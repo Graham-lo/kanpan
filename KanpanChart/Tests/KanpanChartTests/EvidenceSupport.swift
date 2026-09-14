@@ -171,8 +171,8 @@ enum Evidence {
       let c = ctx.cgContext
       renderer.draw(in: c, size: size, scale: scale, live: true)
       guard state.crosshair != nil else { return }
-      // `drawOverlay` 开头会 `ctx.clear` 整块画布——它本来就画在自己那层透明 CALayer 上，
-      // 直接往底图上叠会把底图擦掉。所以先画到一张透明图再合上去，绘制逻辑一个字不改。
+      // 十字线单独画到一张透明图上再合到底图，和 `crossLayer` 的叠法一致。
+      // （单张 `draw` 已经把图例画进底图了，这里只补十字线，不重复画图例。）
       let tf = UIGraphicsImageRendererFormat.preferred()
       tf.scale = scale
       tf.opaque = false

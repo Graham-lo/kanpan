@@ -12,7 +12,7 @@ extension ChartRenderer {
     Pane(indicator: pane.indicator, y: pane.y + 15, h: pane.h - 19)
   }
 
-  func drawSub(_ ctx: CGContext, pane: Pane, L: Layout, scale s: Double) {
+  func drawSub(_ ctx: CGContext, pane: Pane, L: Layout, scale s: Double, legend: Bool = true) {
     guard let key = pane.indicator else { return }
     let t = state.colors
     let (lo, hi) = visibleRange(view: state.view, series: state.series)
@@ -31,7 +31,7 @@ extension ChartRenderer {
     default: break
     }
     ctx.restoreGState()
-    subLegend(ctx, pane: pane, key: key)
+    if legend { subLegend(ctx, pane: pane, key: key) }
   }
 
   /// 可见段的上下界，自适应时上下各留 10%（原型 `extent`）。
@@ -242,6 +242,15 @@ extension ChartRenderer {
       default: break
       }
     }
+  }
+
+  /// 只画图例（主图 + 各副图），给 `crossLayer` 用。顺序和 `draw` 里一致。
+  func drawLegends(_ ctx: CGContext, L: Layout) {
+    for k in 1..<L.panes.count {
+      guard let key = L.panes[k].indicator else { continue }
+      subLegend(ctx, pane: L.panes[k], key: key)
+    }
+    drawLegend(ctx, pane: L.main, L: L)
   }
 
   private func subLegend(_ ctx: CGContext, pane: Pane, key: IndicatorID) {

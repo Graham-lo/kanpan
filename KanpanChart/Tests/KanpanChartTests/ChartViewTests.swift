@@ -68,13 +68,27 @@ struct ChartViewDirtyTests {
     #expect(ChartView.changed(from: a, to: b) == .cross)
   }
 
-  @Test("末根动（ticker）只画底图 + 最新价")
+  @Test("末根动（ticker）：底图 + 最新价 + 图例，不含十字线内容")
   func lastBar() {
     let a = fixtureState()
     var s = a.series
     s.close[s.count - 1] *= 1.001
     var b = a
     b.series = s
+    // 图例画在 `crossLayer` 上（§5.7 的「读数」），没有十字线时它读的就是末根，
+    // 所以末根一动 cross 也得脏；否则图例数值会停在旧值上。
+    #expect(ChartView.changed(from: a, to: b) == [.plot, .live, .cross])
+  }
+
+  @Test("十字线在时，末根动不必重画十字线那层")
+  func lastBarWithCrosshair() {
+    var a = fixtureState()
+    a.crosshair = Crosshair(index: 10)
+    var s = a.series
+    s.close[s.count - 1] *= 1.001
+    var b = a
+    b.series = s
+    // 图例读的是十字线那根（第 10 根），末根怎么动都和它无关。
     #expect(ChartView.changed(from: a, to: b) == [.plot, .live])
   }
 

@@ -189,7 +189,12 @@ public final class ChartView: UIView {
     guard let o = old else { return .all }
     if !sameFrame(o, new) { return .all }
     var p: Parts = []
-    if !sameLastBar(o.series, new.series) { p.insert([.plot, .live]) }
+    // 末根变了：蜡烛（plot）、最新价（live）都要重画；没有十字线时图例读的就是末根，
+    // 图例在 `crossLayer` 上，所以 cross 也得跟着脏。
+    if !sameLastBar(o.series, new.series) {
+      p.insert([.plot, .live])
+      if o.crosshair == nil || new.crosshair == nil { p.insert(.cross) }
+    }
     if o.crosshair != new.crosshair { p.insert(.cross) }
     return p
   }

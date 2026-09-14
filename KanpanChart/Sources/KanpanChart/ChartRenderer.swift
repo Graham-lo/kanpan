@@ -49,7 +49,11 @@ public struct ChartRenderer {
   ///
   /// `live == false` 时跳过最新价——`ChartView` 把最新价放在单独一层（§5.7），
   /// 由 `drawPlot` / `drawLive` 分别调进来。
-  public func draw(in ctx: CGContext, size: CGSize, scale: CGFloat, live: Bool = true) {
+  /// `legend == false` 时跳过主图图例与副图图例——`ChartView` 把图例放在 `crossLayer`
+  /// （§5.7 的「读数」），因为图例读的是 `legendIndex`，十字线一动它就得跟着变。
+  public func draw(
+    in ctx: CGContext, size: CGSize, scale: CGFloat, live: Bool = true, legend: Bool = true
+  ) {
     guard !state.series.isEmpty else { return }
     let L = layout(size: size)
     let r = priceRange(size: size)
@@ -70,12 +74,16 @@ public struct ChartRenderer {
     drawOverlays(ctx, pane: main, r: r, L: L, scale: s)
     drawDrawings(ctx, pane: main, r: r, L: L, scale: s)
     if live { drawLastPrice(ctx, pane: main, r: r, L: L, scale: s) }
-    for k in 1..<L.panes.count { drawSub(ctx, pane: L.panes[k], L: L, scale: s) }
+    for k in 1..<L.panes.count {
+      drawSub(ctx, pane: L.panes[k], L: L, scale: s, legend: legend)
+    }
     drawTimeAxis(ctx, L: L, scale: s)
-    drawLegend(ctx, pane: main, L: L)
+    if legend { drawLegend(ctx, pane: main, L: L) }
   }
 
   /// 十字线层（原型 `paintOver`）。M3 只按 `state.crosshair` 静态摆放。
+  /// 十字线与三处读数。**不负责清屏**——它画在 `crossLayer` 上，由调用方先把那层清空
+  /// （图例也画在同一层，先画图例再画十字线，和原型的 `base`/`over` 叠放顺序一致）。
   public func drawOverlay(in ctx: CGContext, size: CGSize, scale: CGFloat) {
     guard !state.series.isEmpty, let cross = state.crosshair else { return }
     let L = layout(size: size)
@@ -88,7 +96,6 @@ public struct ChartRenderer {
 
     UIGraphicsPushContext(ctx)
     defer { UIGraphicsPopContext() }
-    ctx.clear(CGRect(origin: .zero, size: size))
 
     let xc = x(b.time(at: i), L)
     let y = min(L.timeY, max(0, cross.y ?? yOf(b.close[i], pane, r)))
