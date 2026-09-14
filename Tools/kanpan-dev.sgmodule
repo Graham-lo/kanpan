@@ -1,0 +1,21 @@
+#!name=看盘 开发期：币安生产行情流走代理
+#!desc=只改 fstream/stream/dstream/nbstream 这几个币安 WS 域名的走向，把它们从 DIRECT 挪到 Binance 代理组。不动主配置，开发时开、平时关。
+#!system=mac
+
+[Rule]
+# 为什么要这个模块：
+#
+# 主配置第 256 行挂的 BinanceDirect.list 把这几个域名钉死成 DIRECT，理由写在它自己
+# 的注释里——作者在网关上抓币安 App，看到行情流是从国内加速 IP（39.x / 47.x / 106.x
+# 那批阿里云腾讯云广东段）来的，直连 28ms、走代理 172ms，所以让它直连。
+#
+# 但主配置 [Host] 段第 340-343 行又把同一批域名交给 DoH（1.1.1.1 / 8.8.8.8）解析，
+# 解出来的是 35.73.130.195 这种 AWS 东京地址，不在那批国内加速段里。于是变成
+# 「内地线路裸连境外 IP」，TLS Client Hello 一发出去就被 RST——两段配置互相打架。
+#
+# 这个模块只把走向掰回代理组，DNS 那边不动。fapi.binance.com 本来就走代理组，
+# 没在直连表里，所以 REST 一直是好的；这里让 WS 跟 REST 保持一致。
+DOMAIN,fstream.binance.com,Binance
+DOMAIN,stream.binance.com,Binance
+DOMAIN,dstream.binance.com,Binance
+DOMAIN,nbstream.binance.com,Binance
