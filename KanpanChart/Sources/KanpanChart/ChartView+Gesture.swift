@@ -492,7 +492,8 @@ extension ChartView {
   }
 
   /// 主图里某个 y 对应的价格。
-  private func price(atY y: Double) -> Double {
+  /// 屏幕 y 对应的主图价格。手势和测试都要用（`internal` 是为了后者）。
+  func price(atY y: Double) -> Double {
     guard let s = state, let L = chartLayout, let r = chartPriceRange else { return 0 }
     return pOf(y, pane: L.main, range: r, mode: s.price.mode)
   }
