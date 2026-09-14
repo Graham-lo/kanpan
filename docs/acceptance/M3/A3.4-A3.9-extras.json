@@ -221,16 +221,16 @@
       "askedSpacing" : 1.2,
       "bars" : 272,
       "barsOnScreen" : 286.66666666666669,
-      "bytes" : 338418,
+      "bytes" : 338184,
       "device" : "pro",
       "file" : "M3-pro-light-thin-1.2-09.png",
       "item" : "A3.5",
-      "pixelSha256" : "4fdd821749de49bc50cbe4bc1996f20484a8d2af7468af5ed571b01313255f53",
+      "pixelSha256" : "de22d85f6106b2d8ed3a6a31801bf866db624c8332de2ea63c18812d34d021c9",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "1f9a1f3d5c2188aa21a74fc4bd6bb4986b9c0e34e2f73c1712ebe6bc56b38e01",
+      "sha256" : "da74f50707eede58599009602f9bfec795fb299fe1f079e5e115eb5478f7e7b2",
       "spacing" : 1.2,
       "style" : "stout",
       "thin" : true
@@ -366,19 +366,19 @@
       "subName" : "ATR"
     },
     {
-      "bytes" : 171619,
+      "bytes" : 171717,
       "file" : "M3-pro-light-sub-vol-17.png",
       "item" : "A3.6",
       "params" : [
         5,
         10
       ],
-      "pixelSha256" : "107648341fc113d93a2457b9379bb3c90721ee4814bc9e420192fa21700fe957",
+      "pixelSha256" : "998c2112fef99b72d3afc65d7b265b6d7a3e469920c828cd2c603f1ef2d4d51e",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "9c60cf6edc13b999e48ff2ed3f095d4c330ebfaff31fc45622ef25920fad60be",
+      "sha256" : "7faa99b0c540b3d1798f89eb3f05f988bda9b5aa851ae555f71e1f719767e373",
       "style" : "stout",
       "sub" : "VOL",
       "subName" : "成交量"

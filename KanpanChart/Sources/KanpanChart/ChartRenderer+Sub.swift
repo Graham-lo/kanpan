@@ -107,7 +107,11 @@ extension ChartRenderer {
     if mx <= 0 { mx = 1 }
     let ext = (lo: 0.0, hi: mx * 1.1)
     let spacing = state.view.barSpacing(step: b.step, plotW: L.plotW)
-    let bodyW = Double(candleWidths(spacing: spacing, scale: s, bodyR: state.style.bodyR).body) / s
+    // 和主图蜡烛同宽：走 `candlePixels`（渲染口径），不是 `candleWidths`（原型对账口径）。
+    // 后者没有「相邻两根至少留 1 个设备像素缝」的上限，捏小之后量柱会连成一堵实心墙——
+    // 主图蜡烛在 37b8825 已经修掉这条，副图量柱漏了。AICoin 安卓包里量柱同样恒留缝
+    // （实体 = 节距 × 2/3，两边各 节距/6），见 docs/AICoin-安卓包-UI规格提取.md §3。
+    let bodyW = Double(candlePixels(spacing: spacing, scale: s, style: state.style).body) / s
     for i in lo...hi {
       let xc = state.view.x(Double(b.time(at: i)), plotW: L.plotW)
       if xc < -4 || xc > L.plotW + 4 { continue }
@@ -136,11 +140,11 @@ extension ChartRenderer {
     let spacing = state.view.barSpacing(step: b.step, plotW: L.plotW)
 
     // 柱宽取整数个设备像素，三条同时管着：
-    //   ① 目标是蜡烛实体宽的一半；
+    //   ① 目标是蜡烛实体宽的一半（按 `candlePixels` 的**实画**宽度算，不是原型对账口径）；
     //   ② 上限 `floor(根间距 × scale) - 1`——`snap` 之后相邻两根左沿最少差
     //      `floor(spacing × s)` 个像素，减 1 就保证缝至少留得出 1 个设备像素；
     //   ③ 下限 1 个设备像素，挤到留不出缝时宁可贴着也不能让柱消失。
-    let bodyPx = Double(candleWidths(spacing: spacing, scale: s, bodyR: state.style.bodyR).body)
+    let bodyPx = Double(candlePixels(spacing: spacing, scale: s, style: state.style).body)
     let barPx = max(1, min((bodyPx / 2).rounded(), (spacing * s).rounded(.down) - 1))
     let bw = barPx / s
     let line = 1 / s  // 空心柱的描边：1 个设备像素
