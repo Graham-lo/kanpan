@@ -38,5 +38,5 @@ parts = ['''<!doctype html>
 </html>
 ''']
 out = ''.join(parts)
-io.open('看盘原型.html', 'w', encoding='utf-8').write(out)
+io.open(os.path.join('..', '看盘原型.html'), 'w', encoding='utf-8').write(out)   # 输出到 prototype/ 根
 print(len(out), 'script src left:', out.count('<script src='))
