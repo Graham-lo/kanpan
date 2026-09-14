@@ -228,10 +228,22 @@ struct ChartGestureTests {
     #expect(v.gesture.mode == .axisPrice)
     t.point = CGPoint(x: L.plotW + 12, y: y + 70)
     v.touchesMoved([t], with: FakeEvent(ms: 10_030))
-    #expect(v.state!.price.zoom != 1, "拖价格轴没改缩放")
+    // 竖拖价格轴 ＝ 切成**手动定标**：区间钉成绝对值，不再每帧按可见 K 线贴合。
+    // （从前这儿改的是 `price.zoom`——那是贴合结果上的相对量，横向一平移就又跑了。）
+    let pin = try #require(v.state!.price.pinned, "拖价格轴没切进手动定标")
+    #expect(v.state!.price.isManual)
     let p1 = v.price(atY: y)
     #expect(abs(p1 / p0 - 1) < 2e-3, "按下点的价格跑了：\(p0) → \(p1)")
     v.touchesEnded([t], with: FakeEvent(ms: 10_050))
+
+    // 手动定标之后横向拖一段：价格轴**一个像素都不许动**（AiCoin 桌面版实测行为）。
+    let g = FakeTouch(CGPoint(x: 200, y: 300))
+    v.touchesBegan([g], with: FakeEvent(ms: 10_200))
+    g.point = CGPoint(x: 90, y: 300)
+    v.touchesMoved([g], with: FakeEvent(ms: 10_230))
+    v.touchesEnded([g], with: FakeEvent(ms: 10_250))
+    let after = try #require(v.state!.price.pinned)
+    #expect(after.lo == pin.lo && after.hi == pin.hi, "横向平移把手动定标的价格轴带跑了")
   }
 
   @Test("G6：价格轴双击复位")

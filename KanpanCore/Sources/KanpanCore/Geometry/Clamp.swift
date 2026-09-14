@@ -23,12 +23,37 @@ public func clampView(
   return ViewWindow(to: to, span: span)
 }
 
+extension ViewAnchor {
+  /// 复位时最新一根右边要留多少空白，单位是「窗宽的几成」。
+  ///
+  /// `.right` 就是原来那个 6%（`Chart.rightGap`），一个字没动——默认档必须逐像素等于现状。
+  /// `.center` 留半屏，最新一根正好落在图区正中。
+  ///
+  /// `.left` 名义上想留 75%（最新一根落在左侧 1/4 处），但实际只到 30%：`clampView` 的
+  /// `maxTo = lastT + span * 0.7` 把它截住了。那条 0.7 同时管着手指拖动的边界和手感
+  /// （§5.2 注释写明「右侧能拖出大片空白是正常行为，不要收紧」），为了一个复位档去放宽
+  /// 它，代价是整套拖动边界跟着变，不划算。所以这里照写 0.75，让夹取去截，
+  /// 实测落点是距左边缘 30%——比居中更靠左，方向对，只是没到 25%。
+  var rightGapRatio: Double {
+    switch self {
+    case .right: Chart.rightGap
+    case .center: 0.5
+    case .left: 0.75
+    }
+  }
+}
+
 public enum ViewMath {
   /// 初始视野 / 换品种：右边缘留 6% 空白，窗宽按风格默认根间距（原型 `resetView`）。
-  public static func reset(series: BarSeries, plotW: Double, spacing: Double) -> ViewWindow {
+  ///
+  /// - Parameter anchor: 「回到最新」时最新一根停在横向哪儿（K 线设置·拖动位置）。
+  ///   默认 `.right` = 原行为，老调用点一个字都不用改。
+  public static func reset(
+    series: BarSeries, plotW: Double, spacing: Double, anchor: ViewAnchor = .right
+  ) -> ViewWindow {
     guard series.count > 0 else { return ViewWindow(from: 0, to: 1) }
     let span = (plotW / spacing) * Double(series.step)
-    let to = Double(series.lastTime) + span * Chart.rightGap
+    let to = Double(series.lastTime) + span * anchor.rightGapRatio
     return clampView(ViewWindow(to: to, span: span), series: series, plotW: plotW)
   }
 

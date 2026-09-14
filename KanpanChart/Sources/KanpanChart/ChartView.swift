@@ -212,6 +212,9 @@ public final class ChartView: UIView {
       if o.crosshair == nil || new.crosshair == nil { p.insert(.cross) }
     }
     if o.crosshair != new.crosshair { p.insert(.cross) }
+    // 倒计时每秒走一格，但它只画在 `liveLayer` 上——只脏 live，别把整张图拖下水
+    // （A3.12 要求静止时 CPU < 1%，重画 plot 层就破功了）。倒计时没开就当没变过。
+    if o.nowMs != new.nowMs, new.options.countdown, new.options.lastLine { p.insert(.live) }
     return p
   }
 
@@ -221,7 +224,7 @@ public final class ChartView: UIView {
       && a.redUp == b.redUp && a.price == b.price && a.overlays == b.overlays
       && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
       && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi
-      && a.magnet == b.magnet
+      && a.magnet == b.magnet && a.options == b.options && a.subScale == b.subScale
       && sameSeriesExceptLast(a.series, b.series)
   }
 

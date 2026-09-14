@@ -11,11 +11,13 @@ import UIKit
 /// 取样点不是猜的：先用 `ChartRenderer.candleXs` / `priceGridYs` / `lastPriceY` 把
 /// 那一笔画在哪儿问出来，再直接读那个设备像素——这就是「无抗锯齿处取样」。
 ///
-/// 有一类点**几何上不可能**取到满覆盖：影线宽度是 `max(0.5, style.wick)` 个
-/// **设备像素**（和屏幕倍率无关），靛 / 砖 / 骨 / 密是 0.5、纸 0.8、描 0.9，一个整像素
-/// 都盖不满。这几款的期望值按 CoreGraphics 的合成规则算成 `blend(底色, 影线色, 覆盖率)`，
-/// 仍然是一个**确定的**值，照样精确比（容差 1/255 留给 8 位取整）。轴文字同理，
-/// 字形笔画本身就带抗锯齿，取样记覆盖率。
+/// 影线以前有一类点几何上取不到满覆盖：宽度写的是 `max(0.5, style.wick)` 个设备像素，
+/// 靛 / 砖 / 骨 / 密是 0.5、纸 0.8、描 0.9，一个整像素都盖不满，期望值只能按
+/// `blend(底色, 影线色, 覆盖率)` 算。**M6 之后不再有这一档**：影线一律量化成整数个
+/// 设备像素（`wickPixels`），所以这 7 个点全都是满覆盖精确比。这次改的就是实机反馈
+/// 「影线颜色发淡、糊在一起」的根因——那条 50% 灰不是错觉，是真的只画了半个像素。
+///
+/// 轴文字仍然记覆盖率：字形笔画本身就带抗锯齿，那是字体渲染的事，不是我们的。
 @MainActor
 @Suite("A3.3 颜色取样")
 struct ColorSampleTests {
@@ -114,11 +116,16 @@ struct ColorSampleTests {
 
         // ---------------------------------------------------------------- ③ 影线（tint 后）
         do {
-          let col = style.wickTint < 1 ? Paint.mix(t.bg, t.up, style.wickTint) : t.up
+          // 实体只剩两个设备像素以内时渲染器会取消 tint（见 `drawCandles`）。默认根间距
+          // 下 11 款都不会碰到这条，但取样点必须和渲染器同一套判据，不能各算各的。
+          let tintK = p.bodyW * Double(dev.scale) <= 2 ? 1 : style.wickTint
+          let col = tintK < 1 ? Paint.mix(t.bg, t.up, tintK) : t.up
           #expect(col.value.lowercased() == golden.wick.lowercased(), "\(themeKey)/\(style.id) 影线色算错")
-          let wickPx = max(0.5, style.wick)
-          let full = wickPx >= 1
-          let expected = full ? col.rgb8 : blend8(bg: bg, fg: col.rgb8, k: wickPx)
+          // M6 起影线一律是**整数个设备像素**（`wickPixels`），所以取样点必然满覆盖，
+          // 不再有「0.5 像素 → 50% 灰」那一档。这正是实机上「影线发淡、糊成一片」的根因。
+          let wickPx = Double(wickPixels(style: style, scale: Double(dev.scale)))
+          let full = true
+          let expected = col.rgb8
           // 上影线够长的那根：实体顶到最高价之间是纯影线
           guard let c = xs.filter({ $0.up && ($0.bodyTop - $0.wickTop) * s >= 8 })
             .max(by: { ($0.bodyTop - $0.wickTop) < ($1.bodyTop - $1.wickTop) })
@@ -126,7 +133,10 @@ struct ColorSampleTests {
             Issue.record("\(themeKey)/\(style.id) 找不到够长的上影线")
             continue
           }
-          let xIdx = (style.wickCap == .round && !p.thin)
+          // 圆头帽在细影线上只贡献抗锯齿，渲染器已经改成「≥3 设备像素才用圆头描边」，
+          // 其余一律填矩形。取样点跟着走：描边取中心线，填矩形取左沿那一列。
+          let roundCap = style.wickCap == .round && wickPx >= 3
+          let xIdx = (roundCap && !p.thin)
             ? Int((c.wickHair * s - 0.5).rounded())
             : Int((c.wickLeft * s).rounded())
           let gap = c.bodyTop - c.wickTop
@@ -145,9 +155,7 @@ struct ColorSampleTests {
               point: "wick", expected: hexOf(expected), actual: hexOf(best.got), delta: best.d,
               coverage: coverage(of: best.got, bg: bg, fg: col.rgb8), exact: full,
               at: [xIdx, best.y],
-              note: full
-                ? "影线 \(wickPx) 设备像素，满覆盖"
-                : "影线只有 \(wickPx) 设备像素，期望值 = 底色与 \(col.value) 按 \(wickPx) 合成"))
+              note: "影线 \(Int(wickPx)) 设备像素（风格表 \(style.wick) 量化后），满覆盖"))
         }
 
         // ---------------------------------------------------------------- ④ 网格

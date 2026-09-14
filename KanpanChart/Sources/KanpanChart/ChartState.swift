@@ -30,6 +30,19 @@ public struct ChartState: Sendable {
   /// 价格小数位。原型是快照里的 `meta.p`（BTCUSDT 是 2），等于 `exchangeInfo`
   /// 的 `pricePrecision`——不是按 `tickSize` 推的 `priceDecimals`。
   public var decimals: Int
+  /// K 线设置的那组开关（网格 / 实体 / 平均 K 线 / 实时价格线 / 画线 / 倒计时 / 至今涨幅 /
+  /// 留白偏置 / 拖动位置）。全默认 = 现状。
+  public var options: ChartOptions
+  /// 「本根还有多久收」用的当前时刻（毫秒）。`nil` 就不画倒计时。
+  ///
+  /// 为什么不在渲染器里读系统时钟：`ChartState` 必须保持纯值——同一份 state 任何时候
+  /// 画出来都得是同一张图，A3.11 的 176 张基线全靠这条。时间是外部输入，得喂进来。
+  public var nowMs: Double?
+  /// 每个副图各自的高度倍率（A6.4 小/中/大）。空字典 = 全 1.0 = 现状。
+  ///
+  /// 放这儿而不是塞进 `options`：它是「指标面板」那边的设置，不是「K 线设置」里的项，
+  /// 而且它和 `subs` 是一对（同一批指标的两个侧面），挨着放读起来才顺。
+  public var subScale: [IndicatorID: Double]
 
   public init(
     series: BarSeries,
@@ -47,7 +60,10 @@ public struct ChartState: Sendable {
     drawings: [Drawing] = [],
     crosshair: Crosshair? = nil,
     magnet: Bool = true,
-    decimals: Int? = nil
+    decimals: Int? = nil,
+    options: ChartOptions = .init(),
+    nowMs: Double? = nil,
+    subScale: [IndicatorID: Double] = [:]
   ) {
     self.series = series; self.symbol = symbol; self.view = view
     self.style = style; self.dark = dark; self.redUp = redUp; self.price = price
@@ -56,9 +72,34 @@ public struct ChartState: Sendable {
     self.crosshair = crosshair
     self.magnet = magnet
     self.decimals = decimals ?? symbol.pricePrecision
+    self.options = options
+    self.nowMs = nowMs
+    self.subScale = subScale
   }
 
   public var colors: ChartColors { Palette.chart(dark: dark, redUp: redUp) }
+
+  /// 真正生效的网格档位。渲染器和探针一律读这个，别再读 `style.grid`——
+  /// 覆盖只在读的时候叠，风格表本身一个数都不许改（原型即规格）。
+  public var effectiveGrid: CandleStyle.Grid {
+    switch options.grid {
+    case .style: style.grid
+    case .on: .both
+    case .off: .none
+    }
+  }
+
+  /// 真正生效的实体画法。
+  ///
+  /// `.outline`（「描」那档，阴阳线都空心）被强制档一起接管：用户点了「实心」就该到处都是
+  /// 实心，留一个风格自己说了算的例外只会显得是 bug。
+  public var effectiveShape: CandleStyle.Shape {
+    switch options.body {
+    case .style: style.shape
+    case .solid: .solid
+    case .hollowUp: .hollowUp
+    }
+  }
 }
 
 /// 十字线落在哪儿。

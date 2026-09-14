@@ -59,7 +59,9 @@ struct GeometryTableTests {
           metric: m, appV: a, protoV: b, scale: Double(dev.scale), mainH: p.mainH)
         worst = max(worst, dpx)
         checked += 1
-        #expect(dpx <= 1, "\(style.id).\(m)：app \(a) vs 原型 \(b)，差 \(dpx) 设备像素")
+        // 容差就是「±1 设备像素」，但 1/3 pt（3x）这种数除不尽，正好差 1 像素的点会算出
+        // 1.0000000000000018 这样的值。放 1e-9 的浮点噪声，判据本身一点没松。
+        #expect(dpx <= 1 + 1e-9, "\(style.id).\(m)：app \(a) vs 原型 \(b)，差 \(dpx) 设备像素")
         row[m] = ["app": a, "prototype": b, "deltaDevicePx": dpx]
         csv.append("\(style.id),\(m),\(a),\(b),\(abs(a - b)),\(dpx)")
       }

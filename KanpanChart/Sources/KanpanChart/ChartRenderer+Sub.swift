@@ -268,6 +268,26 @@ extension ChartRenderer {
       default: break
       }
     }
+    // 至今涨幅挂在图例最后一段：它读的是十字线那根，和前面几段同源。
+    if let (text, color) = sinceChangeChip { put(text, color) }
+  }
+
+  /// 「至今涨幅」那一段：从十字线那根的收盘到**最新一根**收盘的涨跌幅。
+  ///
+  /// 十字线关掉就没有——不开十字线时 `legendIndex` 本来就是最后一根，报「至今 +0.00%」
+  /// 是废话。颜色走 `colors.up` / `colors.down`，所以「红涨绿跌」那个开关照样管得住它。
+  ///
+  /// 用真实收盘价算，平均 K 线开着也一样：平滑后的价拿来报涨幅会和详情、报警对不上。
+  var sinceChangeChip: (text: String, color: Hex)? {
+    guard state.options.sinceChange, state.crosshair != nil else { return nil }
+    let b = state.series
+    let i = legendIndex
+    guard b.count > 0, i >= 0, i < b.count else { return nil }
+    let from = b.close[i], to = b.close[b.count - 1]
+    guard from.isFinite, to.isFinite, from != 0 else { return nil }
+    let pct = (to / from - 1) * 100
+    let t = state.colors
+    return ("至今 " + (pct >= 0 ? "+" : "") + toFixed(pct, 2) + "%", pct >= 0 ? t.up : t.down)
   }
 
   /// 只画图例（主图 + 各副图），给 `crossLayer` 用。顺序和 `draw` 里一致。
@@ -337,6 +357,8 @@ extension ChartRenderer {
   // ---------------------------------------------------------------- 画线
 
   func drawDrawings(_ ctx: CGContext, pane: Pane, r: PriceRange, L: Layout, scale s: Double) {
+    // 关掉只是不画，`state.drawings` 一根不删——用户再打开还得在。
+    guard state.options.drawings else { return }
     let t = state.colors
     for d in state.drawings {
       // 选中态（amber + 1.8pt）是 M5 的事，M3 只画静态的那一档

@@ -70,3 +70,96 @@ public enum PriceAnchor {
   /// 往左拖看得更长，往右拖看得更细。
   public static func spanFactor(dx: Double) -> Double { exp(-dx / 220) }
 }
+
+extension PriceAnchor {
+  /// 解出能把「自动贴合出来的区间」按住在 `target` 上的那组 `zoom`/`shift`。
+  ///
+  /// 用在双指缩放：价格轴本来每帧都按可见 K 线的高低重新贴合，捏合时可见根数一直变，
+  /// 极值一进一出整张图就被上下拽（用户原话「缩放 k 线会自动上下跳」）。AiCoin 的做法是
+  /// 框固定、内容在框里缩放，松手才重新贴合——这里就是「框固定」那一半。
+  ///
+  /// `raw` 是**同一套输入、`zoom = 1`/`shift = 0`** 时的区间。`priceRange` 拿到它之后是
+  /// 这么叠变换的：
+  ///
+  ///     half = (rawSpan / 2) / zoom      off = half * 2 * shift
+  ///     lo   = rawMid - half + off       hi  = rawMid + half + off
+  ///
+  /// 令它等于 `target`，反解即
+  ///
+  ///     zoom  = rawSpan / targetSpan
+  ///     shift = (targetMid - rawMid) / targetSpan
+  ///
+  /// 线性和对数两档都精确。百分比档里 `base` 在「价格 → y」的归一化中会约掉
+  /// （`(f - a) / (z - a)` 恒等于 `(p - lo) / (hi - lo)`），所以对齐 `lo`/`hi` 就够，
+  /// 不用管 `base` 换没换根。
+  ///
+  /// 返回 `nil` 表示这一帧解不出来（区间退化成一条线，或者 `zoom` 会被 `0.15` 的下限
+  /// 截掉、按不住）——调用方该原样留着上一帧的变换，别硬塞一个按不住的值进去。
+  public static func freeze(
+    target: PriceRange, raw: PriceRange, mode: PriceMode
+  ) -> PriceTransform? {
+    let span = target.hi - target.lo
+    let rawSpan = raw.hi - raw.lo
+    guard span > 0, rawSpan > 0, span.isFinite, rawSpan.isFinite else { return nil }
+    let zoom = rawSpan / span
+    guard zoom >= minZoom else { return nil }
+    let shift = ((target.lo + target.hi) / 2 - (raw.lo + raw.hi) / 2) / span
+    guard zoom.isFinite, shift.isFinite else { return nil }
+    return PriceTransform(mode: mode, zoom: zoom, shift: shift)
+  }
+
+  /// `priceRange` 里 `max(0.15, zoom)` 的那个下限。低于它 `zoom` 会被截掉，框按不住。
+  public static let minZoom: Double = 0.15
+}
+
+// MARK: - 手动定标（AiCoin 的「自动」关掉之后）
+
+extension PriceAnchor {
+  /// 把绝对区间 `range` 缩放 `factor` 倍，同时让 `price` 停在 `y` 上不动。
+  ///
+  /// 和上面 `shift(keeping:at:)` 的二分不同，这里区间是**绝对**的：`yOf` 在正向空间里
+  /// 就是一条直线，锚点的归一化位置 `u` 保持不变即可，跨度除以 `factor` 就完事，
+  /// 三个档位都有解析解。二分那套是因为 `zoom`/`shift` 要穿过「每帧重新贴合」那一层
+  /// 才落到区间上，这里没有那一层。
+  ///
+  /// `factor` 沿用 `zoom(from:dy:)` 的语义：大于 1 ＝ 区间变窄 ＝ 看得更细。
+  public static func pin(
+    range: PriceRange, factor: Double, keeping price: Double, at y: Double,
+    pane: Pane, mode: PriceMode
+  ) -> (lo: Double, hi: Double)? {
+    let a = mode.forward(range.lo, base: range.base)
+    let z = mode.forward(range.hi, base: range.base)
+    let span = z - a
+    let f = mode.forward(price, base: range.base)
+    guard span > 0, span.isFinite, f.isFinite, factor > 0, factor.isFinite, pane.h > 0
+    else { return nil }
+    // `yOf` 是 `pane.y + pane.h - u * pane.h`，反过来就是这个 `u`。
+    let u = (pane.y + pane.h - y) / pane.h
+    let newSpan = span / factor
+    let newA = f - u * newSpan
+    return clean(lo: mode.inverse(newA, base: range.base),
+                 hi: mode.inverse(newA + newSpan, base: range.base), mode: mode)
+  }
+
+  /// 手动定标下的竖向平移：整段区间跟着手指走 `dy` 个像素（正向空间里是平移）。
+  public static func pan(
+    range: PriceRange, dy: Double, pane: Pane, mode: PriceMode
+  ) -> (lo: Double, hi: Double)? {
+    let a = mode.forward(range.lo, base: range.base)
+    let z = mode.forward(range.hi, base: range.base)
+    let span = z - a
+    guard span > 0, span.isFinite, pane.h > 0 else { return nil }
+    // 手指往下拖，图跟着往下走 ＝ 区间往上抬。
+    let d = span * (dy / pane.h)
+    return clean(lo: mode.inverse(a + d, base: range.base),
+                 hi: mode.inverse(z + d, base: range.base), mode: mode)
+  }
+
+  /// 对数档位下正向空间一路平移是会把 `lo` 拖到 0 以下的（`exp` 出来就贴着 0），
+  /// 这里统一把不能用的结果挡掉，宁可这一帧不动也不要画出一张压平的图。
+  private static func clean(lo: Double, hi: Double, mode: PriceMode) -> (lo: Double, hi: Double)? {
+    guard lo.isFinite, hi.isFinite, hi > lo else { return nil }
+    if mode == .log, lo <= 0 { return nil }
+    return (lo, hi)
+  }
+}

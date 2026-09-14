@@ -68,6 +68,9 @@ extension CGContext {
 enum ChartFont {
   static let axis = UIFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
   static let legend = UIFont.systemFont(ofSize: 10, weight: .medium)
+  /// 比价格胶囊小一号，给挂在它底下的倒计时用：两格叠在右轴上，字号一样会显得头重。
+  /// 等宽数字是必须的——倒计时每秒都在变，比例数字会让整格左右抖。
+  static let tiny = UIFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
 
   static func attrs(_ font: UIFont, _ color: Hex) -> [NSAttributedString.Key: Any] {
     [.font: font, .foregroundColor: UIColor(cgColor: Paint.cg(color))]

@@ -104,6 +104,11 @@ extension ChartRenderer {
           if arr[i] < loP { loP = arr[i] }
         }
       }
+      // 平均 K 线的 hh/hl 必然在真实 high/low 之外，量留白得按真正画出来的那一根量。
+      for p in heikin?.extremes ?? [] where p.isFinite {
+        if p > hiP { hiP = p }
+        if p < loP { loP = p }
+      }
     }
     let yHi = KanpanCore.yOf(hiP, pane: pane, range: r, mode: state.price.mode)
     let yLo = KanpanCore.yOf(loP, pane: pane, range: r, mode: state.price.mode)
@@ -139,9 +144,12 @@ extension ChartRenderer {
     let r = priceRange(size: size)
     let pane = L.main
     let S = state.style
+    let shape = state.effectiveShape
+    let ha = heikin
     let spacing = state.view.barSpacing(step: b.step, plotW: L.plotW)
     let m = candleMetrics(spacing: spacing, style: S, scale: s)
-    let hollowShape = S.shape == .outline || S.shape == .hollowUp
+    let hollowShape = shape == .outline || shape == .hollowUp
+    let minBodyH = max(m.wickW, snap(m.minBody, scale: s))
     let (lo, hi) = visibleRange(view: state.view, series: b)
     func y(_ p: Double) -> Double {
       KanpanCore.yOf(p, pane: pane, range: r, mode: state.price.mode)
@@ -151,11 +159,13 @@ extension ChartRenderer {
     for i in lo...hi {
       let xc = state.view.x(Double(b.time(at: i)), plotW: L.plotW)
       if xc < -4 || xc > L.plotW + 4 { continue }
-      let up = b.close[i] >= b.open[i]
-      let yo = y(b.open[i]), yc = y(b.close[i])
-      let top = min(yo, yc)
-      let h = max(m.minBody, abs(yc - yo))
-      let drawHollow = S.shape == .outline || (S.shape == .hollowUp && up)
+      let bar = ha?.bar(i) ?? (o: b.open[i], h: b.high[i], l: b.low[i], c: b.close[i])
+      let up = bar.c >= bar.o
+      let yo = y(bar.o), yc = y(bar.c)
+      // 和 `drawCandles` 一样：上下边各自 snap，高度是两条对齐边之差。
+      let top = snap(min(yo, yc), scale: s)
+      let h = max(minBodyH, snap(max(yo, yc), scale: s) - top)
+      let drawHollow = shape == .outline || (shape == .hollowUp && up)
       out.append(
         CandleXProbe(
           index: i, center: xc,
@@ -163,7 +173,7 @@ extension ChartRenderer {
           wickLeft: snap(xc - m.wickW / 2, scale: s),
           wickHair: hairline(xc, scale: s),
           up: up,
-          wickTop: y(b.high[i]), wickBottom: y(b.low[i]),
+          wickTop: snap(y(bar.h), scale: s), wickBottom: snap(y(bar.l), scale: s),
           bodyTop: top, bodyHeight: h,
           hollow: hollowShape && drawHollow && h > m.outline * 2.2 && m.bodyW > m.outline * 2.2))
     }
@@ -174,7 +184,8 @@ extension ChartRenderer {
   /// `drawLastPrice` 的提前返回一致。
   public func lastPriceY(size: CGSize) -> (y: Double, up: Bool)? {
     let b = state.series
-    guard !b.isEmpty else { return nil }
+    // 实时价格线关掉了就真的什么都没画，取证也得照实说没有。
+    guard state.options.lastLine, !b.isEmpty else { return nil }
     let L = layout(size: size)
     let r = priceRange(size: size)
     let pane = L.main
@@ -205,7 +216,7 @@ extension ChartRenderer {
     let L = layout(size: size)
     let s = Double(scale)
     var out = [hairline(L.plotW, scale: s)]
-    guard state.style.grid == .both else { return out }
+    guard state.effectiveGrid == .both else { return out }
     for k in timeTicks(
       view: state.view, plotW: L.plotW, offsetMinutes: state.timezone.offsetMinutes)
     {

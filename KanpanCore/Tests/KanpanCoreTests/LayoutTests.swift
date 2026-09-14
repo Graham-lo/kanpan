@@ -79,6 +79,83 @@ struct LayoutTests {
     #expect(Set(sizes.map { "\($0)" }).count > 1, "11 款风格布局完全一样，那 §6 的表没接上")
   }
 
+  // MARK: - 副图高度倍率（A6.4 小/中/大）
+
+  /// 空字典 = 一个字都没改：必须逐比特等于加这个参数之前的结果。A3.11 的基线靠这条。
+  @Test("空倍率表等于现状")
+  func emptyScaleIsIdentity() {
+    for (_, w, h) in Self.devices {
+      for st in CandleStyle.all {
+        for subs in [[], [IndicatorID.macd], [.macd, .rsi], [.vol, .macd, .rsi]] {
+          let old = Layout(width: w, height: h, style: st, subs: subs)
+          let new = Layout(width: w, height: h, style: st, subs: subs, subScale: [:])
+          #expect(old == new, "\(st.id) 空倍率表下漂了")
+          // 顺带钉住「倍率 1.0 也等于现状」——三档里的「中」走的就是这条。
+          let ones = Dictionary(uniqueKeysWithValues: Set(subs).map { ($0, 1.0) })
+          #expect(Layout(width: w, height: h, style: st, subs: subs, subScale: ones) == old)
+        }
+      }
+    }
+  }
+
+  /// 每块副图各按各的倍率算高，主图吃掉剩下的，面板依然首尾相接。
+  @Test("各副图各自的倍率")
+  func perPaneScale() {
+    let st = CandleStyle.default
+    let subs: [IndicatorID] = [.macd, .rsi]
+    let L = Layout(width: 393, height: 852, style: st, subs: subs,
+                   subScale: [.macd: 1.5, .rsi: 0.5])
+    let cap = max(44, (852 - st.timeH) * 0.3)
+    let hMacd = min(max(44, (st.subH * 1.5).rounded()), cap)
+    let hRsi = min(max(44, (st.subH * 0.5).rounded()), cap)
+    #expect(L.panes[1].h == hMacd && L.panes[2].h == hRsi)
+    #expect(hMacd > hRsi, "两块高度应当不同")
+    #expect(L.mainH == max(80, 852 - st.timeH - hMacd - hRsi))
+    #expect(L.panes[1].y == L.mainH && L.panes[2].y == L.mainH + hMacd)
+    #expect(L.subH == hMacd, "代表值取第一块副图的高")
+  }
+
+  /// 倍率是公开入口，外面塞什么都得夹到 0.5…2：夹不住主图就被压到 80 的保底值上。
+  @Test("倍率夹到 0.5…2")
+  func scaleIsClamped() {
+    let st = CandleStyle.default
+    func h(_ k: Double) -> Double {
+      Layout(width: 393, height: 852, style: st, subs: [.macd], subScale: [.macd: k]).panes[1].h
+    }
+    #expect(h(99) == h(2), "上限没夹住")
+    #expect(h(0.01) == h(0.5), "下限没夹住")
+    #expect(h(-3) == h(0.5))
+    #expect(h(.nan) == h(0.5), "NaN 走 min/max 的兜底分支，不能算出 NaN 高度")
+    #expect(h(0.5) < h(1) && h(1) < h(2), "三档必须真的不一样高")
+  }
+
+  /// 放大倍率也逃不掉「单个副图不超过 30%」和「主图 80pt 保底」这两条老约束。
+  @Test("倍率不能突破上限与保底")
+  func scaleRespectsCaps() {
+    let st = CandleStyle.default
+    for (_, w, hh) in Self.devices {
+      let subs: [IndicatorID] = [.vol, .macd, .rsi]
+      let big = Dictionary(uniqueKeysWithValues: subs.map { ($0, 2.0) })
+      let L = Layout(width: w, height: hh, style: st, subs: subs, subScale: big)
+      let cap = max(44, (hh - st.timeH) * 0.3)
+      for p in L.panes.dropFirst() {
+        #expect(p.h <= cap + 1e-9, "副图 \(p.indicator!) 超了 30% 上限")
+        #expect(p.h >= 44)
+      }
+      #expect(L.mainH >= 80)
+    }
+  }
+
+  /// 同一个指标在两块里（真实场景不会，但入口允许）也不能算崩。
+  @Test("查不到的键按 1.0 算")
+  func missingKeyIsOne() {
+    let st = CandleStyle.default
+    let L = Layout(width: 393, height: 852, style: st, subs: [.macd, .rsi],
+                   subScale: [.kdj: 2.0])
+    let base = Layout(width: 393, height: 852, style: st, subs: [.macd, .rsi])
+    #expect(L == base, "给了个不相干的键，布局不该动")
+  }
+
   @Test("主图始终是第 0 块")
   func mainIsFirst() {
     let L = Layout(width: 393, height: 852, style: CandleStyle.default, subs: [.vol, .macd, .rsi])

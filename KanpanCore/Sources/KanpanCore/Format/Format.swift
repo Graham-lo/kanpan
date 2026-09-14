@@ -74,6 +74,28 @@ public func fmtFull(ms: Double, offsetMinutes: Int) -> String {
   return "\(p.year)-\(pad2(p.month))-\(pad2(p.day)) \(pad2(p.hour)):\(pad2(p.minute))"
 }
 
+/// 本根倒计时的文案（K 线设置·本根倒计时）。
+///
+/// 三档，按「这一眼要看的是什么」分：
+/// - 不到一小时：`mm:ss`。分钟不进位，59 分以内本来就只有两位。
+/// - 一小时以上：`h:mm:ss`。小时不补零——`3:05:12` 比 `03:05:12` 窄，右轴那一格很挤。
+/// - 一天以上（1d / 1w / 1M 这几档）：`Nd hh:mm`。到了这个量级秒没有意义，
+///   每秒重画一次右轴纯属浪费帧。
+///
+/// 剩余时间 <= 0 或非数一律给 `nil`：收盘时刻已经过了就不该画这一格
+/// （数据还没推进来的空档，画一个 `00:00` 反而像卡住了）。
+public func fmtCountdown(msRemaining ms: Double) -> String? {
+  guard ms.isFinite, ms > 0 else { return nil }
+  let total = Int((ms / 1000).rounded(.down))
+  let d = total / 86_400
+  let h = (total % 86_400) / 3600
+  let m = (total % 3600) / 60
+  let s = total % 60
+  if d > 0 { return "\(d)d \(pad2(h)):\(pad2(m))" }
+  if total >= 3600 { return "\(h):\(pad2(m)):\(pad2(s))" }
+  return "\(pad2(m)):\(pad2(s))"
+}
+
 /// 定点小数，非数给 `--`。
 public func fmtNum(_ x: Double, _ p: Int) -> String {
   guard x.isFinite else { return "--" }
