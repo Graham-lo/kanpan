@@ -1,0 +1,13 @@
+.DS_Store
+*.xcuserstate
+xcuserdata/
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+DerivedData/
+build/
+.build/
+.swiftpm/
+Packages/
+*.ipa
+*.dSYM.zip
+*.dSYM
+docs/acceptance/**/*.trace
