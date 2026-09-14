@@ -39,10 +39,18 @@ public struct ChartRenderer {
 
   /// 主图价格区间。手势层要用同一份，所以露出来。
   public func priceRange(size: CGSize) -> PriceRange {
+    priceRange(size: size, transform: state.price)
+  }
+
+  /// 换一套 `zoom`/`shift` 重算区间，别的输入不动。
+  ///
+  /// 拖价格轴要为「按下点不动」解 `shift`（`PriceAnchor`），一次二分要问几十遍区间；
+  /// 走这条不用改 `state`，叠加指标的缓存也不会被反复推翻。
+  public func priceRange(size: CGSize, transform: PriceTransform) -> PriceRange {
     KanpanCore.priceRange(
       view: state.view, series: state.series, style: state.style,
       overlayValues: overlayLines(), drawingPrices: state.drawings.flatMap(\.prices),
-      transform: state.price)
+      transform: transform)
   }
 
   /// 底图：背景、网格、K 线、叠加、画线、最新价、副图、时间轴、图例。
@@ -97,8 +105,11 @@ public struct ChartRenderer {
     UIGraphicsPushContext(ctx)
     defer { UIGraphicsPopContext() }
 
-    let xc = x(b.time(at: i), L)
-    let y = min(L.timeY, max(0, cross.y ?? yOf(b.close[i], pane, r)))
+    // 磁吸开着就画在根中心；关掉才用手指停住的那个时间。两个字段都空（M3 的静态摆放、
+    // A3.11 的基线）走的还是根中心 + 收盘价这条老路。
+    let freeT = state.magnet ? nil : cross.t
+    let xc = freeT.map { state.view.x($0, plotW: L.plotW) } ?? x(b.time(at: i), L)
+    let y = min(L.timeY, max(0, yOf(cross.price ?? b.close[i], pane, r)))
 
     ctx.saveGState()
     ctx.setLineDash(phase: 0, lengths: [3 / s, 3 / s])

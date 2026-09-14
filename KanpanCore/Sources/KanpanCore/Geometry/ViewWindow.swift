@@ -33,9 +33,18 @@ public struct ViewWindow: Sendable, Equatable {
     plotW / (span / Double(step))
   }
 
-  /// 平移：手指往左推 dx 像素，视野往右走。
+  /// 平移：**视野**往右（往新）走 dx 像素。注意这是视野的位移，不是手指的。
   public func shifted(byPx dx: Double, plotW: Double) -> ViewWindow {
     let d = dx / plotW * span
     return ViewWindow(to: to + d, span: span)
+  }
+
+  /// 手指拖了 dx 像素之后的视野。
+  ///
+  /// 内容跟着手指走，所以视野往**反**方向移——原型 `pointermove` 里那个显眼的负号
+  /// （`shift = -(dx / plotW) * span`）就是这件事。单独开一个入口是因为
+  /// 「视野位移」和「手指位移」差一个负号，混用一次图就往反方向跑（G1 会直接现形）。
+  public func dragged(byFingerPx dx: Double, plotW: Double) -> ViewWindow {
+    shifted(byPx: -dx, plotW: plotW)
   }
 }

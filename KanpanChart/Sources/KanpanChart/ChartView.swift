@@ -19,7 +19,8 @@ import UIKit
 /// `state` 一变就跟旧值比一次，只有真受影响的层才置脏位；`CADisplayLink` 每帧把脏位
 /// 刷成 `setNeedsDisplay`，没有脏位就把自己暂停（A3.12：静止时 CPU < 1%）。
 ///
-/// M3 只做静态绘制：十字线摆在 `state.crosshair` 给的那根上。跟手、惯性、轴拖是 M4 / M5。
+/// 手势在 `ChartView+Gesture.swift`：触摸直接改 `state`，改完走同一条脏位通道，
+/// 所以跟手、惯性、回弹和外部换数据是一条路，没有第二套绘制入口。
 @MainActor
 public final class ChartView: UIView {
   // ---------------------------------------------------------------- 层
@@ -53,7 +54,7 @@ public final class ChartView: UIView {
 
   /// 渲染器缓存着指标结果（`IndicatorEngine`），所以留着不重建——
   /// 换 `state` 走它的 setter，末根变了只重算末尾那几根。
-  private var renderer: ChartRenderer?
+  private(set) var renderer: ChartRenderer?
 
   /// 当前布局。手势层（M4）和取证脚本要按它换算坐标。
   public var chartLayout: Layout? {
@@ -66,6 +67,21 @@ public final class ChartView: UIView {
     guard let renderer, bounds.width > 0, bounds.height > 0 else { return nil }
     return renderer.priceRange(size: bounds.size)
   }
+
+  // ---------------------------------------------------------------- 手势
+
+  /// 一次手势从按下到抬手之间攒的东西。逻辑全在 `ChartView+Gesture.swift`，
+  /// 这里只放这一个存储属性——扩展加不了存储属性。
+  let gesture = GestureState()
+
+  /// 视野被手势改了（拖、甩、捏、轴拖、回弹的每一帧都会叫）。
+  public var onViewChanged: ((ViewWindow) -> Void)?
+  /// 十字线出现 / 移动 / 消失。`nil` 表示消失。
+  public var onCrosshairChanged: ((Crosshair?) -> Void)?
+  /// 视野左缘推进到头部 200 根以内，该补历史了（§13 G9）。序列长出来之前只叫一次。
+  public var onNeedsHistory: (() -> Void)?
+  /// 图上轻点了一下（没有十字线、不是双击）。画线选中交给 M7 接。
+  public var onTapped: (() -> Void)?
 
   // ---------------------------------------------------------------- 生命周期
 
@@ -205,6 +221,7 @@ public final class ChartView: UIView {
       && a.redUp == b.redUp && a.price == b.price && a.overlays == b.overlays
       && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
       && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi
+      && a.magnet == b.magnet
       && sameSeriesExceptLast(a.series, b.series)
   }
 
@@ -243,9 +260,23 @@ public final class ChartView: UIView {
     link?.isPaused = false
   }
 
+  /// 每帧跑一次的动画：惯性、回弹、十字线淡出这类自己会走完的东西。
+  ///
+  /// 返回 `true` 表示演完了，视图会把它摘掉。只要挂着动画 `CADisplayLink` 就不停——
+  /// 但动画自己走完那一帧之后立刻回到「没脏位就暂停」的老规矩（A3.12）。
+  var animation: ((CFTimeInterval) -> Bool)? {
+    didSet { if animation != nil { resumeLink() } }
+  }
+
   fileprivate func onFrame() {
+    if let step = animation {
+      // 用 `link.targetTimestamp` 而不是 `CACurrentMediaTime()`：动画该按这一帧
+      // **将要显示**的时刻算位置，否则 120Hz 下每帧都慢半拍，甩起来有拖影。
+      let now = link?.targetTimestamp ?? CACurrentMediaTime()
+      if step(now) { animation = nil }
+    }
     if dirty.isEmpty {
-      link?.isPaused = true
+      if animation == nil { link?.isPaused = true }
       return
     }
     flush()
