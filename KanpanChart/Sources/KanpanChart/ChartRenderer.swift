@@ -285,9 +285,19 @@ public struct ChartRenderer {
     let m = candleMetrics(spacing: spacing, style: S, scale: s)
     let lw = m.outline
     let hollowShape = shape == .outline || shape == .hollowUp
-    // 实体只剩 2 个设备像素以内时别再把影线往背景色里兑：兑淡是为了让粗影线给大实体
-    // 让位（墩 0.7 / 砖 0.45 / 辉 0.6），整根只剩一两个像素宽的时候它只会让影线消失。
-    let tint = m.bodyW * s <= 2 ? 1 : S.wickTint
+    // 影线兑淡（`wickTint`）是给「大实体配粗影线」准备的：墩 0.7 / 砖 0.45 / 辉 0.6，
+    // 让影线往背景退半步，实体才压得住。可蜡烛一捏小，这份退让就只剩「影线看不见」——
+    // 用户实机反馈的「颜色都好像变淡了，像模糊不清，特别是影线」就是这一段。
+    //
+    // AiCoin 的做法是**根本不兑**：1920×975 原生截图实测，影线与实体完全同色
+    // （#CF3E3E / #26A380，491 个影线样本无一偏离，见 docs/acceptance/M8/aicoin-对比.md §2.3）。
+    // 风格表是定版规格不动，改的是兑淡的**生效区间**：实体粗到 8 个设备像素以上照旧按
+    // 风格兑，从 8 掉到 2 的过程里线性收回满饱和，2 以下完全不兑。
+    //
+    // 从前这儿是 `bodyW*s <= 2 ? 1 : wickTint` 一个硬台阶——门槛太低（一屏一百多根时
+    // 实体还有 3~6 个像素，照兑不误），而且跨过去的那一帧颜色会跳一下。
+    let tintFade = min(1, max(0, (m.bodyW * s - 2) / 6))
+    let tint = S.wickTint + (1 - S.wickTint) * (1 - tintFade)
     // 圆头帽在 ≤2 个设备像素时只贡献两坨抗锯齿，不贡献造型，那就别用。
     let roundCap = S.wickCap == .round && m.wickW * s >= 3
     let minBodyH = max(m.wickW, snap(m.minBody, scale: s))

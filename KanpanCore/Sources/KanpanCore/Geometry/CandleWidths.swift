@@ -56,13 +56,25 @@ public struct CandleMetrics: Sendable, Equatable {
 /// 恰恰是密度最高的两款），拿到 1.8 会让右边缘落在像素中间被抗锯齿吃掉一截。用户实机
 /// 反馈的「颜色变淡、影线模糊」就是这个。一律四舍五入到整数像素，最小 1。
 ///
-/// 结果：墩 1.8→2，针 2.0→2，芯/阔 1.0→1，纸 0.8→1，描 0.9→1，靛/砖/骨/密 0.5→1。
+/// 结果（2x）：墩 1.8→2，针 2.0→2，芯/阔 1.0→1，纸 0.8→1，描 0.9→1，靛/砖/骨/密 0.5→1。
 ///
-/// - Parameter scale: 目前用不上——风格表的 `wick` 本来就是按设备像素写的。留着这个参数
-///   是为了万一以后要按屏幕倍率分档时不用改所有调用点。
+/// - Parameter scale: 风格表的 `wick` 是**按 2x 屏写的设备像素**，这里换算到当前倍率，
+///   让影线的**物理宽度**跨机型一致。
+///
+///   从前这个参数是被 `_ = scale` 丢掉的，于是 `wick` 被当成「所有倍率下都是这么多个
+///   设备像素」——屏幕越精细影线越细：3x 上墩只有 2px ＝ 0.667pt，2x 上 2px ＝ 1.0pt，
+///   整整差 1.5 倍，而 iPhone 15/16 全是 3x。AiCoin 桌面版实测影线恒为 1 个设备像素、
+///   显示器是 1x，也就是 **1.0pt**（见 docs/acceptance/M8/aicoin-对比.md §2.3）——
+///   我们 3x 上那 0.667pt 比它细三分之一，这正是用户实机反馈「影线模糊、挤在一起」
+///   的另一半（前一半是被 `wickTint` 兑淡，在 `drawCandles` 里修）。
+///
+///   换算后：墩 1.8 → 2x:2px / 3x:3px，两边都是 **1.0pt**，和 AiCoin 对齐；
+///   针 2.0 → 2px / 3px；辉 1.2、阔 1.0、芯 1.0 → 1px / 2px；
+///   描 0.9、纸 0.8、靛 0.5、砖 0.5、骨 0.5、密 0.5 → 1px / 1px（这几款要的就是发丝影线）。
+///   仍然一律四舍五入到整数像素、最小 1：非整数宽度会被抗锯齿吃掉一截，那是老问题。
 public func wickPixels(style: CandleStyle, scale: Double) -> Int {
-  _ = scale
-  return max(1, Int(max(0.5, style.wick).jsRounded()))
+  let ref = max(0.5, style.wick) * max(1, scale) / 2
+  return max(1, Int(ref.jsRounded()))
 }
 
 /// 实际绘制用的一根蜡烛宽度，单位**设备像素**。和 `candleWidths` 的区别有两条：
@@ -80,10 +92,13 @@ public func candlePixels(spacing: Double, scale: Double, style: CandleStyle) -> 
   let ratio = (scale.isFinite && scale > 0) ? scale : 1
   let sp = (spacing.isFinite && spacing > 0) ? spacing : 0
   let rb = (style.bodyR.isFinite && style.bodyR > 0) ? style.bodyR : 0.55
-  let wick = wickPixels(style: style, scale: ratio)
   let raw = sp * rb * ratio
   // 一根占几个像素：`snap` 之后相邻两根的左沿最少差这么多，减 1 就是能给实体的上限。
   let cell = Int((sp * ratio).rounded(.down))
+  // 影线也得让出这条缝。从前只有实体受 `cell - 1` 约束、影线直接用风格量化值，
+  // 于是捏小之后影线自己就把一格占满了：墩在 3x 上影线 3 像素，一格只剩 3 像素时
+  // 缝是 **0**，一排影线糊成一堵墙——正是实机反馈的「影线挤在一起」。
+  let wick = min(wickPixels(style: style, scale: ratio), max(1, cell - 1))
   let cap = max(wick, cell - 1)
   var body = raw < 2 ? wick : max(1, Int(raw.jsRounded()))
   body = min(body, cap)

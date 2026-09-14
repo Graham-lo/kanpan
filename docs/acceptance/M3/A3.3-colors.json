@@ -21,8 +21,8 @@
         {
           "actual" : "#0E9E78",
           "at" : [
-            915,
-            787
+            914,
+            788
           ],
           "coverage" : 1,
           "delta" : 0,
@@ -54,7 +54,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#53B8A0",
-          "note" : "影线 1.8 设备像素，满覆盖",
+          "note" : "影线 3 设备像素（风格表 1.8 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -135,7 +135,7 @@
         {
           "actual" : "#DE2E57",
           "at" : [
-            103,
+            102,
             919
           ],
           "coverage" : 1,
@@ -146,16 +146,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#81CABA",
+          "actual" : "#0E9E78",
           "at" : [
-            175,
-            1294
+            174,
+            1293
           ],
-          "coverage" : 0.5,
-          "delta" : 1,
-          "exactExpected" : false,
-          "expected" : "#81CABB",
-          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #0E9E78 按 0.5 合成",
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "影线 1 设备像素（风格表 0.5 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -249,14 +249,14 @@
         {
           "actual" : "#6AC1AD",
           "at" : [
-            944,
+            943,
             552
           ],
           "coverage" : 1,
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#6AC1AD",
-          "note" : "影线 1.2 设备像素，满覆盖",
+          "note" : "影线 2 设备像素（风格表 1.2 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -325,7 +325,7 @@
           "actual" : "#0E9E78",
           "at" : [
             893,
-            751
+            752
           ],
           "coverage" : 1,
           "delta" : 0,
@@ -350,14 +350,14 @@
         {
           "actual" : "#0E9E78",
           "at" : [
-            893,
-            444
+            892,
+            443
           ],
           "coverage" : 1,
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#0E9E78",
-          "note" : "影线 1.0 设备像素，满覆盖",
+          "note" : "影线 2 设备像素（风格表 1.0 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -396,7 +396,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#DE2E57",
-          "note" : "虚线，该行命中 511 个像素",
+          "note" : "虚线，该行命中 519 个像素",
           "point" : "lastLine"
         },
         {
@@ -438,7 +438,7 @@
         {
           "actual" : "#DE2E57",
           "at" : [
-            825,
+            824,
             1199
           ],
           "coverage" : 1,
@@ -449,16 +449,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#C0E2DF",
+          "actual" : "#8DCEC1",
           "at" : [
             925,
             466
           ],
-          "coverage" : 0.50485436893203883,
-          "delta" : 1,
-          "exactExpected" : false,
-          "expected" : "#C1E2DF",
-          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #8dcec1 按 0.5 合成",
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8DCEC1",
+          "note" : "影线 1 设备像素（风格表 0.5 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -526,7 +526,7 @@
         {
           "actual" : "#0E9E78",
           "at" : [
-            935,
+            934,
             860
           ],
           "coverage" : 1,
@@ -539,7 +539,7 @@
         {
           "actual" : "#DE2E57",
           "at" : [
-            841,
+            840,
             1211
           ],
           "coverage" : 1,
@@ -559,7 +559,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#25A785",
-          "note" : "影线 2.0 设备像素，满覆盖",
+          "note" : "影线 3 设备像素（风格表 2.0 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -598,7 +598,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#DE2E57",
-          "note" : "虚线，该行命中 527 个像素",
+          "note" : "虚线，该行命中 526 个像素",
           "point" : "lastLine"
         },
         {
@@ -653,14 +653,14 @@
         {
           "actual" : "#0E9E78",
           "at" : [
-            947,
+            946,
             600
           ],
           "coverage" : 1,
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#0E9E78",
-          "note" : "影线 1.0 设备像素，满覆盖",
+          "note" : "影线 2 设备像素（风格表 1.0 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -728,7 +728,7 @@
         {
           "actual" : "#0E9E78",
           "at" : [
-            955,
+            954,
             971
           ],
           "coverage" : 1,
@@ -742,7 +742,7 @@
           "actual" : "#DE2E57",
           "at" : [
             883,
-            1330
+            1331
           ],
           "coverage" : 1,
           "delta" : 0,
@@ -752,16 +752,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#3CAF92",
+          "actual" : "#0E9E78",
           "at" : [
             959,
             637
           ],
-          "coverage" : 0.80000000000000004,
-          "delta" : 1,
-          "exactExpected" : false,
-          "expected" : "#3CB093",
-          "note" : "影线只有 0.8 设备像素，期望值 = 底色与 #0E9E78 按 0.8 合成",
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "影线 1 设备像素（风格表 0.8 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -829,8 +829,8 @@
         {
           "actual" : "#0E9E78",
           "at" : [
-            940,
-            878
+            941,
+            879
           ],
           "coverage" : 1,
           "delta" : 0,
@@ -853,16 +853,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#44B297",
+          "actual" : "#31AB8C",
           "at" : [
             947,
             516
           ],
-          "coverage" : 0.90256410256410258,
-          "delta" : 1,
-          "exactExpected" : false,
-          "expected" : "#45B397",
-          "note" : "影线只有 0.9 设备像素，期望值 = 底色与 #31ab8c 按 0.9 合成",
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#31AB8C",
+          "note" : "影线 1 设备像素（风格表 0.9 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -930,7 +930,7 @@
         {
           "actual" : "#0E9E78",
           "at" : [
-            367,
+            366,
             763
           ],
           "coverage" : 1,
@@ -954,16 +954,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#81CABA",
+          "actual" : "#0E9E78",
           "at" : [
-            163,
+            162,
             1357
           ],
-          "coverage" : 0.5,
-          "delta" : 1,
-          "exactExpected" : false,
-          "expected" : "#81CABB",
-          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #0E9E78 按 0.5 合成",
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "影线 1 设备像素（风格表 0.5 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -1002,7 +1002,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#DE2E57",
-          "note" : "虚线，该行命中 542 个像素",
+          "note" : "虚线，该行命中 543 个像素",
           "point" : "lastLine"
         },
         {
@@ -1032,7 +1032,7 @@
           "actual" : "#0E9E78",
           "at" : [
             529,
-            771
+            772
           ],
           "coverage" : 1,
           "delta" : 0,
@@ -1055,16 +1055,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#81CABA",
+          "actual" : "#0E9E78",
           "at" : [
             373,
-            1387
+            1388
           ],
-          "coverage" : 0.5,
-          "delta" : 1,
-          "exactExpected" : false,
-          "expected" : "#81CABB",
-          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #0E9E78 按 0.5 合成",
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "影线 1 设备像素（风格表 0.5 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -1103,7 +1103,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#DE2E57",
-          "note" : "虚线，该行命中 548 个像素",
+          "note" : "虚线，该行命中 550 个像素",
           "point" : "lastLine"
         },
         {
@@ -1132,8 +1132,8 @@
         {
           "actual" : "#2FBF8F",
           "at" : [
-            915,
-            787
+            914,
+            788
           ],
           "coverage" : 1,
           "delta" : 0,
@@ -1165,7 +1165,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#288E77",
-          "note" : "影线 1.8 设备像素，满覆盖",
+          "note" : "影线 3 设备像素（风格表 1.8 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -1246,7 +1246,7 @@
         {
           "actual" : "#F0567B",
           "at" : [
-            103,
+            102,
             919
           ],
           "coverage" : 1,
@@ -1257,16 +1257,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#226C66",
+          "actual" : "#2FBF8F",
           "at" : [
-            175,
-            1294
+            174,
+            1293
           ],
-          "coverage" : 0.49696969696969695,
-          "delta" : 1,
-          "exactExpected" : false,
-          "expected" : "#236D67",
-          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #2FBF8F 按 0.5 合成",
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "影线 1 设备像素（风格表 0.5 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -1360,14 +1360,14 @@
         {
           "actual" : "#257D6F",
           "at" : [
-            944,
+            943,
             552
           ],
           "coverage" : 1,
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#257D6F",
-          "note" : "影线 1.2 设备像素，满覆盖",
+          "note" : "影线 2 设备像素（风格表 1.2 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -1436,7 +1436,7 @@
           "actual" : "#2FBF8F",
           "at" : [
             893,
-            751
+            752
           ],
           "coverage" : 1,
           "delta" : 0,
@@ -1461,14 +1461,14 @@
         {
           "actual" : "#2FBF8F",
           "at" : [
-            893,
-            444
+            892,
+            443
           ],
           "coverage" : 1,
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#2FBF8F",
-          "note" : "影线 1.0 设备像素，满覆盖",
+          "note" : "影线 2 设备像素（风格表 1.0 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -1507,7 +1507,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#F0567B",
-          "note" : "虚线，该行命中 511 个像素",
+          "note" : "虚线，该行命中 519 个像素",
           "point" : "lastLine"
         },
         {
@@ -1549,7 +1549,7 @@
         {
           "actual" : "#F0567B",
           "at" : [
-            825,
+            824,
             1199
           ],
           "coverage" : 1,
@@ -1560,16 +1560,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#1B3E50",
+          "actual" : "#216463",
           "at" : [
             925,
             466
           ],
-          "coverage" : 0.48648648648648651,
-          "delta" : 1,
-          "exactExpected" : false,
-          "expected" : "#1C3F51",
-          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #216463 按 0.5 合成",
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#216463",
+          "note" : "影线 1 设备像素（风格表 0.5 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -1637,7 +1637,7 @@
         {
           "actual" : "#2FBF8F",
           "at" : [
-            935,
+            934,
             860
           ],
           "coverage" : 1,
@@ -1650,7 +1650,7 @@
         {
           "actual" : "#F0567B",
           "at" : [
-            841,
+            840,
             1211
           ],
           "coverage" : 1,
@@ -1670,7 +1670,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#2DAF87",
-          "note" : "影线 2.0 设备像素，满覆盖",
+          "note" : "影线 3 设备像素（风格表 2.0 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -1709,7 +1709,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#F0567B",
-          "note" : "虚线，该行命中 527 个像素",
+          "note" : "虚线，该行命中 526 个像素",
           "point" : "lastLine"
         },
         {
@@ -1764,14 +1764,14 @@
         {
           "actual" : "#2FBF8F",
           "at" : [
-            947,
+            946,
             600
           ],
           "coverage" : 1,
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#2FBF8F",
-          "note" : "影线 1.0 设备像素，满覆盖",
+          "note" : "影线 2 设备像素（风格表 1.0 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -1839,7 +1839,7 @@
         {
           "actual" : "#2FBF8F",
           "at" : [
-            955,
+            954,
             971
           ],
           "coverage" : 1,
@@ -1853,7 +1853,7 @@
           "actual" : "#F0567B",
           "at" : [
             883,
-            1330
+            1331
           ],
           "coverage" : 1,
           "delta" : 0,
@@ -1863,16 +1863,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#2A9E7F",
+          "actual" : "#2FBF8F",
           "at" : [
             959,
             637
           ],
-          "coverage" : 0.80000000000000004,
+          "coverage" : 1,
           "delta" : 0,
-          "exactExpected" : false,
-          "expected" : "#2A9E7F",
-          "note" : "影线只有 0.8 设备像素，期望值 = 底色与 #2FBF8F 按 0.8 合成",
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "影线 1 设备像素（风格表 0.8 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -1940,8 +1940,8 @@
         {
           "actual" : "#2FBF8F",
           "at" : [
-            940,
-            878
+            941,
+            879
           ],
           "coverage" : 1,
           "delta" : 0,
@@ -1964,16 +1964,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#28977C",
+          "actual" : "#2BA683",
           "at" : [
             947,
             516
           ],
-          "coverage" : 0.8928571428571429,
-          "delta" : 1,
-          "exactExpected" : false,
-          "expected" : "#29987C",
-          "note" : "影线只有 0.9 设备像素，期望值 = 底色与 #2ba683 按 0.9 合成",
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2BA683",
+          "note" : "影线 1 设备像素（风格表 0.9 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -2041,7 +2041,7 @@
         {
           "actual" : "#2FBF8F",
           "at" : [
-            367,
+            366,
             763
           ],
           "coverage" : 1,
@@ -2065,16 +2065,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#226C66",
+          "actual" : "#2FBF8F",
           "at" : [
-            163,
+            162,
             1357
           ],
-          "coverage" : 0.49696969696969695,
-          "delta" : 1,
-          "exactExpected" : false,
-          "expected" : "#236D67",
-          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #2FBF8F 按 0.5 合成",
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "影线 1 设备像素（风格表 0.5 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -2113,7 +2113,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#F0567B",
-          "note" : "虚线，该行命中 542 个像素",
+          "note" : "虚线，该行命中 543 个像素",
           "point" : "lastLine"
         },
         {
@@ -2143,7 +2143,7 @@
           "actual" : "#2FBF8F",
           "at" : [
             529,
-            771
+            772
           ],
           "coverage" : 1,
           "delta" : 0,
@@ -2166,16 +2166,16 @@
           "point" : "downBody"
         },
         {
-          "actual" : "#226C66",
+          "actual" : "#2FBF8F",
           "at" : [
             373,
-            1387
+            1388
           ],
-          "coverage" : 0.49696969696969695,
-          "delta" : 1,
-          "exactExpected" : false,
-          "expected" : "#236D67",
-          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #2FBF8F 按 0.5 合成",
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "影线 1 设备像素（风格表 0.5 量化后），满覆盖",
           "point" : "wick"
         },
         {
@@ -2214,7 +2214,7 @@
           "delta" : 0,
           "exactExpected" : true,
           "expected" : "#F0567B",
-          "note" : "虚线，该行命中 548 个像素",
+          "note" : "虚线，该行命中 550 个像素",
           "point" : "lastLine"
         },
         {

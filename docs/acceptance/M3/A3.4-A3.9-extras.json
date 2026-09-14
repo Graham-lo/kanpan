@@ -3,7 +3,7 @@
   "images" : [
     {
       "anchor" : "网格线 y=498.24799531831525",
-      "bytes" : 27884,
+      "bytes" : 28176,
       "cropDevicePx" : [
         924,
         1453,
@@ -14,13 +14,13 @@
       "grid" : "both",
       "item" : "A3.4",
       "magnify" : 8,
-      "pixelSha256" : "316a4287716db4195694d301157926da110f34fc0129bc44ad0aa9910e9f8cac",
+      "pixelSha256" : "9a745e891eaccd96f985d3a9ba557c1c1ce6afa32b0afe4f24ecc6406780a35c",
       "px" : [
         1056,
         672
       ],
       "radius" : 0,
-      "sha256" : "3d6ccbcd0899e742c41b2d066b9b0347955ed1b6c6b3a050b6e0ce03741ef891",
+      "sha256" : "d89eb645fcea9be807e0cfb2856709631f8001f04ddf2bdce5504cafff9cfb77",
       "shape" : "solid",
       "style" : "indigo",
       "styleName" : "靛",
@@ -110,8 +110,8 @@
       "wickDevicePx" : 1.2
     },
     {
-      "anchor" : "第 985 根实体顶，实体高 122.48600917864661 pt，空心=true",
-      "bytes" : 17496,
+      "anchor" : "第 985 根实体顶，实体高 122.33333333333331 pt，空心=true",
+      "bytes" : 20484,
       "cropDevicePx" : [
         696,
         1124,
@@ -122,13 +122,13 @@
       "grid" : "h",
       "item" : "A3.4",
       "magnify" : 8,
-      "pixelSha256" : "b9138fcc55d7b5dc539dceb306cc21464c2b4b03fe35043ea0f6c70c18865be5",
+      "pixelSha256" : "00b1834ddd03f3507223b5b96aa9786aa7c12f42ab038e95f9786a7a97b2263b",
       "px" : [
         528,
         624
       ],
       "radius" : 0,
-      "sha256" : "d83d12c5a24eb5227cf806856a7c932e23960c77414bd2b0471576e9797159c6",
+      "sha256" : "eb7620d2abcc5d693755e84a9eb6463d66e2963b2935e854068f408f589757ad",
       "shape" : "hollowUp",
       "style" : "paper",
       "styleName" : "纸",
@@ -137,8 +137,8 @@
       "wickDevicePx" : 0.80000000000000004
     },
     {
-      "anchor" : "第 993 根实体顶，实体高 216.5899140516209 pt，空心=true",
-      "bytes" : 16287,
+      "anchor" : "第 993 根实体顶，实体高 216.66666666666669 pt，空心=true",
+      "bytes" : 16502,
       "cropDevicePx" : [
         823,
         932,
@@ -149,13 +149,13 @@
       "grid" : "tick",
       "item" : "A3.4",
       "magnify" : 8,
-      "pixelSha256" : "6e45acf671c2c6940b3a8f88b50b44bca45d889588340b6abac6df7ee10fb22e",
+      "pixelSha256" : "214943050c6882a1bd526418eea9a6583e2dd82680a56082df8dae2c07e55b4b",
       "px" : [
         528,
         624
       ],
       "radius" : 0,
-      "sha256" : "f466434d0402d0b7e1ce96be814a6c43b0bfffe136cae5835048f0c4a935f6a0",
+      "sha256" : "81d24cfbd51c3c3a714e7c8b9ff08e77d6260e6ef32ec5c9d8aa1810d81a3664",
       "shape" : "outline",
       "style" : "outline",
       "styleName" : "描",
@@ -164,8 +164,8 @@
       "wickDevicePx" : 0.90000000000000002
     },
     {
-      "anchor" : "第 993 根实体顶，实体高 200.30937167821202 pt，空心=false",
-      "bytes" : 15478,
+      "anchor" : "第 993 根实体顶，实体高 200.33333333333331 pt，空心=false",
+      "bytes" : 16054,
       "cropDevicePx" : [
         835,
         985,
@@ -176,13 +176,13 @@
       "grid" : "h",
       "item" : "A3.4",
       "magnify" : 8,
-      "pixelSha256" : "c22c57349a68ebb91dfb83907db4597a4711064470bfadd8e81fd3e26a0b0b84",
+      "pixelSha256" : "f3a5db38f6e27090beda252168558a5c0604d4204e7e9d2264ab8e170f1e2524",
       "px" : [
         528,
         624
       ],
       "radius" : 3,
-      "sha256" : "88efcebcb9447fa5849fca851f295f91ba57ebf147aadc7c631d2f0deedd4bd7",
+      "sha256" : "8a525c961b31ab361fc0e7452a55b7553bdf4f3b8ffb960f250b41a5687390c8",
       "shape" : "solid",
       "style" : "pill",
       "styleName" : "芯",
@@ -191,8 +191,8 @@
       "wickDevicePx" : 1
     },
     {
-      "anchor" : "第 992 根上影线顶端，影线长 38.09667874281263 pt",
-      "bytes" : 1975,
+      "anchor" : "第 992 根上影线顶端，影线长 38.333333333333314 pt",
+      "bytes" : 1937,
       "cropDevicePx" : [
         803,
         764,
@@ -203,13 +203,13 @@
       "grid" : "h",
       "item" : "A3.4",
       "magnify" : 8,
-      "pixelSha256" : "47cebffc928663029f52123bd9c5905eb5822f8d54ca3267b3a9d5a02e7257fa",
+      "pixelSha256" : "e597a2ab029b8e5935cdfb3312b556b4dbadfc09ddef5c0bad83b04982f9e166",
       "px" : [
         240,
         216
       ],
       "radius" : 0.5,
-      "sha256" : "ab17a21296fde088c956f9719c0e4979d76bacabc589e6498b9d9fc761f416cf",
+      "sha256" : "5204c9b468223b34fe307fbe926507f264cdcccae1daed2e98aeb45706d1ecdd",
       "shape" : "solid",
       "style" : "needle",
       "styleName" : "针",
@@ -221,16 +221,16 @@
       "askedSpacing" : 1.2,
       "bars" : 272,
       "barsOnScreen" : 286.66666666666669,
-      "bytes" : 341106,
+      "bytes" : 338418,
       "device" : "pro",
       "file" : "M3-pro-light-thin-1.2-09.png",
       "item" : "A3.5",
-      "pixelSha256" : "490684fae7a1811fb3682bd3c2a99e5280c93140eb815eee1483b136d74f1a96",
+      "pixelSha256" : "4fdd821749de49bc50cbe4bc1996f20484a8d2af7468af5ed571b01313255f53",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "11bcbc3d3130029624f86f2f86bfd2427fd08137f39f63f5aea24ee56a2f0508",
+      "sha256" : "1f9a1f3d5c2188aa21a74fc4bd6bb4986b9c0e34e2f73c1712ebe6bc56b38e01",
       "spacing" : 1.2,
       "style" : "stout",
       "thin" : true
@@ -239,16 +239,16 @@
       "askedSpacing" : 0.40000000000000002,
       "bars" : 811,
       "barsOnScreen" : 860,
-      "bytes" : 387695,
+      "bytes" : 381191,
       "device" : "pro",
       "file" : "M3-pro-light-thin-0.4-10.png",
       "item" : "A3.5",
-      "pixelSha256" : "08f4c85019f2a4bee4a77639b2e1ed035688fa97d605454bf7efafa37faa0bca",
+      "pixelSha256" : "c51da2466dd642452a32f6b230e611fccd39e09f892fce5201c48797a743944c",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "f94f9ee039d5edf0152e1f0e4a00155b45d7ae7a48c97de7bc859d6b4a624c24",
+      "sha256" : "48a660d433aff76bd4bf31a31f7fcb6f6c01b90132d0d9b40a61a99ba56757e9",
       "spacing" : 0.40000000000000002,
       "style" : "stout",
       "thin" : true
@@ -257,22 +257,22 @@
       "askedSpacing" : 0.40000000000000002,
       "bars" : 1000,
       "barsOnScreen" : 1715,
-      "bytes" : 330822,
+      "bytes" : 322654,
       "device" : "ipad",
       "file" : "M3-ipad-light-thin-0.4-ipad-11.png",
       "item" : "A3.5",
-      "pixelSha256" : "cc67a4d8f66c1062b6545588a22444770581b8aa981de506cd42ed412244cf1e",
+      "pixelSha256" : "6201ee93e01136eaa92f53c79918303d4c0d5e08772c1a579d1bde498b533132",
       "px" : [
         1488,
         2266
       ],
-      "sha256" : "21596bfd5f21fddc869ad4cc7719ebaf5354ede44168a65d9ce66133a94cf086",
+      "sha256" : "9da62fbe413ca924e34da58c60609bf1935cb28e24062facae30a9ffeac66913",
       "spacing" : 0.40000000000000002,
       "style" : "stout",
       "thin" : true
     },
     {
-      "bytes" : 173430,
+      "bytes" : 171574,
       "file" : "M3-pro-light-sub-macd-12.png",
       "item" : "A3.6",
       "params" : [
@@ -280,18 +280,18 @@
         26,
         9
       ],
-      "pixelSha256" : "44a50d5b0fcc7043318f5662f3d3f39eca8b07aba772f5878db26c52507d42d5",
+      "pixelSha256" : "de54ffb623ff437f96204d2d97073e237c13a4c2155240363b454a7e7c16b383",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "45074f653ad0d3af407b7254e7f06ac4219304823c51e4797d9587671f1f21f5",
+      "sha256" : "84c6ae08770b151b1748a050ad30796d1f22881db4a99ef1eacaf3b0c7fc59ad",
       "style" : "stout",
       "sub" : "MACD",
       "subName" : "MACD"
     },
     {
-      "bytes" : 172358,
+      "bytes" : 170511,
       "file" : "M3-pro-light-sub-rsi-13.png",
       "item" : "A3.6",
       "params" : [
@@ -299,18 +299,18 @@
         12,
         24
       ],
-      "pixelSha256" : "8a2cf264985510c3f134d7428a23488d25366bf2f49137016651ec13a8d9a5c3",
+      "pixelSha256" : "031d5170eae2b3f2c7fd784051833c4788b2a2794a678bced20e0be913b6e5ce",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "3e710aa316438fdf6e01c4adc0de3fbf5827e07bec5da0d79b2c734bd961476c",
+      "sha256" : "ad5f23b6f0608c066ac87166d0bbad741a667e306e8807af9c62d04b8482105c",
       "style" : "stout",
       "sub" : "RSI",
       "subName" : "RSI"
     },
     {
-      "bytes" : 178337,
+      "bytes" : 176457,
       "file" : "M3-pro-light-sub-kdj-14.png",
       "item" : "A3.6",
       "params" : [
@@ -318,18 +318,18 @@
         3,
         3
       ],
-      "pixelSha256" : "d692e60976ed3c8182bc5c1ad1400b98a284a29d909fb856796f6f226630722f",
+      "pixelSha256" : "37164d6d234dc7ec179d60c7028c08487702e393f0d42d53549d9d2fb91c961a",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "fb0d59f373f76d049375315dfab402a943c03c7bf8e208a6a680f2f6413d8d00",
+      "sha256" : "4c43f38458a1441255fea9ec226aff8cf91fd9aed88efa7d121bf6c9a27d478a",
       "style" : "stout",
       "sub" : "KDJ",
       "subName" : "KDJ"
     },
     {
-      "bytes" : 175209,
+      "bytes" : 173389,
       "file" : "M3-pro-light-sub-srsi-15.png",
       "item" : "A3.6",
       "params" : [
@@ -338,70 +338,70 @@
         3,
         3
       ],
-      "pixelSha256" : "fda8f64d38e22bc905878aa015fb88449bcd1e75697aa0630bccafdf67e7c3d2",
+      "pixelSha256" : "4f8bc6222ef24d50a60bf23b0342dde35ddf904ba54c96d02129a1be0e0c9c46",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "eb36033221996020f38b51c715683d6759fb40a14678d8c49c9756de62ed7b13",
+      "sha256" : "6dcdd96603892409067892f020042ee1e4358f57ef70be5e9808068903355229",
       "style" : "stout",
       "sub" : "SRSI",
       "subName" : "StochRSI"
     },
     {
-      "bytes" : 155174,
+      "bytes" : 153309,
       "file" : "M3-pro-light-sub-atr-16.png",
       "item" : "A3.6",
       "params" : [
         14
       ],
-      "pixelSha256" : "97a14951906ff1c01260a5f2e766e5294ef703e6d2f0705be032ef54cf145c8a",
+      "pixelSha256" : "53013ec8205ea13a21508f941e3d2533ee517f6a36e999a200998b859a0e31bf",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "e94df8508ccd3ff8c6991622cbfee7cc8b78facc36eff0358119a770817a828a",
+      "sha256" : "0af386942fbe33c066a3da570a110cf6bfa2438bdab59867170d18e16b8ee2b9",
       "style" : "stout",
       "sub" : "ATR",
       "subName" : "ATR"
     },
     {
-      "bytes" : 173542,
+      "bytes" : 171619,
       "file" : "M3-pro-light-sub-vol-17.png",
       "item" : "A3.6",
       "params" : [
         5,
         10
       ],
-      "pixelSha256" : "b063ddc7a0e1e20046aaae8bcc131594065984f6e99e3c8d634f25ee0bde2b77",
+      "pixelSha256" : "107648341fc113d93a2457b9379bb3c90721ee4814bc9e420192fa21700fe957",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "61177035747361e37ae1c3578b2bd24cbde58b97f6f09bcf0d9a410e12dc5fb4",
+      "sha256" : "9c60cf6edc13b999e48ff2ed3f095d4c330ebfaff31fc45622ef25920fad60be",
       "style" : "stout",
       "sub" : "VOL",
       "subName" : "成交量"
     },
     {
-      "bytes" : 173585,
+      "bytes" : 171698,
       "file" : "M3-pro-light-sub-oi-18.png",
       "item" : "A3.6",
       "params" : [
 
       ],
-      "pixelSha256" : "0cf6401fcf8477841fe6e30456727908ae2136c99bc0cd8da13d7be0b3d7b50b",
+      "pixelSha256" : "dc023220b92b66c6650aac2749414a2590c326d7d24cd8f81b4abdb9c3f36cc0",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "662e94d4108c0c50a1878d67158f3f7f5093ff87ad5b54c3578bc2563e459eb9",
+      "sha256" : "1d7395eeec226c9ad70e382f75a053d7e31b932a8db69e3bad016c76e91ea649",
       "style" : "stout",
       "sub" : "OI",
       "subName" : "持仓量"
     },
     {
-      "bytes" : 210161,
+      "bytes" : 208691,
       "file" : "M3-pro-light-overlay-ma-19.png",
       "item" : "A3.7",
       "overlays" : [
@@ -416,15 +416,15 @@
           ]
         }
       ],
-      "pixelSha256" : "57e48147cf212142b5984a296e629e2fcd4e0d9aad14a62fa2d65520f5c12886",
+      "pixelSha256" : "45daa6bbbec5e7e67e8d40968bb2ff261f9f86ca3338e1e481884a36882d0c72",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "538569eab53049ece665276994a4074c2568186dbc86716c5529a1427e41e8ab"
+      "sha256" : "5dd9d3d124a4e78feaf7bdb388b6cafb99429430040c77ffc7c79f9d3bf6785d"
     },
     {
-      "bytes" : 187508,
+      "bytes" : 186346,
       "file" : "M3-pro-light-overlay-ema-20.png",
       "item" : "A3.7",
       "overlays" : [
@@ -438,15 +438,15 @@
           ]
         }
       ],
-      "pixelSha256" : "bf6bacbeae653ce0ecd2b35488d278e95a572b4eacd26d1a323ab6f7e3ae3535",
+      "pixelSha256" : "acc4a15fe9a92b062a551e22252c394f2fa4dfeb5a4452829cb1739fe7991e25",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "a5942c6782d9de6a2152755d848b64df907f6fa7bd4ea4455898b85a36fb879a"
+      "sha256" : "71a989327921db757cc01e4b3cfd8dbf0f242bd16f61c9bae263e15c820253f3"
     },
     {
-      "bytes" : 200137,
+      "bytes" : 197595,
       "file" : "M3-pro-light-overlay-boll-21.png",
       "item" : "A3.7",
       "overlays" : [
@@ -460,15 +460,15 @@
           ]
         }
       ],
-      "pixelSha256" : "c61261f53a0c5dea6790868f22b368038567f033e0ef213cff2c9b45865f35ae",
+      "pixelSha256" : "c5885454ec62ae26369b13ef79dd377f1de3eed7fa252943017b18d9d4296b30",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "029dac0f8a025b5e6943e0abc8b6b00a26e18c62099f2f3fdd62504331411a11"
+      "sha256" : "f0bfef42155ca14d3f007705d967ec18df319abb9a2b493a263bdd5da783fa99"
     },
     {
-      "bytes" : 277798,
+      "bytes" : 277941,
       "file" : "M3-pro-light-overlay-all-22.png",
       "item" : "A3.7",
       "overlays" : [
@@ -497,81 +497,81 @@
           ]
         }
       ],
-      "pixelSha256" : "bcf61b9a9162f21e96b0c7b93657168548ce15a1f8100359ba7d82ec6e457797",
+      "pixelSha256" : "a7c76249c6e923c3ee85594e4e4f1e226101c12e530660500f9d958a64719df4",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "a97291dd4cebb316b79f27e669ee3daf9b141545f5ceb0f8249c0f86a0470256"
+      "sha256" : "af5da4acea20bbbe1972ec91b1f045836d169b8f5c1177d132206c77b14e86ce"
     },
     {
       "barIndex" : 986,
       "barTime" : 1789311600000,
-      "bytes" : 314012,
+      "bytes" : 311963,
       "close" : 77098,
       "file" : "M3-pro-light-crosshair-23.png",
       "item" : "A3.8",
-      "pixelSha256" : "53e5f6185a5d4ceca63196ceb4bbb82ae6c2fba06cd2c60c0ec7b7bfadde57d3",
+      "pixelSha256" : "37727276afab03c30dbaa020ed93bbe5340e863f8fb99fe660a2ee15f43f0fe2",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "9948bdd5111dbb28247b16eb8e5b892c247c0f961b2faf383d9a481d4167b28d",
+      "sha256" : "ea05923f9a25323a28d47c05cfa1399a9340b1f315fd194a1a555dc5f9460c6b",
       "timezone" : "utc"
     },
     {
       "barIndex" : 986,
       "barTime" : 1789311600000,
-      "bytes" : 311188,
+      "bytes" : 308917,
       "close" : 77098,
       "file" : "M3-pro-dark-crosshair-24.png",
       "item" : "A3.8",
-      "pixelSha256" : "a39c235a0446e3e5c9dd13eb8df6ca4b275da021bce08ac6204fd948226d449b",
+      "pixelSha256" : "d814bb7ae6c917e7b89c9f59d1f225d3681fe9bac8e8b8a14601a093c9a6ee49",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "a8497fd219360a5bc003496975c7f4a0298b9958c64e7a86ec401d160761143b",
+      "sha256" : "48c2f687429c0fadc3945ea7dde6871a8e40e25475e1646bdebe4fb8a8f1f6bc",
       "timezone" : "utc"
     },
     {
-      "bytes" : 253151,
+      "bytes" : 250997,
       "display" : "常规",
       "file" : "M3-pro-light-axis-linear-25.png",
       "item" : "A3.9",
-      "pixelSha256" : "42ad6677c60a5ecdce75120416a66f74d9ff3a2b1a0ca7a63540e9c7b3388e60",
+      "pixelSha256" : "2aa8cf58e72d68d2277bcd1e2b793dd2035733e180abd978b3d5078700149b30",
       "priceMode" : "linear",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "955df4f886258450cb4275b4c862c81b69c62815a0377aa6bdf81ea8a2028dbb"
+      "sha256" : "4d416b2ea49ace86185bc95bd11b441992f77ef9300d5fc12b5ffed00336247b"
     },
     {
-      "bytes" : 258082,
+      "bytes" : 256549,
       "display" : "对数",
       "file" : "M3-pro-light-axis-log-26.png",
       "item" : "A3.9",
-      "pixelSha256" : "0348c177037f79523f7c21f3bd72bd4a58415b61ea9b33b1e9b1ebd91a299d3c",
+      "pixelSha256" : "11d9d04a64a80a21280809afe8d0ed0196c05310322b5179c3572f1ddb207870",
       "priceMode" : "log",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "15f032e5ff5adf4d7934928218afd094943e3ecd660a0759f89892bb99da0060"
+      "sha256" : "2575b1de79f31b0a1dad4731834e4eb2008dc1a0f7ecf465b0f3d043d78d9b53"
     },
     {
-      "bytes" : 252449,
+      "bytes" : 250808,
       "display" : "百分比",
       "file" : "M3-pro-light-axis-percent-27.png",
       "item" : "A3.9",
-      "pixelSha256" : "3ba75aa7091221517614115573b54503165867272cc33ed07d90ea1ff2a15887",
+      "pixelSha256" : "489c045df6f7e8fe0ba4c367a80699cd1828cde01f032810647a4c1f6987c625",
       "priceMode" : "percent",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "5549161acd5596e7ee0077a9c81a0a428c7454c95b61711bf356f540de617ab2"
+      "sha256" : "c8ca78e5b62b8410a9a847103a7400700be6272d536a7bdd860ad09df8895657"
     }
   ]
 }

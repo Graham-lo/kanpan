@@ -116,9 +116,12 @@ struct ColorSampleTests {
 
         // ---------------------------------------------------------------- ③ 影线（tint 后）
         do {
-          // 实体只剩两个设备像素以内时渲染器会取消 tint（见 `drawCandles`）。默认根间距
-          // 下 11 款都不会碰到这条，但取样点必须和渲染器同一套判据，不能各算各的。
-          let tintK = p.bodyW * Double(dev.scale) <= 2 ? 1 : style.wickTint
+          // 实体越细，渲染器越少兑淡影线：8 个设备像素以上照风格兑，8→2 之间线性收回
+          // 满饱和，2 以下完全不兑（见 `drawCandles`，AiCoin 实测是根本不兑）。默认根间距
+          // 下 11 款的实体都在 8 像素以上，`tintK` 就是风格表原值，和原型色值对得上；
+          // 但取样点必须和渲染器同一套公式，不能各算各的。
+          let tintFade = min(1, max(0, (p.bodyW * Double(dev.scale) - 2) / 6))
+          let tintK = style.wickTint + (1 - style.wickTint) * (1 - tintFade)
           let col = tintK < 1 ? Paint.mix(t.bg, t.up, tintK) : t.up
           #expect(col.value.lowercased() == golden.wick.lowercased(), "\(themeKey)/\(style.id) 影线色算错")
           // M6 起影线一律是**整数个设备像素**（`wickPixels`），所以取样点必然满覆盖，

@@ -12,6 +12,11 @@ import UIKit
 /// 原样跑起来问出来的（`layout()` / `barSpacing()` / `candleWidths` / `yOf`）。
 /// 口径：BTCUSDT 1h 定版快照、iPhone 16 Pro 402×874 @3x、浅色、叠加 MA、副图 MACD + RSI，
 /// 视野走 `resetView()`（右边缘留 6% 空白）。
+///
+/// 7 项里 **`wickW` 是有意分歧**，不进 ±1 的比对（M8 起）：原型算的是 `style.wick / dpr`，
+/// 同一个 1.8 在 2x 上 0.9pt、3x 上只剩 0.6pt，屏幕越精细影线越细。风格表是照 2x 屏调的，
+/// 所以我们把它当 2x 口径换算成固定物理宽度再量到整数设备像素。分歧值逐条记进
+/// `A3.2-geometry.json` 的 `knownDivergences`，最大的一条是墩：1.0pt vs 0.6pt。
 @MainActor
 @Suite("A3.2 几何量化")
 struct GeometryTableTests {
@@ -34,6 +39,7 @@ struct GeometryTableTests {
     var csv = ["style,metric,app,prototype,delta_pt,delta_device_px"]
     var worst = 0.0
     var checked = 0
+    var diverged: [[String: Any]] = []
 
     for style in CandleStyle.all {
       guard let golden = g.styles[style.id] else {
@@ -59,9 +65,26 @@ struct GeometryTableTests {
           metric: m, appV: a, protoV: b, scale: Double(dev.scale), mainH: p.mainH)
         worst = max(worst, dpx)
         checked += 1
-        // 容差就是「±1 设备像素」，但 1/3 pt（3x）这种数除不尽，正好差 1 像素的点会算出
-        // 1.0000000000000018 这样的值。放 1e-9 的浮点噪声，判据本身一点没松。
-        #expect(dpx <= 1 + 1e-9, "\(style.id).\(m)：app \(a) vs 原型 \(b)，差 \(dpx) 设备像素")
+        if m == "wickW" {
+          // **有意分歧，不比原型**（M8）。原型的影线宽是 `style.wick / dpr`：同一个 1.8
+          // 在 2x 上是 0.9pt、3x 上只有 0.6pt——屏幕越精细影线越细，这不是设计意图，
+          // 是把「设备像素」当成了跨倍率不变量。风格表是照 2x 屏调出来的，所以我们把
+          // `wick` 当 2x 口径换算：目标物理宽度 `wick / 2` 点，再量到整数设备像素
+          // （`wickPixels`）。墩因此从 0.667pt 变成 1.0pt，正好落在 AiCoin 实测的
+          // 1 个设备像素 @1x ＝ 1.0pt 上（docs/acceptance/M8/aicoin-对比.md §2.3），
+          // 也就是用户实机反馈「影线模糊、挤在一起」的那一半。
+          let px = Double(wickPixels(style: style, scale: Double(dev.scale)))
+          #expect(abs(a - px / Double(dev.scale)) < 1e-9, "\(style.id).wickW 不是整数设备像素")
+          #expect(a >= b - 1e-9, "\(style.id).wickW 比原型还细了：\(a) vs \(b)")
+          diverged.append([
+            "style": style.id, "metric": m, "app": a, "prototype": b, "deltaDevicePx": dpx,
+            "reason": "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+          ])
+        } else {
+          // 容差就是「±1 设备像素」，但 1/3 pt（3x）这种数除不尽，正好差 1 像素的点会算出
+          // 1.0000000000000018 这样的值。放 1e-9 的浮点噪声，判据本身一点没松。
+          #expect(dpx <= 1 + 1e-9, "\(style.id).\(m)：app \(a) vs 原型 \(b)，差 \(dpx) 设备像素")
+        }
         row[m] = ["app": a, "prototype": b, "deltaDevicePx": dpx]
         csv.append("\(style.id),\(m),\(a),\(b),\(abs(a - b)),\(dpx)")
       }
@@ -79,12 +102,15 @@ struct GeometryTableTests {
     Evidence.writeJSON(
       [
         "item": "A3.2",
-        "note": "7 项几何 × 11 款风格 = 77 个数，app 实测 vs 原型 chart.js，容差 ±1 设备像素。",
+        "note": "7 项几何 × 11 款风格 = 77 个数，app 实测 vs 原型 chart.js，容差 ±1 设备像素。"
+          + "`wickW` 是有意分歧，单独列在 knownDivergences 里：原型按 `wick / dpr` 算，"
+          + "屏幕越精细影线越细；我们把 `wick` 当 2x 口径换算成固定的物理宽度。",
         "device": dev.name, "width": dev.w, "height": dev.h, "scale": dev.scale,
         "theme": "light", "symbol": Fixture.snapshot.symbol, "interval": Fixture.snapshot.interval,
         "overlays": Evidence.overlays.map(\.rawValue), "subs": Evidence.subs.map(\.rawValue),
         "metrics": ChartProbe.metricNames,
         "worstDeltaDevicePx": worst,
+        "knownDivergences": diverged,
         "styles": rows,
       ], "A3.2-geometry.json")
     Evidence.writeText(csv.joined(separator: "\n") + "\n", "A3.2-geometry.csv")

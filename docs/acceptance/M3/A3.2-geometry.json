@@ -3,6 +3,96 @@
   "height" : 874,
   "interval" : "1h",
   "item" : "A3.2",
+  "knownDivergences" : [
+    {
+      "app" : 1,
+      "deltaDevicePx" : 1.2000000000000002,
+      "metric" : "wickW",
+      "prototype" : 0.59999999999999998,
+      "reason" : "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+      "style" : "stout"
+    },
+    {
+      "app" : 0.33333333333333331,
+      "deltaDevicePx" : 0.5,
+      "metric" : "wickW",
+      "prototype" : 0.16666666666666666,
+      "reason" : "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+      "style" : "indigo"
+    },
+    {
+      "app" : 0.66666666666666663,
+      "deltaDevicePx" : 0.80000000000000004,
+      "metric" : "wickW",
+      "prototype" : 0.39999999999999997,
+      "reason" : "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+      "style" : "glow"
+    },
+    {
+      "app" : 0.66666666666666663,
+      "deltaDevicePx" : 1,
+      "metric" : "wickW",
+      "prototype" : 0.33333333333333331,
+      "reason" : "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+      "style" : "airy"
+    },
+    {
+      "app" : 0.33333333333333331,
+      "deltaDevicePx" : 0.5,
+      "metric" : "wickW",
+      "prototype" : 0.16666666666666666,
+      "reason" : "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+      "style" : "brick"
+    },
+    {
+      "app" : 1,
+      "deltaDevicePx" : 1,
+      "metric" : "wickW",
+      "prototype" : 0.66666666666666663,
+      "reason" : "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+      "style" : "needle"
+    },
+    {
+      "app" : 0.66666666666666663,
+      "deltaDevicePx" : 1,
+      "metric" : "wickW",
+      "prototype" : 0.33333333333333331,
+      "reason" : "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+      "style" : "pill"
+    },
+    {
+      "app" : 0.33333333333333331,
+      "deltaDevicePx" : 0.19999999999999996,
+      "metric" : "wickW",
+      "prototype" : 0.26666666666666666,
+      "reason" : "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+      "style" : "paper"
+    },
+    {
+      "app" : 0.33333333333333331,
+      "deltaDevicePx" : 0.099999999999999978,
+      "metric" : "wickW",
+      "prototype" : 0.29999999999999999,
+      "reason" : "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+      "style" : "outline"
+    },
+    {
+      "app" : 0.33333333333333331,
+      "deltaDevicePx" : 0.5,
+      "metric" : "wickW",
+      "prototype" : 0.16666666666666666,
+      "reason" : "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+      "style" : "bone"
+    },
+    {
+      "app" : 0.33333333333333331,
+      "deltaDevicePx" : 0.5,
+      "metric" : "wickW",
+      "prototype" : 0.16666666666666666,
+      "reason" : "影线按「风格表是 2x 口径」换算到当前倍率，见 CandleWidths.wickPixels",
+      "style" : "dense"
+    }
+  ],
   "metrics" : [
     "axisW",
     "timeH",
@@ -12,7 +102,7 @@
     "wickW",
     "padTop"
   ],
-  "note" : "7 项几何 × 11 款风格 = 77 个数，app 实测 vs 原型 chart.js，容差 ±1 设备像素。",
+  "note" : "7 项几何 × 11 款风格 = 77 个数，app 实测 vs 原型 chart.js，容差 ±1 设备像素。`wickW` 是有意分歧，单独列在 knownDivergences 里：原型按 `wick / dpr` 算，屏幕越精细影线越细；我们把 `wick` 当 2x 口径换算成固定的物理宽度。",
   "overlays" : [
     "MA"
   ],
@@ -25,8 +115,8 @@
         "prototype" : 58
       },
       "bodyW" : {
-        "app" : 8,
-        "deltaDevicePx" : 0,
+        "app" : 7.666666666666667,
+        "deltaDevicePx" : 0.99999999999999911,
         "prototype" : 8
       },
       "name" : "墩",
@@ -37,7 +127,7 @@
       },
       "reference" : {
         "mainH" : 680,
-        "minBody" : 0.66666666666666663,
+        "minBody" : 1,
         "outline" : 1,
         "padBottom" : 0.10937499999999867,
         "plotW" : 344,
@@ -65,8 +155,8 @@
         "prototype" : 26
       },
       "wickW" : {
-        "app" : 0.59999999999999998,
-        "deltaDevicePx" : 0,
+        "app" : 1,
+        "deltaDevicePx" : 1.2000000000000002,
         "prototype" : 0.59999999999999998
       }
     },
@@ -77,8 +167,8 @@
         "prototype" : 54
       },
       "bodyW" : {
-        "app" : 2.6666666666666665,
-        "deltaDevicePx" : 0,
+        "app" : 2.3333333333333335,
+        "deltaDevicePx" : 0.99999999999999911,
         "prototype" : 2.6666666666666665
       },
       "name" : "靛",
@@ -117,8 +207,8 @@
         "prototype" : 22
       },
       "wickW" : {
-        "app" : 0.16666666666666666,
-        "deltaDevicePx" : 0,
+        "app" : 0.33333333333333331,
+        "deltaDevicePx" : 0.5,
         "prototype" : 0.16666666666666666
       }
     },
@@ -169,8 +259,8 @@
         "prototype" : 24
       },
       "wickW" : {
-        "app" : 0.39999999999999997,
-        "deltaDevicePx" : 0,
+        "app" : 0.66666666666666663,
+        "deltaDevicePx" : 0.80000000000000004,
         "prototype" : 0.39999999999999997
       }
     },
@@ -193,7 +283,7 @@
       },
       "reference" : {
         "mainH" : 652,
-        "minBody" : 0.33333333333333331,
+        "minBody" : 0.66666666666666663,
         "outline" : 1,
         "padBottom" : 0.14285714285714279,
         "plotW" : 340,
@@ -221,8 +311,8 @@
         "prototype" : 30
       },
       "wickW" : {
-        "app" : 0.33333333333333331,
-        "deltaDevicePx" : 0,
+        "app" : 0.66666666666666663,
+        "deltaDevicePx" : 1,
         "prototype" : 0.33333333333333331
       }
     },
@@ -233,8 +323,8 @@
         "prototype" : 56
       },
       "bodyW" : {
-        "app" : 8,
-        "deltaDevicePx" : 0,
+        "app" : 7.666666666666667,
+        "deltaDevicePx" : 0.99999999999999911,
         "prototype" : 8
       },
       "name" : "砖",
@@ -273,8 +363,8 @@
         "prototype" : 24
       },
       "wickW" : {
-        "app" : 0.16666666666666666,
-        "deltaDevicePx" : 0,
+        "app" : 0.33333333333333331,
+        "deltaDevicePx" : 0.5,
         "prototype" : 0.16666666666666666
       }
     },
@@ -285,8 +375,8 @@
         "prototype" : 54
       },
       "bodyW" : {
-        "app" : 3.3333333333333335,
-        "deltaDevicePx" : 0,
+        "app" : 3,
+        "deltaDevicePx" : 1.0000000000000004,
         "prototype" : 3.3333333333333335
       },
       "name" : "针",
@@ -297,7 +387,7 @@
       },
       "reference" : {
         "mainH" : 698,
-        "minBody" : 0.66666666666666663,
+        "minBody" : 1,
         "outline" : 1,
         "padBottom" : 0.12121212121212156,
         "plotW" : 348,
@@ -325,8 +415,8 @@
         "prototype" : 24
       },
       "wickW" : {
-        "app" : 0.66666666666666663,
-        "deltaDevicePx" : 0,
+        "app" : 1,
+        "deltaDevicePx" : 1,
         "prototype" : 0.66666666666666663
       }
     },
@@ -377,8 +467,8 @@
         "prototype" : 23
       },
       "wickW" : {
-        "app" : 0.33333333333333331,
-        "deltaDevicePx" : 0,
+        "app" : 0.66666666666666663,
+        "deltaDevicePx" : 1,
         "prototype" : 0.33333333333333331
       }
     },
@@ -389,8 +479,8 @@
         "prototype" : 48
       },
       "bodyW" : {
-        "app" : 4,
-        "deltaDevicePx" : 0,
+        "app" : 4.333333333333333,
+        "deltaDevicePx" : 0.99999999999999911,
         "prototype" : 4
       },
       "name" : "纸",
@@ -429,8 +519,8 @@
         "prototype" : 24
       },
       "wickW" : {
-        "app" : 0.26666666666666666,
-        "deltaDevicePx" : 0,
+        "app" : 0.33333333333333331,
+        "deltaDevicePx" : 0.19999999999999996,
         "prototype" : 0.26666666666666666
       }
     },
@@ -441,8 +531,8 @@
         "prototype" : 50
       },
       "bodyW" : {
-        "app" : 5.333333333333333,
-        "deltaDevicePx" : 0,
+        "app" : 5,
+        "deltaDevicePx" : 0.99999999999999911,
         "prototype" : 5.333333333333333
       },
       "name" : "描",
@@ -481,8 +571,8 @@
         "prototype" : 22
       },
       "wickW" : {
-        "app" : 0.29999999999999999,
-        "deltaDevicePx" : 0,
+        "app" : 0.33333333333333331,
+        "deltaDevicePx" : 0.099999999999999978,
         "prototype" : 0.29999999999999999
       }
     },
@@ -493,8 +583,8 @@
         "prototype" : 44
       },
       "bodyW" : {
-        "app" : 1.3333333333333333,
-        "deltaDevicePx" : 0,
+        "app" : 1,
+        "deltaDevicePx" : 0.99999999999999978,
         "prototype" : 1.3333333333333333
       },
       "name" : "骨",
@@ -533,8 +623,8 @@
         "prototype" : 20
       },
       "wickW" : {
-        "app" : 0.16666666666666666,
-        "deltaDevicePx" : 0,
+        "app" : 0.33333333333333331,
+        "deltaDevicePx" : 0.5,
         "prototype" : 0.16666666666666666
       }
     },
@@ -545,8 +635,8 @@
         "prototype" : 40
       },
       "bodyW" : {
-        "app" : 1.3333333333333333,
-        "deltaDevicePx" : 0,
+        "app" : 1.6666666666666667,
+        "deltaDevicePx" : 1.0000000000000004,
         "prototype" : 1.3333333333333333
       },
       "name" : "密",
@@ -585,8 +675,8 @@
         "prototype" : 18
       },
       "wickW" : {
-        "app" : 0.16666666666666666,
-        "deltaDevicePx" : 0,
+        "app" : 0.33333333333333331,
+        "deltaDevicePx" : 0.5,
         "prototype" : 0.16666666666666666
       }
     }
@@ -598,5 +688,5 @@
   "symbol" : "BTCUSDT",
   "theme" : "light",
   "width" : 402,
-  "worstDeltaDevicePx" : 1.5241141682054149e-11
+  "worstDeltaDevicePx" : 1.2000000000000002
 }

@@ -71,7 +71,7 @@ struct GeometryTests {
     }
   }
 
-  /// 影线粗细取**整数个设备像素**：`max(1, round(max(0.5, style.wick)))`，再除以 scale。
+  /// 影线粗细取**整数个设备像素**：`max(1, round(max(0.5, style.wick) * scale / 2))`，再除以 scale。
   ///
   /// 旧口径是 `max(0.5, style.wick) / scale`，直接把风格表里的点值当逻辑宽度用。那样画出来
   /// 的竖线落在非整像素上，CoreGraphics 会把它摊到相邻两列、各给一半覆盖率——肉眼就是
@@ -80,10 +80,15 @@ struct GeometryTests {
   @Test("影线粗细换算")
   func wickWidth() {
     for st in CandleStyle.all {
-      let px = wickPixels(style: st, scale: 1)
-      #expect(px == max(1, Int(max(0.5, st.wick).jsRounded())), "\(st.id) 影线像素数")
+      // 风格表的 `wick` 是**按 2x 屏写的设备像素**，先换算到当前倍率再量成整数。
+      #expect(
+        wickPixels(style: st, scale: 2) == max(1, Int(max(0.5, st.wick).jsRounded())),
+        "\(st.id) 影线像素数（2x 就是风格表原值）")
       for scale in [1.0, 2.0, 3.0] {
-        // 同一档风格在任何屏上都是同样多个设备像素，只是逻辑宽度跟着 scale 变。
+        let px = wickPixels(style: st, scale: scale)
+        #expect(
+          px == max(1, Int((max(0.5, st.wick) * max(1, scale) / 2).jsRounded())),
+          "\(st.id)@\(scale) 影线像素数")
         #expect(wickLineWidth(style: st, scale: scale) == Double(px) / scale, "\(st.id)@\(scale)")
         #expect(abs(wickLineWidth(style: st, scale: scale) * scale - Double(px)) < 1e-9)
         let m = candleMetrics(spacing: 8, style: st, scale: scale)
@@ -114,15 +119,23 @@ struct CandlePixelTests {
   /// 在 1x 下一格才 2–3 个像素，本来就只画得出一根线，旧代码也是（只是 thin 标志没置上）。
   static let deviceScales: [Double] = [2, 3]
 
-  /// 影线永远是整数个设备像素，而且同一档风格在任何屏上像素数都一样。
+  /// 影线永远是整数个设备像素，而且同一档风格的**物理宽度**跨屏一致。
+  ///
+  /// 跨屏一致的是「多宽」而不是「多少个像素」：`wick` 按 2x 屏写，所以目标物理宽度是
+  /// `wick / 2` 点，屏幕越精细就该用越多个像素去铺它。从前这儿钉的是「像素数不许跟着
+  /// scale 变」，等于让 3x 上的影线比 2x 细三分之一——墩在 3x 只有 0.667pt，而 AiCoin
+  /// 实测是 1.0pt（见 docs/acceptance/M8/aicoin-对比.md §2.3），这正是实机反馈
+  /// 「影线模糊、挤在一起」的一半原因。
   @Test("影线整像素", arguments: scales)
   func wickIsWholePixels(_ scale: Double) {
     for st in CandleStyle.all {
       let px = wickPixels(style: st, scale: scale)
       #expect(px >= 1, "\(st.id) 影线归零")
-      #expect(px == wickPixels(style: st, scale: 1), "\(st.id) 像素数跟着 scale 变了")
       let w = wickLineWidth(style: st, scale: scale)
       #expect(abs(w * scale - (w * scale).rounded()) < 1e-9, "\(st.id)@\(scale) 落不到整像素上")
+      // 量化误差不超过半个设备像素；`px == 1` 是保底那一档（目标不足半像素时抬上来）。
+      let want = max(0.5, st.wick) / 2
+      #expect(px == 1 || abs(w - want) <= 0.5 / scale + 1e-9, "\(st.id)@\(scale) 物理宽度跑了：\(w) vs \(want)")
       // 0.5pt 的四款（靛/砖/骨/密）必须被抬到 1，不能再画 50% 灰。
       if st.wick <= 0.5 { #expect(px == 1, "\(st.id) 半像素影线没被抬起来") }
     }
@@ -143,9 +156,12 @@ struct CandlePixelTests {
     }
   }
 
-  /// 只要还画实体，相邻两根之间就至少留 1 个设备像素的缝。
+  /// 相邻两根之间至少留 1 个设备像素的缝——**实体和影线都算**。
   ///
-  /// 退化成 `thin`（一格里放不下比影线更宽的实体）时不要求——那时候本来就只画影线。
+  /// 退化成 `thin`（一格里放不下比影线更宽的实体）时画的是影线，那就轮到影线让缝：
+  /// 从前只有实体受 `cell - 1` 约束，影线直接用风格量化值，于是捏小之后影线自己把一格
+  /// 占满（墩在 3x 上影线 3 像素、一格只剩 3 像素时缝是 0），一排影线糊成一堵墙。
+  /// 一格只有 1 个像素时谁也让不出来，那是密度上限，不在要求之列。
   @Test("实体之间至少 1 像素缝", arguments: scales)
   func gapAtLeastOnePixel(_ scale: Double) {
     for st in CandleStyle.all {
@@ -153,8 +169,9 @@ struct CandlePixelTests {
       while sp <= Chart.maxBarSpacing {
         let w = candlePixels(spacing: sp, scale: scale, style: st)
         let cell = Int((sp * scale).rounded(.down))
-        if !candleMetrics(spacing: sp, style: st, scale: scale).thin {
-          #expect(cell - w.body >= 1, "\(st.id)@\(scale) spacing=\(sp) 缝只剩 \(cell - w.body)")
+        let ink = candleMetrics(spacing: sp, style: st, scale: scale).thin ? w.wick : w.body
+        if cell >= 2 {
+          #expect(cell - ink >= 1, "\(st.id)@\(scale) spacing=\(sp) 缝只剩 \(cell - ink)")
         }
         sp += 0.05
       }
