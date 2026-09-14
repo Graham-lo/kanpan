@@ -22,7 +22,7 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test data-test chart-build chart-test test strict app-test snap screenshots devices boot shutdown clean doctor evidence fixtures
+.PHONY: help core-test data-test diag-test diag-ios-test chart-build chart-test test strict app-test snap screenshots devices boot shutdown clean doctor evidence fixtures
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -102,7 +102,19 @@ symbols-test:
 settings-test:
 	cd $(SETTINGS) && swift test $(CORE_TEST_FLAGS)
 
-app-logic-test: symbols-test settings-test
+DIAG := Kanpan/Diagnostics
+
+diag-test:
+	cd $(DIAG) && swift test $(CORE_TEST_FLAGS)
+
+# 帧探针那几条只有真跑在 iOS 上才走得到（CADisplayLink / CFRunLoopObserver 在 mac
+# 上编得过但量不到东西），所以单独一个 target，要起模拟器，故意不挂进 `test`。
+# 真机取证前必须跑一遍。
+diag-ios-test:
+	cd $(DIAG) && xcodebuild test -scheme KanpanDiagnostics \
+	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
+
+app-logic-test: symbols-test settings-test diag-test
 
 test: core-test data-test app-logic-test chart-test
 

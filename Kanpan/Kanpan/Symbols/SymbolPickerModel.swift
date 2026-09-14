@@ -36,7 +36,7 @@ final class SymbolPickerModel {
   private let store: SymbolPrefsStore
   private let feed: SymbolTickerFeed?
   /// 品种表的来源，宿主用 `KanpanData.SymbolCatalog` 填。
-  private let catalogLoader: (@Sendable () async -> [SymbolInfo])?
+  private var catalogLoader: (@Sendable () async -> [SymbolInfo])?
   private var subscribed = false
 
   init(catalog: [SymbolInfo] = [],
@@ -51,6 +51,12 @@ final class SymbolPickerModel {
     self.prefs = store.load()
     apply(tickers)
     rebuild()
+  }
+
+  /// 品种表的来源晚一步才知道（宿主要先把 `KanpanData` 那侧建起来）。
+  /// 只在还没进过页面时补得上，进过之后 `catalog` 已经填好了，换不换都无所谓。
+  func setLoader(_ loader: @escaping @Sendable () async -> [SymbolInfo]) {
+    catalogLoader = loader
   }
 
   // ---------------------------------------------------------------- 生命周期

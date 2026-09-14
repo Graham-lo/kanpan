@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		AB0000000000000000000012 /* KanpanCore in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000011 /* KanpanCore */; };
+		AB0000000000000000000022 /* KanpanChart in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000021 /* KanpanChart */; };
+		AB0000000000000000000032 /* KanpanData in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000031 /* KanpanData */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +30,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				AB0000000000000000000012 /* KanpanCore in Frameworks */,
+				AB0000000000000000000022 /* KanpanChart in Frameworks */,
+				AB0000000000000000000032 /* KanpanData in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +75,8 @@
 			name = Kanpan;
 			packageProductDependencies = (
 				AB0000000000000000000011 /* KanpanCore */,
+				AB0000000000000000000021 /* KanpanChart */,
+				AB0000000000000000000031 /* KanpanData */,
 			);
 			productName = Kanpan;
 			productReference = AB0000000000000000000005 /* Kanpan.app */;
@@ -102,6 +108,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				AB0000000000000000000010 /* XCLocalSwiftPackageReference "../KanpanCore" */,
+				AB0000000000000000000020 /* XCLocalSwiftPackageReference "../KanpanChart" */,
+				AB0000000000000000000030 /* XCLocalSwiftPackageReference "../KanpanData" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AB0000000000000000000003 /* Products */;
@@ -254,12 +262,28 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../KanpanCore;
 		};
+		AB0000000000000000000020 /* XCLocalSwiftPackageReference "../KanpanChart" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../KanpanChart;
+		};
+		AB0000000000000000000030 /* XCLocalSwiftPackageReference "../KanpanData" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../KanpanData;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		AB0000000000000000000011 /* KanpanCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = KanpanCore;
+		};
+		AB0000000000000000000021 /* KanpanChart */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = KanpanChart;
+		};
+		AB0000000000000000000031 /* KanpanData */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = KanpanData;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
