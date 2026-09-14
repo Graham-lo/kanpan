@@ -1,0 +1,128 @@
+import SwiftUI
+import KanpanCore
+
+/// 四个面板的出场方式（§9.2 / §10.6）：半屏 sheet，可拉到全屏，下拉关闭。
+///
+/// 挂到主界面那一步不在这儿——这儿只提供 `.prefsPanel(…)` 这一个入口，
+/// 主界面拿一个 `Panel?` 当状态，改它就开关面板。
+
+/// 哪个面板。底栏四个按钮各对应一个。
+enum Panel: String, Identifiable, CaseIterable, Sendable {
+  case style, indicator, period, settings
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .style: "风格"
+    case .indicator: "指标"
+    case .period: "周期"
+    case .settings: "设置"
+    }
+  }
+}
+
+extension ThemeChoice {
+  /// 「跟随系统」时交给环境，浅 / 深两档自己说了算（A6.3）。
+  var forced: ColorScheme? {
+    switch self {
+    case .system: nil
+    case .light: .light
+    case .dark: .dark
+    }
+  }
+}
+
+/// 给面板灌上主题、深浅与半屏尺寸。四个面板都从这儿出场，省得各写一遍。
+struct PanelHost<Content: View>: View {
+  var store: PrefsStore
+  @ViewBuilder var content: () -> Content
+
+  @Environment(\.colorScheme) private var systemScheme
+
+  private var dark: Bool {
+    switch store.prefs.theme {
+    case .system: systemScheme == .dark
+    case .light: false
+    case .dark: true
+    }
+  }
+
+  var body: some View {
+    content()
+      .environment(\.panelTheme, PanelTheme(dark: dark, redUp: store.prefs.redUp))
+      .preferredColorScheme(store.prefs.theme.forced)
+      .presentationDetents([.medium, .large])
+      .presentationDragIndicator(.visible)
+      .presentationBackground { Color(hex: dark ? Palette.darkSeed.raised : Palette.lightSeed.raised) }
+      .presentationCornerRadius(18)
+      // 面板开着的时候图在后面继续更新、仍可单指拖（§10.6）。
+      .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+  }
+}
+
+extension View {
+  /// 主界面用这一个：`.prefsPanel($panel, store: store)`。
+  func prefsPanel(_ panel: Binding<Panel?>,
+                  store: PrefsStore,
+                  onPickInterval: ((Interval) -> Void)? = nil) -> some View {
+    sheet(item: panel) { which in
+      PanelHost(store: store) {
+        switch which {
+        case .style: StylePanel(store: store)
+        case .indicator: IndicatorPanel(store: store)
+        case .period: PeriodPanel(store: store, onPick: onPickInterval)
+        case .settings: SettingsPanel(store: store)
+        }
+      }
+    }
+  }
+}
+
+// MARK: - 预览
+
+/// `#Preview` 用的壳：不碰真沙盒、不碰真缓存，深浅两版各看一眼。
+struct PanelPreviewHost<Content: View>: View {
+  @ViewBuilder var content: (PrefsStore) -> Content
+
+  @State private var store = PrefsStore(storage: InMemoryPrefsStorage(),
+                                        cache: UnavailableMarketCache())
+  @Environment(\.colorScheme) private var scheme
+
+  var body: some View {
+    let dark = store.prefs.theme == .system ? scheme == .dark : store.prefs.theme == .dark
+    content(store)
+      .environment(\.panelTheme, PanelTheme(dark: dark, redUp: store.prefs.redUp))
+      .preferredColorScheme(store.prefs.theme.forced)
+      .background(Color(hex: dark ? Palette.darkSeed.raised : Palette.lightSeed.raised))
+  }
+}
+
+#Preview("四个面板") {
+  PanelDemo()
+}
+
+/// 把四个面板挂起来看一眼：这就是主界面接它的全部写法。
+private struct PanelDemo: View {
+  @State private var store = PrefsStore(storage: InMemoryPrefsStorage(),
+                                        cache: UnavailableMarketCache())
+  @State private var panel: Panel?
+
+  var body: some View {
+    VStack(spacing: 12) {
+      Text("看盘").font(.system(size: 32, weight: .semibold)).kerning(6)
+      HStack(spacing: 10) {
+        ForEach(Panel.allCases) { p in
+          Button(p.title) { panel = p }.buttonStyle(.bordered)
+        }
+      }
+      Text(verbatim: "\(store.prefs.style.name) · \(store.prefs.interval.rawValue) · "
+           + store.prefs.subs.map(\.rawValue).joined(separator: "+"))
+        .font(.footnote.monospaced())
+        .foregroundStyle(.secondary)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .prefsPanel($panel, store: store)
+    .preferredColorScheme(store.prefs.theme.forced)
+  }
+}

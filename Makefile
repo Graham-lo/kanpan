@@ -94,10 +94,17 @@ chart-test:
 # 一份代码两处编译，不会漂移。新增模块照 Symbols 的样子加一行。
 SYMBOLS := Kanpan/Symbols
 
+SETTINGS := Kanpan/Settings
+
 symbols-test:
 	cd $(SYMBOLS) && swift test $(CORE_TEST_FLAGS)
 
-test: core-test data-test symbols-test chart-test
+settings-test:
+	cd $(SETTINGS) && swift test $(CORE_TEST_FLAGS)
+
+app-logic-test: symbols-test settings-test
+
+test: core-test data-test app-logic-test chart-test
 
 # A2.13：零警告零错误。警告即错误，谁也别想蒙混过去。
 strict:
@@ -130,7 +137,7 @@ feed:
 # 「Scheme Kanpan is not currently configured for the test action」，
 # 原来那条末尾的 `|| true` 把这个事实吞掉了，看着像过了其实一条没跑。
 # app 侧的逻辑一律由上面的壳包覆盖，这里只做编译验证。
-app-test: symbols-test build
+app-test: app-logic-test build
 	@echo "注意：app target 没有 test action，app 侧逻辑走 symbols-test 这类壳包。"
 
 build:
