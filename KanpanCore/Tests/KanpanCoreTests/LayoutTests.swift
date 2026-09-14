@@ -126,14 +126,20 @@ struct IndicatorMetaTests {
 
   @Test("0–100 的副图锁刻度")
   func fixedScales() {
+    // 原型 `drawSub`：RSI 与 StochRSI 传 [0,100]，KDJ 传 null（J 会冲出 0–100）。
     for id in [IndicatorID.rsi, .srsi] {
       let f = id.fixedScale
       #expect(f?.lo == 0 && f?.hi == 100)
-      #expect(f?.guides == [20, 50, 80])
     }
-    #expect(IndicatorID.kdj.fixedScale?.guides == [20, 80], "J 会冲出 0–100，参考线只画两条")
-    for id in [IndicatorID.macd, .atr, .vol, .oi] {
+    for id in [IndicatorID.kdj, .macd, .atr, .vol, .oi] {
       #expect(id.fixedScale == nil, "\(id.rawValue) 不该锁刻度")
+    }
+    // 参考线：原型 RSI 30/70，KDJ 与 StochRSI 20/80，别的不画。
+    #expect(IndicatorID.rsi.guides == [30, 70])
+    #expect(IndicatorID.kdj.guides == [20, 80], "J 会冲出 0–100，参考线只画两条")
+    #expect(IndicatorID.srsi.guides == [20, 80])
+    for id in [IndicatorID.macd, .atr, .vol, .oi, .ma, .ema, .boll] {
+      #expect(id.guides.isEmpty, "\(id.rawValue) 不该有参考线")
     }
   }
 

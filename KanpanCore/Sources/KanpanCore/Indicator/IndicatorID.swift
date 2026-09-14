@@ -74,12 +74,21 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     }
   }
 
-  /// 固定刻度的副图（§8）：RSI / StochRSI / KDJ 锁 0–100 并画参考线。
-  public var fixedScale: (lo: Double, hi: Double, guides: [Double])? {
+  /// 锁死的纵轴区间（§8）。原型 `drawSub`：RSI 与 StochRSI 锁 0–100；
+  /// **KDJ 不锁**——J 线常年冲出 0–100，锁了就看不见了，它走自适应。
+  public var fixedScale: (lo: Double, hi: Double)? {
     switch self {
-    case .rsi, .srsi: (0, 100, [20, 50, 80])
-    case .kdj: (0, 100, [20, 80])
+    case .rsi, .srsi: (0, 100)
     default: nil
+    }
+  }
+
+  /// 参考线（原型 `subLines` 的第三个参数）。RSI 是 30/70，KDJ 与 StochRSI 是 20/80。
+  public var guides: [Double] {
+    switch self {
+    case .rsi: [30, 70]
+    case .kdj, .srsi: [20, 80]
+    default: []
     }
   }
 

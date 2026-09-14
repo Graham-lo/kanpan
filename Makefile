@@ -4,6 +4,7 @@
 WORKSPACE  := Kanpan.xcworkspace
 SCHEME     := Kanpan
 CORE       := KanpanCore
+CHART      := KanpanChart
 RUNTIME    := iOS
 SHOTS      := docs/acceptance/shots
 
@@ -21,12 +22,14 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test data-test test strict app-test snap screenshots devices boot shutdown clean doctor
+.PHONY: help core-test data-test chart-build chart-test test strict app-test snap screenshots devices boot shutdown clean doctor
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
 	@echo "data-test    跑 KanpanData 单测（全离线：假 transport / 假 socket / 假时钟）"
-	@echo "test         core-test + data-test"
+	@echo "chart-build  编 KanpanChart（UIKit，必须走 xcodebuild）"
+	@echo "chart-test   跑 KanpanChart 单测（需要一台模拟器）"
+	@echo "test         core-test + data-test + chart-build"
 	@echo "strict       两个包都按 Swift 6 严格并发 + 警告即错误编一遍（A2.13）"
 	@echo "app-test     跑 app target 的测试"
 	@echo "snap         在单台模拟器上装 app 并截一张图（DEVICE=\"iPhone 16 Pro\"）"
@@ -71,12 +74,26 @@ DATA := KanpanData
 data-test:
 	cd $(DATA) && swift test $(CORE_TEST_FLAGS)
 
-test: core-test data-test
+# 绘制层 import UIKit，裸 swift build 会拿 macOS sysroot 编（-sdk 那条 flag 会被吞掉），
+# 所以这里必须走 xcodebuild 指一个 iOS Simulator destination。
+chart-build:
+	cd $(CHART) && xcodebuild -scheme KanpanChart \
+		-destination 'generic/platform=iOS Simulator' \
+		-derivedDataPath .xcbuild build
+
+chart-test:
+	cd $(CHART) && xcodebuild test -scheme KanpanChart \
+		-destination 'platform=iOS Simulator,name=$(DEVICE)' \
+		-derivedDataPath .xcbuild
+
+test: core-test data-test chart-build
 
 # A2.13：零警告零错误。警告即错误，谁也别想蒙混过去。
 strict:
 	cd $(CORE) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
 	cd $(DATA) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+	cd $(CHART) && xcodebuild -scheme KanpanChart -destination 'generic/platform=iOS Simulator' \
+		-derivedDataPath .xcbuild SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build
 
 # 数据层取证工具（§13 M2 的证据都从这儿出）
 feed:

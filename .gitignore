@@ -11,3 +11,4 @@ Packages/
 *.dSYM.zip
 *.dSYM
 docs/acceptance/**/*.trace
+.xcbuild/
