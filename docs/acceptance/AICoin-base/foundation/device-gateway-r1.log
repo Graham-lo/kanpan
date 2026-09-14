@@ -1,0 +1,1017 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -workspace Kanpan.xcworkspace -scheme Kanpan -destination platform=iOS,id=00008140-00010C902690801C -derivedDataPath DerivedData-chart-foundation-device -parallel-testing-enabled NO "-only-testing:KanpanUITests/ChartFoundationUITests/testLiveMarketUpdatesWithinSeconds" "-only-testing:KanpanUITests/ChartFoundationUITests/testCrosshairCenterDragAndOutsidePan" "-only-testing:KanpanUITests/ChartFoundationUITests/testFourSubpanelsFitWithoutPageScroll" "-only-testing:KanpanUITests/AICoinBaseUITests" -resultBundlePath docs/acceptance/AICoin-base/foundation/device-gateway-r1.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/device-gateway-r1.xcresult
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (8 targets)
+    Target 'KanpanUITests' in project 'Kanpan'
+        ➜ Explicit dependency on target 'Kanpan' in project 'Kanpan'
+    Target 'Kanpan' in project 'Kanpan'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanData' in project 'KanpanData'
+    Target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+Build description signature: c7c40e6a0ecd2245242a160e1acf690c
+Build description path: /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/XCBuildData/c7c40e6a0ecd2245242a160e1acf690c.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache
+    cd /Users/mdd/zhk/kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -o /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache
+
+SwiftDriver KanpanData normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanData -Onone @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios17.0 -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -suppress-warnings -index-store-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex/Session.modulevalidation -package-name kanpandata -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData-Swift.h -working-directory /Users/mdd/zhk/kanpan -experimental-emit-module-separately -disable-cmo
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ KanpanData (in target 'KanpanData' from project 'KanpanData')
+
+EmitSwiftModule normal arm64 (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan
+    
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for KanpanData (in target 'KanpanData' from project 'KanpanData')
+
+SwiftDriver\ Compilation\ Requirements KanpanData normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanData -Onone @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios17.0 -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -suppress-warnings -index-store-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex/Session.modulevalidation -package-name kanpandata -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData-Swift.h -working-directory /Users/mdd/zhk/kanpan -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.swiftmodule/Project/arm64-apple-ios.swiftsourceinfo /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.swiftsourceinfo (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan/KanpanData
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.swiftsourceinfo /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.swiftmodule/Project/arm64-apple-ios.swiftsourceinfo
+
+Copy /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.swiftmodule/arm64-apple-ios.swiftmodule /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.swiftmodule (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan/KanpanData
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.swiftmodule /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.swiftmodule/arm64-apple-ios.swiftmodule
+
+Copy /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.swiftmodule/arm64-apple-ios.abi.json /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.abi.json (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan/KanpanData
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.abi.json /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.swiftmodule/arm64-apple-ios.abi.json
+
+SwiftDriver Kanpan normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Kanpan -Onone @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList -DDEBUG -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios17.0 -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -emit-localized-strings -emit-localized-strings-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan_const_extract_protocols.json -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-generated-files.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-own-target-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphoneos/all-product-headers.yaml -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-project-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan-Swift.h -working-directory /Users/mdd/zhk/kanpan/Kanpan -experimental-emit-module-separately -disable-cmo
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ Kanpan (in target 'Kanpan' from project 'Kanpan')
+
+EmitSwiftModule normal arm64 (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+
+SwiftCompile normal arm64 Compiling\ MarketModel.swift /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Main/MarketModel.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Main/MarketModel.swift (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling MarketModel.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftDriver\ Compilation Kanpan normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Kanpan -Onone @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList -DDEBUG -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios17.0 -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -emit-localized-strings -emit-localized-strings-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan_const_extract_protocols.json -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-generated-files.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-own-target-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphoneos/all-product-headers.yaml -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-project-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan-Swift.h -working-directory /Users/mdd/zhk/kanpan/Kanpan -experimental-emit-module-separately -disable-cmo
+
+SwiftCompile normal arm64 Compiling\ WSClient.swift /Users/mdd/zhk/kanpan/KanpanData/Sources/KanpanData/Binance/WSClient.swift (in target 'KanpanData' from project 'KanpanData')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanData/Sources/KanpanData/Binance/WSClient.swift (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling WSClient.swift (in target 'KanpanData' from project 'KanpanData')
+
+SwiftCompile normal arm64 Compiling\ MarketFeed.swift /Users/mdd/zhk/kanpan/KanpanData/Sources/KanpanData/Feed/MarketFeed.swift (in target 'KanpanData' from project 'KanpanData')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanData/Sources/KanpanData/Feed/MarketFeed.swift (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling MarketFeed.swift (in target 'KanpanData' from project 'KanpanData')
+
+SwiftDriver\ Compilation KanpanData normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanData -Onone @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios17.0 -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -suppress-warnings -index-store-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex/Session.modulevalidation -package-name kanpandata -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData-Swift.h -working-directory /Users/mdd/zhk/kanpan -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.o normal (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan/KanpanData
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0 -r -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -O0 -w -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphoneos -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk/Developer/Library/Frameworks -filelist /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.LinkFileList -nostdlib -Xlinker -object_path_lto -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData_lto.o -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.swiftmodule @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData-linker-args.resp -o /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.o
+
+ExtractAppIntentsMetadata (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan/KanpanData
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name KanpanData --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk --xcode-version 17F113 --platform-family iOS --deployment-target 17.0 --bundle-identifier kanpandata.KanpanData --output /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.appintents --target-triple arm64-apple-ios17.0 --binary-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.o --dependency-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData_dependency_info.dat --stringsdata-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.SwiftFileList --metadata-file-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/KanpanData.DependencyMetadataFileList --static-metadata-file-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/KanpanData.DependencyStaticMetadataFileList --swift-const-vals-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.SwiftConstValuesFileList --force --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-15 00:57:46.295 appintentsmetadataprocessor[9597:31991037] Starting appintentsmetadataprocessor export
+2026-09-15 00:57:46.339 appintentsmetadataprocessor[9597:31991037] Extracted no relevant App Intents symbols, skipping writing output
+
+RegisterExecutionPolicyException /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.o (in target 'KanpanData' from project 'KanpanData')
+    cd /Users/mdd/zhk/kanpan/KanpanData
+    builtin-RegisterExecutionPolicyException /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanData.o
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for Kanpan (in target 'Kanpan' from project 'Kanpan')
+
+SwiftDriver\ Compilation\ Requirements Kanpan normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Kanpan -Onone @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList -DDEBUG -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios17.0 -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -emit-localized-strings -emit-localized-strings-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan_const_extract_protocols.json -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-generated-files.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-own-target-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphoneos/all-product-headers.yaml -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-project-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan-Swift.h -working-directory /Users/mdd/zhk/kanpan/Kanpan -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan.debug.dylib normal (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0 -dynamiclib -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -O0 -L/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphoneos -L/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphoneos -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -filelist /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.LinkFileList -install_name @rpath/Kanpan.debug.dylib -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -dead_strip -Xlinker -object_path_lto -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan-linker-args.resp -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Xlinker -alias -Xlinker _main -Xlinker ___debug_main_executable_dylib_entry_point -Xlinker -no_adhoc_codesign -o /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan.debug.dylib -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanCore.build/Debug-iphoneos/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftmodule @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanCore.build/Debug-iphoneos/KanpanCore.build/Objects-normal/arm64/KanpanCore-linker-args.resp -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanChart.build/Debug-iphoneos/KanpanChart.build/Objects-normal/arm64/KanpanChart.swiftmodule @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanChart.build/Debug-iphoneos/KanpanChart.build/Objects-normal/arm64/KanpanChart-linker-args.resp -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData.swiftmodule @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/KanpanData.build/Debug-iphoneos/KanpanData.build/Objects-normal/arm64/KanpanData-linker-args.resp
+
+ConstructStubExecutorLinkFileList /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-ExecutorLinkFileList-normal-arm64.txt (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    construct-stub-executor-link-file-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan.debug.dylib /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libPreviewsJITStubExecutor.a --output /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-ExecutorLinkFileList-normal-arm64.txt
+note: Using stub executor library with Swift entry point. (in target 'Kanpan' from project 'Kanpan')
+
+CompileAssetCatalogVariant thinned /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/usr/bin/actool /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets --compile /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_output/thinned --output-format human-readable-text --notices --warnings --export-dependency-info /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_dependencies_thinned --output-partial-info-plist /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_generated_info.plist_thinned --app-icon AppIcon --accent-color AccentColor --compress-pngs --enable-on-demand-resources YES --filter-for-thinning-device-configuration iPhone17,1 --filter-for-device-os-version 26.6.1 --development-region zh-Hans --target-device iphone --target-device ipad --minimum-deployment-target 17.0 --platform iphoneos
+/* com.apple.actool.compilation-results */
+/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_generated_info.plist_thinned
+/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_output/thinned/AppIcon60x60@2x.png
+/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_output/thinned/AppIcon76x76@2x~ipad.png
+/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_output/thinned/Assets.car
+
+
+Copy /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.swiftmodule/arm64-apple-ios.abi.json /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.abi.json (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.abi.json /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.swiftmodule/arm64-apple-ios.abi.json
+
+Ld /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan normal (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -O0 -L/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -rdynamic -Xlinker -no_deduplicate -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-DebugDylibPath-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-DebugDylibInstallName-normal-arm64.txt -Xlinker -filelist -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan-ExecutorLinkFileList-normal-arm64.txt /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan.debug.dylib -Xlinker -no_adhoc_codesign -o /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan
+
+LinkAssetCatalog /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-linkAssetCatalog --thinned /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_output/thinned --thinned-dependencies /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_dependencies_thinned --thinned-info-plist-content /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_generated_info.plist_thinned --unthinned /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_output/unthinned --unthinned-dependencies /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_dependencies_unthinned --unthinned-info-plist-content /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_generated_info.plist_unthinned --output /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app --plist-output /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_generated_info.plist
+note: Emplaced /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/AppIcon76x76@2x~ipad.png (in target 'Kanpan' from project 'Kanpan')
+note: Emplaced /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/AppIcon60x60@2x.png (in target 'Kanpan' from project 'Kanpan')
+note: Emplaced /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Assets.car (in target 'Kanpan' from project 'Kanpan')
+
+ExtractAppIntentsMetadata (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name Kanpan --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk --xcode-version 17F113 --platform-family iOS --deployment-target 17.0 --bundle-identifier com.mdd.kanpan --output /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app --target-triple arm64-apple-ios17.0 --binary-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan --dependency-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan_dependency_info.dat --stringsdata-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList --metadata-file-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan.DependencyMetadataFileList --static-metadata-file-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan.DependencyStaticMetadataFileList --swift-const-vals-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-15 00:57:55.258 appintentsmetadataprocessor[9681:31991802] Starting appintentsmetadataprocessor export
+2026-09-15 00:57:55.266 appintentsmetadataprocessor[9681:31991802] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+ProcessInfoPlistFile /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Info.plist /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/empty-Kanpan.plist (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-infoPlistUtility /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/empty-Kanpan.plist -producttype com.apple.product-type.application -genpkginfo /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/PkgInfo -expandbuildsettings -format binary -platform iphoneos -additionalcontentfile /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_generated_info.plist -requiredArchitecture arm64 -o /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Info.plist
+
+CopySwiftLibs /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-swiftStdLibTool --copy --verbose --sign E0C31B074D83DD35DE7C0A5EC6895DE9617C460A --scan-executable /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan.debug.dylib --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Frameworks --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/PlugIns --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/SystemExtensions --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Extensions --platform iphoneos --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+CodeSign /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan.debug.dylib (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+    Signing Identity:     "Apple Development: eth2022df@gmail.com (RZ92N4R9JW)"
+    Provisioning Profile: "iOS Team Provisioning Profile: com.mdd.kanpan"
+                          (5293a111-32ef-468a-935c-3371af81f9dd)
+    
+    /usr/bin/codesign --force --sign E0C31B074D83DD35DE7C0A5EC6895DE9617C460A --timestamp\=none --generate-entitlement-der /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan.debug.dylib
+
+CodeSign /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+    Signing Identity:     "Apple Development: eth2022df@gmail.com (RZ92N4R9JW)"
+    Provisioning Profile: "iOS Team Provisioning Profile: com.mdd.kanpan"
+                          (5293a111-32ef-468a-935c-3371af81f9dd)
+    
+    /usr/bin/codesign --force --sign E0C31B074D83DD35DE7C0A5EC6895DE9617C460A --entitlements /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/Kanpan.app.xcent --timestamp\=none --generate-entitlement-der /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app
+
+Validate /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-validationUtility /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app -shallow-bundle -infoplist-subpath Info.plist
+
+ProcessInfoPlistFile /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Info.plist /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/empty-KanpanUITests.plist (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-infoPlistUtility /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/empty-KanpanUITests.plist -producttype com.apple.product-type.bundle.ui-testing -expandbuildsettings -format binary -platform iphoneos -additionalcontentfile /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/ProductTypeInfoPlistAdditions.plist -requiredArchitecture arm64 -o /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Info.plist
+
+CopySwiftLibs /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-swiftStdLibTool --copy --verbose --sign E0C31B074D83DD35DE7C0A5EC6895DE9617C460A --scan-executable /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Frameworks --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/PlugIns --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/SystemExtensions --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Extensions --platform iphoneos --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+2026-09-15 00:58:02.431 xcodebuild[9431:31988649] [MT] Run Destination Preflight: The destination is not ready.
+Error Domain=com.apple.dt.deviceprep Code=-3 "Unlock iPhone to Continue" UserInfo={NSRecoveryAttempter=<_DVTErrorRecoveryHandler: 0x7fc7742c0>, NSLocalizedRecoveryOptions=(
+    "Cancel Testing"
+), NSLocalizedRecoverySuggestion=Xcode cannot launch KanpanUITests on iPhone because the device is locked., DVTRecoveryBlockKey=<__NSMallocBlock__: 0x8003fb090>, NSLocalizedDescription=Unlock iPhone to Continue}
+2026-09-15 00:58:02.434 xcodebuild[9431:31988649] [MT] Run Destination Preflight: Waiting for the destination to become ready.
+Resolve Package Graph
+
+Resolve Package Graph
+
+Resolve Package Graph
+
+Resolve Package Graph
+
+Resolve Package Graph
+
+Testing started
+In flight operation:   <DVTOperationGroup: 0x8002bb180; state = AREfc>
+     <IDEBuildOperationGroup: 0x800102d00; state = AReFc>
+         <DVTOperationGroup: 0x800102e80; state = AReFc>
+             <IDEXCBuildSupportCore.IDEXCBuildServiceBuildOperation:0x7fdd99e00:AReFc>
+         <__DVTSwiftAsyncOperation: 0x800103180; state = AReFc>
+         <DVTOperation: 0x7fe1be1c0; state = aReFc>
+         <__DVTSwiftAsyncOperation: 0x800103a80; state = AReFc>
+         <DVTOperation: 0x7fe1be440; state = aReFc>
+         <__DVTSwiftAsyncOperation: 0x800103000; state = AReFc>
+         <DVTOperation: 0x7fe1be080; state = aReFc>
+         <__DVTSwiftAsyncOperation: 0x800103900; state = AReFc>
+         <DVTOperation: 0x7fe1be300; state = aReFc>
+     <DVTOperationGroup: 0x8002bb300; state = AREfc>
+         <DVTOperation: 0x7fde9c140; name = 'Remove Log If Needed', state = aReFc>
+         <DVTOperationGroup: 0x8002bb000; state = AREfc>
+             <DVTOperationGroup: 0x8002bae80; state = AREfc>
+                 <DVTOperationGroup: 0x8002bab80; state = AREfc>
+                     <IDESchemeActionResultOperation: 0x8002ba400; state = Arefc>
+                     <__DVTSwiftAsyncOperation: 0x8002baa00; state = AReFc>
+                     <__DVTSwiftAsyncOperation: 0x8002bad00; state = AReFc>
+                     <DVTOperation: 0x7fe1bfe80; state = aReFc>
+                     <DVTOperation: 0x7fde99e00; state = arefc>
+                     <__DVTSwiftAsyncOperation: 0x8002ba580; state = AReFc>
+                     <__DVTSwiftAsyncOperation: 0x8002ba880; state = AReFc>
+                     <DVTOperation: 0x7fde98000; state = arefc>
+                     <DVTOperationGroup: 0x8002b8780; state = AREf!c, blocking { Blocking finish to clean up test session. }>
+                         <DVTOperation: 0x7fe1bfac0; state = aReFc>
+                         <XCTHOperationGroup: 0x8002b8900>
+                             <XCTHOperationGroup: 0x8002b8c00>
+                                 <XCTHOperationGroup: 0x8002ba280>
+                                     <XCTHOperationGroup: 0x8002ba700>{name = 'com.apple.dt.xctest.target-runner'}(Finishing blocked for reasons:
+  waiting for workers to materialize
+  )
+                                         <XCTHOperationGroup: 0x8002bba80>
+                                             <XCTHOperationGroup: 0x800190480>
+                                                 <IDERunOperation: 0x8002b8d80; state = aReF!c, blocking { XCTHTestOperationCoordinator processing delay, Blocking finish to allow restarting of crashed test operations., Waiting for -runningDidFinish call. }>
+                                                 worker: <IDERunOperationWorkerGroup: 0x8010d8840, unfinished subworkers : 
+					<IDEInstallCoreDeviceWorker: 0x8010d8780 -- ExtensionIdentifier: IDECoreDeviceRunOperationWorker>
+					<IDELaunchCoreDeviceWorker: 0x7fe868460 -- ExtensionIdentifier: Xcode.CoreDevice.Launch>
+				 >
+
+                                                 tracker: <IDEExecutionOperationTracker: 0x7fdf4a680: Testing workspace Kanpan with scheme Kanpan
+	subtrackers=(
+    "<IDEExecutionRunnableTracker: 0x8009723a0: subtrackers=none>"
+)>
+
+                                 <XCTHOperation: 0x7fe1bfd40>
+                     <DVTOperation: 0x7fe051f40; state = aReFc>
+             <DVTOperation: 0x7fde9c000; state = aReFc>
+         <_IDETestingFinalizeLogsOperation: 0x7fde9c280; name = 'Finalize test log', state = aref!c, blocking { waiting for test log to finish recording }>
+<DVTOperationGroup: 0x8002bb180; state = AREfc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   -[DVTOperationGroup init] (in DVTFoundation)
+  2   +[DVTOperationGroup operationGroupWithSuboperations:] (in DVTFoundation)
+  3   -[IDEScheme _groupAndImposeDependenciesForOrderedOperations:] (in IDEFoundation)
+  4   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  5   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  6   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  9   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 10   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 14   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 15   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 16   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 17   main (in xcodebuild)
+ 18   start (in dyld)
+
+<IDEBuildOperationGroup: 0x800102d00; state = AReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   -[DVTOperationGroup init] (in DVTFoundation)
+  2   -[IDEBuildOperationGroup initWithBuildOperations:otherOperations:buildLog:] (in IDEFoundation)
+  3   -[IDEBuildOperationGroup initWithBuildOperations:buildLog:] (in IDEFoundation)
+  4   -[IDEScheme _buildOperationGroupForSchemeOperationParameters:primaryBuildParameters:variantSpecifiers:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:schemeActionRecord:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+
+<DVTOperationGroup: 0x800102e80; state = AReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   -[DVTOperationGroup init] (in DVTFoundation)
+  2   +[DVTOperationGroup operationGroupWithSuboperations:] (in DVTFoundation)
+  3   -[IDEBuildOperationGroup initWithBuildOperations:otherOperations:buildLog:] (in IDEFoundation)
+  4   -[IDEBuildOperationGroup initWithBuildOperations:buildLog:] (in IDEFoundation)
+  5   -[IDEScheme _buildOperationGroupForSchemeOperationParameters:primaryBuildParameters:variantSpecifiers:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:schemeActionRecord:error:] (in IDEFoundation)
+  6   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  7   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 11   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 16   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 17   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 18   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 19   main (in xcodebuild)
+ 20   start (in dyld)
+
+<IDEXCBuildSupportCore.IDEXCBuildServiceBuildOperation:0x7fdd99e00:AReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   -[IDEBuildOperation initWithConfiguration:] (in IDEFoundation)
+  2   specialized IDEXCBuildServiceBuildOperation.init(configuration:) (in IDEXCBuildSupportCore)
+  3   @objc IDEXCBuildServiceBuildOperation.init(configuration:) (in IDEXCBuildSupportCore)
+  4   -[IDEScheme _buildOperationGroupForSchemeOperationParameters:primaryBuildParameters:variantSpecifiers:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:schemeActionRecord:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+
+<__DVTSwiftAsyncOperation: 0x800103180; state = AReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   @objc DVTAsyncOperation.init() (in DVTFoundation)
+  2   @objc static DVTOperation.operationWithMainThreadBlock(_:) (in DVTFoundation)
+  3   -[IDESchemeAction _setUpOperationsForPackageLoadingInWorkspace:handlePreActionsActivityLogSection:isCleanOperation:] (in IDEFoundation)
+  4   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  5   -[IDEScheme _buildOperationGroupForSchemeOperationParameters:primaryBuildParameters:variantSpecifiers:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:schemeActionRecord:error:] (in IDEFoundation)
+  6   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  7   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 11   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 16   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 17   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 18   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 19   main (in xcodebuild)
+ 20   start (in dyld)
+
+<DVTOperation: 0x7fe1be1c0; state = aReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  3   -[IDEScheme _buildOperationGroupForSchemeOperationParameters:primaryBuildParameters:variantSpecifiers:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:schemeActionRecord:error:] (in IDEFoundation)
+  4   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  5   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  6   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  9   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 10   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 14   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 15   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 16   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 17   main (in xcodebuild)
+ 18   start (in dyld)
+
+<__DVTSwiftAsyncOperation: 0x800103a80; state = AReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   @objc DVTAsyncOperation.init() (in DVTFoundation)
+  2   @objc static DVTOperation.operationWithMainThreadBlock(_:) (in DVTFoundation)
+  3   -[IDESchemeAction _setUpOperationsForPackageLoadingInWorkspace:handlePreActionsActivityLogSection:isCleanOperation:] (in IDEFoundation)
+  4   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  5   -[IDEScheme _buildOperationGroupForSchemeOperationParameters:primaryBuildParameters:variantSpecifiers:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:schemeActionRecord:error:] (in IDEFoundation)
+  6   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  7   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 11   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 16   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 17   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 18   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 19   main (in xcodebuild)
+ 20   start (in dyld)
+
+<DVTOperation: 0x7fe1be440; state = aReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  3   -[IDEScheme _buildOperationGroupForSchemeOperationParameters:primaryBuildParameters:variantSpecifiers:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:schemeActionRecord:error:] (in IDEFoundation)
+  4   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  5   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  6   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  9   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 10   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 14   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 15   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 16   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 17   main (in xcodebuild)
+ 18   start (in dyld)
+
+<__DVTSwiftAsyncOperation: 0x800103000; state = AReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   @objc DVTAsyncOperation.init() (in DVTFoundation)
+  2   static DVTOperation.awaiting(_:) (in DVTFoundation)
+  3   @objc static IDESchemeAction.operationToWaitForFinishedLoadingOperation(of:) (in IDEFoundation)
+  4   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  5   -[IDEScheme _buildOperationGroupForSchemeOperationParameters:primaryBuildParameters:variantSpecifiers:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:schemeActionRecord:error:] (in IDEFoundation)
+  6   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  7   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 11   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 16   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 17   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 18   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 19   main (in xcodebuild)
+ 20   start (in dyld)
+
+<DVTOperation: 0x7fe1be080; state = aReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  3   -[IDEScheme _buildOperationGroupForSchemeOperationParameters:primaryBuildParameters:variantSpecifiers:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:schemeActionRecord:error:] (in IDEFoundation)
+  4   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  5   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  6   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  9   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 10   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 14   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 15   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 16   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 17   main (in xcodebuild)
+ 18   start (in dyld)
+
+<__DVTSwiftAsyncOperation: 0x800103900; state = AReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   @objc DVTAsyncOperation.init() (in DVTFoundation)
+  2   static DVTOperation.awaiting(_:) (in DVTFoundation)
+  3   @objc static IDESchemeAction.operationToWaitForFinishedLoadingOperation(of:) (in IDEFoundation)
+  4   -[IDESchemeAction _setUpOperationsForPackageLoadingInWorkspace:handlePreActionsActivityLogSection:isCleanOperation:] (in IDEFoundation)
+  5   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  6   -[IDEScheme _buildOperationGroupForSchemeOperationParameters:primaryBuildParameters:variantSpecifiers:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:schemeActionRecord:error:] (in IDEFoundation)
+  7   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  8   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 11   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 12   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 16   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 17   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 18   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 19   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 20   main (in xcodebuild)
+ 21   start (in dyld)
+
+<DVTOperation: 0x7fe1be300; state = aReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  3   -[IDEScheme _buildOperationGroupForSchemeOperationParameters:primaryBuildParameters:variantSpecifiers:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:schemeActionRecord:error:] (in IDEFoundation)
+  4   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  5   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  6   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  9   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 10   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 14   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 15   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 16   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 17   main (in xcodebuild)
+ 18   start (in dyld)
+
+<DVTOperationGroup: 0x8002bb300; state = AREfc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   -[DVTOperationGroup init] (in DVTFoundation)
+  2   +[DVTOperationGroup operationGroupWithSuboperations:] (in DVTFoundation)
+  3   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  4   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+
+<DVTOperation: 0x7fde9c140; name = 'Remove Log If Needed', state = aReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDETestSchemeAction _removeLogIfNeededOperationWithLogStore:logRecord:buildOperation:] (in IDEFoundation)
+  3   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  4   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+
+<DVTOperationGroup: 0x8002bb000; state = AREfc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   -[DVTOperationGroup init] (in DVTFoundation)
+  2   +[DVTOperationGroup operationGroupWithSuboperations:] (in DVTFoundation)
+  3   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  4   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+
+<DVTOperationGroup: 0x8002bae80; state = AREfc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   -[DVTOperationGroup init] (in DVTFoundation)
+  2   +[DVTOperationGroup operationGroupWithSuboperations:] (in DVTFoundation)
+  3   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  4   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+
+<DVTOperationGroup: 0x8002bab80; state = AREfc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   -[DVTOperationGroup init] (in DVTFoundation)
+  2   +[DVTOperationGroup operationGroupWithSuboperations:] (in DVTFoundation)
+  3   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  4   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+
+<IDESchemeActionResultOperation: 0x8002ba400; state = Arefc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[IDESchemeActionResultOperation schemeActionResultOperationWithSchemeActionRecord:trackingExecutionOfOperation:actionCallbackBlock:schemeActionResultComputationBlock:] (in IDEFoundation)
+  2   -[IDETestRunSession testOperationForTestRunSpecificationGroups:executionEnvironment:invocationRecord:actionRecord:schemeIdentifier:outSchemeActionResultOperation:launchParametersBlock:actionCallbackBlock:error:] (in IDEFoundation)
+  3   -[IDETestManager testOperationForTestRunSpecificationGroups:executionEnvironment:runDestinationPool:invocationRecord:actionRecord:schemeIdentifier:outSchemeActionResultOperation:launchParametersBlock:actionCallbackBlock:error:] (in IDEFoundation)
+  4   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  5   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  6   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  7   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 11   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 16   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 17   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 18   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 19   main (in xcodebuild)
+ 20   start (in dyld)
+
+<__DVTSwiftAsyncOperation: 0x8002baa00; state = AReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   @objc DVTAsyncOperation.init() (in DVTFoundation)
+  2   static DVTOperation.awaiting(_:) (in DVTFoundation)
+  3   @objc static IDESchemeAction.operationToWaitForFinishedLoadingOperation(of:) (in IDEFoundation)
+  4   -[IDESchemeAction _setUpOperationsForPackageLoadingInWorkspace:handlePreActionsActivityLogSection:isCleanOperation:] (in IDEFoundation)
+  5   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  6   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  7   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  8   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  9   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+ 11   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 12   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 13   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 16   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 17   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 18   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 19   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 20   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 21   main (in xcodebuild)
+ 22   start (in dyld)
+
+<__DVTSwiftAsyncOperation: 0x8002bad00; state = AReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   @objc DVTAsyncOperation.init() (in DVTFoundation)
+  2   @objc static DVTOperation.operationWithMainThreadBlock(_:) (in DVTFoundation)
+  3   -[IDESchemeAction _setUpOperationsForPackageLoadingInWorkspace:handlePreActionsActivityLogSection:isCleanOperation:] (in IDEFoundation)
+  4   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  5   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  7   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  8   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 11   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 12   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 16   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 17   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 18   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 19   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 20   main (in xcodebuild)
+ 21   start (in dyld)
+
+<DVTOperation: 0x7fe1bfe80; state = aReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  3   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  4   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+
+<DVTOperation: 0x7fde99e00; state = arefc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  3   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  4   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+
+<__DVTSwiftAsyncOperation: 0x8002ba580; state = AReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   @objc DVTAsyncOperation.init() (in DVTFoundation)
+  2   static DVTOperation.awaiting(_:) (in DVTFoundation)
+  3   @objc static IDESchemeAction.operationToWaitForFinishedLoadingOperation(of:) (in IDEFoundation)
+  4   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  5   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  7   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  8   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 11   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 12   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 16   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 17   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 18   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 19   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 20   main (in xcodebuild)
+ 21   start (in dyld)
+
+<__DVTSwiftAsyncOperation: 0x8002ba880; state = AReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   @objc DVTAsyncOperation.init() (in DVTFoundation)
+  2   @objc static DVTOperation.operationWithMainThreadBlock(_:) (in DVTFoundation)
+  3   -[IDESchemeAction _setUpOperationsForPackageLoadingInWorkspace:handlePreActionsActivityLogSection:isCleanOperation:] (in IDEFoundation)
+  4   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  5   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  7   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  8   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 11   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 12   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 16   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 17   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 18   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 19   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 20   main (in xcodebuild)
+ 21   start (in dyld)
+
+<DVTOperation: 0x7fde98000; state = arefc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  3   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  4   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+
+<DVTOperationGroup: 0x8002b8780; state = AREf!c> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   -[DVTOperationGroup init] (in DVTFoundation)
+  2   -[IDETestRunSession testOperationForTestRunSpecificationGroups:executionEnvironment:invocationRecord:actionRecord:schemeIdentifier:outSchemeActionResultOperation:launchParametersBlock:actionCallbackBlock:error:] (in IDEFoundation)
+  3   -[IDETestManager testOperationForTestRunSpecificationGroups:executionEnvironment:runDestinationPool:invocationRecord:actionRecord:schemeIdentifier:outSchemeActionResultOperation:launchParametersBlock:actionCallbackBlock:error:] (in IDEFoundation)
+  4   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  5   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  6   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  7   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 11   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 16   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 17   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 18   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 19   main (in xcodebuild)
+ 20   start (in dyld)
+
+<DVTOperation: 0x7fe1bfac0; state = aReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDETestRunSession testOperationForTestRunSpecificationGroups:executionEnvironment:invocationRecord:actionRecord:schemeIdentifier:outSchemeActionResultOperation:launchParametersBlock:actionCallbackBlock:error:] (in IDEFoundation)
+  3   -[IDETestManager testOperationForTestRunSpecificationGroups:executionEnvironment:runDestinationPool:invocationRecord:actionRecord:schemeIdentifier:outSchemeActionResultOperation:launchParametersBlock:actionCallbackBlock:error:] (in IDEFoundation)
+  4   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  5   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  6   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  7   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+ 10   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 11   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 15   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 16   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 17   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 18   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 19   main (in xcodebuild)
+ 20   start (in dyld)
+
+<IDERunOperation: 0x8002b8d80; state = aReF!c> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   -[IDERunOperation initWithWorker:] (in IDEFoundation)
+  2   +[IDETestRunnerLaunchOperationFactory testRunOperationWithLaunchParameters:testRunSpecification:testConfiguration:executionEnvironment:schemeActionRecord:runDestination:localDeviceRunDestination:error:] (in IDEFoundation)
+  3   __110+[IDETestRunnerLaunchOperationFactory makeLaunchOperationProviderWithExecutionEnvironment:schemeActionRecord:]_block_invoke (in IDEFoundation)
+  4   thunk for @escaping @callee_unowned @convention(block) (@unowned XCTHRunDestination, @unowned XCTHTestRunSpecification, @unowned XCTestConfiguration, @unowned XCTHLaunchParameters, @unowned AutoreleasingUnsafeMutablePointer<NSError?>?) -> (@autoreleased (NSOperation & XCTHRunOperation)?) (in XCTHarness)
+  5   thunk for @escaping @callee_guaranteed (@guaranteed XCTHRunDestination, @guaranteed XCTHTestRunSpecification, @guaranteed XCTestConfiguration, @guaranteed XCTHLaunchParameters, @unowned AutoreleasingUnsafeMutablePointer<NSError?>?) -> (@owned (NSOperation & XCTHRunOperation)?) (in XCTHarness)
+  6   -[XCTHTestRunner _testRunOperationWithError:] (in XCTHarness)
+  7   -[XCTHTestRunner _addTestRunOperation:] (in XCTHarness)
+  8   -[XCTHTestRunner testOperationWithError:] (in XCTHarness)
+  9   -[XCTHTestTargetRunner workerWasProvided:] (in XCTHarness)
+ 10   __40-[XCTHTestTargetRunner requestNewWorker]_block_invoke (in XCTHarness)
+ 11   __45-[XCTHFuture observeFinishOnQueue:withBlock:]_block_invoke_2 (in XCTHarness)
+ 12   __XCTHAsyncPerformBlockOnMainRunLoop_block_invoke (in XCTHarness)
+ 13   __CFRUNLOOP_IS_CALLING_OUT_TO_A_BLOCK__ (in CoreFoundation)
+ 14   __CFRunLoopDoBlocks (in CoreFoundation)
+ 15   __CFRunLoopRun (in CoreFoundation)
+ 16   _CFRunLoopRunSpecificWithOptions (in CoreFoundation)
+ 17   CFRunLoopRun (in CoreFoundation)
+ 18   -[Xcode3CommandLineBuildTool waitForBuildWithBuildLog:buildActionTimingSection:executionEnvironment:title:operationToEnqueue:error:] (in Xcode3Core)
+ 19   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 20   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 21   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 22   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 23   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 24   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 25   main (in xcodebuild)
+ 26   start (in dyld)
+
+<DVTOperation: 0x7fe051f40; state = aReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDESchemeAction setUpActionDependenciesForCorePhaseOperation:shouldRunPostActionsBlock:prePhaseEnvironmentPopulationBlock:postPhaseEnvironmentPopulationBlock:handlePreActionsActivityLogSection:handlePostActionsActivityLogSection:buildParameters:schemeActionResultOperation:error:] (in IDEFoundation)
+  3   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  4   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+
+<DVTOperation: 0x7fde9c000; state = aReFc> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  3   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  4   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  5   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  6   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  9   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersist
+
+*** If you believe this error represents a bug, please attach the result bundle at /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/device-gateway-r1.xcresult
+
+2026-09-15 01:00:37.244 xcodebuild[9431:31988649] [MT] IDETestOperationsObserverDebug: 160.622 elapsed -- Testing started completed.
+2026-09-15 01:00:37.244 xcodebuild[9431:31988649] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 01:00:37.244 xcodebuild[9431:31988649] [MT] IDETestOperationsObserverDebug: 160.622 sec, +160.622 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/device-gateway-r1.xcresult
+
+** TEST INTERRUPTED **
+
+2026-09-15 01:01:08.366 xcodebuild[9431:31988649] [MT] IDEResultKit: Warning: While writing a result bundle to /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/device-gateway-r1.xcresult, not all contents have been imported, as the Staging directory still contains the following files/directories: ["1_Test"]
+Error saving invocation record to resultBundlePath:Error Domain=IDEFoundationErrorDomain Code=12 "The result bundle could not be saved due to an error: Could not write the 1_Test action log because the log hasn't finished recording after waiting 30 seconds." UserInfo={NSLocalizedDescription=The result bundle could not be saved due to an error: Could not write the 1_Test action log because the log hasn't finished recording after waiting 30 seconds., NSUnderlyingError=0x7fccb07b0 {Error Domain=IDEFoundationErrorDomain Code=10 "Could not write the 1_Test action log because the log hasn't finished recording after waiting 30 seconds." UserInfo={NSLocalizedDescription=Could not write the 1_Test action log because the log hasn't finished recording after waiting 30 seconds.}}}
+edBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 10   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 14   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 15   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 16   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 17   main (in xcodebuild)
+ 18   start (in dyld)
+
+<_IDETestingFinalizeLogsOperation: 0x7fde9c280; name = 'Finalize test log', state = aref!c> created at:
+  0   -[DVTOperation init] (in DVTFoundation)
+  1   +[DVTOperation(DVTConveniences) operationWithBlock:] (in DVTFoundation)
+  2   -[IDETestSchemeAction _finalizeLogOperationWithRecorder:launchLogsSectionRecorder:] (in IDEFoundation)
+  3   -[IDETestSchemeAction testOperationWithSchemeOperationParameters:testManager:buildOperation:buildParameters:schemeCommand:actionRecord:testPlanRunSpecifications:deviceAvailableChecker:outError:actionCallbackBlock:] (in IDEFoundation)
+  4   -[IDEScheme(TestSchemeAction) executionOperationForTestSchemeActionWithOperationParameters:command:buildOperationVariantSpecifiers:buildOperationGroup:schemeActionResult:buildParameters:shouldOnlyBuild:runDestination:orderedOperations:schemeActionRecord:deviceAvailableChecker:actionCallbackBlock:error:] (in IDEFoundation)
+  5   -[IDEScheme _executionOperationForSchemeOperationParameters:build:onlyBuild:buildParameters:title:buildLog:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:actionCallbackBlock:] (in IDEFoundation)
+  6   -[IDEScheme(TestSchemeAction) schemeTestActionOperationForSchemeOperationParameters:onlyBuild:buildLog:deviceAvailableChecker:buildParameters:shouldBuild:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+  7   -[IDEScheme buildAndActionTaskForSchemeOperationParameters:shouldBuild:onlyBuild:buildParameters:buildLog:deviceAvailableChecker:restorePersistedBuildResults:dontActuallyRunCommands:error:completionBlock:] (in IDEFoundation)
+  8   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:deviceAvailableChecker:error:completionBlock:] (in IDEFoundation)
+  9   -[IDEScheme schemeOperationForSchemeOperationParameters:buildLog:overridingProperties:overridingBuildConfiguration:dontActuallyRunCommands:restorePersistedBuildResults:error:completionBlock:] (in IDEFoundation)
+ 10   -[Xcode3CommandLineBuildTool(TestSchemeAction) buildForTestSchemeCommandWantsSkip:buildAction:isProjectBuild:title:buildLog:isMoreDestinationsPending:runDestinations:runDestination:schemeCommand:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 11   -[Xcode3CommandLineBuildTool doSchemeBuildWithRunDestinations:runDestinationIdx:wantsSkip:buildActionTimingSection:timingSection:buildAction:isMoreDesinationsPending:actionResultBlock:title:buildLog:executionEnvironment:restorePersistedBuildResults:operationToEnqueue:error:] (in Xcode3Core)
+ 12   -[Xcode3CommandLineBuildTool doBuildForBuildAction:timingSection:colorize:colorizeFailure:error:] (in Xcode3Core)
+ 13   -[Xcode3CommandLineBuildTool _buildWithTimingSection:] (in Xcode3Core)
+ 14   -[Xcode3CommandLineBuildTool run] (in Xcode3Core)
+ 15   XcodeBuildMain (in libxcodebuildLoader.dylib)
+ 16   -[XcodebuildPreIDEHandler loadXcode3ProjectSupportAndRunXcode3CommandLineBuildToolWithArguments:] (in xcodebuild)
+ 17   -[XcodebuildPreIDEHandler runWithArguments:] (in xcodebuild)
+ 18   main (in xcodebuild)
+ 19   start (in dyld)
+

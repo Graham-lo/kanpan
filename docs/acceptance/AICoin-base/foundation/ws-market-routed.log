@@ -1,0 +1,3 @@
+end: The operation couldn’t be completed. Socket is not connected
+endpoint: wss://fstream.binance.com/market/stream?streams=btcusdt@kline_1m/btcusdt@ticker/btcusdt@markPrice@1s
+counts: ["markPriceUpdate": 16, "24hrTicker": 8, "kline": 37] firstSeconds: ["24hrTicker": 1.9613010883331299, "markPriceUpdate": 0.7497340440750122, "kline": 1.0825819969177246] lastSeconds: ["kline": 16.524387001991272, "markPriceUpdate": 15.748037099838257, "24hrTicker": 15.967267036437988]

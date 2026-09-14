@@ -1,0 +1,29 @@
+cd Kanpan/Symbols && swift test 
+Building for debugging...
+[0/4] Write sources
+[2/4] Write swift-version--58304C5D6DBC2206.txt
+[4/6] Compiling KanpanCore SymbolInfo.swift
+[5/6] Emitting module KanpanCore
+[6/12] Emitting module KanpanSymbols
+[7/12] Compiling KanpanSymbols SymbolSections.swift
+[8/12] Compiling KanpanSymbols SymbolPickerModel.swift
+[9/12] Compiling KanpanSymbols SymbolQuery.swift
+[10/12] Compiling KanpanSymbols SymbolFixtures.swift
+[11/12] Compiling KanpanSymbols FavoriteCategory.swift
+/Users/mdd/zhk/kanpan/Kanpan/Symbols/Sources/KanpanSymbols/FavoriteCategory.swift:10:20: error: cannot find 'SymbolClassifier' in scope
+ 8 |     let base = key.hasSuffix("USDT") ? String(key.dropLast(4)) : key
+ 9 |     let info = info ?? SymbolInfo(symbol: key, base: base, pricePrecision: 2, tickSize: 0.01)
+10 |     let category = SymbolClassifier.classify(info)
+   |                    `- error: cannot find 'SymbolClassifier' in scope
+11 |     switch category.asset {
+12 |     case .crypto: return "加密"
+
+/Users/mdd/zhk/kanpan/Kanpan/Symbols/Sources/KanpanSymbols/FavoriteCategory.swift:15:44: error: cannot infer contextual base in reference to member 'us'
+13 |     case .index where info.contractType == "PERPETUAL": return "加密"
+14 |     case .preciousMetal: return "贵金属"
+15 |     case .equity where category.region == .us: return "美股"
+   |                                            `- error: cannot infer contextual base in reference to member 'us'
+16 |     case .equity where ["SKHY", "SKHYNIX"].contains(info.base.uppercased()): return "美股"
+17 |     default: return "其他"
+error: fatalError
+make: *** [symbols-test] Error 1

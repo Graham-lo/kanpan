@@ -1,0 +1,630 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -workspace Kanpan.xcworkspace -scheme Kanpan -destination platform=iOS,id=00008140-00010C902690801C -derivedDataPath DerivedData-chart-foundation-device -parallel-testing-enabled NO "-only-testing:KanpanUITests/ChartFoundationUITests" -resultBundlePath docs/acceptance/AICoin-base/foundation/device-ui.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/device-ui.xcresult
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (8 targets)
+    Target 'KanpanUITests' in project 'Kanpan'
+        ➜ Explicit dependency on target 'Kanpan' in project 'Kanpan'
+    Target 'Kanpan' in project 'Kanpan'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanData' in project 'KanpanData'
+    Target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: 2a080ced953b2a2f5de2e70eec0c1c73
+Build description path: /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/XCBuildData/2a080ced953b2a2f5de2e70eec0c1c73.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache
+    cd /Users/mdd/zhk/kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -o /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache
+
+CompileAssetCatalogVariant thinned /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/usr/bin/actool /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets --compile /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_output/thinned --output-format human-readable-text --notices --warnings --export-dependency-info /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_dependencies_thinned --output-partial-info-plist /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_generated_info.plist_thinned --app-icon AppIcon --accent-color AccentColor --compress-pngs --enable-on-demand-resources YES --filter-for-thinning-device-configuration iPhone17,1 --filter-for-device-os-version 26.6.1 --development-region zh-Hans --target-device iphone --target-device ipad --minimum-deployment-target 17.0 --platform iphoneos
+/* com.apple.actool.compilation-results */
+/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_generated_info.plist_thinned
+
+
+ProcessInfoPlistFile /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Info.plist /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/empty-Kanpan.plist (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-infoPlistUtility /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/empty-Kanpan.plist -producttype com.apple.product-type.application -genpkginfo /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/PkgInfo -expandbuildsettings -format binary -platform iphoneos -additionalcontentfile /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/assetcatalog_generated_info.plist -requiredArchitecture arm64 -o /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Info.plist
+
+SwiftDriver KanpanUITests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanUITests -Onone @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.SwiftFileList -DDEBUG -module-alias Testing\=_Testing_Unavailable -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios17.0 -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests_const_extract_protocols.json -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-generated-files.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-own-target-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphoneos/all-product-headers.yaml -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-project-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests-Swift.h -working-directory /Users/mdd/zhk/kanpan/Kanpan -experimental-emit-module-separately -disable-cmo
+
+CopySwiftLibs /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-swiftStdLibTool --copy --verbose --sign E0C31B074D83DD35DE7C0A5EC6895DE9617C460A --scan-executable /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan.debug.dylib --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Frameworks --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/PlugIns --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/SystemExtensions --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Extensions --platform iphoneos --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/Kanpan.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ KanpanUITests (in target 'KanpanUITests' from project 'Kanpan')
+
+EmitSwiftModule normal arm64 (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+
+SwiftCompile normal arm64 Compiling\ ChartFoundationUITests.swift /Users/mdd/zhk/kanpan/Kanpan/KanpanUITests/ChartFoundationUITests.swift (in target 'KanpanUITests' from project 'Kanpan')
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/Kanpan/KanpanUITests/ChartFoundationUITests.swift (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChartFoundationUITests.swift (in target 'KanpanUITests' from project 'Kanpan')
+
+SwiftDriver\ Compilation KanpanUITests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanUITests -Onone @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.SwiftFileList -DDEBUG -module-alias Testing\=_Testing_Unavailable -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios17.0 -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests_const_extract_protocols.json -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-generated-files.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-own-target-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphoneos/all-product-headers.yaml -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-project-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests-Swift.h -working-directory /Users/mdd/zhk/kanpan/Kanpan -experimental-emit-module-separately -disable-cmo
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for KanpanUITests (in target 'KanpanUITests' from project 'Kanpan')
+
+SwiftDriver\ Compilation\ Requirements KanpanUITests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanUITests -Onone @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.SwiftFileList -DDEBUG -module-alias Testing\=_Testing_Unavailable -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios17.0 -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/SDKStatCaches.noindex/iphoneos26.5-23F81a-32daed1954a7d5dd0789fcaf2a9bb78b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests_const_extract_protocols.json -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-generated-files.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-own-target-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphoneos/all-product-headers.yaml -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests-project-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests-Swift.h -working-directory /Users/mdd/zhk/kanpan/Kanpan -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests.swiftmodule/arm64-apple-ios.abi.json /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.abi.json (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.abi.json /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests.swiftmodule/arm64-apple-ios.abi.json
+
+Copy /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests.swiftmodule/Project/arm64-apple-ios.swiftsourceinfo /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.swiftsourceinfo (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.swiftsourceinfo /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests.swiftmodule/Project/arm64-apple-ios.swiftsourceinfo
+
+Ld /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests normal (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0 -bundle -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -O0 -L/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphoneos -L/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphoneos -F/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk/Developer/Library/Frameworks -filelist /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.LinkFileList -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @loader_path/Frameworks -Xlinker -dead_strip -Xlinker -object_path_lto -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.swiftmodule @/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests-linker-args.resp -Xlinker -needed_framework -Xlinker XCTest -framework XCTest -Xlinker -needed-lXCTestSwiftSupport -lXCTestSwiftSupport -Xlinker -no_adhoc_codesign -o /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests
+
+ExtractAppIntentsMetadata (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name KanpanUITests --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk --xcode-version 17F113 --platform-family iOS --deployment-target 17.0 --bundle-identifier com.mdd.kanpan.uitests --output /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest --target-triple arm64-apple-ios17.0 --binary-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests --dependency-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests_dependency_info.dat --stringsdata-file /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.SwiftFileList --metadata-file-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests.DependencyMetadataFileList --static-metadata-file-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests.DependencyStaticMetadataFileList --swift-const-vals-list /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/Objects-normal/arm64/KanpanUITests.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-14 23:43:01.094 appintentsmetadataprocessor[88774:31639545] Starting appintentsmetadataprocessor export
+2026-09-14 23:43:01.100 appintentsmetadataprocessor[88774:31639545] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+ProcessInfoPlistFile /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Info.plist /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/empty-KanpanUITests.plist (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-infoPlistUtility /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/empty-KanpanUITests.plist -producttype com.apple.product-type.bundle.ui-testing -expandbuildsettings -format binary -platform iphoneos -additionalcontentfile /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/ProductTypeInfoPlistAdditions.plist -requiredArchitecture arm64 -o /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Info.plist
+
+CopySwiftLibs /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-swiftStdLibTool --copy --verbose --sign E0C31B074D83DD35DE7C0A5EC6895DE9617C460A --scan-executable /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Frameworks --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/PlugIns --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/SystemExtensions --scan-folder /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Extensions --platform iphoneos --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+GenerateDSYMFile /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest.dSYM /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/dsymutil /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests -o /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest.dSYM
+
+CodeSign /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+    Signing Identity:     "Apple Development: eth2022df@gmail.com (RZ92N4R9JW)"
+    Provisioning Profile: "iOS Team Provisioning Profile: com.mdd.kanpan.uitests.xctrunner"
+                          (85f3d3a5-28b1-4344-a61e-4f39b6ac998d)
+    
+    /usr/bin/codesign --force --sign E0C31B074D83DD35DE7C0A5EC6895DE9617C460A --entitlements /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests.xctest.xcent --timestamp\=none --generate-entitlement-der /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest
+
+CodeSign /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+    Signing Identity:     "Apple Development: eth2022df@gmail.com (RZ92N4R9JW)"
+    Provisioning Profile: "iOS Team Provisioning Profile: com.mdd.kanpan.uitests.xctrunner"
+                          (85f3d3a5-28b1-4344-a61e-4f39b6ac998d)
+    
+    /usr/bin/codesign --force --sign E0C31B074D83DD35DE7C0A5EC6895DE9617C460A --entitlements /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Intermediates.noindex/Kanpan.build/Debug-iphoneos/KanpanUITests.build/KanpanUITests.xctest.xcent --timestamp\=none --generate-entitlement-der /Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app
+/Users/mdd/zhk/kanpan/DerivedData-chart-foundation-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app: replacing existing signature
+
+2026-09-14 23:43:04.657411+0800 KanpanUITests-Runner[1617:222069] [Default] Running tests...
+2026-09-14 23:43:04.670570+0800 KanpanUITests-Runner[1617:222069] [MC] Reading from public effective user settings.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-14 23:43:05.048.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-14 23:43:05.048.
+Test Suite 'ChartFoundationUITests' started at 2026-09-14 23:43:05.048.
+Test Case '-[KanpanUITests.ChartFoundationUITests testDataModesClearHeaderAndSelection]' started.
+    t =     0.00s Start Test at 2026-09-14 23:43:05.049
+    t =     0.02s Set Up
+    t =     0.02s     Setting device orientation to Portrait
+    t =     0.02s         Device orientation changed to Portrait
+    t =     0.04s         Device orientation changed to Face Up
+    t =     0.04s         Wait for com.aicoin.chainpro to idle
+    t =     0.06s     Open com.mdd.kanpan
+    t =     0.06s         Launch com.mdd.kanpan
+    t =     0.06s             Terminate com.mdd.kanpan:1564
+2026-09-14 23:43:07.725 xcodebuild[88621:31638543] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:43:07.725 xcodebuild[88621:31638543] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     4.56s             Setting up automation session
+    t =     4.74s             Wait for com.mdd.kanpan to idle
+    t =     5.81s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =     6.82s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     6.82s             Checking existence of `"chart.canvas" Other`
+    t =     6.83s                 Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =     6.89s                 Find: Descendants matching type Other
+    t =     6.90s                 Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     7.94s     Find the "chart.canvas" Other
+    t =     7.94s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =     7.99s         Find: Descendants matching type Other
+    t =     7.99s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     8.05s Tap "interval.chart" Button
+    t =     8.05s     Wait for com.mdd.kanpan to idle
+    t =     8.08s     Find the "interval.chart" Button
+    t =     8.08s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =     8.11s         Find: Descendants matching type Button
+    t =     8.11s         Find: Elements matching predicate '"interval.chart" IN identifiers'
+    t =     8.11s     Check for interrupting elements affecting "interval.chart" Button
+    t =     8.12s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =     8.14s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     8.14s     Synthesize event
+    t =     8.43s     Wait for com.mdd.kanpan to idle
+    t =     8.86s Tap "顶部" Button
+    t =     8.86s     Wait for com.mdd.kanpan to idle
+    t =     8.86s     Find the "顶部" Button
+    t =     8.87s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =     8.98s         Find: Descendants matching type Button
+    t =     8.98s         Find: Elements matching predicate '"顶部" IN identifiers'
+    t =     8.99s     Check for interrupting elements affecting "chart.dataDisplay" Button
+    t =     9.00s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =     9.06s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     9.07s     Synthesize event
+    t =     9.37s     Wait for com.mdd.kanpan to idle
+    t =    10.11s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    11.12s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    11.12s         Checking existence of `"panel.header" StaticText`
+    t =    11.13s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    11.23s             Find: Descendants matching type StaticText
+    t =    11.23s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    11.24s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    11.24s     Wait for com.mdd.kanpan to idle
+    t =    11.24s     Find the "panel.header" StaticText
+    t =    11.24s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    11.31s         Find: Descendants matching type StaticText
+    t =    11.31s         Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    11.32s     Check for interrupting elements affecting "panel.header" StaticText
+    t =    11.33s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    11.39s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    11.40s     Synthesize event
+    t =    11.40s         Find the "panel.header" StaticText
+    t =    11.40s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    11.46s             Find: Descendants matching type StaticText
+    t =    11.46s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    11.47s         Find the "panel.header" StaticText
+    t =    11.47s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    11.53s             Find: Descendants matching type StaticText
+    t =    11.54s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    11.54s         Find the Window (First Match)
+    t =    11.55s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    11.61s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    11.62s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    11.68s         Find the "panel.header" StaticText
+    t =    11.68s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    11.74s             Find: Descendants matching type StaticText
+    t =    11.74s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    12.94s     Wait for com.mdd.kanpan to idle
+    t =    14.65s Checking existence of `"panel.header" StaticText`
+    t =    14.66s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    14.71s     Find: Descendants matching type StaticText
+    t =    14.71s     Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    14.72s Find the "chart.canvas" Other
+    t =    14.72s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    14.76s     Find: Descendants matching type Other
+    t =    14.76s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    14.77s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    14.77s     Wait for com.mdd.kanpan to idle
+    t =    14.77s     Find the "chart.canvas" Other
+    t =    14.78s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    14.82s         Find: Descendants matching type Other
+    t =    14.82s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    14.82s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    14.84s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    14.87s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    14.88s     Synthesize event
+    t =    14.88s         Find the "chart.canvas" Other
+    t =    14.88s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    14.92s             Find: Descendants matching type Other
+    t =    14.92s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    14.93s         Find the "chart.canvas" Other
+    t =    14.94s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    14.98s             Find: Descendants matching type Other
+    t =    14.98s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    14.99s         Find the "chart.canvas" Other
+    t =    15.00s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    15.03s             Find: Descendants matching type Other
+    t =    15.04s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    15.33s     Wait for com.mdd.kanpan to idle
+    t =    15.34s Waiting 8.0s for "chart.topOHLC" StaticText to exist
+    t =    16.37s     Checking `Expect predicate `existsNoRetry == 1` for object "chart.topOHLC" StaticText`
+    t =    16.37s         Checking existence of `"chart.topOHLC" StaticText`
+    t =    16.38s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    16.42s             Find: Descendants matching type StaticText
+    t =    16.43s             Find: Elements matching predicate '"chart.topOHLC" IN identifiers'
+    t =    16.43s Find the Target Application 'com.mdd.kanpan'
+    t =    16.43s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    16.57s Added attachment named '顶部-历史OHLC'
+    t =    16.57s Tap "interval.chart" Button
+    t =    16.57s     Wait for com.mdd.kanpan to idle
+    t =    16.57s     Find the "interval.chart" Button
+    t =    16.58s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    16.61s         Find: Descendants matching type Button
+    t =    16.61s         Find: Elements matching predicate '"interval.chart" IN identifiers'
+    t =    16.61s     Check for interrupting elements affecting "interval.chart" Button
+    t =    16.62s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    16.64s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    16.64s     Synthesize event
+    t =    16.92s     Wait for com.mdd.kanpan to idle
+    t =    17.32s Tap "跟随K线" Button
+    t =    17.32s     Wait for com.mdd.kanpan to idle
+    t =    17.33s     Find the "跟随K线" Button
+    t =    17.33s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    17.44s         Find: Descendants matching type Button
+    t =    17.44s         Find: Elements matching predicate '"跟随K线" IN identifiers'
+    t =    17.44s     Check for interrupting elements affecting "chart.dataDisplay" Button
+    t =    17.46s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    17.52s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    17.53s     Synthesize event
+    t =    17.84s     Wait for com.mdd.kanpan to idle
+    t =    18.59s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    19.60s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    19.61s         Checking existence of `"panel.header" StaticText`
+    t =    19.61s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    19.72s             Find: Descendants matching type StaticText
+    t =    19.72s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    19.73s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    19.73s     Wait for com.mdd.kanpan to idle
+    t =    19.73s     Find the "panel.header" StaticText
+    t =    19.73s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    19.80s         Find: Descendants matching type StaticText
+    t =    19.80s         Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    19.80s     Check for interrupting elements affecting "panel.header" StaticText
+    t =    19.82s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    19.88s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    19.88s     Synthesize event
+    t =    19.89s         Find the "panel.header" StaticText
+    t =    19.89s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    19.95s             Find: Descendants matching type StaticText
+    t =    19.95s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    19.96s         Find the "panel.header" StaticText
+    t =    19.96s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    20.02s             Find: Descendants matching type StaticText
+    t =    20.02s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    20.03s         Find the Window (First Match)
+    t =    20.03s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    20.11s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    20.11s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    20.17s         Find the "panel.header" StaticText
+    t =    20.18s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    20.23s             Find: Descendants matching type StaticText
+    t =    20.24s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    21.44s     Wait for com.mdd.kanpan to idle
+    t =    23.15s Checking existence of `"panel.header" StaticText`
+    t =    23.16s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    23.21s     Find: Descendants matching type StaticText
+    t =    23.21s     Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    24.24s Find the "chart.canvas" Other
+    t =    24.25s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    24.29s     Find: Descendants matching type Other
+    t =    24.29s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    24.30s Checking existence of `"chart.topOHLC" StaticText`
+    t =    24.30s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    24.34s     Find: Descendants matching type StaticText
+    t =    24.34s     Find: Elements matching predicate '"chart.topOHLC" IN identifiers'
+    t =    24.35s Find the "chart.canvas" Other
+    t =    24.35s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    24.39s     Find: Descendants matching type Other
+    t =    24.39s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    24.40s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    24.40s     Wait for com.mdd.kanpan to idle
+    t =    24.41s     Find the "chart.canvas" Other
+    t =    24.41s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    24.45s         Find: Descendants matching type Other
+    t =    24.45s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    24.45s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    24.47s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    24.50s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    24.51s     Synthesize event
+    t =    24.51s         Find the "chart.canvas" Other
+    t =    24.52s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    24.55s             Find: Descendants matching type Other
+    t =    24.56s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    24.57s         Find the "chart.canvas" Other
+    t =    24.57s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    24.61s             Find: Descendants matching type Other
+    t =    24.61s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    24.63s         Find the "chart.canvas" Other
+    t =    24.63s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    24.67s             Find: Descendants matching type Other
+    t =    24.67s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    24.97s     Wait for com.mdd.kanpan to idle
+    t =    26.00s Find the "chart.canvas" Other
+    t =    26.01s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    26.05s     Find: Descendants matching type Other
+    t =    26.05s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    26.06s Find the Target Application 'com.mdd.kanpan'
+    t =    26.07s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    26.20s Added attachment named '跟随K线-单一容器'
+    t =    26.20s Find the "chart.canvas" Other
+    t =    26.21s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    26.24s     Find: Descendants matching type Other
+    t =    26.24s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    26.24s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    26.24s     Wait for com.mdd.kanpan to idle
+    t =    26.24s     Find the "chart.canvas" Other
+    t =    26.25s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    26.27s         Find: Descendants matching type Other
+    t =    26.27s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    26.27s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    26.28s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    26.30s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    26.31s     Synthesize event
+    t =    26.31s         Find the "chart.canvas" Other
+    t =    26.31s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    26.34s             Find: Descendants matching type Other
+    t =    26.34s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    26.34s         Find the "chart.canvas" Other
+    t =    26.34s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    26.37s             Find: Descendants matching type Other
+    t =    26.37s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    26.38s         Find the "chart.canvas" Other
+    t =    26.38s             Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    26.41s             Find: Descendants matching type Other
+    t =    26.41s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    26.70s     Wait for com.mdd.kanpan to idle
+    t =    27.74s Find the "chart.canvas" Other
+    t =    27.75s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    27.79s     Find: Descendants matching type Other
+    t =    27.79s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    27.80s Checking existence of `"chart.topOHLC" StaticText`
+    t =    27.81s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    27.84s     Find: Descendants matching type StaticText
+    t =    27.85s     Find: Elements matching predicate '"chart.topOHLC" IN identifiers'
+    t =    27.85s Find the Target Application 'com.mdd.kanpan'
+    t =    27.85s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    27.99s Added attachment named '关闭十字线-实时头部恢复'
+    t =    27.99s Tear Down
+    t =    27.99s     Find the Target Application 'com.mdd.kanpan'
+    t =    28.00s         Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    28.09s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    28.09s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    28.17s     Requesting snapshot of accessibility hierarchy for app with pid 1618
+    t =    28.22s     Added attachment of type 'public.plain-text'
+    t =    28.22s     Terminate com.mdd.kanpan:1618
+Test Case '-[KanpanUITests.ChartFoundationUITests testDataModesClearHeaderAndSelection]' passed (29.336 seconds).
+Test Case '-[KanpanUITests.ChartFoundationUITests testHeightAndVerticalReachability]' started.
+    t =     0.00s Start Test at 2026-09-14 23:43:34.389
+    t =     0.02s Set Up
+    t =     0.02s     Setting device orientation to Portrait
+    t =     0.02s         Device orientation changed to Portrait
+    t =     0.03s         Wait for com.apple.springboard to idle
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+2026-09-14 23:43:34.474 xcodebuild[88621:31638543] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:43:34.474 xcodebuild[88621:31638543] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     0.28s             Setting up automation session
+    t =     0.40s             Wait for com.mdd.kanpan to idle
+    t =     1.47s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =     2.50s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     2.50s             Checking existence of `"chart.canvas" Other`
+    t =     2.51s                 Requesting snapshot of accessibility hierarchy for app with pid 1619
+    t =     2.58s                 Find: Descendants matching type Other
+    t =     2.58s                 Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     3.62s     Find the "chart.canvas" Other
+    t =     3.63s         Requesting snapshot of accessibility hierarchy for app with pid 1619
+    t =     3.67s         Find: Descendants matching type Other
+    t =     3.67s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     3.70s Find the "chart.canvas" Other
+    t =     3.70s     Requesting snapshot of accessibility hierarchy for app with pid 1619
+    t =     3.74s     Find: Descendants matching type Other
+    t =     3.74s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     3.75s Tap "interval.chart" Button
+    t =     3.75s     Wait for com.mdd.kanpan to idle
+    t =     3.76s     Find the "interval.chart" Button
+    t =     3.76s         Requesting snapshot of accessibility hierarchy for app with pid 1619
+    t =     3.79s         Find: Descendants matching type Button
+    t =     3.79s         Find: Elements matching predicate '"interval.chart" IN identifiers'
+    t =     3.79s     Check for interrupting elements affecting "interval.chart" Button
+    t =     3.81s         Requesting snapshot of accessibility hierarchy for app with pid 1619
+    t =     3.84s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     3.85s     Synthesize event
+    t =     4.15s     Wait for com.mdd.kanpan to idle
+    t =     4.58s Waiting 5.0s for "chart.portraitHeight" Slider to exist
+    t =     5.60s     Checking `Expect predicate `existsNoRetry == 1` for object "chart.portraitHeight" Slider`
+    t =     5.60s         Checking existence of `"chart.portraitHeight" Slider`
+    t =     5.61s             Requesting snapshot of accessibility hierarchy for app with pid 1619
+    t =     5.74s             Find: Descendants matching type Slider
+    t =     5.74s             Find: Elements matching predicate '"chart.portraitHeight" IN identifiers'
+    t =     5.75s Set normalized position of "chart.portraitHeight" Slider to 1.00
+    t =     5.75s     Wait for com.mdd.kanpan to idle
+    t =     5.76s     Find the "chart.portraitHeight" Slider
+    t =     5.76s         Requesting snapshot of accessibility hierarchy for app with pid 1619
+    t =     5.84s         Find: Descendants matching type Slider
+    t =     5.84s         Find: Elements matching predicate '"chart.portraitHeight" IN identifiers'
+    t =     5.85s     Check for interrupting elements affecting "chart.portraitHeight" Slider
+    t =     5.87s         Wait for com.apple.springboard to idle
+    t =     8.53s         Requesting snapshot of accessibility hierarchy for app with pid 248
+    t =     8.60s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     8.61s     Synthesize event
+2026-09-14 23:44:03.618384+0800 KanpanUITests-Runner[1623:223729] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-14 23:44:04.029.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-14 23:44:04.030.
+Test Suite 'ChartFoundationUITests' started at 2026-09-14 23:44:04.030.
+Test Case '-[KanpanUITests.ChartFoundationUITests testMAParameterCancelAndSaveOutput]' started.
+    t =     0.00s Start Test at 2026-09-14 23:44:04.031
+    t =     0.03s Set Up
+    t =     0.03s     Setting device orientation to Portrait
+    t =     0.03s         Device orientation changed to Portrait
+    t =     0.05s         Wait for com.apple.springboard to idle
+    t =     0.05s     Open com.mdd.kanpan
+    t =     0.05s         Launch com.mdd.kanpan
+2026-09-14 23:44:04.127 xcodebuild[88621:31638543] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:44:04.127 xcodebuild[88621:31638543] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     0.29s             Setting up automation session
+    t =     0.39s             Wait for com.mdd.kanpan to idle
+    t =     1.47s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =     2.48s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     2.48s             Checking existence of `"chart.canvas" Other`
+    t =     2.51s                 Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     2.57s                 Find: Descendants matching type Other
+    t =     2.57s                 Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     3.59s     Find the "chart.canvas" Other
+    t =     3.60s         Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     3.64s         Find: Descendants matching type Other
+    t =     3.64s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     3.69s Find the "chart.canvas" Other
+    t =     3.72s     Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     3.75s     Find: Descendants matching type Other
+    t =     3.75s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     3.75s Tap "bottom.indicator" Button
+    t =     3.75s     Wait for com.mdd.kanpan to idle
+    t =     3.76s     Find the "bottom.indicator" Button
+    t =     3.76s         Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     3.78s         Find: Descendants matching type Button
+    t =     3.78s         Find: Elements matching predicate '"bottom.indicator" IN identifiers'
+    t =     3.78s     Check for interrupting elements affecting "bottom.indicator" Button
+    t =     3.79s         Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     3.82s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     3.83s     Synthesize event
+    t =     4.23s     Wait for com.mdd.kanpan to idle
+    t =     4.62s Tap "indicator.edit.MA" Button
+    t =     4.62s     Wait for com.mdd.kanpan to idle
+    t =     4.63s     Find the "indicator.edit.MA" Button
+    t =     4.63s         Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     4.73s         Find: Descendants matching type Button
+    t =     4.74s         Find: Elements matching predicate '"indicator.edit.MA" IN identifiers'
+    t =     4.74s     Check for interrupting elements affecting "indicator.edit.MA" Button
+    t =     4.76s         Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     4.81s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     4.82s     Synthesize event
+    t =     5.12s     Wait for com.mdd.kanpan to idle
+    t =     5.88s Waiting 5.0s for "indicator.param.0" Stepper to exist
+    t =     6.91s     Checking `Expect predicate `existsNoRetry == 1` for object "indicator.param.0" Stepper`
+    t =     6.91s         Checking existence of `"indicator.param.0" Stepper`
+    t =     6.92s             Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     7.04s             Find: Descendants matching type Stepper
+    t =     7.04s             Find: Elements matching predicate '"indicator.param.0" IN identifiers'
+    t =     7.05s Tap "Increment" Button
+    t =     7.05s     Wait for com.mdd.kanpan to idle
+    t =     7.05s     Find the "Increment" Button
+    t =     7.05s         Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     7.12s         Find: Descendants matching type Stepper
+    t =     7.12s         Find: Elements matching predicate '"indicator.param.0" IN identifiers'
+    t =     7.12s         Find: Descendants matching type Button
+    t =     7.12s         Find: Elements matching predicate '"Increment" IN identifiers'
+    t =     8.13s         Find the "Increment" Button (retry 1)
+    t =     8.14s             Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     8.24s             Find: Descendants matching type Stepper
+    t =     8.24s             Find: Elements matching predicate '"indicator.param.0" IN identifiers'
+    t =     8.25s             Find: Descendants matching type Button
+    t =     8.25s             Find: Elements matching predicate '"Increment" IN identifiers'
+    t =     9.26s         Find the "Increment" Button (retry 2)
+    t =     9.27s             Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     9.37s             Find: Descendants matching type Stepper
+    t =     9.37s             Find: Elements matching predicate '"indicator.param.0" IN identifiers'
+    t =     9.37s             Find: Descendants matching type Button
+    t =     9.37s             Find: Elements matching predicate '"Increment" IN identifiers'
+    t =     9.38s Requesting snapshot of accessibility hierarchy for app with pid 1624
+/Users/mdd/zhk/kanpan/Kanpan/KanpanUITests/ChartFoundationUITests.swift:93: error: -[KanpanUITests.ChartFoundationUITests testMAParameterCancelAndSaveOutput] : Failed to tap "Increment" Button: No matches found for Elements matching predicate '"Increment" IN identifiers' from input {(
+    Button, identifier: 'indicator.param.0-Decrement', label: '周期1：10, 减量', value: 10,
+    Button, identifier: 'indicator.param.0-Increment', label: '周期1：10, 增量', value: 10
+)}
+    t =     9.51s Tear Down
+    t =     9.51s     Find the Target Application 'com.mdd.kanpan'
+    t =     9.52s         Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     9.65s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =     9.65s     Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     9.87s     Requesting snapshot of accessibility hierarchy for app with pid 1624
+    t =     9.99s     Added attachment of type 'public.plain-text'
+    t =     9.99s     Terminate com.mdd.kanpan:1624
+Test Case '-[KanpanUITests.ChartFoundationUITests testMAParameterCancelAndSaveOutput]' failed (11.062 seconds).
+2026-09-14 23:44:17.336602+0800 KanpanUITests-Runner[1632:224707] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-14 23:44:19.031.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-14 23:44:19.032.
+Test Suite 'ChartFoundationUITests' started at 2026-09-14 23:44:19.033.
+Test Suite 'ChartFoundationUITests' passed at 2026-09-14 23:44:19.033.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-14 23:44:19.034.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.002) seconds
+Test Suite 'Selected tests' passed at 2026-09-14 23:44:19.036.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.005) seconds
+2026-09-14 23:44:20.162 xcodebuild[88621:31645802]  IDETestOperationsObserverDebug: Failure collecting diagnostics from devices: Process exited with error 1:
+ ERROR: The operation couldn?t be completed. (CoreDeviceCLISupport.DiagnoseError error 0.)
+This tool generates files that allow Apple to investigate issues with your
+computer and help improve Apple products. The files might contain personal
+information found on your device or associated with your Apple Account(s),
+including but not limited to your name, serial numbers of your device,
+your device name, your device's location over the last one to two days,
+your attached peripheral devices, your user name, your email address and
+email settings, file paths, file names, Siri suggestions, your computer's
+IP addresses, and network connection information.
+
+This information is used by Apple in accordance with its privacy policy
+(www.apple.com/privacy) and is not shared with any other company. By using
+this tool and sending the results to Apple, you consent to Apple using the
+contents of these files to improve Apple products.
+
+An error occurred while running devicectl diagnose. Will archive the diagnostics collected thus far.
+Wrote file to /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/device-ui.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+Partial devicectl diagnose bundle located here: /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/device-ui.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+
+2026-09-14 23:44:20.201 xcodebuild[88621:31638543] [MT] IDETestOperationsObserverDebug: 78.595 elapsed -- Testing started completed.
+2026-09-14 23:44:20.201 xcodebuild[88621:31638543] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-14 23:44:20.201 xcodebuild[88621:31638543] [MT] IDETestOperationsObserverDebug: 78.595 sec, +78.595 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/device-ui.xcresult
+
+Failing tests:
+	ChartFoundationUITests.testHeightAndVerticalReachability()
+	ChartFoundationUITests.testMAParameterCancelAndSaveOutput()
+
+** TEST FAILED **
+
+2026-09-14 23:44:20.380 xcodebuild[88621:31638543] [MT] IDEResultKit: Warning: While writing a result bundle to /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/device-ui.xcresult, not all contents have been imported, as the Staging directory still contains the following files/directories: ["2D5F82A9-2C17-455B-8ABE-9627B7D674F8"]
+Testing started

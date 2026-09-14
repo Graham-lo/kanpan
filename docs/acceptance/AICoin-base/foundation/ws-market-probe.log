@@ -1,0 +1,3 @@
+end: A TLS error caused the secure connection to fail.
+endpoint: wss://fstream.binance.com/market/stream?streams=btcusdt@kline_1m/btcusdt@ticker/btcusdt@markPrice@1s
+counts: [:] firstSeconds: [:] lastSeconds: [:]

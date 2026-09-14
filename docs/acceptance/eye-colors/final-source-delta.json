@@ -1,0 +1,16 @@
+{
+  "relativeTo": "current-r8-source-sha256.json",
+  "files": [
+    "Kanpan/Kanpan/Symbols/FavoritesView.swift",
+    "Kanpan/Kanpan/Symbols/SymbolSections.swift",
+    "Kanpan/Kanpan/Main/MarketModel.swift",
+    "KanpanCore/Sources/KanpanCore/Model/SymbolInfo.swift"
+  ],
+  "changes": {
+    "Kanpan/Kanpan/Symbols/SymbolSections.swift": "Normalize non-finite/negative volume to the missing-data sort key only; preserve original missing statistics for display. Covered by 61 Symbols tests and final search UI regression.",
+    "Kanpan/Kanpan/Symbols/FavoritesView.swift": "Keep ellipsis icon while editing; documentation comment only otherwise.",
+    "Kanpan/Kanpan/Main/MarketModel.swift": "Correct obsolete comments about retaining old candles. No executable change.",
+    "KanpanCore/Sources/KanpanCore/Model/SymbolInfo.swift": "Update Ticker semantics comment. No executable change."
+  },
+  "validation": "Final app builds plus targeted iPhone 15 category/search tests; 13-model layout matrix uses unchanged layout/gesture/color code."
+}

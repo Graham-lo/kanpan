@@ -9,9 +9,11 @@ final class QuoteBook {
   private(set) var raw: [String: Ticker] = [:]
   private(set) var lastListUpdate: Date?
   private(set) var basis: ChangeBasis = .rolling24h
+  private var latestReceived: [String: QuoteState] = [:]
   private var hosts = BinanceHosts.default
   private var rest = BinanceREST()
   private var socket: BinanceWS?
+  private var subscribedStreams: [String] = []
   private var pump: Task<Void, Never>?
   private var wanted = Set<String>()
   private var opens: [String: (time: Int64, price: Double)] = [:]
@@ -51,7 +53,8 @@ final class QuoteBook {
     let changedBasis = basis != self.basis
     if changedHost {
       self.hosts = hosts; rest = BinanceREST(hosts: hosts); opens.removeAll()
-      cancelQuotes()
+      for symbol in Array(quoteJobs.keys) where symbol != chartSymbol { quoteJobs.removeValue(forKey: symbol)?.cancel() }
+      quoteQueue.removeAll { $0 != chartSymbol }
       historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll(); historyRequested.removeAll()
     }
     self.basis = basis
@@ -62,7 +65,7 @@ final class QuoteBook {
   }
 
   private var needsConnection: Bool {
-    QuoteSubscriptionPlan.needsConnection(foreground: foreground, favorites: favorites, visible: visible)
+    foreground && (chartSymbol != nil || QuoteSubscriptionPlan.needsConnection(foreground: foreground, favorites: favorites, visible: visible))
   }
 
   func setFavorites(_ symbols: [String]) {
@@ -84,7 +87,8 @@ final class QuoteBook {
     reconcileConnection()
     updateStreams()
     if !on {
-      cancelQuotes()
+      for symbol in Array(quoteJobs.keys) where symbol != chartSymbol { quoteJobs.removeValue(forKey: symbol)?.cancel() }
+      quoteQueue.removeAll { $0 != chartSymbol }
       historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
     }
   }
@@ -101,35 +105,58 @@ final class QuoteBook {
       network.stop(); stopStream(); cancelQuotes(); resetBaselineRequests()
       historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
       lastListUpdate = nil
-      if !foreground { raw.removeAll(keepingCapacity: true); onReset?() }
+      if !foreground { raw.removeAll(keepingCapacity: true); latestReceived.removeAll(keepingCapacity: true); onReset?() }
     }
   }
 
   private func streamNames() -> [String] {
-    let symbols = QuoteSubscriptionPlan.symbols(favorites: favorites, visible: visible ? visibleRows : [])
+    let symbols = QuoteSubscriptionPlan.symbols(favorites: [chartSymbol].compactMap { $0 } + favorites, visible: visible ? visibleRows : [])
     return (symbols.isEmpty ? ["BTCUSDT"] : symbols).map { BinanceHosts.tickerStream(symbol: $0) }
   }
 
   private func updateStreams() {
-    let symbols = QuoteSubscriptionPlan.symbols(favorites: favorites, visible: visible ? visibleRows : [])
+    let symbols = QuoteSubscriptionPlan.symbols(favorites: [chartSymbol].compactMap { $0 } + favorites, visible: visible ? visibleRows : [])
     wanted = Set(symbols + [chartSymbol].compactMap { $0 })
     if raw.keys.contains(where: { !wanted.contains($0) }) { raw = raw.filter { wanted.contains($0.key) } }
+    latestReceived = latestReceived.filter { wanted.contains($0.key) }
     onScopeChange?(wanted)
     for symbol in Array(jobs.keys) where !wanted.contains(symbol) { jobs.removeValue(forKey: symbol)?.cancel() }
     queue.formIntersection(wanted)
     opens = opens.filter { wanted.contains($0.key) }
     guard let socket else { return }
     let names = streamNames()
+    guard names != subscribedStreams else { return }
+    subscribedStreams = names
     Task { await socket.replaceStreams(names) }
   }
 
   func ingest(_ batch: [Ticker]) {
     guard foreground else { return }
-    let valid = batch.filter { wanted.contains($0.symbol) && $0.last.isFinite && $0.last > 0 }
+    var valid: [Ticker] = []
+    for ticker in batch where wanted.contains(ticker.symbol) {
+      var state = latestReceived[ticker.symbol] ?? QuoteState()
+      guard state.receive(ticker), let ticker = state.value else { continue }
+      latestReceived[ticker.symbol] = state
+      session.receive(ticker.symbol)
+      if let old = raw[ticker.symbol], LatestQuote.sameDisplay(ticker, old) { continue }
+      raw[ticker.symbol] = ticker
+      valid.append(ticker)
+    }
     if needsConnection, !valid.isEmpty, firstQuoteMs == nil { firstQuoteMs = Int(-startedAt.timeIntervalSinceNow * 1000) }
-    for ticker in valid { raw[ticker.symbol] = ticker; session.receive(ticker.symbol) }
-    publish(valid)
+    if !valid.isEmpty { publish(valid) }
     if visible { loadHistories() }
+  }
+
+  func ingestTrade(_ trade: TradeQuote) {
+    guard foreground, wanted.contains(trade.symbol) else { return }
+    var state = latestReceived[trade.symbol] ?? QuoteState()
+    guard state.receive(trade), let ticker = state.value else { return }
+    latestReceived[trade.symbol] = state
+    session.receive(trade.symbol)
+    if let old = raw[trade.symbol], LatestQuote.sameDisplay(ticker, old) { return }
+    raw[trade.symbol] = ticker
+    if firstQuoteMs == nil { firstQuoteMs = Int(-startedAt.timeIntervalSinceNow * 1000) }
+    publish([ticker])
   }
 
   func presented(_ ticker: Ticker) -> Ticker {
@@ -143,6 +170,7 @@ final class QuoteBook {
 
   func watchChart(_ symbol: String) {
     chartSymbol = symbol
+    reconcileConnection()
     updateStreams()
     watch(symbol)
   }
@@ -167,14 +195,17 @@ final class QuoteBook {
     }
     for symbol in wanted { watchBaseline(symbol) }
     for symbol in visibleRows { requestQuote(symbol) }
+    if let chartSymbol { requestQuote(chartSymbol) }
     loadHistories()
   }
 
   func watchRow(_ symbol: String, visible: Bool) {
     if visible { visibleRows.insert(symbol); requestQuote(symbol) }
     else {
-      visibleRows.remove(symbol); quoteQueue.removeAll { $0 == symbol }
-      quoteJobs.removeValue(forKey: symbol)?.cancel()
+      visibleRows.remove(symbol)
+      if symbol != chartSymbol {
+        quoteQueue.removeAll { $0 == symbol }; quoteJobs.removeValue(forKey: symbol)?.cancel()
+      }
     }
     updateStreams()
   }
@@ -238,6 +269,7 @@ final class QuoteBook {
     let generation = session.generation
     self.socket = socket
     let names = streamNames()
+    subscribedStreams = names
     pump = Task { [weak self] in
       let events = await socket.start(streams: names)
       for await event in events {
@@ -245,19 +277,25 @@ final class QuoteBook {
         switch event {
         case .payload(.tickerBatch(let batch)):
           guard !batch.isEmpty else { continue }
-          self.lastListUpdate = Date(); self.status = .live; self.ingest(batch)
+          self.noteLive(); self.ingest(batch)
         case .payload(.ticker(let ticker)):
-          self.lastListUpdate = Date(); self.status = .live; self.ingest([ticker])
+          self.noteLive(); self.ingest([ticker])
         case .status(let status):
           // 握手成功还不等于行情到达。
           if status != .live {
             self.status = status; self.lastListUpdate = nil
-            self.cancelQuotes(); self.raw.removeAll(keepingCapacity: true); self.onReset?()
+            self.cancelQuotes(); self.raw.removeAll(keepingCapacity: true); self.latestReceived.removeAll(keepingCapacity: true); self.onReset?()
           }
         default: break
         }
       }
     }
+  }
+
+  private func noteLive() {
+    let now = Date()
+    if lastListUpdate == nil || now.timeIntervalSince(lastListUpdate!) >= 1 { lastListUpdate = now }
+    if status != .live { status = .live }
   }
 
   private func networkChanged(_ online: Bool) {
@@ -269,13 +307,14 @@ final class QuoteBook {
   private func restartStream() {
     stopStream(); cancelQuotes(); resetBaselineRequests()
     historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
-    session.reset(); raw.removeAll(keepingCapacity: true); lastListUpdate = nil
+    session.reset(); raw.removeAll(keepingCapacity: true); latestReceived.removeAll(keepingCapacity: true); lastListUpdate = nil
     startedAt = Date(); firstQuoteMs = nil
     status = online ? .reconnecting : .offline
     onReset?()
     guard online else { return }
     startStream()
     for symbol in visibleRows { requestQuote(symbol) }
+    if let chartSymbol { requestQuote(chartSymbol) }
   }
 
   private func cancelQuotes() {
@@ -285,14 +324,14 @@ final class QuoteBook {
 
   /// 可见行先请求当前报价；已有 WS 值的行不再请求。REST 与 WS 并行，不依赖 REST 成功。
   private func requestQuote(_ symbol: String) {
-    guard foreground, visible, online, raw[symbol] == nil, quoteJobs[symbol] == nil,
+    guard foreground, (visible || symbol == chartSymbol), online, raw[symbol] == nil, quoteJobs[symbol] == nil,
           !quoteQueue.contains(symbol), quoteQueue.count < 128,
           Date().timeIntervalSince(quoteAttempt[symbol] ?? .distantPast) >= 30 else { return }
     quoteQueue.append(symbol); drainQuotes()
   }
 
   private func drainQuotes() {
-    guard foreground, visible, online else { return }
+    guard foreground, online else { return }
     while quoteJobs.count < 4, !quoteQueue.isEmpty {
       let symbol = quoteQueue.removeFirst()
       guard raw[symbol] == nil else { continue }
@@ -310,7 +349,7 @@ final class QuoteBook {
 
   private func stopStream() {
     pump?.cancel(); pump = nil
-    let old = socket; socket = nil
+    let old = socket; socket = nil; subscribedStreams = []
     Task { await old?.stop() }
   }
 }

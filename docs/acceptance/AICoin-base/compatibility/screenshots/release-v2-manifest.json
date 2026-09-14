@@ -1,0 +1,90 @@
+[
+  {
+    "file": "pro13-landscape.png",
+    "device": "iPad Pro 13-inch (M5)",
+    "runtime": "iOS 26.5 simulator",
+    "source": "release-v2",
+    "attachment": "B3442860-C377-4CB4-9781-1DF1BEE1AA08.png",
+    "originalName": "07-横屏共用底座_0_F0610586-FCD7-4957-86CE-F1B9E2560ADF.png"
+  },
+  {
+    "file": "pro13-reorder.png",
+    "device": "iPad Pro 13-inch (M5)",
+    "runtime": "iOS 26.5 simulator",
+    "source": "release-v2",
+    "attachment": "8D774F94-560A-45AF-B898-954068819AC7.png",
+    "originalName": "自选-无需编辑长按整行排序_0_B8F7381A-297F-4C24-AD84-F5D7A241D3B7.png"
+  },
+  {
+    "file": "pro13-four-panes.png",
+    "device": "iPad Pro 13-inch (M5)",
+    "runtime": "iOS 26.5 simulator",
+    "source": "release-v2",
+    "attachment": "C4645A2E-1A12-4DEF-A30F-1BEE581B8475.png",
+    "originalName": "一屏四副图-无需滚动_0_E0FC5D3F-8027-46C1-9FD5-4DFC26545949.png"
+  },
+  {
+    "file": "pro13-latest-edge.png",
+    "device": "iPad Pro 13-inch (M5)",
+    "runtime": "iOS 26.5 simulator",
+    "source": "release-v2",
+    "attachment": "D4396271-C426-4A8F-B8F2-FC499E3A52B5.png",
+    "originalName": "默认末根贴右-最新端回弹-历史自由拖动-重进复位_0_A6407C2F-8BD0-4713-9977-E9AECBE6E23F.png"
+  },
+  {
+    "file": "16plus-landscape.png",
+    "device": "iPhone 16 Plus",
+    "runtime": "iOS 26.5 simulator",
+    "source": "release-v2",
+    "attachment": "C978275F-6CFC-4E2A-B2DC-CE8E9849FFAB.png",
+    "originalName": "07-横屏共用底座_0_512EA56A-9E2A-449F-AB4E-976C0FC2B47C.png"
+  },
+  {
+    "file": "16plus-reorder.png",
+    "device": "iPhone 16 Plus",
+    "runtime": "iOS 26.5 simulator",
+    "source": "release-v2",
+    "attachment": "EBE95183-E9B5-455E-8822-CBD13C29B958.png",
+    "originalName": "自选-无需编辑长按整行排序_0_C338D981-57C6-43BC-9C6E-D8837500BBA8.png"
+  },
+  {
+    "file": "16plus-four-panes.png",
+    "device": "iPhone 16 Plus",
+    "runtime": "iOS 26.5 simulator",
+    "source": "release-v2",
+    "attachment": "72F6E1E0-B30E-409A-B178-6B9DADF21196.png",
+    "originalName": "一屏四副图-无需滚动_0_41172116-0D46-4B57-B9BB-A69AB1254C73.png"
+  },
+  {
+    "file": "16plus-latest-edge.png",
+    "device": "iPhone 16 Plus",
+    "runtime": "iOS 26.5 simulator",
+    "source": "release-v2",
+    "attachment": "1F35B724-FB5E-4317-97F9-5E3AF797F23A.png",
+    "originalName": "默认末根贴右-最新端回弹-历史自由拖动-重进复位_0_B9A0136B-0FC4-419E-89E1-8137A51986DF.png"
+  },
+  {
+    "file": "pro13-rotated-window.png",
+    "device": "iPad Pro 13-inch (M5)",
+    "runtime": "iOS 26.5 simulator",
+    "source": "release-v2",
+    "attachment": "8069798B-FD6F-426C-9F53-E16DADDB43CA.png",
+    "originalName": "08-iPad横向窗口_0_9DE85BB7-50CA-45B2-8B17-266235A379C1.png"
+  },
+  {
+    "file": "iphone15-landscape.png",
+    "device": "iPhone 15",
+    "runtime": "iOS 26.5 simulator",
+    "source": "release-v2",
+    "attachment": "44A9C0B0-EB42-48C4-91B5-52A881668FC6.png",
+    "originalName": "07-横屏共用底座_0_0C2BF2B1-F5F3-4D48-B1D8-8EEFE3FD34AC.png"
+  },
+  {
+    "file": "iphone15-four-panes.png",
+    "device": "iPhone 15",
+    "runtime": "iOS 26.5 simulator",
+    "source": "release-v2",
+    "attachment": "FC55CDE1-2DA7-4F45-B5B0-EBCD6185EDD2.png",
+    "originalName": "一屏四副图-无需滚动_0_8CB948F4-769E-46A3-8B33-6E70ED6F8D51.png"
+  }
+]

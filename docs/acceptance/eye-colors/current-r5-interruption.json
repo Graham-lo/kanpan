@@ -1,0 +1,4 @@
+{
+  "reason": "Preflight found test source newer than compiled test object; stopped before accepting results and rebuilt tests. No passing claim for this attempt.",
+  "passed": false
+}

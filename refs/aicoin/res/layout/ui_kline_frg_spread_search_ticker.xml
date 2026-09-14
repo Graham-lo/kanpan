@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:id="@id/container_search_ticker" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent" style="@style/sh_base.ViewContent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/search_ticker_view" android:paddingLeft="@dimen/sh_base_offset_15dp" android:paddingRight="@dimen/sh_base_offset_15dp" android:layout_width="match_parent" android:layout_height="50.0dp">
+        <ImageView android:tag="skin:ui_kline_spread_icon_search:src" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@mipmap/ui_kline_spread_icon_search" />
+        <EditText android:textSize="15.0sp" android:textColor="@color/ui_kline_spread_search_text_color" android:textColorHint="@color/ui_kline_spread_search_hint_text_color" android:id="@id/search_content" android:tag="skin:ui_kline_spread_search_text_color:textColor|skin:ui_kline_spread_search_hint_text_color:textColorHint|skin:ui_kline_edit_text_cursor:textCursorDrawable" android:background="@null" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_marginLeft="@dimen/offset_8dp" android:hint="@string/ui_kline_search_ticker_hint" android:maxLines="1" android:layout_weight="1.0" android:textCursorDrawable="@drawable/ui_kline_edit_text_cursor" android:layout_marginStart="@dimen/offset_8dp" />
+        <TextView android:textColor="@color/ui_kline_spread_search_cancel_text_color" android:gravity="center" android:id="@id/action_cancel" android:tag="skin:ui_kline_spread_search_cancel_text_color:textColor" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="@string/sh_base_cancel" />
+    </LinearLayout>
+    <View android:tag="skin:ui_kline_spread_search_market_divider:background" android:background="@color/ui_kline_spread_search_market_divider" android:layout_width="match_parent" android:layout_height="1.0px" />
+    <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
+        <LinearLayout android:orientation="vertical" android:id="@id/container_history" android:layout_width="match_parent" android:layout_height="match_parent">
+            <include layout="@layout/ui_kline_include_spread_title_history" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@id/search_history_list" android:paddingLeft="@dimen/sh_base_offset_15dp" android:paddingRight="@dimen/sh_base_offset_15dp" android:layout_width="match_parent" android:layout_height="match_parent" />
+        </LinearLayout>
+        <LinearLayout android:orientation="vertical" android:id="@id/container_search" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <androidx.recyclerview.widget.RecyclerView android:id="@id/search_market_list" android:visibility="visible" android:layout_width="match_parent" android:layout_height="40.0dp" />
+            <View android:tag="skin:ui_kline_spread_search_market_divider:background" android:background="@color/ui_kline_spread_search_market_divider" android:layout_width="match_parent" android:layout_height="1.0px" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@id/search_currency_list" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/offset_8dp" android:layout_marginBottom="@dimen/offset_8dp" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@id/search_ticker_list" android:paddingLeft="@dimen/sh_base_offset_15dp" android:paddingRight="@dimen/sh_base_offset_15dp" android:layout_width="match_parent" android:layout_height="match_parent" />
+        </LinearLayout>
+        <TextView android:textSize="12.0sp" android:textColor="@color/ui_kline_spread_home_empty_holder_text_color" android:gravity="center" android:id="@id/search_empty_view" android:tag="skin:ui_kline_spread_home_empty_holder_text_color:textColor|skin:ui_kline_spread_home_bg:background" android:background="@color/ui_kline_spread_home_bg" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent" android:text="@string/ui_kline_search_empty_hint" />
+    </FrameLayout>
+</LinearLayout>

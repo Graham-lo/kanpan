@@ -1,0 +1,46 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "A3E505F8-7E37-49A6-A121-29DA5D579FC6",
+        "deviceName" : "iPad Air 11-inch (M4)",
+        "modelName" : "iPad Air 11-inch (M4)",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 0,
+      "passedTests" : 11,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "Kanpan · Built with macOS 26.5.1",
+  "expectedFailures" : 0,
+  "failedTests" : 0,
+  "finishTime" : 1789405013.569,
+  "passedTests" : 11,
+  "result" : "Passed",
+  "skippedTests" : 0,
+  "startTime" : 1789404650.81,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+
+  ],
+  "title" : "Test - Kanpan",
+  "topInsights" : [
+    {
+      "category" : "Longest Test Runs",
+      "impact" : "47% of duration",
+      "text" : "1 longest test run with outlier durations exceeding 114.70s (three standard deviations)"
+    }
+  ],
+  "totalTestCount" : 11
+}

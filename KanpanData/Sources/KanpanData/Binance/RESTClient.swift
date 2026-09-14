@@ -145,7 +145,11 @@ public actor BinanceREST {
 
   public func ticker24h(symbol: String, timeout: TimeInterval = 15) async throws -> Ticker {
     let data = try await fetch(hosts.ticker24h(symbol: symbol), weight: 1, timeout: timeout)
-    return try decode(Ticker24hDTO.self, data).ticker
+    let ticker = try decode(Ticker24hDTO.self, data).ticker
+    guard ticker.symbol.uppercased() == symbol.uppercased(), ticker.last.isFinite, ticker.last > 0 else {
+      throw FeedError.badResponse("报价品种或价格无效")
+    }
+    return ticker
   }
 
   /// 近 30 天的 OI。`period` 是币安原生档；> 1d 的周期传 5m 由上层再聚。
@@ -154,7 +158,12 @@ public actor BinanceREST {
     let url = hosts.openInterestHist(symbol: symbol, period: period, limit: min(limit, 500),
                                      startTime: startTime, endTime: endTime)
     let data = try await fetch(url, weight: 1)
-    return try decode([OIHistDTO].self, data).map(\.point).sorted { $0.time < $1.time }
+    let rows = try decode([OIHistDTO].self, data)
+    guard rows.allSatisfy({ $0.symbol.uppercased() == symbol.uppercased()
+      && $0.point.value.isFinite && $0.point.value >= 0 && $0.timestamp > 0 }) else {
+      throw FeedError.badResponse("持仓量品种或数值无效")
+    }
+    return rows.map(\.point).sorted { $0.time < $1.time }
   }
 
   // ------------------------------------------------------------------ 纯函数

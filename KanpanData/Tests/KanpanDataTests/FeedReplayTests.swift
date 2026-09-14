@@ -259,7 +259,7 @@ struct FeedReplayTests {
     let seen = Counter()
     let stream = await feed.events()
     let pump = Task {
-      for await e in stream { if case .lastBar = e { seen.bump() } }
+      for await e in stream { if case .lastBar = e.event { seen.bump() } }
     }
     await feed.start(symbol: "BTCUSDT", interval: .m1)
     #expect(await waitUntil(20) { await deck.progress() >= rec.lines.count })

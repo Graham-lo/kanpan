@@ -1,0 +1,8 @@
+{
+  "capturedAt": "2026-09-14T23:43:24.880714",
+  "files": {
+    "DerivedData-codex-compat-reviewed/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan": "fe48faccacdd7d00d6fd7aa5d1307ab8e01cfc80c834900eb5173a21afde64f5",
+    "DerivedData-codex-compat-reviewed/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib": "f96461d3037e212cb65f8404c3666eaf33f23d011bb46ae2df7a62992c361d0a",
+    "DerivedData-codex-compat-reviewed/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests": "fc8b474d5b25e482b17f498b5853f506028472e3a989e7c54c7695caf207dfd8"
+  }
+}

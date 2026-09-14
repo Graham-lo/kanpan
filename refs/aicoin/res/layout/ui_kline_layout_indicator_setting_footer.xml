@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:tag="skin:sh_base_page_bg:background" android:background="@color/sh_base_page_bg" android:layout_width="match_parent" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <FrameLayout android:id="@id/layout_restore" android:layout_width="match_parent" android:layout_height="@dimen/sh_base_settings_item_block_height" android:layout_marginTop="@dimen/offset_20dp" style="@style/sh_base.Settings.ItemContainer">
+        <TextView android:textSize="@dimen/font_size_normal_high" android:gravity="center" android:layout_gravity="center" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_indicator_setting_load_default" style="@style/sh_base.Settings.ItemTitle" />
+    </FrameLayout>
+</FrameLayout>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:gravity="center" android:layout_gravity="center" android:orientation="vertical" android:tag="skin:sh_base_view_bg:background" android:background="@color/sh_base_view_bg" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="暂无订阅指标" />
+    <TextView android:textColor="#ff2a82e4" android:id="@id/tv_list" android:background="@drawable/ui_kline_community_empty_shape_bg" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="20.0dp" android:text="社区指标列表" />
+</LinearLayout>

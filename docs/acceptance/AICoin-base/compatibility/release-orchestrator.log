@@ -1,0 +1,4 @@
+START iPad Pro 13-inch (M5)
+START iPhone 16 Plus
+DONE {'name': 'iPhone 16 Plus', 'exitCode': 65, 'seconds': 361, 'result': 'Failed', 'passedTests': 15, 'failedTests': 1, 'skippedTests': 0, 'expectedTests': 16}
+DONE {'name': 'iPad Pro 13-inch (M5)', 'exitCode': 0, 'seconds': 370, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}

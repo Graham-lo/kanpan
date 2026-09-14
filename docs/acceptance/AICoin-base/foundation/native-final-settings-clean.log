@@ -1,0 +1,350 @@
+cd Kanpan/Settings && swift test 
+Building for debugging...
+[0/11] /Users/mdd/zhk/kanpan/Kanpan/Settings/.build/arm64-apple-macosx/debug/KanpanSettingsPackageTests.derived/runner.swift
+[0/11] Write sources
+[8/11] Write swift-version--58304C5D6DBC2206.txt
+[10/39] Emitting module KanpanCore
+[11/41] Compiling KanpanCore CandleStyle.swift
+[12/41] Compiling KanpanCore Palette.swift
+[13/41] Compiling KanpanCore DrawStore.swift
+[14/41] Compiling KanpanCore Drawing.swift
+[15/41] Compiling KanpanCore Format.swift
+[16/41] Compiling KanpanCore CandleWidths.swift
+[17/41] Compiling KanpanCore Clamp.swift
+[18/41] Compiling KanpanCore Constants.swift
+[19/41] Compiling KanpanCore Ticks.swift
+[20/41] Compiling KanpanCore ViewTransition.swift
+[21/41] Compiling KanpanCore ViewWindow.swift
+[22/41] Compiling KanpanCore IncrementalLines.swift
+[23/41] Compiling KanpanCore IndicatorEngine.swift
+[24/41] Compiling KanpanCore IndicatorID.swift
+[25/41] Compiling KanpanCore HeikinAshi.swift
+[26/41] Compiling KanpanCore Interval.swift
+[27/41] Compiling KanpanCore SymbolInfo.swift
+[28/41] Compiling KanpanCore Indicators.swift
+[29/41] Compiling KanpanCore Math.swift
+[30/41] Compiling KanpanCore Aggregator.swift
+[31/41] Compiling KanpanCore Bar.swift
+[32/41] Compiling KanpanCore BarSeries.swift
+[33/41] Compiling KanpanCore ChangeBasis.swift
+[34/41] Compiling KanpanCore Fling.swift
+[35/41] Compiling KanpanCore Layout.swift
+[36/41] Compiling KanpanCore PriceScale.swift
+[37/41] Compiling KanpanCore AICoinBehavior.swift
+[38/41] Compiling KanpanCore ChartOptions.swift
+[39/41] Compiling KanpanCore DrawEdit.swift
+[40/65] Emitting module KanpanData
+[41/67] Compiling KanpanData Paths.swift
+[42/67] Compiling KanpanData Snapshot.swift
+[43/67] Compiling KanpanData OISource.swift
+[44/67] Compiling KanpanData BarCache.swift
+[45/67] Compiling KanpanData WSClient.swift
+[46/67] Compiling KanpanData WSSocket.swift
+[47/67] Compiling KanpanData RESTClient.swift
+[48/67] Compiling KanpanData RateLimiter.swift
+[49/67] Compiling KanpanData MarketSocketRouter.swift
+[50/67] Compiling KanpanData Pacer.swift
+[51/67] Compiling KanpanData Errors.swift
+[52/67] Compiling KanpanData HTTPTransport.swift
+[53/67] Compiling KanpanData Backoff.swift
+[54/67] Compiling KanpanData DTO.swift
+[55/67] Compiling KanpanData Endpoints.swift
+[56/67] Compiling KanpanData OIArchive.swift
+[57/67] Compiling KanpanData OIStore.swift
+[58/67] Compiling KanpanData FeedComposer.swift
+[59/67] Compiling KanpanData MarketFeed.swift
+[60/67] Compiling KanpanData SymbolCatalog.swift
+[61/67] Compiling KanpanData Zip.swift
+[62/76] Compiling KanpanSettings PrefsStore.swift
+[63/76] Compiling KanpanSettings ThemeChoice.swift
+[64/76] Compiling KanpanSettings IndicatorDraft.swift
+[65/76] Compiling KanpanSettings MarketCache.swift
+[66/76] Compiling KanpanSettings IndicatorParamRule.swift
+[67/76] Compiling KanpanSettings Prefs.swift
+[68/76] Compiling KanpanSettings APIHost.swift
+[69/76] Emitting module KanpanSettings
+[70/76] Compiling KanpanSettings PrefsCodec.swift
+[71/83] Compiling KanpanStyleArt LaunchScreen.swift
+[72/83] Compiling KanpanStyleArt StyleThumbnail.swift
+[73/83] Compiling KanpanStyleArt PanelTheme.swift
+[74/83] Emitting module KanpanStyleArt
+[75/85] Emitting module KanpanStyleArtTests
+[76/85] Compiling KanpanStyleArtTests StyleThumbnailTests.swift
+[77/85] Compiling KanpanSettingsTests MarketCacheTests.swift
+[78/85] Compiling KanpanSettingsTests PrefsDefaultsTests.swift
+[79/85] Compiling KanpanSettingsTests PrefsPersistenceTests.swift
+[80/85] Compiling KanpanSettingsTests PrefsColorTests.swift
+[81/85] Emitting module KanpanSettingsTests
+[82/85] Compiling KanpanSettingsTests ChartFoundationPrefsTests.swift
+[83/85] Compiling KanpanSettingsTests PrefsToleranceTests.swift
+[84/87] Compiling KanpanSettingsPackageTests runner.swift
+[85/87] Emitting module KanpanSettingsPackageTests
+[85/87] Write Objects.LinkFileList
+[86/87] Linking KanpanSettingsPackageTests
+Build complete! (17.20s)
+Test Suite 'All tests' started at 2026-09-15 01:55:51.036.
+Test Suite 'All tests' passed at 2026-09-15 01:55:51.040.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.004) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "默认值" started.
+◇ Suite "API 域名" started.
+◇ Suite "指标草稿与图表设置" started.
+◇ Suite "版本与合并" started.
+◇ Suite "容错" started.
+◇ Suite "指标" started.
+◇ Suite "风格缩略图" started.
+◇ Suite "清缓存" started.
+◇ Suite "周期表" started.
+◇ Test "抄来的地址能normalize" started.
+◇ Test "全部新增设置落盘并容错读取" started.
+◇ Test "每个指标的默认参数直接取 Core，不另抄一份" started.
+◇ Test "常用指标取消不改原值、保存连同输出和阈值生效" started.
+◇ Suite "参数规则" started.
+◇ Suite "涨跌对调" started.
+◇ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" started.
+◇ Test "默认就是 fapi.binance.com" started.
+◇ Test "形状不对的都要拒绝，并且不写进设置" started.
+◇ Test "副图高度默认「中」" started.
+◇ Test "坏档进 store：能起来，而且不会把坏档留在盘上" started.
+◇ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" started.
+◇ Test "字段类型全错 → 逐项退回默认，不是整档作废" started.
+◇ Test "保留五副图的选择顺序" started.
+◇ Test "参数越界 / 个数不对 → 夹回区间并补齐" started.
+◇ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" started.
+◇ Test "「图表」的三个开关：类型不对退回默认" started.
+◇ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" started.
+◇ Test "全新安装的一份（A6.4「首次安装即如此」）" started.
+◇ Test "不是 JSON / 是别的 JSON → 默认，不抛" started.
+◇ Test "副图高度：认不出的档丢掉" started.
+◇ Test "认不出来的枚举值 → 那一项取默认" started.
+◇ Test "合法域名写得进去，往返后还在" started.
+◇ Test "常用行：去重、认不出的丢掉、超过 8 档截断、空数组不生效" started.
+◇ Test "改参数只影响那一个指标" started.
+◇ Suite "持久化" started.
+◇ Test "体积文案" started.
+◇ Test "没有存档 → 全新安装的默认" started.
+◇ Test "域名：修得好就修，修不好退回默认" started.
+◇ Test "目录本来就不存在 → 量出 0，清也不报错" started.
+◇ Test "副图高度三档" started.
+◇ Test "清完三处都没了，数字归零；沙盒里别的东西不动" started.
+◇ Test "store 清完会重新量，并给一句回执" started.
+◇ Test "量出来的是那三处，分三笔报" started.
+◇ Test "主图叠加随便开几个，按打开先后排" started.
+◇ Test "拖动排序" started.
+◇ Test "七个副图可同时选择，移除保留其余顺序" started.
+◇ Test "不读取旧原型存档" started.
+◇ Test "数据层没接上就如实说没接上，不报假的 0" started.
+◇ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" started.
+◇ Test "常用行 6 档，与原型 QUICK 相同" started.
+◇ Test "常用行增删：最多 8 档、至少留 1 档，且按 14 档的顺序排" started.
+◇ Test "越界赋值被夹住；越界下标被忽略" started.
+◇ Test "步进器按不出非法值" started.
+◇ Test "开关能存下来" started.
+◇ Test "0、负数、超上限都要有拒绝理由" started.
+◇ Test "只动涨跌两色，其余令牌一个不变" started.
+◇ Test "默认绿涨红跌" started.
+◇ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" started.
+◇ Test "打开之后涨红跌绿，浅深都对调" started.
+✔ Test "保留五副图的选择顺序" passed after 0.001 seconds.
+✔ Test "副图高度默认「中」" passed after 0.001 seconds.
+✔ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" passed after 0.001 seconds.
+✔ Test "形状不对的都要拒绝，并且不写进设置" passed after 0.001 seconds.
+✔ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" passed after 0.001 seconds.
+✔ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" passed after 0.001 seconds.
+✔ Test "默认就是 fapi.binance.com" passed after 0.001 seconds.
+✔ Test "「图表」的三个开关：类型不对退回默认" passed after 0.001 seconds.
+✔ Test "常用指标取消不改原值、保存连同输出和阈值生效" passed after 0.001 seconds.
+✔ Test "字段类型全错 → 逐项退回默认，不是整档作废" passed after 0.001 seconds.
+✔ Test "认不出来的枚举值 → 那一项取默认" passed after 0.001 seconds.
+◇ Test "十二款都能画出来，而且两两不同" started.
+✔ Test "副图高度：认不出的档丢掉" passed after 0.001 seconds.
+✔ Test "参数越界 / 个数不对 → 夹回区间并补齐" passed after 0.001 seconds.
+✔ Test "常用行：去重、认不出的丢掉、超过 8 档截断、空数组不生效" passed after 0.001 seconds.
+◇ Test "JSON 里存的是 rawValue，人能读，不是交错数组" started.
+◇ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" started.
+◇ Test "恢复默认把键抹掉" started.
+◇ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" started.
+✔ Test "抄来的地址能normalize" passed after 0.001 seconds.
+◇ Test "重开一个 store 读回同一份" started.
+✔ Test "每个指标的默认参数直接取 Core，不另抄一份" passed after 0.001 seconds.
+✔ Test "全部新增设置落盘并容错读取" passed after 0.001 seconds.
+◇ Test "没真改动就不落盘" started.
+◇ Test "改完全部 → 杀 app → 重开逐项相等" started.
+✔ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" passed after 0.001 seconds.
+✔ Test "没有存档 → 全新安装的默认" passed after 0.001 seconds.
+✔ Test "全新安装的一份（A6.4「首次安装即如此」）" passed after 0.002 seconds.
+✔ Test "主图叠加随便开几个，按打开先后排" passed after 0.001 seconds.
+✔ Test "体积文案" passed after 0.001 seconds.
+✔ Test "副图高度三档" passed after 0.001 seconds.
+✔ Test "数据层没接上就如实说没接上，不报假的 0" passed after 0.001 seconds.
+✔ Test "改参数只影响那一个指标" passed after 0.001 seconds.
+✔ Test "不是 JSON / 是别的 JSON → 默认，不抛" passed after 0.001 seconds.
+✔ Test "拖动排序" passed after 0.001 seconds.
+✔ Test "坏档进 store：能起来，而且不会把坏档留在盘上" passed after 0.002 seconds.
+✔ Test "七个副图可同时选择，移除保留其余顺序" passed after 0.001 seconds.
+✔ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" passed after 0.001 seconds.
+✔ Test "常用行 6 档，与原型 QUICK 相同" passed after 0.001 seconds.
+✔ Test "合法域名写得进去，往返后还在" passed after 0.002 seconds.
+✔ Test "域名：修得好就修，修不好退回默认" passed after 0.001 seconds.
+✔ Test "0、负数、超上限都要有拒绝理由" passed after 0.001 seconds.
+✔ Test "只动涨跌两色，其余令牌一个不变" passed after 0.001 seconds.
+✔ Test "打开之后涨红跌绿，浅深都对调" passed after 0.001 seconds.
+✔ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" passed after 0.001 seconds.
+✔ Test "开关能存下来" passed after 0.001 seconds.
+✔ Test "默认绿涨红跌" passed after 0.001 seconds.
+✔ Suite "默认值" passed after 0.002 seconds.
+✔ Suite "指标草稿与图表设置" passed after 0.002 seconds.
+✔ Test "步进器按不出非法值" passed after 0.001 seconds.
+✔ Suite "指标" passed after 0.002 seconds.
+✔ Suite "容错" passed after 0.002 seconds.
+✔ Suite "API 域名" passed after 0.002 seconds.
+✔ Suite "涨跌对调" passed after 0.002 seconds.
+✔ Test "越界赋值被夹住；越界下标被忽略" passed after 0.001 seconds.
+✔ Test "常用行增删：最多 8 档、至少留 1 档，且按 14 档的顺序排" passed after 0.001 seconds.
+✔ Test "改完全部 → 杀 app → 重开逐项相等" passed after 0.001 seconds.
+✔ Suite "周期表" passed after 0.002 seconds.
+✔ Suite "参数规则" passed after 0.002 seconds.
+✔ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" passed after 0.001 seconds.
+✔ Test "JSON 里存的是 rawValue，人能读，不是交错数组" passed after 0.001 seconds.
+✔ Test "目录本来就不存在 → 量出 0，清也不报错" passed after 0.002 seconds.
+✔ Test "不读取旧原型存档" passed after 0.003 seconds.
+✔ Suite "版本与合并" passed after 0.004 seconds.
+✔ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" passed after 0.002 seconds.
+✔ Test "恢复默认把键抹掉" passed after 0.002 seconds.
+✔ Test "没真改动就不落盘" passed after 0.002 seconds.
+✔ Test "清完三处都没了，数字归零；沙盒里别的东西不动" passed after 0.004 seconds.
+✔ Test "重开一个 store 读回同一份" passed after 0.003 seconds.
+✔ Suite "持久化" passed after 0.005 seconds.
+✔ Test "量出来的是那三处，分三笔报" passed after 0.005 seconds.
+✔ Test "十二款都能画出来，而且两两不同" passed after 0.224 seconds.
+◇ Test "涨跌对调之后缩略图跟着换色（A6.7 不漏这一处）" started.
+✔ Test "涨跌对调之后缩略图跟着换色（A6.7 不漏这一处）" passed after 0.012 seconds.
+◇ Test "出一张十二款并排的图，存到 docs/acceptance/M6/" started.
+✔ Test "store 清完会重新量，并给一句回执" passed after 0.510 seconds.
+✔ Test "出一张十二款并排的图，存到 docs/acceptance/M6/" passed after 0.272 seconds.
+✔ Suite "风格缩略图" passed after 0.511 seconds.
+✔ Suite "清缓存" passed after 0.511 seconds.
+✔ Test run with 57 tests in 12 suites passed after 0.511 seconds.
+cd Kanpan/Diagnostics && swift test 
+Building for debugging...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.28s)
+Test Suite 'All tests' started at 2026-09-15 01:55:53.197.
+Test Suite 'All tests' passed at 2026-09-15 01:55:53.200.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.002) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "MetricKit 摘要" started.
+◇ Suite "分位数" started.
+◇ Suite "直方图" started.
+◇ Suite "帧统计" started.
+◇ Suite "诊断中枢" started.
+◇ Suite "帧报告落盘" started.
+◇ Suite "带单位字符串解析" started.
+◇ Suite "诊断落盘" started.
+◇ Test "JSON 坏掉返回 nil，不是返回一个空摘要" started.
+◇ Test "四个数组全空 = 干净的一天" started.
+◇ Test "存储单位的直方图走 KB 口径" started.
+◇ Test "摘要能 Codable 往返" started.
+◇ Test "空数组返回 nil" started.
+◇ Test "旧键名 histogrammedTimeToFirstDraw 也认" started.
+◇ Test "每日指标 payload 抽出启动、挂起、磁盘三项" started.
+◇ Test "桶乱序进来也要按 start 排好" started.
+◇ Test "报告能 Codable 往返，allPassed 进得了 JSON" started.
+◇ Test "排队延迟和绘制耗时分开记" started.
+◇ Test "桶边界解析不了就整桶丢掉，不是当 0" started.
+◇ Test "没有 terminationReason 时退回信号号码，不留空" started.
+◇ Test "每帧 4ms：P9.3 的 P99 < 3ms 判不过" started.
+◇ Test "满帧 120Hz、每帧 1ms：hitch 为 0，三条预算全过" started.
+◇ Test "占比达标但有一次长卡顿，worstHitch 要把它顶出来" started.
+◇ Test "重复 start 是幂等的" started.
+◇ Test "注入的假 payload 走的是和真回调同一条路" started.
+◇ Test "分位数取命中桶的中点" started.
+◇ Test "采集中途从 120Hz 降到 60Hz，不能把降频后每一帧都算成掉帧" started.
+◇ Test "崩溃 payload 数得出条数和终止原因" started.
+◇ Test "卡一次 3 帧：hitch 时长、丢帧数、占比都对得上" started.
+◇ Test "线性插值口径，和 numpy 默认一致" started.
+◇ Test "没采到帧 / 只采到一帧：不崩，也不谎报通过" started.
+◇ Test "没单位按默认单位算，负数和小数都收" started.
+◇ Test "JSON 里已经是数字时直接收下" started.
+◇ Test "`2 ms` 不能被 `s` 抢先命中" started.
+◇ Test "标签里的空格和斜杠不会变成路径" started.
+◇ Test "整批导出：有一段没判定，整批就是 nil" started.
+◇ Test "存储单位是 1000 进制，和 MXUnitStorage 一致" started.
+◇ Test "中位数过但长尾超：P99 判不过，中位数判过" started.
+◇ Test "存进去读出来是同一份" started.
+◇ Test "解析不了返回 nil，绝不返回 0" started.
+◇ Test "收一份 metric payload：原文和摘要都在盘上" started.
+◇ Test "文件名按毫秒时间戳排，ls 出来就是时间序" started.
+◇ Test "±20% 的帧间隔抖动不算 hitch" started.
+◇ Test "只有一个样本时所有分位数都是它" started.
+◇ Test "条数超上限，从最旧的开始删" started.
+◇ Test "一条记录都没有时 crashFree 是 nil，不是 true" started.
+◇ Test "时间单位逐个换算到毫秒" started.
+◇ Test "写导出文件 + 占用字节 + 清空" started.
+◇ Test "导出汇总：崩溃数、最坏启动 p50、最近磁盘写入" started.
+◇ Test "字节超上限也删最旧的，但最新那条永远留着" started.
+◇ Test "超上限删最旧的" started.
+◇ Test "挂起 / 磁盘 / CPU / 启动四类各归各位" started.
+◇ Test "空直方图不产出任何数" started.
+◇ Test "JSON 坏掉照样存字节，退到 base64" started.
+◇ Test "原文里我们不看的字段也一个不少地留着" started.
+✔ Test "空数组返回 nil" passed after 0.005 seconds.
+✔ Test "四个数组全空 = 干净的一天" passed after 0.009 seconds.
+✔ Test "JSON 坏掉返回 nil，不是返回一个空摘要" passed after 0.010 seconds.
+✔ Test "旧键名 histogrammedTimeToFirstDraw 也认" passed after 0.011 seconds.
+✔ Test "桶边界解析不了就整桶丢掉，不是当 0" passed after 0.011 seconds.
+✔ Test "每日指标 payload 抽出启动、挂起、磁盘三项" passed after 0.011 seconds.
+✔ Test "排队延迟和绘制耗时分开记" passed after 0.011 seconds.
+✔ Test "每帧 4ms：P9.3 的 P99 < 3ms 判不过" passed after 0.011 seconds.
+✔ Test "没有 terminationReason 时退回信号号码，不留空" passed after 0.011 seconds.
+✔ Test "报告能 Codable 往返，allPassed 进得了 JSON" passed after 0.011 seconds.
+✔ Test "分位数取命中桶的中点" passed after 0.011 seconds.
+✔ Test "存储单位的直方图走 KB 口径" passed after 0.011 seconds.
+✔ Test "桶乱序进来也要按 start 排好" passed after 0.011 seconds.
+✔ Test "线性插值口径，和 numpy 默认一致" passed after 0.011 seconds.
+✔ Test "没单位按默认单位算，负数和小数都收" passed after 0.011 seconds.
+✔ Test "没采到帧 / 只采到一帧：不崩，也不谎报通过" passed after 0.011 seconds.
+✔ Test "JSON 里已经是数字时直接收下" passed after 0.011 seconds.
+✔ Test "`2 ms` 不能被 `s` 抢先命中" passed after 0.011 seconds.
+✔ Test "崩溃 payload 数得出条数和终止原因" passed after 0.011 seconds.
+✔ Test "摘要能 Codable 往返" passed after 0.011 seconds.
+✔ Test "满帧 120Hz、每帧 1ms：hitch 为 0，三条预算全过" passed after 0.011 seconds.
+✔ Test "解析不了返回 nil，绝不返回 0" passed after 0.011 seconds.
+✔ Test "存储单位是 1000 进制，和 MXUnitStorage 一致" passed after 0.011 seconds.
+✔ Test "中位数过但长尾超：P99 判不过，中位数判过" passed after 0.011 seconds.
+✔ Test "采集中途从 120Hz 降到 60Hz，不能把降频后每一帧都算成掉帧" passed after 0.011 seconds.
+✔ Test "卡一次 3 帧：hitch 时长、丢帧数、占比都对得上" passed after 0.011 seconds.
+✔ Test "只有一个样本时所有分位数都是它" passed after 0.011 seconds.
+✔ Test "文件名按毫秒时间戳排，ls 出来就是时间序" passed after 0.011 seconds.
+✔ Test "±20% 的帧间隔抖动不算 hitch" passed after 0.011 seconds.
+✔ Test "时间单位逐个换算到毫秒" passed after 0.011 seconds.
+✔ Test "重复 start 是幂等的" passed after 0.011 seconds.
+✔ Test "存进去读出来是同一份" passed after 0.011 seconds.
+✔ Test "一条记录都没有时 crashFree 是 nil，不是 true" passed after 0.011 seconds.
+✔ Test "挂起 / 磁盘 / CPU / 启动四类各归各位" passed after 0.011 seconds.
+✔ Test "空直方图不产出任何数" passed after 0.011 seconds.
+✔ Test "超上限删最旧的" passed after 0.011 seconds.
+✔ Test "占比达标但有一次长卡顿，worstHitch 要把它顶出来" passed after 0.011 seconds.
+✔ Test "整批导出：有一段没判定，整批就是 nil" passed after 0.011 seconds.
+✔ Suite "分位数" passed after 0.012 seconds.
+✔ Test "标签里的空格和斜杠不会变成路径" passed after 0.011 seconds.
+✔ Suite "MetricKit 摘要" passed after 0.012 seconds.
+✔ Suite "直方图" passed after 0.012 seconds.
+✔ Test "收一份 metric payload：原文和摘要都在盘上" passed after 0.011 seconds.
+✔ Test "JSON 坏掉照样存字节，退到 base64" passed after 0.011 seconds.
+✔ Suite "帧报告落盘" passed after 0.012 seconds.
+✔ Suite "带单位字符串解析" passed after 0.012 seconds.
+✔ Suite "帧统计" passed after 0.012 seconds.
+✔ Test "注入的假 payload 走的是和真回调同一条路" passed after 0.012 seconds.
+✔ Suite "诊断中枢" passed after 0.012 seconds.
+✔ Test "写导出文件 + 占用字节 + 清空" passed after 0.016 seconds.
+✔ Test "原文里我们不看的字段也一个不少地留着" passed after 0.016 seconds.
+✔ Test "字节超上限也删最旧的，但最新那条永远留着" passed after 0.020 seconds.
+✔ Test "导出汇总：崩溃数、最坏启动 p50、最近磁盘写入" passed after 0.022 seconds.
+✔ Test "条数超上限，从最旧的开始删" passed after 0.030 seconds.
+✔ Suite "诊断落盘" passed after 0.031 seconds.
+✔ Test run with 47 tests in 8 suites passed after 0.032 seconds.

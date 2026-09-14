@@ -1,0 +1,3 @@
+end: The operation couldn’t be completed. Socket is not connected
+endpoint: wss://fstream.binance.com/stream?streams=btcusdt@kline_1m/btcusdt@ticker/btcusdt@markPrice@1s
+counts: [:] firstSeconds: [:] lastSeconds: [:]

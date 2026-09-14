@@ -1,0 +1,57 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "3749DE35-5582-4066-8C14-9767B5559B70",
+        "deviceName" : "iPhone 15",
+        "modelName" : "iPhone 15",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 2,
+      "passedTests" : 1,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "Kanpan · Built with macOS 26.5.1",
+  "expectedFailures" : 0,
+  "failedTests" : 2,
+  "finishTime" : 1789421352.838,
+  "passedTests" : 1,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1789421171.807,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "Failed to get matching snapshot: No matches found for Elements matching predicate '\"favorites.group.加密\" IN identifiers' from input {(\n    Button, identifier: 'top.symbol', label: '换品种，当前 BTCUSDT',\n    Button, identifier: 'top.search', label: '搜索品种', value: 0,\n    Button, identifier: 'top.star', label: '移出自选', value: 0,\n    Button, identifier: 'interval.draw', label: '画线',\n    Button, identifier: 'interval.more', label: '更多',\n    Button, identifier: 'interval.chart', label: '图表',\n    Button, identifier: 'bottom.style', label: '风格',\n    Button, identifier: 'bottom.indicator', label: '指标',\n    Button, identifier: 'bottom.favorites', label: '自选',\n    Button, identifier: 'bottom.settings', label: '设置',\n    Button, identifier: 'bottom.landscape', label: '横屏',\n    Button, identifier: 'interval.chip.1m', label: '1 分钟',\n    Button, identifier: 'interval.chip.5m', label: '5 分钟',\n    Button, identifier: 'interval.chip.15m', label: '15 分钟',\n    Button, identifier: 'interval.chip.1h', label: '1 小时', Selected,\n    Button, identifier: 'interval.chip.4h', label: '4 小时',\n    Button, identifier: 'interval.chip.1d', label: '1 天',\n    Button, identifier: 'favorites.groups', label: '加密，2个品种', Selected,\n    Button, identifier: 'favorites.groups', label: '美股，1个品种',\n    Button, identifier: 'favorites.groups', label: '贵金属，1个品种',\n    Button, identifier: 'favorites.add', label: '添加品种',\n    Button, identifier: 'favorites.more', label: '更多分类与管理',\n    Button, label: '品种',\n    Button, label: '成交额',\n    Button, label: '价格',\n    Button, identifier: 'arrow.left.arrow.right', label: '切换涨跌额与涨跌幅',\n    Button, label: '24H涨跌幅',\n    Button,\n    Button, identifier: 'favorites.open.BTCUSDT',\n    Button, identifier: 'favorites.expand.BTCUSDT', label: '展开详情',\n    Button, identifier: 'favorites.open.ETHUSDT',\n    Button, identifier: 'favorites.expand.ETHUSDT', label: '展开详情'\n)}\nPossibly caused by runtime issues:\nAutomation type mismatch: computed Button from legacy attributes vs PopUpButton from modern attribute. Input attributes and values: {\n    \"XC_kAXXCAttributeAutomationType\" = 14;\n    \"XC_kAXXCAttributeElementBaseType\" = UIResponder;\n    \"XC_kAXXCAttributeElementType\" = \"SwiftUI.AccessibilityNode\";\n    \"XC_kAXXCAttributeTraits\" = 1108101562369;\n}\nAutomation type mismatch: computed Other from legacy attributes vs Button from modern attribute. Input attributes and values: {\n    \"XC_kAXXCAttributeAutomationType\" = 9;\n    \"XC_kAXXCAttributeElementBaseType\" = UIResponder;\n    \"XC_kAXXCAttributeElementType\" = \"SwiftUI.AccessibilityNode\";\n    \"XC_kAXXCAttributeTraits\" = 8589934592;\n}\nSee test report attachments for more detail.",
+      "targetName" : "KanpanUITests",
+      "testIdentifier" : 1,
+      "testIdentifierString" : "ChartFoundationUITests/testFavoritesCategoryOverflow()",
+      "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/ChartFoundationUITests/testFavoritesCategoryOverflow",
+      "testName" : "testFavoritesCategoryOverflow()"
+    },
+    {
+      "failureText" : "XCTAssertEqualWithAccuracy failed: (\"3.9067055393586005\") is not equal to (\"4.0\") +/- (\"0.02\")",
+      "targetName" : "KanpanUITests",
+      "testIdentifier" : 2,
+      "testIdentifierString" : "ChartFoundationUITests/testLatestQuoteDoesNotRegressAcrossIntervals()",
+      "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/ChartFoundationUITests/testLatestQuoteDoesNotRegressAcrossIntervals",
+      "testName" : "testLatestQuoteDoesNotRegressAcrossIntervals()"
+    }
+  ],
+  "title" : "Test - Kanpan",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 3
+}

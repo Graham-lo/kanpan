@@ -1,0 +1,153 @@
+Building for debugging...
+[0/3] Write sources
+[1/3] Write swift-version--58304C5D6DBC2206.txt
+[3/12] Emitting module KanpanStyleArtTests
+[4/12] Compiling KanpanStyleArtTests StyleThumbnailTests.swift
+[5/12] Compiling KanpanSettingsTests PrefsDefaultsTests.swift
+[6/12] Compiling KanpanSettingsTests PrefsPersistenceTests.swift
+[7/12] Compiling KanpanSettingsTests PrefsToleranceTests.swift
+[8/12] Compiling KanpanSettingsTests PrefsColorTests.swift
+[9/12] Compiling KanpanSettingsTests MarketCacheTests.swift
+[10/12] Emitting module KanpanSettingsTests
+[10/12] Write Objects.LinkFileList
+[11/12] Linking KanpanSettingsPackageTests
+Build complete! (2.48s)
+Test Suite 'All tests' started at 2026-09-14 22:41:43.076.
+Test Suite 'All tests' passed at 2026-09-14 22:41:43.077.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "默认值" started.
+◇ Suite "指标" started.
+◇ Suite "持久化" started.
+◇ Suite "容错" started.
+◇ Suite "周期表" started.
+◇ Suite "清缓存" started.
+◇ Suite "版本与合并" started.
+◇ Suite "涨跌对调" started.
+◇ Suite "API 域名" started.
+◇ Suite "参数规则" started.
+◇ Test "主图叠加随便开几个，按打开先后排" started.
+◇ Test "副图高度三档" started.
+◇ Suite "风格缩略图" started.
+◇ Test "「图表」的三个开关：类型不对退回默认" started.
+◇ Test "字段类型全错 → 逐项退回默认，不是整档作废" started.
+◇ Test "副图开到第四个就按不下去，并且弹原型那句话" started.
+◇ Test "副图高度：认不出的档丢掉" started.
+◇ Test "改参数只影响那一个指标" started.
+◇ Test "拖动排序" started.
+◇ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" started.
+◇ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" started.
+◇ Test "没有存档 → 全新安装的默认" started.
+◇ Test "不是 JSON / 是别的 JSON → 默认，不抛" started.
+◇ Test "坏档进 store：能起来，而且不会把坏档留在盘上" started.
+◇ Test "打开之后涨红跌绿，浅深都对调" started.
+◇ Test "认不出来的枚举值 → 那一项取默认" started.
+◇ Test "副图超过三个 → 截到三个" started.
+◇ Test "开关能存下来" started.
+◇ Test "常用行：去重、认不出的丢掉、超过 8 档截断、空数组不生效" started.
+◇ Test "域名：修得好就修，修不好退回默认" started.
+◇ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" started.
+◇ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" started.
+◇ Test "每个指标的默认参数直接取 Core，不另抄一份" started.
+◇ Test "默认绿涨红跌" started.
+◇ Test "只动涨跌两色，其余令牌一个不变" started.
+◇ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" started.
+◇ Test "副图高度默认「中」" started.
+◇ Test "JSON 里存的是 rawValue，人能读，不是交错数组" started.
+◇ Test "参数越界 / 个数不对 → 夹回区间并补齐" started.
+◇ Test "不读取旧原型存档" started.
+◇ Test "越界赋值被夹住；越界下标被忽略" started.
+◇ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" started.
+◇ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" started.
+◇ Test "全新安装的一份（A6.4「首次安装即如此」）" started.
+◇ Test "常用行增删：最多 8 档、至少留 1 档，且按 14 档的顺序排" started.
+◇ Test "恢复默认把键抹掉" started.
+◇ Test "步进器按不出非法值" started.
+◇ Test "重开一个 store 读回同一份" started.
+◇ Test "目录本来就不存在 → 量出 0，清也不报错" started.
+◇ Test "0、负数、超上限都要有拒绝理由" started.
+◇ Test "数据层没接上就如实说没接上，不报假的 0" started.
+◇ Test "常用行 6 档，与原型 QUICK 相同" started.
+◇ Test "形状不对的都要拒绝，并且不写进设置" started.
+◇ Test "体积文案" started.
+◇ Test "抄来的地址能normalize" started.
+◇ Test "清完三处都没了，数字归零；沙盒里别的东西不动" started.
+◇ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" started.
+◇ Test "量出来的是那三处，分三笔报" started.
+◇ Test "store 清完会重新量，并给一句回执" started.
+◇ Test "默认就是 fapi.binance.com" started.
+◇ Test "合法域名写得进去，往返后还在" started.
+◇ Test "没真改动就不落盘" started.
+◇ Test "改完全部 → 杀 app → 重开逐项相等" started.
+◇ Test "十二款都能画出来，而且两两不同" started.
+✔ Test "副图高度三档" passed after 0.001 seconds.
+✔ Test "主图叠加随便开几个，按打开先后排" passed after 0.001 seconds.
+✔ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" passed after 0.001 seconds.
+✔ Test "副图开到第四个就按不下去，并且弹原型那句话" passed after 0.001 seconds.
+✔ Test "字段类型全错 → 逐项退回默认，不是整档作废" passed after 0.001 seconds.
+✔ Test "拖动排序" passed after 0.001 seconds.
+✔ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" passed after 0.001 seconds.
+✔ Test "没有存档 → 全新安装的默认" passed after 0.001 seconds.
+✔ Test "打开之后涨红跌绿，浅深都对调" passed after 0.001 seconds.
+✔ Test "不是 JSON / 是别的 JSON → 默认，不抛" passed after 0.001 seconds.
+✔ Test "副图超过三个 → 截到三个" passed after 0.001 seconds.
+✔ Test "默认绿涨红跌" passed after 0.001 seconds.
+✔ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" passed after 0.001 seconds.
+✔ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" passed after 0.001 seconds.
+✔ Test "副图高度：认不出的档丢掉" passed after 0.001 seconds.
+✔ Test "认不出来的枚举值 → 那一项取默认" passed after 0.001 seconds.
+✔ Test "「图表」的三个开关：类型不对退回默认" passed after 0.001 seconds.
+✔ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" passed after 0.001 seconds.
+✔ Test "副图高度默认「中」" passed after 0.001 seconds.
+✔ Test "只动涨跌两色，其余令牌一个不变" passed after 0.001 seconds.
+✔ Test "每个指标的默认参数直接取 Core，不另抄一份" passed after 0.001 seconds.
+✔ Test "全新安装的一份（A6.4「首次安装即如此」）" passed after 0.001 seconds.
+✔ Test "参数越界 / 个数不对 → 夹回区间并补齐" passed after 0.001 seconds.
+✔ Test "0、负数、超上限都要有拒绝理由" passed after 0.001 seconds.
+✔ Test "越界赋值被夹住；越界下标被忽略" passed after 0.001 seconds.
+✔ Test "常用行：去重、认不出的丢掉、超过 8 档截断、空数组不生效" passed after 0.001 seconds.
+✔ Test "数据层没接上就如实说没接上，不报假的 0" passed after 0.001 seconds.
+✔ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" passed after 0.001 seconds.
+✔ Test "体积文案" passed after 0.001 seconds.
+✔ Test "常用行增删：最多 8 档、至少留 1 档，且按 14 档的顺序排" passed after 0.001 seconds.
+✔ Test "常用行 6 档，与原型 QUICK 相同" passed after 0.001 seconds.
+✔ Test "JSON 里存的是 rawValue，人能读，不是交错数组" passed after 0.001 seconds.
+✔ Test "抄来的地址能normalize" passed after 0.001 seconds.
+✔ Test "域名：修得好就修，修不好退回默认" passed after 0.001 seconds.
+✔ Test "开关能存下来" passed after 0.001 seconds.
+✔ Test "改参数只影响那一个指标" passed after 0.001 seconds.
+✔ Test "形状不对的都要拒绝，并且不写进设置" passed after 0.001 seconds.
+✔ Test "步进器按不出非法值" passed after 0.001 seconds.
+✔ Test "默认就是 fapi.binance.com" passed after 0.001 seconds.
+✔ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" passed after 0.001 seconds.
+✔ Test "改完全部 → 杀 app → 重开逐项相等" passed after 0.001 seconds.
+✔ Test "坏档进 store：能起来，而且不会把坏档留在盘上" passed after 0.001 seconds.
+✔ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" passed after 0.001 seconds.
+✔ Test "不读取旧原型存档" passed after 0.001 seconds.
+✔ Suite "指标" passed after 0.001 seconds.
+✔ Suite "参数规则" passed after 0.001 seconds.
+✔ Suite "涨跌对调" passed after 0.001 seconds.
+✔ Suite "版本与合并" passed after 0.001 seconds.
+✔ Test "恢复默认把键抹掉" passed after 0.001 seconds.
+✔ Suite "周期表" passed after 0.001 seconds.
+✔ Test "合法域名写得进去，往返后还在" passed after 0.001 seconds.
+✔ Suite "默认值" passed after 0.002 seconds.
+✔ Suite "容错" passed after 0.001 seconds.
+✔ Suite "API 域名" passed after 0.001 seconds.
+✔ Test "重开一个 store 读回同一份" passed after 0.001 seconds.
+✔ Test "目录本来就不存在 → 量出 0，清也不报错" passed after 0.001 seconds.
+✔ Test "没真改动就不落盘" passed after 0.002 seconds.
+✔ Suite "持久化" passed after 0.003 seconds.
+✔ Test "清完三处都没了，数字归零；沙盒里别的东西不动" passed after 0.003 seconds.
+✔ Test "量出来的是那三处，分三笔报" passed after 0.003 seconds.
+✔ Test "十二款都能画出来，而且两两不同" passed after 0.095 seconds.
+◇ Test "涨跌对调之后缩略图跟着换色（A6.7 不漏这一处）" started.
+✔ Test "涨跌对调之后缩略图跟着换色（A6.7 不漏这一处）" passed after 0.003 seconds.
+◇ Test "出一张十二款并排的图，存到 docs/acceptance/M6/" started.
+✔ Test "store 清完会重新量，并给一句回执" passed after 0.099 seconds.
+✔ Suite "清缓存" passed after 0.100 seconds.
+✔ Test "出一张十二款并排的图，存到 docs/acceptance/M6/" passed after 0.119 seconds.
+✔ Suite "风格缩略图" passed after 0.219 seconds.
+✔ Test run with 55 tests in 11 suites passed after 0.219 seconds.

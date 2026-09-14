@@ -1,0 +1,58 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun DerivedData-chart-foundation-device/Build/Products/Kanpan-user-favorites.xctestrun -destination platform=iOS,id=00008140-00010C902690801C -parallel-testing-enabled NO -resultBundlePath docs/acceptance/AICoin-base/foundation/user-foreground-shared.xcresult "-only-testing:KanpanUITests/ChartFoundationUITests/testUserSessionFreshQuotesAndReorder"
+
+2026-09-15 03:25:54.873 xcodebuild[36195:32354981] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-foreground-shared.xcresult
+
+2026-09-15 03:25:54.878 xcodebuild[36195:32354981] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 03:25:54.973 xcodebuild[36195:32354981] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 03:25:55.382 xcodebuild[36195:32354981] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS, arch:arm64e, id:00008140-00010C902690801C, name:iPhone }
+{ platform:iOS, arch:arm64, id:00008140-00010C902690801C, name:iPhone }
+2026-09-15 03:25:56.604 xcodebuild[36195:32354981] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 03:25:56.762 xcodebuild[36195:32354981] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 03:25:59.019836+0800 KanpanUITests-Runner[2039:342127] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-15 03:25:59.385.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-15 03:25:59.386.
+Test Suite 'ChartFoundationUITests' started at 2026-09-15 03:25:59.386.
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionFreshQuotesAndReorder]' started.
+    t =     0.00s Start Test at 2026-09-15 03:25:59.387
+    t =     0.01s Set Up
+    t =     0.01s     Setting device orientation to Portrait
+    t =     0.01s         Device orientation changed to Portrait
+    t =     0.02s         Wait for com.mdd.kanpan to idle
+/Users/mdd/zhk/kanpan/Kanpan/KanpanUITests/ChartFoundationUITests.swift:390: -[KanpanUITests.ChartFoundationUITests testUserSessionFreshQuotesAndReorder] : Test skipped
+    t =     0.03s Tear Down
+    t =     0.03s     Find the Target Application 'com.mdd.kanpan'
+    t =     0.03s         Requesting snapshot of accessibility hierarchy for app with pid 2009
+2026-09-15 03:25:59.549 xcodebuild[36195:32354981] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+    t =     0.16s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =     0.16s     Requesting snapshot of accessibility hierarchy for app with pid 2009
+    t =     0.24s     Requesting snapshot of accessibility hierarchy for app with pid 2009
+    t =     0.30s     Find the "chart.canvas" Other
+    t =     0.30s         Requesting snapshot of accessibility hierarchy for app with pid 2009
+    t =     0.33s         Find: Descendants matching type Other
+    t =     0.33s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     0.33s     Added attachment of type 'public.plain-text'
+    t =     0.33s     Terminate com.mdd.kanpan:2009
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionFreshQuotesAndReorder]' skipped (1.426 seconds).
+Test Suite 'ChartFoundationUITests' passed at 2026-09-15 03:26:00.813.
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 1.426 (1.427) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-15 03:26:00.814.
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 1.426 (1.428) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 03:26:00.816.
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 1.426 (1.430) seconds
+2026-09-15 03:26:00.949 xcodebuild[36195:32354981] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 03:26:01.112 xcodebuild[36195:32354981] [MT] IDETestOperationsObserverDebug: 4.507 elapsed -- Testing started completed.
+2026-09-15 03:26:01.112 xcodebuild[36195:32354981] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 03:26:01.112 xcodebuild[36195:32354981] [MT] IDETestOperationsObserverDebug: 4.507 sec, +4.507 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-foreground-shared.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

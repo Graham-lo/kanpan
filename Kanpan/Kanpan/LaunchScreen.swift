@@ -4,9 +4,9 @@ import KanpanCore
 /// M0 的空壳首屏：纯色 + 「看盘」两字（§13 A0.3）。
 /// 颜色取自 `KanpanCore` 的靛配色，顺带验证 app target 确实链上了 Core。
 struct LaunchScreen: View {
-  @Environment(\.colorScheme) private var scheme
+  @Environment(\.panelTheme) private var theme
 
-  private var seed: PaletteSeed { scheme == .dark ? Palette.darkSeed : Palette.lightSeed }
+  private var seed: PaletteSeed { theme.seed }
 
   var body: some View {
     ZStack {

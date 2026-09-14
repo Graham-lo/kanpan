@@ -1,0 +1,462 @@
+{
+  "status": "scoped_common_indicator_and_settings_research_completed_with_gesture_limits",
+  "capture_count": 53,
+  "captures": [
+    {
+      "file": "iphone-live-01-baseline-1h.png",
+      "sha256": "a2b891f976b85ce0ba3af2e9b2f8a3cd60f298cc83a8ec352188459c7f581bc3",
+      "bytes": 84799,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-02-period-4h.png",
+      "sha256": "b10aeae23c36590ec5ec2a750ccd67578964bdb8e9970dcbea2f2339da819ce1",
+      "bytes": 80646,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-03-cross-main.png",
+      "sha256": "2d9b6d24c74fa61cb8ac1f10a9b0655421e780a2f83bab52aa9e77defc273eed",
+      "bytes": 84699,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-04-cross-oi.png",
+      "sha256": "ef6e9fba9d063c6ba77338b4e3edb40e53a7c0096c852d4e8c4f1faf9c3e197b",
+      "bytes": 84922,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-05-landscape-4h.png",
+      "sha256": "ab5f0f56cdc1957b0394c0f4c3751a9a388d40715e6f67cf39034f653a244290",
+      "bytes": 68597,
+      "width": 890,
+      "height": 448,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-06-original-subselection.png",
+      "sha256": "2d7f557b91b56ba49533243f65ccaa8ded9233bfd5180fa87f279fbeb9f7c790",
+      "bytes": 75880,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-07-five-subselection.png",
+      "sha256": "8ffc0ed3d5b56a9aa376bbbbd55291d6f11c768396d531e1f2a22c5705597872",
+      "bytes": 77421,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-08-five-pane-overflow.png",
+      "sha256": "fee08113b00c74901699bed14d321810ceaf8a988c1f40a509548d8a696bfd92",
+      "bytes": 80769,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-09-kdj-menu.png",
+      "sha256": "d74407325cd0d123a64d0e1ad472ba33c8481abfb8dce8a20236a53437fb8ef3",
+      "bytes": 81036,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-10-kdj-moved.png",
+      "sha256": "0a6cda161bf8d90dbecc066485e8728391fb24071a226fa724a13d345880364f",
+      "bytes": 82950,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-11-kdj-settings-original.png",
+      "sha256": "26275614030744448d465e0eb5dcea61c15ff2b01af8a801b3e655f6a4df26e4",
+      "bytes": 40104,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-12-kdj-unsaved-9-3-4.png",
+      "sha256": "6be5da764ce9b3beee03aabff2b3fbe190e18f5444721b58b296d25626b46305",
+      "bytes": 40030,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-13-kdj-j-off.png",
+      "sha256": "5f441e5490653fb4250b3916c5c9adcf7c7b4b23947ec2ee00383758cce9c046",
+      "bytes": 80566,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-14-kdj-restored.png",
+      "sha256": "984c6c236512ddc995bb22eed85cfacaa80b08b94af77d3cf9219e69bd054aa4",
+      "bytes": 78782,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-15-rsi-baseline.png",
+      "sha256": "811a738471a09560dd9eda6e79312394ae1d4d9cf892f1eb7b594dea9664eb99",
+      "bytes": 82624,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-16-rsi-history-cross.png",
+      "sha256": "f530b5a22d39699b3026c81c6317201fb809abfba556718bc45f84962c80a434",
+      "bytes": 84874,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-17-rsi-last-pane-menu.png",
+      "sha256": "3ae6a46c7eb3ff8b1c9edcdc9de4afedc7cfd0e83d02c5dc3d4fa8fcb8069052",
+      "bytes": 85138,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-18-rsi-settings-original.png",
+      "sha256": "2456b563e150a2c09b2a525cfb1f6e812fb83602f5686e7f4067f2f87a1164f6",
+      "bytes": 42266,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-19-rsi-upper-80.png",
+      "sha256": "546f434fa26b3b9a7bff42816f3ec02a0cd5186f9db10eb7c31a176678058da8",
+      "bytes": 80669,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-20-rsi-restored-normal.png",
+      "sha256": "8d1ece665a7ae23c567d7f343554e14bb570989d7aad00facef2cf54c4d0dc52",
+      "bytes": 81156,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-21-main-inverted-subs-normal.png",
+      "sha256": "5b99bd49394c41d1711866e726abd4a3c95223c4200c3483d1f87cf438575658",
+      "bytes": 81188,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-22-rsi-axis-no-flip.png",
+      "sha256": "cc5351bff518aa1981ed470dd987e8777b315f011d4b204ba2488b0e615e4429",
+      "bytes": 80807,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-23-ma-on-4h.png",
+      "sha256": "dd6e8e90e885abe1a9af368d2310cd209da79d089fb2580a37f176283505713b",
+      "bytes": 78817,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-24-ma-off-4h.png",
+      "sha256": "2e84d2488740f657ea10f42c1d9e9102ae4d247f3afb59f19f0845e075131211",
+      "bytes": 76071,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-25-ema-settings-blank.png",
+      "sha256": "9cf28e1238ad0603d6b0939cfb1745663af74ac534b0dd271e371eebd9ee2d2e",
+      "bytes": 21292,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-26-ema-on-4h.png",
+      "sha256": "dfe4f0958451e389dc4a17e65eb5ff8f184edb62523362d309e78c55ae70c1b4",
+      "bytes": 82361,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-27-restored-1h-ma-vol-oi-macd.png",
+      "sha256": "6e4c4ecd04da9754274f86a647d3561fa9904cbed71f0bfca0f599611ac91ff7",
+      "bytes": 79481,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-28-settings-original-top.png",
+      "sha256": "46f15800058d871f4a3c3749e03328b57eafd66c2b986030fcf646565ca21ab1",
+      "bytes": 76609,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-29-height-low.png",
+      "sha256": "dbea467188f72e6a34fc8c1253bdb82c0da85e70e6e243ea055a19ab4fae2e34",
+      "bytes": 89024,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-30-height-high.png",
+      "sha256": "5cdd7220549f0c4790eda6a60b4bb4d738d64f09a8f78f61270c442bd7bae95e",
+      "bytes": 76938,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-31-height-restored-settings.png",
+      "sha256": "705ee5cc1f5c51ee653468bfde08056ec2c88c45a746dbb12ce51ecdcc2aeadd",
+      "bytes": 71316,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-32-anchor-right-before.png",
+      "sha256": "2260486f443faec75866175136cc6bbefcfbdc90fca8a39d430d70673250363f",
+      "bytes": 82871,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-33-anchor-center-no-immediate-shift.png",
+      "sha256": "f1c6779d11eedd09fd6c3d6b92bc9816dae4642f7000f5585a748a9dd0e59839",
+      "bytes": 83913,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-34-anchor-left-no-immediate-shift.png",
+      "sha256": "62859cc3f658f87c07e2f542204f83fcf9cf8deaaa03797e45834ef9221047d0",
+      "bytes": 83571,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-35-linear-axis.png",
+      "sha256": "6c23b64a0a451899c4b69d377838d06c71657af3f468ddaac4f3aab227eb3632",
+      "bytes": 84961,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-36-percent-axis.png",
+      "sha256": "148550c634f834fa3cf6a479eaa470cd55814c04e0f3037cde51183b78453fdd",
+      "bytes": 84059,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-37-cross-selected-price.png",
+      "sha256": "c5af6b460f45bdaf2a388f10d5381aca98d60d6f0d042182577aa86544370074",
+      "bytes": 88772,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-38-cross-close-mode.png",
+      "sha256": "3ea4381e664baa109e848b41182197987cc52f36340ecdccb5b4be655c0f6184",
+      "bytes": 87871,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-39-data-top.png",
+      "sha256": "396ca2e3b188a57b42bc8bcf719dec4c4650b9b31528cc72ed4f1993bd14d121",
+      "bytes": 85022,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-40-follow-card-left-selection.png",
+      "sha256": "93d00d4e7cfbf14ffcaa64594367310c8d9c388ed4c8f2469ac0145334a394af",
+      "bytes": 84338,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-41-follow-card-right-selection.png",
+      "sha256": "a7b00982dd47bf8a2f319673b6bd6c74feb3ca2f1b60c0e6f6ce52a496fffd03",
+      "bytes": 84509,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-42-follow-card-x194.png",
+      "sha256": "b125699d97b90c1853a669fd960dd84e37be26ba060ba404b5c02874f5cb9b5f",
+      "bytes": 84261,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-43-follow-card-x222.png",
+      "sha256": "d455fc7b9304d000d6630f7b30a73225889f9c412e860350d1f4382f51cc88c5",
+      "bytes": 84727,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-44-settings-lower-original.png",
+      "sha256": "3a8d2f3b08e14af8ebab26c82b842e452c8ebecf8590e6d7f8aab740d59d1bdd",
+      "bytes": 66271,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-45-indicator-adaptive-on.png",
+      "sha256": "765772582302d11b858b8a17529fedf2625e0cd7749365aff13d4389cef39741",
+      "bytes": 81921,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-46-indicator-compact-values.png",
+      "sha256": "c6ffca2f25b840b35cf597ba7187b1af9150397d94046fa715e6d357b436451b",
+      "bytes": 81461,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-47-adaptive-and-compact-restored.png",
+      "sha256": "d020dbcd0d6a969853224226cec4365c8b157cdd34cc7f3fd26a32ba90d54ac6",
+      "bytes": 66478,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-48-grid-on-adaptive-off.png",
+      "sha256": "9281da9304393230c16911755bfedceb2bcb7c2b4f745c1dc5890edee38bb080",
+      "bytes": 82069,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-49-countdown-on.png",
+      "sha256": "357846069efca002128bdb8b02e45bf0a0a92b68130e3730ad5a1de52edd647d",
+      "bytes": 83060,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-50-lower-settings-final-restored.png",
+      "sha256": "d977743f303038ee050c7437563f3b78fb4a1c39a61fe5336021d6d9eb5df179",
+      "bytes": 66728,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-51-top-settings-final-restored.png",
+      "sha256": "a4e6a7079132e828b7295d6538e2c19ab0d46dd186d6acc8eeee059d308afd19",
+      "bytes": 74271,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-52-final-chart-restored.png",
+      "sha256": "fbda3adba5eb9537efbd5b7b407115d1961c1b247d49c830f74a91fadd9ce69c",
+      "bytes": 83201,
+      "width": 418,
+      "height": 920,
+      "format": "jpeg"
+    },
+    {
+      "file": "iphone-live-53-final-actual-size.png",
+      "sha256": "725f501a3e73deb986d64663e511096194bc9d23a270b924cdc85b8bab809257",
+      "bytes": 56319,
+      "width": 326,
+      "height": 720,
+      "format": "jpeg"
+    }
+  ],
+  "pending_restore": [],
+  "final_restored": {
+    "period": "1h",
+    "main": "MA 10/30/120/256; EMA not selected",
+    "subpanels": [
+      "VOL",
+      "OI",
+      "MACD"
+    ],
+    "portrait_height": "original visual midpoint",
+    "axis": "logarithmic, normal orientation",
+    "crosshair": "off; selected-price mode",
+    "data_display": "inside K-line; live quote header cleared of historical selection",
+    "adaptive_indicator_region": false,
+    "compact_indicator_values": false,
+    "grid": false,
+    "countdown": false,
+    "mirror_size": "actual size, 326x720"
+  },
+  "restored_parameters": {
+    "KDJ": "9/3/3; K D J enabled; not selected",
+    "RSI": "6/12/24 Upper70 Lower30; all 3 outputs enabled; not selected"
+  },
+  "unverified": [
+    "multitouch pinch and focus anchoring",
+    "real horizontal dragging, edge behavior and inertia",
+    "manual Y-scale gesture curve",
+    "EMA parameter editing: blank form",
+    "exact original historical viewport restoration"
+  ],
+  "note": "Original AICoin mirror screenshots, not native pixel/pt calibration. Capture 46 has adaptive and compact simultaneously on; do not label it adaptive-off. Capture 52 leaves MACD curve below visible area; its legend is present. Full final setting state is documented in report section 13.4.",
+  "encoding_note": "Files preserve the screenshot API bytes. Names use .png for continuity; actual encoding is recorded per capture."
+}

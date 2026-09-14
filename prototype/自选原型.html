@@ -1,0 +1,1406 @@
+<meta charset="utf-8">
+<title>看盘 自选</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<style>
+/* 看盘 · 自选页原型
+ *
+ * 令牌、机身、深浅两版全部沿用 prototype/src/style.css，一个新色都没加——
+ * 自选页只是把同一套靛铺到「一屏十行数字」这件事上。新增的只有三样：
+ *   1) 涨跌胶囊的实底（--up-fill / --down-fill / --pill-ink），因为 12px 白字压在
+ *      浅色 --up 上对比不够，浅色版把实底往墨里调 8%；
+ *   2) 置顶行左边的琥珀细轨（--amber），不是给行加卡片边框——加边框会把十行拍平；
+ *   3) 跳价闪一下的两支软色，用 color-mix 从涨跌色推。
+ */
+
+:root {
+  color-scheme: light;
+
+  --ground: #C7CCE4;
+  --app: #FFFFFF;
+  --chart: #F4F6FD;
+  --raised: #FFFFFF;
+  --raised2: #ECEFF9;
+  --line: #DCE0F0;
+  --hair: #12163A0F;
+  --grid: #E4E7F5;
+  --ink: #12163A;
+  --ink2: #565C85;
+  --ink3: #8B90B2;
+  --green: #0E9E78;
+  --red: #DE2E57;
+  --amber: #B26A00;
+  --amber-soft: #B26A0016;
+  --amber-line: #B26A0055;
+  --veil: #FFFFFFF0;
+  --scrim: #12163A4D;
+  --shadow: 0 30px 70px -28px #2B315E80, 0 0 0 1px #FFFFFF60 inset;
+  --bezel: linear-gradient(160deg, #F4F5FB, #C9CEE3 45%, #9EA5C8);
+  --seg-on: #FFFFFF;
+  --pill-ink: #FFFFFF;
+  --pill-mix: var(--ink);       /* 浅色：实底往墨里压一点，白字才站得住 */
+  --pill-amt: 92%;
+  --soft-amt: 14%;              /* 跳价闪动的浓度，护眼版调轻 */
+
+  --p1: #B26A00; --p2: #4A55D6; --p3: #0E8F73; --p4: #C43A7E; --p5: #7A5BD6; --p6: #1A7FC4;
+
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+
+  --dw: 393px;
+  --dh: 852px;
+  --dr: 44px;
+  --dtop: 59px;
+  --dbot: 34px;
+  --fit: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --ground: #07091C;
+    --app: #0F1230;
+    --chart: #161A3F;
+    --raised: #1C2154;
+    --raised2: #232858;
+    --line: #2A2E6E;
+    --hair: #FFFFFF0A;
+    --grid: #232858;
+    --ink: #EDEEF8;
+    --ink2: #A6A9C0;
+    --ink3: #6D719A;
+    --green: #2FBF8F;
+    --red: #F0567B;
+    --amber: #FFB454;
+    --amber-soft: #FFB4541A;
+    --amber-line: #FFB45455;
+    --veil: #0F1230EE;
+    --scrim: #040614AA;
+    --shadow: 0 40px 90px -30px #000, 0 0 0 1px #343A80 inset;
+    --bezel: linear-gradient(160deg, #2B3070, #12153A 42%, #0C0F2A);
+    --p1: #FFB454; --p2: #8C95FF; --p3: #4FD1B5; --p4: #F78FB3; --p5: #C8B6FF; --p6: #7FD0FF;
+    --seg-on: #1C2154;
+    --pill-ink: #0B0E26;
+    --pill-mix: #FFFFFF;
+    --pill-amt: 100%;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #07091C;
+  --app: #0F1230;
+  --chart: #161A3F;
+  --raised: #1C2154;
+  --raised2: #232858;
+  --line: #2A2E6E;
+  --hair: #FFFFFF0A;
+  --grid: #232858;
+  --ink: #EDEEF8;
+  --ink2: #A6A9C0;
+  --ink3: #6D719A;
+  --green: #2FBF8F;
+  --red: #F0567B;
+  --amber: #FFB454;
+  --amber-soft: #FFB4541A;
+  --amber-line: #FFB45455;
+  --veil: #0F1230EE;
+  --scrim: #040614AA;
+  --shadow: 0 40px 90px -30px #000, 0 0 0 1px #343A80 inset;
+  --bezel: linear-gradient(160deg, #2B3070, #12153A 42%, #0C0F2A);
+  --p1: #FFB454; --p2: #8C95FF; --p3: #4FD1B5; --p4: #F78FB3; --p5: #C8B6FF; --p6: #7FD0FF;
+  --seg-on: #1C2154;
+  --pill-ink: #0B0E26;
+  --pill-mix: #FFFFFF;
+  --pill-amt: 100%;
+}
+
+/* 护眼两版：不是给靛加一层黄膜，是把整套令牌换到暖中性轴上重配。
+ * 三件事一起做才叫护眼——降白点（纸白 #F4F0E4 而不是纯白）、降对比（正文对底
+ * 约 9:1 而不是 14:1）、降彩度（涨跌、琥珀、六支色牌全部收 25% 上下）。
+ * 只做暖色滤镜会把绿涨拖成土黄、把红跌拖成橘，涨跌反而更难分。 */
+
+:root[data-theme="paper"] {
+  color-scheme: light;
+  --ground: #B7B2A0;
+  --app: #F4F0E4;
+  --chart: #EDE8D9;
+  --raised: #FAF7EE;
+  --raised2: #E5DFCD;
+  --line: #D9D2BD;
+  --hair: #3A35241A;
+  --grid: #E3DDC9;
+  --ink: #2F2C25;
+  --ink2: #625D4D;
+  --ink3: #736D5D;
+  --green: #387A58;
+  --red: #B74B3F;
+  --amber: #96660F;
+  --amber-soft: #96660F16;
+  --amber-line: #96660F55;
+  --veil: #F4F0E4F0;
+  --scrim: #3A35244D;
+  --shadow: 0 30px 70px -28px #6B634B80, 0 0 0 1px #FFFDF660 inset;
+  --bezel: linear-gradient(160deg, #F2EFE4, #C6C0AC 45%, #9C9682);
+  --p1: #96660F; --p2: #5A63A8; --p3: #3F8A63; --p4: #A85A78; --p5: #7A6BA8; --p6: #3F7FA0;
+  --seg-on: #FAF7EE;
+  --pill-ink: #FFFFFF;
+  --pill-mix: var(--ink);
+  --pill-amt: 88%;
+  --soft-amt: 10%;
+  --mt-size: 11.5px;
+}
+
+:root[data-theme="night"] {
+  color-scheme: dark;
+  --ground: #0D0C0A;
+  --app: #191712;
+  --chart: #201D17;
+  --raised: #262219;
+  --raised2: #2C281F;
+  --line: #3A342A;
+  --hair: #FFFFFF0A;
+  --grid: #2C281F;
+  --ink: #E0DAC9;
+  --ink2: #A19A86;
+  --ink3: #887F6A;
+  --green: #56A883;
+  --red: #D3766A;
+  --amber: #D3A15C;
+  --amber-soft: #D3A15C1A;
+  --amber-line: #D3A15C55;
+  --veil: #191712EE;
+  --scrim: #0A0908AA;
+  --shadow: 0 40px 90px -30px #000, 0 0 0 1px #3C3527 inset;
+  --bezel: linear-gradient(160deg, #3A3428, #201D16 42%, #14120E);
+  --p1: #D3A15C; --p2: #9AA0D8; --p3: #6FC2A4; --p4: #D99BB0; --p5: #BDAEDC; --p6: #85B8D6;
+  --seg-on: #262219;
+  --pill-ink: #17150F;
+  --pill-mix: #000000;
+  --pill-amt: 88%;
+  --soft-amt: 10%;
+  --mt-size: 11.5px;
+}
+
+/* 涨跌配色：默认绿涨，设置里能对调。放在主题块之后，三种主题状态下都生效。 */
+:root { --up: var(--green); --down: var(--red); }
+:root[data-updown="red"] { --up: var(--red); --down: var(--green); }
+:root {
+  --up-fill: color-mix(in srgb, var(--up) var(--pill-amt), var(--pill-mix));
+  --down-fill: color-mix(in srgb, var(--down) var(--pill-amt), var(--pill-mix));
+  --up-soft: color-mix(in srgb, var(--up) var(--soft-amt), transparent);
+  --down-soft: color-mix(in srgb, var(--down) var(--soft-amt), transparent);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { height: 100%; overflow: hidden; overscroll-behavior: none; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--ui);
+  font-size: 14px;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================================ 台面 */
+
+.stagewrap {
+  min-height: 100dvh;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px; padding: 14px 16px 22px;
+}
+.bar {
+  flex: none; display: flex; align-items: center; justify-content: center;
+  gap: 8px 14px; flex-wrap: wrap; width: 100%; max-width: 980px;
+}
+.barset { display: flex; align-items: center; gap: 6px; }
+.barlab {
+  font: 500 10.5px/1 var(--ui); letter-spacing: .12em;
+  color: var(--ink3); text-transform: uppercase; margin-right: 2px;
+}
+.chip {
+  border: 1px solid var(--line); background: var(--app); cursor: pointer;
+  border-radius: 999px; padding: 6px 11px;
+  color: var(--ink2); font: 500 12px/1 var(--ui);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.chip:hover { color: var(--ink); }
+.chip.on { color: var(--amber); border-color: var(--amber-line); background: var(--amber-soft); }
+
+.caption {
+  color: var(--ink3); font-size: 12.5px; letter-spacing: .03em;
+  text-align: center; max-width: 54ch; line-height: 1.7; margin: 0;
+}
+.caption b { color: var(--ink2); font-weight: 600; }
+
+.devicebox { flex: none; width: calc(var(--dw) * var(--fit)); height: calc(var(--dh) * var(--fit)); }
+.device {
+  width: var(--dw); height: var(--dh);
+  transform: scale(var(--fit)); transform-origin: top left;
+  border-radius: calc(var(--dr) + 11px); padding: 11px;
+  background: var(--bezel); box-shadow: var(--shadow);
+  transition: width .32s cubic-bezier(.32,.72,0,1), height .32s cubic-bezier(.32,.72,0,1);
+}
+.screen {
+  position: relative; width: 100%; height: 100%;
+  border-radius: var(--dr); overflow: hidden; background: var(--app);
+  display: flex; flex-direction: column; isolation: isolate; container-type: inline-size;
+}
+
+.statusbar {
+  flex: none; position: relative; z-index: 2; height: var(--dtop);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 max(22px, calc(var(--dr) * .5));
+  background: var(--app); font: 600 14px/1 var(--ui); color: var(--ink);
+}
+.statusbar .cut { position: absolute; top: 11px; left: 50%; transform: translateX(-50%); background: #000; border-radius: 999px; }
+.statusbar[data-cut="island"] .cut { width: 124px; height: 36px; }
+.statusbar[data-cut="notch"] .cut { top: 0; width: 156px; height: 31px; border-radius: 0 0 20px 20px; }
+.statusbar[data-cut="none"] .cut { display: none; }
+.statusbar .icons { display: flex; align-items: center; gap: 5px; }
+.statusbar .batt { width: 24px; height: 12px; border: 1.3px solid currentColor; border-radius: 3.5px; position: relative; opacity: .9; }
+.statusbar .batt::before { content: ""; position: absolute; inset: 1.7px; right: 6px; background: currentColor; border-radius: 1px; }
+.statusbar .batt::after { content: ""; position: absolute; right: -3.2px; top: 3.5px; width: 1.8px; height: 5px; border-radius: 0 2px 2px 0; background: currentColor; opacity: .5; }
+
+.homebar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 9; height: var(--dbot); pointer-events: none; display: grid; place-items: center; }
+.homebar::after { content: ""; width: 36%; max-width: 148px; height: 5px; border-radius: 3px; background: var(--ink); opacity: .35; }
+
+/* 真机 / 窄窗：机身消失，占满屏 */
+body.live { position: fixed; inset: 0; width: 100%; height: 100%; overflow: hidden; --dtop: env(safe-area-inset-top, 0px); --dbot: env(safe-area-inset-bottom, 0px); }
+body.live .stagewrap { padding: 0; gap: 0; height: 100%; overflow: hidden; }
+body.live .bar, body.live .caption { display: none; }
+body.live .devicebox { width: 100%; height: 100dvh; }
+body.live .device { width: 100%; height: 100%; transform: none; border-radius: 0; padding: 0; box-shadow: none; background: var(--app); }
+body.live .screen { border-radius: 0; }
+body.live .statusbar { height: env(safe-area-inset-top, 0px); }
+body.live .statusbar .clock, body.live .statusbar .icons, body.live .statusbar .cut { display: none; }
+body.live .homebar { display: none; }
+
+/* ============================================================ 顶栏 */
+
+.top { flex: none; background: var(--app); border-bottom: 1px solid var(--line); }
+.toprow { display: flex; align-items: center; gap: 2px; padding: 6px 8px 6px 6px; }
+
+.back {
+  display: flex; align-items: center; gap: 1px; border: 0; background: none; cursor: pointer;
+  color: var(--ink2); font: 400 14.5px/1 var(--ui); padding: 6px 6px 6px 2px;
+}
+.ttl { display: flex; align-items: baseline; gap: 7px; margin-left: 2px; }
+.ttl h1 { margin: 0; font: 600 17px/1.2 var(--ui); letter-spacing: .01em; }
+.ttl .cnt { font: 400 11.5px/1.2 var(--ui); color: var(--ink3); font-variant-numeric: tabular-nums; }
+.spacer { flex: 1; }
+
+.iconbtn { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: none; border: 0; color: var(--ink2); cursor: pointer; }
+.iconbtn:active { background: var(--raised2); }
+.iconbtn.on { color: var(--amber); }
+.txtbtn { border: 0; background: none; cursor: pointer; color: var(--amber); font: 500 14px/1 var(--ui); padding: 8px 7px; border-radius: 8px; }
+.txtbtn:active { background: var(--amber-soft); }
+
+/* 搜索：点放大镜才展开，不长期占一条 */
+.searchwrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .24s cubic-bezier(.32,.72,0,1); }
+.searchwrap.open { grid-template-rows: 1fr; }
+.searchwrap > div { overflow: hidden; }
+.search { display: flex; align-items: center; gap: 8px; padding: 2px 12px 9px; }
+.search input {
+  flex: 1; background: var(--raised2); border: 1px solid var(--line); border-radius: 9px;
+  padding: 8px 11px; color: var(--ink); font: 400 14px/1 var(--ui); min-width: 0;
+}
+.search input::placeholder { color: var(--ink3); }
+.search input:focus { outline: 2px solid var(--amber-line); outline-offset: 0; }
+.search button { border: 0; background: none; color: var(--amber); font: 500 14px/1 var(--ui); cursor: pointer; padding: 6px; }
+
+/* ============================================================ 分组条 */
+
+.gtabs { position: relative; flex: none; display: flex; align-items: stretch; background: var(--app); border-bottom: 1px solid var(--line); }
+.gscroll { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; padding: 0 4px; flex: 1; overscroll-behavior: contain; touch-action: pan-x; }
+.gscroll::-webkit-scrollbar { display: none; }
+.gtab {
+  flex: none; border: 0; background: none; cursor: pointer; position: relative;
+  padding: 9px 10px 10px; color: var(--ink2); font: 500 13px/1 var(--ui); white-space: nowrap;
+  display: flex; align-items: center; gap: 5px;
+}
+.gtab.on { color: var(--amber); }
+.gtab .n { font: 400 10.5px/1 var(--mono); color: var(--ink3); font-variant-numeric: tabular-nums; }
+.gtab.on .n { color: var(--amber); opacity: .75; }
+.gink { position: absolute; bottom: 4px; height: 2px; border-radius: 2px; background: var(--amber); transition: transform .26s cubic-bezier(.32,.72,0,1), width .26s cubic-bezier(.32,.72,0,1); left: 0; width: 0; }
+.gnew { flex: none; border: 0; border-left: 1px solid var(--line); background: none; color: var(--ink3); cursor: pointer; padding: 0 12px; display: grid; place-items: center; }
+
+/* ============================================================ 概览条 */
+
+.ovr { flex: none; display: flex; align-items: center; gap: 9px; padding: 8px 16px 8px; background: var(--app); border-bottom: 1px solid var(--hair); }
+.ovrbar { flex: none; width: 54px; height: 5px; border-radius: 3px; overflow: hidden; display: flex; gap: 1.5px; background: var(--raised2); }
+.ovrbar i { display: block; height: 100%; border-radius: 3px; transition: flex-grow .4s ease; }
+.ovrbar .u { background: var(--up); }
+.ovrbar .d { background: var(--down); }
+.ovr .txt { font: 400 11.5px/1 var(--ui); color: var(--ink2); }
+.ovr .txt b { font: 500 11.5px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.ovr .when { margin-left: auto; font: 400 10.5px/1 var(--ui); color: var(--ink3); display: flex; align-items: center; gap: 5px; }
+.dot { width: 5px; height: 5px; border-radius: 3px; background: var(--up); box-shadow: 0 0 0 0 var(--up-soft); animation: beat 2.4s infinite; }
+@keyframes beat { 0%, 100% { opacity: .45 } 50% { opacity: 1 } }
+
+/* ============================================================ 排序表头 */
+
+.shead {
+  flex: none; display: flex; align-items: center; gap: 4px;
+  padding: 7px 16px 7px; background: var(--app); border-bottom: 1px solid var(--line);
+}
+.sbtn {
+  border: 0; background: none; cursor: pointer; padding: 2px 0;
+  color: var(--ink3); font: 400 11px/1.2 var(--ui); display: flex; align-items: center; gap: 3px;
+}
+.sbtn.on { color: var(--amber); }
+.sbtn .car { display: grid; gap: 1.5px; }
+.sbtn .car i { width: 0; height: 0; border-left: 3px solid transparent; border-right: 3px solid transparent; }
+.sbtn .car i:first-child { border-bottom: 3.6px solid currentColor; opacity: .3; }
+.sbtn .car i:last-child { border-top: 3.6px solid currentColor; opacity: .3; }
+.sbtn.on.asc .car i:first-child, .sbtn.on.desc .car i:last-child { opacity: 1; }
+.shead .swap { margin-left: -1px; border: 0; background: none; cursor: pointer; color: var(--ink3); padding: 3px 4px; border-radius: 5px; }
+.shead .swap:active { background: var(--raised2); }
+.shead .px-h { margin-left: auto; }
+.shead .chg-h { width: 74px; justify-content: flex-end; }
+
+/* ============================================================ 列表 */
+
+.list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: var(--app); }
+.list.editing { padding-bottom: 66px; }
+
+.wrow { position: relative; overflow: hidden; background: var(--app); }
+.wrow.dragging { z-index: 3; }
+.wrow.dragging .wbody { background: var(--raised2); box-shadow: 0 14px 30px -18px #12163A66; }
+
+.wtop { position: relative; overflow: hidden; }
+.wact { position: absolute; inset: 0 0 0 auto; display: flex; }
+.wa { border: 0; cursor: pointer; width: 68px; color: var(--pill-ink); font: 500 12.5px/1.3 var(--ui); display: grid; place-items: center; gap: 2px; }
+.wa.pin { background: var(--amber); color: #FFF; }
+.wa.del { background: var(--down-fill); }
+
+.wbody {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px 10px 16px; background: var(--app);
+  border-bottom: 1px solid var(--hair);
+  transition: transform .22s cubic-bezier(.32,.72,0,1), padding .2s ease;
+  touch-action: pan-y;
+}
+.wrow:last-child .wbody { border-bottom: 0; }
+.wbody:active { background: var(--raised2); }
+.wrow.open .wbody { transform: translateX(-136px); }
+
+.rail { position: absolute; left: 0; top: 7px; bottom: 7px; width: 2.5px; border-radius: 0 2px 2px 0; background: var(--amber); opacity: 0; transition: opacity .18s; }
+.wrow.pinned .rail { opacity: 1; }
+
+.grip, .tick { flex: none; width: 0; opacity: 0; overflow: hidden; transition: width .2s cubic-bezier(.32,.72,0,1), opacity .18s, margin .2s; border: 0; background: none; padding: 0; color: var(--ink3); display: grid; place-items: center; }
+.editing .grip { width: 22px; opacity: 1; cursor: grab; touch-action: none; }
+.editing .tick { width: 22px; opacity: 1; cursor: pointer; }
+.list.editing .ico { width: 0; opacity: 0; }
+.tick span { width: 19px; height: 19px; border-radius: 10px; border: 1.5px solid var(--line); display: block; }
+.tick.on span { border-color: var(--amber); background: var(--amber); box-shadow: inset 0 0 0 3px var(--app); }
+
+/* 币种标记：圆角方牌 + 单色字形，颜色只从项目那六支调色板里取，
+   不搬各家的品牌色——十个品牌色堆在一屏上会把涨跌红绿压掉。 */
+.ico {
+  flex: none; width: 30px; height: 30px; border-radius: 9px;
+  display: grid; place-items: center; color: var(--t);
+  background: color-mix(in srgb, var(--t) 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t) 24%, transparent);
+  transition: width .2s cubic-bezier(.32,.72,0,1), opacity .18s;
+}
+.ico svg { display: block; }
+.ico .mono2 { font: 700 11px/1 var(--ui); letter-spacing: .02em; }
+
+.who { flex: 1; min-width: 0; }
+.nm { display: flex; align-items: baseline; gap: 1px; }
+.nm b { font: 600 15px/1.25 var(--ui); letter-spacing: .01em; }
+.nm .qa { font: 400 12px/1.25 var(--ui); color: var(--ink3); }
+.nm .tag { font: 500 9.5px/1 var(--ui); font-style: normal; color: var(--ink3); border: 1px solid var(--line); border-radius: 3px; padding: 2px 3px; margin-left: 5px; transform: translateY(-1px); }
+.mt { margin-top: 3px; font: 400 var(--mt-size, 10.5px)/1.3 var(--ui); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.spark { flex: none; width: 58px; height: 26px; display: block; }
+
+.px { flex: none; width: 98px; text-align: right; border-radius: 6px; padding: 2px 3px; margin-right: -3px; }
+.px .p { font: 500 14.5px/1.25 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.px .pill {
+  display: inline-block; margin-top: 4px; min-width: 62px; border-radius: 5px;
+  padding: 3px 6px; color: var(--pill-ink);
+  font: 600 12px/1.15 var(--mono); font-variant-numeric: tabular-nums;
+}
+.px .pill.up { background: var(--up-fill); }
+.px .pill.down { background: var(--down-fill); }
+.px .pill.flat { background: var(--ink3); }
+.px.f-up { animation: fup .5s ease; }
+.px.f-down { animation: fdn .5s ease; }
+@keyframes fup { 0% { background: var(--up-soft) } 100% { background: transparent } }
+@keyframes fdn { 0% { background: var(--down-soft) } 100% { background: transparent } }
+
+/* 展开层：常驻那行放不下、但看盘时真要看的几项 */
+.more { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .26s cubic-bezier(.32,.72,0,1); background: var(--chart); }
+.wrow.open2 .more { grid-template-rows: 1fr; }
+.more > div { overflow: hidden; }
+.morein { padding: 11px 16px 13px; border-bottom: 1px solid var(--hair); display: grid; gap: 9px; }
+.mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 10px; }
+.mcell { display: flex; flex-direction: column; gap: 3px; }
+.mcell .k { font: 400 10px/1 var(--ui); color: var(--ink3); }
+.mcell .v { font: 500 12.5px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.range { display: grid; gap: 5px; }
+.rbar { position: relative; height: 4px; border-radius: 3px; background: linear-gradient(90deg, var(--down-soft), var(--raised2) 50%, var(--up-soft)); }
+.rbar i { position: absolute; top: -3px; width: 2px; height: 10px; border-radius: 2px; background: var(--ink); transform: translateX(-1px); }
+.rends { display: flex; justify-content: space-between; font: 400 10px/1 var(--mono); color: var(--ink3); font-variant-numeric: tabular-nums; }
+.mgo { border: 1px solid var(--line); background: var(--app); color: var(--ink2); border-radius: 8px; padding: 8px 0; font: 500 12.5px/1 var(--ui); cursor: pointer; }
+.mgo:active { background: var(--raised2); }
+
+.empty { padding: 54px 30px; text-align: center; color: var(--ink3); }
+.empty .eico { color: var(--line); margin: 0 auto 10px; display: block; }
+.empty h3 { margin: 0 0 6px; font: 600 15px/1.3 var(--ui); color: var(--ink2); }
+.empty p { margin: 0 0 16px; font: 400 12.5px/1.7 var(--ui); }
+.empty button { border: 1px solid var(--amber-line); background: var(--amber-soft); color: var(--amber); border-radius: 9px; padding: 9px 16px; font: 500 13px/1 var(--ui); cursor: pointer; }
+
+/* ============================================================ 编辑底条 */
+
+.editbar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 8;
+  display: flex; align-items: center; gap: 4px;
+  background: var(--veil); border-top: 1px solid var(--line);
+  padding: 8px 10px calc(8px + var(--dbot));
+  transform: translateY(115%); transition: transform .24s cubic-bezier(.32,.72,0,1);
+  backdrop-filter: blur(10px);
+}
+.editbar.show { transform: translateY(0); }
+.ebtn { flex: 1; border: 0; background: none; cursor: pointer; border-radius: 8px; color: var(--ink2); font: 500 12.5px/1.2 var(--ui); padding: 8px 4px; display: grid; justify-items: center; gap: 4px; }
+.ebtn:disabled { opacity: .34; cursor: default; }
+.ebtn.danger { color: var(--down); }
+.ebtn:not(:disabled):active { background: var(--raised2); }
+
+/* ============================================================ 覆盖层 */
+
+.scrim { position: absolute; inset: 0; z-index: 5; background: var(--scrim); backdrop-filter: blur(2px); opacity: 0; pointer-events: none; transition: opacity .22s; }
+.scrim.show { opacity: 1; pointer-events: auto; }
+
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 6;
+  background: var(--raised); border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
+  transform: translateY(102%); transition: transform .28s cubic-bezier(.32,.72,0,1);
+  max-height: 80%; display: flex; flex-direction: column; padding-bottom: var(--dbot);
+  box-shadow: 0 -18px 40px -24px #12163A55;
+}
+.sheet.show { transform: translateY(0); }
+.grab { width: 34px; height: 4px; border-radius: 2px; background: var(--line); margin: 7px auto -4px; }
+.sheeth { flex: none; display: flex; align-items: center; gap: 8px; padding: 13px 16px 10px; border-bottom: 1px solid var(--line); }
+.sheeth h2 { margin: 0; font: 600 15px/1.2 var(--ui); }
+.sheeth .sub { font: 400 11px/1.2 var(--ui); color: var(--ink3); }
+.sheeth .done { margin-left: auto; }
+.sheetb { overflow-y: auto; padding: 4px 0 10px; overscroll-behavior: contain; touch-action: pan-y; }
+
+.groupt { padding: 13px 16px 5px; font: 500 11px/1 var(--ui); letter-spacing: .09em; text-transform: uppercase; color: var(--ink3); }
+.row { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-bottom: 1px solid var(--hair); }
+.row .name { font: 500 14px/1.3 var(--ui); }
+.row .meta { font: 400 11px/1.3 var(--ui); color: var(--ink3); margin-top: 2px; }
+.row .num { margin-left: auto; text-align: right; font: 500 13px/1.3 var(--mono); font-variant-numeric: tabular-nums; }
+.row .pct { font: 500 11px/1.4 var(--mono); font-variant-numeric: tabular-nums; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.star { border: 0; background: none; cursor: pointer; color: var(--ink3); padding: 4px; flex: none; }
+.star.on { color: var(--amber); }
+.gpick { width: 100%; text-align: left; background: none; border: 0; cursor: pointer; }
+.gpick .ck { margin-left: auto; color: var(--amber); opacity: 0; }
+.gpick.on .ck { opacity: 1; }
+.gpick.on .name { color: var(--amber); }
+
+.toast {
+  position: absolute; left: 50%; bottom: calc(96px + var(--dbot)); transform: translate(-50%, 8px); z-index: 10;
+  background: color-mix(in srgb, var(--ink) 93%, transparent); border-radius: 11px;
+  padding: 9px 14px; font-size: 12.5px; color: var(--app);
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+  max-width: 86%; text-align: center; line-height: 1.5; box-shadow: 0 10px 30px -12px #12163A66;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* 小屏 / 大屏：量的是屏幕这个容器 */
+@container (max-width: 379px) {
+  .nm b { font-size: 14.5px; }
+  .px { width: 92px; }
+  .px .p { font-size: 13.5px; }
+  .spark { width: 44px; }
+  .mt { font-size: 10px; }
+  .wbody { padding-left: 14px; padding-right: 14px; }
+  .ovr, .shead { padding-left: 14px; padding-right: 14px; }
+}
+@container (min-width: 700px) {
+  .wbody { padding: 13px 26px; }
+  .ovr, .shead, .groupt, .row, .search { padding-left: 26px; padding-right: 26px; }
+  .sheeth { padding-left: 26px; padding-right: 26px; }
+  .nm b { font-size: 17px; }
+  .ico { width: 38px; height: 38px; border-radius: 11px; }
+  .morein { padding: 14px 26px 16px; }
+  .spark { width: 96px; height: 30px; }
+  .px { width: 128px; }
+  .px .p { font-size: 16px; }
+  .ttl h1 { font-size: 20px; }
+}
+
+:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 1px; border-radius: 6px; }
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .scrim, .editbar, .toast, .device, .chip, .wbody, .gink, .searchwrap { transition: none; }
+  .px.f-up, .px.f-down, .dot { animation: none; }
+}
+</style>
+
+<div class="stagewrap">
+
+  <div class="bar">
+    <div class="barset" id="devset"><span class="barlab">机型</span></div>
+    <div class="barset" id="themeset"><span class="barlab">外观</span></div>
+    <div class="barset" id="udset"><span class="barlab">涨跌色</span></div>
+  </div>
+
+  <div class="devicebox" id="devicebox">
+  <div class="device" id="device">
+    <div class="screen" id="screen">
+
+      <div class="statusbar" id="statusbar" data-cut="island">
+        <span class="clock" id="clock">9:41</span>
+        <div class="cut"></div>
+        <span class="icons">
+          <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor" aria-hidden="true"><rect x="0" y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.2" width="3" height="5.8" rx="1"/><rect x="9.2" y="2.6" width="3" height="8.4" rx="1"/><rect x="13.8" y="0" width="3" height="11" rx="1"/></svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M1.2 3.6a10 10 0 0 1 13.6 0"/><path d="M3.8 6.4a6.4 6.4 0 0 1 8.4 0"/><path d="M6.5 9.1a2.6 2.6 0 0 1 3 0"/></svg>
+          <span class="batt"></span>
+        </span>
+      </div>
+
+      <header class="top">
+        <div class="toprow">
+          <button class="back" id="btnBack">
+            <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3.5 5.5 9l5.5 5.5"/></svg>
+            行情
+          </button>
+          <div class="ttl"><h1>自选</h1><span class="cnt" id="cnt">10 个</span></div>
+          <span class="spacer"></span>
+          <button class="iconbtn" id="btnSearch" aria-label="搜索自选">
+            <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.2"/><path d="M12 12l3.5 3.5"/></svg>
+          </button>
+          <button class="iconbtn" id="btnAdd" aria-label="添加品种">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9 3.6v10.8M3.6 9h10.8"/></svg>
+          </button>
+          <button class="txtbtn" id="btnEdit">编辑</button>
+        </div>
+        <div class="searchwrap" id="searchwrap"><div>
+          <div class="search">
+            <input id="q" placeholder="在自选里搜 BTC、ETH…" autocomplete="off" spellcheck="false" enterkeyhint="search">
+            <button id="qCancel">取消</button>
+          </div>
+        </div></div>
+      </header>
+
+      <nav class="gtabs">
+        <div class="gscroll" id="gscroll"></div>
+        <span class="gink" id="gink"></span>
+        <button class="gnew" id="btnNewGroup" aria-label="新建分组">
+          <svg width="15" height="15" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.6 5.2A1.6 1.6 0 0 1 4.2 3.6h2.9l1.4 1.8h5.3a1.6 1.6 0 0 1 1.6 1.6v6.4a1.6 1.6 0 0 1-1.6 1.6H4.2a1.6 1.6 0 0 1-1.6-1.6z"/><path d="M9 8.6v4M7 10.6h4"/></svg>
+        </button>
+      </nav>
+
+      <div class="ovr">
+        <span class="ovrbar" aria-hidden="true"><i class="u" id="ovrU"></i><i class="d" id="ovrD"></i></span>
+        <span class="txt" id="ovrTxt"></span>
+        <span class="when"><span class="dot"></span><span id="ovrWhen"></span></span>
+      </div>
+
+      <div class="shead">
+        <button class="sbtn" id="sName" data-k="name">名称<span class="car"><i></i><i></i></span></button>
+        <button class="sbtn px-h" id="sPrice" data-k="price">最新价<span class="car"><i></i><i></i></span></button>
+        <button class="sbtn chg-h" id="sChg" data-k="chg"><span id="chgLab">24h涨跌幅</span><span class="car"><i></i><i></i></span></button>
+        <button class="swap" id="btnSwap" aria-label="切换涨跌幅 / 涨跌额">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.5h8l-2-2M11.5 9.5h-8l2 2"/></svg>
+        </button>
+      </div>
+
+      <div class="list" id="list"></div>
+
+      <div class="editbar" id="editbar">
+        <button class="ebtn" id="eAll">全选</button>
+        <button class="ebtn" id="ePin" disabled>
+          <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14.4V9M5.4 9h7.2l-.9-2.7V3.6H6.3v2.7z"/></svg>
+          置顶</button>
+        <button class="ebtn" id="eMove" disabled>
+          <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 5.2A1.6 1.6 0 0 1 4.2 3.6h2.9l1.4 1.8h5.3a1.6 1.6 0 0 1 1.6 1.6v6.4a1.6 1.6 0 0 1-1.6 1.6H4.2a1.6 1.6 0 0 1-1.6-1.6z"/></svg>
+          移到分组</button>
+        <button class="ebtn danger" id="eDel" disabled>
+          <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 5.2h11.2M7.2 5.2V3.6h3.6v1.6M5 5.2l.7 8.4a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.4"/></svg>
+          移除</button>
+      </div>
+
+      <div class="toast" id="toast"></div>
+      <div class="scrim" id="scrim"></div>
+
+      <section class="sheet" id="shAdd" aria-label="添加品种">
+        <div class="grab"></div>
+        <div class="sheeth">
+          <h2>添加品种</h2><span class="sub" id="addSub"></span>
+          <button class="txtbtn done" id="addDone">完成</button>
+        </div>
+        <div class="search"><input id="addQ" placeholder="搜 BTC、ETH、SOL…" autocomplete="off" spellcheck="false" enterkeyhint="search"><button id="addClear">清空</button></div>
+        <div class="sheetb" id="addBody"></div>
+      </section>
+
+      <section class="sheet" id="shGroup" aria-label="移到分组">
+        <div class="grab"></div>
+        <div class="sheeth"><h2>移到分组</h2><span class="sub" id="grpSub"></span></div>
+        <div class="sheetb" id="grpBody"></div>
+      </section>
+
+      <div class="homebar" id="homebar"></div>
+    </div>
+  </div>
+  </div>
+
+  <p class="caption">
+    <b>看盘</b> · 自选页原型。配色、字号、行高全部沿用主屏那套<b>靛</b>，浅深两版同步。
+    一行说四件事：<b>名字</b>、<b>24h 走势</b>、<b>最新价</b>、<b>涨跌幅胶囊</b>；
+    置顶的品种左边一条琥珀细轨，不给行加卡片边框——十行都成卡片就等于没有层级。
+    表头三列可排（自定义 / 名称 / 最新价 / 涨跌），涨跌可在<b>幅</b>与<b>额</b>之间对调；
+    行<b>左滑</b>露出置顶与移除，<b>编辑</b>进多选、拖排序、批量移分组。
+    一行常驻的是<b>最新价</b>、<b>24h 涨跌幅</b>、<b>24h 额</b>、<b>振幅</b>与走势线；
+    点走势线（或长按行）就地展开，再给出 <b>24h 高 / 低</b>、<b>1h / 4h / 24h 三档涨跌</b>和距高低的位置。
+    外观里另有两版<b>护眼</b>：日间「护眼」换纸白底、降对比降彩度；夜间「夜读」把底色压到暖近黑，
+    两版都把跳价闪动调轻、三级信息加半号，并把最小的那行文字顶到 4.5:1（WCAG AA 正文线）——
+    久看发涩多半来自「看不太清又一直在看」，不是来自蓝光。
+    行情是 2026-09-14 的币安合约真实快照，走势线取自各自的 1h K 线，价格在原地小幅跳动只为看跳价的闪动。
+  </p>
+</div>
+
+
+<script>
+window.KANPAN_WATCH = {"takenAt":1789361979977,"watch":{"BTCUSDT":{"b":"BTC","p":2,"q":77560.1,"pct":0.49,"vol":7543202245,"h":77840.7,"l":76350.1,"sp":[77177.7,77260.1,77236.9,77325.1,77320,77298.6,77325.8,77294.9,77329.2,77430.5,77343.7,77326.1,77173.5,77105.7,77084.1,77129.2,77218.4,77195.3,77242.8,77239.5,77285.5,77263.9,77162.2,77179,77280.7,77082,77087.7,76767.8,76766.3,76643.6,76752.9,76725.7,76813.8,77175.1,77098,77252.6,77295.8,77314.2,77254.1,77312.1,77277.3,76689.3,76805,76771.5,77089.5,77583.6,77558.7,77557.8]},"ETHUSDT":{"b":"ETH","p":2,"q":2512.14,"pct":-0.29,"vol":7304837882,"h":2523.28,"l":2460.3,"sp":[2510.61,2518.21,2522.99,2532.29,2529.99,2532.52,2535.21,2534.39,2543.62,2538.99,2534,2530.69,2524.93,2521.58,2518.15,2519.44,2523.01,2521.78,2524.76,2524.22,2524.81,2520.48,2519.76,2519.23,2521.59,2511.73,2516.62,2493.25,2483.69,2471.09,2480.13,2476.21,2477.84,2491.3,2489.55,2503.44,2503.99,2508.35,2505.09,2511.98,2507.94,2474.41,2475.48,2483.28,2492.22,2510,2511.98,2512.13]},"SOLUSDT":{"b":"SOL","p":4,"q":101.04,"pct":-0.63,"vol":1274518958,"h":101.87,"l":98.92,"sp":[101.6,101.64,101.61,101.77,101.97,102.1,102.08,102,101.94,101.94,102.02,102.03,101.92,101.59,101.24,101.31,101.44,101.62,101.7,101.68,102.24,101.84,101.57,101.65,101.75,101.19,100.67,99.95,99.8,99.52,99.76,99.65,100.04,100.63,100.2,100.77,100.98,101.15,100.93,101.43,101.3,99.66,99.23,99.61,100.11,100.95,100.94,101.04]},"BNBUSDT":{"b":"BNB","p":3,"q":724.75,"pct":-0.28,"vol":280861557,"h":727.1,"l":713.01,"sp":[733.41,732.24,733.89,735.29,735.81,738.25,737.16,736.76,737.1,736.18,735.59,732.63,731.36,729.83,726.62,726.9,726.88,726.57,727.96,728.36,728.63,728.41,727.33,726.73,726.66,722.24,722.55,718.48,716.8,715.6,716.77,715.98,718.46,718.96,719.14,721.36,721.59,722.45,721.45,722.64,722.52,716.24,716.74,719.28,720.59,724.1,722.95,724.95]},"XRPUSDT":{"b":"XRP","p":4,"q":1.375,"pct":0.84,"vol":611423162,"h":1.3812,"l":1.3312,"sp":[1.3632,1.3624,1.3685,1.3662,1.3692,1.3728,1.3717,1.3697,1.3675,1.3693,1.3719,1.3693,1.3662,1.3628,1.3623,1.3638,1.3622,1.3626,1.3655,1.3665,1.367,1.3674,1.3629,1.3636,1.3674,1.36,1.357,1.3473,1.3437,1.3398,1.3426,1.3394,1.3416,1.3497,1.3427,1.3504,1.3548,1.3575,1.3545,1.3606,1.3568,1.3366,1.3402,1.3463,1.3512,1.3695,1.3723,1.3756]},"DOGEUSDT":{"b":"DOGE","p":6,"q":0.08396,"pct":-0.85,"vol":317341033,"h":0.0849,"l":0.08182,"sp":[0.08437,0.08437,0.08471,0.08475,0.08492,0.08497,0.08503,0.08502,0.08495,0.08511,0.08507,0.08499,0.08495,0.08471,0.08476,0.08473,0.0846,0.08461,0.08479,0.0848,0.08494,0.08491,0.08467,0.08466,0.08479,0.08438,0.08413,0.0835,0.08352,0.08329,0.0835,0.0834,0.08336,0.08372,0.08345,0.08392,0.08442,0.08448,0.08413,0.08442,0.08398,0.08223,0.08235,0.08262,0.08308,0.08405,0.08388,0.084]},"LINKUSDT":{"b":"LINK","p":3,"q":11.383,"pct":-0.92,"vol":119855662,"h":11.557,"l":11.116,"sp":[11.509,11.511,11.561,11.534,11.536,11.532,11.565,11.542,11.548,11.572,11.583,11.527,11.517,11.512,11.472,11.496,11.503,11.478,11.502,11.498,11.512,11.5,11.475,11.488,11.537,11.446,11.426,11.312,11.362,11.298,11.29,11.255,11.295,11.308,11.252,11.347,11.4,11.436,11.409,11.456,11.407,11.161,11.197,11.264,11.314,11.362,11.373,11.39]},"AVAXUSDT":{"b":"AVAX","p":4,"q":7.409,"pct":0.18,"vol":68636091,"h":7.459,"l":7.243,"sp":[7.437,7.43,7.449,7.434,7.446,7.436,7.441,7.434,7.43,7.422,7.428,7.395,7.397,7.373,7.361,7.378,7.391,7.373,7.395,7.391,7.395,7.4,7.403,7.394,7.44,7.395,7.359,7.296,7.332,7.3,7.322,7.307,7.371,7.402,7.357,7.39,7.422,7.426,7.409,7.445,7.433,7.284,7.284,7.318,7.364,7.409,7.4,7.412]},"HYPEUSDT":{"b":"HYPE","p":5,"q":79.982,"pct":1.11,"vol":500429290,"h":80.329,"l":76.545,"sp":[78.582,78.763,79.052,79.368,79.486,79.813,80.215,80.263,80.151,80.274,80.215,80.289,80.497,80.085,79.661,79.764,79.512,79.641,79.639,79.228,79.348,79.201,79.022,79.114,79.386,78.76,78.508,77.825,77.937,77.291,77.528,77.75,78.005,78.431,77.95,78.45,78.404,78.34,78.097,78.895,78.549,77.431,77.284,77.788,78.233,79.416,79.881,80.007]},"ASTERUSDT":{"b":"ASTER","p":7,"q":0.6959,"pct":0.09,"vol":34237432,"h":0.702,"l":0.681,"sp":[0.6832,0.6813,0.6871,0.6858,0.6847,0.686,0.6863,0.6858,0.6837,0.6854,0.6896,0.6969,0.6904,0.6873,0.6836,0.6845,0.6864,0.6832,0.6871,0.6918,0.6903,0.6924,0.6924,0.6946,0.6952,0.6925,0.692,0.6895,0.6885,0.6864,0.6939,0.6945,0.6967,0.6987,0.6968,0.6988,0.6992,0.6995,0.6976,0.6987,0.6969,0.6843,0.6855,0.6902,0.6947,0.6949,0.6948,0.6964]}},"more":[["LSKUSDT","LSK",6,0.83117,-24.09,2196284518],["ZECUSDT","ZEC",2,1114.45,-2.44,1744575981],["FILUSDT","FIL",6,0.9677,18.93,473515201],["CVCUSDT","CVC",7,0.03079,23.06,279021751],["VTHOUSDT","VTHO",7,0.0007608,-20.86,264509862],["龙虾USDT","龙虾",7,0.140083,-11.22,234089070],["STEEMUSDT","STEEM",6,0.06344,-0.8,190990138],["SUIUSDT","SUI",6,0.7168,-0.82,188854067],["1000PEPEUSDT","1000PEPE",7,0.0034416,-0.25,166766797],["NEARUSDT","NEAR",4,2.387,1.97,165282097],["牛来USDT","牛来",7,0.11884,-15.22,156322345],["BTWUSDT","BTW",7,0.74803,35.93,156265729],["UNIUSDT","UNI",4,6.383,0.28,150853227],["ARKUSDT","ARK",7,0.1691,3.93,141272149],["FLOCKUSDT","FLOCK",7,0.06812,-14.46,127346985],["PUMPUSDT","PUMP",7,0.003621,-4.54,121592602],["ADAUSDT","ADA",5,0.2069,-0.14,119809253],["REZUSDT","REZ",7,0.004555,28.89,114417914],["ENAUSDT","ENA",7,0.14062,-0.49,105967993],["PONSUSDT","PONS",7,0.545,-7.91,104084209],["TAOUSDT","TAO",2,234.68,-0.67,98317824],["WLDUSDT","WLD",7,0.3848,-2.93,91045842],["MTLUSDT","MTL",4,0.3972,26.02,86087375],["ARBUSDT","ARB",6,0.13733,-2.6,74186465],["TRUMPUSDT","TRUMP",6,1.998,0.5,73289453],["POWERUSDT","POWER",7,0.11538,14.97,70574293],["LITUSDT","LIT",6,4.6076,10.19,69553756],["PUNDIXUSDT","PUNDIX",7,0.11328,-7.28,68911351],["MARSCOINUSDT","MARSCOIN",7,0.09917,-14.85,68119153],["USELESSUSDT","USELESS",7,0.20519,-10.98,64757373],["LTCUSDT","LTC",2,54.29,0.95,63076124],["AAVEUSDT","AAVE",3,126.1,-0.8,61778778],["LABUSDT","LAB",7,0.05287,-24.41,61750381],["RAYSOLUSDT","RAYSOL",7,1.42,-6.58,59423045],["POWRUSDT","POWR",7,0.06114,-15.37,58188686],["BRUSDT","BR",7,0.38241,53.24,55179165],["BCHUSDT","BCH",2,224,-0.62,55136853],["ONDOUSDT","ONDO",7,0.3513,1.21,53408483],["VVVUSDT","VVV",6,22.607,-5.48,48972702],["AKEUSDT","AKE",7,0.014843,-8.09,47208138],["INJUSDT","INJ",6,6.171,4.49,46198108],["ETHFIUSDT","ETHFI",7,0.664,-3.02,45885852],["DOTUSDT","DOT",6,1.0163,1.15,45121996],["DASHUSDT","DASH",2,54.21,-1.79,41327587],["UAIUSDT","UAI",7,0.5433,6.26,39063810],["XMRUSDT","XMR",2,521.69,-1.66,37811640],["PENGUUSDT","PENGU",7,0.007124,-2.08,35475155],["IOSTUSDT","IOST",8,0.0007814,-6.83,34000011],["KAVAUSDT","KAVA",6,0.06292,-16.85,33759313],["TRXUSDT","TRX",5,0.33882,-0.12,32930875],["XLMUSDT","XLM",5,0.18209,1.23,32756523],["APTUSDT","APT",5,0.5953,0.49,31441478],["CRVUSDT","CRV",6,0.3531,4.31,30318320],["PAXGUSDT","PAXG",4,4332.17,-0.54,29525668],["RIVERUSDT","RIVER",6,1.214,-5.82,29096443],["ICPUSDT","ICP",6,2.772,2.82,28022357],["XPLUSDT","XPL",7,0.08013,0.46,27268050],["WLFIUSDT","WLFI",7,0.05765,0.14,26789571],["METUSDT","MET",7,0.2214,-11.97,25771567],["POLYXUSDT","POLYX",7,0.04111,2.26,25454148],["ILVUSDT","ILV",5,3.498,-5.46,25126713],["GLMUSDT","GLM",7,0.12382,4.52,23715417],["FETUSDT","FET",7,0.1695,0.95,23515376],["API3USDT","API3",4,0.2528,3.14,23511635]]}
+</script>
+
+<script>
+/* 自选页 · 行为层
+ *
+ * 一屏十行，做的事只有四类：看（排序 / 展开）、分（分组）、理（编辑、拖排序、批量）、进（点开行情）。
+ * 状态全在 S 里，结构变了就整表重建，跳价只按引用打补丁——十行没必要为了省一次重建写虚拟 DOM。
+ */
+;(function () {
+  'use strict'
+  var D = window.KANPAN_WATCH
+  var $ = function (id) { return document.getElementById(id) }
+
+  // ------------------------------------------------------------ 格式
+  function fmtNum (v, p) { return v.toLocaleString('en-US', { minimumFractionDigits: p, maximumFractionDigits: p }) }
+  function fmtVol (v) {
+    if (v >= 1e8) return (v / 1e8).toFixed(v >= 1e10 ? 0 : 1) + '亿'
+    if (v >= 1e4) return (v / 1e4).toFixed(1) + '万'
+    return String(Math.round(v))
+  }
+  function pct (v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%' }
+  function dir (v) { return v > 0 ? 'up' : v < 0 ? 'down' : 'flat' }
+
+  // ------------------------------------------------------------ 币种标记
+  // 只用项目那六支调色板上色，不搬各家品牌色；认不出来的品种退回两字母字标。
+  var MARK = {
+    BTCUSDT: { ch: '₿', size: 17 },
+    DOGEUSDT: { ch: 'Ð', size: 16 },
+    HYPEUSDT: { ch: 'H', size: 14 },
+    ETHUSDT: { svg: '<path d="M12 2.4 5.6 12.2 12 15.9l6.4-3.7z" opacity=".5"/><path d="M12 17.2 5.6 13.5 12 21.6l6.4-8.1z"/>' },
+    SOLUSDT: { svg: '<path d="M7.2 6.4h12.4l-2.8 2.6H4.4z"/><path d="M4.4 10.7h12.4l2.8 2.6H7.2z" opacity=".7"/><path d="M7.2 15h12.4l-2.8 2.6H4.4z" opacity=".45"/>' },
+    BNBUSDT: { svg: '<path d="M12 4.2 14.1 6.3 12 8.4 9.9 6.3z"/><path d="M12 15.6 14.1 17.7 12 19.8 9.9 17.7z"/><path d="M6.3 9.9 8.4 12 6.3 14.1 4.2 12z"/><path d="M17.7 9.9 19.8 12 17.7 14.1 15.6 12z"/><path d="M12 9.2 14.8 12 12 14.8 9.2 12z" opacity=".6"/>' },
+    XRPUSDT: { svg: '<path d="M5.4 5.2h3.2l3.4 3.5 3.4-3.5h3.2l-5 5.2a2.3 2.3 0 0 1-3.2 0z"/><path d="M18.6 18.8h-3.2L12 15.3l-3.4 3.5H5.4l5-5.2a2.3 2.3 0 0 1 3.2 0z" opacity=".6"/>' },
+    LINKUSDT: { svg: '<path d="M12 3.2 20 7.6v8.8L12 20.8 4 16.4V7.6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 8.4 15.8 10.5v4.2L12 16.8 8.2 14.7v-4.2z" opacity=".55"/>' },
+    AVAXUSDT: { svg: '<path d="M12 3.4 20.8 19.4h-5.2L12 13.1 8.4 19.4H3.2z"/><path d="M15.9 8.6 18.4 13h-5z" opacity=".55"/>' },
+    ASTERUSDT: { svg: '<path d="M12 3.8v16.4M4.9 7.9l14.2 8.2M19.1 7.9 4.9 16.1" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/><circle cx="12" cy="12" r="2.6"/>' },
+  }
+  var TINT = { BTCUSDT: 1, ETHUSDT: 2, SOLUSDT: 3, BNBUSDT: 1, XRPUSDT: 6, DOGEUSDT: 1, LINKUSDT: 6, AVAXUSDT: 4, HYPEUSDT: 3, ASTERUSDT: 5 }
+  function tintOf (sym) {
+    if (TINT[sym]) return TINT[sym]
+    var h = 0
+    for (var i = 0; i < sym.length; i++) h = (h * 31 + sym.charCodeAt(i)) >>> 0
+    return (h % 6) + 1
+  }
+  function icon (sym, base, px) {
+    var m = MARK[sym]
+    var el = document.createElement('span')
+    el.className = 'ico'
+    el.style.setProperty('--t', 'var(--p' + tintOf(sym) + ')')
+    if (px) { el.style.width = px + 'px'; el.style.height = px + 'px'; el.style.borderRadius = Math.round(px / 3.4) + 'px' }
+    if (m && m.svg) {
+      var s = px ? Math.round(px * 0.56) : 17
+      el.innerHTML = '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' + m.svg + '</svg>'
+    } else {
+      var ch = m ? m.ch : base.slice(0, 2)
+      el.innerHTML = '<span class="mono2" style="font-size:' + (m ? m.size : 11) + 'px">' + ch + '</span>'
+    }
+    el.setAttribute('aria-hidden', 'true')
+    return el
+  }
+
+  // ------------------------------------------------------------ 模型
+  var GROUPS = [
+    { id: 'all', name: '全部' }, { id: 'default', name: '默认' },
+    { id: 'major', name: '主流' }, { id: 'vol', name: '高波动' }, { id: 'eye', name: '观察' },
+  ]
+  var HOME = {
+    BTCUSDT: 'major', ETHUSDT: 'major', SOLUSDT: 'major', BNBUSDT: 'major', XRPUSDT: 'major',
+    DOGEUSDT: 'vol', ASTERUSDT: 'vol', HYPEUSDT: 'default', LINKUSDT: 'eye', AVAXUSDT: 'eye',
+  }
+  var M = {}   // 活的行情：跳价改这里
+  Object.keys(D.watch).forEach(function (sym) {
+    var w = D.watch[sym]
+    M[sym] = {
+      sym: sym, b: w.b, p: w.p, q: w.q, pct: w.pct, vol: w.vol, h: w.h, l: w.l,
+      base: w.q / (1 + w.pct / 100), sp: w.sp.slice(),
+    }
+  })
+  var S = {
+    group: 'all', q: '', sort: 'custom', dir: -1, chgMode: 'pct',
+    edit: false, sel: {}, open2: {}, pinned: { BTCUSDT: true },
+    gof: Object.assign({}, HOME),
+    order: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'LINKUSDT', 'AVAXUSDT', 'HYPEUSDT', 'ASTERUSDT'],
+  }
+
+  function amt (m) { return m.q - m.base }
+  function inGroup (sym, g) { return g === 'all' || S.gof[sym] === g }
+  function groupCount (g) { return S.order.filter(function (s) { return inGroup(s, g) }).length }
+
+  function visible () {
+    var list = S.order.filter(function (s) { return inGroup(s, S.group) })
+    if (S.q) {
+      var q = S.q.toUpperCase()
+      list = list.filter(function (s) { return s.indexOf(q) >= 0 || M[s].b.indexOf(q) >= 0 })
+    }
+    if (S.sort !== 'custom') {
+      var key = S.sort
+      list = list.slice().sort(function (a, b) {
+        var x, y
+        if (key === 'name') { x = M[a].b; y = M[b].b; return x < y ? S.dir : x > y ? -S.dir : 0 }
+        if (key === 'price') { x = M[a].q; y = M[b].q }
+        else { x = S.chgMode === 'pct' ? M[a].pct : amt(M[a]); y = S.chgMode === 'pct' ? M[b].pct : amt(M[b]) }
+        return (x - y) * -S.dir
+      })
+    }
+    // 置顶永远浮在最前，排序也压不住它
+    var pin = list.filter(function (s) { return S.pinned[s] })
+    return pin.concat(list.filter(function (s) { return !S.pinned[s] }))
+  }
+
+  // ------------------------------------------------------------ 走势线
+  function drawSpark (cv, arr, up) {
+    var dpr = Math.min(3, window.devicePixelRatio || 1)
+    var w = cv.clientWidth || 58, h = cv.clientHeight || 26
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr) }
+    var g = cv.getContext('2d')
+    g.setTransform(dpr, 0, 0, dpr, 0, 0)
+    g.clearRect(0, 0, w, h)
+    var lo = Infinity, hi = -Infinity, i
+    for (i = 0; i < arr.length; i++) { if (arr[i] < lo) lo = arr[i]; if (arr[i] > hi) hi = arr[i] }
+    var span = (hi - lo) || (hi || 1) * 1e-4, pad = 3.5
+    var cs = getComputedStyle(document.documentElement)
+    var col = cs.getPropertyValue(up ? '--up' : '--down').trim() || (up ? '#0E9E78' : '#DE2E57')
+    var X = function (k) { return 1 + k * (w - 3) / (arr.length - 1) }
+    var Y = function (v) { return h - pad - (v - lo) / span * (h - pad * 2) }
+    g.beginPath()
+    g.moveTo(X(0), Y(arr[0]))
+    for (i = 1; i < arr.length; i++) g.lineTo(X(i), Y(arr[i]))
+    // 面：线下淡到透明，比整片色块轻，也比只有一条线有体量
+    g.save()
+    g.lineTo(X(arr.length - 1), h); g.lineTo(X(0), h); g.closePath()
+    var grd = g.createLinearGradient(0, 0, 0, h)
+    grd.addColorStop(0, col + '38'); grd.addColorStop(1, col + '00')
+    g.fillStyle = grd; g.fill()
+    g.restore()
+    g.beginPath()
+    g.moveTo(X(0), Y(arr[0]))
+    for (i = 1; i < arr.length; i++) g.lineTo(X(i), Y(arr[i]))
+    g.strokeStyle = col; g.lineWidth = 1.35; g.lineJoin = 'round'; g.lineCap = 'round'; g.stroke()
+    g.beginPath()
+    g.arc(X(arr.length - 1), Y(arr[arr.length - 1]), 1.9, 0, Math.PI * 2)
+    g.fillStyle = col; g.fill()
+  }
+
+  // ------------------------------------------------------------ 列表
+  var refs = {}
+  function renderList () {
+    var box = $('list')
+    box.innerHTML = ''
+    refs = {}
+    var list = visible()
+    if (!list.length) {
+      box.appendChild(emptyBlock())
+      syncHead()
+      return
+    }
+    list.forEach(function (sym) { box.appendChild(rowFor(sym)) })
+    syncHead()
+  }
+
+  function emptyBlock () {
+    var el = document.createElement('div')
+    el.className = 'empty'
+    var name = (GROUPS.filter(function (g) { return g.id === S.group })[0] || {}).name || '这里'
+    el.innerHTML =
+      '<svg class="eico" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M12 3.4l2.7 5.6 6.1.8-4.5 4.3 1.2 6.1L12 17.3 6.5 20.2l1.2-6.1-4.5-4.3 6.1-.8z"/></svg>' +
+      '<h3>' + (S.q ? '没搜到' : name + '还是空的') + '</h3>' +
+      '<p>' + (S.q ? '换个名字试试，比如 BTC、SOL。' : '把常看的品种加进来，分组只是组织方式，行情不会重复。') + '</p>'
+    if (!S.q) {
+      var b = document.createElement('button')
+      b.textContent = '添加品种'
+      b.onclick = openAdd
+      el.appendChild(b)
+    }
+    return el
+  }
+
+  function rowFor (sym) {
+    var m = M[sym]
+    var row = document.createElement('div')
+    row.className = 'wrow' + (S.pinned[sym] ? ' pinned' : '') + (S.open2[sym] ? ' open2' : '')
+    row.dataset.sym = sym
+
+    var top = document.createElement('div')
+    top.className = 'wtop'
+    row.appendChild(top)
+
+    var act = document.createElement('div')
+    act.className = 'wact'
+    act.innerHTML = '<button class="wa pin">' + (S.pinned[sym] ? '取消置顶' : '置顶') + '</button><button class="wa del">移除</button>'
+    act.children[0].onclick = function () { togglePin(sym); closeSwipe() }
+    act.children[1].onclick = function () { remove(sym) }
+    top.appendChild(act)
+
+    var body = document.createElement('div')
+    body.className = 'wbody'
+    body.innerHTML = '<span class="rail"></span>'
+
+    var grip = document.createElement('button')
+    grip.className = 'grip'
+    grip.setAttribute('aria-label', '拖动排序')
+    grip.innerHTML = '<svg width="15" height="15" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.5 6.2h11M3.5 11.8h11"/></svg>'
+    body.appendChild(grip)
+
+    var tick = document.createElement('button')
+    tick.className = 'tick' + (S.sel[sym] ? ' on' : '')
+    tick.setAttribute('aria-label', '选择 ' + m.b)
+    tick.innerHTML = '<span></span>'
+    tick.onclick = function (e) { e.stopPropagation(); S.sel[sym] = !S.sel[sym]; tick.classList.toggle('on', !!S.sel[sym]); syncEditBar() }
+    body.appendChild(tick)
+
+    body.appendChild(icon(sym, m.b))
+
+    var who = document.createElement('div')
+    who.className = 'who'
+    who.innerHTML =
+      '<div class="nm"><b>' + m.b + '</b><span class="qa">/USDT</span><i class="tag">永续</i></div>' +
+      '<div class="mt">额 <span class="mono vol"></span> · 振幅 <span class="mono amp"></span></div>'
+    body.appendChild(who)
+
+    var cv = document.createElement('canvas')
+    cv.className = 'spark'
+    cv.setAttribute('aria-hidden', 'true')
+    body.appendChild(cv)
+
+    var px = document.createElement('div')
+    px.className = 'px'
+    px.innerHTML = '<div class="p"></div><div class="pill"></div>'
+    body.appendChild(px)
+
+    top.appendChild(body)
+
+    var more = document.createElement('div')
+    more.className = 'more'
+    more.innerHTML = '<div><div class="morein"></div></div>'
+    row.appendChild(more)
+
+    refs[sym] = { row: row, body: body, px: px, p: px.children[0], pill: px.children[1], cv: cv,
+                  vol: who.querySelector('.vol'), amp: who.querySelector('.amp'),
+                  more: more.querySelector('.morein'), tick: tick, grip: grip }
+    paint(sym)
+    if (S.open2[sym]) fillMore(sym)
+    bindRow(row, sym, grip)
+    return row
+  }
+
+  function paint (sym, flash) {
+    var m = M[sym], r = refs[sym]
+    if (!r) return
+    r.p.textContent = fmtNum(m.q, m.p)
+    var v = S.chgMode === 'pct' ? m.pct : amt(m)
+    r.pill.textContent = S.chgMode === 'pct' ? pct(v) : (v >= 0 ? '+' : '') + fmtNum(v, m.p)
+    r.pill.className = 'pill ' + dir(m.pct)
+    r.vol.textContent = fmtVol(m.vol)
+    r.amp.textContent = ((m.h - m.l) / m.l * 100).toFixed(2) + '%'
+    drawSpark(r.cv, m.sp, m.pct >= 0)
+    if (flash) {
+      var cls = flash > 0 ? 'f-up' : 'f-down'
+      r.px.classList.remove('f-up', 'f-down')
+      void r.px.offsetWidth
+      r.px.classList.add(cls)
+    }
+    if (S.open2[sym]) fillMore(sym)
+  }
+
+  function fillMore (sym) {
+    var m = M[sym], r = refs[sym]
+    if (!r) return
+    var n = m.sp.length
+    var c1 = (m.q / m.sp[n - 2] - 1) * 100
+    var c4 = (m.q / m.sp[n - 5] - 1) * 100
+    var at = Math.max(0, Math.min(1, (m.q - m.l) / ((m.h - m.l) || 1)))
+    r.more.innerHTML =
+      '<div class="mgrid">' +
+        cell('1h', pct(c1), dir(c1)) + cell('4h', pct(c4), dir(c4)) + cell('24h', pct(m.pct), dir(m.pct)) +
+        cell('24h 高', fmtNum(m.h, m.p)) + cell('24h 低', fmtNum(m.l, m.p)) + cell('24h 额', fmtVol(m.vol) + ' USDT') +
+      '</div>' +
+      '<div class="range"><div class="rbar"><i style="left:' + (at * 100).toFixed(1) + '%"></i></div>' +
+        '<div class="rends"><span>' + fmtNum(m.l, m.p) + '</span><span>现价在 24h 区间 ' + Math.round(at * 100) + '%</span><span>' + fmtNum(m.h, m.p) + '</span></div></div>' +
+      '<button class="mgo">查看 ' + m.b + ' K 线</button>'
+    r.more.querySelector('.mgo').onclick = function (e) { e.stopPropagation(); open(sym) }
+    function cell (k, v, c) { return '<div class="mcell"><span class="k">' + k + '</span><span class="v ' + (c || '') + '">' + v + '</span></div>' }
+  }
+
+  function toggleMore (sym) {
+    if (S.edit) return
+    S.open2[sym] = !S.open2[sym]
+    refs[sym].row.classList.toggle('open2', S.open2[sym])
+    if (S.open2[sym]) fillMore(sym)
+  }
+
+  // ------------------------------------------------------------ 行的手势：左滑露按钮、长按展开、编辑态拖排序
+  var openRow = null
+  function cvOf (body) { return body.querySelector('.spark') }
+  function closeSwipe () {
+    if (openRow) { openRow.classList.remove('open'); openRow = null }
+  }
+  function bindRow (row, sym, grip) {
+    var body = row.querySelector('.wbody')
+    var sx = 0, sy = 0, dx = 0, lock = '', press = null, moved = false, onSpark = false
+
+    body.addEventListener('pointerdown', function (e) {
+      if (S.edit || e.button) return
+      sx = e.clientX; sy = e.clientY; dx = 0; lock = ''; moved = false
+      onSpark = e.target === cvOf(body)
+      press = setTimeout(function () { press = null; moved = true; closeSwipe(); toggleMore(sym) }, 480)
+    })
+    body.addEventListener('pointermove', function (e) {
+      if (S.edit || !sx) return
+      var ddx = e.clientX - sx, ddy = e.clientY - sy
+      if (!lock) {
+        if (Math.abs(ddx) > 10 && Math.abs(ddx) > Math.abs(ddy)) { lock = 'x'; body.setPointerCapture(e.pointerId) }
+        else if (Math.abs(ddy) > 8) lock = 'y'
+        if (lock) { clearTimeout(press); press = null }
+      }
+      if (lock !== 'x') return
+      moved = true
+      var from = row.classList.contains('open') ? -136 : 0
+      dx = Math.max(-150, Math.min(0, from + ddx))
+      body.style.transition = 'none'
+      body.style.transform = 'translateX(' + dx + 'px)'
+    })
+    function end () {
+      clearTimeout(press); press = null
+      body.style.transition = ''
+      body.style.transform = ''
+      if (lock === 'x') {
+        if (dx < -58) { closeSwipe(); row.classList.add('open'); openRow = row }
+        else closeSwipe()
+      }
+      sx = 0; lock = ''
+    }
+    body.addEventListener('pointerup', function () {
+      var wasOpen = row.classList.contains('open')
+      var tap = !moved && lock !== 'x'
+      end()
+      if (tap) {
+        if (wasOpen || openRow) closeSwipe()
+        else if (onSpark) toggleMore(sym)
+        else open(sym)
+      }
+    })
+    body.addEventListener('pointercancel', end)
+
+    // 编辑态：按住手柄拖，整行跟手，松手落位
+    grip.addEventListener('pointerdown', function (e) {
+      if (!S.edit) return
+      e.preventDefault(); e.stopPropagation()
+      grip.setPointerCapture(e.pointerId)
+      var rows = Array.prototype.slice.call($('list').children)
+      var h = row.offsetHeight
+      var from = rows.indexOf(row)
+      var at = from
+      var y0 = e.clientY
+      row.classList.add('dragging')
+      function move (ev) {
+        var d = ev.clientY - y0
+        row.style.transform = 'translateY(' + d + 'px)'
+        var want = Math.max(0, Math.min(rows.length - 1, from + Math.round(d / h)))
+        if (want !== at) {
+          rows.forEach(function (r, i) {
+            if (r === row) return
+            var shift = 0
+            if (want > from && i > from && i <= want) shift = -h
+            if (want < from && i >= want && i < from) shift = h
+            r.style.transform = shift ? 'translateY(' + shift + 'px)' : ''
+          })
+          at = want
+        }
+      }
+      function up () {
+        grip.removeEventListener('pointermove', move)
+        grip.removeEventListener('pointerup', up)
+        rows.forEach(function (r) { r.style.transform = '' })
+        row.classList.remove('dragging')
+        if (at !== from) reorder(from, at)
+      }
+      grip.addEventListener('pointermove', move)
+      grip.addEventListener('pointerup', up)
+    })
+  }
+
+  // ------------------------------------------------------------ 动作
+  function open (sym) { toast(M[sym].b + '/USDT · 打开行情（原型里图在主屏那份）') }
+  function togglePin (sym) {
+    S.pinned[sym] = !S.pinned[sym]
+    toast(M[sym].b + (S.pinned[sym] ? ' 已置顶' : ' 已取消置顶'))
+    renderList()
+  }
+  function remove (syms) {
+    var list = [].concat(syms)
+    S.order = S.order.filter(function (s) { return list.indexOf(s) < 0 })
+    list.forEach(function (s) { delete S.pinned[s]; delete S.sel[s]; delete S.open2[s] })
+    openRow = null
+    toast(list.length === 1 ? M[list[0]].b + ' 已移出自选' : '已移出 ' + list.length + ' 个品种')
+    renderList(); syncTabs(); syncOverview(); syncEditBar()
+  }
+  function reorder (from, to) {
+    // 拖的是「看见的这一列」：这些行按新次序填回它们原本在自定义序里占的槽，
+    // 没露面的品种一个都不动。
+    var seen = visible()
+    var arr = seen.slice()
+    arr.splice(to, 0, arr.splice(from, 1)[0])
+    var next = S.order.slice()
+    var k = 0
+    S.order.forEach(function (s, i) { if (seen.indexOf(s) >= 0) next[i] = arr[k++] })
+    S.order = next
+    S.sort = 'custom'
+    renderList()
+  }
+
+  // ------------------------------------------------------------ 表头 / 概览 / 分组条
+  function syncHead () {
+    $('cnt').textContent = visible().length + ' 个'
+    ;[['sName', 'name'], ['sPrice', 'price'], ['sChg', 'chg']].forEach(function (pair) {
+      var b = $(pair[0])
+      b.classList.toggle('on', S.sort === pair[1])
+      b.classList.toggle('asc', S.sort === pair[1] && S.dir === 1)
+      b.classList.toggle('desc', S.sort === pair[1] && S.dir === -1)
+    })
+    $('chgLab').textContent = '24h涨跌' + (S.chgMode === 'pct' ? '幅' : '额')
+    syncOverview()
+  }
+  function syncOverview () {
+    var list = S.order.filter(function (s) { return inGroup(s, S.group) })
+    var u = list.filter(function (s) { return M[s].pct > 0 }).length
+    var d = list.filter(function (s) { return M[s].pct < 0 }).length
+    $('ovrU').style.flexGrow = String(Math.max(u, 0.08))
+    $('ovrD').style.flexGrow = String(Math.max(d, 0.08))
+    $('ovrTxt').innerHTML = '上涨 <b class="up">' + u + '</b> · 下跌 <b class="down">' + d + '</b>'
+    var t = new Date(D.takenAt)
+    var two = function (n) { return String(n).padStart(2, '0') }
+    $('ovrWhen').textContent = '快照 ' + two(t.getMonth() + 1) + '-' + two(t.getDate()) + ' ' + two(t.getHours()) + ':' + two(t.getMinutes())
+  }
+  function syncTabs () {
+    var box = $('gscroll')
+    box.innerHTML = ''
+    GROUPS.forEach(function (g) {
+      var b = document.createElement('button')
+      b.className = 'gtab' + (S.group === g.id ? ' on' : '')
+      b.innerHTML = g.name + '<span class="n">' + groupCount(g.id) + '</span>'
+      b.onclick = function () { S.group = g.id; S.sel = {}; syncTabs(); renderList(); syncEditBar(); moveInk() }
+      box.appendChild(b)
+    })
+    moveInk()
+  }
+  function moveInk () {
+    var on = $('gscroll').querySelector('.gtab.on')
+    var ink = $('gink')
+    if (!on) { ink.style.width = '0'; return }
+    ink.style.width = (on.offsetWidth - 20) + 'px'
+    ink.style.transform = 'translateX(' + (on.offsetLeft - $('gscroll').scrollLeft + 10) + 'px)'
+  }
+  $('gscroll').addEventListener('scroll', moveInk, { passive: true })
+
+  // ------------------------------------------------------------ 编辑态
+  function setEdit (on) {
+    S.edit = on
+    if (!on) S.sel = {}
+    else { Object.keys(S.open2).forEach(function (k) { delete S.open2[k] }) }
+    closeSwipe()
+    $('list').classList.toggle('editing', on)
+    $('editbar').classList.toggle('show', on)
+    $('btnEdit').textContent = on ? '完成' : '编辑'
+    renderList(); syncEditBar()
+  }
+  function selected () { return visible().filter(function (s) { return S.sel[s] }) }
+  function syncEditBar () {
+    var n = selected().length
+    ;['ePin', 'eMove', 'eDel'].forEach(function (id) { $(id).disabled = !n })
+    $('eAll').textContent = n && n === visible().length ? '全不选' : '全选'
+  }
+
+  // ------------------------------------------------------------ 面板
+  function scrim (on) { $('scrim').classList.toggle('show', on) }
+  function closeSheets () { $('shAdd').classList.remove('show'); $('shGroup').classList.remove('show'); scrim(false) }
+  $('scrim').onclick = closeSheets
+
+  function openAdd () {
+    renderAdd('')
+    $('shAdd').classList.add('show'); scrim(true)
+  }
+  function renderAdd (q) {
+    var box = $('addBody')
+    box.innerHTML = ''
+    q = (q || '').trim().toUpperCase()
+    $('addSub').textContent = S.order.length + ' 个在自选'
+    var rows = D.more.filter(function (r) { return !q || r[0].indexOf(q) >= 0 || r[1].indexOf(q) >= 0 })
+    var mine = Object.keys(D.watch).filter(function (s) { return !q || s.indexOf(q) >= 0 || D.watch[s].b.indexOf(q) >= 0 })
+    group('原型带了 K 线的', mine.map(function (s) {
+      var w = D.watch[s]; return [s, w.b, w.p, M[s].q, M[s].pct, w.vol]
+    }))
+    group(q ? '搜到 ' + rows.length + ' 个' : '24h 额最大的', rows.slice(0, 40))
+    function group (title, list) {
+      if (!list.length) return
+      var t = document.createElement('div')
+      t.className = 'groupt'; t.textContent = title
+      box.appendChild(t)
+      list.forEach(function (r) { box.appendChild(addRow(r)) })
+    }
+  }
+  function addRow (r) {
+    var sym = r[0], base = r[1], p = r[2], price = r[3], ch = r[4], vol = r[5]
+    var row = document.createElement('div')
+    row.className = 'row'
+    row.appendChild(icon(sym, base, 26))
+    var left = document.createElement('div')
+    left.innerHTML = '<div class="name">' + base + ' <span style="color:var(--ink3);font-weight:400">/USDT</span></div>' +
+      '<div class="meta">额 ' + fmtVol(vol) + ' · ' + (M[sym] ? '有 K 线快照' : '仅行情') + '</div>'
+    row.appendChild(left)
+    var num = document.createElement('div')
+    num.className = 'num'
+    num.innerHTML = '<div>' + fmtNum(price, p) + '</div><div class="pct ' + dir(ch) + '">' + pct(ch) + '</div>'
+    row.appendChild(num)
+    var star = document.createElement('button')
+    var on = S.order.indexOf(sym) >= 0
+    star.className = 'star' + (on ? ' on' : '')
+    star.setAttribute('aria-label', on ? '取消自选' : '加入自选')
+    star.innerHTML = '<svg width="16" height="16" viewBox="0 0 18 18" fill="' + (on ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M9 2.2l2 4.2 4.6.6-3.4 3.2.9 4.6L9 12.6 4.9 14.8l.9-4.6L2.4 7l4.6-.6z"/></svg>'
+    star.onclick = function () {
+      if (!M[sym]) {
+        if (S.order.indexOf(sym) >= 0) { remove(sym) }
+        else {
+          // 没快照的品种照样能收进自选：行情有，K 线原型没带
+          M[sym] = { sym: sym, b: base, p: p, q: price, pct: ch, vol: vol, base: price / (1 + ch / 100),
+                     h: price * (1 + Math.abs(ch) / 200 + 0.004), l: price * (1 - Math.abs(ch) / 200 - 0.004), sp: fakeSpark(sym, price, ch) }
+          S.order.push(sym); S.gof[sym] = S.group === 'all' ? 'default' : S.group
+        }
+      } else if (S.order.indexOf(sym) >= 0) remove(sym)
+      else { S.order.push(sym); S.gof[sym] = S.group === 'all' ? 'default' : S.group }
+      renderAdd($('addQ').value)
+      renderList(); syncTabs(); syncOverview()
+    }
+    row.appendChild(star)
+    return row
+  }
+  // 没快照的品种给一条可复现的走势线：种子取名字，起点终点对得上 24h 涨跌
+  function fakeSpark (sym, price, ch) {
+    var h = 2166136261
+    for (var i = 0; i < sym.length; i++) { h ^= sym.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0 }
+    var rnd = function () { h = (Math.imul(h, 1664525) + 1013904223) >>> 0; return h / 4294967296 }
+    var from = price / (1 + ch / 100), out = [], n = 48
+    var vol = Math.max(0.0015, Math.abs(ch) / 100 / 6)
+    var walk = 0
+    for (var k = 0; k < n; k++) {
+      walk += (rnd() - 0.5) * vol
+      out.push(from + (price - from) * (k / (n - 1)) + from * walk * (1 - Math.abs(k / (n - 1) - 0.5) * 1.2))
+    }
+    out[0] = from; out[n - 1] = price
+    return out
+  }
+
+  function openGroupSheet (syms) {
+    var box = $('grpBody')
+    box.innerHTML = ''
+    $('grpSub').textContent = syms.length === 1 ? M[syms[0]].b : syms.length + ' 个品种'
+    GROUPS.filter(function (g) { return g.id !== 'all' }).forEach(function (g) {
+      var b = document.createElement('button')
+      var cur = syms.every(function (s) { return S.gof[s] === g.id })
+      b.className = 'row gpick' + (cur ? ' on' : '')
+      b.innerHTML = '<div><div class="name">' + g.name + '</div><div class="meta">' + groupCount(g.id) + ' 个品种</div></div>' +
+        '<span class="ck"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.8 9.4l3.4 3.4 7-7"/></svg></span>'
+      b.onclick = function () {
+        syms.forEach(function (s) { S.gof[s] = g.id })
+        closeSheets()
+        toast((syms.length === 1 ? M[syms[0]].b : syms.length + ' 个品种') + ' 已移到「' + g.name + '」')
+        renderList(); syncTabs(); syncOverview()
+      }
+      box.appendChild(b)
+    })
+    $('shGroup').classList.add('show'); scrim(true)
+  }
+
+  // ------------------------------------------------------------ toast
+  var tt = null
+  function toast (msg) {
+    var el = $('toast')
+    el.textContent = msg
+    el.classList.add('show')
+    clearTimeout(tt)
+    tt = setTimeout(function () { el.classList.remove('show') }, 1900)
+  }
+
+  // ------------------------------------------------------------ 跳价
+  // 快照是死的，但自选页最该看出来的就是「谁在动」，所以让价格在原地小幅走。
+  var live = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  setInterval(function () {
+    var seen = visible()
+    if (!seen.length) return
+    var n = Math.min(seen.length, 1 + Math.floor(Math.random() * 3))
+    for (var i = 0; i < n; i++) {
+      var sym = seen[Math.floor(Math.random() * seen.length)]
+      var m = M[sym]
+      var next = Math.max(Math.pow(10, -m.p), m.q + m.q * 0.0009 * (Math.random() - 0.5))
+      var up = next > m.q
+      m.q = Number(next.toFixed(m.p))
+      m.pct = (m.q / m.base - 1) * 100
+      if (m.q > m.h) m.h = m.q
+      if (m.q < m.l) m.l = m.q
+      m.sp[m.sp.length - 1] = m.q
+      paint(sym, live ? (up ? 1 : -1) : 0)
+    }
+    syncOverview()
+  }, 1100)
+
+  // ------------------------------------------------------------ 顶栏 / 表头 事件
+  $('btnBack').onclick = function () { toast('返回行情') }
+  $('btnAdd').onclick = openAdd
+  $('btnEdit').onclick = function () { setEdit(!S.edit) }
+  $('btnSearch').onclick = function () {
+    var w = $('searchwrap')
+    var on = !w.classList.contains('open')
+    w.classList.toggle('open', on)
+    $('btnSearch').classList.toggle('on', on)
+    if (on) setTimeout(function () { $('q').focus() }, 120)
+    else { $('q').value = ''; S.q = ''; renderList() }
+  }
+  $('qCancel').onclick = function () { $('btnSearch').click() }
+  $('q').oninput = function (e) { S.q = e.target.value.trim(); renderList() }
+  $('btnNewGroup').onclick = function () { toast('新建分组 · 原型里分组固定四个') }
+
+  function sortBy (k) {
+    if (S.sort === k) {
+      if (S.dir === -1) S.dir = 1
+      else { S.sort = 'custom'; S.dir = -1 }
+    } else { S.sort = k; S.dir = k === 'name' ? 1 : -1 }
+    renderList()
+  }
+  $('sName').onclick = function () { sortBy('name') }
+  $('sPrice').onclick = function () { sortBy('price') }
+  $('sChg').onclick = function () { sortBy('chg') }
+  $('btnSwap').onclick = function () {
+    S.chgMode = S.chgMode === 'pct' ? 'amt' : 'pct'
+    syncHead()
+    visible().forEach(function (s) { paint(s) })
+    toast(S.chgMode === 'pct' ? '按涨跌幅显示' : '按涨跌额显示')
+  }
+
+  $('eAll').onclick = function () {
+    var seen = visible()
+    var all = seen.length && seen.every(function (s) { return S.sel[s] })
+    seen.forEach(function (s) { S.sel[s] = !all })
+    renderList(); syncEditBar()
+  }
+  $('ePin').onclick = function () {
+    var sel = selected()
+    sel.forEach(function (s) { S.pinned[s] = true })
+    toast('已置顶 ' + sel.length + ' 个')
+    renderList()
+  }
+  $('eMove').onclick = function () { openGroupSheet(selected()) }
+  $('eDel').onclick = function () { remove(selected()) }
+  $('addDone').onclick = closeSheets
+  $('addClear').onclick = function () { $('addQ').value = ''; renderAdd('') }
+  $('addQ').oninput = function (e) { renderAdd(e.target.value) }
+
+  // 左滑露出的「分组」走 sheet：单行就是它自己
+  document.addEventListener('click', function (e) {
+    if (openRow && !openRow.contains(e.target)) closeSwipe()
+  }, true)
+
+  // ------------------------------------------------------------ 台面上的三排按钮
+  var DEVICES = [
+    { id: 'se', n: 'SE', w: 375, h: 667, r: 0, top: 20, bot: 0, cut: 'none' },
+    { id: '16', n: 'iPhone 16', w: 393, h: 852, r: 44, top: 59, bot: 34, cut: 'island' },
+    { id: 'max', n: 'Pro Max', w: 440, h: 956, r: 52, top: 62, bot: 34, cut: 'island' },
+  ]
+  var dev = '16'
+  function setDevice (id) {
+    dev = id
+    var d = DEVICES.filter(function (x) { return x.id === id })[0]
+    var s = document.documentElement.style
+    s.setProperty('--dw', d.w + 'px'); s.setProperty('--dh', d.h + 'px')
+    s.setProperty('--dr', d.r + 'px'); s.setProperty('--dtop', d.top + 'px'); s.setProperty('--dbot', d.bot + 'px')
+    $('statusbar').dataset.cut = d.cut
+    $('homebar').style.display = d.bot ? '' : 'none'
+    fit(); chips(); setTimeout(moveInk, 40)
+  }
+  function fit () {
+    if (document.body.classList.contains('live')) return
+    var d = DEVICES.filter(function (x) { return x.id === dev })[0]
+    var k = Math.min(1, Math.max(0.55, Math.min((window.innerHeight - 190) / d.h, (window.innerWidth - 40) / d.w)))
+    document.documentElement.style.setProperty('--fit', String(k))
+  }
+  var theme = 'auto', redUp = false
+  function apply () {
+    var r = document.documentElement
+    if (theme === 'auto') r.removeAttribute('data-theme')
+    else r.setAttribute('data-theme', theme)
+    if (redUp) r.setAttribute('data-updown', 'red')
+    else r.removeAttribute('data-updown')
+    visible().forEach(function (s) { paint(s) })
+  }
+  function chips () {
+    mk('devset', DEVICES.map(function (d) { return [d.id, d.n] }), dev, function (id) { setDevice(id) })
+    mk('themeset', [['auto', '跟随'], ['light', '浅'], ['dark', '深'], ['paper', '护眼'], ['night', '夜读']], theme, function (id) { theme = id; apply(); chips() })
+    mk('udset', [['green', '绿涨'], ['red', '红涨']], redUp ? 'red' : 'green', function (id) { redUp = id === 'red'; apply(); chips() })
+    function mk (host, items, on, cb) {
+      var box = $(host)
+      while (box.children.length > 1) box.removeChild(box.lastChild)
+      items.forEach(function (it) {
+        var b = document.createElement('button')
+        b.className = 'chip' + (it[0] === on ? ' on' : '')
+        b.textContent = it[1]
+        b.onclick = function () { cb(it[0]) }
+        box.appendChild(b)
+      })
+    }
+  }
+
+  function live_() {
+    var narrow = window.innerWidth <= 560
+    document.body.classList.toggle('live', narrow)
+    if (!narrow) fit()
+    else document.documentElement.style.setProperty('--fit', '1')
+    setTimeout(moveInk, 40)
+  }
+  window.addEventListener('resize', function () { live_(); })
+
+  function clock () {
+    var t = new Date()
+    $('clock').textContent = t.getHours() + ':' + String(t.getMinutes()).padStart(2, '0')
+  }
+
+  // ------------------------------------------------------------ 起
+  chips(); setDevice('16'); apply(); live_()
+  syncTabs(); renderList(); syncEditBar(); clock()
+  setInterval(clock, 20000)
+})()
+</script>

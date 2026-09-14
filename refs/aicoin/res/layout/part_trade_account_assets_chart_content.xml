@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:gravity="center_horizontal" android:layout_width="match_parent" android:layout_height="@dimen/trade_account_assets_chart_content_block_height" style="@style/sh_base.ViewContent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <FrameLayout android:id="@id/circle_chart_container" android:layout_width="@dimen/trade_account_assets_chart_out_circle_size" android:layout_height="@dimen/trade_account_assets_chart_out_circle_size" android:layout_centerVertical="true">
+        <app.aicoin.trade.impl.assets.base.widget.SimpleRingCircle android:id="@id/rank_chart" android:layout_width="match_parent" android:layout_height="match_parent" />
+        <LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent">
+            <TextView android:textSize="@dimen/trade_account_assets_chart_circle_title_text_size" android:textColor="@color/trade_account_assets_chart_circle_title_text_color" android:tag="skin:trade_account_assets_chart_circle_title_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/trade_account_assets_chart_circle_title" />
+            <TextView android:textSize="@dimen/trade_account_assets_chart_circle_subtitle_text_size" android:textColor="@color/trade_account_assets_chart_circle_title_text_color" android:tag="skin:trade_account_assets_chart_circle_title_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/offset_2dp" android:text="@string/trade_account_assets_chart_circle_subtitle" />
+        </LinearLayout>
+    </FrameLayout>
+    <LinearLayout android:orientation="vertical" android:id="@id/container_legend_items" android:layout_width="@dimen/trade_account_assets_chart_legend_width" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/trade_account_assets_chart_legend_margin_left" android:layout_toRightOf="@id/circle_chart_container" android:layout_centerVertical="true" android:layout_marginStart="@dimen/trade_account_assets_chart_legend_margin_left" android:layout_toEndOf="@id/circle_chart_container">
+        <include android:layout_gravity="center_vertical" android:id="@id/legend_item_1" android:layout_width="match_parent" android:layout_height="wrap_content" layout="@layout/item_trade_account_assets_chart_legend" />
+        <include android:layout_gravity="center_vertical" android:id="@id/legend_item_2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/trade_account_assets_chart_legend_item_margin_top" layout="@layout/item_trade_account_assets_chart_legend" />
+        <include android:layout_gravity="center_vertical" android:id="@id/legend_item_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/trade_account_assets_chart_legend_item_margin_top" layout="@layout/item_trade_account_assets_chart_legend" />
+        <include android:layout_gravity="center_vertical" android:id="@id/legend_item_4" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/trade_account_assets_chart_legend_item_margin_top" layout="@layout/item_trade_account_assets_chart_legend" />
+    </LinearLayout>
+</RelativeLayout>

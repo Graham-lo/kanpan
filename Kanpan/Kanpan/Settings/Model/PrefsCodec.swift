@@ -34,6 +34,7 @@ extension Prefs: Codable {
     case v
     case interval, quickIntervals
     case theme, styleID, redUp
+    case ambientTheme
     case priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone, changeBasis
     case candleKind, gridChoice, bodyChoice, lastLine, showDrawings, sinceChange
     case viewAnchor, priceBias
@@ -49,6 +50,7 @@ extension Prefs: Codable {
     try c.encode(interval.rawValue, forKey: .interval)
     try c.encode(quickIntervals.map(\.rawValue), forKey: .quickIntervals)
     try c.encode(theme.rawValue, forKey: .theme)
+    try c.encode(ambientTheme, forKey: .ambientTheme)
     try c.encode(styleID, forKey: .styleID)
     try c.encode(redUp, forKey: .redUp)
     try c.encode(priceMode.rawValue, forKey: .priceMode)
@@ -111,6 +113,7 @@ extension Prefs: Codable {
     }
 
     if let raw = str(.theme), let v = ThemeChoice(rawValue: raw) { theme = v }
+    if let v = bool(.ambientTheme) { ambientTheme = v }
     // 认不出来的风格 id 退回「墩」，不是留着一个画不出来的名字。
     if let raw = str(.styleID), CandleStyle.all.contains(where: { $0.id == raw }) { styleID = raw }
     if let v = bool(.redUp) { redUp = v }

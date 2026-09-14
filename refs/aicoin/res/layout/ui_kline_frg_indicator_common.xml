@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <TextView android:textSize="11.0sp" android:textColor="@color/carbon_grey_400" android:id="@id/pc_download_tip_tv" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="120.0dp" android:layout_marginTop="@dimen/offset_5dp" android:text="@string/ui_kline_indic_download_pc_title" />
+    <androidx.recyclerview.widget.RecyclerView android:id="@id/rv_vip_indicator" android:layout_width="match_parent" android:layout_height="match_parent" android:paddingEnd="20.0dp" />
+</LinearLayout>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<carbon.widget.RelativeLayout android:orientation="vertical" android:padding="8.0dp" android:layout_width="match_parent" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <RelativeLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="130.0dp" android:layout_height="wrap_content" android:layout_centerVertical="true">
+            <carbon.widget.TextView android:textSize="16.0sp" android:textColor="@color/sh_base_text_primary" android:ellipsize="end" android:gravity="center_vertical" android:id="@id/tvName" android:tag="skin:sh_base_text_primary:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="100.0dp" android:text="Binance BTC Swap" android:singleLine="true" android:textFontWeight="300" />
+            <app.aicoin.ui.settings.large.LogoView android:id="@id/item_large_order_current_view" android:visibility="gone" android:layout_width="25.0dp" android:layout_height="14.0dp" android:layout_marginStart="@dimen/offset_3dp" />
+        </LinearLayout>
+        <ImageView android:id="@id/left_icon" android:layout_width="20.0dp" android:layout_height="20.0dp" android:src="@drawable/ic_greater_than" android:layout_centerVertical="true" android:layout_marginStart="135.0dp" android:layout_marginEnd="8.0dp" />
+        <LinearLayout android:orientation="horizontal" android:layout_width="160.0dp" android:layout_height="wrap_content" android:layout_marginStart="160.0dp">
+            <carbon.widget.EditText android:textSize="13.0sp" android:textColor="@color/large_order_et_text_color" android:textColorHint="@color/large_order_et_hint_color" android:gravity="center" android:layout_gravity="center_vertical" android:id="@id/etOrderAmount" android:tag="skin:ui_kline_community_search_et_bg:background|skin:large_order_et_text_color:textColor|skin:large_order_et_hint_color:textColorHint" android:background="@drawable/ui_kline_community_search_et_bg" android:padding="8.0dp" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0" android:inputType="number" android:textFontWeight="600" />
+        </LinearLayout>
+    </RelativeLayout>
+</carbon.widget.RelativeLayout>

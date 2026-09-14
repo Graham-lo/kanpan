@@ -20,6 +20,8 @@ struct Prefs: Sendable, Equatable {
   // ---------------------------------------------------------------- 外观
   /// 跟随系统 / 浅 / 深（A6.3）。
   var theme: ThemeChoice = .system
+  // Keep the manual choice intact; automatic brightness selection is runtime-only.
+  var ambientTheme = false
   /// AICoin 与原有十一款造型之一，存 `CandleStyle.id`。
   var styleID: String = CandleStyle.default.id
   /// 涨跌对调（A6.7）。`false` = 绿涨红跌（原型默认）。
@@ -141,7 +143,7 @@ struct Prefs: Sendable, Equatable {
   }
 
   /// 当前深浅下的图表用色，涨跌已按 `redUp` 对调（A6.7 靠这一个入口，不会漏）。
-  func chartColors(dark: Bool) -> ChartColors { Palette.chart(dark: dark, redUp: redUp) }
+  func chartColors(dark: Bool) -> ChartColors { Palette.chart(theme.seed(systemDark: dark), redUp: redUp) }
 
   /// 涨色 / 跌色。胶囊、VOL 柱、MACD 柱都从这儿取，免得各处自己判 `redUp`。
   func upColor(dark: Bool) -> Hex { chartColors(dark: dark).up }

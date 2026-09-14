@@ -49,6 +49,19 @@ private func fixtureState(
 @MainActor
 @Suite("ChartView 脏位")
 struct ChartViewDirtyTests {
+  @Test("护眼配色变更立即重画全部图层，不等待新行情")
+  func paletteChange() {
+    let original = fixtureState()
+    var changed = original
+    changed.paletteSeed = Palette.paperSeed
+    #expect(ChartView.changed(from: original, to: changed) == .all)
+    let size = CGSize(width: 393, height: 720)
+    let a = ChartRenderer(state: original).layout(size: size)
+    let b = ChartRenderer(state: changed).layout(size: size)
+    #expect(a.plotW == b.plotW && a.H == b.H && a.mainH == b.mainH)
+    #expect(changed.view == original.view)
+  }
+
   @Test("第一帧三层全画")
   func first() {
     #expect(ChartView.changed(from: nil, to: fixtureState()) == .all)

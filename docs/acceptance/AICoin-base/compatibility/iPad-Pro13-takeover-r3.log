@@ -1,0 +1,452 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=A62122D5-06E6-4E6D-9C27-0106A18708C6" -derivedDataPath DerivedData-codex-compat-takeover -parallel-testing-enabled NO "-only-testing:KanpanUITests/MainScreenUITests/testLatestButtonAppearsAfterLeavingLatest" -resultBundlePath docs/acceptance/AICoin-base/compatibility/iPad-Pro13-takeover-r3.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/compatibility/iPad-Pro13-takeover-r3.xcresult
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (8 targets)
+    Target 'KanpanUITests' in project 'Kanpan'
+        ➜ Explicit dependency on target 'Kanpan' in project 'Kanpan'
+    Target 'Kanpan' in project 'Kanpan'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanData' in project 'KanpanData'
+    Target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: e96a69ac1a3a09696e309aa624a37c69
+Build description path: /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/XCBuildData/e96a69ac1a3a09696e309aa624a37c69.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+    cd /Users/mdd/zhk/kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -o /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+
+GenerateAssetSymbols /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/usr/bin/actool /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets --compile /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app --output-format human-readable-text --notices --warnings --export-dependency-info /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_dependencies --output-partial-info-plist /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_generated_info.plist --app-icon AppIcon --accent-color AccentColor --compress-pngs --enable-on-demand-resources YES --development-region zh-Hans --target-device iphone --target-device ipad --minimum-deployment-target 17.0 --platform iphonesimulator --bundle-identifier com.mdd.kanpan --generate-swift-asset-symbol-extensions NO --generate-swift-asset-symbols /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/GeneratedAssetSymbols.swift --generate-objc-asset-symbols /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/GeneratedAssetSymbols.h --generate-asset-symbol-index /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/GeneratedAssetSymbols-Index.plist
+/* com.apple.actool.compilation-results */
+/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/GeneratedAssetSymbols-Index.plist
+/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/GeneratedAssetSymbols.h
+/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/GeneratedAssetSymbols.swift
+
+
+CompileAssetCatalogVariant thinned /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/usr/bin/actool /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets --compile /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_output/thinned --output-format human-readable-text --notices --warnings --export-dependency-info /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_dependencies_thinned --output-partial-info-plist /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_generated_info.plist_thinned --app-icon AppIcon --accent-color AccentColor --compress-pngs --enable-on-demand-resources YES --filter-for-thinning-device-configuration iPad17,4-A --filter-for-device-os-version 26.5 --development-region zh-Hans --target-device iphone --target-device ipad --minimum-deployment-target 17.0 --platform iphonesimulator
+/* com.apple.actool.compilation-results */
+/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_generated_info.plist_thinned
+/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_output/thinned/AppIcon60x60@2x.png
+/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_output/thinned/AppIcon76x76@2x~ipad.png
+/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_output/thinned/Assets.car
+
+
+SwiftDriver Kanpan normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Kanpan -Onone @/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList -DDEBUG -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator -emit-localized-strings -emit-localized-strings-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_const_extract_protocols.json -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-generated-files.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-own-target-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-project-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-Swift.h -working-directory /Users/mdd/zhk/kanpan/Kanpan -experimental-emit-module-separately -disable-cmo
+
+SwiftCompile normal arm64 Compiling\ BottomBar.swift /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Main/BottomBar.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Main/BottomBar.swift (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ Kanpan (in target 'Kanpan' from project 'Kanpan')
+
+EmitSwiftModule normal arm64 (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+
+SwiftCompile normal arm64 Compiling\ Prefs.swift /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Settings/Model/Prefs.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Settings/Model/Prefs.swift (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+
+SwiftCompile normal arm64 Compiling\ GeneratedAssetSymbols.swift /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling GeneratedAssetSymbols.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftDriverJobDiscovery normal arm64 Compiling Prefs.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftDriverJobDiscovery normal arm64 Compiling BottomBar.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftCompile normal arm64 Compiling\ MainScreen.swift /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Main/MainScreen.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Main/MainScreen.swift (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling MainScreen.swift (in target 'Kanpan' from project 'Kanpan')
+
+SwiftDriver\ Compilation Kanpan normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Kanpan -Onone @/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList -DDEBUG -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator -emit-localized-strings -emit-localized-strings-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_const_extract_protocols.json -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-generated-files.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-own-target-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-project-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-Swift.h -working-directory /Users/mdd/zhk/kanpan/Kanpan -experimental-emit-module-separately -disable-cmo
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for Kanpan (in target 'Kanpan' from project 'Kanpan')
+
+SwiftDriver\ Compilation\ Requirements Kanpan normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Kanpan -Onone @/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList -DDEBUG -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator -emit-localized-strings -emit-localized-strings-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_const_extract_protocols.json -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-generated-files.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-own-target-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan-88f8e4f6458ff7f878983357411ed85c-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-project-headers.hmap -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-Swift.h -working-directory /Users/mdd/zhk/kanpan/Kanpan -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib normal (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -dynamiclib -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -O0 -L/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -L/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator -F/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator -filelist /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.LinkFileList -install_name @rpath/Kanpan.debug.dylib -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -dead_strip -Xlinker -object_path_lto -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -dependency_info -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule @/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan-linker-args.resp -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Xlinker -alias -Xlinker _main -Xlinker ___debug_main_executable_dylib_entry_point -Xlinker -no_adhoc_codesign -o /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftmodule @/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore-linker-args.resp -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart.swiftmodule @/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart-linker-args.resp -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/KanpanData.build/Debug-iphonesimulator/KanpanData.build/Objects-normal/arm64/KanpanData.swiftmodule @/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/KanpanData.build/Debug-iphonesimulator/KanpanData.build/Objects-normal/arm64/KanpanData-linker-args.resp
+
+ConstructStubExecutorLinkFileList /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-ExecutorLinkFileList-normal-arm64.txt (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    construct-stub-executor-link-file-list /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libPreviewsJITStubExecutor.a --output /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-ExecutorLinkFileList-normal-arm64.txt
+note: Using stub executor library with Swift entry point. (in target 'Kanpan' from project 'Kanpan')
+
+Ld /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan normal (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -O0 -L/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator -F/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -F/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-DebugDylibPath-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-DebugDylibInstallName-normal-arm64.txt -Xlinker -filelist -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan-ExecutorLinkFileList-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan.app-Simulated.xcent -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __ents_der -Xlinker /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan.app-Simulated.xcent.der /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib -Xlinker -no_adhoc_codesign -o /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan
+
+Copy /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftsourceinfo (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftsourceinfo /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo
+
+Copy /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftmodule /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/arm64-apple-ios-simulator.swiftmodule
+
+Copy /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/arm64-apple-ios-simulator.swiftdoc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftdoc (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.swiftdoc /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/arm64-apple-ios-simulator.swiftdoc
+
+Copy /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/arm64-apple-ios-simulator.abi.json /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.abi.json (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.abi.json /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.swiftmodule/arm64-apple-ios-simulator.abi.json
+
+LinkAssetCatalog /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-linkAssetCatalog --thinned /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_output/thinned --thinned-dependencies /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_dependencies_thinned --thinned-info-plist-content /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_generated_info.plist_thinned --unthinned /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_output/unthinned --unthinned-dependencies /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_dependencies_unthinned --unthinned-info-plist-content /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_generated_info.plist_unthinned --output /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app --plist-output /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_generated_info.plist
+note: Emplaced /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/AppIcon76x76@2x~ipad.png (in target 'Kanpan' from project 'Kanpan')
+note: Emplaced /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/AppIcon60x60@2x.png (in target 'Kanpan' from project 'Kanpan')
+note: Emplaced /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Assets.car (in target 'Kanpan' from project 'Kanpan')
+
+ExtractAppIntentsMetadata (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name Kanpan --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk --xcode-version 17F113 --platform-family iOS --deployment-target 17.0 --bundle-identifier com.mdd.kanpan --output /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app --target-triple arm64-apple-ios17.0-simulator --binary-file /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan --dependency-file /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan_dependency_info.dat --stringsdata-file /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftFileList --metadata-file-list /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan.DependencyMetadataFileList --static-metadata-file-list /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan.DependencyStaticMetadataFileList --swift-const-vals-list /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Objects-normal/arm64/Kanpan.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-14 23:58:34.848 appintentsmetadataprocessor[93535:31722359] Starting appintentsmetadataprocessor export
+2026-09-14 23:58:34.852 appintentsmetadataprocessor[93535:31722359] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+ProcessInfoPlistFile /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Info.plist /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/empty-Kanpan.plist (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-infoPlistUtility /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/empty-Kanpan.plist -producttype com.apple.product-type.application -genpkginfo /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_generated_info.plist -o /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Info.plist
+
+AppIntentsSSUTraining (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsnltrainingprocessor --infoplist-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Info.plist --temp-dir-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/ssu --bundle-id com.mdd.kanpan --product-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app --extracted-metadata-path /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Metadata.appintents --metadata-file-list /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/Kanpan.DependencyMetadataFileList --source-file /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Info.plist --archive-ssu-assets
+2026-09-14 23:58:34.889 appintentsnltrainingprocessor[93536:31722360] Parsing options for appintentsnltrainingprocessor
+2026-09-14 23:58:34.889 appintentsnltrainingprocessor[93536:31722360] Starting AppIntents SSU YAML Generation
+2026-09-14 23:58:34.891 appintentsnltrainingprocessor[93536:31722360] No AppShortcuts found - Skipping.
+
+CopySwiftLibs /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib --scan-folder /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Frameworks --scan-folder /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/PlugIns --scan-folder /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/SystemExtensions --scan-folder /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Extensions --platform iphonesimulator --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+CodeSign /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib
+
+CodeSign /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/__preview.dylib (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/__preview.dylib
+/Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app/__preview.dylib: replacing existing signature
+
+CodeSign /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app
+
+Validate /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-validationUtility /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/Kanpan.app -shallow-bundle -infoplist-subpath Info.plist
+
+ProcessInfoPlistFile /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Info.plist /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/empty-KanpanUITests.plist (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-infoPlistUtility /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/empty-KanpanUITests.plist -producttype com.apple.product-type.bundle.ui-testing -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/ProductTypeInfoPlistAdditions.plist -o /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Info.plist
+
+CopySwiftLibs /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests --scan-folder /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Frameworks --scan-folder /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/PlugIns --scan-folder /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/SystemExtensions --scan-folder /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Extensions --platform iphonesimulator --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/mdd/zhk/kanpan/DerivedData-codex-compat-takeover/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+2026-09-14 23:58:57.008633+0800 KanpanUITests-Runner[93788:31724914] [Default] Running tests...
+2026-09-14 23:58:57.038963+0800 KanpanUITests-Runner[93788:31724914] [UIKit App Config] Update the Info.plist: Launch screens will soon be required.
+objc[93788]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x107004310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x1064e0398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-14 23:59:00.977.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-14 23:59:00.978.
+Test Suite 'MainScreenUITests' started at 2026-09-14 23:59:00.978.
+Test Case '-[KanpanUITests.MainScreenUITests testLatestButtonAppearsAfterLeavingLatest]' started.
+    t =     0.00s Start Test at 2026-09-14 23:59:00.978
+    t =     0.25s Set Up
+    t =     0.26s     Open com.mdd.kanpan
+    t =     0.26s         Launch com.mdd.kanpan
+2026-09-14 23:59:01.624 xcodebuild[93489:31722055] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:59:01.624 xcodebuild[93489:31722055] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.91s             Setting up automation session
+    t =     3.28s             Wait for com.mdd.kanpan to idle
+    t =     5.02s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     6.05s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     6.05s             Checking existence of `"top.symbol" Button`
+    t =     6.10s     Find the Window (First Match)
+    t =     6.11s     Find the "interval.more" Button
+    t =     6.13s     Find the "bottom.style" Button
+    t =     6.21s Find the "chart.latest" Button
+    t =     6.35s Press Window (First Match)[0.00, 0.00] -> (40.0, 677.3) for 0.1 seconds, then drag to Window (First Match)[0.00, 0.00] -> (40.0, 677.3) -> (220.0, 0.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     6.35s     Wait for com.mdd.kanpan to idle
+    t =     6.39s     Find the Window (First Match)
+    t =     6.40s     Check for interrupting elements affecting Window
+    t =     6.45s         Wait for com.apple.springboard to idle
+    t =     6.55s     Synthesize event
+    t =     6.55s         Find the Window at {{0.0, 0.0}, {1032.0, 1376.0}}
+    t =     6.56s         Find the Window at {{0.0, 0.0}, {1032.0, 1376.0}}
+    t =     6.57s         Find the Window at {{0.0, 0.0}, {1032.0, 1376.0}}
+    t =     6.58s         Find the Window at {{0.0, 0.0}, {1032.0, 1376.0}}
+    t =     6.59s         Find the Window at {{0.0, 0.0}, {1032.0, 1376.0}}
+    t =     7.44s     Wait for com.mdd.kanpan to idle
+    t =     7.52s Find the "chart.latest" Button
+    t =     7.59s Find the "chart.latest" Button
+    t =     7.62s Tap "chart.latest" Button
+    t =     7.62s     Wait for com.mdd.kanpan to idle
+    t =     7.62s     Find the "chart.latest" Button
+    t =     7.63s     Check for interrupting elements affecting "chart.latest" Button
+    t =     7.65s         Wait for com.apple.springboard to idle
+    t =     7.66s     Synthesize event
+    t =     7.95s     Wait for com.mdd.kanpan to idle
+    t =     7.96s Find the "chart.latest" Button
+    t =     8.37s Find the "chart.latest" Button
+    t =     8.65s Find the "chart.latest" Button
+    t =     8.93s Find the "chart.latest" Button
+    t =     9.21s Find the "chart.latest" Button
+    t =     9.49s Find the "chart.latest" Button
+    t =     9.77s Find the "chart.latest" Button
+    t =    10.06s Find the "chart.latest" Button
+    t =    10.33s Find the "chart.latest" Button
+    t =    10.61s Find the "chart.latest" Button
+    t =    10.88s Find the "chart.latest" Button
+    t =    11.16s Find the "chart.latest" Button
+    t =    11.43s Find the "chart.latest" Button
+    t =    11.77s Find the "chart.latest" Button
+    t =    12.06s Find the "chart.latest" Button
+    t =    12.36s Find the "chart.latest" Button
+    t =    12.64s Find the "chart.latest" Button
+    t =    12.93s Find the "chart.latest" Button
+    t =    13.30s Find the "chart.latest" Button
+    t =    13.62s Find the "chart.latest" Button
+    t =    13.93s Find the "chart.latest" Button
+    t =    14.23s Find the "chart.latest" Button
+    t =    14.57s Find the "chart.latest" Button
+    t =    14.86s Find the "chart.latest" Button
+    t =    15.15s Find the "chart.latest" Button
+    t =    15.43s Find the "chart.latest" Button
+    t =    15.71s Find the "chart.latest" Button
+    t =    16.00s Find the "chart.latest" Button
+    t =    16.03s Requesting snapshot of accessibility hierarchy for app with pid 93845
+    t =    16.04s Find: Descendants matching type Button
+    t =    16.04s Find: Elements matching predicate '"chart.latest" IN identifiers'
+    t =    16.07s Requesting snapshot of accessibility hierarchy for app with pid 93845
+    t =    16.09s Find: Descendants matching type Button
+    t =    16.09s Find: Elements matching predicate '"chart.latest" IN identifiers'
+    t =    16.10s Requesting snapshot of accessibility hierarchy for app with pid 93845
+    t =    16.14s Find: Descendants matching type Button
+    t =    16.14s Requesting snapshot of accessibility hierarchy for app with pid 93845
+    t =    16.26s Find the "chart.canvas" Other
+    t =    16.34s Requesting snapshot of accessibility hierarchy for app with pid 93845
+    t =    16.49s Requesting snapshot of accessibility hierarchy for app with pid 93845
+    t =    16.52s Added attachment named '单次中心命中失败'
+    t =    16.52s Find the Target Application 'com.mdd.kanpan'
+    t =    16.71s Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    16.71s Find the "chart.latest" Button
+    t =    17.00s Find the "chart.latest" Button
+    t =    17.28s Find the "chart.latest" Button
+    t =    17.55s Find the "chart.latest" Button
+    t =    17.86s Find the "chart.latest" Button
+    t =    18.14s Find the "chart.latest" Button
+    t =    18.42s Find the "chart.latest" Button
+    t =    18.71s Find the "chart.latest" Button
+    t =    19.01s Find the "chart.latest" Button
+    t =    19.29s Find the "chart.latest" Button
+    t =    19.60s Find the "chart.latest" Button
+    t =    19.87s Find the "chart.latest" Button
+    t =    20.14s Find the "chart.latest" Button
+    t =    20.41s Find the "chart.latest" Button
+    t =    20.68s Find the "chart.latest" Button
+    t =    20.95s Find the "chart.latest" Button
+    t =    21.32s Find the "chart.latest" Button
+    t =    21.74s Find the "chart.latest" Button
+    t =    22.09s Find the "chart.latest" Button
+    t =    22.36s Find the "chart.latest" Button
+    t =    22.64s Find the "chart.latest" Button
+    t =    22.91s Find the "chart.latest" Button
+    t =    23.18s Find the "chart.latest" Button
+    t =    23.46s Find the "chart.latest" Button
+    t =    23.77s Find the "chart.latest" Button
+    t =    24.08s Find the "chart.latest" Button
+    t =    24.38s Find the "chart.latest" Button
+    t =    24.65s Find the "chart.latest" Button
+    t =    24.93s Find the "chart.latest" Button
+    t =    25.22s Find the "chart.latest" Button
+    t =    25.50s Find the "chart.latest" Button
+    t =    25.78s Find the "chart.latest" Button
+    t =    26.06s Find the "chart.latest" Button
+    t =    26.33s Find the "chart.latest" Button
+    t =    26.61s Find the "chart.latest" Button
+    t =    26.88s Find the "chart.latest" Button
+    t =    27.16s Find the "chart.latest" Button
+    t =    27.44s Find the "chart.latest" Button
+    t =    27.77s Find the "chart.latest" Button
+    t =    28.05s Find the "chart.latest" Button
+    t =    28.33s Find the "chart.latest" Button
+    t =    28.65s Find the "chart.latest" Button
+    t =    28.96s Find the "chart.latest" Button
+    t =    29.25s Find the "chart.latest" Button
+    t =    29.53s Find the "chart.latest" Button
+    t =    29.83s Find the "chart.latest" Button
+    t =    30.11s Find the "chart.latest" Button
+    t =    30.40s Find the "chart.latest" Button
+    t =    30.68s Find the "chart.latest" Button
+    t =    30.95s Find the "chart.latest" Button
+    t =    31.24s Find the "chart.latest" Button
+    t =    31.52s Find the "chart.latest" Button
+    t =    31.82s Find the "chart.latest" Button
+    t =    32.12s Find the "chart.latest" Button
+    t =    32.40s Find the "chart.latest" Button
+    t =    32.68s Find the "chart.latest" Button
+    t =    32.96s Find the "chart.latest" Button
+    t =    33.25s Find the "chart.latest" Button
+    t =    33.52s Find the "chart.latest" Button
+    t =    33.80s Find the "chart.latest" Button
+    t =    34.09s Find the "chart.latest" Button
+    t =    34.38s Find the "chart.latest" Button
+    t =    34.65s Find the "chart.latest" Button
+    t =    34.96s Find the "chart.latest" Button
+    t =    35.24s Find the "chart.latest" Button
+    t =    35.54s Find the "chart.latest" Button
+    t =    35.84s Find the "chart.latest" Button
+    t =    36.13s Find the "chart.latest" Button
+    t =    36.43s Find the "chart.latest" Button
+    t =    36.72s Find the "chart.latest" Button
+    t =    37.02s Find the "chart.latest" Button
+    t =    37.32s Find the "chart.latest" Button
+    t =    37.59s Find the "chart.latest" Button
+    t =    37.86s Find the "chart.latest" Button
+    t =    38.16s Find the "chart.latest" Button
+    t =    38.44s Find the "chart.latest" Button
+    t =    38.71s Find the "chart.latest" Button
+    t =    39.01s Find the "chart.latest" Button
+    t =    39.28s Find the "chart.latest" Button
+    t =    39.57s Find the "chart.latest" Button
+    t =    39.87s Find the "chart.latest" Button
+    t =    40.16s Find the "chart.latest" Button
+    t =    40.43s Find the "chart.latest" Button
+    t =    40.75s Find the "chart.latest" Button
+    t =    41.02s Find the "chart.latest" Button
+    t =    41.29s Find the "chart.latest" Button
+    t =    41.59s Find the "chart.latest" Button
+    t =    41.90s Find the "chart.latest" Button
+    t =    42.17s Find the "chart.latest" Button
+    t =    42.46s Find the "chart.latest" Button
+    t =    42.73s Find the "chart.latest" Button
+    t =    43.01s Find the "chart.latest" Button
+    t =    43.29s Find the "chart.latest" Button
+    t =    43.57s Find the "chart.latest" Button
+    t =    43.85s Find the "chart.latest" Button
+    t =    44.13s Find the "chart.latest" Button
+    t =    44.43s Find the "chart.latest" Button
+    t =    44.72s Find the "chart.latest" Button
+    t =    45.10s Find the "chart.latest" Button
+    t =    45.40s Find the "chart.latest" Button
+    t =    45.68s Find the "chart.latest" Button
+    t =    45.96s Find the "chart.latest" Button
+    t =    46.26s Find the "chart.latest" Button
+    t =    46.54s Find the "chart.latest" Button
+    t =    46.83s Find the "chart.latest" Button
+/Users/mdd/zhk/kanpan/Kanpan/KanpanUITests/MainScreenUITests.swift:163: error: -[KanpanUITests.MainScreenUITests testLatestButtonAppearsAfterLeavingLatest] : XCTAssertTrue failed - 视野就在最新一根上，「回到最新」不该露面
+    t =    47.03s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testLatestButtonAppearsAfterLeavingLatest]' failed (47.111 seconds).
+2026-09-14 23:59:48.090761+0800 KanpanUITests-Runner[93788:31724914] [Default] Flushing outgoing messages to the IDE with timeout 600.00s
+2026-09-14 23:59:48.090989+0800 KanpanUITests-Runner[93788:31725120] [Default] Received confirmation that IDE processed remaining outgoing messages
+2026-09-14 23:59:49.386954+0800 KanpanUITests-Runner[93974:31727437] [Default] Running tests...
+2026-09-14 23:59:49.441053+0800 KanpanUITests-Runner[93974:31727437] [UIKit App Config] Update the Info.plist: Launch screens will soon be required.
+2026-09-14 23:59:49.486832+0800 KanpanUITests-Runner[93974:31727447] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-14 23:59:50.240.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-14 23:59:50.241.
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-14 23:59:50.241.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-14 23:59:50.241.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+2026-09-15 00:00:02.475 xcodebuild[93489:31722055] [MT] IDETestOperationsObserverDebug: 87.513 elapsed -- Testing started completed.
+2026-09-15 00:00:02.475 xcodebuild[93489:31722055] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 00:00:02.475 xcodebuild[93489:31722055] [MT] IDETestOperationsObserverDebug: 87.513 sec, +87.513 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/compatibility/iPad-Pro13-takeover-r3.xcresult
+
+Failing tests:
+	MainScreenUITests.testLatestButtonAppearsAfterLeavingLatest()
+
+** TEST FAILED **
+
+Testing started

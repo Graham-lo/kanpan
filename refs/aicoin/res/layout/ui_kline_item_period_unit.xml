@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView android:textSize="13.0sp" android:textColor="@drawable/ui_kline_period_unit_press_text_selector" android:gravity="center" android:id="@id/tv_name" android:tag="skin:ui_kline_period_unit_press_text_selector:textColor|skin:sh_base_selector_view_bg:background" android:background="@drawable/sh_base_selector_view_bg" android:layout_width="match_parent" android:layout_height="36.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

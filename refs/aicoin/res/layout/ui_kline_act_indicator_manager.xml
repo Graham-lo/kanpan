@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent" style="@style/sh_base.PageContentLight"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <RelativeLayout android:layout_width="match_parent" android:layout_height="@dimen/sh_base_title_block_height" style="@style/sh_base.TitleBar">
+        <include layout="@layout/part_common_button_back" />
+        <LinearLayout android:gravity="center" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_centerInParent="true">
+            <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@id/ll_main_indicator" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                <TextView android:textSize="15.0sp" android:textColor="@color/sh_base_text_primary" android:id="@id/tv_main_indicator" android:tag="skin:sh_base_text_primary:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_indicator_setting_home_sub_title_main_indicator" />
+                <ImageView android:tag="skin:sh_base_tab_indicator_selector:src" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/offset_6dp" android:src="@drawable/sh_base_tab_indicator_selector" />
+            </LinearLayout>
+            <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@id/ll_secondary_indicator" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="40.0dp" android:layout_marginStart="40.0dp">
+                <TextView android:textSize="15.0sp" android:textColor="@color/sh_base_text_primary" android:id="@id/tv_secondary_indicator" android:tag="skin:sh_base_text_primary:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_indicator_setting_home_sub_title_sub_indicator" />
+                <ImageView android:tag="skin:sh_base_tab_indicator_selector:src" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginTop="@dimen/offset_6dp" android:src="@drawable/sh_base_tab_indicator_selector" />
+            </LinearLayout>
+        </LinearLayout>
+    </RelativeLayout>
+    <androidx.viewpager.widget.ViewPager android:id="@id/vp_indicator_manager" android:layout_width="match_parent" android:layout_height="match_parent" />
+</LinearLayout>

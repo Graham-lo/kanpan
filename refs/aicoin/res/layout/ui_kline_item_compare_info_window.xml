@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:background="#00000000" android:paddingTop="7.0dp" android:paddingBottom="7.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/sh_base.ViewContent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
+        <View android:id="@id/color_indicator_dot" android:background="@drawable/ui_kline_indicator_param_setting_color_dot" android:layout_width="5.0dp" android:layout_height="5.0dp" />
+        <TextView android:textSize="@dimen/font_size_small" android:textColor="@color/ui_kline_compare_info_text_color" android:gravity="left" android:id="@id/text_market_name" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/offset_4dp" />
+    </LinearLayout>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="9.0dp" android:layout_marginTop="@dimen/offset_2dp">
+        <TextView android:textSize="11.0sp" android:textColor="@color/ui_kline_compare_info_text_color" android:layout_gravity="center_vertical" android:id="@id/text_trade_pair" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        <TextView android:textSize="7.0sp" android:textColor="#ffffff" android:ellipsize="end" android:gravity="center" android:layout_gravity="center_vertical" android:id="@id/text_growth_rate" android:tag="skin:home_item_shortcut_value_text_color:textColor" android:background="@drawable/ui_kline_compare_growth_rate_container_shape" android:paddingLeft="3.5dp" android:paddingRight="3.5dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/offset_5dp" android:maxLines="1" />
+    </LinearLayout>
+</LinearLayout>

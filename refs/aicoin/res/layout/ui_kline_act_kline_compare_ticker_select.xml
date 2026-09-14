@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent" style="@style/sh_base.PageContentLight"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <RelativeLayout android:layout_width="match_parent" android:layout_height="@dimen/sh_base_title_block_height" style="@style/sh_base.TitleBar">
+        <include layout="@layout/part_common_button_back" />
+        <TextView android:id="@id/page_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_compare_home_compare" android:layout_centerInParent="true" style="@style/sh_base.TitleText" />
+    </RelativeLayout>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:paddingLeft="@dimen/offset_12dp" android:paddingRight="@dimen/offset_12dp" android:layout_width="match_parent" android:layout_height="@dimen/ui_kline_compare_home_selected_container_height">
+        <TextView android:textSize="@dimen/font_size_normal_high" android:textColor="@color/ui_kline_compare_title_tab_text_color" android:tag="skin:ui_kline_compare_title_tab_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_compare_select_items" />
+        <TextView android:textSize="@dimen/font_size_small" android:textColor="@color/ui_kline_compare_title_tab_text_color" android:tag="skin:ui_kline_compare_title_tab_text_color:textColor" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_marginLeft="10.0dp" android:text="@string/ui_kline_compare_click_to_remove" android:layout_weight="1.0" />
+        <TextView android:textSize="@dimen/ui_kline_compare_text_size_15" android:textColor="@color/sh_base_highlight_color" android:gravity="center" android:id="@id/button_finish" android:tag="skin:sh_base_highlight_color:textColor" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="@string/ui_kline_compare_to_compare" />
+    </LinearLayout>
+    <View android:layout_gravity="bottom" android:tag="skin:ui_kline_compare_decorate_divider_color:background" android:background="@color/ui_kline_compare_decorate_divider_color" android:layout_width="match_parent" android:layout_height="@dimen/ui_kline_compare_divider_width" />
+    <androidx.recyclerview.widget.RecyclerView android:id="@id/list_selected" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/offset_6dp" android:layout_marginTop="@dimen/offset_12dp" android:layout_marginRight="@dimen/offset_6dp" android:layout_marginBottom="@dimen/offset_12dp" />
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="@dimen/ui_kline_compare_home_candidate_tag_height" android:layout_marginTop="@dimen/offset_16dp">
+        <androidx.recyclerview.widget.RecyclerView android:id="@id/sh_base_list_content" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="1.0" style="@style/ui_kline_AppSkin.Kline.Compare.TabContent" />
+        <ImageView android:layout_gravity="end|center" android:id="@id/sh_base_action_tab_next" android:layout_width="@dimen/sh_base_title_tab_expand_width" android:layout_height="match_parent" style="@style/ui_kline_AppSkin.Kline.KlineCompareExpand" />
+    </LinearLayout>
+    <View android:layout_gravity="bottom" android:tag="skin:ui_kline_compare_decorate_divider_color:background" android:background="@color/ui_kline_compare_decorate_divider_color" android:layout_width="match_parent" android:layout_height="@dimen/ui_kline_compare_divider_height" />
+    <androidx.recyclerview.widget.RecyclerView android:id="@id/list_candidates" android:padding="@dimen/offset_4dp" android:layout_width="match_parent" android:layout_height="match_parent" android:choiceMode="multipleChoice" />
+</LinearLayout>

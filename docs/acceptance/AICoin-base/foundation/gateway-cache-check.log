@@ -1,0 +1,15 @@
+local cache HTTP 200 seconds 0.003837
+HTTP/1.1 200 OK
+Server: BaseHTTP/0.6 Python/3.11.2
+Date: Mon, 14 Sep 2026 16:57:21 GMT
+Content-Type: application/json
+Content-Length: 7460
+Cache-Control: public, max-age=86400
+X-OI-Cache: HIT
+
+Sep 15 00:53:18 racknerd-3924c62 systemd[1]: Started kanpan-gateway.service - Kanpan historical OI cache.
+Sep 15 00:54:12 racknerd-3924c62 python3[3807254]: 127.0.0.1 - - [15/Sep/2026 00:54:12] "GET /chart-gateway/health HTTP/1.1" 200 -
+Sep 15 00:54:53 racknerd-3924c62 python3[3807254]: 127.0.0.1 - - [15/Sep/2026 00:54:53] "GET /chart-gateway/health HTTP/1.1" 200 -
+Sep 15 00:55:25 racknerd-3924c62 python3[3807254]: 127.0.0.1 - - [15/Sep/2026 00:55:25] "GET /chart-gateway/health HTTP/1.1" 200 -
+Sep 15 00:55:27 racknerd-3924c62 python3[3807254]: 127.0.0.1 - - [15/Sep/2026 00:55:27] "GET /oi/v1/metrics/BTCUSDT/2021-12-01.json HTTP/1.1" 200 -
+Sep 15 00:57:21 racknerd-3924c62 python3[3807254]: 127.0.0.1 - - [15/Sep/2026 00:57:21] "GET /oi/v1/metrics/BTCUSDT/2021-12-01.json HTTP/1.1" 200 -

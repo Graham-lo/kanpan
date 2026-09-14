@@ -1,0 +1,123 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination platform=iOS,id=00008140-00010C902690801C -derivedDataPath DerivedData-codex-device -resultBundlePath docs/acceptance/AICoin-base/device-pinch-background.xcresult "-only-testing:KanpanUITests/AICoinBaseUITests/testPinchAndUnifiedBackground"
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/device-pinch-background.xcresult
+
+2026-09-14 22:52:18.021454+0800 KanpanUITests-Runner[1547:192874] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-14 22:52:18.396.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-14 22:52:18.397.
+Test Suite 'AICoinBaseUITests' started at 2026-09-14 22:52:18.397.
+Test Case '-[KanpanUITests.AICoinBaseUITests testPinchAndUnifiedBackground]' started.
+    t =     0.00s Start Test at 2026-09-14 22:52:18.398
+    t =     0.02s Set Up
+    t =     0.02s Open com.mdd.kanpan
+    t =     0.02s     Launch com.mdd.kanpan
+    t =     0.02s         Terminate com.mdd.kanpan:1539
+2026-09-14 22:52:19.716 xcodebuild[75795:31457442] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 22:52:19.716 xcodebuild[75795:31457442] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     3.30s         Setting up automation session
+    t =     3.33s         Wait for com.mdd.kanpan to idle
+    t =     4.44s Waiting 30.0s for "chart.canvas" Other to exist
+    t =     5.45s     Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     5.46s         Checking existence of `"chart.canvas" Other`
+    t =     5.47s             Requesting snapshot of accessibility hierarchy for app with pid 1548
+    t =     5.53s             Find: Descendants matching type Other
+    t =     5.53s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     6.56s Find the "chart.canvas" Other
+    t =     6.57s     Requesting snapshot of accessibility hierarchy for app with pid 1548
+    t =     6.60s     Find: Descendants matching type Other
+    t =     6.60s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     6.61s Find the "chart.canvas" Other
+    t =     6.61s     Requesting snapshot of accessibility hierarchy for app with pid 1548
+    t =     6.64s     Find: Descendants matching type Other
+    t =     6.64s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     6.65s Find the Target Application 'com.mdd.kanpan'
+    t =     6.65s     Requesting snapshot of accessibility hierarchy for app with pid 1548
+    t =     6.79s Added attachment named '统一靛色背景-冷启动'
+    t =     6.80s Pinch with scale 1.5, velocity 1 in "chart.canvas" Other
+    t =     6.80s     Wait for com.mdd.kanpan to idle
+    t =     6.80s     Find the "chart.canvas" Other
+    t =     6.80s         Requesting snapshot of accessibility hierarchy for app with pid 1548
+    t =     6.83s         Find: Descendants matching type Other
+    t =     6.83s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     6.83s     Check for interrupting elements affecting "chart.canvas" Other
+    t =     6.84s         Requesting snapshot of accessibility hierarchy for app with pid 1548
+    t =     6.86s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     6.86s     Synthesize event
+    t =     6.87s         Pinching with rect {{50, 189.33333333333334}, {302, 603.33333333333314}}
+    t =     8.70s     Wait for com.mdd.kanpan to idle
+    t =     8.71s Find the "chart.canvas" Other
+    t =     8.72s     Requesting snapshot of accessibility hierarchy for app with pid 1548
+    t =     8.75s     Find: Descendants matching type Other
+    t =     8.75s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+/Users/mdd/zhk/kanpan/Kanpan/KanpanUITests/AICoinBaseUITests.swift:26: error: -[KanpanUITests.AICoinBaseUITests testPinchAndUnifiedBackground] : XCTAssertGreaterThan failed: ("4.0") is not greater than ("4.1") - ["to": 1789423200000, "style": aicoin, "height": 603.3333333333333, "mode": log, "inverted": 0, "from": 1789113600000, "subs": <__NSArrayI 0x11c714a50>(
+VOL,
+OI,
+MACD
+)
+, "crossPane": MAIN, "macd": <__NSArrayI 0x11c714c00>(
+10,
+30,
+9
+)
+, "zoomY": 1, "bodyW": 2.666666666666667, "gestureTrace": move d=21.343747458109515 previous=16.505891204186604 active=false, "spacing": 4, "bars": 1500, "oiReady": 1, "span": 309600000, "plotW": 344, "timeY": 293.1666666666666, "axisW": 58, "ma": <__NSArrayI 0x11c7148a0>(
+10,
+30,
+120,
+256
+)
+, "mainH": 293.1666666666666, "centerY": 0.5, "crosshair": 0]
+    t =     8.77s Find the Target Application 'com.mdd.kanpan'
+    t =     8.78s     Requesting snapshot of accessibility hierarchy for app with pid 1548
+    t =     8.89s Added attachment named '统一靛色背景-放大'
+    t =     8.90s Tear Down
+Test Case '-[KanpanUITests.AICoinBaseUITests testPinchAndUnifiedBackground]' failed (9.146 seconds).
+Test Suite 'AICoinBaseUITests' failed at 2026-09-14 22:52:27.545.
+	 Executed 1 test, with 1 failure (0 unexpected) in 9.146 (9.148) seconds
+Test Suite 'KanpanUITests.xctest' failed at 2026-09-14 22:52:27.547.
+	 Executed 1 test, with 1 failure (0 unexpected) in 9.146 (9.150) seconds
+Test Suite 'Selected tests' failed at 2026-09-14 22:52:27.548.
+	 Executed 1 test, with 1 failure (0 unexpected) in 9.146 (9.152) seconds
+2026-09-14 22:52:28.072 xcodebuild[75795:31457444]  IDETestOperationsObserverDebug: Failure collecting diagnostics from devices: Process exited with error 1:
+ ERROR: The operation couldn?t be completed. (CoreDeviceCLISupport.DiagnoseError error 0.)
+This tool generates files that allow Apple to investigate issues with your
+computer and help improve Apple products. The files might contain personal
+information found on your device or associated with your Apple Account(s),
+including but not limited to your name, serial numbers of your device,
+your device name, your device's location over the last one to two days,
+your attached peripheral devices, your user name, your email address and
+email settings, file paths, file names, Siri suggestions, your computer's
+IP addresses, and network connection information.
+
+This information is used by Apple in accordance with its privacy policy
+(www.apple.com/privacy) and is not shared with any other company. By using
+this tool and sending the results to Apple, you consent to Apple using the
+contents of these files to improve Apple products.
+
+An error occurred while running devicectl diagnose. Will archive the diagnostics collected thus far.
+Wrote file to /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/device-pinch-background.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+Partial devicectl diagnose bundle located here: /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/device-pinch-background.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+
+2026-09-14 22:52:28.076 xcodebuild[75795:31457442] [MT] IDETestOperationsObserverDebug: 12.523 elapsed -- Testing started completed.
+2026-09-14 22:52:28.076 xcodebuild[75795:31457442] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-14 22:52:28.076 xcodebuild[75795:31457442] [MT] IDETestOperationsObserverDebug: 12.523 sec, +12.523 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/device-pinch-background.xcresult
+
+Failing tests:
+	AICoinBaseUITests.testPinchAndUnifiedBackground()
+
+** TEST EXECUTE FAILED **
+
+Testing started

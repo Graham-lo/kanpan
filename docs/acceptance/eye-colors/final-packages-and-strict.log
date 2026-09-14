@@ -1,0 +1,1524 @@
+cd KanpanCore && swift test 
+[0/1] Planning build
+Building for debugging...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.35s)
+Test Suite 'All tests' started at 2026-09-15 05:26:23.115.
+Test Suite 'All tests' passed at 2026-09-15 05:26:23.120.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.005) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "格式化" started.
+◇ Suite "指标边界" started.
+◇ Suite "价格轴" started.
+◇ Suite "画线" started.
+◇ Suite "AICoin 统一手势算术" started.
+◇ Suite "图表底座补全" started.
+◇ Suite "K线设置" started.
+◇ Suite "AICoin 硬边界" started.
+◇ Suite "完整历史OI" started.
+◇ Suite "根宽与像素对齐" started.
+◇ Suite "切周期" started.
+◇ Suite "聚合" started.
+◇ Suite "AICoin 共用布局" started.
+◇ Suite "指标增量重算" started.
+◇ Suite "K 线序列" started.
+◇ Suite "刻度" started.
+◇ Suite "不等距周期" started.
+◇ Suite "品种事实分类" started.
+◇ Suite "统一涨跌幅开盘基准" started.
+◇ Suite "风格表与配色" started.
+◇ Suite "Independent live price and rolling statistics" started.
+◇ Suite "护眼配色实际表面对比度" started.
+◇ Suite "指标黄金值" started.
+◇ Suite "共用尺寸参数" started.
+◇ Suite "Indicator workload benchmark" started.
+◇ Suite "Latest quote identity and ordering" started.
+◇ Suite "AICoin 冷启动与尺寸" started.
+◇ Suite "平均K线" started.
+◇ Suite "指标元信息" started.
+◇ Suite "蜡烛整像素光栅化" started.
+◇ Suite "画线编辑" started.
+◇ Suite "AICoin OverScroller参考惯性" started.
+◇ Test "前导 NaN 的位置" started.
+◇ Test "J 线允许越界" started.
+◇ Test "单边行情的 RSI 极值" started.
+◇ Test "横盘时不出 NaN / inf" started.
+◇ Test "数据不够时整列 NaN" started.
+◇ Test "pOf(yOf(p)) == p" started.
+◇ Test "价格轴缩放与平移" started.
+◇ Test "留白按风格 pad" started.
+◇ Test "边界对齐" started.
+◇ Test "smaSkip 跳过前导 NaN" started.
+◇ Test "ATR 算上跳空" started.
+◇ Test "StochRSI 分母为零" started.
+◇ Test "对数模式等比等距" started.
+◇ Test "MACD 柱是差值的两倍" started.
+◇ Test "参数非法就整列 NaN，不要崩" started.
+◇ Test "编解码来回" started.
+◇ Test "后画的先命中" started.
+◇ Test "趋势线两点落成" started.
+◇ Test "默认 ID 不撞" started.
+◇ Test "拖动端点与整条" started.
+◇ Test "引擎在空数据和换参时不乱" started.
+◇ Test "十字星不塌成零高度" started.
+◇ Test "极值并入叠加指标与画线" started.
+◇ Test "删除与清空" started.
+◇ Test "画线价格进区间" started.
+◇ Test "手柄优先于线身" started.
+◇ Test "水平线一点落成" started.
+◇ Test "趋势线线身命中" started.
+◇ Test "手动Y随新自动区间重算，不永久钉死旧价格" started.
+◇ Test "回弹有限时长单调回原边界，不改根宽或越过历史目标" started.
+◇ Test "历史区焦点缩放，右端缩放保持最新列尾贴右" started.
+◇ Test "到达极限后反向捏合立即响应" started.
+◇ Test "随机命中对拍" started.
+◇ Test "distSeg 与原型全等" started.
+◇ Test "Y倍率与高度归一化，中心夹取，自动复位仅改Y" started.
+◇ Test "水平线命中" started.
+◇ Test "卡片在不同容器宽高内换边" started.
+◇ Test "宽容器少量数据使用完整400虚拟列边界，历史焦点不读靠右设置" started.
+◇ Test "倒计时归零与非数给 nil" started.
+◇ Test "倒计时三档文案" started.
+◇ Test "退化线段当点距算" started.
+◇ Test "页面纵拖与图表手势路由互斥" started.
+◇ Test "价格三个模式正常倒置映射和百分比首个相交列" started.
+◇ Test "中文档名" started.
+◇ Test "偏上把蜡烛顶上去" started.
+◇ Test "副图值 → y" started.
+◇ Test "百分比以可见区首根收盘为基准" started.
+◇ Test "三档偏置跨度完全相同" started.
+◇ Test "默认值一律维持现状" started.
+◇ Test "副图整区长按命中，排除主图、坐标轴、面板外与负坐标" started.
+◇ Test "两端越界有限空白并回各自边界，历史中途不吸回" started.
+◇ Test "影线粗细换算" started.
+◇ Test "多年稀疏OI保留前后端，不在五万格处截断，也不提前使用未来样本" started.
+◇ Test "最新柱列尾贴右缘，半根偏移一致" started.
+◇ Test "同档内宽度稳定" started.
+◇ Test "根间距越界先夹" started.
+◇ Test "来回切十次不漂" started.
+◇ Test "无锚点时落回右缘留白" started.
+◇ Test "当前参考手机：4pt 节距对应8px实体、2px影线" started.
+◇ Test "分桶性质" started.
+◇ Test "snap 落在设备像素边界" started.
+◇ Test "拖回历史后再切" started.
+◇ Test "日线聚周线" started.
+◇ Test "十万随机视窗在左右列边界内" started.
+◇ Test "聚不出来就给空" started.
+◇ Test "闰年与月末落桶" started.
+◇ Test "周线桶落在周一零点" started.
+◇ Test "月线聚年线：每桶的开高低收量" started.
+◇ Test "当年未定稿那根" started.
+◇ Test "thin 判定" started.
+◇ Test "高度联动所有pane而非横向时间映射" started.
+◇ Test "连续追加 500 根不漂移" started.
+◇ Test "主副比例与自定义副图高度不随风格改变" started.
+◇ Test "短序列" started.
+◇ Test "所有风格同尺寸；主图、时间轴、副图铺满且互不重叠" started.
+◇ Test "niceStep 与原型全等" started.
+◇ Test "niceStep 尾数只有五种" started.
+◇ Test "刻度密度合理" started.
+◇ Test "空数据不产生无效窗口" started.
+◇ Test "时间刻度按时区对齐" started.
+◇ Test "价格刻度等距" started.
+◇ Test "阶梯表与原型一致" started.
+◇ Test "就近取整与边界" started.
+◇ Test "distSeg 的几何性质" started.
+◇ Test "utcMs 与系统日历一致" started.
+◇ Test olderCatalogRemainsDecodable() started.
+◇ Test "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test "1w 等距推导与 openTime 一致" started.
+◇ Test "月长确实不等" started.
+◇ Test "indexAt(openTime[i]) == i" started.
+◇ Test "timeStep 与原型全等" started.
+◇ Test "只有 1M / 1y 算不等距" started.
+◇ Test "追加与可见区间" started.
+◇ Test "周期表与原型一致" started.
+◇ Test "聚合结果可索引" started.
+◇ Test "随机改末根 / 追加新根 1000 次" started.
+◇ Test "振幅按24h开盘，切换涨跌基准不能改变振幅，缺开盘不伪造" started.
+◇ Test "fmtNum 与原型全等" started.
+◇ Test metadataRetainsFacets() started.
+◇ Test "成交量分档" started.
+◇ Test "滚动24小时保持交易所口径，日基准随最新价更新，缺开盘价留空" started.
+◇ Test "过一遍像素再回来还是同一根" started.
+◇ Test "toFixed 与 JS 同规则" started.
+◇ Test "时间标签与原型全等" started.
+◇ Test delayedStatisticsCannotOverwriteLivePrice() started.
+◇ Test "日期拆解与系统日历一致" started.
+◇ Test identityAndInvalidTrade() started.
+◇ Test retainSeedsAndExposePrototypeGap() started.
+◇ Test luminanceFormula() started.
+◇ Test "闰年与月末" started.
+◇ Test "引擎与裸函数一致" started.
+◇ Test "标签形态" started.
+◇ Test "EMA" started.
+◇ Test defaults() started.
+◇ Test "fmtVol 与原型全等" started.
+◇ Test "MA" started.
+◇ Test resolvedSmallText(_:) started.
+◇ Test "价格精度跟 tickSize 走" started.
+◇ Test "StochRSI" started.
+◇ Test liveTailVersusFullRebuild() started.
+◇ Test "MACD" started.
+◇ Test "VOL" started.
+◇ Test arbitraryArrivalOrderConverges() started.
+◇ Test samePriceNewClockDoesNotInvalidateDisplay() started.
+◇ Test staleAndDuplicate() started.
+◇ Test "国际0点等于上海8点，上海0点前后使用不同UTC日期" started.
+◇ Test "ATR" started.
+◇ Test identityAndValidity() started.
+◇ Test "KDJ" started.
+◇ Test "缓存键" started.
+◇ Test sameMillisecondAndPeriodSwitchConverge() started.
+◇ Test "RSI" started.
+◇ Test "纯未来视野和短指标数组不越界，对数倒置可往返" started.
+◇ Test "上下影包住真实高低" started.
+◇ Test "空序列" started.
+◇ Test "边界输入" started.
+◇ Test unknownDoesNotBecomeCryptoOrUSStock() started.
+◇ Test "BOLL" started.
+◇ Test "热身盖过起点等于全量" started.
+◇ Test "时区偏移" started.
+◇ Test "热身 200 根与全量等价" started.
+◇ Test "所有皮肤保持相同实体宽度、影线宽度和最小高度" started.
+◇ Test "快照补到现在时跟随末根；历史视野不跳" started.
+◇ Test "10 个指标，主图三种" started.
+◇ Test "线名跟着参数走" started.
+◇ Test "结果取值越界给 NaN" started.
+◇ Test "按品种隔离" started.
+◇ Test "不等距周期吸到真 openTime" started.
+◇ Test "默认参数与线名对得上" started.
+◇ Test "回算根数够深" started.
+◇ Test "撤销到底就停" started.
+◇ Test "拖端点 / 拖整条" started.
+◇ Test "水平线整条拖只动价格" started.
+◇ Test "速度越快距离与持续时间越长；正负对称" started.
+◇ Test "速度取样排除过期采样" started.
+◇ Test "AOSP参考数值：1000dp/s" started.
+◇ Test "clear 清两摞" started.
+◇ Test "撤销重做走一圈" started.
+◇ Test "撤销之后再动一笔，重做作废" started.
+◇ Test "对数模式下按像素平移" started.
+◇ Test "老存档缺字段也能读" started.
+◇ Test "0–100 的副图锁刻度" started.
+◇ Test "实体之间至少 1 像素缝" started.
+◇ Test "实体与影线奇偶相同" started.
+◇ Test "手调副图在固定屏幕内重新分配高度并约束极限" started.
+◇ Test "公式逐根对账" started.
+◇ Test "每品种上限 50" started.
+◇ Test "非法输入兜底" started.
+◇ Test "曲线单调、有限、到达终点后停止" started.
+◇ Test "空序列不吸也不崩" started.
+◇ Test "撤销栈有上限" started.
+◇ Test "默认参数与原型一致" started.
+◇ Test "thin 是物理判据" started.
+◇ Test "比自己新的存档不乱读" started.
+◇ Test "实体宽单调" started.
+◇ Test "磁盘往返" started.
+◇ Test "磁吸开：时间吸根、价格吸开高低收" started.
+◇ Test "每个字段与原型逐一相等" started.
+◇ Test "默认根间距下实体够胖" started.
+◇ Test "字段范围合理" started.
+◇ Test "11 款风格、顺序与默认值" started.
+◇ Test "深色配色与原型逐一相等" started.
+◇ Test "颜色格式合法" started.
+◇ Test "存档编解码来回" started.
+◇ Test "磁吸关：原样落点" started.
+◇ Test "影线整像素" started.
+◇ Test "浅色配色与原型逐一相等" started.
+◇ Test case passing 1 argument mode → .linear to "pOf(yOf(p)) == p" started.
+◇ Test case passing 1 argument mode → .percent to "pOf(yOf(p)) == p" started.
+◇ Test "redUp 只翻转涨跌两色" started.
+◇ Test case passing 1 argument mode → .linear to "边界对齐" started.
+◇ Test case passing 1 argument mode → .log to "边界对齐" started.
+◇ Test case passing 1 argument mode → .percent to "边界对齐" started.
+◇ Test "mixHex" started.
+◇ Test case passing 1 argument mode → .log to "pOf(yOf(p)) == p" started.
+◇ Test "upsert 三种情形" started.
+◇ Test "空序列的时间" started.
+◇ Test "等距周期不存 openTime，时间由 t0 推" started.
+◇ Test "覆盖末根" started.
+◇ Test "追加新根" started.
+◇ Test "持仓量对齐" started.
+◇ Test "bar(at:) 取出来的和列里的一致" started.
+◇ Test "负半数按 JS 规则进位" started.
+◇ Test "品种字段" started.
+◇ Test "最近一根而不是向下取整" started.
+◇ Test "不等距周期追加时补建 openTime 表" started.
+◇ Test "反复 upsert 末根不长胖" started.
+◇ Test "不等距周期补历史" started.
+◇ Test "下标越界要夹住，不能崩" started.
+◇ Test case passing 1 argument width → 900.0 to "两端越界有限空白并回各自边界，历史中途不吸回" started.
+◇ Test "向前补历史" started.
+◇ Test case passing 1 argument scale → 1.0 to "snap 落在设备像素边界" started.
+◇ Test case passing 1 argument iv → .m1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument scale → 2.0 to "snap 落在设备像素边界" started.
+◇ Test case passing 1 argument width → 240.0 to "两端越界有限空白并回各自边界，历史中途不吸回" started.
+◇ Test case passing 1 argument width → 360.0 to "两端越界有限空白并回各自边界，历史中途不吸回" started.
+◇ Test case passing 1 argument scale → 3.0 to "snap 落在设备像素边界" started.
+◇ Test case passing 1 argument iv → .m3 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .m5 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .m15 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument from → .m1 to "拖回历史后再切" started.
+◇ Test case passing 1 argument iv → .m30 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument from → .m3 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .m5 to "拖回历史后再切" started.
+◇ Test case passing 1 argument iv → .h1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument lane → 0 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument from → .m15 to "拖回历史后再切" started.
+◇ Test case passing 1 argument iv → .h2 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument lane → 1 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument lane → 2 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument from → .m30 to "拖回历史后再切" started.
+◇ Test case passing 1 argument iv → .h4 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument lane → 3 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument lane → 4 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument from → .h1 to "拖回历史后再切" started.
+◇ Test case passing 1 argument iv → .h6 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument lane → 5 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument lane → 6 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument iv → .h12 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument lane → 7 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument from → .h2 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .h4 to "拖回历史后再切" started.
+◇ Test case passing 1 argument lane → 8 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument lane → 9 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument from → .h6 to "拖回历史后再切" started.
+◇ Test case passing 1 argument iv → .w1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument from → .h12 to "拖回历史后再切" started.
+◇ Test case passing 1 argument iv → .mo1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .d1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument from → .d1 to "拖回历史后再切" started.
+◇ Test case passing 1 argument iv → .y1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument from → .w1 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .mo1 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .y1 to "拖回历史后再切" started.
+◇ Test case passing 1 argument n → 1 to "短序列" started.
+◇ Test case passing 1 argument n → 2 to "短序列" started.
+◇ Test case passing 1 argument n → 5 to "短序列" started.
+◇ Test case passing 1 argument n → 13 to "短序列" started.
+◇ Test case passing 1 argument n → 27 to "短序列" started.
+◇ Test case passing 1 argument mode → .linear to "价格刻度等距" started.
+◇ Test case passing 1 argument mode → .log to "价格刻度等距" started.
+◇ Test case passing 1 argument mode → .percent to "价格刻度等距" started.
+◇ Test case passing 1 argument tz → .local to "时间刻度按时区对齐" started.
+◇ Test case passing 1 argument tz → .utc to "时间刻度按时区对齐" started.
+◇ Test case passing 1 argument tz → .exchange to "时间刻度按时区对齐" started.
+◇ Test case passing 1 argument from → .m1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .m3 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .m5 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .m15 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .m30 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .h1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .h2 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .h4 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .h6 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .h12 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .d1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .w1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .mo1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .y1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument lane → 0 to "随机改末根 / 追加新根 1000 次" started.
+◇ Test case passing 1 argument lane → 1 to "随机改末根 / 追加新根 1000 次" started.
+◇ Test case passing 1 argument lane → 2 to "随机改末根 / 追加新根 1000 次" started.
+◇ Test case passing 1 argument lane → 3 to "随机改末根 / 追加新根 1000 次" started.
+◇ Test case passing 1 argument ci → 0 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 1 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 2 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 3 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 4 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 5 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 6 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 7 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 8 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 9 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 10 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 11 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 12 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 13 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 14 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 0 to "EMA" started.
+◇ Test case passing 1 argument ci → 1 to "EMA" started.
+◇ Test case passing 1 argument ci → 2 to "EMA" started.
+◇ Test case passing 1 argument ci → 3 to "EMA" started.
+◇ Test case passing 1 argument ci → 4 to "EMA" started.
+◇ Test case passing 1 argument ci → 5 to "EMA" started.
+◇ Test case passing 1 argument ci → 6 to "EMA" started.
+◇ Test case passing 1 argument ci → 7 to "EMA" started.
+◇ Test case passing 1 argument ci → 8 to "EMA" started.
+◇ Test case passing 1 argument ci → 9 to "EMA" started.
+◇ Test case passing 1 argument ci → 10 to "EMA" started.
+◇ Test case passing 1 argument ci → 11 to "EMA" started.
+◇ Test case passing 1 argument ci → 12 to "EMA" started.
+◇ Test case passing 1 argument ci → 13 to "EMA" started.
+◇ Test case passing 1 argument ci → 14 to "EMA" started.
+◇ Test case passing 1 argument ci → 0 to "MA" started.
+◇ Test case passing 1 argument ci → 2 to "MA" started.
+◇ Test case passing 1 argument ci → 3 to "MA" started.
+◇ Test case passing 1 argument ci → 4 to "MA" started.
+◇ Test case passing 1 argument ci → 5 to "MA" started.
+◇ Test case passing 1 argument ci → 6 to "MA" started.
+◇ Test case passing 1 argument ci → 1 to "MA" started.
+◇ Test case passing 1 argument ci → 7 to "MA" started.
+◇ Test case passing 1 argument ci → 8 to "MA" started.
+◇ Test case passing 1 argument ci → 9 to "MA" started.
+◇ Test case passing 1 argument ci → 10 to "MA" started.
+◇ Test case passing 1 argument ci → 11 to "MA" started.
+◇ Test case passing 1 argument ci → 12 to "MA" started.
+◇ Test case passing 1 argument ci → 13 to "MA" started.
+◇ Test case passing 1 argument ci → 14 to "MA" started.
+◇ Test case passing 1 argument ci → 0 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 1 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 2 to "StochRSI" started.
+◇ Test case passing 1 argument seed → PaletteSeed(dark: false, ground: #B7B2A0, app: #F4F0E4, chart: #EDE8D9, raised: #FAF7EE, raised2: #E5DFCD, line: #D9D2BD, grid: #E3DDC9, hair: #3A35241A, ink: #2F2C25, ink2: #625D4D, ink3: #736D5D, up: #387A58, down: #B74B3F, amber: #96660F, palette: [#96660F, #5A63A8, #3F8A63, #A85A78, #7A6BA8, #3F7FA0]) to resolvedSmallText(_:) started.
+◇ Test case passing 1 argument ci → 3 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 4 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 5 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 6 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 7 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 8 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 9 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 10 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 0 to "MACD" started.
+◇ Test case passing 1 argument ci → 11 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 1 to "MACD" started.
+◇ Test case passing 1 argument ci → 2 to "MACD" started.
+◇ Test case passing 1 argument ci → 12 to "StochRSI" started.
+◇ Test case passing 1 argument seed → PaletteSeed(dark: true, ground: #0D0C0A, app: #191712, chart: #201D17, raised: #262219, raised2: #2C281F, line: #3A342A, grid: #2C281F, hair: #FFFFFF0A, ink: #E0DAC9, ink2: #A19A86, ink3: #887F6A, up: #56A883, down: #D3766A, amber: #D3A15C, palette: [#D3A15C, #9AA0D8, #6FC2A4, #D99BB0, #BDAEDC, #85B8D6]) to resolvedSmallText(_:) started.
+◇ Test case passing 1 argument ci → 13 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 3 to "MACD" started.
+◇ Test case passing 1 argument ci → 0 to "VOL" started.
+◇ Test case passing 1 argument ci → 4 to "MACD" started.
+◇ Test case passing 1 argument ci → 5 to "MACD" started.
+◇ Test case passing 1 argument ci → 1 to "VOL" started.
+◇ Test case passing 1 argument ci → 6 to "MACD" started.
+◇ Test case passing 1 argument ci → 14 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 7 to "MACD" started.
+◇ Test case passing 1 argument ci → 8 to "MACD" started.
+◇ Test case passing 1 argument ci → 2 to "VOL" started.
+◇ Test case passing 1 argument ci → 9 to "MACD" started.
+◇ Test case passing 1 argument ci → 3 to "VOL" started.
+◇ Test case passing 1 argument ci → 4 to "VOL" started.
+◇ Test case passing 1 argument ci → 5 to "VOL" started.
+◇ Test case passing 1 argument ci → 6 to "VOL" started.
+◇ Test case passing 1 argument ci → 7 to "VOL" started.
+◇ Test case passing 1 argument ci → 10 to "MACD" started.
+◇ Test case passing 1 argument ci → 8 to "VOL" started.
+◇ Test case passing 1 argument ci → 9 to "VOL" started.
+◇ Test case passing 1 argument ci → 11 to "MACD" started.
+◇ Test case passing 1 argument ci → 10 to "VOL" started.
+◇ Test case passing 1 argument ci → 12 to "MACD" started.
+◇ Test case passing 1 argument ci → 11 to "VOL" started.
+◇ Test case passing 1 argument ci → 13 to "MACD" started.
+◇ Test case passing 1 argument ci → 12 to "VOL" started.
+◇ Test case passing 1 argument ci → 13 to "VOL" started.
+◇ Test case passing 1 argument ci → 14 to "MACD" started.
+◇ Test case passing 1 argument ci → 14 to "VOL" started.
+◇ Test case passing 1 argument ci → 0 to "ATR" started.
+◇ Test case passing 1 argument ci → 1 to "ATR" started.
+◇ Test case passing 1 argument ci → 2 to "ATR" started.
+◇ Test case passing 1 argument ci → 3 to "ATR" started.
+◇ Test case passing 1 argument ci → 0 to "KDJ" started.
+◇ Test case passing 1 argument ci → 4 to "ATR" started.
+◇ Test case passing 1 argument ci → 1 to "KDJ" started.
+◇ Test case passing 1 argument ci → 5 to "ATR" started.
+◇ Test case passing 1 argument ci → 2 to "KDJ" started.
+◇ Test case passing 1 argument ci → 6 to "ATR" started.
+◇ Test case passing 1 argument ci → 3 to "KDJ" started.
+◇ Test case passing 1 argument ci → 7 to "ATR" started.
+◇ Test case passing 1 argument ci → 4 to "KDJ" started.
+◇ Test case passing 1 argument ci → 8 to "ATR" started.
+◇ Test case passing 1 argument ci → 5 to "KDJ" started.
+◇ Test case passing 1 argument ci → 9 to "ATR" started.
+◇ Test case passing 1 argument ci → 6 to "KDJ" started.
+◇ Test case passing 1 argument ci → 10 to "ATR" started.
+◇ Test case passing 1 argument ci → 7 to "KDJ" started.
+◇ Test case passing 1 argument ci → 11 to "ATR" started.
+◇ Test case passing 1 argument ci → 8 to "KDJ" started.
+◇ Test case passing 1 argument ci → 12 to "ATR" started.
+◇ Test case passing 1 argument ci → 13 to "ATR" started.
+◇ Test case passing 1 argument ci → 14 to "ATR" started.
+◇ Test case passing 1 argument ci → 0 to "RSI" started.
+◇ Test case passing 1 argument ci → 9 to "KDJ" started.
+◇ Test case passing 1 argument ci → 10 to "KDJ" started.
+◇ Test case passing 1 argument ci → 11 to "KDJ" started.
+◇ Test case passing 1 argument ci → 1 to "RSI" started.
+◇ Test case passing 1 argument ci → 12 to "KDJ" started.
+◇ Test case passing 1 argument ci → 13 to "KDJ" started.
+◇ Test case passing 1 argument ci → 2 to "RSI" started.
+◇ Test case passing 1 argument ci → 14 to "KDJ" started.
+◇ Test case passing 1 argument ci → 3 to "RSI" started.
+◇ Test case passing 1 argument ci → 4 to "RSI" started.
+◇ Test case passing 1 argument ci → 5 to "RSI" started.
+◇ Test case passing 1 argument ci → 6 to "RSI" started.
+◇ Test case passing 1 argument ci → 7 to "RSI" started.
+◇ Test case passing 1 argument ci → 8 to "RSI" started.
+◇ Test case passing 1 argument ci → 9 to "RSI" started.
+◇ Test case passing 1 argument ci → 10 to "RSI" started.
+◇ Test case passing 1 argument ci → 11 to "RSI" started.
+◇ Test case passing 1 argument ci → 1 to "BOLL" started.
+◇ Test case passing 1 argument ci → 0 to "BOLL" started.
+◇ Test case passing 1 argument ci → 2 to "BOLL" started.
+◇ Test case passing 1 argument ci → 3 to "BOLL" started.
+◇ Test case passing 1 argument ci → 4 to "BOLL" started.
+◇ Test case passing 1 argument id → .ma to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument ci → 5 to "BOLL" started.
+◇ Test case passing 1 argument id → .ema to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument id → .boll to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument ci → 6 to "BOLL" started.
+◇ Test case passing 1 argument id → .vol to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument ci → 7 to "BOLL" started.
+◇ Test case passing 1 argument id → .macd to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument ci → 8 to "BOLL" started.
+◇ Test case passing 1 argument ci → 9 to "BOLL" started.
+◇ Test case passing 1 argument id → .rsi to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument ci → 10 to "BOLL" started.
+◇ Test case passing 1 argument id → .kdj to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument ci → 11 to "BOLL" started.
+◇ Test case passing 1 argument id → .srsi to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument ci → 12 to "BOLL" started.
+◇ Test case passing 1 argument id → .atr to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument ci → 13 to "BOLL" started.
+◇ Test case passing 1 argument id → .oi to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument ci → 14 to "BOLL" started.
+◇ Test case passing 1 argument ci → 12 to "RSI" started.
+◇ Test case passing 1 argument ci → 13 to "RSI" started.
+◇ Test case passing 1 argument ci → 14 to "RSI" started.
+◇ Test case passing 1 argument id → .ma to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .ema to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .boll to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .vol to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .macd to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .rsi to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .kdj to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .srsi to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .atr to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .oi to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .ma to "回算根数够深" started.
+◇ Test case passing 1 argument id → .ema to "回算根数够深" started.
+◇ Test case passing 1 argument id → .boll to "回算根数够深" started.
+◇ Test case passing 1 argument id → .vol to "回算根数够深" started.
+◇ Test case passing 1 argument id → .macd to "回算根数够深" started.
+◇ Test case passing 1 argument id → .rsi to "回算根数够深" started.
+◇ Test case passing 1 argument id → .kdj to "回算根数够深" started.
+◇ Test case passing 1 argument id → .srsi to "回算根数够深" started.
+◇ Test case passing 1 argument id → .atr to "回算根数够深" started.
+◇ Test case passing 1 argument id → .oi to "回算根数够深" started.
+◇ Test case passing 1 argument scale → 1.0 to "实体与影线奇偶相同" started.
+◇ Test case passing 1 argument scale → 2.0 to "实体与影线奇偶相同" started.
+◇ Test case passing 1 argument scale → 3.0 to "实体与影线奇偶相同" started.
+◇ Test case passing 1 argument scale → 1.0 to "实体之间至少 1 像素缝" started.
+◇ Test case passing 1 argument scale → 2.0 to "实体之间至少 1 像素缝" started.
+◇ Test case passing 1 argument scale → 3.0 to "实体之间至少 1 像素缝" started.
+◇ Test case passing 1 argument speed → -3000.0 to "曲线单调、有限、到达终点后停止" started.
+◇ Test case passing 1 argument speed → -500.0 to "曲线单调、有限、到达终点后停止" started.
+◇ Test case passing 1 argument speed → 500.0 to "曲线单调、有限、到达终点后停止" started.
+◇ Test case passing 1 argument speed → 3000.0 to "曲线单调、有限、到达终点后停止" started.
+◇ Test case passing 1 argument scale → 2.0 to "thin 是物理判据" started.
+◇ Test case passing 1 argument scale → 3.0 to "thin 是物理判据" started.
+◇ Test case passing 1 argument scale → 1.0 to "实体宽单调" started.
+◇ Test case passing 1 argument scale → 2.0 to "实体宽单调" started.
+◇ Test case passing 1 argument scale → 3.0 to "实体宽单调" started.
+◇ Test case passing 1 argument i → 0 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 1 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument scale → 2.0 to "默认根间距下实体够胖" started.
+◇ Test case passing 1 argument scale → 3.0 to "默认根间距下实体够胖" started.
+◇ Test case passing 1 argument i → 2 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 3 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 4 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 5 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 6 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 7 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 8 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 9 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 10 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "aicoin", name: "AICoin", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.none) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "stout", name: "墩", wickCap: KanpanCore.CandleStyle.WickCap.round, wickTint: 0.7, shape: KanpanCore.CandleStyle.Shape.solid, radius: 1.5, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "indigo", name: "靛", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.both) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "glow", name: "辉", wickCap: KanpanCore.CandleStyle.WickCap.round, wickTint: 0.6, shape: KanpanCore.CandleStyle.Shape.solid, radius: 2.6, grid: KanpanCore.CandleStyle.Grid.none) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "airy", name: "阔", wickCap: KanpanCore.CandleStyle.WickCap.round, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 1.0, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "brick", name: "砖", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 0.45, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "needle", name: "针", wickCap: KanpanCore.CandleStyle.WickCap.round, wickTint: 0.9, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.5, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "pill", name: "芯", wickCap: KanpanCore.CandleStyle.WickCap.round, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 3.0, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "paper", name: "纸", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.hollowUp, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "outline", name: "描", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 0.85, shape: KanpanCore.CandleStyle.Shape.outline, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.tick) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "bone", name: "骨", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.tick) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "dense", name: "密", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.none) to "字段范围合理" started.
+◇ Test case passing 1 argument seed → PaletteSeed(dark: false, ground: #C7CCE4, app: #FFFFFF, chart: #F4F6FD, raised: #FFFFFF, raised2: #ECEFF9, line: #DCE0F0, grid: #E4E7F5, hair: #12163A0F, ink: #12163A, ink2: #565C85, ink3: #8B90B2, up: #0E9E78, down: #DE2E57, amber: #B26A00, palette: [#B26A00, #4A55D6, #0E8F73, #C43A7E, #7A5BD6, #1A7FC4]) to "颜色格式合法" started.
+◇ Test case passing 1 argument seed → PaletteSeed(dark: true, ground: #07091C, app: #0F1230, chart: #161A3F, raised: #1C2154, raised2: #232858, line: #2A2E6E, grid: #232858, hair: #FFFFFF0A, ink: #EDEEF8, ink2: #A6A9C0, ink3: #6D719A, up: #2FBF8F, down: #F0567B, amber: #FFB454, palette: [#FFB454, #8C95FF, #4FD1B5, #F78FB3, #C8B6FF, #7FD0FF]) to "颜色格式合法" started.
+◇ Test case passing 1 argument scale → 1.0 to "影线整像素" started.
+◇ Test case passing 1 argument scale → 2.0 to "影线整像素" started.
+◇ Test case passing 1 argument scale → 3.0 to "影线整像素" started.
+✔ Test "单边行情的 RSI 极值" passed after 1.304 seconds.
+◇ Test case passing 1 argument seed → PaletteSeed(dark: false, ground: #C7CCE4, app: #FFFFFF, chart: #F4F6FD, raised: #FFFFFF, raised2: #ECEFF9, line: #DCE0F0, grid: #E4E7F5, hair: #12163A0F, ink: #12163A, ink2: #565C85, ink3: #8B90B2, up: #0E9E78, down: #DE2E57, amber: #B26A00, palette: [#B26A00, #4A55D6, #0E8F73, #C43A7E, #7A5BD6, #1A7FC4]) to "redUp 只翻转涨跌两色" started.
+◇ Test case passing 1 argument seed → PaletteSeed(dark: true, ground: #07091C, app: #0F1230, chart: #161A3F, raised: #1C2154, raised2: #232858, line: #2A2E6E, grid: #232858, hair: #FFFFFF0A, ink: #EDEEF8, ink2: #A6A9C0, ink3: #6D719A, up: #2FBF8F, down: #F0567B, amber: #FFB454, palette: [#FFB454, #8C95FF, #4FD1B5, #F78FB3, #C8B6FF, #7FD0FF]) to "redUp 只翻转涨跌两色" started.
+✔ Test "smaSkip 跳过前导 NaN" passed after 1.304 seconds.
+✔ Test "边界对齐" with 3 test cases passed after 1.304 seconds.
+✔ Test "数据不够时整列 NaN" passed after 1.304 seconds.
+✔ Test "J 线允许越界" passed after 1.304 seconds.
+✔ Test "前导 NaN 的位置" passed after 1.304 seconds.
+✔ Test "对数模式等比等距" passed after 1.304 seconds.
+✔ Test "ATR 算上跳空" passed after 1.304 seconds.
+✔ Test "MACD 柱是差值的两倍" passed after 1.304 seconds.
+✔ Test "StochRSI 分母为零" passed after 1.304 seconds.
+✔ Test "后画的先命中" passed after 1.304 seconds.
+✔ Test "价格轴缩放与平移" passed after 1.304 seconds.
+✔ Test "参数非法就整列 NaN，不要崩" passed after 1.304 seconds.
+✔ Test "留白按风格 pad" passed after 1.304 seconds.
+✔ Test "编解码来回" passed after 1.304 seconds.
+✔ Test "趋势线两点落成" passed after 1.304 seconds.
+✔ Test "十字星不塌成零高度" passed after 1.304 seconds.
+✔ Test "拖动端点与整条" passed after 1.304 seconds.
+✔ Test "手柄优先于线身" passed after 1.304 seconds.
+✔ Test "画线价格进区间" passed after 1.304 seconds.
+✔ Test "删除与清空" passed after 1.304 seconds.
+✔ Test "水平线一点落成" passed after 1.304 seconds.
+✔ Test "引擎在空数据和换参时不乱" passed after 1.305 seconds.
+✔ Test "极值并入叠加指标与画线" passed after 1.305 seconds.
+✔ Test "横盘时不出 NaN / inf" passed after 1.305 seconds.
+✔ Test "历史区焦点缩放，右端缩放保持最新列尾贴右" passed after 1.305 seconds.
+✔ Test "手动Y随新自动区间重算，不永久钉死旧价格" passed after 1.305 seconds.
+✔ Test "到达极限后反向捏合立即响应" passed after 1.305 seconds.
+✔ Test "distSeg 与原型全等" passed after 1.305 seconds.
+✔ Test "Y倍率与高度归一化，中心夹取，自动复位仅改Y" passed after 1.305 seconds.
+✔ Test "水平线命中" passed after 1.305 seconds.
+✔ Test "卡片在不同容器宽高内换边" passed after 1.305 seconds.
+✔ Test "宽容器少量数据使用完整400虚拟列边界，历史焦点不读靠右设置" passed after 1.305 seconds.
+✔ Test "倒计时归零与非数给 nil" passed after 1.305 seconds.
+✔ Test "倒计时三档文案" passed after 1.305 seconds.
+✔ Test "退化线段当点距算" passed after 1.305 seconds.
+✔ Test "页面纵拖与图表手势路由互斥" passed after 1.305 seconds.
+✔ Test "价格三个模式正常倒置映射和百分比首个相交列" passed after 1.305 seconds.
+✔ Test "副图值 → y" passed after 1.305 seconds.
+✔ Test "中文档名" passed after 1.305 seconds.
+✔ Test "百分比以可见区首根收盘为基准" passed after 1.305 seconds.
+✔ Test "偏上把蜡烛顶上去" passed after 1.305 seconds.
+✔ Test "默认值一律维持现状" passed after 1.305 seconds.
+✔ Test "副图整区长按命中，排除主图、坐标轴、面板外与负坐标" passed after 1.305 seconds.
+✔ Test "三档偏置跨度完全相同" passed after 1.305 seconds.
+✔ Test "默认 ID 不撞" passed after 1.305 seconds.
+✔ Test "影线粗细换算" passed after 1.305 seconds.
+✔ Test "多年稀疏OI保留前后端，不在五万格处截断，也不提前使用未来样本" passed after 1.305 seconds.
+✔ Test "最新柱列尾贴右缘，半根偏移一致" passed after 1.305 seconds.
+✔ Test "同档内宽度稳定" passed after 1.305 seconds.
+✔ Test "趋势线线身命中" passed after 1.305 seconds.
+✔ Test "回弹有限时长单调回原边界，不改根宽或越过历史目标" passed after 1.305 seconds.
+✔ Test "两端越界有限空白并回各自边界，历史中途不吸回" with 3 test cases passed after 1.305 seconds.
+✔ Test "当前参考手机：4pt 节距对应8px实体、2px影线" passed after 1.305 seconds.
+✔ Test "分桶性质" passed after 1.305 seconds.
+✔ Test "无锚点时落回右缘留白" with 14 test cases passed after 1.305 seconds.
+✔ Test "根间距越界先夹" passed after 1.305 seconds.
+✔ Test "snap 落在设备像素边界" with 3 test cases passed after 1.305 seconds.
+✔ Test "日线聚周线" passed after 1.305 seconds.
+✔ Test "拖回历史后再切" with 14 test cases passed after 1.305 seconds.
+✔ Test "来回切十次不漂" passed after 1.305 seconds.
+✔ Test "pOf(yOf(p)) == p" with 3 test cases passed after 1.306 seconds.
+✔ Test "聚不出来就给空" passed after 1.305 seconds.
+✔ Test "随机命中对拍" passed after 1.306 seconds.
+✔ Test "闰年与月末落桶" passed after 1.305 seconds.
+✔ Test "十万随机视窗在左右列边界内" with 10 test cases passed after 1.305 seconds.
+✔ Test "周线桶落在周一零点" passed after 1.305 seconds.
+✔ Test "thin 判定" passed after 1.305 seconds.
+✔ Test "当年未定稿那根" passed after 1.305 seconds.
+✔ Test "月线聚年线：每桶的开高低收量" passed after 1.305 seconds.
+✔ Test "所有风格同尺寸；主图、时间轴、副图铺满且互不重叠" passed after 1.305 seconds.
+✔ Test "短序列" with 5 test cases passed after 1.305 seconds.
+✔ Test "niceStep 与原型全等" passed after 1.305 seconds.
+✔ Test "空数据不产生无效窗口" passed after 1.305 seconds.
+✔ Test "主副比例与自定义副图高度不随风格改变" passed after 1.305 seconds.
+✔ Test "刻度密度合理" passed after 1.305 seconds.
+✔ Test "阶梯表与原型一致" passed after 1.305 seconds.
+✔ Test "价格刻度等距" with 3 test cases passed after 1.305 seconds.
+✔ Test "高度联动所有pane而非横向时间映射" passed after 1.305 seconds.
+✔ Test "就近取整与边界" passed after 1.305 seconds.
+✔ Test "时间刻度按时区对齐" with 3 test cases passed after 1.305 seconds.
+✔ Test olderCatalogRemainsDecodable() passed after 1.305 seconds.
+✔ Test "utcMs 与系统日历一致" passed after 1.305 seconds.
+✔ Test "14 × 14 组互切，根宽不变、右缘不动" with 14 test cases passed after 1.305 seconds.
+✔ Test "indexAt(openTime[i]) == i" passed after 1.305 seconds.
+✔ Test "月长确实不等" passed after 1.305 seconds.
+✔ Test "1w 等距推导与 openTime 一致" passed after 1.305 seconds.
+✔ Test "只有 1M / 1y 算不等距" passed after 1.305 seconds.
+✔ Test "timeStep 与原型全等" passed after 1.305 seconds.
+✔ Test "追加与可见区间" passed after 1.305 seconds.
+✔ Test "周期表与原型一致" passed after 1.305 seconds.
+✔ Test "聚合结果可索引" passed after 1.305 seconds.
+✔ Test "振幅按24h开盘，切换涨跌基准不能改变振幅，缺开盘不伪造" passed after 1.305 seconds.
+✔ Test "fmtNum 与原型全等" passed after 1.305 seconds.
+✔ Test metadataRetainsFacets() passed after 1.305 seconds.
+✔ Test "成交量分档" passed after 1.305 seconds.
+✔ Test "滚动24小时保持交易所口径，日基准随最新价更新，缺开盘价留空" passed after 1.305 seconds.
+✔ Test "过一遍像素再回来还是同一根" passed after 1.305 seconds.
+✔ Test "toFixed 与 JS 同规则" passed after 1.305 seconds.
+✔ Test delayedStatisticsCannotOverwriteLivePrice() passed after 1.305 seconds.
+✔ Test "时间标签与原型全等" passed after 1.305 seconds.
+✔ Test identityAndInvalidTrade() passed after 1.305 seconds.
+✔ Test retainSeedsAndExposePrototypeGap() passed after 1.305 seconds.
+✔ Test luminanceFormula() passed after 1.305 seconds.
+✔ Test "闰年与月末" passed after 1.305 seconds.
+✔ Test "niceStep 尾数只有五种" passed after 1.306 seconds.
+✔ Test "日期拆解与系统日历一致" passed after 1.305 seconds.
+✔ Test "引擎与裸函数一致" with 15 test cases passed after 1.305 seconds.
+✔ Test "distSeg 的几何性质" passed after 1.306 seconds.
+✔ Test "标签形态" passed after 1.305 seconds.
+✔ Test "EMA" with 15 test cases passed after 1.305 seconds.
+✔ Test defaults() passed after 1.305 seconds.
+✔ Test "fmtVol 与原型全等" passed after 1.305 seconds.
+✔ Test "MA" with 15 test cases passed after 1.305 seconds.
+✔ Test "价格精度跟 tickSize 走" passed after 1.305 seconds.
+✔ Test "StochRSI" with 15 test cases passed after 1.305 seconds.
+✔ Test resolvedSmallText(_:) with 2 test cases passed after 1.305 seconds.
+✔ Test "MACD" with 15 test cases passed after 1.305 seconds.
+✔ Test "VOL" with 15 test cases passed after 1.305 seconds.
+✔ Test arbitraryArrivalOrderConverges() passed after 1.305 seconds.
+✔ Test samePriceNewClockDoesNotInvalidateDisplay() passed after 1.305 seconds.
+✔ Test staleAndDuplicate() passed after 1.305 seconds.
+✔ Test "国际0点等于上海8点，上海0点前后使用不同UTC日期" passed after 1.306 seconds.
+✔ Test "ATR" with 15 test cases passed after 1.305 seconds.
+✔ Test identityAndValidity() passed after 1.305 seconds.
+✔ Test "缓存键" passed after 1.305 seconds.
+✔ Test "KDJ" with 15 test cases passed after 1.305 seconds.
+✔ Test sameMillisecondAndPeriodSwitchConverge() passed after 1.305 seconds.
+✔ Test "RSI" with 15 test cases passed after 1.305 seconds.
+✔ Test "纯未来视野和短指标数组不越界，对数倒置可往返" passed after 1.305 seconds.
+✔ Test "上下影包住真实高低" passed after 1.305 seconds.
+✔ Test "边界输入" passed after 1.305 seconds.
+✔ Test unknownDoesNotBecomeCryptoOrUSStock() passed after 1.305 seconds.
+✔ Test "时区偏移" passed after 1.306 seconds.
+✔ Test "所有皮肤保持相同实体宽度、影线宽度和最小高度" passed after 1.305 seconds.
+✔ Test "热身 200 根与全量等价" passed after 1.305 seconds.
+✔ Test "BOLL" with 15 test cases passed after 1.306 seconds.
+✔ Test "快照补到现在时跟随末根；历史视野不跳" passed after 1.305 seconds.
+✔ Test "10 个指标，主图三种" with 10 test cases passed after 1.306 seconds.
+✔ Test "线名跟着参数走" passed after 1.306 seconds.
+✔ Test "空序列" passed after 1.306 seconds.
+✔ Test "结果取值越界给 NaN" passed after 1.306 seconds.
+✔ Test "按品种隔离" passed after 1.306 seconds.
+✔ Test "不等距周期吸到真 openTime" passed after 1.306 seconds.
+✔ Test "热身盖过起点等于全量" passed after 1.306 seconds.
+✔ Test "默认参数与线名对得上" with 10 test cases passed after 1.306 seconds.
+✔ Test "拖端点 / 拖整条" passed after 1.306 seconds.
+✔ Test "撤销到底就停" passed after 1.306 seconds.
+✔ Test "水平线整条拖只动价格" passed after 1.306 seconds.
+✔ Test "速度越快距离与持续时间越长；正负对称" passed after 1.306 seconds.
+✔ Test "速度取样排除过期采样" passed after 1.306 seconds.
+✔ Test "AOSP参考数值：1000dp/s" passed after 1.306 seconds.
+✔ Test "回算根数够深" with 10 test cases passed after 1.306 seconds.
+✔ Test "clear 清两摞" passed after 1.306 seconds.
+✔ Test "撤销重做走一圈" passed after 1.306 seconds.
+✔ Test "对数模式下按像素平移" passed after 1.306 seconds.
+✔ Test "老存档缺字段也能读" passed after 1.306 seconds.
+✔ Test "0–100 的副图锁刻度" passed after 1.306 seconds.
+✔ Test "撤销之后再动一笔，重做作废" passed after 1.306 seconds.
+✔ Test "手调副图在固定屏幕内重新分配高度并约束极限" passed after 1.306 seconds.
+✔ Test "实体与影线奇偶相同" with 3 test cases passed after 1.306 seconds.
+✔ Test "公式逐根对账" passed after 1.306 seconds.
+✔ Test "每品种上限 50" passed after 1.306 seconds.
+✔ Test "非法输入兜底" passed after 1.306 seconds.
+✔ Test "曲线单调、有限、到达终点后停止" with 4 test cases passed after 1.306 seconds.
+✔ Test "空序列不吸也不崩" passed after 1.306 seconds.
+✔ Test "撤销栈有上限" passed after 1.306 seconds.
+✔ Test "默认参数与原型一致" passed after 1.306 seconds.
+✔ Test "thin 是物理判据" with 2 test cases passed after 1.306 seconds.
+✔ Test "比自己新的存档不乱读" passed after 1.306 seconds.
+✔ Test "磁盘往返" passed after 1.306 seconds.
+✔ Test "磁吸开：时间吸根、价格吸开高低收" passed after 1.306 seconds.
+✔ Test "每个字段与原型逐一相等" with 11 test cases passed after 1.306 seconds.
+✔ Test "默认根间距下实体够胖" with 2 test cases passed after 1.306 seconds.
+✔ Test "字段范围合理" with 12 test cases passed after 1.306 seconds.
+✔ Test "11 款风格、顺序与默认值" passed after 1.305 seconds.
+✔ Test "深色配色与原型逐一相等" passed after 1.305 seconds.
+✔ Test "存档编解码来回" passed after 1.305 seconds.
+✔ Test "颜色格式合法" with 2 test cases passed after 1.306 seconds.
+✔ Test "磁吸关：原样落点" passed after 1.305 seconds.
+✔ Test "影线整像素" with 3 test cases passed after 1.305 seconds.
+✔ Test "浅色配色与原型逐一相等" passed after 1.305 seconds.
+✔ Test "redUp 只翻转涨跌两色" with 2 test cases passed after 1.305 seconds.
+✔ Test "mixHex" passed after 1.305 seconds.
+✔ Test "upsert 三种情形" passed after 1.304 seconds.
+✔ Test "空序列的时间" passed after 1.304 seconds.
+✔ Test "等距周期不存 openTime，时间由 t0 推" passed after 1.303 seconds.
+✔ Test "覆盖末根" passed after 1.303 seconds.
+✔ Test "追加新根" passed after 1.303 seconds.
+✔ Test "持仓量对齐" passed after 1.303 seconds.
+✔ Test "bar(at:) 取出来的和列里的一致" passed after 1.303 seconds.
+✔ Test "负半数按 JS 规则进位" passed after 1.303 seconds.
+✔ Test "品种字段" passed after 1.303 seconds.
+✔ Test "最近一根而不是向下取整" passed after 1.303 seconds.
+✔ Test "不等距周期追加时补建 openTime 表" passed after 1.302 seconds.
+✔ Test "反复 upsert 末根不长胖" passed after 1.302 seconds.
+✔ Test "不等距周期补历史" passed after 1.302 seconds.
+✔ Test "下标越界要夹住，不能崩" passed after 1.299 seconds.
+✔ Test "向前补历史" passed after 1.299 seconds.
+✔ Suite "指标边界" passed after 1.312 seconds.
+✔ Suite "价格轴" passed after 1.312 seconds.
+✔ Suite "画线" passed after 1.312 seconds.
+✔ Suite "AICoin 统一手势算术" passed after 1.312 seconds.
+✔ Suite "图表底座补全" passed after 1.312 seconds.
+✔ Suite "K线设置" passed after 1.312 seconds.
+✔ Suite "根宽与像素对齐" passed after 1.312 seconds.
+✔ Suite "完整历史OI" passed after 1.312 seconds.
+✔ Suite "AICoin 硬边界" passed after 1.312 seconds.
+✔ Suite "聚合" passed after 1.312 seconds.
+✔ Suite "切周期" passed after 1.312 seconds.
+✔ Suite "AICoin 共用布局" passed after 1.312 seconds.
+✔ Suite "刻度" passed after 1.312 seconds.
+✔ Suite "不等距周期" passed after 1.312 seconds.
+✔ Suite "品种事实分类" passed after 1.312 seconds.
+✔ Suite "统一涨跌幅开盘基准" passed after 1.312 seconds.
+✔ Suite "格式化" passed after 1.313 seconds.
+✔ Suite "Independent live price and rolling statistics" passed after 1.311 seconds.
+✔ Suite "护眼配色实际表面对比度" passed after 1.311 seconds.
+✔ Suite "指标黄金值" passed after 1.311 seconds.
+✔ Suite "共用尺寸参数" passed after 1.311 seconds.
+✔ Suite "Latest quote identity and ordering" passed after 1.311 seconds.
+✔ Suite "AICoin 冷启动与尺寸" passed after 1.311 seconds.
+✔ Suite "平均K线" passed after 1.311 seconds.
+✔ Suite "指标元信息" passed after 1.311 seconds.
+✔ Suite "画线编辑" passed after 1.311 seconds.
+✔ Suite "AICoin OverScroller参考惯性" passed after 1.311 seconds.
+✔ Suite "风格表与配色" passed after 1.312 seconds.
+✔ Suite "K 线序列" passed after 1.312 seconds.
+✔ Test "实体之间至少 1 像素缝" with 3 test cases passed after 1.326 seconds.
+✔ Test "实体宽单调" with 3 test cases passed after 1.332 seconds.
+✔ Suite "蜡烛整像素光栅化" passed after 1.338 seconds.
+✔ Test "随机改末根 / 追加新根 1000 次" with 4 test cases passed after 1.779 seconds.
+✔ Test "连续追加 500 根不漂移" passed after 1.940 seconds.
+✔ Suite "指标增量重算" passed after 1.943 seconds.
+INDICATOR_BENCHMARK bars=12000 updates=100 tailP95Ms=12.960959 fullP95Ms=212.844
+✔ Test liveTailVersusFullRebuild() passed after 22.010 seconds.
+✔ Suite "Indicator workload benchmark" passed after 22.013 seconds.
+✔ Test run with 204 tests in 32 suites passed after 22.016 seconds.
+cd KanpanData && swift test 
+[0/1] Planning build
+Building for debugging...
+[0/9] Write sources
+[3/9] Write swift-version--58304C5D6DBC2206.txt
+[5/39] Compiling KanpanCore Constants.swift
+[6/39] Compiling KanpanCore Fling.swift
+[7/39] Compiling KanpanCore Layout.swift
+[8/42] Compiling KanpanCore AICoinBehavior.swift
+[9/42] Compiling KanpanCore ChartOptions.swift
+[10/42] Compiling KanpanCore DrawEdit.swift
+[11/42] Compiling KanpanCore DrawStore.swift
+[12/42] Compiling KanpanCore LatestQuote.swift
+[13/42] Compiling KanpanCore MarketSector.swift
+[14/42] Compiling KanpanCore SymbolClassification.swift
+[15/42] Compiling KanpanCore ViewWindow.swift
+[16/42] Compiling KanpanCore IncrementalLines.swift
+[17/42] Compiling KanpanCore IndicatorEngine.swift
+[18/42] Compiling KanpanCore ChangeBasis.swift
+[19/42] Compiling KanpanCore HeikinAshi.swift
+[20/42] Compiling KanpanCore Interval.swift
+[21/42] Compiling KanpanCore IndicatorID.swift
+[22/42] Compiling KanpanCore Indicators.swift
+[23/42] Compiling KanpanCore Math.swift
+[24/42] Compiling KanpanCore Aggregator.swift
+[25/42] Compiling KanpanCore Bar.swift
+[26/42] Compiling KanpanCore BarSeries.swift
+[27/42] Compiling KanpanCore PriceScale.swift
+[28/42] Compiling KanpanCore Ticks.swift
+[29/42] Compiling KanpanCore ViewTransition.swift
+[30/42] Compiling KanpanCore Drawing.swift
+[31/42] Compiling KanpanCore Format.swift
+[32/42] Compiling KanpanCore CandleWidths.swift
+[33/42] Compiling KanpanCore Clamp.swift
+[34/42] Emitting module KanpanCore
+[35/42] Compiling KanpanCore SymbolInfo.swift
+[36/42] Compiling KanpanCore CandleStyle.swift
+[37/42] Compiling KanpanCore Palette.swift
+[38/62] Compiling KanpanData OISource.swift
+[39/62] Compiling KanpanData BarCache.swift
+[40/64] Compiling KanpanData WSClient.swift
+[41/64] Compiling KanpanData WSSocket.swift
+[42/64] Compiling KanpanData MarketSocketRouter.swift
+[43/64] Compiling KanpanData Pacer.swift
+[44/64] Compiling KanpanData RESTClient.swift
+[45/64] Compiling KanpanData RateLimiter.swift
+[46/64] Compiling KanpanData Paths.swift
+[47/64] Compiling KanpanData Snapshot.swift
+[48/64] Compiling KanpanData OIArchive.swift
+[49/64] Compiling KanpanData OIStore.swift
+[50/64] Compiling KanpanData Errors.swift
+[51/64] Compiling KanpanData HTTPTransport.swift
+[52/64] Compiling KanpanData Backoff.swift
+[53/64] Compiling KanpanData DTO.swift
+[54/64] Compiling KanpanData Endpoints.swift
+[55/64] Emitting module KanpanData
+[56/64] Compiling KanpanData FeedComposer.swift
+[57/64] Compiling KanpanData MarketFeed.swift
+[58/64] Compiling KanpanData SymbolCatalog.swift
+[59/64] Compiling KanpanData Zip.swift
+[60/76] Compiling kanpan_feed main.swift
+[61/76] Emitting module kanpan_feed
+[61/76] Write Objects.LinkFileList
+[62/76] Linking kanpan-feed
+[63/76] Applying kanpan-feed
+[65/76] Compiling KanpanDataTests StoreTests.swift
+[66/76] Compiling KanpanDataTests RESTTests.swift
+[67/76] Emitting module KanpanDataTests
+[68/76] Compiling KanpanDataTests DataIntegrityTests.swift
+[69/76] Compiling KanpanDataTests OITests.swift
+[70/76] Compiling KanpanDataTests FeedReplayTests.swift
+[71/76] Compiling KanpanDataTests RateLimitTests.swift
+[72/76] Compiling KanpanDataTests TickFoldTests.swift
+[73/76] Compiling KanpanDataTests Fakes.swift
+[74/76] Compiling KanpanDataTests MarketSocketRouterTests.swift
+[74/76] Write Objects.LinkFileList
+[75/76] Linking KanpanDataPackageTests
+Build complete! (8.61s)
+Test Suite 'All tests' started at 2026-09-15 05:26:55.575.
+Test Suite 'All tests' passed at 2026-09-15 05:26:55.578.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.003) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "OI 归档：自写 ZIP + CSV" started.
+◇ Suite "OI 对齐：两源合一条" started.
+◇ Suite "WS 回放：合成规矩、断线补缺、静默重连" started.
+◇ Suite "逐笔折线" started.
+◇ Suite "启动快照与内存缓存" started.
+◇ Suite "Data identity, snapshots and duplicate delivery" started.
+◇ Suite "无感行情选路" started.
+◇ Test "归档站有的文件本身是乱序的：解析器必须自己排" started.
+◇ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" started.
+◇ Test ".oi 日切片：编解码一致，一天 ≈ 3.4KB" started.
+◇ Test "日期工具：dayString / dayStart / days / 中间优先" started.
+◇ Suite "限流与退避" started.
+◇ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Suite "REST 与 DTO" started.
+◇ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" started.
+◇ Test "近 30 天走 REST、更早走归档：两个源都被问到" started.
+◇ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" started.
+◇ Test "品种上市前：归档站 404 → 返回空而不是报错" started.
+◇ Test "空点列 / 空序列不崩" started.
+◇ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" started.
+◇ Test "存取日切片：关掉开关就不落盘" started.
+◇ Test "对齐取「之前最近」一条，没有就是 NaN" started.
+◇ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" started.
+◇ Test "点列有缺口也对得上：缺口里续用缺口前那条" started.
+◇ Test "1w / 1M / 1y：按桶取最后一条" started.
+◇ Test concurrentCatalogReadersShareOneRequest() started.
+◇ Test decoderRetainsExchangeClock() started.
+◇ Test "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test "30 品种 × 14 周期切一遍：沙盒里只有 last.kbar" started.
+◇ Test lateFramesAndWrongIntervalCannotRewriteTail() started.
+◇ Test returningToSameSelectionCannotReviveOldRequest() started.
+◇ Test "真实 metrics zip：解出 288 行 5 分钟粒度" started.
+◇ Test restCannotReplaceLiveTailReceivedDuringRequest() started.
+◇ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" started.
+◇ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" started.
+◇ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" started.
+◇ Test sameMillisecondDistinctTradesAreNotDropped() started.
+◇ Test "读快照 + 建 BarSeries < 20ms" started.
+◇ Test case passing 1 argument interval → .m1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "60 秒一帧没有就主动重连" started.
+◇ Test tradeDuplicatesDoNotDoubleVolume() started.
+◇ Test invalidOHLCVIsRejectedBeforeIndicators() started.
+◇ Test "不规则周期（1M）带 openTime 表，也能原样读回" started.
+◇ Test "服务器 ping 立刻回 pong" started.
+◇ Test "单个 key 超长会裁掉最老的" started.
+◇ Test "坏文件不崩，返回 nil" started.
+◇ Test case passing 1 argument interval → .m5 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m3 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" started.
+◇ Test case passing 1 argument interval → .m15 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "3000 条录制报文回放：最终序列与期望全等" started.
+◇ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" started.
+◇ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" started.
+◇ Test case passing 1 argument interval → .m30 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" started.
+◇ Test "内存警告后只剩当前 (品种, 周期)" started.
+◇ Test "关掉「启动快照」：文件被删，之后不再写" started.
+◇ Test case passing 1 argument interval → .h4 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h6 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h12 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h2 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "last.kbar：≤600 根、≤60KB，读回逐字节一致" started.
+◇ Test case passing 1 argument interval → .d1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .w1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .mo1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "所有线路超时后释放连接，不无限等待" started.
+◇ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" started.
+◇ Test case passing 1 argument interval → .y1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "连断三次：退避 1s / 2s / 4s，日志可见" started.
+◇ Test "备用HTTPS独立端口保留路径及订阅参数" started.
+◇ Test "对表：这根还没被折过就认 REST 的收盘" started.
+◇ Test "选路期间换品种，连接完成后补订新流，不误记已同步" started.
+◇ Test "历史OI网关时间戳、数值和坏响应检查" started.
+◇ Test "挂单心跳只改价不记量，也不凭它开新的一根" started.
+◇ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" started.
+◇ Test "本地失败时自动兜底，订阅确认不算有效行情" started.
+◇ Test "选择更快有效线路，首帧不丢失，正常收数不反复选路" started.
+◇ Test "桶按撮合时间算，同一根内的时间不会开新根" started.
+◇ Test "trade / bookTicker 报文解得出来" started.
+◇ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" started.
+◇ Test "过期、补缺中、价格不合法、序列空着都不折" started.
+◇ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" started.
+◇ Test "组合行情端点使用 market 路由，替换品种仍可复用连接" started.
+◇ Test "落在末根上：收盘跟着走，高低取极值，量累加" started.
+◇ Test case passing 1 argument firstStatus → 200 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test "换一段序列，折线状态跟着清掉" started.
+◇ Test case passing 1 argument firstStatus → 429 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument firstStatus → 503 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test "1500 根 klines：严格递增、等距、无重复" started.
+◇ Test "404 / 451 / 429 分类" started.
+◇ Test "全市场WS数组包含普通与TradFi报价，保持真实24h涨跌幅" started.
+◇ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" started.
+◇ Test "USDT TradFi全保留，USD1、普通USDC、交割与停牌排除；旧目录即时刷新" started.
+◇ Test "kline 行数字可以是字符串也可以是数字" started.
+◇ Test "当前全部717个产品品种进入独立分类模块，保留细分元数据" started.
+◇ Test "429 带 Retry-After：停够秒数再发，然后成功" started.
+◇ Test "exchangeInfo 走一遍 transport，请求路径正确" started.
+◇ Test "1y 由 1M 聚出来" started.
+◇ Test "dedup 去重并排序" started.
+◇ Test "60 秒没帧就算断了" started.
+◇ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" started.
+◇ Test "撞到分钟权重上限就等到窗口滚出去" started.
+◇ Test "429 不带 Retry-After：退避 1s、2s" started.
+◇ Test "重试到上限还是 429 就把错误抛出来" started.
+✔ Test "日期工具：dayString / dayStart / days / 中间优先" passed after 0.011 seconds.
+◇ Test "罚停后成功一次，计数清零" started.
+◇ Test "连发要隔 120ms" started.
+◇ Test "重连退避 1/2/4/…≤30s" started.
+✔ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" passed after 0.016 seconds.
+✔ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" with 14 test cases passed after 0.016 seconds.
+✔ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" passed after 0.031 seconds.
+✔ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" passed after 0.032 seconds.
+✔ Test "空点列 / 空序列不崩" passed after 0.032 seconds.
+◇ Test case passing 1 argument localFast → true to "选择更快有效线路，首帧不丢失，正常收数不反复选路" started.
+◇ Test case passing 1 argument localFast → false to "选择更快有效线路，首帧不丢失，正常收数不反复选路" started.
+✔ Test "点列有缺口也对得上：缺口里续用缺口前那条" passed after 0.032 seconds.
+✔ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" passed after 0.032 seconds.
+✔ Test "对齐取「之前最近」一条，没有就是 NaN" passed after 0.032 seconds.
+✔ Test "1w / 1M / 1y：按桶取最后一条" passed after 0.032 seconds.
+✔ Test decoderRetainsExchangeClock() passed after 0.032 seconds.
+✔ Test "历史网关失败换备用，保留周期且不重复下载ZIP" with 3 test cases passed after 0.032 seconds.
+✔ Test lateFramesAndWrongIntervalCannotRewriteTail() passed after 0.032 seconds.
+✔ Test restCannotReplaceLiveTailReceivedDuringRequest() passed after 0.032 seconds.
+✔ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" passed after 0.032 seconds.
+✔ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" passed after 0.033 seconds.
+✔ Test sameMillisecondDistinctTradesAreNotDropped() passed after 0.033 seconds.
+✔ Test tradeDuplicatesDoNotDoubleVolume() passed after 0.056 seconds.
+✔ Test "不规则周期（1M）带 openTime 表，也能原样读回" passed after 0.056 seconds.
+✔ Test invalidOHLCVIsRejectedBeforeIndicators() passed after 0.057 seconds.
+✔ Test "坏文件不崩，返回 nil" passed after 0.058 seconds.
+✔ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" passed after 0.059 seconds.
+✔ Test "单个 key 超长会裁掉最老的" passed after 0.059 seconds.
+✔ Test "真实 metrics zip：解出 288 行 5 分钟粒度" passed after 0.059 seconds.
+✔ Test ".oi 日切片：编解码一致，一天 ≈ 3.4KB" passed after 0.059 seconds.
+✔ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" passed after 0.059 seconds.
+✔ Test "内存警告后只剩当前 (品种, 周期)" passed after 0.058 seconds.
+✔ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" passed after 0.059 seconds.
+✔ Test "归档站有的文件本身是乱序的：解析器必须自己排" passed after 0.059 seconds.
+✔ Test "读快照 + 建 BarSeries < 20ms" passed after 0.059 seconds.
+✔ Test "对表：这根还没被折过就认 REST 的收盘" passed after 0.058 seconds.
+✔ Test "历史OI网关时间戳、数值和坏响应检查" passed after 0.058 seconds.
+✔ Test "挂单心跳只改价不记量，也不凭它开新的一根" passed after 0.058 seconds.
+✔ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" passed after 0.058 seconds.
+✔ Test "桶按撮合时间算，同一根内的时间不会开新根" passed after 0.058 seconds.
+✔ Test "trade / bookTicker 报文解得出来" passed after 0.058 seconds.
+✔ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" passed after 0.058 seconds.
+✔ Test "过期、补缺中、价格不合法、序列空着都不折" passed after 0.058 seconds.
+✔ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" passed after 0.058 seconds.
+✔ Test "组合行情端点使用 market 路由，替换品种仍可复用连接" passed after 0.058 seconds.
+✔ Test "落在末根上：收盘跟着走，高低取极值，量累加" passed after 0.058 seconds.
+✔ Test "换一段序列，折线状态跟着清掉" passed after 0.058 seconds.
+✔ Test "存取日切片：关掉开关就不落盘" passed after 0.060 seconds.
+✔ Test "404 / 451 / 429 分类" passed after 0.055 seconds.
+✔ Test "1500 根 klines：严格递增、等距、无重复" passed after 0.058 seconds.
+✔ Test "last.kbar：≤600 根、≤60KB，读回逐字节一致" passed after 0.061 seconds.
+✔ Test "全市场WS数组包含普通与TradFi报价，保持真实24h涨跌幅" passed after 0.056 seconds.
+✔ Test "kline 行数字可以是字符串也可以是数字" passed after 0.053 seconds.
+✔ Test "exchangeInfo 走一遍 transport，请求路径正确" passed after 0.052 seconds.
+✔ Test "1y 由 1M 聚出来" passed after 0.052 seconds.
+✔ Test "dedup 去重并排序" passed after 0.052 seconds.
+✔ Test "60 秒没帧就算断了" passed after 0.052 seconds.
+✔ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" passed after 0.051 seconds.
+✔ Test "罚停后成功一次，计数清零" passed after 0.051 seconds.
+✔ Test "重连退避 1/2/4/…≤30s" passed after 0.046 seconds.
+✔ Suite "OI 归档：自写 ZIP + CSV" passed after 0.071 seconds.
+✔ Suite "逐笔折线" passed after 0.071 seconds.
+✔ Test "撞到分钟权重上限就等到窗口滚出去" passed after 0.063 seconds.
+✔ Test "USDT TradFi全保留，USD1、普通USDC、交割与停牌排除；旧目录即时刷新" passed after 0.068 seconds.
+✔ Test "429 带 Retry-After：停够秒数再发，然后成功" passed after 0.069 seconds.
+✔ Test "429 不带 Retry-After：退避 1s、2s" passed after 0.066 seconds.
+✔ Test "近 30 天走 REST、更早走归档：两个源都被问到" passed after 0.078 seconds.
+✔ Test concurrentCatalogReadersShareOneRequest() passed after 0.079 seconds.
+✔ Test "重试到上限还是 429 就把错误抛出来" passed after 0.068 seconds.
+✔ Test "备用HTTPS独立端口保留路径及订阅参数" passed after 0.078 seconds.
+✔ Test "连发要隔 120ms" passed after 0.066 seconds.
+✔ Suite "限流与退避" passed after 0.080 seconds.
+✔ Test "品种上市前：归档站 404 → 返回空而不是报错" passed after 0.080 seconds.
+✔ Suite "OI 对齐：两源合一条" passed after 0.081 seconds.
+✔ Test "服务器 ping 立刻回 pong" passed after 0.081 seconds.
+✔ Test "所有线路超时后释放连接，不无限等待" passed after 0.084 seconds.
+✔ Test "连断三次：退避 1s / 2s / 4s，日志可见" passed after 0.088 seconds.
+✔ Test "本地失败时自动兜底，订阅确认不算有效行情" passed after 0.094 seconds.
+✔ Test "选择更快有效线路，首帧不丢失，正常收数不反复选路" with 2 test cases passed after 0.104 seconds.
+✔ Test "60 秒一帧没有就主动重连" passed after 0.126 seconds.
+✔ Test "当前全部717个产品品种进入独立分类模块，保留细分元数据" passed after 0.118 seconds.
+✔ Test "30 品种 × 14 周期切一遍：沙盒里只有 last.kbar" passed after 0.136 seconds.
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 0.138 seconds.
+✔ Test "关掉「启动快照」：文件被删，之后不再写" passed after 0.157 seconds.
+✔ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" passed after 0.162 seconds.
+✔ Suite "REST 与 DTO" passed after 0.168 seconds.
+✔ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" passed after 0.172 seconds.
+✔ Test "3000 条录制报文回放：最终序列与期望全等" passed after 0.264 seconds.
+✔ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" passed after 0.275 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 0.276 seconds.
+✔ Test returningToSameSelectionCannotReviveOldRequest() passed after 0.278 seconds.
+✔ Suite "Data identity, snapshots and duplicate delivery" passed after 0.278 seconds.
+✔ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" passed after 0.357 seconds.
+✔ Suite "启动快照与内存缓存" passed after 0.358 seconds.
+✔ Test "选路期间换品种，连接完成后补订新流，不误记已同步" passed after 0.681 seconds.
+✔ Suite "无感行情选路" passed after 0.683 seconds.
+✔ Test run with 82 tests in 9 suites passed after 0.683 seconds.
+cd KanpanCore && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+[0/1] Planning build
+Building for debugging...
+[0/1] Write swift-version--58304C5D6DBC2206.txt
+[2/31] Compiling KanpanCore PriceScale.swift
+[3/31] Compiling KanpanCore Ticks.swift
+[4/31] Compiling KanpanCore ViewTransition.swift
+[5/34] Compiling KanpanCore IndicatorID.swift
+[6/34] Compiling KanpanCore Indicators.swift
+[7/34] Compiling KanpanCore Math.swift
+[8/34] Compiling KanpanCore LatestQuote.swift
+[9/34] Compiling KanpanCore MarketSector.swift
+[10/34] Compiling KanpanCore SymbolClassification.swift
+[11/34] Compiling KanpanCore Constants.swift
+[12/34] Compiling KanpanCore Fling.swift
+[13/34] Compiling KanpanCore Layout.swift
+[14/34] Compiling KanpanCore ViewWindow.swift
+[15/34] Compiling KanpanCore IncrementalLines.swift
+[16/34] Compiling KanpanCore IndicatorEngine.swift
+[17/34] Compiling KanpanCore ChangeBasis.swift
+[18/34] Compiling KanpanCore HeikinAshi.swift
+[19/34] Compiling KanpanCore Interval.swift
+[20/34] Compiling KanpanCore Aggregator.swift
+[21/34] Compiling KanpanCore Bar.swift
+[22/34] Compiling KanpanCore BarSeries.swift
+[23/34] Emitting module KanpanCore
+[24/34] Compiling KanpanCore AICoinBehavior.swift
+[25/34] Compiling KanpanCore ChartOptions.swift
+[26/34] Compiling KanpanCore DrawEdit.swift
+[27/34] Compiling KanpanCore DrawStore.swift
+[28/34] Compiling KanpanCore Drawing.swift
+[29/34] Compiling KanpanCore Format.swift
+[30/34] Compiling KanpanCore CandleWidths.swift
+[31/34] Compiling KanpanCore Clamp.swift
+[32/34] Compiling KanpanCore SymbolInfo.swift
+[33/34] Compiling KanpanCore CandleStyle.swift
+[34/34] Compiling KanpanCore Palette.swift
+Build complete! (1.57s)
+cd KanpanData && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+[0/1] Planning build
+Building for debugging...
+[0/4] Write swift-version--58304C5D6DBC2206.txt
+[2/34] Compiling KanpanCore ChangeBasis.swift
+[3/34] Compiling KanpanCore HeikinAshi.swift
+[4/34] Compiling KanpanCore Interval.swift
+[5/34] Compiling KanpanCore LatestQuote.swift
+[6/34] Compiling KanpanCore MarketSector.swift
+[7/34] Compiling KanpanCore SymbolClassification.swift
+[8/37] Compiling KanpanCore Constants.swift
+[9/37] Compiling KanpanCore Fling.swift
+[10/37] Compiling KanpanCore Layout.swift
+[11/37] Compiling KanpanCore PriceScale.swift
+[12/37] Compiling KanpanCore Ticks.swift
+[13/37] Compiling KanpanCore ViewTransition.swift
+[14/37] Compiling KanpanCore AICoinBehavior.swift
+[15/37] Compiling KanpanCore ChartOptions.swift
+[16/37] Compiling KanpanCore DrawEdit.swift
+[17/37] Compiling KanpanCore DrawStore.swift
+[18/37] Emitting module KanpanCore
+[19/37] Compiling KanpanCore Aggregator.swift
+[20/37] Compiling KanpanCore Bar.swift
+[21/37] Compiling KanpanCore BarSeries.swift
+[22/37] Compiling KanpanCore ViewWindow.swift
+[23/37] Compiling KanpanCore IncrementalLines.swift
+[24/37] Compiling KanpanCore IndicatorEngine.swift
+[25/37] Compiling KanpanCore IndicatorID.swift
+[26/37] Compiling KanpanCore Indicators.swift
+[27/37] Compiling KanpanCore Math.swift
+[28/37] Compiling KanpanCore Drawing.swift
+[29/37] Compiling KanpanCore Format.swift
+[30/37] Compiling KanpanCore CandleWidths.swift
+[31/37] Compiling KanpanCore Clamp.swift
+[32/37] Compiling KanpanCore SymbolInfo.swift
+[33/37] Compiling KanpanCore CandleStyle.swift
+[34/37] Compiling KanpanCore Palette.swift
+[35/57] Compiling KanpanData FeedComposer.swift
+[36/57] Compiling KanpanData MarketFeed.swift
+[37/57] Compiling KanpanData WSClient.swift
+[38/57] Compiling KanpanData WSSocket.swift
+[39/57] Compiling KanpanData RESTClient.swift
+[40/57] Compiling KanpanData RateLimiter.swift
+[41/59] Compiling KanpanData OISource.swift
+[42/59] Compiling KanpanData BarCache.swift
+[43/59] Compiling KanpanData Paths.swift
+[44/59] Compiling KanpanData Snapshot.swift
+[45/59] Compiling KanpanData Errors.swift
+[46/59] Compiling KanpanData HTTPTransport.swift
+[47/59] Compiling KanpanData MarketSocketRouter.swift
+[48/59] Compiling KanpanData Pacer.swift
+[49/59] Compiling KanpanData Backoff.swift
+[50/59] Compiling KanpanData DTO.swift
+[51/59] Compiling KanpanData Endpoints.swift
+[52/59] Emitting module KanpanData
+[53/59] Compiling KanpanData OIArchive.swift
+[54/59] Compiling KanpanData OIStore.swift
+[55/59] Compiling KanpanData SymbolCatalog.swift
+[56/59] Compiling KanpanData Zip.swift
+[57/61] Emitting module kanpan_feed
+[58/61] Compiling kanpan_feed main.swift
+[58/60] Linking kanpan-feed
+[59/60] Applying kanpan-feed
+Build complete! (3.99s)
+cd KanpanChart && KANPAN_STRICT=1 xcodebuild -scheme KanpanChart \
+		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme KanpanChart -destination "generic/platform=iOS Simulator" -derivedDataPath .xcbuild-strict build
+
+Resolve Package Graph
+2026-09-15 05:27:04.572 xcodebuild[68779:32796284] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+
+
+Resolved source packages:
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (4 targets)
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -o /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+
+SwiftDriver KanpanCore normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanCore -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -suppress-warnings -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpancore -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ KanpanCore (in target 'KanpanCore' from project 'KanpanCore')
+
+EmitSwiftModule normal arm64 (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for KanpanCore (in target 'KanpanCore' from project 'KanpanCore')
+
+SwiftDriver\ Compilation\ Requirements KanpanCore normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanCore -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -suppress-warnings -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpancore -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftsourceinfo (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftsourceinfo /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo
+
+SwiftDriver KanpanCore normal x86_64 com.apple.xcode.tools.swift.compiler (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanCore -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target x86_64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -suppress-warnings -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpancore -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources-normal/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftmodule (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftmodule /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/arm64-apple-ios-simulator.swiftmodule
+
+Copy /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/arm64-apple-ios-simulator.swiftdoc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftdoc (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftdoc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/arm64-apple-ios-simulator.swiftdoc
+
+Copy /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/arm64-apple-ios-simulator.abi.json /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.abi.json (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.abi.json /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/arm64-apple-ios-simulator.abi.json
+
+SwiftEmitModule normal x86_64 Emitting\ module\ for\ KanpanCore (in target 'KanpanCore' from project 'KanpanCore')
+
+EmitSwiftModule normal x86_64 (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftDriverJobDiscovery normal x86_64 Emitting module for KanpanCore (in target 'KanpanCore' from project 'KanpanCore')
+
+SwiftDriver\ Compilation\ Requirements KanpanCore normal x86_64 com.apple.xcode.tools.swift.compiler (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanCore -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target x86_64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -suppress-warnings -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpancore -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources-normal/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/x86_64-apple-ios-simulator.swiftmodule /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.swiftmodule (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.swiftmodule /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/x86_64-apple-ios-simulator.swiftmodule
+
+Copy /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/x86_64-apple-ios-simulator.swiftdoc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.swiftdoc (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.swiftdoc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/x86_64-apple-ios-simulator.swiftdoc
+
+Copy /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/x86_64-apple-ios-simulator.abi.json /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.abi.json (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.abi.json /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/x86_64-apple-ios-simulator.abi.json
+
+Copy /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/Project/x86_64-apple-ios-simulator.swiftsourceinfo /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.swiftsourceinfo (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.swiftsourceinfo /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.swiftmodule/Project/x86_64-apple-ios-simulator.swiftsourceinfo
+
+SwiftCompile normal arm64 Compiling\ LatestQuote.swift /Users/mdd/zhk/kanpan/KanpanCore/Sources/KanpanCore/Model/LatestQuote.swift (in target 'KanpanCore' from project 'KanpanCore')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanCore/Sources/KanpanCore/Model/LatestQuote.swift (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling LatestQuote.swift (in target 'KanpanCore' from project 'KanpanCore')
+
+SwiftDriver\ Compilation KanpanCore normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanCore -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -suppress-warnings -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpancore -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftCompile normal x86_64 Compiling\ LatestQuote.swift /Users/mdd/zhk/kanpan/KanpanCore/Sources/KanpanCore/Model/LatestQuote.swift (in target 'KanpanCore' from project 'KanpanCore')
+
+SwiftCompile normal x86_64 /Users/mdd/zhk/kanpan/KanpanCore/Sources/KanpanCore/Model/LatestQuote.swift (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+Ld /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/Binary/KanpanCore.o normal arm64 (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -r -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -O0 -w -F/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -filelist /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.LinkFileList -nostdlib -Xlinker -object_path_lto -Xlinker /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore_lto.o -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.swiftmodule @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore-linker-args.resp -o /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/Binary/KanpanCore.o
+
+SwiftDriverJobDiscovery normal x86_64 Compiling LatestQuote.swift (in target 'KanpanCore' from project 'KanpanCore')
+
+SwiftDriver\ Compilation KanpanCore normal x86_64 com.apple.xcode.tools.swift.compiler (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanCore -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target x86_64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -suppress-warnings -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpancore -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources-normal/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/Binary/KanpanCore.o normal x86_64 (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target x86_64-apple-ios17.0-simulator -r -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -O0 -w -F/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -filelist /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.LinkFileList -nostdlib -Xlinker -object_path_lto -Xlinker /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore_lto.o -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.swiftmodule @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore-linker-args.resp -o /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/Binary/KanpanCore.o
+
+CreateUniversalBinary /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.o normal arm64\ x86_64 (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/lipo -create /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/Binary/KanpanCore.o /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/Binary/KanpanCore.o -output /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.o
+
+ExtractAppIntentsMetadata (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name KanpanCore --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk --xcode-version 17F113 --platform-family iOS --deployment-target 17.0 --bundle-identifier kanpancore.KanpanCore --output /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.appintents --target-triple arm64-apple-ios17.0-simulator --target-triple x86_64-apple-ios17.0-simulator --binary-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.o --dependency-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore_dependency_info.dat --dependency-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore_dependency_info.dat --stringsdata-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --stringsdata-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.SwiftFileList --source-file-list /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.SwiftFileList --metadata-file-list /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/KanpanCore.DependencyMetadataFileList --static-metadata-file-list /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/KanpanCore.DependencyStaticMetadataFileList --swift-const-vals-list /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/arm64/KanpanCore.SwiftConstValuesFileList --swift-const-vals-list /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanCore.build/Debug-iphonesimulator/KanpanCore.build/Objects-normal/x86_64/KanpanCore.SwiftConstValuesFileList --force --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-15 05:27:06.747 appintentsmetadataprocessor[68796:32796496] Starting appintentsmetadataprocessor export
+2026-09-15 05:27:06.771 appintentsmetadataprocessor[68796:32796496] Extracted no relevant App Intents symbols, skipping writing output
+
+RegisterExecutionPolicyException /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.o (in target 'KanpanCore' from project 'KanpanCore')
+    cd /Users/mdd/zhk/kanpan/KanpanCore
+    builtin-RegisterExecutionPolicyException /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanCore.o
+
+SwiftDriver KanpanChart normal x86_64 com.apple.xcode.tools.swift.compiler (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanChart -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -warnings-as-errors -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target x86_64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpanchart -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources-normal/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftCompile normal x86_64 Compiling\ ChartState.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartState.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal x86_64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartState.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal x86_64 Compiling\ ChartView.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView.swift (in target 'KanpanChart' from project 'KanpanChart')
+SwiftCompile normal x86_64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal x86_64 Compiling\ Paint.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/Paint.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal x86_64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/Paint.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal x86_64 Compiling\ ChartView+Gesture.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView+Gesture.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal x86_64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView+Gesture.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftEmitModule normal x86_64 Emitting\ module\ for\ KanpanChart (in target 'KanpanChart' from project 'KanpanChart')
+
+EmitSwiftModule normal x86_64 (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal x86_64 Compiling\ ChartRenderer+Probe.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Probe.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal x86_64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Probe.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal x86_64 Compiling\ ChartRenderer+Sub.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Sub.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal x86_64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Sub.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal x86_64 Compiling\ ChartView+Drawing.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView+Drawing.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal x86_64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView+Drawing.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal x86_64 Compiling\ ChartRenderer+Layers.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal x86_64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal x86_64 Compiling\ ChartRenderer.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal x86_64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftDriverJobDiscovery normal x86_64 Compiling ChartRenderer+Layers.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal x86_64 Compiling ChartState.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal x86_64 Compiling Paint.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal x86_64 Compiling ChartRenderer+Probe.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal x86_64 Compiling ChartRenderer+Sub.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal x86_64 Compiling ChartView+Gesture.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal x86_64 Compiling ChartView+Drawing.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal x86_64 Compiling ChartRenderer.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal x86_64 Compiling ChartView.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriver\ Compilation KanpanChart normal x86_64 com.apple.xcode.tools.swift.compiler (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanChart -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -warnings-as-errors -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target x86_64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpanchart -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources-normal/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftDriver KanpanChart normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanChart -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -warnings-as-errors -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpanchart -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ KanpanChart (in target 'KanpanChart' from project 'KanpanChart')
+
+EmitSwiftModule normal arm64 (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for KanpanChart (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriver\ Compilation\ Requirements KanpanChart normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanChart -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -warnings-as-errors -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpanchart -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftDriverJobDiscovery normal x86_64 Emitting module for KanpanChart (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriver\ Compilation\ Requirements KanpanChart normal x86_64 com.apple.xcode.tools.swift.compiler (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanChart -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -warnings-as-errors -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target x86_64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpanchart -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources-normal/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources/x86_64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftCompile normal arm64 Compiling\ ChartRenderer+Sub.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Sub.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Sub.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ ChartView+Drawing.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView+Drawing.swift (in target 'KanpanChart' from project 'KanpanChart')
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView+Drawing.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ ChartView+Gesture.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView+Gesture.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView+Gesture.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ Paint.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/Paint.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/Paint.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ ChartView.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView.swift (in target 'KanpanChart' from project 'KanpanChart')
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartView.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ ChartState.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartState.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartState.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ ChartRenderer+Probe.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Probe.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Probe.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ ChartRenderer+Layers.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ ChartRenderer.swift /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer.swift (in target 'KanpanChart' from project 'KanpanChart')
+SwiftCompile normal arm64 /Users/mdd/zhk/kanpan/KanpanChart/Sources/KanpanChart/ChartRenderer.swift (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChartRenderer+Layers.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChartState.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal arm64 Compiling Paint.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChartRenderer+Probe.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChartRenderer+Sub.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChartView+Drawing.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChartView+Gesture.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChartView.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChartRenderer.swift (in target 'KanpanChart' from project 'KanpanChart')
+
+SwiftDriver\ Compilation KanpanChart normal arm64 com.apple.xcode.tools.swift.compiler (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name KanpanChart -Onone @/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -warnings-as-errors -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/PackageFrameworks -F /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -sdk-module-cache-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/ModuleCache.noindex/Session.modulevalidation -package-name kanpanchart -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart_const_extract_protocols.json -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources-normal/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources/arm64 -Xcc -I/Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart-Swift.h -working-directory /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanChart.swiftmodule/x86_64-apple-ios-simulator.abi.json /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart.abi.json (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/x86_64/KanpanChart.abi.json /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanChart.swiftmodule/x86_64-apple-ios-simulator.abi.json
+
+Copy /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanChart.swiftmodule/arm64-apple-ios-simulator.abi.json /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart.abi.json (in target 'KanpanChart' from project 'KanpanChart')
+    cd /Users/mdd/zhk/kanpan/KanpanChart
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Intermediates.noindex/KanpanChart.build/Debug-iphonesimulator/KanpanChart.build/Objects-normal/arm64/KanpanChart.abi.json /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/Build/Products/Debug-iphonesimulator/KanpanChart.swiftmodule/arm64-apple-ios-simulator.abi.json
+
+** BUILD SUCCEEDED **
+

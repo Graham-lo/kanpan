@@ -1,0 +1,4 @@
+cached HTTP 200 seconds 0.810946 wireBytes 2150
+points 288 first [1638316800000, 59230.06] last [1638402900000, 60657.802]
+content-encoding: gzip
+x-oi-cache: HIT

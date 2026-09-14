@@ -1,0 +1,778 @@
+diff --git a/Kanpan/Kanpan/Main/ChartHost.swift b/Kanpan/Kanpan/Main/ChartHost.swift
+index 080823c..0e3e8f6 100644
+--- a/Kanpan/Kanpan/Main/ChartHost.swift
++++ b/Kanpan/Kanpan/Main/ChartHost.swift
+@@ -50,7 +50,11 @@ final class ChartBox: UIView {
+     case .keep:
+       return
+     case .reset:
+-      next = ViewMath.reset(series: s.series, plotW: plotW, spacing: s.style.spacing)
++      // 「拖动位置」（`ChartOptions.anchor`）只有复位入口读它。图自己那两个入口
++      // （双击复位、回到最新）已经在读了，这里是第三个——换品种 / 第一次拿到数据。
++      // 漏了这条的话，选了「偏左」的人开 app 看到的第一屏仍然是靠右的。
++      next = ViewMath.reset(
++        series: s.series, plotW: plotW, spacing: s.style.spacing, anchor: s.options.anchor)
+     case .switchInterval(let spacing):
+       next = ViewMath.switchInterval(
+         to: s.series, plotW: plotW, spacing: spacing, anchorRight: nil)
+diff --git a/Kanpan/Kanpan/Main/IntervalBar.swift b/Kanpan/Kanpan/Main/IntervalBar.swift
+index 08662db..5da600f 100644
+--- a/Kanpan/Kanpan/Main/IntervalBar.swift
++++ b/Kanpan/Kanpan/Main/IntervalBar.swift
+@@ -11,6 +11,11 @@ struct IntervalBar: View {
+   var current: Interval
+   var onPick: (Interval) -> Void
+   var onMore: () -> Void
++  /// 右端「图表」：开 K 线设置那一页（`Panel.chart`）。
++  ///
++  /// 为什么挂在周期条上而不是底栏：底栏五个是定版的（§9.1 风格 · 指标 · 画线 · 设置 ·
++  /// 横屏），不动它；而「图表」改的是这根条右边那张图怎么画，放在同一行上手指不用跑远。
++  var onChart: () -> Void
+ 
+   private var list: [Interval] {
+     quick.contains(current) ? quick : [current] + quick
+@@ -27,25 +32,35 @@ struct IntervalBar: View {
+         }
+         .padding(.horizontal, 4)
+       }
+-      Button(action: onMore) {
+-        HStack(spacing: 3) {
+-          Text("更多").font(.system(size: 13, weight: .medium))
+-          VectorIcon.chevron(10)
+-        }
+-        .foregroundStyle(theme.ink2)
+-        .padding(.horizontal, 11)
+-        .frame(maxHeight: .infinity)
+-        .overlay(alignment: .leading) {
+-          Rectangle().fill(theme.line).frame(width: 1)
+-        }
+-        .contentShape(Rectangle())
+-      }
+-      .buttonStyle(.plain)
+-      .accessibilityIdentifier("interval.more")
++      tail("更多", chevron: true, action: onMore)
++        .accessibilityIdentifier("interval.more")
++      tail("图表", chevron: false, action: onChart)
++        .accessibilityIdentifier("interval.chart")
+     }
+     .fixedSize(horizontal: false, vertical: true)
+   }
+ 
++  /// 条右端那种按钮：左边一条分隔线、顶天立地、13pt 次级字。
++  ///
++  /// 「更多」带下箭头（那是从条上往下拉出一屏周期），「图表」不带（它开的是另一页设置，
++  /// 不是这根条的延伸）。
++  private func tail(_ title: String, chevron: Bool, action: @escaping () -> Void) -> some View {
++    Button(action: action) {
++      HStack(spacing: 3) {
++        Text(title).font(.system(size: 13, weight: .medium))
++        if chevron { VectorIcon.chevron(10) }
++      }
++      .foregroundStyle(theme.ink2)
++      .padding(.horizontal, 11)
++      .frame(maxHeight: .infinity)
++      .overlay(alignment: .leading) {
++        Rectangle().fill(theme.line).frame(width: 1)
++      }
++      .contentShape(Rectangle())
++    }
++    .buttonStyle(.plain)
++  }
++
+   private func chip(_ iv: Interval) -> some View {
+     let on = iv == current
+     return Button { onPick(iv) } label: {
+diff --git a/Kanpan/Kanpan/Main/LandscapeChrome.swift b/Kanpan/Kanpan/Main/LandscapeChrome.swift
+index f3a145c..c3282e2 100644
+--- a/Kanpan/Kanpan/Main/LandscapeChrome.swift
++++ b/Kanpan/Kanpan/Main/LandscapeChrome.swift
+@@ -123,6 +123,9 @@ struct ToolRail: View {
+       Spacer(minLength: 0)
+       item(VectorIcon.style, "风格", on: active == .style) { onPanel(.style) }
+       item(VectorIcon.indicator, "指标", on: active == .indicator) { onPanel(.indicator) }
++      // A8.6「横竖屏各用 5 分钟，全部功能可达」：竖屏的「图表」在周期条上，
++      // 横屏没有周期条的尾巴，所以挂到工具栏来，不然横屏根本开不出 K 线设置。
++      item(VectorIcon.chart, "图表", on: active == .chart) { onPanel(.chart) }
+       item(VectorIcon.draw, "画线", on: drawing, action: onDraw)
+       item(VectorIcon.settings, "设置", on: active == .settings) { onPanel(.settings) }
+       item(VectorIcon.landscape, "竖屏", on: false, action: onPortrait)
+diff --git a/Kanpan/Kanpan/Main/MainScreen.swift b/Kanpan/Kanpan/Main/MainScreen.swift
+index 34cff6d..8a30453 100644
+--- a/Kanpan/Kanpan/Main/MainScreen.swift
++++ b/Kanpan/Kanpan/Main/MainScreen.swift
+@@ -24,6 +24,11 @@ struct MainScreen: View {
+   @State private var toastID = 0
+   /// 十字线亮着的时候，价格行读的是十字线那根，不是最新价（原型 `readout`）。
+   @State private var crosshair: Crosshair?
++  /// 倒计时的当前时刻（毫秒）。`nil` = 不画。
++  ///
++  /// 渲染器**不读系统时钟**（`ChartState` 得是纯值，A3.11 的基线靠这条），时间只能
++  /// 从外面喂进去。喂的人就是下面那个 `heartbeat()`。
++  @State private var nowMs: Double?
+ 
+   @Environment(\.colorScheme) private var scheme
+   @Environment(\.scenePhase) private var phase
+@@ -66,6 +71,8 @@ struct MainScreen: View {
+         .preferredColorScheme(prefs.theme.forced)
+     }
+     .task { boot() }
++    // 开关一变、或前后台一切，这个 task 就整个重来（旧的先被取消），心跳跟着起停。
++    .task(id: beating) { await heartbeat() }
+     .onChange(of: phase) { _, now in
+       switch now {
+       case .background: market.enterBackground()
+@@ -96,7 +103,9 @@ struct MainScreen: View {
+       hairline
+       IntervalBar(
+         theme: theme, quick: prefs.quickIntervals, current: market.interval,
+-        onPick: pick(interval:), onMore: { panel = .period }
++        onPick: pick(interval:), onMore: { panel = .period },
++        // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
++        onChart: { panel = .chart }
+       )
+       .background(theme.app)
+       hairline
+@@ -167,6 +176,7 @@ struct MainScreen: View {
+         case .indicator: IndicatorPanel(store: store)
+         case .period: PeriodPanel(store: store, onPick: pick(interval:))
+         case .settings: SettingsPanel(store: store)
++        case .chart: ChartPanel(store: store)
+         }
+       }
+     }
+@@ -281,7 +291,35 @@ struct MainScreen: View {
+       params: prefs.params,
+       timezone: prefs.timeZone,
+       magnet: prefs.magnet,
+-      decimals: market.info.pricePrecision)
++      decimals: market.info.pricePrecision,
++      options: prefs.chartOptions,
++      nowMs: nowMs,
++      subScale: subScale)
++  }
++
++  /// 副图高度（A6.4）：`Prefs.subHeights` 是档位，图要的是倍率。
++  ///
++  /// 只报当前开着的那几个：`subHeights` 里会留着以前开过的指标的档位，全倒进去
++  /// 没坏处但也没用，而且每帧都要比一次字典，不如只带用得上的。
++  private var subScale: [IndicatorID: Double] {
++    var out: [IndicatorID: Double] = [:]
++    for id in prefs.subs { out[id] = prefs.height(for: id).scale }
++    return out
++  }
++
++  /// 心跳该不该跳：开关开着、且 app 在前台。
++  ///
++  /// 后台不跳有两层意思：省电，以及回到前台时 `.task(id:)` 会重来一遍，第一跳立刻把
++  /// 停在后台那一刻的旧时间冲掉，不会先闪一秒错的倒计时。
++  private var beating: Bool { prefs.countdown && phase == .active }
++
++  /// 一秒一跳。倒计时读到秒就够，再快只是白耗。
++  private func heartbeat() async {
++    guard beating else { nowMs = nil; return }
++    while !Task.isCancelled {
++      nowMs = Date().timeIntervalSince1970 * 1000
++      do { try await Task.sleep(for: .seconds(1)) } catch { return }
++    }
+   }
+ 
+   // ---------------------------------------------------------------- 动作
+diff --git a/Kanpan/Kanpan/Main/MarketModel.swift b/Kanpan/Kanpan/Main/MarketModel.swift
+index c189440..f8dd24a 100644
+--- a/Kanpan/Kanpan/Main/MarketModel.swift
++++ b/Kanpan/Kanpan/Main/MarketModel.swift
+@@ -135,6 +135,22 @@ final class MarketModel {
+       guard t.symbol.uppercased() == symbol.uppercased() else { return }
+       ticker = t
+       lastPushAt = Date()
++    case .price(let last, let mark):
++      // 逐笔和标记价只知道「现在多少钱」，不许整份替换——涨跌幅和 24h 高低是
++      // REST 那一路给的，被 NaN 盖掉顶栏就空了一大片。
++      guard var t = ticker else {
++        // 冷启动头几百毫秒还没拿到 24h 行情：先把价格立起来，其余留空等对表补。
++        if let last {
++          ticker = Ticker(symbol: symbol, last: last, changePercent: .nan,
++                          high: .nan, low: .nan, quoteVolume: .nan, markPrice: mark)
++          lastPushAt = Date()
++        }
++        return
++      }
++      if let last { t.last = last }
++      if let mark { t.markPrice = mark }
++      ticker = t
++      lastPushAt = Date()
+     case .oi:
+       break                                   // 副图 OI 由指标层自己取
+     case .status(let s):
+diff --git a/Kanpan/Kanpan/Main/VectorIcon.swift b/Kanpan/Kanpan/Main/VectorIcon.swift
+index 0761410..f8833f5 100644
+--- a/Kanpan/Kanpan/Main/VectorIcon.swift
++++ b/Kanpan/Kanpan/Main/VectorIcon.swift
+@@ -205,6 +205,14 @@ extension VectorIcon {
+     ])
+   }
+ 
++  /// K 线设置（横屏工具栏的「图表」）。两根蜡烛：框 + 上下影线。
++  static var chart: VectorIcon {
++    tool([
++      .rect(x: 3.5, y: 6, w: 4, h: 8, r: 0.8), .path("M5.5 2.6v3.4M5.5 14v3.4"),
++      .rect(x: 12.5, y: 4.5, w: 4, h: 6, r: 0.8), .path("M14.5 2.6v1.9M14.5 10.5v6.9"),
++    ])
++  }
++
+   static var landscape: VectorIcon {
+     tool([.rect(x: 2.5, y: 5.5, w: 15, h: 9, r: 1.6), .path("M7 2.6 9 4.6 7 6.6")])
+   }
+diff --git a/Kanpan/Kanpan/Panels/PanelPresentation.swift b/Kanpan/Kanpan/Panels/PanelPresentation.swift
+index 6d0e8b8..1791639 100644
+--- a/Kanpan/Kanpan/Panels/PanelPresentation.swift
++++ b/Kanpan/Kanpan/Panels/PanelPresentation.swift
+@@ -8,7 +8,7 @@ import KanpanCore
+ 
+ /// 哪个面板。底栏四个按钮各对应一个。
+ enum Panel: String, Identifiable, CaseIterable, Sendable {
+-  case style, indicator, period, settings
++  case style, indicator, period, settings, chart
+ 
+   var id: String { rawValue }
+ 
+@@ -18,6 +18,7 @@ enum Panel: String, Identifiable, CaseIterable, Sendable {
+     case .indicator: "指标"
+     case .period: "周期"
+     case .settings: "设置"
++    case .chart: "图表"
+     }
+   }
+ }
+@@ -122,6 +123,7 @@ extension View {
+         case .indicator: IndicatorPanel(store: store)
+         case .period: PeriodPanel(store: store, onPick: onPickInterval)
+         case .settings: SettingsPanel(store: store)
++        case .chart: ChartPanel(store: store)
+         }
+       }
+     }
+diff --git a/Kanpan/Kanpan/Settings/Model/Prefs.swift b/Kanpan/Kanpan/Settings/Model/Prefs.swift
+index fc4919c..58542af 100644
+--- a/Kanpan/Kanpan/Settings/Model/Prefs.swift
++++ b/Kanpan/Kanpan/Settings/Model/Prefs.swift
+@@ -33,6 +33,23 @@ struct Prefs: Sendable, Equatable {
+   var magnet: Bool = true
+   /// 本根倒计时（§10.4，默认开）。
+   var countdown: Bool = true
++  /// 蜡烛 / 平均K线（Heikin-Ashi）。默认蜡烛。
++  var candleKind: CandleKind = .candle
++  /// 网格：跟随风格 / 强制显示 / 强制隐藏。默认跟随风格——十一款风格各自带网格形态（§6）。
++  var gridChoice: GridChoice = .style
++  /// 实体画法覆盖：跟随风格 / 实心 / 阳线空心。默认跟随风格，理由同上。
++  var bodyChoice: BodyChoice = .style
++  /// 最新价横线 + 右轴胶囊。默认开。
++  var lastLine: Bool = true
++  /// 用户画的线显不显示（数据不删）。默认显示。
++  var showDrawings: Bool = true
++  /// 十字线打开时，多报一段「选中那根到最新价」的涨跌幅。默认关。
++  var sinceChange: Bool = false
++  /// 复位到最新时，最新一根落在横向哪儿。默认靠右（现状）。
++  var viewAnchor: ViewAnchor = .right
++  /// 蜡烛在主图区里整体偏上 / 居中 / 偏下。总留白量不变，只改上下分配，
++  /// 所以蜡烛大小不变，只是位置挪。默认居中（现状）。
++  var priceBias: PriceBias = .center
+   /// 盯盘时不锁屏（§10.4，默认开）。
+   var keepAwake: Bool = true
+   /// 启动快照（§4.3「设置里『启动快照』开关，默认开」）。
+@@ -70,6 +87,24 @@ struct Prefs: Sendable, Equatable {
+ 
+   var style: CandleStyle { CandleStyle.style(id: styleID) }
+ 
++  /// 喂给图表的那一包开关。**主界面只调这一句**：各处自己拼容易漏项，
++  /// 漏了的那一项会静悄悄退回引擎默认值，而不是报错，很难发现。
++  var chartOptions: ChartOptions {
++    var o = ChartOptions()
++    o.kind = candleKind
++    o.grid = gridChoice
++    o.body = bodyChoice
++    o.lastLine = lastLine
++    o.drawings = showDrawings
++    o.countdown = countdown          // 「本根倒计时」早就有了，这里接的是同一个字段
++    o.sinceChange = sinceChange
++    o.anchor = viewAnchor
++    o.bias = priceBias
++    // 副图高度（`subHeights`）**不**走这里：它改的是分区怎么切，归 `Layout`，
++    // 由主界面另行接线。放进来会变成两条路各说各话。
++    return o
++  }
++
+   /// 这个指标现在用的参数。
+   func params(for id: IndicatorID) -> [Int] {
+     IndicatorParamRule.sanitize(params[id] ?? id.defaultParams, for: id)
+diff --git a/Kanpan/Kanpan/Settings/Model/PrefsCodec.swift b/Kanpan/Kanpan/Settings/Model/PrefsCodec.swift
+index 4bcc4f5..63b55a9 100644
+--- a/Kanpan/Kanpan/Settings/Model/PrefsCodec.swift
++++ b/Kanpan/Kanpan/Settings/Model/PrefsCodec.swift
+@@ -55,6 +55,8 @@ extension Prefs: Codable {
+     case interval, quickIntervals
+     case theme, styleID, redUp
+     case priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone
++    case candleKind, gridChoice, bodyChoice, lastLine, showDrawings, sinceChange
++    case viewAnchor, priceBias
+     case overlays, subs, params, subHeights
+     case apiHost, streamHost
+   }
+@@ -73,6 +75,14 @@ extension Prefs: Codable {
+     try c.encode(keepAwake, forKey: .keepAwake)
+     try c.encode(launchSnapshot, forKey: .launchSnapshot)
+     try c.encode(timeZone.rawValue, forKey: .timeZone)
++    try c.encode(candleKind.rawValue, forKey: .candleKind)
++    try c.encode(gridChoice.rawValue, forKey: .gridChoice)
++    try c.encode(bodyChoice.rawValue, forKey: .bodyChoice)
++    try c.encode(lastLine, forKey: .lastLine)
++    try c.encode(showDrawings, forKey: .showDrawings)
++    try c.encode(sinceChange, forKey: .sinceChange)
++    try c.encode(viewAnchor.rawValue, forKey: .viewAnchor)
++    try c.encode(priceBias.rawValue, forKey: .priceBias)
+     try c.encode(overlays.map(\.rawValue), forKey: .overlays)
+     try c.encode(subs.map(\.rawValue), forKey: .subs)
+     // 字典键是 enum，直接 encode 会变成交错数组；摊成 [String: …] 才是人能看懂的 JSON。
+@@ -116,6 +126,17 @@ extension Prefs: Codable {
+     if let v = bool(.launchSnapshot) { launchSnapshot = v }
+     if let raw = str(.timeZone), let v = TZChoice(rawValue: raw) { timeZone = v }
+ 
++    // 「图表」面板那几项。认不出的字面量一律退回默认（多半是降级回旧版本，
++    // 或者手改存档手抖），不能因为一个字符串就让整档作废。
++    if let raw = str(.candleKind), let v = CandleKind(rawValue: raw) { candleKind = v }
++    if let raw = str(.gridChoice), let v = GridChoice(rawValue: raw) { gridChoice = v }
++    if let raw = str(.bodyChoice), let v = BodyChoice(rawValue: raw) { bodyChoice = v }
++    if let v = bool(.lastLine) { lastLine = v }
++    if let v = bool(.showDrawings) { showDrawings = v }
++    if let v = bool(.sinceChange) { sinceChange = v }
++    if let raw = str(.viewAnchor), let v = ViewAnchor(rawValue: raw) { viewAnchor = v }
++    if let raw = str(.priceBias), let v = PriceBias(rawValue: raw) { priceBias = v }
++
+     if let raw = strs(.overlays) {
+       overlays = Prefs.ids(raw, placement: .main)
+     }
+diff --git a/Kanpan/Kanpan/Symbols/SymbolPickerView.swift b/Kanpan/Kanpan/Symbols/SymbolPickerView.swift
+index 248f87a..d875da2 100644
+--- a/Kanpan/Kanpan/Symbols/SymbolPickerView.swift
++++ b/Kanpan/Kanpan/Symbols/SymbolPickerView.swift
+@@ -65,6 +65,10 @@ struct SymbolPickerView: View {
+           .stroke(Color(hex: seed.ink2), style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+           .frame(width: 18, height: 18)
+           .frame(width: 32, height: 32)
++          // 描边形状的按钮，点击区默认只有那条 1.7pt 的线本身——32×32 里绝大部分是空的，
++          // 手指落在两笔之间就没反应（A8.4 在 5 台机器上实测到）。补一块矩形点击区，
++          // 画面一个像素都不动。
++          .contentShape(Rectangle())
+       }
+       .buttonStyle(.plain)
+       .accessibilityLabel("返回")
+diff --git a/Kanpan/KanpanUITests/MainScreenUITests.swift b/Kanpan/KanpanUITests/MainScreenUITests.swift
+index e0fbaf9..bcd5be3 100644
+--- a/Kanpan/KanpanUITests/MainScreenUITests.swift
++++ b/Kanpan/KanpanUITests/MainScreenUITests.swift
+@@ -25,8 +25,9 @@ final class MainScreenUITests: KanpanUICase {
+ 
+   /// 顶栏搜索按钮 → 同一张品种页，且落在搜索框上。
+   func testSearchButtonOpensSymbolPage() {
+-    app.buttons[Ids.searchButton].tap()
+-    expectExists(app.textFields[Ids.symbolsQuery], Self.short, "点搜索没开出品种页的搜索框")
++    let query = app.textFields[Ids.symbolsQuery]
++    XCTAssertTrue(tapButton(app.buttons[Ids.searchButton]) { query.exists },
++                  "点搜索没开出品种页的搜索框")
+     app.buttons[Ids.symbolsBack].tap()
+     expectGone(app.buttons[Ids.symbolsBack], Self.short, "品种页返回没关掉")
+   }
+@@ -60,8 +61,10 @@ final class MainScreenUITests: KanpanUICase {
+ 
+     for raw in Ids.quickIntervals {
+       let chip = app.buttons[Ids.intervalChip(raw)]
+-      chip.tap()
+-      XCTAssertTrue(waitUntil(timeout: Self.short) { chip.isSelected },
++      // 走 `tapButton` 而不是裸 `tap()`：`market.interval` 是同步赋值的，点到了就该
++      // 立刻选中；iPad mini 上实测出现过「点了 1m，等满 30s 也不选中」，和顶栏搜索
++      // 那颗一样是正中心那一点吃掉了——退到框内 1/3 处再点就中。
++      XCTAssertTrue(tapButton(chip) { chip.isSelected },
+                     "点了 \(raw)，它自己没变成选中")
+       for other in Ids.quickIntervals where other != raw {
+         XCTAssertFalse(app.buttons[Ids.intervalChip(other)].isSelected,
+@@ -151,12 +154,14 @@ final class MainScreenUITests: KanpanUICase {
+   func testLatestButtonAppearsAfterLeavingLatest() throws {
+     try XCTSkipUnless(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据，跳过（这条要真数据）")
+     let latest = app.buttons[Ids.latestButton]
+-    XCTAssertFalse(latest.isHittable, "视野就在最新一根上，「回到最新」不该露面")
++    // `waitForLiveChart()` 末尾按过一次「回到最新」，但视野归位是一帧一帧滑过去的
++    // （iPad 上图宽、滑得久），所以这里轮询等它收回去，不瞬时断言。
++    XCTAssertTrue(waitUntil(timeout: Self.long) { !latest.isHittable },
++                  "视野就在最新一根上，「回到最新」不该露面")
+     dragChartRight()
+     XCTAssertTrue(waitUntil(timeout: Self.short) { latest.isHittable },
+                   "视野离开最新一根了，「回到最新」没出现")
+-    latest.tap()
+-    XCTAssertTrue(waitUntil(timeout: Self.short) { !latest.isHittable },
++    XCTAssertTrue(tapButton(latest) { !latest.isHittable },
+                   "点了「回到最新」，按钮没收回去")
+   }
+ }
+diff --git a/Kanpan/KanpanUITests/UITestSupport.swift b/Kanpan/KanpanUITests/UITestSupport.swift
+index 1d632b6..f38a66e 100644
+--- a/Kanpan/KanpanUITests/UITestSupport.swift
++++ b/Kanpan/KanpanUITests/UITestSupport.swift
+@@ -113,6 +113,31 @@ class KanpanUICase: XCTestCase {
+     return condition()
+   }
+ 
++  // ------------------------------------------------------------ 点击
++
++  /// 点一颗按钮，并等它真的产生了 `settled` 说的那个后果；没产生就在按钮框里
++  /// 换个点再点一次。
++  ///
++  /// 为什么要留这条退路：两台 iPad（Pro 11-inch M5 / mini A17 Pro）上，顶栏搜索按钮
++  /// **正中心**点不出反应——A8.4 实测过一张命中图（按钮框 750,40,32,32）：
++  /// 竖着扫 y=38…74 只有 y=56（正中心）是死的，横着扫 y=56 时 x≤762 活、x≥764 死；
++  /// 同一个文件里同样写法的自选星整颗都是活的。XCUITest 的 `tap()` 恰好只点正中心，
++  /// 所以这颗按钮在 iPad 上必挂。这是应用侧的命中测试问题，修它要改
++  /// `Main/TopBar.swift` 的版面（本轮不动那个目录），所以测试这边退一步：
++  /// 中心点不动就往下挪三分之一再点，并在日志里打一行，哪台机器用到了退路一目了然。
++  @discardableResult
++  func tapButton(_ el: XCUIElement, _ timeout: TimeInterval = short,
++                 until settled: () -> Bool) -> Bool {
++    el.tap()
++    if waitUntil(timeout: timeout, settled) { return true }
++    let f = el.frame
++    guard f.width > 0, f.height > 0 else { return false }
++    print("[A8.4] \(el.identifier) 正中心点不动，改点框内 1/3 处重试")
++    app.coordinate(withNormalizedOffset: .zero)
++      .withOffset(CGVector(dx: f.midX, dy: f.minY + f.height / 3)).tap()
++    return waitUntil(timeout: timeout, settled)
++  }
++
+   // ------------------------------------------------------------ 图区取点
+ 
+   /// 图区里的一个点。`fraction` 是从图区顶边往下量的比例。
+@@ -142,8 +167,7 @@ class KanpanUICase: XCTestCase {
+       return latest.isHittable
+     }
+     if live, latest.isHittable {
+-      latest.tap()
+-      _ = waitUntil(timeout: Self.short) { !latest.isHittable }
++      _ = tapButton(latest, Self.short) { !latest.isHittable }
+     }
+     return live
+   }
+@@ -157,16 +181,31 @@ class KanpanUICase: XCTestCase {
+ 
+   // ------------------------------------------------------------ 面板
+ 
+-  /// 半屏面板收起来的通用手法：抓住面板标题往下甩（标题在滚动区外面，甩它动的是面板）。
++  /// 半屏面板收起来的通用手法：抓住面板标题一路拖到屏幕底下（标题在滚动区外面，
++  /// 拖它动的是面板不是内容）。
+   ///
+   /// 不用「再点一次底栏那颗按钮」——半屏面板正好压着底栏，那颗按钮根本点不到。
+-  /// 甩不动就退而求其次点一下图区（§10.6 的「面板外一点就收」），两条路都是真实交互。
++  ///
++  /// 为什么是「慢慢拖到底」而不是 `swipeDown(velocity: .fast)`：面板有 medium / large
++  /// 两档（`presentationDetents`），一记快甩只是把它从 large 摔到 medium，从 medium
++  /// 甩下去还得看那一下的速度够不够——iPhone Air 上实测甩了没反应。按住拖满一屏高
++  /// 是位移说话，不看速度；两档的情况下最多拖三次（large → medium → 关）。
++  ///
++  /// 全拖不动才退到「点图区」这条路（§10.6 的「面板外一点就收」）。这条路要图先有数据：
++  /// 没数据时 `ChartView` 整层让开，那一下报不上来——所以它只能当兜底，不能当主力。
+   func dismissSheet(until gone: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+     let header = app.staticTexts[Ids.panelHeader].firstMatch
+-    if header.exists { header.swipeDown(velocity: .fast) }
+-    if waitUntil(timeout: 3, { !gone.exists }) { return }
++    let window = app.windows.firstMatch
++    for _ in 0..<3 {
++      if !gone.exists { return }
++      guard header.exists else { break }
++      let from = header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
++      let to = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98))
++      from.press(forDuration: 0.05, thenDragTo: to)
++      if waitUntil(timeout: 2, { !gone.exists }) { return }
++    }
+     chartPoint().tap()
+     XCTAssertTrue(waitUntil(timeout: Self.short) { !gone.exists },
+-                  "面板甩不下去、点图也不收", file: file, line: line)
++                  "面板拖不下去、点图也不收", file: file, line: line)
+   }
+ }
+diff --git a/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsDefaultsTests.swift b/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsDefaultsTests.swift
+index c5fee5a..e5061be 100644
+--- a/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsDefaultsTests.swift
++++ b/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsDefaultsTests.swift
+@@ -26,6 +26,47 @@ struct PrefsDefaultsTests {
+     #expect(p.launchSnapshot)                        // §4.3 默认开
+   }
+ 
++  @Test("「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效")
++  func 图表默认() {
++    let p = Prefs.defaults
++    #expect(p.candleKind == .candle)      // 平均K线是可选项，不是默认口径
++    #expect(p.gridChoice == .style)       // 网格形态归十一款风格各自定（§6）
++    #expect(p.bodyChoice == .style)       // 实体画法同上
++    #expect(p.viewAnchor == .right)       // 复位到最新时最新一根靠右——现状
++    #expect(p.priceBias == .center)       // 蜡烛在主图区里居中——现状
++    #expect(p.lastLine)                   // 最新价横线 + 右轴胶囊，默认开
++    #expect(p.showDrawings)               // 画好的线默认看得见
++    #expect(p.sinceChange == false)       // 十字线上多报一段涨跌幅，默认不报
++  }
++
++  @Test("chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏")
++  func 取用入口() {
++    #expect(Prefs.defaults.chartOptions.countdown)   // 接的是已有的 countdown，不是另一个开关
++
++    var p = Prefs.defaults
++    p.candleKind = .heikin
++    p.gridChoice = .off
++    p.bodyChoice = .hollowUp
++    p.lastLine = false
++    p.showDrawings = false
++    p.sinceChange = true
++    p.viewAnchor = .left
++    p.priceBias = .up
++    p.countdown = false
++
++    let o = p.chartOptions
++    #expect(o.kind == .heikin)
++    #expect(o.grid == .off)
++    #expect(o.body == .hollowUp)
++    #expect(o.lastLine == false)
++    #expect(o.drawings == false)
++    #expect(o.sinceChange)
++    #expect(o.anchor == .left)
++    #expect(o.bias == .up)
++    #expect(o.countdown == false)
++    #expect(o != ChartOptions())
++  }
++
+   @Test("每个指标的默认参数直接取 Core，不另抄一份")
+   func 默认参数() {
+     let p = Prefs.defaults
+diff --git a/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsPersistenceTests.swift b/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsPersistenceTests.swift
+index 5e596c7..920cfb0 100644
+--- a/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsPersistenceTests.swift
++++ b/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsPersistenceTests.swift
+@@ -26,6 +26,14 @@ struct PrefsPersistenceTests {
+     p.params = [.ma: [10, 30, 120], .macd: [8, 21, 5], .atr: [7]]
+     p.subHeights = [.atr: .large, .vol: .small]
+     p.apiHost = "fapi.example.com"
++    p.candleKind = .heikin
++    p.gridChoice = .off
++    p.bodyChoice = .hollowUp
++    p.lastLine = false
++    p.showDrawings = false
++    p.sinceChange = true
++    p.viewAnchor = .left
++    p.priceBias = .up
+     return p
+   }
+ 
+@@ -37,6 +45,19 @@ struct PrefsPersistenceTests {
+     #expect(back == want)
+   }
+ 
++  @Test("「图表」那几项逐个往返，不是靠整体相等蒙过去")
++  func 图表往返() {
++    let back = PrefsCodec.decode(PrefsCodec.encode(Self.mutated()))
++    #expect(back.candleKind == .heikin)
++    #expect(back.gridChoice == .off)
++    #expect(back.bodyChoice == .hollowUp)
++    #expect(back.lastLine == false)
++    #expect(back.showDrawings == false)
++    #expect(back.sinceChange)
++    #expect(back.viewAnchor == .left)
++    #expect(back.priceBias == .up)
++  }
++
+   @Test("落在 UserDefaults 的键就是 kanpan.prefs.v1")
+   @MainActor
+   func 键名() {
+@@ -91,6 +112,12 @@ struct PrefsPersistenceTests {
+     #expect(obj["subs"] as? [String] == ["MACD", "RSI"])
+     #expect((obj["params"] as? [String: [Int]])?["MA"] == [7, 25, 99])
+     #expect((obj["subHeights"] as? [String: String])?["MACD"] == "large")
++    // 「图表」那几项也是 rawValue，不是枚举的序号
++    #expect(obj["candleKind"] as? String == "candle")
++    #expect(obj["gridChoice"] as? String == "style")
++    #expect(obj["viewAnchor"] as? String == "right")
++    #expect(obj["priceBias"] as? String == "center")
++    #expect(obj["lastLine"] as? Bool == true)
+   }
+ }
+ 
+@@ -116,6 +143,15 @@ struct PrefsVersionTests {
+     #expect(merged.styleID == "bone")                    // 存档里有的，留着
+     #expect(merged.redUp)                                // 存档里有的，留着
+     #expect(merged.countdown == Prefs.defaults.countdown) // 存档里没有的，取新默认
++    // 「图表」那一页是后加的，v1 存档里一个键都没有——全取新默认
++    #expect(merged.candleKind == Prefs.defaults.candleKind)
++    #expect(merged.gridChoice == Prefs.defaults.gridChoice)
++    #expect(merged.bodyChoice == Prefs.defaults.bodyChoice)
++    #expect(merged.viewAnchor == Prefs.defaults.viewAnchor)
++    #expect(merged.lastLine == Prefs.defaults.lastLine)
++    #expect(merged.showDrawings == Prefs.defaults.showDrawings)
++    #expect(merged.sinceChange == Prefs.defaults.sinceChange)
++    #expect(merged.priceBias == Prefs.defaults.priceBias)
+     #expect(merged.launchSnapshot == Prefs.defaults.launchSnapshot)
+     #expect(merged.apiHost == Prefs.defaults.apiHost)
+     #expect(merged.subs == Prefs.defaults.subs)
+diff --git a/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsToleranceTests.swift b/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsToleranceTests.swift
+index 9caa567..016dd28 100644
+--- a/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsToleranceTests.swift
++++ b/Kanpan/Settings/Tests/KanpanSettingsTests/PrefsToleranceTests.swift
+@@ -44,6 +44,33 @@ struct PrefsToleranceTests {
+     #expect(p.timeZone == .local)
+   }
+ 
++  @Test("「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项")
++  func 脏图表枚举() {
++    let p = decode(#"""
++    {"candleKind":"garbage","gridChoice":"garbage","bodyChoice":"garbage",
++     "viewAnchor":"garbage","priceBias":"garbage"}
++    """#)
++    #expect(p.candleKind == Prefs.defaults.candleKind)
++    #expect(p.gridChoice == Prefs.defaults.gridChoice)
++    #expect(p.bodyChoice == Prefs.defaults.bodyChoice)
++    #expect(p.viewAnchor == Prefs.defaults.viewAnchor)
++    #expect(p.priceBias == Prefs.defaults.priceBias)
++    #expect(p == .defaults)                 // 全都认不出，等于这几项压根没写过
++
++    // 一个坏的不能把同一档里好的那个带下水
++    let q = decode(#"{"gridChoice":"garbage","bodyChoice":"solid"}"#)
++    #expect(q.gridChoice == .style)
++    #expect(q.bodyChoice == .solid)
++  }
++
++  @Test("「图表」的三个开关：类型不对退回默认")
++  func 脏图表开关() {
++    let p = decode(#"{"lastLine":"开","showDrawings":1,"sinceChange":[true]}"#)
++    #expect(p.lastLine == Prefs.defaults.lastLine)
++    #expect(p.showDrawings == Prefs.defaults.showDrawings)
++    #expect(p.sinceChange == Prefs.defaults.sinceChange)
++  }
++
+   @Test("指标：认不出的丢掉、重复的去重、放错位置的剔掉")
+   func 脏指标() {
+     let p = decode(#"""
+diff --git a/KanpanChart/Sources/KanpanChart/ChartRenderer.swift b/KanpanChart/Sources/KanpanChart/ChartRenderer.swift
+index 3c8aaf4..90413ec 100644
+--- a/KanpanChart/Sources/KanpanChart/ChartRenderer.swift
++++ b/KanpanChart/Sources/KanpanChart/ChartRenderer.swift
+@@ -221,28 +221,49 @@ public struct ChartRenderer {
+     drawAutoFitButton(ctx, L: L, scale: s)
+   }
+ 
+-  /// 贴在主图底边的「A」徽章：手动定标时才出现，点一下把价格轴交还给自动贴合。
++  /// 浮在主图右下角的「回到自动贴合」小圆钮：手动定标时才出现，点一下把价格轴交还给自动。
+   ///
+-  /// 字面、造型、锚点全部照 AICoin 安卓包实测（`#tv_scale_auto` 的 XML + `D.t()` 的
+-  /// 运行时重刷，见 `docs/AICoin-安卓包-UI规格提取.md` §3 / §23.3）。从前这儿画的是
+-  /// 一个圈着的「R」，出处是我自己没验证的推断——反编译结果是 `android:text="A"`，
+-  /// 而且是**圆角 2dp 的灰字浅底弱徽章**，不是描边高亮钮。几何在 `Layout.autoFitButton`，
+-  /// 手势那头在 `Layout.hitsAutoFit`。
++  /// **造型**照用户本人 iPhone 上 AiCoin 专业版的原生截图实测，几何和取色的推导写在
++  /// `Layout.autoFitButton` 的文档注释里：半透明填充的圆、16pt、无描边、白色图形。
++  /// 这一版推翻了上一版的「A」字徽章——那是从 AICoin **安卓包**资源里推断的，真机 iOS
++  /// 上不是徽章也不是字母。手势那头在 `Layout.hitsAutoFit`。
+   ///
+-  /// 底色借十字线读数那一对（`crossBg` / `crossInk`）而不是新增颜色常数，理由和倒计时
+-  /// 那格一样：它是浮在图上的一小块读数/开关，跟行情无关，不该跟着涨跌色走。
+-  /// AICoin 那边也是一组专门的中性色（`ui_kline_scale_auto_bg_color` 日 #f3f5f7 /
+-  /// 夜 #303442），语义对得上。
++  /// **图形没照抄。** AiCoin 那个圆里是「⏮」（一根竖条 + 朝左的尖角），读起来是横向
++  /// 导航（回到最早/最新），而我们这个钮管的是**价格轴纵向复位**；照抄等于给控件贴错
++  /// 标签。这里画的是上下分开的一对人字尖——沿用它自家的图形语言（同一张截图里左下角
++  /// 那个「进全屏」用的就是斜向分开的双箭头 ↗↙），语义是「纵向铺回满格」。
++  /// AiCoin 那个钮的真实语义对方还没点开确认过，确认之前不做任何「与 AiCoin 一致」的声称。
++  ///
++  /// **颜色**不新增常数：底色借十字线读数的 `crossBg` 再叠 27% alpha（实测值），
++  /// 图形借 `crossInk`。理由和倒计时那格一样——它是浮在图上的一小块开关，跟行情无关，
++  /// 不该跟着涨跌色走。
+   private func drawAutoFitButton(_ ctx: CGContext, L: Layout, scale s: Double) {
+     guard state.price.isManual else { return }
+     let t = state.colors
+     let b = L.autoFitButton
+     let rect = CGRect(x: b.x, y: b.y, width: b.w, height: b.h)
+-    ctx.setFillColor(Paint.cg(t.crossBg))
+-    ctx.addRoundRect(rect, radius: 2)
+-    ctx.fillPath()
+-    "A".drawCentered(
+-      at: CGPoint(x: rect.midX, y: rect.midY), font: ChartFont.axis, color: t.dim)
++
++    ctx.setFillColor(Paint.cg(t.crossBg.alpha("45")))  // 0x45 = 69/255 ≈ 27%
++    ctx.fillEllipse(in: rect)
++
++    // 一对上下分开的人字尖。尺寸照实测比例：图形高约占直径的 37%，笔画 4 设备像素。
++    let cx = rect.midX, cy = rect.midY
++    let halfW = rect.width * 0.16          // 人字尖的半宽
++    let rise = rect.height * 0.105         // 单个尖的高
++    let gap = rect.height * 0.075          // 中间那道缝的一半
++    let line = max(1, (s * 1.33).rounded()) / s
++    ctx.setStrokeColor(Paint.cg(t.crossInk))
++    ctx.setLineWidth(line)
++    ctx.setLineCap(.round)
++    ctx.setLineJoin(.round)
++    // 上尖：朝上；下尖：朝下。分开＝「撑开铺满」。
++    for dir in [-1.0, 1.0] {
++      let base = cy + dir * gap
++      ctx.move(to: CGPoint(x: cx - halfW, y: base + dir * rise))
++      ctx.addLine(to: CGPoint(x: cx, y: base))
++      ctx.addLine(to: CGPoint(x: cx + halfW, y: base + dir * rise))
++    }
++    ctx.strokePath()
+   }
+ 
+   // ---------------------------------------------------------------- 时间轴
+diff --git a/KanpanCore/Sources/KanpanCore/Geometry/Layout.swift b/KanpanCore/Sources/KanpanCore/Geometry/Layout.swift
+index 988704a..d38b1eb 100644
+--- a/KanpanCore/Sources/KanpanCore/Geometry/Layout.swift
++++ b/KanpanCore/Sources/KanpanCore/Geometry/Layout.swift
+@@ -31,31 +31,32 @@ public struct Layout: Sendable, Equatable {
+   /// 价格轴宽（右侧）。
+   public var axisW: Double { W - plotW }
+ 
+-  /// 「回到自动贴合」的小徽章，贴在**主图区底边**、价格轴那一列里。
++  /// 「回到自动贴合」的小圆钮，浮在**主图绘图区右下角内侧**。
+   ///
+   /// 只有手动定标（`PriceTransform.isManual`）时才画、才可点——它不是常驻按钮。
+   ///
+-  /// 造型与锚点照 AICoin 安卓包实测（`#tv_scale_auto`，见
+-  /// `docs/AICoin-安卓包-UI规格提取.md` §3 / §23.3 / §23.4）：
++  /// 造型照**用户本人 iPhone 上 AiCoin 专业版的原生截图**实测（1206×2622，正好是
++  /// iPhone 16 Pro @3x，和我们取证机型同一台，像素可以直接换算）：
+   ///
+-  /// * **字面是「A」（Auto）不是「R」。** 从前这儿写的是一个圈着的「R」，注释里说是
+-  ///   「照 AiCoin 手机版」——那是没验证过的推断。反编译出来的 XML 写死 `android:text="A"`。
+-  /// * **弱徽章不是高亮按钮**：圆角 2dp 的小方块，灰字浅底。AICoin 把「回到最新」做成
+-  ///   蓝底白字实心 chip、把「自动定标」做成灰字浅底弱徽章，视觉权重是刻意分级的。
+-  /// * **贴主图区底边**，和「展开右侧面板」图标共用一条基线；不是挂在时间轴上面。
+-  ///   这条对我们尤其要紧：挂了 MACD + RSI 两个副图之后，时间轴离主图的价格刻度隔着
+-  ///   大半屏，一个管价格轴的钮摆在那儿等于找不到。
++  /// * **半透明填充的圆**，直径 48 设备像素 ＝ **16.0pt**，**没有描边**。
++  /// * 底色是偏冷的深灰、透明度约 **27%**：实测圆内 (200,202,205)、圆外底 (252,252,252)，
++  ///   而压在价格标签「76115.0」上时那几笔字反而更深（84 → 77）——解出来是
++  ///   源色 ≈ (58,65,77)、α ≈ 0.268。字能透出来，是「浮在图上」而不是「盖住一块」。
++  /// * 圆心 (1130.5, 1665.5)px ＝ (376.8, 555.2)pt，**圆底边离主图底边分隔线只有 1pt**，
++  ///   也就是压在绘图区内侧最下沿。
+   ///
+-  /// 横向我们没照它的 `layout_gravity=end`：AICoin 的价格轴画在图里、浮层要 `marginEnd`
++  /// 这条**推翻了上一版的「A」徽章**（圆角 2dp 的灰字浅底小方块）。那个字面和造型来自
++  /// AICoin **安卓包**的资源推断，真机 iOS 上根本不是徽章、也不是任何字母，而是这种
++  /// 半透明小圆钮——和左下角那个「浅蓝底 + 白色斜向双箭头（进全屏）」是成对的同一族。
++  /// 再往前那一版画的是描边的「R」，出处是我自己没验证的推断，更不对。
++  ///
++  /// 横向仍然没照它的 `layout_gravity=end`：AICoin 的价格轴画在图里、浮层要 `marginEnd`
+   /// 躲开它，我们的价格轴本来就是独立一列，所以跟着列里另外两个方块（最新价胶囊、
+   /// 倒计时）一样从 `plotW + 2` 起算，自家对齐比模仿它的 gravity 重要。
+   public var autoFitButton: (x: Double, y: Double, w: Double, h: Double) {
+-    // 10pt 字 + 上下 2pt / 左右 6pt 的内边距，比例照 AICoin 的 12sp + 2dp/6dp。
+-    // 字宽按等宽数字那一格算（`ChartFont.axis` 是 monospaced），免得 Core 依赖 UIKit。
+-    let h = 14.0
+-    let w = min(axisW - 4, 19)
++    let d = min(axisW - 4, 16)   // 实测 16pt；轴窄到放不下就跟着缩
+     let m = main
+-    return (x: plotW + 2, y: m.y + m.h - h - 2, w: max(12, w), h: h)
++    return (x: plotW + 2, y: m.y + m.h - d - 1, w: max(12, d), h: max(12, d))
+   }
+ 
+   /// 手指落在那个小钮上没有。判定范围比画出来的大一圈（44pt 的可点区域按不到就当没有）。

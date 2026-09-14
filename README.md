@@ -1,48 +1,49 @@
 # 看盘 · Kanpan
 
-一个只做四件事的原生 iOS 实时看盘 app：**品种、周期、K 线、指标**。
+Swift 原生 iOS 行情与自选应用，使用币安 USDT 永续公开数据，包含加密资产和 TradFi 合约。SwiftUI 页面、UIKit/CoreGraphics 自绘图表，不依赖第三方图表库，不提供交易下单。
 
-数据源是币安 USDT 本位永续合约，手感对标 AICoin 手机端。图表引擎自绘（UIKit + CoreGraphics），不用 TradingView，不用任何图表库，零第三方依赖。
+## 当前实现
 
-做这个的原因很简单：现有的手机看盘 app 要么塞满广告，要么在手机上拖不动、捏不顺。这个只留下看盘本身。
+- AICoin 为默认造型，原有11种风格共用根宽、间距、坐标、布局和手势；浅色/深色均沿用项目靛色，另提供原生纸色与暖暗配色。
+- 主图 MA、EMA；常用副图 VOL、OI、MACD、KDJ、RSI。已启用输出参与自动范围，OHLC极值标签独立；参数草稿保存/取消、输出开关、轴倒置与历史十字线联动。
+- 常见3–4副图一屏分配，可拖动边界调整高度，长按副图区域移动完整面板。数据展示支持K线内、顶部、跟随卡片。
+- 默认进入行情末根贴绘图区右缘。正常历史拖动自由停留，两端越界只允许轻微阻尼移动，松手回到对应边界。历史焦点缩放、手动Y及自动复位保留。
+- 独立原生自选页：持久化收藏、真实分类文件夹、自动分类建议、人工分类移动、长按行排序、滑动/批量删除、加号选品和按需详情。顶部直接展示较大的分类按钮，超出宽度的分类收进“…”弹出列表。行内走势图已移除，资源优先用于重要报价。
+- 进程冷启动有收藏进入自选，否则打开BTC；前台在行情/自选之间切换持续订阅WS，进入后台释放，恢复后立即重连，不用磁盘旧报价冒充实时。
+- 统一涨跌幅口径可选滚动24小时、上海0点、上海8点（UTC0点）。排除USD1与稳定币基础资产；TradFi不因某一时刻低成交额被隐藏。
+- 官方/用户线路与两台VPS自动选择有效行情线路，健康连接保持，避免频繁切换。网关合并相同上游订阅，并限制异常资源占用；历史OI在后端按图表周期聚合、失败时备用节点接替。
 
-## 现在的状态
+- 最新报价由单一共享 QuoteBook 管理，按交易所时间与成交编号去重；换周期不借用缓存/历史 K 线收盘价；当前 WS 中带成交编号的实时价格与24小时统计分别合并。K线与OI请求带选择标识，隔离迟到请求和快速来回切换。
+- 行情左上角为全部收藏快捷列表；完整品种页按交易所市场类型、板块标签筛选，独立于用户文件夹。
 
-设计已定版，Swift 实现还没开始。仓库里是**完整的规格**：一份可运行的交互原型，和一份写到可以照着敲代码的实施任务书。
+新增配色与数据审查记录：[护眼配色与数据完整性](docs/acceptance/护眼配色与数据完整性.md)。
 
-| 位置 | 是什么 |
-|---|---|
-| [`prototype/看盘原型.html`](prototype/看盘原型.html) | 单文件可运行原型，内嵌 2026-09-14 的币安真实行情快照，**双击打开、断网也能玩**。手指拖、双指缩放、长按十字线、切周期、开指标、画线，全是真的 |
-| [`prototype/src/`](prototype/src/) | 原型源码。`chart.js` 是自绘图表引擎，`styles.js` 是 11 款 K 线风格的几何表和配色，Swift 侧一比一移植它们 |
-| [`docs/实施任务书.md`](docs/实施任务书.md) | 架构、数据层、图表算法、手势物理、指标数学、性能预算、10 个里程碑和 130 条验收标准 |
-| [`docs/开工提示词.md`](docs/开工提示词.md) | 给 AI 编码助手的开工提示，整段粘过去就能接手 |
-| [`docs/截图/`](docs/截图/) | 原型参考截图：主屏、十字线、各面板、横屏、11 种风格 |
+## 代码与文档
 
-![十一种 K 线风格](docs/截图/00-十一种风格总览.jpg)
+| 位置 | 内容 |
+| --- | --- |
+| `Kanpan/Kanpan/` | 原生页面、设置、自选和图表宿主 |
+| `KanpanCore/` | 坐标、布局、指标与纯Swift算法 |
+| `KanpanChart/` | 自绘图表与UIKit手势 |
+| `KanpanData/` | 行情WS、REST、目录、历史OI与选路 |
+| [行情网关](Backend/kanpan-gateway/README.md) | 双节点共享订阅、资源预算、OI缓存与部署说明 |
+| [当前复刻规格](docs/AICoin-K线复刻规格.md) | 用户最新要求、原版证据和实现约定 |
+| [实现与真机验收](docs/acceptance/AICoin-base/foundation/IMPLEMENTATION.md) | 改动、测试、失败过程与未确认项 |
+| [机型兼容记录](docs/acceptance/AICoin-base/compatibility/README.md) | 每轮二进制、机型清单与实际结果 |
+| [原版研究报告](refs/aicoin/reports/REPORT-missing-chart-interactions.md) | iPhone实测、Android源码、实施推断分开记录 |
 
-## 已经定死的事
+`prototype/`保留原交互和Claude自选设计参考；实际应用是Swift实现。早期[实施任务书](docs/实施任务书.md)中的默认风格、指标及部分布局已经被后续用户要求覆盖，应以当前复刻规格和最新验收记录为准。
 
-这些不再讨论，实现时照做：
+## 构建与验证
 
-- 图表类型永远只有蜡烛一种。「风格」换的是蜡烛本身——实体占几成、影线多粗、端头平还是圆、是否空心或只描边，连同间距和留白一起换，共 **11 款**，默认「墩」。
-- 配色只有一套：**靛**，浅色深色各一版。
-- 周期 **14 档**（1m 3m 5m 15m 30m 1h 2h 4h 6h 12h 1d 1w 1M 1y），默认 1h。**日线以上只给周、月、年**。**切周期时 K 线像素宽度不变**，变的是可见时间跨度。
-- 副图默认 MACD + RSI，主图默认 MA(7, 25, 99)。
-- **K 线行情不永久落盘**：只有内存 LRU 缓存和一份 ≤ 60 KB 的启动快照。但体验优先，为流畅该用的内存就用。
-- 持仓量（OI）有**完整历史**：近 30 天走 REST，更早走币安公开归档站 data.binance.vision（和 K 线归档同一个站），按需取、按天缓存。
-- Swift 6、iOS 17+、SwiftUI 外壳 + UIKit 自绘图表，`KanpanCore` 纯 Swift 包（无 UIKit，命令行 `swift test` 可验）+ `Kanpan` app target。
+Swift6、iOS17+；用Xcode打开 `Kanpan.xcworkspace`，选择 `Kanpan` scheme。当前模拟器验收使用已安装的iOS26.5运行时；机型覆盖不能替代旧版iOS运行时覆盖。
 
-## 怎么开工
-
-```bash
-git clone https://github.com/Graham-lo/kanpan.git && cd kanpan
-open prototype/看盘原型.html      # 先玩一遍原型，这是规格本身
+```sh
+swift test --package-path KanpanCore
+swift test --package-path KanpanData
+swift test --package-path Kanpan/Symbols
+make strict
+xcodebuild build -workspace Kanpan.xcworkspace -scheme Kanpan -destination 'generic/platform=iOS Simulator'
 ```
 
-然后读 [`docs/实施任务书.md`](docs/实施任务书.md) 开头的「开工须知」，按 §15 的顺序从 M0 做起。
-
-## 一起做
-
-欢迎 issue 和 PR。开工前请先看一眼任务书里已经定死的部分——提案改动那些的 PR，麻烦在描述里说明理由。每个里程碑都有明确的验收标准（§12、§13），PR 请附上对应的证据。
-
-原型与任务书是规格，`prototype/` 和 `docs/` 只读；代码写在 `KanpanCore/` 和 `Kanpan/` 里。
+App端无第三方依赖；Python网关使用独立环境与固定版本aiohttp。原版完整惯性/双指/Y缩放曲线、EMA编辑流程等尚未全部确认，不宣称1:1复刻已全部完成。自选、分类、顺序与设置持久化；K线仅有限内存和一份小型启动快照，实时报价不新增磁盘缓存。仓库不包含VPS登录配置、私钥、密码或令牌。

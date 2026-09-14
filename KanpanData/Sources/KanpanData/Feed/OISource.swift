@@ -52,6 +52,7 @@ public actor OISource {
       }
     }
 
+    guard !Task.isCancelled else { return [] }
     // ② 更早：按天列缺口，先缓存后网络。
     if from < cutoff {
       let start = max(from, Self.archiveEpoch), end = min(to, cutoff)
@@ -83,7 +84,9 @@ public actor OISource {
     var end = to
     // 500 条一页，最多翻 20 页（30 天 × 5m = 8640 条）。
     for _ in 0..<20 {
+      try Task.checkCancellation()
       let page = try await rest.openInterestHist(symbol: symbol, period: period, limit: 500, endTime: end)
+      try Task.checkCancellation()
       guard let first = page.first else { break }
       out += page
       if page.count < 500 || first.time <= from { break }

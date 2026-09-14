@@ -1,0 +1,161 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun DerivedData-chart-foundation-device/Build/Products/Kanpan-user-favorites.xctestrun -destination platform=iOS,id=00008140-00010C902690801C -parallel-testing-enabled NO "-only-testing:KanpanUITests/ChartFoundationUITests/testInstallRequestedFavoritesInUserStore" -resultBundlePath docs/acceptance/AICoin-base/foundation/user-favorites-persistent.xcresult
+
+2026-09-15 02:16:08.932 xcodebuild[25345:32212756] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-favorites-persistent.xcresult
+
+2026-09-15 02:16:08.939 xcodebuild[25345:32212756] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:16:09.029 xcodebuild[25345:32212756] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:16:09.889 xcodebuild[25345:32212756] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS, arch:arm64e, id:00008140-00010C902690801C, name:iPhone }
+{ platform:iOS, arch:arm64, id:00008140-00010C902690801C, name:iPhone }
+2026-09-15 02:16:11.567 xcodebuild[25345:32212756] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:16:13.165 xcodebuild[25345:32212756] [MT] Run Destination Preflight: The destination is not ready.
+Error Domain=com.apple.dt.deviceprep Code=-3 "Unlock iPhone to Continue" UserInfo={NSRecoveryAttempter=<_DVTErrorRecoveryHandler: 0x7488b42b0>, NSLocalizedRecoveryOptions=(
+    "Cancel Testing"
+), NSLocalizedRecoverySuggestion=Xcode cannot launch KanpanUITests on iPhone because the device is locked., DVTRecoveryBlockKey=<__NSMallocBlock__: 0x74a5d87b0>, NSLocalizedDescription=Unlock iPhone to Continue}
+2026-09-15 02:16:13.165 xcodebuild[25345:32212756] [MT] Run Destination Preflight: Waiting for the destination to become ready.
+2026-09-15 02:16:43.377 xcodebuild[25345:32212756] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:16:46.161 xcodebuild[25345:32212756] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:17:00.639 xcodebuild[25345:32212756] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:17:01.022 xcodebuild[25345:32218588]  IDELaunchReport: 14763ad8643d1d40:14763ad8643d1d40: Finished with error: The application could not be launched because the Developer App Certificate is not trusted.
+Domain: IDELaunchCoreDevice
+Code: 0
+Recovery Suggestion: Verify that the Developer App certificate for your account is trusted on your device. Open Settings on the device and navigate to General -> VPN & Device Management, then select your Developer App certificate to trust it.
+User Info: {
+    DVTErrorCreationDateKey = "2026-09-14 18:17:01 +0000";
+    IDERunOperationFailingWorker = IDELaunchCoreDeviceWorker;
+}
+--
+The application failed to launch.
+Domain: com.apple.dt.CoreDeviceError
+Code: 10002
+User Info: {
+    BundleIdentifier = "com.mdd.kanpan.uitests.xctrunner";
+}
+--
+The request to open "com.mdd.kanpan.uitests.xctrunner" failed.
+Domain: FBSOpenApplicationServiceErrorDomain
+Code: 1
+Failure Reason: The request was denied by service delegate (SBMainWorkspace) for reason: Security ("Unable to launch com.mdd.kanpan.uitests.xctrunner because it has an invalid code signature, inadequate entitlements or its profile has not been explicitly trusted by the user").
+User Info: {
+    BSErrorCodeDescription = RequestDenied;
+    FBSOpenApplicationRequestID = 0x5b1c;
+}
+--
+The operation couldn’t be completed. Unable to launch com.mdd.kanpan.uitests.xctrunner because it has an invalid code signature, inadequate entitlements or its profile has not been explicitly trusted by the user.
+Domain: FBSOpenApplicationErrorDomain
+Code: 3
+Failure Reason: Unable to launch com.mdd.kanpan.uitests.xctrunner because it has an invalid code signature, inadequate entitlements or its profile has not been explicitly trusted by the user.
+User Info: {
+    BSErrorCodeDescription = Security;
+}
+--
+
+2026-09-15 02:17:01.022 xcodebuild[25345:32218588]  IDELaunchReport: 14763ad8643d1d40:14763ad8643d1d40: com.apple.dt.IDERunOperationWorkerFinished {
+    "device_identifier" = "00008140-00010C902690801C";
+    "device_isCoreDevice" = 1;
+    "device_model" = "iPhone17,1";
+    "device_osBuild" = "26.6.1 (23G83)";
+    "device_osBuild_monotonic" = 2306008300;
+    "device_os_variant" = 1;
+    "device_platform" = "com.apple.platform.iphoneos";
+    "device_platform_family" = 2;
+    "device_reality" = 1;
+    "device_thinningType" = "iPhone17,1";
+    "device_transport" = 1;
+    "launchSession_schemeCommand" = Test;
+    "launchSession_schemeCommand_enum" = 2;
+    "launchSession_targetArch" = arm64e;
+    "launchSession_targetArch_enum" = 7;
+    "operation_duration_ms" = 49093;
+    "operation_errorCode" = 0;
+    "operation_errorDomain" = IDELaunchCoreDevice;
+    "operation_errorWorker" = IDELaunchCoreDeviceWorker;
+    "operation_error_reportable" = 0;
+    "operation_name" = IDERunOperationWorkerGroup;
+    "param_consoleMode" = 0;
+    "param_debugger_attachToExtensions" = 0;
+    "param_debugger_attachToXPC" = 0;
+    "param_debugger_type" = 1;
+    "param_destination_isProxy" = 0;
+    "param_destination_platform" = "com.apple.platform.iphoneos";
+    "param_diag_MTE_enable" = 0;
+    "param_diag_MainThreadChecker_stopOnIssue" = 0;
+    "param_diag_MallocStackLogging_enableDuringAttach" = 0;
+    "param_diag_MallocStackLogging_enableForXPC" = 0;
+    "param_diag_allowLocationSimulation" = 1;
+    "param_diag_checker_mtc_enable" = 0;
+    "param_diag_checker_tpc_enable" = 0;
+    "param_diag_gpu_frameCapture_enable" = 3;
+    "param_diag_gpu_shaderValidation_enable" = 0;
+    "param_diag_gpu_validation_enable" = 1;
+    "param_diag_guardMalloc_enable" = 0;
+    "param_diag_memoryGraphOnResourceException" = 0;
+    "param_diag_queueDebugging_enable" = 0;
+    "param_diag_runtimeProfile_generate" = 0;
+    "param_diag_sanitizer_asan_enable" = 0;
+    "param_diag_sanitizer_tsan_enable" = 0;
+    "param_diag_sanitizer_tsan_stopOnIssue" = 0;
+    "param_diag_sanitizer_ubsan_enable" = 0;
+    "param_diag_sanitizer_ubsan_stopOnIssue" = 0;
+    "param_diag_showNonLocalizedStrings" = 0;
+    "param_diag_viewDebugging_enabled" = 0;
+    "param_diag_viewDebugging_insertDylibOnLaunch" = 0;
+    "param_install_style" = 2;
+    "param_launcher_UID" = 2;
+    "param_launcher_allowDeviceSensorReplayData" = 0;
+    "param_launcher_kind" = 0;
+    "param_launcher_style" = 0;
+    "param_launcher_substyle" = 64;
+    "param_runnable_appExtensionHostRunMode" = 0;
+    "param_runnable_productType" = "com.apple.product-type.application";
+    "param_testing_launchedForTesting" = 1;
+    "param_testing_suppressSimulatorApp" = 1;
+    "param_testing_usingCLI" = 0;
+    "sdk_canonicalName" = "iphoneos26.5";
+    "sdk_osVersion" = "26.5";
+    "sdk_platformID" = 2;
+    "sdk_variant" = iphoneos;
+    "sdk_version_monotonic" = 2305008100;
+}
+
+
+*** If you believe this error represents a bug, please attach the result bundle at /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-favorites-persistent.xcresult
+
+2026-09-15 02:17:01.506 xcodebuild[25345:32218588]  IDETestOperationsObserverDebug: Failure collecting diagnostics from devices: Process exited with error 1:
+ ERROR: The operation couldn?t be completed. (CoreDeviceCLISupport.DiagnoseError error 0.)
+This tool generates files that allow Apple to investigate issues with your
+computer and help improve Apple products. The files might contain personal
+information found on your device or associated with your Apple Account(s),
+including but not limited to your name, serial numbers of your device,
+your device name, your device's location over the last one to two days,
+your attached peripheral devices, your user name, your email address and
+email settings, file paths, file names, Siri suggestions, your computer's
+IP addresses, and network connection information.
+
+This information is used by Apple in accordance with its privacy policy
+(www.apple.com/privacy) and is not shared with any other company. By using
+this tool and sending the results to Apple, you consent to Apple using the
+contents of these files to improve Apple products.
+
+An error occurred while running devicectl diagnose. Will archive the diagnostics collected thus far.
+Wrote file to /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-favorites-persistent.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+Partial devicectl diagnose bundle located here: /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-favorites-persistent.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+
+2026-09-15 02:17:01.517 xcodebuild[25345:32212756] [MT] IDETestOperationsObserverDebug: 49.947 elapsed -- Testing started completed.
+2026-09-15 02:17:01.517 xcodebuild[25345:32212756] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 02:17:01.517 xcodebuild[25345:32212756] [MT] IDETestOperationsObserverDebug: 49.947 sec, +49.947 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-favorites-persistent.xcresult
+
+Testing failed:
+	The application could not be launched because the Developer App Certificate is not trusted.
+	KanpanUITests-Runner encountered an error (Failed to install or launch the test runner. (Underlying Error: The application could not be launched because the Developer App Certificate is not trusted. Verify that the Developer App certificate for your account is trusted on your device. Open Settings on the device and navigate to General -> VPN & Device Management, then select your Developer App certificate to trust it. (Underlying Error: The application failed to launch. (Underlying Error: The request to open "com.mdd.kanpan.uitests.xctrunner" failed. The request was denied by service delegate (SBMainWorkspace) for reason: Security ("Unable to launch com.mdd.kanpan.uitests.xctrunner because it has an invalid code signature, inadequate entitlements or its profile has not been explicitly trusted by the user"). (Underlying Error: The operation couldn’t be completed. Unable to launch com.mdd.kanpan.uitests.xctrunner because it has an invalid code signature, inadequate entitlements or its profile has not been explicitly trusted by the user.)))))
+
+** TEST EXECUTE FAILED **
+
+Testing started

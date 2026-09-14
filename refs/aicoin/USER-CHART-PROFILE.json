@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-14",
+  "authority": "用户本人 iPhone 当前 AICoin 设置优先于 APK 默认值",
+  "device": "iPhone 16 Pro",
+  "market": "BTCUSDT Binance USDT perpetual",
+  "interval": "1h",
+  "chart": {
+    "kind": "candle",
+    "coordinate": "log",
+    "anchor": "right",
+    "crosshairPrice": "selected",
+    "upBody": "solid",
+    "upColor": "green",
+    "downColor": "red",
+    "tone": "default",
+    "minimumStyle": "line",
+    "openTimeLabel": "8点",
+    "portraitHeightFractionApprox": 0.6,
+    "portraitHeightExact": null,
+    "grid": false,
+    "countdown": false,
+    "lastPriceLine": true,
+    "tapToFlipMainAxis": true,
+    "tapToFlipSubAxis": false,
+    "indicatorAreaAdaptive": false,
+    "dataDisplay": "inside",
+    "simplifiedIndicatorParameters": false
+  },
+  "overlays": [
+    {
+      "id": "MA",
+      "activePeriods": [
+        10,
+        30,
+        120,
+        256
+      ],
+      "activeColorNames": [
+        "yellow",
+        "purple",
+        "green",
+        "coral"
+      ],
+      "slots": [
+        {
+          "slot": 1,
+          "period": 5,
+          "enabled": false
+        },
+        {
+          "slot": 2,
+          "period": 10,
+          "enabled": true
+        },
+        {
+          "slot": 3,
+          "period": 30,
+          "enabled": true
+        },
+        {
+          "slot": 4,
+          "period": 90,
+          "enabled": false
+        },
+        {
+          "slot": 5,
+          "period": 120,
+          "enabled": true
+        },
+        {
+          "slot": 6,
+          "period": 256,
+          "enabled": true
+        },
+        {
+          "slot": 7,
+          "period": 0,
+          "enabled": true
+        },
+        {
+          "slot": 8,
+          "period": 0,
+          "enabled": true
+        },
+        {
+          "slot": 9,
+          "period": 0,
+          "enabled": true
+        },
+        {
+          "slot": 10,
+          "period": 0,
+          "enabled": true
+        },
+        {
+          "slot": 11,
+          "period": 0,
+          "enabled": false
+        },
+        {
+          "slot": 12,
+          "period": 0,
+          "enabled": false
+        },
+        {
+          "slot": 13,
+          "period": 0,
+          "enabled": false
+        },
+        {
+          "slot": 14,
+          "period": 0,
+          "enabled": false
+        },
+        {
+          "slot": 15,
+          "period": 0,
+          "enabled": false
+        }
+      ],
+      "uninspectedSlots": [
+        16,
+        17,
+        18,
+        19,
+        20
+      ]
+    }
+  ],
+  "subpanels": [
+    {
+      "id": "VOL",
+      "periods": [
+        5,
+        10,
+        30,
+        60,
+        120
+      ],
+      "allEnabled": true
+    },
+    {
+      "id": "OI",
+      "colorName": "turquoise",
+      "exactStyle": null
+    },
+    {
+      "id": "MACD",
+      "periods": [
+        10,
+        30,
+        9
+      ],
+      "enabled": [
+        "DIF",
+        "DEA",
+        "MACD"
+      ],
+      "lineStyle": {
+        "opacityPercent": 100,
+        "widthOptionIndex": 0,
+        "widthOptionCount": 4,
+        "physicalWidth": null
+      }
+    }
+  ],
+  "unknown": [
+    "精确当前横向节距",
+    "竖屏高度底层值",
+    "iOS 捏合倍率边界与连续响应",
+    "iOS 惯性参数",
+    "iOS Y 轴连续拖动公式",
+    "线条颜色精确 sRGB 与色彩空间",
+    "MA16–20 槽位",
+    "OI 线型参数"
+  ],
+  "scope": "全部图表风格共用 AICoin 底座，保留原有风格；不扩展下单、账户、资讯等功能"
+}

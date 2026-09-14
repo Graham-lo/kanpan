@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:id="@id/item_container" android:tag="skin:ui_kline_compare_type_option_bg_color:background" android:background="@drawable/ui_kline_compare_type_option_bg_color" android:layout_width="match_parent" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <TextView android:textSize="@dimen/sh_base_font_size_normal_high" android:textColor="@color/ui_kline_compare_type_text_color" android:gravity="center_horizontal" android:layout_gravity="center_horizontal" android:id="@id/tv_popup_item_content" android:tag="skin:ui_kline_compare_type_text_color:textColor" android:paddingLeft="@dimen/offset_16dp" android:paddingTop="@dimen/offset_12dp" android:paddingRight="@dimen/offset_16dp" android:paddingBottom="@dimen/offset_12dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" />
+</LinearLayout>

@@ -1,0 +1,22 @@
+START iPad Pro 13-inch (M5)
+START iPhone 16 Plus
+DONE {'name': 'iPhone 16 Plus', 'exitCode': 0, 'seconds': 369, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}
+START iPhone 15
+DONE {'name': 'iPad Pro 13-inch (M5)', 'exitCode': 0, 'seconds': 378, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}
+START iPad mini (A17 Pro)
+DONE {'name': 'iPad mini (A17 Pro)', 'exitCode': 0, 'seconds': 367, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}
+START iPhone 16 Pro
+DONE {'name': 'iPhone 15', 'exitCode': 0, 'seconds': 401, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}
+START iPad (A16)
+DONE {'name': 'iPhone 16 Pro', 'exitCode': 0, 'seconds': 364, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}
+START iPhone 17
+DONE {'name': 'iPad (A16)', 'exitCode': 0, 'seconds': 400, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}
+START iPad Air 11-inch (M4)
+DONE {'name': 'iPhone 17', 'exitCode': 0, 'seconds': 357, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}
+START iPhone 17 Pro Max
+DONE {'name': 'iPad Air 11-inch (M4)', 'exitCode': 0, 'seconds': 372, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}
+START iPad Pro 11-inch (M5)
+DONE {'name': 'iPhone 17 Pro Max', 'exitCode': 0, 'seconds': 360, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}
+START iPhone Air
+DONE {'name': 'iPad Pro 11-inch (M5)', 'exitCode': 0, 'seconds': 374, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}
+DONE {'name': 'iPhone Air', 'exitCode': 0, 'seconds': 387, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}

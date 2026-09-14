@@ -51,6 +51,19 @@ struct SymbolSectionsTests {
     #expect(all.count == catalog.count - 2)
   }
 
+  @Test("实时报价先到但统计缺失时仍保持有效排序，不伪造统计值")
+  func missingStatisticsHaveStableSortKeys() {
+    var values = tickers
+    values["BTCUSDT"]?.quoteVolume = .nan
+    values["ETHUSDT"]?.quoteVolume = .infinity
+    values["SOLUSDT"]?.quoteVolume = -1
+    let input = catalog.filter { ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT"].contains($0.symbol) }
+    let rows = SymbolSections.build(catalog: input, tickers: values, prefs: SymbolPrefs(), query: "").flatMap(\.rows)
+    #expect(rows.first?.id == "DOGEUSDT")
+    #expect(Array(rows.dropFirst().map(\.id)) == input.filter { $0.symbol != "DOGEUSDT" }.map(\.symbol))
+    #expect(rows.first { $0.id == "BTCUSDT" }?.ticker?.quoteVolume.isNaN == true)
+  }
+
   @Test("全部按 24h 成交额降序（A5.7）")
   func allSortedByQuoteVolume() {
     let rows = build().first { $0.kind == .all }?.rows ?? []

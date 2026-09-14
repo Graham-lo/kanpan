@@ -1,0 +1,16 @@
+{"level":"info","ts":1789404797.4774425,"msg":"using provided configuration","config_file":"/opt/kanpan-gateway/Caddyfile.candidate","config_adapter":"caddyfile"}
+{"level":"warn","ts":1789404797.4847102,"msg":"Caddyfile input is not formatted; run the 'caddy fmt' command to fix inconsistencies","adapter":"caddyfile","file":"/opt/kanpan-gateway/Caddyfile.candidate","line":39}
+{"level":"info","ts":1789404797.4857721,"logger":"http","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1789404797.485953,"logger":"http","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1789404797.485954,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc0006caa10"}
+{"level":"info","ts":1789404797.4886515,"logger":"tls.cache.maintenance","msg":"stopped background certificate maintenance","cache":"0xc0006caa10"}
+Valid configuration
+Created symlink /etc/systemd/system/multi-user.target.wants/kanpan-gateway.service → /etc/systemd/system/kanpan-gateway.service.
+Job for caddy.service failed.
+See "systemctl status caddy.service" and "journalctl -xeu caddy.service" for details.
+Caddy backup: /etc/caddy/Caddyfile.backup-before-kanpan-gateway-20260915005317
+Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['systemctl', 'reload', 'caddy']' returned non-zero exit status 1.

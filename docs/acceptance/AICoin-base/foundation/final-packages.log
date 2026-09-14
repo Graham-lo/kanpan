@@ -1,0 +1,1348 @@
+cd KanpanCore && swift test 
+Building for debugging...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.13s)
+Test Suite 'All tests' started at 2026-09-15 00:31:19.419.
+Test Suite 'All tests' passed at 2026-09-15 00:31:19.422.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.002) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "画线" started.
+◇ Suite "指标边界" started.
+◇ Suite "AICoin OverScroller参考惯性" started.
+◇ Suite "K线设置" started.
+◇ Suite "K 线序列" started.
+◇ Suite "AICoin 硬边界" started.
+◇ Suite "指标增量重算" started.
+◇ Suite "价格轴" started.
+◇ Suite "指标黄金值" started.
+◇ Suite "蜡烛整像素光栅化" started.
+◇ Suite "切周期" started.
+◇ Suite "格式化" started.
+◇ Suite "共用尺寸参数" started.
+◇ Suite "图表底座补全" started.
+◇ Suite "刻度" started.
+◇ Suite "AICoin 统一手势算术" started.
+◇ Suite "AICoin 共用布局" started.
+◇ Suite "不等距周期" started.
+◇ Suite "指标元信息" started.
+◇ Suite "风格表与配色" started.
+◇ Suite "AICoin 冷启动与尺寸" started.
+◇ Suite "根宽与像素对齐" started.
+◇ Suite "平均K线" started.
+◇ Test "速度取样排除过期采样" started.
+◇ Test "AOSP参考数值：1000dp/s" started.
+◇ Suite "聚合" started.
+◇ Test "覆盖末根" started.
+◇ Suite "画线编辑" started.
+◇ Test "下标越界要夹住，不能崩" started.
+◇ Test "速度越快距离与持续时间越长；正负对称" started.
+◇ Test "最近一根而不是向下取整" started.
+◇ Test "不等距周期补历史" started.
+◇ Test "持仓量对齐" started.
+◇ Test "向前补历史" started.
+◇ Test "追加新根" started.
+◇ Test "bar(at:) 取出来的和列里的一致" started.
+◇ Test "品种字段" started.
+◇ Test "等距周期不存 openTime，时间由 t0 推" started.
+◇ Test "手柄优先于线身" started.
+◇ Test "反复 upsert 末根不长胖" started.
+◇ Test "负半数按 JS 规则进位" started.
+◇ Test "退化线段当点距算" started.
+◇ Test "单边行情的 RSI 极值" started.
+◇ Test "编解码来回" started.
+◇ Test "后画的先命中" started.
+◇ Test "随机命中对拍" started.
+◇ Test "水平线命中" started.
+◇ Test "upsert 三种情形" started.
+◇ Test "空序列的时间" started.
+◇ Test "distSeg 的几何性质" started.
+◇ Test "参数非法就整列 NaN，不要崩" started.
+◇ Test "趋势线两点落成" started.
+◇ Test "横盘时不出 NaN / inf" started.
+◇ Test "不等距周期追加时补建 openTime 表" started.
+◇ Test "StochRSI 分母为零" started.
+◇ Test "趋势线线身命中" started.
+◇ Test "十万随机视窗在左右列边界内" started.
+◇ Test "水平线一点落成" started.
+◇ Test "空数据不产生无效窗口" started.
+◇ Test "连续追加 500 根不漂移" started.
+◇ Test "J 线允许越界" started.
+◇ Test "distSeg 与原型全等" started.
+◇ Test "默认 ID 不撞" started.
+◇ Test "短序列" started.
+◇ Test "画线价格进区间" started.
+◇ Test "删除与清空" started.
+◇ Test "数据不够时整列 NaN" started.
+◇ Test "ATR 算上跳空" started.
+◇ Test "引擎在空数据和换参时不乱" started.
+◇ Test "曲线单调、有限、到达终点后停止" started.
+◇ Test "pOf(yOf(p)) == p" started.
+◇ Test "随机改末根 / 追加新根 1000 次" started.
+◇ Test "最新柱的右缘预留30pt，半根偏移一致" started.
+◇ Test "副图值 → y" started.
+◇ Test "十字星不塌成零高度" started.
+◇ Test "价格轴缩放与平移" started.
+◇ Test "留白按风格 pad" started.
+◇ Test "StochRSI" started.
+◇ Test "拖动端点与整条" started.
+◇ Test "MACD 柱是差值的两倍" started.
+◇ Test "对数模式等比等距" started.
+◇ Test "空序列" started.
+◇ Test "RSI" started.
+◇ Test "极值并入叠加指标与画线" started.
+◇ Test "EMA" started.
+◇ Test "smaSkip 跳过前导 NaN" started.
+◇ Test "ATR" started.
+◇ Test "引擎与裸函数一致" started.
+◇ Test "VOL" started.
+◇ Test "缓存键" started.
+◇ Test "BOLL" started.
+◇ Test "默认根间距下实体够胖" started.
+◇ Test "百分比以可见区首根收盘为基准" started.
+◇ Test "MA" started.
+◇ Test "时间标签与原型全等" started.
+◇ Test "前导 NaN 的位置" started.
+◇ Test "thin 是物理判据" started.
+◇ Test "影线整像素" started.
+◇ Test "成交量分档" started.
+◇ Test "边界对齐" started.
+◇ Test "价格精度跟 tickSize 走" started.
+◇ Test "闰年与月末" started.
+◇ Test "实体之间至少 1 像素缝" started.
+◇ Test "实体与影线奇偶相同" started.
+◇ Test "时区偏移" started.
+◇ Test "fmtNum 与原型全等" started.
+◇ Test "非法输入兜底" started.
+◇ Test "MACD" started.
+◇ Test "fmtVol 与原型全等" started.
+◇ Test "标签形态" started.
+◇ Test "宽容器少量数据使用完整400虚拟列边界，历史焦点不读靠右设置" started.
+◇ Test "无锚点时落回右缘留白" started.
+◇ Test defaults() started.
+◇ Test "卡片在不同容器宽高内换边" started.
+◇ Test "高度联动所有pane而非横向时间映射" started.
+◇ Test "手调副图在固定屏幕内重新分配高度并约束极限" started.
+◇ Test "阶梯表与原型一致" started.
+◇ Test "时间刻度按时区对齐" started.
+◇ Test "价格三个模式正常倒置映射和百分比首个相交列" started.
+◇ Test "刻度密度合理" started.
+◇ Test "根间距越界先夹" started.
+◇ Test "价格刻度等距" started.
+◇ Test "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test "KDJ" started.
+◇ Test "timeStep 与原型全等" started.
+◇ Test "历史区焦点缩放，右端缩放保持最新列尾留白" started.
+◇ Test "niceStep 与原型全等" started.
+◇ Test "toFixed 与 JS 同规则" started.
+◇ Test "Y倍率与高度归一化，中心夹取，自动复位仅改Y" started.
+◇ Test "到达极限后反向捏合立即响应" started.
+◇ Test "拖回历史后再切" started.
+◇ Test "来回切十次不漂" started.
+◇ Test "同档内宽度稳定" started.
+◇ Test "中文档名" started.
+◇ Test "倒计时三档文案" started.
+◇ Test "主副比例与自定义副图高度不随风格改变" started.
+◇ Test "日期拆解与系统日历一致" started.
+◇ Test "月长确实不等" started.
+◇ Test "niceStep 尾数只有五种" started.
+◇ Test "手动Y随新自动区间重算，不永久钉死旧价格" started.
+◇ Test "1w 等距推导与 openTime 一致" started.
+◇ Test "就近取整与边界" started.
+◇ Test "偏上把蜡烛顶上去" started.
+◇ Test "追加与可见区间" started.
+◇ Test "过一遍像素再回来还是同一根" started.
+◇ Test "实体宽单调" started.
+◇ Test "倒计时归零与非数给 nil" started.
+◇ Test "indexAt(openTime[i]) == i" started.
+◇ Test "三档偏置跨度完全相同" started.
+◇ Test "所有风格同尺寸；主图、时间轴、副图铺满且互不重叠" started.
+◇ Test "默认值一律维持现状" started.
+◇ Test "所有皮肤保持相同实体宽度、影线宽度和最小高度" started.
+◇ Test "页面纵拖与图表手势路由互斥" started.
+◇ Test "只有 1M / 1y 算不等距" started.
+◇ Test "快照补到现在时跟随末根；历史视野不跳" started.
+◇ Test "0–100 的副图锁刻度" started.
+◇ Test "redUp 只翻转涨跌两色" started.
+◇ Test "线名跟着参数走" started.
+◇ Test "结果取值越界给 NaN" started.
+◇ Test "10 个指标，主图三种" started.
+◇ Test "默认参数与线名对得上" started.
+◇ Test "回算根数够深" started.
+◇ Test "默认参数与原型一致" started.
+◇ Test "纯未来视野和短指标数组不越界，对数倒置可往返" started.
+◇ Test "深色配色与原型逐一相等" started.
+◇ Test case passing 1 argument lane → 0 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument lane → 1 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument lane → 2 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument lane → 3 to "十万随机视窗在左右列边界内" started.
+◇ Test "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument lane → 4 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument lane → 5 to "十万随机视窗在左右列边界内" started.
+◇ Test "11 款风格、顺序与默认值" started.
+◇ Test "浅色配色与原型逐一相等" started.
+◇ Test "mixHex" started.
+◇ Test case passing 1 argument lane → 6 to "十万随机视窗在左右列边界内" started.
+◇ Test "字段范围合理" started.
+◇ Test case passing 1 argument lane → 7 to "十万随机视窗在左右列边界内" started.
+◇ Test "颜色格式合法" started.
+◇ Test case passing 1 argument lane → 8 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument lane → 9 to "十万随机视窗在左右列边界内" started.
+◇ Test case passing 1 argument n → 1 to "短序列" started.
+◇ Test case passing 1 argument n → 2 to "短序列" started.
+◇ Test case passing 1 argument n → 5 to "短序列" started.
+◇ Test case passing 1 argument n → 13 to "短序列" started.
+◇ Test case passing 1 argument mode → .linear to "pOf(yOf(p)) == p" started.
+◇ Test case passing 1 argument n → 27 to "短序列" started.
+◇ Test case passing 1 argument speed → -3000.0 to "曲线单调、有限、到达终点后停止" started.
+◇ Test case passing 1 argument mode → .log to "pOf(yOf(p)) == p" started.
+◇ Test case passing 1 argument speed → -500.0 to "曲线单调、有限、到达终点后停止" started.
+◇ Test case passing 1 argument mode → .percent to "pOf(yOf(p)) == p" started.
+◇ Test case passing 1 argument speed → 500.0 to "曲线单调、有限、到达终点后停止" started.
+◇ Test case passing 1 argument speed → 3000.0 to "曲线单调、有限、到达终点后停止" started.
+◇ Test case passing 1 argument lane → 0 to "随机改末根 / 追加新根 1000 次" started.
+◇ Test case passing 1 argument lane → 1 to "随机改末根 / 追加新根 1000 次" started.
+◇ Test case passing 1 argument lane → 2 to "随机改末根 / 追加新根 1000 次" started.
+◇ Test case passing 1 argument lane → 3 to "随机改末根 / 追加新根 1000 次" started.
+◇ Test case passing 1 argument ci → 0 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 1 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 2 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 3 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 4 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 5 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 6 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 0 to "RSI" started.
+◇ Test case passing 1 argument ci → 1 to "RSI" started.
+◇ Test case passing 1 argument ci → 7 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 2 to "RSI" started.
+◇ Test case passing 1 argument ci → 3 to "RSI" started.
+◇ Test case passing 1 argument ci → 8 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 4 to "RSI" started.
+◇ Test case passing 1 argument ci → 9 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 10 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 5 to "RSI" started.
+◇ Test case passing 1 argument ci → 6 to "RSI" started.
+◇ Test case passing 1 argument ci → 11 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 7 to "RSI" started.
+◇ Test case passing 1 argument ci → 8 to "RSI" started.
+◇ Test case passing 1 argument ci → 9 to "RSI" started.
+◇ Test case passing 1 argument ci → 12 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 13 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 10 to "RSI" started.
+◇ Test case passing 1 argument ci → 11 to "RSI" started.
+◇ Test case passing 1 argument ci → 14 to "StochRSI" started.
+◇ Test case passing 1 argument ci → 12 to "RSI" started.
+◇ Test case passing 1 argument ci → 13 to "RSI" started.
+◇ Test case passing 1 argument ci → 14 to "RSI" started.
+◇ Test case passing 1 argument ci → 0 to "EMA" started.
+◇ Test case passing 1 argument ci → 1 to "EMA" started.
+◇ Test case passing 1 argument ci → 0 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 2 to "EMA" started.
+◇ Test case passing 1 argument ci → 0 to "ATR" started.
+◇ Test case passing 1 argument ci → 1 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 2 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 3 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 0 to "VOL" started.
+◇ Test case passing 1 argument ci → 1 to "ATR" started.
+◇ Test case passing 1 argument ci → 4 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 1 to "VOL" started.
+◇ Test case passing 1 argument ci → 3 to "EMA" started.
+◇ Test case passing 1 argument ci → 5 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 2 to "VOL" started.
+◇ Test case passing 1 argument ci → 4 to "EMA" started.
+◇ Test case passing 1 argument ci → 2 to "ATR" started.
+◇ Test case passing 1 argument ci → 6 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 3 to "VOL" started.
+◇ Test case passing 1 argument ci → 5 to "EMA" started.
+◇ Test case passing 1 argument ci → 4 to "VOL" started.
+◇ Test case passing 1 argument ci → 7 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 6 to "EMA" started.
+◇ Test case passing 1 argument ci → 3 to "ATR" started.
+◇ Test case passing 1 argument ci → 8 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 7 to "EMA" started.
+◇ Test case passing 1 argument ci → 5 to "VOL" started.
+◇ Test case passing 1 argument ci → 6 to "VOL" started.
+◇ Test case passing 1 argument ci → 9 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 8 to "EMA" started.
+◇ Test case passing 1 argument ci → 7 to "VOL" started.
+◇ Test case passing 1 argument ci → 9 to "EMA" started.
+◇ Test case passing 1 argument ci → 10 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 4 to "ATR" started.
+◇ Test case passing 1 argument scale → 2.0 to "默认根间距下实体够胖" started.
+◇ Test case passing 1 argument ci → 8 to "VOL" started.
+◇ Test case passing 1 argument ci → 10 to "EMA" started.
+◇ Test case passing 1 argument ci → 11 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 0 to "BOLL" started.
+◇ Test case passing 1 argument ci → 11 to "EMA" started.
+◇ Test case passing 1 argument ci → 9 to "VOL" started.
+◇ Test case passing 1 argument ci → 5 to "ATR" started.
+◇ Test case passing 1 argument scale → 3.0 to "默认根间距下实体够胖" started.
+◇ Test case passing 1 argument ci → 12 to "EMA" started.
+◇ Test case passing 1 argument ci → 10 to "VOL" started.
+◇ Test case passing 1 argument ci → 12 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 13 to "EMA" started.
+◇ Test case passing 1 argument ci → 6 to "ATR" started.
+◇ Test case passing 1 argument ci → 1 to "BOLL" started.
+◇ Test case passing 1 argument ci → 13 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 14 to "EMA" started.
+◇ Test case passing 1 argument ci → 14 to "引擎与裸函数一致" started.
+◇ Test case passing 1 argument ci → 2 to "BOLL" started.
+◇ Test case passing 1 argument ci → 7 to "ATR" started.
+◇ Test case passing 1 argument ci → 3 to "BOLL" started.
+◇ Test case passing 1 argument ci → 11 to "VOL" started.
+◇ Test case passing 1 argument ci → 8 to "ATR" started.
+◇ Test case passing 1 argument ci → 9 to "ATR" started.
+◇ Test case passing 1 argument ci → 4 to "BOLL" started.
+◇ Test case passing 1 argument ci → 0 to "MA" started.
+◇ Test case passing 1 argument ci → 10 to "ATR" started.
+◇ Test case passing 1 argument ci → 1 to "MA" started.
+◇ Test case passing 1 argument ci → 5 to "BOLL" started.
+◇ Test case passing 1 argument ci → 2 to "MA" started.
+◇ Test case passing 1 argument ci → 6 to "BOLL" started.
+◇ Test case passing 1 argument ci → 3 to "MA" started.
+◇ Test case passing 1 argument ci → 4 to "MA" started.
+◇ Test case passing 1 argument ci → 7 to "BOLL" started.
+◇ Test case passing 1 argument ci → 5 to "MA" started.
+◇ Test case passing 1 argument ci → 11 to "ATR" started.
+◇ Test case passing 1 argument ci → 6 to "MA" started.
+◇ Test case passing 1 argument ci → 7 to "MA" started.
+◇ Test case passing 1 argument ci → 8 to "MA" started.
+◇ Test case passing 1 argument ci → 9 to "MA" started.
+◇ Test case passing 1 argument ci → 10 to "MA" started.
+◇ Test case passing 1 argument ci → 8 to "BOLL" started.
+◇ Test case passing 1 argument ci → 11 to "MA" started.
+◇ Test case passing 1 argument ci → 12 to "MA" started.
+◇ Test case passing 1 argument ci → 9 to "BOLL" started.
+◇ Test case passing 1 argument ci → 13 to "MA" started.
+◇ Test case passing 1 argument ci → 12 to "ATR" started.
+◇ Test case passing 1 argument ci → 12 to "VOL" started.
+◇ Test case passing 1 argument ci → 13 to "ATR" started.
+◇ Test case passing 1 argument ci → 10 to "BOLL" started.
+◇ Test case passing 1 argument ci → 14 to "ATR" started.
+◇ Test case passing 1 argument ci → 13 to "VOL" started.
+◇ Test case passing 1 argument ci → 11 to "BOLL" started.
+◇ Test case passing 1 argument ci → 14 to "VOL" started.
+◇ Test case passing 1 argument ci → 14 to "MA" started.
+◇ Test case passing 1 argument ci → 12 to "BOLL" started.
+◇ Test case passing 1 argument ci → 13 to "BOLL" started.
+◇ Test case passing 1 argument ci → 14 to "BOLL" started.
+◇ Test case passing 1 argument scale → 2.0 to "thin 是物理判据" started.
+◇ Test case passing 1 argument scale → 3.0 to "thin 是物理判据" started.
+◇ Test case passing 1 argument mode → .linear to "边界对齐" started.
+◇ Test case passing 1 argument scale → 1.0 to "影线整像素" started.
+◇ Test case passing 1 argument mode → .log to "边界对齐" started.
+◇ Test case passing 1 argument mode → .percent to "边界对齐" started.
+◇ Test case passing 1 argument scale → 2.0 to "影线整像素" started.
+◇ Test case passing 1 argument scale → 3.0 to "影线整像素" started.
+◇ Test case passing 1 argument scale → 1.0 to "实体之间至少 1 像素缝" started.
+◇ Test case passing 1 argument scale → 1.0 to "实体与影线奇偶相同" started.
+◇ Test case passing 1 argument scale → 2.0 to "实体之间至少 1 像素缝" started.
+◇ Test case passing 1 argument scale → 3.0 to "实体之间至少 1 像素缝" started.
+◇ Test case passing 1 argument scale → 2.0 to "实体与影线奇偶相同" started.
+◇ Test "影线粗细换算" started.
+◇ Test case passing 1 argument scale → 3.0 to "实体与影线奇偶相同" started.
+◇ Test "snap 落在设备像素边界" started.
+◇ Test "当前参考手机：4pt 节距对应8px实体、2px影线" started.
+◇ Test "thin 判定" started.
+◇ Test case passing 1 argument ci → 0 to "MACD" started.
+◇ Test case passing 1 argument ci → 1 to "MACD" started.
+◇ Test case passing 1 argument ci → 2 to "MACD" started.
+◇ Test case passing 1 argument ci → 3 to "MACD" started.
+◇ Test case passing 1 argument ci → 4 to "MACD" started.
+◇ Test case passing 1 argument ci → 5 to "MACD" started.
+◇ Test case passing 1 argument ci → 6 to "MACD" started.
+◇ Test case passing 1 argument ci → 7 to "MACD" started.
+◇ Test case passing 1 argument ci → 8 to "MACD" started.
+◇ Test case passing 1 argument ci → 9 to "MACD" started.
+◇ Test case passing 1 argument ci → 11 to "MACD" started.
+◇ Test case passing 1 argument ci → 10 to "MACD" started.
+◇ Test case passing 1 argument iv → .m1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .m3 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .m15 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .m5 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument ci → 12 to "MACD" started.
+◇ Test case passing 1 argument iv → .m30 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .h1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .h2 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument ci → 13 to "MACD" started.
+◇ Test case passing 1 argument iv → .h4 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .h6 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .h12 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .d1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .w1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument ci → 14 to "MACD" started.
+◇ Test case passing 1 argument iv → .mo1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument iv → .y1 to "无锚点时落回右缘留白" started.
+◇ Test case passing 1 argument tz → .local to "时间刻度按时区对齐" started.
+◇ Test case passing 1 argument tz → .utc to "时间刻度按时区对齐" started.
+◇ Test case passing 1 argument tz → .exchange to "时间刻度按时区对齐" started.
+◇ Test case passing 1 argument mode → .linear to "价格刻度等距" started.
+◇ Test case passing 1 argument mode → .log to "价格刻度等距" started.
+◇ Test case passing 1 argument from → .m1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument mode → .percent to "价格刻度等距" started.
+◇ Test case passing 1 argument from → .m3 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument ci → 0 to "KDJ" started.
+◇ Test case passing 1 argument from → .m5 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .m15 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .m30 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument ci → 1 to "KDJ" started.
+◇ Test case passing 1 argument from → .h1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument ci → 2 to "KDJ" started.
+◇ Test case passing 1 argument from → .h2 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument ci → 3 to "KDJ" started.
+◇ Test case passing 1 argument from → .h4 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument ci → 4 to "KDJ" started.
+◇ Test case passing 1 argument from → .h6 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument from → .h12 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test "公式逐根对账" started.
+◇ Test "边界输入" started.
+◇ Test case passing 1 argument from → .d1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test "上下影包住真实高低" started.
+◇ Test case passing 1 argument ci → 5 to "KDJ" started.
+◇ Test case passing 1 argument from → .w1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test "热身盖过起点等于全量" started.
+◇ Test case passing 1 argument from → .m1 to "拖回历史后再切" started.
+◇ Test "热身 200 根与全量等价" started.
+◇ Test case passing 1 argument ci → 6 to "KDJ" started.
+◇ Test case passing 1 argument from → .mo1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument ci → 7 to "KDJ" started.
+◇ Test case passing 1 argument from → .y1 to "14 × 14 组互切，根宽不变、右缘不动" started.
+◇ Test case passing 1 argument ci → 8 to "KDJ" started.
+◇ Test case passing 1 argument from → .m3 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .m5 to "拖回历史后再切" started.
+◇ Test case passing 1 argument ci → 9 to "KDJ" started.
+◇ Test case passing 1 argument from → .m15 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .m30 to "拖回历史后再切" started.
+◇ Test case passing 1 argument ci → 10 to "KDJ" started.
+◇ Test case passing 1 argument ci → 11 to "KDJ" started.
+◇ Test case passing 1 argument from → .h1 to "拖回历史后再切" started.
+◇ Test case passing 1 argument ci → 12 to "KDJ" started.
+◇ Test case passing 1 argument ci → 14 to "KDJ" started.
+◇ Test case passing 1 argument ci → 13 to "KDJ" started.
+◇ Test case passing 1 argument from → .h2 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .h4 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .h6 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .h12 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .d1 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .w1 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .mo1 to "拖回历史后再切" started.
+◇ Test case passing 1 argument from → .y1 to "拖回历史后再切" started.
+◇ Test case passing 1 argument scale → 1.0 to "实体宽单调" started.
+◇ Test case passing 1 argument scale → 2.0 to "实体宽单调" started.
+◇ Test "日线聚周线" started.
+◇ Test "utcMs 与系统日历一致" started.
+◇ Test case passing 1 argument scale → 3.0 to "实体宽单调" started.
+◇ Test "聚合结果可索引" started.
+◇ Test "周线桶落在周一零点" started.
+◇ Test "闰年与月末落桶" started.
+◇ Test "周期表与原型一致" started.
+◇ Test "分桶性质" started.
+◇ Test "聚不出来就给空" started.
+◇ Test "月线聚年线：每桶的开高低收量" started.
+◇ Test "当年未定稿那根" started.
+◇ Test "存档编解码来回" started.
+◇ Test "撤销到底就停" started.
+◇ Test "不等距周期吸到真 openTime" started.
+◇ Test "比自己新的存档不乱读" started.
+◇ Test "空序列不吸也不崩" started.
+◇ Test "磁吸开：时间吸根、价格吸开高低收" started.
+◇ Test "撤销栈有上限" started.
+◇ Test "每品种上限 50" started.
+◇ Test "磁吸关：原样落点" started.
+◇ Test "水平线整条拖只动价格" started.
+◇ Test "撤销之后再动一笔，重做作废" started.
+◇ Test "按品种隔离" started.
+◇ Test "clear 清两摞" started.
+◇ Test "老存档缺字段也能读" started.
+◇ Test "对数模式下按像素平移" started.
+◇ Test "磁盘往返" started.
+◇ Test "拖端点 / 拖整条" started.
+✔ Test "AOSP参考数值：1000dp/s" passed after 0.750 seconds.
+◇ Test "撤销重做走一圈" started.
+✔ Test "最近一根而不是向下取整" passed after 0.750 seconds.
+✔ Test "下标越界要夹住，不能崩" passed after 0.750 seconds.
+✔ Test "覆盖末根" passed after 0.750 seconds.
+✔ Test "速度越快距离与持续时间越长；正负对称" passed after 0.750 seconds.
+✔ Test "速度取样排除过期采样" passed after 0.750 seconds.
+✔ Test "持仓量对齐" passed after 0.750 seconds.
+◇ Test case passing 1 argument id → .ma to "回算根数够深" started.
+◇ Test case passing 1 argument id → .ma to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument id → .ema to "回算根数够深" started.
+◇ Test case passing 1 argument id → .ema to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument id → .ma to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .boll to "回算根数够深" started.
+◇ Test case passing 1 argument id → .boll to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument id → .vol to "回算根数够深" started.
+◇ Test case passing 1 argument id → .vol to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument id → .macd to "回算根数够深" started.
+◇ Test case passing 1 argument id → .ema to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .rsi to "回算根数够深" started.
+◇ Test case passing 1 argument seed → PaletteSeed(dark: false, ground: #C7CCE4, app: #FFFFFF, chart: #F4F6FD, raised: #FFFFFF, raised2: #ECEFF9, line: #DCE0F0, grid: #E4E7F5, ink: #12163A, ink2: #565C85, ink3: #8B90B2, up: #0E9E78, down: #DE2E57, amber: #B26A00, palette: [#B26A00, #4A55D6, #0E8F73, #C43A7E, #7A5BD6, #1A7FC4]) to "redUp 只翻转涨跌两色" started.
+◇ Test case passing 1 argument id → .boll to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .kdj to "回算根数够深" started.
+◇ Test case passing 1 argument id → .srsi to "回算根数够深" started.
+✔ Test "品种字段" passed after 0.751 seconds.
+◇ Test case passing 1 argument id → .vol to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .macd to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument id → .macd to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .atr to "回算根数够深" started.
+◇ Test case passing 1 argument id → .oi to "回算根数够深" started.
+✔ Test "不等距周期补历史" passed after 0.751 seconds.
+◇ Test case passing 1 argument id → .rsi to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument id → .rsi to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .kdj to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument id → .srsi to "10 个指标，主图三种" started.
+✔ Test "向前补历史" passed after 0.751 seconds.
+◇ Test case passing 1 argument id → .kdj to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .atr to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument id → .srsi to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .atr to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument id → .oi to "10 个指标，主图三种" started.
+◇ Test case passing 1 argument id → .oi to "默认参数与线名对得上" started.
+◇ Test case passing 1 argument seed → PaletteSeed(dark: true, ground: #07091C, app: #0F1230, chart: #161A3F, raised: #1C2154, raised2: #232858, line: #2A2E6E, grid: #232858, ink: #EDEEF8, ink2: #A6A9C0, ink3: #6D719A, up: #2FBF8F, down: #F0567B, amber: #FFB454, palette: [#FFB454, #8C95FF, #4FD1B5, #F78FB3, #C8B6FF, #7FD0FF]) to "redUp 只翻转涨跌两色" started.
+✔ Test "负半数按 JS 规则进位" passed after 0.751 seconds.
+✔ Test "bar(at:) 取出来的和列里的一致" passed after 0.751 seconds.
+✔ Test "追加新根" passed after 0.752 seconds.
+✔ Test "退化线段当点距算" passed after 0.751 seconds.
+✔ Test "后画的先命中" passed after 0.751 seconds.
+✔ Test "upsert 三种情形" passed after 0.751 seconds.
+✔ Test "等距周期不存 openTime，时间由 t0 推" passed after 0.752 seconds.
+✔ Test "反复 upsert 末根不长胖" passed after 0.752 seconds.
+✔ Test "空序列的时间" passed after 0.752 seconds.
+✔ Test "趋势线两点落成" passed after 0.751 seconds.
+✔ Test "趋势线线身命中" passed after 0.751 seconds.
+✔ Test "手柄优先于线身" passed after 0.752 seconds.
+✔ Test "水平线命中" passed after 0.752 seconds.
+✔ Test "编解码来回" passed after 0.752 seconds.
+✔ Test "StochRSI 分母为零" passed after 0.751 seconds.
+✔ Test "参数非法就整列 NaN，不要崩" passed after 0.752 seconds.
+✔ Test "空数据不产生无效窗口" passed after 0.751 seconds.
+✔ Test "单边行情的 RSI 极值" passed after 0.752 seconds.
+◇ Test case passing 1 argument i → 0 to "每个字段与原型逐一相等" started.
+✔ Test "横盘时不出 NaN / inf" passed after 0.752 seconds.
+✔ Test "不等距周期追加时补建 openTime 表" passed after 0.752 seconds.
+◇ Test case passing 1 argument i → 1 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 2 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 3 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 4 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 5 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 6 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 7 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 8 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 9 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument i → 10 to "每个字段与原型逐一相等" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "aicoin", name: "AICoin", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.none) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "stout", name: "墩", wickCap: KanpanCore.CandleStyle.WickCap.round, wickTint: 0.7, shape: KanpanCore.CandleStyle.Shape.solid, radius: 1.5, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "indigo", name: "靛", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.both) to "字段范围合理" started.
+✔ Test "十万随机视窗在左右列边界内" with 10 test cases passed after 0.753 seconds.
+◇ Test case passing 1 argument st → CandleStyle(id: "glow", name: "辉", wickCap: KanpanCore.CandleStyle.WickCap.round, wickTint: 0.6, shape: KanpanCore.CandleStyle.Shape.solid, radius: 2.6, grid: KanpanCore.CandleStyle.Grid.none) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "airy", name: "阔", wickCap: KanpanCore.CandleStyle.WickCap.round, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 1.0, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "brick", name: "砖", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 0.45, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "needle", name: "针", wickCap: KanpanCore.CandleStyle.WickCap.round, wickTint: 0.9, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.5, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "pill", name: "芯", wickCap: KanpanCore.CandleStyle.WickCap.round, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 3.0, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "paper", name: "纸", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.hollowUp, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.h) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "outline", name: "描", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 0.85, shape: KanpanCore.CandleStyle.Shape.outline, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.tick) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "bone", name: "骨", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.tick) to "字段范围合理" started.
+◇ Test case passing 1 argument st → CandleStyle(id: "dense", name: "密", wickCap: KanpanCore.CandleStyle.WickCap.butt, wickTint: 1.0, shape: KanpanCore.CandleStyle.Shape.solid, radius: 0.0, grid: KanpanCore.CandleStyle.Grid.none) to "字段范围合理" started.
+◇ Test case passing 1 argument seed → PaletteSeed(dark: false, ground: #C7CCE4, app: #FFFFFF, chart: #F4F6FD, raised: #FFFFFF, raised2: #ECEFF9, line: #DCE0F0, grid: #E4E7F5, ink: #12163A, ink2: #565C85, ink3: #8B90B2, up: #0E9E78, down: #DE2E57, amber: #B26A00, palette: [#B26A00, #4A55D6, #0E8F73, #C43A7E, #7A5BD6, #1A7FC4]) to "颜色格式合法" started.
+✔ Test "水平线一点落成" passed after 0.753 seconds.
+◇ Test case passing 1 argument seed → PaletteSeed(dark: true, ground: #07091C, app: #0F1230, chart: #161A3F, raised: #1C2154, raised2: #232858, line: #2A2E6E, grid: #232858, ink: #EDEEF8, ink2: #A6A9C0, ink3: #6D719A, up: #2FBF8F, down: #F0567B, amber: #FFB454, palette: [#FFB454, #8C95FF, #4FD1B5, #F78FB3, #C8B6FF, #7FD0FF]) to "颜色格式合法" started.
+✔ Test "J 线允许越界" passed after 0.753 seconds.
+✔ Test "distSeg 与原型全等" passed after 0.753 seconds.
+✔ Test "默认 ID 不撞" passed after 0.753 seconds.
+✔ Test "画线价格进区间" passed after 0.754 seconds.
+✔ Test "删除与清空" passed after 0.753 seconds.
+✔ Test "数据不够时整列 NaN" passed after 0.753 seconds.
+✔ Test "ATR 算上跳空" passed after 0.754 seconds.
+✔ Test "引擎在空数据和换参时不乱" passed after 0.754 seconds.
+✔ Test "随机命中对拍" passed after 0.754 seconds.
+✔ Test "曲线单调、有限、到达终点后停止" with 4 test cases passed after 0.755 seconds.
+✔ Test "副图值 → y" passed after 0.754 seconds.
+✔ Test "十字星不塌成零高度" passed after 0.754 seconds.
+✔ Test "价格轴缩放与平移" passed after 0.754 seconds.
+✔ Test "最新柱的右缘预留30pt，半根偏移一致" passed after 0.754 seconds.
+✔ Test "留白按风格 pad" passed after 0.754 seconds.
+✔ Test "拖动端点与整条" passed after 0.754 seconds.
+✔ Test "对数模式等比等距" passed after 0.754 seconds.
+✔ Test "pOf(yOf(p)) == p" with 3 test cases passed after 0.754 seconds.
+✔ Test "distSeg 的几何性质" passed after 0.754 seconds.
+✔ Test "空序列" passed after 0.754 seconds.
+✔ Test "StochRSI" with 15 test cases passed after 0.754 seconds.
+✔ Test "短序列" with 5 test cases passed after 0.754 seconds.
+✔ Test "极值并入叠加指标与画线" passed after 0.754 seconds.
+✔ Test "RSI" with 15 test cases passed after 0.754 seconds.
+✔ Test "smaSkip 跳过前导 NaN" passed after 0.754 seconds.
+✔ Test "EMA" with 15 test cases passed after 0.754 seconds.
+✔ Test "ATR" with 15 test cases passed after 0.754 seconds.
+✔ Test "VOL" with 15 test cases passed after 0.754 seconds.
+✔ Test "缓存键" passed after 0.754 seconds.
+✔ Test "引擎与裸函数一致" with 15 test cases passed after 0.754 seconds.
+✔ Test "默认根间距下实体够胖" with 2 test cases passed after 0.754 seconds.
+✔ Test "BOLL" with 15 test cases passed after 0.754 seconds.
+✔ Test "百分比以可见区首根收盘为基准" passed after 0.754 seconds.
+✔ Test "时间标签与原型全等" passed after 0.754 seconds.
+✔ Test "前导 NaN 的位置" passed after 0.755 seconds.
+✔ Test "thin 是物理判据" with 2 test cases passed after 0.754 seconds.
+✔ Test "MACD 柱是差值的两倍" passed after 0.755 seconds.
+✔ Test "成交量分档" passed after 0.754 seconds.
+✔ Test "边界对齐" with 3 test cases passed after 0.754 seconds.
+✔ Test "价格精度跟 tickSize 走" passed after 0.754 seconds.
+✔ Test "影线整像素" with 3 test cases passed after 0.754 seconds.
+✔ Test "闰年与月末" passed after 0.754 seconds.
+✔ Test "实体与影线奇偶相同" with 3 test cases passed after 0.755 seconds.
+✔ Test "实体之间至少 1 像素缝" with 3 test cases passed after 0.756 seconds.
+◇ Test case passing 1 argument scale → 1.0 to "snap 落在设备像素边界" started.
+✔ Test "MA" with 15 test cases passed after 0.757 seconds.
+◇ Test case passing 1 argument scale → 3.0 to "snap 落在设备像素边界" started.
+◇ Test case passing 1 argument scale → 2.0 to "snap 落在设备像素边界" started.
+✔ Test "fmtNum 与原型全等" passed after 0.757 seconds.
+✔ Test "非法输入兜底" passed after 0.757 seconds.
+✔ Test "标签形态" passed after 0.757 seconds.
+✔ Test "MACD" with 15 test cases passed after 0.757 seconds.
+✔ Test "fmtVol 与原型全等" passed after 0.757 seconds.
+✔ Test "时区偏移" passed after 0.757 seconds.
+✔ Test "宽容器少量数据使用完整400虚拟列边界，历史焦点不读靠右设置" passed after 0.757 seconds.
+✔ Test "无锚点时落回右缘留白" with 14 test cases passed after 0.757 seconds.
+✔ Test defaults() passed after 0.757 seconds.
+✔ Test "卡片在不同容器宽高内换边" passed after 0.757 seconds.
+✔ Test "手调副图在固定屏幕内重新分配高度并约束极限" passed after 0.757 seconds.
+✔ Test "高度联动所有pane而非横向时间映射" passed after 0.757 seconds.
+✔ Test "价格三个模式正常倒置映射和百分比首个相交列" passed after 0.757 seconds.
+✔ Test "阶梯表与原型一致" passed after 0.757 seconds.
+✔ Test "时间刻度按时区对齐" with 3 test cases passed after 0.757 seconds.
+✔ Test "根间距越界先夹" passed after 0.757 seconds.
+✔ Test "价格刻度等距" with 3 test cases passed after 0.757 seconds.
+✔ Test "刻度密度合理" passed after 0.757 seconds.
+✔ Test "timeStep 与原型全等" passed after 0.757 seconds.
+✔ Test "历史区焦点缩放，右端缩放保持最新列尾留白" passed after 0.757 seconds.
+✔ Test "14 × 14 组互切，根宽不变、右缘不动" with 14 test cases passed after 0.758 seconds.
+✔ Test "KDJ" with 15 test cases passed after 0.758 seconds.
+✔ Test "toFixed 与 JS 同规则" passed after 0.757 seconds.
+✔ Test "niceStep 与原型全等" passed after 0.758 seconds.
+✔ Test "到达极限后反向捏合立即响应" passed after 0.759 seconds.
+✔ Test "Y倍率与高度归一化，中心夹取，自动复位仅改Y" passed after 0.761 seconds.
+✔ Test "来回切十次不漂" passed after 0.761 seconds.
+✔ Test "拖回历史后再切" with 14 test cases passed after 0.761 seconds.
+✔ Test "同档内宽度稳定" passed after 0.761 seconds.
+✔ Test "中文档名" passed after 0.761 seconds.
+✔ Test "倒计时三档文案" passed after 0.761 seconds.
+✔ Test "主副比例与自定义副图高度不随风格改变" passed after 0.761 seconds.
+✔ Test "日期拆解与系统日历一致" passed after 0.761 seconds.
+✔ Test "月长确实不等" passed after 0.761 seconds.
+✔ Test "手动Y随新自动区间重算，不永久钉死旧价格" passed after 0.761 seconds.
+✔ Test "就近取整与边界" passed after 0.761 seconds.
+✔ Test "1w 等距推导与 openTime 一致" passed after 0.761 seconds.
+✔ Test "过一遍像素再回来还是同一根" passed after 0.761 seconds.
+✔ Test "偏上把蜡烛顶上去" passed after 0.761 seconds.
+✔ Test "追加与可见区间" passed after 0.761 seconds.
+✔ Test "倒计时归零与非数给 nil" passed after 0.761 seconds.
+✔ Test "实体宽单调" with 3 test cases passed after 0.761 seconds.
+✔ Test "indexAt(openTime[i]) == i" passed after 0.761 seconds.
+✔ Test "三档偏置跨度完全相同" passed after 0.769 seconds.
+✔ Test "默认值一律维持现状" passed after 0.772 seconds.
+✔ Test "所有皮肤保持相同实体宽度、影线宽度和最小高度" passed after 0.772 seconds.
+✔ Test "页面纵拖与图表手势路由互斥" passed after 0.772 seconds.
+✔ Test "只有 1M / 1y 算不等距" passed after 0.772 seconds.
+✔ Test "所有风格同尺寸；主图、时间轴、副图铺满且互不重叠" passed after 0.772 seconds.
+✔ Test "线名跟着参数走" passed after 0.772 seconds.
+✔ Test "结果取值越界给 NaN" passed after 0.772 seconds.
+✔ Test "回算根数够深" with 10 test cases passed after 0.772 seconds.
+✔ Test "10 个指标，主图三种" with 10 test cases passed after 0.772 seconds.
+✔ Test "默认参数与原型一致" passed after 0.772 seconds.
+✔ Test "默认参数与线名对得上" with 10 test cases passed after 0.772 seconds.
+✔ Test "redUp 只翻转涨跌两色" with 2 test cases passed after 0.772 seconds.
+✔ Test "0–100 的副图锁刻度" passed after 0.772 seconds.
+✔ Test "快照补到现在时跟随末根；历史视野不跳" passed after 0.772 seconds.
+✔ Test "纯未来视野和短指标数组不越界，对数倒置可往返" passed after 0.772 seconds.
+✔ Test "深色配色与原型逐一相等" passed after 0.771 seconds.
+✔ Test "每个字段与原型逐一相等" with 11 test cases passed after 0.768 seconds.
+✔ Test "11 款风格、顺序与默认值" passed after 0.760 seconds.
+✔ Test "浅色配色与原型逐一相等" passed after 0.760 seconds.
+✔ Test "mixHex" passed after 0.760 seconds.
+✔ Test "字段范围合理" with 12 test cases passed after 0.759 seconds.
+✔ Test "颜色格式合法" with 2 test cases passed after 0.758 seconds.
+✔ Test "影线粗细换算" passed after 0.311 seconds.
+✔ Test "当前参考手机：4pt 节距对应8px实体、2px影线" passed after 0.307 seconds.
+✔ Test "thin 判定" passed after 0.307 seconds.
+✔ Test "公式逐根对账" passed after 0.213 seconds.
+✔ Test "边界输入" passed after 0.210 seconds.
+✔ Test "上下影包住真实高低" passed after 0.198 seconds.
+✔ Test "热身盖过起点等于全量" passed after 0.185 seconds.
+✔ Test "日线聚周线" passed after 0.032 seconds.
+✔ Test "热身 200 根与全量等价" passed after 0.183 seconds.
+✔ Test "聚合结果可索引" passed after 0.028 seconds.
+✔ Test "闰年与月末落桶" passed after 0.028 seconds.
+✔ Test "utcMs 与系统日历一致" passed after 0.032 seconds.
+✔ Test "周期表与原型一致" passed after 0.028 seconds.
+✔ Test "分桶性质" passed after 0.028 seconds.
+✔ Test "聚不出来就给空" passed after 0.028 seconds.
+✔ Test "当年未定稿那根" passed after 0.028 seconds.
+✔ Test "存档编解码来回" passed after 0.028 seconds.
+✔ Test "撤销到底就停" passed after 0.028 seconds.
+✔ Test "不等距周期吸到真 openTime" passed after 0.028 seconds.
+✔ Test "比自己新的存档不乱读" passed after 0.028 seconds.
+✔ Test "空序列不吸也不崩" passed after 0.028 seconds.
+✔ Test "磁吸开：时间吸根、价格吸开高低收" passed after 0.028 seconds.
+✔ Test "撤销栈有上限" passed after 0.026 seconds.
+✔ Test "每品种上限 50" passed after 0.026 seconds.
+✔ Test "磁吸关：原样落点" passed after 0.026 seconds.
+✔ Test "水平线整条拖只动价格" passed after 0.026 seconds.
+✔ Test "撤销之后再动一笔，重做作废" passed after 0.026 seconds.
+✔ Test "按品种隔离" passed after 0.026 seconds.
+✔ Test "clear 清两摞" passed after 0.026 seconds.
+✔ Test "老存档缺字段也能读" passed after 0.026 seconds.
+✔ Test "对数模式下按像素平移" passed after 0.026 seconds.
+✔ Test "周线桶落在周一零点" passed after 0.029 seconds.
+✔ Test "拖端点 / 拖整条" passed after 0.026 seconds.
+✔ Suite "AICoin OverScroller参考惯性" passed after 0.777 seconds.
+✔ Test "撤销重做走一圈" passed after 0.026 seconds.
+✔ Suite "K 线序列" passed after 0.777 seconds.
+✔ Suite "画线" passed after 0.777 seconds.
+✔ Suite "指标边界" passed after 0.778 seconds.
+✔ Suite "AICoin 硬边界" passed after 0.777 seconds.
+✔ Suite "价格轴" passed after 0.778 seconds.
+✔ Suite "指标黄金值" passed after 0.778 seconds.
+✔ Suite "蜡烛整像素光栅化" passed after 0.778 seconds.
+✔ Suite "格式化" passed after 0.778 seconds.
+✔ Suite "图表底座补全" passed after 0.778 seconds.
+✔ Suite "切周期" passed after 0.779 seconds.
+✔ Suite "共用尺寸参数" passed after 0.780 seconds.
+✔ Suite "AICoin 统一手势算术" passed after 0.780 seconds.
+✔ Test "磁盘往返" passed after 0.029 seconds.
+✔ Suite "K线设置" passed after 0.780 seconds.
+✔ Suite "AICoin 共用布局" passed after 0.780 seconds.
+✔ Suite "不等距周期" passed after 0.780 seconds.
+✔ Suite "AICoin 冷启动与尺寸" passed after 0.780 seconds.
+✔ Suite "指标元信息" passed after 0.780 seconds.
+✔ Suite "风格表与配色" passed after 0.781 seconds.
+✔ Suite "平均K线" passed after 0.781 seconds.
+✔ Suite "画线编辑" passed after 0.781 seconds.
+✔ Test "月线聚年线：每桶的开高低收量" passed after 0.028 seconds.
+✔ Suite "聚合" passed after 0.790 seconds.
+✔ Test "snap 落在设备像素边界" with 3 test cases passed after 0.324 seconds.
+✔ Suite "根宽与像素对齐" passed after 0.791 seconds.
+✔ Test "niceStep 尾数只有五种" passed after 0.791 seconds.
+✔ Suite "刻度" passed after 0.794 seconds.
+✔ Test "随机改末根 / 追加新根 1000 次" with 4 test cases passed after 0.982 seconds.
+✔ Test "连续追加 500 根不漂移" passed after 1.122 seconds.
+✔ Suite "指标增量重算" passed after 1.123 seconds.
+✔ Test run with 183 tests in 25 suites passed after 1.124 seconds.
+cd KanpanData && swift test 
+[0/1] Planning build
+Building for debugging...
+[0/8] Write sources
+[3/8] Write swift-version--58304C5D6DBC2206.txt
+[5/35] Compiling KanpanCore Interval.swift
+[6/35] Compiling KanpanCore SymbolInfo.swift
+[7/35] Compiling KanpanCore Indicators.swift
+[8/35] Compiling KanpanCore Math.swift
+[9/35] Compiling KanpanCore Aggregator.swift
+[10/37] Compiling KanpanCore Ticks.swift
+[11/37] Compiling KanpanCore ViewTransition.swift
+[12/37] Compiling KanpanCore ViewWindow.swift
+[13/37] Compiling KanpanCore Bar.swift
+[14/37] Compiling KanpanCore BarSeries.swift
+[15/37] Compiling KanpanCore HeikinAshi.swift
+[16/37] Compiling KanpanCore Fling.swift
+[17/37] Compiling KanpanCore Layout.swift
+[18/37] Compiling KanpanCore PriceScale.swift
+[19/37] Compiling KanpanCore AICoinBehavior.swift
+[20/37] Compiling KanpanCore ChartOptions.swift
+[21/37] Compiling KanpanCore DrawEdit.swift
+[22/37] Compiling KanpanCore IncrementalLines.swift
+[23/37] Compiling KanpanCore IndicatorEngine.swift
+[24/37] Compiling KanpanCore IndicatorID.swift
+[25/37] Emitting module KanpanCore
+[26/37] Compiling KanpanCore CandleWidths.swift
+[27/37] Compiling KanpanCore Clamp.swift
+[28/37] Compiling KanpanCore Constants.swift
+[29/37] Compiling KanpanCore DrawStore.swift
+[30/37] Compiling KanpanCore Drawing.swift
+[31/37] Compiling KanpanCore Format.swift
+[32/37] Compiling KanpanCore CandleStyle.swift
+[33/37] Compiling KanpanCore Palette.swift
+[34/57] Compiling KanpanData OISource.swift
+[35/57] Compiling KanpanData BarCache.swift
+[36/59] Compiling KanpanData WSClient.swift
+[37/59] Compiling KanpanData WSSocket.swift
+[38/59] Compiling KanpanData RESTClient.swift
+[39/59] Compiling KanpanData RateLimiter.swift
+[40/59] Compiling KanpanData OIArchive.swift
+[41/59] Compiling KanpanData OIStore.swift
+[42/59] Compiling KanpanData Paths.swift
+[43/59] Compiling KanpanData Snapshot.swift
+[44/59] Compiling KanpanData HTTPTransport.swift
+[45/59] Compiling KanpanData Pacer.swift
+[46/59] Compiling KanpanData FeedComposer.swift
+[47/59] Compiling KanpanData MarketFeed.swift
+[48/59] Compiling KanpanData Backoff.swift
+[49/59] Compiling KanpanData DTO.swift
+[50/59] Compiling KanpanData Endpoints.swift
+[51/59] Compiling KanpanData Errors.swift
+[52/59] Emitting module KanpanData
+[53/59] Compiling KanpanData SymbolCatalog.swift
+[54/59] Compiling KanpanData Zip.swift
+[55/69] Emitting module kanpan_feed
+[56/69] Compiling kanpan_feed main.swift
+[56/69] Write Objects.LinkFileList
+[57/69] Linking kanpan-feed
+[58/69] Applying kanpan-feed
+[60/69] Compiling KanpanDataTests RESTTests.swift
+[61/69] Compiling KanpanDataTests TickFoldTests.swift
+[62/69] Compiling KanpanDataTests Fakes.swift
+[63/69] Compiling KanpanDataTests StoreTests.swift
+[64/69] Compiling KanpanDataTests OITests.swift
+[65/69] Compiling KanpanDataTests RateLimitTests.swift
+[66/69] Emitting module KanpanDataTests
+[67/69] Compiling KanpanDataTests FeedReplayTests.swift
+[67/69] Write Objects.LinkFileList
+[68/69] Linking KanpanDataPackageTests
+Build complete! (6.03s)
+Test Suite 'All tests' started at 2026-09-15 00:31:27.200.
+Test Suite 'All tests' passed at 2026-09-15 00:31:27.200.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "启动快照与内存缓存" started.
+◇ Suite "OI 归档：自写 ZIP + CSV" started.
+◇ Suite "WS 回放：合成规矩、断线补缺、静默重连" started.
+◇ Suite "逐笔折线" started.
+◇ Suite "REST 与 DTO" started.
+◇ Suite "限流与退避" started.
+◇ Suite "OI 对齐：两源合一条" started.
+◇ Test "last.kbar：≤600 根、≤60KB，读回逐字节一致" started.
+◇ Test "内存警告后只剩当前 (品种, 周期)" started.
+◇ Test "坏文件不崩，返回 nil" started.
+◇ Test "单个 key 超长会裁掉最老的" started.
+◇ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" started.
+◇ Test "不规则周期（1M）带 openTime 表，也能原样读回" started.
+◇ Test ".oi 日切片：编解码一致，一天 ≈ 3.4KB" started.
+◇ Test "真实 metrics zip：解出 288 行 5 分钟粒度" started.
+◇ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" started.
+◇ Test "日期工具：dayString / dayStart / days / 中间优先" started.
+◇ Test "存取日切片：关掉开关就不落盘" started.
+◇ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" started.
+◇ Test "读快照 + 建 BarSeries < 20ms" started.
+◇ Test "归档站有的文件本身是乱序的：解析器必须自己排" started.
+◇ Test "服务器 ping 立刻回 pong" started.
+◇ Test "挂单心跳只改价不记量，也不凭它开新的一根" started.
+◇ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" started.
+◇ Test "trade / bookTicker 报文解得出来" started.
+◇ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" started.
+◇ Test "桶按撮合时间算，同一根内的时间不会开新根" started.
+◇ Test "组合行情端点使用 market 路由，替换品种仍可复用连接" started.
+◇ Test "过期、补缺中、价格不合法、序列空着都不折" started.
+◇ Test "3000 条录制报文回放：最终序列与期望全等" started.
+◇ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" started.
+◇ Test "换一段序列，折线状态跟着清掉" started.
+◇ Test "60 秒一帧没有就主动重连" started.
+◇ Test "撞到分钟权重上限就等到窗口滚出去" started.
+◇ Test "对表：这根还没被折过就认 REST 的收盘" started.
+◇ Test "关掉「启动快照」：文件被删，之后不再写" started.
+◇ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" started.
+◇ Test "重连退避 1/2/4/…≤30s" started.
+◇ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" started.
+◇ Test "落在末根上：收盘跟着走，高低取极值，量累加" started.
+◇ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" started.
+◇ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" started.
+◇ Test "连断三次：退避 1s / 2s / 4s，日志可见" started.
+◇ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" started.
+◇ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" started.
+◇ Test "429 带 Retry-After：停够秒数再发，然后成功" started.
+◇ Test "60 秒没帧就算断了" started.
+◇ Test "连发要隔 120ms" started.
+◇ Test "30 品种 × 14 周期切一遍：沙盒里只有 last.kbar" started.
+◇ Test "罚停后成功一次，计数清零" started.
+◇ Test "429 不带 Retry-After：退避 1s、2s" started.
+◇ Test "1500 根 klines：严格递增、等距、无重复" started.
+◇ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" started.
+◇ Test "dedup 去重并排序" started.
+◇ Test "1y 由 1M 聚出来" started.
+◇ Test "重试到上限还是 429 就把错误抛出来" started.
+◇ Test "kline 行数字可以是字符串也可以是数字" started.
+◇ Test "exchangeInfo 走一遍 transport，请求路径正确" started.
+◇ Test "404 / 451 / 429 分类" started.
+◇ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" started.
+◇ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" started.
+◇ Test "点列有缺口也对得上：缺口里续用缺口前那条" started.
+◇ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" started.
+◇ Test "品种上市前：归档站 404 → 返回空而不是报错" started.
+◇ Test "对齐取「之前最近」一条，没有就是 NaN" started.
+◇ Test "近 30 天走 REST、更早走归档：两个源都被问到" started.
+◇ Test "1w / 1M / 1y：按桶取最后一条" started.
+◇ Test "空点列 / 空序列不崩" started.
+✔ Test "内存警告后只剩当前 (品种, 周期)" passed after 0.040 seconds.
+✔ Test "日期工具：dayString / dayStart / days / 中间优先" passed after 0.053 seconds.
+✔ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" passed after 0.054 seconds.
+✔ Test "坏文件不崩，返回 nil" passed after 0.056 seconds.
+✔ Test "挂单心跳只改价不记量，也不凭它开新的一根" passed after 0.056 seconds.
+✔ Test "不规则周期（1M）带 openTime 表，也能原样读回" passed after 0.056 seconds.
+✔ Test "单个 key 超长会裁掉最老的" passed after 0.067 seconds.
+✔ Test "trade / bookTicker 报文解得出来" passed after 0.067 seconds.
+✔ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" passed after 0.067 seconds.
+✔ Test "桶按撮合时间算，同一根内的时间不会开新根" passed after 0.067 seconds.
+✔ Test "过期、补缺中、价格不合法、序列空着都不折" passed after 0.067 seconds.
+✔ Test "组合行情端点使用 market 路由，替换品种仍可复用连接" passed after 0.067 seconds.
+✔ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" passed after 0.067 seconds.
+✔ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" passed after 0.067 seconds.
+✔ Test "换一段序列，折线状态跟着清掉" passed after 0.067 seconds.
+✔ Test "对表：这根还没被折过就认 REST 的收盘" passed after 0.067 seconds.
+✔ Test "真实 metrics zip：解出 288 行 5 分钟粒度" passed after 0.067 seconds.
+✔ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" passed after 0.067 seconds.
+✔ Test "重连退避 1/2/4/…≤30s" passed after 0.067 seconds.
+✔ Test "落在末根上：收盘跟着走，高低取极值，量累加" passed after 0.067 seconds.
+✔ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" passed after 0.067 seconds.
+✔ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" passed after 0.067 seconds.
+✔ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" passed after 0.067 seconds.
+✔ Test ".oi 日切片：编解码一致，一天 ≈ 3.4KB" passed after 0.068 seconds.
+✔ Test "读快照 + 建 BarSeries < 20ms" passed after 0.068 seconds.
+✔ Test "60 秒没帧就算断了" passed after 0.067 seconds.
+✔ Test "归档站有的文件本身是乱序的：解析器必须自己排" passed after 0.067 seconds.
+✔ Test "罚停后成功一次，计数清零" passed after 0.067 seconds.
+✔ Test "dedup 去重并排序" passed after 0.067 seconds.
+✔ Test "1y 由 1M 聚出来" passed after 0.067 seconds.
+✔ Test "kline 行数字可以是字符串也可以是数字" passed after 0.066 seconds.
+✔ Test "exchangeInfo 走一遍 transport，请求路径正确" passed after 0.066 seconds.
+✔ Test "404 / 451 / 429 分类" passed after 0.066 seconds.
+✔ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" passed after 0.066 seconds.
+✔ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" passed after 0.066 seconds.
+✔ Test "点列有缺口也对得上：缺口里续用缺口前那条" passed after 0.064 seconds.
+✔ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" passed after 0.064 seconds.
+✔ Test "last.kbar：≤600 根、≤60KB，读回逐字节一致" passed after 0.068 seconds.
+✔ Test "对齐取「之前最近」一条，没有就是 NaN" passed after 0.064 seconds.
+✔ Test "1w / 1M / 1y：按桶取最后一条" passed after 0.064 seconds.
+✔ Test "存取日切片：关掉开关就不落盘" passed after 0.068 seconds.
+✔ Test "空点列 / 空序列不崩" passed after 0.064 seconds.
+✔ Suite "逐笔折线" passed after 0.069 seconds.
+✔ Test "撞到分钟权重上限就等到窗口滚出去" passed after 0.069 seconds.
+✔ Test "1500 根 klines：严格递增、等距、无重复" passed after 0.067 seconds.
+✔ Suite "OI 归档：自写 ZIP + CSV" passed after 0.082 seconds.
+✔ Test "429 带 Retry-After：停够秒数再发，然后成功" passed after 0.082 seconds.
+✔ Test "429 不带 Retry-After：退避 1s、2s" passed after 0.082 seconds.
+✔ Test "重试到上限还是 429 就把错误抛出来" passed after 0.083 seconds.
+✔ Test "连发要隔 120ms" passed after 0.083 seconds.
+✔ Suite "限流与退避" passed after 0.088 seconds.
+✔ Test "服务器 ping 立刻回 pong" passed after 0.096 seconds.
+✔ Test "品种上市前：归档站 404 → 返回空而不是报错" passed after 0.093 seconds.
+✔ Test "连断三次：退避 1s / 2s / 4s，日志可见" passed after 0.109 seconds.
+✔ Test "30 品种 × 14 周期切一遍：沙盒里只有 last.kbar" passed after 0.117 seconds.
+✔ Test "近 30 天走 REST、更早走归档：两个源都被问到" passed after 0.120 seconds.
+✔ Suite "OI 对齐：两源合一条" passed after 0.125 seconds.
+✔ Test "60 秒一帧没有就主动重连" passed after 0.152 seconds.
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 0.176 seconds.
+✔ Test "关掉「启动快照」：文件被删，之后不再写" passed after 0.242 seconds.
+✔ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" passed after 0.248 seconds.
+✔ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" passed after 0.347 seconds.
+✔ Suite "REST 与 DTO" passed after 0.348 seconds.
+✔ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" passed after 0.386 seconds.
+✔ Test "3000 条录制报文回放：最终序列与期望全等" passed after 0.457 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 0.458 seconds.
+✔ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" passed after 1.036 seconds.
+✔ Suite "启动快照与内存缓存" passed after 1.036 seconds.
+✔ Test run with 61 tests in 7 suites passed after 1.036 seconds.
+cd Kanpan/Symbols && swift test 
+Building for debugging...
+[0/3] Write sources
+[1/3] Write swift-version--58304C5D6DBC2206.txt
+[3/6] Compiling KanpanCore Layout.swift
+[4/6] Compiling KanpanCore AICoinBehavior.swift
+[5/9] Emitting module KanpanCore
+[6/9] Compiling KanpanCore Clamp.swift
+[7/9] Compiling KanpanCore Constants.swift
+[8/9] Compiling KanpanCore PriceScale.swift
+[9/16] Compiling KanpanSymbols SymbolTickerFeed.swift
+[10/16] Emitting module KanpanSymbols
+[11/16] Compiling KanpanSymbols SymbolPickerModel.swift
+[12/16] Compiling KanpanSymbols SymbolFixtures.swift
+[13/16] Compiling KanpanSymbols SymbolQuery.swift
+[14/16] Compiling KanpanSymbols SymbolSections.swift
+[15/20] Compiling KanpanSymbolsTests SymbolPickerModelTests.swift
+[16/20] Compiling KanpanSymbolsTests SymbolQueryTests.swift
+[17/20] Emitting module KanpanSymbolsTests
+[18/20] Compiling KanpanSymbolsTests SymbolSectionsTests.swift
+[18/20] Write Objects.LinkFileList
+[19/20] Linking KanpanSymbolsPackageTests
+Build complete! (5.21s)
+Test Suite 'All tests' started at 2026-09-15 00:31:34.544.
+Test Suite 'All tests' passed at 2026-09-15 00:31:34.546.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.002) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "品种搜索" started.
+◇ Suite "品种页" started.
+◇ Suite "品种页分区" started.
+◇ Suite "自选与最近" started.
+◇ Test "点星星：加 → 落盘 → 分区里冒出自选组；再点一次全撤回" started.
+◇ Test "拖排序后落盘，顺序就是自选分区的顺序" started.
+◇ Test "点一行：记进最近、落盘、回调宿主（A5.9）" started.
+◇ Test "左滑删除按分区内下标删对人" started.
+◇ Test "进页订阅、出页退订，并且都打了日志（A5.7）" started.
+◇ Test "改搜索词，分区立刻跟着变" started.
+◇ Test "推一批新价，行上的数跟着跳" started.
+◇ Test "品种表可以后到（异步拉回来再灌）" started.
+◇ Test "开页就把存档读回来" started.
+◇ Test "base 前缀排在含子串的前面" started.
+◇ Test "高亮切段：命中段单独拆出来" started.
+◇ Test "高亮片段落在 symbol 的正确位置" started.
+◇ Test "数字前缀的品种也能搜" started.
+◇ Test "小写照样搜得到，命中集合与原型一致" started.
+◇ Test "四档名次各就各位" started.
+◇ Test "搜不到给空分区，页面自己去显示「没有这个品种」" started.
+◇ Test "平盘按涨算，没有行情时价显示破折号" started.
+◇ Test "空查询不过滤，原序全出" started.
+◇ Test "已在自选里的不再出现在最近，两处都露过的不再进全部" started.
+◇ Test "自选按用户自己的顺序出，不按成交额" started.
+◇ Test "价格小数位跟 pricePrecision 走" started.
+◇ Test "页头小字：N 个永续合约" started.
+◇ Test "封顶与「还有 N 个」小字，常数照原型：全部 120、搜索 160" started.
+◇ Test "行的展示字段照原型：名 · 最新价 · 涨跌幅" started.
+◇ Test "空分区不出现" started.
+◇ Test "无查询：自选 → 最近 → 全部，顺序固定" started.
+◇ Test "全部按 24h 成交额降序（A5.7）" started.
+◇ Test "搜索态只剩一组，标题带命中数" started.
+◇ Test "没有行情的品种成交额算 0，落到末尾且保持原序" started.
+◇ Test "老存档里塞了 20 条，读进来只留 10 条" started.
+◇ Test "最近最多 10 个，第 11 次打开挤掉最旧的" started.
+◇ Test "同档保持品种表原序（稳定排序）" started.
+◇ Test "重复加不会多出一条，大小写不敏感" started.
+◇ Test "容量 10，第 11 个把最旧的挤掉" started.
+◇ Test "存档坏了当空处理，不崩" started.
+◇ Test "最近按时间倒序，最新的在最前" started.
+◇ Test "拖排序：onMove 口径" started.
+◇ Test "写进去再读出来，一模一样（杀 app 重开保留）" started.
+◇ Test "加自选追加到末尾，再点一次移除" started.
+◇ Test "构造时就把老存档洗干净：大写、去空、去重、保序" started.
+◇ Test "存档键就是 kanpan.symbols.v1，落的是 JSON" started.
+◇ Test "拖排序：落在某一行上" started.
+◇ Test "再打开一次已在列表里的，提到队首而不是多一条" started.
+◇ Test "清空存档" started.
+✔ Test "小写照样搜得到，命中集合与原型一致" passed after 0.003 seconds.
+✔ Test "数字前缀的品种也能搜" passed after 0.003 seconds.
+✔ Test "四档名次各就各位" passed after 0.003 seconds.
+✔ Test "高亮切段：命中段单独拆出来" passed after 0.003 seconds.
+✔ Test "搜不到给空分区，页面自己去显示「没有这个品种」" passed after 0.003 seconds.
+✔ Test "空查询不过滤，原序全出" passed after 0.003 seconds.
+✔ Test "自选按用户自己的顺序出，不按成交额" passed after 0.003 seconds.
+✔ Test "页头小字：N 个永续合约" passed after 0.003 seconds.
+✔ Test "已在自选里的不再出现在最近，两处都露过的不再进全部" passed after 0.003 seconds.
+✔ Test "价格小数位跟 pricePrecision 走" passed after 0.003 seconds.
+✔ Test "空分区不出现" passed after 0.003 seconds.
+✔ Test "行的展示字段照原型：名 · 最新价 · 涨跌幅" passed after 0.003 seconds.
+✔ Test "无查询：自选 → 最近 → 全部，顺序固定" passed after 0.003 seconds.
+✔ Test "全部按 24h 成交额降序（A5.7）" passed after 0.003 seconds.
+✔ Test "搜索态只剩一组，标题带命中数" passed after 0.003 seconds.
+✔ Test "没有行情的品种成交额算 0，落到末尾且保持原序" passed after 0.003 seconds.
+✔ Test "老存档里塞了 20 条，读进来只留 10 条" passed after 0.003 seconds.
+✔ Test "同档保持品种表原序（稳定排序）" passed after 0.004 seconds.
+✔ Test "重复加不会多出一条，大小写不敏感" passed after 0.003 seconds.
+✔ Test "高亮片段落在 symbol 的正确位置" passed after 0.004 seconds.
+✔ Test "最近按时间倒序，最新的在最前" passed after 0.002 seconds.
+✔ Test "容量 10，第 11 个把最旧的挤掉" passed after 0.003 seconds.
+✔ Test "构造时就把老存档洗干净：大写、去空、去重、保序" passed after 0.002 seconds.
+✔ Test "拖排序：落在某一行上" passed after 0.002 seconds.
+✔ Test "加自选追加到末尾，再点一次移除" passed after 0.002 seconds.
+✔ Test "推一批新价，行上的数跟着跳" passed after 0.004 seconds.
+✔ Test "进页订阅、出页退订，并且都打了日志（A5.7）" passed after 0.004 seconds.
+✔ Test "封顶与「还有 N 个」小字，常数照原型：全部 120、搜索 160" passed after 0.004 seconds.
+✔ Test "拖排序：onMove 口径" passed after 0.003 seconds.
+✔ Test "base 前缀排在含子串的前面" passed after 0.004 seconds.
+✔ Suite "品种搜索" passed after 0.005 seconds.
+✔ Test "平盘按涨算，没有行情时价显示破折号" passed after 0.005 seconds.
+✔ Suite "品种页分区" passed after 0.005 seconds.
+✔ Test "再打开一次已在列表里的，提到队首而不是多一条" passed after 0.002 seconds.
+✔ Test "存档坏了当空处理，不崩" passed after 0.004 seconds.
+✔ Test "写进去再读出来，一模一样（杀 app 重开保留）" passed after 0.004 seconds.
+✔ Test "存档键就是 kanpan.symbols.v1，落的是 JSON" passed after 0.004 seconds.
+✔ Test "清空存档" passed after 0.004 seconds.
+✔ Suite "自选与最近" passed after 0.006 seconds.
+✔ Test "品种表可以后到（异步拉回来再灌）" passed after 0.007 seconds.
+✔ Test "拖排序后落盘，顺序就是自选分区的顺序" passed after 0.008 seconds.
+✔ Test "左滑删除按分区内下标删对人" passed after 0.008 seconds.
+✔ Test "改搜索词，分区立刻跟着变" passed after 0.008 seconds.
+✔ Test "点星星：加 → 落盘 → 分区里冒出自选组；再点一次全撤回" passed after 0.008 seconds.
+✔ Test "开页就把存档读回来" passed after 0.008 seconds.
+✔ Test "点一行：记进最近、落盘、回调宿主（A5.9）" passed after 0.008 seconds.
+✔ Test "最近最多 10 个，第 11 次打开挤掉最旧的" passed after 0.008 seconds.
+✔ Suite "品种页" passed after 0.008 seconds.
+✔ Test run with 44 tests in 4 suites passed after 0.009 seconds.
+cd Kanpan/Settings && swift test 
+Building for debugging...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+[1/3] Write sources
+[3/7] Compiling KanpanData FeedComposer.swift
+[4/7] Compiling KanpanData Endpoints.swift
+[5/7] Emitting module KanpanData
+[6/7] Compiling KanpanData MarketFeed.swift
+[7/8] Emitting module KanpanSettings
+[7/9] Write Objects.LinkFileList
+[8/9] Linking KanpanSettingsPackageTests
+Build complete! (3.46s)
+Test Suite 'All tests' started at 2026-09-15 00:31:38.972.
+Test Suite 'All tests' passed at 2026-09-15 00:31:38.974.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.002) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "默认值" started.
+◇ Suite "持久化" started.
+◇ Suite "指标草稿与图表设置" started.
+◇ Suite "风格缩略图" started.
+◇ Suite "API 域名" started.
+◇ Suite "涨跌对调" started.
+◇ Suite "周期表" started.
+◇ Test "全部新增设置落盘并容错读取" started.
+◇ Test "常用指标取消不改原值、保存连同输出和阈值生效" started.
+◇ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" started.
+◇ Suite "清缓存" started.
+◇ Test "副图高度默认「中」" started.
+◇ Suite "参数规则" started.
+◇ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" started.
+◇ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" started.
+◇ Test "没真改动就不落盘" started.
+◇ Suite "版本与合并" started.
+◇ Suite "容错" started.
+◇ Test "每个指标的默认参数直接取 Core，不另抄一份" started.
+◇ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" started.
+◇ Test "重开一个 store 读回同一份" started.
+◇ Test "JSON 里存的是 rawValue，人能读，不是交错数组" started.
+◇ Test "只动涨跌两色，其余令牌一个不变" started.
+◇ Test "开关能存下来" started.
+◇ Test "默认绿涨红跌" started.
+◇ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" started.
+◇ Test "恢复默认把键抹掉" started.
+◇ Suite "指标" started.
+◇ Test "抄来的地址能normalize" started.
+◇ Test "常用行 6 档，与原型 QUICK 相同" started.
+◇ Test "默认就是 fapi.binance.com" started.
+◇ Test "打开之后涨红跌绿，浅深都对调" started.
+◇ Test "形状不对的都要拒绝，并且不写进设置" started.
+◇ Test "十二款都能画出来，而且两两不同" started.
+◇ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" started.
+◇ Test "全新安装的一份（A6.4「首次安装即如此」）" started.
+◇ Test "改完全部 → 杀 app → 重开逐项相等" started.
+◇ Test "常用行增删：最多 8 档、至少留 1 档，且按 14 档的顺序排" started.
+◇ Test "合法域名写得进去，往返后还在" started.
+◇ Test "清完三处都没了，数字归零；沙盒里别的东西不动" started.
+◇ Test "体积文案" started.
+◇ Test "store 清完会重新量，并给一句回执" started.
+◇ Test "量出来的是那三处，分三笔报" started.
+◇ Test "目录本来就不存在 → 量出 0，清也不报错" started.
+◇ Test "数据层没接上就如实说没接上，不报假的 0" started.
+◇ Test "步进器按不出非法值" started.
+◇ Test "越界赋值被夹住；越界下标被忽略" started.
+◇ Test "0、负数、超上限都要有拒绝理由" started.
+◇ Test "没有存档 → 全新安装的默认" started.
+✔ Test "副图高度默认「中」" passed after 0.001 seconds.
+◇ Test "「图表」的三个开关：类型不对退回默认" started.
+◇ Test "不是 JSON / 是别的 JSON → 默认，不抛" started.
+◇ Test "字段类型全错 → 逐项退回默认，不是整档作废" started.
+✔ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" passed after 0.001 seconds.
+◇ Test "域名：修得好就修，修不好退回默认" started.
+◇ Test "认不出来的枚举值 → 那一项取默认" started.
+◇ Test "坏档进 store：能起来，而且不会把坏档留在盘上" started.
+◇ Test "参数越界 / 个数不对 → 夹回区间并补齐" started.
+◇ Test "常用行：去重、认不出的丢掉、超过 8 档截断、空数组不生效" started.
+◇ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" started.
+◇ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" started.
+✔ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" passed after 0.001 seconds.
+◇ Test "副图高度：认不出的档丢掉" started.
+✔ Test "每个指标的默认参数直接取 Core，不另抄一份" passed after 0.001 seconds.
+✔ Test "默认绿涨红跌" passed after 0.001 seconds.
+◇ Test "不读取旧原型存档" started.
+◇ Test "改参数只影响那一个指标" started.
+◇ Test "主图叠加随便开几个，按打开先后排" started.
+◇ Test "拖动排序" started.
+◇ Test "七个副图可同时选择，移除保留其余顺序" started.
+✔ Test "抄来的地址能normalize" passed after 0.001 seconds.
+◇ Test "副图高度三档" started.
+✔ Test "默认就是 fapi.binance.com" passed after 0.001 seconds.
+✔ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" passed after 0.001 seconds.
+✔ Test "打开之后涨红跌绿，浅深都对调" passed after 0.001 seconds.
+✔ Test "只动涨跌两色，其余令牌一个不变" passed after 0.001 seconds.
+✔ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" passed after 0.001 seconds.
+✔ Test "全新安装的一份（A6.4「首次安装即如此」）" passed after 0.002 seconds.
+✔ Test "常用指标取消不改原值、保存连同输出和阈值生效" passed after 0.001 seconds.
+✔ Test "改完全部 → 杀 app → 重开逐项相等" passed after 0.002 seconds.
+✔ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" passed after 0.002 seconds.
+◇ Test "保留五副图的选择顺序" started.
+✔ Test "开关能存下来" passed after 0.002 seconds.
+✔ Test "常用行增删：最多 8 档、至少留 1 档，且按 14 档的顺序排" passed after 0.002 seconds.
+✔ Test "常用行 6 档，与原型 QUICK 相同" passed after 0.002 seconds.
+✔ Test "合法域名写得进去，往返后还在" passed after 0.003 seconds.
+✔ Test "越界赋值被夹住；越界下标被忽略" passed after 0.001 seconds.
+✔ Test "0、负数、超上限都要有拒绝理由" passed after 0.001 seconds.
+✔ Suite "默认值" passed after 0.003 seconds.
+✔ Test "形状不对的都要拒绝，并且不写进设置" passed after 0.002 seconds.
+✔ Test "体积文案" passed after 0.002 seconds.
+✔ Test "步进器按不出非法值" passed after 0.002 seconds.
+✔ Test "数据层没接上就如实说没接上，不报假的 0" passed after 0.002 seconds.
+✔ Test "「图表」的三个开关：类型不对退回默认" passed after 0.001 seconds.
+✔ Test "域名：修得好就修，修不好退回默认" passed after 0.001 seconds.
+✔ Test "没有存档 → 全新安装的默认" passed after 0.002 seconds.
+✔ Test "认不出来的枚举值 → 那一项取默认" passed after 0.001 seconds.
+✔ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" passed after 0.001 seconds.
+✔ Test "参数越界 / 个数不对 → 夹回区间并补齐" passed after 0.001 seconds.
+✔ Suite "涨跌对调" passed after 0.003 seconds.
+✔ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" passed after 0.001 seconds.
+✔ Test "全部新增设置落盘并容错读取" passed after 0.003 seconds.
+✔ Test "拖动排序" passed after 0.001 seconds.
+✔ Test "JSON 里存的是 rawValue，人能读，不是交错数组" passed after 0.003 seconds.
+✔ Test "改参数只影响那一个指标" passed after 0.001 seconds.
+✔ Test "不是 JSON / 是别的 JSON → 默认，不抛" passed after 0.002 seconds.
+✔ Test "七个副图可同时选择，移除保留其余顺序" passed after 0.001 seconds.
+✔ Test "字段类型全错 → 逐项退回默认，不是整档作废" passed after 0.002 seconds.
+✔ Test "主图叠加随便开几个，按打开先后排" passed after 0.001 seconds.
+✔ Test "副图高度三档" passed after 0.001 seconds.
+✔ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" passed after 0.003 seconds.
+✔ Test "恢复默认把键抹掉" passed after 0.003 seconds.
+✔ Test "副图高度：认不出的档丢掉" passed after 0.001 seconds.
+✔ Test "重开一个 store 读回同一份" passed after 0.003 seconds.
+✔ Test "保留五副图的选择顺序" passed after 0.001 seconds.
+✔ Suite "周期表" passed after 0.003 seconds.
+✔ Suite "API 域名" passed after 0.003 seconds.
+✔ Suite "指标草稿与图表设置" passed after 0.003 seconds.
+✔ Test "常用行：去重、认不出的丢掉、超过 8 档截断、空数组不生效" passed after 0.001 seconds.
+✔ Suite "指标" passed after 0.003 seconds.
+✔ Test "没真改动就不落盘" passed after 0.003 seconds.
+✔ Suite "持久化" passed after 0.003 seconds.
+✔ Suite "参数规则" passed after 0.003 seconds.
+✔ Test "坏档进 store：能起来，而且不会把坏档留在盘上" passed after 0.003 seconds.
+✔ Test "目录本来就不存在 → 量出 0，清也不报错" passed after 0.003 seconds.
+✔ Test "不读取旧原型存档" passed after 0.002 seconds.
+✔ Suite "版本与合并" passed after 0.004 seconds.
+✔ Suite "容错" passed after 0.004 seconds.
+✔ Test "清完三处都没了，数字归零；沙盒里别的东西不动" passed after 0.005 seconds.
+✔ Test "量出来的是那三处，分三笔报" passed after 0.005 seconds.
+✔ Test "十二款都能画出来，而且两两不同" passed after 0.259 seconds.
+◇ Test "涨跌对调之后缩略图跟着换色（A6.7 不漏这一处）" started.
+✔ Test "涨跌对调之后缩略图跟着换色（A6.7 不漏这一处）" passed after 0.007 seconds.
+◇ Test "出一张十二款并排的图，存到 docs/acceptance/M6/" started.
+✔ Test "store 清完会重新量，并给一句回执" passed after 0.268 seconds.
+✔ Suite "清缓存" passed after 0.269 seconds.
+✔ Test "出一张十二款并排的图，存到 docs/acceptance/M6/" passed after 0.275 seconds.
+✔ Suite "风格缩略图" passed after 0.544 seconds.
+✔ Test run with 57 tests in 12 suites passed after 0.544 seconds.
+cd Kanpan/Diagnostics && swift test 
+Building for debugging...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.18s)
+Test Suite 'All tests' started at 2026-09-15 00:31:40.916.
+Test Suite 'All tests' passed at 2026-09-15 00:31:40.919.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.002) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "帧报告落盘" started.
+◇ Suite "分位数" started.
+◇ Suite "直方图" started.
+◇ Suite "诊断中枢" started.
+◇ Suite "帧统计" started.
+◇ Suite "MetricKit 摘要" started.
+◇ Suite "诊断落盘" started.
+◇ Suite "带单位字符串解析" started.
+◇ Test "存进去读出来是同一份" started.
+◇ Test "超上限删最旧的" started.
+◇ Test "标签里的空格和斜杠不会变成路径" started.
+◇ Test "整批导出：有一段没判定，整批就是 nil" started.
+◇ Test "只有一个样本时所有分位数都是它" started.
+◇ Test "空数组返回 nil" started.
+◇ Test "线性插值口径，和 numpy 默认一致" started.
+◇ Test "桶乱序进来也要按 start 排好" started.
+◇ Test "存储单位的直方图走 KB 口径" started.
+◇ Test "分位数取命中桶的中点" started.
+◇ Test "注入的假 payload 走的是和真回调同一条路" started.
+◇ Test "采集中途从 120Hz 降到 60Hz，不能把降频后每一帧都算成掉帧" started.
+◇ Test "没采到帧 / 只采到一帧：不崩，也不谎报通过" started.
+◇ Test "卡一次 3 帧：hitch 时长、丢帧数、占比都对得上" started.
+◇ Test "±20% 的帧间隔抖动不算 hitch" started.
+◇ Test "每帧 4ms：P9.3 的 P99 < 3ms 判不过" started.
+◇ Test "报告能 Codable 往返，allPassed 进得了 JSON" started.
+◇ Test "占比达标但有一次长卡顿，worstHitch 要把它顶出来" started.
+◇ Test "中位数过但长尾超：P99 判不过，中位数判过" started.
+◇ Test "排队延迟和绘制耗时分开记" started.
+◇ Test "旧键名 histogrammedTimeToFirstDraw 也认" started.
+◇ Test "四个数组全空 = 干净的一天" started.
+◇ Test "没有 terminationReason 时退回信号号码，不留空" started.
+◇ Test "摘要能 Codable 往返" started.
+◇ Test "挂起 / 磁盘 / CPU / 启动四类各归各位" started.
+◇ Test "每日指标 payload 抽出启动、挂起、磁盘三项" started.
+◇ Test "JSON 坏掉返回 nil，不是返回一个空摘要" started.
+◇ Test "字节超上限也删最旧的，但最新那条永远留着" started.
+◇ Test "导出汇总：崩溃数、最坏启动 p50、最近磁盘写入" started.
+◇ Test "原文里我们不看的字段也一个不少地留着" started.
+◇ Test "收一份 metric payload：原文和摘要都在盘上" started.
+◇ Test "JSON 坏掉照样存字节，退到 base64" started.
+◇ Test "一条记录都没有时 crashFree 是 nil，不是 true" started.
+◇ Test "条数超上限，从最旧的开始删" started.
+◇ Test "文件名按毫秒时间戳排，ls 出来就是时间序" started.
+◇ Test "时间单位逐个换算到毫秒" started.
+◇ Test "崩溃 payload 数得出条数和终止原因" started.
+◇ Test "解析不了返回 nil，绝不返回 0" started.
+◇ Test "JSON 里已经是数字时直接收下" started.
+◇ Test "写导出文件 + 占用字节 + 清空" started.
+◇ Test "存储单位是 1000 进制，和 MXUnitStorage 一致" started.
+◇ Test "满帧 120Hz、每帧 1ms：hitch 为 0，三条预算全过" started.
+◇ Test "桶边界解析不了就整桶丢掉，不是当 0" started.
+◇ Test "`2 ms` 不能被 `s` 抢先命中" started.
+◇ Test "重复 start 是幂等的" started.
+◇ Test "空直方图不产出任何数" started.
+◇ Test "没单位按默认单位算，负数和小数都收" started.
+✔ Test "空数组返回 nil" passed after 0.025 seconds.
+✔ Test "线性插值口径，和 numpy 默认一致" passed after 0.026 seconds.
+✔ Test "分位数取命中桶的中点" passed after 0.026 seconds.
+✔ Test "只有一个样本时所有分位数都是它" passed after 0.026 seconds.
+✔ Test "没采到帧 / 只采到一帧：不崩，也不谎报通过" passed after 0.026 seconds.
+✔ Test "桶乱序进来也要按 start 排好" passed after 0.026 seconds.
+✔ Test "采集中途从 120Hz 降到 60Hz，不能把降频后每一帧都算成掉帧" passed after 0.026 seconds.
+✔ Test "存储单位的直方图走 KB 口径" passed after 0.026 seconds.
+✔ Test "卡一次 3 帧：hitch 时长、丢帧数、占比都对得上" passed after 0.026 seconds.
+✔ Test "每帧 4ms：P9.3 的 P99 < 3ms 判不过" passed after 0.026 seconds.
+✔ Test "排队延迟和绘制耗时分开记" passed after 0.026 seconds.
+✔ Test "旧键名 histogrammedTimeToFirstDraw 也认" passed after 0.026 seconds.
+✔ Test "四个数组全空 = 干净的一天" passed after 0.026 seconds.
+✔ Test "没有 terminationReason 时退回信号号码，不留空" passed after 0.026 seconds.
+✔ Test "摘要能 Codable 往返" passed after 0.026 seconds.
+✔ Test "挂起 / 磁盘 / CPU / 启动四类各归各位" passed after 0.026 seconds.
+✔ Test "报告能 Codable 往返，allPassed 进得了 JSON" passed after 0.026 seconds.
+✔ Test "每日指标 payload 抽出启动、挂起、磁盘三项" passed after 0.026 seconds.
+✔ Test "JSON 坏掉返回 nil，不是返回一个空摘要" passed after 0.026 seconds.
+✔ Test "±20% 的帧间隔抖动不算 hitch" passed after 0.026 seconds.
+✔ Test "标签里的空格和斜杠不会变成路径" passed after 0.027 seconds.
+✔ Test "存进去读出来是同一份" passed after 0.027 seconds.
+✔ Test "JSON 坏掉照样存字节，退到 base64" passed after 0.026 seconds.
+✔ Test "占比达标但有一次长卡顿，worstHitch 要把它顶出来" passed after 0.027 seconds.
+✔ Test "文件名按毫秒时间戳排，ls 出来就是时间序" passed after 0.026 seconds.
+✔ Test "时间单位逐个换算到毫秒" passed after 0.026 seconds.
+✔ Test "崩溃 payload 数得出条数和终止原因" passed after 0.026 seconds.
+✔ Test "解析不了返回 nil，绝不返回 0" passed after 0.026 seconds.
+✔ Test "原文里我们不看的字段也一个不少地留着" passed after 0.027 seconds.
+✔ Test "JSON 里已经是数字时直接收下" passed after 0.026 seconds.
+✔ Test "存储单位是 1000 进制，和 MXUnitStorage 一致" passed after 0.026 seconds.
+✔ Test "满帧 120Hz、每帧 1ms：hitch 为 0，三条预算全过" passed after 0.027 seconds.
+✔ Test "中位数过但长尾超：P99 判不过，中位数判过" passed after 0.028 seconds.
+✔ Test "`2 ms` 不能被 `s` 抢先命中" passed after 0.027 seconds.
+✔ Test "桶边界解析不了就整桶丢掉，不是当 0" passed after 0.028 seconds.
+✔ Test "重复 start 是幂等的" passed after 0.028 seconds.
+✔ Test "空直方图不产出任何数" passed after 0.028 seconds.
+✔ Test "没单位按默认单位算，负数和小数都收" passed after 0.028 seconds.
+✔ Test "一条记录都没有时 crashFree 是 nil，不是 true" passed after 0.028 seconds.
+✔ Suite "分位数" passed after 0.029 seconds.
+✔ Suite "直方图" passed after 0.029 seconds.
+✔ Suite "帧统计" passed after 0.029 seconds.
+✔ Suite "MetricKit 摘要" passed after 0.029 seconds.
+✔ Suite "带单位字符串解析" passed after 0.029 seconds.
+✔ Test "超上限删最旧的" passed after 0.033 seconds.
+✔ Test "收一份 metric payload：原文和摘要都在盘上" passed after 0.033 seconds.
+✔ Test "整批导出：有一段没判定，整批就是 nil" passed after 0.034 seconds.
+✔ Suite "帧报告落盘" passed after 0.035 seconds.
+✔ Test "注入的假 payload 走的是和真回调同一条路" passed after 0.036 seconds.
+✔ Suite "诊断中枢" passed after 0.037 seconds.
+✔ Test "写导出文件 + 占用字节 + 清空" passed after 0.037 seconds.
+✔ Test "字节超上限也删最旧的，但最新那条永远留着" passed after 0.039 seconds.
+✔ Test "导出汇总：崩溃数、最坏启动 p50、最近磁盘写入" passed after 0.041 seconds.
+✔ Test "条数超上限，从最旧的开始删" passed after 0.047 seconds.
+✔ Suite "诊断落盘" passed after 0.048 seconds.
+✔ Test run with 47 tests in 8 suites passed after 0.048 seconds.

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="300.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <carbon.widget.ImageView android:tag="skin:sh_base_ic_load_empty:src" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@mipmap/sh_base_ic_load_empty" />
+    <carbon.widget.TextView android:textSize="15.0sp" android:textColor="@color/sh_base_text_tertiary" android:id="@id/tv_title" android:tag="skin:sh_base_text_tertiary:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="15.0dp" android:text="@string/ui_kline_community_sub_script_empty" />
+    <carbon.widget.TextView android:textSize="15.0sp" android:textColor="@color/sh_base_highlight_color" android:id="@id/tv_copy" android:tag="skin:ui_kline_community_empty_btn_shape:background|skin:sh_base_highlight_color:textColor" android:background="@drawable/ui_kline_community_empty_btn_shape" android:paddingTop="10.0dp" android:paddingBottom="10.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="30.0dp" android:text="@string/ui_kline_community_sub_script_btn_text" android:paddingStart="15.0dp" android:paddingEnd="15.0dp" />
+</LinearLayout>

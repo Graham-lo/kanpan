@@ -18,13 +18,14 @@ final class ChartFoundationUITests: XCTestCase {
   override func tearDown() async throws {
     let attachment = XCTAttachment(screenshot: app.screenshot())
     attachment.lifetime = .keepAlways; add(attachment)
-    if testRun?.hasSucceeded == false {
-      let tree = XCTAttachment(string: app.debugDescription + "\nChart state: " + String(describing: canvas.value)); tree.lifetime = .keepAlways; add(tree)
+    if (testRun?.failureCount ?? 0) > 0 {
+      let state = canvas.exists ? String(describing: canvas.value) : "Chart is covered by another page"
+      let tree = XCTAttachment(string: app.debugDescription + "\nChart state: " + state); tree.lifetime = .keepAlways; add(tree)
     }
     app.terminate()
   }
   func info() -> [String: Any] {
-    guard let value = canvas.value as? String, let data = value.data(using: .utf8),
+    guard canvas.exists, let value = canvas.value as? String, let data = value.data(using: .utf8),
           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
     return object
   }
@@ -170,7 +171,7 @@ final class ChartFoundationUITests: XCTestCase {
   func testFavoritesCategoriesAndNavigation() throws {
     app.buttons["bottom.favorites"].tap()
     XCTAssertTrue(app.buttons["favorites.add"].waitForExistence(timeout: 5))
-    app.buttons["favorites.newGroup"].tap()
+    favoritesAction("favorites.newGroup")
     let name = app.alerts.textFields["分类名称"]
     XCTAssertTrue(name.waitForExistence(timeout: 5)); name.typeText("半导体")
     app.alerts.buttons["保存"].tap()
@@ -201,7 +202,7 @@ final class ChartFoundationUITests: XCTestCase {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SNDKUSDT"
     app.launch()
-    XCTAssertTrue(app.buttons["favorites.close"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     let price = app.staticTexts["favorites.price.BTCUSDT"]
     let change = app.staticTexts["favorites.change.BTCUSDT"]
     XCTAssertTrue(wait(seconds: 30) { price.exists && price.label != "—" && change.exists && change.label.contains("%") })
@@ -216,7 +217,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCUIDevice.shared.press(.home)
     app.activate()
     XCTAssertTrue(app.buttons["bottom.favorites"].waitForExistence(timeout: 8))
-    XCTAssertFalse(app.buttons["favorites.close"].exists, "普通前后台切换不重置首页")
+    XCTAssertFalse(app.buttons["favorites.more"].exists, "普通前后台切换不重置首页")
   }
 
   func testChangeBasisUpdatesFavorites() throws {
@@ -242,8 +243,8 @@ final class ChartFoundationUITests: XCTestCase {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SOLUSDT"
     app.launch()
-    XCTAssertTrue(app.buttons["favorites.edit"].waitForExistence(timeout: 15))
-    app.buttons["favorites.edit"].tap()
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
+    favoritesAction("favorites.edit")
     let btc = app.buttons["favorites.open.BTCUSDT"]
     let sndk = app.buttons["favorites.open.SOLUSDT"]
     let before = btc.frame.minY
@@ -275,7 +276,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertFalse(app.buttons["favorites.open.ETHUSDT"].exists)
     XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].exists)
     XCTAssertTrue(app.buttons["favorites.open.SOLUSDT"].exists)
-    app.buttons["favorites.edit"].tap()
+    favoritesAction("favorites.edit")
     shot("自选-选择与删除")
   }
 
@@ -286,8 +287,13 @@ final class ChartFoundationUITests: XCTestCase {
     let btc = app.buttons["favorites.open.BTCUSDT"]
     let sol = app.buttons["favorites.open.SOLUSDT"]
     XCTAssertTrue(btc.waitForExistence(timeout: 15))
-    let center = btc.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-    center.press(forDuration: 0.8, thenDragTo: center.withOffset(CGVector(dx: 0, dy: sol.frame.midY - btc.frame.midY + 12)))
+    XCTAssertTrue(sol.waitForExistence(timeout: 5))
+    // Freeze screen coordinates before List rearranges its cells. Drop beyond the
+    // last row, allowing the native insertion animation to finish before release.
+    let origin = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+    let start = origin.withOffset(CGVector(dx: btc.frame.midX, dy: btc.frame.midY))
+    let end = origin.withOffset(CGVector(dx: sol.frame.midX, dy: sol.frame.maxY + 20))
+    start.press(forDuration: 1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.5)
     XCTAssertTrue(wait(seconds: 5) { btc.frame.minY > sol.frame.minY }, "普通状态长按整行应直接排序")
     shot("自选-无需编辑长按整行排序")
   }
@@ -315,7 +321,7 @@ final class ChartFoundationUITests: XCTestCase {
     app.launchEnvironment.removeValue(forKey: "KANPAN_TEST_PROFILE")
     app.launchEnvironment.removeValue(forKey: "KANPAN_TEST_FAVORITES")
     app.launch()
-    if !app.buttons["favorites.close"].waitForExistence(timeout: 3) {
+    if !app.buttons["favorites.more"].waitForExistence(timeout: 3) {
       XCTAssertTrue(app.buttons["bottom.favorites"].waitForExistence(timeout: 20))
       app.buttons["bottom.favorites"].tap()
     }
@@ -325,7 +331,7 @@ final class ChartFoundationUITests: XCTestCase {
       ("贵金属", ["XAUUSDT", "XAGUSDT"])
     ]
     for (group, symbols) in groups {
-      app.buttons["favorites.newGroup"].tap()
+      favoritesAction("favorites.newGroup")
       let name = app.alerts.textFields["分类名称"]
       XCTAssertTrue(name.waitForExistence(timeout: 5)); name.typeText(group)
       app.alerts.buttons["保存"].tap()
@@ -341,14 +347,12 @@ final class ChartFoundationUITests: XCTestCase {
         let result = app.descendants(matching: .any).matching(identifier: "symbols.row." + symbol).firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 30)); result.tap()
         XCTAssertTrue(wait(seconds: 5) { !query.exists }, "添加后应关闭选品页")
-        XCTAssertTrue(app.buttons["favorites.close"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 5))
       }
     }
     func group(_ name: String) {
       let chip = app.buttons["favorites.group." + name]
-      let tabs = app.scrollViews["favorites.groups"]
-      tabs.swipeRight()
-      for _ in 0..<4 { if chip.isHittable { break }; tabs.swipeLeft() }
+      if !chip.isHittable { app.buttons["favorites.more"].tap() }
       XCTAssertTrue(chip.isHittable); chip.tap()
     }
     group("加密")
@@ -361,7 +365,7 @@ final class ChartFoundationUITests: XCTestCase {
     let crypto = groups[0].1
     let movedOrder = crypto.sorted { app.buttons["favorites.open." + $0].frame.minY < app.buttons["favorites.open." + $1].frame.minY }
     app.terminate(); app.launch()
-    XCTAssertTrue(app.buttons["favorites.close"].waitForExistence(timeout: 20), "结束后台进程后应直接恢复自选")
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 20), "结束后台进程后应直接恢复自选")
     group("加密")
     let restoredOrder = crypto.sorted { app.buttons["favorites.open." + $0].frame.minY < app.buttons["favorites.open." + $1].frame.minY }
     XCTAssertEqual(restoredOrder, movedOrder, "自定义顺序应在冷启动后完整保留")
@@ -371,7 +375,7 @@ final class ChartFoundationUITests: XCTestCase {
     restore.press(forDuration: 0.8, thenDragTo: eth.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
     XCTAssertTrue(wait(seconds: 5) { btc.frame.minY < eth.frame.minY })
     app.terminate(); app.launch()
-    XCTAssertTrue(app.buttons["favorites.close"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 20))
     for (name, symbols) in groups {
       group(name)
       for symbol in symbols {
@@ -390,8 +394,19 @@ final class ChartFoundationUITests: XCTestCase {
     try XCTSkipUnless(ProcessInfo.processInfo.environment["KANPAN_INSTALL_USER_FAVORITES"] == "1")
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
-    XCTAssertTrue(app.buttons["favorites.close"].waitForExistence(timeout: 15))
-    app.scrollViews["favorites.groups"].swipeRight(); app.buttons["favorites.group.加密"].tap()
+    try verifyLatestEdgeAndReentry()
+  }
+
+  func testLatestEdgeAndReentryCompatibility() throws {
+    app.terminate()
+    app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
+    app.launch()
+    try verifyLatestEdgeAndReentry()
+  }
+
+  private func verifyLatestEdgeAndReentry() throws {
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
+    app.buttons["favorites.group.加密"].tap()
     app.buttons["favorites.open.BTCUSDT"].tap()
     XCTAssertTrue(canvas.waitForExistence(timeout: 15))
     XCTAssertTrue(wait { (self.info()["bars"] as? Int ?? 0) >= 256 })
@@ -415,25 +430,168 @@ final class ChartFoundationUITests: XCTestCase {
     shot("默认末根贴右-最新端回弹-历史自由拖动-重进复位")
   }
 
+  func testComfortPalettesAndLayout() throws {
+    app.terminate()
+    app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SOLUSDT,SNDKUSDT,XAUUSDT"
+    app.launch()
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
+    favoritesAction("favorites.close")
+    let original = info()
+    for (choice, background) in [("light", "#F4F6FD"), ("dark", "#161A3F"), ("paper", "#F4F0E4"), ("night", "#191712")] {
+      app.buttons["bottom.settings"].tap()
+      let strip = app.scrollViews["display.themes"]
+      XCTAssertTrue(strip.waitForExistence(timeout: 5))
+      let card = app.buttons["display.theme." + choice]
+      for _ in 0..<4 {
+        if card.exists && strip.frame.contains(card.frame) { break }
+        strip.swipeLeft()
+      }
+      XCTAssertTrue(card.isHittable)
+      card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+      XCTAssertFalse(app.buttons["display.still"].exists)
+      XCTAssertFalse(app.buttons["display.eyeBreak"].exists)
+      closePanel()
+      XCTAssertTrue(wait(seconds: 5) { self.info()["background"] as? String == background })
+      for key in ["span", "plotW", "spacing", "mainH", "height"] {
+        XCTAssertEqual(try XCTUnwrap(info()[key] as? Double), try XCTUnwrap(original[key] as? Double), accuracy: 0.001)
+      }
+      shot("配色-" + choice + "-图表")
+      app.buttons["bottom.favorites"].tap()
+      let feed = app.descendants(matching: .any).matching(identifier: "favorites.feed").firstMatch
+      XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].waitForExistence(timeout: 5))
+      XCTAssertTrue(wait(seconds: 5) {
+        (feed.value as? String)?.contains("background=" + background) == true
+      })
+      for name in ["加密", "美股", "贵金属"] {
+        let tab = app.buttons["favorites.group." + name]
+        XCTAssertTrue(tab.exists)
+        XCTAssertGreaterThanOrEqual(tab.frame.height, 44)
+        XCTAssertLessThanOrEqual(tab.frame.maxX, app.buttons["favorites.add"].frame.minX)
+      }
+      XCTAssertFalse(app.buttons["favorites.search"].exists)
+      shot("配色-" + choice + "-自选")
+      favoritesAction("favorites.close")
+    }
+  }
+
+  func testQuickFavoritesAndMarketSectors() throws {
+    app.terminate()
+    app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SNDKUSDT"
+    app.launch()
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
+    favoritesAction("favorites.close")
+    app.buttons["top.symbol"].tap()
+    for symbol in ["BTCUSDT", "ETHUSDT", "SNDKUSDT"] {
+      XCTAssertTrue(app.buttons["quickFavorites.open." + symbol].waitForExistence(timeout: 5))
+    }
+    XCTAssertFalse(app.scrollViews["favorites.groups"].exists)
+    shot("左上角-全部收藏快捷切换")
+    app.buttons["quickFavorites.search"].tap()
+    XCTAssertTrue(app.textFields["symbols.query"].waitForExistence(timeout: 5))
+    app.buttons["symbols.market"].tap()
+    let equities = app.buttons["美股"]
+    XCTAssertTrue(equities.waitForExistence(timeout: 5)); equities.tap()
+    let query = app.textFields["symbols.query"]
+    query.tap(); query.typeText("SNDK")
+    XCTAssertTrue(app.buttons["symbols.row.SNDKUSDT"].waitForExistence(timeout: 10))
+    shot("交易所-美股板块筛选")
+    app.buttons["symbols.row.SNDKUSDT"].tap()
+    XCTAssertTrue(wait(seconds: 20) { self.info()["symbol"] as? String == "SNDKUSDT" })
+  }
+
+  func testLatestQuoteDoesNotRegressAcrossIntervals() throws {
+    func quote() -> [String: String] {
+      let element = app.descendants(matching: .any).matching(identifier: "market.quote").firstMatch
+      let raw = element.value as? String ?? ""
+      return Dictionary(raw.split(separator: ";").compactMap { field in
+        let parts = field.split(separator: "=", maxSplits: 1)
+        return parts.count == 2 ? (String(parts[0]), String(parts[1])) : nil
+      }, uniquingKeysWith: { _, b in b })
+    }
+    for symbol in ["BTCUSDT", "SNDKUSDT", "ETHUSDT", "BTCUSDT"] {
+      if symbol != "BTCUSDT" || info()["symbol"] as? String != "BTCUSDT" {
+        app.buttons["top.search"].tap()
+        let query = app.textFields["symbols.query"]
+        XCTAssertTrue(query.waitForExistence(timeout: 5)); query.tap()
+        if let old = query.value as? String, !old.isEmpty { query.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count)) }
+        query.typeText(symbol)
+        let row = app.buttons["symbols.row." + symbol]
+        XCTAssertTrue(row.waitForExistence(timeout: 15)); row.tap()
+      }
+      XCTAssertTrue(wait(seconds: 20) { quote()["symbol"] == symbol && (Int64(quote()["time"] ?? "0") ?? 0) > 0 })
+      var stamp = Int64(quote()["time"] ?? "0") ?? 0
+      for interval in ["1m", "1h", "4h", "1h"] {
+        let chip = app.buttons["interval.chip." + interval]
+        let strip = app.scrollViews["interval.quick"]
+        strip.swipeRight()
+        for _ in 0..<3 { if chip.exists && strip.frame.contains(chip.frame) { break }; strip.swipeLeft() }
+        let previousSpacing = info()["spacing"] as? Double
+        chip.tap()
+        // Read during the actual transition, before the REST candle request finishes.
+        for _ in 0..<3 {
+          let value = quote()
+          XCTAssertEqual(value["symbol"], symbol)
+          let next = Int64(value["time"] ?? "0") ?? 0
+          XCTAssertGreaterThanOrEqual(next, stamp)
+          XCTAssertGreaterThan(Double(value["last"] ?? "0") ?? 0, 0)
+          stamp = next
+        }
+        XCTAssertTrue(wait(seconds: 20) { self.info()["symbol"] as? String == symbol && self.info()["interval"] as? String == interval })
+        if let previousSpacing { XCTAssertEqual(self.info()["spacing"] as? Double ?? 0, previousSpacing, accuracy: 0.02) }
+      }
+    }
+    shot("多品种多周期-报价时序")
+  }
+
+  func favoritesAction(_ identifier: String) {
+    app.buttons["favorites.more"].tap()
+    let action = app.buttons[identifier]
+    XCTAssertTrue(action.waitForExistence(timeout: 4)); action.tap()
+    if identifier == "favorites.close" {
+      XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists && self.app.buttons["bottom.settings"].isHittable })
+    }
+  }
+
+  func testFavoritesCategoryOverflow() throws {
+    app.terminate()
+    app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SNDKUSDT,XAUUSDT"
+    app.launch()
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
+    XCTAssertFalse(app.buttons["favorites.search"].exists)
+    XCTAssertFalse(app.textFields["favorites.query"].exists)
+    XCTAssertGreaterThanOrEqual(app.buttons["favorites.group.加密"].frame.height, 44)
+    for name in ["观察中的品种", "长期关注", "短线"] {
+      favoritesAction("favorites.newGroup")
+      let field = app.alerts.textFields.firstMatch
+      XCTAssertTrue(field.waitForExistence(timeout: 4)); field.typeText(name)
+      app.alerts.buttons["保存"].tap()
+      XCTAssertTrue(app.buttons["favorites.group." + name].waitForExistence(timeout: 4))
+    }
+    shot("自选-顶部分类与更多入口")
+    app.buttons["favorites.more"].tap()
+    let overflow = app.buttons["favorites.group.观察中的品种"]
+    XCTAssertTrue(overflow.waitForExistence(timeout: 4)); overflow.tap()
+    XCTAssertTrue(app.buttons["favorites.group.观察中的品种"].isHittable)
+    favoritesAction("favorites.close")
+    app.buttons["bottom.favorites"].tap()
+    XCTAssertTrue(app.buttons["favorites.group.观察中的品种"].waitForExistence(timeout: 15))
+    app.buttons["favorites.group.加密"].tap()
+    favoritesAction("favorites.edit")
+    XCTAssertTrue(app.buttons["全选"].waitForExistence(timeout: 4))
+    favoritesAction("favorites.edit")
+    app.buttons["favorites.add"].tap()
+    XCTAssertTrue(app.textFields["symbols.query"].waitForExistence(timeout: 5))
+  }
+
   func testUserSessionFreshQuotesAndReorder() throws {
     try XCTSkipUnless(ProcessInfo.processInfo.environment["KANPAN_INSTALL_USER_FAVORITES"] == "1")
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
-    XCTAssertTrue(app.buttons["favorites.close"].waitForExistence(timeout: 15))
-    app.scrollViews["favorites.groups"].swipeRight()
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     app.buttons["favorites.group.加密"].tap()
     XCTAssertFalse(app.buttons["favorites.group.全部"].exists)
     XCTAssertFalse(app.buttons["favorites.group.默认"].exists)
-    // 严格单次点击搜索中心，不能用重试掩盖实际点击区域错误。
-    app.buttons["favorites.search"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-    let query = app.textFields["favorites.query"]
-    XCTAssertTrue(query.waitForExistence(timeout: 4))
-    XCTAssertTrue(wait(seconds: 4) { query.debugDescription.contains("Keyboard Focused") }, "搜索框应自动获得输入焦点（兼容第三方键盘）")
-    query.typeText("btc")
-    XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].exists)
-    XCTAssertFalse(app.buttons["favorites.open.ETHUSDT"].exists)
-    app.buttons["favorites.search.cancel"].tap()
-    XCTAssertTrue(app.buttons["favorites.open.ETHUSDT"].waitForExistence(timeout: 4))
+    XCTAssertFalse(app.buttons["favorites.search"].exists)
     let feed = app.descendants(matching: .any).matching(identifier: "favorites.feed").firstMatch
     let price = app.staticTexts["favorites.price.BTCUSDT"]
     XCTAssertTrue(wait(seconds: 20) { price.exists && price.label != "—" })
@@ -442,12 +600,12 @@ final class ChartFoundationUITests: XCTestCase {
     print("FreshQuotes cold: " + cold)
     var prices = Set<String>()
     XCTAssertTrue(wait(seconds: 15) { prices.insert(price.label); return prices.count > 1 })
-    app.buttons["favorites.close"].tap()
+    favoritesAction("favorites.close")
     XCTAssertTrue(app.buttons["bottom.favorites"].waitForExistence(timeout: 8))
     let stayUntil = Date().addingTimeInterval(3)
     XCTAssertTrue(wait(seconds: 5) { Date() >= stayUntil })
     app.buttons["bottom.favorites"].tap()
-    XCTAssertTrue(app.buttons["favorites.close"].waitForExistence(timeout: 3))
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 3))
     XCTAssertTrue(price.exists && price.label != "—", "返回自选首帧应直接使用持续订阅的真实报价")
     XCTAssertEqual((feed.value as? String ?? "").components(separatedBy: ";").first, coldSession,
       "前台切页不能重建报价会话")
@@ -461,7 +619,7 @@ final class ChartFoundationUITests: XCTestCase {
     let until = Date().addingTimeInterval(7)
     XCTAssertTrue(wait(seconds: 10) { Date() >= until })
     app.activate()
-    XCTAssertTrue(app.buttons["favorites.close"].waitForExistence(timeout: 8))
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 8))
     XCTAssertTrue(wait(seconds: 20) { price.exists && price.label != "—" && (feed.value as? String ?? "").components(separatedBy: ";").first != coldSession })
     print("FreshQuotes resume: " + (feed.value as? String ?? ""))
     shot("正式自选-前台恢复实时报价")
@@ -471,9 +629,9 @@ final class ChartFoundationUITests: XCTestCase {
     try XCTSkipUnless(ProcessInfo.processInfo.environment["KANPAN_INSTALL_USER_FAVORITES"] == "1")
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
-    XCTAssertTrue(app.buttons["favorites.close"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     let group = app.buttons["favorites.group.加密"]
-    app.scrollViews["favorites.groups"].swipeRight(); group.tap()
+    group.tap()
     let btc = app.buttons["favorites.open.BTCUSDT"], doge = app.buttons["favorites.open.DOGEUSDT"]
     let originalY = btc.frame.minY
     let origin = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
@@ -483,8 +641,8 @@ final class ChartFoundationUITests: XCTestCase {
     let crypto = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT"]
     let moved = crypto.sorted { app.buttons["favorites.open." + $0].frame.minY < app.buttons["favorites.open." + $1].frame.minY }
     app.terminate(); app.launch()
-    XCTAssertTrue(app.buttons["favorites.close"].waitForExistence(timeout: 15))
-    app.scrollViews["favorites.groups"].swipeRight(); group.tap()
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
+    group.tap()
     let restored = crypto.sorted { app.buttons["favorites.open." + $0].frame.minY < app.buttons["favorites.open." + $1].frame.minY }
     XCTAssertEqual(restored, moved)
     let eth = app.buttons["favorites.open.ETHUSDT"]
@@ -511,8 +669,8 @@ final class ChartFoundationUITests: XCTestCase {
     try XCTSkipUnless(ProcessInfo.processInfo.environment["KANPAN_INSTALL_USER_FAVORITES"] == "1")
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
-    XCTAssertTrue(app.buttons["favorites.close"].waitForExistence(timeout: 15))
-    app.scrollViews["favorites.groups"].swipeRight(); app.buttons["favorites.group.加密"].tap()
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
+    app.buttons["favorites.group.加密"].tap()
     app.buttons["favorites.open.BTCUSDT"].tap()
     XCTAssertTrue(canvas.waitForExistence(timeout: 15))
     XCTAssertTrue(wait { (self.info()["bars"] as? Int ?? 0) >= 256 })

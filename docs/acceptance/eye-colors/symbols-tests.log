@@ -1,0 +1,169 @@
+Building for debugging...
+[0/5] Write sources
+[3/5] Write swift-version--58304C5D6DBC2206.txt
+[5/8] Compiling KanpanCore LatestQuote.swift
+[6/8] Emitting module KanpanCore
+[7/8] Compiling KanpanCore SymbolInfo.swift
+[8/17] Compiling KanpanSymbols SymbolSections.swift
+[9/17] Compiling KanpanSymbols QuoteSession.swift
+[10/17] Compiling KanpanSymbols FavoriteCategory.swift
+[11/17] Emitting module KanpanSymbols
+[12/17] Compiling KanpanSymbols SymbolPickerModel.swift
+[13/17] Compiling KanpanSymbols SymbolQuery.swift
+[14/17] Compiling KanpanSymbols SymbolTickerFeed.swift
+[15/17] Compiling KanpanSymbols SymbolFixtures.swift
+[16/24] Compiling KanpanSymbolsTests SymbolQueryTests.swift
+[17/24] Compiling KanpanSymbolsTests SymbolPickerModelTests.swift
+[18/24] Compiling KanpanSymbolsTests MarketSectorTests.swift
+[19/24] Compiling KanpanSymbolsTests FavoriteCategoryTests.swift
+[20/24] Compiling KanpanSymbolsTests QuoteSessionTests.swift
+[21/24] Compiling KanpanSymbolsTests SymbolSectionsTests.swift
+[22/24] Emitting module KanpanSymbolsTests
+[22/24] Write Objects.LinkFileList
+[23/24] Linking KanpanSymbolsPackageTests
+Build complete! (5.09s)
+Test Suite 'All tests' started at 2026-09-15 05:58:04.300.
+Test Suite 'All tests' passed at 2026-09-15 05:58:04.306.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.006) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "实时报价会话" started.
+◇ Suite "自选与最近" started.
+◇ Suite "自选分类" started.
+◇ Suite "品种页分区" started.
+◇ Suite "品种搜索" started.
+◇ Suite "收藏自动分类" started.
+◇ Test slowResponseDoesNotBecomeLivePrice() started.
+◇ Test foregroundFavoritesStaySubscribedAcrossPages() started.
+◇ Suite "Exchange sectors are independent of favorites" started.
+◇ Test lateRESTCannotOverwriteWS() started.
+◇ Test previousForegroundRequestIsRejected() started.
+◇ Test "分类内部排序不改变其他分类的顺序" started.
+◇ Suite "品种页" started.
+◇ Test "旧收藏迁入默认分类，分类和成员落盘后恢复" started.
+◇ Test "实际分类选择与成员移动持久化，不重复收藏" started.
+◇ Test "数字前缀的品种也能搜" started.
+◇ Test "同档保持品种表原序（稳定排序）" started.
+◇ Test "高亮片段落在 symbol 的正确位置" started.
+◇ Test "base 前缀排在含子串的前面" started.
+◇ Test "小写照样搜得到，命中集合与原型一致" started.
+◇ Test "没有行情的品种成交额算 0，落到末尾且保持原序" started.
+◇ Test metadataAndFallback() started.
+◇ Test "四档名次各就各位" started.
+◇ Test "页头小字：N 个永续合约" started.
+◇ Test "取消收藏清分类关系，删除分类保留品种，重名空名不增加分类" started.
+◇ Test "高亮切段：命中段单独拆出来" started.
+◇ Test "行情排序后拖动使用可见顺序，未显示的其他分类仍保留" started.
+◇ Test "空分区不出现" started.
+◇ Test "全部按 24h 成交额降序（A5.7）" started.
+◇ Test "行的展示字段照原型：名 · 最新价 · 涨跌幅" started.
+◇ Test "价格小数位跟 pricePrecision 走" started.
+◇ Test "自选按用户自己的顺序出，不按成交额" started.
+◇ Test "无查询：自选 → 最近 → 全部，顺序固定" started.
+◇ Test "封顶与「还有 N 个」小字，常数照原型：全部 120、搜索 160" started.
+◇ Test "平盘按涨算，没有行情时价显示破折号" started.
+◇ Test autoCreateReuseManualMoveAndReload() started.
+◇ Test "搜不到给空分区，页面自己去显示「没有这个品种」" started.
+◇ Test "搜索态只剩一组，标题带命中数" started.
+◇ Test "加自选追加到末尾，再点一次移除" started.
+◇ Test "存档坏了当空处理，不崩" started.
+◇ Test "已在自选里的不再出现在最近，两处都露过的不再进全部" started.
+◇ Test "实时报价先到但统计缺失时仍保持有效排序，不伪造统计值" started.
+◇ Test combinedFiltersNeverMoveFolders() started.
+◇ Test "容量 10，第 11 个把最旧的挤掉" started.
+◇ Test "存档键就是 kanpan.symbols.v1，落的是 JSON" started.
+◇ Test "老存档里塞了 20 条，读进来只留 10 条" started.
+◇ Test "重复加不会多出一条，大小写不敏感" started.
+◇ Test "空查询不过滤，原序全出" started.
+◇ Test "拖排序：落在某一行上" started.
+◇ Test "写进去再读出来，一模一样（杀 app 重开保留）" started.
+◇ Test "清空存档" started.
+◇ Test "拖排序：onMove 口径" started.
+◇ Test "构造时就把老存档洗干净：大写、去空、去重、保序" started.
+◇ Test "再打开一次已在列表里的，提到队首而不是多一条" started.
+◇ Test "最近按时间倒序，最新的在最前" started.
+✔ Test lateRESTCannotOverwriteWS() passed after 0.001 seconds.
+✔ Test slowResponseDoesNotBecomeLivePrice() passed after 0.001 seconds.
+◇ Test "左滑删除按分区内下标删对人" started.
+◇ Test "推一批新价，行上的数跟着跳" started.
+◇ Test "重新连接清除报价而不改自选存档" started.
+◇ Test "开页就把存档读回来" started.
+◇ Test "改搜索词，分区立刻跟着变" started.
+◇ Test "品种表可以后到（异步拉回来再灌）" started.
+◇ Test "离开订阅范围只移除旧报价，收藏与仍订阅报价保持" started.
+◇ Test "报价变化只刷新数字，不在手指下自动重排" started.
+◇ Test "进页订阅、出页退订，并且都打了日志（A5.7）" started.
+◇ Test "隐藏搜索表不随报价重建，打开时追上最新" started.
+◇ Test "最近最多 10 个，第 11 次打开挤掉最旧的" started.
+✔ Test previousForegroundRequestIsRejected() passed after 0.001 seconds.
+✔ Test "高亮片段落在 symbol 的正确位置" passed after 0.001 seconds.
+◇ Test "点一行：记进最近、落盘、回调宿主（A5.9）" started.
+◇ Test "拖排序后落盘，顺序就是自选分区的顺序" started.
+✔ Test "页头小字：N 个永续合约" passed after 0.001 seconds.
+✔ Test "取消收藏清分类关系，删除分类保留品种，重名空名不增加分类" passed after 0.001 seconds.
+✔ Test "高亮切段：命中段单独拆出来" passed after 0.001 seconds.
+✔ Test "小写照样搜得到，命中集合与原型一致" passed after 0.001 seconds.
+◇ Test "点星星：加 → 落盘 → 分区里冒出自选组；再点一次全撤回" started.
+✔ Test metadataAndFallback() passed after 0.001 seconds.
+✔ Test "数字前缀的品种也能搜" passed after 0.001 seconds.
+✔ Test "四档名次各就各位" passed after 0.001 seconds.
+✔ Test "base 前缀排在含子串的前面" passed after 0.001 seconds.
+✔ Test "自选按用户自己的顺序出，不按成交额" passed after 0.001 seconds.
+✔ Test "同档保持品种表原序（稳定排序）" passed after 0.001 seconds.
+✔ Test "无查询：自选 → 最近 → 全部，顺序固定" passed after 0.001 seconds.
+✔ Test "全部按 24h 成交额降序（A5.7）" passed after 0.001 seconds.
+✔ Test "价格小数位跟 pricePrecision 走" passed after 0.001 seconds.
+✔ Test foregroundFavoritesStaySubscribedAcrossPages() passed after 0.002 seconds.
+✔ Test "行的展示字段照原型：名 · 最新价 · 涨跌幅" passed after 0.001 seconds.
+✔ Test "平盘按涨算，没有行情时价显示破折号" passed after 0.001 seconds.
+✔ Test "加自选追加到末尾，再点一次移除" passed after 0.001 seconds.
+✔ Test "搜索态只剩一组，标题带命中数" passed after 0.001 seconds.
+✔ Test "搜不到给空分区，页面自己去显示「没有这个品种」" passed after 0.001 seconds.
+✔ Test "没有行情的品种成交额算 0，落到末尾且保持原序" passed after 0.001 seconds.
+✔ Test "行情排序后拖动使用可见顺序，未显示的其他分类仍保留" passed after 0.001 seconds.
+✔ Test "实时报价先到但统计缺失时仍保持有效排序，不伪造统计值" passed after 0.001 seconds.
+✔ Test "已在自选里的不再出现在最近，两处都露过的不再进全部" passed after 0.001 seconds.
+✔ Test "空分区不出现" passed after 0.001 seconds.
+✔ Test "重复加不会多出一条，大小写不敏感" passed after 0.001 seconds.
+✔ Test "老存档里塞了 20 条，读进来只留 10 条" passed after 0.001 seconds.
+✔ Test "拖排序：onMove 口径" passed after 0.001 seconds.
+✔ Test "分类内部排序不改变其他分类的顺序" passed after 0.002 seconds.
+✔ Test "空查询不过滤，原序全出" passed after 0.001 seconds.
+✔ Test "构造时就把老存档洗干净：大写、去空、去重、保序" passed after 0.001 seconds.
+✔ Test "拖排序：落在某一行上" passed after 0.001 seconds.
+✔ Test "再打开一次已在列表里的，提到队首而不是多一条" passed after 0.001 seconds.
+✔ Test "实际分类选择与成员移动持久化，不重复收藏" passed after 0.002 seconds.
+✔ Suite "实时报价会话" passed after 0.002 seconds.
+✔ Test "最近按时间倒序，最新的在最前" passed after 0.001 seconds.
+✔ Test "旧收藏迁入默认分类，分类和成员落盘后恢复" passed after 0.002 seconds.
+✔ Test autoCreateReuseManualMoveAndReload() passed after 0.001 seconds.
+✔ Suite "品种搜索" passed after 0.002 seconds.
+✔ Suite "收藏自动分类" passed after 0.002 seconds.
+✔ Suite "自选分类" passed after 0.002 seconds.
+✔ Test "存档坏了当空处理，不崩" passed after 0.002 seconds.
+✔ Test "容量 10，第 11 个把最旧的挤掉" passed after 0.002 seconds.
+✔ Test "存档键就是 kanpan.symbols.v1，落的是 JSON" passed after 0.002 seconds.
+✔ Test "清空存档" passed after 0.001 seconds.
+✔ Test "写进去再读出来，一模一样（杀 app 重开保留）" passed after 0.002 seconds.
+✔ Suite "自选与最近" passed after 0.002 seconds.
+✔ Test "推一批新价，行上的数跟着跳" passed after 0.001 seconds.
+✔ Test "进页订阅、出页退订，并且都打了日志（A5.7）" passed after 0.001 seconds.
+✔ Test "封顶与「还有 N 个」小字，常数照原型：全部 120、搜索 160" passed after 0.002 seconds.
+✔ Suite "品种页分区" passed after 0.003 seconds.
+✔ Test "品种表可以后到（异步拉回来再灌）" passed after 0.002 seconds.
+✔ Test "开页就把存档读回来" passed after 0.004 seconds.
+✔ Test "左滑删除按分区内下标删对人" passed after 0.004 seconds.
+✔ Test combinedFiltersNeverMoveFolders() passed after 0.005 seconds.
+✔ Test "隐藏搜索表不随报价重建，打开时追上最新" passed after 0.004 seconds.
+✔ Test "离开订阅范围只移除旧报价，收藏与仍订阅报价保持" passed after 0.004 seconds.
+✔ Test "点星星：加 → 落盘 → 分区里冒出自选组；再点一次全撤回" passed after 0.004 seconds.
+✔ Test "点一行：记进最近、落盘、回调宿主（A5.9）" passed after 0.004 seconds.
+✔ Test "最近最多 10 个，第 11 次打开挤掉最旧的" passed after 0.004 seconds.
+✔ Test "改搜索词，分区立刻跟着变" passed after 0.004 seconds.
+✔ Test "重新连接清除报价而不改自选存档" passed after 0.004 seconds.
+✔ Test "报价变化只刷新数字，不在手指下自动重排" passed after 0.004 seconds.
+✔ Test "拖排序后落盘，顺序就是自选分区的顺序" passed after 0.004 seconds.
+✔ Suite "Exchange sectors are independent of favorites" passed after 0.006 seconds.
+✔ Suite "品种页" passed after 0.006 seconds.
+✔ Test run with 61 tests in 8 suites passed after 0.006 seconds.

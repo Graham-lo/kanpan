@@ -220,7 +220,7 @@ func cmdLive(_ symbol: String, _ iv: Interval, minutes: Double) async throws {
 
   let pump = Task {
     for await ev in events {
-      switch ev {
+      switch ev.event {
       case .series(let s):
         await tally.paint(-t0.timeIntervalSinceNow * 1000)
         say("序列 \(s.count) 根  \(s.firstTime) … \(s.lastTime)  末根 close=\(s.close.last ?? .nan)")
@@ -231,11 +231,11 @@ func cmdLive(_ symbol: String, _ iv: Interval, minutes: Double) async throws {
       case .ticker(let t):
         let n = await tally.bumpTick()
         if n % 10 == 1 { say("行情 last=\(t.last) 涨跌=\(t.changePercent)% 24h高=\(t.high) 低=\(t.low)") }
-      case .price(let last, let mark):
-        let n = await tally.bumpPrice()
-        if n % 50 == 1 {
-          say("价 last=\(last.map { "\($0)" } ?? "-") 标记=\(mark.map { "\($0)" } ?? "-")（第 \(n) 次）")
-        }
+      case .tradeQuote:
+        break
+      case .markPrice(_, let price, _):
+        _ = await tally.bumpPrice()
+        say("标记价 \(price)")
       case .oi(let p): say("OI \(p.count) 条")
       case .status(let s): say("状态 → \(s.rawValue)")
       }

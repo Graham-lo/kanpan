@@ -1,0 +1,12 @@
+{
+  "model": "iPhone 16 Plus",
+  "runtime": "iOS 26.5",
+  "test": "ChartFoundationUITests/testFavoritesDirectRowReorder",
+  "result": "15 passed / 1 failed",
+  "observed": "Long press reordered BTC from first to second, not below SOL; screenshot has ETH, BTC, SOL. Native reorder was active.",
+  "testCorrection": "Freeze window coordinates before dragging; target after final row; press 1 second, slow drag, hold 0.5 seconds. Preserve BTC below SOL assertion.",
+  "productChanged": false,
+  "evidence": "screenshots/iphone16plus-original-drag-drop.png",
+  "originalResult": "iPhone-16-Plus-release-final-summary.json",
+  "followup": "release-v2-runs.jsonl"
+}

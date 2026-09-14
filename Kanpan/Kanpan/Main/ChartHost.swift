@@ -202,28 +202,28 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   func applyPending() {
     guard pending != .keep, var s = chart.state, s.series.count > 0, let L = chart.chartLayout
     else { return }
-    let plotW = L.plotW
-    let next: ViewWindow
-    switch pending {
-    case .keep:
-      return
-    case .reset:
-      // 「拖动位置」（`ChartOptions.anchor`）只有复位入口读它。图自己那两个入口
-      // （双击复位、回到最新）已经在读了，这里是第三个——换品种 / 第一次拿到数据。
-      // 漏了这条的话，选了「偏左」的人开 app 看到的第一屏仍然是靠右的。
-      next = ViewMath.reset(
-        series: s.series, plotW: plotW, spacing: AICoinBehavior.initialSpacing, anchor: s.options.anchor)
-    case .switchInterval(let spacing):
-      next = ViewMath.switchInterval(
-        to: s.series, plotW: plotW, spacing: spacing, anchorRight: nil)
-    case .resize(let spacing):
-      next = ViewMath.resized(
-        s.view, series: s.series, plotW: plotW, spacing: spacing, anchor: s.options.anchor)
-    }
+    let transition = pending
     pending = .keep
-    s.view = next
-    chart.state = s
-    chart.onViewChanged?(next)
+    var plotW = L.plotW
+    // The new visible range can change formatted axis label width. Resolve the
+    // viewport against that final width, keeping the requested candle spacing.
+    for _ in 0..<4 {
+      switch transition {
+      case .keep: return
+      case .reset:
+        s.view = ViewMath.reset(series: s.series, plotW: plotW,
+          spacing: AICoinBehavior.initialSpacing, anchor: s.options.anchor)
+      case .switchInterval(let spacing):
+        s.view = ViewMath.switchInterval(to: s.series, plotW: plotW, spacing: spacing, anchorRight: nil)
+      case .resize(let spacing):
+        s.view = ViewMath.resized(s.view, series: s.series, plotW: plotW, spacing: spacing, anchor: s.options.anchor)
+      }
+      chart.state = s
+      let resolved = chart.chartLayout?.plotW ?? plotW
+      if abs(resolved - plotW) < 0.001 { break }
+      plotW = resolved
+    }
+    chart.onViewChanged?(s.view)
   }
 }
 
@@ -255,6 +255,7 @@ final class ChartProxy {
 /// 混着摆就会出现两套坐标系，转屏和改副图高度时必然对不齐。
 struct ChartHost: UIViewRepresentable {
   var portrait = true
+  var renderingActive: Bool = true
   var panelOpen = false
   var state: ChartState?
   var proxy: ChartProxy?
@@ -273,6 +274,8 @@ struct ChartHost: UIViewRepresentable {
   func makeUIView(context: Context) -> ChartBox {
     let box = ChartBox(frame: .zero)
     proxy?.box = box
+    box.chart.isHidden = !renderingActive
+    guard renderingActive else { return box }
     box.portrait = portrait
     wire(box)
     var incoming = state
@@ -291,6 +294,8 @@ struct ChartHost: UIViewRepresentable {
 
   func updateUIView(_ box: ChartBox, context: Context) {
     proxy?.box = box
+    box.chart.isHidden = !renderingActive
+    guard renderingActive else { return }
     box.portrait = portrait
     wire(box)
     guard var s = state else {
@@ -298,7 +303,7 @@ struct ChartHost: UIViewRepresentable {
       box.pending = .reset
       return
     }
-    if let old = box.chart.state, old.series.count > 0 {
+    if let old = box.chart.state ?? proxy?.savedState, old.series.count > 0 {
       // 视野归图自己管：外面传下来的那份是「上一次图告诉我的」，原样塞回去会把
       // 手势正在做的位移覆盖掉。只在品种/周期/风格真换了的时候才重算。
       s.view = old.view
@@ -321,7 +326,7 @@ struct ChartHost: UIViewRepresentable {
         box.pending = .reset
       } else if old.series.interval != s.series.interval {
         s.crosshair = nil
-        let plotW = box.chart.chartLayout?.plotW ?? Double(box.bounds.width)
+        let plotW = box.chart.chartLayout?.plotW ?? proxy?.savedPlotWidth ?? Double(box.bounds.width)
         box.pending = .switchInterval(
           spacing: old.view.barSpacing(step: old.series.step, plotW: plotW))
       } else {
@@ -335,7 +340,13 @@ struct ChartHost: UIViewRepresentable {
     } else {
       box.pending = .reset
     }
+    let previousWidth = box.chart.chartLayout?.plotW
+    let previousSpacing = box.chart.state.flatMap { old in previousWidth.map { old.view.barSpacing(step: old.series.step, plotW: $0) } }
     box.chart.state = s
+    if box.pending == .keep, let previousWidth, let previousSpacing,
+       let width = box.chart.chartLayout?.plotW, width != previousWidth {
+      box.pending = .resize(spacing: previousSpacing)
+    }
     box.setNeedsLayout()
     box.applyPending()
     // 放在灌完 state 之后：`focus` 会往图里塞这个品种的线，早一步会被上面那行盖掉。

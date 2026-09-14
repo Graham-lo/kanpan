@@ -1,0 +1,4 @@
+{
+  "reason": "Stopped after exposing too-small transparent button hit bounds and teardown reading a covered chart. Row drag itself completed; do not count interrupted run as passed.",
+  "passed": false
+}

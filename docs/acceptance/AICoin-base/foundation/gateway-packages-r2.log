@@ -1,0 +1,40 @@
+cd KanpanData && swift test 
+[0/1] Planning build
+Building for debugging...
+[0/7] Write sources
+[2/7] Write swift-version--58304C5D6DBC2206.txt
+[4/12] Compiling KanpanData OISource.swift
+[5/12] Emitting module KanpanData
+[6/12] Compiling KanpanData MarketSocketRouter.swift
+[7/12] Compiling KanpanData WSClient.swift
+[8/12] Compiling KanpanData MarketFeed.swift
+[9/19] Compiling kanpan_feed main.swift
+[10/19] Emitting module kanpan_feed
+[10/19] Write Objects.LinkFileList
+[12/19] Compiling KanpanDataTests OITests.swift
+[13/19] Compiling KanpanDataTests MarketSocketRouterTests.swift
+macro expansion #expect:1:48: error: actor-isolated property 'closed' can not be referenced from a nonisolated autoclosure
+`- /Users/mdd/zhk/kanpan/KanpanData/Tests/KanpanDataTests/MarketSocketRouterTests.swift:71:46: note: expanded code originates here
+ 7 |   let delay: Double
+ 8 |   let fails: Bool
+ 9 |   var closed = false
+   |       `- note: property declared here
+10 |   var acknowledgement = true
+11 |   init(delay: Double, fails: Bool = false) { self.delay = delay; self.fails = fails }
+   :
+69 |       Issue.record("timeout expected")
+70 |     } catch {}
+71 |     #expect(await local.closed && vps.closed)
+   |     `- note: in expansion of macro 'expect' here
+   +--- macro expansion #expect ----------------------------------------
+   |1 | Testing.__checkValue(await local.closed && vps.closed,expression: .__fromSyntaxNode("await local.closed && vps.closed"),comments: [],isRequired: false,sourceLocation: Testing.SourceLocation.__here()).__expected()
+   |  |                                                `- error: actor-isolated property 'closed' can not be referenced from a nonisolated autoclosure
+   +--------------------------------------------------------------------
+72 |   }
+73 | 
+[13/19] Linking kanpan-feed
+[14/19] Applying kanpan-feed
+[16/19] Emitting module KanpanDataTests
+[17/19] Compiling KanpanDataTests FeedReplayTests.swift
+error: fatalError
+make: *** [data-test] Error 1

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <androidx.recyclerview.widget.RecyclerView android:id="@id/rv_indicator_type" android:layout_width="0.0dp" android:layout_height="0.0dp" app:layout_constrainedHeight="true" app:layout_constraintBottom_toTopOf="@id/divider_bottom" app:layout_constraintEnd_toStartOf="@id/guideline_vertical" app:layout_constraintHorizontal_weight="1.0" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_weight="1.0" />
+    <View android:id="@id/divider_middle" android:tag="skin:sh_base_divider_fill_color:background" android:background="@color/sh_base_divider_fill_color" android:layout_width="1.0px" android:layout_height="0.0dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toStartOf="@id/guideline_vertical" app:layout_constraintStart_toEndOf="@id/rv_indicator_type" app:layout_constraintTop_toTopOf="parent" />
+    <androidx.constraintlayout.widget.Guideline android:orientation="vertical" android:id="@id/guideline_vertical" android:layout_width="wrap_content" android:layout_height="wrap_content" app:layout_constraintGuide_percent="0.26" />
+    <app.aicoin.ui.base.widget.NoScrollViewPager android:id="@id/vp_indicator_detail" android:layout_width="0.0dp" android:layout_height="0.0dp" app:layout_constrainedHeight="true" app:layout_constraintBottom_toTopOf="@id/divider_bottom" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintHorizontal_weight="1.0" app:layout_constraintStart_toEndOf="@id/divider_middle" app:layout_constraintTop_toTopOf="parent" app:layout_constraintVertical_weight="1.0" />
+    <View android:id="@id/divider_bottom" android:tag="skin:sh_base_divider_fill_color:background" android:background="@color/sh_base_divider_fill_color" android:layout_width="match_parent" android:layout_height="1.0px" app:layout_constraintBottom_toTopOf="@id/layout_bottom" app:layout_constraintStart_toStartOf="parent" />
+    <LinearLayout android:gravity="center" android:orientation="horizontal" android:id="@id/layout_bottom" android:layout_width="match_parent" android:layout_height="@dimen/ui_kline_menu_period_setting_button_height" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent">
+        <LinearLayout android:orientation="horizontal" android:id="@id/ll_indic_sync" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0" android:layout_marginStart="10.0dp">
+            <LinearLayout android:gravity="center" android:layout_gravity="center" android:orientation="vertical" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                <lib.aicoin.ui.LazyCheckBox android:id="@id/checkbox_indic_sync" android:focusable="true" android:clickable="true" android:layout_width="wrap_content" android:layout_height="wrap_content" android:scaleX="0.7" android:scaleY="0.7" style="@style/sh_base.SwitchButton" />
+                <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                    <TextView android:textSize="12.0sp" android:textColor="@color/sh_base_text_tertiary" android:layout_gravity="center" android:id="@id/tv_indic_sync" android:tag="skin:sh_base_text_tertiary:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_indic_sync_with_computer" />
+                    <carbon.widget.ImageView android:layout_gravity="center" android:id="@id/iv_question_tip" android:layout_width="13.0dp" android:layout_height="13.0dp" android:src="@mipmap/ui_kline_spread_icon_question_night" android:layout_marginStart="2.0dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+        <LinearLayout android:gravity="center" android:layout_gravity="center" android:orientation="vertical" android:id="@id/ll_indic_edit" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0">
+            <ImageView android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@mipmap/ui_kline_main_menu_edit_child_icon" />
+            <TextView android:textSize="12.0sp" android:textColor="@color/sh_base_text_tertiary" android:gravity="center" android:id="@id/btn_indicator_menu_edit" android:tag="skin:sh_base_text_tertiary:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_indicator_manager_editing" />
+        </LinearLayout>
+        <LinearLayout android:gravity="center" android:layout_gravity="center" android:orientation="vertical" android:id="@id/ll_indic_setting" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0">
+            <ImageView android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@mipmap/ui_kline_main_menu_setting_child_icon" />
+            <TextView android:textSize="12.0sp" android:textColor="@color/sh_base_text_tertiary" android:gravity="center" android:id="@id/btn_indicator_menu_setting" android:tag="skin:sh_base_text_tertiary:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_indicator_manager_setting" />
+        </LinearLayout>
+        <LinearLayout android:gravity="center" android:layout_gravity="center" android:orientation="vertical" android:id="@id/btn_script_alert" android:tag="skin:sh_base_highlight_color:background" android:background="@color/sh_base_highlight_color" android:layout_width="0.0dp" android:layout_height="@dimen/ui_kline_menu_period_setting_button_height" android:layout_weight="1.0">
+            <ImageView android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@mipmap/ui_kline_indic_setting_add_alert" />
+            <TextView android:textSize="12.0sp" android:textColor="@color/sh_base_white_color" android:gravity="center" android:tag="skin:sh_base_white_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_add_alert_msg" />
+        </LinearLayout>
+    </LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

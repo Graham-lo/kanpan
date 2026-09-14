@@ -1,0 +1,12 @@
+{
+  "core": 204,
+  "data": 82,
+  "symbols": 61,
+  "settingsStyle": 61,
+  "chart": 71,
+  "backend": 19,
+  "strict": "passed",
+  "simulatorBuild": "passed arm64/x86_64",
+  "note": "Core/Data/strict, Symbols, Settings/Style, Chart and backend checks are recorded in adjacent logs. Final data sort guard covered by 61 Symbols tests; final app has targeted category/search UI regression. Physical validation deferred by user.",
+  "releaseDeviceBuild": "passed, unsigned generic iOS Release; no device run"
+}

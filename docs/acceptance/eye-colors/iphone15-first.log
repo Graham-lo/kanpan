@@ -1,0 +1,153 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=3749DE35-5582-4066-8C14-9767B5559B70" -derivedDataPath DerivedData-codex-eye -parallel-testing-enabled NO -resultBundlePath docs/acceptance/eye-colors/iphone15-first.xcresult "-only-testing:KanpanUITests/ChartFoundationUITests/testComfortPalettesAndLayout"
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/eye-colors/iphone15-first.xcresult
+
+2026-09-15 04:39:22.736100+0800 KanpanUITests-Runner[56101:32652233] [Default] Running tests...
+2026-09-15 04:39:22.765654+0800 KanpanUITests-Runner[56101:32652469] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+2026-09-15 04:39:22.806944+0800 KanpanUITests-Runner[56101:32652469] [General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+objc[56101]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x1077b4310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x106468398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-15 04:39:26.515.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-15 04:39:26.517.
+Test Suite 'ChartFoundationUITests' started at 2026-09-15 04:39:26.517.
+Test Case '-[KanpanUITests.ChartFoundationUITests testComfortPalettesAndLayout]' started.
+    t =     0.00s Start Test at 2026-09-15 04:39:26.519
+    t =     0.39s Set Up
+    t =     0.39s     Setting device orientation to Portrait
+    t =     0.39s         Device orientation changed to Portrait
+    t =     0.42s         Wait for com.apple.springboard to idle
+    t =     0.49s     Open com.mdd.kanpan
+    t =     0.49s         Launch com.mdd.kanpan
+2026-09-15 04:39:27.551 xcodebuild[55801:32649122] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 04:39:27.551 xcodebuild[55801:32649122] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     3.09s             Setting up automation session
+    t =     3.50s             Wait for com.mdd.kanpan to idle
+    t =     4.86s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =     6.15s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     6.15s             Checking existence of `"chart.canvas" Other`
+    t =     7.36s     Find the "chart.canvas" Other
+    t =     7.42s Terminate com.mdd.kanpan:56138
+    t =     8.45s Open com.mdd.kanpan
+    t =     8.45s     Launch com.mdd.kanpan
+2026-09-15 04:39:34.966 xcodebuild[55801:32649122] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 04:39:34.966 xcodebuild[55801:32649122] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     8.67s         Setting up automation session
+    t =     9.39s         Wait for com.mdd.kanpan to idle
+    t =    10.99s Waiting 15.0s for "favorites.close" Button to exist
+    t =    12.06s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.close" Button`
+    t =    12.06s         Checking existence of `"favorites.close" Button`
+    t =    12.14s Tap "favorites.close" Button
+    t =    12.14s     Wait for com.mdd.kanpan to idle
+    t =    12.15s     Find the "favorites.close" Button
+    t =    12.18s     Check for interrupting elements affecting "favorites.close" Button
+    t =    12.23s     Synthesize event
+    t =    12.64s     Wait for com.mdd.kanpan to idle
+    t =    13.42s Find the "chart.canvas" Other
+    t =    13.45s Tap "bottom.settings" Button
+    t =    13.45s     Wait for com.mdd.kanpan to idle
+    t =    13.45s     Find the "bottom.settings" Button
+    t =    13.46s     Check for interrupting elements affecting "bottom.settings" Button
+    t =    13.48s     Synthesize event
+    t =    13.76s     Wait for com.mdd.kanpan to idle
+    t =    13.98s Waiting 5.0s for "display.themes" ScrollView to exist
+    t =    15.06s     Checking `Expect predicate `existsNoRetry == 1` for object "display.themes" ScrollView`
+    t =    15.06s         Checking existence of `"display.themes" ScrollView`
+    t =    15.18s Checking existence of `"display.theme.light" Button`
+    t =    15.22s Find the "display.themes" ScrollView
+    t =    15.26s Find the "display.theme.light" Button
+    t =    15.31s Find the "display.theme.light" Button
+    t =    15.35s Tap "display.theme.light" Button[0.50, 0.50]
+    t =    15.35s     Wait for com.mdd.kanpan to idle
+    t =    15.36s     Find the "display.theme.light" Button
+    t =    15.39s     Check for interrupting elements affecting "display.theme.light" Button
+    t =    15.42s     Synthesize event
+    t =    15.42s         Find the "display.theme.light" Button
+    t =    15.46s         Find the "display.theme.light" Button
+    t =    15.50s         Find the "display.theme.light" Button
+    t =    15.81s     Wait for com.mdd.kanpan to idle
+    t =    16.60s Checking existence of `"display.still" Button`
+    t =    16.64s Checking existence of `"display.eyeBreak" Button`
+    t =    16.67s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    17.75s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    17.75s         Checking existence of `"panel.header" StaticText`
+    t =    17.79s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    17.79s     Wait for com.mdd.kanpan to idle
+    t =    17.79s     Find the "panel.header" StaticText
+    t =    17.83s     Check for interrupting elements affecting "panel.header" StaticText
+    t =    17.86s     Synthesize event
+    t =    17.86s         Find the "panel.header" StaticText
+    t =    17.90s         Find the "panel.header" StaticText
+    t =    17.93s         Find the Window (First Match)
+    t =    17.94s         Find the Window at {{0.0, 0.0}, {393.0, 852.0}}
+    t =    17.95s         Find the "panel.header" StaticText
+    t =    19.15s     Wait for com.mdd.kanpan to idle
+    t =    20.90s Checking existence of `"panel.header" StaticText`
+    t =    22.00s Find the "chart.canvas" Other
+    t =    22.02s Find the "chart.canvas" Other
+    t =    22.03s Find the "chart.canvas" Other
+    t =    22.05s Find the "chart.canvas" Other
+    t =    22.06s Find the "chart.canvas" Other
+    t =    22.07s Find the "chart.canvas" Other
+    t =    22.08s Find the Target Application 'com.mdd.kanpan'
+    t =    22.17s Added attachment named '配色-light-图表'
+    t =    22.17s Tap "bottom.favorites" Button
+    t =    22.17s     Wait for com.mdd.kanpan to idle
+    t =    22.17s     Find the "bottom.favorites" Button
+    t =    22.19s     Check for interrupting elements affecting "bottom.favorites" Button
+    t =    22.20s     Synthesize event
+    t =    22.48s     Wait for com.mdd.kanpan to idle
+    t =    22.92s Waiting 5.0s for "favorites.open.BTCUSDT" Button to exist
+    t =    23.99s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.BTCUSDT" Button`
+    t =    23.99s         Checking existence of `"favorites.open.BTCUSDT" Button`
+    t =    25.13s Find the "favorites.feed" Other
+    t =    26.16s Find the "favorites.feed" Other
+    t =    27.06s Find the "favorites.feed" Other
+    t =    28.07s Find the "favorites.feed" Other
+    t =    29.06s Find the "favorites.feed" Other
+/Users/mdd/zhk/kanpan/Kanpan/KanpanUITests/ChartFoundationUITests.swift:463: error: -[KanpanUITests.ChartFoundationUITests testComfortPalettesAndLayout] : XCTAssertTrue failed
+    t =    29.30s Tear Down
+    t =    29.31s     Find the Target Application 'com.mdd.kanpan'
+    t =    29.42s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    29.43s     Requesting snapshot of accessibility hierarchy for app with pid 56165
+    t =    29.71s     Requesting snapshot of accessibility hierarchy for app with pid 56165
+    t =    29.77s     Find the "chart.canvas" Other
+    t =    29.82s     Added attachment of type 'public.plain-text'
+    t =    29.82s     Terminate com.mdd.kanpan:56165
+Test Case '-[KanpanUITests.ChartFoundationUITests testComfortPalettesAndLayout]' failed (30.994 seconds).
+2026-09-15 04:39:57.512378+0800 KanpanUITests-Runner[56101:32652233] [Default] Flushing outgoing messages to the IDE with timeout 600.00s
+2026-09-15 04:39:57.512629+0800 KanpanUITests-Runner[56101:32652470] [Default] Received confirmation that IDE processed remaining outgoing messages
+2026-09-15 04:39:58.195053+0800 KanpanUITests-Runner[56235:32654443] [Default] Running tests...
+2026-09-15 04:39:58.230849+0800 KanpanUITests-Runner[56235:32654454] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-15 04:39:58.675.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-15 04:39:58.675.
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-15 04:39:58.676.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 04:39:58.676.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+2026-09-15 04:40:12.464 xcodebuild[55801:32649122] [MT] IDETestOperationsObserverDebug: 76.543 elapsed -- Testing started completed.
+2026-09-15 04:40:12.464 xcodebuild[55801:32649122] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 04:40:12.464 xcodebuild[55801:32649122] [MT] IDETestOperationsObserverDebug: 76.543 sec, +76.543 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/eye-colors/iphone15-first.xcresult
+
+Failing tests:
+	ChartFoundationUITests.testComfortPalettesAndLayout()
+
+** TEST EXECUTE FAILED **
+
+Testing started

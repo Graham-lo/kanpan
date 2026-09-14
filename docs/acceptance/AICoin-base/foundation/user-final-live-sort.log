@@ -1,0 +1,649 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun DerivedData-chart-foundation-device/Build/Products/Kanpan-user-favorites.xctestrun -destination platform=iOS,id=00008140-00010C902690801C -parallel-testing-enabled NO "-only-testing:KanpanUITests/ChartFoundationUITests/testUserSessionFreshQuotesAndReorder" "-only-testing:KanpanUITests/ChartFoundationUITests/testUserSessionRowReorderAndMove" -resultBundlePath docs/acceptance/AICoin-base/foundation/user-final-live-sort.xcresult
+
+2026-09-15 02:58:10.907 xcodebuild[32497:32308898] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-final-live-sort.xcresult
+
+2026-09-15 02:58:10.912 xcodebuild[32497:32308898] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:58:11.008 xcodebuild[32497:32308898] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:58:11.502 xcodebuild[32497:32308898] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS, arch:arm64e, id:00008140-00010C902690801C, name:iPhone }
+{ platform:iOS, arch:arm64, id:00008140-00010C902690801C, name:iPhone }
+2026-09-15 02:58:12.792 xcodebuild[32497:32308898] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:58:15.212810+0800 KanpanUITests-Runner[2001:328556] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-15 02:58:15.595.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-15 02:58:15.596.
+Test Suite 'ChartFoundationUITests' started at 2026-09-15 02:58:15.596.
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionFreshQuotesAndReorder]' started.
+    t =     0.00s Start Test at 2026-09-15 02:58:15.597
+    t =     0.02s Set Up
+    t =     0.02s     Setting device orientation to Portrait
+    t =     0.02s         Device orientation changed to Portrait
+    t =     0.03s         Wait for com.apple.springboard to idle
+    t =     0.04s Open com.mdd.kanpan
+    t =     0.04s     Launch com.mdd.kanpan
+    t =     0.04s         Terminate com.mdd.kanpan:2000
+2026-09-15 02:58:15.896 xcodebuild[32497:32308898] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:58:17.056 xcodebuild[32497:32308898] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 02:58:17.056 xcodebuild[32497:32308898] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     3.59s         Setting up automation session
+    t =     3.60s         Wait for com.mdd.kanpan to idle
+    t =     4.80s Waiting 15.0s for "favorites.close" Button to exist
+    t =     5.82s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.close" Button`
+    t =     5.82s         Checking existence of `"favorites.close" Button`
+    t =     5.84s             Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     5.92s             Find: Descendants matching type Button
+    t =     5.92s             Find: Elements matching predicate '"favorites.close" IN identifiers'
+    t =     5.93s Swipe right "favorites.groups" ScrollView
+    t =     5.93s     Wait for com.mdd.kanpan to idle
+    t =     5.93s     Find the "favorites.groups" ScrollView
+    t =     5.94s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     6.00s         Find: Descendants matching type ScrollView
+    t =     6.00s         Find: Elements matching predicate '"favorites.groups" IN identifiers'
+    t =     6.00s     Check for interrupting elements affecting "favorites.groups" ScrollView
+    t =     6.01s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     6.07s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     6.09s     Synthesize event
+    t =     6.56s     Wait for com.mdd.kanpan to idle
+    t =     7.82s Tap "favorites.group.加密" Button
+    t =     7.82s     Wait for com.mdd.kanpan to idle
+    t =     7.83s     Find the "favorites.group.加密" Button
+    t =     7.83s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     7.91s         Find: Descendants matching type Button
+    t =     7.91s         Find: Elements matching predicate '"favorites.group.加密" IN identifiers'
+    t =     7.92s     Check for interrupting elements affecting "favorites.group.加密" Button
+    t =     7.94s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     8.00s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     8.01s     Synthesize event
+    t =     8.30s     Wait for com.mdd.kanpan to idle
+    t =     8.31s Checking existence of `"favorites.group.全部" Button`
+    t =     8.32s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     8.42s     Find: Descendants matching type Button
+    t =     8.42s     Find: Elements matching predicate '"favorites.group.全部" IN identifiers'
+    t =     8.42s Checking existence of `"favorites.group.默认" Button`
+    t =     8.43s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     8.51s     Find: Descendants matching type Button
+    t =     8.51s     Find: Elements matching predicate '"favorites.group.默认" IN identifiers'
+    t =     8.52s Tap "favorites.search" Button[0.50, 0.50]
+    t =     8.52s     Wait for com.mdd.kanpan to idle
+    t =     8.52s     Find the "favorites.search" Button
+    t =     8.52s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     8.59s         Find: Descendants matching type Button
+    t =     8.59s         Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     8.60s     Check for interrupting elements affecting "favorites.search" Button
+    t =     8.61s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     8.68s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     8.68s     Synthesize event
+    t =     8.68s         Find the "favorites.search" Button
+    t =     8.68s             Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     8.76s             Find: Descendants matching type Button
+    t =     8.76s             Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     8.77s         Find the "favorites.search" Button
+    t =     8.77s             Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     8.85s             Find: Descendants matching type Button
+    t =     8.85s             Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     8.86s         Find the "favorites.search" Button
+    t =     8.86s             Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =     8.93s             Find: Descendants matching type Button
+    t =     8.93s             Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     9.22s     Wait for com.mdd.kanpan to idle
+    t =     9.95s Waiting 4.0s for "favorites.query" TextField to exist
+    t =    10.98s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.query" TextField`
+    t =    10.98s         Checking existence of `"favorites.query" TextField`
+    t =    10.99s             Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    11.18s             Find: Descendants matching type TextField
+    t =    11.18s             Find: Elements matching predicate '"favorites.query" IN identifiers'
+    t =    12.19s Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    12.33s Find: Descendants matching type TextField
+    t =    12.33s Find: Elements matching predicate '"favorites.query" IN identifiers'
+    t =    12.38s Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    12.48s Find: Descendants matching type TextField
+    t =    12.48s Find: Elements matching predicate '"favorites.query" IN identifiers'
+    t =    12.49s Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    12.59s Find: Descendants matching type TextField
+    t =    12.59s Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    12.72s Type 'btc' into "favorites.query" TextField
+    t =    12.72s     Wait for com.mdd.kanpan to idle
+    t =    12.72s     Find the "favorites.query" TextField
+    t =    12.72s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    12.80s         Find: Descendants matching type TextField
+    t =    12.80s         Find: Elements matching predicate '"favorites.query" IN identifiers'
+    t =    12.81s     Check for interrupting elements affecting "favorites.query" TextField
+    t =    12.82s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    12.89s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    12.89s     Synthesize event
+    t =    13.15s     Wait for com.mdd.kanpan to idle
+    t =    13.16s Checking existence of `"favorites.open.BTCUSDT" Button`
+    t =    13.17s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    13.27s     Find: Descendants matching type Button
+    t =    13.27s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    13.28s Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =    13.28s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    13.35s     Find: Descendants matching type Button
+    t =    13.36s     Find: Elements matching predicate '"favorites.open.ETHUSDT" IN identifiers'
+    t =    13.36s Tap "favorites.search.cancel" Button
+    t =    13.36s     Wait for com.mdd.kanpan to idle
+    t =    13.36s     Find the "favorites.search.cancel" Button
+    t =    13.36s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    13.43s         Find: Descendants matching type Button
+    t =    13.43s         Find: Elements matching predicate '"favorites.search.cancel" IN identifiers'
+    t =    13.44s     Check for interrupting elements affecting "favorites.search.cancel" Button
+    t =    13.45s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    13.52s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    13.53s     Synthesize event
+    t =    13.82s     Wait for com.mdd.kanpan to idle
+    t =    14.39s Waiting 4.0s for "favorites.open.ETHUSDT" Button to exist
+    t =    15.39s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.ETHUSDT" Button`
+    t =    15.39s         Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =    15.40s             Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    15.52s             Find: Descendants matching type Button
+    t =    15.52s             Find: Elements matching predicate '"favorites.open.ETHUSDT" IN identifiers'
+    t =    16.54s Checking existence of `"favorites.price.BTCUSDT" StaticText`
+    t =    16.55s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    16.69s     Find: Descendants matching type StaticText
+    t =    16.69s     Find: Elements matching predicate '"favorites.price.BTCUSDT" IN identifiers'
+    t =    16.69s Find the "favorites.price.BTCUSDT" StaticText
+    t =    16.70s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    16.77s     Find: Descendants matching type StaticText
+    t =    16.77s     Find: Elements matching predicate '"favorites.price.BTCUSDT" IN identifiers'
+    t =    16.78s Find the "favorites.feed" Any
+    t =    16.78s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+FreshQuotes cold: session=1;firstQuoteMs=550;rows=401;status=live
+    t =    17.89s Find the "favorites.price.BTCUSDT" StaticText
+    t =    17.90s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    17.99s     Find: Descendants matching type StaticText
+    t =    18.00s     Find: Elements matching predicate '"favorites.price.BTCUSDT" IN identifiers'
+    t =    18.92s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.93s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    19.03s     Find: Descendants matching type StaticText
+    t =    19.03s     Find: Elements matching predicate '"favorites.price.BTCUSDT" IN identifiers'
+    t =    19.04s Pressing Home button
+    t =    26.52s Open com.mdd.kanpan
+    t =    26.52s     Activate com.mdd.kanpan
+    t =    26.60s         Wait for com.mdd.kanpan to idle
+    t =    26.72s Waiting 8.0s for "favorites.close" Button to exist
+    t =    27.75s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.close" Button`
+    t =    27.76s         Checking existence of `"favorites.close" Button`
+    t =    27.76s             Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    27.88s             Find: Descendants matching type Button
+    t =    27.89s             Find: Elements matching predicate '"favorites.close" IN identifiers'
+    t =    28.90s Checking existence of `"favorites.price.BTCUSDT" StaticText`
+    t =    28.91s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    29.04s     Find: Descendants matching type StaticText
+    t =    29.04s     Find: Elements matching predicate '"favorites.price.BTCUSDT" IN identifiers'
+    t =    29.05s Find the "favorites.price.BTCUSDT" StaticText
+    t =    29.05s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    29.14s     Find: Descendants matching type StaticText
+    t =    29.15s     Find: Elements matching predicate '"favorites.price.BTCUSDT" IN identifiers'
+    t =    29.16s Find the "favorites.feed" Other
+    t =    29.16s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    29.25s Find the "favorites.feed" Other
+    t =    29.25s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+FreshQuotes resume: session=2;firstQuoteMs=244;rows=173;status=live
+    t =    29.34s Find the Target Application 'com.mdd.kanpan'
+    t =    29.34s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    29.49s Added attachment named '正式自选-前台恢复实时报价'
+    t =    29.49s Tear Down
+    t =    29.49s     Find the Target Application 'com.mdd.kanpan'
+    t =    29.49s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    29.60s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    29.60s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    29.86s     Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    29.95s     Find the "chart.canvas" Other
+    t =    29.95s         Requesting snapshot of accessibility hierarchy for app with pid 2002
+    t =    30.00s         Find: Descendants matching type Other
+    t =    30.00s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    30.01s     Added attachment of type 'public.plain-text'
+    t =    30.01s     Terminate com.mdd.kanpan:2002
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionFreshQuotesAndReorder]' passed (31.127 seconds).
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionRowReorderAndMove]' started.
+    t =     0.00s Start Test at 2026-09-15 02:58:46.730
+    t =     0.02s Set Up
+    t =     0.02s     Setting device orientation to Portrait
+    t =     0.03s         Wait for com.apple.springboard to idle
+    t =     0.03s Open com.mdd.kanpan
+    t =     0.03s     Launch com.mdd.kanpan
+2026-09-15 02:58:46.912 xcodebuild[32497:32308898] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 02:58:46.912 xcodebuild[32497:32308898] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-15 02:58:46.919 xcodebuild[32497:32308898] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:58:47.032 xcodebuild[32497:32308898] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+    t =     0.25s         Setting up automation session
+    t =     0.30s         Wait for com.mdd.kanpan to idle
+    t =     1.55s Waiting 15.0s for "favorites.close" Button to exist
+    t =     2.57s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.close" Button`
+    t =     2.57s         Checking existence of `"favorites.close" Button`
+    t =     2.58s             Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     2.70s             Find: Descendants matching type Button
+    t =     2.70s             Find: Elements matching predicate '"favorites.close" IN identifiers'
+    t =     2.70s Swipe right "favorites.groups" ScrollView
+    t =     2.70s     Wait for com.mdd.kanpan to idle
+    t =     2.72s     Find the "favorites.groups" ScrollView
+    t =     2.72s         Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     2.80s         Find: Descendants matching type ScrollView
+    t =     2.80s         Find: Elements matching predicate '"favorites.groups" IN identifiers'
+    t =     2.80s     Check for interrupting elements affecting "favorites.groups" ScrollView
+    t =     2.81s         Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     2.89s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     2.89s     Synthesize event
+    t =     3.38s     Wait for com.mdd.kanpan to idle
+    t =     4.64s Tap "favorites.group.加密" Button
+    t =     4.64s     Wait for com.mdd.kanpan to idle
+    t =     4.65s     Find the "favorites.group.加密" Button
+    t =     4.65s         Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     4.79s         Find: Descendants matching type Button
+    t =     4.79s         Find: Elements matching predicate '"favorites.group.加密" IN identifiers'
+    t =     4.79s     Check for interrupting elements affecting "favorites.group.加密" Button
+    t =     4.81s         Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     4.88s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     4.88s     Synthesize event
+    t =     5.18s     Wait for com.mdd.kanpan to idle
+    t =     5.19s Find the "favorites.open.BTCUSDT" Button
+    t =     5.20s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     5.29s     Find: Descendants matching type Button
+    t =     5.29s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =     5.30s Find the "favorites.open.BTCUSDT" Button
+    t =     5.30s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     5.39s     Find: Descendants matching type Button
+    t =     5.39s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =     5.41s Find the "favorites.open.BTCUSDT" Button
+    t =     5.41s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     5.48s     Find: Descendants matching type Button
+    t =     5.48s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =     5.49s Find the "favorites.open.DOGEUSDT" Button
+    t =     5.49s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     5.56s     Find: Descendants matching type Button
+    t =     5.56s     Find: Elements matching predicate '"favorites.open.DOGEUSDT" IN identifiers'
+    t =     5.57s Find the "favorites.open.DOGEUSDT" Button
+    t =     5.57s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     5.65s     Find: Descendants matching type Button
+    t =     5.65s     Find: Elements matching predicate '"favorites.open.DOGEUSDT" IN identifiers'
+    t =     5.66s Press Window (First Match)[0.00, 0.00] -> (187.0, 308.5) for 1.0 seconds, then drag to Window (First Match)[0.00, 0.00] -> (187.0, 500.5) with velocity of 250.00 pixels per second, and then hold for 0.5 seconds 
+    t =     5.66s     Wait for com.mdd.kanpan to idle
+    t =     5.66s     Find the Window (First Match)
+    t =     5.66s         Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     5.74s     Check for interrupting elements affecting Window
+    t =     5.75s         Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     5.82s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     5.82s     Synthesize event
+    t =     5.82s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =     5.83s             Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     5.91s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =     5.91s             Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     6.02s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =     6.02s             Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     6.11s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =     6.11s             Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     6.19s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =     6.19s             Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =     8.77s     Wait for com.mdd.kanpan to idle
+    t =    10.68s Find the "favorites.open.BTCUSDT" Button
+    t =    10.69s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    10.86s     Find: Descendants matching type Button
+    t =    10.87s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    10.88s Find the "favorites.open.ETHUSDT" Button
+    t =    10.88s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    10.97s     Find: Descendants matching type Button
+    t =    10.97s     Find: Elements matching predicate '"favorites.open.ETHUSDT" IN identifiers'
+    t =    10.98s Find the "favorites.open.BTCUSDT" Button
+    t =    10.98s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    11.08s     Find: Descendants matching type Button
+    t =    11.08s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    11.09s Find the "favorites.open.SOLUSDT" Button
+    t =    11.09s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    11.18s     Find: Descendants matching type Button
+    t =    11.18s     Find: Elements matching predicate '"favorites.open.SOLUSDT" IN identifiers'
+    t =    11.19s Find the "favorites.open.BTCUSDT" Button
+    t =    11.19s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    11.28s     Find: Descendants matching type Button
+    t =    11.29s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    11.29s Find the "favorites.open.SOLUSDT" Button
+    t =    11.30s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    11.40s     Find: Descendants matching type Button
+    t =    11.40s     Find: Elements matching predicate '"favorites.open.SOLUSDT" IN identifiers'
+    t =    11.41s Find the "favorites.open.ETHUSDT" Button
+    t =    11.41s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    11.50s     Find: Descendants matching type Button
+    t =    11.50s     Find: Elements matching predicate '"favorites.open.ETHUSDT" IN identifiers'
+    t =    11.52s Find the "favorites.open.XRPUSDT" Button
+    t =    11.53s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    11.62s     Find: Descendants matching type Button
+    t =    11.62s     Find: Elements matching predicate '"favorites.open.XRPUSDT" IN identifiers'
+    t =    11.64s Find the "favorites.open.BTCUSDT" Button
+    t =    11.64s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    11.73s     Find: Descendants matching type Button
+    t =    11.73s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    11.74s Find the "favorites.open.XRPUSDT" Button
+    t =    11.74s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    11.82s     Find: Descendants matching type Button
+    t =    11.83s     Find: Elements matching predicate '"favorites.open.XRPUSDT" IN identifiers'
+    t =    11.84s Find the "favorites.open.SOLUSDT" Button
+    t =    11.84s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    11.92s     Find: Descendants matching type Button
+    t =    11.92s     Find: Elements matching predicate '"favorites.open.SOLUSDT" IN identifiers'
+    t =    11.93s Find the "favorites.open.DOGEUSDT" Button
+    t =    11.93s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    12.02s     Find: Descendants matching type Button
+    t =    12.02s     Find: Elements matching predicate '"favorites.open.DOGEUSDT" IN identifiers'
+    t =    12.03s Find the "favorites.open.BTCUSDT" Button
+    t =    12.03s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    12.16s     Find: Descendants matching type Button
+    t =    12.16s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    12.17s Find the "favorites.open.DOGEUSDT" Button
+    t =    12.17s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    12.26s     Find: Descendants matching type Button
+    t =    12.27s     Find: Elements matching predicate '"favorites.open.DOGEUSDT" IN identifiers'
+    t =    12.27s Find the "favorites.open.XRPUSDT" Button
+    t =    12.28s     Requesting snapshot of accessibility hierarchy for app with pid 2003
+    t =    12.37s     Find: Descendants matching type Button
+    t =    12.37s     Find: Elements matching predicate '"favorites.open.XRPUSDT" IN identifiers'
+    t =    12.38s Terminate com.mdd.kanpan:2003
+    t =    13.42s Open com.mdd.kanpan
+    t =    13.42s     Launch com.mdd.kanpan
+2026-09-15 02:59:00.303 xcodebuild[32497:32308898] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 02:59:00.303 xcodebuild[32497:32308898] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    13.64s         Setting up automation session
+    t =    13.66s         Wait for com.mdd.kanpan to idle
+    t =    14.92s Waiting 15.0s for "favorites.close" Button to exist
+    t =    15.93s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.close" Button`
+    t =    15.93s         Checking existence of `"favorites.close" Button`
+    t =    15.94s             Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    16.05s             Find: Descendants matching type Button
+    t =    16.05s             Find: Elements matching predicate '"favorites.close" IN identifiers'
+    t =    16.06s Swipe right "favorites.groups" ScrollView
+    t =    16.06s     Wait for com.mdd.kanpan to idle
+    t =    16.06s     Find the "favorites.groups" ScrollView
+    t =    16.06s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    16.14s         Find: Descendants matching type ScrollView
+    t =    16.14s         Find: Elements matching predicate '"favorites.groups" IN identifiers'
+    t =    16.14s     Check for interrupting elements affecting "favorites.groups" ScrollView
+    t =    16.15s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    16.22s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    16.22s     Synthesize event
+    t =    16.67s     Wait for com.mdd.kanpan to idle
+    t =    17.93s Tap "favorites.group.加密" Button
+    t =    17.93s     Wait for com.mdd.kanpan to idle
+    t =    17.94s     Find the "favorites.group.加密" Button
+    t =    17.95s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    18.07s         Find: Descendants matching type Button
+    t =    18.07s         Find: Elements matching predicate '"favorites.group.加密" IN identifiers'
+    t =    18.08s     Check for interrupting elements affecting "favorites.group.加密" Button
+    t =    18.09s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    18.16s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    18.16s     Synthesize event
+    t =    18.45s     Wait for com.mdd.kanpan to idle
+    t =    18.46s Find the "favorites.open.ETHUSDT" Button
+    t =    18.47s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    18.56s     Find: Descendants matching type Button
+    t =    18.57s     Find: Elements matching predicate '"favorites.open.ETHUSDT" IN identifiers'
+    t =    18.57s Find the "favorites.open.BTCUSDT" Button
+    t =    18.58s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    18.66s     Find: Descendants matching type Button
+    t =    18.66s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    18.67s Find the "favorites.open.SOLUSDT" Button
+    t =    18.67s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    18.75s     Find: Descendants matching type Button
+    t =    18.75s     Find: Elements matching predicate '"favorites.open.SOLUSDT" IN identifiers'
+    t =    18.76s Find the "favorites.open.BTCUSDT" Button
+    t =    18.76s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    18.84s     Find: Descendants matching type Button
+    t =    18.84s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    18.85s Find the "favorites.open.SOLUSDT" Button
+    t =    18.85s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    18.92s     Find: Descendants matching type Button
+    t =    18.92s     Find: Elements matching predicate '"favorites.open.SOLUSDT" IN identifiers'
+    t =    18.93s Find the "favorites.open.ETHUSDT" Button
+    t =    18.93s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.02s     Find: Descendants matching type Button
+    t =    19.02s     Find: Elements matching predicate '"favorites.open.ETHUSDT" IN identifiers'
+    t =    19.03s Find the "favorites.open.XRPUSDT" Button
+    t =    19.03s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.10s     Find: Descendants matching type Button
+    t =    19.10s     Find: Elements matching predicate '"favorites.open.XRPUSDT" IN identifiers'
+    t =    19.11s Find the "favorites.open.BTCUSDT" Button
+    t =    19.11s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.19s     Find: Descendants matching type Button
+    t =    19.19s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    19.20s Find the "favorites.open.XRPUSDT" Button
+    t =    19.20s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.27s     Find: Descendants matching type Button
+    t =    19.27s     Find: Elements matching predicate '"favorites.open.XRPUSDT" IN identifiers'
+    t =    19.28s Find the "favorites.open.SOLUSDT" Button
+    t =    19.28s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.36s     Find: Descendants matching type Button
+    t =    19.36s     Find: Elements matching predicate '"favorites.open.SOLUSDT" IN identifiers'
+    t =    19.37s Find the "favorites.open.DOGEUSDT" Button
+    t =    19.37s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.45s     Find: Descendants matching type Button
+    t =    19.45s     Find: Elements matching predicate '"favorites.open.DOGEUSDT" IN identifiers'
+    t =    19.46s Find the "favorites.open.BTCUSDT" Button
+    t =    19.46s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.54s     Find: Descendants matching type Button
+    t =    19.54s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    19.55s Find the "favorites.open.DOGEUSDT" Button
+    t =    19.55s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.62s     Find: Descendants matching type Button
+    t =    19.62s     Find: Elements matching predicate '"favorites.open.DOGEUSDT" IN identifiers'
+    t =    19.63s Find the "favorites.open.XRPUSDT" Button
+    t =    19.63s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.70s     Find: Descendants matching type Button
+    t =    19.71s     Find: Elements matching predicate '"favorites.open.XRPUSDT" IN identifiers'
+    t =    19.71s Find the "favorites.open.BTCUSDT" Button
+    t =    19.71s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.80s     Find: Descendants matching type Button
+    t =    19.80s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    19.81s Find the "favorites.open.BTCUSDT" Button
+    t =    19.81s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.89s     Find: Descendants matching type Button
+    t =    19.89s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    19.90s Find the "favorites.open.ETHUSDT" Button
+    t =    19.90s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    19.97s     Find: Descendants matching type Button
+    t =    19.98s     Find: Elements matching predicate '"favorites.open.ETHUSDT" IN identifiers'
+    t =    19.98s Find the "favorites.open.ETHUSDT" Button
+    t =    19.99s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    20.06s     Find: Descendants matching type Button
+    t =    20.06s     Find: Elements matching predicate '"favorites.open.ETHUSDT" IN identifiers'
+    t =    20.07s Press Window at {{0.0, 0.0}, {402.0, 874.0}}[0.00, 0.00] -> (187.0, 500.5) for 1.0 seconds, then drag to Window at {{0.0, 0.0}, {402.0, 874.0}}[0.00, 0.00] -> (187.0, 222.7) with velocity of 250.00 pixels per second, and then hold for 0.5 seconds 
+    t =    20.07s     Wait for com.mdd.kanpan to idle
+    t =    20.08s     Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    20.08s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    20.16s     Check for interrupting elements affecting Window
+    t =    20.17s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    20.23s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    20.24s     Synthesize event
+    t =    20.24s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    20.24s             Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    20.35s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    20.35s             Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    20.44s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    20.44s             Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    20.52s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    20.52s             Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    20.60s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    20.60s             Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    23.52s     Wait for com.mdd.kanpan to idle
+    t =    25.62s Find the "favorites.open.BTCUSDT" Button
+    t =    25.63s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    25.77s     Find: Descendants matching type Button
+    t =    25.77s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    25.78s Find the "favorites.open.ETHUSDT" Button
+    t =    25.79s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    25.89s     Find: Descendants matching type Button
+    t =    25.89s     Find: Elements matching predicate '"favorites.open.ETHUSDT" IN identifiers'
+    t =    25.92s Find the Target Application 'com.mdd.kanpan'
+    t =    25.93s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    26.09s Added attachment named '正式自选-原生长按排序与冷启动持久化'
+    t =    26.09s Swipe left "favorites.open.BTCUSDT" Button
+    t =    26.09s     Wait for com.mdd.kanpan to idle
+    t =    26.09s     Find the "favorites.open.BTCUSDT" Button
+    t =    26.09s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    26.16s         Find: Descendants matching type Button
+    t =    26.16s         Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    26.16s     Check for interrupting elements affecting "favorites.open.BTCUSDT" Button
+    t =    26.17s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    26.22s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    26.22s     Synthesize event
+    t =    26.68s     Wait for com.mdd.kanpan to idle
+    t =    27.24s Waiting 4.0s for "移到分类" Button to exist
+2026-09-15 02:59:14.932 xcodebuild[32497:32308898] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+    t =    28.27s     Checking `Expect predicate `existsNoRetry == 1` for object "移到分类" Button`
+    t =    28.27s         Checking existence of `"移到分类" Button`
+    t =    28.28s             Requesting snapshot of accessibility hierarchy for app with pid 2005
+2026-09-15 02:59:15.275 xcodebuild[32497:32308898] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+    t =    28.41s             Find: Descendants matching type Button
+    t =    28.41s             Find: Elements matching predicate '"移到分类" IN identifiers'
+    t =    28.42s Tap "移到分类" Button
+    t =    28.42s     Wait for com.mdd.kanpan to idle
+    t =    28.42s     Find the "移到分类" Button
+    t =    28.43s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    28.51s         Find: Descendants matching type Button
+    t =    28.51s         Find: Elements matching predicate '"移到分类" IN identifiers'
+    t =    28.52s     Check for interrupting elements affecting "移到分类" Button
+    t =    28.53s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    28.59s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    28.60s     Synthesize event
+    t =    28.90s     Wait for com.mdd.kanpan to idle
+    t =    29.56s Waiting 4.0s for "美股" Button to exist
+    t =    30.58s     Checking `Expect predicate `existsNoRetry == 1` for object "美股" Button`
+    t =    30.58s         Checking existence of `"美股" Button`
+    t =    30.59s             Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    30.74s             Find: Descendants matching type Button
+    t =    30.74s             Find: Elements matching predicate '"美股" IN identifiers'
+    t =    30.75s Tap "美股" Button
+    t =    30.75s     Wait for com.mdd.kanpan to idle
+    t =    30.75s     Find the "美股" Button
+    t =    30.75s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    30.88s         Find: Descendants matching type Button
+    t =    30.88s         Find: Elements matching predicate '"美股" IN identifiers'
+    t =    30.88s     Check for interrupting elements affecting "美股" Button
+    t =    30.89s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    30.98s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    30.98s     Synthesize event
+    t =    31.29s     Wait for com.mdd.kanpan to idle
+    t =    32.71s Checking existence of `"favorites.open.BTCUSDT" Button`
+    t =    32.72s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    32.85s     Find: Descendants matching type Button
+    t =    32.85s     Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    32.86s Tap "favorites.group.美股" Button
+    t =    32.86s     Wait for com.mdd.kanpan to idle
+    t =    32.86s     Find the "favorites.group.美股" Button
+    t =    32.86s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    32.94s         Find: Descendants matching type Button
+    t =    32.94s         Find: Elements matching predicate '"favorites.group.美股" IN identifiers'
+    t =    32.95s     Check for interrupting elements affecting "favorites.group.美股" Button
+    t =    32.96s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    33.02s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    33.03s     Synthesize event
+    t =    33.33s     Wait for com.mdd.kanpan to idle
+    t =    33.35s Waiting 4.0s for "favorites.open.BTCUSDT" Button to exist
+    t =    34.36s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.BTCUSDT" Button`
+    t =    34.36s         Checking existence of `"favorites.open.BTCUSDT" Button`
+    t =    34.37s             Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    34.55s             Find: Descendants matching type Button
+    t =    34.55s             Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    34.56s Swipe left "favorites.open.BTCUSDT" Button
+    t =    34.56s     Wait for com.mdd.kanpan to idle
+    t =    34.56s     Find the "favorites.open.BTCUSDT" Button
+    t =    34.56s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    34.69s         Find: Descendants matching type Button
+    t =    34.69s         Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    34.70s     Check for interrupting elements affecting "favorites.open.BTCUSDT" Button
+    t =    34.71s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    34.81s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    34.82s     Synthesize event
+    t =    35.30s     Wait for com.mdd.kanpan to idle
+    t =    35.96s Tap "移到分类" Button
+    t =    35.96s     Wait for com.mdd.kanpan to idle
+    t =    35.97s     Find the "移到分类" Button
+    t =    35.98s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    36.18s         Find: Descendants matching type Button
+    t =    36.18s         Find: Elements matching predicate '"移到分类" IN identifiers'
+    t =    36.19s     Check for interrupting elements affecting "移到分类" Button
+    t =    36.20s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    36.28s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    36.29s     Synthesize event
+    t =    36.59s     Wait for com.mdd.kanpan to idle
+    t =    37.30s Tap "加密" Button
+    t =    37.30s     Wait for com.mdd.kanpan to idle
+    t =    37.31s     Find the "加密" Button
+    t =    37.32s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    37.51s         Find: Descendants matching type Button
+    t =    37.51s         Find: Elements matching predicate '"加密" IN identifiers'
+    t =    37.52s     Check for interrupting elements affecting "加密" Button
+    t =    37.53s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    37.64s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    37.65s     Synthesize event
+    t =    37.95s     Wait for com.mdd.kanpan to idle
+    t =    38.38s Tap "favorites.group.加密" Button
+    t =    38.38s     Wait for com.mdd.kanpan to idle
+    t =    38.39s     Find the "favorites.group.加密" Button
+    t =    38.39s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    38.51s         Find: Descendants matching type Button
+    t =    38.52s         Find: Elements matching predicate '"favorites.group.加密" IN identifiers'
+    t =    38.52s     Check for interrupting elements affecting "favorites.group.加密" Button
+    t =    38.53s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    38.62s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    38.63s     Synthesize event
+    t =    38.94s     Wait for com.mdd.kanpan to idle
+    t =    38.94s Waiting 4.0s for "favorites.open.BTCUSDT" Button to exist
+    t =    39.96s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.BTCUSDT" Button`
+    t =    39.96s         Checking existence of `"favorites.open.BTCUSDT" Button`
+    t =    39.97s             Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    40.06s             Find: Descendants matching type Button
+    t =    40.06s             Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =    40.07s Find the Target Application 'com.mdd.kanpan'
+    t =    40.07s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    40.23s Added attachment named '正式自选-滑动移到分类'
+    t =    40.23s Tear Down
+    t =    40.23s     Find the Target Application 'com.mdd.kanpan'
+    t =    40.23s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    40.44s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    40.44s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    40.69s     Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    40.84s     Find the "chart.canvas" Other
+    t =    40.84s         Requesting snapshot of accessibility hierarchy for app with pid 2005
+    t =    40.92s         Find: Descendants matching type Other
+    t =    40.92s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    40.93s     Added attachment of type 'public.plain-text'
+    t =    40.93s     Terminate com.mdd.kanpan:2005
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionRowReorderAndMove]' passed (42.057 seconds).
+Test Suite 'ChartFoundationUITests' passed at 2026-09-15 02:59:28.789.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 73.185 (73.193) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-15 02:59:28.791.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 73.185 (73.196) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 02:59:28.792.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 73.185 (73.197) seconds
+2026-09-15 02:59:29.047 xcodebuild[32497:32308898] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:59:29.626 xcodebuild[32497:32308915]  IDETestOperationsObserverDebug: Failure collecting diagnostics from devices: Process exited with error 1:
+ ERROR: The operation couldn?t be completed. (CoreDeviceCLISupport.DiagnoseError error 0.)
+This tool generates files that allow Apple to investigate issues with your
+computer and help improve Apple products. The files might contain personal
+information found on your device or associated with your Apple Account(s),
+including but not limited to your name, serial numbers of your device,
+your device name, your device's location over the last one to two days,
+your attached peripheral devices, your user name, your email address and
+email settings, file paths, file names, Siri suggestions, your computer's
+IP addresses, and network connection information.
+
+This information is used by Apple in accordance with its privacy policy
+(www.apple.com/privacy) and is not shared with any other company. By using
+this tool and sending the results to Apple, you consent to Apple using the
+contents of these files to improve Apple products.
+
+An error occurred while running devicectl diagnose. Will archive the diagnostics collected thus far.
+Wrote file to /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-final-live-sort.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+Partial devicectl diagnose bundle located here: /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-final-live-sort.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+
+2026-09-15 02:59:29.646 xcodebuild[32497:32308898] [MT] IDETestOperationsObserverDebug: 76.853 elapsed -- Testing started completed.
+2026-09-15 02:59:29.646 xcodebuild[32497:32308898] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 02:59:29.646 xcodebuild[32497:32308898] [MT] IDETestOperationsObserverDebug: 76.853 sec, +76.853 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-final-live-sort.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent" style="@style/sh_base.PageContentLight"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <RelativeLayout android:layout_width="match_parent" android:layout_height="@dimen/sh_base_title_block_height" style="@style/sh_base.TitleBar">
+        <include layout="@layout/part_common_button_back" />
+        <TextView android:gravity="center" android:id="@id/text_title" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="@string/ui_kline_compare_type_price" android:layout_centerInParent="true" style="@style/sh_base.TitleText" />
+        <ImageView android:id="@id/iv_type_indicator" android:tag="skin:ui_kline_conpare_type_switch_indicator:src" android:paddingLeft="@dimen/offset_4dp" android:paddingRight="@dimen/offset_4dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@mipmap/ui_kline_conpare_type_switch_indicator" android:layout_toRightOf="@id/text_title" android:layout_centerVertical="true" android:layout_toEndOf="@id/text_title" />
+        <ImageView android:id="@id/iv_more" android:tag="skin:sh_base_title_ic_menu_more:src" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginRight="@dimen/sh_base_title_ic_margin" android:src="@mipmap/sh_base_title_ic_menu_more" android:layout_alignParentRight="true" android:layout_centerVertical="true" style="@style/sh_base.ActionIcon" />
+    </RelativeLayout>
+    <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent">
+        <FrameLayout android:layout_width="match_parent" android:layout_height="@dimen/ui_kline_compare_main_price_item_height">
+            <androidx.recyclerview.widget.RecyclerView android:orientation="horizontal" android:id="@id/list_price" android:layout_width="match_parent" android:layout_height="match_parent" />
+            <ImageView android:id="@id/container_button_back" android:layout_width="0.0dp" android:layout_height="0.0dp" />
+        </FrameLayout>
+        <include layout="@layout/ui_kline_part_kline_compare_bar" />
+        <FrameLayout android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="7.0">
+            <sp.aicoin_kline.chart.Chart android:id="@id/compare_chart" android:tag="skin:ui_ticker_list_item_divider:divider|skin:sh_base_page_bg:background" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginBottom="10.0dp" android:listSelector="@android:color/transparent" android:fastScrollEnabled="false" style="@style/sh_base.PageContent" />
+            <LinearLayout android:layout_gravity="right" android:orientation="vertical" android:id="@id/info_window_container" android:tag="skin:ui_kline_compare_info_window_bg:background" android:background="@color/ui_kline_compare_info_window_bg" android:paddingLeft="10.0dp" android:paddingTop="10.0dp" android:paddingRight="10.0dp" android:paddingBottom="10.0dp" android:visibility="gone" android:clickable="false" android:layout_width="@dimen/ui_kline_compare_info_window_width" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/offset_4dp" android:layout_marginTop="@dimen/offset_4dp" android:layout_marginRight="@dimen/ui_kline_compare_info_window_right_margin" android:elevation="@dimen/offset_1dp">
+                <TextView android:textSize="@dimen/font_size_tiny" android:textColor="@color/sh_base_text_tertiary" android:id="@id/text_info_time" android:tag="skin:sh_base_text_tertiary:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <androidx.recyclerview.widget.RecyclerView android:id="@id/info_window" android:clickable="false" android:layout_width="match_parent" android:layout_height="match_parent" />
+            </LinearLayout>
+        </FrameLayout>
+        <FrameLayout android:padding="10.0dp" android:paddingLeft="@dimen/offset_14dp" android:paddingRight="@dimen/offset_14dp" android:visibility="gone" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_marginTop="@dimen/offset_2dp" android:layout_weight="1.0">
+            <androidx.recyclerview.widget.RecyclerView android:orientation="horizontal" android:id="@id/list_color_indicator" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        </FrameLayout>
+    </LinearLayout>
+</LinearLayout>

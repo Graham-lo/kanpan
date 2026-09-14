@@ -1,0 +1,3 @@
+end: The operation couldn’t be completed. Socket is not connected
+endpoint: wss://fstream.binance.com/market/stream?streams=sndkusdt@kline_1m/muusdt@kline_1m/skhyusdt@kline_1m/skhynixusdt@kline_1m
+counts: ["SKHYUSDT/kline": 16, "SNDKUSDT/kline": 41, "MUUSDT/kline": 22, "SKHYNIXUSDT/kline": 23] firstSeconds: ["kline": 0.6646260023117065] lastSeconds: ["kline": 16.820919036865234]

@@ -20,6 +20,8 @@ public actor SymbolCatalog {
     self.log = log
   }
 
+  private var refreshTask: Task<[SymbolInfo], Error>?
+
   public func all(now: Int64 = Int64(Date().timeIntervalSince1970 * 1000)) async -> [SymbolInfo] {
     if !symbols.isEmpty, loadedSchema == Self.schema, now - loadedAtMs < Self.ttlMs { return symbols }
     if symbols.isEmpty, let disk = readDisk(), disk.schema == Self.schema, now - disk.at < Self.ttlMs {
@@ -29,8 +31,12 @@ public actor SymbolCatalog {
       log("品种表走缓存 \(symbols.count) 个")
       return symbols
     }
+    if let refreshTask { return (try? await refreshTask.value) ?? symbols }
+    let task = Task { [rest] in try await rest.exchangeInfo() }
+    refreshTask = task
+    defer { refreshTask = nil }
     do {
-      let fresh = try await rest.exchangeInfo()
+      let fresh = try await task.value
       guard !fresh.isEmpty else { throw FeedError.badResponse("品种表为空") }
       symbols = fresh
       loadedSchema = Self.schema

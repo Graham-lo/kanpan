@@ -38,7 +38,8 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
   }
 }
 
-/// 24h 行情（顶栏）。涨跌幅用币安的 `P` 字段，不自己算（§4.4）。
+/// 24h 统计与当前成交。实时成交先到时按 open24h 重算滚动涨跌幅；
+/// 日切口径由共享报价层处理，缺失统计保持缺失。
 public struct Ticker: Sendable, Equatable {
   public var symbol: String
   public var last: Double
@@ -48,6 +49,9 @@ public struct Ticker: Sendable, Equatable {
   public var quoteVolume: Double
   public var markPrice: Double?
   public var open24h: Double?
+  /// Exchange snapshot time (REST closeTime / WS C), never local arrival time.
+  public var timeMs: Int64?
+  public var lastTradeID: Int64?
 
   /// 振幅以24h开盘价为分母，独立于用户选择的日涨跌幅口径。
   public var amplitude24h: Double? {
@@ -56,7 +60,8 @@ public struct Ticker: Sendable, Equatable {
   }
 
   public init(symbol: String, last: Double, changePercent: Double,
-              high: Double, low: Double, quoteVolume: Double, markPrice: Double? = nil, open24h: Double? = nil) {
+              high: Double, low: Double, quoteVolume: Double, markPrice: Double? = nil, open24h: Double? = nil,
+              timeMs: Int64? = nil, lastTradeID: Int64? = nil) {
     self.symbol = symbol
     self.last = last
     self.changePercent = changePercent
@@ -65,5 +70,7 @@ public struct Ticker: Sendable, Equatable {
     self.quoteVolume = quoteVolume
     self.markPrice = markPrice
     self.open24h = open24h
+    self.timeMs = timeMs
+    self.lastTradeID = lastTradeID
   }
 }

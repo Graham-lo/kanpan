@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:background="@android:color/transparent" android:layout_width="90.0dp" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <TextView android:textSize="@dimen/ui_kline_compare_text_size_8" android:textColor="@color/ui_kline_compare_color_indicator_text_color" android:gravity="left" android:id="@id/text_market_name" android:tag="skin:ui_kline_compare_color_indicator_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    <TextView android:textSize="@dimen/font_size_tiny" android:textColor="@color/ui_kline_compare_color_indicator_text_color" android:id="@id/text_trade_pair" android:tag="skin:ui_kline_compare_color_indicator_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/offset_1dp" android:text="" />
+    <View android:id="@id/color_indicator_bar" android:tag="skin:ui_kline_compare_color_indicator_item_bg:background" android:background="@drawable/ui_kline_compare_color_indicator_item_bg" android:layout_width="@dimen/ui_kline_indicator_bar_size" android:layout_height="@dimen/ui_kline_compare_color_indicator_decorate_bar_height" android:layout_marginTop="@dimen/offset_3dp" />
+</LinearLayout>

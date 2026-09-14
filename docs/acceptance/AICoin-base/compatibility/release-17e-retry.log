@@ -1,0 +1,2 @@
+START iPhone 17e
+DONE {'name': 'iPhone 17e', 'exitCode': 0, 'seconds': 364, 'result': 'Passed', 'passedTests': 16, 'failedTests': 0, 'skippedTests': 0}

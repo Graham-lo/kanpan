@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<carbon.widget.ConstraintLayout android:layout_width="40.0dp" android:layout_height="40.0dp" app:carbon_cornerRadius="4.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <carbon.widget.ImageView android:id="@id/iv_color" android:layout_width="40.0dp" android:layout_height="40.0dp" app:carbon_cornerRadius="4.0dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+    <ImageView android:id="@id/iv_select" android:layout_width="25.0dp" android:layout_height="25.0dp" android:src="@mipmap/indic_color_select" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+</carbon.widget.ConstraintLayout>

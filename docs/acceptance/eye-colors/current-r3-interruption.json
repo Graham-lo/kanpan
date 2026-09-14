@@ -1,0 +1,5 @@
+{
+  "reason": "Stopped after CPU sample showed repeated replacement/animation of the visible native menu on quote updates; fixing header invalidation before continuing.",
+  "passed": false,
+  "sample": "/tmp/kanpan-menu-cpu-r3.txt"
+}

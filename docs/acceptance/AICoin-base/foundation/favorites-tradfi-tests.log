@@ -1,0 +1,77 @@
+cd Kanpan/Symbols && swift test 
+[0/1] Planning build
+Building for debugging...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/6] Compiling KanpanSymbolsTests FavoriteGroupTests.swift
+macro expansion #require:2:6: error: cannot use mutating member on immutable value: '$0' is immutable
+`- /Users/mdd/zhk/kanpan/Kanpan/Symbols/Tests/KanpanSymbolsTests/FavoriteGroupTests.swift:13:61: note: expanded code originates here
+11 |     var prefs = store.load()
+12 |     #expect(prefs.favorites(in: nil) == ["SNDKUSDT", "MUUSDT"])
+13 |     let group = try #require(prefs.createGroup("半导体"))
+   |                     `- note: in expansion of macro 'require' here
+   +--- macro expansion #require ---------------------------------------
+   |1 | Testing.__checkFunctionCall(prefs.self,calling: {
+   |2 |   $0.createGroup($1)
+   |  |      `- error: cannot use mutating member on immutable value: '$0' is immutable
+   |3 | },"半导体",expression: .__fromFunctionCall(.__fromSyntaxNode("prefs"),"createGroup",(nil,.__fromStringLiteral(#""半导体""#, "半导体"))),comments: [],isRequired: true,sourceLocation: Testing.SourceLocation.__here()).__required()
+   +--------------------------------------------------------------------
+14 |     prefs.assign("sndkusdt", to: group)
+15 |     store.save(prefs)
+
+/Users/mdd/zhk/kanpan/Kanpan/Symbols/Tests/KanpanSymbolsTests/FavoriteGroupTests.swift:13:17: warning: no calls to throwing functions occur within 'try' expression
+11 |     var prefs = store.load()
+12 |     #expect(prefs.favorites(in: nil) == ["SNDKUSDT", "MUUSDT"])
+13 |     let group = try #require(prefs.createGroup("半导体"))
+   |                 `- warning: no calls to throwing functions occur within 'try' expression
+14 |     prefs.assign("sndkusdt", to: group)
+15 |     store.save(prefs)
+
+macro expansion #require:2:6: error: cannot use mutating member on immutable value: '$0' is immutable
+`- /Users/mdd/zhk/kanpan/Kanpan/Symbols/Tests/KanpanSymbolsTests/FavoriteGroupTests.swift:23:58: note: expanded code originates here
+21 |   func lifecycle() throws {
+22 |     var prefs = SymbolPrefs(favorites: ["SNDKUSDT", "MUUSDT"])
+23 |     let group = try #require(prefs.createGroup("芯片"))
+   |                     `- note: in expansion of macro 'require' here
+   +--- macro expansion #require ---------------------------------------
+   |1 | Testing.__checkFunctionCall(prefs.self,calling: {
+   |2 |   $0.createGroup($1)
+   |  |      `- error: cannot use mutating member on immutable value: '$0' is immutable
+   |3 | },"芯片",expression: .__fromFunctionCall(.__fromSyntaxNode("prefs"),"createGroup",(nil,.__fromStringLiteral(#""芯片""#, "芯片"))),comments: [],isRequired: true,sourceLocation: Testing.SourceLocation.__here()).__required()
+   +--------------------------------------------------------------------
+24 |     #expect(prefs.createGroup(" 芯片 ") == group)
+25 |     #expect(prefs.createGroup("  ") == nil)
+
+/Users/mdd/zhk/kanpan/Kanpan/Symbols/Tests/KanpanSymbolsTests/FavoriteGroupTests.swift:23:17: warning: no calls to throwing functions occur within 'try' expression
+21 |   func lifecycle() throws {
+22 |     var prefs = SymbolPrefs(favorites: ["SNDKUSDT", "MUUSDT"])
+23 |     let group = try #require(prefs.createGroup("芯片"))
+   |                 `- warning: no calls to throwing functions occur within 'try' expression
+24 |     #expect(prefs.createGroup(" 芯片 ") == group)
+25 |     #expect(prefs.createGroup("  ") == nil)
+
+macro expansion #require:2:6: error: cannot use mutating member on immutable value: '$0' is immutable
+`- /Users/mdd/zhk/kanpan/Kanpan/Symbols/Tests/KanpanSymbolsTests/FavoriteGroupTests.swift:38:58: note: expanded code originates here
+36 |   func scopedOrder() throws {
+37 |     var prefs = SymbolPrefs(favorites: ["A", "BTC", "B", "ETH", "C"])
+38 |     let group = try #require(prefs.createGroup("股票"))
+   |                     `- note: in expansion of macro 'require' here
+   +--- macro expansion #require ---------------------------------------
+   |1 | Testing.__checkFunctionCall(prefs.self,calling: {
+   |2 |   $0.createGroup($1)
+   |  |      `- error: cannot use mutating member on immutable value: '$0' is immutable
+   |3 | },"股票",expression: .__fromFunctionCall(.__fromSyntaxNode("prefs"),"createGroup",(nil,.__fromStringLiteral(#""股票""#, "股票"))),comments: [],isRequired: true,sourceLocation: Testing.SourceLocation.__here()).__required()
+   +--------------------------------------------------------------------
+39 |     for symbol in ["A", "B", "C"] { prefs.assign(symbol, to: group) }
+40 |     prefs.moveInGroup(group, from: IndexSet(integer: 0), to: 3)
+
+/Users/mdd/zhk/kanpan/Kanpan/Symbols/Tests/KanpanSymbolsTests/FavoriteGroupTests.swift:38:17: warning: no calls to throwing functions occur within 'try' expression
+36 |   func scopedOrder() throws {
+37 |     var prefs = SymbolPrefs(favorites: ["A", "BTC", "B", "ETH", "C"])
+38 |     let group = try #require(prefs.createGroup("股票"))
+   |                 `- warning: no calls to throwing functions occur within 'try' expression
+39 |     for symbol in ["A", "B", "C"] { prefs.assign(symbol, to: group) }
+40 |     prefs.moveInGroup(group, from: IndexSet(integer: 0), to: 3)
+[4/6] Emitting module KanpanSymbolsTests
+error: fatalError
+make: *** [symbols-test] Error 1

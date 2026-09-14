@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:tag="skin:sh_base_view_bg:background" android:background="@color/sh_base_view_bg" android:paddingTop="30.0dp" android:layout_width="match_parent" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="horizontal" android:paddingBottom="20.0dp" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <LinearLayout android:gravity="center" android:orientation="horizontal" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0">
+            <TextView android:textSize="16.0sp" android:textColor="@color/sh_base_text_primary" android:id="@id/share_item_chat" android:tag="skin:ui_kline_share_chat_icon:drawableTop|skin:sh_base_text_primary:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_share_item_chat" android:drawableTop="@mipmap/ui_kline_share_chat_icon" style="@style/ui_share.Brief.ShareItem" />
+        </LinearLayout>
+        <LinearLayout android:gravity="center" android:orientation="horizontal" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0">
+            <TextView android:textSize="16.0sp" android:textColor="@color/sh_base_text_primary" android:id="@id/share_item_moment" android:tag="skin:ui_kline_share_flash_icon:drawableTop|skin:sh_base_text_primary:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_share_item_moment" android:drawableTop="@mipmap/ui_kline_share_flash_icon" style="@style/ui_share.Brief.ShareItem" />
+        </LinearLayout>
+    </LinearLayout>
+    <View android:tag="skin:ui_kline_community_dialog_divider_color:background" android:background="@color/ui_kline_community_dialog_divider_color" android:layout_width="match_parent" android:layout_height="0.5dp" android:layout_marginTop="10.0dp" />
+    <TextView android:textSize="18.0sp" android:textColor="@color/sh_base_text_primary" android:gravity="center" android:layout_gravity="center" android:id="@id/tv_cancel" android:tag="skin:sh_base_text_primary:textColor" android:paddingTop="15.0dp" android:paddingBottom="10.0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ui_kline_common_cancel" />
+</LinearLayout>

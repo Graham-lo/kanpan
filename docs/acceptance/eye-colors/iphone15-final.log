@@ -1,0 +1,377 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=3749DE35-5582-4066-8C14-9767B5559B70" -derivedDataPath DerivedData-codex-current-r5 -parallel-testing-enabled NO -resultBundlePath /Users/mdd/zhk/kanpan/docs/acceptance/eye-colors/iphone15-final.xcresult "-only-testing:KanpanUITests/ChartFoundationUITests/testFavoritesCategoryOverflow" "-only-testing:KanpanUITests/ChartFoundationUITests/testQuickFavoritesAndMarketSectors"
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/eye-colors/iphone15-final.xcresult
+
+2026-09-15 06:13:16.498341+0800 KanpanUITests-Runner[84997:33050979] [Default] Running tests...
+objc[84997]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10a594310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10a518398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-15 06:13:24.831.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-15 06:13:24.832.
+Test Suite 'ChartFoundationUITests' started at 2026-09-15 06:13:24.833.
+Test Case '-[KanpanUITests.ChartFoundationUITests testFavoritesCategoryOverflow]' started.
+    t =     0.00s Start Test at 2026-09-15 06:13:24.834
+    t =     0.46s Set Up
+    t =     0.46s     Setting device orientation to Portrait
+    t =     0.47s         Device orientation changed to Portrait
+    t =     0.60s         Wait for com.apple.springboard to idle
+    t =     0.65s     Open com.mdd.kanpan
+    t =     0.65s         Launch com.mdd.kanpan
+2026-09-15 06:13:25.923 xcodebuild[84773:33048909] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 06:13:25.923 xcodebuild[84773:33048909] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     2.34s             Setting up automation session
+    t =     3.38s             Wait for com.mdd.kanpan to idle
+    t =     4.90s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =     5.98s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     5.98s             Checking existence of `"chart.canvas" Other`
+    t =     7.10s     Checking existence of `"chart.canvas" Other`
+    t =     7.12s     Find the "chart.canvas" Other
+    t =     7.18s Terminate com.mdd.kanpan:85093
+    t =     8.20s Open com.mdd.kanpan
+    t =     8.20s     Launch com.mdd.kanpan
+2026-09-15 06:13:33.032 xcodebuild[84773:33048909] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 06:13:33.032 xcodebuild[84773:33048909] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     8.62s         Setting up automation session
+    t =     9.35s         Wait for com.mdd.kanpan to idle
+    t =    11.15s Waiting 15.0s for "favorites.more" Button to exist
+    t =    12.23s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =    12.23s         Checking existence of `"favorites.more" Button`
+    t =    12.35s Checking existence of `"favorites.search" Button`
+    t =    12.39s Checking existence of `"favorites.query" TextField`
+    t =    12.43s Find the "favorites.group.加密" Button
+    t =    12.46s Tap "favorites.more" Button
+    t =    12.46s     Wait for com.mdd.kanpan to idle
+    t =    12.46s     Find the "favorites.more" Button
+    t =    12.49s     Check for interrupting elements affecting "favorites.more" Button
+    t =    12.52s     Synthesize event
+    t =    12.93s     Wait for com.mdd.kanpan to idle
+    t =    13.01s Waiting 4.0s for "favorites.newGroup" Button to exist
+    t =    14.09s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.newGroup" Button`
+    t =    14.09s         Checking existence of `"favorites.newGroup" Button`
+    t =    14.19s Tap "favorites.newGroup" Button
+    t =    14.19s     Wait for com.mdd.kanpan to idle
+    t =    14.34s     Find the "favorites.newGroup" Button
+    t =    14.39s     Check for interrupting elements affecting "favorites.newGroup" Button
+    t =    14.45s     Synthesize event
+    t =    14.81s     Wait for com.mdd.kanpan to idle
+    t =    15.20s Waiting 4.0s for TextField (First Match) to exist
+    t =    16.28s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    16.29s         Checking existence of `TextField (First Match)`
+    t =    16.33s Type '观察中的品种' into TextField (First Match)
+    t =    16.33s     Wait for com.mdd.kanpan to idle
+    t =    16.33s     Find the TextField (First Match)
+    t =    16.36s     Check for interrupting elements affecting "分类名称" TextField
+    t =    16.42s     Synthesize event
+    t =    16.72s     Wait for com.mdd.kanpan to idle
+    t =    16.73s Tap "保存" Button
+    t =    16.73s     Wait for com.mdd.kanpan to idle
+    t =    16.73s     Find the "保存" Button
+    t =    16.81s     Check for interrupting elements affecting "保存" Button
+    t =    16.86s     Synthesize event
+    t =    17.16s     Wait for com.mdd.kanpan to idle
+    t =    17.54s Waiting 4.0s for "favorites.group.观察中的品种" Button to exist
+    t =    18.61s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.观察中的品种" Button`
+    t =    18.61s         Checking existence of `"favorites.group.观察中的品种" Button`
+    t =    18.64s Tap "favorites.more" Button
+    t =    18.64s     Wait for com.mdd.kanpan to idle
+    t =    18.65s     Find the "favorites.more" Button
+    t =    18.67s     Check for interrupting elements affecting "favorites.more" Button
+    t =    18.71s     Synthesize event
+    t =    19.00s     Wait for com.mdd.kanpan to idle
+    t =    19.43s Waiting 4.0s for "favorites.newGroup" Button to exist
+    t =    20.50s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.newGroup" Button`
+    t =    20.51s         Checking existence of `"favorites.newGroup" Button`
+    t =    20.55s Tap "favorites.newGroup" Button
+    t =    20.55s     Wait for com.mdd.kanpan to idle
+    t =    20.55s     Find the "favorites.newGroup" Button
+    t =    20.58s     Check for interrupting elements affecting "favorites.newGroup" Button
+    t =    20.61s     Synthesize event
+    t =    20.91s     Wait for com.mdd.kanpan to idle
+    t =    21.27s Waiting 4.0s for TextField (First Match) to exist
+    t =    22.36s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    22.37s         Checking existence of `TextField (First Match)`
+    t =    22.43s Type '长期关注' into TextField (First Match)
+    t =    22.43s     Wait for com.mdd.kanpan to idle
+    t =    22.46s     Find the TextField (First Match)
+    t =    22.53s     Check for interrupting elements affecting "分类名称" TextField
+    t =    22.64s     Synthesize event
+    t =    22.91s     Wait for com.mdd.kanpan to idle
+    t =    22.92s Tap "保存" Button
+    t =    22.92s     Wait for com.mdd.kanpan to idle
+    t =    22.92s     Find the "保存" Button
+    t =    23.01s     Check for interrupting elements affecting "保存" Button
+    t =    23.09s     Synthesize event
+    t =    23.38s     Wait for com.mdd.kanpan to idle
+    t =    23.67s Waiting 4.0s for "favorites.group.长期关注" Button to exist
+    t =    24.75s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.长期关注" Button`
+    t =    24.75s         Checking existence of `"favorites.group.长期关注" Button`
+    t =    24.82s Tap "favorites.more" Button
+    t =    24.82s     Wait for com.mdd.kanpan to idle
+    t =    24.82s     Find the "favorites.more" Button
+    t =    24.86s     Check for interrupting elements affecting "favorites.more" Button
+    t =    24.90s     Synthesize event
+    t =    25.20s     Wait for com.mdd.kanpan to idle
+    t =    25.73s Waiting 4.0s for "favorites.newGroup" Button to exist
+    t =    26.80s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.newGroup" Button`
+    t =    26.80s         Checking existence of `"favorites.newGroup" Button`
+    t =    26.83s Tap "favorites.newGroup" Button
+    t =    26.83s     Wait for com.mdd.kanpan to idle
+    t =    26.84s     Find the "favorites.newGroup" Button
+    t =    26.87s     Check for interrupting elements affecting "favorites.newGroup" Button
+    t =    26.89s     Synthesize event
+    t =    27.19s     Wait for com.mdd.kanpan to idle
+    t =    27.54s Waiting 4.0s for TextField (First Match) to exist
+    t =    28.62s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    28.62s         Checking existence of `TextField (First Match)`
+    t =    28.65s Type '短线' into TextField (First Match)
+    t =    28.65s     Wait for com.mdd.kanpan to idle
+    t =    28.66s     Find the TextField (First Match)
+    t =    28.73s     Check for interrupting elements affecting "分类名称" TextField
+    t =    28.82s     Synthesize event
+    t =    29.07s     Wait for com.mdd.kanpan to idle
+    t =    29.07s Tap "保存" Button
+    t =    29.07s     Wait for com.mdd.kanpan to idle
+    t =    29.07s     Find the "保存" Button
+    t =    29.13s     Check for interrupting elements affecting "保存" Button
+    t =    29.18s     Synthesize event
+    t =    29.46s     Wait for com.mdd.kanpan to idle
+    t =    29.75s Waiting 4.0s for "favorites.group.短线" Button to exist
+    t =    30.80s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.短线" Button`
+    t =    30.81s         Checking existence of `"favorites.group.短线" Button`
+    t =    30.83s Find the Target Application 'com.mdd.kanpan'
+    t =    31.06s Added attachment named '自选-顶部分类与更多入口'
+    t =    31.06s Tap "favorites.more" Button
+    t =    31.06s     Wait for com.mdd.kanpan to idle
+    t =    31.07s     Find the "favorites.more" Button
+    t =    31.12s     Check for interrupting elements affecting "favorites.more" Button
+    t =    31.17s     Synthesize event
+    t =    31.47s     Wait for com.mdd.kanpan to idle
+    t =    31.85s Waiting 4.0s for "favorites.group.观察中的品种" Button to exist
+    t =    32.92s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.观察中的品种" Button`
+    t =    32.92s         Checking existence of `"favorites.group.观察中的品种" Button`
+    t =    32.96s Tap "favorites.group.观察中的品种" Button
+    t =    32.96s     Wait for com.mdd.kanpan to idle
+    t =    32.96s     Find the "favorites.group.观察中的品种" Button
+    t =    33.01s     Check for interrupting elements affecting "favorites.group.观察中的品种" Button
+    t =    33.04s     Synthesize event
+    t =    33.35s     Wait for com.mdd.kanpan to idle
+    t =    33.70s Find the "favorites.group.观察中的品种" Button
+    t =    33.74s Tap "favorites.more" Button
+    t =    33.74s     Wait for com.mdd.kanpan to idle
+    t =    33.75s     Find the "favorites.more" Button
+    t =    33.77s     Check for interrupting elements affecting "favorites.more" Button
+    t =    33.79s     Synthesize event
+    t =    34.10s     Wait for com.mdd.kanpan to idle
+    t =    34.47s Waiting 4.0s for "favorites.close" Button to exist
+    t =    35.53s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.close" Button`
+    t =    35.54s         Checking existence of `"favorites.close" Button`
+    t =    35.57s Tap "favorites.close" Button
+    t =    35.57s     Wait for com.mdd.kanpan to idle
+    t =    35.57s     Find the "favorites.close" Button
+    t =    35.60s     Check for interrupting elements affecting "favorites.close" Button
+    t =    35.63s     Synthesize event
+    t =    35.94s     Wait for com.mdd.kanpan to idle
+    t =    37.36s Checking existence of `"favorites.more" Button`
+    t =    37.40s Find the "bottom.settings" Button
+    t =    37.44s Tap "bottom.favorites" Button
+    t =    37.44s     Wait for com.mdd.kanpan to idle
+    t =    37.44s     Find the "bottom.favorites" Button
+    t =    37.46s     Check for interrupting elements affecting "bottom.favorites" Button
+    t =    37.48s     Synthesize event
+    t =    37.77s     Wait for com.mdd.kanpan to idle
+    t =    38.20s Waiting 15.0s for "favorites.group.观察中的品种" Button to exist
+    t =    39.25s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.观察中的品种" Button`
+    t =    39.26s         Checking existence of `"favorites.group.观察中的品种" Button`
+    t =    39.29s Tap "favorites.group.加密" Button
+    t =    39.29s     Wait for com.mdd.kanpan to idle
+    t =    39.30s     Find the "favorites.group.加密" Button
+    t =    39.33s     Check for interrupting elements affecting "favorites.group.加密" Button
+    t =    39.36s     Synthesize event
+    t =    39.66s     Wait for com.mdd.kanpan to idle
+    t =    39.66s Tap "favorites.more" Button
+    t =    39.66s     Wait for com.mdd.kanpan to idle
+    t =    39.67s     Find the "favorites.more" Button
+    t =    39.71s     Check for interrupting elements affecting "favorites.more" Button
+    t =    39.74s     Synthesize event
+    t =    40.03s     Wait for com.mdd.kanpan to idle
+    t =    40.40s Waiting 4.0s for "favorites.edit" Button to exist
+    t =    41.47s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.edit" Button`
+    t =    41.47s         Checking existence of `"favorites.edit" Button`
+    t =    41.54s Tap "favorites.edit" Button
+    t =    41.54s     Wait for com.mdd.kanpan to idle
+    t =    41.54s     Find the "favorites.edit" Button
+    t =    41.60s     Check for interrupting elements affecting "favorites.edit" Button
+    t =    41.64s     Synthesize event
+    t =    41.94s     Wait for com.mdd.kanpan to idle
+    t =    42.27s Waiting 4.0s for "全选" Button to exist
+    t =    43.31s     Checking `Expect predicate `existsNoRetry == 1` for object "全选" Button`
+    t =    43.32s         Checking existence of `"全选" Button`
+    t =    43.36s Tap "favorites.more" Button
+    t =    43.36s     Wait for com.mdd.kanpan to idle
+    t =    43.36s     Find the "favorites.more" Button
+    t =    43.39s     Check for interrupting elements affecting "favorites.more" Button
+    t =    43.42s     Synthesize event
+    t =    43.72s     Wait for com.mdd.kanpan to idle
+    t =    44.11s Waiting 4.0s for "favorites.edit" Button to exist
+    t =    45.15s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.edit" Button`
+    t =    45.15s         Checking existence of `"favorites.edit" Button`
+    t =    45.19s Tap "favorites.edit" Button
+    t =    45.19s     Wait for com.mdd.kanpan to idle
+    t =    45.19s     Find the "favorites.edit" Button
+    t =    45.23s     Check for interrupting elements affecting "favorites.edit" Button
+    t =    45.30s     Synthesize event
+    t =    45.60s     Wait for com.mdd.kanpan to idle
+    t =    45.97s Tap "favorites.add" Button
+    t =    45.97s     Wait for com.mdd.kanpan to idle
+    t =    45.98s     Find the "favorites.add" Button
+    t =    46.01s     Check for interrupting elements affecting "favorites.add" Button
+    t =    46.03s     Synthesize event
+    t =    46.32s     Wait for com.mdd.kanpan to idle
+    t =    46.41s Waiting 5.0s for "symbols.query" TextField to exist
+    t =    47.45s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.query" TextField`
+    t =    47.45s         Checking existence of `"symbols.query" TextField`
+    t =    47.74s Tear Down
+    t =    47.74s     Find the Target Application 'com.mdd.kanpan'
+    t =    47.99s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    47.99s     Terminate com.mdd.kanpan:85126
+Test Case '-[KanpanUITests.ChartFoundationUITests testFavoritesCategoryOverflow]' passed (49.225 seconds).
+Test Case '-[KanpanUITests.ChartFoundationUITests testQuickFavoritesAndMarketSectors]' started.
+    t =     0.00s Start Test at 2026-09-15 06:14:14.060
+    t =     0.05s Set Up
+    t =     0.05s     Setting device orientation to Portrait
+    t =     0.06s         Wait for com.apple.springboard to idle
+    t =     0.07s     Open com.mdd.kanpan
+    t =     0.07s         Launch com.mdd.kanpan
+2026-09-15 06:14:14.154 xcodebuild[84773:33048909] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 06:14:14.155 xcodebuild[84773:33048909] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     0.31s             Setting up automation session
+    t =     1.15s             Wait for com.mdd.kanpan to idle
+    t =     2.51s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =     3.57s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     3.57s             Checking existence of `"chart.canvas" Other`
+    t =     4.65s     Checking existence of `"chart.canvas" Other`
+    t =     4.68s     Find the "chart.canvas" Other
+    t =     4.70s Terminate com.mdd.kanpan:85441
+    t =     5.71s Open com.mdd.kanpan
+    t =     5.71s     Launch com.mdd.kanpan
+2026-09-15 06:14:19.772 xcodebuild[84773:33048909] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 06:14:19.772 xcodebuild[84773:33048909] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     5.94s         Setting up automation session
+    t =     6.74s         Wait for com.mdd.kanpan to idle
+    t =     8.39s Waiting 15.0s for "favorites.more" Button to exist
+    t =     9.47s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =     9.47s         Checking existence of `"favorites.more" Button`
+    t =     9.55s Tap "favorites.more" Button
+    t =     9.55s     Wait for com.mdd.kanpan to idle
+    t =     9.55s     Find the "favorites.more" Button
+    t =     9.58s     Check for interrupting elements affecting "favorites.more" Button
+    t =     9.61s     Synthesize event
+    t =     9.92s     Wait for com.mdd.kanpan to idle
+    t =     9.98s Waiting 4.0s for "favorites.close" Button to exist
+    t =    11.02s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.close" Button`
+    t =    11.02s         Checking existence of `"favorites.close" Button`
+    t =    11.07s Tap "favorites.close" Button
+    t =    11.07s     Wait for com.mdd.kanpan to idle
+    t =    11.08s     Find the "favorites.close" Button
+    t =    11.11s     Check for interrupting elements affecting "favorites.close" Button
+    t =    11.18s     Synthesize event
+    t =    11.49s     Wait for com.mdd.kanpan to idle
+    t =    12.87s Checking existence of `"favorites.more" Button`
+    t =    12.90s Find the "bottom.settings" Button
+    t =    12.92s Tap "top.symbol" Button
+    t =    12.92s     Wait for com.mdd.kanpan to idle
+    t =    12.92s     Find the "top.symbol" Button
+    t =    12.94s     Check for interrupting elements affecting "top.symbol" Button
+    t =    12.96s     Synthesize event
+    t =    13.25s     Wait for com.mdd.kanpan to idle
+    t =    13.67s Waiting 5.0s for "quickFavorites.open.BTCUSDT" Button to exist
+    t =    14.69s     Checking `Expect predicate `existsNoRetry == 1` for object "quickFavorites.open.BTCUSDT" Button`
+    t =    14.70s         Checking existence of `"quickFavorites.open.BTCUSDT" Button`
+    t =    14.75s Waiting 5.0s for "quickFavorites.open.ETHUSDT" Button to exist
+    t =    15.80s     Checking `Expect predicate `existsNoRetry == 1` for object "quickFavorites.open.ETHUSDT" Button`
+    t =    15.80s         Checking existence of `"quickFavorites.open.ETHUSDT" Button`
+    t =    15.84s Waiting 5.0s for "quickFavorites.open.SNDKUSDT" Button to exist
+    t =    16.88s     Checking `Expect predicate `existsNoRetry == 1` for object "quickFavorites.open.SNDKUSDT" Button`
+    t =    16.88s         Checking existence of `"quickFavorites.open.SNDKUSDT" Button`
+    t =    16.92s Checking existence of `"favorites.groups" ScrollView`
+    t =    16.95s Find the Target Application 'com.mdd.kanpan'
+    t =    17.07s Added attachment named '左上角-全部收藏快捷切换'
+    t =    17.07s Tap "quickFavorites.search" Button
+    t =    17.07s     Wait for com.mdd.kanpan to idle
+    t =    17.07s     Find the "quickFavorites.search" Button
+    t =    17.10s     Check for interrupting elements affecting "quickFavorites.search" Button
+    t =    17.13s     Synthesize event
+    t =    17.44s     Wait for com.mdd.kanpan to idle
+    t =    18.02s Waiting 5.0s for "symbols.query" TextField to exist
+    t =    19.04s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.query" TextField`
+    t =    19.04s         Checking existence of `"symbols.query" TextField`
+    t =    19.15s Tap "symbols.market" Button
+    t =    19.15s     Wait for com.mdd.kanpan to idle
+    t =    19.41s     Find the "symbols.market" Button
+    t =    19.46s     Check for interrupting elements affecting "symbols.market" Button
+    t =    19.54s     Synthesize event
+    t =    19.84s     Wait for com.mdd.kanpan to idle
+    t =    20.33s Waiting 5.0s for "美股" Button to exist
+    t =    21.37s     Checking `Expect predicate `existsNoRetry == 1` for object "美股" Button`
+    t =    21.37s         Checking existence of `"美股" Button`
+    t =    21.43s Tap "美股" Button
+    t =    21.43s     Wait for com.mdd.kanpan to idle
+    t =    21.43s     Find the "美股" Button
+    t =    21.50s     Check for interrupting elements affecting "美股" Button
+    t =    21.56s     Synthesize event
+    t =    21.85s     Wait for com.mdd.kanpan to idle
+    t =    22.03s Tap "symbols.query" TextField
+    t =    22.03s     Wait for com.mdd.kanpan to idle
+    t =    22.12s     Find the "symbols.query" TextField
+    t =    22.16s     Check for interrupting elements affecting "symbols.query" TextField
+    t =    22.20s     Synthesize event
+    t =    22.49s     Wait for com.mdd.kanpan to idle
+    t =    22.80s Type 'SNDK' into "symbols.query" TextField
+    t =    22.80s     Wait for com.mdd.kanpan to idle
+    t =    22.81s     Find the "symbols.query" TextField
+    t =    22.88s     Check for interrupting elements affecting "symbols.query" TextField
+    t =    22.92s     Synthesize event
+    t =    23.19s     Wait for com.mdd.kanpan to idle
+    t =    23.19s Waiting 10.0s for "symbols.row.SNDKUSDT" Button to exist
+    t =    24.22s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.row.SNDKUSDT" Button`
+    t =    24.22s         Checking existence of `"symbols.row.SNDKUSDT" Button`
+    t =    24.26s Find the Target Application 'com.mdd.kanpan'
+    t =    24.35s Added attachment named '交易所-美股板块筛选'
+    t =    24.36s Tap "symbols.row.SNDKUSDT" Button
+    t =    24.36s     Wait for com.mdd.kanpan to idle
+    t =    24.36s     Find the "symbols.row.SNDKUSDT" Button
+    t =    24.39s     Check for interrupting elements affecting "symbols.row.SNDKUSDT" Button
+    t =    24.42s     Synthesize event
+    t =    24.71s     Wait for com.mdd.kanpan to idle
+    t =    26.12s Checking existence of `"chart.canvas" Other`
+    t =    26.16s Find the "chart.canvas" Other
+    t =    26.19s Tear Down
+    t =    26.19s     Find the Target Application 'com.mdd.kanpan'
+    t =    26.28s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    26.28s     Terminate com.mdd.kanpan:85460
+Test Case '-[KanpanUITests.ChartFoundationUITests testQuickFavoritesAndMarketSectors]' passed (27.434 seconds).
+Test Suite 'ChartFoundationUITests' passed at 2026-09-15 06:14:41.494.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 76.658 (76.661) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-15 06:14:41.495.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 76.658 (76.663) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 06:14:41.495.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 76.658 (76.664) seconds
+2026-09-15 06:14:54.560 xcodebuild[84773:33048909] [MT] IDETestOperationsObserverDebug: 118.160 elapsed -- Testing started completed.
+2026-09-15 06:14:54.560 xcodebuild[84773:33048909] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 06:14:54.560 xcodebuild[84773:33048909] [MT] IDETestOperationsObserverDebug: 118.160 sec, +118.160 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/eye-colors/iphone15-final.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

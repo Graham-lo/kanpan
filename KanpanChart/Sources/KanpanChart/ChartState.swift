@@ -11,6 +11,7 @@ public struct ChartState: Sendable {
   public var symbol: SymbolInfo
   public var view: ViewWindow
   public var style: CandleStyle
+  public var paletteSeed: PaletteSeed?
   public var dark: Bool
   public var redUp: Bool
   public var price: PriceTransform
@@ -82,7 +83,7 @@ public struct ChartState: Sendable {
     self.subScale = subScale
   }
 
-  public var colors: ChartColors { Palette.chart(dark: dark, redUp: redUp) }
+  public var colors: ChartColors { Palette.chart(paletteSeed ?? (dark ? Palette.darkSeed : Palette.lightSeed), redUp: redUp) }
 
   /// 真正生效的网格档位。渲染器和探针一律读这个，别再读 `style.grid`——
   /// 覆盖只在读的时候叠，风格表本身一个数都不许改（原型即规格）。

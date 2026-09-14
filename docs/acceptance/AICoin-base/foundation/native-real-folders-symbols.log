@@ -1,0 +1,61 @@
+cd Kanpan/Symbols && swift test 
+[0/1] Planning build
+Building for debugging...
+[0/4] Write sources
+[2/4] Write swift-version--58304C5D6DBC2206.txt
+[4/7] Emitting module KanpanSymbols
+[5/7] Compiling KanpanSymbols SymbolPrefs.swift
+[6/7] Compiling KanpanSymbols SymbolPickerModel.swift
+[7/8] Compiling KanpanSymbols SymbolSections.swift
+[8/14] Compiling KanpanSymbolsTests SymbolPrefsTests.swift
+[9/14] Emitting module KanpanSymbolsTests
+[10/14] Compiling KanpanSymbolsTests SymbolPickerModelTests.swift
+[11/14] Compiling KanpanSymbolsTests SymbolSectionsTests.swift
+[12/14] Compiling KanpanSymbolsTests FavoriteGroupTests.swift
+macro expansion #require:2:6: error: cannot use mutating member on immutable value: '$0' is immutable
+`- /Users/mdd/zhk/kanpan/Kanpan/Symbols/Tests/KanpanSymbolsTests/FavoriteGroupTests.swift:63:59: note: expanded code originates here
+61 |     let memory = MemoryPrefsStorage(), store = SymbolPrefsStore(storage: memory)
+62 |     var prefs = SymbolPrefs(favorites: ["BTCUSDT", "MUUSDT"])
+63 |     let crypto = try #require(prefs.createGroup("加密"))
+   |                      `- note: in expansion of macro 'require' here
+   +--- macro expansion #require ---------------------------------------
+   |1 | Testing.__checkFunctionCall(prefs.self,calling: {
+   |2 |   $0.createGroup($1)
+   |  |      `- error: cannot use mutating member on immutable value: '$0' is immutable
+   |3 | },"加密",expression: .__fromFunctionCall(.__fromSyntaxNode("prefs"),"createGroup",(nil,.__fromStringLiteral(#""加密""#, "加密"))),comments: [],isRequired: true,sourceLocation: Testing.SourceLocation.__here()).__required()
+   +--------------------------------------------------------------------
+64 |     let stocks = try #require(prefs.createGroup("美股"))
+65 |     prefs.classifyUnassigned()
+
+macro expansion #require:2:6: error: cannot use mutating member on immutable value: '$0' is immutable
+`- /Users/mdd/zhk/kanpan/Kanpan/Symbols/Tests/KanpanSymbolsTests/FavoriteGroupTests.swift:64:59: note: expanded code originates here
+62 |     var prefs = SymbolPrefs(favorites: ["BTCUSDT", "MUUSDT"])
+63 |     let crypto = try #require(prefs.createGroup("加密"))
+64 |     let stocks = try #require(prefs.createGroup("美股"))
+   |                      `- note: in expansion of macro 'require' here
+   +--- macro expansion #require ---------------------------------------
+   |1 | Testing.__checkFunctionCall(prefs.self,calling: {
+   |2 |   $0.createGroup($1)
+   |  |      `- error: cannot use mutating member on immutable value: '$0' is immutable
+   |3 | },"美股",expression: .__fromFunctionCall(.__fromSyntaxNode("prefs"),"createGroup",(nil,.__fromStringLiteral(#""美股""#, "美股"))),comments: [],isRequired: true,sourceLocation: Testing.SourceLocation.__here()).__required()
+   +--------------------------------------------------------------------
+65 |     prefs.classifyUnassigned()
+66 |     prefs.assign("MUUSDT", to: stocks); prefs.selectGroup(stocks)
+
+/Users/mdd/zhk/kanpan/Kanpan/Symbols/Tests/KanpanSymbolsTests/FavoriteGroupTests.swift:63:18: warning: no calls to throwing functions occur within 'try' expression
+61 |     let memory = MemoryPrefsStorage(), store = SymbolPrefsStore(storage: memory)
+62 |     var prefs = SymbolPrefs(favorites: ["BTCUSDT", "MUUSDT"])
+63 |     let crypto = try #require(prefs.createGroup("加密"))
+   |                  `- warning: no calls to throwing functions occur within 'try' expression
+64 |     let stocks = try #require(prefs.createGroup("美股"))
+65 |     prefs.classifyUnassigned()
+
+/Users/mdd/zhk/kanpan/Kanpan/Symbols/Tests/KanpanSymbolsTests/FavoriteGroupTests.swift:64:18: warning: no calls to throwing functions occur within 'try' expression
+62 |     var prefs = SymbolPrefs(favorites: ["BTCUSDT", "MUUSDT"])
+63 |     let crypto = try #require(prefs.createGroup("加密"))
+64 |     let stocks = try #require(prefs.createGroup("美股"))
+   |                  `- warning: no calls to throwing functions occur within 'try' expression
+65 |     prefs.classifyUnassigned()
+66 |     prefs.assign("MUUSDT", to: stocks); prefs.selectGroup(stocks)
+error: fatalError
+make: *** [symbols-test] Error 1

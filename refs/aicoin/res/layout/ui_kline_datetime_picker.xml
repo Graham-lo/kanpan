@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:maxHeight="500.0dp" android:fillViewport="true"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <carbon.widget.LinearLayout android:orientation="vertical" android:tag="skin:ui_kline_menu_background_color:background" android:background="@color/ui_kline_menu_background_color" android:paddingTop="16.0dp" android:paddingBottom="16.0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="20.0dp" android:paddingEnd="20.0dp" app:carbon_cornerRadius="8.0dp">
+        <TextView android:textSize="18.0sp" android:textStyle="bold" android:textColor="@color/sh_base_one_text_color" android:id="@id/tvPickerTitle" android:tag="skin:sh_base_one_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="32.0dp" android:text="@string/ui_kline_data_select_title" />
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="44.0dp">
+            <TextView android:textSize="14.0sp" android:textColor="@color/sh_base_one_text_color" android:gravity="center" android:id="@id/btnDateTab" android:tag="skin:sh_base_one_text_color:textColor|skin:ui_kline_data_selected_date_bg:background" android:background="@drawable/ui_kline_data_selected_date_bg" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="1.0" android:layout_marginEnd="8.0dp" />
+            <TextView android:textSize="14.0sp" android:textColor="@color/sh_base_one_text_color" android:gravity="center" android:id="@id/btnTimeTab" android:tag="skin:sh_base_one_text_color:textColor|skin:ui_kline_data_selected_date_bg:background" android:background="@drawable/ui_kline_data_selected_date_bg" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="1.0" android:layout_marginStart="8.0dp" />
+        </LinearLayout>
+        <LinearLayout android:orientation="horizontal" android:id="@id/panelDate" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8.0dp">
+            <m.aicoin.kline.main.menu.WheelPickerView android:id="@id/npYear" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0" />
+            <m.aicoin.kline.main.menu.WheelPickerView android:id="@id/npMonth" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0" />
+            <m.aicoin.kline.main.menu.WheelPickerView android:id="@id/npDay" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0" />
+        </LinearLayout>
+        <LinearLayout android:orientation="horizontal" android:id="@id/panelTime" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8.0dp">
+            <m.aicoin.kline.main.menu.WheelPickerView android:id="@id/npHour" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0" />
+            <m.aicoin.kline.main.menu.WheelPickerView android:id="@id/npMinute" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0" />
+            <m.aicoin.kline.main.menu.WheelPickerView android:id="@id/npSecond" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0" />
+        </LinearLayout>
+        <LinearLayout android:orientation="horizontal" android:paddingBottom="8.0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16.0dp">
+            <TextView android:textSize="16.0sp" android:textColor="@color/sh_base_text_primary" android:gravity="center" android:id="@id/btnPickerCancel" android:tag="skin:ui_kline_data_btn_cancel_bg:background|skin:sh_base_text_primary:textColor" android:background="@drawable/ui_kline_data_btn_cancel_bg" android:layout_width="0.0dp" android:layout_height="48.0dp" android:text="@string/ui_kline_common_cancel" android:layout_weight="1.0" android:layout_marginEnd="10.0dp" />
+            <TextView android:textSize="16.0sp" android:textColor="@color/ui_kline_date_white_btn_color" android:gravity="center" android:id="@id/btnPickerConfirm" android:tag="skin:ui_kline_data_btn_jump_bg:background|skin:ui_kline_date_white_btn_color:textColor" android:background="@drawable/ui_kline_data_btn_jump_bg" android:layout_width="0.0dp" android:layout_height="48.0dp" android:text="@string/ui_kline_data_select_jump" android:layout_weight="1.0" />
+        </LinearLayout>
+    </carbon.widget.LinearLayout>
+</ScrollView>

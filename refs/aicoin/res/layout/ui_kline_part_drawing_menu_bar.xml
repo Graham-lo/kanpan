@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:orientation="vertical" android:id="@id/kline_drawing_menu_vertical_bar" android:tag="skin:ui_kline_menu_bg_color:background" android:background="@color/ui_kline_menu_bg_color" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <LinearLayout android:orientation="vertical" android:id="@id/kline_drawing_menu_vertical_bar_content" android:layout_width="56.0dp" android:layout_height="match_parent">
+        <View android:tag="skin:ui_kline_common_border:background" android:background="@color/ui_kline_common_border" android:layout_width="match_parent" android:layout_height="@dimen/offset_1px" />
+        <androidx.constraintlayout.widget.ConstraintLayout android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0">
+            <androidx.recyclerview.widget.RecyclerView android:id="@id/kline_drawing_menu_vertical_bar_line_type" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginTop="@dimen/offset_8dp" app:layout_constraintTop_toTopOf="parent" />
+            <FrameLayout android:id="@id/layout_vertical_more" android:tag="skin:ui_kline_drawing_vertial_more_bg:background" android:background="@drawable/ui_kline_drawing_vertial_more_bg" android:layout_width="match_parent" android:layout_height="20.0dp" app:layout_constraintBottom_toBottomOf="parent">
+                <ImageView android:layout_gravity="center" android:id="@id/iv_vertical_arrow" android:tag="skin:sh_base_text_tertiary:appTint" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/ui_kline_ic_drawing_vertical_arrow" />
+            </FrameLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+        <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="@dimen/offset_8dp">
+            <TextView android:textColor="@drawable/ui_kline_kline_drawing_menu_hide_btn_color_selector" android:gravity="center" android:id="@id/kline_drawing_menu_hide_button" android:tag="skin:ui_kline_kline_drawing_menu_hide_btn_color_selector:textColor" android:paddingTop="@dimen/offset_8dp" android:paddingBottom="@dimen/offset_8dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ui_kline_common_hide" />
+            <TextView android:textColor="@color/sh_base_text_tertiary" android:gravity="center" android:id="@id/kline_drawing_menu_clear_button" android:tag="skin:sh_base_text_tertiary:textColor" android:paddingTop="@dimen/offset_8dp" android:paddingBottom="@dimen/offset_8dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ui_kline_common_clear" />
+            <TextView android:textColor="@color/sh_base_text_tertiary" android:gravity="center" android:id="@id/kline_drawing_menu_share_button" android:tag="skin:sh_base_text_tertiary:textColor" android:paddingTop="@dimen/offset_8dp" android:paddingBottom="@dimen/offset_8dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/sh_base_share" />
+        </LinearLayout>
+        <View android:tag="skin:ui_kline_common_border:background" android:background="@color/ui_kline_common_border" android:layout_width="match_parent" android:layout_height="@dimen/offset_1px" />
+    </LinearLayout>
+    <ImageView android:id="@id/kline_drawing_menu_vertical_bar_arrow" android:tag="skin:ui_kline_drawing_menu_bar_arrow_selector:src" android:paddingTop="@dimen/offset_12dp" android:paddingBottom="@dimen/offset_12dp" android:layout_width="@dimen/offset_14dp" android:layout_height="wrap_content" android:src="@drawable/ui_kline_drawing_menu_bar_arrow_selector" android:scaleType="fitStart" android:layout_centerVertical="true" />
+    <View android:tag="skin:ui_kline_common_border:background" android:background="@color/ui_kline_common_border" android:layout_width="@dimen/offset_1px" android:layout_height="match_parent" android:layout_alignParentLeft="true" android:layout_alignParentStart="true" />
+</RelativeLayout>

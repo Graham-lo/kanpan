@@ -28,8 +28,8 @@ extension ThemeChoice {
   var forced: ColorScheme? {
     switch self {
     case .system: nil
-    case .light: .light
-    case .dark: .dark
+    case .light, .paper: .light
+    case .dark, .night: .dark
     }
   }
 }
@@ -41,21 +41,16 @@ struct PanelHost<Content: View>: View {
 
   @Environment(\.colorScheme) private var systemScheme
 
-  private var dark: Bool {
-    switch store.prefs.theme {
-    case .system: systemScheme == .dark
-    case .light: false
-    case .dark: true
-    }
-  }
+  @Environment(\.panelTheme) private var inheritedTheme
+  private var seed: PaletteSeed { store.prefs.ambientTheme ? inheritedTheme.seed : store.prefs.theme.seed(systemDark: systemScheme == .dark) }
 
   var body: some View {
     content()
-      .environment(\.panelTheme, PanelTheme(dark: dark, redUp: store.prefs.redUp))
-      .preferredColorScheme(store.prefs.theme.forced)
+      .environment(\.panelTheme, PanelTheme(seed: seed, redUp: store.prefs.redUp))
+      .preferredColorScheme(store.prefs.ambientTheme ? (seed.dark ? .dark : .light) : store.prefs.theme.forced)
       .presentationDetents([.medium, .large])
       .presentationDragIndicator(.visible)
-      .presentationBackground { Color(hex: dark ? Palette.darkSeed.raised : Palette.lightSeed.raised) }
+      .presentationBackground { Color(hex: seed.raised) }
       .presentationCornerRadius(18)
       // 背后继续更新；外部触摸由ChartBox遮罩消费，只关闭面板。
       .presentationBackgroundInteraction(.enabled(upThrough: .medium))
@@ -100,13 +95,13 @@ struct PanelCloser {
 /// 横屏侧栏的外壳：主题、深浅、背景，外加把关闭动作递进去。
 struct PanelSide<Content: View>: View {
   var store: PrefsStore
-  var dark: Bool
+  var seed: PaletteSeed
   var onClose: PanelDismiss
   @ViewBuilder var content: () -> Content
 
   var body: some View {
     content()
-      .environment(\.panelTheme, PanelTheme(dark: dark, redUp: store.prefs.redUp))
+      .environment(\.panelTheme, PanelTheme(seed: seed, redUp: store.prefs.redUp))
       .environment(\.panelDismiss, onClose)
   }
 }
@@ -141,11 +136,11 @@ struct PanelPreviewHost<Content: View>: View {
   @Environment(\.colorScheme) private var scheme
 
   var body: some View {
-    let dark = store.prefs.theme == .system ? scheme == .dark : store.prefs.theme == .dark
+    let seed = store.prefs.theme.seed(systemDark: scheme == .dark)
     content(store)
-      .environment(\.panelTheme, PanelTheme(dark: dark, redUp: store.prefs.redUp))
+      .environment(\.panelTheme, PanelTheme(seed: seed, redUp: store.prefs.redUp))
       .preferredColorScheme(store.prefs.theme.forced)
-      .background(Color(hex: dark ? Palette.darkSeed.raised : Palette.lightSeed.raised))
+      .background(Color(hex: seed.raised))
   }
 }
 

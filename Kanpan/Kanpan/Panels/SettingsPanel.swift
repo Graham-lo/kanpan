@@ -20,12 +20,7 @@ struct SettingsPanel: View {
 
   var body: some View {
     PanelSheet(title: "设置", subtitle: nil) {
-      // ---- 原型里的五行，顺序一字不动
-      PanelRow(name: "外观") {
-        PanelSegment(options: ThemeChoice.options, selection: prefs.theme) { v in
-          store.update { $0.theme = v }
-        }
-      }
+      DisplaySettingsSection(store: store)
       PanelRow(name: "涨跌配色") {
         PanelSegment(options: [("绿涨红跌", false), ("红涨绿跌", true)], selection: prefs.redUp) { v in
           store.update { $0.redUp = v }

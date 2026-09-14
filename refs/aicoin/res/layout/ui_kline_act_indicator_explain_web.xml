@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:tag="skin:sh_base_indicator_explain_web_color:background" android:background="@color/sh_base_indicator_explain_web_color" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <RelativeLayout android:layout_width="match_parent" android:layout_height="@dimen/sh_base_title_block_height" style="@style/sh_base.TitleBar">
+        <include layout="@layout/part_common_button_back" />
+        <TextView android:id="@id/indicator_explain_title" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_centerInParent="true" style="@style/sh_base.TitleText" />
+    </RelativeLayout>
+    <app.aicoin.ui.base.widget.ObservableWebView android:id="@id/web_content" android:scrollbars="none" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0" style="@style/sh_base.PageContentLight" />
+    <TextView android:textSize="@dimen/font_size_normal_high" android:textColor="@color/site_navigation_web_errorTip_text_color" android:id="@id/tip_url_failed" android:tag="skin:site_navigation_web_errorTip_text_color:textColor" android:padding="@dimen/offset_8dp" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+</LinearLayout>

@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView android:textSize="@dimen/font_size_small" android:textColor="@color/ui_kline_compare_title_tab_text_color" android:id="@id/text_indicator_group_tag" android:tag="skin:ui_kline_compare_title_tab_text_color:textColor" android:paddingLeft="@dimen/offset_16dp" android:paddingTop="10.0dp" android:paddingRight="@dimen/offset_16dp" android:paddingBottom="10.0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="@dimen/offset_16dp" android:paddingEnd="@dimen/offset_16dp"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:layout_gravity="left" android:orientation="vertical" android:id="@id/kline_aisrl_info_container" android:tag="skin:ui_kline_bg_aisrl_info:background" android:background="@drawable/ui_kline_bg_aisrl_info" android:paddingLeft="12.0dp" android:paddingTop="10.0dp" android:paddingRight="12.0dp" android:paddingBottom="10.0dp" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/offset_8dp" android:layout_marginTop="@dimen/offset_8dp" android:layout_marginRight="@dimen/ui_kline_compare_info_window_right_margin" android:elevation="10.0dp" style="@style/sh_base.PageContentLight"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <TextView android:textSize="12.0sp" android:textStyle="bold" android:textColor="@color/ui_kline_order_point_msg_title_text_color" android:id="@id/tv_aisrl_title" android:tag="skin:ui_kline_order_point_msg_title_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6.0dp">
+        <TextView android:textSize="10.0sp" android:textColor="@color/ui_kline_order_point_msg_label_text_color" android:tag="skin:ui_kline_order_point_msg_label_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_vpvr_alert_dialog_price" />
+        <TextView android:textSize="10.0sp" android:textColor="@color/ui_kline_order_point_msg_value_text_color" android:id="@id/tv_aisrl_price" android:tag="skin:ui_kline_order_point_msg_value_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dp">
+        <TextView android:textSize="10.0sp" android:textColor="@color/ui_kline_order_point_msg_label_text_color" android:tag="skin:ui_kline_order_point_msg_label_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_vpvr_alert_dialog_num" />
+        <TextView android:textSize="10.0sp" android:textColor="@color/ui_kline_order_point_msg_value_text_color" android:id="@id/tv_aisrl_amount" android:tag="skin:ui_kline_order_point_msg_value_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </LinearLayout>
+</LinearLayout>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:orientation="vertical" android:background="@android:color/black" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <com.aicoin.photoeditor.PhotoEditorView android:id="@id/photoEditorView" android:layout_width="match_parent" android:layout_height="match_parent" app:photo_src="@android:color/black" />
+    <FrameLayout android:id="@id/container_title" android:background="#cc000000" android:paddingLeft="16.0dp" android:paddingRight="16.0dp" android:layout_width="match_parent" android:layout_height="48.0dp">
+        <TextView android:textSize="16.0sp" android:textColor="#d7d7e0" android:gravity="center_vertical" android:layout_gravity="center_vertical" android:id="@id/text_cancel" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="@string/home_search_button_cancel" />
+        <TextView android:textSize="16.0sp" android:textColor="#008beb" android:gravity="center_vertical" android:layout_gravity="right|center" android:id="@id/text_confirm" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="@string/confirm" />
+    </FrameLayout>
+    <LinearLayout android:orientation="horizontal" android:id="@id/container_panel" android:background="#cc000000" android:layout_width="match_parent" android:layout_height="50.0dp" android:layout_alignParentBottom="true">
+        <ImageView android:id="@id/image_icon_path" android:padding="16.0dp" android:layout_width="0.0dp" android:layout_height="match_parent" android:src="@drawable/ai_kline_photo_editor_graffti_selector" android:layout_weight="1.0" />
+        <ImageView android:id="@id/image_icon_oval" android:padding="16.0dp" android:layout_width="0.0dp" android:layout_height="match_parent" android:src="@drawable/ai_kline_photo_editor_oval_selector" android:layout_weight="1.0" />
+        <ImageView android:id="@id/image_icon_rect" android:padding="16.0dp" android:layout_width="0.0dp" android:layout_height="match_parent" android:src="@drawable/ai_kline_photo_editor_rect_selector" android:layout_weight="1.0" />
+        <ImageView android:id="@id/image_icon_arrow" android:padding="16.0dp" android:layout_width="0.0dp" android:layout_height="match_parent" android:src="@drawable/ai_kline_photo_editor_arrow_selector" android:layout_weight="1.0" />
+        <ImageView android:id="@id/image_icon_text" android:padding="16.0dp" android:layout_width="0.0dp" android:layout_height="match_parent" android:src="@drawable/ai_kline_photo_editor_text_selector" android:layout_weight="1.0" />
+        <ImageView android:id="@id/image_icon_redo" android:padding="16.0dp" android:layout_width="0.0dp" android:layout_height="match_parent" android:src="@drawable/ai_kline_photo_editor_redo_selector" android:layout_weight="1.0" />
+    </LinearLayout>
+    <FrameLayout android:orientation="horizontal" android:id="@id/container_color_plate" android:background="#cc000000" android:visibility="gone" android:layout_width="match_parent" android:layout_height="46.0dp" android:layout_above="@id/container_panel">
+        <androidx.recyclerview.widget.RecyclerView android:id="@id/list_color_plate" android:layout_width="match_parent" android:layout_height="match_parent" />
+        <View android:layout_gravity="bottom" android:background="#4cd8d8d8" android:layout_width="match_parent" android:layout_height="0.5dp" />
+    </FrameLayout>
+    <include layout="@layout/loading_dialog_view" />
+</RelativeLayout>

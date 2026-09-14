@@ -23,6 +23,7 @@ struct KlineRow: Decodable {
     close = try KlineRow.num(&c)
     volume = try KlineRow.num(&c)
     closeTime = try c.decode(Int64.self)
+    guard bar.isValidMarketBar else { throw FeedError.badResponse("无效的 OHLCV") }
     // 后面几列（成交额、笔数、主动买量）1.0 用不上，不解。
   }
 
@@ -98,6 +99,8 @@ struct Ticker24hDTO: Decodable {
   var highPrice: String
   var lowPrice: String
   var quoteVolume: String
+  var closeTime: Int64?
+  var lastId: Int64?
 
   var ticker: Ticker {
     Ticker(symbol: symbol,
@@ -105,7 +108,8 @@ struct Ticker24hDTO: Decodable {
            changePercent: Double(priceChangePercent) ?? .nan,
            high: Double(highPrice) ?? .nan,
            low: Double(lowPrice) ?? .nan,
-           quoteVolume: Double(quoteVolume) ?? .nan, open24h: openPrice.flatMap(Double.init))
+           quoteVolume: Double(quoteVolume) ?? .nan, open24h: openPrice.flatMap(Double.init),
+           timeMs: closeTime, lastTradeID: lastId)
   }
 }
 
@@ -147,7 +151,7 @@ public enum StreamPayload: Sendable {
   case kline(KlineEvent)
   case ticker(Ticker)
   case tickerBatch([Ticker])
-  case markPrice(symbol: String, price: Double)
+  case markPrice(symbol: String, price: Double, timeMs: Int64)
   /// 逐笔成交。K 线的实时跳动现在靠它（见 `BinanceHosts.tradeStream`）。
   case trade(TradeEvent)
   /// 最优挂单：只给价格线一个心跳，不进成交量。
@@ -174,11 +178,12 @@ extension StreamPayload: Decodable {
       let sym = try c.decode(String.self, forKey: .s)
       func d(_ k: K) -> Double { (try? c.decode(String.self, forKey: k)).flatMap(Double.init) ?? .nan }
       self = .ticker(Ticker(symbol: sym, last: d(.c), changePercent: d(.P),
-                            high: d(.h), low: d(.l), quoteVolume: d(.q), open24h: d(.o)))
+                            high: d(.h), low: d(.l), quoteVolume: d(.q), open24h: d(.o), timeMs: try c.decodeIfPresent(Int64.self, forKey: .C),
+                            lastTradeID: try c.decodeIfPresent(Int64.self, forKey: .L)))
     case "markPriceUpdate":
       let sym = try c.decode(String.self, forKey: .s)
       let p = (try? c.decode(String.self, forKey: .p)).flatMap(Double.init) ?? .nan
-      self = .markPrice(symbol: sym, price: p)
+      self = .markPrice(symbol: sym, price: p, timeMs: (try? c.decode(Int64.self, forKey: .E)) ?? 0)
     case "trade":
       self = .trade(try TradeEvent(from: decoder))
     case "bookTicker":
@@ -191,7 +196,7 @@ extension StreamPayload: Decodable {
       self = .other(e)
     }
   }
-  enum K: String, CodingKey { case e, s, c, o, P, h, l, q, p, k, b, a, T, E }
+  enum K: String, CodingKey { case e, s, c, o, P, h, l, q, p, k, b, a, T, E, C, L }
 }
 
 /// `kline` 事件。`x == true` 表示这根收了（§4.4）。
@@ -200,18 +205,22 @@ public struct KlineEvent: Sendable, Equatable, Decodable {
   public var interval: String
   public var openTime: Int64
   public var closed: Bool
+  public var eventTime: Int64
+  public var lastTradeID: Int64?
   public var bar: Bar
 
-  public init(symbol: String, interval: String, openTime: Int64, closed: Bool, bar: Bar) {
+  public init(symbol: String, interval: String, openTime: Int64, closed: Bool, bar: Bar, eventTime: Int64 = 0, lastTradeID: Int64? = nil) {
     self.symbol = symbol; self.interval = interval
-    self.openTime = openTime; self.closed = closed; self.bar = bar
+    self.openTime = openTime; self.closed = closed; self.bar = bar; self.eventTime = eventTime; self.lastTradeID = lastTradeID
   }
 
   public init(from decoder: Decoder) throws {
     let outer = try decoder.container(keyedBy: Outer.self)
+    eventTime = (try? outer.decode(Int64.self, forKey: .E)) ?? 0
     let k = try outer.nestedContainer(keyedBy: Inner.self, forKey: .k)
     if let s = try? k.decode(String.self, forKey: .s) { symbol = s }
     else { symbol = try outer.decode(String.self, forKey: .s) }
+    lastTradeID = try k.decodeIfPresent(Int64.self, forKey: .L)
     interval = try k.decode(String.self, forKey: .i)
     openTime = try k.decode(Int64.self, forKey: .t)
     closed = (try? k.decode(Bool.self, forKey: .x)) ?? false
@@ -227,7 +236,7 @@ public struct KlineEvent: Sendable, Equatable, Decodable {
   }
 
   enum Outer: String, CodingKey { case e, E, s, k }
-  enum Inner: String, CodingKey { case t, T, s, i, o, h, l, c, v, x }
+  enum Inner: String, CodingKey { case t, T, s, i, o, h, l, c, v, x, L }
 }
 
 /// `trade` 事件：一笔成交。
@@ -239,9 +248,10 @@ public struct TradeEvent: Sendable, Equatable, Decodable {
   public var price: Double
   public var qty: Double
   public var timeMs: Int64
+  public var tradeID: Int64?
 
-  public init(symbol: String, price: Double, qty: Double, timeMs: Int64) {
-    self.symbol = symbol; self.price = price; self.qty = qty; self.timeMs = timeMs
+  public init(symbol: String, price: Double, qty: Double, timeMs: Int64, tradeID: Int64? = nil) {
+    self.symbol = symbol; self.price = price; self.qty = qty; self.timeMs = timeMs; self.tradeID = tradeID
   }
 
   public init(from decoder: Decoder) throws {
@@ -254,6 +264,7 @@ public struct TradeEvent: Sendable, Equatable, Decodable {
       }
       return try c.decode(Double.self, forKey: key)
     }
+    tradeID = try c.decodeIfPresent(Int64.self, forKey: .t)
     price = try num(.p)
     qty = try num(.q)
     timeMs = (try? c.decode(Int64.self, forKey: .T)) ?? (try? c.decode(Int64.self, forKey: .E)) ?? 0

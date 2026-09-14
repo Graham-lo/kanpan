@@ -8,16 +8,21 @@ CHART      := KanpanChart
 RUNTIME    := iOS
 SHOTS      := docs/acceptance/shots
 
-# A0.2 的八台机型，与原型 app.js 的 DEVICES 一一对应
+# 当前兼容范围：iPhone 15 及更新型号、iPad；与 Tools/ui-test.sh 保持一致。
 DEVICES := \
-	"iPhone SE (3rd generation)" \
-	"iPhone 13 mini" \
 	"iPhone 15" \
 	"iPhone 16 Pro" \
-	"iPhone Air" \
 	"iPhone 16 Plus" \
+	"iPhone 17" \
+	"iPhone 17 Pro" \
+	"iPhone 17e" \
 	"iPhone 17 Pro Max" \
-	"iPad mini (A17 Pro)"
+	"iPhone Air" \
+	"iPad mini (A17 Pro)" \
+	"iPad (A16)" \
+	"iPad Air 11-inch (M4)" \
+	"iPad Pro 11-inch (M5)" \
+	"iPad Pro 13-inch (M5)"
 
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
@@ -34,12 +39,12 @@ help:
 	@echo "evidence     出 M3 全套取证产物到 docs/acceptance/M3/（A3.1–A3.10）"
 	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库）"
 	@echo "app-test     跑 app target 的测试"
-	@echo "ui-test      A8.4：八台机型跑同一套 XCUITest 用例，逐台记结果"
+	@echo "ui-test      A8.4：13 台机型跑同一套 XCUITest 用例，逐台记结果"
 	@echo "ui-test-one  只跑一台（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "snap         在单台模拟器上装 app 并截一张图（DEVICE=\"iPhone 16 Pro\"）"
-	@echo "screenshots  八台机型全跑一遍，出 docs/acceptance/shots/"
-	@echo "devices      备齐 A0.2 的八台模拟器（缺的自动 create）"
-	@echo "boot         把八台全 boot 起来"
+	@echo "screenshots  13 台机型全跑一遍，出 docs/acceptance/shots/"
+	@echo "devices      备齐 当前范围的 13 台模拟器（缺的自动 create）"
+	@echo "boot         把13 台全 boot 起来"
 	@echo "doctor       打印环境信息，对 A0.1 的验收"
 	@echo "clean        清 DerivedData 与 .build"
 
@@ -156,17 +161,9 @@ app-test: app-logic-test build
 
 # ---------------------------------------------------------------- A8.4 UI 测试
 # KanpanUITests（本工程里唯一的 XCTest target，其余单测一律 swift-testing）。
-# 同一套用例在八台机型上各跑一遍，逐台记结果：make ui-test
+# 同一套用例在13 台机型上各跑一遍，逐台记结果：make ui-test
 # 单台：make ui-test-one DEVICE="iPad mini (A17 Pro)"
-UI_DEVICES := \
-	"iPhone 13 mini" \
-	"iPhone 15" \
-	"iPhone 16 Pro" \
-	"iPhone 16 Plus" \
-	"iPhone 17 Pro Max" \
-	"iPhone Air" \
-	"iPad mini (A17 Pro)" \
-	"iPad Pro 11-inch (M5)"
+UI_DEVICES := $(DEVICES)
 
 ui-test:
 	@bash Tools/ui-test.sh
@@ -195,7 +192,7 @@ screenshots: build devices
 	@for d in $(DEVICES); do \
 		bash Tools/snap.sh "$$d" "$(SHOTS)" || exit 1; \
 	done
-	@echo "\n八台完成，图在 $(SHOTS)/"
+	@echo "\n13 台完成，图在 $(SHOTS)/"
 	@ls -1 $(SHOTS)
 
 # ---------------------------------------------------------------- A0.2 机型

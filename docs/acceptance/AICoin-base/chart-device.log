@@ -1,0 +1,18 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -scheme KanpanChart -destination platform=iOS,id=00008140-00010C902690801C -derivedDataPath .xcbuild-device DEVELOPMENT_TEAM=27Y32PT2HZ -resultBundlePath ../docs/acceptance/AICoin-base/chart-device.xcresult
+
+Build settings from command line:
+    DEVELOPMENT_TEAM = 27Y32PT2HZ
+
+Resolve Package Graph
+2026-09-14 22:44:53.723 xcodebuild[74475:31438345] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+
+
+Resolved source packages:
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/chart-device.xcresult
+
+xcodebuild: error: Failed to build workspace KanpanChart with scheme KanpanChart.: Cannot test target “KanpanChartTests” on “iPhone”: Tool-hosted testing is unavailable on device destinations. Select a host application for the test target, or use a simulator destination instead.

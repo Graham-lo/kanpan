@@ -1,0 +1,88 @@
+{
+  "endpoint": "https://fapi.binance.com/fapi/v1/exchangeInfo",
+  "checkedAt": "2026-09-15",
+  "symbols": [
+    {
+      "symbol": "BTCUSDT",
+      "contractType": "PERPETUAL",
+      "underlyingType": "COIN",
+      "underlyingSubType": [
+        "PoW",
+        "Crypto"
+      ]
+    },
+    {
+      "symbol": "ETHUSDT",
+      "contractType": "PERPETUAL",
+      "underlyingType": "COIN",
+      "underlyingSubType": [
+        "Layer-1",
+        "Crypto"
+      ]
+    },
+    {
+      "symbol": "XAUUSDT",
+      "contractType": "TRADIFI_PERPETUAL",
+      "underlyingType": "COMMODITY",
+      "underlyingSubType": [
+        "TradFi"
+      ]
+    },
+    {
+      "symbol": "XAGUSDT",
+      "contractType": "TRADIFI_PERPETUAL",
+      "underlyingType": "COMMODITY",
+      "underlyingSubType": [
+        "TradFi"
+      ]
+    },
+    {
+      "symbol": "XPTUSDT",
+      "contractType": "TRADIFI_PERPETUAL",
+      "underlyingType": "COMMODITY",
+      "underlyingSubType": [
+        "TradFi"
+      ]
+    },
+    {
+      "symbol": "CLUSDT",
+      "contractType": "TRADIFI_PERPETUAL",
+      "underlyingType": "COMMODITY",
+      "underlyingSubType": [
+        "TradFi"
+      ]
+    },
+    {
+      "symbol": "SNDKUSDT",
+      "contractType": "TRADIFI_PERPETUAL",
+      "underlyingType": "EQUITY",
+      "underlyingSubType": [
+        "TradFi"
+      ]
+    },
+    {
+      "symbol": "SOXLUSDT",
+      "contractType": "TRADIFI_PERPETUAL",
+      "underlyingType": "EQUITY",
+      "underlyingSubType": [
+        "TradFi"
+      ]
+    },
+    {
+      "symbol": "SKHYNIXUSDT",
+      "contractType": "TRADIFI_PERPETUAL",
+      "underlyingType": "KR_EQUITY",
+      "underlyingSubType": [
+        "TradFi"
+      ]
+    },
+    {
+      "symbol": "SKHYUSDT",
+      "contractType": "TRADIFI_PERPETUAL",
+      "underlyingType": "EQUITY",
+      "underlyingSubType": [
+        "TradFi"
+      ]
+    }
+  ]
+}

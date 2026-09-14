@@ -1,0 +1,197 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=A62122D5-06E6-4E6D-9C27-0106A18708C6" -derivedDataPath DerivedData-chart-foundation -parallel-testing-enabled NO -resultBundlePath docs/acceptance/AICoin-base/foundation/favorites-batch-delete-final.xcresult "-only-testing:KanpanUITests/ChartFoundationUITests/testFavoritesBatchEditing"
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/favorites-batch-delete-final.xcresult
+
+2026-09-15 03:28:39.617727+0800 KanpanUITests-Runner[37213:32370523] [Default] Running tests...
+2026-09-15 03:28:39.653809+0800 KanpanUITests-Runner[37213:32370523] [UIKit App Config] Update the Info.plist: Launch screens will soon be required.
+objc[37213]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x106f4c310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10650c398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-15 03:28:44.885.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-15 03:28:44.886.
+Test Suite 'ChartFoundationUITests' started at 2026-09-15 03:28:44.886.
+Test Case '-[KanpanUITests.ChartFoundationUITests testFavoritesBatchEditing]' started.
+    t =     0.00s Start Test at 2026-09-15 03:28:44.888
+    t =     0.32s Set Up
+    t =     0.32s     Setting device orientation to Portrait
+    t =     0.33s         Device orientation changed to Portrait
+    t =     0.39s         Wait for com.apple.DocumentManager.DockFolderViewService to idle
+    t =     0.43s         Wait for com.apple.springboard to idle
+    t =     0.47s     Open com.mdd.kanpan
+    t =     0.47s         Launch com.mdd.kanpan
+2026-09-15 03:28:45.754 xcodebuild[36965:32367966] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 03:28:45.754 xcodebuild[36965:32367966] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     2.54s             Setting up automation session
+    t =     3.89s             Wait for com.mdd.kanpan to idle
+    t =     5.86s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =     6.89s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     6.89s             Checking existence of `"chart.canvas" Other`
+    t =     7.98s     Find the "chart.canvas" Other
+    t =     8.12s Terminate com.mdd.kanpan:37263
+    t =     9.22s Open com.mdd.kanpan
+    t =     9.22s     Launch com.mdd.kanpan
+2026-09-15 03:28:54.108 xcodebuild[36965:32367966] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 03:28:54.108 xcodebuild[36965:32367966] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     9.63s         Setting up automation session
+    t =    10.45s         Wait for com.mdd.kanpan to idle
+    t =    12.70s Waiting 15.0s for "favorites.edit" Button to exist
+    t =    13.74s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.edit" Button`
+    t =    13.74s         Checking existence of `"favorites.edit" Button`
+    t =    13.86s Tap "favorites.edit" Button
+    t =    13.86s     Wait for com.mdd.kanpan to idle
+    t =    13.86s     Find the "favorites.edit" Button
+    t =    13.93s     Check for interrupting elements affecting "favorites.edit" Button
+    t =    13.98s         Wait for com.apple.springboard to idle
+    t =    14.02s     Synthesize event
+    t =    14.49s     Wait for com.mdd.kanpan to idle
+    t =    15.36s Find the "favorites.open.BTCUSDT" Button
+    t =    15.43s Find the "favorites.price.BTCUSDT" StaticText
+    t =    16.50s Find the "favorites.price.BTCUSDT" StaticText
+    t =    17.49s Find the "favorites.price.BTCUSDT" StaticText
+    t =    17.59s Find the "favorites.price.BTCUSDT" StaticText
+    t =    17.65s Find the "favorites.price.BTCUSDT" StaticText
+    t =    17.72s Find the "favorites.price.BTCUSDT" StaticText
+    t =    17.84s Find the "favorites.price.BTCUSDT" StaticText
+    t =    17.91s Find the "favorites.price.BTCUSDT" StaticText
+    t =    17.96s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.02s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.07s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.12s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.23s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.31s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.37s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.42s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.47s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.53s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.58s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.69s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.75s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.81s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.86s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.91s Find the "favorites.price.BTCUSDT" StaticText
+    t =    18.96s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.01s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.06s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.12s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.22s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.34s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.41s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.47s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.53s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.59s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.65s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.71s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.84s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.92s Find the "favorites.price.BTCUSDT" StaticText
+    t =    19.98s Find the "favorites.price.BTCUSDT" StaticText
+    t =    20.04s Find the "favorites.price.BTCUSDT" StaticText
+    t =    20.18s Find the "favorites.price.BTCUSDT" StaticText
+    t =    20.29s Find the "favorites.price.BTCUSDT" StaticText
+    t =    20.35s Find the "favorites.price.BTCUSDT" StaticText
+    t =    20.40s Find the "favorites.price.BTCUSDT" StaticText
+    t =    20.45s Find the "favorites.price.BTCUSDT" StaticText
+    t =    20.51s Find the "favorites.price.BTCUSDT" StaticText
+    t =    20.55s Find the "favorites.price.BTCUSDT" StaticText
+    t =    20.73s Find the "favorites.open.BTCUSDT" Button
+    t =    20.78s Find the "favorites.open.BTCUSDT" Button
+    t =    20.82s Find the "favorites.open.SOLUSDT" Button
+    t =    20.87s Find the "favorites.open.BTCUSDT" Button
+    t =    20.92s Press Window (First Match)[0.00, 0.00] -> (514.5, 215.0) for 0.6 seconds, then drag to Window (First Match)[0.00, 0.00] -> (514.5, 215.0) -> (0.0, 138.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    20.92s     Wait for com.mdd.kanpan to idle
+    t =    20.92s     Find the Window (First Match)
+    t =    20.93s     Check for interrupting elements affecting Window
+    t =    20.97s         Wait for com.apple.springboard to idle
+    t =    20.99s     Synthesize event
+    t =    20.99s         Find the Window at {{0.0, 0.0}, {1032.0, 1376.0}}
+    t =    21.00s         Find the Window at {{0.0, 0.0}, {1032.0, 1376.0}}
+    t =    21.02s         Find the Window at {{0.0, 0.0}, {1032.0, 1376.0}}
+    t =    21.03s         Find the Window at {{0.0, 0.0}, {1032.0, 1376.0}}
+    t =    21.04s         Find the Window at {{0.0, 0.0}, {1032.0, 1376.0}}
+    t =    22.14s     Wait for com.mdd.kanpan to idle
+    t =    24.58s Find the "favorites.open.BTCUSDT" Button
+    t =    24.64s Tap "favorites.open.BTCUSDT" Button
+    t =    24.64s     Wait for com.mdd.kanpan to idle
+    t =    24.65s     Find the "favorites.open.BTCUSDT" Button
+    t =    24.69s     Check for interrupting elements affecting "favorites.open.BTCUSDT" Button
+    t =    24.73s         Wait for com.apple.springboard to idle
+    t =    24.75s Ignoring failure to get hierarchy for remote element in process 37300 (Error getting main window kAXErrorServerNotFound)
+    t =    24.75s Ignoring failure to get hierarchy for remote element in process 37300 (Error getting main window kAXErrorServerNotFound)
+    t =    24.76s     Synthesize event
+    t =    25.05s     Wait for com.mdd.kanpan to idle
+    t =    25.05s Tap "favorites.open.ETHUSDT" Button
+    t =    25.05s     Wait for com.mdd.kanpan to idle
+    t =    25.05s     Find the "favorites.open.ETHUSDT" Button
+    t =    25.09s     Check for interrupting elements affecting "favorites.open.ETHUSDT" Button
+    t =    25.13s         Wait for com.apple.springboard to idle
+    t =    25.15s Ignoring failure to get hierarchy for remote element in process 37300 (Error getting main window kAXErrorServerNotFound)
+    t =    25.15s Ignoring failure to get hierarchy for remote element in process 37300 (Error getting main window kAXErrorServerNotFound)
+    t =    25.15s     Synthesize event
+    t =    25.44s     Wait for com.mdd.kanpan to idle
+    t =    25.46s Checking existence of `"置顶" Button`
+    t =    25.51s Tap "favorites.open.BTCUSDT" Button
+    t =    25.51s     Wait for com.mdd.kanpan to idle
+    t =    25.51s     Find the "favorites.open.BTCUSDT" Button
+    t =    25.56s     Check for interrupting elements affecting "favorites.open.BTCUSDT" Button
+    t =    25.60s         Wait for com.apple.springboard to idle
+    t =    25.61s Ignoring failure to get hierarchy for remote element in process 37300 (Error getting main window kAXErrorServerNotFound)
+    t =    25.61s Ignoring failure to get hierarchy for remote element in process 37300 (Error getting main window kAXErrorServerNotFound)
+    t =    25.62s     Synthesize event
+    t =    25.92s     Wait for com.mdd.kanpan to idle
+    t =    25.92s Find the "删除" Button
+    t =    25.96s Tap "删除" Button
+    t =    25.96s     Wait for com.mdd.kanpan to idle
+    t =    25.96s     Find the "删除" Button
+    t =    26.01s     Check for interrupting elements affecting "删除" Button
+    t =    26.04s         Wait for com.apple.springboard to idle
+    t =    26.06s Ignoring failure to get hierarchy for remote element in process 37300 (Error getting main window kAXErrorServerNotFound)
+    t =    26.06s Ignoring failure to get hierarchy for remote element in process 37300 (Error getting main window kAXErrorServerNotFound)
+    t =    26.06s     Synthesize event
+    t =    26.35s     Wait for com.mdd.kanpan to idle
+    t =    26.35s Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =    26.39s Checking existence of `"favorites.open.BTCUSDT" Button`
+    t =    26.43s Checking existence of `"favorites.open.SOLUSDT" Button`
+    t =    26.46s Tap "favorites.edit" Button
+    t =    26.47s     Wait for com.mdd.kanpan to idle
+    t =    26.47s     Find the "favorites.edit" Button
+    t =    26.51s     Check for interrupting elements affecting "favorites.edit" Button
+    t =    26.55s         Wait for com.apple.springboard to idle
+    t =    26.56s Ignoring failure to get hierarchy for remote element in process 37300 (Error getting main window kAXErrorServerNotFound)
+    t =    26.56s Ignoring failure to get hierarchy for remote element in process 37300 (Error getting main window kAXErrorServerNotFound)
+    t =    26.57s     Synthesize event
+    t =    26.86s     Wait for com.mdd.kanpan to idle
+    t =    27.60s Find the Target Application 'com.mdd.kanpan'
+    t =    27.83s Added attachment named '自选-选择与删除'
+    t =    27.84s Tear Down
+    t =    27.84s     Find the Target Application 'com.mdd.kanpan'
+    t =    27.99s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    28.00s     Requesting snapshot of accessibility hierarchy for app with pid 37281
+    t =    28.24s     Requesting snapshot of accessibility hierarchy for app with pid 37281
+    t =    28.31s     Find the "chart.canvas" Other
+    t =    28.35s     Added attachment of type 'public.plain-text'
+    t =    28.35s     Terminate com.mdd.kanpan:37281
+Test Case '-[KanpanUITests.ChartFoundationUITests testFavoritesBatchEditing]' passed (29.469 seconds).
+Test Suite 'ChartFoundationUITests' passed at 2026-09-15 03:29:14.359.
+	 Executed 1 test, with 0 failures (0 unexpected) in 29.469 (29.472) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-15 03:29:14.360.
+	 Executed 1 test, with 0 failures (0 unexpected) in 29.469 (29.473) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 03:29:14.360.
+	 Executed 1 test, with 0 failures (0 unexpected) in 29.469 (29.475) seconds
+2026-09-15 03:29:26.761 xcodebuild[36965:32367966] [MT] IDETestOperationsObserverDebug: 68.634 elapsed -- Testing started completed.
+2026-09-15 03:29:26.761 xcodebuild[36965:32367966] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 03:29:26.761 xcodebuild[36965:32367966] [MT] IDETestOperationsObserverDebug: 68.634 sec, +68.634 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/favorites-batch-delete-final.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

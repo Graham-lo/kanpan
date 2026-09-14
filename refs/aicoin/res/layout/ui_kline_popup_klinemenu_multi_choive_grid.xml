@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:tag="skin:ui_kline_menu_bg:background" android:background="@drawable/ui_kline_menu_bg" android:paddingBottom="10.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <androidx.recyclerview.widget.RecyclerView android:id="@id/list_kline_menu" android:layout_width="wrap_content" android:layout_height="wrap_content" android:listSelector="@android:color/transparent" android:numColumns="5" />
+    <TextView android:textSize="@dimen/font_size_tiny" android:textColor="@color/ui_kline_menuitem_hover_tip_textcolor" android:tag="skin:ui_kline_menu_tip:drawableLeft|skin:ui_kline_menuitem_hover_tip_textcolor:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="10.0dp" android:layout_marginTop="@dimen/offset_6dp" android:text="@string/ui_kline_fragment_menu_multi_choice_tip" android:drawableLeft="@mipmap/ui_kline_menu_tip" android:drawablePadding="@dimen/offset_3dp" />
+</LinearLayout>

@@ -1,0 +1,94 @@
+{
+  "at": "2026-09-14T19:27:58.848882+00:00",
+  "type": "public real Binance data, two normal clients per node; not capacity benchmark",
+  "results": [
+    {
+      "endpoint": "kanpan.107-174-172-10.sslip.io",
+      "firstFrameMs": 1726,
+      "realSymbols": [
+        "BTCUSDT",
+        "BTCUSDT"
+      ],
+      "prices": [
+        "79164.60",
+        "79164.60"
+      ],
+      "during": {
+        "status": "ok",
+        "service": "kanpan-stream-hub",
+        "clients": 2,
+        "channels": 1,
+        "capacity": 128,
+        "upstreamConnected": true
+      },
+      "oi4h": {
+        "status": 200,
+        "points": 6,
+        "first": [
+          1638316800000,
+          59795.984
+        ]
+      },
+      "oi1d": {
+        "status": 200,
+        "points": 1,
+        "first": [
+          1638316800000,
+          60657.802
+        ]
+      },
+      "after": {
+        "status": "ok",
+        "service": "kanpan-stream-hub",
+        "clients": 0,
+        "channels": 0,
+        "capacity": 128,
+        "upstreamConnected": false
+      }
+    },
+    {
+      "endpoint": "kanpan.96-44-162-222.sslip.io:8443",
+      "firstFrameMs": 1710,
+      "realSymbols": [
+        "BTCUSDT",
+        "BTCUSDT"
+      ],
+      "prices": [
+        "79164.60",
+        "79164.60"
+      ],
+      "during": {
+        "status": "ok",
+        "service": "kanpan-stream-hub",
+        "clients": 2,
+        "channels": 1,
+        "capacity": 64,
+        "upstreamConnected": true
+      },
+      "oi4h": {
+        "status": 200,
+        "points": 6,
+        "first": [
+          1638316800000,
+          59795.984
+        ]
+      },
+      "oi1d": {
+        "status": 200,
+        "points": 1,
+        "first": [
+          1638316800000,
+          60657.802
+        ]
+      },
+      "after": {
+        "status": "ok",
+        "service": "kanpan-stream-hub",
+        "clients": 0,
+        "channels": 0,
+        "capacity": 64,
+        "upstreamConnected": false
+      }
+    }
+  ]
+}

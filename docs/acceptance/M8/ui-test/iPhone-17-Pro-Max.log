@@ -1,0 +1,610 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=D4A341CA-1A67-4A50-B1D5-3D1BCD9995C1" -derivedDataPath DerivedData -resultBundlePath DerivedData/ui-test/iPhone-17-Pro-Max.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/DerivedData/ui-test/iPhone-17-Pro-Max.xcresult
+
+2026-09-14 21:24:32.990916+0800 KanpanUITests-Runner[60557:31299410] [Default] Running tests...
+2026-09-14 21:24:33.043428+0800 KanpanUITests-Runner[60557:31299520] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+2026-09-14 21:24:33.081473+0800 KanpanUITests-Runner[60557:31299522] [General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+objc[60557]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x1063bc310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x106848398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'All tests' started at 2026-09-14 21:24:36.798.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-14 21:24:36.799.
+Test Suite 'MainScreenUITests' started at 2026-09-14 21:24:36.799.
+Test Case '-[KanpanUITests.MainScreenUITests testDrawingModeEntersAndExits]' started.
+    t =     0.00s Start Test at 2026-09-14 21:24:36.801
+    t =     0.31s Set Up
+    t =     0.31s     Open com.mdd.kanpan
+    t =     0.31s         Launch com.mdd.kanpan
+2026-09-14 21:24:37.568 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 21:24:37.568 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     3.44s             Setting up automation session
+    t =     4.56s             Wait for com.mdd.kanpan to idle
+    t =     6.03s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     7.06s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     7.06s             Checking existence of `"top.symbol" Button`
+    t =     7.11s     Find the Window (First Match)
+    t =     7.12s     Find the "interval.more" Button
+    t =     7.13s     Find the "bottom.style" Button
+    t =     7.19s Tap "bottom.draw" Button
+    t =     7.19s     Wait for com.mdd.kanpan to idle
+    t =     7.19s     Find the "bottom.draw" Button
+    t =     7.21s     Check for interrupting elements affecting "bottom.draw" Button
+    t =     7.24s     Synthesize event
+    t =     7.63s     Wait for com.mdd.kanpan to idle
+    t =     7.64s Waiting 8.0s for "draw.trend" Button to exist
+    t =     8.71s     Checking `Expect predicate `existsNoRetry == 1` for object "draw.trend" Button`
+    t =     8.71s         Checking existence of `"draw.trend" Button`
+    t =     8.74s Waiting 8.0s for "draw.hline" Button to exist
+    t =     9.77s     Checking `Expect predicate `existsNoRetry == 1` for object "draw.hline" Button`
+    t =     9.77s         Checking existence of `"draw.hline" Button`
+    t =     9.79s Tap "draw.finish" Button
+    t =     9.79s     Wait for com.mdd.kanpan to idle
+    t =     9.80s     Find the "draw.finish" Button
+    t =     9.81s     Check for interrupting elements affecting "draw.finish" Button
+    t =     9.82s     Synthesize event
+    t =    10.11s     Wait for com.mdd.kanpan to idle
+    t =    10.13s Checking existence of `"draw.trend" Button`
+    t =    10.14s Tap "bottom.draw" Button
+    t =    10.14s     Wait for com.mdd.kanpan to idle
+    t =    10.14s     Find the "bottom.draw" Button
+    t =    10.16s     Check for interrupting elements affecting "bottom.draw" Button
+    t =    10.18s     Synthesize event
+    t =    10.47s     Wait for com.mdd.kanpan to idle
+    t =    10.47s Waiting 8.0s for "draw.trend" Button to exist
+    t =    11.50s     Checking `Expect predicate `existsNoRetry == 1` for object "draw.trend" Button`
+    t =    11.50s         Checking existence of `"draw.trend" Button`
+    t =    11.51s Tap "bottom.draw" Button
+    t =    11.51s     Wait for com.mdd.kanpan to idle
+    t =    11.51s     Find the "bottom.draw" Button
+    t =    11.52s     Check for interrupting elements affecting "bottom.draw" Button
+    t =    11.54s     Synthesize event
+    t =    11.83s     Wait for com.mdd.kanpan to idle
+    t =    11.83s Checking existence of `"draw.trend" Button`
+    t =    11.84s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testDrawingModeEntersAndExits]' passed (12.103 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testFavoriteStarToggles]' started.
+    t =     0.00s Start Test at 2026-09-14 21:24:48.903
+    t =     0.03s Set Up
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+    t =     0.03s             Terminate com.mdd.kanpan:60597
+2026-09-14 21:24:49.999 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 21:24:49.999 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.31s             Setting up automation session
+    t =     1.99s             Wait for com.mdd.kanpan to idle
+    t =     3.23s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.26s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.26s             Checking existence of `"top.symbol" Button`
+    t =     4.30s     Find the Window (First Match)
+    t =     4.30s     Find the "interval.more" Button
+    t =     4.31s     Find the "bottom.style" Button
+    t =     4.33s Waiting 8.0s for "top.star" Button to exist
+    t =     5.35s     Checking `Expect predicate `existsNoRetry == 1` for object "top.star" Button`
+    t =     5.35s         Checking existence of `"top.star" Button`
+    t =     5.37s Find the "top.star" Button
+    t =     5.38s Tap "top.star" Button
+    t =     5.38s     Wait for com.mdd.kanpan to idle
+    t =     5.38s     Find the "top.star" Button
+    t =     5.39s     Check for interrupting elements affecting "top.star" Button
+    t =     5.40s     Synthesize event
+    t =     5.69s     Wait for com.mdd.kanpan to idle
+    t =     5.69s Find the "top.star" Button
+    t =     5.70s Find the "top.star" Button
+    t =     5.71s Tap "top.star" Button
+    t =     5.71s     Wait for com.mdd.kanpan to idle
+    t =     5.71s     Find the "top.star" Button
+    t =     5.72s     Check for interrupting elements affecting "top.star" Button
+    t =     5.73s     Synthesize event
+    t =     6.02s     Wait for com.mdd.kanpan to idle
+    t =     6.02s Find the "top.star" Button
+    t =     6.04s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testFavoriteStarToggles]' passed (6.283 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testIndicatorPanelOpensAndCloses]' started.
+    t =     0.00s Start Test at 2026-09-14 21:24:55.186
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+    t =     0.02s             Terminate com.mdd.kanpan:60615
+2026-09-14 21:24:56.267 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 21:24:56.267 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.29s             Setting up automation session
+    t =     2.00s             Wait for com.mdd.kanpan to idle
+    t =     3.30s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.32s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.32s             Checking existence of `"top.symbol" Button`
+    t =     4.35s     Find the Window (First Match)
+    t =     4.36s     Find the "interval.more" Button
+    t =     4.38s     Find the "bottom.style" Button
+    t =     4.39s Tap "bottom.indicator" Button
+    t =     4.39s     Wait for com.mdd.kanpan to idle
+    t =     4.39s     Find the "bottom.indicator" Button
+    t =     4.40s     Check for interrupting elements affecting "bottom.indicator" Button
+    t =     4.42s     Synthesize event
+    t =     4.70s     Wait for com.mdd.kanpan to idle
+    t =     4.83s Waiting 8.0s for "indicator.switch.MACD" Button to exist
+    t =     5.85s     Checking `Expect predicate `existsNoRetry == 1` for object "indicator.switch.MACD" Button`
+    t =     5.86s         Checking existence of `"indicator.switch.MACD" Button`
+    t =     5.92s Waiting 8.0s for "indicator.switch.MA" Button to exist
+    t =     6.94s     Checking `Expect predicate `existsNoRetry == 1` for object "indicator.switch.MA" Button`
+    t =     6.94s         Checking existence of `"indicator.switch.MA" Button`
+    t =     6.97s Checking existence of `"indicator.switch.MACD" Button`
+    t =     7.01s Checking existence of `"panel.header" StaticText`
+    t =     7.04s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     7.04s     Wait for com.mdd.kanpan to idle
+    t =     7.04s     Find the "panel.header" StaticText
+    t =     7.07s     Check for interrupting elements affecting "panel.header" StaticText
+    t =     7.12s     Synthesize event
+    t =     7.12s         Find the "panel.header" StaticText
+    t =     7.14s         Find the "panel.header" StaticText
+    t =     7.17s         Find the Window (First Match)
+    t =     7.18s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     7.19s         Find the "panel.header" StaticText
+    t =     8.50s     Wait for com.mdd.kanpan to idle
+    t =     9.19s Checking existence of `"indicator.switch.MACD" Button`
+    t =     9.20s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testIndicatorPanelOpensAndCloses]' passed (9.431 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testIntervalChipsSelectOneAtATime]' started.
+    t =     0.00s Start Test at 2026-09-14 21:25:04.617
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+    t =     0.02s             Terminate com.mdd.kanpan:60626
+2026-09-14 21:25:05.647 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 21:25:05.647 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.24s             Setting up automation session
+    t =     1.90s             Wait for com.mdd.kanpan to idle
+    t =     3.13s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.16s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.16s             Checking existence of `"top.symbol" Button`
+    t =     4.19s     Find the Window (First Match)
+    t =     4.19s     Find the "interval.more" Button
+    t =     4.20s     Find the "bottom.style" Button
+    t =     4.21s Waiting 8.0s for "interval.chip.1m" Button to exist
+    t =     5.24s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.1m" Button`
+    t =     5.24s         Checking existence of `"interval.chip.1m" Button`
+    t =     5.25s Waiting 8.0s for "interval.chip.5m" Button to exist
+    t =     6.28s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.5m" Button`
+    t =     6.28s         Checking existence of `"interval.chip.5m" Button`
+    t =     6.30s Waiting 8.0s for "interval.chip.15m" Button to exist
+    t =     7.33s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.15m" Button`
+    t =     7.33s         Checking existence of `"interval.chip.15m" Button`
+    t =     7.36s Waiting 8.0s for "interval.chip.1h" Button to exist
+    t =     8.39s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.1h" Button`
+    t =     8.39s         Checking existence of `"interval.chip.1h" Button`
+    t =     8.41s Waiting 8.0s for "interval.chip.4h" Button to exist
+    t =     9.44s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.4h" Button`
+    t =     9.44s         Checking existence of `"interval.chip.4h" Button`
+    t =     9.46s Waiting 8.0s for "interval.chip.1d" Button to exist
+    t =    10.48s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.1d" Button`
+    t =    10.48s         Checking existence of `"interval.chip.1d" Button`
+    t =    10.51s Find the "interval.chip.1m" Button
+    t =    10.52s Find the "interval.chip.5m" Button
+    t =    10.52s Find the "interval.chip.15m" Button
+    t =    10.53s Find the "interval.chip.1h" Button
+    t =    10.54s Tap "interval.chip.1m" Button
+    t =    10.54s     Wait for com.mdd.kanpan to idle
+    t =    10.54s     Find the "interval.chip.1m" Button
+    t =    10.55s     Check for interrupting elements affecting "interval.chip.1m" Button
+    t =    10.56s     Synthesize event
+    t =    10.85s     Wait for com.mdd.kanpan to idle
+    t =    10.85s Find the "interval.chip.1m" Button
+    t =    10.86s Find the "interval.chip.5m" Button
+    t =    10.87s Find the "interval.chip.15m" Button
+    t =    10.88s Find the "interval.chip.1h" Button
+    t =    10.89s Find the "interval.chip.4h" Button
+    t =    10.90s Find the "interval.chip.1d" Button
+    t =    10.90s Tap "interval.chip.5m" Button
+    t =    10.90s     Wait for com.mdd.kanpan to idle
+    t =    10.91s     Find the "interval.chip.5m" Button
+    t =    10.91s     Check for interrupting elements affecting "interval.chip.5m" Button
+    t =    10.92s     Synthesize event
+    t =    11.22s     Wait for com.mdd.kanpan to idle
+    t =    11.22s Find the "interval.chip.5m" Button
+    t =    11.23s Find the "interval.chip.1m" Button
+    t =    11.24s Find the "interval.chip.15m" Button
+    t =    11.25s Find the "interval.chip.1h" Button
+    t =    11.26s Find the "interval.chip.4h" Button
+    t =    11.26s Find the "interval.chip.1d" Button
+    t =    11.27s Tap "interval.chip.15m" Button
+    t =    11.27s     Wait for com.mdd.kanpan to idle
+    t =    11.27s     Find the "interval.chip.15m" Button
+    t =    11.28s     Check for interrupting elements affecting "interval.chip.15m" Button
+    t =    11.29s     Synthesize event
+    t =    11.58s     Wait for com.mdd.kanpan to idle
+    t =    11.59s Find the "interval.chip.15m" Button
+    t =    11.60s Find the "interval.chip.1m" Button
+    t =    11.61s Find the "interval.chip.5m" Button
+    t =    11.62s Find the "interval.chip.1h" Button
+    t =    11.63s Find the "interval.chip.4h" Button
+    t =    11.63s Find the "interval.chip.1d" Button
+    t =    11.64s Tap "interval.chip.1h" Button
+    t =    11.64s     Wait for com.mdd.kanpan to idle
+    t =    11.64s     Find the "interval.chip.1h" Button
+    t =    11.65s     Check for interrupting elements affecting "interval.chip.1h" Button
+    t =    11.66s     Synthesize event
+    t =    11.94s     Wait for com.mdd.kanpan to idle
+    t =    11.95s Find the "interval.chip.1h" Button
+    t =    11.95s Find the "interval.chip.1m" Button
+    t =    11.96s Find the "interval.chip.5m" Button
+    t =    11.97s Find the "interval.chip.15m" Button
+    t =    11.98s Find the "interval.chip.4h" Button
+    t =    11.99s Find the "interval.chip.1d" Button
+    t =    12.00s Tap "interval.chip.4h" Button
+    t =    12.00s     Wait for com.mdd.kanpan to idle
+    t =    12.00s     Find the "interval.chip.4h" Button
+    t =    12.01s     Check for interrupting elements affecting "interval.chip.4h" Button
+    t =    12.02s     Synthesize event
+    t =    12.31s     Wait for com.mdd.kanpan to idle
+    t =    12.32s Find the "interval.chip.4h" Button
+    t =    12.33s Find the "interval.chip.1m" Button
+    t =    12.34s Find the "interval.chip.5m" Button
+    t =    12.35s Find the "interval.chip.15m" Button
+    t =    12.36s Find the "interval.chip.1h" Button
+    t =    12.36s Find the "interval.chip.1d" Button
+    t =    12.37s Tap "interval.chip.1d" Button
+    t =    12.37s     Wait for com.mdd.kanpan to idle
+    t =    12.37s     Find the "interval.chip.1d" Button
+    t =    12.38s     Check for interrupting elements affecting "interval.chip.1d" Button
+    t =    12.40s     Synthesize event
+    t =    12.68s     Wait for com.mdd.kanpan to idle
+    t =    12.69s Find the "interval.chip.1d" Button
+    t =    12.71s Find the "interval.chip.1m" Button
+    t =    12.72s Find the "interval.chip.5m" Button
+    t =    12.73s Find the "interval.chip.15m" Button
+    t =    12.74s Find the "interval.chip.1h" Button
+    t =    12.75s Find the "interval.chip.4h" Button
+    t =    12.77s Tap "interval.chip.1h" Button
+    t =    12.77s     Wait for com.mdd.kanpan to idle
+    t =    12.77s     Find the "interval.chip.1h" Button
+    t =    12.80s     Check for interrupting elements affecting "interval.chip.1h" Button
+    t =    12.82s     Synthesize event
+    t =    13.11s     Wait for com.mdd.kanpan to idle
+    t =    13.12s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testIntervalChipsSelectOneAtATime]' passed (13.360 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testLatestButtonAppearsAfterLeavingLatest]' started.
+    t =     0.00s Start Test at 2026-09-14 21:25:17.978
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+    t =     0.02s             Terminate com.mdd.kanpan:60647
+2026-09-14 21:25:19.044 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 21:25:19.044 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.27s             Setting up automation session
+    t =     1.91s             Wait for com.mdd.kanpan to idle
+    t =     3.16s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.19s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.19s             Checking existence of `"top.symbol" Button`
+    t =     4.23s     Find the Window (First Match)
+    t =     4.23s     Find the "interval.more" Button
+    t =     4.24s     Find the "bottom.style" Button
+    t =     4.26s Find the "chart.latest" Button
+    t =     4.27s Press Window (First Match)[0.00, 0.00] -> (40.0, 497.7) for 0.1 seconds, then drag to Window (First Match)[0.00, 0.00] -> (40.0, 497.7) -> (220.0, 0.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     4.27s     Wait for com.mdd.kanpan to idle
+    t =     4.28s     Find the Window (First Match)
+    t =     4.28s     Check for interrupting elements affecting Window
+    t =     4.30s     Synthesize event
+    t =     4.30s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     4.31s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     4.31s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     4.32s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     4.33s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     5.07s     Wait for com.mdd.kanpan to idle
+    t =     5.08s Find the "chart.latest" Button
+    t =     5.12s Find the "chart.latest" Button
+    t =     5.16s Tap "chart.latest" Button
+    t =     5.16s     Wait for com.mdd.kanpan to idle
+    t =     5.16s     Find the "chart.latest" Button
+    t =     5.18s     Check for interrupting elements affecting "chart.latest" Button
+    t =     5.20s     Synthesize event
+    t =     5.49s     Wait for com.mdd.kanpan to idle
+    t =     5.50s Find the "chart.latest" Button
+    t =     5.54s Find the "chart.latest" Button
+    t =     5.56s Press Window (First Match)[0.00, 0.00] -> (40.0, 497.7) for 0.1 seconds, then drag to Window (First Match)[0.00, 0.00] -> (40.0, 497.7) -> (220.0, 0.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     5.56s     Wait for com.mdd.kanpan to idle
+    t =     5.56s     Find the Window (First Match)
+    t =     5.57s     Check for interrupting elements affecting Window
+    t =     5.58s     Synthesize event
+    t =     5.58s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     5.59s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     5.60s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     5.61s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     5.62s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     6.36s     Wait for com.mdd.kanpan to idle
+    t =     6.37s Find the "chart.latest" Button
+    t =     6.40s Tap "chart.latest" Button
+    t =     6.40s     Wait for com.mdd.kanpan to idle
+    t =     6.40s     Find the "chart.latest" Button
+    t =     6.42s     Check for interrupting elements affecting "chart.latest" Button
+    t =     6.44s     Synthesize event
+    t =     6.74s     Wait for com.mdd.kanpan to idle
+    t =     6.75s Find the "chart.latest" Button
+    t =     6.78s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testLatestButtonAppearsAfterLeavingLatest]' passed (7.029 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testMoreOpensPeriodPanel]' started.
+    t =     0.00s Start Test at 2026-09-14 21:25:25.008
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+    t =     0.02s             Terminate com.mdd.kanpan:60707
+2026-09-14 21:25:26.092 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 21:25:26.092 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.30s             Setting up automation session
+    t =     2.00s             Wait for com.mdd.kanpan to idle
+    t =     3.25s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.27s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.27s             Checking existence of `"top.symbol" Button`
+    t =     4.30s     Find the Window (First Match)
+    t =     4.31s     Find the "interval.more" Button
+    t =     4.32s     Find the "bottom.style" Button
+    t =     4.33s Tap "interval.more" Button
+    t =     4.33s     Wait for com.mdd.kanpan to idle
+    t =     4.33s     Find the "interval.more" Button
+    t =     4.35s     Check for interrupting elements affecting "interval.more" Button
+    t =     4.37s     Synthesize event
+    t =     4.66s     Wait for com.mdd.kanpan to idle
+    t =     5.12s Waiting 8.0s for "period.row.1h" Button to exist
+    t =     6.15s     Checking `Expect predicate `existsNoRetry == 1` for object "period.row.1h" Button`
+    t =     6.15s         Checking existence of `"period.row.1h" Button`
+    t =     6.20s Waiting 8.0s for "period.row.1M" Button to exist
+    t =     7.22s     Checking `Expect predicate `existsNoRetry == 1` for object "period.row.1M" Button`
+    t =     7.22s         Checking existence of `"period.row.1M" Button`
+    t =     7.26s Checking existence of `"period.row.1h" Button`
+    t =     7.30s Checking existence of `"panel.header" StaticText`
+    t =     7.33s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     7.33s     Wait for com.mdd.kanpan to idle
+    t =     7.33s     Find the "panel.header" StaticText
+    t =     7.36s     Check for interrupting elements affecting "panel.header" StaticText
+    t =     7.39s     Synthesize event
+    t =     7.39s         Find the "panel.header" StaticText
+    t =     7.43s         Find the "panel.header" StaticText
+    t =     7.47s         Find the Window (First Match)
+    t =     7.48s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     7.48s         Find the "panel.header" StaticText
+    t =     8.80s     Wait for com.mdd.kanpan to idle
+    t =     9.49s Checking existence of `"period.row.1h" Button`
+    t =     9.51s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testMoreOpensPeriodPanel]' passed (9.749 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testSearchButtonOpensSymbolPage]' started.
+    t =     0.00s Start Test at 2026-09-14 21:25:34.758
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+    t =     0.02s             Terminate com.mdd.kanpan:60728
+2026-09-14 21:25:35.839 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 21:25:35.839 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.29s             Setting up automation session
+    t =     2.11s             Wait for com.mdd.kanpan to idle
+    t =     3.46s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.47s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.47s             Checking existence of `"top.symbol" Button`
+    t =     4.52s     Find the Window (First Match)
+    t =     4.54s     Find the "interval.more" Button
+    t =     4.57s     Find the "bottom.style" Button
+    t =     4.78s Tap "top.search" Button
+    t =     4.78s     Wait for com.mdd.kanpan to idle
+    t =     4.78s     Find the "top.search" Button
+    t =     4.80s     Check for interrupting elements affecting "top.search" Button
+    t =     4.82s     Synthesize event
+    t =     5.12s     Wait for com.mdd.kanpan to idle
+    t =     5.50s Checking existence of `"symbols.query" TextField`
+    t =     6.12s Tap "symbols.back" Button
+    t =     6.12s     Wait for com.mdd.kanpan to idle
+    t =     6.18s     Find the "symbols.back" Button
+    t =     6.26s     Check for interrupting elements affecting "symbols.back" Button
+    t =     6.31s     Synthesize event
+    t =     6.60s     Wait for com.mdd.kanpan to idle
+    t =     6.97s Checking existence of `"symbols.back" Button`
+    t =     6.99s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testSearchButtonOpensSymbolPage]' passed (7.238 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testSettingsPanelOpensAndCloses]' started.
+    t =     0.00s Start Test at 2026-09-14 21:25:41.996
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+    t =     0.02s             Terminate com.mdd.kanpan:60941
+2026-09-14 21:25:43.066 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 21:25:43.066 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.28s             Setting up automation session
+    t =     1.99s             Wait for com.mdd.kanpan to idle
+    t =     3.24s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.26s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.26s             Checking existence of `"top.symbol" Button`
+    t =     4.29s     Find the Window (First Match)
+    t =     4.30s     Find the "interval.more" Button
+    t =     4.31s     Find the "bottom.style" Button
+    t =     4.32s Tap "bottom.settings" Button
+    t =     4.32s     Wait for com.mdd.kanpan to idle
+    t =     4.33s     Find the "bottom.settings" Button
+    t =     4.34s     Check for interrupting elements affecting "bottom.settings" Button
+    t =     4.35s     Synthesize event
+    t =     4.64s     Wait for com.mdd.kanpan to idle
+    t =     4.76s Waiting 8.0s for "settings.magnet" Button to exist
+    t =     5.77s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.magnet" Button`
+    t =     5.77s         Checking existence of `"settings.magnet" Button`
+    t =     5.83s Checking existence of `"settings.magnet" Button`
+    t =     5.85s Checking existence of `"panel.header" StaticText`
+    t =     5.87s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     5.87s     Wait for com.mdd.kanpan to idle
+    t =     5.87s     Find the "panel.header" StaticText
+    t =     5.89s     Check for interrupting elements affecting "panel.header" StaticText
+    t =     5.92s     Synthesize event
+    t =     5.92s         Find the "panel.header" StaticText
+    t =     5.94s         Find the "panel.header" StaticText
+    t =     5.96s         Find the Window (First Match)
+    t =     5.97s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     5.97s         Find the "panel.header" StaticText
+    t =     7.28s     Wait for com.mdd.kanpan to idle
+    t =     7.97s Checking existence of `"settings.magnet" Button`
+    t =     7.98s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testSettingsPanelOpensAndCloses]' passed (8.210 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testStylePanelDismissesItselfAfterPick]' started.
+    t =     0.01s Start Test at 2026-09-14 21:25:50.219
+    t =     0.04s Set Up
+    t =     0.04s     Open com.mdd.kanpan
+    t =     0.04s         Launch com.mdd.kanpan
+    t =     0.04s             Terminate com.mdd.kanpan:60978
+2026-09-14 21:25:51.271 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 21:25:51.271 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.27s             Setting up automation session
+    t =     1.97s             Wait for com.mdd.kanpan to idle
+    t =     3.24s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.25s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.25s             Checking existence of `"top.symbol" Button`
+    t =     4.29s     Find the Window (First Match)
+    t =     4.29s     Find the "interval.more" Button
+    t =     4.30s     Find the "bottom.style" Button
+    t =     4.31s Tap "bottom.style" Button
+    t =     4.31s     Wait for com.mdd.kanpan to idle
+    t =     4.31s     Find the "bottom.style" Button
+    t =     4.32s     Check for interrupting elements affecting "bottom.style" Button
+    t =     4.33s     Synthesize event
+    t =     4.62s     Wait for com.mdd.kanpan to idle
+    t =     5.17s Waiting 8.0s for "style.card.indigo" Button to exist
+    t =     6.20s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.indigo" Button`
+    t =     6.21s         Checking existence of `"style.card.indigo" Button`
+    t =     6.25s Tap "style.card.indigo" Button
+    t =     6.25s     Wait for com.mdd.kanpan to idle
+    t =     6.25s     Find the "style.card.indigo" Button
+    t =     6.28s     Check for interrupting elements affecting "style.card.indigo" Button
+    t =     6.30s     Synthesize event
+    t =     6.59s     Wait for com.mdd.kanpan to idle
+    t =     6.95s Checking existence of `"style.card.indigo" Button`
+    t =     6.96s Tap "bottom.style" Button
+    t =     6.96s     Wait for com.mdd.kanpan to idle
+    t =     6.96s     Find the "bottom.style" Button
+    t =     6.98s     Check for interrupting elements affecting "bottom.style" Button
+    t =     7.00s     Synthesize event
+    t =     7.28s     Wait for com.mdd.kanpan to idle
+    t =     7.65s Waiting 8.0s for "style.card.stout" Button to exist
+    t =     8.67s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.stout" Button`
+    t =     8.67s         Checking existence of `"style.card.stout" Button`
+    t =     8.72s Tap "style.card.stout" Button
+    t =     8.72s     Wait for com.mdd.kanpan to idle
+    t =     8.72s     Find the "style.card.stout" Button
+    t =     8.74s     Check for interrupting elements affecting "style.card.stout" Button
+    t =     8.76s     Synthesize event
+    t =     9.05s     Wait for com.mdd.kanpan to idle
+    t =     9.39s Checking existence of `"style.card.stout" Button`
+    t =     9.40s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testStylePanelDismissesItselfAfterPick]' passed (9.613 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testSymbolButtonOpensAndClosesSymbolPage]' started.
+    t =     0.00s Start Test at 2026-09-14 21:25:59.830
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+    t =     0.02s             Terminate com.mdd.kanpan:61008
+2026-09-14 21:26:00.902 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 21:26:00.903 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.28s             Setting up automation session
+    t =     1.93s             Wait for com.mdd.kanpan to idle
+    t =     3.18s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.20s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.20s             Checking existence of `"top.symbol" Button`
+    t =     4.25s     Find the Window (First Match)
+    t =     4.26s     Find the "interval.more" Button
+    t =     4.27s     Find the "bottom.style" Button
+    t =     4.28s Tap "top.symbol" Button
+    t =     4.28s     Wait for com.mdd.kanpan to idle
+    t =     4.29s     Find the "top.symbol" Button
+    t =     4.30s     Check for interrupting elements affecting "top.symbol" Button
+    t =     4.31s     Synthesize event
+    t =     4.59s     Wait for com.mdd.kanpan to idle
+    t =     4.94s Waiting 8.0s for "symbols.back" Button to exist
+    t =     5.96s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.back" Button`
+    t =     5.96s         Checking existence of `"symbols.back" Button`
+    t =     6.07s Tap "symbols.back" Button
+    t =     6.07s     Wait for com.mdd.kanpan to idle
+    t =     6.07s     Find the "symbols.back" Button
+    t =     6.11s     Check for interrupting elements affecting "symbols.back" Button
+    t =     6.16s     Synthesize event
+    t =     6.45s     Wait for com.mdd.kanpan to idle
+    t =     6.79s Checking existence of `"symbols.back" Button`
+    t =     6.80s Waiting 8.0s for "top.symbol" Button to exist
+    t =     7.83s     Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     7.83s         Checking existence of `"top.symbol" Button`
+    t =     7.84s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testSymbolButtonOpensAndClosesSymbolPage]' passed (8.074 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testTappingChartDismissesPanel]' started.
+    t =     0.00s Start Test at 2026-09-14 21:26:07.906
+    t =     0.02s Set Up
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+    t =     0.03s             Terminate com.mdd.kanpan:61047
+2026-09-14 21:26:08.977 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 21:26:08.977 xcodebuild[60481:31298084] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.28s             Setting up automation session
+    t =     1.98s             Wait for com.mdd.kanpan to idle
+    t =     3.21s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.23s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.24s             Checking existence of `"top.symbol" Button`
+    t =     4.28s     Find the Window (First Match)
+    t =     4.28s     Find the "interval.more" Button
+    t =     4.29s     Find the "bottom.style" Button
+    t =     4.30s Find the "chart.latest" Button
+    t =     4.33s Press Window (First Match)[0.00, 0.00] -> (40.0, 497.7) for 0.1 seconds, then drag to Window (First Match)[0.00, 0.00] -> (40.0, 497.7) -> (220.0, 0.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     4.33s     Wait for com.mdd.kanpan to idle
+    t =     4.33s     Find the Window (First Match)
+    t =     4.33s     Check for interrupting elements affecting Window
+    t =     4.34s     Synthesize event
+    t =     4.34s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     4.35s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     4.36s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     4.37s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     4.37s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     5.11s     Wait for com.mdd.kanpan to idle
+    t =     5.12s Find the "chart.latest" Button
+    t =     5.15s Find the "chart.latest" Button
+    t =     5.18s Tap "chart.latest" Button
+    t =     5.18s     Wait for com.mdd.kanpan to idle
+    t =     5.18s     Find the "chart.latest" Button
+    t =     5.20s     Check for interrupting elements affecting "chart.latest" Button
+    t =     5.22s     Synthesize event
+    t =     5.51s     Wait for com.mdd.kanpan to idle
+    t =     5.51s Find the "chart.latest" Button
+    t =     5.55s Tap "bottom.indicator" Button
+    t =     5.55s     Wait for com.mdd.kanpan to idle
+    t =     5.55s     Find the "bottom.indicator" Button
+    t =     5.56s     Check for interrupting elements affecting "bottom.indicator" Button
+    t =     5.58s     Synthesize event
+    t =     5.87s     Wait for com.mdd.kanpan to idle
+    t =     6.39s Waiting 8.0s for "indicator.switch.MACD" Button to exist
+    t =     7.41s     Checking `Expect predicate `existsNoRetry == 1` for object "indicator.switch.MACD" Button`
+    t =     7.41s         Checking existence of `"indicator.switch.MACD" Button`
+    t =     7.49s Tap Window (First Match)[0.00, 0.00] -> (40.0, 360.5)
+    t =     7.49s     Wait for com.mdd.kanpan to idle
+    t =     7.49s     Find the Window (First Match)
+    t =     7.50s     Check for interrupting elements affecting Window
+    t =     7.54s     Synthesize event
+    t =     7.54s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     7.55s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     7.56s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =     7.84s     Wait for com.mdd.kanpan to idle
+    t =     8.19s Checking existence of `"indicator.switch.MACD" Button`
+    t =     8.20s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testTappingChartDismissesPanel]' passed (8.419 seconds).
+Test Suite 'MainScreenUITests' passed at 2026-09-14 21:26:16.326.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 99.509 (99.527) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-14 21:26:16.329.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 99.509 (99.530) seconds
+Test Suite 'All tests' passed at 2026-09-14 21:26:16.329.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 99.509 (99.531) seconds
+2026-09-14 21:26:28.011 xcodebuild[60481:31298084] [MT] IDETestOperationsObserverDebug: 124.416 elapsed -- Testing started completed.
+2026-09-14 21:26:28.012 xcodebuild[60481:31298084] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-14 21:26:28.012 xcodebuild[60481:31298084] [MT] IDETestOperationsObserverDebug: 124.416 sec, +124.416 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/DerivedData/ui-test/iPhone-17-Pro-Max.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

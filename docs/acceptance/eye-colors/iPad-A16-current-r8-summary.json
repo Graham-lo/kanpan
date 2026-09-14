@@ -1,0 +1,49 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "1D341A2D-6403-46A7-8BA3-30D0675D60EE",
+        "deviceName" : "iPad (A16)",
+        "modelName" : "iPad (A16)",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 1,
+      "passedTests" : 1,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "Kanpan · Built with macOS 26.5.1",
+  "expectedFailures" : 0,
+  "failedTests" : 1,
+  "finishTime" : 1789423501.136,
+  "passedTests" : 1,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1789423343.207,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "XCTAssertTrue failed - 普通状态长按整行应直接排序",
+      "targetName" : "KanpanUITests",
+      "testIdentifier" : 2,
+      "testIdentifierString" : "ChartFoundationUITests/testFavoritesDirectRowReorder()",
+      "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/ChartFoundationUITests/testFavoritesDirectRowReorder",
+      "testName" : "testFavoritesDirectRowReorder()"
+    }
+  ],
+  "title" : "Test - Kanpan",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 2
+}

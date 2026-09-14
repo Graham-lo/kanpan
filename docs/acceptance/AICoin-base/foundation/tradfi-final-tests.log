@@ -1,0 +1,313 @@
+cd KanpanData && swift test 
+Building for debugging...
+[0/6] Write sources
+[2/6] Write swift-version--58304C5D6DBC2206.txt
+[4/9] Emitting module KanpanData
+[5/9] Compiling KanpanData RESTClient.swift
+[6/9] Compiling KanpanData SymbolCatalog.swift
+[7/15] Emitting module kanpan_feed
+[8/15] Compiling kanpan_feed main.swift
+[8/15] Write Objects.LinkFileList
+[10/15] Compiling KanpanDataTests RESTTests.swift
+[11/15] Emitting module KanpanDataTests
+[11/15] Write Objects.LinkFileList
+[12/15] Linking kanpan-feed
+[13/15] Applying kanpan-feed
+[14/15] Linking KanpanDataPackageTests
+Build complete! (2.97s)
+Test Suite 'All tests' started at 2026-09-15 01:17:52.367.
+Test Suite 'All tests' passed at 2026-09-15 01:17:52.369.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.002) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "逐笔折线" started.
+◇ Suite "OI 对齐：两源合一条" started.
+◇ Suite "OI 归档：自写 ZIP + CSV" started.
+◇ Suite "WS 回放：合成规矩、断线补缺、静默重连" started.
+◇ Suite "REST 与 DTO" started.
+◇ Suite "限流与退避" started.
+◇ Suite "启动快照与内存缓存" started.
+◇ Suite "无感行情选路" started.
+◇ Test "历史请求把周期交给网关，成功后不下载原始ZIP" started.
+◇ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" started.
+◇ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" started.
+◇ Test "对齐取「之前最近」一条，没有就是 NaN" started.
+◇ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" started.
+◇ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" started.
+◇ Test "归档站有的文件本身是乱序的：解析器必须自己排" started.
+◇ Test "真实 metrics zip：解出 288 行 5 分钟粒度" started.
+◇ Test "存取日切片：关掉开关就不落盘" started.
+◇ Test "空点列 / 空序列不崩" started.
+◇ Test "日期工具：dayString / dayStart / days / 中间优先" started.
+◇ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "404 / 451 / 429 分类" started.
+◇ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" started.
+◇ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" started.
+◇ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" started.
+◇ Test "关掉「启动快照」：文件被删，之后不再写" started.
+◇ Test "过期、补缺中、价格不合法、序列空着都不折" started.
+◇ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" started.
+◇ Test "30 品种 × 14 周期切一遍：沙盒里只有 last.kbar" started.
+◇ Test ".oi 日切片：编解码一致，一天 ≈ 3.4KB" started.
+◇ Test "桶按撮合时间算，同一根内的时间不会开新根" started.
+◇ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" started.
+◇ Test "点列有缺口也对得上：缺口里续用缺口前那条" started.
+◇ Test "落在末根上：收盘跟着走，高低取极值，量累加" started.
+◇ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" started.
+◇ Test "trade / bookTicker 报文解得出来" started.
+◇ Test "1y 由 1M 聚出来" started.
+◇ Test "组合行情端点使用 market 路由，替换品种仍可复用连接" started.
+◇ Test "1500 根 klines：严格递增、等距、无重复" started.
+◇ Test "1w / 1M / 1y：按桶取最后一条" started.
+◇ Test "品种上市前：归档站 404 → 返回空而不是报错" started.
+◇ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" started.
+◇ Test "kline 行数字可以是字符串也可以是数字" started.
+◇ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" started.
+◇ Test "近 30 天走 REST、更早走归档：两个源都被问到" started.
+◇ Test "exchangeInfo 走一遍 transport，请求路径正确" started.
+◇ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" started.
+◇ Test "对表：这根还没被折过就认 REST 的收盘" started.
+◇ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" started.
+◇ Test "dedup 去重并排序" started.
+◇ Test "TradFi永续保留，交割、非USDT与停牌仍排除；旧目录即时刷新" started.
+◇ Test "换一段序列，折线状态跟着清掉" started.
+◇ Test "服务器 ping 立刻回 pong" started.
+◇ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" started.
+◇ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" started.
+◇ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" started.
+◇ Test "罚停后成功一次，计数清零" started.
+◇ Test "60 秒没帧就算断了" started.
+◇ Test "60 秒一帧没有就主动重连" started.
+◇ Test "连断三次：退避 1s / 2s / 4s，日志可见" started.
+◇ Test "不规则周期（1M）带 openTime 表，也能原样读回" started.
+◇ Test "重连退避 1/2/4/…≤30s" started.
+◇ Test "连发要隔 120ms" started.
+◇ Test "429 带 Retry-After：停够秒数再发，然后成功" started.
+◇ Test "重试到上限还是 429 就把错误抛出来" started.
+◇ Test "读快照 + 建 BarSeries < 20ms" started.
+◇ Test "单个 key 超长会裁掉最老的" started.
+◇ Test "挂单心跳只改价不记量，也不凭它开新的一根" started.
+◇ Test "last.kbar：≤600 根、≤60KB，读回逐字节一致" started.
+◇ Test "坏文件不崩，返回 nil" started.
+◇ Test "内存警告后只剩当前 (品种, 周期)" started.
+◇ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" started.
+◇ Test "撞到分钟权重上限就等到窗口滚出去" started.
+◇ Test "3000 条录制报文回放：最终序列与期望全等" started.
+◇ Test "429 不带 Retry-After：退避 1s、2s" started.
+◇ Test "所有线路超时后释放连接，不无限等待" started.
+◇ Test "历史OI网关时间戳、数值和坏响应检查" started.
+◇ Test "选择更快有效线路，首帧不丢失，正常收数不反复选路" started.
+◇ Test "本地失败时自动兜底，订阅确认不算有效行情" started.
+◇ Test "选路期间换品种，连接完成后补订新流，不误记已同步" started.
+◇ Test case passing 1 argument interval → .m1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m5 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m3 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m15 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m30 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h2 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h4 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h6 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h12 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .d1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .w1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .mo1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .y1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument localFast → true to "选择更快有效线路，首帧不丢失，正常收数不反复选路" started.
+◇ Test case passing 1 argument localFast → false to "选择更快有效线路，首帧不丢失，正常收数不反复选路" started.
+✔ Test "对齐取「之前最近」一条，没有就是 NaN" passed after 0.061 seconds.
+✔ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" passed after 0.061 seconds.
+✔ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" passed after 0.061 seconds.
+✔ Test "日期工具：dayString / dayStart / days / 中间优先" passed after 0.061 seconds.
+✔ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" passed after 0.061 seconds.
+✔ Test "404 / 451 / 429 分类" passed after 0.061 seconds.
+✔ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" passed after 0.061 seconds.
+✔ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" passed after 0.061 seconds.
+✔ Test "空点列 / 空序列不崩" passed after 0.061 seconds.
+✔ Test "过期、补缺中、价格不合法、序列空着都不折" passed after 0.061 seconds.
+✔ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" passed after 0.061 seconds.
+✔ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" with 14 test cases passed after 0.061 seconds.
+✔ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" passed after 0.061 seconds.
+✔ Test "桶按撮合时间算，同一根内的时间不会开新根" passed after 0.061 seconds.
+✔ Test "历史请求把周期交给网关，成功后不下载原始ZIP" passed after 0.062 seconds.
+✔ Test "点列有缺口也对得上：缺口里续用缺口前那条" passed after 0.061 seconds.
+✔ Test "落在末根上：收盘跟着走，高低取极值，量累加" passed after 0.061 seconds.
+✔ Test "trade / bookTicker 报文解得出来" passed after 0.061 seconds.
+✔ Test "1y 由 1M 聚出来" passed after 0.061 seconds.
+✔ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" passed after 0.062 seconds.
+✔ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" passed after 0.061 seconds.
+✔ Test "1w / 1M / 1y：按桶取最后一条" passed after 0.061 seconds.
+✔ Test "kline 行数字可以是字符串也可以是数字" passed after 0.062 seconds.
+✔ Test ".oi 日切片：编解码一致，一天 ≈ 3.4KB" passed after 0.062 seconds.
+✔ Test "真实 metrics zip：解出 288 行 5 分钟粒度" passed after 0.062 seconds.
+✔ Test "1500 根 klines：严格递增、等距、无重复" passed after 0.062 seconds.
+✔ Test "exchangeInfo 走一遍 transport，请求路径正确" passed after 0.062 seconds.
+✔ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" passed after 0.062 seconds.
+✔ Test "组合行情端点使用 market 路由，替换品种仍可复用连接" passed after 0.062 seconds.
+✔ Test "对表：这根还没被折过就认 REST 的收盘" passed after 0.062 seconds.
+✔ Test "dedup 去重并排序" passed after 0.088 seconds.
+✔ Test "换一段序列，折线状态跟着清掉" passed after 0.088 seconds.
+✔ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" passed after 0.088 seconds.
+✔ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" passed after 0.088 seconds.
+✔ Test "罚停后成功一次，计数清零" passed after 0.088 seconds.
+✔ Test "60 秒没帧就算断了" passed after 0.088 seconds.
+✔ Test "不规则周期（1M）带 openTime 表，也能原样读回" passed after 0.088 seconds.
+✔ Test "重连退避 1/2/4/…≤30s" passed after 0.088 seconds.
+✔ Test "TradFi永续保留，交割、非USDT与停牌仍排除；旧目录即时刷新" passed after 0.088 seconds.
+✔ Test "归档站有的文件本身是乱序的：解析器必须自己排" passed after 0.088 seconds.
+✔ Test "单个 key 超长会裁掉最老的" passed after 0.088 seconds.
+✔ Test "坏文件不崩，返回 nil" passed after 0.088 seconds.
+✔ Test "挂单心跳只改价不记量，也不凭它开新的一根" passed after 0.088 seconds.
+✔ Test "内存警告后只剩当前 (品种, 周期)" passed after 0.088 seconds.
+✔ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" passed after 0.088 seconds.
+✔ Test "存取日切片：关掉开关就不落盘" passed after 0.089 seconds.
+✔ Test "读快照 + 建 BarSeries < 20ms" passed after 0.088 seconds.
+✔ Test "历史OI网关时间戳、数值和坏响应检查" passed after 0.088 seconds.
+✔ Test "last.kbar：≤600 根、≤60KB，读回逐字节一致" passed after 0.091 seconds.
+✔ Suite "逐笔折线" passed after 0.093 seconds.
+✔ Suite "OI 归档：自写 ZIP + CSV" passed after 0.092 seconds.
+✔ Test "撞到分钟权重上限就等到窗口滚出去" passed after 0.098 seconds.
+✔ Test "429 带 Retry-After：停够秒数再发，然后成功" passed after 0.100 seconds.
+✔ Test "429 不带 Retry-After：退避 1s、2s" passed after 0.101 seconds.
+✔ Test "重试到上限还是 429 就把错误抛出来" passed after 0.102 seconds.
+✔ Test "连发要隔 120ms" passed after 0.102 seconds.
+✔ Suite "限流与退避" passed after 0.103 seconds.
+✔ Test "30 品种 × 14 周期切一遍：沙盒里只有 last.kbar" passed after 0.107 seconds.
+✔ Test "服务器 ping 立刻回 pong" passed after 0.107 seconds.
+✔ Test "品种上市前：归档站 404 → 返回空而不是报错" passed after 0.108 seconds.
+✔ Test "所有线路超时后释放连接，不无限等待" passed after 0.123 seconds.
+✔ Test "连断三次：退避 1s / 2s / 4s，日志可见" passed after 0.128 seconds.
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 0.129 seconds.
+✔ Test "本地失败时自动兜底，订阅确认不算有效行情" passed after 0.132 seconds.
+✔ Test "选择更快有效线路，首帧不丢失，正常收数不反复选路" with 2 test cases passed after 0.137 seconds.
+✔ Test "近 30 天走 REST、更早走归档：两个源都被问到" passed after 0.157 seconds.
+✔ Suite "OI 对齐：两源合一条" passed after 0.157 seconds.
+✔ Test "60 秒一帧没有就主动重连" passed after 0.158 seconds.
+✔ Test "关掉「启动快照」：文件被删，之后不再写" passed after 0.166 seconds.
+✔ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" passed after 0.202 seconds.
+✔ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" passed after 0.238 seconds.
+✔ Suite "REST 与 DTO" passed after 0.239 seconds.
+✔ Test "3000 条录制报文回放：最终序列与期望全等" passed after 0.295 seconds.
+✔ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" passed after 0.295 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 0.296 seconds.
+✔ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" passed after 0.532 seconds.
+✔ Suite "启动快照与内存缓存" passed after 0.533 seconds.
+✔ Test "选路期间换品种，连接完成后补订新流，不误记已同步" passed after 0.704 seconds.
+✔ Suite "无感行情选路" passed after 0.706 seconds.
+✔ Test run with 71 tests in 8 suites passed after 0.706 seconds.
+cd Kanpan/Symbols && swift test 
+Building for debugging...
+[0/4] Write sources
+[2/4] Write swift-version--58304C5D6DBC2206.txt
+[4/6] Compiling KanpanCore Bar.swift
+[5/6] Emitting module KanpanCore
+[6/7] Compiling KanpanCore IndicatorEngine.swift
+[7/10] Compiling KanpanSymbols SymbolPickerModel.swift
+[8/10] Emitting module KanpanSymbols
+[8/10] Write Objects.LinkFileList
+[9/10] Linking KanpanSymbolsPackageTests
+Build complete! (2.07s)
+Test Suite 'All tests' started at 2026-09-15 01:17:55.748.
+Test Suite 'All tests' passed at 2026-09-15 01:17:55.749.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "品种页分区" started.
+◇ Suite "品种搜索" started.
+◇ Suite "品种页" started.
+◇ Suite "自选与最近" started.
+◇ Test "无查询：自选 → 最近 → 全部，顺序固定" started.
+◇ Test "搜不到给空分区，页面自己去显示「没有这个品种」" started.
+◇ Test "价格小数位跟 pricePrecision 走" started.
+◇ Test "行的展示字段照原型：名 · 最新价 · 涨跌幅" started.
+◇ Test "全部按 24h 成交额降序（A5.7）" started.
+◇ Test "自选按用户自己的顺序出，不按成交额" started.
+◇ Test "搜索态只剩一组，标题带命中数" started.
+◇ Test "封顶与「还有 N 个」小字，常数照原型：全部 120、搜索 160" started.
+◇ Test "平盘按涨算，没有行情时价显示破折号" started.
+◇ Test "空分区不出现" started.
+◇ Test "空查询不过滤，原序全出" started.
+◇ Test "页头小字：N 个永续合约" started.
+◇ Test "四档名次各就各位" started.
+◇ Test "已在自选里的不再出现在最近，两处都露过的不再进全部" started.
+◇ Test "数字前缀的品种也能搜" started.
+◇ Test "没有行情的品种成交额算 0，落到末尾且保持原序" started.
+◇ Test "base 前缀排在含子串的前面" started.
+◇ Test "拖排序：落在某一行上" started.
+◇ Test "进页订阅、出页退订，并且都打了日志（A5.7）" started.
+◇ Test "重复加不会多出一条，大小写不敏感" started.
+◇ Test "同档保持品种表原序（稳定排序）" started.
+◇ Test "高亮切段：命中段单独拆出来" started.
+◇ Test "小写照样搜得到，命中集合与原型一致" started.
+◇ Test "拖排序：onMove 口径" started.
+◇ Test "高亮片段落在 symbol 的正确位置" started.
+◇ Test "写进去再读出来，一模一样（杀 app 重开保留）" started.
+◇ Test "最近最多 10 个，第 11 次打开挤掉最旧的" started.
+◇ Test "品种表可以后到（异步拉回来再灌）" started.
+◇ Test "推一批新价，行上的数跟着跳" started.
+◇ Test "构造时就把老存档洗干净：大写、去空、去重、保序" started.
+◇ Test "再打开一次已在列表里的，提到队首而不是多一条" started.
+◇ Test "容量 10，第 11 个把最旧的挤掉" started.
+◇ Test "清空存档" started.
+◇ Test "最近按时间倒序，最新的在最前" started.
+◇ Test "加自选追加到末尾，再点一次移除" started.
+◇ Test "老存档里塞了 20 条，读进来只留 10 条" started.
+◇ Test "存档键就是 kanpan.symbols.v1，落的是 JSON" started.
+◇ Test "存档坏了当空处理，不崩" started.
+◇ Test "点一行：记进最近、落盘、回调宿主（A5.9）" started.
+◇ Test "点星星：加 → 落盘 → 分区里冒出自选组；再点一次全撤回" started.
+◇ Test "拖排序后落盘，顺序就是自选分区的顺序" started.
+◇ Test "开页就把存档读回来" started.
+◇ Test "左滑删除按分区内下标删对人" started.
+◇ Test "改搜索词，分区立刻跟着变" started.
+✔ Test "无查询：自选 → 最近 → 全部，顺序固定" passed after 0.001 seconds.
+✔ Test "自选按用户自己的顺序出，不按成交额" passed after 0.001 seconds.
+✔ Test "搜不到给空分区，页面自己去显示「没有这个品种」" passed after 0.001 seconds.
+✔ Test "搜索态只剩一组，标题带命中数" passed after 0.001 seconds.
+✔ Test "页头小字：N 个永续合约" passed after 0.001 seconds.
+✔ Test "平盘按涨算，没有行情时价显示破折号" passed after 0.001 seconds.
+✔ Test "空查询不过滤，原序全出" passed after 0.001 seconds.
+✔ Test "全部按 24h 成交额降序（A5.7）" passed after 0.001 seconds.
+✔ Test "价格小数位跟 pricePrecision 走" passed after 0.001 seconds.
+✔ Test "拖排序：落在某一行上" passed after 0.001 seconds.
+✔ Test "数字前缀的品种也能搜" passed after 0.001 seconds.
+✔ Test "空分区不出现" passed after 0.001 seconds.
+✔ Test "已在自选里的不再出现在最近，两处都露过的不再进全部" passed after 0.001 seconds.
+✔ Test "重复加不会多出一条，大小写不敏感" passed after 0.001 seconds.
+✔ Test "小写照样搜得到，命中集合与原型一致" passed after 0.001 seconds.
+✔ Test "base 前缀排在含子串的前面" passed after 0.001 seconds.
+✔ Test "四档名次各就各位" passed after 0.001 seconds.
+✔ Test "高亮片段落在 symbol 的正确位置" passed after 0.001 seconds.
+✔ Test "高亮切段：命中段单独拆出来" passed after 0.001 seconds.
+✔ Test "最近按时间倒序，最新的在最前" passed after 0.001 seconds.
+✔ Test "加自选追加到末尾，再点一次移除" passed after 0.001 seconds.
+✔ Test "再打开一次已在列表里的，提到队首而不是多一条" passed after 0.001 seconds.
+✔ Test "容量 10，第 11 个把最旧的挤掉" passed after 0.001 seconds.
+✔ Test "同档保持品种表原序（稳定排序）" passed after 0.001 seconds.
+✔ Test "构造时就把老存档洗干净：大写、去空、去重、保序" passed after 0.001 seconds.
+✔ Test "进页订阅、出页退订，并且都打了日志（A5.7）" passed after 0.001 seconds.
+✔ Test "没有行情的品种成交额算 0，落到末尾且保持原序" passed after 0.001 seconds.
+✔ Test "行的展示字段照原型：名 · 最新价 · 涨跌幅" passed after 0.001 seconds.
+✔ Suite "品种搜索" passed after 0.001 seconds.
+✔ Test "老存档里塞了 20 条，读进来只留 10 条" passed after 0.001 seconds.
+✔ Test "推一批新价，行上的数跟着跳" passed after 0.001 seconds.
+✔ Test "写进去再读出来，一模一样（杀 app 重开保留）" passed after 0.001 seconds.
+✔ Test "清空存档" passed after 0.001 seconds.
+✔ Test "存档键就是 kanpan.symbols.v1，落的是 JSON" passed after 0.001 seconds.
+✔ Test "封顶与「还有 N 个」小字，常数照原型：全部 120、搜索 160" passed after 0.001 seconds.
+✔ Suite "品种页分区" passed after 0.002 seconds.
+✔ Test "存档坏了当空处理，不崩" passed after 0.001 seconds.
+✔ Test "品种表可以后到（异步拉回来再灌）" passed after 0.001 seconds.
+✔ Test "拖排序：onMove 口径" passed after 0.001 seconds.
+✔ Suite "自选与最近" passed after 0.002 seconds.
+✔ Test "最近最多 10 个，第 11 次打开挤掉最旧的" passed after 0.003 seconds.
+✔ Test "点星星：加 → 落盘 → 分区里冒出自选组；再点一次全撤回" passed after 0.003 seconds.
+✔ Test "左滑删除按分区内下标删对人" passed after 0.002 seconds.
+✔ Test "拖排序后落盘，顺序就是自选分区的顺序" passed after 0.002 seconds.
+✔ Test "开页就把存档读回来" passed after 0.002 seconds.
+✔ Test "点一行：记进最近、落盘、回调宿主（A5.9）" passed after 0.003 seconds.
+✔ Test "改搜索词，分区立刻跟着变" passed after 0.003 seconds.
+✔ Suite "品种页" passed after 0.003 seconds.
+✔ Test run with 44 tests in 4 suites passed after 0.003 seconds.

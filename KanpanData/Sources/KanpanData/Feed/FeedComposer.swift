@@ -29,6 +29,9 @@ public struct FeedComposer: Sendable {
   public private(set) var lastTickMs: Int64 = 0
   /// 收到过 `x=true` 的最大 openTime：这一根交易所自己宣布收线了，是定论。
   public private(set) var lastClosedTime: Int64 = 0
+  public private(set) var wsRevision: UInt64 = 0
+  private var lastEvent: KlineEvent?
+  private var lastTradeID: Int64?
 
   public init(series: BarSeries) { self.series = series }
 
@@ -40,7 +43,20 @@ public struct FeedComposer: Sendable {
   /// 吃一条 kline 事件。返回序列有没有变。
   @discardableResult
   public mutating func apply(_ ev: KlineEvent) -> Bool {
-    guard ev.symbol.uppercased() == series.symbol.uppercased() else { return false }
+    guard ev.symbol.uppercased() == series.symbol.uppercased(),
+          ev.bar.isValidMarketBar, ev.interval == series.interval.rawValue else { return false }
+    if let old = lastEvent {
+      guard ev.openTime >= old.openTime else { droppedStale += 1; return false }
+      if ev.openTime == old.openTime {
+        if old.closed || ev == old { return false }
+        if old.eventTime > 0 {
+          if ev.eventTime < old.eventTime { return false }
+          if ev.eventTime == old.eventTime, (ev.lastTradeID ?? -1) <= (old.lastTradeID ?? -1) { return false }
+        }
+      }
+    }
+    lastEvent = ev
+    wsRevision &+= 1
     // x=true 是交易所宣布这根收线了。记下来，别让慢一拍的 REST 快照再把它改回去。
     if ev.closed { lastClosedTime = max(lastClosedTime, ev.bar.openTime) }
     return apply(bar: ev.bar)
@@ -48,6 +64,7 @@ public struct FeedComposer: Sendable {
 
   @discardableResult
   public mutating func apply(bar: Bar) -> Bool {
+    guard bar.isValidMarketBar else { return false }
     if isBackfilling {
       queued.append(bar)
       return false
@@ -73,8 +90,9 @@ public struct FeedComposer: Sendable {
   ///     去开一根的开盘价，开出来的是一个从没成交过的价。
   @discardableResult
   public mutating func applyTick(price: Double, qty: Double = 0, timeMs: Int64,
-                                 allowAppend: Bool = true) -> TickFold {
-    guard price.isFinite, price > 0 else { return .ignored }
+                                 allowAppend: Bool = true, tradeID: Int64? = nil) -> TickFold {
+    guard price.isFinite, price > 0, timeMs >= lastTickMs else { return .ignored }
+    if timeMs == lastTickMs, (tradeID ?? -1) <= (lastTradeID ?? -1) { return .ignored }
     // 补缺期间不折：REST 马上就要拿权威值整段盖过来，这会儿改末根只会打架。
     guard !isBackfilling, series.count > 0 else { return .ignored }
     let t = Aggregator.bucketStart(ms: timeMs, interval: series.interval)
@@ -91,7 +109,7 @@ public struct FeedComposer: Sendable {
       b.low = min(b.low, price)
       b.close = price
       b.volume += vol
-      lastTickMs = timeMs
+      lastTickMs = timeMs; lastTradeID = tradeID
       // 挂单心跳一秒能来几十条，价没动的那些别往上抛——上面是按这个返回值决定
       // 要不要重画的，一根没变的末根重画多少次都是同一张图。
       guard b != before else { return .ignored }
@@ -100,7 +118,7 @@ public struct FeedComposer: Sendable {
     }
     guard allowAppend else { return .ignored }
     _ = series.upsert(Bar(openTime: t, open: price, high: price, low: price, close: price, volume: vol))
-    lastTickMs = timeMs
+    lastTickMs = timeMs; lastTradeID = tradeID
     return .appended
   }
 
@@ -142,7 +160,7 @@ public struct FeedComposer: Sendable {
   /// 停在快照那一刻的价）。所以已经封了的那根，快照的半根一律不许碰。
   ///
   /// 这一段里除末根之外的每一根，在快照眼里都已经收线，是权威值，照收不误。
-  public mutating func merge(_ bars: [Bar]) {
+  public mutating func merge(_ bars: [Bar], preservingLiveTail: Bool = false) {
     guard !bars.isEmpty else { return }
     if series.count == 0 {
       series = BarSeries(symbol: series.symbol, interval: series.interval, bars: BinanceREST.dedup(bars))
@@ -154,6 +172,7 @@ public struct FeedComposer: Sendable {
     // 不假设入参有序：取最大的那个 openTime 当「还在走的那根」。
     let live = bars.lazy.map(\.openTime).max()
     for b in bars {
+      if preservingLiveTail, b.openTime == series.lastTime { continue }
       // 只挡「快照的半根 vs 我们手上封好的同一根」。手上没有的那根照样得接上，
       // 不然中间会留个洞。
       if b.openTime == live, m[b.openTime] != nil, isSealed(b.openTime) { continue }
@@ -178,6 +197,8 @@ public struct FeedComposer: Sendable {
     isBackfilling = false
     lastTickMs = 0
     lastClosedTime = 0
+    lastEvent = nil; lastTradeID = nil
+    wsRevision = 0
   }
 
   /// REST 对表：拿权威值盖回来，但**当前那根的收盘留我们自己的**。

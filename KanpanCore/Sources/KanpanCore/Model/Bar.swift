@@ -9,6 +9,12 @@ public struct Bar: Sendable, Equatable {
   public var close: Double
   public var volume: Double
 
+  /// Validate exchange OHLCV before it can contaminate every derived indicator.
+  public var isValidMarketBar: Bool {
+    [open, high, low, close, volume].allSatisfy(\.isFinite)
+      && low >= 0 && high >= max(open, close) && low <= min(open, close) && volume >= 0
+  }
+
   public init(openTime: Int64, open: Double, high: Double, low: Double, close: Double, volume: Double) {
     self.openTime = openTime
     self.open = open

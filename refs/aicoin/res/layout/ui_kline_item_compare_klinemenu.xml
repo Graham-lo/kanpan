@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView android:textSize="@dimen/ui_kline_menu_item_text_size" android:textColor="@color/ui_kline_menuitem_hover_textcolor" android:gravity="center" android:id="@id/text_menu_title" android:tag="skin:ui_kline_menuitem_hover_textcolor:textColor|skin:ui_kline_menuitem_selector_bg:background" android:background="@drawable/ui_kline_menuitem_selector_bg" android:layout_width="match_parent" android:layout_height="@dimen/ui_kline_menu_item_height" android:minWidth="60.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

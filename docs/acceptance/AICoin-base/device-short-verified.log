@@ -1,0 +1,103 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination platform=iOS,id=00008140-00010C902690801C -derivedDataPath DerivedData-codex-device -resultBundlePath docs/acceptance/AICoin-base/device-short-verified.xcresult "-only-testing:KanpanUITests/AICoinBaseUITests/testPinchAndUnifiedBackground"
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/device-short-verified.xcresult
+
+2026-09-14 22:57:10.590375+0800 KanpanUITests-Runner[1561:196740] [Default] Running tests...
+2026-09-14 22:57:10.605204+0800 KanpanUITests-Runner[1561:196740] [MC] Reading from public effective user settings.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-14 22:57:10.974.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-14 22:57:10.974.
+Test Suite 'AICoinBaseUITests' started at 2026-09-14 22:57:10.975.
+Test Case '-[KanpanUITests.AICoinBaseUITests testPinchAndUnifiedBackground]' started.
+    t =     0.00s Start Test at 2026-09-14 22:57:10.976
+    t =     0.02s Set Up
+    t =     0.03s Open com.mdd.kanpan
+    t =     0.03s     Launch com.mdd.kanpan
+2026-09-14 22:57:11.261 xcodebuild[76214:31463248] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 22:57:11.261 xcodebuild[76214:31463248] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     2.45s         Setting up automation session
+    t =     2.46s         Wait for com.mdd.kanpan to idle
+    t =     3.55s Waiting 30.0s for "chart.canvas" Other to exist
+    t =     4.59s     Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     4.59s         Checking existence of `"chart.canvas" Other`
+    t =     4.61s             Requesting snapshot of accessibility hierarchy for app with pid 1562
+    t =     4.68s             Find: Descendants matching type Other
+    t =     4.68s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     5.72s Find the "chart.canvas" Other
+    t =     5.73s     Requesting snapshot of accessibility hierarchy for app with pid 1562
+    t =     5.77s     Find: Descendants matching type Other
+    t =     5.77s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     5.78s Find the "chart.canvas" Other
+    t =     5.78s     Requesting snapshot of accessibility hierarchy for app with pid 1562
+    t =     5.81s     Find: Descendants matching type Other
+    t =     5.81s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     5.82s Find the Target Application 'com.mdd.kanpan'
+    t =     5.82s     Requesting snapshot of accessibility hierarchy for app with pid 1562
+    t =     5.96s Added attachment named '统一靛色背景-冷启动'
+    t =     5.96s Pinch with scale 2, velocity 1 in "chart.canvas" Other
+    t =     5.96s     Wait for com.mdd.kanpan to idle
+    t =     5.97s     Find the "chart.canvas" Other
+    t =     5.97s         Requesting snapshot of accessibility hierarchy for app with pid 1562
+    t =     5.99s         Find: Descendants matching type Other
+    t =     5.99s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     5.99s     Check for interrupting elements affecting "chart.canvas" Other
+    t =     6.00s         Requesting snapshot of accessibility hierarchy for app with pid 1562
+    t =     6.02s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     6.02s     Synthesize event
+    t =     6.03s         Pinching with rect {{50, 189.33333333333334}, {302, 603.33333333333314}}
+    t =     8.36s     Wait for com.mdd.kanpan to idle
+    t =     8.37s Find the "chart.canvas" Other
+    t =     8.37s     Requesting snapshot of accessibility hierarchy for app with pid 1562
+    t =     8.41s     Find: Descendants matching type Other
+    t =     8.41s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     8.41s Find the Target Application 'com.mdd.kanpan'
+    t =     8.42s     Requesting snapshot of accessibility hierarchy for app with pid 1562
+    t =     8.55s Added attachment named '统一靛色背景-放大'
+    t =     8.55s Tear Down
+Test Case '-[KanpanUITests.AICoinBaseUITests testPinchAndUnifiedBackground]' passed (8.761 seconds).
+Test Suite 'AICoinBaseUITests' passed at 2026-09-14 22:57:19.738.
+	 Executed 1 test, with 0 failures (0 unexpected) in 8.761 (8.764) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-14 22:57:19.740.
+	 Executed 1 test, with 0 failures (0 unexpected) in 8.761 (8.766) seconds
+Test Suite 'Selected tests' passed at 2026-09-14 22:57:19.742.
+	 Executed 1 test, with 0 failures (0 unexpected) in 8.761 (8.768) seconds
+2026-09-14 22:57:20.232 xcodebuild[76214:31463288]  IDETestOperationsObserverDebug: Failure collecting diagnostics from devices: Process exited with error 1:
+ ERROR: The operation couldn?t be completed. (CoreDeviceCLISupport.DiagnoseError error 0.)
+This tool generates files that allow Apple to investigate issues with your
+computer and help improve Apple products. The files might contain personal
+information found on your device or associated with your Apple Account(s),
+including but not limited to your name, serial numbers of your device,
+your device name, your device's location over the last one to two days,
+your attached peripheral devices, your user name, your email address and
+email settings, file paths, file names, Siri suggestions, your computer's
+IP addresses, and network connection information.
+
+This information is used by Apple in accordance with its privacy policy
+(www.apple.com/privacy) and is not shared with any other company. By using
+this tool and sending the results to Apple, you consent to Apple using the
+contents of these files to improve Apple products.
+
+An error occurred while running devicectl diagnose. Will archive the diagnostics collected thus far.
+Wrote file to /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/device-short-verified.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+Partial devicectl diagnose bundle located here: /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/device-short-verified.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+
+2026-09-14 22:57:20.235 xcodebuild[76214:31463248] [MT] IDETestOperationsObserverDebug: 12.596 elapsed -- Testing started completed.
+2026-09-14 22:57:20.235 xcodebuild[76214:31463248] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-14 22:57:20.235 xcodebuild[76214:31463248] [MT] IDETestOperationsObserverDebug: 12.596 sec, +12.596 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/device-short-verified.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

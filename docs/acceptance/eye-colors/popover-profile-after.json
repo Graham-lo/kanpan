@@ -1,0 +1,36 @@
+{
+  "sampleSeconds": 3,
+  "intervalMs": 10,
+  "environment": "iPhone 15 iOS 26.5 simulator, Debug, during popover open/close; not physical energy or FPS benchmark",
+  "nativeMenuReplacementStackOccurrences": {
+    "UpdateContextMenuInteraction.updateValue": 0,
+    "updateVisibleMenuWithBlock": 0,
+    "_replaceVisibleMenu": 0
+  },
+  "metadata": [
+    "Analysis of sampling Kanpan (pid 76485) every 10 milliseconds",
+    "Process:         Kanpan [76485]",
+    "Path:            /Users/USER/Library/Developer/CoreSimulator/Devices/3749DE35-5582-4066-8C14-9767B5559B70/data/Containers/Bundle/Application/E6F32370-B14B-4B0C-879D-E1088F27865E/Kanpan.app/Kanpan",
+    "Load Address:    0x100178000",
+    "Identifier:      com.mdd.kanpan",
+    "Version:         1.0.0 (1)",
+    "Code Type:       ARM64",
+    "Platform:        iOS Simulator",
+    "Parent Process:  launchd_sim [75733]",
+    "Target Type:     live task",
+    "",
+    "Date/Time:       2026-09-15 05:50:43.988 +0800",
+    "Launch Time:     2026-09-15 05:50:27.593 +0800",
+    "OS Version:      macOS 26.5.1 (25F80)",
+    "Report Version:  7",
+    "Analysis Tool:   /usr/bin/sample",
+    "",
+    "Physical footprint:         98.8M",
+    "Physical footprint (peak):  110.4M",
+    "Idle exit:                  untracked",
+    "----",
+    "",
+    "Call graph:",
+    "    232 Thread_32899234   DispatchQueue_1: com.apple.main-thread  (serial)"
+  ]
+}

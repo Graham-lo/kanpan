@@ -25,6 +25,8 @@ DEVICES=(
   "iPhone 16 Pro"
   "iPhone 16 Plus"
   "iPhone 17"
+  "iPhone 17 Pro"
+  "iPhone 17e"
   "iPhone 17 Pro Max"
   "iPhone Air"
   "iPad mini (A17 Pro)"

@@ -1,0 +1,82 @@
+Building for production...
+[0/8] Write sources
+[2/8] /Users/mdd/zhk/kanpan/KanpanCore/.build/arm64-apple-macosx/release/KanpanCorePackageTests.derived/runner.swift
+[3/8] Write sources
+[4/8] Copying Fixtures
+[5/8] Write swift-version--58304C5D6DBC2206.txt
+[7/9] Compiling KanpanCore AICoinBehavior.swift
+[8/10] Compiling KanpanCoreTests AICoinBehaviorTests.swift
+/Users/mdd/zhk/kanpan/KanpanCore/Tests/KanpanCoreTests/ChartOptionsTests.swift:42:9: warning: initialization of immutable value 'st' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+ 40 |     let s = synthSeries(count: 400, seed: 11)
+ 41 |     let v = ViewMath.reset(series: s, plotW: 353, spacing: 8)
+ 42 |     let st = CandleStyle.default
+    |         `- warning: initialization of immutable value 'st' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+ 43 |     let r = PriceBias.allCases.map {
+ 44 |       priceRange(view: v, series: s, bias: $0)
+
+/Users/mdd/zhk/kanpan/KanpanCore/Tests/KanpanCoreTests/ChartOptionsTests.swift:55:9: warning: initialization of immutable value 'st' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+ 53 |     let s = synthSeries(count: 400, seed: 12)
+ 54 |     let v = ViewMath.reset(series: s, plotW: 353, spacing: 8)
+ 55 |     let st = CandleStyle.default
+    |         `- warning: initialization of immutable value 'st' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+ 56 |     let up = priceRange(view: v, series: s, bias: .up)
+ 57 |     let mid = priceRange(view: v, series: s, bias: .center)
+
+/Users/mdd/zhk/kanpan/KanpanCore/Tests/KanpanCoreTests/GeometryTests.swift:10:9: warning: immutable value 'style' was never used; consider replacing with '_' or removing it [#no-usage]
+  8 |   @Test("当前参考手机：4pt 节距对应8px实体、2px影线")
+  9 |   func referenceWidth() {
+ 10 |     for style in CandleStyle.all {
+    |         `- warning: immutable value 'style' was never used; consider replacing with '_' or removing it [#no-usage]
+ 11 |       let w = candlePixels(spacing: 4, scale: 3)
+ 12 |       #expect(w.body == 8 && w.wick == 2)
+
+/Users/mdd/zhk/kanpan/KanpanCore/Tests/KanpanCoreTests/GeometryTests.swift:189:9: warning: initialization of immutable value 'st' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+187 |   @Test("非法输入兜底")
+188 |   func garbageIn() {
+189 |     let st = CandleStyle.default
+    |         `- warning: initialization of immutable value 'st' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+190 |     for sp in [0.0, -5, Double.nan, .infinity] {
+191 |       let w = candlePixels(spacing: sp, scale: 2)
+
+/Users/mdd/zhk/kanpan/KanpanCore/Tests/KanpanCoreTests/LayoutTests.swift:12:13: warning: immutable value 'style' was never used; consider replacing with '_' or removing it [#no-usage]
+ 10 |       for subs in [[], [IndicatorID.macd], [.vol, .oi, .macd]] {
+ 11 |         let reference = Layout(width: w, height: h, subs: subs)
+ 12 |         for style in CandleStyle.all {
+    |             `- warning: immutable value 'style' was never used; consider replacing with '_' or removing it [#no-usage]
+ 13 |           let layout = Layout(width: w, height: h, subs: subs)
+ 14 |           #expect(layout == reference)
+
+/Users/mdd/zhk/kanpan/KanpanCore/Tests/KanpanCoreTests/PriceScaleTests.swift:66:9: warning: initialization of immutable value 'style' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+ 64 |     let plotW = 390.0
+ 65 |     let v = ViewMath.reset(series: s, plotW: plotW, spacing: AICoinBehavior.initialSpacing)
+ 66 |     let style = CandleStyle.default
+    |         `- warning: initialization of immutable value 'style' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+ 67 |     let bare = priceRange(view: v, series: s)
+ 68 | 
+
+/Users/mdd/zhk/kanpan/KanpanCore/Tests/KanpanCoreTests/PriceScaleTests.swift:110:9: warning: initialization of immutable value 'st' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+108 |     let s = synthSeries(count: 300, seed: 57)
+109 |     let v = ViewMath.reset(series: s, plotW: 390, spacing: 9.2)
+110 |     let st = CandleStyle.default
+    |         `- warning: initialization of immutable value 'st' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+111 |     let base = priceRange(view: v, series: s)
+112 |     let mid = (base.lo + base.hi) / 2
+[9/11] Compiling KanpanCorePackageTests runner.swift
+[9/11] Write Objects.LinkFileList
+[10/11] Linking KanpanCorePackageTests
+Build complete! (35.42s)
+Test Suite 'Selected tests' started at 2026-09-15 05:03:34.190.
+Test Suite 'KanpanCorePackageTests.xctest' started at 2026-09-15 05:03:34.209.
+Test Suite 'KanpanCorePackageTests.xctest' passed at 2026-09-15 05:03:34.209.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 05:03:34.209.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.019) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "Indicator workload benchmark" started.
+◇ Test liveTailVersusFullRebuild() started.
+INDICATOR_BENCHMARK bars=12000 updates=100 tailP95Ms=0.71975 fullP95Ms=3.19575
+✔ Test liveTailVersusFullRebuild() passed after 0.228 seconds.
+✔ Suite "Indicator workload benchmark" passed after 0.229 seconds.
+✔ Test run with 1 test in 1 suite passed after 0.231 seconds.

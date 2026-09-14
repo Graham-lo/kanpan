@@ -1,0 +1,1050 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun DerivedData-chart-foundation-device/Build/Products/Kanpan-user-favorites.xctestrun -destination platform=iOS,id=00008140-00010C902690801C -parallel-testing-enabled NO "-only-testing:KanpanUITests/ChartFoundationUITests/testUserSessionFreshQuotesAndReorder" "-only-testing:KanpanUITests/ChartFoundationUITests/testUserSessionChartInteractions" -resultBundlePath docs/acceptance/AICoin-base/foundation/user-session-final.xcresult
+
+2026-09-15 02:40:32.143 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-session-final.xcresult
+
+2026-09-15 02:40:32.147 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:40:32.242 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:40:32.570 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS, arch:arm64e, id:00008140-00010C902690801C, name:iPhone }
+{ platform:iOS, arch:arm64, id:00008140-00010C902690801C, name:iPhone }
+2026-09-15 02:40:33.766 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:40:33.916 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:40:35.944 xcodebuild[29661:32279153] [MT] Run Destination Preflight: The destination is not ready.
+Error Domain=com.apple.dt.deviceprep Code=-3 "Unlock iPhone to Continue" UserInfo={NSRecoveryAttempter=<_DVTErrorRecoveryHandler: 0xb4d1709e0>, NSLocalizedRecoveryOptions=(
+    "Cancel Testing"
+), NSLocalizedRecoverySuggestion=Xcode cannot launch KanpanUITests on iPhone because the device is locked., DVTRecoveryBlockKey=<__NSMallocBlock__: 0xb4f844c00>, NSLocalizedDescription=Unlock iPhone to Continue}
+2026-09-15 02:40:35.944 xcodebuild[29661:32279153] [MT] Run Destination Preflight: Waiting for the destination to become ready.
+2026-09-15 02:41:18.687 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:41:19.048345+0800 KanpanUITests-Runner[1984:319988] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-15 02:41:19.432.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-15 02:41:19.433.
+Test Suite 'ChartFoundationUITests' started at 2026-09-15 02:41:19.433.
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionChartInteractions]' started.
+    t =     0.00s Start Test at 2026-09-15 02:41:19.434
+    t =     0.02s Set Up
+    t =     0.02s     Setting device orientation to Portrait
+    t =     0.02s         Wait for com.mdd.kanpan to idle
+    t =     0.05s Open com.mdd.kanpan
+    t =     0.05s     Launch com.mdd.kanpan
+    t =     0.05s         Terminate com.mdd.kanpan:1959
+2026-09-15 02:41:19.691 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+    t =     0.26s             Device orientation changed to Face Up
+2026-09-15 02:41:19.872 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:41:20.795 xcodebuild[29661:32279153] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 02:41:20.795 xcodebuild[29661:32279153] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     3.51s         Setting up automation session
+    t =     3.59s         Wait for com.mdd.kanpan to idle
+    t =     4.86s Waiting 15.0s for "favorites.close" Button to exist
+    t =     5.89s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.close" Button`
+    t =     5.89s         Checking existence of `"favorites.close" Button`
+    t =     5.91s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =     6.10s             Find: Descendants matching type Button
+    t =     6.10s             Find: Elements matching predicate '"favorites.close" IN identifiers'
+    t =     6.10s Tap "favorites.open.BTCUSDT" Button
+    t =     6.10s     Wait for com.mdd.kanpan to idle
+    t =     6.10s     Find the "favorites.open.BTCUSDT" Button
+    t =     6.11s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =     6.20s         Find: Descendants matching type Button
+    t =     6.20s         Find: Elements matching predicate '"favorites.open.BTCUSDT" IN identifiers'
+    t =     6.21s     Check for interrupting elements affecting "favorites.open.BTCUSDT" Button
+    t =     6.22s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =     6.32s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     6.33s     Synthesize event
+    t =     6.62s     Wait for com.mdd.kanpan to idle
+    t =     7.01s Waiting 15.0s for "chart.canvas" Other to exist
+    t =     8.03s     Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     8.03s         Checking existence of `"chart.canvas" Other`
+    t =     8.04s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =     8.09s             Find: Descendants matching type Other
+    t =     8.09s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     9.11s Find the "chart.canvas" Other
+    t =     9.12s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =     9.18s     Find: Descendants matching type Other
+    t =     9.18s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     9.19s Find the "top.search" Button
+    t =     9.20s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =     9.22s     Find: Descendants matching type Button
+    t =     9.22s     Find: Elements matching predicate '"top.search" IN identifiers'
+    t =     9.24s Tap "bottom.indicator" Button
+    t =     9.24s     Wait for com.mdd.kanpan to idle
+    t =     9.24s     Find the "bottom.indicator" Button
+    t =     9.24s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =     9.26s         Find: Descendants matching type Button
+    t =     9.27s         Find: Elements matching predicate '"bottom.indicator" IN identifiers'
+    t =     9.27s     Check for interrupting elements affecting "bottom.indicator" Button
+    t =     9.28s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =     9.30s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     9.31s     Synthesize event
+    t =     9.60s     Wait for com.mdd.kanpan to idle
+    t =    10.01s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    11.05s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    11.05s         Checking existence of `"panel.header" StaticText`
+    t =    11.05s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    11.15s             Find: Descendants matching type StaticText
+    t =    11.15s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    11.16s Tap Window (First Match)[0.00, 0.00] -> (334.0, 86.0)
+    t =    11.16s     Wait for com.mdd.kanpan to idle
+    t =    11.16s     Find the Window (First Match)
+    t =    11.17s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    11.23s     Check for interrupting elements affecting Window
+    t =    11.25s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    11.29s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    11.29s     Synthesize event
+    t =    11.29s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    11.30s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    11.36s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    11.36s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    11.43s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    11.43s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    11.76s     Wait for com.mdd.kanpan to idle
+    t =    13.13s Checking existence of `"panel.header" StaticText`
+    t =    13.14s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    13.18s     Find: Descendants matching type StaticText
+    t =    13.19s     Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    13.19s Checking existence of `"symbols.query" TextField`
+    t =    13.20s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    13.24s     Find: Descendants matching type TextField
+    t =    13.24s Tap "bottom.indicator" Button
+    t =    13.25s     Wait for com.mdd.kanpan to idle
+    t =    13.26s     Find the "bottom.indicator" Button
+    t =    13.27s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    13.31s         Find: Descendants matching type Button
+    t =    13.32s         Find: Elements matching predicate '"bottom.indicator" IN identifiers'
+    t =    13.32s     Check for interrupting elements affecting "bottom.indicator" Button
+    t =    13.33s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    13.35s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    13.36s     Synthesize event
+    t =    13.65s     Wait for com.mdd.kanpan to idle
+    t =    14.04s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    15.04s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    15.05s         Checking existence of `"panel.header" StaticText`
+    t =    15.05s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    15.15s             Find: Descendants matching type StaticText
+    t =    15.15s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    15.16s Find the "chart.canvas" Other
+    t =    15.16s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    15.22s     Find: Descendants matching type Other
+    t =    15.22s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    15.23s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    15.23s     Wait for com.mdd.kanpan to idle
+    t =    15.23s     Find the "chart.canvas" Other
+    t =    15.23s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    15.29s         Find: Descendants matching type Other
+    t =    15.29s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    15.29s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    15.31s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    15.35s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    15.36s     Synthesize event
+    t =    15.36s         Find the "chart.canvas" Other
+    t =    15.36s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    15.41s             Find: Descendants matching type Other
+    t =    15.41s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    15.42s         Find the "chart.canvas" Other
+    t =    15.43s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    15.47s             Find: Descendants matching type Other
+    t =    15.47s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    15.48s         Find the "chart.canvas" Other
+    t =    15.49s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    15.53s             Find: Descendants matching type Other
+    t =    15.54s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    15.82s     Wait for com.mdd.kanpan to idle
+    t =    17.20s Checking existence of `"panel.header" StaticText`
+    t =    17.21s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    17.24s     Find: Descendants matching type StaticText
+    t =    17.24s     Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    17.25s Find the "chart.canvas" Other
+    t =    17.25s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    17.29s     Find: Descendants matching type Other
+    t =    17.29s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    17.30s Find the "chart.canvas" Other
+    t =    17.31s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    17.35s     Find: Descendants matching type Other
+    t =    17.35s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    17.36s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    17.36s     Wait for com.mdd.kanpan to idle
+    t =    17.37s     Find the "chart.canvas" Other
+    t =    17.37s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    17.41s         Find: Descendants matching type Other
+    t =    17.41s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    17.42s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    17.43s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    17.51s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    17.52s     Synthesize event
+    t =    17.52s         Find the "chart.canvas" Other
+    t =    17.53s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    17.55s             Find: Descendants matching type Other
+    t =    17.55s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    17.56s         Find the "chart.canvas" Other
+    t =    17.57s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    17.59s             Find: Descendants matching type Other
+    t =    17.59s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    17.60s         Find the "chart.canvas" Other
+    t =    17.61s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    17.63s             Find: Descendants matching type Other
+    t =    17.63s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    17.94s     Wait for com.mdd.kanpan to idle
+    t =    18.98s Find the "chart.canvas" Other
+    t =    18.99s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    19.03s     Find: Descendants matching type Other
+    t =    19.03s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    19.06s Find the "chart.canvas" Other
+    t =    19.06s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    19.11s     Find: Descendants matching type Other
+    t =    19.11s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    19.13s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    19.13s     Wait for com.mdd.kanpan to idle
+    t =    19.14s     Find the "chart.canvas" Other
+    t =    19.15s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    19.19s         Find: Descendants matching type Other
+    t =    19.19s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    19.20s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    19.22s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    19.25s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    19.25s     Synthesize event
+    t =    19.25s         Find the "chart.canvas" Other
+    t =    19.26s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    19.32s             Find: Descendants matching type Other
+    t =    19.32s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    19.33s         Find the "chart.canvas" Other
+    t =    19.33s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    19.36s             Find: Descendants matching type Other
+    t =    19.37s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    19.38s         Find the "chart.canvas" Other
+    t =    19.38s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    19.41s             Find: Descendants matching type Other
+    t =    19.41s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    19.70s     Wait for com.mdd.kanpan to idle
+    t =    20.75s Find the "chart.canvas" Other
+    t =    20.75s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    20.79s     Find: Descendants matching type Other
+    t =    20.79s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    20.80s Tap "bottom.settings" Button
+    t =    20.80s     Wait for com.mdd.kanpan to idle
+    t =    20.81s     Find the "bottom.settings" Button
+    t =    20.81s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    20.84s         Find: Descendants matching type Button
+    t =    20.85s         Find: Elements matching predicate '"bottom.settings" IN identifiers'
+    t =    20.85s     Check for interrupting elements affecting "bottom.settings" Button
+    t =    20.87s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    20.90s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    20.91s     Synthesize event
+    t =    21.20s     Wait for com.mdd.kanpan to idle
+    t =    21.61s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    22.63s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    22.63s         Checking existence of `"panel.header" StaticText`
+    t =    22.64s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    22.74s             Find: Descendants matching type StaticText
+    t =    22.74s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    22.75s Find the "chart.canvas" Other
+    t =    22.75s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    22.80s     Find: Descendants matching type Other
+    t =    22.80s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    22.81s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    22.81s     Wait for com.mdd.kanpan to idle
+    t =    22.81s     Find the "chart.canvas" Other
+    t =    22.81s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    22.86s         Find: Descendants matching type Other
+    t =    22.86s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    22.87s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    22.88s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    22.92s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    22.93s     Synthesize event
+    t =    22.93s         Find the "chart.canvas" Other
+    t =    22.93s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    22.98s             Find: Descendants matching type Other
+    t =    22.99s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    23.00s         Find the "chart.canvas" Other
+    t =    23.00s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    23.05s             Find: Descendants matching type Other
+    t =    23.05s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    23.06s         Find the "chart.canvas" Other
+    t =    23.06s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    23.11s             Find: Descendants matching type Other
+    t =    23.11s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    23.40s     Wait for com.mdd.kanpan to idle
+    t =    24.80s Checking existence of `"panel.header" StaticText`
+    t =    24.81s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    24.84s     Find: Descendants matching type StaticText
+    t =    24.84s     Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    24.84s Find the "chart.canvas" Other
+    t =    24.85s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    24.87s     Find: Descendants matching type Other
+    t =    24.88s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    24.89s Find the "chart.canvas" Other
+    t =    24.89s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    24.93s     Find: Descendants matching type Other
+    t =    24.94s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    24.95s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    24.95s     Wait for com.mdd.kanpan to idle
+    t =    24.95s     Find the "chart.canvas" Other
+    t =    24.96s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    24.98s         Find: Descendants matching type Other
+    t =    24.98s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    24.98s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    25.00s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    25.01s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    25.02s     Synthesize event
+    t =    25.02s         Find the "chart.canvas" Other
+    t =    25.03s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    25.05s             Find: Descendants matching type Other
+    t =    25.05s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    25.06s         Find the "chart.canvas" Other
+    t =    25.06s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    25.08s             Find: Descendants matching type Other
+    t =    25.08s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    25.09s         Find the "chart.canvas" Other
+    t =    25.10s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    25.12s             Find: Descendants matching type Other
+    t =    25.12s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    25.41s     Wait for com.mdd.kanpan to idle
+    t =    26.45s Find the "chart.canvas" Other
+    t =    26.46s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    26.53s     Find: Descendants matching type Other
+    t =    26.53s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    26.55s Find the "chart.canvas" Other
+    t =    26.55s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    26.58s     Find: Descendants matching type Other
+    t =    26.58s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    26.60s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    26.60s     Wait for com.mdd.kanpan to idle
+    t =    26.60s     Find the "chart.canvas" Other
+    t =    26.61s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    26.63s         Find: Descendants matching type Other
+    t =    26.64s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    26.64s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    26.66s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    26.68s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    26.69s     Synthesize event
+    t =    26.69s         Find the "chart.canvas" Other
+    t =    26.69s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    26.72s             Find: Descendants matching type Other
+    t =    26.72s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    26.73s         Find the "chart.canvas" Other
+    t =    26.74s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    26.76s             Find: Descendants matching type Other
+    t =    26.76s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    26.78s         Find the "chart.canvas" Other
+    t =    26.78s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    26.81s             Find: Descendants matching type Other
+    t =    26.81s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    27.10s     Wait for com.mdd.kanpan to idle
+    t =    28.13s Find the "chart.canvas" Other
+    t =    28.15s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    28.19s     Find: Descendants matching type Other
+    t =    28.19s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    28.21s Tap "bottom.style" Button
+    t =    28.21s     Wait for com.mdd.kanpan to idle
+    t =    28.21s     Find the "bottom.style" Button
+    t =    28.22s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    28.26s         Find: Descendants matching type Button
+    t =    28.26s         Find: Elements matching predicate '"bottom.style" IN identifiers'
+    t =    28.26s     Check for interrupting elements affecting "bottom.style" Button
+    t =    28.29s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    28.32s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    28.33s     Synthesize event
+    t =    28.63s     Wait for com.mdd.kanpan to idle
+    t =    29.01s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    30.03s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    30.03s         Checking existence of `"panel.header" StaticText`
+    t =    30.04s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    30.14s             Find: Descendants matching type StaticText
+    t =    30.14s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    30.15s Find the "chart.canvas" Other
+    t =    30.15s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    30.21s     Find: Descendants matching type Other
+    t =    30.22s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    30.23s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    30.23s     Wait for com.mdd.kanpan to idle
+    t =    30.23s     Find the "chart.canvas" Other
+    t =    30.23s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    30.31s         Find: Descendants matching type Other
+    t =    30.32s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    30.32s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    30.33s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    30.37s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    30.38s     Synthesize event
+    t =    30.38s         Find the "chart.canvas" Other
+    t =    30.38s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    30.43s             Find: Descendants matching type Other
+    t =    30.43s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    30.45s         Find the "chart.canvas" Other
+    t =    30.45s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    30.50s             Find: Descendants matching type Other
+    t =    30.50s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    30.51s         Find the "chart.canvas" Other
+    t =    30.51s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    30.57s             Find: Descendants matching type Other
+    t =    30.57s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    30.86s     Wait for com.mdd.kanpan to idle
+    t =    32.23s Checking existence of `"panel.header" StaticText`
+    t =    32.24s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    32.29s     Find: Descendants matching type StaticText
+    t =    32.29s     Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    32.30s Find the "chart.canvas" Other
+    t =    32.30s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    32.34s     Find: Descendants matching type Other
+    t =    32.35s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    32.36s Find the "chart.canvas" Other
+    t =    32.37s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    32.42s     Find: Descendants matching type Other
+    t =    32.42s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    32.43s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    32.43s     Wait for com.mdd.kanpan to idle
+    t =    32.44s     Find the "chart.canvas" Other
+    t =    32.44s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    32.47s         Find: Descendants matching type Other
+    t =    32.47s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    32.47s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    32.49s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    32.51s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    32.52s     Synthesize event
+    t =    32.52s         Find the "chart.canvas" Other
+    t =    32.52s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    32.55s             Find: Descendants matching type Other
+    t =    32.55s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    32.56s         Find the "chart.canvas" Other
+    t =    32.56s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    32.59s             Find: Descendants matching type Other
+    t =    32.59s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    32.60s         Find the "chart.canvas" Other
+    t =    32.61s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    32.63s             Find: Descendants matching type Other
+    t =    32.63s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    32.92s     Wait for com.mdd.kanpan to idle
+    t =    33.95s Find the "chart.canvas" Other
+    t =    33.96s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    34.01s     Find: Descendants matching type Other
+    t =    34.01s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    34.04s Find the "chart.canvas" Other
+    t =    34.04s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    34.09s     Find: Descendants matching type Other
+    t =    34.09s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    34.11s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    34.11s     Wait for com.mdd.kanpan to idle
+    t =    34.12s     Find the "chart.canvas" Other
+    t =    34.12s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    34.18s         Find: Descendants matching type Other
+    t =    34.18s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    34.18s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    34.21s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    34.22s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    34.23s     Synthesize event
+    t =    34.23s         Find the "chart.canvas" Other
+    t =    34.23s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    34.26s             Find: Descendants matching type Other
+    t =    34.26s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    34.27s         Find the "chart.canvas" Other
+    t =    34.28s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    34.30s             Find: Descendants matching type Other
+    t =    34.31s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    34.32s         Find the "chart.canvas" Other
+    t =    34.32s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    34.35s             Find: Descendants matching type Other
+    t =    34.35s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    34.65s     Wait for com.mdd.kanpan to idle
+    t =    35.70s Find the "chart.canvas" Other
+    t =    35.71s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    35.76s     Find: Descendants matching type Other
+    t =    35.76s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    35.77s Tap "interval.chart" Button
+    t =    35.77s     Wait for com.mdd.kanpan to idle
+    t =    35.78s     Find the "interval.chart" Button
+    t =    35.78s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    35.82s         Find: Descendants matching type Button
+    t =    35.83s         Find: Elements matching predicate '"interval.chart" IN identifiers'
+    t =    35.83s     Check for interrupting elements affecting "interval.chart" Button
+    t =    35.85s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    35.87s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    35.88s     Synthesize event
+    t =    36.18s     Wait for com.mdd.kanpan to idle
+    t =    36.58s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    37.60s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    37.60s         Checking existence of `"panel.header" StaticText`
+    t =    37.61s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    37.72s             Find: Descendants matching type StaticText
+    t =    37.73s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    37.73s Find the "chart.canvas" Other
+    t =    37.74s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    37.79s     Find: Descendants matching type Other
+    t =    37.80s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    37.81s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    37.81s     Wait for com.mdd.kanpan to idle
+    t =    37.81s     Find the "chart.canvas" Other
+    t =    37.81s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    37.87s         Find: Descendants matching type Other
+    t =    37.87s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    37.87s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    37.88s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    37.93s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    37.94s     Synthesize event
+    t =    37.94s         Find the "chart.canvas" Other
+    t =    37.94s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    38.00s             Find: Descendants matching type Other
+    t =    38.00s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    38.01s         Find the "chart.canvas" Other
+    t =    38.01s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    38.07s             Find: Descendants matching type Other
+    t =    38.08s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    38.09s         Find the "chart.canvas" Other
+    t =    38.09s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    38.15s             Find: Descendants matching type Other
+    t =    38.15s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    38.44s     Wait for com.mdd.kanpan to idle
+    t =    39.82s Checking existence of `"panel.header" StaticText`
+    t =    39.83s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    39.87s     Find: Descendants matching type StaticText
+    t =    39.88s     Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    39.88s Find the "chart.canvas" Other
+    t =    39.89s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    39.93s     Find: Descendants matching type Other
+    t =    39.93s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    39.94s Find the "chart.canvas" Other
+    t =    39.95s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    40.00s     Find: Descendants matching type Other
+    t =    40.00s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    40.02s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    40.02s     Wait for com.mdd.kanpan to idle
+    t =    40.03s     Find the "chart.canvas" Other
+    t =    40.03s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    40.06s         Find: Descendants matching type Other
+    t =    40.06s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    40.06s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    40.08s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    40.10s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    40.10s     Synthesize event
+    t =    40.10s         Find the "chart.canvas" Other
+    t =    40.11s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    40.13s             Find: Descendants matching type Other
+    t =    40.14s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    40.15s         Find the "chart.canvas" Other
+    t =    40.15s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    40.17s             Find: Descendants matching type Other
+    t =    40.18s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    40.19s         Find the "chart.canvas" Other
+    t =    40.19s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    40.22s             Find: Descendants matching type Other
+    t =    40.22s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    40.51s     Wait for com.mdd.kanpan to idle
+    t =    41.54s Find the "chart.canvas" Other
+    t =    41.54s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    41.60s     Find: Descendants matching type Other
+    t =    41.60s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    41.62s Find the "chart.canvas" Other
+    t =    41.63s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    41.67s     Find: Descendants matching type Other
+    t =    41.68s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    41.70s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    41.70s     Wait for com.mdd.kanpan to idle
+    t =    41.72s     Find the "chart.canvas" Other
+    t =    41.73s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    41.78s         Find: Descendants matching type Other
+    t =    41.79s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    41.79s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    41.81s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    41.83s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    41.83s     Synthesize event
+    t =    41.83s         Find the "chart.canvas" Other
+    t =    41.84s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    41.87s             Find: Descendants matching type Other
+    t =    41.87s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    41.88s         Find the "chart.canvas" Other
+    t =    41.88s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    41.91s             Find: Descendants matching type Other
+    t =    41.91s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    41.93s         Find the "chart.canvas" Other
+    t =    41.93s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    41.96s             Find: Descendants matching type Other
+    t =    41.96s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    42.26s     Wait for com.mdd.kanpan to idle
+    t =    43.29s Find the "chart.canvas" Other
+    t =    43.29s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    43.34s     Find: Descendants matching type Other
+    t =    43.34s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    43.35s Tap "interval.more" Button
+    t =    43.35s     Wait for com.mdd.kanpan to idle
+    t =    43.36s     Find the "interval.more" Button
+    t =    43.36s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    43.40s         Find: Descendants matching type Button
+    t =    43.40s         Find: Elements matching predicate '"interval.more" IN identifiers'
+    t =    43.41s     Check for interrupting elements affecting "interval.more" Button
+    t =    43.43s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    43.46s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    43.46s     Synthesize event
+    t =    43.76s     Wait for com.mdd.kanpan to idle
+    t =    44.14s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    45.15s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    45.15s         Checking existence of `"panel.header" StaticText`
+    t =    45.16s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    45.28s             Find: Descendants matching type StaticText
+    t =    45.28s             Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    45.29s Find the "chart.canvas" Other
+    t =    45.29s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    45.34s     Find: Descendants matching type Other
+    t =    45.34s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    45.35s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    45.35s     Wait for com.mdd.kanpan to idle
+    t =    45.35s     Find the "chart.canvas" Other
+    t =    45.36s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    45.41s         Find: Descendants matching type Other
+    t =    45.41s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    45.42s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    45.43s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    45.47s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    45.48s     Synthesize event
+    t =    45.48s         Find the "chart.canvas" Other
+    t =    45.48s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    45.54s             Find: Descendants matching type Other
+    t =    45.54s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    45.55s         Find the "chart.canvas" Other
+    t =    45.55s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    45.60s             Find: Descendants matching type Other
+    t =    45.60s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    45.63s         Find the "chart.canvas" Other
+    t =    45.63s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    45.68s             Find: Descendants matching type Other
+    t =    45.68s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    45.97s     Wait for com.mdd.kanpan to idle
+    t =    47.35s Checking existence of `"panel.header" StaticText`
+    t =    47.36s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    47.40s     Find: Descendants matching type StaticText
+    t =    47.41s     Find: Elements matching predicate '"panel.header" IN identifiers'
+    t =    47.41s Find the "chart.canvas" Other
+    t =    47.42s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    47.47s     Find: Descendants matching type Other
+    t =    47.48s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    47.49s Find the "chart.canvas" Other
+    t =    47.49s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    47.52s     Find: Descendants matching type Other
+    t =    47.52s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    47.53s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    47.53s     Wait for com.mdd.kanpan to idle
+    t =    47.53s     Find the "chart.canvas" Other
+    t =    47.53s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    47.55s         Find: Descendants matching type Other
+    t =    47.56s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    47.56s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    47.57s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    47.59s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    47.60s     Synthesize event
+    t =    47.60s         Find the "chart.canvas" Other
+    t =    47.60s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    47.64s             Find: Descendants matching type Other
+    t =    47.64s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    47.65s         Find the "chart.canvas" Other
+    t =    47.66s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    47.68s             Find: Descendants matching type Other
+    t =    47.68s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    47.69s         Find the "chart.canvas" Other
+    t =    47.70s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    47.72s             Find: Descendants matching type Other
+    t =    47.72s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    48.02s     Wait for com.mdd.kanpan to idle
+    t =    49.05s Find the "chart.canvas" Other
+    t =    49.06s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    49.12s     Find: Descendants matching type Other
+    t =    49.13s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    49.14s Find the "chart.canvas" Other
+    t =    49.15s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    49.18s     Find: Descendants matching type Other
+    t =    49.18s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    49.19s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    49.19s     Wait for com.mdd.kanpan to idle
+    t =    49.20s     Find the "chart.canvas" Other
+    t =    49.20s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    49.23s         Find: Descendants matching type Other
+    t =    49.23s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    49.24s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    49.26s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    49.27s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    49.28s     Synthesize event
+    t =    49.28s         Find the "chart.canvas" Other
+    t =    49.28s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    49.31s             Find: Descendants matching type Other
+    t =    49.32s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    49.33s         Find the "chart.canvas" Other
+    t =    49.33s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    49.36s             Find: Descendants matching type Other
+    t =    49.36s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    49.37s         Find the "chart.canvas" Other
+    t =    49.38s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    49.40s             Find: Descendants matching type Other
+    t =    49.41s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    49.70s     Wait for com.mdd.kanpan to idle
+    t =    50.74s Find the "chart.canvas" Other
+    t =    50.74s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    50.80s     Find: Descendants matching type Other
+    t =    50.80s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    50.81s Find the Target Application 'com.mdd.kanpan'
+    t =    50.82s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    50.95s Added attachment named '面板外点击-只收起不触发十字线'
+    t =    50.95s Find the "chart.canvas" Other
+    t =    50.95s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    50.99s     Find: Descendants matching type Other
+    t =    50.99s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    50.99s Find the "chart.canvas" Other
+    t =    50.99s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    51.02s     Find: Descendants matching type Other
+    t =    51.02s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    51.03s Find the "chart.canvas" Other
+    t =    51.03s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    51.06s     Find: Descendants matching type Other
+    t =    51.06s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    51.07s Find the "chart.canvas" Other
+    t =    51.07s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    51.10s     Find: Descendants matching type Other
+    t =    51.10s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    51.11s Press "chart.canvas" Other[0.00, 0.00] -> (172.0, 404.4) for 0.5 seconds, then drag to "chart.canvas" Other[0.00, 0.00] -> (172.0, 558.4) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    51.11s     Wait for com.mdd.kanpan to idle
+    t =    51.11s     Find the "chart.canvas" Other
+    t =    51.11s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    51.14s         Find: Descendants matching type Other
+    t =    51.14s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    51.15s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    51.16s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    51.18s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    51.19s     Synthesize event
+    t =    51.19s         Find the "chart.canvas" Other
+    t =    51.19s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    51.23s             Find: Descendants matching type Other
+    t =    51.23s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    51.23s         Find the "chart.canvas" Other
+    t =    51.23s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    51.27s             Find: Descendants matching type Other
+    t =    51.27s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    51.28s         Find the "chart.canvas" Other
+    t =    51.28s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    51.31s             Find: Descendants matching type Other
+    t =    51.31s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    51.32s         Find the "chart.canvas" Other
+    t =    51.32s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    51.36s             Find: Descendants matching type Other
+    t =    51.36s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    51.37s         Find the "chart.canvas" Other
+    t =    51.37s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    51.41s             Find: Descendants matching type Other
+    t =    51.41s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    52.46s     Wait for com.mdd.kanpan to idle
+    t =    53.50s Find the "chart.canvas" Other
+    t =    53.51s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.56s     Find: Descendants matching type Other
+    t =    53.56s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    53.57s Find the Target Application 'com.mdd.kanpan'
+    t =    53.58s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.72s Added attachment named '正式行情-整个副图区域长按换序'
+    t =    53.72s Find the "chart.canvas" Other
+    t =    53.72s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.75s     Find: Descendants matching type Other
+    t =    53.75s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    53.76s Find the "chart.canvas" Other
+    t =    53.76s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.78s     Find: Descendants matching type Other
+    t =    53.78s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    53.78s Find the "chart.canvas" Other
+    t =    53.78s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.80s     Find: Descendants matching type Other
+    t =    53.80s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    53.80s Press "chart.canvas" Other[0.00, 0.00] -> (172.0, 548.8) for 0.5 seconds, then drag to "chart.canvas" Other[0.00, 0.00] -> (172.0, 377.1) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    53.80s     Wait for com.mdd.kanpan to idle
+    t =    53.80s     Find the "chart.canvas" Other
+    t =    53.81s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.82s         Find: Descendants matching type Other
+    t =    53.82s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    53.82s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    53.83s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.84s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    53.84s     Synthesize event
+    t =    53.85s         Find the "chart.canvas" Other
+    t =    53.85s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.86s             Find: Descendants matching type Other
+    t =    53.87s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    53.87s         Find the "chart.canvas" Other
+    t =    53.87s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.89s             Find: Descendants matching type Other
+    t =    53.89s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    53.89s         Find the "chart.canvas" Other
+    t =    53.89s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.91s             Find: Descendants matching type Other
+    t =    53.91s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    53.91s         Find the "chart.canvas" Other
+    t =    53.92s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.93s             Find: Descendants matching type Other
+    t =    53.93s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    53.94s         Find the "chart.canvas" Other
+    t =    53.94s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    53.96s             Find: Descendants matching type Other
+    t =    53.96s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    55.03s     Wait for com.mdd.kanpan to idle
+    t =    56.04s Find the "chart.canvas" Other
+    t =    56.05s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    56.10s     Find: Descendants matching type Other
+    t =    56.10s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    56.11s Find the "chart.canvas" Other
+    t =    56.12s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    56.16s     Find: Descendants matching type Other
+    t =    56.16s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    56.17s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    56.18s     Wait for com.mdd.kanpan to idle
+    t =    56.18s     Find the "chart.canvas" Other
+    t =    56.18s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    56.22s         Find: Descendants matching type Other
+    t =    56.22s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    56.23s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    56.25s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    56.28s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    56.28s     Synthesize event
+    t =    56.29s         Find the "chart.canvas" Other
+    t =    56.29s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    56.34s             Find: Descendants matching type Other
+    t =    56.34s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    56.38s         Find the "chart.canvas" Other
+    t =    56.39s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    56.43s             Find: Descendants matching type Other
+    t =    56.43s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    56.44s         Find the "chart.canvas" Other
+    t =    56.45s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    56.47s             Find: Descendants matching type Other
+    t =    56.47s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    56.76s     Wait for com.mdd.kanpan to idle
+    t =    56.77s Find the "chart.canvas" Other
+    t =    56.77s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    56.82s     Find: Descendants matching type Other
+    t =    56.83s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    56.85s Press "chart.canvas" Other[0.00, 0.00] -> (152.0, 130.0) for 0.1 seconds, then drag to "chart.canvas" Other[0.00, 0.00] -> (152.0, 130.0) -> (50.0, 10.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    56.85s     Wait for com.mdd.kanpan to idle
+    t =    56.86s     Find the "chart.canvas" Other
+    t =    56.86s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    56.91s         Find: Descendants matching type Other
+    t =    56.91s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    56.91s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    56.93s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    56.96s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    56.96s     Synthesize event
+    t =    56.97s         Find the "chart.canvas" Other
+    t =    56.98s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    57.02s             Find: Descendants matching type Other
+    t =    57.03s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    57.04s         Find the "chart.canvas" Other
+    t =    57.04s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    57.09s             Find: Descendants matching type Other
+    t =    57.09s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    57.11s         Find the "chart.canvas" Other
+    t =    57.11s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    57.16s             Find: Descendants matching type Other
+    t =    57.16s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    57.18s         Find the "chart.canvas" Other
+    t =    57.18s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    57.23s             Find: Descendants matching type Other
+    t =    57.23s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    57.25s         Find the "chart.canvas" Other
+    t =    57.25s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    57.31s             Find: Descendants matching type Other
+    t =    57.31s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    57.72s     Wait for com.mdd.kanpan to idle
+    t =    58.74s Find the "chart.canvas" Other
+    t =    58.75s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    58.80s     Find: Descendants matching type Other
+    t =    58.81s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    58.83s Find the "chart.canvas" Other
+    t =    58.84s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    58.88s     Find: Descendants matching type Other
+    t =    58.88s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    58.90s Press "chart.canvas" Other[0.00, 0.00] -> (45.0, 100.0) for 0.1 seconds, then drag to "chart.canvas" Other[0.00, 0.00] -> (45.0, 100.0) -> (100.0, 0.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    58.91s     Wait for com.mdd.kanpan to idle
+    t =    58.91s     Find the "chart.canvas" Other
+    t =    58.92s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    58.96s         Find: Descendants matching type Other
+    t =    58.96s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    58.97s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    58.99s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    59.04s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    59.05s     Synthesize event
+    t =    59.06s         Find the "chart.canvas" Other
+    t =    59.06s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    59.09s             Find: Descendants matching type Other
+    t =    59.10s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    59.11s         Find the "chart.canvas" Other
+    t =    59.11s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    59.14s             Find: Descendants matching type Other
+    t =    59.14s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    59.15s         Find the "chart.canvas" Other
+    t =    59.15s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    59.18s             Find: Descendants matching type Other
+    t =    59.18s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    59.19s         Find the "chart.canvas" Other
+    t =    59.20s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    59.23s             Find: Descendants matching type Other
+    t =    59.23s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    59.24s         Find the "chart.canvas" Other
+    t =    59.24s             Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    59.27s             Find: Descendants matching type Other
+    t =    59.27s             Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    59.78s     Wait for com.mdd.kanpan to idle
+    t =    60.80s Find the "chart.canvas" Other
+    t =    60.81s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    60.84s     Find: Descendants matching type Other
+    t =    60.85s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    60.86s Find the "chart.canvas" Other
+    t =    60.86s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    60.89s     Find: Descendants matching type Other
+    t =    60.89s     Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    60.90s Find the Target Application 'com.mdd.kanpan'
+    t =    60.91s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    61.04s Added attachment named '十字中心移线-其它区域拖图'
+    t =    61.04s Tap "bottom.favorites" Button
+    t =    61.04s     Wait for com.mdd.kanpan to idle
+    t =    61.05s     Find the "bottom.favorites" Button
+    t =    61.05s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    61.08s         Find: Descendants matching type Button
+    t =    61.08s         Find: Elements matching predicate '"bottom.favorites" IN identifiers'
+    t =    61.08s     Check for interrupting elements affecting "bottom.favorites" Button
+    t =    61.10s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    61.14s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    61.14s     Synthesize event
+    t =    61.43s     Wait for com.mdd.kanpan to idle
+    t =    61.89s Tear Down
+    t =    61.89s     Find the Target Application 'com.mdd.kanpan'
+    t =    61.90s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    62.12s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    62.12s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    62.50s     Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    62.65s     Find the "chart.canvas" Other
+    t =    62.65s         Requesting snapshot of accessibility hierarchy for app with pid 1986
+    t =    62.77s         Find: Descendants matching type Other
+    t =    62.78s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    62.79s     Added attachment of type 'public.plain-text'
+    t =    62.79s     Terminate com.mdd.kanpan:1986
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionChartInteractions]' passed (63.973 seconds).
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionFreshQuotesAndReorder]' started.
+    t =     0.00s Start Test at 2026-09-15 02:42:23.408
+    t =     0.02s Set Up
+    t =     0.02s     Setting device orientation to Portrait
+    t =     0.02s         Device orientation changed to Portrait
+2026-09-15 02:42:23.531 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+    t =     0.04s         Wait for com.apple.springboard to idle
+    t =     0.04s Open com.mdd.kanpan
+    t =     0.04s     Launch com.mdd.kanpan
+2026-09-15 02:42:23.575 xcodebuild[29661:32279153] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 02:42:23.575 xcodebuild[29661:32279153] [MT] IDELaunchParametersSnapshot: no debugger version
+2026-09-15 02:42:23.680 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+    t =     0.28s         Setting up automation session
+    t =     0.31s         Wait for com.mdd.kanpan to idle
+    t =     1.55s Waiting 15.0s for "favorites.close" Button to exist
+    t =     2.57s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.close" Button`
+    t =     2.57s         Checking existence of `"favorites.close" Button`
+    t =     2.58s             Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     2.70s             Find: Descendants matching type Button
+    t =     2.70s             Find: Elements matching predicate '"favorites.close" IN identifiers'
+    t =     2.71s Tap "favorites.search" Button[0.50, 0.50]
+    t =     2.71s     Wait for com.mdd.kanpan to idle
+    t =     2.73s     Find the "favorites.search" Button
+    t =     2.73s         Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     2.84s         Find: Descendants matching type Button
+    t =     2.85s         Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     2.85s     Check for interrupting elements affecting "favorites.search" Button
+    t =     2.86s         Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     2.95s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     2.96s     Synthesize event
+    t =     2.96s         Find the "favorites.search" Button
+    t =     2.96s             Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     3.06s             Find: Descendants matching type Button
+    t =     3.06s             Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     3.07s         Find the "favorites.search" Button
+    t =     3.08s             Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     3.18s             Find: Descendants matching type Button
+    t =     3.18s             Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     3.19s         Find the "favorites.search" Button
+    t =     3.19s             Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     3.28s             Find: Descendants matching type Button
+    t =     3.28s             Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     3.57s     Wait for com.mdd.kanpan to idle
+    t =     4.31s Waiting 4.0s for "favorites.query" TextField to exist
+    t =     5.33s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.query" TextField`
+    t =     5.33s         Checking existence of `"favorites.query" TextField`
+    t =     5.34s             Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     5.44s             Find: Descendants matching type TextField
+    t =     5.44s             Find: Elements matching predicate '"favorites.query" IN identifiers'
+    t =     5.45s Waiting 4.0s for Keyboard (First Match) to exist
+    t =     6.46s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =     6.46s         Checking existence of `Keyboard (First Match)`
+    t =     6.47s             Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     6.57s         Capturing element debug description
+    t =     7.49s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =     7.49s         Checking existence of `Keyboard (First Match)`
+    t =     7.49s             Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     7.64s         Capturing element debug description
+    t =     8.54s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =     8.54s         Checking existence of `Keyboard (First Match)`
+    t =     8.55s             Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     8.65s         Capturing element debug description
+    t =     9.45s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =     9.45s         Checking existence of `Keyboard (First Match)`
+    t =     9.46s             Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     9.58s         Capturing element debug description
+    t =     9.58s     Checking existence of `Keyboard (First Match)`
+    t =     9.58s         Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =     9.68s Collecting debug information to assist test failure triage
+    t =     9.68s     Requesting snapshot of accessibility hierarchy for app with pid 1987
+/Users/mdd/zhk/kanpan/Kanpan/KanpanUITests/ChartFoundationUITests.swift:398: error: -[KanpanUITests.ChartFoundationUITests testUserSessionFreshQuotesAndReorder] : XCTAssertTrue failed
+    t =     9.88s Tear Down
+    t =     9.88s     Find the Target Application 'com.mdd.kanpan'
+    t =     9.88s         Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =    10.04s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    10.04s     Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =    10.43s     Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =    10.56s     Find the "chart.canvas" Other
+    t =    10.56s         Requesting snapshot of accessibility hierarchy for app with pid 1987
+    t =    10.64s         Find: Descendants matching type Other
+    t =    10.64s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    10.65s     Added attachment of type 'public.plain-text'
+    t =    10.65s     Terminate com.mdd.kanpan:1987
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionFreshQuotesAndReorder]' failed (11.797 seconds).
+2026-09-15 02:42:35.380 xcodebuild[29661:32279153] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:42:35.635296+0800 KanpanUITests-Runner[1988:321060] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-15 02:42:36.004.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-15 02:42:36.005.
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-15 02:42:36.005.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 02:42:36.005.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+2026-09-15 02:42:36.529 xcodebuild[29661:32280738]  IDETestOperationsObserverDebug: Failure collecting diagnostics from devices: Process exited with error 1:
+ ERROR: The operation couldn?t be completed. (CoreDeviceCLISupport.DiagnoseError error 0.)
+This tool generates files that allow Apple to investigate issues with your
+computer and help improve Apple products. The files might contain personal
+information found on your device or associated with your Apple Account(s),
+including but not limited to your name, serial numbers of your device,
+your device name, your device's location over the last one to two days,
+your attached peripheral devices, your user name, your email address and
+email settings, file paths, file names, Siri suggestions, your computer's
+IP addresses, and network connection information.
+
+This information is used by Apple in accordance with its privacy policy
+(www.apple.com/privacy) and is not shared with any other company. By using
+this tool and sending the results to Apple, you consent to Apple using the
+contents of these files to improve Apple products.
+
+An error occurred while running devicectl diagnose. Will archive the diagnostics collected thus far.
+Wrote file to /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-session-final.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+Partial devicectl diagnose bundle located here: /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-session-final.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+
+2026-09-15 02:42:36.535 xcodebuild[29661:32279153] [MT] IDETestOperationsObserverDebug: 122.768 elapsed -- Testing started completed.
+2026-09-15 02:42:36.535 xcodebuild[29661:32279153] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 02:42:36.535 xcodebuild[29661:32279153] [MT] IDETestOperationsObserverDebug: 122.768 sec, +122.768 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-session-final.xcresult
+
+Failing tests:
+	ChartFoundationUITests.testUserSessionFreshQuotesAndReorder()
+
+** TEST EXECUTE FAILED **
+
+Testing started

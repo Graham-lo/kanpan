@@ -7,7 +7,7 @@ import Observation
 ///
 /// 为什么中间要有这一层——`MarketFeed` 是 actor，事件在它自己的执行器上来；
 /// SwiftUI 要的是 `@MainActor` 上的值。这层就是那道闸，顺便把只有界面在意的规则
-/// （换周期时旧图先留着别闪白）收在一处。
+/// （切换隔离、异步结果范围校验）收在一处。
 @MainActor
 @Observable
 final class MarketModel {
@@ -20,12 +20,13 @@ final class MarketModel {
   private var oiRequestedAt = Date.distantPast
   private var lastView: ViewWindow?
   private(set) var ticker: Ticker?
+  private(set) var tradeQuote: TradeQuote?
   private(set) var info: SymbolInfo
   private(set) var status: FeedStatus = .offline
   /// 最近一次 WS 推进来的时刻。顶栏圆点长按时报「多久没动了」——
   /// 「连上了但一帧不推」这种情况光看 `status` 是看不出来的（那时它还是 `.live`）。
   private(set) var lastPushAt: Date?
-  /// 换品种/周期还没拿到新数据的这段空档。图上用它压暗旧图（§10.4）。
+  /// 换品种/周期尚未取得新序列。旧蜡烛清空，宿主单独保留视野参数。
   private(set) var switching = false
 
   private(set) var symbol: String
@@ -53,7 +54,7 @@ final class MarketModel {
     let rest = BinanceREST(hosts: hosts, log: MarketModel.log)
     self.oiSource = OISource(hosts: hosts, rest: rest, store: OIStore(paths: .caches()))
     self.feed = MarketFeed(rest: rest, ws: BinanceWS(hosts: hosts, log: MarketModel.log),
-                           log: MarketModel.log)
+                           includeTicker: false, log: MarketModel.log)
     self.catalog = CatalogBox(SymbolCatalog(rest: rest))
   }
 
@@ -73,6 +74,11 @@ final class MarketModel {
 
   // ---------------------------------------------------------------- 生命周期
 
+  private var selection = UUID()
+  private var switchTask: Task<Void, Never>?
+  private var markTime: Int64 = 0
+  private var markPrice: Double?
+
   func start(snapshot: Bool, interval requestedInterval: Interval? = nil) {
     if let requestedInterval { interval = requestedInterval }
     self.snapshot = snapshot
@@ -83,11 +89,11 @@ final class MarketModel {
         await self.feed.networkChanged(online: online)
       }
     }
-    let sym = symbol, iv = interval
+    let sym = symbol, iv = interval, request = selection
     pump = Task { [feed] in
       let stream = await feed.events()
       await feed.setSnapshotEnabled(snapshot)
-      await feed.start(symbol: sym, interval: iv)
+      await feed.start(symbol: sym, interval: iv, selection: request)
       for await e in stream {
         if Task.isCancelled { break }
         await MainActor.run { self.apply(e) }
@@ -97,6 +103,8 @@ final class MarketModel {
   }
 
   func stop() {
+    selection = UUID()
+    switchTask?.cancel(); switchTask = nil
     network.stop()
     oiTask?.cancel(); oiTask = nil
     pump?.cancel()
@@ -123,7 +131,7 @@ final class MarketModel {
     oiSource = OISource(hosts: next, rest: rest, store: OIStore(paths: .caches()))
     oi = nil; oiRegion = nil
     feed = MarketFeed(rest: rest, ws: BinanceWS(hosts: next, log: MarketModel.log),
-                      log: MarketModel.log)
+                      includeTicker: false, log: MarketModel.log)
     let box = catalog
     Task { await box.replace(SymbolCatalog(rest: rest)) }
     status = .offline
@@ -135,43 +143,40 @@ final class MarketModel {
 
   // ---------------------------------------------------------------- 事件
 
-  private func apply(_ e: FeedEvent) {
-    switch e {
+  private func apply(_ update: FeedUpdate) {
+    guard update.selection == selection else { return }
+    switch update.event {
     case .series(let s):
       guard s.symbol == symbol, s.interval == interval else { return }
       series = s
       switching = false
     case .lastBar(let b):
+      guard series?.symbol == symbol, series?.interval == interval else { return }
       _ = series?.upsert(b)
       lastPushAt = Date()
     case .prepend:
       // `.prepend` 不带新序列，得自己去取。视野是绝对时间窗，补在左边天然不跳。
+      let request = selection
       Task { [feed] in
         let s = await feed.currentSeries
         await MainActor.run {
-          if s.symbol == self.symbol, s.interval == self.interval { self.series = s }
+          if request == self.selection, s.symbol == self.symbol, s.interval == self.interval { self.series = s }
         }
       }
+    case .tradeQuote(let quote):
+      guard quote.symbol == symbol else { return }
+      tradeQuote = quote
     case .ticker(let t):
       guard t.symbol.uppercased() == symbol.uppercased() else { return }
-      ticker = t
+      guard LatestQuote.accepts(t, after: ticker) else { return }
+      var next = t; next.markPrice = markPrice
+      ticker = next
       lastPushAt = Date()
-    case .price(let last, let mark):
-      // 逐笔和标记价只知道「现在多少钱」，不许整份替换——涨跌幅和 24h 高低是
-      // REST 那一路给的，被 NaN 盖掉顶栏就空了一大片。
-      guard var t = ticker else {
-        // 冷启动头几百毫秒还没拿到 24h 行情：先把价格立起来，其余留空等对表补。
-        if let last {
-          ticker = Ticker(symbol: symbol, last: last, changePercent: .nan,
-                          high: .nan, low: .nan, quoteVolume: .nan, markPrice: mark)
-          lastPushAt = Date()
-        }
-        return
-      }
-      if let last { t.last = last }
-      if let mark { t.markPrice = mark }
-      ticker = t
-      lastPushAt = Date()
+    case .markPrice(let sym, let price, let time):
+      guard sym.uppercased() == symbol, price.isFinite, price > 0,
+            time > markTime else { return }
+      markTime = time; markPrice = price
+      ticker?.markPrice = price
     case .oi:
       break                                   // 副图 OI 由指标层自己取
     case .status(let s):
@@ -186,16 +191,23 @@ final class MarketModel {
     let iv = newInterval ?? interval
     guard sym != symbol || iv != interval else { return }
     let cold = sym != symbol
+    selection = UUID()
+    let request = selection
+    switchTask?.cancel()
     symbol = sym
     interval = iv
     switching = true
+    series = nil
+    loading = false
     oiTask?.cancel(); oi = nil; oiRegion = nil; lastView = nil
     if cold {
       ticker = nil
+      markPrice = nil; markTime = 0
       info = MarketModel.placeholder(sym)
     }
-    Task { [feed] in
-      await feed.switchTo(symbol: sym, interval: iv, coldStart: cold)
+    switchTask = Task { [feed] in
+      guard !Task.isCancelled else { return }
+      await feed.switchTo(symbol: sym, interval: iv, coldStart: cold, selection: request)
       if cold { await refreshInfo() }
     }
   }
@@ -204,9 +216,10 @@ final class MarketModel {
   func loadMore() {
     guard !loading, series != nil else { return }
     loading = true
+    let request = selection
     Task { [feed] in
       await feed.loadMore()
-      await MainActor.run { self.loading = false }
+      await MainActor.run { if request == self.selection { self.loading = false } }
     }
   }
 
@@ -232,13 +245,13 @@ final class MarketModel {
     if !refresh, let region = oiRegion, from >= region.from, to <= region.to { return }
     oiTask?.cancel()
     oiRequestedAt = Date()
-    let sym = symbol, iv = interval, source = oiSource
+    let sym = symbol, iv = interval, source = oiSource, request = selection
     let margin = max(series.step * 20, (to - from) / 2)
     let fetchFrom = max(series.firstTime, from - margin), fetchTo = to + series.step
     oiTask = Task {
       do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
       let points = await source.rawPoints(symbol: sym, interval: iv, from: fetchFrom, to: fetchTo)
-      guard !Task.isCancelled, self.symbol == sym, self.interval == iv else { return }
+      guard !Task.isCancelled, request == self.selection, self.symbol == sym, self.interval == iv else { return }
       let ordered = OISource.dedup(points)
       if !ordered.isEmpty {
         self.oi = OISource.chartSeries(ordered, interval: iv)

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent" style="@style/sh_base.ViewContent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent">
+        <RelativeLayout android:layout_width="match_parent" android:layout_height="40.0dp">
+            <TextView android:textSize="15.0sp" android:textColor="@drawable/ui_kline_spread_select_ticker_tab_selector" android:gravity="center_vertical" android:id="@id/tab_optional" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginLeft="@dimen/sh_base_offset_15dp" android:layout_marginRight="@dimen/offset_14dp" android:text="@string/ui_kline_spread_charts_select_ticker_tab_optional" android:layout_marginStart="@dimen/sh_base_offset_15dp" android:layout_marginEnd="@dimen/offset_14dp" />
+            <TextView android:textSize="15.0sp" android:textColor="@drawable/ui_kline_spread_select_ticker_tab_selector" android:gravity="center_vertical" android:id="@id/tab_hot" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginLeft="@dimen/offset_14dp" android:text="@string/ui_kline_spread_charts_select_ticker_tab_hot" android:layout_toRightOf="@id/tab_optional" android:layout_marginStart="@dimen/offset_14dp" android:layout_toEndOf="@id/tab_optional" />
+            <carbon.widget.LinearLayout android:orientation="horizontal" android:id="@id/search_ticker_view" android:tag="skin:ui_kline_spread_edit_search_bg:background" android:background="@drawable/ui_kline_spread_edit_search_bg" android:paddingLeft="@dimen/sh_base_offset_15dp" android:paddingRight="@dimen/sh_base_offset_15dp" android:layout_width="wrap_content" android:layout_height="32.0dp" android:layout_marginLeft="@dimen/sh_base_offset_15dp" android:layout_marginRight="@dimen/sh_base_offset_15dp" android:layout_alignParentRight="true" android:layout_centerVertical="true" android:layout_alignParentEnd="true">
+                <ImageView android:layout_gravity="center_vertical" android:tag="skin:ui_kline_spread_icon_search:src" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@mipmap/ui_kline_spread_icon_search" />
+                <TextView android:textSize="13.0sp" android:textColor="@color/ui_kline_spread_home_search_text_color" android:layout_gravity="center_vertical" android:tag="skin:ui_kline_spread_home_search_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/offset_4dp" android:text="@string/ui_kline_search_ticker_title" android:layout_marginStart="@dimen/offset_4dp" />
+            </carbon.widget.LinearLayout>
+        </RelativeLayout>
+        <FrameLayout android:id="@id/container_frame_page" android:layout_width="match_parent" android:layout_height="match_parent">
+            <androidx.recyclerview.widget.RecyclerView android:id="@id/select_ticker_list" android:paddingBottom="17.0dp" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginLeft="@dimen/sh_base_offset_15dp" android:layout_marginRight="@dimen/sh_base_offset_15dp" />
+            <TextView android:textSize="12.0sp" android:textColor="@color/ui_kline_spread_home_empty_holder_text_color" android:layout_gravity="center" android:id="@id/empty_view" android:tag="skin:ui_kline_spread_home_empty_holder_text_color:textColor" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_spread_charts_home_search_empty_holder" />
+        </FrameLayout>
+    </LinearLayout>
+    <include layout="@layout/ui_kline_frg_spread_search_ticker" />
+</FrameLayout>

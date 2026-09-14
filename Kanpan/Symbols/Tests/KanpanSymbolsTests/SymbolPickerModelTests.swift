@@ -57,6 +57,17 @@ struct SymbolPickerModelTests {
     #expect(m.sections != original)
   }
 
+  @Test("报价变化只刷新数字，不在手指下自动重排")
+  func quotesKeepRowPositionsStable() throws {
+    let (model, _) = make()
+    let order = model.sections.flatMap(\.rows).map(\.id)
+    var quote = try #require(model.ticker(for: "BTCUSDT"))
+    quote.last += 1; quote.quoteVolume = 0
+    model.updateQuotes([quote])
+    #expect(model.sections.flatMap(\.rows).map(\.id) == order)
+    #expect(model.sections.flatMap(\.rows).first { $0.id == "BTCUSDT" }?.ticker?.last == quote.last)
+  }
+
   @Test("开页就把存档读回来")
   func loadsPrefsOnInit() {
     let (m, _) = make(prefs: SymbolPrefs(favorites: ["ETHUSDT"], recents: ["SOLUSDT"]))

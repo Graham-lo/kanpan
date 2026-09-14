@@ -1,0 +1,46 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "B29FA1D2-E0DD-4620-B3CE-3675ABA3F5DC",
+        "deviceName" : "iPhone Air",
+        "modelName" : "iPhone Air",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 0,
+      "passedTests" : 11,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "Kanpan · Built with macOS 26.5.1",
+  "expectedFailures" : 0,
+  "failedTests" : 0,
+  "finishTime" : 1789405435.627,
+  "passedTests" : 11,
+  "result" : "Passed",
+  "skippedTests" : 0,
+  "startTime" : 1789405176.465,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+
+  ],
+  "title" : "Test - Kanpan",
+  "topInsights" : [
+    {
+      "category" : "Longest Test Runs",
+      "impact" : "46% of duration",
+      "text" : "1 longest test run with outlier durations exceeding 88.01s (three standard deviations)"
+    }
+  ],
+  "totalTestCount" : 11
+}

@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent" style="@style/sh_base.PageContent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <RelativeLayout android:layout_width="match_parent" android:layout_height="@dimen/sh_base_title_block_height">
+        <include layout="@layout/part_common_button_back" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_side_menu_title_chart_setting" android:layout_centerInParent="true" style="@style/sh_base.TitleText" />
+    </RelativeLayout>
+    <androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+        <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/sh_base.ViewContent">
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <TextView android:id="@id/switch_drawing_show" android:text="@string/ui_kline_common_drawing_show" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <TextView android:paddingTop="10.0dp" android:paddingBottom="10.0dp" android:layout_width="match_parent" android:text="@string/ui_kline_side_menu_title_chart_ticker_detail_height" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                <LinearLayout android:orientation="horizontal" android:paddingLeft="@dimen/offset_20dp" android:paddingRight="@dimen/offset_20dp" android:layout_width="match_parent" android:layout_height="wrap_content">
+                    <TextView android:textSize="@dimen/font_size_small" android:textColor="@color/sh_base_text_tertiary" android:gravity="center" android:tag="skin:sh_base_text_tertiary:textColor" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="@string/ui_kline_side_menu_title_chart_ticker_detail_height_short" />
+                    <SeekBar android:id="@id/kline_height" android:tag="skin:ui_kline_ic_seekbar_thumb:thumb|skin:ui_kline_bg_seekbar:progressDrawable" android:background="@null" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_marginLeft="10.0dp" android:layout_marginTop="10.0dp" android:layout_marginRight="10.0dp" android:layout_marginBottom="10.0dp" android:maxHeight="2.0dp" android:progressDrawable="@drawable/ui_kline_bg_seekbar" android:minHeight="2.0dp" android:thumb="@mipmap/ui_kline_ic_seekbar_thumb" android:layout_weight="1.0" android:splitTrack="false" />
+                    <TextView android:textSize="@dimen/font_size_small" android:textColor="@color/sh_base_text_tertiary" android:gravity="center" android:tag="skin:sh_base_text_tertiary:textColor" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="@string/ui_kline_side_menu_title_chart_ticker_detail_height_tall" />
+                </LinearLayout>
+            </LinearLayout>
+            <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/offset_8dp" style="@style/sh_base.ViewContent">
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.Group">
+                    <TextView android:layout_width="0.0dp" android:text="@string/ui_kline_flavor" android:layout_weight="1.0" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <carbon.widget.TextView android:id="@id/flavor_normal" android:text="@string/ui_kline_flavor_normal" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/flavor_ave" android:text="@string/ui_kline_flavor_average" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                </LinearLayout>
+                <LinearLayout android:orientation="vertical" android:id="@id/ll_mult_account" android:layout_width="match_parent" android:layout_height="wrap_content">
+                    <LinearLayout android:gravity="center" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingEnd="20.0dp">
+                        <TextView android:visibility="gone" android:layout_width="0.0dp" android:layout_height="wrap_content" android:text="@string/ui_kline_trade_account_type" android:layout_weight="1.0" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                        <carbon.widget.TextView android:id="@id/single_account" android:visibility="gone" android:text="@string/ui_kline_account_single" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                        <carbon.widget.TextView android:id="@id/mult_account" android:visibility="gone" android:text="@string/ui_kline_account_mult" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    </LinearLayout>
+                    <LinearLayout android:gravity="center" android:layout_gravity="end" android:orientation="horizontal" android:id="@id/ll_account_setting" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingEnd="20.0dp">
+                        <TextView android:textSize="12.0sp" android:textColor="@color/sh_base_three_text_color" android:id="@id/tv_account_setting" android:tag="skin:sh_base_three_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_account_mult_manage" />
+                        <ImageView android:layout_width="12.0dp" android:layout_height="12.0dp" android:layout_marginTop="1.0dp" android:src="@mipmap/ui_kline_account_setting_icon" android:layout_marginStart="5.0dp" />
+                    </LinearLayout>
+                </LinearLayout>
+                <androidx.constraintlayout.widget.ConstraintLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                    <TextView android:id="@id/tv_signal_tittle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16.0dp" android:text="@string/ui_kline_menu_indic_signal_title" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <TextView android:id="@id/signall_red_point" android:visibility="gone" android:layout_marginLeft="@dimen/offset_3dp" android:layout_marginBottom="@dimen/offset_6dp" app:layout_constraintStart_toEndOf="@id/tv_signal_tittle" app:layout_constraintTop_toTopOf="@id/tv_signal_tittle" style="@style/ui_base.NewFuncRedPoint" />
+                    <TextView android:id="@id/switch_signal" android:layout_width="0.0dp" android:layout_height="wrap_content" android:paddingEnd="20.0dp" app:layout_constraintBottom_toBottomOf="@id/tv_signal_tittle" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toEndOf="@id/tv_signal_tittle" app:layout_constraintTop_toTopOf="@id/tv_signal_tittle" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                    <TextView android:id="@id/tv_show_current_signal" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_marginTop="30.0dp" android:text="@string/ui_kline_menu_show_current_signal" app:layout_constraintEnd_toStartOf="@id/iv_current_signal_check" app:layout_constraintHorizontal_weight="1.0" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_signal_tittle" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <ImageView android:id="@id/iv_current_signal_check" android:padding="8.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/sh_base_ic_check_right_selector" android:layout_marginEnd="12.0dp" app:layout_constraintBottom_toBottomOf="@id/tv_show_current_signal" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintHorizontal_bias="1.0" app:layout_constraintStart_toEndOf="@id/tv_show_current_signal" app:layout_constraintTop_toTopOf="@id/tv_show_current_signal" />
+                    <TextView android:id="@id/tv_show_latest_signal" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_marginTop="12.0dp" android:layout_marginBottom="16.0dp" android:text="@string/ui_kline_menu_show_new_signal" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toStartOf="@id/iv_current_signal_check" app:layout_constraintHorizontal_weight="1.0" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_show_current_signal" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <ImageView android:id="@id/iv_latest_signal_check" android:padding="8.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/sh_base_ic_check_right_selector" android:layout_marginEnd="12.0dp" app:layout_constraintBottom_toBottomOf="@id/tv_show_latest_signal" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintHorizontal_bias="1.0" app:layout_constraintStart_toEndOf="@id/tv_show_latest_signal" app:layout_constraintTop_toTopOf="@id/tv_show_latest_signal" />
+                </androidx.constraintlayout.widget.ConstraintLayout>
+                <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_select_data_setting" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10.0dp" android:layout_marginBottom="18.0dp">
+                        <LinearLayout android:gravity="center" android:layout_gravity="center" android:orientation="vertical" android:id="@id/ll_setting_kline" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0">
+                            <TextView android:textSize="12.0sp" android:textColor="@color/ui_kline_info_data_text_title_color" android:id="@id/tv_kline_name" android:tag="skin:ui_kline_info_data_text_title_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_select_inside" />
+                            <carbon.widget.ImageView android:id="@id/iv_kline_src" android:layout_width="71.0dp" android:layout_height="75.0dp" android:layout_marginTop="6.0dp" android:src="@mipmap/ui_kline_setting_on_kline_dis_select" app:carbon_cornerRadius="4.0dp" />
+                        </LinearLayout>
+                        <LinearLayout android:gravity="center" android:layout_gravity="center" android:orientation="vertical" android:id="@id/ll_setting_top" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0">
+                            <TextView android:textSize="12.0sp" android:textColor="@color/ui_kline_info_data_text_title_color" android:id="@id/tv_top_name" android:tag="skin:ui_kline_info_data_text_title_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_select_outside" />
+                            <carbon.widget.ImageView android:id="@id/iv_top_src" android:layout_width="71.0dp" android:layout_height="75.0dp" android:layout_marginTop="6.0dp" android:src="@mipmap/ui_kline_setting_on_top_unselect" app:carbon_cornerRadius="4.0dp" />
+                        </LinearLayout>
+                        <LinearLayout android:gravity="center" android:layout_gravity="center" android:orientation="vertical" android:id="@id/ll_setting_follow" android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0">
+                            <TextView android:textSize="12.0sp" android:textColor="@color/ui_kline_info_data_text_title_color" android:id="@id/tv_follow_name" android:tag="skin:ui_kline_info_data_text_title_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_select_follow" />
+                            <carbon.widget.ImageView android:id="@id/iv_follow_src" android:layout_width="71.0dp" android:layout_height="75.0dp" android:layout_marginTop="6.0dp" android:src="@mipmap/ui_kline_setting_on_window_unselect" app:carbon_cornerRadius="4.0dp" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.Group">
+                    <TextView android:layout_width="0.0dp" android:text="@string/ui_kline_theme_setting" android:layout_weight="1.0" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <carbon.widget.TextView android:id="@id/theme_light" android:text="@string/ui_kline_theme_setting_light" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/theme_dark" android:text="@string/ui_kline_theme_setting_dark" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/theme_default" android:text="@string/ui_kline_theme_setting_default" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.Group">
+                    <TextView android:layout_width="0.0dp" android:text="@string/ui_kline_menu_three_stage_level_switch" android:layout_weight="1.0" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <carbon.widget.TextView android:id="@id/stage_line" android:text="@string/ui_kline_menu_stage_least" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/stage_stick" android:text="@string/ui_kline_menu_stage_middle" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/stage_bar" android:text="@string/ui_kline_menu_stage_most" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.Group">
+                    <TextView android:layout_width="0.0dp" android:text="@string/ui_kline_menu_open_time" android:layout_weight="1.0" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <carbon.widget.TextView android:id="@id/kline_setting_open_time_0_clock" android:text="@string/ui_kline_menu_open_time_0_clock" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/kline_setting_open_time_8_clock" android:text="@string/ui_kline_menu_open_time_8_clock" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/kline_setting_open_time_24h" android:text="@string/ui_kline_menu_open_time_24h" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.Group">
+                    <TextView android:layout_width="0.0dp" android:text="@string/ui_kline_menu_stick_position" android:layout_weight="1.0" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <carbon.widget.TextView android:id="@id/kline_menu_stick_position_left" android:text="@string/ui_kline_menu_stick_position_left" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/kline_menu_stick_position_mid" android:text="@string/ui_kline_menu_stick_position_mid" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/kline_menu_stick_position_right" android:text="@string/ui_kline_menu_stick_position_right" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.Group">
+                    <TextView android:layout_width="0.0dp" android:text="@string/ui_kline_side_menu_title_axis" android:layout_weight="1.0" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <carbon.widget.TextView android:id="@id/y_axis_log" android:text="@string/ui_kline_menu_log_chart" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/y_axis_linear" android:text="@string/ui_kline_menu_normal_chart" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/y_axis_percent" android:text="@string/ui_kline_menu_percent_chart" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.Group">
+                    <TextView android:layout_width="0.0dp" android:text="@string/ui_kline_common_cross_line" android:layout_weight="1.0" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <carbon.widget.TextView android:id="@id/cross_at_close" android:text="@string/ui_kline_common_cross_line_close_price" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/cross_at_touch" android:text="@string/ui_kline_common_cross_line_selected_price" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.Group">
+                    <TextView android:layout_width="0.0dp" android:text="@string/ui_kline_common_kline_positive_shadow" android:layout_weight="1.0" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <carbon.widget.TextView android:id="@id/up_candle_empty" android:text="@string/ui_kline_common_hollow" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                    <carbon.widget.TextView android:id="@id/up_candle_filled" android:text="@string/ui_kline_common_solid" style="@style/ui_kline_setting_bar.SideMenu.Background" />
+                </LinearLayout>
+                <LinearLayout android:gravity="center_vertical" android:layout_gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="40.0dp" android:layout_marginEnd="20.0dp">
+                    <TextView android:layout_width="0.0dp" android:text="@string/ui_kline_main_candle_color" android:layout_weight="1.0" style="@style/ui_kline_setting_bar.SideMenu.Title" />
+                    <LinearLayout android:orientation="horizontal" android:id="@id/ll_up_candle_color" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="20.0dp">
+                        <carbon.widget.TextView android:id="@id/tv_up_candle_color" android:background="@color/sh_base_highlight_color" android:layout_width="22.0dp" android:layout_height="22.0dp" android:layout_marginEnd="10.0dp" app:carbon_cornerRadius="50.0dp" />
+                        <TextView android:textColor="@color/ui_kline_menu_normal_tint_color" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_main_candle_color_up" />
+                    </LinearLayout>
+                    <LinearLayout android:orientation="horizontal" android:id="@id/ll_down_candle_color" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                        <carbon.widget.TextView android:id="@id/tv_down_candle_color" android:background="@color/sh_base_highlight_color" android:layout_width="22.0dp" android:layout_height="22.0dp" android:layout_marginEnd="10.0dp" app:carbon_cornerRadius="50.0dp" />
+                        <TextView android:textColor="@color/ui_kline_menu_normal_tint_color" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_main_candle_color_down" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+            <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/offset_8dp" style="@style/sh_base.ViewContent">
+                <carbon.widget.RelativeLayout android:id="@id/switch_kline_right" android:tag="skin:sh_base_selector_view_bg:background" android:paddingLeft="@dimen/offset_20dp" android:focusable="true" android:clickable="true" android:layout_width="match_parent" android:layout_height="40.0dp" style="@style/sh_base.ViewContent">
+                    <androidx.appcompat.widget.AppCompatTextView android:textSize="16.0sp" android:textColor="@color/ui_kline_menu_normal_tint_color" android:tag="skin:ui_kline_menu_normal_tint_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_menu_main_kline_right" android:layout_centerVertical="true" />
+                    <lib.aicoin.ui.LazyCheckBox android:id="@id/checkbox_kline_right" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_alignParentRight="true" android:layout_centerVertical="true" android:layout_marginEnd="20.0dp" android:layout_alignParentEnd="true" style="@style/sh_base.SwitchButton" />
+                </carbon.widget.RelativeLayout>
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <TextView android:id="@id/switch_y_reversal" android:text="@string/ui_kline_menu_main_y_reversal" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <androidx.constraintlayout.widget.ConstraintLayout android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0">
+                        <TextView android:textSize="@dimen/ui_kline_side_menu_title_text_size" android:textColor="@color/ui_kline_menu_normal_tint_color" android:ellipsize="end" android:id="@id/switch_sub_y_reversal_title" android:tag="skin:ui_kline_menu_normal_tint_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_menu_sub_y_reversal" android:maxLines="2" app:layout_constrainedWidth="true" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toStartOf="@id/switch_sub_y_reversal_help" app:layout_constraintHorizontal_bias="0.0" app:layout_constraintHorizontal_chainStyle="packed" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+                        <ImageView android:id="@id/switch_sub_y_reversal_help" android:tag="skin:ui_base_ic_help:src" android:layout_width="@dimen/ui_kline_menu_help_size" android:layout_height="@dimen/ui_kline_menu_help_size" android:src="@mipmap/ui_base_ic_help" android:layout_marginStart="@dimen/offset_4dp" app:layout_constraintBottom_toBottomOf="@id/switch_sub_y_reversal_title" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toEndOf="@id/switch_sub_y_reversal_title" app:layout_constraintTop_toTopOf="@id/switch_sub_y_reversal_title" />
+                        <TextView android:id="@id/switch_sub_y_reversal_red_point" android:visibility="gone" android:layout_marginEnd="@dimen/offset_3dp" app:layout_constraintEnd_toStartOf="@id/switch_sub_y_reversal_help" app:layout_constraintTop_toTopOf="@id/switch_sub_y_reversal_help" style="@style/ui_base.NewFuncRedPoint" />
+                    </androidx.constraintlayout.widget.ConstraintLayout>
+                    <TextView android:gravity="end|center" android:id="@id/switch_sub_y_reversal" android:layout_width="wrap_content" android:minWidth="@dimen/ui_kline_side_style_menu_switch_button_width" android:layout_weight="0.0" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <TextView android:id="@id/switch_last_price" android:text="@string/ui_kline_common_latest_price_line" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <androidx.constraintlayout.widget.ConstraintLayout android:id="@id/switch_end_countdown_container" style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <TextView android:textSize="@dimen/ui_kline_side_menu_title_text_size" android:textColor="@color/ui_kline_menu_normal_tint_color" android:ellipsize="end" android:id="@id/switch_end_countdown_title" android:tag="skin:ui_kline_menu_normal_tint_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_common_end_countdown" android:maxLines="2" app:layout_constrainedWidth="true" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toStartOf="@id/switch_end_countdown_red_point" app:layout_constraintHorizontal_bias="0.0" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+                    <TextView android:id="@id/switch_end_countdown_red_point" android:visibility="gone" android:layout_marginBottom="@dimen/offset_6dp" android:layout_marginStart="@dimen/offset_3dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toStartOf="@id/switch_end_countdown" app:layout_constraintStart_toEndOf="@id/switch_end_countdown_title" app:layout_constraintTop_toTopOf="parent" style="@style/ui_base.NewFuncRedPoint" />
+                    <TextView android:gravity="end|center" android:id="@id/switch_end_countdown" android:layout_width="wrap_content" android:minWidth="@dimen/ui_kline_side_style_menu_switch_button_width" android:layout_weight="0.0" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toTopOf="parent" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </androidx.constraintlayout.widget.ConstraintLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout android:id="@id/ll_switch_alert_line" style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <TextView android:id="@id/switch_alert_line" android:text="@string/ui_kline_fragment_menu_alert_line" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout android:id="@id/ll_switch_growth_rate" style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <TextView android:textSize="@dimen/ui_kline_side_menu_title_text_size" android:textColor="@color/ui_kline_menu_normal_tint_color" android:id="@id/switch_growth_rate_title" android:tag="skin:ui_kline_menu_normal_tint_color:textColor" android:layout_width="0.0dp" android:layout_height="wrap_content" android:text="@string/ui_kline_fragment_menu_growth_rate" android:layout_weight="1.0" />
+                    <TextView android:gravity="end|center" android:id="@id/switch_growth_rate" android:layout_width="wrap_content" android:minWidth="@dimen/ui_kline_side_style_menu_switch_button_width" android:layout_weight="0.0" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout android:id="@id/ll_switch_diff_rate" style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <androidx.constraintlayout.widget.ConstraintLayout android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0">
+                        <TextView android:textSize="@dimen/ui_kline_side_menu_title_text_size" android:textColor="@color/ui_kline_menu_normal_tint_color" android:ellipsize="end" android:id="@id/switch_diff_rate_title" android:tag="skin:ui_kline_menu_normal_tint_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_fragment_menu_diff_rate" android:maxLines="2" app:layout_constrainedWidth="true" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toStartOf="@id/switch_diff_rate_help" app:layout_constraintHorizontal_bias="0.0" app:layout_constraintHorizontal_chainStyle="packed" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+                        <ImageView android:id="@id/switch_diff_rate_help" android:tag="skin:ui_base_ic_help:src" android:layout_width="@dimen/ui_kline_menu_help_size" android:layout_height="@dimen/ui_kline_menu_help_size" android:src="@mipmap/ui_base_ic_help" android:layout_marginStart="@dimen/offset_4dp" app:layout_constraintBottom_toBottomOf="@id/switch_diff_rate_title" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toEndOf="@id/switch_diff_rate_title" app:layout_constraintTop_toTopOf="@id/switch_diff_rate_title" />
+                    </androidx.constraintlayout.widget.ConstraintLayout>
+                    <TextView android:gravity="end|center" android:id="@id/switch_diff_rate" android:layout_width="wrap_content" android:minWidth="@dimen/ui_kline_side_style_menu_switch_button_width" android:layout_weight="0.0" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <TextView android:id="@id/switch_grid" android:text="@string/ui_kline_fragment_menu_grid" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <TextView android:id="@id/switch_alert" android:text="@string/ui_kline_fragment_menu_alert_ctrl" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <TextView android:id="@id/switch_info_btn" android:text="@string/ui_kline_fragment_menu_kline_info_btn" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <TextView android:id="@id/switch_sub_indicator_action_popup" android:text="@string/ui_kline_fragment_menu_sub_indicator_action_popup_btn" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+                <LinearLayout android:id="@id/switch_indic_unit_container" style="@style/ui_kline_setting_bar.SideMenu.SwitchLayout">
+                    <androidx.constraintlayout.widget.ConstraintLayout android:layout_width="0.0dp" android:layout_height="wrap_content" android:layout_weight="1.0">
+                        <TextView android:textSize="@dimen/ui_kline_side_menu_title_text_size" android:textColor="@color/ui_kline_menu_normal_tint_color" android:ellipsize="end" android:id="@id/switch_indic_unit_title" android:tag="skin:ui_kline_menu_normal_tint_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_fragment_menu_kline_indic_unit" android:maxLines="2" app:layout_constrainedWidth="true" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toStartOf="@id/switch_indic_unit_help" app:layout_constraintHorizontal_bias="0.0" app:layout_constraintHorizontal_chainStyle="packed" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+                        <ImageView android:id="@id/switch_indic_unit_help" android:tag="skin:ui_base_ic_help:src" android:layout_width="@dimen/ui_kline_menu_help_size" android:layout_height="@dimen/ui_kline_menu_help_size" android:src="@mipmap/ui_base_ic_help" android:layout_marginStart="@dimen/offset_4dp" app:layout_constraintBottom_toBottomOf="@id/switch_indic_unit_title" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toEndOf="@id/switch_indic_unit_title" app:layout_constraintTop_toTopOf="@id/switch_indic_unit_title" />
+                    </androidx.constraintlayout.widget.ConstraintLayout>
+                    <TextView android:gravity="end|center" android:id="@id/switch_indic_unit" android:layout_width="wrap_content" android:minWidth="@dimen/ui_kline_side_style_menu_switch_button_width" android:layout_weight="0.0" style="@style/ui_kline_setting_bar.SideMenu.SwitchItem" />
+                </LinearLayout>
+                <View style="@style/ui_kline_setting_bar.SideMenu.Divider" />
+            </LinearLayout>
+            <View android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0" style="@style/sh_base.PageContent" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</LinearLayout>

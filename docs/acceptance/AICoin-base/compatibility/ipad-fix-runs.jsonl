@@ -1,0 +1,5 @@
+{"name": "iPhone 15", "exitCode": 0, "seconds": 177, "result": "Passed", "passedTests": 4, "failedTests": 0, "skippedTests": 0}
+{"name": "iPad mini (A17 Pro)", "exitCode": 0, "seconds": 307, "result": "Passed", "passedTests": 13, "failedTests": 0, "skippedTests": 0}
+{"name": "iPhone 16 Pro", "exitCode": 0, "seconds": 168, "result": "Passed", "passedTests": 4, "failedTests": 0, "skippedTests": 0}
+{"name": "iPhone 16 Plus", "exitCode": 65, "seconds": 224, "result": "Failed", "passedTests": 3, "failedTests": 1, "skippedTests": 0}
+{"name": "iPad Pro 13-inch (M5)", "exitCode": 65, "seconds": 479, "result": "Failed", "passedTests": 12, "failedTests": 1, "skippedTests": 0}

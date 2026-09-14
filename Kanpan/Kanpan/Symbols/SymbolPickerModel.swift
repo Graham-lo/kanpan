@@ -20,6 +20,11 @@ final class SymbolPickerModel {
   private(set) var prefs = SymbolPrefs()
   /// 搜索框里的原文。改它分区就重算。
   var query: String = "" { didSet { if query != oldValue { rebuild() } } }
+  var marketFilter = "all" { didSet { sectorFilter = nil; rebuildFilter() } }
+  var sectorFilter: String? { didSet { rebuildFilter() } }
+  private(set) var markets: [String] = []
+  private(set) var sectors: [String] = []
+  private var filteredCatalog: [SymbolInfo] = []
   /// 当前要显示的分区。
   private(set) var sections: [SymbolSection] = []
   /// 页头右边的小字：`571 个永续合约`。
@@ -53,6 +58,7 @@ final class SymbolPickerModel {
        feed: SymbolTickerFeed? = nil,
        catalogLoader: (@Sendable () async -> [SymbolInfo])? = nil) {
     self.catalog = catalog
+    self.filteredCatalog = catalog
     self.store = store
     self.feed = feed
     self.catalogLoader = catalogLoader
@@ -60,7 +66,7 @@ final class SymbolPickerModel {
     classifyUnassigned()
     store.save(self.prefs)
     apply(tickers)
-    rebuild()
+    rebuildFilter()
   }
 
   /// 品种表的来源晚一步才知道（宿主要先把 `KanpanData` 那侧建起来）。
@@ -102,7 +108,7 @@ final class SymbolPickerModel {
 
   func setCatalog(_ list: [SymbolInfo]) {
     catalog = list
-    rebuild()
+    rebuildFilter()
   }
 
   /// 行情按 symbol 覆盖写；`!ticker@arr` 每 1s 推一批，只推变动的。
@@ -138,7 +144,16 @@ final class SymbolPickerModel {
     let changed = batch.filter { tickers[$0.symbol] != $0 }
     guard !changed.isEmpty else { return }
     apply(changed)
-    if sectionsActive { rebuild() }
+    guard sectionsActive else { return }
+    // Keep rows under the user's finger stable; rebuild/sort only on navigation or filtering.
+    let keys = Set(changed.map { $0.symbol.uppercased() })
+    var updated = sections
+    for section in updated.indices {
+      for row in updated[section].rows.indices where keys.contains(updated[section].rows[row].id) {
+        updated[section].rows[row].ticker = tickers[updated[section].rows[row].id]
+      }
+    }
+    sections = updated
   }
 
   func ticker(for symbol: String) -> Ticker? { tickers[SymbolPrefs.key(symbol)] }
@@ -235,7 +250,16 @@ final class SymbolPickerModel {
     rebuild()
   }
 
+  private func rebuildFilter() {
+    let present = Set(catalog.map(MarketSector.market))
+    markets = MarketSector.order.filter { present.contains($0) }
+    let base = catalog.filter { marketFilter == "all" || MarketSector.market($0) == marketFilter }
+    sectors = Array(Set(base.flatMap(MarketSector.tags))).sorted()
+    filteredCatalog = base.filter { sectorFilter == nil || MarketSector.tags($0).contains(sectorFilter!) }
+    rebuild()
+  }
+
   private func rebuild() {
-    sections = SymbolSections.build(catalog: catalog, tickers: tickers, prefs: prefs, query: query)
+    sections = SymbolSections.build(catalog: filteredCatalog, tickers: tickers, prefs: prefs, query: query)
   }
 }

@@ -28,9 +28,13 @@ public struct ChartRenderer {
   }
 
   private mutating func recalc(previous: ChartState? = nil) {
+    let seriesChanged = previous == nil || previous!.series != state.series
+    let oiChanged = previous?.oi != state.oi
+    let inputsChanged = seriesChanged || oiChanged || previous?.params != state.params
+      || previous?.overlays != state.overlays || previous?.subs != state.subs
     // Same count does not imply same candles: REST can replace a stale snapshot,
     // and every live tick changes the last MA/MACD value.
-    if let old = previous, old.series != state.series || old.oi != state.oi {
+    if let old = previous, seriesChanged || oiChanged {
       if old.series.symbol == state.series.symbol,
          old.series.interval == state.series.interval,
          old.series.t0 == state.series.t0,
@@ -46,10 +50,12 @@ public struct ChartRenderer {
         engine = IndicatorEngine()
       }
     }
-    engine.ensure(
+    if inputsChanged { engine.ensure(
       series: state.series, wanted: state.overlays + state.subs,
-      params: state.params, oi: state.oi, dataKey: state.symbol.symbol)
-    heikin = HeikinSlice.make(state: state)
+      params: state.params, oi: state.oi, dataKey: state.symbol.symbol) }
+    if seriesChanged || previous?.view != state.view || previous?.options.kind != state.options.kind {
+      heikin = HeikinSlice.make(state: state)
+    }
   }
 
   /// Mask outputs without changing their slots, periods, colors or computational dependencies.

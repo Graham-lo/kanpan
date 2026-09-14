@@ -1,0 +1,1319 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=09660D81-A401-4C62-9ED2-1643B59F22E7" -derivedDataPath DerivedData-codex-compat-final -parallel-testing-enabled NO -resultBundlePath /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/compatibility/iPad-mini-A17-Pro-ipad-fix.xcresult "-only-testing:KanpanUITests/AICoinBaseUITests" "-only-testing:KanpanUITests/MainScreenUITests"
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/compatibility/iPad-mini-A17-Pro-ipad-fix.xcresult
+
+2026-09-14 23:27:45.676318+0800 KanpanUITests-Runner[82964:31556513] [Default] Running tests...
+2026-09-14 23:27:45.760643+0800 KanpanUITests-Runner[82964:31556513] [UIKit App Config] Update the Info.plist: Launch screens will soon be required.
+objc[82964]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10ad6c310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10a638398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+Test Suite 'Selected tests' started at 2026-09-14 23:27:52.474.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-14 23:27:52.474.
+Test Suite 'AICoinBaseUITests' started at 2026-09-14 23:27:52.474.
+Test Case '-[KanpanUITests.AICoinBaseUITests testColdLaunchStylesAndChartInteractions]' started.
+    t =     0.00s Start Test at 2026-09-14 23:27:52.476
+    t =     0.37s Set Up
+    t =     0.37s     Setting device orientation to Portrait
+    t =     0.38s         Device orientation changed to Portrait
+    t =     0.42s         Wait for com.apple.DocumentManager.DockFolderViewService to idle
+    t =     0.45s         Wait for com.apple.springboard to idle
+    t =     0.50s Open com.mdd.kanpan
+    t =     0.50s     Launch com.mdd.kanpan
+2026-09-14 23:27:53.440 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:27:53.440 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     3.05s         Setting up automation session
+    t =     4.77s         Wait for com.mdd.kanpan to idle
+    t =     6.94s Waiting 30.0s for "chart.canvas" Other to exist
+    t =     7.96s     Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     7.97s         Checking existence of `"chart.canvas" Other`
+    t =     9.15s Find the "chart.canvas" Other
+    t =     9.17s Find the "chart.canvas" Other
+    t =     9.19s Find the Target Application 'com.mdd.kanpan'
+    t =     9.35s Added attachment named '01-冷启动-AICoin默认'
+    t =     9.35s Tap "bottom.style" Button
+    t =     9.35s     Wait for com.mdd.kanpan to idle
+    t =     9.36s     Find the "bottom.style" Button
+    t =     9.43s     Check for interrupting elements affecting "bottom.style" Button
+    t =     9.49s         Wait for com.apple.springboard to idle
+    t =     9.55s     Synthesize event
+    t =     9.96s     Wait for com.mdd.kanpan to idle
+    t =    10.13s Find the "style.card.stout" Button
+    t =    10.57s Find the "style.card.stout" Button
+    t =    10.76s Find the "style.card.stout" Button
+    t =    11.05s Find the "style.card.stout" Button
+    t =    11.51s Find the "style.card.stout" Button
+    t =    11.67s Waiting 8.0s for "style.card.stout" Button to exist
+    t =    12.70s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.stout" Button`
+    t =    12.70s         Checking existence of `"style.card.stout" Button`
+    t =    12.85s Tap "style.card.stout" Button
+    t =    12.85s     Wait for com.mdd.kanpan to idle
+    t =    12.86s     Find the "style.card.stout" Button
+    t =    12.92s     Check for interrupting elements affecting "style.card.stout" Button
+    t =    12.98s         Wait for com.apple.springboard to idle
+    t =    13.01s     Synthesize event
+    t =    13.34s     Wait for com.mdd.kanpan to idle
+    t =    14.80s Find the "chart.canvas" Other
+    t =    14.81s Find the "chart.canvas" Other
+    t =    14.83s Find the "chart.canvas" Other
+    t =    14.84s Find the "chart.canvas" Other
+    t =    14.86s Find the "chart.canvas" Other
+    t =    14.87s Find the "chart.canvas" Other
+    t =    14.90s Find the "chart.canvas" Other
+    t =    14.92s Tap "bottom.style" Button
+    t =    14.92s     Wait for com.mdd.kanpan to idle
+    t =    14.92s     Find the "bottom.style" Button
+    t =    14.94s     Check for interrupting elements affecting "bottom.style" Button
+    t =    14.99s         Wait for com.apple.springboard to idle
+    t =    15.01s     Synthesize event
+    t =    15.30s     Wait for com.mdd.kanpan to idle
+    t =    15.69s Find the "style.card.indigo" Button
+    t =    15.84s Find the "style.card.indigo" Button
+    t =    15.98s Find the "style.card.indigo" Button
+    t =    16.05s Find the "style.card.indigo" Button
+    t =    16.14s Find the "style.card.indigo" Button
+    t =    16.26s Waiting 8.0s for "style.card.indigo" Button to exist
+    t =    17.30s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.indigo" Button`
+    t =    17.30s         Checking existence of `"style.card.indigo" Button`
+    t =    17.35s Tap "style.card.indigo" Button
+    t =    17.35s     Wait for com.mdd.kanpan to idle
+    t =    17.36s     Find the "style.card.indigo" Button
+    t =    17.38s     Check for interrupting elements affecting "style.card.indigo" Button
+    t =    17.41s         Wait for com.apple.springboard to idle
+    t =    17.43s     Synthesize event
+    t =    17.73s     Wait for com.mdd.kanpan to idle
+    t =    19.13s Find the "chart.canvas" Other
+    t =    19.16s Find the "chart.canvas" Other
+    t =    19.18s Find the "chart.canvas" Other
+    t =    19.21s Find the "chart.canvas" Other
+    t =    19.23s Find the "chart.canvas" Other
+    t =    19.26s Find the "chart.canvas" Other
+    t =    19.31s Find the "chart.canvas" Other
+    t =    19.35s Tap "bottom.style" Button
+    t =    19.35s     Wait for com.mdd.kanpan to idle
+    t =    19.36s     Find the "bottom.style" Button
+    t =    19.40s     Check for interrupting elements affecting "bottom.style" Button
+    t =    19.52s         Wait for com.apple.springboard to idle
+    t =    19.56s     Synthesize event
+    t =    19.87s     Wait for com.mdd.kanpan to idle
+    t =    20.25s Find the "style.card.glow" Button
+    t =    20.32s Find the "style.card.glow" Button
+    t =    20.36s Find the "style.card.glow" Button
+    t =    20.42s Find the "style.card.glow" Button
+    t =    20.50s Find the "style.card.glow" Button
+    t =    20.57s Waiting 8.0s for "style.card.glow" Button to exist
+    t =    21.61s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.glow" Button`
+    t =    21.61s         Checking existence of `"style.card.glow" Button`
+    t =    21.72s Tap "style.card.glow" Button
+    t =    21.72s     Wait for com.mdd.kanpan to idle
+    t =    21.74s     Find the "style.card.glow" Button
+    t =    21.80s     Check for interrupting elements affecting "style.card.glow" Button
+    t =    21.84s         Wait for com.apple.springboard to idle
+    t =    21.86s     Synthesize event
+    t =    22.27s     Wait for com.mdd.kanpan to idle
+    t =    23.65s Find the "chart.canvas" Other
+    t =    23.68s Find the "chart.canvas" Other
+    t =    23.70s Find the "chart.canvas" Other
+    t =    23.73s Find the "chart.canvas" Other
+    t =    23.75s Find the "chart.canvas" Other
+    t =    23.76s Find the "chart.canvas" Other
+    t =    23.78s Find the "chart.canvas" Other
+    t =    23.80s Tap "bottom.style" Button
+    t =    23.81s     Wait for com.mdd.kanpan to idle
+    t =    23.81s     Find the "bottom.style" Button
+    t =    23.84s     Check for interrupting elements affecting "bottom.style" Button
+    t =    23.87s         Wait for com.apple.springboard to idle
+    t =    23.90s     Synthesize event
+    t =    24.19s     Wait for com.mdd.kanpan to idle
+    t =    24.58s Find the "style.card.airy" Button
+    t =    24.78s Find the "style.card.airy" Button
+    t =    24.86s Find the "style.card.airy" Button
+    t =    24.90s Find the "style.card.airy" Button
+    t =    24.94s Find the "style.card.airy" Button
+    t =    25.12s Waiting 8.0s for "style.card.airy" Button to exist
+    t =    26.16s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.airy" Button`
+    t =    26.16s         Checking existence of `"style.card.airy" Button`
+    t =    26.20s Tap "style.card.airy" Button
+    t =    26.20s     Wait for com.mdd.kanpan to idle
+    t =    26.20s     Find the "style.card.airy" Button
+    t =    26.24s     Check for interrupting elements affecting "style.card.airy" Button
+    t =    26.27s         Wait for com.apple.springboard to idle
+    t =    26.30s     Synthesize event
+    t =    26.59s     Wait for com.mdd.kanpan to idle
+    t =    27.98s Find the "chart.canvas" Other
+    t =    27.99s Find the "chart.canvas" Other
+    t =    28.00s Find the "chart.canvas" Other
+    t =    28.01s Find the "chart.canvas" Other
+    t =    28.02s Find the "chart.canvas" Other
+    t =    28.04s Find the "chart.canvas" Other
+    t =    28.05s Find the "chart.canvas" Other
+    t =    28.06s Tap "bottom.style" Button
+    t =    28.06s     Wait for com.mdd.kanpan to idle
+    t =    28.06s     Find the "bottom.style" Button
+    t =    28.07s     Check for interrupting elements affecting "bottom.style" Button
+    t =    28.09s         Wait for com.apple.springboard to idle
+    t =    28.11s     Synthesize event
+    t =    28.39s     Wait for com.mdd.kanpan to idle
+    t =    28.75s Find the "style.card.brick" Button
+    t =    28.80s Find the "style.card.brick" Button
+    t =    28.83s Find the "style.card.brick" Button
+    t =    28.87s Find the "style.card.brick" Button
+    t =    28.90s Find the "style.card.brick" Button
+    t =    28.94s Waiting 8.0s for "style.card.brick" Button to exist
+    t =    29.97s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.brick" Button`
+    t =    29.97s         Checking existence of `"style.card.brick" Button`
+    t =    30.00s Tap "style.card.brick" Button
+    t =    30.00s     Wait for com.mdd.kanpan to idle
+    t =    30.00s     Find the "style.card.brick" Button
+    t =    30.02s     Check for interrupting elements affecting "style.card.brick" Button
+    t =    30.05s         Wait for com.apple.springboard to idle
+    t =    30.06s     Synthesize event
+    t =    30.35s     Wait for com.mdd.kanpan to idle
+    t =    31.71s Find the "chart.canvas" Other
+    t =    31.73s Find the "chart.canvas" Other
+    t =    31.74s Find the "chart.canvas" Other
+    t =    31.75s Find the "chart.canvas" Other
+    t =    31.76s Find the "chart.canvas" Other
+    t =    31.77s Find the "chart.canvas" Other
+    t =    31.78s Find the "chart.canvas" Other
+    t =    31.79s Tap "bottom.style" Button
+    t =    31.79s     Wait for com.mdd.kanpan to idle
+    t =    31.80s     Find the "bottom.style" Button
+    t =    31.81s     Check for interrupting elements affecting "bottom.style" Button
+    t =    31.82s         Wait for com.apple.springboard to idle
+    t =    31.84s     Synthesize event
+    t =    32.14s     Wait for com.mdd.kanpan to idle
+    t =    32.52s Find the "style.card.needle" Button
+    t =    32.59s Swipe up Target Application 'com.mdd.kanpan'
+    t =    32.59s     Wait for com.mdd.kanpan to idle
+    t =    32.59s     Find the Target Application 'com.mdd.kanpan'
+    t =    32.62s     Check for interrupting elements affecting "看盘" Application
+    t =    32.67s         Wait for com.apple.springboard to idle
+    t =    32.70s     Synthesize event
+    t =    33.12s     Wait for com.mdd.kanpan to idle
+    t =    33.76s Find the "style.card.needle" Button
+    t =    33.80s Find the "style.card.needle" Button
+    t =    33.83s Find the "style.card.needle" Button
+    t =    33.87s Find the "style.card.needle" Button
+    t =    33.90s Waiting 8.0s for "style.card.needle" Button to exist
+    t =    34.92s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.needle" Button`
+    t =    34.92s         Checking existence of `"style.card.needle" Button`
+    t =    34.98s Tap "style.card.needle" Button
+    t =    34.98s     Wait for com.mdd.kanpan to idle
+    t =    34.98s     Find the "style.card.needle" Button
+    t =    35.10s     Check for interrupting elements affecting "style.card.needle" Button
+    t =    35.16s         Wait for com.apple.springboard to idle
+    t =    35.18s     Synthesize event
+    t =    35.47s     Wait for com.mdd.kanpan to idle
+    t =    36.85s Find the "chart.canvas" Other
+    t =    36.87s Find the "chart.canvas" Other
+    t =    36.88s Find the "chart.canvas" Other
+    t =    36.89s Find the "chart.canvas" Other
+    t =    36.90s Find the "chart.canvas" Other
+    t =    36.92s Find the "chart.canvas" Other
+    t =    36.93s Find the "chart.canvas" Other
+    t =    36.94s Tap "bottom.style" Button
+    t =    36.94s     Wait for com.mdd.kanpan to idle
+    t =    36.94s     Find the "bottom.style" Button
+    t =    36.95s     Check for interrupting elements affecting "bottom.style" Button
+    t =    36.97s         Wait for com.apple.springboard to idle
+    t =    36.99s     Synthesize event
+    t =    37.28s     Wait for com.mdd.kanpan to idle
+    t =    37.64s Find the "style.card.pill" Button
+    t =    37.74s Swipe up Target Application 'com.mdd.kanpan'
+    t =    37.74s     Wait for com.mdd.kanpan to idle
+    t =    37.75s     Find the Target Application 'com.mdd.kanpan'
+    t =    37.77s     Check for interrupting elements affecting "看盘" Application
+    t =    37.80s         Wait for com.apple.springboard to idle
+    t =    37.82s     Synthesize event
+    t =    38.24s     Wait for com.mdd.kanpan to idle
+    t =    38.86s Find the "style.card.pill" Button
+    t =    38.89s Find the "style.card.pill" Button
+    t =    38.93s Find the "style.card.pill" Button
+    t =    38.96s Find the "style.card.pill" Button
+    t =    39.00s Waiting 8.0s for "style.card.pill" Button to exist
+    t =    40.01s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.pill" Button`
+    t =    40.01s         Checking existence of `"style.card.pill" Button`
+    t =    40.04s Tap "style.card.pill" Button
+    t =    40.04s     Wait for com.mdd.kanpan to idle
+    t =    40.04s     Find the "style.card.pill" Button
+    t =    40.07s     Check for interrupting elements affecting "style.card.pill" Button
+    t =    40.09s         Wait for com.apple.springboard to idle
+    t =    40.11s     Synthesize event
+    t =    40.50s     Wait for com.mdd.kanpan to idle
+    t =    41.84s Find the "chart.canvas" Other
+    t =    41.85s Find the "chart.canvas" Other
+    t =    41.86s Find the "chart.canvas" Other
+    t =    41.87s Find the "chart.canvas" Other
+    t =    41.89s Find the "chart.canvas" Other
+    t =    41.91s Find the "chart.canvas" Other
+    t =    41.92s Find the "chart.canvas" Other
+    t =    41.93s Tap "bottom.style" Button
+    t =    41.93s     Wait for com.mdd.kanpan to idle
+    t =    41.93s     Find the "bottom.style" Button
+    t =    41.94s     Check for interrupting elements affecting "bottom.style" Button
+    t =    41.96s         Wait for com.apple.springboard to idle
+    t =    41.98s     Synthesize event
+    t =    42.28s     Wait for com.mdd.kanpan to idle
+    t =    42.63s Find the "style.card.paper" Button
+    t =    42.68s Swipe up Target Application 'com.mdd.kanpan'
+    t =    42.68s     Wait for com.mdd.kanpan to idle
+    t =    42.68s     Find the Target Application 'com.mdd.kanpan'
+    t =    42.70s     Check for interrupting elements affecting "看盘" Application
+    t =    42.72s         Wait for com.apple.springboard to idle
+    t =    42.74s     Synthesize event
+    t =    43.16s     Wait for com.mdd.kanpan to idle
+    t =    43.77s Find the "style.card.paper" Button
+    t =    43.82s Find the "style.card.paper" Button
+    t =    43.87s Find the "style.card.paper" Button
+    t =    43.91s Find the "style.card.paper" Button
+    t =    43.95s Waiting 8.0s for "style.card.paper" Button to exist
+    t =    44.98s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.paper" Button`
+    t =    44.98s         Checking existence of `"style.card.paper" Button`
+    t =    45.02s Tap "style.card.paper" Button
+    t =    45.02s     Wait for com.mdd.kanpan to idle
+    t =    45.02s     Find the "style.card.paper" Button
+    t =    45.06s     Check for interrupting elements affecting "style.card.paper" Button
+    t =    45.10s         Wait for com.apple.springboard to idle
+    t =    45.12s     Synthesize event
+    t =    45.41s     Wait for com.mdd.kanpan to idle
+    t =    46.79s Find the "chart.canvas" Other
+    t =    46.80s Find the "chart.canvas" Other
+    t =    46.82s Find the "chart.canvas" Other
+    t =    46.84s Find the "chart.canvas" Other
+    t =    46.85s Find the "chart.canvas" Other
+    t =    46.86s Find the "chart.canvas" Other
+    t =    46.87s Find the "chart.canvas" Other
+    t =    46.88s Tap "bottom.style" Button
+    t =    46.88s     Wait for com.mdd.kanpan to idle
+    t =    46.88s     Find the "bottom.style" Button
+    t =    46.89s     Check for interrupting elements affecting "bottom.style" Button
+    t =    46.90s         Wait for com.apple.springboard to idle
+    t =    46.92s     Synthesize event
+    t =    47.21s     Wait for com.mdd.kanpan to idle
+    t =    47.57s Find the "style.card.outline" Button
+    t =    47.61s Swipe up Target Application 'com.mdd.kanpan'
+    t =    47.61s     Wait for com.mdd.kanpan to idle
+    t =    47.61s     Find the Target Application 'com.mdd.kanpan'
+    t =    47.63s     Check for interrupting elements affecting "看盘" Application
+    t =    47.65s         Wait for com.apple.springboard to idle
+    t =    47.67s     Synthesize event
+    t =    48.09s     Wait for com.mdd.kanpan to idle
+    t =    48.70s Find the "style.card.outline" Button
+    t =    48.75s Find the "style.card.outline" Button
+    t =    48.79s Find the "style.card.outline" Button
+    t =    48.83s Find the "style.card.outline" Button
+    t =    48.87s Waiting 8.0s for "style.card.outline" Button to exist
+    t =    49.89s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.outline" Button`
+    t =    49.89s         Checking existence of `"style.card.outline" Button`
+    t =    49.92s Tap "style.card.outline" Button
+    t =    49.92s     Wait for com.mdd.kanpan to idle
+    t =    49.92s     Find the "style.card.outline" Button
+    t =    49.96s     Check for interrupting elements affecting "style.card.outline" Button
+    t =    50.01s         Wait for com.apple.springboard to idle
+    t =    50.05s     Synthesize event
+    t =    50.34s     Wait for com.mdd.kanpan to idle
+    t =    51.74s Find the "chart.canvas" Other
+    t =    51.75s Find the "chart.canvas" Other
+    t =    51.76s Find the "chart.canvas" Other
+    t =    51.78s Find the "chart.canvas" Other
+    t =    51.79s Find the "chart.canvas" Other
+    t =    51.79s Find the "chart.canvas" Other
+    t =    51.81s Find the "chart.canvas" Other
+    t =    51.81s Tap "bottom.style" Button
+    t =    51.81s     Wait for com.mdd.kanpan to idle
+    t =    51.82s     Find the "bottom.style" Button
+    t =    51.83s     Check for interrupting elements affecting "bottom.style" Button
+    t =    51.84s         Wait for com.apple.springboard to idle
+    t =    51.85s     Synthesize event
+    t =    52.14s     Wait for com.mdd.kanpan to idle
+    t =    52.50s Find the "style.card.bone" Button
+    t =    53.54s     Find the "style.card.bone" Button (retry 1)
+    t =    54.59s     Find the "style.card.bone" Button (retry 2)
+    t =    54.62s Swipe up Target Application 'com.mdd.kanpan'
+    t =    54.62s     Wait for com.mdd.kanpan to idle
+    t =    54.62s     Find the Target Application 'com.mdd.kanpan'
+    t =    54.64s     Check for interrupting elements affecting "看盘" Application
+    t =    54.67s         Wait for com.apple.springboard to idle
+    t =    54.69s     Synthesize event
+    t =    55.11s     Wait for com.mdd.kanpan to idle
+    t =    55.72s Find the "style.card.bone" Button
+    t =    55.77s Swipe up Target Application 'com.mdd.kanpan'
+    t =    55.77s     Wait for com.mdd.kanpan to idle
+    t =    55.77s     Find the Target Application 'com.mdd.kanpan'
+    t =    55.80s     Check for interrupting elements affecting "看盘" Application
+    t =    55.84s         Wait for com.apple.springboard to idle
+    t =    55.87s     Synthesize event
+    t =    56.29s     Wait for com.mdd.kanpan to idle
+    t =    56.84s Find the "style.card.bone" Button
+    t =    56.90s Find the "style.card.bone" Button
+    t =    56.93s Find the "style.card.bone" Button
+    t =    56.97s Waiting 8.0s for "style.card.bone" Button to exist
+    t =    58.00s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.bone" Button`
+    t =    58.00s         Checking existence of `"style.card.bone" Button`
+    t =    58.04s Tap "style.card.bone" Button
+    t =    58.04s     Wait for com.mdd.kanpan to idle
+    t =    58.09s     Find the "style.card.bone" Button
+    t =    58.14s     Check for interrupting elements affecting "style.card.bone" Button
+    t =    58.17s         Wait for com.apple.springboard to idle
+    t =    58.19s     Synthesize event
+    t =    58.48s     Wait for com.mdd.kanpan to idle
+    t =    59.88s Find the "chart.canvas" Other
+    t =    59.89s Find the "chart.canvas" Other
+    t =    59.91s Find the "chart.canvas" Other
+    t =    59.92s Find the "chart.canvas" Other
+    t =    59.93s Find the "chart.canvas" Other
+    t =    59.94s Find the "chart.canvas" Other
+    t =    59.95s Find the "chart.canvas" Other
+    t =    59.96s Tap "bottom.style" Button
+    t =    59.96s     Wait for com.mdd.kanpan to idle
+    t =    59.96s     Find the "bottom.style" Button
+    t =    59.98s     Check for interrupting elements affecting "bottom.style" Button
+    t =    59.99s         Wait for com.apple.springboard to idle
+    t =    60.01s     Synthesize event
+    t =    60.30s     Wait for com.mdd.kanpan to idle
+    t =    60.67s Find the "style.card.dense" Button
+    t =    61.71s     Find the "style.card.dense" Button (retry 1)
+    t =    62.74s     Find the "style.card.dense" Button (retry 2)
+    t =    62.78s Swipe up Target Application 'com.mdd.kanpan'
+    t =    62.78s     Wait for com.mdd.kanpan to idle
+    t =    62.78s     Find the Target Application 'com.mdd.kanpan'
+    t =    62.80s     Check for interrupting elements affecting "看盘" Application
+    t =    62.82s         Wait for com.apple.springboard to idle
+    t =    62.84s     Synthesize event
+    t =    63.26s     Wait for com.mdd.kanpan to idle
+    t =    63.92s Find the "style.card.dense" Button
+    t =    63.97s Swipe up Target Application 'com.mdd.kanpan'
+    t =    63.97s     Wait for com.mdd.kanpan to idle
+    t =    63.97s     Find the Target Application 'com.mdd.kanpan'
+    t =    63.99s     Check for interrupting elements affecting "看盘" Application
+    t =    64.02s         Wait for com.apple.springboard to idle
+    t =    64.03s     Synthesize event
+    t =    64.46s     Wait for com.mdd.kanpan to idle
+    t =    65.00s Find the "style.card.dense" Button
+    t =    65.04s Find the "style.card.dense" Button
+    t =    65.07s Find the "style.card.dense" Button
+    t =    65.11s Waiting 8.0s for "style.card.dense" Button to exist
+    t =    66.12s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.dense" Button`
+    t =    66.12s         Checking existence of `"style.card.dense" Button`
+    t =    66.15s Tap "style.card.dense" Button
+    t =    66.15s     Wait for com.mdd.kanpan to idle
+    t =    66.30s     Find the "style.card.dense" Button
+    t =    66.33s     Check for interrupting elements affecting "style.card.dense" Button
+    t =    66.35s         Wait for com.apple.springboard to idle
+    t =    66.36s     Synthesize event
+    t =    66.66s     Wait for com.mdd.kanpan to idle
+    t =    68.02s Find the "chart.canvas" Other
+    t =    68.03s Find the "chart.canvas" Other
+    t =    68.04s Find the "chart.canvas" Other
+    t =    68.05s Find the "chart.canvas" Other
+    t =    68.08s Find the "chart.canvas" Other
+    t =    68.10s Find the "chart.canvas" Other
+    t =    68.11s Find the "chart.canvas" Other
+    t =    68.12s Find the Target Application 'com.mdd.kanpan'
+    t =    68.21s Added attachment named '02-原有风格-尺寸保持'
+    t =    68.21s Tap "bottom.style" Button
+    t =    68.21s     Wait for com.mdd.kanpan to idle
+    t =    68.21s     Find the "bottom.style" Button
+    t =    68.22s     Check for interrupting elements affecting "bottom.style" Button
+    t =    68.23s         Wait for com.apple.springboard to idle
+    t =    68.25s     Synthesize event
+    t =    68.54s     Wait for com.mdd.kanpan to idle
+    t =    68.90s Tap "style.card.aicoin" Button
+    t =    68.90s     Wait for com.mdd.kanpan to idle
+    t =    68.92s     Find the "style.card.aicoin" Button
+    t =    69.01s     Check for interrupting elements affecting "style.card.aicoin" Button
+    t =    69.08s         Wait for com.apple.springboard to idle
+    t =    69.10s     Synthesize event
+    t =    69.41s     Wait for com.mdd.kanpan to idle
+    t =    70.79s Find the "chart.canvas" Other
+    t =    70.81s Tap "chart.canvas" Other[0.35, 0.20]
+    t =    70.81s     Wait for com.mdd.kanpan to idle
+    t =    70.81s     Find the "chart.canvas" Other
+    t =    70.82s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    70.84s         Wait for com.apple.springboard to idle
+    t =    70.86s     Synthesize event
+    t =    70.86s         Find the "chart.canvas" Other
+    t =    70.89s         Find the "chart.canvas" Other
+    t =    70.91s         Find the "chart.canvas" Other
+    t =    71.20s     Wait for com.mdd.kanpan to idle
+    t =    72.24s Find the "chart.canvas" Other
+    t =    72.26s Find the Target Application 'com.mdd.kanpan'
+    t =    72.36s Added attachment named '03-单击十字线'
+    t =    72.36s Tap "chart.canvas" Other[0.35, 0.20]
+    t =    72.36s     Wait for com.mdd.kanpan to idle
+    t =    72.36s     Find the "chart.canvas" Other
+    t =    72.38s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    72.40s         Wait for com.apple.springboard to idle
+    t =    72.42s     Synthesize event
+    t =    72.42s         Find the "chart.canvas" Other
+    t =    72.43s         Find the "chart.canvas" Other
+    t =    72.45s         Find the "chart.canvas" Other
+    t =    72.76s     Wait for com.mdd.kanpan to idle
+    t =    73.77s Find the "chart.canvas" Other
+    t =    73.78s Tap "chart.canvas" Other[0.98, 0.20]
+    t =    73.78s     Wait for com.mdd.kanpan to idle
+    t =    73.79s     Find the "chart.canvas" Other
+    t =    73.81s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    73.83s         Wait for com.apple.springboard to idle
+    t =    73.84s     Synthesize event
+    t =    73.85s         Find the "chart.canvas" Other
+    t =    73.86s         Find the "chart.canvas" Other
+    t =    73.87s         Find the "chart.canvas" Other
+    t =    74.19s     Wait for com.mdd.kanpan to idle
+    t =    75.22s Find the "chart.canvas" Other
+    t =    75.25s Tap "chart.canvas" Other[0.98, 0.20]
+    t =    75.25s     Wait for com.mdd.kanpan to idle
+    t =    75.25s     Find the "chart.canvas" Other
+    t =    75.26s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    75.28s         Wait for com.apple.springboard to idle
+    t =    75.30s     Synthesize event
+    t =    75.31s         Find the "chart.canvas" Other
+    t =    75.33s         Find the "chart.canvas" Other
+    t =    75.34s         Find the "chart.canvas" Other
+    t =    75.64s     Wait for com.mdd.kanpan to idle
+    t =    76.67s Find the "chart.canvas" Other
+    t =    76.69s Press "chart.canvas" Other[0.98, 0.20] for 0.1 seconds, then drag to "chart.canvas" Other[0.98, 0.32] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    76.69s     Wait for com.mdd.kanpan to idle
+    t =    76.69s     Find the "chart.canvas" Other
+    t =    76.71s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    76.72s         Wait for com.apple.springboard to idle
+    t =    76.74s     Synthesize event
+    t =    76.74s         Find the "chart.canvas" Other
+    t =    76.76s         Find the "chart.canvas" Other
+    t =    76.77s         Find the "chart.canvas" Other
+    t =    76.79s         Find the "chart.canvas" Other
+    t =    76.80s         Find the "chart.canvas" Other
+    t =    77.34s     Wait for com.mdd.kanpan to idle
+    t =    78.35s Find the "chart.canvas" Other
+    t =    78.45s Find the "chart.canvas" Other
+    t =    78.49s Find the "chart.canvas" Other
+    t =    78.51s Find the "chart.canvas" Other
+    t =    78.52s Find the "chart.canvas" Other
+    t =    78.58s Find the "chart.canvas" Other
+    t =    78.60s Tap "chart.canvas" Other[0.96, 0.45]
+    t =    78.60s     Wait for com.mdd.kanpan to idle
+    t =    78.60s     Find the "chart.canvas" Other
+    t =    78.62s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    78.64s         Wait for com.apple.springboard to idle
+    t =    78.67s     Synthesize event
+    t =    78.67s         Find the "chart.canvas" Other
+    t =    78.68s         Find the "chart.canvas" Other
+    t =    78.70s         Find the "chart.canvas" Other
+    t =    79.00s     Wait for com.mdd.kanpan to idle
+    t =    80.02s Find the "chart.canvas" Other
+    t =    80.04s Find the "chart.canvas" Other
+    t =    80.05s Pinch with scale 2, velocity 1 in "chart.canvas" Other
+    t =    80.05s     Wait for com.mdd.kanpan to idle
+    t =    80.06s     Find the "chart.canvas" Other
+    t =    80.09s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    80.13s         Wait for com.apple.springboard to idle
+    t =    80.15s     Synthesize event
+    t =    80.19s         Pinching with rect {{50, 161}, {644, 904.5}}
+    t =    82.54s     Wait for com.mdd.kanpan to idle
+    t =    83.56s Find the "chart.canvas" Other
+    t =    83.58s Find the Target Application 'com.mdd.kanpan'
+    t =    83.68s Added attachment named '04-真机双指缩放'
+    t =    83.68s Press "chart.canvas" Other[0.35, 0.20] for 0.6 seconds
+    t =    83.68s     Wait for com.mdd.kanpan to idle
+    t =    83.68s     Find the "chart.canvas" Other
+    t =    83.69s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    83.72s         Wait for com.apple.springboard to idle
+    t =    83.74s     Synthesize event
+    t =    83.75s         Find the "chart.canvas" Other
+    t =    83.79s         Find the "chart.canvas" Other
+    t =    83.81s         Find the "chart.canvas" Other
+    t =    84.64s     Wait for com.mdd.kanpan to idle
+    t =    85.65s Find the "chart.canvas" Other
+    t =    85.68s Tap "chart.canvas" Other[0.35, 0.20]
+    t =    85.68s     Wait for com.mdd.kanpan to idle
+    t =    85.68s     Find the "chart.canvas" Other
+    t =    85.69s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    85.73s         Wait for com.apple.springboard to idle
+    t =    85.75s     Synthesize event
+    t =    85.75s         Find the "chart.canvas" Other
+    t =    85.77s         Find the "chart.canvas" Other
+    t =    85.78s         Find the "chart.canvas" Other
+    t =    86.09s     Wait for com.mdd.kanpan to idle
+    t =    87.13s Find the "chart.canvas" Other
+    t =    87.14s Find the Target Application 'com.mdd.kanpan'
+    t =    87.30s Added attachment named '05-持仓量与三副图'
+    t =    87.30s Tap "chart.canvas" Other[0.40, 0.75]
+    t =    87.30s     Wait for com.mdd.kanpan to idle
+    t =    87.30s     Find the "chart.canvas" Other
+    t =    87.32s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    87.33s         Wait for com.apple.springboard to idle
+    t =    87.35s     Synthesize event
+    t =    87.35s         Find the "chart.canvas" Other
+    t =    87.37s         Find the "chart.canvas" Other
+    t =    87.39s         Find the "chart.canvas" Other
+    t =    87.69s     Wait for com.mdd.kanpan to idle
+    t =    88.72s Find the "chart.canvas" Other
+    t =    88.74s Find the "chart.canvas" Other
+    t =    88.75s Find the Target Application 'com.mdd.kanpan'
+    t =    88.85s Added attachment named '06-副图十字线'
+    t =    88.85s Tap "chart.canvas" Other[0.35, 0.20]
+    t =    88.85s     Wait for com.mdd.kanpan to idle
+    t =    88.85s     Find the "chart.canvas" Other
+    t =    88.87s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    88.88s         Wait for com.apple.springboard to idle
+    t =    88.90s     Synthesize event
+    t =    88.90s         Find the "chart.canvas" Other
+    t =    88.92s         Find the "chart.canvas" Other
+    t =    88.93s         Find the "chart.canvas" Other
+    t =    89.23s     Wait for com.mdd.kanpan to idle
+    t =    89.23s Find the "chart.canvas" Other
+    t =    89.25s Find the "chart.canvas" Other
+    t =    89.26s Find the "chart.canvas" Other
+    t =    89.27s Tap "bottom.landscape" Button
+    t =    89.27s     Wait for com.mdd.kanpan to idle
+    t =    89.28s     Find the "bottom.landscape" Button
+    t =    89.29s     Check for interrupting elements affecting "bottom.landscape" Button
+    t =    89.30s         Wait for com.apple.springboard to idle
+    t =    89.32s     Synthesize event
+    t =    89.61s     Wait for com.mdd.kanpan to idle
+    t =    90.62s Checking existence of `"land.exit" Button`
+    t =    90.65s Find the "chart.canvas" Other
+    t =    90.66s Find the "chart.canvas" Other
+    t =    90.66s Find the Target Application 'com.mdd.kanpan'
+    t =    90.75s Added attachment named '07-横屏共用底座'
+    t =    90.75s Setting device orientation to Landscape Left
+    t =    90.76s     Device orientation changed to Landscape Left
+    t =    90.96s     Interface orientation changed to Landscape Right
+    t =    90.96s     Wait for com.mdd.kanpan to idle
+    t =    90.96s     Wait for com.apple.springboard to idle
+    t =    91.99s Find the "land.exit" Button
+    t =    92.03s Find the "chart.canvas" Other
+    t =    92.06s Find the Target Application 'com.mdd.kanpan'
+    t =    92.16s Added attachment named '08-iPad横向窗口'
+    t =    92.16s Tap "land.exit" Button
+    t =    92.16s     Wait for com.mdd.kanpan to idle
+    t =    92.17s     Find the "land.exit" Button
+    t =    92.18s     Check for interrupting elements affecting "land.exit" Button
+    t =    92.20s         Wait for com.apple.springboard to idle
+    t =    92.23s     Synthesize event
+    t =    92.52s     Wait for com.mdd.kanpan to idle
+    t =    92.53s Waiting 10.0s for "bottom.style" Button to exist
+    t =    93.55s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.style" Button`
+    t =    93.55s         Checking existence of `"bottom.style" Button`
+    t =    93.59s Tear Down
+    t =    93.59s     Setting device orientation to Portrait
+    t =    93.59s         Device orientation changed to Portrait
+    t =    93.66s         Interface orientation changed to Portrait
+    t =    93.66s         Wait for com.mdd.kanpan to idle
+    t =    93.69s         Wait for com.apple.springboard to idle
+Test Case '-[KanpanUITests.AICoinBaseUITests testColdLaunchStylesAndChartInteractions]' passed (94.401 seconds).
+Test Case '-[KanpanUITests.AICoinBaseUITests testPinchAndUnifiedBackground]' started.
+    t =     0.00s Start Test at 2026-09-14 23:29:26.877
+    t =     0.03s Set Up
+    t =     0.04s     Setting device orientation to Portrait
+    t =     0.04s         Wait for com.mdd.kanpan to idle
+    t =     0.04s         Wait for com.apple.springboard to idle
+    t =     0.14s Open com.mdd.kanpan
+    t =     0.14s     Launch com.mdd.kanpan
+    t =     0.14s         Terminate com.mdd.kanpan:83023
+2026-09-14 23:29:28.117 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:29:28.118 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.45s         Setting up automation session
+    t =     2.70s         Wait for com.mdd.kanpan to idle
+    t =     4.18s Waiting 30.0s for "chart.canvas" Other to exist
+    t =     5.20s     Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     5.20s         Checking existence of `"chart.canvas" Other`
+    t =     6.26s Find the "chart.canvas" Other
+    t =     6.27s Find the "chart.canvas" Other
+    t =     6.29s Find the Target Application 'com.mdd.kanpan'
+    t =     6.39s Added attachment named '统一靛色背景-冷启动'
+    t =     6.40s Pinch with scale 2, velocity 1 in "chart.canvas" Other
+    t =     6.40s     Wait for com.mdd.kanpan to idle
+    t =     6.40s     Find the "chart.canvas" Other
+    t =     6.41s     Check for interrupting elements affecting "chart.canvas" Other
+    t =     6.45s         Wait for com.apple.springboard to idle
+    t =     6.47s     Synthesize event
+    t =     6.51s         Pinching with rect {{50, 161}, {644, 904.5}}
+    t =     8.85s     Wait for com.mdd.kanpan to idle
+    t =     8.85s Find the "chart.canvas" Other
+    t =     8.86s Find the Target Application 'com.mdd.kanpan'
+    t =     8.96s Added attachment named '统一靛色背景-放大'
+    t =     8.96s Tear Down
+    t =     8.96s     Setting device orientation to Portrait
+    t =     8.96s         Wait for com.mdd.kanpan to idle
+    t =     8.96s         Wait for com.apple.springboard to idle
+Test Case '-[KanpanUITests.AICoinBaseUITests testPinchAndUnifiedBackground]' passed (9.188 seconds).
+Test Suite 'AICoinBaseUITests' passed at 2026-09-14 23:29:36.065.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 103.589 (103.591) seconds
+Test Suite 'MainScreenUITests' started at 2026-09-14 23:29:36.066.
+Test Case '-[KanpanUITests.MainScreenUITests testDrawingModeEntersAndExits]' started.
+    t =     0.00s Start Test at 2026-09-14 23:29:36.067
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+    t =     0.02s             Terminate com.mdd.kanpan:83303
+2026-09-14 23:29:37.097 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:29:37.097 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.24s             Setting up automation session
+    t =     2.10s             Wait for com.mdd.kanpan to idle
+    t =     3.47s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.51s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.51s             Checking existence of `"top.symbol" Button`
+    t =     4.55s     Find the Window (First Match)
+    t =     4.58s     Find the "interval.more" Button
+    t =     4.60s     Find the "bottom.style" Button
+    t =     4.61s Tap "bottom.draw" Button
+    t =     4.61s     Wait for com.mdd.kanpan to idle
+    t =     4.62s     Find the "bottom.draw" Button
+    t =     4.63s     Check for interrupting elements affecting "bottom.draw" Button
+    t =     4.65s         Wait for com.apple.springboard to idle
+    t =     4.67s     Synthesize event
+    t =     4.96s     Wait for com.mdd.kanpan to idle
+    t =     4.96s Waiting 8.0s for "draw.trend" Button to exist
+    t =     5.97s     Checking `Expect predicate `existsNoRetry == 1` for object "draw.trend" Button`
+    t =     5.97s         Checking existence of `"draw.trend" Button`
+    t =     5.99s Waiting 8.0s for "draw.hline" Button to exist
+    t =     7.01s     Checking `Expect predicate `existsNoRetry == 1` for object "draw.hline" Button`
+    t =     7.01s         Checking existence of `"draw.hline" Button`
+    t =     7.04s Tap "draw.finish" Button
+    t =     7.04s     Wait for com.mdd.kanpan to idle
+    t =     7.04s     Find the "draw.finish" Button
+    t =     7.06s     Check for interrupting elements affecting "draw.finish" Button
+    t =     7.08s         Wait for com.apple.springboard to idle
+    t =     7.10s     Synthesize event
+    t =     7.39s     Wait for com.mdd.kanpan to idle
+    t =     7.40s Checking existence of `"draw.trend" Button`
+    t =     7.41s Tap "bottom.draw" Button
+    t =     7.41s     Wait for com.mdd.kanpan to idle
+    t =     7.42s     Find the "bottom.draw" Button
+    t =     7.45s     Check for interrupting elements affecting "bottom.draw" Button
+    t =     7.47s         Wait for com.apple.springboard to idle
+    t =     7.50s     Synthesize event
+    t =     7.79s     Wait for com.mdd.kanpan to idle
+    t =     7.80s Waiting 8.0s for "draw.trend" Button to exist
+    t =     8.83s     Checking `Expect predicate `existsNoRetry == 1` for object "draw.trend" Button`
+    t =     8.84s         Checking existence of `"draw.trend" Button`
+    t =     8.86s Tap "bottom.draw" Button
+    t =     8.86s     Wait for com.mdd.kanpan to idle
+    t =     8.86s     Find the "bottom.draw" Button
+    t =     8.89s     Check for interrupting elements affecting "bottom.draw" Button
+    t =     8.90s         Wait for com.apple.springboard to idle
+    t =     8.93s     Synthesize event
+    t =     9.23s     Wait for com.mdd.kanpan to idle
+    t =     9.23s Checking existence of `"draw.trend" Button`
+    t =     9.24s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testDrawingModeEntersAndExits]' passed (9.498 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testFavoriteStarToggles]' started.
+    t =     0.00s Start Test at 2026-09-14 23:29:45.565
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+    t =     0.02s             Terminate com.mdd.kanpan:83344
+2026-09-14 23:29:46.679 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:29:46.679 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.72s             Setting up automation session
+    t =     2.85s             Wait for com.mdd.kanpan to idle
+    t =     4.24s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     5.26s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     5.26s             Checking existence of `"top.symbol" Button`
+    t =     5.32s     Find the Window (First Match)
+    t =     5.33s     Find the "interval.more" Button
+    t =     5.38s     Find the "bottom.style" Button
+    t =     5.40s Waiting 8.0s for "top.star" Button to exist
+    t =     6.41s     Checking `Expect predicate `existsNoRetry == 1` for object "top.star" Button`
+    t =     6.41s         Checking existence of `"top.star" Button`
+    t =     6.44s Find the "top.star" Button
+    t =     6.48s Tap "top.star" Button
+    t =     6.48s     Wait for com.mdd.kanpan to idle
+    t =     6.49s     Find the "top.star" Button
+    t =     6.56s     Check for interrupting elements affecting "top.star" Button
+    t =     6.59s         Wait for com.apple.springboard to idle
+    t =     6.61s     Synthesize event
+    t =     6.90s     Wait for com.mdd.kanpan to idle
+    t =     6.91s Find the "top.star" Button
+    t =     6.93s Find the "top.star" Button
+    t =     6.99s Tap "top.star" Button
+    t =     6.99s     Wait for com.mdd.kanpan to idle
+    t =     6.99s     Find the "top.star" Button
+    t =     7.01s     Check for interrupting elements affecting "top.star" Button
+    t =     7.05s         Wait for com.apple.springboard to idle
+    t =     7.08s     Synthesize event
+    t =     7.37s     Wait for com.mdd.kanpan to idle
+    t =     7.37s Find the "top.star" Button
+    t =     7.39s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testFavoriteStarToggles]' passed (7.634 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testIndicatorPanelOpensAndCloses]' started.
+    t =     0.00s Start Test at 2026-09-14 23:29:53.199
+    t =     0.03s Set Up
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+    t =     0.03s             Terminate com.mdd.kanpan:83463
+2026-09-14 23:29:54.253 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:29:54.254 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.54s             Setting up automation session
+    t =     2.94s             Wait for com.mdd.kanpan to idle
+    t =     4.53s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     5.56s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     5.56s             Checking existence of `"top.symbol" Button`
+    t =     5.61s     Find the Window (First Match)
+    t =     5.62s     Find the "interval.more" Button
+    t =     5.66s     Find the "bottom.style" Button
+    t =     5.70s Tap "bottom.indicator" Button
+    t =     5.70s     Wait for com.mdd.kanpan to idle
+    t =     5.71s     Find the "bottom.indicator" Button
+    t =     5.77s     Check for interrupting elements affecting "bottom.indicator" Button
+    t =     5.81s         Wait for com.apple.springboard to idle
+    t =     5.85s     Synthesize event
+    t =     6.14s     Wait for com.mdd.kanpan to idle
+    t =     6.33s Waiting 8.0s for "indicator.switch.MACD" Button to exist
+    t =     7.36s     Checking `Expect predicate `existsNoRetry == 1` for object "indicator.switch.MACD" Button`
+    t =     7.36s         Checking existence of `"indicator.switch.MACD" Button`
+    t =     7.53s Waiting 8.0s for "indicator.switch.MA" Button to exist
+    t =     8.55s     Checking `Expect predicate `existsNoRetry == 1` for object "indicator.switch.MA" Button`
+    t =     8.55s         Checking existence of `"indicator.switch.MA" Button`
+    t =     8.66s Checking existence of `"indicator.switch.MACD" Button`
+    t =     8.77s Checking existence of `"panel.header" StaticText`
+    t =     8.82s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     8.82s     Wait for com.mdd.kanpan to idle
+    t =     8.87s     Find the "panel.header" StaticText
+    t =     8.91s     Check for interrupting elements affecting "panel.header" StaticText
+    t =     9.07s         Wait for com.apple.springboard to idle
+    t =     9.12s     Synthesize event
+    t =     9.12s         Find the "panel.header" StaticText
+    t =     9.20s         Find the "panel.header" StaticText
+    t =     9.30s         Find the Window (First Match)
+    t =     9.49s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     9.55s         Find the "panel.header" StaticText
+    t =    11.16s     Wait for com.mdd.kanpan to idle
+    t =    11.85s Checking existence of `"indicator.switch.MACD" Button`
+    t =    11.87s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testIndicatorPanelOpensAndCloses]' passed (12.141 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testIntervalChipsSelectOneAtATime]' started.
+    t =     0.00s Start Test at 2026-09-14 23:30:05.342
+    t =     0.03s Set Up
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+    t =     0.04s             Terminate com.mdd.kanpan:83525
+2026-09-14 23:30:06.454 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:30:06.454 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.55s             Setting up automation session
+    t =     2.68s             Wait for com.mdd.kanpan to idle
+    t =     4.10s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     5.12s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     5.12s             Checking existence of `"top.symbol" Button`
+    t =     5.15s     Find the Window (First Match)
+    t =     5.16s     Find the "interval.more" Button
+    t =     5.18s     Find the "bottom.style" Button
+    t =     5.20s Waiting 8.0s for "interval.chip.1m" Button to exist
+    t =     6.22s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.1m" Button`
+    t =     6.22s         Checking existence of `"interval.chip.1m" Button`
+    t =     6.24s Waiting 8.0s for "interval.chip.5m" Button to exist
+    t =     7.26s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.5m" Button`
+    t =     7.26s         Checking existence of `"interval.chip.5m" Button`
+    t =     7.29s Waiting 8.0s for "interval.chip.15m" Button to exist
+    t =     8.29s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.15m" Button`
+    t =     8.29s         Checking existence of `"interval.chip.15m" Button`
+    t =     8.31s Waiting 8.0s for "interval.chip.1h" Button to exist
+    t =     9.32s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.1h" Button`
+    t =     9.32s         Checking existence of `"interval.chip.1h" Button`
+    t =     9.34s Waiting 8.0s for "interval.chip.4h" Button to exist
+    t =    10.35s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.4h" Button`
+    t =    10.35s         Checking existence of `"interval.chip.4h" Button`
+    t =    10.37s Waiting 8.0s for "interval.chip.1d" Button to exist
+    t =    11.39s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chip.1d" Button`
+    t =    11.39s         Checking existence of `"interval.chip.1d" Button`
+    t =    11.41s Find the "interval.chip.1m" Button
+    t =    11.43s Find the "interval.chip.5m" Button
+    t =    11.44s Find the "interval.chip.15m" Button
+    t =    11.45s Find the "interval.chip.1h" Button
+    t =    11.47s Tap "interval.chip.1m" Button
+    t =    11.47s     Wait for com.mdd.kanpan to idle
+    t =    11.47s     Find the "interval.chip.1m" Button
+    t =    11.50s     Check for interrupting elements affecting "interval.chip.1m" Button
+    t =    11.53s         Wait for com.apple.springboard to idle
+    t =    11.56s     Synthesize event
+    t =    11.86s     Wait for com.mdd.kanpan to idle
+    t =    11.86s Find the "interval.chip.1m" Button
+    t =    11.87s Find the "interval.chip.5m" Button
+    t =    11.89s Find the "interval.chip.15m" Button
+    t =    11.90s Find the "interval.chip.1h" Button
+    t =    11.91s Find the "interval.chip.4h" Button
+    t =    11.94s Find the "interval.chip.1d" Button
+    t =    11.98s Tap "interval.chip.5m" Button
+    t =    11.98s     Wait for com.mdd.kanpan to idle
+    t =    11.98s     Find the "interval.chip.5m" Button
+    t =    12.02s     Check for interrupting elements affecting "interval.chip.5m" Button
+    t =    12.03s         Wait for com.apple.springboard to idle
+    t =    12.06s     Synthesize event
+    t =    12.35s     Wait for com.mdd.kanpan to idle
+    t =    12.35s Find the "interval.chip.5m" Button
+    t =    12.37s Find the "interval.chip.1m" Button
+    t =    12.40s Find the "interval.chip.15m" Button
+    t =    12.42s Find the "interval.chip.1h" Button
+    t =    12.46s Find the "interval.chip.4h" Button
+    t =    12.48s Find the "interval.chip.1d" Button
+    t =    12.51s Tap "interval.chip.15m" Button
+    t =    12.51s     Wait for com.mdd.kanpan to idle
+    t =    12.51s     Find the "interval.chip.15m" Button
+    t =    12.52s     Check for interrupting elements affecting "interval.chip.15m" Button
+    t =    12.54s         Wait for com.apple.springboard to idle
+    t =    12.57s     Synthesize event
+    t =    12.86s     Wait for com.mdd.kanpan to idle
+    t =    12.86s Find the "interval.chip.15m" Button
+    t =    12.88s Find the "interval.chip.1m" Button
+    t =    12.89s Find the "interval.chip.5m" Button
+    t =    12.90s Find the "interval.chip.1h" Button
+    t =    12.93s Find the "interval.chip.4h" Button
+    t =    12.94s Find the "interval.chip.1d" Button
+    t =    12.95s Tap "interval.chip.1h" Button
+    t =    12.95s     Wait for com.mdd.kanpan to idle
+    t =    12.95s     Find the "interval.chip.1h" Button
+    t =    12.98s     Check for interrupting elements affecting "interval.chip.1h" Button
+    t =    13.00s         Wait for com.apple.springboard to idle
+    t =    13.04s     Synthesize event
+    t =    13.34s     Wait for com.mdd.kanpan to idle
+    t =    13.34s Find the "interval.chip.1h" Button
+    t =    13.35s Find the "interval.chip.1m" Button
+    t =    13.37s Find the "interval.chip.5m" Button
+    t =    13.38s Find the "interval.chip.15m" Button
+    t =    13.39s Find the "interval.chip.4h" Button
+    t =    13.41s Find the "interval.chip.1d" Button
+    t =    13.43s Tap "interval.chip.4h" Button
+    t =    13.43s     Wait for com.mdd.kanpan to idle
+    t =    13.43s     Find the "interval.chip.4h" Button
+    t =    13.45s     Check for interrupting elements affecting "interval.chip.4h" Button
+    t =    13.48s         Wait for com.apple.springboard to idle
+    t =    13.51s     Synthesize event
+    t =    13.80s     Wait for com.mdd.kanpan to idle
+    t =    13.81s Find the "interval.chip.4h" Button
+    t =    13.82s Find the "interval.chip.1m" Button
+    t =    13.84s Find the "interval.chip.5m" Button
+    t =    13.86s Find the "interval.chip.15m" Button
+    t =    13.87s Find the "interval.chip.1h" Button
+    t =    13.89s Find the "interval.chip.1d" Button
+    t =    13.92s Tap "interval.chip.1d" Button
+    t =    13.92s     Wait for com.mdd.kanpan to idle
+    t =    13.92s     Find the "interval.chip.1d" Button
+    t =    13.96s     Check for interrupting elements affecting "interval.chip.1d" Button
+    t =    13.99s         Wait for com.apple.springboard to idle
+    t =    14.02s     Synthesize event
+    t =    14.32s     Wait for com.mdd.kanpan to idle
+    t =    14.33s Find the "interval.chip.1d" Button
+    t =    14.34s Find the "interval.chip.1m" Button
+    t =    14.35s Find the "interval.chip.5m" Button
+    t =    14.36s Find the "interval.chip.15m" Button
+    t =    14.38s Find the "interval.chip.1h" Button
+    t =    14.39s Find the "interval.chip.4h" Button
+    t =    14.41s Tap "interval.chip.1h" Button
+    t =    14.41s     Wait for com.mdd.kanpan to idle
+    t =    14.41s     Find the "interval.chip.1h" Button
+    t =    14.43s     Check for interrupting elements affecting "interval.chip.1h" Button
+    t =    14.45s         Wait for com.apple.springboard to idle
+    t =    14.48s     Synthesize event
+    t =    14.77s     Wait for com.mdd.kanpan to idle
+    t =    14.78s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testIntervalChipsSelectOneAtATime]' passed (15.057 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testLatestButtonAppearsAfterLeavingLatest]' started.
+    t =     0.00s Start Test at 2026-09-14 23:30:20.399
+    t =     0.03s Set Up
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+    t =     0.03s             Terminate com.mdd.kanpan:83631
+2026-09-14 23:30:21.496 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:30:21.496 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.31s             Setting up automation session
+    t =     2.69s             Wait for com.mdd.kanpan to idle
+    t =     4.11s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     5.13s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     5.13s             Checking existence of `"top.symbol" Button`
+    t =     5.16s     Find the Window (First Match)
+    t =     5.17s     Find the "interval.more" Button
+    t =     5.22s     Find the "bottom.style" Button
+    t =     5.24s Find the "chart.latest" Button
+    t =     5.29s Press Window (First Match)[0.00, 0.00] -> (40.0, 568.0) for 0.1 seconds, then drag to Window (First Match)[0.00, 0.00] -> (40.0, 568.0) -> (220.0, 0.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     5.29s     Wait for com.mdd.kanpan to idle
+    t =     5.29s     Find the Window (First Match)
+    t =     5.31s     Check for interrupting elements affecting Window
+    t =     5.32s         Wait for com.apple.springboard to idle
+    t =     5.35s     Synthesize event
+    t =     5.35s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     5.37s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     5.42s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     5.46s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     5.50s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     6.25s     Wait for com.mdd.kanpan to idle
+    t =     6.26s Find the "chart.latest" Button
+    t =     6.29s Find the "chart.latest" Button
+    t =     6.32s Tap "chart.latest" Button
+    t =     6.32s     Wait for com.mdd.kanpan to idle
+    t =     6.32s     Find the "chart.latest" Button
+    t =     6.34s     Check for interrupting elements affecting "chart.latest" Button
+    t =     6.35s         Wait for com.apple.springboard to idle
+    t =     6.37s     Synthesize event
+    t =     6.66s     Wait for com.mdd.kanpan to idle
+    t =     6.68s Find the "chart.latest" Button
+    t =     6.71s Find the "chart.latest" Button
+    t =     6.73s Press Window (First Match)[0.00, 0.00] -> (40.0, 568.0) for 0.1 seconds, then drag to Window (First Match)[0.00, 0.00] -> (40.0, 568.0) -> (220.0, 0.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     6.73s     Wait for com.mdd.kanpan to idle
+    t =     6.73s     Find the Window (First Match)
+    t =     6.74s     Check for interrupting elements affecting Window
+    t =     6.76s         Wait for com.apple.springboard to idle
+    t =     6.77s     Synthesize event
+    t =     6.77s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     6.79s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     6.80s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     6.81s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     6.83s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     7.57s     Wait for com.mdd.kanpan to idle
+    t =     7.58s Find the "chart.latest" Button
+    t =     7.60s Tap "chart.latest" Button
+    t =     7.61s     Wait for com.mdd.kanpan to idle
+    t =     7.61s     Find the "chart.latest" Button
+    t =     7.63s     Check for interrupting elements affecting "chart.latest" Button
+    t =     7.64s         Wait for com.apple.springboard to idle
+    t =     7.67s     Synthesize event
+    t =     7.95s     Wait for com.mdd.kanpan to idle
+    t =     7.97s Find the "chart.latest" Button
+    t =     8.01s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testLatestButtonAppearsAfterLeavingLatest]' passed (8.298 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testMoreOpensPeriodPanel]' started.
+    t =     0.00s Start Test at 2026-09-14 23:30:28.698
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+    t =     0.02s             Terminate com.mdd.kanpan:83689
+2026-09-14 23:30:29.817 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:30:29.817 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.33s             Setting up automation session
+    t =     2.35s             Wait for com.mdd.kanpan to idle
+    t =     3.77s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.78s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.78s             Checking existence of `"top.symbol" Button`
+    t =     4.85s     Find the Window (First Match)
+    t =     4.87s     Find the "interval.more" Button
+    t =     4.90s     Find the "bottom.style" Button
+    t =     4.92s Tap "interval.more" Button
+    t =     4.92s     Wait for com.mdd.kanpan to idle
+    t =     4.92s     Find the "interval.more" Button
+    t =     4.93s     Check for interrupting elements affecting "interval.more" Button
+    t =     4.95s         Wait for com.apple.springboard to idle
+    t =     4.98s     Synthesize event
+    t =     5.27s     Wait for com.mdd.kanpan to idle
+    t =     5.76s Waiting 8.0s for "period.row.1h" Button to exist
+    t =     6.78s     Checking `Expect predicate `existsNoRetry == 1` for object "period.row.1h" Button`
+    t =     6.78s         Checking existence of `"period.row.1h" Button`
+    t =     6.83s Waiting 8.0s for "period.row.1M" Button to exist
+    t =     7.83s     Checking `Expect predicate `existsNoRetry == 1` for object "period.row.1M" Button`
+    t =     7.83s         Checking existence of `"period.row.1M" Button`
+    t =     7.89s Checking existence of `"period.row.1h" Button`
+    t =     7.93s Checking existence of `"panel.header" StaticText`
+    t =     8.00s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     8.00s     Wait for com.mdd.kanpan to idle
+    t =     8.02s     Find the "panel.header" StaticText
+    t =     8.08s     Check for interrupting elements affecting "panel.header" StaticText
+    t =     8.21s         Wait for com.apple.springboard to idle
+    t =     8.28s     Synthesize event
+    t =     8.28s         Find the "panel.header" StaticText
+    t =     8.39s         Find the "panel.header" StaticText
+    t =     8.47s         Find the Window (First Match)
+    t =     8.50s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     8.51s         Find the "panel.header" StaticText
+    t =    10.09s     Wait for com.mdd.kanpan to idle
+    t =    10.77s Checking existence of `"period.row.1h" Button`
+    t =    10.79s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testMoreOpensPeriodPanel]' passed (11.013 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testSearchButtonOpensSymbolPage]' started.
+    t =     0.00s Start Test at 2026-09-14 23:30:39.712
+    t =     0.03s Set Up
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+    t =     0.03s             Terminate com.mdd.kanpan:83714
+2026-09-14 23:30:40.778 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:30:40.780 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.28s             Setting up automation session
+    t =     2.55s             Wait for com.mdd.kanpan to idle
+    t =     3.93s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.95s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.95s             Checking existence of `"top.symbol" Button`
+    t =     4.99s     Find the Window (First Match)
+    t =     5.00s     Find the "interval.more" Button
+    t =     5.01s     Find the "bottom.style" Button
+    t =     5.03s Tap "top.search" Button
+    t =     5.03s     Wait for com.mdd.kanpan to idle
+    t =     5.03s     Find the "top.search" Button
+    t =     5.09s     Check for interrupting elements affecting "top.search" Button
+    t =     5.10s         Wait for com.apple.springboard to idle
+    t =     5.11s     Synthesize event
+    t =     5.40s     Wait for com.mdd.kanpan to idle
+    t =     5.41s Checking existence of `"symbols.query" TextField`
+    t =     5.67s Checking existence of `"symbols.query" TextField`
+    t =     5.94s Checking existence of `"symbols.query" TextField`
+    t =     6.20s Checking existence of `"symbols.query" TextField`
+    t =     6.48s Checking existence of `"symbols.query" TextField`
+    t =     6.74s Checking existence of `"symbols.query" TextField`
+    t =     7.01s Checking existence of `"symbols.query" TextField`
+    t =     7.27s Checking existence of `"symbols.query" TextField`
+    t =     7.53s Checking existence of `"symbols.query" TextField`
+    t =     7.80s Checking existence of `"symbols.query" TextField`
+    t =     8.08s Checking existence of `"symbols.query" TextField`
+    t =     8.35s Checking existence of `"symbols.query" TextField`
+    t =     8.62s Checking existence of `"symbols.query" TextField`
+    t =     8.90s Checking existence of `"symbols.query" TextField`
+    t =     9.18s Checking existence of `"symbols.query" TextField`
+    t =     9.46s Checking existence of `"symbols.query" TextField`
+    t =     9.72s Checking existence of `"symbols.query" TextField`
+    t =     9.98s Checking existence of `"symbols.query" TextField`
+    t =    10.25s Checking existence of `"symbols.query" TextField`
+    t =    10.53s Checking existence of `"symbols.query" TextField`
+    t =    10.80s Checking existence of `"symbols.query" TextField`
+    t =    11.06s Checking existence of `"symbols.query" TextField`
+    t =    11.33s Checking existence of `"symbols.query" TextField`
+    t =    11.59s Checking existence of `"symbols.query" TextField`
+    t =    11.86s Checking existence of `"symbols.query" TextField`
+    t =    12.14s Checking existence of `"symbols.query" TextField`
+    t =    12.42s Checking existence of `"symbols.query" TextField`
+    t =    12.69s Checking existence of `"symbols.query" TextField`
+    t =    12.96s Checking existence of `"symbols.query" TextField`
+    t =    13.23s Checking existence of `"symbols.query" TextField`
+    t =    13.50s Checking existence of `"symbols.query" TextField`
+    t =    13.53s Find the "top.search" Button
+    t =    13.54s Find the "top.search" Button
+[A8.4] top.search 正中心点不动，改点框内 1/3 处重试
+    t =    13.55s Tap Target Application 'com.mdd.kanpan'[0.00, 0.00] -> (676.0, 50.7)
+    t =    13.55s     Wait for com.mdd.kanpan to idle
+    t =    13.55s     Find the Target Application 'com.mdd.kanpan'
+    t =    13.59s     Check for interrupting elements affecting "看盘" Application
+    t =    13.62s         Wait for com.apple.springboard to idle
+    t =    13.65s     Synthesize event
+    t =    13.65s         Find the Target Application 'com.mdd.kanpan'
+    t =    13.67s         Find the Target Application 'com.mdd.kanpan'
+    t =    13.69s         Find the Target Application 'com.mdd.kanpan'
+    t =    13.99s     Wait for com.mdd.kanpan to idle
+    t =    14.40s Checking existence of `"symbols.query" TextField`
+    t =    14.84s Tap "symbols.back" Button
+    t =    14.84s     Wait for com.mdd.kanpan to idle
+    t =    15.00s     Find the "symbols.back" Button
+    t =    15.21s     Check for interrupting elements affecting "symbols.back" Button
+    t =    15.32s         Wait for com.apple.springboard to idle
+    t =    15.34s     Synthesize event
+    t =    15.64s     Wait for com.mdd.kanpan to idle
+    t =    16.04s Checking existence of `"symbols.back" Button`
+    t =    16.07s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testSearchButtonOpensSymbolPage]' passed (16.328 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testSettingsPanelOpensAndCloses]' started.
+    t =     0.00s Start Test at 2026-09-14 23:30:56.042
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+    t =     0.03s             Terminate com.mdd.kanpan:83748
+2026-09-14 23:30:57.145 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:30:57.145 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.31s             Setting up automation session
+    t =     2.12s             Wait for com.mdd.kanpan to idle
+    t =     3.59s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.61s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.61s             Checking existence of `"top.symbol" Button`
+    t =     4.65s     Find the Window (First Match)
+    t =     4.66s     Find the "interval.more" Button
+    t =     4.68s     Find the "bottom.style" Button
+    t =     4.70s Tap "bottom.settings" Button
+    t =     4.70s     Wait for com.mdd.kanpan to idle
+    t =     4.71s     Find the "bottom.settings" Button
+    t =     4.73s     Check for interrupting elements affecting "bottom.settings" Button
+    t =     4.76s         Wait for com.apple.springboard to idle
+    t =     4.81s     Synthesize event
+    t =     5.10s     Wait for com.mdd.kanpan to idle
+    t =     5.26s Waiting 8.0s for "settings.magnet" Button to exist
+    t =     6.28s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.magnet" Button`
+    t =     6.28s         Checking existence of `"settings.magnet" Button`
+    t =     6.34s Checking existence of `"settings.magnet" Button`
+    t =     6.37s Checking existence of `"panel.header" StaticText`
+    t =     6.40s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     6.40s     Wait for com.mdd.kanpan to idle
+    t =     6.40s     Find the "panel.header" StaticText
+    t =     6.43s     Check for interrupting elements affecting "panel.header" StaticText
+    t =     6.46s         Wait for com.apple.springboard to idle
+    t =     6.48s     Synthesize event
+    t =     6.48s         Find the "panel.header" StaticText
+    t =     6.51s         Find the "panel.header" StaticText
+    t =     6.57s         Find the Window (First Match)
+    t =     6.58s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     6.61s         Find the "panel.header" StaticText
+    t =     8.20s     Wait for com.mdd.kanpan to idle
+    t =     8.87s Checking existence of `"settings.magnet" Button`
+    t =     8.88s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testSettingsPanelOpensAndCloses]' passed (9.123 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testStylePanelDismissesItselfAfterPick]' started.
+    t =     0.00s Start Test at 2026-09-14 23:31:05.166
+    t =     0.02s Set Up
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+    t =     0.03s             Terminate com.mdd.kanpan:83787
+2026-09-14 23:31:06.285 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:31:06.285 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.33s             Setting up automation session
+    t =     2.04s             Wait for com.mdd.kanpan to idle
+    t =     3.40s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.43s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.43s             Checking existence of `"top.symbol" Button`
+    t =     4.47s     Find the Window (First Match)
+    t =     4.48s     Find the "interval.more" Button
+    t =     4.49s     Find the "bottom.style" Button
+    t =     4.52s Tap "bottom.style" Button
+    t =     4.52s     Wait for com.mdd.kanpan to idle
+    t =     4.52s     Find the "bottom.style" Button
+    t =     4.54s     Check for interrupting elements affecting "bottom.style" Button
+    t =     4.56s         Wait for com.apple.springboard to idle
+    t =     4.58s     Synthesize event
+    t =     4.87s     Wait for com.mdd.kanpan to idle
+    t =     4.88s Waiting 8.0s for "style.card.indigo" Button to exist
+    t =     5.91s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.indigo" Button`
+    t =     5.91s         Checking existence of `"style.card.indigo" Button`
+    t =     5.96s Tap "style.card.indigo" Button
+    t =     5.96s     Wait for com.mdd.kanpan to idle
+    t =     5.96s     Find the "style.card.indigo" Button
+    t =     6.01s     Check for interrupting elements affecting "style.card.indigo" Button
+    t =     6.04s         Wait for com.apple.springboard to idle
+    t =     6.06s     Synthesize event
+    t =     6.37s     Wait for com.mdd.kanpan to idle
+    t =     6.73s Checking existence of `"style.card.indigo" Button`
+    t =     6.74s Tap "bottom.style" Button
+    t =     6.74s     Wait for com.mdd.kanpan to idle
+    t =     6.74s     Find the "bottom.style" Button
+    t =     6.75s     Check for interrupting elements affecting "bottom.style" Button
+    t =     6.77s         Wait for com.apple.springboard to idle
+    t =     6.78s     Synthesize event
+    t =     7.07s     Wait for com.mdd.kanpan to idle
+    t =     7.45s Waiting 8.0s for "style.card.stout" Button to exist
+    t =     8.48s     Checking `Expect predicate `existsNoRetry == 1` for object "style.card.stout" Button`
+    t =     8.48s         Checking existence of `"style.card.stout" Button`
+    t =     8.52s Tap "style.card.stout" Button
+    t =     8.52s     Wait for com.mdd.kanpan to idle
+    t =     8.52s     Find the "style.card.stout" Button
+    t =     8.55s     Check for interrupting elements affecting "style.card.stout" Button
+    t =     8.58s         Wait for com.apple.springboard to idle
+    t =     8.59s     Synthesize event
+    t =     8.88s     Wait for com.mdd.kanpan to idle
+    t =     9.24s Checking existence of `"style.card.stout" Button`
+    t =     9.26s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testStylePanelDismissesItselfAfterPick]' passed (9.511 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testSymbolButtonOpensAndClosesSymbolPage]' started.
+    t =     0.00s Start Test at 2026-09-14 23:31:14.677
+    t =     0.02s Set Up
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+    t =     0.03s             Terminate com.mdd.kanpan:83797
+2026-09-14 23:31:15.773 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:31:15.773 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.30s             Setting up automation session
+    t =     2.07s             Wait for com.mdd.kanpan to idle
+    t =     3.42s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.43s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.43s             Checking existence of `"top.symbol" Button`
+    t =     4.47s     Find the Window (First Match)
+    t =     4.48s     Find the "interval.more" Button
+    t =     4.50s     Find the "bottom.style" Button
+    t =     4.52s Tap "top.symbol" Button
+    t =     4.52s     Wait for com.mdd.kanpan to idle
+    t =     4.52s     Find the "top.symbol" Button
+    t =     4.53s     Check for interrupting elements affecting "top.symbol" Button
+    t =     4.54s         Wait for com.apple.springboard to idle
+    t =     4.56s     Synthesize event
+    t =     4.85s     Wait for com.mdd.kanpan to idle
+    t =     5.19s Waiting 8.0s for "symbols.back" Button to exist
+    t =     6.20s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.back" Button`
+    t =     6.20s         Checking existence of `"symbols.back" Button`
+    t =     6.31s Tap "symbols.back" Button
+    t =     6.31s     Wait for com.mdd.kanpan to idle
+    t =     6.32s     Find the "symbols.back" Button
+    t =     6.38s     Check for interrupting elements affecting "symbols.back" Button
+    t =     6.43s         Wait for com.apple.springboard to idle
+    t =     6.45s     Synthesize event
+    t =     6.74s     Wait for com.mdd.kanpan to idle
+    t =     7.14s Checking existence of `"symbols.back" Button`
+    t =     7.16s Waiting 8.0s for "top.symbol" Button to exist
+    t =     8.17s     Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     8.17s         Checking existence of `"top.symbol" Button`
+    t =     8.20s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testSymbolButtonOpensAndClosesSymbolPage]' passed (8.422 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testTappingChartDismissesPanel]' started.
+    t =     0.00s Start Test at 2026-09-14 23:31:23.100
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+    t =     0.02s             Terminate com.mdd.kanpan:83820
+2026-09-14 23:31:24.184 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:31:24.184 xcodebuild[82445:31549983] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.29s             Setting up automation session
+    t =     2.10s             Wait for com.mdd.kanpan to idle
+    t =     3.42s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     4.43s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     4.43s             Checking existence of `"top.symbol" Button`
+    t =     4.46s     Find the Window (First Match)
+    t =     4.47s     Find the "interval.more" Button
+    t =     4.48s     Find the "bottom.style" Button
+    t =     4.50s Find the "chart.latest" Button
+    t =     4.53s Press Window (First Match)[0.00, 0.00] -> (40.0, 568.0) for 0.1 seconds, then drag to Window (First Match)[0.00, 0.00] -> (40.0, 568.0) -> (220.0, 0.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =     4.53s     Wait for com.mdd.kanpan to idle
+    t =     4.53s     Find the Window (First Match)
+    t =     4.54s     Check for interrupting elements affecting Window
+    t =     4.55s         Wait for com.apple.springboard to idle
+    t =     4.58s     Synthesize event
+    t =     4.58s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     4.59s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     4.59s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     4.60s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     4.62s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     5.36s     Wait for com.mdd.kanpan to idle
+    t =     5.36s Find the "chart.latest" Button
+    t =     5.39s Find the "chart.latest" Button
+    t =     5.40s Tap "chart.latest" Button
+    t =     5.40s     Wait for com.mdd.kanpan to idle
+    t =     5.41s     Find the "chart.latest" Button
+    t =     5.42s     Check for interrupting elements affecting "chart.latest" Button
+    t =     5.43s         Wait for com.apple.springboard to idle
+    t =     5.44s     Synthesize event
+    t =     5.73s     Wait for com.mdd.kanpan to idle
+    t =     5.74s Find the "chart.latest" Button
+    t =     5.76s Tap "bottom.indicator" Button
+    t =     5.76s     Wait for com.mdd.kanpan to idle
+    t =     5.76s     Find the "bottom.indicator" Button
+    t =     5.78s     Check for interrupting elements affecting "bottom.indicator" Button
+    t =     5.80s         Wait for com.apple.springboard to idle
+    t =     5.81s     Synthesize event
+    t =     6.10s     Wait for com.mdd.kanpan to idle
+    t =     6.18s Waiting 8.0s for "indicator.switch.MACD" Button to exist
+    t =     7.21s     Checking `Expect predicate `existsNoRetry == 1` for object "indicator.switch.MACD" Button`
+    t =     7.21s         Checking existence of `"indicator.switch.MACD" Button`
+    t =     7.29s Tap Window (First Match)[0.00, 0.00] -> (40.0, 386.9)
+    t =     7.29s     Wait for com.mdd.kanpan to idle
+    t =     7.30s     Find the Window (First Match)
+    t =     7.31s     Check for interrupting elements affecting Window
+    t =     7.35s         Wait for com.apple.springboard to idle
+    t =     7.36s     Synthesize event
+    t =     7.36s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     7.37s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     7.38s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =     7.66s     Wait for com.mdd.kanpan to idle
+    t =     7.99s Checking existence of `"indicator.switch.MACD" Button`
+    t =     8.00s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testTappingChartDismissesPanel]' passed (8.228 seconds).
+Test Suite 'MainScreenUITests' passed at 2026-09-14 23:31:31.327.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 115.253 (115.261) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-14 23:31:31.328.
+	 Executed 13 tests, with 0 failures (0 unexpected) in 218.842 (218.854) seconds
+Test Suite 'Selected tests' passed at 2026-09-14 23:31:31.328.
+	 Executed 13 tests, with 0 failures (0 unexpected) in 218.842 (218.855) seconds
+2026-09-14 23:31:47.713 xcodebuild[82445:31549983] [MT] IDETestOperationsObserverDebug: 301.230 elapsed -- Testing started completed.
+2026-09-14 23:31:47.713 xcodebuild[82445:31549983] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-14 23:31:47.713 xcodebuild[82445:31549983] [MT] IDETestOperationsObserverDebug: 301.230 sec, +301.230 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/compatibility/iPad-mini-A17-Pro-ipad-fix.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

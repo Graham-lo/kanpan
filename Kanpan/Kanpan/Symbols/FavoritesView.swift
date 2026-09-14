@@ -15,14 +15,14 @@ struct FavoritesView: View {
   var onRowVisibility: (String, Bool) -> Void
   var onHistoryVisibility: (String, Bool) -> Void
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @Environment(\.colorScheme) private var scheme
+  @Environment(\.panelTheme) private var theme
   @State private var adding = false
+  @State private var more = false
+  @State private var afterMore: (() -> Void)?
+  @State private var moreTask: Task<Void, Never>?
   @State private var editingName = false
   @State private var renamedID: String?
   @State private var name = ""
-  @FocusState private var searchFocused: Bool
-  @State private var search = false
-  @State private var query = ""
   @State private var editing = false
   @State private var editQuotes: [String: Ticker] = [:]
   @State private var selection = Set<String>()
@@ -32,13 +32,11 @@ struct FavoritesView: View {
   @State private var amount = false
   @State private var moving: MoveRequest?
   private struct MoveRequest: Identifiable { let id = UUID(); let symbols: [String] }
-  private var theme: PanelTheme { PanelTheme(dark: scheme == .dark, redUp: redUp) }
   private var selected: String? { model.prefs.selectedGroupID ?? model.prefs.groups.first?.id }
   private var groupID: String? { selected }
   private var symbols: [String] {
     let source = model.prefs.favorites(in: groupID)
-    let term = SymbolQuery.normalize(query)
-    var rows = source.filter { term.isEmpty || $0.contains(term) }
+    var rows = source
     if !editing, sort != "custom" {
       rows.sort { a, b in
         if sort == "name" { return ascending ? a < b : a > b }
@@ -56,26 +54,12 @@ struct FavoritesView: View {
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
-        if search {
-          HStack(spacing: 10) {
-            TextField("搜索自选品种", text: $query).textInputAutocapitalization(.characters)
-              .autocorrectionDisabled().focused($searchFocused).accessibilityIdentifier("favorites.query")
-              .task {
-                // 搜索框插入动画结束后再聚焦，避免尚未加入窗口时丢失焦点请求。
-                try? await Task.sleep(for: .milliseconds(220))
-                guard !Task.isCancelled else { return }
-                searchFocused = true
-              }
-              .padding(9).background(theme.raised2, in: RoundedRectangle(cornerRadius: 9))
-            Button("取消") { searchFocused = false; search = false; query = "" }.accessibilityIdentifier("favorites.search.cancel")
-          }.padding(.horizontal, 12).padding(.bottom, 9)
-        }
-        groupBar
+        FavoritesHeader(prefs: model.prefs, editing: editing, more: more, theme: theme, content: groupBar).equatable()
         overview
         sortBar
         if symbols.isEmpty {
           ContentUnavailableView {
-            Label(query.isEmpty ? "这个分类还是空的" : "没搜到", systemImage: "star")
+            Label("这个分类还是空的", systemImage: "star")
           } description: {
             Text("把常看的品种加进来，分组只是组织方式，行情不会重复。")
           } actions: { Button("添加品种") { adding = true } }
@@ -104,47 +88,28 @@ struct FavoritesView: View {
               model.moveVisible(symbols, from: source, to: target)
               sort = "custom"
             }
-            .moveDisabled(!query.isEmpty)
           }.listStyle(.plain).scrollContentBackground(.hidden)
         }
       }
       .background(theme.app)
-      .toolbarBackground(theme.app, for: .navigationBar)
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .topBarLeading) {
-          Button("行情", action: onClose).accessibilityIdentifier("favorites.close")
-        }
-        ToolbarItem(placement: .principal) {
-          HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("自选").font(.system(size: 17, weight: .semibold))
-            Text("\(model.prefs.favorites.count)").font(.system(size: 11)).foregroundStyle(theme.ink3)
-          }
-        }
-        ToolbarItemGroup(placement: .topBarTrailing) {
-          Button {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { search.toggle() }
-            if !search { query = ""; searchFocused = false }
-          } label: {
-            Image(systemName: "magnifyingglass").frame(width: 36, height: 36)
-              .background(theme.app, in: RoundedRectangle(cornerRadius: 8)).contentShape(Rectangle())
-          }.buttonStyle(.plain).accessibilityLabel("搜索自选").accessibilityIdentifier("favorites.search")
-          Button { adding = true } label: { Image(systemName: "plus") }
-            .accessibilityLabel("添加品种").accessibilityIdentifier("favorites.add")
-          Button(editing ? "完成" : "编辑") {
-            if editing { editing = false; editQuotes.removeAll() }
-            else { editQuotes = model.tickers; editing = true }
-            selection.removeAll(); query = ""; expanded.removeAll()
-          }.accessibilityIdentifier("favorites.edit")
-        }
-      }
+      .toolbar(.hidden, for: .navigationBar)
       .safeAreaInset(edge: .bottom, spacing: 0) { if editing { editBar } }
     }
     .tint(theme.amber)
     .task { await model.appear() }
     .onDisappear {
+      moreTask?.cancel()
       model.disappear()
       for symbol in expanded { onHistoryVisibility(symbol, false) }
+    }
+    .onChange(of: more) { _, shown in
+      guard !shown, let action = afterMore else { return }
+      afterMore = nil
+      moreTask?.cancel()
+      moreTask = Task { @MainActor in
+        do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+        action()
+      }
     }
     .onChange(of: expanded) { old, next in
       for symbol in next.subtracting(old) { onHistoryVisibility(symbol, true) }
@@ -179,25 +144,103 @@ struct FavoritesView: View {
     }
   }
 
+  /// Width follows native container/font metrics; extra folders live in the menu.
+  private func tabWidth(_ group: FavoriteGroup) -> CGFloat {
+    min(132, max(66, (group.name as NSString).size(withAttributes:
+      [.font: UIFont.systemFont(ofSize: 17, weight: .semibold)]).width + 24))
+  }
+
+  private func visibleGroups(width: CGFloat) -> [FavoriteGroup] {
+    var result: [FavoriteGroup] = []
+    var remaining = max(0, width - 104)
+    for group in model.prefs.groups {
+      let required = tabWidth(group) + (result.isEmpty ? 0 : 4)
+      guard remaining >= required else { break }
+      result.append(group); remaining -= required
+    }
+    if let active = model.prefs.groups.first(where: { $0.id == selected }),
+       !result.contains(where: { $0.id == active.id }) {
+      while !result.isEmpty && remaining < tabWidth(active) + 4 {
+        remaining += tabWidth(result.removeLast()) + 4
+      }
+      result.append(active)
+    }
+    return result
+  }
+
+  private func toggleEditing() {
+    if editing { editing = false; editQuotes.removeAll() }
+    else { editQuotes = model.tickers; editing = true }
+    selection.removeAll(); expanded.removeAll()
+  }
+
   private var groupBar: some View {
-    HStack(spacing: 0) {
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 2) {
-          ForEach(model.prefs.groups) { group in
+    GeometryReader { geometry in
+      let visible = visibleGroups(width: geometry.size.width)
+      HStack(spacing: 4) {
+        HStack(spacing: 4) {
+          ForEach(visible) { group in
             chip(group.name, id: group.id, count: model.prefs.favorites(in: group.id).count)
-              .contextMenu {
-                Button("重命名") { renamedID = group.id; name = group.name; editingName = true }
-                Button("删除分类", role: .destructive) {
-                  model.deleteGroup(group.id)
-                }
-              }
+              .frame(width: tabWidth(group))
+
           }
-        }.padding(.horizontal, 4)
-      }.accessibilityIdentifier("favorites.groups")
-      Button { renamedID = nil; name = ""; editingName = true } label: {
-        Image(systemName: "folder.badge.plus").frame(width: 42, height: 38)
-      }.accessibilityLabel("新建分类").accessibilityIdentifier("favorites.newGroup")
-    }.overlay(alignment: .bottom) { theme.line.frame(height: 0.5) }
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("favorites.groups")
+        Spacer(minLength: 0)
+        Button { adding = true } label: { Image(systemName: "plus").frame(width: 44, height: 48) }
+          .accessibilityLabel("添加品种").accessibilityIdentifier("favorites.add")
+        Button { more = true } label: {
+          Image(systemName: "ellipsis").frame(width: 44, height: 48).contentShape(Rectangle())
+        }.accessibilityLabel("更多分类与管理").accessibilityIdentifier("favorites.more")
+          .popover(isPresented: $more, arrowEdge: .top) {
+            moreList(hidden: model.prefs.groups.filter { group in !visible.contains(where: { $0.id == group.id }) })
+              .presentationCompactAdaptation(.popover)
+          }
+      }.font(.system(size: 19, weight: .medium)).padding(.horizontal, 8)
+    }.frame(height: 58)
+      .overlay(alignment: .bottom) { theme.line.frame(height: 0.5) }
+  }
+
+  private func runMore(_ action: @escaping () -> Void) {
+    afterMore = action; more = false
+  }
+
+  private func moreRow(_ title: String, icon: String, id: String, destructive: Bool = false,
+                       action: @escaping () -> Void) -> some View {
+    Button { runMore(action) } label: {
+      Label(title, systemImage: icon).frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+        .padding(.horizontal, 16).contentShape(Rectangle())
+    }.buttonStyle(.plain).foregroundStyle(destructive ? Color(hex: Palette.chart(theme.seed, redUp: false).down) : theme.ink)
+      .accessibilityIdentifier(id)
+  }
+
+  private func moreList(hidden: [FavoriteGroup]) -> some View {
+    ScrollView {
+      VStack(spacing: 0) {
+        if !hidden.isEmpty {
+          Text("更多分类").font(.system(size: 11)).foregroundStyle(theme.ink3)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 10)
+          ForEach(hidden) { group in
+            moreRow(group.name, icon: "folder", id: "favorites.group." + group.name) {
+              model.selectGroup(group.id); selection.removeAll(); expanded.removeAll()
+            }
+          }
+          theme.line.frame(height: 0.5).padding(.vertical, 6)
+        }
+        moreRow("新建分类", icon: "folder.badge.plus", id: "favorites.newGroup") {
+          renamedID = nil; name = ""; editingName = true
+        }
+        moreRow(editing ? "完成编辑" : "编辑自选", icon: "pencil", id: "favorites.edit") { toggleEditing() }
+        if let group = model.prefs.groups.first(where: { $0.id == selected }) {
+          moreRow("重命名当前分类", icon: "square.and.pencil", id: "favorites.renameGroup") {
+            renamedID = group.id; name = group.name; editingName = true
+          }
+          moreRow("删除当前分类", icon: "trash", id: "favorites.deleteGroup", destructive: true) { model.deleteGroup(group.id) }
+        }
+        theme.line.frame(height: 0.5).padding(.vertical, 6)
+        moreRow("返回行情", icon: "chart.xyaxis.line", id: "favorites.close", action: onClose)
+      }.padding(.vertical, 6)
+    }.font(.system(size: 14)).frame(width: 260).frame(idealHeight: min(430, CGFloat(5 + hidden.count) * 46 + (hidden.isEmpty ? 25 : 68)), maxHeight: 430)
+      .background(theme.app).presentationBackground(theme.app)
   }
 
   private var overview: some View {
@@ -221,7 +264,12 @@ struct FavoritesView: View {
     }.font(.system(size: 11)).padding(.horizontal, 16).padding(.vertical, 8)
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("favorites.feed")
-      .accessibilityValue(feedDiagnostics ?? "")
+      .accessibilityValue(paletteDiagnostics)
+  }
+
+  private var paletteDiagnostics: String {
+    guard let feedDiagnostics else { return "" }
+    return feedDiagnostics + ";background=" + theme.chart.bg.value
   }
 
   private var sortBar: some View {
@@ -318,7 +366,7 @@ struct FavoritesView: View {
   private func quote(_ symbol: String) -> some View {
     let ticker = displayQuote(symbol)
     let value = ticker?.changePercent ?? .nan
-    let color = value.isFinite ? (value >= 0 ? theme.up : theme.down) : theme.ink3
+    let color = value.isFinite ? theme.badgeFill(up: value >= 0) : theme.ink3
     let decimals = model.catalog.first { $0.symbol == symbol }?.pricePrecision ?? 2
     let price = ticker?.last ?? .nan
     let change = amount && value.isFinite && price.isFinite && value > -100 ? price - price / (1 + value / 100) : value
@@ -411,10 +459,27 @@ struct FavoritesView: View {
   }
   private func chip(_ title: String, id: String, count: Int) -> some View {
     Button { model.selectGroup(id); selection.removeAll(); expanded.removeAll() } label: {
-      HStack(spacing: 4) { Text(title).font(.system(size: 13, weight: .medium)); Text("\(count)").font(.system(size: 10, design: .monospaced)).opacity(0.75) }
-        .padding(.horizontal, 10).padding(.vertical, 12)
+      Text(title).font(.system(size: 17, weight: selected == id ? .semibold : .medium))
+        .lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, minHeight: 48)
+        .contentShape(Rectangle())
         .foregroundStyle(selected == id ? theme.amber : theme.ink2)
         .overlay(alignment: .bottom) { if selected == id { Capsule().fill(theme.amber).frame(height: 2).padding(.horizontal, 10).padding(.bottom, 4) } }
-    }.accessibilityIdentifier("favorites.group." + title)
+    }.buttonStyle(.plain).accessibilityLabel(title + "，\(count)个品种")
+      .accessibilityAddTraits(selected == id ? .isSelected : [])
+      .accessibilityIdentifier("favorites.group." + title)
   }
+}
+
+/// Keep category controls independent of row-price refreshes.
+/// Keep the header's identity tied to folders/editing/theme, not row prices.
+private struct FavoritesHeader<Content: View>: View, Equatable {
+  let prefs: SymbolPrefs
+  let editing: Bool
+  let more: Bool
+  let theme: PanelTheme
+  let content: Content
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.prefs == rhs.prefs && lhs.editing == rhs.editing && lhs.more == rhs.more && lhs.theme == rhs.theme
+  }
+  var body: some View { content }
 }

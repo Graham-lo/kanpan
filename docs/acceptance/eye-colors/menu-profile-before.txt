@@ -1,0 +1,41 @@
+Analysis of sampling Kanpan (pid 70241) every 10 milliseconds
+Process:         Kanpan [70241]
+Path:            /Users/USER/Library/Developer/CoreSimulator/Devices/3749DE35-5582-4066-8C14-9767B5559B70/data/Containers/Bundle/Application/476E4F94-F646-4F7E-89EB-44DF4A1E316D/Kanpan.app/Kanpan
+Load Address:    0x102b4c000
+Identifier:      com.mdd.kanpan
+Version:         1.0.0 (1)
+Code Type:       ARM64
+Platform:        iOS Simulator
+Parent Process:  launchd_sim [69751]
+Target Type:     live task
+
+Date/Time:       2026-09-15 05:31:03.022 +0800
+Launch Time:     2026-09-15 05:30:24.330 +0800
+OS Version:      macOS 26.5.1 (25F80)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         92.7M
+Physical footprint (peak):  100.8M
+Idle exit:                  untracked
+----
+
+Call graph:
+    245 Thread_32814157: Main Thread   DispatchQueue_<multiple>
+
+Selected stacks (not a whole-app before/after benchmark):
+    + !                     :             | +     !       :             |         + 11 UpdateContextMenuInteraction.updateValue()  (in SwiftUI) + 604  [0x1d2d36f14]
+    + !                     :             | +     !       :             |         + ! 11 -[UIContextMenuInteraction updateVisibleMenuWithBlock:]  (in UIKitCore) + 556  [0x186b4a238]
+    + !                     :             | +     !       :             |         + !     11 -[_UIContextMenuUIController _replaceVisibleMenu:withMenu:]  (in UIKitCore) + 152  [0x1867ab03c]
+    + !                     :             | +     !       :             |         + !       9 -[_UIContextMenuView _displayMenu:inPlaceOfMenu:updateType:alongsideAnimations:]  (in UIKitCore) + 1724  [0x1857b36b4]
+    + !                     :             | +     !       :             |         + !       :               1 __80-[_UIContextMenuView _displayMenu:inPlaceOfMenu:updateType:alongsideAnimations:]_block_invoke_4  (in UIKitCore) + 24  [0x1857b3c08]
+    + !                     :             | +     !       :             |         + !       2 -[_UIContextMenuView _displayMenu:inPlaceOfMenu:updateType:alongsideAnimations:]  (in UIKitCore) + 1972  [0x1857b37ac]
+    + !                     :             | +     !       :             |         + !                       2 __80-[_UIContextMenuView _displayMenu:inPlaceOfMenu:updateType:alongsideAnimations:]_block_invoke_5  (in UIKitCore) + 200  [0x1857b3cec]
+    + !                     :             | +     !       :             |         + !                           2 __80-[_UIContextMenuView _displayMenu:inPlaceOfMenu:updateType:alongsideAnimations:]_block_invoke_6  (in UIKitCore) + 72  [0x1857b3d68]
+    + !                     :             | +     !       :             |         + 2 UpdateContextMenuInteraction.updateValue()  (in SwiftUI) + 380  [0x1d2d36e34]
+    + !                     :             | +     !       :             | +       ! 10 UpdateContextMenuInteraction.updateValue()  (in SwiftUI) + 604  [0x1d2d36f14]
+    + !                     :             | +     !       :             | +       !   10 -[UIContextMenuInteraction updateVisibleMenuWithBlock:]  (in UIKitCore) + 556  [0x186b4a238]
+    + !                     :             | +     !       :             | +       !       10 -[_UIContextMenuUIController _replaceVisibleMenu:withMenu:]  (in UIKitCore) + 152  [0x1867ab03c]
+    + !                     :             | +     !       :             | +       !         10 -[_UIContextMenuView _displayMenu:inPlaceOfMenu:updateType:alongsideAnimations:]  (in UIKitCore) + 1724  [0x1857b36b4]
+    + !                     :             | +     !       :             | +       !                         1 __80-[_UIContextMenuView _displayMenu:inPlaceOfMenu:updateType:alongsideAnimations:]_block_invoke_4  (in UIKitCore) + 24  [0x1857b3c08]
+    + !                     :                   +                           !     : 7 UpdateContextMenuInteraction.updateValue()  (in SwiftUI) + 604  [0x1d2d36f14]

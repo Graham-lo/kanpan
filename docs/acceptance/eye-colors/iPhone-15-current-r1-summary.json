@@ -1,0 +1,57 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "3749DE35-5582-4066-8C14-9767B5559B70",
+        "deviceName" : "iPhone 15",
+        "modelName" : "iPhone 15",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 2,
+      "passedTests" : 3,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "Kanpan · Built with macOS 26.5.1",
+  "expectedFailures" : 0,
+  "failedTests" : 2,
+  "finishTime" : 1789420475.964,
+  "passedTests" : 3,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1789420191.771,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "XCTAssertEqualWithAccuracy failed: (\"4.692537313432836\") is not equal to (\"4.0\") +/- (\"0.02\")",
+      "targetName" : "KanpanUITests",
+      "testIdentifier" : 4,
+      "testIdentifierString" : "ChartFoundationUITests/testLatestQuoteDoesNotRegressAcrossIntervals()",
+      "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/ChartFoundationUITests/testLatestQuoteDoesNotRegressAcrossIntervals",
+      "testName" : "testLatestQuoteDoesNotRegressAcrossIntervals()"
+    },
+    {
+      "failureText" : "Failed to synthesize event: Neither element nor any descendant has keyboard focus. Event dispatch snapshot: TextField, {{11.5, 121.5}, {328.0, 37.7}}, identifier: 'symbols.query', placeholderValue: '搜 BTC、ETH、SOL…', value: 搜 BTC、ETH、SOL…\nElement debug description:\nAttributes: TextField, 0x117892940, {{11.5, 121.5}, {328.0, 37.7}}, identifier: 'symbols.query', placeholderValue: '搜 BTC、ETH、SOL…', value: 搜 BTC、ETH、SOL…\nElement subtree:\n →TextField, 0x117892940, {{11.5, 121.5}, {328.0, 37.7}}, identifier: 'symbols.query', placeholderValue: '搜 BTC、ETH、SOL…', value: 搜 BTC、ETH、SOL…\nPath to element:\n →Application, 0x1178c5040, pid: 65244, label: 'Hntcoin'\n  ↳Window (Main), 0x1178c7700, {{0.0, 0.0}, {393.0, 852.0}}\n   ↳Other, 0x117893840, {{0.0, 0.0}, {393.0, 852.0}}\n    ↳Other, 0x117893980, {{0.0, 0.0}, {393.0, 852.0}}\n     ↳Other, 0x1178935c0, {{0.0, 0.0}, {393.0, 852.0}}\n      ↳TextField, 0x117892940, {{11.5, 121.5}, {328.0, 37.7}}, identifier: 'symbols.query', placeholderValue: '搜 BTC、ETH、SOL…', value: 搜 BTC、ETH、SOL…\nQuery chain:\n →Find: Target Application 'com.mdd.kanpan'\n  Output: {\n    Application, 0x1178efe80, pid: 65244, label: 'Hntcoin'\n  }\n  ↪︎Find: Descendants matching type TextField\n    Output: {\n      TextField, 0x1178f6bc0, {{11.5, 121.5}, {328.0, 37.7}}, identifier: 'symbols.query', placeholderValue: '搜 BTC、ETH、SOL…', value: 搜 BTC、ETH、SOL…\n    }\n    ↪︎Find: Elements matching predicate '\"symbols.query\" IN identifiers'\n      Output: {\n        TextField, 0x11788d680, {{11.5, 121.5}, {328.0, 37.7}}, identifier: 'symbols.query', placeholderValue: '搜 BTC、ETH、SOL…', value: 搜 BTC、ETH、SOL…\n      }\n",
+      "targetName" : "KanpanUITests",
+      "testIdentifier" : 5,
+      "testIdentifierString" : "ChartFoundationUITests/testQuickFavoritesAndMarketSectors()",
+      "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/ChartFoundationUITests/testQuickFavoritesAndMarketSectors",
+      "testName" : "testQuickFavoritesAndMarketSectors()"
+    }
+  ],
+  "title" : "Test - Kanpan",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 5
+}

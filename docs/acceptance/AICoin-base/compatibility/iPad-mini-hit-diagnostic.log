@@ -1,0 +1,140 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=09660D81-A401-4C62-9ED2-1643B59F22E7" -derivedDataPath DerivedData-codex-compat-reviewed -parallel-testing-enabled NO -resultBundlePath docs/acceptance/AICoin-base/compatibility/iPad-mini-hit-diagnostic.xcresult "-only-testing:KanpanUITests/MainScreenUITests/testSearchButtonOpensSymbolPage" "-only-testing:KanpanUITests/MainScreenUITests/testLatestButtonAppearsAfterLeavingLatest"
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/compatibility/iPad-mini-hit-diagnostic.xcresult
+
+2026-09-14 23:50:35.999262+0800 KanpanUITests-Runner[91152:31679116] [Default] Running tests...
+2026-09-14 23:50:36.057147+0800 KanpanUITests-Runner[91152:31679116] [UIKit App Config] Update the Info.plist: Launch screens will soon be required.
+2026-09-14 23:50:36.060180+0800 KanpanUITests-Runner[91152:31679400] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+2026-09-14 23:50:36.099344+0800 KanpanUITests-Runner[91152:31679392] [General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+objc[91152]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x108980310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x107c0c398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-14 23:50:51.650.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-14 23:50:51.651.
+Test Suite 'MainScreenUITests' started at 2026-09-14 23:50:51.651.
+Test Case '-[KanpanUITests.MainScreenUITests testLatestButtonAppearsAfterLeavingLatest]' started.
+    t =     0.00s Start Test at 2026-09-14 23:50:51.652
+    t =     0.17s Set Up
+    t =     0.19s     Open com.mdd.kanpan
+    t =     0.19s         Launch com.mdd.kanpan
+2026-09-14 23:50:53.014 xcodebuild[90663:31673558] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:50:53.015 xcodebuild[90663:31673558] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     7.15s             Setting up automation session
+    t =     8.09s             Wait for com.mdd.kanpan to idle
+    t =     9.99s     Waiting 30.0s for "top.symbol" Button to exist
+    t =    11.04s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =    11.04s             Checking existence of `"top.symbol" Button`
+    t =    11.16s     Find the Window (First Match)
+    t =    11.22s     Find the "interval.more" Button
+    t =    11.31s     Find the "bottom.style" Button
+    t =    11.43s Find the "chart.latest" Button
+    t =    11.52s Press Window (First Match)[0.00, 0.00] -> (40.0, 568.0) for 0.1 seconds, then drag to Window (First Match)[0.00, 0.00] -> (40.0, 568.0) -> (220.0, 0.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    11.52s     Wait for com.mdd.kanpan to idle
+    t =    11.53s     Find the Window (First Match)
+    t =    11.57s     Check for interrupting elements affecting Window
+    t =    11.71s         Wait for com.apple.springboard to idle
+    t =    11.92s     Synthesize event
+    t =    11.92s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =    11.95s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =    11.97s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =    11.99s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =    12.01s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =    12.89s     Wait for com.mdd.kanpan to idle
+    t =    12.92s Find the "chart.latest" Button
+    t =    12.98s Find the "chart.latest" Button
+    t =    13.01s Tap "chart.latest" Button
+    t =    13.01s     Wait for com.mdd.kanpan to idle
+    t =    13.01s     Find the "chart.latest" Button
+    t =    13.05s     Check for interrupting elements affecting "chart.latest" Button
+    t =    13.08s         Wait for com.apple.springboard to idle
+    t =    13.11s     Synthesize event
+    t =    13.41s     Wait for com.mdd.kanpan to idle
+    t =    13.43s Find the "chart.latest" Button
+    t =    13.47s Find the "chart.latest" Button
+    t =    13.49s Press Window (First Match)[0.00, 0.00] -> (40.0, 568.0) for 0.1 seconds, then drag to Window (First Match)[0.00, 0.00] -> (40.0, 568.0) -> (220.0, 0.0) with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    13.49s     Wait for com.mdd.kanpan to idle
+    t =    13.49s     Find the Window (First Match)
+    t =    13.50s     Check for interrupting elements affecting Window
+    t =    13.52s         Wait for com.apple.springboard to idle
+    t =    13.54s     Synthesize event
+    t =    13.54s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =    13.56s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =    13.57s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =    13.58s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =    13.60s         Find the Window at {{0.0, 0.0}, {744.0, 1133.0}}
+    t =    14.34s     Wait for com.mdd.kanpan to idle
+    t =    14.36s Find the "chart.latest" Button
+    t =    14.42s Tap "chart.latest" Button
+    t =    14.43s     Wait for com.mdd.kanpan to idle
+    t =    14.43s     Find the "chart.latest" Button
+    t =    14.44s     Check for interrupting elements affecting "chart.latest" Button
+    t =    14.46s         Wait for com.apple.springboard to idle
+    t =    14.48s     Synthesize event
+    t =    14.77s     Wait for com.mdd.kanpan to idle
+    t =    14.80s Find the "chart.latest" Button
+    t =    14.86s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testLatestButtonAppearsAfterLeavingLatest]' passed (15.191 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testSearchButtonOpensSymbolPage]' started.
+    t =     0.00s Start Test at 2026-09-14 23:51:06.844
+    t =     0.04s Set Up
+    t =     0.04s     Open com.mdd.kanpan
+    t =     0.04s         Launch com.mdd.kanpan
+    t =     0.04s             Terminate com.mdd.kanpan:91287
+2026-09-14 23:51:07.991 xcodebuild[90663:31673558] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-14 23:51:07.991 xcodebuild[90663:31673558] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.61s             Setting up automation session
+    t =     2.77s             Wait for com.mdd.kanpan to idle
+    t =     4.64s     Waiting 30.0s for "top.symbol" Button to exist
+    t =     5.68s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Button`
+    t =     5.68s             Checking existence of `"top.symbol" Button`
+    t =     5.72s     Find the Window (First Match)
+    t =     5.73s     Find the "interval.more" Button
+    t =     5.74s     Find the "bottom.style" Button
+    t =     5.76s Tap "top.search" Button
+    t =     5.76s     Wait for com.mdd.kanpan to idle
+    t =     5.77s     Find the "top.search" Button
+    t =     5.78s     Check for interrupting elements affecting "top.search" Button
+    t =     5.81s         Wait for com.apple.springboard to idle
+    t =     5.85s     Synthesize event
+    t =     6.16s     Wait for com.mdd.kanpan to idle
+    t =     6.64s Checking existence of `"top.search" Button`
+    t =     7.29s Find the "top.search" Button
+[UIHit] search callback count: Optional(1)
+    t =     7.66s Waiting 8.0s for "symbols.query" TextField to exist
+    t =     8.67s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.query" TextField`
+    t =     8.67s         Checking existence of `"symbols.query" TextField`
+    t =     8.82s Tap "symbols.back" Button
+    t =     8.82s     Wait for com.mdd.kanpan to idle
+    t =     8.87s     Find the "symbols.back" Button
+    t =     9.10s     Check for interrupting elements affecting "symbols.back" Button
+    t =     9.23s         Wait for com.apple.springboard to idle
+    t =     9.28s     Synthesize event
+    t =     9.62s     Wait for com.mdd.kanpan to idle
+    t =    10.09s Checking existence of `"symbols.back" Button`
+    t =    10.21s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testSearchButtonOpensSymbolPage]' passed (10.514 seconds).
+Test Suite 'MainScreenUITests' passed at 2026-09-14 23:51:17.359.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 25.705 (25.708) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-14 23:51:17.359.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 25.705 (25.709) seconds
+Test Suite 'Selected tests' passed at 2026-09-14 23:51:17.359.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 25.705 (25.709) seconds
+2026-09-14 23:51:39.322 xcodebuild[90663:31673558] [MT] IDETestOperationsObserverDebug: 110.231 elapsed -- Testing started completed.
+2026-09-14 23:51:39.323 xcodebuild[90663:31673558] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-14 23:51:39.323 xcodebuild[90663:31673558] [MT] IDETestOperationsObserverDebug: 110.231 sec, +110.231 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/compatibility/iPad-mini-hit-diagnostic.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

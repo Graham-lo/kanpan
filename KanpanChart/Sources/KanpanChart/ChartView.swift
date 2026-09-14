@@ -84,7 +84,7 @@ public final class ChartView: UIView {
       if ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" {
         let metrics = candleMetrics(spacing: s.view.barSpacing(step: s.series.step, plotW: layout.plotW),
                                     style: s.style, scale: Double(renderScale))
-        let info: [String: Any] = ["style": s.style.id, "bars": s.series.count, "symbol": s.series.symbol,
+        let info: [String: Any] = ["style": s.style.id, "background": s.colors.bg.value, "bars": s.series.count, "symbol": s.series.symbol,
           "latestRightGap": layout.plotW - s.view.x(Double(s.series.lastTime), plotW: layout.plotW)
             - s.view.barSpacing(step: s.series.step, plotW: layout.plotW) / 2,
           "lastClose": s.series.close.last ?? 0, "lastVolume": s.series.volume.last ?? 0,
@@ -284,7 +284,7 @@ public final class ChartView: UIView {
 
   /// 末根之外的一切是否一样。
   private static func sameFrame(_ a: ChartState, _ b: ChartState) -> Bool {
-    a.symbol == b.symbol && a.view == b.view && a.style == b.style && a.dark == b.dark
+    a.symbol == b.symbol && a.view == b.view && a.style == b.style && a.dark == b.dark && a.paletteSeed == b.paletteSeed
       && a.redUp == b.redUp && a.price == b.price && a.overlays == b.overlays
       && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
       && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi

@@ -1,0 +1,179 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun DerivedData-chart-foundation-device/Build/Products/Kanpan-user-favorites.xctestrun -destination platform=iOS,id=00008140-00010C902690801C -parallel-testing-enabled NO "-only-testing:KanpanUITests/ChartFoundationUITests/testUserSessionFreshQuotesAndReorder" -resultBundlePath docs/acceptance/AICoin-base/foundation/user-classification-final.xcresult
+
+2026-09-15 02:52:03.446 xcodebuild[31508:32298447] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-classification-final.xcresult
+
+2026-09-15 02:52:03.460 xcodebuild[31508:32298447] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:52:03.536 xcodebuild[31508:32298447] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:52:04.037 xcodebuild[31508:32298447] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS, arch:arm64e, id:00008140-00010C902690801C, name:iPhone }
+{ platform:iOS, arch:arm64, id:00008140-00010C902690801C, name:iPhone }
+2026-09-15 02:52:05.783 xcodebuild[31508:32298447] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:52:06.214 xcodebuild[31508:32298447] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:52:08.632453+0800 KanpanUITests-Runner[1993:325189] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-15 02:52:09.009.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-15 02:52:09.009.
+Test Suite 'ChartFoundationUITests' started at 2026-09-15 02:52:09.010.
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionFreshQuotesAndReorder]' started.
+    t =     0.00s Start Test at 2026-09-15 02:52:09.011
+    t =     0.02s Set Up
+    t =     0.02s     Setting device orientation to Portrait
+    t =     0.02s         Device orientation changed to Portrait
+    t =     0.04s         Wait for com.bradar.bcoinPro to idle
+    t =     0.11s Open com.mdd.kanpan
+    t =     0.11s     Launch com.mdd.kanpan
+    t =     0.11s         Terminate com.mdd.kanpan:1990
+2026-09-15 02:52:09.320 xcodebuild[31508:32298447] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:52:10.464 xcodebuild[31508:32298447] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 02:52:10.464 xcodebuild[31508:32298447] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     3.36s         Setting up automation session
+    t =     3.42s         Wait for com.mdd.kanpan to idle
+    t =     4.60s Waiting 15.0s for "favorites.close" Button to exist
+    t =     5.63s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.close" Button`
+    t =     5.64s         Checking existence of `"favorites.close" Button`
+    t =     5.65s             Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     5.79s             Find: Descendants matching type Button
+    t =     5.79s             Find: Elements matching predicate '"favorites.close" IN identifiers'
+    t =     5.79s Swipe right "favorites.groups" ScrollView
+    t =     5.79s     Wait for com.mdd.kanpan to idle
+    t =     5.80s     Find the "favorites.groups" ScrollView
+    t =     5.80s         Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     5.88s         Find: Descendants matching type ScrollView
+    t =     5.88s         Find: Elements matching predicate '"favorites.groups" IN identifiers'
+    t =     5.88s     Check for interrupting elements affecting "favorites.groups" ScrollView
+    t =     5.89s         Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     5.96s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     5.97s     Synthesize event
+    t =     6.44s     Wait for com.mdd.kanpan to idle
+    t =     7.71s Tap "favorites.group.加密" Button
+    t =     7.71s     Wait for com.mdd.kanpan to idle
+    t =     7.73s     Find the "favorites.group.加密" Button
+    t =     7.73s         Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     7.81s         Find: Descendants matching type Button
+    t =     7.81s         Find: Elements matching predicate '"favorites.group.加密" IN identifiers'
+    t =     7.82s     Check for interrupting elements affecting "favorites.group.加密" Button
+    t =     7.83s         Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     7.90s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     7.91s     Synthesize event
+    t =     8.20s     Wait for com.mdd.kanpan to idle
+    t =     8.21s Checking existence of `"favorites.group.全部" Button`
+    t =     8.21s     Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     8.30s     Find: Descendants matching type Button
+    t =     8.31s     Find: Elements matching predicate '"favorites.group.全部" IN identifiers'
+    t =     8.31s Checking existence of `"favorites.group.默认" Button`
+    t =     8.31s     Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     8.39s     Find: Descendants matching type Button
+    t =     8.39s     Find: Elements matching predicate '"favorites.group.默认" IN identifiers'
+    t =     8.40s Tap "favorites.search" Button[0.50, 0.50]
+    t =     8.40s     Wait for com.mdd.kanpan to idle
+    t =     8.40s     Find the "favorites.search" Button
+    t =     8.40s         Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     8.48s         Find: Descendants matching type Button
+    t =     8.48s         Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     8.49s     Check for interrupting elements affecting "favorites.search" Button
+    t =     8.50s         Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     8.56s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     8.57s     Synthesize event
+    t =     8.57s         Find the "favorites.search" Button
+    t =     8.57s             Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     8.66s             Find: Descendants matching type Button
+    t =     8.66s             Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     8.67s         Find the "favorites.search" Button
+    t =     8.67s             Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     8.74s             Find: Descendants matching type Button
+    t =     8.75s             Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     8.76s         Find the "favorites.search" Button
+    t =     8.76s             Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =     8.83s             Find: Descendants matching type Button
+    t =     8.83s             Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     9.12s     Wait for com.mdd.kanpan to idle
+    t =     9.86s Waiting 4.0s for "favorites.query" TextField to exist
+    t =    10.89s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.query" TextField`
+    t =    10.90s         Checking existence of `"favorites.query" TextField`
+    t =    10.90s             Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =    11.02s             Find: Descendants matching type TextField
+    t =    11.03s             Find: Elements matching predicate '"favorites.query" IN identifiers'
+    t =    11.03s Waiting 4.0s for Keyboard (First Match) to exist
+    t =    12.04s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =    12.04s         Checking existence of `Keyboard (First Match)`
+    t =    12.05s             Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =    12.17s         Capturing element debug description
+    t =    13.04s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =    13.04s         Checking existence of `Keyboard (First Match)`
+    t =    13.05s             Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =    13.12s         Capturing element debug description
+    t =    14.04s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =    14.04s         Checking existence of `Keyboard (First Match)`
+    t =    14.05s             Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =    14.17s         Capturing element debug description
+    t =    15.04s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =    15.04s         Checking existence of `Keyboard (First Match)`
+    t =    15.05s             Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =    15.14s         Capturing element debug description
+    t =    15.15s     Checking existence of `Keyboard (First Match)`
+    t =    15.15s         Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =    15.22s Collecting debug information to assist test failure triage
+    t =    15.22s     Requesting snapshot of accessibility hierarchy for app with pid 1994
+/Users/mdd/zhk/kanpan/Kanpan/KanpanUITests/ChartFoundationUITests.swift:402: error: -[KanpanUITests.ChartFoundationUITests testUserSessionFreshQuotesAndReorder] : XCTAssertTrue failed
+    t =    15.37s Tear Down
+    t =    15.37s     Find the Target Application 'com.mdd.kanpan'
+    t =    15.37s         Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =    15.53s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    15.53s     Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =    15.78s     Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =    15.94s     Find the "chart.canvas" Other
+    t =    15.95s         Requesting snapshot of accessibility hierarchy for app with pid 1994
+    t =    16.02s         Find: Descendants matching type Other
+    t =    16.02s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =    16.03s     Added attachment of type 'public.plain-text'
+    t =    16.03s     Terminate com.mdd.kanpan:1994
+Test Case '-[KanpanUITests.ChartFoundationUITests testUserSessionFreshQuotesAndReorder]' failed (17.175 seconds).
+2026-09-15 02:52:26.412 xcodebuild[31508:32298447] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-09-15 02:52:26.630588+0800 KanpanUITests-Runner[1995:325586] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-15 02:52:27.000.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-15 02:52:27.001.
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-15 02:52:27.001.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 02:52:27.002.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+2026-09-15 02:52:27.520 xcodebuild[31508:32298603]  IDETestOperationsObserverDebug: Failure collecting diagnostics from devices: Process exited with error 1:
+ ERROR: The operation couldn?t be completed. (CoreDeviceCLISupport.DiagnoseError error 0.)
+This tool generates files that allow Apple to investigate issues with your
+computer and help improve Apple products. The files might contain personal
+information found on your device or associated with your Apple Account(s),
+including but not limited to your name, serial numbers of your device,
+your device name, your device's location over the last one to two days,
+your attached peripheral devices, your user name, your email address and
+email settings, file paths, file names, Siri suggestions, your computer's
+IP addresses, and network connection information.
+
+This information is used by Apple in accordance with its privacy policy
+(www.apple.com/privacy) and is not shared with any other company. By using
+this tool and sending the results to Apple, you consent to Apple using the
+contents of these files to improve Apple products.
+
+An error occurred while running devicectl diagnose. Will archive the diagnostics collected thus far.
+Wrote file to /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-classification-final.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+Partial devicectl diagnose bundle located here: /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-classification-final.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+
+2026-09-15 02:52:27.525 xcodebuild[31508:32298447] [MT] IDETestOperationsObserverDebug: 21.714 elapsed -- Testing started completed.
+2026-09-15 02:52:27.525 xcodebuild[31508:32298447] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 02:52:27.525 xcodebuild[31508:32298447] [MT] IDETestOperationsObserverDebug: 21.714 sec, +21.714 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/user-classification-final.xcresult
+
+Failing tests:
+	ChartFoundationUITests.testUserSessionFreshQuotesAndReorder()
+
+** TEST EXECUTE FAILED **
+
+Testing started

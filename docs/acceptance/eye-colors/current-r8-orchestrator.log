@@ -1,0 +1,24 @@
+START iPhone 15
+START iPad Pro 13-inch (M5)
+DONE {'name': 'iPad Pro 13-inch (M5)', 'exitCode': 0, 'seconds': 161, 'expectedTests': 2, 'result': 'Passed', 'passedTests': 2, 'failedTests': 0, 'skippedTests': 0}
+START iPhone 17e
+DONE {'name': 'iPhone 17e', 'exitCode': 0, 'seconds': 147, 'expectedTests': 2, 'result': 'Passed', 'passedTests': 2, 'failedTests': 0, 'skippedTests': 0}
+START iPhone 17 Pro
+DONE {'name': 'iPhone 15', 'exitCode': 0, 'seconds': 352, 'expectedTests': 7, 'result': 'Passed', 'passedTests': 7, 'failedTests': 0, 'skippedTests': 0}
+START iPhone 17
+DONE {'name': 'iPhone 17 Pro', 'exitCode': 0, 'seconds': 150, 'expectedTests': 2, 'result': 'Passed', 'passedTests': 2, 'failedTests': 0, 'skippedTests': 0}
+START iPhone 17 Pro Max
+DONE {'name': 'iPhone 17', 'exitCode': 0, 'seconds': 158, 'expectedTests': 2, 'result': 'Passed', 'passedTests': 2, 'failedTests': 0, 'skippedTests': 0}
+START iPhone 16 Pro
+DONE {'name': 'iPhone 17 Pro Max', 'exitCode': 0, 'seconds': 156, 'expectedTests': 2, 'result': 'Passed', 'passedTests': 2, 'failedTests': 0, 'skippedTests': 0}
+START iPhone 16 Plus
+DONE {'name': 'iPhone 16 Pro', 'exitCode': 0, 'seconds': 166, 'expectedTests': 2, 'result': 'Passed', 'passedTests': 2, 'failedTests': 0, 'skippedTests': 0}
+START iPhone Air
+DONE {'name': 'iPhone 16 Plus', 'exitCode': 0, 'seconds': 169, 'expectedTests': 2, 'result': 'Passed', 'passedTests': 2, 'failedTests': 0, 'skippedTests': 0}
+START iPad mini (A17 Pro)
+DONE {'name': 'iPhone Air', 'exitCode': 0, 'seconds': 167, 'expectedTests': 2, 'result': 'Passed', 'passedTests': 2, 'failedTests': 0, 'skippedTests': 0}
+START iPad (A16)
+DONE {'name': 'iPad mini (A17 Pro)', 'exitCode': 0, 'seconds': 155, 'expectedTests': 2, 'result': 'Passed', 'passedTests': 2, 'failedTests': 0, 'skippedTests': 0}
+START iPad Air 11-inch (M4)
+DONE {'name': 'iPad (A16)', 'exitCode': 65, 'seconds': 161, 'expectedTests': 2, 'result': 'Failed', 'passedTests': 1, 'failedTests': 1, 'skippedTests': 0}
+DONE {'name': 'iPad Air 11-inch (M4)', 'exitCode': 0, 'seconds': 151, 'expectedTests': 2, 'result': 'Passed', 'passedTests': 2, 'failedTests': 0, 'skippedTests': 0}

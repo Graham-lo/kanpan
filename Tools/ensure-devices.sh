@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
-# A0.2：把任务书要的八台机型在最新 iOS 运行时上备齐。
+# 当前兼容范围：把 13 台机型在最新 iOS 运行时上备齐。
 # 已经有的就不动，缺的用 simctl create 补。用法：Tools/ensure-devices.sh
 set -euo pipefail
 
-# 机型名 → devicetype 标识符。名字与原型 app.js 的 DEVICES 一一对应。
+# 机型名 → devicetype 标识符。与 Makefile / Tools/ui-test.sh 保持一致。
 PAIRS=(
-  "iPhone SE (3rd generation)|com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation"
-  "iPhone 13 mini|com.apple.CoreSimulator.SimDeviceType.iPhone-13-mini"
   "iPhone 15|com.apple.CoreSimulator.SimDeviceType.iPhone-15"
   "iPhone 16 Pro|com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro"
-  "iPhone Air|com.apple.CoreSimulator.SimDeviceType.iPhone-Air"
   "iPhone 16 Plus|com.apple.CoreSimulator.SimDeviceType.iPhone-16-Plus"
+  "iPhone 17|com.apple.CoreSimulator.SimDeviceType.iPhone-17"
+  "iPhone 17 Pro|com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"
+  "iPhone 17e|com.apple.CoreSimulator.SimDeviceType.iPhone-17e"
   "iPhone 17 Pro Max|com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max"
+  "iPhone Air|com.apple.CoreSimulator.SimDeviceType.iPhone-Air"
   "iPad mini (A17 Pro)|com.apple.CoreSimulator.SimDeviceType.iPad-mini-A17-Pro"
+  "iPad (A16)|com.apple.CoreSimulator.SimDeviceType.iPad-A16"
+  "iPad Air 11-inch (M4)|com.apple.CoreSimulator.SimDeviceType.iPad-Air-11-inch-M4"
+  "iPad Pro 11-inch (M5)|com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-M5-12GB"
+  "iPad Pro 13-inch (M5)|com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB"
 )
 
 # 取版本号最大的那个 iOS 运行时

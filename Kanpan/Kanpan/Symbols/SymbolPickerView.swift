@@ -26,11 +26,14 @@ struct SymbolPickerView: View {
   var onVisible: ((String) -> Void)? = nil
   var onRowVisibility: ((String, Bool) -> Void)? = nil
 
-  @Environment(\.colorScheme) private var scheme
+  @Environment(\.panelTheme) private var theme
   @FocusState private var searchFocused: Bool
   @State private var dragging: String?
+  @State private var filterSelection: FilterSelection?
+  @State private var filterTask: Task<Void, Never>?
+  private enum FilterSelection { case market, sector }
 
-  private var seed: PaletteSeed { scheme == .dark ? Palette.darkSeed : Palette.lightSeed }
+  private var seed: PaletteSeed { theme.seed }
   private var colors: ChartColors { Palette.chart(seed, redUp: redUp) }
 
   @ScaledMetric(relativeTo: .body) private var nameSize: CGFloat = 14
@@ -43,15 +46,28 @@ struct SymbolPickerView: View {
     VStack(spacing: 0) {
       header
       searchBar
+      filters
       list
     }
     .background(Color(hex: seed.app))
+    .confirmationDialog(filterSelection == .market ? "市场" : "板块",
+      isPresented: Binding(get: { filterSelection != nil }, set: { if !$0 { filterSelection = nil } }),
+      titleVisibility: .visible) {
+        if filterSelection == .market {
+          Button("全部市场") { model.marketFilter = "all" }
+          ForEach(model.markets, id: \.self) { key in Button(MarketSector.title(key)) { model.marketFilter = key } }
+        } else {
+          Button("全部板块") { model.sectorFilter = nil }
+          ForEach(model.sectors, id: \.self) { key in Button(MarketSector.title(key)) { model.sectorFilter = key } }
+        }
+      }
     .task {
       model.setSectionsActive(true)
       await model.appear()
       searchFocused = true
     }
     .onDisappear {
+      filterTask?.cancel()
       searchFocused = false
       model.setSectionsActive(false)
       model.disappear()
@@ -125,6 +141,27 @@ struct SymbolPickerView: View {
     .overlay(alignment: .bottom) { Divider().overlay(Color(hex: seed.line)) }
   }
 
+  private func openFilter(_ kind: FilterSelection) {
+    searchFocused = false
+    filterTask?.cancel()
+    filterTask = Task { @MainActor in
+      do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+      filterSelection = kind
+    }
+  }
+
+  private var filters: some View {
+    HStack(spacing: 18) {
+      Button { openFilter(.market) } label: { Label(MarketSector.title(model.marketFilter), systemImage: "chevron.down") }
+        .accessibilityIdentifier("symbols.market")
+      Button { openFilter(.sector) } label: {
+        Label(model.sectorFilter.map(MarketSector.title) ?? "全部板块", systemImage: "chevron.down")
+      }.disabled(model.sectors.isEmpty).accessibilityIdentifier("symbols.sector")
+      Spacer(minLength: 0)
+    }.font(.system(size: 12, weight: .medium)).foregroundStyle(theme.amber)
+      .padding(.horizontal, 16).padding(.bottom, 10)
+  }
+
   // ---------------------------------------------------------------- 列表
 
   @ViewBuilder
@@ -181,17 +218,13 @@ struct SymbolPickerView: View {
                   seed: seed,
                   colors: colors,
                   nameSize: nameSize, metaSize: metaSize,
-                  priceSize: priceSize, pctSize: pctSize) {
-      haptic(.light)
-      model.toggleFavorite(row.id)
-    }
-    .contentShape(Rectangle())
-    .onTapGesture {
-      searchFocused = false
-      haptic(.medium)
-      if let onSelect { onSelect(row.info) } else { model.pick(row.info) }
-    }
-    .accessibilityIdentifier("symbols.row.\(row.id)")
+                  priceSize: priceSize, pctSize: pctSize,
+                  onStar: { haptic(.light); model.toggleFavorite(row.id) },
+                  onPick: {
+                    searchFocused = false
+                    haptic(.medium)
+                    if let onSelect { onSelect(row.info) } else { model.pick(row.info) }
+                  })
     .onAppear { onVisible?(row.id); onRowVisibility?(row.id, true) }
     .onDisappear { onRowVisibility?(row.id, false) }
     .listRowInsets(EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 16))
@@ -238,9 +271,12 @@ private struct SymbolRowView: View {
   let priceSize: CGFloat
   let pctSize: CGFloat
   let onStar: () -> Void
+  let onPick: () -> Void
 
   var body: some View {
     HStack(spacing: 10) {
+      Button(action: onPick) {
+        HStack(spacing: 10) {
       VStack(alignment: .leading, spacing: 2) {
         name
         Text(row.meta)
@@ -258,6 +294,8 @@ private struct SymbolRowView: View {
           .monospacedDigit()
           .foregroundStyle(Color(hex: row.ticker?.changePercent.isFinite == true ? (row.isUp ? colors.up : colors.down) : seed.ink3))
       }
+        }.contentShape(Rectangle())
+      }.buttonStyle(.plain).accessibilityIdentifier("symbols.row.\(row.id)")
       Button(action: onStar) {
         StarShape()
           .fill(isFavorite ? Color(hex: seed.amber) : .clear)
@@ -270,6 +308,7 @@ private struct SymbolRowView: View {
       }
       .buttonStyle(.plain)
       .accessibilityLabel(isFavorite ? "移出自选" : "加入自选")
+      .accessibilityIdentifier("symbols.star.\(row.id)")
     }
   }
 

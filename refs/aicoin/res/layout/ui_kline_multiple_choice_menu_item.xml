@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:tag="skin:ui_kline_multiple_choice_selector:background" android:background="@drawable/ui_kline_multiple_choice_selector" android:layout_width="wrap_content" android:layout_height="@dimen/ui_kline_menu_item_height" android:minWidth="60.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <TextView android:layout_gravity="center" android:id="@id/text_menu_title" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/ui_kline_KLineStyle.MultiChoiceMenuItem" />
+    <ImageView android:layout_gravity="right|bottom" android:id="@id/image_ticker_select_check" android:tag="skin:ui_kline_compare_ticker_check:src" android:layout_width="@dimen/ui_kline_multi_choice_menu_checker_size" android:layout_height="@dimen/ui_kline_multi_choice_menu_checker_size" android:src="@mipmap/ui_kline_compare_ticker_check" />
+</FrameLayout>

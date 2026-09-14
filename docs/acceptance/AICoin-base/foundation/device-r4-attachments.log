@@ -1,0 +1,20 @@
+Exported 7 attachments for: AICoinBaseUITests/testColdLaunchStylesAndChartInteractions():
+File: 915F6FB8-329B-4056-B663-C733B8AA829B.png, suggested name: "07-横屏共用底座_0_FBFCE191-E3F4-4CB7-8612-E848F8B58D25.png"
+File: FCA3ED4B-099F-4CE1-8B22-6C625CDA9EFF.png, suggested name: "06-副图十字线_0_E48335B6-9432-4E9C-A029-4FDA320DBB19.png"
+File: 2ABCF547-0955-4B17-A888-156941DEF072.png, suggested name: "05-持仓量与三副图_0_2DAB3249-07CE-4517-9888-082BC0C169E0.png"
+File: 8E3CD2CA-553D-4ABA-8BD6-EE6C6694CA9D.png, suggested name: "04-真机双指缩放_0_FA9CEE0C-999F-4D3D-BE47-4B5EE64960F8.png"
+File: C6C6D0DB-D467-4FE9-9C62-A9701E468BEA.png, suggested name: "03-单击十字线_0_39EAB14D-C9F4-45F4-B23E-F2903F9D0F5E.png"
+File: 6EB4D616-2E65-4C95-A970-DA6C40D01A99.png, suggested name: "02-原有风格-尺寸保持_0_A6A53747-D02E-48B5-A158-694154A2D864.png"
+File: BD627FCF-E685-401E-A337-3F02CA56522B.png, suggested name: "01-冷启动-AICoin默认_0_09CDF860-08ED-4BED-96A2-9DEE566B3AFF.png"
+
+Exported 2 attachments for: AICoinBaseUITests/testPinchAndUnifiedBackground():
+File: 30D0B21E-BDAA-43FD-95A6-11E3C65A8133.png, suggested name: "统一靛色背景-放大_0_9CEF68E8-A013-42F9-BA5A-45855AEB6917.png"
+File: 7C9CD806-8F60-4976-9E49-C6890E787609.png, suggested name: "统一靛色背景-冷启动_0_FB9ADB1D-5690-48F3-AB83-D30990E861DE.png"
+
+Exported 4 attachments for: ChartFoundationUITests/testHeightAndVerticalReachability():
+File: EF027B48-49B2-45E8-9464-E5F48B23DCDC.txt, suggested name: "public.plain-text_0_7DF39D54-89AF-4E7D-B285-9722A7B2FA75.txt"
+File: 05F43467-B51C-4731-9641-4AFD7369A930.png, suggested name: "Screenshot of Target Application 'com.mdd.kanpan'_0_62E67359-DD72-4AE7-A646-380BEBBA8A3E.png"
+File: 660936C2-6D68-4B5A-91DF-21C999FC0536.png, suggested name: "纵向页面滚动-末副图可达_0_5ADB7249-F792-470A-8554-836479523667.png"
+File: 748A7E96-93BF-4468-93EE-D10D7794C280.png, suggested name: "高度最大-主副图内容_0_D2D4A52A-1530-4188-AB7A-DE8E44B6EB22.png"
+
+Generated manifest file with attachment details: /Users/mdd/zhk/kanpan/docs/acceptance/AICoin-base/foundation/device-r4-attachments/manifest.json

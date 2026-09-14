@@ -1,0 +1,50 @@
+[
+  {
+    "name": "正式自选-前台恢复实时报价_0_06488249-5D5F-4896-A22E-A37A2F0CB332.png",
+    "file": "latest-EB20D707-F94B-44A9-B79D-5BF14386A57E.png",
+    "source": "user-final-pass-attachments"
+  },
+  {
+    "name": "正式自选-滑动移到分类_0_E4F54F17-3411-43CB-8846-5D464518B81C.png",
+    "file": "latest-BDC4D1C8-3BB4-47D7-A228-6A0CE1AE8411.png",
+    "source": "user-final-pass-attachments"
+  },
+  {
+    "name": "正式自选-原生长按排序与冷启动持久化_0_43554A6D-8F0C-4AC7-8D88-2E6942289FC0.png",
+    "file": "latest-CA52042B-96F4-42B6-B3D2-4D6754374B9E.png",
+    "source": "user-final-pass-attachments"
+  },
+  {
+    "name": "十字中心移线-其它区域拖图_0_0C566BD4-413E-41A4-BBB0-D1C84CEBCABA.png",
+    "file": "latest-BF8878E3-9DF0-4EF2-88EE-924FCDD905FE.png",
+    "source": "user-session-attachments"
+  },
+  {
+    "name": "正式行情-整个副图区域长按换序_0_B0AD302F-254E-48F5-9246-6F9250087998.png",
+    "file": "latest-6DD02072-AF1C-43D7-A41E-695D10221321.png",
+    "source": "user-session-attachments"
+  },
+  {
+    "name": "面板外点击-只收起不触发十字线_0_FC9F8885-C1CA-4886-A94E-934663F30E5E.png",
+    "file": "latest-826F52EF-6A72-4ED4-8957-9426A9F240DE.png",
+    "source": "user-session-attachments"
+  },
+  {
+    "name": "前台跨页保持会话、后台恢复真实报价",
+    "file": "latest-foreground-live.png",
+    "source": "user-foreground-live.xcresult",
+    "note": "2026-09-15 iPhone16Pro, final scope-pruning patch is validated in subsequent log"
+  },
+  {
+    "name": "默认末根贴右、回位、历史拖动、重进复位",
+    "file": "final-edge.png",
+    "source": "user-edge-final.xcresult",
+    "codeCommit": "310e8c1"
+  },
+  {
+    "name": "最后一轮前台持续报价",
+    "file": "final-foreground.png",
+    "source": "user-edge-final.xcresult",
+    "codeCommit": "310e8c1"
+  }
+]

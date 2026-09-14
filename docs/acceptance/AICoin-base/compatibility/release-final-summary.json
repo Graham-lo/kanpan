@@ -1,0 +1,125 @@
+{
+  "baselineAppCommit": "310e8c1e4b69743a5d97ea565e495fb4e95834ff",
+  "deviceCount": 13,
+  "passedTests": 208,
+  "devices": [
+    {
+      "name": "iPhone 16 Plus",
+      "exitCode": 0,
+      "seconds": 369,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPad Pro 13-inch (M5)",
+      "exitCode": 0,
+      "seconds": 378,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPad mini (A17 Pro)",
+      "exitCode": 0,
+      "seconds": 367,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPhone 15",
+      "exitCode": 0,
+      "seconds": 401,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPhone 16 Pro",
+      "exitCode": 0,
+      "seconds": 364,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPad (A16)",
+      "exitCode": 0,
+      "seconds": 400,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPhone 17",
+      "exitCode": 0,
+      "seconds": 357,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPad Air 11-inch (M4)",
+      "exitCode": 0,
+      "seconds": 372,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPhone 17 Pro Max",
+      "exitCode": 0,
+      "seconds": 360,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPad Pro 11-inch (M5)",
+      "exitCode": 0,
+      "seconds": 374,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPhone 17e",
+      "exitCode": 0,
+      "seconds": 364,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPhone Air",
+      "exitCode": 0,
+      "seconds": 387,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    {
+      "name": "iPhone 17 Pro",
+      "exitCode": 0,
+      "seconds": 374,
+      "result": "Passed",
+      "passedTests": 16,
+      "failedTests": 0,
+      "skippedTests": 0
+    }
+  ],
+  "note": "Pre-comfort/data-audit baseline. 17e original run was interrupted; latest is release-v3 retry."
+}

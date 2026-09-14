@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView android:textSize="14.0sp" android:textStyle="bold" android:textColor="@drawable/ui_kline_win_rate_condition_select_text_color" android:gravity="center" android:id="@id/tv_condition_name" android:tag="skin:ui_kline_win_rate_condition_select_text_color:textColor|skin:ui_kline_win_rate_condition_select_bg:background" android:background="@drawable/ui_kline_win_rate_condition_select_bg" android:layout_width="wrap_content" android:layout_height="28.0dp" android:minWidth="104.0dp" android:maxLines="1" android:singleLine="true" android:paddingStart="10.0dp" android:paddingEnd="10.0dp"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

@@ -1,4 +1,5 @@
 import Foundation
+import KanpanCore
 
 /// 外观三档（A6.3）。原型 `S.theme` 存的是 `'auto' | 'light' | 'dark'`，
 /// 存档里的字面量照抄原型，不自己换词。
@@ -6,6 +7,8 @@ enum ThemeChoice: String, Sendable, Codable, CaseIterable, Hashable {
   case system = "auto"
   case light
   case dark
+  case paper
+  case night
 
   /// 面板上的三个字。原型 `renderSettings` / `renderStyleSheet` 里逐字如此。
   var display: String {
@@ -13,6 +16,18 @@ enum ThemeChoice: String, Sendable, Codable, CaseIterable, Hashable {
     case .system: "跟随系统"
     case .light: "浅色"
     case .dark: "深色"
+    case .paper: "护眼"
+    case .night: "夜读"
+    }
+  }
+
+  func seed(systemDark: Bool) -> PaletteSeed {
+    switch self {
+    case .system: systemDark ? Palette.darkSeed : Palette.lightSeed
+    case .light: Palette.lightSeed
+    case .dark: Palette.darkSeed
+    case .paper: Palette.paperSeed
+    case .night: Palette.nightSeed
     }
   }
 

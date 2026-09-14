@@ -1,2 +1,8 @@
-iPhone 13 mini	PASS	11	154
-iPhone 15	PASS	11	148
+iPhone 13 mini	PASS	11	129
+iPhone 15	PASS	11	127
+iPhone 16 Pro	PASS	11	126
+iPhone 16 Plus	PASS	11	127
+iPhone 17 Pro Max	PASS	11	132
+iPhone Air	PASS	11	136
+iPad mini (A17 Pro)	PASS	11	146
+iPad Pro 11-inch (M5)	PASS	11	170

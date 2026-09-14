@@ -1,0 +1,53 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "00008140-00010C902690801C",
+        "deviceName" : "iPhone",
+        "modelName" : "iPhone 16 Pro",
+        "osBuildNumber" : "23G83",
+        "osVersion" : "26.6.1",
+        "platform" : "iOS"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 1,
+      "passedTests" : 10,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "Kanpan · Built with macOS 26.5.1",
+  "expectedFailures" : 0,
+  "failedTests" : 1,
+  "finishTime" : 1789403839.202,
+  "passedTests" : 10,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1789403552.848,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "XCTAssertTrue failed - 12 秒内应至少观测到 5 份不同 OHLCV，不能只靠 5–10 秒 REST 轮询",
+      "targetName" : "KanpanUITests",
+      "testIdentifier" : 9,
+      "testIdentifierString" : "ChartFoundationUITests/testLiveMarketUpdatesWithinSeconds()",
+      "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/ChartFoundationUITests/testLiveMarketUpdatesWithinSeconds",
+      "testName" : "testLiveMarketUpdatesWithinSeconds()"
+    }
+  ],
+  "title" : "Test - Kanpan",
+  "topInsights" : [
+    {
+      "category" : "Longest Test Runs",
+      "impact" : "39% of duration",
+      "text" : "1 longest test run with outlier durations exceeding 98.41s (three standard deviations)"
+    }
+  ],
+  "totalTestCount" : 11
+}

@@ -49,7 +49,12 @@ struct SymbolRow: Sendable, Equatable, Identifiable {
   var isUp: Bool { (ticker?.changePercent ?? 0) >= 0 }
 
   /// 24h 成交额，「全部」分区的排序键。
-  var quoteVolume: Double { ticker?.quoteVolume ?? 0 }
+  var quoteVolume: Double {
+    // A real trade may arrive before 24h statistics. Unknown volume must sort
+    // with missing values; NaN would violate the comparator's ordering contract.
+    guard let value = ticker?.quoteVolume, value.isFinite, value >= 0 else { return 0 }
+    return value
+  }
 }
 
 /// 一个分区。

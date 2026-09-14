@@ -1,0 +1,6 @@
+START iPhone 15
+START iPad Pro 13-inch (M5)
+DONE {'name': 'iPad Pro 13-inch (M5)', 'exitCode': 0, 'seconds': 203, 'expectedTests': 3, 'result': 'Passed', 'passedTests': 3, 'failedTests': 0, 'skippedTests': 0}
+START iPhone 17e
+DONE {'name': 'iPhone 15', 'exitCode': 65, 'seconds': 291, 'expectedTests': 5, 'result': 'Failed', 'passedTests': 3, 'failedTests': 2, 'skippedTests': 0}
+DONE {'name': 'iPhone 17e', 'exitCode': 0, 'seconds': 186, 'expectedTests': 3, 'result': 'Passed', 'passedTests': 3, 'failedTests': 0, 'skippedTests': 0}

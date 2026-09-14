@@ -1,0 +1,10 @@
+{"level":"info","ts":1789404893.060534,"msg":"using provided configuration","config_file":"/etc/caddy/Caddyfile","config_adapter":"caddyfile"}
+{"level":"warn","ts":1789404893.0685081,"msg":"Caddyfile input is not formatted; run the 'caddy fmt' command to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":39}
+{"level":"info","ts":1789404893.0693698,"logger":"http","msg":"server is listening only on the HTTPS port but has no TLS connection policies; adding one to enable TLS","server_name":"srv0","https_port":443}
+{"level":"info","ts":1789404893.06942,"logger":"http","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1789404893.0696359,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xc00030e5b0"}
+Valid configuration
+{"level":"info","ts":1789404893.0722334,"logger":"tls.cache.maintenance","msg":"stopped background certificate maintenance","cache":"0xc00030e5b0"}
+active
+active
+{"status":"ok","service":"kanpan-gateway"}

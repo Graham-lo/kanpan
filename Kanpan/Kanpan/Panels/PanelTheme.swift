@@ -9,9 +9,12 @@ struct PanelTheme: Sendable, Equatable {
   var seed: PaletteSeed
   var chart: ChartColors
 
+  init(seed: PaletteSeed, redUp: Bool = false) {
+    self.seed = seed
+    chart = Palette.chart(seed, redUp: redUp)
+  }
   init(dark: Bool, redUp: Bool = false) {
-    seed = dark ? Palette.darkSeed : Palette.lightSeed
-    chart = Palette.chart(dark: dark, redUp: redUp)
+    self.init(seed: dark ? Palette.darkSeed : Palette.lightSeed, redUp: redUp)
   }
 
   var dark: Bool { seed.dark }
@@ -20,7 +23,7 @@ struct PanelTheme: Sendable, Equatable {
   var app: Color { Color(hex: chart.bg) }
   var raised: Color { Color(hex: seed.raised) }
   var raised2: Color { Color(hex: seed.raised2) }
-  var chartBG: Color { Color(hex: seed.chart) }
+  var chartBG: Color { Color(hex: chart.bg) }
 
   // 线
   var line: Color { Color(hex: seed.line) }
@@ -30,10 +33,10 @@ struct PanelTheme: Sendable, Equatable {
   // 字
   var ink: Color { Color(hex: seed.ink) }
   var ink2: Color { Color(hex: seed.ink2) }
-  var ink3: Color { Color(hex: seed.ink3) }
+  var ink3: Color { Color(hex: Palette.secondaryInk(seed)) }
 
   // 琥珀：当前项、强调
-  var amber: Color { Color(hex: seed.amber) }
+  var amber: Color { Color(hex: chart.amber) }
   var amberSoft: Color { Color(hex: chart.amberSoft) }
   var amberLine: Color { Color(hex: chart.amberLine) }
 
@@ -42,12 +45,22 @@ struct PanelTheme: Sendable, Equatable {
   var down: Color { Color(hex: chart.down) }
 
   /// 分段控件选中那一格的底（原型 `--seg-on`）。
-  var badgeInk: Color { dark ? app : .white }
-  var segOn: Color { seed.dark ? Color(hex: seed.raised) : .white }
+  var badgeInk: Color { Color(hex: pillInk) }
+  private var pillInk: Hex {
+    if seed == Palette.nightSeed { return "#17150F" }
+    return dark ? "#0B0E26" : "#FFFFFF"
+  }
+  func badgeFill(up: Bool) -> Color {
+    let base = up ? chart.up : chart.down
+    let amount = Palette.isComfort(seed) ? 0.88 : (dark ? 1 : 0.92)
+    let fill = Palette.mix(base, dark ? Hex("#000000") : seed.ink, amount: amount)
+    return Color(hex: Palette.readable(fill, on: [pillInk], toward: seed.ink))
+  }
+  var segOn: Color { Color(hex: seed.raised) }
   /// 开关关着时的槽（`--sw-off`）。
   var switchOff: Color { seed.dark ? Color(hex: seed.raised2) : Color(hex: seed.line) }
   /// 开关的圆钮（`--sw-knob`）。
-  var switchKnob: Color { seed.dark ? Color(hex: seed.ink3) : .white }
+  var switchKnob: Color { seed.dark ? Color(hex: Palette.secondaryInk(seed)) : .white }
   /// 开关开着时的槽：涨色 42% 透明（原型 `color-mix(… var(--up) 42%)`）。
   var switchOn: Color { up.opacity(0.42) }
 
@@ -78,6 +91,7 @@ enum PanelFont {
   /// 数字一律等宽，免得步进时左右跳。
   static let number = Font.system(size: 11, weight: .medium, design: .monospaced)
 }
+
 
 /// 面板横向留白，原型 `.row { padding: 11px 16px }`。
 enum PanelMetrics {

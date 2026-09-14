@@ -1,0 +1,349 @@
+HTTP 200
+count 897
+[
+  {
+    "baseAsset" : "MU",
+    "baseAssetPrecision" : 8,
+    "contractType" : "TRADIFI_PERPETUAL",
+    "deliveryDate" : 4133404800000,
+    "filters" : [
+      {
+        "filterType" : "PRICE_FILTER",
+        "maxPrice" : "20000",
+        "minPrice" : "0.01000",
+        "tickSize" : "0.01000"
+      },
+      {
+        "filterType" : "LOT_SIZE",
+        "maxQty" : "10000",
+        "minQty" : "0.01",
+        "stepSize" : "0.01"
+      },
+      {
+        "filterType" : "MARKET_LOT_SIZE",
+        "maxQty" : "1000",
+        "minQty" : "0.01",
+        "stepSize" : "0.01"
+      },
+      {
+        "filterType" : "MAX_NUM_ORDERS",
+        "limit" : 200
+      },
+      {
+        "filterType" : "MIN_NOTIONAL",
+        "notional" : "5"
+      },
+      {
+        "filterType" : "PERCENT_PRICE",
+        "multiplierDecimal" : "4",
+        "multiplierDown" : "0.9700",
+        "multiplierUp" : "1.0300"
+      },
+      {
+        "filterType" : "POSITION_RISK_CONTROL",
+        "positionControlSide" : "NONE"
+      }
+    ],
+    "liquidationFee" : "0.015000",
+    "maintMarginPercent" : "2.5000",
+    "marginAsset" : "USDT",
+    "marketTakeBound" : "0.03",
+    "maxMoveOrderLimit" : 10000,
+    "onboardDate" : 1775568600000,
+    "orderTypes" : [
+      "LIMIT",
+      "MARKET",
+      "STOP",
+      "STOP_MARKET",
+      "TAKE_PROFIT",
+      "TAKE_PROFIT_MARKET",
+      "TRAILING_STOP_MARKET"
+    ],
+    "pair" : "MUUSDT",
+    "permissionSets" : [
+      "GRID",
+      "COPY",
+      "RPI",
+      "DCA",
+      "PSB"
+    ],
+    "pricePrecision" : 5,
+    "quantityPrecision" : 2,
+    "quoteAsset" : "USDT",
+    "quotePrecision" : 8,
+    "requiredMarginPercent" : "5.0000",
+    "status" : "TRADING",
+    "symbol" : "MUUSDT",
+    "timeInForce" : [
+      "GTC",
+      "IOC",
+      "FOK",
+      "GTX",
+      "GTD"
+    ],
+    "triggerProtect" : "0.0300",
+    "underlyingSubType" : [
+      "TradFi"
+    ],
+    "underlyingType" : "EQUITY"
+  },
+  {
+    "baseAsset" : "SNDK",
+    "baseAssetPrecision" : 8,
+    "contractType" : "TRADIFI_PERPETUAL",
+    "deliveryDate" : 4133404800000,
+    "filters" : [
+      {
+        "filterType" : "PRICE_FILTER",
+        "maxPrice" : "20000",
+        "minPrice" : "0.01000",
+        "tickSize" : "0.01000"
+      },
+      {
+        "filterType" : "LOT_SIZE",
+        "maxQty" : "6000",
+        "minQty" : "0.01",
+        "stepSize" : "0.01"
+      },
+      {
+        "filterType" : "MARKET_LOT_SIZE",
+        "maxQty" : "600",
+        "minQty" : "0.01",
+        "stepSize" : "0.01"
+      },
+      {
+        "filterType" : "MAX_NUM_ORDERS",
+        "limit" : 200
+      },
+      {
+        "filterType" : "MIN_NOTIONAL",
+        "notional" : "5"
+      },
+      {
+        "filterType" : "PERCENT_PRICE",
+        "multiplierDecimal" : "4",
+        "multiplierDown" : "0.9700",
+        "multiplierUp" : "1.0300"
+      },
+      {
+        "filterType" : "POSITION_RISK_CONTROL",
+        "positionControlSide" : "NONE"
+      }
+    ],
+    "liquidationFee" : "0.015000",
+    "maintMarginPercent" : "2.5000",
+    "marginAsset" : "USDT",
+    "marketTakeBound" : "0.03",
+    "maxMoveOrderLimit" : 10000,
+    "onboardDate" : 1775569200000,
+    "orderTypes" : [
+      "LIMIT",
+      "MARKET",
+      "STOP",
+      "STOP_MARKET",
+      "TAKE_PROFIT",
+      "TAKE_PROFIT_MARKET",
+      "TRAILING_STOP_MARKET"
+    ],
+    "pair" : "SNDKUSDT",
+    "permissionSets" : [
+      "GRID",
+      "COPY",
+      "RPI",
+      "DCA",
+      "PSB"
+    ],
+    "pricePrecision" : 5,
+    "quantityPrecision" : 2,
+    "quoteAsset" : "USDT",
+    "quotePrecision" : 8,
+    "requiredMarginPercent" : "5.0000",
+    "status" : "TRADING",
+    "symbol" : "SNDKUSDT",
+    "timeInForce" : [
+      "GTC",
+      "IOC",
+      "FOK",
+      "GTX",
+      "GTD"
+    ],
+    "triggerProtect" : "0.0300",
+    "underlyingSubType" : [
+      "TradFi"
+    ],
+    "underlyingType" : "EQUITY"
+  },
+  {
+    "baseAsset" : "SKHYNIX",
+    "baseAssetPrecision" : 8,
+    "contractType" : "TRADIFI_PERPETUAL",
+    "deliveryDate" : 4133404800000,
+    "filters" : [
+      {
+        "filterType" : "PRICE_FILTER",
+        "maxPrice" : "20000",
+        "minPrice" : "0.01000",
+        "tickSize" : "0.01000"
+      },
+      {
+        "filterType" : "LOT_SIZE",
+        "maxQty" : "20000",
+        "minQty" : "0.01",
+        "stepSize" : "0.01"
+      },
+      {
+        "filterType" : "MARKET_LOT_SIZE",
+        "maxQty" : "2000",
+        "minQty" : "0.01",
+        "stepSize" : "0.01"
+      },
+      {
+        "filterType" : "MAX_NUM_ORDERS",
+        "limit" : 200
+      },
+      {
+        "filterType" : "MIN_NOTIONAL",
+        "notional" : "5"
+      },
+      {
+        "filterType" : "PERCENT_PRICE",
+        "multiplierDecimal" : "4",
+        "multiplierDown" : "0.9700",
+        "multiplierUp" : "1.0300"
+      },
+      {
+        "filterType" : "POSITION_RISK_CONTROL",
+        "positionControlSide" : "NONE"
+      }
+    ],
+    "liquidationFee" : "0.015000",
+    "maintMarginPercent" : "2.5000",
+    "marginAsset" : "USDT",
+    "marketTakeBound" : "0.03",
+    "maxMoveOrderLimit" : 10000,
+    "onboardDate" : 1780369200000,
+    "orderTypes" : [
+      "LIMIT",
+      "MARKET",
+      "STOP",
+      "STOP_MARKET",
+      "TAKE_PROFIT",
+      "TAKE_PROFIT_MARKET",
+      "TRAILING_STOP_MARKET"
+    ],
+    "pair" : "SKHYNIXUSDT",
+    "permissionSets" : [
+      "GRID",
+      "COPY",
+      "RPI",
+      "DCA",
+      "PSB"
+    ],
+    "pricePrecision" : 5,
+    "quantityPrecision" : 2,
+    "quoteAsset" : "USDT",
+    "quotePrecision" : 8,
+    "requiredMarginPercent" : "5.0000",
+    "status" : "TRADING",
+    "symbol" : "SKHYNIXUSDT",
+    "timeInForce" : [
+      "GTC",
+      "IOC",
+      "FOK",
+      "GTX",
+      "GTD"
+    ],
+    "triggerProtect" : "0.0300",
+    "underlyingSubType" : [
+      "TradFi"
+    ],
+    "underlyingType" : "KR_EQUITY"
+  },
+  {
+    "baseAsset" : "SKHY",
+    "baseAssetPrecision" : 8,
+    "contractType" : "TRADIFI_PERPETUAL",
+    "deliveryDate" : 4133404800000,
+    "filters" : [
+      {
+        "filterType" : "PRICE_FILTER",
+        "maxPrice" : "20000",
+        "minPrice" : "0.01000",
+        "tickSize" : "0.01000"
+      },
+      {
+        "filterType" : "LOT_SIZE",
+        "maxQty" : "30000",
+        "minQty" : "0.01",
+        "stepSize" : "0.01"
+      },
+      {
+        "filterType" : "MARKET_LOT_SIZE",
+        "maxQty" : "2300",
+        "minQty" : "0.01",
+        "stepSize" : "0.01"
+      },
+      {
+        "filterType" : "MAX_NUM_ORDERS",
+        "limit" : 200
+      },
+      {
+        "filterType" : "MIN_NOTIONAL",
+        "notional" : "5"
+      },
+      {
+        "filterType" : "PERCENT_PRICE",
+        "multiplierDecimal" : "4",
+        "multiplierDown" : "0.9700",
+        "multiplierUp" : "1.0300"
+      },
+      {
+        "filterType" : "POSITION_RISK_CONTROL",
+        "positionControlSide" : "NONE"
+      }
+    ],
+    "liquidationFee" : "0.015000",
+    "maintMarginPercent" : "2.5000",
+    "marginAsset" : "USDT",
+    "marketTakeBound" : "0.03",
+    "maxMoveOrderLimit" : 10000,
+    "onboardDate" : 1783698600000,
+    "orderTypes" : [
+      "LIMIT",
+      "MARKET",
+      "STOP",
+      "STOP_MARKET",
+      "TAKE_PROFIT",
+      "TAKE_PROFIT_MARKET",
+      "TRAILING_STOP_MARKET"
+    ],
+    "pair" : "SKHYUSDT",
+    "permissionSets" : [
+      "GRID",
+      "COPY",
+      "RPI",
+      "DCA",
+      "PSB"
+    ],
+    "pricePrecision" : 5,
+    "quantityPrecision" : 2,
+    "quoteAsset" : "USDT",
+    "quotePrecision" : 8,
+    "requiredMarginPercent" : "5.0000",
+    "status" : "TRADING",
+    "symbol" : "SKHYUSDT",
+    "timeInForce" : [
+      "GTC",
+      "IOC",
+      "FOK",
+      "GTX",
+      "GTD"
+    ],
+    "triggerProtect" : "0.0300",
+    "underlyingSubType" : [
+      "TradFi"
+    ],
+    "underlyingType" : "EQUITY"
+  }
+]
+contractTypes ["CURRENT_QUARTER", "NEXT_QUARTER", "PERPETUAL", "TRADIFI_PERPETUAL"]

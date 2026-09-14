@@ -1,0 +1,21 @@
+{
+  "at": "2026-09-15T03:47:23.169962",
+  "services": {
+    "primary": {
+      "MemoryCurrent": "30089216",
+      "TasksCurrent": "2",
+      "CPUQuotaPerSecUSec": "500ms",
+      "MemoryMax": "268435456",
+      "ActiveState": "active",
+      "commandSucceeded": true
+    },
+    "secondary": {
+      "MemoryCurrent": "30183424",
+      "TasksCurrent": "2",
+      "CPUQuotaPerSecUSec": "500ms",
+      "MemoryMax": "268435456",
+      "ActiveState": "active",
+      "commandSucceeded": true
+    }
+  }
+}
