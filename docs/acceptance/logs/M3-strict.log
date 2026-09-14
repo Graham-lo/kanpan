@@ -1,0 +1,77 @@
+cd KanpanCore && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+[0/1] Planning build
+Building for debugging...
+[0/1] Write swift-version--58304C5D6DBC2206.txt
+[2/22] Compiling KanpanCore IncrementalLines.swift
+[3/22] Compiling KanpanCore IndicatorEngine.swift
+[4/22] Compiling KanpanCore Math.swift
+[5/22] Compiling KanpanCore Aggregator.swift
+[6/22] Compiling KanpanCore Layout.swift
+[7/22] Compiling KanpanCore PriceScale.swift
+[8/22] Compiling KanpanCore Interval.swift
+[9/22] Compiling KanpanCore SymbolInfo.swift
+[10/22] Compiling KanpanCore Clamp.swift
+[11/22] Compiling KanpanCore Constants.swift
+[12/22] Compiling KanpanCore Fling.swift
+[13/22] Compiling KanpanCore IndicatorID.swift
+[14/22] Compiling KanpanCore Indicators.swift
+[15/22] Compiling KanpanCore Bar.swift
+[16/22] Compiling KanpanCore BarSeries.swift
+[17/24] Compiling KanpanCore Ticks.swift
+[18/24] Compiling KanpanCore ViewWindow.swift
+[19/24] Emitting module KanpanCore
+[20/24] Compiling KanpanCore Drawing.swift
+[21/24] Compiling KanpanCore Format.swift
+[22/24] Compiling KanpanCore CandleWidths.swift
+[23/24] Compiling KanpanCore CandleStyle.swift
+[24/24] Compiling KanpanCore Palette.swift
+Build complete! (0.80s)
+cd KanpanData && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+Building for debugging...
+[0/3] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.08s)
+cd KanpanChart && KANPAN_STRICT=1 xcodebuild -scheme KanpanChart \
+		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme KanpanChart -destination "generic/platform=iOS Simulator" -derivedDataPath .xcbuild-strict build
+
+Resolve Package Graph
+2026-09-14 17:37:03.671 xcodebuild[83440:30220773] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+
+
+Resolved source packages:
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (4 targets)
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+    cd /Users/mdd/zhk/kanpan/KanpanChart/.swiftpm/xcode
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -o /Users/mdd/zhk/kanpan/KanpanChart/.xcbuild-strict/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+
+** BUILD SUCCEEDED **
+

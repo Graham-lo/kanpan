@@ -1,0 +1,2243 @@
+{
+  "device" : "iPhone 16 Pro",
+  "height" : 874,
+  "interval" : "1h",
+  "item" : "A3.3",
+  "note" : "7 个取色点 × 11 款风格 × 明暗两套 = 154 个取样点。exactExpected=false 的点（细影线、轴文字）几何上取不到满覆盖，期望值按 CoreGraphics 合成规则算。",
+  "points" : [
+    "upBody",
+    "downBody",
+    "wick",
+    "grid",
+    "bg",
+    "lastLine",
+    "axisText"
+  ],
+  "rows" : [
+    {
+      "gridMode" : "h",
+      "name" : "墩",
+      "samples" : [
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            915,
+            787
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            804,
+            1156
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#53B8A0",
+          "at" : [
+            915,
+            445
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#53B8A0",
+          "note" : "影线 1.8 设备像素，满覆盖",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#E4E7F5",
+          "at" : [
+            1014,
+            1973
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#E4E7F5",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            0,
+            557
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实线，该行命中 1032 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#8B90B2",
+          "at" : [
+            1050,
+            1964
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8B90B2",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "stout",
+      "theme" : "light",
+      "wickDevicePx" : 1.8
+    },
+    {
+      "gridMode" : "both",
+      "name" : "靛",
+      "samples" : [
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            74,
+            739
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            103,
+            919
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#81CABA",
+          "at" : [
+            175,
+            1294
+          ],
+          "coverage" : 0.5,
+          "delta" : 1,
+          "exactExpected" : false,
+          "expected" : "#81CABB",
+          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #0E9E78 按 0.5 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#E4E7F5",
+          "at" : [
+            1026,
+            80
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#E4E7F5",
+          "note" : "grid: both，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            0,
+            1232
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "虚线，该行命中 526 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#8B90B2",
+          "at" : [
+            1062,
+            1957
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8B90B2",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "indigo",
+      "theme" : "light",
+      "wickDevicePx" : 0.5
+    },
+    {
+      "gridMode" : "none",
+      "name" : "辉",
+      "samples" : [
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            944,
+            892
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            857,
+            1257
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#6AC1AD",
+          "at" : [
+            944,
+            552
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6AC1AD",
+          "note" : "影线 1.2 设备像素，满覆盖",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1032,
+            2068
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "grid: none，该位置应为底色",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            0,
+            663
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实线，该行命中 1050 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#8B90B2",
+          "at" : [
+            1068,
+            2059
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8B90B2",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "glow",
+      "theme" : "light",
+      "wickDevicePx" : 1.2
+    },
+    {
+      "gridMode" : "h",
+      "name" : "阔",
+      "samples" : [
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            893,
+            751
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            761,
+            1083
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            893,
+            444
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "影线 1.0 设备像素，满覆盖",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#E4E7F5",
+          "at" : [
+            1002,
+            1817
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#E4E7F5",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            0,
+            545
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "虚线，该行命中 511 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#8B90B2",
+          "at" : [
+            1038,
+            1807
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8B90B2",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "airy",
+      "theme" : "light",
+      "wickDevicePx" : 1
+    },
+    {
+      "gridMode" : "h",
+      "name" : "砖",
+      "samples" : [
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            925,
+            819
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            825,
+            1199
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#C0E2DF",
+          "at" : [
+            925,
+            466
+          ],
+          "coverage" : 0.50485436893203883,
+          "delta" : 1,
+          "exactExpected" : false,
+          "expected" : "#C1E2DF",
+          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #8dcec1 按 0.5 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#E4E7F5",
+          "at" : [
+            1020,
+            2042
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#E4E7F5",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            0,
+            581
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实线，该行命中 1038 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#8B90B2",
+          "at" : [
+            1056,
+            2032
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8B90B2",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "brick",
+      "theme" : "light",
+      "wickDevicePx" : 0.5
+    },
+    {
+      "gridMode" : "h",
+      "name" : "针",
+      "samples" : [
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            935,
+            860
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            841,
+            1211
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#25A785",
+          "at" : [
+            935,
+            534
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#25A785",
+          "note" : "影线 2.0 设备像素，满覆盖",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#E4E7F5",
+          "at" : [
+            1026,
+            1989
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#E4E7F5",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            0,
+            641
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "虚线，该行命中 527 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#8B90B2",
+          "at" : [
+            1062,
+            1979
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8B90B2",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "needle",
+      "theme" : "light",
+      "wickDevicePx" : 2
+    },
+    {
+      "gridMode" : "h",
+      "name" : "芯",
+      "samples" : [
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            947,
+            936
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            868,
+            1297
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            947,
+            600
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "影线 1.0 设备像素，满覆盖",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#E4E7F5",
+          "at" : [
+            1032,
+            2098
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#E4E7F5",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            0,
+            710
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "虚线，该行命中 529 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#8B90B2",
+          "at" : [
+            1068,
+            2088
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8B90B2",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "pill",
+      "theme" : "light",
+      "wickDevicePx" : 1
+    },
+    {
+      "gridMode" : "h",
+      "name" : "纸",
+      "samples" : [
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            955,
+            971
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "描边实体，取左边框内侧",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            883,
+            1330
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#3CAF92",
+          "at" : [
+            959,
+            637
+          ],
+          "coverage" : 0.80000000000000004,
+          "delta" : 1,
+          "exactExpected" : false,
+          "expected" : "#3CB093",
+          "note" : "影线只有 0.8 设备像素，期望值 = 底色与 #0E9E78 按 0.8 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#E4E7F5",
+          "at" : [
+            1044,
+            2127
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#E4E7F5",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            0,
+            747
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "虚线，该行命中 531 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#8B90B2",
+          "at" : [
+            1080,
+            2117
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8B90B2",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "hollowUp",
+      "style" : "paper",
+      "theme" : "light",
+      "wickDevicePx" : 0.80000000000000004
+    },
+    {
+      "gridMode" : "tick",
+      "name" : "描",
+      "samples" : [
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            940,
+            878
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "描边实体，取左边框内侧",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            849,
+            1269
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "描边实体，取左边框内侧",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#44B297",
+          "at" : [
+            947,
+            516
+          ],
+          "coverage" : 0.90256410256410258,
+          "delta" : 1,
+          "exactExpected" : false,
+          "expected" : "#45B397",
+          "note" : "影线只有 0.9 设备像素，期望值 = 底色与 #31ab8c 按 0.9 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#E4E7F5",
+          "at" : [
+            1038,
+            2135
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#E4E7F5",
+          "note" : "grid: tick，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            0,
+            634
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实线，该行命中 1056 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#8B90B2",
+          "at" : [
+            1074,
+            2125
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8B90B2",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "outline",
+      "style" : "outline",
+      "theme" : "light",
+      "wickDevicePx" : 0.90000000000000002
+    },
+    {
+      "gridMode" : "tick",
+      "name" : "骨",
+      "samples" : [
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            367,
+            763
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            387,
+            958
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#81CABA",
+          "at" : [
+            163,
+            1357
+          ],
+          "coverage" : 0.5,
+          "delta" : 1,
+          "exactExpected" : false,
+          "expected" : "#81CABB",
+          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #0E9E78 按 0.5 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#E4E7F5",
+          "at" : [
+            1056,
+            47
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#E4E7F5",
+          "note" : "grid: tick，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            0,
+            1298
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "虚线，该行命中 542 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#8B90B2",
+          "at" : [
+            1092,
+            2086
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8B90B2",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "bone",
+      "theme" : "light",
+      "wickDevicePx" : 0.5
+    },
+    {
+      "gridMode" : "none",
+      "name" : "密",
+      "samples" : [
+        {
+          "actual" : "#0E9E78",
+          "at" : [
+            529,
+            771
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#0E9E78",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            545,
+            973
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#81CABA",
+          "at" : [
+            373,
+            1387
+          ],
+          "coverage" : 0.5,
+          "delta" : 1,
+          "exactExpected" : false,
+          "expected" : "#81CABB",
+          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #0E9E78 按 0.5 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1068,
+            2154
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "grid: none，该位置应为底色",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#F4F6FD",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F4F6FD",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#DE2E57",
+          "at" : [
+            0,
+            1326
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#DE2E57",
+          "note" : "虚线，该行命中 548 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#8B90B2",
+          "at" : [
+            1104,
+            2144
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#8B90B2",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "dense",
+      "theme" : "light",
+      "wickDevicePx" : 0.5
+    },
+    {
+      "gridMode" : "h",
+      "name" : "墩",
+      "samples" : [
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            915,
+            787
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            804,
+            1156
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#288E77",
+          "at" : [
+            915,
+            445
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#288E77",
+          "note" : "影线 1.8 设备像素，满覆盖",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#232858",
+          "at" : [
+            1014,
+            1973
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#232858",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            0,
+            557
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实线，该行命中 1032 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#6D719A",
+          "at" : [
+            1050,
+            1964
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6D719A",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "stout",
+      "theme" : "dark",
+      "wickDevicePx" : 1.8
+    },
+    {
+      "gridMode" : "both",
+      "name" : "靛",
+      "samples" : [
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            74,
+            739
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            103,
+            919
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#226C66",
+          "at" : [
+            175,
+            1294
+          ],
+          "coverage" : 0.49696969696969695,
+          "delta" : 1,
+          "exactExpected" : false,
+          "expected" : "#236D67",
+          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #2FBF8F 按 0.5 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#232858",
+          "at" : [
+            1026,
+            80
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#232858",
+          "note" : "grid: both，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            0,
+            1232
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "虚线，该行命中 526 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#6D719A",
+          "at" : [
+            1062,
+            1957
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6D719A",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "indigo",
+      "theme" : "dark",
+      "wickDevicePx" : 0.5
+    },
+    {
+      "gridMode" : "none",
+      "name" : "辉",
+      "samples" : [
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            944,
+            892
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            857,
+            1257
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#257D6F",
+          "at" : [
+            944,
+            552
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#257D6F",
+          "note" : "影线 1.2 设备像素，满覆盖",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1032,
+            2068
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "grid: none，该位置应为底色",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            0,
+            663
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实线，该行命中 1050 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#6D719A",
+          "at" : [
+            1068,
+            2059
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6D719A",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "glow",
+      "theme" : "dark",
+      "wickDevicePx" : 1.2
+    },
+    {
+      "gridMode" : "h",
+      "name" : "阔",
+      "samples" : [
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            893,
+            751
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            761,
+            1083
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            893,
+            444
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "影线 1.0 设备像素，满覆盖",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#232858",
+          "at" : [
+            1002,
+            1817
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#232858",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            0,
+            545
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "虚线，该行命中 511 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#6D719A",
+          "at" : [
+            1038,
+            1807
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6D719A",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "airy",
+      "theme" : "dark",
+      "wickDevicePx" : 1
+    },
+    {
+      "gridMode" : "h",
+      "name" : "砖",
+      "samples" : [
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            925,
+            819
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            825,
+            1199
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#1B3E50",
+          "at" : [
+            925,
+            466
+          ],
+          "coverage" : 0.48648648648648651,
+          "delta" : 1,
+          "exactExpected" : false,
+          "expected" : "#1C3F51",
+          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #216463 按 0.5 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#232858",
+          "at" : [
+            1020,
+            2042
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#232858",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            0,
+            581
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实线，该行命中 1038 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#6D719A",
+          "at" : [
+            1056,
+            2032
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6D719A",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "brick",
+      "theme" : "dark",
+      "wickDevicePx" : 0.5
+    },
+    {
+      "gridMode" : "h",
+      "name" : "针",
+      "samples" : [
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            935,
+            860
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            841,
+            1211
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#2DAF87",
+          "at" : [
+            935,
+            534
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2DAF87",
+          "note" : "影线 2.0 设备像素，满覆盖",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#232858",
+          "at" : [
+            1026,
+            1989
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#232858",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            0,
+            641
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "虚线，该行命中 527 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#6D719A",
+          "at" : [
+            1062,
+            1979
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6D719A",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "needle",
+      "theme" : "dark",
+      "wickDevicePx" : 2
+    },
+    {
+      "gridMode" : "h",
+      "name" : "芯",
+      "samples" : [
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            947,
+            936
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            868,
+            1297
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            947,
+            600
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "影线 1.0 设备像素，满覆盖",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#232858",
+          "at" : [
+            1032,
+            2098
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#232858",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            0,
+            710
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "虚线，该行命中 529 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#6D719A",
+          "at" : [
+            1068,
+            2088
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6D719A",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "pill",
+      "theme" : "dark",
+      "wickDevicePx" : 1
+    },
+    {
+      "gridMode" : "h",
+      "name" : "纸",
+      "samples" : [
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            955,
+            971
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "描边实体，取左边框内侧",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            883,
+            1330
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#2A9E7F",
+          "at" : [
+            959,
+            637
+          ],
+          "coverage" : 0.80000000000000004,
+          "delta" : 0,
+          "exactExpected" : false,
+          "expected" : "#2A9E7F",
+          "note" : "影线只有 0.8 设备像素，期望值 = 底色与 #2FBF8F 按 0.8 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#232858",
+          "at" : [
+            1044,
+            2127
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#232858",
+          "note" : "grid: h，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            0,
+            747
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "虚线，该行命中 531 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#6D719A",
+          "at" : [
+            1080,
+            2117
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6D719A",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "hollowUp",
+      "style" : "paper",
+      "theme" : "dark",
+      "wickDevicePx" : 0.80000000000000004
+    },
+    {
+      "gridMode" : "tick",
+      "name" : "描",
+      "samples" : [
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            940,
+            878
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "描边实体，取左边框内侧",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            849,
+            1269
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "描边实体，取左边框内侧",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#28977C",
+          "at" : [
+            947,
+            516
+          ],
+          "coverage" : 0.8928571428571429,
+          "delta" : 1,
+          "exactExpected" : false,
+          "expected" : "#29987C",
+          "note" : "影线只有 0.9 设备像素，期望值 = 底色与 #2ba683 按 0.9 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#232858",
+          "at" : [
+            1038,
+            2135
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#232858",
+          "note" : "grid: tick，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            0,
+            634
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实线，该行命中 1056 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#6D719A",
+          "at" : [
+            1074,
+            2125
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6D719A",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "outline",
+      "style" : "outline",
+      "theme" : "dark",
+      "wickDevicePx" : 0.90000000000000002
+    },
+    {
+      "gridMode" : "tick",
+      "name" : "骨",
+      "samples" : [
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            367,
+            763
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            387,
+            958
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#226C66",
+          "at" : [
+            163,
+            1357
+          ],
+          "coverage" : 0.49696969696969695,
+          "delta" : 1,
+          "exactExpected" : false,
+          "expected" : "#236D67",
+          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #2FBF8F 按 0.5 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#232858",
+          "at" : [
+            1056,
+            47
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#232858",
+          "note" : "grid: tick，1 设备像素细线",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            0,
+            1298
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "虚线，该行命中 542 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#6D719A",
+          "at" : [
+            1092,
+            2086
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6D719A",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "bone",
+      "theme" : "dark",
+      "wickDevicePx" : 0.5
+    },
+    {
+      "gridMode" : "none",
+      "name" : "密",
+      "samples" : [
+        {
+          "actual" : "#2FBF8F",
+          "at" : [
+            529,
+            771
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#2FBF8F",
+          "note" : "实心实体中心",
+          "point" : "upBody"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            545,
+            973
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "实心实体中心",
+          "point" : "downBody"
+        },
+        {
+          "actual" : "#226C66",
+          "at" : [
+            373,
+            1387
+          ],
+          "coverage" : 0.49696969696969695,
+          "delta" : 1,
+          "exactExpected" : false,
+          "expected" : "#236D67",
+          "note" : "影线只有 0.5 设备像素，期望值 = 底色与 #2FBF8F 按 0.5 合成",
+          "point" : "wick"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1068,
+            2154
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "grid: none，该位置应为底色",
+          "point" : "grid"
+        },
+        {
+          "actual" : "#161A3F",
+          "at" : [
+            1205,
+            2621
+          ],
+          "coverage" : 0,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#161A3F",
+          "note" : "右下角，时间轴外侧",
+          "point" : "bg"
+        },
+        {
+          "actual" : "#F0567B",
+          "at" : [
+            0,
+            1326
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#F0567B",
+          "note" : "虚线，该行命中 548 个像素",
+          "point" : "lastLine"
+        },
+        {
+          "actual" : "#6D719A",
+          "at" : [
+            1104,
+            2144
+          ],
+          "coverage" : 1,
+          "delta" : 0,
+          "exactExpected" : true,
+          "expected" : "#6D719A",
+          "note" : "字形笔画有满覆盖像素",
+          "point" : "axisText"
+        }
+      ],
+      "shape" : "solid",
+      "style" : "dense",
+      "theme" : "dark",
+      "wickDevicePx" : 0.5
+    }
+  ],
+  "scale" : 3,
+  "symbol" : "BTCUSDT",
+  "width" : 402
+}

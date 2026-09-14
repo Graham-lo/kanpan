@@ -12,3 +12,14 @@ Packages/
 *.dSYM
 docs/acceptance/**/*.trace
 .xcbuild/
+.xcbuild-strict/
+
+# M3 取证（§12.1 的证据类型 ②）：
+# 203 张 png + 6 份表都入库——A3.11 的回归基线就是 docs/acceptance/M3/A3.1-baselines.json
+# 里那 176 个像素指纹，表不入库就没有基线可比。共 47 MB。
+# 落盘开关，跑完就删，别入库：
+docs/acceptance/M3/.render
+# 嫌 44 MB 基线图太重的话，打开下面两行：清单和表照样入库，A3.11 仍然能跑
+# （它比的是指纹不是文件），要看图重跑一次 make evidence 即可，字节完全一致。
+#docs/acceptance/M3/*.png
+#!docs/acceptance/M3/M3-*-zoom8-*.png

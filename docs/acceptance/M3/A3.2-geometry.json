@@ -1,0 +1,602 @@
+{
+  "device" : "iPhone 16 Pro",
+  "height" : 874,
+  "interval" : "1h",
+  "item" : "A3.2",
+  "metrics" : [
+    "axisW",
+    "timeH",
+    "subH",
+    "spacing",
+    "bodyW",
+    "wickW",
+    "padTop"
+  ],
+  "note" : "7 项几何 × 11 款风格 = 77 个数，app 实测 vs 原型 chart.js，容差 ±1 设备像素。",
+  "overlays" : [
+    "MA"
+  ],
+  "scale" : 3,
+  "styles" : [
+    {
+      "axisW" : {
+        "app" : 58,
+        "deltaDevicePx" : 0,
+        "prototype" : 58
+      },
+      "bodyW" : {
+        "app" : 8,
+        "deltaDevicePx" : 0,
+        "prototype" : 8
+      },
+      "name" : "墩",
+      "padTop" : {
+        "app" : 0.1093749999999985,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.1093749999999985
+      },
+      "reference" : {
+        "mainH" : 680,
+        "minBody" : 0.66666666666666663,
+        "outline" : 1,
+        "padBottom" : 0.10937499999999867,
+        "plotW" : 344,
+        "radius" : 1.5,
+        "rangeHi" : 78091.967030303029,
+        "rangeLo" : 76136.186505050515,
+        "visibleHi" : 999,
+        "visibleLo" : 962
+      },
+      "spacing" : {
+        "app" : 9.1999999999999993,
+        "deltaDevicePx" : 1.5241141682054149e-11,
+        "prototype" : 9.2000000000050797
+      },
+      "style" : "stout",
+      "subH" : {
+        "app" : 84,
+        "deltaDevicePx" : 0,
+        "prototype" : 84
+      },
+      "thin" : false,
+      "timeH" : {
+        "app" : 26,
+        "deltaDevicePx" : 0,
+        "prototype" : 26
+      },
+      "wickW" : {
+        "app" : 0.59999999999999998,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.59999999999999998
+      }
+    },
+    {
+      "axisW" : {
+        "app" : 54,
+        "deltaDevicePx" : 0,
+        "prototype" : 54
+      },
+      "bodyW" : {
+        "app" : 2.6666666666666665,
+        "deltaDevicePx" : 0,
+        "prototype" : 2.6666666666666665
+      },
+      "name" : "靛",
+      "padTop" : {
+        "app" : 0.068965517241378352,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.068965517241378352
+      },
+      "reference" : {
+        "mainH" : 704,
+        "minBody" : 0.33333333333333331,
+        "outline" : 1,
+        "padBottom" : 0.068965517241378352,
+        "plotW" : 348,
+        "radius" : 0,
+        "rangeHi" : 80168.559999999998,
+        "rangeLo" : 75691.540000000008,
+        "visibleHi" : 999,
+        "visibleLo" : 929
+      },
+      "spacing" : {
+        "app" : 4.7999999999999998,
+        "deltaDevicePx" : 0,
+        "prototype" : 4.7999999999999998
+      },
+      "style" : "indigo",
+      "subH" : {
+        "app" : 74,
+        "deltaDevicePx" : 0,
+        "prototype" : 74
+      },
+      "thin" : false,
+      "timeH" : {
+        "app" : 22,
+        "deltaDevicePx" : 0,
+        "prototype" : 22
+      },
+      "wickW" : {
+        "app" : 0.16666666666666666,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.16666666666666666
+      }
+    },
+    {
+      "axisW" : {
+        "app" : 52,
+        "deltaDevicePx" : 0,
+        "prototype" : 52
+      },
+      "bodyW" : {
+        "app" : 5.333333333333333,
+        "deltaDevicePx" : 0,
+        "prototype" : 5.333333333333333
+      },
+      "name" : "辉",
+      "padTop" : {
+        "app" : 0.09677419354838733,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.09677419354838733
+      },
+      "reference" : {
+        "mainH" : 706,
+        "minBody" : 0.66666666666666663,
+        "outline" : 1,
+        "padBottom" : 0.09677419354838733,
+        "plotW" : 350,
+        "radius" : 2.6000000000000001,
+        "rangeHi" : 78198.628323232333,
+        "rangeLo" : 76152.043393939399,
+        "visibleHi" : 999,
+        "visibleLo" : 952
+      },
+      "spacing" : {
+        "app" : 7.1999999999999993,
+        "deltaDevicePx" : 0,
+        "prototype" : 7.1999999999999993
+      },
+      "style" : "glow",
+      "subH" : {
+        "app" : 72,
+        "deltaDevicePx" : 0,
+        "prototype" : 72
+      },
+      "thin" : false,
+      "timeH" : {
+        "app" : 24,
+        "deltaDevicePx" : 0,
+        "prototype" : 24
+      },
+      "wickW" : {
+        "app" : 0.39999999999999997,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.39999999999999997
+      }
+    },
+    {
+      "axisW" : {
+        "app" : 62,
+        "deltaDevicePx" : 0,
+        "prototype" : 62
+      },
+      "bodyW" : {
+        "app" : 6.666666666666667,
+        "deltaDevicePx" : 0,
+        "prototype" : 6.666666666666667
+      },
+      "name" : "阔",
+      "padTop" : {
+        "app" : 0.14285714285713583,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.14285714285713583
+      },
+      "reference" : {
+        "mainH" : 652,
+        "minBody" : 0.33333333333333331,
+        "outline" : 1,
+        "padBottom" : 0.14285714285714279,
+        "plotW" : 340,
+        "radius" : 1,
+        "rangeHi" : 78138.819999999978,
+        "rangeLo" : 76051.98000000001,
+        "visibleHi" : 999,
+        "visibleLo" : 968
+      },
+      "spacing" : {
+        "app" : 11,
+        "deltaDevicePx" : 6.581402089977928e-12,
+        "prototype" : 11.000000000002194
+      },
+      "style" : "airy",
+      "subH" : {
+        "app" : 96,
+        "deltaDevicePx" : 0,
+        "prototype" : 96
+      },
+      "thin" : false,
+      "timeH" : {
+        "app" : 30,
+        "deltaDevicePx" : 0,
+        "prototype" : 30
+      },
+      "wickW" : {
+        "app" : 0.33333333333333331,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.33333333333333331
+      }
+    },
+    {
+      "axisW" : {
+        "app" : 56,
+        "deltaDevicePx" : 0,
+        "prototype" : 56
+      },
+      "bodyW" : {
+        "app" : 8,
+        "deltaDevicePx" : 0,
+        "prototype" : 8
+      },
+      "name" : "砖",
+      "padTop" : {
+        "app" : 0.096774193548389009,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.096774193548389009
+      },
+      "reference" : {
+        "mainH" : 694,
+        "minBody" : 1,
+        "outline" : 1,
+        "padBottom" : 0.096774193548389009,
+        "plotW" : 346,
+        "radius" : 0,
+        "rangeHi" : 78098.126989898999,
+        "rangeLo" : 76162.811393939395,
+        "visibleHi" : 999,
+        "visibleLo" : 959
+      },
+      "spacing" : {
+        "app" : 8.4000000000000021,
+        "deltaDevicePx" : 1.184652376196027e-11,
+        "prototype" : 8.400000000003951
+      },
+      "style" : "brick",
+      "subH" : {
+        "app" : 78,
+        "deltaDevicePx" : 0,
+        "prototype" : 78
+      },
+      "thin" : false,
+      "timeH" : {
+        "app" : 24,
+        "deltaDevicePx" : 0,
+        "prototype" : 24
+      },
+      "wickW" : {
+        "app" : 0.16666666666666666,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.16666666666666666
+      }
+    },
+    {
+      "axisW" : {
+        "app" : 54,
+        "deltaDevicePx" : 0,
+        "prototype" : 54
+      },
+      "bodyW" : {
+        "app" : 3.3333333333333335,
+        "deltaDevicePx" : 0,
+        "prototype" : 3.3333333333333335
+      },
+      "name" : "针",
+      "padTop" : {
+        "app" : 0.12121212121212857,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.12121212121212857
+      },
+      "reference" : {
+        "mainH" : 698,
+        "minBody" : 0.66666666666666663,
+        "outline" : 1,
+        "padBottom" : 0.12121212121212156,
+        "plotW" : 348,
+        "radius" : 0.5,
+        "rangeHi" : 78203.323030303058,
+        "rangeLo" : 76094.483030303032,
+        "visibleHi" : 999,
+        "visibleLo" : 956
+      },
+      "spacing" : {
+        "app" : 7.8000000000000007,
+        "deltaDevicePx" : 1.3682388555480429e-11,
+        "prototype" : 7.7999999999954399
+      },
+      "style" : "needle",
+      "subH" : {
+        "app" : 76,
+        "deltaDevicePx" : 0,
+        "prototype" : 76
+      },
+      "thin" : false,
+      "timeH" : {
+        "app" : 24,
+        "deltaDevicePx" : 0,
+        "prototype" : 24
+      },
+      "wickW" : {
+        "app" : 0.66666666666666663,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.66666666666666663
+      }
+    },
+    {
+      "axisW" : {
+        "app" : 52,
+        "deltaDevicePx" : 0,
+        "prototype" : 52
+      },
+      "bodyW" : {
+        "app" : 2.6666666666666665,
+        "deltaDevicePx" : 0,
+        "prototype" : 2.6666666666666665
+      },
+      "name" : "芯",
+      "padTop" : {
+        "app" : 0.08333333333333344,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.08333333333333344
+      },
+      "reference" : {
+        "mainH" : 707,
+        "minBody" : 1.3333333333333333,
+        "outline" : 1,
+        "padBottom" : 0.083333333333333273,
+        "plotW" : 350,
+        "radius" : 1.3333333333333333,
+        "rangeHi" : 78252.522222222222,
+        "rangeLo" : 76177.152525252532,
+        "visibleHi" : 999,
+        "visibleLo" : 948
+      },
+      "spacing" : {
+        "app" : 6.5999999999999996,
+        "deltaDevicePx" : 9.2086338554508984e-12,
+        "prototype" : 6.5999999999969301
+      },
+      "style" : "pill",
+      "subH" : {
+        "app" : 72,
+        "deltaDevicePx" : 0,
+        "prototype" : 72
+      },
+      "thin" : false,
+      "timeH" : {
+        "app" : 23,
+        "deltaDevicePx" : 0,
+        "prototype" : 23
+      },
+      "wickW" : {
+        "app" : 0.33333333333333331,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.33333333333333331
+      }
+    },
+    {
+      "axisW" : {
+        "app" : 48,
+        "deltaDevicePx" : 0,
+        "prototype" : 48
+      },
+      "bodyW" : {
+        "app" : 4,
+        "deltaDevicePx" : 0,
+        "prototype" : 4
+      },
+      "name" : "纸",
+      "padTop" : {
+        "app" : 0.083333333333331011,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.083333333333331011
+      },
+      "reference" : {
+        "mainH" : 718,
+        "minBody" : 0.33333333333333331,
+        "outline" : 1,
+        "padBottom" : 0.083333333333331011,
+        "plotW" : 354,
+        "radius" : 0,
+        "rangeHi" : 78292.047777777771,
+        "rangeLo" : 76173.559292929305,
+        "visibleHi" : 999,
+        "visibleLo" : 946
+      },
+      "spacing" : {
+        "app" : 6.4000000000000004,
+        "deltaDevicePx" : 0,
+        "prototype" : 6.4000000000000004
+      },
+      "style" : "paper",
+      "subH" : {
+        "app" : 66,
+        "deltaDevicePx" : 0,
+        "prototype" : 66
+      },
+      "thin" : false,
+      "timeH" : {
+        "app" : 24,
+        "deltaDevicePx" : 0,
+        "prototype" : 24
+      },
+      "wickW" : {
+        "app" : 0.26666666666666666,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.26666666666666666
+      }
+    },
+    {
+      "axisW" : {
+        "app" : 50,
+        "deltaDevicePx" : 0,
+        "prototype" : 50
+      },
+      "bodyW" : {
+        "app" : 5.333333333333333,
+        "deltaDevicePx" : 0,
+        "prototype" : 5.333333333333333
+      },
+      "name" : "描",
+      "padTop" : {
+        "app" : 0.083333333333338366,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.083333333333338366
+      },
+      "reference" : {
+        "mainH" : 716,
+        "minBody" : 0.33333333333333331,
+        "outline" : 1,
+        "padBottom" : 0.0833333333333309,
+        "plotW" : 352,
+        "radius" : 0,
+        "rangeHi" : 78131.918888888904,
+        "rangeLo" : 76188.116464646475,
+        "visibleHi" : 999,
+        "visibleLo" : 954
+      },
+      "spacing" : {
+        "app" : 7.5999999999999996,
+        "deltaDevicePx" : 5.2704507425005431e-12,
+        "prototype" : 7.6000000000017565
+      },
+      "style" : "outline",
+      "subH" : {
+        "app" : 68,
+        "deltaDevicePx" : 0,
+        "prototype" : 68
+      },
+      "thin" : false,
+      "timeH" : {
+        "app" : 22,
+        "deltaDevicePx" : 0,
+        "prototype" : 22
+      },
+      "wickW" : {
+        "app" : 0.29999999999999999,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.29999999999999999
+      }
+    },
+    {
+      "axisW" : {
+        "app" : 44,
+        "deltaDevicePx" : 0,
+        "prototype" : 44
+      },
+      "bodyW" : {
+        "app" : 1.3333333333333333,
+        "deltaDevicePx" : 0,
+        "prototype" : 1.3333333333333333
+      },
+      "name" : "骨",
+      "padTop" : {
+        "app" : 0.053571428571430026,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.053571428571430026
+      },
+      "reference" : {
+        "mainH" : 738,
+        "minBody" : 0.33333333333333331,
+        "outline" : 1,
+        "padBottom" : 0.053571428571430026,
+        "plotW" : 358,
+        "radius" : 0,
+        "rangeHi" : 80091.37000000001,
+        "rangeLo" : 75768.729999999996,
+        "visibleHi" : 999,
+        "visibleLo" : 899
+      },
+      "spacing" : {
+        "app" : 3.3999999999999999,
+        "deltaDevicePx" : 3.092193168185986e-12,
+        "prototype" : 3.4000000000010306
+      },
+      "style" : "bone",
+      "subH" : {
+        "app" : 58,
+        "deltaDevicePx" : 0,
+        "prototype" : 58
+      },
+      "thin" : false,
+      "timeH" : {
+        "app" : 20,
+        "deltaDevicePx" : 0,
+        "prototype" : 20
+      },
+      "wickW" : {
+        "app" : 0.16666666666666666,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.16666666666666666
+      }
+    },
+    {
+      "axisW" : {
+        "app" : 40,
+        "deltaDevicePx" : 0,
+        "prototype" : 40
+      },
+      "bodyW" : {
+        "app" : 1.3333333333333333,
+        "deltaDevicePx" : 0,
+        "prototype" : 1.3333333333333333
+      },
+      "name" : "密",
+      "padTop" : {
+        "app" : 0.045454545454546746,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.045454545454546746
+      },
+      "reference" : {
+        "mainH" : 752,
+        "minBody" : 0.33333333333333331,
+        "outline" : 1,
+        "padBottom" : 0.045454545454546746,
+        "plotW" : 362,
+        "radius" : 0,
+        "rangeHi" : 80052.775000000009,
+        "rangeLo" : 75807.324999999997,
+        "visibleHi" : 999,
+        "visibleLo" : 867
+      },
+      "spacing" : {
+        "app" : 2.6000000000000001,
+        "deltaDevicePx" : 8.7529983261447342e-13,
+        "prototype" : 2.6000000000002919
+      },
+      "style" : "dense",
+      "subH" : {
+        "app" : 52,
+        "deltaDevicePx" : 0,
+        "prototype" : 52
+      },
+      "thin" : false,
+      "timeH" : {
+        "app" : 18,
+        "deltaDevicePx" : 0,
+        "prototype" : 18
+      },
+      "wickW" : {
+        "app" : 0.16666666666666666,
+        "deltaDevicePx" : 0,
+        "prototype" : 0.16666666666666666
+      }
+    }
+  ],
+  "subs" : [
+    "MACD",
+    "RSI"
+  ],
+  "symbol" : "BTCUSDT",
+  "theme" : "light",
+  "width" : 402,
+  "worstDeltaDevicePx" : 1.5241141682054149e-11
+}

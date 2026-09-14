@@ -22,7 +22,7 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test data-test chart-build chart-test test strict app-test snap screenshots devices boot shutdown clean doctor
+.PHONY: help core-test data-test chart-build chart-test test strict app-test snap screenshots devices boot shutdown clean doctor evidence fixtures
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -31,6 +31,8 @@ help:
 	@echo "chart-test   跑 KanpanChart 单测（需要一台模拟器）"
 	@echo "test         core-test + data-test + chart-build"
 	@echo "strict       两个包都按 Swift 6 严格并发 + 警告即错误编一遍（A2.13）"
+	@echo "evidence     出 M3 全套取证产物到 docs/acceptance/M3/（A3.1–A3.10）"
+	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库）"
 	@echo "app-test     跑 app target 的测试"
 	@echo "snap         在单台模拟器上装 app 并截一张图（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "screenshots  八台机型全跑一遍，出 docs/acceptance/shots/"
@@ -92,8 +94,22 @@ test: core-test data-test chart-build
 strict:
 	cd $(CORE) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
 	cd $(DATA) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
-	cd $(CHART) && xcodebuild -scheme KanpanChart -destination 'generic/platform=iOS Simulator' \
-		-derivedDataPath .xcbuild SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build
+	cd $(CHART) && KANPAN_STRICT=1 xcodebuild -scheme KanpanChart \
+		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
+
+# ---------------------------------------------------------------- §12 M3 取证
+# 绘制层的证据只能在模拟器里出（UIKit），所以取证器就是测试 target 里的三个 suite：
+#   M3 取证渲染 / A3.2 几何量化 / A3.3 颜色取样
+# 落盘开关是 docs/acceptance/M3/.render 标记文件（脚本建、跑完删）；没有它
+# chart-test 照样跑断言但一个字节都不落盘。
+evidence:
+	@bash Tools/render-evidence.sh "$(DEVICE)"
+
+# fixture 是把原型 chart.js / styles.js / data.js 原样跑一遍问出来的黄金值，
+# 已入库，只有原型改动时才需要重导。
+fixtures:
+	node Tools/export-chart-fixtures.mjs
+	@ls -l $(CHART)/Tests/KanpanChartTests/Fixtures
 
 # 数据层取证工具（§13 M2 的证据都从这儿出）
 feed:

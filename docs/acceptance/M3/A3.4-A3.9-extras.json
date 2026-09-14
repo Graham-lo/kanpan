@@ -1,0 +1,577 @@
+{
+  "count" : 27,
+  "images" : [
+    {
+      "anchor" : "网格线 y=498.24799531831525",
+      "bytes" : 27884,
+      "cropDevicePx" : [
+        924,
+        1453,
+        132,
+        84
+      ],
+      "file" : "M3-pro-light-grid-both-zoom8-01.png",
+      "grid" : "both",
+      "item" : "A3.4",
+      "magnify" : 8,
+      "pixelSha256" : "316a4287716db4195694d301157926da110f34fc0129bc44ad0aa9910e9f8cac",
+      "px" : [
+        1056,
+        672
+      ],
+      "radius" : 0,
+      "sha256" : "3d6ccbcd0899e742c41b2d066b9b0347955ed1b6c6b3a050b6e0ce03741ef891",
+      "shape" : "solid",
+      "style" : "indigo",
+      "styleName" : "靛",
+      "topic" : "grid-both",
+      "wickCap" : "butt",
+      "wickDevicePx" : 0.5
+    },
+    {
+      "anchor" : "网格线 y=518.7379501465641",
+      "bytes" : 17127,
+      "cropDevicePx" : [
+        912,
+        1514,
+        132,
+        84
+      ],
+      "file" : "M3-pro-light-grid-h-zoom8-02.png",
+      "grid" : "h",
+      "item" : "A3.4",
+      "magnify" : 8,
+      "pixelSha256" : "1941de9a36cbea99b45960b75243cc9e80b1eafb7dac5a02599a0676ac9e2fc6",
+      "px" : [
+        1056,
+        672
+      ],
+      "radius" : 1.5,
+      "sha256" : "f384285737c69bacce5801ae12c3ae9230533d069b8b8d79ebcea5e244820229",
+      "shape" : "solid",
+      "style" : "stout",
+      "styleName" : "墩",
+      "topic" : "grid-h",
+      "wickCap" : "round",
+      "wickDevicePx" : 1.8
+    },
+    {
+      "anchor" : "网格线 y=564.2826198613984",
+      "bytes" : 17145,
+      "cropDevicePx" : [
+        936,
+        1651,
+        132,
+        84
+      ],
+      "file" : "M3-pro-light-grid-tick-zoom8-03.png",
+      "grid" : "tick",
+      "item" : "A3.4",
+      "magnify" : 8,
+      "pixelSha256" : "f8c17c71c2b459c79644d5d4dd1960b7cff1b95cf9b79700488d9df84d50e83d",
+      "px" : [
+        1056,
+        672
+      ],
+      "radius" : 0,
+      "sha256" : "29ee2967e6b502c576f0eaa0e044c900426debd85d4d762b02cacc4877256034",
+      "shape" : "outline",
+      "style" : "outline",
+      "styleName" : "描",
+      "topic" : "grid-tick",
+      "wickCap" : "butt",
+      "wickDevicePx" : 0.90000000000000002
+    },
+    {
+      "anchor" : "网格线 y=551.4706866291414",
+      "bytes" : 17082,
+      "cropDevicePx" : [
+        930,
+        1612,
+        132,
+        84
+      ],
+      "file" : "M3-pro-light-grid-none-zoom8-04.png",
+      "grid" : "none",
+      "item" : "A3.4",
+      "magnify" : 8,
+      "pixelSha256" : "4a8492723b03d467543a7795a4c9cff5a2e8c6536c86701f4492b39935f9eeae",
+      "px" : [
+        1056,
+        672
+      ],
+      "radius" : 2.6000000000000001,
+      "sha256" : "6452a755174c9277deabb60054bbd9bfe7b9040f65a7d8c5292809e250f6c949",
+      "shape" : "solid",
+      "style" : "glow",
+      "styleName" : "辉",
+      "topic" : "grid-none",
+      "wickCap" : "round",
+      "wickDevicePx" : 1.2
+    },
+    {
+      "anchor" : "第 985 根实体顶，实体高 122.48600917864661 pt，空心=true",
+      "bytes" : 17496,
+      "cropDevicePx" : [
+        696,
+        1124,
+        66,
+        78
+      ],
+      "file" : "M3-pro-light-shape-hollowUp-zoom8-05.png",
+      "grid" : "h",
+      "item" : "A3.4",
+      "magnify" : 8,
+      "pixelSha256" : "b9138fcc55d7b5dc539dceb306cc21464c2b4b03fe35043ea0f6c70c18865be5",
+      "px" : [
+        528,
+        624
+      ],
+      "radius" : 0,
+      "sha256" : "d83d12c5a24eb5227cf806856a7c932e23960c77414bd2b0471576e9797159c6",
+      "shape" : "hollowUp",
+      "style" : "paper",
+      "styleName" : "纸",
+      "topic" : "shape-hollowUp",
+      "wickCap" : "butt",
+      "wickDevicePx" : 0.80000000000000004
+    },
+    {
+      "anchor" : "第 993 根实体顶，实体高 216.5899140516209 pt，空心=true",
+      "bytes" : 16287,
+      "cropDevicePx" : [
+        823,
+        932,
+        66,
+        78
+      ],
+      "file" : "M3-pro-light-shape-outline-zoom8-06.png",
+      "grid" : "tick",
+      "item" : "A3.4",
+      "magnify" : 8,
+      "pixelSha256" : "6e45acf671c2c6940b3a8f88b50b44bca45d889588340b6abac6df7ee10fb22e",
+      "px" : [
+        528,
+        624
+      ],
+      "radius" : 0,
+      "sha256" : "f466434d0402d0b7e1ce96be814a6c43b0bfffe136cae5835048f0c4a935f6a0",
+      "shape" : "outline",
+      "style" : "outline",
+      "styleName" : "描",
+      "topic" : "shape-outline",
+      "wickCap" : "butt",
+      "wickDevicePx" : 0.90000000000000002
+    },
+    {
+      "anchor" : "第 993 根实体顶，实体高 200.30937167821202 pt，空心=false",
+      "bytes" : 15478,
+      "cropDevicePx" : [
+        835,
+        985,
+        66,
+        78
+      ],
+      "file" : "M3-pro-light-radius-zoom8-07.png",
+      "grid" : "h",
+      "item" : "A3.4",
+      "magnify" : 8,
+      "pixelSha256" : "c22c57349a68ebb91dfb83907db4597a4711064470bfadd8e81fd3e26a0b0b84",
+      "px" : [
+        528,
+        624
+      ],
+      "radius" : 3,
+      "sha256" : "88efcebcb9447fa5849fca851f295f91ba57ebf147aadc7c631d2f0deedd4bd7",
+      "shape" : "solid",
+      "style" : "pill",
+      "styleName" : "芯",
+      "topic" : "radius",
+      "wickCap" : "round",
+      "wickDevicePx" : 1
+    },
+    {
+      "anchor" : "第 992 根上影线顶端，影线长 38.09667874281263 pt",
+      "bytes" : 1975,
+      "cropDevicePx" : [
+        803,
+        764,
+        30,
+        27
+      ],
+      "file" : "M3-pro-light-wickcap-round-zoom8-08.png",
+      "grid" : "h",
+      "item" : "A3.4",
+      "magnify" : 8,
+      "pixelSha256" : "47cebffc928663029f52123bd9c5905eb5822f8d54ca3267b3a9d5a02e7257fa",
+      "px" : [
+        240,
+        216
+      ],
+      "radius" : 0.5,
+      "sha256" : "ab17a21296fde088c956f9719c0e4979d76bacabc589e6498b9d9fc761f416cf",
+      "shape" : "solid",
+      "style" : "needle",
+      "styleName" : "针",
+      "topic" : "wickcap-round",
+      "wickCap" : "round",
+      "wickDevicePx" : 2
+    },
+    {
+      "askedSpacing" : 1.2,
+      "bars" : 272,
+      "barsOnScreen" : 286.66666666666669,
+      "bytes" : 342619,
+      "device" : "pro",
+      "file" : "M3-pro-light-thin-1.2-09.png",
+      "item" : "A3.5",
+      "pixelSha256" : "992844157dbb2a013a09390d0f8f6e540b28bece8479194b297ba8cabdd110e2",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "3d9bf0a4d70874e31da3b473f8864f89b1b0acc9ab9adfc47f7b13255140d91b",
+      "spacing" : 1.2,
+      "style" : "stout",
+      "thin" : true
+    },
+    {
+      "askedSpacing" : 0.40000000000000002,
+      "bars" : 811,
+      "barsOnScreen" : 860,
+      "bytes" : 390721,
+      "device" : "pro",
+      "file" : "M3-pro-light-thin-0.4-10.png",
+      "item" : "A3.5",
+      "pixelSha256" : "44bc445fcb18da195e9aba0b0184c8f289d95a4b3b471eadc5dcfeb24458f80f",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "b850d6401ff05853bda79879a140b22becd6d3d18c1a1a11a9541749deb4396c",
+      "spacing" : 0.40000000000000002,
+      "style" : "stout",
+      "thin" : true
+    },
+    {
+      "askedSpacing" : 0.40000000000000002,
+      "bars" : 1000,
+      "barsOnScreen" : 1715,
+      "bytes" : 332706,
+      "device" : "ipad",
+      "file" : "M3-ipad-light-thin-0.4-ipad-11.png",
+      "item" : "A3.5",
+      "pixelSha256" : "162e1cb2a37c7b6ef4f76084527afa48ad5e8fabb4b80c30238d68d5337de326",
+      "px" : [
+        1488,
+        2266
+      ],
+      "sha256" : "73f6e020a43b843931da4c4cad562cc28f4424193a83c7a1662f1b2815312419",
+      "spacing" : 0.40000000000000002,
+      "style" : "stout",
+      "thin" : true
+    },
+    {
+      "bytes" : 172924,
+      "file" : "M3-pro-light-sub-macd-12.png",
+      "item" : "A3.6",
+      "params" : [
+        12,
+        26,
+        9
+      ],
+      "pixelSha256" : "fe471c59f07a41e69d3dc330c5f2fc719fda316afb6b0fe1925032d7272db817",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "5f9ca6c1493ff16b10c736ece62fe98f7ac4a4dac02392df681b6fe44862a683",
+      "style" : "stout",
+      "sub" : "MACD",
+      "subName" : "MACD"
+    },
+    {
+      "bytes" : 172358,
+      "file" : "M3-pro-light-sub-rsi-13.png",
+      "item" : "A3.6",
+      "params" : [
+        6,
+        12,
+        24
+      ],
+      "pixelSha256" : "8a2cf264985510c3f134d7428a23488d25366bf2f49137016651ec13a8d9a5c3",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "3e710aa316438fdf6e01c4adc0de3fbf5827e07bec5da0d79b2c734bd961476c",
+      "style" : "stout",
+      "sub" : "RSI",
+      "subName" : "RSI"
+    },
+    {
+      "bytes" : 178337,
+      "file" : "M3-pro-light-sub-kdj-14.png",
+      "item" : "A3.6",
+      "params" : [
+        9,
+        3,
+        3
+      ],
+      "pixelSha256" : "d692e60976ed3c8182bc5c1ad1400b98a284a29d909fb856796f6f226630722f",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "fb0d59f373f76d049375315dfab402a943c03c7bf8e208a6a680f2f6413d8d00",
+      "style" : "stout",
+      "sub" : "KDJ",
+      "subName" : "KDJ"
+    },
+    {
+      "bytes" : 175209,
+      "file" : "M3-pro-light-sub-srsi-15.png",
+      "item" : "A3.6",
+      "params" : [
+        14,
+        14,
+        3,
+        3
+      ],
+      "pixelSha256" : "fda8f64d38e22bc905878aa015fb88449bcd1e75697aa0630bccafdf67e7c3d2",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "eb36033221996020f38b51c715683d6759fb40a14678d8c49c9756de62ed7b13",
+      "style" : "stout",
+      "sub" : "SRSI",
+      "subName" : "StochRSI"
+    },
+    {
+      "bytes" : 155174,
+      "file" : "M3-pro-light-sub-atr-16.png",
+      "item" : "A3.6",
+      "params" : [
+        14
+      ],
+      "pixelSha256" : "97a14951906ff1c01260a5f2e766e5294ef703e6d2f0705be032ef54cf145c8a",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "e94df8508ccd3ff8c6991622cbfee7cc8b78facc36eff0358119a770817a828a",
+      "style" : "stout",
+      "sub" : "ATR",
+      "subName" : "ATR"
+    },
+    {
+      "bytes" : 173542,
+      "file" : "M3-pro-light-sub-vol-17.png",
+      "item" : "A3.6",
+      "params" : [
+        5,
+        10
+      ],
+      "pixelSha256" : "b063ddc7a0e1e20046aaae8bcc131594065984f6e99e3c8d634f25ee0bde2b77",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "61177035747361e37ae1c3578b2bd24cbde58b97f6f09bcf0d9a410e12dc5fb4",
+      "style" : "stout",
+      "sub" : "VOL",
+      "subName" : "成交量"
+    },
+    {
+      "bytes" : 173585,
+      "file" : "M3-pro-light-sub-oi-18.png",
+      "item" : "A3.6",
+      "params" : [
+
+      ],
+      "pixelSha256" : "0cf6401fcf8477841fe6e30456727908ae2136c99bc0cd8da13d7be0b3d7b50b",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "662e94d4108c0c50a1878d67158f3f7f5093ff87ad5b54c3578bc2563e459eb9",
+      "style" : "stout",
+      "sub" : "OI",
+      "subName" : "持仓量"
+    },
+    {
+      "bytes" : 210161,
+      "file" : "M3-pro-light-overlay-ma-19.png",
+      "item" : "A3.7",
+      "overlays" : [
+        "MA"
+      ],
+      "params" : [
+        {
+          "MA" : [
+            7,
+            25,
+            99
+          ]
+        }
+      ],
+      "pixelSha256" : "57e48147cf212142b5984a296e629e2fcd4e0d9aad14a62fa2d65520f5c12886",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "538569eab53049ece665276994a4074c2568186dbc86716c5529a1427e41e8ab"
+    },
+    {
+      "bytes" : 187508,
+      "file" : "M3-pro-light-overlay-ema-20.png",
+      "item" : "A3.7",
+      "overlays" : [
+        "EMA"
+      ],
+      "params" : [
+        {
+          "EMA" : [
+            12,
+            26
+          ]
+        }
+      ],
+      "pixelSha256" : "bf6bacbeae653ce0ecd2b35488d278e95a572b4eacd26d1a323ab6f7e3ae3535",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "a5942c6782d9de6a2152755d848b64df907f6fa7bd4ea4455898b85a36fb879a"
+    },
+    {
+      "bytes" : 200137,
+      "file" : "M3-pro-light-overlay-boll-21.png",
+      "item" : "A3.7",
+      "overlays" : [
+        "BOLL"
+      ],
+      "params" : [
+        {
+          "BOLL" : [
+            20,
+            2
+          ]
+        }
+      ],
+      "pixelSha256" : "c61261f53a0c5dea6790868f22b368038567f033e0ef213cff2c9b45865f35ae",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "029dac0f8a025b5e6943e0abc8b6b00a26e18c62099f2f3fdd62504331411a11"
+    },
+    {
+      "bytes" : 277798,
+      "file" : "M3-pro-light-overlay-all-22.png",
+      "item" : "A3.7",
+      "overlays" : [
+        "MA",
+        "EMA",
+        "BOLL"
+      ],
+      "params" : [
+        {
+          "MA" : [
+            7,
+            25,
+            99
+          ]
+        },
+        {
+          "EMA" : [
+            12,
+            26
+          ]
+        },
+        {
+          "BOLL" : [
+            20,
+            2
+          ]
+        }
+      ],
+      "pixelSha256" : "bcf61b9a9162f21e96b0c7b93657168548ce15a1f8100359ba7d82ec6e457797",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "a97291dd4cebb316b79f27e669ee3daf9b141545f5ceb0f8249c0f86a0470256"
+    },
+    {
+      "barIndex" : 986,
+      "barTime" : 1789311600000,
+      "bytes" : 313126,
+      "close" : 77098,
+      "file" : "M3-pro-light-crosshair-23.png",
+      "item" : "A3.8",
+      "pixelSha256" : "97d2f31829b0c2c5eb07b2a023a1ca60c9d1aa40b4d66a68abcbaa0e9c4c12b0",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "91fe40d3feb0e3c2eff2ea2ccb4dc2f04685d49d99250472ef6f690d5c962dfd",
+      "timezone" : "utc"
+    },
+    {
+      "barIndex" : 986,
+      "barTime" : 1789311600000,
+      "bytes" : 309835,
+      "close" : 77098,
+      "file" : "M3-pro-dark-crosshair-24.png",
+      "item" : "A3.8",
+      "pixelSha256" : "a968fd4581bab6d2f6a2cd380173a99cc068ab0cb08819e742d90c05aa7b2fa3",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "74c8ee5322c1a9859a2ba900928e76385f4b6f4ba03c07f39b230aafbad49dff",
+      "timezone" : "utc"
+    },
+    {
+      "bytes" : 252626,
+      "display" : "常规",
+      "file" : "M3-pro-light-axis-linear-25.png",
+      "item" : "A3.9",
+      "pixelSha256" : "739272334330cd191b80bf024d87955d5c22ecb8d234a7daa9bd4c1e19dc8d78",
+      "priceMode" : "linear",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "53a7011ed8f0968881a17679695248dd73b699934fb6ad4a8bf9182f9b1dc60e"
+    },
+    {
+      "bytes" : 257560,
+      "display" : "对数",
+      "file" : "M3-pro-light-axis-log-26.png",
+      "item" : "A3.9",
+      "pixelSha256" : "0192322d35f2b885489327dc3f6252b47be8d6a6d5143a140ae83cd24afd52a2",
+      "priceMode" : "log",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "5dae1dcc80583863975a3b3ad1e674d66beb0bb70c1ca2d1187c9ea7827c3a03"
+    },
+    {
+      "bytes" : 251967,
+      "display" : "百分比",
+      "file" : "M3-pro-light-axis-percent-27.png",
+      "item" : "A3.9",
+      "pixelSha256" : "f48c49426a3dc89288462c0b1d0c75db41710bbd7abe4db4556865e3f2a3e98f",
+      "priceMode" : "percent",
+      "px" : [
+        1206,
+        2622
+      ],
+      "sha256" : "06543d5111524407d146cee3a423ce20812e26da70eb4b29264ffa5880881507"
+    }
+  ]
+}

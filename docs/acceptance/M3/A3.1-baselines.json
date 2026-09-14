@@ -1,0 +1,4230 @@
+{
+  "count" : 176,
+  "images" : [
+    {
+      "bars" : 35,
+      "bytes" : 124211,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-light-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "ad9c18f97cc1c14b8fe183ad9b1e5f9714a22824489cacb40132ee5be500307d",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "5afa4bf53b86461492fe02d2e3973ba304cbeeb4f275583d1b1ae461cfd95bea",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 65,
+      "bytes" : 118981,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-light-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "0270f4ad7d9514d5df0103f2e2a6167a8f1d9c8d47c26d774167063763e8f593",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "53931a5e69965862f270949465028e866c470d39edd638c9b6f21e2fd5c76534",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 45,
+      "bytes" : 128321,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-light-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "59c3a9b7307be8f4d8e79a1fd00e348c5fb1381113cae78091f442e6c658c51f",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "b9b78123cc07b6c8238b6589ab1c743a8e00ea78c27c215b360b6ed62e36ef42",
+      "spacing" : 7.1999999999999993,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 29,
+      "bytes" : 114109,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-light-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "47736e7e4cf6dd564fa7f662b5fc1a4ccde674db953ffd7c33415fac7def839e",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "4f834eeb1cf20a2a639a3d10f3a1a378c67f7ece64a396aa6c56bb705c9e3c24",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 38,
+      "bytes" : 120544,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-light-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "44d9e3b0debead7939ac336ae8ee11e1ccb49fa1c628870fcd7f2540946450e8",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "bea47118199ac4913d1b1edc1a74440d8ccc2f3c51e6b7cc3fa1b6faae04f282",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 41,
+      "bytes" : 118545,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-light-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "f91c1143c7ce5b0e62c53532a0ed0569f5317f837f7c3a28eec1d9107155aa1b",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "b77031207c791e64ec0a05bd407a952bfaf9976fe49cb928a9b28bdbcc3ecdbc",
+      "spacing" : 7.7999999999999998,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 49,
+      "bytes" : 119755,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-light-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "e2201b7166f5ecc406950a93354933b60a2b4f89beb1c9cf74654b4d9007d9c6",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "8f3977e6b2ff4010855786c9851afb1e243473aca1e2e07f2772b690d2273a1c",
+      "spacing" : 6.6000000000000005,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 51,
+      "bytes" : 124864,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-light-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "de7694c1919ce7e27b5bd7100d05b36c8cf9e3b3ebc4cdc09a8703e082ccf051",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "427731833125ac97f4b6bf85be0cf44a6ca160416c47753abfd022701f3b728d",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 43,
+      "bytes" : 124087,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-light-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "7d48022e55ce7faf33a872bceb2d6f53b9884a649c3587ff287fdeee4ef402bd",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "bac9a490a68d6e3ecca70ad7ddc30c3314184b7094f1c80bc6baef51498a9261",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 94,
+      "bytes" : 129240,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-light-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a926b0a96d6a01770e9fb54b2ad5bff6ebe57f78fe47b85047ba770799b7cf4d",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "1f2eec68ff8cd81d507ddd382f4e199900ecfc440f747b17896646cefe370557",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 124,
+      "bytes" : 146351,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-light-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "b73e9f838a34ed8e2aae653404f1bee03d1365f82175bd3f4fc082ecae4d6bfb",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "6b301cc0c9fc5217c7242b8ff841023b7527cb8e1f7f98d121530f3ecec154f6",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 35,
+      "bytes" : 122939,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-dark-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "6415b83d9cfa41162fc0be93bd3693f457ad9036a0a8091ba4d25a61ea00dff2",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "038b1fe4e0409f9b96b20d373638c20409d3d3fae467b060f5be585d030892d0",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 65,
+      "bytes" : 117975,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-dark-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a27d6bc41372e02efbc83d75426eb3e6fae8db0a5ceaee32b6e8b93ed4ae5ce3",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "726577274deb980bab579841a749625b9e281fc3c06ce885afdf4727fd641074",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 45,
+      "bytes" : 127302,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-dark-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "bd55c035aa78a35827629c2ef59ad27adabb906733d89c05df4a2ca0151785f8",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "d481a9098fe47c19e7794af8c896cbc80cb15c1f0add2f4e7ad19f8073cb44ce",
+      "spacing" : 7.1999999999999993,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 29,
+      "bytes" : 113802,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-dark-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "519d9a622b24441fb526b81db243c1f3479dd000f3d52e0d4f338f6eca5bde29",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "98cb8fd3cdd937f9851eaa0e249222842a5beefcc0257ef70a9a60fe0cc55c76",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 38,
+      "bytes" : 119825,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-dark-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a8f972aafa0c81e7136ed1ab63350e7cd07201ba4fea24bc16ad3d54e91fe648",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "2c598d775ac03f0aa7ae4802bcf842c41a075f23dd6bb0dd043d15d0370f4fc9",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 41,
+      "bytes" : 118251,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-dark-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "968e76bf76a762117468f8921a297b2dad98cfb7b261e2cd346853da60bf60c0",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "3ae4c43642c0beea28276419eb9bae1d36c3516eb12ad609e74a550425740121",
+      "spacing" : 7.7999999999999998,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 49,
+      "bytes" : 119070,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-dark-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "6baefe4846ea0259b32759679397b6546dba6f17665e9654fc1ace11573ee009",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "8fd2d85d7348854ca33c9e9f970e330cffbfe38b48c4ec67f3c817bdea69f39a",
+      "spacing" : 6.6000000000000005,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 51,
+      "bytes" : 123697,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-dark-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "9aa6d26a57d3430c27484b6abae7a2234301f0360c30c85f7aa08fe09d691527",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "022b317c6e655c24999523d2551523deddd449094557ea2c8f89b4f176676b87",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 43,
+      "bytes" : 123342,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-dark-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "7e5604b654eddf42371aa6b2d0a108fc053d155b74cdc38e0b9eee55b4375207",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "7ee035118ee6dc2d344f962a65b350cd4e762aa8fb605db9cb9ee70de4e9c37a",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 94,
+      "bytes" : 128620,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-dark-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "9880c10325619768695d424c4f0e5e1e370092bb596e67cc47c7cba1dace297a",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "4aa12272fb3f09fd093dbcb284a3dd3f1e67698da89c81389b0e84697330bfcb",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 124,
+      "bytes" : 145576,
+      "device" : "se",
+      "deviceName" : "iPhone SE (3rd generation)",
+      "file" : "M3-se-dark-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "ced2b0f35b392ce76a077320471959c8881ae40f762ee37b66c75f2cf8daf51d",
+      "pt" : [
+        375,
+        667
+      ],
+      "px" : [
+        750,
+        1334
+      ],
+      "scale" : 2,
+      "sha256" : "960f746f66b5a99fd3cdc9111de51a1b5c9af3cdb30bdcc22cfc01a7573f4f91",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 35,
+      "bytes" : 233877,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-light-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "debfd7d604d9d6255883c1ae69215419b971e9be823e98a0569c189a804e04bf",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "457e2f4cd391757c025fdaabcdb7d41cbffc6033cad1d568032b1b6de6fb6c23",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 65,
+      "bytes" : 226184,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-light-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "78c246dab130afe811e6c906a689193e981aebe0b5e46a1ff5b8dd3700ebfc73",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "4f8c7211fc644243402d5e1b3b65cbe0fe74ec045e6954b3195dd5fea44d9893",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 45,
+      "bytes" : 242733,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-light-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "65cccdbec5484cb884885b463ed964bfb0a3d4b4cc66b94d55633caa3ed6562c",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "cd409c150138fd1e1562045c421b179cc9e8d8866219253156935cb0b374448b",
+      "spacing" : 7.1999999999999993,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 29,
+      "bytes" : 225228,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-light-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "b10482ec9259fef737c9ee0890b0718ab2338d167824296f1a109e19679aa301",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "1b33c253d974195f4acbccd53515f2a6bedb00434cf7a8d97d4431ab084516ad",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 38,
+      "bytes" : 229923,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-light-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "5baebcfd81d8efbe54876e6cd164ffdc86f05c2afec0b5be02eb8c12325b95ce",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "2b436d75cdbf02e629c8d66ceb962f14fca7ff60abe6b5c3156beefd99cd14f1",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 41,
+      "bytes" : 230941,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-light-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "379a067fbbb7acc66fc6d888c5a8c6c66f8bfe36a30aca856b9122e0f5ceafd5",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "7f6673babd693e789eedd38594516b4584d13c306e2256479863200f31c0411f",
+      "spacing" : 7.7999999999999998,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 49,
+      "bytes" : 237482,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-light-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "138c08a8fe95588b114ff4c353e67efa7ae09a701220edc513a928b8955bf484",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "0a85e59cb17cb5762866236f252c0901a8259b47f4095da8f490e48b2cafee78",
+      "spacing" : 6.6000000000000005,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 51,
+      "bytes" : 235987,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-light-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "504a7fa18c0be7be829cd3cec9272be26a1f1d0b9411704445930870af96e22d",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "eac58c90de0f5dc1ca3a18e462c4b87e4bc0cbd6d03cfc1fea74b31a03aadcbb",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 43,
+      "bytes" : 236718,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-light-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "07c93a66b4565d798274bb4ab9512ddd29a4c1e6ea39f69490d05207ad9ea9b3",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "00fa42ebdfbc4fa91edb1527f908ef13e99b395c93cf3b28159ce23a75e608d2",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 94,
+      "bytes" : 244254,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-light-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "49153e9d714c0d441d27c5fcf7f4877d51b6fe56d6ca8dddc510d9fb47e33f7a",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "06390864635f99c7fd1a79123946fe04178c6d21a1c9286fe165038dfefaffc9",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 124,
+      "bytes" : 280262,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-light-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "bf2a5e587e096db4d2934ad86a381486797b60fee98399f0b7433056fc49ca06",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "9e84d737dccd012dc397da1a33e7e09071e39021bb33a3cf4560406f155b83ee",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 35,
+      "bytes" : 232609,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-dark-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "4ada9f017c51916989a73c31667807dec7d8d16724130042eff9f026529f568e",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "e9f40599c49a7f3d1793da274b9644443184572d055e8f9424f7a6fc0285b0f4",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 65,
+      "bytes" : 224443,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-dark-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "b6f6659b6dad7929bf6c78ef40c8d67a77d7887bdbf10425c9d505a106f4887d",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "6a845add1275b8a3e148aaec7231980b424d756cad52d943b330e0f51959cc2b",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 45,
+      "bytes" : 243472,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-dark-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "5e075408cc45e4a63f98be49a9c163f413229782784ea69f542ac383cfe82723",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "28b999306386a29d71d7c12476026f659fe46e4ef24c931c5b77b43d8f43f21f",
+      "spacing" : 7.1999999999999993,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 29,
+      "bytes" : 221230,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-dark-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "6fb535985392d925efd103fe709c6e865c5c26cc66813cb446da2a83e8096344",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "03e0da0dbcb148fff6d33008ade822ccebb3c626e890c13d2806ab93c436811e",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 38,
+      "bytes" : 228256,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-dark-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "532c44ff097297a34e04bb9864ddb0983e7f0bb1581276478c28e8d2979c639b",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "00dc9d039f34af96efab856d33a7b9acd2265a3abf0a983ac9c8a7e7926fab4a",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 41,
+      "bytes" : 230037,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-dark-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "39309e6c287d9e8aa83667ba5a0868a399d16387a603391fa9556904ed6b990d",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "5dbe3b5794fd1d4d87dd1ecbf438228a7e2527183cc8e7da214f975633c776a5",
+      "spacing" : 7.7999999999999998,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 49,
+      "bytes" : 236412,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-dark-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "83966a11f1fb79b6a2b9f3f7e245055a7aaafe1d1bbadd8b3911764768c67f89",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "a852ab495093035e49694ad310aed647d02ca85548aa7665f2d537db33605671",
+      "spacing" : 6.6000000000000005,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 51,
+      "bytes" : 235050,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-dark-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a46b6373d3349b2d4ca8fc69a067916043eb5796316f241c4ab17e50456c3618",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "d12d6b3580a3238260c545a77ab7022eba4856922da9c8e342ce38787c1733b6",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 43,
+      "bytes" : 234731,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-dark-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a2f25097719c104c2b7d77f02beef9d52ee1f76a7fbd0c4d578a83741766116a",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "9a6f26818764a12ab5996f754b1514174b5bb99d3b5fdfb90dc77ff3be739da7",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 94,
+      "bytes" : 242914,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-dark-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "14c823d23447673480ee378faa679fbd6c17bcf755334a3a3d56d0828d7af5e1",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "c969499f49fca111f6496747d8f528469b07e7e30e6fcb2520c3c6db2a5df2a7",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 124,
+      "bytes" : 278649,
+      "device" : "mini",
+      "deviceName" : "iPhone 13 mini",
+      "file" : "M3-mini-dark-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "962e808c076e3252e5be93412edc733e59466f13b42415261000e15b08e78565",
+      "pt" : [
+        375,
+        812
+      ],
+      "px" : [
+        1125,
+        2436
+      ],
+      "scale" : 3,
+      "sha256" : "0a195a03d692c3782978525c03c457fb4eb5d40997888579ddf802f84fc1daed",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 37,
+      "bytes" : 247396,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-light-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "5b4bd0cf85c5a6d273f1439f93f41dba47382736b6f92960da85826d9b3a2e82",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "9637a6398ae7e82c60f4a0103726b0e30738dbb1c026907d3fb7ea7c440ddd97",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 69,
+      "bytes" : 250065,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-light-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "01703c724ca2d93b042ed085c827dc8d50116623b5d9ec440799ecd4b1b6d90c",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "1ca93bd6a8b5f171cbbb72c7af861cfd2b3ea8ddee767f0f70335ebe75b6bd2a",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 47,
+      "bytes" : 254561,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-light-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "d34ee0f5e073812443f14973876a4e573fca6902fec8fe380161c36ecbee85df",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "b5528a3b022d2be284763413936f153b9d13cc6a666178d220e7eee64d660c38",
+      "spacing" : 7.1999999999999993,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 31,
+      "bytes" : 237275,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-light-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "d807c3dbd01cb44620a9879c0fe37e801c0db8a3b37463447e4e7c97609be170",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "6e435da9e3dbf40d957afd430c6d022dbf93d180d8cab9d612489da695e996b6",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 40,
+      "bytes" : 241752,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-light-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "f5eb0a3938d999edc70ffd011795b77fb82f2ad31d1ef1c475f7c87bdc3c6cfc",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "9d2251750870163cd4f67f7fdcd6ad5e4304bf5a39e45144a997a574ef7717c5",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 43,
+      "bytes" : 246126,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-light-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "94d3aefddb16d21239895d7e22ea2d046db167bdf8a9f21544329cda16af249a",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "b24830b28d6011d3b360cabfacf12f7b1a0a6c9a9749d284bee0c59dcf6af423",
+      "spacing" : 7.8000000000000007,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 51,
+      "bytes" : 252193,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-light-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "ba81348999fb1aaf2d4b63b928723399ed828c49ea06953c93c31f9520e92e02",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "264d82ba12c03f0afa7a31deac2dae72f4e9d83e94dd76d24cd15bd77eb68ba8",
+      "spacing" : 6.5999999999999996,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 53,
+      "bytes" : 249902,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-light-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a71b17d5c76b43db2557275e8ca77d4b724568765f0d279cec86e856811934b9",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "267762d116b2cc7cec4662dec28fe6a821c4acf48dc821967acdc2344e9a2d59",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 45,
+      "bytes" : 251196,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-light-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "079e3cca52ecc595ea7ae476591ce72a51bf1cf711b3ee0fa15c2390c9922b0f",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "e41c7bae5b14afda99bf181f63da67303490f86664d9855b7a3e47a9d6d18bf7",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 99,
+      "bytes" : 260051,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-light-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "10d55f35d94411cf114cf089002a80bd7c94a129712d57582df2010f7d7206ef",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "c34795d46ae86dda5500356992d217ff8548a69f892ba63ab6bb56f66ee7ea66",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 130,
+      "bytes" : 303766,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-light-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "5fcdd7111337cf218cbf29556c752f03babee3ab46602b3d13e18885180d647e",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "b54d5befe7d41632705dac49d84ad6ea61dfb4d25c1908fb2d18a27adcb27387",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 37,
+      "bytes" : 246404,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-dark-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "f5918626699d8496c885477e02f15e522800d55bf5abaa704583dd533eb4b498",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "8d1362e8b5f6fe69ad6b639c2826b47553e9411156d444a84e2501971fa45ffa",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 69,
+      "bytes" : 248633,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-dark-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "6bc5f927b1b53e3b467eac07c70510963045f2a26ac919045e62f607faf178fb",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "de212d5f93a563d7b19857a1ff59323182eccef9a50adc086954ea8ae31af088",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 47,
+      "bytes" : 255521,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-dark-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "71ec16236bae8e164daf3e03957a86f1cc57f116ac98f036e9ec6f54cac630e0",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "dd5f81551841b805c20cd506c795d8219225fb72a96b78c22a860bc65d687afc",
+      "spacing" : 7.1999999999999993,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 31,
+      "bytes" : 237538,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-dark-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "1d8da68b4959ecc5683625ae936e083ef22c8ef7c05180a0540fc7f26908ff14",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "0b377b1cdec0d5b8c578b0371d091b05f6c7f0f0f19dd211044df3a58575276b",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 40,
+      "bytes" : 241412,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-dark-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "6d49b5ac2203ace05fafd2a0cec81e5ff91d1f8d9ed5b8e6cac9ff0f5e189134",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "cc8e80807c52c90f3456d32944b7c8c499cedbd1c3651f49795b5639b24de20a",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 43,
+      "bytes" : 244370,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-dark-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "6c0c073e0d5a0eeab51a5c960b0587102f4c75087efcf2125ae1f6b608ef9f76",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "54ed77c1205e855ce95bf67058aa1fde8b497e7ef11a8323796be0a31e7e8463",
+      "spacing" : 7.8000000000000007,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 51,
+      "bytes" : 251192,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-dark-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "0eb0dfda4e93156ce4b223815a1fbc7c11e0047f35ebdc0013b6bb7e5dd783fe",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "7c4e6869edf24868410ff7fc5a30f59b03d6025292e1da09069542061cc14f20",
+      "spacing" : 6.5999999999999996,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 53,
+      "bytes" : 247863,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-dark-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "c426583e80a24d1ff9348ca47e43d9ccd6bbf8e0688d15deab81fa5f88bfafaa",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "bd152f7ef8e4dacdb449fdf31f70dbc9c53580952992438e5e5df1c5490d8667",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 45,
+      "bytes" : 250637,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-dark-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "9b8a4f3e7f9cb9541be203708b187499554c57b7147ee0434a2df0ba6ed3fb99",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "dae400cc2bff4a93712119b6f690be6940f0eb665fe9d8d6ed112d8d6373fb3c",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 99,
+      "bytes" : 258968,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-dark-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "7bb4d87e576db0176c988bf649409bc53bf1170f8fa8b2dce784368cd4b5e19c",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "c617d274b321e5196bcfbbf6ec6dc4d20c8c3f56f6284e58e72b86be42e387df",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 130,
+      "bytes" : 302969,
+      "device" : "std",
+      "deviceName" : "iPhone 15",
+      "file" : "M3-std-dark-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "ad3b33c47c359ee58b3ab0459c4701f9c9c1c9f0fca3db34fdf6d00b427e01d8",
+      "pt" : [
+        393,
+        852
+      ],
+      "px" : [
+        1179,
+        2556
+      ],
+      "scale" : 3,
+      "sha256" : "d47e1c45090f6e1d2f7b76622f5cc01d7da51bf71b56f7ef3130734a6c852bf8",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 38,
+      "bytes" : 252626,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-light-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "739272334330cd191b80bf024d87955d5c22ecb8d234a7daa9bd4c1e19dc8d78",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "53a7011ed8f0968881a17679695248dd73b699934fb6ad4a8bf9182f9b1dc60e",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 71,
+      "bytes" : 258132,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-light-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "df96eb3c2a38ae50bb3c422bbec8a41a6f2389bec19de171cf0db37e563a94b1",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "7fc78a10fd55aac8b8e1e6e4b50335fe2df4c09011b2bff73eabacf09740ed98",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 48,
+      "bytes" : 262945,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-light-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "e3961b31802e14747e7e0ebefb9bd9e8b93df7a26ca5845564a74cb0ad4b8cd2",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "89ceffbe39968fdeb097bf6dd49ce732cdfa18d6d659353b786ef3f1749435a4",
+      "spacing" : 7.1999999999999993,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 32,
+      "bytes" : 243972,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-light-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "97b4992888a1e397a78189769df5bbd4a6204a05379217e9235720656c9b651e",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "b594e33429cd1b4eebb9186b22a26142f38958cb2ed95a78c8deffc0720d937e",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 41,
+      "bytes" : 249858,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-light-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "b643b4188e6240c494d75265ca0d78882428eb716c43344df5c34176b0f0cb0a",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "26d4856ff17fc757b7209ff85885acbfac651974db859a0cc8eab5fcc2abe6e6",
+      "spacing" : 8.4000000000000021,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 44,
+      "bytes" : 252049,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-light-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "72acd761be8a1176ac466274bcbdbc384caadb28024a97eacacc4383ae8ba9f8",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "67b7abe1c4e1ce4f7cd9b81a1c4a787b2b8c5d1d913b51f535f337214cc380f9",
+      "spacing" : 7.8000000000000007,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 52,
+      "bytes" : 258884,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-light-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "3f4b80f2a2ffd04c9f3a8972243aad3e2539eeb3fc0720ad894db38f822b7465",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "89995bafd46ebc60e76bf6a06179783dae5ab94853be4af4d5f904bd0f97200c",
+      "spacing" : 6.5999999999999996,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 54,
+      "bytes" : 254580,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-light-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "474d33ec3ac6bdd0928c6bcc64d2575836107e46990f69f608265382ef99ce74",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "8b1f219e9060c1a4e7910bb232f36a7c11c0ccc2b480d4e3b5547f79ee243613",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 46,
+      "bytes" : 256884,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-light-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "3cbb015cdd1b4e287b9d10eb4aae03f8a9dd8531718c2a092a59c72a81fea90e",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "cf247c678a2ec62d33555340898a1eb4f505bc7c9f9901e3c5ed6b1408d63446",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 101,
+      "bytes" : 270817,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-light-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "d579b8af9e870643f4db9bb3e8b3109487035b34af9f30c901d76aa08d087bc9",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "97f8b6665f2453f70f8894c74a04c02d564c3cc18de46d1d8c71cd8e9db4ae54",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 133,
+      "bytes" : 315020,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-light-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "4a1770d6deab811372389716827daf531ff0aaea211f0c57cfadf0d62bcd0b26",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "643ded34f11597cf3bfd24b74bc06712376fbedb175b9e4e577fa921d8a40752",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 38,
+      "bytes" : 250767,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-dark-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "aa349ec8c474e694d9e18099fb61d8132868956083be5056dfb7c9b6598bc419",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "3939cf713a91c3872af70babb06c202824f79d605b80f1d5beac6a26050e97ff",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 71,
+      "bytes" : 256650,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-dark-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "4ea13b223ac5db824e7775592da563d320af360bf2ea4eb3666b75cac59eee52",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "ec9d5411b44d112c9c24bb2e935be8f5b074227c4e55e3f13c38bc6aeb0e54a0",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 48,
+      "bytes" : 263026,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-dark-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "e51f6772f8471de4480b1c7491178dc722b8311cb6815062a0008f275290233b",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "6a72215714ac6a1f0f87fece49d45b576c66d41cbec4478eb5e987b0bef68f84",
+      "spacing" : 7.1999999999999993,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 32,
+      "bytes" : 243707,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-dark-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "06b2785496aad1fc110696406d82ef57b0706628c5800401af393b99119f78fb",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "070a214d48e2b7c2bf45e25900fa143c6dc7355cd89bdcbe9cabd09cb8553040",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 41,
+      "bytes" : 248782,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-dark-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "5027ff9f84ad22bacd217f2902ca58e61ccb87d52be18970ab135fd783a6aa25",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "8857e561558c30f560638545634f10a5d00e24face1a3fa6fec45cb95affdc83",
+      "spacing" : 8.4000000000000021,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 44,
+      "bytes" : 251826,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-dark-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "14f05320ec514766b7a259cfd335069c277bd0e168b75b40f3d098ba5cf88ccb",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "ff0964912c1c35a1e947422e4caa57c9784eb34c9a371f086a055f69a65b0597",
+      "spacing" : 7.8000000000000007,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 52,
+      "bytes" : 257644,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-dark-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "2fbf290fc04fdb11238bca0320da1d7b9a73ea1a5c06264106d4950e4d4f1a93",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "1a4d8ba3e893a5799726b00fa88b2a0b48ff927cbe79938b27d9fc58493ebe25",
+      "spacing" : 6.5999999999999996,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 54,
+      "bytes" : 253026,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-dark-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "499995fa2cffe7f9db395c6b258280446bc18cf5972eee2d48ff1ca6f4046583",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "9d9cc57a32fc7c9809a92041519fa910b7e02e3e47b926bff31cf933e241e010",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 46,
+      "bytes" : 256905,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-dark-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "eeaac952bb6f1e0fb0dc32913ff2457ebc78f8a5566d50cc57a22dae46c13f96",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "fd973e1b7446ecbfefbff99d607b01188b559d7457a606cfc92143a4f0177504",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 101,
+      "bytes" : 271271,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-dark-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "39d9bab04c9261b7f7672d5fd1b35aa95546d5f9c79ffd450a1b990560c4747b",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "2c1a8d7ad3689d975266747b0119c77f1ed4589f327b660ef9b707ad1294e68c",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 133,
+      "bytes" : 313990,
+      "device" : "pro",
+      "deviceName" : "iPhone 16 Pro",
+      "file" : "M3-pro-dark-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a508eff2bcc1d79d7612d6e407c1bc25c58e7d3d0293b0d4249ec9573c1a199c",
+      "pt" : [
+        402,
+        874
+      ],
+      "px" : [
+        1206,
+        2622
+      ],
+      "scale" : 3,
+      "sha256" : "ddee73cd33b44eaef7c070d1dd45554fdaf9ecb3a1097c9dc055a826dfbe4e3f",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 39,
+      "bytes" : 267232,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-light-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "cc721ae9b726665466ee8fd3c6ff904b8e8ba7faa8ee1eccd10607259251484d",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "820510a72e73f325b014dd18b7eb821a3e01002eff28f5f8c928259f260ab7b9",
+      "spacing" : 9.2000000000000011,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 74,
+      "bytes" : 282205,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-light-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "2e4519420da8720b5eb0a452ad6f769170f49d54fe9c4d634a8a4f07ecf566b8",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "2ab533d09d3c56e7583b3e205363702c41d6d0d033e1226c94f254c95b5d45f4",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 51,
+      "bytes" : 277180,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-light-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "946129da2ab264aafbdd73ddbe9c5f1ac44e22be5038569ffe4fd00f1822cb36",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "b48c555af273cef350c88d4435d96be4796e8b52270ff3032cdc4ac7b5ab9a43",
+      "spacing" : 7.1999999999999993,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 33,
+      "bytes" : 257053,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-light-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "03cfad331a1f45ab5357e0d0fd751be7beb0783cef3bbf89a99a8631685252c1",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "8bd20b49fc9133f60629058f00100366a3f94abc20c733a37a4c1365bb0f1d0e",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 43,
+      "bytes" : 263580,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-light-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a73dcf6bae87f566af09d78f36dd1d9857f7f43995361c8daf5ef971b467d6a5",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "835137306dce05e28c3266dcb4dfbe19c1b30fa59e01961a16f21ca982166210",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 47,
+      "bytes" : 265685,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-light-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "7f9cdec13a654eb977f516f368bd8ef817dc4e7b6fe5272d87bfe262a0d3b71d",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "f7a8946d32b94236b9fb66ae6c45840b47d0f510789bebc6c1e4d999cb1c2d02",
+      "spacing" : 7.7999999999999989,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 55,
+      "bytes" : 270374,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-light-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "8c63f95041ee3653566ec77c086cdf73dbc7f59bd0c0cbe40e3d268e7b6c9103",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "afd96107f4693c253dc03f4f61a9dc209dd8ed1e7a5b08dae898c78f2e5aab6c",
+      "spacing" : 6.5999999999999996,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 57,
+      "bytes" : 273780,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-light-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a08cfdd7e459e542b377d7e3fb388649818848454047dd3bbc35fb7c71376bc1",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "c66f70cd997ca67540827eb5c813beee3815a055a5d261e0754dc035e7607cb8",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 48,
+      "bytes" : 270431,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-light-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "c60238c42fd62674334a96f60e5de26cc7bbc11c91ae36e7ff3578a4be8a8670",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "5f092efb2d8c194c290b751d73a502f45ee2ba1978861a7a13b6df97cbec5dea",
+      "spacing" : 7.5999999999999988,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 106,
+      "bytes" : 294457,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-light-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "3044b3f09e92de9668ab7edefc09484fcc713f05698b0531bccc6120ef3dea30",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "561d6eb61181f2779d457470d0320ef0d712ec8fb630a7eb2f326299c843ee62",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 140,
+      "bytes" : 352985,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-light-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "f191a29dd950d930d8c4d6c9d77f394bcd12cabc6f0a1ed154fc5b2f44b837bc",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "1ed5ac2cc365d8c91573143550df628757621b99861f9ae1e02d1b27b76556eb",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 39,
+      "bytes" : 267215,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-dark-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "eb86523a51c3061f63cf9ee2f80a22acb14fa19e64173da36fd4d3ce2ca766ae",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "2162ee06bd11eaf2222c5c2a7762735f06c4be6e578fbed52b7945319a10b212",
+      "spacing" : 9.2000000000000011,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 74,
+      "bytes" : 281646,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-dark-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "fc013e001d10e1125184913fe86035c2de6033c53b4c78cb3bd1b58ab883f410",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "2f45b11b510ae8e2b67f7df19cb6f8a439b4400ea375578903d73c15342d7c5b",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 51,
+      "bytes" : 275928,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-dark-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "d502d3b205eb0eb60241ec14cceee03cfc2d174d3dc9d3a1da97ca5309d526f9",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "a2abbc8736998029c7588cb33f259dfc70dae9d76a9642c3d8ba2813ec7644e3",
+      "spacing" : 7.1999999999999993,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 33,
+      "bytes" : 257286,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-dark-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "c8f80f8130b8480565fe6764a031fbc3fdbe200572c5f5aad35dc1a3dd1af823",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "5c3520a08d7b14fd2164fc58156fa76a58f19086d171b314113a1be12c8eec40",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 43,
+      "bytes" : 261425,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-dark-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "8aeaf70a5918402b16ea24d908539979a9cc1e932642cc35330dcd62cbd2da98",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "c0e392088da0975c2642a0d86e743fb532dc826df16e4031237b518ca95c3ea9",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 47,
+      "bytes" : 264227,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-dark-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "0e1248b1c566f715f9a5bfc6b1b8c12094d67ad649d3997d28ce2396037f5d10",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "a37e178f50ff04a7316dda66ee49e1dfbb459bc731d68ae03914ca86e2183833",
+      "spacing" : 7.7999999999999989,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 55,
+      "bytes" : 269149,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-dark-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "92468b53944d572bd612bef927ae01b51f85fe4116e1499b177283ec546bee1e",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "e98277fd3704b806ad90fc4cb03ddbbea2b712e67e4b8997c3c5f1c35fd93842",
+      "spacing" : 6.5999999999999996,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 57,
+      "bytes" : 272393,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-dark-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "82f48c391f991d8410499760e23c10d8b4f5969bcbf61df98f3d9bf52a4bdc3d",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "00f5741dc5e1c21aa6b136d407e90c96212503e0852a61ecfbfcf5730334774a",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 48,
+      "bytes" : 268749,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-dark-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "ea6efb036d048947d41710b12970131b96bd5cc491735a2ec000dfb3fe2232f4",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "c5c3567383bdd885fb69dcce8c9bbe529cd3e29127383375f0dc3310e8dca63f",
+      "spacing" : 7.5999999999999988,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 106,
+      "bytes" : 293649,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-dark-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "bc67a76bbc20b30e7c7daa2a5feb0e9a8a53022979ab19ae4339726aa71a25f2",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "c7f7b1d0656eb84ff25823e91646acf1d641929088124d13ec54d9df9958652f",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 140,
+      "bytes" : 351839,
+      "device" : "air",
+      "deviceName" : "iPhone Air",
+      "file" : "M3-air-dark-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "853f7eea1985d932945f29fde105654149a5d9b367ef2a2f187d9bbfd53a80e6",
+      "pt" : [
+        420,
+        912
+      ],
+      "px" : [
+        1260,
+        2736
+      ],
+      "scale" : 3,
+      "sha256" : "042c8da9e67a58fb36792eb88827ef0a85b5d002eb4fd57fb2484393d727ff91",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 41,
+      "bytes" : 276373,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-light-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "b973a91878430de36ae78fdb5a3de624ddd5a7ae6be8f30880166c2f43869810",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "fcf989db318c4db5ab6a56dbc1ce22a4f39bbf2431da3096e5e764ccb58a3976",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 76,
+      "bytes" : 291863,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-light-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "f21c0999841ce84373bf7b9f5b104946a7c3a41ae885e7d44380e7e47470cb37",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "12cebd64f1f4ae0f35841bd69407857eef83fb9b171c18a43f3aefb8a6950a38",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 52,
+      "bytes" : 283952,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-light-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "ca5978cbb8ba5aadc4ea46e183c670672ee02c2042f0c7cee83418665c39d2aa",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "e1a12f339e840ca6116b6d9d1e4c39629b13975b027ac760a37a582827b52227",
+      "spacing" : 7.2000000000000002,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 34,
+      "bytes" : 264277,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-light-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "3a090a71bb60a79a86ca3649dd209c3994f8b4b1d20e278a8dd2d53ec73df804",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "4b545c50be8234dd0b0fcc3b5038e97bc6de7b4c9b894caa75ba7df3230d9c88",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 44,
+      "bytes" : 272983,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-light-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "f2713898a226bebc84c66fcb4386937073db08a294289db98477d045ca9d09a0",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "fca363bfb33e0fc2c3cf5666fa17d920d98660e2ae694ac10297e68c9c778ef4",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 48,
+      "bytes" : 273270,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-light-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "3dbe19a02384d8472534704ee111993f7fce6546b5bea12cf5d79a60f5ff6ad1",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "147f73b6028ab7ae080dc392f7da9e32b0ea8f31752c4dd006b7e2c36d4f1b9c",
+      "spacing" : 7.7999999999999998,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 56,
+      "bytes" : 280181,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-light-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "12dc606bc9a805d8afa6ae1232b8a709d15cb655c53ce7fce9441baed334ba4c",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "dfa793e958bb7afeb5cf419d48bc743a1e80db167c2ad20f4f12452c3bd56e78",
+      "spacing" : 6.5999999999999996,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 59,
+      "bytes" : 279694,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-light-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "5f2a1f1e60ade9599e127962b1a144b1a29639f7243feb27626d8ea216fa4ead",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "69cfd80d6e0bad264cf1c4ff4a479c8960509fd655b5c778e7faf6e9ac249d40",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 49,
+      "bytes" : 276974,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-light-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "684d9c7c7fcc8670c00bbeeef78e50625b7f06a5f7b9442a8f7e8516e70aed82",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "6b8e144a9b8c51ad4e25df847e9cfbd950af5c2eef95eefa0d766addba32cfb6",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 109,
+      "bytes" : 309184,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-light-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "711f1ff0b9da3a137404731c34e7f9c074771420a465c9bbe9ca9e8bf2e92053",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "10b3cc1449436808cc6f1b006f1133079dccab06f348858d7094105f63705896",
+      "spacing" : 3.4000000000000004,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 143,
+      "bytes" : 369987,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-light-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "73b141d88656c8bfd788f88183e9cbfcf75dd33aa464379d68f3ce5faae9bc79",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "a4db24ec32be8303ff96f4e3ec55dbe8e6b597eec7575dac3d90eb3f28c23c38",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 41,
+      "bytes" : 275636,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-dark-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "c8306d7bff56c3efe57323484b49bd3b16a4c8122ae918d3b9c6f1ae075af287",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "a28147afa30eb64ae1d61dbb939aba582e75bfc40b9e2f10b6675d86667dbc2d",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 76,
+      "bytes" : 290356,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-dark-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "d0fb5e5f0e76c79658036b285a4127a1a9a08515c6cbea984f50d07caa874ccf",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "aa82f80a7f65ff5a17b2cac27d3eac23fb82ad6e0e4889b391ca07f5c9e6ac12",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 52,
+      "bytes" : 285121,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-dark-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "5f35394958c85fca52609accc379ebff5283a6e83260808cbf2cb3b8802fb1f3",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "b3c84103ff022382d8f46abde13362927c47721654f7c74964faf1e9ff91945e",
+      "spacing" : 7.2000000000000002,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 34,
+      "bytes" : 259372,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-dark-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "151537e5cd7ff08185eb5f0dd1f1283d27c3d2a99fc54f9fe69b0b5327d06ba3",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "217c91ce81b4cbca7d3bd1efbfd156a0f5be87d0dec11026449ebd6f9a188d8b",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 44,
+      "bytes" : 270754,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-dark-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "2848fa3beb5b8b7da9f9524a659cd8b405849197d361e2ce8dac54b45fb10b1c",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "fb5997dbb1ca02c91066f5f59551aaf5d56bb1039543b6051bc794db6d4f8185",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 48,
+      "bytes" : 272250,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-dark-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "54686113d7963b210beb12ff8f4cc8dbe8240a023ba41bb943a51b9a1b0c60b0",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "cfc2fa7e24736c0b9a80042aad240df82f2b10bc9f9812cfcd762fd859dcdc1a",
+      "spacing" : 7.7999999999999998,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 56,
+      "bytes" : 279292,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-dark-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "fbfb408f4434100ace651e2daea4d8fd8e3526d030aeaa4f6909f5039826b7d6",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "e481efdcd3bc6343f868d621dbf6a7eeeb9733d627fb22fd0693de80fa1241d4",
+      "spacing" : 6.5999999999999996,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 59,
+      "bytes" : 278521,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-dark-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "c64df27fc9c827dffbe92768741ae4ce0130050c837364f25457fb5f6a989419",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "3a5662a1f0b09928747be51e105a1f74b625b31c109612e4ef3471b78a502465",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 49,
+      "bytes" : 276008,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-dark-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "72537effa413ce3d29419e0f0aab3b2f9c2a6b53b45945133e96ed1815b2f6c9",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "eb951a9cd93405c287a1ef522acf8ffa3e99857c42b91c3124d12d314b3c42a1",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 109,
+      "bytes" : 308173,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-dark-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "dae5d6ad92282f415746b5d2297fe7cb134284534be1953ff3800812b3eab665",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "03b1f3de639c093e6cc1426c45ac351880b29ba0cdf6425a7afa72cd44618ab4",
+      "spacing" : 3.4000000000000004,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 143,
+      "bytes" : 368490,
+      "device" : "plus",
+      "deviceName" : "iPhone 16 Plus",
+      "file" : "M3-plus-dark-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "fe8e93bf742a6a1fc433bc48115ee43e42b71a9236436a1ad2f82dda2652cf7f",
+      "pt" : [
+        430,
+        932
+      ],
+      "px" : [
+        1290,
+        2796
+      ],
+      "scale" : 3,
+      "sha256" : "0f7189d25bd91e569717041291970d235fe89570cfbc39138968c80a3a8f0377",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 42,
+      "bytes" : 286331,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-light-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "500bcaca5b640a2306163b898979cd1d401cb673584e50b5b636595a2559735f",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "fdd49c6bd977dec0e9f0b4165008312136a81d1448f566458e66397799dc8462",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 78,
+      "bytes" : 309510,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-light-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "25d06b8287a4a38628ef0df08e2cc8868cb8d799324ee88670f40396f9c32cbd",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "63f56aed020e9c215d5cb8e821249438f588b623710fd8da9cfb249bdea2be47",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 53,
+      "bytes" : 292167,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-light-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "9f129bdaf40b46613297083e83b5b1cac41a8b9af756c4bf7d9cd1a3b8b72c59",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "a2ba3125b2e135e0154f2d9a804ef1d85c4ce5bfce5cbe0fab45bdb68dc133ce",
+      "spacing" : 7.2000000000000002,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 35,
+      "bytes" : 270299,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-light-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "cda9f4d2c13c7a5daf9b727afd2fdec2a7068518698f285b30f1eff23a627f6d",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "5f1f78f225c1141c74c8c4c57092c4f879148dc2694f4cdb0272b540d1556ec5",
+      "spacing" : 10.999999999999998,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 45,
+      "bytes" : 280045,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-light-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "2a3be01d1c7a4f99ab16afd04ac406eec7aea475f343fa514c06df86a9ade902",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "8c398a9812b2b1180beda6d5b3a96a04ba6d738ba9db6ec9325988668a4c811b",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 49,
+      "bytes" : 279476,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-light-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "630225a000f3e6921b7143f5b339400df074d96de2384c69f0c3836f2a7aca0d",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "42557d927518b171d9bb22eeb82cd4eb38e8ee86f8677c3ac507348a3b17a380",
+      "spacing" : 7.7999999999999989,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 58,
+      "bytes" : 290453,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-light-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a17580e87959cb05e4062af2d536f75834080248f3bdd96cd8b4bedf35e94924",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "c152f5f4f27e7bc283a8ace02fa2efeead5694704a9e7778aa3a76cb39c55d8c",
+      "spacing" : 6.6000000000000005,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 60,
+      "bytes" : 290633,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-light-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a95f608ff0a61c7493efe50eb01337dafae535ecab83f0585325e7956d548f5b",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "c1c2e3d8c85702d187aaf609d5b37816d54928ea72108ef37e9938ce9441d88f",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 51,
+      "bytes" : 287545,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-light-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "fe25d970ab6a018564bbc529659357818fb626234508213199d5211eae4bdeea",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "9cb2cde642bb0e82042a2f8969983d584129b29ffacabe273d362d9e840fa119",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 112,
+      "bytes" : 319790,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-light-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "21ca8b24fb9ace5fb856de3bc72f88ea474f250ff71bd8a453db1905fb85b80e",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "5f8870ffe810be76363d5f0e7c30d63d8cde44040fce67bc37d6b783e0527e4a",
+      "spacing" : 3.3999999999999995,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 147,
+      "bytes" : 386317,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-light-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "d194a407b49abd65c7ce6ea834100a1bef04fee7b2692875d918f0b748d34c2c",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "6a220002029fe0f9ce8f1e9724703c595ef88eb6b26d537b46396ffc188b870b",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 42,
+      "bytes" : 286095,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-dark-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "1510c8a19bea60664dc8f42b9b29b57f7f25664310d15945f9e6db6f2092b2cd",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "9e98a361b82d2359e099524557730594f473111d8973dc6c2932c11300cd8ab7",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 78,
+      "bytes" : 308381,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-dark-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "fe2b7d4416033a0518d519bf05fbcc338f0bdd189a2fac008867781fa939eb1f",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "6443862b9953d13c85355f689b666a3986ad1e70d20f6de3e1e79d9998bb4be6",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 53,
+      "bytes" : 292039,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-dark-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "1f01d3438dc467df9a68b5a79437816041c2b7713a26556e246b5eba97e722f5",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "5d99f9b9e4d665fab43fe3f5b0036e5480643770fa06ed7d1526a1a23a2969d0",
+      "spacing" : 7.2000000000000002,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 35,
+      "bytes" : 269410,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-dark-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "ca2886702da7634a2d9818f871fefe3da0891bd5a34b90eef3870f90197f0bfc",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "9a26d729d44b2239b1d495efedc6acab6245ffce67870303e8b18ab078997a33",
+      "spacing" : 10.999999999999998,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 45,
+      "bytes" : 278598,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-dark-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "fe4ca7a42f49cb7ca4b95e6eb59e932453a2d74b9d312784cf9070dee76c3e8e",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "4fbf2f4b9ea181e9e8aa6b5d12ab33b0b91a6c4b08171d4101763dea29e27173",
+      "spacing" : 8.4000000000000004,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 49,
+      "bytes" : 278437,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-dark-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "fbe74d0e76f847b04d1c97839aa055352fabb7a8fa8d9474d414fc45e3413445",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "51401fc8a0ec458a534b002aa5b7631f8ebc2e5e55273f5da1ef3bac6c524cc4",
+      "spacing" : 7.7999999999999989,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 58,
+      "bytes" : 288350,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-dark-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "4f210cd7db830c55ba2b8050fc36e7cb3bbdd0a0079152b2050fffcb49285050",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "f561e78a5b9558b9b06df07e185fb6baf67dcd92c2ee455928d4d0afc1f847cc",
+      "spacing" : 6.6000000000000005,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 60,
+      "bytes" : 288993,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-dark-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a46ebc234c107a9e4a3da64907439ed9f754c451e8d66aab787a34bd355d4f0e",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "18b73f377b551378c0d621797510fab742d6fb138885e6930f2e0d958dbaf4d4",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 51,
+      "bytes" : 286532,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-dark-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "d6b8121ca80791cbe21b92c2878e98b35bfdd2884c19dc2691887c53f85d884d",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "1f79f8ceeb2c73881002aebf69fe5a8a999e94ae9761a3eac8e21ca3c0bea05e",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 112,
+      "bytes" : 317873,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-dark-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "58f6dc5eb347ec30ab6865d3321615e55ca31ec6c873df3f2e5aea559887a4e2",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "ac87b72e5dd7e9935d28fadacc9a44ec3ad20887c39b798c5717a41535c8f777",
+      "spacing" : 3.3999999999999995,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 147,
+      "bytes" : 385094,
+      "device" : "max",
+      "deviceName" : "iPhone 17 Pro Max",
+      "file" : "M3-max-dark-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "26f314aaeecc28582584ec3bf28294672e580018e68b543c507974002acd8030",
+      "pt" : [
+        440,
+        956
+      ],
+      "px" : [
+        1320,
+        2868
+      ],
+      "scale" : 3,
+      "sha256" : "9ca4931956c948c433637d800c63650ec532e716be1d8fc9099d06d7713f379c",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 73,
+      "bytes" : 243027,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-light-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "f0dc0c5851c6379f69f054d75efec23af0907a8bc0428ba2317001a2da4da54d",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "f7b44ee27e7c848e33dab8a225c397ad9400e02f205b9e44ba73f085a28f24c2",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 138,
+      "bytes" : 350819,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-light-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "7a1ec3d5b7d22eb87363dbb65e0c66ffe4af5816ed984113d3d332ebc37dd049",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "6bfc6a1ce9673a7700709feb0748f96516386a8cd10f9a616dabe39d5c9fa1f9",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 93,
+      "bytes" : 274251,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-light-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "2c40f90f4ca36621e9e4b6a465095097a8fe4245038411789c55ac512c84d5ba",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "b87b33352662bd90ec7e9945331dc6331cbdbf4d35eac17f5bc94208ec161bf0",
+      "spacing" : 7.2000000000000002,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 61,
+      "bytes" : 236193,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-light-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "c728755119c2fa6f77ba58f0e5dea9222055cf2700fee3d706e6b4dba14b9fb6",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "44a7fac317633dd8609d77688c23c555d819f41c90126d19abab894e1e1ef5dc",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 79,
+      "bytes" : 248800,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-light-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "b0ca1ae635b8ece835d4ee37510b2587b381821fb7a2e05fc76b89ffe0d9f3a8",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "69157a899d3578debb0245505d9b77cb6b93c22b1d7e2bf3698d67114d395b07",
+      "spacing" : 8.4000000000000021,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 86,
+      "bytes" : 238305,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-light-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "15c3d93c91ffac0c43c2ccfcae0c258b2de2917407c952771ad86d94199ba11b",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "f9f8dea6d6b8fb7d97fdc17c8ed08b529c802ab855efdf152a2832c8947dfd4d",
+      "spacing" : 7.7999999999999998,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 101,
+      "bytes" : 270226,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-light-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a58bb24a5435fbbfd302b1e1e347b4eb0d66a21ee095930e0792b4d93dca55c1",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "8891f352bae395c607f6017f876f591904cae8dd417b38091a289f5f121a4b2b",
+      "spacing" : 6.5999999999999996,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 105,
+      "bytes" : 279151,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-light-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "fcc4ae814be516962fa1a2b6a7b621d3ef2465c442fe271cba5cba66e19afe81",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "4be31cd590509c208f065959e8ee3a89199cf0e51017467a62839c6d44503ab9",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 88,
+      "bytes" : 261962,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-light-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "351aabcd8ee0f7027f258155b2bd4e67cb15f46ca25af80a1a51ef04a913c381",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "f019e4a5d9b73c9572ac8f546218f22f036c5e8df0a0922287a296ec9a063b50",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 196,
+      "bytes" : 341258,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-light-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "3ba485fad01caab37fffe9e7b5968a165d9b78090b553991850c0bd554649aa9",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "46d4a7ab34d3aa71abd342e94a37a9e8d7929aff91e29871bfe8ff02c4fdfd58",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 257,
+      "bytes" : 332883,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-light-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "11312dbc4f7825b58a1a1f8553c9ebd2d5b0b21a043f2458667a985650e34268",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "8dd61e4e831f6272ca31e5952061fce2baa3dae1bf188f7767a2bac1aa784486",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "light",
+      "thin" : false
+    },
+    {
+      "bars" : 73,
+      "bytes" : 242981,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-dark-stout-01.png",
+      "item" : "A3.1",
+      "pixelSha256" : "c002d98699e00e7a06531c977b8670d707fe2a2cc6f7a8de5e1a4f31a43a1da8",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "f32f6096d398f65fcddc4acc7ff1706e3b9d2b15964c461cc33e25397bf05903",
+      "spacing" : 9.1999999999999993,
+      "style" : "stout",
+      "styleName" : "墩",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 138,
+      "bytes" : 349389,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-dark-indigo-02.png",
+      "item" : "A3.1",
+      "pixelSha256" : "1a7df1be83201271ca71ed1a0ee6070fb6deb4ec4d3c8df59d448cd45287693a",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "b918c33a5e1b2535544e007bfeb536af110ec5629dea8d5826d87bf999aad9ad",
+      "spacing" : 4.7999999999999998,
+      "style" : "indigo",
+      "styleName" : "靛",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 93,
+      "bytes" : 273108,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-dark-glow-03.png",
+      "item" : "A3.1",
+      "pixelSha256" : "a8ec4ee102e18a664ef889fb63f7467c2074a8a89fa89cf2ea12fbe967725d1b",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "ec96672a513441f4cfec0facd9a049489dc1b022181730e800e754731df1013a",
+      "spacing" : 7.2000000000000002,
+      "style" : "glow",
+      "styleName" : "辉",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 61,
+      "bytes" : 235208,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-dark-airy-04.png",
+      "item" : "A3.1",
+      "pixelSha256" : "ba43f69e6d2e4a9e2d9eafe098ed5a30f2acd150bfbb910994c6dae8baaa54a8",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "8547a9782afc8fceb19c5b8c9a8bcdc53cf655b7a3a0e5f8eaa7781d52da881d",
+      "spacing" : 11,
+      "style" : "airy",
+      "styleName" : "阔",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 79,
+      "bytes" : 246078,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-dark-brick-05.png",
+      "item" : "A3.1",
+      "pixelSha256" : "5736bbdcb775e4615e1b3375c592013d3f8c4aa23efde73b127884f9d5bfb568",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "a873f8297a5a32614e8ed2584916babdaf1eeabf4e8bbaa854ca555feba66028",
+      "spacing" : 8.4000000000000021,
+      "style" : "brick",
+      "styleName" : "砖",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 86,
+      "bytes" : 236591,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-dark-needle-06.png",
+      "item" : "A3.1",
+      "pixelSha256" : "01ff5e8ef00acd6b7aed01794901e6efcc445c277e0ee0464d2e5bf1a16044e5",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "ef1c26617dbac283ee3a6a0e6af10ed6ce4135895a7591d1d3ee368d490b07d0",
+      "spacing" : 7.7999999999999998,
+      "style" : "needle",
+      "styleName" : "针",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 101,
+      "bytes" : 269139,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-dark-pill-07.png",
+      "item" : "A3.1",
+      "pixelSha256" : "0f71fec7518576eaf21a0bb228408b2d011807df9dc90f0de1ace7e2973e19f0",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "21117194ff1af126222dd8f0d3a71839f3b9e9978c432f66c7f5e9931b711133",
+      "spacing" : 6.5999999999999996,
+      "style" : "pill",
+      "styleName" : "芯",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 105,
+      "bytes" : 277232,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-dark-paper-08.png",
+      "item" : "A3.1",
+      "pixelSha256" : "d23754ca5534fe18cf887f55a4b31f055b08dd8bb480eb6d0b856e62a9b1eb5b",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "182ddd6bef736222cebf7e4ffe6cdfc4b488061e0bf652d5755be8e5a0e768b2",
+      "spacing" : 6.4000000000000004,
+      "style" : "paper",
+      "styleName" : "纸",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 88,
+      "bytes" : 259394,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-dark-outline-09.png",
+      "item" : "A3.1",
+      "pixelSha256" : "54c3278d4b86ca7586f68cedfae00cfa6c8fac57a1f9b7ffcabaeacf6e1ef9a8",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "bfa184b0ee92e9e6ff6c22da077ba90d99badc27e1185b55b263adf85f661b24",
+      "spacing" : 7.5999999999999996,
+      "style" : "outline",
+      "styleName" : "描",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 196,
+      "bytes" : 339301,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-dark-bone-10.png",
+      "item" : "A3.1",
+      "pixelSha256" : "fdb1bf25ff0019b6fa20ce340cc5535db859d7d5d7c3c919d95631b76bd2b830",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "3c038ab80ac0989e81cf0d1ca26caac486ab950fcb954d366d0dbd2e5fee05db",
+      "spacing" : 3.3999999999999999,
+      "style" : "bone",
+      "styleName" : "骨",
+      "theme" : "dark",
+      "thin" : false
+    },
+    {
+      "bars" : 257,
+      "bytes" : 331147,
+      "device" : "ipad",
+      "deviceName" : "iPad mini (A17 Pro)",
+      "file" : "M3-ipad-dark-dense-11.png",
+      "item" : "A3.1",
+      "pixelSha256" : "e970cd1220bb30e405b97527bdf82c763e7866b1a2efaca7c24b12474a144595",
+      "pt" : [
+        744,
+        1133
+      ],
+      "px" : [
+        1488,
+        2266
+      ],
+      "scale" : 2,
+      "sha256" : "3c8d5b57d24a57d1996d4e14b04badad324a67343e0c4516d8dc4f739f51b5dd",
+      "spacing" : 2.6000000000000001,
+      "style" : "dense",
+      "styleName" : "密",
+      "theme" : "dark",
+      "thin" : false
+    }
+  ],
+  "item" : "A3.1"
+}
