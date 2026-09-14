@@ -633,3 +633,162 @@ public final boolean M() {   // 是否正好停在「距离最右端 400 根」�
 结论：**「MA 5/10/20、MACD 12/26/9、KDJ 9/3/3」这些默认值在安卓包里查不到**，
 AICoin 是从服务端拉 `ChartIndicatorSetting` 下来的。看盘要自己定默认值，
 照通用惯例即可，不要声称「和 AICoin 对齐」——这一项无从对齐。
+
+---
+
+## 25. 蜡烛实体/影线几何与落笔对齐（`Rj/C2723k.java`、`Rj/F0.java`、`Rj/J.java`）
+
+这一节回答两个具体问题：**实体宽/影线宽和节距（12px）是什么关系**，
+以及**网格线、十字线落笔有没有 +0.5 半像素、有没有按 density 取整**。
+
+### 25.1 蜡烛：实体占节距的 2/3，影线是固定 2px
+
+画蜡烛的是 `Rj/C2723k.java`。几何量在一次 `g(Canvas)` 里算好，之后每根 `+= 节距` 推进：
+
+```java
+float fU = y1VarM.u();              // itemWidth＝节距（= scale × 12，见 §24）
+float fJ = y1VarM.J();              // = scrollX mod 节距，亚像素相位
+float f20 = (fU / 6) - fJ;          // 实体左边 = w/6
+float f21 = (fU / 2) - fJ;          // 影线   x = w/2（正中）
+float f22 = ((fU * 2) / 3) + f20;   // 实体右边 = 2w/3 + w/6 = 5w/6
+float f23 = f20;
+// 循环末尾：f23 += fU; f22 += fU; f21 += fU;
+```
+
+于是：
+
+| 量 | 表达式 | 节距 12px 时 |
+|---|---|---|
+| 实体左边 | `w/6` | 2px |
+| 实体右边 | `5w/6` | 10px |
+| **实体宽** | **`2w/3`** | **8px** |
+| 左右各留的缝 | `w/6` 各一侧 | 2px + 2px |
+| 影线 x | `w/2`（bar 正中） | 6px |
+| **影线宽** | **固定 `strokeWidth 2.0f`，与节距无关** | 2px |
+
+注意**影线宽是写死的 2 裸像素**，不随缩放变。所以放到最大（scale 10 ⇒ 节距 120px）时
+实体有 80px 宽，影线还是 2px 一条细线；缩到最小（scale 0.4 ⇒ 节距 4.8px）时
+实体 3.2px，影线 2px，两者几乎一样粗。
+
+### 25.2 涨的实体右边要 `-1`，跌的不减
+
+```java
+// 涨（bVar.a() > bVar.d()，a()=close d()=open）：
+if (bottom - top >= 2.0f) canvas.drawRect(f23, top, f22 - 1, bottom, f19440m);  // ← -1
+else                      canvas.drawLine(f23, y, f22, y, f19439l);
+// 跌：
+if (bottom - top >= 1.0f) canvas.drawRect(f23, top, f22, bottom, f19442o);      // ← 不减
+else                      canvas.drawLine(f23, y, f22, y, f19441n);
+// 十字星（a() == d()）：
+f19443p.setStrokeWidth(2.0f);
+canvas.drawLine(f23, fS, f22, fS, f19443p);
+```
+
+极性由配色函数坐实，不是猜的：
+
+```java
+public void u(mk.a aVar) {
+    f19439l.setColor(aVar.q()); f19440m.setColor(aVar.q()); f19443p.setColor(aVar.q()); // 涨色
+    f19441n.setColor(aVar.l()); f19442o.setColor(aVar.l());                              // 跌色
+}
+```
+
+两点值得注意：
+
+- **「一格留 1 像素缝」这个做法 AICoin 确实有，但只用在涨的实体上。** 跌的实体画满
+  `[w/6, 5w/6]`。所以密集时跌的柱子看起来比涨的宽 1px——这是实现的不对称，
+  不是视觉设计。要不要抄这条 1px 是可以自己定的，但别以为 AICoin 两边都做了。
+- **实体高度不足就退化成一条线**，而且涨跌阈值不一样：涨 `>= 2.0f` 才画矩形，
+  跌 `>= 1.0f` 就画。退化后用的是影线画笔（strokeWidth 2.0f）画一条横线。
+
+### 25.3 空心/实心与描边宽度是设置项
+
+构造函数里的画笔配置：
+
+```java
+paint  (f19439l) 涨/影线： strokeWidth 2.0f
+paint4 (f19441n) 跌：      FILL_AND_STROKE，strokeWidth 2.0f
+paint2 (f19440m) 涨实体：  if (KLineManager.f0() == 1) strokeWidth 1.0f;
+                           q(9) == 0 → FILL_AND_STROKE ; q(9) == 1 → STROKE + strokeWidth 2.0f
+paint5 (f19442o) 跌实体：  if (f0() == 1) strokeWidth 1.0f
+paint3 (f19443p) 十字星：  q(9) == 0 → FILL_AND_STROKE ; q(9) == 1 → STROKE
+```
+
+`q(9)` 是「实心 / 空心蜡烛」的用户设置，空心时涨的实体改成 `STROKE` + 2px 描边。
+`f0() == 1` 是另一个开关，会把实体描边收到 1px。默认（`q(9)==0`）是实心。
+
+### 25.4 落笔对齐：**全链路没有 +0.5，没有按 density 取整，也没开抗锯齿**
+
+这是和原型有分歧的那一处，结论很干脆：**AICoin 一个对齐动作都没做，全是裸 float。**
+
+**K 线 x**：起点 `w/6 - (scrollX mod w)`，逐根 `+= w`。`scrollX mod w` 本身就是任意小数，
+所以蜡烛左右边几乎永远落在非整数像素上。没有 `Math.round`，没有 `+0.5`。
+
+**十字线竖线**（`Rj/F0.java`）：
+
+```java
+f19105l: Style.FILL，默认 strokeWidth 0  → 1px 发丝线
+f19106m: Style.FILL，strokeWidth 2.0f
+float fC = y1.C(y1VarM, 0, 1, null);   // = l(selectedIndex) = (i + 0.5) × 节距 − scrollX
+if (y1VarM.o() > 0.0f)  canvas.drawLine(fC, iZ, fC, c2702dE.p(), this.f19106m);
+else if (y1VarM.E())    canvas.drawLine(fC, iZ, fC, c2702dE.p(), this.f19105l);
+```
+
+关键是 `fC` 来自 `y1.l(i) = (i + 0.5) × 节距 − scrollX`：**竖线钉在 bar 的中心，
+不跟手指的像素走**。手指落在哪根上就吸到那根的中心，中间不做插值也不做像素对齐。
+这里的 `+0.5` 是「第 i 根的中心」这个语义，**不是半像素对齐**，别混为一谈。
+
+**网格**（`Rj/J.java`，注册为 `.g` 图层，见 `C2757v1.java:563`）：
+
+```java
+public void g(Canvas canvas) {
+    boolean z10 = abstractC2759w0L instanceof C2742q0;
+    if (this.f19152n) {
+        int iU = c2702dE.u();  int iY = c2702dE.y();      // 左右边界
+        Iterator it = abstractC2759w0L.p().iterator();     // 遍历 Y 轴刻度值
+        while (it.hasNext()) {
+            float fS = abstractC2759w0L.S(((Number) it.next()).doubleValue());
+            canvas.drawLine(iU, fS, iY, fS,
+                (AbstractC7609s.f(nk.l.k(..., Math.abs(abstractC2759w0L.R(fS)), 2, ...), "0.00") && z10)
+                    ? this.f19151m : this.f19150l);
+        }
+    }
+}
+public void u(mk.a aVar) {
+    this.f19152n = nk.n.f(8);              // 网格开关（用户设置第 8 项）
+    Paint paint = this.f19150l;
+    paint.setStrokeWidth(1.0f);            // 1 裸像素
+    paint.setStyle(Paint.Style.STROKE);
+    paint.setColor(aVar.g(1));
+    Paint paint2 = new Paint(this.f19150l);
+    paint2.setColor(aVar.d("value_indicator_line_color_0"));
+    this.f19151m = paint2;
+}
+```
+
+三条事实：
+
+1. **网格只有横线，没有竖线。** 它只遍历 Y 轴刻度 `p()`，从左边界画到右边界。
+   竖向的分隔完全交给时间轴刻度文字和十字线，画布上没有竖网格。
+2. **strokeWidth 1.0f 是裸像素**，不是 1dp。y 值直接是 `S(刻度值)` 的浮点结果，没有取整。
+3. 某条横线的值格式化成两位小数后等于 `"0.00"` 且主图是 `C2742q0` 类型时，
+   换成 `value_indicator_line_color_0` 另一个颜色——即「零轴」高亮。
+
+**抗锯齿**：`C2723k`（蜡烛）、`J`（网格）、`F0`（十字线）三个文件里
+**一次 `setAntiAlias` 都没有**，即默认 `false`；而同目录下几十个其他图层
+（`C2727l0`、`K1`、`Z`、`B1` 等，多是文字/曲线/圆点）都显式开了 AA。
+
+这三件事合起来就说通了：**AICoin 的做法不是「对齐到整数像素」，而是「关掉抗锯齿」。**
+关了 AA 之后，float 坐标由光栅化器按覆盖度直接判进/判出，1px 线永远是硬边的 1px，
+根本不会糊成两条半透明线，所以它压根不需要半像素补偿。
+
+### 25.5 对看盘的结论
+
+- 实体宽用 **节距 × 2/3**，左右各留 **节距 / 6**；影线用 **固定 2px**（不随缩放变）。
+- 「留 1px 缝」AICoin 只对涨的做。我们要么两边都不做、要么两边都做，别复制这个不对称。
+- **对齐策略上，我们「x/y 双向 snap」和原型「只 snap x」两个选项都不是 AICoin 的做法**——
+  它两个方向都不 snap。它能这么做的前提是这三层关掉了抗锯齿。所以这里要么
+  「关 AA + 不 snap」（跟 AICoin 走），要么「开 AA + snap」（跟原型走），
+  **不能开着 AA 又不 snap**——那才是糊的来源。iOS 上 CoreGraphics 默认开 AA，
+  `CGContextSetShouldAntialias(ctx, false)` 是对应的开关。
+- 十字线竖线钉 bar 中心（`(i + 0.5) × 节距 − scrollX`），不跟手指像素，这一条可以直接抄。
