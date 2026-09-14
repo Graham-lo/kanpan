@@ -1,0 +1,1 @@
+../../../Kanpan/Diagnostics/DiagnosticsCenter.swift
