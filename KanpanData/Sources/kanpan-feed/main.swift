@@ -28,13 +28,15 @@ actor Tally {
   var ids: Set<Int> = []
   var bars = 0
   var ticks = 0
+  var prices = 0
   var firstPaintMs: Double?
   func addID(_ i: Int) { ids.insert(i) }
   func bumpBar() { bars += 1 }
   func bumpTick() -> Int { ticks += 1; return ticks }
+  func bumpPrice() -> Int { prices += 1; return prices }
   func paint(_ ms: Double) { if firstPaintMs == nil { firstPaintMs = ms } }
   var summary: String {
-    "末根更新 \(bars) 次，行情 \(ticks) 次，首帧 " + (firstPaintMs.map { String(format: "%.0fms", $0) } ?? "无")
+    "末根更新 \(bars) 次，价格 \(prices) 次，行情 \(ticks) 次，首帧 " + (firstPaintMs.map { String(format: "%.0fms", $0) } ?? "无")
   }
 }
 
@@ -229,6 +231,11 @@ func cmdLive(_ symbol: String, _ iv: Interval, minutes: Double) async throws {
       case .ticker(let t):
         let n = await tally.bumpTick()
         if n % 10 == 1 { say("行情 last=\(t.last) 涨跌=\(t.changePercent)% 24h高=\(t.high) 低=\(t.low)") }
+      case .price(let last, let mark):
+        let n = await tally.bumpPrice()
+        if n % 50 == 1 {
+          say("价 last=\(last.map { "\($0)" } ?? "-") 标记=\(mark.map { "\($0)" } ?? "-")（第 \(n) 次）")
+        }
       case .oi(let p): say("OI \(p.count) 条")
       case .status(let s): say("状态 → \(s.rawValue)")
       }

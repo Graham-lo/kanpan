@@ -11,18 +11,44 @@ import Foundation
 // 差异记在 docs/acceptance/M5/品种页.md。
 
 /// 自选与最近两份列表。纯值，全部操作都在这上面做，方便单测。
+struct FavoriteGroup: Codable, Sendable, Equatable, Identifiable {
+  var id: String
+  var name: String
+}
+
 struct SymbolPrefs: Codable, Sendable, Equatable {
   /// 自选，用户自己的顺序（拖排序改的就是它）。
   var favorites: [String] = []
   /// 最近打开，**时间倒序**：下标 0 是最新打开的那个。
   var recents: [String] = []
+  var groups: [FavoriteGroup] = []
+  var groupForSymbol: [String: String] = [:]
+  var pinned: [String] = []
+  var selectedGroupID: String?
 
   /// 最近分区的容量（§10.5「最近分区最多 10 个」/ A5.9）。
   static let recentLimit = 10
 
-  init(favorites: [String] = [], recents: [String] = []) {
+  init(favorites: [String] = [], recents: [String] = [], groups: [FavoriteGroup] = [],
+       groupForSymbol: [String: String] = [:], pinned: [String] = [], selectedGroupID: String? = nil) {
     self.favorites = Self.clean(favorites)
     self.recents = Array(Self.clean(recents).prefix(Self.recentLimit))
+    var seen = Set<String>()
+    self.groups = groups.filter { !$0.id.isEmpty && !$0.name.isEmpty && seen.insert($0.id).inserted }
+    self.pinned = Self.clean(pinned).filter { self.favorites.contains($0) }
+    self.groupForSymbol = groupForSymbol.filter { self.favorites.contains($0.key) && seen.contains($0.value) }
+    self.selectedGroupID = selectedGroupID.flatMap { seen.contains($0) ? $0 : nil }
+  }
+
+  private enum CodingKeys: String, CodingKey { case favorites, recents, groups, groupForSymbol, pinned, selectedGroupID }
+  init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(favorites: try values.decodeIfPresent([String].self, forKey: .favorites) ?? [],
+              recents: try values.decodeIfPresent([String].self, forKey: .recents) ?? [],
+              groups: try values.decodeIfPresent([FavoriteGroup].self, forKey: .groups) ?? [],
+              groupForSymbol: try values.decodeIfPresent([String: String].self, forKey: .groupForSymbol) ?? [:],
+              pinned: try values.decodeIfPresent([String].self, forKey: .pinned) ?? [],
+              selectedGroupID: try values.decodeIfPresent(String.self, forKey: .selectedGroupID))
   }
 
   // ---------------------------------------------------------------- 自选
@@ -35,17 +61,20 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   mutating func toggleFavorite(_ symbol: String) {
     let s = Self.key(symbol)
     guard !s.isEmpty else { return }
-    if let at = favorites.firstIndex(of: s) { favorites.remove(at: at) } else { favorites.append(s) }
+    if favorites.contains(s) { removeFavorite(s) } else { addFavorite(s) }
   }
 
   mutating func addFavorite(_ symbol: String) {
     let s = Self.key(symbol)
     guard !s.isEmpty, !favorites.contains(s) else { return }
     favorites.append(s)
+    if let group = selectedGroupID ?? groups.first?.id { groupForSymbol[s] = group }
   }
 
   mutating func removeFavorite(_ symbol: String) {
     favorites.removeAll { $0 == Self.key(symbol) }
+    groupForSymbol.removeValue(forKey: Self.key(symbol))
+    pinned.removeAll { $0 == Self.key(symbol) }
   }
 
   /// `List.onMove` 的口径（IndexSet + 目标下标，目标是「插到原下标 destination 之前」）。
@@ -73,6 +102,79 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
           let to = favorites.firstIndex(of: t) else { return }
     favorites.remove(at: from)
     favorites.insert(s, at: to)
+  }
+
+  mutating func setPinned(_ symbol: String, _ on: Bool) {
+    let symbol = Self.key(symbol)
+    guard favorites.contains(symbol) else { return }
+    pinned.removeAll { $0 == symbol }
+    if on { pinned.append(symbol) }
+  }
+
+  // ---------------------------------------------------------------- 自选分类
+
+  @discardableResult
+  mutating func createGroup(_ name: String) -> String? {
+    let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
+    guard !trimmed.isEmpty else { return nil }
+    if let existing = groups.first(where: { $0.name == trimmed }) { return existing.id }
+    let id = UUID().uuidString
+    groups.append(.init(id: id, name: trimmed))
+    return id
+  }
+
+  mutating func renameGroup(_ id: String, name: String) {
+    let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
+    guard !trimmed.isEmpty, !groups.contains(where: { $0.id != id && $0.name == trimmed }),
+          let index = groups.firstIndex(where: { $0.id == id }) else { return }
+    groups[index].name = trimmed
+  }
+
+  mutating func deleteGroup(_ id: String) {
+    groups.removeAll { $0.id == id }
+    groupForSymbol = groupForSymbol.filter { $0.value != id }
+    if selectedGroupID == id { selectedGroupID = nil }
+    classifyUnassigned()
+  }
+
+  /// 去掉虚拟默认分类后，旧未归类成员进入当前/首个实际分类；没有分类时原样保留。
+  mutating func classifyUnassigned() {
+    guard let group = selectedGroupID ?? groups.first?.id else { return }
+    for symbol in favorites where groupForSymbol[symbol] == nil { groupForSymbol[symbol] = group }
+  }
+
+  mutating func selectGroup(_ id: String) {
+    guard groups.contains(where: { $0.id == id }) else { return }
+    selectedGroupID = id
+  }
+
+  mutating func assign(_ symbol: String, to group: String?) {
+    let symbol = Self.key(symbol)
+    guard favorites.contains(symbol) else { return }
+    if let group, groups.contains(where: { $0.id == group }) { groupForSymbol[symbol] = group }
+    else { groupForSymbol.removeValue(forKey: symbol) }
+  }
+
+  func favorites(in group: String?) -> [String] {
+    favorites.filter { groupForSymbol[$0] == group }
+  }
+
+  /// 可见行可能按行情排序或属于某一分类，不能直接把显示索引写入全量收藏。
+  mutating func moveVisible(_ visible: [String], from source: IndexSet, to destination: Int) {
+    var ordered = SymbolPrefs(favorites: visible.filter { favorites.contains($0) })
+    ordered.moveFavorites(from: source, to: destination)
+    let members = Set(ordered.favorites)
+    var iterator = ordered.favorites.makeIterator()
+    favorites = favorites.map { members.contains($0) ? iterator.next()! : $0 }
+  }
+
+  mutating func moveInGroup(_ group: String?, from source: IndexSet, to destination: Int) {
+    let members = favorites(in: group)
+    var scoped = SymbolPrefs(favorites: members)
+    scoped.moveFavorites(from: source, to: destination)
+    var ordered = scoped.favorites.makeIterator()
+    let memberSet = Set(members)
+    favorites = favorites.map { memberSet.contains($0) ? ordered.next()! : $0 }
   }
 
   // ---------------------------------------------------------------- 最近
@@ -124,7 +226,7 @@ extension UserDefaults: SymbolPrefsStorage {
 ///
 /// **落盘位置**：`UserDefaults.standard`，键 **`kanpan.symbols.v1`**，
 /// 值是 `SymbolPrefs` 的 JSON（`{"favorites":[...],"recents":[...]}`）。
-/// 改默认值 / 改结构就把 `v1` 往上抬一位，老存档自然作废（同原型 `kanpan.v3` 的规矩）。
+/// 分类字段增量解码，保留旧自选与最近；未分类的品种进入默认分类。
 ///
 /// 任务书 §4.4 说设置 / 自选走「JSON + Codable 放 Application Support」。
 /// 这里先落在 UserDefaults：两份列表加起来不到 1 KB，UserDefaults 本身就是
@@ -137,17 +239,23 @@ final class SymbolPrefsStore {
   private let storage: SymbolPrefsStorage
   private let key: String
 
-  init(storage: SymbolPrefsStorage = UserDefaults.standard, key: String = SymbolPrefsStore.defaultsKey) {
-    self.storage = storage
+  init(storage: SymbolPrefsStorage? = nil, key: String = SymbolPrefsStore.defaultsKey) {
+    self.storage = storage ?? (ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1"
+      ? MemoryPrefsStorage() : UserDefaults.standard)
     self.key = key
   }
 
   /// 读不出来 / 解不动（老版本、被人手改坏）一律当空，绝不抛。
   func load() -> SymbolPrefs {
+    if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
+       let seed = ProcessInfo.processInfo.environment["KANPAN_TEST_FAVORITES"] {
+      return SymbolPrefs(favorites: seed.split(separator: ",").map(String.init))
+    }
     guard let data = storage.symbolPrefsData(forKey: key),
           let prefs = try? JSONDecoder().decode(SymbolPrefs.self, from: data) else { return SymbolPrefs() }
     // 过一遍 init 的清洗（去重、大写、截断到 10）。
-    return SymbolPrefs(favorites: prefs.favorites, recents: prefs.recents)
+    return SymbolPrefs(favorites: prefs.favorites, recents: prefs.recents,
+                       groups: prefs.groups, groupForSymbol: prefs.groupForSymbol, pinned: prefs.pinned, selectedGroupID: prefs.selectedGroupID)
   }
 
   func save(_ prefs: SymbolPrefs) {

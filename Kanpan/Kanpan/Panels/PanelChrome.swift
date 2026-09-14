@@ -35,6 +35,7 @@ struct PanelSheet<Content: View>: View {
           .padding(.bottom, 10)
       }
       .scrollBounceBehavior(.basedOnSize)
+      .accessibilityIdentifier("panel.content")
     }
     .background(t.raised)
     .accessibilityLabel(title)

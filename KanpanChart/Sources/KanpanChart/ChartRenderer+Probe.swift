@@ -98,7 +98,7 @@ extension ChartRenderer {
         if b.high[i] > hiP { hiP = b.high[i] }
         if b.low[i] < loP { loP = b.low[i] }
       }
-      for arr in probeOverlayLines() {
+      for arr in probeOverlayLines() where arr.count > lo {
         for i in lo...min(hi, arr.count - 1) where arr[i].isFinite {
           if arr[i] > hiP { hiP = arr[i] }
           if arr[i] < loP { loP = arr[i] }
@@ -115,7 +115,7 @@ extension ChartRenderer {
 
     return ChartProbe(
       axisW: L.axisW,
-      timeH: L.H - L.timeY,
+      timeH: AICoinBehavior.timeHeight,
       subH: L.subH,
       spacing: spacing,
       bodyW: m.bodyW,

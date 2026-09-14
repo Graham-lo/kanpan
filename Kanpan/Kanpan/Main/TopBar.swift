@@ -7,6 +7,7 @@ import SwiftUI
 /// 字号、间距、图标都按原型 `style.css` 的 `.top` 那一段抄，别自己发挥——
 /// 这一条和价格行是整个 app 里唯一常驻的文字，差一点点立刻显得不像同一个应用。
 struct TopBar: View {
+  @State private var iconTapCount = 0
   var theme: PanelTheme
   var symbol: String
   var starred: Bool
@@ -55,14 +56,20 @@ struct TopBar: View {
   private func iconButton(
     _ icon: VectorIcon, label: String, on: Bool, action: @escaping () -> Void
   ) -> some View {
-    Button(action: action) {
+    Button {
+      iconTapCount += 1
+      action()
+    } label: {
       icon
         .foregroundStyle(on ? theme.amber : theme.ink2)
         .frame(width: 32, height: 32)
-        .contentShape(RoundedRectangle(cornerRadius: 9))
+        .background(theme.app)
+        .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .accessibilityLabel(label)
+    .accessibilityValue(ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1"
+      ? String(iconTapCount) : "")
   }
 }
 
@@ -76,8 +83,14 @@ struct PriceRow: View {
   var lastPrice: Double?
   var decimals: Int
 
-  private var pct: Double { ticker?.changePercent ?? 0 }
-  private var tint: Color { pct >= 0 ? theme.up : theme.down }
+  private var pct: Double? {
+    guard let value = ticker?.changePercent, value.isFinite else { return nil }
+    return value
+  }
+  private var tint: Color {
+    guard let pct else { return theme.ink }
+    return pct >= 0 ? theme.up : theme.down
+  }
 
   var body: some View {
     HStack(alignment: .bottom, spacing: 10) {
@@ -85,10 +98,10 @@ struct PriceRow: View {
         .font(.system(size: 27, weight: .medium, design: .monospaced))
         .monospacedDigit()
         .foregroundStyle(lastPrice == nil ? theme.ink : tint)
-      Text(ticker == nil ? "—" : (pct >= 0 ? "+" : "") + toFixed(pct, 2) + "%")
+      Text(pct.map { ($0 >= 0 ? "+" : "") + toFixed($0, 2) + "%" } ?? "—")
         .font(.system(size: 13, weight: .medium, design: .monospaced))
         .monospacedDigit()
-        .foregroundStyle(ticker == nil ? theme.ink3 : tint)
+        .foregroundStyle(pct == nil ? theme.ink3 : tint)
       Spacer(minLength: 0)
       stats
     }

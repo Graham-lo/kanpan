@@ -115,6 +115,75 @@ struct OIArchiveTests {
 @Suite("OI 对齐：两源合一条")
 struct OIAlignTests {
 
+  @Test("历史网关失败换备用，保留周期且不重复下载ZIP", arguments: [200, 429, 503])
+  func gatewayPeriodRequest(firstStatus: Int) async throws {
+    let day = Aggregator.utcMs(year: 2021, month: 12, day: 1)
+    let now = Aggregator.utcMs(year: 2026, month: 9, day: 15)
+    let pacer = StepPacer()
+    let server = FakeServer(pacer: pacer) { url in
+      if url.host == "gateway.example", firstStatus != 200 { return HTTPReply(status: firstStatus) }
+      if ["gateway.example", "backup.example"].contains(url.host ?? ""), url.path.hasSuffix("/range") {
+        return json("[[\(day),120]]")
+      }
+      return HTTPReply(status: 500)
+    }
+    let transport = FakeTransport(server)
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let source = OISource(hosts: BinanceHosts(oiProxy: "gateway.example", oiProxyFallbacks: ["backup.example"]),
+      rest: BinanceREST(transport: transport, pacer: pacer), transport: transport,
+      store: OIStore(paths: Paths(root: dir)))
+    let result = await source.rawPoints(symbol: "BTCUSDT", interval: .h4,
+      from: day, to: day + 86_399_999, now: now)
+    #expect(result == [.init(time: day, value: 120)])
+    let urls = await server.urls()
+    #expect(urls.count == (firstStatus == 200 ? 1 : 2))
+    #expect(urls.last?.host == (firstStatus == 200 ? "gateway.example" : "backup.example"))
+    #expect(URLComponents(url: urls.last!, resolvingAgainstBaseURL: false)?.queryItems?.contains(
+      URLQueryItem(name: "interval", value: "4h")) == true)
+  }
+
+  @Test("图表管线按周期取最后持仓量，不求和、不直接取原始首点", arguments: Interval.allCases)
+  func chartPipeline(interval: Interval) {
+    let origin = Aggregator.utcMs(year: 2024, month: 2, day: 15)
+    let bucket = Aggregator.bucketStart(ms: origin, interval: interval)
+    let raw = [OIPoint(time: bucket, value: 100),
+               OIPoint(time: bucket + 300_000, value: 120),
+               OIPoint(time: bucket + 600_000, value: 110)]
+    let chart = OISource.chartSeries(raw, interval: interval)
+    let bars = BarSeries(symbol: "X", interval: interval,
+      bars: makeBars(t0: bucket, step: interval.stepMs, count: 1))
+    let expected = interval.stepMs > 600_000 ? 110.0 : 100.0
+    #expect(chart.aligned(to: bars) == [expected])
+  }
+
+  @Test("月OI用真实日历桶，缺失二月不把一月或三月数据填进去")
+  func calendarGap() {
+    let jan = Aggregator.utcMs(year: 2024, month: 1, day: 1)
+    let feb = Aggregator.utcMs(year: 2024, month: 2, day: 1)
+    let mar = Aggregator.utcMs(year: 2024, month: 3, day: 1)
+    let apr = Aggregator.utcMs(year: 2024, month: 4, day: 1)
+    let chart = OISource.chartSeries([
+      .init(time: jan + 300_000, value: 10), .init(time: mar + 600_000, value: 30)
+    ], interval: .mo1)
+    var bars = BarSeries(symbol: "X", interval: .mo1,
+      bars: makeBars(t0: jan, step: Interval.mo1.stepMs, count: 4))
+    bars.openTime = [jan, feb, mar, apr]
+    let aligned = chart.aligned(to: bars)
+    #expect(aligned[0] == 10 && aligned[2] == 30)
+    #expect(aligned[1].isNaN && aligned[3].isNaN)
+  }
+
+  @Test("分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长")
+  func fineGap() {
+    let chart = OISource.chartSeries([.init(time: 300_000, value: 10),
+                                     .init(time: 900_000, value: 20)], interval: .m1)
+    let bars = BarSeries(symbol: "X", interval: .m1, bars: makeBars(t0: 0, step: 60_000, count: 17))
+    let aligned = chart.aligned(to: bars)
+    #expect(aligned[4].isNaN && aligned[10].isNaN && aligned[14].isNaN)
+    #expect(aligned[5] == 10 && aligned[9] == 10 && aligned[15] == 20)
+  }
+
   private func pts(from: Int64, step: Int64, n: Int, base: Double = 1000) -> [OIPoint] {
     (0..<n).map { OIPoint(time: from + Int64($0) * step, value: base + Double($0)) }
   }

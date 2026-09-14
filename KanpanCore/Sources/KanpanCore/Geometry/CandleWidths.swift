@@ -17,23 +17,7 @@ func evenUp(raw: Double, body: Int, wick: Int) -> Int {
   return max(body, wick)
 }
 
-/// 影线半个设备像素；实体不到 2 像素就退成一根竖线。
-///
-/// **这是原型口径**（`prototype/src/chart.js` 的 `candleWidths`），A1.3 逐点对账用它。
-/// 真正画蜡烛走 `candlePixels`：原型的影线宽只看 dpr 不看风格，也不保证相邻两根之间
-/// 留得出缝，缩小之后会糊成一片（M6 实机反馈）。两条口径分开留着，对账的归对账。
-public func candleWidths(spacing: Double, scale: Double, bodyR: Double) -> CandleWidth {
-  let ratio = (scale.isFinite && scale > 0) ? scale : 1
-  let sp = (spacing.isFinite && spacing > 0) ? spacing : 0
-  let rb = (bodyR.isFinite && bodyR > 0) ? bodyR : 0.55
-  let wick = max(1, Int((ratio / 2).jsRounded()))
-  let raw = sp * rb * ratio
-  if raw < 2 { return CandleWidth(body: wick, wick: wick) }
-  return CandleWidth(body: evenUp(raw: raw, body: max(1, Int(raw.jsRounded())), wick: wick), wick: wick)
-}
-
-/// 一根蜡烛画出来的实际尺寸，单位**点**（pt）。风格表里的 `wick`/`minBody`/`radius`
-/// 都是按设备像素写的，所以一律除以 scale 换回点，和原型 `drawCandles` 开头一致。
+/// Shared candle geometry in points; only radius and outline/fill are skin choices.
 public struct CandleMetrics: Sendable, Equatable {
   /// 实体宽。
   public var bodyW: Double
@@ -49,56 +33,23 @@ public struct CandleMetrics: Sendable, Equatable {
   public var thin: Bool
 }
 
-/// 影线宽度，**整数设备像素**。
-///
-/// 风格表里的 0.5 / 0.8 / 0.9 / 1.8 这些小数是「想要多粗」的意图值，不是能直接画的宽度：
-/// CoreGraphics 拿到 0.5 会画出一条 50% 覆盖率的灰线（靛/砖/骨/密四款全中，而密和骨
-/// 恰恰是密度最高的两款），拿到 1.8 会让右边缘落在像素中间被抗锯齿吃掉一截。用户实机
-/// 反馈的「颜色变淡、影线模糊」就是这个。一律四舍五入到整数像素，最小 1。
-///
-/// 结果（2x）：墩 1.8→2，针 2.0→2，芯/阔 1.0→1，纸 0.8→1，描 0.9→1，靛/砖/骨/密 0.5→1。
-///
-/// - Parameter scale: 风格表的 `wick` 是**按 2x 屏写的设备像素**，这里换算到当前倍率，
-///   让影线的**物理宽度**跨机型一致。
-///
-///   从前这个参数是被 `_ = scale` 丢掉的，于是 `wick` 被当成「所有倍率下都是这么多个
-///   设备像素」——屏幕越精细影线越细：3x 上墩只有 2px ＝ 0.667pt，2x 上 2px ＝ 1.0pt，
-///   整整差 1.5 倍，而 iPhone 15/16 全是 3x。AiCoin 桌面版实测影线恒为 1 个设备像素、
-///   显示器是 1x，也就是 **1.0pt**（见 docs/acceptance/M8/aicoin-对比.md §2.3）——
-///   我们 3x 上那 0.667pt 比它细三分之一，这正是用户实机反馈「影线模糊、挤在一起」
-///   的另一半（前一半是被 `wickTint` 兑淡，在 `drawCandles` 里修）。
-///
-///   换算后：墩 1.8 → 2x:2px / 3x:3px，两边都是 **1.0pt**，和 AiCoin 对齐；
-///   针 2.0 → 2px / 3px；辉 1.2、阔 1.0、芯 1.0 → 1px / 2px；
-///   描 0.9、纸 0.8、靛 0.5、砖 0.5、骨 0.5、密 0.5 → 1px / 1px（这几款要的就是发丝影线）。
-///   仍然一律四舍五入到整数像素、最小 1：非整数宽度会被抗锯齿吃掉一截，那是老问题。
-public func wickPixels(style: CandleStyle, scale: Double) -> Int {
-  let ref = max(0.5, style.wick) * max(1, scale) / 2
-  return max(1, Int(ref.jsRounded()))
+/// Shared wick width, snapped to whole device pixels.
+public func wickPixels(scale: Double) -> Int {
+  max(1, Int((max(1, scale) * 2 / 3).rounded()))
 }
 
-/// 实际绘制用的一根蜡烛宽度，单位**设备像素**。和 `candleWidths` 的区别有两条：
-///
-/// 1. 影线按风格量化（`wickPixels`），不再是原型那个只看 dpr 的 `round(scale/2)`。
-///    这样 `evenUp` 的奇偶对齐才真的生效——原来渲染器只取了 `w.body`，影线另走
-///    `wickLineWidth`，奇偶从来没对上过，整个设计意图是死的。
-/// 2. 实体上限 `cell - 1`（`cell` = 一根占的整数像素），保证相邻两根之间至少留得出
-///    1 个设备像素的缝。原型没有这一条，捏小之后实体会连成一片（实测墩在 1.3pt 时
-///    3 像素一格、实体 3 像素，缝为 0）。
-///
-/// 注意所有风格的**默认根间距都碰不到第 2 条**（墩 9.2pt@3x 算下来 `min(24, 26) = 24`），
-/// 它只在用户捏小之后才生效。
-public func candlePixels(spacing: Double, scale: Double, style: CandleStyle) -> CandleWidth {
+/// All skins use the same 2/3 body and a visible gap between adjacent candles.
+public func candlePixels(spacing: Double, scale: Double) -> CandleWidth {
   let ratio = (scale.isFinite && scale > 0) ? scale : 1
   let sp = (spacing.isFinite && spacing > 0) ? spacing : 0
-  let rb = (style.bodyR.isFinite && style.bodyR > 0) ? style.bodyR : 0.55
+  let rb = 2.0 / 3
   let raw = sp * rb * ratio
   // 一根占几个像素：`snap` 之后相邻两根的左沿最少差这么多，减 1 就是能给实体的上限。
   let cell = Int((sp * ratio).rounded(.down))
   // 影线也得让出这条缝。从前只有实体受 `cell - 1` 约束、影线直接用风格量化值，
   // 于是捏小之后影线自己就把一格占满了：墩在 3x 上影线 3 像素，一格只剩 3 像素时
   // 缝是 **0**，一排影线糊成一堵墙——正是实机反馈的「影线挤在一起」。
-  let wick = min(wickPixels(style: style, scale: ratio), max(1, cell - 1))
+  let wick = min(wickPixels(scale: ratio), max(1, cell - 1))
   let cap = max(wick, cell - 1)
   var body = raw < 2 ? wick : max(1, Int(raw.jsRounded()))
   body = min(body, cap)
@@ -110,24 +61,24 @@ public func candlePixels(spacing: Double, scale: Double, style: CandleStyle) -> 
 
 /// 由根间距 + 风格 + 屏幕倍率推出一根蜡烛的全部尺寸。
 public func candleMetrics(spacing: Double, style: CandleStyle, scale: Double) -> CandleMetrics {
-  let w = candlePixels(spacing: spacing, scale: scale, style: style)
+  let w = candlePixels(spacing: spacing, scale: scale)
   let bodyW = Double(w.body) / scale
   let wickW = Double(w.wick) / scale
   let cell = Int((spacing * scale).rounded(.down))
   return CandleMetrics(
     bodyW: bodyW,
     wickW: wickW,
-    minBody: max(wickW, style.minBody / scale),
+    minBody: 1 / scale,
     radius: min(style.radius, bodyW / 2),
-    outline: max(1, (scale * 0.9).rounded()) / scale,
+    outline: 1 / scale,
     // 判据改成物理条件：一格里放不下比影线更宽的实体了，画实体就是白画。
     // 原来写死的 `spacing < 1.3` 和屏幕倍率、风格都无关，2x 和 3x 该退化的点不一样。
     thin: cell - 1 <= w.wick || w.body <= w.wick)
 }
 
 /// 影线粗细，换回点。整数设备像素除以 scale，落笔正好压满整数个像素。
-public func wickLineWidth(style: CandleStyle, scale: Double) -> Double {
-  Double(wickPixels(style: style, scale: scale)) / scale
+public func wickLineWidth(scale: Double) -> Double {
+  Double(wickPixels(scale: scale)) / scale
 }
 
 /// 所有 x 都先乘 scale 取整再除回，保证落在设备像素边界（§5.6 末句）。

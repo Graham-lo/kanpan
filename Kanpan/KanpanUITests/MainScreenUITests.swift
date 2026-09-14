@@ -25,8 +25,13 @@ final class MainScreenUITests: KanpanUICase {
 
   /// 顶栏搜索按钮 → 同一张品种页，且落在搜索框上。
   func testSearchButtonOpensSymbolPage() {
+    let query = app.textFields[Ids.symbolsQuery]
     app.buttons[Ids.searchButton].tap()
-    expectExists(app.textFields[Ids.symbolsQuery], Self.short, "点搜索没开出品种页的搜索框")
+    if app.buttons[Ids.searchButton].exists {
+      print("[UIHit] search callback count: \(String(describing: app.buttons[Ids.searchButton].value))")
+    }
+    XCTAssertTrue(query.waitForExistence(timeout: Self.short),
+                  "搜索按钮正中心一次点击应开出品种页的搜索框")
     app.buttons[Ids.symbolsBack].tap()
     expectGone(app.buttons[Ids.symbolsBack], Self.short, "品种页返回没关掉")
   }
@@ -60,8 +65,10 @@ final class MainScreenUITests: KanpanUICase {
 
     for raw in Ids.quickIntervals {
       let chip = app.buttons[Ids.intervalChip(raw)]
-      chip.tap()
-      XCTAssertTrue(waitUntil(timeout: Self.short) { chip.isSelected },
+      // 走 `tapButton` 而不是裸 `tap()`：`market.interval` 是同步赋值的，点到了就该
+      // 立刻选中；iPad mini 上实测出现过「点了 1m，等满 30s 也不选中」，和顶栏搜索
+      // 那颗一样是正中心那一点吃掉了——退到框内 1/3 处再点就中。
+      XCTAssertTrue(tapButton(chip) { chip.isSelected },
                     "点了 \(raw)，它自己没变成选中")
       for other in Ids.quickIntervals where other != raw {
         XCTAssertFalse(app.buttons[Ids.intervalChip(other)].isSelected,
@@ -151,12 +158,14 @@ final class MainScreenUITests: KanpanUICase {
   func testLatestButtonAppearsAfterLeavingLatest() throws {
     try XCTSkipUnless(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据，跳过（这条要真数据）")
     let latest = app.buttons[Ids.latestButton]
-    XCTAssertFalse(latest.isHittable, "视野就在最新一根上，「回到最新」不该露面")
+    // `waitForLiveChart()` 末尾按过一次「回到最新」，但视野归位是一帧一帧滑过去的
+    // （iPad 上图宽、滑得久），所以这里轮询等它收回去，不瞬时断言。
+    XCTAssertTrue(waitUntil(timeout: Self.long) { !latest.isHittable },
+                  "视野就在最新一根上，「回到最新」不该露面")
     dragChartRight()
     XCTAssertTrue(waitUntil(timeout: Self.short) { latest.isHittable },
                   "视野离开最新一根了，「回到最新」没出现")
-    latest.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { !latest.isHittable },
+    XCTAssertTrue(tapButton(latest) { !latest.isHittable },
                   "点了「回到最新」，按钮没收回去")
   }
 }

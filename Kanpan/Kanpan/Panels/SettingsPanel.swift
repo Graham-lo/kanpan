@@ -36,6 +36,13 @@ struct SettingsPanel: View {
           store.update { $0.priceMode = v }
         }
       }
+      PanelRow(name: "开盘时间") {
+        Menu(prefs.changeBasis.title) {
+          ForEach(ChangeBasis.allCases, id: \.self) { basis in
+            Button(basis.title) { store.update { $0.changeBasis = basis } }
+          }
+        }.accessibilityIdentifier("settings.changeBasis")
+      }
       PanelRow(name: "时区") {
         PanelSegment(options: SettingsPanel.zones, selection: prefs.timeZone) { v in
           store.update { $0.timeZone = v }
@@ -54,6 +61,8 @@ struct SettingsPanel: View {
 
       hostRow
       streamRow
+      switchRow("智能行情线路", "自动选用较快的可用线路，断线自动切换", prefs.smartMarketRoute) { $0.smartMarketRoute = $1 }
+        .accessibilityIdentifier("settings.smartMarketRoute")
       cacheRow
 
       PanelRow(name: "恢复默认", meta: "风格、指标、周期、各项开关回到全新安装的样子",

@@ -155,6 +155,87 @@ struct FeedReplayTests {
     #expect(!c.isBackfilling)
   }
 
+  /// 这条是上面两条回放用例里那个竞态的最小复现：REST 的 `klines` 回的是「请求那一刻」
+  /// 的快照，末尾那根是半根。一次往返几百毫秒，回来时 WS 早把这根推完、甚至开了下一根，
+  /// 拿半根盖回去就把收线值抹掉了，而之后这根的 kline 报文又会被当成乱序丢掉——这根
+  /// 就永远定格在半截上（量偏小、收盘停在快照那一刻的价，边界上那笔跑进了下一根）。
+  @Test("慢一拍的 REST 快照不许把已经收线的那根改回半截")
+  func staleSnapshotCannotUnsealClosedBar() {
+    let t2: Int64 = 2 * 60_000, t3: Int64 = 3 * 60_000
+    // 半根：REST 在这根还在走的时候拍下来的样子。
+    let half = Bar(openTime: t2, open: 10, high: 12, low: 9, close: 11, volume: 5)
+    // 收线值：WS 的 x=true 报的。
+    let sealed = Bar(openTime: t2, open: 10, high: 15, low: 9, close: 14, volume: 20)
+
+    // ① 序列里已经有更晚的一根 → t2 封了。
+    var a = FeedComposer(series: BarSeries(symbol: "BTCUSDT", interval: .m1,
+                                           bars: makeBars(t0: 0, step: 60_000, count: 3)))
+    _ = a.apply(KlineEvent(symbol: "BTCUSDT", interval: "1m", openTime: t2, closed: false, bar: sealed))
+    _ = a.apply(KlineEvent(symbol: "BTCUSDT", interval: "1m", openTime: t3, closed: false,
+                           bar: Bar(openTime: t3, open: 14, high: 14, low: 14, close: 14, volume: 1)))
+    a.merge([half])                                   // 慢一拍的快照追上来
+    #expect(a.series.count == 4)
+    #expect(a.series.bar(at: 2) == sealed)            // 没被改回半截
+
+    // ② 还没有更晚的一根，但收到过 x=true → 一样封了。
+    var b = FeedComposer(series: BarSeries(symbol: "BTCUSDT", interval: .m1,
+                                           bars: makeBars(t0: 0, step: 60_000, count: 3)))
+    _ = b.apply(KlineEvent(symbol: "BTCUSDT", interval: "1m", openTime: t2, closed: true, bar: sealed))
+    b.merge([half])
+    #expect(b.series.bar(at: 2) == sealed)
+
+    // ③ 没封的那根照旧认快照（对表、补缺得能把末根盖回去）。
+    var c = FeedComposer(series: BarSeries(symbol: "BTCUSDT", interval: .m1,
+                                           bars: makeBars(t0: 0, step: 60_000, count: 3)))
+    _ = c.apply(KlineEvent(symbol: "BTCUSDT", interval: "1m", openTime: t2, closed: false, bar: sealed))
+    c.merge([half])
+    #expect(c.series.bar(at: 2) == half)
+
+    // ④ 手上没有的那根必须接上，不许因为「时间比末根早」就留个洞。
+    //    等距周期的 `BarSeries` 按下标排，中间本来就不可能有洞；1M 是查表的，能有。
+    let mo: Int64 = 30 * 86_400_000
+    var d = FeedComposer(series: BarSeries(symbol: "BTCUSDT", interval: .mo1, bars: [
+      Bar(openTime: 0, open: 1, high: 1, low: 1, close: 1, volume: 1),
+      Bar(openTime: mo, open: 1, high: 1, low: 1, close: 1, volume: 1),
+      Bar(openTime: 3 * mo, open: 1, high: 1, low: 1, close: 1, volume: 1),   // 缺第 3 个月
+    ]))
+    let missing = Bar(openTime: 2 * mo, open: 7, high: 8, low: 6, close: 7.5, volume: 3)
+    d.merge([missing])                                // 比末根早，但手上没有这根
+    #expect(d.series.count == 4)
+    #expect(d.series.bar(at: 2) == missing)
+
+    // ⑤ 非末根的那些是快照眼里已经收线的权威值，照收不误。
+    var e = FeedComposer(series: BarSeries(symbol: "BTCUSDT", interval: .m1,
+                                           bars: makeBars(t0: 0, step: 60_000, count: 3)))
+    _ = e.apply(KlineEvent(symbol: "BTCUSDT", interval: "1m", openTime: t2, closed: true, bar: sealed))
+    e.merge([half, Bar(openTime: t3, open: 14, high: 14, low: 14, close: 14, volume: 1)])
+    #expect(e.series.count == 4)
+    #expect(e.series.bar(at: 2) == half)               // t2 这回不是末根了
+  }
+
+  /// 等 `feed` 的序列追平 `want`（逐根全等）。超时返回 `false`，让调用方的逐根断言
+  /// 去报「差在哪儿」——这里只负责不要读得太早。
+  /// 第一根对不上的，连两边的值一起报出来。只说「不全等」的话，挂了还得自己再跑一遍
+  /// 才知道差在哪一根、差的是收盘还是成交量。
+  private func firstDiff(_ got: BarSeries, _ want: [Bar]) -> String? {
+    if got.count != want.count { return "根数 \(got.count) ≠ \(want.count)" }
+    for i in 0..<min(got.count, want.count) where got.bar(at: i) != want[i] {
+      return "第 \(i)/\(got.count) 根不等\n  got  \(got.bar(at: i))\n  want \(want[i])"
+    }
+    return nil
+  }
+
+  /// 超时取 20 秒，和上面等牌堆发完那句一致：机器被别的活（比如并行跑八台模拟器的
+  /// UI 测试）占满时，这些 actor 的任务会被调度饿着，5 秒不够——那不是数据错了，
+  /// 是根本没轮上跑。
+  private func converged(_ feed: MarketFeed, _ want: [Bar], _ seconds: Double = 20) async -> Bool {
+    await waitUntil(seconds) {
+      let s = await feed.currentSeries
+      guard s.count == want.count else { return false }
+      return (0..<s.count).allSatisfy { s.bar(at: $0) == want[$0] }
+    }
+  }
+
   // ---------------------------------------------------------------- A2.6
 
   @Test("3000 条录制报文回放：最终序列与期望全等")
@@ -173,7 +254,7 @@ struct FeedReplayTests {
 
     let rest = BinanceREST(transport: FakeTransport(server), pacer: pacer)
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer)
-    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer)
+    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0)
 
     let seen = Counter()
     let stream = await feed.events()
@@ -185,10 +266,19 @@ struct FeedReplayTests {
     // 末根事件至少和 kline 报文一样多（去掉排队期间的）。
     #expect(await waitUntil(5) { seen.value > rec.klines.count / 2 })
 
-    let got = await feed.currentSeries
     let want = ex.bars(now: rec.lines.count)
+    // 牌堆把帧发完 ≠ 报文已经落进序列：中间还隔着 socket → AsyncStream → MarketFeed
+    // 三道手，末根还要过 `tickCoalesceMs` 的合并。发完就立刻读 `currentSeries`，
+    // 尾巴要么少几根、要么末根的高低收还没追平——这条用例过去就是这么飘的
+    // （实测约一成概率，少 4 根或末根不等）。
+    //
+    // 所以等的是**整条序列收敛**，不是只等根数：等到了下面的逐根断言自然全过；
+    // 5 秒等不到就带着下面的 `count` / `allSatisfy` 一起挂，真 bug 照样拦得住。
+    #expect(await converged(feed, want))
+
+    let got = await feed.currentSeries
     #expect(got.count == want.count)
-    #expect((0..<min(got.count, want.count)).allSatisfy { got.bar(at: $0) == want[$0] })
+    #expect(firstDiff(got, want) == nil, "\(firstDiff(got, want) ?? "")")
     // openTime 严格递增、等距、无重复。
     for i in 1..<got.count { #expect(got.time(at: i) == got.time(at: i - 1) + 60_000) }
     await feed.stop()
@@ -215,7 +305,11 @@ struct FeedReplayTests {
     let server = FakeServer(pacer: pacer) { url in
       // 回放到第 k 步，对应原录制的第 k 行（断线那 300 条已经被跳过，但交易所知道）。
       let k = deck.cursor.value
-      lost.setTo(k <= 1000 ? k : min(rec.lines.count, k + 300))
+      // 边界是 `< 1000` 不是 `<= 1000`：回放走到第 1000 帧的那一刻断线就已经发生了，
+      // 交易所从这一刻起手上就有 1300 行。写成 `<=` 会留一个窗口——重连后的补缺如果
+      // 恰好赶在 `.drop` 那一步把游标推到 1001 之前被应答，交易所会谎称自己只有 1000 行，
+      // 那 300 行就永远补不回来，序列中间留个洞（这个竞态让这条用例有约四成概率挂）。
+      lost.setTo(k < 1000 ? k : min(rec.lines.count, k + 300))
       return ex.reply(for: url)
     }
     let paths = tempPaths()
@@ -223,17 +317,20 @@ struct FeedReplayTests {
 
     let rest = BinanceREST(transport: FakeTransport(server), pacer: pacer)
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer)
-    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer)
+    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0)
     _ = await feed.events()
     await feed.start(symbol: "BTCUSDT", interval: .m1)
     #expect(await waitUntil(20) { await deck.progress() >= stepCount - 1 })
     #expect(await waitUntil(5) { await deck.stats().connects >= 2 })   // 真的重连了
 
-    let got = await feed.currentSeries
     lost.setTo(rec.lines.count)
     let want = ex.bars(now: rec.lines.count)
+    // 同上：等整条序列收敛再读。
+    #expect(await converged(feed, want))
+
+    let got = await feed.currentSeries
     #expect(got.count == want.count)
-    #expect((0..<min(got.count, want.count)).allSatisfy { got.bar(at: $0) == want[$0] })
+    #expect(firstDiff(got, want) == nil, "\(firstDiff(got, want) ?? "")")
     for i in 1..<got.count { #expect(got.time(at: i) == got.time(at: i - 1) + 60_000) }
     await feed.stop()
   }
@@ -275,7 +372,9 @@ struct FeedReplayTests {
   func pingPong() async throws {
     let deck = ReplayDeck([.frame(.ping), .frame(.ping), .frame(.ping), .hang])
     let pacer = FastPacer()
-    let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer)
+    // This fixture has no market events: keep the separate valid-data watchdog
+    // outside the pong assertion, even when UI builds delay this test task.
+    let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer, silenceMs: 60_000_000)
     let s = await ws.start(streams: ["btcusdt@kline_1m"])
     let t = Task { for await _ in s {} }
     #expect(await waitUntil(5) { await deck.stats().pongs >= 3 })
@@ -296,8 +395,10 @@ struct FeedReplayTests {
     let paths = tempPaths()
     defer { try? FileManager.default.removeItem(at: paths.root) }
     let rest = BinanceREST(transport: FakeTransport(server), pacer: pacer)
-    let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer)
-    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer)
+    // The finite fixture then hangs; this case checks subscription reuse, not the
+    // separate silence watchdog. Keep its accelerated deadline outside this test.
+    let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer, silenceMs: 60_000_000)
+    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0)
     _ = await feed.events()
 
     await feed.start(symbol: "BTCUSDT", interval: .m1)
@@ -316,7 +417,10 @@ struct FeedReplayTests {
     #expect(sent.contains { $0.contains("SUBSCRIBE") })
     // 订阅的永远只是当前那一组流，不会越积越多。
     let live = await ws.currentStreams
-    #expect(live.count == 2)
+    // All subscribed streams belong to /market.
+    #expect(live.count == 3)
+    #expect(live.contains { $0.contains("@markPrice") })
+    #expect(!live.contains { $0.contains("@bookTicker") || $0.contains("@trade") })
     #expect(live.allSatisfy { $0.hasPrefix(syms[19 % syms.count].lowercased()) })
     // 旧品种的报文不会进当前序列。
     let s = await feed.currentSeries
@@ -345,7 +449,7 @@ struct FeedReplayTests {
     let server = FakeServer(pacer: pacer) { ex.reply(for: $0) }
     let rest = BinanceREST(transport: FakeTransport(server), pacer: pacer)
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer)
-    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer)
+    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0)
 
     let firstEvent = Counter()
     let stream = await feed.events()
@@ -377,7 +481,7 @@ struct FeedReplayTests {
     let server = FakeServer(pacer: pacer) { ex.reply(for: $0) }
     let rest = BinanceREST(transport: FakeTransport(server), pacer: pacer)
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer)
-    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer)
+    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0)
     _ = await feed.events()
     await feed.start(symbol: "BTCUSDT", interval: .m1)
     #expect(await waitUntil(10) { FileManager.default.fileExists(atPath: paths.snapshot.path) })
@@ -404,7 +508,7 @@ struct FeedReplayTests {
     let rest = BinanceREST(transport: FakeTransport(server), pacer: pacer)
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer)
     let cache = BarCache()
-    let feed = MarketFeed(rest: rest, ws: ws, cache: cache, paths: paths, pacer: pacer)
+    let feed = MarketFeed(rest: rest, ws: ws, cache: cache, paths: paths, pacer: pacer, reconcileMs: 0)
     _ = await feed.events()
     await feed.start(symbol: "S0USDT", interval: .m1)
     for i in 0..<30 {

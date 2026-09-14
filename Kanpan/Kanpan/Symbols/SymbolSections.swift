@@ -39,9 +39,9 @@ struct SymbolRow: Sendable, Equatable, Identifiable {
   }
 
   /// 涨跌幅：`+1.23%` / `-1.23%`，两位小数，照原型 `pct.toFixed(2)`。
-  /// 没有行情时原型仍按 0 走（显示 `+0.00%`），这里也一样。
+  /// 没有报价或日开盘基准时留空，不把缺失值写成0%或nan%。
   var changeText: String {
-    let p = ticker?.changePercent ?? 0
+    guard let p = ticker?.changePercent, p.isFinite else { return "—" }
     return (p >= 0 ? "+" : "") + toFixed(p, 2) + "%"
   }
 

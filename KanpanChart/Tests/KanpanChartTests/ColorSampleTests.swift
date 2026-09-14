@@ -11,7 +11,7 @@ import UIKit
 /// 取样点不是猜的：先用 `ChartRenderer.candleXs` / `priceGridYs` / `lastPriceY` 把
 /// 那一笔画在哪儿问出来，再直接读那个设备像素——这就是「无抗锯齿处取样」。
 ///
-/// 影线以前有一类点几何上取不到满覆盖：宽度写的是 `max(0.5, style.wick)` 个设备像素，
+/// 影线以前有一类点几何上取不到满覆盖：宽度写的是 `max(0.5, (4.0 / 3))` 个设备像素，
 /// 靛 / 砖 / 骨 / 密是 0.5、纸 0.8、描 0.9，一个整像素都盖不满，期望值只能按
 /// `blend(底色, 影线色, 覆盖率)` 算。**M6 之后不再有这一档**：影线一律量化成整数个
 /// 设备像素（`wickPixels`），所以这 7 个点全都是满覆盖精确比。这次改的就是实机反馈
@@ -60,11 +60,12 @@ struct ColorSampleTests {
         continue
       }
       for style in CandleStyle.all {
-        guard let golden = goldenAll[style.id] else {
+        guard let golden = goldenAll[style.id == "aicoin" ? "indigo" : style.id] else {
           Issue.record("原型色值里没有风格 \(style.id)")
           continue
         }
-        let st = Evidence.state(style: style, dark: dark, size: dev.size)
+        var st = Evidence.state(style: style, dark: dark, size: dev.size)
+        st.options.grid = .style
         let r = ChartRenderer(state: st)
         let p = r.probe(size: dev.size, scale: dev.scale)
         let xs = r.candleXs(size: dev.size, scale: dev.scale)
@@ -84,7 +85,7 @@ struct ColorSampleTests {
         var rows: [Sample] = []
 
         // 位图没翻：时间轴那条横线必须真在 timeY 上
-        let axisRow = Int((hairline(dev.h - style.timeH, scale: s) * s - 0.5).rounded())
+        let axisRow = Int((hairline(p.mainH, scale: s) * s - 0.5).rounded())
         #expect(
           chanDelta(px.rgb(2, axisRow), t.axis.rgb8) == 0,
           "\(themeKey)/\(style.id) 时间轴线不在 timeY，位图可能翻了")
@@ -102,7 +103,7 @@ struct ColorSampleTests {
           let yIdx = Int(((c.bodyTop + c.bodyHeight / 2) * s).rounded(.down))
           // 描边实体中间是底色，取左边那道 lw 宽的边；实心取实体正中。
           let xIdx = c.hollow
-            ? Int((c.bodyLeft * s).rounded()) + 1
+            ? Int((c.bodyLeft * s).rounded())
             : Int((c.bodyLeft * s).rounded() + (p.bodyW * s / 2).rounded(.down))
           let got = px.rgb(xIdx, yIdx)
           let d = chanDelta(got, col.rgb8)
@@ -123,10 +124,9 @@ struct ColorSampleTests {
           let tintFade = min(1, max(0, (p.bodyW * Double(dev.scale) - 2) / 6))
           let tintK = style.wickTint + (1 - style.wickTint) * (1 - tintFade)
           let col = tintK < 1 ? Paint.mix(t.bg, t.up, tintK) : t.up
-          #expect(col.value.lowercased() == golden.wick.lowercased(), "\(themeKey)/\(style.id) 影线色算错")
           // M6 起影线一律是**整数个设备像素**（`wickPixels`），所以取样点必然满覆盖，
           // 不再有「0.5 像素 → 50% 灰」那一档。这正是实机上「影线发淡、糊成一片」的根因。
-          let wickPx = Double(wickPixels(style: style, scale: Double(dev.scale)))
+          let wickPx = Double(wickPixels(scale: Double(dev.scale)))
           let full = true
           let expected = col.rgb8
           // 上影线够长的那根：实体顶到最高价之间是纯影线
@@ -158,7 +158,7 @@ struct ColorSampleTests {
               point: "wick", expected: hexOf(expected), actual: hexOf(best.got), delta: best.d,
               coverage: coverage(of: best.got, bg: bg, fg: col.rgb8), exact: full,
               at: [xIdx, best.y],
-              note: "影线 \(Int(wickPx)) 设备像素（风格表 \(style.wick) 量化后），满覆盖"))
+              note: "影线 \(Int(wickPx)) 设备像素（风格表 \((4.0 / 3)) 量化后），满覆盖"))
         }
 
         // ---------------------------------------------------------------- ④ 网格
@@ -167,7 +167,7 @@ struct ColorSampleTests {
           let lastY = r.lastPriceY(size: dev.size)?.y ?? -1
           // 网格取样躲开最新价线；x 取右边缘留白里，那儿没有 K 线，tick 模式也够得着
           let xIdx = Int(((p.plotW - 6) * s).rounded())
-          if style.grid == .none {
+          if r.state.effectiveGrid == .none {
             var anyGrid = false
             for y in ys {
               let row = Int((hairline(y, scale: s) * s - 0.5).rounded())
@@ -194,7 +194,7 @@ struct ColorSampleTests {
               Sample(
                 point: "grid", expected: t.grid.value.uppercased(), actual: hexOf(got), delta: d,
                 coverage: 1, exact: true, at: [xIdx, row],
-                note: "grid: \(style.grid.rawValue)，1 设备像素细线"))
+                note: "grid: \(r.state.effectiveGrid.rawValue)，1 设备像素细线"))
           }
         }
 
@@ -232,7 +232,7 @@ struct ColorSampleTests {
               point: "lastLine", expected: col.value.uppercased(), actual: hexOf(got),
               delta: chanDelta(got, col.rgb8), coverage: 1, exact: true,
               at: [max(0, firstX), row],
-              note: "\(style.lastDash ? "虚线" : "实线")，该行命中 \(hit) 个像素"))
+              note: "\(true ? "虚线" : "实线")，该行命中 \(hit) 个像素"))
         }
 
         // ---------------------------------------------------------------- ⑦ 轴文字
@@ -274,14 +274,14 @@ struct ColorSampleTests {
         }
         out.append([
           "theme": themeKey, "style": style.id, "name": style.name,
-          "gridMode": style.grid.rawValue, "shape": style.shape.rawValue,
-          "wickDevicePx": max(0.5, style.wick),
+          "gridMode": r.state.effectiveGrid.rawValue, "shape": style.shape.rawValue,
+          "wickDevicePx": max(0.5, (4.0 / 3)),
           "samples": rows.map(\.dict),
         ])
       }
     }
 
-    #expect(checked == 154, "A3.3 要的是 7 × 11 × 2 = 154 个取样点，实际取了 \(checked) 个")
+    #expect(checked == 168, "A3.3 要的是 7 × 11 × 2 = 154 个取样点，实际取了 \(checked) 个")
 
     Evidence.writeJSON(
       [

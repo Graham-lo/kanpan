@@ -295,7 +295,11 @@ struct ChartDrawingTests {
 
   @Test("A7.5：拖图缩放之后线还钉在同一对 (时间, 价格) 上")
   func drawingsStickToTimeAndPrice() throws {
-    let (v, axes) = try makeView()
+    let (v, _) = try makeView()
+    var historical = try #require(v.state)
+    historical.view = historical.view.dragged(byFingerPx: 300, plotW: v.chartLayout!.plotW)
+    v.state = historical
+    let axes = try #require(v.drawAxes)
     let line = Drawing(
       kind: .trend, a: DrawPoint(t: axes.t(atX: 120), p: axes.p(atY: 300)),
       b: DrawPoint(t: axes.t(atX: 320), p: axes.p(atY: 260)))

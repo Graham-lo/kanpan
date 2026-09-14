@@ -42,6 +42,11 @@ public struct ChartState: Sendable {
   ///
   /// 放这儿而不是塞进 `options`：它是「指标面板」那边的设置，不是「K 线设置」里的项，
   /// 而且它和 `subs` 是一对（同一批指标的两个侧面），挨着放读起来才顺。
+  public var axisScaleAnchor: Double?
+  public var hiddenOutputs: [IndicatorID: Set<Int>] = [:]
+  public var subInverted: Set<IndicatorID> = []
+  public var rsiUpper = 70.0
+  public var rsiLower = 30.0
   public var subScale: [IndicatorID: Double]
 
   public init(
@@ -51,15 +56,15 @@ public struct ChartState: Sendable {
     style: CandleStyle = .default,
     dark: Bool = false,
     redUp: Bool = false,
-    price: PriceTransform = .init(),
+    price: PriceTransform = .init(mode: .log),
     overlays: [IndicatorID] = [.ma],
-    subs: [IndicatorID] = [.macd, .rsi],
-    params: [IndicatorID: [Int]] = [:],
+    subs: [IndicatorID] = AICoinBehavior.subpanels,
+    params: [IndicatorID: [Int]] = [.ma: AICoinBehavior.maPeriods, .vol: AICoinBehavior.volumePeriods, .macd: AICoinBehavior.macdPeriods],
     timezone: TZChoice = .local,
     oi: OISeries? = nil,
     drawings: [Drawing] = [],
     crosshair: Crosshair? = nil,
-    magnet: Bool = true,
+    magnet: Bool = false,
     decimals: Int? = nil,
     options: ChartOptions = .init(),
     nowMs: Double? = nil,
@@ -83,7 +88,7 @@ public struct ChartState: Sendable {
   /// 覆盖只在读的时候叠，风格表本身一个数都不许改（原型即规格）。
   public var effectiveGrid: CandleStyle.Grid {
     switch options.grid {
-    case .style: style.grid
+    case .style: .none
     case .on: .both
     case .off: .none
     }
@@ -108,6 +113,7 @@ public struct ChartState: Sendable {
 /// 线会自己跳走。`index` 是磁吸模式下吸到的那根，读数（图例、时间胶囊）一律读它。
 public struct Crosshair: Sendable, Equatable {
   public var index: Int
+  public var pane: IndicatorID?
   /// 关掉磁吸时竖线停在这个时间上；`nil` 用第 `index` 根的中心。
   public var t: Double?
   /// 横线的价格；`nil` 表示用这根的收盘。
@@ -115,7 +121,7 @@ public struct Crosshair: Sendable, Equatable {
   /// 注意存的是价格不是 y：`y` 这个名字留着是因为 M3 的基线用它摆位置，语义没变过——
   /// 当时给的就是「这一层画到哪个高度」，现在统一成价格由渲染器换算。
   public var price: Double?
-  public init(index: Int, t: Double? = nil, price: Double? = nil) {
-    self.index = index; self.t = t; self.price = price
+  public init(index: Int, t: Double? = nil, price: Double? = nil, pane: IndicatorID? = nil) {
+    self.index = index; self.t = t; self.price = price; self.pane = pane
   }
 }

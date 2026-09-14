@@ -35,6 +35,7 @@ public actor BinanceWS {
   private var reqID = 0
   private var connectionID = 0
   private var runTask: Task<Void, Never>?
+  private var runGeneration = 0
   private var continuation: AsyncStream<WSEvent>.Continuation?
   private var stopped = false
   private var backoff = Backoff()
@@ -55,9 +56,10 @@ public actor BinanceWS {
               capBackoffMs: Double = 30_000,
               log: FeedLog = .silent) {
     self.hosts = hosts
-    self.factory = factory
+    self.factory = hosts.streamFallbacks.isEmpty ? factory
+      : MarketSocketRouter(factory: factory, fallbacks: hosts.streamFallbacks, log: log)
     self.pacer = pacer
-    self.silenceMs = silenceMs
+    self.silenceMs = hosts.streamFallbacks.isEmpty ? silenceMs : min(silenceMs, 15_000)
     self.baseBackoffMs = baseBackoffMs
     self.capBackoffMs = capBackoffMs
     self.log = log
@@ -74,7 +76,9 @@ public actor BinanceWS {
     stopped = false
     let (s, c) = AsyncStream<WSEvent>.makeStream(bufferingPolicy: .unbounded)
     continuation = c
-    runTask = Task { [weak self] in await self?.loop() }
+    runGeneration += 1
+    let generation = runGeneration
+    runTask = Task { [weak self] in await self?.loop(generation: generation) }
     return s
   }
 
@@ -84,11 +88,11 @@ public actor BinanceWS {
     runTask = nil
     syncTask?.cancel()
     syncTask = nil
-    await socket?.cancel()
-    socket = nil
-    continuation?.yield(.status(.offline))
-    continuation?.finish()
-    continuation = nil
+    runGeneration += 1
+    let oldSocket = socket, oldContinuation = continuation
+    socket = nil; continuation = nil
+    oldContinuation?.yield(.status(.offline)); oldContinuation?.finish()
+    await oldSocket?.cancel()
   }
 
   /// 切品种 / 周期。同一条连接上换流，连接 id 不变。
@@ -142,15 +146,17 @@ public actor BinanceWS {
 
   // ------------------------------------------------------------------ 主循环
 
-  private func loop() async {
-    while !stopped, !Task.isCancelled {
+  private func loop(generation: Int) async {
+    while !stopped, !Task.isCancelled, generation == runGeneration {
       do {
         // 首连用 URL 带上流；重连也一样，省一次 SUBSCRIBE 往返。
-        let url = hosts.combinedStream(streams.sorted())
+        let connectingStreams = streams
+        let url = hosts.combinedStream(connectingStreams.sorted())
         let s = try await factory.connect(to: url)
+        guard generation == runGeneration, !Task.isCancelled else { await s.cancel(); return }
         socket = s
         // 连接 URL 自己带了流，这套就算服务器已经知道了。
-        sentStreams = streams
+        sentStreams = connectingStreams
         lastControlMs = await pacer.nowMs()
         connectionID += 1
         gotFrame = false
@@ -163,6 +169,7 @@ public actor BinanceWS {
         if stopped || Task.isCancelled { break }
         log("WS 断了：\(error)")
       }
+      guard generation == runGeneration else { return }
       await socket?.cancel()
       socket = nil
       sentStreams = []
@@ -172,18 +179,15 @@ public actor BinanceWS {
       log("WS 退避 \(Int(wait))ms 后重连（第 \(backoff.attempt) 次）")
       do { try await pacer.sleep(ms: wait) } catch { break }
     }
-    if !stopped { continuation?.yield(.status(.offline)) }
+    if !stopped, generation == runGeneration { continuation?.yield(.status(.offline)) }
   }
 
   /// 收帧，直到断开或静默超时。
   private func pump(_ s: WSSocket) async throws {
+    var lastMarketMs = await pacer.nowMs()
     while !stopped, !Task.isCancelled {
-      let frame = try await withSilenceTimeout(s) { try await s.receive() }
-      // 收到第一帧才算这条连接站住了，这时候退避才该清零。
-      if !gotFrame, case .closed = frame {} else if !gotFrame {
-        gotFrame = true
-        backoff.reset()
-      }
+      let remaining = max(1, silenceMs - (await pacer.nowMs() - lastMarketMs))
+      let frame = try await withSilenceTimeout(s, timeout: remaining) { try await s.receive() }
       switch frame {
       case .ping:
         log("WS ← ping，回 pong")
@@ -195,6 +199,8 @@ public actor BinanceWS {
         guard let env = try? JSONDecoder().decode(StreamEnvelope.self, from: data),
               let payload = env.payload else { continue }   // SUBSCRIBE 的应答没有 e 字段，忽略
         if case .other = payload { continue }
+        lastMarketMs = await pacer.nowMs()
+        if !gotFrame { gotFrame = true; backoff.reset() }
         continuation?.yield(.payload(payload))
       }
     }
@@ -208,11 +214,10 @@ public actor BinanceWS {
   /// 看门狗就这么被自己挂死。线路被静默丢弃（代理黑洞、NAT 超时）时正是这种局面：
   /// 连接看着还「活着」，60 秒到了也没有任何反应。只有 `cancel()` 能让挂着的
   /// `receive()` 带着错误返回。
-  private func withSilenceTimeout(_ socket: WSSocket,
+  private func withSilenceTimeout(_ socket: WSSocket, timeout: Double,
                                   _ body: @escaping @Sendable () async throws -> WSFrame)
     async throws -> WSFrame
   {
-    let timeout = silenceMs
     let pacer = self.pacer
     return try await withThrowingTaskGroup(of: WSFrame.self) { g in
       g.addTask { try await body() }

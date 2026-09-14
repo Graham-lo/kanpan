@@ -23,6 +23,40 @@ struct SymbolPickerModelTests {
     return (m, storage)
   }
 
+  @Test("重新连接清除报价而不改自选存档")
+  func reconnectClearsQuotesOnly() {
+    let (m, storage) = make(prefs: SymbolPrefs(favorites: ["BTCUSDT"]))
+    #expect(!m.tickers.isEmpty)
+    m.clearQuotes()
+    #expect(m.tickers.isEmpty)
+    #expect(m.prefs.favorites == ["BTCUSDT"])
+    #expect(SymbolPrefsStore(storage: storage, key: "t").load().favorites == ["BTCUSDT"])
+  }
+
+  @Test("离开订阅范围只移除旧报价，收藏与仍订阅报价保持")
+  func unsubscribeDropsStaleQuotes() throws {
+    let (m, storage) = make(prefs: SymbolPrefs(favorites: ["BTCUSDT", "ETHUSDT"]))
+    let btc = try #require(m.ticker(for: "BTCUSDT"))
+    m.retainQuotes(for: ["BTCUSDT"])
+    #expect(m.tickers.count == 1 && m.ticker(for: "BTCUSDT") == btc)
+    #expect(m.ticker(for: "ETHUSDT") == nil)
+    #expect(SymbolPrefsStore(storage: storage, key: "t").load().favorites == ["BTCUSDT", "ETHUSDT"])
+  }
+
+  @Test("隐藏搜索表不随报价重建，打开时追上最新")
+  func hiddenSectionsCatchUpOnPresentation() throws {
+    let (m, _) = make()
+    let original = m.sections
+    m.setSectionsActive(false)
+    var ticker = try #require(m.ticker(for: "BTCUSDT"))
+    ticker.last += 100
+    m.updateQuotes([ticker])
+    #expect(m.ticker(for: "BTCUSDT")?.last == ticker.last)
+    #expect(m.sections == original)
+    m.setSectionsActive(true)
+    #expect(m.sections != original)
+  }
+
   @Test("开页就把存档读回来")
   func loadsPrefsOnInit() {
     let (m, _) = make(prefs: SymbolPrefs(favorites: ["ETHUSDT"], recents: ["SOLUSDT"]))

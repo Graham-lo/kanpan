@@ -37,11 +37,38 @@ struct PrefsToleranceTests {
     {"interval":"8h","styleID":"雷电","theme":"neon","priceMode":"polar","timeZone":"火星"}
     """#)
     #expect(p.interval == .h1)
-    #expect(p.styleID == "stout")          // 认不出的风格退回「墩」，不是留个画不出的名字
-    #expect(p.style.name == "墩")
+    #expect(p.styleID == "aicoin")          // 认不出的风格退回「墩」，不是留个画不出的名字
+    #expect(p.style.name == "AICoin")
     #expect(p.theme == .system)
-    #expect(p.priceMode == .linear)
+    #expect(p.priceMode == .log)
     #expect(p.timeZone == .local)
+  }
+
+  @Test("「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项")
+  func 脏图表枚举() {
+    let p = decode(#"""
+    {"candleKind":"garbage","gridChoice":"garbage","bodyChoice":"garbage",
+     "viewAnchor":"garbage","priceBias":"garbage"}
+    """#)
+    #expect(p.candleKind == Prefs.defaults.candleKind)
+    #expect(p.gridChoice == Prefs.defaults.gridChoice)
+    #expect(p.bodyChoice == Prefs.defaults.bodyChoice)
+    #expect(p.viewAnchor == Prefs.defaults.viewAnchor)
+    #expect(p.priceBias == Prefs.defaults.priceBias)
+    #expect(p == .defaults)                 // 全都认不出，等于这几项压根没写过
+
+    // 一个坏的不能把同一档里好的那个带下水
+    let q = decode(#"{"gridChoice":"garbage","bodyChoice":"solid"}"#)
+    #expect(q.gridChoice == .off)
+    #expect(q.bodyChoice == .solid)
+  }
+
+  @Test("「图表」的三个开关：类型不对退回默认")
+  func 脏图表开关() {
+    let p = decode(#"{"lastLine":"开","showDrawings":1,"sinceChange":[true]}"#)
+    #expect(p.lastLine == Prefs.defaults.lastLine)
+    #expect(p.showDrawings == Prefs.defaults.showDrawings)
+    #expect(p.sinceChange == Prefs.defaults.sinceChange)
   }
 
   @Test("指标：认不出的丢掉、重复的去重、放错位置的剔掉")
@@ -53,11 +80,11 @@ struct PrefsToleranceTests {
     #expect(p.subs == [.rsi, .kdj])
   }
 
-  @Test("副图超过三个 → 截到三个")
+  @Test("保留五副图的选择顺序")
   func 副图截断() {
     let p = decode(#"{"subs":["MACD","RSI","KDJ","ATR","VOL"]}"#)
-    #expect(p.subs == [.macd, .rsi, .kdj])
-    #expect(p.subs.count == Prefs.maxSubs)
+    #expect(p.subs == [.macd, .rsi, .kdj, .atr, .vol])
+    #expect(p.subs.count <= Prefs.maxSubs)
   }
 
   @Test("参数越界 / 个数不对 → 夹回区间并补齐")
@@ -139,9 +166,9 @@ struct IndicatorParamRuleTests {
   func 直接赋值() {
     var p = Prefs.defaults
     p.setParam(.macd, at: 1, to: 100_000)
-    #expect(p.params(for: .macd) == [12, 400, 9])
+    #expect(p.params(for: .macd) == [10, 400, 9])
     p.setParam(.macd, at: 9, to: 5)
-    #expect(p.params(for: .macd) == [12, 400, 9])
+    #expect(p.params(for: .macd) == [10, 400, 9])
     p.setParam(.oi, at: 0, to: 5)
     #expect(p.params(for: .oi) == [])
   }

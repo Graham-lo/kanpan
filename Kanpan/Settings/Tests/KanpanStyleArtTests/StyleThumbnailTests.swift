@@ -4,7 +4,7 @@ import Foundation
 import KanpanCore
 @testable import KanpanStyleArt
 
-/// A6.2：十一款缩略图必须是**按这一版真画出来的**，不是贴图。
+/// A6.2：十二款缩略图必须是**按这一版真画出来的**，不是贴图。
 ///
 /// 这里用 `ImageRenderer` 把面板里那份 `StyleThumbnail` 原样渲染一遍：
 /// 编不过、画不出、十一张里有两张一模一样，都会在这儿被抓住。
@@ -13,7 +13,7 @@ import KanpanCore
 @MainActor
 struct StyleThumbnailTests {
 
-  @Test("十一款都能画出来，而且两两不同")
+  @Test("十二款都能画出来，而且两两不同")
   func 逐款不同() throws {
     var seen: [String: String] = [:]
     for st in CandleStyle.all {
@@ -25,7 +25,7 @@ struct StyleThumbnailTests {
       seen[key] = st.name
     }
     #expect(seen.count == CandleStyle.all.count)
-    #expect(CandleStyle.all.count == 11)
+    #expect(CandleStyle.all.count == 12)
   }
 
   @Test("涨跌对调之后缩略图跟着换色（A6.7 不漏这一处）")
@@ -36,13 +36,13 @@ struct StyleThumbnailTests {
     #expect(green != red)
   }
 
-  @Test("出一张十一款并排的图，存到 docs/acceptance/M6/")
+  @Test("出一张十二款并排的图，存到 docs/acceptance/M6/")
   func 取证() throws {
     for dark in [false, true] {
       let sheet = VStack(alignment: .leading, spacing: 8) {
         ForEach(CandleStyle.all) { st in
           VStack(alignment: .leading, spacing: 4) {
-            Text("\(st.name) · \(st.one)")
+            Text("\(st.name) · \(st.visualSummary)")
               .font(.system(size: 11))
               .foregroundStyle(Color(hex: dark ? Palette.darkSeed.ink2 : Palette.lightSeed.ink2))
             StyleThumbnail(style: st, colors: Palette.chart(dark: dark))

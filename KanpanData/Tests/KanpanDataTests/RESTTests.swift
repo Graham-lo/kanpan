@@ -6,6 +6,56 @@ import KanpanCore
 @Suite("REST 与 DTO")
 struct RESTTests {
 
+  @Test("全市场WS数组包含普通与TradFi报价，保持真实24h涨跌幅")
+  func marketTickerArray() throws {
+    let frame = Data(#"{"stream":"!ticker@arr","data":[{"e":"24hrTicker","s":"SNDKUSDT","o":"102.5","c":"100.25","P":"-2.3","h":"104","l":"98","q":"1000"},{"e":"24hrTicker","s":"BTCUSDT","c":"78000","P":"1.2","h":"79000","l":"76000","q":"999999"}]}"#.utf8)
+    let envelope = try JSONDecoder().decode(StreamEnvelope.self, from: frame)
+    guard case .tickerBatch(let batch) = envelope.payload else { Issue.record("没有解出全市场报价"); return }
+    #expect(batch.count == 2)
+    #expect(batch[0].open24h == 102.5)
+    #expect(batch[0].symbol == "SNDKUSDT" && batch[0].last == 100.25 && batch[0].changePercent == -2.3)
+  }
+
+  @Test("USDT TradFi全保留，USD1、普通USDC、交割与停牌排除；旧目录即时刷新")
+  func tradFiAndOldCatalog() async throws {
+    let names = ["SNDKUSDT", "MUUSDT", "SKHYUSDT", "SKHYNIXUSDT", "FUTUREUSDT", "STOPUSDT", "XUSDC", "SPCXUSD1", "USDCUSDT"]
+    let rows: [[String: Any]] = names.enumerated().map { index, symbol in
+      ["symbol": symbol, "baseAsset": symbol.replacingOccurrences(of: "USDT", with: ""),
+       "quoteAsset": index == 7 ? "USD1" : (index == 6 ? "USDC" : "USDT"), "pricePrecision": 2, "quantityPrecision": 3,
+       "contractType": index == 4 ? "CURRENT_QUARTER" : ((index == 6 || index == 8) ? "PERPETUAL" : "TRADIFI_PERPETUAL"),
+       "status": index == 5 ? "SETTLING" : "TRADING", "filters": []]
+    }
+    let body = try JSONSerialization.data(withJSONObject: ["symbols": rows])
+    #expect(BinanceREST.parseExchangeInfo(body).map(\.symbol) == Array(names.prefix(4)).sorted())
+    #expect(BinanceREST.parseExchangeInfo(body).first { $0.symbol == "SPCXUSD1" } == nil)
+    let server = FakeServer { _ in HTTPReply(status: 200, body: body) }
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("catalog-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let paths = Paths(root: dir); try paths.ensureRoot()
+    let oldList = try JSONSerialization.jsonObject(with: JSONEncoder().encode([
+      SymbolInfo(symbol: "BTCUSDT", base: "BTC", pricePrecision: 2, tickSize: 0.1)]))
+    try JSONSerialization.data(withJSONObject: ["at": 1000, "list": oldList]).write(to: paths.exchangeInfo)
+    let catalog = SymbolCatalog(rest: BinanceREST(transport: FakeTransport(server), pacer: StepPacer()), paths: paths)
+    #expect(await catalog.all(now: 1100).count == 4)
+    #expect(await catalog.all(now: 1200).count == 4)
+    #expect(await server.urls().count == 1)
+  }
+
+  @Test("当前全部717个产品品种进入独立分类模块，保留细分元数据")
+  func completeCatalogClassification() {
+    let list = BinanceREST.parseExchangeInfo(Fixture.data("catalog-classification-2026-09-15.json"))
+    #expect(list.count == 717)
+    let classified = list.map(SymbolClassifier.classify)
+    #expect(classified.filter { $0.asset == .crypto }.count == 525)
+    #expect(classified.filter { $0.asset == .equity }.count == 180)
+    #expect(classified.filter { $0.asset == .preciousMetal }.count == 4)
+    #expect(classified.filter { $0.asset == .commodity }.count == 4)
+    #expect(classified.filter { $0.asset == .index }.count == 2)
+    #expect(classified.filter { $0.asset == .preMarket }.count == 2)
+    #expect(classified.filter { $0.source == .unknown }.isEmpty)
+    #expect(list.allSatisfy { $0.underlyingSubTypes != nil && $0.contractType != nil })
+  }
+
   // ---------------------------------------------------------------- A2.1
 
   @Test("exchangeInfo 只留 USDT 永续，tickSize 解析正确")

@@ -12,6 +12,13 @@ import Observation
 @Observable
 final class MarketModel {
   private(set) var series: BarSeries?
+  private(set) var oi: OISeries?
+  private var oiTask: Task<Void, Never>?
+  private var oiSource: OISource
+  private var oiRegion: (from: Int64, to: Int64)?
+  private var oiEnabled = false
+  private var oiRequestedAt = Date.distantPast
+  private var lastView: ViewWindow?
   private(set) var ticker: Ticker?
   private(set) var info: SymbolInfo
   private(set) var status: FeedStatus = .offline
@@ -32,6 +39,8 @@ final class MarketModel {
   /// 启动快照开关的当前值。换域名要把整条流重建一遍，得记着用哪个值重启。
   private var snapshot = true
   private var pump: Task<Void, Never>?
+  private let network = MarketNetworkMonitor()
+  private var foreground = true
   /// 补历史一次只放一发在路上，别一路拖着就连喊十几次。
   private var loading = false
 
@@ -42,6 +51,7 @@ final class MarketModel {
     self.hosts = hosts
     self.info = MarketModel.placeholder(symbol)
     let rest = BinanceREST(hosts: hosts, log: MarketModel.log)
+    self.oiSource = OISource(hosts: hosts, rest: rest, store: OIStore(paths: .caches()))
     self.feed = MarketFeed(rest: rest, ws: BinanceWS(hosts: hosts, log: MarketModel.log),
                            log: MarketModel.log)
     self.catalog = CatalogBox(SymbolCatalog(rest: rest))
@@ -63,9 +73,16 @@ final class MarketModel {
 
   // ---------------------------------------------------------------- 生命周期
 
-  func start(snapshot: Bool) {
+  func start(snapshot: Bool, interval requestedInterval: Interval? = nil) {
+    if let requestedInterval { interval = requestedInterval }
     self.snapshot = snapshot
     guard pump == nil else { return }
+    network.start { [weak self] online in
+      Task { @MainActor [weak self] in
+        guard let self, self.pump != nil, self.foreground else { return }
+        await self.feed.networkChanged(online: online)
+      }
+    }
     let sym = symbol, iv = interval
     pump = Task { [feed] in
       let stream = await feed.events()
@@ -80,13 +97,15 @@ final class MarketModel {
   }
 
   func stop() {
+    network.stop()
+    oiTask?.cancel(); oiTask = nil
     pump?.cancel()
     pump = nil
     Task { [feed] in await feed.stop() }
   }
 
-  func enterBackground() { Task { [feed] in await feed.enterBackground() } }
-  func enterForeground() { Task { [feed] in await feed.enterForeground() } }
+  func enterBackground() { foreground = false; Task { [feed] in await feed.enterBackground() } }
+  func enterForeground() { foreground = true; Task { [feed] in await feed.enterForeground() } }
   func memoryWarning() { Task { [feed] in await feed.memoryWarning() } }
   func setSnapshotEnabled(_ on: Bool) {
     snapshot = on
@@ -101,6 +120,8 @@ final class MarketModel {
     let running = pump != nil
     stop()
     let rest = BinanceREST(hosts: next, log: MarketModel.log)
+    oiSource = OISource(hosts: next, rest: rest, store: OIStore(paths: .caches()))
+    oi = nil; oiRegion = nil
     feed = MarketFeed(rest: rest, ws: BinanceWS(hosts: next, log: MarketModel.log),
                       log: MarketModel.log)
     let box = catalog
@@ -135,6 +156,22 @@ final class MarketModel {
       guard t.symbol.uppercased() == symbol.uppercased() else { return }
       ticker = t
       lastPushAt = Date()
+    case .price(let last, let mark):
+      // 逐笔和标记价只知道「现在多少钱」，不许整份替换——涨跌幅和 24h 高低是
+      // REST 那一路给的，被 NaN 盖掉顶栏就空了一大片。
+      guard var t = ticker else {
+        // 冷启动头几百毫秒还没拿到 24h 行情：先把价格立起来，其余留空等对表补。
+        if let last {
+          ticker = Ticker(symbol: symbol, last: last, changePercent: .nan,
+                          high: .nan, low: .nan, quoteVolume: .nan, markPrice: mark)
+          lastPushAt = Date()
+        }
+        return
+      }
+      if let last { t.last = last }
+      if let mark { t.markPrice = mark }
+      ticker = t
+      lastPushAt = Date()
     case .oi:
       break                                   // 副图 OI 由指标层自己取
     case .status(let s):
@@ -152,6 +189,7 @@ final class MarketModel {
     symbol = sym
     interval = iv
     switching = true
+    oiTask?.cancel(); oi = nil; oiRegion = nil; lastView = nil
     if cold {
       ticker = nil
       info = MarketModel.placeholder(sym)
@@ -169,6 +207,43 @@ final class MarketModel {
     Task { [feed] in
       await feed.loadMore()
       await MainActor.run { self.loading = false }
+    }
+  }
+
+  func setOIEnabled(_ enabled: Bool) {
+    oiEnabled = enabled
+    if !enabled { oiTask?.cancel(); oiTask = nil; return }
+    if let view = lastView { loadOI(view: view) }
+  }
+
+  /// 历史OI是统计采样，不伪造成逐笔WS；前台每分钟更新可见尾桶。
+  func refreshOIIfNeeded() {
+    guard foreground, oiEnabled, Date().timeIntervalSince(oiRequestedAt) >= 60,
+          let view = lastView, let series, view.to >= Double(series.lastTime) else { return }
+    loadOI(view: view, refresh: true)
+  }
+
+  func loadOI(view: ViewWindow, refresh: Bool = false) {
+    lastView = view
+    guard oiEnabled, let series, !series.isEmpty else { return }
+    let from = max(series.firstTime, Int64(view.from) - series.step)
+    let to = min(series.lastTime + series.step, Int64(view.to))
+    guard to >= from else { return }
+    if !refresh, let region = oiRegion, from >= region.from, to <= region.to { return }
+    oiTask?.cancel()
+    oiRequestedAt = Date()
+    let sym = symbol, iv = interval, source = oiSource
+    let margin = max(series.step * 20, (to - from) / 2)
+    let fetchFrom = max(series.firstTime, from - margin), fetchTo = to + series.step
+    oiTask = Task {
+      do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+      let points = await source.rawPoints(symbol: sym, interval: iv, from: fetchFrom, to: fetchTo)
+      guard !Task.isCancelled, self.symbol == sym, self.interval == iv else { return }
+      let ordered = OISource.dedup(points)
+      if !ordered.isEmpty {
+        self.oi = OISource.chartSeries(ordered, interval: iv)
+        self.oiRegion = (fetchFrom, fetchTo)
+      }
     }
   }
 

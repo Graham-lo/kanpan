@@ -147,9 +147,9 @@ enum Evidence {
     crosshair: Crosshair? = nil,
     redUp: Bool = false
   ) -> ChartState {
-    let L = Layout(width: Double(size.width), height: Double(size.height), style: style, subs: subs)
+    let L = Layout(width: Double(size.width), height: Double(size.height), subs: subs)
     let view = ViewMath.reset(
-      series: Fixture.series, plotW: L.plotW, spacing: spacing ?? style.spacing)
+      series: Fixture.series, plotW: L.plotW, spacing: spacing ?? AICoinBehavior.initialSpacing)
     return ChartState(
       series: Fixture.series, symbol: Fixture.symbol, view: view,
       style: style, dark: dark, redUp: redUp, price: price,

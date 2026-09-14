@@ -17,7 +17,7 @@ extension ChartColors {
 /// 算法一律走 `KanpanCore`（`priceRange` / `priceTicks` / `timeTicks` / `candleWidths`
 /// / `IndicatorEngine`），这里只负责把数落到像素上。
 public struct ChartRenderer {
-  public var state: ChartState { didSet { recalc() } }
+  public var state: ChartState { didSet { recalc(previous: oldValue) } }
   public private(set) var engine = IndicatorEngine()
   /// 平均 K 线的可见段。`kind == .candle` 时恒为 `nil`——默认路径一个数都不多算。
   public private(set) var heikin: HeikinSlice?
@@ -27,19 +27,84 @@ public struct ChartRenderer {
     recalc()
   }
 
-  private mutating func recalc() {
+  private mutating func recalc(previous: ChartState? = nil) {
+    // Same count does not imply same candles: REST can replace a stale snapshot,
+    // and every live tick changes the last MA/MACD value.
+    if let old = previous, old.series != state.series || old.oi != state.oi {
+      if old.series.symbol == state.series.symbol,
+         old.series.interval == state.series.interval,
+         old.series.t0 == state.series.t0,
+         old.series.count == state.series.count,
+         old.series.openTime == state.series.openTime,
+         old.series.close.dropLast().elementsEqual(state.series.close.dropLast()),
+         old.series.high.dropLast().elementsEqual(state.series.high.dropLast()),
+         old.series.low.dropLast().elementsEqual(state.series.low.dropLast()),
+         old.series.volume.dropLast().elementsEqual(state.series.volume.dropLast()),
+         old.oi == state.oi {
+        engine.updateTail(series: state.series, oi: state.oi, dataKey: state.symbol.symbol)
+      } else {
+        engine = IndicatorEngine()
+      }
+    }
     engine.ensure(
       series: state.series, wanted: state.overlays + state.subs,
       params: state.params, oi: state.oi, dataKey: state.symbol.symbol)
     heikin = HeikinSlice.make(state: state)
   }
 
+  /// Mask outputs without changing their slots, periods, colors or computational dependencies.
+  func displayed(_ id: IndicatorID) -> IndicatorResult? {
+    guard var result = engine[id] else { return nil }
+    let hidden = state.hiddenOutputs[id] ?? []
+    for k in result.lines.indices where hidden.contains(k) {
+      result.lines[k] = Array(repeating: .nan, count: result.lines[k].count)
+    }
+    if hidden.contains(result.lines.count), let histogram = result.histogram {
+      result.histogram = Array(repeating: .nan, count: histogram.count)
+    }
+    return result
+  }
+
+  func outputVisible(_ id: IndicatorID, _ index: Int) -> Bool {
+    !(state.hiddenOutputs[id]?.contains(index) ?? false)
+  }
+
+  func indicatorNumber(_ value: Double, decimals: Int = 2) -> String {
+    guard value.isFinite else { return "--" }
+    return state.options.compactValues ? fmtVol(value) : fmtNum(value, decimals)
+  }
+
+  // Adaptive mode reserves legend rows, never changes pane allocation.
+  func mainLegendInset(plotW: Double) -> Double {
+    guard state.options.adaptiveIndicators else { return AICoinBehavior.mainTopInset }
+    var x = 8.0, rows = 1.0
+    for id in state.overlays {
+      let names = id.lineNames(params: state.params[id] ?? id.defaultParams)
+      for (k, name) in names.enumerated() where outputVisible(id, k) {
+        let width = Double((name + " " + indicatorNumber(state.series.close.last ?? 0, decimals: state.decimals)).width(ChartFont.axis)) + 8
+        if x + width > plotW - 4 { rows += 1; x = 8 }
+        x += width
+      }
+    }
+    return max(AICoinBehavior.mainTopInset, rows * 12 + 24)
+  }
+
   // ---------------------------------------------------------------- 入口
 
   public func layout(size: CGSize) -> Layout {
-    Layout(
-      width: Double(size.width), height: Double(size.height), style: state.style,
-      subs: state.subs, subScale: state.subScale)
+    let mainWeight = ChartContentLayout.mainWeight(height: Double(size.height), control: state.options.portraitHeight, count: state.subs.count)
+    let initial = Layout(width: Double(size.width), height: Double(size.height), subs: state.subs, subScale: state.subScale, mainWeight: mainWeight)
+    // Height changes must not alter plot width/time mapping through padded-range label sizes.
+    let range = KanpanCore.priceRange(view: state.view, series: state.series, overlayValues: overlayLines(), transform: state.price, paneHeight: 300)
+    var labels = [range.lo, range.hi].map { axisLabel($0, range: range) }
+    for pane in initial.panes.dropFirst() {
+      if let id = pane.indicator { labels += subAxisLabels(id) }
+    }
+    let measured = labels.map { Double($0.width(ChartFont.axis)) + 8 }.max() ?? 0
+    let width = max(AICoinBehavior.axisWidth,
+                    AICoinBehavior.axisWidth + ceil(max(0, measured - AICoinBehavior.axisWidth) / 8) * 8)
+    return Layout(width: Double(size.width), height: Double(size.height), subs: state.subs, subScale: state.subScale, mainWeight: mainWeight,
+                  axisWidth: min(max(50, Double(size.width) / 3), width))
   }
 
   /// 主图价格区间。手势层要用同一份，所以露出来。
@@ -47,27 +112,20 @@ public struct ChartRenderer {
     priceRange(size: size, transform: state.price)
   }
 
-  /// 换一套 `zoom`/`shift` 重算区间，别的输入不动。
-  ///
-  /// 拖价格轴要为「按下点不动」解 `shift`（`PriceAnchor`），一次二分要问几十遍区间；
-  /// 走这条不用改 `state`，叠加指标的缓存也不会被反复推翻。
+  /// Probe a normalized Y state without invalidating indicator caches.
   public func priceRange(size: CGSize, transform: PriceTransform) -> PriceRange {
     priceRange(size: size, view: state.view, transform: transform)
   }
 
-  /// 再换一套视野。捏合期间要为「框钉住不动」解 `zoom`/`shift`，而解之前必须先知道
-  /// **新视野**下不带变换的区间长什么样——这时 `state.view` 还是旧的，不能用。
-  ///
-  /// 叠加指标（`overlayLines()`）和平均 K 线的极值算的都是整条序列，与视野无关，
-  /// 缓存照旧能用，所以这条只是把 `view` 换掉，不额外花钱。
+  /// Probe another visible range using the same geometry and indicators.
   public func priceRange(size: CGSize, view: ViewWindow, transform: PriceTransform) -> PriceRange {
     KanpanCore.priceRange(
-      view: view, series: state.series, style: state.style,
-      overlayValues: overlayLines(),
+      view: view, series: state.series, overlayValues: overlayLines(),
       // 画线关掉了就别再让它撑价格区间：一条看不见的线把蜡烛压扁，用户只会觉得图坏了。
       drawingPrices: state.options.drawings ? state.drawings.flatMap(\.prices) : [],
       transform: transform,
-      extraPrices: heikin?.extremes ?? [], bias: state.options.bias)
+      extraPrices: heikin?.extremes ?? [], bias: state.options.bias,
+      paneHeight: layout(size: size).main.h, topInset: mainLegendInset(plotW: layout(size: size).plotW), anchorPrice: transform.isManual ? state.axisScaleAnchor : nil)
   }
 
   /// 底图：背景、网格、K 线、叠加、画线、最新价、副图、时间轴、图例。
@@ -96,6 +154,7 @@ public struct ChartRenderer {
     drawPriceGrid(ctx, pane: main, r: r, L: L, scale: s)
     drawTimeGrid(ctx, L: L, scale: s)
     drawCandles(ctx, pane: main, r: r, L: L, scale: s)
+    drawExtrema(ctx, r: r, L: L, scale: s)
     drawOverlays(ctx, pane: main, r: r, L: L, scale: s)
     drawDrawings(ctx, pane: main, r: r, L: L, scale: s)
     if live { drawLastPrice(ctx, pane: main, r: r, L: L, scale: s) }
@@ -109,6 +168,17 @@ public struct ChartRenderer {
   /// 十字线层（原型 `paintOver`）。M3 只按 `state.crosshair` 静态摆放。
   /// 十字线与三处读数。**不负责清屏**——它画在 `crossLayer` 上，由调用方先把那层清空
   /// （图例也画在同一层，先画图例再画十字线，和原型的 `base`/`over` 叠放顺序一致）。
+  /// One geometry source for drawing and the crosshair's touch target.
+  public func crosshairCenter(size: CGSize) -> CGPoint? {
+    guard !state.series.isEmpty, let cross = state.crosshair else { return nil }
+    let L = layout(size: size), r = priceRange(size: size), b = state.series
+    let i = min(max(0, cross.index), b.count - 1)
+    let pane = cross.pane.flatMap { id in L.panes.first { $0.indicator == id } } ?? L.main
+    let rawY = cross.pane != nil ? subCrosshairY(value: cross.price ?? 0, pane: pane)
+      : yOf(cross.price ?? b.close[i], pane, r)
+    return CGPoint(x: x(b.time(at: i), L), y: min(pane.y + pane.h - 7, max(pane.y + 7, rawY)))
+  }
+
   public func drawOverlay(in ctx: CGContext, size: CGSize, scale: CGFloat) {
     guard !state.series.isEmpty, let cross = state.crosshair else { return }
     let L = layout(size: size)
@@ -117,24 +187,22 @@ public struct ChartRenderer {
     let s = Double(scale)
     let b = state.series
     let i = min(max(0, cross.index), b.count - 1)
-    let pane = L.main
+    let pane = cross.pane.flatMap { id in L.panes.first { $0.indicator == id } } ?? L.main
 
     UIGraphicsPushContext(ctx)
     defer { UIGraphicsPopContext() }
 
-    // 磁吸开着就画在根中心；关掉才用手指停住的那个时间。两个字段都空（M3 的静态摆放、
-    // A3.11 的基线）走的还是根中心 + 收盘价这条老路。
-    let freeT = state.magnet ? nil : cross.t
-    let xc = freeT.map { state.view.x($0, plotW: L.plotW) } ?? x(b.time(at: i), L)
-    let y = min(L.timeY, max(0, yOf(cross.price ?? b.close[i], pane, r)))
+    guard let center = crosshairCenter(size: size) else { return }
+    let xc = Double(center.x), y = Double(center.y)
 
     ctx.saveGState()
+    ctx.clip(to: CGRect(x: 0, y: 0, width: L.plotW, height: L.H))
     ctx.setLineDash(phase: 0, lengths: [3 / s, 3 / s])
     ctx.setStrokeColor(Paint.cg(t.cross))
     ctx.setLineWidth(1 / s)
     ctx.beginPath()
     ctx.move(to: CGPoint(x: hairline(xc, scale: s), y: 0))
-    ctx.addLine(to: CGPoint(x: hairline(xc, scale: s), y: L.timeY))
+    ctx.addLine(to: CGPoint(x: hairline(xc, scale: s), y: L.H))
     ctx.strokePath()
     ctx.beginPath()
     ctx.move(to: CGPoint(x: 0, y: hairline(y, scale: s)))
@@ -144,16 +212,19 @@ public struct ChartRenderer {
 
     // 右轴价格
     if y <= pane.y + pane.h {
-      let p = pOf(y, pane, r)
-      let label = state.price.mode == .percent
-        ? toFixed((p / r.base - 1) * 100, 2) + "%"
-        : fmtNum(p, state.decimals)
-      let w = min(state.style.axisW - 2, Double(label.width(ChartFont.axis)) + 10)
+      let p = cross.pane == nil ? pOf(y, pane, r) : cross.price ?? 0
+      let label: String
+      if let key = cross.pane { label = key == .vol || key == .oi ? fmtVol(p) : fmtNum(p, 2) }
+      else if state.price.mode == .percent { label = toFixed((p / r.base - 1) * 100, 2) + "%" }
+      else { label = fmtNum(p, state.decimals) }
+      let w = min(L.axisW - 2, Double(label.width(ChartFont.axis)) + 10)
       ctx.setFillColor(Paint.cg(t.crossBg))
       ctx.addRoundRect(CGRect(x: L.plotW + 2, y: y - 7.5, width: w, height: 15), radius: 3)
       ctx.fillPath()
       label.drawCentered(at: CGPoint(x: L.plotW + 2 + w / 2, y: y), font: ChartFont.axis, color: t.crossInk)
     }
+
+    drawCandleData(ctx, L: L, index: i, selectedX: xc)
 
     // 下轴时间
     let tl = fmtFull(ms: Double(b.time(at: i)), offsetMinutes: state.timezone.offsetMinutes)
@@ -161,10 +232,10 @@ public struct ChartRenderer {
     let tx = max(2, min(L.plotW - tw - 2, xc - tw / 2))
     ctx.setFillColor(Paint.cg(t.crossBg))
     ctx.addRoundRect(
-      CGRect(x: tx, y: L.timeY + 3, width: tw, height: state.style.timeH - 6), radius: 3)
+      CGRect(x: tx, y: L.timeY + 3, width: tw, height: AICoinBehavior.timeHeight - 6), radius: 3)
     ctx.fillPath()
     tl.drawCentered(
-      at: CGPoint(x: tx + tw / 2, y: L.timeY + state.style.timeH / 2),
+      at: CGPoint(x: tx + tw / 2, y: L.timeY + AICoinBehavior.timeHeight / 2),
       font: ChartFont.axis, color: t.crossInk)
   }
 
@@ -184,7 +255,7 @@ public struct ChartRenderer {
   private func overlayLines() -> [[Double]] {
     var out: [[Double]] = []
     for id in state.overlays {
-      guard let v = engine[id] else { continue }
+      guard let v = displayed(id) else { continue }
       switch id {
       case .ma, .ema: out += v.lines
       case .boll: if v.lines.count >= 3 { out += [v.lines[1], v.lines[2]] }
@@ -203,7 +274,8 @@ public struct ChartRenderer {
     ctx.setLineWidth(1 / s)
     let gm = state.effectiveGrid
     for f in priceTicks(range: r, mode: mode, paneH: pane.h) {
-      let y = pane.y + pane.h - ((f - a) / (z - a)) * pane.h
+      let fraction = (f - a) / (z - a)
+      let y = pane.y + (r.inverted ? fraction : 1 - fraction) * pane.h
       if y < pane.y + 6 || y > pane.y + pane.h - 2 { continue }
       if gm != .none {
         let x0 = gm == .tick ? L.plotW - 22 : 0
@@ -215,34 +287,22 @@ public struct ChartRenderer {
       case .log: label = fmtNum(exp(f), state.decimals)
       case .linear: label = fmtNum(f, state.decimals)
       }
-      label.drawLeft(at: CGPoint(x: L.plotW + 5, y: y), font: ChartFont.axis, color: t.dim)
+      label.drawCentered(at: CGPoint(x: L.plotW + L.axisW / 2, y: y), font: ChartFont.axis, color: t.dim)
     }
     ctx.hairLineV(x: L.plotW, from: 0, to: L.H, scale: CGFloat(s), color: Paint.cg(t.axis))
     drawAutoFitButton(ctx, L: L, scale: s)
   }
 
-  /// 贴在主图底边的「A」徽章：手动定标时才出现，点一下把价格轴交还给自动贴合。
-  ///
-  /// 字面、造型、锚点全部照 AICoin 安卓包实测（`#tv_scale_auto` 的 XML + `D.t()` 的
-  /// 运行时重刷，见 `docs/AICoin-安卓包-UI规格提取.md` §3 / §23.3）。从前这儿画的是
-  /// 一个圈着的「R」，出处是我自己没验证的推断——反编译结果是 `android:text="A"`，
-  /// 而且是**圆角 2dp 的灰字浅底弱徽章**，不是描边高亮钮。几何在 `Layout.autoFitButton`，
-  /// 手势那头在 `Layout.hitsAutoFit`。
-  ///
-  /// 底色借十字线读数那一对（`crossBg` / `crossInk`）而不是新增颜色常数，理由和倒计时
-  /// 那格一样：它是浮在图上的一小块读数/开关，跟行情无关，不该跟着涨跌色走。
-  /// AICoin 那边也是一组专门的中性色（`ui_kline_scale_auto_bg_color` 日 #f3f5f7 /
-  /// 夜 #303442），语义对得上。
+  /// The A badge resets only Y auto scaling; the iPhone's separate round control opens a side panel.
   private func drawAutoFitButton(_ ctx: CGContext, L: Layout, scale s: Double) {
     guard state.price.isManual else { return }
-    let t = state.colors
     let b = L.autoFitButton
     let rect = CGRect(x: b.x, y: b.y, width: b.w, height: b.h)
-    ctx.setFillColor(Paint.cg(t.crossBg))
+    ctx.setFillColor(Paint.cg(state.colors.axis))
     ctx.addRoundRect(rect, radius: 2)
     ctx.fillPath()
-    "A".drawCentered(
-      at: CGPoint(x: rect.midX, y: rect.midY), font: ChartFont.axis, color: t.dim)
+    "A".drawCentered(at: CGPoint(x: rect.midX, y: rect.midY),
+                     font: ChartFont.axis, color: state.colors.text)
   }
 
   // ---------------------------------------------------------------- 时间轴
@@ -270,8 +330,30 @@ public struct ChartRenderer {
       if xx < 18 || xx > L.plotW - 18 { continue }
       fmtTick(ms: k.t, step: Double(k.step), offsetMinutes: off)
         .drawCentered(
-          at: CGPoint(x: xx, y: L.timeY + state.style.timeH / 2),
+          at: CGPoint(x: xx, y: L.timeY + AICoinBehavior.timeHeight / 2),
           font: ChartFont.axis, color: t.dim)
+    }
+  }
+
+  private func drawExtrema(_ ctx: CGContext, r: PriceRange, L: Layout, scale: Double) {
+    let b = state.series
+    let bounds = visibleRange(view: state.view, series: b)
+    let visible = (bounds.lo...bounds.hi).filter {
+      let px = x(b.time(at: $0), L); return px >= 0 && px <= L.plotW
+    }
+    guard let high = visible.max(by: { b.high[$0] < b.high[$1] }),
+          let low = visible.min(by: { b.low[$0] < b.low[$1] }) else { return }
+    for (index, price, isHigh) in [(high, b.high[high], true), (low, b.low[low], false)] {
+      let px = x(b.time(at: index), L), py = yOf(price, L.main, r)
+      let label = fmtNum(price, state.decimals), width = Double(label.width(ChartFont.axis))
+      let left = px + 16 + width > L.plotW - 4
+      let tx = max(4, min(L.plotW - width - 4, left ? px - width - 12 : px + 12))
+      let above = isHigh != r.inverted
+      let ty = max(8, min(L.mainH - 8, py + (above ? -10 : 10)))
+      ctx.setStrokeColor(Paint.cg(state.colors.text)); ctx.setLineWidth(1 / scale)
+      ctx.beginPath(); ctx.move(to: CGPoint(x: px, y: py))
+      ctx.addLine(to: CGPoint(x: left ? tx + width + 3 : tx - 3, y: ty)); ctx.strokePath()
+      label.drawLeft(at: CGPoint(x: tx, y: ty), font: ChartFont.axis, color: state.colors.text)
     }
   }
 
@@ -315,6 +397,13 @@ public struct ChartRenderer {
     ctx.addRect(CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
     ctx.clip()
     ctx.setLineCap(roundCap ? .round : .butt)
+    let rendering = AICoinBehavior.rendering(spacing: spacing, scale: s)
+    if rendering == .closeLine {
+      line(ctx, pane: pane, r: r, plotW: L.plotW, arr: b.close,
+           color: t.up, lo: lo, hi: hi, width: 2 / s)
+      ctx.restoreGState()
+      return
+    }
 
     for i in lo...hi {
       let xc = x(b.time(at: i), L)
@@ -324,7 +413,8 @@ public struct ChartRenderer {
       let up = bar.c >= bar.o
       let col = up ? t.up : t.down
       let wick = tint < 1 ? Paint.mix(t.bg, col, tint) : col
-      let yh = snap(yOf(bar.h, pane, r), scale: s), yl = snap(yOf(bar.l, pane, r), scale: s)
+      let highY = yOf(bar.h, pane, r), lowY = yOf(bar.l, pane, r)
+      let yh = snap(min(highY, lowY), scale: s), yl = snap(max(highY, lowY), scale: s)
 
       // 影线：可以比实体淡，端头可以是圆的
       if roundCap && !m.thin {
@@ -339,7 +429,7 @@ public struct ChartRenderer {
         let xw = snap(xc - m.wickW / 2, scale: s)
         ctx.fill(CGRect(x: xw, y: yh, width: m.wickW, height: max(m.wickW, yl - yh)))
       }
-      if m.thin { continue }
+      if rendering == .highLow { continue }
 
       let yo = yOf(bar.o, pane, r), yc = yOf(bar.c, pane, r)
       let top = snap(min(yo, yc), scale: s)
@@ -407,7 +497,7 @@ public struct ChartRenderer {
     ctx.addRect(CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
     ctx.clip()
     for id in state.overlays {
-      guard let v = engine[id] else { continue }
+      guard let v = displayed(id) else { continue }
       switch id {
       case .ma:
         for (k, a) in v.lines.enumerated() {
@@ -436,18 +526,19 @@ public struct ChartRenderer {
     let b = state.series, t = state.colors
     let i = b.count - 1
     let p = b.close[i]
-    let y = yOf(p, pane, r)
-    if y < pane.y || y > pane.y + pane.h { return }
+    let y = max(pane.y + 8, min(pane.y + pane.h - 8, yOf(p, pane, r)))
     let up = b.close[i] >= b.open[i]
     let col = up ? t.up : t.down
 
     ctx.saveGState()
-    if state.style.lastDash { ctx.setLineDash(phase: 0, lengths: [3 / s, 3 / s]) }
-    ctx.hairLine(from: 0, to: L.plotW, y: y, scale: CGFloat(s), color: Paint.cg(col))
+    ctx.setLineDash(phase: 0, lengths: [3, 2])
+    ctx.setStrokeColor(Paint.cg(col)); ctx.setLineWidth(2 / s)
+    ctx.beginPath(); ctx.move(to: CGPoint(x: 0, y: snap(y, scale: s)))
+    ctx.addLine(to: CGPoint(x: L.plotW, y: snap(y, scale: s))); ctx.strokePath()
     ctx.restoreGState()
 
-    let label = fmtNum(p, state.decimals)
-    let w = min(state.style.axisW - 2, Double(label.width(ChartFont.axis)) + 10)
+    let label = axisLabel(p, range: r)
+    let w = min(L.axisW - 2, Double(label.width(ChartFont.axis)) + 10)
     let h = 15.0
     ctx.setFillColor(Paint.cg(col))
     ctx.addRoundRect(CGRect(x: L.plotW + 2, y: y - h / 2, width: w, height: h), radius: 3)
@@ -469,9 +560,9 @@ public struct ChartRenderer {
     else { return }
     let t = state.colors
     let h = 13.0
-    let y = belowY + 2
+    let y = belowY + 2 + h <= L.timeY ? belowY + 2 : max(0, belowY - 15 - 2 - h)
     guard y + h <= L.timeY else { return }   // 顶到时间轴上就不画了
-    let w = min(state.style.axisW - 2, max(width, Double(text.width(ChartFont.tiny)) + 8))
+    let w = min(L.axisW - 2, max(width, Double(text.width(ChartFont.tiny)) + 8))
     ctx.setFillColor(Paint.cg(t.crossBg))
     ctx.addRoundRect(CGRect(x: L.plotW + 2, y: y, width: w, height: h), radius: 3)
     ctx.fillPath()
@@ -517,5 +608,35 @@ public struct HeikinSlice: Sendable, Equatable {
     let k = i - lo
     guard k >= 0, k < open.count else { return nil }
     return (open[k], high[k], low[k], close[k])
+  }
+}
+
+extension ChartRenderer {
+  func axisLabel(_ price: Double, range: PriceRange) -> String {
+    state.price.mode == .percent ? toFixed((price / range.base - 1) * 100, 2) + "%" : fmtNum(price, state.decimals)
+  }
+
+  /// One derived container; top mode is rendered by the host, never cached here.
+  func drawCandleData(_ ctx: CGContext, L: Layout, index: Int, selectedX: Double) {
+    guard state.options.dataDisplay != .top else { return }
+    let b = state.series
+    let lines = [fmtFull(ms: Double(b.time(at: index)), offsetMinutes: state.timezone.offsetMinutes),
+      "开 " + fmtNum(b.open[index], state.decimals), "高 " + fmtNum(b.high[index], state.decimals),
+      "低 " + fmtNum(b.low[index], state.decimals), "收 " + fmtNum(b.close[index], state.decimals),
+      "量 " + indicatorNumber(b.volume[index])]
+    let wantedW = (lines.map { Double($0.width(ChartFont.axis)) }.max() ?? 100) + 16
+    let box = CandleDataBox.rect(plotWidth: L.plotW, mainHeight: L.mainH,
+      selectedX: selectedX, desiredWidth: wantedW, desiredHeight: Double(lines.count) * 14 + 12,
+      follow: state.options.dataDisplay == .follow)
+    let rect = CGRect(x: box.x, y: box.y, width: box.width, height: box.height)
+    ctx.saveGState(); defer { ctx.restoreGState() }
+    ctx.clip(to: rect)
+    ctx.setFillColor(Paint.cg(state.colors.bg)); ctx.fill(rect)
+    ctx.setStrokeColor(Paint.cg(state.colors.axis)); ctx.stroke(rect.insetBy(dx: 0.5, dy: 0.5))
+    let rowHeight = min(14, (rect.height - 8) / Double(lines.count))
+    for (row, text) in lines.enumerated() {
+      text.drawLeft(at: CGPoint(x: rect.minX + 8, y: rect.minY + 5 + rowHeight * (Double(row) + 0.5)),
+        font: ChartFont.axis, color: state.colors.text)
+    }
   }
 }

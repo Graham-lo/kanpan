@@ -11,6 +11,8 @@ public actor SymbolCatalog {
   private let log: FeedLog
   private var symbols: [SymbolInfo] = []
   private var loadedAtMs: Int64 = 0
+  private static let schema = 5 // USDT普通/TradFi，排除稳定币对；刷新早期目录。
+  private var loadedSchema = 0
 
   public init(rest: BinanceREST, paths: Paths = .caches(), log: FeedLog = .silent) {
     self.rest = rest
@@ -19,16 +21,19 @@ public actor SymbolCatalog {
   }
 
   public func all(now: Int64 = Int64(Date().timeIntervalSince1970 * 1000)) async -> [SymbolInfo] {
-    if !symbols.isEmpty, now - loadedAtMs < Self.ttlMs { return symbols }
-    if symbols.isEmpty, let disk = readDisk(), now - disk.at < Self.ttlMs {
+    if !symbols.isEmpty, loadedSchema == Self.schema, now - loadedAtMs < Self.ttlMs { return symbols }
+    if symbols.isEmpty, let disk = readDisk(), disk.schema == Self.schema, now - disk.at < Self.ttlMs {
       symbols = disk.list
       loadedAtMs = disk.at
+      loadedSchema = Self.schema
       log("品种表走缓存 \(symbols.count) 个")
       return symbols
     }
     do {
       let fresh = try await rest.exchangeInfo()
+      guard !fresh.isEmpty else { throw FeedError.badResponse("品种表为空") }
       symbols = fresh
+      loadedSchema = Self.schema
       loadedAtMs = now
       writeDisk(fresh, at: now)
       log("品种表刷新 \(fresh.count) 个")
@@ -46,7 +51,7 @@ public actor SymbolCatalog {
 
   // ------------------------------------------------------------------ 磁盘
 
-  private struct Disk: Codable { var at: Int64; var list: [SymbolInfo] }
+  private struct Disk: Codable { var schema: Int?; var at: Int64; var list: [SymbolInfo] }
 
   private func readDisk() -> Disk? {
     guard let d = try? Data(contentsOf: paths.exchangeInfo) else { return nil }
@@ -55,7 +60,7 @@ public actor SymbolCatalog {
 
   private func writeDisk(_ list: [SymbolInfo], at: Int64) {
     try? paths.ensureRoot()
-    guard let d = try? JSONEncoder().encode(Disk(at: at, list: list)) else { return }
+    guard let d = try? JSONEncoder().encode(Disk(schema: Self.schema, at: at, list: list)) else { return }
     try? d.write(to: paths.exchangeInfo, options: .atomic)
   }
 }

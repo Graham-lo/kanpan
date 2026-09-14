@@ -14,16 +14,24 @@ struct MainScreen: View {
   @State private var market = MarketModel()
   @State private var store = PrefsStore()
   @State private var picker = SymbolPickerModel()
+  @State private var quotes = QuoteBook()
+  @State private var didBoot = false
   @State private var proxy = ChartProxy()
 
   @State private var panel: Panel?
   @State private var showSymbols = false
-  @State private var atLatest = true
+  @State private var showFavorites = false
+  @State private var expandedChart = false
   @StateObject private var draw = DrawingController()
   @State private var toast: String?
   @State private var toastID = 0
   /// 十字线亮着的时候，价格行读的是十字线那根，不是最新价（原型 `readout`）。
   @State private var crosshair: Crosshair?
+  /// 倒计时的当前时刻（毫秒）。`nil` = 不画。
+  ///
+  /// 渲染器**不读系统时钟**（`ChartState` 得是纯值，A3.11 的基线靠这条），时间只能
+  /// 从外面喂进去。喂的人就是下面那个 `heartbeat()`。
+  @State private var nowMs: Double?
 
   @Environment(\.colorScheme) private var scheme
   @Environment(\.scenePhase) private var phase
@@ -42,19 +50,26 @@ struct MainScreen: View {
   private var theme: PanelTheme { PanelTheme(dark: dark, redUp: prefs.redUp) }
 
   /// 设置里那两行域名（A6.10）。REST 和推送分开填，理由见 `APIHost.defaultStream`。
-  private var hosts: BinanceHosts { BinanceHosts(fapi: prefs.apiHost, stream: prefs.streamHost) }
+  private var hosts: BinanceHosts {
+    BinanceHosts(fapi: prefs.apiHost, stream: prefs.streamHost,
+      streamFallbacks: prefs.smartMarketRoute ? [APIHost.defaultStream, APIHost.gateway, APIHost.gatewayBackup] : [],
+      oiProxy: APIHost.gateway, oiProxyFallbacks: [APIHost.gatewayBackup])
+  }
 
   /// 横屏判据用高度的 size class，不用宽高比。
   ///
   /// iPad 横过来仍然是 regular × regular——那是「大屏竖版布局转个向」，不该切成
   /// 手机横屏那套（§10.7 说的是 iPhone 横屏；iPad 走 A8.3 的放大布局）。
-  private var landscape: Bool { vClass == .compact }
+  private var landscape: Bool { vClass == .compact || expandedChart }
 
   var body: some View {
     Group {
       if landscape { landscapeBody } else { portraitBody }
     }
     .background(theme.app)
+    .overlay {
+      if !landscape, panel != nil { PanelDismissShield(onDismiss: dismissPanel) }
+    }
     .preferredColorScheme(prefs.theme.forced)
     .overlay(alignment: .bottom) { toastLayer }
     // 横屏的面板走自己那层侧栏，不挂系统 sheet：半屏 sheet 在 compact 高度下会被
@@ -62,22 +77,39 @@ struct MainScreen: View {
     .prefsPanel(landscape ? .constant(nil) : $panel, store: store,
                 onPickInterval: pick(interval:))
     .fullScreenCover(isPresented: $showSymbols) {
-      SymbolPickerView(model: picker, redUp: prefs.redUp, onClose: { showSymbols = false })
+      SymbolPickerView(model: picker, redUp: prefs.redUp, onClose: { showSymbols = false },
+                       onVisible: { quotes.watch($0) },
+                       onRowVisibility: { quotes.watchRow($0, visible: $1) })
+        .preferredColorScheme(prefs.theme.forced)
+    }
+    .fullScreenCover(isPresented: $showFavorites) {
+      FavoritesView(model: picker, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
+                    onClose: { showFavorites = false; proxy.scrollToLatest(animated: false) }, onVisible: { quotes.watch($0) },
+                    onRowVisibility: { quotes.watchRow($0, visible: $1) },
+                    onHistoryVisibility: { quotes.watchHistory($0, visible: $1) })
         .preferredColorScheme(prefs.theme.forced)
     }
     .task { boot() }
+    // 开关一变、或前后台一切，这个 task 就整个重来（旧的先被取消），心跳跟着起停。
+    .task(id: beating) { await heartbeat() }
     .onChange(of: phase) { _, now in
       switch now {
-      case .background: market.enterBackground()
-      case .active: market.enterForeground()
+      case .background: market.enterBackground(); quotes.setForeground(false)
+      case .active: market.enterForeground(); quotes.setForeground(true)
       default: break
       }
     }
     .onChange(of: prefs.keepAwake, initial: true) { _, on in
       UIApplication.shared.isIdleTimerDisabled = on
     }
+    .onChange(of: prefs.subs) { _, subs in market.setOIEnabled(subs.contains(.oi)) }
     .onChange(of: prefs.launchSnapshot) { _, on in market.setSnapshotEnabled(on) }
-    .onChange(of: hosts) { _, next in market.setHosts(next) }
+    .onChange(of: hosts) { _, next in market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis) }
+    .onChange(of: prefs.changeBasis) { _, next in quotes.configure(hosts: hosts, basis: next) }
+    .onChange(of: market.ticker) { _, ticker in if let ticker { quotes.ingest([ticker]) } }
+    .onChange(of: showFavorites || showSymbols) { _, on in quotes.setVisible(on) }
+    .onChange(of: picker.prefs.favorites) { _, symbols in quotes.setFavorites(symbols) }
+    .onChange(of: market.symbol) { _, symbol in quotes.watchChart(symbol) }
     .onChange(of: store.notice) { _, note in
       if let note { say(note); store.clearNotice() }
     }
@@ -96,7 +128,10 @@ struct MainScreen: View {
       hairline
       IntervalBar(
         theme: theme, quick: prefs.quickIntervals, current: market.interval,
-        onPick: pick(interval:), onMore: { panel = .period }
+        onPick: pick(interval:), onMore: { panel = .period },
+        // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
+        onChart: { panel = .chart }, drawing: draw.active,
+        onDraw: { dismissPanel(); draw.toggle() }
       )
       .background(theme.app)
       hairline
@@ -108,8 +143,12 @@ struct MainScreen: View {
       BottomBar(
         theme: theme, active: panel, drawing: draw.active,
         onPanel: { p in panel = (panel == p) ? nil : p },
-        onDraw: { dismissPanel(); draw.toggle() },
-        onLandscape: { dismissPanel(); Orientation.rotate(to: true) }
+        onFavorites: { dismissPanel(); showFavorites = true },
+        onLandscape: {
+          dismissPanel()
+          if UIDevice.current.userInterfaceIdiom == .pad { expandedChart = true }
+          else { Orientation.rotate(to: true) }
+        }
       )
       .background(theme.app)
     }
@@ -127,20 +166,18 @@ struct MainScreen: View {
         onPick: pick(interval:), onMore: { panel = .period }
       )
       .background(theme.app)
-      ZStack(alignment: .topLeading) {
-        chart
+      VStack(spacing: 0) {
         LandscapeHeadline(
           theme: theme, symbol: market.symbol, price: readoutPrice,
-          changePercent: market.ticker?.changePercent,
+          changePercent: displayedTicker?.changePercent,
           decimals: market.info.pricePrecision,
           onSymbol: { dismissPanel(); showSymbols = true })
-          .padding(.leading, 8)
-          .padding(.top, 6)
-        if draw.hint != nil {
-          DrawingHintStrip(controller: draw)
-            .frame(maxWidth: .infinity, alignment: .top)
-            .padding(.top, 6)
+          .padding(.horizontal, 8).padding(.vertical, 4)
+        if let text = topCandleData {
+          Text(text).font(.system(size: 10, design: .monospaced)).foregroundStyle(theme.ink)
+            .accessibilityIdentifier("chart.topOHLC")
         }
+        chart
       }
       if draw.active {
         DrawingRail(controller: draw)
@@ -149,9 +186,12 @@ struct MainScreen: View {
         theme: theme, active: panel, drawing: draw.active,
         onPanel: { p in panel = (panel == p) ? nil : p },
         onDraw: { dismissPanel(); draw.toggle() },
-        onPortrait: { dismissPanel(); Orientation.rotate(to: false) })
+        onPortrait: {
+          dismissPanel()
+          expandedChart = false
+          if UIDevice.current.userInterfaceIdiom != .pad { Orientation.rotate(to: false) }
+        })
     }
-    .ignoresSafeArea(.container, edges: .bottom)
     .overlay(alignment: .trailing) {
       SidePanelLayer(theme: theme, shown: panel != nil, onClose: dismissPanel) {
         sidePanelContent
@@ -167,6 +207,7 @@ struct MainScreen: View {
         case .indicator: IndicatorPanel(store: store)
         case .period: PeriodPanel(store: store, onPick: pick(interval:))
         case .settings: SettingsPanel(store: store)
+        case .chart: ChartPanel(store: store)
         }
       }
     }
@@ -183,12 +224,19 @@ struct MainScreen: View {
         onSearch: { dismissPanel(); showSymbols = true },
         onStar: {
           dismissPanel()
-          let now = picker.toggleFavorite(market.symbol)
+          let now = picker.toggleFavorite(market.symbol, info: market.info)
           say(now ? "已加入自选" : "已移出自选")
         })
-      PriceRow(
-        theme: theme, ticker: market.ticker, lastPrice: readoutPrice,
-        decimals: market.info.pricePrecision)
+      ZStack {
+        PriceRow(theme: theme, ticker: displayedTicker, lastPrice: readoutPrice,
+          decimals: market.info.pricePrecision)
+          .opacity(topCandleData == nil ? 1 : 0)
+        if let text = topCandleData {
+          Text(text).font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(theme.ink).frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("chart.topOHLC")
+        }
+      }
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
@@ -199,6 +247,8 @@ struct MainScreen: View {
   ///
   /// 除了状态本身还报「多久没推了」：WS 能连上但一帧不推的时候 `status` 仍是
   /// `.live`，光看颜色会以为一切正常——这一行是那种情况唯一看得见的线索。
+  private var displayedTicker: Ticker? { market.ticker.map { quotes.presented($0) } }
+
   private var statusLine: String {
     let head: String
     switch market.status {
@@ -213,30 +263,39 @@ struct MainScreen: View {
 
   /// 十字线在哪根上就读哪根的收盘，没有十字线就读最新价。
   private var readoutPrice: Double? {
-    if let c = crosshair, let s = market.series, c.index >= 0, c.index < s.count {
-      return s.close[c.index]
-    }
     return market.series?.close.last ?? market.ticker?.last
+  }
+
+  private var topCandleData: String? {
+    guard prefs.dataDisplay == .top, let c = crosshair, let series = market.series,
+          series.close.indices.contains(c.index) else { return nil }
+    let i = c.index, p = market.info.pricePrecision
+    return fmtFull(ms: Double(series.time(at: i)), offsetMinutes: prefs.timeZone.offsetMinutes)
+      + "\n开 " + fmtNum(series.open[i], p) + "  高 " + fmtNum(series.high[i], p)
+      + "\n低 " + fmtNum(series.low[i], p) + "  收 " + fmtNum(series.close[i], p)
+      + "  量 " + fmtVol(series.volume[i])
   }
 
   private var chart: some View {
     ZStack(alignment: .bottomTrailing) {
       theme.chartBG
       ChartHost(
+        portrait: !landscape,
+        panelOpen: panel != nil,
         state: chartState,
         proxy: proxy,
-        onView: { _ in atLatest = proxy.isAtLatest },
+        onView: { view in market.loadOI(view: view) },
+        onSubResize: { id, scale in store.update { $0.subHeightOverrides[id] = scale } },
+        onSubReorder: { order in store.update { $0.subs = order } },
         onCrosshair: { crosshair = $0 },
         onNeedsHistory: { market.loadMore() },
-        // 点一下图就回到看盘：面板收起（§10.6「点遮罩关闭」在这一层的等价物——
-        // sheet 背后仍然可以单指拖图，所以不铺遮罩，而是让图自己把这一下报上来）。
+        // 面板打开时由原生遮罩消费首个触摸，只收起面板。
         onTapped: { dismissPanel() },
         drawing: draw
       )
       // 换品种/周期的空档：旧图留着压暗，不闪白（§10.4）。
       .opacity(market.switching ? 0.6 : 1)
       .animation(.easeOut(duration: 0.18), value: market.switching)
-      LatestButton(theme: theme, shown: !atLatest, action: goLatest)
       // 提示条压在图区上沿（§10.8），不占版面高度，所以走 overlay 不进 VStack。
       if draw.hint != nil {
         DrawingHintStrip(controller: draw)
@@ -268,7 +327,7 @@ struct MainScreen: View {
   /// 三种情形各自算一份真的（见 `ViewIntent`）。
   private var chartState: ChartState? {
     guard let s = market.series, s.count > 0 else { return nil }
-    return ChartState(
+    var result = ChartState(
       series: s,
       symbol: market.info,
       view: ViewWindow(to: Double(s.lastTime), span: Double(s.step) * 80),
@@ -280,22 +339,69 @@ struct MainScreen: View {
       subs: prefs.subs,
       params: prefs.params,
       timezone: prefs.timeZone,
+      oi: market.oi,
       magnet: prefs.magnet,
-      decimals: market.info.pricePrecision)
+      decimals: market.info.pricePrecision,
+      options: prefs.chartOptions,
+      nowMs: nowMs,
+      subScale: subScale)
+    result.hiddenOutputs = prefs.hiddenOutputs
+    result.rsiUpper = prefs.rsiUpper; result.rsiLower = prefs.rsiLower
+    return result
+  }
+
+  /// 副图高度（A6.4）：`Prefs.subHeights` 是档位，图要的是倍率。
+  ///
+  /// 只报当前开着的那几个：`subHeights` 里会留着以前开过的指标的档位，全倒进去
+  /// 没坏处但也没用，而且每帧都要比一次字典，不如只带用得上的。
+  private var subScale: [IndicatorID: Double] {
+    var out: [IndicatorID: Double] = [:]
+    for id in prefs.subs { out[id] = prefs.scale(for: id) }
+    return out
+  }
+
+  /// 心跳该不该跳：开关开着、且 app 在前台。
+  ///
+  /// 后台不跳有两层意思：省电，以及回到前台时 `.task(id:)` 会重来一遍，第一跳立刻把
+  /// 停在后台那一刻的旧时间冲掉，不会先闪一秒错的倒计时。
+  private var beating: Bool { phase == .active }
+
+  /// 一秒一跳。倒计时读到秒就够，再快只是白耗。
+  private func heartbeat() async {
+    guard beating else { nowMs = nil; return }
+    while !Task.isCancelled {
+      nowMs = prefs.countdown ? Date().timeIntervalSince1970 * 1000 : nil
+      market.refreshOIIfNeeded()
+      quotes.tick()
+      do { try await Task.sleep(for: .seconds(1)) } catch { return }
+    }
   }
 
   // ---------------------------------------------------------------- 动作
 
   private func boot() {
+    guard !didBoot else { return }
+    didBoot = true
+    picker.setSectionsActive(false)
+    quotes.onReset = { picker.clearQuotes() }
+    quotes.onScopeChange = { picker.retainQuotes(for: $0) }
+    quotes.onUpdate = { picker.updateQuotes($0) }
+    quotes.onHistory = { picker.setHistory($0, $1) }
+    quotes.configure(hosts: hosts, basis: prefs.changeBasis)
+    quotes.watchChart(market.symbol)
+    quotes.setForeground(phase != .background)
+    quotes.setFavorites(picker.prefs.favorites)
+    if !picker.prefs.favorites.isEmpty { showFavorites = true; quotes.setVisible(true) }
     picker.onPick = { info in
-      showSymbols = false
+      showSymbols = false; showFavorites = false
+      if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
       market.switchTo(symbol: info.symbol)
     }
     picker.setLoader(market.catalogLoader)
     // 域名要赶在开流之前给：`MarketModel` 自己的默认是币安官方那两台。
     market.setHosts(hosts)
-    market.start(snapshot: prefs.launchSnapshot)
-    if market.interval != prefs.interval { market.switchTo(interval: prefs.interval) }
+    market.setOIEnabled(prefs.subs.contains(.oi))
+    market.start(snapshot: prefs.launchSnapshot, interval: prefs.interval)
   }
 
   /// 收起面板。选完一项、或者手指落到图和别的控件上，都走这儿。
@@ -310,11 +416,6 @@ struct MainScreen: View {
     store.update { $0.interval = iv }
     market.switchTo(interval: iv)
     UISelectionFeedbackGenerator().selectionChanged()
-  }
-
-  private func goLatest() {
-    proxy.scrollToLatest()
-    atLatest = true
   }
 
   private func say(_ text: String) {

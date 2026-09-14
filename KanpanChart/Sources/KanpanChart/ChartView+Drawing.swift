@@ -392,9 +392,8 @@ extension ChartView {
         return
       }
       let hit = drawHitTest(q, axes: axes)
-      let isDoubleTap = now - gesture.lastTapMs < Chart.doubleTapMs
       // 取消选中要给双击复位让路——原型里双击那一支也排在选中之前。
-      if (hit != nil || d.selected != nil) && !isDoubleTap {
+      if hit != nil || d.selected != nil {
         consumeTap()
         touchesEnded(touches, with: event)
         d.selected = hit?.id
@@ -413,7 +412,6 @@ extension ChartView {
   /// 三个分支全都不成立，只剩一次无害的回弹判定。
   private func consumeTap() {
     gesture.mode = nil
-    gesture.lastTapMs = 0
   }
 
   // MARK: - 落笔

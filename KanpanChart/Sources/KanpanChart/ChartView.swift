@@ -49,7 +49,17 @@ public final class ChartView: UIView {
   ///
   /// `nil` 表示还没数据（冷启动、切品种的空档）：三层清空，什么都不画。
   public var state: ChartState? {
-    didSet { adopt(old: oldValue) }
+    didSet {
+      if let old = oldValue, var next = state {
+        if old.options.dataDisplay != next.options.dataDisplay || old.options.crossPrice != next.options.crossPrice
+          || old.series.symbol != next.series.symbol || old.series.interval != next.series.interval
+          || next.crosshair?.pane.map({ !next.subs.contains($0) }) == true {
+          next.crosshair = nil
+          state = next
+        }
+      }
+      adopt(old: oldValue)
+    }
   }
 
   /// 渲染器缓存着指标结果（`IndicatorEngine`），所以留着不重建——
@@ -68,6 +78,46 @@ public final class ChartView: UIView {
     return renderer.priceRange(size: bounds.size)
   }
 
+  public override var accessibilityValue: String? {
+    get {
+      guard let s = state, let layout = chartLayout else { return "行情加载中" }
+      if ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" {
+        let metrics = candleMetrics(spacing: s.view.barSpacing(step: s.series.step, plotW: layout.plotW),
+                                    style: s.style, scale: Double(renderScale))
+        let info: [String: Any] = ["style": s.style.id, "bars": s.series.count, "symbol": s.series.symbol,
+          "latestRightGap": layout.plotW - s.view.x(Double(s.series.lastTime), plotW: layout.plotW)
+            - s.view.barSpacing(step: s.series.step, plotW: layout.plotW) / 2,
+          "lastClose": s.series.close.last ?? 0, "lastVolume": s.series.volume.last ?? 0,
+          "from": s.view.from, "to": s.view.to, "span": s.view.span,
+          "plotW": layout.plotW, "mainH": layout.mainH, "timeY": layout.timeY,
+          "bodyW": metrics.bodyW, "spacing": s.view.barSpacing(step: s.series.step, plotW: layout.plotW),
+          "mode": s.price.mode.rawValue, "inverted": s.price.inverted,
+          "zoomY": s.price.zoom, "centerY": s.price.centerFraction,
+          "axisW": layout.axisW, "height": layout.H,
+          "dataDisplay": s.options.dataDisplay.rawValue, "portraitHeight": s.options.portraitHeight,
+          "hiddenMA": (s.hiddenOutputs[.ma] ?? []).sorted(),
+          "scrollY": (superview as? UIScrollView)?.contentOffset.y ?? 0,
+          "viewportH": (superview as? UIScrollView)?.bounds.height ?? bounds.height,
+          "gestureTrace": gesture.trace,
+          "crossPane": s.crosshair?.pane?.rawValue ?? "MAIN",
+          "crosshair": s.crosshair != nil,
+          "crossIndex": s.crosshair?.index ?? -1,
+          "crossX": renderer?.crosshairCenter(size: bounds.size)?.x ?? -1,
+          "crossY": renderer?.crosshairCenter(size: bounds.size)?.y ?? -1,
+          "panes": layout.panes.dropFirst().map { ["id": $0.indicator?.rawValue ?? "", "y": $0.y, "h": $0.h] as [String: Any] }, "subs": s.subs.map(\.rawValue),
+          "ma": s.params[.ma] ?? [], "macd": s.params[.macd] ?? [],
+          "oiReady": s.oi != nil, "interval": s.series.interval.rawValue,
+          "oiPeriod": s.oi?.bucketInterval?.rawValue ?? "",
+          "oiTimes": s.oi?.timestamps ?? []]
+        guard let data = try? JSONSerialization.data(withJSONObject: info, options: .sortedKeys)
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+      }
+      return "\(s.symbol.symbol)，\(s.series.interval.display)，\(s.series.count)根K线"
+    }
+    set { super.accessibilityValue = newValue }
+  }
+
   // ---------------------------------------------------------------- 手势
 
   /// 一次手势从按下到抬手之间攒的东西。逻辑全在 `ChartView+Gesture.swift`，
@@ -82,6 +132,7 @@ public final class ChartView: UIView {
   public var onNeedsHistory: (() -> Void)?
   /// 图上轻点了一下（没有十字线、不是双击）。画线选中交给 M7 接。
   public var onTapped: (() -> Void)?
+  public var onStateChanged: ((ChartState?) -> Void)?
 
   // ---------------------------------------------------------------- 生命周期
 
@@ -103,6 +154,10 @@ public final class ChartView: UIView {
   }
 
   private func setup() {
+    isMultipleTouchEnabled = true
+    isAccessibilityElement = true
+    accessibilityIdentifier = "chart.canvas"
+    accessibilityLabel = "行情图表"
     backgroundColor = .clear
     isOpaque = false
     contentMode = .redraw
@@ -149,6 +204,9 @@ public final class ChartView: UIView {
   public override func didMoveToWindow() {
     super.didMoveToWindow()
     if window == nil {
+      animation = nil
+      gesture.touches.removeAll(); gesture.reset()
+      state?.axisScaleAnchor = nil
       // 不在窗口上就没有帧可跑；脏位留着，回来再刷。
       link?.invalidate()
       link = nil
@@ -188,12 +246,18 @@ public final class ChartView: UIView {
   /// 换 `state`：先喂给渲染器，再跟旧值比出该重画哪几层。
   private func adopt(old: ChartState?) {
     guard let s = state else {
+      animation = nil
+      gesture.touches.removeAll(); gesture.reset()
+      onCrosshairChanged?(nil)
+      onStateChanged?(nil)
       renderer = nil
       setNeedsRedraw(.all)
       return
     }
     if renderer == nil { renderer = ChartRenderer(state: s) } else { renderer?.state = s }
     setNeedsRedraw(Self.changed(from: old, to: s))
+    onStateChanged?(s)
+    if old?.crosshair != s.crosshair { onCrosshairChanged?(s.crosshair) }
   }
 
   /// 新旧两帧的差异落在哪几层。
@@ -225,6 +289,8 @@ public final class ChartView: UIView {
       && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
       && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi
       && a.magnet == b.magnet && a.options == b.options && a.subScale == b.subScale
+      && a.hiddenOutputs == b.hiddenOutputs && a.subInverted == b.subInverted
+      && a.rsiUpper == b.rsiUpper && a.rsiLower == b.rsiLower && a.axisScaleAnchor == b.axisScaleAnchor
       && sameSeriesExceptLast(a.series, b.series)
   }
 

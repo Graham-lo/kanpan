@@ -161,7 +161,7 @@ struct SymbolSectionsTests {
 
     let naked = SymbolRow(match: SymbolMatch(info: SymbolFixtures.info("BTCUSDT")), ticker: nil)
     #expect(naked.priceText == "—")
-    #expect(naked.changeText == "+0.00%")
+    #expect(naked.changeText == "—")
     #expect(naked.isUp)
   }
 }

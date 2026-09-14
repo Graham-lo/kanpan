@@ -1,19 +1,11 @@
 import Foundation
 
-/// K 线图表的一组开关（对标 AICoin「K 线设置」里跟图有关的那几项）。
-///
-/// 默认值一律「维持现状」：全默认时渲染结果和没有这个结构时逐像素相同。
-///
-/// 这条不是客气话。A3.11 的 176 张基线是**已经定版的验收证据**，加功能不许让它漂移，
-/// 所以每一项的默认值都必须落回旧代码原来那条分支上——`.style` 就是「读风格表自己的
-/// 值」，`lastLine` / `drawings` 就是「照画」。凡是新增的画法（倒计时、至今涨幅），
-/// 默认一律关，哪怕设置页里它本来是开的（`Prefs.countdown` §10.4 默认开）：
-/// 那个开关由 app 层喂进来，不是这里的事。
+/// Shared chart options; defaults follow the current phone profile.
 public struct ChartOptions: Sendable, Equatable {
   /// 蜡烛画成什么：真实 OHLC，还是平均 K 线。
   public var kind: CandleKind = .candle
   /// 网格：跟随风格 / 强制显示 / 强制隐藏。
-  public var grid: GridChoice = .style
+  public var grid: GridChoice = .off
   /// 实体：跟随风格 / 强制实心 / 强制阳线空心。
   public var body: BodyChoice = .style
   /// 实时价格线（主图那条横线 + 右轴胶囊）。关掉连倒计时一起没有——它是挂在胶囊底下的。
@@ -28,6 +20,14 @@ public struct ChartOptions: Sendable, Equatable {
   public var bias: PriceBias = .center
   /// 「回到最新」时最新一根落在横向的哪儿。只有复位入口读它，渲染器不关心。
   public var anchor: ViewAnchor = .right
+  public var dataDisplay: CandleDataDisplay = .inside
+  public var crossPrice: CrossPriceMode = .selected
+  public var allowMainInversion = true
+  public var allowSubInversion = false
+  public var adaptiveIndicators = false
+  public var compactValues = false
+  /// Native relative control, not a conversion from mirror screenshot coordinates.
+  public var portraitHeight = 0.5
   public init() {}
 }
 
@@ -109,3 +109,6 @@ public enum ViewAnchor: String, Sendable, Codable, CaseIterable {
     }
   }
 }
+
+public enum CandleDataDisplay: String, Sendable, Codable, CaseIterable { case inside, top, follow }
+public enum CrossPriceMode: String, Sendable, Codable, CaseIterable { case selected, close }

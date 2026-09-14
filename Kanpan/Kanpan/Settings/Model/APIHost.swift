@@ -10,6 +10,9 @@ enum APIHost {
   /// 行情推送（WebSocket）域名。和 REST 分开填：这两个在币安本来就是两台，
   /// 换镜像、走代理的时候往往只有一边通（§4.1 的两条 URL）。
   static let defaultStream = "fstream.binance.com"
+  static let gateway = "kanpan.107-174-172-10.sslip.io"
+
+  static let gatewayBackup = "kanpan.96-44-162-222.sslip.io:8443"
 
   /// 不合形状就说一句为什么。合法返回 nil。
   static func reject(_ raw: String) -> String? {

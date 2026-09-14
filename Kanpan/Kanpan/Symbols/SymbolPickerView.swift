@@ -22,6 +22,9 @@ struct SymbolPickerView: View {
   var redUp: Bool = false
   /// 返回。宿主给，一般就是关掉这一页。
   var onClose: (() -> Void)?
+  var onSelect: ((SymbolInfo) -> Void)? = nil
+  var onVisible: ((String) -> Void)? = nil
+  var onRowVisibility: ((String, Bool) -> Void)? = nil
 
   @Environment(\.colorScheme) private var scheme
   @FocusState private var searchFocused: Bool
@@ -44,11 +47,13 @@ struct SymbolPickerView: View {
     }
     .background(Color(hex: seed.app))
     .task {
+      model.setSectionsActive(true)
       await model.appear()
       searchFocused = true
     }
     .onDisappear {
       searchFocused = false
+      model.setSectionsActive(false)
       model.disappear()
     }
   }
@@ -65,6 +70,10 @@ struct SymbolPickerView: View {
           .stroke(Color(hex: seed.ink2), style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
           .frame(width: 18, height: 18)
           .frame(width: 32, height: 32)
+          // 描边形状的按钮，点击区默认只有那条 1.7pt 的线本身——32×32 里绝大部分是空的，
+          // 手指落在两笔之间就没反应（A8.4 在 5 台机器上实测到）。补一块矩形点击区，
+          // 画面一个像素都不动。
+          .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
       .accessibilityLabel("返回")
@@ -180,8 +189,11 @@ struct SymbolPickerView: View {
     .onTapGesture {
       searchFocused = false
       haptic(.medium)
-      model.pick(row.info)
+      if let onSelect { onSelect(row.info) } else { model.pick(row.info) }
     }
+    .accessibilityIdentifier("symbols.row.\(row.id)")
+    .onAppear { onVisible?(row.id); onRowVisibility?(row.id, true) }
+    .onDisappear { onRowVisibility?(row.id, false) }
     .listRowInsets(EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 16))
     .listRowBackground(Color(hex: seed.app))
     .listRowSeparatorTint(Color(hex: colors.hair))
@@ -244,7 +256,7 @@ private struct SymbolRowView: View {
         Text(row.changeText)
           .font(.system(size: pctSize, weight: .medium, design: .monospaced))
           .monospacedDigit()
-          .foregroundStyle(Color(hex: row.isUp ? colors.up : colors.down))
+          .foregroundStyle(Color(hex: row.ticker?.changePercent.isFinite == true ? (row.isUp ? colors.up : colors.down) : seed.ink3))
       }
       Button(action: onStar) {
         StarShape()

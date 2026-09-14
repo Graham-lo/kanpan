@@ -31,12 +31,14 @@ public actor OISource {
 
   // ------------------------------------------------------------------ 取数
 
-  /// `[from, to]` 的原始 OI 点（REST 用原生 period，归档固定 5m），已排序去重。
+  /// `[from, to]` 的 OI 点。REST用原生period，网关历史已经按图表周期聚合。
+  /// 网关不可用时才下载5m归档供本地回退，最终统一走chartSeries对齐。
   /// `onDay` 每下完一天调一次，面板用它走进度条、画已到的部分。
   public func rawPoints(symbol: String, interval: Interval, from: Int64, to: Int64,
                         now: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
                         onDay: (@Sendable (Int64, [OIPoint]) -> Void)? = nil) async -> [OIPoint] {
     var all: [OIPoint] = []
+    var recent: [OIPoint] = []
     let cutoff = now - Self.restWindowMs
 
     // ① 近 30 天：REST 一次拿完（500 条一页，往前翻）。
@@ -44,7 +46,7 @@ public actor OISource {
       let period = interval.oiPeriod ?? (interval.stepMs >= 86_400_000 ? "1d" : "5m")
       let start = max(from, cutoff)
       do {
-        all += try await restRange(symbol: symbol, period: period, from: start, to: to)
+        recent += try await restRange(symbol: symbol, period: period, from: start, to: to)
       } catch {
         log("OI REST 失败：\(error)")
       }
@@ -52,11 +54,16 @@ public actor OISource {
 
     // ② 更早：按天列缺口，先缓存后网络。
     if from < cutoff {
-      let days = OIArchive.days(from: max(from, Self.archiveEpoch), to: min(to, cutoff))
-      all += await archiveDays(symbol: symbol, days: days, onDay: onDay)
+      let start = max(from, Self.archiveEpoch), end = min(to, cutoff)
+      if let history = await gatewayHistory(symbol: symbol, interval: interval, from: start, to: end) {
+        all += history
+      } else {
+        let days = OIArchive.days(from: start, to: end)
+        all += await archiveDays(symbol: symbol, days: days, onDay: onDay)
+      }
     }
 
-    return Self.dedup(all)
+    return Self.dedup(all + recent)  // 接缝重叠时近期统计优先。
   }
 
   /// 对齐到 K 线：每根取「不晚于这根开盘」的最近一条（原型 `oiAligned` 的规矩）。
@@ -66,7 +73,7 @@ public actor OISource {
     let from = series.time(at: 0) - interval.stepMs
     let to = series.lastTime + interval.stepMs
     let raw = await rawPoints(symbol: symbol, interval: interval, from: from, to: to, now: now)
-    return Self.align(Self.downsample(raw, to: interval), to: series)
+    return Self.chartSeries(raw, interval: interval).aligned(to: series)
   }
 
   // ------------------------------------------------------------------ REST
@@ -86,6 +93,23 @@ public actor OISource {
   }
 
   // ------------------------------------------------------------------ 归档
+
+  /// 正常路径：服务器解析ZIP并按请求周期聚合，手机不搬运多年原始5m数组。
+  private func gatewayHistory(symbol: String, interval: Interval, from: Int64, to: Int64) async -> [OIPoint]? {
+    guard from <= to else { return nil }
+    for proxy in hosts.oiProxies {
+      guard !Task.isCancelled else { return nil }
+      guard var url = URLComponents(string: "https://\(proxy)/oi/v1/metrics/\(symbol)/range") else { continue }
+      url.queryItems = [URLQueryItem(name: "interval", value: interval.rawValue),
+                       URLQueryItem(name: "from", value: String(from)), URLQueryItem(name: "to", value: String(to))]
+      guard let target = url.url else { continue }
+      do {
+        let response = try await transport.get(target, timeout: 45)
+        if response.status == 200 { return try Self.decodeGateway(response.body) }
+      } catch { if Task.isCancelled { return nil } }
+    }
+    return nil
+  }
 
   private func archiveDays(symbol: String, days: [Int64],
                            onDay: (@Sendable (Int64, [OIPoint]) -> Void)?) async -> [OIPoint] {
@@ -116,6 +140,14 @@ public actor OISource {
         group.addTask {
           let url = hosts.metricsZip(symbol: symbol, day: OIArchive.dayString(day))
           do {
+            for proxy in hosts.oiProxies {
+              guard !Task.isCancelled else { return (day, []) }
+              if let proxyURL = URL(string: "https://\(proxy)/oi/v1/metrics/\(symbol)/\(OIArchive.dayString(day)).json"),
+                 let reply = try? await transport.get(proxyURL, timeout: 6), reply.status == 200,
+                 let points = try? Self.decodeGateway(reply.body) {
+                return (day, points)
+              }
+            }
             let reply = try await transport.get(url, timeout: 20)
             if reply.status == 404 { return (day, []) }      // 上市前 / 还没归档，不是错误
             guard reply.status == 200 else { return (day, []) }
@@ -138,6 +170,16 @@ public actor OISource {
     return out
   }
 
+  /// Gateway returns real timestamps, including archives older than the REST window.
+  public static func decodeGateway(_ data: Data) throws -> [OIPoint] {
+    let rows = try JSONDecoder().decode([[Double]].self, from: data)
+    guard rows.allSatisfy({ $0.count == 2 && $0[0].isFinite && $0[0] > 0
+      && $0[0] < Double(Int64.max) && $0[1].isFinite && $0[1] >= 0 }) else {
+      throw FeedError.badResponse("历史OI响应不完整")
+    }
+    return dedup(rows.map { OIPoint(time: Int64($0[0]), value: $0[1]) })
+  }
+
   // ------------------------------------------------------------------ 纯函数
 
   /// 按时间排序去重，同一时刻留后来的。
@@ -147,6 +189,12 @@ public actor OISource {
     m.reserveCapacity(pts.count)
     for p in pts { m[p.time] = p }
     return m.keys.sorted().map { m[$0]! }
+  }
+
+  /// App 与查询入口共用这条管线，不能将原始5m归档直接交给高周期图表。
+  public static func chartSeries(_ raw: [OIPoint], interval: Interval) -> OISeries {
+    OISeries(points: downsample(dedup(raw), to: interval),
+             step: max(300_000, interval.stepMs), bucketInterval: interval)
   }
 
   /// 降采样到周期：每桶取最后一条，时间戳打在桶头上。

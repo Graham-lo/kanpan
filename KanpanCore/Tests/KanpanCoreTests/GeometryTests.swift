@@ -5,47 +5,11 @@ import Testing
 /// A1.3：根宽表必须和原型 `candleWidths` 完全相同，并满足奇偶、包含关系等不变量。
 @Suite("根宽与像素对齐")
 struct GeometryTests {
-  @Test("candleWidths 与原型逐点相等", arguments: Fx.widths.indices)
-  func candleWidths(_ ri: Int) {
-    let row = Fx.widths[ri]
-    var bad = 0
-    var first = ""
-    for i in row.body.indices {
-      let s = row.spacing(i)
-      let got = KanpanCore.candleWidths(spacing: s, scale: row.scale, bodyR: row.bodyR)
-      if Double(got.body) != row.body[i] || Double(got.wick) != row.wick[i] {
-        bad += 1
-        if first.isEmpty {
-          first = "spacing=\(s) want (\(row.body[i]), \(row.wick[i])) got (\(got.body), \(got.wick))"
-        }
-      }
-    }
-    #expect(bad == 0, "\(row.style)@\(Int(row.scale))x：\(bad) 点不符，首个 \(first)")
-  }
-
-  @Test("奇偶相同 / body ≥ wick / 细到极致时合二为一", arguments: Fx.widths.indices)
-  func widthInvariants(_ ri: Int) {
-    let row = Fx.widths[ri]
-    for i in row.body.indices {
-      let s = row.spacing(i)
-      let w = KanpanCore.candleWidths(spacing: s, scale: row.scale, bodyR: row.bodyR)
-      #expect(w.body % 2 == w.wick % 2, "spacing=\(s) 奇偶不同 \(w)")
-      #expect(w.body >= w.wick, "spacing=\(s) 实体比影线还细 \(w)")
-      #expect(w.wick >= 1, "spacing=\(s) 影线归零 \(w)")
-      // 原型：raw = spacing · bodyR · dpr，不到 2 个设备像素就退成一根竖线。
-      if s * row.bodyR * row.scale < 2 { #expect(w.body == w.wick, "spacing=\(s) 细蜡烛没退成一根线") }
-    }
-  }
-
-  /// 根宽随根间距单调不减——放大不能把蜡烛画细了。
-  @Test("根宽单调", arguments: Fx.widths.indices)
-  func monotonic(_ ri: Int) {
-    let row = Fx.widths[ri]
-    var prev = -1
-    for i in row.body.indices {
-      let b = KanpanCore.candleWidths(spacing: row.spacing(i), scale: row.scale, bodyR: row.bodyR).body
-      #expect(b >= prev, "spacing=\(row.spacing(i)) 变细了 \(prev)→\(b)")
-      prev = b
+  @Test("当前参考手机：4pt 节距对应8px实体、2px影线")
+  func referenceWidth() {
+    for style in CandleStyle.all {
+      let w = candlePixels(spacing: 4, scale: 3)
+      #expect(w.body == 8 && w.wick == 2)
     }
   }
 
@@ -71,9 +35,9 @@ struct GeometryTests {
     }
   }
 
-  /// 影线粗细取**整数个设备像素**：`max(1, round(max(0.5, style.wick) * scale / 2))`，再除以 scale。
+  /// 影线粗细取**整数个设备像素**：`max(1, round(max(0.5, (4.0 / 3)) * scale / 2))`，再除以 scale。
   ///
-  /// 旧口径是 `max(0.5, style.wick) / scale`，直接把风格表里的点值当逻辑宽度用。那样画出来
+  /// 旧口径是 `max(0.5, (4.0 / 3)) / scale`，直接把风格表里的点值当逻辑宽度用。那样画出来
   /// 的竖线落在非整像素上，CoreGraphics 会把它摊到相邻两列、各给一半覆盖率——肉眼就是
   /// 「颜色变淡、影线糊在一起」。0.5 pt 的风格（靛/砖/骨/密）在 1x 下更是只有半像素，
   /// 等于画了一条 50% 灰。所以改成先量成整数设备像素再换回逻辑宽度。
@@ -82,21 +46,21 @@ struct GeometryTests {
     for st in CandleStyle.all {
       // 风格表的 `wick` 是**按 2x 屏写的设备像素**，先换算到当前倍率再量成整数。
       #expect(
-        wickPixels(style: st, scale: 2) == max(1, Int(max(0.5, st.wick).jsRounded())),
+        wickPixels(scale: 2) == max(1, Int(max(0.5, (4.0 / 3)).jsRounded())),
         "\(st.id) 影线像素数（2x 就是风格表原值）")
       for scale in [1.0, 2.0, 3.0] {
-        let px = wickPixels(style: st, scale: scale)
+        let px = wickPixels(scale: scale)
         #expect(
-          px == max(1, Int((max(0.5, st.wick) * max(1, scale) / 2).jsRounded())),
+          px == max(1, Int((max(0.5, (4.0 / 3)) * max(1, scale) / 2).jsRounded())),
           "\(st.id)@\(scale) 影线像素数")
-        #expect(wickLineWidth(style: st, scale: scale) == Double(px) / scale, "\(st.id)@\(scale)")
-        #expect(abs(wickLineWidth(style: st, scale: scale) * scale - Double(px)) < 1e-9)
+        #expect(wickLineWidth(scale: scale) == Double(px) / scale, "\(st.id)@\(scale)")
+        #expect(abs(wickLineWidth(scale: scale) * scale - Double(px)) < 1e-9)
         let m = candleMetrics(spacing: 8, style: st, scale: scale)
         let wickW = Double(px) / scale
         #expect(m.wickW == wickW, "\(st.id)@\(scale) wickW")
-        #expect(m.minBody == max(wickW, st.minBody / scale), "\(st.id)@\(scale) minBody")
+        #expect(m.minBody == 1 / scale, "\(st.id)@\(scale) minBody")
         #expect(m.radius == min(st.radius, m.bodyW / 2), "\(st.id)@\(scale) radius")
-        #expect(m.outline == max(1, (scale * 0.9).rounded()) / scale, "\(st.id)@\(scale) 描边线宽")
+        #expect(m.outline == 1 / scale, "\(st.id)@\(scale) 描边线宽")
         #expect(m.bodyW > 0 && m.wickW > 0)
       }
     }
@@ -106,7 +70,7 @@ struct GeometryTests {
 /// M6：蜡烛按整设备像素光栅化。
 ///
 /// 起因是实机反馈「缩小后 K 线糊成一片、影线颜色发淡挤在一起」。根因有两条：影线宽度
-/// 是 `max(0.5, style.wick) / scale` 这样的小数，落笔压不满整像素，抗锯齿把它摊成半灰；
+/// 是 `max(0.5, (4.0 / 3)) / scale` 这样的小数，落笔压不满整像素，抗锯齿把它摊成半灰；
 /// 实体宽没有「至少留 1 像素缝」的上限，捏小之后相邻两根直接连成一片（砖在默认根间距
 /// 下实测缝是 **-1**，也就是重叠）。
 ///
@@ -129,15 +93,15 @@ struct CandlePixelTests {
   @Test("影线整像素", arguments: scales)
   func wickIsWholePixels(_ scale: Double) {
     for st in CandleStyle.all {
-      let px = wickPixels(style: st, scale: scale)
+      let px = wickPixels(scale: scale)
       #expect(px >= 1, "\(st.id) 影线归零")
-      let w = wickLineWidth(style: st, scale: scale)
+      let w = wickLineWidth(scale: scale)
       #expect(abs(w * scale - (w * scale).rounded()) < 1e-9, "\(st.id)@\(scale) 落不到整像素上")
       // 量化误差不超过半个设备像素；`px == 1` 是保底那一档（目标不足半像素时抬上来）。
-      let want = max(0.5, st.wick) / 2
+      let want = max(0.5, (4.0 / 3)) / 2
       #expect(px == 1 || abs(w - want) <= 0.5 / scale + 1e-9, "\(st.id)@\(scale) 物理宽度跑了：\(w) vs \(want)")
       // 0.5pt 的四款（靛/砖/骨/密）必须被抬到 1，不能再画 50% 灰。
-      if st.wick <= 0.5 { #expect(px == 1, "\(st.id) 半像素影线没被抬起来") }
+
     }
   }
 
@@ -148,7 +112,7 @@ struct CandlePixelTests {
     for st in CandleStyle.all {
       var sp = Chart.minBarSpacing
       while sp <= Chart.maxBarSpacing {
-        let w = candlePixels(spacing: sp, scale: scale, style: st)
+        let w = candlePixels(spacing: sp, scale: scale)
         #expect(w.body % 2 == w.wick % 2, "\(st.id)@\(scale) spacing=\(sp) 奇偶不同 \(w)")
         #expect(w.body >= w.wick, "\(st.id)@\(scale) spacing=\(sp) 实体比影线细")
         sp += 0.05
@@ -167,7 +131,7 @@ struct CandlePixelTests {
     for st in CandleStyle.all {
       var sp = Chart.minBarSpacing
       while sp <= Chart.maxBarSpacing {
-        let w = candlePixels(spacing: sp, scale: scale, style: st)
+        let w = candlePixels(spacing: sp, scale: scale)
         let cell = Int((sp * scale).rounded(.down))
         let ink = candleMetrics(spacing: sp, style: st, scale: scale).thin ? w.wick : w.body
         if cell >= 2 {
@@ -185,7 +149,7 @@ struct CandlePixelTests {
       var prev = -1
       var sp = Chart.minBarSpacing
       while sp <= Chart.maxBarSpacing {
-        let b = candlePixels(spacing: sp, scale: scale, style: st).body
+        let b = candlePixels(spacing: sp, scale: scale).body
         #expect(b >= prev, "\(st.id)@\(scale) spacing=\(sp) 变细了 \(prev)→\(b)")
         prev = b
         sp += 0.05
@@ -203,7 +167,7 @@ struct CandlePixelTests {
       #expect(candleMetrics(spacing: tight, style: st, scale: scale).thin,
               "\(st.id)@\(scale) 一格 3 像素还画实体")
       // 默认根间距下一根都不许退化，否则默认视图就没实体了。
-      #expect(!candleMetrics(spacing: st.spacing, style: st, scale: scale).thin,
+      #expect(!candleMetrics(spacing: AICoinBehavior.initialSpacing, style: st, scale: scale).thin,
               "\(st.id)@\(scale) 默认根间距就退化了")
     }
   }
@@ -212,8 +176,8 @@ struct CandlePixelTests {
   @Test("默认根间距下实体够胖", arguments: deviceScales)
   func defaultSpacingIsFat(_ scale: Double) {
     for st in CandleStyle.all {
-      let w = candlePixels(spacing: st.spacing, scale: scale, style: st)
-      let cell = Int((st.spacing * scale).rounded(.down))
+      let w = candlePixels(spacing: AICoinBehavior.initialSpacing, scale: scale)
+      let cell = Int((AICoinBehavior.initialSpacing * scale).rounded(.down))
       #expect(w.body > w.wick, "\(st.id)@\(scale) 默认档实体没比影线宽")
       #expect(cell - w.body >= 1, "\(st.id)@\(scale) 默认档没缝")
     }
@@ -224,11 +188,11 @@ struct CandlePixelTests {
   func garbageIn() {
     let st = CandleStyle.default
     for sp in [0.0, -5, Double.nan, .infinity] {
-      let w = candlePixels(spacing: sp, scale: 2, style: st)
+      let w = candlePixels(spacing: sp, scale: 2)
       #expect(w.body >= 1 && w.wick >= 1, "spacing=\(sp) 算出 \(w)")
     }
     for sc in [0.0, -2, Double.nan] {
-      let w = candlePixels(spacing: 8, scale: sc, style: st)
+      let w = candlePixels(spacing: 8, scale: sc)
       #expect(w.body >= 1 && w.wick >= 1, "scale=\(sc) 算出 \(w)")
     }
   }

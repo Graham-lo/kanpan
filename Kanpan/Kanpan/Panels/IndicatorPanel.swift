@@ -1,20 +1,16 @@
 import SwiftUI
 import KanpanCore
 
-/// 指标面板（A6.4 / A6.5 / A6.6）。
-///
-/// 主图三个随便开，副图七个最多同时开三个——第四个按不下去，弹原型那句
-/// 「副图最多同时开三个」。开着的指标底下跟一排步进器，加减一下立刻生效、立刻存。
-/// 「副图顺序」和「高度」两组是任务书 §10.6 要的，原型里没有（原型副图只按打开先后排、
-/// 高度由风格表定死），所以做成**不动原型既有部分**的追加。
+/// 指标选择即时生效；参数与输出在独立草稿中保存或取消。
 struct IndicatorPanel: View {
   var store: PrefsStore
+  @State private var editing: IndicatorID?
   @Environment(\.panelTheme) private var t
 
   private var prefs: Prefs { store.prefs }
 
   var body: some View {
-    PanelSheet(title: "指标", subtitle: "副图默认 MACD + RSI") {
+    PanelSheet(title: "指标", subtitle: "副图默认 VOL + OI + MACD") {
       PanelGroupTitle(text: "主图叠加")
       ForEach([IndicatorID.ma, .ema, .boll], id: \.self) { id in
         row(id)
@@ -31,10 +27,11 @@ struct IndicatorPanel: View {
       }
 
       PanelNote(markdown:
-        "副图按打开的先后从上往下排，最多同时开三个还看得清。"
+        "副图按打开的先后从上往下排，更多副图可上下滚动查看；拖动副图下边界可调整高度。"
         + "**持仓量**用的是币安 openInterestHist，交易所只保留最近 30 天、最细 5 分钟——"
         + "超出这个范围会直说没有，不画假线。")
     }
+    .sheet(item: $editing) { id in IndicatorEditor(store: store, id: id) }
     .panelToast(store)
   }
 
@@ -56,22 +53,15 @@ struct IndicatorPanel: View {
   @ViewBuilder
   private func detail(_ id: IndicatorID) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      if !id.paramLabels.isEmpty {
-        let values = prefs.params(for: id)
-        FlowRow(spacing: 5) {
-          ForEach(Array(id.paramLabels.enumerated()), id: \.offset) { index, label in
-            PanelStepper(label: label, value: values[index]) { delta in
-              store.update { $0.bumpParam(id, at: index, by: delta) }
-            }
-          }
-        }
-      }
+      Button("参数与输出设置") { editing = id }
+        .font(PanelFont.meta).foregroundStyle(t.ink)
+        .accessibilityIdentifier("indicator.edit.\(id.rawValue)")
       if id.placement == .sub {
         HStack(spacing: PanelMetrics.rowGap) {
-          Text("高度").font(PanelFont.meta).foregroundStyle(t.ink3)
+          Text(prefs.subHeightOverrides[id] == nil ? "高度" : "高度 · 已手调").font(PanelFont.meta).foregroundStyle(t.ink3)
           Spacer(minLength: 0)
           PanelSegment(options: SubPaneHeight.options, selection: prefs.height(for: id)) { h in
-            store.update { $0.subHeights[id] = h }
+            store.update { $0.subHeights[id] = h; $0.subHeightOverrides[id] = nil }
           }
         }
       }
@@ -196,4 +186,49 @@ struct FlowRow: SwiftUI.Layout {
 
 #Preview("指标") {
   PanelPreviewHost { store in IndicatorPanel(store: store) }
+}
+
+// Separate draft lifetime makes Back/Cancel/swipe-to-dismiss equivalent.
+extension IndicatorID: @retroactive Identifiable { public var id: String { rawValue } }
+private struct IndicatorEditor: View {
+  var store: PrefsStore
+  @State private var draft: IndicatorDraft
+  @Environment(\.dismiss) private var dismiss
+  init(store: PrefsStore, id: IndicatorID) {
+    self.store = store; _draft = State(initialValue: IndicatorDraft(id: id, prefs: store.prefs))
+  }
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section("参数") {
+          ForEach(Array(draft.params.indices), id: \.self) { index in
+            Stepper("\(parameterLabel(index))：\(draft.params[index])", value: $draft.params[index], in: 1...400)
+              .accessibilityIdentifier("indicator.param.\(index)")
+          }
+          if draft.id == .rsi {
+            Stepper("上限：\(Int(draft.upper))", value: $draft.upper, in: (draft.lower + 1)...100)
+            Stepper("下限：\(Int(draft.lower))", value: $draft.lower, in: 0...(draft.upper - 1))
+          }
+        }
+        Section("输出") {
+          ForEach(Array(draft.outputs.enumerated()), id: \.offset) { index, name in
+            Toggle(name, isOn: Binding(get: { !draft.hidden.contains(index) }, set: { on in
+              if on { draft.hidden.remove(index) } else { draft.hidden.insert(index) }
+            })).accessibilityIdentifier("indicator.output.\(index)")
+          }
+        }
+      }
+      .navigationTitle(draft.id.name)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("保存") { store.update { draft.save(into: &$0) }; dismiss() }
+        }
+      }
+    }
+  }
+  private func parameterLabel(_ index: Int) -> String {
+    if [.ma, .ema, .vol].contains(draft.id) { return "周期\(index + 1)" }
+    return draft.id.paramLabels[index]
+  }
 }

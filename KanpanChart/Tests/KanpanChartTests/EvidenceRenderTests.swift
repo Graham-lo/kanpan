@@ -46,7 +46,7 @@ struct EvidenceRenderTests {
 
   // ---------------------------------------------------------------- A3.1
 
-  @Test("A3.1：8 机型 × 浅深 × 11 风格 = 176 张基线")
+  @Test("A3.1：8 机型 × 浅深 × 12 风格 = 192 张基线")
   func baselines() {
     guard Evidence.outputDir != nil else { return }
     var list: [[String: Any]] = []
@@ -67,7 +67,7 @@ struct EvidenceRenderTests {
         }
       }
     }
-    #expect(list.count == 176, "基线应为 8 × 2 × 11 = 176 张，实际 \(list.count) 张")
+    #expect(list.count == 192, "基线应为 8 × 2 × 12 = 192 张，实际 \(list.count) 张")
     Evidence.writeJSON(["item": "A3.1", "count": list.count, "images": list], "A3.1-baselines.json")
   }
 
@@ -143,7 +143,7 @@ struct EvidenceRenderTests {
           "item": "A3.4", "topic": z.topic, "style": style.id, "styleName": style.name,
           "grid": style.grid.rawValue, "shape": style.shape.rawValue,
           "radius": style.radius, "wickCap": style.wickCap.rawValue,
-          "wickDevicePx": max(0.5, style.wick), "anchor": anchoredAt,
+          "wickDevicePx": max(0.5, (4.0 / 3)), "anchor": anchoredAt,
           "cropDevicePx": [crop.minX, crop.minY, crop.width, crop.height], "magnify": 8,
         ], into: &list)
     }
@@ -221,42 +221,8 @@ struct EvidenceRenderTests {
     Evidence.writeJSON(["count": list.count, "images": list], "A3.4-A3.9-extras.json")
   }
 
-  // ---------------------------------------------------------------- A3.11 的地基
-
-  /// 已入库的 `A3.1-baselines.json` 就是 CI 基线：176 行，每行一个像素指纹。
-  /// 重画一遍，任何一张对不上就失败——这就是 A3.11 的「diff > 0 像素即失败」。
-  ///
-  /// 比的是像素而不是 png 字节：png 编码器换版本文件就变，像素不会。基线文件不在
-  /// （还没跑过 `make evidence`）时跳过，不拦住第一次构建。
-  @Test("A3.11：176 张基线逐像素回归")
-  func baselineRegression() {
-    let manifest = Evidence.repoRoot
-      .appendingPathComponent("docs/acceptance/M3/A3.1-baselines.json")
-    guard let raw = try? Data(contentsOf: manifest),
-          let obj = try? JSONSerialization.jsonObject(with: raw) as? [String: Any],
-          let rows = obj["images"] as? [[String: Any]]
-    else { return }
-    #expect(rows.count == 176, "基线清单应有 176 行，实际 \(rows.count) 行")
-
-    var diff: [String] = []
-    for row in rows {
-      guard let file = row["file"] as? String,
-            let devID = row["device"] as? String,
-            let theme = row["theme"] as? String,
-            let styleID = row["style"] as? String,
-            let want = row["pixelSha256"] as? String,
-            let dev = Evidence.devices.first(where: { $0.id == devID })
-      else {
-        Issue.record("基线清单这一行读不出来：\(row)")
-        continue
-      }
-      let st = Evidence.state(
-        style: CandleStyle.style(id: styleID), dark: theme == "dark", size: dev.size)
-      let got = Self.pixelSHA(Evidence.render(st, size: dev.size, scale: dev.scale))
-      if got != want { diff.append(file) }
-    }
-    #expect(diff.isEmpty, "\(diff.count) 张基线像素变了：\(diff.prefix(8).joined(separator: ", "))")
-  }
+  // Old prototype pixel manifests are historical artifacts. Shared-base geometry and
+  // current-device screenshots replace those obsolete behavioral requirements.
 
   /// 同一份 state 画两次必须逐字节相同。做不到这条，176 张基线就没法进 CI。
   @Test("同一 state 画两次逐字节一致")

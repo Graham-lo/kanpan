@@ -6,22 +6,21 @@ import UIKit
 
 // MARK: - 手势状态
 
-/// 一次手势从按下到抬手之间要记住的东西（§7、§13 G1–G15）。
-///
-/// 不用 `UIGestureRecognizer`：那套有自己的 slop、长按时长和互斥策略，和原型的
-/// `pointerdown/move/up` 对不上，G10 要求的「捏合中途抬一根手指变拖动不跳」在
-/// recognizer 之间转交时也很难做到无缝。直接接 `touches*`，一条路照着原型抄。
+/// Shared gesture state for every visual skin.
 @MainActor
 final class GestureState {
   enum Mode {
-    /// 图上单指：拖图；十字线在的时候是移线。
+    /// 图上单指：拖图。
     case pan
+    case crosshair
     /// 双指缩放。
     case pinch
     /// 右侧价格轴：竖拖缩放价格。
     case axisPrice
-    /// 底部时间轴：横拖缩放时间。
-    case axisTime
+    case subAxis
+    /// 手动纵轴平移；自动纵轴的纵向拖动交由父容器。
+    case verticalPan
+    case parentScroll
     /// 主图底边那个「A」徽章：抬手就把价格轴交还给自动贴合。
     case autoFit
   }
@@ -35,31 +34,21 @@ final class GestureState {
   var startPoint: CGPoint = .zero
   var startView = ViewWindow(from: 0, to: 1)
   var startTransform = PriceTransform()
-  var startAtMs: Double = 0
-  /// 按下点上的价格，价格轴拖要把它钉住。
-  var anchorPrice: Double = 0
-  /// 按下那一刻屏幕上的**绝对**价格区间。手动定标（`PriceTransform.pinned`）拿它当基准：
-  /// 整场手势都在这一份快照上算，不再去碰每帧重算的自动贴合。
-  var axisRange: PriceRange?
-
-  /// 双指快照：初始间距与中点。
+  var startRange: PriceRange?
+  var trace = ""
   var pinchD0: Double = 0
   var pinchMid0: Double = 0
-  /// 捏合开始那一刻屏幕上的价格区间。整场捏合都把图钉在这个区间里——
-  /// 价格轴本来每帧都按可见 K 线重新贴合，捏的时候可见根数一直在变，
-  /// 极值进进出出就会把整张图上下拽（用户原话「缩放 k 线会自动上下跳」）。
-  /// AiCoin 的做法是框固定、内容在框里缩放，松手才重新贴合。
-  var pinchRange: PriceRange?
-  /// 捏合之前的价格变换。松手后缓动回它，把自动贴合交还出去。
-  var pinchTransform = PriceTransform()
-
+  var pinchActive = false
+  var directionChosen = false
+  var axisStarted = false
+  var lastAxisTap: Double?
+  var lastAxisInverted = false
   /// 这次手势总共动了多远（取最大值，不是最后的位移）。判轻点、判长按取消都看它。
   var moved: Double = 0
   var velocity = VelocityTracker()
   /// 最后一次 move 的时刻，用来算「手指停下来之后才松手」那种不该甩的情况。
-  var lastMoveMs: Double = 0
+  var longPressActivated = false
   var longPress: DispatchWorkItem?
-  var lastTapMs: Double = 0
   /// 上一帧磁吸吸住的那根，换根才震一下。
   var lastMagnetIndex: Int = -1
   /// 已经喊过补历史了；序列长出来之前不重复喊。
@@ -69,9 +58,11 @@ final class GestureState {
 
   func reset() {
     mode = nil
+    longPressActivated = false
     moved = 0
-    pinchRange = nil
-    axisRange = nil
+    pinchActive = false
+    directionChosen = false
+    axisStarted = false
     velocity.reset()
     cancelLongPress()
   }
@@ -114,12 +105,8 @@ extension ChartView {
     gesture.startPoint = q
     gesture.startView = state?.view ?? gesture.startView
     gesture.startTransform = state?.price ?? PriceTransform()
-    gesture.startAtMs = now
-    gesture.lastMoveMs = now
+    gesture.startRange = chartPriceRange
     gesture.velocity.add(x: Double(q.x), t: now)
-    gesture.axisRange = renderer?.priceRange(
-      size: bounds.size, transform: state?.price ?? PriceTransform())
-
     // 主图底边那个「A」（回到自动贴合）先截胡：它压在价格轴的可拖区域上，
     // 不先判就永远只会被当成竖拖。手动定标时它才存在。
     if state?.price.isManual == true, L.hitsAutoFit(x: Double(q.x), y: Double(q.y)) {
@@ -127,19 +114,21 @@ extension ChartView {
       return
     }
 
-    // 轴的判定顺序照原型：先看右侧价格轴，右下角那块重叠区归价格轴。
-    if Double(q.x) > L.plotW {
+    // Only the main price axis accepts Y scaling.
+    if Double(q.x) > L.plotW && Double(q.y) < L.mainH {
       gesture.mode = .axisPrice
-      gesture.anchorPrice = price(atY: Double(q.y))
       return
     }
-    if Double(q.y) > L.timeY {
-      gesture.mode = .axisTime
+    if Double(q.x) > L.plotW {
+      gesture.mode = .subAxis
       return
     }
-
-    gesture.mode = .pan
-    scheduleLongPress(at: q)
+    if Double(q.y) >= L.mainH && Double(q.y) < L.mainH + AICoinBehavior.timeHeight {
+      gesture.mode = .parentScroll
+      return
+    }
+    gesture.mode = hitsCrosshairCenter(q) ? .crosshair : .pan
+    if state?.crosshair == nil { scheduleLongPress(at: q) }
   }
 
   public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -159,16 +148,26 @@ extension ChartView {
     let dy = Double(q.y - gesture.startPoint.y)
     gesture.moved = max(gesture.moved, (dx * dx + dy * dy).squareRoot())
     if gesture.moved > Chart.longPressSlopPt { gesture.cancelLongPress() }
-    gesture.lastMoveMs = now
 
     switch mode {
-    case .pinch, .autoFit: break
+    case .pinch, .autoFit, .subAxis: break
     case .axisPrice: dragPriceAxis(dy: dy, L: L)
-    case .axisTime: dragTimeAxis(dx: dx, L: L)
+    case .verticalPan: panPrice(dy: dy, L: L)
+    case .parentScroll: break
+    case .crosshair: moveCrosshair(to: q, L: L)
     case .pan:
-      if state?.crosshair != nil {
-        moveCrosshair(to: q, L: L)
-      } else {
+      do {
+        guard gesture.moved >= Chart.panSlopPt else { break }
+        if !gesture.directionChosen {
+          gesture.directionChosen = true
+          if abs(dy) > 1.5 * abs(dx) {
+            gesture.mode = gesture.startTransform.isManual && gesture.startPoint.y < L.mainH
+              ? .verticalPan : .parentScroll
+            if gesture.mode == .verticalPan { panPrice(dy: dy, L: L) }
+            break
+          }
+        }
+        clearCrosshair()
         gesture.velocity.add(x: Double(q.x), t: now)
         panPlot(dx: dx, dy: dy, L: L)
       }
@@ -186,16 +185,22 @@ extension ChartView {
   private func finishTouches(_ touches: Set<UITouch>, event: UIEvent?, cancelled: Bool) {
     let now = Self.ms(event)
     let wasPinch = gesture.mode == .pinch
+    let endPoint = touches.first?.location(in: self) ?? gesture.startPoint
+    if cancelled {
+      gesture.touches.removeAll(); gesture.reset(); animation = nil
+      state?.axisScaleAnchor = nil
+      settleView()
+      return
+    }
     let liftedAll = gesture.touches.allSatisfy { touches.contains($0) }
     gesture.touches.removeAll { touches.contains($0) }
     gesture.cancelLongPress()
 
     if wasPinch {
       if gesture.touches.count >= 2 {
+        if let layout = chartLayout { beginPinch(L: layout) }
         return                                   // 三指抬掉一根，剩下的两指接着捏
       }
-      // 捏合结束——先把「还框」的目标算出来，`gesture.reset()` 会把捏合快照清掉。
-      let priceTo = pinchPriceTarget()
       if let t = gesture.touches.first, let L = chartLayout {
         // G10：捏合中途抬一根手指要无缝变拖动——以剩下那根的**当前**位置重新起手，
         // 不是拿按下时的位置，否则图会瞬间跳一段。
@@ -205,26 +210,24 @@ extension ChartView {
         gesture.startPoint = q
         gesture.startView = state?.view ?? gesture.startView
         gesture.startTransform = state?.price ?? PriceTransform()
-        gesture.startAtMs = now
-        gesture.lastMoveMs = now
         gesture.velocity.add(x: Double(q.x), t: now)
         // 框先缓着还给自动贴合，同时剩下那根手指已经能拖了，两件事互不打扰。
-        unwindPinchPrice(to: priceTo)
         _ = L
         return
       }
       gesture.reset()
-      settleAfterPinch(price: priceTo)
+      settleView()
       return
     }
 
     guard liftedAll || gesture.touches.isEmpty else { return }
     let mode = gesture.mode
+    state?.axisScaleAnchor = nil
+    let wasLongPress = gesture.longPressActivated
     let moved = gesture.moved
     // 抬手位置要在 `gesture.reset()` 之前拿——「A」徽章判「手指有没有跑出去」要用。
-    let endPoint = gesture.touches.first?.location(in: self) ?? gesture.startPoint
+    gesture.velocity.add(x: Double(endPoint.x), t: now)
     let v = gesture.velocity.velocity
-    let gap = now - gesture.lastMoveMs
     gesture.reset()
 
     if cancelled {
@@ -232,7 +235,8 @@ extension ChartView {
       return
     }
 
-    if mode == .pan, moved < Chart.panSlopPt * 2 {
+    if wasLongPress { finishCrosshairSelection(); return }
+    if (mode == .pan || mode == .crosshair), moved < Chart.panSlopPt * 2 {
       handleTap(at: now)
       return
     }
@@ -245,198 +249,121 @@ extension ChartView {
       }
       return
     }
+    if mode == .subAxis, moved < Chart.panSlopPt * 2 {
+      if let layout = chartLayout, var s = state, s.options.allowSubInversion,
+         let id = layout.panes.first(where: { $0.indicator != nil && endPoint.y >= $0.y && endPoint.y <= $0.y + $0.h })?.indicator {
+        if s.subInverted.contains(id) { s.subInverted.remove(id) } else { s.subInverted.insert(id) }
+        state = s
+      }
+      return
+    }
     if mode == .axisPrice, moved < Chart.panSlopPt * 2 {
       handleAxisTap(at: now)
       return
     }
     if mode == .pan, state?.crosshair == nil {
-      startFling(speed: v, gapMs: gap)
+      startFling(speed: v)
       return
     }
+    finishCrosshairSelection()
     settleView()
   }
 
   // MARK: - 拖
 
-  /// 单指拖图（G1）。横向平移视野，纵向超过 14pt 才顺带平移价格——原型这个阈值
-  /// 是为了「想横拖的时候手指难免带点竖向抖动」，别一抖价格就跑。
+  /// 两端允许单指弹性留白；历史中途仍沿共享时间映射。
   private func panPlot(dx: Double, dy: Double, L: Layout) {
     guard var s = state else { return }
-    let shifted = gesture.startView.dragged(byFingerPx: dx, plotW: L.plotW)
-    s.view = clamp(shifted, plotW: L.plotW, soft: true)
-    if abs(dy) > 14 {
-      if gesture.startTransform.pinned != nil, let from = gesture.axisRange,
-        let pin = PriceAnchor.pan(range: from, dy: dy, pane: L.main, mode: s.price.mode)
-      {
-        // 已经手动定标了：`shift` 是失效的，改它一点用没有，得平移那段绝对区间。
-        s.price.pinned = pin
-      } else {
-        s.price.shift = gesture.startTransform.shift - dy / (L.main.h * 2)
-      }
-    }
+    s.view = ViewMath.dragging(gesture.startView.dragged(byFingerPx: dx, plotW: L.plotW),
+                               series: s.series, plotW: L.plotW, anchor: s.options.anchor)
     state = s
     viewDidChange(s.view)
   }
 
-  /// 价格轴竖拖（G6）：切成**手动定标**，把区间钉成绝对值，按下点的价格不动。
-  ///
-  /// 原来这儿改的是 `zoom`/`shift`，那是「自动贴合结果」上的相对量——手一松再左右平移一下，
-  /// 贴合按新的可见 K 线重算，刚调好的刻度就又跑了。AiCoin 桌面版实测是另一套：竖拖价格轴
-  /// 就把右下角的「自动」关掉，此后横向缩放价格轴**逐字不动**（同一段横向缩放，自动档下轴从
-  /// 1349.58…1262.36 跑到 1344.15…1262.51，手动档下前后一模一样）。见 `PriceTransform.pinned`。
+  private func panPrice(dy: Double, L: Layout) {
+    guard var s = state, gesture.startTransform.isManual else { return }
+    guard let range = gesture.startRange, let renderer else { return }
+    var auto = gesture.startTransform; auto.reset()
+    let automatic = renderer.priceRange(size: bounds.size, transform: auto)
+    let start = Double(gesture.startPoint.y)
+    let delta = pOf(start, pane: L.main, range: range, mode: s.price.mode)
+      - pOf(start + dy, pane: L.main, range: range, mode: s.price.mode)
+    let center = gesture.startTransform.centerFraction + delta / max(1e-12, automatic.hi - automatic.lo)
+    s.price.centerFraction = PriceTransform.clampedCenter(center, zoom: s.price.zoom)
+    state = s
+  }
+
   private func dragPriceAxis(dy: Double, L: Layout) {
-    guard var s = state, let from = gesture.axisRange else { return }
-    guard
-      let pin = PriceAnchor.pin(
-        range: from, factor: PriceAnchor.zoom(from: 1, dy: dy),
-        keeping: gesture.anchorPrice, at: Double(gesture.startPoint.y),
-        pane: L.main, mode: s.price.mode)
-    else { return }
-    s.price.pinned = pin
+    guard var s = state, gesture.moved >= Chart.panSlopPt else { return }
+    if !gesture.axisStarted {
+      gesture.axisStarted = true
+      gesture.startPoint.y += dy
+      if let range = chartPriceRange { s.axisScaleAnchor = (range.lo + range.hi) / 2 }
+      state = s
+      return
+    }
+    s.price.zoom = AICoinBehavior.axisZoom(from: gesture.startTransform.zoom,
+                                          dy: dy, height: L.mainH)
+    s.price.centerFraction = PriceTransform.clampedCenter(
+      gesture.startTransform.centerFraction, zoom: s.price.zoom)
     state = s
   }
-
-  /// 时间轴横拖（G7）：以按下点为锚缩放窗宽。原型没有这条，见 `PriceAnchor.spanFactor`。
-  private func dragTimeAxis(dx: Double, L: Layout) {
-    guard var s = state else { return }
-    let zoomed = ViewMath.zoom(
-      gesture.startView, factor: PriceAnchor.spanFactor(dx: dx),
-      anchorPx: Double(gesture.startPoint.x), plotW: L.plotW)
-    s.view = clamp(zoomed, plotW: L.plotW, soft: true)
-    state = s
-    viewDidChange(s.view)
-    reportZoomLimit(s.view, L: L)
-  }
-
-  // MARK: - 捏
 
   private func beginPinch(L: Layout) {
-    guard gesture.touches.count >= 2 else { return }
+    guard gesture.touches.count >= 2, gesture.mode != .crosshair else { return }
+    clearCrosshair()
     let (d, m) = twoFinger()
     gesture.cancelLongPress()
+    state?.axisScaleAnchor = nil
     gesture.mode = .pinch
-    gesture.startView = state?.view ?? gesture.startView
-    gesture.pinchD0 = max(Chart.pinchMinPx, d)
+    gesture.trace = "begin d=\(d)"
+    gesture.pinchD0 = d
     gesture.pinchMid0 = m
-    gesture.moved = .greatestFiniteMagnitude   // 捏过就不可能是轻点
-    gesture.pinchTransform = state?.price ?? PriceTransform()
-    // 已经手动定标的话框本来就不会动，这套冻结不但多余，`freeze` 解出来的是一份
-    // `pinned == nil` 的变换，赋回去正好把钉子拔了。所以钉住时直接不参与。
-    gesture.pinchRange =
-      state?.price.pinned == nil ? renderer?.priceRange(size: bounds.size) : nil
-    _ = L
+    gesture.pinchActive = false
+    gesture.moved = .greatestFiniteMagnitude
   }
 
   private func updatePinch(L: Layout) {
     guard var s = state else { return }
     let (d, m) = twoFinger()
-    let v = ViewMath.pinch(
-      from0: gesture.startView.from, span0: gesture.startView.span,
-      d0: gesture.pinchD0, d: max(Chart.pinchMinPx, d),
-      mid0Px: gesture.pinchMid0, plotW: L.plotW)
-    // 中点自己也会漂（两指整体平移），按当前中点把视野拖回去，两指中间那根就真不动了。
-    let follow = v.dragged(byFingerPx: m - gesture.pinchMid0, plotW: L.plotW)
-    s.view = clamp(follow, plotW: L.plotW, soft: true)
-    s.price = frozenTransform(mode: s.price.mode, view: s.view) ?? s.price
+    gesture.trace = "move d=\(d) previous=\(gesture.pinchD0) active=\(gesture.pinchActive)"
+    let minimumSpan = 50.0 / max(1, Double(traitCollection.displayScale))
+    guard gesture.pinchD0 > 0 else { gesture.pinchD0 = d; return }
+    guard d >= minimumSpan else {
+      if gesture.pinchActive {
+        gesture.pinchD0 = d; gesture.pinchMid0 = m; gesture.pinchActive = false
+      }
+      return
+    }
+    if !gesture.pinchActive {
+      guard abs(d - gesture.pinchD0) > 2 * Chart.panSlopPt else { return }
+      gesture.pinchActive = true
+    }
+    let spacing = s.view.barSpacing(step: s.series.step, plotW: L.plotW)
+    // Android mode4 aligns the latest column without reserved blank, not any RIGHT boundary.
+    let aligned = Double(s.series.lastTime) + Double(s.series.step) / 2
+    let mode4 = abs(s.view.to - aligned) / s.view.span * L.plotW < spacing
+    let moved = mode4 ? s.view : clamp(s.view.dragged(byFingerPx: m - gesture.pinchMid0, plotW: L.plotW), plotW: L.plotW)
+    s.view = ViewMath.scaled(moved, series: s.series, plotW: L.plotW,
+                            factor: d / gesture.pinchD0, focus: m, anchor: s.options.anchor)
+    gesture.pinchD0 = d
+    gesture.pinchMid0 = m
     state = s
     viewDidChange(s.view)
     reportZoomLimit(s.view, L: L)
   }
 
-  /// 捏合每一帧：把框按回捏合开始那一刻的位置。数学在 `PriceAnchor.freeze`，
-  /// 这里只负责喂「新视野下不带变换的区间」。
-  ///
-  /// 注意必须用 `renderer.priceRange(size:view:transform:)` 这条重载——`state.view`
-  /// 这时还是上一帧的，拿它探出来的 raw 对不上新窗口。
-  private func frozenTransform(mode: PriceMode, view: ViewWindow) -> PriceTransform? {
-    guard let want = gesture.pinchRange, let r = renderer else { return nil }
-    let raw = r.priceRange(
-      size: bounds.size, view: view, transform: PriceTransform(mode: mode, zoom: 1, shift: 0))
-    return PriceAnchor.freeze(target: want, raw: raw, mode: mode)
-  }
-
-  /// 捏合期间钉住框用的那套 `zoom`/`shift`，松手要还回去。
-  ///
-  /// `pinchTransform` 是捏之前的值：本来就没手动拖过价格轴的话它是 1/0，还回去就等于
-  /// 把自动贴合交还出来；之前手动拖过就还原成他拖出来的那套，不偷偷清掉。
-  private func pinchPriceTarget() -> PriceTransform? {
-    guard gesture.pinchRange != nil, let s = state else { return nil }
-    var to = gesture.pinchTransform
-    to.mode = s.price.mode                    // 捏合中途换过价格档位就跟着走
-    return s.price == to ? nil : to
-  }
-
-  /// 松手只把框交还给自动贴合（视野不用回弹时走这条，比如 G10 抬掉一根手指转拖动）。
-  private func unwindPinchPrice(to: PriceTransform?) {
-    gesture.pinchRange = nil
-    guard let to, let s = state else { return }
-    let from = s.price
-    guard !Haptics.reduceMotion else {
-      var cur = s
-      cur.price = to
-      state = cur
-      return
-    }
-    let t0 = CACurrentMediaTime()
-    animation = { [weak self] now in
-      guard let self, var cur = self.state else { return true }
-      let k = min(1, max(0, (now - t0) * 1000 / Settle.durationMs))
-      cur.price = Self.lerp(from, to, Settle.ease(k))
-      self.state = cur
-      return k >= 1
-    }
-  }
-
-  /// 捏完松手：视野回弹和价格框交还得在**同一个**闭包里做。
-  /// `animation` 只有一格，分两次设后一次会把前一次顶掉——那样要么图不回弹，
-  /// 要么框卡在捏合时的位置不还。
-  private func settleAfterPinch(price to: PriceTransform?) {
-    gesture.pinchRange = nil
-    guard let s = state, let L = chartLayout, s.series.count > 0 else { return }
-    let vTarget = Settle.target(s.view, series: s.series, plotW: L.plotW)
-    guard vTarget != nil || to != nil else {
-      onViewChanged?(s.view)
-      return
-    }
-    let from = s.price
-    let v0 = s.view
-    guard !Haptics.reduceMotion else {
-      var cur = s
-      if let vTarget { cur.view = vTarget }
-      if let to { cur.price = to }
-      state = cur
-      viewDidChange(cur.view)
-      return
-    }
-    let t0 = CACurrentMediaTime()
-    animation = { [weak self] now in
-      guard let self, var cur = self.state else { return true }
-      let ms = (now - t0) * 1000
-      let k = min(1, max(0, ms / Settle.durationMs))
-      let e = Settle.ease(k)
-      if let vTarget { cur.view = Settle.frame(from: v0, to: vTarget, elapsedMs: ms).view }
-      if let to { cur.price = Self.lerp(from, to, e) }
-      self.state = cur
-      if vTarget != nil { self.viewDidChange(cur.view) }
-      return k >= 1
-    }
-  }
-
-  private static func lerp(_ a: PriceTransform, _ b: PriceTransform, _ e: Double) -> PriceTransform {
-    PriceTransform(
-      mode: b.mode,
-      zoom: a.zoom + (b.zoom - a.zoom) * e,
-      shift: a.shift + (b.shift - a.shift) * e)
-  }
-
   private func twoFinger() -> (d: Double, mid: Double) {
-    let a = gesture.touches[0].location(in: self)
-    let b = gesture.touches[1].location(in: self)
-    let dx = Double(a.x - b.x), dy = Double(a.y - b.y)
-    return ((dx * dx + dy * dy).squareRoot(), Double(a.x + b.x) / 2)
+    let points = gesture.touches.map { $0.location(in: self) }
+    let count = Double(points.count)
+    let mx = points.reduce(0) { $0 + Double($1.x) } / count
+    let my = points.reduce(0) { $0 + Double($1.y) } / count
+    let sx = 2 * points.reduce(0) { $0 + abs(Double($1.x) - mx) } / count
+    let sy = 2 * points.reduce(0) { $0 + abs(Double($1.y) - my) } / count
+    return (hypot(sx, sy), mx)
   }
 
-  /// 缩放顶到 0.4 / 40 那一下震一次，松开再撞才震第二次（G11 的 rigid）。
+  /// 缩放顶到 1.6 / 40 那一下震一次，松开再撞才震第二次（G11 的 rigid）。
   private func reportZoomLimit(_ v: ViewWindow, L: Layout) {
     guard let s = state, s.series.count > 0 else { return }
     let sp = v.barSpacing(step: s.series.step, plotW: L.plotW)
@@ -447,11 +374,19 @@ extension ChartView {
 
   // MARK: - 十字线
 
+  /// A native 44 pt touch target around the rendered intersection, not either full line.
+  public func hitsCrosshairCenter(_ point: CGPoint) -> Bool {
+    guard let center = renderer?.crosshairCenter(size: bounds.size) else { return false }
+    return abs(point.x - center.x) <= 22 && abs(point.y - center.y) <= 22
+  }
+
   private func scheduleLongPress(at q: CGPoint) {
     let work = DispatchWorkItem { [weak self] in
       guard let self, let L = self.chartLayout else { return }
       self.gesture.longPress = nil
       guard self.gesture.moved <= Chart.longPressSlopPt else { return }
+      self.gesture.longPressActivated = true
+      self.gesture.mode = .crosshair
       self.gesture.lastMagnetIndex = -1
       self.moveCrosshair(to: q, L: L)
       Haptics.crosshair()
@@ -467,11 +402,11 @@ extension ChartView {
     let px = max(0, min(L.plotW, Double(q.x)))
     let t = s.view.t(atX: px, plotW: L.plotW)
     let i = s.series.index(atTime: t)
-    var c = Crosshair(index: i, t: t, price: price(atY: Double(q.y)))
-    if s.magnet, let p = c.price {
-      // 竖线吸根中心由渲染器按 `index` 画；横线在这儿吸到最近的开高低收。
-      c.price = nearestOHLC(p, at: i, in: s.series)
-    }
+    var c = Crosshair(index: i, t: nil, price: price(atY: Double(q.y)))
+    if let pane = L.panes.dropFirst().first(where: { Double(q.y) >= $0.y && Double(q.y) <= $0.y + $0.h }) {
+      c.pane = pane.indicator
+      c.price = renderer?.subCrosshairValue(y: Double(q.y), pane: pane)
+    } else if s.magnet { c.price = s.series.close[i] }
     let changed = s.crosshair?.index != i
     s.crosshair = c
     state = s
@@ -480,9 +415,13 @@ extension ChartView {
     onCrosshairChanged?(c)
   }
 
-  private func nearestOHLC(_ p: Double, at i: Int, in b: BarSeries) -> Double {
-    let cands = [b.open[i], b.high[i], b.low[i], b.close[i]]
-    return cands.min(by: { abs($0 - p) < abs($1 - p) }) ?? p
+  /// Android M.g/q12: close mode snaps only after release, not during selection movement.
+  private func finishCrosshairSelection() {
+    guard var s = state, s.options.crossPrice == .close, var cross = s.crosshair,
+          cross.pane == nil, s.series.close.indices.contains(cross.index) else { return }
+    cross.price = nil
+    s.crosshair = cross
+    state = s
   }
 
   /// 清掉十字线。品种 / 周期切换、面板弹出时外面也会叫。
@@ -497,71 +436,43 @@ extension ChartView {
   // MARK: - 轻点与双击
 
   private func handleTap(at now: Double) {
-    if now - gesture.lastTapMs < Chart.doubleTapMs {
-      gesture.lastTapMs = 0
-      resetView()
-      return
-    }
-    gesture.lastTapMs = now
     if state?.crosshair != nil {
       clearCrosshair()
-    } else {
+    } else if let L = chartLayout {
+      moveCrosshair(to: gesture.startPoint, L: L)
+      finishCrosshairSelection()
       onTapped?()
     }
   }
 
-  /// 把价格轴交还给自动贴合（AiCoin 桌面版的「自动」钮、手机版贴在主图底边的「A」徽章）。
-  ///
-  /// 不硬切：钉住的区间和自动贴合出来的区间可能差一大截，直接赋值会「啪」地跳一下。
-  /// 做法是先把目标区间**当成一次钉住**，再一帧帧把钉子从旧区间挪到新区间，落地那一帧
-  /// 才真的换成 `reset()` 过的变换——过程中价格轴仍然是钉死的，所以不会边缓动边重新贴合。
+  /// Restore automatic Y only; historical X and inversion remain unchanged.
   public func resetPriceScale() {
-    guard var s = state, s.price.isManual else { return }
-    var to = s.price
-    to.reset()
-    let from = renderer?.priceRange(size: bounds.size, transform: s.price)
-    let want = renderer?.priceRange(size: bounds.size, transform: to)
-    guard !Haptics.reduceMotion, let from, let want, from != want else {
-      s.price = to
-      state = s
-      return
-    }
-    let t0 = CACurrentMediaTime()
-    animation = { [weak self] now in
-      guard let self, var cur = self.state else { return true }
-      let e = min(1, max(0, (now - t0) * 1000 / Settle.durationMs))
-      if e >= 1 {
-        cur.price = to
-      } else {
-        let k = Settle.ease(e)
-        cur.price = to
-        cur.price.pinned = (
-          lo: from.lo + (want.lo - from.lo) * k,
-          hi: from.hi + (want.hi - from.hi) * k
-        )
-      }
-      self.state = cur
-      return e >= 1
-    }
+    guard var s = state else { return }
+    s.price.reset()
+    s.axisScaleAnchor = nil
+    state = s
   }
 
-  /// 价格轴双击复位到自动范围（G6）。
+  /// 当前手机开启主轴点击翻转。
   private func handleAxisTap(at now: Double) {
-    if now - gesture.lastTapMs < Chart.doubleTapMs {
-      gesture.lastTapMs = 0
-      guard var s = state else { return }
+    guard var s = state, let L = chartLayout, gesture.startPoint.y < L.mainH else { return }
+    if let previous = gesture.lastAxisTap, now - previous < 300 {
+      s.price.inverted = gesture.lastAxisInverted
       s.price.reset()
-      state = s
-      return
+      gesture.lastAxisTap = nil
+    } else {
+      gesture.lastAxisInverted = s.price.inverted
+      gesture.lastAxisTap = now
+      if s.options.allowMainInversion { s.price.inverted.toggle() }
     }
-    gesture.lastTapMs = now
+    state = s
   }
 
-  /// 双击图面：回到默认视野，价格轴也一并复位（原型 `resetView`）。
+  /// Explicit reset action restores the shared initial spacing.
   public func resetView() {
     guard var s = state, let L = chartLayout, s.series.count > 0 else { return }
     s.view = ViewMath.reset(
-      series: s.series, plotW: L.plotW, spacing: s.style.spacing, anchor: s.options.anchor)
+      series: s.series, plotW: L.plotW, spacing: AICoinBehavior.initialSpacing, anchor: s.options.anchor)
     s.price.reset()
     s.crosshair = nil
     state = s
@@ -593,12 +504,14 @@ extension ChartView {
 
   // MARK: - 惯性与回弹
 
-  private func startFling(speed: Double, gapMs: Double) {
+  private func startFling(speed: Double) {
     guard let s = state, let L = chartLayout else { return }
+    let settled = clamp(s.view, plotW: L.plotW)
+    if abs(s.view.to - settled.to) / s.view.span * L.plotW > 0.01 { settleView(); return }
     // G12：系统开了「减少动效」就不滑行，抬手即停，其余功能不变。
     guard !Haptics.reduceMotion,
       let run = FlingRun(
-        speedPxPerMs: speed, gapMs: gapMs, start: s.view, plotW: L.plotW)
+        speedPxPerMs: speed, start: s.view, plotW: L.plotW)
     else {
       settleView()
       return
@@ -607,36 +520,32 @@ extension ChartView {
     animation = { [weak self] now in
       guard let self, var cur = self.state else { return true }
       let (v, done) = run.frame(elapsedMs: (now - t0) * 1000)
-      cur.view = self.clamp(v, plotW: L.plotW, soft: false)
+      cur.view = self.clamp(v, plotW: L.plotW)
+      let hit = abs(cur.view.to - v.to) / v.span * L.plotW > 0.01
       self.state = cur
       self.viewDidChange(cur.view)
-      if done { self.settleView() }
-      return done
+      return done || hit
     }
   }
 
-  /// 松手回弹（G5）。已经在界内就什么都不做。
+  /// 两端单指拉出的空白松手回对应边界，历史窗口不被拉回最新。
   private func settleView() {
-    guard let s = state, let L = chartLayout, s.series.count > 0 else { return }
-    guard let target = Settle.target(s.view, series: s.series, plotW: L.plotW) else {
-      onViewChanged?(s.view)
-      return
+    guard var s = state, let L = chartLayout else { return }
+    let target = clamp(s.view, plotW: L.plotW)
+    if !Haptics.reduceMotion, abs(s.view.to - target.to) / s.view.span * L.plotW > 0.01 {
+      animate(from: s.view, to: target, rebound: true)
+    } else {
+      s.view = target; state = s; onViewChanged?(s.view)
     }
-    guard !Haptics.reduceMotion else {
-      var cur = s
-      cur.view = target
-      state = cur
-      viewDidChange(target)
-      return
-    }
-    animate(from: s.view, to: target)
   }
 
-  private func animate(from a: ViewWindow, to b: ViewWindow) {
+  private func animate(from a: ViewWindow, to b: ViewWindow, rebound: Bool = false) {
     let t0 = CACurrentMediaTime()
     animation = { [weak self] now in
       guard let self, var cur = self.state else { return true }
-      let (v, done) = Settle.frame(from: a, to: b, elapsedMs: (now - t0) * 1000)
+      let elapsed = (now - t0) * 1000
+      let (v, done) = rebound ? ViewTransition.rebound(from: a, to: b, elapsedMs: elapsed)
+                              : ViewTransition.frame(from: a, to: b, elapsedMs: elapsed)
       cur.view = v
       self.state = cur
       self.viewDidChange(v)
@@ -646,9 +555,9 @@ extension ChartView {
 
   // MARK: - 杂项
 
-  private func clamp(_ v: ViewWindow, plotW: Double, soft: Bool) -> ViewWindow {
+  private func clamp(_ v: ViewWindow, plotW: Double) -> ViewWindow {
     guard let s = state else { return v }
-    return clampView(v, series: s.series, plotW: plotW, soft: soft)
+    return clampView(v, series: s.series, plotW: plotW, anchor: s.options.anchor)
   }
 
   /// 视野变了之后统一走这里：通知外面 + 判断该不该补历史。

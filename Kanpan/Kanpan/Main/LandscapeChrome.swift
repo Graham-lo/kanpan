@@ -28,7 +28,7 @@ struct LandscapeHeadline: View {
             .font(.system(size: 13, weight: .semibold).monospacedDigit())
             .foregroundStyle(up ? theme.up : theme.down)
         }
-        if let changePercent {
+        if let changePercent, changePercent.isFinite {
           Text((changePercent >= 0 ? "+" : "") + toFixed(changePercent, 2) + "%")
             .font(.system(size: 11, weight: .medium).monospacedDigit())
             .foregroundStyle(up ? theme.up : theme.down)
@@ -123,9 +123,13 @@ struct ToolRail: View {
       Spacer(minLength: 0)
       item(VectorIcon.style, "风格", on: active == .style) { onPanel(.style) }
       item(VectorIcon.indicator, "指标", on: active == .indicator) { onPanel(.indicator) }
+      // A8.6「横竖屏各用 5 分钟，全部功能可达」：竖屏的「图表」在周期条上，
+      // 横屏没有周期条的尾巴，所以挂到工具栏来，不然横屏根本开不出 K 线设置。
+      item(VectorIcon.chart, "图表", on: active == .chart) { onPanel(.chart) }
       item(VectorIcon.draw, "画线", on: drawing, action: onDraw)
       item(VectorIcon.settings, "设置", on: active == .settings) { onPanel(.settings) }
-      item(VectorIcon.landscape, "竖屏", on: false, action: onPortrait)
+      item(VectorIcon.landscape, UIDevice.current.userInterfaceIdiom == .pad ? "返回" : "竖屏", on: false, action: onPortrait)
+        .accessibilityIdentifier("land.exit")
       Spacer(minLength: 0)
     }
     .frame(width: 52)
@@ -169,10 +173,10 @@ struct SidePanelLayer<Content: View>: View {
   var body: some View {
     ZStack(alignment: .trailing) {
       if shown {
-        // 只盖侧栏以外的那一条：点它关面板，图的左 2/3 照常能拖。
+        // 面板外的点击只关闭侧栏，不触发底下控件。
         Color.black.opacity(0.18)
           .ignoresSafeArea()
-          .onTapGesture(perform: onClose)
+          .overlay { PanelDismissShield(onDismiss: onClose) }
           .transition(.opacity)
         content()
           .frame(width: width)

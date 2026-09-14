@@ -8,7 +8,7 @@ import KanpanCore
 
 /// 哪个面板。底栏四个按钮各对应一个。
 enum Panel: String, Identifiable, CaseIterable, Sendable {
-  case style, indicator, period, settings
+  case style, indicator, period, settings, chart
 
   var id: String { rawValue }
 
@@ -18,6 +18,7 @@ enum Panel: String, Identifiable, CaseIterable, Sendable {
     case .indicator: "指标"
     case .period: "周期"
     case .settings: "设置"
+    case .chart: "图表"
     }
   }
 }
@@ -56,7 +57,7 @@ struct PanelHost<Content: View>: View {
       .presentationDragIndicator(.visible)
       .presentationBackground { Color(hex: dark ? Palette.darkSeed.raised : Palette.lightSeed.raised) }
       .presentationCornerRadius(18)
-      // 面板开着的时候图在后面继续更新、仍可单指拖（§10.6）。
+      // 背后继续更新；外部触摸由ChartBox遮罩消费，只关闭面板。
       .presentationBackgroundInteraction(.enabled(upThrough: .medium))
   }
 }
@@ -122,6 +123,7 @@ extension View {
         case .indicator: IndicatorPanel(store: store)
         case .period: PeriodPanel(store: store, onPick: onPickInterval)
         case .settings: SettingsPanel(store: store)
+        case .chart: ChartPanel(store: store)
         }
       }
     }

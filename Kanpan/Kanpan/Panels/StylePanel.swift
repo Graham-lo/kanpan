@@ -20,9 +20,8 @@ struct StylePanel: View {
       }
 
       PanelNote(markdown:
-        "每一套换的都是 **K 线本身**：实体占几成、影线多粗、端头平还是圆、"
-        + "是否空心或只描边，连同价格上下留白、根与根的间距、右轴宽度、副图和时间轴高度一起换。"
-        + "图表类型始终只有一种：K 线。")
+        "所有风格共用 **AICoin 的大小、间距和缩放**，切换时保留当前看盘位置。"
+        + "风格只改变圆角、空心和影线端头等造型；背景统一使用靛。")
     }
   }
 }
@@ -87,13 +86,13 @@ private struct StyleCard: View {
           Text(style.name)
             .font(PanelFont.cardName)
             .foregroundStyle(selected ? t.amber : t.ink)
-          Text(style.one)
+          Text(style.visualSummary)
             .font(PanelFont.cardOne)
             .foregroundStyle(t.ink3)
             .lineLimit(2)
           Spacer(minLength: 0)
         }
-        Text(style.bet)
+        Text(style.id == "aicoin" ? "默认风格 · 参照当前手机的 AICoin 图表" : "保留原有造型，使用相同的 K 线大小与交互")
           .font(PanelFont.cardBet)
           .lineSpacing(4.5)
           .foregroundStyle(t.ink2)
@@ -111,7 +110,7 @@ private struct StyleCard: View {
         .stroke(selected ? t.amberLine : t.line, lineWidth: 1))
     }
     .buttonStyle(.plain)
-    .accessibilityLabel("\(style.name)，\(style.one)")
+    .accessibilityLabel("\(style.name)，\(style.visualSummary)")
     .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
   }
 }

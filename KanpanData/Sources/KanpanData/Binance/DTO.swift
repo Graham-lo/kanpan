@@ -48,6 +48,8 @@ struct ExchangeInfoDTO: Decodable {
     var baseAsset: String
     var quoteAsset: String
     var contractType: String?
+    var underlyingType: String?
+    var underlyingSubType: [String]?
     var status: String?
     var pricePrecision: Int
     var quantityPrecision: Int
@@ -92,6 +94,7 @@ struct Ticker24hDTO: Decodable {
   var symbol: String
   var lastPrice: String
   var priceChangePercent: String
+  var openPrice: String?
   var highPrice: String
   var lowPrice: String
   var quoteVolume: String
@@ -102,7 +105,7 @@ struct Ticker24hDTO: Decodable {
            changePercent: Double(priceChangePercent) ?? .nan,
            high: Double(highPrice) ?? .nan,
            low: Double(lowPrice) ?? .nan,
-           quoteVolume: Double(quoteVolume) ?? .nan)
+           quoteVolume: Double(quoteVolume) ?? .nan, open24h: openPrice.flatMap(Double.init))
   }
 }
 
@@ -143,12 +146,25 @@ public struct StreamEnvelope: Decodable {
 public enum StreamPayload: Sendable {
   case kline(KlineEvent)
   case ticker(Ticker)
+  case tickerBatch([Ticker])
   case markPrice(symbol: String, price: Double)
+  /// 逐笔成交。K 线的实时跳动现在靠它（见 `BinanceHosts.tradeStream`）。
+  case trade(TradeEvent)
+  /// 最优挂单：只给价格线一个心跳，不进成交量。
+  case bookTicker(symbol: String, bid: Double, ask: Double, timeMs: Int64)
   case other(String)
 }
 
 extension StreamPayload: Decodable {
   public init(from decoder: Decoder) throws {
+    if var rows = try? decoder.unkeyedContainer() {
+      var tickers: [Ticker] = []
+      while !rows.isAtEnd {
+        if case .ticker(let ticker) = try rows.decode(StreamPayload.self) { tickers.append(ticker) }
+      }
+      self = tickers.isEmpty ? .other("empty ticker batch") : .tickerBatch(tickers)
+      return
+    }
     let c = try decoder.container(keyedBy: K.self)
     let e = (try? c.decode(String.self, forKey: .e)) ?? ""
     switch e {
@@ -158,16 +174,24 @@ extension StreamPayload: Decodable {
       let sym = try c.decode(String.self, forKey: .s)
       func d(_ k: K) -> Double { (try? c.decode(String.self, forKey: k)).flatMap(Double.init) ?? .nan }
       self = .ticker(Ticker(symbol: sym, last: d(.c), changePercent: d(.P),
-                            high: d(.h), low: d(.l), quoteVolume: d(.q)))
+                            high: d(.h), low: d(.l), quoteVolume: d(.q), open24h: d(.o)))
     case "markPriceUpdate":
       let sym = try c.decode(String.self, forKey: .s)
       let p = (try? c.decode(String.self, forKey: .p)).flatMap(Double.init) ?? .nan
       self = .markPrice(symbol: sym, price: p)
+    case "trade":
+      self = .trade(try TradeEvent(from: decoder))
+    case "bookTicker":
+      let sym = try c.decode(String.self, forKey: .s)
+      func px(_ k: K) -> Double { (try? c.decode(String.self, forKey: k)).flatMap(Double.init) ?? .nan }
+      // 撮合时间 `T` 优先；某些镜像只给事件时间 `E`。
+      let t = (try? c.decode(Int64.self, forKey: .T)) ?? (try? c.decode(Int64.self, forKey: .E)) ?? 0
+      self = .bookTicker(symbol: sym, bid: px(.b), ask: px(.a), timeMs: t)
     default:
       self = .other(e)
     }
   }
-  enum K: String, CodingKey { case e, s, c, P, h, l, q, p, k }
+  enum K: String, CodingKey { case e, s, c, o, P, h, l, q, p, k, b, a, T, E }
 }
 
 /// `kline` 事件。`x == true` 表示这根收了（§4.4）。
@@ -204,4 +228,36 @@ public struct KlineEvent: Sendable, Equatable, Decodable {
 
   enum Outer: String, CodingKey { case e, E, s, k }
   enum Inner: String, CodingKey { case t, T, s, i, o, h, l, c, v, x }
+}
+
+/// `trade` 事件：一笔成交。
+///
+/// 币安合约的字段是 `p`（价）、`q`（量）、`T`（撮合时间毫秒）。时间用 `T` 不用 `E`：
+/// `E` 是服务器发出这条推送的时刻，跨周期边界时那点延迟会把最后一笔成交折错到下一根上。
+public struct TradeEvent: Sendable, Equatable, Decodable {
+  public var symbol: String
+  public var price: Double
+  public var qty: Double
+  public var timeMs: Int64
+
+  public init(symbol: String, price: Double, qty: Double, timeMs: Int64) {
+    self.symbol = symbol; self.price = price; self.qty = qty; self.timeMs = timeMs
+  }
+
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: K.self)
+    symbol = try c.decode(String.self, forKey: .s)
+    func num(_ key: K) throws -> Double {
+      if let s = try? c.decode(String.self, forKey: key) {
+        guard let v = Double(s) else { throw FeedError.badResponse("不是数字：\(s)") }
+        return v
+      }
+      return try c.decode(Double.self, forKey: key)
+    }
+    price = try num(.p)
+    qty = try num(.q)
+    timeMs = (try? c.decode(Int64.self, forKey: .T)) ?? (try? c.decode(Int64.self, forKey: .E)) ?? 0
+  }
+
+  enum K: String, CodingKey { case e, s, p, q, T, E, t, m }
 }

@@ -74,7 +74,7 @@ public actor BinanceREST {
 
   // ------------------------------------------------------------------ 品种表
 
-  /// 全部 USDT 本位永续，按品种名排序。非永续、非 USDT、非 TRADING 的都不要。
+  /// 全部USDT普通与TradFi永续，只显示TRADING；按产品范围排除USD1等计价。
   public func exchangeInfo() async throws -> [SymbolInfo] {
     let data = try await fetch(hosts.exchangeInfo(), weight: 1, timeout: 30)
     return Self.parseExchangeInfo(data)
@@ -83,11 +83,18 @@ public actor BinanceREST {
   public static func parseExchangeInfo(_ data: Data) -> [SymbolInfo] {
     guard let dto = try? JSONDecoder().decode(ExchangeInfoDTO.self, from: data) else { return [] }
     return dto.symbols
-      .filter { $0.quoteAsset == "USDT" && ($0.contractType ?? "PERPETUAL") == "PERPETUAL" && ($0.status ?? "TRADING") == "TRADING" }
+      .filter {
+        let type = $0.contractType ?? "PERPETUAL"
+        let stableBases: Set<String> = ["USDC", "FDUSD", "TUSD", "USDP", "DAI", "USDE", "PYUSD", "USD1", "USDD"]
+        let stablePair = type == "PERPETUAL" && stableBases.contains($0.baseAsset)
+        return !stablePair && ($0.status ?? "TRADING") == "TRADING" && $0.quoteAsset == "USDT" &&
+          ["PERPETUAL", "TRADIFI_PERPETUAL"].contains(type)
+      }
       .map {
         SymbolInfo(symbol: $0.symbol, base: $0.baseAsset, quote: $0.quoteAsset,
                    pricePrecision: $0.pricePrecision, quantityPrecision: $0.quantityPrecision,
-                   tickSize: $0.tickSize)
+                   tickSize: $0.tickSize, underlyingType: $0.underlyingType,
+                   underlyingSubTypes: $0.underlyingSubType, contractType: $0.contractType)
       }
       .sorted { $0.symbol < $1.symbol }
   }
@@ -136,8 +143,8 @@ public actor BinanceREST {
 
   // ------------------------------------------------------------------ 行情 / 持仓量
 
-  public func ticker24h(symbol: String) async throws -> Ticker {
-    let data = try await fetch(hosts.ticker24h(symbol: symbol), weight: 1)
+  public func ticker24h(symbol: String, timeout: TimeInterval = 15) async throws -> Ticker {
+    let data = try await fetch(hosts.ticker24h(symbol: symbol), weight: 1, timeout: timeout)
     return try decode(Ticker24hDTO.self, data).ticker
   }
 

@@ -26,7 +26,7 @@ enum Ids {
   // 底栏
   static let bottomStyle = "bottom.style"
   static let bottomIndicator = "bottom.indicator"
-  static let bottomDraw = "bottom.draw"
+  static let bottomDraw = "interval.draw"
   static let bottomSettings = "bottom.settings"
   static let bottomLandscape = "bottom.landscape"
   // 图区
@@ -66,6 +66,8 @@ class KanpanUICase: XCTestCase {
   override func setUp() async throws {
     continueAfterFailure = false
     app = XCUIApplication()
+    app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
+    app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
     // 主界面就是第一帧，没有启动页也没有弹窗（X1）；顶栏出来就算起来了。
     XCTAssertTrue(
@@ -113,6 +115,20 @@ class KanpanUICase: XCTestCase {
     return condition()
   }
 
+  // ------------------------------------------------------------ 点击
+
+  /// 只接受一次中心点击，不用偏移重试掩盖产品命中问题。
+  @discardableResult
+  func tapButton(_ el: XCUIElement, _ timeout: TimeInterval = short,
+                 until settled: () -> Bool) -> Bool {
+    el.tap()
+    if waitUntil(timeout: timeout, settled) { return true }
+    let evidence = XCTAttachment(string: "Button: \(el.debugDescription)\nChart: \(String(describing: app.otherElements["chart.canvas"].value))\n" + app.debugDescription)
+    evidence.name = "单次中心命中失败"; evidence.lifetime = .keepAlways; add(evidence)
+    let shot = XCTAttachment(screenshot: app.screenshot()); shot.lifetime = .keepAlways; add(shot)
+    return false
+  }
+
   // ------------------------------------------------------------ 图区取点
 
   /// 图区里的一个点。`fraction` 是从图区顶边往下量的比例。
@@ -142,8 +158,7 @@ class KanpanUICase: XCTestCase {
       return latest.isHittable
     }
     if live, latest.isHittable {
-      latest.tap()
-      _ = waitUntil(timeout: Self.short) { !latest.isHittable }
+      _ = tapButton(latest, Self.short) { !latest.isHittable }
     }
     return live
   }
@@ -157,16 +172,31 @@ class KanpanUICase: XCTestCase {
 
   // ------------------------------------------------------------ 面板
 
-  /// 半屏面板收起来的通用手法：抓住面板标题往下甩（标题在滚动区外面，甩它动的是面板）。
+  /// 半屏面板收起来的通用手法：抓住面板标题一路拖到屏幕底下（标题在滚动区外面，
+  /// 拖它动的是面板不是内容）。
   ///
   /// 不用「再点一次底栏那颗按钮」——半屏面板正好压着底栏，那颗按钮根本点不到。
-  /// 甩不动就退而求其次点一下图区（§10.6 的「面板外一点就收」），两条路都是真实交互。
+  ///
+  /// 为什么是「慢慢拖到底」而不是 `swipeDown(velocity: .fast)`：面板有 medium / large
+  /// 两档（`presentationDetents`），一记快甩只是把它从 large 摔到 medium，从 medium
+  /// 甩下去还得看那一下的速度够不够——iPhone Air 上实测甩了没反应。按住拖满一屏高
+  /// 是位移说话，不看速度；两档的情况下最多拖三次（large → medium → 关）。
+  ///
+  /// 全拖不动才退到「点图区」这条路（§10.6 的「面板外一点就收」）。这条路要图先有数据：
+  /// 没数据时 `ChartView` 整层让开，那一下报不上来——所以它只能当兜底，不能当主力。
   func dismissSheet(until gone: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
     let header = app.staticTexts[Ids.panelHeader].firstMatch
-    if header.exists { header.swipeDown(velocity: .fast) }
-    if waitUntil(timeout: 3, { !gone.exists }) { return }
+    let window = app.windows.firstMatch
+    for _ in 0..<3 {
+      if !gone.exists { return }
+      guard header.exists else { break }
+      let from = header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+      let to = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98))
+      from.press(forDuration: 0.05, thenDragTo: to)
+      if waitUntil(timeout: 2, { !gone.exists }) { return }
+    }
     chartPoint().tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { !gone.exists },
-                  "面板甩不下去、点图也不收", file: file, line: line)
+                  "面板拖不下去、点图也不收", file: file, line: line)
   }
 }

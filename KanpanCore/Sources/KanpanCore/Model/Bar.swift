@@ -43,20 +43,47 @@ public struct OIPoint: Sendable, Equatable {
   }
 }
 
-/// 持仓量序列。等距（period 固定），对齐时按「不晚于这根开盘」取。
+/// 持仓量序列；保留旧等距存档，也支持按图表周期聚合后的真实时间戳。
 public struct OISeries: Sendable, Equatable {
   public var t0: Int64
   public var step: Int64
   public var values: [Double]
+  /// Archived OI can span years and use a different cadence from recent REST samples.
+  public var timestamps: [Int64]?
+  /// 非空时仅对齐相同周期桶；缺失桶不能冒用前一个周期的持仓量。
+  public var bucketInterval: Interval?
 
   public init(t0: Int64, step: Int64, values: [Double]) {
-    self.t0 = t0; self.step = step; self.values = values
+    self.t0 = t0; self.step = step; self.values = values; self.timestamps = nil; self.bucketInterval = nil
+  }
+
+  /// Sparse historical samples retain their real timestamps without a dense 50,000-slot cutoff.
+  public init(points: [OIPoint], step: Int64 = 300_000, bucketInterval: Interval? = nil) {
+    let ordered = points.sorted { $0.time < $1.time }
+    self.t0 = ordered.first?.time ?? 0; self.step = step
+    self.values = ordered.map(\.value); self.timestamps = ordered.map(\.time)
+    self.bucketInterval = bucketInterval
   }
 
   /// 原型 `oiAligned()`：每根 K 线取 `floor((t - t0) / step)` 那一条，越界留 NaN。
   public func aligned(to series: BarSeries) -> [Double] {
     var out = [Double](repeating: .nan, count: series.count)
     guard step > 0 else { return out }
+    if let times = timestamps {
+      guard times.count == values.count, let last = times.last else { return out }
+      var j = 0
+      for i in 0..<series.count {
+        let t = series.time(at: i)
+        while j + 1 < times.count && times[j + 1] <= t { j += 1 }
+        if let interval = bucketInterval {
+          let matching = interval.stepMs >= 300_000
+            ? times[j] == Aggregator.bucketStart(ms: t, interval: interval)
+            : times[j] <= t && t - times[j] < 300_000
+          if matching { out[i] = values[j] }
+        } else if times[j] <= t && t < last + step { out[i] = values[j] }
+      }
+      return out
+    }
     for i in 0..<series.count {
       let t = series.time(at: i)
       let j = Int(floor(Double(t - t0) / Double(step)))

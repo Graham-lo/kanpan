@@ -80,22 +80,21 @@ struct IndicatorToggleTests {
     #expect(!p.isOn(.ma))
   }
 
-  @Test("副图开到第四个就按不下去，并且弹原型那句话")
+  @Test("七个副图可同时选择，移除保留其余顺序")
   func 副图上限() {
     var p = Prefs.defaults
-    #expect(p.subs == [.macd, .rsi])
+    p.subs = []
+    let ids: [IndicatorID] = [.vol, .oi, .macd, .kdj, .rsi, .srsi, .atr]
+    for id in ids { #expect(p.toggle(id) == nil) }
+    #expect(p.subs == ids)
     #expect(p.toggle(.kdj) == nil)
-    #expect(p.subs.count == 3)
-    #expect(p.toggle(.atr) == "副图最多同时开三个")
-    #expect(p.subs == [.macd, .rsi, .kdj])     // 没动
-    #expect(p.toggle(.rsi) == nil)             // 关掉一个就又能开
-    #expect(p.toggle(.atr) == nil)
-    #expect(p.subs == [.macd, .kdj, .atr])
+    #expect(p.subs == ids.filter { $0 != .kdj })
   }
 
   @Test("拖动排序")
   func 排序() {
     var p = Prefs.defaults
+    p.subs = [.macd, .rsi]
     p.toggle(.kdj)
     p.moveSub(from: 2, to: 0)
     #expect(p.subs == [.kdj, .macd, .rsi])
@@ -120,11 +119,11 @@ struct IndicatorToggleTests {
   @Test("改参数只影响那一个指标")
   func 参数互不影响() {
     var p = Prefs.defaults
-    p.setParam(.ma, at: 1, to: 30)
-    #expect(p.params(for: .ma) == [7, 30, 99])
-    #expect(p.params(for: .ema) == IndicatorID.ema.defaultParams)
-    #expect(p.params(for: .macd) == [12, 26, 9])
+    p.setParam(.ma, at: 1, to: 35)
+    #expect(p.params(for: .ma) == [10, 35, 120, 256])
+    #expect(p.params(for: .ema) == Prefs.defaults.params(for: .ema))
+    #expect(p.params(for: .macd) == [10, 30, 9])
     let back = PrefsCodec.decode(PrefsCodec.encode(p))
-    #expect(back.params(for: .ma) == [7, 30, 99])
+    #expect(back.params(for: .ma) == [10, 35, 120, 256])
   }
 }

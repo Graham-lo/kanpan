@@ -46,7 +46,7 @@ struct ChartOptionsRenderTests {
   @Test("网格三档")
   func gridChoice() {
     for style in CandleStyle.all {
-      #expect(Self.state({ $0.grid = .style }, style: style).effectiveGrid == style.grid)
+      #expect(Self.state({ $0.grid = .style }, style: style).effectiveGrid == .none)
       #expect(Self.state({ $0.grid = .on }, style: style).effectiveGrid == .both)
       #expect(Self.state({ $0.grid = .off }, style: style).effectiveGrid == .none)
     }
@@ -251,8 +251,8 @@ struct ChartOptionsRenderTests {
     st.subScale = [.macd: 2.0]
     let big = ChartRenderer(state: st).layout(size: Self.size)
     #expect(big.panes[1].h > base.panes[1].h, "倍率没进布局")
-    #expect(big.panes[2].h == base.panes[2].h, "没给倍率的那块被连累了")
+    #expect(abs(big.panes[1].h / big.panes[2].h - 2) < 1e-9, "副图区权重比例不是2:1")
     #expect(big.mainH < base.mainH, "主图没让出高度")
-    #expect(big.panes[2].y == big.mainH + big.panes[1].h, "面板没接上")
+    #expect(abs(big.panes[2].y - big.mainH - AICoinBehavior.timeHeight - big.panes[1].h) < 1e-9, "面板没接上")
   }
 }

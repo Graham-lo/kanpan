@@ -30,8 +30,9 @@ enum IndicatorParamRule {
   static func sanitize(_ raw: [Int], for id: IndicatorID) -> [Int] {
     let fallback = id.defaultParams
     guard !fallback.isEmpty else { return [] }
-    var out = fallback
-    for i in fallback.indices where raw.indices.contains(i) {
+    var out = (id == .ma || id == .ema || id == .vol) && !raw.isEmpty
+      ? Array(raw.prefix(20)) : fallback
+    for i in out.indices where raw.indices.contains(i) {
       out[i] = clamp(raw[i])
     }
     return out

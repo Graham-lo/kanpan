@@ -1,0 +1,13 @@
+# Inside a dedicated HTTPS site; no arbitrary upstream URLs or private APIs.
+@market path /market/stream /chart-gateway/stream-health
+handle @market {
+    reverse_proxy 127.0.0.1:8793 {
+        header_up X-Kanpan-Client-IP {remote_host}
+    }
+}
+@archive path /oi/v1/metrics/* /chart-gateway/health
+handle @archive {
+    reverse_proxy 127.0.0.1:8792 {
+        header_up X-Kanpan-Client-IP {remote_host}
+    }
+}

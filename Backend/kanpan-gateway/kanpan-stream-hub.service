@@ -1,0 +1,24 @@
+[Unit]
+Description=Kanpan shared public market subscriptions
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+WorkingDirectory=/opt/kanpan-gateway
+ExecStart=/opt/kanpan-gateway/venv/bin/python /opt/kanpan-gateway/stream_hub.py
+EnvironmentFile=-/etc/kanpan-gateway/limits.env
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+MemoryMax=256M
+CPUQuota=50%
+TasksMax=64
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target

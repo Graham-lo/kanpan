@@ -1,31 +1,56 @@
 import Foundation
 
-/// 惯性一帧的位置（§7，原型 `flingAt`）。
-public struct FlingSample: Sendable, Equatable {
-  /// 从抬手到现在总共走了多少像素。
-  public var pastPx: Double
-  /// 停了没有。
-  public var done: Bool
+/// AICoin uses Android OverScroller. This is its AOSP SPLINE phase in reference dp units.
+/// Reference friction/min/max need iPhone calibration; screen scale is not Android density.
+public struct FlingCurve: Sendable, Equatable {
+  public let durationMs: Double
+  public let distance: Double
+  public init(speedPointsPerSecond v: Double) {
+    let rate = log(0.78) / log(0.9)
+    let physical = 9.80665 * 39.37 * 160 * 0.84
+    let friction = 0.015
+    let speed = min(8000, abs(v))
+    guard speed > 0, speed.isFinite else { durationMs = 0; distance = 0; return }
+    let l = log(0.35 * speed / (friction * physical))
+    durationMs = floor(1000 * exp(l / (rate - 1)))
+    distance = (v < 0 ? -1 : 1) * floor(friction * physical * exp(rate * l / (rate - 1)))
+  }
+
+  private static let position: [Double] = (0...100).map { i in
+    if i == 100 { return 1 }
+    let time = Double(i) / 100
+    var lo = 0.0, hi = 1.0, x = 0.0
+    for _ in 0..<32 {
+      x = (lo + hi) / 2
+      let tx = 3 * x * (1 - x) * ((1 - x) * 0.175 + x * 0.35) + x * x * x
+      if tx < time { lo = x } else { hi = x }
+    }
+    return 3 * x * (1 - x) * ((1 - x) * 0.5 + x) + x * x * x
+  }
+
+  public func sample(elapsedMs: Double) -> (pastPx: Double, done: Bool) {
+    guard durationMs > 0, elapsedMs < durationMs else { return (distance, true) }
+    if elapsedMs <= 0 { return (0, false) }
+    let t = elapsedMs / durationMs * 100
+    let i = min(99, Int(t)), f = t - Double(i)
+    let p = Self.position[i] + (Self.position[i + 1] - Self.position[i]) * f
+    return ((distance * p).rounded(), false)
+  }
 }
 
-public func flingAt(speedPxPerMs: Double, elapsedMs: Double, tauMs: Double = Chart.flingTauMs) -> FlingSample {
-  let tau = tauMs == 0 ? Chart.flingTauMs : tauMs
-  let time = max(0, elapsedMs)
-  let left = exp(-time / tau)
-  let total = speedPxPerMs * tau
-  let pastPx = total * (1 - left)
-  let done = time >= Chart.flingMaxMs || abs(total) * left < Chart.flingEpsPx
-  return FlingSample(pastPx: pastPx, done: done)
-}
-
-/// 抬手时这个速度算不算「甩」（原型：只有下限，比 0.2 px/ms 慢就直接不甩）。
-public func isFling(speedPxPerMs v: Double) -> Bool {
-  abs(v) >= Chart.flingMinPxPerMs
-}
-
-/// 甩出去用的速度：方向保留，大小封顶 3 px/ms（原型 `Math.sign(speed) * Math.min(MAX, s)`）。
-public func flingSpeed(_ v: Double) -> Double {
-  (v < 0 ? -1 : 1) * min(Chart.flingMaxPxPerMs, abs(v))
+public struct FlingRun: Sendable, Equatable {
+  public let curve: FlingCurve
+  public let start: ViewWindow
+  public let plotW: Double
+  public init?(speedPxPerMs v: Double, start: ViewWindow, plotW: Double) {
+    guard v.isFinite, abs(v * 1000) > 50, plotW > 0 else { return nil }
+    curve = FlingCurve(speedPointsPerSecond: v * 1000)
+    self.start = start; self.plotW = plotW
+  }
+  public func frame(elapsedMs: Double) -> (view: ViewWindow, done: Bool) {
+    let sample = curve.sample(elapsedMs: elapsedMs)
+    return (start.dragged(byFingerPx: sample.pastPx, plotW: plotW), sample.done)
+  }
 }
 
 /// 速度取样：只看最近 100 ms 的位移（§7）。

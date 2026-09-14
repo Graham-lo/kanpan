@@ -70,12 +70,12 @@ struct DrawingTests {
       #expect(hit([h], x, 100) == DrawHit(id: "h1", part: .body))
       #expect(hit([h], x, 108.9) == DrawHit(id: "h1", part: .body))
       #expect(hit([h], x, 91.1) == DrawHit(id: "h1", part: .body))
-      #expect(hit([h], x, 109.1) == nil)
-      #expect(hit([h], x, 90.9) == nil)
+      #expect(hit([h], x, 109.6) == nil)
+      #expect(hit([h], x, 90.4) == nil)
     }
     // 阈值是严格小于
-    #expect(hit([h], 0, 109) == nil, "9 是开区间")
-    #expect(hit([h], 0, 91) == nil)
+    #expect(hit([h], 0, 109.5) == nil, "9 是开区间")
+    #expect(hit([h], 0, 90.5) == nil)
   }
 
   /// 趋势线：线身阈值 9，投影落在段外不算。
@@ -85,7 +85,7 @@ struct DrawingTests {
                     a: DrawPoint(t: 0, p: 0), b: DrawPoint(t: 100, p: 0))
     #expect(hit([d], 50, 0) == DrawHit(id: "t1", part: .body))
     #expect(hit([d], 50, 8.9) == DrawHit(id: "t1", part: .body))
-    #expect(hit([d], 50, 9.1) == nil)
+    #expect(hit([d], 50, 9.6) == nil)
     // 段外：离端点 20 远，超出手柄也超出线身
     #expect(hit([d], 120, 0) == nil, "线段不外延")
     #expect(hit([d], -20, 0) == nil)
@@ -103,11 +103,11 @@ struct DrawingTests {
     #expect(hit([d], 0, 5) == DrawHit(id: "t1", part: .a))
     #expect(hit([d], 200, 5) == DrawHit(id: "t1", part: .b))
     // 端点正上方 11px：线身够不着了，手柄还在
-    #expect(hit([d], 0, 11) == DrawHit(id: "t1", part: .a))
-    #expect(hit([d], 200, -11) == DrawHit(id: "t1", part: .b))
+    #expect(hit([d], 0, 9) == DrawHit(id: "t1", part: .a))
+    #expect(hit([d], 200, -9) == DrawHit(id: "t1", part: .b))
     #expect(hit([d], 0, 12.1) == nil)
     // 沿线方向离 a 点 10：仍在手柄半径内 → a 而不是 body
-    #expect(hit([d], 10, 0) == DrawHit(id: "t1", part: .a))
+    #expect(hit([d], 9, 0) == DrawHit(id: "t1", part: .a))
     #expect(hit([d], 13, 0) == DrawHit(id: "t1", part: .body))
     // 两端手柄重叠时先给 a（原型的判定顺序）
     let tiny = Drawing(id: "t3", kind: .trend,
@@ -144,17 +144,17 @@ struct DrawingTests {
       var want: DrawHit?
       for d in ds.reversed() {
         if d.kind == .hline {
-          if abs(d.a.p - py) < 9 { want = DrawHit(id: d.id, part: .body); break }
+          if abs(d.a.p - py) < 9.5 { want = DrawHit(id: d.id, part: .body); break }
           continue
         }
         let b = d.b!
-        if (((px - d.a.t) * (px - d.a.t) + (py - d.a.p) * (py - d.a.p)).squareRoot()) < 12 {
+        if (((px - d.a.t) * (px - d.a.t) + (py - d.a.p) * (py - d.a.p)).squareRoot()) < 9.5 {
           want = DrawHit(id: d.id, part: .a); break
         }
-        if (((px - b.t) * (px - b.t) + (py - b.p) * (py - b.p)).squareRoot()) < 12 {
+        if (((px - b.t) * (px - b.t) + (py - b.p) * (py - b.p)).squareRoot()) < 9.5 {
           want = DrawHit(id: d.id, part: .b); break
         }
-        if distSeg(px, py, d.a.t, d.a.p, b.t, b.p) < 9 {
+        if distSeg(px, py, d.a.t, d.a.p, b.t, b.p) < 9.5 {
           want = DrawHit(id: d.id, part: .body); break
         }
       }
@@ -269,8 +269,8 @@ struct DrawingTests {
 
     let series = synthSeries(count: 200, interval: .h1, t0: 1_700_000_000_000, seed: 7)
     let view = ViewWindow(to: Double(series.t0 + series.step * Int64(series.count)), span: 100 * 3_600_000)
-    let base = priceRange(view: view, series: series, style: CandleStyle.all[0])
-    let with = priceRange(view: view, series: series, style: CandleStyle.all[0], drawingPrices: s.prices)
+    let base = priceRange(view: view, series: series)
+    let with = priceRange(view: view, series: series, drawingPrices: s.prices)
     #expect(with.lo <= min(base.lo, 50) + 1e-9 && with.hi >= max(base.hi, 150) - 1e-9,
             "画线端点没被算进区间：\(with) vs \(base)")
   }

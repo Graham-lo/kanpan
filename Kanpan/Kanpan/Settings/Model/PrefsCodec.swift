@@ -3,35 +3,15 @@ import KanpanCore
 
 // MARK: - 落盘格式
 
-/// 存档的读写与版本策略（A6.12 / A6.13）。
-///
-/// **键**：`kanpan.prefs.v1`。任务书 §3.2 与原型 `SAVE = 'kanpan.v3'` 是同一条规矩：
-/// **改默认值就跳版本号**，免得老存档把新默认盖掉。
-///
-/// 跳版本号之后老存档不是被丢掉，而是**逐字段并进新默认**：
-///
-/// 1. 写只写当前键；
-/// 2. 读先看当前键，没有就按 `legacyKeys` 从新到旧回落，读到哪个算哪个；
-/// 3. 不论从哪个版本读出来，缺的字段、认不出来的字段、类型不对的字段，
-///    一律取**新默认**，其余原样保留——不整体覆盖，也不整体作废。
-///
-/// 所以 A6.13 那条断言（旧版本存档 + 新默认）成立的前提就写在 `decode` 里：
-/// 解码从 `Prefs.defaults` 起步，存档只负责往上盖它真有的那几项。
+/// Current chart preferences only. Old prototype archives are not migrated.
 enum PrefsCodec {
   /// 当前存档版本。**改任何一个默认值都要把它 +1**。
-  static let version = 1
+  static let version = 2
   static let keyPrefix = "kanpan.prefs.v"
 
   /// 写进 `UserDefaults` 的那个键。
   static var key: String { key(version: version) }
   static func key(version: Int) -> String { "\(keyPrefix)\(version)" }
-
-  /// 从新到旧的历史键。`version == 1` 时是空的。
-  static var legacyKeys: [String] { legacyKeys(version: version) }
-  static func legacyKeys(version: Int) -> [String] {
-    guard version > 1 else { return [] }
-    return (1..<version).reversed().map { key(version: $0) }
-  }
 
   static func encode(_ prefs: Prefs) -> Data {
     let encoder = JSONEncoder()
@@ -54,9 +34,13 @@ extension Prefs: Codable {
     case v
     case interval, quickIntervals
     case theme, styleID, redUp
-    case priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone
-    case overlays, subs, params, subHeights
-    case apiHost, streamHost
+    case priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone, changeBasis
+    case candleKind, gridChoice, bodyChoice, lastLine, showDrawings, sinceChange
+    case viewAnchor, priceBias
+    case dataDisplay, crossPrice, allowMainInversion, allowSubInversion
+    case adaptiveIndicators, compactValues, portraitHeight, hiddenOutputs, rsiUpper, rsiLower
+    case overlays, subs, params, subHeights, subHeightOverrides
+    case apiHost, streamHost, smartMarketRoute
   }
 
   func encode(to encoder: Encoder) throws {
@@ -73,21 +57,43 @@ extension Prefs: Codable {
     try c.encode(keepAwake, forKey: .keepAwake)
     try c.encode(launchSnapshot, forKey: .launchSnapshot)
     try c.encode(timeZone.rawValue, forKey: .timeZone)
+    try c.encode(changeBasis.rawValue, forKey: .changeBasis)
+    try c.encode(candleKind.rawValue, forKey: .candleKind)
+    try c.encode(gridChoice.rawValue, forKey: .gridChoice)
+    try c.encode(bodyChoice.rawValue, forKey: .bodyChoice)
+    try c.encode(lastLine, forKey: .lastLine)
+    try c.encode(showDrawings, forKey: .showDrawings)
+    try c.encode(sinceChange, forKey: .sinceChange)
+    try c.encode(viewAnchor.rawValue, forKey: .viewAnchor)
+    try c.encode(priceBias.rawValue, forKey: .priceBias)
+    try c.encode(dataDisplay, forKey: .dataDisplay)
+    try c.encode(crossPrice, forKey: .crossPrice)
+    try c.encode(allowMainInversion, forKey: .allowMainInversion)
+    try c.encode(allowSubInversion, forKey: .allowSubInversion)
+    try c.encode(adaptiveIndicators, forKey: .adaptiveIndicators)
+    try c.encode(compactValues, forKey: .compactValues)
+    try c.encode(portraitHeight, forKey: .portraitHeight)
+    try c.encode(Dictionary(uniqueKeysWithValues: hiddenOutputs.map { ($0.key.rawValue, $0.value.sorted()) }), forKey: .hiddenOutputs)
+    try c.encode(rsiUpper, forKey: .rsiUpper)
+    try c.encode(rsiLower, forKey: .rsiLower)
     try c.encode(overlays.map(\.rawValue), forKey: .overlays)
     try c.encode(subs.map(\.rawValue), forKey: .subs)
     // 字典键是 enum，直接 encode 会变成交错数组；摊成 [String: …] 才是人能看懂的 JSON。
     try c.encode(Dictionary(uniqueKeysWithValues: params.map { ($0.key.rawValue, $0.value) }),
                  forKey: .params)
+    try c.encode(Dictionary(uniqueKeysWithValues: subHeightOverrides.map { ($0.key.rawValue, $0.value) }), forKey: .subHeightOverrides)
     try c.encode(Dictionary(uniqueKeysWithValues: subHeights.map { ($0.key.rawValue, $0.value.rawValue) }),
                  forKey: .subHeights)
     try c.encode(apiHost, forKey: .apiHost)
     try c.encode(streamHost, forKey: .streamHost)
+    try c.encode(smartMarketRoute, forKey: .smartMarketRoute)
   }
 
   init(from decoder: Decoder) throws {
     // 从新默认起步：存档只往上盖它真有的那几项（A6.13）。
     self = .defaults
     guard let c = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+    if let version = try? c.decode(Int.self, forKey: .v), version != PrefsCodec.version { return }
 
     func str(_ k: CodingKeys) -> String? { (try? c.decodeIfPresent(String.self, forKey: k)) ?? nil }
     func bool(_ k: CodingKeys) -> Bool? { (try? c.decodeIfPresent(Bool.self, forKey: k)) ?? nil }
@@ -114,7 +120,34 @@ extension Prefs: Codable {
     if let v = bool(.countdown) { countdown = v }
     if let v = bool(.keepAwake) { keepAwake = v }
     if let v = bool(.launchSnapshot) { launchSnapshot = v }
+    if let raw = str(.changeBasis), let v = ChangeBasis(rawValue: raw) { changeBasis = v }
     if let raw = str(.timeZone), let v = TZChoice(rawValue: raw) { timeZone = v }
+
+    // 「图表」面板那几项。认不出的字面量一律退回默认（多半是降级回旧版本，
+    // 或者手改存档手抖），不能因为一个字符串就让整档作废。
+    if let raw = str(.candleKind), let v = CandleKind(rawValue: raw) { candleKind = v }
+    if let raw = str(.gridChoice), let v = GridChoice(rawValue: raw) { gridChoice = v }
+    if let raw = str(.bodyChoice), let v = BodyChoice(rawValue: raw) { bodyChoice = v }
+    if let v = bool(.lastLine) { lastLine = v }
+    if let v = bool(.showDrawings) { showDrawings = v }
+    if let v = bool(.sinceChange) { sinceChange = v }
+    if let raw = str(.viewAnchor), let v = ViewAnchor(rawValue: raw) { viewAnchor = v }
+    if let raw = str(.priceBias), let v = PriceBias(rawValue: raw) { priceBias = v }
+
+    if let raw = str(.dataDisplay), let v = CandleDataDisplay(rawValue: raw) { dataDisplay = v }
+    if let raw = str(.crossPrice), let v = CrossPriceMode(rawValue: raw) { crossPrice = v }
+    if let v = bool(.allowMainInversion) { allowMainInversion = v }
+    if let v = bool(.allowSubInversion) { allowSubInversion = v }
+    if let v = bool(.adaptiveIndicators) { adaptiveIndicators = v }
+    if let v = bool(.compactValues) { compactValues = v }
+    if let v = try? c.decode(Double.self, forKey: .portraitHeight), v.isFinite { portraitHeight = min(1, max(0, v)) }
+    if let v = try? c.decode(Double.self, forKey: .rsiUpper), v.isFinite { rsiUpper = min(100, max(1, v)) }
+    if let v = try? c.decode(Double.self, forKey: .rsiLower), v.isFinite { rsiLower = min(rsiUpper - 1, max(0, v)) }
+    if let raw = try? c.decode([String: [Int]].self, forKey: .hiddenOutputs) {
+      for (key, values) in raw {
+        if let id = IndicatorID(rawValue: key) { hiddenOutputs[id] = Set(values.filter { (0..<21).contains($0) }) }
+      }
+    }
 
     if let raw = strs(.overlays) {
       overlays = Prefs.ids(raw, placement: .main)
@@ -132,6 +165,13 @@ extension Prefs: Codable {
       params = out
     }
 
+    if let raw = try? c.decode([String: Double].self, forKey: .subHeightOverrides) {
+      for (key, scale) in raw {
+        if let id = IndicatorID(rawValue: key), id.placement == .sub, scale.isFinite {
+          subHeightOverrides[id] = min(2, max(0.5, scale))
+        }
+      }
+    }
     if let raw = (try? c.decodeIfPresent([String: String].self, forKey: .subHeights)) ?? nil {
       var out: [IndicatorID: SubPaneHeight] = [:]
       for (k, v) in raw {
@@ -141,6 +181,7 @@ extension Prefs: Codable {
       subHeights = out
     }
 
+    smartMarketRoute = (try? c.decode(Bool.self, forKey: .smartMarketRoute)) ?? true
     if let raw = str(.apiHost) { apiHost = APIHost.sanitize(raw) }
     if let raw = str(.streamHost) {
       let host = APIHost.normalize(raw)

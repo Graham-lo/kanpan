@@ -10,30 +10,71 @@ struct PrefsDefaultsTests {
   @Test("全新安装的一份（A6.4「首次安装即如此」）")
   func 全新安装() {
     let p = Prefs.defaults
-    #expect(p.styleID == "stout")                    // 原型 S.style 默认 'stout'（墩）
-    #expect(p.style.name == "墩")
+    #expect(p.styleID == "aicoin")                    // 原型 S.style 默认 'stout'（墩）
+    #expect(p.style.name == "AICoin")
     #expect(p.interval == .h1)                       // 原型 S.interval 恒从 '1h' 起步
     #expect(p.overlays == [.ma])                     // chart.js: this.overlays = ['MA']
-    #expect(p.subs == [.macd, .rsi])                 // chart.js: this.subs = ['MACD','RSI']
-    #expect(p.priceMode == .linear)                  // chart.js: price.mode = 'linear'
-    #expect(p.magnet)                                // chart.js: this.magnet = true
+    #expect(p.subs == [.vol, .oi, .macd])                 // chart.js: this.subs = ['MACD','RSI']
+    #expect(p.priceMode == .log)                  // chart.js: price.mode = 'linear'
+    #expect(!p.magnet)                                // chart.js: this.magnet = true
     #expect(p.timeZone == .local)                    // chart.js: this.tz = 'local'
     #expect(p.redUp == false)                        // app.js: S.redUp = !!saved.redUp
     #expect(p.theme == .system)                      // app.js: 'auto'
     #expect(p.apiHost == "fapi.binance.com")         // §4.1
-    #expect(p.countdown)                             // §10.4 默认开
+    #expect(!p.countdown)                             // §10.4 默认开
     #expect(p.keepAwake)                             // §10.4 默认开
     #expect(p.launchSnapshot)                        // §4.3 默认开
+  }
+
+  @Test("「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效")
+  func 图表默认() {
+    let p = Prefs.defaults
+    #expect(p.candleKind == .candle)      // 平均K线是可选项，不是默认口径
+    #expect(p.gridChoice == .off)       // 网格形态归十一款风格各自定（§6）
+    #expect(p.bodyChoice == .style)       // 实体画法同上
+    #expect(p.viewAnchor == .right)       // 复位到最新时最新一根靠右——现状
+    #expect(p.priceBias == .center)       // 蜡烛在主图区里居中——现状
+    #expect(p.lastLine)                   // 最新价横线 + 右轴胶囊，默认开
+    #expect(p.showDrawings)               // 画好的线默认看得见
+    #expect(p.sinceChange == false)       // 十字线上多报一段涨跌幅，默认不报
+  }
+
+  @Test("chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏")
+  func 取用入口() {
+    #expect(!Prefs.defaults.chartOptions.countdown)   // 接的是已有的 countdown，不是另一个开关
+
+    var p = Prefs.defaults
+    p.candleKind = .heikin
+    p.gridChoice = .off
+    p.bodyChoice = .hollowUp
+    p.lastLine = false
+    p.showDrawings = false
+    p.sinceChange = true
+    p.viewAnchor = .left
+    p.priceBias = .up
+    p.countdown = false
+
+    let o = p.chartOptions
+    #expect(o.kind == .heikin)
+    #expect(o.grid == .off)
+    #expect(o.body == .hollowUp)
+    #expect(o.lastLine == false)
+    #expect(o.drawings == false)
+    #expect(o.sinceChange)
+    #expect(o.anchor == .left)
+    #expect(o.bias == .up)
+    #expect(o.countdown == false)
+    #expect(o != ChartOptions())
   }
 
   @Test("每个指标的默认参数直接取 Core，不另抄一份")
   func 默认参数() {
     let p = Prefs.defaults
     for id in IndicatorID.allCases {
-      #expect(p.params(for: id) == id.defaultParams)
+      #expect(p.params(for: id) == (p.params[id] ?? id.defaultParams))
     }
-    #expect(p.params(for: .ma) == [7, 25, 99])
-    #expect(p.params(for: .macd) == [12, 26, 9])
+    #expect(p.params(for: .ma) == [10, 30, 120, 256])
+    #expect(p.params(for: .macd) == [10, 30, 9])
   }
 
   @Test("副图高度默认「中」")

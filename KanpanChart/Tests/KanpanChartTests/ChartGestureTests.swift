@@ -96,236 +96,130 @@ private func stroke(
 // ---------------------------------------------------------------- 拖
 
 @MainActor
-@Suite("手势状态机")
-struct ChartGestureTests {
-
-  @Test("G1：单指横拖，内容跟着手指走且一比一")
-  func panFollowsFinger() throws {
-    let (v, L) = try makeView()
-    let before = v.state!.view
-    let t0 = before.to - before.span / 2
-    let x0 = before.x(t0, plotW: L.plotW)
-    // 手指往左推 90pt，同一个时刻也应该往左挪 90pt。
-    stroke(v, from: CGPoint(x: 200, y: 300), through: [CGPoint(x: 155, y: 300), CGPoint(x: 110, y: 300)], lift: false)
-    let after = v.state!.view
-    #expect(abs(after.x(t0, plotW: L.plotW) - (x0 - 90)) < 0.5, "拖动不是一比一，或者方向反了")
-  }
-
-  @Test("G1：竖向小抖动不带着价格跑")
-  func panIgnoresSmallVertical() throws {
-    // 两次分开在两张图上做：第一次故意不抬手（要看拖动中途的值），
-    // 同一张图上再按一根手指就变成捏合了。
-    let (a, _) = try makeView()
-    let shift0 = a.state!.price.shift
-    stroke(a, from: CGPoint(x: 200, y: 300), through: [CGPoint(x: 150, y: 308)], lift: false)
-    #expect(a.state!.price.shift == shift0, "竖向 8pt 的抖动就把价格平移了")
-
-    let (b, _) = try makeView()
-    stroke(b, from: CGPoint(x: 200, y: 300), through: [CGPoint(x: 150, y: 360)], lift: false)
-    #expect(b.state!.price.shift != shift0, "竖向 60pt 应该平移价格")
-  }
-
-  @Test("空数据时手势整个让开")
-  func emptySeriesIgnored() {
-    let v = ChartView(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
-    v.state = nil
-    stroke(v, from: CGPoint(x: 200, y: 300), through: [CGPoint(x: 100, y: 300)])
-    #expect(v.state == nil)
-    #expect(v.gesture.mode == nil, "白板上不该进任何手势模式")
-  }
-
-  // ---------------------------------------------------------------- 长按十字线
-
-  @Test("G4：长按出十字线，横线吸到最近的开高低收")
-  func longPressCrosshair() async throws {
-    let (v, L) = try makeView()
-    var reported: [Crosshair?] = []
-    v.onCrosshairChanged = { reported.append($0) }
-    let t = FakeTouch(CGPoint(x: 180, y: 260))
-    v.touchesBegan([t], with: FakeEvent(ms: 10_000))
-    #expect(v.state?.crosshair == nil, "还没到时长就冒出十字线了")
-    try await Task.sleep(for: .milliseconds(Int(Chart.longPressMs) + 160))
-    let c = try #require(v.state?.crosshair, "长按 \(Chart.longPressMs)ms 之后应该有十字线")
-    #expect(reported.count == 1)
-
-    let b = v.state!.series
-    let i = c.index
-    let p = try #require(c.price)
-    #expect([b.open[i], b.high[i], b.low[i], b.close[i]].contains(p), "磁吸开着，横线必须落在开高低收之一")
-    // 竖线吸到的那根，应该就是手指那个 x 对应的根。
-    let tAtX = v.state!.view.t(atX: 180, plotW: L.plotW)
-    #expect(i == b.index(atTime: tAtX))
-    v.touchesEnded([t], with: FakeEvent(ms: 11_000))
-  }
-
-  @Test("G4：关掉磁吸，横线停在手指上")
-  func magnetOff() async throws {
+@Suite("AICoin 手势状态机") struct ChartGestureTests {
+  @Test("单击显示，第二次关闭；X吸柱中心、Y保留选中价")
+  func taps() throws {
     let (v, _) = try makeView(magnet: false)
-    let t = FakeTouch(CGPoint(x: 180, y: 260))
-    v.touchesBegan([t], with: FakeEvent(ms: 10_000))
-    try await Task.sleep(for: .milliseconds(Int(Chart.longPressMs) + 160))
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [])
     let c = try #require(v.state?.crosshair)
-    let b = v.state!.series
-    let i = c.index
-    let p = try #require(c.price)
-    #expect(!([b.open[i], b.high[i], b.low[i], b.close[i]].contains(p)) || true)
-    // 关磁吸时 `t` 必须留着——渲染器靠它把竖线画在手指上而不是根中心。
-    #expect(c.t != nil)
-    v.touchesEnded([t], with: FakeEvent(ms: 11_000))
+    #expect(c.t == nil && c.price != nil)
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [], startMs: 11000)
+    #expect(v.state?.crosshair == nil)
   }
-
-  @Test("长按之前先滑开，就不该出十字线")
-  func longPressCancelledByPan() async throws {
-    let (v, _) = try makeView()
-    let t = FakeTouch(CGPoint(x: 180, y: 260))
-    v.touchesBegan([t], with: FakeEvent(ms: 10_000))
-    t.point = CGPoint(x: 140, y: 260)
-    v.touchesMoved([t], with: FakeEvent(ms: 10_030))
-    try await Task.sleep(for: .milliseconds(Int(Chart.longPressMs) + 160))
-    #expect(v.state?.crosshair == nil, "滑了 40pt 还弹十字线，等于拖不动图")
-    v.touchesEnded([t], with: FakeEvent(ms: 11_000))
-  }
-
-  // ---------------------------------------------------------------- 捏合
-
-  @Test("G10：捏合中途抬一根手指，视野不跳")
-  func pinchToPanHandoff() throws {
-    let (v, _) = try makeView()
-    let a = FakeTouch(CGPoint(x: 120, y: 300))
-    let b = FakeTouch(CGPoint(x: 260, y: 300))
-    v.touchesBegan([a], with: FakeEvent(ms: 10_000))
-    v.touchesBegan([b], with: FakeEvent(ms: 10_010))
-    #expect(v.gesture.mode == .pinch)
-    a.point = CGPoint(x: 80, y: 300)
-    b.point = CGPoint(x: 300, y: 300)
-    v.touchesMoved([a, b], with: FakeEvent(ms: 10_030))
-    let zoomed = v.state!.view
-    #expect(zoomed.span < gestureState().view.span, "撑开手指应该放大")
-
-    // 抬掉一根：交接的那一瞬间视野必须原样不动。
-    v.touchesEnded([a], with: FakeEvent(ms: 10_050))
-    #expect(v.gesture.mode == .pan)
-    #expect(v.state!.view == zoomed, "交接的瞬间视野跳了")
-
-    // 接着用剩下那根拖：位移要从它**当前**的位置算，不是从按下时的位置。
-    b.point = CGPoint(x: 270, y: 300)
-    v.touchesMoved([b], with: FakeEvent(ms: 10_070))
-    let moved = v.state!.view
-    let expected = zoomed.dragged(byFingerPx: -30, plotW: v.chartLayout!.plotW)
-    #expect(abs(moved.to - expected.to) < 1, "交接后第一下拖动跳了一段")
-    v.touchesEnded([b], with: FakeEvent(ms: 10_090))
-  }
-
-  // ---------------------------------------------------------------- 轴
-
-  @Test("G6：拖价格轴改缩放，按下点的价格不动")
-  func priceAxisDrag() throws {
-    let (v, L) = try makeView()
-    let y = 240.0
-    let p0 = v.price(atY: y)
-    let t = FakeTouch(CGPoint(x: L.plotW + 12, y: y))
-    v.touchesBegan([t], with: FakeEvent(ms: 10_000))
-    #expect(v.gesture.mode == .axisPrice)
-    t.point = CGPoint(x: L.plotW + 12, y: y + 70)
-    v.touchesMoved([t], with: FakeEvent(ms: 10_030))
-    // 竖拖价格轴 ＝ 切成**手动定标**：区间钉成绝对值，不再每帧按可见 K 线贴合。
-    // （从前这儿改的是 `price.zoom`——那是贴合结果上的相对量，横向一平移就又跑了。）
-    let pin = try #require(v.state!.price.pinned, "拖价格轴没切进手动定标")
-    #expect(v.state!.price.isManual)
-    let p1 = v.price(atY: y)
-    #expect(abs(p1 / p0 - 1) < 2e-3, "按下点的价格跑了：\(p0) → \(p1)")
-    v.touchesEnded([t], with: FakeEvent(ms: 10_050))
-
-    // 手动定标之后横向拖一段：价格轴**一个像素都不许动**（AiCoin 桌面版实测行为）。
-    let g = FakeTouch(CGPoint(x: 200, y: 300))
-    v.touchesBegan([g], with: FakeEvent(ms: 10_200))
-    g.point = CGPoint(x: 90, y: 300)
-    v.touchesMoved([g], with: FakeEvent(ms: 10_230))
-    v.touchesEnded([g], with: FakeEvent(ms: 10_250))
-    let after = try #require(v.state!.price.pinned)
-    #expect(after.lo == pin.lo && after.hi == pin.hi, "横向平移把手动定标的价格轴带跑了")
-  }
-
-  @Test("G6：价格轴双击复位")
-  func priceAxisDoubleTap() throws {
-    let (v, L) = try makeView()
-    var s = v.state!
-    s.price.zoom = 2.5
-    s.price.shift = 0.3
-    v.state = s
-    let x = L.plotW + 12
-    stroke(v, from: CGPoint(x: x, y: 240), through: [], startMs: 10_000)
-    stroke(v, from: CGPoint(x: x, y: 240), through: [], startMs: 10_120)
-    #expect(v.state!.price.zoom == 1 && v.state!.price.shift == 0, "价格轴双击没复位")
-  }
-
-  @Test("G7：拖时间轴改窗宽，按下点的时刻不动")
-  func timeAxisDrag() throws {
-    let (v, L) = try makeView()
-    let x = 150.0
-    let t0 = v.state!.view.t(atX: x, plotW: L.plotW)
-    let t = FakeTouch(CGPoint(x: x, y: L.timeY + 10))
-    v.touchesBegan([t], with: FakeEvent(ms: 10_000))
-    #expect(v.gesture.mode == .axisTime)
-    let span0 = v.state!.view.span
-    t.point = CGPoint(x: x - 60, y: L.timeY + 10)
-    v.touchesMoved([t], with: FakeEvent(ms: 10_030))
-    #expect(v.state!.view.span > span0, "往左拖时间轴应该看得更长")
-    #expect(abs(v.state!.view.x(t0, plotW: L.plotW) - x) < 0.5, "按下点的时刻跑了")
-    v.touchesEnded([t], with: FakeEvent(ms: 10_050))
-  }
-
-  // ---------------------------------------------------------------- 轻点
-
-  @Test("G14：十字线在时轻点一下先关十字线，不去开面板")
-  func tapClosesCrosshair() async throws {
-    let (v, _) = try makeView()
-    var tapped = 0
-    v.onTapped = { tapped += 1 }
-    let t = FakeTouch(CGPoint(x: 180, y: 260))
-    v.touchesBegan([t], with: FakeEvent(ms: 10_000))
-    try await Task.sleep(for: .milliseconds(Int(Chart.longPressMs) + 160))
+  @Test("长按抬手保留选择")
+  func longPress() async throws {
+    let (v, _) = try makeView(magnet: false)
+    let touch = FakeTouch(CGPoint(x: 180, y: 120))
+    v.touchesBegan([touch], with: FakeEvent(ms: 10000))
+    try await Task.sleep(for: .milliseconds(560))
     #expect(v.state?.crosshair != nil)
-    v.touchesEnded([t], with: FakeEvent(ms: 11_000))
-    #expect(v.state?.crosshair == nil, "轻点没关掉十字线")
-    #expect(tapped == 0, "十字线还在的时候轻点不该往外报")
-
-    stroke(v, from: CGPoint(x: 180, y: 260), through: [], startMs: 12_000)
-    #expect(tapped == 1, "没有十字线时轻点应该往外报一次")
+    v.touchesEnded([touch], with: FakeEvent(ms: 11000))
+    #expect(v.state?.crosshair != nil)
   }
-
-  @Test("双击图面复位视野")
-  func doubleTapResets() throws {
-    let (v, L) = try makeView()
-    stroke(v, from: CGPoint(x: 200, y: 300), through: [CGPoint(x: 90, y: 300)], startMs: 10_000)
-    let dragged = v.state!.view
-    stroke(v, from: CGPoint(x: 200, y: 300), through: [], startMs: 12_000)
-    stroke(v, from: CGPoint(x: 200, y: 300), through: [], startMs: 12_120)
-    let reset = ViewMath.reset(
-      series: v.state!.series, plotW: L.plotW, spacing: v.state!.style.spacing)
-    #expect(v.state!.view.to == reset.to && v.state!.view.span == reset.span, "双击没回到默认视野")
-    #expect(dragged.to != reset.to, "这一轮拖动根本没生效，双击测了个寂寞")
-  }
-
-  // ---------------------------------------------------------------- 补历史
-
-  @Test("G9：拖到头部附近喊一次补历史，别连着喊")
-  func historyAskedOnce() throws {
-    let (v, L) = try makeView()
-    var asks = 0
-    v.onNeedsHistory = { asks += 1 }
-    var s = v.state!
-    // 先摆到离头部还远的地方，免得一按下就已经越线。
-    s.view = ViewWindow(to: Double(s.series.firstTime) + 400 * Double(s.series.step), span: s.view.span)
-    v.state = s
-    let t = FakeTouch(CGPoint(x: 100, y: 300))
-    v.touchesBegan([t], with: FakeEvent(ms: 10_000))
-    for (n, x) in [260.0, 420, 580, 740].enumerated() {
-      t.point = CGPoint(x: x, y: 300)
-      v.touchesMoved([t], with: FakeEvent(ms: 10_000 + Double(n + 1) * 16))
+  @Test("十字中心才移线，远处横拖清选择并移动历史窗口")
+  func crosshairDragTarget() throws {
+    for pane in [IndicatorID?.none, .some(.vol)] {
+      for inverted in [false, true] {
+        for mode in [CrossPriceMode.selected, .close] {
+          let (v, L) = try makeView(magnet: false)
+          var s = v.state!
+          s.options.crossPrice = mode; s.price.inverted = inverted
+          if inverted { s.subInverted = [.vol] }
+          s.view = s.view.dragged(byFingerPx: 400, plotW: L.plotW)
+          v.state = s
+          let y = pane == nil ? 120 : L.panes[1].y + L.panes[1].h / 2
+          stroke(v, from: CGPoint(x: 150, y: y), through: [])
+          let before = v.state!.view
+          let center = try #require(v.renderer?.crosshairCenter(size: v.bounds.size))
+          let index = try #require(v.state?.crosshair?.index)
+          stroke(v, from: center, through: [CGPoint(x: center.x + 45, y: center.y + 12)])
+          #expect(v.state!.view == before)
+          #expect(v.state?.crosshair?.index != index)
+          let far = CGPoint(x: 50, y: y)
+          #expect(!v.hitsCrosshairCenter(far))
+          stroke(v, from: far, through: [CGPoint(x: 120, y: y)], startMs: 12000, lift: false)
+          #expect(v.state?.crosshair == nil)
+          #expect(v.state!.view.from < before.from)
+          #expect(v.gesture.mode == .pan)
+        }
+      }
     }
-    #expect(ViewMath.needsMoreHistory(v.state!.view, series: v.state!.series), "没拖进触发区，这条测的不算数")
-    #expect(asks == 1, "补历史喊了 \(asks) 次，应该只喊一次")
-    _ = L
+  }
+
+  @Test("自动Y下纵向拖动不偷偷修改Y或X")
+  func verticalAuto() throws {
+    let (v, _) = try makeView()
+    let before = v.state!
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [CGPoint(x: 185, y: 180)], lift: false)
+    #expect(v.state!.price == before.price && v.state!.view == before.view)
+    #expect(v.gesture.mode == .parentScroll)
+  }
+  @Test("价格轴拖动进入归一化手动Y，A只复位Y")
+  func axis() throws {
+    let (v, L) = try makeView()
+    let x = L.plotW + 10
+    stroke(v, from: CGPoint(x: x, y: 120),
+           through: [CGPoint(x: x, y: 130), CGPoint(x: x, y: 190)])
+    #expect(v.state!.price.isManual)
+    let view = v.state!.view
+    v.resetPriceScale()
+    #expect(!v.state!.price.isManual && v.state!.view == view)
+    stroke(v, from: CGPoint(x: x, y: 120), through: [], startMs: 12000)
+    #expect(v.state!.price.inverted)
+  }
+  @Test("历史缩放抬起一指后不跳变")
+  func pinchHandoff() throws {
+    let (v, L) = try makeView()
+    var state = v.state!
+    state.view = ViewMath.reset(series: state.series, plotW: L.plotW, spacing: 4)
+      .dragged(byFingerPx: 500, plotW: L.plotW)
+    v.state = state
+    let a = FakeTouch(CGPoint(x: 120, y: 120)), b = FakeTouch(CGPoint(x: 260, y: 120))
+    v.touchesBegan([a], with: FakeEvent(ms: 10000))
+    v.touchesBegan([b], with: FakeEvent(ms: 10010))
+    a.point.x = 80; b.point.x = 300
+    v.touchesMoved([a,b], with: FakeEvent(ms: 10030))
+    let zoomed = v.state!.view
+    #expect(zoomed.span < state.view.span)
+    v.touchesEnded([a], with: FakeEvent(ms: 10050))
+    #expect(v.state!.view == zoomed && v.gesture.mode == .pan)
+    b.point.x -= 30
+    v.touchesMoved([b], with: FakeEvent(ms: 10070))
+    let expected = zoomed.dragged(byFingerPx: -30, plotW: L.plotW)
+    #expect(abs(v.state!.view.to - expected.to) < 1)
+  }
+  @Test("双指小间距起步保留初始基准，越过门槛后缩放")
+  func pinchFromSmallSpan() throws {
+    let (v, _) = try makeView()
+    v.traitOverrides.displayScale = 3
+    let initial = v.state!.view
+    let a = FakeTouch(CGPoint(x: 173, y: 120))
+    let b = FakeTouch(CGPoint(x: 187, y: 120))
+    v.touchesBegan([a], with: FakeEvent(ms: 10000))
+    v.touchesBegan([b], with: FakeEvent(ms: 10010))
+    a.point.x = 172; b.point.x = 188
+    v.touchesMoved([a, b], with: FakeEvent(ms: 10020))
+    #expect(v.gesture.pinchD0 == 14)
+    #expect(v.state!.view == initial)
+    a.point.x = 166; b.point.x = 194
+    v.touchesMoved([a, b], with: FakeEvent(ms: 10030))
+    #expect(v.gesture.pinchActive)
+    #expect(abs(v.state!.view.span - initial.span / 2) < 1)
+    v.touchesEnded([a, b], with: FakeEvent(ms: 10040))
+  }
+  @Test("实时末根更新与同数历史替换均刷新指标")
+  func indicatorsRefresh() throws {
+    var state = gestureState()
+    state.overlays = [.ma]; state.params[.ma] = [10]
+    var renderer = ChartRenderer(state: state)
+    let old = try #require(renderer.engine[.ma]?.lines.first?.last)
+    state.series.close[state.series.count - 1] += 100
+    renderer.state = state
+    let tail = try #require(renderer.engine[.ma]?.lines.first?.last)
+    #expect(abs(tail - old - 10) < 1e-6)
+    state.series.close[state.series.count - 5] += 200
+    renderer.state = state
+    let replaced = try #require(renderer.engine[.ma]?.lines.first?.last)
+    #expect(abs(replaced - tail - 20) < 1e-6)
   }
 }

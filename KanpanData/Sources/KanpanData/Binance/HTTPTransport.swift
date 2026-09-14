@@ -31,7 +31,7 @@ public struct URLSessionTransport: HTTPTransport {
   public init(session: URLSession = .shared) { self.session = session }
 
   public func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
-    var req = URLRequest(url: url, timeoutInterval: timeout)
+    var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
     req.httpMethod = "GET"
     // 币安对没有 UA 的请求偶尔更严，带一个固定的，方便对方限流统计。
     req.setValue("kanpan-ios/1.0", forHTTPHeaderField: "User-Agent")

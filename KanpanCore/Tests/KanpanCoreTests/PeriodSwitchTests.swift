@@ -8,7 +8,7 @@ import Testing
 struct PeriodSwitchTests {
   static let plotW = 390.0
   static let end: Int64 = 1_789_300_800_000
-  static let spacings: [Double] = [0.4, 0.7, 1.3, 2.6, 4.8, 9.2, 15, 23.5, 32, 40]
+  static let spacings: [Double] = [1.6, 2.0, 2.3, 2.6, 4.8, 9.2, 15, 23.5, 32, 40]
 
   /// 所有周期都收在同一时刻，切过去右边缘才有可比性。
   static func series(_ iv: Interval, count: Int = 2200) -> BarSeries {
@@ -64,7 +64,7 @@ struct PeriodSwitchTests {
     for spacing in Self.spacings {
       let v = ViewMath.switchInterval(to: s, plotW: Self.plotW, spacing: spacing, anchorRight: nil)
       #expect(abs(v.barSpacing(step: s.step, plotW: Self.plotW) - spacing) < 1e-9, "\(iv.rawValue) @\(spacing)")
-      #expect(abs((v.to - Double(s.lastTime)) / v.span - Chart.rightGap) < 1e-9, "\(iv.rawValue) @\(spacing) 留白不对")
+      #expect(abs((v.to - Double(s.lastTime)) / v.span - (AICoinBehavior.rightInset + spacing / 2) / Self.plotW) < 1e-9, "\(iv.rawValue) @\(spacing) 留白不对")
     }
   }
 

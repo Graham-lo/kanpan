@@ -62,9 +62,9 @@ struct PriceScaleTests {
   func rangeIncludesOverlaysAndDrawings() {
     let s = synthSeries(count: 400, seed: 55)
     let plotW = 390.0
-    let v = ViewMath.reset(series: s, plotW: plotW, spacing: CandleStyle.default.spacing)
+    let v = ViewMath.reset(series: s, plotW: plotW, spacing: AICoinBehavior.initialSpacing)
     let style = CandleStyle.default
-    let bare = priceRange(view: v, series: s, style: style)
+    let bare = priceRange(view: v, series: s)
 
     let (lo, hi) = visibleRange(view: v, series: s)
     // 一条比所有 high 都高的线，和一个比所有 low 都低的画线端点。
@@ -73,7 +73,7 @@ struct PriceScaleTests {
     var overlay = [Double](repeating: .nan, count: s.count)
     overlay[(lo + hi) / 2] = top
     let wide = priceRange(
-      view: v, series: s, style: style, overlayValues: [overlay], drawingPrices: [bottom])
+      view: v, series: s, overlayValues: [overlay], drawingPrices: [bottom])
     #expect(wide.hi > bare.hi, "叠加指标没抬高上界")
     #expect(wide.lo < bare.lo, "画线端点没压低下界")
     #expect(wide.hi >= top, "上界 \(wide.hi) 没盖住 \(top)")
@@ -81,7 +81,7 @@ struct PriceScaleTests {
 
     // NaN 前导段不许污染极值。
     let allNaN = [Double](repeating: .nan, count: s.count)
-    let withNaN = priceRange(view: v, series: s, style: style, overlayValues: [allNaN])
+    let withNaN = priceRange(view: v, series: s, overlayValues: [allNaN])
     #expect(withNaN.lo == bare.lo && withNaN.hi == bare.hi, "全 NaN 的线改变了区间")
   }
 
@@ -94,10 +94,11 @@ struct PriceScaleTests {
     let maxV = (lo...hi).map { s.high[$0] }.max()!
     let minV = (lo...hi).map { s.low[$0] }.min()!
     for st in CandleStyle.all {
-      let r = priceRange(view: v, series: s, style: st)
-      let want = (maxV - minV) * st.pad
+      let r = priceRange(view: v, series: s)
+      let perPoint = (maxV - minV) / (300 - 40 - 8)
+      let want = perPoint * 40
       #expect(abs((maxV + want) - r.hi) < 1e-9, "\(st.id) 上留白")
-      #expect(abs((minV - want) - r.lo) < 1e-9, "\(st.id) 下留白")
+      #expect(abs((minV - perPoint * 8) - r.lo) < 1e-9, "\(st.id) 下留白")
     }
   }
 
@@ -107,20 +108,20 @@ struct PriceScaleTests {
     let s = synthSeries(count: 300, seed: 57)
     let v = ViewMath.reset(series: s, plotW: 390, spacing: 9.2)
     let st = CandleStyle.default
-    let base = priceRange(view: v, series: s, style: st)
+    let base = priceRange(view: v, series: s)
     let mid = (base.lo + base.hi) / 2
 
-    let zoomed = priceRange(view: v, series: s, style: st, transform: PriceTransform(zoom: 2))
+    let zoomed = priceRange(view: v, series: s, transform: PriceTransform(zoom: 2))
     #expect(abs((zoomed.lo + zoomed.hi) / 2 - mid) < 1e-9, "缩放挪了中心")
     #expect(abs((zoomed.hi - zoomed.lo) - (base.hi - base.lo) / 2) < 1e-9, "缩放比例不对")
 
-    let shifted = priceRange(view: v, series: s, style: st, transform: PriceTransform(shift: 0.25))
-    #expect(abs((shifted.hi - shifted.lo) - (base.hi - base.lo)) < 1e-9, "平移改了高度")
+    let shifted = priceRange(view: v, series: s, transform: PriceTransform(zoom: 2, centerFraction: 0.75))
+    #expect(abs((shifted.hi - shifted.lo) - (base.hi - base.lo) / 2) < 1e-9, "平移改了高度")
     #expect(abs((shifted.lo + shifted.hi) / 2 - (mid + (base.hi - base.lo) * 0.25)) < 1e-9, "平移距离不对")
 
     // zoom 有下限 0.15，别让用户把价格轴拉成无限高。
-    let crazy = priceRange(view: v, series: s, style: st, transform: PriceTransform(zoom: 0.0001))
-    #expect(abs((crazy.hi - crazy.lo) - (base.hi - base.lo) / 0.15) < 1e-6, "zoom 下限没兜住")
+    let crazy = priceRange(view: v, series: s, transform: PriceTransform(zoom: 0.0001))
+    #expect(abs((crazy.hi - crazy.lo) - (base.hi - base.lo) / 0.03) < 1e-6, "zoom 下限没兜住")
   }
 
   /// 一字板：开高低收全一样也得给出有厚度的区间。
@@ -133,7 +134,7 @@ struct PriceScaleTests {
       low: .init(repeating: 100, count: n), close: .init(repeating: 100, count: n),
       volume: .init(repeating: 0, count: n))
     let v = ViewMath.reset(series: s, plotW: 390, spacing: 9.2)
-    let r = priceRange(view: v, series: s, style: .default)
+    let r = priceRange(view: v, series: s)
     #expect(r.hi > r.lo, "塌成了 \(r)")
     for mode in PriceMode.allCases {
       let y = yOf(100, pane: Self.pane, range: r, mode: mode)

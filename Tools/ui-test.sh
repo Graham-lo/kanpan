@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A8.4：同一套 XCUITest 用例在八台机型上各跑一遍，逐台记结果。
+# 兼容验收：iPhone 15 及更新机型、iPad 系列，逐台记结果。
 #
 # 为什么一台一条命令、不用 xcodebuild 的多 -destination：
 #   多 destination 并行跑的时候，失败只会汇总成一句「Testing failed」，
@@ -21,14 +21,17 @@ SCHEME=Kanpan
 DD=DerivedData
 
 DEVICES=(
-  "iPhone 13 mini"
   "iPhone 15"
   "iPhone 16 Pro"
   "iPhone 16 Plus"
+  "iPhone 17"
   "iPhone 17 Pro Max"
   "iPhone Air"
   "iPad mini (A17 Pro)"
+  "iPad (A16)"
+  "iPad Air 11-inch (M4)"
   "iPad Pro 11-inch (M5)"
+  "iPad Pro 13-inch (M5)"
 )
 
 mkdir -p "$OUT" "$RES"
@@ -62,6 +65,9 @@ for name in "${DEVICES[@]}"; do
     -resultBundlePath "$RES/$slug.xcresult" > "$OUT/$slug.log" 2>&1
   rc=$?
   dur=$((SECONDS-start))
+  # 跑完就关机。八台一路 boot 下来不关，最后那台常常被系统按内存压力 SIGTERM 掉
+  # （实测 iPad Pro 11-inch 在第八位上被 Terminated: 15，日志停在 ** BUILD INTERRUPTED **）。
+  xcrun simctl shutdown "$udid" > /dev/null 2>&1 || true
   passed=$(grep -c "' passed (" "$OUT/$slug.log")
   failed=$(grep -c "' failed (" "$OUT/$slug.log")
   if [ $rc -eq 0 ]; then

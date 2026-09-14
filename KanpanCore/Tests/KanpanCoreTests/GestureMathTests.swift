@@ -1,214 +1,95 @@
 import Foundation
 import Testing
-
 @testable import KanpanCore
 
-/// M4 手势背后的纯算术：回弹、惯性、捏合往返、轴拖锚点。
-///
-/// 这些是 §13 G1 / G2 / G3 / G5 / G6 / G7 能不能过的前提——录屏只能证明「看起来对」，
-/// 数字得在这儿钉死。
-@Suite("手势算术")
-struct GestureMathTests {
-  private let plotW = 360.0
-
-  private func fixture() -> BarSeries { synthSeries(count: 1500, interval: .h1, seed: 7) }
-  private func startView(_ s: BarSeries) -> ViewWindow {
-    ViewMath.reset(series: s, plotW: plotW, spacing: 8)
+@Suite("AICoin 统一手势算术") struct GestureMathTests {
+  @Test("历史区焦点缩放，右端缩放保持最新列尾贴右")
+  func anchors() {
+    let s = synthSeries(count: 1500)
+    let w = 360.0
+    let latest = ViewMath.reset(series: s, plotW: w, spacing: 4)
+    let end = ViewMath.scaled(latest, series: s, plotW: w, factor: 2, focus: 100)
+    #expect(abs(end.x(Double(s.lastTime), plotW: w) - 356) < 1e-6)
+    let history = latest.dragged(byFingerPx: 500, plotW: w)
+    let t = history.t(atX: 120, plotW: w)
+    let zoom = ViewMath.scaled(history, series: s, plotW: w, factor: 2, focus: 120)
+    #expect(abs(zoom.x(t, plotW: w) - 120) < 1e-6)
+    let back = ViewMath.scaled(zoom, series: s, plotW: w, factor: 0.5, focus: 120)
+    #expect(abs(back.to - history.to) < 0.001)
+    #expect(abs(back.span - history.span) < 0.001)
   }
-
-  // ---------------------------------------------------------------- G1 拖
-
-  @Test("G1：手指走 100pt，图正好走 100pt")
-  func dragIsOneToOne() {
-    let s = fixture()
-    let v0 = startView(s)
-    for dx in [-240.0, -100, -3, 3, 100, 240] {
-      let v = v0.dragged(byFingerPx: dx, plotW: plotW)
-      // 拖之前在 x 处的那个时间，拖之后应该正好在 x + dx 处。
-      let t = v0.t(atX: 120, plotW: plotW)
-      #expect(abs(v.x(t, plotW: plotW) - (120 + dx)) < 1e-9, "dx=\(dx) 没跟住手")
-      #expect(abs(v.span - v0.span) < 1e-9, "拖动不该改窗宽")
+  @Test("两端越界有限空白并回各自边界，历史中途不吸回", arguments: [240.0, 360.0, 900.0])
+  func latestEdgePull(width: Double) {
+    let series = synthSeries(count: 1500)
+    let latest = ViewMath.reset(series: series, plotW: width, spacing: 4)
+    let history = latest.dragged(byFingerPx: 400, plotW: width)
+    for finger in [-80.0, 80.0] {
+      let proposed = history.dragged(byFingerPx: finger, plotW: width)
+      let actual = ViewMath.dragging(proposed, series: series, plotW: width)
+      #expect(abs(actual.to - proposed.to) < 0.001)
+      #expect(actual.to < latest.to)
+    }
+    let oldest = clampView(latest.dragged(byFingerPx: 100000, plotW: width), series: series, plotW: width)
+    let olderPull = ViewMath.dragging(oldest.dragged(byFingerPx: 100, plotW: width), series: series, plotW: width)
+    #expect(olderPull.to < oldest.to)
+    #expect((oldest.to - olderPull.to) / oldest.span * width < min(32, width * 0.1))
+    #expect(abs(clampView(olderPull, series: series, plotW: width).to - oldest.to) < 0.001)
+    var previous = 0.0
+    for finger in [-10.0, -100, -10000] {
+      let pulled = ViewMath.dragging(latest.dragged(byFingerPx: finger, plotW: width), series: series, plotW: width)
+      let distance = (pulled.to - latest.to) / pulled.span * width
+      #expect(distance > previous && distance < min(32, width * 0.1))
+      #expect(pulled.span == latest.span)
+      let settled = clampView(pulled, series: series, plotW: width)
+      #expect(abs(settled.to - latest.to) < 0.001)
+      previous = distance
     }
   }
 
-  // ---------------------------------------------------------------- G2 甩
-
-  @Test("G2：慢放手不滑行、停一下再松手不滑行、快甩封顶 3px/ms")
-  func flingGates() {
-    let s = fixture()
-    let v0 = startView(s)
-    // 比 0.2px/ms 慢：不甩。
-    #expect(FlingRun(speedPxPerMs: 0.19, gapMs: 8, start: v0, plotW: plotW) == nil)
-    // 够快但手指已经停了 120ms：不甩。
-    #expect(FlingRun(speedPxPerMs: 2, gapMs: 120, start: v0, plotW: plotW) == nil)
-    let run = FlingRun(speedPxPerMs: 9, gapMs: 8, start: v0, plotW: plotW)
-    #expect(run?.speedPxPerMs == 3, "速度该封顶到 3px/ms")
-  }
-
-  @Test("G2：滑行 1.4s 内必停，方向跟手，总位移等于 v·τ")
-  func flingRunsOut() {
-    let s = fixture()
-    let v0 = startView(s)
-    for v in [-3.0, -0.6, 0.35, 1.7] {
-      guard let run = FlingRun(speedPxPerMs: v, gapMs: 8, start: v0, plotW: plotW) else {
-        Issue.record("v=\(v) 该甩却没甩起来")
-        continue
-      }
-      #expect(run.frame(elapsedMs: Chart.flingMaxMs).done, "v=\(v) 到 1.4s 还没停")
-      let end = run.frame(elapsedMs: 5000).view
-      // 手指往右甩（v > 0）视野该往回走，看到更早的 K 线。
-      #expect((end.to - v0.to).sign == (v > 0 ? .minus : .plus), "v=\(v) 方向反了")
-      let want = -(v * Chart.flingTauMs / plotW) * v0.span
-      #expect(abs((end.to - v0.to) - want) < abs(want) * 1e-6 + 1e-9, "v=\(v) 总位移不对")
-      // 中途某一帧必须落在起点和终点之间，不能越冲。
-      let mid = run.frame(elapsedMs: 200).view.to - v0.to
-      #expect(abs(mid) < abs(want) && abs(mid) > 0)
+  @Test("回弹有限时长单调回原边界，不改根宽或越过历史目标")
+  func latestEdgeRebound() {
+    let end = ViewWindow(to: 1000, span: 500)
+    let start = ViewWindow(to: 1200, span: 500)
+    var previous = start.to
+    for ms in stride(from: 0.0, through: 320.0, by: 16) {
+      let (view, done) = ViewTransition.rebound(from: start, to: end, elapsedMs: ms)
+      #expect(view.to <= previous && view.to >= end.to && view.span == end.span)
+      #expect(done == (ms >= 320))
+      previous = view.to
     }
+    #expect(ViewTransition.rebound(from: start, to: end, elapsedMs: 1000).view == end)
   }
 
-  // ---------------------------------------------------------------- G3 捏
-
-  @Test("G3：两指中点那根全程不动")
-  func pinchKeepsMidpointFixed() {
-    let s = fixture()
-    let v0 = startView(s)
-    let mid = 150.0
-    let t0 = v0.t(atX: mid, plotW: plotW)
-    for d in [40.0, 80, 120, 240, 20] {
-      let v = ViewMath.pinch(
-        from0: v0.from, span0: v0.span, d0: 80, d: d, mid0Px: mid, plotW: plotW)
-      #expect(abs(v.x(t0, plotW: plotW) - mid) < 1e-9, "d=\(d) 中点那根跑了")
+  @Test("到达极限后反向捏合立即响应")
+  func reverseAtLimit() {
+    let s = synthSeries(count: 1500)
+    let v = ViewMath.reset(series: s, plotW: 360, spacing: 4)
+    let maxed = ViewMath.scaled(v, series: s, plotW: 360, factor: 100, focus: 100)
+    let back = ViewMath.scaled(maxed, series: s, plotW: 360, factor: 0.9, focus: 100)
+    #expect(abs(back.barSpacing(step: s.step, plotW: 360) - 36) < 1e-6)
+  }
+  @Test("Y倍率与高度归一化，中心夹取，自动复位仅改Y")
+  func yState() {
+    #expect(AICoinBehavior.axisZoom(from: 1, dy: 100, height: 400) == 0.5)
+    #expect(AICoinBehavior.axisZoom(from: 1, dy: -10000, height: 400) == 16)
+    #expect(AICoinBehavior.axisZoom(from: 1, dy: 10000, height: 400) == 0.03)
+    #expect(PriceTransform.clampedCenter(50, zoom: 2) == 1.5)
+    #expect(PriceTransform.clampedCenter(-50, zoom: 2) == -0.5)
+    var p = PriceTransform(mode: .log, zoom: 2, centerFraction: 0.7)
+    p.inverted = true; p.reset()
+    #expect(!p.isManual && p.centerFraction == 0.5 && p.inverted && p.mode == .log)
+  }
+  @Test("手动Y随新自动区间重算，不永久钉死旧价格")
+  func manualRange() {
+    let s = synthSeries(count: 1500)
+    let start = ViewMath.reset(series: s, plotW: 360, spacing: 4)
+    let t = PriceTransform(mode: .linear, zoom: 2, centerFraction: 0.7)
+    for v in [start, start.dragged(byFingerPx: 300, plotW: 360)] {
+      let raw = priceRange(view: v, series: s)
+      let actual = priceRange(view: v, series: s, transform: t)
+      let d = raw.hi - raw.lo
+      #expect(abs((actual.hi - actual.lo) / d - 0.5) < 1e-9)
+      #expect(abs(((actual.hi + actual.lo) / 2 - raw.lo) / d - 0.7) < 1e-9)
     }
-  }
-
-  @Test("G3：捏开再捏拢回到原处，误差远小于 0.01 根间距")
-  func pinchRoundTrip() {
-    let s = fixture()
-    let v0 = startView(s)
-    let sp0 = v0.barSpacing(step: s.step, plotW: plotW)
-    var v = v0
-    // 一次手势里的每一帧都从同一份快照算，所以往返只看首尾。
-    for d in [80.0, 140, 220, 300, 220, 140, 80] {
-      v = ViewMath.pinch(
-        from0: v0.from, span0: v0.span, d0: 80, d: d, mid0Px: 150, plotW: plotW)
-    }
-    let sp = v.barSpacing(step: s.step, plotW: plotW)
-    #expect(abs(sp - sp0) < 1e-9, "往返之后根间距变了：\(sp0) → \(sp)")
-    #expect(abs(v.to - v0.to) < 1e-9, "往返之后右边缘变了")
-  }
-
-  @Test("G3：捏到 0.4 / 40 就停住")
-  func pinchStopsAtLimits() {
-    let s = fixture()
-    let v0 = startView(s)
-    for d in [1.0, 4, 10_000] {
-      let raw = ViewMath.pinch(
-        from0: v0.from, span0: v0.span, d0: 80, d: max(Chart.pinchMinPx, d),
-        mid0Px: 150, plotW: plotW)
-      let v = clampView(raw, series: s, plotW: plotW, soft: true)
-      let sp = v.barSpacing(step: s.step, plotW: plotW)
-      #expect(sp >= Chart.minBarSpacing - 1e-9 && sp <= Chart.maxBarSpacing + 1e-9,
-        "d=\(d) 根间距跑到 \(sp)")
-    }
-  }
-
-  // ---------------------------------------------------------------- G5 回弹
-
-  @Test("G5：软边界内松手会弹回硬边界，240ms 走完")
-  func settleReturnsToHardBound() {
-    let s = fixture()
-    let v0 = startView(s)
-    // 往左推手指，把最后一根一路推到左边 30% 处再往外顶——这是右边界那一侧。
-    let over = clampView(
-      v0.dragged(byFingerPx: -4 * plotW, plotW: plotW), series: s, plotW: plotW, soft: true)
-    let hard = clampView(over, series: s, plotW: plotW)
-    #expect(over.to > hard.to, "软夹取没给出越界空间，后面的回弹就没意义了")
-    guard let target = Settle.target(over, series: s, plotW: plotW) else {
-      Issue.record("越界了却说不用回弹")
-      return
-    }
-    #expect(abs(target.to - hard.to) < 1e-9)
-    #expect(Settle.frame(from: over, to: target, elapsedMs: 0).view.to == over.to)
-    let done = Settle.frame(from: over, to: target, elapsedMs: Settle.durationMs)
-    #expect(done.done)
-    #expect(abs(done.view.to - target.to) < 1e-9)
-    // 缓出：一半时间该走完一大半路程。
-    let half = Settle.frame(from: over, to: target, elapsedMs: Settle.durationMs / 2).view
-    let k = (half.to - over.to) / (target.to - over.to)
-    #expect(k > 0.8 && k < 0.9, "缓出曲线不对：半程走了 \(k)")
-  }
-
-  @Test("G5：本来就在界内就不起动画")
-  func settleSkipsWhenInside() {
-    let s = fixture()
-    #expect(Settle.target(startView(s), series: s, plotW: plotW) == nil)
-  }
-
-  // ---------------------------------------------------------------- G6 价格轴
-
-  @Test("G6：竖拖缩放后按下点的价格还在原来那个 y 上", arguments: PriceMode.allCases)
-  func priceAxisKeepsAnchor(_ mode: PriceMode) {
-    let s = fixture()
-    let v = startView(s)
-    let pane = Pane(indicator: nil, y: 0, h: 420)
-    let style = CandleStyle.default
-    func range(_ t: PriceTransform) -> PriceRange {
-      priceRange(view: v, series: s, style: style, transform: t)
-    }
-    var t0 = PriceTransform(mode: mode)
-    let y = 130.0
-    let anchor = pOf(y, pane: pane, range: range(t0), mode: mode)
-    for dy in [-260.0, -80, -10, 10, 80, 260] {
-      var t = t0
-      t.zoom = PriceAnchor.zoom(from: t0.zoom, dy: dy)
-      t.shift = PriceAnchor.shift(
-        keeping: anchor, at: y, pane: pane, mode: mode, zoom: t.zoom,
-        rangeFor: { sh in
-          var probe = t
-          probe.shift = sh
-          return range(probe)
-        })
-      let got = yOf(anchor, pane: pane, range: range(t), mode: mode)
-      #expect(abs(got - y) < 1e-6, "\(mode) dy=\(dy)：按下点从 \(y) 跑到 \(got)")
-    }
-    t0.zoom = 1
-  }
-
-  @Test("G6：缩放倍数卡在 0.25…6")
-  func priceZoomClamped() {
-    #expect(PriceAnchor.zoom(from: 1, dy: -5000) == 6)
-    #expect(PriceAnchor.zoom(from: 1, dy: 5000) == 0.25)
-    #expect(abs(PriceAnchor.zoom(from: 1, dy: 0) - 1) < 1e-12)
-  }
-
-  // ---------------------------------------------------------------- G7 时间轴
-
-  @Test("G7：横拖时间轴，按下点的时间不动")
-  func timeAxisKeepsAnchor() {
-    let s = fixture()
-    let v0 = startView(s)
-    let anchorPx = 220.0
-    let t0 = v0.t(atX: anchorPx, plotW: plotW)
-    for dx in [-300.0, -60, 60, 300] {
-      let v = ViewMath.zoom(
-        v0, factor: PriceAnchor.spanFactor(dx: dx), anchorPx: anchorPx, plotW: plotW)
-      #expect(abs(v.x(t0, plotW: plotW) - anchorPx) < 1e-9, "dx=\(dx) 锚点跑了")
-      // 往左拖看得更长，往右拖看得更细。
-      #expect((v.span > v0.span) == (dx < 0), "dx=\(dx) 缩放方向反了")
-    }
-  }
-
-  // ---------------------------------------------------------------- G9 补历史
-
-  @Test("G9：左缘进到头部 200 根以内才喊补历史")
-  func historyTrigger() {
-    let s = fixture()
-    let step = Double(s.step)
-    let first = Double(s.firstTime)
-    // 阈值看的是**左缘**：`from = to - span`，所以 to 要算上 span 才落进 200 根以内。
-    let inside = ViewWindow(to: first + 200 * step, span: 60 * step)
-    let outside = ViewWindow(to: first + 900 * step, span: 60 * step)
-    #expect(ViewMath.needsMoreHistory(inside, series: s))
-    #expect(!ViewMath.needsMoreHistory(outside, series: s))
   }
 }

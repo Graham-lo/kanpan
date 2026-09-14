@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// 底部工具条五个：风格 · 指标 · 画线 · 设置 · 横屏（§9.1）。
+/// 底部工具条五个：风格 · 指标 · 自选 · 设置 · 横屏（§9.1）。
 struct BottomBar: View {
   var theme: PanelTheme
   /// 哪个亮着。面板开着时对应那个是琥珀色（原型 `syncTools()`）。
   var active: Panel?
   var drawing: Bool
   var onPanel: (Panel) -> Void
-  var onDraw: () -> Void
+  var onFavorites: () -> Void
   var onLandscape: () -> Void
 
   var body: some View {
@@ -16,11 +16,11 @@ struct BottomBar: View {
         .accessibilityIdentifier("bottom.style")
       tool(.indicator, VectorIcon.indicator, "指标") { onPanel(.indicator) }
         .accessibilityIdentifier("bottom.indicator")
-      item(VectorIcon.draw, "画线", on: drawing, action: onDraw)
-        .accessibilityIdentifier("bottom.draw")
+      item(VectorIcon.star(), "自选", on: false, action: onFavorites)
+        .accessibilityIdentifier("bottom.favorites")
       tool(.settings, VectorIcon.settings, "设置") { onPanel(.settings) }
         .accessibilityIdentifier("bottom.settings")
-      item(VectorIcon.landscape, "横屏", on: false, action: onLandscape)
+      item(VectorIcon.landscape, UIDevice.current.userInterfaceIdiom == .pad ? "全屏" : "横屏", on: false, action: onLandscape)
         .accessibilityIdentifier("bottom.landscape")
     }
   }
@@ -54,30 +54,6 @@ struct BottomBar: View {
 ///
 /// 视野离开最新一根就淡入，回到最新就淡出。位置按原型：离右 60pt——刚好让开价格轴，
 /// 离底 28pt。
-struct LatestButton: View {
-  var theme: PanelTheme
-  var shown: Bool
-  var action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      VectorIcon.chevronRight()
-        .foregroundStyle(theme.ink2)
-        .frame(width: 30, height: 30)
-        .background(Circle().fill(theme.app.opacity(0.92)))
-        .overlay(Circle().stroke(theme.line, lineWidth: 1))
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel("回到最新")
-    .accessibilityIdentifier("chart.latest")
-    .padding(.trailing, 60)
-    .padding(.bottom, 28)
-    .opacity(shown ? 1 : 0)
-    .allowsHitTesting(shown)
-    .animation(.easeOut(duration: 0.15), value: shown)
-  }
-}
-
 /// 一句话提示，1.6 秒后自己消失（原型 `.toast`）。
 struct Toast: View {
   var theme: PanelTheme

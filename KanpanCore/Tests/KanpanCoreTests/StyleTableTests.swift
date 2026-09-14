@@ -7,46 +7,39 @@ import Testing
 struct StyleTableTests {
   @Test("11 款风格、顺序与默认值")
   func tableShape() {
-    #expect(CandleStyle.all.count == 11)
-    #expect(CandleStyle.all.map(\.id) == Fx.styles.map { $0.s["id"]! }, "顺序和原型不一致")
-    #expect(CandleStyle.default.id == "stout", "默认必须是「墩」")
-    #expect(CandleStyle.default.name == "墩")
-    #expect(Set(CandleStyle.all.map(\.id)).count == 11, "id 有重复")
-    #expect(Set(CandleStyle.all.map(\.name)).count == 11, "名字有重复")
-    #expect(CandleStyle.style(id: "没这个").id == "stout", "找不到要落回默认")
+    #expect(CandleStyle.all.count == 12)
+    #expect(CandleStyle.originalStyles.map(\.id) == Fx.styles.map { $0.s["id"]! }, "顺序和原型不一致")
+    #expect(CandleStyle.default.id == "aicoin", "默认必须是「墩」")
+    #expect(CandleStyle.default.name == "AICoin")
+    #expect(Set(CandleStyle.all.map(\.id)).count == 12, "id 有重复")
+    #expect(Set(CandleStyle.all.map(\.name)).count == 12, "名字有重复")
+    #expect(CandleStyle.style(id: "没这个").id == "aicoin", "找不到要落回默认")
   }
 
-  @Test("每个字段与原型逐一相等", arguments: CandleStyle.all.indices)
+  @Test("每个字段与原型逐一相等", arguments: CandleStyle.originalStyles.indices)
   func fieldsMatchPrototype(_ i: Int) {
-    let st = CandleStyle.all[i]
+    let st = CandleStyle.originalStyles[i]
     let fx = Fx.styles[i]
     #expect(st.id == fx.s["id"]!)
     #expect(st.name == fx.s["name"]!)
-    #expect(st.one == fx.s["one"]!)
+
     #expect(st.wickCap.rawValue == fx.s["wickCap"]!, "\(st.id) wickCap")
     #expect(st.shape.rawValue == fx.s["shape"]!, "\(st.id) shape")
     #expect(st.grid.rawValue == fx.s["grid"]!, "\(st.id) grid")
-    let nums: [(String, Double)] = [
-      ("bodyR", st.bodyR), ("wick", st.wick), ("wickTint", st.wickTint), ("radius", st.radius),
-      ("minBody", st.minBody), ("spacing", st.spacing), ("pad", st.pad), ("axisW", st.axisW),
-      ("timeH", st.timeH), ("subH", st.subH), ("lastDash", st.lastDash ? 1 : 0),
-    ]
+    let nums: [(String, Double)] = [("wickTint", st.wickTint), ("radius", st.radius)]
     for (k, v) in nums {
       #expect(v == fx.n[k], "\(st.id).\(k)：原型 \(fx.n[k] ?? .nan)，这里 \(v)")
     }
     // 一句话和赌注文案都得有，图例和切换器要用。
-    #expect(!st.one.isEmpty && !st.bet.isEmpty, "\(st.id) 缺文案")
+    #expect(!st.visualSummary.isEmpty, "\(st.id) 缺文案")
   }
 
   /// 字段本身得在合理范围里——写错一位小数比对不上原型也看得出来。
   @Test("字段范围合理", arguments: CandleStyle.all)
   func sane(_ st: CandleStyle) {
-    #expect(st.bodyR > 0 && st.bodyR <= 1, "\(st.id) bodyR=\(st.bodyR)")
-    #expect(st.wick > 0 && st.wick <= 6, "\(st.id) wick=\(st.wick)")
-    #expect(st.wickTint >= 0 && st.wickTint <= 1, "\(st.id) wickTint=\(st.wickTint)")
-    #expect(st.spacing >= Chart.minBarSpacing && st.spacing <= Chart.maxBarSpacing, "\(st.id) spacing")
-    #expect(st.pad >= 0 && st.pad < 0.5, "\(st.id) pad=\(st.pad)")
-    #expect(st.axisW > 20 && st.timeH > 10 && st.subH > 30, "\(st.id) 版面尺寸")
+    #expect(st.wickTint >= 0 && st.wickTint <= 1)
+    #expect(st.radius >= 0 && st.radius.isFinite)
+
   }
 
   @Test("浅色配色与原型逐一相等")

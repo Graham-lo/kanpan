@@ -1,0 +1,25 @@
+[Unit]
+Description=Kanpan historical OI cache
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+WorkingDirectory=/opt/kanpan-gateway
+ExecStart=/usr/bin/python3 /opt/kanpan-gateway/server.py
+Environment=PORT=8792
+CacheDirectory=kanpan-gateway
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+MemoryMax=256M
+CPUQuota=50%
+TasksMax=64
+LimitNOFILE=256
+
+[Install]
+WantedBy=multi-user.target

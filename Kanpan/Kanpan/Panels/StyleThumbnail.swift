@@ -62,7 +62,7 @@ struct StyleThumbnail: View {
     }
 
     // 上下留白和左右间距都照这一版：间距小的自然塞进更多根。
-    let step = max(3, min(W / 6, style.spacing * 2.2))
+    let step = max(3, min(W / 6, AICoinBehavior.initialSpacing * 2.2))
     let count = max(4, Int((W - 6) / step))
     func bar(_ i: Int) -> [Double] { bars[i % bars.count] }
 
@@ -71,13 +71,13 @@ struct StyleThumbnail: View {
       let b = bar(i)
       lo = min(lo, b[2]); hi = max(hi, b[1])
     }
-    let padv = (hi - lo) * style.pad
+    let padv = (hi - lo) * 0.1
     lo -= padv; hi += padv
     let span = max(hi - lo, .leastNonzeroMagnitude)
     func yOf(_ v: Double) -> CGFloat { H - 4 - CGFloat((v - lo) / span) * (H - 8) }
 
-    let bodyW = max(1.2, step * style.bodyR)
-    let wickW = max(0.6, style.wick)
+    let bodyW = max(1.2, step * 2 / 3)
+    let wickW = 2.0 / 3
     let left = (W - CGFloat(count) * step) / 2 + step / 2
     let cap: CGLineCap = style.wickCap == .round ? .round : .butt
 
@@ -97,7 +97,7 @@ struct StyleThumbnail: View {
 
       // 实体。十字星也要留 `minBody` 那么一条，不然整根消失。
       let top = min(yOf(o), yOf(c))
-      let bh = max(style.minBody, abs(yOf(c) - yOf(o)))
+      let bh = max(0.5, abs(yOf(c) - yOf(o)))
       let rect = CGRect(x: x - bodyW / 2, y: top, width: bodyW, height: bh)
       let r = min(style.radius, bodyW / 2, bh / 2)
       let body = r > 0
@@ -117,7 +117,7 @@ struct StyleThumbnail: View {
     let y = (yOf(bar(count - 1)[3])).rounded() + 0.5
     ctx.stroke(Path { $0.move(to: CGPoint(x: 0, y: y)); $0.addLine(to: CGPoint(x: W, y: y)) },
                with: .color(Color(hex: colors.amber)),
-               style: StrokeStyle(lineWidth: 1, dash: style.lastDash ? [3, 3] : []))
+               style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
   }
 }
 
@@ -126,7 +126,7 @@ struct StyleThumbnail: View {
     VStack(spacing: 8) {
       ForEach(CandleStyle.all) { st in
         VStack(alignment: .leading, spacing: 4) {
-          Text("\(st.name) · \(st.one)").font(PanelFont.cardOne)
+          Text("\(st.name) · \(st.visualSummary)").font(PanelFont.cardOne)
           StyleThumbnail(style: st, colors: Palette.chart(dark: false))
         }
       }

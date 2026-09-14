@@ -8,13 +8,23 @@ public struct BinanceHosts: Sendable, Equatable {
   public var stream: String
   /// 公开归档站，OI 的 metrics zip 在这儿。
   public var vision: String
+  public var streamFallbacks: [String]
+  public var oiProxy: String?
+  public var oiProxyFallbacks: [String]
+  public var oiProxies: [String] {
+    var seen = Set<String>()
+    return ([oiProxy].compactMap { $0 } + oiProxyFallbacks).filter { seen.insert($0).inserted }
+  }
 
   public init(fapi: String = "fapi.binance.com",
               stream: String = "fstream.binance.com",
-              vision: String = "data.binance.vision") {
+              vision: String = "data.binance.vision",
+              streamFallbacks: [String] = [], oiProxy: String? = nil, oiProxyFallbacks: [String] = []) {
     self.fapi = fapi
     self.stream = stream
     self.vision = vision
+    self.streamFallbacks = streamFallbacks; self.oiProxy = oiProxy
+    self.oiProxyFallbacks = oiProxyFallbacks
   }
 
   public static let `default` = BinanceHosts()
@@ -72,7 +82,7 @@ public struct BinanceHosts: Sendable, Equatable {
     var c = URLComponents()
     c.scheme = "wss"
     c.host = stream
-    c.path = "/stream"
+    c.path = "/market/stream"
     if !streams.isEmpty { c.queryItems = [URLQueryItem(name: "streams", value: streams.joined(separator: "/"))] }
     return c.url!
   }
@@ -83,4 +93,12 @@ public struct BinanceHosts: Sendable, Equatable {
   }
   public static func tickerStream(symbol: String) -> String { "\(symbol.lowercased())@ticker" }
   public static func markPriceStream(symbol: String) -> String { "\(symbol.lowercased())@markPrice@1s" }
+
+  /// Legacy trade decoder support for recordings. Production subscribes to the documented
+  /// /market kline/ticker/markPrice streams; /public bookTicker is a separate endpoint.
+  public static func tradeStream(symbol: String) -> String { "\(symbol.lowercased())@trade" }
+
+  /// 最优买卖挂单。成交稀疏的品种（半夜的小币）可能几十秒没有一笔成交，
+  /// 靠它给最新价一个心跳——只改价，不记量，也不凭它开新的一根。
+  public static func bookTickerStream(symbol: String) -> String { "\(symbol.lowercased())@bookTicker" }
 }

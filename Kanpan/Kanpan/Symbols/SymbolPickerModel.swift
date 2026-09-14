@@ -15,6 +15,7 @@ final class SymbolPickerModel {
   private(set) var catalog: [SymbolInfo] = []
   /// symbol（大写）→ 24h 行情。
   private(set) var tickers: [String: Ticker] = [:]
+  private(set) var historyBars: [String: [Bar]] = [:]
   /// 自选与最近。改完立刻落盘。
   private(set) var prefs = SymbolPrefs()
   /// 搜索框里的原文。改它分区就重算。
@@ -38,6 +39,13 @@ final class SymbolPickerModel {
   /// 品种表的来源，宿主用 `KanpanData.SymbolCatalog` 填。
   private var catalogLoader: (@Sendable () async -> [SymbolInfo])?
   private var subscribed = false
+  private var sectionsActive = true
+
+  /// 自选直接读取报价字典，隐藏的全市场搜索表不必随每笔价格重建。
+  func setSectionsActive(_ active: Bool) {
+    sectionsActive = active
+    if active { rebuild() }
+  }
 
   init(catalog: [SymbolInfo] = [],
        tickers: [Ticker] = [],
@@ -49,6 +57,8 @@ final class SymbolPickerModel {
     self.feed = feed
     self.catalogLoader = catalogLoader
     self.prefs = store.load()
+    classifyUnassigned()
+    store.save(self.prefs)
     apply(tickers)
     rebuild()
   }
@@ -64,7 +74,7 @@ final class SymbolPickerModel {
   /// 进页：补品种表、订阅行情。
   func appear() async {
     subscribe()
-    if let catalogLoader, catalog.isEmpty {
+    if let catalogLoader {
       let list = await catalogLoader()
       setCatalog(list)
     }
@@ -98,7 +108,37 @@ final class SymbolPickerModel {
   /// 行情按 symbol 覆盖写；`!ticker@arr` 每 1s 推一批，只推变动的。
   func apply(_ batch: [Ticker]) {
     guard !batch.isEmpty else { return }
-    for t in batch { tickers[t.symbol.uppercased()] = t }
+    for t in batch {
+      let symbol = t.symbol.uppercased()
+      tickers[symbol] = t
+
+    }
+  }
+
+  func setHistory(_ symbol: String, _ bars: [Bar]) {
+    if historyBars[symbol] == nil, historyBars.count >= 8, let victim = historyBars.keys.sorted().first {
+      historyBars.removeValue(forKey: victim)
+    }
+    historyBars[symbol] = Array(bars.suffix(245))
+  }
+
+  /// 已退订报价不继续冒充实时；只清数字，不碰收藏/分类/顺序。
+  func retainQuotes(for symbols: Set<String>) {
+    guard tickers.keys.contains(where: { !symbols.contains($0) }) else { return }
+    tickers = tickers.filter { symbols.contains($0.key) }
+    if sectionsActive { rebuild() }
+  }
+
+  func clearQuotes() {
+    tickers.removeAll(keepingCapacity: true)
+    rebuild()
+  }
+
+  func updateQuotes(_ batch: [Ticker]) {
+    let changed = batch.filter { tickers[$0.symbol] != $0 }
+    guard !changed.isEmpty else { return }
+    apply(changed)
+    if sectionsActive { rebuild() }
   }
 
   func ticker(for symbol: String) -> Ticker? { tickers[SymbolPrefs.key(symbol)] }
@@ -109,10 +149,29 @@ final class SymbolPickerModel {
 
   /// 星星：一点加、再点移除（§10.5）。
   @discardableResult
-  func toggleFavorite(_ symbol: String) -> Bool {
-    prefs.toggleFavorite(symbol)
+  func toggleFavorite(_ symbol: String, info: SymbolInfo? = nil) -> Bool {
+    if prefs.isFavorite(symbol) { prefs.removeFavorite(symbol); commit(); return false }
+    addFavorite(symbol, info: info)
+    return true
+  }
+
+  func addFavorite(_ symbol: String, info: SymbolInfo? = nil) {
+    guard !prefs.isFavorite(symbol) else { return }
+    let key = SymbolPrefs.key(symbol)
+    guard !key.isEmpty else { return }
+    prefs.addFavorite(key)
+    let name = FavoriteCategory.name(symbol: key, info: info ?? catalog.first { $0.symbol == key })
+    let group = prefs.createGroup(name)
+    prefs.assign(key, to: group)
     commit()
-    return prefs.isFavorite(symbol)
+  }
+
+  private func classifyUnassigned() {
+    for symbol in prefs.favorites where prefs.groupForSymbol[symbol] == nil {
+      let name = FavoriteCategory.name(symbol: symbol, info: catalog.first { $0.symbol == symbol })
+      let group = prefs.createGroup(name)
+      prefs.assign(symbol, to: group)
+    }
   }
 
   func removeFavorite(_ symbol: String) {
@@ -136,6 +195,23 @@ final class SymbolPickerModel {
   func moveFavorite(_ symbol: String, onto target: String) {
     prefs.moveFavorite(symbol, onto: target)
     commit()
+  }
+
+  @discardableResult
+  func createGroup(_ name: String) -> String? {
+    let id = prefs.createGroup(name); prefs.classifyUnassigned(); commit(); return id
+  }
+  func selectGroup(_ id: String) { prefs.selectGroup(id); commit() }
+  func setPinned(_ symbol: String, _ on: Bool) { prefs.setPinned(symbol, on); commit() }
+  func renameGroup(_ id: String, name: String) { prefs.renameGroup(id, name: name); commit() }
+  func deleteGroup(_ id: String) { prefs.deleteGroup(id); commit() }
+  func assign(_ symbol: String, to group: String?) { prefs.assign(symbol, to: group); commit() }
+  func moveVisible(_ visible: [String], from source: IndexSet, to destination: Int) {
+    prefs.moveVisible(visible, from: source, to: destination); commit()
+  }
+
+  func moveInGroup(_ group: String?, from source: IndexSet, to destination: Int) {
+    prefs.moveInGroup(group, from: source, to: destination); commit()
   }
 
   // ---------------------------------------------------------------- 最近

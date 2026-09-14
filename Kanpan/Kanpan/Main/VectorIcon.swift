@@ -205,6 +205,14 @@ extension VectorIcon {
     ])
   }
 
+  /// K 线设置（横屏工具栏的「图表」）。两根蜡烛：框 + 上下影线。
+  static var chart: VectorIcon {
+    tool([
+      .rect(x: 3.5, y: 6, w: 4, h: 8, r: 0.8), .path("M5.5 2.6v3.4M5.5 14v3.4"),
+      .rect(x: 12.5, y: 4.5, w: 4, h: 6, r: 0.8), .path("M14.5 2.6v1.9M14.5 10.5v6.9"),
+    ])
+  }
+
   static var landscape: VectorIcon {
     tool([.rect(x: 2.5, y: 5.5, w: 15, h: 9, r: 1.6), .path("M7 2.6 9 4.6 7 6.6")])
   }

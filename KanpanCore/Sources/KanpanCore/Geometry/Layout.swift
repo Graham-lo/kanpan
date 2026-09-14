@@ -12,7 +12,7 @@ public struct Pane: Sendable, Equatable {
   }
 }
 
-/// 一帧的布局（§5.3）。所有距离都从当前风格表读，没有全局常数。
+/// 一帧的布局（§5.3）。所有视觉风格共用 AICoin 分区，风格不改变看盘位置。
 public struct Layout: Sendable, Equatable {
   public var W: Double
   public var H: Double
@@ -31,31 +31,9 @@ public struct Layout: Sendable, Equatable {
   /// 价格轴宽（右侧）。
   public var axisW: Double { W - plotW }
 
-  /// 「回到自动贴合」的小徽章，贴在**主图区底边**、价格轴那一列里。
-  ///
-  /// 只有手动定标（`PriceTransform.isManual`）时才画、才可点——它不是常驻按钮。
-  ///
-  /// 造型与锚点照 AICoin 安卓包实测（`#tv_scale_auto`，见
-  /// `docs/AICoin-安卓包-UI规格提取.md` §3 / §23.3 / §23.4）：
-  ///
-  /// * **字面是「A」（Auto）不是「R」。** 从前这儿写的是一个圈着的「R」，注释里说是
-  ///   「照 AiCoin 手机版」——那是没验证过的推断。反编译出来的 XML 写死 `android:text="A"`。
-  /// * **弱徽章不是高亮按钮**：圆角 2dp 的小方块，灰字浅底。AICoin 把「回到最新」做成
-  ///   蓝底白字实心 chip、把「自动定标」做成灰字浅底弱徽章，视觉权重是刻意分级的。
-  /// * **贴主图区底边**，和「展开右侧面板」图标共用一条基线；不是挂在时间轴上面。
-  ///   这条对我们尤其要紧：挂了 MACD + RSI 两个副图之后，时间轴离主图的价格刻度隔着
-  ///   大半屏，一个管价格轴的钮摆在那儿等于找不到。
-  ///
-  /// 横向我们没照它的 `layout_gravity=end`：AICoin 的价格轴画在图里、浮层要 `marginEnd`
-  /// 躲开它，我们的价格轴本来就是独立一列，所以跟着列里另外两个方块（最新价胶囊、
-  /// 倒计时）一样从 `plotW + 2` 起算，自家对齐比模仿它的 gravity 重要。
+  /// 真机 A 徽章位于价格轴内；下方灰圆是侧栏控制，不能混用。
   public var autoFitButton: (x: Double, y: Double, w: Double, h: Double) {
-    // 10pt 字 + 上下 2pt / 左右 6pt 的内边距，比例照 AICoin 的 12sp + 2dp/6dp。
-    // 字宽按等宽数字那一格算（`ChartFont.axis` 是 monospaced），免得 Core 依赖 UIKit。
-    let h = 14.0
-    let w = min(axisW - 4, 19)
-    let m = main
-    return (x: plotW + 2, y: m.y + m.h - h - 2, w: max(12, w), h: h)
+    (plotW + max(2, (axisW - 16) / 2), max(0, mainH - 42), 16, 17)
   }
 
   /// 手指落在那个小钮上没有。判定范围比画出来的大一圈（44pt 的可点区域按不到就当没有）。
@@ -69,34 +47,81 @@ public struct Layout: Sendable, Equatable {
   ///   缺省 / 查不到就是 1.0 = 风格表原值 = 现状。三档的具体倍率定义在 app 层
   ///   （`SubPaneHeight.scale`），Core 只收倍率，不在这儿再定义一份，不然两处会漂。
   public init(
-    width W: Double, height H: Double, style: CandleStyle, subs: [IndicatorID],
-    subScale: [IndicatorID: Double] = [:]
+    width W: Double, height H: Double, subs: [IndicatorID],
+    subScale: [IndicatorID: Double] = [:], mainWeight: Double = 3, axisWidth: Double = AICoinBehavior.axisWidth
   ) {
     self.W = W
     self.H = H
-    plotW = max(40, W - style.axisW)
-    timeY = H - style.timeH
-
-    // 单个副图的高度上限，口径和以前一样是**按单个算**的（不是按总和）：
-    // 副图多到把主图挤没时兜底的是下面 `mainH` 的 80，这条只管别让某一块太胖。
-    let cap = max(44, (H - style.timeH) * 0.3)
-    // 倍率夹到 0.5…2：这是公开入口，外面塞个离谱的数进来会把主图压到 80 的保底值上。
-    func heightOf(_ k: IndicatorID) -> Double {
-      let s = min(2, max(0.5, subScale[k] ?? 1))
-      return min(max(44, (style.subH * s).rounded()), cap)
+    plotW = max(40, W - axisWidth)
+    let content = max(1, H - AICoinBehavior.timeHeight)
+    let weights = subs.map { id -> Double in
+      let raw = subScale[id] ?? 1
+      return raw.isFinite ? min(2, max(0.5, raw)) : 0.5
     }
-
-    let hs = subs.map(heightOf)
-    // 空列表时保留老式子的结果（`min(style.subH, cap)`），不然极矮窗口下这个代表值
-    // 会跳一下——它不参与绘制，但进了取证表。
-    subH = hs.first ?? min(max(44, style.subH), cap)
-    mainH = max(80, H - style.timeH - hs.reduce(0, +))
+    let unit = content / (max(0.5, mainWeight) + weights.reduce(0, +))
+    mainH = content - weights.reduce(0, +) * unit
+    timeY = mainH
+    subH = weights.first.map { $0 * unit } ?? unit
     var list = [Pane(indicator: nil, y: 0, h: mainH)]
-    var y = mainH
-    for (k, h) in zip(subs, hs) {
-      list.append(Pane(indicator: k, y: y, h: h))
-      y += h
+    var y = mainH + AICoinBehavior.timeHeight
+    for (id, weight) in zip(subs, weights) {
+      let height = weight * unit
+      list.append(Pane(indicator: id, y: y, h: height))
+      y += height
     }
     panes = list
+  }
+}
+
+/// The user's one-screen preference takes priority for the usual 3–4 panels.
+/// Only windows too small for readable panes need overflow scrolling.
+public enum ChartContentLayout {
+  public static func height(viewport: Double, control: Double, subs: [IndicatorID],
+                            subScale: [IndicatorID: Double], portrait: Bool) -> Double {
+    max(viewport, (portrait ? 120 : 72) + Double(subs.count) * (portrait ? 40 : 28) + AICoinBehavior.timeHeight)
+  }
+  public static func mainWeight(height: Double, control: Double, count: Int) -> Double {
+    guard count > 0 else { return 3 }
+    let setting = control.isFinite ? min(1, max(0, control)) : 0.5
+    let content = max(1, height - AICoinBehavior.timeHeight)
+    let minimumSub = min(40, content / Double(count + 3))
+    let preferred = 3 * (0.5 + setting)
+    return min(preferred, max(0.5, content / minimumSub - Double(count)))
+  }
+}
+
+public enum CandleDataBox {
+  /// Container-relative placement; midpoint is an implementation choice, not an iPhone measurement.
+  public static func rect(plotWidth: Double, mainHeight: Double, selectedX: Double,
+                          desiredWidth: Double, desiredHeight: Double, follow: Bool) -> (x: Double, y: Double, width: Double, height: Double) {
+    let width = max(1, min(desiredWidth, plotWidth - 8))
+    let height = max(1, min(desiredHeight, mainHeight - 8))
+    let x = follow && selectedX < plotWidth / 2 ? plotWidth - width - 4 : 4
+    return (max(0, x), min(44, max(4, mainHeight - height - 4)), width, height)
+  }
+}
+
+public enum ChartGestureRoute {
+  /// 副图内长按移动整个面板；主图与价格轴保持原来的手势职责。
+  public static func reorderPane(x: Double, y: Double, plotWidth: Double, panes: [Pane]) -> IndicatorID? {
+    guard x >= 0, x < plotWidth else { return nil }
+    return panes.first { $0.indicator != nil && y >= $0.y && y < $0.y + $0.h }?.indicator
+  }
+
+  public static func pageScroll(x: Double, y: Double, dx: Double, dy: Double, touches: Int,
+                                plotWidth: Double, mainHeight: Double, manualY: Bool, selecting: Bool) -> Bool {
+    guard touches == 1, !selecting, abs(dy) > 1.5 * abs(dx) else { return false }
+    if y < mainHeight && (x > plotWidth || manualY) { return false }
+    return true
+  }
+}
+
+/// Continuous panel resize uses the same relative weights as preset heights.
+public enum SubPaneResize {
+  public static func scale(initialHeight: Double, translation: Double, contentHeight: Double,
+                           otherWeight: Double) -> Double {
+    guard contentHeight > 0, translation.isFinite, otherWeight > 0 else { return 1 }
+    let desired = min(contentHeight - 1, max(1, initialHeight + translation))
+    return min(2, max(0.5, desired * otherWeight / (contentHeight - desired)))
   }
 }

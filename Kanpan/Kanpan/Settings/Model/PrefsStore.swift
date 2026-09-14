@@ -61,27 +61,17 @@ final class PrefsStore {
 
   init(storage: any PrefsStorage = UserDefaults.standard,
        cache: any MarketCacheStore = MarketCacheFactory.make()) {
-    self.storage = storage
+    let selectedStorage: any PrefsStorage = ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1"
+      ? InMemoryPrefsStorage() : storage
+    self.storage = selectedStorage
     self.cache = cache
-    self.prefs = PrefsStore.load(from: storage)
+    self.prefs = PrefsStore.load(from: selectedStorage)
   }
 
   // ---------------------------------------------------------------- 读
 
-  /// 当前键没有就按 `PrefsCodec.legacyKeys` 从新到旧回落；
-  /// 读到的老存档逐字段并进新默认（A6.13），不整体覆盖。
-  static func load(from storage: any PrefsStorage,
-                   key: String = PrefsCodec.key,
-                   legacyKeys: [String] = PrefsCodec.legacyKeys) -> Prefs {
-    if let data = storage.prefsData(forKey: key) {
-      return PrefsCodec.decode(data)
-    }
-    for legacy in legacyKeys {
-      if let data = storage.prefsData(forKey: legacy) {
-        return PrefsCodec.decode(data)
-      }
-    }
-    return .defaults
+  static func load(from storage: any PrefsStorage, key: String = PrefsCodec.key) -> Prefs {
+    PrefsCodec.decode(storage.prefsData(forKey: key))
   }
 
   // ---------------------------------------------------------------- 写
@@ -110,7 +100,7 @@ final class PrefsStore {
   /// 恢复出厂：把当前键抹掉，回到新默认。
   func resetToDefaults() {
     prefs = .defaults
-    storage.setPrefsData(nil, forKey: PrefsCodec.key)
+    storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
   }
 
   private func persist() {

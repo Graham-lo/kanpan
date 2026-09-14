@@ -17,7 +17,7 @@ struct PanelTheme: Sendable, Equatable {
   var dark: Bool { seed.dark }
 
   // 底 / 面
-  var app: Color { Color(hex: seed.app) }
+  var app: Color { Color(hex: chart.bg) }
   var raised: Color { Color(hex: seed.raised) }
   var raised2: Color { Color(hex: seed.raised2) }
   var chartBG: Color { Color(hex: seed.chart) }
@@ -42,6 +42,7 @@ struct PanelTheme: Sendable, Equatable {
   var down: Color { Color(hex: chart.down) }
 
   /// 分段控件选中那一格的底（原型 `--seg-on`）。
+  var badgeInk: Color { dark ? app : .white }
   var segOn: Color { seed.dark ? Color(hex: seed.raised) : .white }
   /// 开关关着时的槽（`--sw-off`）。
   var switchOff: Color { seed.dark ? Color(hex: seed.raised2) : Color(hex: seed.line) }
