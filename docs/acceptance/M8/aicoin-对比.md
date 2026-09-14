@@ -176,7 +176,7 @@ body  = evenUp(raw, body, wick)
 |---|---|---|
 | 「自动」**开**（默认） | 每次平移/缩放都按可见窗口**重新贴合**价格轴 | 一次横拖，轴从 `1349.58…1262.36` 变成 `1344.15…1262.51` |
 | 竖拖价格轴 → 切成**手动** | 刻度变成**绝对钉死**的区间，此后横向平移/缩放**一个像素都不动** | 跨度 81.6 → 102.8 之后连拖两次，七个标签 `1354.74 / 1339.55 / 1324.53 / 1309.68 / 1294.99 / 1280.47 / 1266.11` **逐字节相同** |
-| 复位 | 图区右上角出现一个复位钮；**手机版**把「对数/%/自动」三个钮换成一个圈着的「R」 | |
+| 复位 | 图区右上角出现一个复位钮 | 手机版的形态见 §7（当时写的「圈着的 R」是**错的**，已订正） |
 
 **我们改动前**：`PriceTransform.zoom` / `shift` 是**贴合结果上的相对倍率**，而
 `KanpanCore.priceRange(...)` 每帧都按可见 K 线重算贴合——所以「手动调好的价格刻度」
@@ -192,7 +192,7 @@ body  = evenUp(raw, body, wick)
 | `PriceAnchor.pan(range:dy:pane:mode:)` —— 手动档下的整段平移 | 同上 |
 | 竖拖价格轴改成写 `pinned`；单指拖图的竖向分量在钉住时也走 `pan` | `ChartView+Gesture.swift` |
 | 捏合冻结在钉住时**不参与**（`freeze` 解出的是 `pinned == nil` 的变换，会把钉子拔掉） | 同上 |
-| 圈着的「R」复位钮：`Layout.autoFitButton` / `hitsAutoFit` + `ChartRenderer.drawAutoFitButton` + `ChartView.resetPriceScale()`（240ms 三次缓出，插值的是**钉子本身**，所以缓动过程中也不会边动边重新贴合） | `Layout.swift` / `ChartRenderer.swift` / `ChartView+Gesture.swift` |
+| 复位钮：`Layout.autoFitButton` / `hitsAutoFit` + `ChartRenderer.drawAutoFitButton` + `ChartView.resetPriceScale()`（240ms 三次缓出，插值的是**钉子本身**，所以缓动过程中也不会边动边重新贴合）。**造型与位置后来按安卓包实测订正过，见 §7** | `Layout.swift` / `ChartRenderer.swift` / `ChartView+Gesture.swift` |
 
 为什么 `pin` 能解析求解：区间一旦是绝对的，`yOf` 在正向空间里就是线性的，于是
 `u = (pane.y + pane.h - y) / pane.h；newSpan = span / factor；newA = f(p) - u × newSpan`。
@@ -361,3 +361,43 @@ python3 scratchpad/vert.py     # 网格行列、面板分隔线
 make core-test    # 含「价格轴手动定标」11 条
 make chart-test   # 含 176 张像素基线
 ```
+
+---
+
+## 7. 订正：复位钮是「A」不是「R」，弱徽章不是描边钮
+
+写 §5 那一节时我手上只有 AiCoin **桌面版**的截图，桌面版价格轴右下角是「对数 / % / 自动」
+三个钮。手机版长什么样我没有证据，却写成了「官方自己收成一个圈着的 R」并照着实现了——
+那是推断，不是实测。
+
+后来另一个会话把 AICoin 安卓包反编译出来，拿到了这颗钮的原始定义
+（`docs/AICoin-安卓包-UI规格提取.md` §3 / §23.3 / §23.4），三处都对不上：
+
+| | 我们改动前 | AICoin 安卓包实测 | 本次 |
+|---|---|---|---|
+| 字面 | 「R」 | `android:text="A"`（Auto） | 改成「A」 |
+| 造型 | 描边圆圈，`dim` 色 | 圆角 2dp 的实底小方块，灰字浅底 | 改成圆角 2pt 弱徽章：底 `crossBg`、字 `dim` |
+| 字重 | — | `D.t()` 挂载时强制 `Typeface.DEFAULT` + `setFakeBoldText(false)`，**明确非粗体** | 常规字重（本来就是） |
+| 内边距 | — | 上下 2dp / 左右 6dp，12sp | 上下 2pt / 左右 6pt，10pt（跟着我们自家轴字号，比例照它） |
+| 位置 | 价格轴底部、**时间轴上面**那一格 | 贴**主图区底边**，和「展开右侧面板」图标共用基线 | 改成贴主图区底边 |
+
+位置这条对我们比对它更要紧：AICoin 的主图底边和时间轴之间只隔着副图，而我们默认挂
+**MACD + RSI 两个副图**，时间轴离主图的价格刻度隔着大半屏——一个管价格轴的钮摆在那儿，
+用户根本不会把它和刚拖过的价格刻度联系起来。贴主图底边之后它正好落在价格轴最后一个
+刻度标签底下。
+
+**没照抄的一条**：AICoin 是 `layout_gravity="end"` + `marginEnd 18dp`。它的价格轴画在
+图表 View 内部，浮层得靠 `marginEnd` 躲开；我们的价格轴本来就是独立一列，所以跟着这一列
+里另外两个方块（最新价胶囊、倒计时）一样从 `plotW + 2` 起算——自家对齐比模仿它的
+gravity 重要。
+
+**颜色**：AICoin 用的是一组专门的中性色 `ui_kline_scale_auto_bg_color`（日 `#f3f5f7` /
+夜 `#303442`）。我们不新增颜色常数，借十字线读数那一对 `crossBg` / `crossInk`，理由和
+倒计时那格一样——它是浮在图上的一小块开关，跟行情无关，不该跟着涨跌色走，语义对得上。
+
+**显隐语义本来就对**：AICoin 的 `setOnMainYAxisScaleStateChanged` + `getIsMainYAxisScaled`
+决定徽章显隐，点一下 `chart.z()` 恢复自动后立刻消失——**不是常驻按钮**。我们的
+`PriceTransform.isManual` 是同一套语义，这条不用改。
+
+**不动像素基线**：徽章只在 `price.isManual` 时才画，A3.11 的 176 张取证帧全是自动档，
+一张都没动。

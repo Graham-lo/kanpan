@@ -221,19 +221,27 @@ public struct ChartRenderer {
     drawAutoFitButton(ctx, L: L, scale: s)
   }
 
-  /// 价格轴底下那个圈着的「R」：手动定标时才出现，点一下把价格轴交还给自动贴合。
+  /// 贴在主图底边的「A」徽章：手动定标时才出现，点一下把价格轴交还给自动贴合。
   ///
-  /// 位置和造型照 AiCoin 手机版（桌面版同一个位置放的是「对数 / % / 自动」三个钮，
-  /// 手机宽度不够，官方自己就收成了一个「R」）。手势那头在 `Layout.hitsAutoFit`。
+  /// 字面、造型、锚点全部照 AICoin 安卓包实测（`#tv_scale_auto` 的 XML + `D.t()` 的
+  /// 运行时重刷，见 `docs/AICoin-安卓包-UI规格提取.md` §3 / §23.3）。从前这儿画的是
+  /// 一个圈着的「R」，出处是我自己没验证的推断——反编译结果是 `android:text="A"`，
+  /// 而且是**圆角 2dp 的灰字浅底弱徽章**，不是描边高亮钮。几何在 `Layout.autoFitButton`，
+  /// 手势那头在 `Layout.hitsAutoFit`。
+  ///
+  /// 底色借十字线读数那一对（`crossBg` / `crossInk`）而不是新增颜色常数，理由和倒计时
+  /// 那格一样：它是浮在图上的一小块读数/开关，跟行情无关，不该跟着涨跌色走。
+  /// AICoin 那边也是一组专门的中性色（`ui_kline_scale_auto_bg_color` 日 #f3f5f7 /
+  /// 夜 #303442），语义对得上。
   private func drawAutoFitButton(_ ctx: CGContext, L: Layout, scale s: Double) {
     guard state.price.isManual else { return }
     let t = state.colors
     let b = L.autoFitButton
     let rect = CGRect(x: b.x, y: b.y, width: b.w, height: b.h)
-    ctx.setLineWidth(1 / s)
-    ctx.setStrokeColor(Paint.cg(t.dim))
-    ctx.strokeEllipse(in: rect.insetBy(dx: 0.5 / s, dy: 0.5 / s))
-    "R".drawCentered(
+    ctx.setFillColor(Paint.cg(t.crossBg))
+    ctx.addRoundRect(rect, radius: 2)
+    ctx.fillPath()
+    "A".drawCentered(
       at: CGPoint(x: rect.midX, y: rect.midY), font: ChartFont.axis, color: t.dim)
   }
 

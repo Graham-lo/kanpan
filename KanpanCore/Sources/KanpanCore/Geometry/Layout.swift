@@ -31,16 +31,31 @@ public struct Layout: Sendable, Equatable {
   /// 价格轴宽（右侧）。
   public var axisW: Double { W - plotW }
 
-  /// 「回到自动贴合」的小钮，摆在价格轴底部、时间轴上面那一格。
+  /// 「回到自动贴合」的小徽章，贴在**主图区底边**、价格轴那一列里。
   ///
-  /// 位置照 AiCoin：桌面版那儿是「对数 / %  / 自动」三个钮，手机版地方不够，
-  /// 换成一个圈着的「R」。我们是手机，所以取手机那一版；「对数 / 百分比」两档在
-  /// 设置面板里已经有了（A6.8），这儿只留「自动」这一件事。
+  /// 只有手动定标（`PriceTransform.isManual`）时才画、才可点——它不是常驻按钮。
   ///
-  /// 只有手动定标（`PriceTransform.isManual`）时才画、才可点。
+  /// 造型与锚点照 AICoin 安卓包实测（`#tv_scale_auto`，见
+  /// `docs/AICoin-安卓包-UI规格提取.md` §3 / §23.3 / §23.4）：
+  ///
+  /// * **字面是「A」（Auto）不是「R」。** 从前这儿写的是一个圈着的「R」，注释里说是
+  ///   「照 AiCoin 手机版」——那是没验证过的推断。反编译出来的 XML 写死 `android:text="A"`。
+  /// * **弱徽章不是高亮按钮**：圆角 2dp 的小方块，灰字浅底。AICoin 把「回到最新」做成
+  ///   蓝底白字实心 chip、把「自动定标」做成灰字浅底弱徽章，视觉权重是刻意分级的。
+  /// * **贴主图区底边**，和「展开右侧面板」图标共用一条基线；不是挂在时间轴上面。
+  ///   这条对我们尤其要紧：挂了 MACD + RSI 两个副图之后，时间轴离主图的价格刻度隔着
+  ///   大半屏，一个管价格轴的钮摆在那儿等于找不到。
+  ///
+  /// 横向我们没照它的 `layout_gravity=end`：AICoin 的价格轴画在图里、浮层要 `marginEnd`
+  /// 躲开它，我们的价格轴本来就是独立一列，所以跟着列里另外两个方块（最新价胶囊、
+  /// 倒计时）一样从 `plotW + 2` 起算，自家对齐比模仿它的 gravity 重要。
   public var autoFitButton: (x: Double, y: Double, w: Double, h: Double) {
-    let d = min(22, max(14, axisW - 8))
-    return (x: plotW + (axisW - d) / 2, y: timeY - d - 6, w: d, h: d)
+    // 10pt 字 + 上下 2pt / 左右 6pt 的内边距，比例照 AICoin 的 12sp + 2dp/6dp。
+    // 字宽按等宽数字那一格算（`ChartFont.axis` 是 monospaced），免得 Core 依赖 UIKit。
+    let h = 14.0
+    let w = min(axisW - 4, 19)
+    let m = main
+    return (x: plotW + 2, y: m.y + m.h - h - 2, w: max(12, w), h: h)
   }
 
   /// 手指落在那个小钮上没有。判定范围比画出来的大一圈（44pt 的可点区域按不到就当没有）。

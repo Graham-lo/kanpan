@@ -22,7 +22,7 @@ final class GestureState {
     case axisPrice
     /// 底部时间轴：横拖缩放时间。
     case axisTime
-    /// 价格轴底下那个「R」：抬手就把价格轴交还给自动贴合。
+    /// 主图底边那个「A」徽章：抬手就把价格轴交还给自动贴合。
     case autoFit
   }
 
@@ -120,7 +120,7 @@ extension ChartView {
     gesture.axisRange = renderer?.priceRange(
       size: bounds.size, transform: state?.price ?? PriceTransform())
 
-    // 价格轴底下那个「R」（回到自动贴合）先截胡：它压在价格轴的可拖区域上，
+    // 主图底边那个「A」（回到自动贴合）先截胡：它压在价格轴的可拖区域上，
     // 不先判就永远只会被当成竖拖。手动定标时它才存在。
     if state?.price.isManual == true, L.hitsAutoFit(x: Double(q.x), y: Double(q.y)) {
       gesture.mode = .autoFit
@@ -221,7 +221,7 @@ extension ChartView {
     guard liftedAll || gesture.touches.isEmpty else { return }
     let mode = gesture.mode
     let moved = gesture.moved
-    // 抬手位置要在 `gesture.reset()` 之前拿——「R」小钮判「手指有没有跑出去」要用。
+    // 抬手位置要在 `gesture.reset()` 之前拿——「A」徽章判「手指有没有跑出去」要用。
     let endPoint = gesture.touches.first?.location(in: self) ?? gesture.startPoint
     let v = gesture.velocity.velocity
     let gap = now - gesture.lastMoveMs
@@ -510,7 +510,7 @@ extension ChartView {
     }
   }
 
-  /// 把价格轴交还给自动贴合（AiCoin 桌面版的「自动」、手机版价格轴底下那个圈着的「R」）。
+  /// 把价格轴交还给自动贴合（AiCoin 桌面版的「自动」钮、手机版贴在主图底边的「A」徽章）。
   ///
   /// 不硬切：钉住的区间和自动贴合出来的区间可能差一大截，直接赋值会「啪」地跳一下。
   /// 做法是先把目标区间**当成一次钉住**，再一帧帧把钉子从旧区间挪到新区间，落地那一帧

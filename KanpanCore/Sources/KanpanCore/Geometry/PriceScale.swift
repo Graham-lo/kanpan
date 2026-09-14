@@ -52,7 +52,7 @@ public struct PriceTransform: Sendable, Equatable {
   /// AiCoin 桌面版实测：价格轴右下角有「对数 / % / 自动」三个钮，默认「自动」＝每帧贴合；
   /// 一旦竖拖价格轴就切成手动，此后左右缩放**价格轴一个像素都不动**（同一段横向缩放，
   /// 自动档下轴从 1349.58…1262.36 跑到 1344.15…1262.51，手动档下前后逐字相同），
-  /// 并在图区右上角给出一个复位钮。手机版把那个位置换成一个圈着的「R」。
+  /// 并给出一个复位钮。手机版（AICoin 安卓包实测）是贴在主图底边的「A」弱徽章。
   ///
   /// `base`（百分比档的基准）不钉：它是可见区第一根的收盘，按定义就该跟着视野走。
   public var pinned: (lo: Double, hi: Double)?
@@ -60,7 +60,7 @@ public struct PriceTransform: Sendable, Equatable {
     self.mode = mode; self.zoom = zoom; self.shift = shift
   }
   public mutating func reset() { zoom = 1; shift = 0; pinned = nil }
-  /// 是否偏离了「自动贴合」。UI 的复位钮（AiCoin 手机版那个「R」）按这个决定露不露面。
+  /// 是否偏离了「自动贴合」。UI 的复位钮（手机版那个「A」徽章）按这个决定露不露面。
   public var isManual: Bool { pinned != nil || zoom != 1 || shift != 0 }
 
   public static func == (a: PriceTransform, b: PriceTransform) -> Bool {
