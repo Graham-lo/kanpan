@@ -46,7 +46,10 @@ public struct ChartRenderer {
   }
 
   /// 底图：背景、网格、K 线、叠加、画线、最新价、副图、时间轴、图例。
-  public func draw(in ctx: CGContext, size: CGSize, scale: CGFloat) {
+  ///
+  /// `live == false` 时跳过最新价——`ChartView` 把最新价放在单独一层（§5.7），
+  /// 由 `drawPlot` / `drawLive` 分别调进来。
+  public func draw(in ctx: CGContext, size: CGSize, scale: CGFloat, live: Bool = true) {
     guard !state.series.isEmpty else { return }
     let L = layout(size: size)
     let r = priceRange(size: size)
@@ -66,7 +69,7 @@ public struct ChartRenderer {
     drawCandles(ctx, pane: main, r: r, L: L, scale: s)
     drawOverlays(ctx, pane: main, r: r, L: L, scale: s)
     drawDrawings(ctx, pane: main, r: r, L: L, scale: s)
-    drawLastPrice(ctx, pane: main, r: r, L: L, scale: s)
+    if live { drawLastPrice(ctx, pane: main, r: r, L: L, scale: s) }
     for k in 1..<L.panes.count { drawSub(ctx, pane: L.panes[k], L: L, scale: s) }
     drawTimeAxis(ctx, L: L, scale: s)
     drawLegend(ctx, pane: main, L: L)
@@ -340,7 +343,7 @@ public struct ChartRenderer {
 
   // ---------------------------------------------------------------- 最新价
 
-  private func drawLastPrice(_ ctx: CGContext, pane: Pane, r: PriceRange, L: Layout, scale s: Double) {
+  func drawLastPrice(_ ctx: CGContext, pane: Pane, r: PriceRange, L: Layout, scale s: Double) {
     let b = state.series, t = state.colors
     let i = b.count - 1
     let p = b.close[i]

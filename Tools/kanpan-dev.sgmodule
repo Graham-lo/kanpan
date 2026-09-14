@@ -1,6 +1,20 @@
 #!name=看盘 开发期：只放行本项目进程
 #!desc=只让 kanpan-feed / Kanpan 这两个本项目进程访问币安行情流时走代理组，其余进程（含手机、币安 App、浏览器）一律维持主配置的 DIRECT 优化，一个字不改。
+#!category=Enhancements
 #!system=mac
+
+# 2026-09-14 排查记录（别再走一遍弯路）：
+# 这个模块是有效的——不带它，curl/裸连 fstream.binance.com 的 TLS Client Hello
+# 直接被 RST（NSURLErrorDomain -1200 / SSL_ERROR_SYSCALL）；挂上之后握手正常。
+# 但生产的 fstream 还有一层跟代理无关的毛病：WebSocket 握手 101 正常、
+# ping/pong 正常、SUBSCRIBE 有 {"result":null} 应答、LIST_SUBSCRIPTIONS 也确认
+# 订阅上了，可是 aggTrade / kline / ticker / markPrice / forceOrder /
+# continuousKline 一帧都不推；同一条连接上的 depth5、depth20、bookTicker
+# 每几十毫秒正常推（实测 20 秒 6582 帧 bookTicker）。
+# 换了新加坡机房、台湾机房、香港家宽、台湾家宽、新西兰家宽五个出口，结果一致，
+# 所以不是出口司法辖区、不是节点、不是 Surge。同一份代码打到测试网
+# fstream.binancefuture.com 则 kline/aggTrade 全部正常。
+# 结论：这是币安生产端对这几个频道的行为，开发期继续用测试网取证。
 
 [Rule]
 # 背景：
