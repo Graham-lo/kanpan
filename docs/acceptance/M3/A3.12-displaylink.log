@@ -1,0 +1,48 @@
+A3.12| 模式：--probe（带 1 Hz 观察定时器）
+A3.12| 已喂快照：BTCUSDT 1h，1000 根；画布 402×874@3x，主题 浅，风格 stout
+A3.12| 
+A3.12|       t  阶段        link      timestamp
+A3.12|   1.050  settled     paused    2940251.376415
+A3.12|       —  poke        setNeedsRedraw(.all)
+A3.12|   2.100  poked       RUNNING   2940251.376415
+A3.12|   3.150  repaused    paused    2940253.450000
+A3.12|       —  window      静止 30 秒开始（不碰屏幕）
+A3.12|   5.158  window      paused    2940253.450000
+A3.12|   6.158  window      paused    2940253.450000
+A3.12|   7.160  window      paused    2940253.450000
+A3.12|   8.160  window      paused    2940253.450000
+A3.12|   9.160  window      paused    2940253.450000
+A3.12|  10.160  window      paused    2940253.450000
+A3.12|  11.160  window      paused    2940253.450000
+A3.12|  12.160  window      paused    2940253.450000
+A3.12|  13.160  window      paused    2940253.450000
+A3.12|  14.160  window      paused    2940253.450000
+A3.12|  15.158  window      paused    2940253.450000
+A3.12|  16.159  window      paused    2940253.450000
+A3.12|  17.160  window      paused    2940253.450000
+A3.12|  18.159  window      paused    2940253.450000
+A3.12|  19.160  window      paused    2940253.450000
+A3.12|  20.159  window      paused    2940253.450000
+A3.12|  21.158  window      paused    2940253.450000
+A3.12|  22.159  window      paused    2940253.450000
+A3.12|  23.158  window      paused    2940253.450000
+A3.12|  24.158  window      paused    2940253.450000
+A3.12|  25.160  window      paused    2940253.450000
+A3.12|  26.158  window      paused    2940253.450000
+A3.12|  27.160  window      paused    2940253.450000
+A3.12|  28.160  window      paused    2940253.450000
+A3.12|  29.158  window      paused    2940253.450000
+A3.12|  30.158  window      paused    2940253.450000
+A3.12|  31.158  window      paused    2940253.450000
+A3.12|  32.159  window      paused    2940253.450000
+A3.12|  33.160  window      paused    2940253.450000
+A3.12|  34.158  window      paused    2940253.450000
+A3.12|  35.159  window      paused    2940253.450000
+A3.12| 
+A3.12| == 结论 ==
+A3.12| 静止窗口采样 31 次（1 Hz，30 秒）
+A3.12| 其中 isPaused == false（link 在跑）：0 次
+A3.12| 其中 没有 link 对象：0 次
+A3.12| 窗口内出现过的 link.timestamp 取值：1 个 → 2940253.450000
+A3.12| A3.12 前半句（静止时 DisplayLink 暂停）：通过
+com.mdd.kanpan.evidence: 85400

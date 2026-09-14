@@ -1,0 +1,6 @@
+run,trace,app_pid,wall_seconds,tp_samples_of_host,sample_weight_ms,host_cpu_ms,host_cpu_pct_time_profiler,ps_cpu_delta_seconds,host_cpu_pct_ps,chart_frames_in_samples,note
+1,run1（未留档）,88330,30.758283,1,1,1,0.003,0.00,<0.033,0,"并发：另一个会话同时在跑 make chart-test；唯一那次采样栈顶是 _dispatch_cache_cleanup"
+2,run2（未留档）,88330,30.800000,29,1,29,0.094,0.03,0.097,0,"29 次采样全挤在 23.3s-25.7s，栈根是 FBSWorkspaceScenesClient 推来的 scene 设置变更"
+3,作废,—,—,—,—,—,—,—,—,—,"模拟器被别的会话连 app 一起关掉，ps 读到空，本轮丢弃"
+4,run4（未留档，最干净的一轮）,92999,30.839351,0,1,0,0.000,0.00,<0.032,0,"模拟器上无其他 app 活动；Time Profiler 整段 30.8 秒一次都没采到本进程，trace 的 TOC 进程列表里根本没有它"
+5,docs/acceptance/M3/instruments/A3.12.trace,94491,30.876000,15,1,15,0.049,0.03,0.097,0,"留档的这一轮，由 Tools/a3.12-cpu.sh 跑出；15 次采样集中在 24.9s-25.9s，栈根同样是 FrontBoard 推来的 scene 设置变更，与绘制无关"
