@@ -1,0 +1,3855 @@
+{
+  "count": 183,
+  "images": [
+    {
+      "item": "A3.1",
+      "file": "P3-se-light-stout-01.png",
+      "app": "M3-se-light-stout-01.png",
+      "device": "se",
+      "theme": "light",
+      "style": "stout",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 9.199999999991341,
+      "bars": 35,
+      "thin": false,
+      "bytes": 117852
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-light-indigo-02.png",
+      "app": "M3-se-light-indigo-02.png",
+      "device": "se",
+      "theme": "light",
+      "style": "indigo",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 4.8,
+      "bars": 65,
+      "thin": false,
+      "bytes": 116320
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-light-glow-03.png",
+      "app": "M3-se-light-glow-03.png",
+      "device": "se",
+      "theme": "light",
+      "style": "glow",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 7.199999999999999,
+      "bars": 45,
+      "thin": false,
+      "bytes": 121466
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-light-airy-04.png",
+      "app": "M3-se-light-airy-04.png",
+      "device": "se",
+      "theme": "light",
+      "style": "airy",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 10.999999999988084,
+      "bars": 29,
+      "thin": false,
+      "bytes": 109118
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-light-brick-05.png",
+      "app": "M3-se-light-brick-05.png",
+      "device": "se",
+      "theme": "light",
+      "style": "brick",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 8.399999999995714,
+      "bars": 38,
+      "thin": false,
+      "bytes": 117551
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-light-needle-06.png",
+      "app": "M3-se-light-needle-06.png",
+      "device": "se",
+      "theme": "light",
+      "style": "needle",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 7.800000000001977,
+      "bars": 41,
+      "thin": false,
+      "bytes": 114072
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-light-pill-07.png",
+      "app": "M3-se-light-pill-07.png",
+      "device": "se",
+      "theme": "light",
+      "style": "pill",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 6.599999999997506,
+      "bars": 49,
+      "thin": false,
+      "bytes": 113828
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-light-paper-08.png",
+      "app": "M3-se-light-paper-08.png",
+      "device": "se",
+      "theme": "light",
+      "style": "paper",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 6.4,
+      "bars": 51,
+      "thin": false,
+      "bytes": 123004
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-light-outline-09.png",
+      "app": "M3-se-light-outline-09.png",
+      "device": "se",
+      "theme": "light",
+      "style": "outline",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 7.59999999999556,
+      "bars": 43,
+      "thin": false,
+      "bytes": 118622
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-light-bone-10.png",
+      "app": "M3-se-light-bone-10.png",
+      "device": "se",
+      "theme": "light",
+      "style": "bone",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 3.399999999999443,
+      "bars": 94,
+      "thin": false,
+      "bytes": 123941
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-light-dense-11.png",
+      "app": "M3-se-light-dense-11.png",
+      "device": "se",
+      "theme": "light",
+      "style": "dense",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 2.5999999999997896,
+      "bars": 124,
+      "thin": false,
+      "bytes": 133110
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-dark-stout-01.png",
+      "app": "M3-se-dark-stout-01.png",
+      "device": "se",
+      "theme": "dark",
+      "style": "stout",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 9.199999999991341,
+      "bars": 35,
+      "thin": false,
+      "bytes": 116069
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-dark-indigo-02.png",
+      "app": "M3-se-dark-indigo-02.png",
+      "device": "se",
+      "theme": "dark",
+      "style": "indigo",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 4.8,
+      "bars": 65,
+      "thin": false,
+      "bytes": 114621
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-dark-glow-03.png",
+      "app": "M3-se-dark-glow-03.png",
+      "device": "se",
+      "theme": "dark",
+      "style": "glow",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 7.199999999999999,
+      "bars": 45,
+      "thin": false,
+      "bytes": 119438
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-dark-airy-04.png",
+      "app": "M3-se-dark-airy-04.png",
+      "device": "se",
+      "theme": "dark",
+      "style": "airy",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 10.999999999988084,
+      "bars": 29,
+      "thin": false,
+      "bytes": 107253
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-dark-brick-05.png",
+      "app": "M3-se-dark-brick-05.png",
+      "device": "se",
+      "theme": "dark",
+      "style": "brick",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 8.399999999995714,
+      "bars": 38,
+      "thin": false,
+      "bytes": 115623
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-dark-needle-06.png",
+      "app": "M3-se-dark-needle-06.png",
+      "device": "se",
+      "theme": "dark",
+      "style": "needle",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 7.800000000001977,
+      "bars": 41,
+      "thin": false,
+      "bytes": 112746
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-dark-pill-07.png",
+      "app": "M3-se-dark-pill-07.png",
+      "device": "se",
+      "theme": "dark",
+      "style": "pill",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 6.599999999997506,
+      "bars": 49,
+      "thin": false,
+      "bytes": 112057
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-dark-paper-08.png",
+      "app": "M3-se-dark-paper-08.png",
+      "device": "se",
+      "theme": "dark",
+      "style": "paper",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 6.4,
+      "bars": 51,
+      "thin": false,
+      "bytes": 120939
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-dark-outline-09.png",
+      "app": "M3-se-dark-outline-09.png",
+      "device": "se",
+      "theme": "dark",
+      "style": "outline",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 7.59999999999556,
+      "bars": 43,
+      "thin": false,
+      "bytes": 116364
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-dark-bone-10.png",
+      "app": "M3-se-dark-bone-10.png",
+      "device": "se",
+      "theme": "dark",
+      "style": "bone",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 3.399999999999443,
+      "bars": 94,
+      "thin": false,
+      "bytes": 122110
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-se-dark-dense-11.png",
+      "app": "M3-se-dark-dense-11.png",
+      "device": "se",
+      "theme": "dark",
+      "style": "dense",
+      "pt": [
+        375,
+        667
+      ],
+      "scale": 2,
+      "px": [
+        750,
+        1334
+      ],
+      "spacing": 2.5999999999997896,
+      "bars": 124,
+      "thin": false,
+      "bytes": 131352
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-light-stout-01.png",
+      "app": "M3-mini-light-stout-01.png",
+      "device": "mini",
+      "theme": "light",
+      "style": "stout",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 9.199999999991341,
+      "bars": 35,
+      "thin": false,
+      "bytes": 215085
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-light-indigo-02.png",
+      "app": "M3-mini-light-indigo-02.png",
+      "device": "mini",
+      "theme": "light",
+      "style": "indigo",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 4.8,
+      "bars": 65,
+      "thin": false,
+      "bytes": 212725
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-light-glow-03.png",
+      "app": "M3-mini-light-glow-03.png",
+      "device": "mini",
+      "theme": "light",
+      "style": "glow",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 7.199999999999999,
+      "bars": 45,
+      "thin": false,
+      "bytes": 220143
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-light-airy-04.png",
+      "app": "M3-mini-light-airy-04.png",
+      "device": "mini",
+      "theme": "light",
+      "style": "airy",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 10.999999999988084,
+      "bars": 29,
+      "thin": false,
+      "bytes": 206872
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-light-brick-05.png",
+      "app": "M3-mini-light-brick-05.png",
+      "device": "mini",
+      "theme": "light",
+      "style": "brick",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 8.399999999995714,
+      "bars": 38,
+      "thin": false,
+      "bytes": 212371
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-light-needle-06.png",
+      "app": "M3-mini-light-needle-06.png",
+      "device": "mini",
+      "theme": "light",
+      "style": "needle",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 7.800000000001977,
+      "bars": 41,
+      "thin": false,
+      "bytes": 215647
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-light-pill-07.png",
+      "app": "M3-mini-light-pill-07.png",
+      "device": "mini",
+      "theme": "light",
+      "style": "pill",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 6.599999999997506,
+      "bars": 49,
+      "thin": false,
+      "bytes": 217469
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-light-paper-08.png",
+      "app": "M3-mini-light-paper-08.png",
+      "device": "mini",
+      "theme": "light",
+      "style": "paper",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 6.4,
+      "bars": 51,
+      "thin": false,
+      "bytes": 214304
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-light-outline-09.png",
+      "app": "M3-mini-light-outline-09.png",
+      "device": "mini",
+      "theme": "light",
+      "style": "outline",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 7.59999999999556,
+      "bars": 43,
+      "thin": false,
+      "bytes": 211149
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-light-bone-10.png",
+      "app": "M3-mini-light-bone-10.png",
+      "device": "mini",
+      "theme": "light",
+      "style": "bone",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 3.399999999999443,
+      "bars": 94,
+      "thin": false,
+      "bytes": 221249
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-light-dense-11.png",
+      "app": "M3-mini-light-dense-11.png",
+      "device": "mini",
+      "theme": "light",
+      "style": "dense",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 2.5999999999997896,
+      "bars": 124,
+      "thin": false,
+      "bytes": 234344
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-dark-stout-01.png",
+      "app": "M3-mini-dark-stout-01.png",
+      "device": "mini",
+      "theme": "dark",
+      "style": "stout",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 9.199999999991341,
+      "bars": 35,
+      "thin": false,
+      "bytes": 211716
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-dark-indigo-02.png",
+      "app": "M3-mini-dark-indigo-02.png",
+      "device": "mini",
+      "theme": "dark",
+      "style": "indigo",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 4.8,
+      "bars": 65,
+      "thin": false,
+      "bytes": 210438
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-dark-glow-03.png",
+      "app": "M3-mini-dark-glow-03.png",
+      "device": "mini",
+      "theme": "dark",
+      "style": "glow",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 7.199999999999999,
+      "bars": 45,
+      "thin": false,
+      "bytes": 218039
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-dark-airy-04.png",
+      "app": "M3-mini-dark-airy-04.png",
+      "device": "mini",
+      "theme": "dark",
+      "style": "airy",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 10.999999999988084,
+      "bars": 29,
+      "thin": false,
+      "bytes": 203974
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-dark-brick-05.png",
+      "app": "M3-mini-dark-brick-05.png",
+      "device": "mini",
+      "theme": "dark",
+      "style": "brick",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 8.399999999995714,
+      "bars": 38,
+      "thin": false,
+      "bytes": 209325
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-dark-needle-06.png",
+      "app": "M3-mini-dark-needle-06.png",
+      "device": "mini",
+      "theme": "dark",
+      "style": "needle",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 7.800000000001977,
+      "bars": 41,
+      "thin": false,
+      "bytes": 214404
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-dark-pill-07.png",
+      "app": "M3-mini-dark-pill-07.png",
+      "device": "mini",
+      "theme": "dark",
+      "style": "pill",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 6.599999999997506,
+      "bars": 49,
+      "thin": false,
+      "bytes": 214253
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-dark-paper-08.png",
+      "app": "M3-mini-dark-paper-08.png",
+      "device": "mini",
+      "theme": "dark",
+      "style": "paper",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 6.4,
+      "bars": 51,
+      "thin": false,
+      "bytes": 213370
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-dark-outline-09.png",
+      "app": "M3-mini-dark-outline-09.png",
+      "device": "mini",
+      "theme": "dark",
+      "style": "outline",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 7.59999999999556,
+      "bars": 43,
+      "thin": false,
+      "bytes": 209420
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-dark-bone-10.png",
+      "app": "M3-mini-dark-bone-10.png",
+      "device": "mini",
+      "theme": "dark",
+      "style": "bone",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 3.399999999999443,
+      "bars": 94,
+      "thin": false,
+      "bytes": 218735
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-mini-dark-dense-11.png",
+      "app": "M3-mini-dark-dense-11.png",
+      "device": "mini",
+      "theme": "dark",
+      "style": "dense",
+      "pt": [
+        375,
+        812
+      ],
+      "scale": 3,
+      "px": [
+        1125,
+        2436
+      ],
+      "spacing": 2.5999999999997896,
+      "bars": 124,
+      "thin": false,
+      "bytes": 232765
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-light-stout-01.png",
+      "app": "M3-std-light-stout-01.png",
+      "device": "std",
+      "theme": "light",
+      "style": "stout",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 9.200000000000745,
+      "bars": 37,
+      "thin": false,
+      "bytes": 224552
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-light-indigo-02.png",
+      "app": "M3-std-light-indigo-02.png",
+      "device": "std",
+      "theme": "light",
+      "style": "indigo",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 4.8,
+      "bars": 69,
+      "thin": false,
+      "bytes": 224271
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-light-glow-03.png",
+      "app": "M3-std-light-glow-03.png",
+      "device": "std",
+      "theme": "light",
+      "style": "glow",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 7.199999999999999,
+      "bars": 47,
+      "thin": false,
+      "bytes": 229627
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-light-airy-04.png",
+      "app": "M3-std-light-airy-04.png",
+      "device": "std",
+      "theme": "light",
+      "style": "airy",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 10.999999999997746,
+      "bars": 31,
+      "thin": false,
+      "bytes": 218338
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-light-brick-05.png",
+      "app": "M3-std-light-brick-05.png",
+      "device": "std",
+      "theme": "light",
+      "style": "brick",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 8.400000000006086,
+      "bars": 40,
+      "thin": false,
+      "bytes": 222692
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-light-needle-06.png",
+      "app": "M3-std-light-needle-06.png",
+      "device": "std",
+      "theme": "light",
+      "style": "needle",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 7.8000000000056176,
+      "bars": 43,
+      "thin": false,
+      "bytes": 226311
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-light-pill-07.png",
+      "app": "M3-std-light-pill-07.png",
+      "device": "std",
+      "theme": "light",
+      "style": "pill",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 6.6000000000000005,
+      "bars": 51,
+      "thin": false,
+      "bytes": 230729
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-light-paper-08.png",
+      "app": "M3-std-light-paper-08.png",
+      "device": "std",
+      "theme": "light",
+      "style": "paper",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 6.4,
+      "bars": 53,
+      "thin": false,
+      "bytes": 224185
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-light-outline-09.png",
+      "app": "M3-std-light-outline-09.png",
+      "device": "std",
+      "theme": "light",
+      "style": "outline",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 7.6000000000036065,
+      "bars": 45,
+      "thin": false,
+      "bytes": 222775
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-light-bone-10.png",
+      "app": "M3-std-light-bone-10.png",
+      "device": "std",
+      "theme": "light",
+      "style": "bone",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 3.4000000000005284,
+      "bars": 99,
+      "thin": false,
+      "bytes": 232898
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-light-dense-11.png",
+      "app": "M3-std-light-dense-11.png",
+      "device": "std",
+      "theme": "light",
+      "style": "dense",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 2.5999999999997008,
+      "bars": 130,
+      "thin": false,
+      "bytes": 248023
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-dark-stout-01.png",
+      "app": "M3-std-dark-stout-01.png",
+      "device": "std",
+      "theme": "dark",
+      "style": "stout",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 9.200000000000745,
+      "bars": 37,
+      "thin": false,
+      "bytes": 222485
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-dark-indigo-02.png",
+      "app": "M3-std-dark-indigo-02.png",
+      "device": "std",
+      "theme": "dark",
+      "style": "indigo",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 4.8,
+      "bars": 69,
+      "thin": false,
+      "bytes": 221591
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-dark-glow-03.png",
+      "app": "M3-std-dark-glow-03.png",
+      "device": "std",
+      "theme": "dark",
+      "style": "glow",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 7.199999999999999,
+      "bars": 47,
+      "thin": false,
+      "bytes": 227667
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-dark-airy-04.png",
+      "app": "M3-std-dark-airy-04.png",
+      "device": "std",
+      "theme": "dark",
+      "style": "airy",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 10.999999999997746,
+      "bars": 31,
+      "thin": false,
+      "bytes": 215193
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-dark-brick-05.png",
+      "app": "M3-std-dark-brick-05.png",
+      "device": "std",
+      "theme": "dark",
+      "style": "brick",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 8.400000000006086,
+      "bars": 40,
+      "thin": false,
+      "bytes": 219774
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-dark-needle-06.png",
+      "app": "M3-std-dark-needle-06.png",
+      "device": "std",
+      "theme": "dark",
+      "style": "needle",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 7.8000000000056176,
+      "bars": 43,
+      "thin": false,
+      "bytes": 224372
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-dark-pill-07.png",
+      "app": "M3-std-dark-pill-07.png",
+      "device": "std",
+      "theme": "dark",
+      "style": "pill",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 6.6000000000000005,
+      "bars": 51,
+      "thin": false,
+      "bytes": 227994
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-dark-paper-08.png",
+      "app": "M3-std-dark-paper-08.png",
+      "device": "std",
+      "theme": "dark",
+      "style": "paper",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 6.4,
+      "bars": 53,
+      "thin": false,
+      "bytes": 222175
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-dark-outline-09.png",
+      "app": "M3-std-dark-outline-09.png",
+      "device": "std",
+      "theme": "dark",
+      "style": "outline",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 7.6000000000036065,
+      "bars": 45,
+      "thin": false,
+      "bytes": 221567
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-dark-bone-10.png",
+      "app": "M3-std-dark-bone-10.png",
+      "device": "std",
+      "theme": "dark",
+      "style": "bone",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 3.4000000000005284,
+      "bars": 99,
+      "thin": false,
+      "bytes": 230141
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-std-dark-dense-11.png",
+      "app": "M3-std-dark-dense-11.png",
+      "device": "std",
+      "theme": "dark",
+      "style": "dense",
+      "pt": [
+        393,
+        852
+      ],
+      "scale": 3,
+      "px": [
+        1179,
+        2556
+      ],
+      "spacing": 2.5999999999997008,
+      "bars": 130,
+      "thin": false,
+      "bytes": 245802
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-light-stout-01.png",
+      "app": "M3-pro-light-stout-01.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "stout",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 9.20000000000508,
+      "bars": 38,
+      "thin": false,
+      "bytes": 230434
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-light-indigo-02.png",
+      "app": "M3-pro-light-indigo-02.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "indigo",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 4.8,
+      "bars": 71,
+      "thin": false,
+      "bytes": 230351
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-light-glow-03.png",
+      "app": "M3-pro-light-glow-03.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "glow",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 7.199999999999999,
+      "bars": 48,
+      "thin": false,
+      "bytes": 233969
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-light-airy-04.png",
+      "app": "M3-pro-light-airy-04.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "airy",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 11.000000000002194,
+      "bars": 32,
+      "thin": false,
+      "bytes": 222474
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-light-brick-05.png",
+      "app": "M3-pro-light-brick-05.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "brick",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 8.400000000003951,
+      "bars": 41,
+      "thin": false,
+      "bytes": 229006
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-light-needle-06.png",
+      "app": "M3-pro-light-needle-06.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "needle",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 7.79999999999544,
+      "bars": 44,
+      "thin": false,
+      "bytes": 230993
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-light-pill-07.png",
+      "app": "M3-pro-light-pill-07.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "pill",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 6.59999999999693,
+      "bars": 52,
+      "thin": false,
+      "bytes": 236649
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-light-paper-08.png",
+      "app": "M3-pro-light-paper-08.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "paper",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 6.4,
+      "bars": 54,
+      "thin": false,
+      "bytes": 229185
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-light-outline-09.png",
+      "app": "M3-pro-light-outline-09.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "outline",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 7.6000000000017565,
+      "bars": 46,
+      "thin": false,
+      "bytes": 227182
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-light-bone-10.png",
+      "app": "M3-pro-light-bone-10.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "bone",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 3.4000000000010306,
+      "bars": 101,
+      "thin": false,
+      "bytes": 238121
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-light-dense-11.png",
+      "app": "M3-pro-light-dense-11.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "dense",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 2.600000000000292,
+      "bars": 133,
+      "thin": false,
+      "bytes": 253851
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-dark-stout-01.png",
+      "app": "M3-pro-dark-stout-01.png",
+      "device": "pro",
+      "theme": "dark",
+      "style": "stout",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 9.20000000000508,
+      "bars": 38,
+      "thin": false,
+      "bytes": 227206
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-dark-indigo-02.png",
+      "app": "M3-pro-dark-indigo-02.png",
+      "device": "pro",
+      "theme": "dark",
+      "style": "indigo",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 4.8,
+      "bars": 71,
+      "thin": false,
+      "bytes": 226972
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-dark-glow-03.png",
+      "app": "M3-pro-dark-glow-03.png",
+      "device": "pro",
+      "theme": "dark",
+      "style": "glow",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 7.199999999999999,
+      "bars": 48,
+      "thin": false,
+      "bytes": 231352
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-dark-airy-04.png",
+      "app": "M3-pro-dark-airy-04.png",
+      "device": "pro",
+      "theme": "dark",
+      "style": "airy",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 11.000000000002194,
+      "bars": 32,
+      "thin": false,
+      "bytes": 219406
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-dark-brick-05.png",
+      "app": "M3-pro-dark-brick-05.png",
+      "device": "pro",
+      "theme": "dark",
+      "style": "brick",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 8.400000000003951,
+      "bars": 41,
+      "thin": false,
+      "bytes": 225973
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-dark-needle-06.png",
+      "app": "M3-pro-dark-needle-06.png",
+      "device": "pro",
+      "theme": "dark",
+      "style": "needle",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 7.79999999999544,
+      "bars": 44,
+      "thin": false,
+      "bytes": 229088
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-dark-pill-07.png",
+      "app": "M3-pro-dark-pill-07.png",
+      "device": "pro",
+      "theme": "dark",
+      "style": "pill",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 6.59999999999693,
+      "bars": 52,
+      "thin": false,
+      "bytes": 233468
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-dark-paper-08.png",
+      "app": "M3-pro-dark-paper-08.png",
+      "device": "pro",
+      "theme": "dark",
+      "style": "paper",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 6.4,
+      "bars": 54,
+      "thin": false,
+      "bytes": 227310
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-dark-outline-09.png",
+      "app": "M3-pro-dark-outline-09.png",
+      "device": "pro",
+      "theme": "dark",
+      "style": "outline",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 7.6000000000017565,
+      "bars": 46,
+      "thin": false,
+      "bytes": 225369
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-dark-bone-10.png",
+      "app": "M3-pro-dark-bone-10.png",
+      "device": "pro",
+      "theme": "dark",
+      "style": "bone",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 3.4000000000010306,
+      "bars": 101,
+      "thin": false,
+      "bytes": 235365
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-pro-dark-dense-11.png",
+      "app": "M3-pro-dark-dense-11.png",
+      "device": "pro",
+      "theme": "dark",
+      "style": "dense",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 2.600000000000292,
+      "bars": 133,
+      "thin": false,
+      "bytes": 251815
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-light-stout-01.png",
+      "app": "M3-air-light-stout-01.png",
+      "device": "air",
+      "theme": "light",
+      "style": "stout",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 9.199999999997242,
+      "bars": 39,
+      "thin": false,
+      "bytes": 240968
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-light-indigo-02.png",
+      "app": "M3-air-light-indigo-02.png",
+      "device": "air",
+      "theme": "light",
+      "style": "indigo",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 4.8,
+      "bars": 74,
+      "thin": false,
+      "bytes": 241049
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-light-glow-03.png",
+      "app": "M3-air-light-glow-03.png",
+      "device": "air",
+      "theme": "light",
+      "style": "glow",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 7.199999999999999,
+      "bars": 51,
+      "thin": false,
+      "bytes": 246239
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-light-airy-04.png",
+      "app": "M3-air-light-airy-04.png",
+      "device": "air",
+      "theme": "light",
+      "style": "airy",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 11.00000000001042,
+      "bars": 33,
+      "thin": false,
+      "bytes": 233995
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-light-brick-05.png",
+      "app": "M3-air-light-brick-05.png",
+      "device": "air",
+      "theme": "light",
+      "style": "brick",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 8.4,
+      "bars": 43,
+      "thin": false,
+      "bytes": 239765
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-light-needle-06.png",
+      "app": "M3-air-light-needle-06.png",
+      "device": "air",
+      "theme": "light",
+      "style": "needle",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 7.799999999999132,
+      "bars": 47,
+      "thin": false,
+      "bytes": 244872
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-light-pill-07.png",
+      "app": "M3-air-light-pill-07.png",
+      "device": "air",
+      "theme": "light",
+      "style": "pill",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 6.59999999999927,
+      "bars": 55,
+      "thin": false,
+      "bytes": 245393
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-light-paper-08.png",
+      "app": "M3-air-light-paper-08.png",
+      "device": "air",
+      "theme": "light",
+      "style": "paper",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 6.4,
+      "bars": 57,
+      "thin": false,
+      "bytes": 243023
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-light-outline-09.png",
+      "app": "M3-air-light-outline-09.png",
+      "device": "air",
+      "theme": "light",
+      "style": "outline",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 7.599999999998329,
+      "bars": 48,
+      "thin": false,
+      "bytes": 237201
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-light-bone-10.png",
+      "app": "M3-air-light-bone-10.png",
+      "device": "air",
+      "theme": "light",
+      "style": "bone",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 3.3999999999998773,
+      "bars": 106,
+      "thin": false,
+      "bytes": 255404
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-light-dense-11.png",
+      "app": "M3-air-light-dense-11.png",
+      "device": "air",
+      "theme": "light",
+      "style": "dense",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 2.6000000000001853,
+      "bars": 140,
+      "thin": false,
+      "bytes": 289552
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-dark-stout-01.png",
+      "app": "M3-air-dark-stout-01.png",
+      "device": "air",
+      "theme": "dark",
+      "style": "stout",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 9.199999999997242,
+      "bars": 39,
+      "thin": false,
+      "bytes": 238273
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-dark-indigo-02.png",
+      "app": "M3-air-dark-indigo-02.png",
+      "device": "air",
+      "theme": "dark",
+      "style": "indigo",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 4.8,
+      "bars": 74,
+      "thin": false,
+      "bytes": 238499
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-dark-glow-03.png",
+      "app": "M3-air-dark-glow-03.png",
+      "device": "air",
+      "theme": "dark",
+      "style": "glow",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 7.199999999999999,
+      "bars": 51,
+      "thin": false,
+      "bytes": 244009
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-dark-airy-04.png",
+      "app": "M3-air-dark-airy-04.png",
+      "device": "air",
+      "theme": "dark",
+      "style": "airy",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 11.00000000001042,
+      "bars": 33,
+      "thin": false,
+      "bytes": 230255
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-dark-brick-05.png",
+      "app": "M3-air-dark-brick-05.png",
+      "device": "air",
+      "theme": "dark",
+      "style": "brick",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 8.4,
+      "bars": 43,
+      "thin": false,
+      "bytes": 237300
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-dark-needle-06.png",
+      "app": "M3-air-dark-needle-06.png",
+      "device": "air",
+      "theme": "dark",
+      "style": "needle",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 7.799999999999132,
+      "bars": 47,
+      "thin": false,
+      "bytes": 242228
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-dark-pill-07.png",
+      "app": "M3-air-dark-pill-07.png",
+      "device": "air",
+      "theme": "dark",
+      "style": "pill",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 6.59999999999927,
+      "bars": 55,
+      "thin": false,
+      "bytes": 241824
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-dark-paper-08.png",
+      "app": "M3-air-dark-paper-08.png",
+      "device": "air",
+      "theme": "dark",
+      "style": "paper",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 6.4,
+      "bars": 57,
+      "thin": false,
+      "bytes": 240312
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-dark-outline-09.png",
+      "app": "M3-air-dark-outline-09.png",
+      "device": "air",
+      "theme": "dark",
+      "style": "outline",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 7.599999999998329,
+      "bars": 48,
+      "thin": false,
+      "bytes": 234894
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-dark-bone-10.png",
+      "app": "M3-air-dark-bone-10.png",
+      "device": "air",
+      "theme": "dark",
+      "style": "bone",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 3.3999999999998773,
+      "bars": 106,
+      "thin": false,
+      "bytes": 252205
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-air-dark-dense-11.png",
+      "app": "M3-air-dark-dense-11.png",
+      "device": "air",
+      "theme": "dark",
+      "style": "dense",
+      "pt": [
+        420,
+        912
+      ],
+      "scale": 3,
+      "px": [
+        1260,
+        2736
+      ],
+      "spacing": 2.6000000000001853,
+      "bars": 140,
+      "thin": false,
+      "bytes": 285748
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-light-stout-01.png",
+      "app": "M3-plus-light-stout-01.png",
+      "device": "plus",
+      "theme": "light",
+      "style": "stout",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 9.199999999996646,
+      "bars": 41,
+      "thin": false,
+      "bytes": 245408
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-light-indigo-02.png",
+      "app": "M3-plus-light-indigo-02.png",
+      "device": "plus",
+      "theme": "light",
+      "style": "indigo",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 4.800000000000001,
+      "bars": 76,
+      "thin": false,
+      "bytes": 250056
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-light-glow-03.png",
+      "app": "M3-plus-light-glow-03.png",
+      "device": "plus",
+      "theme": "light",
+      "style": "glow",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 7.2,
+      "bars": 52,
+      "thin": false,
+      "bytes": 254614
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-light-airy-04.png",
+      "app": "M3-plus-light-airy-04.png",
+      "device": "plus",
+      "theme": "light",
+      "style": "airy",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 10.999999999989864,
+      "bars": 34,
+      "thin": false,
+      "bytes": 238939
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-light-brick-05.png",
+      "app": "M3-plus-light-brick-05.png",
+      "device": "plus",
+      "theme": "light",
+      "style": "brick",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 8.400000000003656,
+      "bars": 44,
+      "thin": false,
+      "bytes": 245091
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-light-needle-06.png",
+      "app": "M3-plus-light-needle-06.png",
+      "device": "plus",
+      "theme": "light",
+      "style": "needle",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 7.799999999994935,
+      "bars": 48,
+      "thin": false,
+      "bytes": 251525
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-light-pill-07.png",
+      "app": "M3-plus-light-pill-07.png",
+      "device": "plus",
+      "theme": "light",
+      "style": "pill",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 6.599999999997869,
+      "bars": 56,
+      "thin": false,
+      "bytes": 254100
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-light-paper-08.png",
+      "app": "M3-plus-light-paper-08.png",
+      "device": "plus",
+      "theme": "light",
+      "style": "paper",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 6.4,
+      "bars": 59,
+      "thin": false,
+      "bytes": 252380
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-light-outline-09.png",
+      "app": "M3-plus-light-outline-09.png",
+      "device": "plus",
+      "theme": "light",
+      "style": "outline",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 7.6,
+      "bars": 49,
+      "thin": false,
+      "bytes": 242338
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-light-bone-10.png",
+      "app": "M3-plus-light-bone-10.png",
+      "device": "plus",
+      "theme": "light",
+      "style": "bone",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 3.399999999999283,
+      "bars": 109,
+      "thin": false,
+      "bytes": 265171
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-light-dense-11.png",
+      "app": "M3-plus-light-dense-11.png",
+      "device": "plus",
+      "theme": "light",
+      "style": "dense",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 2.6,
+      "bars": 143,
+      "thin": false,
+      "bytes": 295554
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-dark-stout-01.png",
+      "app": "M3-plus-dark-stout-01.png",
+      "device": "plus",
+      "theme": "dark",
+      "style": "stout",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 9.199999999996646,
+      "bars": 41,
+      "thin": false,
+      "bytes": 243228
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-dark-indigo-02.png",
+      "app": "M3-plus-dark-indigo-02.png",
+      "device": "plus",
+      "theme": "dark",
+      "style": "indigo",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 4.800000000000001,
+      "bars": 76,
+      "thin": false,
+      "bytes": 247339
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-dark-glow-03.png",
+      "app": "M3-plus-dark-glow-03.png",
+      "device": "plus",
+      "theme": "dark",
+      "style": "glow",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 7.2,
+      "bars": 52,
+      "thin": false,
+      "bytes": 251886
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-dark-airy-04.png",
+      "app": "M3-plus-dark-airy-04.png",
+      "device": "plus",
+      "theme": "dark",
+      "style": "airy",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 10.999999999989864,
+      "bars": 34,
+      "thin": false,
+      "bytes": 235401
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-dark-brick-05.png",
+      "app": "M3-plus-dark-brick-05.png",
+      "device": "plus",
+      "theme": "dark",
+      "style": "brick",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 8.400000000003656,
+      "bars": 44,
+      "thin": false,
+      "bytes": 242694
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-dark-needle-06.png",
+      "app": "M3-plus-dark-needle-06.png",
+      "device": "plus",
+      "theme": "dark",
+      "style": "needle",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 7.799999999994935,
+      "bars": 48,
+      "thin": false,
+      "bytes": 248540
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-dark-pill-07.png",
+      "app": "M3-plus-dark-pill-07.png",
+      "device": "plus",
+      "theme": "dark",
+      "style": "pill",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 6.599999999997869,
+      "bars": 56,
+      "thin": false,
+      "bytes": 250081
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-dark-paper-08.png",
+      "app": "M3-plus-dark-paper-08.png",
+      "device": "plus",
+      "theme": "dark",
+      "style": "paper",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 6.4,
+      "bars": 59,
+      "thin": false,
+      "bytes": 249072
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-dark-outline-09.png",
+      "app": "M3-plus-dark-outline-09.png",
+      "device": "plus",
+      "theme": "dark",
+      "style": "outline",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 7.6,
+      "bars": 49,
+      "thin": false,
+      "bytes": 240038
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-dark-bone-10.png",
+      "app": "M3-plus-dark-bone-10.png",
+      "device": "plus",
+      "theme": "dark",
+      "style": "bone",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 3.399999999999283,
+      "bars": 109,
+      "thin": false,
+      "bytes": 261481
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-plus-dark-dense-11.png",
+      "app": "M3-plus-dark-dense-11.png",
+      "device": "plus",
+      "theme": "dark",
+      "style": "dense",
+      "pt": [
+        430,
+        932
+      ],
+      "scale": 3,
+      "px": [
+        1290,
+        2796
+      ],
+      "spacing": 2.6,
+      "bars": 143,
+      "thin": false,
+      "bytes": 292490
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-light-stout-01.png",
+      "app": "M3-max-light-stout-01.png",
+      "device": "max",
+      "theme": "light",
+      "style": "stout",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 9.19999999999608,
+      "bars": 42,
+      "thin": false,
+      "bytes": 253552
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-light-indigo-02.png",
+      "app": "M3-max-light-indigo-02.png",
+      "device": "max",
+      "theme": "light",
+      "style": "indigo",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 4.8,
+      "bars": 78,
+      "thin": false,
+      "bytes": 255774
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-light-glow-03.png",
+      "app": "M3-max-light-glow-03.png",
+      "device": "max",
+      "theme": "light",
+      "style": "glow",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 7.2,
+      "bars": 53,
+      "thin": false,
+      "bytes": 261288
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-light-airy-04.png",
+      "app": "M3-max-light-airy-04.png",
+      "device": "max",
+      "theme": "light",
+      "style": "airy",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 10.999999999992106,
+      "bars": 35,
+      "thin": false,
+      "bytes": 245396
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-light-brick-05.png",
+      "app": "M3-max-light-brick-05.png",
+      "device": "max",
+      "theme": "light",
+      "style": "brick",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 8.39999999999466,
+      "bars": 45,
+      "thin": false,
+      "bytes": 251824
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-light-needle-06.png",
+      "app": "M3-max-light-needle-06.png",
+      "device": "max",
+      "theme": "light",
+      "style": "needle",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 7.800000000001645,
+      "bars": 49,
+      "thin": false,
+      "bytes": 257113
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-light-pill-07.png",
+      "app": "M3-max-light-pill-07.png",
+      "device": "max",
+      "theme": "light",
+      "style": "pill",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 6.599999999996539,
+      "bars": 58,
+      "thin": false,
+      "bytes": 261618
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-light-paper-08.png",
+      "app": "M3-max-light-paper-08.png",
+      "device": "max",
+      "theme": "light",
+      "style": "paper",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 6.4,
+      "bars": 60,
+      "thin": false,
+      "bytes": 258321
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-light-outline-09.png",
+      "app": "M3-max-light-outline-09.png",
+      "device": "max",
+      "theme": "light",
+      "style": "outline",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 7.600000000001586,
+      "bars": 51,
+      "thin": false,
+      "bytes": 252627
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-light-bone-10.png",
+      "app": "M3-max-light-bone-10.png",
+      "device": "max",
+      "theme": "light",
+      "style": "bone",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 3.4000000000006985,
+      "bars": 112,
+      "thin": false,
+      "bytes": 272818
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-light-dense-11.png",
+      "app": "M3-max-light-dense-11.png",
+      "device": "max",
+      "theme": "light",
+      "style": "dense",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 2.599999999999824,
+      "bars": 147,
+      "thin": false,
+      "bytes": 304870
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-dark-stout-01.png",
+      "app": "M3-max-dark-stout-01.png",
+      "device": "max",
+      "theme": "dark",
+      "style": "stout",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 9.19999999999608,
+      "bars": 42,
+      "thin": false,
+      "bytes": 250911
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-dark-indigo-02.png",
+      "app": "M3-max-dark-indigo-02.png",
+      "device": "max",
+      "theme": "dark",
+      "style": "indigo",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 4.8,
+      "bars": 78,
+      "thin": false,
+      "bytes": 252934
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-dark-glow-03.png",
+      "app": "M3-max-dark-glow-03.png",
+      "device": "max",
+      "theme": "dark",
+      "style": "glow",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 7.2,
+      "bars": 53,
+      "thin": false,
+      "bytes": 259260
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-dark-airy-04.png",
+      "app": "M3-max-dark-airy-04.png",
+      "device": "max",
+      "theme": "dark",
+      "style": "airy",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 10.999999999992106,
+      "bars": 35,
+      "thin": false,
+      "bytes": 242188
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-dark-brick-05.png",
+      "app": "M3-max-dark-brick-05.png",
+      "device": "max",
+      "theme": "dark",
+      "style": "brick",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 8.39999999999466,
+      "bars": 45,
+      "thin": false,
+      "bytes": 248384
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-dark-needle-06.png",
+      "app": "M3-max-dark-needle-06.png",
+      "device": "max",
+      "theme": "dark",
+      "style": "needle",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 7.800000000001645,
+      "bars": 49,
+      "thin": false,
+      "bytes": 254403
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-dark-pill-07.png",
+      "app": "M3-max-dark-pill-07.png",
+      "device": "max",
+      "theme": "dark",
+      "style": "pill",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 6.599999999996539,
+      "bars": 58,
+      "thin": false,
+      "bytes": 260167
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-dark-paper-08.png",
+      "app": "M3-max-dark-paper-08.png",
+      "device": "max",
+      "theme": "dark",
+      "style": "paper",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 6.4,
+      "bars": 60,
+      "thin": false,
+      "bytes": 256459
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-dark-outline-09.png",
+      "app": "M3-max-dark-outline-09.png",
+      "device": "max",
+      "theme": "dark",
+      "style": "outline",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 7.600000000001586,
+      "bars": 51,
+      "thin": false,
+      "bytes": 249629
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-dark-bone-10.png",
+      "app": "M3-max-dark-bone-10.png",
+      "device": "max",
+      "theme": "dark",
+      "style": "bone",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 3.4000000000006985,
+      "bars": 112,
+      "thin": false,
+      "bytes": 268969
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-max-dark-dense-11.png",
+      "app": "M3-max-dark-dense-11.png",
+      "device": "max",
+      "theme": "dark",
+      "style": "dense",
+      "pt": [
+        440,
+        956
+      ],
+      "scale": 3,
+      "px": [
+        1320,
+        2868
+      ],
+      "spacing": 2.599999999999824,
+      "bars": 147,
+      "thin": false,
+      "bytes": 300913
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-light-stout-01.png",
+      "app": "M3-ipad-light-stout-01.png",
+      "device": "ipad",
+      "theme": "light",
+      "style": "stout",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 9.200000000001818,
+      "bars": 73,
+      "thin": false,
+      "bytes": 231952
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-light-indigo-02.png",
+      "app": "M3-ipad-light-indigo-02.png",
+      "device": "ipad",
+      "theme": "light",
+      "style": "indigo",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 4.8,
+      "bars": 138,
+      "thin": false,
+      "bytes": 267039
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-light-glow-03.png",
+      "app": "M3-ipad-light-glow-03.png",
+      "device": "ipad",
+      "theme": "light",
+      "style": "glow",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 7.2,
+      "bars": 93,
+      "thin": false,
+      "bytes": 243553
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-light-airy-04.png",
+      "app": "M3-ipad-light-airy-04.png",
+      "device": "ipad",
+      "theme": "light",
+      "style": "airy",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 11,
+      "bars": 61,
+      "thin": false,
+      "bytes": 220246
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-light-brick-05.png",
+      "app": "M3-ipad-light-brick-05.png",
+      "device": "ipad",
+      "theme": "light",
+      "style": "brick",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 8.399999999999007,
+      "bars": 79,
+      "thin": false,
+      "bytes": 230033
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-light-needle-06.png",
+      "app": "M3-ipad-light-needle-06.png",
+      "device": "ipad",
+      "theme": "light",
+      "style": "needle",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 7.80000000000276,
+      "bars": 86,
+      "thin": false,
+      "bytes": 216400
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-light-pill-07.png",
+      "app": "M3-ipad-light-pill-07.png",
+      "device": "ipad",
+      "theme": "light",
+      "style": "pill",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 6.599999999999223,
+      "bars": 101,
+      "thin": false,
+      "bytes": 242079
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-light-paper-08.png",
+      "app": "M3-ipad-light-paper-08.png",
+      "device": "ipad",
+      "theme": "light",
+      "style": "paper",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 6.4,
+      "bars": 105,
+      "thin": false,
+      "bytes": 245410
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-light-outline-09.png",
+      "app": "M3-ipad-light-outline-09.png",
+      "device": "ipad",
+      "theme": "light",
+      "style": "outline",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 7.600000000000891,
+      "bars": 88,
+      "thin": false,
+      "bytes": 233381
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-light-bone-10.png",
+      "app": "M3-ipad-light-bone-10.png",
+      "device": "ipad",
+      "theme": "light",
+      "style": "bone",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 3.400000000000461,
+      "bars": 196,
+      "thin": false,
+      "bytes": 281933
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-light-dense-11.png",
+      "app": "M3-ipad-light-dense-11.png",
+      "device": "ipad",
+      "theme": "light",
+      "style": "dense",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 2.59999999999985,
+      "bars": 257,
+      "thin": false,
+      "bytes": 274820
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-dark-stout-01.png",
+      "app": "M3-ipad-dark-stout-01.png",
+      "device": "ipad",
+      "theme": "dark",
+      "style": "stout",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 9.200000000001818,
+      "bars": 73,
+      "thin": false,
+      "bytes": 228301
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-dark-indigo-02.png",
+      "app": "M3-ipad-dark-indigo-02.png",
+      "device": "ipad",
+      "theme": "dark",
+      "style": "indigo",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 4.8,
+      "bars": 138,
+      "thin": false,
+      "bytes": 264326
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-dark-glow-03.png",
+      "app": "M3-ipad-dark-glow-03.png",
+      "device": "ipad",
+      "theme": "dark",
+      "style": "glow",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 7.2,
+      "bars": 93,
+      "thin": false,
+      "bytes": 239769
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-dark-airy-04.png",
+      "app": "M3-ipad-dark-airy-04.png",
+      "device": "ipad",
+      "theme": "dark",
+      "style": "airy",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 11,
+      "bars": 61,
+      "thin": false,
+      "bytes": 216993
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-dark-brick-05.png",
+      "app": "M3-ipad-dark-brick-05.png",
+      "device": "ipad",
+      "theme": "dark",
+      "style": "brick",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 8.399999999999007,
+      "bars": 79,
+      "thin": false,
+      "bytes": 226720
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-dark-needle-06.png",
+      "app": "M3-ipad-dark-needle-06.png",
+      "device": "ipad",
+      "theme": "dark",
+      "style": "needle",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 7.80000000000276,
+      "bars": 86,
+      "thin": false,
+      "bytes": 215024
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-dark-pill-07.png",
+      "app": "M3-ipad-dark-pill-07.png",
+      "device": "ipad",
+      "theme": "dark",
+      "style": "pill",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 6.599999999999223,
+      "bars": 101,
+      "thin": false,
+      "bytes": 237740
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-dark-paper-08.png",
+      "app": "M3-ipad-dark-paper-08.png",
+      "device": "ipad",
+      "theme": "dark",
+      "style": "paper",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 6.4,
+      "bars": 105,
+      "thin": false,
+      "bytes": 240818
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-dark-outline-09.png",
+      "app": "M3-ipad-dark-outline-09.png",
+      "device": "ipad",
+      "theme": "dark",
+      "style": "outline",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 7.600000000000891,
+      "bars": 88,
+      "thin": false,
+      "bytes": 229954
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-dark-bone-10.png",
+      "app": "M3-ipad-dark-bone-10.png",
+      "device": "ipad",
+      "theme": "dark",
+      "style": "bone",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 3.400000000000461,
+      "bars": 196,
+      "thin": false,
+      "bytes": 277168
+    },
+    {
+      "item": "A3.1",
+      "file": "P3-ipad-dark-dense-11.png",
+      "app": "M3-ipad-dark-dense-11.png",
+      "device": "ipad",
+      "theme": "dark",
+      "style": "dense",
+      "pt": [
+        744,
+        1133
+      ],
+      "scale": 2,
+      "px": [
+        1488,
+        2266
+      ],
+      "spacing": 2.59999999999985,
+      "bars": 257,
+      "thin": false,
+      "bytes": 271275
+    },
+    {
+      "item": "A3.6",
+      "file": "P3-pro-light-sub-macd-12.png",
+      "app": "M3-pro-light-sub-macd-12.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "stout",
+      "sub": "MACD",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 9.20000000000508,
+      "bars": 38,
+      "thin": false,
+      "bytes": 154060
+    },
+    {
+      "item": "A3.6",
+      "file": "P3-pro-light-sub-rsi-13.png",
+      "app": "M3-pro-light-sub-rsi-13.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "stout",
+      "sub": "RSI",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 9.20000000000508,
+      "bars": 38,
+      "thin": false,
+      "bytes": 156033
+    },
+    {
+      "item": "A3.6",
+      "file": "P3-pro-light-sub-kdj-14.png",
+      "app": "M3-pro-light-sub-kdj-14.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "stout",
+      "sub": "KDJ",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 9.20000000000508,
+      "bars": 38,
+      "thin": false,
+      "bytes": 161721
+    },
+    {
+      "item": "A3.6",
+      "file": "P3-pro-light-sub-srsi-15.png",
+      "app": "M3-pro-light-sub-srsi-15.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "stout",
+      "sub": "SRSI",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 9.20000000000508,
+      "bars": 38,
+      "thin": false,
+      "bytes": 158147
+    },
+    {
+      "item": "A3.6",
+      "file": "P3-pro-light-sub-atr-16.png",
+      "app": "M3-pro-light-sub-atr-16.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "stout",
+      "sub": "ATR",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 9.20000000000508,
+      "bars": 38,
+      "thin": false,
+      "bytes": 138101
+    },
+    {
+      "item": "A3.6",
+      "file": "P3-pro-light-sub-vol-17.png",
+      "app": "M3-pro-light-sub-vol-17.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "stout",
+      "sub": "VOL",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 9.20000000000508,
+      "bars": 38,
+      "thin": false,
+      "bytes": 148080
+    },
+    {
+      "item": "A3.6",
+      "file": "P3-pro-light-sub-oi-18.png",
+      "app": "M3-pro-light-sub-oi-18.png",
+      "device": "pro",
+      "theme": "light",
+      "style": "stout",
+      "sub": "OI",
+      "pt": [
+        402,
+        874
+      ],
+      "scale": 3,
+      "px": [
+        1206,
+        2622
+      ],
+      "spacing": 9.20000000000508,
+      "bars": 38,
+      "thin": false,
+      "bytes": 156121
+    }
+  ]
+}

@@ -1,0 +1,2971 @@
+{
+  "item": "A3.1/A3.6 副图分区拆分：图例条 vs 绘图区",
+  "note": "subLegend = 每个副图面板顶部的图例文字行（高 16pt，含指标名与数值）；subPlot = 副图面板去掉图例行后的绘图区。r = 三通道最大差 > 0 的像素占比，r64 = 差值 > 64 的像素占比。目的：区分「字体光栅化差异」与「图形绘制差异」。",
+  "count": 183,
+  "summary": {
+    "subLegend": {
+      "r": {
+        "min": 0.0535,
+        "median": 0.15018,
+        "max": 0.20305,
+        "mean": 0.149559
+      },
+      "r64": {
+        "min": 0.04189,
+        "median": 0.11153,
+        "max": 0.14688,
+        "mean": 0.107555
+      }
+    },
+    "subPlot": {
+      "r": {
+        "min": 0.01119,
+        "median": 0.03365,
+        "max": 0.23974,
+        "mean": 0.037304
+      },
+      "r64": {
+        "min": 0,
+        "median": 0.00015,
+        "max": 0.00071,
+        "mean": 0.00018
+      },
+      "max": {
+        "min": 67,
+        "median": 93,
+        "max": 230,
+        "mean": 95.928962
+      }
+    }
+  },
+  "rows": [
+    {
+      "app": "M3-se-light-stout-01.png",
+      "device": "se",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.20049,
+        "r64": 0.13434
+      },
+      "subPlot": {
+        "r": 0.04015,
+        "r64": 0.00024,
+        "max": 99
+      }
+    },
+    {
+      "app": "M3-se-light-indigo-02.png",
+      "device": "se",
+      "style": "indigo",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19799,
+        "r64": 0.13265
+      },
+      "subPlot": {
+        "r": 0.04269,
+        "r64": 0.00046,
+        "max": 94
+      }
+    },
+    {
+      "app": "M3-se-light-glow-03.png",
+      "device": "se",
+      "style": "glow",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19676,
+        "r64": 0.13184
+      },
+      "subPlot": {
+        "r": 0.04672,
+        "r64": 0.00031,
+        "max": 89
+      }
+    },
+    {
+      "app": "M3-se-light-airy-04.png",
+      "device": "se",
+      "style": "airy",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.20305,
+        "r64": 0.13605
+      },
+      "subPlot": {
+        "r": 0.0356,
+        "r64": 0.00025,
+        "max": 112
+      }
+    },
+    {
+      "app": "M3-se-light-brick-05.png",
+      "device": "se",
+      "style": "brick",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19923,
+        "r64": 0.1335
+      },
+      "subPlot": {
+        "r": 0.0438,
+        "r64": 0.00022,
+        "max": 92
+      }
+    },
+    {
+      "app": "M3-se-light-needle-06.png",
+      "device": "se",
+      "style": "needle",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19799,
+        "r64": 0.13267
+      },
+      "subPlot": {
+        "r": 0.04405,
+        "r64": 0.00036,
+        "max": 90
+      }
+    },
+    {
+      "app": "M3-se-light-pill-07.png",
+      "device": "se",
+      "style": "pill",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19676,
+        "r64": 0.13184
+      },
+      "subPlot": {
+        "r": 0.04605,
+        "r64": 0.00038,
+        "max": 92
+      }
+    },
+    {
+      "app": "M3-se-light-paper-08.png",
+      "device": "se",
+      "style": "paper",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19435,
+        "r64": 0.13023
+      },
+      "subPlot": {
+        "r": 0.0509,
+        "r64": 0.00034,
+        "max": 89
+      }
+    },
+    {
+      "app": "M3-se-light-outline-09.png",
+      "device": "se",
+      "style": "outline",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19556,
+        "r64": 0.13104
+      },
+      "subPlot": {
+        "r": 0.04982,
+        "r64": 0.00028,
+        "max": 92
+      }
+    },
+    {
+      "app": "M3-se-light-bone-10.png",
+      "device": "se",
+      "style": "bone",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19201,
+        "r64": 0.12866
+      },
+      "subPlot": {
+        "r": 0.05752,
+        "r64": 0.00055,
+        "max": 94
+      }
+    },
+    {
+      "app": "M3-se-light-dense-11.png",
+      "device": "se",
+      "style": "dense",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.18971,
+        "r64": 0.12712
+      },
+      "subPlot": {
+        "r": 0.06773,
+        "r64": 0.00071,
+        "max": 124
+      }
+    },
+    {
+      "app": "M3-se-dark-stout-01.png",
+      "device": "se",
+      "style": "stout",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19933,
+        "r64": 0.12921
+      },
+      "subPlot": {
+        "r": 0.04111,
+        "r64": 0.00013,
+        "max": 75
+      }
+    },
+    {
+      "app": "M3-se-dark-indigo-02.png",
+      "device": "se",
+      "style": "indigo",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19684,
+        "r64": 0.12753
+      },
+      "subPlot": {
+        "r": 0.0431,
+        "r64": 0.00028,
+        "max": 85
+      }
+    },
+    {
+      "app": "M3-se-dark-glow-03.png",
+      "device": "se",
+      "style": "glow",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19563,
+        "r64": 0.12681
+      },
+      "subPlot": {
+        "r": 0.04824,
+        "r64": 0.00013,
+        "max": 73
+      }
+    },
+    {
+      "app": "M3-se-dark-airy-04.png",
+      "device": "se",
+      "style": "airy",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.20188,
+        "r64": 0.13087
+      },
+      "subPlot": {
+        "r": 0.03628,
+        "r64": 0.00015,
+        "max": 93
+      }
+    },
+    {
+      "app": "M3-se-dark-brick-05.png",
+      "device": "se",
+      "style": "brick",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19808,
+        "r64": 0.12841
+      },
+      "subPlot": {
+        "r": 0.04428,
+        "r64": 0.00013,
+        "max": 98
+      }
+    },
+    {
+      "app": "M3-se-dark-needle-06.png",
+      "device": "se",
+      "style": "needle",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19684,
+        "r64": 0.1276
+      },
+      "subPlot": {
+        "r": 0.04464,
+        "r64": 0.00016,
+        "max": 90
+      }
+    },
+    {
+      "app": "M3-se-dark-pill-07.png",
+      "device": "se",
+      "style": "pill",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19563,
+        "r64": 0.12681
+      },
+      "subPlot": {
+        "r": 0.04687,
+        "r64": 0.00016,
+        "max": 79
+      }
+    },
+    {
+      "app": "M3-se-dark-paper-08.png",
+      "device": "se",
+      "style": "paper",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19323,
+        "r64": 0.12526
+      },
+      "subPlot": {
+        "r": 0.05139,
+        "r64": 0.00016,
+        "max": 82
+      }
+    },
+    {
+      "app": "M3-se-dark-outline-09.png",
+      "device": "se",
+      "style": "outline",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.19442,
+        "r64": 0.12604
+      },
+      "subPlot": {
+        "r": 0.05083,
+        "r64": 0.00011,
+        "max": 86
+      }
+    },
+    {
+      "app": "M3-se-dark-bone-10.png",
+      "device": "se",
+      "style": "bone",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.1909,
+        "r64": 0.12375
+      },
+      "subPlot": {
+        "r": 0.05804,
+        "r64": 0.00026,
+        "max": 83
+      }
+    },
+    {
+      "app": "M3-se-dark-dense-11.png",
+      "device": "se",
+      "style": "dense",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.18862,
+        "r64": 0.12227
+      },
+      "subPlot": {
+        "r": 0.06841,
+        "r64": 0.00037,
+        "max": 94
+      }
+    },
+    {
+      "app": "M3-mini-light-stout-01.png",
+      "device": "mini",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.17205,
+        "r64": 0.12876
+      },
+      "subPlot": {
+        "r": 0.02758,
+        "r64": 0.00018,
+        "max": 96
+      }
+    },
+    {
+      "app": "M3-mini-light-indigo-02.png",
+      "device": "mini",
+      "style": "indigo",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16991,
+        "r64": 0.12715
+      },
+      "subPlot": {
+        "r": 0.02948,
+        "r64": 0.00021,
+        "max": 116
+      }
+    },
+    {
+      "app": "M3-mini-light-glow-03.png",
+      "device": "mini",
+      "style": "glow",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16886,
+        "r64": 0.12638
+      },
+      "subPlot": {
+        "r": 0.03268,
+        "r64": 0.00022,
+        "max": 100
+      }
+    },
+    {
+      "app": "M3-mini-light-airy-04.png",
+      "device": "mini",
+      "style": "airy",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.17425,
+        "r64": 0.13042
+      },
+      "subPlot": {
+        "r": 0.02449,
+        "r64": 0.00015,
+        "max": 85
+      }
+    },
+    {
+      "app": "M3-mini-light-brick-05.png",
+      "device": "mini",
+      "style": "brick",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.17098,
+        "r64": 0.12796
+      },
+      "subPlot": {
+        "r": 0.03036,
+        "r64": 0.00016,
+        "max": 95
+      }
+    },
+    {
+      "app": "M3-mini-light-needle-06.png",
+      "device": "mini",
+      "style": "needle",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16991,
+        "r64": 0.12717
+      },
+      "subPlot": {
+        "r": 0.02985,
+        "r64": 0.00022,
+        "max": 109
+      }
+    },
+    {
+      "app": "M3-mini-light-pill-07.png",
+      "device": "mini",
+      "style": "pill",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16886,
+        "r64": 0.12638
+      },
+      "subPlot": {
+        "r": 0.03178,
+        "r64": 0.00017,
+        "max": 94
+      }
+    },
+    {
+      "app": "M3-mini-light-paper-08.png",
+      "device": "mini",
+      "style": "paper",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.1668,
+        "r64": 0.12483
+      },
+      "subPlot": {
+        "r": 0.03479,
+        "r64": 0.00019,
+        "max": 112
+      }
+    },
+    {
+      "app": "M3-mini-light-outline-09.png",
+      "device": "mini",
+      "style": "outline",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16782,
+        "r64": 0.1256
+      },
+      "subPlot": {
+        "r": 0.03405,
+        "r64": 0.00017,
+        "max": 93
+      }
+    },
+    {
+      "app": "M3-mini-light-bone-10.png",
+      "device": "mini",
+      "style": "bone",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16478,
+        "r64": 0.12332
+      },
+      "subPlot": {
+        "r": 0.03999,
+        "r64": 0.00034,
+        "max": 120
+      }
+    },
+    {
+      "app": "M3-mini-light-dense-11.png",
+      "device": "mini",
+      "style": "dense",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16281,
+        "r64": 0.12185
+      },
+      "subPlot": {
+        "r": 0.04775,
+        "r64": 0.00051,
+        "max": 98
+      }
+    },
+    {
+      "app": "M3-mini-dark-stout-01.png",
+      "device": "mini",
+      "style": "stout",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.17151,
+        "r64": 0.12466
+      },
+      "subPlot": {
+        "r": 0.02956,
+        "r64": 0.00007,
+        "max": 81
+      }
+    },
+    {
+      "app": "M3-mini-dark-indigo-02.png",
+      "device": "mini",
+      "style": "indigo",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16937,
+        "r64": 0.12309
+      },
+      "subPlot": {
+        "r": 0.03052,
+        "r64": 0.00011,
+        "max": 91
+      }
+    },
+    {
+      "app": "M3-mini-dark-glow-03.png",
+      "device": "mini",
+      "style": "glow",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16832,
+        "r64": 0.12234
+      },
+      "subPlot": {
+        "r": 0.03457,
+        "r64": 0.00013,
+        "max": 90
+      }
+    },
+    {
+      "app": "M3-mini-dark-airy-04.png",
+      "device": "mini",
+      "style": "airy",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.17369,
+        "r64": 0.12625
+      },
+      "subPlot": {
+        "r": 0.02556,
+        "r64": 0.00009,
+        "max": 85
+      }
+    },
+    {
+      "app": "M3-mini-dark-brick-05.png",
+      "device": "mini",
+      "style": "brick",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.17043,
+        "r64": 0.12388
+      },
+      "subPlot": {
+        "r": 0.03268,
+        "r64": 0.00008,
+        "max": 84
+      }
+    },
+    {
+      "app": "M3-mini-dark-needle-06.png",
+      "device": "mini",
+      "style": "needle",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16937,
+        "r64": 0.12311
+      },
+      "subPlot": {
+        "r": 0.03124,
+        "r64": 0.00009,
+        "max": 90
+      }
+    },
+    {
+      "app": "M3-mini-dark-pill-07.png",
+      "device": "mini",
+      "style": "pill",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16832,
+        "r64": 0.12234
+      },
+      "subPlot": {
+        "r": 0.03293,
+        "r64": 0.00005,
+        "max": 82
+      }
+    },
+    {
+      "app": "M3-mini-dark-paper-08.png",
+      "device": "mini",
+      "style": "paper",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16626,
+        "r64": 0.12085
+      },
+      "subPlot": {
+        "r": 0.03681,
+        "r64": 0.00007,
+        "max": 96
+      }
+    },
+    {
+      "app": "M3-mini-dark-outline-09.png",
+      "device": "mini",
+      "style": "outline",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16728,
+        "r64": 0.12159
+      },
+      "subPlot": {
+        "r": 0.03614,
+        "r64": 0.00009,
+        "max": 84
+      }
+    },
+    {
+      "app": "M3-mini-dark-bone-10.png",
+      "device": "mini",
+      "style": "bone",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16426,
+        "r64": 0.11939
+      },
+      "subPlot": {
+        "r": 0.04095,
+        "r64": 0.00016,
+        "max": 95
+      }
+    },
+    {
+      "app": "M3-mini-dark-dense-11.png",
+      "device": "mini",
+      "style": "dense",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16229,
+        "r64": 0.11797
+      },
+      "subPlot": {
+        "r": 0.04904,
+        "r64": 0.00024,
+        "max": 86
+      }
+    },
+    {
+      "app": "M3-std-light-stout-01.png",
+      "device": "std",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16281,
+        "r64": 0.12185
+      },
+      "subPlot": {
+        "r": 0.02746,
+        "r64": 0.00015,
+        "max": 101
+      }
+    },
+    {
+      "app": "M3-std-light-indigo-02.png",
+      "device": "std",
+      "style": "indigo",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16089,
+        "r64": 0.1204
+      },
+      "subPlot": {
+        "r": 0.03015,
+        "r64": 0.00022,
+        "max": 98
+      }
+    },
+    {
+      "app": "M3-std-light-glow-03.png",
+      "device": "std",
+      "style": "glow",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15995,
+        "r64": 0.1197
+      },
+      "subPlot": {
+        "r": 0.03232,
+        "r64": 0.00017,
+        "max": 94
+      }
+    },
+    {
+      "app": "M3-std-light-airy-04.png",
+      "device": "std",
+      "style": "airy",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16478,
+        "r64": 0.12332
+      },
+      "subPlot": {
+        "r": 0.02418,
+        "r64": 0.00015,
+        "max": 101
+      }
+    },
+    {
+      "app": "M3-std-light-brick-05.png",
+      "device": "std",
+      "style": "brick",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16184,
+        "r64": 0.12112
+      },
+      "subPlot": {
+        "r": 0.02999,
+        "r64": 0.00014,
+        "max": 100
+      }
+    },
+    {
+      "app": "M3-std-light-needle-06.png",
+      "device": "std",
+      "style": "needle",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16089,
+        "r64": 0.12041
+      },
+      "subPlot": {
+        "r": 0.02988,
+        "r64": 0.00014,
+        "max": 105
+      }
+    },
+    {
+      "app": "M3-std-light-pill-07.png",
+      "device": "std",
+      "style": "pill",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15995,
+        "r64": 0.1197
+      },
+      "subPlot": {
+        "r": 0.03157,
+        "r64": 0.00015,
+        "max": 105
+      }
+    },
+    {
+      "app": "M3-std-light-paper-08.png",
+      "device": "std",
+      "style": "paper",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15809,
+        "r64": 0.11832
+      },
+      "subPlot": {
+        "r": 0.03438,
+        "r64": 0.00022,
+        "max": 102
+      }
+    },
+    {
+      "app": "M3-std-light-outline-09.png",
+      "device": "std",
+      "style": "outline",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15901,
+        "r64": 0.119
+      },
+      "subPlot": {
+        "r": 0.03378,
+        "r64": 0.00014,
+        "max": 94
+      }
+    },
+    {
+      "app": "M3-std-light-bone-10.png",
+      "device": "std",
+      "style": "bone",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15628,
+        "r64": 0.11696
+      },
+      "subPlot": {
+        "r": 0.03964,
+        "r64": 0.00032,
+        "max": 100
+      }
+    },
+    {
+      "app": "M3-std-light-dense-11.png",
+      "device": "std",
+      "style": "dense",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15451,
+        "r64": 0.11563
+      },
+      "subPlot": {
+        "r": 0.04771,
+        "r64": 0.00042,
+        "max": 120
+      }
+    },
+    {
+      "app": "M3-std-dark-stout-01.png",
+      "device": "std",
+      "style": "stout",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16229,
+        "r64": 0.11797
+      },
+      "subPlot": {
+        "r": 0.02954,
+        "r64": 0.00008,
+        "max": 85
+      }
+    },
+    {
+      "app": "M3-std-dark-indigo-02.png",
+      "device": "std",
+      "style": "indigo",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16037,
+        "r64": 0.11656
+      },
+      "subPlot": {
+        "r": 0.03112,
+        "r64": 0.00009,
+        "max": 93
+      }
+    },
+    {
+      "app": "M3-std-dark-glow-03.png",
+      "device": "std",
+      "style": "glow",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15943,
+        "r64": 0.11589
+      },
+      "subPlot": {
+        "r": 0.03432,
+        "r64": 0.00009,
+        "max": 82
+      }
+    },
+    {
+      "app": "M3-std-dark-airy-04.png",
+      "device": "std",
+      "style": "airy",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16426,
+        "r64": 0.11939
+      },
+      "subPlot": {
+        "r": 0.02523,
+        "r64": 0.00008,
+        "max": 91
+      }
+    },
+    {
+      "app": "M3-std-dark-brick-05.png",
+      "device": "std",
+      "style": "brick",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16133,
+        "r64": 0.11726
+      },
+      "subPlot": {
+        "r": 0.03227,
+        "r64": 0.00009,
+        "max": 94
+      }
+    },
+    {
+      "app": "M3-std-dark-needle-06.png",
+      "device": "std",
+      "style": "needle",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16038,
+        "r64": 0.11657
+      },
+      "subPlot": {
+        "r": 0.03116,
+        "r64": 0.00004,
+        "max": 76
+      }
+    },
+    {
+      "app": "M3-std-dark-pill-07.png",
+      "device": "std",
+      "style": "pill",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15943,
+        "r64": 0.11589
+      },
+      "subPlot": {
+        "r": 0.03264,
+        "r64": 0.00008,
+        "max": 92
+      }
+    },
+    {
+      "app": "M3-std-dark-paper-08.png",
+      "device": "std",
+      "style": "paper",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15759,
+        "r64": 0.11455
+      },
+      "subPlot": {
+        "r": 0.03625,
+        "r64": 0.0001,
+        "max": 87
+      }
+    },
+    {
+      "app": "M3-std-dark-outline-09.png",
+      "device": "std",
+      "style": "outline",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15851,
+        "r64": 0.11521
+      },
+      "subPlot": {
+        "r": 0.03599,
+        "r64": 0.00006,
+        "max": 85
+      }
+    },
+    {
+      "app": "M3-std-dark-bone-10.png",
+      "device": "std",
+      "style": "bone",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15578,
+        "r64": 0.11323
+      },
+      "subPlot": {
+        "r": 0.04068,
+        "r64": 0.00017,
+        "max": 100
+      }
+    },
+    {
+      "app": "M3-std-dark-dense-11.png",
+      "device": "std",
+      "style": "dense",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15402,
+        "r64": 0.11195
+      },
+      "subPlot": {
+        "r": 0.04913,
+        "r64": 0.00019,
+        "max": 90
+      }
+    },
+    {
+      "app": "M3-pro-light-stout-01.png",
+      "device": "pro",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15855,
+        "r64": 0.11866
+      },
+      "subPlot": {
+        "r": 0.02738,
+        "r64": 0.00019,
+        "max": 100
+      }
+    },
+    {
+      "app": "M3-pro-light-indigo-02.png",
+      "device": "pro",
+      "style": "indigo",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15673,
+        "r64": 0.11729
+      },
+      "subPlot": {
+        "r": 0.0302,
+        "r64": 0.00021,
+        "max": 109
+      }
+    },
+    {
+      "app": "M3-pro-light-glow-03.png",
+      "device": "pro",
+      "style": "glow",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15584,
+        "r64": 0.11663
+      },
+      "subPlot": {
+        "r": 0.03213,
+        "r64": 0.00015,
+        "max": 97
+      }
+    },
+    {
+      "app": "M3-pro-light-airy-04.png",
+      "device": "pro",
+      "style": "airy",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.16042,
+        "r64": 0.12005
+      },
+      "subPlot": {
+        "r": 0.02405,
+        "r64": 0.00013,
+        "max": 92
+      }
+    },
+    {
+      "app": "M3-pro-light-brick-05.png",
+      "device": "pro",
+      "style": "brick",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15763,
+        "r64": 0.11797
+      },
+      "subPlot": {
+        "r": 0.03024,
+        "r64": 0.00015,
+        "max": 92
+      }
+    },
+    {
+      "app": "M3-pro-light-needle-06.png",
+      "device": "pro",
+      "style": "needle",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15673,
+        "r64": 0.11729
+      },
+      "subPlot": {
+        "r": 0.02966,
+        "r64": 0.00019,
+        "max": 96
+      }
+    },
+    {
+      "app": "M3-pro-light-pill-07.png",
+      "device": "pro",
+      "style": "pill",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15584,
+        "r64": 0.11663
+      },
+      "subPlot": {
+        "r": 0.0313,
+        "r64": 0.00018,
+        "max": 90
+      }
+    },
+    {
+      "app": "M3-pro-light-paper-08.png",
+      "device": "pro",
+      "style": "paper",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15407,
+        "r64": 0.1153
+      },
+      "subPlot": {
+        "r": 0.03409,
+        "r64": 0.00018,
+        "max": 104
+      }
+    },
+    {
+      "app": "M3-pro-light-outline-09.png",
+      "device": "pro",
+      "style": "outline",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15494,
+        "r64": 0.11596
+      },
+      "subPlot": {
+        "r": 0.03343,
+        "r64": 0.00016,
+        "max": 107
+      }
+    },
+    {
+      "app": "M3-pro-light-bone-10.png",
+      "device": "pro",
+      "style": "bone",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15235,
+        "r64": 0.11402
+      },
+      "subPlot": {
+        "r": 0.03951,
+        "r64": 0.00035,
+        "max": 102
+      }
+    },
+    {
+      "app": "M3-pro-light-dense-11.png",
+      "device": "pro",
+      "style": "dense",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15066,
+        "r64": 0.11276
+      },
+      "subPlot": {
+        "r": 0.04732,
+        "r64": 0.00035,
+        "max": 103
+      }
+    },
+    {
+      "app": "M3-pro-dark-stout-01.png",
+      "device": "pro",
+      "style": "stout",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15804,
+        "r64": 0.11488
+      },
+      "subPlot": {
+        "r": 0.0294,
+        "r64": 0.00009,
+        "max": 99
+      }
+    },
+    {
+      "app": "M3-pro-dark-indigo-02.png",
+      "device": "pro",
+      "style": "indigo",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15623,
+        "r64": 0.11349
+      },
+      "subPlot": {
+        "r": 0.03125,
+        "r64": 0.00011,
+        "max": 91
+      }
+    },
+    {
+      "app": "M3-pro-dark-glow-03.png",
+      "device": "pro",
+      "style": "glow",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15534,
+        "r64": 0.11291
+      },
+      "subPlot": {
+        "r": 0.03415,
+        "r64": 0.00008,
+        "max": 94
+      }
+    },
+    {
+      "app": "M3-pro-dark-airy-04.png",
+      "device": "pro",
+      "style": "airy",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15991,
+        "r64": 0.11623
+      },
+      "subPlot": {
+        "r": 0.02503,
+        "r64": 0.00007,
+        "max": 83
+      }
+    },
+    {
+      "app": "M3-pro-dark-brick-05.png",
+      "device": "pro",
+      "style": "brick",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15713,
+        "r64": 0.11421
+      },
+      "subPlot": {
+        "r": 0.03256,
+        "r64": 0.00009,
+        "max": 80
+      }
+    },
+    {
+      "app": "M3-pro-dark-needle-06.png",
+      "device": "pro",
+      "style": "needle",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15623,
+        "r64": 0.11355
+      },
+      "subPlot": {
+        "r": 0.03101,
+        "r64": 0.00012,
+        "max": 79
+      }
+    },
+    {
+      "app": "M3-pro-dark-pill-07.png",
+      "device": "pro",
+      "style": "pill",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15534,
+        "r64": 0.11291
+      },
+      "subPlot": {
+        "r": 0.03241,
+        "r64": 0.00008,
+        "max": 82
+      }
+    },
+    {
+      "app": "M3-pro-dark-paper-08.png",
+      "device": "pro",
+      "style": "paper",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15358,
+        "r64": 0.11163
+      },
+      "subPlot": {
+        "r": 0.03595,
+        "r64": 0.0001,
+        "max": 88
+      }
+    },
+    {
+      "app": "M3-pro-dark-outline-09.png",
+      "device": "pro",
+      "style": "outline",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15446,
+        "r64": 0.11227
+      },
+      "subPlot": {
+        "r": 0.03558,
+        "r64": 0.00007,
+        "max": 86
+      }
+    },
+    {
+      "app": "M3-pro-dark-bone-10.png",
+      "device": "pro",
+      "style": "bone",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15186,
+        "r64": 0.11038
+      },
+      "subPlot": {
+        "r": 0.04053,
+        "r64": 0.00018,
+        "max": 101
+      }
+    },
+    {
+      "app": "M3-pro-dark-dense-11.png",
+      "device": "pro",
+      "style": "dense",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15018,
+        "r64": 0.10916
+      },
+      "subPlot": {
+        "r": 0.04868,
+        "r64": 0.00018,
+        "max": 87
+      }
+    },
+    {
+      "app": "M3-air-light-stout-01.png",
+      "device": "air",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15066,
+        "r64": 0.11276
+      },
+      "subPlot": {
+        "r": 0.02728,
+        "r64": 0.00016,
+        "max": 93
+      }
+    },
+    {
+      "app": "M3-air-light-indigo-02.png",
+      "device": "air",
+      "style": "indigo",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14902,
+        "r64": 0.11153
+      },
+      "subPlot": {
+        "r": 0.03034,
+        "r64": 0.00017,
+        "max": 128
+      }
+    },
+    {
+      "app": "M3-air-light-glow-03.png",
+      "device": "air",
+      "style": "glow",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14821,
+        "r64": 0.11092
+      },
+      "subPlot": {
+        "r": 0.03198,
+        "r64": 0.00012,
+        "max": 88
+      }
+    },
+    {
+      "app": "M3-air-light-airy-04.png",
+      "device": "air",
+      "style": "airy",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15235,
+        "r64": 0.11402
+      },
+      "subPlot": {
+        "r": 0.02364,
+        "r64": 0.00015,
+        "max": 113
+      }
+    },
+    {
+      "app": "M3-air-light-brick-05.png",
+      "device": "air",
+      "style": "brick",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14984,
+        "r64": 0.11214
+      },
+      "subPlot": {
+        "r": 0.02997,
+        "r64": 0.00012,
+        "max": 92
+      }
+    },
+    {
+      "app": "M3-air-light-needle-06.png",
+      "device": "air",
+      "style": "needle",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14902,
+        "r64": 0.11153
+      },
+      "subPlot": {
+        "r": 0.02943,
+        "r64": 0.0002,
+        "max": 107
+      }
+    },
+    {
+      "app": "M3-air-light-pill-07.png",
+      "device": "air",
+      "style": "pill",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14821,
+        "r64": 0.11092
+      },
+      "subPlot": {
+        "r": 0.0309,
+        "r64": 0.00015,
+        "max": 96
+      }
+    },
+    {
+      "app": "M3-air-light-paper-08.png",
+      "device": "air",
+      "style": "paper",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14662,
+        "r64": 0.10973
+      },
+      "subPlot": {
+        "r": 0.03408,
+        "r64": 0.00014,
+        "max": 103
+      }
+    },
+    {
+      "app": "M3-air-light-outline-09.png",
+      "device": "air",
+      "style": "outline",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14741,
+        "r64": 0.11032
+      },
+      "subPlot": {
+        "r": 0.03325,
+        "r64": 0.00012,
+        "max": 91
+      }
+    },
+    {
+      "app": "M3-air-light-bone-10.png",
+      "device": "air",
+      "style": "bone",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14506,
+        "r64": 0.10856
+      },
+      "subPlot": {
+        "r": 0.03982,
+        "r64": 0.0004,
+        "max": 96
+      }
+    },
+    {
+      "app": "M3-air-light-dense-11.png",
+      "device": "air",
+      "style": "dense",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14353,
+        "r64": 0.10742
+      },
+      "subPlot": {
+        "r": 0.04735,
+        "r64": 0.00043,
+        "max": 127
+      }
+    },
+    {
+      "app": "M3-air-dark-stout-01.png",
+      "device": "air",
+      "style": "stout",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15018,
+        "r64": 0.10916
+      },
+      "subPlot": {
+        "r": 0.02928,
+        "r64": 0.00008,
+        "max": 83
+      }
+    },
+    {
+      "app": "M3-air-dark-indigo-02.png",
+      "device": "air",
+      "style": "indigo",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14855,
+        "r64": 0.10797
+      },
+      "subPlot": {
+        "r": 0.03136,
+        "r64": 0.00007,
+        "max": 101
+      }
+    },
+    {
+      "app": "M3-air-dark-glow-03.png",
+      "device": "air",
+      "style": "glow",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14774,
+        "r64": 0.10738
+      },
+      "subPlot": {
+        "r": 0.03388,
+        "r64": 0.00006,
+        "max": 86
+      }
+    },
+    {
+      "app": "M3-air-dark-airy-04.png",
+      "device": "air",
+      "style": "airy",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.15186,
+        "r64": 0.11038
+      },
+      "subPlot": {
+        "r": 0.02461,
+        "r64": 0.00007,
+        "max": 100
+      }
+    },
+    {
+      "app": "M3-air-dark-brick-05.png",
+      "device": "air",
+      "style": "brick",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14936,
+        "r64": 0.10857
+      },
+      "subPlot": {
+        "r": 0.03231,
+        "r64": 0.00006,
+        "max": 85
+      }
+    },
+    {
+      "app": "M3-air-dark-needle-06.png",
+      "device": "air",
+      "style": "needle",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14855,
+        "r64": 0.10797
+      },
+      "subPlot": {
+        "r": 0.03081,
+        "r64": 0.00008,
+        "max": 87
+      }
+    },
+    {
+      "app": "M3-air-dark-pill-07.png",
+      "device": "air",
+      "style": "pill",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14774,
+        "r64": 0.10738
+      },
+      "subPlot": {
+        "r": 0.03186,
+        "r64": 0.00007,
+        "max": 89
+      }
+    },
+    {
+      "app": "M3-air-dark-paper-08.png",
+      "device": "air",
+      "style": "paper",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14616,
+        "r64": 0.10623
+      },
+      "subPlot": {
+        "r": 0.03577,
+        "r64": 0.00007,
+        "max": 83
+      }
+    },
+    {
+      "app": "M3-air-dark-outline-09.png",
+      "device": "air",
+      "style": "outline",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14694,
+        "r64": 0.10681
+      },
+      "subPlot": {
+        "r": 0.03547,
+        "r64": 0.00007,
+        "max": 83
+      }
+    },
+    {
+      "app": "M3-air-dark-bone-10.png",
+      "device": "air",
+      "style": "bone",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.1446,
+        "r64": 0.1051
+      },
+      "subPlot": {
+        "r": 0.04082,
+        "r64": 0.00016,
+        "max": 93
+      }
+    },
+    {
+      "app": "M3-air-dark-dense-11.png",
+      "device": "air",
+      "style": "dense",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14308,
+        "r64": 0.10399
+      },
+      "subPlot": {
+        "r": 0.04861,
+        "r64": 0.00023,
+        "max": 91
+      }
+    },
+    {
+      "app": "M3-plus-light-stout-01.png",
+      "device": "plus",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14662,
+        "r64": 0.10973
+      },
+      "subPlot": {
+        "r": 0.02738,
+        "r64": 0.00015,
+        "max": 101
+      }
+    },
+    {
+      "app": "M3-plus-light-indigo-02.png",
+      "device": "plus",
+      "style": "indigo",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14506,
+        "r64": 0.10855
+      },
+      "subPlot": {
+        "r": 0.03031,
+        "r64": 0.00022,
+        "max": 112
+      }
+    },
+    {
+      "app": "M3-plus-light-glow-03.png",
+      "device": "plus",
+      "style": "glow",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14429,
+        "r64": 0.10799
+      },
+      "subPlot": {
+        "r": 0.03175,
+        "r64": 0.00015,
+        "max": 99
+      }
+    },
+    {
+      "app": "M3-plus-light-airy-04.png",
+      "device": "plus",
+      "style": "airy",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14821,
+        "r64": 0.11092
+      },
+      "subPlot": {
+        "r": 0.02355,
+        "r64": 0.00015,
+        "max": 96
+      }
+    },
+    {
+      "app": "M3-plus-light-brick-05.png",
+      "device": "plus",
+      "style": "brick",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14583,
+        "r64": 0.10914
+      },
+      "subPlot": {
+        "r": 0.02991,
+        "r64": 0.00012,
+        "max": 91
+      }
+    },
+    {
+      "app": "M3-plus-light-needle-06.png",
+      "device": "plus",
+      "style": "needle",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14506,
+        "r64": 0.10856
+      },
+      "subPlot": {
+        "r": 0.02924,
+        "r64": 0.00019,
+        "max": 116
+      }
+    },
+    {
+      "app": "M3-plus-light-pill-07.png",
+      "device": "plus",
+      "style": "pill",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14429,
+        "r64": 0.10799
+      },
+      "subPlot": {
+        "r": 0.03092,
+        "r64": 0.00017,
+        "max": 101
+      }
+    },
+    {
+      "app": "M3-plus-light-paper-08.png",
+      "device": "plus",
+      "style": "paper",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14278,
+        "r64": 0.10685
+      },
+      "subPlot": {
+        "r": 0.03393,
+        "r64": 0.00019,
+        "max": 108
+      }
+    },
+    {
+      "app": "M3-plus-light-outline-09.png",
+      "device": "plus",
+      "style": "outline",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14353,
+        "r64": 0.10742
+      },
+      "subPlot": {
+        "r": 0.03297,
+        "r64": 0.00016,
+        "max": 104
+      }
+    },
+    {
+      "app": "M3-plus-light-bone-10.png",
+      "device": "plus",
+      "style": "bone",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.1413,
+        "r64": 0.10575
+      },
+      "subPlot": {
+        "r": 0.03992,
+        "r64": 0.00036,
+        "max": 99
+      }
+    },
+    {
+      "app": "M3-plus-light-dense-11.png",
+      "device": "plus",
+      "style": "dense",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.13985,
+        "r64": 0.10466
+      },
+      "subPlot": {
+        "r": 0.04733,
+        "r64": 0.00046,
+        "max": 96
+      }
+    },
+    {
+      "app": "M3-plus-dark-stout-01.png",
+      "device": "plus",
+      "style": "stout",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14616,
+        "r64": 0.10623
+      },
+      "subPlot": {
+        "r": 0.02932,
+        "r64": 0.00007,
+        "max": 86
+      }
+    },
+    {
+      "app": "M3-plus-dark-indigo-02.png",
+      "device": "plus",
+      "style": "indigo",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.1446,
+        "r64": 0.1051
+      },
+      "subPlot": {
+        "r": 0.03149,
+        "r64": 0.00012,
+        "max": 112
+      }
+    },
+    {
+      "app": "M3-plus-dark-glow-03.png",
+      "device": "plus",
+      "style": "glow",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14383,
+        "r64": 0.10455
+      },
+      "subPlot": {
+        "r": 0.03365,
+        "r64": 0.00008,
+        "max": 93
+      }
+    },
+    {
+      "app": "M3-plus-dark-airy-04.png",
+      "device": "plus",
+      "style": "airy",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14774,
+        "r64": 0.10738
+      },
+      "subPlot": {
+        "r": 0.02442,
+        "r64": 0.00007,
+        "max": 87
+      }
+    },
+    {
+      "app": "M3-plus-dark-brick-05.png",
+      "device": "plus",
+      "style": "brick",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14537,
+        "r64": 0.10566
+      },
+      "subPlot": {
+        "r": 0.03236,
+        "r64": 0.00006,
+        "max": 81
+      }
+    },
+    {
+      "app": "M3-plus-dark-needle-06.png",
+      "device": "plus",
+      "style": "needle",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.1446,
+        "r64": 0.1051
+      },
+      "subPlot": {
+        "r": 0.03059,
+        "r64": 0.0001,
+        "max": 97
+      }
+    },
+    {
+      "app": "M3-plus-dark-pill-07.png",
+      "device": "plus",
+      "style": "pill",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14383,
+        "r64": 0.10455
+      },
+      "subPlot": {
+        "r": 0.0318,
+        "r64": 0.00007,
+        "max": 87
+      }
+    },
+    {
+      "app": "M3-plus-dark-paper-08.png",
+      "device": "plus",
+      "style": "paper",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14233,
+        "r64": 0.10344
+      },
+      "subPlot": {
+        "r": 0.03582,
+        "r64": 0.00008,
+        "max": 90
+      }
+    },
+    {
+      "app": "M3-plus-dark-outline-09.png",
+      "device": "plus",
+      "style": "outline",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14308,
+        "r64": 0.10399
+      },
+      "subPlot": {
+        "r": 0.03515,
+        "r64": 0.00007,
+        "max": 85
+      }
+    },
+    {
+      "app": "M3-plus-dark-bone-10.png",
+      "device": "plus",
+      "style": "bone",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14085,
+        "r64": 0.10238
+      },
+      "subPlot": {
+        "r": 0.0409,
+        "r64": 0.00018,
+        "max": 99
+      }
+    },
+    {
+      "app": "M3-plus-dark-dense-11.png",
+      "device": "plus",
+      "style": "dense",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.13941,
+        "r64": 0.10132
+      },
+      "subPlot": {
+        "r": 0.04864,
+        "r64": 0.00024,
+        "max": 87
+      }
+    },
+    {
+      "app": "M3-max-light-stout-01.png",
+      "device": "max",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14278,
+        "r64": 0.10685
+      },
+      "subPlot": {
+        "r": 0.02734,
+        "r64": 0.00017,
+        "max": 93
+      }
+    },
+    {
+      "app": "M3-max-light-indigo-02.png",
+      "device": "max",
+      "style": "indigo",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.1413,
+        "r64": 0.10572
+      },
+      "subPlot": {
+        "r": 0.03023,
+        "r64": 0.00022,
+        "max": 95
+      }
+    },
+    {
+      "app": "M3-max-light-glow-03.png",
+      "device": "max",
+      "style": "glow",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14057,
+        "r64": 0.1052
+      },
+      "subPlot": {
+        "r": 0.03162,
+        "r64": 0.00016,
+        "max": 89
+      }
+    },
+    {
+      "app": "M3-max-light-airy-04.png",
+      "device": "max",
+      "style": "airy",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14429,
+        "r64": 0.10799
+      },
+      "subPlot": {
+        "r": 0.0236,
+        "r64": 0.00015,
+        "max": 94
+      }
+    },
+    {
+      "app": "M3-max-light-brick-05.png",
+      "device": "max",
+      "style": "brick",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14204,
+        "r64": 0.1063
+      },
+      "subPlot": {
+        "r": 0.02968,
+        "r64": 0.00016,
+        "max": 111
+      }
+    },
+    {
+      "app": "M3-max-light-needle-06.png",
+      "device": "max",
+      "style": "needle",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.1413,
+        "r64": 0.10575
+      },
+      "subPlot": {
+        "r": 0.0291,
+        "r64": 0.00016,
+        "max": 98
+      }
+    },
+    {
+      "app": "M3-max-light-pill-07.png",
+      "device": "max",
+      "style": "pill",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14057,
+        "r64": 0.1052
+      },
+      "subPlot": {
+        "r": 0.03084,
+        "r64": 0.00016,
+        "max": 95
+      }
+    },
+    {
+      "app": "M3-max-light-paper-08.png",
+      "device": "max",
+      "style": "paper",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.13914,
+        "r64": 0.10414
+      },
+      "subPlot": {
+        "r": 0.03306,
+        "r64": 0.00014,
+        "max": 113
+      }
+    },
+    {
+      "app": "M3-max-light-outline-09.png",
+      "device": "max",
+      "style": "outline",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.13985,
+        "r64": 0.10466
+      },
+      "subPlot": {
+        "r": 0.03297,
+        "r64": 0.00016,
+        "max": 96
+      }
+    },
+    {
+      "app": "M3-max-light-bone-10.png",
+      "device": "max",
+      "style": "bone",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.13773,
+        "r64": 0.10308
+      },
+      "subPlot": {
+        "r": 0.04018,
+        "r64": 0.00028,
+        "max": 100
+      }
+    },
+    {
+      "app": "M3-max-light-dense-11.png",
+      "device": "max",
+      "style": "dense",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.13636,
+        "r64": 0.10205
+      },
+      "subPlot": {
+        "r": 0.04759,
+        "r64": 0.00042,
+        "max": 110
+      }
+    },
+    {
+      "app": "M3-max-dark-stout-01.png",
+      "device": "max",
+      "style": "stout",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14233,
+        "r64": 0.10344
+      },
+      "subPlot": {
+        "r": 0.02937,
+        "r64": 0.00007,
+        "max": 79
+      }
+    },
+    {
+      "app": "M3-max-dark-indigo-02.png",
+      "device": "max",
+      "style": "indigo",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14085,
+        "r64": 0.10237
+      },
+      "subPlot": {
+        "r": 0.03136,
+        "r64": 0.00008,
+        "max": 91
+      }
+    },
+    {
+      "app": "M3-max-dark-glow-03.png",
+      "device": "max",
+      "style": "glow",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14012,
+        "r64": 0.10185
+      },
+      "subPlot": {
+        "r": 0.03336,
+        "r64": 0.00007,
+        "max": 96
+      }
+    },
+    {
+      "app": "M3-max-dark-airy-04.png",
+      "device": "max",
+      "style": "airy",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14383,
+        "r64": 0.10455
+      },
+      "subPlot": {
+        "r": 0.02459,
+        "r64": 0.00007,
+        "max": 74
+      }
+    },
+    {
+      "app": "M3-max-dark-brick-05.png",
+      "device": "max",
+      "style": "brick",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14159,
+        "r64": 0.10291
+      },
+      "subPlot": {
+        "r": 0.0322,
+        "r64": 0.00007,
+        "max": 80
+      }
+    },
+    {
+      "app": "M3-max-dark-needle-06.png",
+      "device": "max",
+      "style": "needle",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14085,
+        "r64": 0.10238
+      },
+      "subPlot": {
+        "r": 0.03042,
+        "r64": 0.00006,
+        "max": 86
+      }
+    },
+    {
+      "app": "M3-max-dark-pill-07.png",
+      "device": "max",
+      "style": "pill",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.14012,
+        "r64": 0.10185
+      },
+      "subPlot": {
+        "r": 0.03176,
+        "r64": 0.00007,
+        "max": 93
+      }
+    },
+    {
+      "app": "M3-max-dark-paper-08.png",
+      "device": "max",
+      "style": "paper",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.1387,
+        "r64": 0.10081
+      },
+      "subPlot": {
+        "r": 0.03474,
+        "r64": 0.00006,
+        "max": 93
+      }
+    },
+    {
+      "app": "M3-max-dark-outline-09.png",
+      "device": "max",
+      "style": "outline",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.13941,
+        "r64": 0.10132
+      },
+      "subPlot": {
+        "r": 0.03495,
+        "r64": 0.0001,
+        "max": 91
+      }
+    },
+    {
+      "app": "M3-max-dark-bone-10.png",
+      "device": "max",
+      "style": "bone",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.1373,
+        "r64": 0.09979
+      },
+      "subPlot": {
+        "r": 0.04097,
+        "r64": 0.00013,
+        "max": 86
+      }
+    },
+    {
+      "app": "M3-max-dark-dense-11.png",
+      "device": "max",
+      "style": "dense",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.13592,
+        "r64": 0.0988
+      },
+      "subPlot": {
+        "r": 0.04895,
+        "r64": 0.00021,
+        "max": 92
+      }
+    },
+    {
+      "app": "M3-ipad-light-stout-01.png",
+      "device": "ipad",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09264,
+        "r64": 0.06207
+      },
+      "subPlot": {
+        "r": 0.03524,
+        "r64": 0.00022,
+        "max": 95
+      }
+    },
+    {
+      "app": "M3-ipad-light-indigo-02.png",
+      "device": "ipad",
+      "style": "indigo",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09211,
+        "r64": 0.06168
+      },
+      "subPlot": {
+        "r": 0.04484,
+        "r64": 0.00042,
+        "max": 133
+      }
+    },
+    {
+      "app": "M3-ipad-light-glow-03.png",
+      "device": "ipad",
+      "style": "glow",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09184,
+        "r64": 0.06154
+      },
+      "subPlot": {
+        "r": 0.04203,
+        "r64": 0.00026,
+        "max": 100
+      }
+    },
+    {
+      "app": "M3-ipad-light-airy-04.png",
+      "device": "ipad",
+      "style": "airy",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09318,
+        "r64": 0.06244
+      },
+      "subPlot": {
+        "r": 0.0304,
+        "r64": 0.00017,
+        "max": 97
+      }
+    },
+    {
+      "app": "M3-ipad-light-brick-05.png",
+      "device": "ipad",
+      "style": "brick",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09238,
+        "r64": 0.0619
+      },
+      "subPlot": {
+        "r": 0.03843,
+        "r64": 0.00022,
+        "max": 87
+      }
+    },
+    {
+      "app": "M3-ipad-light-needle-06.png",
+      "device": "ipad",
+      "style": "needle",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09211,
+        "r64": 0.06172
+      },
+      "subPlot": {
+        "r": 0.03885,
+        "r64": 0.00048,
+        "max": 230
+      }
+    },
+    {
+      "app": "M3-ipad-light-pill-07.png",
+      "device": "ipad",
+      "style": "pill",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09184,
+        "r64": 0.06154
+      },
+      "subPlot": {
+        "r": 0.04138,
+        "r64": 0.00026,
+        "max": 96
+      }
+    },
+    {
+      "app": "M3-ipad-light-paper-08.png",
+      "device": "ipad",
+      "style": "paper",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09131,
+        "r64": 0.06119
+      },
+      "subPlot": {
+        "r": 0.04616,
+        "r64": 0.00037,
+        "max": 107
+      }
+    },
+    {
+      "app": "M3-ipad-light-outline-09.png",
+      "device": "ipad",
+      "style": "outline",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09158,
+        "r64": 0.06136
+      },
+      "subPlot": {
+        "r": 0.04365,
+        "r64": 0.00024,
+        "max": 103
+      }
+    },
+    {
+      "app": "M3-ipad-light-bone-10.png",
+      "device": "ipad",
+      "style": "bone",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.0908,
+        "r64": 0.06084
+      },
+      "subPlot": {
+        "r": 0.05735,
+        "r64": 0.00056,
+        "max": 102
+      }
+    },
+    {
+      "app": "M3-ipad-light-dense-11.png",
+      "device": "ipad",
+      "style": "dense",
+      "theme": "light",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09027,
+        "r64": 0.0605
+      },
+      "subPlot": {
+        "r": 0.06298,
+        "r64": 0.00063,
+        "max": 155
+      }
+    },
+    {
+      "app": "M3-ipad-dark-stout-01.png",
+      "device": "ipad",
+      "style": "stout",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09211,
+        "r64": 0.05971
+      },
+      "subPlot": {
+        "r": 0.03567,
+        "r64": 0.00011,
+        "max": 82
+      }
+    },
+    {
+      "app": "M3-ipad-dark-indigo-02.png",
+      "device": "ipad",
+      "style": "indigo",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09157,
+        "r64": 0.05933
+      },
+      "subPlot": {
+        "r": 0.04533,
+        "r64": 0.00024,
+        "max": 99
+      }
+    },
+    {
+      "app": "M3-ipad-dark-glow-03.png",
+      "device": "ipad",
+      "style": "glow",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09131,
+        "r64": 0.05919
+      },
+      "subPlot": {
+        "r": 0.04288,
+        "r64": 0.00013,
+        "max": 88
+      }
+    },
+    {
+      "app": "M3-ipad-dark-airy-04.png",
+      "device": "ipad",
+      "style": "airy",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09265,
+        "r64": 0.06006
+      },
+      "subPlot": {
+        "r": 0.03065,
+        "r64": 0.00008,
+        "max": 81
+      }
+    },
+    {
+      "app": "M3-ipad-dark-brick-05.png",
+      "device": "ipad",
+      "style": "brick",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09184,
+        "r64": 0.05954
+      },
+      "subPlot": {
+        "r": 0.03914,
+        "r64": 0.00011,
+        "max": 81
+      }
+    },
+    {
+      "app": "M3-ipad-dark-needle-06.png",
+      "device": "ipad",
+      "style": "needle",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09157,
+        "r64": 0.05936
+      },
+      "subPlot": {
+        "r": 0.03924,
+        "r64": 0.00035,
+        "max": 218
+      }
+    },
+    {
+      "app": "M3-ipad-dark-pill-07.png",
+      "device": "ipad",
+      "style": "pill",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09131,
+        "r64": 0.05919
+      },
+      "subPlot": {
+        "r": 0.04183,
+        "r64": 0.00012,
+        "max": 85
+      }
+    },
+    {
+      "app": "M3-ipad-dark-paper-08.png",
+      "device": "ipad",
+      "style": "paper",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09079,
+        "r64": 0.05885
+      },
+      "subPlot": {
+        "r": 0.0467,
+        "r64": 0.00015,
+        "max": 85
+      }
+    },
+    {
+      "app": "M3-ipad-dark-outline-09.png",
+      "device": "ipad",
+      "style": "outline",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09105,
+        "r64": 0.05903
+      },
+      "subPlot": {
+        "r": 0.04385,
+        "r64": 0.00008,
+        "max": 84
+      }
+    },
+    {
+      "app": "M3-ipad-dark-bone-10.png",
+      "device": "ipad",
+      "style": "bone",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.09027,
+        "r64": 0.05852
+      },
+      "subPlot": {
+        "r": 0.05793,
+        "r64": 0.00026,
+        "max": 96
+      }
+    },
+    {
+      "app": "M3-ipad-dark-dense-11.png",
+      "device": "ipad",
+      "style": "dense",
+      "theme": "dark",
+      "item": "A3.1",
+      "subLegend": {
+        "r": 0.08976,
+        "r64": 0.05818
+      },
+      "subPlot": {
+        "r": 0.06359,
+        "r64": 0.00029,
+        "max": 144
+      }
+    },
+    {
+      "app": "M3-pro-light-sub-macd-12.png",
+      "device": "pro",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.6",
+      "subLegend": {
+        "r": 0.19824,
+        "r64": 0.14688
+      },
+      "subPlot": {
+        "r": 0.02295,
+        "r64": 0.00016,
+        "max": 100
+      }
+    },
+    {
+      "app": "M3-pro-light-sub-rsi-13.png",
+      "device": "pro",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.6",
+      "subLegend": {
+        "r": 0.11886,
+        "r64": 0.09044
+      },
+      "subPlot": {
+        "r": 0.03181,
+        "r64": 0.00022,
+        "max": 92
+      }
+    },
+    {
+      "app": "M3-pro-light-sub-kdj-14.png",
+      "device": "pro",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.6",
+      "subLegend": {
+        "r": 0.136,
+        "r64": 0.09738
+      },
+      "subPlot": {
+        "r": 0.03443,
+        "r64": 0.00014,
+        "max": 78
+      }
+    },
+    {
+      "app": "M3-pro-light-sub-srsi-15.png",
+      "device": "pro",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.6",
+      "subLegend": {
+        "r": 0.10946,
+        "r64": 0.07714
+      },
+      "subPlot": {
+        "r": 0.02858,
+        "r64": 0.0002,
+        "max": 83
+      }
+    },
+    {
+      "app": "M3-pro-light-sub-atr-16.png",
+      "device": "pro",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.6",
+      "subLegend": {
+        "r": 0.0535,
+        "r64": 0.04189
+      },
+      "subPlot": {
+        "r": 0.01119,
+        "r64": 0,
+        "max": 67
+      }
+    },
+    {
+      "app": "M3-pro-light-sub-vol-17.png",
+      "device": "pro",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.6",
+      "subLegend": {
+        "r": 0.13509,
+        "r64": 0.09797
+      },
+      "subPlot": {
+        "r": 0.02049,
+        "r64": 0.00005,
+        "max": 79
+      }
+    },
+    {
+      "app": "M3-pro-light-sub-oi-18.png",
+      "device": "pro",
+      "style": "stout",
+      "theme": "light",
+      "item": "A3.6",
+      "subLegend": {
+        "r": 0.1357,
+        "r64": 0.09327
+      },
+      "subPlot": {
+        "r": 0.23974,
+        "r64": 0.00001,
+        "max": 67
+      }
+    }
+  ]
+}
