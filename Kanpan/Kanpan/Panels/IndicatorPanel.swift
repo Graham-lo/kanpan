@@ -45,6 +45,7 @@ struct IndicatorPanel: View {
       PanelSwitch(isOn: on) {
         store.attempt { $0.toggle(id) }
       }
+      .accessibilityIdentifier("indicator.switch.\(id.rawValue)")
     }
     if on, !id.paramLabels.isEmpty || id.placement == .sub {
       detail(id)

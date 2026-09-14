@@ -12,8 +12,19 @@
 		AB0000000000000000000032 /* KanpanData in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000031 /* KanpanData */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		AB000000000000000000004B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AB0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AB0000000000000000000004;
+			remoteInfo = Kanpan;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
-		AB0000000000000000000005 /* 看盘.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kanpan.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB0000000000000000000005 /* Kanpan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kanpan.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB0000000000000000000041 /* KanpanUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KanpanUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -22,16 +33,28 @@
 			path = Kanpan;
 			sourceTree = "<group>";
 		};
+		AB0000000000000000000042 /* KanpanUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = KanpanUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		AB0000000000000000000007 = {
+		AB0000000000000000000007 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				AB0000000000000000000012 /* KanpanCore in Frameworks */,
 				AB0000000000000000000022 /* KanpanChart in Frameworks */,
 				AB0000000000000000000032 /* KanpanData in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AB0000000000000000000044 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -42,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				AB0000000000000000000009 /* Kanpan */,
+				AB0000000000000000000042 /* KanpanUITests */,
 				AB0000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -50,6 +74,7 @@
 			isa = PBXGroup;
 			children = (
 				AB0000000000000000000005 /* Kanpan.app */,
+				AB0000000000000000000041 /* KanpanUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -82,6 +107,29 @@
 			productReference = AB0000000000000000000005 /* Kanpan.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AB0000000000000000000046 /* KanpanUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AB0000000000000000000047 /* Build configuration list for PBXNativeTarget "KanpanUITests" */;
+			buildPhases = (
+				AB0000000000000000000043 /* Sources */,
+				AB0000000000000000000044 /* Frameworks */,
+				AB0000000000000000000045 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AB000000000000000000004A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AB0000000000000000000042 /* KanpanUITests */,
+			);
+			name = KanpanUITests;
+			packageProductDependencies = (
+			);
+			productName = KanpanUITests;
+			productReference = AB0000000000000000000041 /* KanpanUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -94,6 +142,10 @@
 				TargetAttributes = {
 					AB0000000000000000000004 = {
 						CreatedOnToolsVersion = 26.6;
+					};
+					AB0000000000000000000046 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = AB0000000000000000000004;
 					};
 				};
 			};
@@ -117,12 +169,20 @@
 			projectRoot = "";
 			targets = (
 				AB0000000000000000000004 /* Kanpan */,
+				AB0000000000000000000046 /* KanpanUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		AB0000000000000000000008 = {
+		AB0000000000000000000008 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AB0000000000000000000045 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -132,7 +192,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		AB0000000000000000000006 = {
+		AB0000000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AB0000000000000000000043 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -141,6 +208,14 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		AB000000000000000000004A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AB0000000000000000000004 /* Kanpan */;
+			targetProxy = AB000000000000000000004B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
 		AB000000000000000000000C /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -148,19 +223,19 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_NO_COMMON_BLOCKS = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				SDKROOT = iphoneos;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -170,16 +245,16 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_NO_COMMON_BLOCKS = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -191,6 +266,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 27Y32PT2HZ;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "看盘";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -216,6 +292,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 27Y32PT2HZ;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "看盘";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -231,6 +308,38 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AB0000000000000000000048 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 27Y32PT2HZ;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mdd.kanpan.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kanpan;
+			};
+			name = Debug;
+		};
+		AB0000000000000000000049 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 27Y32PT2HZ;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mdd.kanpan.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kanpan;
 			};
 			name = Release;
 		};
@@ -251,6 +360,15 @@
 			buildConfigurations = (
 				AB000000000000000000000E /* Debug */,
 				AB000000000000000000000F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AB0000000000000000000047 /* Build configuration list for PBXNativeTarget "KanpanUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AB0000000000000000000048 /* Debug */,
+				AB0000000000000000000049 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

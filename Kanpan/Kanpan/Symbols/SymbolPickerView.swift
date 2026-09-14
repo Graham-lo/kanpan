@@ -68,6 +68,7 @@ struct SymbolPickerView: View {
       }
       .buttonStyle(.plain)
       .accessibilityLabel("返回")
+      .accessibilityIdentifier("symbols.back")
 
       Text("品种").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(hex: seed.ink))
       Text(model.countText).font(.system(size: 11)).foregroundStyle(Color(hex: seed.ink3))
@@ -98,6 +99,7 @@ struct SymbolPickerView: View {
         .overlay(RoundedRectangle(cornerRadius: 9).stroke(
           Color(hex: searchFocused ? colors.amberLine : seed.line),
           lineWidth: searchFocused ? 2 : 1))
+        .accessibilityIdentifier("symbols.query")
 
       Button("清空") {
         model.query = ""

@@ -31,6 +31,9 @@ struct StylePanel: View {
 private struct StyleGrid: View {
   var store: PrefsStore
   @Environment(\.panelTheme) private var t
+  @Environment(\.dismiss) private var dismiss
+  /// 横屏侧栏没有系统 `dismiss`，走主界面递进来的这一条（见 `PanelCloser`）。
+  @Environment(\.panelDismiss) private var sideDismiss
   @State private var width: CGFloat = 0
 
   private var columns: [GridItem] {
@@ -47,7 +50,11 @@ private struct StyleGrid: View {
                     selected: st.id == store.prefs.styleID,
                     colors: store.prefs.chartColors(dark: t.dark)) {
             store.update { $0.styleID = st.id }
+            // 选完就收起，直接看换过的图——和周期面板一个规矩（原型 `closeAll()`）。
+            // 单选的面板都这样；指标和设置是一次调好几项的，不在此列。
+            PanelCloser(side: sideDismiss, sheet: dismiss)()
           }
+          .accessibilityIdentifier("style.card.\(st.id)")
         }
       }
     }

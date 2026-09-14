@@ -22,6 +22,7 @@ struct IntervalBar: View {
         HStack(spacing: 2) {
           ForEach(list, id: \.self) { iv in
             chip(iv)
+              .accessibilityIdentifier("interval.chip.\(iv.rawValue)")
           }
         }
         .padding(.horizontal, 4)
@@ -40,6 +41,7 @@ struct IntervalBar: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .accessibilityIdentifier("interval.more")
     }
     .fixedSize(horizontal: false, vertical: true)
   }

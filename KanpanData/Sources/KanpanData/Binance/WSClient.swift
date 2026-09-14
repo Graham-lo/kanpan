@@ -178,7 +178,7 @@ public actor BinanceWS {
   /// 收帧，直到断开或静默超时。
   private func pump(_ s: WSSocket) async throws {
     while !stopped, !Task.isCancelled {
-      let frame = try await withSilenceTimeout { try await s.receive() }
+      let frame = try await withSilenceTimeout(s) { try await s.receive() }
       // 收到第一帧才算这条连接站住了，这时候退避才该清零。
       if !gotFrame, case .closed = frame {} else if !gotFrame {
         gotFrame = true
@@ -201,13 +201,24 @@ public actor BinanceWS {
   }
 
   /// 静默 `silenceMs` 没有任何帧就当断了，主动重连（A2.8）。
-  private func withSilenceTimeout(_ body: @escaping @Sendable () async throws -> WSFrame) async throws -> WSFrame {
+  ///
+  /// 超时那一路**必须先把 socket 掐掉再抛错**。`URLSessionWebSocketTask.receive()`
+  /// 是用 `withCheckedContinuation` 包出来的，不理会任务取消：光让计时任务抛错，
+  /// `withThrowingTaskGroup` 退出前还要等那条收帧任务，而它永远不回来——整个
+  /// 看门狗就这么被自己挂死。线路被静默丢弃（代理黑洞、NAT 超时）时正是这种局面：
+  /// 连接看着还「活着」，60 秒到了也没有任何反应。只有 `cancel()` 能让挂着的
+  /// `receive()` 带着错误返回。
+  private func withSilenceTimeout(_ socket: WSSocket,
+                                  _ body: @escaping @Sendable () async throws -> WSFrame)
+    async throws -> WSFrame
+  {
     let timeout = silenceMs
     let pacer = self.pacer
     return try await withThrowingTaskGroup(of: WSFrame.self) { g in
       g.addTask { try await body() }
       g.addTask {
         try await pacer.sleep(ms: timeout)
+        await socket.cancel()
         throw FeedError.badResponse("\(Int(timeout / 1000)) 秒没有任何帧，主动重连")
       }
       let first = try await g.next()!

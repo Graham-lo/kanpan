@@ -53,6 +53,8 @@ struct Prefs: Sendable, Equatable {
   // ---------------------------------------------------------------- 网络
   /// 自定义 API 域名（A6.10）。
   var apiHost: String = APIHost.default
+  /// 自定义行情推送域名（WebSocket）。和 `apiHost` 分开，理由见 `APIHost.defaultStream`。
+  var streamHost: String = APIHost.defaultStream
 
   init() {}
 
@@ -151,6 +153,15 @@ struct Prefs: Sendable, Equatable {
     let host = APIHost.normalize(raw)
     if let why = APIHost.reject(host) { return why }
     apiHost = host
+    return nil
+  }
+
+  /// 改行情推送域名。规则和 `setAPIHost` 一样。
+  @discardableResult
+  mutating func setStreamHost(_ raw: String) -> String? {
+    let host = APIHost.normalize(raw)
+    if let why = APIHost.reject(host) { return why }
+    streamHost = host
     return nil
   }
 }

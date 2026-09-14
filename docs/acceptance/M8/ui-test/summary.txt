@@ -1,0 +1,2 @@
+iPhone 13 mini	PASS	11	154
+iPhone 15	PASS	11	148

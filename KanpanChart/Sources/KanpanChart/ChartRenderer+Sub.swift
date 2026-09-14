@@ -121,7 +121,11 @@ extension ChartRenderer {
     }
   }
 
-  /// MACD：柱对称压在零轴两侧，涨跌各分「继续」和「转头」两档颜色。
+  /// MACD：柱对称压在零轴两侧。样式参照 AICoin——柱比蜡烛实体细一半、柱间留缝，
+  /// 颜色只表示正负（跟着「红涨绿跌」走），**动能变强实心、动能变弱只描边**。
+  ///
+  /// 原型 `subMacd` 画的是四色实心（涨/跌各分「继续」「转头」两档），这里是用户
+  /// 2026-09-14 当面推翻原型后的新口径，记在 `docs/acceptance/M6.md`「与原型的分歧」。
   private func subMacd(_ ctx: CGContext, _ box: Pane, _ L: Layout, _ lo: Int, _ hi: Int, _ s: Double) {
     guard let v = engine[.macd], let hist = v.histogram, v.lines.count >= 2 else { return }
     let b = state.series, t = state.colors
@@ -130,19 +134,41 @@ extension ChartRenderer {
     let e = (lo: -span, hi: span)
     let zero = subY(box, e, 0)
     let spacing = state.view.barSpacing(step: b.step, plotW: L.plotW)
-    let bw = max(1 / s, Double(candleWidths(spacing: spacing, scale: s, bodyR: state.style.bodyR).body) / s)
+
+    // 柱宽取整数个设备像素，三条同时管着：
+    //   ① 目标是蜡烛实体宽的一半；
+    //   ② 上限 `floor(根间距 × scale) - 1`——`snap` 之后相邻两根左沿最少差
+    //      `floor(spacing × s)` 个像素，减 1 就保证缝至少留得出 1 个设备像素；
+    //   ③ 下限 1 个设备像素，挤到留不出缝时宁可贴着也不能让柱消失。
+    let bodyPx = Double(candleWidths(spacing: spacing, scale: s, bodyR: state.style.bodyR).body)
+    let barPx = max(1, min((bodyPx / 2).rounded(), (spacing * s).rounded(.down) - 1))
+    let bw = barPx / s
+    let line = 1 / s  // 空心柱的描边：1 个设备像素
+
     for i in lo...hi where i < hist.count {
       let v0 = hist[i]
       if !v0.isFinite { continue }
       let xc = state.view.x(Double(b.time(at: i)), plotW: L.plotW)
       let y = subY(box, e, v0)
       let prev = i > 0 ? hist[i - 1] : Double.nan
-      let rising = !prev.isFinite || v0 >= prev
-      let col: Hex = v0 >= 0 ? (rising ? t.up : t.volUp) : (rising ? t.volDn : t.down)
-      ctx.setFillColor(Paint.cg(col))
-      ctx.fill(CGRect(
-        x: snap(xc - bw / 2, scale: s), y: min(y, zero),
-        width: bw, height: max(1 / s, abs(zero - y))))
+      // 动能：绝对值比前一根大就实心，比前一根小就空心。第一根没有前一根，按实心。
+      let solid = !prev.isFinite || abs(v0) >= abs(prev)
+      let col = Paint.cg(v0 >= 0 ? t.up : t.down)
+      let top = snap(min(y, zero), scale: s)
+      let rect = CGRect(
+        x: snap(xc - bw / 2, scale: s), y: top,
+        width: bw, height: max(line, snap(max(y, zero), scale: s) - top))
+      // 空心：描边路径往内缩半个线宽，笔画外沿才正好压在 `rect` 上而不胖出去；
+      // 缩完宽或高没了（柱只有 1 个设备像素细 / 扁）就退回实心，不然什么也画不出来。
+      let stroked = rect.insetBy(dx: CGFloat(line / 2), dy: CGFloat(line / 2))
+      if solid || stroked.width <= 0 || stroked.height <= 0 {
+        ctx.setFillColor(col)
+        ctx.fill(rect)
+      } else {
+        ctx.setStrokeColor(col)
+        ctx.setLineWidth(line)
+        ctx.stroke(stroked)
+      }
     }
     ctx.hairLine(from: 0, to: L.plotW, y: zero, scale: CGFloat(s), color: Paint.cg(t.grid))
     let pal = t.palette

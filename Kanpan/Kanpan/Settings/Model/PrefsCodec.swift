@@ -56,7 +56,7 @@ extension Prefs: Codable {
     case theme, styleID, redUp
     case priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone
     case overlays, subs, params, subHeights
-    case apiHost
+    case apiHost, streamHost
   }
 
   func encode(to encoder: Encoder) throws {
@@ -81,6 +81,7 @@ extension Prefs: Codable {
     try c.encode(Dictionary(uniqueKeysWithValues: subHeights.map { ($0.key.rawValue, $0.value.rawValue) }),
                  forKey: .subHeights)
     try c.encode(apiHost, forKey: .apiHost)
+    try c.encode(streamHost, forKey: .streamHost)
   }
 
   init(from decoder: Decoder) throws {
@@ -141,6 +142,10 @@ extension Prefs: Codable {
     }
 
     if let raw = str(.apiHost) { apiHost = APIHost.sanitize(raw) }
+    if let raw = str(.streamHost) {
+      let host = APIHost.normalize(raw)
+      streamHost = APIHost.isValid(host) ? host : APIHost.defaultStream
+    }
   }
 
   /// 一串 rawValue → 去重、去掉认不出的、去掉放错位置的指标。

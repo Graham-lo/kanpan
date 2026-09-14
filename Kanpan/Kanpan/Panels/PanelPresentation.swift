@@ -61,6 +61,55 @@ struct PanelHost<Content: View>: View {
   }
 }
 
+/// 横屏的侧栏用它把「关掉我」传进面板。
+///
+/// 竖屏面板是系统 sheet，关自己走 `@Environment(\.dismiss)`；横屏是主界面自己铺的
+/// 一层覆盖，系统的 `dismiss` 在那儿什么也不做。面板本身不该知道自己是以哪种方式
+/// 出场的，所以两条路都收在 `PanelCloser` 后面。
+/// 关自己那个动作。包一层 struct 而不是裸闭包：环境值要求 `Sendable`，
+/// 裸的 `(() -> Void)?` 过不了 Swift 6 的并发检查。
+struct PanelDismiss: Sendable {
+  private let run: @MainActor @Sendable () -> Void
+  init(_ run: @escaping @MainActor @Sendable () -> Void) { self.run = run }
+  @MainActor func callAsFunction() { run() }
+}
+
+private struct PanelDismissKey: EnvironmentKey {
+  static let defaultValue: PanelDismiss? = nil
+}
+
+extension EnvironmentValues {
+  var panelDismiss: PanelDismiss? {
+    get { self[PanelDismissKey.self] }
+    set { self[PanelDismissKey.self] = newValue }
+  }
+}
+
+/// 面板内部统一这一句，不关心自己是 sheet 还是侧栏。
+@MainActor
+struct PanelCloser {
+  var side: PanelDismiss?
+  var sheet: DismissAction
+
+  func callAsFunction() {
+    if let side { side() } else { sheet() }
+  }
+}
+
+/// 横屏侧栏的外壳：主题、深浅、背景，外加把关闭动作递进去。
+struct PanelSide<Content: View>: View {
+  var store: PrefsStore
+  var dark: Bool
+  var onClose: PanelDismiss
+  @ViewBuilder var content: () -> Content
+
+  var body: some View {
+    content()
+      .environment(\.panelTheme, PanelTheme(dark: dark, redUp: store.prefs.redUp))
+      .environment(\.panelDismiss, onClose)
+  }
+}
+
 extension View {
   /// 主界面用这一个：`.prefsPanel($panel, store: store)`。
   func prefsPanel(_ panel: Binding<Panel?>,

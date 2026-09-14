@@ -18,6 +18,7 @@ struct PanelSheet<Content: View>: View {
     VStack(spacing: 0) {
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Text(title).font(PanelFont.title).foregroundStyle(t.ink)
+          .accessibilityIdentifier("panel.header")
         if let subtitle {
           Text(subtitle).font(PanelFont.sub).foregroundStyle(t.ink3)
         }

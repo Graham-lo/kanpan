@@ -22,7 +22,7 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test data-test diag-test diag-ios-test chart-build chart-test test strict app-test snap screenshots devices boot shutdown clean doctor evidence fixtures
+.PHONY: help core-test data-test diag-test diag-ios-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -34,6 +34,8 @@ help:
 	@echo "evidence     出 M3 全套取证产物到 docs/acceptance/M3/（A3.1–A3.10）"
 	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库）"
 	@echo "app-test     跑 app target 的测试"
+	@echo "ui-test      A8.4：八台机型跑同一套 XCUITest 用例，逐台记结果"
+	@echo "ui-test-one  只跑一台（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "snap         在单台模拟器上装 app 并截一张图（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "screenshots  八台机型全跑一遍，出 docs/acceptance/shots/"
 	@echo "devices      备齐 A0.2 的八台模拟器（缺的自动 create）"
@@ -151,6 +153,30 @@ feed:
 # app 侧的逻辑一律由上面的壳包覆盖，这里只做编译验证。
 app-test: app-logic-test build
 	@echo "注意：app target 没有 test action，app 侧逻辑走 symbols-test 这类壳包。"
+
+# ---------------------------------------------------------------- A8.4 UI 测试
+# KanpanUITests（本工程里唯一的 XCTest target，其余单测一律 swift-testing）。
+# 同一套用例在八台机型上各跑一遍，逐台记结果：make ui-test
+# 单台：make ui-test-one DEVICE="iPad mini (A17 Pro)"
+UI_DEVICES := \
+	"iPhone 13 mini" \
+	"iPhone 15" \
+	"iPhone 16 Pro" \
+	"iPhone 16 Plus" \
+	"iPhone 17 Pro Max" \
+	"iPhone Air" \
+	"iPad mini (A17 Pro)" \
+	"iPad Pro 11-inch (M5)"
+
+ui-test:
+	@bash Tools/ui-test.sh
+
+ui-test-one:
+	xcodebuild test \
+		-workspace $(WORKSPACE) \
+		-scheme $(SCHEME) \
+		-destination 'platform=iOS Simulator,name=$(DEVICE)' \
+		-derivedDataPath DerivedData
 
 build:
 	xcodebuild build \

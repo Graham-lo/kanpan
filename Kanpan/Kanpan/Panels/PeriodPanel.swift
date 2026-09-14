@@ -13,6 +13,8 @@ struct PeriodPanel: View {
 
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
+  /// 横屏侧栏没有系统 `dismiss`，走主界面递进来的这一条（见 `PanelCloser`）。
+  @Environment(\.panelDismiss) private var sideDismiss
 
   var body: some View {
     PanelSheet(title: "周期", subtitle: "切换时 K 线粗细不变") {
@@ -24,12 +26,14 @@ struct PeriodPanel: View {
                  onTap: {
                    store.update { $0.interval = iv }
                    onPick?(iv)
-                   dismiss()
+                   PanelCloser(side: sideDismiss, sheet: dismiss)()
                  },
                  // §10.6：长按加入 / 移出常用行。右边的图钉是同一件事的明面写法。
                  onLongPress: { store.attempt { $0.toggleQuick(iv) } }) {
           pin(iv)
+            .accessibilityIdentifier("period.pin.\(iv.rawValue)")
         }
+        .accessibilityIdentifier("period.row.\(iv.rawValue)")
       }
 
       PanelNote(markdown:

@@ -13,6 +13,7 @@ struct SettingsPanel: View {
 
   @Environment(\.panelTheme) private var t
   @State private var hostDraft: String = ""
+  @State private var streamDraft: String = ""
   @State private var clearing = false
 
   private var prefs: Prefs { store.prefs }
@@ -41,13 +42,18 @@ struct SettingsPanel: View {
         }
       }
       switchRow("十字线磁吸", "吸到最近一根 K 线上", prefs.magnet) { $0.magnet = $1 }
+        .accessibilityIdentifier("settings.magnet")
 
       // ---- 任务书 §10.6 里有、原型里没有的
       switchRow("本根倒计时", "右轴上显示这根还有多久收", prefs.countdown) { $0.countdown = $1 }
+        .accessibilityIdentifier("settings.countdown")
       switchRow("盯盘时不锁屏", "在图上就不自动息屏", prefs.keepAwake) { $0.keepAwake = $1 }
+        .accessibilityIdentifier("settings.keepAwake")
       switchRow("启动快照", "冷启动先画上次那 600 根，再等网", prefs.launchSnapshot) { $0.launchSnapshot = $1 }
+        .accessibilityIdentifier("settings.launchSnapshot")
 
       hostRow
+      streamRow
       cacheRow
 
       PanelRow(name: "恢复默认", meta: "风格、指标、周期、各项开关回到全新安装的样子",
@@ -61,7 +67,7 @@ struct SettingsPanel: View {
     }
     .panelToast(store)
     .task { await store.refreshCacheUsage() }
-    .onAppear { hostDraft = prefs.apiHost }
+    .onAppear { hostDraft = prefs.apiHost; streamDraft = prefs.streamHost }
     .sensoryFeedback(.selection, trigger: prefs)
   }
 
@@ -89,6 +95,30 @@ struct SettingsPanel: View {
         .frame(minWidth: 150)
         .onSubmit { commitHost() }
     }
+  }
+
+  /// 行情推送域名。和上一行分开填：走镜像或代理时常常只有一边通，
+  /// 推送这条不通的表现就是「图有数据但一动不动」——那时候改的是这一行。
+  private var streamRow: some View {
+    PanelRow(name: "行情推送域名", meta: "默认 \(APIHost.defaultStream)") {
+      TextField(APIHost.defaultStream, text: $streamDraft)
+        .textFieldStyle(.plain)
+        .font(PanelFont.number)
+        .foregroundStyle(t.ink)
+        .multilineTextAlignment(.trailing)
+        .textInputAutocapitalization(.never)
+        .autocorrectionDisabled()
+        .keyboardType(.URL)
+        .submitLabel(.done)
+        .frame(minWidth: 150)
+        .onSubmit { commitStream() }
+    }
+  }
+
+  private func commitStream() {
+    let draft = streamDraft
+    store.attempt { $0.setStreamHost(draft) }
+    streamDraft = store.prefs.streamHost
   }
 
   private func commitHost() {

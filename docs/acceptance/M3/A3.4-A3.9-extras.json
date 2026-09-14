@@ -221,16 +221,16 @@
       "askedSpacing" : 1.2,
       "bars" : 272,
       "barsOnScreen" : 286.66666666666669,
-      "bytes" : 342619,
+      "bytes" : 341106,
       "device" : "pro",
       "file" : "M3-pro-light-thin-1.2-09.png",
       "item" : "A3.5",
-      "pixelSha256" : "992844157dbb2a013a09390d0f8f6e540b28bece8479194b297ba8cabdd110e2",
+      "pixelSha256" : "490684fae7a1811fb3682bd3c2a99e5280c93140eb815eee1483b136d74f1a96",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "3d9bf0a4d70874e31da3b473f8864f89b1b0acc9ab9adfc47f7b13255140d91b",
+      "sha256" : "11bcbc3d3130029624f86f2f86bfd2427fd08137f39f63f5aea24ee56a2f0508",
       "spacing" : 1.2,
       "style" : "stout",
       "thin" : true
@@ -239,16 +239,16 @@
       "askedSpacing" : 0.40000000000000002,
       "bars" : 811,
       "barsOnScreen" : 860,
-      "bytes" : 390721,
+      "bytes" : 387695,
       "device" : "pro",
       "file" : "M3-pro-light-thin-0.4-10.png",
       "item" : "A3.5",
-      "pixelSha256" : "44bc445fcb18da195e9aba0b0184c8f289d95a4b3b471eadc5dcfeb24458f80f",
+      "pixelSha256" : "08f4c85019f2a4bee4a77639b2e1ed035688fa97d605454bf7efafa37faa0bca",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "b850d6401ff05853bda79879a140b22becd6d3d18c1a1a11a9541749deb4396c",
+      "sha256" : "f94f9ee039d5edf0152e1f0e4a00155b45d7ae7a48c97de7bc859d6b4a624c24",
       "spacing" : 0.40000000000000002,
       "style" : "stout",
       "thin" : true
@@ -257,22 +257,22 @@
       "askedSpacing" : 0.40000000000000002,
       "bars" : 1000,
       "barsOnScreen" : 1715,
-      "bytes" : 332706,
+      "bytes" : 330822,
       "device" : "ipad",
       "file" : "M3-ipad-light-thin-0.4-ipad-11.png",
       "item" : "A3.5",
-      "pixelSha256" : "162e1cb2a37c7b6ef4f76084527afa48ad5e8fabb4b80c30238d68d5337de326",
+      "pixelSha256" : "cc67a4d8f66c1062b6545588a22444770581b8aa981de506cd42ed412244cf1e",
       "px" : [
         1488,
         2266
       ],
-      "sha256" : "73f6e020a43b843931da4c4cad562cc28f4424193a83c7a1662f1b2815312419",
+      "sha256" : "21596bfd5f21fddc869ad4cc7719ebaf5354ede44168a65d9ce66133a94cf086",
       "spacing" : 0.40000000000000002,
       "style" : "stout",
       "thin" : true
     },
     {
-      "bytes" : 172924,
+      "bytes" : 173430,
       "file" : "M3-pro-light-sub-macd-12.png",
       "item" : "A3.6",
       "params" : [
@@ -280,12 +280,12 @@
         26,
         9
       ],
-      "pixelSha256" : "fe471c59f07a41e69d3dc330c5f2fc719fda316afb6b0fe1925032d7272db817",
+      "pixelSha256" : "44a50d5b0fcc7043318f5662f3d3f39eca8b07aba772f5878db26c52507d42d5",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "5f9ca6c1493ff16b10c736ece62fe98f7ac4a4dac02392df681b6fe44862a683",
+      "sha256" : "45074f653ad0d3af407b7254e7f06ac4219304823c51e4797d9587671f1f21f5",
       "style" : "stout",
       "sub" : "MACD",
       "subName" : "MACD"
@@ -507,71 +507,71 @@
     {
       "barIndex" : 986,
       "barTime" : 1789311600000,
-      "bytes" : 313126,
+      "bytes" : 314012,
       "close" : 77098,
       "file" : "M3-pro-light-crosshair-23.png",
       "item" : "A3.8",
-      "pixelSha256" : "97d2f31829b0c2c5eb07b2a023a1ca60c9d1aa40b4d66a68abcbaa0e9c4c12b0",
+      "pixelSha256" : "53e5f6185a5d4ceca63196ceb4bbb82ae6c2fba06cd2c60c0ec7b7bfadde57d3",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "91fe40d3feb0e3c2eff2ea2ccb4dc2f04685d49d99250472ef6f690d5c962dfd",
+      "sha256" : "9948bdd5111dbb28247b16eb8e5b892c247c0f961b2faf383d9a481d4167b28d",
       "timezone" : "utc"
     },
     {
       "barIndex" : 986,
       "barTime" : 1789311600000,
-      "bytes" : 309835,
+      "bytes" : 311188,
       "close" : 77098,
       "file" : "M3-pro-dark-crosshair-24.png",
       "item" : "A3.8",
-      "pixelSha256" : "a968fd4581bab6d2f6a2cd380173a99cc068ab0cb08819e742d90c05aa7b2fa3",
+      "pixelSha256" : "a39c235a0446e3e5c9dd13eb8df6ca4b275da021bce08ac6204fd948226d449b",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "74c8ee5322c1a9859a2ba900928e76385f4b6f4ba03c07f39b230aafbad49dff",
+      "sha256" : "a8497fd219360a5bc003496975c7f4a0298b9958c64e7a86ec401d160761143b",
       "timezone" : "utc"
     },
     {
-      "bytes" : 252626,
+      "bytes" : 253151,
       "display" : "常规",
       "file" : "M3-pro-light-axis-linear-25.png",
       "item" : "A3.9",
-      "pixelSha256" : "739272334330cd191b80bf024d87955d5c22ecb8d234a7daa9bd4c1e19dc8d78",
+      "pixelSha256" : "42ad6677c60a5ecdce75120416a66f74d9ff3a2b1a0ca7a63540e9c7b3388e60",
       "priceMode" : "linear",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "53a7011ed8f0968881a17679695248dd73b699934fb6ad4a8bf9182f9b1dc60e"
+      "sha256" : "955df4f886258450cb4275b4c862c81b69c62815a0377aa6bdf81ea8a2028dbb"
     },
     {
-      "bytes" : 257560,
+      "bytes" : 258082,
       "display" : "对数",
       "file" : "M3-pro-light-axis-log-26.png",
       "item" : "A3.9",
-      "pixelSha256" : "0192322d35f2b885489327dc3f6252b47be8d6a6d5143a140ae83cd24afd52a2",
+      "pixelSha256" : "0348c177037f79523f7c21f3bd72bd4a58415b61ea9b33b1e9b1ebd91a299d3c",
       "priceMode" : "log",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "5dae1dcc80583863975a3b3ad1e674d66beb0bb70c1ca2d1187c9ea7827c3a03"
+      "sha256" : "15f032e5ff5adf4d7934928218afd094943e3ecd660a0759f89892bb99da0060"
     },
     {
-      "bytes" : 251967,
+      "bytes" : 252449,
       "display" : "百分比",
       "file" : "M3-pro-light-axis-percent-27.png",
       "item" : "A3.9",
-      "pixelSha256" : "f48c49426a3dc89288462c0b1d0c75db41710bbd7abe4db4556865e3f2a3e98f",
+      "pixelSha256" : "3ba75aa7091221517614115573b54503165867272cc33ed07d90ea1ff2a15887",
       "priceMode" : "percent",
       "px" : [
         1206,
         2622
       ],
-      "sha256" : "06543d5111524407d146cee3a423ce20812e26da70eb4b29264ffa5880881507"
+      "sha256" : "5549161acd5596e7ee0077a9c81a0a428c7454c95b61711bf356f540de617ab2"
     }
   ]
 }

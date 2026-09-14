@@ -1,0 +1,55 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "kanpanchart",
+          "kind" : "fileSystem",
+          "location" : "/Users/mdd/zhk/kanpan/KanpanChart",
+          "name" : "KanpanChart"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/mdd/zhk/kanpan/KanpanChart"
+        },
+        "subpath" : "kanpanchart"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "kanpancore",
+          "kind" : "fileSystem",
+          "location" : "/Users/mdd/zhk/kanpan/KanpanCore",
+          "name" : "KanpanCore"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/mdd/zhk/kanpan/KanpanCore"
+        },
+        "subpath" : "kanpancore"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "kanpandata",
+          "kind" : "fileSystem",
+          "location" : "/Users/mdd/zhk/kanpan/KanpanData",
+          "name" : "KanpanData"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/mdd/zhk/kanpan/KanpanData"
+        },
+        "subpath" : "kanpandata"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

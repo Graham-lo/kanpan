@@ -146,26 +146,65 @@ public struct ReplayFactory: WSSocketFactory {
 final class ReplaySocket: WSSocket {
   let deck: ReplayDeck
   let pacer: Pacer
+  /// 挂起的 `receive()` 靠它叫醒。见 `deafSleep`。
+  private let gate = Gate()
   init(deck: ReplayDeck, pacer: Pacer) { self.deck = deck; self.pacer = pacer }
 
   func send(_ text: String) async throws { await deck.noteSend(text) }
   func pong() async throws { await deck.notePong() }
-  func cancel() async {}
+  func cancel() async { await gate.kill() }
 
   func receive() async throws -> WSFrame {
     while true {
       guard let step = await deck.next() else {
         // 脚本放完，挂着等测试收工。
-        try await pacer.sleep(ms: 600_000)
+        try await deafSleep(ms: 600_000)
         continue
       }
       switch step {
       case .frame(let f): return f
       case .drop(let why): return .closed(why)
-      case .silence(let ms): try await pacer.sleep(ms: ms)
-      case .hang: try await pacer.sleep(ms: 600_000)
+      case .silence(let ms): try await deafSleep(ms: ms)
+      case .hang: try await deafSleep(ms: 600_000)
       }
     }
+  }
+
+  /// 睡一段，**不理会任务取消**——只有 `cancel()` 叫得醒，叫醒了抛错。
+  ///
+  /// 真 `URLSessionWebSocketTask.receive()` 就是这个脾气：它是
+  /// `withCheckedContinuation` 包出来的，取消所在任务没有任何作用，只有把 socket
+  /// 掐了挂着的那一下才会带错误返回。回放器必须照着来——用 `Task.sleep` 的话，
+  /// 「静默 60 秒主动重连」（A2.8）在测试里一路绿灯，真机上却是看门狗把自己挂死：
+  /// 计时任务抛了错，任务组退出前还得等这条收帧任务，而它永远不回来。
+  private func deafSleep(ms: Double) async throws {
+    let pacer = self.pacer
+    let gate = self.gate
+    // 分离任务不继承取消，计时不会被上层的 `cancelAll()` 掐掉。
+    let timer = Task.detached { try? await pacer.sleep(ms: ms); await gate.wake() }
+    defer { timer.cancel() }
+    await gate.wait()
+    if await gate.killed { throw FeedError.badResponse("连接已取消") }
+  }
+}
+
+/// 一次性的叫醒闸。`wait()` 里那个 `withCheckedContinuation` 不可取消，正是要点。
+actor Gate {
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+  private(set) var killed = false
+
+  func wait() async {
+    if killed { return }
+    await withCheckedContinuation { waiters.append($0) }
+  }
+  func wake() {
+    let w = waiters
+    waiters = []
+    for c in w { c.resume() }
+  }
+  func kill() {
+    killed = true
+    wake()
   }
 }
 

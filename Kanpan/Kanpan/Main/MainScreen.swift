@@ -1,5 +1,6 @@
 import KanpanChart
 import KanpanCore
+import KanpanData
 import SwiftUI
 import UIKit
 
@@ -26,6 +27,7 @@ struct MainScreen: View {
 
   @Environment(\.colorScheme) private var scheme
   @Environment(\.scenePhase) private var phase
+  @Environment(\.verticalSizeClass) private var vClass
 
   private var prefs: Prefs { store.prefs }
 
@@ -39,7 +41,56 @@ struct MainScreen: View {
 
   private var theme: PanelTheme { PanelTheme(dark: dark, redUp: prefs.redUp) }
 
+  /// 设置里那两行域名（A6.10）。REST 和推送分开填，理由见 `APIHost.defaultStream`。
+  private var hosts: BinanceHosts { BinanceHosts(fapi: prefs.apiHost, stream: prefs.streamHost) }
+
+  /// 横屏判据用高度的 size class，不用宽高比。
+  ///
+  /// iPad 横过来仍然是 regular × regular——那是「大屏竖版布局转个向」，不该切成
+  /// 手机横屏那套（§10.7 说的是 iPhone 横屏；iPad 走 A8.3 的放大布局）。
+  private var landscape: Bool { vClass == .compact }
+
   var body: some View {
+    Group {
+      if landscape { landscapeBody } else { portraitBody }
+    }
+    .background(theme.app)
+    .preferredColorScheme(prefs.theme.forced)
+    .overlay(alignment: .bottom) { toastLayer }
+    // 横屏的面板走自己那层侧栏，不挂系统 sheet：半屏 sheet 在 compact 高度下会被
+    // 系统顶成全屏，图就整个没了。
+    .prefsPanel(landscape ? .constant(nil) : $panel, store: store,
+                onPickInterval: pick(interval:))
+    .fullScreenCover(isPresented: $showSymbols) {
+      SymbolPickerView(model: picker, redUp: prefs.redUp, onClose: { showSymbols = false })
+        .preferredColorScheme(prefs.theme.forced)
+    }
+    .task { boot() }
+    .onChange(of: phase) { _, now in
+      switch now {
+      case .background: market.enterBackground()
+      case .active: market.enterForeground()
+      default: break
+      }
+    }
+    .onChange(of: prefs.keepAwake, initial: true) { _, on in
+      UIApplication.shared.isIdleTimerDisabled = on
+    }
+    .onChange(of: prefs.launchSnapshot) { _, on in market.setSnapshotEnabled(on) }
+    .onChange(of: hosts) { _, next in market.setHosts(next) }
+    .onChange(of: store.notice) { _, note in
+      if let note { say(note); store.clearNotice() }
+    }
+    .onChange(of: draw.full) { _, full in
+      // A7.7：一个品种最多 50 条，满了只提示、不悄悄丢。
+      if full { say("这个品种的线画满了（50 条）"); draw.full = false }
+    }
+    .environment(\.panelTheme, theme)
+  }
+
+  // ---------------------------------------------------------------- 各段
+
+  private var portraitBody: some View {
     VStack(spacing: 0) {
       header
       hairline
@@ -57,51 +108,81 @@ struct MainScreen: View {
       BottomBar(
         theme: theme, active: panel, drawing: draw.active,
         onPanel: { p in panel = (panel == p) ? nil : p },
-        onDraw: { draw.toggle() },
-        onLandscape: { say("把手机横过来，图自己转") }
+        onDraw: { dismissPanel(); draw.toggle() },
+        onLandscape: { dismissPanel(); Orientation.rotate(to: true) }
       )
       .background(theme.app)
     }
-    .background(theme.app)
-    .preferredColorScheme(prefs.theme.forced)
-    .overlay(alignment: .bottom) { toastLayer }
-    .prefsPanel($panel, store: store, onPickInterval: pick(interval:))
-    .fullScreenCover(isPresented: $showSymbols) {
-      SymbolPickerView(model: picker, redUp: prefs.redUp, onClose: { showSymbols = false })
-        .preferredColorScheme(prefs.theme.forced)
-    }
-    .task { boot() }
-    .onChange(of: phase) { _, now in
-      switch now {
-      case .background: market.enterBackground()
-      case .active: market.enterForeground()
-      default: break
-      }
-    }
-    .onChange(of: prefs.keepAwake, initial: true) { _, on in
-      UIApplication.shared.isIdleTimerDisabled = on
-    }
-    .onChange(of: prefs.launchSnapshot) { _, on in market.setSnapshotEnabled(on) }
-    .onChange(of: store.notice) { _, note in
-      if let note { say(note); store.clearNotice() }
-    }
-    .onChange(of: draw.full) { _, full in
-      // A7.7：一个品种最多 50 条，满了只提示、不悄悄丢。
-      if full { say("这个品种的线画满了（50 条）"); draw.full = false }
-    }
-    .environment(\.panelTheme, theme)
   }
 
-  // ---------------------------------------------------------------- 各段
+  /// 横屏（§10.7）：图占满，周期竖排贴左，工具竖排贴右，顶栏缩成一行小字压在图上。
+  ///
+  /// 安全区只吃左右两边（灵动岛横过来在左或右）——上下交给图自己占满，那正是横屏
+  /// 想要的。右轴永远在图的右边，所以右边那条工具栏放在安全区**外面**、自己留白，
+  /// 不然右轴文字会被切（A8.2）。
+  private var landscapeBody: some View {
+    HStack(spacing: 0) {
+      IntervalRail(
+        theme: theme, quick: prefs.quickIntervals, current: market.interval,
+        onPick: pick(interval:), onMore: { panel = .period }
+      )
+      .background(theme.app)
+      ZStack(alignment: .topLeading) {
+        chart
+        LandscapeHeadline(
+          theme: theme, symbol: market.symbol, price: readoutPrice,
+          changePercent: market.ticker?.changePercent,
+          decimals: market.info.pricePrecision,
+          onSymbol: { dismissPanel(); showSymbols = true })
+          .padding(.leading, 8)
+          .padding(.top, 6)
+        if draw.hint != nil {
+          DrawingHintStrip(controller: draw)
+            .frame(maxWidth: .infinity, alignment: .top)
+            .padding(.top, 6)
+        }
+      }
+      if draw.active {
+        DrawingRail(controller: draw)
+      }
+      ToolRail(
+        theme: theme, active: panel, drawing: draw.active,
+        onPanel: { p in panel = (panel == p) ? nil : p },
+        onDraw: { dismissPanel(); draw.toggle() },
+        onPortrait: { dismissPanel(); Orientation.rotate(to: false) })
+    }
+    .ignoresSafeArea(.container, edges: .bottom)
+    .overlay(alignment: .trailing) {
+      SidePanelLayer(theme: theme, shown: panel != nil, onClose: dismissPanel) {
+        sidePanelContent
+      }
+    }
+  }
+
+  @ViewBuilder private var sidePanelContent: some View {
+    if let which = panel {
+      PanelSide(store: store, dark: dark, onClose: PanelDismiss { dismissPanel() }) {
+        switch which {
+        case .style: StylePanel(store: store)
+        case .indicator: IndicatorPanel(store: store)
+        case .period: PeriodPanel(store: store, onPick: pick(interval:))
+        case .settings: SettingsPanel(store: store)
+        }
+      }
+    }
+  }
 
   private var header: some View {
     VStack(spacing: 0) {
       TopBar(
         theme: theme, symbol: market.symbol,
         starred: picker.isFavorite(market.symbol),
-        onSymbol: { showSymbols = true },
-        onSearch: { showSymbols = true },
+        status: market.status,
+        onSymbol: { dismissPanel(); showSymbols = true },
+        onStatus: { say(statusLine) },
+        onSearch: { dismissPanel(); showSymbols = true },
         onStar: {
+          dismissPanel()
           let now = picker.toggleFavorite(market.symbol)
           say(now ? "已加入自选" : "已移出自选")
         })
@@ -112,6 +193,22 @@ struct MainScreen: View {
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
     .background(theme.app)
+  }
+
+  /// 长按状态圆点报的那一行（§10.5）。
+  ///
+  /// 除了状态本身还报「多久没推了」：WS 能连上但一帧不推的时候 `status` 仍是
+  /// `.live`，光看颜色会以为一切正常——这一行是那种情况唯一看得见的线索。
+  private var statusLine: String {
+    let head: String
+    switch market.status {
+    case .live: head = "实时"
+    case .reconnecting: head = "重连中"
+    case .offline: head = "离线"
+    }
+    guard let at = market.lastPushAt else { return head + " · 还没收到推送" }
+    let age = Int(Date().timeIntervalSince(at))
+    return head + (age < 2 ? " · 刚刚更新" : " · \(age) 秒没动了")
   }
 
   /// 十字线在哪根上就读哪根的收盘，没有十字线就读最新价。
@@ -131,7 +228,9 @@ struct MainScreen: View {
         onView: { _ in atLatest = proxy.isAtLatest },
         onCrosshair: { crosshair = $0 },
         onNeedsHistory: { market.loadMore() },
-        onTapped: {},
+        // 点一下图就回到看盘：面板收起（§10.6「点遮罩关闭」在这一层的等价物——
+        // sheet 背后仍然可以单指拖图，所以不铺遮罩，而是让图自己把这一下报上来）。
+        onTapped: { dismissPanel() },
         drawing: draw
       )
       // 换品种/周期的空档：旧图留着压暗，不闪白（§10.4）。
@@ -193,11 +292,20 @@ struct MainScreen: View {
       market.switchTo(symbol: info.symbol)
     }
     picker.setLoader(market.catalogLoader)
+    // 域名要赶在开流之前给：`MarketModel` 自己的默认是币安官方那两台。
+    market.setHosts(hosts)
     market.start(snapshot: prefs.launchSnapshot)
     if market.interval != prefs.interval { market.switchTo(interval: prefs.interval) }
   }
 
+  /// 收起面板。选完一项、或者手指落到图和别的控件上，都走这儿。
+  private func dismissPanel() {
+    guard panel != nil else { return }
+    panel = nil
+  }
+
   private func pick(interval iv: Interval) {
+    dismissPanel()
     guard iv != market.interval else { return }
     store.update { $0.interval = iv }
     market.switchTo(interval: iv)

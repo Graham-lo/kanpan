@@ -13,10 +13,15 @@ struct BottomBar: View {
   var body: some View {
     HStack(spacing: 0) {
       tool(.style, VectorIcon.style, "风格") { onPanel(.style) }
+        .accessibilityIdentifier("bottom.style")
       tool(.indicator, VectorIcon.indicator, "指标") { onPanel(.indicator) }
+        .accessibilityIdentifier("bottom.indicator")
       item(VectorIcon.draw, "画线", on: drawing, action: onDraw)
+        .accessibilityIdentifier("bottom.draw")
       tool(.settings, VectorIcon.settings, "设置") { onPanel(.settings) }
+        .accessibilityIdentifier("bottom.settings")
       item(VectorIcon.landscape, "横屏", on: false, action: onLandscape)
+        .accessibilityIdentifier("bottom.landscape")
     }
   }
 
@@ -64,6 +69,7 @@ struct LatestButton: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel("回到最新")
+    .accessibilityIdentifier("chart.latest")
     .padding(.trailing, 60)
     .padding(.bottom, 28)
     .opacity(shown ? 1 : 0)
