@@ -19,11 +19,28 @@ public struct Bar: Sendable, Equatable {
   }
 }
 
-/// 持仓量的一点。币安只给最近 30 天，最细 5m（§4.5）。
+/// 持仓量的一点。最细 5 分钟——REST 只给最近 30 天，更早的走归档站（§4.5）。
+///
+/// 后面四个是同一份 metrics 里顺手读出来的多空比。1.0 不画，留着是因为将来加一个
+/// 「多空比」副图就只是加一条曲线的事，不用把归档再解一遍。
 public struct OIPoint: Sendable, Equatable {
   public var time: Int64
   public var value: Double
-  public init(time: Int64, value: Double) { self.time = time; self.value = value }
+  public var topTraderAccountRatio: Double?
+  public var topTraderPositionRatio: Double?
+  public var accountRatio: Double?
+  public var takerVolumeRatio: Double?
+
+  public init(time: Int64, value: Double,
+              topTraderAccountRatio: Double? = nil, topTraderPositionRatio: Double? = nil,
+              accountRatio: Double? = nil, takerVolumeRatio: Double? = nil) {
+    self.time = time
+    self.value = value
+    self.topTraderAccountRatio = topTraderAccountRatio
+    self.topTraderPositionRatio = topTraderPositionRatio
+    self.accountRatio = accountRatio
+    self.takerVolumeRatio = takerVolumeRatio
+  }
 }
 
 /// 持仓量序列。等距（period 固定），对齐时按「不晚于这根开盘」取。

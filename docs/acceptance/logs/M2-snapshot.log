@@ -1,0 +1,5 @@
+[15:47:25.733] GET /fapi/v1/klines?interval=1h&limit=1500&symbol=BTCUSDT → 200 212806B 723ms
+[15:47:25.740] 写 /var/folders/lk/b025r9w52qzbwfgfjnvrgb3r0000gn/T/kanpan-feed/last.kbar 24040 字节（上限 61440）
+[15:47:25.740] 读回 600 根，用时 0.23ms
+[15:47:25.741] 逐字节一致：是
+[15:47:25.741] 末根 1789369200000 close=77750.5

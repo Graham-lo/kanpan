@@ -1,0 +1,6 @@
+[15:47:28.250] GET /futures/data/openInterestHist?endTime=1789372047835&limit=500&period=1h&symbol=BTCUSDT → 200 85501B 414ms
+[15:47:28.436] GET /futures/data/openInterestHist?endTime=1787572799999&limit=500&period=1h&symbol=BTCUSDT → 200 41725B 183ms
+[15:47:28.438] OI 归档缺 16 天，并发 8 下载
+[15:47:29.155] 原始点 5309 条，用时 1.32s
+[15:47:29.155] 降采样到 1h：1088 条，1785456000000 … 1789369200000
+[15:47:29.156] 重复 0 处；缓存占用 55516 字节

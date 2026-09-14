@@ -1,0 +1,207 @@
+import Foundation
+import KanpanCore
+
+// ---------------------------------------------------------------- K 线
+
+/// `fapi/v1/klines` 的一行：数组，元素类型混着来。
+/// `[openTime, o, h, l, c, v, closeTime, quoteVolume, trades, takerBase, takerQuote, ignore]`
+struct KlineRow: Decodable {
+  var openTime: Int64
+  var open: Double
+  var high: Double
+  var low: Double
+  var close: Double
+  var volume: Double
+  var closeTime: Int64
+
+  init(from decoder: Decoder) throws {
+    var c = try decoder.unkeyedContainer()
+    openTime = try c.decode(Int64.self)
+    open = try KlineRow.num(&c)
+    high = try KlineRow.num(&c)
+    low = try KlineRow.num(&c)
+    close = try KlineRow.num(&c)
+    volume = try KlineRow.num(&c)
+    closeTime = try c.decode(Int64.self)
+    // 后面几列（成交额、笔数、主动买量）1.0 用不上，不解。
+  }
+
+  /// 币安价格量都是字符串，但归档和某些镜像会给数字，两种都收。
+  private static func num(_ c: inout UnkeyedDecodingContainer) throws -> Double {
+    if let s = try? c.decode(String.self) {
+      guard let d = Double(s) else {
+        throw FeedError.badResponse("不是数字：\(s)")
+      }
+      return d
+    }
+    return try c.decode(Double.self)
+  }
+
+  var bar: Bar { Bar(openTime: openTime, open: open, high: high, low: low, close: close, volume: volume) }
+}
+
+// ---------------------------------------------------------------- 品种表
+
+struct ExchangeInfoDTO: Decodable {
+  struct Symbol: Decodable {
+    var symbol: String
+    var baseAsset: String
+    var quoteAsset: String
+    var contractType: String?
+    var status: String?
+    var pricePrecision: Int
+    var quantityPrecision: Int
+    var filters: [[String: JSONValue]]
+
+    var tickSize: Double {
+      for f in filters where f["filterType"]?.stringValue == "PRICE_FILTER" {
+        if let t = f["tickSize"]?.doubleValue { return t }
+      }
+      return pow(10, -Double(pricePrecision))
+    }
+  }
+  var symbols: [Symbol]
+}
+
+/// 只为了从 `filters` 这种异构数组里挑两个字段，不值得写 9 个 struct。
+enum JSONValue: Decodable {
+  case string(String), number(Double), bool(Bool), null, other
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.singleValueContainer()
+    if c.decodeNil() { self = .null }
+    else if let s = try? c.decode(String.self) { self = .string(s) }
+    else if let d = try? c.decode(Double.self) { self = .number(d) }
+    else if let b = try? c.decode(Bool.self) { self = .bool(b) }
+    else { self = .other }
+  }
+
+  var stringValue: String? { if case .string(let s) = self { return s }; return nil }
+  var doubleValue: Double? {
+    switch self {
+    case .string(let s): return Double(s)
+    case .number(let d): return d
+    default: return nil
+    }
+  }
+}
+
+// ---------------------------------------------------------------- 24h 行情
+
+struct Ticker24hDTO: Decodable {
+  var symbol: String
+  var lastPrice: String
+  var priceChangePercent: String
+  var highPrice: String
+  var lowPrice: String
+  var quoteVolume: String
+
+  var ticker: Ticker {
+    Ticker(symbol: symbol,
+           last: Double(lastPrice) ?? .nan,
+           changePercent: Double(priceChangePercent) ?? .nan,
+           high: Double(highPrice) ?? .nan,
+           low: Double(lowPrice) ?? .nan,
+           quoteVolume: Double(quoteVolume) ?? .nan)
+  }
+}
+
+// ---------------------------------------------------------------- 持仓量
+
+struct OIHistDTO: Decodable {
+  var symbol: String
+  var sumOpenInterest: String
+  var sumOpenInterestValue: String
+  var timestamp: Int64
+
+  var point: OIPoint { OIPoint(time: timestamp, value: Double(sumOpenInterest) ?? .nan) }
+}
+
+// ---------------------------------------------------------------- WS 报文
+
+/// 组合流外层：`{"stream":"btcusdt@kline_1m","data":{…}}`。
+/// 也收裸报文（单流地址、回放文件），那时 `stream` 为空。
+public struct StreamEnvelope: Decodable {
+  public var stream: String?
+  public var data: StreamPayload?
+  /// 裸报文时外层就是 payload 本身。
+  public var inline: StreamPayload?
+
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: K.self)
+    stream = try c.decodeIfPresent(String.self, forKey: .stream)
+    data = try c.decodeIfPresent(StreamPayload.self, forKey: .data)
+    if data == nil {
+      inline = try? StreamPayload(from: decoder)
+    }
+  }
+  enum K: String, CodingKey { case stream, data }
+
+  public var payload: StreamPayload? { data ?? inline }
+}
+
+public enum StreamPayload: Sendable {
+  case kline(KlineEvent)
+  case ticker(Ticker)
+  case markPrice(symbol: String, price: Double)
+  case other(String)
+}
+
+extension StreamPayload: Decodable {
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: K.self)
+    let e = (try? c.decode(String.self, forKey: .e)) ?? ""
+    switch e {
+    case "kline":
+      self = .kline(try KlineEvent(from: decoder))
+    case "24hrTicker":
+      let sym = try c.decode(String.self, forKey: .s)
+      func d(_ k: K) -> Double { (try? c.decode(String.self, forKey: k)).flatMap(Double.init) ?? .nan }
+      self = .ticker(Ticker(symbol: sym, last: d(.c), changePercent: d(.P),
+                            high: d(.h), low: d(.l), quoteVolume: d(.q)))
+    case "markPriceUpdate":
+      let sym = try c.decode(String.self, forKey: .s)
+      let p = (try? c.decode(String.self, forKey: .p)).flatMap(Double.init) ?? .nan
+      self = .markPrice(symbol: sym, price: p)
+    default:
+      self = .other(e)
+    }
+  }
+  enum K: String, CodingKey { case e, s, c, P, h, l, q, p, k }
+}
+
+/// `kline` 事件。`x == true` 表示这根收了（§4.4）。
+public struct KlineEvent: Sendable, Equatable, Decodable {
+  public var symbol: String
+  public var interval: String
+  public var openTime: Int64
+  public var closed: Bool
+  public var bar: Bar
+
+  public init(symbol: String, interval: String, openTime: Int64, closed: Bool, bar: Bar) {
+    self.symbol = symbol; self.interval = interval
+    self.openTime = openTime; self.closed = closed; self.bar = bar
+  }
+
+  public init(from decoder: Decoder) throws {
+    let outer = try decoder.container(keyedBy: Outer.self)
+    let k = try outer.nestedContainer(keyedBy: Inner.self, forKey: .k)
+    if let s = try? k.decode(String.self, forKey: .s) { symbol = s }
+    else { symbol = try outer.decode(String.self, forKey: .s) }
+    interval = try k.decode(String.self, forKey: .i)
+    openTime = try k.decode(Int64.self, forKey: .t)
+    closed = (try? k.decode(Bool.self, forKey: .x)) ?? false
+    func d(_ key: Inner) throws -> Double {
+      if let s = try? k.decode(String.self, forKey: key) {
+        guard let v = Double(s) else { throw FeedError.badResponse("不是数字：\(s)") }
+        return v
+      }
+      return try k.decode(Double.self, forKey: key)
+    }
+    bar = Bar(openTime: openTime, open: try d(.o), high: try d(.h),
+              low: try d(.l), close: try d(.c), volume: try d(.v))
+  }
+
+  enum Outer: String, CodingKey { case e, E, s, k }
+  enum Inner: String, CodingKey { case t, T, s, i, o, h, l, c, v, x }
+}

@@ -1,0 +1,84 @@
+$ make strict
+cd KanpanCore && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+[0/1] Planning build
+Building for debugging...
+[0/1] Write swift-version--58304C5D6DBC2206.txt
+[2/22] Compiling KanpanCore Math.swift
+[3/22] Compiling KanpanCore Aggregator.swift
+[4/24] Emitting module KanpanCore
+[5/24] Compiling KanpanCore IncrementalLines.swift
+[6/24] Compiling KanpanCore IndicatorEngine.swift
+[7/24] Compiling KanpanCore Bar.swift
+[8/24] Compiling KanpanCore BarSeries.swift
+[9/24] Compiling KanpanCore Interval.swift
+[10/24] Compiling KanpanCore SymbolInfo.swift
+[11/24] Compiling KanpanCore IndicatorID.swift
+[12/24] Compiling KanpanCore Indicators.swift
+[13/24] Compiling KanpanCore Ticks.swift
+[14/24] Compiling KanpanCore ViewWindow.swift
+[15/24] Compiling KanpanCore Clamp.swift
+[16/24] Compiling KanpanCore Constants.swift
+[17/24] Compiling KanpanCore Fling.swift
+[18/24] Compiling KanpanCore Layout.swift
+[19/24] Compiling KanpanCore PriceScale.swift
+[20/24] Compiling KanpanCore Drawing.swift
+[21/24] Compiling KanpanCore Format.swift
+[22/24] Compiling KanpanCore CandleWidths.swift
+[23/24] Compiling KanpanCore CandleStyle.swift
+[24/24] Compiling KanpanCore Palette.swift
+Build complete! (2.10s)
+cd KanpanData && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+[0/1] Planning build
+Building for debugging...
+[0/5] Write sources
+[1/5] Write swift-version--58304C5D6DBC2206.txt
+[3/26] Compiling KanpanCore Math.swift
+[4/26] Compiling KanpanCore Aggregator.swift
+[5/26] Compiling KanpanCore IndicatorID.swift
+[6/26] Compiling KanpanCore Indicators.swift
+[7/26] Compiling KanpanCore Bar.swift
+[8/26] Compiling KanpanCore BarSeries.swift
+[9/28] Compiling KanpanCore Ticks.swift
+[10/28] Compiling KanpanCore ViewWindow.swift
+[11/28] Compiling KanpanCore Layout.swift
+[12/28] Compiling KanpanCore PriceScale.swift
+[13/28] Compiling KanpanCore Interval.swift
+[14/28] Compiling KanpanCore SymbolInfo.swift
+[15/28] Compiling KanpanCore Clamp.swift
+[16/28] Compiling KanpanCore Constants.swift
+[17/28] Compiling KanpanCore Fling.swift
+[18/28] Compiling KanpanCore IncrementalLines.swift
+[19/28] Compiling KanpanCore IndicatorEngine.swift
+[20/28] Emitting module KanpanCore
+[21/28] Compiling KanpanCore Drawing.swift
+[22/28] Compiling KanpanCore Format.swift
+[23/28] Compiling KanpanCore CandleWidths.swift
+[24/28] Compiling KanpanCore CandleStyle.swift
+[25/28] Compiling KanpanCore Palette.swift
+[26/47] Compiling KanpanData Paths.swift
+[27/47] Compiling KanpanData Snapshot.swift
+[28/49] Compiling KanpanData OISource.swift
+[29/49] Compiling KanpanData BarCache.swift
+[30/49] Compiling KanpanData FeedComposer.swift
+[31/49] Compiling KanpanData MarketFeed.swift
+[32/49] Compiling KanpanData WSClient.swift
+[33/49] Compiling KanpanData WSSocket.swift
+[34/49] Compiling KanpanData RESTClient.swift
+[35/49] Compiling KanpanData RateLimiter.swift
+[36/49] Compiling KanpanData HTTPTransport.swift
+[37/49] Compiling KanpanData Pacer.swift
+[38/49] Compiling KanpanData Endpoints.swift
+[39/49] Compiling KanpanData Errors.swift
+[40/49] Compiling KanpanData Backoff.swift
+[41/49] Compiling KanpanData DTO.swift
+[42/49] Emitting module KanpanData
+[43/49] Compiling KanpanData OIArchive.swift
+[44/49] Compiling KanpanData OIStore.swift
+[45/49] Compiling KanpanData SymbolCatalog.swift
+[46/49] Compiling KanpanData Zip.swift
+[47/51] Compiling kanpan_feed main.swift
+[48/51] Emitting module kanpan_feed
+[48/51] Write Objects.LinkFileList
+[49/51] Linking kanpan-feed
+[50/51] Applying kanpan-feed
+Build complete! (7.76s)

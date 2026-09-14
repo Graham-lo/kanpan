@@ -1,0 +1,126 @@
+xcodebuild build \
+		-workspace Kanpan.xcworkspace \
+		-scheme Kanpan \
+		-destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+		-derivedDataPath DerivedData
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,name=iPhone 16 Pro" -derivedDataPath DerivedData
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (3 targets)
+    Target 'Kanpan' in project 'Kanpan'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/mdd/zhk/kanpan/Kanpan/Kanpan/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+Build description signature: 1203cc1e0e38c42907387057cdf4d99c
+Build description path: /Users/mdd/zhk/kanpan/DerivedData/Build/Intermediates.noindex/XCBuildData/1203cc1e0e38c42907387057cdf4d99c.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk /Users/mdd/zhk/kanpan/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+    cd /Users/mdd/zhk/kanpan
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -o /Users/mdd/zhk/kanpan/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+
+ProcessInfoPlistFile /Users/mdd/zhk/kanpan/DerivedData/Build/Products/Debug-iphonesimulator/Kanpan.app/Info.plist /Users/mdd/zhk/kanpan/DerivedData/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/empty-Kanpan.plist (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan/Kanpan
+    builtin-infoPlistUtility /Users/mdd/zhk/kanpan/DerivedData/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/empty-Kanpan.plist -producttype com.apple.product-type.application -genpkginfo /Users/mdd/zhk/kanpan/DerivedData/Build/Products/Debug-iphonesimulator/Kanpan.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/mdd/zhk/kanpan/DerivedData/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_generated_info.plist -o /Users/mdd/zhk/kanpan/DerivedData/Build/Products/Debug-iphonesimulator/Kanpan.app/Info.plist
+
+** BUILD SUCCEEDED **
+
+运行时：com.apple.CoreSimulator.SimRuntime.iOS-26-5
+  = iPhone SE (3rd generation)
+  = iPhone 13 mini
+  = iPhone 15
+  = iPhone 16 Pro
+  = iPhone Air
+  = iPhone 16 Plus
+  = iPhone 17 Pro Max
+  = iPad mini (A17 Pro)
+→ iPhone SE (3rd generation) (E8C08290-5756-4701-8FCB-982A098118B5)
+   ✓ docs/acceptance/shots/M0-iPhone-SE-3rd-generation-desktop.png
+   ✓ docs/acceptance/shots/M0-iPhone-SE-3rd-generation-light.png
+   ✓ docs/acceptance/shots/M0-iPhone-SE-3rd-generation-dark.png
+→ iPhone 13 mini (EE185CD1-5E3A-4479-BCE4-7BE0A0FF57A9)
+   ✓ docs/acceptance/shots/M0-iPhone-13-mini-desktop.png
+   ✓ docs/acceptance/shots/M0-iPhone-13-mini-light.png
+   ✓ docs/acceptance/shots/M0-iPhone-13-mini-dark.png
+→ iPhone 15 (3749DE35-5582-4066-8C14-9767B5559B70)
+   ✓ docs/acceptance/shots/M0-iPhone-15-desktop.png
+   ✓ docs/acceptance/shots/M0-iPhone-15-light.png
+   ✓ docs/acceptance/shots/M0-iPhone-15-dark.png
+→ iPhone 16 Pro (D6C41248-C78E-46B8-B391-311F373D24A8)
+   ✓ docs/acceptance/shots/M0-iPhone-16-Pro-desktop.png
+   ✓ docs/acceptance/shots/M0-iPhone-16-Pro-light.png
+   ✓ docs/acceptance/shots/M0-iPhone-16-Pro-dark.png
+→ iPhone Air (B29FA1D2-E0DD-4620-B3CE-3675ABA3F5DC)
+   ✓ docs/acceptance/shots/M0-iPhone-Air-desktop.png
+   ✓ docs/acceptance/shots/M0-iPhone-Air-light.png
+   ✓ docs/acceptance/shots/M0-iPhone-Air-dark.png
+→ iPhone 16 Plus (FFABA918-C503-4FAA-A4EF-DEC049C78C49)
+   ✓ docs/acceptance/shots/M0-iPhone-16-Plus-desktop.png
+   ✓ docs/acceptance/shots/M0-iPhone-16-Plus-light.png
+   ✓ docs/acceptance/shots/M0-iPhone-16-Plus-dark.png
+→ iPhone 17 Pro Max (D4A341CA-1A67-4A50-B1D5-3D1BCD9995C1)
+   ✓ docs/acceptance/shots/M0-iPhone-17-Pro-Max-desktop.png
+   ✓ docs/acceptance/shots/M0-iPhone-17-Pro-Max-light.png
+   ✓ docs/acceptance/shots/M0-iPhone-17-Pro-Max-dark.png
+→ iPad mini (A17 Pro) (09660D81-A401-4C62-9ED2-1643B59F22E7)
+   ✓ docs/acceptance/shots/M0-iPad-mini-A17-Pro-desktop.png
+   ✓ docs/acceptance/shots/M0-iPad-mini-A17-Pro-light.png
+   ✓ docs/acceptance/shots/M0-iPad-mini-A17-Pro-dark.png
+
+八台完成，图在 docs/acceptance/shots/
+M0-iPad-mini-A17-Pro-dark.png
+M0-iPad-mini-A17-Pro-desktop.png
+M0-iPad-mini-A17-Pro-light.png
+M0-iPhone-13-mini-dark.png
+M0-iPhone-13-mini-desktop.png
+M0-iPhone-13-mini-light.png
+M0-iPhone-15-dark.png
+M0-iPhone-15-desktop.png
+M0-iPhone-15-light.png
+M0-iPhone-16-Plus-dark.png
+M0-iPhone-16-Plus-desktop.png
+M0-iPhone-16-Plus-light.png
+M0-iPhone-16-Pro-dark.png
+M0-iPhone-16-Pro-desktop.png
+M0-iPhone-16-Pro-light.png
+M0-iPhone-17-Pro-Max-dark.png
+M0-iPhone-17-Pro-Max-desktop.png
+M0-iPhone-17-Pro-Max-light.png
+M0-iPhone-Air-dark.png
+M0-iPhone-Air-desktop.png
+M0-iPhone-Air-light.png
+M0-iPhone-SE-3rd-generation-dark.png
+M0-iPhone-SE-3rd-generation-desktop.png
+M0-iPhone-SE-3rd-generation-light.png

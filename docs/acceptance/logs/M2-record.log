@@ -1,0 +1,8 @@
+[15:40:54.432] 录制 wss://fstream.binancefuture.com/stream?streams=btcusdt@kline_1m/btcusdt@ticker → /tmp/ws-btcusdt-1m.jsonl
+[15:46:22.146] 已录 500 条
+[15:51:39.578] 已录 1000 条
+[15:56:57.665] 已录 1500 条
+[16:01:35.458] 已录 2000 条
+[16:06:29.685] 已录 2500 条
+[16:11:46.188] 已录 3000 条
+[16:11:46.204] 录完 3000 条（kline 2090 / ticker 910），用时 1851s

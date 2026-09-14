@@ -1,0 +1,18 @@
+$ find $TMPDIR/kanpan-feed -type f -exec ls -la {} +
+-rw-r--r--@ 1 mdd  staff  24040 Sep 14 15:50 $TMPDIR//kanpan-feed/last.kbar
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-07-31.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-01.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-02.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-03.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-04.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-05.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-06.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-07.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-08.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-09.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-10.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-11.oi
+-rw-r--r--@ 1 mdd  staff   3436 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-12.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-13.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-14.oi
+-rw-r--r--@ 1 mdd  staff   3472 Sep 14 15:47 $TMPDIR//kanpan-feed/oi/BTCUSDT/2026-08-15.oi

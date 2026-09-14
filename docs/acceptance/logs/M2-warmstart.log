@@ -1,0 +1,14 @@
+[16:02:11.567] 快照命中 BTCUSDT|1h 600 根
+[16:02:11.567] 序列 600 根  1787216400000 … 1789372800000  末根 close=77847.7
+[16:02:11.586] 开始：BTCUSDT 1h，跑 0.2 分钟（Ctrl-C 停）
+[16:02:11.598] WS 连上 #1 wss://fstream.binancefuture.com/stream?streams=btcusdt@kline_1h/btcusdt@ticker
+[16:02:11.599] 状态 → live
+[16:02:12.368] GET /fapi/v1/klines?interval=1h&limit=1500&startTime=1789372800000&symbol=BTCUSDT → 200 136B 780ms
+[16:02:12.368] 补缺 startTime=1789372800000 → 1 根
+[16:02:12.649] GET /fapi/v1/klines?interval=1h&limit=1500&symbol=BTCUSDT → 200 212801B 281ms
+[16:02:12.651] 序列 1500 根  1783976400000 … 1789372800000  末根 close=77785.2
+[16:02:12.844] GET /fapi/v1/ticker/24hr?symbol=BTCUSDT → 200 371B 192ms
+[16:02:12.844] 行情 last=77779.3 涨跌=0.903% 24h高=77864.7 低=76350.1
+[16:02:17.868] 快照 24040B → last.kbar
+[16:02:23.890] 收工：末根更新 15 次，行情 7 次，首帧 7ms
+[16:02:23.892] 快照 24040B → last.kbar

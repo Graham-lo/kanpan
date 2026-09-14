@@ -1,0 +1,39 @@
+[15:49:14.482] WS 连上 #1 wss://fstream.binancefuture.com/stream?streams=btcusdt@kline_1m
+[15:49:14.482] 连接 #1
+[15:49:16.543] 第 1 次切到 1m
+[15:49:16.544] WS → {"method":"SUBSCRIBE","id":1,"params":["btcusdt@ticker"]}
+[15:49:16.746] 第 2 次切到 3m
+[15:49:16.804] WS → {"method":"UNSUBSCRIBE","id":2,"params":["btcusdt@kline_1m"]}
+[15:49:16.948] 第 3 次切到 5m
+[15:49:17.066] WS → {"method":"SUBSCRIBE","id":3,"params":["btcusdt@kline_5m"]}
+[15:49:17.157] 第 4 次切到 15m
+[15:49:17.320] WS → {"method":"UNSUBSCRIBE","id":4,"params":["btcusdt@kline_5m"]}
+[15:49:17.369] 第 5 次切到 30m
+[15:49:17.582] WS → {"method":"SUBSCRIBE","id":5,"params":["btcusdt@kline_30m"]}
+[15:49:17.582] 第 6 次切到 1h
+[15:49:17.789] 第 7 次切到 2h
+[15:49:17.840] WS → {"method":"UNSUBSCRIBE","id":6,"params":["btcusdt@kline_30m"]}
+[15:49:17.991] 第 8 次切到 4h
+[15:49:18.098] WS → {"method":"SUBSCRIBE","id":7,"params":["btcusdt@kline_4h"]}
+[15:49:18.192] 第 9 次切到 6h
+[15:49:18.351] WS → {"method":"UNSUBSCRIBE","id":8,"params":["btcusdt@kline_4h"]}
+[15:49:18.406] 第 10 次切到 12h
+[15:49:18.598] WS 断了：Error Domain=NSPOSIXErrorDomain Code=57 "Socket is not connected" UserInfo={NSErrorFailingURLStringKey=https://fstream.binancefuture.com/stream?streams=btcusdt@kline_1m, NSErrorFailingURLKey=https://fstream.binancefuture.com/stream?streams=btcusdt@kline_1m}
+[15:49:18.598] WS 退避 1000ms 后重连（第 1 次）
+[15:49:18.615] 第 11 次切到 1d
+[15:49:18.816] 第 12 次切到 1w
+[15:49:19.027] 第 13 次切到 1M
+[15:49:19.231] 第 14 次切到 1M
+[15:49:19.445] 第 15 次切到 1m
+[15:49:19.657] 第 16 次切到 3m
+[15:49:19.657] WS 连上 #2 wss://fstream.binancefuture.com/stream?streams=btcusdt@kline_1m/btcusdt@ticker
+[15:49:19.657] 连接 #2
+[15:49:19.865] 第 17 次切到 5m
+[15:49:19.910] WS → {"method":"UNSUBSCRIBE","params":["btcusdt@kline_3m"],"id":9}
+[15:49:20.074] 第 18 次切到 15m
+[15:49:20.274] 第 19 次切到 30m
+[15:49:20.275] WS → {"method":"SUBSCRIBE","id":10,"params":["btcusdt@kline_30m"]}
+[15:49:20.476] 第 20 次切到 1h
+[15:49:20.535] WS → {"method":"UNSUBSCRIBE","id":11,"params":["btcusdt@kline_30m"]}
+[15:49:20.795] WS → {"method":"SUBSCRIBE","id":12,"params":["btcusdt@kline_1h"]}
+[15:49:21.698] 一共建立过 2 条连接：[1, 2]

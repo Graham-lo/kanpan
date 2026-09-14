@@ -1,0 +1,86 @@
+import Foundation
+
+/// 端点配置（§4.1）。域名可改：设置页留了「自定义 API 域名」，国内网络换镜像域时用。
+public struct BinanceHosts: Sendable, Equatable {
+  /// USDT 本位合约 REST，默认 `fapi.binance.com`。
+  public var fapi: String
+  /// 组合流 WS，默认 `fstream.binance.com`。
+  public var stream: String
+  /// 公开归档站，OI 的 metrics zip 在这儿。
+  public var vision: String
+
+  public init(fapi: String = "fapi.binance.com",
+              stream: String = "fstream.binance.com",
+              vision: String = "data.binance.vision") {
+    self.fapi = fapi
+    self.stream = stream
+    self.vision = vision
+  }
+
+  public static let `default` = BinanceHosts()
+
+  // ------------------------------------------------------------------ REST
+
+  func url(_ path: String, _ query: [String: String] = [:]) -> URL {
+    var c = URLComponents()
+    c.scheme = "https"
+    c.host = fapi
+    c.path = path
+    if !query.isEmpty {
+      // 固定字典序，日志和测试里请求串才是稳定的。
+      c.queryItems = query.keys.sorted().map { URLQueryItem(name: $0, value: query[$0]) }
+    }
+    return c.url!
+  }
+
+  public func exchangeInfo() -> URL { url("/fapi/v1/exchangeInfo") }
+
+  /// 历史 K 线。向前翻页时传 `endTime = 已有第一根 openTime - 1`。
+  public func klines(symbol: String, interval: String, limit: Int,
+                     startTime: Int64? = nil, endTime: Int64? = nil) -> URL {
+    var q = ["symbol": symbol, "interval": interval, "limit": String(limit)]
+    if let startTime { q["startTime"] = String(startTime) }
+    if let endTime { q["endTime"] = String(endTime) }
+    return url("/fapi/v1/klines", q)
+  }
+
+  public func ticker24h(symbol: String) -> URL {
+    url("/fapi/v1/ticker/24hr", ["symbol": symbol])
+  }
+
+  /// 持仓量近 30 天。`period` 只能是 5m/15m/30m/1h/2h/4h/6h/12h/1d。
+  public func openInterestHist(symbol: String, period: String, limit: Int,
+                               startTime: Int64? = nil, endTime: Int64? = nil) -> URL {
+    var q = ["symbol": symbol, "period": period, "limit": String(limit)]
+    if let startTime { q["startTime"] = String(startTime) }
+    if let endTime { q["endTime"] = String(endTime) }
+    return url("/futures/data/openInterestHist", q)
+  }
+
+  // ------------------------------------------------------------------ 归档
+
+  /// 每日 metrics zip：一天一个，≈ 12 KB，解开是 288 行 5 分钟粒度的 CSV。
+  /// metrics **只有 daily 一档**，请求 monthly 是 404。
+  public func metricsZip(symbol: String, day: String) -> URL {
+    URL(string: "https://\(vision)/data/futures/um/daily/metrics/\(symbol)/\(symbol)-metrics-\(day).zip")!
+  }
+
+  // ------------------------------------------------------------------ WS
+
+  /// 组合流。一条连接，后续靠 SUBSCRIBE / UNSUBSCRIBE 换流，不重连（§4.4）。
+  public func combinedStream(_ streams: [String]) -> URL {
+    var c = URLComponents()
+    c.scheme = "wss"
+    c.host = stream
+    c.path = "/stream"
+    if !streams.isEmpty { c.queryItems = [URLQueryItem(name: "streams", value: streams.joined(separator: "/"))] }
+    return c.url!
+  }
+
+  /// 某品种某周期的 K 线流名。1y 没有原生流，订 1M（§4.2）。
+  public static func klineStream(symbol: String, interval: String) -> String {
+    "\(symbol.lowercased())@kline_\(interval)"
+  }
+  public static func tickerStream(symbol: String) -> String { "\(symbol.lowercased())@ticker" }
+  public static func markPriceStream(symbol: String) -> String { "\(symbol.lowercased())@markPrice@1s" }
+}

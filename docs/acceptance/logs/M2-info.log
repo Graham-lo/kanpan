@@ -1,0 +1,18 @@
+[15:51:45.123] GET /fapi/v1/exchangeInfo → 200 1113532B 526ms
+[15:51:45.147] 品种表刷新 528 个
+[15:51:45.147] USDT 本位永续 528 个，用时 551ms
+[15:51:45.147] BTCUSDT  base=BTC  pricePrecision=2  qtyPrecision=3  tickSize=0.1  小数位=1
+[15:51:45.147]   0GUSDT tick=0.0001
+[15:51:45.147]   1000000BOBUSDT tick=1e-05
+[15:51:45.147]   1000000MOGUSDT tick=0.0001
+[15:51:45.147]   1000BONKUSDT tick=1e-06
+[15:51:45.147]   1000CATUSDT tick=1e-06
+--- 再跑一次，走 Caches 里那份：
+[15:51:45.155] 品种表走缓存 528 个
+[15:51:45.155] USDT 本位永续 528 个，用时 1ms
+[15:51:45.155] BTCUSDT  base=BTC  pricePrecision=2  qtyPrecision=3  tickSize=0.1  小数位=1
+[15:51:45.155]   0GUSDT tick=0.0001
+[15:51:45.155]   1000000BOBUSDT tick=1e-05
+[15:51:45.155]   1000000MOGUSDT tick=0.0001
+[15:51:45.155]   1000BONKUSDT tick=1e-06
+[15:51:45.155]   1000CATUSDT tick=1e-06

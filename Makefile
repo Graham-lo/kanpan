@@ -1,53 +1,130 @@
-# 看盘 —— 构建与验收入口（任务书 §13 M0）
-#
-#   make core-test    KanpanCore 单测（不需要 Xcode GUI，CLT 就能跑）
-#   make app-test     app 与 UI 测试（需要 Xcode + 模拟器）
-#   make snap         快照测试（176 张基线逐像素比对）
-#   make screenshots  8 台模拟器的机型矩阵截图
-#
-# 为什么 core-test 这么多 -Xswiftc：Command Line Tools 不把 swift-testing 放在
-# 默认搜索路径里，得手工把 framework 目录和两条 rpath 递给编译器和链接器。
-# 装了完整 Xcode 之后这些参数无害（照样能编），所以不分两套。
+# 看盘 · 构建与取证入口（任务书 §13 M0）
+# 约定：所有命令从仓库根跑；证据落在 docs/acceptance/。
 
-SHELL := /bin/bash
-CORE  := KanpanCore
-SCHEME := Kanpan
-SIM ?= iPhone 17 Pro
+WORKSPACE  := Kanpan.xcworkspace
+SCHEME     := Kanpan
+CORE       := KanpanCore
+RUNTIME    := iOS
+SHOTS      := docs/acceptance/shots
 
-# swift-testing 在 CLT 下的落脚点。DEVELOPER_DIR 指向 Xcode 时这两个目录也在，
-# 找不到就退回空串，让 swift 自己去默认路径找。
-CLT_F := $(shell [ -d /Library/Developer/CommandLineTools/Library/Developer/Frameworks ] \
-	&& echo /Library/Developer/CommandLineTools/Library/Developer/Frameworks)
-CLT_L := /Library/Developer/CommandLineTools/Library/Developer/usr/lib
-TESTING_FLAGS := $(if $(CLT_F),-Xswiftc -F -Xswiftc $(CLT_F) \
-	-Xlinker -F -Xlinker $(CLT_F) \
-	-Xlinker -rpath -Xlinker $(CLT_F) \
-	-Xlinker -rpath -Xlinker $(CLT_L),)
+# A0.2 的八台机型，与原型 app.js 的 DEVICES 一一对应
+DEVICES := \
+	"iPhone SE (3rd generation)" \
+	"iPhone 13 mini" \
+	"iPhone 15" \
+	"iPhone 16 Pro" \
+	"iPhone Air" \
+	"iPhone 16 Plus" \
+	"iPhone 17 Pro Max" \
+	"iPad mini (A17 Pro)"
 
-.PHONY: core-test core-build fixtures app-test snap screenshots clean
+# 单台机型时用：make snap DEVICE="iPhone 16 Pro"
+DEVICE ?= iPhone 16 Pro
+
+.PHONY: help core-test data-test test strict app-test snap screenshots devices boot shutdown clean doctor
+
+help:
+	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
+	@echo "data-test    跑 KanpanData 单测（全离线：假 transport / 假 socket / 假时钟）"
+	@echo "test         core-test + data-test"
+	@echo "strict       两个包都按 Swift 6 严格并发 + 警告即错误编一遍（A2.13）"
+	@echo "app-test     跑 app target 的测试"
+	@echo "snap         在单台模拟器上装 app 并截一张图（DEVICE=\"iPhone 16 Pro\"）"
+	@echo "screenshots  八台机型全跑一遍，出 docs/acceptance/shots/"
+	@echo "devices      备齐 A0.2 的八台模拟器（缺的自动 create）"
+	@echo "boot         把八台全 boot 起来"
+	@echo "doctor       打印环境信息，对 A0.1 的验收"
+	@echo "clean        清 DerivedData 与 .build"
+
+# ---------------------------------------------------------------- A0.1 环境
+doctor:
+	@echo "== xcodebuild =="        && xcodebuild -version
+	@echo "\n== 开发者目录 =="      && xcode-select -p
+	@echo "\n== 模拟器运行时 =="    && xcrun simctl list runtimes
+	@echo "\n== swift =="           && swift --version
+
+# ---------------------------------------------------------------- A0.4 Core
+# 刻意不经过 xcodebuild：Core 不 import UIKit，纯 SwiftPM 就能跑。
+# 验收命令：DEVELOPER_DIR=/Library/Developer/CommandLineTools make core-test
+# CLT 单独发行时，SwiftPM 不会自动把 swift-testing 的框架和 lib_TestingInterop.dylib
+# 加进搜索路径（Xcode 工具链会）。两条 -F / 两条 rpath 补上，CLT 下就能跑 Testing。
+CLT := /Library/Developer/CommandLineTools
+CLT_TESTING_FLAGS := \
+	-Xswiftc -F -Xswiftc $(CLT)/Library/Developer/Frameworks \
+	-Xlinker -F -Xlinker $(CLT)/Library/Developer/Frameworks \
+	-Xlinker -rpath -Xlinker $(CLT)/Library/Developer/Frameworks \
+	-Xlinker -rpath -Xlinker $(CLT)/Library/Developer/usr/lib
+
+# DEVELOPER_DIR 指向 CLT 时才加那串 flag，指向 Xcode 时保持裸 swift test
+ifeq ($(DEVELOPER_DIR),$(CLT))
+	CORE_TEST_FLAGS := $(CLT_TESTING_FLAGS)
+else
+	CORE_TEST_FLAGS :=
+endif
 
 core-test:
-	cd $(CORE) && swift test --parallel $(TESTING_FLAGS)
+	cd $(CORE) && swift test $(CORE_TEST_FLAGS)
 
-## 零警告的 release 构建（A1.13）
-core-build:
-	cd $(CORE) && swift build -c release -Xswiftc -warnings-as-errors \
-		$(if $(CLT_F),-Xswiftc -F -Xswiftc $(CLT_F),)
+# ---------------------------------------------------------------- A2 Data
+DATA := KanpanData
 
-## 从定版原型重新导出黄金值 fixture（改了 prototype 才需要跑）
-fixtures:
-	node Tools/export-fixtures.mjs
+data-test:
+	cd $(DATA) && swift test $(CORE_TEST_FLAGS)
 
+test: core-test data-test
+
+# A2.13：零警告零错误。警告即错误，谁也别想蒙混过去。
+strict:
+	cd $(CORE) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+	cd $(DATA) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+
+# 数据层取证工具（§13 M2 的证据都从这儿出）
+feed:
+	cd $(DATA) && swift build -c release --product kanpan-feed
+	@echo "二进制：$(DATA)/.build/release/kanpan-feed"
+
+# ---------------------------------------------------------------- app
 app-test:
-	xcodebuild test -scheme $(SCHEME) -destination 'platform=iOS Simulator,name=$(SIM)' | xcpretty || \
-	xcodebuild test -scheme $(SCHEME) -destination 'platform=iOS Simulator,name=$(SIM)'
+	xcodebuild test \
+		-workspace $(WORKSPACE) \
+		-scheme $(SCHEME) \
+		-destination 'platform=iOS Simulator,name=$(DEVICE)' \
+		| xcbeautify 2>/dev/null || true
 
-snap:
-	xcodebuild test -scheme $(SCHEME) -destination 'platform=iOS Simulator,name=$(SIM)' \
-		-only-testing:KanpanSnapshotTests
+build:
+	xcodebuild build \
+		-workspace $(WORKSPACE) \
+		-scheme $(SCHEME) \
+		-destination 'platform=iOS Simulator,name=$(DEVICE)' \
+		-derivedDataPath DerivedData
 
-screenshots:
-	bash Tools/screenshots.sh
+# ---------------------------------------------------------------- A0.3 取证
+snap: build
+	@mkdir -p $(SHOTS)
+	@bash Tools/snap.sh "$(DEVICE)" "$(SHOTS)"
+
+screenshots: build devices
+	@mkdir -p $(SHOTS)
+	@for d in $(DEVICES); do \
+		bash Tools/snap.sh "$$d" "$(SHOTS)" || exit 1; \
+	done
+	@echo "\n八台完成，图在 $(SHOTS)/"
+	@ls -1 $(SHOTS)
+
+# ---------------------------------------------------------------- A0.2 机型
+devices:
+	@bash Tools/ensure-devices.sh
+
+boot: devices
+	@for d in $(DEVICES); do \
+		echo "→ boot $$d"; \
+		xcrun simctl boot "$$d" 2>/dev/null || true; \
+		xcrun simctl bootstatus "$$d" -b >/dev/null 2>&1 || true; \
+	done
+	@xcrun simctl list devices | grep Booted
+
+shutdown:
+	-xcrun simctl shutdown all
 
 clean:
-	cd $(CORE) && swift package clean
+	rm -rf DerivedData $(CORE)/.build $(DATA)/.build
