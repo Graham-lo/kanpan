@@ -27,6 +27,13 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   let chart = ChartView(frame: .zero)
   private let scroll = ChartPageScrollView()
   private let latest = UIButton(type: .custom)
+  private let record = UIButton(type: .custom)
+  var onRecord: (() -> Void)?
+  var recordPosition = CGPoint(x: 1, y: 1)
+  var onRecordMoved: (CGPoint) -> Void = { _ in }
+  private var recordTouchOffset = CGPoint(x: 22, y: 22)
+  private var recordDragStart: (origin: CGPoint, position: CGPoint)?
+  var isMovingRecord: Bool { recordDragStart != nil }
   private let panelDismiss = UIControl()
   var onOverlayUpdate: () -> Void = {}
   var onPanelDismiss: () -> Void = {}
@@ -57,10 +64,22 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
     chart.addGestureRecognizer(reorder)
     scroll.panGestureRecognizer.require(toFail: reorder)
     latest.setImage(UIImage(systemName: "chevron.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)), for: .normal)
-    latest.layer.cornerRadius = 15; latest.layer.borderWidth = 1
+    latest.layer.cornerRadius = 22; latest.layer.borderWidth = 1
     latest.accessibilityIdentifier = "chart.latest"; latest.accessibilityLabel = "回到最新"
     latest.addTarget(self, action: #selector(goLatest), for: .touchUpInside)
-    addSubview(latest)
+    scroll.addSubview(latest)
+    record.setTitle("记", for: .normal)
+    record.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
+    record.layer.cornerRadius = 22; record.layer.borderWidth = 1
+    record.accessibilityIdentifier = "review.record"; record.accessibilityLabel = "记一笔"
+    record.addTarget(self, action: #selector(beginRecord), for: .touchUpInside)
+    record.addTarget(self, action: #selector(recordTouchDown(_:event:)), for: .touchDown)
+    scroll.addSubview(record)
+    record.accessibilityHint = "轻点记一笔，拖动调整位置"
+    let recordPan = UIPanGestureRecognizer(target: self, action: #selector(moveRecord))
+    recordPan.maximumNumberOfTouches = 1
+    record.addGestureRecognizer(recordPan)
+    scroll.panGestureRecognizer.require(toFail: recordPan)
     panelDismiss.isHidden = true
     panelDismiss.accessibilityIdentifier = "chart.dismissPanel"
     panelDismiss.accessibilityLabel = "收起面板"
@@ -96,14 +115,49 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
 
   @objc private func closePanel() { onPanelDismiss() }
 
+  @objc private func recordTouchDown(_ sender: UIButton, event: UIEvent) {
+    recordTouchOffset = event.touches(for: sender)?.first?.location(in: sender) ?? CGPoint(x: 22, y: 22)
+  }
+
+  @objc private func moveRecord(_ pan: UIPanGestureRecognizer) {
+    guard let layout = chart.chartLayout else { return }
+    if pan.state == .began { recordDragStart = (record.frame.origin, recordPosition) }
+    guard let start = recordDragStart else { return }
+    if pan.state == .cancelled || pan.state == .failed {
+      recordPosition = start.position; recordDragStart = nil; updateControls(); return
+    }
+    let point = pan.location(in: scroll)
+    let width = max(1, layout.plotW - 60), height = max(1, layout.mainH - 60)
+    recordPosition = CGPoint(x: min(1, max(0, (point.x - recordTouchOffset.x - 8) / width)),
+                             y: min(1, max(0, (point.y - recordTouchOffset.y - 8) / height)))
+    updateControls()
+    if pan.state == .ended {
+      recordDragStart = nil
+      onRecordMoved(recordPosition)
+    }
+  }
+
+  @objc private func beginRecord() { onRecord?() }
+
   @objc private func goLatest() { chart.scrollToLatest() }
 
   func updateControls() {
     onOverlayUpdate()
-    latest.frame = CGRect(x: max(0, bounds.width - 90), y: max(0, bounds.height - 58), width: 30, height: 30)
-    latest.isHidden = chart.isAtLatest
-    guard let state = chart.state, let layout = chart.chartLayout else { return }
+    guard let state = chart.state, let layout = chart.chartLayout else {
+      latest.isHidden = true; record.isHidden = true; return
+    }
+    // Chart-local positions move with the main pane; no fixed overlay can land on a subplot.
+    let x = max(0, layout.plotW - 52), y = max(0, layout.mainH - 52)
+    record.isHidden = onRecord == nil || !portrait || state.series.isEmpty || layout.mainH < 60
+    record.frame = CGRect(x: 8 + max(0, layout.plotW - 60) * recordPosition.x,
+                          y: 8 + max(0, layout.mainH - 60) * recordPosition.y, width: 44, height: 44)
+    latest.frame = CGRect(x: x, y: y, width: 44, height: 44)
+    if !record.isHidden, latest.frame.intersects(record.frame.insetBy(dx: -8, dy: -8)) { latest.frame.origin.y = max(0, y - 52) }
+    latest.isHidden = chart.isAtLatest || layout.mainH < (record.isHidden ? 60 : 112)
     let colors = state.colors
+    record.backgroundColor = UIColor(Color(hex: colors.bg)).withAlphaComponent(0.92)
+    record.setTitleColor(UIColor(Color(hex: colors.amber)), for: .normal)
+    record.layer.borderColor = UIColor(Color(hex: colors.hair)).cgColor
     latest.backgroundColor = UIColor(Color(hex: colors.bg)).withAlphaComponent(0.92)
     latest.tintColor = UIColor(Color(hex: colors.ink))
     latest.layer.borderColor = UIColor(Color(hex: colors.hair)).cgColor
@@ -128,7 +182,8 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
       grip.viewWithTag(1)?.backgroundColor = UIColor(Color(hex: colors.dim))
       grip.accessibilityValue = String(format: "%.0f", pane.h)
     }
-    bringSubviewToFront(latest)
+    scroll.bringSubviewToFront(latest)
+    scroll.bringSubviewToFront(record)
     if panelOpen { bringSubviewToFront(panelDismiss) }
   }
 
@@ -269,6 +324,9 @@ struct ChartHost: UIViewRepresentable {
   var onCrosshair: (Crosshair?) -> Void = { _ in }
   var onNeedsHistory: () -> Void = {}
   var onTapped: () -> Void = {}
+  var onRecord: (() -> Void)?
+  var recordPosition = CGPoint(x: 1, y: 1)
+  var onRecordMoved: (CGPoint) -> Void = { _ in }
   /// 画线壳（M7）。线本身住在 `ChartState.drawings` 里、手势归图，这个只负责
   /// 亮哪一颗按钮和按品种落盘。
   var drawing: DrawingController?
@@ -358,6 +416,9 @@ struct ChartHost: UIViewRepresentable {
   private func wire(_ box: ChartBox) {
     box.panelOpen = panelOpen
     box.onPanelDismiss = onTapped
+    box.onRecord = onRecord
+    if !box.isMovingRecord { box.recordPosition = recordPosition }
+    box.onRecordMoved = onRecordMoved
     drawing?.attach(box.chart)
     box.chart.onViewChanged = onView
     box.onSubResize = onSubResize

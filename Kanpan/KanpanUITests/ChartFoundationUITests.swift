@@ -10,8 +10,9 @@ final class ChartFoundationUITests: XCTestCase {
     app = XCUIApplication()
     if name.contains("testInstallRequestedFavoritesInUserStore") || name.contains("testUserSession") { return }
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
-    if name.contains("Drawing") || name.contains("IndicatorColor") || name.contains("CompactChart") { app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString }
+    if name.contains("Drawing") || name.contains("IndicatorColor") || name.contains("CompactChart") || name.contains("ReviewButton") { app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString }
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
+    if name.contains("ReviewButton") { app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io" }
     app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
@@ -47,6 +48,28 @@ final class ChartFoundationUITests: XCTestCase {
   }
   func shot(_ name: String) {
     let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
+  }
+
+  func testReviewButtonDragPersistsInsideMainPane() throws {
+    let button = app.buttons["review.record"]
+    XCTAssertTrue(button.waitForExistence(timeout: 10))
+    let span = try XCTUnwrap(info()["span"] as? Double)
+    let target = canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 70, dy: 80))
+    button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.05, thenDragTo: target)
+    XCTAssertTrue(wait(seconds: 3) { abs(button.frame.midX - target.screenPoint.x) < 8 && abs(button.frame.midY - target.screenPoint.y) < 8 })
+    XCTAssertEqual(try XCTUnwrap(info()["span"] as? Double), span, accuracy: 0.001)
+    let saved = button.frame
+    XCTAssertLessThan(saved.maxY, canvas.frame.minY + (try XCTUnwrap(info()["mainH"] as? Double)))
+    shot("记按钮-拖动后主图内")
+    app.terminate(); app.launch()
+    XCTAssertTrue(canvas.waitForExistence(timeout: 30))
+    XCTAssertTrue(button.waitForExistence(timeout: 30))
+    XCTAssertEqual(button.frame.midX, saved.midX, accuracy: 2)
+    XCTAssertEqual(button.frame.midY, saved.midY, accuracy: 2)
+    let outside = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.95))
+    button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.05, thenDragTo: outside)
+    XCTAssertLessThan(button.frame.maxY, canvas.frame.minY + (try XCTUnwrap(info()["mainH"] as? Double)))
+    shot("记按钮-副图边界限位")
   }
 
   func testHeightAndVerticalReachability() throws {

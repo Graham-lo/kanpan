@@ -356,6 +356,11 @@ struct MainScreen: View {
       + "  量 " + fmtVol(series.volume[i])
   }
 
+  private var chartRecordAction: (() -> Void)? {
+    guard !reviewChart.active, !landscape else { return nil }
+    return { startReviewCapture() }
+  }
+
   private var chart: some View {
     ZStack(alignment: .bottomTrailing) {
       theme.chartBG
@@ -372,6 +377,9 @@ struct MainScreen: View {
         onNeedsHistory: { if reviewChart.mode == .replay { reviewChart.loadReplayPage(forward: false, feature: review) } else if !reviewChart.active { market.loadMore() } },
         // 面板打开时由原生遮罩消费首个触摸，只收起面板。
         onTapped: { dismissPanel() },
+        onRecord: chartRecordAction,
+        recordPosition: CGPoint(x: prefs.recordButtonX, y: prefs.recordButtonY),
+        onRecordMoved: { position in store.update { $0.recordButtonX = position.x; $0.recordButtonY = position.y } },
         drawing: reviewChart.active ? nil : draw
       )
       .id(reviewChart.mode.rawValue)
@@ -386,13 +394,6 @@ struct MainScreen: View {
         Button(error) { market.loadMore() }.font(.caption).padding(10)
           .background(.regularMaterial, in: Capsule()).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
           .padding(.top, 8)
-      }
-      if !reviewChart.active {
-        Button(action: startReviewCapture) {
-          Text("记").font(.system(size: 14, weight: .medium)).frame(width: 44, height: 44)
-            .background(theme.raised, in: Circle()).overlay(Circle().stroke(theme.line))
-        }.buttonStyle(.plain).foregroundStyle(theme.amber)
-          .padding(.trailing, 61).padding(.bottom, 65).accessibilityLabel("记一笔").accessibilityIdentifier("review.record")
       }
       if reviewChart.loading { ProgressView("加载重温行情").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) }
       // 提示条压在图区上沿（§10.8），不占版面高度，所以走 overlay 不进 VStack。

@@ -58,6 +58,9 @@ struct Prefs: Sendable, Equatable {
   var adaptiveIndicators = false
   var compactValues = false
   var portraitHeight = 0.5
+  // Device-local touch placement, normalized inside the main chart.
+  var recordButtonX = 1.0
+  var recordButtonY = 1.0
   var indicatorColors: [IndicatorID: [Int: Hex]] = [:]
   var hiddenOutputs: [IndicatorID: Set<Int>] = [:]
   var rsiUpper = 70.0
