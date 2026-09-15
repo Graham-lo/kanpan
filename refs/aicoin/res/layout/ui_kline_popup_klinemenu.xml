@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.recyclerview.widget.RecyclerView android:id="@id/list_kline_menu" android:background="?ui_kline_menu_parent_bg" android:layout_width="wrap_content" android:layout_height="wrap_content" android:divider="@android:color/transparent" android:dividerHeight="1.0px"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

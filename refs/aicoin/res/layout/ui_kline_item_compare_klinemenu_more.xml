@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:id="@id/layout_menu_container" android:tag="skin:ui_kline_menuitem_selector_bg:background" android:background="@drawable/ui_kline_menuitem_selector_bg" android:layout_width="match_parent" android:layout_height="@dimen/ui_kline_menu_item_height"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <LinearLayout android:gravity="center_vertical" android:layout_gravity="center" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
-        <ImageView android:id="@id/image_menu_icon" android:tag="skin:ui_kline_compare_menu_info_window:src" android:layout_width="@dimen/ui_kline_compare_menu_icon_size" android:layout_height="@dimen/ui_kline_compare_menu_icon_size" android:src="@drawable/ui_kline_compare_menu_info_window" />
-        <TextView android:textSize="@dimen/ui_kline_menu_item_text_size" android:textColor="@color/ui_kline_menuitem_hover_textcolor" android:id="@id/text_menu_title" android:tag="skin:ui_kline_menuitem_hover_textcolor:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/offset_4dp" />
-    </LinearLayout>
-</FrameLayout>

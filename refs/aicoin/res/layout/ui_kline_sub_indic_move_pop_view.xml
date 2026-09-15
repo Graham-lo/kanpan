@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="vertical" android:padding="15.0dp" android:layout_width="match_parent" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <TextView android:textSize="12.0sp" android:gravity="center" android:layout_gravity="center" android:id="@id/tv_move_up" android:layout_width="match_parent" android:layout_height="25.0dp" android:text="向上移动" />
-    <TextView android:textSize="12.0sp" android:gravity="center" android:layout_gravity="center" android:id="@id/tv_move_down" android:layout_width="match_parent" android:layout_height="25.0dp" android:layout_marginTop="15.0dp" android:text="向下移动" />
-</LinearLayout>

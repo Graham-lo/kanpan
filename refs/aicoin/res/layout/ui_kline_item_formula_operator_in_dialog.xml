@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:background="@android:color/transparent" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="30.0dp"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <TextView android:textSize="@dimen/font_size_normal" android:textColor="@color/ui_kline_spread_saving_dialog_formula_operator_text_color" android:layout_gravity="center" android:id="@id/operator_text" android:tag="skin:ui_kline_spread_saving_dialog_formula_operator_text_color:textColor" android:paddingLeft="@dimen/offset_2dp" android:paddingRight="@dimen/offset_2dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" />
-</FrameLayout>

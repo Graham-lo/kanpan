@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:clipToPadding="false" android:layout_width="wrap_content" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <LinearLayout android:orientation="vertical" android:tag="skin:ui_kline_popup_rounded_bg:background" android:background="@drawable/ui_kline_popup_rounded_bg" android:padding="8.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="8.0dp" android:elevation="4.0dp">
-        <TextView android:textSize="13.0sp" android:textColor="@color/sh_base_highlight_color" android:gravity="end" android:layout_gravity="end" android:id="@id/tv_default" android:tag="skin:sh_base_highlight_color:textColor" android:paddingTop="10.0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12.0dp" android:text="@string/ui_kline_main_candle_color_defult" />
-        <GridLayout android:id="@id/grid_colors" android:layout_width="match_parent" android:layout_height="wrap_content" android:rowCount="2" android:columnCount="10" android:columnOrderPreserved="false" android:useDefaultMargins="true" android:alignmentMode="alignMargins" />
-    </LinearLayout>
-</FrameLayout>

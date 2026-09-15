@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:layout_width="wrap_content" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <TextView android:textSize="@dimen/font_size_tiny_high" android:textColor="@drawable/ui_kline_indicator_bar_selector_textcolor" android:gravity="center_vertical" android:layout_gravity="center_vertical" android:id="@id/indicator_name" android:tag="skin:ui_kline_indicator_bar_selector_textcolor:textColor" android:paddingLeft="10.0dp" android:paddingRight="10.0dp" android:layout_width="wrap_content" android:layout_height="match_parent" />
-</FrameLayout>

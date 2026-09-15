@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout android:paddingBottom="22.0dp" android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <TextView android:textSize="14.0sp" android:textColor="@color/sh_base_text_primary" android:gravity="center" android:id="@id/tv_period_empty_msg" android:tag="skin:sh_base_text_primary:textColor" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ui_kline_index_epmty_period_dialog_msg" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
-    <TextView android:textColor="@color/sh_base_text_tertiary" android:id="@id/tv_period_empty_never_remind" android:tag="skin:sh_base_checkbox_round_selector_bg:drawableLeft|skin:sh_base_text_tertiary:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16.0dp" android:text="@string/ui_base_no_longer_remind" android:drawableLeft="@drawable/sh_base_checkbox_round_selector_bg" android:drawablePadding="8.0dp" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tv_period_empty_msg" />
-</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:gravity="center" android:orientation="horizontal" android:id="@id/ui_kline_drawing_color_menu_item_container" android:layout_width="wrap_content" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <FrameLayout android:id="@id/ui_kline_drawing_color_menu_item_background" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="@dimen/ui_kline_menu_item_color_padding">
-        <ImageView android:id="@id/ui_kline_drawing_color_menu_item_selected_icon" android:tag="skin:ui_kline_drawing_color_menu_selected_icon:src" android:visibility="gone" android:layout_width="@dimen/ui_kline_menu_item_color_width" android:layout_height="@dimen/ui_kline_menu_item_color_width" android:src="@mipmap/ui_kline_drawing_color_menu_selected_icon" android:scaleType="center" />
-    </FrameLayout>
-</FrameLayout>

@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<TextView android:textSize="15.0sp" android:textColor="@drawable/ui_kline_spread_select_ticker_item_market_selector" android:gravity="center" android:id="@id/item_title" android:tag="skin:ui_kline_spread_select_ticker_item_market_selector:textColor" android:layout_width="wrap_content" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

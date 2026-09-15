@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:orientation="vertical" android:id="@id/digit_text" android:background="@android:color/transparent" android:paddingLeft="@dimen/offset_4dp" android:paddingRight="@dimen/offset_4dp" android:layout_width="wrap_content" android:layout_height="41.0dp" android:minHeight="41.0dp" android:maxLines="1"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <View android:layout_gravity="center" android:id="@id/formula_pointer_view" android:tag="skin:ui_kline_spread_home_formula_pointer_color:background" android:background="@color/ui_kline_spread_home_formula_pointer_color" android:layout_width="1.0dp" android:layout_height="36.0dp" />
-</FrameLayout>

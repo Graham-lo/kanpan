@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <ImageView android:id="@id/image_poi" android:tag="skin:sh_base_image_guide_poi:src" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="64.0dp" android:layout_marginRight="12.0dp" android:src="@mipmap/sh_base_image_guide_poi" android:layout_marginEnd="12.0dp" app:layout_constraintRight_toRightOf="parent" app:layout_constraintTop_toTopOf="parent" />
-    <TextView android:textSize="16.0sp" android:textStyle="bold" android:textColor="@color/ui_kline_master_guide_tip_text_color" android:gravity="end" android:tag="skin:ui_kline_master_guide_tip_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="@dimen/offset_20dp" android:text="@string/ui_kline_master_guide_tip" app:layout_constraintRight_toRightOf="@id/image_poi" app:layout_constraintTop_toBottomOf="@id/image_poi" />
-</androidx.constraintlayout.widget.ConstraintLayout>

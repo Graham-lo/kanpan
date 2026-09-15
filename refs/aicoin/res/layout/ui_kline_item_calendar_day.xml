@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:layout_width="match_parent" android:layout_height="36.0dp"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <View android:layout_gravity="center" android:id="@id/daySelectedBg" android:background="@drawable/ui_kline_calendar_day_selected_bg" android:visibility="gone" android:layout_width="30.0dp" android:layout_height="30.0dp" />
-    <TextView android:textSize="12.0sp" android:gravity="center" android:id="@id/tvDay" android:layout_width="match_parent" android:layout_height="match_parent" />
-</FrameLayout>

@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/container_indicator_ma" android:layout_width="match_parent" android:layout_height="@dimen/sh_base_settings_item_block_height" style="@style/sh_base.Settings.ItemContainer.NoSkin"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <TextView android:id="@id/text_indicator_name" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_indicator_setting_home_item_name_ma" style="@style/sh_base.Settings.ItemTitle" />
-    <ImageView android:id="@id/image_indicator_explain" android:tag="skin:ui_kline_indicator_parameter_guide:src" android:padding="@dimen/offset_8dp" android:layout_width="@dimen/ui_kline_indicator_image_size" android:layout_height="@dimen/ui_kline_indicator_image_size" android:src="@mipmap/ui_kline_indicator_parameter_guide" />
-    <TextView android:layout_width="0.0dp" android:layout_height="0.0dp" android:layout_weight="1.0" />
-    <ImageView android:id="@id/image_indicator_setting" android:tag="skin:ui_kline_indicator_setting_trigger:src" android:padding="@dimen/offset_4dp" android:layout_width="@dimen/ui_kline_indicator_image_size" android:layout_height="match_parent" android:src="@mipmap/ui_kline_indicator_setting_trigger" />
-</LinearLayout>

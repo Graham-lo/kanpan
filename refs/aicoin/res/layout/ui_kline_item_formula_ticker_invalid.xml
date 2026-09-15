@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:background="@android:color/transparent" android:paddingLeft="@dimen/offset_4dp" android:paddingRight="@dimen/offset_4dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="41.0dp"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <TextView android:textSize="15.0sp" android:textColor="@color/ui_kline_spread_formula_ticker_text_color" android:layout_gravity="center" android:id="@id/invalid_ticker_text" android:tag="skin:ui_kline_spread_formula_ticker_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" />
-    <View android:layout_gravity="start|center" android:id="@id/formula_pointer_view_left" android:tag="skin:ui_kline_spread_home_formula_pointer_color:background" android:background="@color/ui_kline_spread_home_formula_pointer_color" android:visibility="invisible" android:layout_width="1.0dp" android:layout_height="36.0dp" />
-    <View android:layout_gravity="end|center" android:id="@id/formula_pointer_view_right" android:tag="skin:ui_kline_spread_home_formula_pointer_color:background" android:background="@color/ui_kline_spread_home_formula_pointer_color" android:visibility="invisible" android:layout_width="1.0dp" android:layout_height="36.0dp" />
-</FrameLayout>

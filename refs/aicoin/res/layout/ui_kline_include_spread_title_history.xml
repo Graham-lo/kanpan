@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:gravity="center_vertical" android:paddingLeft="@dimen/sh_base_offset_15dp" android:paddingRight="@dimen/sh_base_offset_15dp" android:layout_width="match_parent" android:layout_height="50.0dp"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <TextView android:textColor="@color/ui_kline_spread_search_cancel_text_color" android:tag="skin:ui_kline_spread_search_cancel_text_color:textColor" android:layout_width="0.0dp" android:layout_height="wrap_content" android:text="@string/ui_kline_search_history_hint" android:layout_weight="1.0" />
-    <ImageView android:id="@id/action_clear" android:tag="skin:ui_kline_ic_clear:src" android:layout_width="wrap_content" android:layout_height="match_parent" android:src="@mipmap/ui_kline_ic_clear" />
-</LinearLayout>

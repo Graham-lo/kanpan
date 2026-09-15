@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:background="@android:color/transparent" android:layout_width="wrap_content" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <TextView android:textSize="12.0sp" android:textColor="@drawable/ui_kline_spread_formula_color_selector" android:gravity="center" android:id="@id/digit_text" android:tag="skin:ui_kline_spread_formula_color_selector:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="30.0dp" android:maxLines="1" />
-</FrameLayout>

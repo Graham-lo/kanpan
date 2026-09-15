@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent" style="@style/sh_base.PageContent"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <include android:id="@id/price_block" layout="@layout/ui_ticker_part_index_detail_price_block" />
-    <FrameLayout android:id="@id/kline_frame" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_marginTop="@dimen/offset_5dp" android:layout_weight="1.0" />
-    <View android:layout_width="match_parent" android:layout_height="@dimen/ui_ticker_index_detail_kline_detail_divider_bar_height" />
-</LinearLayout>

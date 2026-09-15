@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<TextView android:id="@id/text_menu_title" android:layout_width="match_parent" android:layout_height="@dimen/ui_kline_menu_item_height" style="@style/ui_kline_KLineStyle.MenuItemHover"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:gravity="center" android:orientation="horizontal" android:id="@id/kline_drawing_menu_vertical_bar" android:padding="@dimen/offset_9dp" android:layout_width="match_parent" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <ImageView android:id="@id/kline_drawing_line_type_arrow" android:tag="skin:ui_kline_drawing_menu_bar_item_arrow_selector:src" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginRight="@dimen/offset_3dp" android:src="@drawable/ui_kline_drawing_menu_bar_item_arrow_selector" android:layout_marginEnd="@dimen/offset_3dp" />
-    <ImageView android:id="@id/kline_drawing_line_type_icon" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@mipmap/ui_kline_drawing_price_line" />
-</LinearLayout>

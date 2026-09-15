@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="vertical" android:id="@id/ui_kline_child_menu_container" android:tag="skin:ui_base_drawing_popup_window_shadow:background" android:background="@drawable/ui_base_drawing_popup_window_shadow" android:layout_width="wrap_content" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <androidx.recyclerview.widget.RecyclerView android:id="@id/ui_kline_child_menu" android:layout_width="wrap_content" android:layout_height="wrap_content" />
-</LinearLayout>

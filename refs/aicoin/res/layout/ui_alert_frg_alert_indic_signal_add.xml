@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <include android:id="@id/layout_expire_notify" layout="@layout/ui_alert_part_expire_notify" />
-    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout android:id="@id/swipe_container" android:layout_width="match_parent" android:layout_height="0.0dp" app:layout_constraintBottom_toTopOf="@id/tv_order" app:layout_constraintTop_toBottomOf="@id/layout_expire_notify">
-        <androidx.recyclerview.widget.RecyclerView android:id="@id/rv_pending" android:paddingTop="4.0dp" android:clipChildren="false" android:clipToPadding="false" android:layout_width="match_parent" android:layout_height="match_parent" android:paddingStart="15.0dp" android:paddingEnd="15.0dp" />
-    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
-    <TextView android:textSize="16.0sp" android:textColor="@color/sh_base_block_text_color" android:gravity="center" android:id="@id/tv_order" android:tag="skin:sh_base_block_text_color:textColor|skin:sh_base_highlight_color:background" android:background="@color/sh_base_highlight_color" android:visibility="gone" android:layout_width="match_parent" android:layout_height="49.0dp" android:text="@string/ui_alert_add_alert_msg" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/swipe_container" />
-</androidx.constraintlayout.widget.ConstraintLayout>

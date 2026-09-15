@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:background="@android:color/transparent" android:paddingLeft="@dimen/offset_2dp" android:paddingRight="@dimen/offset_2dp" android:layout_width="wrap_content" android:layout_height="30.0dp"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <LinearLayout android:orientation="vertical" android:layout_width="wrap_content" android:layout_height="wrap_content">
-        <TextView android:textSize="12.0sp" android:textColor="@drawable/ui_kline_spread_formula_color_selector" android:id="@id/trade_pair_text" android:tag="skin:ui_kline_spread_formula_color_selector:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" />
-        <TextView android:textSize="12.0sp" android:textColor="@drawable/ui_kline_spread_formula_color_selector" android:id="@id/name_text" android:tag="skin:ui_kline_spread_formula_color_selector:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" />
-    </LinearLayout>
-</FrameLayout>

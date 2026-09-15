@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:orientation="vertical" android:layout_width="wrap_content" android:layout_height="@dimen/ui_kline_compare_title_tab_height"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <TextView android:layout_gravity="center" android:id="@id/text_tag_item_title" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/ui_kline_AppSkin.Kline.KlineCompareSelectorTabItem" />
-    <View android:layout_gravity="center|bottom" android:id="@id/view_indicator" android:tag="skin:ui_kline_compare_title_tab_selector_indicator_color:background" android:background="@drawable/ui_kline_compare_title_tab_selector_indicator_color" android:layout_width="@dimen/ui_kline_compare_title_tab_indicator_width" android:layout_height="@dimen/ui_kline_compare_title_tab_indicator_height" />
-</FrameLayout>

@@ -2,7 +2,8 @@
 *.xcuserstate
 xcuserdata/
 *.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
-DerivedData/
+# 所有 Xcode 构建产物目录一律不入库（原来一条条列，每开一个新的 derivedDataPath 就漏一个）。
+DerivedData*/
 build/
 .build/
 .swiftpm/
@@ -25,7 +26,6 @@ docs/acceptance/M3/.render
 #!docs/acceptance/M3/M3-*-zoom8-*.png
 
 # Local AICoin base builds and raw Xcode diagnostics; selected screenshots stay reviewable.
-DerivedData-codex*/
 .xcbuild-device/
 .xcbuild-codex/
 docs/acceptance/AICoin-base/*.xcresult/
@@ -33,7 +33,6 @@ docs/acceptance/AICoin-base/*attachments/
 docs/acceptance/AICoin-base/compatibility/**/*.xcresult/
 docs/acceptance/AICoin-base/compatibility/**/*attachments/
 
-DerivedData-chart-foundation*/
 docs/acceptance/AICoin-base/foundation/*.xcresult/
 docs/acceptance/AICoin-base/foundation/*attachments/
 
@@ -44,5 +43,8 @@ Backend/kanpan-gateway/__pycache__/
 docs/acceptance/eye-colors/*.xcresult/
 docs/acceptance/eye-colors/*attachments/
 
-DerivedData-review-tests/
 docs/acceptance/drawing-v2/*.xcresult/
+
+# 反编译出来的 AICoin 产物只当本地参照，不入库：它不是本项目的源码，
+# 16 MB 的 jadx 输出既撑大仓库，也不该随公开仓库分发。
+refs/aicoin/

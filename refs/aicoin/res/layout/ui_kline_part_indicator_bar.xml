@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="horizontal" android:id="@id/ll_bottom_indic" android:tag="skin:ui_kline_menu_bg_color:background" android:background="@color/ui_kline_menu_bg_color" android:layout_width="match_parent" android:layout_height="@dimen/ui_kline_indicator_bar_height"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <app.aicoin.ui.kline.widget.NestedBannedRecyclerView android:id="@id/bar_list_main_indicator" android:paddingRight="@dimen/offset_5dp" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="1.0" />
-    <View android:tag="skin:ui_kline_indicator_bar_divider_color:background" android:background="@color/ui_kline_indicator_bar_divider_color" android:layout_width="@dimen/offset_0.5dp" android:layout_height="match_parent" android:layout_marginTop="@dimen/offset_6dp" android:layout_marginBottom="@dimen/offset_6dp" />
-    <app.aicoin.ui.kline.widget.NestedBannedRecyclerView android:id="@id/bar_list_secondary_indicator" android:paddingLeft="@dimen/offset_5dp" android:layout_width="0.0dp" android:layout_height="match_parent" android:layout_weight="1.0" />
-</LinearLayout>

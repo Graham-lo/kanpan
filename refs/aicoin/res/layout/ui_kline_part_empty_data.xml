@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="vertical" android:id="@id/empty_data_view" android:paddingTop="15.0dp" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginLeft="@dimen/offset_8dp" android:layout_marginTop="@dimen/offset_8dp" android:layout_marginRight="@dimen/ui_kline_compare_info_window_right_margin" android:minHeight="@dimen/ui_kline_index_empty_view_min_height" android:layout_marginEnd="@dimen/ui_kline_compare_info_window_right_margin" style="@style/sh_base.PageContentLight"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <ImageView android:layout_gravity="center" android:id="@id/iv_empty_icon" android:tag="skin:ui_base_ic_empty_no_content:src" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@mipmap/ui_base_ic_empty_no_content" />
-    <TextView android:textSize="14.0sp" android:textColor="@color/ui_kline_empty_data_text_color" android:gravity="center" android:layout_gravity="center" android:id="@id/tv_empty_text" android:tag="skin:ui_kline_empty_data_text_color:textColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ui_kline_spread_epmty_msg" />
-</LinearLayout>

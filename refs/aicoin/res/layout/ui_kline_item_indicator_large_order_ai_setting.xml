@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:clickable="true" android:layout_width="match_parent" android:layout_height="@dimen/sh_base_settings_item_block_height" style="@style/sh_base.Settings.ItemContainer.NoSkin"
-  xmlns:android="http://schemas.android.com/apk/res/android">
-    <CheckBox android:id="@id/indicator_visible" android:tag="skin:sh_base_selector_ic_check:drawableLeft" android:background="@android:color/transparent" android:layout_width="wrap_content" android:layout_height="match_parent" android:button="@null" android:drawableLeft="@drawable/sh_base_selector_ic_check" />
-    <ImageView android:id="@id/iv_logo" android:layout_width="25.0dp" android:layout_height="25.0dp" android:layout_marginLeft="10.0dp" android:src="@drawable/ui_kline_item_indicator_large_order_ai_logo" />
-    <TextView android:id="@id/text_indicator_name" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="8.0dp" android:text="启用AI智能算法" style="@style/sh_base.Settings.ItemTitle" />
-    <ImageView android:id="@id/iv_question" android:layout_width="16.0dp" android:layout_height="16.0dp" android:layout_marginLeft="8.0dp" android:src="@drawable/ui_kline_indicactor_large_order_ai_question" />
-</LinearLayout>

@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="vertical" android:background="@color/voice_alert_pay_vip_golden_block_text_black_color" android:layout_width="match_parent" android:layout_height="match_parent"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <app.aicoin.ui.base.widget.PageDWebView android:id="@id/web_container" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0" />
-    <include android:id="@id/order_bar" layout="@layout/vip_part_order_bar" />
-</LinearLayout>

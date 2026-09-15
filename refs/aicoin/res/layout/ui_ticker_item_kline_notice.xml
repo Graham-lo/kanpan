@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<TextView android:textSize="@dimen/ui_ticker_price_block_title_text_size" android:ellipsize="end" android:gravity="end|center" android:id="@id/text_notify" android:tag="skin:ui_ticker_price_block_board_content_text_color:textColor|skin:ui_ticker_detail_expand:drawableRight|skin:ui_ticker_detail_expand:drawableEnd" android:layout_width="match_parent" android:layout_height="match_parent" android:drawableRight="@mipmap/ui_ticker_detail_expand" android:drawableEnd="@mipmap/ui_ticker_detail_expand" style="@style/ui_ticker.PriceBoard.ContentText"
-  xmlns:android="http://schemas.android.com/apk/res/android" />

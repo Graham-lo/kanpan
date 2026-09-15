@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<carbon.widget.LinearLayout android:orientation="horizontal" android:padding="8.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content"
-  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <carbon.widget.TextView android:textSize="13.0sp" android:textColor="@color/sh_base_text_primary" android:gravity="center" android:id="@id/btn_indicator_item" android:background="@color/sh_base_view_bg" android:layout_width="75.0dp" android:layout_height="35.0dp" android:lineSpacingMultiplier="1.0" android:autoSizeMinTextSize="9.0sp" android:autoSizeMaxTextSize="13.0sp" app:carbon_cornerRadius="3.0dp" app:carbon_stroke="@color/ui_grid_no_select_item_stroke" app:carbon_strokeWidth="0.5dp" />
-</carbon.widget.LinearLayout>
