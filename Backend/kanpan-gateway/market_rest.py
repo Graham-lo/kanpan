@@ -179,6 +179,7 @@ class PublicMarket:
         now = int(time.time() * 1000)
         if source not in ('binance', 'okx') or interval not in STEPS or not 1 <= limit <= 1500:
             raise ValueError('invalid request')
+        latest_window = start is None and end is None
         if start is not None and start < 0 or end is not None and end < 0:
             raise ValueError('invalid time')
         end = min(end if end is not None else now, now)
@@ -197,32 +198,42 @@ class PublicMarket:
         else:
             item = self.instrument(symbol)
             ratio = 2 if interval == '8h' else 3 if interval == '3d' else 1
-            # Start-based consumers need the earliest page after start, not the latest page before now.
-            if start is not None:
-                boundary = bucket(start, interval)
-                for _ in range(limit):
-                    boundary = close_time(boundary, interval)
-                end = min(end, boundary - 1)
-            wanted = min(4503, limit * ratio + ratio)
-            raw = []; cursor = close_time(bucket(end, '4h' if interval == '8h' else '1d' if interval == '3d' else interval),
-                                          '4h' if interval == '8h' else '1d' if interval == '3d' else interval)
-            for _ in range((wanted + 99) // 100 + 1):
-                query = {'instId': item['instId'], 'bar': OKX_BARS[interval], 'limit': min(100, wanted - len(raw)), 'after': cursor}
-                if query['limit'] <= 0:
-                    break
-                page = self.get(source, '/api/v5/market/history-candles', query,
-                                ttl=3600 if end < now - 2 * DAY else 1)
-                if not page:
-                    break
-                times = [int(r[0]) for r in page]
-                if any(t >= cursor for t in times) or len(set(times)) != len(times):
-                    raise Unavailable('invalid history cursor')
-                raw.extend(page); cursor = min(times)
-                if start is not None and cursor <= bucket(start, interval):
-                    break
-                if len(page) < query['limit']:
-                    break
-            rows = normalize_okx(raw, interval)
+            if latest_window and limit <= 300:
+                # OKX's current-candles endpoint returns up to 300 rows in one
+                # request. The old history-candles path fetched the same first
+                # screen in four serial 100-row pages, adding roughly 1.2s on
+                # the VPS before the phone could draw anything. Historical and
+                # start/end-based requests intentionally keep the paged path.
+                query = {'instId': item['instId'], 'bar': OKX_BARS[interval], 'limit': limit}
+                raw = self.get(source, '/api/v5/market/candles', query, ttl=1)
+                rows = normalize_okx(raw, interval)
+            else:
+                # Start-based consumers need the earliest page after start, not the latest page before now.
+                if start is not None:
+                    boundary = bucket(start, interval)
+                    for _ in range(limit):
+                        boundary = close_time(boundary, interval)
+                    end = min(end, boundary - 1)
+                wanted = min(4503, limit * ratio + ratio)
+                raw = []; cursor = close_time(bucket(end, '4h' if interval == '8h' else '1d' if interval == '3d' else interval),
+                                              '4h' if interval == '8h' else '1d' if interval == '3d' else interval)
+                for _ in range((wanted + 99) // 100 + 1):
+                    query = {'instId': item['instId'], 'bar': OKX_BARS[interval], 'limit': min(100, wanted - len(raw)), 'after': cursor}
+                    if query['limit'] <= 0:
+                        break
+                    page = self.get(source, '/api/v5/market/history-candles', query,
+                                    ttl=3600 if end < now - 2 * DAY else 1)
+                    if not page:
+                        break
+                    times = [int(r[0]) for r in page]
+                    if any(t >= cursor for t in times) or len(set(times)) != len(times):
+                        raise Unavailable('invalid history cursor')
+                    raw.extend(page); cursor = min(times)
+                    if start is not None and cursor <= bucket(start, interval):
+                        break
+                    if len(page) < query['limit']:
+                        break
+                rows = normalize_okx(raw, interval)
         rows = [r for r in rows if (start is None or int(r[0]) >= start) and int(r[0]) <= end]
         rows = rows[:limit] if start is not None else rows[-limit:]
         if any(close_time(int(a[0]), interval) != int(b[0]) for a, b in zip(rows, rows[1:])):

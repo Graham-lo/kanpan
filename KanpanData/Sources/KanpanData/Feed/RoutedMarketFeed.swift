@@ -105,7 +105,13 @@ public actor RoutedMarketFeed {
       continuation?.yield(update)
       return
     }
-    if case .status(let status) = update.event { pendingStatus = status }
+    if case .status(let status) = update.event {
+      pendingStatus = status
+      // Do not wait for the normal 20-second monitor cadence when a newly
+      // selected source is already offline. This matters on mobile networks
+      // that can open HTTP but black-hole WebSocket traffic.
+      if status != .live { startMonitoring(immediate: true) }
+    }
     if publishedRoute != generation {
       guard case .series(let series) = update.event, series.count >= 3 else { return }
       publishedRoute = generation
@@ -129,22 +135,49 @@ public actor RoutedMarketFeed {
       savedSource = source
     } catch { log("行情线路偏好未保存：\(error)") }
   }
-  private func healthy(_ candidate: MarketSource, symbol: String, interval: Interval) async -> Bool {
+  private func healthy(_ candidate: MarketSource, symbol: String, interval: Interval,
+                       requireStream: Bool = true) async -> Bool {
+    let rest = candidate == .binance ? primary : backup
+    let boundary = historyBoundary
+    let streamFactory = SourceSocketFactory(source: candidate, hosts: hosts)
+    let streamURL = hosts.combinedStream([
+      BinanceHosts.klineStream(symbol: symbol, interval: interval.source.rawValue)
+    ])
+
+    // REST and WS are independent. The old serial probe paid both network
+    // round trips before activating the source, even though the feed starts
+    // its own REST and WS work immediately afterwards.
+    async let restReady = Self.restHealthy(rest: rest, symbol: symbol, interval: interval,
+                                           boundary: boundary)
+    if !requireStream { return await restReady }
+    async let streamReady = Self.streamHealthy(factory: streamFactory, url: streamURL)
+    let restOK = await restReady
+    let streamOK = await streamReady
+    return restOK && streamOK
+  }
+
+  private static func restHealthy(rest: BinanceREST, symbol: String, interval: Interval,
+                                  boundary: Int64?) async -> Bool {
     do {
-      let rest = candidate == .binance ? primary : backup
       let bars = try await rest.klines(symbol: symbol, interval: interval, limit: 3)
       try Task.checkCancellation()
       guard bars.count >= 3, let last = bars.last else { return false }
-      if let boundary = historyBoundary {
-        let older = try await rest.klines(symbol: symbol, interval: interval, limit: 3, endTime: boundary - 1)
+      if let boundary {
+        let older = try await rest.klines(symbol: symbol, interval: interval, limit: 3,
+                                          endTime: boundary - 1)
         guard !older.isEmpty else { return false }
       }
       let current = Aggregator.bucketStart(ms: Int64(Date().timeIntervalSince1970 * 1000), interval: interval)
-      guard last.openTime >= current else { return false }
-      let url = hosts.combinedStream([BinanceHosts.klineStream(symbol: symbol, interval: interval.source.rawValue)])
-      let socket = try await SourceSocketFactory(source: candidate, hosts: hosts).connect(to: url)
+      return last.openTime >= current
+    } catch { return false }
+  }
+
+  private static func streamHealthy(factory: SourceSocketFactory, url: URL) async -> Bool {
+    do {
+      let socket = try await factory.connect(to: url)
       await socket.cancel()
-      try Task.checkCancellation(); return true
+      try Task.checkCancellation()
+      return true
     } catch { return false }
   }
   private func startMonitoring(immediate: Bool = false) {
@@ -177,14 +210,26 @@ public actor RoutedMarketFeed {
     if source == .binance, pendingStatus == .live, pendingHistoryError == nil, Date() >= historyRetry { return }
     let sym = symbol, iv = interval, chosen = source
     // Source choice survives navigation. Healthy OKX never waits for a Binance probe.
-    if source == .okx, pendingHistoryError == nil, !recovery.isDue(at: Date()) {
+    if source == .okx, pendingStatus == .live, pendingHistoryError == nil, !recovery.isDue(at: Date()) {
       await refreshBackupTicker(symbol: sym, selection: request)
       return
     }
     let primaryReady = Date() >= historyRetry ? await healthy(.binance, symbol: sym, interval: iv) : false
     guard request == selection, foreground, !Task.isCancelled, chosen == source else { return }
     if source == .binance {
-      if !primaryReady, !hosts.oiProxies.isEmpty, await healthy(.okx, symbol: sym, interval: iv) {
+      // The active Binance feed already made the full request and received a
+      // real history error. Do not make the user wait for a second OKX probe:
+      // activating OKX starts its REST and WS checks concurrently and only
+      // publishes the source after a valid series arrives. A standalone
+      // health check is still kept for WS-only failures where REST has not
+      // conclusively failed yet.
+      var fallbackReady = false
+      if !primaryReady, !hosts.oiProxies.isEmpty {
+        fallbackReady = pendingHistoryError != nil
+          ? true
+          : await healthy(.okx, symbol: sym, interval: iv)
+      }
+      if fallbackReady {
         guard request == selection, foreground, !Task.isCancelled else { return }
         if pendingHistoryError == nil, pendingStatus == .live { return }
         announceSwitch()

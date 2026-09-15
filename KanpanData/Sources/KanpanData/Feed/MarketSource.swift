@@ -7,6 +7,10 @@ public enum MarketSource: String, Codable, Sendable { case binance, okx }
 public actor MarketRESTTransport: HTTPTransport {
   private static let directCooldownSeconds: TimeInterval = 30
   private static let preferredGatewaySeconds: TimeInterval = 300
+  /// A blocked mobile route must yield to the VPS quickly. The route race and
+  /// the source switch are the recovery mechanism; waiting the full request
+  /// timeout here only makes the first screen feel frozen.
+  private static let directAttemptTimeout: TimeInterval = 3
   private let source: MarketSource
   private let log: FeedLog
   private let gateways: [String]
@@ -48,7 +52,7 @@ public actor MarketRESTTransport: HTTPTransport {
     if source == .binance, Date() >= directRetry {
       do {
         let began = Date()
-        let reply = try await transport.get(url, timeout: min(timeout, 15))
+        let reply = try await transport.get(url, timeout: min(timeout, Self.directAttemptTimeout))
         log("直连 \(url.host ?? "") \(url.path) HTTP \(reply.status) \(Int(-began.timeIntervalSinceNow * 1000))ms")
         try Task.checkCancellation()
         if reply.status == 200 { return reply }
@@ -83,10 +87,11 @@ public actor MarketRESTTransport: HTTPTransport {
       guard let target = parts.url else { continue }
       let smallProbe = queryItems.first(where: { $0.name == "limit" })?.value.flatMap(Int.init).map { $0 <= 3 } ?? false
       // Catalog and ticker requests are small and should never wait behind a
-      // mobile-network black hole. Historical K-lines retain the longer
-      // deadline because a cold gateway may need to fetch several pages.
+      // mobile-network black hole. A first historical page is also bounded:
+      // the gateway returns the latest window first, while older pages can be
+      // retried in the background instead of blocking the initial screen.
       let deadline: TimeInterval = endpoint == "instruments" || endpoint == "ticker"
-        ? min(timeout, 5) : (source == .binance || smallProbe ? 5 : 30)
+        ? min(timeout, 5) : (source == .binance || smallProbe ? 5 : min(timeout, 8))
       candidates.append(GatewayCandidate(host: host, target: target, timeout: deadline))
     }
     guard !candidates.isEmpty else { throw failure }

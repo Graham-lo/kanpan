@@ -16,6 +16,8 @@ class FixtureMarket(PublicMarket):
 
     def get(self, source, path, query, ttl=1):
         self.calls.append((source, path, query.copy()))
+        if path.endswith('/candles'):
+            return sorted(self.rows, key=lambda row: int(row[0]), reverse=True)[:int(query['limit'])]
         return [r for r in self.rows if int(r[0]) < int(query['after'])][:int(query['limit'])]
 
 
@@ -48,6 +50,8 @@ class MarketTests(unittest.TestCase):
         self.assertEqual(latest['source'], 'okx')
         self.assertEqual(len(latest['bars']), 300)
         self.assertEqual(latest['bars'][-1][0], end)
+        self.assertEqual(market.calls[0][1], '/api/v5/market/candles')
+        self.assertEqual(market.calls[0][2]['limit'], 300)
         older = market.klines('okx', 'BTCUSDT', '1m', 300, end=latest['bars'][0][0] - 1)
         self.assertEqual(older['bars'][-1][0] + 60_000, latest['bars'][0][0])
         start = end - 700 * 60_000

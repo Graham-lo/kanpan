@@ -67,7 +67,10 @@ class OKXHub(Hub):
     async def sync(self, upstream, family, sent, changed):
         while True:
             await changed.wait(); changed.clear()
-            await asyncio.sleep(.3)
+            # The first subscription is the cold-start critical path. There
+            # is nothing to coalesce before the first send; keep only a tiny
+            # yield there and retain the debounce for rapid chart switches.
+            await asyncio.sleep(.03 if not sent else .3)
             wanted_channels = {channel for channel in self.channels
                                if (self.channel_parts(channel)[1] == 'ticker') == (family == 'ticker')}
             if not wanted_channels:
