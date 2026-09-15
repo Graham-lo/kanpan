@@ -13,6 +13,20 @@ import KanpanCore
 final class SymbolPickerModel {
   /// 品种表（USDT 永续），顺序即 `exchangeInfo` 给的顺序。
   private(set) var catalog: [SymbolInfo] = []
+  /// symbol（大写）→ 品种信息。
+  ///
+  /// 自选行渲染要问好几次品种信息（基础币名、价格精度、计价币）。品种表有
+  /// 五百多行，`catalog.first { $0.symbol == symbol }` 是一次线性扫描；一行问
+  /// 三四次、一屏二十几行、每来一批报价重算一次，就是每秒几万次字符串比较，
+  /// 全落在主线程上——列表正在填数字的时候恰好最忙。查表把它压成常数。
+  @ObservationIgnored private var index: [String: SymbolInfo] = [:]
+  /// 按 symbol 取品种信息。取不到返回 `nil`，调用方自己兜底。
+  func info(for symbol: String) -> SymbolInfo? { index[symbol.uppercased()] }
+  /// `catalog` 只在 `setCatalog` 和初始化时换，索引跟着换。不用 `didSet`：
+  /// `@Observable` 会把存储属性改写成计算属性，属性观察器放在这儿只会让人猜。
+  private func reindex() {
+    index = Dictionary(catalog.map { ($0.symbol.uppercased(), $0) }, uniquingKeysWith: { a, _ in a })
+  }
   /// symbol（大写）→ 24h 行情。
   private(set) var tickers: [String: Ticker] = [:]
   private(set) var historyBars: [String: [Bar]] = [:]
@@ -63,6 +77,7 @@ final class SymbolPickerModel {
     self.store = store
     self.feed = feed
     self.catalogLoader = catalogLoader
+    reindex()
     self.prefs = store.load()
     classifyUnassigned()
     store.save(self.prefs)
@@ -117,6 +132,7 @@ final class SymbolPickerModel {
 
   func setCatalog(_ list: [SymbolInfo]) {
     catalog = list
+    reindex()
     rebuildFilter()
   }
 
@@ -130,8 +146,14 @@ final class SymbolPickerModel {
     }
   }
 
+  /// 展开详情里的 1h / 4h 涨跌用的分钟线。一份 245 根约 8 KB，
+  /// 三十几份也就几百 KB——按「机器资源可以大方用」的口径，够整张自选表
+  /// 全展开也不用互相挤掉。
+  static let historyCapacity = 40
+
   func setHistory(_ symbol: String, _ bars: [Bar]) {
-    if historyBars[symbol] == nil, historyBars.count >= 8, let victim = historyBars.keys.sorted().first {
+    if historyBars[symbol] == nil, historyBars.count >= Self.historyCapacity,
+       let victim = historyBars.keys.sorted().first {
       historyBars.removeValue(forKey: victim)
     }
     historyBars[symbol] = Array(bars.suffix(245))
@@ -184,7 +206,7 @@ final class SymbolPickerModel {
     let key = SymbolPrefs.key(symbol)
     guard !key.isEmpty else { return }
     prefs.addFavorite(key)
-    let name = FavoriteCategory.name(symbol: key, info: info ?? catalog.first { $0.symbol == key })
+    let name = FavoriteCategory.name(symbol: key, info: info ?? self.info(for: key))
     let group = prefs.createGroup(name)
     prefs.assign(key, to: group)
     commit()
@@ -192,7 +214,7 @@ final class SymbolPickerModel {
 
   private func classifyUnassigned() {
     for symbol in prefs.favorites where prefs.groupForSymbol[symbol] == nil {
-      let name = FavoriteCategory.name(symbol: symbol, info: catalog.first { $0.symbol == symbol })
+      let name = FavoriteCategory.name(symbol: symbol, info: self.info(for: symbol))
       let group = prefs.createGroup(name)
       prefs.assign(symbol, to: group)
     }
@@ -248,7 +270,7 @@ final class SymbolPickerModel {
   }
 
   func pick(symbol: String) {
-    guard let info = catalog.first(where: { $0.symbol.uppercased() == SymbolPrefs.key(symbol) }) else { return }
+    guard let info = info(for: SymbolPrefs.key(symbol)) else { return }
     pick(info)
   }
 

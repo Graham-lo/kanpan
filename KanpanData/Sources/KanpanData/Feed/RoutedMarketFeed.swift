@@ -289,7 +289,10 @@ public actor RoutedMarketFeed {
       .prefix(Self.prefetchLimit).map { (symbol: $0, interval: interval) }
     // 当前品种换周期：本地已经有当前这档了，补其余几档。
     jobs += intervals.filter { $0 != interval && $0.source == $0 }.map { (symbol: current, interval: $0) }
-    prefetchTask = run(jobs: jobs, delayMs: 0)
+    // 慢一步再开始。预热的每一份是 300 根、几十 KB，而此刻用户正盯着自选列表
+    // 等那一屏报价（每条只有几百字节）补齐——先让小的过去。等得起：用户从
+    // 看清列表到点进某一行，不会比这快。
+    prefetchTask = run(jobs: jobs, delayMs: 1200)
   }
 
   /// 换品种之后，给新品种的其他常用周期也各拉一份。

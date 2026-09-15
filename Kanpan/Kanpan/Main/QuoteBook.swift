@@ -62,7 +62,22 @@ final class QuoteBook {
   /// 超过这个秒数的值只是「上次看到的」，要重新取。
   private static let freshSeconds: TimeInterval = 20
   /// 攒够这么多行要补，就用一次全市场请求换掉逐行往返。
-  private static let batchThreshold = 8
+  ///
+  /// 门槛原来是 8，那是按「一次请求换几十次往返」估的，但估错了两件事：
+  /// 单品种的 `ticker/24hr` 回包只有 ~375 B，而全市场那一条是 285 KB；
+  /// 而且币安是 HTTP/2，几十条单品种请求在同一条连接上多路复用，
+  /// 实际只花一个往返。于是「省」出来的是把 8 KB 换成 285 KB——在手机
+  /// 网络上，这恰恰就是冷启动时那段「等一下才出来」。
+  /// 抬到 48：自选表怎么加都走逐行那条，只有品种搜索页那种几百行滚动时
+  /// 才值得用全市场换。
+  private static let batchThreshold = 48
+  /// 逐行补价的并发。
+  ///
+  /// HTTP/2 下这些请求共用一条连接，并发开大不多开连接，只是多几条流；
+  /// 一屏自选（二十几行）因此一个往返就全部补齐，而不是 4 个一批排队。
+  private static let quoteConcurrency = 24
+  /// 展开详情里 1h / 4h 分钟线的并发。同上，原来是 2，一行行地填。
+  private static let historyConcurrency = 8
   /// 进后台后连接还留多久。和 `MarketFeed.backgroundGraceMs` 对齐，
   /// 都在 iOS 给的约 30 秒后台运行时间之内。
   private static let idleGraceSeconds: Double = 25
@@ -359,7 +374,7 @@ final class QuoteBook {
 
   private func loadHistories() {
     guard foreground, visible, online else { return }
-    for symbol in historyWanted where historyJobs.count < 2 && historyJobs[symbol] == nil && raw[symbol] != nil {
+    for symbol in historyWanted where historyJobs.count < Self.historyConcurrency && historyJobs[symbol] == nil && raw[symbol] != nil {
       guard Date().timeIntervalSince(historyRequested[symbol] ?? .distantPast) >= 60 else { continue }
       historyRequested[symbol] = Date()
       let rest = self.rest
@@ -522,7 +537,7 @@ final class QuoteBook {
   private func drainQuotes() {
     guard foreground, online else { return }
     if drainBatch() { return }
-    while quoteJobs.count < 4, !quoteQueue.isEmpty {
+    while quoteJobs.count < Self.quoteConcurrency, !quoteQueue.isEmpty {
       let symbol = quoteQueue.removeFirst()
       guard !isFresh(symbol) else { continue }
       quoteAttempt[symbol] = Date()

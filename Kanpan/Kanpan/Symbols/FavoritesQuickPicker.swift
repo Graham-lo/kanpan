@@ -38,7 +38,7 @@ struct FavoritesQuickPicker: View {
         Spacer()
       } else {
         List(model.prefs.favorites, id: \.self) { symbol in
-          let info = model.catalog.first { $0.symbol == symbol } ?? SymbolInfo(symbol: symbol,
+          let info = model.info(for: symbol) ?? SymbolInfo(symbol: symbol,
             base: symbol.hasSuffix("USDT") ? String(symbol.dropLast(4)) : symbol, pricePrecision: 2, tickSize: 0.01)
           let row = SymbolRow(match: SymbolMatch(info: info), ticker: model.ticker(for: symbol))
           Button { model.pick(info) } label: {

@@ -323,7 +323,7 @@ struct FavoritesView: View {
 
   private func row(_ symbol: String) -> some View {
     let ticker = displayQuote(symbol)
-    let base = model.catalog.first { $0.symbol == symbol }?.base ?? String(symbol.dropLast(4))
+    let base = model.info(for: symbol)?.base ?? String(symbol.dropLast(4))
     let index = symbol.utf8.reduce(0) { ($0 + Int($1)) % 6 }
     let tint = Color(hex: theme.chart.palette[index % theme.chart.palette.count])
     let amplitude = ticker?.amplitude24h
@@ -378,7 +378,7 @@ struct FavoritesView: View {
     let ticker = displayQuote(symbol)
     let value = ticker?.changePercent ?? .nan
     let color = value.isFinite ? theme.badgeFill(up: value >= 0) : theme.ink3
-    let decimals = model.catalog.first { $0.symbol == symbol }?.pricePrecision ?? 2
+    let decimals = model.info(for: symbol)?.pricePrecision ?? 2
     let price = ticker?.last ?? .nan
     let change = amount && value.isFinite && price.isFinite && value > -100 ? price - price / (1 + value / 100) : value
     let priceText = price.isFinite ? fmtNum(price, decimals) : "—"
@@ -405,7 +405,7 @@ struct FavoritesView: View {
 
   private func details(_ symbol: String) -> some View {
     let ticker = displayQuote(symbol)
-    let decimals = model.catalog.first { $0.symbol == symbol }?.pricePrecision ?? 2
+    let decimals = model.info(for: symbol)?.pricePrecision ?? 2
     return VStack(spacing: 10) {
       LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3), spacing: 10) {
         cell("1h", percent(historyChange(symbol, hours: 1)))
@@ -449,11 +449,11 @@ struct FavoritesView: View {
     else { open(symbol) }
   }
   private func quoteAsset(_ symbol: String) -> String {
-    model.catalog.first { $0.symbol == symbol }?.quote ??
+    model.info(for: symbol)?.quote ??
       (["USDT", "USDC", "BUSD"].first { symbol.hasSuffix($0) } ?? "USDT")
   }
   private func open(_ symbol: String) {
-    let info = model.catalog.first { $0.symbol == symbol } ?? SymbolInfo(symbol: symbol, base: String(symbol.dropLast(4)), quote: quoteAsset(symbol), pricePrecision: 2, tickSize: 0.01)
+    let info = model.info(for: symbol) ?? SymbolInfo(symbol: symbol, base: String(symbol.dropLast(4)), quote: quoteAsset(symbol), pricePrecision: 2, tickSize: 0.01)
     model.pick(info)
   }
   private func assign(_ symbols: [String], to group: String?) {
