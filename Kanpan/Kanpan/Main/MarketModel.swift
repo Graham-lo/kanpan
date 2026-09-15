@@ -115,6 +115,14 @@ final class MarketModel {
   func start(snapshot: Bool, interval requestedInterval: Interval? = nil) {
     if let requestedInterval { interval = requestedInterval }
     self.snapshot = snapshot
+    // 第一帧就把盘上的快照摆出来。`feed` 是 actor，它那份快照要等一次跨执行器的
+    // 跳转才回得来——冷启动时那一跳就是半秒的空图。这里同步读一次（几十 KB 的
+    // 连续内存，读完直接是可画的值），图和价格一起出现。
+    if snapshot, series == nil,
+       let saved = SeriesStore.read(symbol: symbol, interval: interval,
+                                    in: Self.catalogPaths(for: source).series) {
+      series = saved
+    }
     guard pump == nil else { return }
     network.start { [weak self] online in
       Task { @MainActor [weak self] in

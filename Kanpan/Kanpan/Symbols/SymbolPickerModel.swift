@@ -74,6 +74,14 @@ final class SymbolPickerModel {
   /// 只在还没进过页面时补得上，进过之后 `catalog` 已经填好了，换不换都无所谓。
   func setLoader(_ loader: @escaping @Sendable () async -> [SymbolInfo]) {
     catalogLoader = loader
+    // 自选页现在从第一帧就盖着（见 `MainScreen.startsOnFavorites`），它的 `appear()`
+    // 可能比宿主接线还早跑一步，那一趟手里没有 loader，品种表就会一直空到下次进页。
+    // 补上 loader 的时候如果还空着，自己补一趟。
+    guard catalog.isEmpty else { return }
+    Task { [weak self] in
+      let list = await loader()
+      self?.setCatalog(list)
+    }
   }
 
   // ---------------------------------------------------------------- 生命周期

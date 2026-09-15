@@ -43,7 +43,16 @@ final class QuoteBook {
   /// 下一次定时落盘。`nil` 表示当前没有排队的写。
   private var persistPending: Task<Void, Never>?
   private var lastPersist = Date.distantPast
+  /// 上一次真正落盘的那批品种。用来判断「这次有没有新面孔」——有就别等节流。
+  private var persistedSymbols = Set<String>()
   private var restored = false
+  /// 宿主把自选表送进来了吗。
+  ///
+  /// 冷启动的顺序是「`restoreQuotes()` 先把上次的报价摆好 → 宿主接着告诉我们自选是哪些」。
+  /// 中间这一小段里 `wanted` 只有图上那一个品种，照着它裁 `raw`，刚摆出来的十几行
+  /// 立刻退回骨架——用户看到的「自选一个个慢慢加载」就是从这儿来的。所以在自选表
+  /// 到齐之前，只准往 `wanted` 里加，不准拿它去裁。
+  private var favoritesKnown = false
   /// 进后台后延迟拆连接的窗口。宿主用 `beginBackgroundTask` 顶住这段时间，
   /// 短暂切走再回来就不必重连。
   private var idleTeardown: Task<Void, Never>?
@@ -83,6 +92,8 @@ final class QuoteBook {
     let saved = QuoteSnapshot.read(paths.quotes)
     guard !saved.isEmpty else { return }
     for ticker in saved { raw[ticker.symbol] = ticker }
+    // 盘上就是这批，别让下面那次 publish 又原样写回去一遍。
+    persistedSymbols = Set(saved.map(\.symbol))
     publish(saved.map(presented))
   }
 
@@ -92,6 +103,7 @@ final class QuoteBook {
     lastPersist = Date()
     let values = Array(raw.values)
     guard !values.isEmpty else { return }
+    persistedSymbols = Set(values.map(\.symbol))
     let url = paths.quotes
     persistTask?.cancel()
     persistTask = Task.detached(priority: .utility) { QuoteSnapshot.write(values, to: url) }
@@ -103,6 +115,10 @@ final class QuoteBook {
   /// 杀掉是没有通知的，那一次的报价就全丢了，下次冷启动照样是空列表。定时写一遍，
   /// 最多丢掉这一个间隔里的变化。写的是后台低优先级的一小段 JSON，代价可以忽略。
   private func notePersist() {
+    // 出现了盘上没有的品种（多半是刚加的自选）就不走节流，立刻写一遍。
+    // 否则用户加完自选顺手把 app 划掉，这一行下次冷启动就是空的，只能干等网络——
+    // 「自选一个个慢慢加载」看到的正是这个。
+    if !persistedSymbols.isSuperset(of: raw.keys) { persistQuotes(); return }
     guard persistPending == nil else { return }
     let wait = Self.persistEverySeconds - Date().timeIntervalSince(lastPersist)
     guard wait > 0 else { persistQuotes(); return }
@@ -151,6 +167,7 @@ final class QuoteBook {
   }
 
   func setFavorites(_ symbols: [String]) {
+    favoritesKnown = true
     favorites = symbols
     for symbol in symbols { wanted.insert(symbol); watchBaseline(symbol) }
     reconcileConnection()
@@ -224,6 +241,8 @@ final class QuoteBook {
   private func updateStreams() {
     let symbols = QuoteSubscriptionPlan.symbols(favorites: [chartSymbol].compactMap { $0 } + favorites, visible: visible ? visibleRows : [])
     wanted = Set(symbols + [chartSymbol].compactMap { $0 })
+    // 自选表还没到，先把上次恢复出来的那批一起算进来，别把它们裁掉（见 `favoritesKnown`）。
+    if !favoritesKnown { wanted.formUnion(raw.keys) }
     if raw.keys.contains(where: { !wanted.contains($0) }) { raw = raw.filter { wanted.contains($0.key) } }
     latestReceived = latestReceived.filter { wanted.contains($0.key) }
     onScopeChange?(wanted)

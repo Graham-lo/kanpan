@@ -35,6 +35,8 @@ struct MainScreen: View {
   @State private var quickListPending = false
   @State private var showSymbols = false
   @State private var showFavorites = false
+  /// 冷启动的自选盖层还在吗。详见 `launchFavorites`。
+  @State private var launchCover = MainScreen.startsOnFavorites
   @State private var expandedChart = false
   /// 这次横屏是「点画线」带进来的吗——是的话画完要自己转回竖屏。
   @State private var landscapeForDrawing = false
@@ -52,6 +54,10 @@ struct MainScreen: View {
   @Environment(\.colorScheme) private var scheme
   @Environment(\.scenePhase) private var phase
   @Environment(\.verticalSizeClass) private var vClass
+
+  /// 上次存下来的自选表非空吗。只读一次，值在这一整次启动里不会变——
+  /// 自选表本身是 `SymbolPickerModel` 在管，这儿只关心「第一帧该盖谁」。
+  private static let startsOnFavorites = !SymbolPrefsStore().load().favorites.isEmpty
 
   private var prefs: Prefs { store.prefs }
 
@@ -118,16 +124,45 @@ struct MainScreen: View {
         .preferredColorScheme(effectiveTheme.forced)
     }
     .fullScreenCover(isPresented: $showFavorites) {
-      FavoritesView(model: picker, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
-                    onClose: { showFavorites = false; proxy.scrollToLatest(animated: false) }, onVisible: { quotes.watch($0) },
-                    onRowVisibility: { quotes.watchRow($0, visible: $1) },
-                    onHistoryVisibility: { quotes.watchHistory($0, visible: $1) })
+      favoritesPage { showFavorites = false; proxy.scrollToLatest(animated: false) }
         .preferredColorScheme(effectiveTheme.forced)
+    }
+    .overlay { launchFavorites }
+  }
+
+  private func favoritesPage(onClose: @escaping () -> Void) -> some View {
+    FavoritesView(model: picker, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
+                  onClose: onClose, onVisible: { quotes.watch($0) },
+                  onRowVisibility: { quotes.watchRow($0, visible: $1) },
+                  onHistoryVisibility: { quotes.watchHistory($0, visible: $1) })
+  }
+
+  /// 冷启动的自选盖层。
+  ///
+  /// 上次关掉 app 时自选表非空，这一次就该直接落在自选页上，中间不要漏出行情页。
+  /// **不能用 `fullScreenCover` 来做这件事**：那东西的呈现要过一遍 UIKit 的 present
+  /// 流程，哪怕把动画关掉（`disablesAnimations`），宿主也一定会先自己画一帧——抓帧
+  /// 看到的就是 0.57 s 那张行情页。这里改成叠在同一棵视图树上的 `overlay`，它和宿主
+  /// 在同一帧里布局，第一帧就是自选页。
+  ///
+  /// 只管「第一次」。用户一旦从这儿走开（关掉、或者点了某个品种），`launchCover`
+  /// 就永久落下，之后再进自选走的还是原来那个 `showFavorites` 盖层，两条路不会同时在。
+  @ViewBuilder private var launchFavorites: some View {
+    if launchCover {
+      ZStack {
+        // 背景要铺满整屏（盖住状态栏和 home indicator 那两条），但页面本身仍然待在
+        // 安全区里——和 `fullScreenCover` 里的排版对齐。
+        theme.app.ignoresSafeArea()
+        favoritesPage { launchCover = false; proxy.scrollToLatest(animated: false) }
+      }
     }
   }
 
   private var lifecycleContent: some View {
     presentation
+    // 接线要排在盖层前面：`QuoteBook` 得先知道自选是哪些，才不会拿「图上那一个品种」
+    // 去裁刚从盘上恢复出来的报价。`boot()` 自己有 `didBoot` 挡着，重复调用是空转。
+    .onAppear { boot() }
     .task { boot() }
     // 开关一变、或前后台一切，这个 task 就整个重来（旧的先被取消），心跳跟着起停。
     .task(id: beating) { await heartbeat() }
@@ -163,7 +198,7 @@ struct MainScreen: View {
     .onChange(of: hosts) { _, next in market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis, source: market.source) }
     .onChange(of: prefs.changeBasis) { _, next in quotes.configure(hosts: hosts, basis: next, source: market.source) }
     .onChange(of: market.source) { _, next in quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next) }
-    .onChange(of: showFavorites || showSymbols) { _, on in quotes.setVisible(on) }
+    .onChange(of: showFavorites || showSymbols || launchCover) { _, on in quotes.setVisible(on) }
     .onChange(of: picker.prefs.favorites) { _, symbols in quotes.setFavorites(symbols) }
     .onChange(of: market.routing) { _, state in
       if state == .switched { say("已切换成功") }
@@ -431,7 +466,7 @@ struct MainScreen: View {
       theme.chartBG
       ChartHost(
         portrait: !landscape,
-        renderingActive: !showFavorites && !showSymbols,
+        renderingActive: !showFavorites && !showSymbols && !launchCover,
         panelOpen: panel != nil || draw.panel != nil,
         state: reviewChart.active ? reviewChart.state : chartState,
         proxy: reviewChart.active ? reviewChart.proxy : proxy,
@@ -628,11 +663,13 @@ struct MainScreen: View {
     quotes.onUpdate = { picker.updateQuotes($0) }
     quotes.onHistory = { picker.setHistory($0, $1) }
     quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: market.source)
+    // 自选表要赶在 `setChartSymbol` 前面：后者会重算订阅范围，那时候如果自选还是空的，
+    // `configure` 刚恢复出来的那批报价就会被裁到只剩图上这一个品种。
+    quotes.setFavorites(picker.prefs.favorites)
     quotes.setChartSymbol(market.symbol)
     quotes.setForeground(phase != .background)
-    quotes.setFavorites(picker.prefs.favorites)
     picker.onPick = { info in
-      showSymbols = false; showFavorites = false; showQuickFavorites = false
+      showSymbols = false; showFavorites = false; showQuickFavorites = false; launchCover = false
       if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
       crosshair = nil
       market.switchTo(symbol: info.symbol)
@@ -643,7 +680,9 @@ struct MainScreen: View {
     // Otherwise FavoritesView can start its first catalog request against the
     // default Binance route while the host/source setup is still in flight.
     if !picker.prefs.favorites.isEmpty {
-      showFavorites = true; quotes.setVisible(true)
+      // 盖层已经在了（`launchFavorites`）就别再叠一层 `fullScreenCover`。
+      if !launchCover { showFavorites = true }
+      quotes.setVisible(true)
       // 冷启动第一屏就是自选页。趁用户在这儿看报价，把自选的 K 线、以及当前品种
       // 其他常用周期的 K 线先拉好，点进去、切周期第一帧就有图。
       market.prefetchFavorites(picker.prefs.favorites, intervals: prefs.quickIntervals)
@@ -660,7 +699,7 @@ struct MainScreen: View {
       bridge.onSwitch = {
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
         else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
-        showFavorites = false; showSymbols = false; showQuickFavorites = false
+        showFavorites = false; showSymbols = false; showQuickFavorites = false; launchCover = false
         dismissPanel(); crosshair = nil
       }
       accountBridge = bridge; bridge.focus(market.symbol)
