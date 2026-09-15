@@ -49,7 +49,17 @@ public actor BinanceREST {
       tried += 1
       try await limiter.acquire(weight: weight)
       let t0 = await pacer.nowMs()
-      let reply = try await transport.get(url, timeout: timeout)
+      let reply: HTTPReply
+      do { reply = try await transport.get(url, timeout: timeout) }
+      catch let error as BinanceError where error.isRateLimited {
+        // 走网关/对冲那条路时，上游的状态码是被 transport 吞掉再抛出来的，
+        // 到不了下面 `reply.status` 那段。不在这儿记一笔，限流器就永远不知道
+        // 自己已经被 ban 了，只会接着往枪口上撞——表现成「用一会儿涨跌幅全空」。
+        // 记完就抛：这一笔让调用方按自己的节奏重试，别占着并发位空等。
+        log("限流 \(error.status)（上游），记录罚停")
+        await limiter.penalize(retryAfterSeconds: nil)
+        throw error
+      }
       let ms = await pacer.nowMs() - t0
       log("GET \(url.path)\(url.query.map { "?\($0)" } ?? "") → \(reply.status) \(reply.body.count)B \(Int(ms))ms")
 

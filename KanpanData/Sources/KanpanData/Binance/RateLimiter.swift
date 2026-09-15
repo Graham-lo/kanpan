@@ -22,6 +22,20 @@ public actor RateLimiter {
     }
   }
 
+  /// 全 app 共用的那把限流器（按上游分）。
+  ///
+  /// 币安的分钟权重是按 IP 算的，不是按对象算的。以前
+  /// `BinanceREST.upstream(_:hosts:)` 每调用一次就配一把新的——行情页、自选、
+  /// 复盘、品种目录同时开着就是四五把，每把都以为自己独占整个额度，真正发出去
+  /// 的量是限额的好几倍。撞上 418 之后又各罚各的，谁也不知道别人已经被 ban，
+  /// 于是一直有请求往枪口上撞。共用一把之后：谁被罚停，所有人一起等。
+  ///
+  /// 间隔从 120ms 收到 25ms——原来那个数是「每个对象各自限速」时代留下的，
+  /// 现在只有一把，再用 120ms 就等于把全 app 卡在 8 次/秒。真正的闸门是
+  /// 下面那个分钟权重窗口。
+  public static let sharedBinance = RateLimiter(budget: 2100, minGapMs: 25)
+  public static let sharedOKX = RateLimiter(budget: 1000, minGapMs: 40)
+
   private let pacer: Pacer
   private let budget: Int
   private let minGapMs: Double

@@ -76,6 +76,9 @@ public actor MarketRESTTransport: HTTPTransport {
         try Task.checkCancellation()
         if !Self.fallsBack(reply.status) { return reply }
         directRetry = Self.directCooldown(for: reply.status)
+        // 上游的状态码到这儿就被吞掉了。留一份带状态码的错误：两条路都没成的时候
+        // 抛的是它，`BinanceREST` 才认得出 418/429，才会去按住限流器。
+        failure = BinanceError(status: reply.status, url: url.absoluteString)
       } catch is CancellationError { throw CancellationError() }
       catch {
         try Task.checkCancellation()
@@ -176,6 +179,7 @@ public actor MarketRESTTransport: HTTPTransport {
         log("直连 \(url.host ?? "") \(url.path) HTTP \(reply.status) \(Int(-began.timeIntervalSinceNow * 1000))ms")
         if !Self.fallsBack(reply.status) { return reply }
         directRetry = Self.directCooldown(for: reply.status)
+        failure = BinanceError(status: reply.status, url: url.absoluteString)
       } else if let error = direct.error {
         if Self.isCancellation(error) { throw CancellationError() }
         directRetry = Date().addingTimeInterval(Self.directCooldownSeconds)
@@ -341,7 +345,8 @@ public struct SourceSocketFactory: WSSocketFactory {
 
 public extension BinanceREST {
   static func upstream(_ source: MarketSource, hosts: BinanceHosts, log: FeedLog = .silent) -> BinanceREST {
-    BinanceREST(hosts: hosts, transport: MarketRESTTransport(source: source, gateways: hosts.oiProxies, log: log), log: log)
+    BinanceREST(hosts: hosts, transport: MarketRESTTransport(source: source, gateways: hosts.oiProxies, log: log),
+                limiter: source == .binance ? .sharedBinance : .sharedOKX, log: log)
   }
 
 }

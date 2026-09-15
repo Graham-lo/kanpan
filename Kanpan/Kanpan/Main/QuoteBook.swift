@@ -11,7 +11,7 @@ final class QuoteBook {
   private(set) var basis: ChangeBasis = .rolling24h
   private var latestReceived: [String: QuoteState] = [:]
   private var hosts = BinanceHosts.default
-  private var rest = BinanceREST()
+  private var rest = BinanceREST.upstream(.binance, hosts: .default)
   private var source: MarketSource = .binance
   private var socket: BinanceWS?
   private var subscribedStreams: [String] = []
@@ -21,6 +21,11 @@ final class QuoteBook {
   private var queue = Set<String>()
   private var jobs: [String: Task<Void, Never>] = [:]
   private var failedAt: [String: Date] = [:]
+  /// 连续失败次数，用来把重试间隔逐级拉开。
+  private var failCount: [String: Int] = [:]
+  /// 「先拿现价顶上」的那批开盘价（见 `rollBoundary(to:)`）。它们是真实成交价，
+  /// 但不是交易所口径的当日开盘价，所以既要继续去取正式值，也不能落盘。
+  private var provisionalOpens = Set<String>()
   /// 已经落盘的那批开盘价（以及它们属于哪一档边界）。只为避免重复写同一份。
   private var persistedOpens = Set<String>()
   private var persistedBoundary: Int64?
@@ -109,6 +114,11 @@ final class QuoteBook {
   private static let idleGraceSeconds: Double = 25
   /// 定时落盘的最小间隔。
   private static let persistEverySeconds: Double = 30
+  /// 内存里最多留多少个品种的当日开盘价。一个品种一个 Double，留着是为了
+  /// 翻来翻去不用重取；到这个数才按当前可见范围收一次。
+  private static let maxRememberedOpens = 512
+  /// 跨档之后还能拿现价顶开盘价的时间窗。超出这一段就只能老老实实去取。
+  private static let provisionalWindowMs: Int64 = 120_000
   var diagnostics: String? {
     guard ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" else { return nil }
     return "session=\(session.generation);firstQuoteMs=\(firstQuoteMs ?? -1);rows=\(raw.count);status=\(status.rawValue)"
@@ -184,7 +194,10 @@ final class QuoteBook {
       self.hosts = hosts
       self.source = source
       rest = BinanceREST.upstream(source, hosts: hosts)
-      opens.removeAll()
+      // 换镜像不动开盘价：那是交易所的数据，跟走哪台机器取回来没关系。
+      // 以前这儿连着 `opens.removeAll()`，改一下行情源地址、或者
+      // 「智能线路」开关一动，整屏涨跌幅就得重新排队取一遍。换上游才要重取。
+      if changedSource { opens.removeAll(); provisionalOpens.removeAll() }
       for symbol in Array(quoteJobs.keys) where symbol != chartSymbol { quoteJobs.removeValue(forKey: symbol)?.cancel() }
       quoteQueue.removeAll { $0 != chartSymbol }
       flushCoalesced()
@@ -291,7 +304,15 @@ final class QuoteBook {
     onScopeChange?(wanted)
     for symbol in Array(jobs.keys) where !wanted.contains(symbol) { jobs.removeValue(forKey: symbol)?.cancel() }
     queue.formIntersection(wanted)
-    opens = opens.filter { wanted.contains($0.key) }
+    // 开盘价不跟着裁。一个品种只占一个 Double，重取却要一次网络往返——
+    // 翻去别的分类再翻回来就得整屏重算，正是「涨跌幅每次都最慢出来」。
+    // 只有攒得实在多了才收一收。
+    if opens.count > Self.maxRememberedOpens {
+      opens = opens.filter { wanted.contains($0.key) }
+      provisionalOpens.formIntersection(wanted)
+      failedAt = failedAt.filter { wanted.contains($0.key) }
+      failCount = failCount.filter { wanted.contains($0.key) }
+    }
     guard let socket else { return }
     let names = streamNames()
     guard names != subscribedStreams else { return }
@@ -364,22 +385,58 @@ final class QuoteBook {
   }
 
   private func watchBaseline(_ symbol: String) {
-    guard let boundary, opens[symbol]?.time != boundary, jobs[symbol] == nil,
-          Date().timeIntervalSince(failedAt[symbol] ?? .distantPast) > 30 else { return }
+    guard let boundary, jobs[symbol] == nil,
+          opens[symbol]?.time != boundary || provisionalOpens.contains(symbol),
+          Date().timeIntervalSince(failedAt[symbol] ?? .distantPast) > retryDelay(symbol) else { return }
     queue.insert(symbol); drain()
+  }
+
+  /// 失败后隔多久再试。
+  ///
+  /// 原来是一律 30 秒：网络抖一下掉的那一行，要空着三十秒才补得回来；
+  /// 而真的被限流时，三十秒又太短，一屏品种轮着撞，谁也好不了。
+  /// 改成逐级拉开（2/4/8…最多 60 秒）——抖一下的那种下一秒就回来了，
+  /// 一直不成的那种自己退到后台去。
+  private func retryDelay(_ symbol: String) -> TimeInterval {
+    min(60, pow(2, Double(min(failCount[symbol] ?? 0, 6))))
   }
 
   func tick() {
     let next = basis.boundary(now: Int64(Date().timeIntervalSince1970 * 1000))
-    if next != boundary {
-      boundary = next; opens.removeAll(); resetBaselineRequests()
-      restoreBaselines()
-      publish(Array(raw.values))
-    }
+    if next != boundary { rollBoundary(to: next) }
     for symbol in wanted { watchBaseline(symbol) }
     for symbol in visibleRows { requestQuote(symbol) }
     if let chartSymbol { requestQuote(chartSymbol) }
     loadHistories()
+  }
+
+  /// 跨档：过了 0 点 / 8 点，或者第一次算出边界。
+  ///
+  /// 这儿原来是 `opens.removeAll()` 紧跟一次全量 `publish`——盘上每一行的涨跌幅
+  /// 在那一瞬间同时变成空白，要等十几二十个 K 线请求回来才一个个填回去。网络
+  /// 不顺的时候就一直空着，也就是「用着用着涨跌幅全都不出来了」。
+  ///
+  /// 其实新一档的开盘价不用问：这一刻的最新成交价就是新一档的第一笔成交。
+  /// 先拿它顶上——那是交易所真实推过来的价，不是编的——再让 REST 回来纠正到
+  /// 交易所口径。只有本来就没有新鲜价格的品种（比如冷启动刚恢复出来的那批）
+  /// 才留空等取。
+  private func rollBoundary(to next: Int64?) {
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    boundary = next
+    provisionalOpens.removeAll()
+    resetBaselineRequests()
+    restoreBaselines()
+    // 只有「刚跨过去」才能拿现价当开盘价。要是 app 在后台待到了下午才醒，
+    // 这一刻的现价离当档开盘早就差出十万八千里，顶上去就等于编了一个接近
+    // 零的涨跌幅摆在那儿——宁可留空等 REST 取回真值。
+    if let next, now - next <= Self.provisionalWindowMs {
+      for (symbol, ticker) in raw where opens[symbol]?.time != next {
+        guard isFresh(symbol), ticker.last.isFinite, ticker.last > 0 else { continue }
+        opens[symbol] = (next, ticker.last)
+        provisionalOpens.insert(symbol)
+      }
+    }
+    publish(Array(raw.values))
   }
 
   func watchRow(_ symbol: String, visible: Bool) {
@@ -427,13 +484,14 @@ final class QuoteBook {
     guard let boundary else { return }
     let saved = BaselineSnapshot.read(paths.opens, boundary: boundary)
     guard !saved.isEmpty else { return }
-    for (symbol, price) in saved { opens[symbol] = (boundary, price) }
+    for (symbol, price) in saved { opens[symbol] = (boundary, price); provisionalOpens.remove(symbol) }
     persistedOpens = Set(saved.keys); persistedBoundary = boundary
   }
 
   private func persistBaselines() {
     guard let boundary else { return }
-    let rows = opens.filter { $0.value.time == boundary }.mapValues(\.price)
+    // 顶上去的那批不落盘：下次冷启动读回来的必须是交易所口径的开盘价。
+    let rows = opens.filter { $0.value.time == boundary && !provisionalOpens.contains($0.key) }.mapValues(\.price)
     guard !rows.isEmpty else { return }
     guard persistedBoundary != boundary || Set(rows.keys) != persistedOpens else { return }
     persistedOpens = Set(rows.keys); persistedBoundary = boundary
@@ -443,7 +501,26 @@ final class QuoteBook {
 
   private func resetBaselineRequests() {
     generation += 1
-    jobs.values.forEach { $0.cancel() }; jobs.removeAll(); queue.removeAll(); failedAt.removeAll()
+    jobs.values.forEach { $0.cancel() }; jobs.removeAll(); queue.removeAll()
+    failedAt.removeAll(); failCount.removeAll()
+  }
+
+  /// 这一档的开盘价。
+  ///
+  /// 正常情况就是跨过边界那根 1h K 线的开盘价。但 XAU / XAG 这些 TradFi 永续
+  /// 周末休市：边界那个小时根本没有成交，也就没有那根 K 线，于是这一行的涨跌幅
+  /// 永远是空的——用户截图里 XAG 空着就是这么来的。休市的时候基准本来就该取
+  /// 「停盘前最后成交价」，所以退一步去拿边界之前的最后一根，用它的收盘价。
+  private static func dayOpen(symbol: String, boundary: Int64, rest: BinanceREST) async -> Double? {
+    let bars = try? await rest.klines(symbol: symbol, interval: .h1, limit: 1,
+      startTime: boundary, endTime: boundary + 3_600_000 - 1)
+    if let bar = bars?.first, bar.openTime == boundary, bar.open.isFinite, bar.open > 0 { return bar.open }
+    guard bars != nil else { return nil }  // 请求本身失败了，不是「这个小时没成交」。
+    let previous = try? await rest.klines(symbol: symbol, interval: .h1, limit: 1, endTime: boundary - 1)
+    // 太老的那种是已经下架的品种，拿它的价格当基准只会得到一个荒唐的涨跌幅。
+    guard let bar = previous?.first, boundary - bar.openTime <= 7 * 86_400_000,
+          bar.close.isFinite, bar.close > 0 else { return nil }
+    return bar.close
   }
 
   private func drain() {
@@ -452,13 +529,17 @@ final class QuoteBook {
       queue.remove(symbol)
       let generation = self.generation, rest = self.rest
       jobs[symbol] = Task { [weak self] in
-        let bars = try? await rest.klines(symbol: symbol, interval: .h1, limit: 1,
-          startTime: boundary, endTime: boundary + 3_600_000 - 1)
+        let price = await Self.dayOpen(symbol: symbol, boundary: boundary, rest: rest)
         guard let self, !Task.isCancelled, generation == self.generation else { return }
         self.jobs[symbol] = nil
-        if let bar = bars?.first, bar.openTime == boundary, bar.open.isFinite, bar.open > 0 {
-          self.opens[symbol] = (boundary, bar.open)
-        } else { self.failedAt[symbol] = Date() }
+        if let price {
+          self.opens[symbol] = (boundary, price)
+          self.provisionalOpens.remove(symbol)
+          self.failedAt[symbol] = nil; self.failCount[symbol] = nil
+        } else {
+          self.failedAt[symbol] = Date()
+          self.failCount[symbol, default: 0] += 1
+        }
         if let value = self.raw[symbol] { self.publish([value]) }
         self.drain()
         // 这一批取完了就存一次。开盘价在这一档边界里不会再变，下次冷启动直接读，
