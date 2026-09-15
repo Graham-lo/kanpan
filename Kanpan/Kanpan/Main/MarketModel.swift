@@ -23,7 +23,7 @@ final class MarketModel {
   private(set) var tradeQuote: TradeQuote?
   private(set) var info: SymbolInfo
   private(set) var status: FeedStatus = .offline
-  private(set) var source: MarketSource = .binance
+  private(set) var source: MarketSource
   private(set) var historyError: String?
   private(set) var routing: MarketRoutingState = .idle
   /// 最近一次 WS 推进来的时刻。顶栏圆点长按时报「多久没动了」——
@@ -54,10 +54,13 @@ final class MarketModel {
     self.interval = interval
     self.hosts = hosts
     self.info = MarketModel.placeholder(symbol)
-    let rest = BinanceREST.upstream(.binance, hosts: hosts, log: MarketModel.log)
-    self.oiSource = OISource(hosts: hosts, rest: rest, store: OIStore(paths: .caches()))
+    let initialSource = Self.preferredSource()
+    self.source = initialSource
+    let binanceRest = BinanceREST.upstream(.binance, hosts: hosts, log: MarketModel.log)
+    let rest = BinanceREST.upstream(initialSource, hosts: hosts, log: MarketModel.log)
+    self.oiSource = OISource(hosts: hosts, rest: binanceRest, store: OIStore(paths: .caches()))
     self.feed = RoutedMarketFeed(hosts: hosts, preferenceURL: Self.sourcePreferenceURL, log: MarketModel.log)
-    self.catalog = CatalogBox(SymbolCatalog(rest: rest))
+    self.catalog = CatalogBox(SymbolCatalog(rest: rest, paths: Self.catalogPaths(for: initialSource)))
   }
 
   /// 排查「图有数据但一动不动」的时候需要看得见连了没有、推没推进来。
@@ -71,6 +74,19 @@ final class MarketModel {
     }
     #endif
     return root.appendingPathComponent("source.json")
+  }
+
+  /// `RoutedMarketFeed` reads the same preference before it starts probing. The
+  /// favorites page must use that source immediately too; otherwise it briefly
+  /// creates a Binance catalog and waits for a failed request before switching.
+  private static func preferredSource() -> MarketSource {
+    guard let data = try? Data(contentsOf: sourcePreferenceURL),
+          let value = try? JSONDecoder().decode(MarketSource.self, from: data) else { return .binance }
+    return value
+  }
+
+  private static func catalogPaths(for source: MarketSource) -> Paths {
+    source == .binance ? .caches() : Paths(root: Paths.caches().root.appendingPathComponent("sources/" + source.rawValue))
   }
 
   private static let log: FeedLog =
@@ -144,12 +160,14 @@ final class MarketModel {
     hosts = next
     let running = pump != nil
     stop()
-    let rest = BinanceREST.upstream(.binance, hosts: next, log: MarketModel.log)
-    oiSource = OISource(hosts: next, rest: rest, store: OIStore(paths: .caches()))
+    let source = source
+    let binanceRest = BinanceREST.upstream(.binance, hosts: next, log: MarketModel.log)
+    let rest = BinanceREST.upstream(source, hosts: next, log: MarketModel.log)
+    oiSource = OISource(hosts: next, rest: binanceRest, store: OIStore(paths: .caches()))
     oi = nil; oiRegion = nil
     feed = RoutedMarketFeed(hosts: next, preferenceURL: Self.sourcePreferenceURL, log: MarketModel.log)
     let box = catalog
-    Task { await box.replace(SymbolCatalog(rest: rest)) }
+    Task { await box.replace(SymbolCatalog(rest: rest, paths: Self.catalogPaths(for: source))) }
     status = .offline
     lastPushAt = nil
     guard running else { return }

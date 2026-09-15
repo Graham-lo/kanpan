@@ -615,7 +615,6 @@ struct MainScreen: View {
     quotes.watchChart(market.symbol)
     quotes.setForeground(phase != .background)
     quotes.setFavorites(picker.prefs.favorites)
-    if !picker.prefs.favorites.isEmpty { showFavorites = true; quotes.setVisible(true) }
     picker.onPick = { info in
       showSymbols = false; showFavorites = false; showQuickFavorites = false
       if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
@@ -626,6 +625,10 @@ struct MainScreen: View {
     // 域名要赶在开流之前给：`MarketModel` 自己的默认是币安官方那两台。
     market.setHosts(hosts)
     market.setOIEnabled(prefs.subs.contains(.oi))
+    // Configure the catalog and its source before presenting the favorites list.
+    // Otherwise FavoritesView can start its first catalog request against the
+    // default Binance route while the host/source setup is still in flight.
+    if !picker.prefs.favorites.isEmpty { showFavorites = true; quotes.setVisible(true) }
     market.start(snapshot: prefs.launchSnapshot, interval: prefs.interval)
   }
 
