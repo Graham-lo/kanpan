@@ -38,6 +38,8 @@ public struct Paths: Sendable {
   public var exchangeInfo: URL { root.appendingPathComponent("exchangeInfo.json") }
   /// 上次看到的自选报价。冷启动第一帧用它，避免整张列表空着等网络。
   public var quotes: URL { root.appendingPathComponent("quotes.json") }
+  /// 上次算涨跌幅用的当日开盘价。见 `BaselineSnapshot`。
+  public var opens: URL { root.appendingPathComponent("opens.json") }
   /// OI 归档切片，按天存，总上限 20 MB。
   public var oi: URL { root.appendingPathComponent("oi", isDirectory: true) }
   public func oiDay(symbol: String, day: String) -> URL {

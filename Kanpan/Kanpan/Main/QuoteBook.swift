@@ -21,6 +21,9 @@ final class QuoteBook {
   private var queue = Set<String>()
   private var jobs: [String: Task<Void, Never>] = [:]
   private var failedAt: [String: Date] = [:]
+  /// 已经落盘的那批开盘价（以及它们属于哪一档边界）。只为避免重复写同一份。
+  private var persistedOpens = Set<String>()
+  private var persistedBoundary: Int64?
   private var generation = 0
   private var boundary: Int64?
   private var visible = false
@@ -78,6 +81,11 @@ final class QuoteBook {
   private static let quoteConcurrency = 24
   /// 展开详情里 1h / 4h 分钟线的并发。同上，原来是 2，一行行地填。
   private static let historyConcurrency = 8
+  /// 取「当日开盘价」（算非 24 小时口径涨跌幅用）的并发。
+  ///
+  /// 原来是 4：二十几个自选要排六轮往返才填满，价格早就在那儿了，涨跌幅还在
+  /// 一格格地冒。这些请求和补价走同一条 HTTP/2 连接，开大只多几条流、不多开连接。
+  private static let baselineConcurrency = 16
   /// 进后台后连接还留多久。和 `MarketFeed.backgroundGraceMs` 对齐，
   /// 都在 iOS 给的约 30 秒后台运行时间之内。
   private static let idleGraceSeconds: Double = 25
@@ -345,6 +353,7 @@ final class QuoteBook {
     let next = basis.boundary(now: Int64(Date().timeIntervalSince1970 * 1000))
     if next != boundary {
       boundary = next; opens.removeAll(); resetBaselineRequests()
+      restoreBaselines()
       publish(Array(raw.values))
     }
     for symbol in wanted { watchBaseline(symbol) }
@@ -391,6 +400,27 @@ final class QuoteBook {
     }
   }
 
+  /// 把上次存下的当日开盘价读回来，让冷启动第一帧的涨跌幅就有值。
+  ///
+  /// `read` 自己对边界，跨了一天就返回空——那时本来也该重新取。
+  private func restoreBaselines() {
+    guard let boundary else { return }
+    let saved = BaselineSnapshot.read(paths.opens, boundary: boundary)
+    guard !saved.isEmpty else { return }
+    for (symbol, price) in saved { opens[symbol] = (boundary, price) }
+    persistedOpens = Set(saved.keys); persistedBoundary = boundary
+  }
+
+  private func persistBaselines() {
+    guard let boundary else { return }
+    let rows = opens.filter { $0.value.time == boundary }.mapValues(\.price)
+    guard !rows.isEmpty else { return }
+    guard persistedBoundary != boundary || Set(rows.keys) != persistedOpens else { return }
+    persistedOpens = Set(rows.keys); persistedBoundary = boundary
+    let url = paths.opens
+    Task.detached(priority: .utility) { BaselineSnapshot.write(boundary: boundary, opens: rows, to: url) }
+  }
+
   private func resetBaselineRequests() {
     generation += 1
     jobs.values.forEach { $0.cancel() }; jobs.removeAll(); queue.removeAll(); failedAt.removeAll()
@@ -398,7 +428,7 @@ final class QuoteBook {
 
   private func drain() {
     guard foreground, online, let boundary else { return }
-    while jobs.count < 4, let symbol = queue.first {
+    while jobs.count < Self.baselineConcurrency, let symbol = queue.first {
       queue.remove(symbol)
       let generation = self.generation, rest = self.rest
       jobs[symbol] = Task { [weak self] in
@@ -411,6 +441,9 @@ final class QuoteBook {
         } else { self.failedAt[symbol] = Date() }
         if let value = self.raw[symbol] { self.publish([value]) }
         self.drain()
+        // 这一批取完了就存一次。开盘价在这一档边界里不会再变，下次冷启动直接读，
+        // 涨跌幅和价格同一帧出来。
+        if self.jobs.isEmpty, self.queue.isEmpty { self.persistBaselines() }
       }
     }
   }

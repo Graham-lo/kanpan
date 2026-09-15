@@ -248,6 +248,15 @@ final class SymbolPickerModel {
     let id = prefs.createGroup(name); prefs.classifyUnassigned(); commit(); return id
   }
   func selectGroup(_ id: String) { prefs.selectGroup(id); commit() }
+  /// 冷启动回到第一个分类。
+  ///
+  /// 分组的选中在同一次使用里要记住（来回切别跳回去），但下一次开 app 该从头看起，
+  /// 这和 AICoin 一致。只改内存里这一份、不落盘也不同步——用户这一次自己切过才算数。
+  func resetSelectedGroup() {
+    guard prefs.selectedGroupID != nil else { return }
+    prefs.selectedGroupID = nil
+    rebuild()
+  }
   func setPinned(_ symbol: String, _ on: Bool) { prefs.setPinned(symbol, on); commit() }
   func renameGroup(_ id: String, name: String) { prefs.renameGroup(id, name: name); commit() }
   func deleteGroup(_ id: String) { prefs.deleteGroup(id); commit() }

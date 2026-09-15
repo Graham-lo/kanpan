@@ -37,6 +37,27 @@ struct MainScreen: View {
   @State private var showFavorites = false
   /// 冷启动的自选盖层还在吗。详见 `launchFavorites`。
   @State private var launchCover = MainScreen.startsOnFavorites
+  /// 账号那一侧已经「切」过一次了吗。
+  ///
+  /// 冷启动时 `account.restore()` 把登录态恢复回来，走的是和用户主动换号完全
+  /// 同一条 `AppAccountBridge.onSwitch`。第一次不能当换号看——用户刚开 app，
+  /// 本来就该停在自选页；盖层里那张表会跟着恢复出来的账号自己换
+  /// （`onChange(of: picker.prefs.favorites)`）。
+  @State private var didRestoreAccount = false
+  /// 自选表的预热跑过了吗。见 `primeFavorites(_:)`。
+  @State private var didPrimeFavorites = false
+  /// 用户已经从首屏走开了吗（点了品种、关掉了自选页、或者主动换了账号）。
+  ///
+  /// 首屏盖层只能在「还没走开」的时候升起来。`launchCover` 的初值是拿上次存下的
+  /// 自选表猜的，猜得不一定准——登录用户的自选表存在账号那份档案里，默认档案可能
+  /// 是空的。账号恢复回来之后要按真表重判一次，这个标记保证那次重判不会把已经在
+  /// 看图的用户拽回自选页。
+  @State private var didLeaveLaunch = false
+  /// 还在等 `account.restore()` 把登录态读回来吗。
+  ///
+  /// 这一小段里 `picker.prefs` 挂的还是访客那份空档案，不能拿「自选是空的」当真——
+  /// 否则首屏盖层会当场让位给行情页，等账号回来再翻回自选，闪一下。
+  @State private var awaitingAccount = false
   @State private var expandedChart = false
   /// 这次横屏是「点画线」带进来的吗——是的话画完要自己转回竖屏。
   @State private var landscapeForDrawing = false
@@ -137,6 +158,11 @@ struct MainScreen: View {
                   onHistoryVisibility: { quotes.watchHistory($0, visible: $1) })
   }
 
+  /// 盖层此刻是不是真的盖着。`launchCover` 只说「还没离开首屏」，画不画还得看
+  /// 自选表当下空不空——账号恢复之后这张表会整体换成那个账号的那一份，空表没什么可盖的。
+  /// 图要不要渲染、报价要不要拉，都跟着这个值走，不能只看 `launchCover`。
+  private var coveringLaunch: Bool { launchCover && (!picker.prefs.favorites.isEmpty || awaitingAccount) }
+
   /// 冷启动的自选盖层。
   ///
   /// 上次关掉 app 时自选表非空，这一次就该直接落在自选页上，中间不要漏出行情页。
@@ -148,12 +174,12 @@ struct MainScreen: View {
   /// 只管「第一次」。用户一旦从这儿走开（关掉、或者点了某个品种），`launchCover`
   /// 就永久落下，之后再进自选走的还是原来那个 `showFavorites` 盖层，两条路不会同时在。
   @ViewBuilder private var launchFavorites: some View {
-    if launchCover {
+    if coveringLaunch {
       ZStack {
         // 背景要铺满整屏（盖住状态栏和 home indicator 那两条），但页面本身仍然待在
         // 安全区里——和 `fullScreenCover` 里的排版对齐。
         theme.app.ignoresSafeArea()
-        favoritesPage { launchCover = false; proxy.scrollToLatest(animated: false) }
+        favoritesPage { launchCover = false; didLeaveLaunch = true; proxy.scrollToLatest(animated: false) }
       }
     }
   }
@@ -198,8 +224,8 @@ struct MainScreen: View {
     .onChange(of: hosts) { _, next in market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis, source: market.source) }
     .onChange(of: prefs.changeBasis) { _, next in quotes.configure(hosts: hosts, basis: next, source: market.source) }
     .onChange(of: market.source) { _, next in quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next) }
-    .onChange(of: showFavorites || showSymbols || launchCover) { _, on in quotes.setVisible(on) }
-    .onChange(of: picker.prefs.favorites) { _, symbols in quotes.setFavorites(symbols) }
+    .onChange(of: showFavorites || showSymbols || coveringLaunch) { _, on in quotes.setVisible(on) }
+    .onChange(of: picker.prefs.favorites) { _, symbols in settleFavorites(symbols) }
     .onChange(of: market.routing) { _, state in
       if state == .switched { say("已切换成功") }
     }
@@ -466,7 +492,7 @@ struct MainScreen: View {
       theme.chartBG
       ChartHost(
         portrait: !landscape,
-        renderingActive: !showFavorites && !showSymbols && !launchCover,
+        renderingActive: !showFavorites && !showSymbols && !coveringLaunch,
         panelOpen: panel != nil || draw.panel != nil,
         state: reviewChart.active ? reviewChart.state : chartState,
         proxy: reviewChart.active ? reviewChart.proxy : proxy,
@@ -649,6 +675,30 @@ struct MainScreen: View {
 
   // ---------------------------------------------------------------- 动作
 
+  /// 自选表这次算是定下来了：交给报价簿，顺手把第一次的预热跑了。
+  ///
+  /// 登录过的机器上，冷启动时 `boot()` 看到的自选表是**空的**——`AppAccountBridge`
+  /// 初始化时先同步装上访客那份档案，账号自己那份要等 `account.restore()` 异步读回来。
+  /// 所以「订阅自选、预热 K 线」这两件事不能只在 `boot()` 里做一次，得跟着表本身走。
+  private func settleFavorites(_ symbols: [String]) {
+    quotes.setFavorites(symbols)
+    primeFavorites(symbols)
+  }
+
+  /// 自选表第一次有内容时的一次性预热：让报价订阅它、把 K 线提前拉好。
+  private func primeFavorites(_ symbols: [String]) {
+    guard !didPrimeFavorites, !symbols.isEmpty else { return }
+    didPrimeFavorites = true
+    // 冷启动从第一个分类看起。存下来的那个选中分组是给「同一次使用里来回切」用的，
+    // 不该跨启动生效——这一份表是刚刚才定下来的（登录用户还等过一次账号恢复），
+    // 所以这里才是重置的时机。
+    picker.resetSelectedGroup()
+    quotes.setVisible(showFavorites || showSymbols || coveringLaunch)
+    // 冷启动第一屏就是自选页。趁用户在这儿看报价，把自选的 K 线、以及当前品种
+    // 其他常用周期的 K 线先拉好，点进去、切周期第一帧就有图。
+    market.prefetchFavorites(symbols, intervals: prefs.quickIntervals)
+  }
+
   private func boot() {
     guard !didBoot else { return }
     didBoot = true
@@ -665,11 +715,17 @@ struct MainScreen: View {
     quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: market.source)
     // 自选表要赶在 `setChartSymbol` 前面：后者会重算订阅范围，那时候如果自选还是空的，
     // `configure` 刚恢复出来的那批报价就会被裁到只剩图上这一个品种。
-    quotes.setFavorites(picker.prefs.favorites)
+    //
+    // 空表则一个字都别说。登录过的机器上这会儿挂着的是**访客**那份档案（`AppAccountBridge`
+    // 初始化时同步装的），里面本来就没有自选；把这份空表交上去，`QuoteBook` 会认定
+    // 「自选范围已知且为空」，刚从磁盘恢复出来的十几行报价当场被裁光。等
+    // `account.restore()` 把账号那份读回来，走 `settleFavorites(_:)` 再交。
+    if !picker.prefs.favorites.isEmpty { quotes.setFavorites(picker.prefs.favorites) }
     quotes.setChartSymbol(market.symbol)
     quotes.setForeground(phase != .background)
     picker.onPick = { info in
-      showSymbols = false; showFavorites = false; showQuickFavorites = false; launchCover = false
+      showSymbols = false; showFavorites = false; showQuickFavorites = false
+      launchCover = false; didLeaveLaunch = true
       if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
       crosshair = nil
       market.switchTo(symbol: info.symbol)
@@ -682,10 +738,7 @@ struct MainScreen: View {
     if !picker.prefs.favorites.isEmpty {
       // 盖层已经在了（`launchFavorites`）就别再叠一层 `fullScreenCover`。
       if !launchCover { showFavorites = true }
-      quotes.setVisible(true)
-      // 冷启动第一屏就是自选页。趁用户在这儿看报价，把自选的 K 线、以及当前品种
-      // 其他常用周期的 K 线先拉好，点进去、切周期第一帧就有图。
-      market.prefetchFavorites(picker.prefs.favorites, intervals: prefs.quickIntervals)
+      primeFavorites(picker.prefs.favorites)
     }
   }
 
@@ -699,11 +752,34 @@ struct MainScreen: View {
       bridge.onSwitch = {
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
         else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
-        showFavorites = false; showSymbols = false; showQuickFavorites = false; launchCover = false
+        showFavorites = false; showSymbols = false; showQuickFavorites = false
+        // 换号要把首屏盖层也掀掉（别让人对着上一个账号的自选表）；但冷启动恢复
+        // 登录态是同一条路走过来的第一次，那一次盖层必须留着，否则第一眼看到的
+        // 就是行情页——这正是真机上「冷启动没进自选」的成因，模拟器没登录才看不出来。
+        if didRestoreAccount { launchCover = false; didLeaveLaunch = true }
+        else {
+          didRestoreAccount = true
+          // `onSwitch()` 在 `symbols.useStorage` **之前**调用，这会儿 `picker.prefs`
+          // 还是旧的。等这一趟同步的切换做完再看：恢复出来的账号要是根本没有自选，
+          // 就没有盖层可留，照旧落在行情页。
+          //
+          // 顺带把这份表正式交给报价簿。`onChange(of: picker.prefs.favorites)` 只在
+          // 表真的变了时才响；恢复出来还是空表的话它不响，而 `boot()` 那会儿也故意
+          // 没交——不在这儿补一句，`QuoteBook` 就永远等着一份不会来的自选表。
+          Task { @MainActor in
+            // 恢复出来的这份表才是准的，首屏该不该盖按它重判一次：有自选就盖上
+            // （默认档案是空的、`launchCover` 初值猜成 false 的机器也能进自选页），
+            // 没有就照旧落在行情页。前提是用户还没自己走开。
+            if picker.prefs.favorites.isEmpty { launchCover = false }
+            else if !didLeaveLaunch, !showFavorites, !showSymbols { launchCover = true }
+            settleFavorites(picker.prefs.favorites)
+          }
+        }
         dismissPanel(); crosshair = nil
       }
       accountBridge = bridge; bridge.focus(market.symbol)
-      Task { await account.restore() }
+      awaitingAccount = true
+      Task { await account.restore(); awaitingAccount = false }
     } catch { say(error.localizedDescription) }
   }
 
