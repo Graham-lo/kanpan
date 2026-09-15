@@ -1,0 +1,32 @@
+{
+  "device": "iPhone 16 Pro",
+  "test": "ChartFoundationUITests/testLiveMarketUpdatesWithinSeconds()",
+  "samples": [
+    {
+      "seconds": 1.1340900659561157,
+      "close": 77705.1,
+      "volume": 247.691
+    },
+    {
+      "volume": 248.461,
+      "seconds": 2.1352360248565674,
+      "close": 77705.0
+    },
+    {
+      "close": 77705.1,
+      "seconds": 3.1508179903030396,
+      "volume": 248.587
+    },
+    {
+      "seconds": 4.144688963890076,
+      "close": 77708.5,
+      "volume": 251.189
+    },
+    {
+      "seconds": 5.174093961715698,
+      "volume": 251.773,
+      "close": 77710.5
+    }
+  ],
+  "note": "XCUITest samples around once per second; these are observed UI OHLCV changes, not a measurement of every WS packet or render frame."
+}

@@ -544,12 +544,26 @@ final class ChartFoundationUITests: XCTestCase {
   }
 
   func favoritesAction(_ identifier: String) {
+    dismissNotificationBanner()
     app.buttons["favorites.more"].tap()
     let action = app.buttons[identifier]
     XCTAssertTrue(action.waitForExistence(timeout: 4)); action.tap()
     if identifier == "favorites.close" {
       XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists && self.app.buttons["bottom.settings"].isHittable })
     }
+  }
+
+  /// Physical-device notifications can cover the top category bar. Dismiss only
+  /// the system banner, without opening it or changing notification preferences.
+  private func dismissNotificationBanner() {
+    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    let banner = springboard.descendants(matching: .any)
+      .matching(identifier: "NotificationShortLookView").firstMatch
+    for _ in 0..<3 {
+      guard banner.exists else { return }
+      banner.swipeUp()
+    }
+    XCTAssertFalse(banner.exists, "系统通知仍遮挡顶部分类栏")
   }
 
   func testFavoritesCategoryOverflow() throws {
@@ -568,6 +582,7 @@ final class ChartFoundationUITests: XCTestCase {
       XCTAssertTrue(app.buttons["favorites.group." + name].waitForExistence(timeout: 4))
     }
     shot("自选-顶部分类与更多入口")
+    dismissNotificationBanner()
     app.buttons["favorites.more"].tap()
     let overflow = app.buttons["favorites.group.观察中的品种"]
     XCTAssertTrue(overflow.waitForExistence(timeout: 4)); overflow.tap()

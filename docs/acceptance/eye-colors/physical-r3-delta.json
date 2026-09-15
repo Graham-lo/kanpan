@@ -1,0 +1,11 @@
+{
+  "sourceDelta": {
+    "Kanpan/KanpanUITests/ChartFoundationUITests.swift": "e472b77f3358a43dc45b8dca186f0613e24b6f25151bbf3b56313314c833e9c0"
+  },
+  "appBinaryUnchanged": true,
+  "binaries": {
+    "DerivedData-codex-eye-device/Build/Products/Debug-iphoneos/Kanpan.app/Kanpan.debug.dylib": "a3c9148840cef2c75c924c80c0b7955fe952e7ff5092b3026377b62c48ad9cde",
+    "DerivedData-codex-eye-device/Build/Products/Debug-iphoneos/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests": "7f8d7e7bd0768d462c2cb36122b9ed2d0ffe22456928dd7a959f40c98b9acbbc"
+  },
+  "note": "Only test helper changed to dismiss SpringBoard notification banners before category taps. App code and app binary unchanged."
+}

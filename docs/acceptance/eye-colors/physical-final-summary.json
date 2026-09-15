@@ -1,0 +1,285 @@
+{
+  "physical": true,
+  "device": "iPhone 16 Pro",
+  "os": "26.6.1",
+  "appCommit": "b497380601ad0cdf0a3b2009e293529eb5baa6d7",
+  "acceptedUniqueTests": 19,
+  "totalExecutions": 21,
+  "passedExecutions": 19,
+  "failedExecutions": 2,
+  "accepted": [
+    {
+      "test": "ChartFoundationUITests/testColdLaunchFavoritesAndLiveQuotes",
+      "result": "passed",
+      "seconds": 22.437,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testComfortPalettesAndLayout",
+      "result": "passed",
+      "seconds": 89.766,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testCrosshairCenterDragAndOutsidePan",
+      "result": "passed",
+      "seconds": 9.784,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testDataModesClearHeaderAndSelection",
+      "result": "passed",
+      "seconds": 25.039,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testDeviceHistoricalPanPinchAndManualY",
+      "result": "passed",
+      "seconds": 15.673,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testDragIndicatorTitleReordersCompletePane",
+      "result": "passed",
+      "seconds": 8.142,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testFavoritesDirectRowReorder",
+      "result": "passed",
+      "seconds": 15.213,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testFourSubpanelsFitWithoutPageScroll",
+      "result": "passed",
+      "seconds": 15.543,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testHistoricalOIUsesChartPeriod",
+      "result": "passed",
+      "seconds": 9.052,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testLatestEdgeAndReentryCompatibility",
+      "result": "passed",
+      "seconds": 24.133,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testLatestQuoteDoesNotRegressAcrossIntervals",
+      "result": "passed",
+      "seconds": 79.642,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testLiveMarketUpdatesWithinSeconds",
+      "result": "passed",
+      "seconds": 10.072,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testMAParameterCancelAndSaveOutput",
+      "result": "passed",
+      "seconds": 28.224,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testOutsideTapOnlyDismissesPanel",
+      "result": "passed",
+      "seconds": 44.568,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testQuickFavoritesAndMarketSectors",
+      "result": "passed",
+      "seconds": 26.032,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testTradFiSearchAndMarketData",
+      "result": "passed",
+      "seconds": 26.94,
+      "evidence": "physical-r1-summary.json"
+    },
+    {
+      "test": "AICoinBaseUITests/testColdLaunchStylesAndChartInteractions",
+      "result": "passed",
+      "seconds": 97.485,
+      "evidence": "physical-r2-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testUserSessionFreshQuotesAndReorder",
+      "result": "passed",
+      "seconds": 32.396,
+      "evidence": "physical-r2-summary.json"
+    },
+    {
+      "test": "ChartFoundationUITests/testFavoritesCategoryOverflow",
+      "result": "passed",
+      "seconds": 48.498,
+      "evidence": "physical-r3-summary.json"
+    }
+  ],
+  "attempts": [
+    {
+      "run": "physical-r1",
+      "passedTests": 16,
+      "failedTests": 1,
+      "skippedTests": 0,
+      "tests": [
+        {
+          "test": "ChartFoundationUITests/testColdLaunchFavoritesAndLiveQuotes",
+          "result": "passed",
+          "seconds": 22.437,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testComfortPalettesAndLayout",
+          "result": "passed",
+          "seconds": 89.766,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testCrosshairCenterDragAndOutsidePan",
+          "result": "passed",
+          "seconds": 9.784,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testDataModesClearHeaderAndSelection",
+          "result": "passed",
+          "seconds": 25.039,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testDeviceHistoricalPanPinchAndManualY",
+          "result": "passed",
+          "seconds": 15.673,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testDragIndicatorTitleReordersCompletePane",
+          "result": "passed",
+          "seconds": 8.142,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testFavoritesCategoryOverflow",
+          "result": "failed",
+          "seconds": 13.797,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testFavoritesDirectRowReorder",
+          "result": "passed",
+          "seconds": 15.213,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testFourSubpanelsFitWithoutPageScroll",
+          "result": "passed",
+          "seconds": 15.543,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testHistoricalOIUsesChartPeriod",
+          "result": "passed",
+          "seconds": 9.052,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testLatestEdgeAndReentryCompatibility",
+          "result": "passed",
+          "seconds": 24.133,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testLatestQuoteDoesNotRegressAcrossIntervals",
+          "result": "passed",
+          "seconds": 79.642,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testLiveMarketUpdatesWithinSeconds",
+          "result": "passed",
+          "seconds": 10.072,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testMAParameterCancelAndSaveOutput",
+          "result": "passed",
+          "seconds": 28.224,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testOutsideTapOnlyDismissesPanel",
+          "result": "passed",
+          "seconds": 44.568,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testQuickFavoritesAndMarketSectors",
+          "result": "passed",
+          "seconds": 26.032,
+          "evidence": "physical-r1-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testTradFiSearchAndMarketData",
+          "result": "passed",
+          "seconds": 26.94,
+          "evidence": "physical-r1-summary.json"
+        }
+      ]
+    },
+    {
+      "run": "physical-r2",
+      "passedTests": 2,
+      "failedTests": 1,
+      "skippedTests": 0,
+      "tests": [
+        {
+          "test": "AICoinBaseUITests/testColdLaunchStylesAndChartInteractions",
+          "result": "passed",
+          "seconds": 97.485,
+          "evidence": "physical-r2-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testFavoritesCategoryOverflow",
+          "result": "failed",
+          "seconds": 20.958,
+          "evidence": "physical-r2-summary.json"
+        },
+        {
+          "test": "ChartFoundationUITests/testUserSessionFreshQuotesAndReorder",
+          "result": "passed",
+          "seconds": 32.396,
+          "evidence": "physical-r2-summary.json"
+        }
+      ]
+    },
+    {
+      "run": "physical-r3",
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "tests": [
+        {
+          "test": "ChartFoundationUITests/testFavoritesCategoryOverflow",
+          "result": "passed",
+          "seconds": 48.498,
+          "evidence": "physical-r3-summary.json"
+        }
+      ]
+    }
+  ],
+  "testOnlyPatch": "physical-r3-delta.json",
+  "limitations": [
+    "This is one real iPhone 16 Pro, not real iPhone 17 or iPad validation.",
+    "First two category attempts were interrupted by SpringBoard banners covering the top button; retained.",
+    "Original AICoin exact gesture curves, exhaustive oldest-history boundary and automatic brightness under changing ambient conditions were not measured."
+  ],
+  "normalLaunchRestored": true
+}

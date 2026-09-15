@@ -1,0 +1,29 @@
+{
+  "samples": [
+    {
+      "phase": "cold",
+      "session": "1",
+      "firstQuoteMs": "1043",
+      "rows": "14",
+      "status": "live",
+      "background": "#F4F6FD"
+    },
+    {
+      "phase": "return",
+      "session": "1",
+      "firstQuoteMs": "1043",
+      "rows": "21",
+      "status": "live",
+      "background": "#F4F6FD"
+    },
+    {
+      "phase": "resume",
+      "session": "2",
+      "firstQuoteMs": "261",
+      "rows": "9",
+      "status": "live",
+      "background": "#F4F6FD"
+    }
+  ],
+  "note": "Real persisted favorites. firstQuoteMs measures the quote session first reception, not total launch or per-frame latency; rows is received quote count, not saved favorite count."
+}

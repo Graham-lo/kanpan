@@ -1,0 +1,49 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64e",
+        "deviceId" : "00008140-00010C902690801C",
+        "deviceName" : "iPhone",
+        "modelName" : "iPhone 16 Pro",
+        "osBuildNumber" : "23G83",
+        "osVersion" : "26.6.1",
+        "platform" : "iOS"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 1,
+      "passedTests" : 2,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "Kanpan · Built with macOS 26.5.1",
+  "expectedFailures" : 0,
+  "failedTests" : 1,
+  "finishTime" : 1789445382.419,
+  "passedTests" : 2,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1789445226.522,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "XCTAssertTrue failed",
+      "targetName" : "KanpanUITests",
+      "testIdentifier" : 2,
+      "testIdentifierString" : "ChartFoundationUITests/testFavoritesCategoryOverflow()",
+      "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/ChartFoundationUITests/testFavoritesCategoryOverflow",
+      "testName" : "testFavoritesCategoryOverflow()"
+    }
+  ],
+  "title" : "Test - Kanpan",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 3
+}

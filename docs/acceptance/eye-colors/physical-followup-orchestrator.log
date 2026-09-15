@@ -1,0 +1,14 @@
+{
+  "physical": true,
+  "device": "iPhone 16 Pro",
+  "os": "26.6.1",
+  "expectedTests": 3,
+  "exitCode": 65,
+  "seconds": 158,
+  "source": "physical-source-sha256.json",
+  "note": "Same compiled app/tests. Recheck notification-obstructed category test, cover styles and landscape, then read real favorites and verify live foreground/background sessions. Does not invoke favorite installation or reorder/move user rows.",
+  "result": "Failed",
+  "passedTests": 2,
+  "failedTests": 1,
+  "skippedTests": 0
+}

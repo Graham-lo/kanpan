@@ -1,0 +1,33 @@
+{
+  "device": "iPhone 16 Pro",
+  "os": "26.6.1",
+  "physical": true,
+  "expectedTests": 17,
+  "tests": [
+    "testColdLaunchFavoritesAndLiveQuotes",
+    "testComfortPalettesAndLayout",
+    "testFavoritesCategoryOverflow",
+    "testFavoritesDirectRowReorder",
+    "testQuickFavoritesAndMarketSectors",
+    "testLatestQuoteDoesNotRegressAcrossIntervals",
+    "testLiveMarketUpdatesWithinSeconds",
+    "testHistoricalOIUsesChartPeriod",
+    "testOutsideTapOnlyDismissesPanel",
+    "testFourSubpanelsFitWithoutPageScroll",
+    "testCrosshairCenterDragAndOutsidePan",
+    "testDragIndicatorTitleReordersCompletePane",
+    "testDataModesClearHeaderAndSelection",
+    "testMAParameterCancelAndSaveOutput",
+    "testDeviceHistoricalPanPinchAndManualY",
+    "testLatestEdgeAndReentryCompatibility",
+    "testTradFiSearchAndMarketData"
+  ],
+  "exitCode": 65,
+  "seconds": 477,
+  "commit": "b497380601ad0cdf0a3b2009e293529eb5baa6d7",
+  "workingTreeNote": "Local pre-existing display name and app icon changes included in installation; not committed with test work. Test preferences are isolated; real market network.",
+  "result": "Failed",
+  "passedTests": 16,
+  "failedTests": 1,
+  "skippedTests": 0
+}

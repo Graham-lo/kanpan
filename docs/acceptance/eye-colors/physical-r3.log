@@ -1,0 +1,485 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination platform=iOS,id=00008140-00010C902690801C -derivedDataPath DerivedData-codex-eye-device -parallel-testing-enabled NO -resultBundlePath docs/acceptance/eye-colors/physical-r3.xcresult "-only-testing:KanpanUITests/ChartFoundationUITests/testFavoritesCategoryOverflow"
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan/docs/acceptance/eye-colors/physical-r3.xcresult
+
+2026-09-15 12:10:34.013632+0800 KanpanUITests-Runner[2302:449215] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-15 12:10:34.390.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-15 12:10:34.390.
+Test Suite 'ChartFoundationUITests' started at 2026-09-15 12:10:34.390.
+Test Case '-[KanpanUITests.ChartFoundationUITests testFavoritesCategoryOverflow]' started.
+    t =     0.00s Start Test at 2026-09-15 12:10:34.391
+    t =     0.02s Set Up
+    t =     0.02s     Setting device orientation to Portrait
+    t =     0.03s         Wait for com.apple.springboard to idle
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.04s         Launch com.mdd.kanpan
+2026-09-15 12:10:34.501 xcodebuild[7855:33376122] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 12:10:34.501 xcodebuild[7855:33376122] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     2.32s             Setting up automation session
+    t =     2.42s             Wait for com.mdd.kanpan to idle
+    t =     3.51s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =     4.54s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     4.54s             Checking existence of `"chart.canvas" Other`
+    t =     4.55s                 Requesting snapshot of accessibility hierarchy for app with pid 2303
+    t =     4.62s                 Find: Descendants matching type Other
+    t =     4.62s                 Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     5.65s     Checking existence of `"chart.canvas" Other`
+    t =     5.66s         Requesting snapshot of accessibility hierarchy for app with pid 2303
+    t =     5.71s         Find: Descendants matching type Other
+    t =     5.72s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     5.72s     Find the "chart.canvas" Other
+    t =     5.73s         Requesting snapshot of accessibility hierarchy for app with pid 2303
+    t =     5.77s         Find: Descendants matching type Other
+    t =     5.77s         Find: Elements matching predicate '"chart.canvas" IN identifiers'
+    t =     5.82s Terminate com.mdd.kanpan:2303
+    t =     6.91s Open com.mdd.kanpan
+    t =     6.91s     Launch com.mdd.kanpan
+2026-09-15 12:10:41.178 xcodebuild[7855:33376122] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-15 12:10:41.178 xcodebuild[7855:33376122] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     7.13s         Setting up automation session
+    t =     7.17s         Wait for com.mdd.kanpan to idle
+    t =     8.35s Waiting 15.0s for "favorites.more" Button to exist
+    t =     9.38s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =     9.38s         Checking existence of `"favorites.more" Button`
+    t =     9.39s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =     9.49s             Find: Descendants matching type Button
+    t =     9.50s             Find: Elements matching predicate '"favorites.more" IN identifiers'
+    t =     9.50s Checking existence of `"favorites.search" Button`
+    t =     9.51s     Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =     9.55s     Find: Descendants matching type Button
+    t =     9.55s     Find: Elements matching predicate '"favorites.search" IN identifiers'
+    t =     9.56s Checking existence of `"favorites.query" TextField`
+    t =     9.56s     Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =     9.60s     Find: Descendants matching type TextField
+    t =     9.61s Find the "favorites.group.加密" Button
+    t =     9.61s     Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =     9.65s     Find: Descendants matching type Button
+    t =     9.66s     Find: Elements matching predicate '"favorites.group.加密" IN identifiers'
+    t =     9.67s Checking existence of `"NotificationShortLookView" Any`
+    t =     9.67s     Requesting snapshot of accessibility hierarchy for app with pid 1625
+    t =     9.77s Tap "favorites.more" Button
+    t =     9.77s     Wait for com.mdd.kanpan to idle
+    t =     9.78s     Find the "favorites.more" Button
+    t =     9.78s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =     9.84s         Find: Descendants matching type Button
+    t =     9.85s         Find: Elements matching predicate '"favorites.more" IN identifiers'
+    t =     9.86s     Check for interrupting elements affecting "favorites.more" Button
+    t =     9.87s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =     9.93s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =     9.94s     Synthesize event
+    t =    10.24s     Wait for com.mdd.kanpan to idle
+    t =    10.66s Waiting 4.0s for "favorites.newGroup" Button to exist
+    t =    11.68s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.newGroup" Button`
+    t =    11.68s         Checking existence of `"favorites.newGroup" Button`
+    t =    11.69s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    11.79s             Find: Descendants matching type Button
+    t =    11.79s             Find: Elements matching predicate '"favorites.newGroup" IN identifiers'
+    t =    11.80s Tap "favorites.newGroup" Button
+    t =    11.80s     Wait for com.mdd.kanpan to idle
+    t =    11.80s     Find the "favorites.newGroup" Button
+    t =    11.80s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    11.87s         Find: Descendants matching type Button
+    t =    11.87s         Find: Elements matching predicate '"favorites.newGroup" IN identifiers'
+    t =    11.87s     Check for interrupting elements affecting "favorites.newGroup" Button
+    t =    11.89s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    11.94s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    11.95s     Synthesize event
+    t =    12.24s     Wait for com.mdd.kanpan to idle
+    t =    12.64s Waiting 4.0s for TextField (First Match) to exist
+    t =    13.67s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    13.67s         Checking existence of `TextField (First Match)`
+    t =    13.68s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    13.76s Type '观察中的品种' into TextField (First Match)
+    t =    13.76s     Wait for com.mdd.kanpan to idle
+    t =    13.76s     Find the TextField (First Match)
+    t =    13.77s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    13.84s     Check for interrupting elements affecting "分类名称" TextField
+    t =    13.85s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    13.91s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    13.92s Failed to construct element query matching interruption. Interrupting element Alert, foreground application Target Application 'com.mdd.kanpan', element application: (null). If your test failed after this unhandled interruption, please file a bug and attach your .xcresult bundle.
+    t =    13.93s     Synthesize event
+    t =    14.25s     Wait for com.mdd.kanpan to idle
+    t =    14.26s Tap "保存" Button
+    t =    14.26s     Wait for com.mdd.kanpan to idle
+    t =    14.26s     Find the "保存" Button
+    t =    14.27s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    14.38s         Find: Descendants matching type Alert
+    t =    14.38s         Find: Descendants matching type Button
+    t =    14.39s         Find: Elements matching predicate '"保存" IN identifiers'
+    t =    14.39s     Check for interrupting elements affecting "保存" Button
+    t =    14.40s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    14.45s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    14.46s Failed to construct element query matching interruption. Interrupting element Alert, foreground application Target Application 'com.mdd.kanpan', element application: (null). If your test failed after this unhandled interruption, please file a bug and attach your .xcresult bundle.
+    t =    14.46s     Synthesize event
+    t =    14.75s     Wait for com.mdd.kanpan to idle
+    t =    15.06s Waiting 4.0s for "favorites.group.观察中的品种" Button to exist
+    t =    16.09s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.观察中的品种" Button`
+    t =    16.09s         Checking existence of `"favorites.group.观察中的品种" Button`
+    t =    16.10s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    16.16s             Find: Descendants matching type Button
+    t =    16.16s             Find: Elements matching predicate '"favorites.group.观察中的品种" IN identifiers'
+    t =    16.17s Checking existence of `"NotificationShortLookView" Any`
+    t =    16.17s     Requesting snapshot of accessibility hierarchy for app with pid 1625
+    t =    16.27s Tap "favorites.more" Button
+    t =    16.27s     Wait for com.mdd.kanpan to idle
+    t =    16.27s     Find the "favorites.more" Button
+    t =    16.28s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    16.33s         Find: Descendants matching type Button
+    t =    16.33s         Find: Elements matching predicate '"favorites.more" IN identifiers'
+    t =    16.34s     Check for interrupting elements affecting "favorites.more" Button
+    t =    16.35s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    16.40s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    16.41s     Synthesize event
+    t =    16.71s     Wait for com.mdd.kanpan to idle
+    t =    17.08s Waiting 4.0s for "favorites.newGroup" Button to exist
+    t =    18.10s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.newGroup" Button`
+    t =    18.10s         Checking existence of `"favorites.newGroup" Button`
+    t =    18.11s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    18.18s             Find: Descendants matching type Button
+    t =    18.18s             Find: Elements matching predicate '"favorites.newGroup" IN identifiers'
+    t =    18.19s Tap "favorites.newGroup" Button
+    t =    18.19s     Wait for com.mdd.kanpan to idle
+    t =    18.19s     Find the "favorites.newGroup" Button
+    t =    18.19s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    18.25s         Find: Descendants matching type Button
+    t =    18.25s         Find: Elements matching predicate '"favorites.newGroup" IN identifiers'
+    t =    18.26s     Check for interrupting elements affecting "favorites.newGroup" Button
+    t =    18.27s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    18.32s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    18.33s     Synthesize event
+    t =    18.62s     Wait for com.mdd.kanpan to idle
+    t =    18.99s Waiting 4.0s for TextField (First Match) to exist
+    t =    20.02s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    20.02s         Checking existence of `TextField (First Match)`
+    t =    20.03s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    20.12s Type '长期关注' into TextField (First Match)
+    t =    20.12s     Wait for com.mdd.kanpan to idle
+    t =    20.12s     Find the TextField (First Match)
+    t =    20.12s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    20.22s     Check for interrupting elements affecting "分类名称" TextField
+    t =    20.23s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    20.30s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    20.31s Failed to construct element query matching interruption. Interrupting element Alert, foreground application Target Application 'com.mdd.kanpan', element application: (null). If your test failed after this unhandled interruption, please file a bug and attach your .xcresult bundle.
+    t =    20.31s     Synthesize event
+    t =    20.58s     Wait for com.mdd.kanpan to idle
+    t =    20.60s Tap "保存" Button
+    t =    20.60s     Wait for com.mdd.kanpan to idle
+    t =    20.62s     Find the "保存" Button
+    t =    20.63s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    20.69s         Find: Descendants matching type Alert
+    t =    20.69s         Find: Descendants matching type Button
+    t =    20.69s         Find: Elements matching predicate '"保存" IN identifiers'
+    t =    20.69s     Check for interrupting elements affecting "保存" Button
+    t =    20.71s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    20.76s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    20.77s Failed to construct element query matching interruption. Interrupting element Alert, foreground application Target Application 'com.mdd.kanpan', element application: (null). If your test failed after this unhandled interruption, please file a bug and attach your .xcresult bundle.
+    t =    20.77s     Synthesize event
+    t =    21.06s     Wait for com.mdd.kanpan to idle
+    t =    21.37s Waiting 4.0s for "favorites.group.长期关注" Button to exist
+    t =    22.40s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.长期关注" Button`
+    t =    22.40s         Checking existence of `"favorites.group.长期关注" Button`
+    t =    22.41s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    22.47s             Find: Descendants matching type Button
+    t =    22.47s             Find: Elements matching predicate '"favorites.group.长期关注" IN identifiers'
+    t =    22.48s Checking existence of `"NotificationShortLookView" Any`
+    t =    22.48s     Requesting snapshot of accessibility hierarchy for app with pid 1625
+    t =    22.59s Tap "favorites.more" Button
+    t =    22.59s     Wait for com.mdd.kanpan to idle
+    t =    22.59s     Find the "favorites.more" Button
+    t =    22.59s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    22.65s         Find: Descendants matching type Button
+    t =    22.66s         Find: Elements matching predicate '"favorites.more" IN identifiers'
+    t =    22.66s     Check for interrupting elements affecting "favorites.more" Button
+    t =    22.67s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    22.71s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    22.71s     Synthesize event
+    t =    23.01s     Wait for com.mdd.kanpan to idle
+    t =    23.39s Waiting 4.0s for "favorites.newGroup" Button to exist
+    t =    24.41s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.newGroup" Button`
+    t =    24.41s         Checking existence of `"favorites.newGroup" Button`
+    t =    24.42s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    24.50s             Find: Descendants matching type Button
+    t =    24.50s             Find: Elements matching predicate '"favorites.newGroup" IN identifiers'
+    t =    24.51s Tap "favorites.newGroup" Button
+    t =    24.51s     Wait for com.mdd.kanpan to idle
+    t =    24.51s     Find the "favorites.newGroup" Button
+    t =    24.51s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    24.57s         Find: Descendants matching type Button
+    t =    24.57s         Find: Elements matching predicate '"favorites.newGroup" IN identifiers'
+    t =    24.58s     Check for interrupting elements affecting "favorites.newGroup" Button
+    t =    24.59s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    24.64s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    24.64s     Synthesize event
+    t =    24.93s     Wait for com.mdd.kanpan to idle
+    t =    25.31s Waiting 4.0s for TextField (First Match) to exist
+    t =    26.34s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    26.34s         Checking existence of `TextField (First Match)`
+    t =    26.35s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    26.44s Type '短线' into TextField (First Match)
+    t =    26.44s     Wait for com.mdd.kanpan to idle
+    t =    26.44s     Find the TextField (First Match)
+    t =    26.45s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    26.51s     Check for interrupting elements affecting "分类名称" TextField
+    t =    26.52s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    26.57s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    26.57s Failed to construct element query matching interruption. Interrupting element Alert, foreground application Target Application 'com.mdd.kanpan', element application: (null). If your test failed after this unhandled interruption, please file a bug and attach your .xcresult bundle.
+    t =    26.58s     Synthesize event
+    t =    26.81s     Wait for com.mdd.kanpan to idle
+    t =    26.81s Tap "保存" Button
+    t =    26.82s     Wait for com.mdd.kanpan to idle
+    t =    26.82s     Find the "保存" Button
+    t =    26.83s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    26.89s         Find: Descendants matching type Alert
+    t =    26.89s         Find: Descendants matching type Button
+    t =    26.90s         Find: Elements matching predicate '"保存" IN identifiers'
+    t =    26.90s     Check for interrupting elements affecting "保存" Button
+    t =    26.91s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    26.97s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    26.98s Failed to construct element query matching interruption. Interrupting element Alert, foreground application Target Application 'com.mdd.kanpan', element application: (null). If your test failed after this unhandled interruption, please file a bug and attach your .xcresult bundle.
+    t =    26.98s     Synthesize event
+    t =    27.27s     Wait for com.mdd.kanpan to idle
+    t =    27.57s Waiting 4.0s for "favorites.group.短线" Button to exist
+    t =    28.59s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.短线" Button`
+    t =    28.59s         Checking existence of `"favorites.group.短线" Button`
+    t =    28.60s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    28.66s             Find: Descendants matching type Button
+    t =    28.67s             Find: Elements matching predicate '"favorites.group.短线" IN identifiers'
+    t =    28.68s Find the Target Application 'com.mdd.kanpan'
+    t =    28.68s     Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    28.84s Added attachment named '自选-顶部分类与更多入口'
+    t =    28.84s Checking existence of `"NotificationShortLookView" Any`
+    t =    28.85s     Requesting snapshot of accessibility hierarchy for app with pid 1625
+    t =    28.91s Tap "favorites.more" Button
+    t =    28.91s     Wait for com.mdd.kanpan to idle
+    t =    28.96s     Find the "favorites.more" Button
+    t =    28.96s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    29.00s         Find: Descendants matching type Button
+    t =    29.00s         Find: Elements matching predicate '"favorites.more" IN identifiers'
+    t =    29.00s     Check for interrupting elements affecting "favorites.more" Button
+    t =    29.01s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    29.04s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    29.04s     Synthesize event
+    t =    29.34s     Wait for com.mdd.kanpan to idle
+    t =    29.68s Waiting 4.0s for "favorites.group.观察中的品种" Button to exist
+    t =    30.70s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.观察中的品种" Button`
+    t =    30.70s         Checking existence of `"favorites.group.观察中的品种" Button`
+    t =    30.71s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    30.79s             Find: Descendants matching type Button
+    t =    30.79s             Find: Elements matching predicate '"favorites.group.观察中的品种" IN identifiers'
+    t =    30.80s Tap "favorites.group.观察中的品种" Button
+    t =    30.80s     Wait for com.mdd.kanpan to idle
+    t =    30.80s     Find the "favorites.group.观察中的品种" Button
+    t =    30.81s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    30.88s         Find: Descendants matching type Button
+    t =    30.89s         Find: Elements matching predicate '"favorites.group.观察中的品种" IN identifiers'
+    t =    30.89s     Check for interrupting elements affecting "favorites.group.观察中的品种" Button
+    t =    30.90s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    30.95s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    30.96s     Synthesize event
+    t =    31.25s     Wait for com.mdd.kanpan to idle
+    t =    31.62s Find the "favorites.group.观察中的品种" Button
+    t =    31.63s     Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    31.68s     Find: Descendants matching type Button
+    t =    31.68s     Find: Elements matching predicate '"favorites.group.观察中的品种" IN identifiers'
+    t =    31.71s Checking existence of `"NotificationShortLookView" Any`
+    t =    31.71s     Requesting snapshot of accessibility hierarchy for app with pid 1625
+    t =    31.78s Tap "favorites.more" Button
+    t =    31.79s     Wait for com.mdd.kanpan to idle
+    t =    31.79s     Find the "favorites.more" Button
+    t =    31.79s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    31.83s         Find: Descendants matching type Button
+    t =    31.83s         Find: Elements matching predicate '"favorites.more" IN identifiers'
+    t =    31.83s     Check for interrupting elements affecting "favorites.more" Button
+    t =    31.84s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    31.87s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    31.87s     Synthesize event
+    t =    32.17s     Wait for com.mdd.kanpan to idle
+    t =    32.55s Waiting 4.0s for "favorites.close" Button to exist
+    t =    33.57s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.close" Button`
+    t =    33.57s         Checking existence of `"favorites.close" Button`
+    t =    33.58s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    33.65s             Find: Descendants matching type Button
+    t =    33.65s             Find: Elements matching predicate '"favorites.close" IN identifiers'
+    t =    33.66s Tap "favorites.close" Button
+    t =    33.66s     Wait for com.mdd.kanpan to idle
+    t =    33.66s     Find the "favorites.close" Button
+    t =    33.66s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    33.72s         Find: Descendants matching type Button
+    t =    33.72s         Find: Elements matching predicate '"favorites.close" IN identifiers'
+    t =    33.72s     Check for interrupting elements affecting "favorites.close" Button
+    t =    33.74s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    33.78s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    33.79s     Synthesize event
+    t =    34.10s     Wait for com.mdd.kanpan to idle
+    t =    35.51s Checking existence of `"favorites.more" Button`
+    t =    35.52s     Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    35.58s     Find: Descendants matching type Button
+    t =    35.58s     Find: Elements matching predicate '"favorites.more" IN identifiers'
+    t =    35.58s Find the "bottom.settings" Button
+    t =    35.59s     Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    35.63s     Find: Descendants matching type Button
+    t =    35.63s     Find: Elements matching predicate '"bottom.settings" IN identifiers'
+    t =    35.70s Tap "bottom.favorites" Button
+    t =    35.70s     Wait for com.mdd.kanpan to idle
+    t =    35.70s     Find the "bottom.favorites" Button
+    t =    35.71s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    35.73s         Find: Descendants matching type Button
+    t =    35.74s         Find: Elements matching predicate '"bottom.favorites" IN identifiers'
+    t =    35.74s     Check for interrupting elements affecting "bottom.favorites" Button
+    t =    35.76s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    35.78s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    35.78s     Synthesize event
+    t =    36.08s     Wait for com.mdd.kanpan to idle
+    t =    36.50s Waiting 15.0s for "favorites.group.观察中的品种" Button to exist
+    t =    37.52s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.观察中的品种" Button`
+    t =    37.52s         Checking existence of `"favorites.group.观察中的品种" Button`
+    t =    37.53s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    37.60s             Find: Descendants matching type Button
+    t =    37.61s             Find: Elements matching predicate '"favorites.group.观察中的品种" IN identifiers'
+    t =    37.61s Tap "favorites.group.加密" Button
+    t =    37.61s     Wait for com.mdd.kanpan to idle
+    t =    37.62s     Find the "favorites.group.加密" Button
+    t =    37.62s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    37.68s         Find: Descendants matching type Button
+    t =    37.68s         Find: Elements matching predicate '"favorites.group.加密" IN identifiers'
+    t =    37.69s     Check for interrupting elements affecting "favorites.group.加密" Button
+    t =    37.74s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    37.77s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    37.78s     Synthesize event
+    t =    38.08s     Wait for com.mdd.kanpan to idle
+    t =    38.09s Checking existence of `"NotificationShortLookView" Any`
+    t =    38.10s     Requesting snapshot of accessibility hierarchy for app with pid 1625
+    t =    38.19s Tap "favorites.more" Button
+    t =    38.19s     Wait for com.mdd.kanpan to idle
+    t =    38.19s     Find the "favorites.more" Button
+    t =    38.19s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    38.27s         Find: Descendants matching type Button
+    t =    38.27s         Find: Elements matching predicate '"favorites.more" IN identifiers'
+    t =    38.28s     Check for interrupting elements affecting "favorites.more" Button
+    t =    38.29s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    38.35s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    38.36s     Synthesize event
+    t =    38.66s     Wait for com.mdd.kanpan to idle
+    t =    39.06s Waiting 4.0s for "favorites.edit" Button to exist
+    t =    40.07s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.edit" Button`
+    t =    40.07s         Checking existence of `"favorites.edit" Button`
+    t =    40.08s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    40.16s             Find: Descendants matching type Button
+    t =    40.16s             Find: Elements matching predicate '"favorites.edit" IN identifiers'
+    t =    40.17s Tap "favorites.edit" Button
+    t =    40.17s     Wait for com.mdd.kanpan to idle
+    t =    40.17s     Find the "favorites.edit" Button
+    t =    40.18s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    40.25s         Find: Descendants matching type Button
+    t =    40.25s         Find: Elements matching predicate '"favorites.edit" IN identifiers'
+    t =    40.25s     Check for interrupting elements affecting "favorites.edit" Button
+    t =    40.27s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    40.33s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    40.33s     Synthesize event
+    t =    40.66s     Wait for com.mdd.kanpan to idle
+    t =    41.04s Waiting 4.0s for "全选" Button to exist
+    t =    42.07s     Checking `Expect predicate `existsNoRetry == 1` for object "全选" Button`
+    t =    42.07s         Checking existence of `"全选" Button`
+    t =    42.08s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    42.15s             Find: Descendants matching type Button
+    t =    42.15s             Find: Elements matching predicate '"全选" IN identifiers'
+    t =    42.16s Checking existence of `"NotificationShortLookView" Any`
+    t =    42.16s     Requesting snapshot of accessibility hierarchy for app with pid 1625
+    t =    42.25s Tap "favorites.more" Button
+    t =    42.25s     Wait for com.mdd.kanpan to idle
+    t =    42.25s     Find the "favorites.more" Button
+    t =    42.26s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    42.31s         Find: Descendants matching type Button
+    t =    42.31s         Find: Elements matching predicate '"favorites.more" IN identifiers'
+    t =    42.32s     Check for interrupting elements affecting "favorites.more" Button
+    t =    42.33s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    42.38s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    42.38s     Synthesize event
+    t =    42.68s     Wait for com.mdd.kanpan to idle
+    t =    43.07s Waiting 4.0s for "favorites.edit" Button to exist
+    t =    44.10s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.edit" Button`
+    t =    44.10s         Checking existence of `"favorites.edit" Button`
+    t =    44.11s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    44.22s             Find: Descendants matching type Button
+    t =    44.22s             Find: Elements matching predicate '"favorites.edit" IN identifiers'
+    t =    44.22s Tap "favorites.edit" Button
+    t =    44.22s     Wait for com.mdd.kanpan to idle
+    t =    44.23s     Find the "favorites.edit" Button
+    t =    44.23s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    44.29s         Find: Descendants matching type Button
+    t =    44.29s         Find: Elements matching predicate '"favorites.edit" IN identifiers'
+    t =    44.30s     Check for interrupting elements affecting "favorites.edit" Button
+    t =    44.31s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    44.37s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    44.37s     Synthesize event
+    t =    44.67s     Wait for com.mdd.kanpan to idle
+    t =    45.04s Tap "favorites.add" Button
+    t =    45.04s     Wait for com.mdd.kanpan to idle
+    t =    45.06s     Find the "favorites.add" Button
+    t =    45.07s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    45.14s         Find: Descendants matching type Button
+    t =    45.14s         Find: Elements matching predicate '"favorites.add" IN identifiers'
+    t =    45.15s     Check for interrupting elements affecting "favorites.add" Button
+    t =    45.16s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    45.25s         Find: Descendants matching predicate identifier == "NotificationShortLookView" OR elementType == 7
+    t =    45.26s     Synthesize event
+    t =    45.55s     Wait for com.mdd.kanpan to idle
+    t =    46.00s Waiting 5.0s for "symbols.query" TextField to exist
+    t =    47.02s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.query" TextField`
+    t =    47.02s         Checking existence of `"symbols.query" TextField`
+    t =    47.03s             Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    47.13s             Find: Descendants matching type TextField
+    t =    47.13s             Find: Elements matching predicate '"symbols.query" IN identifiers'
+    t =    47.14s Tear Down
+    t =    47.14s     Find the Target Application 'com.mdd.kanpan'
+    t =    47.14s         Requesting snapshot of accessibility hierarchy for app with pid 2307
+    t =    47.33s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    47.33s     Terminate com.mdd.kanpan:2307
+Test Case '-[KanpanUITests.ChartFoundationUITests testFavoritesCategoryOverflow]' passed (48.498 seconds).
+Test Suite 'ChartFoundationUITests' passed at 2026-09-15 12:11:22.893.
+	 Executed 1 test, with 0 failures (0 unexpected) in 48.498 (48.502) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-15 12:11:22.895.
+	 Executed 1 test, with 0 failures (0 unexpected) in 48.498 (48.505) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 12:11:22.897.
+	 Executed 1 test, with 0 failures (0 unexpected) in 48.498 (48.508) seconds
+2026-09-15 12:11:23.148 xcodebuild[7855:33376240]  IDETestOperationsObserverDebug: Failure collecting diagnostics from devices: Process exited with error 1:
+ ERROR: The operation couldn?t be completed. (CoreDeviceCLISupport.DiagnoseError error 0.)
+This tool generates files that allow Apple to investigate issues with your
+computer and help improve Apple products. The files might contain personal
+information found on your device or associated with your Apple Account(s),
+including but not limited to your name, serial numbers of your device,
+your device name, your device's location over the last one to two days,
+your attached peripheral devices, your user name, your email address and
+email settings, file paths, file names, Siri suggestions, your computer's
+IP addresses, and network connection information.
+
+This information is used by Apple in accordance with its privacy policy
+(www.apple.com/privacy) and is not shared with any other company. By using
+this tool and sending the results to Apple, you consent to Apple using the
+contents of these files to improve Apple products.
+
+An error occurred while running devicectl diagnose. Will archive the diagnostics collected thus far.
+Wrote file to /Users/mdd/zhk/kanpan/docs/acceptance/eye-colors/physical-r3.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+Partial devicectl diagnose bundle located here: /Users/mdd/zhk/kanpan/docs/acceptance/eye-colors/physical-r3.xcresult/Staging/1_Test/Diagnostics/devicectl_diagnostics.zip
+
+2026-09-15 12:11:23.153 xcodebuild[7855:33376122] [MT] IDETestOperationsObserverDebug: 51.720 elapsed -- Testing started completed.
+2026-09-15 12:11:23.153 xcodebuild[7855:33376122] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-15 12:11:23.153 xcodebuild[7855:33376122] [MT] IDETestOperationsObserverDebug: 51.720 sec, +51.720 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan/docs/acceptance/eye-colors/physical-r3.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
