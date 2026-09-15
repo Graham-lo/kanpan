@@ -164,7 +164,7 @@ struct MainScreen: View {
     .onChange(of: market.tradeQuote) { _, trade in
       if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
     }
-    .onChange(of: market.symbol) { _, symbol in quotes.watchChart(symbol); accountBridge?.focus(symbol) }
+    .onChange(of: market.symbol) { _, symbol in quotes.setChartSymbol(symbol); accountBridge?.focus(symbol) }
     .onChange(of: store.notice) { _, note in
       if let note { say(note); store.clearNotice() }
     }
@@ -372,7 +372,12 @@ struct MainScreen: View {
   /// 除了状态本身还报「多久没推了」：WS 能连上但一帧不推的时候 `status` 仍是
   /// `.live`，光看颜色会以为一切正常——这一行是那种情况唯一看得见的线索。
   private var displayedTicker: Ticker? {
-    market.source == .okx ? market.ticker : quotes.raw[market.symbol].map { quotes.presented($0) }
+    if market.source == .okx { return market.ticker }
+    if let quote = quotes.raw[market.symbol] { return quotes.presented(quote) }
+    // MarketModel already receives Binance ticker frames as part of the
+    // chart feed. Use that value immediately instead of waiting for the
+    // separate list QuoteBook to open another socket.
+    return market.ticker.map { quotes.presented($0) }
   }
 
   private var quoteDiagnostics: String {
@@ -605,6 +610,10 @@ struct MainScreen: View {
   private func boot() {
     guard !didBoot else { return }
     didBoot = true
+    // Start the chart feed before the account/catalog wiring so network I/O
+    // overlaps the synchronous view setup and first frame rendering.
+    market.setHosts(hosts)
+    market.start(snapshot: prefs.launchSnapshot, interval: prefs.interval)
     wireAccount()
     picker.setSectionsActive(false)
     quotes.onReset = { picker.clearQuotes() }
@@ -612,7 +621,7 @@ struct MainScreen: View {
     quotes.onUpdate = { picker.updateQuotes($0) }
     quotes.onHistory = { picker.setHistory($0, $1) }
     quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: market.source)
-    quotes.watchChart(market.symbol)
+    quotes.setChartSymbol(market.symbol)
     quotes.setForeground(phase != .background)
     quotes.setFavorites(picker.prefs.favorites)
     picker.onPick = { info in
@@ -622,14 +631,11 @@ struct MainScreen: View {
       market.switchTo(symbol: info.symbol)
     }
     picker.setLoader(market.catalogLoader)
-    // 域名要赶在开流之前给：`MarketModel` 自己的默认是币安官方那两台。
-    market.setHosts(hosts)
     market.setOIEnabled(prefs.subs.contains(.oi))
     // Configure the catalog and its source before presenting the favorites list.
     // Otherwise FavoritesView can start its first catalog request against the
     // default Binance route while the host/source setup is still in flight.
     if !picker.prefs.favorites.isEmpty { showFavorites = true; quotes.setVisible(true) }
-    market.start(snapshot: prefs.launchSnapshot, interval: prefs.interval)
   }
 
   private func wireAccount() {

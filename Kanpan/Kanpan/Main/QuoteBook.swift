@@ -70,7 +70,9 @@ final class QuoteBook {
   }
 
   private var needsConnection: Bool {
-    foreground && (chartSymbol != nil || QuoteSubscriptionPlan.needsConnection(foreground: foreground, favorites: favorites, visible: visible))
+    // The chart has its own MarketModel feed. QuoteBook only needs a socket
+    // when it is serving the cross-page favorites/symbol list.
+    foreground && QuoteSubscriptionPlan.needsConnection(foreground: foreground, favorites: favorites, visible: visible)
   }
 
   func setFavorites(_ symbols: [String]) {
@@ -174,10 +176,21 @@ final class QuoteBook {
   }
 
   func watchChart(_ symbol: String) {
-    chartSymbol = symbol
+    setChartSymbol(symbol)
+    if needsConnection { watch(symbol) }
+  }
+
+  /// Keeps the chart symbol available to the shared quote book without
+  /// opening a second socket for the chart page. If the list is already
+  /// visible, preserve the old behavior and add the symbol to its stream.
+  func setChartSymbol(_ symbol: String) {
+    let next = symbol.uppercased()
+    guard chartSymbol != next else { return }
+    chartSymbol = next
+    guard needsConnection else { return }
+    watch(next)
     reconcileConnection()
     updateStreams()
-    watch(symbol)
   }
 
   func watch(_ symbol: String) {
