@@ -3,16 +3,20 @@ import KanpanCore
 
 /// 启动快照 `last.kbar`（§4.3）。
 ///
-/// 列式小端，最后 600 根，≤ 60 KB。只有一个文件，不按品种累积——K 线不永久存盘，
-/// 这一份只是为了冷启动那一帧不白板。
+/// 列式小端，最后 3000 根，≤ 300 KB。编码格式没变，变的只是留多深。
+/// 一对一个文件，按 (品种, 周期) 存在 `series/` 下，见 `SeriesStore`。
 public enum Snapshot {
   /// `'K','B','A','R'`
   static let magic: UInt32 = 0x4B42_4152
   static let version: UInt16 = 1
-  /// 存多少根。默认 spacing 下一屏 ≈ 40–150 根，600 根够拖两三屏。
-  public static let maxBars = 600
-  /// 文件大小上限，验收按这个量（A2.4）。
-  public static let maxBytes = 60 * 1024
+  /// 存多少根。
+  ///
+  /// 必须**装得下 `MarketFeed.deepenTarget`（1800 根）**，否则后台辛苦加深出来的
+  /// 那一段，一写盘就被截掉，下次冷启动还得重拉。3000 根留了足够余量，
+  /// 一份也才 ~144 KB——磁盘是这台机器上最不值钱的东西。原来是 600 根。
+  public static let maxBars = 3000
+  /// 单个文件的字节上限（A2.4）。3000 根 × 48 B ≈ 144 KB，留一倍余量。
+  public static let maxBytes = 300 * 1024
 
   // ------------------------------------------------------------------ 编码
 

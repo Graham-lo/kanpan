@@ -137,8 +137,12 @@ struct DataIntegrityTests {
     let transport = HeldHistory()
     let rest = BinanceREST(transport: transport)
     let deck = ReplayDeck([.hang])
+    // `initialLimit` 压到首屏那一档，让每次选择只发一个历史请求——这条用例查的是
+    // 「旧选择的请求不能复活」，按下标逐个放行，两段式会把下标搅乱。两段式本身
+    // 另有用例（`TwoStageFetchTests`）。
     let feed = MarketFeed(rest: rest, ws: BinanceWS(factory: ReplayFactory(deck: deck, pacer: SystemPacer())),
-                          paths: Paths(root: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)), reconcileMs: 0)
+                          paths: Paths(root: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)),
+                          reconcileMs: 0, initialLimit: MarketFeed.firstScreenLimit)
     let stream = await feed.events()
     let recorded = Updates()
     let reader = Task { for await update in stream { await recorded.add(update) } }

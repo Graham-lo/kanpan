@@ -10,13 +10,21 @@ public struct SeriesKey: Hashable, Sendable, CustomStringConvertible {
 
 /// 内存缓存（§4.3）。
 ///
-/// K 线**不永久存盘**：这里放内存，进程没了就没了。上限 40 MB（≈ 100 万根），
+/// K 线**不永久存盘**：这里放内存，进程没了就没了。上限 160 MB（≈ 400 万根），
 /// 按 LRU 淘汰；单个 (品种, 周期) 上限 20 万根；收到内存警告清到只剩当前那对。
+///
+/// 上限从 40 MB 抬到 160 MB，是拿内存换「本次会话里切回去不重拉」。
+/// 机器有 8~12 G 内存也不再往上抬：iOS 的 jetsam 是按「这个进程占了多少」来挑
+/// 杀谁的，前台占得越多，退到后台越早被杀——而被杀一次，恰恰就是「切回来要重新
+/// 加载」的根因。也就是说这一档之上买不到速度，只会买到重启。
+/// 真正拿来换体验的是磁盘（见 `SeriesStore`，512 MB）：磁盘没有这个惩罚。
+///
+/// 160 MB 本身也已经够用：1800 根 × 48 B ≈ 86 KB 一对，装得下 ~1900 对。
 public actor BarCache {
   /// 一根的估算字节数：5 列 Double。带 openTime 表的另算。
   public static let bytesPerBar = 40
   public static let bytesPerBarWithTime = 48
-  public static let defaultLimitBytes = 40 * 1024 * 1024
+  public static let defaultLimitBytes = 160 * 1024 * 1024
   public static let maxBarsPerKey = 200_000
 
   private var store: [SeriesKey: BarSeries] = [:]

@@ -177,6 +177,18 @@ public actor BinanceREST {
     return ticker
   }
 
+  /// 全市场 24h 统计，一次往返。权重 40（不带 symbol 的官方档位），
+  /// 但省掉的是几十个请求各自的排队与往返——回前台整屏补价时用它。
+  /// 网关只代理单品种 `ticker`，所以这条在非直连线路上会直接失败，
+  /// 调用方要能退回逐个请求。
+  public func tickers24h(timeout: TimeInterval = 8) async throws -> [Ticker] {
+    let data = try await fetch(hosts.tickers24h(), weight: 40, attempts: 1, timeout: timeout)
+    let rows = try decode([Ticker24hDTO].self, data)
+    let tickers = rows.map(\.ticker).filter { $0.last.isFinite && $0.last > 0 && !$0.symbol.isEmpty }
+    guard !tickers.isEmpty else { throw FeedError.badResponse("全市场报价为空") }
+    return tickers
+  }
+
   /// 近 30 天的 OI。`period` 是币安原生档；> 1d 的周期传 5m 由上层再聚。
   public func openInterestHist(symbol: String, period: String, limit: Int = 500,
                                startTime: Int64? = nil, endTime: Int64? = nil) async throws -> [OIPoint] {

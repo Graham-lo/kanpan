@@ -440,7 +440,7 @@ struct FeedReplayTests {
     let ex0 = FakeExchange(rec: rec, cursor: Counter())
     let old = BarSeries(symbol: "BTCUSDT", interval: .m1,
                         bars: Array(ex0.history.dropLast(100)))
-    _ = try Snapshot.write(old, to: paths.snapshot)
+    _ = try SeriesStore.write(old, in: paths.series)
     let snapLast = old.lastTime
 
     let deck = ReplayDeck(rec.lines.prefix(200).map { .frame(.text($0)) } + [.hang])
@@ -484,19 +484,21 @@ struct FeedReplayTests {
     let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0)
     _ = await feed.events()
     await feed.start(symbol: "BTCUSDT", interval: .m1)
-    #expect(await waitUntil(10) { FileManager.default.fileExists(atPath: paths.snapshot.path) })
-    let size = (try? Data(contentsOf: paths.snapshot).count) ?? 0
+    let snap = SeriesStore.url(symbol: "BTCUSDT", interval: .m1, in: paths.series)!
+    #expect(await waitUntil(10) { FileManager.default.fileExists(atPath: snap.path) })
+    let size = (try? Data(contentsOf: snap).count) ?? 0
     #expect(size <= Snapshot.maxBytes)
 
     await feed.setSnapshotEnabled(false)
-    #expect(!FileManager.default.fileExists(atPath: paths.snapshot.path))
+    #expect(!FileManager.default.fileExists(atPath: snap.path))
+    #expect(!FileManager.default.fileExists(atPath: paths.series.path))
     await feed.stop()
-    #expect(!FileManager.default.fileExists(atPath: paths.snapshot.path))
+    #expect(!FileManager.default.fileExists(atPath: snap.path))
   }
 
   // ---------------------------------------------------------------- A2.12
 
-  @Test("30 品种 × 14 周期切一遍：沙盒里只有 last.kbar")
+  @Test("30 品种 × 14 周期切一遍：沙盒里只有 series/ 下封顶的快照和品种表")
   func sandboxStaysClean() async throws {
     let rec = Recording.load()
     let paths = tempPaths()
@@ -518,10 +520,18 @@ struct FeedReplayTests {
     }
     await feed.stop()
 
-    let files = FileManager.default.enumerator(at: paths.root, includingPropertiesForKeys: nil)?
-      .compactMap { ($0 as? URL)?.lastPathComponent }.sorted() ?? []
-    #expect(files.allSatisfy { $0 == "last.kbar" || $0 == "exchangeInfo.json" })
-    if let d = try? Data(contentsOf: paths.snapshot) { #expect(d.count <= Snapshot.maxBytes) }
+    // 420 对全切过一遍，磁盘上留下的只能是 `series/` 下的快照和品种表，
+    // 而且份数和总字节都要在 `SeriesStore` 的上限之内。
+    let urls = (FileManager.default.enumerator(at: paths.root, includingPropertiesForKeys: nil)?
+      .compactMap { $0 as? URL } ?? []).filter { !$0.hasDirectoryPath }
+    let names = urls.map(\.lastPathComponent).sorted()
+    #expect(names.allSatisfy { $0.hasSuffix(".kbar") || $0 == "exchangeInfo.json" })
+    let snaps = urls.filter { $0.pathExtension == "kbar" }
+    #expect(snaps.allSatisfy { $0.deletingLastPathComponent().lastPathComponent == "series" })
+    #expect(snaps.count <= SeriesStore.maxEntries)
+    let bytes = snaps.reduce(0) { $0 + ((try? Data(contentsOf: $1).count) ?? 0) }
+    #expect(bytes <= SeriesStore.maxBytes)
+    #expect(snaps.allSatisfy { ((try? Data(contentsOf: $0).count) ?? 0) <= Snapshot.maxBytes })
     #expect(await cache.totalBytes <= BarCache.defaultLimitBytes)
 
     await feed.memoryWarning()

@@ -257,6 +257,14 @@ final class MarketModel {
     }
   }
 
+  /// 预热：把自选列表里的品种（当前周期）和当前品种的其他常用周期先拉回来落到快照里，
+  /// 点进去、切周期就不用等网络（见 `RoutedMarketFeed.prefetch`）。
+  func prefetchFavorites(_ symbols: [String], intervals: [Interval] = []) {
+    guard !symbols.isEmpty || !intervals.isEmpty else { return }
+    let iv = interval
+    Task { [feed] in await feed.prefetch(symbols: symbols, interval: iv, intervals: intervals) }
+  }
+
   /// 视野推到头部 200 根以内时叫（G9）。
   func loadMore() {
     guard !loading, series != nil else { return }

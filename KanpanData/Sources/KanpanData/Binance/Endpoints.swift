@@ -58,6 +58,10 @@ public struct BinanceHosts: Sendable, Equatable {
     url("/fapi/v1/ticker/24hr", ["symbol": symbol])
   }
 
+  /// 全市场 24h 统计。一次往返换回所有品种，权重 40；从后台回来时
+  /// 整屏都要补价，比按行发几十个单品种请求少等一整轮。
+  public func tickers24h() -> URL { url("/fapi/v1/ticker/24hr") }
+
   /// 持仓量近 30 天。`period` 只能是 5m/15m/30m/1h/2h/4h/6h/12h/1d。
   public func openInterestHist(symbol: String, period: String, limit: Int,
                                startTime: Int64? = nil, endTime: Int64? = nil) -> URL {

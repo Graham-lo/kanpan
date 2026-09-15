@@ -35,6 +35,30 @@ final class QuoteBook {
   private var quoteAttempt: [String: Date] = [:]
   private var startedAt = Date()
   private var firstQuoteMs: Int?
+  /// 每个品种最后一次真正收到值的本机时间。判「要不要补价」看它，
+  /// 不再看「有没有值」——留着上次的价格显示，不等于那个价格还新鲜。
+  private var receivedAt: [String: Date] = [:]
+  private let paths = Paths.caches()
+  private var persistTask: Task<Void, Never>?
+  /// 下一次定时落盘。`nil` 表示当前没有排队的写。
+  private var persistPending: Task<Void, Never>?
+  private var lastPersist = Date.distantPast
+  private var restored = false
+  /// 进后台后延迟拆连接的窗口。宿主用 `beginBackgroundTask` 顶住这段时间，
+  /// 短暂切走再回来就不必重连。
+  private var idleTeardown: Task<Void, Never>?
+  private var batchJob: Task<Void, Never>?
+  /// 全市场报价只有直连可用，网关只代理单品种。失败后先别反复试。
+  private var batchRetry = Date.distantPast
+  /// 超过这个秒数的值只是「上次看到的」，要重新取。
+  private static let freshSeconds: TimeInterval = 20
+  /// 攒够这么多行要补，就用一次全市场请求换掉逐行往返。
+  private static let batchThreshold = 8
+  /// 进后台后连接还留多久。和 `MarketFeed.backgroundGraceMs` 对齐，
+  /// 都在 iOS 给的约 30 秒后台运行时间之内。
+  private static let idleGraceSeconds: Double = 25
+  /// 定时落盘的最小间隔。
+  private static let persistEverySeconds: Double = 30
   var diagnostics: String? {
     guard ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" else { return nil }
     return "session=\(session.generation);firstQuoteMs=\(firstQuoteMs ?? -1);rows=\(raw.count);status=\(status.rawValue)"
@@ -48,6 +72,52 @@ final class QuoteBook {
   private var historyRequested: [String: Date] = [:]
   var onHistory: ((String, [Bar]) -> Void)?
   var onUpdate: (([Ticker]) -> Void)?
+
+  /// 冷启动第一帧：先把上次看到的报价摆出来，再去取新的。存的是交易所
+  /// 真实返回过的值，`timeMs` 一并留着——列表顶部的实时指示灯只认 5 秒内
+  /// 的更新，所以它不会被当成实时价。
+  func restoreQuotes() {
+    guard !restored else { return }
+    restored = true
+    guard raw.isEmpty else { return }
+    let saved = QuoteSnapshot.read(paths.quotes)
+    guard !saved.isEmpty else { return }
+    for ticker in saved { raw[ticker.symbol] = ticker }
+    publish(saved.map(presented))
+  }
+
+  private func persistQuotes() {
+    persistPending?.cancel()
+    persistPending = nil
+    lastPersist = Date()
+    let values = Array(raw.values)
+    guard !values.isEmpty else { return }
+    let url = paths.quotes
+    persistTask?.cancel()
+    persistTask = Task.detached(priority: .utility) { QuoteSnapshot.write(values, to: url) }
+  }
+
+  /// 有新报价就记一笔「该存了」，真正写盘按 `persistEverySeconds` 节流。
+  ///
+  /// 原来只有退后台和拆连接才写。问题是 app 不一定有机会「退后台」——被 jetsam
+  /// 杀掉是没有通知的，那一次的报价就全丢了，下次冷启动照样是空列表。定时写一遍，
+  /// 最多丢掉这一个间隔里的变化。写的是后台低优先级的一小段 JSON，代价可以忽略。
+  private func notePersist() {
+    guard persistPending == nil else { return }
+    let wait = Self.persistEverySeconds - Date().timeIntervalSince(lastPersist)
+    guard wait > 0 else { persistQuotes(); return }
+    persistPending = Task { [weak self] in
+      try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+      guard let self, !Task.isCancelled else { return }
+      self.persistPending = nil
+      self.persistQuotes()
+    }
+  }
+
+  private func isFresh(_ symbol: String) -> Bool {
+    guard raw[symbol] != nil, let at = receivedAt[symbol] else { return false }
+    return Date().timeIntervalSince(at) < Self.freshSeconds
+  }
 
   func configure(hosts: BinanceHosts, basis: ChangeBasis, source: MarketSource = .binance) {
     let changedHost = hosts != self.hosts
@@ -64,10 +134,15 @@ final class QuoteBook {
     }
     self.basis = basis
     if changedHost || changedSource || changedBasis { resetBaselineRequests() }
-    if (changedHost || changedSource), needsConnection { restartStream() }
+    if (changedHost || changedSource), needsConnection { restartStream(clearing: changedSource) }
+    restoreQuotes()
     tick()
     publish(Array(raw.values))
   }
+
+  /// 进后台后的宽限窗口里连接还活着，这时到的帧照收——回来就是现价。
+  /// REST 那几条路仍然只在前台走。
+  private var accepting: Bool { foreground || idleTeardown != nil }
 
   private var needsConnection: Bool {
     // The chart has its own MarketModel feed. QuoteBook only needs a socket
@@ -102,18 +177,43 @@ final class QuoteBook {
 
   private func reconcileConnection() {
     if needsConnection {
+      idleTeardown?.cancel(); idleTeardown = nil
       guard pump == nil else { return } // 健康前台会话跨页面继续，价格无需重取。
       online = true
       network.start { [weak self] online in
         Task { @MainActor [weak self] in self?.networkChanged(online) }
       }
       restartStream()
-    } else {
-      network.stop(); stopStream(); cancelQuotes(); resetBaselineRequests()
+    } else if !foreground, pump != nil, idleTeardown == nil {
+      // 刚进后台：连接先留着。iOS 还给约 30 秒运行时间（宿主用
+      // beginBackgroundTask 要下来），窗口内切回来就不必重连，也就没有
+      // DNS + TCP + TLS + 订阅 + 等第一帧那一整轮。REST 立刻停，
+      // 只让已经开着的 socket 继续填。
+      cancelQuotes(); resetBaselineRequests()
       historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
-      lastListUpdate = nil
-      if !foreground { raw.removeAll(keepingCapacity: true); latestReceived.removeAll(keepingCapacity: true); onReset?() }
+      persistQuotes()
+      idleTeardown = Task { [weak self] in
+        try? await Task.sleep(nanoseconds: UInt64(Self.idleGraceSeconds * 1_000_000_000))
+        guard let self, !Task.isCancelled else { return }
+        self.idleTeardown = nil
+        guard !self.needsConnection else { return }
+        self.teardown()
+      }
+    } else {
+      teardown()
     }
+  }
+
+  /// 真正释放连接。价格留在内存里：回来时列表先显示上次看到的值，
+  /// 顶部那颗实时指示灯只认 5 秒内的更新，超时自动转灰，所以旧值不会
+  /// 被当成实时价。
+  private func teardown() {
+    idleTeardown?.cancel(); idleTeardown = nil
+    batchJob?.cancel(); batchJob = nil
+    network.stop(); stopStream(); cancelQuotes(); resetBaselineRequests()
+    historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
+    lastListUpdate = nil
+    persistQuotes()
   }
 
   private func streamNames() -> [String] {
@@ -138,13 +238,14 @@ final class QuoteBook {
   }
 
   func ingest(_ batch: [Ticker]) {
-    guard foreground else { return }
+    guard accepting else { return }
     var valid: [Ticker] = []
     for ticker in batch where wanted.contains(ticker.symbol) {
       var state = latestReceived[ticker.symbol] ?? QuoteState()
       guard state.receive(ticker), let ticker = state.value else { continue }
       latestReceived[ticker.symbol] = state
       session.receive(ticker.symbol)
+      receivedAt[ticker.symbol] = Date()
       if let old = raw[ticker.symbol], LatestQuote.sameDisplay(ticker, old) { continue }
       raw[ticker.symbol] = ticker
       valid.append(ticker)
@@ -155,11 +256,12 @@ final class QuoteBook {
   }
 
   func ingestTrade(_ trade: TradeQuote) {
-    guard foreground, wanted.contains(trade.symbol) else { return }
+    guard accepting, wanted.contains(trade.symbol) else { return }
     var state = latestReceived[trade.symbol] ?? QuoteState()
     guard state.receive(trade), let ticker = state.value else { return }
     latestReceived[trade.symbol] = state
     session.receive(trade.symbol)
+    receivedAt[trade.symbol] = Date()
     if let old = raw[trade.symbol], LatestQuote.sameDisplay(ticker, old) { return }
     raw[trade.symbol] = ticker
     if firstQuoteMs == nil { firstQuoteMs = Int(-startedAt.timeIntervalSinceNow * 1000) }
@@ -279,7 +381,10 @@ final class QuoteBook {
     }
   }
 
-  private func publish(_ batch: [Ticker]) { onUpdate?(batch.map(presented)) }
+  private func publish(_ batch: [Ticker]) {
+    onUpdate?(batch.map(presented))
+    notePersist()
+  }
 
   private func startStream() {
     guard pump == nil else { return }
@@ -307,8 +412,10 @@ final class QuoteBook {
         case .status(let status):
           // 握手成功还不等于行情到达。
           if status != .live {
+            // 断了就把指示灯熄掉，但别把数字抹了——空列表比一个标注为
+            // 「非实时」的旧价格更没用，用户也更容易以为是卡死。
             self.status = status; self.lastListUpdate = nil
-            self.cancelQuotes(); self.raw.removeAll(keepingCapacity: true); self.latestReceived.removeAll(keepingCapacity: true); self.onReset?()
+            self.cancelQuotes(); self.latestReceived.removeAll(keepingCapacity: true)
           }
         default: break
         }
@@ -328,13 +435,18 @@ final class QuoteBook {
     restartStream()
   }
 
-  private func restartStream() {
+  /// `clearing` 只在换交易所时为真。断线重连不清价：`latestReceived` 这类
+  /// 跨连接不能延用的顺序状态照清，显示值留着，第一帧到了自然覆盖。
+  private func restartStream(clearing: Bool = false) {
     stopStream(); cancelQuotes(); resetBaselineRequests()
     historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
-    session.reset(); raw.removeAll(keepingCapacity: true); latestReceived.removeAll(keepingCapacity: true); lastListUpdate = nil
+    batchJob?.cancel(); batchJob = nil
+    session.reset(); latestReceived.removeAll(keepingCapacity: true); lastListUpdate = nil
+    if clearing {
+      raw.removeAll(keepingCapacity: true); receivedAt.removeAll(keepingCapacity: true); onReset?()
+    }
     startedAt = Date(); firstQuoteMs = nil
     status = online ? .reconnecting : .offline
-    onReset?()
     guard online else { return }
     startStream()
     for symbol in visibleRows { requestQuote(symbol) }
@@ -346,19 +458,54 @@ final class QuoteBook {
     quoteQueue.removeAll(); quoteAttempt.removeAll()
   }
 
-  /// 可见行先请求当前报价；已有 WS 值的行不再请求。REST 与 WS 并行，不依赖 REST 成功。
+  /// 可见行先请求当前报价；WS 已经在喂的行不再请求。判据是「值够不够新」，
+  /// 不是「有没有值」——从后台或磁盘带回来的旧值也要补一次。
+  /// REST 与 WS 并行，不依赖 REST 成功。
   private func requestQuote(_ symbol: String) {
-    guard foreground, (visible || symbol == chartSymbol), online, raw[symbol] == nil, quoteJobs[symbol] == nil,
+    guard foreground, (visible || symbol == chartSymbol), online, !isFresh(symbol), quoteJobs[symbol] == nil,
           !quoteQueue.contains(symbol), quoteQueue.count < 128,
-          Date().timeIntervalSince(quoteAttempt[symbol] ?? .distantPast) >= 30 else { return }
+          Date().timeIntervalSince(quoteAttempt[symbol] ?? .distantPast) >= Self.freshSeconds else { return }
     quoteQueue.append(symbol); drainQuotes()
+  }
+
+  /// 攒够一屏要补的行时，用一次全市场请求换掉几十个逐行往返。
+  /// 网关只代理单品种，这条只有直连可用；失败就退回下面的逐个请求。
+  private func drainBatch() -> Bool {
+    guard source == .binance, batchJob == nil, online, Date() >= batchRetry,
+          quoteQueue.count >= Self.batchThreshold else { return false }
+    let pending = quoteQueue
+    quoteQueue.removeAll()
+    let now = Date()
+    var requests: [String: QuoteSession.Request] = [:]
+    for symbol in pending { quoteAttempt[symbol] = now; requests[symbol] = session.request(symbol) }
+    let rest = self.rest
+    batchJob = Task { [weak self] in
+      let all = try? await rest.tickers24h(timeout: 6)
+      guard let self, !Task.isCancelled else { return }
+      self.batchJob = nil
+      guard let all else {
+        // 换回逐个请求，并且别马上再试一次全市场。
+        self.batchRetry = Date().addingTimeInterval(120)
+        for symbol in pending { self.quoteAttempt[symbol] = .distantPast }
+        for symbol in pending { self.requestQuote(symbol) }
+        return
+      }
+      let accepted = all.filter { ticker in
+        guard self.wanted.contains(ticker.symbol), let request = requests[ticker.symbol] else { return false }
+        return self.session.accepts(request, symbol: ticker.symbol)
+      }
+      if !accepted.isEmpty { self.ingest(accepted) }
+      self.drainQuotes()
+    }
+    return true
   }
 
   private func drainQuotes() {
     guard foreground, online else { return }
+    if drainBatch() { return }
     while quoteJobs.count < 4, !quoteQueue.isEmpty {
       let symbol = quoteQueue.removeFirst()
-      guard raw[symbol] == nil else { continue }
+      guard !isFresh(symbol) else { continue }
       quoteAttempt[symbol] = Date()
       let request = session.request(symbol), rest = self.rest
       quoteJobs[symbol] = Task { [weak self] in

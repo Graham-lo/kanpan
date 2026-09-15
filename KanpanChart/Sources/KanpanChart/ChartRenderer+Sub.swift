@@ -346,10 +346,12 @@ extension ChartRenderer {
     case .macd:
       put("MACD(" + params(.macd).map(String.init).joined(separator: ",") + ")", t.dim)
       guard let v, let hist = v.histogram, v.lines.count >= 2 else { break }
-      put("DIF " + indicatorNumber(at(v.lines[0])), pal[0])
-      put("DEA " + indicatorNumber(at(v.lines[1])), pal[1])
+      // MACD 三个值都是价差，量级跟着价格走：0.0033 的币种上它们在 1e-5 附近，
+      // 按固定 2 位小数印出来全是 0.00。跟着品种的价格精度走才读得出东西。
+      put("DIF " + indicatorNumber(at(v.lines[0]), decimals: state.decimals), pal[0])
+      put("DEA " + indicatorNumber(at(v.lines[1]), decimals: state.decimals), pal[1])
       let h = at(hist)
-      put("M " + indicatorNumber(h), h >= 0 ? t.up : t.down)
+      put("M " + indicatorNumber(h, decimals: state.decimals), h >= 0 ? t.up : t.down)
     case .rsi:
       put("RSI(\(Int(state.rsiUpper))/\(Int(state.rsiLower)))", t.dim)
       guard let v else { break }

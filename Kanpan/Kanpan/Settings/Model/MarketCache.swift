@@ -4,22 +4,27 @@ import Foundation
 import KanpanData
 #endif
 
-/// 行情缓存占了多少（A6.11：设置页要显示，且「应恒 < 1 MB」）。
+/// 行情缓存占了多少（A6.11：设置页要显示，且有上限）。
 ///
-/// 分三笔报，因为它们的性质不一样：启动快照和 exchangeInfo 是 §4.3 说的那点点，
+/// 分三笔报，因为它们的性质不一样：启动快照按 (品种, 周期) 存在 `series/` 下
+/// （上限 2000 对 / 512 MB，见 `SeriesStore`），exchangeInfo 是一份品种表（约 150 KB），
 /// OI 归档切片是 §4.3 里唯一被放行的历史缓存（上限 20 MB、LRU）。
-/// 「< 1 MB」这条针对的是前两笔。
+///
+/// A6.11 原来写的是「恒 < 1 MB」。那条已经作废：当时只存一对快照，现在存上千对，
+/// 为的是换品种、换周期也能第一帧就有图。上限改成看得见的三个数各自封顶，
+/// 合计不超过 ~540 MB——在一台 256 G、还空着 160 G 的机器上占千分之几，
+/// 而且在 `Caches/` 下，系统缺空间随时能清。用磁盘换等待是划算的。
 struct MarketCacheUsage: Sendable, Equatable {
   /// 数据层没接上时是 false，界面就直说「数据层未接入」，不报一个假的 0。
   var available: Bool = false
-  /// `last.kbar`，上次画面快照。
+  /// `series/` 下按 (品种, 周期) 存的启动快照，条数与字节都封顶。
   var snapshotBytes: Int = 0
   /// `exchangeInfo.json`，品种表。
   var catalogBytes: Int = 0
   /// `oi/` 下按天存的归档切片。
   var oiBytes: Int = 0
 
-  /// A6.11 盯的那一笔。
+  /// 设置页「行情缓存」那一行报的数。
   var marketBytes: Int { snapshotBytes + catalogBytes }
   var totalBytes: Int { marketBytes + oiBytes }
 
@@ -58,7 +63,7 @@ struct DiskMarketCache: MarketCacheStore {
     return await Task.detached(priority: .utility) {
       MarketCacheUsage(
         available: true,
-        snapshotBytes: DiskMarketCache.size(of: p.snapshot),
+        snapshotBytes: DiskMarketCache.size(of: p.series) + DiskMarketCache.size(of: p.snapshot),
         catalogBytes: DiskMarketCache.size(of: p.exchangeInfo),
         oiBytes: DiskMarketCache.size(of: p.oi))
     }.value
@@ -68,7 +73,7 @@ struct DiskMarketCache: MarketCacheStore {
     let p = paths
     await Task.detached(priority: .utility) {
       let fm = FileManager.default
-      for url in [p.snapshot, p.exchangeInfo, p.oi] {
+      for url in [p.series, p.snapshot, p.exchangeInfo, p.oi] {
         try? fm.removeItem(at: url)
       }
     }.value

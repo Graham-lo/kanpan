@@ -61,6 +61,26 @@ public actor MarketFeed {
   private var snapshotTask: Task<Void, Never>?
   /// 设置页「启动快照」。关掉：不写，并把已有的那份删掉。
   private var snapshotEnabled = true
+  /// 旧版 `last.kbar` 清过了没有。快照改成按对存之后它就是死文件。
+  private var legacyCleaned = false
+  /// 后台加深那一发。换品种、换周期、停机都要取消它。
+  private var deepenTask: Task<Void, Never>?
+  /// 首屏先拉这么多根。一屏实际只画 40~150 根，1500 根的包在弱网上就是
+  /// 「图一直空着」的主因。先要一小页画出来，完整深度另一发并行补，
+  /// 两发都落在同一个绝对时间窗里，补在左边不会让视野跳（见 `.prepend` 那段注释）。
+  static let firstScreenLimit = 300
+  /// 首屏之后在后台往回多铺到这个根数。
+  ///
+  /// app 里首发只拉 300 根——够画一屏，弱网上也快。代价是往左一拖就要现拉，
+  /// 手指停在边上等。这一步把那次等待挪到用户还在看第一屏的时候做掉。
+  /// 一屏 40~150 根，1800 根能往回拖十几屏，够了。再往深挖要多翻一页（权重 10），
+  /// 换来的是第 13 屏往后——边际很小，所以停在一页。
+  /// 这个数必须 ≤ `Snapshot.maxBars`，否则加深出来的那一段写盘时会被截掉，
+  /// 下次冷启动白干。
+  static let deepenTarget = 1800
+  /// 快照旧到这个程度就不拿来打底了。中间缺的那段靠 `contiguousTail` 补，
+  /// 它最多翻 4 页；超过这个跨度补不回来，图上会留个洞，宁可空着等网络。
+  static let maxSeedGapBars: Int64 = 3000
   /// 只有 1y 用得上：WS 推的是月线，年线要拿月线重聚（§4.2）。
   private var sourceComposer: FeedComposer?
   /// 逐笔折线的合帧闸门。BTCUSDT 忙的时候一秒上百笔，每笔都往上抛一次
@@ -109,7 +129,10 @@ public actor MarketFeed {
 
   public func setSnapshotEnabled(_ on: Bool) {
     snapshotEnabled = on
-    if !on { Snapshot.remove(paths.snapshot) }
+    if !on {
+      Snapshot.remove(paths.snapshot)
+      SeriesStore.clear(in: paths.series)
+    }
   }
 
   /// 冷启动：先读快照画第一帧，再拉网络（§4.3）。
@@ -122,6 +145,7 @@ public actor MarketFeed {
     selection = requested
     writeSnapshotNow()
     loadTask?.cancel()
+    deepenTask?.cancel(); deepenTask = nil
     tickFlush?.cancel(); tickFlush = nil; tickDirty = false
     lastTradeMs = 0
     lastKlineReceivedMs = -.infinity; lastTickerReceivedMs = -.infinity
@@ -139,12 +163,13 @@ public actor MarketFeed {
       emit(.series(hit))
       seeded = true
       log("内存命中 \(key) \(hit.count) 根")
-    } else if coldStart, snapshotEnabled, let snap = Snapshot.read(paths.snapshot),
-              snap.symbol == symbol, snap.interval == interval {
+    } else if snapshotEnabled, let snap = SeriesStore.read(symbol: symbol, interval: interval, in: paths.series),
+              Self.seedUsable(snap, nowMs: await pacer.nowMs()) {
+      guard current(requested) else { return }
       composer.replace(snap)
       emit(.series(snap))
       seeded = true
-      log("快照命中 \(key) \(snap.count) 根")
+      log("快照命中 \(key) \(snap.count) 根\(coldStart ? "（冷启动）" : "")")
     } else {
       composer.replace(BarSeries(symbol: symbol, interval: interval, t0: 0,
                                  open: [], high: [], low: [], close: [], volume: []))
@@ -160,11 +185,15 @@ public actor MarketFeed {
     // ③ 网络补齐。
     let sym = symbol, iv = interval, had = seeded ? composer.series.lastTime : 0
     filling = true
-    loadTask = Task { [weak self] in await self?.fill(symbol: sym, interval: iv, since: had, selection: requested) }
+    // 图上已经有东西了就别再分两发——那只是多一个请求，省不下任何等待。
+    let quick = !seeded
+    loadTask = Task { [weak self] in
+      await self?.fill(symbol: sym, interval: iv, since: had, selection: requested, quickFirst: quick)
+    }
   }
 
   /// 向前补历史（拖到左边缘时叫）。
-  public func loadMore(pages: Int = 1) async {
+  public func loadMore(pages: Int = 1, quiet: Bool = false) async {
     let request = selection
     let sym = symbol, iv = interval
     guard composer.series.count > 0 else { return }
@@ -182,8 +211,9 @@ public actor MarketFeed {
       log("补历史 \(n) 根，现在 \(composer.series.count) 根")
     } catch {
       guard current(request) else { return }
-      emit(.historyError("历史行情暂未加载，点此重试"))
-      log("补历史失败：\(error)")
+      // 后台悄悄加深的那一发失败了就算了——用户没在等它，不该为它弹提示。
+      if !quiet { emit(.historyError("历史行情暂未加载，点此重试")) }
+      log("补历史失败\(quiet ? "（后台加深）" : "")：\(error)")
     }
   }
 
@@ -197,12 +227,16 @@ public actor MarketFeed {
     await startWS()
   }
 
-  /// 进后台 5 秒后断 WS（§4.4）。
+  /// 进后台后延迟断 WS（§4.4）。iOS 进后台还留约 30 秒运行时间，宿主会用
+  /// `beginBackgroundTask` 把这段时间要下来；在窗口内切走再回来就不必重连，
+  /// 省掉 DNS + TCP + TLS + 订阅 + 等第一帧的整轮开销。超过窗口才真的挂起。
+  static let backgroundGraceMs: Double = 25_000
+  /// 进后台后延迟断 WS（§4.4）。
   public func enterBackground() {
     writeSnapshotNow()
     backgroundTask?.cancel()
     backgroundTask = Task { [weak self, pacer] in
-      try? await pacer.sleep(ms: 5000)
+      try? await pacer.sleep(ms: Self.backgroundGraceMs)
       guard !Task.isCancelled else { return }
       await self?.suspendWS()
     }
@@ -211,6 +245,9 @@ public actor MarketFeed {
   public func enterForeground() async {
     backgroundTask?.cancel()
     backgroundTask = nil
+    // 内存里的序列还在，先把它重新发出去，让图表立刻有东西可画。
+    // 下面的补齐是网络往返，不该由它决定用户什么时候看见行情。
+    if composer.series.count > 0 { emit(.series(composer.series)) }
     if wsTask == nil { await startWS() } else { startReconcile() }
     await ws.replaceStreams(streamNames())
     let sym = symbol, iv = interval, request = selection
@@ -230,6 +267,7 @@ public actor MarketFeed {
     wsGeneration = UUID()
     writeSnapshotNow()
     loadTask?.cancel(); loadTask = nil
+    deepenTask?.cancel(); deepenTask = nil
     backgroundTask?.cancel(); backgroundTask = nil
     stopReconcile()
     tickFlush?.cancel(); tickFlush = nil; tickDirty = false
@@ -499,18 +537,59 @@ public actor MarketFeed {
   /// 补缺（两发 fill 并发谁后到谁说了算），缺口记在 `gapFrom` 里没人管。而这一发
   /// fill 拿到的是「它自己发请求那一刻」的快照，盖不住断线窗口里丢掉的那根——
   /// 不在这儿补一次，那根就永远定格在半截上。
-  private func fill(symbol sym: String, interval iv: Interval, since: Int64, selection request: UUID) async {
+  private func fill(symbol sym: String, interval iv: Interval, since: Int64, selection request: UUID,
+                    quickFirst: Bool = false) async {
     guard current(request) else { return }
-    await fillOnce(symbol: sym, interval: iv, since: since, selection: request)
+    await fillOnce(symbol: sym, interval: iv, since: since, selection: request, quickFirst: quickFirst)
     guard current(request), gapFrom > 0, sym == symbol, iv == interval, !composer.isBackfilling else { return }
     composer.beginBackfill()
     await backfill(symbol: sym, interval: iv, selection: request)
   }
 
+  /// 首屏小页落地。只在图还空着的时候画——完整那发已经到了就什么都不做，
+  /// 免得用一份更浅的历史把已经铺开的序列盖回去。
+  private func applyFirstScreen(_ bars: [Bar], symbol sym: String, interval iv: Interval,
+                                selection request: UUID) {
+    guard current(request), sym == symbol, iv == interval else { return }
+    guard composer.series.count == 0, !bars.isEmpty else { return }
+    if iv.source != iv {
+      sourceComposer = FeedComposer(series: BarSeries(symbol: sym, interval: iv.source, bars: BinanceREST.dedup(bars)))
+      composer.replace(Aggregator.bucket(series: sourceComposer!.series, into: iv))
+    } else {
+      composer.merge(bars)
+    }
+    emit(.historyError(nil))
+    emit(.series(composer.series))
+    log("首屏 \(bars.count) 根先落地 \(sym)|\(iv.rawValue)")
+  }
+
+  /// 快照还能不能拿来打底：中间欠的那段要在 `contiguousTail` 的翻页能力之内。
+  static func seedUsable(_ snap: BarSeries, nowMs: Double) -> Bool {
+    guard snap.count > 0 else { return false }
+    let step = snap.interval.source.stepMs
+    guard step > 0 else { return false }
+    let gap = Int64(nowMs) - snap.lastTime
+    guard gap > 0 else { return true }
+    return gap / step <= maxSeedGapBars
+  }
+
   /// 拉满一屏。`since > 0` 时并行启动快照到现在的缺口回补（§4.3 冷启动时序）。
-  private func fillOnce(symbol sym: String, interval iv: Interval, since: Int64, selection request: UUID) async {
+  private func fillOnce(symbol sym: String, interval iv: Interval, since: Int64, selection request: UUID,
+                        quickFirst: Bool = false) async {
     guard current(request) else { return }
     defer { if current(request), sym == symbol, iv == interval { filling = false } }
+    // 首屏小页：和完整那发并行发出去，谁先回谁先画。它只在图还空着时落地，
+    // 完整那发要是先回来，这一发回来什么都不做。
+    let quickTask: Task<[Bar], Error>? = (quickFirst && initialLimit > Self.firstScreenLimit)
+      ? Task { [rest] in try await rest.klines(symbol: sym, interval: iv, limit: Self.firstScreenLimit) }
+      : nil
+    defer { quickTask?.cancel() }
+    if let quickTask {
+      Task { [weak self] in
+        guard let bars = try? await quickTask.value else { return }
+        await self?.applyFirstScreen(bars, symbol: sym, interval: iv, selection: request)
+      }
+    }
     // 启动快照缺口请求，但不要等待它挡住最新窗口。BinanceREST / transport
     // 都是 actor，可重入地让两个请求同时在路上；首屏先用最新窗口，缺口回来后再合并。
     let gapTask: Task<[Bar], Error>? = (since > 0 && iv.source == iv)
@@ -577,6 +656,8 @@ public actor MarketFeed {
       }
     }
 
+    scheduleDeepen(symbol: sym, interval: iv, selection: request)
+
     // 历史序列已经落地后，ticker 只是顶栏校准。它失败不能把一张可用的
     // K 线降级成「历史失败/离线」，否则正好会出现“最新在动、历史提示失败”
     // 并触发不必要的整条线路切换。
@@ -591,6 +672,30 @@ public actor MarketFeed {
       guard current(request), !Task.isCancelled else { return }
       log("校准报价失败 \(sym)|\(iv.rawValue)，保留已加载历史：\(error)")
     }
+  }
+
+  /// 首屏落地之后，后台悄悄再往回拉一页。
+  ///
+  /// 补在左边不会让视野跳（视野是绝对时间窗，见 `.prepend` 那段注释），所以
+  /// 用户完全无感；等他真把图拖到左边缘时，那段历史已经在内存里了。
+  /// 失败不报错——没人在等它。
+  private func scheduleDeepen(symbol sym: String, interval iv: Interval, selection request: UUID) {
+    deepenTask?.cancel()
+    guard current(request), composer.series.count > 0, composer.series.count < Self.deepenTarget else { return }
+    deepenTask = Task { [weak self, pacer] in
+      // 让实时报文和 ticker 先走，别和首屏抢带宽。
+      try? await pacer.sleep(ms: 1200)
+      guard !Task.isCancelled else { return }
+      await self?.deepen(symbol: sym, interval: iv, selection: request)
+    }
+  }
+
+  private func deepen(symbol sym: String, interval iv: Interval, selection request: UUID) async {
+    guard current(request), sym == symbol, iv == interval else { return }
+    guard composer.series.count > 0, composer.series.count < Self.deepenTarget else { return }
+    await loadMore(quiet: true)
+    guard current(request), sym == symbol, iv == interval else { return }
+    scheduleSnapshot()
   }
 
   /// 重连 / 回前台后补缺：从末根开始重拉，排队的 WS 事件补完再放行。
@@ -639,8 +744,10 @@ public actor MarketFeed {
     snapshotTask = nil
     guard snapshotEnabled, composer.series.count > 0 else { return }
     do {
-      let n = try Snapshot.write(composer.series, to: paths.snapshot)
-      log("快照 \(n)B → \(paths.snapshot.lastPathComponent)")
+      let n = try SeriesStore.write(composer.series, in: paths.series)
+      // 旧版只有一份 `last.kbar`，按对存之后它就是死文件，清一次。
+      if !legacyCleaned { legacyCleaned = true; Snapshot.remove(paths.snapshot) }
+      log("快照 \(n)B → \(composer.series.symbol)|\(composer.series.interval.rawValue)")
     } catch {
       log("写快照失败：\(error)")
     }

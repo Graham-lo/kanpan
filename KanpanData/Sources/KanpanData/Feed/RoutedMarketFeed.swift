@@ -27,6 +27,14 @@ public actor RoutedMarketFeed {
   private var seriesStart: Int64?
   private var historyRetry = Date.distantPast
   private var continuation: AsyncStream<FeedUpdate>.Continuation?
+  private var prefetchTask: Task<Void, Never>?
+  /// 换周期预热单独占一个槽：它跟自选预热是两件事，谁也不该把对方掐掉。
+  private var warmTask: Task<Void, Never>?
+  /// 上一次预热时带来的常用周期表。记下来，换品种之后自动给新品种也热一遍。
+  private var warmIntervals: [Interval] = []
+  /// 预热几个自选。自选列表通常也就这么长，等于「整张列表都热过一遍」。
+  /// 一个品种一发 300 根（限频权重 2），20 个合计 40 点权重，币安一分钟的配额是 2400。
+  public static let prefetchLimit = 20
 
   public init(hosts: BinanceHosts, paths: Paths = .caches(), preferenceURL: URL? = nil, log: FeedLog = .silent) {
     self.hosts = hosts; self.paths = paths; self.log = log
@@ -46,7 +54,12 @@ public actor RoutedMarketFeed {
     await feed?.setSnapshotEnabled(enabled)
     if !enabled {
       Snapshot.remove(paths.snapshot)
-      for name in ["binance", "okx"] { Snapshot.remove(Paths(root: paths.root.appendingPathComponent("sources/" + name)).snapshot) }
+      SeriesStore.clear(in: paths.series)
+      for name in ["binance", "okx"] {
+        let sub = Paths(root: paths.root.appendingPathComponent("sources/" + name))
+        Snapshot.remove(sub.snapshot)
+        SeriesStore.clear(in: sub.series)
+      }
     }
   }
   public func start(symbol: String, interval: Interval, selection: UUID = UUID()) async {
@@ -61,6 +74,9 @@ public actor RoutedMarketFeed {
     if let feed { await feed.switchTo(symbol: symbol, interval: interval, coldStart: coldStart, selection: selection) }
     else { await activate(source, coldStart: coldStart) }
     if self.selection == selection { startMonitoring(immediate: historyRetry > Date()) }
+    // 换了品种，新品种的其他常用周期也热一遍：用户看完这一档，下一个动作
+    // 多半就是切周期。等首屏和后台加深先走完，别跟它们抢带宽。
+    if coldStart, self.selection == selection { warmOtherIntervals(of: symbol, current: interval) }
   }
   private func activate(_ next: MarketSource, coldStart: Bool = false) async {
     let request = selection; let generation = UUID(); route = generation
@@ -254,6 +270,74 @@ public actor RoutedMarketFeed {
   }
   public func loadMore(pages: Int = 1) async { await feed?.loadMore(pages: pages) }
 
+  /// 预热：趁用户还在看自选列表，把他大概率会点开的东西先拉回来落到快照里。
+  /// 点进去时 `switchTo` 直接命中磁盘，第一帧就有图，不用等网络。
+  ///
+  /// 两类活儿，按「多半会先发生」排序：先是自选列表里的品种（当前周期），
+  /// 因为下一个动作大概率是点开其中一个；然后是**当前品种的其他常用周期**，
+  /// 因为进图之后第二个动作大概率是切周期。
+  ///
+  /// 只花请求和磁盘，不占内存——拉回来直接写盘，不塞 `BarCache`。
+  /// 失败就算了，预热不成功只是回到「点进去等一下」，不报错。
+  public func prefetch(symbols: [String], interval: Interval, intervals: [Interval] = []) {
+    prefetchTask?.cancel()
+    guard snapshots, interval.source == interval else { return }
+    if !intervals.isEmpty { warmIntervals = intervals }
+    let current = symbol.uppercased()
+    var seen = Set<String>([current])
+    var jobs = symbols.map { $0.uppercased() }.filter { seen.insert($0).inserted }
+      .prefix(Self.prefetchLimit).map { (symbol: $0, interval: interval) }
+    // 当前品种换周期：本地已经有当前这档了，补其余几档。
+    jobs += intervals.filter { $0 != interval && $0.source == $0 }.map { (symbol: current, interval: $0) }
+    prefetchTask = run(jobs: jobs, delayMs: 0)
+  }
+
+  /// 换品种之后，给新品种的其他常用周期也各拉一份。
+  ///
+  /// 常用周期表是上一次 `prefetch` 留下来的（`warmIntervals`），所以不用在每次
+  /// 切换时都把偏好设置一路塞下来。延迟 2.5 秒是让首屏和后台加深先跑完——
+  /// 用户此刻正盯着这一档，别跟它抢带宽。
+  private func warmOtherIntervals(of symbol: String, current: Interval) {
+    warmTask?.cancel()
+    guard snapshots, !warmIntervals.isEmpty, current.source == current else { return }
+    let name = symbol.uppercased()
+    let jobs = warmIntervals.filter { $0 != current && $0.source == $0 }.map { (symbol: name, interval: $0) }
+    warmTask = run(jobs: jobs, delayMs: 2500)
+  }
+
+  /// 预热的活儿本身：挨个拉回来写盘。只花请求和磁盘，不占内存。
+  private func run(jobs: [(symbol: String, interval: Interval)], delayMs: Int) -> Task<Void, Never>? {
+    guard !jobs.isEmpty else { return nil }
+    let rest = source == .binance ? primary : backup
+    let dir = (source == .binance ? paths : Paths(root: paths.root.appendingPathComponent("sources/okx"))).series
+    let log = self.log
+    return Task.detached(priority: .utility) {
+      if delayMs > 0 {
+        try? await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
+        guard !Task.isCancelled else { return }
+      }
+      var done = 0
+      for job in jobs {
+        guard !Task.isCancelled else { return }
+        // 已经有一份够新的就跳过——落后不到几根的快照，点进去照样是秒开。
+        if let have = SeriesStore.read(symbol: job.symbol, interval: job.interval, in: dir),
+           have.count >= MarketFeed.firstScreenLimit / 2,
+           Int64(Date().timeIntervalSince1970 * 1000) - have.lastTime < 3 * job.interval.stepMs { continue }
+        do {
+          let bars = try await rest.klines(symbol: job.symbol, interval: job.interval, limit: MarketFeed.firstScreenLimit)
+          guard !bars.isEmpty else { continue }
+          _ = try SeriesStore.write(BarSeries(symbol: job.symbol, interval: job.interval, bars: BinanceREST.dedup(bars)), in: dir)
+          done += 1
+        } catch {
+          // 一个失败多半意味着线路本身不行，后面几个也别再试了。
+          log("预热停在 \(job.symbol) \(job.interval.rawValue)：\(error)")
+          return
+        }
+      }
+      log("预热 \(done)/\(jobs.count) 份快照")
+    }
+  }
+
   /// Retry the currently selected source after a visible history failure.
   /// This also clears the short-lived route backoff because the retry was an
   /// explicit user action, not an automatic probe.
@@ -275,6 +359,7 @@ public actor RoutedMarketFeed {
   public func memoryWarning() async { await feed?.memoryWarning() }
   public func stop() async {
     selection = UUID(); route = UUID(); monitor?.cancel(); pump?.cancel()
+    prefetchTask?.cancel(); warmTask?.cancel()
     await feed?.stop(); feed = nil; continuation?.finish(); continuation = nil
   }
 }

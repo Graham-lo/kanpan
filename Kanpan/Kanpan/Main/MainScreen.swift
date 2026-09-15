@@ -23,6 +23,7 @@ struct MainScreen: View {
   @State private var picker = SymbolPickerModel()
   @State private var quotes = QuoteBook()
   @State private var didBoot = false
+  @State private var grace = BackgroundGrace()
   @State private var proxy = ChartProxy()
   @State private var review = ReviewFeature(directory: ReviewChartBridge.storageDirectory())
   @State private var reviewChart = ReviewChartBridge()
@@ -132,8 +133,14 @@ struct MainScreen: View {
     .task(id: beating) { await heartbeat() }
     .onChange(of: phase) { _, now in
       switch now {
-      case .background: market.enterBackground(); quotes.setForeground(false)
-      case .active: market.enterForeground(); quotes.setForeground(true)
+      case .background:
+        // 先把后台运行额度要下来，再进后台状态：下面两处的宽限窗口靠它才有
+        // CPU 可跑，短暂切走再回来就不必重连。
+        grace.begin()
+        market.enterBackground(); quotes.setForeground(false)
+      case .active:
+        grace.end()
+        market.enterForeground(); quotes.setForeground(true)
       default: break
       }
     }
@@ -635,7 +642,12 @@ struct MainScreen: View {
     // Configure the catalog and its source before presenting the favorites list.
     // Otherwise FavoritesView can start its first catalog request against the
     // default Binance route while the host/source setup is still in flight.
-    if !picker.prefs.favorites.isEmpty { showFavorites = true; quotes.setVisible(true) }
+    if !picker.prefs.favorites.isEmpty {
+      showFavorites = true; quotes.setVisible(true)
+      // 冷启动第一屏就是自选页。趁用户在这儿看报价，把自选的 K 线、以及当前品种
+      // 其他常用周期的 K 线先拉好，点进去、切周期第一帧就有图。
+      market.prefetchFavorites(picker.prefs.favorites, intervals: prefs.quickIntervals)
+    }
   }
 
   private func wireAccount() {

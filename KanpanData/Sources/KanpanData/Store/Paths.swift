@@ -14,10 +14,15 @@ public struct Paths: Sendable {
     return Paths(root: base.appendingPathComponent("kanpan", isDirectory: true))
   }
 
-  /// 磁盘上**唯一**的 K 线痕迹：上次看的那对 (品种, 周期) 的最后 600 根。
+  /// 旧版快照：磁盘上唯一的一份。现在只用来清理，写入一律走 `series`。
   public var snapshot: URL { root.appendingPathComponent("last.kbar") }
+  /// 启动快照目录。按 (品种, 周期) 一对一个文件，条数和总字节都封顶，
+  /// 见 `SeriesStore`。放大到十几对是为了换品种、换周期也能第一帧就有图。
+  public var series: URL { root.appendingPathComponent("series", isDirectory: true) }
   /// 品种表缓存，24 小时。
   public var exchangeInfo: URL { root.appendingPathComponent("exchangeInfo.json") }
+  /// 上次看到的自选报价。冷启动第一帧用它，避免整张列表空着等网络。
+  public var quotes: URL { root.appendingPathComponent("quotes.json") }
   /// OI 归档切片，按天存，总上限 20 MB。
   public var oi: URL { root.appendingPathComponent("oi", isDirectory: true) }
   public func oiDay(symbol: String, day: String) -> URL {

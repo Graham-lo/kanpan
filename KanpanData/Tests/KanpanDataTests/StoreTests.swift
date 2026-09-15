@@ -16,17 +16,18 @@ struct StoreTests {
 
   // ---------------------------------------------------------------- A2.4
 
-  @Test("last.kbar：≤600 根、≤60KB，读回逐字节一致")
+  @Test("快照文件：≤3000 根、≤300KB，读回逐字节一致")
   func snapshotRoundTrip() throws {
     let p = tempPaths()
     defer { try? FileManager.default.removeItem(at: p.root) }
 
-    let s = makeSeries("BTCUSDT", .h1, count: 1500)
+    // 故意多给一截，验证写盘时确实截到 `maxBars`。
+    let s = makeSeries("BTCUSDT", .h1, count: Snapshot.maxBars + 500)
     let n = try Snapshot.write(s, to: p.snapshot)
     #expect(n <= Snapshot.maxBytes)
 
     let back = try #require(Snapshot.read(p.snapshot))
-    #expect(back.count == Snapshot.maxBars)             // 只留末 600 根
+    #expect(back.count == Snapshot.maxBars)             // 只留末 maxBars 根
     #expect(back.symbol == "BTCUSDT")
     #expect(back.interval == .h1)
     #expect(back.lastTime == s.lastTime)
