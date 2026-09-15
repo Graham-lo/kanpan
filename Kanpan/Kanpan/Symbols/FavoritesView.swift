@@ -377,7 +377,9 @@ struct FavoritesView: View {
   private func quote(_ symbol: String) -> some View {
     let ticker = displayQuote(symbol)
     let value = ticker?.changePercent ?? .nan
-    let color = value.isFinite ? theme.badgeFill(up: value >= 0) : theme.ink3
+    // 还没到的涨跌幅和还没到的价格用同一种骨架：一块底色，不写字。
+    // 写「—」会让人以为这个品种没有涨跌幅，而不是还在路上。
+    let color = value.isFinite ? theme.badgeFill(up: value >= 0) : theme.raised2
     let decimals = model.info(for: symbol)?.pricePrecision ?? 2
     let price = ticker?.last ?? .nan
     let change = amount && value.isFinite && price.isFinite && value > -100 ? price - price / (1 + value / 100) : value
@@ -395,7 +397,7 @@ struct FavoritesView: View {
         }.accessibilityIdentifier("favorites.price." + symbol)
       Text(changeText)
         .font(.system(size: 12, weight: .semibold, design: .monospaced))
-        .foregroundStyle(theme.badgeInk)
+        .foregroundStyle(change.isFinite ? theme.badgeInk : .clear)
         .padding(.horizontal, 6).padding(.vertical, 4).frame(minWidth: 62)
         .background(color, in: RoundedRectangle(cornerRadius: 5))
         .accessibilityIdentifier("favorites.change." + symbol)

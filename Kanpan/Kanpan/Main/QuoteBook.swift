@@ -49,6 +49,12 @@ final class QuoteBook {
   /// 上一次真正落盘的那批品种。用来判断「这次有没有新面孔」——有就别等节流。
   private var persistedSymbols = Set<String>()
   private var restored = false
+  /// 已经露过面的行。只有第一次露面的行需要合帧——它是「凭空冒出来」的那种；
+  /// 已经有值的行只是数字变一下，谁也看不出先后。
+  private var everPublished = Set<String>()
+  /// 攒着等一起发的首帧行。见 `publish(_:)`。
+  private var coalesced: [String: Ticker] = [:]
+  private var coalesceFlush: Task<Void, Never>?
   /// 宿主把自选表送进来了吗。
   ///
   /// 冷启动的顺序是「`restoreQuotes()` 先把上次的报价摆好 → 宿主接着告诉我们自选是哪些」。
@@ -86,6 +92,18 @@ final class QuoteBook {
   /// 原来是 4：二十几个自选要排六轮往返才填满，价格早就在那儿了，涨跌幅还在
   /// 一格格地冒。这些请求和补价走同一条 HTTP/2 连接，开大只多几条流、不多开连接。
   private static let baselineConcurrency = 16
+  /// 首帧合帧的等待上限。
+  ///
+  /// 二十几行各自一个 REST 响应，虽然共用一条 HTTP/2 连接、只花一个往返，
+  /// 但回包落地的时刻仍然差着几十到几百毫秒。一条一条发出去，列表就是
+  /// 「一行行往外冒」——明明总共只等了半秒，体感却是慢慢加载。攒起来一次发，
+  /// 整屏同时出现。攒的时间不会超过这一轮本来就要等的那个往返，不是把数据压慢。
+  ///
+  /// 正常情况下走的不是这个上限，而是「这一轮补价排空」——二十几行同时在飞，
+  /// 最后一行回来时一起发，只画一帧。这个数只是兜底：真有一两行卡住了，
+  /// 别让已经到的那十几行陪着一起等。所以它要明显大于一轮往返（实测半秒上下），
+  /// 定 0.45 秒反而会在排空之前先把半屏发出去，变成两拨——那正是要消掉的东西。
+  private static let coalesceMaxSeconds: Double = 1.2
   /// 进后台后连接还留多久。和 `MarketFeed.backgroundGraceMs` 对齐，
   /// 都在 iOS 给的约 30 秒后台运行时间之内。
   private static let idleGraceSeconds: Double = 25
@@ -169,6 +187,7 @@ final class QuoteBook {
       opens.removeAll()
       for symbol in Array(quoteJobs.keys) where symbol != chartSymbol { quoteJobs.removeValue(forKey: symbol)?.cancel() }
       quoteQueue.removeAll { $0 != chartSymbol }
+      flushCoalesced()
       historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll(); historyRequested.removeAll()
     }
     self.basis = basis
@@ -211,6 +230,7 @@ final class QuoteBook {
     if !on {
       for symbol in Array(quoteJobs.keys) where symbol != chartSymbol { quoteJobs.removeValue(forKey: symbol)?.cancel() }
       quoteQueue.removeAll { $0 != chartSymbol }
+      flushCoalesced()
       historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
     }
   }
@@ -449,8 +469,39 @@ final class QuoteBook {
   }
 
   private func publish(_ batch: [Ticker]) {
+    guard !quoteJobs.isEmpty || !quoteQueue.isEmpty else { emit(batch); return }
+    // 首轮补价还在路上。已经露过面的行照常发（它只是数字变一下），头一回露面的
+    // 行攒起来——图上那个品种除外，头部的价格不能等。
+    var immediate: [Ticker] = [], held: [Ticker] = []
+    for ticker in batch {
+      if ticker.symbol == chartSymbol || everPublished.contains(ticker.symbol) { immediate.append(ticker) }
+      else { held.append(ticker) }
+    }
+    if !immediate.isEmpty { emit(immediate) }
+    guard !held.isEmpty else { return }
+    for ticker in held { coalesced[ticker.symbol] = ticker }
+    guard coalesceFlush == nil else { return }
+    coalesceFlush = Task { [weak self] in
+      try? await Task.sleep(nanoseconds: UInt64(Self.coalesceMaxSeconds * 1_000_000_000))
+      guard let self, !Task.isCancelled else { return }
+      self.flushCoalesced()
+    }
+  }
+
+  private func emit(_ batch: [Ticker]) {
+    for ticker in batch { everPublished.insert(ticker.symbol) }
     onUpdate?(batch.map(presented))
     notePersist()
+  }
+
+  /// 把攒着的首帧行一次发出去。首轮补价排空、或者等满 `coalesceMaxSeconds` 就走这儿——
+  /// 哪个先到算哪个，慢的那几行不会把整屏一起拖住。
+  private func flushCoalesced() {
+    coalesceFlush?.cancel(); coalesceFlush = nil
+    guard !coalesced.isEmpty else { return }
+    let batch = Array(coalesced.values)
+    coalesced.removeAll(keepingCapacity: true)
+    emit(batch)
   }
 
   private func startStream() {
@@ -510,7 +561,8 @@ final class QuoteBook {
     batchJob?.cancel(); batchJob = nil
     session.reset(); latestReceived.removeAll(keepingCapacity: true); lastListUpdate = nil
     if clearing {
-      raw.removeAll(keepingCapacity: true); receivedAt.removeAll(keepingCapacity: true); onReset?()
+      raw.removeAll(keepingCapacity: true); receivedAt.removeAll(keepingCapacity: true)
+      everPublished.removeAll(keepingCapacity: true); onReset?()
     }
     startedAt = Date(); firstQuoteMs = nil
     status = online ? .reconnecting : .offline
@@ -523,6 +575,8 @@ final class QuoteBook {
   private func cancelQuotes() {
     quoteJobs.values.forEach { $0.cancel() }; quoteJobs.removeAll()
     quoteQueue.removeAll(); quoteAttempt.removeAll()
+    // 这一轮不跑了，攒着的行现在就发——否则它们要等到下一轮才有机会露面。
+    flushCoalesced()
   }
 
   /// 可见行先请求当前报价；WS 已经在喂的行不再请求。判据是「值够不够新」，
@@ -563,6 +617,7 @@ final class QuoteBook {
       }
       if !accepted.isEmpty { self.ingest(accepted) }
       self.drainQuotes()
+      if self.quoteJobs.isEmpty, self.quoteQueue.isEmpty { self.flushCoalesced() }
     }
     return true
   }
@@ -581,6 +636,7 @@ final class QuoteBook {
         self.quoteJobs[symbol] = nil
         if let ticker, self.session.accepts(request, symbol: symbol) { self.ingest([ticker]) }
         self.drainQuotes()
+        if self.quoteJobs.isEmpty, self.quoteQueue.isEmpty { self.flushCoalesced() }
       }
     }
   }
