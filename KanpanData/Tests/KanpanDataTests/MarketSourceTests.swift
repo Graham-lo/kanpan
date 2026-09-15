@@ -23,6 +23,14 @@ import Testing
       return json(#"{"source":"binance","symbol":"BTCUSDT","interval":"1m","bars":[]}"#)
     }
   }
+  actor RacingGateways: HTTPTransport {
+    var hosts: [String] = []
+    func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
+      hosts.append(url.host!)
+      if url.host == "one.test" { try await Task.sleep(for: .milliseconds(800)) }
+      return json(#"{"source":"okx","symbol":"BTCUSDT","interval":"1m","bars":[]}"#)
+    }
+  }
   @Test func cancelledSelectionDoesNotPoisonHealthyDirectRoute() async throws {
     let network = CancelFirst()
     let transport = MarketRESTTransport(source: .binance, gateways: ["gateway.test"], transport: network)
@@ -73,8 +81,19 @@ import Testing
     _ = try await transport.get(url, timeout: 10)
     _ = try await transport.get(url, timeout: 10)
     let urls = await server.urls()
-    #expect(urls.map(\.host) == ["one.test", "two.test", "two.test"])
+    #expect(Set(urls.map(\.host)) == ["one.test", "two.test"])
+    #expect(urls.last?.host == "two.test")
     #expect(urls.allSatisfy { $0.query?.contains("source=okx") == true })
     #expect(urls.last?.port == 8443)
+  }
+  @Test func gatewaysRaceSoFastBackupAvoidsSlowPrimary() async throws {
+    let network = RacingGateways()
+    let transport = MarketRESTTransport(source: .okx,
+      gateways: ["one.test", "two.test"], transport: network)
+    let began = Date()
+    _ = try await transport.get(url, timeout: 10)
+    let elapsed = Date().timeIntervalSince(began)
+    #expect(elapsed < 0.5)
+    #expect(Set(await network.hosts) == ["one.test", "two.test"])
   }
 }

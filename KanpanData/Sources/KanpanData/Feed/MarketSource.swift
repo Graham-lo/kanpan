@@ -15,6 +15,17 @@ public actor MarketRESTTransport: HTTPTransport {
   private var gatewayRetry: [String: Date] = [:]
   private var preferred: String?
 
+  private struct GatewayCandidate: Sendable {
+    let host: String
+    let target: URL
+    let timeout: TimeInterval
+  }
+
+  private struct GatewaySuccess: Sendable {
+    let host: String
+    let payload: Data
+  }
+
   public init(source: MarketSource, gateways: [String], transport: any HTTPTransport = URLSessionTransport(), log: FeedLog = .silent) {
     self.source = source; self.gateways = gateways; self.transport = transport; self.log = log
   }
@@ -59,44 +70,81 @@ public actor MarketRESTTransport: HTTPTransport {
     default: throw failure
     }
     let ordered = gateways.sorted { $0 == preferred && $1 != preferred }
+    let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+    let expectedSymbol = queryItems.first(where: { $0.name == "symbol" })?.value ?? ""
+    let expectedInterval = queryItems.first(where: { $0.name == "interval" })?.value ?? ""
+    var candidates: [GatewayCandidate] = []
     for host in ordered where Date() >= (gatewayRetry[host] ?? .distantPast) {
       guard var parts = URLComponents(string: "https://" + host), parts.host != nil,
             parts.user == nil, parts.password == nil, parts.path.isEmpty, parts.query == nil else { continue }
       parts.path = "/market/v1/" + endpoint
-      parts.queryItems = (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? [])
+      parts.queryItems = queryItems
         + [URLQueryItem(name: "source", value: source.rawValue)]
       guard let target = parts.url else { continue }
-      do {
-        let smallProbe = parts.queryItems?.first(where: { $0.name == "limit" })?.value.flatMap(Int.init).map { $0 <= 3 } ?? false
-        let deadline: TimeInterval = source == .binance || smallProbe ? 5 : 30
-        let reply = try await transport.get(target, timeout: deadline)
-        try Task.checkCancellation()
-        guard reply.status == 200 else { throw FeedError.badResponse("行情暂不可用，请重试") }
-        guard let body = try JSONSerialization.jsonObject(with: reply.body) as? [String: Any],
-              body["source"] as? String == source.rawValue, let payload = body[field] else {
-          throw FeedError.badResponse("行情来源不匹配")
-        }
-        if endpoint == "klines" {
-          let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-          guard body["symbol"] as? String == query.first(where: { $0.name == "symbol" })?.value,
-                body["interval"] as? String == query.first(where: { $0.name == "interval" })?.value else {
-            throw FeedError.badResponse("行情区间不匹配")
+      let smallProbe = queryItems.first(where: { $0.name == "limit" })?.value.flatMap(Int.init).map { $0 <= 3 } ?? false
+      // Catalog and ticker requests are small and should never wait behind a
+      // mobile-network black hole. Historical K-lines retain the longer
+      // deadline because a cold gateway may need to fetch several pages.
+      let deadline: TimeInterval = endpoint == "instruments" || endpoint == "ticker"
+        ? min(timeout, 5) : (source == .binance || smallProbe ? 5 : 30)
+      candidates.append(GatewayCandidate(host: host, target: target, timeout: deadline))
+    }
+    guard !candidates.isEmpty else { throw failure }
+
+    let sourceRawValue = source.rawValue
+    let transport = self.transport
+    let winner = await withTaskGroup(of: GatewaySuccess?.self) { group -> GatewaySuccess? in
+      for candidate in candidates {
+        group.addTask {
+          do {
+            let reply = try await transport.get(candidate.target, timeout: candidate.timeout)
+            guard reply.status == 200,
+                  let body = try JSONSerialization.jsonObject(with: reply.body) as? [String: Any],
+                  body["source"] as? String == sourceRawValue,
+                  let payload = body[field] else { return nil }
+            if endpoint == "klines" {
+              guard body["symbol"] as? String == expectedSymbol,
+                    body["interval"] as? String == expectedInterval else { return nil }
+            }
+            return GatewaySuccess(host: candidate.host,
+                                  payload: try JSONSerialization.data(withJSONObject: payload))
+          } catch is CancellationError {
+            return nil
+          } catch {
+            return nil
           }
         }
-        preferred = host
-        // Once a gateway has returned a validated same-source payload, keep
-        // subsequent requests on that route for a while. This avoids paying
-        // the direct black-hole timeout again on every symbol/interval change;
-        // the normal recovery path can probe direct after the short lease.
-        directRetry = max(directRetry, Date().addingTimeInterval(Self.preferredGatewaySeconds))
-        return HTTPReply(status: 200, body: try JSONSerialization.data(withJSONObject: payload))
-      } catch is CancellationError { throw CancellationError() }
-      catch {
-        try Task.checkCancellation()
-        if (error as? URLError)?.code == .cancelled { throw CancellationError() }
-        failure = error; gatewayRetry[host] = Date().addingTimeInterval(10)
       }
+      var result: GatewaySuccess?
+      while let next = await group.next() {
+        if let next {
+          result = next
+          group.cancelAll()
+          break
+        }
+      }
+      group.cancelAll()
+      while await group.next() != nil {}
+      return result
     }
+
+    if let winner {
+      preferred = winner.host
+      // Do not immediately race a gateway that lost this round. It may have
+      // been a slow or black-holed path; keep the winner hot and give the
+      // losers a short retry lease so each row does not reopen the same race.
+      for candidate in candidates where candidate.host != winner.host {
+        gatewayRetry[candidate.host] = Date().addingTimeInterval(10)
+      }
+      // Once a gateway has returned a validated same-source payload, keep
+      // subsequent requests on that route for a while. This avoids paying
+      // the direct black-hole timeout again on every symbol/interval change;
+      // the normal recovery path can probe direct after the short lease.
+      directRetry = max(directRetry, Date().addingTimeInterval(Self.preferredGatewaySeconds))
+      return HTTPReply(status: 200, body: winner.payload)
+    }
+
+    for candidate in candidates { gatewayRetry[candidate.host] = Date().addingTimeInterval(10) }
     throw failure
   }
 

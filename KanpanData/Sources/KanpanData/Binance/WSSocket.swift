@@ -53,8 +53,16 @@ final class URLSessionSocket: WSSocket, @unchecked Sendable {
 
 public struct URLSessionSocketFactory: WSSocketFactory {
   let session: URLSession
-  public init(session: URLSession = .shared) { self.session = session }
+  let connectTimeout: TimeInterval
+  public init(session: URLSession = .shared, connectTimeout: TimeInterval = 6) {
+    self.session = session; self.connectTimeout = connectTimeout
+  }
   public func connect(to url: URL) async throws -> WSSocket {
-    URLSessionSocket(task: session.webSocketTask(with: url))
+    var request = URLRequest(url: url)
+    // URLSessionWebSocketTask returns before the TLS/HTTP upgrade completes;
+    // put a bound on that handshake too, otherwise a black-holed mobile route
+    // can outlive MarketSocketRouter's first-frame race.
+    request.timeoutInterval = connectTimeout
+    return URLSessionSocket(task: session.webSocketTask(with: request))
   }
 }
