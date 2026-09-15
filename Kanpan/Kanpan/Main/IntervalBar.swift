@@ -73,7 +73,7 @@ struct IntervalBar: View {
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(on ? theme.amber : theme.ink2)
         .padding(.horizontal, 10)
-        .padding(.vertical, 9)
+        .frame(minHeight: 44)
         .overlay(alignment: .bottom) {
           // 选中那一档底下的琥珀小横杠：左右各缩 10pt、离底 4pt（原型 `.pchip.on::after`）。
           if on {

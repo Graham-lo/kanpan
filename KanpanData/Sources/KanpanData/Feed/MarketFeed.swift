@@ -4,6 +4,9 @@ import KanpanCore
 /// 图表侧收到的东西（§3.1）。`BarSeries` 是值类型快照，每次事件换一份，
 /// 绘制线程只读一份不可变数据，没有锁。
 public enum FeedEvent: Sendable {
+  case source(MarketSource)
+  case routing(MarketRoutingState)
+  case historyError(String?)
   case series(BarSeries)          // 整段替换
   case lastBar(Bar)               // 末根更新 / 新根追加
   case prepend(count: Int)        // 前面补了 N 根，视野要平移保持不跳
@@ -25,6 +28,7 @@ public struct FeedUpdate: Sendable {
 /// 把 REST + WS + 内存缓存合成「当前 (品种, 周期)」一条流（§3.1 / §4.4）。
 public actor MarketFeed {
   private let includeTicker: Bool
+  private let initialLimit: Int
   private let rest: BinanceREST
   private let ws: BinanceWS
   private let cache: BarCache
@@ -81,8 +85,9 @@ public actor MarketFeed {
   ///   按规矩合出来是什么」，多一路 REST 在旁边改序列就测不出那件事，所以那边传 0。
   public init(rest: BinanceREST, ws: BinanceWS, cache: BarCache = BarCache(),
               paths: Paths = .caches(), pacer: Pacer = SystemPacer(),
-              reconcileMs: Double = 5000, includeTicker: Bool = true, log: FeedLog = .silent) {
+              reconcileMs: Double = 5000, includeTicker: Bool = true, initialLimit: Int = BinanceREST.maxKlines, log: FeedLog = .silent) {
     self.includeTicker = includeTicker
+    self.initialLimit = min(BinanceREST.maxKlines, max(3, initialLimit))
     self.reconcileStepMs = reconcileMs
     self.rest = rest
     self.ws = ws
@@ -168,6 +173,7 @@ public actor MarketFeed {
       let bars = try await rest.history(symbol: sym, interval: iv, pages: pages, before: first)
       guard current(request), sym == symbol, iv == interval else { return }
       let n = composer.prepend(bars)
+      emit(.historyError(nil))
       if n > 0 {
         await cache.put(composer.series)
         guard current(request) else { return }
@@ -175,6 +181,8 @@ public actor MarketFeed {
       }
       log("补历史 \(n) 根，现在 \(composer.series.count) 根")
     } catch {
+      guard current(request) else { return }
+      emit(.historyError("历史行情暂未加载，点此重试"))
       log("补历史失败：\(error)")
     }
   }
@@ -355,6 +363,7 @@ public actor MarketFeed {
       guard monthly.apply(k) else { return }
       sourceComposer = monthly
       composer.replace(Aggregator.bucket(series: monthly.series, into: .y1))
+      emit(.historyError(nil))
       emit(.series(composer.series))
       scheduleSnapshot()
       return
@@ -375,6 +384,7 @@ public actor MarketFeed {
       else { return }
       sourceComposer = src
       composer.replace(Aggregator.bucket(series: src.series, into: .y1))
+      emit(.historyError(nil))
       emit(.series(composer.series))
       scheduleSnapshot()
       return
@@ -505,14 +515,14 @@ public actor MarketFeed {
       // 聚出来的周期（1y）没法拿月线往年线上合，直接整段重拉重聚。
       if since > 0, iv.source == iv {
         let revision = composer.wsRevision
-        let gap = try await rest.klines(symbol: sym, interval: iv, limit: BinanceREST.maxKlines, startTime: since)
+        let gap = try await rest.contiguousTail(symbol: sym, interval: iv, from: since)
         guard current(request), sym == symbol, iv == interval else { return }
         composer.merge(gap, preservingLiveTail: composer.wsRevision != revision)
         log("补缺 startTime=\(since) → \(gap.count) 根")
       }
       let revision = composer.wsRevision
       let sourceRevision = sourceComposer?.wsRevision
-      let bars = try await rest.klines(symbol: sym, interval: iv, limit: BinanceREST.maxKlines)
+      let bars = try await rest.klines(symbol: sym, interval: iv, limit: initialLimit)
       guard current(request), sym == symbol, iv == interval else { return }
       if iv.source != iv {
         let src = BarSeries(symbol: sym, interval: iv.source, bars: BinanceREST.dedup(bars))
@@ -527,6 +537,7 @@ public actor MarketFeed {
       }
       await cache.put(composer.series)
       guard current(request) else { return }
+      emit(.historyError(nil))
       emit(.series(composer.series))
       scheduleSnapshot()
 
@@ -537,6 +548,7 @@ public actor MarketFeed {
     } catch {
       guard current(request) else { return }
       log("拉 \(sym)|\(iv.rawValue) 失败：\(error)")
+      emit(.historyError("历史行情暂未加载，点此重试"))
       emit(.status(.offline))
     }
   }
@@ -552,15 +564,17 @@ public actor MarketFeed {
       return
     }
     do {
-      let bars = try await rest.klines(symbol: sym, interval: iv, limit: BinanceREST.maxKlines, startTime: from)
+      let bars = try await rest.contiguousTail(symbol: sym, interval: iv, from: from)
       guard current(request), sym == symbol, iv == interval else { return }
       let added = composer.endBackfill(with: bars)
       await cache.put(composer.series)
       guard current(request) else { return }
       emit(.series(composer.series))
+      emit(.historyError(nil))
       log("补缺 startTime=\(from) → \(bars.count) 根，净增 \(added)，队列已合并")
     } catch {
       guard current(request) else { return }
+      emit(.historyError("行情缺口暂未补齐，点此重试"))
       log("补缺失败：\(error)")
       composer.endBackfill(with: [])
       noteGap(at: from)          // 没补成，这段还欠着

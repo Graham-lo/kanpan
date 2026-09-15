@@ -105,7 +105,7 @@ struct ChartOptionsRenderTests {
     off.options.drawings = false
     let rOn = ChartRenderer(state: st).probe(size: Self.size, scale: Self.scale)
     let rOff = ChartRenderer(state: off).probe(size: Self.size, scale: Self.scale)
-    #expect(rOn.rangeHi > rOff.rangeHi, "开着的时候没把区间撑开，这条测试就没意义")
+    #expect(rOn.rangeHi == rOff.rangeHi, "画线显示开关不能改变自动价格范围")
     #expect(rOff.rangeHi < far, "隐藏的画线还在撑价格区间")
     #expect(off.drawings.count == 1, "关显示把数据删了")
 

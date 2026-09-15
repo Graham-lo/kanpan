@@ -116,20 +116,25 @@ struct ToolRail: View {
   var drawing: Bool
   var onPanel: (Panel) -> Void
   var onDraw: () -> Void
+  var onReview: () -> Void
+  var onRecord: () -> Void
   var onPortrait: () -> Void
 
   var body: some View {
     VStack(spacing: 0) {
       Spacer(minLength: 0)
-      item(VectorIcon.style, "风格", on: active == .style) { onPanel(.style) }
+      item(VectorIcon.chart, "记", on: false, action: onRecord)
+      item(VectorIcon.chart, "复盘", on: false, action: onReview)
       item(VectorIcon.indicator, "指标", on: active == .indicator) { onPanel(.indicator) }
       // A8.6「横竖屏各用 5 分钟，全部功能可达」：竖屏的「图表」在周期条上，
       // 横屏没有周期条的尾巴，所以挂到工具栏来，不然横屏根本开不出 K 线设置。
       item(VectorIcon.chart, "图表", on: active == .chart) { onPanel(.chart) }
       item(VectorIcon.draw, "画线", on: drawing, action: onDraw)
       item(VectorIcon.settings, "设置", on: active == .settings) { onPanel(.settings) }
-      item(VectorIcon.landscape, UIDevice.current.userInterfaceIdiom == .pad ? "返回" : "竖屏", on: false, action: onPortrait)
-        .accessibilityIdentifier("land.exit")
+      if UIDevice.current.userInterfaceIdiom == .pad {
+        item(VectorIcon.landscape, "返回", on: false, action: onPortrait)
+          .accessibilityIdentifier("land.exit")
+      }
       Spacer(minLength: 0)
     }
     .frame(width: 52)

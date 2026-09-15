@@ -1,6 +1,6 @@
 import Foundation
 
-/// 画线：只有水平线和趋势线两种（§7.5，原型 `draws`）。
+/// 画线模型；兼容第一版水平线与趋势线存档。
 ///
 /// 端点存的是**时间 + 价格**，不是像素——缩放、换周期、切对数轴之后线还在原来的
 /// 位置上。命中判定的三个阈值（手柄 12、线身 9、水平线 9）照抄原型。
@@ -19,38 +19,117 @@ public struct DrawPoint: Sendable, Equatable, Codable {
 }
 
 public struct Drawing: Sendable, Equatable, Identifiable, Codable {
-  public enum Kind: String, Sendable, Codable { case hline, trend }
-  /// 命中到哪个部位。
-  public enum Part: String, Sendable, Equatable { case a, b, body }
-
+  public enum Kind: String, Sendable, Codable, CaseIterable, Identifiable {
+    case hline, trend, ray, hray, extended, vline, rectangle, channel, fibonacci, measure
+    public var id: String { rawValue }
+    public var title: String {
+      switch self {
+      case .hline: "水平线"
+      case .trend: "趋势线"
+      case .ray: "射线"
+      case .hray: "水平射线"
+      case .extended: "直线"
+      case .vline: "垂直线"
+      case .rectangle: "矩形"
+      case .channel: "平行通道"
+      case .fibonacci: "斐波那契回撤"
+      case .measure: "价时测量"
+      }
+    }
+    public var shortTitle: String {
+      switch self { case .fibonacci: "回撤"; case .channel: "通道"; case .measure: "测量"; default: title }
+    }
+    public var pointCount: Int {
+      switch self {
+      case .hline, .vline, .hray: 1
+      case .channel: 3
+      default: 2
+      }
+    }
+    public var group: String {
+      switch self {
+      case .hline, .trend, .ray, .hray, .extended, .vline: "线条"
+      case .rectangle, .channel: "区域"
+      case .fibonacci: "斐波那契"
+      case .measure: "测量"
+      }
+    }
+  }
+  public enum Part: String, Sendable, Equatable { case a, b, c, body }
+  public enum Dash: String, Sendable, Codable, CaseIterable {
+    case solid, dashed, dotted
+    public var title: String {
+      switch self { case .solid: "实线"; case .dashed: "虚线"; case .dotted: "点线" }
+    }
+  }
   public var id: String
   public var kind: Kind
-  public var a: DrawPoint
-  /// 趋势线的第二个点；水平线没有。
-  public var b: DrawPoint?
-  /// 不给就用主题的 `band` 色。
+  /// Only time and price are persisted. Pixel geometry is derived for each viewport.
+  public var points: [DrawPoint]
   public var color: Hex?
-
+  public var lineWidth: Double = 1.3
+  public var dash: Dash = .solid
+  public var filled = true
+  public var locked = false
+  public var hidden = false
+  public var levels: [Double] = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+  public var a: DrawPoint {
+    get { points.first ?? DrawPoint(t: 0, p: 0) }
+    set { if points.isEmpty { points = [newValue] } else { points[0] = newValue } }
+  }
+  public var b: DrawPoint? {
+    get { points.count > 1 ? points[1] : nil }
+    set {
+      if let newValue { if points.count > 1 { points[1] = newValue } else { points.append(newValue) } }
+      else if points.count > 1 { points.removeSubrange(1...) }
+    }
+  }
   public init(id: String = Drawing.newID(), kind: Kind, a: DrawPoint, b: DrawPoint? = nil, color: Hex? = nil) {
-    self.id = id
-    self.kind = kind
-    self.a = a
-    self.b = b
-    self.color = color
+    self.id = id; self.kind = kind; self.points = [a] + (b.map { [$0] } ?? []); self.color = color
   }
-
-  /// 原型是 `'d' + Date.now()`，同一毫秒内连画两条会撞号——撞了之后选中和删除都会
-  /// 连坐。这里保留同样的前缀，再补一个进程内自增的尾巴。
-  public static func newID() -> String {
-    "d\(Int(Date().timeIntervalSince1970 * 1000))-\(idSeq.next())"
+  public init(id: String = Drawing.newID(), kind: Kind, points: [DrawPoint]) {
+    self.id = id; self.kind = kind; self.points = points
   }
-
-  /// 价格区间要把画线端点算进去（§5.4）。
-  public var prices: [Double] { kind == .hline ? [a.p] : [a.p, b?.p ?? a.p] }
+  public static func newID() -> String { "d" + UUID().uuidString }
+  public var prices: [Double] { points.map(\.p) }
+  public var isValid: Bool {
+    points.count == kind.pointCount && points.allSatisfy { $0.t.isFinite && $0.p.isFinite }
+      && lineWidth.isFinite && (0.5...6).contains(lineWidth)
+      && levels.count <= 24 && levels.allSatisfy { $0.isFinite && abs($0) <= 10 }
+  }
+  private enum CodingKeys: String, CodingKey {
+    case id, kind, points, a, b, color, lineWidth, dash, filled, locked, hidden, levels
+  }
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(String.self, forKey: .id)
+    kind = try c.decode(Kind.self, forKey: .kind)
+    if let pts = try c.decodeIfPresent([DrawPoint].self, forKey: .points) { points = pts }
+    else {
+      points = [try c.decode(DrawPoint.self, forKey: .a)]
+      if let b = try c.decodeIfPresent(DrawPoint.self, forKey: .b) { points.append(b) }
+    }
+    color = try c.decodeIfPresent(Hex.self, forKey: .color)
+    lineWidth = try c.decodeIfPresent(Double.self, forKey: .lineWidth) ?? 1.3
+    dash = try c.decodeIfPresent(Dash.self, forKey: .dash) ?? .solid
+    filled = try c.decodeIfPresent(Bool.self, forKey: .filled) ?? true
+    locked = try c.decodeIfPresent(Bool.self, forKey: .locked) ?? false
+    hidden = try c.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
+    levels = try c.decodeIfPresent([Double].self, forKey: .levels) ?? [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+    guard isValid else { throw DecodingError.dataCorruptedError(forKey: .points, in: c, debugDescription: "Invalid drawing") }
+  }
+  public func encode(to encoder: Encoder) throws {
+    var c = encoder.container(keyedBy: CodingKeys.self)
+    try c.encode(id, forKey: .id); try c.encode(kind, forKey: .kind); try c.encode(points, forKey: .points)
+    try c.encodeIfPresent(color, forKey: .color); try c.encode(lineWidth, forKey: .lineWidth)
+    try c.encode(dash, forKey: .dash); try c.encode(filled, forKey: .filled)
+    try c.encode(locked, forKey: .locked); try c.encode(hidden, forKey: .hidden); try c.encode(levels, forKey: .levels)
+  }
 }
 
 /// 命中结果。
 public struct DrawHit: Sendable, Equatable {
+  public init(id: String, part: Drawing.Part) { self.id = id; self.part = part }
   public var id: String
   public var part: Drawing.Part
 }
@@ -71,33 +150,29 @@ public func hitDraw(
   _ draws: [Drawing], px: Double, py: Double,
   xOf: (Double) -> Double, yOf: (Double) -> Double
 ) -> DrawHit? {
-  for d in draws.reversed() {
+  for d in draws.reversed() where !d.hidden {
     if d.kind == .hline {
       if abs(yOf(d.a.p) - py) < Chart.hitLinePt { return DrawHit(id: d.id, part: .body) }
       continue
     }
-    guard let b = d.b else { continue }
-    let x1 = xOf(d.a.t), y1 = yOf(d.a.p)
-    let x2 = xOf(b.t), y2 = yOf(b.p)
-    if ((px - x1) * (px - x1) + (py - y1) * (py - y1)).squareRoot() < Chart.hitHandlePt {
-      return DrawHit(id: d.id, part: .a)
-    }
-    if ((px - x2) * (px - x2) + (py - y2) * (py - y2)).squareRoot() < Chart.hitHandlePt {
-      return DrawHit(id: d.id, part: .b)
-    }
-    if distSeg(px, py, x1, y1, x2, y2) < Chart.hitLinePt { return DrawHit(id: d.id, part: .body) }
+    let geometry = drawingGeometry(d, bounds: DrawBounds(left: -1e9, top: -1e9, right: 1e9, bottom: 1e9), xOf: xOf, yOf: yOf)
+    if let part = geometry.hit(x: px, y: py) { return DrawHit(id: d.id, part: part) }
   }
   return nil
 }
 
 /// 画线的编辑状态：待落的第二点、选中项、当前工具。
 public struct DrawingStore: Sendable, Equatable {
-  public enum Tool: String, Sendable, Equatable { case hline, trend }
+  public typealias Tool = Drawing.Kind
 
   public var items: [Drawing] = []
   public var selected: String?
   /// 趋势线落了第一点、还差第二点。
-  public var pending: DrawPoint?
+  public var anchors: [DrawPoint] = []
+  public var pending: DrawPoint? {
+    get { anchors.first }
+    set { anchors = newValue.map { [$0] } ?? [] }
+  }
   public var tool: Tool?
   /// 吸附到 K 线中心。
   public var magnet = true
@@ -106,21 +181,11 @@ public struct DrawingStore: Sendable, Equatable {
 
   /// 落一个点。趋势线要落两次。
   public mutating func place(_ pt: DrawPoint, id: String = Drawing.newID()) {
-    switch tool {
-    case .hline:
-      items.append(Drawing(id: id, kind: .hline, a: pt))
-      tool = nil
-      pending = nil
-    case .trend:
-      if let first = pending {
-        items.append(Drawing(id: id, kind: .trend, a: first, b: pt))
-        pending = nil
-        tool = nil
-      } else {
-        pending = pt
-      }
-    case nil:
-      break
+    guard let tool else { return }
+    anchors.append(pt)
+    if anchors.count == tool.pointCount {
+      items.append(Drawing(id: id, kind: tool, points: anchors))
+      anchors = []; self.tool = nil
     }
   }
 
@@ -139,31 +204,13 @@ public struct DrawingStore: Sendable, Equatable {
   /// 拖动：`part` 决定动哪一端，`body` 两端一起走。
   public mutating func move(id: String, part: Drawing.Part, from start: Drawing, dt: Double, dp: Double) {
     guard let i = items.firstIndex(where: { $0.id == id }) else { return }
-    switch part {
-    case .a:
-      items[i].a = DrawPoint(t: start.a.t + dt, p: start.a.p + dp)
-    case .b:
-      if let sb = start.b { items[i].b = DrawPoint(t: sb.t + dt, p: sb.p + dp) }
-    case .body:
-      items[i].a = DrawPoint(t: start.a.t + dt, p: start.a.p + dp)
-      if let sb = start.b { items[i].b = DrawPoint(t: sb.t + dt, p: sb.p + dp) }
+    guard !items[i].locked else { return }
+    let index: Int? = switch part { case .a: 0; case .b: 1; case .c: 2; case .body: nil }
+    for j in items[i].points.indices where (index == nil || j == index) && start.points.indices.contains(j) {
+      items[i].points[j] = DrawPoint(t: start.points[j].t + dt, p: start.points[j].p + dp)
     }
   }
 
   /// 所有画线端点的价格，喂给 `priceRange`。
   public var prices: [Double] { items.flatMap(\.prices) }
 }
-
-/// 画线 ID 的自增尾号。画线是用户手速级别的低频操作，一把锁足够。
-private final class IDSeq: @unchecked Sendable {
-  private let lock = NSLock()
-  private var n = 0
-  func next() -> Int {
-    lock.lock()
-    defer { lock.unlock() }
-    n += 1
-    return n
-  }
-}
-
-private let idSeq = IDSeq()

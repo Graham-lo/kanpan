@@ -95,6 +95,17 @@ public final class ChartView: UIView {
           "zoomY": s.price.zoom, "centerY": s.price.centerFraction,
           "axisW": layout.axisW, "height": layout.H,
           "dataDisplay": s.options.dataDisplay.rawValue, "portraitHeight": s.options.portraitHeight,
+          "drawingCount": s.drawings.count,
+          "drawingKinds": s.drawings.map { $0.kind.rawValue },
+          "drawingIDs": s.drawings.map { $0.id },
+          "drawingAnchors": s.drawings.map { $0.points.map { ["t": $0.t, "p": $0.p] } },
+          "drawingColors": s.drawings.map { $0.color?.value ?? "default" },
+          "drawingLocked": s.drawings.map { $0.locked },
+          "drawingHidden": s.drawings.map { $0.hidden },
+          "maColor0": renderer?.indicatorColor(.ma, 0).value ?? "",
+          "emaColor0": renderer?.indicatorColor(.ema, 0).value ?? "",
+          "drawingMagnet": drawing.magnet,
+          "drawingContinuous": drawing.continuous,
           "hiddenMA": (s.hiddenOutputs[.ma] ?? []).sorted(),
           "scrollY": (superview as? UIScrollView)?.contentOffset.y ?? 0,
           "viewportH": (superview as? UIScrollView)?.bounds.height ?? bounds.height,
@@ -287,9 +298,9 @@ public final class ChartView: UIView {
     a.symbol == b.symbol && a.view == b.view && a.style == b.style && a.dark == b.dark && a.paletteSeed == b.paletteSeed
       && a.redUp == b.redUp && a.price == b.price && a.overlays == b.overlays
       && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
-      && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi
+      && a.drawingPreviewID == b.drawingPreviewID && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi
       && a.magnet == b.magnet && a.options == b.options && a.subScale == b.subScale
-      && a.hiddenOutputs == b.hiddenOutputs && a.subInverted == b.subInverted
+      && a.indicatorColors == b.indicatorColors && a.hiddenOutputs == b.hiddenOutputs && a.subInverted == b.subInverted
       && a.rsiUpper == b.rsiUpper && a.rsiLower == b.rsiLower && a.axisScaleAnchor == b.axisScaleAnchor
       && sameSeriesExceptLast(a.series, b.series)
   }

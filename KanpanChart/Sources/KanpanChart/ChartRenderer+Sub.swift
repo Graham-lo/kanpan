@@ -264,7 +264,6 @@ extension ChartRenderer {
     let t = state.colors
     let i = legendIndex
     let p = state.decimals
-    let pal = t.palette
     var x = 8.0
     var y = pane.y + 9
     let put = { (text: String, color: Hex) in
@@ -278,9 +277,8 @@ extension ChartRenderer {
       guard let v = displayed(id) else { continue }
       switch id {
       case .ma, .ema:
-        let off = id == .ema ? 3 : 0
         for (k, n) in params(id).enumerated() where k < v.lines.count && outputVisible(id, k) {
-          put("\(id.rawValue)\(n) " + indicatorNumber(reading(v.lines[k]), decimals: p), pal[(k + off) % pal.count])
+          put("\(id.rawValue)\(n) " + indicatorNumber(reading(v.lines[k]), decimals: p), indicatorColor(id, k))
         }
       case .boll:
         guard v.lines.count >= 3 else { break }
@@ -386,33 +384,8 @@ extension ChartRenderer {
     guard state.options.drawings else { return }
     ctx.saveGState(); defer { ctx.restoreGState() }
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
-    let t = state.colors
-    for d in state.drawings {
-      // 选中态（amber + 1.8pt）是 M5 的事，M3 只画静态的那一档
-      let col = d.color ?? t.band
-      ctx.setStrokeColor(Paint.cg(col))
-      ctx.setLineWidth(1.3)
-      ctx.setLineDash(phase: 0, lengths: [])
-      if d.kind == .hline {
-        let y = KanpanCore.yOf(d.a.p, pane: pane, range: r, mode: state.price.mode)
-        ctx.beginPath()
-        ctx.move(to: CGPoint(x: 0, y: y))
-        ctx.addLine(to: CGPoint(x: L.plotW, y: y))
-        ctx.strokePath()
-        let label = fmtNum(d.a.p, state.decimals)
-        label.drawRightBottom(
-          at: CGPoint(x: L.plotW - 4, y: y - 3), font: ChartFont.axis, color: col)
-      } else if let b = d.b {
-        let x1 = state.view.x(d.a.t, plotW: L.plotW)
-        let y1 = KanpanCore.yOf(d.a.p, pane: pane, range: r, mode: state.price.mode)
-        let x2 = state.view.x(b.t, plotW: L.plotW)
-        let y2 = KanpanCore.yOf(b.p, pane: pane, range: r, mode: state.price.mode)
-        ctx.beginPath()
-        ctx.move(to: CGPoint(x: x1, y: y1))
-        ctx.addLine(to: CGPoint(x: x2, y: y2))
-        ctx.strokePath()
-      }
-    }
+    let axes = DrawAxes(layout: L, pane: pane, range: r, mode: state.price.mode, view: state.view)
+    for d in state.drawings where d.id != state.drawingPreviewID { paintDrawing(d, ctx: ctx, axes: axes, colors: state.colors) }
   }
 }
 

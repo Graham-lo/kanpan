@@ -17,7 +17,7 @@ struct PeriodPanel: View {
   @Environment(\.panelDismiss) private var sideDismiss
 
   var body: some View {
-    PanelSheet(title: "周期", subtitle: "切换时 K 线粗细不变") {
+    PanelSheet(title: "周期", subtitle: nil) {
       ForEach(Interval.allCases, id: \.self) { iv in
         let current = iv == store.prefs.interval
         PanelRow(name: iv.display,
@@ -36,9 +36,7 @@ struct PeriodPanel: View {
         .accessibilityIdentifier("period.row.\(iv.rawValue)")
       }
 
-      PanelNote(markdown:
-        "十四档都在。右边的图钉决定它上不上**顶栏的常用行**——常用行最多 8 档、至少留 1 档，"
-        + "剩下的从这儿进。切换周期时**根宽不变**，变的是一屏看得见的时间跨度。")
+      PanelNote(markdown: "点图钉设为常用")
     }
     .panelToast(store)
   }

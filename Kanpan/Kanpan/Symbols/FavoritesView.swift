@@ -59,9 +59,9 @@ struct FavoritesView: View {
         sortBar
         if symbols.isEmpty {
           ContentUnavailableView {
-            Label("这个分类还是空的", systemImage: "star")
+            Label("暂无自选", systemImage: "star")
           } description: {
-            Text("把常看的品种加进来，分组只是组织方式，行情不会重复。")
+            Text("添加常看的品种")
           } actions: { Button("添加品种") { adding = true } }
         } else {
           List {

@@ -112,6 +112,22 @@ public actor BinanceREST {
     return rows.map(\.bar)
   }
 
+  /// Reconnects can span several pages; never treat the first 1500 bars as the whole gap.
+  func contiguousTail(symbol: String, interval: Interval, from: Int64) async throws -> [Bar] {
+    var cursor = from
+    var result: [Bar] = []
+    for _ in 0..<4 {
+      try Task.checkCancellation()
+      let page = try await klines(symbol: symbol, interval: interval, startTime: cursor)
+      guard let last = page.last else { return result }
+      guard page.first!.openTime >= cursor, last.openTime >= cursor else { throw FeedError.badResponse("行情翻页没有推进") }
+      result.append(contentsOf: page)
+      if page.count < Self.maxKlines { return result }
+      cursor = last.openTime + 1
+    }
+    throw FeedError.badResponse("断线时间较长，需要重新加载行情")
+  }
+
   /// 最新一屏：拉满 `limit` 根，返回 `BarSeries`。1y 会在这儿聚出来。
   public func latestSeries(symbol: String, interval: Interval, limit: Int = maxKlines) async throws -> BarSeries {
     let bars = try await klines(symbol: symbol, interval: interval, limit: limit)

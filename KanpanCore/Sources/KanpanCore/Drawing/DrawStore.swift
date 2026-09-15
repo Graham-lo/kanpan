@@ -13,12 +13,34 @@ import Foundation
 // MARK: - 归档
 
 /// 全部品种的画线。键是品种代码（`BTCUSDT`）。
+/// Tool defaults contain style only, never deleted objects' anchor coordinates.
+public struct DrawingStyle: Sendable, Equatable, Codable {
+  public var color: Hex?
+  public var lineWidth: Double
+  public var dash: Drawing.Dash
+  public var filled: Bool
+  public var levels: [Double]
+  public init(_ drawing: Drawing) {
+    color = drawing.color; lineWidth = drawing.lineWidth; dash = drawing.dash
+    filled = drawing.filled; levels = drawing.levels
+  }
+}
+
+public struct DrawingPreferences: Sendable, Equatable, Codable {
+  public var favorites: [Drawing.Kind] = [.trend, .hline, .rectangle, .fibonacci, .measure]
+  public var magnet = true
+  public var continuous = false
+  public var styles: [String: DrawingStyle] = [:]
+  public init() {}
+}
+
 public struct DrawArchive: Sendable, Equatable, Codable {
   /// 存档版本。字段有增删时 +1，老档按「缺的取默认」合并，不整体丢弃（A6.13 的规矩）。
-  public static let currentVersion = 1
+  public static let currentVersion = 2
   /// 每个品种的条数上限（A7.7）。
   public static let perSymbolLimit = 50
 
+  public var preferences = DrawingPreferences()
   public var version: Int
   public var bySymbol: [String: [Drawing]]
 
@@ -27,7 +49,7 @@ public struct DrawArchive: Sendable, Equatable, Codable {
     self.bySymbol = bySymbol
   }
 
-  /// 取 / 存某个品种的线。存进去时超出上限的部分从**最早**的一头砍掉。
+  /// 存档保留全部对象；交互创建限制不能裁掉同步合并的数据。
   public subscript(symbol: String) -> [Drawing] {
     get { bySymbol[symbol] ?? [] }
     set {
@@ -39,9 +61,9 @@ public struct DrawArchive: Sendable, Equatable, Codable {
     }
   }
 
-  /// 只留最后 50 条。顺序就是画的顺序，也是叠放顺序（后画的在上面）。
+  /// 保留顺序和所有对象；旧调用点仍可使用此兼容方法。
   public static func capped(_ ds: [Drawing]) -> [Drawing] {
-    ds.count <= perSymbolLimit ? ds : Array(ds.suffix(perSymbolLimit))
+    ds
   }
 
   /// 还能不能再画一条。满了由调用方提示，而不是默默把最早那条挤掉——
@@ -54,11 +76,13 @@ public struct DrawArchive: Sendable, Equatable, Codable {
   private enum CodingKeys: String, CodingKey {
     case version = "v"
     case bySymbol = "d"
+    case preferences
   }
 
   public init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     version = try c.decodeIfPresent(Int.self, forKey: .version) ?? Self.currentVersion
+    preferences = try c.decodeIfPresent(DrawingPreferences.self, forKey: .preferences) ?? DrawingPreferences()
     let raw = try c.decodeIfPresent([String: [Drawing]].self, forKey: .bySymbol) ?? [:]
     bySymbol = raw.compactMapValues { $0.isEmpty ? nil : Self.capped($0) }
   }
@@ -78,26 +102,37 @@ public struct DrawStore: Sendable {
   public static func applicationSupport() -> DrawStore {
     let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
       ?? URL(fileURLWithPath: NSTemporaryDirectory())
-    return DrawStore(
-      url: base.appendingPathComponent("kanpan", isDirectory: true)
-        .appendingPathComponent("draws.json"))
+    let profile = ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"].flatMap { UUID(uuidString: $0)?.uuidString } ?? "default"
+    var folder = base.appendingPathComponent("kanpan", isDirectory: true)
+    if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" {
+      folder = base.appendingPathComponent("kanpan-drawing-tests", isDirectory: true).appendingPathComponent(profile, isDirectory: true)
+    }
+    return DrawStore(url: folder.appendingPathComponent("draws.json"))
   }
 
   /// 读。读不出来一律当空档，**不抛**：画线丢了是可惜，因为它开不了图是不可接受的。
-  public func load() -> DrawArchive {
-    guard let data = try? Data(contentsOf: url) else { return DrawArchive() }
-    guard var a = try? JSONDecoder().decode(DrawArchive.self, from: data) else {
-      return DrawArchive()
-    }
-    // 比自己新的存档看不懂（降级安装、从别人机器拷过来）：当空的，但不动磁盘上那份，
-    // 用户升回去还在。
-    guard a.version <= DrawArchive.currentVersion else { return DrawArchive() }
-    a.version = DrawArchive.currentVersion
-    return a
+  public enum StoreError: Error { case newerVersion, invalidArchive }
+  public func read() throws -> DrawArchive {
+    guard FileManager.default.fileExists(atPath: url.path) else { return DrawArchive() }
+    let data = try Data(contentsOf: url)
+    // Read the envelope before decoding tools unknown to this version.
+    if let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+       let version = raw["v"] as? Int, version > DrawArchive.currentVersion { throw StoreError.newerVersion }
+    var archive = try JSONDecoder().decode(DrawArchive.self, from: data)
+    archive.version = DrawArchive.currentVersion
+    return archive
   }
+  public func load() -> DrawArchive { (try? read()) ?? DrawArchive() }
 
   /// 写。先写临时文件再原子替换，中途被杀不会留下半份坏 JSON。
   public func save(_ archive: DrawArchive) throws {
+    // Never replace an unreadable/newer file with an empty in-memory fallback.
+    if FileManager.default.fileExists(atPath: url.path) { _ = try read() }
+    guard archive.bySymbol.values.allSatisfy({ $0.allSatisfy(\.isValid) }) else { throw StoreError.invalidArchive }
+    if FileManager.default.fileExists(atPath: url.path) {
+      let backup = url.appendingPathExtension("backup")
+      if !FileManager.default.fileExists(atPath: backup.path) { try FileManager.default.copyItem(at: url, to: backup) }
+    }
     var a = archive
     a.version = DrawArchive.currentVersion
     let data = try JSONEncoder().encode(a)

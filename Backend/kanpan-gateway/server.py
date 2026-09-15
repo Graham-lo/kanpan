@@ -17,6 +17,7 @@ from urllib.parse import urlsplit, parse_qs
 import zipfile
 import ipaddress
 from resource_limits import HTTPGuard
+from market_rest import MARKET, Unavailable
 
 CACHE = Path(os.environ.get('KANPAN_OI_CACHE', '/var/cache/kanpan-gateway'))
 LIMIT = 200 * 1024 * 1024
@@ -180,6 +181,38 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/chart-gateway/health':
             return self.reply(200, b'{"status":"ok","service":"kanpan-gateway"}')
         parts = urlsplit(self.path)
+        if parts.path in ('/market/v1/klines', '/market/v1/ticker', '/market/v1/instruments'):
+            if not RANGE_SLOTS.acquire(blocking=False):
+                return self.reply(503, b'{"error":"busy"}')
+            try:
+                query = parse_qs(parts.query, strict_parsing=True)
+                if any(len(v) != 1 for v in query.values()):
+                    raise ValueError('duplicate query')
+                q = {k: v[0] for k, v in query.items()}
+                source = q.pop('source')
+                if source not in ('binance', 'okx'):
+                    raise ValueError('invalid source')
+                if parts.path.endswith('/klines'):
+                    if set(q) - {'symbol', 'interval', 'limit', 'startTime', 'endTime'}:
+                        raise ValueError('invalid query')
+                    value = MARKET.klines(source, q['symbol'], q['interval'], int(q.get('limit', '300')),
+                                          int(q['startTime']) if 'startTime' in q else None,
+                                          int(q['endTime']) if 'endTime' in q else None)
+                elif parts.path.endswith('/ticker'):
+                    if set(q) != {'symbol'} or not re.fullmatch(r'[A-Z0-9_]{1,30}', q['symbol']):
+                        raise ValueError('invalid symbol')
+                    value = {'source': source, 'ticker': MARKET.ticker(source, q['symbol'])}
+                else:
+                    if q:
+                        raise ValueError('invalid query')
+                    value = {'source': source, 'instruments': MARKET.exchange_info(source)}
+                return self.reply(200, json.dumps(value, separators=(',', ':')).encode(), 'no-store')
+            except (KeyError, ValueError, TypeError):
+                return self.reply(400, b'{"error":"invalid market request"}')
+            except (Unavailable, HTTPError, OSError, TimeoutError, RuntimeError):
+                return self.reply(503, b'{"error":"market unavailable"}')
+            finally:
+                RANGE_SLOTS.release()
         range_match = RANGE_PATTERN.fullmatch(parts.path)
         if range_match:
             if not RANGE_SLOTS.acquire(blocking=False):

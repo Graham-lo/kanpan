@@ -58,6 +58,7 @@ struct Prefs: Sendable, Equatable {
   var adaptiveIndicators = false
   var compactValues = false
   var portraitHeight = 0.5
+  var indicatorColors: [IndicatorID: [Int: Hex]] = [:]
   var hiddenOutputs: [IndicatorID: Set<Int>] = [:]
   var rsiUpper = 70.0
   var rsiLower = 30.0

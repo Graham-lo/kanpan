@@ -1,0 +1,149 @@
+import SwiftUI
+import ReviewDomain
+
+public struct ReviewBook: View {
+  @Bindable var feature: ReviewFeature
+  @State private var filter = ""
+  public init(feature: ReviewFeature) { self.feature = feature }
+  public var body: some View {
+    NavigationStack {
+      VStack(spacing: 0) {
+        Picker("复盘", selection: $feature.tab) {
+          Text("待办").tag("todo"); Text("记录").tag("records"); Text("战绩").tag("stats")
+        }.pickerStyle(.segmented).padding()
+        if feature.tab == "stats" { statistics }
+        else {
+          List {
+            if feature.draft != nil {
+              Button { feature.bookOpen = false; feature.onCapture() } label: {
+                Label("继续未完成的记录", systemImage: "square.and.pencil")
+              }
+            }
+            if feature.tab == "todo" {
+              group("待处理", records: filtered.filter { $0.needsAction })
+              group("等答案", records: filtered.filter { $0.outcome == .waiting && !$0.needsAction })
+            } else { group(nil, records: filtered) }
+            if feature.historyLoading { ProgressView() }
+            if let error = feature.historyError { Text(error).foregroundStyle(.secondary); Button("重试") { Task { await feature.loadHistory(query: filter, page: feature.historyPage) } } }
+            if filtered.isEmpty && !feature.historyLoading && feature.historyError == nil {
+              Button { feature.bookOpen = false; feature.onCapture() } label: { ContentUnavailableView("还没有记录", systemImage: "book.closed", description: Text("记一笔")) }
+            }
+            if feature.isConnected && (feature.historyPage > 0 || feature.nextPage != nil) {
+              HStack {
+                Button("上一页") { Task { await feature.loadHistory(query: filter, page: feature.historyPage - 1) } }.disabled(feature.historyPage == 0 || feature.historyLoading)
+                Spacer(); Text("\(feature.historyPage + 1)").monospacedDigit(); Spacer()
+                Button("下一页") { Task { await feature.loadHistory(query: filter, page: feature.historyPage + 1) } }.disabled(feature.nextPage == nil || feature.historyLoading)
+              }.buttonStyle(.borderless).frame(minHeight: 44)
+            }
+          }.listStyle(.plain).searchable(text: $filter, prompt: "品种或原话")
+        }
+      }
+      .navigationTitle("复盘").navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("完成") { feature.bookOpen = false } }
+        ToolbarItemGroup(placement: .primaryAction) {
+          Button { feature.bookOpen = false; feature.onCapture() } label: { Image(systemName: "plus") }.accessibilityLabel("记一笔")
+        }
+      }
+      .refreshable { feature.synchronize(manual: true); await feature.loadHistory(query: filter) }
+      .onChange(of: feature.tab) { _, _ in feature.rememberTab() }
+      .task(id: feature.tab) { if feature.tab == "stats" { await feature.loadStatistics() } else { await feature.loadHistory(query: filter) } }
+      .task(id: filter) { do { try await Task.sleep(for: .milliseconds(350)); if feature.tab != "stats" { await feature.loadHistory(query: filter) } } catch {} }
+    }.tint(.orange)
+  }
+  private var filtered: [ReviewRecord] { feature.bookRecords.filter { filter.isEmpty || $0.draft.range.symbol.localizedCaseInsensitiveContains(filter) || $0.draft.text.localizedCaseInsensitiveContains(filter) } }
+  @ViewBuilder private func group(_ title: String?, records: [ReviewRecord]) -> some View {
+    if !records.isEmpty {
+      Section {
+        ForEach(records) { record in
+          NavigationLink { ReviewRecordView(feature: feature, id: record.id) } label: { ReviewRecordRow(record: record) }
+        }
+      } header: { if let title { Text(title) } }
+    }
+  }
+  private var statistics: some View {
+    List {
+      if let error = feature.statisticsError {
+        Text(error).foregroundStyle(.secondary)
+        Button("登录") { feature.onLogin() }
+      } else if feature.statistics.isEmpty { Text("暂无已判定样本").foregroundStyle(.secondary) }
+      ForEach(feature.statistics) { group in
+        HStack {
+          VStack(alignment: .leading) { Text(group.title); Text("\(group.total) 条有效记录").font(.caption).foregroundStyle(.secondary) }
+          Spacer()
+          Text(group.rate.map { String(format: "%.0f%%", $0 * 100) } ?? "—").font(.title2.monospacedDigit())
+        }
+      }
+    }.listStyle(.plain)
+  }
+}
+struct ReviewRecordRow: View {
+  let record: ReviewRecord
+  var body: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      HStack { Text(record.draft.range.symbol).fontWeight(.semibold); Text(record.draft.range.interval).foregroundStyle(.secondary); Spacer(); Text(record.outcome.title).foregroundStyle(.orange) }
+      Text(record.draft.text.isEmpty ? "未写原话" : record.draft.text).lineLimit(2).foregroundStyle(record.draft.text.isEmpty ? .secondary : .primary)
+      HStack {
+        Text(record.draft.rule.direction.title); Text(record.draft.origin.title)
+        Spacer(); Text(Date(timeIntervalSince1970: Double(record.draft.created) / 1000), style: .date)
+      }.font(.caption).foregroundStyle(.secondary)
+      if let error = record.syncError { Text(error).font(.caption).foregroundStyle(.orange) }
+      else if record.serverId == nil { Text("已存本机 · 待同步").font(.caption).foregroundStyle(.secondary) }
+      else if !record.eligible && record.draft.rule.direction != .observe { Text(record.draft.originalClaimed != nil || record.submitted.map { abs($0 - record.draft.created) > 60_000 } == true ? "补记" : "核验中").font(.caption).foregroundStyle(.secondary) }
+    }.padding(.vertical, 7)
+  }
+}
+public struct ReviewRecordView: View {
+  @Bindable var feature: ReviewFeature
+  let id: UUID
+  @State private var note = ""
+  @State private var nextTime = ""
+  @State private var confirmVoid = false
+  @State private var searchScope = "history"
+  public init(feature: ReviewFeature, id: UUID) { self.feature = feature; self.id = id }
+  private var record: ReviewRecord? { feature.record(id) }
+  public var body: some View {
+    Group {
+      if let record {
+        List {
+          Section { ReviewRecordRow(record: record) }
+          if record.groupPending == true {
+            Section("这次判断") {
+              Text("与最近一笔是同一次判断吗？").font(.subheadline)
+              Button("同一次判断") { feature.resolveGroup(id, sameEpisode: true) }
+              Button("独立判断") { feature.resolveGroup(id, sameEpisode: false) }
+            }
+          }
+          Section("当时") {
+            LabeledContent("区间", value: "\(record.draft.range.bars) 根 · \(record.draft.range.interval)")
+            if record.draft.rule.direction != .observe {
+              LabeledContent("目标", value: price(record.draft.rule.target))
+              LabeledContent("失效", value: price(record.draft.rule.invalidation))
+              LabeledContent("判定", value: record.draft.rule.confirmation.title)
+              LabeledContent("到期") { Text(Date(timeIntervalSince1970: Double(record.draft.rule.expires) / 1000), style: .date) }
+            }
+            Button("在图上重温") { feature.bookOpen = false; feature.onOpenChart(record) }
+            Button("找相似") { feature.search(record.draft.range, cutoff: record.draft.created, scope: searchScope) }
+          }
+          Section("市场的答案") { Text(record.outcome.title); if let result = record.assessment { Text(result.reason).font(.caption).foregroundStyle(.secondary) } }
+          Section("现在怎么看") { TextField("当时的判断，哪些成立", text: $note, axis: .vertical).lineLimit(3...8) }
+          Section("下次怎么做") { TextField("同样的局面再来，改哪儿", text: $nextTime, axis: .vertical).lineLimit(2...6) }
+          Section {
+            Button("保存草稿") { feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) }
+            Button("完成复盘") { feature.saveReflection(id, note: note, nextTime: nextTime, publish: true) }
+          }
+          if !record.reflectionHistory.isEmpty {
+            Section("历史复盘") { ForEach(Array(record.reflectionHistory.enumerated()), id: \.offset) { _, reflection in Text(reflection.note.isEmpty ? "未写内容" : reflection.note) } }
+          }
+          if !record.voided { Section { Button("作废记录", role: .destructive) { confirmVoid = true } } }
+        }.onAppear { note = record.reflection.note; nextTime = record.reflection.nextTime }
+          .onDisappear { if note != record.reflection.note || nextTime != record.reflection.nextTime { feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) } }
+          .sheet(isPresented: $feature.searchOpen) { ReviewSearchView(feature: feature, range: record.draft.range, cutoff: record.draft.created) }
+      } else { ContentUnavailableView("记录暂不可用", systemImage: "book.closed") }
+    }.navigationTitle("记录详情").navigationBarTitleDisplayMode(.inline)
+      .confirmationDialog("作废后保留内容，退出战绩统计", isPresented: $confirmVoid) {
+        Button("作废记录", role: .destructive) { feature.voidRecord(id) }
+      }
+  }
+  private func price(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(0...8))) }
+}

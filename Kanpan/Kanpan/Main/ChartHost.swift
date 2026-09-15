@@ -28,6 +28,7 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   private let scroll = ChartPageScrollView()
   private let latest = UIButton(type: .custom)
   private let panelDismiss = UIControl()
+  var onOverlayUpdate: () -> Void = {}
   var onPanelDismiss: () -> Void = {}
   var panelOpen = false { didSet { panelDismiss.isHidden = !panelOpen; if panelOpen { bringSubviewToFront(panelDismiss) } } }
   private var grips: [IndicatorID: ResizeGrip] = [:]
@@ -98,6 +99,7 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   @objc private func goLatest() { chart.scrollToLatest() }
 
   func updateControls() {
+    onOverlayUpdate()
     latest.frame = CGRect(x: max(0, bounds.width - 90), y: max(0, bounds.height - 58), width: 30, height: 30)
     latest.isHidden = chart.isAtLatest
     guard let state = chart.state, let layout = chart.chartLayout else { return }
@@ -320,7 +322,7 @@ struct ChartHost: UIViewRepresentable {
         s.crosshair = cross
       }
       // 线和视野一个道理：画的时候每帧都在动，外面那份必然是旧的。
-      if old.series.symbol == s.series.symbol { s.drawings = old.drawings }
+      if old.series.symbol == s.series.symbol { s.drawings = old.drawings; s.drawingPreviewID = old.drawingPreviewID }
       if old.series.symbol != s.series.symbol {
         s.crosshair = nil
         box.pending = .reset

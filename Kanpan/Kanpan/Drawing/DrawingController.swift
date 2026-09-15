@@ -2,112 +2,108 @@ import KanpanChart
 import KanpanCore
 import SwiftUI
 
-/// 画线态的外壳状态（§13 A7）。
-///
-/// 线本身归 `ChartView` 管（存在 `ChartState.drawings` 里，手势也在那边），这里只做
-/// 三件外壳的事：底栏该亮哪一颗、提示条写什么、以及**按品种落盘**。
-///
-/// 为什么不把线放进这个对象：视野和线都得跟着手指每帧变，穿一趟 SwiftUI 的 diff 太贵
-/// ——和 `ChartHost` 里「视野归图自己管」是同一个理由。这里只在事情发生之后被叫一次。
 @MainActor
 final class DrawingController: ObservableObject {
-  /// 画线态开着（底栏露出来）。
+  enum Panel: String, Identifiable { case tools, objects, style; var id: String { rawValue } }
   @Published private(set) var active = false
   @Published private(set) var tool: DrawingStore.Tool?
-  /// 图区顶部那一行提示；`nil` 就不显示（§10.8）。
   @Published private(set) var hint: String?
   @Published private(set) var canDelete = false
   @Published private(set) var canUndo = false
   @Published private(set) var canRedo = false
-  /// 这个品种画满 50 条了（A7.7）。外面弹一句就把它清掉。
+  @Published private(set) var items: [Drawing] = []
+  @Published private(set) var selected: Drawing?
+  @Published private(set) var preferences: DrawingPreferences
   @Published var full = false
-
+  @Published var notice: String?
+  @Published var panel: Panel?
   private weak var chart: ChartView?
-  private let store: DrawStore
+  private var store: DrawStore
+  var onArchiveChange: ((DrawArchive) -> Void)?
+  var storedArchive: DrawArchive { archive }
   private var archive: DrawArchive
   private var symbol = ""
 
   init(store: DrawStore = .applicationSupport()) {
     self.store = store
-    self.archive = store.load()
+    var problem: String?
+    do { archive = try store.read() }
+    catch { archive = DrawArchive(); problem = "暂时无法读取画线，原存档已保留。" }
+    preferences = archive.preferences
+    notice = problem
   }
-
-  // MARK: - 接线
-
-  /// `ChartHost` 造好视图之后把图交过来。同一张视图只接一次。
   func attach(_ view: ChartView) {
     guard chart !== view else { return }
-    chart = view
-    view.drawingInteractive = true
+    chart?.onDrawingsChanged = nil; chart?.onDrawingStateChanged = nil
+    chart?.endDrawing()
+    chart = view; view.drawingInteractive = true
     view.onDrawingsChanged = { [weak self] items in self?.persist(items) }
     view.onDrawingStateChanged = { [weak self] in self?.sync() }
     view.onDrawingLimitReached = { [weak self] in self?.full = true }
+    applyPreferences()
     if !symbol.isEmpty { view.setDrawings(archive[symbol]) }
     sync()
   }
-
-  /// 换品种：先把手上这份存了，再把新品种的读进图里（A7.7）。
   func focus(_ symbol: String) {
-    guard symbol != self.symbol else { return }
-    if let chart, !self.symbol.isEmpty { persist(chart.drawings) }
+    guard symbol != self.symbol || chart?.drawings != archive[symbol] && chart?.drawings.isEmpty == true else { return }
+    // Every completed edit is already saved. Never write the incoming chart into the outgoing key.
     self.symbol = symbol
-    chart?.setDrawings(archive[symbol])
-    sync()
+    chart?.setDrawings(archive[symbol]); panel = nil; sync()
   }
-
-  // MARK: - 底栏
-
-  /// 工具栏上的「画线」。再点一次收起来，收起时退出画线态（原型 `tDraw`）。
-  func toggle() {
-    active.toggle()
-    if !active { chart?.endDrawing() }
-    sync()
-  }
-
-  /// 选工具。点已经亮着的那颗就松开（原型 `data-draw` 的 onclick）。
+  func toggle() { active.toggle(); if !active { chart?.endDrawing() }; sync() }
   func pick(_ t: DrawingStore.Tool) {
-    chart?.drawTool = chart?.drawTool == t ? nil : t
-    sync()
+    active = true; chart?.drawTool = chart?.drawTool == t ? nil : t; panel = nil; sync()
   }
-
-  func deleteSelected() {
-    chart?.deleteSelectedDrawing()
-    sync()
+  func select(_ id: String) { active = true; chart?.selectedDrawingID = id; sync() }
+  func deleteSelected() { chart?.deleteSelectedDrawing(); sync() }
+  func finish() { chart?.endDrawing(); active = false; panel = nil; sync() }
+  func undo() { chart?.undoDrawing(); sync() }
+  func redo() { chart?.redoDrawing(); sync() }
+  func duplicate() { chart?.duplicateSelectedDrawing(); sync() }
+  func clear() { chart?.clearDrawings(); sync() }
+  func hideAll() { chart?.setAllDrawingsHidden(!items.allSatisfy(\.hidden)); sync() }
+  func update(_ item: Drawing) {
+    chart?.updateDrawing(item)
+    preferences.styles[item.kind.rawValue] = DrawingStyle(item)
+    savePreferences(); sync()
   }
-
-  /// 「完成」：退出画线态，线全留着（A7.6）。
-  func finish() {
-    chart?.endDrawing()
-    active = false
-    sync()
+  func toggleLock() { if var item = selected { item.locked.toggle(); update(item) } }
+  func toggleHidden(_ item: Drawing) { var next = item; next.hidden.toggle(); chart?.updateDrawing(next); sync() }
+  func toggleFavorite(_ kind: Drawing.Kind) {
+    if preferences.favorites.contains(kind) { preferences.favorites.removeAll { $0 == kind } }
+    else { preferences.favorites.append(kind) }
+    savePreferences()
   }
-
-  func undo() {
-    chart?.undoDrawing()
-    sync()
+  func toggleMagnet() { preferences.magnet.toggle(); savePreferences() }
+  func toggleContinuous() { preferences.continuous.toggle(); savePreferences() }
+  private func applyPreferences() {
+    chart?.drawingMagnet = preferences.magnet
+    chart?.continuousDrawing = preferences.continuous
+    chart?.drawingStyles = preferences.styles
   }
-
-  func redo() {
-    chart?.redoDrawing()
-    sync()
-  }
-
-  // MARK: - 落盘
-
-  /// 每次增删改都整份重写。画线全部加起来几 KB，比记增量省心，也不会写到一半断电。
+  private func savePreferences() { archive.preferences = preferences; write(); applyPreferences() }
   private func persist(_ items: [Drawing]) {
     guard !symbol.isEmpty else { return }
-    archive[symbol] = items
-    try? store.save(archive)
-    sync()
+    archive[symbol] = items; write(); sync()
   }
-
+  private func write() {
+    do { try store.save(archive); onArchiveChange?(archive) }
+    catch { notice = "画线未能保存，原存档已保留。请检查设备存储空间。" }
+  }
+  func useStorage(_ store: DrawStore, archive: DrawArchive) {
+    finish(); self.store = store; self.archive = archive; preferences = archive.preferences
+    chart?.setDrawings(archive[symbol]); applyPreferences(); sync()
+  }
+  func applySynced(_ value: DrawArchive) throws {
+    guard value != archive else { return }
+    try store.save(value); archive = value; preferences = value.preferences
+    chart?.setDrawings(value[symbol]); applyPreferences(); sync()
+  }
   private func sync() {
     guard let chart else { return }
-    tool = chart.drawTool
-    hint = active ? chart.drawHint : nil
-    canDelete = chart.selectedDrawingID != nil
-    canUndo = chart.canUndoDrawing
-    canRedo = chart.canRedoDrawing
+    tool = chart.drawTool; hint = active ? chart.drawHint : nil
+    items = chart.drawings; selected = items.first { $0.id == chart.selectedDrawingID }
+    if selected != nil { active = true }
+    canDelete = selected != nil; canUndo = chart.canUndoDrawing; canRedo = chart.canRedoDrawing
   }
 }

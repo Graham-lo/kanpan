@@ -39,3 +39,26 @@ struct ChartFoundationPrefsTests {
     #expect(restored.chartOptions.portraitHeight == 0.9)
   }
 }
+
+@Suite("MA EMA color persistence")
+struct IndicatorColorPersistenceTests {
+  @Test @MainActor func cancelSaveRestartAndReset() {
+    let storage = InMemoryPrefsStorage()
+    let store = PrefsStore(storage: storage)
+    var ma = IndicatorDraft(id: .ma, prefs: store.prefs)
+    ma.colors[0] = "#4A90E2"; ma.colors[2] = "#E46A76"
+    #expect(store.prefs.indicatorColors.isEmpty)
+    store.update { ma.save(into: &$0) }
+    var ema = IndicatorDraft(id: .ema, prefs: store.prefs)
+    ema.colors[0] = "#37A78F"
+    store.update { ema.save(into: &$0) }
+    let restarted = PrefsStore(storage: storage)
+    #expect(restarted.prefs.indicatorColors[.ma]?[0] == "#4A90E2")
+    #expect(restarted.prefs.indicatorColors[.ma]?[2] == "#E46A76")
+    #expect(restarted.prefs.indicatorColors[.ema]?[0] == "#37A78F")
+    var reset = IndicatorDraft(id: .ma, prefs: restarted.prefs); reset.colors = [:]
+    restarted.update { reset.save(into: &$0) }
+    #expect(PrefsStore(storage: storage).prefs.indicatorColors[.ma]?.isEmpty == true)
+    #expect(PrefsStore(storage: storage).prefs.indicatorColors[.ema]?[0] == "#37A78F")
+  }
+}

@@ -1,0 +1,44 @@
+[package]
+name = "kanpan-api"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+
+[workspace]
+members = [".", "vendor/scorebook-core", "vendor/scorebook-market"]
+resolver = "3"
+
+[dependencies]
+scorebook-market = { path = "vendor/scorebook-market" }
+scorebook-core = { path = "vendor/scorebook-core" }
+anyhow = "1"
+axum = { version = "0.8.9", features = ["macros", "multipart"] }
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+argon2 = "0.5"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+rand = "0.9"
+base64 = "0.22"
+chacha20poly1305 = "0.10"
+subtle = "2"
+zeroize = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls", "ring", "webpki-roots"] }
+tower-http = { version = "0.6", features = ["limit", "timeout"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+strip = true

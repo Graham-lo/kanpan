@@ -23,6 +23,9 @@ final class MarketModel {
   private(set) var tradeQuote: TradeQuote?
   private(set) var info: SymbolInfo
   private(set) var status: FeedStatus = .offline
+  private(set) var source: MarketSource = .binance
+  private(set) var historyError: String?
+  private(set) var routing: MarketRoutingState = .idle
   /// 最近一次 WS 推进来的时刻。顶栏圆点长按时报「多久没动了」——
   /// 「连上了但一帧不推」这种情况光看 `status` 是看不出来的（那时它还是 `.live`）。
   private(set) var lastPushAt: Date?
@@ -32,7 +35,7 @@ final class MarketModel {
   private(set) var symbol: String
   private(set) var interval: Interval
 
-  private var feed: MarketFeed
+  private var feed: RoutedMarketFeed
   /// 品种表。域名可以改（A6.10），而品种页握着的是一条早就交出去的 `@Sendable`
   /// 闭包——中间夹这个盒子，换域名时换掉里面那份，闭包不用重发。
   nonisolated private let catalog: CatalogBox
@@ -51,18 +54,32 @@ final class MarketModel {
     self.interval = interval
     self.hosts = hosts
     self.info = MarketModel.placeholder(symbol)
-    let rest = BinanceREST(hosts: hosts, log: MarketModel.log)
+    let rest = BinanceREST.upstream(.binance, hosts: hosts, log: MarketModel.log)
     self.oiSource = OISource(hosts: hosts, rest: rest, store: OIStore(paths: .caches()))
-    self.feed = MarketFeed(rest: rest, ws: BinanceWS(hosts: hosts, log: MarketModel.log),
-                           includeTicker: false, log: MarketModel.log)
+    self.feed = RoutedMarketFeed(hosts: hosts, preferenceURL: Self.sourcePreferenceURL, log: MarketModel.log)
     self.catalog = CatalogBox(SymbolCatalog(rest: rest))
   }
 
   /// 排查「图有数据但一动不动」的时候需要看得见连了没有、推没推进来。
   /// 默认静音；`KANPAN_LOG=1` 打开（Xcode Scheme 的环境变量，或 `simctl launch` 的
   /// `SIMCTL_CHILD_KANPAN_LOG=1`）。
+  private static var sourcePreferenceURL: URL {
+    var root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("kanpan-market")
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" {
+      root = root.appendingPathComponent("tests/" + (ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"] ?? "normal"))
+    }
+    #endif
+    return root.appendingPathComponent("source.json")
+  }
+
   private static let log: FeedLog =
-    ProcessInfo.processInfo.environment["KANPAN_LOG"] == "1" ? .stdout : .silent
+    ProcessInfo.processInfo.environment["KANPAN_LOG"] == "1" ? FeedLog { line in
+      print(line)
+      #if DEBUG
+      Task { @MainActor in MarketNetworkDiagnostics.shared.lines = String((MarketNetworkDiagnostics.shared.lines + "\n" + line).suffix(8000)) }
+      #endif
+    } : .silent
 
   /// `exchangeInfo` 回来之前先顶上。冷启动第一帧不该等网络。
   private static func placeholder(_ symbol: String) -> SymbolInfo {
@@ -127,11 +144,10 @@ final class MarketModel {
     hosts = next
     let running = pump != nil
     stop()
-    let rest = BinanceREST(hosts: next, log: MarketModel.log)
+    let rest = BinanceREST.upstream(.binance, hosts: next, log: MarketModel.log)
     oiSource = OISource(hosts: next, rest: rest, store: OIStore(paths: .caches()))
     oi = nil; oiRegion = nil
-    feed = MarketFeed(rest: rest, ws: BinanceWS(hosts: next, log: MarketModel.log),
-                      includeTicker: false, log: MarketModel.log)
+    feed = RoutedMarketFeed(hosts: next, preferenceURL: Self.sourcePreferenceURL, log: MarketModel.log)
     let box = catalog
     Task { await box.replace(SymbolCatalog(rest: rest)) }
     status = .offline
@@ -146,6 +162,17 @@ final class MarketModel {
   private func apply(_ update: FeedUpdate) {
     guard update.selection == selection else { return }
     switch update.event {
+    case .routing(let state):
+      routing = state
+      if state == .switching { historyError = nil }
+    case .source(let next):
+      source = next; ticker = nil; tradeQuote = nil; markPrice = nil; markTime = 0
+      oiTask?.cancel(); oi = nil; oiRegion = nil; historyError = nil
+      let paths = Paths(root: Paths.caches().root.appendingPathComponent("sources/" + next.rawValue))
+      let catalog = SymbolCatalog(rest: .upstream(next, hosts: hosts), paths: paths)
+      Task { await self.catalog.replace(catalog); await self.refreshInfo() }
+    case .historyError(let error):
+      historyError = error
     case .series(let s):
       guard s.symbol == symbol, s.interval == interval else { return }
       series = s
@@ -156,11 +183,11 @@ final class MarketModel {
       lastPushAt = Date()
     case .prepend:
       // `.prepend` 不带新序列，得自己去取。视野是绝对时间窗，补在左边天然不跳。
-      let request = selection
+      let request = selection, expectedSource = source
       Task { [feed] in
         let s = await feed.currentSeries
         await MainActor.run {
-          if request == self.selection, s.symbol == self.symbol, s.interval == self.interval { self.series = s }
+          if request == self.selection, expectedSource == self.source, s.symbol == self.symbol, s.interval == self.interval { self.series = s }
         }
       }
     case .tradeQuote(let quote):
@@ -238,6 +265,7 @@ final class MarketModel {
 
   func loadOI(view: ViewWindow, refresh: Bool = false) {
     lastView = view
+    guard source == .binance else { return }
     guard oiEnabled, let series, !series.isEmpty else { return }
     let from = max(series.firstTime, Int64(view.from) - series.step)
     let to = min(series.lastTime + series.step, Int64(view.to))
@@ -284,3 +312,10 @@ actor CatalogBox {
   func all() async -> [SymbolInfo] { await catalog.all() }
   func find(_ symbol: String) async -> SymbolInfo? { await catalog.find(symbol) }
 }
+
+#if DEBUG
+@MainActor @Observable final class MarketNetworkDiagnostics {
+  static let shared = MarketNetworkDiagnostics()
+  var lines = ""
+}
+#endif

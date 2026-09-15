@@ -7,9 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AC0000000000000000000052 /* KanpanAccount in Frameworks */ = {isa = PBXBuildFile; productRef = AC0000000000000000000051 /* KanpanAccount */; };
 		AB0000000000000000000012 /* KanpanCore in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000011 /* KanpanCore */; };
 		AB0000000000000000000022 /* KanpanChart in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000021 /* KanpanChart */; };
 		AB0000000000000000000032 /* KanpanData in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000031 /* KanpanData */; };
+		AB0000000000000000000052 /* KanpanReview in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000051 /* KanpanReview */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +50,8 @@
 				AB0000000000000000000012 /* KanpanCore in Frameworks */,
 				AB0000000000000000000022 /* KanpanChart in Frameworks */,
 				AB0000000000000000000032 /* KanpanData in Frameworks */,
+				AB0000000000000000000052 /* KanpanReview in Frameworks */,
+				AC0000000000000000000052 /* KanpanAccount in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -102,6 +106,8 @@
 				AB0000000000000000000011 /* KanpanCore */,
 				AB0000000000000000000021 /* KanpanChart */,
 				AB0000000000000000000031 /* KanpanData */,
+				AB0000000000000000000051 /* KanpanReview */,
+				AC0000000000000000000051 /* KanpanAccount */,
 			);
 			productName = Kanpan;
 			productReference = AB0000000000000000000005 /* Kanpan.app */;
@@ -162,6 +168,8 @@
 				AB0000000000000000000010 /* XCLocalSwiftPackageReference "../KanpanCore" */,
 				AB0000000000000000000020 /* XCLocalSwiftPackageReference "../KanpanChart" */,
 				AB0000000000000000000030 /* XCLocalSwiftPackageReference "../KanpanData" */,
+				AB0000000000000000000050 /* XCLocalSwiftPackageReference "../KanpanReview" */,
+				AC0000000000000000000050 /* XCLocalSwiftPackageReference "../KanpanAccount" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AB0000000000000000000003 /* Products */;
@@ -269,6 +277,7 @@
 				DEVELOPMENT_TEAM = 27Y32PT2HZ;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "看盘";
+				INFOPLIST_KEY_KanpanAccountAPIURL = "https://kanpan.107-174-172-10.sslip.io";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -295,6 +304,7 @@
 				DEVELOPMENT_TEAM = 27Y32PT2HZ;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "看盘";
+				INFOPLIST_KEY_KanpanAccountAPIURL = "https://kanpan.107-174-172-10.sslip.io";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -376,6 +386,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		AC0000000000000000000050 /* XCLocalSwiftPackageReference "../KanpanAccount" */ = {isa = XCLocalSwiftPackageReference; relativePath = ../KanpanAccount; };
 		AB0000000000000000000010 /* XCLocalSwiftPackageReference "../KanpanCore" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../KanpanCore;
@@ -388,9 +399,11 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../KanpanData;
 		};
+		AB0000000000000000000050 /* XCLocalSwiftPackageReference "../KanpanReview" */ = {isa = XCLocalSwiftPackageReference; relativePath = ../KanpanReview; };
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		AC0000000000000000000051 /* KanpanAccount */ = {isa = XCSwiftPackageProductDependency; productName = KanpanAccount; };
 		AB0000000000000000000011 /* KanpanCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = KanpanCore;
@@ -403,6 +416,7 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = KanpanData;
 		};
+		AB0000000000000000000051 /* KanpanReview */ = {isa = XCSwiftPackageProductDependency; productName = KanpanReview; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AB0000000000000000000001 /* Project object */;

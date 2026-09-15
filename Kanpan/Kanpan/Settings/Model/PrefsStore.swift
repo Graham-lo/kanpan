@@ -56,13 +56,19 @@ final class PrefsStore {
   /// 行情缓存占用（A6.11）。没量过是 nil，设置页进来量一次。
   private(set) var cacheUsage: MarketCacheUsage?
 
-  @ObservationIgnored private let storage: any PrefsStorage
+  @ObservationIgnored private var storage: any PrefsStorage
+  @ObservationIgnored var onChange: ((Prefs) -> Void)?
   @ObservationIgnored private let cache: any MarketCacheStore
 
   init(storage: any PrefsStorage = UserDefaults.standard,
        cache: any MarketCacheStore = MarketCacheFactory.make()) {
-    let selectedStorage: any PrefsStorage = ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1"
-      ? InMemoryPrefsStorage() : storage
+    let selectedStorage: any PrefsStorage
+    if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" {
+      if let profile = ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"],
+         UUID(uuidString: profile) != nil, let defaults = UserDefaults(suiteName: "kanpan.tests." + profile) {
+        selectedStorage = defaults
+      } else { selectedStorage = InMemoryPrefsStorage() }
+    } else { selectedStorage = storage }
     self.storage = selectedStorage
     self.cache = cache
     self.prefs = PrefsStore.load(from: selectedStorage)
@@ -100,11 +106,21 @@ final class PrefsStore {
   /// 恢复出厂：把当前键抹掉，回到新默认。
   func resetToDefaults() {
     prefs = .defaults
-    storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
+    persist()
   }
 
   private func persist() {
     storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
+    onChange?(prefs)
+  }
+
+  func useStorage(_ storage: any PrefsStorage, prefs: Prefs) {
+    self.storage = storage; self.prefs = prefs
+    storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
+  }
+  func applySynced(_ value: Prefs) {
+    guard value != prefs else { return }
+    prefs = value; storage.setPrefsData(PrefsCodec.encode(value), forKey: PrefsCodec.key)
   }
 
   // ---------------------------------------------------------------- 缓存

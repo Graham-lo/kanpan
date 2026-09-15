@@ -43,3 +43,6 @@ Backend/kanpan-gateway/__pycache__/
 # Raw simulator result bundles stay local; summaries and selected screenshots are tracked.
 docs/acceptance/eye-colors/*.xcresult/
 docs/acceptance/eye-colors/*attachments/
+
+DerivedData-review-tests/
+docs/acceptance/drawing-v2/*.xcresult/

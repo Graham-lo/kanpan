@@ -25,14 +25,25 @@ final class DrawingSession {
     /// `startView` 一样：累加会把手指抖动的浮点误差一路攒进端点里。
     var from: Drawing
     var start: CGPoint
+    var axes: DrawAxes
   }
 
   var tool: DrawingStore.Tool?
   var selected: String?
   /// 趋势线落了第一点、还差第二点。
-  var pending: DrawPoint?
+  var anchors: [DrawPoint] = []
+  var pending: DrawPoint? {
+    get { anchors.first }
+    set { anchors = newValue.map { [$0] } ?? [] }
+  }
+  var styles: [String: DrawingStyle] = [:]
+  var continuous = false
+  var magnet = true
+  var navigating = false
   /// 第二点此刻指到哪儿：`pending` 在的时候手指移动，预览线实时跟到这里（§10.8）。
   var aim: DrawPoint?
+  var preview: Drawing?
+  var loupe: UIImage?
   var drag: Drag?
   var history = DrawHistory()
 
@@ -58,7 +69,7 @@ private nonisolated(unsafe) let drawingSessionKey =
 
 /// 「轻点」的时长上限（§10.8：按下到抬起 < 200ms 且位移 < 4pt 才算落笔）。
 /// 位移那一半复用 `Chart.panSlopPt`，两处是同一个 4pt。
-private let drawTapMs: Double = 200
+private let drawTapMs: Double = 500
 
 extension ChartView {
   /// 这张图的画线会话。第一次问的时候建。
@@ -107,6 +118,8 @@ extension ChartView {
       d.tool = newValue
       d.pending = nil
       d.aim = nil
+      d.selected = nil
+      if var s = state { s.crosshair = nil; state = s }
       if newValue != nil { drawingInteractive = true }
       drawingChanged()
     }
@@ -128,6 +141,8 @@ extension ChartView {
   /// 整批换线（切品种、从磁盘读回来）。撤销栈一并清掉：两个品种的线互不相干。
   public func setDrawings(_ items: [Drawing]) {
     guard var s = state else { return }
+    s.drawingPreviewID = nil
+    drawing.preview = nil
     s.drawings = DrawArchive.capped(items)
     state = s
     let d = drawing
@@ -136,17 +151,58 @@ extension ChartView {
     d.aim = nil
     d.drag = nil
     d.history.clear()
+    d.tool = nil
+    d.claimed = nil
+    d.navigating = false
     drawingChanged()
   }
 
   /// 图区顶部那一行提示（§10.8）。没选工具时是 `nil`，外面就把提示条收起来。
   public var drawHint: String? {
-    switch drawing.tool {
-    case .trend: return drawing.pending == nil ? "点两下画一条趋势线" : "再点一下"
-    // 任务书只给了趋势线那两句，水平线一点即成，照同样的口气补一句。
-    case .hline: return "点一下画一条水平线"
-    case nil: return nil
-    }
+    guard let tool = drawing.tool else { return nil }
+    if tool == .trend { return drawing.pending == nil ? "点两下画一条趋势线" : "再点一下" }
+    if tool.pointCount == 1 { return "轻点放置" + tool.title }
+    if drawing.anchors.isEmpty { return "选择起点" }
+    return tool == .channel && drawing.anchors.count == 2 ? "选择通道宽度" : "选择终点"
+  }
+
+  public var drawingStyles: [String: DrawingStyle] {
+    get { drawing.styles }
+    set { drawing.styles = newValue }
+  }
+  public var continuousDrawing: Bool {
+    get { drawing.continuous }
+    set { drawing.continuous = newValue; drawingChanged() }
+  }
+  public var drawingMagnet: Bool {
+    get { drawing.magnet }
+    set { drawing.magnet = newValue; drawingChanged() }
+  }
+  public func updateDrawing(_ item: Drawing) {
+    guard item.isValid, var s = state, let i = s.drawings.firstIndex(where: { $0.id == item.id }), s.drawings[i] != item else { return }
+    drawing.history.commit(before: s.drawings)
+    s.drawings[i] = item; state = s; drawingChanged(items: s.drawings)
+  }
+  public func duplicateSelectedDrawing() {
+    guard var s = state, let item = s.drawings.first(where: { $0.id == drawing.selected }), let axes = drawAxes else { return }
+    guard s.drawings.count < DrawArchive.perSymbolLimit else { drawing.onFull?(); return }
+    var copy = item; copy.locked = false; copy.hidden = false
+    copy = movedDrawing(copy, part: .body, dt: axes.view.span * 20 / axes.layout.plotW,
+                        priceShift: { axes.p(atY: axes.y($0) + 20) })
+    copy.id = Drawing.newID()
+    drawing.history.commit(before: s.drawings); s.drawings.append(copy); state = s
+    drawing.selected = copy.id; drawingChanged(items: s.drawings)
+  }
+  public func clearDrawings() {
+    guard var s = state, !s.drawings.isEmpty else { return }
+    drawing.history.commit(before: s.drawings); s.drawings = []; state = s
+    drawing.selected = nil; drawing.pending = nil; drawing.aim = nil; drawingChanged(items: [])
+  }
+  public func setAllDrawingsHidden(_ hidden: Bool) {
+    guard var s = state, s.drawings.contains(where: { $0.hidden != hidden }) else { return }
+    drawing.history.commit(before: s.drawings)
+    for i in s.drawings.indices { s.drawings[i].hidden = hidden }
+    state = s; drawing.selected = nil; drawingChanged(items: s.drawings)
   }
 
   /// 删掉选中的那条（A7.6）。一次 rigid 触觉，没有确认弹窗——画错了重画就是了（§10.8）。
@@ -170,13 +226,17 @@ extension ChartView {
     d.aim = nil
     d.selected = nil
     d.drag = nil
+    d.claimed = nil
+    d.preview = nil
+    if var s = state { s.drawingPreviewID = nil; state = s }
     drawingChanged()
   }
 
-  public var canUndoDrawing: Bool { drawing.history.canUndo }
+  public var canUndoDrawing: Bool { !drawing.anchors.isEmpty || drawing.history.canUndo }
   public var canRedoDrawing: Bool { drawing.history.canRedo }
 
   public func undoDrawing() {
+    if !drawing.anchors.isEmpty { drawing.anchors.removeLast(); drawing.aim = nil; drawingChanged(); return }
     guard var s = state, let prev = drawing.history.undo(current: s.drawings) else { return }
     s.drawings = prev
     state = s
@@ -238,6 +298,7 @@ struct DrawAxes {
   var range: PriceRange
   var mode: PriceMode
   var view: ViewWindow
+  var bounds: DrawBounds { DrawBounds(left: 0, top: pane.y, right: layout.plotW, bottom: pane.y + pane.h) }
 
   func x(_ t: Double) -> Double { view.x(t, plotW: layout.plotW) }
   func y(_ p: Double) -> Double { yOf(p, pane: pane, range: range, mode: mode) }
@@ -257,14 +318,25 @@ extension ChartView {
     guard let s = state else { return DrawSnap(point: DrawPoint(t: 0, p: 0), index: -1) }
     let px = max(0, min(axes.layout.plotW, Double(q.x)))
     return snapDrawPoint(
-      t: axes.t(atX: px), p: axes.p(atY: Double(q.y)), series: s.series, magnet: s.magnet)
+      t: axes.t(atX: px), p: axes.p(atY: max(axes.pane.y, min(axes.pane.y + axes.pane.h, Double(q.y)))),
+      series: s.series, magnet: drawing.magnet, xOf: axes.x, yOf: axes.y)
   }
 
   fileprivate func drawHitTest(_ q: CGPoint, axes: DrawAxes) -> DrawHit? {
-    hitDraw(
-      drawings, px: Double(q.x), py: Double(q.y),
-      xOf: { axes.x($0) }, yOf: { axes.y($0) })
+    guard state?.options.drawings == true, axes.bounds.contains(DrawPixel(Double(q.x), Double(q.y))) else { return nil }
+    // The selected object's handles get a finger-sized target and priority over
+    // crossing lines. Unselected drawings keep their narrower selection hit area.
+    if let item = drawings.first(where: { $0.id == drawing.selected && !$0.hidden }) {
+      let g = drawingGeometry(item, bounds: axes.bounds, xOf: axes.x, yOf: axes.y)
+      if let part = g.hit(x: Double(q.x), y: Double(q.y), handleRadius: 22) { return DrawHit(id: item.id, part: part) }
+    }
+    for item in drawings.reversed() where !item.hidden {
+      let g = drawingGeometry(item, bounds: axes.bounds, xOf: axes.x, yOf: axes.y)
+      if let part = g.hit(x: Double(q.x), y: Double(q.y)) { return DrawHit(id: item.id, part: part) }
+    }
+    return nil
   }
+
 }
 
 // MARK: - 触摸
@@ -284,9 +356,19 @@ extension ChartView {
     startDrawingLink()
     let d = drawing
     // 已经在拖线 / 在瞄第二点：多落下来的手指一概不理，别把正在画的东西打断。
-    if d.claimed != nil { return }
+    if let claimed = d.claimed {
+      guard !touches.contains(claimed) else { return }
+      // Transition the original touch and the new touch to a pinch. Keep completed anchors.
+      if let drag = d.drag, var s = state, let i = s.drawings.firstIndex(where: { $0.id == drag.id }) {
+        s.drawings[i] = drag.from; s.drawingPreviewID = nil; state = s
+      }
+      d.preview = nil; d.drag = nil; d.claimed = nil; d.aim = nil; d.navigating = true
+      touchesBegan(Set([claimed]).union(touches), with: event)
+      drawingChanged(); return
+    }
     // 已经交给图表的手势：第二根手指要给它做捏合，继续转。
     if !gesture.touches.isEmpty {
+      d.navigating = true
       touchesBegan(touches, with: event)
       return
     }
@@ -296,7 +378,7 @@ extension ChartView {
     }
     let q = t.location(in: self)
     // 右侧价格轴、底部时间轴归图表，画线不掺和。
-    guard Double(q.x) <= axes.layout.plotW, Double(q.y) <= axes.layout.timeY else {
+    guard axes.bounds.contains(DrawPixel(Double(q.x), Double(q.y))) else {
       touchesBegan(touches, with: event)
       return
     }
@@ -307,20 +389,23 @@ extension ChartView {
     // 半截的趋势线：这根手指是用来瞄第二点的，预览线跟着走，抬手落点。
     if d.pending != nil {
       d.claimed = t
+      captureDrawingLoupe()
       d.lastMagnetIndex = -1
       aimPending(at: q, axes: axes)
       return
     }
 
-    // 命中已有的线。原型的规矩：手柄随时可拖，线身只有已经选中的那条才拖得动，
-    // 否则从线上划过去就再也拖不动图了。
-    if let hit = drawHitTest(q, axes: axes), d.selected == hit.id || hit.part != .body,
-      let from = drawings.first(where: { $0.id == hit.id }), var s = state
+    // On a phone, first tap to select, then drag. Passing a finger over an
+    // unselected endpoint must not accidentally edit a drawing instead of panning.
+    if d.tool == nil, let hit = drawHitTest(q, axes: axes), d.selected == hit.id,
+      let from = drawings.first(where: { $0.id == hit.id }), !from.locked, var s = state
     {
       d.claimed = t
       d.selected = hit.id
-      d.drag = DrawingSession.Drag(id: hit.id, part: hit.part, from: from, start: q)
-      d.history.commit(before: s.drawings)
+      captureDrawingLoupe()
+      d.preview = from
+      s.drawingPreviewID = from.id
+      d.drag = DrawingSession.Drag(id: hit.id, part: hit.part, from: from, start: q, axes: axes)
       s.crosshair = nil          // 拖线的时候十字线碍事
       state = s
       drawingChanged()
@@ -328,6 +413,7 @@ extension ChartView {
     }
 
     touchesBegan(touches, with: event)
+    if d.tool != nil { gesture.cancelLongPress() }
   }
 
   func drawingTouchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -355,9 +441,16 @@ extension ChartView {
     d.claimed = nil
     let axes = drawAxes
 
-    if d.drag != nil {
-      d.drag = nil
-      drawingChanged(items: drawings)
+    if let drag = d.drag, var s = state, let i = s.drawings.firstIndex(where: { $0.id == drag.id }) {
+      let preview = d.preview
+      d.drag = nil; d.preview = nil; s.drawingPreviewID = nil
+      if cancelled { s.drawings[i] = drag.from; state = s; drawingChanged(); return }
+      if let preview { s.drawings[i] = preview }
+      state = s
+      if s.drawings[i] != drag.from {
+        var before = s.drawings; before[i] = drag.from
+        d.history.commit(before: before); drawingChanged(items: s.drawings)
+      } else { drawingChanged() }
       return
     }
     // 瞄着第二点的那根手指抬起来了：落点。
@@ -376,12 +469,12 @@ extension ChartView {
     let d = drawing
     let now = Self.drawMs(event)
     let isTap =
-      !cancelled && gesture.mode == .pan && gesture.moved < Chart.panSlopPt
+      !d.navigating && !cancelled && gesture.mode == .pan && gesture.moved < Chart.panSlopPt
       && now - d.beganMs < drawTapMs
     // 十字线在的时候这一下是用来收十字线的，不落笔也不改选中。
     let busy = state?.crosshair != nil
 
-    if isTap, !busy, let axes = drawAxes {
+    if isTap, !busy, let axes = drawAxes, axes.bounds.contains(DrawPixel(Double(gesture.startPoint.x), Double(gesture.startPoint.y))) {
       let q = gesture.startPoint
       if d.tool != nil {
         // 原型 `pointerup` 里画线分支排在平移分支**前面**：画线态下这一下不会被
@@ -406,6 +499,7 @@ extension ChartView {
     } else {
       touchesEnded(touches, with: event)
     }
+    if gesture.touches.isEmpty { d.navigating = false }
   }
 
   /// 把这一下轻点从图表手势里摘掉：`mode` 一清，`finishTouches` 的轻点、甩、双击
@@ -446,44 +540,51 @@ extension ChartView {
       d.history.commit(before: s.drawings)
       s.drawings.append(item)
       state = s
-      d.tool = nil
+      d.tool = d.continuous ? tool : nil
+      d.selected = item.id
       d.pending = nil
       d.aim = nil
-      if s.magnet { Haptics.magnetTick() }
+      if snap.index >= 0 { Haptics.magnetTick() }
       drawingChanged(items: s.drawings)
     }
 
-    switch tool {
-    case .hline:
-      commit(Drawing(kind: .hline, a: pt))
-    case .trend:
-      if let first = d.pending {
-        commit(Drawing(kind: .trend, a: first, b: pt))
-      } else {
-        d.pending = pt
-        d.aim = nil
-        d.lastMagnetIndex = snap.index
-        if s.magnet { Haptics.magnetTick() }
-        drawingChanged()
+    if let last = d.anchors.last, hypot(axes.x(last.t) - axes.x(pt.t), axes.y(last.p) - axes.y(pt.p)) < 3 { return }
+    let points = d.anchors + [pt]
+    if points.count == tool.pointCount {
+      var item = Drawing(kind: tool, points: points)
+      if let style = d.styles[tool.rawValue] {
+        item.color = style.color; item.lineWidth = style.lineWidth; item.dash = style.dash
+        item.filled = style.filled; item.levels = style.levels
       }
+      commit(item)
+    } else {
+      d.anchors.append(pt); d.aim = nil; d.lastMagnetIndex = snap.index
+      if snap.index >= 0 { Haptics.magnetTick() }
+      drawingChanged()
     }
   }
 
   // MARK: - 拖
 
   private func applyDrag(to q: CGPoint, axes: DrawAxes) {
-    guard var s = state, let drag = drawing.drag,
-      let i = s.drawings.firstIndex(where: { $0.id == drag.id })
-    else { return }
-    let dxPx = Double(q.x - drag.start.x)
-    let dyPx = Double(q.y - drag.start.y)
-    let dt = dxPx / axes.layout.plotW * s.view.span
-    // 价格按**像素**平移：对数 / 百分比模式下等价差不等于等像素（A7.5）。
-    s.drawings[i] = movedDrawing(
-      drag.from, part: drag.part, dt: dt,
-      priceShift: { axes.p(atY: axes.y($0) + dyPx) })
-    state = s
+    guard let drag = drawing.drag else { return }
+    let axes = drag.axes
+    let dx = Double(q.x - drag.start.x), dy = Double(q.y - drag.start.y)
+    var item = movedDrawing(drag.from, part: drag.part, dt: dx / axes.layout.plotW * axes.view.span,
+                            priceShift: { axes.p(atY: axes.y($0) + dy) })
+    if drag.part != .body {
+      let index = drag.part == .a ? 0 : (drag.part == .b ? 1 : 2)
+      if item.points.indices.contains(index) { item.points[index] = drawPoint(at: q, axes: axes).point }
+    }
+    drawing.preview = item
     refreshDrawingOverlay()
+  }
+
+  private func captureDrawingLoupe() {
+    guard let renderer else { return }
+    drawing.loupe = UIGraphicsImageRenderer(size: bounds.size).image { context in
+      renderer.drawPlot(in: context.cgContext, size: bounds.size, scale: Double(contentScaleFactor))
+    }
   }
 
   // MARK: - 覆盖层的帧
@@ -565,70 +666,43 @@ final class DrawingOverlayView: UIView {
     else { return }
     let d = host.drawing
     let t = s.colors
+    guard s.options.drawings else { return }
     ctx.saveGState()
     defer { ctx.restoreGState() }
     // 画布只有图区那一块，别糊到轴上。
-    ctx.clip(to: CGRect(x: 0, y: 0, width: axes.layout.plotW, height: axes.layout.timeY))
+    ctx.clip(to: CGRect(x: 0, y: axes.pane.y, width: axes.layout.plotW, height: axes.pane.h))
 
     if let sel = d.selected, let item = s.drawings.first(where: { $0.id == sel }) {
-      strokeSelected(item, ctx: ctx, axes: axes, colors: t, decimals: s.decimals)
+      strokeSelected(d.preview ?? item, ctx: ctx, axes: axes, colors: t, decimals: s.decimals)
     }
-    if let first = d.pending {
-      let x1 = axes.x(first.t), y1 = axes.y(first.p)
-      if let aim = d.aim {
-        // 预览用虚线：还没落的东西不能和画好的线长一个样。
-        ctx.setStrokeColor(Paint.cg(t.amber))
-        ctx.setLineWidth(1.3)
-        ctx.setLineDash(phase: 0, lengths: [4, 3])
-        ctx.beginPath()
-        ctx.move(to: CGPoint(x: x1, y: y1))
-        ctx.addLine(to: CGPoint(x: axes.x(aim.t), y: axes.y(aim.p)))
-        ctx.strokePath()
-        ctx.setLineDash(phase: 0, lengths: [])
-        readout(ctx, at: CGPoint(x: axes.x(aim.t), y: axes.y(aim.p)), point: aim, host: host, axes: axes)
+    if let tool = d.tool, !d.anchors.isEmpty {
+      var points = d.anchors
+      if let aim = d.aim { points.append(aim) }
+      if points.count == tool.pointCount {
+        var preview = Drawing(kind: tool, points: points); preview.dash = .dashed
+        paintDrawing(preview, ctx: ctx, axes: axes, colors: t, selected: true, handles: true)
+      } else {
+        for pt in points { handle(ctx: ctx, x: axes.x(pt.t), y: axes.y(pt.p), colors: t) }
+        if points.count > 1 {
+          paintDrawing(Drawing(kind: .trend, points: Array(points.prefix(2))), ctx: ctx, axes: axes, colors: t, selected: true, handles: false)
+        }
       }
-      ctx.setFillColor(Paint.cg(t.amber))
-      ctx.fillEllipse(in: CGRect(x: x1 - 4, y: y1 - 4, width: 8, height: 8))
+      if let aim = d.aim { readout(ctx, at: CGPoint(x: axes.x(aim.t), y: axes.y(aim.p)), point: aim, host: host, axes: axes) }
     }
-    if let drag = d.drag, let item = s.drawings.first(where: { $0.id == drag.id }),
-      drag.part != .body
-    {
-      // §10.8：拖手柄时给出该点的 时间 · 价格。
-      let pt = drag.part == .a ? item.a : (item.b ?? item.a)
-      readout(ctx, at: CGPoint(x: axes.x(pt.t), y: axes.y(pt.p)), point: pt, host: host, axes: axes)
-    }
-  }
-
-  private func strokeSelected(
-    _ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartColors, decimals: Int
-  ) {
-    ctx.setStrokeColor(Paint.cg(t.amber))
-    ctx.setLineWidth(1.8)
-    ctx.setLineDash(phase: 0, lengths: [])
-    if d.kind == .hline {
-      let y = axes.y(d.a.p)
-      ctx.beginPath()
-      ctx.move(to: CGPoint(x: 0, y: y))
-      ctx.addLine(to: CGPoint(x: axes.layout.plotW, y: y))
-      ctx.strokePath()
-      fmtNum(d.a.p, decimals).drawRightBottom(
-        at: CGPoint(x: axes.layout.plotW - 4, y: y - 3), font: ChartFont.axis, color: t.amber)
-      handle(ctx: ctx, x: axes.layout.plotW / 2, y: y, colors: t)
-    } else if let b = d.b {
-      let x1 = axes.x(d.a.t), y1 = axes.y(d.a.p)
-      let x2 = axes.x(b.t), y2 = axes.y(b.p)
-      ctx.beginPath()
-      ctx.move(to: CGPoint(x: x1, y: y1))
-      ctx.addLine(to: CGPoint(x: x2, y: y2))
-      ctx.strokePath()
-      handle(ctx: ctx, x: x1, y: y1, colors: t)
-      handle(ctx: ctx, x: x2, y: y2, colors: t)
+    if let drag = d.drag, let item = d.preview ?? s.drawings.first(where: { $0.id == drag.id }), drag.part != .body {
+      let index = drag.part == .a ? 0 : (drag.part == .b ? 1 : 2)
+      if item.points.indices.contains(index) {
+        let pt = item.points[index]
+        readout(ctx, at: CGPoint(x: axes.x(pt.t), y: axes.y(pt.p)), point: pt, host: host, axes: axes)
+      }
     }
   }
 
-  /// 原型的 `handle()`：r=5 的圆，`panel` 填、amber 描 1.4。
-  /// 看着是 10pt，但命中半径是 12pt（`Chart.hitHandlePt`），实际可按范围 24pt，
-  /// 满足 §10.8 的「直径 22pt 好按」。
+  private func strokeSelected(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartColors, decimals: Int) {
+    paintDrawing(d, ctx: ctx, axes: axes, colors: t, selected: true, handles: !d.locked)
+  }
+
+  /// Visual handle stays compact; the selected handle accepts a 44pt touch target.
   private func handle(ctx: CGContext, x: Double, y: Double, colors t: ChartColors) {
     let r = CGRect(x: x - 5, y: y - 5, width: 10, height: 10)
     ctx.setFillColor(Paint.cg(t.panel))
@@ -643,6 +717,16 @@ final class DrawingOverlayView: UIView {
     _ ctx: CGContext, at q: CGPoint, point: DrawPoint, host: ChartView, axes: DrawAxes
   ) {
     guard let s = host.state else { return }
+    if let backdrop = host.drawing.loupe {
+      let center = CGPoint(x: max(48, min(axes.layout.plotW - 48, Double(q.x))), y: max(axes.pane.y + 42, Double(q.y) - 95))
+      let box = CGRect(x: center.x - 43, y: center.y - 33, width: 86, height: 66)
+      ctx.saveGState(); ctx.addEllipse(in: box); ctx.clip()
+      ctx.translateBy(x: center.x, y: center.y); ctx.scaleBy(x: 1.8, y: 1.8)
+      backdrop.draw(at: CGPoint(x: -q.x, y: -q.y)); ctx.restoreGState()
+      ctx.setStrokeColor(Paint.cg(s.colors.amber)); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: box)
+      ctx.beginPath(); ctx.move(to: CGPoint(x: center.x - 7, y: center.y)); ctx.addLine(to: CGPoint(x: center.x + 7, y: center.y))
+      ctx.move(to: CGPoint(x: center.x, y: center.y - 7)); ctx.addLine(to: CGPoint(x: center.x, y: center.y + 7)); ctx.strokePath()
+    }
     let text = fmtFull(ms: point.t, offsetMinutes: s.timezone.offsetMinutes) + " · "
       + fmtNum(point.p, s.decimals)
     let t = s.colors
@@ -654,5 +738,38 @@ final class DrawingOverlayView: UIView {
     ctx.fillPath()
     text.drawCentered(
       at: CGPoint(x: x + w / 2, y: y + 8.5), font: ChartFont.axis, color: t.crossInk)
+  }
+}
+
+func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartColors,
+                  selected: Bool = false, handles: Bool = false) {
+  let g = drawingGeometry(d, bounds: axes.bounds, xOf: axes.x, yOf: axes.y)
+  guard !d.hidden else { return }
+  let color = d.color ?? t.band
+  ctx.saveGState(); defer { ctx.restoreGState() }
+  ctx.clip(to: CGRect(x: axes.bounds.left, y: axes.bounds.top, width: axes.layout.plotW, height: axes.pane.h))
+  ctx.setStrokeColor(Paint.cg(color)); ctx.setLineWidth(d.lineWidth)
+  ctx.setLineDash(phase: 0, lengths: d.dash == .solid ? [] : (d.dash == .dashed ? [6, 4] : [1, 3]))
+  if d.filled, !selected, let first = g.polygon.first {
+    ctx.saveGState(); ctx.setAlpha(0.12); ctx.setFillColor(Paint.cg(color))
+    ctx.beginPath(); ctx.move(to: CGPoint(x: first.x, y: first.y))
+    for p in g.polygon.dropFirst() { ctx.addLine(to: CGPoint(x: p.x, y: p.y)) }
+    ctx.closePath(); ctx.fillPath(); ctx.restoreGState()
+  }
+  for line in g.segments {
+    ctx.beginPath(); ctx.move(to: CGPoint(x: line.a.x, y: line.a.y)); ctx.addLine(to: CGPoint(x: line.b.x, y: line.b.y)); ctx.strokePath()
+  }
+  for label in g.labels where label.point.y >= axes.pane.y && label.point.y <= axes.pane.y + axes.pane.h {
+    let width = Double(label.text.width(ChartFont.axis))
+    label.text.drawRightBottom(at: CGPoint(x: max(width + 3, min(axes.layout.plotW - 3, label.point.x)), y: label.point.y), font: ChartFont.axis, color: color)
+  }
+  if selected, handles {
+    ctx.setLineDash(phase: 0, lengths: [])
+    let points = g.handles.isEmpty ? [DrawPixel(d.kind == .hline ? axes.layout.plotW / 2 : axes.x(d.a.t), d.kind == .vline ? axes.pane.y + axes.pane.h / 2 : axes.y(d.a.p))] : g.handles
+    for p in points {
+      let rect = CGRect(x: p.x - 6, y: p.y - 6, width: 12, height: 12)
+      ctx.setFillColor(Paint.cg(t.panel)); ctx.fillEllipse(in: rect)
+      ctx.setStrokeColor(Paint.cg(t.amber)); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: rect)
+    }
   }
 }

@@ -1,0 +1,99 @@
+import Foundation
+import KanpanCore
+import KanpanAccount
+
+/// Explicit allowlist shared by cloud preferences and review chart snapshots.
+enum PersonalSyncCodec {
+  static let fields: Set<String> = ["overlays", "subs", "subHeights", "subHeightOverrides", "params", "indicatorColors", "hiddenOutputs", "portraitHeight", "quickIntervals", "theme", "ambientTheme", "styleID", "redUp", "priceMode", "timeZone", "magnet", "countdown", "lastLine", "sinceChange", "showDrawings", "candleKind", "gridChoice", "bodyChoice", "viewAnchor", "priceBias", "dataDisplay", "crossPrice", "allowMainInversion", "allowSubInversion", "adaptiveIndicators", "compactValues", "changeBasis"]
+  static let nested: Set<String> = ["params", "indicatorColors", "hiddenOutputs", "subHeights", "subHeightOverrides", "styles"]
+  static func flatten(_ value: [String: KanpanAccount.JSONValue]) -> [String: KanpanAccount.JSONValue] {
+    var result: [String: KanpanAccount.JSONValue] = [:]
+    for (key, value) in value {
+      if nested.contains(key), case .object(let children) = value {
+        for (child, content) in children {
+          if key == "indicatorColors", case .object(let outputs) = content {
+            for (output, color) in outputs { result[key + "/" + child + "/" + output] = color }
+          } else { result[key + "/" + child] = content }
+        }
+      } else { result[key] = value }
+    }
+    return result
+  }
+  static func expand(_ value: [String: KanpanAccount.JSONValue]) -> [String: KanpanAccount.JSONValue] {
+    var result: [String: KanpanAccount.JSONValue] = [:]
+    for (path, value) in value {
+      let keys = path.split(separator: "/").map(String.init)
+      if keys.count == 1 { if value != .null { result[path] = value }; continue }
+      var children: [String: KanpanAccount.JSONValue] = [:]
+      if case .object(let old) = result[keys[0]] { children = old }
+      if keys.count == 2 { if value != .null { children[keys[1]] = value } }
+      else if keys.count == 3 {
+        var outputs: [String: KanpanAccount.JSONValue] = [:]
+        if case .object(let old) = children[keys[1]] { outputs = old }
+        if value != .null { outputs[keys[2]] = value }; children[keys[1]] = .object(outputs)
+      }
+      result[keys[0]] = .object(children)
+    }
+    return result
+  }
+  static func settings(_ prefs: Prefs) throws -> SyncObject {
+    let all = try JSONDecoder().decode([String: KanpanAccount.JSONValue].self, from: PrefsCodec.encode(prefs))
+    var object = SyncObject(collection: "settings", id: "chart")
+    object.body = flatten(all.filter { fields.contains($0.key) })
+    object.body["rsiRange"] = .array([.number(prefs.rsiLower), .number(prefs.rsiUpper)])
+    return object
+  }
+  static func apply(_ object: SyncObject, to local: Prefs) throws -> Prefs {
+    var all = try JSONDecoder().decode([String: KanpanAccount.JSONValue].self, from: PrefsCodec.encode(local))
+    let values = expand(object.body)
+    for key in fields where values[key] != nil { all[key] = values[key] }
+    if case .array(let range) = values["rsiRange"], range.count == 2 { all["rsiLower"] = range[0]; all["rsiUpper"] = range[1] }
+    return try JSONDecoder().decode(Prefs.self, from: JSONEncoder().encode(all))
+  }
+  static func keepDeviceFields(_ source: Prefs, in target: inout Prefs) {
+    target.interval = source.interval; target.apiHost = source.apiHost; target.streamHost = source.streamHost
+    target.smartMarketRoute = source.smartMarketRoute; target.keepAwake = source.keepAwake; target.launchSnapshot = source.launchSnapshot
+  }
+  static func snapshot(_ prefs: Prefs) throws -> Data {
+    // Format marker distinguishes the allowlisted snapshot from legacy full-Prefs drafts.
+    try JSONEncoder().encode(ChartSnapshot(version: 1, fields: settings(prefs).body))
+  }
+  struct ChartSnapshot: Codable { var version: Int; var fields: [String: KanpanAccount.JSONValue] }
+  static func snapshotPrefs(_ data: Data, base: Prefs = .defaults) throws -> Prefs {
+    let value = try JSONDecoder().decode(ChartSnapshot.self, from: data)
+    guard value.version == 1 else { throw AccountError.invalidResponse }
+    var object = SyncObject(collection: "settings", id: "chart"); object.body = value.fields
+    return try apply(object, to: base)
+  }
+  static func drawings(_ archive: DrawArchive) throws -> [SyncObject] {
+    var output: [SyncObject] = []
+    var preferences = SyncObject(collection: "drawingPreferences", id: "tools")
+    preferences.body = flatten(try KanpanAccount.JSONValue.encode(archive.preferences).decode([String: KanpanAccount.JSONValue].self)); output.append(preferences)
+    for (symbol, drawings) in archive.bySymbol {
+      for drawing in drawings {
+        var object = SyncObject(collection: "drawings", id: "binance/usd_m/" + symbol + "/" + drawing.id)
+        var value = try KanpanAccount.JSONValue.encode(drawing).decode([String: KanpanAccount.JSONValue].self)
+        value.removeValue(forKey: "id"); value["anchors"] = value.removeValue(forKey: "points")
+        value["symbol"] = .string(symbol); value["market"] = .string("usd_m"); value["venue"] = .string("binance")
+        object.body = value; output.append(object)
+      }
+    }
+    return output
+  }
+  static func drawing(_ object: SyncObject) throws -> Drawing {
+    var value = object.body; value["id"] = .string(String(object.id.split(separator: "/").last ?? "")); value["points"] = value.removeValue(forKey: "anchors")
+    return try KanpanAccount.JSONValue.object(value).decode(Drawing.self)
+  }
+  static func symbols(_ prefs: SymbolPrefs) -> [SyncObject] {
+    var objects: [SyncObject] = []
+    for (order, group) in prefs.groups.enumerated() {
+      var value = SyncObject(collection: "groups", id: group.id); value.body = ["name": .string(group.name), "order": .number(Double(order))]; objects.append(value)
+    }
+    for (order, symbol) in prefs.favorites.enumerated() {
+      var value = SyncObject(collection: "favorites", id: "binance/usd_m/" + symbol)
+      value.body = ["symbol": .string(symbol), "market": .string("usd_m"), "venue": .string("binance"), "groupId": prefs.groupForSymbol[symbol].map(KanpanAccount.JSONValue.string) ?? .null, "order": .number(Double(order)), "pinned": .bool(prefs.pinned.contains(symbol))]
+      objects.append(value)
+    }
+    return objects
+  }
+}

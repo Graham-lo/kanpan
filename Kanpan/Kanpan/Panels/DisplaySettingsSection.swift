@@ -35,8 +35,7 @@ struct DisplaySettingsSection: View {
         }
       }.padding(.horizontal, 16).padding(.vertical, 8)
     }.accessibilityIdentifier("display.themes")
-    PanelNote(markdown: "iOS 的原彩显示与夜览已经在调色温，这里不再叠一层黄。")
-    PanelRow(name: "自动护眼配色", meta: "随屏幕明暗选择护眼或夜读，保持稳定后再切换") {
+    PanelRow(name: "自动护眼配色", meta: "随屏幕明暗切换") {
       PanelSwitch(isOn: store.prefs.ambientTheme) { store.update { $0.ambientTheme.toggle() } }
         .accessibilityIdentifier("display.ambient")
     }

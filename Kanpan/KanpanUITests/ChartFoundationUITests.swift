@@ -10,10 +10,11 @@ final class ChartFoundationUITests: XCTestCase {
     app = XCUIApplication()
     if name.contains("testInstallRequestedFavoritesInUserStore") || name.contains("testUserSession") { return }
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
+    if name.contains("Drawing") || name.contains("IndicatorColor") || name.contains("CompactChart") { app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString }
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
-    XCTAssertTrue(wait { (self.info()["bars"] as? Int ?? 0) >= 256 })
+    XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
   }
   override func tearDown() async throws {
     let attachment = XCTAttachment(screenshot: app.screenshot())
@@ -409,7 +410,7 @@ final class ChartFoundationUITests: XCTestCase {
     app.buttons["favorites.group.加密"].tap()
     app.buttons["favorites.open.BTCUSDT"].tap()
     XCTAssertTrue(canvas.waitForExistence(timeout: 15))
-    XCTAssertTrue(wait { (self.info()["bars"] as? Int ?? 0) >= 256 })
+    XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
     func gap() -> Double { self.info()["latestRightGap"] as? Double ?? 99999 }
     XCTAssertTrue(wait(seconds: 5) { abs(gap()) < 0.5 }, "从列表进入末根应贴绘图区右缘")
     let width = try XCTUnwrap(info()["plotW"] as? Double)
@@ -688,7 +689,7 @@ final class ChartFoundationUITests: XCTestCase {
     app.buttons["favorites.group.加密"].tap()
     app.buttons["favorites.open.BTCUSDT"].tap()
     XCTAssertTrue(canvas.waitForExistence(timeout: 15))
-    XCTAssertTrue(wait { (self.info()["bars"] as? Int ?? 0) >= 256 })
+    XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
     // 顶部搜索区域也只负责收起，不应穿透打开选品页。
     let search = app.buttons["top.search"].frame
     app.buttons["bottom.indicator"].tap()
@@ -716,7 +717,7 @@ final class ChartFoundationUITests: XCTestCase {
   }
 
   func testOutsideTapOnlyDismissesPanel() throws {
-    for entry in ["bottom.indicator", "bottom.settings", "bottom.style", "interval.chart", "interval.more"] {
+    for entry in ["bottom.indicator", "bottom.settings", "interval.chart", "interval.more"] {
       app.buttons[entry].tap()
       let header = app.staticTexts["panel.header"]
       XCTAssertTrue(header.waitForExistence(timeout: 5))
@@ -818,4 +819,230 @@ final class ChartFoundationUITests: XCTestCase {
     shot("真机-A仅恢复自动Y")
   }
 
+}
+
+extension ChartFoundationUITests {
+  func testDrawingToolsAndPersistentStyles() throws {
+    app.buttons["interval.draw"].tap()
+    app.buttons["draw.tools"].tap()
+    XCTAssertTrue(app.buttons["draw.tool.ray"].waitForExistence(timeout: 5))
+    shot("画线-工具分类")
+    app.buttons["draw.tool.ray"].tap()
+    var origin = canvas.coordinate(withNormalizedOffset: .zero)
+    origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
+    origin.withOffset(CGVector(dx: 240, dy: 160)).tap()
+    XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 1 }, String(describing: info()))
+    XCTAssertEqual(info()["drawingKinds"] as? [String], ["ray"])
+    XCTAssertTrue(app.buttons["draw.undo"].isEnabled)
+    app.buttons["draw.undo"].tap(); XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 0 })
+    app.buttons["draw.redo"].tap(); XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 1 })
+    // Undo removes selection; tap the actual ray after redo.
+    origin = canvas.coordinate(withNormalizedOffset: .zero)
+    origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
+    XCTAssertTrue(app.buttons["draw.style"].waitForExistence(timeout: 3))
+    app.buttons["draw.style"].tap()
+    app.buttons["color.#4A90E2"].tap()
+    app.buttons["draw.save"].tap()
+    XCTAssertTrue(wait { self.info()["drawingColors"] as? [String] == ["#4A90E2"] })
+    app.buttons["draw.lock"].tap()
+    XCTAssertTrue(wait { self.info()["drawingLocked"] as? [Bool] == [true] })
+    let ids = try XCTUnwrap(info()["drawingIDs"] as? [String])
+    shot("画线-射线颜色与锁定")
+    app.buttons["draw.finish"].tap()
+    app.terminate(); app.launch()
+    XCTAssertTrue(canvas.waitForExistence(timeout: 30))
+    XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids }, String(describing: info()))
+    XCTAssertEqual(info()["drawingColors"] as? [String], ["#4A90E2"])
+    XCTAssertEqual(info()["drawingLocked"] as? [Bool], [true])
+    app.buttons["interval.draw"].tap()
+    app.buttons["draw.objects.quick"].tap()
+    XCTAssertTrue(app.buttons["draw.object.\(ids[0])"].waitForExistence(timeout: 5))
+    shot("画线-重启恢复对象")
+    app.buttons["隐藏画线"].tap()
+    canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 150, dy: 50)).tap()
+    XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["draw.sheet.done"].exists })
+    XCTAssertEqual(info()["crosshair"] as? Bool, false)
+    XCTAssertTrue(wait { self.info()["drawingHidden"] as? [Bool] == [true] })
+    XCUIDevice.shared.orientation = .landscapeLeft
+    XCTAssertTrue(wait(seconds: 5) { self.canvas.frame.width > self.canvas.frame.height && self.app.buttons["draw.tools"].isHittable })
+    app.buttons["draw.tools"].tap()
+    XCTAssertTrue(app.buttons["draw.sheet.done"].waitForExistence(timeout: 5))
+    for _ in 0..<8 {
+      if app.buttons["draw.tool.ray"].exists && app.buttons["draw.tool.ray"].isHittable { break }
+      let list = app.collectionViews.firstMatch
+      list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).press(forDuration: 0.05,
+        thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)),
+        withVelocity: .slow, thenHoldForDuration: 0.1)
+    }
+    XCTAssertTrue(app.buttons["draw.tool.ray"].isHittable)
+    app.buttons["draw.sheet.done"].tap()
+    XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["draw.sheet.done"].exists && self.app.buttons["draw.tools"].isHittable })
+    let landscapeShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+    landscapeShot.name = "画线-横屏工具栏"; landscapeShot.lifetime = .keepAlways; add(landscapeShot)
+    XCUIDevice.shared.orientation = .portrait
+    app.terminate(); app.launch()
+    XCTAssertTrue(canvas.waitForExistence(timeout: 30))
+    XCTAssertTrue(wait { self.info()["drawingHidden"] as? [Bool] == [true] })
+    app.buttons["interval.draw"].tap()
+    app.buttons["draw.objects.quick"].tap()
+    app.buttons["draw.object.\(ids[0])"].tap()
+    XCTAssertTrue(app.buttons["draw.copy"].waitForExistence(timeout: 5))
+    app.buttons["draw.copy"].tap()
+    XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 2 })
+    app.buttons["draw.delete"].tap()
+    XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })
+    app.buttons["draw.undo"].tap()
+    XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 2 })
+    app.buttons["draw.redo"].tap()
+    XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })
+    shot("画线-只删除选中对象并可撤销")
+    app.buttons["draw.magnet.quick"].tap()
+    app.buttons["draw.continuous.quick"].tap()
+    app.terminate(); app.launch()
+    XCTAssertTrue(canvas.waitForExistence(timeout: 30))
+    XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })
+    XCTAssertEqual(info()["drawingMagnet"] as? Bool, false)
+    XCTAssertEqual(info()["drawingContinuous"] as? Bool, true)
+  }
+
+  func testIndicatorColorSaveCancelAndRestart() throws {
+    func edit(_ id: String, color: String, save: Bool) {
+      app.buttons["bottom.indicator"].tap()
+      if !app.buttons["indicator.edit.\(id)"].exists { app.buttons["indicator.switch.\(id)"].tap() }
+      app.buttons["indicator.edit.\(id)"].tap()
+      let swatch = app.buttons["indicator.color.0.\(color)"].firstMatch
+      for _ in 0..<5 { if swatch.isHittable { break }; app.swipeUp() }
+      XCTAssertTrue(swatch.isHittable); swatch.tap()
+      shot("\(id)-独立颜色编辑")
+      app.buttons[save ? "保存" : "取消"].tap(); closePanel()
+    }
+    let original = info()["maColor0"] as? String
+    edit("MA", color: "#4A90E2", save: false)
+    XCTAssertEqual(info()["maColor0"] as? String, original)
+    edit("MA", color: "#4A90E2", save: true)
+    XCTAssertTrue(wait { self.info()["maColor0"] as? String == "#4A90E2" })
+    edit("EMA", color: "#37A78F", save: true)
+    XCTAssertEqual(info()["maColor0"] as? String, "#4A90E2")
+    XCTAssertEqual(info()["emaColor0"] as? String, "#37A78F")
+    app.terminate(); app.launch()
+    XCTAssertTrue(canvas.waitForExistence(timeout: 30))
+    XCTAssertTrue(wait { self.info()["maColor0"] as? String == "#4A90E2" })
+    XCTAssertEqual(info()["emaColor0"] as? String, "#37A78F")
+    shot("均线颜色-重启恢复")
+  }
+}
+
+extension ChartFoundationUITests {
+  func testDrawingAllToolsAndFingerTargets() throws {
+    app.buttons["interval.draw"].tap()
+    app.buttons["draw.magnet.quick"].tap()
+    let tools: [(String, Int)] = [("trend", 2), ("hline", 1), ("ray", 2), ("hray", 1),
+      ("extended", 2), ("vline", 1), ("rectangle", 2), ("channel", 3), ("fibonacci", 2), ("measure", 2)]
+    for (index, tool) in tools.enumerated() {
+      app.buttons["draw.tools"].tap()
+      XCTAssertTrue(app.buttons["draw.sheet.done"].waitForExistence(timeout: 5))
+      let target = app.buttons["draw.tool.\(tool.0)"]
+      for _ in 0..<14 {
+        if target.exists && target.isHittable { break }
+        let list = app.collectionViews.firstMatch
+        list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).press(forDuration: 0.05,
+          thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)),
+          withVelocity: .slow, thenHoldForDuration: 0.1)
+      }
+      XCTAssertTrue(target.isHittable, tool.0); target.tap()
+      XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["draw.sheet.done"].exists })
+      let h = try XCTUnwrap(info()["mainH"] as? Double)
+      let origin = canvas.coordinate(withNormalizedOffset: .zero)
+      let points = [CGVector(dx: 90, dy: h * 0.65), CGVector(dx: 245, dy: h * 0.3), CGVector(dx: 160, dy: h * 0.75)]
+      for point in points.prefix(tool.1) { origin.withOffset(point).tap() }
+      XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == index + 1 }, tool.0)
+      XCTAssertEqual((info()["drawingKinds"] as? [String])?.last, tool.0)
+      if index == 0 {
+        let before = try XCTUnwrap(info()["drawingAnchors"] as? [[[String: Double]]])
+        origin.withOffset(CGVector(dx: 90, dy: h * 0.65 + 17)).press(forDuration: 0.1,
+          thenDragTo: origin.withOffset(CGVector(dx: 115, dy: h * 0.65 + 42)), withVelocity: .slow, thenHoldForDuration: 0.1)
+        XCTAssertTrue(wait { (self.info()["drawingAnchors"] as? [[[String: Double]]]) != before })
+        let after = try XCTUnwrap(info()["drawingAnchors"] as? [[[String: Double]]])
+        XCTAssertEqual(after[0][1], before[0][1], "手指偏离可见把手 17pt 仍应只拖动最近端点")
+        app.buttons["draw.undo"].tap()
+        XCTAssertTrue(wait { (self.info()["drawingAnchors"] as? [[[String: Double]]]) == before })
+      }
+    }
+    let ids = try XCTUnwrap(info()["drawingIDs"] as? [String])
+    app.buttons["draw.finish"].tap()
+    app.buttons["interval.draw"].tap()
+    app.buttons["draw.objects.quick"].tap()
+    let clear = app.buttons["draw.clear"]
+    for _ in 0..<10 { if clear.exists && clear.isHittable { break }; app.swipeUp() }
+    XCTAssertTrue(clear.isHittable); clear.tap()
+    app.buttons["清空画线"].tap()
+    app.buttons["draw.sheet.done"].tap()
+    XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 0 })
+    app.buttons["draw.undo"].tap()
+    XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })
+    app.terminate(); app.launch()
+    XCTAssertTrue(canvas.waitForExistence(timeout: 30))
+    XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })
+    shot("画线-十种工具与手指端点拖动")
+  }
+
+  func testDrawingRectangleChannelAndFibonacci() throws {
+    app.buttons["interval.draw"].tap()
+    for (index, entry) in [("rectangle", 2), ("channel", 3), ("fibonacci", 2)].enumerated() {
+      app.buttons["draw.tools"].tap()
+      let target = app.buttons["draw.tool.\(entry.0)"]
+      for _ in 0..<8 { if target.exists && target.isHittable { break }; app.swipeUp() }
+      XCTAssertTrue(target.isHittable); target.tap()
+      XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["draw.sheet.done"].exists })
+      let h = try XCTUnwrap(info()["mainH"] as? Double)
+      let origin = canvas.coordinate(withNormalizedOffset: .zero)
+      let points = [CGVector(dx: 90, dy: h * 0.7), CGVector(dx: 245, dy: h * 0.25), CGVector(dx: 160, dy: h * 0.65)]
+      for point in points.prefix(entry.1) { origin.withOffset(point).tap() }
+      XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == index + 1 }, String(describing: info()))
+      XCTAssertEqual((info()["drawingKinds"] as? [String])?.last, entry.0)
+      shot("画线-\(entry.0)")
+    }
+    let ids = info()["drawingIDs"] as? [String]
+    app.buttons["draw.finish"].tap()
+    app.buttons["interval.chip.4h"].tap()
+    XCTAssertTrue(wait { self.info()["interval"] as? String == "4h" })
+    XCTAssertEqual(info()["drawingIDs"] as? [String], ids)
+    app.terminate(); app.launch()
+    XCTAssertTrue(canvas.waitForExistence(timeout: 30))
+    XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })
+    shot("画线-多工具跨周期与重启")
+  }
+}
+
+extension ChartFoundationUITests {
+  func testCompactChartStylesAndRotation() throws {
+    XCTAssertFalse(app.buttons["bottom.style"].exists)
+    XCTAssertFalse(app.buttons["bottom.landscape"].exists)
+    XCTAssertFalse(app.buttons["chart.expand"].exists)
+    shot("手机-简化入口")
+    app.buttons["interval.chart"].tap()
+    for id in ["aicoin", "pill", "paper", "outline"] {
+      let button = app.buttons["style.card.\(id)"]
+      XCTAssertTrue(button.waitForExistence(timeout: 5))
+      button.tap()
+      XCTAssertTrue(button.isSelected)
+    }
+    XCTAssertFalse(app.buttons["style.card.stout"].exists)
+    shot("手机-图表四种精选风格")
+    closePanel()
+    XCTAssertEqual(info()["style"] as? String, "outline")
+    app.terminate(); app.launch()
+    XCTAssertTrue(canvas.waitForExistence(timeout: 30))
+    XCTAssertTrue(wait { self.info()["style"] as? String == "outline" })
+    // 用户拿起手机旋转，不需要先点按钮。
+    XCUIDevice.shared.orientation = .landscapeLeft
+    XCTAssertTrue(wait(seconds: 8) { self.canvas.frame.width > self.canvas.frame.height })
+    XCTAssertFalse(app.buttons["chart.expand"].isHittable)
+    XCTAssertFalse(app.buttons["land.exit"].exists)
+    let landscapeShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+    landscapeShot.name = "手机-自动横屏"; landscapeShot.lifetime = .keepAlways; add(landscapeShot)
+    XCUIDevice.shared.orientation = .portrait
+    XCTAssertTrue(wait(seconds: 8) { self.canvas.frame.width < self.canvas.frame.height && self.app.buttons["interval.chart"].isHittable })
+    XCTAssertEqual(info()["style"] as? String, "outline")
+  }
 }

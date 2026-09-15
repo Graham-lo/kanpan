@@ -22,6 +22,8 @@ public struct ChartState: Sendable {
   /// 指标参数覆盖；没给的走 `IndicatorID.defaultParams`。
   public var params: [IndicatorID: [Int]]
   public var timezone: TZChoice
+  public var indicatorColors: [IndicatorID: [Int: Hex]] = [:]
+  public var drawingPreviewID: String? = nil
   public var drawings: [Drawing]
   /// 十字线摆在哪根上；`nil` 就不画。
   public var crosshair: Crosshair?

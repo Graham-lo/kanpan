@@ -34,6 +34,7 @@ extension Prefs: Codable {
     case v
     case interval, quickIntervals
     case theme, styleID, redUp
+    case indicatorColors
     case ambientTheme
     case priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone, changeBasis
     case candleKind, gridChoice, bodyChoice, lastLine, showDrawings, sinceChange
@@ -76,6 +77,7 @@ extension Prefs: Codable {
     try c.encode(compactValues, forKey: .compactValues)
     try c.encode(portraitHeight, forKey: .portraitHeight)
     try c.encode(Dictionary(uniqueKeysWithValues: hiddenOutputs.map { ($0.key.rawValue, $0.value.sorted()) }), forKey: .hiddenOutputs)
+    try c.encode(Dictionary(uniqueKeysWithValues: indicatorColors.map { ($0.key.rawValue, $0.value) }), forKey: .indicatorColors)
     try c.encode(rsiUpper, forKey: .rsiUpper)
     try c.encode(rsiLower, forKey: .rsiLower)
     try c.encode(overlays.map(\.rawValue), forKey: .overlays)
@@ -152,6 +154,12 @@ extension Prefs: Codable {
       }
     }
 
+    if let raw = try? c.decode([String: [Int: Hex]].self, forKey: .indicatorColors) {
+      for (key, values) in raw {
+        guard let id = IndicatorID(rawValue: key) else { continue }
+        indicatorColors[id] = values.filter { (0..<21).contains($0.key) && $0.value.value.range(of: "^#[0-9a-fA-F]{6}$", options: .regularExpression) != nil }
+      }
+    }
     if let raw = strs(.overlays) {
       overlays = Prefs.ids(raw, placement: .main)
     }

@@ -1,0 +1,21 @@
+{
+  "origin": "scorebook-backend",
+  "adaptations": [
+    "MarketDataProvider import path",
+    "KANPAN environment prefix"
+  ],
+  "files": [
+    {
+      "source": "/Users/mdd/zhk/scorebook-backend/crates/infrastructure/src/adapters/binance.rs",
+      "sha256": "4aaa885c75729ee58fd5a14b5dc696376729cd3889f38f0d72eaed05306f88e8"
+    },
+    {
+      "source": "/Users/mdd/zhk/scorebook-backend/crates/infrastructure/src/adapters/provider_budget.rs",
+      "sha256": "9f87676055e18bd937930b517157108178536ca489ffe0a5a99dde2b95820588"
+    },
+    {
+      "source": "/Users/mdd/zhk/scorebook-backend/crates/infrastructure/src/error.rs",
+      "sha256": "e30bd18050b46965d3064a3f07f7868a785f203f431b45c9e0c63ce803a78980"
+    }
+  ]
+}

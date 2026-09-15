@@ -221,6 +221,9 @@ func cmdLive(_ symbol: String, _ iv: Interval, minutes: Double) async throws {
   let pump = Task {
     for await ev in events {
       switch ev.event {
+      case .routing(let state): say("行情线路：\(state)")
+      case .source(let source): say("行情源 → \(source.rawValue)")
+      case .historyError(let error): if let error { say(error) }
       case .series(let s):
         await tally.paint(-t0.timeIntervalSinceNow * 1000)
         say("序列 \(s.count) 根  \(s.firstTime) … \(s.lastTime)  末根 close=\(s.close.last ?? .nan)")

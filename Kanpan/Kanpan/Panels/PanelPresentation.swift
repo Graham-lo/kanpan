@@ -8,13 +8,12 @@ import KanpanCore
 
 /// 哪个面板。底栏四个按钮各对应一个。
 enum Panel: String, Identifiable, CaseIterable, Sendable {
-  case style, indicator, period, settings, chart
+  case indicator, period, settings, chart
 
   var id: String { rawValue }
 
   var title: String {
     switch self {
-    case .style: "风格"
     case .indicator: "指标"
     case .period: "周期"
     case .settings: "设置"
@@ -114,7 +113,6 @@ extension View {
     sheet(item: panel) { which in
       PanelHost(store: store) {
         switch which {
-        case .style: StylePanel(store: store)
         case .indicator: IndicatorPanel(store: store)
         case .period: PeriodPanel(store: store, onPick: onPickInterval)
         case .settings: SettingsPanel(store: store)

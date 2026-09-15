@@ -10,7 +10,7 @@ struct IndicatorPanel: View {
   private var prefs: Prefs { store.prefs }
 
   var body: some View {
-    PanelSheet(title: "指标", subtitle: "副图默认 VOL + OI + MACD") {
+    PanelSheet(title: "指标", subtitle: nil) {
       PanelGroupTitle(text: "主图叠加")
       ForEach([IndicatorID.ma, .ema, .boll], id: \.self) { id in
         row(id)
@@ -26,10 +26,6 @@ struct IndicatorPanel: View {
         SubOrderList(store: store)
       }
 
-      PanelNote(markdown:
-        "副图按打开的先后从上往下排，更多副图可上下滚动查看；拖动副图下边界可调整高度。"
-        + "**持仓量**用的是币安 openInterestHist，交易所只保留最近 30 天、最细 5 分钟——"
-        + "超出这个范围会直说没有，不画假线。")
     }
     .sheet(item: $editing) { id in IndicatorEditor(store: store, id: id) }
     .panelToast(store)
@@ -53,7 +49,7 @@ struct IndicatorPanel: View {
   @ViewBuilder
   private func detail(_ id: IndicatorID) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      Button("参数与输出设置") { editing = id }
+      Button(id == .ma || id == .ema ? "参数与颜色" : "参数与输出") { editing = id }
         .font(PanelFont.meta).foregroundStyle(t.ink)
         .accessibilityIdentifier("indicator.edit.\(id.rawValue)")
       if id.placement == .sub {
@@ -71,19 +67,19 @@ struct IndicatorPanel: View {
     .overlay(alignment: .bottom) { Rectangle().fill(t.hair).frame(height: 1) }
   }
 
-  /// 原型 `hintFor`，逐字。
+  /// 保留指标中文名称与必要的数据范围。
   static func hint(_ id: IndicatorID) -> String {
     switch id {
-    case .ma: "收盘价的简单均线"
-    case .ema: "指数加权，比 MA 跟得紧"
-    case .boll: "中轨加减标准差"
-    case .vol: "成交量柱 + 均量线"
-    case .macd: "快慢均线的差与它的均线"
-    case .rsi: "涨跌力量的比值"
+    case .ma: "均线"
+    case .ema: "指数均线"
+    case .boll: "布林带"
+    case .vol: "成交量"
+    case .macd: "平滑异同均线"
+    case .rsi: "相对强弱"
     case .kdj: "随机指标"
-    case .srsi: "RSI 自己的随机指标，更灵敏"
-    case .atr: "真实波幅，拿来量止损距离"
-    case .oi: "未平仓合约张数 · 币安只给近 30 天"
+    case .srsi: "随机 RSI"
+    case .atr: "平均真实波幅"
+    case .oi: "持仓量 · 近 30 天，最细 5 分钟"
     }
   }
 }
@@ -193,6 +189,7 @@ extension IndicatorID: @retroactive Identifiable { public var id: String { rawVa
 private struct IndicatorEditor: View {
   var store: PrefsStore
   @State private var draft: IndicatorDraft
+  @Environment(\.colorScheme) private var colorScheme
   @Environment(\.dismiss) private var dismiss
   init(store: PrefsStore, id: IndicatorID) {
     self.store = store; _draft = State(initialValue: IndicatorDraft(id: id, prefs: store.prefs))
@@ -215,6 +212,17 @@ private struct IndicatorEditor: View {
             Toggle(name, isOn: Binding(get: { !draft.hidden.contains(index) }, set: { on in
               if on { draft.hidden.remove(index) } else { draft.hidden.insert(index) }
             })).accessibilityIdentifier("indicator.output.\(index)")
+          }
+        }
+        if draft.id == .ma || draft.id == .ema {
+          Section("线条颜色") {
+            ForEach(Array(draft.outputs.enumerated()), id: \.offset) { index, name in
+              DrawingColorControl(title: name, identifierPrefix: "indicator.color.\(index)", color: Binding(get: {
+                let palette = store.prefs.chartColors(dark: colorScheme == .dark).palette
+                return draft.colors[index] ?? palette[(index + (draft.id == .ema ? 3 : 0)) % palette.count]
+              }, set: { draft.colors[index] = $0 }))
+            }
+            Button("恢复默认颜色") { draft.colors = [:] }.accessibilityIdentifier("indicator.colors.reset")
           }
         }
       }

@@ -3,6 +3,9 @@ import KanpanCore
 import KanpanData
 import SwiftUI
 import UIKit
+import ReviewDomain
+import ReviewUI
+import KanpanAccount
 
 /// 主界面（§9.1）。
 ///
@@ -11,6 +14,8 @@ import UIKit
 /// 交给图，再把图和面板的回调转回去。**任何计算都不该在这儿写**——算法在 `KanpanCore`，
 /// 画在 `KanpanChart`，这里只负责让它们见面。
 struct MainScreen: View {
+  @State private var account = AccountFeature()
+  @State private var accountBridge: AppAccountBridge?
   @State private var comfort = DisplayComfort()
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   @State private var market = MarketModel()
@@ -19,6 +24,8 @@ struct MainScreen: View {
   @State private var quotes = QuoteBook()
   @State private var didBoot = false
   @State private var proxy = ChartProxy()
+  @State private var review = ReviewFeature(directory: ReviewChartBridge.storageDirectory())
+  @State private var reviewChart = ReviewChartBridge()
 
   @State private var panel: Panel?
   @State private var showQuickFavorites = false
@@ -61,13 +68,23 @@ struct MainScreen: View {
   /// 手机横屏那套（§10.7 说的是 iPhone 横屏；iPad 走 A8.3 的放大布局）。
   private var landscape: Bool { vClass == .compact || expandedChart }
 
-  var body: some View {
+  private var basePresentation: some View {
     Group {
       if landscape { landscapeBody } else { portraitBody }
     }
     .background(theme.app)
+    .overlay(alignment: .topLeading) {
+      #if DEBUG
+      if ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" {
+        VStack {
+        Text(market.source.rawValue).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.source").accessibilityValue(market.status.rawValue)
+        Text(MarketNetworkDiagnostics.shared.lines).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.network")
+        }.allowsHitTesting(false)
+      }
+      #endif
+    }
     .overlay {
-      if !landscape, panel != nil { PanelDismissShield(onDismiss: dismissPanel) }
+      if !landscape, panel != nil || draw.panel != nil { PanelDismissShield(onDismiss: dismissPanel) }
     }
     .preferredColorScheme(effectiveTheme.forced)
     .overlay(alignment: .bottom) { toastLayer }
@@ -75,6 +92,10 @@ struct MainScreen: View {
     // 系统顶成全屏，图就整个没了。
     .prefsPanel(landscape ? .constant(nil) : $panel, store: store,
                 onPickInterval: pick(interval:))
+  }
+
+  private var presentation: some View {
+    basePresentation
     .sheet(isPresented: $showQuickFavorites, onDismiss: {
       if quickSearchPending { quickSearchPending = false; showSymbols = true }
     }) {
@@ -96,6 +117,10 @@ struct MainScreen: View {
                     onHistoryVisibility: { quotes.watchHistory($0, visible: $1) })
         .preferredColorScheme(effectiveTheme.forced)
     }
+  }
+
+  private var lifecycleContent: some View {
+    presentation
     .task { boot() }
     // 开关一变、或前后台一切，这个 task 就整个重来（旧的先被取消），心跳跟着起停。
     .task(id: beating) { await heartbeat() }
@@ -106,6 +131,10 @@ struct MainScreen: View {
       default: break
       }
     }
+  }
+
+  private var observedContent: some View {
+    lifecycleContent
     .onReceive(NotificationCenter.default.publisher(for: UIScreen.brightnessDidChangeNotification)) { _ in refreshComfort() }
     .onChange(of: prefs.ambientTheme) { _, _ in refreshComfort() }
     .onChange(of: prefs.theme) { _, _ in refreshComfort() }
@@ -114,14 +143,21 @@ struct MainScreen: View {
     }
     .onChange(of: prefs.subs) { _, subs in market.setOIEnabled(subs.contains(.oi)) }
     .onChange(of: prefs.launchSnapshot) { _, on in market.setSnapshotEnabled(on) }
+  }
+
+  private var marketContent: some View {
+    observedContent
     .onChange(of: hosts) { _, next in market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis) }
     .onChange(of: prefs.changeBasis) { _, next in quotes.configure(hosts: hosts, basis: next) }
     .onChange(of: showFavorites || showSymbols) { _, on in quotes.setVisible(on) }
     .onChange(of: picker.prefs.favorites) { _, symbols in quotes.setFavorites(symbols) }
-    .onChange(of: market.tradeQuote) { _, trade in
-      if let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
+    .onChange(of: market.routing) { _, state in
+      if state == .switched { say("已切换成功") }
     }
-    .onChange(of: market.symbol) { _, symbol in quotes.watchChart(symbol) }
+    .onChange(of: market.tradeQuote) { _, trade in
+      if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
+    }
+    .onChange(of: market.symbol) { _, symbol in quotes.watchChart(symbol); accountBridge?.focus(symbol) }
     .onChange(of: store.notice) { _, note in
       if let note { say(note); store.clearNotice() }
     }
@@ -129,38 +165,56 @@ struct MainScreen: View {
       // A7.7：一个品种最多 50 条，满了只提示、不悄悄丢。
       if full { say("这个品种的线画满了（50 条）"); draw.full = false }
     }
+  }
+
+  var body: some View {
+    marketContent
+    .sheet(item: $draw.panel) { panel in DrawingSheet(controller: draw, panel: panel) }
+    .onChange(of: draw.notice, initial: true) { _, note in if let note { say(note); draw.notice = nil } }
     .environment(\.panelTheme, theme)
+    .environment(\.accountFeature, account)
+    .sheet(isPresented: Binding(get: { account.presented && panel != .settings && !review.bookOpen }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
+    .onChange(of: account.notice) { _, note in if let note { say(note); account.notice = nil } }
+    .onChange(of: panel) { _, value in if value == nil { try? accountBridge?.applyPending() } }
+    .onChange(of: draw.active) { _, active in if !active { try? accountBridge?.applyPending() } }
+    .fullScreenCover(isPresented: $review.bookOpen) {
+      ReviewBook(feature: review).sheet(isPresented: $account.presented) { AccountView(feature: account).environment(\.panelTheme, theme) }
+    }
+    .onAppear { wireReview() }
+    .onChange(of: review.notice) { _, note in if let note { say(note); review.notice = nil } }
+    .onChange(of: reviewChart.notice) { _, note in if let note { say(note); reviewChart.notice = nil } }
+    .onChange(of: phase) { _, phase in
+      if phase != .active { review.saveDraft(); if reviewChart.playing { reviewChart.togglePlay(feature: review) } }
+      else { accountBridge?.synchronize(); review.synchronize() }
+    }
   }
 
   // ---------------------------------------------------------------- 各段
 
   private var portraitBody: some View {
     VStack(spacing: 0) {
-      header
+      if reviewChart.mode == .replay { reviewHeader } else { header }
       hairline
-      IntervalBar(
+      if !reviewChart.active { IntervalBar(
         theme: theme, quick: prefs.quickIntervals, current: market.interval,
         onPick: pick(interval:), onMore: { panel = .period },
         // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
         onChart: { panel = .chart }, drawing: draw.active,
         onDraw: { dismissPanel(); draw.toggle() }
       )
-      .background(theme.app)
+      .background(theme.app) }
       hairline
       chart
+      reviewControls
       hairline
       if draw.active {
         DrawingBar(controller: draw)
       }
       BottomBar(
-        theme: theme, active: panel, drawing: draw.active,
+        theme: theme, active: panel,
         onPanel: { p in panel = (panel == p) ? nil : p },
-        onFavorites: { dismissPanel(); showFavorites = true },
-        onLandscape: {
-          dismissPanel()
-          if UIDevice.current.userInterfaceIdiom == .pad { expandedChart = true }
-          else { Orientation.rotate(to: true) }
-        }
+        onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() }, reviewCount: review.pendingCount,
+        onFavorites: { dismissPanel(); showFavorites = true }
       )
       .background(theme.app)
     }
@@ -179,6 +233,7 @@ struct MainScreen: View {
       )
       .background(theme.app)
       VStack(spacing: 0) {
+        if reviewChart.mode == .replay { reviewHeader } else {
         LandscapeHeadline(
           theme: theme, symbol: market.symbol, price: readoutPrice,
           changePercent: displayedTicker?.changePercent,
@@ -189,7 +244,9 @@ struct MainScreen: View {
           Text(text).font(.system(size: 10, design: .monospaced)).foregroundStyle(theme.ink)
             .accessibilityIdentifier("chart.topOHLC")
         }
+        }
         chart
+        reviewControls
       }
       if draw.active {
         DrawingRail(controller: draw)
@@ -197,7 +254,9 @@ struct MainScreen: View {
       ToolRail(
         theme: theme, active: panel, drawing: draw.active,
         onPanel: { p in panel = (panel == p) ? nil : p },
-        onDraw: { dismissPanel(); draw.toggle() },
+        onDraw: { dismissPanel(); if reviewChart.active { endReview() }; draw.toggle() },
+        onReview: { review.bookOpen = true; review.synchronize() },
+        onRecord: startReviewCapture,
         onPortrait: {
           dismissPanel()
           expandedChart = false
@@ -215,7 +274,6 @@ struct MainScreen: View {
     if let which = panel {
       PanelSide(store: store, seed: seed, onClose: PanelDismiss { dismissPanel() }) {
         switch which {
-        case .style: StylePanel(store: store)
         case .indicator: IndicatorPanel(store: store)
         case .period: PeriodPanel(store: store, onPick: pick(interval:))
         case .settings: SettingsPanel(store: store)
@@ -263,7 +321,7 @@ struct MainScreen: View {
   /// 除了状态本身还报「多久没推了」：WS 能连上但一帧不推的时候 `status` 仍是
   /// `.live`，光看颜色会以为一切正常——这一行是那种情况唯一看得见的线索。
   private var displayedTicker: Ticker? {
-    quotes.raw[market.symbol].map { quotes.presented($0) }
+    market.source == .okx ? market.ticker : quotes.raw[market.symbol].map { quotes.presented($0) }
   }
 
   private var quoteDiagnostics: String {
@@ -285,7 +343,7 @@ struct MainScreen: View {
 
   /// Latest trade quote only; changing candle interval must never change its source.
   private var readoutPrice: Double? {
-    return displayedTicker?.last
+    return market.source == .okx ? market.series?.close.last : displayedTicker?.last
   }
 
   private var topCandleData: String? {
@@ -304,21 +362,39 @@ struct MainScreen: View {
       ChartHost(
         portrait: !landscape,
         renderingActive: !showFavorites && !showSymbols,
-        panelOpen: panel != nil,
-        state: chartState,
-        proxy: proxy,
-        onView: { view in market.loadOI(view: view) },
+        panelOpen: panel != nil || draw.panel != nil,
+        state: reviewChart.active ? reviewChart.state : chartState,
+        proxy: reviewChart.active ? reviewChart.proxy : proxy,
+        onView: { view in if !reviewChart.active { market.loadOI(view: view) } },
         onSubResize: { id, scale in store.update { $0.subHeightOverrides[id] = scale } },
         onSubReorder: { order in store.update { $0.subs = order } },
         onCrosshair: { crosshair = $0 },
-        onNeedsHistory: { market.loadMore() },
+        onNeedsHistory: { if reviewChart.mode == .replay { reviewChart.loadReplayPage(forward: false, feature: review) } else if !reviewChart.active { market.loadMore() } },
         // 面板打开时由原生遮罩消费首个触摸，只收起面板。
         onTapped: { dismissPanel() },
-        drawing: draw
+        drawing: reviewChart.active ? nil : draw
       )
-      // 换品种/周期的空档：旧图留着压暗，不闪白（§10.4）。
-      .opacity(market.switching ? 0.6 : 1)
-      .animation(.easeOut(duration: 0.18), value: market.switching)
+      .id(reviewChart.mode.rawValue)
+      ReviewRangeOverlay(feature: review, bridge: reviewChart, liveProxy: proxy)
+        .allowsHitTesting(reviewChart.mode == .capture)
+      if market.routing == .switching, !reviewChart.active {
+        Text("检测到当前链路不可用，正在切换智能链路")
+          .font(.caption).padding(10).background(.regularMaterial, in: Capsule())
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).padding(.top, 8)
+          .allowsHitTesting(false).accessibilityIdentifier("market.routeSwitching")
+      } else if let error = market.historyError, !reviewChart.active {
+        Button(error) { market.loadMore() }.font(.caption).padding(10)
+          .background(.regularMaterial, in: Capsule()).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+          .padding(.top, 8)
+      }
+      if !reviewChart.active {
+        Button(action: startReviewCapture) {
+          Text("记").font(.system(size: 14, weight: .medium)).frame(width: 44, height: 44)
+            .background(theme.raised, in: Circle()).overlay(Circle().stroke(theme.line))
+        }.buttonStyle(.plain).foregroundStyle(theme.amber)
+          .padding(.trailing, 61).padding(.bottom, 65).accessibilityLabel("记一笔").accessibilityIdentifier("review.record")
+      }
+      if reviewChart.loading { ProgressView("加载重温行情").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) }
       // 提示条压在图区上沿（§10.8），不占版面高度，所以走 overlay 不进 VStack。
       if draw.hint != nil {
         DrawingHintStrip(controller: draw)
@@ -328,6 +404,58 @@ struct MainScreen: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .clipped()
+  }
+
+  private func wireReview() {
+    review.onCapture = startReviewCapture
+    review.onOpenChart = { record in
+      dismissPanel(); draw.finish()
+      reviewChart.open(record, feature: review, live: proxy.box?.chart.state ?? chartState, hosts: hosts)
+    }
+    review.onOpenMatch = { match, cutoff in
+      dismissPanel(); draw.finish()
+      reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: proxy.box?.chart.state ?? chartState, hosts: hosts)
+    }
+    review.synchronize()
+  }
+  private func startReviewCapture() {
+    dismissPanel(); draw.finish()
+    reviewChart.beginCapture(feature: review, live: proxy.box?.chart.state ?? chartState, prefs: prefs, source: market.source)
+  }
+  private func endReview() {
+    if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
+    else { reviewChart.exitReplay(feature: review) }
+  }
+  private var reviewHeader: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text("重温 · " + (reviewChart.state?.series.symbol ?? "")).font(.headline)
+      HStack {
+        Text(Date(timeIntervalSince1970: Double(reviewChart.replayTime) / 1000), style: .date)
+        Text(Date(timeIntervalSince1970: Double(reviewChart.replayTime) / 1000), style: .time)
+        Spacer()
+      }.font(.caption.monospacedDigit())
+      if let series = reviewChart.state?.series, let open = series.open.last, let high = series.high.last, let low = series.low.last, let close = series.close.last {
+        HStack(spacing: 10) {
+          Text("开 " + open.formatted(.number.precision(.significantDigits(1...7))))
+          Text("高 " + high.formatted(.number.precision(.significantDigits(1...7))))
+          Text("低 " + low.formatted(.number.precision(.significantDigits(1...7))))
+          Text("收 " + close.formatted(.number.precision(.significantDigits(1...7))))
+        }.font(.caption.monospacedDigit()).lineLimit(1).minimumScaleFactor(0.65)
+      }
+    }.padding(.horizontal).padding(.vertical, 8)
+  }
+  @ViewBuilder private var reviewControls: some View {
+    if reviewChart.mode == .capture {
+      ReviewCaptureCard(feature: review, onSave: {
+        if review.saveRecord() { reviewChart.endCapture(feature: review) }
+      }, onClose: { reviewChart.endCapture(feature: review) })
+      .frame(maxHeight: landscape ? 150 : 290)
+    } else if reviewChart.mode == .replay {
+      ReviewReplayControls(time: reviewChart.replayTime, playing: reviewChart.playing, speed: reviewChart.speed,
+        onStep: { reviewChart.step($0, feature: review) }, onPlay: { reviewChart.togglePlay(feature: review) },
+        onSpeed: { reviewChart.speed = reviewChart.speed == 4 ? 1 : reviewChart.speed * 2 },
+        onJudgment: { reviewChart.jumpToJudgment(feature: review) }, onExit: endReview)
+    }
   }
 
   private var hairline: some View {
@@ -370,6 +498,7 @@ struct MainScreen: View {
       subScale: subScale)
     result.paletteSeed = seed
     result.hiddenOutputs = prefs.hiddenOutputs
+    result.indicatorColors = prefs.indicatorColors
     result.rsiUpper = prefs.rsiUpper; result.rsiLower = prefs.rsiLower
     return result
   }
@@ -415,6 +544,7 @@ struct MainScreen: View {
   private func boot() {
     guard !didBoot else { return }
     didBoot = true
+    wireAccount()
     picker.setSectionsActive(false)
     quotes.onReset = { picker.clearQuotes() }
     quotes.onScopeChange = { picker.retainQuotes(for: $0) }
@@ -438,10 +568,30 @@ struct MainScreen: View {
     market.start(snapshot: prefs.launchSnapshot, interval: prefs.interval)
   }
 
+  private func wireAccount() {
+    // Existing drawing fixtures keep their own isolated profile; account tests explicitly configure an endpoint.
+    if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
+       ProcessInfo.processInfo.environment["KANPAN_ACCOUNT_API_URL"] == nil { return }
+    do {
+      let bridge = try AppAccountBridge(account: account, prefs: store, symbols: picker, drawings: draw, review: review)
+      bridge.canApply = { !draw.active && panel == nil && !reviewChart.active }
+      bridge.onSwitch = {
+        if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
+        else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
+        showFavorites = false; showSymbols = false; showQuickFavorites = false
+        dismissPanel(); crosshair = nil
+      }
+      accountBridge = bridge; bridge.focus(market.symbol)
+      Task { await account.restore() }
+    } catch { say(error.localizedDescription) }
+  }
+
   /// 收起面板。选完一项、或者手指落到图和别的控件上，都走这儿。
   private func dismissPanel() {
-    guard panel != nil else { return }
-    panel = nil
+    // Chart taps also call this after setting the crosshair. Avoid publishing an
+    // unchanged sheet binding from that callback while the chart is updating.
+    if panel != nil { panel = nil }
+    if draw.panel != nil { draw.panel = nil }
   }
 
   private func pick(interval iv: Interval) {

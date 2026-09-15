@@ -228,10 +228,10 @@ struct DrawingEditTests {
     a["BTCUSDT"] = a["BTCUSDT"] + [hline(49, "d49")]
     #expect(a["BTCUSDT"].count == 50)
     #expect(!a.hasRoom(for: "BTCUSDT"), "满了要能报出来，交给上层提示")
-    // 硬塞超额的（比如从老存档读进来）：留最后 50 条
+    // 同步或导入超过创建上限时，存档仍保留全部用户对象。
     a["BTCUSDT"] = (0..<60).map { hline(Double($0), "d\($0)") }
-    #expect(a["BTCUSDT"].count == 50)
-    #expect(a["BTCUSDT"].first?.id == "d10")
+    #expect(a["BTCUSDT"].count == 60)
+    #expect(a["BTCUSDT"].first?.id == "d0")
   }
 
   @Test("存档编解码来回")
@@ -298,5 +298,71 @@ struct DrawingEditTests {
       DrawArchive.self,
       from: Data(#"{"d":{"BTCUSDT":[{"id":"h","kind":"hline","a":{"t":1,"p":2}}]}}"#.utf8))
     #expect(noVersion["BTCUSDT"].count == 1)
+  }
+}
+
+@Suite("Drawing v2 persistence and geometry")
+struct DrawingV2Tests {
+  @Test func migrateV1AndRoundTripAllTools() throws {
+    let legacy = Data(#"{"v":1,"d":{"BTCUSDT":[{"id":"old","kind":"trend","a":{"t":1,"p":100},"b":{"t":2,"p":200}}]}}"#.utf8)
+    var archive = try JSONDecoder().decode(DrawArchive.self, from: legacy)
+    #expect(archive["BTCUSDT"][0].points == [DrawPoint(t: 1, p: 100), DrawPoint(t: 2, p: 200)])
+    archive["ETHUSDT"] = Drawing.Kind.allCases.map { kind in
+      var d = Drawing(kind: kind, points: (0..<kind.pointCount).map { DrawPoint(t: Double($0 + 1), p: Double(100 + $0 * 20)) })
+      d.color = "#4A90E2"; d.lineWidth = 3; d.dash = .dashed; d.locked = true; d.hidden = true; d.filled = false
+      return d
+    }
+    archive.preferences.magnet = false; archive.preferences.continuous = true
+    archive.preferences.favorites = [.channel, .hray]
+    archive.preferences.styles["trend"] = DrawingStyle(archive["BTCUSDT"][0])
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("draws.json")
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    try DrawStore(url: url).save(archive)
+    let restored = try DrawStore(url: url).read()
+    #expect(restored.bySymbol == archive.bySymbol)
+    #expect(restored.preferences == archive.preferences)
+    #expect(restored["OTHER"].isEmpty)
+  }
+  @Test func failedReadCannotOverwriteOriginal() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: url) }
+    for content in ["broken", #"{"v":999,"d":{}}"#] {
+      let bytes = Data(content.utf8); try bytes.write(to: url)
+      #expect(throws: (any Error).self) { try DrawStore(url: url).save(DrawArchive()) }
+      #expect(try Data(contentsOf: url) == bytes)
+    }
+  }
+  @Test func raysClipAndNeverHitBehindOrigin() {
+    let bounds = DrawBounds(left: 0, top: 0, right: 300, bottom: 200)
+    let ray = Drawing(kind: .ray, a: DrawPoint(t: 100, p: 100), b: DrawPoint(t: 150, p: 100))
+    let g = drawingGeometry(ray, bounds: bounds, xOf: { $0 }, yOf: { $0 })
+    #expect(g.segments.count == 1)
+    #expect(g.segments.first?.b == DrawPixel(300, 100))
+    #expect(g.hit(x: 250, y: 100) == .body)
+    #expect(g.hit(x: 50, y: 100) == nil)
+    var hidden = ray; hidden.hidden = true
+    #expect(drawingGeometry(hidden, bounds: bounds, xOf: { $0 }, yOf: { $0 }).hit(x: 125, y: 100) == nil)
+  }
+  @Test func channelIsParallelInLogCoordinates() {
+    let d = Drawing(kind: .channel, points: [DrawPoint(t: 20, p: 100), DrawPoint(t: 100, p: 300), DrawPoint(t: 50, p: 400)])
+    let g = drawingGeometry(d, bounds: DrawBounds(left: 0, top: 0, right: 300, bottom: 300), xOf: { $0 }, yOf: { log($0) * 30 })
+    #expect(g.segments.count == 3)
+    let slopes = g.segments.map { ($0.b.y - $0.a.y) / ($0.b.x - $0.a.x) }
+    #expect(abs(slopes[0] - slopes[1]) < 1e-10)
+    #expect(abs(slopes[0] - slopes[2]) < 1e-10)
+    var locked = d; locked.locked = true
+    #expect(movedDrawing(locked, part: .c, dt: 10, priceShift: { $0 + 10 }) == locked)
+  }
+  @Test func weakMagnetUsesPixels() {
+    let s = synthSeries(count: 30, seed: 3)
+    let i = 12, t = Double(s.time(at: 12)), p = s.high[12]
+    let x: (Double) -> Double = { ($0 - t) / Double(s.step) * 8 }
+    let y: (Double) -> Double = { log($0) * 300 }
+    let near = snapDrawPoint(t: t, p: exp(log(p) + 0.01), series: s, magnet: true, xOf: x, yOf: y)
+    #expect(near.index == i)
+    let far = snapDrawPoint(t: t, p: p * 3, series: s, magnet: true, xOf: x, yOf: y)
+    #expect(far.index == -1 && far.point.p == p * 3)
+    let future = snapDrawPoint(t: t + Double(s.step) * 100, p: p, series: s, magnet: true, xOf: x, yOf: y)
+    #expect(future.index == -1)
   }
 }

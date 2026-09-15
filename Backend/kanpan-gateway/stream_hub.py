@@ -320,16 +320,23 @@ class Hub:
                                   'upstreamConnected': self.upstream is not None})
 
 
-def app_for(hub):
+def app_for(hub, okx=None):
     app = web.Application(client_max_size=8192)
     app.router.add_get('/market/stream', hub.websocket)
     app.router.add_get('/chart-gateway/stream-health', hub.health)
-    async def start(_): await hub.start()
-    async def close(_): await hub.close()
+    if okx:
+        app.router.add_get('/market/okx/stream', okx.websocket)
+    async def start(_):
+        await hub.start()
+        if okx: await okx.start()
+    async def close(_):
+        await hub.close()
+        if okx: await okx.close()
     app.on_startup.append(start)
     app.on_cleanup.append(close)
     return app
 
 
 if __name__ == '__main__':
-    web.run_app(app_for(Hub()), host='127.0.0.1', port=int(os.environ.get('STREAM_PORT', '8793')), access_log=None, print=None)
+    from okx_hub import OKXHub
+    web.run_app(app_for(Hub(), OKXHub()), host='127.0.0.1', port=int(os.environ.get('STREAM_PORT', '8793')), access_log=None, print=None)

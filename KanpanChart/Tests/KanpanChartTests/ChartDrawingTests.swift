@@ -69,6 +69,7 @@ private func makeView(magnet: Bool = false) throws -> (ChartView, DrawAxes) {
   s.magnet = magnet
   v.state = s
   v.drawingInteractive = true
+  v.drawingMagnet = magnet
   return (v, try #require(v.drawAxes, "布局没建起来，后面都别测了"))
 }
 
@@ -164,10 +165,10 @@ struct ChartDrawingTests {
     let (v, axes) = try makeView(magnet: true)
     let s = try #require(v.state)
     v.drawTool = .hline
-    let q = CGPoint(x: 200, y: 300)
+    let i = s.series.index(atTime: axes.t(atX: 200))
+    let q = CGPoint(x: axes.x(Double(s.series.time(at: i))), y: axes.y(s.series.high[i]) + 2)
     tap(v, at: q)
     let d = try #require(v.drawings.first)
-    let i = s.series.index(atTime: axes.t(atX: 200))
     let ohlc = [s.series.open[i], s.series.high[i], s.series.low[i], s.series.close[i]]
     #expect(ohlc.contains(d.a.p), "价格没吸到开高低收里的任何一个")
     #expect(d.a.t == Double(s.series.time(at: i)), "时间没吸到这根的开盘时刻")
@@ -254,6 +255,22 @@ struct ChartDrawingTests {
     drag(v, from: CGPoint(x: 200, y: 320), to: CGPoint(x: 120, y: 320), lift: false)
     #expect(v.drawings.first == line, "没选中的线身不该被拖走")
     #expect(try #require(v.state).view.from != before.from, "这一下应该是在拖图")
+  }
+
+  @Test("Phone: unselected endpoint pans; selected endpoint has a 44pt touch target")
+  func phoneEndpointSelection() throws {
+    let (v, axes) = try makeView()
+    let line = Drawing(kind: .trend, a: DrawPoint(t: axes.t(atX: 100), p: axes.p(atY: 300)),
+      b: DrawPoint(t: axes.t(atX: 300), p: axes.p(atY: 260)))
+    v.setDrawings([line])
+    drag(v, from: CGPoint(x: 100, y: 300), to: CGPoint(x: 50, y: 300))
+    #expect(v.drawings == [line], "A swipe over an unselected endpoint must not edit it")
+    v.selectedDrawingID = line.id
+    let current = try #require(v.drawAxes)
+    let start = CGPoint(x: current.x(line.a.t), y: current.y(line.a.p) + 17)
+    drag(v, from: start, to: CGPoint(x: start.x + 25, y: start.y + 30))
+    #expect(v.drawings[0].a != line.a)
+    #expect(v.drawings[0].b == line.b)
   }
 
   @Test("A7.5：对数模式下拖动按像素走，两端的像素位移一致")
@@ -410,7 +427,7 @@ struct ChartDrawingTests {
     var hitLimit = false
     v.onDrawingLimitReached = { hitLimit = true }
     v.drawTool = .hline
-    tap(v, at: CGPoint(x: 200, y: 500))
+    tap(v, at: CGPoint(x: 200, y: axes.pane.y + 30))
     #expect(v.drawings.count == 50)
     #expect(hitLimit, "满了没吭声")
   }
@@ -449,5 +466,86 @@ struct ChartDrawingTests {
     v.drawTool = .hline
     tap(v, at: CGPoint(x: 200, y: 300))
     #expect(seen.count == 1 && seen.last?.count == 1)
+  }
+}
+
+extension ChartDrawingTests {
+  @Test("All tools create, undo and redo")
+  func allToolsCreate() throws {
+    for tool in Drawing.Kind.allCases {
+      let (v, axes) = try makeView(); v.drawTool = tool
+      let coords = [CGPoint(x: 80, y: axes.pane.h * 0.65), CGPoint(x: 240, y: axes.pane.h * 0.4), CGPoint(x: 140, y: axes.pane.h * 0.25)]
+      for i in 0..<tool.pointCount { tap(v, at: coords[i], ms: Double(10000 + i * 1000)) }
+      let result = try #require(v.drawings.first, "Missing \(tool)")
+      #expect(result.kind == tool && result.points.count == tool.pointCount)
+      #expect(v.selectedDrawingID == result.id)
+      v.undoDrawing(); #expect(v.drawings.isEmpty)
+      v.redoDrawing(); #expect(v.drawings == [result])
+    }
+  }
+  @Test("Drag previews do not mutate committed model; cancel and no-op have no undo entry")
+  func cancelledDragAndNoOp() throws {
+    let (v, axes) = try makeView()
+    let line = Drawing(kind: .trend, a: DrawPoint(t: axes.t(atX: 80), p: axes.p(atY: 120)), b: DrawPoint(t: axes.t(atX: 240), p: axes.p(atY: 180)))
+    v.setDrawings([line]); v.selectedDrawingID = line.id
+    let touch = FakeTouch(CGPoint(x: 80, y: 120))
+    v.drawingTouchesBegan([touch], with: FakeEvent(ms: 10000))
+    touch.point = CGPoint(x: 110, y: 140)
+    v.drawingTouchesMoved([touch], with: FakeEvent(ms: 10020))
+    #expect(v.state?.drawings == [line]); #expect(v.drawing.preview != line)
+    v.drawingTouchesEnded([touch], with: FakeEvent(ms: 10040), cancelled: true)
+    #expect(v.drawings == [line] && !v.canUndoDrawing); #expect(v.state?.drawingPreviewID == nil)
+    tap(v, at: CGPoint(x: 80, y: 120), ms: 20000); #expect(!v.canUndoDrawing)
+  }
+  @Test("Pinch while placing preserves anchors")
+  func pinchWhilePending() throws {
+    let (v, _) = try makeView(); v.drawTool = .channel
+    tap(v, at: CGPoint(x: 80, y: 120))
+    let anchors = v.drawing.anchors
+    let a = FakeTouch(CGPoint(x: 130, y: 160)), b = FakeTouch(CGPoint(x: 240, y: 160))
+    v.drawingTouchesBegan([a], with: FakeEvent(ms: 11000))
+    v.drawingTouchesBegan([b], with: FakeEvent(ms: 11010))
+    a.point.x = 90; b.point.x = 280
+    v.drawingTouchesMoved([a,b], with: FakeEvent(ms: 11030))
+    v.drawingTouchesEnded([a,b], with: FakeEvent(ms: 11050), cancelled: false)
+    #expect(v.drawing.anchors == anchors && v.drawings.isEmpty)
+    v.undoDrawing(); #expect(v.drawing.pending == nil)
+  }
+  @Test("Lock, hide, copy and styles support undo")
+  func objectActions() throws {
+    let (v, axes) = try makeView()
+    let line = Drawing(kind: .hline, a: DrawPoint(t: axes.t(atX: 80), p: axes.p(atY: 120)))
+    v.setDrawings([line]); v.selectedDrawingID = line.id
+    var edited = line; edited.locked = true; edited.color = "#4A90E2"; edited.lineWidth = 3
+    v.updateDrawing(edited)
+    drag(v, from: CGPoint(x: 150, y: 120), to: CGPoint(x: 170, y: 150))
+    #expect(v.drawings == [edited])
+    v.selectedDrawingID = line.id; v.duplicateSelectedDrawing(); #expect(v.drawings.count == 2)
+    #expect(v.drawings.last?.locked == false && v.drawings.last?.color == edited.color)
+    v.undoDrawing(); #expect(v.drawings == [edited])
+    v.setAllDrawingsHidden(true); #expect(v.drawings[0].hidden)
+    v.undoDrawing(); #expect(!v.drawings[0].hidden)
+    v.clearDrawings(); #expect(v.drawings.isEmpty)
+    v.undoDrawing(); #expect(v.drawings == [edited])
+  }
+  @Test("Distant drawings do not distort Y; hidden objects cannot be selected")
+  func rangeAndHidden() throws {
+    let (v, axes) = try makeView(); let before = v.chartPriceRange
+    var line = Drawing(kind: .hline, a: DrawPoint(t: 0, p: 1e12))
+    v.setDrawings([line]); #expect(v.chartPriceRange == before)
+    line.a.p = axes.p(atY: 120); line.hidden = true
+    v.setDrawings([line]); tap(v, at: CGPoint(x: 150, y: 120)); #expect(v.selectedDrawingID == nil)
+  }
+  @Test("MA EMA colors are independent from each other and calculations")
+  func indicatorColorsDoNotAffectValues() {
+    var s = drawState(); s.overlays = [.ma, .ema]
+    var renderer = ChartRenderer(state: s); let before = renderer.engine[.ma]
+    s.indicatorColors = [.ma: [0: "#4A90E2", 1: "#E46A76"], .ema: [0: "#37A78F"]]; renderer.state = s
+    #expect(renderer.indicatorColor(.ma, 0) == "#4A90E2")
+    #expect(renderer.indicatorColor(.ema, 0) == "#37A78F")
+    #expect(renderer.indicatorColor(.ma, 2) == s.colors.palette[2])
+    let old = before?.lines.first?.filter(\.isFinite)
+    let new = renderer.engine[.ma]?.lines.first?.filter(\.isFinite)
+    #expect(new == old)
   }
 }

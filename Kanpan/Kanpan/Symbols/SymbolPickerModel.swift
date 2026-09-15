@@ -39,7 +39,8 @@ final class SymbolPickerModel {
   /// 订阅 / 退订的日志钩子，A5.7 要求「出页面后退订（日志确认）」。
   var log: ((String) -> Void)?
 
-  private let store: SymbolPrefsStore
+  private var store: SymbolPrefsStore
+  @ObservationIgnored var onPrefsChange: ((SymbolPrefs) -> Void)?
   private let feed: SymbolTickerFeed?
   /// 品种表的来源，宿主用 `KanpanData.SymbolCatalog` 填。
   private var catalogLoader: (@Sendable () async -> [SymbolInfo])?
@@ -247,7 +248,16 @@ final class SymbolPickerModel {
 
   private func commit() {
     store.save(prefs)
+    onPrefsChange?(prefs)
     rebuild()
+  }
+
+  func useStorage(_ store: SymbolPrefsStore, prefs: SymbolPrefs) {
+    self.store = store; self.prefs = prefs; query = ""; rebuild()
+  }
+  func applySynced(_ value: SymbolPrefs) {
+    guard value != prefs else { return }
+    prefs = value; store.save(value); rebuild()
   }
 
   private func rebuildFilter() {

@@ -71,6 +71,11 @@ public struct ChartRenderer {
     return result
   }
 
+  func indicatorColor(_ id: IndicatorID, _ index: Int) -> Hex {
+    let palette = state.colors.palette
+    return state.indicatorColors[id]?[index] ?? palette[(index + (id == .ema ? 3 : 0)) % palette.count]
+  }
+
   func outputVisible(_ id: IndicatorID, _ index: Int) -> Bool {
     !(state.hiddenOutputs[id]?.contains(index) ?? false)
   }
@@ -128,7 +133,7 @@ public struct ChartRenderer {
     KanpanCore.priceRange(
       view: view, series: state.series, overlayValues: overlayLines(),
       // 画线关掉了就别再让它撑价格区间：一条看不见的线把蜡烛压扁，用户只会觉得图坏了。
-      drawingPrices: state.options.drawings ? state.drawings.flatMap(\.prices) : [],
+      drawingPrices: [],
       transform: transform,
       extraPrices: heikin?.extremes ?? [], bias: state.options.bias,
       paneHeight: layout(size: size).main.h, topInset: mainLegendInset(plotW: layout(size: size).plotW), anchorPrice: transform.isManual ? state.axisScaleAnchor : nil)
@@ -497,7 +502,6 @@ public struct ChartRenderer {
   private func drawOverlays(_ ctx: CGContext, pane: Pane, r: PriceRange, L: Layout, scale s: Double) {
     let t = state.colors
     let (lo, hi) = visible
-    let pal = t.palette
     ctx.saveGState()
     ctx.beginPath()
     ctx.addRect(CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
@@ -507,11 +511,11 @@ public struct ChartRenderer {
       switch id {
       case .ma:
         for (k, a) in v.lines.enumerated() {
-          line(ctx, pane: pane, r: r, plotW: L.plotW, arr: a, color: pal[k % pal.count], lo: lo, hi: hi)
+          line(ctx, pane: pane, r: r, plotW: L.plotW, arr: a, color: indicatorColor(id, k), lo: lo, hi: hi)
         }
       case .ema:
         for (k, a) in v.lines.enumerated() {
-          line(ctx, pane: pane, r: r, plotW: L.plotW, arr: a, color: pal[(k + 3) % pal.count], lo: lo, hi: hi)
+          line(ctx, pane: pane, r: r, plotW: L.plotW, arr: a, color: indicatorColor(id, k), lo: lo, hi: hi)
         }
       case .boll:
         guard v.lines.count >= 3 else { break }

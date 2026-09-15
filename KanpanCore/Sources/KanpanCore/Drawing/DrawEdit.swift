@@ -54,23 +54,29 @@ public func snapDrawPoint(t: Double, p: Double, series: BarSeries, magnet: Bool)
 public func movedDrawing(
   _ from: Drawing, part: Drawing.Part, dt: Double, priceShift: (Double) -> Double
 ) -> Drawing {
+  guard !from.locked else { return from }
   var d = from
-  switch part {
-  case .a:
-    d.a = DrawPoint(t: from.a.t + dt, p: priceShift(from.a.p))
-  case .b:
-    if let b = from.b { d.b = DrawPoint(t: b.t + dt, p: priceShift(b.p)) }
-  case .body:
-    if from.kind == .hline {
-      // 水平线横跨整宽，横着拖它没有任何视觉效果，却会把端点时间拖到视野外——
-      // 原型在这儿也只改价格不改时间。
-      d.a = DrawPoint(t: from.a.t, p: priceShift(from.a.p))
-    } else {
-      d.a = DrawPoint(t: from.a.t + dt, p: priceShift(from.a.p))
-      if let b = from.b { d.b = DrawPoint(t: b.t + dt, p: priceShift(b.p)) }
-    }
+  let index: Int? = switch part { case .a: 0; case .b: 1; case .c: 2; case .body: nil }
+  for i in d.points.indices where index == nil || index == i {
+    d.points[i] = DrawPoint(t: from.points[i].t + (from.kind == .hline ? 0 : dt),
+                           p: from.kind == .vline ? from.points[i].p : priceShift(from.points[i].p))
   }
   return d
+}
+
+/// Weak magnet compares screen distances, including on inverted/log axes.
+public func snapDrawPoint(t: Double, p: Double, series: BarSeries, magnet: Bool,
+                          xOf: (Double) -> Double, yOf: (Double) -> Double, radius: Double = 10) -> DrawSnap {
+  guard magnet, series.count > 0 else { return DrawSnap(point: DrawPoint(t: t, p: p), index: -1) }
+  let i = series.index(atTime: t)
+  let time = Double(series.time(at: i))
+  guard abs(xOf(time) - xOf(t)) <= radius else { return DrawSnap(point: DrawPoint(t: t, p: p), index: -1) }
+  let prices = [series.open[i], series.high[i], series.low[i], series.close[i]]
+  guard let near = prices.min(by: { abs(yOf($0) - yOf(p)) < abs(yOf($1) - yOf(p)) }),
+        abs(yOf(near) - yOf(p)) <= radius else {
+    return DrawSnap(point: DrawPoint(t: t, p: p), index: -1)
+  }
+  return DrawSnap(point: DrawPoint(t: time, p: near), index: i)
 }
 
 // MARK: - 撤销重做

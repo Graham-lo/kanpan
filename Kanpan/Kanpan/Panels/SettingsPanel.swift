@@ -12,6 +12,7 @@ struct SettingsPanel: View {
   var store: PrefsStore
 
   @Environment(\.panelTheme) private var t
+  @Environment(\.accountFeature) private var account
   @State private var hostDraft: String = ""
   @State private var streamDraft: String = ""
   @State private var clearing = false
@@ -20,6 +21,12 @@ struct SettingsPanel: View {
 
   var body: some View {
     PanelSheet(title: "设置", subtitle: nil) {
+      if let account {
+        PanelRow(name: account.user?.email ?? "登录", meta: account.user == nil ? nil : account.syncStatus,
+                 onTap: { account.open() }) {
+          Image(systemName: "person.crop.circle").font(.title3).foregroundStyle(t.amber)
+        }.accessibilityIdentifier("settings.account")
+      }
       DisplaySettingsSection(store: store)
       PanelRow(name: "涨跌配色") {
         PanelSegment(options: [("绿涨红跌", false), ("红涨绿跌", true)], selection: prefs.redUp) { v in
@@ -43,31 +50,31 @@ struct SettingsPanel: View {
           store.update { $0.timeZone = v }
         }
       }
-      switchRow("十字线磁吸", "吸到最近一根 K 线上", prefs.magnet) { $0.magnet = $1 }
+      switchRow("十字线磁吸", nil, prefs.magnet) { $0.magnet = $1 }
         .accessibilityIdentifier("settings.magnet")
 
       // ---- 任务书 §10.6 里有、原型里没有的
-      switchRow("本根倒计时", "右轴上显示这根还有多久收", prefs.countdown) { $0.countdown = $1 }
+      switchRow("本根倒计时", nil, prefs.countdown) { $0.countdown = $1 }
         .accessibilityIdentifier("settings.countdown")
-      switchRow("盯盘时不锁屏", "在图上就不自动息屏", prefs.keepAwake) { $0.keepAwake = $1 }
+      switchRow("盯盘时不锁屏", nil, prefs.keepAwake) { $0.keepAwake = $1 }
         .accessibilityIdentifier("settings.keepAwake")
-      switchRow("启动快照", "冷启动先画上次那 600 根，再等网", prefs.launchSnapshot) { $0.launchSnapshot = $1 }
+      switchRow("启动快照", "先显示上次图表", prefs.launchSnapshot) { $0.launchSnapshot = $1 }
         .accessibilityIdentifier("settings.launchSnapshot")
 
       hostRow
       streamRow
-      switchRow("智能行情线路", "自动选用较快的可用线路，断线自动切换", prefs.smartMarketRoute) { $0.smartMarketRoute = $1 }
+      switchRow("智能行情线路", "自动选择可用线路", prefs.smartMarketRoute) { $0.smartMarketRoute = $1 }
         .accessibilityIdentifier("settings.smartMarketRoute")
       cacheRow
 
-      PanelRow(name: "恢复默认", meta: "风格、指标、周期、各项开关回到全新安装的样子",
+      PanelRow(name: "恢复默认", meta: "重置所有偏好设置",
                divider: false, onTap: { store.resetToDefaults() }) {
         Text("恢复").font(PanelFont.seg).foregroundStyle(t.amber)
       }
 
-      PanelNote(markdown:
-        "行情走 WebSocket，最新价和右轴胶囊一直跳。**这里的任何一项改完立刻生效、立刻存**，"
-        + "杀掉 app 再开还是这样。")
+    }
+    .sheet(isPresented: Binding(get: { account?.presented == true }, set: { account?.presented = $0 })) {
+      if let account { AccountView(feature: account) }
     }
     .panelToast(store)
     .task { await store.refreshCacheUsage() }
@@ -77,7 +84,7 @@ struct SettingsPanel: View {
 
   // MARK: - 行
 
-  private func switchRow(_ name: String, _ meta: String, _ on: Bool,
+  private func switchRow(_ name: String, _ meta: String?, _ on: Bool,
                          _ set: @escaping (inout Prefs, Bool) -> Void) -> some View {
     PanelRow(name: name, meta: meta) {
       PanelSwitch(isOn: on) { store.update { set(&$0, !on) } }
@@ -86,7 +93,7 @@ struct SettingsPanel: View {
 
   /// A6.10：填一个域名，立刻落盘；形状不对就弹一句、不写。
   private var hostRow: some View {
-    PanelRow(name: "API 域名", meta: "默认 \(APIHost.default)") {
+    PanelRow(name: "API 域名") {
       TextField(APIHost.default, text: $hostDraft)
         .textFieldStyle(.plain)
         .font(PanelFont.number)
@@ -104,7 +111,7 @@ struct SettingsPanel: View {
   /// 行情推送域名。和上一行分开填：走镜像或代理时常常只有一边通，
   /// 推送这条不通的表现就是「图有数据但一动不动」——那时候改的是这一行。
   private var streamRow: some View {
-    PanelRow(name: "行情推送域名", meta: "默认 \(APIHost.defaultStream)") {
+    PanelRow(name: "行情推送域名") {
       TextField(APIHost.defaultStream, text: $streamDraft)
         .textFieldStyle(.plain)
         .font(PanelFont.number)
@@ -151,9 +158,8 @@ struct SettingsPanel: View {
 
   private var cacheMeta: String {
     guard let u = store.cacheUsage else { return "正在统计…" }
-    guard u.available else { return "数据层未接入" }
-    return "启动快照与品种表 \(MarketCacheUsage.display(u.marketBytes))"
-      + " · 持仓量归档 \(MarketCacheUsage.display(u.oiBytes))"
+    guard u.available else { return "暂时无法读取" }
+    return MarketCacheUsage.display(u.totalBytes)
   }
 
   // MARK: - 分段选项
