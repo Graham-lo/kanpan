@@ -18,6 +18,11 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
   }
   override func tearDown() async throws {
+    // 手动用例（`testUserSession*`、`testInstallRequestedFavoritesInUserStore`）在 setUp 里
+    // 第 11 行就直接 return 了，压根没起过 app。这时候对它调 `screenshot()` 只会拿到一张
+    // 「capture failed」的废图，接着 `terminate()` 是冲着 pid 0 下手——XCTest 会就此卡死，
+    // 那一格要干等满 executionTimeAllowance 才肯往下走（真机、模拟器都复现）。没起来就别碰。
+    guard app.state != .notRunning, app.state != .unknown else { return }
     let attachment = XCTAttachment(screenshot: app.screenshot())
     attachment.lifetime = .keepAlways; add(attachment)
     if (testRun?.failureCount ?? 0) > 0 {
