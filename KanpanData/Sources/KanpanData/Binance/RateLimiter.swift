@@ -10,6 +10,18 @@ public actor RateLimiter {
   /// `klines limit=1500` 的权重。
   public static let klinesWeight = 10
 
+  /// 币安 K 线按请求条数计权重。保留上面的常量兼容旧调用方，
+  /// 新请求必须传实际 `limit`，否则 300 根首屏和 3 根健康探测都会被
+  /// 按 1500 根计费，造成不必要的分钟窗口等待。
+  public static func klinesWeight(for limit: Int) -> Int {
+    switch max(1, min(limit, 1500)) {
+    case 1..<100: return 1
+    case 100..<500: return 2
+    case 500...1000: return 5
+    default: return 10
+    }
+  }
+
   private let pacer: Pacer
   private let budget: Int
   private let minGapMs: Double

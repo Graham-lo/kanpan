@@ -5,6 +5,8 @@ public enum MarketSource: String, Codable, Sendable { case binance, okx }
 
 /// REST adaptation is confined to the upstream boundary. A request never changes exchange.
 public actor MarketRESTTransport: HTTPTransport {
+  private static let directCooldownSeconds: TimeInterval = 30
+  private static let preferredGatewaySeconds: TimeInterval = 300
   private let source: MarketSource
   private let log: FeedLog
   private let gateways: [String]
@@ -15,6 +17,14 @@ public actor MarketRESTTransport: HTTPTransport {
 
   public init(source: MarketSource, gateways: [String], transport: any HTTPTransport = URLSessionTransport(), log: FeedLog = .silent) {
     self.source = source; self.gateways = gateways; self.transport = transport; self.log = log
+  }
+
+  /// A user-requested retry may bypass a route cooldown once. Automatic
+  /// monitoring still observes the cooldowns; this is only for an explicit
+  /// tap on the visible retry affordance.
+  public func resetRouteCooldowns() {
+    directRetry = .distantPast
+    gatewayRetry.removeAll()
   }
   public func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
     try Task.checkCancellation()
@@ -32,12 +42,14 @@ public actor MarketRESTTransport: HTTPTransport {
         try Task.checkCancellation()
         if reply.status == 200 { return reply }
         if ![403, 408, 418, 429, 451, 500, 502, 503, 504].contains(reply.status) { return reply }
-        directRetry = [403, 451].contains(reply.status) ? Date().addingTimeInterval(60) : ([418, 429].contains(reply.status) ? Date().addingTimeInterval(15) : .distantPast)
+        directRetry = Self.directCooldown(for: reply.status)
       } catch is CancellationError { throw CancellationError() }
       catch {
         try Task.checkCancellation()
         if (error as? URLError)?.code == .cancelled { throw CancellationError() }
-        log("直连失败 \(url.host ?? ""): \(error)"); failure = error }
+        directRetry = Date().addingTimeInterval(Self.directCooldownSeconds)
+        log("直连失败 \(url.host ?? "")，\(Int(Self.directCooldownSeconds))s 内优先走网关：\(error)")
+        failure = error }
     }
     let endpoint: String, field: String
     switch url.path {
@@ -72,6 +84,11 @@ public actor MarketRESTTransport: HTTPTransport {
           }
         }
         preferred = host
+        // Once a gateway has returned a validated same-source payload, keep
+        // subsequent requests on that route for a while. This avoids paying
+        // the direct black-hole timeout again on every symbol/interval change;
+        // the normal recovery path can probe direct after the short lease.
+        directRetry = max(directRetry, Date().addingTimeInterval(Self.preferredGatewaySeconds))
         return HTTPReply(status: 200, body: try JSONSerialization.data(withJSONObject: payload))
       } catch is CancellationError { throw CancellationError() }
       catch {
@@ -81,6 +98,17 @@ public actor MarketRESTTransport: HTTPTransport {
       }
     }
     throw failure
+  }
+
+  private static func directCooldown(for status: Int) -> Date {
+    let seconds: TimeInterval
+    switch status {
+    case 403, 451: seconds = 60
+    case 418, 429: seconds = 15
+    case 408, 500, 502, 503, 504: seconds = directCooldownSeconds
+    default: seconds = 0
+    }
+    return seconds > 0 ? Date().addingTimeInterval(seconds) : .distantPast
   }
 }
 
@@ -108,4 +136,5 @@ public extension BinanceREST {
   static func upstream(_ source: MarketSource, hosts: BinanceHosts, log: FeedLog = .silent) -> BinanceREST {
     BinanceREST(hosts: hosts, transport: MarketRESTTransport(source: source, gateways: hosts.oiProxies, log: log), log: log)
   }
+
 }

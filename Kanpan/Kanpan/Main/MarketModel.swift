@@ -250,6 +250,22 @@ final class MarketModel {
     }
   }
 
+  /// Retry the initial history request (or a failed gap request). `loadMore`
+  /// intentionally requires an existing series, so it cannot serve the
+  /// cold-start error state where the retry button is shown.
+  func retryHistory() {
+    guard !loading else { return }
+    selection = UUID()
+    let request = selection
+    switchTask?.cancel()
+    loading = false
+    historyError = nil
+    switching = true
+    switchTask = Task { [feed] in
+      await feed.retry(selection: request)
+    }
+  }
+
   func setOIEnabled(_ enabled: Bool) {
     oiEnabled = enabled
     if !enabled { oiTask?.cancel(); oiTask = nil; return }

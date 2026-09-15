@@ -12,6 +12,7 @@ final class QuoteBook {
   private var latestReceived: [String: QuoteState] = [:]
   private var hosts = BinanceHosts.default
   private var rest = BinanceREST()
+  private var source: MarketSource = .binance
   private var socket: BinanceWS?
   private var subscribedStreams: [String] = []
   private var pump: Task<Void, Never>?
@@ -48,18 +49,22 @@ final class QuoteBook {
   var onHistory: ((String, [Bar]) -> Void)?
   var onUpdate: (([Ticker]) -> Void)?
 
-  func configure(hosts: BinanceHosts, basis: ChangeBasis) {
+  func configure(hosts: BinanceHosts, basis: ChangeBasis, source: MarketSource = .binance) {
     let changedHost = hosts != self.hosts
+    let changedSource = source != self.source
     let changedBasis = basis != self.basis
-    if changedHost {
-      self.hosts = hosts; rest = BinanceREST(hosts: hosts); opens.removeAll()
+    if changedHost || changedSource {
+      self.hosts = hosts
+      self.source = source
+      rest = BinanceREST.upstream(source, hosts: hosts)
+      opens.removeAll()
       for symbol in Array(quoteJobs.keys) where symbol != chartSymbol { quoteJobs.removeValue(forKey: symbol)?.cancel() }
       quoteQueue.removeAll { $0 != chartSymbol }
       historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll(); historyRequested.removeAll()
     }
     self.basis = basis
-    if changedHost || changedBasis { resetBaselineRequests() }
-    if changedHost, needsConnection { restartStream() }
+    if changedHost || changedSource || changedBasis { resetBaselineRequests() }
+    if (changedHost || changedSource), needsConnection { restartStream() }
     tick()
     publish(Array(raw.values))
   }
@@ -265,7 +270,13 @@ final class QuoteBook {
 
   private func startStream() {
     guard pump == nil else { return }
-    let socket = BinanceWS(hosts: hosts, silenceMs: 15_000)
+    // SourceSocketFactory owns the Binance/OKX fallback decision. Clear the
+    // generic stream fallback list here so BinanceWS does not wrap it twice.
+    var socketHosts = hosts
+    socketHosts.streamFallbacks = []
+    let socket = BinanceWS(hosts: socketHosts,
+                           factory: SourceSocketFactory(source: source, hosts: hosts),
+                           silenceMs: 15_000)
     let generation = session.generation
     self.socket = socket
     let names = streamNames()

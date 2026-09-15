@@ -18,12 +18,16 @@ struct AccountView: View {
       }
       .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
       .toolbar {
+        // 不论是收起整张账号页还是退回上一层，出口都在左上角同一颗「‹」上（2026-09-15）。
         ToolbarItem(placement: .cancellationAction) {
-          Button(feature.page == .account || feature.page == .login ? "完成" : "返回") {
+          Button {
             focused = nil
             if feature.page == .account || feature.page == .login { feature.presented = false }
             else { feature.move(feature.user == nil ? .login : .account) }
-          }.disabled(feature.busy)
+          } label: {
+            Label(feature.page == .account || feature.page == .login ? "关闭" : "返回",
+                  systemImage: "chevron.left")
+          }.disabled(feature.busy).accessibilityIdentifier("account.back")
         }
       }
     }.tint(theme.amber)

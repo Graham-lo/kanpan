@@ -131,10 +131,10 @@ struct ToolRail: View {
       item(VectorIcon.chart, "图表", on: active == .chart) { onPanel(.chart) }
       item(VectorIcon.draw, "画线", on: drawing, action: onDraw)
       item(VectorIcon.settings, "设置", on: active == .settings) { onPanel(.settings) }
-      if UIDevice.current.userInterfaceIdiom == .pad {
-        item(VectorIcon.landscape, "返回", on: false, action: onPortrait)
-          .accessibilityIdentifier("land.exit")
-      }
+      // 手机上也得有这一格。以前只给 iPad 留，理由是「手机转回去就行了」——
+      // 可锁了方向的手机转不回去，进了横屏就只能靠关掉 app 出来，横屏成了单程票。
+      item(VectorIcon.landscape, "竖屏", on: false, action: onPortrait)
+        .accessibilityIdentifier("land.exit")
       Spacer(minLength: 0)
     }
     .frame(width: 52)

@@ -5,7 +5,9 @@
 - 主节点：`kanpan.107-174-172-10.sslip.io`
 - 备用节点：`kanpan.96-44-162-222.sslip.io:8443`（该机443已有业务，保留原服务）
 
-只处理公开行情，不接收交易/API密钥/账户数据，不代理REST。客户端优先使用当前有效线路；新连接比较用户地址、官方和两台网关的首条有效行情。健康连接持续使用，不因小幅延迟变化切换；断线、有效行情超时或网络接口变化后重选。败选连接立即关闭，首帧不会丢失。REST继续由客户端访问，两台美国节点的REST均实测451。
+只处理公开行情，不接收交易/API密钥/账户数据，不提供任意 URL 转发。客户端优先使用当前有效线路；新连接比较用户地址、官方和两台网关的首条有效行情。健康连接持续使用，不因小幅延迟变化切换；断线、有效行情超时或网络接口变化后重选。败选连接立即关闭，首帧不会丢失。
+
+历史 K 线通过受限的 `/market/v1/*` 接口按 `source=binance|okx` 取数，响应会明确返回品种、周期和来源。网关不会把失败的 Binance 请求伪装成 OKX，也不拼接两个交易所的 K 线；客户端在 Binance 的历史与实时链路不能完整使用时，整套切到 OKX，恢复后再切回。近期 K 线不从归档站伪造，服务端只访问固定的 Binance/OKX 公开市场接口。
 
 ## 共享实时订阅
 
@@ -21,14 +23,20 @@
 
 每5秒采样宿主CPU、可用内存、服务RSS、默认出口发送速度。压力升高时逐步减少新连接及发送预算，回落时缓慢恢复，避免抖动。整个服务由systemd限制256MB内存、50%单核CPU、64任务；历史服务独立受限。预算在`/etc/kanpan-gateway/limits.env`配置，不影响同机其他应用。公开HTTP健康接口只返回必要服务状态。
 
-## 历史OI
+## 历史 K 线与 OI
+
+- `/market/v1/klines?source=okx&symbol=BTCUSDT&interval=1m&limit=300`：受限的 OKX/Binance 统一 K 线格式；`source` 必须明确，服务端校验 OHLCV、连续性、时间范围和 USDT 永续品种。
+- `/market/v1/ticker?source=okx&symbol=BTCUSDT`：当前源的 24h 行情。
+- `/market/v1/instruments?source=okx`：当前源的可用 USDT 永续品种表。
+
+历史分页按时间游标继续请求，不把短响应误判为历史耗尽；缺口、来源不匹配或上游不可用都返回失败。主节点失败后按顺序尝试备用节点，客户端只在两台网关都不可用时报告失败。
 
 - `/oi/v1/metrics/BTCUSDT/2021-12-01.json`：归档日切片，真实 `[毫秒时间戳,持仓量]`。
 - `/oi/v1/metrics/BTCUSDT/range?interval=4h&from=1638316800000&to=1638403199999`：按14种图表周期取桶末值，周/月/年用UTC日历，1m/3m保留源5m粒度。
 - `/chart-gateway/health`：历史服务状态。
 - `/chart-gateway/stream-health`：实时服务连接/频道/预算状态。健康HTTP本身不证明行情可用。
 
-历史日切片缓存最多200MB、8个全局下载任务、64个待处理键；同日请求合并。范围最多4并发，每请求2个读取任务；每来源2并发和请求速率限制，HTTP工作线程最多16，读超时5秒。缓存按最近使用淘汰，失败/404不永久缓存。手机只收周期聚合结果；主节点失败顺序转备用，不同时在两台重复生成相同历史范围；全部网关失败才走原有官方归档回退。近期REST及实时WS不交给历史聚合服务。
+历史日切片缓存最多200MB、8个全局下载任务、64个待处理键；同日请求合并。范围最多4并发，每请求2个读取任务；每来源2并发和请求速率限制，HTTP工作线程最多16，读超时5秒。缓存按最近使用淘汰，失败/404不永久缓存。手机只收周期聚合结果；主节点失败顺序转备用，不同时在两台重复生成相同历史范围。近期市场 REST 与实时 WS 走同一完整来源，不从 OI 归档补行情。
 
 ## 运行、验证与回滚
 
@@ -38,6 +46,6 @@ Python3.11+，独立venv，`pip install -r requirements.txt`；aiohttp固定3.14
 
 仅在项目独立Caddy站点导入`Caddy.routes`，其它主机规则保留。两台现有Caddy均admin off，配置备份并validate成功后各短重启一次激活；未升级Caddy或更改管理接口。后续Python更新只重启项目服务。恢复`/etc/caddy/Caddyfile.backup-before-shared-<部署时间>`并validate/激活可回滚路由；主节点旧源码另备份在`/var/backups/kanpan-gateway`。未修改Mac网络代理规则。
 
-两台VPS的19项测试均通过；公网各2个客户端实收BTC、健康统计2客户端/1频道，断开后0客户端且上游关闭。2021年OI的4h返回6点、1d返回1点，两台一致。原始可公开结果见`docs/acceptance/AICoin-base/foundation/dual-gateway-live.json`。
+两台VPS的实时共享与 OI 验证记录见`docs/acceptance/AICoin-base/foundation/dual-gateway-live.json`；市场源的 OKX 历史、实时和分页应通过 `LiveRoutingTests` 在当前公网环境单独复验，不能用本地单元测试代替 VPS 或真机覆盖。
 
 Git只包含公开服务地址、实现及验证记录，不包含SSH配置、登录端口、私钥、密码或令牌。VPS是受信行情中转；WSS/HTTPS正常校验证书，不等于交易所对报价做端到端签名。

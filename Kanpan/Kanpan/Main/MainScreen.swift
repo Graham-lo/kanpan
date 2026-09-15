@@ -30,9 +30,13 @@ struct MainScreen: View {
   @State private var panel: Panel?
   @State private var showQuickFavorites = false
   @State private var quickSearchPending = false
+  /// 半屏弹层里点了「全部自选与分组」：等它关完再开全屏自选页。
+  @State private var quickListPending = false
   @State private var showSymbols = false
   @State private var showFavorites = false
   @State private var expandedChart = false
+  /// 这次横屏是「点画线」带进来的吗——是的话画完要自己转回竖屏。
+  @State private var landscapeForDrawing = false
   @StateObject private var draw = DrawingController()
   @State private var toast: String?
   @State private var toastID = 0
@@ -98,10 +102,12 @@ struct MainScreen: View {
     basePresentation
     .sheet(isPresented: $showQuickFavorites, onDismiss: {
       if quickSearchPending { quickSearchPending = false; showSymbols = true }
+      else if quickListPending { quickListPending = false; showFavorites = true }
     }) {
       FavoritesQuickPicker(model: picker, current: market.symbol,
         onClose: { showQuickFavorites = false },
-        onSearch: { quickSearchPending = true; showQuickFavorites = false })
+        onSearch: { quickSearchPending = true; showQuickFavorites = false },
+        onAll: { quickListPending = true; showQuickFavorites = false })
         .preferredColorScheme(effectiveTheme.forced)
     }
     .fullScreenCover(isPresented: $showSymbols) {
@@ -147,8 +153,9 @@ struct MainScreen: View {
 
   private var marketContent: some View {
     observedContent
-    .onChange(of: hosts) { _, next in market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis) }
-    .onChange(of: prefs.changeBasis) { _, next in quotes.configure(hosts: hosts, basis: next) }
+    .onChange(of: hosts) { _, next in market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis, source: market.source) }
+    .onChange(of: prefs.changeBasis) { _, next in quotes.configure(hosts: hosts, basis: next, source: market.source) }
+    .onChange(of: market.source) { _, next in quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next) }
     .onChange(of: showFavorites || showSymbols) { _, on in quotes.setVisible(on) }
     .onChange(of: picker.prefs.favorites) { _, symbols in quotes.setFavorites(symbols) }
     .onChange(of: market.routing) { _, state in
@@ -169,14 +176,25 @@ struct MainScreen: View {
 
   var body: some View {
     marketContent
-    .sheet(item: $draw.panel) { panel in DrawingSheet(controller: draw, panel: panel) }
+    .sheet(item: $draw.panel) { panel in
+      DrawingSheet(controller: draw, panel: panel, decimals: market.info.pricePrecision)
+    }
     .onChange(of: draw.notice, initial: true) { _, note in if let note { say(note); draw.notice = nil } }
     .environment(\.panelTheme, theme)
     .environment(\.accountFeature, account)
     .sheet(isPresented: Binding(get: { account.presented && panel != .settings && !review.bookOpen }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
     .onChange(of: account.notice) { _, note in if let note { say(note); account.notice = nil } }
     .onChange(of: panel) { _, value in if value == nil { try? accountBridge?.applyPending() } }
-    .onChange(of: draw.active) { _, active in if !active { try? accountBridge?.applyPending() } }
+    .onChange(of: draw.active) { _, active in
+      if !active { try? accountBridge?.applyPending() }
+      // 画线直接横过来，画完自己转回去（§10.7 的入口就此收在「画线」上）。
+      if active {
+        if !landscape { landscapeForDrawing = true; enterLandscape() }
+      } else if landscapeForDrawing {
+        landscapeForDrawing = false
+        leaveLandscape()
+      }
+    }
     .fullScreenCover(isPresented: $review.bookOpen) {
       ReviewBook(feature: review).sheet(isPresented: $account.presented) { AccountView(feature: account).environment(\.panelTheme, theme) }
     }
@@ -200,7 +218,8 @@ struct MainScreen: View {
         onPick: pick(interval:), onMore: { panel = .period },
         // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
         onChart: { panel = .chart }, drawing: draw.active,
-        onDraw: { dismissPanel(); draw.toggle() }
+        onDraw: { dismissPanel(); draw.toggle() },
+        onRecord: chartRecordAction
       )
       .background(theme.app) }
       hairline
@@ -214,7 +233,7 @@ struct MainScreen: View {
         theme: theme, active: panel,
         onPanel: { p in panel = (panel == p) ? nil : p },
         onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() }, reviewCount: review.pendingCount,
-        onFavorites: { dismissPanel(); showFavorites = true }
+        onFavorites: { dismissPanel(); showFavorites = true; quotes.setVisible(true) }
       )
       .background(theme.app)
     }
@@ -259,8 +278,8 @@ struct MainScreen: View {
         onRecord: startReviewCapture,
         onPortrait: {
           dismissPanel()
-          expandedChart = false
-          if UIDevice.current.userInterfaceIdiom != .pad { Orientation.rotate(to: false) }
+          landscapeForDrawing = false
+          leaveLandscape()
         })
     }
     .overlay(alignment: .trailing) {
@@ -269,6 +288,39 @@ struct MainScreen: View {
       }
     }
   }
+
+  /// 竖屏点「横屏」：先把布局切成横屏，再请系统把屏幕转过去（§10.7）。
+  ///
+  /// 两件事都要做。`expandedChart` 管的是「这一屏用哪套外壳」——iPad 横过来
+  /// 竖直尺寸类仍是 regular，只有它说了算；`Orientation.rotate` 管的是手机上真的
+  /// 把屏幕转过去，手机锁了方向照样转得动（锁的是跟重力转，不是 app 指定方向）。
+  /// 回来那一格在横屏工具栏上，两边对称。
+  ///
+  /// 手机上只转屏、**不**置 `expandedChart`：转过去 `vClass` 自己就变 compact 了，
+  /// 再多置一个标志，等用户哪天用手把手机转回竖着，标志还挂着，人就卡在一个
+  /// 竖着的屏幕配一套横屏外壳里。iPad 反过来——横过来尺寸类不变，只有它说了算。
+  private func enterLandscape() {
+    if UIDevice.current.userInterfaceIdiom == .pad { expandedChart = true }
+    else { Orientation.rotate(to: true) }
+  }
+
+  private func leaveLandscape() {
+    expandedChart = false
+    if UIDevice.current.userInterfaceIdiom != .pad { Orientation.rotate(to: false) }
+  }
+
+  /// 画线的时候横屏里**一个指标都不画**：画线要的就是一整屏的原始 K 线。
+  ///
+  /// 副图（成交量、MACD）好理解——它们只是把主图挤扁。主图上的均线要一起收掉则是
+  /// 因为价格轴的上下界是把均线算进去一起取的：MA256 一挂上，量程被拉宽，K 线当场
+  /// 被压扁、整体位置也挪了，这时候画的线和真正的价格结构对不上。所以横屏画线给的是
+  /// 一张没有任何指标参与定标的图。
+  ///
+  /// 两个都只影响画出来的这一帧，`prefs.subs` 和 `prefs.overlays` 一个字没动——画完
+  /// 退出画线，副图和均线原样回来，用户开着的那几个指标不需要重新打开。
+  private var drawingCanvasOnly: Bool { draw.active && landscape }
+  private var visibleSubs: [IndicatorID] { drawingCanvasOnly ? [] : prefs.subs }
+  private var visibleOverlays: [IndicatorID] { drawingCanvasOnly ? [] : prefs.overlays }
 
   @ViewBuilder private var sidePanelContent: some View {
     if let which = panel {
@@ -291,7 +343,6 @@ struct MainScreen: View {
         status: market.status,
         onSymbol: { dismissPanel(); showQuickFavorites = true },
         onStatus: { say(statusLine) },
-        onSearch: { dismissPanel(); showSymbols = true },
         onStar: {
           dismissPanel()
           let now = picker.toggleFavorite(market.symbol, info: market.info)
@@ -356,6 +407,8 @@ struct MainScreen: View {
       + "  量 " + fmtVol(series.volume[i])
   }
 
+  /// 周期条上那颗「记」。复盘回放里没有「记」这回事，横屏归 `ToolRail` 管，
+  /// 这两种情形返回 nil，条上那一格直接不排。
   private var chartRecordAction: (() -> Void)? {
     guard !reviewChart.active, !landscape else { return nil }
     return { startReviewCapture() }
@@ -377,9 +430,7 @@ struct MainScreen: View {
         onNeedsHistory: { if reviewChart.mode == .replay { reviewChart.loadReplayPage(forward: false, feature: review) } else if !reviewChart.active { market.loadMore() } },
         // 面板打开时由原生遮罩消费首个触摸，只收起面板。
         onTapped: { dismissPanel() },
-        onRecord: chartRecordAction,
-        recordPosition: CGPoint(x: prefs.recordButtonX, y: prefs.recordButtonY),
-        onRecordMoved: { position in store.update { $0.recordButtonX = position.x; $0.recordButtonY = position.y } },
+        onNotice: { say($0) },
         drawing: reviewChart.active ? nil : draw
       )
       .id(reviewChart.mode.rawValue)
@@ -391,7 +442,7 @@ struct MainScreen: View {
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).padding(.top, 8)
           .allowsHitTesting(false).accessibilityIdentifier("market.routeSwitching")
       } else if let error = market.historyError, !reviewChart.active {
-        Button(error) { market.loadMore() }.font(.caption).padding(10)
+        Button(error) { market.retryHistory() }.font(.caption).padding(10)
           .background(.regularMaterial, in: Capsule()).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
           .padding(.top, 8)
       }
@@ -401,6 +452,12 @@ struct MainScreen: View {
         DrawingHintStrip(controller: draw)
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
           .padding(.top, 8)
+      }
+      // 选中态的动作条同样浮在图上（贴下沿），理由见 `DrawingSelectionBar`。
+      if draw.active, !landscape {
+        DrawingSelectionBar(controller: draw)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+          .padding(.bottom, 6)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -487,8 +544,8 @@ struct MainScreen: View {
       dark: dark,
       redUp: prefs.redUp,
       price: PriceTransform(mode: prefs.priceMode),
-      overlays: prefs.overlays,
-      subs: prefs.subs,
+      overlays: visibleOverlays,
+      subs: visibleSubs,
       params: prefs.params,
       timezone: prefs.timeZone,
       oi: market.oi,
@@ -497,6 +554,9 @@ struct MainScreen: View {
       options: prefs.chartOptions,
       nowMs: nowMs,
       subScale: subScale)
+    // 走 OKX 兜底线路时持仓量根本取不到（`OISource` 只连币安）——让副图说实话，
+    // 别一直挂「加载中」。
+    result.oiSupported = market.source == .binance
     result.paletteSeed = seed
     result.hiddenOutputs = prefs.hiddenOutputs
     result.indicatorColors = prefs.indicatorColors
@@ -510,7 +570,7 @@ struct MainScreen: View {
   /// 没坏处但也没用，而且每帧都要比一次字典，不如只带用得上的。
   private var subScale: [IndicatorID: Double] {
     var out: [IndicatorID: Double] = [:]
-    for id in prefs.subs { out[id] = prefs.scale(for: id) }
+    for id in visibleSubs { out[id] = prefs.scale(for: id) }
     return out
   }
 
@@ -551,7 +611,7 @@ struct MainScreen: View {
     quotes.onScopeChange = { picker.retainQuotes(for: $0) }
     quotes.onUpdate = { picker.updateQuotes($0) }
     quotes.onHistory = { picker.setHistory($0, $1) }
-    quotes.configure(hosts: hosts, basis: prefs.changeBasis)
+    quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: market.source)
     quotes.watchChart(market.symbol)
     quotes.setForeground(phase != .background)
     quotes.setFavorites(picker.prefs.favorites)

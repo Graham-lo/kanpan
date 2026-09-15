@@ -116,6 +116,8 @@ public final class ChartView: UIView {
           "crossX": renderer?.crosshairCenter(size: bounds.size)?.x ?? -1,
           "crossY": renderer?.crosshairCenter(size: bounds.size)?.y ?? -1,
           "panes": layout.panes.dropFirst().map { ["id": $0.indicator?.rawValue ?? "", "y": $0.y, "h": $0.h] as [String: Any] }, "subs": s.subs.map(\.rawValue),
+          // 画线横屏要的是一张没有任何指标参与定标的原始 K 线，用例得能看见主图叠加层。
+          "overlays": s.overlays.map(\.rawValue),
           "ma": s.params[.ma] ?? [], "macd": s.params[.macd] ?? [],
           "oiReady": s.oi != nil, "interval": s.series.interval.rawValue,
           "oiPeriod": s.oi?.bucketInterval?.rawValue ?? "",
@@ -143,6 +145,9 @@ public final class ChartView: UIView {
   public var onNeedsHistory: (() -> Void)?
   /// 图上轻点了一下（没有十字线、不是双击）。画线选中交给 M7 接。
   public var onTapped: (() -> Void)?
+  /// 图自己做了件用户可能没预料到的事，需要外面报一行短提示（比如价格轴双击翻转）。
+  /// 只给这种「不说一声就找不回来」的动作用，别拿它做常规反馈。
+  public var onNotice: ((String) -> Void)?
   public var onStateChanged: ((ChartState?) -> Void)?
 
   // ---------------------------------------------------------------- 生命周期
@@ -298,7 +303,7 @@ public final class ChartView: UIView {
     a.symbol == b.symbol && a.view == b.view && a.style == b.style && a.dark == b.dark && a.paletteSeed == b.paletteSeed
       && a.redUp == b.redUp && a.price == b.price && a.overlays == b.overlays
       && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
-      && a.drawingPreviewID == b.drawingPreviewID && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi
+      && a.drawingPreviewID == b.drawingPreviewID && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi && a.oiSupported == b.oiSupported
       && a.magnet == b.magnet && a.options == b.options && a.subScale == b.subScale
       && a.indicatorColors == b.indicatorColors && a.hiddenOutputs == b.hiddenOutputs && a.subInverted == b.subInverted
       && a.rsiUpper == b.rsiUpper && a.rsiLower == b.rsiLower && a.axisScaleAnchor == b.axisScaleAnchor

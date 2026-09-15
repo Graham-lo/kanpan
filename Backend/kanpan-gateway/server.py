@@ -1,4 +1,4 @@
-"""Public historical OI cache. WS is streamed by Caddy; REST stays on the client."""
+"""Bounded public history service for OI and complete market-source fallback."""
 import csv
 import datetime as dt
 import io

@@ -15,6 +15,14 @@ import Testing
       return json("[]")
     }
   }
+  actor TimeoutThenGateway: HTTPTransport {
+    var hosts: [String] = []
+    func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
+      hosts.append(url.host!)
+      if hosts.count == 1 { throw URLError(.timedOut) }
+      return json(#"{"source":"binance","symbol":"BTCUSDT","interval":"1m","bars":[]}"#)
+    }
+  }
   @Test func cancelledSelectionDoesNotPoisonHealthyDirectRoute() async throws {
     let network = CancelFirst()
     let transport = MarketRESTTransport(source: .binance, gateways: ["gateway.test"], transport: network)
@@ -22,13 +30,20 @@ import Testing
     _ = try await transport.get(url, timeout: 10)
     #expect(await network.hosts == ["fapi.binance.com", "fapi.binance.com"])
   }
-  @Test func oneTimeoutCannotDisableDirectAccessForOtherSymbols() async throws {
+  @Test func timeoutEntersCooldownAndDoesNotRepeatDirectAttempt() async throws {
     let network = CancelFirst(.timedOut)
     let transport = MarketRESTTransport(source: .binance, gateways: [], transport: network)
     await #expect(throws: (any Error).self) { try await transport.get(url, timeout: 10) }
     let next = URL(string: "https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=1m&limit=3")!
-    _ = try await transport.get(next, timeout: 10)
-    #expect(await network.hosts == ["fapi.binance.com", "fapi.binance.com"])
+    await #expect(throws: (any Error).self) { try await transport.get(next, timeout: 10) }
+    #expect(await network.hosts == ["fapi.binance.com"])
+  }
+  @Test func timeoutFallsBackAndNextRequestReusesGateway() async throws {
+    let network = TimeoutThenGateway()
+    let transport = MarketRESTTransport(source: .binance, gateways: ["gateway.test"], transport: network)
+    _ = try await transport.get(url, timeout: 10)
+    _ = try await transport.get(url, timeout: 10)
+    #expect(await network.hosts == ["fapi.binance.com", "gateway.test", "gateway.test"])
   }
   @Test func blockedBinanceUsesOnlyBinanceGateway() async throws {
     let server = FakeServer { url in

@@ -42,7 +42,6 @@ final class GestureState {
   var directionChosen = false
   var axisStarted = false
   var lastAxisTap: Double?
-  var lastAxisInverted = false
   /// 这次手势总共动了多远（取最大值，不是最后的位移）。判轻点、判长按取消都看它。
   var moved: Double = 0
   var velocity = VelocityTracker()
@@ -453,19 +452,27 @@ extension ChartView {
     state = s
   }
 
-  /// 当前手机开启主轴点击翻转。
+  /// 价格轴上轻点 / 双击。
+  ///
+  /// 单击 = 恢复自动纵向缩放。安全、可逆、点错了没代价，正好配「轴上拖动改缩放」这个手势。
+  ///
+  /// 双击 = 主图上下翻转（前提是设置里开了「主轴允许翻转」，默认没开）。翻转会让整张图的
+  /// 形态全反过来、副图还不跟着翻，实测一次误触就足以让人以为行情崩了；所以它必须是个
+  /// 「我确实要这么干」的手势，而且翻完要说一句——不然用户只知道图不对，不知道怎么翻回去。
   private func handleAxisTap(at now: Double) {
-    guard var s = state, let L = chartLayout, gesture.startPoint.y < L.mainH else { return }
-    if let previous = gesture.lastAxisTap, now - previous < 300 {
-      s.price.inverted = gesture.lastAxisInverted
-      s.price.reset()
-      gesture.lastAxisTap = nil
-    } else {
-      gesture.lastAxisInverted = s.price.inverted
+    guard let L = chartLayout, gesture.startPoint.y < L.mainH else { return }
+    let isDouble = gesture.lastAxisTap.map { now - $0 < 300 } ?? false
+    guard isDouble else {
       gesture.lastAxisTap = now
-      if s.options.allowMainInversion { s.price.inverted.toggle() }
+      resetPriceScale()
+      return
     }
+    gesture.lastAxisTap = nil
+    guard var s = state, s.options.allowMainInversion else { return }
+    s.price.inverted.toggle()
+    s.price.reset()
     state = s
+    onNotice?(s.price.inverted ? "主图已上下翻转，再双击价格轴翻回来" : "主图已翻回正常方向")
   }
 
   /// Explicit reset action restores the shared initial spacing.

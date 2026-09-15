@@ -33,6 +33,13 @@ public actor BinanceREST {
     self.log = log
   }
 
+  /// Clear only the in-memory route backoff before an explicit user retry.
+  public func resetRouteCooldowns() async {
+    if let routed = transport as? MarketRESTTransport {
+      await routed.resetRouteCooldowns()
+    }
+  }
+
   // ------------------------------------------------------------------ 底层
 
   /// 发一次 GET。418 / 429 按 `Retry-After` 停够重发，最多 `attempts` 次。
@@ -51,11 +58,13 @@ public actor BinanceREST {
         return reply.body
       }
       let err = decodeError(reply, url: url)
-      if err.isRateLimited, tried < attempts {
+      if err.isRateLimited {
         let ra = reply.header("Retry-After").flatMap(Double.init)
-        log("限流 \(reply.status)，Retry-After=\(ra.map { "\($0)s" } ?? "无")，停够再发")
+        log("限流 \(reply.status)，Retry-After=\(ra.map { "\($0)s" } ?? "无")，记录罚停")
         await limiter.penalize(retryAfterSeconds: ra)
-        continue
+        if tried < attempts {
+          continue
+        }
       }
       throw err
     }
@@ -107,7 +116,7 @@ public actor BinanceREST {
     let api = interval.source.rawValue
     let url = hosts.klines(symbol: symbol, interval: api, limit: min(limit, Self.maxKlines),
                            startTime: startTime, endTime: endTime)
-    let data = try await fetch(url, weight: RateLimiter.klinesWeight)
+    let data = try await fetch(url, weight: RateLimiter.klinesWeight(for: min(limit, Self.maxKlines)))
     let rows = try decode([KlineRow].self, data)
     return rows.map(\.bar)
   }

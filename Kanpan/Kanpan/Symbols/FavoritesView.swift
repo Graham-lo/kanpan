@@ -152,7 +152,8 @@ struct FavoritesView: View {
 
   private func visibleGroups(width: CGFloat) -> [FavoriteGroup] {
     var result: [FavoriteGroup] = []
-    var remaining = max(0, width - 104)
+    // 104 是右边「+」和「…」两个按钮，44 是左边新加的返回按钮。
+    var remaining = max(0, width - 104 - 44)
     for group in model.prefs.groups {
       let required = tabWidth(group) + (result.isEmpty ? 0 : 4)
       guard remaining >= required else { break }
@@ -178,6 +179,18 @@ struct FavoritesView: View {
     GeometryReader { geometry in
       let visible = visibleGroups(width: geometry.size.width)
       HStack(spacing: 4) {
+        // 自选是整屏盖上来的（`fullScreenCover`），没有导航栏也没有 tab 栏。
+        // 原来唯一的出口埋在「…」弹层最后一行、红色的「删除当前分类」下面——
+        // 实测新用户在这一页出不去。常驻一个返回按钮，放在所有人第一眼找出口的地方。
+        Button(action: onClose) {
+          HStack(spacing: 2) {
+            Image(systemName: "chevron.left")
+            Text("行情").font(.system(size: 15, weight: .medium))
+          }
+          .frame(height: 48).padding(.trailing, 4).contentShape(Rectangle())
+        }
+        .foregroundStyle(theme.amber)
+        .accessibilityLabel("返回行情").accessibilityIdentifier("favorites.back")
         HStack(spacing: 4) {
           ForEach(visible) { group in
             chip(group.name, id: group.id, count: model.prefs.favorites(in: group.id).count)
@@ -236,10 +249,8 @@ struct FavoritesView: View {
           }
           moreRow("删除当前分类", icon: "trash", id: "favorites.deleteGroup", destructive: true) { model.deleteGroup(group.id) }
         }
-        theme.line.frame(height: 0.5).padding(.vertical, 6)
-        moreRow("返回行情", icon: "chart.xyaxis.line", id: "favorites.close", action: onClose)
       }.padding(.vertical, 6)
-    }.font(.system(size: 14)).frame(width: 260).frame(idealHeight: min(430, CGFloat(5 + hidden.count) * 46 + (hidden.isEmpty ? 25 : 68)), maxHeight: 430)
+    }.font(.system(size: 14)).frame(width: 260).frame(idealHeight: min(430, CGFloat(4 + hidden.count) * 46 + (hidden.isEmpty ? 18 : 61)), maxHeight: 430)
       .background(theme.app).presentationBackground(theme.app)
   }
 

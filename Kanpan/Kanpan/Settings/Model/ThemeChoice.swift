@@ -32,9 +32,6 @@ enum ThemeChoice: String, Sendable, Codable, CaseIterable, Hashable {
   }
 
   static let fallback: ThemeChoice = .system
-
-  /// 分段控件那三格，顺序与原型一致。
-  static let options: [(String, ThemeChoice)] = allCases.map { ($0.display, $0) }
 }
 
 /// 副图高度三档（任务书 A6.4 / §10.6「每个副图有 小 / 中 / 大 三档高度」）。
@@ -65,6 +62,4 @@ enum SubPaneHeight: String, Sendable, Codable, CaseIterable, Hashable {
   func points(base: Double) -> Double { max(44, (base * scale).rounded()) }
 
   static let fallback: SubPaneHeight = .medium
-
-  static let options: [(String, SubPaneHeight)] = allCases.map { ($0.display, $0) }
 }

@@ -3,10 +3,17 @@ import Foundation
 import KanpanCore
 import UIKit
 
-/// 成交量柱的颜色：涨跌色压 40% 透明（原型 `app.js` 的 `theme.volUp = up + '66'`）。
+/// 成交量柱的颜色：和主图蜡烛同色，不压透明。
+///
+/// 原型 `app.js` 里是 `theme.volUp = up + '66'`（40% 透明），照抄过来之后量柱在白底上
+/// 最深也只到 `#AEDAB3` / `#D38188`，整条副图发灰。2026-09-15 在同一个镜像窗口、同品种
+/// 同周期（BTCUSDT·1h）下量过手机 AICoin 的量柱：最纯的一格红是 `#E64553`——正好是
+/// 我们的 `down` 原值，绿是 `#3DB45C`，都没有掺底色；整条量柱带离白底的平均距离
+/// AICoin 是 240.1，压了透明的我们只有 154.0。所以这里跟手机 AICoin 走，撤掉透明。
+/// 柱与柱之间恒留缝靠的是 `candlePixels` 的宽度上限（见 `subVol`），不是靠透明度。
 extension ChartColors {
-  var volUp: Hex { up.alpha("66") }
-  var volDn: Hex { down.alpha("66") }
+  var volUp: Hex { up }
+  var volDn: Hex { down }
 }
 
 /// 一帧的画法，1:1 移植自 `prototype/src/chart.js` 的 `paint()`。
@@ -97,7 +104,7 @@ public struct ChartRenderer {
         x += width
       }
     }
-    return max(AICoinBehavior.mainTopInset, rows * 12 + 24)
+    return max(AICoinBehavior.mainTopInset, rows * 12 + 12)
   }
 
   // ---------------------------------------------------------------- 入口

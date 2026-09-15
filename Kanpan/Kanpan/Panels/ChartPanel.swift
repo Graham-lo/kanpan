@@ -2,6 +2,16 @@ import SwiftUI
 import KanpanCore
 
 /// 图表共用设置，改动即时生效并落盘；风格只控制造型。
+///
+/// 和「设置」的分界：**画在图上的东西归这儿，其余归设置**。以前两边各有一份
+/// 外观、一份价格轴、一份本根倒计时，同一个字段两个入口两种叫法（「价格坐标」
+/// 和「价格轴」是同一个 `priceMode`），改了一处回头在另一处看见旧位置，人就开始
+/// 怀疑自己有没有改成功。现在外观留在设置（那边有配色卡片，能看见效果），
+/// 价格轴和本根倒计时留在这儿。
+///
+/// 「竖屏高度」那根滑块也撤了：主图和副图的高度比例在图上直接拖副图上沿那条把手
+/// 就能改，边拖边看。滑块是同一件事的第二个入口，而且它在面板里——拖的时候图被
+/// 面板盖着，等于蒙着眼调。
 struct ChartPanel: View {
   var store: PrefsStore
 
@@ -19,28 +29,21 @@ struct ChartPanel: View {
   var body: some View {
     PanelSheet(title: "图表", subtitle: nil) {
       CandleStylePicker(store: store)
-      PanelRow(name: "外观") {
-        PanelSegment(options: ThemeChoice.options, selection: prefs.theme) { value in
-          store.update { $0.theme = value }
-        }
-      }
 
       PanelGroupTitle(text: "布局与读数")
-      PanelRow(name: "竖屏高度") {
-        Slider(value: Binding(get: { prefs.portraitHeight }, set: { value in store.update { $0.portraitHeight = value } }), in: 0...1)
-          .frame(maxWidth: 180).accessibilityIdentifier("chart.portraitHeight")
-      }
-      PanelRow(name: "K线数据") {
+      PanelRow(name: "K 线数据") {
         PanelSegment(options: [("K线内", CandleDataDisplay.inside), ("顶部", .top), ("跟随K线", .follow)], selection: prefs.dataDisplay) { v in store.update { $0.dataDisplay = v } }
       }.accessibilityIdentifier("chart.dataDisplay")
       PanelRow(name: "十字线") {
         PanelSegment(options: [("选中价", CrossPriceMode.selected), ("收盘价", .close)], selection: prefs.crossPrice) { v in store.update { $0.crossPrice = v } }
       }
-      PanelRow(name: "价格坐标") {
+      PanelRow(name: "价格轴") {
         PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: prefs.priceMode) { v in store.update { $0.priceMode = v } }
       }
-      switchRow("主轴允许翻转", "轻点价格轴翻转", prefs.allowMainInversion) { $0.allowMainInversion = $1 }
-      switchRow("副轴允许翻转", "轻点副图坐标轴翻转", prefs.allowSubInversion) { $0.allowSubInversion = $1 }
+      switchRow("主轴允许翻转", "双击价格轴上下颠倒", prefs.allowMainInversion,
+                id: "chart.allowMainInversion") { $0.allowMainInversion = $1 }
+      switchRow("副轴允许翻转", "双击副图坐标轴翻转", prefs.allowSubInversion,
+                id: "chart.allowSubInversion") { $0.allowSubInversion = $1 }
       switchRow("指标区域自适应", nil, prefs.adaptiveIndicators) { $0.adaptiveIndicators = $1 }
       switchRow("简化指标数值", "使用万、亿等单位", prefs.compactValues) { $0.compactValues = $1 }
 
@@ -82,8 +85,7 @@ struct ChartPanel: View {
       PanelGroupTitle(text: "显示")
       switchRow("实时价格线", nil, prefs.lastLine) { $0.lastLine = $1 }
         .accessibilityIdentifier("chart.lastLine")
-      // 同一个字段在「设置」面板里也有一行。那边留着不动：两处改的是同一个
-      // `countdown`，谁改都一样，不会出现两个开关各说各话。
+      // 「设置」里原来也有一行同名开关，已经去掉了：那是画在图上的东西，归这儿。
       switchRow("本根倒计时", nil, prefs.countdown) { $0.countdown = $1 }
         .accessibilityIdentifier("chart.countdown")
       switchRow("至今涨幅", "选中 K 线至今的涨跌幅", prefs.sinceChange) {
@@ -101,10 +103,14 @@ struct ChartPanel: View {
 
   // MARK: - 行
 
+  /// `id` 给用例一个把手：这几个开关控制的是「双击轴翻不翻转」这类默认关掉的行为，
+  /// 没有把手就只能靠点坐标去猜哪一行是哪一行。
   private func switchRow(_ name: String, _ meta: String?, _ on: Bool, divider: Bool = true,
+                         id: String? = nil,
                          _ set: @escaping (inout Prefs, Bool) -> Void) -> some View {
     PanelRow(name: name, meta: meta, divider: divider) {
       PanelSwitch(isOn: on) { store.update { set(&$0, !on) } }
+        .accessibilityIdentifier(id ?? "")
     }
   }
 

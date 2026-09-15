@@ -8,7 +8,9 @@ struct DisplaySettingsSection: View {
   @Environment(\.colorScheme) private var scheme
 
   var body: some View {
-    PanelGroupTitle(text: "显示与护眼")
+    // 「显示」这个词让给「图表」面板里那一组（那边管的是画在图上的东西）：
+    // 这儿从头到尾只有配色，叫「配色」不会再和那边撞（第三批 16）。
+    PanelGroupTitle(text: "配色与护眼")
     ScrollView(.horizontal) {
       HStack(spacing: 10) {
         ForEach(ThemeChoice.allCases, id: \.self) { choice in

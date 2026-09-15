@@ -95,10 +95,11 @@ struct PriceScaleTests {
     let minV = (lo...hi).map { s.low[$0] }.min()!
     for st in CandleStyle.all {
       let r = priceRange(view: v, series: s)
-      let perPoint = (maxV - minV) / (300 - 40 - 8)
-      let want = perPoint * 40
+      let top = AICoinBehavior.mainTopInset, bottom = AICoinBehavior.mainBottomInset
+      let perPoint = (maxV - minV) / (300 - top - bottom)
+      let want = perPoint * top
       #expect(abs((maxV + want) - r.hi) < 1e-9, "\(st.id) 上留白")
-      #expect(abs((minV - perPoint * 8) - r.lo) < 1e-9, "\(st.id) 下留白")
+      #expect(abs((minV - perPoint * bottom) - r.lo) < 1e-9, "\(st.id) 下留白")
     }
   }
 

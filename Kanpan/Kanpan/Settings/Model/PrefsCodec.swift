@@ -34,7 +34,10 @@ extension Prefs: Codable {
     case v
     case interval, quickIntervals
     case theme, styleID, redUp
-    case indicatorColors, recordButtonX, recordButtonY
+    // 这儿原来还有 `recordButtonX/Y`：「记」还浮在图上、能拖着摆的那阵子存的位置。
+    // 现在「记」住在周期条上，没有位置可存了。老存档里那两个键读的时候认不出来，
+    // 直接忽略（这份编解码是一个键一个键 `try?` 取的，多出来的键不会让整份存档解不开）。
+    case indicatorColors
     case ambientTheme
     case priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone, changeBasis
     case candleKind, gridChoice, bodyChoice, lastLine, showDrawings, sinceChange
@@ -76,8 +79,6 @@ extension Prefs: Codable {
     try c.encode(adaptiveIndicators, forKey: .adaptiveIndicators)
     try c.encode(compactValues, forKey: .compactValues)
     try c.encode(portraitHeight, forKey: .portraitHeight)
-    try c.encode(recordButtonX, forKey: .recordButtonX)
-    try c.encode(recordButtonY, forKey: .recordButtonY)
     try c.encode(Dictionary(uniqueKeysWithValues: hiddenOutputs.map { ($0.key.rawValue, $0.value.sorted()) }), forKey: .hiddenOutputs)
     try c.encode(Dictionary(uniqueKeysWithValues: indicatorColors.map { ($0.key.rawValue, $0.value) }), forKey: .indicatorColors)
     try c.encode(rsiUpper, forKey: .rsiUpper)
@@ -147,8 +148,6 @@ extension Prefs: Codable {
     if let v = bool(.allowSubInversion) { allowSubInversion = v }
     if let v = bool(.adaptiveIndicators) { adaptiveIndicators = v }
     if let v = bool(.compactValues) { compactValues = v }
-    if let v = try? c.decode(Double.self, forKey: .recordButtonX), v.isFinite { recordButtonX = min(1, max(0, v)) }
-    if let v = try? c.decode(Double.self, forKey: .recordButtonY), v.isFinite { recordButtonY = min(1, max(0, v)) }
     if let v = try? c.decode(Double.self, forKey: .portraitHeight), v.isFinite { portraitHeight = min(1, max(0, v)) }
     if let v = try? c.decode(Double.self, forKey: .rsiUpper), v.isFinite { rsiUpper = min(100, max(1, v)) }
     if let v = try? c.decode(Double.self, forKey: .rsiLower), v.isFinite { rsiLower = min(rsiUpper - 1, max(0, v)) }

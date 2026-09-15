@@ -6,6 +6,29 @@ import KanpanCore
 @Suite("限流与退避")
 struct RateLimitTests {
 
+  @Test("K 线权重按 limit 分档")
+  func klineWeights() {
+    #expect(RateLimiter.klinesWeight(for: 1) == 1)
+    #expect(RateLimiter.klinesWeight(for: 99) == 1)
+    #expect(RateLimiter.klinesWeight(for: 100) == 2)
+    #expect(RateLimiter.klinesWeight(for: 499) == 2)
+    #expect(RateLimiter.klinesWeight(for: 500) == 5)
+    #expect(RateLimiter.klinesWeight(for: 1000) == 5)
+    #expect(RateLimiter.klinesWeight(for: 1001) == 10)
+    #expect(RateLimiter.klinesWeight(for: 1500) == 10)
+    #expect(RateLimiter.klinesWeight(for: 5000) == 10)
+  }
+
+  @Test("K 线请求按实际 limit 消耗权重")
+  func klineRequestUsesActualWeight() async throws {
+    let pacer = StepPacer()
+    let limiter = RateLimiter(pacer: pacer, minGapMs: 0)
+    let server = FakeServer { _ in json("[]") }
+    let rest = BinanceREST(transport: FakeTransport(server), limiter: limiter, pacer: pacer)
+    _ = try await rest.klines(symbol: "BTCUSDT", interval: .h1, limit: 300)
+    #expect(await limiter.usedWeight() == 2)
+  }
+
   // ---------------------------------------------------------------- A2.10
 
   @Test("连发要隔 120ms")
@@ -77,14 +100,16 @@ struct RateLimitTests {
   @Test("重试到上限还是 429 就把错误抛出来")
   func giveUp() async throws {
     let pacer = StepPacer()
+    let limiter = RateLimiter(pacer: pacer, minGapMs: 0)
     let server = FakeServer(pacer: pacer) { _ in
       json(#"{"code":-1003,"msg":"Way too many requests"}"#, status: 429, headers: ["Retry-After": "1"])
     }
-    let rest = BinanceREST(transport: FakeTransport(server), pacer: pacer)
+    let rest = BinanceREST(transport: FakeTransport(server), limiter: limiter, pacer: pacer)
     await #expect(throws: BinanceError.self) {
       _ = try await rest.klines(symbol: "BTCUSDT", interval: .h1, limit: 10)
     }
     #expect(await server.urls().count == 4)     // attempts 默认 4
+    #expect(await limiter.penaltyCount == 4)    // 最后一发也要留下冷却状态
   }
 
   // ---------------------------------------------------------------- A2.7 退避

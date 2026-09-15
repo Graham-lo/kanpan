@@ -22,7 +22,9 @@ public struct ChartOptions: Sendable, Equatable {
   public var anchor: ViewAnchor = .right
   public var dataDisplay: CandleDataDisplay = .inside
   public var crossPrice: CrossPriceMode = .selected
-  public var allowMainInversion = true
+  /// 主图价格轴允许翻转（上下颠倒）。**默认关**：一次误触就把整张图倒过来、
+  /// 副图还不跟着翻，代价远大于它的用处；真要用的人去设置里开。
+  public var allowMainInversion = false
   public var allowSubInversion = false
   public var adaptiveIndicators = false
   public var compactValues = false

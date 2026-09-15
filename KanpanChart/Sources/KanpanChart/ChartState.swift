@@ -51,6 +51,9 @@ public struct ChartState: Sendable {
   public var rsiUpper = 70.0
   public var rsiLower = 30.0
   public var subScale: [IndicatorID: Double]
+  /// 当前行情线路给不给得出持仓量。`OISource` 只认币安；走 OKX 兜底线路时这条数据
+  /// 根本不会来，副图要是还挂着「持仓量加载中」，等多久都等不到，用户只会以为卡住了。
+  public var oiSupported = true
 
   public init(
     series: BarSeries,

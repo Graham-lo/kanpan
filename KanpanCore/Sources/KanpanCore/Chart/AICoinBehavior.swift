@@ -10,7 +10,7 @@ public enum AICoinBehavior {
   public static let timeHeight = 17.0
   /// iPhone原版进入行情末列贴绘图区右缘；2026-09-15镜像实测。
   public static let rightInset = 0.0
-  public static let mainTopInset = 40.0
+  public static let mainTopInset = 24.0
   public static let mainBottomInset = 8.0
   public static let maPeriods = [10, 30, 120, 256]
   public static let volumePeriods = [5, 10, 30, 60, 120]

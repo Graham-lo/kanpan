@@ -230,7 +230,8 @@ extension ChartRenderer {
     var has = false
     for i in lo...hi where i < a.count && a[i].isFinite { has = true; break }
     if !has {
-      note(state.oi == nil ? "持仓量加载中" : "这一段暂无持仓量数据")
+      note(!state.oiSupported ? "当前行情线路不提供持仓量"
+             : (state.oi == nil ? "持仓量加载中" : "这一段暂无持仓量数据"))
       return
     }
     let b = state.series

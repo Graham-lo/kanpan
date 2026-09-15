@@ -51,8 +51,17 @@ final class DrawingController: ObservableObject {
     chart?.setDrawings(archive[symbol]); panel = nil; sync()
   }
   func toggle() { active.toggle(); if !active { chart?.endDrawing() }; sync() }
+  /// 选工具：**幂等**。点已经选中的那个工具就是「还是它」，不是「取消它」。
+  ///
+  /// 原来是 `drawTool == t ? nil : t`。画完一条想接着画同一种线，很自然会再点一下工具，
+  /// 结果把工具关掉了，之后点画布什么都不发生——实测连着画 14 次只成了 7 条，
+  /// 失败的那 7 次没有任何反馈。要收手有「完成」和点空白处，不需要工具按钮兼任开关。
   func pick(_ t: DrawingStore.Tool) {
-    active = true; chart?.drawTool = chart?.drawTool == t ? nil : t; panel = nil; sync()
+    active = true
+    chart?.selectedDrawingID = nil   // 手上拿着工具就不该还选中着上一条线
+    chart?.drawTool = t
+    panel = nil
+    sync()
   }
   func select(_ id: String) { active = true; chart?.selectedDrawingID = id; sync() }
   func deleteSelected() { chart?.deleteSelectedDrawing(); sync() }

@@ -208,6 +208,16 @@ public actor RoutedMarketFeed {
     }
   }
   public func loadMore(pages: Int = 1) async { await feed?.loadMore(pages: pages) }
+
+  /// Retry the currently selected source after a visible history failure.
+  /// This also clears the short-lived route backoff because the retry was an
+  /// explicit user action, not an automatic probe.
+  public func retry(selection requested: UUID = UUID()) async {
+    await primary.resetRouteCooldowns()
+    await backup.resetRouteCooldowns()
+    await switchTo(symbol: symbol, interval: interval, coldStart: false, selection: requested)
+  }
+
   public func networkChanged(online: Bool) async {
     await feed?.networkChanged(online: online)
     if online {

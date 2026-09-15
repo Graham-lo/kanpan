@@ -64,10 +64,10 @@ public struct ChartColors: Sendable, Equatable {
 public enum Palette: Sendable {
   public static let lightSeed = PaletteSeed(
     dark: false,
-    ground: "#C7CCE4", app: "#FFFFFF", chart: "#F4F6FD", raised: "#FFFFFF", raised2: "#ECEFF9",
-    line: "#DCE0F0", grid: "#E4E7F5", hair: "#12163A0F",
+    ground: "#C7CCE4", app: "#FFFFFF", chart: "#FFFFFF", raised: "#FFFFFF", raised2: "#ECEFF9",
+    line: "#DCE0F0", grid: "#EDEFF6", hair: "#12163A0F",
     ink: "#12163A", ink2: "#565C85", ink3: "#8B90B2",
-    up: "#0E9E78", down: "#DE2E57", amber: "#B26A00",
+    up: "#34B257", down: "#E64553", amber: "#B26A00",
     palette: ["#B26A00", "#4A55D6", "#0E8F73", "#C43A7E", "#7A5BD6", "#1A7FC4"])
 
   public static let darkSeed = PaletteSeed(
@@ -75,7 +75,7 @@ public enum Palette: Sendable {
     ground: "#07091C", app: "#0F1230", chart: "#161A3F", raised: "#1C2154", raised2: "#232858",
     line: "#2A2E6E", grid: "#232858", hair: "#FFFFFF0A",
     ink: "#EDEEF8", ink2: "#A6A9C0", ink3: "#6D719A",
-    up: "#2FBF8F", down: "#F0567B", amber: "#FFB454",
+    up: "#3DC65C", down: "#F2555B", amber: "#FFB454",
     palette: ["#FFB454", "#8C95FF", "#4FD1B5", "#F78FB3", "#C8B6FF", "#7FD0FF"])
 
   public static let paperSeed = PaletteSeed(

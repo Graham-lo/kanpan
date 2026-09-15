@@ -47,7 +47,12 @@ public struct ReviewSearchView: View {
           }.listStyle(.plain)
         }
       }.navigationTitle("找相似").navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { dismiss() } } }
+        .toolbar {
+          ToolbarItem(placement: .cancellationAction) {
+            Button { dismiss() } label: { Label("返回", systemImage: "chevron.left") }
+              .accessibilityIdentifier("review.search.back")
+          }
+        }
         .onChange(of: scope) { _, value in feature.search(range, cutoff: cutoff, scope: value) }
         .onDisappear { feature.cancelSearch() }
     }.tint(.orange)

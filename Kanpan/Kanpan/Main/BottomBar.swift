@@ -1,6 +1,14 @@
 import SwiftUI
 
 /// 底栏保留常用去处；外观与横屏统一在周期行。
+///
+/// 「自选」进的是带加密 / 美股分类的那张完整自选页（`FavoritesView`），不是顶栏
+/// 品种名开的那个半屏弹层。两者分工：弹层是「快速换一个」，这一格是「去管我的表」——
+/// 分类、分组、排序、历史都在那页上，弹层里塞不下。
+///
+/// 这儿没有「横屏」那一格：横屏不是一个单独要去的地方，需要它的其实只有画线。
+/// 所以点周期行上的「画线」就直接横过去（见 `MainScreen.onChange(of: draw.active)`），
+/// 画完自己转回来，底栏不必为它留一格。
 struct BottomBar: View {
   var theme: PanelTheme
   /// 哪个亮着。面板开着时对应那个是琥珀色（原型 `syncTools()`）。
@@ -12,6 +20,8 @@ struct BottomBar: View {
 
   var body: some View {
     HStack(spacing: 0) {
+      item(VectorIcon.star(), "自选", on: false, action: onFavorites)
+        .accessibilityIdentifier("bottom.favorites")
       item(VectorIcon.chart, "复盘", on: false, action: onReview)
         .accessibilityIdentifier("bottom.review")
         .overlay(alignment: .topTrailing) {
@@ -19,8 +29,6 @@ struct BottomBar: View {
         }
       tool(.indicator, VectorIcon.indicator, "指标") { onPanel(.indicator) }
         .accessibilityIdentifier("bottom.indicator")
-      item(VectorIcon.star(), "自选", on: false, action: onFavorites)
-        .accessibilityIdentifier("bottom.favorites")
       tool(.settings, VectorIcon.settings, "设置") { onPanel(.settings) }
         .accessibilityIdentifier("bottom.settings")
     }

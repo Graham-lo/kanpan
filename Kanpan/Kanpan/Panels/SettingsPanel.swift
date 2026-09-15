@@ -3,9 +3,16 @@ import KanpanCore
 
 /// 设置面板（A6.3 / A6.7 / A6.8 / A6.9 / A6.10 / A6.11）。
 ///
-/// 条目顺序：先照原型（外观 · 涨跌配色 · 价格轴 · 时区 · 十字线磁吸），
-/// 再按任务书 §10.6 追加原型里没有的那几项（本根倒计时 · 盯盘时不锁屏 · 启动快照 ·
-/// API 域名 · 清缓存 · 关于）。原型里的「演示实时跳动」是原型自己的假数据开关，不进 app。
+/// 条目顺序：先照原型（外观 · 涨跌配色 · 时区 · 十字线磁吸），再按任务书 §10.6 追加
+/// 原型里没有的那几项（盯盘时不锁屏 · 启动快照 · 域名 · 清缓存）。原型里的
+/// 「演示实时跳动」是原型自己的假数据开关，不进 app。
+///
+/// 和「图表」的分界：**画在图上的东西归图表面板**。原型那份「价格轴」和「本根倒计时」
+/// 在两边各有一份，改的却是同一个字段，现在只留图表那边（见 `ChartPanel`）。
+///
+/// 域名、线路、缓存这几件收进最底下的「高级与诊断」，默认折着。它们不是日常会动的
+/// 东西——真要动的时候多半是照着一句排查说明填，找得到就行；平时摊在设置里，
+/// 每次找「不锁屏」都要从一堆域名输入框里翻过去。
 ///
 /// 没有「确定」也没有「取消」：改一下立刻生效、立刻落盘，并给一次 selection 触觉。
 struct SettingsPanel: View {
@@ -16,6 +23,7 @@ struct SettingsPanel: View {
   @State private var hostDraft: String = ""
   @State private var streamDraft: String = ""
   @State private var clearing = false
+  @State private var advanced = false
 
   private var prefs: Prefs { store.prefs }
 
@@ -31,11 +39,6 @@ struct SettingsPanel: View {
       PanelRow(name: "涨跌配色") {
         PanelSegment(options: [("绿涨红跌", false), ("红涨绿跌", true)], selection: prefs.redUp) { v in
           store.update { $0.redUp = v }
-        }
-      }
-      PanelRow(name: "价格轴") {
-        PanelSegment(options: SettingsPanel.priceModes, selection: prefs.priceMode) { v in
-          store.update { $0.priceMode = v }
         }
       }
       PanelRow(name: "开盘时间") {
@@ -54,18 +57,25 @@ struct SettingsPanel: View {
         .accessibilityIdentifier("settings.magnet")
 
       // ---- 任务书 §10.6 里有、原型里没有的
-      switchRow("本根倒计时", nil, prefs.countdown) { $0.countdown = $1 }
-        .accessibilityIdentifier("settings.countdown")
       switchRow("盯盘时不锁屏", nil, prefs.keepAwake) { $0.keepAwake = $1 }
         .accessibilityIdentifier("settings.keepAwake")
       switchRow("启动快照", "先显示上次图表", prefs.launchSnapshot) { $0.launchSnapshot = $1 }
         .accessibilityIdentifier("settings.launchSnapshot")
 
-      hostRow
-      streamRow
-      switchRow("智能行情线路", "自动选择可用线路", prefs.smartMarketRoute) { $0.smartMarketRoute = $1 }
-        .accessibilityIdentifier("settings.smartMarketRoute")
-      cacheRow
+      PanelGroupTitle(text: "高级与诊断")
+      PanelRow(name: advanced ? "收起" : "展开", meta: "行情域名、线路与缓存 · 平时不用动",
+               divider: advanced, onTap: { advanced.toggle() }) {
+        Image(systemName: advanced ? "chevron.up" : "chevron.down")
+          .font(PanelFont.seg).foregroundStyle(t.ink3)
+      }
+      .accessibilityIdentifier("settings.advanced")
+      if advanced {
+        switchRow("智能行情线路", "自动选择可用线路", prefs.smartMarketRoute) { $0.smartMarketRoute = $1 }
+          .accessibilityIdentifier("settings.smartMarketRoute")
+        hostRow
+        streamRow
+        cacheRow
+      }
 
       PanelRow(name: "恢复默认", meta: "重置所有偏好设置",
                divider: false, onTap: { store.resetToDefaults() }) {
@@ -164,8 +174,6 @@ struct SettingsPanel: View {
 
   // MARK: - 分段选项
 
-  /// A6.8。`PriceMode` 的三档，字面照原型。
-  static let priceModes: [(String, PriceMode)] = [("常规", .linear), ("对数", .log), ("百分比", .percent)]
   /// A6.9。原型写的是 本地 / UTC / 交易所——任务书写的是 设备 / UTC+8 / UTC，以原型为准。
   static let zones: [(String, TZChoice)] = [("本地", .local), ("UTC", .utc), ("交易所", .exchange)]
 }

@@ -6,25 +6,53 @@ import KanpanCore
 
 // MARK: - 壳
 
-/// 半屏面板的外壳：标题 + 副标题 + 可滚动的正文（原型 `.sheet / .sheeth / .sheetb`）。
+/// 半屏面板的外壳：「‹」 + 标题 + 副标题 + 可滚动的正文（原型 `.sheet / .sheeth / .sheetb`）。
+///
+/// 左上角那颗「‹」不是装饰：面板被拉到全屏之后，下拉指示条还在，但整页占满屏幕，
+/// 「往下拽」这件事在一个全是滚动内容的页面上不成立——实测在图表面板里拉到全屏就出不来了，
+/// 只能杀进程。所以每个面板都常驻一个明确的出口。
+///
+/// 它原来是标题右边的文字「完成」。用户 2026-09-15 指出「很多页面左上方都没有返回按钮，
+/// 你看 aicoin」——手机 AICoin 的每一层都在左上角摆一颗「‹」，出口永远在同一个位置，
+/// 不用每进一页先找一遍。所以这里把出口搬到左上角，并和自选页（`favorites.back`）、
+/// 品种页（`symbols.back`）统一成同一个手势。标识符仍叫 `panel.done`，UI 测试沿用。
 struct PanelSheet<Content: View>: View {
   var title: String
   var subtitle: String?
   @ViewBuilder var content: () -> Content
 
   @Environment(\.panelTheme) private var t
+  /// 横屏侧栏没有系统 `dismiss`，走主界面递进来的这一条（见 `PanelCloser`）。
+  @Environment(\.panelDismiss) private var sideDismiss
+  @Environment(\.dismiss) private var dismiss
 
   var body: some View {
     VStack(spacing: 0) {
-      HStack(alignment: .firstTextBaseline, spacing: 8) {
-        Text(title).font(PanelFont.title).foregroundStyle(t.ink)
-          .accessibilityIdentifier("panel.header")
-        if let subtitle {
-          Text(subtitle).font(PanelFont.sub).foregroundStyle(t.ink3)
+      HStack(alignment: .center, spacing: 6) {
+        Button { PanelCloser(side: sideDismiss, sheet: dismiss)() } label: {
+          Image(systemName: "chevron.left")
+            .font(.system(size: 17, weight: .semibold))
+            // 描边图标的点击区默认只有笔画本身，补一块 32×32 的矩形，画面不动。
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
+        }
+        .foregroundStyle(t.amber)
+        .buttonStyle(.plain)
+        .accessibilityLabel("返回")
+        .accessibilityIdentifier("panel.done")
+
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Text(title).font(PanelFont.title).foregroundStyle(t.ink)
+            .accessibilityIdentifier("panel.header")
+          if let subtitle {
+            Text(subtitle).font(PanelFont.sub).foregroundStyle(t.ink3)
+          }
         }
         Spacer(minLength: 0)
       }
-      .padding(.horizontal, PanelMetrics.hPad)
+      // 图标自带 7pt 视觉留白，左边对齐到和正文一样的 `hPad`。
+      .padding(.leading, PanelMetrics.hPad - 7)
+      .padding(.trailing, PanelMetrics.hPad)
       .padding(.top, 13)
       .padding(.bottom, 10)
       .overlay(alignment: .bottom) { Rectangle().fill(t.line).frame(height: 1) }

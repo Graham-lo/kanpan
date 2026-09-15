@@ -507,19 +507,20 @@ public actor MarketFeed {
     await backfill(symbol: sym, interval: iv, selection: request)
   }
 
-  /// 拉满一屏。`since > 0` 时先补快照到现在的缺口（§4.3 冷启动时序）。
+  /// 拉满一屏。`since > 0` 时并行启动快照到现在的缺口回补（§4.3 冷启动时序）。
   private func fillOnce(symbol sym: String, interval iv: Interval, since: Int64, selection request: UUID) async {
     guard current(request) else { return }
     defer { if current(request), sym == symbol, iv == interval { filling = false } }
+    // 启动快照缺口请求，但不要等待它挡住最新窗口。BinanceREST / transport
+    // 都是 actor，可重入地让两个请求同时在路上；首屏先用最新窗口，缺口回来后再合并。
+    let gapTask: Task<[Bar], Error>? = (since > 0 && iv.source == iv)
+      ? Task { [rest] in try await rest.contiguousTail(symbol: sym, interval: iv, from: since) }
+      : nil
+    if gapTask != nil { await Task.yield() }
     do {
-      // 聚出来的周期（1y）没法拿月线往年线上合，直接整段重拉重聚。
-      if since > 0, iv.source == iv {
-        let revision = composer.wsRevision
-        let gap = try await rest.contiguousTail(symbol: sym, interval: iv, from: since)
-        guard current(request), sym == symbol, iv == interval else { return }
-        composer.merge(gap, preservingLiveTail: composer.wsRevision != revision)
-        log("补缺 startTime=\(since) → \(gap.count) 根")
-      }
+      // 先取最新窗口并发布，让用户先看到当前行情；快照到现在的旧缺口
+      // 另行补齐。旧实现把这两步串成“先补缺、再取最新”，直连黑洞时
+      // 会让实时尾部在动、整张历史却迟迟没有首屏。
       let revision = composer.wsRevision
       let sourceRevision = sourceComposer?.wsRevision
       let bars = try await rest.klines(symbol: sym, interval: iv, limit: initialLimit)
@@ -540,16 +541,55 @@ public actor MarketFeed {
       emit(.historyError(nil))
       emit(.series(composer.series))
       scheduleSnapshot()
-
-      guard includeTicker else { return }
-      let tickerStamp = lastTickerReceivedMs
-      let t = try await rest.ticker24h(symbol: sym)
-      if current(request), sym == symbol, lastTickerReceivedMs == tickerStamp { emit(.ticker(t)) }
+    } catch is CancellationError {
+      gapTask?.cancel()
+      return
     } catch {
-      guard current(request) else { return }
+      gapTask?.cancel()
+      guard current(request), !Task.isCancelled else { return }
       log("拉 \(sym)|\(iv.rawValue) 失败：\(error)")
       emit(.historyError("历史行情暂未加载，点此重试"))
       emit(.status(.offline))
+      return
+    }
+
+    // 聚出来的周期（1y）没有可直接对齐的历史缺口；其它周期在最新窗口
+    // 已显示后再补快照缺口。缺口失败时保留最新序列和实时 WS，不把整条
+    // 可用行情降级为离线。
+    if since > 0, iv.source == iv {
+      do {
+        let revision = composer.wsRevision
+        let gap: [Bar]
+        if let gapTask { gap = try await gapTask.value }
+        else { gap = try await rest.contiguousTail(symbol: sym, interval: iv, from: since) }
+        guard current(request), sym == symbol, iv == interval else { return }
+        composer.merge(gap, preservingLiveTail: composer.wsRevision != revision)
+        await cache.put(composer.series)
+        emit(.historyError(nil))
+        emit(.series(composer.series))
+        log("补缺 startTime=\(since) → \(gap.count) 根")
+      } catch is CancellationError {
+        return
+      } catch {
+        guard current(request), !Task.isCancelled else { return }
+        log("补缺失败，保留最新行情：\(error)")
+        emit(.historyError("行情缺口暂未补齐，点此重试"))
+      }
+    }
+
+    // 历史序列已经落地后，ticker 只是顶栏校准。它失败不能把一张可用的
+    // K 线降级成「历史失败/离线」，否则正好会出现“最新在动、历史提示失败”
+    // 并触发不必要的整条线路切换。
+    guard includeTicker else { return }
+    do {
+      let tickerStamp = lastTickerReceivedMs
+      let t = try await rest.ticker24h(symbol: sym)
+      if current(request), sym == symbol, lastTickerReceivedMs == tickerStamp { emit(.ticker(t)) }
+    } catch is CancellationError {
+      return
+    } catch {
+      guard current(request), !Task.isCancelled else { return }
+      log("校准报价失败 \(sym)|\(iv.rawValue)，保留已加载历史：\(error)")
     }
   }
 

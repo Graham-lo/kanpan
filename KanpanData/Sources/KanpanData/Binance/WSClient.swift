@@ -110,7 +110,13 @@ public actor BinanceWS {
   }
 
   private func syncStreams() async {
-    defer { syncTask = nil }
+    defer {
+      syncTask = nil
+      // A socket send can fail while the connection itself is still present.
+      // Leave the desired set intact and retry the diff instead of claiming
+      // the server has a subscription it never received.
+      if !stopped, socket != nil, streams != sentStreams { scheduleSync() }
+    }
     while !stopped, !Task.isCancelled {
       guard let socket else { return }
       let want = streams
@@ -125,12 +131,22 @@ public actor BinanceWS {
       lastControlMs = await pacer.nowMs()
       let drop = sentStreams.subtracting(want)
       if !drop.isEmpty {
-        sentStreams.subtract(drop)
-        try? await send(socket, method: "UNSUBSCRIBE", params: drop.sorted())
+        do {
+          try await send(socket, method: "UNSUBSCRIBE", params: drop.sorted())
+          sentStreams.subtract(drop)
+        } catch {
+          log("WS 控制帧发送失败，保留退订差异：\(error)")
+          return
+        }
       } else {
         let add = want.subtracting(sentStreams)
-        sentStreams.formUnion(add)
-        try? await send(socket, method: "SUBSCRIBE", params: add.sorted())
+        do {
+          try await send(socket, method: "SUBSCRIBE", params: add.sorted())
+          sentStreams.formUnion(add)
+        } catch {
+          log("WS 控制帧发送失败，保留订阅差异：\(error)")
+          return
+        }
       }
     }
   }

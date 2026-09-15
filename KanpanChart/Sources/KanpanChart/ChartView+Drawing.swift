@@ -160,9 +160,8 @@ extension ChartView {
   /// 图区顶部那一行提示（§10.8）。没选工具时是 `nil`，外面就把提示条收起来。
   public var drawHint: String? {
     guard let tool = drawing.tool else { return nil }
-    if tool == .trend { return drawing.pending == nil ? "点两下画一条趋势线" : "再点一下" }
-    if tool.pointCount == 1 { return "轻点放置" + tool.title }
-    if drawing.anchors.isEmpty { return "选择起点" }
+    if tool.pointCount == 1 { return "按住放置" + tool.title }
+    if drawing.anchors.isEmpty { return "按住拖动画" + tool.title }
     return tool == .channel && drawing.anchors.count == 2 ? "选择通道宽度" : "选择终点"
   }
 
@@ -395,6 +394,21 @@ extension ChartView {
       return
     }
 
+    // 手上拿着工具：按下就是第一点，拖到哪儿画到哪儿，抬手成线（第二批 7）。
+    //
+    // 原来只认「轻点两下」：按下—拖—抬手会被当成平移，什么都不留下，而这恰恰是
+    // 所有人第一次画线的下意识动作。现在这根手指整场归画线，单指平移在握着工具时
+    // 让位——两指照常平移捏合（`claimed` 分支会把它整场转交），画完一条工具自动
+    // 松手（连续画线默认关），平移立刻回来。位移不够就退回轻点，「点两下」那条路
+    // 一点没丢。
+    if d.tool != nil, d.anchors.isEmpty {
+      d.claimed = t
+      captureDrawingLoupe()
+      d.lastMagnetIndex = -1
+      aimPending(at: q, axes: axes)
+      return
+    }
+
     // On a phone, first tap to select, then drag. Passing a finger over an
     // unselected endpoint must not accidentally edit a drawing instead of panning.
     if d.tool == nil, let hit = drawHitTest(q, axes: axes), d.selected == hit.id,
@@ -427,7 +441,7 @@ extension ChartView {
     d.moved = max(d.moved, (dx * dx + dy * dy).squareRoot())
     if d.drag != nil {
       applyDrag(to: q, axes: axes)
-    } else if d.pending != nil {
+    } else if d.tool != nil {
       aimPending(at: q, axes: axes)
     }
   }
@@ -453,15 +467,30 @@ extension ChartView {
       } else { drawingChanged() }
       return
     }
-    // 瞄着第二点的那根手指抬起来了：落点。
-    if let axes, d.pending != nil {
-      if cancelled {
-        d.aim = nil
-        drawingChanged()
-      } else {
-        placeDrawPoint(at: t.location(in: self), axes: axes)
-      }
+    // 瞄着落点的那根手指抬起来了。
+    guard let axes, let tool = d.tool else { return }
+    if cancelled {
+      d.aim = nil
+      drawingChanged()
+      return
     }
+    let q = t.location(in: self)
+    guard d.anchors.isEmpty else {
+      placeDrawPoint(at: q, axes: axes)
+      return
+    }
+    d.aim = nil
+    // 单点的线（水平线、竖线）按下去只是先放着，抬手那一刻才算数——中间可以一直挪，
+    // 放大镜就在手指上面，挪到哪儿看到哪儿。
+    if tool.pointCount == 1 {
+      placeDrawPoint(at: q, axes: axes)
+      return
+    }
+    // 拖过了：这一笔是完整的一条线，起点在按下处，终点在抬手处。
+    // 没拖动：只是轻点，落第一点，接着按老规矩点第二下。
+    let dragged = d.moved >= Chart.panSlopPt * 2
+    placeDrawPoint(at: d.startPoint, axes: axes)
+    if dragged { placeDrawPoint(at: q, axes: axes) }
   }
 
   /// 这次触摸是图表手势在管的。抬手之前先看看该不该把这一下「轻点」收走。
@@ -675,7 +704,7 @@ final class DrawingOverlayView: UIView {
     if let sel = d.selected, let item = s.drawings.first(where: { $0.id == sel }) {
       strokeSelected(d.preview ?? item, ctx: ctx, axes: axes, colors: t, decimals: s.decimals)
     }
-    if let tool = d.tool, !d.anchors.isEmpty {
+    if let tool = d.tool, !d.anchors.isEmpty || d.aim != nil {
       var points = d.anchors
       if let aim = d.aim { points.append(aim) }
       if points.count == tool.pointCount {

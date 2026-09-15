@@ -9,6 +9,8 @@ struct LiveRoutingTests {
     let hosts = BinanceHosts(streamFallbacks: ["kanpan.107-174-172-10.sslip.io"], oiProxy: "kanpan.107-174-172-10.sslip.io", oiProxyFallbacks: ["kanpan.96-44-162-222.sslip.io:8443"])
     let path = Paths(root: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     defer { try? FileManager.default.removeItem(at: path.root) }
+    try FileManager.default.createDirectory(at: path.root, withIntermediateDirectories: true)
+    try JSONEncoder().encode(MarketSource.okx).write(to: path.root.appendingPathComponent("market-source.json"))
     let feed = RoutedMarketFeed(hosts: hosts, paths: path, log: .stdout)
     let events = await feed.events()
     await feed.start(symbol: "BTCUSDT", interval: .m1)

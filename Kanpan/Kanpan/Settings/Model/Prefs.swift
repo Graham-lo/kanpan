@@ -53,14 +53,12 @@ struct Prefs: Sendable, Equatable {
   var priceBias: PriceBias = .center
   var dataDisplay: CandleDataDisplay = .inside
   var crossPrice: CrossPriceMode = .selected
-  var allowMainInversion = true
+  /// 默认关，理由见 `ChartOptions.allowMainInversion`。
+  var allowMainInversion = false
   var allowSubInversion = false
   var adaptiveIndicators = false
   var compactValues = false
   var portraitHeight = 0.5
-  // Device-local touch placement, normalized inside the main chart.
-  var recordButtonX = 1.0
-  var recordButtonY = 1.0
   var indicatorColors: [IndicatorID: [Int: Hex]] = [:]
   var hiddenOutputs: [IndicatorID: Set<Int>] = [:]
   var rsiUpper = 70.0
@@ -136,9 +134,24 @@ struct Prefs: Sendable, Equatable {
     IndicatorParamRule.sanitize(params[id] ?? id.defaultParams, for: id)
   }
 
-  /// 这个副图的高度档。
-  func scale(for id: IndicatorID) -> Double { subHeightOverrides[id] ?? height(for: id).scale }
+  /// 这个副图实际要多高（倍率，1.0 = 风格表原值）。
+  ///
+  /// 三档和拖拽只在用户**真的调过**的时候才算数；没调过的走各自的出厂倍率：
+  /// 成交量维持满格，其余副图开出来只有 `otherSubScale` 那一档。为什么区别对待——
+  /// 成交量是靠柱子之间的**高度差**读的，压扁了就剩一排看不出长短的小墩子；
+  /// MACD / OI / KDJ 这类读的是线的方向和零轴上下，矮一截照样读得出来。
+  /// 省下来的高度全给主图：一屏里真正要看的是 K 线，副图是陪看的。
+  func scale(for id: IndicatorID) -> Double {
+    if let manual = subHeightOverrides[id] { return manual }
+    if let picked = subHeights[id] { return picked.scale }
+    return id == .vol ? 1 : Prefs.otherSubScale
+  }
 
+  /// 成交量以外的副图的出厂高度倍率。
+  static let otherSubScale: Double = 0.62
+
+  /// 这个副图的高度档。用户没选过就是「中」——注意这只是档位的缺省，
+  /// 实际高度看 `scale(for:)`（那儿对成交量以外的副图另有出厂倍率）。
   func height(for id: IndicatorID) -> SubPaneHeight { subHeights[id] ?? .medium }
 
   /// 某个指标是不是开着的。

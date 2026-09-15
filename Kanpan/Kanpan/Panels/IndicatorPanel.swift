@@ -45,20 +45,25 @@ struct IndicatorPanel: View {
     }
   }
 
-  /// 开着的指标底下这一块：参数步进器 +（副图才有的）高度三档。
+  /// 开着的指标底下这一块：参数步进器 +（手调过高度的副图才有的）一键还原。
+  ///
+  /// 原来这儿挂着「高度」三档。它和图上副图上沿那条把手是同一件事的两个入口，
+  /// 两边还各说各话——拖过之后三档仍停在旧档位上，看着像没生效（第三批 16）。
+  /// 现在设高度只有一个地方：在图上拖，边拖边看。这儿只留一条退路，
+  /// 而且只在真的手调过之后才出现。
   @ViewBuilder
   private func detail(_ id: IndicatorID) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       Button(id == .ma || id == .ema ? "参数与颜色" : "参数与输出") { editing = id }
         .font(PanelFont.meta).foregroundStyle(t.ink)
         .accessibilityIdentifier("indicator.edit.\(id.rawValue)")
-      if id.placement == .sub {
+      if id.placement == .sub, prefs.subHeightOverrides[id] != nil {
         HStack(spacing: PanelMetrics.rowGap) {
-          Text(prefs.subHeightOverrides[id] == nil ? "高度" : "高度 · 已手调").font(PanelFont.meta).foregroundStyle(t.ink3)
+          Text("高度 · 已手调").font(PanelFont.meta).foregroundStyle(t.ink3)
           Spacer(minLength: 0)
-          PanelSegment(options: SubPaneHeight.options, selection: prefs.height(for: id)) { h in
-            store.update { $0.subHeights[id] = h; $0.subHeightOverrides[id] = nil }
-          }
+          Button("还原高度") { store.update { $0.subHeightOverrides[id] = nil } }
+            .font(PanelFont.meta).foregroundStyle(t.amber)
+            .accessibilityIdentifier("indicator.height.reset.\(id.rawValue)")
         }
       }
     }

@@ -10,9 +10,9 @@ final class ChartFoundationUITests: XCTestCase {
     app = XCUIApplication()
     if name.contains("testInstallRequestedFavoritesInUserStore") || name.contains("testUserSession") { return }
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
-    if name.contains("Drawing") || name.contains("IndicatorColor") || name.contains("CompactChart") || name.contains("ReviewButton") { app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString }
+    if name.contains("Drawing") || name.contains("IndicatorColor") || name.contains("CompactChart") || name.contains("Record") { app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString }
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
-    if name.contains("ReviewButton") { app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io" }
+    if name.contains("Record") { app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io" }
     app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
@@ -34,13 +34,22 @@ final class ChartFoundationUITests: XCTestCase {
   func wait(seconds: Double = 40, _ condition: @escaping () -> Bool) -> Bool {
     XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)], timeout: seconds) == .completed
   }
+  /// 关面板：先走用户最常用的那一下——拽标题栏往下甩，甩不掉再点「完成」。
+  ///
+  /// 「完成」不是测试后门，它是面板自带的常驻出口（见 `PanelSheet` 的注释）：面板一旦被拉到
+  /// 全屏，「往下拽」在一整页滚动内容上就不成立了，所以每张面板都留了这颗按钮。两条路都得能走通。
   func closePanel() {
     let header = app.staticTexts["panel.header"]
     XCTAssertTrue(header.waitForExistence(timeout: 5))
     let start = header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
     let end = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98))
-    start.press(forDuration: 0.05, thenDragTo: end)
-    XCTAssertTrue(wait { !header.exists })
+    for _ in 0..<2 {
+      start.press(forDuration: 0.05, thenDragTo: end)
+      if wait(seconds: 3, { !header.exists }) { return }
+    }
+    let done = app.buttons["panel.done"]
+    if done.exists, done.isHittable { done.tap() }
+    XCTAssertTrue(wait { !header.exists }, "面板关不掉：拖不走，「完成」也没反应")
   }
   func selectMain() {
     let h = info()["mainH"] as? Double ?? 300
@@ -50,37 +59,43 @@ final class ChartFoundationUITests: XCTestCase {
     let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
   }
 
-  func testReviewButtonDragPersistsInsideMainPane() throws {
-    let button = app.buttons["review.record"]
-    XCTAssertTrue(button.waitForExistence(timeout: 10))
+  /// 「记」在图**外面**：它是周期条右端的一格，不许再浮在主图上。
+  ///
+  /// 这颗按钮以前是浮在主图上、能拖着到处摆的一枚圆钮。浮着就一定挡图——停哪儿糊哪儿，
+  /// 还在画布上挖出一块点不动的死区，画线时尤其碍事。现在它跟「画线」「图表」排在
+  /// 一起，和横屏工具栏（`ToolRail` 的「记」）是同一套摆法。
+  func testRecordSitsOutsideTheChart() throws {
+    let record = app.buttons["interval.record"]
+    XCTAssertTrue(record.waitForExistence(timeout: 10), "周期条上没有「记」")
+    XCTAssertFalse(app.buttons["review.record"].exists, "主图上不该再浮着「记」")
+    XCTAssertLessThanOrEqual(record.frame.maxY, canvas.frame.minY + 1, "「记」压在图上了")
     let span = try XCTUnwrap(info()["span"] as? Double)
-    let target = canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 70, dy: 80))
-    button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.05, thenDragTo: target)
-    XCTAssertTrue(wait(seconds: 3) { abs(button.frame.midX - target.screenPoint.x) < 8 && abs(button.frame.midY - target.screenPoint.y) < 8 })
+    record.tap()
+    // 点一下开的是复盘取景卡（`ReviewCaptureCard`）：收起来之后，图的横向视野一格不许动。
+    let close = app.buttons["收起"]
+    XCTAssertTrue(close.waitForExistence(timeout: 10), "点「记」没开出取景卡")
+    shot("记-周期条入口")
+    close.tap()
+    XCTAssertTrue(wait(seconds: 5) { !close.exists }, "取景卡收不回去")
     XCTAssertEqual(try XCTUnwrap(info()["span"] as? Double), span, accuracy: 0.001)
-    let saved = button.frame
-    XCTAssertLessThan(saved.maxY, canvas.frame.minY + (try XCTUnwrap(info()["mainH"] as? Double)))
-    shot("记按钮-拖动后主图内")
-    app.terminate(); app.launch()
-    XCTAssertTrue(canvas.waitForExistence(timeout: 30))
-    XCTAssertTrue(button.waitForExistence(timeout: 30))
-    XCTAssertEqual(button.frame.midX, saved.midX, accuracy: 2)
-    XCTAssertEqual(button.frame.midY, saved.midY, accuracy: 2)
-    let outside = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.95))
-    button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.05, thenDragTo: outside)
-    XCTAssertLessThan(button.frame.maxY, canvas.frame.minY + (try XCTUnwrap(info()["mainH"] as? Double)))
-    shot("记按钮-副图边界限位")
   }
 
+  /// 把主图调高，主副图仍在一屏里，横向视野一格不动。
+  ///
+  /// 调高的入口只剩图上那条把手：「图表」面板里那根「竖屏高度」滑块在第三批 16
+  /// 撤了（同一件事两个入口，而且滑块在面板里、拖的时候图被面板盖着）。
+  /// 这里把 VOL 的上沿往上推，主图跟着变高——和原来拉滑块测的是同一件事。
   func testHeightAndVerticalReachability() throws {
     let original = info()
-    app.buttons["interval.chart"].tap()
-    let slider = app.sliders["chart.portraitHeight"]
-    XCTAssertTrue(slider.waitForExistence(timeout: 5))
-    slider.adjust(toNormalizedSliderPosition: 1)
-    closePanel()
-    XCTAssertTrue(wait(seconds: 3) { (self.info()["portraitHeight"] as? Double ?? 0) > (original["portraitHeight"] as? Double ?? 0) + 0.2 }, String(describing: info()))
-    XCTAssertGreaterThan(try XCTUnwrap(info()["mainH"] as? Double), try XCTUnwrap(original["mainH"] as? Double))
+    XCTAssertFalse(app.sliders["chart.portraitHeight"].exists, "竖屏高度滑块应已撤掉")
+    let grip = app.otherElements["chart.resize.VOL"]
+    XCTAssertTrue(grip.waitForExistence(timeout: 5))
+    let from = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+      .withOffset(CGVector(dx: grip.frame.midX, dy: grip.frame.midY))
+    from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: -40)))
+    XCTAssertTrue(wait(seconds: 4) {
+      (self.info()["mainH"] as? Double ?? 0) > (original["mainH"] as? Double ?? 0) + 15
+    }, String(describing: info()))
     for key in ["from", "span", "plotW", "spacing"] {
       XCTAssertEqual(try XCTUnwrap(info()[key] as? Double), try XCTUnwrap(original[key] as? Double), accuracy: 0.001)
     }
@@ -173,7 +188,7 @@ final class ChartFoundationUITests: XCTestCase {
 
   func testTradFiSearchAndMarketData() throws {
     for symbol in ["SNDKUSDT", "SKHYUSDT", "MUUSDT"] {
-      app.buttons["top.search"].tap()
+      XCTAssertTrue(app.openSymbolSearch())
       let query = app.textFields["symbols.query"]
       XCTAssertTrue(query.waitForExistence(timeout: 5))
       query.tap()
@@ -193,7 +208,7 @@ final class ChartFoundationUITests: XCTestCase {
   }
 
   func testFavoritesCategoriesAndNavigation() throws {
-    app.buttons["bottom.favorites"].tap()
+    XCTAssertTrue(app.openFavorites())
     XCTAssertTrue(app.buttons["favorites.add"].waitForExistence(timeout: 5))
     favoritesAction("favorites.newGroup")
     let name = app.alerts.textFields["分类名称"]
@@ -237,10 +252,10 @@ final class ChartFoundationUITests: XCTestCase {
     }, "自选价格未连续刷新")
     shot("冷启动自选-实时价格与涨跌幅")
     app.buttons["favorites.open.BTCUSDT"].tap()
-    XCTAssertTrue(app.buttons["bottom.favorites"].waitForExistence(timeout: 8))
+    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 8))
     XCUIDevice.shared.press(.home)
     app.activate()
-    XCTAssertTrue(app.buttons["bottom.favorites"].waitForExistence(timeout: 8))
+    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 8))
     XCTAssertFalse(app.buttons["favorites.more"].exists, "普通前后台切换不重置首页")
   }
 
@@ -251,7 +266,7 @@ final class ChartFoundationUITests: XCTestCase {
     let option = app.buttons["上海8点 / UTC 0点"]
     XCTAssertTrue(wait { option.exists && option.isHittable }); option.tap()
     closePanel()
-    app.buttons["bottom.favorites"].tap()
+    XCTAssertTrue(app.openFavorites())
     app.buttons["favorites.add"].tap()
     let query = app.textFields["symbols.query"]
     XCTAssertTrue(query.waitForExistence(timeout: 5)); query.tap(); query.typeText("BTCUSDT")
@@ -346,8 +361,8 @@ final class ChartFoundationUITests: XCTestCase {
     app.launchEnvironment.removeValue(forKey: "KANPAN_TEST_FAVORITES")
     app.launch()
     if !app.buttons["favorites.more"].waitForExistence(timeout: 3) {
-      XCTAssertTrue(app.buttons["bottom.favorites"].waitForExistence(timeout: 20))
-      app.buttons["bottom.favorites"].tap()
+      XCTAssertTrue(app.buttons["top.symbol"].waitForExistence(timeout: 20))
+      XCTAssertTrue(app.openFavorites())
     }
     let groups: [(String, [String])] = [
       ("加密", ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT"]),
@@ -446,7 +461,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertLessThan(gap(), -40, "右滑进入历史，不应回最新")
     right.press(forDuration: 0.05, thenDragTo: right.withOffset(CGVector(dx: -30, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.3)
     XCTAssertLessThan(gap(), -20, "历史区左滑不能强制吸回最新")
-    app.buttons["bottom.favorites"].tap()
+    XCTAssertTrue(app.openFavorites())
     XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].waitForExistence(timeout: 5))
     app.buttons["favorites.open.BTCUSDT"].tap()
     XCTAssertTrue(canvas.waitForExistence(timeout: 5))
@@ -461,7 +476,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     favoritesAction("favorites.close")
     let original = info()
-    for (choice, background) in [("light", "#F4F6FD"), ("dark", "#161A3F"), ("paper", "#F4F0E4"), ("night", "#191712")] {
+    for (choice, background) in [("light", "#FFFFFF"), ("dark", "#161A3F"), ("paper", "#F4F0E4"), ("night", "#191712")] {
       app.buttons["bottom.settings"].tap()
       let strip = app.scrollViews["display.themes"]
       XCTAssertTrue(strip.waitForExistence(timeout: 5))
@@ -480,7 +495,7 @@ final class ChartFoundationUITests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(info()[key] as? Double), try XCTUnwrap(original[key] as? Double), accuracy: 0.001)
       }
       shot("配色-" + choice + "-图表")
-      app.buttons["bottom.favorites"].tap()
+      XCTAssertTrue(app.openFavorites())
       let feed = app.descendants(matching: .any).matching(identifier: "favorites.feed").firstMatch
       XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].waitForExistence(timeout: 5))
       XCTAssertTrue(wait(seconds: 5) {
@@ -534,7 +549,7 @@ final class ChartFoundationUITests: XCTestCase {
     }
     for symbol in ["BTCUSDT", "SNDKUSDT", "ETHUSDT", "BTCUSDT"] {
       if symbol != "BTCUSDT" || info()["symbol"] as? String != "BTCUSDT" {
-        app.buttons["top.search"].tap()
+        XCTAssertTrue(app.openSymbolSearch())
         let query = app.textFields["symbols.query"]
         XCTAssertTrue(query.waitForExistence(timeout: 5)); query.tap()
         if let old = query.value as? String, !old.isEmpty { query.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count)) }
@@ -569,12 +584,16 @@ final class ChartFoundationUITests: XCTestCase {
 
   func favoritesAction(_ identifier: String) {
     dismissNotificationBanner()
+    // 「返回行情」不再藏在「…」里，改成分类栏左端常驻的返回按钮。
+    if identifier == "favorites.close" {
+      let back = app.buttons["favorites.back"]
+      XCTAssertTrue(back.waitForExistence(timeout: 4)); back.tap()
+      XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists && self.app.buttons["bottom.settings"].isHittable })
+      return
+    }
     app.buttons["favorites.more"].tap()
     let action = app.buttons[identifier]
     XCTAssertTrue(action.waitForExistence(timeout: 4)); action.tap()
-    if identifier == "favorites.close" {
-      XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists && self.app.buttons["bottom.settings"].isHittable })
-    }
   }
 
   /// Physical-device notifications can cover the top category bar. Dismiss only
@@ -612,7 +631,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(overflow.waitForExistence(timeout: 4)); overflow.tap()
     XCTAssertTrue(app.buttons["favorites.group.观察中的品种"].isHittable)
     favoritesAction("favorites.close")
-    app.buttons["bottom.favorites"].tap()
+    XCTAssertTrue(app.openFavorites())
     XCTAssertTrue(app.buttons["favorites.group.观察中的品种"].waitForExistence(timeout: 15))
     app.buttons["favorites.group.加密"].tap()
     favoritesAction("favorites.edit")
@@ -640,10 +659,10 @@ final class ChartFoundationUITests: XCTestCase {
     var prices = Set<String>()
     XCTAssertTrue(wait(seconds: 15) { prices.insert(price.label); return prices.count > 1 })
     favoritesAction("favorites.close")
-    XCTAssertTrue(app.buttons["bottom.favorites"].waitForExistence(timeout: 8))
+    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 8))
     let stayUntil = Date().addingTimeInterval(3)
     XCTAssertTrue(wait(seconds: 5) { Date() >= stayUntil })
-    app.buttons["bottom.favorites"].tap()
+    XCTAssertTrue(app.openFavorites())
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 3))
     XCTAssertTrue(price.exists && price.label != "—", "返回自选首帧应直接使用持续订阅的真实报价")
     XCTAssertEqual((feed.value as? String ?? "").components(separatedBy: ";").first, coldSession,
@@ -713,13 +732,14 @@ final class ChartFoundationUITests: XCTestCase {
     app.buttons["favorites.open.BTCUSDT"].tap()
     XCTAssertTrue(canvas.waitForExistence(timeout: 15))
     XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
-    // 顶部搜索区域也只负责收起，不应穿透打开选品页。
-    let search = app.buttons["top.search"].frame
+    // 顶栏品种名那块也只负责收起，不应穿透打开换品种弹层。
+    // （原来点的是顶栏的放大镜，那个入口在第三批 15 里并进了品种名。）
+    let top = app.buttons["top.symbol"].frame
     app.buttons["bottom.indicator"].tap()
     XCTAssertTrue(app.staticTexts["panel.header"].waitForExistence(timeout: 5))
-    app.windows.firstMatch.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: search.midX, dy: search.midY)).tap()
+    app.windows.firstMatch.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: top.midX, dy: top.midY)).tap()
     XCTAssertTrue(wait(seconds: 5) { !self.app.staticTexts["panel.header"].exists })
-    XCTAssertFalse(app.textFields["symbols.query"].exists)
+    XCTAssertFalse(app.buttons["quickFavorites.search"].exists)
     try testOutsideTapOnlyDismissesPanel()
     let original = try XCTUnwrap(info()["subs"] as? [String])
     let panes = try XCTUnwrap(info()["panes"] as? [[String: Any]])
@@ -736,7 +756,7 @@ final class ChartFoundationUITests: XCTestCase {
     center(moved[moved.count - 1]).press(forDuration: 0.5, thenDragTo: center(moved[0]))
     XCTAssertTrue(wait(seconds: 5) { self.info()["subs"] as? [String] == original })
     try testCrosshairCenterDragAndOutsidePan()
-    app.buttons["bottom.favorites"].tap()
+    XCTAssertTrue(app.openFavorites())
   }
 
   func testOutsideTapOnlyDismissesPanel() throws {
@@ -846,7 +866,7 @@ final class ChartFoundationUITests: XCTestCase {
 
 extension ChartFoundationUITests {
   func testDrawingToolsAndPersistentStyles() throws {
-    app.buttons["interval.draw"].tap()
+    XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     app.buttons["draw.tools"].tap()
     XCTAssertTrue(app.buttons["draw.tool.ray"].waitForExistence(timeout: 5))
     shot("画线-工具分类")
@@ -863,8 +883,7 @@ extension ChartFoundationUITests {
     origin = canvas.coordinate(withNormalizedOffset: .zero)
     origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
     XCTAssertTrue(app.buttons["draw.style"].waitForExistence(timeout: 3))
-    app.buttons["draw.style"].tap()
-    app.buttons["color.#4A90E2"].tap()
+    XCTAssertTrue(app.openDrawingStyleSheet(pick: "#4A90E2"), "样式面板里点不到蓝色")
     app.buttons["draw.save"].tap()
     XCTAssertTrue(wait { self.info()["drawingColors"] as? [String] == ["#4A90E2"] })
     app.buttons["draw.lock"].tap()
@@ -877,7 +896,7 @@ extension ChartFoundationUITests {
     XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids }, String(describing: info()))
     XCTAssertEqual(info()["drawingColors"] as? [String], ["#4A90E2"])
     XCTAssertEqual(info()["drawingLocked"] as? [Bool], [true])
-    app.buttons["interval.draw"].tap()
+    XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     app.buttons["draw.objects.quick"].tap()
     XCTAssertTrue(app.buttons["draw.object.\(ids[0])"].waitForExistence(timeout: 5))
     shot("画线-重启恢复对象")
@@ -906,7 +925,7 @@ extension ChartFoundationUITests {
     app.terminate(); app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     XCTAssertTrue(wait { self.info()["drawingHidden"] as? [Bool] == [true] })
-    app.buttons["interval.draw"].tap()
+    XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     app.buttons["draw.objects.quick"].tap()
     app.buttons["draw.object.\(ids[0])"].tap()
     XCTAssertTrue(app.buttons["draw.copy"].waitForExistence(timeout: 5))
@@ -957,7 +976,7 @@ extension ChartFoundationUITests {
 
 extension ChartFoundationUITests {
   func testDrawingAllToolsAndFingerTargets() throws {
-    app.buttons["interval.draw"].tap()
+    XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     app.buttons["draw.magnet.quick"].tap()
     let tools: [(String, Int)] = [("trend", 2), ("hline", 1), ("ray", 2), ("hray", 1),
       ("extended", 2), ("vline", 1), ("rectangle", 2), ("channel", 3), ("fibonacci", 2), ("measure", 2)]
@@ -965,15 +984,23 @@ extension ChartFoundationUITests {
       app.buttons["draw.tools"].tap()
       XCTAssertTrue(app.buttons["draw.sheet.done"].waitForExistence(timeout: 5))
       let target = app.buttons["draw.tool.\(tool.0)"]
+      // 滚动必须**限定在工具面板自己的列表里**。原来用的是 `app.collectionViews.firstMatch`：
+      // 它取的是整棵树里第一个集合视图，不保证是这张半屏面板——一旦落到主界面上，
+      // 这十四次拖动就变成了在行情页上乱划，整条用例会跑飞（真出过：最后停在自选页，
+      // `chart.canvas` 直接不存在了）。用「含有 draw.tool.trend 这颗按钮的那个列表」把它钉死。
+      let list = app.collectionViews.containing(.button, identifier: "draw.tool.trend").firstMatch
+      XCTAssertTrue(list.waitForExistence(timeout: 5), "没找到画线工具面板的列表")
       for _ in 0..<14 {
         if target.exists && target.isHittable { break }
-        let list = app.collectionViews.firstMatch
         list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).press(forDuration: 0.05,
           thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)),
           withVelocity: .slow, thenHoldForDuration: 0.1)
       }
       XCTAssertTrue(target.isHittable, tool.0); target.tap()
       XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["draw.sheet.done"].exists })
+      // 下面每一下都是点在画布上的。面板收了但图不在（被别的页盖住），
+      // 再点下去就是往别人身上点——先把图还在这件事断言死，失败信息也才看得懂。
+      XCTAssertTrue(canvas.waitForExistence(timeout: 5), "\(tool.0)：工具面板收起后图不见了")
       let h = try XCTUnwrap(info()["mainH"] as? Double)
       let origin = canvas.coordinate(withNormalizedOffset: .zero)
       let points = [CGVector(dx: 90, dy: h * 0.65), CGVector(dx: 245, dy: h * 0.3), CGVector(dx: 160, dy: h * 0.75)]
@@ -993,10 +1020,16 @@ extension ChartFoundationUITests {
     }
     let ids = try XCTUnwrap(info()["drawingIDs"] as? [String])
     app.buttons["draw.finish"].tap()
-    app.buttons["interval.draw"].tap()
+    XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     app.buttons["draw.objects.quick"].tap()
     let clear = app.buttons["draw.clear"]
-    for _ in 0..<10 { if clear.exists && clear.isHittable { break }; app.swipeUp() }
+    // 同理：往上翻要翻的是「画线管理」这张面板自己的列表。管理面板停在 `.medium`，
+    // 背景是可交互的，`app.swipeUp()` 有机会划到底下的行情页上去。
+    let objects = app.collectionViews.containing(.button, identifier: "draw.object.\(ids[0])").firstMatch
+    for _ in 0..<10 {
+      if clear.exists && clear.isHittable { break }
+      if objects.exists { objects.swipeUp() } else { app.swipeUp() }
+    }
     XCTAssertTrue(clear.isHittable); clear.tap()
     app.buttons["清空画线"].tap()
     app.buttons["draw.sheet.done"].tap()
@@ -1010,7 +1043,7 @@ extension ChartFoundationUITests {
   }
 
   func testDrawingRectangleChannelAndFibonacci() throws {
-    app.buttons["interval.draw"].tap()
+    XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     for (index, entry) in [("rectangle", 2), ("channel", 3), ("fibonacci", 2)].enumerated() {
       app.buttons["draw.tools"].tap()
       let target = app.buttons["draw.tool.\(entry.0)"]
@@ -1061,7 +1094,9 @@ extension ChartFoundationUITests {
     XCUIDevice.shared.orientation = .landscapeLeft
     XCTAssertTrue(wait(seconds: 8) { self.canvas.frame.width > self.canvas.frame.height })
     XCTAssertFalse(app.buttons["chart.expand"].isHittable)
-    XCTAssertFalse(app.buttons["land.exit"].exists)
+    // 横屏工具栏常驻一颗「竖屏」。以前这儿断言它**不存在**，理由是「手机转回去就行了」——
+    // 可锁了方向的手机转不回去，进了横屏就只能杀进程，横屏成了单程票（见 `LandscapeChrome`）。
+    XCTAssertTrue(app.buttons["land.exit"].waitForExistence(timeout: 5), "横屏没有回竖屏的出口")
     let landscapeShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
     landscapeShot.name = "手机-自动横屏"; landscapeShot.lifetime = .keepAlways; add(landscapeShot)
     XCUIDevice.shared.orientation = .portrait

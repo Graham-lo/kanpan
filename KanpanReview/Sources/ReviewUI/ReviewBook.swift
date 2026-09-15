@@ -40,7 +40,11 @@ public struct ReviewBook: View {
       }
       .navigationTitle("复盘").navigationBarTitleDisplayMode(.inline)
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) { Button("完成") { feature.bookOpen = false } }
+        // 左上角统一成「‹ 返回」，和看盘其余各页一致（2026-09-15）。
+        ToolbarItem(placement: .cancellationAction) {
+          Button { feature.bookOpen = false } label: { Label("返回", systemImage: "chevron.left") }
+            .accessibilityIdentifier("review.back")
+        }
         ToolbarItemGroup(placement: .primaryAction) {
           Button { feature.bookOpen = false; feature.onCapture() } label: { Image(systemName: "plus") }.accessibilityLabel("记一笔")
         }

@@ -91,6 +91,48 @@ struct DataIntegrityTests {
     #expect(await transport.calls == 1)
   }
 
+  @Test("ticker 校准失败不降级已加载的历史")
+  func tickerFailureDoesNotInvalidateHistory() async throws {
+    let t0: Int64 = 1_700_000_000_000
+    let rows = (0..<3).map { i -> String in
+      let t = t0 + Int64(i) * Interval.m1.stepMs
+      return "[\(t),\"100\",\"101\",\"99\",\"100.5\",\"10\",\(t + Interval.m1.stepMs - 1)]"
+    }.joined(separator: ",")
+    let server = FakeServer { url in
+      if url.path.contains("ticker") { return json("{}", status: 503) }
+      if url.path.contains("klines") { return json("[\(rows)]") }
+      return json("[]")
+    }
+    let pacer = SystemPacer()
+    let rest = BinanceREST(transport: FakeTransport(server), pacer: pacer)
+    let deck = ReplayDeck([.hang])
+    let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer,
+                       silenceMs: 60_000_000)
+    let paths = Paths(root: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+    let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer,
+                          reconcileMs: 0, includeTicker: true, initialLimit: 3)
+    let stream = await feed.events()
+    let recorded = Updates()
+    let reader = Task { for await update in stream { await recorded.add(update) } }
+
+    await feed.start(symbol: "BTCUSDT", interval: .m1)
+    #expect(await waitUntil(3) { await feed.currentSeries.count == 3 })
+    // Give the independent ticker request a chance to fail after history was published.
+    try? await Task.sleep(for: .milliseconds(20))
+    let events = await recorded.values
+    #expect(!events.contains {
+      if case .historyError(let message) = $0.event { return message != nil }
+      return false
+    })
+    #expect(!events.contains {
+      if case .status(.offline) = $0.event { return true }
+      return false
+    })
+
+    await feed.stop()
+    reader.cancel()
+  }
+
   @Test func returningToSameSelectionCannotReviveOldRequest() async throws {
     let transport = HeldHistory()
     let rest = BinanceREST(transport: transport)
