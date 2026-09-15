@@ -20,17 +20,17 @@ struct BottomBar: View {
 
   var body: some View {
     HStack(spacing: 0) {
-      tool(.settings, VectorIcon.settings, "设置") { onPanel(.settings) }
-        .accessibilityIdentifier("bottom.settings")
-      tool(.indicator, VectorIcon.indicator, "指标") { onPanel(.indicator) }
-        .accessibilityIdentifier("bottom.indicator")
-      item(VectorIcon.star(), "自选", on: false, action: onFavorites)
-        .accessibilityIdentifier("bottom.favorites")
       item(VectorIcon.chart, "复盘", on: false, action: onReview)
         .accessibilityIdentifier("bottom.review")
         .overlay(alignment: .topTrailing) {
           if reviewCount > 0 { Text("\(min(reviewCount, 99))").font(.system(size: 9)).padding(3).background(theme.amber, in: Capsule()).foregroundStyle(.white).padding(.trailing, 14) }
         }
+      tool(.indicator, VectorIcon.indicator, "指标") { onPanel(.indicator) }
+        .accessibilityIdentifier("bottom.indicator")
+      item(VectorIcon.star(), "自选", on: false, action: onFavorites)
+        .accessibilityIdentifier("bottom.favorites")
+      tool(.settings, VectorIcon.settings, "设置") { onPanel(.settings) }
+        .accessibilityIdentifier("bottom.settings")
     }
   }
 
