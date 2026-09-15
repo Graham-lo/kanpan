@@ -29,12 +29,11 @@ enum Ids {
   static let quickIntervals = ["1m", "5m", "15m", "1h", "4h", "1d"]
   // 底栏
   /// 底栏第三批之后是「自选 · 复盘 · 指标 · 设置」四格：没有「风格」也没有「横屏」。
-  /// K 线风格搬进了周期行的「图表」面板（`interval.chart` → `CandleStylePicker`），
   /// 横屏收在「画线」上（`interval.draw` 直接横过去）。要量图区下沿就用底栏第一格。
   static let bottomFavorites = "bottom.favorites"
   static let bottomReview = "bottom.review"
   static let bottomIndicator = "bottom.indicator"
-  /// 周期行右端的「图表」：K 线风格、网格、主图形态都在这张面板里。
+  /// 周期行右端的「图表」：网格、阳线实心/空心、价格轴这些都在这张面板里。
   static let intervalChart = "interval.chart"
   static let bottomDraw = "interval.draw"
   static let bottomSettings = "bottom.settings"
@@ -48,7 +47,8 @@ enum Ids {
   static let symbolsBack = "symbols.back"
   static let symbolsQuery = "symbols.query"
   // 面板里各自的「招牌元素」：拿它在不在，判断面板开没开
-  static func styleCard(_ id: String) -> String { "style.card.\(id)" }
+  /// 「图表」面板里「阳线」那一行的某一档（实心 / 空心）。风格卡撤掉之后，拿它当这张面板的招牌元素。
+  static func chartBody(_ raw: String) -> String { "chart.bodyChoice.\(raw)" }
   static func periodRow(_ raw: String) -> String { "period.row.\(raw)" }
   static func indicatorSwitch(_ raw: String) -> String { "indicator.switch.\(raw)" }
   static let settingsMagnet = "settings.magnet"

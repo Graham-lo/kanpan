@@ -13,7 +13,6 @@ struct PrefsPersistenceTests {
     p.interval = .m15
     p.quickIntervals = [.m3, .m30, .h2, .h12, .w1, .mo1, .y1]
     p.theme = .dark
-    p.styleID = "needle"
     p.redUp = true
     p.priceMode = .log
     p.magnet = false

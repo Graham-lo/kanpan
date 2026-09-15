@@ -1076,20 +1076,23 @@ extension ChartFoundationUITests {
     XCTAssertFalse(app.buttons["bottom.landscape"].exists)
     XCTAssertFalse(app.buttons["chart.expand"].exists)
     shot("手机-简化入口")
+    // 这儿原来挨个点四张风格卡再重启验持久化。风格表收成 AICoin 一套之后（见
+    // `CandleStyle`）卡撤了，改用同一张面板上的「阳线」实心 / 空心走同一条路：
+    // 改一下、收面板、杀进程重开，看它还在不在。
     app.buttons["interval.chart"].tap()
-    for id in ["aicoin", "pill", "paper", "outline"] {
-      let button = app.buttons["style.card.\(id)"]
-      XCTAssertTrue(button.waitForExistence(timeout: 5))
-      button.tap()
-      XCTAssertTrue(button.isSelected)
-    }
-    XCTAssertFalse(app.buttons["style.card.stout"].exists)
-    shot("手机-图表四种精选风格")
+    let body = app.buttons["chart.bodyChoice.空心"]
+    XCTAssertTrue(body.waitForExistence(timeout: 5), "图表面板没开出来")
+    XCTAssertFalse(app.buttons["style.card.aicoin"].exists, "风格卡还在")
+    body.tap()
+    shot("手机-图表阳线实心空心")
     closePanel()
-    XCTAssertEqual(info()["style"] as? String, "outline")
     app.terminate(); app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
-    XCTAssertTrue(wait { self.info()["style"] as? String == "outline" })
+    app.buttons["interval.chart"].tap()
+    XCTAssertTrue(wait { self.app.buttons["chart.bodyChoice.空心"].isSelected },
+                  "重启之后阳线画法没留住")
+    app.buttons["chart.bodyChoice.实心"].tap()
+    closePanel()
     // 用户拿起手机旋转，不需要先点按钮。
     XCUIDevice.shared.orientation = .landscapeLeft
     XCTAssertTrue(wait(seconds: 8) { self.canvas.frame.width > self.canvas.frame.height })
@@ -1101,6 +1104,11 @@ extension ChartFoundationUITests {
     landscapeShot.name = "手机-自动横屏"; landscapeShot.lifetime = .keepAlways; add(landscapeShot)
     XCUIDevice.shared.orientation = .portrait
     XCTAssertTrue(wait(seconds: 8) { self.canvas.frame.width < self.canvas.frame.height && self.app.buttons["interval.chart"].isHittable })
-    XCTAssertEqual(info()["style"] as? String, "outline")
+    // 风格表收成 AICoin 一套之后 `style` 恒为 "aicoin"，原来断言的 "outline" 已经没有对应项了。
+    // 这一步真正该守的是「手机转一圈回来，刚选的阳线画法还在」。
+    XCTAssertEqual(info()["style"] as? String, "aicoin")
+    app.buttons["interval.chart"].tap()
+    XCTAssertTrue(wait { self.app.buttons["chart.bodyChoice.实心"].isSelected }, "转一圈回来阳线画法丢了")
+    closePanel()
   }
 }

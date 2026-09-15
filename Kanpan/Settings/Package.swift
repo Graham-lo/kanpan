@@ -20,7 +20,6 @@ let package = Package(
   platforms: [.iOS(.v17), .macOS(.v14)],
   products: [
     .library(name: "KanpanSettings", targets: ["KanpanSettings"]),
-    .library(name: "KanpanStyleArt", targets: ["KanpanStyleArt"]),
   ],
   dependencies: [
     .package(path: "../../KanpanCore"),
@@ -43,19 +42,8 @@ let package = Package(
       ],
       path: "Tests/KanpanSettingsTests"
     ),
-    // A6.2 的取证跑道：风格缩略图那两份文件（连同 app 里的 `Color(hex:)`）在这里
-    // 也编一遍，测试用 `ImageRenderer` 把十一款真画出来存成 PNG。
-    // 只放跨平台的那几份——面板本体吃 iOS 专有 API（presentationDetents / keyboardType），
-    // 它们的证据走 `#Preview` 与模拟器截图。
-    .target(
-      name: "KanpanStyleArt",
-      dependencies: [.product(name: "KanpanCore", package: "KanpanCore")],
-      path: "Sources/KanpanStyleArt"
-    ),
-    .testTarget(
-      name: "KanpanStyleArtTests",
-      dependencies: ["KanpanStyleArt", .product(name: "KanpanCore", package: "KanpanCore")],
-      path: "Tests/KanpanStyleArtTests"
-    ),
+    // 这儿原来还有 `KanpanStyleArt` / `KanpanStyleArtTests`：把十一款风格的缩略图
+    // 用 `ImageRenderer` 真画出来存 PNG 的取证跑道（A6.2）。风格收成 AICoin 一套之后
+    // 缩略图和风格卡都撤了，跑道跟着撤。
   ]
 )

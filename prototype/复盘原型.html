@@ -1,0 +1,1239 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<title>看盘 · 复盘原型</title>
+<!--
+  看盘 · 复盘（记分簿）接入原型
+  ────────────────────────────────────────────────────────────────
+  以看盘为准：复盘不是搬进来的第二个 app，而是同一张图的另外三种状态。
+
+    看盘态 → 框选态 → 记录态 → 重温态        （互斥，画线态是第五态）
+
+  入口重排（对照现状）：
+    顶栏   品种▾ ●   ……   搜索 星                     不变
+    周期条 1m 5m 15m 1h 4h 1d | 画线 更多▾ 图表        「风格」并进「图表」
+    图区   右下浮钮「记」（回到最新在它上面）           新增
+    底栏   指标 · 自选 · 簿 · 设置 · 横屏               「风格」让位给「簿」
+
+  配色令牌抄 src/styles.js 的靛色两版，深浅跟随系统。
+  K 线是种子随机走出来的（这份原型只验交互，不验数据）。
+-->
+<style>
+:root{
+  --ground:#C7CCE4; --app:#FFFFFF; --chart:#F4F6FD; --raised:#FFFFFF; --raised2:#ECEFF9;
+  --line:#DCE0F0; --hair:#12163A0F; --grid:#E4E7F5;
+  --ink:#12163A; --ink2:#565C85; --ink3:#8B90B2;
+  --up:#0E9E78; --down:#DE2E57;
+  --amber:#B26A00; --amber-soft:#B26A0016; --amber-line:#B26A0055; --amber-band:#B26A0014;
+  --veil:#FFFFFFF0; --scrim:#12163A4D;
+  --shadow:0 30px 70px -28px #2B315E80, 0 0 0 1px #FFFFFF60 inset;
+  --bezel:linear-gradient(160deg,#F4F5FB,#C9CEE3 45%,#9EA5C8);
+  --seg-on:#FFFFFF; --sw-off:#C9CEE3;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",system-ui,sans-serif;
+}
+:root[data-theme="dark"]{
+  --ground:#07091C; --app:#0F1230; --chart:#161A3F; --raised:#1C2154; --raised2:#232858;
+  --line:#2A2E6E; --hair:#FFFFFF0A; --grid:#232858;
+  --ink:#EDEEF8; --ink2:#A6A9C0; --ink3:#6D719A;
+  --up:#2FBF8F; --down:#F0567B;
+  --amber:#FFB454; --amber-soft:#FFB4541A; --amber-line:#FFB45455; --amber-band:#FFB45416;
+  --veil:#0F1230EE; --scrim:#040614AA;
+  --shadow:0 40px 90px -30px #000, 0 0 0 1px #343A80 inset;
+  --bezel:linear-gradient(160deg,#2B3070,#12153A 42%,#0C0F2A);
+  --seg-on:#1C2154; --sw-off:#232858;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:var(--ground);font-family:var(--ui);color:var(--ink);overflow:hidden;
+  display:flex;align-items:center;justify-content:center;gap:28px}
+
+/* ───────────────────────────── 桌面机身与旁注 */
+#notes{width:300px;max-height:86vh;overflow:auto;font-size:12.5px;line-height:1.7;color:var(--ink2)}
+#notes h1{font-size:15px;color:var(--ink);margin:0 0 10px}
+#notes h2{font-size:12.5px;color:var(--ink);margin:16px 0 4px;letter-spacing:.02em}
+#notes p{margin:4px 0}
+#notes b{color:var(--ink);font-weight:600}
+#notes kbd{font:11px var(--mono);background:var(--raised2);border:1px solid var(--line);
+  border-radius:4px;padding:1px 5px;color:var(--ink2)}
+#phone{position:relative;flex:none;padding:12px;border-radius:56px;background:var(--bezel);box-shadow:var(--shadow)}
+#screen{position:relative;width:393px;height:852px;border-radius:44px;overflow:hidden;background:var(--app)}
+body.land #screen{width:852px;height:393px;border-radius:30px}
+body.land #phone{border-radius:42px}
+#chrome{position:fixed;top:14px;left:0;right:0;display:flex;gap:6px;justify-content:center;z-index:50}
+#chrome button{font:12px var(--ui);color:var(--ink2);background:var(--raised);border:1px solid var(--line);
+  border-radius:999px;padding:5px 12px;cursor:pointer}
+#chrome button:hover{color:var(--ink)}
+@media (max-width:1100px){#notes{display:none}}
+@media (max-width:900px){
+  body{display:block}
+  #phone{padding:0;border-radius:0;box-shadow:none;height:100%}
+  #screen,body.land #screen{width:100vw;height:100vh;border-radius:0}
+  #chrome{display:none}
+}
+
+/* ───────────────────────────── app 骨架 */
+#app{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--app)}
+body.land #app{flex-direction:row}
+.safe-top{height:44px;flex:none}
+body.land .safe-top{display:none}
+
+header{padding:0 12px 6px;flex:none}
+.top{display:flex;align-items:center;gap:8px;height:34px}
+.sym{display:flex;align-items:center;gap:6px;border:0;background:none;padding:2px 4px;cursor:pointer}
+.sym b{font-size:17px;font-weight:600;color:var(--ink)}
+.perp{font-size:10px;font-weight:500;color:var(--ink3);border:1px solid var(--line);border-radius:4px;padding:1px 4px}
+.chev{width:7px;height:7px;border-right:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);
+  transform:rotate(45deg) translate(-2px,-2px);opacity:.55}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--up)}
+.grow{flex:1}
+.icon{width:32px;height:32px;display:grid;place-items:center;border:0;background:none;cursor:pointer;color:var(--ink2)}
+.icon.on{color:var(--amber)}
+.price{display:flex;align-items:flex-end;gap:10px;padding-top:5px}
+.price .last{font:500 27px var(--mono);font-variant-numeric:tabular-nums}
+.price .pct{font:500 13px var(--mono)}
+.price .stats{margin-left:auto;display:grid;grid-template-columns:auto auto;gap:1px 8px;text-align:right}
+.price .stats span{font-size:10.5px;color:var(--ink3)}
+.price .stats i{font:10.5px var(--mono);font-style:normal;color:var(--ink2)}
+.up{color:var(--up)} .down{color:var(--down)}
+.hair{height:1px;background:var(--line);flex:none}
+
+/* 周期条 */
+.ivbar{display:flex;align-items:stretch;flex:none;background:var(--app)}
+.ivs{flex:1;display:flex;gap:2px;overflow-x:auto;padding:0 4px;scrollbar-width:none}
+.ivs::-webkit-scrollbar{display:none}
+.iv{flex:none;border:0;background:none;font:500 13px var(--ui);color:var(--ink2);padding:9px 10px;
+  cursor:pointer;position:relative}
+.iv.on{color:var(--amber)}
+.iv.on::after{content:"";position:absolute;left:8px;right:8px;bottom:3px;height:2px;border-radius:2px;background:var(--amber)}
+.tail{flex:none;border:0;border-left:1px solid var(--line);background:none;font:13px var(--ui);
+  color:var(--ink2);padding:9px 10px;cursor:pointer}
+.tail.on{color:var(--amber)}
+
+/* 图区 */
+#plot{position:relative;flex:1;min-height:0;background:var(--chart);touch-action:none;overflow:hidden}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+.fab{position:absolute;right:14px;border:1px solid var(--line);background:var(--veil);color:var(--ink2);
+  border-radius:999px;font:500 12.5px var(--ui);padding:7px 13px;cursor:pointer;
+  box-shadow:0 8px 20px -10px #00000055;display:flex;align-items:center;gap:5px}
+.fab.rec{bottom:16px;color:var(--amber);border-color:var(--amber-line)}
+.fab.latest{bottom:58px}
+.fab.hide{display:none}
+.hint{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:8px;
+  padding:7px 12px;background:var(--veil);border-bottom:1px solid var(--line);font-size:12.5px;color:var(--ink2)}
+.hint b{color:var(--amber);font-weight:600}
+.hint button{margin-left:auto;flex:none;white-space:nowrap;border:0;background:none;color:var(--ink2);
+  font:12.5px var(--ui);cursor:pointer}
+.hint span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hint b{flex:none}
+.readout{position:absolute;padding:4px 8px;border-radius:8px;background:var(--veil);border:1px solid var(--line);
+  font:11.5px var(--mono);color:var(--ink);pointer-events:none;white-space:nowrap;
+  box-shadow:0 6px 16px -10px #00000066}
+
+/* 底栏 */
+.bottom{display:flex;flex:none;background:var(--app);border-top:1px solid var(--line)}
+.bi{flex:1;border:0;background:none;padding:7px 0 6px;cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;gap:3px;color:var(--ink3);position:relative}
+.bi.on{color:var(--amber)}
+.bi span{font-size:10px;font-weight:500}
+.badge{position:absolute;top:3px;left:calc(50% + 7px);min-width:15px;height:15px;border-radius:999px;
+  background:var(--amber);color:var(--app);font:600 10px var(--ui);display:grid;place-items:center;padding:0 3px}
+:root[data-theme="dark"] .badge{color:#1A1400}
+.safe-bot{height:20px;background:var(--app);flex:none}
+body.land .safe-bot{display:none}
+
+/* 横屏两条 rail */
+.rail{flex:none;width:52px;background:var(--app);display:flex;flex-direction:column;align-items:center;
+  padding:6px 0;gap:2px;overflow-y:auto;scrollbar-width:none}
+.rail::-webkit-scrollbar{display:none}
+.rail button{width:44px;border:0;background:none;color:var(--ink3);font:11px var(--ui);padding:7px 0;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:2px}
+.rail button.on{color:var(--amber)}
+.landhead{display:none;align-items:center;gap:8px;padding:4px 8px;font-size:12px;color:var(--ink2)}
+body.land .landhead{display:flex}
+body.land header,body.land .ivbar,body.land .bottom{display:none}
+.mid{flex:1;min-width:0;display:flex;flex-direction:column}
+
+/* ───────────────────────────── 抽屉 / 卡片 */
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--raised);border-top:1px solid var(--line);
+  border-radius:16px 16px 0 0;box-shadow:0 -14px 40px -24px #00000066;z-index:20;
+  transform:translateY(102%);transition:transform .22s cubic-bezier(.32,.72,0,1)}
+.sheet.show{transform:none}
+.sheet .pad{padding:10px 14px 16px}
+.grab{width:36px;height:4px;border-radius:2px;background:var(--line);margin:7px auto 2px}
+.row{display:flex;align-items:center;gap:8px}
+.facts{font:12px var(--mono);color:var(--ink2)}
+.facts b{color:var(--ink);font-weight:600}
+.seg{display:flex;background:var(--raised2);border-radius:9px;padding:2px;gap:2px}
+.seg button{flex:1;border:0;background:none;border-radius:7px;padding:7px 0;font:13px var(--ui);
+  color:var(--ink2);cursor:pointer}
+.seg button.on{background:var(--seg-on);color:var(--ink);box-shadow:0 1px 3px #00000014;font-weight:600}
+.seg button.on.long{color:var(--up)} .seg button.on.short{color:var(--down)}
+.chips{display:flex;gap:6px}
+.chip{flex:1;border:1px solid var(--line);background:none;border-radius:8px;padding:8px 0;
+  font:13px var(--mono);color:var(--ink2);cursor:pointer}
+.chip.on{border-color:var(--amber-line);background:var(--amber-soft);color:var(--amber);font-weight:600}
+.lab{font-size:11px;color:var(--ink3);margin:12px 0 5px;letter-spacing:.02em}
+.say{width:100%;border:1px solid var(--line);background:var(--app);border-radius:10px;padding:10px 38px 10px 11px;
+  font:14px var(--ui);color:var(--ink);outline:none}
+.say:focus{border-color:var(--amber-line)}
+.mic{position:absolute;right:10px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--ink3);cursor:pointer}
+.btn{border:0;border-radius:10px;padding:12px 0;font:600 14px var(--ui);cursor:pointer;width:100%}
+.btn.pri{background:var(--amber);color:var(--app)}
+:root[data-theme="dark"] .btn.pri{color:#1A1400}
+.btn.gho{background:var(--raised2);color:var(--ink2);font-weight:500}
+.mini{border:1px solid var(--line);background:none;border-radius:8px;padding:7px 11px;font:12.5px var(--ui);
+  color:var(--ink2);cursor:pointer}
+.mini.on{border-color:var(--amber-line);color:var(--amber);background:var(--amber-soft)}
+.switch{margin-left:auto;width:40px;height:23px;border-radius:999px;background:var(--sw-off);border:0;
+  position:relative;cursor:pointer;flex:none}
+.switch.on{background:var(--amber)}
+.switch i{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;
+  transition:left .16s}
+.switch.on i{left:19px}
+
+/* 记录卡的五段 */
+.stage{border-top:1px solid var(--hair);padding:11px 0}
+.stage h4{margin:0 0 5px;font-size:12px;color:var(--ink3);font-weight:500}
+.stage p{margin:0;font-size:13.5px;color:var(--ink);line-height:1.5}
+.stamp{font:600 11px var(--ui);border-radius:999px;padding:3px 9px;border:1px solid var(--line);color:var(--ink3)}
+.stamp.wait{color:var(--amber);border-color:var(--amber-line);background:var(--amber-soft)}
+.stamp.right{background:var(--amber);color:var(--app);border-color:var(--amber)}
+:root[data-theme="dark"] .stamp.right{color:#1A1400}
+.stamp.wrong{color:var(--ink2)}
+
+/* ───────────────────────────── 簿（全屏盖） */
+.cover{position:absolute;inset:0;background:var(--app);z-index:30;display:flex;flex-direction:column;
+  transform:translateY(100%);transition:transform .24s cubic-bezier(.32,.72,0,1)}
+.cover.show{transform:none}
+.covhead{padding:0 12px 8px;flex:none}
+.covtop{display:flex;align-items:center;height:44px;gap:8px}
+.covtop h3{margin:0;font-size:17px;font-weight:600}
+.list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.group{padding:14px 14px 4px;font-size:11.5px;color:var(--ink3);letter-spacing:.02em}
+.recrow{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--hair);
+  cursor:pointer;background:none;border-left:0;border-right:0;border-top:0;width:100%;text-align:left}
+.recrow .spark{width:52px;height:30px;flex:none}
+.recrow .m{flex:1;min-width:0}
+.recrow .m b{font:600 13.5px var(--ui);color:var(--ink)}
+.recrow .m .q{font-size:12px;color:var(--ink2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recrow .m .f{font:11px var(--mono);color:var(--ink3);margin-top:3px}
+.recrow .r{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.empty{padding:36px 14px;text-align:center;color:var(--ink3);font-size:13px}
+.act{display:flex;gap:6px}
+.act button{border:1px solid var(--line);background:var(--app);border-radius:7px;padding:5px 9px;
+  font:12px var(--ui);color:var(--ink2);cursor:pointer}
+.act button.pri{border-color:var(--amber-line);color:var(--amber);background:var(--amber-soft)}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line)}
+.kpi{background:var(--app);padding:13px 14px}
+.kpi b{display:block;font:600 22px var(--mono);color:var(--ink)}
+.kpi span{font-size:11.5px;color:var(--ink3)}
+.bars{padding:14px}
+.bar{display:flex;align-items:center;gap:8px;margin-bottom:9px;font:11.5px var(--mono);color:var(--ink2)}
+.bar .t{width:34px;flex:none;text-align:right}
+.bar .g{flex:1;height:9px;border-radius:5px;background:var(--raised2);overflow:hidden}
+.bar .g i{display:block;height:100%;background:var(--amber);border-radius:5px}
+.bar .n{width:66px;flex:none;color:var(--ink3);white-space:nowrap;text-align:right}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{font-weight:500;color:var(--ink3);font-size:11px;text-align:right;padding:8px 14px;border-bottom:1px solid var(--line)}
+th:first-child{text-align:left}
+td{padding:10px 14px;border-bottom:1px solid var(--hair);text-align:right;font-family:var(--mono);color:var(--ink2)}
+td:first-child{text-align:left;font-family:var(--ui);color:var(--ink);font-weight:500}
+
+/* 重温播放条 */
+.play{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--app);border-top:1px solid var(--line);flex:none}
+.play button{border:1px solid var(--line);background:none;border-radius:8px;color:var(--ink2);
+  font:12.5px var(--ui);padding:7px 10px;cursor:pointer}
+.play button.pri{border-color:var(--amber-line);color:var(--amber);background:var(--amber-soft);font-weight:600}
+.play .sp{margin-left:auto;display:flex;gap:4px}
+
+.toast{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);background:var(--raised);
+  border:1px solid var(--line);border-radius:20px;padding:8px 14px;font-size:12.5px;color:var(--ink);
+  box-shadow:0 12px 30px -16px #00000088;z-index:60;opacity:0;transition:opacity .18s;pointer-events:none}
+.toast.show{opacity:1}
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:15;opacity:0;pointer-events:none;transition:opacity .2s}
+.scrim.show{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+
+<div id="chrome">
+  <button data-act="theme">深色 / 浅色</button>
+  <button data-act="land">横屏 / 竖屏</button>
+  <button data-act="reset">清空记录</button>
+</div>
+
+<div id="notes">
+  <h1>看盘 · 复盘接入</h1>
+  <p>一张图，四种状态：<b>看盘 → 框选 → 记录 → 重温</b>。复盘没有自己的"主页"，它是图的另外三种态加一个盖。</p>
+
+  <h2>入口重排</h2>
+  <p><b>底栏</b> 指标 · 自选 · <b>簿</b> · 设置 · 横屏<br>
+  「风格」并进周期条右端的「图表」——两个都是 K 线外观，本来就该是一个入口；空出来的中间格给「簿」，最好按、带角标。</p>
+  <p><b>图区右下「记」</b> 记一笔是图上的动作，不是一个去处，所以不进底栏，和「回到最新」同族。</p>
+  <p><b>顶栏不动。</b></p>
+
+  <h2>试试</h2>
+  <p>1 点 <kbd>记</kbd>，在图上<b>横滑一段</b>。<br>
+  2 松手后拖三个把手：上下两条是<b>目标 / 失效</b>，右边竖线拖进空白区是<b>看多久</b>。<br>
+  3 选方向、把握，说一句，记下。<br>
+  4 图上留痕。点底栏 <kbd>簿</kbd> 看待办 / 记录 / 战绩。<br>
+  5 记录卡里点 <kbd>重温</kbd> 逐根回放。</p>
+
+  <h2>为什么不再需要识图</h2>
+  <p>截图识别只是在还原<b>品种 · 周期 · 起止时间</b>三个数。在看盘里这三个数是现成的，框选直接给毫秒级精确值——定位从"概率 + 候选确认"变成零成本。</p>
+
+  <h2>颜色纪律</h2>
+  <p>记录层<b>不许用涨跌色</b>。涨跌红绿是用户可以互换的（红涨绿跌 / 绿涨红跌），一旦用它表示对错，换个配色语义就翻了。所以痕迹一律走琥珀 + 中性灰。</p>
+</div>
+
+<div id="phone"><div id="screen">
+  <div id="app">
+    <!-- 横屏左侧周期 rail -->
+    <div class="rail" id="ivrail" style="display:none"></div>
+
+    <div class="mid">
+      <div class="safe-top"></div>
+      <div class="landhead" id="landhead"></div>
+      <header>
+        <div class="top">
+          <button class="sym" id="symBtn"><b id="symTx">BTCUSDT</b><span class="perp">永续</span><i class="chev"></i></button>
+          <div class="dot"></div>
+          <div class="grow"></div>
+          <button class="icon" title="搜索品种">
+            <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.8 12.8 17 17"/></svg>
+          </button>
+          <button class="icon on" title="自选">
+            <svg width="17" height="17" viewBox="0 0 20 20" fill="currentColor"><path d="M10 1.8l2.4 5.1 5.6.7-4.1 3.9 1 5.5L10 14.4 5.1 17l1-5.5L2 7.6l5.6-.7z"/></svg>
+          </button>
+        </div>
+        <div class="price">
+          <div class="last" id="pxLast">—</div>
+          <div class="pct" id="pxPct">—</div>
+          <div class="stats">
+            <span>24h 高</span><i id="pxHi">—</i>
+            <span>24h 低</span><i id="pxLo">—</i>
+          </div>
+        </div>
+      </header>
+      <div class="hair"></div>
+
+      <div class="ivbar" id="ivbar">
+        <div class="ivs" id="ivs"></div>
+        <button class="tail" data-act="draw">画线</button>
+        <button class="tail" data-act="more">更多 ▾</button>
+        <button class="tail" data-act="chart">图表</button>
+      </div>
+      <div class="hair"></div>
+
+      <div id="plot">
+        <canvas id="cv"></canvas>
+        <div class="hint" id="hint" style="display:none"></div>
+        <button class="fab latest hide" id="fabLatest">回到最新</button>
+        <button class="fab rec" id="fabRec">记</button>
+        <div class="readout" id="readout" style="display:none"></div>
+      </div>
+
+      <div class="play" id="playbar" style="display:none"></div>
+
+      <div class="bottom" id="bottom"></div>
+      <div class="safe-bot"></div>
+    </div>
+
+    <!-- 横屏右侧工具 rail -->
+    <div class="rail" id="toolrail" style="display:none"></div>
+  </div>
+
+  <div class="scrim" id="scrim"></div>
+
+  <!-- 记一笔 / 记录卡 -->
+  <div class="sheet" id="sheet"><div id="sheetBody"></div></div>
+
+  <!-- 簿 -->
+  <div class="cover" id="book">
+    <div class="covhead">
+      <div class="safe-top"></div>
+      <div class="covtop">
+        <h3>簿</h3>
+        <div class="grow"></div>
+        <button class="mini" id="bookClose">关闭</button>
+      </div>
+      <div class="seg" id="bookSeg">
+        <button data-tab="todo" class="on">待办</button>
+        <button data-tab="all">记录</button>
+        <button data-tab="stat">战绩</button>
+      </div>
+    </div>
+    <div class="list" id="bookList"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div></div>
+
+<script>
+'use strict'
+/* ═══════════════════════════════════════════════════════════════
+   0. 小工具
+   ═══════════════════════════════════════════════════════════════ */
+const $ = s => document.querySelector(s)
+const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n }
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v
+const MIN = 60000, HOUR = 3600000, DAY = 86400000
+
+function fmtN(v, d) { return v == null || !isFinite(v) ? '—' : v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) }
+function fmtT(ms) {
+  const d = new Date(ms)
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+}
+function fmtDur(ms) {
+  if (ms <= 0) return '已到期'
+  const h = Math.round(ms / HOUR)
+  return h >= 48 ? Math.round(h / 24) + ' 天' : h + ' 小时'
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   1. 数据：种子随机的 15 分钟基准序列，按需聚合成各周期
+   ═══════════════════════════════════════════════════════════════ */
+const NOW = new Date('2026-09-15T12:00:00').getTime()
+const BASE = 15 * MIN, NBASE = 5800                  // ≈ 60 天
+
+function lcg(seed) { let s = seed >>> 0; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296 }
+
+function gen(seed, px0, vol) {
+  const r = lcg(seed), t = new Float64Array(NBASE), o = new Float64Array(NBASE), h = new Float64Array(NBASE)
+  const l = new Float64Array(NBASE), c = new Float64Array(NBASE), v = new Float64Array(NBASE)
+  let p = px0, drift = 0, phase = 0
+  const t0 = NOW - (NBASE - 1) * BASE
+  for (let i = 0; i < NBASE; i++) {
+    if (i % 120 === 0) { drift = (r() - 0.5) * vol * 0.55; phase = 40 + r() * 160 }
+    const shock = (r() - 0.5) * vol * (r() < 0.02 ? 4 : 1)
+    const wave = Math.sin(i / phase) * vol * 0.35
+    const op = p
+    p = Math.max(px0 * 0.25, p * (1 + drift * 0.02 + shock + wave * 0.01))
+    const hi = Math.max(op, p) * (1 + r() * vol * 0.6)
+    const lo = Math.min(op, p) * (1 - r() * vol * 0.6)
+    t[i] = t0 + i * BASE; o[i] = op; h[i] = hi; l[i] = lo; c[i] = p
+    v[i] = (0.4 + r() * 1.6) * (1 + Math.abs(p / op - 1) * 90)
+  }
+  return { t, o, h, l, c, v }
+}
+
+const SYMBOLS = {
+  BTCUSDT: { base: gen(20260915, 63200, 0.0042), d: 1 },
+  ETHUSDT: { base: gen(77021, 2480, 0.0055), d: 2 },
+  SOLUSDT: { base: gen(31415, 148.6, 0.0072), d: 3 },
+}
+const IVS = [['15m', 15 * MIN], ['1h', HOUR], ['4h', 4 * HOUR], ['1d', DAY]]
+const ivMs = k => (IVS.find(x => x[0] === k) || [, HOUR])[1]
+
+function series(sym, iv) {
+  const S = SYMBOLS[sym]
+  S.cache = S.cache || {}
+  if (S.cache[iv]) return S.cache[iv]
+  const step = ivMs(iv), b = S.base, n = b.t.length
+  const T = [], O = [], H = [], L = [], C = [], V = []
+  let k = -1, cur = -1
+  for (let i = 0; i < n; i++) {
+    // 按本地日界对齐，跟界面上的时间标签一致
+    const bucket = step >= DAY ? new Date(b.t[i]).setHours(0, 0, 0, 0) : Math.floor(b.t[i] / step) * step
+    if (bucket !== cur) { cur = bucket; k++; T[k] = bucket; O[k] = b.o[i]; H[k] = b.h[i]; L[k] = b.l[i]; V[k] = 0 }
+    H[k] = Math.max(H[k], b.h[i]); L[k] = Math.min(L[k], b.l[i]); C[k] = b.c[i]; V[k] += b.v[i]
+  }
+  return (S.cache[iv] = { t: T, o: O, h: H, l: L, c: C, v: V, n: T.length, step, d: S.d })
+}
+const idxAt = (s, ms) => clamp(Math.round((ms - s.t[0]) / s.step), 0, s.n - 1)
+
+/* ═══════════════════════════════════════════════════════════════
+   2. 记录
+   ═══════════════════════════════════════════════════════════════ */
+const KEY = 'kanpan.review.proto.v1'
+let records = []
+
+function judge(r) {                                   // 本地判定：目标先到 = 对，失效先到 = 错，到期都没到 = 不算
+  if (r.outcome) return r.outcome
+  const s = series(r.symbol, r.interval)
+  const from = idxAt(s, r.t1), to = idxAt(s, Math.min(r.due, NOW))
+  const long = r.dir === 'L'
+  if (r.target != null && r.invalid != null) {
+    for (let i = from; i <= to; i++) {
+      if (long ? s.h[i] >= r.target : s.l[i] <= r.target) return 'right'
+      if (long ? s.l[i] <= r.invalid : s.h[i] >= r.invalid) return 'wrong'
+    }
+  }
+  return r.due <= NOW ? 'na' : null                   // null = 还在等答案
+}
+const isWaiting = r => judge(r) === null
+const needReview = r => judge(r) !== null && !r.review
+
+function seedRecords() {
+  const mk = (symbol, interval, endAgo, spanBars, dir, conf, text, dueBars, tw, iw, review) => {
+    const s = series(symbol, interval)
+    const i1 = s.n - 1 - endAgo, i0 = i1 - spanBars
+    const hi = Math.max(...s.h.slice(i0, i1 + 1)), lo = Math.min(...s.l.slice(i0, i1 + 1))
+    const px = s.c[i1]
+    return {
+      id: 'r' + Math.random().toString(36).slice(2, 8), symbol, interval,
+      t0: s.t[i0], t1: s.t[i1], dir, conf, text, trigger: 'chart',
+      target: dir === 'L' ? px + (hi - px) * tw : px - (px - lo) * tw,
+      invalid: dir === 'L' ? px - (px - lo) * iw : px + (hi - px) * iw,
+      due: s.t[i1] + dueBars * s.step, at: s.t[i1] + 3 * MIN, outcome: null, review: review || null,
+    }
+  }
+  return [
+    mk('BTCUSDT', '1h', 2, 70, 'L', 70, '缩量回踩没破前低，先看一波反弹', 36, 0.9, 1.1),
+    mk('ETHUSDT', '1h', 120, 60, 'S', 60, '连着三根上影线，上面压力挺重', 48, 1.0, 1.0, null),
+    mk('SOLUSDT', '4h', 30, 40, 'L', 80, '这个位置站稳了，日线也顺', 30, 0.8, 1.2, { at: NOW - 2 * DAY, text: '目标给太近，其实还能拿一截' }),
+    mk('BTCUSDT', '4h', 46, 34, 'S', 50, '冲太快了，想接个回调', 22, 1.2, 0.7, null),
+    mk('ETHUSDT', '15m', 200, 80, 'L', 90, '假突破回收，直接反手', 90, 0.85, 1.0, { at: NOW - 5 * DAY, text: '对了但手太抖，只拿了三分之一' }),
+  ]
+}
+function load() {
+  try { const raw = JSON.parse(localStorage.getItem(KEY)); if (raw && raw.length) { records = raw; return } } catch (e) { }
+  records = seedRecords(); save()
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(records)) } catch (e) { } }
+
+/* ═══════════════════════════════════════════════════════════════
+   3. 状态机：看盘 / 框选 / 记录 / 重温
+   ═══════════════════════════════════════════════════════════════ */
+const st = {
+  sym: 'BTCUSDT', iv: '1h',
+  mode: 'chart',
+  view: null,                 // {from,to} 以“根”为单位，to 可以大于 n-1（右侧留白 = 未来）
+  brush: null,                // {i0,i1,target,invalid,due}
+  sel: null,                  // 记录态 / 重温态选中的那条
+  play: { i: 0, on: false, sp: 1, timer: null },
+  expand: false,
+}
+const S = () => series(st.sym, st.iv)
+
+function resetView() {
+  const s = S(), span = 96
+  st.view = { from: s.n - span, to: s.n - 1 + 14 }     // 右侧留 14 根空白：未来在这儿
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   4. 画图
+   ═══════════════════════════════════════════════════════════════ */
+const cv = $('#cv'), ctx = cv.getContext('2d')
+let L = null                                          // 布局
+
+function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim() }
+
+function layout() {
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  const axisW = 58, timeH = 18, volH = Math.max(34, r.height * 0.15)
+  const s = S(), v = st.view
+  const plotW = r.width - axisW, plotH = r.height - timeH - volH - 6
+  const span = v.to - v.from + 1, bw = plotW / span
+
+  // 纵轴自动贴合：可见区 + 记录线都得进来
+  let hi = -Infinity, lo = Infinity
+  const a = Math.max(0, Math.floor(v.from)), b = Math.min(s.n - 1, Math.ceil(v.to))
+  const last = st.mode === 'replay' ? Math.min(b, playIndex()) : b
+  for (let i = a; i <= last; i++) { if (s.h[i] > hi) hi = s.h[i]; if (s.l[i] < lo) lo = s.l[i] }
+  const trace = st.mode === 'brush' ? st.brush : st.sel
+  if (trace) {
+    if (trace.target != null) { hi = Math.max(hi, trace.target); lo = Math.min(lo, trace.target) }
+    if (trace.invalid != null) { hi = Math.max(hi, trace.invalid); lo = Math.min(lo, trace.invalid) }
+  }
+  if (!isFinite(hi)) { hi = 1; lo = 0 }
+  const pad = (hi - lo) * 0.08 || 1
+  hi += pad; lo -= pad
+  let vmax = 0
+  for (let i = a; i <= last; i++) vmax = Math.max(vmax, s.v[i])
+
+  L = {
+    w: r.width, h: r.height, axisW, plotW, plotH, volH, timeH, bw, span, s,
+    x: i => (i - v.from) * bw + bw / 2,
+    i: x => x / bw + v.from - 0.5,
+    y: p => plotH - (p - lo) / (hi - lo) * plotH,
+    p: y => lo + (plotH - y) / plotH * (hi - lo),
+    vy: q => plotH + 6 + volH - (vmax ? q / vmax * volH * 0.92 : 0),
+    hi, lo, vmax, last,
+  }
+}
+
+function drawGrid() {
+  const c = ctx
+  c.fillStyle = css('--chart'); c.fillRect(0, 0, L.w, L.h)
+  c.strokeStyle = css('--grid'); c.lineWidth = 1
+  c.font = '10px ' + css('--mono'); c.fillStyle = css('--ink3'); c.textAlign = 'left'
+  const step = niceStep((L.hi - L.lo) / 5)
+  for (let p = Math.ceil(L.lo / step) * step; p < L.hi; p += step) {
+    const y = Math.round(L.y(p)) + .5
+    c.beginPath(); c.moveTo(0, y); c.lineTo(L.plotW, y); c.stroke()
+    c.fillText(fmtN(p, L.s.d), L.plotW + 6, y + 3)
+  }
+  // 时间轴
+  const s = L.s, every = Math.max(1, Math.round(L.span / 5))
+  c.textAlign = 'center'
+  for (let i = Math.ceil(st.view.from / every) * every; i <= Math.min(s.n - 1, L.last); i += every) {
+    const x = L.x(i); if (x < 14 || x > L.plotW - 14) continue
+    const d = new Date(s.t[i])
+    const tx = s.step >= DAY ? (d.getMonth() + 1) + '/' + d.getDate()
+      : String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':00'
+    c.fillText(tx, x, L.h - 5)
+  }
+}
+function niceStep(raw) {
+  const e = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / e
+  return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * e
+}
+
+function drawCandles() {
+  const c = ctx, s = L.s, up = css('--up'), down = css('--down')
+  const w = Math.max(1, Math.min(L.bw * 0.66, 18))
+  for (let i = Math.max(0, Math.floor(st.view.from)); i <= L.last; i++) {
+    const x = L.x(i), rise = s.c[i] >= s.o[i], col = rise ? up : down
+    c.strokeStyle = col; c.fillStyle = col; c.lineWidth = Math.max(1, w * 0.14)
+    c.beginPath(); c.moveTo(x, L.y(s.h[i])); c.lineTo(x, L.y(s.l[i])); c.stroke()
+    const y0 = L.y(Math.max(s.o[i], s.c[i])), y1 = L.y(Math.min(s.o[i], s.c[i]))
+    c.fillRect(x - w / 2, y0, w, Math.max(1, y1 - y0))
+    c.globalAlpha = .5; c.fillRect(x - w / 2, L.vy(s.v[i]), w, L.plotH + 6 + L.volH - L.vy(s.v[i])); c.globalAlpha = 1
+  }
+  // 最新价线
+  const p = s.c[L.last], y = L.y(p)
+  c.strokeStyle = css('--ink3'); c.setLineDash([3, 3]); c.lineWidth = 1
+  c.beginPath(); c.moveTo(0, y); c.lineTo(L.plotW, y); c.stroke(); c.setLineDash([])
+  c.fillStyle = css('--ink'); c.fillRect(L.plotW, y - 8, L.axisW, 16)
+  c.fillStyle = css('--app'); c.font = '10px ' + css('--mono'); c.textAlign = 'left'
+  c.fillText(fmtN(p, s.d), L.plotW + 6, y + 3)
+}
+
+/* 记录痕迹 / 框选：一律琥珀 + 中性，绝不碰涨跌色 */
+function drawTrace(o, live) {
+  const c = ctx, s = L.s, amber = css('--amber')
+  const x0 = L.x(o.i0 - .5), x1 = L.x(o.i1 + .5)
+  c.fillStyle = css('--amber-band'); c.fillRect(x0, 0, x1 - x0, L.plotH + 6 + L.volH)
+  c.strokeStyle = css('--amber-line'); c.lineWidth = 1
+  c.beginPath(); c.moveTo(x0 + .5, 0); c.lineTo(x0 + .5, L.plotH); c.moveTo(x1 - .5, 0); c.lineTo(x1 - .5, L.plotH); c.stroke()
+
+  // 判断时刻
+  c.strokeStyle = amber; c.lineWidth = 1.5
+  c.beginPath(); c.moveTo(x1, 0); c.lineTo(x1, L.plotH); c.stroke()
+  tag(x1, 12, '判断', amber, true)
+
+  const line = (p, label, dash) => {
+    if (p == null) return
+    const y = L.y(p)
+    c.strokeStyle = dash ? css('--ink3') : amber; c.lineWidth = 1
+    c.setLineDash(dash); c.beginPath(); c.moveTo(x1, y); c.lineTo(L.plotW, y); c.stroke(); c.setLineDash([])
+    c.fillStyle = css('--veil'); c.strokeStyle = css('--line')
+    const tx = label + ' ' + fmtN(p, s.d), w = ctx.measureText(tx).width + 12
+    c.fillRect(L.plotW - w - 4, y - 8, w, 16); c.strokeRect(L.plotW - w - 4.5, y - 8.5, w, 16)
+    c.fillStyle = css('--ink2'); c.font = '10px ' + css('--mono'); c.textAlign = 'left'
+    c.fillText(tx, L.plotW - w + 2, y + 3)
+  }
+  line(o.target, '目标', [5, 3])
+  line(o.invalid, '失效', [2, 3])
+
+  // 到期竖线（可以落在未来那片空白里）
+  if (o.due != null) {
+    const xi = (o.due - s.t[0]) / s.step, x = L.x(xi)
+    if (x > 0 && x < L.plotW) {
+      c.strokeStyle = css('--ink3'); c.setLineDash([4, 4]); c.lineWidth = 1
+      c.beginPath(); c.moveTo(x, 0); c.lineTo(x, L.plotH); c.stroke(); c.setLineDash([])
+      tag(x, L.plotH - 22, live ? fmtDur(o.due - s.t[o.i1]) : '到期', css('--ink3'), false)
+    }
+  }
+  // 把手
+  if (live) {
+    handle(x0, L.plotH / 2); handle(x1, L.plotH / 2)
+    if (o.target != null) handleH(L.plotW - 26, L.y(o.target))
+    if (o.invalid != null) handleH(L.plotW - 26, L.y(o.invalid))
+    if (o.due != null) handle(L.x((o.due - s.t[0]) / s.step), L.plotH - 40)
+  }
+  function tag(x, y, text, col, solid) {
+    c.font = '10px ' + css('--ui'); c.textAlign = 'center'
+    const w = c.measureText(text).width + 12
+    c.fillStyle = solid ? col : css('--veil'); c.strokeStyle = solid ? col : css('--line')
+    roundRect(x - w / 2, y - 8, w, 16, 8); c.fill(); c.stroke()
+    c.fillStyle = solid ? css('--app') : col; c.fillText(text, x, y + 3.5)
+  }
+  function handle(x, y) {
+    c.fillStyle = css('--app'); c.strokeStyle = amber; c.lineWidth = 1.5
+    c.beginPath(); c.arc(x, y, 9, 0, 7); c.fill(); c.stroke()
+    c.strokeStyle = amber; c.lineWidth = 1.2
+    c.beginPath(); c.moveTo(x - 2.5, y - 3.5); c.lineTo(x - 2.5, y + 3.5); c.moveTo(x + 2.5, y - 3.5); c.lineTo(x + 2.5, y + 3.5); c.stroke()
+  }
+  function handleH(x, y) {
+    c.fillStyle = css('--app'); c.strokeStyle = amber; c.lineWidth = 1.5
+    c.beginPath(); c.arc(x, y, 9, 0, 7); c.fill(); c.stroke()
+    c.strokeStyle = amber; c.lineWidth = 1.2
+    c.beginPath(); c.moveTo(x - 3.5, y - 2.5); c.lineTo(x + 3.5, y - 2.5); c.moveTo(x - 3.5, y + 2.5); c.lineTo(x + 3.5, y + 2.5); c.stroke()
+  }
+  function roundRect(x, y, w, h, r) {
+    c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r)
+    c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath()
+  }
+}
+
+function draw() {
+  layout(); drawGrid(); drawCandles()
+  if (st.mode === 'brush' && st.brush) drawTrace(st.brush, true)
+  else if ((st.mode === 'record' || st.mode === 'replay') && st.sel) {
+    const s = L.s
+    drawTrace({ i0: idxAt(s, st.sel.t0), i1: idxAt(s, st.sel.t1), target: st.sel.target, invalid: st.sel.invalid, due: st.sel.due }, false)
+  }
+  $('#fabLatest').classList.toggle('hide', st.mode !== 'chart' || st.view.to >= L.s.n - 1 + 8)
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   5. 手势
+   ═══════════════════════════════════════════════════════════════ */
+const plot = $('#plot'), readout = $('#readout')
+let drag = null
+
+plot.addEventListener('pointerdown', e => {
+  if (st.mode === 'replay') return
+  if (e.target.closest('button')) return       // 浮钮/提示条上的点击不走图的手势，否则指针捕获会把 click 吞掉
+  const r = plot.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top
+  plot.setPointerCapture(e.pointerId)
+
+  if (st.mode === 'brush') {
+    const b = st.brush
+    if (b) {
+      const s = L.s, near = (a, c) => Math.abs(a - c) < 22
+      const x0 = L.x(b.i0 - .5), x1 = L.x(b.i1 + .5)
+      const xd = b.due != null ? L.x((b.due - s.t[0]) / s.step) : -999
+      if (near(x, xd) && y > L.plotH - 90) return start('due')
+      if (b.target != null && near(y, L.y(b.target)) && x > L.plotW - 120) return start('target')
+      if (b.invalid != null && near(y, L.y(b.invalid)) && x > L.plotW - 120) return start('invalid')
+      if (near(x, x0)) return start('i0')
+      if (near(x, x1)) return start('i1')
+    }
+    // 新刷一段
+    const i = Math.round(L.i(x))
+    st.brush = { i0: i, i1: i, target: null, invalid: null, due: null, mTarget: false, mInvalid: false, mDue: false }
+    return start('i1')
+  }
+  start('pan')
+  function start(what) { drag = { what, x, y, ox: x, view: { ...st.view }, brush: st.brush ? { ...st.brush } : null } }
+})
+
+plot.addEventListener('pointermove', e => {
+  if (!drag) return
+  const r = plot.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top
+  const s = L.s
+
+  if (drag.what === 'pan') {
+    const d = (x - drag.ox) / L.bw
+    st.view = { from: drag.view.from - d, to: drag.view.to - d }
+    const maxTo = s.n - 1 + 40, minFrom = -20
+    if (st.view.from < minFrom) { const k = minFrom - st.view.from; st.view.from += k; st.view.to += k }
+    if (st.view.to > maxTo) { const k = st.view.to - maxTo; st.view.from -= k; st.view.to -= k }
+    draw(); return
+  }
+  const b = st.brush
+  if (drag.what === 'i0' || drag.what === 'i1') {
+    let i = clamp(Math.round(L.i(x)), 0, s.n - 1)          // 磁吸到根中心；不许框到未来
+    if (drag.what === 'i0') b.i0 = i; else b.i1 = i
+    if (b.i0 > b.i1) { const t = b.i0; b.i0 = b.i1; b.i1 = t; drag.what = drag.what === 'i0' ? 'i1' : 'i0' }
+    if (x > L.plotW - 26 && st.view.to < s.n + 30) { st.view.from += .6; st.view.to += .6 }   // 贴边自动滚
+    if (x < 26 && st.view.from > -10) { st.view.from -= .6; st.view.to -= .6 }
+    autoLevels()
+  } else if (drag.what === 'target') { b.target = L.p(y); b.mTarget = true }
+  else if (drag.what === 'invalid') { b.invalid = L.p(y); b.mInvalid = true }
+  else if (drag.what === 'due') {
+    const i = L.i(x)
+    b.due = clamp(s.t[0] + i * s.step, s.t[b.i1] + s.step, s.t[s.n - 1] + 200 * s.step)
+    b.mDue = true
+  }
+  showReadout(); draw()
+})
+
+/* 三条默认线跟着框走，直到用户自己动过那一条为止。
+   （之前只在第一次算，结果框还没拉完「到期」就定死在半途的那根上了。） */
+function autoLevels() {
+  const b = st.brush, s = L.s
+  if (b.i1 - b.i0 < 2) { b.target = b.invalid = b.due = null; return }
+  let hi = -Infinity, lo = Infinity
+  for (let i = b.i0; i <= b.i1; i++) { hi = Math.max(hi, s.h[i]); lo = Math.min(lo, s.l[i]) }
+  if (!b.mTarget) b.target = hi
+  if (!b.mInvalid) b.invalid = lo
+  if (!b.mDue) b.due = s.t[b.i1] + Math.max(8, Math.round((b.i1 - b.i0) / 2)) * s.step
+}
+
+plot.addEventListener('pointerup', () => {
+  if (!drag) return
+  const what = drag.what; drag = null
+  readout.style.display = 'none'
+  if (st.mode !== 'brush') return
+  const b = st.brush
+  if (b.i1 - b.i0 < 2) { toast('再滑长一点'); st.brush = null; draw(); return }
+  autoLevels(); draw()
+  if (what === 'i0' || what === 'i1') openCapture()
+})
+plot.addEventListener('pointercancel', () => { drag = null; readout.style.display = 'none' })
+
+function showReadout() {
+  const b = st.brush, s = L.s
+  if (!b || b.i1 - b.i0 < 1) { readout.style.display = 'none'; return }
+  const chg = (s.c[b.i1] / s.o[b.i0] - 1) * 100
+  readout.textContent = fmtT(s.t[b.i0]) + ' – ' + fmtT(s.t[b.i1]) + ' · ' + (b.i1 - b.i0 + 1) + ' 根 · '
+    + (chg >= 0 ? '+' : '') + chg.toFixed(1) + '%'
+  readout.style.display = 'block'
+  const mid = (L.x(b.i0) + L.x(b.i1)) / 2
+  readout.style.left = clamp(mid - readout.offsetWidth / 2, 6, L.plotW - readout.offsetWidth - 6) + 'px'
+  readout.style.top = '36px'
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   6. 外壳渲染
+   ═══════════════════════════════════════════════════════════════ */
+const BOTTOM = [
+  ['indicator', '指标', 'M3 15l4-6 4 3 6-9'],
+  ['fav', '自选', 'M10 2l2.4 5.1 5.6.7-4.1 4 1 5.5L10 14.6 5.1 17.3l1-5.5L2 7.8l5.6-.7z'],
+  ['book', '簿', 'M4 3h9a3 3 0 013 3v11H7a3 3 0 00-3 3zM4 3v17'],
+  ['settings', '设置', 'M10 13a3 3 0 100-6 3 3 0 000 6zM10 1.6v2M10 16.4v2M3.6 10h-2M18.4 10h-2'],
+  ['land', '横屏', 'M2 5h16v10H2zM6 17h8'],
+]
+function renderBottom() {
+  const n = $('#bottom'); n.innerHTML = ''
+  const waiting = records.filter(isWaiting).length + records.filter(needReview).length
+  BOTTOM.forEach(([id, title, d]) => {
+    const b = el('button', 'bi'); b.dataset.act = id
+    b.innerHTML = '<svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>'
+    b.appendChild(el('span', null, title))
+    if (id === 'book' && waiting) b.appendChild(el('i', 'badge', String(waiting)))
+    n.appendChild(b)
+  })
+  const rail = $('#toolrail'); rail.innerHTML = ''
+  ;[['rec', '记'], ['indicator', '指标'], ['settings', '设置'], ['land', '竖屏']].forEach(([id, t]) => {
+    const b = el('button', null, t); b.dataset.act = id; rail.appendChild(b)
+  })
+}
+function renderIvs() {
+  const n = $('#ivs'); n.innerHTML = ''
+  IVS.forEach(([k]) => {
+    const b = el('button', 'iv' + (k === st.iv ? ' on' : ''), k); b.dataset.iv = k; n.appendChild(b)
+  })
+  const rail = $('#ivrail'); rail.innerHTML = ''
+  IVS.forEach(([k]) => { const b = el('button', k === st.iv ? 'on' : '', k); b.dataset.iv = k; rail.appendChild(b) })
+}
+function renderTop() {
+  const s = S(), i = s.n - 1, px = s.c[i], op = s.o[Math.max(0, i - (st.iv === '1d' ? 1 : Math.round(DAY / s.step)))]
+  const pct = (px / op - 1) * 100
+  $('#symTx').textContent = st.sym
+  $('#pxLast').textContent = fmtN(px, s.d); $('#pxLast').className = 'last ' + (pct >= 0 ? 'up' : 'down')
+  $('#pxPct').textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'
+  $('#pxPct').className = 'pct ' + (pct >= 0 ? 'up' : 'down')
+  let hi = -Infinity, lo = Infinity
+  for (let k = Math.max(0, i - Math.round(DAY / s.step)); k <= i; k++) { hi = Math.max(hi, s.h[k]); lo = Math.min(lo, s.l[k]) }
+  $('#pxHi').textContent = fmtN(hi, s.d); $('#pxLo').textContent = fmtN(lo, s.d)
+  $('#landhead').textContent = st.sym + ' 永续 · ' + st.iv + ' · ' + fmtN(px, s.d)
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   7. 记一笔
+   ═══════════════════════════════════════════════════════════════ */
+const sheet = $('#sheet'), sheetBody = $('#sheetBody')
+let capture = null
+
+function enterBrush() {
+  closeSheet(); st.mode = 'brush'; st.brush = null; st.sel = null
+  $('#fabRec').style.display = 'none'
+  const h = $('#hint'); h.style.display = 'flex'
+  h.innerHTML = '<b>在图上滑一段</b><span style="color:var(--ink3)">视野已锁住</span>'
+  const x = el('button', null, '取消'); x.dataset.act = 'cancelBrush'; h.appendChild(x)
+  draw()
+}
+function exitBrush() {
+  st.mode = 'chart'; st.brush = null; capture = null
+  $('#hint').style.display = 'none'; $('#fabRec').style.display = ''
+  closeSheet(); draw()
+}
+function openCapture() {
+  const b = st.brush, s = L.s
+  capture = capture || { dir: null, conf: 70, text: '', trigger: 'chart' }
+  // 方向按这段的走向预选一次，之后听用户的（criteria 从来不许从原话里猜）
+  if (capture.dir === null) capture.dir = s.c[b.i1] >= s.c[b.i0] ? 'L' : 'S'
+  applyDir(); renderCapture(); openSheet()
+}
+
+/* 看多时「目标」在上、「失效」在下；换成看空就整个翻过来。
+   用户自己拖过的那条不动。 */
+function applyDir() {
+  const b = st.brush, s = L.s
+  if (!b || b.i1 - b.i0 < 2) return
+  let hi = -Infinity, lo = Infinity
+  for (let i = b.i0; i <= b.i1; i++) { hi = Math.max(hi, s.h[i]); lo = Math.min(lo, s.l[i]) }
+  const down = capture.dir === 'S'
+  if (!b.mTarget) b.target = down ? lo : hi
+  if (!b.mInvalid) b.invalid = down ? hi : lo
+}
+function renderCapture() {
+  const b = st.brush, s = L.s
+  sheetBody.innerHTML = ''
+  const w = el('div', 'pad'); sheetBody.appendChild(el('div', 'grab')); sheetBody.appendChild(w)
+
+  const f = el('div', 'facts'); f.innerHTML = '<b>' + st.sym + '</b> · ' + st.iv + ' · '
+    + fmtT(s.t[b.i0]) + ' – ' + fmtT(s.t[b.i1]) + ' · ' + (b.i1 - b.i0 + 1) + ' 根'
+  w.appendChild(f)
+
+  w.appendChild(lab('方向'))
+  const seg = el('div', 'seg')
+  ;[['L', '看多', 'long'], ['S', '看空', 'short'], ['N', '观望', '']].forEach(([k, t, c]) => {
+    const btn = el('button', (capture.dir === k ? 'on ' + c : ''), t)
+    btn.onclick = () => { capture.dir = k; applyDir(); renderCapture(); draw() }
+    seg.appendChild(btn)
+  })
+  w.appendChild(seg)
+
+  w.appendChild(lab('把握'))
+  const cs = el('div', 'chips')
+  ;[50, 60, 70, 80, 90].forEach(v => {
+    const c = el('button', 'chip' + (capture.conf === v ? ' on' : ''), String(v))
+    c.onclick = () => { capture.conf = v; renderCapture() }
+    cs.appendChild(c)
+  })
+  w.appendChild(cs)
+
+  w.appendChild(lab('一句话'))
+  const box = el('div'); box.style.position = 'relative'
+  const inp = el('input', 'say'); inp.placeholder = '你现在怎么想'; inp.value = capture.text
+  inp.oninput = e => capture.text = e.target.value
+  const mic = el('button', 'mic')
+  mic.innerHTML = '<svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="2" width="6" height="10" rx="3"/><path d="M4 9a6 6 0 0012 0M10 15v3"/></svg>'
+  mic.onclick = () => toast('说一句就行（原型略）')
+  box.appendChild(inp); box.appendChild(mic); w.appendChild(box)
+
+  const tr = el('div', 'row'); tr.style.marginTop = '12px'
+  tr.appendChild(el('div', 'facts', '想法在先'))
+  const sw = el('button', 'switch' + (capture.trigger === 'idea' ? ' on' : '')); sw.appendChild(el('i'))
+  sw.onclick = () => { capture.trigger = capture.trigger === 'idea' ? 'chart' : 'idea'; renderCapture() }
+  tr.appendChild(sw); w.appendChild(tr)
+  const note = el('div', null, '默认「图在先」——在图上框出来的，本来就是先看到图。')
+  note.style.cssText = 'font-size:11px;color:var(--ink3);margin-top:4px'; w.appendChild(note)
+
+  const acts = el('div', 'row'); acts.style.marginTop = '14px'
+  const cancel = el('button', 'btn gho', '取消'); cancel.style.flex = '0 0 96px'; cancel.onclick = exitBrush
+  const ok = el('button', 'btn pri', '记下'); ok.onclick = commit
+  acts.appendChild(cancel); acts.appendChild(ok); w.appendChild(acts)
+
+  function lab(t) { return el('div', 'lab', t) }
+}
+function commit() {
+  const b = st.brush, s = L.s
+  if (!capture.text.trim()) { toast('留一句话——没有原话的记录，统计里是个空壳'); return }
+  const r = {
+    id: 'r' + Math.random().toString(36).slice(2, 8), symbol: st.sym, interval: st.iv,
+    t0: s.t[b.i0], t1: s.t[b.i1], dir: capture.dir, conf: capture.conf, text: capture.text.trim(),
+    trigger: capture.trigger, target: capture.dir === 'N' ? null : b.target,
+    invalid: capture.dir === 'N' ? null : b.invalid, due: b.due, at: Date.now(), outcome: null, review: null,
+  }
+  records.unshift(r); save()
+  st.mode = 'record'; st.sel = r; st.brush = null; capture = null
+  $('#hint').style.display = 'none'; $('#fabRec').style.display = ''
+  renderBottom(); renderRecordCard(); openSheet(); draw(); toast('记下了')
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   8. 记录卡（图上留痕 + 五段）
+   ═══════════════════════════════════════════════════════════════ */
+const DIRTX = { L: '看多', S: '看空', N: '观望' }
+const OUT = { right: ['对', 'right'], wrong: ['错', 'wrong'], na: ['不算', ''], null: ['等答案', 'wait'] }
+
+function openRecord(r) {
+  st.sym = r.symbol; st.iv = r.interval; st.mode = 'record'; st.sel = r; st.expand = false
+  const s = S(), i1 = idxAt(s, r.t1), i0 = idxAt(s, r.t0), span = Math.max(40, (i1 - i0) * 2.4)
+  st.view = { from: i0 - span * 0.25, to: i1 + span * 0.75 }
+  renderIvs(); renderTop(); renderRecordCard(); openSheet(); draw()
+}
+function renderRecordCard() {
+  const r = st.sel, s = series(r.symbol, r.interval), out = judge(r)
+  const [otx, ocls] = OUT[String(out)]
+  sheetBody.innerHTML = ''
+  sheetBody.appendChild(el('div', 'grab'))
+  const w = el('div', 'pad'); sheetBody.appendChild(w)
+
+  const head = el('div', 'row')
+  const f = el('div', 'facts'); f.style.flex = '1'
+  f.innerHTML = '<b>' + DIRTX[r.dir] + '</b> · 把握 ' + r.conf + '% · ' + r.interval
+    + ' · ' + (r.trigger === 'idea' ? '想法在先' : '图在先')
+  head.appendChild(f)
+  head.appendChild(el('span', 'stamp ' + ocls, otx))
+  const fold = el('button', 'mini', st.expand ? '收起' : '展开')
+  fold.onclick = () => { st.expand = !st.expand; renderRecordCard() }
+  head.appendChild(fold)
+  w.appendChild(head)
+
+  const say = el('p', null, '「' + r.text + '」'); say.style.cssText = 'margin:9px 0 0;font-size:14px;line-height:1.5'
+  w.appendChild(say)
+
+  if (!st.expand) {
+    const acts = el('div', 'act'); acts.style.marginTop = '12px'
+    const rl = el('button', 'pri', '重温'); rl.onclick = () => enterReplay(r); acts.appendChild(rl)
+    if (out !== null && !r.review) {
+      const rv = el('button', null, '写复盘'); rv.onclick = writeReview; acts.appendChild(rv)
+    }
+    const cl = el('button', null, '退出'); cl.onclick = exitRecord; acts.appendChild(cl)
+    w.appendChild(acts)
+    return
+  }
+
+  stage(w, '判断', fmtT(r.t0) + ' – ' + fmtT(r.t1) + ' · ' + DIRTX[r.dir] + ' · 把握 ' + r.conf + '%')
+  stage(w, '怎么算对', r.target == null ? '没写' :
+    (r.dir === 'L' ? '到 ' : '跌到 ') + fmtN(r.target, s.d) + ' 算对，破 ' + fmtN(r.invalid, s.d) + ' 算错，'
+    + fmtT(r.due) + ' 到期')
+  stage(w, '走势', out === null ? '还在走 · 还差 ' + fmtDur(r.due - NOW) : '已经走完到期这一段')
+
+  const st3 = el('div', 'stage'); st3.appendChild(el('h4', null, '结果'))
+  if (out === null) st3.appendChild(el('p', null, '市场还没给答案'))
+  else {
+    const row = el('div', 'act')
+    ;[['right', '对'], ['wrong', '错'], ['na', '不算']].forEach(([k, t]) => {
+      const b = el('button', out === k ? 'pri' : '', t)
+      b.onclick = () => { r.outcome = k; save(); renderBottom(); renderRecordCard(); renderBook() }
+      row.appendChild(b)
+    })
+    st3.appendChild(row)
+    const note = el('p', null, '按「怎么算对」判的，可以改')
+    note.style.cssText = 'font-size:11px;color:var(--ink3);margin-top:7px'; st3.appendChild(note)
+  }
+  w.appendChild(st3)
+
+  const st4 = el('div', 'stage'); st4.appendChild(el('h4', null, '复盘'))
+  if (r.review) st4.appendChild(el('p', null, r.review.text))
+  else { const b = el('button', 'mini', '写复盘'); b.onclick = writeReview; st4.appendChild(b) }
+  w.appendChild(st4)
+
+  const st5 = el('div', 'stage'); st5.appendChild(el('h4', null, '打法'))
+  const b5 = el('button', 'mini', '归到一类局面'); b5.onclick = () => toast('归类（原型略）')
+  st5.appendChild(b5); w.appendChild(st5)
+
+  const acts = el('div', 'act'); acts.style.marginTop = '14px'
+  const rl = el('button', 'pri', '重温'); rl.onclick = () => enterReplay(r)
+  const cl = el('button', null, '退出'); cl.onclick = exitRecord
+  acts.appendChild(rl); acts.appendChild(cl); w.appendChild(acts)
+
+  function stage(p, title, text) {
+    const n = el('div', 'stage'); n.appendChild(el('h4', null, title)); n.appendChild(el('p', null, text)); p.appendChild(n)
+  }
+}
+function writeReview() {
+  const t = prompt('写一句复盘：')
+  if (t && t.trim()) { st.sel.review = { at: Date.now(), text: t.trim() }; save(); renderBottom(); renderRecordCard(); renderBook(); toast('记下了') }
+}
+function exitRecord() { st.mode = 'chart'; st.sel = null; closeSheet(); resetView(); draw() }
+
+/* ═══════════════════════════════════════════════════════════════
+   9. 重温
+   ═══════════════════════════════════════════════════════════════ */
+function playIndex() { return st.play.i }
+function enterReplay(r) {
+  closeSheet(); st.mode = 'replay'; st.sel = r
+  const s = series(r.symbol, r.interval)
+  const i0 = idxAt(s, r.t0), i1 = idxAt(s, r.t1), iEnd = idxAt(s, Math.min(r.due, NOW))
+  st.view = { from: i0 - 6, to: iEnd + 10 }
+  st.play.i = i1; st.play.end = iEnd; st.play.start = i1; st.play.on = false
+  $('#playbar').style.display = 'flex'; $('#fabRec').style.display = 'none'
+  const h = $('#hint'); h.style.display = 'flex'
+  renderPlay(); draw()
+}
+function exitReplay() {
+  stopPlay(); st.mode = 'record'
+  $('#playbar').style.display = 'none'; $('#hint').style.display = 'none'; $('#fabRec').style.display = ''
+  openRecord(st.sel)
+}
+function renderPlay() {
+  const s = series(st.sel.symbol, st.sel.interval), i = st.play.i
+  $('#hint').innerHTML = '<b>重温</b><span style="font-family:var(--mono);font-size:11px">' + fmtT(s.t[i])
+    + ' 开 ' + fmtN(s.o[i], s.d) + ' 高 ' + fmtN(s.h[i], s.d) + ' 低 ' + fmtN(s.l[i], s.d) + ' 收 ' + fmtN(s.c[i], s.d) + '</span>'
+  const x = el('button', null, '退出'); x.onclick = exitReplay; $('#hint').appendChild(x)
+
+  const p = $('#playbar'); p.innerHTML = ''
+  const prev = el('button', null, '◀'); prev.onclick = () => step(-1)
+  const play = el('button', 'pri', st.play.on ? '暂停' : '播放'); play.onclick = togglePlay
+  const next = el('button', null, '▶'); next.onclick = () => step(1)
+  const jump = el('button', null, '跳到判断'); jump.onclick = () => { st.play.i = st.play.start; renderPlay(); draw() }
+  p.appendChild(prev); p.appendChild(play); p.appendChild(next); p.appendChild(jump)
+  const sp = el('div', 'sp')
+  ;[1, 2, 4].forEach(k => { const b = el('button', st.play.sp === k ? 'pri' : '', k + '×'); b.onclick = () => { st.play.sp = k; if (st.play.on) { stopPlay(); togglePlay() } else renderPlay() }; sp.appendChild(b) })
+  p.appendChild(sp)
+}
+function step(d) { st.play.i = clamp(st.play.i + d, 0, st.play.end); renderPlay(); draw() }
+function togglePlay() {
+  if (st.play.on) return stopPlay()
+  st.play.on = true; renderPlay()
+  st.play.timer = setInterval(() => {
+    if (st.play.i >= st.play.end) return stopPlay()
+    st.play.i++; renderPlay(); draw()
+  }, 420 / st.play.sp)
+}
+function stopPlay() { clearInterval(st.play.timer); st.play.on = false; renderPlay() }
+
+/* ═══════════════════════════════════════════════════════════════
+   10. 簿
+   ═══════════════════════════════════════════════════════════════ */
+let bookTab = 'todo'
+function openBook() { renderBook(); $('#book').classList.add('show') }
+function closeBook() { $('#book').classList.remove('show') }
+
+function sparkline(r) {
+  const s = series(r.symbol, r.interval), i0 = idxAt(s, r.t0), i1 = idxAt(s, r.t1)
+  const w = 52, h = 30, n = i1 - i0 + 1
+  let hi = -Infinity, lo = Infinity
+  for (let i = i0; i <= i1; i++) { hi = Math.max(hi, s.h[i]); lo = Math.min(lo, s.l[i]) }
+  let d = ''
+  for (let i = i0; i <= i1; i++) {
+    const x = (i - i0) / Math.max(1, n - 1) * w, y = h - (s.c[i] - lo) / (hi - lo || 1) * h
+    d += (i === i0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1)
+  }
+  return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" fill="none"><path d="' + d
+    + '" stroke="var(--amber)" stroke-width="1.3"/></svg>'
+}
+function recRow(r, extra) {
+  const out = judge(r), [otx, ocls] = OUT[String(out)]
+  const b = el('button', 'recrow')
+  b.innerHTML = sparkline(r)
+  const m = el('div', 'm')
+  m.innerHTML = '<b>' + r.symbol + ' · ' + DIRTX[r.dir] + '</b>'
+    + '<div class="q">「' + r.text + '」</div>'
+    + '<div class="f">' + r.interval + ' · 把握 ' + r.conf + '% · ' + fmtT(r.t1) + '</div>'
+  b.appendChild(m)
+  const rr = el('div', 'r')
+  rr.appendChild(el('span', 'stamp ' + ocls, otx))
+  if (extra) rr.appendChild(el('span', null, extra)).style.cssText = 'font-size:11px;color:var(--ink3)'
+  b.appendChild(rr)
+  b.onclick = () => { closeBook(); openRecord(r) }
+  return b
+}
+function renderBook() {
+  const n = $('#bookList'); n.innerHTML = ''
+  $('#bookSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.tab === bookTab))
+
+  if (bookTab === 'todo') {
+    const wait = records.filter(isWaiting)
+    const judgeable = records.filter(r => judge(r) !== null && !r.outcome && !r.review)
+    const towrite = records.filter(r => r.outcome && !r.review)
+    group('等答案 ' + wait.length, wait, r => fmtDur(r.due - NOW))
+    group('判对错 ' + judgeable.length, judgeable)
+    group('写复盘 ' + towrite.length, towrite)
+    if (!wait.length && !judgeable.length && !towrite.length) n.appendChild(el('div', 'empty', '没有要复盘的'))
+  } else if (bookTab === 'all') {
+    if (!records.length) { n.appendChild(el('div', 'empty', '还没有记录')); return }
+    n.appendChild(el('div', 'group', '全部 ' + records.length + ' 条'))
+    records.forEach(r => n.appendChild(recRow(r)))
+  } else {
+    const done = records.filter(r => judge(r) !== null)
+    const right = done.filter(r => judge(r) === 'right').length
+    const rate = done.length ? Math.round(right / done.length * 100) : 0
+    const byTrig = t => {
+      const g = done.filter(r => r.trigger === t)
+      return g.length ? Math.round(g.filter(r => judge(r) === 'right').length / g.length * 100) + '%' : '—'
+    }
+    const k = el('div', 'kpis')
+    kpi(k, records.length, '记录'); kpi(k, rate + '%', '判对率')
+    kpi(k, byTrig('chart'), '图在先判对率'); kpi(k, byTrig('idea'), '想法在先判对率')
+    n.appendChild(k)
+
+    n.appendChild(el('div', 'group', '把握 vs 结果'))
+    const bars = el('div', 'bars')
+    ;[50, 60, 70, 80, 90].forEach(c => {
+      const g = done.filter(r => r.conf === c)
+      const pct = g.length ? Math.round(g.filter(r => judge(r) === 'right').length / g.length * 100) : 0
+      const row = el('div', 'bar')
+      row.innerHTML = '<div class="t">' + c + '%</div><div class="g"><i style="width:' + (g.length ? pct : 0)
+        + '%"></i></div><div class="n">' + (g.length ? pct + '% · ' + g.length + ' 次' : '—') + '</div>'
+      bars.appendChild(row)
+    })
+    n.appendChild(bars)
+
+    n.appendChild(el('div', 'group', '按品种'))
+    const tb = el('table')
+    tb.innerHTML = '<tr><th>品种</th><th>次数</th><th>对</th><th>错</th><th>判对率</th></tr>'
+    Object.keys(SYMBOLS).forEach(sym => {
+      const g = done.filter(r => r.symbol === sym)
+      if (!g.length) return
+      const rt = g.filter(r => judge(r) === 'right').length, wr = g.filter(r => judge(r) === 'wrong').length
+      const tr = el('tr')
+      tr.innerHTML = '<td>' + sym + '</td><td>' + g.length + '</td><td>' + rt + '</td><td>' + wr
+        + '</td><td>' + Math.round(rt / g.length * 100) + '%</td>'
+      tb.appendChild(tr)
+    })
+    n.appendChild(tb)
+  }
+
+  function group(title, list, extra) {
+    if (!list.length) return
+    n.appendChild(el('div', 'group', title))
+    list.forEach(r => n.appendChild(recRow(r, extra && extra(r))))
+  }
+  function kpi(p, big, small) {
+    const d = el('div', 'kpi'); d.appendChild(el('b', null, String(big))); d.appendChild(el('span', null, small)); p.appendChild(d)
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   11. 接线
+   ═══════════════════════════════════════════════════════════════ */
+function openSheet() { sheet.classList.add('show'); setTimeout(fit, 0) }
+function closeSheet() { sheet.classList.remove('show'); setTimeout(fit, 240) }
+function fit() { draw() }
+
+let toastT
+function toast(t) {
+  const n = $('#toast'); n.textContent = t; n.classList.add('show')
+  clearTimeout(toastT); toastT = setTimeout(() => n.classList.remove('show'), 1600)
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); const iv = e.target.closest('[data-iv]')
+  if (iv) {
+    st.iv = iv.dataset.iv
+    if (st.mode === 'brush') exitBrush()
+    if (st.mode === 'record' || st.mode === 'replay') { st.mode = 'chart'; st.sel = null; closeSheet() }
+    renderIvs(); renderTop(); resetView(); draw(); return
+  }
+  if (!b) return
+  switch (b.dataset.act) {
+    case 'theme': {
+      const cur = document.documentElement.dataset.theme
+        || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      document.documentElement.dataset.theme = cur === 'dark' ? 'light' : 'dark'; draw(); break
+    }
+    case 'land': document.body.classList.toggle('land'); toggleRails(); setTimeout(draw, 60); break
+    case 'reset': localStorage.removeItem(KEY); records = seedRecords(); save(); renderBottom(); renderBook(); toast('回到初始记录'); break
+    case 'rec': enterBrush(); break
+    case 'cancelBrush': exitBrush(); break
+    case 'book': openBook(); break
+    case 'fav': toast('自选（原型略）'); break
+    case 'indicator': toast('指标面板（原型略）'); break
+    case 'settings': toast('设置面板（原型略）'); break
+    case 'draw': toast('画线态 · 画完长按线可以「按这段记一笔」'); break
+    case 'more': toast('全部周期（原型略）'); break
+    case 'chart': toast('图表设置 · 风格已并进这里'); break
+  }
+})
+$('#fabRec').onclick = enterBrush
+$('#fabLatest').onclick = () => { resetView(); draw() }
+$('#bookClose').onclick = closeBook
+$('#bookSeg').addEventListener('click', e => {
+  const b = e.target.closest('[data-tab]'); if (!b) return
+  bookTab = b.dataset.tab; renderBook()
+})
+$('#symBtn').onclick = () => {
+  const ks = Object.keys(SYMBOLS)
+  st.sym = ks[(ks.indexOf(st.sym) + 1) % ks.length]
+  if (st.mode !== 'chart') { st.mode = 'chart'; st.sel = null; st.brush = null; closeSheet(); $('#hint').style.display = 'none'; $('#fabRec').style.display = ''; $('#playbar').style.display = 'none' }
+  renderTop(); resetView(); draw()
+}
+function toggleRails() {
+  const land = document.body.classList.contains('land')
+  $('#ivrail').style.display = land ? 'flex' : 'none'
+  $('#toolrail').style.display = land ? 'flex' : 'none'
+}
+new ResizeObserver(() => draw()).observe(plot)
+window.addEventListener('resize', draw)
+
+load(); resetView(); renderIvs(); renderTop(); renderBottom(); renderBook(); draw()
+</script>
+</body>
+</html>

@@ -1,1 +1,0 @@
-../../../Kanpan/LaunchScreen.swift

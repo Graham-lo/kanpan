@@ -2,36 +2,31 @@ import Testing
 
 @testable import KanpanCore
 
-/// A1.10：11 款风格的每个字段、两套配色的每个颜色，都要和定版原型一模一样。
+/// A1.10：风格表和两套配色的每个颜色，都要和定版原型一模一样。
+///
+/// 原来这儿逐字段比对的是原型带来的十一款风格（`Fx.styles`）。2026-09-15 风格表收成
+/// AICoin 一套（见 `CandleStyle`），那一批对照就没有对象了；配色那几条一个都没动，
+/// 它们和风格无关。
 @Suite("风格表与配色")
 struct StyleTableTests {
-  @Test("11 款风格、顺序与默认值")
+  @Test("只有 AICoin 一套")
   func tableShape() {
-    #expect(CandleStyle.all.count == 12)
-    #expect(CandleStyle.originalStyles.map(\.id) == Fx.styles.map { $0.s["id"]! }, "顺序和原型不一致")
-    #expect(CandleStyle.default.id == "aicoin", "默认必须是「墩」")
+    #expect(CandleStyle.all.count == 1, "风格表又长出别的款了")
+    #expect(CandleStyle.default.id == "aicoin")
     #expect(CandleStyle.default.name == "AICoin")
-    #expect(Set(CandleStyle.all.map(\.id)).count == 12, "id 有重复")
-    #expect(Set(CandleStyle.all.map(\.name)).count == 12, "名字有重复")
-    #expect(CandleStyle.style(id: "没这个").id == "aicoin", "找不到要落回默认")
+    #expect(CandleStyle.style(id: "没这个").id == "aicoin", "认不出的 id 要落回这一套")
+    #expect(CandleStyle.style(id: "stout").id == "aicoin", "旧存档里的老风格 id 也一样")
   }
 
-  @Test("每个字段与原型逐一相等", arguments: CandleStyle.originalStyles.indices)
-  func fieldsMatchPrototype(_ i: Int) {
-    let st = CandleStyle.originalStyles[i]
-    let fx = Fx.styles[i]
-    #expect(st.id == fx.s["id"]!)
-    #expect(st.name == fx.s["name"]!)
-
-    #expect(st.wickCap.rawValue == fx.s["wickCap"]!, "\(st.id) wickCap")
-    #expect(st.shape.rawValue == fx.s["shape"]!, "\(st.id) shape")
-    #expect(st.grid.rawValue == fx.s["grid"]!, "\(st.id) grid")
-    let nums: [(String, Double)] = [("wickTint", st.wickTint), ("radius", st.radius)]
-    for (k, v) in nums {
-      #expect(v == fx.n[k], "\(st.id).\(k)：原型 \(fx.n[k] ?? .nan)，这里 \(v)")
-    }
-    // 一句话和赌注文案都得有，图例和切换器要用。
-    #expect(!st.visualSummary.isEmpty, "\(st.id) 缺文案")
+  /// AICoin 这一套本身：平头影线、不压影线颜色、直角实心、不画风格自带网格。
+  @Test("AICoin 的字段")
+  func aicoinFields() {
+    let st = CandleStyle.aicoin
+    #expect(st.wickCap == .butt)
+    #expect(st.wickTint == 1)
+    #expect(st.shape == .solid)
+    #expect(st.radius == 0)
+    #expect(st.grid == .none)
   }
 
   /// 字段本身得在合理范围里——写错一位小数比对不上原型也看得出来。

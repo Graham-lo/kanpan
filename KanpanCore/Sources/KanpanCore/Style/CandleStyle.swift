@@ -1,6 +1,15 @@
 import Foundation
 
-/// Visual skins only. Candle dimensions, axes, layout and gestures live in the shared chart base.
+/// 蜡烛的造型。尺寸、坐标轴、布局与手势都在共用的图表基座里，这里只管「长什么样」。
+///
+/// 这里原来摆着十二套：AICoin 一套，加上从原型带过来的十一款（墩／靛／辉／阔／砖／针／
+/// 芯／纸／描／骨／密），「图表」面板上还有一张四选一的风格卡。用户 2026-09-15 定了：
+/// 「k 线风格直接默认 aicoin 那套就行了，不用搞那么多套」。看盘这套视觉本来就是照着
+/// 手机 AICoin 抄的（默认风格的 id 就叫 `aicoin`），多出来的十一款既不是谁在用，又让
+/// 每改一次渲染都得横着验十二遍——量成交量颜色那次就是十二套一起量的。所以只留这一套。
+///
+/// 结构体本身留着不动：渲染器读的是 `shape / wickCap / wickTint / radius / grid` 这几个
+/// 字段，不是读一个风格 id；把它们摊平成常量等于把造型散进渲染器各处，反而更难改。
 public struct CandleStyle: Sendable, Equatable, Identifiable, Codable {
   public enum WickCap: String, Sendable, Codable { case butt, round }
   public enum Shape: String, Sendable, Codable { case solid, hollowUp, outline }
@@ -13,27 +22,10 @@ public struct CandleStyle: Sendable, Equatable, Identifiable, Codable {
   public let radius: Double
   public let grid: Grid
 
-  public var visualSummary: String {
-    let body = shape == .hollowUp ? "阳线空心" : shape == .outline ? "轮廓" : "实心"
-    return (radius > 0 ? "圆角" : "直角") + body + (wickCap == .round ? " · 圆头影线" : " · 平头影线")
-  }
-
   public static let aicoin = CandleStyle(id: "aicoin", name: "AICoin", wickCap: .butt,
     wickTint: 1, shape: .solid, radius: 0, grid: .none)
-  public static let originalStyles: [CandleStyle] = [
-    .init(id: "stout", name: "墩", wickCap: .round, wickTint: 0.7, shape: .solid, radius: 1.5, grid: .h),
-    .init(id: "indigo", name: "靛", wickCap: .butt, wickTint: 1, shape: .solid, radius: 0, grid: .both),
-    .init(id: "glow", name: "辉", wickCap: .round, wickTint: 0.6, shape: .solid, radius: 2.6, grid: .none),
-    .init(id: "airy", name: "阔", wickCap: .round, wickTint: 1, shape: .solid, radius: 1, grid: .h),
-    .init(id: "brick", name: "砖", wickCap: .butt, wickTint: 0.45, shape: .solid, radius: 0, grid: .h),
-    .init(id: "needle", name: "针", wickCap: .round, wickTint: 0.9, shape: .solid, radius: 0.5, grid: .h),
-    .init(id: "pill", name: "芯", wickCap: .round, wickTint: 1, shape: .solid, radius: 3, grid: .h),
-    .init(id: "paper", name: "纸", wickCap: .butt, wickTint: 1, shape: .hollowUp, radius: 0, grid: .h),
-    .init(id: "outline", name: "描", wickCap: .butt, wickTint: 0.85, shape: .outline, radius: 0, grid: .tick),
-    .init(id: "bone", name: "骨", wickCap: .butt, wickTint: 1, shape: .solid, radius: 0, grid: .tick),
-    .init(id: "dense", name: "密", wickCap: .butt, wickTint: 1, shape: .solid, radius: 0, grid: .none)
-  ]
-  public static let all = [aicoin] + originalStyles
+  public static let all: [CandleStyle] = [aicoin]
   public static let `default` = aicoin
-  public static func style(id: String) -> CandleStyle { all.first { $0.id == id } ?? .aicoin }
+  /// 只剩一套了，但调用点（旧存档解码、测试）还按 id 要，就一律给这一套。
+  public static func style(id _: String) -> CandleStyle { aicoin }
 }

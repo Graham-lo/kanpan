@@ -46,7 +46,7 @@ struct EvidenceRenderTests {
 
   // ---------------------------------------------------------------- A3.1
 
-  @Test("A3.1：8 机型 × 浅深 × 12 风格 = 192 张基线")
+  @Test("A3.1：8 机型 × 浅深 × 风格表 = 每款一张基线")
   func baselines() {
     guard Evidence.outputDir != nil else { return }
     var list: [[String: Any]] = []
@@ -228,7 +228,7 @@ struct EvidenceRenderTests {
   @Test("同一 state 画两次逐字节一致")
   func deterministic() {
     let dev = Evidence.devices.first { $0.id == "std" }!
-    for style in [CandleStyle.default, CandleStyle.style(id: "paper")] {
+    for style in CandleStyle.all {
       for dark in [false, true] {
         let st = Evidence.state(style: style, dark: dark, size: dev.size)
         let a = UIImage(cgImage: Evidence.render(st, size: dev.size, scale: dev.scale)).pngData()!

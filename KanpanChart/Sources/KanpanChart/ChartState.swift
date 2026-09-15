@@ -100,13 +100,10 @@ public struct ChartState: Sendable {
     }
   }
 
-  /// 真正生效的实体画法。
-  ///
-  /// `.outline`（「描」那档，阴阳线都空心）被强制档一起接管：用户点了「实心」就该到处都是
-  /// 实心，留一个风格自己说了算的例外只会显得是 bug。
+  /// 真正生效的实体画法。风格表只剩 AICoin 一套之后，这里就是「图表」面板上那两档的直译；
+  /// 渲染器一律读这个，别去读 `style.shape`。
   public var effectiveShape: CandleStyle.Shape {
     switch options.body {
-    case .style: style.shape
     case .solid: .solid
     case .hollowUp: .hollowUp
     }

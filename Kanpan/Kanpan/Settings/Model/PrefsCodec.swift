@@ -33,7 +33,9 @@ extension Prefs: Codable {
   enum CodingKeys: String, CodingKey {
     case v
     case interval, quickIntervals
-    case theme, styleID, redUp
+    case theme, redUp
+    // 这儿原来还有 `styleID`：十二款蜡烛造型里挑一款的那阵子存的选择。现在只剩 AICoin
+    // 一套，老存档里的那个键读的时候认不出来，直接忽略。
     // 这儿原来还有 `recordButtonX/Y`：「记」还浮在图上、能拖着摆的那阵子存的位置。
     // 现在「记」住在周期条上，没有位置可存了。老存档里那两个键读的时候认不出来，
     // 直接忽略（这份编解码是一个键一个键 `try?` 取的，多出来的键不会让整份存档解不开）。
@@ -55,7 +57,6 @@ extension Prefs: Codable {
     try c.encode(quickIntervals.map(\.rawValue), forKey: .quickIntervals)
     try c.encode(theme.rawValue, forKey: .theme)
     try c.encode(ambientTheme, forKey: .ambientTheme)
-    try c.encode(styleID, forKey: .styleID)
     try c.encode(redUp, forKey: .redUp)
     try c.encode(priceMode.rawValue, forKey: .priceMode)
     try c.encode(magnet, forKey: .magnet)
@@ -119,8 +120,6 @@ extension Prefs: Codable {
 
     if let raw = str(.theme), let v = ThemeChoice(rawValue: raw) { theme = v }
     if let v = bool(.ambientTheme) { ambientTheme = v }
-    // 认不出来的风格 id 退回「墩」，不是留着一个画不出来的名字。
-    if let raw = str(.styleID), CandleStyle.all.contains(where: { $0.id == raw }) { styleID = raw }
     if let v = bool(.redUp) { redUp = v }
 
     if let raw = str(.priceMode), let v = PriceMode(rawValue: raw) { priceMode = v }
@@ -135,7 +134,8 @@ extension Prefs: Codable {
     // 或者手改存档手抖），不能因为一个字符串就让整档作废。
     if let raw = str(.candleKind), let v = CandleKind(rawValue: raw) { candleKind = v }
     if let raw = str(.gridChoice), let v = GridChoice(rawValue: raw) { gridChoice = v }
-    if let raw = str(.bodyChoice), let v = BodyChoice(rawValue: raw) { bodyChoice = v }
+    // 旧存档里的 `"style"`（「跟随风格」那一档）读成实心：风格表只剩一套，两者等价。
+    if let raw = str(.bodyChoice) { bodyChoice = raw == "style" ? .solid : BodyChoice(rawValue: raw) ?? bodyChoice }
     if let v = bool(.lastLine) { lastLine = v }
     if let v = bool(.showDrawings) { showDrawings = v }
     if let v = bool(.sinceChange) { sinceChange = v }

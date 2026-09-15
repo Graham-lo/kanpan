@@ -37,8 +37,7 @@ struct PrefsToleranceTests {
     {"interval":"8h","styleID":"雷电","theme":"neon","priceMode":"polar","timeZone":"火星"}
     """#)
     #expect(p.interval == .h1)
-    #expect(p.styleID == "aicoin")          // 认不出的风格退回「墩」，不是留个画不出的名字
-    #expect(p.style.name == "AICoin")
+    #expect(p.style.name == "AICoin")       // 存档里那个 `styleID` 现在整条忽略，造型只有这一套
     #expect(p.theme == .system)
     #expect(p.priceMode == .log)
     #expect(p.timeZone == .local)
@@ -58,9 +57,12 @@ struct PrefsToleranceTests {
     #expect(p == .defaults)                 // 全都认不出，等于这几项压根没写过
 
     // 一个坏的不能把同一档里好的那个带下水
-    let q = decode(#"{"gridChoice":"garbage","bodyChoice":"solid"}"#)
+    let q = decode(#"{"gridChoice":"garbage","bodyChoice":"hollowUp"}"#)
     #expect(q.gridChoice == .off)
-    #expect(q.bodyChoice == .solid)
+    #expect(q.bodyChoice == .hollowUp)
+
+    // 旧存档里的 `"style"`（撤掉的「跟随风格」那一档）读成实心——风格表只剩一套，两者等价。
+    #expect(decode(#"{"bodyChoice":"style"}"#).bodyChoice == .solid)
   }
 
   @Test("「图表」的三个开关：类型不对退回默认")

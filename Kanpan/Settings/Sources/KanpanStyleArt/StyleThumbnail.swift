@@ -1,1 +1,0 @@
-../../../Kanpan/Panels/StyleThumbnail.swift

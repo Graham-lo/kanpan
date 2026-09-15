@@ -22,8 +22,6 @@ struct Prefs: Sendable, Equatable {
   var theme: ThemeChoice = .system
   // Keep the manual choice intact; automatic brightness selection is runtime-only.
   var ambientTheme = false
-  /// AICoin 与原有十一款造型之一，存 `CandleStyle.id`。
-  var styleID: String = CandleStyle.default.id
   /// 涨跌对调（A6.7）。`false` = 绿涨红跌（原型默认）。
   var redUp: Bool = false
 
@@ -38,8 +36,8 @@ struct Prefs: Sendable, Equatable {
   var candleKind: CandleKind = .candle
   /// 共用网格，默认关闭；旧存档的跟随风格枚举按共用默认解析。
   var gridChoice: GridChoice = .off
-  /// 实体画法覆盖：跟随风格 / 实心 / 阳线空心。默认跟随风格，理由同上。
-  var bodyChoice: BodyChoice = .style
+  /// 阳线实体：实心 / 空心。默认实心，也就是 AICoin 的画法。
+  var bodyChoice: BodyChoice = .solid
   /// 最新价横线 + 右轴胶囊。默认开。
   var lastLine: Bool = true
   /// 用户画的线显不显示（数据不删）。默认显示。
@@ -102,7 +100,9 @@ struct Prefs: Sendable, Equatable {
 
   // ---------------------------------------------------------------- 取用
 
-  var style: CandleStyle { CandleStyle.style(id: styleID) }
+  /// 造型只剩 AICoin 一套（见 `CandleStyle`），所以这儿不再存 id，也没有 `styleID` 这个字段了。
+  /// 旧存档里的 `styleID` 解码时直接忽略。
+  var style: CandleStyle { .aicoin }
 
   /// 喂给图表的那一包开关。**主界面只调这一句**：各处自己拼容易漏项，
   /// 漏了的那一项会静悄悄退回引擎默认值，而不是报错，很难发现。

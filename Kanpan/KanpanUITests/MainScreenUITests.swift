@@ -93,26 +93,25 @@ final class MainScreenUITests: KanpanUICase {
 
   // ---------------------------------------------------------------- 底栏三个面板
 
-  /// K 线风格：底栏那格「风格」撤掉之后，风格选择住在周期行的「图表」面板里
-  /// （`interval.chart` → `CandleStylePicker`，四款：经典 / 圆角 / 空心 / 轮廓）。
+  /// 「图表」面板：开得出来、改得动、收得回去。
   ///
+  /// 这条原来验的是那张四选一的「K 线风格」卡。风格表收成 AICoin 一套之后（见
+  /// `CandleStyle`）卡撤了，改用同一张面板上的「阳线」实心 / 空心来验同一件事：
   /// 它是多项配置页里的一行，所以选完**不**自动收（规矩①：单选面板即选即收，
   /// 配置页不连着关）——这页上还有网格、画法、价格轴要一起调，收掉反而碍事。
-  /// 选完把风格调回「经典」，不给下一条用例留状态。
-  func testChartPanelPicksCandleStyle() {
+  /// 选完调回「实心」，不给下一条用例留状态。
+  func testChartPanelTogglesCandleBody() {
     app.buttons[Ids.intervalChart].tap()
-    let classic = app.buttons[Ids.styleCard("aicoin")]
-    expectExists(classic, Self.short, "点周期行「图表」没开出图表面板")
-    let pill = app.buttons[Ids.styleCard("pill")]
-    expectExists(pill, Self.short, "图表面板里没有「圆角」这一款")
-    pill.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { pill.isSelected }, "选了「圆角」它自己没变成选中")
-    XCTAssertFalse(classic.isSelected, "同一时刻只能有一款风格选中")
-    XCTAssertTrue(pill.exists, "配置页不该选一下就自己收起")
+    let solid = app.buttons[Ids.chartBody("实心")], hollow = app.buttons[Ids.chartBody("空心")]
+    expectExists(hollow, Self.short, "点周期行「图表」没开出图表面板")
+    hollow.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { hollow.isSelected }, "选了「空心」它自己没变成选中")
+    XCTAssertFalse(solid.isSelected, "同一时刻只能有一档选中")
+    XCTAssertTrue(hollow.exists, "配置页不该选一下就自己收起")
 
-    classic.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { classic.isSelected }, "风格调不回「经典」")
-    dismissSheet(until: classic)
+    solid.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { solid.isSelected }, "调不回「实心」")
+    dismissSheet(until: hollow)
   }
 
   /// 指标面板：开得出来、收得回去。多项配置页，选完**不**自动收（规矩①的另一半）。

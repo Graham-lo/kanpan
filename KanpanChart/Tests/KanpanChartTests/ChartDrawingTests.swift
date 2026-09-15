@@ -126,11 +126,13 @@ struct ChartDrawingTests {
   func trendNeedsTwoTaps() throws {
     let (v, axes) = try makeView()
     v.drawTool = .trend
-    #expect(v.drawHint == "点两下画一条趋势线")
+    // 提示跟着「按住拖动画」那一版改了口：按下就是第一点，拖到哪儿画到哪儿；
+    // 位移不够的那一下退回轻点，「点两下」这条老路一点没丢，所以下面照旧点两下。
+    #expect(v.drawHint == "按住拖动画趋势线")
     tap(v, at: CGPoint(x: 120, y: 300), ms: 10_000)
     #expect(v.drawings.isEmpty, "第一点不该直接成线")
     #expect(v.drawing.pending != nil)
-    #expect(v.drawHint == "再点一下")
+    #expect(v.drawHint == "选择终点")
     tap(v, at: CGPoint(x: 280, y: 200), ms: 12_000)
     let d = try #require(v.drawings.first)
     #expect(d.kind == .trend)
@@ -333,15 +335,24 @@ struct ChartDrawingTests {
     #expect(v.drawings.first == line)
   }
 
-  @Test("A7.8：选着工具照样能拖图，拖动不算落笔")
-  func panStillWorksWithToolArmed() throws {
-    let (v, _) = try makeView()
+  /// A7.8：手上握着工具时，单指按下—拖—抬手画的是一条线，不是平移。
+  ///
+  /// 这条原来断言的正相反（「拖动不算落笔」）。改口的理由写在
+  /// `drawingTouchesBegan` 里：按下—拖—抬手是所有人第一次画线的下意识动作，
+  /// 当成平移就什么都不留下。单指平移在握着工具时让位，两指照常平移捏合
+  /// （见下一条），画完一条工具自动松手，平移立刻回来。
+  func dragDrawsWithToolArmed() throws {
+    let (v, axes) = try makeView()
     v.drawTool = .trend
     let before = try #require(v.state).view
-    drag(v, from: CGPoint(x: 200, y: 300), to: CGPoint(x: 120, y: 300))
-    #expect(try #require(v.state).view.from != before.from, "画线态下拖不动图了")
-    #expect(v.drawings.isEmpty && v.drawing.pending == nil, "一拖就落笔了")
-    #expect(v.drawTool == .trend, "工具不该因为拖了一下就松开")
+    drag(v, from: CGPoint(x: 200, y: 300), to: CGPoint(x: 120, y: 260))
+    #expect(try #require(v.state).view.from == before.from, "握着工具时单指还在平移")
+    let d = try #require(v.drawings.first, "按住拖一笔没画出线")
+    #expect(d.kind == .trend)
+    #expect(abs(axes.x(d.a.t) - 200) < 1 && abs(axes.y(d.a.p) - 300) < 1, "起点不在按下处")
+    let b = try #require(d.b)
+    #expect(abs(axes.x(b.t) - 120) < 1 && abs(axes.y(b.p) - 260) < 1, "终点不在抬手处")
+    #expect(v.drawTool == nil, "画完一条该自动松手")
   }
 
   @Test("A7.8：两指照样能捏合")

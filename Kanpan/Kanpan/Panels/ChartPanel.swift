@@ -1,7 +1,7 @@
 import SwiftUI
 import KanpanCore
 
-/// 图表共用设置，改动即时生效并落盘；风格只控制造型。
+/// 图表共用设置，改动即时生效并落盘。
 ///
 /// 和「设置」的分界：**画在图上的东西归这儿，其余归设置**。以前两边各有一份
 /// 外观、一份价格轴、一份本根倒计时，同一个字段两个入口两种叫法（「价格坐标」
@@ -12,6 +12,10 @@ import KanpanCore
 /// 「竖屏高度」那根滑块也撤了：主图和副图的高度比例在图上直接拖副图上沿那条把手
 /// 就能改，边拖边看。滑块是同一件事的第二个入口，而且它在面板里——拖的时候图被
 /// 面板盖着，等于蒙着眼调。
+///
+/// 头一块原来是那张四选一的「K 线风格」卡（经典 / 圆角 / 空心 / 轮廓）。风格表收成
+/// AICoin 一套之后（见 `CandleStyle`）它没有可选项了，整块撤掉；下面「阳线」那行
+/// 的「跟随风格」也一并撤了，剩实心 / 空心两档。
 struct ChartPanel: View {
   var store: PrefsStore
 
@@ -28,12 +32,11 @@ struct ChartPanel: View {
 
   var body: some View {
     PanelSheet(title: "图表", subtitle: nil) {
-      CandleStylePicker(store: store)
-
       PanelGroupTitle(text: "布局与读数")
       PanelRow(name: "K 线数据") {
-        PanelSegment(options: [("K线内", CandleDataDisplay.inside), ("顶部", .top), ("跟随K线", .follow)], selection: prefs.dataDisplay) { v in store.update { $0.dataDisplay = v } }
-      }.accessibilityIdentifier("chart.dataDisplay")
+        PanelSegment(options: [("K线内", CandleDataDisplay.inside), ("顶部", .top), ("跟随K线", .follow)],
+                     selection: prefs.dataDisplay, id: "chart.dataDisplay") { v in store.update { $0.dataDisplay = v } }
+      }
       PanelRow(name: "十字线") {
         PanelSegment(options: [("选中价", CrossPriceMode.selected), ("收盘价", .close)], selection: prefs.crossPrice) { v in store.update { $0.crossPrice = v } }
       }
@@ -50,37 +53,37 @@ struct ChartPanel: View {
       PanelGroupTitle(text: "类型")
       PanelRow(name: "画法", meta: prefs.candleKind == .heikin ? "平均 K 线使用平滑价格" : nil,
                divider: false) {
-        PanelSegment(options: ChartPanel.kinds, selection: prefs.candleKind) { v in
+        PanelSegment(options: ChartPanel.kinds, selection: prefs.candleKind,
+                     id: "chart.candleKind") { v in
           store.update { $0.candleKind = v }
         }
       }
-      .accessibilityIdentifier("chart.candleKind")
 
       PanelGroupTitle(text: "K 线")
       PanelRow(name: "网格") {
-        PanelSegment(options: ChartPanel.grids, selection: prefs.gridChoice) { v in
+        PanelSegment(options: ChartPanel.grids, selection: prefs.gridChoice,
+                     id: "chart.gridChoice") { v in
           store.update { $0.gridChoice = v }
         }
       }
-      .accessibilityIdentifier("chart.gridChoice")
       PanelRow(name: "阳线") {
-        PanelSegment(options: ChartPanel.bodies, selection: prefs.bodyChoice) { v in
+        PanelSegment(options: ChartPanel.bodies, selection: prefs.bodyChoice,
+                     id: "chart.bodyChoice") { v in
           store.update { $0.bodyChoice = v }
         }
       }
-      .accessibilityIdentifier("chart.bodyChoice")
       PanelRow(name: "横向位置") {
-        PanelSegment(options: ChartPanel.anchors, selection: prefs.viewAnchor) { v in
+        PanelSegment(options: ChartPanel.anchors, selection: prefs.viewAnchor,
+                     id: "chart.viewAnchor") { v in
           store.update { $0.viewAnchor = v }
         }
       }
-      .accessibilityIdentifier("chart.viewAnchor")
       PanelRow(name: "纵向位置", divider: false) {
-        PanelSegment(options: ChartPanel.biases, selection: prefs.priceBias) { v in
+        PanelSegment(options: ChartPanel.biases, selection: prefs.priceBias,
+                     id: "chart.priceBias") { v in
           store.update { $0.priceBias = v }
         }
       }
-      .accessibilityIdentifier("chart.priceBias")
 
       PanelGroupTitle(text: "显示")
       switchRow("实时价格线", nil, prefs.lastLine) { $0.lastLine = $1 }
@@ -120,7 +123,7 @@ struct ChartPanel: View {
   /// 枚举那边给的是完整名字（「阳线空心」），两处用途不同，和 `SettingsPanel` 一个办法。
   static let kinds: [(String, CandleKind)] = [("蜡烛", .candle), ("平均K线", .heikin)]
   static let grids: [(String, GridChoice)] = [("显示", .on), ("隐藏", .off)]
-  static let bodies: [(String, BodyChoice)] = [("跟随风格", .style), ("实心", .solid), ("空心", .hollowUp)]
+  static let bodies: [(String, BodyChoice)] = [("实心", .solid), ("空心", .hollowUp)]
   static let anchors: [(String, ViewAnchor)] = [("偏左", .left), ("居中", .center), ("靠右", .right)]
   static let biases: [(String, PriceBias)] = [("偏上", .up), ("居中", .center), ("偏下", .down)]
 }

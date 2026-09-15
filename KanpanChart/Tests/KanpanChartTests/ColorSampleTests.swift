@@ -6,13 +6,16 @@ import UIKit
 
 @testable import KanpanChart
 
-/// A3.3：每款风格浅深两套各取 7 个点，像素颜色与 §6 计算值比对。
+/// A3.3：AICoin 这一套风格浅深各取 7 个点，像素颜色与 §6 计算值比对。
 ///
 /// 取样点不是猜的：先用 `ChartRenderer.candleXs` / `priceGridYs` / `lastPriceY` 把
 /// 那一笔画在哪儿问出来，再直接读那个设备像素——这就是「无抗锯齿处取样」。
 ///
+/// 风格表原来有十一款（见 `CandleStyle`），这条用例也就横着跑十一遍；收成 AICoin 一套
+/// 之后只剩一遍。守的东西一点没变——像素必须等于 `state.colors` 算出来的那个值。
+///
 /// 影线以前有一类点几何上取不到满覆盖：宽度写的是 `max(0.5, (4.0 / 3))` 个设备像素，
-/// 靛 / 砖 / 骨 / 密是 0.5、纸 0.8、描 0.9，一个整像素都盖不满，期望值只能按
+/// 有几款只有 0.5 / 0.8 / 0.9，一个整像素都盖不满，期望值只能按
 /// `blend(底色, 影线色, 覆盖率)` 算。**M6 之后不再有这一档**：影线一律量化成整数个
 /// 设备像素（`wickPixels`），所以这 7 个点全都是满覆盖精确比。这次改的就是实机反馈
 /// 「影线颜色发淡、糊在一起」的根因——那条 50% 灰不是错觉，是真的只画了半个像素。
@@ -44,7 +47,7 @@ struct ColorSampleTests {
     String(format: "#%02X%02X%02X", c.r, c.g, c.b)
   }
 
-  @Test("7 个点 × 11 款风格 × 明暗两套")
+  @Test("7 个点 × AICoin 一套 × 明暗两套")
   func sample() {
     let dev = Self.dev
     let s = Double(dev.scale)
@@ -60,7 +63,7 @@ struct ColorSampleTests {
         continue
       }
       for style in CandleStyle.all {
-        guard let golden = goldenAll[style.id == "aicoin" ? "indigo" : style.id] else {
+        guard let golden = goldenAll[style.id] else {
           Issue.record("原型色值里没有风格 \(style.id)")
           continue
         }
@@ -99,7 +102,7 @@ struct ColorSampleTests {
             Issue.record("\(themeKey)/\(style.id) 找不到能取样的\(want ? "涨" : "跌")实体")
             continue
           }
-          #expect(!(c.hollow && p.radius > 0), "描边 + 圆角的取样点没实现（当前 11 款没有这种）")
+          #expect(!(c.hollow && p.radius > 0), "描边 + 圆角的取样点没实现（AICoin 这套没有这种）")
           let yIdx = Int(((c.bodyTop + c.bodyHeight / 2) * s).rounded(.down))
           // 描边实体中间是底色，取左边那道 lw 宽的边；实心取实体正中。
           let xIdx = c.hollow
@@ -119,7 +122,7 @@ struct ColorSampleTests {
         do {
           // 实体越细，渲染器越少兑淡影线：8 个设备像素以上照风格兑，8→2 之间线性收回
           // 满饱和，2 以下完全不兑（见 `drawCandles`，AiCoin 实测是根本不兑）。默认根间距
-          // 下 11 款的实体都在 8 像素以上，`tintK` 就是风格表原值，和原型色值对得上；
+          // 下实体在 8 像素以上，`tintK` 就是风格表原值（AICoin 的 wickTint 是 1，压根不兑）；
           // 但取样点必须和渲染器同一套公式，不能各算各的。
           let tintFade = min(1, max(0, (p.bodyW * Double(dev.scale) - 2) / 6))
           let tintK = style.wickTint + (1 - style.wickTint) * (1 - tintFade)
@@ -281,12 +284,12 @@ struct ColorSampleTests {
       }
     }
 
-    #expect(checked == 168, "A3.3 要的是 7 × 11 × 2 = 154 个取样点，实际取了 \(checked) 个")
+    #expect(checked == 14, "A3.3 要的是 7 × 1 × 2 = 14 个取样点，实际取了 \(checked) 个")
 
     Evidence.writeJSON(
       [
         "item": "A3.3",
-        "note": "7 个取色点 × 11 款风格 × 明暗两套 = 154 个取样点。exactExpected=false 的点"
+        "note": "7 个取色点 × AICoin 一套 × 明暗两套 = 14 个取样点。exactExpected=false 的点"
           + "（细影线、轴文字）几何上取不到满覆盖，期望值按 CoreGraphics 合成规则算。",
         "device": Self.dev.name, "width": Self.dev.w, "height": Self.dev.h, "scale": Self.dev.scale,
         "symbol": Fixture.snapshot.symbol, "interval": Fixture.snapshot.interval,

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  这份 Info.plist 只放 Xcode 自己生成不了的那一个键，其余键仍由
+  `GENERATE_INFOPLIST_FILE = YES` 生成后合并进来（两者可以同时用）。
+
+  为什么不能继续写 `INFOPLIST_KEY_KanpanAccountAPIURL`：`INFOPLIST_KEY_*` 这套
+  构建设置只认 Xcode 内置的那张已知键表（CFBundleDisplayName、UILaunchScreen 之类），
+  自定义键会被**静默丢弃**——不报错、不警告，打出来的包里就是没有。结果是
+  `Bundle.main.object(forInfoDictionaryKey: "KanpanAccountAPIURL")` 取到 nil，
+  `AccountFeature` 建不出 `AccountClient`，登录/注册一律回「账号服务暂不可用」，
+  看着像后端挂了，其实后端一直好好的。
+-->
+<plist version="1.0">
+<dict>
+  <key>KanpanAccountAPIURL</key>
+  <string>https://kanpan.107-174-172-10.sslip.io</string>
+</dict>
+</plist>

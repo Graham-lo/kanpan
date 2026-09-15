@@ -79,30 +79,23 @@ final class AICoinBaseUITests: XCTestCase {
     XCTAssertEqual(original["subs"] as? [String], ["VOL", "OI", "MACD"])
     XCTAssertEqual(try XCTUnwrap(original["spacing"] as? Double), 4, accuracy: 0.001)
     shot("01-冷启动-AICoin默认")
-    // 底栏那格「风格」撤掉之后，K 线风格住在周期行的「图表」面板里（`CandleStylePicker`），
-    // 面板上只留四款精选：经典 / 圆角 / 空心 / 轮廓。这一段验的是「换风格不许动版面尺寸」，
-    // 四款和十一款一样能验到——造型是造型，间距、主图高度、时间轴位置不归它管。
-    // 面板**开一次就够**：图表面板是配置页，选完不自己收，正好一口气把四款都试了。
-    // 别在循环里反复点 `interval.chart` —— 面板开着的时候那颗按钮身上压着「点面板外
-    // 收面板」的透明层，那一下只会把面板关掉，下一款就找不着了。
-    // 风格卡也不用翻页：`CandleStylePicker` 是 `PanelSheet` 的头一块，永远在第一屏。
+    // 这儿原来还挨个点那四张风格卡（经典 / 圆角 / 空心 / 轮廓），验「换风格不动版面尺寸」。
+    // 风格表收成 AICoin 一套之后（见 `CandleStyle`）没有第二款可换，这一段跟着撤。
+    // 「阳线实心 / 空心」这一档还在「图表」面板上，它同样不该动版面：造型是造型，
+    // 间距、主图高度、时间轴位置不归它管——改用它来验同一件事。
     app.buttons["interval.chart"].tap()
-    for id in ["pill", "paper", "outline"] {
-      let card = app.buttons["style.card." + id]
-      XCTAssertTrue(card.waitForExistence(timeout: 8), "图表面板里没有「\(id)」这一款")
-      card.tap()
-      XCTAssertTrue(wait { info()["style"] as? String == id }, "风格未切换到\(id)，状态：\(info())")
-      for key in ["span", "plotW", "mainH", "timeY", "bodyW", "spacing"] {
-        XCTAssertEqual(try XCTUnwrap(info()[key] as? Double), try XCTUnwrap(original[key] as? Double),
-                       accuracy: 0.001, "切风格\(id)改变了\(key)")
-      }
+    let hollow = app.buttons["chart.bodyChoice.空心"]
+    XCTAssertTrue(hollow.waitForExistence(timeout: 8), "图表面板没开出来")
+    hollow.tap()
+    for key in ["span", "plotW", "mainH", "timeY", "bodyW", "spacing"] {
+      XCTAssertEqual(try XCTUnwrap(info()[key] as? Double), try XCTUnwrap(original[key] as? Double),
+                     accuracy: 0.001, "切成空心阳线改变了\(key)")
     }
-    shot("02-原有风格-尺寸保持")
-    app.buttons["style.card.aicoin"].tap()
-    XCTAssertTrue(wait { info()["style"] as? String == "aicoin" })
+    shot("02-空心阳线-尺寸保持")
+    app.buttons["chart.bodyChoice.实心"].tap()
     // 图表面板是配置页，选完不自己收；后面全是点图的动作，先把它收掉。
     app.buttons["panel.done"].tap()
-    XCTAssertTrue(wait { !app.buttons["style.card.aicoin"].exists }, "图表面板没收回去")
+    XCTAssertTrue(wait { !hollow.exists }, "图表面板没收回去")
     let point = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.2))
     point.tap()
     XCTAssertTrue(wait { info()["crosshair"] as? Bool == true })

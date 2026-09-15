@@ -10,8 +10,7 @@ struct PrefsDefaultsTests {
   @Test("全新安装的一份（A6.4「首次安装即如此」）")
   func 全新安装() {
     let p = Prefs.defaults
-    #expect(p.styleID == "aicoin")                    // 原型 S.style 默认 'stout'（墩）
-    #expect(p.style.name == "AICoin")
+    #expect(p.style.name == "AICoin")                // 造型只有 AICoin 这一套
     #expect(p.interval == .h1)                       // 原型 S.interval 恒从 '1h' 起步
     #expect(p.overlays == [.ma])                     // chart.js: this.overlays = ['MA']
     #expect(p.subs == [.vol, .oi, .macd])                 // chart.js: this.subs = ['MACD','RSI']
@@ -30,8 +29,8 @@ struct PrefsDefaultsTests {
   func 图表默认() {
     let p = Prefs.defaults
     #expect(p.candleKind == .candle)      // 平均K线是可选项，不是默认口径
-    #expect(p.gridChoice == .off)       // 网格形态归十一款风格各自定（§6）
-    #expect(p.bodyChoice == .style)       // 实体画法同上
+    #expect(p.gridChoice == .off)       // 不画网格，和手机 AICoin 一致
+    #expect(p.bodyChoice == .solid)       // 阳线实心，同上
     #expect(p.viewAnchor == .right)       // 复位到最新时最新一根靠右——现状
     #expect(p.priceBias == .center)       // 蜡烛在主图区里居中——现状
     #expect(p.lastLine)                   // 最新价横线 + 右轴胶囊，默认开

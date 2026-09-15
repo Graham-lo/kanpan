@@ -13,7 +13,7 @@ struct ChartOptionsTests {
   func defaults() {
     let o = ChartOptions()
     #expect(o.kind == .candle)
-    #expect(o.grid == .off && o.body == .style, "覆盖档默认必须是「跟随风格」")
+    #expect(o.grid == .off && o.body == .solid, "默认必须是隐藏网格 + 实心阳线（AICoin 的画法）")
     #expect(o.lastLine && o.drawings, "实时价格线和画线默认都画")
     #expect(!o.countdown && !o.sinceChange, "新画法默认一律关")
     #expect(o.bias == .center && o.anchor == .right)
@@ -25,7 +25,7 @@ struct ChartOptionsTests {
   func displayNames() {
     #expect(CandleKind.allCases.map(\.display) == ["蜡烛", "平均K线"])
     #expect(GridChoice.allCases.map(\.display) == ["跟随风格", "显示", "隐藏"])
-    #expect(BodyChoice.allCases.map(\.display) == ["跟随风格", "实心", "阳线空心"])
+    #expect(BodyChoice.allCases.map(\.display) == ["实心", "阳线空心"])
     #expect(PriceBias.allCases.map(\.display) == ["偏上", "居中", "偏下"])
     #expect(ViewAnchor.allCases.map(\.display) == ["偏左", "居中", "靠右"])
     // 存盘走 rawValue，不能跟着中文改。

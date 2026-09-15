@@ -119,17 +119,14 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
         grip.isAccessibilityElement = true
         grip.accessibilityIdentifier = "chart.resize.\(id.rawValue)"
         grip.accessibilityLabel = "调整\(id.name)区域高度"
-        let line = UIView(frame: CGRect(x: 10, y: 7, width: 24, height: 2))
-        line.tag = 1; line.layer.cornerRadius = 1; grip.addSubview(line)
         let pan = UIPanGestureRecognizer(target: self, action: #selector(resizePane))
         pan.maximumNumberOfTouches = 1; pan.delegate = self
         grip.addGestureRecognizer(pan)
         scroll.panGestureRecognizer.require(toFail: pan)
         scroll.addSubview(grip); grips[id] = grip
       }
+      // 分隔线本身就是把手：这条 16pt 高的带子骑在两格的交界上，只提供热区，不画任何东西。
       grip.frame = CGRect(x: 0, y: min(layout.H - 16, pane.y + pane.h - 8), width: layout.W, height: 16)
-      grip.viewWithTag(1)?.frame.origin.x = layout.plotW - 34
-      grip.viewWithTag(1)?.backgroundColor = UIColor(Color(hex: colors.dim))
       grip.accessibilityValue = String(format: "%.0f", pane.h)
     }
     scroll.bringSubviewToFront(latest)

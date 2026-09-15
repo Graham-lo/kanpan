@@ -61,16 +61,15 @@ struct ChartOptionsRenderTests {
 
   // ---------------------------------------------------------------- 实体
 
-  @Test("实体三档")
+  @Test("实体两档")
   func bodyChoice() {
     for style in CandleStyle.all {
-      #expect(Self.state({ $0.body = .style }, style: style).effectiveShape == style.shape)
       #expect(Self.state({ $0.body = .solid }, style: style).effectiveShape == .solid)
       #expect(Self.state({ $0.body = .hollowUp }, style: style).effectiveShape == .hollowUp)
     }
-    // 「描」默认全空心：强制实心之后一根空心都不该剩。
-    let outline = CandleStyle.style(id: "outline")
-    let forced = ChartRenderer(state: Self.state({ $0.body = .solid }, style: outline))
+    // 选了「实心」就该一根空心都不剩。原来这儿用的是造型自己说全空心的那款「描」，
+    // 风格表收成 AICoin 一套之后（见 `CandleStyle`）没有那种造型了，直接用默认这套验。
+    let forced = ChartRenderer(state: Self.state({ $0.body = .solid }, style: .default))
       .candleXs(size: Self.size, scale: Self.scale)
     #expect(!forced.isEmpty)
     #expect(forced.allSatisfy { !$0.hollow }, "强制实心还有空心实体")

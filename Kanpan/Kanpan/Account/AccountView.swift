@@ -55,14 +55,17 @@ struct AccountView: View {
         if [.login, .register, .changePassword, .close].contains(feature.page) {
           input(feature.page == .changePassword ? "当前密码" : "密码", field: .password) {
             SecureField("密码", text: $feature.password)
-              .textContentType(feature.page == .register ? .newPassword : .password)
+              // 注册页不要报 `.newPassword`：那会拉起系统的「强密码」自动填充流程，
+              // 这套账号是用户名 + 自定义口令，弹出来的密码面板不但用不上，还会把 app
+              // 顶到后台、键入的字符只剩最后一个。统一按普通密码框处理。
+              .textContentType(.password)
               .focused($focused, equals: .password).submitLabel(.go)
               .onSubmit { feature.submit() }.accessibilityIdentifier("account.password")
           }
         }
         if [.changePassword].contains(feature.page) {
           input("新密码", field: .newPassword) {
-            SecureField("新密码", text: $feature.newPassword).textContentType(.newPassword)
+            SecureField("新密码", text: $feature.newPassword).textContentType(.password)
               .focused($focused, equals: .newPassword).submitLabel(.go).onSubmit { feature.submit() }
               .accessibilityIdentifier("account.newPassword")
           }

@@ -1,0 +1,1112 @@
+<meta charset="utf-8">
+<title>看盘 账号</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<style>
+/* 看盘 · 账号（登录 / 注册 / 找回密码 / 同步与数据）原型
+ *
+ * 令牌、机身、四版主题与 prototype/自选原型.html、prototype/护眼设置原型.html 同源，
+ * 一个新色都没加；危险操作用 --down，主操作用 --amber。
+ *
+ * 这一页要回答的其实只有四个问题：
+ *   1) 不登录的人会不会被挡住          —— 不会。账号是可选项，第一屏永远是行情。
+ *   2) 登录之后本机那份东西归谁        —— 登录时当场问，不偷偷合并，也不偷偷覆盖。
+ *   3) 哪些数据会离开这台手机          —— 「同步与数据」里列成一张表，逐项写清楚。
+ *   4) 忘了密码怎么回来 / 怎么彻底离开 —— 找回密码与注销账号都走完整流程，不是摆设。
+ *
+ * 安全上有三条在原型里就定死，实现时不许改：
+ *   · 注册和找回密码的响应对「邮箱存在与否」保持一致，文案不泄露账号是否注册过；
+ *   · 验证码 6 位、10 分钟、最多 5 次，失败与重发都有冷却，界面上要看得见倒计时；
+ *   · 改密码、重置密码默认踢掉其他设备，不给用户一个「静默被别人占着」的账号。
+ */
+
+:root {
+  color-scheme: light;
+
+  --ground: #C7CCE4;
+  --app: #FFFFFF;
+  --chart: #F4F6FD;
+  --raised: #FFFFFF;
+  --raised2: #ECEFF9;
+  --line: #DCE0F0;
+  --hair: #12163A0F;
+  --grid: #E4E7F5;
+  --ink: #12163A;
+  --ink2: #565C85;
+  --ink3: #8B90B2;
+  --green: #0E9E78;
+  --red: #DE2E57;
+  --amber: #B26A00;
+  --amber-soft: #B26A0016;
+  --amber-line: #B26A0055;
+  --veil: #FFFFFFF0;
+  --scrim: #12163A4D;
+  --shadow: 0 30px 70px -28px #2B315E80, 0 0 0 1px #FFFFFF60 inset;
+  --bezel: linear-gradient(160deg, #F4F5FB, #C9CEE3 45%, #9EA5C8);
+  --seg-on: #FFFFFF;
+  --pill-ink: #FFFFFF;
+  --pill-mix: var(--ink);
+  --pill-amt: 92%;
+  --soft-amt: 14%;
+
+  --p1: #B26A00; --p2: #4A55D6; --p3: #0E8F73; --p4: #C43A7E; --p5: #7A5BD6; --p6: #1A7FC4;
+
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+
+  --dw: 393px;
+  --dh: 852px;
+  --dr: 44px;
+  --dtop: 59px;
+  --dbot: 34px;
+  --fit: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --ground: #07091C; --app: #0F1230; --chart: #161A3F; --raised: #1C2154; --raised2: #232858;
+    --line: #2A2E6E; --hair: #FFFFFF0A; --grid: #232858;
+    --ink: #EDEEF8; --ink2: #A6A9C0; --ink3: #6D719A;
+    --green: #2FBF8F; --red: #F0567B;
+    --amber: #FFB454; --amber-soft: #FFB4541A; --amber-line: #FFB45455;
+    --veil: #0F1230EE; --scrim: #040614AA;
+    --shadow: 0 40px 90px -30px #000, 0 0 0 1px #343A80 inset;
+    --bezel: linear-gradient(160deg, #2B3070, #12153A 42%, #0C0F2A);
+    --p1: #FFB454; --p2: #8C95FF; --p3: #4FD1B5; --p4: #F78FB3; --p5: #C8B6FF; --p6: #7FD0FF;
+    --seg-on: #1C2154; --pill-ink: #0B0E26; --pill-mix: #FFFFFF; --pill-amt: 100%;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #07091C; --app: #0F1230; --chart: #161A3F; --raised: #1C2154; --raised2: #232858;
+  --line: #2A2E6E; --hair: #FFFFFF0A; --grid: #232858;
+  --ink: #EDEEF8; --ink2: #A6A9C0; --ink3: #6D719A;
+  --green: #2FBF8F; --red: #F0567B;
+  --amber: #FFB454; --amber-soft: #FFB4541A; --amber-line: #FFB45455;
+  --veil: #0F1230EE; --scrim: #040614AA;
+  --shadow: 0 40px 90px -30px #000, 0 0 0 1px #343A80 inset;
+  --bezel: linear-gradient(160deg, #2B3070, #12153A 42%, #0C0F2A);
+  --p1: #FFB454; --p2: #8C95FF; --p3: #4FD1B5; --p4: #F78FB3; --p5: #C8B6FF; --p6: #7FD0FF;
+  --seg-on: #1C2154; --pill-ink: #0B0E26; --pill-mix: #FFFFFF; --pill-amt: 100%;
+}
+
+:root[data-theme="paper"] {
+  color-scheme: light;
+  --ground: #B7B2A0; --app: #F4F0E4; --chart: #EDE8D9; --raised: #FAF7EE; --raised2: #E5DFCD;
+  --line: #D9D2BD; --hair: #3A35241A; --grid: #E3DDC9;
+  --ink: #2F2C25; --ink2: #625D4D; --ink3: #736D5D;
+  --green: #387A58; --red: #B74B3F;
+  --amber: #96660F; --amber-soft: #96660F16; --amber-line: #96660F55;
+  --veil: #F4F0E4F0; --scrim: #3A35244D;
+  --shadow: 0 30px 70px -28px #6B634B80, 0 0 0 1px #FFFDF660 inset;
+  --bezel: linear-gradient(160deg, #F2EFE4, #C6C0AC 45%, #9C9682);
+  --p1: #96660F; --p2: #5A63A8; --p3: #3F8A63; --p4: #A85A78; --p5: #7A6BA8; --p6: #3F7FA0;
+  --seg-on: #FAF7EE; --pill-ink: #FFFFFF; --pill-mix: var(--ink); --pill-amt: 92%; --soft-amt: 11%;
+}
+
+:root[data-theme="night"] {
+  color-scheme: dark;
+  --ground: #0D0C0A; --app: #191712; --chart: #201D17; --raised: #262219; --raised2: #2C281F;
+  --line: #3A342A; --hair: #FFFFFF0A; --grid: #2C281F;
+  --ink: #E0DAC9; --ink2: #A19A86; --ink3: #887F6A;
+  --green: #56A883; --red: #D3766A;
+  --amber: #D3A15C; --amber-soft: #D3A15C1A; --amber-line: #D3A15C55;
+  --veil: #191712EE; --scrim: #0D0C0AAA;
+  --shadow: 0 40px 90px -30px #000, 0 0 0 1px #4A422F inset;
+  --bezel: linear-gradient(160deg, #3A3428, #201D16 42%, #14120E);
+  --p1: #D3A15C; --p2: #9AA0D8; --p3: #6FC2A4; --p4: #D99BB0; --p5: #BDAEDC; --p6: #85B8D6;
+  --seg-on: #262219; --pill-ink: #17150F; --pill-mix: #FFFFFF; --pill-amt: 100%; --soft-amt: 11%;
+}
+
+:root { --up: var(--green); --down: var(--red); }
+:root[data-updown="red"] { --up: var(--red); --down: var(--green); }
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { height: 100%; overflow: hidden; overscroll-behavior: none; }
+body {
+  margin: 0; background: var(--ground); color: var(--ink); font-family: var(--ui); font-size: 14px;
+  height: 100%; overflow-y: auto; overscroll-behavior: none; -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================================ 台面 */
+
+.stagewrap { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 14px 16px 22px; }
+.bar { flex: none; display: flex; align-items: center; justify-content: center; gap: 8px 14px; flex-wrap: wrap; width: 100%; max-width: 980px; }
+.barset { display: flex; align-items: center; gap: 6px; }
+.barlab { font: 500 10.5px/1 var(--ui); letter-spacing: .12em; color: var(--ink3); text-transform: uppercase; margin-right: 2px; }
+.chip {
+  border: 1px solid var(--line); background: var(--app); cursor: pointer; border-radius: 999px;
+  padding: 6px 11px; color: var(--ink2); font: 500 12px/1 var(--ui);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.chip:hover { color: var(--ink); }
+.chip.on { color: var(--amber); border-color: var(--amber-line); background: var(--amber-soft); }
+
+.caption { color: var(--ink3); font-size: 12.5px; letter-spacing: .03em; text-align: center; max-width: 58ch; line-height: 1.7; margin: 0; }
+.caption b { color: var(--ink2); font-weight: 600; }
+
+.devicebox { flex: none; width: calc(var(--dw) * var(--fit)); height: calc(var(--dh) * var(--fit)); }
+.device {
+  width: var(--dw); height: var(--dh); transform: scale(var(--fit)); transform-origin: top left;
+  border-radius: calc(var(--dr) + 11px); padding: 11px; background: var(--bezel); box-shadow: var(--shadow);
+}
+.screen {
+  position: relative; width: 100%; height: 100%; border-radius: var(--dr); overflow: hidden;
+  background: var(--app); display: flex; flex-direction: column; isolation: isolate; container-type: inline-size;
+}
+
+.statusbar {
+  flex: none; position: relative; z-index: 2; height: var(--dtop);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 max(22px, calc(var(--dr) * .5)); background: var(--app); font: 600 14px/1 var(--ui); color: var(--ink);
+}
+.statusbar .cut { position: absolute; top: 11px; left: 50%; transform: translateX(-50%); background: #000; border-radius: 999px; width: 124px; height: 36px; }
+.statusbar .icons { display: flex; align-items: center; gap: 5px; }
+.statusbar .batt { width: 24px; height: 12px; border: 1.3px solid currentColor; border-radius: 3.5px; position: relative; opacity: .9; }
+.statusbar .batt::before { content: ""; position: absolute; inset: 1.7px; right: 6px; background: currentColor; border-radius: 1px; }
+.statusbar .batt::after { content: ""; position: absolute; right: -3.2px; top: 3.5px; width: 1.8px; height: 5px; border-radius: 0 2px 2px 0; background: currentColor; opacity: .5; }
+.statusbar .off { color: var(--ink3); font: 500 11px/1 var(--ui); }
+
+.homebar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 9; height: var(--dbot); pointer-events: none; display: grid; place-items: center; }
+.homebar::after { content: ""; width: 36%; max-width: 148px; height: 5px; border-radius: 3px; background: var(--ink); opacity: .35; }
+
+body.live { position: fixed; inset: 0; width: 100%; height: 100%; overflow: hidden; --dtop: env(safe-area-inset-top, 0px); --dbot: env(safe-area-inset-bottom, 0px); }
+body.live .stagewrap { padding: 0; gap: 0; height: 100%; overflow: hidden; }
+body.live .bar, body.live .caption { display: none; }
+body.live .devicebox { width: 100%; height: 100dvh; }
+body.live .device { width: 100%; height: 100%; transform: none; border-radius: 0; padding: 0; box-shadow: none; background: var(--app); }
+body.live .screen { border-radius: 0; }
+body.live .statusbar { height: env(safe-area-inset-top, 0px); }
+body.live .statusbar .clock, body.live .statusbar .icons, body.live .statusbar .cut, body.live .statusbar .off { display: none; }
+body.live .homebar { display: none; }
+
+/* ============================================================ 顶栏 */
+
+.top { flex: none; background: var(--app); border-bottom: 1px solid var(--line); }
+.toprow { display: flex; align-items: center; gap: 2px; padding: 6px 8px 6px 6px; min-height: 44px; }
+.back { display: flex; align-items: center; gap: 1px; border: 0; background: none; cursor: pointer; color: var(--ink2); font: 400 14.5px/1 var(--ui); padding: 6px 6px 6px 2px; }
+.back.hide { visibility: hidden; }
+.ttl { display: flex; align-items: baseline; gap: 7px; margin-left: 2px; }
+.ttl h1 { margin: 0; font: 600 17px/1.2 var(--ui); letter-spacing: .01em; }
+.spacer { flex: 1; }
+.txtbtn { border: 0; background: none; cursor: pointer; color: var(--amber); font: 500 14px/1 var(--ui); padding: 8px 7px; border-radius: 8px; }
+.txtbtn:active { background: var(--amber-soft); }
+.txtbtn[disabled] { color: var(--ink3); cursor: default; }
+
+/* ============================================================ 页面 */
+
+.page { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--chart); padding-bottom: calc(28px + var(--dbot)); }
+.pad { padding: 0 16px; }
+
+.sect { margin: 16px 0 0; }
+.sect > h2 { margin: 0 0 7px; padding: 0 16px; font: 500 11px/1 var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--ink3); }
+.card { background: var(--app); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+.note { margin: 7px 0 0; padding: 0 16px; font: 400 11.5px/1.65 var(--ui); color: var(--ink3); }
+.note b { color: var(--ink2); font-weight: 500; }
+.note.warn b { color: var(--amber); }
+
+/* 一行：左文右控件 / 可点击行 */
+.srow { display: flex; align-items: center; gap: 12px; padding: 11px 16px; border-bottom: 1px solid var(--hair); background: none; border-left: 0; border-right: 0; border-top: 0; width: 100%; text-align: left; font: inherit; color: inherit; }
+.srow:last-child { border-bottom: 0; }
+.srow.tap { cursor: pointer; }
+.srow.tap:active { background: var(--raised2); }
+.srow .lab { flex: 1; min-width: 0; }
+.srow .lab .t { display: block; font: 500 14px/1.3 var(--ui); }
+.srow .lab .d { display: block; margin-top: 3px; font: 400 11px/1.5 var(--ui); color: var(--ink3); }
+.srow .val { flex: none; font: 400 13px/1.3 var(--ui); color: var(--ink3); font-variant-numeric: tabular-nums; }
+.srow .val.mono { font-family: var(--mono); font-size: 12.5px; }
+.srow.danger .lab .t { color: var(--down); }
+.chev { flex: none; color: var(--ink3); opacity: .8; }
+
+.sw { flex: none; width: 46px; height: 28px; border-radius: 16px; border: 0; cursor: pointer; padding: 0; background: var(--line); position: relative; transition: background .22s cubic-bezier(.32,.72,0,1); }
+.sw i { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 12px; background: #FFF; box-shadow: 0 1px 3px #12163A40; transition: transform .22s cubic-bezier(.32,.72,0,1); }
+.sw.on { background: color-mix(in srgb, var(--up) 42%, transparent); }
+.sw.on i { transform: translateX(18px); background: var(--up); }
+
+/* ============================================================ 账号行（设置页顶部那一行） */
+
+.acct { display: flex; align-items: center; gap: 12px; padding: 13px 16px; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; }
+.acct:active { background: var(--raised2); }
+.ava { flex: none; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--raised2); color: var(--ink3); }
+.ava.on { background: color-mix(in srgb, var(--p2) 15%, transparent); color: var(--p2); font: 600 17px/1 var(--mono); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p2) 26%, transparent); }
+.acct .who { flex: 1; min-width: 0; }
+.acct .who .n { display: block; font: 600 15px/1.3 var(--ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct .who .s { margin-top: 3px; font: 400 11.5px/1.45 var(--ui); color: var(--ink3); display: flex; align-items: center; gap: 5px; }
+.acct .who .s .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--up); flex: none; }
+.acct .who .s .dot.idle { background: var(--ink3); }
+.acct .who .s .dot.warnd { background: var(--amber); }
+.btn-inline { flex: none; border: 1px solid var(--amber-line); background: var(--amber-soft); color: var(--amber); border-radius: 999px; padding: 7px 14px; font: 500 13px/1 var(--ui); cursor: pointer; }
+
+/* ============================================================ 表单 */
+
+.form { padding: 18px 16px 4px; display: grid; gap: 13px; }
+.lede { font: 400 12.5px/1.65 var(--ui); color: var(--ink3); margin: -2px 0 2px; }
+.lede b { color: var(--ink2); font-weight: 500; }
+.lede em { font-style: normal; color: var(--amber); }
+
+.field { display: grid; gap: 6px; }
+.field > label { font: 500 11.5px/1 var(--ui); color: var(--ink3); letter-spacing: .04em; }
+.inp { display: flex; align-items: center; gap: 8px; background: var(--app); border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; transition: border-color .16s, box-shadow .16s; }
+.inp:focus-within { border-color: var(--amber-line); box-shadow: 0 0 0 3px var(--amber-soft); }
+.inp.bad { border-color: color-mix(in srgb, var(--down) 55%, transparent); }
+.inp input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font: 400 16px/1 var(--ui); padding: 13px 0; }
+.inp input::placeholder { color: var(--ink3); opacity: .75; }
+.inp .eye { border: 0; background: none; cursor: pointer; color: var(--ink3); padding: 6px; display: grid; place-items: center; }
+.err { font: 400 11.5px/1.5 var(--ui); color: var(--down); display: flex; align-items: flex-start; gap: 5px; }
+.ok { font: 400 11.5px/1.5 var(--ui); color: var(--up); }
+
+.btn { width: 100%; border: 0; border-radius: 13px; padding: 15px 0; cursor: pointer; font: 600 15px/1 var(--ui); background: var(--amber); color: var(--app); transition: opacity .16s; }
+:root[data-theme="dark"] .btn, :root[data-theme="night"] .btn { color: #12100B; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .btn { color: #0B0E26; } }
+.btn[disabled] { opacity: .38; cursor: default; }
+.btn.ghost { background: var(--raised2); color: var(--ink2); font-weight: 500; }
+.btn.danger { background: var(--down); color: #FFF; }
+.btn.quiet { background: none; color: var(--ink2); font-weight: 500; padding: 12px 0; }
+
+.links { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px 0; }
+.link { border: 0; background: none; cursor: pointer; color: var(--amber); font: 500 13px/1 var(--ui); padding: 8px 4px; border-radius: 7px; }
+.link.quiet { color: var(--ink3); font-weight: 400; }
+.foot { padding: 16px 16px calc(20px + var(--dbot)); font: 400 11.5px/1.7 var(--ui); color: var(--ink3); }
+.foot b { color: var(--ink2); font-weight: 500; }
+
+/* 密码规则勾选表 */
+.rules { display: grid; gap: 4px; margin-top: 2px; }
+.rule { display: flex; align-items: center; gap: 6px; font: 400 11.5px/1.4 var(--ui); color: var(--ink3); }
+.rule.hit { color: var(--up); }
+.rule i { width: 13px; height: 13px; border-radius: 50%; border: 1.3px solid currentColor; display: grid; place-items: center; flex: none; opacity: .55; }
+.rule.hit i { opacity: 1; background: var(--up); border-color: var(--up); color: var(--app); }
+.meter { height: 4px; border-radius: 3px; background: var(--raised2); overflow: hidden; }
+.meter i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--down); transition: width .2s, background .2s; }
+
+/* 勾选框 */
+.check { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; padding: 2px 0; }
+.check i { flex: none; width: 19px; height: 19px; border-radius: 6px; border: 1.5px solid var(--line); display: grid; place-items: center; color: transparent; margin-top: 1px; }
+.check.on i { background: var(--amber); border-color: var(--amber); color: var(--app); }
+.check span { font: 400 12px/1.55 var(--ui); color: var(--ink2); }
+.check span a { color: var(--amber); text-decoration: none; }
+
+/* 验证码 6 格 */
+.codebox { display: flex; gap: 8px; justify-content: space-between; }
+.codebox b {
+  flex: 1; height: 56px; border-radius: 12px; border: 1px solid var(--line); background: var(--app);
+  display: grid; place-items: center; font: 500 24px/1 var(--mono); color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.codebox b.cur { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+.codebox b.bad { border-color: color-mix(in srgb, var(--down) 60%, transparent); color: var(--down); }
+.codebox b.empty::after { content: ""; width: 9px; height: 2px; border-radius: 2px; background: var(--ink3); opacity: .4; }
+.codewrap { position: relative; }
+.codewrap input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; font-size: 16px; letter-spacing: 2em; border: 0; }
+.resend { display: flex; align-items: center; justify-content: space-between; padding-top: 2px; }
+.resend .cd { font: 400 12px/1 var(--mono); color: var(--ink3); font-variant-numeric: tabular-nums; }
+
+/* 数据去向表 */
+.tbl { background: var(--app); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+.trow { display: flex; align-items: flex-start; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--hair); }
+.trow:last-child { border-bottom: 0; }
+.trow .k { flex: 1; min-width: 0; font: 500 13px/1.4 var(--ui); }
+.trow .k em { display: block; font: 400 10.5px/1.5 var(--ui); font-style: normal; color: var(--ink3); margin-top: 2px; }
+.tag { flex: none; border-radius: 6px; padding: 3px 7px; font: 500 10.5px/1.35 var(--ui); white-space: nowrap; margin-top: 1px; }
+.tag.cloud { background: color-mix(in srgb, var(--p2) 14%, transparent); color: var(--p2); }
+.tag.local { background: var(--raised2); color: var(--ink2); }
+.tag.never { background: color-mix(in srgb, var(--down) 12%, transparent); color: var(--down); }
+
+/* 设备列表 */
+.dev { display: flex; align-items: center; gap: 11px; padding: 12px 16px; border-bottom: 1px solid var(--hair); }
+.dev:last-child { border-bottom: 0; }
+.dev .ico { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--raised2); color: var(--ink2); }
+.dev .m { flex: 1; min-width: 0; }
+.dev .m .n { font: 500 13.5px/1.3 var(--ui); display: flex; align-items: center; gap: 6px; }
+.dev .m .n span { font: 500 10px/1 var(--ui); color: var(--up); background: color-mix(in srgb, var(--up) 13%, transparent); border-radius: 4px; padding: 3px 5px; }
+.dev .m .w { display: block; margin-top: 3px; font: 400 11px/1.4 var(--ui); color: var(--ink3); }
+.dev button { flex: none; border: 1px solid var(--line); background: none; color: var(--ink2); border-radius: 8px; padding: 6px 10px; font: 500 12px/1 var(--ui); cursor: pointer; }
+.dev button:active { background: var(--raised2); }
+
+/* 队列小条 */
+.queue { padding: 11px 16px; border-bottom: 1px solid var(--hair); }
+.qline { display: flex; align-items: center; gap: 8px; font: 400 12px/1.4 var(--ui); color: var(--ink2); padding: 4px 0; }
+.qline .d { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--amber); }
+.qline .d.done { background: var(--up); }
+.qline .w { margin-left: auto; color: var(--ink3); font: 400 11px/1 var(--mono); }
+
+/* ============================================================ 弹层 */
+
+.scrim { position: absolute; inset: 0; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .22s; z-index: 11; }
+.scrim.show { opacity: 1; pointer-events: auto; }
+
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 12; background: var(--app);
+  border-radius: 22px 22px 0 0; padding: 8px 0 calc(14px + var(--dbot));
+  transform: translateY(102%); transition: transform .3s cubic-bezier(.32,.72,0,1);
+  box-shadow: 0 -20px 50px -26px #12163A66; max-height: 86%; overflow-y: auto;
+}
+.sheet.show { transform: translateY(0); }
+.sheet .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 12px; }
+.sheet h3 { margin: 0 16px 6px; font: 600 17px/1.3 var(--ui); }
+.sheet .sub { margin: 0 16px 14px; font: 400 12.5px/1.6 var(--ui); color: var(--ink3); }
+
+.opt { display: flex; align-items: flex-start; gap: 11px; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; padding: 12px 16px; border-top: 1px solid var(--hair); }
+.opt:active { background: var(--raised2); }
+.opt i { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line); margin-top: 2px; display: grid; place-items: center; color: transparent; }
+.opt.on i { border-color: var(--amber); background: var(--amber); color: var(--app); }
+.opt .m { flex: 1; min-width: 0; }
+.opt .m .t { font: 500 14px/1.35 var(--ui); display: flex; align-items: center; gap: 6px; }
+.opt .m .t b { font: 500 10px/1 var(--ui); color: var(--amber); background: var(--amber-soft); border-radius: 4px; padding: 3px 5px; }
+.opt .m .d { display: block; margin-top: 4px; font: 400 11.5px/1.55 var(--ui); color: var(--ink3); }
+.counts { display: flex; gap: 8px; margin: 0 16px 4px; }
+.cbox { flex: 1; border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; }
+.cbox .h { font: 500 10.5px/1 var(--ui); letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); }
+.cbox .r { margin-top: 7px; font: 400 12px/1.6 var(--ui); color: var(--ink2); font-variant-numeric: tabular-nums; }
+
+.toast {
+  position: absolute; left: 50%; bottom: calc(40px + var(--dbot)); transform: translate(-50%, 8px); z-index: 14;
+  background: color-mix(in srgb, var(--ink) 93%, transparent); border-radius: 11px; padding: 9px 14px;
+  font: 400 12.5px/1.5 var(--ui); color: var(--app); opacity: 0; pointer-events: none;
+  transition: opacity .2s, transform .2s; max-width: 84%; text-align: center;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.banner { margin: 12px 16px 0; border: 1px solid var(--amber-line); background: var(--amber-soft); border-radius: 12px; padding: 11px 13px; font: 400 12px/1.6 var(--ui); color: var(--ink2); }
+.banner b { color: var(--amber); font-weight: 600; display: block; margin-bottom: 3px; font-size: 12.5px; }
+
+@container (max-width: 379px) {
+  .srow, .sect > h2, .note, .form, .trow, .dev { padding-left: 14px; padding-right: 14px; }
+}
+:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 1px; border-radius: 6px; }
+@media (prefers-reduced-motion: reduce) { .sw, .sw i, .sheet, .scrim, .toast, .meter i { transition: none; } }
+</style>
+
+<div class="stagewrap">
+
+  <div class="bar">
+    <div class="barset" id="themeset"><span class="barlab">配色</span></div>
+    <div class="barset" id="stateset"><span class="barlab">状态</span></div>
+    <div class="barset" id="netset"><span class="barlab">网络</span></div>
+  </div>
+
+  <div class="devicebox">
+  <div class="device">
+    <div class="screen">
+
+      <div class="statusbar">
+        <span class="clock">9:41</span>
+        <div class="cut"></div>
+        <span class="icons" id="sbicons">
+          <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor" aria-hidden="true"><rect x="0" y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.2" width="3" height="5.8" rx="1"/><rect x="9.2" y="2.6" width="3" height="8.4" rx="1"/><rect x="13.8" y="0" width="3" height="11" rx="1"/></svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M1.2 3.6a10 10 0 0 1 13.6 0"/><path d="M3.8 6.4a6.4 6.4 0 0 1 8.4 0"/><path d="M6.5 9.1a2.6 2.6 0 0 1 3 0"/></svg>
+          <span class="batt"></span>
+        </span>
+      </div>
+
+      <header class="top">
+        <div class="toprow">
+          <button class="back" id="btnBack">
+            <svg width="11" height="18" viewBox="0 0 11 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.2 1.4 1.8 9l7.4 7.6"/></svg>
+            <span id="backText">设置</span>
+          </button>
+          <div class="ttl"><h1 id="title">账号</h1></div>
+          <span class="spacer"></span>
+        </div>
+      </header>
+
+      <div class="page" id="page"></div>
+
+      <div class="scrim" id="scrim"></div>
+      <div class="sheet" id="sheet"></div>
+      <div class="toast" id="toast"></div>
+      <div class="homebar"></div>
+
+    </div>
+  </div>
+  </div>
+
+  <p class="caption">
+    <b>看盘</b> · 账号。邮箱 + 密码，不接第三方登录；<b>不登录照常看图</b>，账号只负责把自选、画线、设置和复盘带到第二台设备。
+    上面的「状态」可以在未登录 / 已登录之间切，「网络」切到离线看断网时每一屏的样子。
+  </p>
+
+</div>
+
+<script>
+/* 看盘 · 账号 · 行为层
+ *
+ * 这一份不是「画几张静态图」：登录失败会累积、会锁、会倒计时；验证码会过期、会用完次数；
+ * 离线时该灰的按钮真的灰。登录成功时如果本机有匿名数据，一定弹合并选择——
+ * 这是整个账号系统里最容易被做错的一步，做错一次用户的画线就没了。
+ *
+ * 原型里的假后端：
+ *   · 正确密码 kanpan2026，其余一律「邮箱或密码不对」，不区分是邮箱错还是密码错；
+ *   · 正确验证码 314159，其余报错，三次用完必须重发；
+ *   · 连错 5 次密码锁 60 秒；重发验证码冷却 60 秒。
+ */
+;(function () {
+  'use strict'
+
+  var $ = function (id) { return document.getElementById(id) }
+  var page = $('page'), sheet = $('sheet'), scrim = $('scrim')
+
+  // ------------------------------------------------------------ 假后端常量
+  var RIGHT_PW = 'kanpan2026'
+  var RIGHT_CODE = '314159'
+  var WEAK = ['12345678', 'password', 'qwertyui', '11111111', 'abc12345', 'kanpan12']
+
+  var S = {
+    route: 'settings',
+    stack: [],
+    signedIn: false,
+    online: true,
+    email: 'lo.graham@fastmail.com',
+    hasLocalData: true,      // 本机有一份没归属的匿名数据
+    merged: false,
+    // 表单
+    fEmail: '', fPw: '', fPw2: '', fPwOld: '', agreed: false, showPw: false,
+    formErr: '', fieldBad: '',
+    // 验证码
+    codePurpose: 'signup', codeMail: '', digits: '', codeBad: false, codeTries: 3, resend: 0,
+    // 登录节流
+    fails: 0, lock: 0,
+    // 同步
+    wifiOnly: true, pending: 3, lastSync: '刚刚', syncing: false,
+    logoutOthers: true, mergeChoice: 'merge', closeConfirm: ''
+  }
+
+  // ------------------------------------------------------------ 小工具
+  function esc (s) { return String(s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] }) }
+  function validEmail (s) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.trim()) }
+  function maskEmail (s) {
+    var at = s.indexOf('@'); if (at < 1) return s
+    var n = s.slice(0, at), d = s.slice(at)
+    return (n.length <= 2 ? n[0] + '***' : n.slice(0, 2) + '***') + d
+  }
+  var toastT
+  function toast (msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.add('show')
+    clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show') }, 2200)
+  }
+
+  function svgChev () { return '<svg class="chev" width="7" height="12" viewBox="0 0 7 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 1l5 5-5 5"/></svg>' }
+  function svgTick (w) { w = w || 12; return '<svg width="' + w + '" height="' + w + '" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.8 9.4l3.4 3.4 7-7"/></svg>' }
+  function svgPerson () { return '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.6 20c.7-3.7 3.8-5.8 7.4-5.8s6.7 2.1 7.4 5.8"/></svg>' }
+  function svgEye (off) {
+    return off
+      ? '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 6.1A9.6 9.6 0 0 1 12 6c6.2 0 9.8 6 9.8 6a17 17 0 0 1-3.6 4.2"/><path d="M6.4 7.9A17.2 17.2 0 0 0 2.2 12S5.8 18 12 18a9.4 9.4 0 0 0 3.5-.7"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>'
+      : '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.2 12S5.8 6 12 6s9.8 6 9.8 6-3.6 6-9.8 6-9.8-6-9.8-6z"/><circle cx="12" cy="12" r="2.8"/></svg>'
+  }
+  function svgWarn () { return '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" style="margin-top:1px;flex:none" aria-hidden="true"><circle cx="8" cy="8" r="6.6"/><path d="M8 4.8v3.9M8 11.1v.1"/></svg>' }
+  function svgDev (kind) {
+    if (kind === 'pad') return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="4" y="2.4" width="16" height="19.2" rx="2.2"/><path d="M10.6 19.2h2.8"/></svg>'
+    if (kind === 'mac') return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="3.4" y="4.6" width="17.2" height="11.4" rx="1.8"/><path d="M1.6 19.2h20.8"/></svg>'
+    return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="6.4" y="2.2" width="11.2" height="19.6" rx="2.4"/><path d="M10.6 5.4h2.8"/></svg>'
+  }
+
+  // ------------------------------------------------------------ 路由
+  var HEAD = {
+    settings:  { title: '设置',       back: null },
+    signin:    { title: '登录',       back: '返回' },
+    signup:    { title: '注册',       back: '返回' },
+    code:      { title: '验证邮箱',   back: '返回' },
+    newpw:     { title: '设置新密码', back: '返回' },
+    account:   { title: '账号',       back: '设置' },
+    sync:      { title: '同步与数据', back: '账号' },
+    devices:   { title: '登录设备',   back: '账号' },
+    security:  { title: '修改密码',   back: '账号' },
+    close:     { title: '注销账号',   back: '账号' }
+  }
+
+  function go (r, keep) {
+    if (!keep) { S.formErr = ''; S.fieldBad = '' }
+    S.stack.push(S.route); S.route = r; render()
+    page.scrollTop = 0
+  }
+  function back () {
+    S.formErr = ''; S.fieldBad = ''
+    S.route = S.stack.pop() || 'settings'; render(); page.scrollTop = 0
+  }
+
+  // ------------------------------------------------------------ 渲染：设置页
+  function vSettings () {
+    var h = ''
+    h += '<section class="sect"><h2>账号</h2><div class="card">'
+    if (S.signedIn) {
+      h += '<button class="acct" data-act="go:account">' +
+        '<span class="ava on">' + esc(S.email[0].toUpperCase()) + '</span>' +
+        '<span class="who"><span class="n">' + esc(S.email) + '</span>' +
+        '<span class="s">' + syncDot() + syncWord() + '</span></span>' + svgChev() + '</button>'
+    } else {
+      h += '<div class="acct" style="cursor:default">' +
+        '<span class="ava">' + svgPerson() + '</span>' +
+        '<span class="who"><span class="n">未登录 · 本机模式</span>' +
+        '<span class="s"><span class="dot idle"></span>自选、画线、设置只在这台 iPhone 上</span></span>' +
+        '<button class="btn-inline" data-act="go:signin">登录</button></div>'
+    }
+    h += '</div>'
+    h += '<p class="note">看盘' + (S.signedIn ? '本来就' : '') + '不登录也能用全部功能。账号只做一件事：把<b>自选、画线、设置、复盘记录</b>带到你的第二台设备，并让复盘的结果由服务器判定，而不是你自己说了算。</p>'
+    h += '</section>'
+
+    h += '<section class="sect"><h2>其它</h2><div class="card">' +
+      pRow('显示与护眼', '配色、文字大小、盯盘舒适度') +
+      pRow('图表', '坐标、显示项、布局') +
+      pRow('指标', '主图与副图参数') +
+      pRow('关于看盘', '版本 1.4.0（2026.9）') +
+      '</div><p class="note">这几屏在别的原型里，本页只管账号。</p></section>'
+    return h
+  }
+  function pRow (t, d) {
+    return '<button class="srow tap" data-act="stub"><span class="lab"><span class="t">' + t + '</span><span class="d">' + d + '</span></span>' + svgChev() + '</button>'
+  }
+  function syncDot () {
+    if (!S.online) return '<span class="dot warnd"></span>'
+    return S.pending > 0 ? '<span class="dot warnd"></span>' : '<span class="dot"></span>'
+  }
+  function syncWord () {
+    if (!S.online) return '离线 · ' + S.pending + ' 项等着上传'
+    if (S.syncing) return '正在同步…'
+    return S.pending > 0 ? S.pending + ' 项待同步' : '已同步 · ' + S.lastSync
+  }
+
+  // ------------------------------------------------------------ 渲染：登录
+  function vSignin () {
+    var locked = S.lock > 0
+    var h = '<div class="form">'
+    h += '<p class="lede">登录只为同步。<b>你这台机器上已有的东西不会被悄悄覆盖</b>——两边都有数据时，下一步会先问你怎么处理。</p>'
+    h += field('邮箱', 'email', 'inEmail', S.fEmail, '你的邮箱', S.fieldBad === 'email')
+    h += pwField('密码', 'inPw', S.fPw, '密码', S.fieldBad === 'pw', 'current')
+    if (S.formErr) h += '<div class="err">' + svgWarn() + '<span>' + esc(S.formErr) + '</span></div>'
+    h += '<button class="btn" data-act="signin" id="btnGo"' + ((!S.online || locked) ? ' disabled' : '') + '>' +
+      (locked ? '等 <span id="lockCd">' + S.lock + '</span> 秒' : (S.online ? '登录' : '离线中，连上网再登录')) + '</button>'
+    h += '<div class="links"><button class="link" data-act="go:forgot">忘记密码</button>' +
+      '<button class="link quiet" data-act="go:signup">还没有账号？注册</button></div>'
+    h += '</div>'
+    h += '<p class="foot"><b>不登录也能继续用。</b>返回就回到行情，自选和画线还在。<br><br>' +
+      '看盘不接任何交易所账户，也没有任何地方需要你的 API 密钥或助记词。谁向你索要，谁就不是看盘。<br><br>' +
+      '<span style="opacity:.75">原型：密码填 <code style="font-family:var(--mono)">kanpan2026</code> 登得进去，填别的看错误态；连错 5 次锁 60 秒。</span></p>'
+    return h
+  }
+
+  // ------------------------------------------------------------ 渲染：注册
+  function vSignup () {
+    var sc = pwScore(S.fPw)
+    var h = '<div class="form">'
+    h += '<p class="lede">注册只要一个<b>邮箱</b>和一个<b>密码</b>。我们不要手机号、不要实名、不要交易所密钥。</p>'
+    h += field('邮箱', 'email', 'inEmail', S.fEmail, '收得到信的邮箱', S.fieldBad === 'email')
+    h += pwField('密码', 'inPw', S.fPw, '至少 8 位', S.fieldBad === 'pw', 'new')
+    h += '<div class="meter"><i style="width:' + (sc.pct) + '%;background:' + sc.color + '"></i></div>'
+    h += '<div class="rules">' +
+      rule('至少 8 位', S.fPw.length >= 8) +
+      rule('字母和数字都有', /[A-Za-z]/.test(S.fPw) && /\d/.test(S.fPw)) +
+      rule('不是常见弱密码', S.fPw.length > 0 && WEAK.indexOf(S.fPw.toLowerCase()) < 0) +
+      '</div>'
+    h += '<label class="check' + (S.agreed ? ' on' : '') + '" data-act="agree"><i>' + svgTick(11) + '</i>' +
+      '<span>我已阅读并同意<a data-act="stub">服务条款</a>与<a data-act="stub">隐私政策</a>。看盘只提供行情与记录工具，不提供任何投资建议。</span></label>'
+    if (S.formErr) h += '<div class="err">' + svgWarn() + '<span>' + esc(S.formErr) + '</span></div>'
+    h += '<button class="btn" data-act="signup"' + (S.online ? '' : ' disabled') + '>' + (S.online ? '发送验证码' : '离线中，连上网再注册') + '</button>'
+    h += '<div class="links"><span></span><button class="link quiet" data-act="go:signin">已经有账号？登录</button></div>'
+    h += '</div>'
+    h += '<p class="foot">服务器上只存你的<b>邮箱</b>和密码的<b>不可逆哈希</b>。我们没有你的密码原文，所以也无法「帮你查回来」，只能重设。<br><br>' +
+      '邮箱是账号本身，也是唯一的找回途径。用一个你长期还在用的。</p>'
+    return h
+  }
+  function rule (t, hit) { return '<span class="rule' + (hit ? ' hit' : '') + '"><i>' + (hit ? svgTick(9) : '') + '</i>' + t + '</span>' }
+  function pwScore (p) {
+    var s = 0
+    if (p.length >= 8) s++
+    if (p.length >= 12) s++
+    if (/[A-Za-z]/.test(p) && /\d/.test(p)) s++
+    if (/[^A-Za-z0-9]/.test(p)) s++
+    if (WEAK.indexOf(p.toLowerCase()) >= 0) s = 0
+    if (!p.length) return { pct: 0, color: 'var(--down)' }
+    return { pct: Math.max(12, s * 25), color: s <= 1 ? 'var(--down)' : (s === 2 ? 'var(--amber)' : 'var(--up)') }
+  }
+
+  // ------------------------------------------------------------ 渲染：验证码
+  function vCode () {
+    var reset = S.codePurpose === 'reset'
+    var h = '<div class="form">'
+    h += '<p class="lede">' + (reset
+      ? '如果 <b>' + esc(maskEmail(S.codeMail)) + '</b> 注册过看盘，验证码已经发出去了。<br><span style="opacity:.8">不论这个邮箱在不在，这句话都一样——我们不用这一屏告诉任何人某个邮箱有没有账号。</span>'
+      : '验证码发到了 <b>' + esc(maskEmail(S.codeMail)) + '</b>，6 位数字，10 分钟内有效。') + '</p>'
+    h += '<div class="codewrap"><div class="codebox">' + codeCells() + '</div>' +
+      '<input id="inCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" value="' + esc(S.digits) + '" aria-label="验证码"></div>'
+    if (S.formErr) h += '<div class="err">' + svgWarn() + '<span>' + esc(S.formErr) + '</span></div>'
+    h += '<div class="resend">' +
+      (S.resend > 0
+        ? '<span class="cd">' + S.resend + ' 秒后可以重发</span>'
+        : '<button class="link" data-act="resend">重发验证码</button>') +
+      '<button class="link quiet" data-act="back">换个邮箱</button></div>'
+    h += '</div>'
+    h += '<p class="foot">收不到？先翻一下<b>垃圾邮件</b>。同一个邮箱一小时最多发 3 封，超了要等——这是拦住拿别人邮箱刷验证码的人，不是为难你。<br><br>' +
+      '<span style="opacity:.75">原型：验证码 <code style="font-family:var(--mono)">314159</code>，错 3 次就得重发。</span></p>'
+    return h
+  }
+  function codeCells () {
+    var h = '', i
+    for (i = 0; i < 6; i++) {
+      var d = S.digits[i]
+      var cls = d ? '' : ' empty'
+      if (S.codeBad) cls += ' bad'
+      else if (i === S.digits.length) cls += ' cur'
+      h += '<b class="' + cls.trim() + '">' + (d || '') + '</b>'
+    }
+    return h
+  }
+
+  // ------------------------------------------------------------ 渲染：设置新密码
+  function vNewpw () {
+    var sc = pwScore(S.fPw)
+    var h = '<div class="form">'
+    h += '<p class="lede">给 <b>' + esc(maskEmail(S.codeMail || S.email)) + '</b> 设一个新密码。</p>'
+    h += pwField('新密码', 'inPw', S.fPw, '至少 8 位', S.fieldBad === 'pw', 'new')
+    h += '<div class="meter"><i style="width:' + sc.pct + '%;background:' + sc.color + '"></i></div>'
+    h += pwField('再输一次', 'inPw2', S.fPw2, '', S.fieldBad === 'pw2', 'new')
+    if (S.formErr) h += '<div class="err">' + svgWarn() + '<span>' + esc(S.formErr) + '</span></div>'
+    h += '<div class="banner"><b>改完会退出其他所有设备</b>密码要被重设，多半是因为你担心它已经不只你一个人知道。这一步不给开关。</div>'
+    h += '<button class="btn" data-act="newpw" style="margin-top:13px">设为新密码并登录</button>'
+    h += '</div>'
+    return h
+  }
+
+  // ------------------------------------------------------------ 渲染：账号中心
+  function vAccount () {
+    var h = '<section class="sect"><div class="card">'
+    h += '<div class="acct" style="cursor:default"><span class="ava on">' + esc(S.email[0].toUpperCase()) + '</span>' +
+      '<span class="who"><span class="n">' + esc(S.email) + '</span>' +
+      '<span class="s"><span class="dot"></span>邮箱已验证</span></span></div>'
+    h += '</div></section>'
+
+    h += '<section class="sect"><h2>同步</h2><div class="card">' +
+      '<div class="srow"><span class="lab"><span class="t">状态</span><span class="d">' +
+        (S.online ? '上次成功同步：' + S.lastSync : '离线。改动留在本机，联网后按顺序补传，不会重复') +
+      '</span></span><span class="val">' + (S.pending > 0 ? S.pending + ' 项待上传' : '已是最新') + '</span></div>' +
+      '<div class="srow"><span class="lab"><span class="t">仅在 Wi-Fi 下同步</span><span class="d">画线和复盘都很小，蜂窝网也传得起；关掉就一直传</span></span>' +
+        '<button class="sw' + (S.wifiOnly ? ' on' : '') + '" role="switch" aria-checked="' + S.wifiOnly + '" data-act="wifi"><i></i></button></div>' +
+      '<button class="srow tap" data-act="go:sync"><span class="lab"><span class="t">同步与数据</span><span class="d">哪些东西会离开这台手机，逐项列清楚</span></span>' + svgChev() + '</button>' +
+      '</div></section>'
+
+    h += '<section class="sect"><h2>安全</h2><div class="card">' +
+      '<button class="srow tap" data-act="go:security"><span class="lab"><span class="t">修改密码</span></span>' + svgChev() + '</button>' +
+      '<button class="srow tap" data-act="go:devices"><span class="lab"><span class="t">登录设备</span><span class="d">看看这个账号还在哪儿登着</span></span><span class="val">3 台</span>' + svgChev() + '</button>' +
+      '</div></section>'
+
+    h += '<section class="sect"><div class="card">' +
+      '<button class="srow tap" data-act="logout"><span class="lab"><span class="t">退出登录</span><span class="d">本机这份数据留着，下次登录还在</span></span></button>' +
+      '<button class="srow tap danger" data-act="go:close"><span class="lab"><span class="t">注销账号</span><span class="d">连同云端的记录一起删掉</span></span>' + svgChev() + '</button>' +
+      '</div><p class="note">「退出登录」和「注销账号」是两件事：前者只是把这台设备和账号解绑，后者是把账号本身删掉。</p></section>'
+    return h
+  }
+
+  // ------------------------------------------------------------ 渲染：同步与数据
+  var TABLE = [
+    ['自选品种与排序', '含置顶、分组', 'cloud', '本机 + 云端'],
+    ['画线', '按品种存，每品种上限 50 条', 'cloud', '本机 + 云端'],
+    ['设置', '配色、字号、指标参数、常用周期', 'cloud', '本机 + 云端'],
+    ['复盘记录与战绩', '判定在服务器做，本机只缓存结果', 'cloud', '本机 + 云端'],
+    ['K 线、持仓量缓存', '随时可以被系统清掉，清掉再拉一次就是', 'local', '只在本机'],
+    ['上次看的品种、周期、视野、十字线', '换台设备接着看的是你的自选，不是你的滚动位置', 'local', '只在本机'],
+    ['交易所账户、API 密钥、资金', '看盘从不索取，界面上也没有地方填', 'never', '从不存在']
+  ]
+  function vSync () {
+    var h = '<section class="sect"><h2>待同步</h2><div class="card"><div class="queue">'
+    if (S.pending > 0) {
+      h += '<div class="qline"><span class="d"></span>自选：加了 SOLUSDT、去掉 DOGEUSDT<span class="w">2 分钟前</span></div>'
+      h += '<div class="qline"><span class="d"></span>画线：BTCUSDT 上的 3 条趋势线<span class="w">11 分钟前</span></div>'
+      h += '<div class="qline"><span class="d"></span>设置：配色换到「夜读」<span class="w">1 小时前</span></div>'
+    } else {
+      h += '<div class="qline"><span class="d done"></span>都传完了 · ' + S.lastSync + '</div>'
+    }
+    h += '</div><button class="srow tap" data-act="syncnow"><span class="lab"><span class="t" style="color:var(--amber)">' +
+      (S.online ? '立即同步' : '离线，先连上网') + '</span></span></button></div>' +
+      '<p class="note">离线时的每一次改动都会<b>排队</b>，联网后按原顺序补传，每条带一个幂等键——补传两次也不会变成两条。</p></section>'
+
+    h += '<section class="sect"><h2>数据去向</h2><div class="tbl">'
+    TABLE.forEach(function (r) {
+      h += '<div class="trow"><span class="k">' + r[0] + '<em>' + r[1] + '</em></span><span class="tag ' + r[2] + '">' + r[3] + '</span></div>'
+    })
+    h += '</div><p class="note">行情缓存不算你的私人数据，所以它不按账号分，也不上传；<b>私人数据按账号分开存</b>：同一台手机上换个账号登录，看不到上一个账号的自选和画线。</p></section>'
+
+    h += '<section class="sect"><h2>这台设备上的数据</h2><div class="card">' +
+      '<button class="srow tap" data-act="export"><span class="lab"><span class="t">导出一份</span><span class="d">自选、画线、设置、复盘记录，一个 JSON 文件</span></span>' + svgChev() + '</button>' +
+      '<button class="srow tap" data-act="wipe"><span class="lab"><span class="t">清除本机这份副本</span><span class="d">云端不动。这台手机要给别人用的时候用它</span></span>' + svgChev() + '</button>' +
+      '</div></section>'
+    return h
+  }
+
+  // ------------------------------------------------------------ 渲染：设备
+  var DEVS = [
+    { k: 'phone', n: 'iPhone 15 Pro', w: '这台设备 · 刚刚 · 中国 广东', me: true },
+    { k: 'pad', n: 'iPad Pro 11″', w: '3 天前 · 中国 广东', me: false },
+    { k: 'mac', n: 'MacBook Pro · Safari', w: '2 周前 · 日本 东京', me: false }
+  ]
+  function vDevices () {
+    var h = '<section class="sect"><h2>正在登录</h2><div class="card">'
+    DEVS.forEach(function (d, i) {
+      h += '<div class="dev"><span class="ico">' + svgDev(d.k) + '</span>' +
+        '<span class="m"><span class="n">' + d.n + (d.me ? '<span>这台</span>' : '') + '</span><span class="w">' + d.w + '</span></span>' +
+        (d.me ? '' : '<button data-act="kick:' + i + '">退出</button>') + '</div>'
+    })
+    h += '</div><p class="note">地区是按登录时的 IP <b>粗略</b>估的，只用来让你认出「这不是我」，不精确也不是定位。</p></section>'
+    h += '<div class="form"><button class="btn ghost" data-act="kickall">退出所有其他设备</button></div>'
+    h += '<p class="foot">看到不认识的设备：先<b>退出所有其他设备</b>，再<b>改密码</b>。改密码本身也会把其他设备踢下去。</p>'
+    return h
+  }
+
+  // ------------------------------------------------------------ 渲染：修改密码
+  function vSecurity () {
+    var sc = pwScore(S.fPw)
+    var h = '<div class="form">'
+    h += pwField('当前密码', 'inPwOld', S.fPwOld, '', S.fieldBad === 'old', 'current')
+    h += pwField('新密码', 'inPw', S.fPw, '至少 8 位', S.fieldBad === 'pw', 'new')
+    h += '<div class="meter"><i style="width:' + sc.pct + '%;background:' + sc.color + '"></i></div>'
+    h += pwField('再输一次', 'inPw2', S.fPw2, '', S.fieldBad === 'pw2', 'new')
+    h += '<label class="check' + (S.logoutOthers ? ' on' : '') + '" data-act="lo"><i>' + svgTick(11) + '</i>' +
+      '<span>同时退出其他设备（<b style="color:var(--ink2)">建议保持勾选</b>）</span></label>'
+    if (S.formErr) h += '<div class="err">' + svgWarn() + '<span>' + esc(S.formErr) + '</span></div>'
+    h += '<button class="btn" data-act="changepw">改密码</button>'
+    h += '</div>'
+    h += '<p class="foot">忘了当前密码就不要在这儿硬试：退出登录，走<b>忘记密码</b>。<br><br>' +
+      '<span style="opacity:.75">原型：当前密码同样是 <code style="font-family:var(--mono)">kanpan2026</code>。</span></p>'
+    return h
+  }
+
+  // ------------------------------------------------------------ 渲染：注销
+  function vClose () {
+    var h = '<div class="banner" style="margin-top:16px"><b>注销是删账号，不是退出登录</b>只是想让这台手机不再登着，回上一页点「退出登录」就够了。</div>'
+    h += '<section class="sect"><h2>会发生什么</h2><div class="card">' +
+      '<div class="srow"><span class="lab"><span class="t">立刻删掉</span><span class="d">账号、邮箱、云端的自选 / 画线 / 设置 / 复盘记录与战绩</span></span></div>' +
+      '<div class="srow"><span class="lab"><span class="t">7 天内可以反悔</span><span class="d">7 天里用原邮箱重新登录即撤销；7 天后后台真删，我们也拿不回来</span></span></div>' +
+      '<div class="srow"><span class="lab"><span class="t">这台手机上的副本不动</span><span class="d">想一起清掉，去「同步与数据 › 清除本机这份副本」</span></span></div>' +
+      '<div class="srow"><span class="lab"><span class="t">账单与风控日志按法律保留期留存</span><span class="d">只留最少的那部分，不含你的画线与复盘内容</span></span></div>' +
+      '</div></section>'
+    h += '<div class="form" style="padding-top:16px">' +
+      '<button class="btn ghost" data-act="export">先导出我的数据</button>' +
+      field('输入 ' + maskEmail(S.email) + ' 的完整邮箱以确认', 'email', 'inClose', S.closeConfirm, S.email, false) +
+      '<button class="btn danger" data-act="doclose"' + (S.closeConfirm.trim().toLowerCase() === S.email.toLowerCase() ? '' : ' disabled') + '>注销账号</button>' +
+      '<button class="btn quiet" data-act="back">算了，返回</button></div>'
+    return h
+  }
+
+  // ------------------------------------------------------------ 表单零件
+  function field (label, type, id, val, ph, bad) {
+    return '<div class="field"><label for="' + id + '">' + label + '</label>' +
+      '<div class="inp' + (bad ? ' bad' : '') + '"><input id="' + id + '" type="' + (type === 'email' ? 'email' : 'text') + '"' +
+      (type === 'email' ? ' inputmode="email" autocapitalize="none" autocorrect="off" autocomplete="username"' : '') +
+      ' value="' + esc(val) + '" placeholder="' + esc(ph) + '"></div></div>'
+  }
+  function pwField (label, id, val, ph, bad, mode) {
+    return '<div class="field"><label for="' + id + '">' + label + '</label>' +
+      '<div class="inp' + (bad ? ' bad' : '') + '"><input id="' + id + '" type="' + (S.showPw ? 'text' : 'password') + '"' +
+      ' autocomplete="' + (mode === 'new' ? 'new-password' : 'current-password') + '" autocapitalize="none" autocorrect="off"' +
+      ' value="' + esc(val) + '" placeholder="' + esc(ph || '') + '">' +
+      '<button class="eye" data-act="peek" aria-label="' + (S.showPw ? '隐藏密码' : '显示密码') + '">' + svgEye(S.showPw) + '</button></div></div>'
+  }
+
+  // ------------------------------------------------------------ 合并本机数据的选择面板
+  function openMerge () {
+    sheet.innerHTML = '<div class="grab"></div>' +
+      '<h3>这台机器上有一份还没归属的东西</h3>' +
+      '<p class="sub">你在没登录的时候用了一阵子。现在要把它算成谁的？<b style="color:var(--ink2);font-weight:500">这一步不会自动替你决定。</b></p>' +
+      '<div class="counts">' +
+        '<div class="cbox"><div class="h">这台手机</div><div class="r">自选 12 个<br>画线 37 条<br>复盘 0 条</div></div>' +
+        '<div class="cbox"><div class="h">云端账号</div><div class="r">自选 8 个<br>画线 104 条<br>复盘 26 条</div></div>' +
+      '</div>' +
+      opt('merge', '两边合起来', '同名的以最后改动的那份为准；删除记录也会带上时间戳，删掉的不会自己长回来。', '推荐') +
+      opt('cloud', '只要云端那份', '本机这份留一个副本，在「同步与数据」里还能导出，7 天后清掉。') +
+      opt('local', '只要本机这份', '用本机覆盖云端。云端的旧版本保留 30 天，可以找回。') +
+      '<div class="form" style="padding-top:14px"><button class="btn" data-act="mergeok">就这么办</button></div>'
+    sheet.classList.add('show'); scrim.classList.add('show')
+  }
+  function opt (k, t, d, tag) {
+    return '<button class="opt' + (S.mergeChoice === k ? ' on' : '') + '" data-act="merge:' + k + '"><i>' + svgTick(11) + '</i>' +
+      '<span class="m"><span class="t">' + t + (tag ? '<b>' + tag + '</b>' : '') + '</span><span class="d">' + d + '</span></span></button>'
+  }
+  function closeSheet () { sheet.classList.remove('show'); scrim.classList.remove('show') }
+
+  // ------------------------------------------------------------ 主渲染
+  function render () {
+    var head = HEAD[S.route] || HEAD.settings
+    $('title').textContent = head.title
+    $('btnBack').classList.toggle('hide', !head.back)
+    $('backText').textContent = head.back || ''
+
+    var v = { settings: vSettings, signin: vSignin, signup: vSignup, code: vCode, newpw: vNewpw,
+      account: vAccount, sync: vSync, devices: vDevices, security: vSecurity, close: vClose }[S.route]
+    page.innerHTML = v ? v() : ''
+    $('sbicons').innerHTML = S.online
+      ? '<svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.2" width="3" height="5.8" rx="1"/><rect x="9.2" y="2.6" width="3" height="8.4" rx="1"/><rect x="13.8" y="0" width="3" height="11" rx="1"/></svg>' +
+        '<svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.2 3.6a10 10 0 0 1 13.6 0"/><path d="M3.8 6.4a6.4 6.4 0 0 1 8.4 0"/><path d="M6.5 9.1a2.6 2.6 0 0 1 3 0"/></svg><span class="batt"></span>'
+      : '<span class="off">离线</span><span class="batt"></span>'
+    wire()
+  }
+
+  // ------------------------------------------------------------ 事件
+  function wire () {
+    bindInput('inEmail', function (v) { S.fEmail = v })
+    bindInput('inPw', function (v) { S.fPw = v; if (S.route === 'signup' || S.route === 'newpw' || S.route === 'security') softRender() })
+    bindInput('inPw2', function (v) { S.fPw2 = v })
+    bindInput('inPwOld', function (v) { S.fPwOld = v })
+    bindInput('inClose', function (v) { S.closeConfirm = v; softRender() })
+
+    var ci = $('inCode')
+    if (ci) {
+      ci.addEventListener('input', function () {
+        S.digits = ci.value.replace(/\D/g, '').slice(0, 6)
+        ci.value = S.digits; S.codeBad = false; S.formErr = ''
+        paintCode()
+        if (S.digits.length === 6) setTimeout(submitCode, 140)
+      })
+      setTimeout(function () { ci.focus() }, 60)
+    }
+  }
+  function bindInput (id, fn) {
+    var el = $(id); if (!el) return
+    el.addEventListener('input', function () { fn(el.value) })
+  }
+  // 只重画不带输入焦点的那几块，免得打字时光标被冲掉
+  function softRender () {
+    var keep = document.activeElement && document.activeElement.id
+    var pos = null
+    var el = keep ? $(keep) : null
+    if (el && el.selectionStart != null) pos = el.selectionStart
+    render()
+    if (keep && $(keep)) {
+      $(keep).focus()
+      if (pos != null && $(keep).setSelectionRange) { try { $(keep).setSelectionRange(pos, pos) } catch (e) {} }
+    }
+  }
+  function paintCode () {
+    var box = document.querySelector('.codebox')
+    if (box) box.innerHTML = codeCells()
+    var e = document.querySelector('.form .err')
+    if (e && !S.formErr) e.remove()
+  }
+
+  document.addEventListener('click', function (ev) {
+    var t = ev.target.closest('[data-act]')
+    if (!t) return
+    var a = t.getAttribute('data-act')
+    ev.preventDefault()
+    act(a)
+  })
+  $('btnBack').addEventListener('click', function () { if (S.route !== 'settings') back() })
+  scrim.addEventListener('click', function () {
+    // 合并选择不能靠点空白糊弄过去：本机那份数据的去向必须有个明确答复
+    toast('先选一个：合并、只要云端，还是只要本机')
+  })
+
+  function act (a) {
+    var p = a.split(':')
+    switch (p[0]) {
+      case 'go':
+        if (p[1] === 'forgot') { forgotStart(); return }
+        go(p[1]); return
+      case 'back': back(); return
+      case 'peek': S.showPw = !S.showPw; softRender(); return
+      case 'agree': S.agreed = !S.agreed; softRender(); return
+      case 'lo': S.logoutOthers = !S.logoutOthers; softRender(); return
+      case 'wifi': S.wifiOnly = !S.wifiOnly; render(); toast(S.wifiOnly ? '只在 Wi-Fi 下同步' : '蜂窝网也同步'); return
+      case 'signin': doSignin(); return
+      case 'signup': doSignup(); return
+      case 'resend': doResend(); return
+      case 'newpw': doNewpw(); return
+      case 'changepw': doChangePw(); return
+      case 'logout': doLogout(); return
+      case 'merge': S.mergeChoice = p[1]; openMerge(); return
+      case 'mergeok': doMerge(); return
+      case 'syncnow': doSync(); return
+      case 'export': toast('导出为 kanpan-我的数据.json'); return
+      case 'wipe': toast('本机副本已清除，云端不动'); return
+      case 'kick': toast('已让「' + DEVS[+p[1]].n + '」退出登录'); return
+      case 'kickall': toast('其他 2 台设备都退出了'); return
+      case 'doclose': doClose(); return
+      case 'stub': toast('这一屏不在本原型里'); return
+    }
+  }
+
+  // ------------------------------------------------------------ 流程
+  function forgotStart () {
+    // 「忘记密码」是登录页上的一步，不另开一棵树：拿邮箱 → 发码 → 设新密码
+    S.formErr = ''
+    var mail = S.fEmail.trim()
+    if (!validEmail(mail)) {
+      S.route = 'signin'; S.stack = ['settings']
+      S.formErr = '先把邮箱填对，再点「忘记密码」——验证码得有地方发。'
+      S.fieldBad = 'email'; render(); return
+    }
+    S.codePurpose = 'reset'; S.codeMail = mail; S.digits = ''; S.codeTries = 3; S.resend = 60
+    S.route = 'code'; S.stack = ['settings', 'signin']; S.formErr = ''; render()
+  }
+
+  function doSignin () {
+    if (!S.online || S.lock > 0) return
+    S.formErr = ''; S.fieldBad = ''
+    if (!validEmail(S.fEmail)) { S.formErr = '这个邮箱看着不对。'; S.fieldBad = 'email'; render(); return }
+    if (!S.fPw) { S.formErr = '还没填密码。'; S.fieldBad = 'pw'; render(); return }
+    if (S.fPw !== RIGHT_PW) {
+      S.fails++
+      if (S.fails >= 5) { S.lock = 60; S.formErr = '试得太密了。等 60 秒再来，或者直接走「忘记密码」。' }
+      else S.formErr = '邮箱或密码不对。（还可以试 ' + (5 - S.fails) + ' 次）'
+      S.fieldBad = 'pw'; render(); return
+    }
+    S.email = S.fEmail.trim(); S.fails = 0; S.fPw = ''
+    S.signedIn = true; S.route = 'account'; S.stack = ['settings']; render()
+    if (S.hasLocalData && !S.merged) openMerge()
+    else toast('登录成功')
+  }
+
+  function doSignup () {
+    S.formErr = ''; S.fieldBad = ''
+    if (!validEmail(S.fEmail)) { S.formErr = '这个邮箱看着不对。'; S.fieldBad = 'email'; render(); return }
+    if (S.fPw.length < 8) { S.formErr = '密码至少 8 位。'; S.fieldBad = 'pw'; render(); return }
+    if (WEAK.indexOf(S.fPw.toLowerCase()) >= 0) { S.formErr = '这个密码太常见了，换一个。'; S.fieldBad = 'pw'; render(); return }
+    if (!S.agreed) { S.formErr = '还差勾上那一条。'; render(); return }
+    S.codePurpose = 'signup'; S.codeMail = S.fEmail.trim(); S.digits = ''; S.codeTries = 3; S.resend = 60
+    go('code')
+  }
+
+  function submitCode () {
+    if (S.digits.length < 6) return
+    if (S.digits !== RIGHT_CODE) {
+      S.codeTries--
+      S.codeBad = true
+      S.formErr = S.codeTries > 0
+        ? '验证码不对，还可以试 ' + S.codeTries + ' 次。'
+        : '这封码作废了，重新发一封。'
+      if (S.codeTries <= 0) { S.digits = ''; S.resend = Math.max(S.resend, 20) }
+      render(); return
+    }
+    S.codeBad = false; S.formErr = ''
+    if (S.codePurpose === 'reset') { S.fPw = ''; S.fPw2 = ''; go('newpw'); return }
+    // 注册完成：邮箱当场算已验证，直接进账号
+    S.email = S.codeMail; S.signedIn = true; S.fPw = ''
+    S.route = 'account'; S.stack = ['settings']; render()
+    if (S.hasLocalData && !S.merged) openMerge()
+    else toast('注册成功')
+  }
+
+  function doResend () {
+    if (S.resend > 0 || !S.online) return
+    S.resend = 60; S.codeTries = 3; S.digits = ''; S.codeBad = false
+    S.formErr = ''; render(); toast('又发了一封到 ' + maskEmail(S.codeMail))
+  }
+
+  function doNewpw () {
+    S.formErr = ''; S.fieldBad = ''
+    if (S.fPw.length < 8) { S.formErr = '新密码至少 8 位。'; S.fieldBad = 'pw'; render(); return }
+    if (WEAK.indexOf(S.fPw.toLowerCase()) >= 0) { S.formErr = '这个密码太常见了，换一个。'; S.fieldBad = 'pw'; render(); return }
+    if (S.fPw !== S.fPw2) { S.formErr = '两次输的不一样。'; S.fieldBad = 'pw2'; render(); return }
+    S.email = S.codeMail || S.email; S.signedIn = true; S.fails = 0; S.lock = 0
+    S.fPw = ''; S.fPw2 = ''
+    S.route = 'account'; S.stack = ['settings']; render()
+    if (S.hasLocalData && !S.merged) openMerge()
+    else toast('密码改好了，其他设备都已退出')
+  }
+
+  function doChangePw () {
+    S.formErr = ''; S.fieldBad = ''
+    if (S.fPwOld !== RIGHT_PW) { S.formErr = '当前密码不对。'; S.fieldBad = 'old'; render(); return }
+    if (S.fPw.length < 8) { S.formErr = '新密码至少 8 位。'; S.fieldBad = 'pw'; render(); return }
+    if (S.fPw === S.fPwOld) { S.formErr = '新密码不能和旧的一样。'; S.fieldBad = 'pw'; render(); return }
+    if (S.fPw !== S.fPw2) { S.formErr = '两次输的不一样。'; S.fieldBad = 'pw2'; render(); return }
+    S.fPw = ''; S.fPw2 = ''; S.fPwOld = ''
+    back(); toast(S.logoutOthers ? '密码改好了，其他设备已退出' : '密码改好了')
+  }
+
+  function doLogout () {
+    S.signedIn = false; S.merged = false; S.hasLocalData = true
+    S.fEmail = ''; S.fPw = ''; S.pending = 3
+    S.route = 'settings'; S.stack = []; render()
+    toast('退出了。这台手机上的自选和画线还在')
+  }
+
+  function doMerge () {
+    S.merged = true; closeSheet()
+    S.pending = S.mergeChoice === 'cloud' ? 0 : 3
+    render()
+    toast({ merge: '两边已合并', cloud: '用了云端那份，本机副本留着', local: '本机这份已上传，云端旧版保留 30 天' }[S.mergeChoice])
+  }
+
+  function doSync () {
+    if (!S.online) { toast('还没联网'); return }
+    if (S.pending === 0) { toast('本来就是最新的'); return }
+    S.syncing = true; render()
+    setTimeout(function () { S.syncing = false; S.pending = 0; S.lastSync = '刚刚'; render(); toast('都传完了') }, 900)
+  }
+
+  function doClose () {
+    if (S.closeConfirm.trim().toLowerCase() !== S.email.toLowerCase()) return
+    S.signedIn = false; S.closeConfirm = ''; S.merged = false
+    S.route = 'settings'; S.stack = []; render()
+    toast('已提交注销。7 天内重新登录可以撤销')
+  }
+
+  // ------------------------------------------------------------ 秒表：重发冷却与登录锁
+  setInterval(function () {
+    if (S.resend > 0) {
+      S.resend--
+      if (S.route === 'code') {
+        var box = document.querySelector('.resend')
+        if (box) {
+          box.innerHTML = (S.resend > 0 ? '<span class="cd">' + S.resend + ' 秒后可以重发</span>' : '<button class="link" data-act="resend">重发验证码</button>') +
+            '<button class="link quiet" data-act="back">换个邮箱</button>'
+        }
+      }
+    }
+    if (S.lock > 0) {
+      S.lock--
+      if (S.lock === 0) { S.fails = 0; S.formErr = ''; if (S.route === 'signin') render() }
+      else if (S.route === 'signin') { var c = $('lockCd'); if (c) c.textContent = S.lock }
+    }
+  }, 1000)
+
+  // ------------------------------------------------------------ 台面上的三排开关
+  function chips (host, list, get, set) {
+    list.forEach(function (o) {
+      var b = document.createElement('button')
+      b.className = 'chip' + (get() === o.id ? ' on' : '')
+      b.textContent = o.n
+      b.onclick = function () { set(o.id); paintChips() }
+      host.appendChild(b)
+    })
+  }
+  var theme = 'auto'
+  function paintChips () {
+    ;['themeset', 'stateset', 'netset'].forEach(function (id) {
+      var h = $(id), lab = h.firstElementChild
+      h.innerHTML = ''; h.appendChild(lab)
+    })
+    chips($('themeset'), [{ id: 'auto', n: '跟随系统' }, { id: 'light', n: '浅' }, { id: 'dark', n: '深' }, { id: 'paper', n: '护眼' }, { id: 'night', n: '夜读' }],
+      function () { return theme },
+      function (v) {
+        theme = v
+        if (v === 'auto') document.documentElement.removeAttribute('data-theme')
+        else document.documentElement.setAttribute('data-theme', v)
+      })
+    chips($('stateset'), [{ id: 'out', n: '未登录' }, { id: 'in', n: '已登录' }],
+      function () { return S.signedIn ? 'in' : 'out' },
+      function (v) {
+        S.signedIn = v === 'in'
+        S.merged = S.signedIn
+        S.route = S.signedIn ? 'account' : 'settings'
+        S.stack = S.signedIn ? ['settings'] : []
+        render()
+      })
+    chips($('netset'), [{ id: 'on', n: '在线' }, { id: 'off', n: '离线' }],
+      function () { return S.online ? 'on' : 'off' },
+      function (v) { S.online = v === 'on'; render() })
+  }
+
+  // ------------------------------------------------------------ 机身：窄窗口 / 真手机就脱掉外壳
+  function fit () {
+    var narrow = window.matchMedia('(max-width: 620px)').matches || window.matchMedia('(pointer: coarse)').matches
+    document.body.classList.toggle('live', narrow)
+    if (narrow) { document.documentElement.style.setProperty('--fit', 1); return }
+    var avail = window.innerHeight - 150
+    var f = Math.min(1, avail / 874)
+    document.documentElement.style.setProperty('--fit', f.toFixed(3))
+  }
+  window.addEventListener('resize', fit)
+
+  fit(); paintChips(); render()
+})()
+</script>

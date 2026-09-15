@@ -164,8 +164,20 @@ private func stroke(
     let view = v.state!.view
     v.resetPriceScale()
     #expect(!v.state!.price.isManual && v.state!.view == view)
-    stroke(v, from: CGPoint(x: x, y: 120), through: [], startMs: 12000)
+    // 双击价格轴翻转：`allowMainInversion` 现在默认关（一次误触把整张图倒过来，
+    // 代价远大于用处，见 `handleAxisTap`），所以先要有人把它打开这一下才算数。
+    // 两下之间必须在 300ms 以内，否则各算各的单击（单击 = 恢复自动纵向缩放）。
+    func doubleTapAxis(at ms: Double) {
+      stroke(v, from: CGPoint(x: x, y: 120), through: [], startMs: ms)
+      stroke(v, from: CGPoint(x: x, y: 120), through: [], startMs: ms + 100)
+    }
+    doubleTapAxis(at: 12000)
+    #expect(!v.state!.price.inverted, "默认关着还翻了")
+    v.state?.options.allowMainInversion = true
+    doubleTapAxis(at: 22000)
     #expect(v.state!.price.inverted)
+    doubleTapAxis(at: 32000)
+    #expect(!v.state!.price.inverted, "再双击一次该翻回来")
   }
   @Test("历史缩放抬起一指后不跳变")
   func pinchHandoff() throws {

@@ -6,8 +6,8 @@ public struct ChartOptions: Sendable, Equatable {
   public var kind: CandleKind = .candle
   /// 网格：跟随风格 / 强制显示 / 强制隐藏。
   public var grid: GridChoice = .off
-  /// 实体：跟随风格 / 强制实心 / 强制阳线空心。
-  public var body: BodyChoice = .style
+  /// 实体：实心 / 阳线空心。
+  public var body: BodyChoice = .solid
   /// 实时价格线（主图那条横线 + 右轴胶囊）。关掉连倒计时一起没有——它是挂在胶囊底下的。
   public var lastLine: Bool = true
   /// 用户画的趋势线 / 水平线显不显示。关掉只是不画，数据一根不删。
@@ -58,13 +58,16 @@ public enum GridChoice: String, Sendable, Codable, CaseIterable {
   }
 }
 
-/// 实体覆盖。`.style` 读风格表，另两档强制。
+/// 阳线实体画法。
+///
+/// 原来还有一档 `.style`「跟随风格」——风格表只剩 AICoin 一套之后（见 `CandleStyle`），
+/// 「跟随」和「实心」是同一件事，面板上并排摆两个一模一样的选项只会让人以为自己没点对。
+/// 旧存档里的 `"style"` 在 `PrefsCodec` 里直接读成 `.solid`。
 public enum BodyChoice: String, Sendable, Codable, CaseIterable {
-  case style, solid, hollowUp
+  case solid, hollowUp
 
   public var display: String {
     switch self {
-    case .style: "跟随风格"
     case .solid: "实心"
     case .hollowUp: "阳线空心"
     }

@@ -105,16 +105,16 @@ struct ChartViewDirtyTests {
     #expect(ChartView.changed(from: a, to: b) == [.plot, .live])
   }
 
-  @Test("视野 / 风格 / 指标一动，三层全画")
+  @Test("视野 / 指标一动，三层全画")
   func geometry() {
     let a = fixtureState()
     var moved = a
     moved.view = a.view.shifted(byPx: 40, plotW: 320)
     #expect(ChartView.changed(from: a, to: moved) == .all)
 
-    var styled = a
-    styled.style = CandleStyle.all[1]
-    #expect(ChartView.changed(from: a, to: styled) == .all)
+    // 这儿原来还切一次 `style` 验「造型一变三层全画」。风格表收成 AICoin 一套之后
+    // （见 `CandleStyle`）`state.style` 在运行期不会再变，这条断言没有可造的输入了。
+    // 「阳线实心 / 空心」那档走的是 `options.body`，由下面 `ChartOptionsRenderTests` 管。
 
     var withSub = a
     withSub.subs = [.vol]
