@@ -131,7 +131,8 @@ struct PriceRow: View {
     VStack(alignment: .leading, spacing: 5) {
       HStack(alignment: .firstTextBaseline, spacing: 9) {
         Text(lastText)
-          .font(.system(size: 29, weight: .semibold, design: .monospaced))
+          .font(.system(size: 22, weight: .medium))
+          .monospacedDigit()
           .foregroundStyle(lastPrice == nil ? theme.ink : tint)
           .lineLimit(1)
           .minimumScaleFactor(0.6)
@@ -152,7 +153,7 @@ struct PriceRow: View {
           .font(.system(size: 7.5))
       }
       Text(pct.map { ($0 >= 0 ? "+" : "") + toFixed($0, 2) + "%" } ?? "—")
-        .font(.system(size: 12.5, weight: .semibold))
+        .font(.system(size: 11.5, weight: .semibold))
         .monospacedDigit()
     }
     .foregroundStyle(pct == nil ? theme.ink3 : theme.badgeInk)

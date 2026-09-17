@@ -247,13 +247,21 @@ final class SymbolPickerModel {
   func createGroup(_ name: String) -> String? {
     let id = prefs.createGroup(name); prefs.classifyUnassigned(); commit(); return id
   }
-  func selectGroup(_ id: String) { prefs.selectGroup(id); commit() }
+  func selectGroup(_ id: String) { pickedGroupThisRun = true; prefs.selectGroup(id); commit() }
+
+  /// 这一次使用里用户自己定过看哪一类没有。
+  ///
+  /// 新装机上「第一次添加品种」和「自选表第一次非空」是同一件事，宿主的冷启动预热
+  /// 正好挂在后者上——不挡一下的话，刚落进新分类的品种会被那次重置弹回第一个分类，
+  /// 用户点了添加却看见一张空列表。
+  private var pickedGroupThisRun = false
+
   /// 冷启动回到第一个分类。
   ///
   /// 分组的选中在同一次使用里要记住（来回切别跳回去），但下一次开 app 该从头看起，
   /// 这和 AICoin 一致。只改内存里这一份、不落盘也不同步——用户这一次自己切过才算数。
   func resetSelectedGroup() {
-    guard prefs.selectedGroupID != nil else { return }
+    guard !pickedGroupThisRun, prefs.selectedGroupID != nil else { return }
     prefs.selectedGroupID = nil
     rebuild()
   }

@@ -281,7 +281,12 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(query.waitForExistence(timeout: 5)); query.tap(); query.typeText("BTCUSDT")
     let result = app.descendants(matching: .any).matching(identifier: "symbols.row.BTCUSDT").firstMatch
     XCTAssertTrue(result.waitForExistence(timeout: 30)); result.tap()
-    XCTAssertTrue(app.buttons.containing(.staticText, identifier: "8点涨跌幅").firstMatch.waitForExistence(timeout: 5))
+    // 涨跌口径不再常驻排序行，它是排序弹层里的一项——先把弹层打开再看。
+    // 弹层里那一项是一颗整按钮，标题就是它的 label，没有单独的子 staticText。
+    app.buttons["favorites.sort"].tap()
+    let basis8 = app.buttons["8点涨跌幅"].firstMatch
+    XCTAssertTrue(basis8.waitForExistence(timeout: 5))
+    basis8.tap()
     let change = app.staticTexts["favorites.change.BTCUSDT"]
     XCTAssertTrue(wait(seconds: 40) { change.exists && change.label.contains("%") })
     shot("自选-上海8点统一涨跌幅")
