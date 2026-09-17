@@ -26,7 +26,7 @@ struct DisplaySettingsSection: View {
       }
     }.padding(.horizontal, 16).padding(.vertical, 8)
     // 这一排原来还挂着 `.accessibilityIdentifier("display.themes")`。加在 HStack 上的
-    // 标识符会往下盖住两张卡自己的 `display.theme.sage` / `display.theme.terra`，
+    // 标识符会往下盖住几张卡自己的 `display.theme.sage` / `display.theme.terra` / `display.theme.classic`，
     // 于是无障碍树里并排躺着两个都叫 `display.themes` 的按钮，UI 用例按名字一张也找不着。
     // 外面这层没人按名字找，删掉就是了。
 

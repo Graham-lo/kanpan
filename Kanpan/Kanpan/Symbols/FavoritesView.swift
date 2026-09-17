@@ -853,6 +853,8 @@ struct FavoritesView: View {
 ///
 /// 浅色的底与光斑是唯一的例外：用户定的「天青 · 薄荷」，不是皮肤原色——
 /// 皮肤原色在浅底上糊成一片，冷光才托得住玻璃。
+/// 经典（白）又是例外中的例外：它的底就是那张 AICoin 白，直接用种子的 `ground`，
+/// 光斑仍借青苔那三团。
 private struct LiuliSkin {
   let theme: PanelTheme
   var seed: PaletteSeed { theme.seed }
@@ -865,16 +867,15 @@ private struct LiuliSkin {
   private static let terraLobes: [Hex] = ["#B5D9F1", "#F5D8C3", "#D3EDE0"]
 
   var ground: Color {
-    dark ? Color(hex: seed.ground) : Color(hex: warm ? Self.terraGround : Self.sageGround)
+    if dark || Palette.isClassic(seed) { return Color(hex: seed.ground) }
+    return Color(hex: warm ? Self.terraGround : Self.sageGround)
   }
+  /// 光斑只在浅色下画（深色的三团已按用户要求去掉，见 `AuroraBackdrop`）。
   var lobes: [Color] {
     dark ? [accent, accentLift, Color(hex: seed.amber)]
          : (warm ? Self.terraLobes : Self.sageLobes).map { Color(hex: $0) }
   }
-  /// 第三团是 amber。深色下它和青苔的墨绿差着一个色系，按 55% 铺出来会在屏幕
-  /// 下半截烧出一块橘斑，收到 34% 才只剩「墙角一点暖」。
-  ///
-  /// 列表不再垫玻璃之后光斑直接穿过文字，整体再收 30%——最亮的那一团正好压在
+  /// 列表不再垫玻璃之后光斑直接穿过文字，整体收 30%——最亮的那一团正好压在
   /// 最上面两三行，那几行是最常看的。
   func lobeOpacity(_ index: Int) -> Double {
     guard dark else { return 0.9 * 0.7 }
@@ -938,14 +939,18 @@ private struct AuroraBackdrop: View {
       let width = geometry.size.width, height = geometry.size.height
       ZStack(alignment: .topLeading) {
         skin.ground
-        lobe(0, size: 300, x: -95, y: -80, seconds: 22)
-        lobe(1, size: 250, x: width - 170, y: 240, seconds: 27)
-        lobe(2, size: 280, x: -70, y: height - 230, seconds: 31)
-        LinearGradient(stops: [
-          .init(color: skin.ground.opacity(0), location: 0.22),
-          .init(color: skin.ground.opacity(skin.washStrength), location: 1)],
-          startPoint: .top, endPoint: .bottom)
-          .frame(width: width, height: height)
+        // 深色下不画光斑：用户看过真机说「深色模式下有两个光晕影响视觉，直接去掉」——
+        // 深底上那两团强调色的光压在最上面几行字上，像屏幕没擦干净。素底加颗粒就够。
+        if !skin.dark {
+          lobe(0, size: 300, x: -95, y: -80, seconds: 22)
+          lobe(1, size: 250, x: width - 170, y: 240, seconds: 27)
+          lobe(2, size: 280, x: -70, y: height - 230, seconds: 31)
+          LinearGradient(stops: [
+            .init(color: skin.ground.opacity(0), location: 0.22),
+            .init(color: skin.ground.opacity(skin.washStrength), location: 1)],
+            startPoint: .top, endPoint: .bottom)
+            .frame(width: width, height: height)
+        }
         if let grain = Grain.image {
           grain.resizable(resizingMode: .tile).opacity(skin.grainOpacity)
         }

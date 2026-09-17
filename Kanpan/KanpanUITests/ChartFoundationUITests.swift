@@ -494,7 +494,8 @@ final class ChartFoundationUITests: XCTestCase {
     // 换的只有颜色，K 线底座的 span / plotW / spacing / mainH / height 一个数都不许动。
     // 画布本身固定 AICoin 配色（浅 #FFFFFF / 深 #0D111C），皮肤只染图区以外，所以四组期望值只随深浅变。
     for (skin, mode, background) in [("sage", "浅色", "#FFFFFF"), ("sage", "深色", "#0D111C"),
-                                     ("terra", "浅色", "#FFFFFF"), ("terra", "深色", "#0D111C")] {
+                                     ("terra", "浅色", "#FFFFFF"), ("terra", "深色", "#0D111C"),
+                                     ("classic", "浅色", "#FFFFFF"), ("classic", "深色", "#0D111C")] {
       app.buttons["bottom.settings"].tap()
       let card = app.buttons["display.theme." + skin]
       XCTAssertTrue(card.waitForExistence(timeout: 5), "配色卡要在树里：\(skin)")

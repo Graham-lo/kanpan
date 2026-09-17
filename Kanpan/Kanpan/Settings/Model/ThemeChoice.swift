@@ -1,18 +1,23 @@
 import Foundation
 import KanpanCore
 
-/// 配色两套：青苔（冷）与陶土（暖）。出厂是青苔。
+/// 配色三套：青苔（冷）、陶土（暖）与经典（白）。出厂是青苔。
+///
+/// 经典是青苔换了一张 AICoin 的白底（深色是 AICoin 夜间的深蓝底），文字、涨跌、
+/// 强调色全和青苔一样——它存在的意义就是让图里图外同一张纸。
 ///
 /// 这一层只决定**颜色**。K 线底座的形状、尺寸，以及指标那几行读数的排布，
 /// 一个字都不经过这里——换配色换的只有 `PaletteSeed` 里那十几个色值。
 enum ThemeSkin: String, Sendable, Codable, CaseIterable, Hashable {
   case sage
   case terra
+  case classic
 
   var display: String {
     switch self {
     case .sage: "青苔"
     case .terra: "陶土"
+    case .classic: "经典"
     }
   }
 
@@ -21,6 +26,7 @@ enum ThemeSkin: String, Sendable, Codable, CaseIterable, Hashable {
     switch self {
     case .sage: "冷 · 墨绿"
     case .terra: "暖 · 赤陶"
+    case .classic: "白 · 墨绿"
     }
   }
 
@@ -28,6 +34,7 @@ enum ThemeSkin: String, Sendable, Codable, CaseIterable, Hashable {
     switch self {
     case .sage: dark ? Palette.sageNightSeed : Palette.sageSeed
     case .terra: dark ? Palette.terraNightSeed : Palette.terraSeed
+    case .classic: dark ? Palette.classicNightSeed : Palette.classicSeed
     }
   }
 

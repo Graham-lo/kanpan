@@ -80,7 +80,7 @@ public struct ChartColors: Sendable, Equatable {
   public var palette: [Hex]
 }
 
-/// 两套配色：青苔（冷，出厂）与陶土（暖），各有浅深两版。
+/// 三套配色：青苔（冷，出厂）、陶土（暖）与经典（白），各有浅深两版。
 ///
 /// K 线与指标的**画法**一个像素都不改——这里换的只有颜色。蜡烛的宽度、间距、
 /// 副图的分区、读数那一行的排布全在 `KanpanChart` 里，和这份表没有关系。
@@ -134,6 +134,30 @@ public enum Palette: Sendable {
     up: "#3FA783", down: "#E0584A", amber: "#E0A544", accent: "#E2874F",
     palette: ["#E0A544", "#9B8AE0", "#3FA783", "#E894B4", "#C0AEE0", "#85B8D6"])
 
+  // ---------------------------------------------------------------- 经典（白）
+
+  /// 经典 · 浅。青苔那套原样，只把底换成 AICoin 的白：页面底 `#F7F9FF`、面 `#FFFFFF`、
+  /// 徽章底 `#F3F5F7`、分割线 `#DEE1E5`（`docs/AICoin-安卓包-UI规格提取.md` §8）。
+  /// 文字、涨跌、强调色、MA 那组线色一个都不动——用户要的只是「背景换成 AICoin 那种白」，
+  /// 图里图外从此同一张白纸，接缝自然没了。
+  public static let classicSeed = PaletteSeed(
+    dark: false,
+    ground: "#F7F9FF", app: "#F7F9FF", chart: "#F7F9FF", raised: "#FFFFFF", raised2: "#F3F5F7",
+    line: "#DEE1E5", grid: "#EAEAEA", hair: "#14211B0F",
+    ink: "#14211B", ink2: "#4E6158", ink3: "#606F67",
+    up: "#2E7D6B", down: "#C34642", amber: "#B57C28", accent: "#2E7D6B",
+    palette: ["#BD8229", "#5A79C4", "#2E7D6B", "#B4617F", "#7A6BC0", "#3E86A8"])
+
+  /// 经典 · 深。底换成 AICoin 夜间那张深蓝：页面底 `#0D111C`（和夜画布同色）、
+  /// 弹窗面 `#202126`、徽章底 `#303442`、分割线 `#25282E`。其余仍是青苔 · 深的值。
+  public static let classicNightSeed = PaletteSeed(
+    dark: true,
+    ground: "#080B14", app: "#0D111C", chart: "#0D111C", raised: "#202126", raised2: "#303442",
+    line: "#25282E", grid: "#20232E", hair: "#FFFFFF0A",
+    ink: "#E9F2EC", ink2: "#A5B8AE", ink3: "#7B8D85",
+    up: "#4FB69C", down: "#E36159", amber: "#E0A544", accent: "#4FB69C",
+    palette: ["#E0A544", "#7D9AE8", "#4FB69C", "#E894B4", "#BDAEDC", "#7FD0FF"])
+
   /// 「浅 / 深」这两个词在代码里到处都是，指的就是出厂那一套的两版。
   public static let lightSeed = sageSeed
   public static let darkSeed = sageNightSeed
@@ -143,7 +167,12 @@ public enum Palette: Sendable {
     t.ground == terraSeed.ground || t.ground == terraNightSeed.ground
   }
 
-  /// 小字用的第三级墨色。四套种子都是手配的，直接用。
+  /// 白底那一套（经典）。自选页的浅色底不再借「天青」，直接用种子自己的白。
+  public static func isClassic(_ t: PaletteSeed) -> Bool {
+    t.ground == classicSeed.ground || t.ground == classicNightSeed.ground
+  }
+
+  /// 小字用的第三级墨色。六套种子都是手配的，直接用。
   public static func secondaryInk(_ t: PaletteSeed) -> Hex { t.ink3 }
 
   public static func contrast(_ foreground: Hex, _ background: Hex) -> Double {
@@ -173,7 +202,7 @@ public enum Palette: Sendable {
   /// 由原始令牌推出图表用色，逐行对应原型 `expand()`。
   ///
   /// `ChartState.colors` 是个计算属性，画一帧要读几十次；每读一次 `expanded` 就重拼
-  /// 一遍 `.alpha()` 的十六进制串、重建一次调色板数组。可全仓一共就四套种子，
+  /// 一遍 `.alpha()` 的十六进制串、重建一次调色板数组。可全仓一共就六套种子，
   /// 结果永远是同样几份。这里挂一张小表：种子数量有限，线性比 `==` 就够，
   /// 不用给 `PaletteSeed` 加 `Hashable`（那是公开 API，能不动就不动）。
   private nonisolated(unsafe) static var chartCache: [(seed: PaletteSeed, redUp: Bool, value: ChartColors)] = []

@@ -45,7 +45,8 @@ struct StyleTableTests {
   /// 固定用 AICoin 的日 / 夜两套，只认 `seed.dark`；跟着皮肤走的只剩涨跌色、`amber`
   /// 和 MA 那组 `palette`——它们在头部和自选列表里也出现，图里图外得是同一个红、同一个绿。
   @Test("令牌接线正确", arguments: [Palette.sageSeed, Palette.sageNightSeed,
-                                    Palette.terraSeed, Palette.terraNightSeed])
+                                    Palette.terraSeed, Palette.terraNightSeed,
+                                    Palette.classicSeed, Palette.classicNightSeed])
   func tokensWireThrough(_ seed: PaletteSeed) {
     let c = Palette.chart(seed)
     let canvas = seed.dark ? Palette.nightCanvas : Palette.dayCanvas
@@ -70,7 +71,8 @@ struct StyleTableTests {
 
   /// 红涨绿跌只换 up/down 两个，别的一个都不许动。
   @Test("redUp 只翻转涨跌两色", arguments: [Palette.sageSeed, Palette.sageNightSeed,
-                                           Palette.terraSeed, Palette.terraNightSeed])
+                                           Palette.terraSeed, Palette.terraNightSeed,
+                                    Palette.classicSeed, Palette.classicNightSeed])
   func redUpSwapsOnlyUpDown(_ seed: PaletteSeed) {
     let a = Palette.chart(seed)
     let b = Palette.chart(seed, redUp: true)
@@ -83,7 +85,8 @@ struct StyleTableTests {
 
   /// 颜色都得是能解析的十六进制。
   @Test("颜色格式合法", arguments: [Palette.sageSeed, Palette.sageNightSeed,
-                                           Palette.terraSeed, Palette.terraNightSeed])
+                                           Palette.terraSeed, Palette.terraNightSeed,
+                                    Palette.classicSeed, Palette.classicNightSeed])
   func hexParses(_ seed: PaletteSeed) {
     let c = Palette.chart(seed)
     for h in [c.bg, c.grid, c.axis, c.text, c.dim, c.ink, c.amber, c.cross, c.band, c.oi,

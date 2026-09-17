@@ -45,6 +45,8 @@ struct DisplayComfortTests {
       #expect(ThemeChoice.dark.seed(skin: .sage, systemDark: systemDark) == Palette.sageNightSeed)
       #expect(ThemeChoice.light.seed(skin: .terra, systemDark: systemDark) == Palette.terraSeed)
       #expect(ThemeChoice.dark.seed(skin: .terra, systemDark: systemDark) == Palette.terraNightSeed)
+      #expect(ThemeChoice.light.seed(skin: .classic, systemDark: systemDark) == Palette.classicSeed)
+      #expect(ThemeChoice.dark.seed(skin: .classic, systemDark: systemDark) == Palette.classicNightSeed)
       for skin in ThemeSkin.allCases {
         #expect(ThemeChoice.system.seed(skin: skin, systemDark: systemDark) == skin.seed(dark: systemDark))
       }

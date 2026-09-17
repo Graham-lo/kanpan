@@ -1,14 +1,15 @@
 import Testing
 @testable import KanpanCore
 
-/// 两套配色（青苔 / 陶土）四个版本在真实表面上的可读性。
+/// 三套配色（青苔 / 陶土 / 经典）六个版本在真实表面上的可读性。
 ///
 /// 两条不同的线：**文字**按 WCAG AA 的 4.5:1 收，**画在图上的线**（均线、BOLL 中轴、
 /// 那六支指标色）按图形元素的 3:1 收。均线要在同一张图上彼此分得开，一律压到 4.5
 /// 只会把六支颜色全挤成深色，反而分不清哪根是哪根。
 @Suite("配色在真实表面上的对比度")
 struct SkinPaletteTests {
-  static let seeds = [Palette.sageSeed, Palette.sageNightSeed, Palette.terraSeed, Palette.terraNightSeed]
+  static let seeds = [Palette.sageSeed, Palette.sageNightSeed, Palette.terraSeed, Palette.terraNightSeed,
+                      Palette.classicSeed, Palette.classicNightSeed]
 
   @Test func luminanceFormula() {
     #expect(abs(Palette.contrast("#FFFFFF", "#000000") - 21) < 0.00001)
@@ -66,13 +67,32 @@ struct SkinPaletteTests {
     #expect(reversed.bg == colors.bg && reversed.palette == colors.palette)
   }
 
-  @Test("两套配色确实不是同一套") 
+  @Test("三套配色确实不是同一套")
   func skinsDiffer() {
     #expect(Palette.isWarm(Palette.terraSeed) && Palette.isWarm(Palette.terraNightSeed))
     #expect(!Palette.isWarm(Palette.sageSeed) && !Palette.isWarm(Palette.sageNightSeed))
+    #expect(!Palette.isWarm(Palette.classicSeed) && !Palette.isWarm(Palette.classicNightSeed))
+    #expect(Palette.isClassic(Palette.classicSeed) && Palette.isClassic(Palette.classicNightSeed))
+    #expect(!Palette.isClassic(Palette.sageSeed) && !Palette.isClassic(Palette.terraSeed))
     #expect(Palette.lightSeed == Palette.sageSeed, "出厂是青苔")
     #expect(Palette.darkSeed == Palette.sageNightSeed)
     #expect(Palette.chart(Palette.sageSeed).hair == "#14211B0F")
     #expect(Palette.chart(Palette.sageNightSeed).hair == "#FFFFFF0A")
+  }
+
+  /// 经典只是青苔换了底：底、面、线是 AICoin 的白 / 深蓝，其余每一个令牌都和青苔相同。
+  @Test("经典只换底，不换字和涨跌")
+  func classicOnlySwapsBackgrounds() {
+    for (classic, sage) in [(Palette.classicSeed, Palette.sageSeed),
+                            (Palette.classicNightSeed, Palette.sageNightSeed)] {
+      #expect(classic.dark == sage.dark)
+      #expect(classic.ink == sage.ink && classic.ink2 == sage.ink2 && classic.ink3 == sage.ink3)
+      #expect(classic.up == sage.up && classic.down == sage.down)
+      #expect(classic.amber == sage.amber && classic.accent == sage.accent)
+      #expect(classic.palette == sage.palette && classic.hair == sage.hair)
+      #expect(classic.app != sage.app && classic.raised2 != sage.raised2)
+    }
+    #expect(Palette.classicSeed.app == "#F7F9FF" && Palette.classicSeed.raised == "#FFFFFF")
+    #expect(Palette.classicNightSeed.app == Palette.nightCanvas.bg, "夜里图里图外同一块深蓝")
   }
 }
