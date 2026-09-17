@@ -146,22 +146,31 @@ struct Prefs: Sendable, Equatable {
 
   /// 这个副图实际要多高（倍率，1.0 = 风格表原值）。
   ///
-  /// 三档和拖拽只在用户**真的调过**的时候才算数；没调过的走各自的出厂倍率：
-  /// 成交量维持满格，其余副图开出来只有 `otherSubScale` 那一档。为什么区别对待——
-  /// 成交量是靠柱子之间的**高度差**读的，压扁了就剩一排看不出长短的小墩子；
-  /// MACD / OI / KDJ 这类读的是线的方向和零轴上下，矮一截照样读得出来。
-  /// 省下来的高度全给主图：一屏里真正要看的是 K 线，副图是陪看的。
+  /// 三档和拖拽只在用户**真的调过**的时候才算数；没调过的一律走同一个出厂倍率
+  /// `defaultSubScale`，也就是三个副图**等高**。
+  ///
+  /// 以前这里给成交量满格、其余只给 0.62，理由是「成交量靠柱子的高度差读，压扁了
+  /// 就剩一排小墩子」。真机量下来这条理由撑不住：4h 一屏里成交量拿到 105.7pt，
+  /// OI 和 MACD 各只有 65.5pt——成交量比它们高出 61%，一排副图看着像没对齐的三段楼梯，
+  /// 而矮下去的那两格恰恰是 MACD 这种要看线离零轴多远的图。AICoin 同屏是 89 / 90pt
+  /// 的等高两格，读起来齐整得多。
+  ///
+  /// 等高不是把主图砍掉换来的：三格各 0.75 倍时主图仍是 316.6pt（原来 317.2pt），
+  /// 副图各 79.1pt，主图只让出半个点。省高度要省在别处，不是让成交量一家独大。
   func scale(for id: IndicatorID) -> Double {
     if let manual = subHeightOverrides[id] { return manual }
     if let picked = subHeights[id] { return picked.scale }
-    return id == .vol ? 1 : Prefs.otherSubScale
+    return Prefs.defaultSubScale
   }
 
-  /// 成交量以外的副图的出厂高度倍率。
-  static let otherSubScale: Double = 0.62
+  /// 副图的出厂高度倍率，三个副图共用一个数（等高）。
+  ///
+  /// 0.75 是照「主图不动」反推的：主图权重 3、三个副图各 w，
+  /// 想让每格 ≈79pt 而主图留在 ≈317pt，解出来正好 w = 0.75。
+  static let defaultSubScale: Double = 0.75
 
   /// 这个副图的高度档。用户没选过就是「中」——注意这只是档位的缺省，
-  /// 实际高度看 `scale(for:)`（那儿对成交量以外的副图另有出厂倍率）。
+  /// 实际高度看 `scale(for:)`（没选过的走 `defaultSubScale`，不是「中」的 1.0）。
   func height(for id: IndicatorID) -> SubPaneHeight { subHeights[id] ?? .medium }
 
   /// 某个指标是不是开着的。

@@ -132,7 +132,7 @@ struct IntervalBar: View {
     .frame(height: 28)
   }
 
-  /// 一档周期：没选中是一颗浅底药丸，选中了整颗填强调色。
+  /// 一档周期：没选中是一颗浅底药丸，选中了填 10% 的强调色淡底、字用强调色本身。
   /// 没被钉住的当前档画成虚线描边——它是临时的，切走就没了。
   private func chip(_ iv: Interval) -> some View {
     Button { onPick(iv) } label: { chipLabel(iv) }
@@ -149,7 +149,7 @@ struct IntervalBar: View {
     let temp = !quick.contains(iv)
     Text(iv.rawValue)
       .font(.system(size: 12.5, weight: on ? .semibold : .medium))
-      .foregroundStyle(temp ? theme.amber : (on ? theme.badgeInk : theme.ink2))
+      .foregroundStyle(on ? theme.amber : theme.ink2)
       // 字先 `fixedSize` 钉死自己的自然宽度，再谈铺满。铺满靠每颗 `maxWidth: .infinity`，
       // 横排是**均分**，「15m」「30m」这种四个字符的档分到的那一份比它自己还窄，
       // 当场被截成「1…」「3…」。钉死之后均分只分多出来的那部分，窄的宽的都写得全，
@@ -161,8 +161,15 @@ struct IntervalBar: View {
       .padding(.horizontal, 6)
       .frame(maxWidth: .infinity)
       .frame(height: 28)
-      .background(temp ? AnyShapeStyle(theme.amberSoft)
-                       : (on ? AnyShapeStyle(theme.amber) : AnyShapeStyle(theme.raised)),
+      // 选中态填 10% 的强调色，不是整颗实心。
+      //
+      // 这颗药丸离蜡烛只有 30pt，实心强调色是整屏饱和度最高的一块，比任何一根蜡烛都跳——
+      // 可它要说的只是「九档里选中了这一档」，跟八个兄弟分得开就够，不需要在全屏抢第一。
+      // 2026-09-17 逐像素比 AICoin：它的 chrome 一律 10% 淡底 + 彩色字
+      // （`sh_base_transparent_highlight_color` = `#1a1478fa`，落白底上就是 `#E8F1FF`），
+      // 高饱和块在周期行只占 0.58%，我们实心时是 4.77%。实心留给「这一屏要看的那个数」——
+      // 顶栏那颗涨跌胶囊——chrome 一概降到 10%。
+      .background(on ? AnyShapeStyle(theme.amberSoft) : AnyShapeStyle(theme.raised),
                   in: Capsule())
       .overlay {
         if temp {
@@ -190,10 +197,11 @@ struct IntervalBar: View {
           VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(flipped ? 180 : 0))
         }
       }
-      .foregroundStyle(on ? theme.badgeInk : theme.ink2)
+      .foregroundStyle(on ? theme.amber : theme.ink2)
       .padding(.horizontal, 9)
       .frame(height: 28)
-      .background(on ? AnyShapeStyle(theme.amber) : AnyShapeStyle(theme.raised2),
+      // 和周期药丸同一条规矩：选中 / 展开态是 10% 淡底 + 强调色字，不是实心。
+      .background(on ? AnyShapeStyle(theme.amberSoft) : AnyShapeStyle(theme.raised2),
                   in: Capsule())
       .contentShape(Capsule())
     }
@@ -239,10 +247,11 @@ struct IntervalBar: View {
       } label: {
         Text(iv.display)
           .font(.system(size: 12.5, weight: on ? .semibold : .medium))
-          .foregroundStyle(on ? theme.badgeInk : theme.ink2)
+          .foregroundStyle(on ? theme.amber : theme.ink2)
           .frame(maxWidth: .infinity)
           .frame(height: 42)
-          .background(on ? AnyShapeStyle(theme.amber) : AnyShapeStyle(theme.raised),
+          // 同上：网格里当前那一格也是 10% 淡底 + 强调色字。
+          .background(on ? AnyShapeStyle(theme.amberSoft) : AnyShapeStyle(theme.raised),
                       in: RoundedRectangle(cornerRadius: 10, style: .continuous))
           .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
       }
@@ -255,7 +264,7 @@ struct IntervalBar: View {
       Button { onPin(iv) } label: {
         Image(systemName: pinned ? "pin.fill" : "pin")
           .font(.system(size: 9.5, weight: .medium))
-          .foregroundStyle(pinned ? (on ? theme.badgeInk : theme.amber) : theme.ink3)
+          .foregroundStyle(pinned ? theme.amber : theme.ink3)
           .frame(width: 24, height: 22)
           .contentShape(Rectangle())
       }
