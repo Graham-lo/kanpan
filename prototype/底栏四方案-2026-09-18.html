@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>看盘 · 底栏四方案</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#15171a;color:#e8eaec;
+ font:14px/1.6 -apple-system,"PingFang SC",system-ui,sans-serif}
+header{padding:28px 24px 8px;max-width:1180px;margin:0 auto}
+h1{margin:0 0 6px;font-size:19px;font-weight:600;letter-spacing:.4px}
+header p{margin:0;color:#8d949b;font-size:13px}
+.wrap{max-width:1180px;margin:0 auto;padding:8px 24px 60px}
+.plan{margin-top:34px;border-top:1px solid #26292e;padding-top:22px}
+.plan h2{margin:0 0 3px;font-size:16px;font-weight:600}
+.plan h2 b{color:#e0a544;font-weight:600;margin-right:8px}
+.plan .desc{margin:0 0 18px;color:#8d949b;font-size:13px}
+.row{display:flex;gap:18px;flex-wrap:wrap}
+.cell{flex:0 0 250px}
+.cap{font-size:11.5px;color:#767c83;margin:0 0 7px;letter-spacing:.3px}
+.phone{border-radius:20px;overflow:hidden;background:var(--app);
+ box-shadow:0 8px 24px #0009;}
+.fake{padding:16px 14px 10px;display:flex;flex-direction:column;gap:11px}
+.fake .r{display:flex;align-items:center;gap:9px}
+.fake .dot{width:19px;height:19px;border-radius:7px;background:var(--r2)}
+.fake .l1{height:8px;border-radius:4px;background:var(--r2);flex:1}
+.fake .l2{height:8px;width:38px;border-radius:4px;background:var(--r2);opacity:.66}
+
+.bar{position:relative;display:flex;padding-bottom:14px}
+.it{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;
+ padding:9px 0 9px;background:none;border:0;cursor:pointer}
+.gl{position:relative;z-index:2;line-height:0}
+.chip{position:absolute;z-index:1;left:50%;top:50%;transform:translate(-50%,-50%)}
+
+/* ---------- A 暖玉胶囊 ---------- */
+.v-a{background:linear-gradient(to bottom,var(--app),var(--r2))}
+.v-a .on .chip{width:64px;height:48px;border-radius:24px;
+ background:linear-gradient(160deg,var(--acc),var(--accD));
+ box-shadow:0 5px 14px var(--accGlow),inset 0 1px 0 #ffffff40}
+
+/* ---------- B 柔光 ---------- */
+.v-b{background:linear-gradient(to bottom,var(--app) 0%,var(--app) 34%,var(--r2) 100%)}
+.v-b .on .chip{width:88px;height:88px;border-radius:50%;
+ background:radial-gradient(circle,var(--accGlow) 0%,transparent 68%)}
+.v-b .dotmark{position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);
+ width:5px;height:5px;border-radius:50%;background:var(--acc);
+ box-shadow:0 0 7px var(--acc)}
+
+/* ---------- C 釉面卡片 ---------- */
+.v-c{padding:0 10px 14px;background:linear-gradient(to bottom,var(--app),var(--r2))}
+.v-c .card{flex:1;display:flex;border-radius:22px;
+ background:linear-gradient(to bottom,var(--raised),var(--r2));
+ box-shadow:0 6px 18px var(--shadow),inset 0 1px 0 var(--sheen),
+  inset 0 0 0 .5px var(--line)}
+.v-c .on .chip{width:62px;height:48px;border-radius:24px;
+ background:linear-gradient(to bottom,var(--accTint),var(--accTintD));
+ box-shadow:inset 0 1px 0 #ffffff55,0 2px 8px var(--accGlow)}
+
+/* ---------- D 一格一色 ---------- */
+.v-d{background:linear-gradient(to bottom,var(--app),var(--r2))}
+.v-d .on .chip{width:56px;height:56px;border-radius:20px;
+ background:radial-gradient(circle at 50% 35%,var(--hue) 0%,transparent 72%);
+ opacity:.24}
+.v-d .on .gl{filter:drop-shadow(0 3px 7px var(--hue))}
+</style></head><body>
+<header>
+ <h1>看盘 · 底栏四方案</h1>
+ <p>纯图标、不带文字。同一套新图标（钢笔 / 胖蜡烛 / 圆角星 / 花瓣齿轮），四种底栏材质与配色，选中态一律是「图表」。</p>
+</header>
+<div class="wrap" id="wrap"></div>
+<script>
+const SK={
+ sage:{n:'青苔 · 浅',app:'#F3F7F4',raised:'#FFFFFF',r2:'#E7EFE9',line:'#D6E3DA',
+  ink:'#14211B',ink2:'#4E6158',ink3:'#7E958B',acc:'#2E7D6B',accD:'#256356',
+  amber:'#B57C28',up:'#36B257',down:'#E64552',dark:0},
+ terra:{n:'陶土 · 浅',app:'#FBF6F0',raised:'#FFFFFF',r2:'#F2E8DE',line:'#E7DACB',
+  ink:'#241A13',ink2:'#6E5C4D',ink3:'#9C8877',acc:'#B25735',accD:'#8F4227',
+  amber:'#B37B25',up:'#36B257',down:'#E64552',dark:0},
+ classic:{n:'经典 · 浅',app:'#FFFFFF',raised:'#FFFFFF',r2:'#F3F5F7',line:'#EAEAEA',
+  ink:'#14211B',ink2:'#4E6158',ink3:'#8E9A95',acc:'#2E7D6B',accD:'#256356',
+  amber:'#B57C28',up:'#36B257',down:'#E64552',dark:0},
+ sageN:{n:'青苔 · 深',app:'#0B120F',raised:'#131C18',r2:'#1A241F',line:'#25332C',
+  ink:'#E9F2EC',ink2:'#A5B8AE',ink3:'#688076',acc:'#4FB69C',accD:'#37907A',
+  amber:'#E0A544',up:'#4FB69C',down:'#E36159',dark:1}};
+
+let uid=0;
+function pen(a,b,hair){return `
+<g transform="rotate(45 14 14)">
+ <rect x="10.6" y="5" width="6.8" height="11" rx="2.4" fill="${a}"/>
+ <path d="M10.6 15.6h6.8L14 23z" fill="${b}"/>
+ <path d="M12.55 19.2h2.9L14 23z" fill="${hair}"/>
+ <rect x="10.6" y="10.9" width="6.8" height="1.7" fill="${hair}"/>
+</g>
+`}
+function candle(u,d){return `
+<rect x="4.2" y="8" width="8" height="12.6" rx="2" fill="${u}"/>
+<path d="M8.2 4.6v3.4M8.2 20.6v2.8" stroke="${u}" stroke-width="2" stroke-linecap="round"/>
+<rect x="15.8" y="5.4" width="8" height="9.8" rx="2" fill="${d}"/>
+<path d="M19.8 3v2.4M19.8 15.2v5.2" stroke="${d}" stroke-width="2" stroke-linecap="round"/>`}
+function star(c){const D="M14 5.2 16.59 10.64 22.56 11.42 18.19 15.56 19.29 21.48 14 18.6 8.71 21.48 9.81 15.56 5.44 11.42 11.41 10.64Z";
+ return `<path d="${D}" fill="${c}" stroke="${c}" stroke-width="2.5" stroke-linejoin="round"/>`}
+function rosette(c){const i='r'+(uid++);let p='';
+ for(let k=0;k<8;k++){const t=k*Math.PI/4;
+  p+=`<circle cx="${(14+6.5*Math.cos(t)).toFixed(2)}" cy="${(14+6.5*Math.sin(t)).toFixed(2)}" r="2.5"/>`}
+ return `<mask id="${i}"><rect width="28" height="28" fill="#fff"/>
+  <circle cx="14" cy="14" r="3.05" fill="#000"/></mask>
+ <g mask="url(#${i})" fill="${c}"><circle cx="14" cy="14" r="6.4"/>${p}</g>`}
+function glyph(tab,C){const s=`<svg width="34" height="34" viewBox="0 0 28 28" fill="none">`;
+ const e='</svg>';
+ if(tab=='draw')  return s+pen(C.a,C.b,C.hair)+e;
+ if(tab=='chart') return s+candle(C.up,C.down)+e;
+ if(tab=='fav')   return s+star(C.a)+e;
+ return s+rosette(C.a)+e}
+
+const TABS=[['draw','画线'],['chart','图表'],['fav','自选'],['settings','设置']];
+const HUE={draw:'acc',chart:'up',fav:'amber',settings:'ink2'};
+
+function bar(v,k){const t=SK[k],on='chart';
+ const off=t.ink3, offHair=t.dark?'#0B120F':'#FFFFFF';
+ let h='';
+ for(const [id,name] of TABS){
+  const sel=id==on;
+  let C;
+  if(v=='a')      C=sel?{a:'#fff',b:'#ffffffE6',hair:t.accD,up:'#fff',down:'#ffffffB8'}
+                       :{a:off,b:off,hair:offHair,up:off,down:off};
+  else if(v=='d'){const hue=sel?t[HUE[id]]:off;
+                  C=sel&&id=='chart'?{a:hue,b:hue,hair:offHair,up:t.up,down:t.down}
+                                    :{a:hue,b:hue,hair:offHair,up:hue,down:hue}}
+  else            C=sel?{a:t.acc,b:t.acc,hair:offHair,up:t.up,down:t.down}
+                       :{a:off,b:off,hair:offHair,up:off,down:off};
+  const hueVar=v=='d'?`--hue:${t[HUE[id]]}`:'';
+  h+=`<button class="it${sel?' on':''}" style="${hueVar}" aria-label="${name}">
+   <span class="chip"></span><span class="gl">${glyph(id,C)}
+   ${v=='b'&&sel?'<i class="dotmark"></i>':''}</span></button>`}
+ return v=='c'?`<div class="bar v-c"><div class="card">${h}</div></div>`
+              :`<div class="bar v-${v}">${h}</div>`}
+
+function phone(v,k){const t=SK[k];
+ const st=`--app:${t.app};--raised:${t.raised};--r2:${t.r2};--line:${t.line};
+  --ink:${t.ink};--ink2:${t.ink2};--acc:${t.acc};--accD:${t.accD};
+  --accGlow:${t.acc}${t.dark?'55':'40'};--accTint:${t.acc}${t.dark?'33':'22'};
+  --accTintD:${t.acc}${t.dark?'18':'10'};
+  --sheen:${t.dark?'#ffffff12':'#ffffffE0'};--shadow:${t.dark?'#00000066':'#14211B14'}`;
+ return `<div class="cell"><p class="cap">${t.n}</p>
+  <div class="phone" style="${st}">
+   <div class="fake">${'<div class="r"><div class="dot"></div><div class="l1"></div><div class="l2"></div></div>'.repeat(5)}</div>
+   ${bar(v,k)}</div></div>`}
+
+const PLANS=[['a','A','暖玉胶囊','选中格是一枚实心主色胶囊，图标反白。最有分量、最像成品 App。'],
+ ['b','B','柔光','不要胶囊。选中的图标本身上主色，背后透出一团柔光，下面一颗小圆点。最轻、最唯美。'],
+ ['c','C','釉面卡片','整条底栏收成一块悬浮的圆角釉面卡片，有高光边和投影；选中格是卡片里一枚半透明的主色玻璃。'],
+ ['d','D','一格一色','四格各有自己的颜色（画线=主色 / 图表=涨绿 / 自选=金 / 设置=墨），选中时那一格亮起并带同色柔晕。']];
+
+document.getElementById('wrap').innerHTML=PLANS.map(([v,L,n,d])=>
+ `<section class="plan"><h2><b>${L}</b>${n}</h2><p class="desc">${d}</p>
+  <div class="row">${Object.keys(SK).map(k=>phone(v,k)).join('')}</div></section>`).join('');
+</script></body></html>

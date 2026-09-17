@@ -58,7 +58,12 @@ enum IconItem: Equatable {
   case rect(x: Double, y: Double, w: Double, h: Double, r: Double)
 }
 
-private struct IconShape: Shape {
+/// 把一组 `IconItem` 摊成一条 `Path`，等比缩到给定的框里。
+///
+/// 它本来是 `VectorIcon` 的私有实现。底栏那四个记号要分层上色——蜡烛是实心的身子加
+/// 一根描边的影线，星和螺母选中时里头填实——而 `VectorIcon` 是「一套路径、一个描边色」，
+/// 表达不了。所以把这一层露出来，让 `TabGlyph` 直接拿它 `.fill` / `.stroke` 地叠。
+struct IconShape: Shape {
   var box: Double
   var items: [IconItem]
 

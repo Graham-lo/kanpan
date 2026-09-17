@@ -338,9 +338,9 @@ struct MainScreen: View {
       // 一套自己的操作（记下 / 收起、播放 / 退出），底下再摆一排分页，点哪个都像是
       // 要跑题。两种状态各自都有明确的回头路（卡片的「收起」、回放条的「退出」）。
       if !reviewChart.active {
-        hairline
+        // 底栏自己是一块悬浮的釉面卡片，身下那道渐变一直铺到 home 条，所以这儿既不补
+        // `hairline` 也不垫 `theme.app`——补了就是在一块连续的材料上画一条拼缝。
         TabBar(theme: theme, current: tab, drawing: draw.active, onPick: switchTo(tab:))
-          .background(theme.app)
       }
     }
   }
