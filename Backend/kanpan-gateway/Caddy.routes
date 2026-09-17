@@ -5,7 +5,15 @@ handle @market {
         header_up X-Kanpan-Client-IP {remote_host}
     }
 }
-@archive path /oi/v1/metrics/* /market/v1/* /chart-gateway/health
+# Open interest history moved to kanpan-api: the Python gateway backfilled the
+# archive four days at a time, so a one-year window took the better part of a
+# minute. Must stay ahead of @archive, which would otherwise swallow the path.
+@openinterest path /oi/v1/metrics/*
+handle @openinterest {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8794
+}
+@archive path /market/v1/* /chart-gateway/health
 handle @archive {
     # Kline pages and OI ranges are highly compressible JSON; the phone pays for
     # every byte over mobile data. Never applied to the 8793 WebSocket site.
@@ -14,7 +22,7 @@ handle @archive {
         header_up X-Kanpan-Client-IP {remote_host}
     }
 }
-@account path /v1/auth/* /v1/sync/* /v1/native-review/* /v1/capabilities
+@account path /v1/auth/* /v1/sync/* /v1/native-review/* /v1/market/* /v1/capabilities
 handle @account {
     encode zstd gzip
     reverse_proxy 127.0.0.1:8794
