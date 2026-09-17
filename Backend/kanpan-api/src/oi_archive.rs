@@ -49,6 +49,21 @@ const DEFAULT_LIMIT:u64=4*1024*1024*1024;
 /// A day that has just ended may not be published yet, so its absence is not
 /// yet evidence of anything and must not be remembered as a gap.
 const SETTLED:i64=2*DAY;
+/// How far back the boot warm-up fills every listed contract. A first look at a
+/// symbol nobody has opened on this host costs 4.6 s for a year, measured, and
+/// that cost lands on the one person unlucky enough to open it first.
+const WARM_DAYS:i64=180;
+/// The warm-up runs narrower than even a background backfill: it is speculative
+/// work for a user who has not arrived, and it must never be what someone waits
+/// behind. Three symbols at a time, a breath between days.
+const WARM_LANES:usize=3;
+const WARM_PAUSE:Duration=Duration::from_millis(60);
+/// The contract list, and the volume that decides what gets warmed first.
+/// `fapi.binance.com` answers 451 from this datacentre; `www.binance.com/fapi`
+/// answers 200 — same data, different edge, which is why the host here is not
+/// the documented one.
+const LISTING:&str="https://www.binance.com/fapi/v1/exchangeInfo";
+const TICKER:&str="https://www.binance.com/fapi/v1/ticker/24hr";
 
 /// Generic over the state because these routes never read it: the standby
 /// gateway serves open interest with no database behind it at all.
@@ -61,7 +76,63 @@ pub fn routes<S:Clone+Send+Sync+'static>()->Router<S> {
 
 /// Warm the disk index at startup so the first request does not pay for the
 /// directory scan.
-pub fn spawn_warm() {tokio::spawn(async {store().await;});}
+/// Open the store, then fill the recent window of every listed contract while
+/// nobody is waiting.
+///
+/// Without this the archive is only ever warmed by someone paying for it: the
+/// first person to open a symbol here waits the full cold path, and does so
+/// again for the next symbol. The work is bounded (180 days of 528 contracts is
+/// ~700 MB against a 4 GB ceiling), ordered by turnover so the symbols anyone
+/// is likely to open come first, and skipped entirely for days already on disk —
+/// so a restart resumes rather than repeats. `KANPAN_OI_WARM_DAYS=0` turns it off.
+pub fn spawn_warm() {
+ tokio::spawn(async {
+  let store=store().await;
+  let days=std::env::var("KANPAN_OI_WARM_DAYS").ok().and_then(|v|v.parse().ok()).unwrap_or(WARM_DAYS);
+  if days<=0 {return}
+  let Some(symbols)=perpetuals(&store.client).await else {
+   tracing::warn!("Open interest warm-up skipped: the contract list could not be read");
+   return;
+  };
+  tracing::info!("Open interest warm-up: {} contracts, {days} days",symbols.len());
+  store.warm(symbols,days).await;
+ });
+}
+
+/// The USDT perpetuals that are actually trading, busiest first.
+///
+/// The order is the whole point of the second request: warming alphabetically
+/// would spend the first hour on contracts nobody here has ever opened.
+async fn perpetuals(client:&reqwest::Client)->Option<Vec<Arc<str>>> {
+ let listing:serde_json::Value=client.get(LISTING).send().await.ok()?.json().await.ok()?;
+ let mut symbols:Vec<&str>=listing.get("symbols")?.as_array()?.iter()
+  .filter(|row|{
+   let field=|key|row.get(key).and_then(serde_json::Value::as_str);
+   field("status")==Some("TRADING")&&field("contractType")==Some("PERPETUAL")&&field("quoteAsset")==Some("USDT")
+  })
+  .filter_map(|row|row.get("symbol").and_then(serde_json::Value::as_str))
+  .collect();
+ symbols.sort_unstable();
+ symbols.dedup();
+ // Turnover is a nicety: without it the list is still correct, just ordered badly.
+ let mut turnover:HashMap<&str,f64>=HashMap::new();
+ let ticker:Option<serde_json::Value>=match client.get(TICKER).send().await {
+  Ok(reply)=>reply.json().await.ok(),
+  Err(_)=>None,
+ };
+ if let Some(rows)=ticker.as_ref().and_then(serde_json::Value::as_array) {
+  for row in rows {
+   let (Some(symbol),Some(volume))=(row.get("symbol").and_then(serde_json::Value::as_str),
+                                    row.get("quoteVolume").and_then(serde_json::Value::as_str))
+    else {continue};
+   if let Some(symbol)=symbols.iter().find(|s|**s==symbol) {
+    turnover.insert(symbol,volume.parse().unwrap_or(0.0));
+   }
+  }
+ }
+ symbols.sort_by(|a,b|turnover.get(b).unwrap_or(&0.0).total_cmp(turnover.get(a).unwrap_or(&0.0)));
+ Some(symbols.into_iter().map(Arc::from).collect())
+}
 
 // ---------------------------------------------------------------- the routes
 
@@ -445,6 +516,43 @@ impl Store {
  /// date announces itself, and it runs once per symbol per process: the days it
  /// would add on a second pass are the recent ones, which a chart request
  /// fetches anyway.
+ /// The boot warm-up: `WARM_LANES` symbols at a time, each walking its own days
+ /// backwards from yesterday. Per-symbol rather than per-day so the "thirty
+ /// absent days means this contract was not listed yet" test stays meaningful —
+ /// it only reads as a run when the days arrive in order.
+ async fn warm(self:&Arc<Self>,symbols:Vec<Arc<str>>,days:i64) {
+  let last=Utc::now().timestamp_millis().div_euclid(DAY)-1;
+  let first=(last-days+1).max(EPOCH.div_euclid(DAY));
+  let mut tasks=tokio::task::JoinSet::new();
+  let mut queue=symbols.into_iter();
+  loop {
+   while tasks.len()<WARM_LANES {
+    let Some(symbol)=queue.next() else {break};
+    let store=self.clone();
+    tasks.spawn(async move {
+     let mut absent=0;
+     for day in (first..=last).rev() {
+      if absent>=30 {break}                  // before this contract was listed
+      match store.known(&format!("{symbol}-{}",day_name(day))) {
+       Some(true)=>{absent=0;continue}
+       Some(false)=>{absent+=1;continue}
+       None=>{}
+      }
+      match store.day(&symbol,day).await.0 {
+       Ok(Day::Absent)=>absent+=1,
+       Ok(Day::Points(_))=>absent=0,
+       Err(())=>{}
+      }
+      tokio::time::sleep(WARM_PAUSE).await;
+     }
+    });
+   }
+   if tasks.is_empty() {break}
+   let _=tasks.join_next().await;
+  }
+  tracing::info!("Open interest warm-up finished");
+ }
+
  fn spawn_prefetch(self:&Arc<Self>,symbol:Arc<str>) {
   {
    let Ok(mut running)=self.prefetching.lock() else {return};

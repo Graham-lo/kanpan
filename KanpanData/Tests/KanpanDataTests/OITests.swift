@@ -461,3 +461,118 @@ struct OIIncrementalTests {
     #expect(await server.urls().count == 2)          // 断掉的那一页确实试过
   }
 }
+
+@Suite("OI 切块：细周期看长区间也要走网关那条快路")
+struct OIChunkTests {
+
+  /// 服务端的护栏：一次不超过十年，也不超过两万根自己周期的柱子。
+  private static func serverLimit(step: Int64) -> Int64 {
+    min(3_660 * 86_400_000, 20_000 * max(step, 300_000))
+  }
+
+  @Test("日线看一年：还是一个请求，不为切块而切块")
+  func dailyStaysWhole() {
+    let to = Aggregator.utcMs(year: 2026, month: 9, day: 1)
+    let from = to - 365 * 86_400_000
+    let chunks = OISource.historyChunks(from: from, to: to, step: 86_400_000)
+    #expect(chunks.count == 1)
+    #expect(chunks[0].from == from)
+    #expect(chunks[0].to == to)
+  }
+
+  @Test("5 分钟看一年：切成几块，每块都在服务端的上限之内", arguments: [
+    Interval.m1, .m3, .m5, .m15
+  ])
+  func fineIntervalsSplit(interval: Interval) throws {
+    let to = Aggregator.utcMs(year: 2026, month: 9, day: 1)
+    let from = to - 365 * 86_400_000
+    let step = interval.stepMs
+    let chunks = OISource.historyChunks(from: from, to: to, step: step)
+    try #require(chunks.count > 1)             // 不切就会被服务端 400 顶回来
+    let limit = Self.serverLimit(step: step)
+    for chunk in chunks { #expect(chunk.to - chunk.from <= limit) }
+    // 首尾对齐、块块相接：既不漏一段，也不留下需要再补的缝。
+    #expect(chunks.first?.from == from)
+    #expect(chunks.last?.to == to)
+    for i in 1..<chunks.count { #expect(chunks[i].from == chunks[i - 1].to) }
+  }
+
+  @Test("空窗口 / 倒着的窗口：不切出任何块")
+  func degenerate() {
+    let t = Aggregator.utcMs(year: 2026, month: 9, day: 1)
+    #expect(OISource.historyChunks(from: t, to: t - 1, step: 300_000).isEmpty)
+    let single = OISource.historyChunks(from: t, to: t, step: 300_000)
+    #expect(single.count == 1)
+    #expect(single[0].from == t)
+    #expect(single[0].to == t)
+  }
+}
+
+@Suite("OI 分段上屏：先到的那一段不必陪着慢的一起等")
+struct OIPartialTests {
+
+  private actor Batches {
+    private(set) var all: [[OIPoint]] = []
+    func add(_ points: [OIPoint]) { all.append(points) }
+  }
+
+  /// REST 和归档都在场时，两段各自落地就各回调一次。
+  @Test("两段都在：先到的先回调，不等另一段")
+  func bothHalvesReport() async throws {
+    let pacer = StepPacer()
+    let zip = Fixture.data("metrics-btcusdt-2025-01-15.zip")
+    let now = Aggregator.utcMs(year: 2025, month: 2, day: 20)
+    let server = FakeServer(pacer: pacer) { url in
+      if url.host == "data.binance.vision" { return HTTPReply(status: 200, body: zip) }
+      if url.path == "/futures/data/openInterestHist" {
+        let rows = (0..<3).map { i -> String in
+          let t = now - Int64(3 - i) * 3_600_000
+          return #"{"symbol":"BTCUSDT","sumOpenInterest":"50.0","sumOpenInterestValue":"1","timestamp":\#(t)}"#
+        }
+        return json("[" + rows.joined(separator: ",") + "]")
+      }
+      return json("[]")
+    }
+    let transport = FakeTransport(server)
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let src = OISource(rest: BinanceREST(transport: transport, pacer: pacer), transport: transport,
+                       store: OIStore(paths: Paths(root: dir)))
+    let batches = Batches()
+    let out = await src.rawPoints(symbol: "BTCUSDT", interval: .h1,
+                                  from: now - 40 * 86_400_000, to: now, now: now,
+                                  onPartial: { points in Task { await batches.add(points) } })
+    // 回调是从别的任务里发出来的，等它们收尾。
+    try await Task.sleep(for: .milliseconds(120))
+    let seen = await batches.all
+    #expect(seen.count == 2)                       // REST 一次、归档一次
+    #expect(seen.allSatisfy { !$0.isEmpty })
+    // 两段拼起来就是最终结果：回调给的不是抽样，是真的那一段。
+    // （测试里每天回的是同一个 zip，所以要按去重后的条数比。）
+    #expect(OISource.dedup(seen.flatMap { $0 }).count == out.count)
+  }
+
+  @Test("只有一段：不回调，免得同一批点被画两遍")
+  func singleHalfIsSilent() async throws {
+    let pacer = StepPacer()
+    let zip = Fixture.data("metrics-btcusdt-2025-01-15.zip")
+    let now = Aggregator.utcMs(year: 2025, month: 2, day: 20)
+    let server = FakeServer(pacer: pacer) { url in
+      if url.host == "data.binance.vision" { return HTTPReply(status: 200, body: zip) }
+      return json("[]")
+    }
+    let transport = FakeTransport(server)
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let src = OISource(rest: BinanceREST(transport: transport, pacer: pacer), transport: transport,
+                       store: OIStore(paths: Paths(root: dir)))
+    let batches = Batches()
+    // 整个窗口都在 30 天之外：只有归档那一段。
+    let out = await src.rawPoints(symbol: "BTCUSDT", interval: .h1,
+                                  from: now - 100 * 86_400_000, to: now - 40 * 86_400_000, now: now,
+                                  onPartial: { points in Task { await batches.add(points) } })
+    try await Task.sleep(for: .milliseconds(120))
+    #expect(await batches.all.isEmpty)
+    #expect(!out.isEmpty)
+  }
+}

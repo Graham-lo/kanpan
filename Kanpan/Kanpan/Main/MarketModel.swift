@@ -459,8 +459,19 @@ final class MarketModel {
     let margin = max(series.step * 20, (to - from) / 2)
     let want = (from: max(series.firstTime, from - margin), to: to + series.step)
     let step = series.step
+    // 防抖是给连续平移用的：手指还在滑，就不该为中间每一帧各发一轮请求。第一次
+    // 打开没有「连续」可言，那 250 ms 是白等的，所以只留够合并同一拍的那点时间。
+    let quiet = oiRegion == nil && !refresh ? 30 : 250
+    // 两段里先到的那段直接上屏。画而不动 `oiRegion`——区间由最后那次 mergeOI 定，
+    // 否则半段到手就敢声称整段已有，平移时那块缺口再也不会被补。
+    let paint: @Sendable ([OIPoint]) -> Void = { part in
+      Task { @MainActor [weak self] in
+        guard let self, request == self.selection, self.symbol == sym, self.interval == iv else { return }
+        self.paintOI(part, interval: iv)
+      }
+    }
     oiTask = Task {
-      do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+      do { try await Task.sleep(for: .milliseconds(quiet)) } catch { return }
       guard request == self.selection, self.symbol == sym, self.interval == iv else { return }
       // 上次留在磁盘上的那一段先上屏，用户不用对着「持仓量加载中」等一个往返。
       await self.seedOI(symbol: sym, interval: iv)
@@ -469,10 +480,17 @@ final class MarketModel {
       guard !segments.isEmpty else { return }
       let points = await withTaskGroup(of: [OIPoint].self) { group in
         for segment in segments {
-          group.addTask { await source.rawPoints(symbol: sym, interval: iv, from: segment.from, to: segment.to) }
+          group.addTask {
+            await source.rawPoints(symbol: sym, interval: iv, from: segment.from, to: segment.to,
+                                   onPartial: paint)
+          }
         }
         var all: [OIPoint] = []
-        for await part in group { all += part }
+        for await part in group {
+          all += part
+          // 缺口不止一个时，先回来的那个缺口也立刻上屏。
+          if segments.count > 1 { paint(part) }
+        }
         return all
       }
       guard !Task.isCancelled, request == self.selection, self.symbol == sym, self.interval == iv else { return }
@@ -490,6 +508,16 @@ final class MarketModel {
     oiPoints = cached.points
     oiRegion = (cached.from, cached.to)
     oi = OISource.chartSeries(cached.points, interval: iv)
+  }
+
+  /// 半路到手的点：只管画，不碰 `oiRegion`，也不落盘。落盘和记账是 `mergeOI`
+  /// 的事——它拿到的才是这一轮的完整结果。
+  private func paintOI(_ points: [OIPoint], interval iv: Interval) {
+    guard !points.isEmpty, iv == interval else { return }
+    let merged = OISource.dedup(oiPoints + points)
+    guard !merged.isEmpty else { return }
+    oiPoints = merged
+    oi = OISource.chartSeries(merged, interval: iv)
   }
 
   private func mergeOI(_ points: [OIPoint], want: (from: Int64, to: Int64),

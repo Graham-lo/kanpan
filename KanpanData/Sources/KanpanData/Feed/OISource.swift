@@ -10,6 +10,8 @@ public actor OISource {
   public static let restWindowMs: Int64 = 30 * 86_400_000
   /// 归档站的并发上限。
   public static let maxParallelDays = 8
+  /// 历史切块后同时在飞的块数。块本身已经是并发下载，再多只是抢同一条链路。
+  public static let maxParallelChunks = 4
   /// BTCUSDT 的归档从这天起；更早是 404。别的品种从各自上市日起。
   public static let archiveEpoch: Int64 = 1_598_918_400_000   // 2020-09-01 UTC
 
@@ -34,19 +36,32 @@ public actor OISource {
   /// `[from, to]` 的 OI 点。REST用原生period，网关历史已经按图表周期聚合。
   /// 网关不可用时才下载5m归档供本地回退，最终统一走chartSeries对齐。
   /// `onDay` 每下完一天调一次，面板用它走进度条、画已到的部分。
+  /// `onPartial` 在两段中先到的那一段落地时调一次：并发不等于同时到，REST 那半秒
+  /// 就回来的东西没有理由陪着归档一起等。只有真的分了两段才会调。
   public func rawPoints(symbol: String, interval: Interval, from: Int64, to: Int64,
                         now: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
-                        onDay: (@Sendable (Int64, [OIPoint]) -> Void)? = nil) async -> [OIPoint] {
+                        onDay: (@Sendable (Int64, [OIPoint]) -> Void)? = nil,
+                        onPartial: (@Sendable ([OIPoint]) -> Void)? = nil) async -> [OIPoint] {
     let cutoff = now - Self.restWindowMs
     // 两段谁也不等谁：① 近 30 天问币安 REST，② 更早的问网关归档。串着做等于把两次
     // 往返加起来，而它们各查各的、互不依赖——历史那段本来就是慢的那一段。
-    async let recent: [OIPoint] = to > cutoff
-      ? restSegment(symbol: symbol, interval: interval, from: max(from, cutoff), to: to)
-      : []
-    async let history: [OIPoint] = from < cutoff
-      ? historySegment(symbol: symbol, interval: interval, from: max(from, Self.archiveEpoch),
-                       to: min(to, cutoff), onDay: onDay)
-      : []
+    let wantsRecent = to > cutoff, wantsHistory = from < cutoff
+    // 只有一段时不必回调：那一段就是全部，调了等于让调用方把同一批点画两遍。
+    let partial = wantsRecent && wantsHistory ? onPartial : nil
+    async let recent: [OIPoint] = {
+      guard wantsRecent else { return [] }
+      let points = await restSegment(symbol: symbol, interval: interval, from: max(from, cutoff), to: to)
+      if !points.isEmpty, !Task.isCancelled { partial?(points) }
+      return points
+    }()
+    async let history: [OIPoint] = {
+      guard wantsHistory else { return [] }
+      let points = await historySegment(symbol: symbol, interval: interval,
+                                        from: max(from, Self.archiveEpoch),
+                                        to: min(to, cutoff), onDay: onDay)
+      if !points.isEmpty, !Task.isCancelled { partial?(points) }
+      return points
+    }()
     let (early, late) = await (history, recent)
     guard !Task.isCancelled else { return [] }
     return Self.dedup(early + late)  // 接缝重叠时近期统计优先。
@@ -64,8 +79,63 @@ public actor OISource {
   }
 
   /// ② 更早：先问网关（它自己存盘、自己聚合），网关不在才退回逐日归档。
+  /// 网关一次只答这么长：不超过十年，且不超过两万根自己周期的柱子（5 分钟以下的
+  /// 周期按 5 分钟算，归档本身就是五分钟一行）。和服务端同一个公式。
+  ///
+  /// 从前不切块：细周期看长区间会被网关以 400 顶回来，客户端把两个代理各试一遍
+  /// 之后退回逐天下载几百个归档 zip。既慢，又慢得无声无息——所以宁可自己先切。
+  static func historySpan(step: Int64) -> Int64 {
+    min(3_660 * 86_400_000, 20_000 * max(step, 300_000))
+  }
+
+  /// 把 `[from, to]` 按上面的上限切成若干块。块与块在端点上重叠一瞬，交给 dedup。
+  static func historyChunks(from: Int64, to: Int64, step: Int64) -> [(from: Int64, to: Int64)] {
+    guard from <= to else { return [] }
+    let span = historySpan(step: step)
+    var out: [(from: Int64, to: Int64)] = []
+    var start = from
+    while true {
+      let end = min(to, start + span)
+      out.append((start, end))
+      if end >= to { break }
+      start = end
+    }
+    return out
+  }
+
   private func historySegment(symbol: String, interval: Interval, from: Int64, to: Int64,
                               onDay: (@Sendable (Int64, [OIPoint]) -> Void)?) async -> [OIPoint] {
+    guard from <= to else { return [] }
+    let chunks = Self.historyChunks(from: from, to: to, step: interval.stepMs)
+    guard chunks.count > 1 else {
+      return await historyChunk(symbol: symbol, interval: interval, from: from, to: to, onDay: onDay)
+    }
+    log("OI 历史切成 \(chunks.count) 块（网关一次最多 \(Self.historySpan(step: interval.stepMs) / 86_400_000) 天）")
+    var out: [OIPoint] = []
+    await withTaskGroup(of: [OIPoint].self) { group in
+      var next = 0
+      func spawn() {
+        guard next < chunks.count else { return }
+        let chunk = chunks[next]
+        next += 1
+        group.addTask {
+          await self.historyChunk(symbol: symbol, interval: interval,
+                                  from: chunk.from, to: chunk.to, onDay: onDay)
+        }
+      }
+      for _ in 0..<min(Self.maxParallelChunks, chunks.count) { spawn() }
+      while let part = await group.next() {
+        out += part
+        spawn()
+      }
+    }
+    return Self.dedup(out)
+  }
+
+  /// 一块历史：先问网关，网关不行才逐天下归档。回退是按块来的，一块失手不会把
+  /// 已经从网关拿到的其它块也拖进逐天下载。
+  private func historyChunk(symbol: String, interval: Interval, from: Int64, to: Int64,
+                            onDay: (@Sendable (Int64, [OIPoint]) -> Void)?) async -> [OIPoint] {
     guard from <= to else { return [] }
     if let history = await gatewayHistory(symbol: symbol, interval: interval, from: from, to: to) {
       return history
