@@ -2,16 +2,19 @@ import KanpanCore
 import KanpanData
 import SwiftUI
 
-/// 顶栏：品种按钮 · 自选星（§9.1）。
+/// 顶栏：品种名 · 放大镜（§9.1）。
 ///
 /// 品种名右边原来还有一颗连接状态圆点。用户的话是界面上不要出现「行情源 / 线路 /
 /// 已同步」这类后台字段——连没连上、走的哪条线，是我们该自己搞定的事，
 /// 摆出来只会让人盯着一颗点猜。断了就重连，重连不上会在拉不到历史时明说。
 ///
-/// 右上角两颗圆按钮：放大镜进搜索页（`SymbolSearchView`），星是自选。品种名
-/// 本身**不再可点**——它以前开一个「最近看过的几个」的半屏弹层，搜索页做出来
-/// 之后那一层就是重复入口了（用户 2026-09-18 定的）。左上角现在只负责回答
+/// 右上角只剩一颗圆按钮：放大镜，进搜索页（`SymbolSearchView`）。品种名本身
+/// **不再可点**——它以前开一个「最近看过的几个」的半屏弹层，搜索页做出来之后
+/// 那一层就是重复入口了（用户 2026-09-18 定的）。左上角现在只负责回答
 /// 「我正在看哪个」，换品种走放大镜，浏览走底栏的自选。
+///
+/// 自选星也在同一天撤了：加自选统一在搜索页和自选页的行上做（那儿一行一颗星，
+/// 看着列表挑着加），顶栏这一颗既和它们重复，又贴着品种名最容易误触。
 ///
 /// 字号、间距、图标都按原型 `style.css` 的 `.top` 那一段抄，别自己发挥——
 /// 这一条和价格行是整个 app 里唯一常驻的文字，差一点点立刻显得不像同一个应用。
@@ -19,9 +22,7 @@ struct TopBar: View {
   @State private var iconTapCount = 0
   var theme: PanelTheme
   var symbol: String
-  var starred: Bool
   var onSearch: () -> Void
-  var onStar: () -> Void
 
   /// 「BTCUSDT」拆成「BTC」+「/USDT」：基础币用正文色、计价币降一级，
   /// 一眼扫过去认的是前半截。
@@ -64,28 +65,25 @@ struct TopBar: View {
 
       Spacer(minLength: 0)
 
-      iconButton(VectorIcon.search(15), label: "搜索品种", on: false, action: onSearch)
+      iconButton(VectorIcon.search(15), label: "搜索品种", action: onSearch)
         .accessibilityIdentifier("top.search")
-
-      iconButton(VectorIcon.star(15), label: starred ? "移出自选" : "加入自选", on: starred, action: onStar)
-        .accessibilityIdentifier("top.star")
     }
   }
 
   /// 右上角的圆按钮：30pt 的托底 + 15pt 的线性图标（用户定过的尺度）。
-  /// 选中的那颗用强调色的字配一层 15% 的强调底，不要整颗填满——它旁边就是价格，
+  /// 图标用二级墨色配一层中性托底，不要用强调色填满——它旁边就是价格，
   /// 填满会把视线从价格上抢走。
   private func iconButton(
-    _ icon: VectorIcon, label: String, on: Bool, action: @escaping () -> Void
+    _ icon: VectorIcon, label: String, action: @escaping () -> Void
   ) -> some View {
     Button {
       iconTapCount += 1
       action()
     } label: {
       icon
-        .foregroundStyle(on ? theme.amber : theme.ink2)
+        .foregroundStyle(theme.ink2)
         .frame(width: 30, height: 30)
-        .background(on ? theme.amberSoft : theme.raised, in: Circle())
+        .background(theme.raised, in: Circle())
         .contentShape(Circle())
     }
     .buttonStyle(.plain)

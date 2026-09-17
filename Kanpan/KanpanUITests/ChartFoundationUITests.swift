@@ -198,7 +198,7 @@ final class ChartFoundationUITests: XCTestCase {
   func testTradFiSearchAndMarketData() throws {
     for symbol in ["SNDKUSDT", "SKHYUSDT", "MUUSDT"] {
       XCTAssertTrue(app.openSymbolSearch())
-      let query = app.textFields["symbols.query"]
+      let query = app.textFields["search.query"]
       XCTAssertTrue(query.waitForExistence(timeout: 5))
       query.tap()
       if let text = query.value as? String, !text.isEmpty, text != query.placeholderValue {
@@ -223,16 +223,10 @@ final class ChartFoundationUITests: XCTestCase {
     let name = app.alerts.textFields["分类名称"]
     XCTAssertTrue(name.waitForExistence(timeout: 5)); name.typeText("半导体")
     app.alerts.buttons["保存"].tap()
-    app.buttons["favorites.add"].tap()
-    let query = app.textFields["symbols.query"]
-    XCTAssertTrue(query.waitForExistence(timeout: 5)); query.tap(); query.typeText("SNDKUSDT")
-    let result = app.descendants(matching: .any).matching(identifier: "symbols.row.SNDKUSDT").firstMatch
-    XCTAssertTrue(result.waitForExistence(timeout: 30)); result.tap()
+    addFavoriteFromSearch("SNDKUSDT")
     let row = app.buttons["favorites.open.SNDKUSDT"]
-    XCTAssertTrue(row.waitForExistence(timeout: 5))
-    app.buttons["favorites.expand.SNDKUSDT"].tap()
     let move = app.buttons["favorites.move.SNDKUSDT"]
-    XCTAssertTrue(move.waitForExistence(timeout: 5))
+    XCTAssertTrue(expandRow("SNDKUSDT"), "展开箭头点不开详情")
     move.tap()
     let destination = app.buttons["半导体"]
     XCTAssertTrue(wait { destination.exists && destination.isHittable })
@@ -276,11 +270,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(wait { option.exists && option.isHittable }); option.tap()
     closePanel()
     XCTAssertTrue(app.openFavorites())
-    app.buttons["favorites.add"].tap()
-    let query = app.textFields["symbols.query"]
-    XCTAssertTrue(query.waitForExistence(timeout: 5)); query.tap(); query.typeText("BTCUSDT")
-    let result = app.descendants(matching: .any).matching(identifier: "symbols.row.BTCUSDT").firstMatch
-    XCTAssertTrue(result.waitForExistence(timeout: 30)); result.tap()
+    addFavoriteFromSearch("BTCUSDT")
     // 涨跌口径不再常驻排序行，它是排序弹层里的一项——先把弹层打开再看。
     // 弹层里那一项是一颗整按钮，标题就是它的 label，没有单独的子 staticText。
     app.buttons["favorites.sort"].tap()
@@ -390,17 +380,7 @@ final class ChartFoundationUITests: XCTestCase {
       app.alerts.buttons["保存"].tap()
       for symbol in symbols {
         if app.buttons["favorites.open." + symbol].exists { continue }
-        app.buttons["favorites.add"].tap()
-        let query = app.textFields["symbols.query"]
-        XCTAssertTrue(query.waitForExistence(timeout: 5)); query.tap()
-        if let text = query.value as? String, !text.isEmpty, text != query.placeholderValue {
-          query.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
-        }
-        query.typeText(symbol)
-        let result = app.descendants(matching: .any).matching(identifier: "symbols.row." + symbol).firstMatch
-        XCTAssertTrue(result.waitForExistence(timeout: 30)); result.tap()
-        XCTAssertTrue(wait(seconds: 5) { !query.exists }, "添加后应关闭选品页")
-        XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 5))
+        addFavoriteFromSearch(symbol)
       }
     }
     func group(_ name: String) {
@@ -527,7 +507,7 @@ final class ChartFoundationUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(tab.frame.height, 44)
         XCTAssertLessThanOrEqual(tab.frame.maxX, app.buttons["favorites.add"].frame.minX)
       }
-      XCTAssertFalse(app.buttons["favorites.search"].exists)
+      XCTAssertTrue(app.buttons["favorites.search"].exists, "自选页右上角要有放大镜")
       shot("配色-" + skin + mode + "-自选")
       favoritesAction("favorites.close")
     }
@@ -545,15 +525,14 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(top.waitForExistence(timeout: 20))
     app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
       .withOffset(CGVector(dx: top.frame.midX, dy: top.frame.midY)).tap()
-    XCTAssertFalse(app.textFields["symbols.query"].waitForExistence(timeout: 2),
+    XCTAssertFalse(app.textFields["search.query"].waitForExistence(timeout: 2),
                    "左上角品种名不该再弹换品种的层")
     shot("行情页-左上角品种名不可点")
-    XCTAssertTrue(app.openSymbolSearch())
+    // 板块筛选归品种整页，搜索页不做：打个字把「查看全部」逼出来，从那儿进整页。
+    XCTAssertTrue(app.openSymbolPicker(matching: "SNDK"))
     app.buttons["symbols.market"].tap()
     let equities = app.buttons["美股"]
     XCTAssertTrue(equities.waitForExistence(timeout: 5)); equities.tap()
-    let query = app.textFields["symbols.query"]
-    query.tap(); query.typeText("SNDK")
     XCTAssertTrue(app.buttons["symbols.row.SNDKUSDT"].waitForExistence(timeout: 10))
     shot("交易所-美股板块筛选")
     app.buttons["symbols.row.SNDKUSDT"].tap()
@@ -572,7 +551,7 @@ final class ChartFoundationUITests: XCTestCase {
     for symbol in ["BTCUSDT", "SNDKUSDT", "ETHUSDT", "BTCUSDT"] {
       if symbol != "BTCUSDT" || info()["symbol"] as? String != "BTCUSDT" {
         XCTAssertTrue(app.openSymbolSearch())
-        let query = app.textFields["symbols.query"]
+        let query = app.textFields["search.query"]
         XCTAssertTrue(query.waitForExistence(timeout: 5)); query.tap()
         if let old = query.value as? String, !old.isEmpty { query.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count)) }
         query.typeText(symbol)
@@ -602,6 +581,41 @@ final class ChartFoundationUITests: XCTestCase {
       }
     }
     shot("多品种多周期-报价时序")
+  }
+
+  /// 点开一行右边那颗箭头，等它下面的详情出来。
+  ///
+  /// 箭头只有 14pt 宽，贴在屏幕最右边；合成点击偶尔会落空（手指点是好的，模拟器和
+  /// 真机上都逐步走过）。落空了就再点一次，别让一次抖动把整条用例判死。
+  @discardableResult func expandRow(_ symbol: String) -> Bool {
+    let chevron = app.buttons["favorites.expand." + symbol]
+    XCTAssertTrue(chevron.waitForExistence(timeout: 5), "没找到 " + symbol + " 那行的展开箭头")
+    chevron.tap()
+    return app.otherElements["favorites.details." + symbol].waitForExistence(timeout: 5)
+  }
+
+  /// 从自选页加一个品种。
+  ///
+  /// 分类栏右端那颗 `+` 和右上角的放大镜现在开的是同一页——搜索页（用户
+  /// 2026-09-18 定的：加自选统一在搜索页的行上点星）。所以流程不再是以前选品页
+  /// 那样「点中一行就算加上了」，而是「打字 → 点那一行的星 → 取消退回自选」。
+  /// 星是个开关，已经在自选里的品种再点一下反而会被移除，所以先看 label 再决定点不点。
+  func addFavoriteFromSearch(_ symbol: String) {
+    app.buttons["favorites.add"].tap()
+    let query = app.textFields["search.query"]
+    XCTAssertTrue(query.waitForExistence(timeout: 5)); query.tap()
+    if let text = query.value as? String, !text.isEmpty, text != query.placeholderValue {
+      query.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
+    }
+    query.typeText(symbol)
+    let star = app.buttons["symbols.star." + symbol]
+    XCTAssertTrue(star.waitForExistence(timeout: 30), "搜索页没搜到 " + symbol)
+    if star.label == "加入自选" { star.tap() }
+    app.buttons["search.cancel"].tap()
+    XCTAssertTrue(wait(seconds: 5) { !query.exists }, "取消后应收起搜索页")
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["favorites.open." + symbol].waitForExistence(timeout: 5),
+                  "加完应停在品种落进去的那一组，看得见刚加的那一行")
   }
 
   func favoritesAction(_ identifier: String) {
@@ -636,7 +650,7 @@ final class ChartFoundationUITests: XCTestCase {
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SNDKUSDT,XAUUSDT"
     app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
-    XCTAssertFalse(app.buttons["favorites.search"].exists)
+    XCTAssertTrue(app.buttons["favorites.search"].exists, "自选页右上角要有放大镜")
     XCTAssertFalse(app.textFields["favorites.query"].exists)
     XCTAssertGreaterThanOrEqual(app.buttons["favorites.group.加密"].frame.height, 44)
     for name in ["观察中的品种", "长期关注", "短线"] {
@@ -660,7 +674,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["全选"].waitForExistence(timeout: 4))
     favoritesAction("favorites.edit")
     app.buttons["favorites.add"].tap()
-    XCTAssertTrue(app.textFields["symbols.query"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.textFields["search.query"].waitForExistence(timeout: 5))
   }
 
   func testUserSessionFreshQuotesAndReorder() throws {
@@ -671,7 +685,7 @@ final class ChartFoundationUITests: XCTestCase {
     app.buttons["favorites.group.加密"].tap()
     XCTAssertFalse(app.buttons["favorites.group.全部"].exists)
     XCTAssertFalse(app.buttons["favorites.group.默认"].exists)
-    XCTAssertFalse(app.buttons["favorites.search"].exists)
+    XCTAssertTrue(app.buttons["favorites.search"].exists, "自选页右上角要有放大镜")
     let feed = app.descendants(matching: .any).matching(identifier: "favorites.feed").firstMatch
     let price = app.staticTexts["favorites.price.BTCUSDT"]
     XCTAssertTrue(wait(seconds: 20) { price.exists && price.label != "—" })
@@ -760,6 +774,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["panel.header"].waitForExistence(timeout: 5))
     app.windows.firstMatch.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: top.midX, dy: top.midY)).tap()
     XCTAssertTrue(wait(seconds: 5) { !self.app.staticTexts["panel.header"].exists })
+    XCTAssertFalse(app.textFields["search.query"].exists)
     XCTAssertFalse(app.textFields["symbols.query"].exists)
     try testOutsideTapOnlyDismissesPanel()
     let original = try XCTUnwrap(info()["subs"] as? [String])

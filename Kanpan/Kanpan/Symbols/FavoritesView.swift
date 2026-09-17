@@ -14,6 +14,8 @@ import KanpanData
 /// 排序、展开详情、右滑删除、长按拖动、进图表，`accessibilityIdentifier` 一个没换。
 struct FavoritesView: View {
   @Bindable var model: SymbolPickerModel
+  /// 搜索页的历史词仓。自选页自己开搜索页（见 `searching`），所以得跟着传进来。
+  var history: SearchHistory
   var redUp: Bool
   var basisTitle: String
   var updatedAt: Date?
@@ -25,7 +27,10 @@ struct FavoritesView: View {
   var onHistoryVisibility: (String, Bool) -> Void
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.panelTheme) private var theme
+  /// 「查看全部 N 个品种」落到品种整页时才用得上；平时加品种一律走搜索页。
   @State private var adding = false
+  /// 搜索页盖层。加自选统一在这儿做（用户 2026-09-18 定的），不用先跳回行情页。
+  @State private var searching = false
   @State private var more = false
   @State private var sorting = false
   @State private var afterMore: (() -> Void)?
@@ -82,6 +87,11 @@ struct FavoritesView: View {
           if symbols.isEmpty { emptyState } else { listSheet }
         }
         .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+        .overlayPreferenceValue(MenuAnchors.self) { anchors in
+          GeometryReader { proxy in floatingMenu(proxy: proxy, anchors: anchors) }
+        }
+        .animation(.easeOut(duration: 0.16), value: more)
+        .animation(.easeOut(duration: 0.16), value: sorting)
       }
       .background { AuroraBackdrop(skin: skin, reduceMotion: reduceMotion).ignoresSafeArea() }
       .toolbar(.hidden, for: .navigationBar)
@@ -115,6 +125,18 @@ struct FavoritesView: View {
         else if let id = model.createGroup(name) { model.selectGroup(id) }
       }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
+    .fullScreenCover(isPresented: $searching) {
+      SymbolSearchView(model: model, history: history, redUp: redUp,
+                       onClose: { searching = false },
+                       // 搜到的比一屏多时那行「查看全部」：交给品种整页，查询词跟着过去。
+                       onAll: { searching = false; adding = true },
+                       onPicked: { searching = false },
+                       // 星点亮之后跟着品种走：它落进哪一组就切到哪一组，
+                       // 收起搜索页第一眼就能看见刚加的那一行。
+                       onStarred: { if let group = model.prefs.groupForSymbol[$0] { model.selectGroup(group) } },
+                       onVisible: onVisible,
+                       onRowVisibility: onRowVisibility)
+    }
     .sheet(isPresented: $adding) {
       SymbolPickerView(model: model, redUp: redUp, onClose: { adding = false }, onSelect: { info in
         model.addFavorite(info.symbol, info: info)
@@ -140,6 +162,9 @@ struct FavoritesView: View {
     HStack(spacing: 0) {
       circleButton("chevron.left", label: "返回行情", id: "favorites.back", action: onClose)
       Spacer(minLength: 0)
+      // 常态下这儿原来还有一颗铅笔（「编辑自选」），和「…」里那一行是同一个动作，
+      // 用户 2026-09-18 让它只留在「…」里。编辑中的「完成」留着：模式总得有个
+      // 看得见的出口，藏进菜单要点两下才出得来。
       if editing {
         Button { toggleEditing() } label: {
           Text("完成").font(.system(size: 13.5, weight: .semibold)).foregroundStyle(theme.amber)
@@ -150,23 +175,41 @@ struct FavoritesView: View {
         }.buttonStyle(.plain)
           .accessibilityLabel("完成编辑").accessibilityIdentifier("favorites.editToggle")
       } else {
-        circleButton("square.and.pencil", label: "编辑自选", id: "favorites.editToggle") { toggleEditing() }
+        circleButton(VectorIcon.search(15), label: "搜索品种", id: "favorites.search") { searching = true }
       }
-      circleButton("ellipsis", label: "更多分类与管理", id: "favorites.more") { more = true }
-        .popover(isPresented: $more, arrowEdge: .top) {
-          moreList(hidden: hiddenGroups).presentationCompactAdaptation(.popover)
-        }
+      // 这颗以前是「…」。它现在装的是编辑自选、新建/重命名/删除分类、迷你走势开关，
+      // 整个就是这一页的设置，所以换成设置的记号（用户 2026-09-18 定的）。
+      // 用自绘的圆角六边形（`VectorIcon.hexSettings`），和左边的放大镜同一套描边；
+      // SF Symbols 的齿轮牙齿多、字重也不是一路，并排站会显得两颗不是一家的。
+      circleButton(VectorIcon.hexSettings(15), label: "自选设置", id: "favorites.more") { more = true }
+        .anchorPreference(key: MenuAnchors.self, value: .bounds) { ["more": $0] }
     }
     .padding(.horizontal, 10)
     .frame(height: 44)
   }
 
+  private func circleButton(_ icon: VectorIcon, label: String, id: String,
+                            action: @escaping () -> Void) -> some View {
+    circleButton(label: label, id: id, action: action) {
+      icon.foregroundStyle(theme.ink)
+    }
+  }
+
   private func circleButton(_ icon: String, label: String, id: String,
                             action: @escaping () -> Void) -> some View {
-    Button(action: action) {
+    circleButton(label: label, id: id, action: action) {
       Image(systemName: icon)
         .font(.system(size: 15, weight: .regular))
         .foregroundStyle(theme.ink)
+    }
+  }
+
+  /// 玻璃圆片：32 的片子挂在 44 的可点区里，两种记号（SF Symbol / 自绘线条）共用。
+  private func circleButton<Icon: View>(label: String, id: String,
+                                        action: @escaping () -> Void,
+                                        @ViewBuilder icon: () -> Icon) -> some View {
+    Button(action: action) {
+      icon()
         .frame(width: 32, height: 32)
         .background(skin.glassThin, in: Circle())
         .overlay(Circle().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
@@ -321,7 +364,7 @@ struct FavoritesView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("favorites.groups")
       Spacer(minLength: 0)
-      Button { adding = true } label: {
+      Button { searching = true } label: {
         Image(systemName: "plus").font(.system(size: 14, weight: .medium))
           .foregroundStyle(theme.ink3)
           .frame(width: 32, height: 32)
@@ -366,6 +409,46 @@ struct FavoritesView: View {
       .accessibilityIdentifier("favorites.group." + title)
   }
 
+  // MARK: - 浮层菜单
+
+  /// 设置菜单与排序菜单都画在页面自己的浮层里，不走 `.popover`。
+  ///
+  /// 原来这两张卡片是 `.popover(presentationCompactAdaptation(.popover))`。UIKit 为它
+  /// 单独起一层承载视图，而这一页的列表是「空态 ↔ 列表」两个分支换着挂的：只要弹层
+  /// 出现过一次，之后新挂上来的那张 `List` 就落在了那层的下面，画得出来却收不到触摸
+  /// ——展开箭头、整行、右滑全都点不动（2026-09-18 在模拟器上复现：先开一次设置菜单
+  /// 再从搜索页加第一个品种，那一行就是死的；列表先有内容时则不受影响）。浮层画在
+  /// 自己的视图树里就没有这层承载视图，也顺手省掉了 iPad 上 popover 的尺寸适配。
+  @ViewBuilder
+  private func floatingMenu(proxy: GeometryProxy, anchors: [String: Anchor<CGRect>]) -> some View {
+    if more || sorting {
+      ZStack(alignment: .topLeading) {
+        // 点菜单外面收起来：透明但吃点击，画面上看不出多一层。
+        Color.black.opacity(0.001).ignoresSafeArea().contentShape(Rectangle())
+          .onTapGesture { more = false; sorting = false }
+        if more, let anchor = anchors["more"] {
+          menuCard(width: 260, proxy: proxy, anchor: anchor) { moreList(hidden: hiddenGroups) }
+        } else if sorting, let anchor = anchors["sort"] {
+          menuCard(width: 190, proxy: proxy, anchor: anchor) { sortList }
+        }
+      }
+    }
+  }
+
+  /// 卡片吊在触发它的那颗按钮下面，右边对齐，够不着就往里收。
+  private func menuCard<V: View>(width: CGFloat, proxy: GeometryProxy, anchor: Anchor<CGRect>,
+                                 @ViewBuilder content: () -> V) -> some View {
+    let rect = proxy[anchor]
+    let x = min(max(10, rect.maxX - width), max(10, proxy.size.width - width - 10))
+    return content()
+      .frame(width: width)
+      .background(theme.app, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(skin.edgeSoft, lineWidth: 0.5))
+      .shadow(color: .black.opacity(0.14), radius: 20, y: 10)
+      .offset(x: x, y: rect.maxY + 8)
+      .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
+  }
+
   // MARK: - 更多
 
   private func runMore(_ action: @escaping () -> Void) {
@@ -400,16 +483,20 @@ struct FavoritesView: View {
         moreRow(editing ? "完成编辑" : "编辑自选", icon: "pencil", id: "favorites.edit") { toggleEditing() }
         moreRow(sparkline ? "隐藏迷你走势" : "显示迷你走势", icon: sparkline ? "waveform.slash" : "waveform",
                 id: "favorites.sparkline") { sparkline.toggle() }
-        if let group = model.prefs.groups.first(where: { $0.id == selected }) {
+        if let group = currentGroup {
           moreRow("重命名当前分类", icon: "square.and.pencil", id: "favorites.renameGroup") {
             renamedID = group.id; name = group.name; editingName = true
           }
           moreRow("删除当前分类", icon: "trash", id: "favorites.deleteGroup", destructive: true) { model.deleteGroup(group.id) }
         }
       }.padding(.vertical, 6)
-    }.font(.system(size: 14)).frame(width: 260).frame(idealHeight: min(430, CGFloat(5 + hidden.count) * 46 + (hidden.isEmpty ? 18 : 61)), maxHeight: 430)
-      .background(theme.app).presentationBackground(theme.app)
+    }.font(.system(size: 14))
+      .frame(height: min(430, CGFloat(hidden.count + 3 + (currentGroup == nil ? 0 : 2)) * 46
+                             + 12 + (hidden.isEmpty ? 0 : 46)))
   }
+
+  /// 当前选中的那一组；没有（比如一条自选都还没加）时菜单里不摆重命名/删除。
+  private var currentGroup: FavoriteGroup? { model.prefs.groups.first(where: { $0.id == selected }) }
 
   private func toggleEditing() {
     if editing { editing = false; editQuotes.removeAll() }
@@ -432,9 +519,7 @@ struct FavoritesView: View {
         }.frame(height: 28).contentShape(Rectangle())
       }.buttonStyle(.plain).disabled(editing)
         .accessibilityLabel("排序方式").accessibilityIdentifier("favorites.sort")
-        .popover(isPresented: $sorting, arrowEdge: .top) {
-          sortList.presentationCompactAdaptation(.popover)
-        }
+        .anchorPreference(key: MenuAnchors.self, value: .bounds) { ["sort": $0] }
     }.padding(.horizontal, 22).padding(.top, 10).padding(.bottom, 4)
   }
 
@@ -456,8 +541,7 @@ struct FavoritesView: View {
       sortItem("价格", key: "price")
       sortItem(basisTitle, key: "change", useAmount: false)
       sortItem("涨跌额", key: "change", useAmount: true)
-    }.padding(.vertical, 6).font(.system(size: 14)).frame(width: 190)
-      .background(theme.app).presentationBackground(theme.app)
+    }.padding(.vertical, 6).font(.system(size: 14))
   }
 
   private func sortItem(_ title: String, key: String, useAmount: Bool? = nil) -> some View {
@@ -541,6 +625,10 @@ struct FavoritesView: View {
       }
     }
     .listStyle(.plain)
+    // 关掉系统滚动条。iOS 13 起那根灰条自己是能抓住拖的，也就是说它会吃触摸——
+    // 它占的那条竖带（右边 30pt）正好压在每行最右边那颗展开箭头上，列表一滚或一重建
+    // 它就闪出来，那一两秒里点箭头会没反应。这一页本来也没打算露系统滚动条。
+    .scrollIndicators(.hidden)
     .scrollContentBackground(.hidden)
     .environment(\.defaultMinListRowHeight, 0)
     // List 占满剩下的整屏：长按把一行拖到最后一行下面，落点还在列表里。
@@ -596,6 +684,7 @@ struct FavoritesView: View {
             .font(.system(size: 9, weight: .semibold)).foregroundStyle(skin.ink4)
             .frame(width: 14, height: 44).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel("展开详情")
+          .accessibilityValue(expanded.contains(symbol) ? "已展开" : "已收起")
           .accessibilityIdentifier("favorites.expand." + symbol)
       }
     }
@@ -779,6 +868,7 @@ struct FavoritesView: View {
       Text(value).font(.system(size: 12, weight: .medium)).monospacedDigit().foregroundStyle(theme.ink)
     }
   }
+
   private func toggleDetails(_ symbol: String) { if !expanded.insert(symbol).inserted { expanded.remove(symbol) } }
   private func selectOrOpen(_ symbol: String) {
     if editing { if !selection.insert(symbol).inserted { selection.remove(symbol) } }
@@ -810,7 +900,7 @@ struct FavoritesView: View {
       Text("这一栏还空着").font(skin.serif(15.5)).foregroundStyle(theme.ink).padding(.top, 2)
       Text("加几个常看的品种，它们会在这里排好")
         .font(.system(size: 12)).foregroundStyle(theme.ink3)
-      Button { adding = true } label: {
+      Button { searching = true } label: {
         Text("添加品种").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
           .frame(height: 36).padding(.horizontal, 20)
           .background(skin.accentGradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1081,4 +1171,12 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
       && lhs.theme == rhs.theme && lhs.width == rhs.width
   }
   var body: some View { content }
+}
+
+/// 记下「设置」「排序」两颗按钮的位置，好让浮层菜单吊在它们下面。
+private struct MenuAnchors: PreferenceKey {
+  static let defaultValue: [String: Anchor<CGRect>] = [:]
+  static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
+    value.merge(nextValue()) { _, new in new }
+  }
 }

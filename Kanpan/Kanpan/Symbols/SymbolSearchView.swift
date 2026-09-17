@@ -31,6 +31,16 @@ struct SymbolSearchView: View {
   var onClose: () -> Void
   /// 「查看全部 N 个品种」——交给品种整页，查询词已经在 `model.query` 里。
   var onAll: () -> Void
+  /// 选中一个品种之后调一下。行情页那边不用管（`picker.onPick` 会把所有层一起收掉），
+  /// 自选页把这一页当自己的盖层开着，得先自己收了再让宿主换图——不然是里层还开着、
+  /// 外层先被拆，UIKit 会抱怨「dismiss while presenting」。
+  var onPicked: (() -> Void)? = nil
+
+  /// 在这一页点亮一颗星之后调一下，参数是那个品种的代号（只在「加上了」时调，
+  /// 取消收藏不调）。自选页拿它把分类切到品种刚落进去的那一组——收起搜索页回到的
+  /// 要是还是原来那一组，刚加的东西不在眼前，人会以为没加上。以前选品页那个 `+`
+  /// 就是加完顺手跳过去的，这条只是把那个行为接回来。行情页那边不用管。
+  var onStarred: ((String) -> Void)? = nil
   var onVisible: ((String) -> Void)? = nil
   var onRowVisibility: ((String, Bool) -> Void)? = nil
 
@@ -74,6 +84,9 @@ struct SymbolSearchView: View {
           Color.clear.frame(height: 26)
         }
       }
+      // 同自选页：系统滚动条那条竖带压在每行最右边那颗星上，而这一页加自选全靠点星，
+      // 滚动条一闪那一两秒点上去会没反应，所以不露它。
+      .scrollIndicators(.hidden)
       .scrollDismissesKeyboard(.interactively)
     }
     .background(theme.app)
@@ -270,7 +283,9 @@ struct SymbolSearchView: View {
                     colors: colors,
                     nameSize: nameSize, metaSize: metaSize,
                     priceSize: priceSize, pctSize: pctSize,
-                    onStar: { model.toggleFavorite(row.id, info: row.info) },
+                    onStar: {
+                      if model.toggleFavorite(row.id, info: row.info) { onStarred?(row.id) }
+                    },
                     onPick: { pick(row.info) })
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
@@ -284,6 +299,7 @@ struct SymbolSearchView: View {
     focused = false
     if searching { history.remember(trimmed) }
     model.query = ""
+    onPicked?()
     model.pick(info)
   }
 

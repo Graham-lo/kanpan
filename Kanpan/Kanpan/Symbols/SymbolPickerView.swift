@@ -204,6 +204,8 @@ struct SymbolPickerView: View {
         }
       }
       .listStyle(.plain)
+      // 同搜索页：滚动条会吃掉行尾那颗星的点击。
+      .scrollIndicators(.hidden)
       .scrollContentBackground(.hidden)
       .scrollDismissesKeyboard(.interactively)
       .environment(\.defaultMinListRowHeight, 0)

@@ -24,32 +24,25 @@ final class MainScreenUITests: KanpanUICase {
     expectExists(label, Self.short, "左上角没有品种名")
     app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
       .withOffset(CGVector(dx: label.frame.midX, dy: label.frame.midY)).tap()
-    expectGone(app.textFields[Ids.symbolsQuery], Self.short, "点品种名还是弹出了换品种的层")
+    expectGone(app.textFields[Ids.searchQuery], Self.short, "点品种名还是弹出了换品种的层")
     expectExists(app.buttons[Ids.searchButton], Self.short, "点完还应停在主界面")
   }
 
   /// 顶栏放大镜 → 品种搜索页，且落在搜索框上。换品种只有这一条路。
+  ///
+  /// 这一页的出口是输入框右边那颗「取消」，不是页头的返回箭头——手指在键盘上，
+  /// 出口就该在同一条横线上（返回箭头是品种整页的，那一页才有页头）。
   func testSearchEntryOpensSymbolPage() {
-    XCTAssertTrue(app.openSymbolSearch(), "顶栏放大镜没开出品种页的搜索框")
-    app.buttons[Ids.symbolsBack].tap()
-    expectGone(app.buttons[Ids.symbolsBack], Self.short, "品种页返回没关掉")
+    XCTAssertTrue(app.openSymbolSearch(), "顶栏放大镜没开出搜索页的输入框")
+    app.buttons["search.cancel"].tap()
+    expectGone(app.textFields[Ids.searchQuery], Self.short, "搜索页取消没关掉")
   }
 
-  /// 自选星：点一下加进自选、再点一下移出，label 跟着翻。
-  ///
-  /// 断言读的是 label（「加入自选」/「移出自选」），因为这颗星的「亮没亮」在界面上
-  /// 就是靠颜色，颜色不归 UI 测试管。两次点完回到出发时的状态。
-  func testFavoriteStarToggles() {
-    let star = app.buttons[Ids.starButton]
-    expectExists(star)
-    let before = star.label
-    star.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { star.label != before },
-                  "点了自选星，状态没变（还是「\(before)」）")
-    let after = star.label
-    star.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { star.label == before },
-                  "再点一次自选星没退回原状（停在「\(after)」）")
+  /// 顶栏右上角只剩放大镜一颗。自选星 2026-09-18 撤了——加自选统一在搜索页和
+  /// 自选页的品种行上做，顶栏那一颗既重复又紧贴品种名，最容易误触。
+  func testTopBarHasOnlySearch() {
+    expectExists(app.buttons[Ids.searchButton])
+    XCTAssertFalse(app.buttons["top.star"].exists, "顶栏还留着自选星")
   }
 
   // ---------------------------------------------------------------- 周期条

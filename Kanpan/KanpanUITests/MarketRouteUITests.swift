@@ -36,7 +36,7 @@ final class MarketRouteUITests: KanpanUICase {
 
     app.terminate()
     app.launch()
-    XCTAssertTrue(app.buttons[Ids.symbolButton].waitForExistence(timeout: Self.long), "重开后没见到主界面")
+    XCTAssertTrue(app.symbolLabel.waitForExistence(timeout: Self.long), "重开后没见到主界面")
     openSettings()
     XCTAssertTrue(waitUntil(timeout: Self.short) { route("网关").isSelected }, "重开后「行情线路」没记住「网关」")
     route("直连").tap()

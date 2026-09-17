@@ -167,7 +167,7 @@ struct MainScreen: View {
   }
 
   private func favoritesPage(onClose: @escaping () -> Void) -> some View {
-    FavoritesView(model: picker, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
+    FavoritesView(model: picker, history: searchHistory, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
                   onClose: onClose, onVisible: { quotes.watch($0) },
                   onRowVisibility: { quotes.watchRow($0, visible: $1) },
                   onHistoryVisibility: { quotes.watchHistory($0, visible: $1) })
@@ -447,18 +447,11 @@ struct MainScreen: View {
 
   private var header: some View {
     VStack(spacing: 9) {
+      // 顶栏没有自选星了（用户 2026-09-18 定的）：加自选统一在搜索页和自选页的
+      // 品种行上做，那儿看得见一整列，挑着加；顶栏这一颗紧贴品种名，只会误触。
       TopBar(
         theme: theme, symbol: market.symbol,
-        starred: picker.isFavorite(market.symbol),
-        onSearch: { dismissPanel(); showSearch = true },
-        onStar: {
-          dismissPanel()
-          let now = picker.toggleFavorite(market.symbol, info: market.info)
-          // 星标最容易误触（它就在品种名旁边），所以这一条给「撤销」：再点一次而已。
-          let symbol = market.symbol, info = market.info
-          say(now ? "已加入自选" : "已移出自选",
-              undo: { picker.toggleFavorite(symbol, info: info) })
-        })
+        onSearch: { dismissPanel(); showSearch = true })
       ZStack {
         PriceRow(theme: theme, ticker: displayedTicker, lastPrice: readoutPrice,
           decimals: market.info.pricePrecision,

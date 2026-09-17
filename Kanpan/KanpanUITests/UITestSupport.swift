@@ -18,7 +18,6 @@ enum Ids {
   /// 左上角的品种名。2026-09-18 起它不再是按钮（半屏换品种弹层已撤），
   /// 只是一块文字，所以用例要找它得走 `symbolLabel`，不能再用 `buttons[...]`。
   static let symbolButton = "top.symbol"
-  static let starButton = "top.star"
   /// 顶栏放大镜：换品种唯一的入口。浏览走底栏的「自选」。
   static let searchButton = "top.search"
   static let favoritesTab = "bottom.favorites"
@@ -52,6 +51,10 @@ enum Ids {
   // 品种页
   static let symbolsBack = "symbols.back"
   static let symbolsQuery = "symbols.query"
+  // 搜索页。顶栏放大镜和自选页那颗放大镜开的都是它；品种整页现在只在
+  // 「查看全部 N 个品种」之后才露面，所以两张页的输入框要分开记。
+  static let searchQuery = "search.query"
+  static let searchAll = "search.all"
   // 面板里各自的「招牌元素」：拿它在不在，判断面板开没开
   /// 「图表」面板里「阳线」那一行的某一档（实心 / 空心）。风格卡撤掉之后，拿它当这张面板的招牌元素。
   static func chartBody(_ raw: String) -> String { "chart.bodyChoice.\(raw)" }
@@ -96,10 +99,15 @@ class KanpanUICase: XCTestCase {
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     for (key, value) in extraLaunchEnvironment { app.launchEnvironment[key] = value }
     app.launch()
+    // 冷启动可能先停在自选页（`launchFavorites`）——那一层没有顶栏，先按返回回行情。
+    let back = app.buttons["favorites.back"]
+    if back.waitForExistence(timeout: 3) { back.tap() }
     // 主界面就是第一帧，没有启动页也没有弹窗（X1）；顶栏出来就算起来了。
+    // 左上角的品种名 2026-09-18 起不再是按钮（点它不弹任何东西），所以这儿按
+    // identifier 找元素，不能再按 `buttons[...]` 找——那样永远等不到。
     XCTAssertTrue(
-      app.buttons[Ids.symbolButton].waitForExistence(timeout: Self.long),
-      "启动后 \(Self.long)s 还没见到顶栏品种按钮")
+      app.symbolLabel.waitForExistence(timeout: Self.long),
+      "启动后 \(Self.long)s 还没见到顶栏品种名")
     windowFrame = app.windows.firstMatch.frame
     chartTop = app.buttons[Ids.intervalMore].frame.maxY
     chartBottom = app.buttons[Ids.bottomFavorites].frame.minY
@@ -271,11 +279,37 @@ extension XCUIApplication {
     descendants(matching: .any).matching(identifier: Ids.symbolButton).firstMatch
   }
 
+  /// 顶栏放大镜 → 搜索页。这一页是「我知道要找什么」那条路：打字、历史词、
+  /// 最近看过，行还是品种整页那一行（`symbols.row.*` / `symbols.star.*` 通用）。
   @discardableResult func openSymbolSearch() -> Bool {
     let entry = buttons[Ids.searchButton]
     guard entry.waitForExistence(timeout: 10) else { return false }
     entry.tap()
-    return textFields[Ids.symbolsQuery].waitForExistence(timeout: 10)
+    return textFields[Ids.searchQuery].waitForExistence(timeout: 10)
+  }
+
+  /// 搜索页 → 「查看全部 N 个品种」→ 品种整页。板块筛选、全部合约这些浏览的事
+  ///
+  /// 「查看全部」只有命中数超过搜索页预览的那 6 行时才露面，所以打一个精确的代号
+  /// （像 SNDK）根本进不去整页。先用一个宽的词（默认 USD，几乎命中所有合约）把那一行
+  /// 逼出来，进了整页再把查询词收窄成真正要找的那个。
+  /// 只有整页有，搜索页不做，所以要验它们得先打个字把那一行逼出来。
+  @discardableResult func openSymbolPicker(matching term: String, broad: String = "USD") -> Bool {
+    guard openSymbolSearch() else { return false }
+    let query = textFields[Ids.searchQuery]
+    query.tap(); query.typeText(broad)
+    let all = buttons[Ids.searchAll]
+    guard all.waitForExistence(timeout: 10) else { return false }
+    all.tap()
+    let picker = textFields[Ids.symbolsQuery]
+    guard picker.waitForExistence(timeout: 10) else { return false }
+    guard term != broad else { return true }
+    picker.tap()
+    if let text = picker.value as? String, !text.isEmpty, text != picker.placeholderValue {
+      picker.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
+    }
+    picker.typeText(term)
+    return true
   }
 
   /// 点「画线」→ 先横过去 →  按横屏工具栏上的「竖屏」转回来，停在**竖屏画线态**。
