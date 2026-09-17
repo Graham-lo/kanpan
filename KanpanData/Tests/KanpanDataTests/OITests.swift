@@ -313,3 +313,151 @@ struct OIAlignTests {
     for i in 1..<out.count { #expect(out[i].time > out[i - 1].time) }
   }
 }
+
+@Suite("OI 增量：只补缺的那一段")
+struct OIIncrementalTests {
+
+  private static let step: Int64 = 3_600_000
+
+  @Test("手里没有：整段都要")
+  func nothingCached() {
+    let out = OISource.missingSegments(have: nil, want: (100, 200), step: Self.step, refresh: false)
+    #expect(out.count == 1)
+    #expect(out[0] == (100, 200))
+  }
+
+  @Test("往左拖：只取左边多出来的一截")
+  func panLeft() {
+    let out = OISource.missingSegments(have: (1_000, 2_000), want: (500, 1_800),
+                                       step: Self.step, refresh: false)
+    #expect(out.count == 1)
+    #expect(out[0] == (500, 1_000))
+  }
+
+  @Test("窗口整个落在已有区间里：一个请求都不发")
+  func fullyCovered() {
+    #expect(OISource.missingSegments(have: (1_000, 2_000), want: (1_200, 1_800),
+                                     step: Self.step, refresh: false).isEmpty)
+  }
+
+  @Test("两头都缺：拆成左右两段，不重不漏")
+  func bothEnds() throws {
+    let out = OISource.missingSegments(have: (1_000, 2_000), want: (500, 2_500),
+                                       step: Self.step, refresh: false)
+    try #require(out.count == 2)
+    #expect(out[0] == (500, 1_000))
+    #expect(out[1] == (2_000, 2_500))
+  }
+
+  @Test("和已有区间完全不挨着：整段重取")
+  func disjoint() {
+    let out = OISource.missingSegments(have: (1_000, 2_000), want: (5_000, 6_000),
+                                       step: Self.step, refresh: false)
+    #expect(out.count == 1)
+    #expect(out[0] == (5_000, 6_000))
+  }
+
+  @Test("60 秒定时刷新：全都在手里也要把尾巴几根重取一次")
+  func refreshTail() {
+    let have = (from: Int64(0), to: 100 * Self.step)
+    let want = (from: Int64(0), to: 100 * Self.step)
+    let out = OISource.missingSegments(have: have, want: want, step: Self.step, refresh: true)
+    #expect(out.count == 1)
+    #expect(out[0].to == want.to)
+    #expect(out[0].from == want.to - 3 * Self.step)   // 最后三根
+    // 不刷新时同样的入参一个请求都不发。
+    #expect(OISource.missingSegments(have: have, want: want, step: Self.step, refresh: false).isEmpty)
+  }
+
+  @Test("刷新时左边也缺：尾巴并进右边那段，不会多发一个请求")
+  func refreshMergesIntoRightGap() throws {
+    let base = Aggregator.utcMs(year: 2025, month: 1, day: 15)
+    let have = (from: base, to: base + 1_000 * Self.step)
+    let want = (from: base - 500 * Self.step, to: base + 1_100 * Self.step)
+    let out = OISource.missingSegments(have: have, want: want, step: Self.step, refresh: true)
+    try #require(out.count == 2)                     // 左缺口 + 右缺口（尾巴被右缺口盖住）
+    #expect(out[0] == (want.from, have.from))
+    #expect(out[1] == (have.to, want.to))
+  }
+
+  @Test("空窗口 / 倒着的窗口：不发请求")
+  func degenerate() {
+    #expect(OISource.missingSegments(have: nil, want: (100, 100), step: Self.step, refresh: true).isEmpty)
+    #expect(OISource.missingSegments(have: nil, want: (200, 100), step: Self.step, refresh: false).isEmpty)
+  }
+
+  @Test("已聚好的一段存盘：编解码一致，区间跟着回来")
+  func rangeCodec() throws {
+    let day = Aggregator.utcMs(year: 2025, month: 1, day: 15)
+    let pts = (0..<240).map { OIPoint(time: day + Int64($0) * 3_600_000, value: 1_000 + Double($0) * 0.5) }
+    let blob = OIArchive.encodeRange(pts, from: day, to: day + 240 * 3_600_000)
+    let back = try #require(OIArchive.decodeRange(blob))
+    #expect(back.from == day)
+    #expect(back.to == day + 240 * 3_600_000)
+    #expect(back.points.map(\.time) == pts.map(\.time))
+    #expect(back.points.map(\.value) == pts.map(\.value))
+  }
+
+  @Test("坏盘面：不是 KOI2 / 被截断 / 区间倒着，一律当没有")
+  func rangeCodecRejects() {
+    let day = Aggregator.utcMs(year: 2025, month: 1, day: 15)
+    let pts = [OIPoint(time: day, value: 1), OIPoint(time: day + 3_600_000, value: 2)]
+    let good = OIArchive.encodeRange(pts, from: day, to: day + 7_200_000)
+    #expect(OIArchive.decodeRange(Data("hello".utf8)) == nil)
+    #expect(OIArchive.decodeRange(good.prefix(good.count - 4)) == nil)
+    #expect(OIArchive.decodeRange(Data()) == nil)
+    #expect(OIArchive.decodeRange(OIArchive.encodeRange(pts, from: day + 7_200_000, to: day)) == nil)
+    // 日切片和聚合段两个格式互不认账。
+    #expect(OIArchive.decodeSlice(good) == nil)
+  }
+
+  @Test("聚合段存取：换一张图回来先有旧的可画")
+  func seriesStore() async throws {
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = OIStore(paths: Paths(root: dir))
+    let day = Aggregator.utcMs(year: 2025, month: 1, day: 15)
+    let pts = (0..<48).map { OIPoint(time: day + Int64($0) * 3_600_000, value: Double(100 + $0)) }
+    await store.saveSeries(symbol: "BTCUSDT", interval: .h1, points: pts,
+                           from: day, to: day + 48 * 3_600_000)
+    let back = try #require(await store.loadSeries(symbol: "BTCUSDT", interval: .h1))
+    #expect(back.points.count == 48)
+    #expect(back.from == day)
+    // 一个周期一份，别的周期不串味。
+    #expect(await store.loadSeries(symbol: "BTCUSDT", interval: .h4) == nil)
+    #expect(await store.loadSeries(symbol: "ETHUSDT", interval: .h1) == nil)
+    // 关掉开关就读不到，也不该留在盘上。
+    await store.setEnabled(false)
+    #expect(await store.loadSeries(symbol: "BTCUSDT", interval: .h1) == nil)
+    #expect(await store.usage() == 0)
+  }
+
+  @Test("REST 翻到一半断了：已经到手的几页要留住，不是整条空")
+  func partialRestPages() async throws {
+    let now = Aggregator.utcMs(year: 2025, month: 2, day: 20)
+    let to = now
+    let pacer = StepPacer()
+    let server = FakeServer(pacer: pacer) { url in
+      guard url.path == "/futures/data/openInterestHist" else { return HTTPReply(status: 404) }
+      let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+      let endTime = q.first { $0.name == "endTime" }?.value.flatMap { Int64($0) }
+      // 第一页正常给满 500 条，第二页（更早的那一页）直接断。
+      guard endTime == to else { return HTTPReply(status: 500) }
+      let rows = (0..<500).map { i -> String in
+        let t = to - Int64(499 - i) * 3_600_000
+        return #"{"symbol":"BTCUSDT","sumOpenInterest":"50.0","sumOpenInterestValue":"1","timestamp":\#(t)}"#
+      }
+      return json("[" + rows.joined(separator: ",") + "]")
+    }
+    let transport = FakeTransport(server)
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let src = OISource(rest: BinanceREST(transport: transport, pacer: pacer), transport: transport,
+                       store: OIStore(paths: Paths(root: dir)))
+    let out = await src.rawPoints(symbol: "BTCUSDT", interval: .h1,
+                                  from: now - 29 * 86_400_000, to: to, now: now)
+    #expect(out.count == 500)
+    #expect(out.last?.time == to)
+    #expect(await server.urls().count == 2)          // 断掉的那一页确实试过
+  }
+}

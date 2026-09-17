@@ -91,6 +91,54 @@ public enum OIArchive {
     return out
   }
 
+  // ------------------------------------------------------------------ 聚合段
+
+  /// `.oi` 的另一种用法：一段**已经按图表周期聚好**的序列。
+  ///
+  /// 日切片是原始 5m，画 1d 图得当场再聚一次；这份存的是网关已经聚完的结果，
+  /// 重新打开同一个品种时能直接上屏。多存两样东西：这段覆盖到哪里（`to`，光看
+  /// 最后一个点看不出来——末尾可能本来就没数据），以及它聚的是哪个周期（放在
+  /// 文件名里，换周期就是另一份，不会混用）。
+  static let rangeMagic: UInt32 = 0x494F_4B32   // 'KOI2' 小端读出来
+
+  public static func encodeRange(_ points: [OIPoint], from: Int64, to: Int64) -> Data {
+    var d = Data()
+    d.reserveCapacity(24 + points.count * 12)
+    append(&d, rangeMagic)
+    append(&d, UInt64(bitPattern: from))
+    append(&d, UInt64(bitPattern: to))
+    append(&d, UInt32(points.count))
+    for p in points {
+      append(&d, UInt32(max(0, min(Int64(UInt32.max), (p.time - from) / 1000))))
+      append(&d, p.value.bitPattern)
+    }
+    return d
+  }
+
+  public static func decodeRange(_ data: Data) -> (points: [OIPoint], from: Int64, to: Int64)? {
+    let b = [UInt8](data)
+    guard b.count >= 24, Zip.u32(b, 0) == rangeMagic else { return nil }
+    func i64(_ o: Int) -> Int64 {
+      var v: Int64 = 0
+      for i in 0..<8 { v |= Int64(b[o + i]) << (8 * Int64(i)) }
+      return v
+    }
+    let from = i64(4), to = i64(12)
+    let n = Int(Zip.u32(b, 20))
+    guard to >= from, b.count >= 24 + n * 12 else { return nil }
+    var out: [OIPoint] = []
+    out.reserveCapacity(n)
+    for i in 0..<n {
+      let o = 24 + i * 12
+      var bits: UInt64 = 0
+      for k in 0..<8 { bits |= UInt64(b[o + 4 + k]) << (8 * UInt64(k)) }
+      let value = Double(bitPattern: bits)
+      guard value.isFinite else { return nil }
+      out.append(OIPoint(time: from + Int64(Zip.u32(b, o)) * 1000, value: value))
+    }
+    return (out, from, to)
+  }
+
   private static func append(_ d: inout Data, _ v: UInt32) {
     for i in 0..<4 { d.append(UInt8(truncatingIfNeeded: v >> (8 * UInt32(i)))) }
   }

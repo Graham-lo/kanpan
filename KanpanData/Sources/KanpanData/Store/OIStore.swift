@@ -43,6 +43,25 @@ public actor OIStore {
     evict()
   }
 
+  /// 上次为这个「品种 + 周期」聚好的那一段，连同它覆盖的区间。
+  ///
+  /// 有它，重新打开同一张图就不必再等一个往返：先把旧的画上，再只补缺的那一头。
+  public func loadSeries(symbol: String, interval: Interval) -> (points: [OIPoint], from: Int64, to: Int64)? {
+    guard enabled else { return nil }
+    let url = paths.oiSeries(symbol: symbol, interval: interval.rawValue)
+    guard let d = try? Data(contentsOf: url) else { return nil }
+    try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
+    return OIArchive.decodeRange(d)
+  }
+
+  public func saveSeries(symbol: String, interval: Interval, points: [OIPoint], from: Int64, to: Int64) {
+    guard enabled, to >= from else { return }
+    let url = paths.oiSeries(symbol: symbol, interval: interval.rawValue)
+    try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try? OIArchive.encodeRange(points, from: from, to: to).write(to: url, options: .atomic)
+    evict()
+  }
+
   /// 占用字节（设置页「清缓存」要显示）。
   public func usage() -> Int {
     files().reduce(0) { $0 + $1.size }

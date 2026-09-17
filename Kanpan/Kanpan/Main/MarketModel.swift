@@ -15,7 +15,14 @@ final class MarketModel {
   private(set) var oi: OISeries?
   private var oiTask: Task<Void, Never>?
   private var oiSource: OISource
+  /// 归档缓存；`OISource` 和这里共用一份，聚好的整段也存在它里面。
+  private let oiStore = OIStore(paths: .caches())
+  /// 已经到手的点，按时间排好；`oiRegion` 是它们覆盖的区间。两个合起来就是
+  /// 「这张图上已经有什么」，平移和刷新都据此只补差的那一段，不整段重下。
+  private var oiPoints: [OIPoint] = []
   private var oiRegion: (from: Int64, to: Int64)?
+  /// 磁盘上那份「品种 + 周期」只认一次，认过就以内存里的为准。
+  private var oiDiskKey: String?
   private var oiEnabled = false
   private var oiRequestedAt = Date.distantPast
   private var lastView: ViewWindow?
@@ -86,7 +93,7 @@ final class MarketModel {
     self.source = initialSource
     let binanceRest = BinanceREST.upstream(.binance, hosts: hosts, log: MarketModel.log)
     let rest = BinanceREST.upstream(initialSource, hosts: hosts, log: MarketModel.log)
-    self.oiSource = OISource(hosts: hosts, rest: binanceRest, store: OIStore(paths: .caches()))
+    self.oiSource = OISource(hosts: hosts, rest: binanceRest, store: oiStore)
     self.feed = RoutedMarketFeed(hosts: hosts, log: MarketModel.log)
     self.catalog = CatalogBox(SymbolCatalog(rest: rest, paths: Self.catalogPaths(for: initialSource)))
     // 换线路时 `RoutedMarketFeed` 自己会切；历史 OI 的客户端是这里建的，也得跟着换，
@@ -102,10 +109,9 @@ final class MarketModel {
   }
 
   private func routePolicyDidChange() {
-    oiTask?.cancel()
     oiSource = OISource(hosts: hosts, rest: .upstream(.binance, hosts: hosts, log: MarketModel.log),
-                        store: OIStore(paths: .caches()))
-    oi = nil; oiRegion = nil
+                        store: oiStore)
+    resetOI()
     if let lastView { loadOI(view: lastView, refresh: true) }
   }
 
@@ -213,8 +219,8 @@ final class MarketModel {
     let source = source
     let binanceRest = BinanceREST.upstream(.binance, hosts: next, log: MarketModel.log)
     let rest = BinanceREST.upstream(source, hosts: next, log: MarketModel.log)
-    oiSource = OISource(hosts: next, rest: binanceRest, store: OIStore(paths: .caches()))
-    oi = nil; oiRegion = nil
+    oiSource = OISource(hosts: next, rest: binanceRest, store: oiStore)
+    resetOI()
     feed = RoutedMarketFeed(hosts: next, log: MarketModel.log)
     let box = catalog
     Task { await box.replace(SymbolCatalog(rest: rest, paths: Self.catalogPaths(for: source))) }
@@ -255,7 +261,7 @@ final class MarketModel {
       // 持仓量是按交易所报的，换了线路就得按新交易所重取；供应量与交易所无关，留着。
       openInterestQty = nil; openInterestValue = nil; openInterestUnit = nil
       startStats()
-      oiTask?.cancel(); oi = nil; oiRegion = nil; historyError = nil
+      resetOI(); historyError = nil
       let paths = Paths(root: Paths.caches().root.appendingPathComponent("sources/" + next.rawValue))
       let catalog = SymbolCatalog(rest: .upstream(next, hosts: hosts), paths: paths)
       Task { await self.catalog.replace(catalog); await self.refreshInfo() }
@@ -319,7 +325,10 @@ final class MarketModel {
       return
     }
     statsTask = Task { [weak self] in
-      if let meta = await MarketStatsClient.shared.meta(symbol: sym, base: base, hosts: proxies) {
+      // 供应量和持仓量是两条互不相干的接口，谁先回来先填谁那一格。以前是先等供应量
+      // （取不到就得等它超时），顶栏的「仓」跟着白等一次往返。
+      Task { [weak self] in
+        guard let meta = await MarketStatsClient.shared.meta(symbol: sym, base: base, hosts: proxies) else { return }
         await MainActor.run { self?.applyMeta(meta, for: sym) }
       }
       while !Task.isCancelled {
@@ -367,7 +376,7 @@ final class MarketModel {
       ? SeriesStore.read(symbol: sym, interval: iv, in: Self.catalogPaths(for: source).series, touch: false)
       : nil
     loading = false
-    oiTask?.cancel(); oi = nil; oiRegion = nil; lastView = nil
+    resetOI(); lastView = nil
     if cold {
       ticker = nil
       tickerStale = false
@@ -448,17 +457,60 @@ final class MarketModel {
     oiRequestedAt = Date()
     let sym = symbol, iv = interval, source = oiSource, request = selection
     let margin = max(series.step * 20, (to - from) / 2)
-    let fetchFrom = max(series.firstTime, from - margin), fetchTo = to + series.step
+    let want = (from: max(series.firstTime, from - margin), to: to + series.step)
+    let step = series.step
     oiTask = Task {
       do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
-      let points = await source.rawPoints(symbol: sym, interval: iv, from: fetchFrom, to: fetchTo)
+      guard request == self.selection, self.symbol == sym, self.interval == iv else { return }
+      // 上次留在磁盘上的那一段先上屏，用户不用对着「持仓量加载中」等一个往返。
+      await self.seedOI(symbol: sym, interval: iv)
       guard !Task.isCancelled, request == self.selection, self.symbol == sym, self.interval == iv else { return }
-      let ordered = OISource.dedup(points)
-      if !ordered.isEmpty {
-        self.oi = OISource.chartSeries(ordered, interval: iv)
-        self.oiRegion = (fetchFrom, fetchTo)
+      let segments = OISource.missingSegments(have: self.oiRegion, want: want, step: step, refresh: refresh)
+      guard !segments.isEmpty else { return }
+      let points = await withTaskGroup(of: [OIPoint].self) { group in
+        for segment in segments {
+          group.addTask { await source.rawPoints(symbol: sym, interval: iv, from: segment.from, to: segment.to) }
+        }
+        var all: [OIPoint] = []
+        for await part in group { all += part }
+        return all
       }
+      guard !Task.isCancelled, request == self.selection, self.symbol == sym, self.interval == iv else { return }
+      self.mergeOI(points, want: want, symbol: sym, interval: iv)
     }
+  }
+
+  /// 磁盘上那份「品种 + 周期」只认一次：认过之后内存里的才是最新的。
+  private func seedOI(symbol sym: String, interval iv: Interval) async {
+    let key = sym + "|" + iv.rawValue
+    guard oiDiskKey != key else { return }
+    oiDiskKey = key
+    guard oiRegion == nil, let cached = await oiStore.loadSeries(symbol: sym, interval: iv),
+          !cached.points.isEmpty, sym == symbol, iv == interval, oiRegion == nil else { return }
+    oiPoints = cached.points
+    oiRegion = (cached.from, cached.to)
+    oi = OISource.chartSeries(cached.points, interval: iv)
+  }
+
+  private func mergeOI(_ points: [OIPoint], want: (from: Int64, to: Int64),
+                       symbol sym: String, interval iv: Interval) {
+    let previous = oiRegion
+    let joins = previous.map { want.from <= $0.to && want.to >= $0.from } ?? false
+    let merged = OISource.dedup(joins ? oiPoints + points : points)   // 同一时刻留新到的
+    guard !merged.isEmpty else { return }
+    var region = want
+    if joins, let old = previous { region = (from: min(old.from, want.from), to: max(old.to, want.to)) }
+    oiPoints = merged
+    oiRegion = region
+    oi = OISource.chartSeries(merged, interval: iv)
+    let store = oiStore
+    Task { await store.saveSeries(symbol: sym, interval: iv, points: merged, from: region.from, to: region.to) }
+  }
+
+  /// 换品种、换周期、换线路都得从头来：手里的点要么周期对不上，要么是另一家交易所报的。
+  private func resetOI() {
+    oiTask?.cancel(); oiTask = nil
+    oi = nil; oiPoints = []; oiRegion = nil; oiDiskKey = nil
   }
 
   /// 品种页要的品种表。`@Sendable` 是因为品种页把它当闭包存着，

@@ -45,6 +45,11 @@ public struct Paths: Sendable {
   public func oiDay(symbol: String, day: String) -> URL {
     oi.appendingPathComponent(symbol, isDirectory: true).appendingPathComponent("\(day).oi")
   }
+  /// 已经按图表周期聚好的那一段，一个「品种 + 周期」一份；和日切片同一个目录，
+  /// 一起受 20 MB 上限和 LRU 管。
+  public func oiSeries(symbol: String, interval: String) -> URL {
+    oi.appendingPathComponent(symbol, isDirectory: true).appendingPathComponent("series-\(interval).oi")
+  }
 
   public func ensure(_ dir: URL) throws {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

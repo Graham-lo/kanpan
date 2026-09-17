@@ -37,34 +37,69 @@ public actor OISource {
   public func rawPoints(symbol: String, interval: Interval, from: Int64, to: Int64,
                         now: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
                         onDay: (@Sendable (Int64, [OIPoint]) -> Void)? = nil) async -> [OIPoint] {
-    var all: [OIPoint] = []
-    var recent: [OIPoint] = []
     let cutoff = now - Self.restWindowMs
-
-    // ① 近 30 天：REST 一次拿完（500 条一页，往前翻）。
-    if to > cutoff {
-      let period = interval.oiPeriod ?? (interval.stepMs >= 86_400_000 ? "1d" : "5m")
-      let start = max(from, cutoff)
-      do {
-        recent += try await restRange(symbol: symbol, period: period, from: start, to: to)
-      } catch {
-        log("OI REST 失败：\(error)")
-      }
-    }
-
+    // 两段谁也不等谁：① 近 30 天问币安 REST，② 更早的问网关归档。串着做等于把两次
+    // 往返加起来，而它们各查各的、互不依赖——历史那段本来就是慢的那一段。
+    async let recent: [OIPoint] = to > cutoff
+      ? restSegment(symbol: symbol, interval: interval, from: max(from, cutoff), to: to)
+      : []
+    async let history: [OIPoint] = from < cutoff
+      ? historySegment(symbol: symbol, interval: interval, from: max(from, Self.archiveEpoch),
+                       to: min(to, cutoff), onDay: onDay)
+      : []
+    let (early, late) = await (history, recent)
     guard !Task.isCancelled else { return [] }
-    // ② 更早：按天列缺口，先缓存后网络。
-    if from < cutoff {
-      let start = max(from, Self.archiveEpoch), end = min(to, cutoff)
-      if let history = await gatewayHistory(symbol: symbol, interval: interval, from: start, to: end) {
-        all += history
+    return Self.dedup(early + late)  // 接缝重叠时近期统计优先。
+  }
+
+  /// ① 近 30 天。取不到就是没有——OI 副图少一段总比整条空着强。
+  private func restSegment(symbol: String, interval: Interval, from: Int64, to: Int64) async -> [OIPoint] {
+    let period = interval.oiPeriod ?? (interval.stepMs >= 86_400_000 ? "1d" : "5m")
+    do {
+      return try await restRange(symbol: symbol, period: period, from: from, to: to)
+    } catch {
+      log("OI REST 失败：\(error)")
+      return []
+    }
+  }
+
+  /// ② 更早：先问网关（它自己存盘、自己聚合），网关不在才退回逐日归档。
+  private func historySegment(symbol: String, interval: Interval, from: Int64, to: Int64,
+                              onDay: (@Sendable (Int64, [OIPoint]) -> Void)?) async -> [OIPoint] {
+    guard from <= to else { return [] }
+    if let history = await gatewayHistory(symbol: symbol, interval: interval, from: from, to: to) {
+      return history
+    }
+    return await archiveDays(symbol: symbol, days: OIArchive.days(from: from, to: to), onDay: onDay)
+  }
+
+  /// 这一轮真正要下的几段。
+  ///
+  /// 手里已经有的那段历史不会再变，没有理由跟着视野一起重下——往左拉就取左边露出来的
+  /// 那截，60 秒续一次就只取尾巴（只有最后一两根桶的统计值还在动）。视野整段跳到别处、
+  /// 和手里那段不沾边时不能只补一头，那会在中间留一个再也补不上的洞，所以整段重取。
+  public static func missingSegments(have: (from: Int64, to: Int64)?, want: (from: Int64, to: Int64),
+                                     step: Int64, refresh: Bool) -> [(from: Int64, to: Int64)] {
+    guard want.to > want.from else { return [] }
+    guard let have, have.to >= have.from, want.from <= have.to, want.to >= have.from else { return [want] }
+    var out: [(from: Int64, to: Int64)] = []
+    if want.from < have.from { out.append((want.from, min(have.from, want.to))) }
+    if want.to > have.to { out.append((max(have.to, want.from), want.to)) }
+    if refresh {
+      let tail = (from: max(want.from, want.to - max(step, 60_000) * 3), to: want.to)
+      if !out.contains(where: { $0.from <= tail.from && $0.to >= tail.to }) { out.append(tail) }
+    }
+    out = out.filter { $0.to > $0.from }.sorted { $0.from < $1.from }
+    // 尾巴常常和右边露出来的那截叠在一起，叠了就并成一段，别发两次几乎一样的请求。
+    var merged: [(from: Int64, to: Int64)] = []
+    for segment in out {
+      if let last = merged.last, segment.from <= last.to {
+        merged[merged.count - 1].to = max(last.to, segment.to)
       } else {
-        let days = OIArchive.days(from: start, to: end)
-        all += await archiveDays(symbol: symbol, days: days, onDay: onDay)
+        merged.append(segment)
       }
     }
-
-    return Self.dedup(all + recent)  // 接缝重叠时近期统计优先。
+    return merged
   }
 
   /// 对齐到 K 线：每根取「不晚于这根开盘」的最近一条（原型 `oiAligned` 的规矩）。
@@ -85,7 +120,16 @@ public actor OISource {
     // 500 条一页，最多翻 20 页（30 天 × 5m = 8640 条）。
     for _ in 0..<20 {
       try Task.checkCancellation()
-      let page = try await rest.openInterestHist(symbol: symbol, period: period, limit: 500, endTime: end)
+      let page: [OIPoint]
+      do {
+        page = try await rest.openInterestHist(symbol: symbol, period: period, limit: 500, endTime: end)
+      } catch {
+        // 翻到第几页断了就用到第几页：已经到手的几页是好数据，为了更早的一页
+        // 把它们一起丢掉，屏幕上就从「少一截」变成「整条没有」。
+        if error is CancellationError || Task.isCancelled { throw error }
+        log("OI REST 翻页中断：\(error)")
+        break
+      }
       try Task.checkCancellation()
       guard let first = page.first else { break }
       out += page
