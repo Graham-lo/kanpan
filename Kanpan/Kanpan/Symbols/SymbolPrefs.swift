@@ -25,12 +25,29 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   var groupForSymbol: [String: String] = [:]
   var pinned: [String] = []
   var selectedGroupID: String?
+  /// 「看得勤不勤」的分数表，键是品种代号。见 `noteDwell(_:)`。
+  var viewScores: [String: Double] = [:]
+  /// `viewScores` 上一次衰减到的时刻（Unix 秒）。0 表示还没记过。
+  var scoredAt: Double = 0
 
   /// 最近分区的容量（§10.5「最近分区最多 10 个」/ A5.9）。
   static let recentLimit = 10
+  /// 分数的半衰期：14 天前看得再多，今天也只值一半。
+  static let scoreHalfLife: Double = 14 * 86_400
+  /// 分数表最多留这么多个品种，超了把最低的丢掉——它只服务「常看」那一小列。
+  static let scoreCapacity = 60
+  /// 低于这个分就不值得留了（约等于 14 天 × 6 个半衰期没再看过）。
+  static let scoreFloor = 0.02
 
   init(favorites: [String] = [], recents: [String] = [], groups: [FavoriteGroup] = [],
-       groupForSymbol: [String: String] = [:], pinned: [String] = [], selectedGroupID: String? = nil) {
+       groupForSymbol: [String: String] = [:], pinned: [String] = [], selectedGroupID: String? = nil,
+       viewScores: [String: Double] = [:], scoredAt: Double = 0) {
+    self.viewScores = viewScores.reduce(into: [:]) { out, pair in
+      let key = Self.key(pair.key)
+      guard !key.isEmpty, pair.value.isFinite, pair.value > 0 else { return }
+      out[key, default: 0] += pair.value
+    }
+    self.scoredAt = scoredAt.isFinite && scoredAt > 0 ? scoredAt : 0
     self.favorites = Self.clean(favorites)
     self.recents = Array(Self.clean(recents).prefix(Self.recentLimit))
     var seen = Set<String>()
@@ -40,7 +57,9 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     self.selectedGroupID = selectedGroupID.flatMap { seen.contains($0) ? $0 : nil }
   }
 
-  private enum CodingKeys: String, CodingKey { case favorites, recents, groups, groupForSymbol, pinned, selectedGroupID }
+  private enum CodingKeys: String, CodingKey {
+    case favorites, recents, groups, groupForSymbol, pinned, selectedGroupID, viewScores, scoredAt
+  }
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
     self.init(favorites: try values.decodeIfPresent([String].self, forKey: .favorites) ?? [],
@@ -48,7 +67,9 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
               groups: try values.decodeIfPresent([FavoriteGroup].self, forKey: .groups) ?? [],
               groupForSymbol: try values.decodeIfPresent([String: String].self, forKey: .groupForSymbol) ?? [:],
               pinned: try values.decodeIfPresent([String].self, forKey: .pinned) ?? [],
-              selectedGroupID: try values.decodeIfPresent(String.self, forKey: .selectedGroupID))
+              selectedGroupID: try values.decodeIfPresent(String.self, forKey: .selectedGroupID),
+              viewScores: try values.decodeIfPresent([String: Double].self, forKey: .viewScores) ?? [:],
+              scoredAt: try values.decodeIfPresent(Double.self, forKey: .scoredAt) ?? 0)
   }
 
   // ---------------------------------------------------------------- 自选
@@ -190,6 +211,59 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
 
   mutating func clearRecents() { recents.removeAll() }
 
+  // ---------------------------------------------------------------- 常看
+
+  /// 「真的在这张图上待了一会儿」记一分。
+  ///
+  /// 为什么不直接拿 `recents` 当「常看」：`recents` 是**时间**倒序，搜索里滑过、
+  /// 点错一下、随手翻两眼，都会把真正天天盯的那几个顶出前排；用户要的是
+  /// 「哪些品种经常看，说明更有画线的需求」——那是**次数**，不是最后一次什么时候。
+  ///
+  /// 所以另记一份分数：看一次加 1 分，全表按 14 天半衰期衰减。半衰期是为了让口味
+  /// 能变——上个月天天看的东西，这个月不看了就会自己沉下去，不必让用户去清。
+  /// 调用方负责判断「待了一会儿」（见 `MainScreen` 里的停留计时），这里只管记账。
+  mutating func noteDwell(_ symbol: String, now: Double = Date().timeIntervalSince1970) {
+    let s = Self.key(symbol)
+    guard !s.isEmpty, now.isFinite, now > 0 else { return }
+    decayScores(to: now)
+    viewScores[s, default: 0] += 1
+    guard viewScores.count > Self.scoreCapacity else { return }
+    let keep = viewScores.sorted { $0.value > $1.value }.prefix(Self.scoreCapacity)
+    viewScores = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
+  }
+
+  /// 常看的品种，分数从高到低；同分按最近打开过的排前面。
+  func frequent(limit: Int = 12, now: Double = Date().timeIntervalSince1970) -> [String] {
+    var scores = viewScores
+    Self.decay(&scores, from: scoredAt, to: now)
+    let recency = Dictionary(uniqueKeysWithValues: recents.enumerated().map { ($1, $0) })
+    return scores.sorted {
+      if $0.value != $1.value { return $0.value > $1.value }
+      return (recency[$0.key] ?? .max) < (recency[$1.key] ?? .max)
+    }.prefix(limit).map(\.key)
+  }
+
+  mutating func clearViewScores() { viewScores.removeAll(); scoredAt = 0 }
+
+  private mutating func decayScores(to now: Double) {
+    Self.decay(&viewScores, from: scoredAt, to: now)
+    scoredAt = now
+  }
+
+  /// 按半衰期把整张表往下压一档，压到地板以下的直接丢掉。
+  /// 时钟倒退（改过系统时间、跨设备同步）时 `elapsed <= 0`，什么都不做——
+  /// 宁可这一次不衰减，也不要把分数**放大**回去。
+  private static func decay(_ scores: inout [String: Double], from: Double, to now: Double) {
+    let elapsed = now - from
+    guard from > 0, elapsed > 0, elapsed.isFinite else { return }
+    let factor = pow(0.5, elapsed / scoreHalfLife)
+    guard factor.isFinite, factor < 1 else { return }
+    for (key, value) in scores {
+      let next = value * factor
+      if next < scoreFloor { scores.removeValue(forKey: key) } else { scores[key] = next }
+    }
+  }
+
   // ---------------------------------------------------------------- 归一
 
   static func key(_ symbol: String) -> String {
@@ -255,7 +329,9 @@ final class SymbolPrefsStore {
           let prefs = try? JSONDecoder().decode(SymbolPrefs.self, from: data) else { return SymbolPrefs() }
     // 过一遍 init 的清洗（去重、大写、截断到 10）。
     return SymbolPrefs(favorites: prefs.favorites, recents: prefs.recents,
-                       groups: prefs.groups, groupForSymbol: prefs.groupForSymbol, pinned: prefs.pinned, selectedGroupID: prefs.selectedGroupID)
+                       groups: prefs.groups, groupForSymbol: prefs.groupForSymbol, pinned: prefs.pinned,
+                       selectedGroupID: prefs.selectedGroupID,
+                       viewScores: prefs.viewScores, scoredAt: prefs.scoredAt)
   }
 
   func save(_ prefs: SymbolPrefs) {

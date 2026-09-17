@@ -310,6 +310,60 @@ final class SymbolPickerModel {
     pick(info)
   }
 
+  // ---------------------------------------------------------------- 常看
+
+  /// 在某个品种的图上真待了一会儿——记一分。见 `SymbolPrefs.noteDwell(_:)`。
+  ///
+  /// 只落盘，既不 `rebuild()` 也不走 `onPrefsChange`：这张分数表是**纯本机**的
+  /// （服务端那几张表里没有它，`AppAccountBridge` 只负责把它原样带过同步），
+  /// 而且不参与任何一张列表的排序，所以重排分区和推同步都是白跑一趟。
+  func noteDwell(_ symbol: String) {
+    let before = prefs.viewScores
+    prefs.noteDwell(symbol)
+    guard prefs.viewScores != before else { return }
+    store.save(prefs)
+  }
+
+  /// 常看的品种，分数从高到低。画线工作台里换品种那一层，没输入时列的就是它。
+  ///
+  /// 冷启动那几天分数表还是空的，这时回落到「最近」——总比给用户一张白名单强。
+  /// 两边都空就给「全部」里成交额最高的几个，**永远不让这一列是空的**：
+  /// 那一层除了这一列没有别的内容，空了就成了一张只有搜索框的白板。
+  func frequentSymbols(limit: Int = 12) -> [String] {
+    var out = prefs.frequent(limit: limit)
+    guard out.count < limit else { return out }
+    var seen = Set(out)
+    for symbol in prefs.recents where seen.insert(symbol).inserted {
+      out.append(symbol); if out.count == limit { return out }
+    }
+    let hot = catalog
+      .map { ($0.symbol.uppercased(), tickers[$0.symbol.uppercased()]?.quoteVolume ?? 0) }
+      .filter { $0.1.isFinite }
+      .sorted { $0.1 > $1.1 }
+    for (symbol, _) in hot where seen.insert(symbol).inserted {
+      out.append(symbol); if out.count == limit { return out }
+    }
+    return out
+  }
+
+  /// 搜索框里打了字时列的那一列——**只有代号**，没有价格涨跌。
+  /// 排序跟品种页一个口径：先最匹配，同档按 24h 成交额降序（见 `SymbolSections.build`）。
+  func matchingSymbols(_ query: String, limit: Int = 60) -> [String] {
+    let q = SymbolQuery.normalize(query)
+    guard !q.isEmpty else { return [] }
+    return SymbolQuery.match(catalog, query: q)
+      .enumerated()
+      .sorted { a, b in
+        if a.element.tier != b.element.tier { return a.element.tier < b.element.tier }
+        let x = tickers[a.element.info.symbol.uppercased()]?.quoteVolume ?? 0
+        let y = tickers[b.element.info.symbol.uppercased()]?.quoteVolume ?? 0
+        if x != y { return x > y }
+        return a.offset < b.offset
+      }
+      .prefix(limit)
+      .map { $0.element.info.symbol.uppercased() }
+  }
+
   // ---------------------------------------------------------------- 内务
 
   private func commit() {

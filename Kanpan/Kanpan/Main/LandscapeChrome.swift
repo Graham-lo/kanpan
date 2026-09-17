@@ -13,6 +13,9 @@ struct LandscapeHeadline: View {
   var price: Double?
   var changePercent: Double?
   var decimals: Int
+  /// 只有画线工作台传它，别处一律 `nil`——竖屏行情页的品种名不是按钮，
+  /// 横屏看行情时也不是。理由见 `DrawingSymbolSwitcher` 顶上那段。
+  var onTapSymbol: (() -> Void)?
 
   private var up: Bool { (changePercent ?? 0) >= 0 }
 
@@ -21,6 +24,12 @@ struct LandscapeHeadline: View {
       Text(symbol)
         .font(.system(size: 13, weight: .semibold))
         .foregroundStyle(theme.ink)
+      if onTapSymbol != nil {
+        Image(systemName: "chevron.down")
+          .font(.system(size: 8, weight: .bold))
+          .foregroundStyle(theme.ink3)
+          .padding(.leading, -4)
+      }
       if let price {
         Text(fmtNum(price, decimals))
           .font(.system(size: 13, weight: .semibold).monospacedDigit())
@@ -31,13 +40,14 @@ struct LandscapeHeadline: View {
           .font(.system(size: 11, weight: .medium).monospacedDigit())
           .foregroundStyle(up ? theme.up : theme.down)
       }
-      // 竖屏的品种名不再开换品种弹层，横屏这一行跟着走：它本来就只是图例，
-      // 横屏是画线的工作台，不是挑品种的地方。
     }
     .padding(.horizontal, 9)
     .padding(.vertical, 5)
     .background(Capsule().fill(theme.raised2.opacity(0.82)))
+    .contentShape(Capsule())
+    .onTapGesture { onTapSymbol?() }
     .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(onTapSymbol == nil ? [] : .isButton)
     .accessibilityIdentifier("land.symbol")
   }
 }
@@ -117,7 +127,7 @@ struct IntervalRail: View {
 ///   就得转回竖屏点一下再转过来。
 /// - 「竖屏」是出口。锁了方向的手机转不回去，没有它横屏就是一张单程票。
 ///
-/// 工具列、撤销 / 重做、完成都在画线自己那根 `DrawingRail` 上，不在这儿重复一份。
+/// 工具列、撤销 / 重做、完成都在画线自己那根 `DrawingDock` 上，不在这儿重复一份。
 struct ToolRail: View {
   var theme: PanelTheme
   var drawing: Bool

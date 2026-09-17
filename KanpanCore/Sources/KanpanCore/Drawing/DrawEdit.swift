@@ -56,7 +56,7 @@ public func movedDrawing(
 ) -> Drawing {
   guard !from.locked else { return from }
   var d = from
-  let index: Int? = switch part { case .a: 0; case .b: 1; case .c: 2; case .body: nil }
+  let index = part.index
   for i in d.points.indices where index == nil || index == i {
     d.points[i] = DrawPoint(t: from.points[i].t + (from.kind == .hline ? 0 : dt),
                            p: from.kind == .vline ? from.points[i].p : priceShift(from.points[i].p))

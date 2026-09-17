@@ -75,6 +75,39 @@ final class ChartFoundationUITests: XCTestCase {
     let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
   }
 
+  /// 点「绘图」面板上的分类标签。
+  ///
+  /// 那条标签是横向滚动的：九个分类（线条 / 通道 / 几何 / 区间 / 斐波那契 / 江恩 / 形态 /
+  /// 测量 / 标注）在 393pt 宽的竖屏上一次只露得出四五格，后面几格的 frame 干脆落在屏幕
+  /// 右边以外。用户遇到这种情况就是拿手指往左拨，这里照做：先把要点的那格划进可视区，再点。
+  ///
+  /// 判断「露出来了没有」只能看 frame，不能问 `isHittable`：标签整个在屏幕外时 XCTest
+  /// 连 activation point 都算不出来，**查询** `isHittable` 这一下自己就抛
+  /// 「Activation point invalid」——它不是返回 false，是直接让用例挂掉。
+  func tapDrawGroup(_ name: String) {
+    let tab = app.buttons["draw.group.\(name)"]
+    XCTAssertTrue(tab.waitForExistence(timeout: 5), "没找到分类标签 \(name)")
+    // 用「含有『线条』这颗胶囊的那个滚动视图」把标签条钉死：格子区那个 ScrollView 里
+    // 只有 draw.tool.*，不会被误取（同一个道理见下面工具格子那段注释）。
+    let strip = app.scrollViews.containing(.button, identifier: "draw.group.线条").firstMatch
+    XCTAssertTrue(strip.waitForExistence(timeout: 5), "没找到分类标签条")
+    func showing() -> Bool {
+      let f = tab.frame, box = strip.frame
+      return f.minX >= box.minX - 0.5 && f.maxX <= box.maxX + 0.5
+    }
+    for _ in 0..<10 {
+      if showing() { break }
+      let toTheRight = tab.frame.midX > strip.frame.midX
+      let from = CGVector(dx: toTheRight ? 0.85 : 0.15, dy: 0.5)
+      let to = CGVector(dx: toTheRight ? 0.2 : 0.8, dy: 0.5)
+      strip.coordinate(withNormalizedOffset: from).press(forDuration: 0.05,
+        thenDragTo: strip.coordinate(withNormalizedOffset: to),
+        withVelocity: .slow, thenHoldForDuration: 0.1)
+    }
+    XCTAssertTrue(showing(), "分类标签 \(name) 划不进可视区")
+    tab.tap()
+  }
+
   /// 「记一笔」收在「图表设置」那一屏里，开出的取景卡只压图的下半截，一根 K 线都不动。
   ///
   /// 这颗按钮走过两站：先是浮在主图上、能拖着到处摆的一枚圆钮（浮着就一定挡图，
@@ -1094,11 +1127,13 @@ extension ChartFoundationUITests {
     XCTAssertTrue(wait { self.info()["drawingHidden"] as? [Bool] == [true] })
     XCUIDevice.shared.orientation = .landscapeLeft
     XCTAssertTrue(wait(seconds: 5) { self.canvas.frame.width > self.canvas.frame.height && self.app.buttons["draw.tools"].isHittable })
+    // 横屏的「绘图」面板不是半屏表单，是贴着左边推出来的一块卡片（`drawToolsLayer`），
+    // 但里头的搜索框、分类标签、格子和关闭按钮跟竖屏是同一个视图，标识符也一样。
     app.buttons["draw.tools"].tap()
     XCTAssertTrue(app.buttons["draw.sheet.done"].waitForExistence(timeout: 5))
     for _ in 0..<8 {
       if app.buttons["draw.tool.ray"].exists && app.buttons["draw.tool.ray"].isHittable { break }
-      let list = app.collectionViews.firstMatch
+      let list = app.scrollViews.containing(.button, identifier: "draw.tool.trend").firstMatch
       list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).press(forDuration: 0.05,
         thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)),
         withVelocity: .slow, thenHoldForDuration: 0.1)
@@ -1165,18 +1200,23 @@ extension ChartFoundationUITests {
   func testDrawingAllToolsAndFingerTargets() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     app.buttons["draw.magnet.quick"].tap()
-    let tools: [(String, Int)] = [("trend", 2), ("hline", 1), ("ray", 2), ("hray", 1),
-      ("extended", 2), ("vline", 1), ("rectangle", 2), ("channel", 3), ("fibonacci", 2), ("measure", 2)]
+    // 第三项是这把工具所在的分类：「绘图」面板一次只列一类，先点标签再找工具
+    // （面板长什么样见 `DrawingToolPicker`）。
+    let tools: [(String, Int, String)] = [("trend", 2, "线条"), ("hline", 1, "线条"), ("ray", 2, "线条"),
+      ("hray", 1, "线条"), ("extended", 2, "线条"), ("vline", 1, "线条"), ("rectangle", 2, "几何"),
+      ("channel", 3, "通道"), ("fibonacci", 2, "斐波那契"), ("measure", 2, "测量")]
     for (index, tool) in tools.enumerated() {
       app.buttons["draw.tools"].tap()
       XCTAssertTrue(app.buttons["draw.sheet.done"].waitForExistence(timeout: 5))
+      tapDrawGroup(tool.2)
       let target = app.buttons["draw.tool.\(tool.0)"]
-      // 滚动必须**限定在工具面板自己的列表里**。原来用的是 `app.collectionViews.firstMatch`：
-      // 它取的是整棵树里第一个集合视图，不保证是这张半屏面板——一旦落到主界面上，
-      // 这十四次拖动就变成了在行情页上乱划，整条用例会跑飞（真出过：最后停在自选页，
-      // `chart.canvas` 直接不存在了）。用「含有 draw.tool.trend 这颗按钮的那个列表」把它钉死。
-      let list = app.collectionViews.containing(.button, identifier: "draw.tool.trend").firstMatch
-      XCTAssertTrue(list.waitForExistence(timeout: 5), "没找到画线工具面板的列表")
+      // 滚动必须**限定在工具面板自己的格子区里**。早先用的是 `app.collectionViews.firstMatch`：
+      // 它取的是整棵树里第一个集合视图，不保证是这张面板——一旦落到主界面上，这十四次
+      // 拖动就变成了在行情页上乱划，整条用例会跑飞（真出过：最后停在自选页，
+      // `chart.canvas` 直接不存在了）。现在面板是 `ScrollView` + `LazyVGrid`，
+      // 用「含有这把工具的那个滚动视图」把它钉死。
+      let list = app.scrollViews.containing(.button, identifier: "draw.tool.\(tool.0)").firstMatch
+      XCTAssertTrue(list.waitForExistence(timeout: 5), "没找到画线工具面板的格子区")
       for _ in 0..<14 {
         if target.exists && target.isHittable { break }
         list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).press(forDuration: 0.05,

@@ -35,14 +35,17 @@ struct DrawingBar: View {
         icon("arrow.uturn.forward", "重做", "draw.redo", enabled: controller.canRedo) { controller.redo() }
       }
       HStack(spacing: 0) {
-        Button { controller.panel = .tools } label: {
-          Image(systemName: "square.grid.2x2").frame(width: 44, height: 44).contentShape(Rectangle())
+        Button { controller.openTools() } label: {
+          Image(systemName: "pencil.line").frame(width: 44, height: 44).contentShape(Rectangle())
         }
         .accessibilityLabel("全部画线工具").accessibilityIdentifier("draw.tools")
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: 6) {
             ForEach(controller.preferences.favorites) { kind in
-              Button(kind.shortTitle) { controller.pick(kind) }
+              // 记号在前、短名在后：横屏那根栏和这排 chip 认的是同一套形状（`DrawKindGlyph`）。
+              Button { controller.pick(kind) } label: {
+                HStack(spacing: 5) { DrawKindGlyph(kind: kind, size: 18); Text(kind.shortTitle) }
+              }
                 .padding(.horizontal, 10).frame(minHeight: 44)
                 .background(controller.tool == kind ? theme.amberSoft : .clear, in: RoundedRectangle(cornerRadius: 8))
                 .foregroundStyle(controller.tool == kind ? theme.amber : theme.ink2)
@@ -158,34 +161,122 @@ struct DrawingHintStrip: View {
   }
 }
 
-/// 横屏那根 64pt 的竖栏：工具列 · 收藏的几把工具 · 撤销 / 重做 · 完成（§2E1）。
+/// 横屏画线工作台底下那根横条：笔形入口 + 收藏的几把工具 + 几个常驻动作（§2E5）。
 ///
-/// 选中一条线之后的 样式 / 锁定 / 复制 / 删除 原来也挤在这根栏上，位置还跟着选中态
-/// 一跳一跳地变——刚点完「重做」，下一次同一个位置已经换成了「删除」。现在它们搬到
-/// 图外顶部那条属性栏上（`DrawingSelectionBar(flat:)`），这根栏从头到尾长一个样，
-/// 「完成」「撤销」不会再被顶着走。
-struct DrawingRail: View {
+/// 这根条改过三轮，每一轮都是位置和入口数量的取舍：
+///
+/// 1. 最早是右边一列**文字按钮**——「工具」「趋势线」「撤销」「重做」「完成」，工具只有
+///    一个入口，点开是一张盖住整张图的半屏表单；
+/// 2. 照 AICoin 改成右边一列**分类图标**，点开向左弹一条那一类的清单；
+/// 3. 现在照 TradingView 收成**底部一横条**，工具入口是一个笔形图标，点开是那张自带
+///    搜索和分类的「绘图」面板（`DrawingToolPicker`）。
+///
+/// 从竖栏挪到底部是尺寸算出来的，不只是照抄：工具全量对齐 TV 之后要在栏上摆的东西有
+/// 十四五个，横屏可用高度只有 390pt 上下，竖着摆必然要滚动——而横屏的**宽**有 850pt，
+/// 横着摆绰绰有余。手也顺：横握手机时两个拇指都停在下沿，右栏顶上那几格恰恰是最难够的。
+///
+/// 条上留下的都是**画的过程中要反复点**的东西，它们不该藏进面板里：收藏的工具一格一个、
+/// 形状即按钮（`DrawKindGlyph`），吸附 / 连续两个开关，以及撤销 / 重做 / 隐藏 / 管理 / 完成。
+///
+/// 「清空」没上条。AICoin 把它和「隐藏」并排放，但那是一下就把整个品种的线全删掉的动作，
+/// 紧挨着一个每天要点很多次的「隐藏」太险——它留在「管理」里，那儿有确认。
+struct DrawingDock: View {
   @ObservedObject var controller: DrawingController
   @Environment(\.panelTheme) private var theme
+  @Environment(\.displayScale) private var displayScale
+  private static let height: Double = 46
+
   var body: some View {
-    ScrollView {
-      VStack(spacing: 2) {
-        Button("工具") { controller.panel = .tools }.accessibilityIdentifier("draw.tools")
-        ForEach(controller.preferences.favorites) { kind in
-          Button(kind.shortTitle) { controller.pick(kind) }.accessibilityIdentifier("draw.\(kind.rawValue)")
-            .foregroundStyle(controller.tool == kind ? theme.amber : theme.ink2)
-            .drawRepeatOnLongPress(controller, kind)
-        }
-        Button("撤销") { controller.undo() }.disabled(!controller.canUndo).accessibilityIdentifier("draw.undo")
-        Button("重做") { controller.redo() }.disabled(!controller.canRedo).accessibilityIdentifier("draw.redo")
-        Button("完成") { controller.finish() }.accessibilityIdentifier("draw.finish")
-      }.buttonStyle(DrawingRailButton())
-    }.font(.system(size: 11)).frame(width: 64).background(theme.raised).foregroundStyle(theme.ink2)
+    HStack(spacing: 0) {
+      toolsButton
+      divider
+      // 收藏放在滚动区里：它的数量由用户定，多了也不能把右边那几个固定动作挤没
+      // （竖屏那根条踩过这个坑，见 `DrawingBar` 顶上那段）。
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 2) {
+          ForEach(controller.preferences.favorites) { kind in toolButton(kind) }
+        }.padding(.horizontal, 4)
+      }
+      .frame(maxWidth: .infinity)
+      .clipped()
+      divider
+      toggleButton("吸附", "arrow.up.and.down.and.arrow.left.and.right", "draw.magnet.quick",
+                   on: controller.preferences.magnet) { controller.toggleMagnet() }
+      toggleButton("连续", "repeat", "draw.continuous.quick",
+                   on: controller.preferences.continuous) { controller.toggleContinuous() }
+      divider
+      iconButton("arrow.uturn.backward", "撤销", "draw.undo", enabled: controller.canUndo) { controller.undo() }
+      iconButton("arrow.uturn.forward", "重做", "draw.redo", enabled: controller.canRedo) { controller.redo() }
+      let allHidden = !controller.items.isEmpty && controller.items.allSatisfy(\.hidden)
+      iconButton(allHidden ? "eye.slash" : "eye", allHidden ? "全部显示" : "全部隐藏", "draw.hideAll",
+                 enabled: !controller.items.isEmpty) { controller.hideAll() }
+      iconButton("square.stack", "管理画线", "draw.objects.quick") { controller.panel = .objects }
+      divider
+      Button("完成") { controller.finish() }
+        .frame(width: 56, height: Self.height).contentShape(Rectangle())
+        .foregroundStyle(theme.amber).font(.system(size: 12, weight: .medium))
+        .accessibilityIdentifier("draw.finish")
+    }
+    .font(.system(size: 10))
+    .buttonStyle(.plain)
+    .frame(height: Self.height)
+    .background(theme.raised)
+    .foregroundStyle(theme.ink2)
+    .overlay(alignment: .top) { theme.line.frame(height: 1 / displayScale) }
   }
-}
-private struct DrawingRailButton: ButtonStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label.frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle()).opacity(configuration.isPressed ? 0.5 : 1)
+
+  private var divider: some View { theme.line.frame(width: 1 / displayScale, height: 26) }
+
+  /// 笔形入口。手里拿着的工具不在收藏里时它也亮着，并且写上那把工具的名字——
+  /// 不然换了一把冷门的线，条上没有任何一格是亮的，看不出手里正拿着东西。
+  private var toolsButton: some View {
+    let held = controller.tool.flatMap { controller.preferences.favorites.contains($0) ? nil : $0.shortTitle }
+    return Button { controller.openTools() } label: {
+      VStack(spacing: 1) {
+        Image(systemName: "pencil.line").font(.system(size: 17))
+        Text(held ?? "工具").lineLimit(1).minimumScaleFactor(0.8)
+      }.frame(width: 54, height: Self.height).contentShape(Rectangle())
+    }
+    .foregroundStyle(held != nil || controller.picker ? theme.amber : theme.ink2)
+    .background(controller.picker ? theme.amberSoft : .clear)
+    .accessibilityLabel("全部画线工具").accessibilityIdentifier("draw.tools")
+  }
+
+  private func toolButton(_ kind: Drawing.Kind) -> some View {
+    Button { controller.pick(kind) } label: {
+      VStack(spacing: 1) {
+        DrawKindGlyph(kind: kind, size: 20)
+        Text(kind.shortTitle).lineLimit(1).minimumScaleFactor(0.8)
+      }.frame(minWidth: 46, minHeight: Self.height).padding(.horizontal, 2).contentShape(Rectangle())
+    }
+    .foregroundStyle(controller.tool == kind ? theme.amber : theme.ink2)
+    .background(controller.tool == kind ? theme.amberSoft : .clear, in: RoundedRectangle(cornerRadius: 8))
+    .accessibilityLabel(kind.title)
+    .accessibilityIdentifier("draw.\(kind.rawValue)")
+    .drawRepeatOnLongPress(controller, kind)
+  }
+
+  private func toggleButton(_ title: String, _ icon: String, _ id: String, on: Bool,
+                            action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      VStack(spacing: 1) {
+        Image(systemName: icon).font(.system(size: 13))
+        Text(title).lineLimit(1)
+      }.frame(width: 44, height: Self.height).contentShape(Rectangle())
+    }
+    .foregroundStyle(on ? theme.amber : theme.ink3)
+    .accessibilityLabel(title + (on ? "开" : "关"))
+    .accessibilityIdentifier(id)
+  }
+
+  private func iconButton(_ icon: String, _ label: String, _ id: String, enabled: Bool = true,
+                          action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Image(systemName: icon).font(.system(size: 15))
+        .frame(width: 42, height: Self.height).contentShape(Rectangle())
+    }
+    .disabled(!enabled).opacity(enabled ? 1 : 0.35)
+    .accessibilityLabel(label).accessibilityIdentifier(id)
   }
 }
 
@@ -206,33 +297,7 @@ struct DrawingSheet: View {
     } else {
       NavigationStack {
         List {
-          if panel == .tools {
-            Section {
-              Toggle("靠近 K 线时吸附", isOn: Binding(get: { controller.preferences.magnet }, set: { _ in controller.toggleMagnet() }))
-                .accessibilityIdentifier("draw.magnet")
-              Toggle("连续画线", isOn: Binding(get: { controller.preferences.continuous }, set: { _ in controller.toggleContinuous() }))
-                .accessibilityIdentifier("draw.continuous")
-              Button("管理画线（\(controller.items.count)）") { controller.panel = .objects }.accessibilityIdentifier("draw.objects")
-            }
-            ForEach(["线条", "区域", "斐波那契", "测量"], id: \.self) { group in
-              Section(group) {
-                ForEach(Drawing.Kind.allCases.filter { $0.group == group }) { kind in
-                  HStack {
-                    Button { controller.pick(kind) } label: {
-                      Text(kind.title).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-                    }
-                      .accessibilityIdentifier("draw.tool.\(kind.rawValue)")
-                      .drawRepeatOnLongPress(controller, kind)
-                    Button { controller.toggleFavorite(kind) } label: {
-                      Image(systemName: controller.preferences.favorites.contains(kind) ? "star.fill" : "star")
-                        .frame(width: 44, height: 44)
-                    }.accessibilityLabel("收藏" + kind.title).accessibilityIdentifier("draw.favorite.\(kind.rawValue)")
-                  }.buttonStyle(.borderless)
-                }
-              }
-            }
-          } else {
-            Section {
+          Section {
               if controller.items.isEmpty { Text("还没有画线") }
               ForEach(Array(controller.items.reversed())) { item in
                 HStack {
@@ -252,13 +317,12 @@ struct DrawingSheet: View {
                 }
               }
             }
-            if !controller.items.isEmpty {
-              Button(controller.items.allSatisfy(\.hidden) ? "全部显示" : "全部隐藏") { controller.hideAll() }
-              Button("清空当前品种画线", role: .destructive) { confirmClear = true }.accessibilityIdentifier("draw.clear")
-            }
+          if !controller.items.isEmpty {
+            Button(controller.items.allSatisfy(\.hidden) ? "全部显示" : "全部隐藏") { controller.hideAll() }
+            Button("清空当前品种画线", role: .destructive) { confirmClear = true }.accessibilityIdentifier("draw.clear")
           }
         }
-        .navigationTitle(panel == .tools ? "画线工具" : "画线管理")
+        .navigationTitle("画线管理")
         .navigationBarTitleDisplayMode(.inline)
         // 出口摆左上角的「‹ 返回」，和面板、自选页、品种页同一个位置（2026-09-15）。
         // 这张表单没有「保存」语义——它改的每一项都即时生效——所以右上角不留按钮。
@@ -271,10 +335,11 @@ struct DrawingSheet: View {
         .confirmationDialog("清空当前品种的全部画线？", isPresented: $confirmClear, titleVisibility: .visible) {
           Button("清空画线", role: .destructive) { controller.clear() }
         } message: { Text("清空后可在画线栏撤销。") }
-      }.presentationDetents(panel == .tools ? [.large] : [.medium, .large])
+      }.presentationDetents([.medium, .large])
         .presentationBackgroundInteraction(.enabled(upThrough: .medium))
     }
   }
+
 }
 
 private struct DrawingStyleEditor: View {
@@ -290,8 +355,7 @@ private struct DrawingStyleEditor: View {
           DrawingColorControl(title: "颜色", color: Binding(get: { item.color ?? "#D6A64F" }, set: { item.color = $0 }))
           Stepper("粗细：\(item.lineWidth, specifier: "%.1f")", value: $item.lineWidth, in: 0.5...6, step: 0.5)
           Picker("线型", selection: $item.dash) { ForEach(Drawing.Dash.allCases, id: \.self) { Text($0.title).tag($0) } }
-          // 「测量」不在这儿了：它已经不是一个框，是两点之间的一条线（§2E4），没有底可填。
-          if [.rectangle, .channel].contains(item.kind) { Toggle("背景填充", isOn: $item.filled) }
+          if item.kind.usesFill { Toggle("背景填充", isOn: $item.filled) }
           Toggle("锁定位置", isOn: $item.locked)
         }
         Section("坐标") {
@@ -304,10 +368,18 @@ private struct DrawingStyleEditor: View {
             }
           }
         }.disabled(item.locked)
-        if item.kind == .fibonacci {
-          Section("回撤比例") {
+        if item.kind.usesText {
+          Section("文字") {
+            TextField("写点什么", text: $item.text, axis: .vertical).lineLimit(1...4)
+              .accessibilityIdentifier("draw.note.text")
+            Text("最多 \(Drawing.textLimit) 个字。").font(.caption).foregroundStyle(.secondary)
+          }
+        }
+        if item.kind.usesLevels {
+          Section(item.kind == .fibExtension ? "扩展比例" : "回撤比例") {
             TextField("0, 0.382, 0.5, 0.618, 1", text: $levelText).keyboardType(.numbersAndPunctuation)
-            Text("用逗号分隔；0 为终点，1 为起点。").font(.caption).foregroundStyle(.secondary)
+            Text(item.kind == .fibExtension ? "用逗号分隔；从起算点 C 往外按 A→B 的幅度乘出来。"
+                 : "用逗号分隔；0 为终点，1 为起点。").font(.caption).foregroundStyle(.secondary)
           }
         }
       }
@@ -317,9 +389,9 @@ private struct DrawingStyleEditor: View {
         ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
         ToolbarItem(placement: .confirmationAction) {
           Button("保存") {
-            if item.kind == .fibonacci, let levels = parsedLevels { item.levels = levels }
+            if item.kind.usesLevels, let levels = parsedLevels { item.levels = levels }
             controller.update(item); dismiss()
-          }.disabled(!item.isValid || (item.kind == .fibonacci && parsedLevels == nil)).accessibilityIdentifier("draw.save")
+          }.disabled(!item.isValid || (item.kind.usesLevels && parsedLevels == nil)).accessibilityIdentifier("draw.save")
         }
       }
     }

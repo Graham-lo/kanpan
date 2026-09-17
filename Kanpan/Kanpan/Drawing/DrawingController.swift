@@ -4,7 +4,10 @@ import SwiftUI
 
 @MainActor
 final class DrawingController: ObservableObject {
-  enum Panel: String, Identifiable { case tools, objects, style; var id: String { rawValue } }
+  enum Panel: String, Identifiable { case objects, style; var id: String { rawValue } }
+  /// 「绘图」工具面板开着没有。它没跟 `panel` 合在一起：横竖屏呈现方式不一样——
+  /// 竖屏是半屏表单，横屏是贴边的一块卡片（见 `DrawingToolPicker`），而 `panel`
+  /// 那两张（管理 / 样式）两种朝向下都是表单。
   @Published private(set) var active = false
   @Published private(set) var tool: DrawingStore.Tool?
   @Published private(set) var hint: String?
@@ -17,12 +20,16 @@ final class DrawingController: ObservableObject {
   @Published var full = false
   @Published var notice: String?
   @Published var panel: Panel?
+  @Published var picker = false
   private weak var chart: ChartView?
   private var store: DrawStore
   var onArchiveChange: ((DrawArchive) -> Void)?
   var storedArchive: DrawArchive { archive }
   private var archive: DrawArchive
   private var symbol = ""
+  /// 上一条「刚落下、还没写字」的文字标注。只为了别把样式表反复弹出来：
+  /// 用户点了取消之后 `panel` 回到 nil，`sync()` 又会跑一遍，没有这个记号就成了死循环。
+  private var promptedNote: String?
 
   init(store: DrawStore = .applicationSupport()) {
     self.store = store
@@ -48,9 +55,11 @@ final class DrawingController: ObservableObject {
     guard symbol != self.symbol || chart?.drawings != archive[symbol] && chart?.drawings.isEmpty == true else { return }
     // Every completed edit is already saved. Never write the incoming chart into the outgoing key.
     self.symbol = symbol
-    chart?.setDrawings(archive[symbol]); panel = nil; sync()
+    chart?.setDrawings(archive[symbol]); panel = nil; picker = false; sync()
   }
-  func toggle() { active.toggle(); if !active { chart?.endDrawing() }; sync() }
+  func toggle() { active.toggle(); if !active { chart?.endDrawing(); picker = false }; sync() }
+  /// 开「绘图」面板。入口只有一个笔形图标，横竖屏都是它。
+  func openTools() { active = true; picker = true }
   /// 选工具：**幂等**。点已经选中的那个工具就是「还是它」，不是「取消它」。
   ///
   /// 原来是 `drawTool == t ? nil : t`。画完一条想接着画同一种线，很自然会再点一下工具，
@@ -69,12 +78,12 @@ final class DrawingController: ObservableObject {
       savePreferences()
     }
     chart?.drawTool = t
-    panel = nil
+    panel = nil; picker = false
     sync()
   }
   func select(_ id: String) { active = true; chart?.selectedDrawingID = id; sync() }
   func deleteSelected() { chart?.deleteSelectedDrawing(); sync() }
-  func finish() { chart?.endDrawing(); active = false; panel = nil; sync() }
+  func finish() { chart?.endDrawing(); active = false; panel = nil; picker = false; sync() }
   func undo() { chart?.undoDrawing(); sync() }
   func redo() { chart?.redoDrawing(); sync() }
   func duplicate() { chart?.duplicateSelectedDrawing(); sync() }
@@ -123,5 +132,13 @@ final class DrawingController: ObservableObject {
     items = chart.drawings; selected = items.first { $0.id == chart.selectedDrawingID }
     if selected != nil { active = true }
     canDelete = selected != nil; canUndo = chart.canUndoDrawing; canRedo = chart.canRedoDrawing
+    // 空的文字标注在图上只是一句「点这里写字」的占位。落点即开样式表，
+    // 省掉「落点 → 发现没字 → 自己去找样式」这三步。
+    if let note = selected, note.kind.usesText, note.text.isEmpty, promptedNote != note.id {
+      promptedNote = note.id
+      panel = .style
+    } else if selected == nil {
+      promptedNote = nil
+    }
   }
 }

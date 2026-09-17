@@ -161,8 +161,27 @@ extension ChartView {
   public var drawHint: String? {
     guard let tool = drawing.tool else { return nil }
     if tool.pointCount == 1 { return "按住放置" + tool.title }
-    if drawing.anchors.isEmpty { return "按住拖动画" + tool.title }
-    return tool == .channel && drawing.anchors.count == 2 ? "选择通道宽度" : "选择终点"
+    let placed = drawing.anchors.count
+    switch tool {
+    // 三点工具各有各的说法，统一说「选择终点」等于什么都没说。
+    case .position: return ["按住放置入场价", "选择目标价", "选择止损价"][min(placed, 2)]
+    case .fibExtension: return ["按住拖动画起点 A", "选择回调点 B", "选择起算点 C"][min(placed, 2)]
+    case .channel: return placed == 2 ? "选择通道宽度" : (placed == 0 ? "按住拖动画" + tool.title : "选择终点")
+    case .regression: return placed == 0 ? "圈住要拟合的那一段" : "选择这一段的终点"
+    // 形态类点数多，一路数下去比「选择终点」有用：用户照着字母摆点就行。
+    case .xabcd: return ["按住放置 X 点", "选择 A 点", "选择 B 点", "选择 C 点", "选择 D 点"][min(placed, 4)]
+    case .abcd: return ["按住放置 A 点", "选择 B 点", "选择 C 点", "选择 D 点"][min(placed, 3)]
+    case .headShoulders:
+      return ["按住放置起点", "选择左肩", "选择左颈线点", "选择头部", "选择右颈线点", "选择右肩", "选择终点"][min(placed, 6)]
+    case .elliottImpulse: return placed == 0 ? "按住放置 0 点" : "选择 \(placed) 浪终点"
+    case .elliottCorrection: return ["按住放置 0 点", "选择 A 浪终点", "选择 B 浪终点", "选择 C 浪终点"][min(placed, 3)]
+    case .pitchfork: return ["按住放置柄部 A", "选择枢轴 B", "选择枢轴 C"][min(placed, 2)]
+    case .fibChannel: return ["按住拖动画基线起点", "选择基线终点", "选择通道宽度"][min(placed, 2)]
+    case .triangle: return ["按住放置第一个角", "选择第二个角", "选择第三个角"][min(placed, 2)]
+    case .curve: return ["按住放置起点", "选择终点", "拉出弯曲方向"][min(placed, 2)]
+    case .callout: return placed == 0 ? "按住指向要标注的位置" : "选择气泡落点"
+    default: return placed == 0 ? "按住拖动画" + tool.title : "选择终点"
+    }
   }
 
   public var drawingStyles: [String: DrawingStyle] {
@@ -581,8 +600,19 @@ extension ChartView {
     }
 
     if let last = d.anchors.last, hypot(axes.x(last.t) - axes.x(pt.t), axes.y(last.p) - axes.y(pt.p)) < 3 { return }
-    let points = d.anchors + [pt]
-    if points.count == tool.pointCount {
+    var points = d.anchors + [pt]
+    // 收口看的是 `placeCount`（手指要点几下），存下来的是 `pointCount`（这条线由几个点描述）。
+    // 只有回归通道两者不同：用户圈起止两点，第三点由最小二乘拟合出来补上。
+    if points.count == tool.placeCount {
+      if tool == .regression {
+        // 拟合不出来（圈住的 K 线不到 3 根）就当这一点没落，提示条还停在「选择终点」上，
+        // 用户往右再点远一些就成了——比画出一条没有数据支持的通道诚实。
+        guard let fitted = Drawing.fittedRegression(from: points, series: s.series) else {
+          Haptics.boundary()
+          return
+        }
+        points = fitted
+      }
       var item = Drawing(kind: tool, points: points)
       if let style = d.styles[tool.rawValue] {
         item.color = style.color; item.lineWidth = style.lineWidth; item.dash = style.dash
@@ -605,7 +635,7 @@ extension ChartView {
     var item = movedDrawing(drag.from, part: drag.part, dt: dx / axes.layout.plotW * axes.view.span,
                             priceShift: { axes.p(atY: axes.y($0) + dy) })
     if drag.part != .body {
-      let index = drag.part == .a ? 0 : (drag.part == .b ? 1 : 2)
+      let index = drag.part.index ?? 0
       if item.points.indices.contains(index) { item.points[index] = drawPoint(at: q, axes: axes).point }
     }
     drawing.preview = item
@@ -710,6 +740,11 @@ final class DrawingOverlayView: UIView {
     if let tool = d.tool, !d.anchors.isEmpty || d.aim != nil {
       var points = d.anchors
       if let aim = d.aim { points.append(aim) }
+      // 回归通道的预览也得先拟合，不然两个点喂给 `.regression` 的几何是画不出东西的。
+      // 拟合失败（圈住的 K 线太少）就退到下面那条「只画手柄和一条连线」的路上。
+      if points.count == tool.placeCount, tool == .regression {
+        points = Drawing.fittedRegression(from: points, series: s.series) ?? points
+      }
       if points.count == tool.pointCount {
         var preview = Drawing(kind: tool, points: points); preview.dash = .dashed
         paintDrawing(preview, ctx: ctx, axes: axes, colors: t, selected: true, handles: true)
@@ -722,7 +757,7 @@ final class DrawingOverlayView: UIView {
       if let aim = d.aim { readout(ctx, at: CGPoint(x: axes.x(aim.t), y: axes.y(aim.p)), point: aim, host: host, axes: axes) }
     }
     if let drag = d.drag, let item = d.preview ?? s.drawings.first(where: { $0.id == drag.id }), drag.part != .body {
-      let index = drag.part == .a ? 0 : (drag.part == .b ? 1 : 2)
+      let index = drag.part.index ?? 0
       if item.points.indices.contains(index) {
         let pt = item.points[index]
         readout(ctx, at: CGPoint(x: axes.x(pt.t), y: axes.y(pt.p)), point: pt, host: host, axes: axes)
@@ -780,20 +815,29 @@ func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartC
   let color = d.color ?? t.band
   ctx.saveGState(); defer { ctx.restoreGState() }
   ctx.clip(to: CGRect(x: axes.bounds.left, y: axes.bounds.top, width: axes.layout.plotW, height: axes.pane.h))
+  // 「多空持仓框」的两半要跟着图表的涨跌色走，别的画线一律用用户自己挑的那个颜色
+  // （见 `DrawTint`）。涨跌色也得照用户的红绿口径来，所以问的是这张图的 `t.up/t.down`。
+  func paint(_ tint: DrawTint) -> Hex {
+    switch tint { case .line: color; case .up: t.up; case .down: t.down }
+  }
   ctx.setStrokeColor(Paint.cg(color)); ctx.setLineWidth(d.lineWidth)
   ctx.setLineDash(phase: 0, lengths: d.dash == .solid ? [] : (d.dash == .dashed ? [6, 4] : [1, 3]))
-  if d.filled, !selected, let first = g.polygon.first {
-    ctx.saveGState(); ctx.setAlpha(0.12); ctx.setFillColor(Paint.cg(color))
-    ctx.beginPath(); ctx.move(to: CGPoint(x: first.x, y: first.y))
-    for p in g.polygon.dropFirst() { ctx.addLine(to: CGPoint(x: p.x, y: p.y)) }
-    ctx.closePath(); ctx.fillPath(); ctx.restoreGState()
+  if d.filled, !selected {
+    for fill in g.fills {
+      guard let first = fill.points.first else { continue }
+      ctx.saveGState(); ctx.setAlpha(0.12); ctx.setFillColor(Paint.cg(paint(fill.tint)))
+      ctx.beginPath(); ctx.move(to: CGPoint(x: first.x, y: first.y))
+      for p in fill.points.dropFirst() { ctx.addLine(to: CGPoint(x: p.x, y: p.y)) }
+      ctx.closePath(); ctx.fillPath(); ctx.restoreGState()
+    }
   }
   for line in g.segments {
+    ctx.setStrokeColor(Paint.cg(paint(line.tint)))
     ctx.beginPath(); ctx.move(to: CGPoint(x: line.a.x, y: line.a.y)); ctx.addLine(to: CGPoint(x: line.b.x, y: line.b.y)); ctx.strokePath()
   }
   for label in g.labels where label.point.y >= axes.pane.y && label.point.y <= axes.pane.y + axes.pane.h {
     let width = Double(label.text.width(ChartFont.axis))
-    label.text.drawRightBottom(at: CGPoint(x: max(width + 3, min(axes.layout.plotW - 3, label.point.x)), y: label.point.y), font: ChartFont.axis, color: color)
+    label.text.drawRightBottom(at: CGPoint(x: max(width + 3, min(axes.layout.plotW - 3, label.point.x)), y: label.point.y), font: ChartFont.axis, color: paint(label.tint))
   }
   if selected, handles {
     ctx.setLineDash(phase: 0, lengths: [])

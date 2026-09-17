@@ -27,6 +27,8 @@ struct MainScreen: View {
   @State private var market = MarketModel(symbol: MainScreen.launchSymbol)
   @State private var store = PrefsStore()
   @State private var picker = SymbolPickerModel()
+  /// 画线工作台里那一层换品种开着没有。只在横屏画线时有意义。
+  @State private var showDrawSwitcher = false
   @State private var quotes = QuoteBook()
   @State private var didBoot = false
   @State private var grace = BackgroundGrace()
@@ -246,6 +248,16 @@ struct MainScreen: View {
       if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
     }
     .onChange(of: market.symbol) { _, symbol in quotes.setChartSymbol(symbol); accountBridge?.focus(symbol) }
+    // 「常看」记的是**在这张图上真待住了**，不是「点开过」：搜索里滑过一下、点错一次
+    // 立刻退出去的，都不该算一分。`task(id:)` 换品种就取消重来，离屏也取消，
+    // 所以停不满 3 秒的那些一分都拿不到。
+    .task(id: market.symbol) {
+      let symbol = market.symbol
+      guard !symbol.isEmpty else { return }
+      try? await Task.sleep(for: .seconds(3))
+      guard !Task.isCancelled else { return }
+      picker.noteDwell(symbol)
+    }
     .onChange(of: store.notice) { _, note in
       // 设置那一侧说的话（换下了哪个副图、常用行满了、已恢复默认）分两处落：
       // 面板开着的时候它归面板自己的 `panelToast` 说——主 toast 压在面板底下
@@ -267,6 +279,13 @@ struct MainScreen: View {
     marketContent
     .sheet(item: $draw.panel) { panel in
       DrawingSheet(controller: draw, panel: panel, decimals: market.info.pricePrecision)
+    }
+    // 竖屏的「绘图」面板是一张半屏表单；横屏走 `drawToolsLayer` 那块贴边卡片，
+    // 所以这儿要把横屏挡掉，不然两份会同时在场。
+    .sheet(isPresented: Binding(get: { draw.picker && !landscape }, set: { draw.picker = $0 })) {
+      DrawingToolPicker(controller: draw) { draw.picker = false }
+        .presentationDetents([.large])
+        .environment(\.panelTheme, theme)
     }
     .onChange(of: draw.notice, initial: true) { _, note in if let note { say(note); draw.notice = nil } }
     .environment(\.panelTheme, theme)
@@ -377,6 +396,22 @@ struct MainScreen: View {
   /// 安全区只吃左右两边（灵动岛横过来在左或右）——上下交给图自己占满，那正是横屏
   /// 想要的。右轴永远在图的右边，所以右边那条工具栏放在安全区**外面**、自己留白，
   /// 不然右轴文字会被切（A8.2）。
+  /// 横屏的「绘图」面板：贴着左边的一块卡片，不是半屏表单（TV 横屏也是从边上推出来的
+  /// 一块）。图还露着右边大半——挑工具的时候看得见自己要往哪儿画，这是它比表单强的地方。
+  /// 靠左是因为右边那两条竖栏（画线动作、周期）都在右手底下，卡片压过去就挡住了。
+  @ViewBuilder private var drawToolsLayer: some View {
+    if draw.active, draw.picker {
+      DrawingToolPicker(controller: draw) { draw.picker = false }
+        .frame(width: 340)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.line, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.24), radius: 14, x: 2, y: 2)
+        .padding(.vertical, 6).padding(.leading, 6)
+        .transition(.move(edge: .leading).combined(with: .opacity))
+        .environment(\.panelTheme, theme)
+    }
+  }
+
   private var landscapeBody: some View {
     HStack(spacing: 0) {
       IntervalRail(
@@ -389,7 +424,10 @@ struct MainScreen: View {
         LandscapeHeadline(
           theme: theme, symbol: market.symbol, price: readoutPrice,
           changePercent: displayedTicker?.changePercent,
-          decimals: market.info.pricePrecision)
+          decimals: market.info.pricePrecision,
+          // 只有画线工作台里那一行是按钮，见 `DrawingSymbolSwitcher` 顶上那段。
+          // 换品种和挑工具都贴在左边，同时开会叠在一起——开一个就把另一个收了。
+          onTapSymbol: draw.active ? { draw.picker = false; showDrawSwitcher.toggle() } : nil)
           .padding(.horizontal, 8).padding(.vertical, 4)
         if let text = topCandleData {
           Text(text).font(.system(size: 10, design: .monospaced)).foregroundStyle(theme.ink)
@@ -405,9 +443,11 @@ struct MainScreen: View {
         }
         chart.overlay(alignment: .bottom) { captureCard }
         replayControls
-      }
-      if draw.active {
-        DrawingRail(controller: draw)
+        // 画线工作台的那根条排在图**下面**、图外面（§2E5）：横屏的高度金贵，但十四五个
+        // 控件竖着摆放不下、横着摆绰绰有余，而且两个拇指本来就停在下沿。
+        if draw.active {
+          DrawingDock(controller: draw)
+        }
       }
       ToolRail(
         theme: theme, drawing: draw.active,
@@ -418,11 +458,52 @@ struct MainScreen: View {
           leaveLandscape()
         })
     }
+    .overlay(alignment: .topLeading) { drawSwitcherLayer }
+    // 动画只裹住这一块。挂到整个 `body` 上会把图一起带进过渡，开合面板时 K 线跟着晃。
+    .overlay(alignment: .leading) { drawToolsLayer.animation(.easeOut(duration: 0.18), value: draw.picker) }
     .overlay(alignment: .trailing) {
       SidePanelLayer(theme: theme, shown: panel != nil, onClose: dismissPanel) {
         sidePanelContent
       }
     }
+    // 退出画线、或者品种已经换掉了，这一层就没有存在的理由了。
+    .onChange(of: draw.active) { _, on in if !on { showDrawSwitcher = false } }
+    .onChange(of: draw.picker) { _, on in if on { showDrawSwitcher = false } }
+  }
+
+  /// 画线工作台里那一层换品种（§见 `DrawingSymbolSwitcher`）。
+  ///
+  /// 铺一张透明的挡板接「点别处就收起」，浮层本体压在品种名底下——挡板不铺满就得靠
+  /// 焦点丢失来收，那在横屏里根本不可靠（点 K 线并不会让输入框失焦）。
+  @ViewBuilder private var drawSwitcherLayer: some View {
+    if draw.active, showDrawSwitcher {
+      ZStack(alignment: .topLeading) {
+        Color.black.opacity(0.001)
+          .contentShape(Rectangle())
+          .onTapGesture { showDrawSwitcher = false }
+          .accessibilityHidden(true)
+        DrawingSymbolSwitcher(
+          theme: theme,
+          frequent: picker.frequentSymbols(),
+          matches: { picker.matchingSymbols($0) },
+          current: market.symbol,
+          onPick: { symbol in switchDrawingSymbol(symbol) },
+          onClose: { showDrawSwitcher = false })
+          .padding(.leading, 60)
+          .padding(.top, 40)
+      }
+      .ignoresSafeArea(edges: .bottom)
+      .transition(.opacity)
+    }
+  }
+
+  /// 在画线里换品种：走的是和别处一模一样的那条换品种路（`picker.pick(symbol:)`），
+  /// 所以「最近」照记、行情照订、账号照同步——画线只需要跟着换目标就行。
+  /// 不问「要不要保存」：每一笔画完就已经落盘了（`DrawingController.persist`），
+  /// 用户说的「既然自动存那就不用管」。
+  private func switchDrawingSymbol(_ symbol: String) {
+    guard SymbolPrefs.key(symbol) != market.symbol else { return }
+    picker.pick(symbol: symbol)
   }
 
   /// 竖屏点「横屏」：先把布局切成横屏，再请系统把屏幕转过去（§10.7）。

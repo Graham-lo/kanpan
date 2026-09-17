@@ -166,3 +166,61 @@ struct SymbolPrefsTests {
     #expect(store.load() == SymbolPrefs())
   }
 }
+
+// ============================================================ 常看（画线工作台换品种用）
+
+@Suite("常看")
+struct FrequentTests {
+  private let day: Double = 86_400
+  private let t0: Double = 1_700_000_000
+
+  /// 「常看」问的是**次数**，不是最后一次什么时候——这正是它不能用 `recents` 顶替的原因。
+  @Test func countsBeatRecency() {
+    var p = SymbolPrefs()
+    for i in 0 ..< 5 { p.noteDwell("BTCUSDT", now: t0 + Double(i) * day) }
+    p.noteDwell("DOGEUSDT", now: t0 + 5 * day)
+    p.visit("DOGEUSDT")
+    #expect(p.recents.first == "DOGEUSDT")
+    #expect(p.frequent(now: t0 + 5 * day).first == "BTCUSDT")
+  }
+
+  /// 半衰期：同样看过 4 次，两个月没碰的那个要让位给这周天天看的。
+  @Test func staleScoresDecay() {
+    var p = SymbolPrefs()
+    for i in 0 ..< 4 { p.noteDwell("OLDUSDT", now: t0 + Double(i) * 3_600) }
+    let later = t0 + 60 * day
+    for i in 0 ..< 3 { p.noteDwell("NEWUSDT", now: later + Double(i) * 3_600) }
+    #expect(p.frequent(now: later).first == "NEWUSDT")
+  }
+
+  /// 分数表有上限，超了丢最低的；也不许把空串记进去。
+  @Test func capacityAndJunk() {
+    var p = SymbolPrefs()
+    p.noteDwell("  ", now: t0)
+    p.noteDwell("", now: t0)
+    #expect(p.viewScores.isEmpty)
+    for i in 0 ..< (SymbolPrefs.scoreCapacity + 20) { p.noteDwell("S\(i)USDT", now: t0) }
+    #expect(p.viewScores.count <= SymbolPrefs.scoreCapacity)
+  }
+
+  /// 时钟倒退（改过系统时间、跨设备同步）时宁可不衰减，也不能把分数**放大**回去。
+  @Test func clockGoingBackwardsDoesNotInflate() {
+    var p = SymbolPrefs()
+    p.noteDwell("BTCUSDT", now: t0 + 30 * day)
+    let before = p.frequent(now: t0)
+    p.noteDwell("BTCUSDT", now: t0)
+    #expect(before == ["BTCUSDT"])
+    #expect(p.viewScores["BTCUSDT"] == 2)
+  }
+
+  /// 存档来回一趟，常看这张表要跟着活下来。
+  @Test func roundTrip() {
+    var p = SymbolPrefs(favorites: ["BTCUSDT"])
+    p.noteDwell("ETHUSDT", now: t0)
+    p.noteDwell("ETHUSDT", now: t0 + 60)
+    let data = try! JSONEncoder().encode(p)
+    let back = try! JSONDecoder().decode(SymbolPrefs.self, from: data)
+    #expect((back.viewScores["ETHUSDT"] ?? 0) > 1.9)  // 第二次打分前先衰减了 60 秒，所以是 1.99…
+    #expect(back.frequent(now: t0 + 120) == ["ETHUSDT"])
+  }
+}

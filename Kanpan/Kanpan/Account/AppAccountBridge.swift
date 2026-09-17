@@ -342,7 +342,12 @@ import ReviewUI
       if case .string(let group) = value.body["groupId"] { membership[name] = group }
       if value.body["pinned"] == .bool(true) { pinned.append(name) }
     }
-    let value = SymbolPrefs(favorites: names, recents: symbols.prefs.recents, groups: groups, groupForSymbol: membership, pinned: pinned, selectedGroupID: symbols.prefs.selectedGroupID)
+    // 服务端只同步自选/分组这几张表，「最近」「常看」一直是本机的事——
+    // 重建时要把它们原样带回去，否则每来一次同步就把常看清零。
+    let value = SymbolPrefs(favorites: names, recents: symbols.prefs.recents, groups: groups,
+                            groupForSymbol: membership, pinned: pinned,
+                            selectedGroupID: symbols.prefs.selectedGroupID,
+                            viewScores: symbols.prefs.viewScores, scoredAt: symbols.prefs.scoredAt)
     symbols.applySynced(value)
   }
 }
