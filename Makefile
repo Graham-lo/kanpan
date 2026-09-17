@@ -218,7 +218,11 @@ device-release:
 # 装到第一台 connected 真机。UDID 从 `xcrun devicectl list devices` 解析（JSON 落到
 # 临时文件：让它写 /dev/stdout 会混进人类可读那份，json.load 会报 Extra data），
 # 只认 state=connected 的那几行；一台都没有就直接报错，不去碰模拟器。
-install-release:
+#
+# 依赖 `device-release`：这一条以前不重编，改完代码直接 `make install-release` 装上去的
+# 是上一次的包，真机上验出来的行为是旧的——2026-09-18 就这么白测了一轮。增量编译在
+# 没有改动时只要十几秒，不值得为省这点时间冒装错包的风险。
+install-release: device-release
 	@[ -d "$(DEVICE_RELEASE_APP)" ] || { echo "没找到 $(DEVICE_RELEASE_APP)，先跑 make device-release"; exit 1; }
 	@udid=$$(xcrun devicectl list devices --json-output "$(TMPDIR)devicectl.json" >/dev/null 2>&1; python3 -c "\
 import json,sys;\
