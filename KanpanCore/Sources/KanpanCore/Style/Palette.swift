@@ -99,8 +99,11 @@ public struct ChartColors: Sendable, Equatable {
 /// 连成一块了，但蜡烛和均线全压在一层带色的底上，看久了分不清价格结构——这正是 AICoin
 /// 十年如一日用白底的原因。接缝交给 `ground` / `raised` 去收，那本来就是它们的活。
 ///
-/// 跟着皮肤走的只剩涨跌色、`amber`、MA 那组 `palette` 和副图那组 `sub`：涨跌与 MA 色在头部胶囊、
-/// 自选列表里也出现，图里图外必须是同一个红、同一个绿。
+/// 种子里仍带着涨跌色、`amber`、MA 那组 `palette` 和副图那组 `sub`，因为涨跌与 MA 色在头部胶囊、
+/// 自选列表里也出现，图里图外必须是同一个红、同一个绿。但**浅色下这几组三套皮肤完全一样，都是
+/// AICoin 手机端的那套**（`aicoinDayUp` / `aicoinDayDown` / `aicoinDayMA` / `aicoinSlots`）：用户 2026-09-17
+/// 看完真机说「浅色所有模式下的 K 线颜色都统一成 AICoin 那种」「以后不再另起一套」。皮肤要融的是
+/// 图外，不是图。深色版 AICoin 没在真机量过，青苔 / 陶土深色暂时还各带自己的一组。
 /// 种子里的 `chart` 字段因此只用于图表以外的容器，不再是画布底色。
 public enum Palette: Sendable {
   // ---------------------------------------------------------------- 青苔（冷）
@@ -111,8 +114,8 @@ public enum Palette: Sendable {
     ground: "#C3D6CA", app: "#F3F7F4", chart: "#F3F7F4", raised: "#FFFFFF", raised2: "#E7EFE9",
     line: "#D6E3DA", grid: "#E2EBE5", hair: "#14211B0F",
     ink: "#14211B", ink2: "#4E6158", ink3: "#606F67",
-    up: "#2E7D6B", down: "#C34642", amber: "#B57C28", accent: "#2E7D6B",
-    palette: ["#BD8229", "#5A79C4", "#2E7D6B", "#B4617F", "#7A6BC0", "#3E86A8"])
+    up: aicoinDayUp, down: aicoinDayDown, amber: "#B57C28", accent: "#2E7D6B",
+    palette: aicoinDayMA, sub: aicoinSlots)
 
   /// 青苔 · 深。
   public static let sageNightSeed = PaletteSeed(
@@ -131,8 +134,8 @@ public enum Palette: Sendable {
     ground: "#D9C7B4", app: "#FBF6F0", chart: "#FBF6F0", raised: "#FFFFFF", raised2: "#F2E8DE",
     line: "#E7DACB", grid: "#F0E6DA", hair: "#241A130F",
     ink: "#241A13", ink2: "#6E5C4D", ink3: "#756659",
-    up: "#2F7D62", down: "#C4483C", amber: "#B37B25", accent: "#B25735",
-    palette: ["#C18030", "#5566C4", "#2F7D62", "#B85A82", "#8A6FC0", "#3E7FA8"])
+    up: aicoinDayUp, down: aicoinDayDown, amber: "#B37B25", accent: "#B25735",
+    palette: aicoinDayMA, sub: aicoinSlots)
 
   /// 陶土 · 深。
   public static let terraNightSeed = PaletteSeed(
@@ -147,17 +150,14 @@ public enum Palette: Sendable {
 
   /// 经典 · 浅。青苔的文字与强调色原样，底换成 AICoin 的白：页面底 `#F7F9FF`、面 `#FFFFFF`、
   /// 徽章底 `#F3F5F7`、分割线 `#DEE1E5`（`docs/AICoin-安卓包-UI规格提取.md` §8）。
-  /// 涨跌与指标线色也照 AICoin：用户 2026-09-17 拿手机截图说「经典模式下 K 线颜色和 AICoin 不一样」。
-  /// 蜡烛 `#36B257` / `#E64552` 是从他 iPhone 截图逐像素统计的众数（比安卓包 `#32A853` /
-  /// `#EB4236` 略亮），MA10/30/120/256 = 黄 / 紫 / 绿 / 珊瑚，副图线见 `aicoinSlots`。
+  /// 涨跌与指标线色跟青苔 / 陶土浅色一样都是 AICoin 的（见 `aicoinDayUp` 一组）。
   public static let classicSeed = PaletteSeed(
     dark: false,
     ground: "#F7F9FF", app: "#F7F9FF", chart: "#F7F9FF", raised: "#FFFFFF", raised2: "#F3F5F7",
     line: "#DEE1E5", grid: "#EAEAEA", hair: "#14211B0F",
     ink: "#14211B", ink2: "#4E6158", ink3: "#606F67",
-    up: "#36B257", down: "#E64552", amber: "#FFB400", accent: "#2E7D6B",
-    palette: ["#FFB400", "#E849B9", "#6EBF26", "#F55B58", "#1478C8", "#2FD2B2"],
-    sub: aicoinSlots)
+    up: aicoinDayUp, down: aicoinDayDown, amber: "#B57C28", accent: "#2E7D6B",
+    palette: aicoinDayMA, sub: aicoinSlots)
 
   /// 经典 · 深。底是 AICoin 夜间的 `#0D111C` / `#202126` / `#303442` / `#25282E`；
   /// 涨跌取安卓包 `sh_base_text_color_green_night` / `_red_night`（`#2F9347` / `#CC3333`），
@@ -167,9 +167,19 @@ public enum Palette: Sendable {
     ground: "#080B14", app: "#0D111C", chart: "#0D111C", raised: "#202126", raised2: "#303442",
     line: "#25282E", grid: "#20232E", hair: "#FFFFFF0A",
     ink: "#E9F2EC", ink2: "#A5B8AE", ink3: "#7B8D85",
-    up: "#2F9347", down: "#CC3333", amber: "#FFB400", accent: "#4FB69C",
+    up: "#2F9347", down: "#CC3333", amber: "#E0A544", accent: "#4FB69C",
     palette: ["#FFB400", "#E849B9", "#B2DF8A", "#FB9A99", "#1478C8", "#2FD2B2"],
     sub: aicoinNightSlots)
+
+  // ---------------------------------------------------------------- AICoin 的 K 线色
+
+  /// AICoin iPhone 端浅色的蜡烛涨跌色。用户 2026-09-17 的手机截图逐像素统计的众数
+  /// （比安卓包 `#32A853` / `#EB4236` 略亮）；顶栏最新价、涨跌幅胶囊也用这两支（实测 `#34A756`，同一支）。
+  public static let aicoinDayUp: Hex = "#36B257"
+  public static let aicoinDayDown: Hex = "#E64552"
+  /// AICoin 主图 MA 依次取的色：MA10 黄、MA30 紫、MA120 绿、MA256 珊瑚（用户手机上这四条占槽位
+  /// 第 2、3、5、6 格），后两格给第五、六条均线和 BOLL 带 / 持仓量用。
+  public static let aicoinDayMA: [Hex] = ["#FFB400", "#E849B9", "#6EBF26", "#F55B58", "#1478C8", "#2FD2B2"]
 
   /// AICoin 指标线的槽位色板前六格：青绿、黄、紫、蓝、绿、珊瑚。安卓包
   /// `refs/aicoin/java/sp/aicoin_kline/core/indicator/config/L.java` 里 MA1…MA6 的默认色就是
@@ -188,6 +198,12 @@ public enum Palette: Sendable {
   /// 暖色那一套（陶土）。渐变、徽章那几处要按冷暖分别让一让。
   public static func isWarm(_ t: PaletteSeed) -> Bool {
     t.ground == terraSeed.ground || t.ground == terraNightSeed.ground
+  }
+
+  /// K 线色是不是 AICoin 那套（浅色三套皮肤都是，深色只有经典）。对比度那几条测试对这些种子不设限：
+  /// 它们的目标是「跟 AICoin 一样」，`#FFB400` 在白底上只有 1.8:1 也照抄。
+  public static func usesAICoinKLine(_ t: PaletteSeed) -> Bool {
+    t.palette == aicoinDayMA || t.palette == classicNightSeed.palette
   }
 
   /// 白底那一套（经典）。自选页的浅色底不再借「天青」，直接用种子自己的白。
