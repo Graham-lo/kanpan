@@ -43,6 +43,9 @@ struct FavoritesView: View {
   @State private var sort = "custom"
   @State private var ascending = false
   @State private var amount = false
+  /// 行尾那条迷你走势线。默认不画——它挤在价格旁边会把整行的视觉打散；
+  /// 想看的人在「…」里自己打开，开关记在本机。
+  @AppStorage("favorites.sparkline") private var sparkline = false
   @State private var moving: MoveRequest?
   private struct MoveRequest: Identifiable { let id = UUID(); let symbols: [String] }
   private var selected: String? { model.prefs.selectedGroupID ?? model.prefs.groups.first?.id }
@@ -395,6 +398,8 @@ struct FavoritesView: View {
           renamedID = nil; name = ""; editingName = true
         }
         moreRow(editing ? "完成编辑" : "编辑自选", icon: "pencil", id: "favorites.edit") { toggleEditing() }
+        moreRow(sparkline ? "隐藏迷你走势" : "显示迷你走势", icon: sparkline ? "waveform.slash" : "waveform",
+                id: "favorites.sparkline") { sparkline.toggle() }
         if let group = model.prefs.groups.first(where: { $0.id == selected }) {
           moreRow("重命名当前分类", icon: "square.and.pencil", id: "favorites.renameGroup") {
             renamedID = group.id; name = group.name; editingName = true
@@ -402,7 +407,7 @@ struct FavoritesView: View {
           moreRow("删除当前分类", icon: "trash", id: "favorites.deleteGroup", destructive: true) { model.deleteGroup(group.id) }
         }
       }.padding(.vertical, 6)
-    }.font(.system(size: 14)).frame(width: 260).frame(idealHeight: min(430, CGFloat(4 + hidden.count) * 46 + (hidden.isEmpty ? 18 : 61)), maxHeight: 430)
+    }.font(.system(size: 14)).frame(width: 260).frame(idealHeight: min(430, CGFloat(5 + hidden.count) * 46 + (hidden.isEmpty ? 18 : 61)), maxHeight: 430)
       .background(theme.app).presentationBackground(theme.app)
   }
 
@@ -576,7 +581,7 @@ struct FavoritesView: View {
             .font(.system(size: 10)).monospacedDigit().foregroundStyle(theme.ink3)
             .lineLimit(1).minimumScaleFactor(0.8)
         }.frame(maxWidth: .infinity, alignment: .leading)
-        if !editing {
+        if !editing, sparkline {
           Sparkline(values: sparkValues(symbol), color: trend)
             .frame(width: 44, height: 24)
         }
