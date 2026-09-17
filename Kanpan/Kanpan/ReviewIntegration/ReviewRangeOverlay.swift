@@ -51,11 +51,23 @@ final class RangeOverlayView: UIView {
     flashID = id; flashTimer?.invalidate(); flashOn = false
     guard id != nil else { setNeedsDisplay(); return }
     var left = 6   // 亮灭各三次
+    // `Timer` 的 block 在严格并发下是 `@Sendable` 的非隔离上下文，而这一层是 `UIView`
+    // 子类、整个在主 actor 上，所以里面每一次碰 `self` 都会挨一条「不能从非隔离上下文
+    // 调用」。定时器是在主 actor 的 `flash(_:)` 里挂到当前 runloop 上的，回调只会在
+    // 主线程上来，这里就把这件既成事实如实声明一次。不改成 `Task { @MainActor in }`
+    // 是因为那样每一次亮灭都要多等一次调度，0.15 秒的节奏会漂。
+    // `timer` 本身留在隔离区外：它是任务隔离的，塞进主 actor 闭包会被判「sending
+    // 'timer' risks causing data races」。所以里面只答一句「还闪不闪」，invalidate
+    // 在外面做——view 已经没了也照样收得掉，不会在 runloop 上留一个空转的定时器。
     flashTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] timer in
-      guard let self else { timer.invalidate(); return }
-      self.flashOn.toggle(); left -= 1
-      if left <= 0 { timer.invalidate(); self.flashOn = false; self.flashTimer = nil }
-      self.setNeedsDisplay()
+      let keepGoing = MainActor.assumeIsolated { () -> Bool in
+        guard let self else { return false }
+        self.flashOn.toggle(); left -= 1
+        if left <= 0 { self.flashOn = false; self.flashTimer = nil }
+        self.setNeedsDisplay()
+        return left > 0
+      }
+      if !keepGoing { timer.invalidate() }
     }
     setNeedsDisplay()
   }

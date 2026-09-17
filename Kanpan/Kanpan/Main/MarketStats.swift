@@ -119,8 +119,11 @@ actor MarketStatsClient {
   }
 
   /// 数字字段可能是数也可能是字符串，两种都收；`null` / 非数一律当缺失。
+  ///
+  /// 不用再单独挡 `NSNull`：它不是 `NSNumber`，`as? NSNumber` 这一步就已经把它
+  /// 判掉了，多写一句反而是编译器认定「永远不成立」的死代码。
   private static func num(_ any: Any?) -> Double? {
-    if let n = any as? NSNumber, !(n is NSNull) {
+    if let n = any as? NSNumber {
       let v = n.doubleValue
       return v.isFinite ? v : nil
     }
