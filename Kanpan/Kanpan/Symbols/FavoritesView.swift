@@ -77,12 +77,9 @@ struct FavoritesView: View {
     NavigationStack {
       GeometryReader { geometry in
         VStack(spacing: 0) {
-          navBar
-          titleRow
-          subline
           FavoritesHeader(prefs: model.prefs, editing: editing, more: more,
                           theme: theme, width: geometry.size.width,
-                          content: groupBar(width: geometry.size.width)).equatable()
+                          content: headerBar).equatable()
           sortBar
           if symbols.isEmpty { emptyState } else { listSheet }
         }
@@ -157,35 +154,67 @@ struct FavoritesView: View {
 
   // MARK: - 头部
 
-  /// 返回 / 编辑 / 更多：三颗 32 的玻璃圆片，命中区 44。
-  private var navBar: some View {
-    HStack(spacing: 0) {
-      circleButton("chevron.left", label: "返回行情", id: "favorites.back", action: onClose)
-      Spacer(minLength: 0)
-      // 常态下这儿原来还有一颗铅笔（「编辑自选」），和「…」里那一行是同一个动作，
-      // 用户 2026-09-18 让它只留在「…」里。编辑中的「完成」留着：模式总得有个
-      // 看得见的出口，藏进菜单要点两下才出得来。
-      if editing {
-        Button { toggleEditing() } label: {
-          Text("完成").font(.system(size: 13.5, weight: .semibold)).foregroundStyle(theme.amber)
-            .frame(height: 32).padding(.horizontal, 14)
-            .background(skin.glassThin, in: Capsule())
-            .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
-            .frame(height: 44).contentShape(Rectangle())
-        }.buttonStyle(.plain)
-          .accessibilityLabel("完成编辑").accessibilityIdentifier("favorites.editToggle")
-      } else {
-        circleButton(VectorIcon.search(15), label: "搜索品种", id: "favorites.search") { searching = true }
+  /// 两行：上一行是返回、一条长搜索框、设置，下一行整条都是分类文件夹。
+  ///
+  /// 2026-09-18 用户把这一页顶上的「自选」大字、数量印章、右边那条涨跌比和
+  /// 「今日 N 涨 N 跌」那行小字全撤了，加自选的入口只留一个——它开的就是搜索页。
+  /// 排法照推特：两头各一颗圆按钮，中间整条是搜索框，分类条自己独占一行，
+  /// 这样分类不必和按钮抢宽度，也不会挤成一条乱麻。
+  private var headerBar: some View {
+    VStack(spacing: 6) {
+      HStack(spacing: 8) {
+        circleButton("chevron.left", label: "返回行情", id: "favorites.back", action: onClose)
+        // 编辑中把搜索框换成「完成」：模式总得有个看得见的出口，藏进菜单要点两下才出得来。
+        if editing {
+          Button { toggleEditing() } label: {
+            Text("完成").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.amber)
+              .frame(maxWidth: .infinity).frame(height: 42)
+              .background(skin.glassThin, in: Capsule())
+              .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
+              .frame(height: 46).contentShape(Rectangle())
+          }.buttonStyle(.plain)
+            .accessibilityLabel("完成编辑").accessibilityIdentifier("favorites.editToggle")
+        } else {
+          searchField
+        }
+        // 这颗以前是「…」。它装的是编辑自选、新建/重命名/删除分类、迷你走势开关，
+        // 整个就是这一页的设置，所以换成设置的记号（用户 2026-09-18 定的）。
+        // 用自绘的圆角六边形（`VectorIcon.hexSettings`），和左边的返回箭头同一套描边；
+        // SF Symbols 的齿轮牙齿多、字重也不是一路，并排站会显得两颗不是一家的。
+        circleButton(VectorIcon.hexSettings(19), label: "自选设置", id: "favorites.more") { more = true }
+          .anchorPreference(key: MenuAnchors.self, value: .bounds) { ["more": $0] }
       }
-      // 这颗以前是「…」。它现在装的是编辑自选、新建/重命名/删除分类、迷你走势开关，
-      // 整个就是这一页的设置，所以换成设置的记号（用户 2026-09-18 定的）。
-      // 用自绘的圆角六边形（`VectorIcon.hexSettings`），和左边的放大镜同一套描边；
-      // SF Symbols 的齿轮牙齿多、字重也不是一路，并排站会显得两颗不是一家的。
-      circleButton(VectorIcon.hexSettings(15), label: "自选设置", id: "favorites.more") { more = true }
-        .anchorPreference(key: MenuAnchors.self, value: .bounds) { ["more": $0] }
+      groupStrip
     }
-    .padding(.horizontal, 10)
-    .frame(height: 44)
+    .padding(.horizontal, 12)
+    .padding(.bottom, 2)
+    // 那行状态小字撤掉了，但 UI 测试要从 `favorites.feed` 上读调色板与行情线路的
+    // 诊断串（它只在辅助功能树里，界面上看不见），所以把这个标识挂到整条头部上。
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("favorites.feed")
+    .accessibilityValue(paletteDiagnostics)
+  }
+
+  /// 中间那条长搜索框：看着像输入框，点一下开的是整张搜索页。
+  ///
+  /// 这一页只有这一个「加自选」的入口（点进去在结果行上点星）。做成框而不是一颗放大镜
+  /// 是用户 2026-09-18 照推特定的：框子把两头的圆按钮分开，中线不空，也一眼看得出
+  /// 这里能搜。里面不放真的输入框——真输入框会在这一页起键盘，搜索页那边还要再起一次。
+  private var searchField: some View {
+    Button { searching = true } label: {
+      HStack(spacing: 7) {
+        VectorIcon.search(16).foregroundStyle(theme.ink3)
+        Text("搜索品种").font(.system(size: 15)).foregroundStyle(theme.ink3)
+        Spacer(minLength: 0)
+      }
+      .padding(.horizontal, 15)
+      .frame(maxWidth: .infinity).frame(height: 42)
+      .background(skin.glassThin, in: Capsule())
+      .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
+      .frame(height: 46)
+      .contentShape(Rectangle())
+    }.buttonStyle(.plain)
+      .accessibilityLabel("添加品种").accessibilityIdentifier("favorites.add")
   }
 
   private func circleButton(_ icon: VectorIcon, label: String, id: String,
@@ -199,210 +228,105 @@ struct FavoritesView: View {
                             action: @escaping () -> Void) -> some View {
     circleButton(label: label, id: id, action: action) {
       Image(systemName: icon)
-        .font(.system(size: 15, weight: .regular))
+        .font(.system(size: 19, weight: .regular))
         .foregroundStyle(theme.ink)
     }
   }
 
-  /// 玻璃圆片：32 的片子挂在 44 的可点区里，两种记号（SF Symbol / 自绘线条）共用。
+  /// 玻璃圆片：42 的片子挂在 46 的可点区里，两种记号（SF Symbol / 自绘线条）共用。
+  /// 片子原来是 32，用户 2026-09-18 两次说太小不好点，一路放大到 42。
   private func circleButton<Icon: View>(label: String, id: String,
                                         action: @escaping () -> Void,
                                         @ViewBuilder icon: () -> Icon) -> some View {
     Button(action: action) {
       icon()
-        .frame(width: 32, height: 32)
+        .frame(width: 42, height: 42)
         .background(skin.glassThin, in: Circle())
         .overlay(Circle().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
-        .frame(width: 44, height: 44)
+        .frame(width: 46, height: 46)
         .contentShape(Rectangle())
     }.buttonStyle(.plain)
       .accessibilityLabel(label).accessibilityIdentifier(id)
   }
 
-  /// 「自选」衬线体 + 数量印章（正放），右边是涨跌比。
-  private var titleRow: some View {
-    HStack(alignment: .center, spacing: 10) {
-      HStack(alignment: .center, spacing: 8) {
-        Text("自选").font(skin.serif(22)).foregroundStyle(theme.ink)
-          .tracking(1.3)
-        seal(symbols.count)
-      }
-      Spacer(minLength: 8)
-      breadth
-    }.padding(.horizontal, 20).padding(.top, 2)
-  }
-
-  private func seal(_ count: Int) -> some View {
-    Text("\(count)")
-      .font(.system(size: 10.5, weight: .semibold)).monospacedDigit()
-      .foregroundStyle(.white)
-      .frame(minWidth: 20).frame(height: 20)
-      .padding(.horizontal, 4)
-      .background(skin.accent, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: 4, style: .continuous)
-          .strokeBorder(Color.white.opacity(0.35), lineWidth: 1).padding(1))
-      .shadow(color: skin.accent.opacity(0.5), radius: 5, x: 0, y: 3)
-      .offset(y: -3)
-      .accessibilityLabel("\(count) 个品种")
-  }
-
-  private var breadth: some View {
-    let values = changeValues
-    let up = values.filter { $0 >= 0 }.count
-    let down = values.count - up
-    let ratio = values.isEmpty ? 0 : CGFloat(up) / CGFloat(max(1, values.count))
-    return HStack(spacing: 7) {
-      Text(values.isEmpty ? "—" : "\(up)").foregroundStyle(theme.up)
-      ZStack(alignment: .leading) {
-        Capsule().fill(values.isEmpty ? skin.rule : theme.down)
-          .shadow(color: values.isEmpty ? .clear : theme.down.opacity(0.4), radius: 4)
-        if !values.isEmpty {
-          Capsule()
-            .fill(LinearGradient(colors: [theme.up, skin.lift(theme.chart.up, 0.3)],
-                                 startPoint: .leading, endPoint: .trailing))
-            .frame(width: 62 * ratio)
-            .shadow(color: theme.up.opacity(0.5), radius: 4)
-        }
-      }.frame(width: 62, height: 4)
-      Text(values.isEmpty ? "—" : "\(down)").foregroundStyle(theme.down)
-    }.font(.system(size: 10, weight: .medium)).monospacedDigit()
-  }
-
-  /// 标题下那一行小字：整页唯一允许出现的状态文案。
-  private var subline: some View {
-    let values = changeValues
-    let up = values.filter { $0 >= 0 }.count
-    let amplitudes = symbols.compactMap { displayQuote($0)?.amplitude24h }.filter(\.isFinite)
-    let live = feedStatus == .live
-    let text: String = {
-      guard !values.isEmpty else { return "正在取最新价" }
-      var line = "今日 \(up) 涨 \(values.count - up) 跌"
-      if !amplitudes.isEmpty {
-        line += " · 平均振幅 " + toFixed(amplitudes.reduce(0, +) / Double(amplitudes.count), 1) + "%"
-      }
-      return line
-    }()
-    return HStack(spacing: 0) {
-      Circle().fill(live ? skin.accent : skin.ink4)
-        .frame(width: 5, height: 5)
-        .overlay(Circle().stroke((live ? skin.accent : skin.ink4).opacity(0.22), lineWidth: 3))
-        .padding(.trailing, 7)
-      Text(text).font(.system(size: 10.5)).foregroundStyle(theme.ink3)
-      Spacer(minLength: 0)
-    }.padding(.horizontal, 20).padding(.top, 5).frame(height: 18)
-      .accessibilityElement(children: .contain)
-      .accessibilityIdentifier("favorites.feed")
-      .accessibilityValue(paletteDiagnostics)
-  }
-
-  private var changeValues: [Double] {
-    symbols.compactMap { displayQuote($0)?.changePercent }.filter(\.isFinite)
-  }
-
+  /// 只活在辅助功能树里的诊断串：验收用例靠它确认当前皮肤与行情线路。
   private var paletteDiagnostics: String {
     guard let feedDiagnostics else { return "" }
     return feedDiagnostics + ";background=" + theme.chart.bg.value
+      + ";feed=" + String(describing: feedStatus)
   }
 
   // MARK: - 分类分段器
 
-  /// 一格分类占多宽：12.5 的名字 + 上标数字 + 左右各 12 的内边。
+  /// 一格分类占多宽：15 的名字 + 左右各 19 的内边。
   private func tabWidth(_ group: FavoriteGroup) -> CGFloat {
     let text = (group.name as NSString)
-      .size(withAttributes: [.font: UIFont.systemFont(ofSize: 12.5, weight: .medium)]).width
-    let count = model.prefs.favorites(in: group.id).count
-    return min(124, max(54, text + CGFloat("\(count)".count) * 6 + 28))
+      .size(withAttributes: [.font: UIFont.systemFont(ofSize: 15, weight: .medium)]).width
+    return min(150, max(72, text + 38))
   }
 
-  private func visibleGroups(width: CGFloat) -> [FavoriteGroup] {
-    var result: [FavoriteGroup] = []
-    // 32 是右边那颗「+」，8 是它和胶囊之间的缝，6 是胶囊自己的内边，32 是左右页边。
-    var remaining = max(0, width - 32 - 8 - 6 - 32)
-    for group in model.prefs.groups {
-      let required = tabWidth(group)
-      guard remaining >= required else { break }
-      result.append(group); remaining -= required
-    }
-    if let active = model.prefs.groups.first(where: { $0.id == selected }),
-       !result.contains(where: { $0.id == active.id }) {
-      while !result.isEmpty && remaining < tabWidth(active) {
-        remaining += tabWidth(result.removeLast())
-      }
-      result.append(active)
-    }
-    return result
-  }
-
-  /// 「更多」里那半截：没能排进分段器的分类。
-  private var hiddenGroups: [FavoriteGroup] {
-    let visible = visibleGroups(width: barWidth)
-    return model.prefs.groups.filter { group in !visible.contains(where: { $0.id == group.id }) }
-  }
-
-  /// 分段器可用宽度。页面是整屏盖上来的，宽度就是屏宽——只在这儿记一次，
-  /// 免得「更多」弹层还要再问一遍几何。
-  @State private var barWidth: CGFloat = 393
-
-  private func groupBar(width: CGFloat) -> some View {
-    let visible = visibleGroups(width: width)
-    return HStack(spacing: 8) {
-      HStack(spacing: 0) {
-        ForEach(visible) { group in
-          chip(group.name, id: group.id, count: model.prefs.favorites(in: group.id).count)
-            .frame(width: tabWidth(group))
+  /// 分类文件夹：一条能横向滚的玻璃分段器。
+  ///
+  /// 原来这条是按剩余宽度裁的——排不下的分类折进设置菜单的「更多分类」里。现在它
+  /// 自己独占头部第二行，改成横着滚：分类再多也都在这条上，往左推就能看见，菜单里
+  /// 那半截也就不用留了（用户 2026-09-18：「空间都给分类文件夹」「往右边滑即可」）。
+  @ViewBuilder private var groupStrip: some View {
+    if model.prefs.groups.isEmpty {
+      EmptyView()
+    } else {
+      ScrollViewReader { reader in
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 0) {
+            ForEach(model.prefs.groups) { group in
+              chip(group.name, id: group.id, count: model.prefs.favorites(in: group.id).count)
+                .frame(width: tabWidth(group))
+            }
+          }
+          .padding(.horizontal, 4)
+          .background {
+            Capsule()
+              .fill(skin.glassThin)
+              .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
+              .frame(height: 46)
+          }
+          // 选中那格底下有一圈光晕，留出上下这点地方，免得被滚动区裁掉。
+          .padding(.vertical, 8)
         }
-      }
-      .padding(.horizontal, 3)
-      .background {
-        RoundedRectangle(cornerRadius: 15, style: .continuous)
-          .fill(skin.glassThin)
-          .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous)
-            .strokeBorder(skin.edgeSoft, lineWidth: 0.5))
-          .frame(height: 36)
+        // 选中的那一格必须看得见：新建完一个分类它就立刻被选上，要是正好排在
+        // 滚动区外面，用户会以为分类没建成。
+        .onAppear { scrollToSelected(reader, animated: false) }
+        .onChange(of: selected) { _, _ in scrollToSelected(reader, animated: true) }
       }
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("favorites.groups")
-      Spacer(minLength: 0)
-      Button { searching = true } label: {
-        Image(systemName: "plus").font(.system(size: 14, weight: .medium))
-          .foregroundStyle(theme.ink3)
-          .frame(width: 32, height: 32)
-          .background(skin.glassThin, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-          .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
-            .strokeBorder(skin.edgeSoft, lineWidth: 0.5))
-          .frame(width: 40, height: 44)
-          .contentShape(Rectangle())
-      }.buttonStyle(.plain)
-        .accessibilityLabel("添加品种").accessibilityIdentifier("favorites.add")
     }
-    .padding(.horizontal, 16).padding(.top, 12)
-    .onAppear { barWidth = width }
-    .onChange(of: width) { _, next in barWidth = next }
+  }
+
+  private func scrollToSelected(_ reader: ScrollViewProxy, animated: Bool) {
+    guard let selected else { return }
+    guard animated else { reader.scrollTo(selected, anchor: .center); return }
+    withAnimation(.easeOut(duration: 0.2)) { reader.scrollTo(selected, anchor: .center) }
   }
 
   private func chip(_ title: String, id: String, count: Int) -> some View {
     let on = selected == id
     return Button { model.selectGroup(id); selection.removeAll(); expanded.removeAll() } label: {
-      HStack(alignment: .firstTextBaseline, spacing: 3) {
-        Text(title).font(.system(size: 12.5, weight: .medium))
-          .lineLimit(1).truncationMode(.middle)
-        Text("\(count)").font(.system(size: 9, weight: .medium)).monospacedDigit()
-          .baselineOffset(4)
-          .foregroundStyle(on ? Color.white.opacity(0.75) : skin.ink4)
-      }
-      .foregroundStyle(on ? Color.white : theme.ink2)
-      .frame(maxWidth: .infinity).frame(height: 30)
-      .background {
-        if on {
-          RoundedRectangle(cornerRadius: 11, style: .continuous)
-            .fill(skin.accentGradient)
-            .overlay(alignment: .top) { skin.topHighlight(inset: 7) }
-            .shadow(color: skin.accent.opacity(skin.dark ? 0.5 : 0.35), radius: 8, x: 0, y: 5)
+      // 名字后面原来还挂着一个上标的数量，用户 2026-09-18 让去掉——数量在列表上面
+      // 那行「N 个品种」已经写着了，格子里只留名字更干净。数量仍留在朗读标签里。
+      Text(title).font(.system(size: 15, weight: .medium))
+        .lineLimit(1).truncationMode(.middle)
+        .foregroundStyle(on ? Color.white : theme.ink2)
+        .frame(maxWidth: .infinity).frame(height: 40)
+        .background {
+          if on {
+            Capsule()
+              .fill(skin.accentGradient)
+              .overlay(alignment: .top) { skin.topHighlight(inset: 10) }
+              .shadow(color: skin.accent.opacity(skin.dark ? 0.5 : 0.35), radius: 8, x: 0, y: 5)
+          }
         }
-      }
-      .frame(height: 44)
-      .contentShape(Rectangle())
+        .frame(height: 44)
+        .contentShape(Rectangle())
     }.buttonStyle(.plain)
       .accessibilityLabel(title + "，\(count)个品种")
       .accessibilityAddTraits(on ? .isSelected : [])
@@ -427,7 +351,7 @@ struct FavoritesView: View {
         Color.black.opacity(0.001).ignoresSafeArea().contentShape(Rectangle())
           .onTapGesture { more = false; sorting = false }
         if more, let anchor = anchors["more"] {
-          menuCard(width: 260, proxy: proxy, anchor: anchor) { moreList(hidden: hiddenGroups) }
+          menuCard(width: 260, proxy: proxy, anchor: anchor) { moreList }
         } else if sorting, let anchor = anchors["sort"] {
           menuCard(width: 190, proxy: proxy, anchor: anchor) { sortList }
         }
@@ -464,19 +388,11 @@ struct FavoritesView: View {
       .accessibilityIdentifier(id)
   }
 
-  private func moreList(hidden: [FavoriteGroup]) -> some View {
+  /// 设置菜单。以前头一段是「更多分类」——分类条排不下的那几个；现在分类条自己
+  /// 能滚，一个都不会被挤掉，这一段就撤了。
+  private var moreList: some View {
     ScrollView {
       VStack(spacing: 0) {
-        if !hidden.isEmpty {
-          Text("更多分类").font(.system(size: 11)).foregroundStyle(theme.ink3)
-            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 10)
-          ForEach(hidden) { group in
-            moreRow(group.name, icon: "folder", id: "favorites.group." + group.name) {
-              model.selectGroup(group.id); selection.removeAll(); expanded.removeAll()
-            }
-          }
-          theme.line.frame(height: 0.5).padding(.vertical, 6)
-        }
         moreRow("新建分类", icon: "folder.badge.plus", id: "favorites.newGroup") {
           renamedID = nil; name = ""; editingName = true
         }
@@ -491,8 +407,7 @@ struct FavoritesView: View {
         }
       }.padding(.vertical, 6)
     }.font(.system(size: 14))
-      .frame(height: min(430, CGFloat(hidden.count + 3 + (currentGroup == nil ? 0 : 2)) * 46
-                             + 12 + (hidden.isEmpty ? 0 : 46)))
+      .frame(height: min(430, CGFloat(3 + (currentGroup == nil ? 0 : 2)) * 46 + 12))
   }
 
   /// 当前选中的那一组；没有（比如一条自选都还没加）时菜单里不摆重命名/删除。

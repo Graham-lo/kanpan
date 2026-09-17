@@ -383,9 +383,12 @@ final class ChartFoundationUITests: XCTestCase {
         addFavoriteFromSearch(symbol)
       }
     }
+    /// 分类条能横滑（用户 2026-09-18 定的），排不下的分类往两边滑着找，不再折进设置菜单。
     func group(_ name: String) {
       let chip = app.buttons["favorites.group." + name]
-      if !chip.isHittable { app.buttons["favorites.more"].tap() }
+      let strip = app.descendants(matching: .any).matching(identifier: "favorites.groups").firstMatch
+      for _ in 0..<6 where !chip.isHittable { strip.swipeRight() }
+      for _ in 0..<6 where !chip.isHittable { strip.swipeLeft() }
       XCTAssertTrue(chip.isHittable); chip.tap()
     }
     group("加密")
@@ -507,7 +510,6 @@ final class ChartFoundationUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(tab.frame.height, 44)
         XCTAssertLessThanOrEqual(tab.frame.maxX, app.buttons["favorites.add"].frame.minX)
       }
-      XCTAssertTrue(app.buttons["favorites.search"].exists, "自选页右上角要有放大镜")
       shot("配色-" + skin + mode + "-自选")
       favoritesAction("favorites.close")
     }
@@ -596,8 +598,8 @@ final class ChartFoundationUITests: XCTestCase {
 
   /// 从自选页加一个品种。
   ///
-  /// 分类栏右端那颗 `+` 和右上角的放大镜现在开的是同一页——搜索页（用户
-  /// 2026-09-18 定的：加自选统一在搜索页的行上点星）。所以流程不再是以前选品页
+  /// 加自选的入口这一页只剩头部右边那颗放大镜（用户 2026-09-18 定的：以前的加号和
+  /// 放大镜开的是同一张搜索页，两颗并成了一颗）。流程不再是以前选品页
   /// 那样「点中一行就算加上了」，而是「打字 → 点那一行的星 → 取消退回自选」。
   /// 星是个开关，已经在自选里的品种再点一下反而会被移除，所以先看 label 再决定点不点。
   func addFavoriteFromSearch(_ symbol: String) {
@@ -650,7 +652,6 @@ final class ChartFoundationUITests: XCTestCase {
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SNDKUSDT,XAUUSDT"
     app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
-    XCTAssertTrue(app.buttons["favorites.search"].exists, "自选页右上角要有放大镜")
     XCTAssertFalse(app.textFields["favorites.query"].exists)
     XCTAssertGreaterThanOrEqual(app.buttons["favorites.group.加密"].frame.height, 44)
     for name in ["观察中的品种", "长期关注", "短线"] {
@@ -660,16 +661,27 @@ final class ChartFoundationUITests: XCTestCase {
       app.alerts.buttons["保存"].tap()
       XCTAssertTrue(app.buttons["favorites.group." + name].waitForExistence(timeout: 4))
     }
-    shot("自选-顶部分类与更多入口")
+    shot("自选-顶部分类条")
     dismissNotificationBanner()
+    // 排不下的分类不再折进设置菜单，分类条自己能横滑（用户 2026-09-18 定的，和
+    // AICoin 一样）：新建完的那个已经被选上，条子会自己滚过去，往右滑又能回到第一个。
+    let created = app.buttons["favorites.group.观察中的品种"]
+    XCTAssertTrue(created.waitForExistence(timeout: 4))
+    XCTAssertTrue(created.isHittable, "刚建好的分类要自己滚进看得见的地方")
     app.buttons["favorites.more"].tap()
-    let overflow = app.buttons["favorites.group.观察中的品种"]
-    XCTAssertTrue(overflow.waitForExistence(timeout: 4)); overflow.tap()
-    XCTAssertTrue(app.buttons["favorites.group.观察中的品种"].isHittable)
+    XCTAssertTrue(app.buttons["favorites.newGroup"].waitForExistence(timeout: 4))
+    XCTAssertFalse(app.staticTexts["更多分类"].exists, "分类条能横滑了，菜单里不该再有「更多分类」")
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
+    XCTAssertTrue(wait(seconds: 4) { !self.app.buttons["favorites.newGroup"].exists })
     favoritesAction("favorites.close")
     XCTAssertTrue(app.openFavorites())
     XCTAssertTrue(app.buttons["favorites.group.观察中的品种"].waitForExistence(timeout: 15))
-    app.buttons["favorites.group.加密"].tap()
+    let strip = app.descendants(matching: .any).matching(identifier: "favorites.groups").firstMatch
+    XCTAssertTrue(strip.waitForExistence(timeout: 4))
+    let crypto = app.buttons["favorites.group.加密"]
+    for _ in 0..<4 where !crypto.isHittable { strip.swipeRight() }
+    XCTAssertTrue(crypto.isHittable, "往右滑要能滑回第一个分类")
+    crypto.tap()
     favoritesAction("favorites.edit")
     XCTAssertTrue(app.buttons["全选"].waitForExistence(timeout: 4))
     favoritesAction("favorites.edit")
@@ -685,7 +697,6 @@ final class ChartFoundationUITests: XCTestCase {
     app.buttons["favorites.group.加密"].tap()
     XCTAssertFalse(app.buttons["favorites.group.全部"].exists)
     XCTAssertFalse(app.buttons["favorites.group.默认"].exists)
-    XCTAssertTrue(app.buttons["favorites.search"].exists, "自选页右上角要有放大镜")
     let feed = app.descendants(matching: .any).matching(identifier: "favorites.feed").firstMatch
     let price = app.staticTexts["favorites.price.BTCUSDT"]
     XCTAssertTrue(wait(seconds: 20) { price.exists && price.label != "—" })
