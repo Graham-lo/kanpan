@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="zh-CN" data-skin="sage" data-mode="light" data-redup="1">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>看盘 · 自选页原型五套 · 2026-09-17</title>
+<style>
+  /* ---------------- 四套皮肤的 token，逐字取自 KanpanCore/Style/Palette.swift ---------------- */
+  html[data-skin="sage"][data-mode="light"]{
+    --app:#F3F7F4; --raised:#FFFFFF; --raised2:#E7EFE9; --line:#D6E3DA; --grid:#E2EBE5;
+    --hair:#14211B0F; --ink:#14211B; --ink2:#4E6158; --ink3:#606F67;
+    --green:#2E7D6B; --red:#C34642; --accent:#2E7D6B; --amber:#B57C28; --shadow:0 1px 2px #14211B0A,0 8px 24px #14211B0A;
+  }
+  html[data-skin="sage"][data-mode="dark"]{
+    --app:#0B120F; --raised:#131C18; --raised2:#1A241F; --line:#25332C; --grid:#1A241F;
+    --hair:#FFFFFF0A; --ink:#E9F2EC; --ink2:#A5B8AE; --ink3:#7B8D85;
+    --green:#4FB69C; --red:#E36159; --accent:#4FB69C; --amber:#E0A544; --shadow:0 1px 2px #0006,0 8px 24px #0004;
+  }
+  html[data-skin="terra"][data-mode="light"]{
+    --app:#FBF6F0; --raised:#FFFFFF; --raised2:#F2E8DE; --line:#E7DACB; --grid:#F0E6DA;
+    --hair:#241A130F; --ink:#241A13; --ink2:#6E5C4D; --ink3:#756659;
+    --green:#2F7D62; --red:#C4483C; --accent:#B25735; --amber:#B37B25; --shadow:0 1px 2px #241A130A,0 8px 24px #241A130A;
+  }
+  html[data-skin="terra"][data-mode="dark"]{
+    --app:#16100C; --raised:#211812; --raised2:#2A1F17; --line:#37281D; --grid:#2A1F17;
+    --hair:#FFFFFF0A; --ink:#F7EFE6; --ink2:#C2AC98; --ink3:#958576;
+    --green:#3FA783; --red:#E0584A; --accent:#E2874F; --amber:#E0A544; --shadow:0 1px 2px #0006,0 8px 24px #0004;
+  }
+  html[data-redup="1"]{ --gain:var(--red); --loss:var(--green); }
+  html[data-redup="0"]{ --gain:var(--green); --loss:var(--red); }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:#15171a;color:#e8eaec;
+    font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1500px;margin:0 auto;padding:28px 20px 90px}
+  h1{font-size:23px;margin:0 0 6px;font-weight:650;letter-spacing:.3px}
+  .lede{color:#98a0a8;font-size:13.5px;max-width:860px;margin:0 0 22px;line-height:1.75}
+  .lede b{color:#d8dde1;font-weight:600}
+
+  /* 控制条 */
+  .bar{position:sticky;top:0;z-index:30;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+    background:#1c1f23e8;backdrop-filter:blur(12px);border:1px solid #2c3137;border-radius:14px;
+    padding:10px 14px;margin-bottom:26px}
+  .bar .grp{display:flex;gap:4px;background:#0f1113;border-radius:10px;padding:3px}
+  .bar button{appearance:none;border:0;background:transparent;color:#9aa2aa;font-size:12.5px;
+    padding:6px 13px;border-radius:8px;cursor:pointer;font-family:inherit}
+  .bar button[aria-pressed="true"]{background:#333a41;color:#fff}
+  .bar .lbl{color:#6e767e;font-size:11.5px;margin-right:2px}
+
+  /* 版块 */
+  section{margin:0 0 54px}
+  .head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px;flex-wrap:wrap}
+  .head h2{font-size:19px;margin:0;font-weight:640}
+  .head .tag{font-size:11.5px;color:#7e868e;border:1px solid #2f353b;border-radius:999px;padding:2px 9px}
+  .head .rec{border-color:#3f6b56;color:#7fd0ac}
+  .duo{display:grid;grid-template-columns:393px minmax(320px,1fr);gap:34px;align-items:start}
+  @media(max-width:820px){.duo{grid-template-columns:1fr}}
+  .notes{font-size:13px;color:#aeb5bb;line-height:1.8;padding-top:6px}
+  .notes p{margin:0 0 12px}
+  .notes b{color:#e8eaec;font-weight:600}
+  .notes .k{color:#8fd8b8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .spec{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .spec span{font-size:11px;color:#8b939a;background:#20252a;border-radius:6px;padding:3px 8px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* 手机框 */
+  .phone{width:393px;height:760px;border-radius:40px;background:var(--app);position:relative;
+    overflow:hidden;box-shadow:0 0 0 9px #26292d,0 0 0 10px #3a3f45,0 26px 60px #0009;
+    color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+  .phone.sm{height:470px}
+  .status{height:50px;display:flex;align-items:flex-end;justify-content:space-between;
+    padding:0 26px 4px;font-size:13.5px;font-weight:600;color:var(--ink)}
+  .notch{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:108px;height:30px;
+    background:#000;border-radius:16px}
+  .scroll{height:calc(100% - 50px);overflow:auto;scrollbar-width:none}
+  .scroll::-webkit-scrollbar{display:none}
+
+  /* 头部：分组条 */
+  .gbar{display:flex;align-items:center;gap:2px;padding:0 8px;height:52px;
+    border-bottom:.5px solid var(--line);overflow:hidden;white-space:nowrap}
+  .gbar>*,.gbar .gtab{flex:none}
+  .gbar .back{display:flex;align-items:center;gap:2px;color:var(--accent);font-size:15px;
+    font-weight:500;padding:0 8px 0 4px;white-space:nowrap}
+  .gbar .tabs{display:flex;gap:2px;margin-left:2px}
+  .gtab{font-size:16px;font-weight:500;color:var(--ink2);padding:0 12px;height:52px;
+    display:flex;align-items:center;position:relative;white-space:nowrap}
+  .gtab.on{color:var(--accent);font-weight:640}
+  .gtab.on::after{content:"";position:absolute;left:12px;right:12px;bottom:9px;height:2px;
+    border-radius:2px;background:var(--accent)}
+  /* 胶囊型分组（方案三、四用） */
+  .gtab.pill{height:30px;border-radius:999px;padding:0 13px;font-size:14px;color:var(--ink2);
+    background:var(--raised2)}
+  .gtab.pill.on{background:var(--accent);color:var(--app);font-weight:600}
+  .gtab.pill.on::after{display:none}
+  .gbar .sp{flex:1}
+  .gbar .ic{width:36px;height:52px;display:flex;align-items:center;justify-content:center;color:var(--accent)}
+
+  /* 头部：一行式「温度 + 排序」 */
+  .mbar{display:flex;align-items:center;gap:9px;padding:9px 16px;font-size:11px;color:var(--ink3)}
+  .therm{display:flex;gap:2px;width:62px;height:4px;border-radius:99px;overflow:hidden}
+  .therm i{display:block;height:100%}
+  .mbar .cnt{font-variant-numeric:tabular-nums}
+  .mbar .cnt b{font-weight:600}
+  .mbar .sp{flex:1}
+  .sortchip{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 10px;
+    border-radius:999px;background:var(--raised2);color:var(--ink2);font-size:11.5px;font-weight:500}
+
+  /* 行 —— 通用件 */
+  .badge{flex:none;border-radius:31%;position:relative}
+  .nm{font-size:15.5px;font-weight:620;letter-spacing:.2px;color:var(--ink)}
+  .nm .q{font-size:11px;font-weight:400;color:var(--ink3);letter-spacing:0}
+  .sub{font-size:10.5px;color:var(--ink3);font-variant-numeric:tabular-nums;margin-top:2px}
+  .px{font-size:17px;font-weight:600;color:var(--ink);text-align:right;letter-spacing:-.2px;
+    font-variant-numeric:tabular-nums;
+    font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace}
+  .ch{font-size:12.5px;font-weight:620;text-align:right;font-variant-numeric:tabular-nums;
+    font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace}
+  .up{color:var(--gain)} .dn{color:var(--loss)}
+  .hair{height:.5px;background:var(--line);opacity:.6}
+
+  /* 方案一 清池 */
+  .r1{display:flex;align-items:center;gap:11px;padding:11px 16px}
+  .r1 .col{flex:1;min-width:0}
+  .r1 .rt{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+  .s1 .hair{margin-left:62px}
+
+  /* 方案二 脉搏 */
+  .r2{display:flex;align-items:center;gap:11px;padding:11px 16px}
+  .r2 .col{flex:1;min-width:0}
+  .r2 .spark{flex:none;width:52px;height:26px;opacity:.95}
+  .r2 .rt{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:96px}
+  .s2 .hair{margin-left:62px}
+
+  /* 方案三 素笺（卡片） */
+  .s3{padding:6px 12px 20px;display:flex;flex-direction:column;gap:7px}
+  .r3{position:relative;overflow:hidden;border-radius:15px;background:var(--raised);
+    box-shadow:var(--shadow);padding:12px 13px;display:flex;align-items:center;gap:11px}
+  .r3 .bgspark{position:absolute;inset:auto 0 0 0;height:34px;opacity:.13;pointer-events:none}
+  .r3 .col{flex:1;min-width:0;position:relative}
+  .r3 .rt{display:flex;flex-direction:column;align-items:flex-end;gap:3px;position:relative}
+
+  /* 方案四 尺（密排） */
+  .r4{display:flex;align-items:center;gap:10px;padding:8px 16px 8px 13px;position:relative}
+  .r4 .rail{position:absolute;left:5px;top:9px;bottom:9px;width:3px;border-radius:99px}
+  .r4 .col{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px}
+  .r4 .rt{display:flex;align-items:baseline;gap:9px}
+  .r4 .px{font-size:15px}
+  .r4 .ch{font-size:12px;min-width:58px}
+  .s4 .hair{margin-left:58px}
+
+  /* 方案五 分级药丸 */
+  .r5{display:flex;align-items:center;gap:11px;padding:11px 16px}
+  .r5 .col{flex:1;min-width:0}
+  .r5 .rt{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+  .pill{font-size:12px;font-weight:620;font-variant-numeric:tabular-nums;border-radius:6px;
+    padding:2.5px 7px;min-width:66px;text-align:center;
+    font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace}
+  .pill.t0{padding:2.5px 0;min-width:0}
+  .s5 .hair{margin-left:62px}
+
+  /* 状态小图 */
+  .states{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:26px}
+  .stcap{font-size:12.5px;color:#aeb5bb;margin:10px 2px 0;line-height:1.7}
+  .stcap b{color:#e8eaec}
+  .phone.mini{width:300px;height:400px;border-radius:30px;box-shadow:0 0 0 7px #26292d,0 0 0 8px #3a3f45,0 14px 34px #0008}
+  .phone.mini .status{height:38px;font-size:11px;padding:0 20px 3px}
+  .phone.mini .scroll{height:calc(100% - 38px)}
+  .phone.mini .notch{width:82px;height:22px;top:7px}
+  .phone.mini .gbar{height:46px}
+  .phone.mini .gtab{font-size:14.5px;padding:0 9px;height:46px}
+  .phone.mini .gtab.on::after{left:9px;right:9px;bottom:8px}
+  .phone.mini .back{font-size:13.5px}
+  .phone.mini .ic{width:30px;height:46px}
+  .phone.mini .mbar{padding:8px 13px}
+
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    height:300px;gap:10px;color:var(--ink3);text-align:center;padding:0 40px}
+  .empty .t{font-size:15px;color:var(--ink2);font-weight:560}
+  .empty .btn{margin-top:4px;height:34px;padding:0 18px;border-radius:999px;background:var(--accent);
+    color:var(--app);font-size:13px;font-weight:600;display:flex;align-items:center}
+  .skel{background:var(--raised2);border-radius:4px}
+  .banner{display:flex;align-items:center;gap:7px;margin:8px 12px;padding:8px 12px;border-radius:11px;
+    background:var(--raised2);font-size:11.5px;color:var(--ink2)}
+  .banner .dot{width:6px;height:6px;border-radius:99px;background:var(--amber);flex:none}
+  .editbar{position:absolute;left:0;right:0;bottom:0;height:56px;background:var(--raised);
+    border-top:.5px solid var(--line);display:flex;align-items:center;justify-content:space-between;
+    padding:0 20px;font-size:13px;color:var(--accent)}
+  .cbox{width:19px;height:19px;border-radius:99px;border:1.6px solid var(--ink3);flex:none}
+  .cbox.on{border-color:var(--accent);background:var(--accent);position:relative}
+  .cbox.on::after{content:"";position:absolute;left:5.5px;top:3px;width:5px;height:9px;
+    border:solid var(--app);border-width:0 1.8px 1.8px 0;transform:rotate(42deg)}
+  .detail{padding:12px 16px 14px;background:var(--raised2);display:grid;
+    grid-template-columns:1fr 1fr 1fr;gap:11px 8px}
+  .detail .c{font-size:10px;color:var(--ink3)}
+  .detail .v{font-size:12px;font-weight:560;margin-top:2px;font-variant-numeric:tabular-nums;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* 规格表 */
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:10px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #262b30;vertical-align:top}
+  th{color:#8b939a;font-weight:600;font-size:11.5px;text-transform:none}
+  td code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#8fd8b8}
+  td.num{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfd5da}
+  .sw{display:inline-block;width:13px;height:13px;border-radius:4px;vertical-align:-2px;
+    margin-right:7px;box-shadow:inset 0 0 0 1px #ffffff22}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>自选页 · 五套方案</h1>
+<p class="lede">同一份真实数据（今天模拟器上那 16 个自选，价格与成交额原样搬过来），画成五种不同的自选页。
+徽章是 app 里 <b>CoinBadge</b> 的同一批路径与渐变，不是另画的示意图。
+四套皮肤都能切，<b>红涨绿跌</b>也能切——请在两套皮肤下各看一眼再定，冷暖底子对色块的容忍度差得很远。</p>
+
+<div class="bar">
+  <span class="lbl">皮肤</span>
+  <div class="grp" id="skin">
+    <button data-v="sage" aria-pressed="true">青苔 · 冷</button>
+    <button data-v="terra" aria-pressed="false">陶土 · 暖</button>
+  </div>
+  <span class="lbl">外观</span>
+  <div class="grp" id="mode">
+    <button data-v="light" aria-pressed="true">浅色</button>
+    <button data-v="dark" aria-pressed="false">深色</button>
+  </div>
+  <span class="lbl">涨跌色</span>
+  <div class="grp" id="redup">
+    <button data-v="1" aria-pressed="true">红涨绿跌</button>
+    <button data-v="0" aria-pressed="false">绿涨红跌</button>
+  </div>
+</div>
+
+<!-- ===================== 现状 ===================== -->
+<section>
+  <div class="head"><h2>先看现状</h2><span class="tag">今天模拟器上的样子</span></div>
+  <div class="duo">
+    <div class="phone" id="p0"></div>
+    <div class="notes">
+      <p><b>右半边压过了左半边。</b>价格 14.5pt 浅墨，正下方却是一块饱和的实心色块。一屏 16 行里 15 行在涨，
+      于是右边排着 15 块同样的红——第一眼读到的是一列标签，不是一张行情表。<b>主角反了</b>：
+      涨跌幅是修饰语，最新价才是主语。</p>
+      <p><b>那块色块还不认识皮肤。</b>它取的是 K 线的涨跌色，而整页其余部分（返回、选中分组、徽章）
+      都按青苔的墨绿调过。同一屏里两套不相干的颜色体系。</p>
+      <p><b>三处重复了 16 遍的东西：</b>「永续」描边小框（整页都是 USDT 永续，零信息）、
+      「额」「振幅」两个标签字、行尾的 <span class="k">⌄</span>。</p>
+      <p><b>头部两条横栏占掉 60pt</b>，信息密度却很低：四个一模一样的 <span class="k">⇅</span> 排成一行，
+      是整页最像后台表头的地方。</p>
+      <p>徽章是这页唯一精致的东西，可它左边挨着大字名、右边被色块压着，没被托住。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 方案一 ===================== -->
+<section>
+  <div class="head"><h2>方案一 · 清池</h2><span class="tag">减法</span><span class="tag">一屏 11 行</span></div>
+  <div class="duo">
+    <div class="phone" id="p1"></div>
+    <div class="notes">
+      <p><b>把所有色块都拿掉。</b>涨跌幅只剩彩色数字，价格升到 17pt semibold 等宽，成为整行最重的东西。
+      色彩预算全部让给徽章——一屏上只剩 11 枚渐变方章在发光，页面立刻安静下来。</p>
+      <p><b>第二行只留成交额，去掉「额」「振幅」两个标签。</b>数字自带单位（亿/万），标签是多余的；
+      振幅收进展开详情——它本来就在那儿。</p>
+      <p><b>「永续」框删掉</b>，只在混合分类（贵金属+美股+加密）里才显示合约类型。
+      行尾的 <span class="k">⌄</span> 也删掉，展开改成<b>整行长按</b>，点击直接开图。</p>
+      <p>分隔线缩进到 62pt（徽章右缘），并降到 60% 不透明度——线不该比内容还清楚。</p>
+      <div class="spec"><span>行高 64</span><span>徽章 34</span><span>名 15.5/620</span>
+        <span>价 17/600 mono</span><span>幅 12.5/620 mono</span><span>副 10.5 ink3</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 方案二 ===================== -->
+<section>
+  <div class="head"><h2>方案二 · 脉搏</h2><span class="tag rec">推荐</span><span class="tag">一屏 10 行</span></div>
+  <div class="duo">
+    <div class="phone" id="p2"></div>
+    <div class="notes">
+      <p><b>在清池的基础上，每行加一条 24 小时迷你走势线。</b>这是「多加点元素」里唯一
+      我认为真正值得加的：它不是装饰，是行情 app 的母语。一条线就回答了色块回答不了的问题——
+      <b>这 +2.71% 是一路涨上来的，还是冲高回落剩下的</b>。</p>
+      <p>数据现成：<span class="k">model.historyBars</span> 已经在为展开详情拉 1h/4h 的分钟线，
+      画一条 52×26 的折线不需要任何新请求。</p>
+      <p>线用涨跌色，下面垫一层同色 <span class="k">14% → 0</span> 的竖向渐变，收尾处一个 2pt 的圆点标住最新价。
+      静止时不动；有新报价才让最右端那一小段重画。</p>
+      <p><b>这是我建议定板的一套</b>：安静、信息密度反而更高、并且一眼看得出「活着」。</p>
+      <div class="spec"><span>行高 68</span><span>走势 52×26</span><span>徽章 34</span>
+        <span>价 17/600</span><span>填充 14%</span><span>端点 r=2</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 方案三 ===================== -->
+<section>
+  <div class="head"><h2>方案三 · 素笺</h2><span class="tag">最精致</span><span class="tag">一屏 8 行</span></div>
+  <div class="duo">
+    <div class="phone" id="p3"></div>
+    <div class="notes">
+      <p><b>每一行变成一张卡片</b>：raised 底、15pt 圆角、极淡的两层阴影，卡片之间 7pt 空气，
+      分隔线全部取消——白卡与灰底的边界就是分隔。这是五套里最「精致优雅」的一套。</p>
+      <p><b>走势线沉到卡片底部当底纹</b>（13% 不透明度，满幅铺开），不占横向空间，
+      却让每张卡片有了自己的表情。</p>
+      <p>分组改成胶囊（和周期条、底栏同一套语言），选中态填强调色。</p>
+      <p><b>代价说在前面：一屏只剩 8 行</b>，比现在少 5 行。你有 16 个加密自选，
+      这意味着要多滑一屏半。卡片适合「少而精」的自选表，不适合当成看盘扫描器用。</p>
+      <div class="spec"><span>卡高 72</span><span>圆角 15</span><span>间隙 7</span>
+        <span>徽章 36</span><span>底纹 13%</span><span>阴影 0/1/2 + 0/8/24</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 方案四 ===================== -->
+<section>
+  <div class="head"><h2>方案四 · 尺</h2><span class="tag">最密</span><span class="tag">一屏 13 行</span></div>
+  <div class="duo">
+    <div class="phone" id="p4"></div>
+    <div class="notes">
+      <p><b>给扫描场景的一套。</b>行压到 56pt、单行排版：品种名和成交额并排在一行，
+      价格和涨跌幅并排在右边。一屏 13 行，比现在还多一行。</p>
+      <p><b>颜色全部收进左边那道 3pt 的竖尺。</b>它的颜色是涨跌方向，
+      <b>不透明度是幅度</b>（0.25 → 1.0 对应 0% → 8%）。于是整页左缘形成一条深浅不一的节奏线，
+      哪个品种在异动，眼睛扫一下就抓到了——而页面上一块饱和色都没有。</p>
+      <p>这是「工程风」的反面做法：不是把信息删掉，而是把信息<b>编码进一个不喧哗的通道</b>。</p>
+      <div class="spec"><span>行高 56</span><span>竖尺 3×38</span><span>徽章 30</span>
+        <span>名 14.5</span><span>价 15 mono</span><span>α = 0.25+0.75·min(|Δ|/8,1)</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 方案五 ===================== -->
+<section>
+  <div class="head"><h2>方案五 · 分级</h2><span class="tag">改动最小</span><span class="tag">一屏 11 行</span></div>
+  <div class="duo">
+    <div class="phone" id="p5"></div>
+    <div class="notes">
+      <p><b>保留色块，但让它按幅度分三档</b>：<br>
+      <span class="k">|Δ| &lt; 2%</span> → 只有彩色文字，没有底；<br>
+      <span class="k">2% ≤ |Δ| &lt; 6%</span> → 14% 透明度的淡底 + 彩色文字；<br>
+      <span class="k">|Δ| ≥ 6%</span> → 实心底 + 白字。</p>
+      <p>今天这一屏于是从 15 块实心红，变成 <b>1 块实心（0G +6.20%）、4 块淡底、10 行纯文字</b>。
+      真正在动的那个品种第一眼就跳出来——现在这样「全都在喊」，等于谁都没喊。</p>
+      <p>如果你舍不得色块这个视觉锚点，选这套；它和现在的代码差得最少，半天能落地。</p>
+      <div class="spec"><span>行高 64</span><span>药丸 r=6</span><span>淡底 14%</span>
+        <span>门槛 2% / 6%</span><span>最小宽 66</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 状态覆盖 ===================== -->
+<section>
+  <div class="head"><h2>状态覆盖</h2><span class="tag">以方案二（脉搏）为准</span></div>
+  <div class="states" id="states"></div>
+</section>
+
+<!-- ===================== 施工参数 ===================== -->
+<section>
+  <div class="head"><h2>施工参数</h2><span class="tag">定板后可直接落地</span></div>
+
+  <h3 style="font-size:15px;margin:22px 0 0">颜色 token（当前皮肤）</h3>
+  <table id="tok"><thead><tr><th>用途</th><th>token</th><th>青苔·浅</th><th>青苔·深</th><th>陶土·浅</th><th>陶土·深</th></tr></thead><tbody></tbody></table>
+
+  <h3 style="font-size:15px;margin:26px 0 0">尺寸与字号</h3>
+  <table>
+    <thead><tr><th>元素</th><th>字号 / 尺寸</th><th>字重</th><th>颜色</th><th>备注</th></tr></thead>
+    <tbody>
+      <tr><td>品种名</td><td class="num">15.5</td><td class="num">620</td><td><code>ink</code></td><td>长名（1000000BOB）最小缩放 0.72</td></tr>
+      <tr><td>计价单位 /USDT</td><td class="num">11</td><td class="num">400</td><td><code>ink3</code></td><td>紧跟名字，无空格</td></tr>
+      <tr><td>最新价</td><td class="num">17</td><td class="num">600</td><td><code>ink</code></td><td>等宽、tabular-nums，右对齐</td></tr>
+      <tr><td>涨跌幅</td><td class="num">12.5</td><td class="num">620</td><td><code>gain/loss</code></td><td>等宽，带正负号</td></tr>
+      <tr><td>成交额</td><td class="num">10.5</td><td class="num">400</td><td><code>ink3</code></td><td>不写「额」字</td></tr>
+      <tr><td>徽章</td><td class="num">34</td><td>—</td><td>品牌渐变</td><td>圆角 31%，影 y=0.1·size / r=0.17·size</td></tr>
+      <tr><td>走势线</td><td class="num">52 × 26</td><td class="num">1.6</td><td><code>gain/loss</code></td><td>填充 14%→0，端点 r=2</td></tr>
+      <tr><td>行高</td><td class="num">68</td><td>—</td><td>—</td><td>热区整行，≥44 达标</td></tr>
+      <tr><td>分隔线</td><td class="num">0.5</td><td>—</td><td><code>line</code> @60%</td><td>左缩进 62（徽章右缘）</td></tr>
+      <tr><td>分组条</td><td class="num">16 / 高 52</td><td class="num">500·640</td><td><code>ink2 / accent</code></td><td>选中 2pt 胶囊下划线</td></tr>
+      <tr><td>排序胶囊</td><td class="num">11.5 / 高 24</td><td class="num">500</td><td><code>ink2 on raised2</code></td><td>点开弹小层选字段与方向</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:15px;margin:26px 0 0">动效与触感</h3>
+  <table>
+    <thead><tr><th>时机</th><th>动作</th><th>参数</th></tr></thead>
+    <tbody>
+      <tr><td>报价跳动</td><td>该行数字底扫过一层涨跌淡色</td><td class="num">14% → 0，120ms ease-out，无触感</td></tr>
+      <tr><td>首屏补价</td><td>骨架块淡出、数字淡入</td><td class="num">320ms ease-out（沿用现有 <code>reduceMotion</code> 判断）</td></tr>
+      <tr><td>长按展开详情</td><td>详情块自上而下展开</td><td class="num">0.28s spring(0.86)，轻触感 <code>.light</code></td></tr>
+      <tr><td>拖动排序</td><td>抬起 + 阴影</td><td class="num">scale 1.02，影 0/10/24，触感 <code>.rigid</code></td></tr>
+      <tr><td>删除自选</td><td>行收拢</td><td class="num">0.22s，触感 <code>.warning</code>，顶部「已删除 · 撤销」停 4s</td></tr>
+      <tr><td>切分组</td><td>列表整体横移淡入</td><td class="num">12pt 位移 + 0.18s</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:15px;margin:26px 0 0">交互取舍（每条都说明为什么）</h3>
+  <table>
+    <thead><tr><th>决定</th><th>理由</th></tr></thead>
+    <tbody>
+      <tr><td>点行 = 直接开 K 线图</td><td>自选页的唯一高频动作。不要求先展开再点「打开行情图表」——那是两步。</td></tr>
+      <tr><td>长按 = 展开详情</td><td>换掉行尾那 16 个 <code>⌄</code>。展开是低频动作，不配占常驻位置。</td></tr>
+      <tr><td>左滑 = 移到分类 / 删除</td><td>保持现状，iOS 通用手势，不新增按钮。</td></tr>
+      <tr><td>排序收成一颗胶囊</td><td>五个排序控件并排是表头长相。收起来还能省出一整行给列表。</td></tr>
+      <tr><td>删除后给 4 秒撤销</td><td>删自选没有二次确认，误删只能重新搜——撤销比确认弹窗轻。</td></tr>
+      <tr><td>「永续」只在混合分类显示</td><td>纯加密分类里整页都是永续，重复 16 次等于零信息。</td></tr>
+      <tr><td>返回「行情」常驻左上</td><td>自选是整屏盖上来的，没有导航栏；出口必须在所有人第一眼找的位置。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</div>
+
+<script>
+/* ------------------------------------------------------------------ 数据 */
+// 2026-09-17 14:52 模拟器上真实的一屏（加密分类）
+const ROWS = [
+  {b:"BTC",        p:"76487.20",   c:+0.77, v:"123.26亿", a:2.27, s:1},
+  {b:"1000PEPE",   p:"0.0034654",  c:+2.71, v:"1.82亿",   a:5.82, s:2},
+  {b:"0G",         p:"0.1954000",  c:+6.20, v:"426.17万", a:7.66, s:3},
+  {b:"1000000BOB", p:"0.0182400",  c:+0.55, v:"51.49万",  a:4.69, s:4},
+  {b:"ETH",        p:"2441.46",    c:+1.82, v:"109.43亿", a:3.38, s:5},
+  {b:"SOL",        p:"99.7500",    c:+2.74, v:"18.22亿",  a:4.13, s:6},
+  {b:"XRP",        p:"1.3012",     c:+0.60, v:"13.24亿",  a:5.57, s:7},
+  {b:"DOGE",       p:"0.080970",   c:+1.17, v:"4.27亿",   a:3.82, s:8},
+  {b:"BNB",        p:"726.330",    c:+1.83, v:"3.31亿",   a:3.54, s:9},
+  {b:"ADA",        p:"0.19740",    c:+1.18, v:"1.65亿",   a:3.95, s:10},
+  {b:"LINK",       p:"11.174",     c:+3.69, v:"1.60亿",   a:5.53, s:11},
+  {b:"SUI",        p:"1.8420",     c:-1.24, v:"2.14亿",   a:4.41, s:12},
+  {b:"AVAX",       p:"18.930",     c:+0.92, v:"1.12亿",   a:3.10, s:13},
+];
+
+/* ------------------------------------------------------------------ 徽章
+   路径与渐变逐字取自 Kanpan/Kanpan/Main/CoinBadge.swift，24×24 viewBox。 */
+const SPEC = {
+  BTC:{f:"#F9B34A",t:"#EE7A12",text:"₿"},
+  DOGE:{f:"#E3C368",t:"#BFA033",text:"Ð"},
+  ETH:{f:"#8F97F2",t:"#4B54C8",fill:["M12 2.6l5.6 9.1-5.6 3.3-5.6-3.3z","M12 21.6l5.6-7.9-5.6 3.3-5.6-3.3z"]},
+  SOL:{f:"#19F0A0",t:"#9945FF",fill:["M5.4 7.4h11.4l2.2-2.6H7.6z","M5.4 13.3h11.4l2.2-2.6H7.6z","M5.4 19.2h11.4l2.2-2.6H7.6z"]},
+  BNB:{f:"#F8D661",t:"#EFB40A",fill:["M12 3.1l2.6 2.6L12 8.3 9.4 5.7z","M12 15.7l2.6 2.6L12 20.9l-2.6-2.6z","M5.7 9.4l2.6 2.6-2.6 2.6L3.1 12z","M18.3 9.4l2.6 2.6-2.6 2.6L15.7 12z","M12 9.4l2.6 2.6-2.6 2.6L9.4 12z"]},
+  XRP:{f:"#5B667A",t:"#252B33",stroke:[["M6.2 5.6l3.6 3.7 1.1.5 1.1-.5 3.6-3.7","M6.2 18.4l3.6-3.7 1.1-.5 1.1.5 3.6 3.7"],2.1]},
+  LINK:{f:"#6AA0FF",t:"#2450D4",stroke:[["M12 3.2l7.2 4.2v8.9L12 20.5l-7.2-4.2V7.4z"],2]},
+  AVAX:{f:"#F1616B",t:"#C42832",fill:["M12 4.2l8.8 15.4h-5.3L12 13.4 8.5 19.6H3.2z"]},
+  SUI:{f:"#7CC6F7",t:"#3E8FF0",stroke:[["M12 4.2c3.9 4.7 5.9 7.7 5.9 10.1a5.9 5.9 0 0 1-11.8 0c0-2.4 2-5.4 5.9-10.1z"],2.1]},
+  ADA:{f:"#6FA8F0",t:"#1C4FBF",fill:["M12 9.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z","M12 2.6a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z","M12 18.4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z","M4.4 6.8a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z","M19.6 6.8a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z","M4.4 14.2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z","M19.6 14.2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"]},
+  "1000PEPE":{f:"#8CD46A",t:"#3E8B2C",
+    stroke:[["M4.6 12.8c0-3.2 3.3-5.4 7.4-5.4s7.4 2.2 7.4 5.4c0 3.6-3.3 6-7.4 6s-7.4-2.4-7.4-6z","M8 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z","M16 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z","M7.6 14.4c2.6 2 6.2 2 8.8 0"],1.8],
+    fill:["M8 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z","M16 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"]},
+  // 长尾：app 里由 12 外圈 × 24 内核散列组合，这里取它们实际散到的那两枚
+  "0G":{f:"#7FB4CF",t:"#3E6E8E",stroke:[["M4.6 4.6h14.8v14.8H4.6z","M12 8.4l3.6 3.6-3.6 3.6-3.6-3.6z"],1.9]},
+  "1000000BOB":{f:"#D49BE0",t:"#9A4FB8",stroke:[["M12 3.8l6.6 2.6v5.2c0 4-2.8 6.8-6.6 8.6-3.8-1.8-6.6-4.6-6.6-8.6V6.4z"],2]},
+  XAU:{f:"#EFC760",t:"#B8860B",stroke:[["M8.6 7.4h6.8l4 9.2H4.6z","M7.6 11h8.8"],2.1]},
+  NVDA:{f:"#9BE36A",t:"#3F8A16",stroke:[["M4.4 12c2.9-3.7 5.4-5.5 7.6-5.5s4.7 1.8 7.6 5.5c-2.9 3.7-5.4 5.5-7.6 5.5S7.3 15.7 4.4 12z"],1.9],
+    fill:["M12 9.6a2.4 2.4 0 1 1 0 4.8 2.4 2.4 0 0 1 0-4.8z"]},
+};
+let gid = 0;
+function badge(base, size){
+  const sp = SPEC[base] || {f:"#9AA7B4",t:"#5A6672",text:base[0]};
+  const id = "bg" + (gid++);
+  const inset = size * 0.62, off = (size - inset) / 2;
+  let inner = "";
+  if (sp.text){
+    inner = `<text x="${size/2}" y="${size/2}" fill="#fff" font-size="${size*0.5}"
+      font-weight="700" text-anchor="middle" dominant-baseline="central"
+      font-family="-apple-system,BlinkMacSystemFont,sans-serif">${sp.text}</text>`;
+  } else {
+    const k = inset / 24;
+    let g = "";
+    if (sp.stroke) g += sp.stroke[0].map(d=>`<path d="${d}" fill="none" stroke="#fff"
+      stroke-width="${sp.stroke[1]}" stroke-linecap="round" stroke-linejoin="round"/>`).join("");
+    if (sp.fill) g += sp.fill.map(d=>`<path d="${d}" fill="#fff"/>`).join("");
+    inner = `<g transform="translate(${off},${off}) scale(${k})">${g}</g>`;
+  }
+  return `<svg class="badge" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"
+    style="filter:drop-shadow(0 ${size*0.1}px ${size*0.17}px ${sp.t}38)">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="${sp.f}"/><stop offset="1" stop-color="${sp.t}"/></linearGradient></defs>
+    <rect width="${size}" height="${size}" rx="${size*0.31}" fill="url(#${id})"/>${inner}</svg>`;
+}
+
+/* ------------------------------------------------------------------ 走势线 */
+function series(seed, change, n){
+  // 确定性伪随机游走 + 与涨跌同向的趋势项，再做三点平滑——
+  // 真实的 24h 线是有走向的，纯噪声看着像心电图。
+  let x = seed * 9301 % 233280, raw = [], v = 0, mo = 0;
+  const drift = (change >= 0 ? 1 : -1) * Math.min(Math.abs(change)/4, 1) * 0.055;
+  for (let i=0;i<n;i++){
+    x = (x*9301+49297) % 233280;
+    mo = mo*0.62 + (x/233280 - 0.5) * 0.38;   // 有惯性的随机步，不是白噪声
+    v += mo + drift;
+    raw.push(v);
+  }
+  let out = raw.map((y,i)=>{
+    const a = raw[Math.max(0,i-1)], b = raw[Math.min(n-1,i+1)];
+    return (a + y*2 + b) / 4;
+  });
+  const lo = Math.min(...out), hi = Math.max(...out), sp = (hi-lo)||1;
+  let norm = out.map(y => 0.06 + (y-lo)/sp*0.88);
+  if ((norm[n-1]-norm[0] > 0) !== (change >= 0)) norm = norm.map(y => 1-y);
+  return norm;
+}
+function spark(seed, change, w, h, fillOp){
+  const n = 34, d = series(seed, change, n), col = change>=0 ? "var(--gain)" : "var(--loss)";
+  const id = "sp"+(gid++), pad = 2.5;
+  const pts = d.map((y,i)=>[pad + i*(w-pad*2)/(n-1), pad + (1-y)*(h-pad*2)]);
+  const line = pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+  const area = line + ` L${w-pad} ${h} L${pad} ${h} Z`;
+  const last = pts[n-1];
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${col}" stop-opacity="${fillOp}"/>
+      <stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    <path d="${area}" fill="url(#${id})"/>
+    <path d="${line}" fill="none" stroke="${col}" stroke-width="1.6"
+      stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="2" fill="${col}"/></svg>`;
+}
+
+/* ------------------------------------------------------------------ 零件 */
+const sign = c => (c>=0?"+":"") + c.toFixed(2) + "%";
+const cls  = c => c>=0 ? "up" : "dn";
+const status = `<div class="notch"></div><div class="status"><span>14:52</span>
+  <span style="font-size:11px;letter-spacing:1px">●●● ᯤ ▮</span></div>`;
+
+function gbar(pill){
+  const T = (n,on)=>`<div class="gtab${pill?" pill":""}${on?" on":""}">${n}</div>`;
+  return `<div class="gbar">
+    <div class="back">‹ 行情</div>
+    <div class="tabs">${T("加密",1)}${T("贵金属",0)}${T("美股",0)}</div>
+    <div class="sp"></div><div class="ic">＋</div><div class="ic">···</div></div>`;
+}
+function mbar(){
+  return `<div class="mbar">
+    <span class="therm"><i style="flex:11;background:var(--gain)"></i><i style="flex:2;background:var(--loss)"></i></span>
+    <span class="cnt"><b style="color:var(--gain)">涨 11</b></span>
+    <span class="cnt"><b style="color:var(--loss)">跌 2</b></span>
+    <span class="sp"></span>
+    <span class="sortchip">成交额 ↓</span></div>`;
+}
+function head(pill){ return gbar(pill) + mbar(); }
+
+/* ------------------------------------------------------------------ 现状复刻 */
+function old(){
+  const r = ROWS.map(x=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 16px">
+      ${badge(x.b,33)}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:15px;font-weight:600;display:flex;align-items:baseline;gap:1px">
+          <span>${x.b}</span><span style="font-size:11px;color:var(--ink3)">/USDT</span>
+          <span style="font-size:9px;color:var(--ink3);border:.5px solid var(--line);
+            border-radius:3px;padding:1px 3px;margin-left:3px">永续</span></div>
+        <div style="font-size:10px;color:var(--ink3);margin-top:3px">额 ${x.v} · 振幅 ${x.a.toFixed(2)}%</div>
+      </div>
+      <div style="width:98px;text-align:right">
+        <div style="font-size:14.5px;font-weight:500;font-family:ui-monospace,Menlo,monospace">${x.p}</div>
+        <div style="margin-top:4px;display:inline-block;min-width:62px;padding:4px 6px;border-radius:5px;
+          font-size:12px;font-weight:600;color:#fff;font-family:ui-monospace,Menlo,monospace;
+          background:${'var(--'+(x.c>=0?'gain':'loss')+')'}">${sign(x.c)}</div>
+      </div>
+      <div style="width:18px;text-align:center;font-size:10px;color:var(--ink2)">⌄</div>
+    </div><div class="hair" style="margin-left:62px"></div>`).join("");
+  return status + `<div class="scroll">
+    <div class="gbar"><div class="back">‹ 行情</div><div class="tabs">
+      <div class="gtab on">加密</div><div class="gtab">贵金属</div><div class="gtab">美股</div></div>
+      <div class="sp"></div><div class="ic">＋</div><div class="ic">···</div></div>
+    <div class="mbar"><span class="therm"><i style="flex:11;background:var(--gain)"></i>
+      <i style="flex:2;background:var(--loss)"></i></span>
+      <span style="color:var(--gain)">涨 11</span><span style="color:var(--loss)">跌 2</span>
+      <span class="sp"></span>
+      <span style="display:flex;align-items:center;gap:5px"><i style="width:5px;height:5px;border-radius:9px;
+        background:var(--gain);display:block"></i>24H</span></div>
+    <div class="mbar" style="border-bottom:.5px solid var(--line);padding-top:0">
+      品种 ⇅　成交额 ⇅<span class="sp"></span>价格 ⇅　⇆　24H涨跌幅 ⇅</div>
+    ${r}</div>`;
+}
+
+/* ------------------------------------------------------------------ 五套 */
+function v1(){ // 清池
+  const r = ROWS.map(x=>`
+    <div class="r1">${badge(x.b,34)}
+      <div class="col"><div class="nm">${x.b}<span class="q">/USDT</span></div>
+        <div class="sub">${x.v}</div></div>
+      <div class="rt"><div class="px">${x.p}</div>
+        <div class="ch ${cls(x.c)}">${sign(x.c)}</div></div>
+    </div><div class="hair"></div>`).join("");
+  return status + `<div class="scroll s1">${head(false)}${r}</div>`;
+}
+function v2(){ // 脉搏
+  const r = ROWS.map(x=>`
+    <div class="r2">${badge(x.b,34)}
+      <div class="col"><div class="nm">${x.b}<span class="q">/USDT</span></div>
+        <div class="sub">${x.v}</div></div>
+      ${spark(x.s,x.c,52,26,0.14)}
+      <div class="rt"><div class="px">${x.p}</div>
+        <div class="ch ${cls(x.c)}">${sign(x.c)}</div></div>
+    </div><div class="hair"></div>`).join("");
+  return status + `<div class="scroll s2">${head(false)}${r}</div>`;
+}
+function v3(){ // 素笺
+  const r = ROWS.map(x=>`
+    <div class="r3">
+      <div class="bgspark">${spark(x.s,x.c,368,34,0.9)}</div>
+      ${badge(x.b,36)}
+      <div class="col"><div class="nm">${x.b}<span class="q">/USDT</span></div>
+        <div class="sub">${x.v}</div></div>
+      <div class="rt"><div class="px">${x.p}</div>
+        <div class="ch ${cls(x.c)}">${sign(x.c)}</div></div>
+    </div>`).join("");
+  return status + `<div class="scroll">${gbar(true)}${mbar()}<div class="s3">${r}</div></div>`;
+}
+function v4(){ // 尺
+  const r = ROWS.map(x=>{
+    const a = (0.25 + 0.75*Math.min(Math.abs(x.c)/8,1)).toFixed(2);
+    return `<div class="r4">
+      <span class="rail" style="background:var(--${x.c>=0?'gain':'loss'});opacity:${a}"></span>
+      ${badge(x.b,30)}
+      <div class="col"><span class="nm" style="font-size:14.5px">${x.b}</span>
+        <span class="sub" style="margin:0">${x.v}</span></div>
+      <div class="rt"><span class="px">${x.p}</span>
+        <span class="ch ${cls(x.c)}">${sign(x.c)}</span></div>
+    </div><div class="hair"></div>`;}).join("");
+  return status + `<div class="scroll s4">${gbar(true)}${mbar()}${r}</div>`;
+}
+function v5(){ // 分级
+  const r = ROWS.map(x=>{
+    const m = Math.abs(x.c), col = x.c>=0?"var(--gain)":"var(--loss)";
+    let st;
+    if (m < 2)      st = `class="pill t0" style="color:${col}"`;
+    else if (m < 6) st = `class="pill" style="color:${col};background:color-mix(in srgb,${col} 14%,transparent)"`;
+    else            st = `class="pill" style="color:var(--app);background:${col}"`;
+    return `<div class="r5">${badge(x.b,34)}
+      <div class="col"><div class="nm">${x.b}<span class="q">/USDT</span></div>
+        <div class="sub">${x.v}</div></div>
+      <div class="rt"><div class="px">${x.p}</div><div ${st}>${sign(x.c)}</div></div>
+    </div><div class="hair"></div>`;}).join("");
+  return status + `<div class="scroll s5">${head(false)}${r}</div>`;
+}
+
+/* ------------------------------------------------------------------ 状态 */
+function row2(x, extra){
+  return `<div class="r2" ${extra||""}>${badge(x.b,34)}
+    <div class="col"><div class="nm">${x.b}<span class="q">/USDT</span></div>
+      <div class="sub">${x.v}</div></div>
+    ${spark(x.s,x.c,52,26,0.14)}
+    <div class="rt"><div class="px">${x.p}</div>
+      <div class="ch ${cls(x.c)}">${sign(x.c)}</div></div>
+  </div><div class="hair"></div>`;
+}
+const STATES = [
+  ["空自选","一个自选都没有时。不写说明文案，一句话加一颗按钮。",
+    ()=> status+`<div class="scroll s2">${head(false)}
+      <div class="empty"><div style="font-size:26px;opacity:.35">☆</div>
+      <div class="t">还没有自选</div><div style="font-size:12px">搜一个品种，星标一下就进来了</div>
+      <div class="btn">添加品种</div></div></div>`],
+  ["冷启动补价","价格还在路上：一块底色，不写「—」。写破折号会让人以为这个品种没有报价。",
+    ()=> status+`<div class="scroll s2">${head(false)}`+
+      ROWS.slice(0,3).map(x=>row2(x)).join("")+
+      ROWS.slice(3,8).map(x=>`<div class="r2">${badge(x.b,34)}
+        <div class="col"><div class="nm">${x.b}<span class="q">/USDT</span></div>
+          <div class="skel" style="width:62px;height:9px;margin-top:5px"></div></div>
+        <div class="skel" style="width:52px;height:20px"></div>
+        <div class="rt"><div class="skel" style="width:72px;height:13px"></div>
+          <div class="skel" style="width:48px;height:11px"></div></div>
+        </div><div class="hair"></div>`).join("")+`</div>`],
+  ["断线重连","顶部一条极窄的提示带，不遮内容、不弹窗；数字保留上一次的值并降到 ink2。",
+    ()=> status+`<div class="scroll s2">${head(false)}
+      <div class="banner"><span class="dot"></span>连接断开，正在重连 · 显示的是 14:51 的价格</div>`+
+      ROWS.slice(0,6).map(x=>row2(x,'style="opacity:.62"')).join("")+`</div>`],
+  ["编辑多选","进编辑态：徽章让位给勾选圈，走势线收起，底部一条操作栏。",
+    ()=> status+`<div class="scroll s2">${head(false)}`+
+      ROWS.slice(0,6).map((x,i)=>`<div class="r2">
+        <span class="cbox ${i<2?"on":""}"></span>${badge(x.b,30)}
+        <div class="col"><div class="nm">${x.b}<span class="q">/USDT</span></div>
+          <div class="sub">${x.v}</div></div>
+        <div class="rt"><div class="px" style="font-size:15px">${x.p}</div></div>
+        <span style="color:var(--ink3);font-size:15px">≡</span>
+        </div><div class="hair"></div>`).join("")+
+      `</div><div class="editbar"><span>全选</span><span>移到分类</span>
+        <span style="color:var(--loss)">删除 2</span></div>`],
+  ["长按展开","1h / 4h / 24h、高低额，外加一条当日位置尺。两颗动作贴在底部。",
+    ()=> status+`<div class="scroll s2">${head(false)}`+row2(ROWS[0])+
+      `<div class="detail">
+        <div><div class="c">1h</div><div class="v up">+0.31%</div></div>
+        <div><div class="c">4h</div><div class="v up">+1.04%</div></div>
+        <div><div class="c">24H</div><div class="v up">+0.77%</div></div>
+        <div><div class="c">24h 高</div><div class="v">77120.00</div></div>
+        <div><div class="c">24h 低</div><div class="v">75410.50</div></div>
+        <div><div class="c">24h 额</div><div class="v">123.26亿</div></div>
+        <div style="grid-column:1/4;margin-top:2px">
+          <div style="height:4px;border-radius:99px;background:var(--grid);position:relative">
+            <span style="position:absolute;left:63%;top:-3px;width:2px;height:10px;
+              border-radius:2px;background:var(--ink2)"></span></div></div>
+        <div style="grid-column:1/4;display:flex;justify-content:space-between;
+          font-size:12px;color:var(--accent);margin-top:2px">
+          <span>移到分类</span><span>打开图表</span></div>
+      </div>`+ROWS.slice(1,5).map(x=>row2(x)).join("")+`</div>`],
+  ["分类管理","长按分类名或点「···」进管理：拖动排序、改名、删除。分类是这页的骨架，不能藏在三级菜单里。",
+    ()=> status+`<div class="scroll s2">
+      <div class="gbar"><div class="back">‹ 返回</div>
+        <div class="gtab on" style="padding-left:12px">管理分类</div>
+        <div class="sp"></div><div class="ic" style="font-size:13px">完成</div></div>`+
+      [["加密",16],["贵金属",3],["美股",8],["观察中",5]].map((g,i)=>`
+        <div class="r2" style="padding:13px 16px">
+          <span style="color:var(--loss);font-size:17px">⊖</span>
+          <div class="col"><div class="nm" style="font-size:15px">${g[0]}</div>
+            <div class="sub">${g[1]} 个品种</div></div>
+          <span style="color:var(--ink3);font-size:12px">改名</span>
+          <span style="color:var(--ink3);font-size:17px;margin-left:8px">≡</span>
+        </div><div class="hair" style="margin-left:16px"></div>`).join("")+
+      `<div class="r2" style="padding:13px 16px;color:var(--accent)">
+        <span style="font-size:17px">⊕</span>
+        <div class="col"><div class="nm" style="font-size:15px;color:var(--accent)">新建分类</div></div>
+      </div></div>`],
+  ["移到分类","从行里左滑选「移到分类」：一张矮弹层，当前所属打勾，一个品种可以在多个分类里。",
+    ()=> status+`<div class="scroll s2" style="filter:brightness(.72)">${head(false)}`+
+      ROWS.slice(0,7).map(x=>row2(x)).join("")+`</div>
+      <div style="position:absolute;left:0;right:0;bottom:0;background:var(--app);
+        border-radius:18px 18px 0 0;padding:8px 0 22px;box-shadow:0 -10px 40px #0003">
+        <div style="width:36px;height:4px;border-radius:9px;background:var(--line);margin:0 auto 10px"></div>
+        <div style="padding:0 18px 8px;font-size:15px;font-weight:600">BTC 放在哪些分类</div>`+
+        [["加密",1],["贵金属",0],["美股",0],["观察中",1]].map(g=>`
+          <div style="display:flex;align-items:center;gap:11px;padding:11px 18px">
+            <span class="cbox ${g[1]?"on":""}" style="border-radius:5px"></span>
+            <span style="font-size:14.5px">${g[0]}</span></div>
+          <div class="hair" style="margin-left:48px"></div>`).join("")+
+      `</div>`],
+  ["休市与下架","黄金周末没有行情、下架合约没有价——都不留空白：一个写「休市」，一个整行降到 ink3。",
+    ()=> status+`<div class="scroll s2">${head(false)}
+      <div class="r2">${badge("XAU",34)}
+        <div class="col"><div class="nm">XAU<span class="q">/USD</span></div>
+          <div class="sub">周末休市</div></div>
+        <div style="width:52px;text-align:center;font-size:10px;color:var(--ink3)">— · —</div>
+        <div class="rt"><div class="px" style="color:var(--ink2)">4218.60</div>
+          <div class="ch" style="color:var(--ink3)">收盘 +0.42%</div></div>
+      </div><div class="hair"></div>
+      <div class="r2" style="opacity:.45">${badge("MKR",34)}
+        <div class="col"><div class="nm">MKR<span class="q">/USDT</span></div>
+          <div class="sub">已下架 · 左滑移除</div></div>
+        <div style="width:52px"></div>
+        <div class="rt"><div class="px" style="color:var(--ink3)">—</div></div>
+      </div><div class="hair"></div>`+ROWS.slice(0,4).map(x=>row2(x)).join("")+`</div>`],
+];
+
+/* ------------------------------------------------------------------ 装配 */
+function paint(){
+  gid = 0;
+  document.getElementById("p0").innerHTML = old();
+  document.getElementById("p1").innerHTML = v1();
+  document.getElementById("p2").innerHTML = v2();
+  document.getElementById("p3").innerHTML = v3();
+  document.getElementById("p4").innerHTML = v4();
+  document.getElementById("p5").innerHTML = v5();
+  document.getElementById("states").innerHTML = STATES.map(([t,d,f])=>
+    `<div><div class="phone mini">${f()}</div>
+     <div class="stcap"><b>${t}</b> — ${d}</div></div>`).join("");
+}
+const TOKENS = [
+  ["页面底","app","#F3F7F4","#0B120F","#FBF6F0","#16100C"],
+  ["卡片 / 抬起","raised","#FFFFFF","#131C18","#FFFFFF","#211812"],
+  ["药丸淡底","raised2","#E7EFE9","#1A241F","#F2E8DE","#2A1F17"],
+  ["分隔线","line","#D6E3DA","#25332C","#E7DACB","#37281D"],
+  ["主文字","ink","#14211B","#E9F2EC","#241A13","#F7EFE6"],
+  ["次文字","ink2","#4E6158","#A5B8AE","#6E5C4D","#C2AC98"],
+  ["弱文字","ink3","#606F67","#7B8D85","#756659","#958576"],
+  ["界面强调","accent","#2E7D6B","#4FB69C","#B25735","#E2874F"],
+  ["涨（红涨时）","down→gain","#C34642","#E36159","#C4483C","#E0584A"],
+  ["跌（红涨时）","up→loss","#2E7D6B","#4FB69C","#2F7D62","#3FA783"],
+];
+document.querySelector("#tok tbody").innerHTML = TOKENS.map(r=>
+  `<tr><td>${r[0]}</td><td><code>${r[1]}</code></td>`+
+  r.slice(2).map(h=>`<td class="num"><span class="sw" style="background:${h}"></span>${h}</td>`).join("")+
+  `</tr>`).join("");
+
+for (const id of ["skin","mode","redup"]){
+  document.getElementById(id).addEventListener("click", e=>{
+    const b = e.target.closest("button"); if(!b) return;
+    document.documentElement.dataset[id==="redup"?"redup":id] = b.dataset.v;
+    [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed", x===b));
+    paint();
+  });
+}
+paint();
+</script>
+</body>
+</html>
