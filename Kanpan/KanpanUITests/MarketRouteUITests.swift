@@ -2,7 +2,7 @@ import XCTest
 
 // ============================================================ 行情线路（设置）
 //
-// 设置面板里的「行情线路」两档：直连 / 网关，出厂默认直连，没有「自动」。
+// 设置页里的「行情线路」两档：直连 / 网关，出厂默认直连，没有「自动」。
 // 选了哪条就走哪条。它存在 `Prefs.routePolicy` 里：登录了随账号同步，没登录就记在
 // 本机的访客档案里——所以这里给用例一份自己的持久档案，杀掉重开还能读回来，
 // 又不会碰到这台真机上真实用户的设置。
@@ -18,8 +18,8 @@ final class MarketRouteUITests: KanpanUICase {
 
   private func openSettings() {
     app.buttons[Ids.bottomSettings].tap()
-    expectExists(route("直连"), Self.short, "设置面板里没有「行情线路」的「直连」")
-    expectExists(route("网关"), Self.short, "设置面板里没有「行情线路」的「网关」")
+    expectExists(route("直连"), Self.short, "设置页里没有「行情线路」的「直连」")
+    expectExists(route("网关"), Self.short, "设置页里没有「行情线路」的「网关」")
     XCTAssertFalse(app.buttons["settings.routePolicy.自动"].exists, "「自动」档应该已经没有了")
   }
 
@@ -41,7 +41,7 @@ final class MarketRouteUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { route("网关").isSelected }, "重开后「行情线路」没记住「网关」")
     route("直连").tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { route("直连").isSelected }, "点回「直连」没选中")
-    dismissSheet(until: route("直连"))
+    leaveSettings()
   }
 
   /// 「直连」下 OKX 永远不会被启用，所以只要图活着、有最新一根，就是币安直连真的通了。
@@ -50,7 +50,7 @@ final class MarketRouteUITests: KanpanUICase {
   func testDirectRouteGetsLiveBinanceChart() {
     openSettings()
     XCTAssertTrue(route("直连").isSelected, "出厂默认应该是「直连」")
-    dismissSheet(until: route("直连"))
+    leaveSettings()
     XCTAssertTrue(waitForLiveChart(), "「直连」下 \(Self.long)s 内没等到币安的 K 线")
     let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "直连-币安K线"; shot.lifetime = .keepAlways
     add(shot)

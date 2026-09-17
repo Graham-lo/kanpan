@@ -16,9 +16,16 @@ import KanpanCore
 /// 你看 aicoin」——手机 AICoin 的每一层都在左上角摆一颗「‹」，出口永远在同一个位置，
 /// 不用每进一页先找一遍。所以这里把出口搬到左上角，并和自选页（`favorites.back`）、
 /// 品种页（`symbols.back`）统一成同一个手势。标识符仍叫 `panel.done`，UI 测试沿用。
+///
+/// 2026-09-18 加了 `asPage`：底栏换成常驻标签栏之后，「设置」不再是半屏叫出来的
+/// 一张面板，而是标签栏上的一整页。整页没有「返回哪儿」可言（返回就是换一格标签），
+/// 所以那颗「‹」只在半屏／侧栏模式下画；底色也从浮起来的 `raised` 换成页面的 `app`，
+/// 免得一整页浮在一整页上面，读成两块拼接的材料。
 struct PanelSheet<Content: View>: View {
   var title: String
   var subtitle: String?
+  /// 当作标签栏上的一整页来画：不画左上角的「‹」，底色用页面底色。
+  var asPage: Bool = false
   @ViewBuilder var content: () -> Content
 
   @Environment(\.panelTheme) private var t
@@ -29,17 +36,19 @@ struct PanelSheet<Content: View>: View {
   var body: some View {
     VStack(spacing: 0) {
       HStack(alignment: .center, spacing: 6) {
-        Button { PanelCloser(side: sideDismiss, sheet: dismiss)() } label: {
-          Image(systemName: "chevron.left")
-            .font(.system(size: 17, weight: .semibold))
-            // 描边图标的点击区默认只有笔画本身，补一块 32×32 的矩形，画面不动。
-            .frame(width: 32, height: 32)
-            .contentShape(Rectangle())
+        if !asPage {
+          Button { PanelCloser(side: sideDismiss, sheet: dismiss)() } label: {
+            Image(systemName: "chevron.left")
+              .font(.system(size: 17, weight: .semibold))
+              // 描边图标的点击区默认只有笔画本身，补一块 32×32 的矩形，画面不动。
+              .frame(width: 32, height: 32)
+              .contentShape(Rectangle())
+          }
+          .foregroundStyle(t.amber)
+          .buttonStyle(.plain)
+          .accessibilityLabel("返回")
+          .accessibilityIdentifier("panel.done")
         }
-        .foregroundStyle(t.amber)
-        .buttonStyle(.plain)
-        .accessibilityLabel("返回")
-        .accessibilityIdentifier("panel.done")
 
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(title).font(PanelFont.title).foregroundStyle(t.ink)
@@ -50,8 +59,9 @@ struct PanelSheet<Content: View>: View {
         }
         Spacer(minLength: 0)
       }
-      // 图标自带 7pt 视觉留白，左边对齐到和正文一样的 `hPad`。
-      .padding(.leading, PanelMetrics.hPad - 7)
+      // 图标自带 7pt 视觉留白，左边对齐到和正文一样的 `hPad`；整页模式下没有图标，
+      // 标题自己顶上去，直接用 `hPad`。
+      .padding(.leading, asPage ? PanelMetrics.hPad : PanelMetrics.hPad - 7)
       .padding(.trailing, PanelMetrics.hPad)
       .padding(.top, 13)
       .padding(.bottom, 10)
@@ -65,7 +75,7 @@ struct PanelSheet<Content: View>: View {
       .scrollBounceBehavior(.basedOnSize)
       .accessibilityIdentifier("panel.content")
     }
-    .background(t.raised)
+    .background(asPage ? t.app : t.raised)
     .accessibilityLabel(title)
   }
 }

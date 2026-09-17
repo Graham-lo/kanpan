@@ -1,23 +1,28 @@
 import SwiftUI
 import KanpanCore
 
-/// 四个面板的出场方式（§9.2 / §10.6）：半屏 sheet，可拉到全屏，下拉关闭。
+/// 面板的出场方式（§9.2 / §10.6）：半屏 sheet，可拉到全屏，下拉关闭。
 ///
 /// 挂到主界面那一步不在这儿——这儿只提供 `.prefsPanel(…)` 这一个入口，
 /// 主界面拿一个 `Panel?` 当状态，改它就开关面板。
 
-/// 哪个面板。底栏四个按钮各对应一个。
+/// 哪个面板。
+///
+/// 2026-09-18 底栏改成常驻标签栏（画线 · 图表 · 自选 · 设置）之后，这儿只剩两张：
+/// 「设置」升成了标签栏上的一整页，不再是半屏；「指标」整段并进了「图表设置」，
+/// 成为它里头的一个子栏目——用户的话是「行情页面的指标放到图表里作为一个子栏目」。
+/// 半屏 sheet 从此只留给这种「从某一页里叫出来的子面板」，不承载标签本身。
 enum Panel: String, Identifiable, CaseIterable, Sendable {
-  case indicator, period, settings, chart
+  case period, chart
 
   var id: String { rawValue }
 
   var title: String {
     switch self {
-    case .indicator: "指标"
     case .period: "周期"
-    case .settings: "设置"
-    case .chart: "图表"
+    // 「图表」这个名字给了标签栏那一格（整张行情页），面板只管图上那些设置，
+    // 所以它叫「图表设置」——同名两个东西会让人不知道自己点开的是哪个。
+    case .chart: "图表设置"
     }
   }
 }
@@ -110,15 +115,12 @@ extension View {
   func prefsPanel(_ panel: Binding<Panel?>,
                   store: PrefsStore,
                   onPickInterval: ((Interval) -> Void)? = nil,
-                  onDraw: (() -> Void)? = nil,
                   onRecord: (() -> Void)? = nil) -> some View {
     sheet(item: panel) { which in
       PanelHost(store: store) {
         switch which {
-        case .indicator: IndicatorPanel(store: store)
         case .period: IntervalGridPanel(store: store, onPick: onPickInterval)
-        case .settings: SettingsPanel(store: store)
-        case .chart: ChartPanel(store: store, onDraw: onDraw, onRecord: onRecord)
+        case .chart: ChartPanel(store: store, onRecord: onRecord)
         }
       }
     }
@@ -144,11 +146,11 @@ struct PanelPreviewHost<Content: View>: View {
   }
 }
 
-#Preview("四个面板") {
+#Preview("面板") {
   PanelDemo()
 }
 
-/// 把四个面板挂起来看一眼：这就是主界面接它的全部写法。
+/// 把面板挂起来看一眼：这就是主界面接它的全部写法。
 private struct PanelDemo: View {
   @State private var store = PrefsStore(storage: InMemoryPrefsStorage(),
                                         cache: UnavailableMarketCache())

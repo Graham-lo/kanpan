@@ -21,7 +21,6 @@ struct FavoritesView: View {
   var updatedAt: Date?
   var feedStatus: FeedStatus
   var feedDiagnostics: String? = nil
-  var onClose: () -> Void
   var onVisible: (String) -> Void
   var onRowVisibility: (String, Bool) -> Void
   var onHistoryVisibility: (String, Bool) -> Void
@@ -154,16 +153,20 @@ struct FavoritesView: View {
 
   // MARK: - 头部
 
-  /// 两行：上一行是返回、一条长搜索框、设置，下一行整条都是分类文件夹。
+  /// 两行：上一行是一条长搜索框加一颗「…」，下一行整条都是分类文件夹。
   ///
   /// 2026-09-18 用户把这一页顶上的「自选」大字、数量印章、右边那条涨跌比和
   /// 「今日 N 涨 N 跌」那行小字全撤了，加自选的入口只留一个——它开的就是搜索页。
-  /// 排法照推特：两头各一颗圆按钮，中间整条是搜索框，分类条自己独占一行，
-  /// 这样分类不必和按钮抢宽度，也不会挤成一条乱麻。
+  /// 排法照推特：中间整条是搜索框，分类条自己独占一行，这样分类不必和按钮抢宽度，
+  /// 也不会挤成一条乱麻。
+  ///
+  /// 同一天晚些时候底栏换成了常驻标签栏，这一行跟着改了两处：**左边那颗返回没了**
+  /// （自选本身就是标签栏上的一格，「返回」去哪儿都说不清，换一格就是返回），
+  /// **右边那颗从齿轮换回「…」**——齿轮现在归标签栏最右边那一整页，两个齿轮
+  /// 一个开整页设置、一个开这一页的菜单，谁也分不出哪个是哪个。
   private var headerBar: some View {
     VStack(spacing: 6) {
       HStack(spacing: 8) {
-        circleButton("chevron.left", label: "返回行情", id: "favorites.back", action: onClose)
         // 编辑中把搜索框换成「完成」：模式总得有个看得见的出口，藏进菜单要点两下才出得来。
         if editing {
           Button { toggleEditing() } label: {
@@ -177,11 +180,9 @@ struct FavoritesView: View {
         } else {
           searchField
         }
-        // 这颗以前是「…」。它装的是编辑自选、新建/重命名/删除分类、迷你走势开关，
-        // 整个就是这一页的设置，所以换成设置的记号（用户 2026-09-18 定的）。
-        // 用自绘的圆角六边形（`VectorIcon.hexSettings`），和左边的返回箭头同一套描边；
-        // SF Symbols 的齿轮牙齿多、字重也不是一路，并排站会显得两颗不是一家的。
-        circleButton(VectorIcon.hexSettings(19), label: "自选设置", id: "favorites.more") { more = true }
+        // 它装的是编辑自选、新建/重命名/删除分类、迷你走势开关——全是**这一页**的事，
+        // 所以记号用「…」而不是齿轮：齿轮在标签栏最右边，那颗才是整个 app 的设置。
+        circleButton("ellipsis", label: "自选菜单", id: "favorites.more") { more = true }
           .anchorPreference(key: MenuAnchors.self, value: .bounds) { ["more": $0] }
       }
       groupStrip

@@ -1,65 +1,78 @@
 import SwiftUI
 
-/// 底栏保留常用去处；外观与横屏统一在周期行。
+/// 底栏那四格。
 ///
-/// 「自选」进的是带加密 / 美股分类的那张完整自选页（`FavoritesView`），不是顶栏
-/// 品种名开的那个半屏弹层。两者分工：弹层是「快速换一个」，这一格是「去管我的表」——
-/// 分类、分组、排序、历史都在那页上，弹层里塞不下。
+/// 2026-09-18 它从「几个入口按钮」改成了常驻标签栏。用户的话是「大部分 app 把常用的
+/// 大分页都固定在底部，比如 tv 和推特都是，底部是固定的，切换页面下面还是那样」——
+/// 以前「自选」是全屏 cover、「设置」是半屏 sheet、「复盘」是另一层 cover，一层盖一层，
+/// 人不知道自己在第几层，只能一路退回去。现在四格各是一张整页，底栏永远在，
+/// 换页就是换一格。
 ///
-/// 这儿没有「横屏」那一格：横屏不是一个单独要去的地方，需要它的其实只有画线。
-/// 所以点周期行上的「画线」就直接横过去（见 `MainScreen.onChange(of: draw.active)`），
-/// 画完自己转回来，底栏不必为它留一格。
-struct BottomBar: View {
+/// 顺序是用户定死的：**画线 · 图表 · 自选 · 设置**。他的话是「本来行情 app 这个
+/// 就很重要」——画线值一格；「复盘放到图表里」，所以复盘不在底栏上（它挪到了行情页
+/// 顶栏那颗带角标的按钮），「指标」也不在（并进了「图表设置」）。
+enum Tab: String, CaseIterable, Sendable {
+  case draw, chart, favorites, settings
+
+  var title: String {
+    switch self {
+    case .draw: "画线"
+    case .chart: "图表"
+    case .favorites: "自选"
+    case .settings: "设置"
+    }
+  }
+
+  var icon: VectorIcon {
+    switch self {
+    case .draw: VectorIcon.draw
+    case .chart: VectorIcon.chart
+    case .favorites: VectorIcon.star()
+    case .settings: VectorIcon.settings
+    }
+  }
+
+  /// 能不能停在这一格。
+  ///
+  /// 「画线」是个动作不是去处：点它是「把当前这张图横过来画」，画完自动转回行情页
+  /// （见 `kanpan-landscape-is-for-drawing`）。所以它永远不是那个「回来之后还停在
+  /// 这儿」的格子，选中态只在真的在画的时候亮。
+  var isRestingPlace: Bool { self != .draw }
+}
+
+/// 常驻标签栏：四格等宽，谁亮着谁是当前页。
+struct TabBar: View {
   var theme: PanelTheme
-  /// 哪个亮着。面板开着时对应那个是琥珀色（原型 `syncTools()`）。
-  var active: Panel?
-  var onPanel: (Panel) -> Void
-  var onReview: () -> Void
-  var reviewCount: Int
-  var onFavorites: () -> Void
+  /// 停在哪一页。`draw` 不会是它——见 `Tab.isRestingPlace`。
+  var current: Tab
+  /// 正在画线。这时候亮的是最左边那格，而不是身下那张行情页。
+  var drawing: Bool
+  var onPick: (Tab) -> Void
 
   var body: some View {
     HStack(spacing: 0) {
-      item(VectorIcon.chart, "复盘", on: false, action: onReview)
-        .accessibilityIdentifier("bottom.review")
-        .overlay(alignment: .top) {
-          if reviewCount > 0 {
-            Text("\(min(reviewCount, 99))")
-              .font(.system(size: 9, weight: .semibold))
-              .foregroundStyle(theme.badgeInk)
-              .padding(.horizontal, 4).padding(.vertical, 1.5)
-              .background(theme.amber, in: Capsule())
-              .offset(x: 19, y: 1)
-          }
-        }
-      tool(.indicator, VectorIcon.indicator, "指标") { onPanel(.indicator) }
-        .accessibilityIdentifier("bottom.indicator")
-      item(VectorIcon.star(), "自选", on: false, action: onFavorites)
-        .accessibilityIdentifier("bottom.favorites")
-      tool(.settings, VectorIcon.settings, "设置") { onPanel(.settings) }
-        .accessibilityIdentifier("bottom.settings")
+      ForEach(Tab.allCases, id: \.self) { tab in
+        item(tab).accessibilityIdentifier("bottom.\(tab.rawValue)")
+      }
     }
     .padding(.top, 6)
     .padding(.bottom, 2)
   }
 
-  private func tool(
-    _ which: Panel, _ icon: VectorIcon, _ title: String, action: @escaping () -> Void
-  ) -> some View {
-    item(icon, title, on: active == which, action: action)
+  private func on(_ tab: Tab) -> Bool {
+    drawing ? tab == .draw : tab == current
   }
 
   /// 一格：18pt 的线性图标坐在一颗 42×27 的胶囊里，下面 10pt 的名字（原型 `.tabs`）。
   /// 亮着的那格不是只把字染色——胶囊垫一层 15% 的强调底，四格并排时一眼看得出在哪儿。
-  private func item(
-    _ icon: VectorIcon, _ title: String, on: Bool, action: @escaping () -> Void
-  ) -> some View {
-    Button(action: action) {
+  private func item(_ tab: Tab) -> some View {
+    let on = on(tab)
+    return Button { onPick(tab) } label: {
       VStack(spacing: 3) {
-        icon.sized(18)
+        tab.icon.sized(18)
           .frame(width: 42, height: 27)
           .background(on ? theme.amberSoft : .clear, in: Capsule())
-        Text(title).font(.system(size: 10, weight: on ? .semibold : .medium))
+        Text(tab.title).font(.system(size: 10, weight: on ? .semibold : .medium))
       }
       .foregroundStyle(on ? theme.amber : theme.ink3)
       .padding(.top, 4)

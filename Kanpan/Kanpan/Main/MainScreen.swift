@@ -9,7 +9,13 @@ import KanpanAccount
 
 /// 主界面（§9.1）。
 ///
-/// 从上到下：顶栏 → 价格行 → 周期条 → 图（占满剩下的）→ 底部工具条五个。
+/// 从上到下：顶栏 → 价格行 → 周期条 → 图（占满剩下的）→ 常驻标签栏。
+///
+/// 2026-09-18 底栏改成了常驻标签栏（`TabBar`）：画线 · 图表 · 自选 · 设置，
+/// 四格各是一张整页，底栏永远在，换页就是换一格（用户的话是「大部分 app 把常用的
+/// 大分页都固定在底部，比如 tv 和推特都是」）。在这之前自选是全屏 cover、设置是
+/// 半屏 sheet、复盘是另一层 cover，一层盖一层。现在这一层只剩一个 `tab`，
+/// 品种搜索和品种整页仍然是 cover——它们是「从某一页里叫出来的东西」，不是分页。
 /// 这一层只做接线：把 `MarketModel` 的行情和 `PrefsStore` 的设置揉成一份 `ChartState`
 /// 交给图，再把图和面板的回调转回去。**任何计算都不该在这儿写**——算法在 `KanpanCore`，
 /// 画在 `KanpanChart`，这里只负责让它们见面。
@@ -18,7 +24,7 @@ struct MainScreen: View {
   @State private var accountBridge: AppAccountBridge?
   @State private var comfort = DisplayComfort()
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-  @State private var market = MarketModel()
+  @State private var market = MarketModel(symbol: MainScreen.launchSymbol)
   @State private var store = PrefsStore()
   @State private var picker = SymbolPickerModel()
   @State private var quotes = QuoteBook()
@@ -37,9 +43,12 @@ struct MainScreen: View {
   @State private var searchAllPending = false
   /// 历史搜索词。放在宿主身上，来回进出搜索页不丢。
   @State private var searchHistory = SearchHistory()
-  @State private var showFavorites = false
-  /// 冷启动的自选盖层还在吗。详见 `launchFavorites`。
-  @State private var launchCover = MainScreen.startsOnFavorites
+  /// 停在哪一格。冷启动落在自选还是行情，看上次存下的自选表空不空。
+  ///
+  /// 这就是原来那个「冷启动自选盖层」的去处。以前得专门铺一层 `overlay`（不能用
+  /// `fullScreenCover`：UIKit 的 present 一定会先画一帧宿主，实测漏出 0.57 s 的
+  /// 行情页）。改成标签栏之后这件事自己就成立了——第一帧画的就是 `tab` 指着的那一页。
+  @State private var tab: Tab = MainScreen.startsOnFavorites ? .favorites : .chart
   /// 账号那一侧已经「切」过一次了吗。
   ///
   /// 冷启动时 `account.restore()` 把登录态恢复回来，走的是和用户主动换号完全
@@ -49,17 +58,17 @@ struct MainScreen: View {
   @State private var didRestoreAccount = false
   /// 自选表的预热跑过了吗。见 `primeFavorites(_:)`。
   @State private var didPrimeFavorites = false
-  /// 用户已经从首屏走开了吗（点了品种、关掉了自选页、或者主动换了账号）。
+  /// 用户已经从首屏走开了吗（点了品种、自己换了一格标签、或者主动换了账号）。
   ///
-  /// 首屏盖层只能在「还没走开」的时候升起来。`launchCover` 的初值是拿上次存下的
-  /// 自选表猜的，猜得不一定准——登录用户的自选表存在账号那份档案里，默认档案可能
-  /// 是空的。账号恢复回来之后要按真表重判一次，这个标记保证那次重判不会把已经在
-  /// 看图的用户拽回自选页。
+  /// 首屏那一格只能在「还没走开」的时候改。`tab` 的初值是拿上次存下的自选表猜的，
+  /// 猜得不一定准——登录用户的自选表存在账号那份档案里，默认档案可能是空的。
+  /// 账号恢复回来之后要按真表重判一次，这个标记保证那次重判不会把已经在看图的
+  /// 用户拽回自选页。
   @State private var didLeaveLaunch = false
   /// 还在等 `account.restore()` 把登录态读回来吗。
   ///
   /// 这一小段里 `picker.prefs` 挂的还是访客那份空档案，不能拿「自选是空的」当真——
-  /// 否则首屏盖层会当场让位给行情页，等账号回来再翻回自选，闪一下。
+  /// 否则首屏那一格会当场翻到行情页，等账号回来再翻回自选，闪一下。
   @State private var awaitingAccount = false
   @State private var expandedChart = false
   /// 这次横屏是「点画线」带进来的吗——是的话画完要自己转回竖屏。
@@ -90,9 +99,20 @@ struct MainScreen: View {
   // 只认主屏，发丝线会画粗或画糊。环境里的 displayScale 跟着当前窗口走。
   @Environment(\.displayScale) private var displayScale
 
-  /// 上次存下来的自选表非空吗。只读一次，值在这一整次启动里不会变——
-  /// 自选表本身是 `SymbolPickerModel` 在管，这儿只关心「第一帧该盖谁」。
-  private static let startsOnFavorites = !SymbolPrefsStore().load().favorites.isEmpty
+  /// 上次关掉 app 时存下的那份品种档案。只读一次，值在这一整次启动里不会变——
+  /// 档案本身是 `SymbolPickerModel` 在管，这儿只关心「第一帧该是什么样」。
+  private static let launchPrefs = SymbolPrefsStore().load()
+
+  /// 上次存下来的自选表非空吗。决定第一帧停在哪一格。
+  private static var startsOnFavorites: Bool { !launchPrefs.favorites.isEmpty }
+
+  /// 冷启动开哪张图：上次看的最后一个品种。
+  ///
+  /// 用户的话是「无论用户是否跳到了其它页面，系统都记录了他最后看的一张图，
+  /// 如果第一次就是 btc」——`SymbolPrefs.visit(_:)` 一直在记这份 `recents`，
+  /// 只是以前没人读它，冷启动一律从 BTCUSDT 开始，「最后看的那张图」在关掉 app
+  /// 之后就不算数了。头一次用（没有 recents）才落到 BTCUSDT。
+  private static var launchSymbol: String { launchPrefs.recents.first ?? "BTCUSDT" }
 
   private var prefs: Prefs { store.prefs }
 
@@ -137,8 +157,7 @@ struct MainScreen: View {
     // 横屏的面板走自己那层侧栏，不挂系统 sheet：半屏 sheet 在 compact 高度下会被
     // 系统顶成全屏，图就整个没了。
     .prefsPanel(landscape ? .constant(nil) : $panel, store: store,
-                onPickInterval: pick(interval:),
-                onDraw: chartDrawAction, onRecord: chartRecordAction)
+                onPickInterval: pick(interval:), onRecord: chartRecordAction)
   }
 
   private var presentation: some View {
@@ -162,45 +181,24 @@ struct MainScreen: View {
                        onRowVisibility: { quotes.watchRow($0, visible: $1) })
         .preferredColorScheme(effectiveTheme.forced)
     }
-    .fullScreenCover(isPresented: $showFavorites) {
-      favoritesPage { showFavorites = false; proxy.scrollToLatest(animated: false) }
-        .preferredColorScheme(effectiveTheme.forced)
-    }
-    .overlay { launchFavorites }
   }
 
-  private func favoritesPage(onClose: @escaping () -> Void) -> some View {
+  /// 自选那一整页。标签栏上的一格，所以没有「返回」——返回就是换一格标签。
+  private var favoritesPage: some View {
     FavoritesView(model: picker, history: searchHistory, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
-                  onClose: onClose, onVisible: { quotes.watch($0) },
+                  onVisible: { quotes.watch($0) },
                   onRowVisibility: { quotes.watchRow($0, visible: $1) },
                   onHistoryVisibility: { quotes.watchHistory($0, visible: $1) })
   }
 
-  /// 盖层此刻是不是真的盖着。`launchCover` 只说「还没离开首屏」，画不画还得看
-  /// 自选表当下空不空——账号恢复之后这张表会整体换成那个账号的那一份，空表没什么可盖的。
-  /// 图要不要渲染、报价要不要拉，都跟着这个值走，不能只看 `launchCover`。
-  private var coveringLaunch: Bool { launchCover && (!picker.prefs.favorites.isEmpty || awaitingAccount) }
-
-  /// 冷启动的自选盖层。
-  ///
-  /// 上次关掉 app 时自选表非空，这一次就该直接落在自选页上，中间不要漏出行情页。
-  /// **不能用 `fullScreenCover` 来做这件事**：那东西的呈现要过一遍 UIKit 的 present
-  /// 流程，哪怕把动画关掉（`disablesAnimations`），宿主也一定会先自己画一帧——抓帧
-  /// 看到的就是 0.57 s 那张行情页。这里改成叠在同一棵视图树上的 `overlay`，它和宿主
-  /// 在同一帧里布局，第一帧就是自选页。
-  ///
-  /// 只管「第一次」。用户一旦从这儿走开（关掉、或者点了某个品种），`launchCover`
-  /// 就永久落下，之后再进自选走的还是原来那个 `showFavorites` 盖层，两条路不会同时在。
-  @ViewBuilder private var launchFavorites: some View {
-    if coveringLaunch {
-      ZStack {
-        // 背景要铺满整屏（盖住状态栏和 home indicator 那两条），但页面本身仍然待在
-        // 安全区里——和 `fullScreenCover` 里的排版对齐。
-        theme.app.ignoresSafeArea()
-        favoritesPage { launchCover = false; didLeaveLaunch = true; proxy.scrollToLatest(animated: false) }
-      }
-    }
+  /// 此刻画的是不是自选页。账号还在恢复的那一小段里，`picker.prefs` 挂的是访客那份
+  /// 空档案，不能拿「自选是空的」当真——所以 `awaitingAccount` 也算数。
+  private var showingFavorites: Bool {
+    tab == .favorites && (!picker.prefs.favorites.isEmpty || awaitingAccount)
   }
+
+  /// 报价簿要不要拉列表：看得见一列品种的时候才拉。
+  private var listVisible: Bool { showingFavorites || showSymbols || showSearch }
 
   private var lifecycleContent: some View {
     presentation
@@ -242,7 +240,7 @@ struct MainScreen: View {
     .onChange(of: hosts) { _, next in market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis, source: market.source) }
     .onChange(of: prefs.changeBasis) { _, next in quotes.configure(hosts: hosts, basis: next, source: market.source) }
     .onChange(of: market.source) { _, next in quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next) }
-    .onChange(of: showFavorites || showSymbols || showSearch || coveringLaunch) { _, on in quotes.setVisible(on) }
+    .onChange(of: listVisible) { _, on in quotes.setVisible(on) }
     .onChange(of: picker.prefs.favorites) { _, symbols in settleFavorites(symbols) }
     .onChange(of: market.tradeQuote) { _, trade in
       if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
@@ -273,7 +271,7 @@ struct MainScreen: View {
     .onChange(of: draw.notice, initial: true) { _, note in if let note { say(note); draw.notice = nil } }
     .environment(\.panelTheme, theme)
     .environment(\.accountFeature, account)
-    .sheet(isPresented: Binding(get: { account.presented && panel != .settings && !review.bookOpen }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
+    .sheet(isPresented: Binding(get: { account.presented && !review.bookOpen }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
     .onChange(of: account.notice) { _, note in if let note { say(note); account.notice = nil } }
     .onChange(of: panel) { _, value in if value == nil { try? accountBridge?.applyPending() } }
     .onChange(of: draw.active) { _, active in
@@ -302,7 +300,55 @@ struct MainScreen: View {
 
   // ---------------------------------------------------------------- 各段
 
+  /// 竖屏：当前这一页 + 底下那条常驻标签栏。
+  ///
+  /// 三张整页共用同一棵视图树，所以行情的连接、报价、复盘那几个模型都挂在这一层
+  /// 的宿主身上（`@State`），换页不重建、行情不断线。
   private var portraitBody: some View {
+    VStack(spacing: 0) {
+      Group {
+        switch tab {
+        // 「画线」不是一张页：点它是把当前这张图横过来画，所以它落在行情页上。
+        case .chart, .draw: chartPage
+        case .favorites: favoritesPage
+        case .settings: SettingsPanel(store: store, asPage: true)
+        }
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      // 记一笔和回放这两种状态下标签栏收起来（§2F1 / §2G4）：这时候屏幕上已经有
+      // 一套自己的操作（记下 / 收起、播放 / 退出），底下再摆一排分页，点哪个都像是
+      // 要跑题。两种状态各自都有明确的回头路（卡片的「收起」、回放条的「退出」）。
+      if !reviewChart.active {
+        hairline
+        TabBar(theme: theme, current: tab, drawing: draw.active, onPick: switchTo(tab:))
+          .background(theme.app)
+      }
+    }
+  }
+
+  /// 换一格标签。
+  ///
+  /// 「画线」那一格是个动作：先回到行情页，再横过去画（`draw.toggle()` 会触发
+  /// `onChange(of: draw.active)` 里的转屏）。用户定的是「用户当前看的这张图作为
+  /// 画线的目标，直接实现即可」——不问品种，画的就是眼前这张。
+  private func switchTo(tab next: Tab) {
+    dismissPanel()
+    didLeaveLaunch = true
+    guard next != .draw else {
+      if reviewChart.active { endReview() }
+      tab = .chart
+      draw.toggle()
+      return
+    }
+    guard next != tab else { return }
+    if next != .chart { draw.finish() }
+    tab = next
+    if next == .favorites { quotes.setVisible(true) }
+    if next == .chart { proxy.scrollToLatest(animated: false) }
+  }
+
+  /// 行情页那一整页：顶栏 → 价格行 → 周期条 → 图。
+  private var chartPage: some View {
     VStack(spacing: 0) {
       if reviewChart.mode == .replay { reviewHeader } else { header }
       hairline
@@ -322,19 +368,6 @@ struct MainScreen: View {
       hairline
       if draw.active {
         DrawingBar(controller: draw)
-      }
-      // 记一笔和回放这两种状态下底栏收起来（§2F1 / §2G4）。
-      // 理由一样：这时候屏幕上已经有一套自己的操作（记下 / 收起、播放 / 退出），
-      // 底下再摆一排「复盘 指标 自选 设置」，等于同时给两套出口，点哪个都像是要跑题。
-      // 两种状态各自都有明确的回头路（卡片的「收起」、回放条的「退出」），功能没断。
-      if !reviewChart.active {
-        BottomBar(
-          theme: theme, active: panel,
-          onPanel: { p in panel = (panel == p) ? nil : p },
-          onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() }, reviewCount: review.pendingCount,
-          onFavorites: { dismissPanel(); showFavorites = true; quotes.setVisible(true) }
-        )
-        .background(theme.app)
       }
     }
   }
@@ -439,9 +472,7 @@ struct MainScreen: View {
     if let which = panel {
       PanelSide(store: store, seed: seed, onClose: PanelDismiss { dismissPanel() }) {
         switch which {
-        case .indicator: IndicatorPanel(store: store)
         case .period: IntervalGridPanel(store: store, onPick: pick(interval:))
-        case .settings: SettingsPanel(store: store)
         case .chart: ChartPanel(store: store)
         }
       }
@@ -452,8 +483,12 @@ struct MainScreen: View {
     VStack(spacing: 9) {
       // 顶栏没有自选星了（用户 2026-09-18 定的）：加自选统一在搜索页和自选页的
       // 品种行上做，那儿看得见一整列，挑着加；顶栏这一颗紧贴品种名，只会误触。
+      // 复盘从底栏挪到了这儿：底栏换成常驻标签栏之后那四格是分页，复盘按用户的话
+      // 「放到图表里」——它是看着某张图时才想起来的事。角标是还欠着答案的条数。
       TopBar(
         theme: theme, symbol: market.symbol,
+        reviewCount: review.pendingCount,
+        onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() },
         onSearch: { dismissPanel(); showSearch = true })
       ZStack {
         PriceRow(theme: theme, ticker: displayedTicker, lastPrice: readoutPrice,
@@ -519,18 +554,12 @@ struct MainScreen: View {
     return { startReviewCapture() }
   }
 
-  /// 「图表」那一页顶上的「画线」。横屏有自己的 `ToolRail`，那边不排这一条。
-  private var chartDrawAction: (() -> Void)? {
-    guard !landscape else { return nil }
-    return { if reviewChart.active { endReview() }; draw.toggle() }
-  }
-
   private var chart: some View {
     ZStack(alignment: .bottomTrailing) {
       theme.chartBG
       ChartHost(
         portrait: !landscape,
-        renderingActive: !showFavorites && !showSymbols && !showSearch && !coveringLaunch,
+        renderingActive: tab == .chart && !showSymbols && !showSearch,
         panelOpen: panel != nil || draw.panel != nil,
         state: reviewChart.active ? reviewChart.state : chartState,
         proxy: reviewChart.active ? reviewChart.proxy : proxy,
@@ -779,7 +808,7 @@ struct MainScreen: View {
     // 不该跨启动生效——这一份表是刚刚才定下来的（登录用户还等过一次账号恢复），
     // 所以这里才是重置的时机。
     picker.resetSelectedGroup()
-    quotes.setVisible(showFavorites || showSymbols || showSearch || coveringLaunch)
+    quotes.setVisible(listVisible)
     // 冷启动第一屏就是自选页。趁用户在这儿看报价，把自选的 K 线、以及当前品种
     // 其他常用周期的 K 线先拉好，点进去、切周期第一帧就有图。
     market.prefetchFavorites(symbols, intervals: prefs.quickIntervals)
@@ -810,9 +839,10 @@ struct MainScreen: View {
     quotes.setChartSymbol(market.symbol)
     quotes.setForeground(phase != .background)
     picker.onPick = { info in
-      showSymbols = false; showFavorites = false
+      showSymbols = false
       showSearch = false; searchAllPending = false
-      launchCover = false; didLeaveLaunch = true
+      // 挑完品种落到行情页：自选、搜索、品种整页三条路都是「去看哪张图」。
+      tab = .chart; didLeaveLaunch = true
       if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
       crosshair = nil
       market.switchTo(symbol: info.symbol)
@@ -822,11 +852,8 @@ struct MainScreen: View {
     // Configure the catalog and its source before presenting the favorites list.
     // Otherwise FavoritesView can start its first catalog request against the
     // default Binance route while the host/source setup is still in flight.
-    if !picker.prefs.favorites.isEmpty {
-      // 盖层已经在了（`launchFavorites`）就别再叠一层 `fullScreenCover`。
-      if !launchCover { showFavorites = true }
-      primeFavorites(picker.prefs.favorites)
-    }
+    // 第一帧停在哪一格是 `tab` 的初值定的（见 `startsOnFavorites`），这儿只补预热。
+    if !picker.prefs.favorites.isEmpty { primeFavorites(picker.prefs.favorites) }
   }
 
   private func wireAccount() {
@@ -839,12 +866,12 @@ struct MainScreen: View {
       bridge.onSwitch = {
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
         else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
-        showFavorites = false; showSymbols = false
+        showSymbols = false
         showSearch = false; searchAllPending = false
-        // 换号要把首屏盖层也掀掉（别让人对着上一个账号的自选表）；但冷启动恢复
-        // 登录态是同一条路走过来的第一次，那一次盖层必须留着，否则第一眼看到的
-        // 就是行情页——这正是真机上「冷启动没进自选」的成因，模拟器没登录才看不出来。
-        if didRestoreAccount { launchCover = false; didLeaveLaunch = true }
+        // 换号要把人从自选页带走（别让他对着上一个账号的表）；但冷启动恢复登录态
+        // 是同一条路走过来的第一次，那一次必须留在自选，否则第一眼看到的就是行情页
+        // ——这正是真机上「冷启动没进自选」的成因，模拟器没登录才看不出来。
+        if didRestoreAccount { tab = .chart; didLeaveLaunch = true }
         else {
           didRestoreAccount = true
           // `onSwitch()` 在 `symbols.useStorage` **之前**调用，这会儿 `picker.prefs`
@@ -855,11 +882,11 @@ struct MainScreen: View {
           // 表真的变了时才响；恢复出来还是空表的话它不响，而 `boot()` 那会儿也故意
           // 没交——不在这儿补一句，`QuoteBook` 就永远等着一份不会来的自选表。
           Task { @MainActor in
-            // 恢复出来的这份表才是准的，首屏该不该盖按它重判一次：有自选就盖上
-            // （默认档案是空的、`launchCover` 初值猜成 false 的机器也能进自选页），
-            // 没有就照旧落在行情页。前提是用户还没自己走开。
-            if picker.prefs.favorites.isEmpty { launchCover = false }
-            else if !didLeaveLaunch, !showFavorites, !showSymbols { launchCover = true }
+            // 恢复出来的这份表才是准的，首屏该停哪一格按它重判一次：有自选就停在
+            // 自选（默认档案是空的、`tab` 初值猜成 `.chart` 的机器也能进自选页），
+            // 没有就落到行情页。前提是用户还没自己走开。
+            if picker.prefs.favorites.isEmpty { if !didLeaveLaunch { tab = .chart } }
+            else if !didLeaveLaunch, !showSymbols { tab = .favorites }
             settleFavorites(picker.prefs.favorites)
           }
         }

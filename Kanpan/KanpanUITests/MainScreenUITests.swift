@@ -109,21 +109,29 @@ final class MainScreenUITests: KanpanUICase {
     dismissSheet(until: hollow)
   }
 
-  /// 指标面板：开得出来、收得回去。多项配置页，选完**不**自动收（规矩①的另一半）。
+  /// 指标：开得出来、收得回去。多项配置页，选完**不**自动收（规矩①的另一半）。
+  ///
+  /// 2026-09-18 起指标不再是底栏上单独的一格，整段并进了「图表设置」面板
+  /// （用户：「行情页面的指标放到图表里作为一个子栏目」），入口是周期行右端的「图表」。
   func testIndicatorPanelOpensAndCloses() {
-    app.buttons[Ids.bottomIndicator].tap()
+    app.buttons[Ids.intervalChart].tap()
     let macd = app.buttons[Ids.indicatorSwitch("MACD")]
-    expectExists(macd, Self.short, "点底栏「指标」没开出指标面板")
-    expectExists(app.buttons[Ids.indicatorSwitch("MA")], Self.short, "指标面板里没有主图叠加那几项")
+    expectExists(macd, Self.short, "点周期行「图表」没开出指标那几栏")
+    expectExists(app.buttons[Ids.indicatorSwitch("MA")], Self.short, "指标那几栏里没有主图叠加")
     dismissSheet(until: macd)
   }
 
-  /// 设置面板：开得出来、收得回去。同样是多项配置页，不自动收。
+  /// 设置页：进得去、出得来。
+  ///
+  /// 2026-09-18 起设置是标签栏上的一整页，不是半屏面板（用户：「这四个底部拦都单独是
+  /// 一个页面」），所以出来靠切回「图表」那一格，不是拖或者点「完成」。
   func testSettingsPanelOpensAndCloses() {
     app.buttons[Ids.bottomSettings].tap()
     let magnet = app.buttons[Ids.settingsMagnet]
-    expectExists(magnet, Self.short, "点底栏「设置」没开出设置面板")
-    dismissSheet(until: magnet)
+    expectExists(magnet, Self.short, "点底栏「设置」没进设置页")
+    XCTAssertFalse(app.buttons[Ids.panelDone].exists, "整页不该有半屏那颗「完成」")
+    leaveSettings()
+    expectGone(magnet, Self.short, "切回「图表」之后还停在设置页")
   }
 
   /// 交互规矩②：手指落到面板以外（这里点的是 K 线图）面板就收起。
@@ -131,9 +139,9 @@ final class MainScreenUITests: KanpanUICase {
   /// 要先等图真的有数据——没数据时 `ChartView` 整层让开，点下去不会往外报。
   func testTappingChartDismissesPanel() throws {
     try XCTSkipUnless(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据，跳过（这条要真数据）")
-    app.buttons[Ids.bottomIndicator].tap()
+    app.buttons[Ids.intervalChart].tap()
     let macd = app.buttons[Ids.indicatorSwitch("MACD")]
-    expectExists(macd, Self.short, "指标面板没开出来")
+    expectExists(macd, Self.short, "图表设置面板没开出来")
     chartPoint().tap()
     expectGone(macd, Self.short, "点了图，面板没收起")
   }
@@ -156,7 +164,7 @@ final class MainScreenUITests: KanpanUICase {
 
     XCTAssertTrue(app.enterDrawingInPortrait(), "第二次进画线态失败")
     expectExists(trend, Self.short, "第二次进画线态失败")
-    XCTAssertTrue(app.tapDrawEntry(), "「图表」面板里没有「画线」")
+    XCTAssertTrue(app.tapDrawEntry(), "标签栏上没有「画线」")
     expectGone(trend, Self.short, "再点一次「画线」没退出画线态")
   }
 
@@ -173,8 +181,13 @@ final class MainScreenUITests: KanpanUICase {
     XCTAssertFalse(subsBefore.isEmpty, "竖屏默认就该有副图，否则这条用例验不到东西")
     XCTAssertFalse(overlaysBefore.isEmpty, "竖屏默认就该有均线，否则这条用例验不到东西")
 
-    XCTAssertTrue(app.tapDrawEntry(), "「图表」面板里没有「画线」")
-    expectExists(app.buttons[Ids.landscapeSymbol], Self.long, "点「画线」没横过去")
+    XCTAssertTrue(app.tapDrawEntry(), "标签栏上没有「画线」")
+    // 横屏那行品种名早就不是按钮了——竖屏的品种名不再开换品种弹层之后，横屏这一行
+    // 跟着退回纯图例（`LandscapeHeadline` 只有 `accessibilityElement(children: .combine)`，
+    // 没有 `.isButton`）。用例还按 `app.buttons` 找它，于是 iPhone、iPad 一台不落地
+    // 全报「点「画线」没横过去」，其实横是横过去了。按 identifier 找任意元素。
+    let landscapeSymbol = app.descendants(matching: .any).matching(identifier: Ids.landscapeSymbol).firstMatch
+    expectExists(landscapeSymbol, Self.long, "点「画线」没横过去")
     XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["subs"] as? [String])?.isEmpty == true },
                   "画线横屏里还留着副图：\(chartInfo()["subs"] ?? "?")")
     XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["overlays"] as? [String])?.isEmpty == true },

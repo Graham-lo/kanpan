@@ -18,8 +18,13 @@ import KanpanData
 /// 唯一留下的是「清缓存」：那是用户真会想干的一件事，提到一级。
 ///
 /// 没有「确定」也没有「取消」：改一下立刻生效、立刻落盘，并给一次 selection 触觉。
+///
+/// 2026-09-18 起它是标签栏最右边那一整页，不再是半屏（`asPage`）。用户定的是
+/// 「这四个底部栏都单独是一个页面」——设置里要翻的东西不少，半屏拉上拉下本来就别扭。
 struct SettingsPanel: View {
   var store: PrefsStore
+  /// 当作标签栏上的整页画：不要左上角的「‹」，底色用页面底色。
+  var asPage = false
 
   @Environment(\.panelTheme) private var t
   @Environment(\.accountFeature) private var account
@@ -28,7 +33,7 @@ struct SettingsPanel: View {
   private var prefs: Prefs { store.prefs }
 
   var body: some View {
-    PanelSheet(title: "设置", subtitle: nil) {
+    PanelSheet(title: "设置", subtitle: nil, asPage: asPage) {
       if let account {
         // 登录后这一行报的是「上次同步多久以前」，不是「成功」——「成功」说的是
         // 上一次请求的结果，用户想知道的是「我这台机器上的东西新不新」。

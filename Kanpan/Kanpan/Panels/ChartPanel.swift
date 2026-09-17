@@ -16,14 +16,17 @@ import KanpanCore
 /// 头一块原来是那张四选一的「K 线风格」卡（经典 / 圆角 / 空心 / 轮廓）。风格表收成
 /// AICoin 一套之后（见 `CandleStyle`）它没有可选项了，整块撤掉；下面「阳线」那行
 /// 的「跟随风格」也一并撤了，剩实心 / 空心两档。
-/// 顶上那一组「这张图」是两个动作而不是设置：「画线」和「记一笔」。它们原来常驻在
-/// 周期条右端，用户的话是「这个功能不是经常用到啊」「记和画线都放到图表栏目里」——
-/// 周期条是一路要点的地方，一天用不到一次的东西不该在那儿占格。放这一页也讲得通：
-/// 这一页管的就是「画在图上的东西」，画线和取景本来就是往图上添东西。
+/// 顶上那一组「这张图」是动作而不是设置：「记一笔」。它原来常驻在周期条右端，
+/// 用户的话是「这个功能不是经常用到啊」「记和画线都放到图表栏目里」——周期条是
+/// 一路要点的地方，一天用不到一次的东西不该在那儿占格。放这一页也讲得通：这一页
+/// 管的就是「画在图上的东西」，取景本来就是往图上添东西。
+///
+/// 2026-09-18 这一页又收进了整段「指标」（`IndicatorSections`），面板名字也从
+/// 「图表」改成了「图表设置」。用户的话是「行情页面的指标放到图表里作为一个子栏目」：
+/// 底栏换成常驻标签栏之后，「图表」是标签栏上那一整页的名字，指标不再单独占一格。
+/// 同一轮里「画线」那行也走了——它升成了标签栏最左边的一格，直接画当前这张图。
 struct ChartPanel: View {
   var store: PrefsStore
-  /// 「画线」：关掉面板直接横过去画（见 `MainScreen.onChange(of: draw.active)`）。
-  var onDraw: (() -> Void)?
   /// 「记一笔」：把当前这张图存进复盘本。复盘回放里没有这回事，调用方传 nil。
   var onRecord: (() -> Void)?
 
@@ -34,26 +37,23 @@ struct ChartPanel: View {
 
   private var prefs: Prefs { store.prefs }
 
-  /// 关自己的唯一出口。设置那些行不连着关（一次调好几项），但顶上那两个**动作**
-  /// 必须先把面板收掉——画线要横屏、记一笔要看见图。竖屏是 sheet、横屏是侧栏，
+  /// 关自己的唯一出口。设置那些行不连着关（一次调好几项），但顶上那个**动作**
+  /// 必须先把面板收掉——记一笔要看见图。竖屏是 sheet、横屏是侧栏，
   /// 面板本身不该知道是哪种，所以一律走这里。
   private var close: PanelCloser { PanelCloser(side: sideDismiss, sheet: dismiss) }
 
   var body: some View {
-    PanelSheet(title: "图表", subtitle: nil) {
-      if onDraw != nil || onRecord != nil {
+    PanelSheet(title: "图表设置", subtitle: nil) {
+      if let onRecord {
         PanelGroupTitle(text: "这张图")
-        if let onDraw {
-          PanelRow(name: "画线", meta: "横过去画，画完自动转回",
-                   divider: onRecord != nil, onTap: { close(); onDraw() })
-            .accessibilityIdentifier("chart.draw")
-        }
-        if let onRecord {
-          PanelRow(name: "记一笔", meta: "存进复盘本",
-                   divider: false, onTap: { close(); onRecord() })
-            .accessibilityIdentifier("chart.record")
-        }
+        PanelRow(name: "记一笔", meta: "存进复盘本",
+                 divider: false, onTap: { close(); onRecord() })
+          .accessibilityIdentifier("chart.record")
       }
+
+      // 指标排在设置前面：一天里开关指标的次数远多于改坐标轴和网格，
+      // 半屏出场时第一眼要能看见它。
+      IndicatorSections(store: store)
 
       PanelGroupTitle(text: "布局与读数")
       PanelRow(name: "K 线数据") {
@@ -125,6 +125,8 @@ struct ChartPanel: View {
 
     }
     .sensoryFeedback(.selection, trigger: prefs)
+    // 指标那段会弹「副图最多三个」，提示归这一层——面板盖着主界面的 toast。
+    .panelToast(store)
   }
 
   // MARK: - 行
@@ -151,6 +153,6 @@ struct ChartPanel: View {
   static let biases: [(String, PriceBias)] = [("偏上", .up), ("居中", .center), ("偏下", .down)]
 }
 
-#Preview("图表") {
+#Preview("图表设置") {
   PanelPreviewHost { store in ChartPanel(store: store) }
 }

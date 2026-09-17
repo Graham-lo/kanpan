@@ -56,6 +56,17 @@ final class ChartFoundationUITests: XCTestCase {
     if done.exists, done.isHittable { done.tap() }
     XCTAssertTrue(wait { !header.exists }, "面板关不掉：拖不走，「完成」也没反应")
   }
+  /// 离开设置页。
+  ///
+  /// 设置 2026-09-18 起不是半屏面板而是标签栏上的一整页：它既拖不走，也没有「完成」，
+  /// 离开它的办法就是切到别的标签。行情页那一格叫「图表」。
+  func leaveSettings() {
+    let chartTab = app.buttons["bottom.chart"]
+    XCTAssertTrue(chartTab.waitForExistence(timeout: 5), "标签栏上没有「图表」")
+    chartTab.tap()
+    XCTAssertTrue(wait(seconds: 8) { self.app.buttons["interval.chart"].exists },
+                  "点了「图表」还没回到行情页")
+  }
   func selectMain() {
     let h = info()["mainH"] as? Double ?? 300
     canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 150, dy: min(130, h / 2))).tap()
@@ -64,13 +75,19 @@ final class ChartFoundationUITests: XCTestCase {
     let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
   }
 
-  /// 「记一笔」收在「更多」那一屏里，而且开出的取景卡一个像素都不占图。
+  /// 「记一笔」收在「图表设置」那一屏里，开出的取景卡只压图的下半截，一根 K 线都不动。
   ///
   /// 这颗按钮走过两站：先是浮在主图上、能拖着到处摆的一枚圆钮（浮着就一定挡图，
   /// 停哪儿糊哪儿，还在画布上挖出一块点不动的死区），后来挪到周期条右端常驻。
   /// 用户看过之后说「这个功能不是经常用到啊」「记和画线都放到图表栏目里」，于是
-  /// 再收进「图表」面板——常驻的格子留给天天要点的东西。这条用例守两件事：
-  /// 路还走得通，且图上没有浮着的控件。
+  /// 再收进「图表」面板——常驻的格子留给天天要点的东西。
+  ///
+  /// 取景卡这一头也改过一次：它原来和图排在同一根 `VStack` 里，卡片一出来图就被压到
+  /// 剩三分之一——而记一笔恰恰是「看着这段行情写点什么」，图被压扁正好把要看的东西挤没了。
+  /// 2026-09-17（`181a5bc`「交互定板落地」）改成压在图下沿的一层（见 `MainScreen.captureCard`）。
+  /// 这条用例当初守的是「卡片整个待在图外面」，那一版之后就不成立了，同一天没跟着改。
+  /// 现在守的是改版之后真正要守的三件事：图上没有浮着的控件、卡片只占下半截
+  /// （上半截的主图还看得见）、卡片进出的时候一屏还是那么多根 K 线。
   func testRecordSitsOutsideTheChart() throws {
     XCTAssertFalse(app.buttons["review.record"].exists, "主图上不该再浮着「记」")
     XCTAssertFalse(app.buttons["interval.record"].exists, "「记」不该再占周期条的常驻格")
@@ -79,10 +96,14 @@ final class ChartFoundationUITests: XCTestCase {
     let record = app.buttons["chart.record"]
     XCTAssertTrue(record.waitForExistence(timeout: 10), "「图表」面板里没有「记一笔」")
     record.tap()
-    // 点一下开的是复盘取景卡（`ReviewCaptureCard`）：收起来之后，图的横向视野一格不许动。
+    // 点一下开的是复盘取景卡（`ReviewCaptureCard`）：从出来到收回去，图的横向视野一格不许动。
     let close = app.buttons["收起"]
     XCTAssertTrue(close.waitForExistence(timeout: 10), "点「记一笔」没开出取景卡")
-    XCTAssertGreaterThanOrEqual(close.frame.minY, canvas.frame.maxY - 1, "取景卡压在图上了")
+    XCTAssertGreaterThan(close.frame.minY, canvas.frame.midY, "取景卡盖过了图的一半")
+    // 看的是**宽度**：卡片一压上来，一屏还是这么多根 K 线，图没有被压扁重排。
+    // 左缘（`from`）不在这儿验——取景态下图挂的是 `reviewChart` 那份快照，它按整根收口，
+    // 正在走的那一根不算，所以左缘差一根是它该有的样子，不是布局把图挤动了。
+    XCTAssertEqual(try XCTUnwrap(info()["span"] as? Double), span, accuracy: 0.001, "卡片一出来一屏的根数就变了")
     shot("记一笔-图表面板入口")
     close.tap()
     XCTAssertTrue(wait(seconds: 5) { !close.exists }, "取景卡收不回去")
@@ -237,7 +258,8 @@ final class ChartFoundationUITests: XCTestCase {
     row.tap()
     XCTAssertTrue(wait(seconds: 45) { self.info()["symbol"] as? String == "SNDKUSDT" })
     XCTAssertTrue(app.buttons["interval.chart"].exists)
-    XCTAssertFalse(app.buttons["bottom.draw"].exists)
+    // 「画线」2026-09-18 起是标签栏最左那一格，常驻——从自选页点进来也该在。
+    XCTAssertTrue(app.buttons["bottom.draw"].exists)
   }
 
   func testColdLaunchFavoritesAndLiveQuotes() throws {
@@ -255,11 +277,60 @@ final class ChartFoundationUITests: XCTestCase {
     }, "自选价格未连续刷新")
     shot("冷启动自选-实时价格与涨跌幅")
     app.buttons["favorites.open.BTCUSDT"].tap()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 8))
+    // 标签栏常驻，`bottom.settings` 在哪一页都在，拿它判不出落到哪儿了；
+    // 「图表设置」那颗按钮只有行情页有，用它当准星。
+    XCTAssertTrue(app.buttons["interval.chart"].waitForExistence(timeout: 8))
     XCUIDevice.shared.press(.home)
     app.activate()
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 8))
+    XCTAssertTrue(app.buttons["interval.chart"].waitForExistence(timeout: 8))
     XCTAssertFalse(app.buttons["favorites.more"].exists, "普通前后台切换不重置首页")
+  }
+
+  /// 底栏四格轮一圈，报价还在跳。
+  ///
+  /// 2026-09-18 底栏改成常驻标签栏（画线 · 图表 · 自选 · 设置），每一格都是独立一页
+  /// （用户：「这四个底部拦都单独是一个页面」「切换页面下面还是那样」）。四页来回切
+  /// 最容易出的事是把行情订阅切断——所以这条走满一圈，最后回自选页看价格还在不在刷新，
+  /// 顺带确认标签栏本身每一步都在。
+  func testQuotesKeepTickingAcrossAllFourTabs() throws {
+    app.terminate()
+    app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
+    // 这条会真画一根线，给它一份只属于自己的档案，别把画线留给后面的用例。
+    app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
+    app.launch()
+    let price = app.staticTexts["favorites.price.BTCUSDT"]
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15), "有自选时冷启动该停在自选页")
+    XCTAssertTrue(wait(seconds: 30) { price.exists && price.label != "—" }, "自选页第一轮报价没来")
+
+    // ① 画线：对着用户当前看的这张图直接开画，点完横过去（横屏就是画线的工作台）。
+    app.buttons["bottom.draw"].tap()
+    let exitLandscape = app.buttons["land.exit"]
+    XCTAssertTrue(exitLandscape.waitForExistence(timeout: 25), "从自选页点「画线」没进画线态")
+    exitLandscape.tap()
+    let finish = app.buttons["draw.finish"]
+    XCTAssertTrue(finish.waitForExistence(timeout: 20), "转回竖屏后画线栏没了")
+    finish.tap()
+
+    // ② 图表：退出画线就停在行情页，标签栏还在。
+    XCTAssertTrue(app.buttons["interval.chart"].waitForExistence(timeout: 20), "画完没回行情页")
+    XCTAssertTrue(app.buttons["bottom.chart"].exists, "行情页上没有标签栏")
+
+    // ③ 设置：整页，不是半屏。
+    app.buttons["bottom.settings"].tap()
+    XCTAssertTrue(app.buttons["settings.magnet"].waitForExistence(timeout: 10), "点「设置」没进设置页")
+    XCTAssertFalse(app.buttons["panel.done"].exists, "设置是整页，不该有半屏那颗「完成」")
+    XCTAssertTrue(app.buttons["bottom.favorites"].exists, "设置页上没有标签栏")
+
+    // ④ 回自选：报价要接着跳，不能因为中间走了三页就断掉。
+    app.buttons["bottom.favorites"].tap()
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 10), "点「自选」没回自选页")
+    XCTAssertTrue(price.exists && price.label != "—", "转一圈回来自选页首帧应直接有真实报价")
+    var values = Set<String>()
+    XCTAssertTrue(wait(seconds: 25) {
+      if price.exists { values.insert(price.label) }
+      return values.count >= 2
+    }, "四页轮一圈之后自选报价不再刷新")
+    shot("标签栏-四页轮一圈后报价仍在刷新")
   }
 
   func testChangeBasisUpdatesFavorites() throws {
@@ -268,7 +339,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(basis.waitForExistence(timeout: 5)); basis.tap()
     let option = app.buttons["上海8点 / UTC 0点"]
     XCTAssertTrue(wait { option.exists && option.isHittable }); option.tap()
-    closePanel()
+    leaveSettings()
     XCTAssertTrue(app.openFavorites())
     addFavoriteFromSearch("BTCUSDT")
     // 涨跌口径不再常驻排序行，它是排序弹层里的一项——先把弹层打开再看。
@@ -492,7 +563,7 @@ final class ChartFoundationUITests: XCTestCase {
       segment.tap()
       XCTAssertFalse(app.buttons["display.still"].exists)
       XCTAssertFalse(app.buttons["display.eyeBreak"].exists)
-      closePanel()
+      leaveSettings()
       XCTAssertTrue(wait(seconds: 5) { self.info()["background"] as? String == background })
       for key in ["span", "plotW", "spacing", "mainH", "height"] {
         XCTAssertEqual(try XCTUnwrap(info()[key] as? Double), try XCTUnwrap(original[key] as? Double), accuracy: 0.001)
@@ -598,8 +669,9 @@ final class ChartFoundationUITests: XCTestCase {
 
   /// 从自选页加一个品种。
   ///
-  /// 加自选的入口这一页只剩头部右边那颗放大镜（用户 2026-09-18 定的：以前的加号和
-  /// 放大镜开的是同一张搜索页，两颗并成了一颗）。流程不再是以前选品页
+  /// 加自选的入口这一页只剩头部中间那条长搜索框（`favorites.add`，用户 2026-09-18
+  /// 定的：以前的加号和放大镜开的是同一张搜索页，两颗并成一颗，又照推特摊成了长条）。
+  /// 流程不再是以前选品页
   /// 那样「点中一行就算加上了」，而是「打字 → 点那一行的星 → 取消退回自选」。
   /// 星是个开关，已经在自选里的品种再点一下反而会被移除，所以先看 label 再决定点不点。
   func addFavoriteFromSearch(_ symbol: String) {
@@ -622,11 +694,12 @@ final class ChartFoundationUITests: XCTestCase {
 
   func favoritesAction(_ identifier: String) {
     dismissNotificationBanner()
-    // 「返回行情」不再藏在「…」里，改成分类栏左端常驻的返回按钮。
+    // 「返回行情」既不在「…」里也不在分类栏左端了：2026-09-18 底栏改成常驻标签栏之后，
+    // 页面之间的来回一律归标签栏管，自选页自己不再画返回按钮。
     if identifier == "favorites.close" {
-      let back = app.buttons["favorites.back"]
-      XCTAssertTrue(back.waitForExistence(timeout: 4)); back.tap()
-      XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists && self.app.buttons["bottom.settings"].isHittable })
+      let chartTab = app.buttons["bottom.chart"]
+      XCTAssertTrue(chartTab.waitForExistence(timeout: 4)); chartTab.tap()
+      XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists && self.app.buttons["interval.chart"].isHittable })
       return
     }
     app.buttons["favorites.more"].tap()
@@ -706,7 +779,7 @@ final class ChartFoundationUITests: XCTestCase {
     var prices = Set<String>()
     XCTAssertTrue(wait(seconds: 15) { prices.insert(price.label); return prices.count > 1 })
     favoritesAction("favorites.close")
-    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 8))
+    XCTAssertTrue(app.buttons["interval.chart"].waitForExistence(timeout: 8))
     let stayUntil = Date().addingTimeInterval(3)
     XCTAssertTrue(wait(seconds: 5) { Date() >= stayUntil })
     XCTAssertTrue(app.openFavorites())
@@ -781,7 +854,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
     // 顶栏品种名那块也只负责收起，不应穿透打开任何东西。
     let top = app.symbolLabel.frame
-    app.buttons["bottom.indicator"].tap()
+    app.buttons["interval.chart"].tap()
     XCTAssertTrue(app.staticTexts["panel.header"].waitForExistence(timeout: 5))
     app.windows.firstMatch.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: top.midX, dy: top.midY)).tap()
     XCTAssertTrue(wait(seconds: 5) { !self.app.staticTexts["panel.header"].exists })
@@ -806,24 +879,48 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.openFavorites())
   }
 
+  /// 交互规矩②：手指落到面板以外，第一下**只**收面板，不顺手落十字线。
+  ///
+  /// 竖屏现在只剩「图表设置」一张半屏（`interval.chart`，指标整段也在里头）：设置升成了
+  /// 标签栏上的整页；周期「更多」从 `181a5bc` 起摊的是**内联**网格，不是 sheet
+  /// （见 `MainScreenUITests.testMoreOpensPeriodPanel`）。这条用例原来把 `interval.more`
+  /// 也按面板来等 `panel.header`，那一版之后就一直等不到，同一天没跟着改。
+  /// 内联网格挪到下半段单测，按它自己的规矩验。
   func testOutsideTapOnlyDismissesPanel() throws {
-    for entry in ["bottom.indicator", "bottom.settings", "interval.chart", "interval.more"] {
+    for entry in ["interval.chart"] {
       app.buttons[entry].tap()
       let header = app.staticTexts["panel.header"]
-      XCTAssertTrue(header.waitForExistence(timeout: 5))
+      XCTAssertTrue(header.waitForExistence(timeout: 5), "点了 " + entry + " 没开出面板")
       selectMain()
-      XCTAssertTrue(wait(seconds: 5) { !header.exists })
+      XCTAssertTrue(wait(seconds: 5) { !header.exists }, "点了图，" + entry + " 那张面板没收起")
       XCTAssertEqual(info()["crosshair"] as? Bool, false, "首个外部点击只关闭面板：" + entry)
       selectMain()
       XCTAssertTrue(wait(seconds: 3) { self.info()["crosshair"] as? Bool == true })
       selectMain()
       XCTAssertTrue(wait(seconds: 3) { self.info()["crosshair"] as? Bool == false })
     }
+    // 内联的周期网格背后没有那层拦截罩（`PanelDismissShield` 只给面板铺），所以规矩②
+    // 对它不适用：它是排在图**上面**的一段内容，不是盖住图的一层，手指落到图上它自己收起。
+    app.buttons["interval.more"].tap()
+    let row = app.buttons["period.row.1h"]
+    XCTAssertTrue(row.waitForExistence(timeout: 5), "点「更多」没摊开周期网格")
+    selectMain()
+    XCTAssertTrue(wait(seconds: 5) { !row.exists }, "点了图，周期网格没收起")
+    if info()["crosshair"] as? Bool == true { selectMain() }
+    XCTAssertTrue(wait(seconds: 3) { self.info()["crosshair"] as? Bool == false })
     shot("面板外点击-只收起不触发十字线")
   }
 
-  func testFourSubpanelsFitWithoutPageScroll() throws {
-    app.buttons["bottom.indicator"].tap()
+  /// 副图开满，主图和副图仍然一起落在一屏可视区里，不用翻页。
+  ///
+  /// 「开满」是三个，不是四个：`Prefs.maxSubs` 从 `181a5bc`「交互定板落地」起卡死在 3
+  /// （用户：「最多同时开三个副图……第四个进来就把最早开的那个换下去」），出厂默认
+  /// 也正好是三个（`AICoinBehavior.subpanels` = 量 / 仓 / MACD）。这条用例写在那之前，
+  /// 一直在等 `subs.count == 4`，那个数从此再也不可能出现。现在它验的是同一件事：
+  /// 再开一个 RSI，最早那个被换下去、总数仍是三个，图整体高度还等于可视区高度
+  /// （`height == viewportH` 就是「没有整页滚动」），新开的那格把手也点得到。
+  func testThreeSubpanelsFitWithoutPageScroll() throws {
+    app.buttons["interval.chart"].tap()
     let toggle = app.buttons["indicator.switch.RSI"]
     let scroll = app.scrollViews["panel.content"]
     for _ in 0..<5 {
@@ -831,10 +928,13 @@ final class ChartFoundationUITests: XCTestCase {
       scroll.swipeUp()
     }
     XCTAssertTrue(toggle.waitForExistence(timeout: 5)); toggle.tap(); closePanel()
-    XCTAssertTrue(wait { (self.info()["subs"] as? [String])?.count == 4 })
+    XCTAssertTrue(wait { (self.info()["subs"] as? [String])?.count == 3 },
+                  "副图数不是三个：\(info()["subs"] ?? "?")")
+    XCTAssertTrue(wait { (self.info()["subs"] as? [String])?.contains("RSI") == true },
+                  "刚开的 RSI 没上图：\(info()["subs"] ?? "?")")
     XCTAssertEqual(try XCTUnwrap(info()["height"] as? Double), try XCTUnwrap(info()["viewportH"] as? Double), accuracy: 1)
     XCTAssertTrue(app.otherElements["chart.resize.RSI"].isHittable)
-    shot("一屏四副图-无需滚动")
+    shot("一屏三副图-无需滚动")
   }
 
   func testDataModesClearHeaderAndSelection() throws {
@@ -858,14 +958,14 @@ final class ChartFoundationUITests: XCTestCase {
 
   func testMAParameterCancelAndSaveOutput() throws {
     let original = try XCTUnwrap(info()["ma"] as? [Int])
-    app.buttons["bottom.indicator"].tap()
+    app.buttons["interval.chart"].tap()
     app.buttons["indicator.edit.MA"].tap()
     let stepper = app.steppers["indicator.param.0"]
     XCTAssertTrue(stepper.waitForExistence(timeout: 5))
     stepper.buttons["indicator.param.0-Increment"].tap()
     app.buttons["取消"].tap(); closePanel()
     XCTAssertEqual(info()["ma"] as? [Int], original)
-    app.buttons["bottom.indicator"].tap()
+    app.buttons["interval.chart"].tap()
     app.buttons["indicator.edit.MA"].tap()
     let output = app.switches["indicator.output.0"]
     XCTAssertTrue(output.waitForExistence(timeout: 5))
@@ -884,7 +984,7 @@ final class ChartFoundationUITests: XCTestCase {
   /// 顺带把加减线时输出开关和颜色跟着挪位的那段逻辑走一遍。
   func testMAPeriodsTypedAndAddRemove() throws {
     let original = try XCTUnwrap(info()["ma"] as? [Int])
-    app.buttons["bottom.indicator"].tap()
+    app.buttons["interval.chart"].tap()
     app.buttons["indicator.edit.MA"].tap()
 
     let field = app.textFields["indicator.param.0.field"]
@@ -904,7 +1004,7 @@ final class ChartFoundationUITests: XCTestCase {
     })
     shot("均线周期-手输并加一条")
 
-    app.buttons["bottom.indicator"].tap()
+    app.buttons["interval.chart"].tap()
     app.buttons["indicator.edit.MA"].tap()
     let last = app.cells.containing(.textField,
                                     identifier: "indicator.param.\(original.count).field").firstMatch
@@ -1036,7 +1136,7 @@ extension ChartFoundationUITests {
 
   func testIndicatorColorSaveCancelAndRestart() throws {
     func edit(_ id: String, color: String, save: Bool) {
-      app.buttons["bottom.indicator"].tap()
+      app.buttons["interval.chart"].tap()
       if !app.buttons["indicator.edit.\(id)"].exists { app.buttons["indicator.switch.\(id)"].tap() }
       app.buttons["indicator.edit.\(id)"].tap()
       let swatch = app.buttons["indicator.color.0.\(color)"].firstMatch

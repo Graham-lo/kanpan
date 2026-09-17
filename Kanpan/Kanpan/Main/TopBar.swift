@@ -16,12 +16,19 @@ import SwiftUI
 /// 自选星也在同一天撤了：加自选统一在搜索页和自选页的行上做（那儿一行一颗星，
 /// 看着列表挑着加），顶栏这一颗既和它们重复，又贴着品种名最容易误触。
 ///
+/// 2026-09-18 右上角多了一颗「复盘」。底栏那天换成了常驻标签栏（画线 · 图表 ·
+/// 自选 · 设置），复盘按用户的话「放到图表里」——它是看着某张图时才想起来的事，
+/// 所以落在行情页顶栏，挨着搜索。待办条数照旧画成一颗角标。
+///
 /// 字号、间距、图标都按原型 `style.css` 的 `.top` 那一段抄，别自己发挥——
 /// 这一条和价格行是整个 app 里唯一常驻的文字，差一点点立刻显得不像同一个应用。
 struct TopBar: View {
   @State private var iconTapCount = 0
   var theme: PanelTheme
   var symbol: String
+  /// 复盘本里还欠着答案的条数。0 就不画角标。
+  var reviewCount: Int = 0
+  var onReview: (() -> Void)?
   var onSearch: () -> Void
 
   /// 「BTCUSDT」拆成「BTC」+「/USDT」：基础币用正文色、计价币降一级，
@@ -64,6 +71,22 @@ struct TopBar: View {
       .accessibilityIdentifier("top.symbol")
 
       Spacer(minLength: 0)
+
+      if let onReview {
+        iconButton(VectorIcon.indicator, label: "复盘", action: onReview)
+          .accessibilityIdentifier("top.review")
+          .overlay(alignment: .topTrailing) {
+            if reviewCount > 0 {
+              Text("\(min(reviewCount, 99))")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(theme.badgeInk)
+                .padding(.horizontal, 4).padding(.vertical, 1.5)
+                .background(theme.amber, in: Capsule())
+                .offset(x: 5, y: -3)
+                .allowsHitTesting(false)
+            }
+          }
+      }
 
       iconButton(VectorIcon.search(15), label: "搜索品种", action: onSearch)
         .accessibilityIdentifier("top.search")

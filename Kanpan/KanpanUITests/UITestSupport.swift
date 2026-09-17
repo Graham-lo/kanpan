@@ -20,6 +20,7 @@ enum Ids {
   static let symbolButton = "top.symbol"
   /// 顶栏放大镜：换品种唯一的入口。浏览走底栏的「自选」。
   static let searchButton = "top.search"
+  /// 底栏「自选」那一格。标签栏常驻，任何一页上都点得到。
   static let favoritesTab = "bottom.favorites"
   // 周期条
   static func intervalChip(_ raw: String) -> String { "interval.chip.\(raw)" }
@@ -30,18 +31,22 @@ enum Ids {
   /// 禁改的 `ChartFoundationUITests` 里按 `interval.chip.1m` 直接点，收窄了就点不着。
   static let quickIntervals = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
   // 底栏
-  /// 底栏第三批之后是「自选 · 复盘 · 指标 · 设置」四格：没有「风格」也没有「横屏」。
-  /// 横屏收在「画线」上，而「画线」本身在「图表」面板里（`chart.draw` 直接横过去）。
-  /// 要量图区下沿就用底栏第一格。
+  /// 2026-09-18 起底栏是一条**常驻标签栏**：从左到右「画线 · 图表 · 自选 · 设置」，
+  /// 四格各是一整页，切到哪一页它都还在（用户：「大部分 app 把常用的大分页都固定在底部」）。
+  /// 所以不再有「复盘」「指标」两格——复盘挪进了顶栏那颗带角标的按钮（`topReview`），
+  /// 指标整段并进了「图表设置」面板（`intervalChart` 开的那张）。
+  /// 要量图区下沿就用标签栏任意一格，这儿沿用第一格。
+  static let bottomDraw = "bottom.draw"
+  static let bottomChart = "bottom.chart"
   static let bottomFavorites = "bottom.favorites"
-  static let bottomReview = "bottom.review"
-  static let bottomIndicator = "bottom.indicator"
-  /// 周期行右端的「图表」：网格、阳线实心/空心、价格轴这些都在这张面板里。
-  static let intervalChart = "interval.chart"
-  /// 「画线」：周期条右端那颗常驻药丸撤了（用户：「记和画线都放到图表栏目里」），
-  /// 现在要先开「图表」面板才点得到，走 `enterDrawing()` 那一步。
-  static let drawEntry = "chart.draw"
   static let bottomSettings = "bottom.settings"
+  /// 顶栏的「复盘」：右上角那颗带待办角标的按钮，开复盘本。
+  static let topReview = "top.review"
+  /// 周期行右端的「图表」：网格、阳线实心/空心、价格轴，外加整段指标开关，都在这张
+  /// 名叫「图表设置」的面板里。面板名和标签名要分清——标签栏那一格叫「图表」，是整页。
+  static let intervalChart = "interval.chart"
+  /// 「画线」：标签栏最左那一格，任何一页上点它都直接在当前这张图上开画。
+  static let drawEntry = "bottom.draw"
   /// 横屏工具栏上的「竖屏」。以前只有 iPad 有，第三批 17 起手机也有。
   static let landscapeExit = "land.exit"
   /// 横屏顶上那行小字里的品种名：拿它当「已经横过来了」的准星。
@@ -99,9 +104,10 @@ class KanpanUICase: XCTestCase {
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     for (key, value) in extraLaunchEnvironment { app.launchEnvironment[key] = value }
     app.launch()
-    // 冷启动可能先停在自选页（`launchFavorites`）——那一层没有顶栏，先按返回回行情。
-    let back = app.buttons["favorites.back"]
-    if back.waitForExistence(timeout: 3) { back.tap() }
+    // 冷启动可能先停在自选页（有自选就落在「自选」那一格）——那一页没有顶栏，
+    // 先按标签栏上的「图表」回行情页。标签栏是常驻的，自选页上也点得到。
+    let chartTab = app.buttons[Ids.bottomChart]
+    if chartTab.waitForExistence(timeout: 3), !app.symbolLabel.exists { chartTab.tap() }
     // 主界面就是第一帧，没有启动页也没有弹窗（X1）；顶栏出来就算起来了。
     // 左上角的品种名 2026-09-18 起不再是按钮（点它不弹任何东西），所以这儿按
     // identifier 找元素，不能再按 `buttons[...]` 找——那样永远等不到。
@@ -150,24 +156,27 @@ class KanpanUICase: XCTestCase {
     return condition()
   }
 
-  /// 「这颗现在能点吗」——问之前先确认它站稳了。
+  /// 「这颗现在能点吗」——只问一遍，而且只问快照。
   ///
-  /// `isHittable` 不是个老实的布尔量：元素正在插入或移除的那一帧，它的 frame 是空的，
-  /// XCTest 算不出可激活的点，于是**当场把用例判失败**
-  /// （`Failed to determine hittability … Activation point invalid and no suggested
-  /// hit points based on element frame`），而不是返回 false。
-  /// 「最新」这颗按钮本来就是随视野进出的（带 `.opacity` 过渡），轮询时正好撞上那一帧
-  /// 的概率不低——之前 `waitForLiveChart` 就是这么红的。
-  /// 所以先自己看一眼：在不在、有没有面积；都有了才敢问 `isHittable`。
-  /// `exists` 也挡不住它：答「在」之后、取 `frame` 之前的那一帧里按钮可能已经走了，
-  /// 那一下 `.frame` 直接抛 `Failed to get matching snapshot: No matches found`，
-  /// 同样是当场判红（iPad mini 上就这么红过——图宽、视野归位滑得久，窗口更容易撞上）。
-  /// `snapshot()` 是这组接口里唯一会把「没这个元素」老实交成 Swift 错误的，
-  /// 所以在不在、有没有面积都从它这一张快照上读，读不到就算「现在点不了」。
+  /// 这个函数是被同一颗雷炸出来的：`XCUIElement` 上几乎每个属性都会在「元素这一帧
+  /// 正好走了」的时候**当场把用例判失败**，而不是老实答 false。三种说法都见过——
+  /// `isHittable` 报 `Failed to determine hittability … Activation point invalid and
+  /// no suggested hit points based on element frame`，`.frame` 和 `isHittable` 都报
+  /// `Failed to get matching snapshot: No matches found`。`exists` 挡不住任何一种：
+  /// 它答「在」之后、下一句问出去之前，那一帧里按钮可能已经走了。
+  ///
+  /// 「最新」这颗正是随视野进出的（`IntervalBar` 里 `if !atLatest` 整个插拔，带
+  /// `.opacity` 过场），轮询时撞上那一帧的概率不低：`waitForLiveChart` 在 iPhone 上红过，
+  /// iPad mini / iPad (A16) / iPad Air 11" 三台更容易红——图宽、视野归位滑得久，窗口更大。
+  ///
+  /// 所以**一个属性都不许再问**：`snapshot()` 是这组接口里唯一会把「没这个元素」
+  /// 交成 Swift 错误的，在不在、可不可用、有没有面积、在不在屏幕上，全从同一张快照上读，
+  /// 读不到就算「现在点不了」。走了就是从树上没了，这一遍就答得出来。
   func hittable(_ el: XCUIElement) -> Bool {
-    guard let snap = try? el.snapshot() else { return false }
+    guard let snap = try? el.snapshot(), snap.isEnabled else { return false }
     guard snap.frame.width > 1, snap.frame.height > 1 else { return false }
-    return el.isHittable
+    guard let window = try? app.windows.firstMatch.snapshot() else { return false }
+    return window.frame.contains(CGPoint(x: snap.frame.midX, y: snap.frame.midY))
   }
 
   // ------------------------------------------------------------ 点击
@@ -200,14 +209,25 @@ class KanpanUICase: XCTestCase {
 
   /// 等到图真的有数据、手势也活了。
   ///
-  /// 没数据时 `ChartView` 整层让开（`gestureReady`），点和拖都不会有任何反应，
-  /// 所以「等数据」没法靠某个静态元素判断——只能真拖一下看图认不认。
-  /// 拖完视野离开最新一根，「回到最新」就会亮，拿它当信号；完事按一下回到最新，
-  /// 把视野恢复原样，不给后面的用例留状态。
+  /// 分两步，顺序不能反。
+  ///
+  /// **先等数据。** 一根 K 线都还没到的时候 `ChartView` 整层让开（`gestureReady`），
+  /// 拖多少下图都不认；把整份预算耗在空拖上，机器一忙就会假报「没等到行情」——
+  /// 2026-09-18 实测过：`testDirectRouteGetsLiveBinanceChart` 单跑 16s 就过，
+  /// 排在十几条用例后面跑就报「30s 内没等到币安的 K 线」。诊断里的 `bars`
+  /// 是这件事唯一的直接答案（要 `KANPAN_CHART_DIAGNOSTICS=1`），别拿手势去猜。
+  ///
+  /// **再等手势。** 数据到了不等于手势活了，这一步只能真拖一下看图认不认：拖完视野
+  /// 离开最新一根，「回到最新」就会亮，拿它当信号。完事按一下回到最新，把视野恢复原样，
+  /// 不给后面的用例留状态。数据来得晚的时候第二步至少还留 `short` 那么久，
+  /// 免得预算刚好在交界处用完、白白判一次假阴。
   @discardableResult
   func waitForLiveChart(timeout: TimeInterval = long) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    guard waitUntil(timeout: timeout, poll: 0.5, { (self.chartInfo()["bars"] as? Int ?? 0) > 0 })
+    else { return false }
     let latest = app.buttons[Ids.latestButton]
-    let live = waitUntil(timeout: timeout, poll: 0.5) {
+    let live = waitUntil(timeout: max(Self.short, deadline.timeIntervalSinceNow), poll: 0.5) {
       if hittable(latest) { return true }
       dragChartRight()
       return hittable(latest)
@@ -274,6 +294,19 @@ class KanpanUICase: XCTestCase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { !gone.exists },
                   "面板拖不下去、点图也不收", file: file, line: line)
   }
+
+  /// 离开设置页，回到行情页。
+  ///
+  /// 设置 2026-09-18 起不是半屏面板而是标签栏上的一整页：既拖不走，也没有「完成」，
+  /// 离开它就是切到别的标签，所以它不能走 `dismissSheet(until:)`。
+  func leaveSettings(file: StaticString = #filePath, line: UInt = #line) {
+    let chartTab = app.buttons[Ids.bottomChart]
+    XCTAssertTrue(chartTab.waitForExistence(timeout: Self.short), "标签栏上没有「图表」",
+                  file: file, line: line)
+    chartTab.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.buttons[Ids.intervalChart].exists },
+                  "点了「图表」还没回到行情页", file: file, line: line)
+  }
 }
 
 extension XCUIApplication {
@@ -316,16 +349,15 @@ extension XCUIApplication {
     return true
   }
 
-  /// 点「画线」→ 先横过去 →  按横屏工具栏上的「竖屏」转回来，停在**竖屏画线态**。
+  /// 点标签栏最左的「画线」。它对着用户当前正看的这张图开画，不再问品种
+  /// （用户：「用户当前看的这张图作为画线的目标」），所以这儿就是干干净净一下。
   ///
-  /// 画线入口改成「点画线直接横屏」之后，那一下已经不再留在竖屏了。
-  /// 但「管理 / 吸附 / 连续」这几个快捷键只有竖屏那条画线栏上有，用例里按坐标点的
-  /// 位置也都是按竖屏量的，所以这些用例统一走这个入口：横过去再转回来——这也正是
-  /// 用户「横屏画完转回竖屏接着看」走的那条路，顺带把它一并验了。
-  /// 开「图表」面板点「画线」——竖屏下进画线态的唯一一条路。
+  /// 点完先横过去（`kanpan-landscape-is-for-drawing`：横屏就是画线的工作台）。
+  /// 「管理 / 吸附 / 连续」这几个快捷键只有竖屏那条画线栏上有，用例里按坐标点的
+  /// 位置也都是按竖屏量的，所以要竖屏画线态的用例走 `enterDrawingInPortrait()`：
+  /// 横过去再按「竖屏」转回来——这也正是用户「横屏画完转回竖屏接着看」走的那条路。
   @discardableResult func tapDrawEntry() -> Bool {
-    buttons[Ids.intervalChart].tap()
-    let entry = buttons[Ids.drawEntry]
+    let entry = buttons[Ids.bottomDraw]
     guard entry.waitForExistence(timeout: 10) else { return false }
     entry.tap()
     return true
@@ -360,13 +392,16 @@ extension XCUIApplication {
     return true
   }
 
-  /// 顶栏品种名 →「全部自选与分组」→ 完整自选页。返回是否真的到了自选页。
+  /// 标签栏的「自选」→ 完整自选页。返回是否真的到了自选页。
   ///
-  /// 走三轮：上一张面板的收起动画偶尔会吃掉第一下点击，顶栏品种名就白点了一次。
-  /// 每轮开头先确认没有面板压在上面，有就按「完成」收掉，再点。
+  /// 到没到用「…」那颗菜单按钮判断——自选页上只有它，别的页都没有
+  /// （返回按钮随标签栏一起撤了，页面之间的来回归标签栏管）。
+  ///
+  /// 走三轮：上一张面板的收起动画偶尔会吃掉第一下点击，标签就白点了一次。
+  /// 每轮开头先确认没有半屏面板压在上面，有就按「完成」收掉，再点。
   @discardableResult func openFavorites() -> Bool {
     for _ in 0..<3 {
-      if buttons["favorites.back"].exists { return true }
+      if buttons["favorites.more"].exists { return true }
       let header = staticTexts["panel.header"]
       if header.exists {
         let done = buttons["panel.done"]
@@ -376,7 +411,7 @@ extension XCUIApplication {
       let entry = buttons[Ids.favoritesTab]
       guard entry.waitForExistence(timeout: 10) else { continue }
       entry.tap()
-      if buttons["favorites.back"].waitForExistence(timeout: 15) { return true }
+      if buttons["favorites.more"].waitForExistence(timeout: 15) { return true }
     }
     return false
   }

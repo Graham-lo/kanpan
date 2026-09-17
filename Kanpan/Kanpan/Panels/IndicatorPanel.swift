@@ -1,8 +1,13 @@
 import SwiftUI
 import KanpanCore
 
-/// 指标选择即时生效；参数与输出在独立草稿中保存或取消。
-struct IndicatorPanel: View {
+/// 指标那几栏。指标选择即时生效；参数与输出在独立草稿中保存或取消。
+///
+/// 2026-09-18 起它不再是一张独立的半屏面板，而是「图表设置」里的一段
+/// （见 `ChartPanel`）。用户的话是「行情页面的指标放到图表里作为一个子栏目」——
+/// 底栏那一格让位给了常驻标签栏，指标本来也就是「图上画什么」的一部分。
+/// 参数编辑那层 sheet 和面板提示留在这一段自己身上，搬到哪儿都跟着走。
+struct IndicatorSections: View {
   var store: PrefsStore
   @State private var editing: IndicatorID?
   @Environment(\.panelTheme) private var t
@@ -10,7 +15,9 @@ struct IndicatorPanel: View {
   private var prefs: Prefs { store.prefs }
 
   var body: some View {
-    PanelSheet(title: "指标", subtitle: nil) {
+    // `PanelSheet` 的内容是一根 `VStack`，这儿必须也铺成同样的一串行，
+    // 不能自己再套一层带内边距的容器，否则这一段会比上面几段窄一圈。
+    Group {
       PanelGroupTitle(text: "主图叠加")
       ForEach([IndicatorID.ma, .ema, .boll], id: \.self) { id in
         row(id)
@@ -26,16 +33,14 @@ struct IndicatorPanel: View {
         PanelGroupTitle(text: "副图顺序")
         SubOrderList(store: store)
       }
-
     }
     .sheet(item: $editing) { id in IndicatorEditor(store: store, id: id).environment(\.panelTheme, t) }
-    .panelToast(store)
   }
 
   @ViewBuilder
   private func row(_ id: IndicatorID) -> some View {
     let on = prefs.isOn(id)
-    PanelRow(name: id.name, meta: IndicatorPanel.hint(id), swatch: t.swatch(id)) {
+    PanelRow(name: id.name, meta: IndicatorSections.hint(id), swatch: t.swatch(id)) {
       PanelSwitch(isOn: on) {
         store.toggleIndicator(id)
       }
@@ -198,7 +203,9 @@ struct FlowRow: SwiftUI.Layout {
 }
 
 #Preview("指标") {
-  PanelPreviewHost { store in IndicatorPanel(store: store) }
+  PanelPreviewHost { store in
+    ScrollView { VStack(spacing: 0) { IndicatorSections(store: store) } }
+  }
 }
 
 // Separate draft lifetime makes Back/Cancel/swipe-to-dismiss equivalent.
