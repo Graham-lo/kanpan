@@ -401,4 +401,7 @@ class BoundedHTTPServer(ThreadingHTTPServer):
 if __name__ == '__main__':
     CACHE.mkdir(parents=True, exist_ok=True)
     INDEX.warm(CACHE)  # one startup scan; every later update is incremental
+    # Keep the windows people are actually watching fresh in the background, so
+    # the phone's next request is a cache hit instead of an exchange round trip.
+    MARKET.start_warming()
     BoundedHTTPServer(('127.0.0.1', int(os.environ.get('PORT', '8792'))), Handler).serve_forever()

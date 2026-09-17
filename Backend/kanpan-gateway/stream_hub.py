@@ -1,6 +1,6 @@
 """Shared fixed-upstream public market relay. No trading/authentication API forwarding."""
 import asyncio
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import contextlib
 import ipaddress
 import json
@@ -13,6 +13,19 @@ from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
 from resource_limits import Bucket, Capacity, HostSampler
 
 UPSTREAM = 'wss://fstream.binance.com/market/stream'
+# One channel the node keeps subscribed with or without clients. Opening the
+# upstream costs about 0.75s of TLS and handshake, and the old two-second idle
+# release meant the next phone to arrive paid it before seeing a single quote.
+# One 1m kline stream is a few hundred bytes a second and keeps the socket --
+# and the stall watchdog that guards it -- alive. Set empty to switch off.
+RESIDENT = frozenset(v for v in os.environ.get('RESIDENT_STREAMS', 'btcusdt@kline_1m').split(',') if v)
+# How long a channel stays subscribed upstream after its last client leaves.
+# Measured on the node: after SUBSCRIBE the exchange takes about 0.8s to deliver
+# the first frame of a channel, and a phone that flips between two symbols or
+# rotates a timeframe comes back within seconds. Holding the subscription makes
+# the return trip cost nothing; the cap keeps a long session from accumulating.
+LINGER_SECONDS = float(os.environ.get('CHANNEL_LINGER', '90'))
+LINGER_CHANNELS = 48
 STREAM = re.compile(r'(?:[a-z0-9_]{1,30}@(?:ticker|markPrice@1s|kline_(?:1m|3m|5m|15m|30m|1h|2h|4h|6h|8h|12h|1d|3d|1w|1M))|!ticker@arr)\Z')
 
 
@@ -76,8 +89,12 @@ class Peer:
 
 
 class Hub:
-    def __init__(self, upstream=UPSTREAM, capacity=None, idle_seconds=2):
+    def __init__(self, upstream=UPSTREAM, capacity=None, idle_seconds=2, resident=RESIDENT,
+                 linger_seconds=LINGER_SECONDS):
         self.upstream_url = upstream  # injected only by local tests, never by client requests
+        self.resident = frozenset(resident)
+        self.linger_seconds = linger_seconds
+        self.linger = OrderedDict()  # channel -> deadline, oldest first
         # Defaults match the widened systemd budget (MemoryMax=1G) and the
         # quadrupled connection budget in /etc/kanpan-gateway/limits.env.
         self.capacity = capacity or Capacity(int(os.environ.get('MAX_CLIENTS', '512')), int(os.environ.get('EGRESS_BYTES_PER_SECOND', '6000000')))
@@ -125,6 +142,21 @@ class Hub:
         count = sum(p.key == key for p in self.peers)
         return len(self.peers) < self.capacity.clients and count < min(12, max(2, self.capacity.clients // 4))
 
+    def lingering(self, now=None):
+        """Channels still subscribed upstream although nobody is watching."""
+        now = time.monotonic() if now is None else now
+        for channel in [c for c, at in self.linger.items() if at <= now]:
+            del self.linger[channel]
+        return set(self.linger)
+
+    def park(self, channels):
+        now = time.monotonic()
+        for channel in channels:
+            self.linger.pop(channel, None)
+            self.linger[channel] = now + self.linger_seconds
+        while len(self.linger) > LINGER_CHANNELS:
+            self.linger.popitem(last=False)
+
     def replace(self, peer, desired):
         if len(desired) > 64:
             return False
@@ -132,12 +164,16 @@ class Hub:
         same_ip = set().union(*(p.channels for p in self.peers if p is not peer and p.key == peer.key)) if self.peers else set()
         if len(others | desired) > 512 or len(same_ip | desired) > 160:
             return False
+        released = set()
         for channel in peer.channels - desired:
             self.channels[channel].discard(peer)
             if not self.channels[channel]:
                 del self.channels[channel]
+                released.add(channel)
+        self.park(released)
         for channel in desired - peer.channels:
             self.channels[channel].add(peer)
+            self.linger.pop(channel, None)  # watched again: no longer on the clock
         peer.channels = set(desired)
         peer.pending.retain(desired)
         self.changed.set()
@@ -240,19 +276,29 @@ class Hub:
         identity = 0
         last_control = 0.0
         while True:
-            await self.changed.wait()
+            if self.linger:
+                # A hold that runs out is a change nobody signals, so wake for it.
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self.changed.wait(),
+                                           max(.05, min(self.linger.values()) - time.monotonic()))
+            else:
+                await self.changed.wait()
             self.changed.clear()
             # The first change after a quiet second is the cold-start critical
             # path and has nothing to coalesce; only back-to-back changes back
             # off to .3 so rapid chart switching stays <= ~3 control frames/s.
             pause = .03 if time.monotonic() - last_control > 1 else .3
             await asyncio.sleep(pause)
-            wanted = set(self.channels)
+            wanted = set(self.channels) | self.resident | self.lingering()
             if not wanted:
-                await asyncio.sleep(self.idle_seconds)
+                # Wait on the event, not the clock: a client arriving during the
+                # idle hold must be subscribed at once, not when the hold ends.
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self.changed.wait(), self.idle_seconds)
                 if not self.channels:
                     await upstream.close()
                     return
+                self.changed.clear()
                 wanted = set(self.channels)
             removed, added = self.sent - wanted, wanted - self.sent
             for method, values in [('UNSUBSCRIBE', removed), ('SUBSCRIBE', added)]:
@@ -269,14 +315,14 @@ class Hub:
     async def run(self):
         backoff = 1
         while not self.closed:
-            if not self.channels:
+            if not self.channels and not self.resident:
                 self.changed.clear()
                 await self.changed.wait()
                 if not self.channels:
                     continue
             sync = None
             try:
-                initial = set(self.channels)
+                initial = set(self.channels) | self.resident | self.lingering()
                 url = self.upstream_url + '?' + urlencode({'streams': '/'.join(sorted(initial))})
                 async with self.http.ws_connect(url, heartbeat=20, max_msg_size=2 * 1024 * 1024, compress=0) as upstream:
                     self.upstream, self.sent = upstream, initial
@@ -291,14 +337,17 @@ class Hub:
                             payload = json.loads(message.data)
                             channel = payload.get('stream')
                             data = payload.get('data')
-                            if channel not in self.channels or not data:
-                                continue
-                            if not isinstance(data, (dict, list)):
+                            if not data or not isinstance(data, (dict, list)):
                                 continue
                         except (ValueError, AttributeError):
                             continue
+                        # Counted before the subscriber check: a resident channel
+                        # nobody is watching is still proof the socket is alive,
+                        # and the stall watchdog reads exactly this timestamp.
                         self.last_market = time.monotonic()
                         backoff = 1
+                        if channel not in self.channels:
+                            continue
                         for peer in tuple(self.channels.get(channel, ())):
                             if not peer.closing and not peer.offer(channel, message.data):
                                 peer.closing = True
@@ -306,12 +355,14 @@ class Hub:
             except (Exception,):
                 pass  # no payload/user/IP logging; retry bounded below
             finally:
-                self.upstream = None
+                self.upstream, self.sent = None, set()
                 if sync:
                     sync.cancel()
                     with contextlib.suppress(asyncio.CancelledError, Exception):
                         await sync
-            if self.channels:
+            # Back off for the resident channel too: without this a node with no
+            # clients would reconnect to a failing upstream in a tight loop.
+            if self.channels or self.resident:
                 await asyncio.sleep(backoff)
                 backoff = min(30, backoff * 2)
 
@@ -319,13 +370,17 @@ class Hub:
         while True:
             await asyncio.sleep(5)
             self.capacity.update(**self.sampler.sample())
-            if self.upstream and self.channels and time.monotonic() - self.last_market > 15:
+            # The resident channel is also the stall detector: a warm socket that
+            # stopped delivering is worth reconnecting even with nobody watching.
+            if self.upstream and (self.channels or self.resident) and time.monotonic() - self.last_market > 15:
                 await self.upstream.close()
 
     async def health(self, _request):
         return web.json_response({'status': 'ok', 'service': 'kanpan-stream-hub', 'clients': len(self.peers),
                                   'channels': len(self.channels), 'capacity': self.capacity.clients,
-                                  'upstreamConnected': self.upstream is not None})
+                                  'resident': len(self.resident), 'lingering': len(self.linger),
+                                  'upstreamConnected': self.upstream is not None,
+                                  'upstreamConnections': self.upstream_connections})
 
 
 def app_for(hub, okx=None):

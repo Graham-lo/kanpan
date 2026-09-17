@@ -1,11 +1,15 @@
 """Bounded public market data. Each response belongs to exactly one exchange."""
+import bisect
 from collections import deque, OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
 import http.client
 import json
 import math
+import os
+from pathlib import Path
 import re
+import tempfile
 import threading
 import time
 from urllib.parse import urlencode
@@ -24,6 +28,18 @@ STEPS = {'1m': 60_000, '3m': 180_000, '5m': 300_000, '15m': 900_000,
 OKX_BARS = {'1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m', '30m': '30m',
             '1h': '1H', '2h': '2H', '4h': '4H', '6h': '6Hutc', '8h': '4H',
             '12h': '12Hutc', '1d': '1Dutc', '3d': '1Dutc', '1w': '1Wutc', '1M': '1Mutc'}
+# Background refresh. Only a response that expires within seconds is worth
+# fetching ahead of demand, and only while someone is still asking for it.
+WARM_TTL_MAX = 5
+WARM_IDLE_SECONDS = 60
+WARM_KEYS = 64
+WARM_LEAD = .35
+BARS_ROOT = Path(os.environ.get('KANPAN_BAR_CACHE',
+                                os.environ.get('KANPAN_OI_CACHE', '/var/cache/kanpan-gateway') + '/bars'))
+BARS_IN_MEMORY = 64_000
+BARS_SERIES = 32
+BARS_ON_DISK = 256 * 1024 * 1024
+BARS_WRITE_INTERVAL = 30
 
 
 class Unavailable(Exception):
@@ -54,19 +70,37 @@ class RateGate:
         self.interval = interval
         self.condition = threading.Condition()
         self.next_at = 0.0
+        self.waiting = 0
 
-    def reserve(self, patience=8.0):
+    def reserve(self, patience=8.0, background=False):
+        """Take one pacing slot. Background callers take only unwanted ones.
+
+        The refresher exists to save the phone a wait, so it must never cause
+        one: while any request thread is queued here, background work stands
+        aside instead of spending the slot the phone is about to need.
+        """
         deadline = time.monotonic() + patience
         with self.condition:
-            while True:
-                now = time.monotonic()
-                if now >= self.next_at:
-                    self.next_at = now + self.interval
-                    self.condition.notify_all()
-                    return
-                if now >= deadline:
-                    raise Unavailable('upstream pacing exceeded')
-                self.condition.wait(min(self.next_at, deadline) - now)
+            if not background:
+                self.waiting += 1
+            try:
+                while True:
+                    now = time.monotonic()
+                    # Background work needs idle headroom, not just an open slot:
+                    # a backfill holds the gate continuously, and taking the slot
+                    # just before it asks again would lengthen every one of its pages.
+                    free = self.next_at + (self.interval if background else 0)
+                    if now >= free and not (background and self.waiting):
+                        self.next_at = now + self.interval
+                        self.condition.notify_all()
+                        return
+                    if now >= deadline:
+                        raise Unavailable('upstream pacing exceeded')
+                    self.condition.wait(min(max(free, now + .01), deadline) - now)
+            finally:
+                if not background:
+                    self.waiting -= 1
+                    self.condition.notify_all()  # a yielding background caller may go now
 
 
 class Upstream:
@@ -208,6 +242,183 @@ def normalize_okx(rows, interval):
     return out
 
 
+class BarCache:
+    """Closed bars per (source, symbol, interval), so a window is a slice.
+
+    OKX pages history 100 rows at a time, so one 1500-bar window is a dozen
+    upstream round trips -- measured at 2.2s on the standby node. Those bars can
+    never change again, and scrolling a chart asks for windows that overlap the
+    previous one almost entirely, so the second window used to pay the whole
+    price again. One contiguous run per series answers it locally, and the run
+    is mirrored to disk so a restart or a deploy does not start from nothing.
+
+    Only closed bars are ever kept, and a window is only served when the run
+    covers it completely; anything else falls through to the network path, which
+    stays the single source of truth for the live edge.
+    """
+
+    def __init__(self, root=BARS_ROOT, memory=BARS_IN_MEMORY, series=BARS_SERIES,
+                 disk=BARS_ON_DISK, interval=BARS_WRITE_INTERVAL):
+        self.root, self.memory, self.series_limit = Path(root), memory, series
+        self.disk, self.write_interval = disk, interval
+        self.lock = threading.Lock()
+        self.series = OrderedDict()
+        self.written = {}
+        self.bars = 0
+
+    @staticmethod
+    def contiguous(bars, interval):
+        return all(close_time(int(a[0]), interval) == int(b[0]) for a, b in zip(bars, bars[1:]))
+
+    def path(self, key):
+        return self.root / ('%s-%s-%s.json' % key)
+
+    def load(self, key, interval):
+        """Best effort: a missing, truncated or stale file is simply not a hit."""
+        try:
+            bars = json.loads(self.path(key).read_bytes())
+        except (OSError, ValueError):
+            return None
+        if not isinstance(bars, list) or not bars or not self.contiguous(bars, interval):
+            return None
+        return bars
+
+    def store(self, key, bars):
+        try:
+            self.root.mkdir(parents=True, exist_ok=True)
+            payload = json.dumps(bars, separators=(',', ':')).encode()
+            with tempfile.NamedTemporaryFile(dir=self.root, delete=False) as out:
+                out.write(payload)
+                temporary = out.name
+            os.replace(temporary, self.path(key))
+            self.evict_disk()
+        except (OSError, ValueError):
+            pass  # the in-memory run still works; disk is only a head start
+
+    def evict_disk(self):
+        files = []
+        total = 0
+        for path in self.root.glob('*.json'):
+            try:
+                status = path.stat()
+            except OSError:
+                continue
+            files.append((status.st_mtime, status.st_size, path))
+            total += status.st_size
+        for _, size, path in sorted(files):
+            if total <= self.disk:
+                break
+            path.unlink(missing_ok=True)
+            total -= size
+
+    def resident(self, key, interval):
+        """Caller holds the lock. Returns the in-memory run, loading it once."""
+        run = self.series.get(key)
+        if run is None:
+            run = self.load(key, interval) or []
+            self.series[key] = run
+            self.bars += len(run)
+            self.trim()
+        self.series.move_to_end(key)
+        return run
+
+    def trim(self):
+        while self.series and (self.bars > self.memory or len(self.series) > self.series_limit):
+            key, dropped = self.series.popitem(last=False)
+            self.bars -= len(dropped)
+            self.written.pop(key, None)  # bounded with the series it belongs to
+
+    def tail(self, key, interval, limit, end, now):
+        """The newest part of an end-based window this store already holds.
+
+        Scrolling back asks for a window that overlaps the previous one on its
+        newer side, so the part worth fetching is only what lies below the
+        overlap. Returning that boundary turns a fifteen-page OKX backfill into
+        one or two pages; an empty list means the store knows nothing useful.
+        """
+        with self.lock:
+            run = self.resident(key, interval)
+            if not run:
+                return []
+            at = bucket(end, interval)
+            # A window that ends inside the forming bar belongs to the live
+            # path, which is the only place that bar exists.
+            if close_time(at, interval) > now:
+                return []
+            times = [int(r[0]) for r in run]
+            index = bisect.bisect_left(times, at)
+            # The run must reach the very bar the window ends on; anything else
+            # would answer a different question than the exchange would.
+            if index >= len(times) or times[index] != at:
+                return []
+            return [list(row) for row in run[max(0, index + 1 - limit):index + 1]]
+
+    def window(self, key, interval, limit, start, end, now):
+        """The exact rows `klines` would have fetched, or None to go upstream."""
+        if start is None:
+            chunk = self.tail(key, interval, limit, end, now)
+            return chunk if len(chunk) == limit else None
+        with self.lock:
+            run = self.resident(key, interval)
+            if not run:
+                return None
+            times = [int(r[0]) for r in run]
+            at = bucket(start, interval)
+            index = bisect.bisect_left(times, at)
+            # The run must hold the very bar the window starts on; a later
+            # first bar means the missing part is upstream, not here.
+            if index >= len(times) or times[index] != at:
+                return None
+            chunk = run[index:index + limit]
+            # A short answer may be genuine (a young listing) or a hole in this
+            # cache; only the upstream can tell them apart, so defer.
+            if len(chunk) < limit or int(chunk[-1][0]) > end:
+                return None
+            if close_time(int(chunk[-1][0]), interval) > now:
+                return None
+            return [list(row) for row in chunk]
+
+    def merge(self, key, interval, bars):
+        """Extend the run with freshly fetched closed bars."""
+        if not bars or not self.contiguous(bars, interval):
+            return
+        with self.lock:
+            run = self.resident(key, interval)
+            before = len(run)
+            if run:
+                first, last = int(run[0][0]), int(run[-1][0])
+                head, tail = int(bars[0][0]), int(bars[-1][0])
+                if head <= close_time(last, interval) and close_time(tail, interval) >= first:
+                    index = {int(row[0]): row for row in run}
+                    index.update({int(row[0]): row for row in bars})
+                    merged = [index[at] for at in sorted(index)]
+                    run = merged if self.contiguous(merged, interval) else list(bars)
+                else:
+                    run = list(bars)  # a jump elsewhere in history: keep the newer run
+            else:
+                run = list(bars)
+            self.series[key] = run
+            self.bars += len(run) - before
+            self.trim()
+            due = time.monotonic() - self.written.get(key, 0) > self.write_interval
+            if due and key in self.series:
+                self.written[key] = time.monotonic()
+                snapshot = run
+            else:
+                snapshot = None
+        if snapshot is not None:
+            self.store(key, snapshot)
+
+
+# Which kind of work the current thread is doing. Set only by the refresher and
+# carried onto the paging pool, so pacing can tell demand from anticipation.
+DEMAND = threading.local()
+
+
+def background_now():
+    return getattr(DEMAND, 'background', False)
+
+
 class PublicMarket:
     def __init__(self):
         self.lock = threading.Lock()
@@ -223,29 +434,56 @@ class PublicMarket:
         self.cooldown = {}
         self.responses = OrderedDict()
         self.response_bytes = 0
+        # Background refresh of the live window, started by the service only.
+        self.warm = OrderedDict()
+        self.warm_active = set()
+        self.warm_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix='market-warm')
+        self.warming = None
+        # The SWAP instrument table is 518 KB and changes about never; keeping it
+        # parsed turns a per-request 10 ms decode-and-scan into a dict lookup.
+        self.instruments = None
+        self.bars = BarCache()
 
-    def get(self, source, path, query, ttl=1):
+    def get(self, source, path, query, ttl=1, retry=True):
         key = (source, path, urlencode(sorted(query.items())))
+        cached_bytes = None
+        inherited = False
         with self.lock:
-            for finished in [k for k, task in self.pending.items() if task.done()]:
+            for finished in [k for k, (task, _) in self.pending.items() if task.done()]:
                 del self.pending[finished]
             cached = self.cache.get(key)
             if cached and cached[0] > time.monotonic():
                 self.cache.move_to_end(key)
-                return json.loads(cached[1])
-            self.check_cooldown(source)
-            future = self.pending.get(key)
-            if future is None:
-                if len(self.pending) >= 64:
-                    raise Unavailable('busy')
-                future = self.pool.submit(self.download, key, ttl)
-                self.pending[key] = future
+                cached_bytes = cached[1]
+            else:
+                self.check_cooldown(source)
+                entry = self.pending.get(key)
+                if entry is None:
+                    if len(self.pending) >= 64:
+                        raise Unavailable('busy')
+                    background = background_now()
+                    self.pending[key] = (self.pool.submit(self.download, key, ttl, background),
+                                         background)
+                    entry = self.pending[key]
+                future, background = entry
+                # The refresher stands aside at the pacing gate and may give up
+                # for reasons that have nothing to do with this request. A phone
+                # that joined its work must not inherit that answer.
+                inherited = background and not background_now()
+        if cached_bytes is not None:
+            # Decoding is the expensive half of a hit. Doing it under the lock
+            # made every other market request queue behind it.
+            return json.loads(cached_bytes)
         try:
             return future.result(timeout=25)
+        except Unavailable:
+            if not (inherited and retry):
+                raise
         finally:
             with self.lock:
-                if future.done() and self.pending.get(key) is future:
+                if future.done() and self.pending.get(key, (None, None))[0] is future:
                     del self.pending[key]
+        return self.get(source, path, query, ttl, retry=False)  # this time on our own
 
     def check_cooldown(self, source):
         """Caller already holds self.lock, or does not need to."""
@@ -253,9 +491,9 @@ class PublicMarket:
         if until > time.monotonic():
             raise Blocked(source) if blocked else Unavailable('upstream cooling down')
 
-    def download(self, key, ttl):
+    def download(self, key, ttl, background=False):
         source, path, query = key
-        self.gates[source].reserve()
+        self.gates[source].reserve(background=background)
         status, data = self.connections[source].fetch(
             path + ('?' + query if query else ''),
             {'User-Agent': 'Kanpan-Market-Probe/1.0', 'Accept': 'application/json',
@@ -282,15 +520,26 @@ class PublicMarket:
                 _, old = self.cache.popitem(last=False); self.bytes -= len(old[1])
         return value
 
+    def okx_instruments(self):
+        """instId -> instrument, decoded once per TTL instead of once per request."""
+        with self.lock:
+            index = self.instruments
+            if index and index[0] > time.monotonic():
+                return index[1]
+        rows = self.get('okx', '/api/v5/public/instruments', {'instType': 'SWAP'}, ttl=300)
+        index = {r['instId']: r for r in rows if isinstance(r, dict) and isinstance(r.get('instId'), str)}
+        with self.lock:
+            self.instruments = (time.monotonic() + 300, index)
+        return index
+
     def instrument(self, symbol):
         if not OKX_SYMBOL.fullmatch(symbol):
             raise ValueError('invalid symbol')
         # Exact USDT perpetuals only. Never silently substitute a spot market or multiplier token.
         inst = symbol[:-4] + '-USDT-SWAP'
-        rows = self.get('okx', '/api/v5/public/instruments', {'instType': 'SWAP'}, ttl=300)
-        item = next((r for r in rows if r.get('instId') == inst and r.get('settleCcy') == 'USDT'
-                     and r.get('ctType') == 'linear' and r.get('state') == 'live'), None)
-        if item is None:
+        item = self.okx_instruments().get(inst)
+        if item is None or item.get('settleCcy') != 'USDT' or item.get('ctType') != 'linear' \
+                or item.get('state') != 'live':
             raise Unavailable('instrument unavailable')
         return item
 
@@ -322,10 +571,23 @@ class PublicMarket:
         """
         with self.lock:
             hit = self.responses.get(key)
-            if hit and hit[0] > time.monotonic():
+            payload = hit[1] if hit and hit[0] > time.monotonic() else None
+            if payload is not None:
                 self.responses.move_to_end(key)
-                return hit[1]
+            if ttl <= WARM_TTL_MAX:
+                # Someone is watching this window right now: keep it fresh for
+                # them instead of making the next request wait for the exchange.
+                self.warm[key] = [time.monotonic(), ttl, build]
+                self.warm.move_to_end(key)
+                while len(self.warm) > WARM_KEYS:
+                    self.warm.popitem(last=False)
+        if payload is not None:
+            return payload
         payload = build()
+        self.keep(key, ttl, payload)
+        return payload
+
+    def keep(self, key, ttl, payload):
         with self.lock:
             old = self.responses.pop(key, None)
             if old:
@@ -335,7 +597,67 @@ class PublicMarket:
             while self.response_bytes > 32 * 1024 * 1024 or len(self.responses) > 512:
                 _, dropped = self.responses.popitem(last=False)
                 self.response_bytes -= len(dropped[1])
-        return payload
+
+    def start_warming(self):
+        """Run by the service, never by a unit test: it calls the exchanges."""
+        if self.warming is None or not self.warming.is_alive():
+            self.warming = threading.Thread(target=self.warm_forever, name='market-warm', daemon=True)
+            self.warming.start()
+
+    def warm_forever(self):
+        while True:
+            try:
+                self.warm_once()
+            except Exception:
+                pass  # a refresher that dies would silently restore the old latency
+            time.sleep(.1)
+
+    def warm_once(self):
+        """Refresh every watched window that is about to expire.
+
+        The staleness bound is unchanged -- the entry still lives exactly `ttl`
+        seconds -- the waiting simply moves off the phone's request.
+        """
+        now = time.monotonic()
+        due = []
+        with self.lock:
+            for key, entry in list(self.warm.items()):
+                if now - entry[0] > WARM_IDLE_SECONDS:
+                    del self.warm[key]
+                    continue
+                if key in self.warm_active:
+                    continue
+                held = self.responses.get(key)
+                if held is None or held[0] - now <= WARM_LEAD:
+                    self.warm_active.add(key)
+                    due.append((key, entry[1], entry[2]))
+        for key, ttl, build in due:
+            self.warm_pool.submit(self.refresh, key, ttl, build)
+        return len(due)
+
+    def get_as(self, background, source, path, query, ttl=1):
+        """Carry the caller's priority onto a pool thread that is not its own."""
+        DEMAND.background = background
+        try:
+            return self.get(source, path, query, ttl)
+        finally:
+            DEMAND.background = False
+
+    def refresh(self, key, ttl, build):
+        DEMAND.background = True
+        try:
+            self.keep(key, ttl, build())
+        except Exception:
+            # A failing refresh must not cost the phone anything: it still
+            # fetches for itself, and this key goes cold shortly.
+            with self.lock:
+                entry = self.warm.get(key)
+                if entry:
+                    entry[0] = min(entry[0], time.monotonic() - WARM_IDLE_SECONDS + 5)
+        finally:
+            DEMAND.background = False
+            with self.lock:
+                self.warm_active.discard(key)
 
     def klines_response(self, source, symbol, interval, limit, start=None, end=None):
         """The exact bytes the phone receives.
@@ -385,6 +707,24 @@ class PublicMarket:
         now = self.validate_klines(source, symbol, interval, limit, start, end)
         latest_window = start is None and end is None
         end = min(end if end is not None else now, now)
+        series = (source, symbol, interval)
+        answer = lambda bars: {'source': source, 'symbol': symbol, 'interval': interval,
+                               'bars': bars, 'serverTime': now}
+        held = []
+        if not latest_window:
+            # Closed bars cannot change, so the overlap a scroll-back window
+            # shares with the previous one never needs the exchange twice.
+            if start is not None:
+                covered = self.bars.window(series, interval, limit, start, end, now)
+                if covered is not None:
+                    return answer(covered)
+            else:
+                held = self.bars.tail(series, interval, limit, end, now)
+                if len(held) == limit:
+                    return answer(held)
+                if held:
+                    # Ask the exchange only for the part below what is held.
+                    end, limit = int(held[0][0]) - 1, limit - len(held)
         if source == 'binance':
             query = {'symbol': symbol, 'interval': interval, 'limit': limit, 'endTime': end}
             if start is not None:
@@ -423,8 +763,9 @@ class PublicMarket:
                 while remaining > 0 and len(raw) < wanted:
                     width = min(3, remaining)
                     cursors = [step_back(cursor, unit, 100 * k) for k in range(width)]
+                    priority = background_now()
                     tasks = [self.pages.submit(
-                        self.get, source, '/api/v5/market/history-candles',
+                        self.get_as, priority, source, '/api/v5/market/history-candles',
                         {'instId': item['instId'], 'bar': OKX_BARS[interval], 'limit': 100, 'after': c}, ttl)
                         for c in cursors]
                     done = False
@@ -449,9 +790,19 @@ class PublicMarket:
                 rows = normalize_okx(raw, interval)
         rows = [r for r in rows if (start is None or int(r[0]) >= start) and int(r[0]) <= end]
         rows = rows[:limit] if start is not None else rows[-limit:]
+        if held and rows:
+            # The join is checked by the same rule as the rest of the window, so
+            # a spliced answer is either byte-identical to the network's or an error.
+            rows = rows + held
+        elif held:
+            rows = held
         if any(close_time(int(a[0]), interval) != int(b[0]) for a, b in zip(rows, rows[1:])):
             raise Unavailable('history has gaps')
-        return {'source': source, 'symbol': symbol, 'interval': interval, 'bars': rows, 'serverTime': now}
+        # Keep the closed prefix only: the newest bar of a live window is still
+        # moving, and a cache that remembered it would freeze the chart.
+        closed = [r for r in rows if close_time(int(r[0]), interval) <= now]
+        self.bars.merge(series, interval, closed)
+        return answer(rows)
 
     def ticker(self, source, symbol):
         if source == 'binance':

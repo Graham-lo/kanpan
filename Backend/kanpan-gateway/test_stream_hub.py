@@ -99,13 +99,22 @@ class SharedHubTests(unittest.IsolatedAsyncioTestCase):
         self.source_runner = web.AppRunner(source_app); await self.source_runner.setup()
         site = web.TCPSite(self.source_runner, '127.0.0.1', 0); await site.start()
         port = site._server.sockets[0].getsockname()[1]
-        self.hub = Hub(f'http://127.0.0.1:{port}/market/stream', capacity=Capacity(128, 4_000_000), idle_seconds=.05)
+        self.source_port = port
+        # No resident channel and no hold here: these cases are about what
+        # clients ask for, one release at a time.
+        self.hub = Hub(f'http://127.0.0.1:{port}/market/stream', capacity=Capacity(128, 4_000_000),
+                       idle_seconds=.05, resident=(), linger_seconds=0)
         self.runner = web.AppRunner(app_for(self.hub)); await self.runner.setup()
         site = web.TCPSite(self.runner, '127.0.0.1', 0); await site.start()
         self.url = f'http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}/market/stream'
         self.http = ClientSession()
+        self.extra = []
 
     async def asyncTearDown(self):
+        # Extra hubs go first: a hub still holding a socket to the fake exchange
+        # makes that server's cleanup sit out its full shutdown timeout.
+        for hub in self.extra:
+            await hub.close()
         await self.http.close(); await self.runner.cleanup(); await self.source_runner.cleanup()
 
     async def connect(self, key='192.0.2.1', channel='btcusdt@ticker'):
@@ -199,6 +208,105 @@ class SharedHubTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(self.hub.send(peer), 2)
         self.assertNotIn(peer, self.hub.peers)
         self.assertTrue(peer.ws.closed)
+
+    async def test_resident_channel_keeps_the_upstream_warm_with_no_clients(self):
+        hub = Hub(self.hub.upstream_url, capacity=Capacity(8, 1_000_000), idle_seconds=.05,
+                  resident={'btcusdt@kline_1m'})
+        await hub.start()
+        try:
+            for _ in range(300):
+                if hub.upstream is not None and hub.sent:
+                    break
+                await asyncio.sleep(.01)
+            # Subscribed before the first phone arrives: that is the whole point.
+            self.assertEqual(hub.sent, {'btcusdt@kline_1m'})
+            self.assertFalse(hub.channels)
+            stalled = hub.last_market
+            await asyncio.sleep(.3)
+            self.assertIsNotNone(hub.upstream)  # the old idle release let this go
+            # Resident frames feed the stall watchdog, so a warm socket that went
+            # quiet is still detectable with nobody watching.
+            self.assertGreater(hub.last_market, stalled)
+        finally:
+            await hub.close()
+
+    async def test_idle_hold_does_not_delay_the_next_client(self):
+        slow = Hub(self.hub.upstream_url, capacity=Capacity(8, 1_000_000), idle_seconds=5, resident=())
+        await slow.start()
+        try:
+            peer = Peer(None, 'a')
+            slow.peers.add(peer)
+            slow.replace(peer, {'btcusdt@ticker'})
+            for _ in range(300):
+                if 'btcusdt@ticker' in slow.sent:
+                    break
+                await asyncio.sleep(.01)
+            slow.replace(peer, set())  # everyone leaves: the idle hold starts
+            await asyncio.sleep(.2)
+            started = time.monotonic()
+            slow.replace(peer, {'ethusdt@ticker'})
+            while 'ethusdt@ticker' not in slow.sent:
+                await asyncio.sleep(.005)
+                if time.monotonic() - started > 3:
+                    self.fail('a client arriving during the idle hold waited for the clock')
+            self.assertLess(time.monotonic() - started, 1)  # not the 5s hold
+        finally:
+            slow.peers.discard(peer)
+            await slow.close()
+
+    async def held(self, linger, resident=()):
+        hub = Hub(self.hub.upstream_url, capacity=Capacity(8, 1_000_000), idle_seconds=.05,
+                  resident=resident, linger_seconds=linger)
+        await hub.start()
+        self.extra.append(hub)
+        return hub
+
+    async def subscribed(self, hub, peer, channels):
+        hub.replace(peer, channels)
+        started = time.monotonic()
+        while not channels <= hub.sent:
+            await asyncio.sleep(.005)
+            if time.monotonic() - started > 3:
+                self.fail(f'{channels} never reached upstream')
+
+    async def test_a_channel_is_held_upstream_after_its_last_client_leaves(self):
+        hub = await self.held(5)
+        peer = Peer(None, 'a')
+        hub.peers.add(peer)
+        self.addCleanup(hub.peers.discard, peer)
+        await self.subscribed(hub, peer, {'btcusdt@ticker'})
+        control = len(self.controls)
+        hub.replace(peer, set())
+        await asyncio.sleep(.5)
+        # Still subscribed: the exchange needs about .8s to start a channel, and
+        # a phone flipping symbols comes back long before that is worth paying twice.
+        self.assertIn('btcusdt@ticker', hub.sent)
+        self.assertFalse(hub.channels)
+        self.assertEqual(hub.lingering(), {'btcusdt@ticker'})
+        await self.subscribed(hub, peer, {'btcusdt@ticker'})
+        self.assertFalse(hub.linger)
+        self.assertEqual(len(self.controls), control)  # nothing was re-sent upstream
+
+    async def test_a_hold_that_runs_out_releases_the_channel(self):
+        # With a resident channel the socket outlives the hold, so the release
+        # has to be a real UNSUBSCRIBE rather than the connection going away.
+        hub = await self.held(.3, resident={'btcusdt@kline_1m'})
+        peer = Peer(None, 'a')
+        hub.peers.add(peer)
+        self.addCleanup(hub.peers.discard, peer)
+        await self.subscribed(hub, peer, {'btcusdt@ticker'})
+        hub.replace(peer, set())
+        started = time.monotonic()
+        while 'btcusdt@ticker' in hub.sent:
+            await asyncio.sleep(.01)
+            if time.monotonic() - started > 3:
+                self.fail('an expired hold was never released')
+        self.assertGreater(time.monotonic() - started, .2)  # and not before it expired
+
+    async def test_holds_cannot_grow_without_bound(self):
+        hub = await self.held(60)
+        hub.park({f'h{i}@ticker' for i in range(200)})
+        self.assertEqual(len(hub.linger), 48)
 
     async def test_one_hundred_clients_share_one_upstream(self):
         clients = [await self.connect(f'192.0.2.{i // 10 + 1}') for i in range(100)]
