@@ -215,15 +215,16 @@ device-release:
 		build
 	@echo "Release 真机包：$(DEVICE_RELEASE_APP)"
 
-# 装到第一台 connected 真机。UDID 从 `xcrun devicectl list devices` 解析，
+# 装到第一台 connected 真机。UDID 从 `xcrun devicectl list devices` 解析（JSON 落到
+# 临时文件：让它写 /dev/stdout 会混进人类可读那份，json.load 会报 Extra data），
 # 只认 state=connected 的那几行；一台都没有就直接报错，不去碰模拟器。
 install-release:
 	@[ -d "$(DEVICE_RELEASE_APP)" ] || { echo "没找到 $(DEVICE_RELEASE_APP)，先跑 make device-release"; exit 1; }
-	@udid=$$(xcrun devicectl list devices --json-output /dev/stdout 2>/dev/null | python3 -c "\
+	@udid=$$(xcrun devicectl list devices --json-output "$(TMPDIR)devicectl.json" >/dev/null 2>&1; python3 -c "\
 import json,sys;\
-d=json.load(sys.stdin);\
+d=json.load(open(sys.argv[1]));\
 xs=[x for x in d.get('result',{}).get('devices',[]) if x.get('connectionProperties',{}).get('tunnelState')!='unavailable' and x.get('connectionProperties',{}).get('pairingState')=='paired'];\
-print(xs[0]['hardwareProperties']['udid'] if xs else '')"); \
+print(xs[0]['hardwareProperties']['udid'] if xs else '')" "$(TMPDIR)devicectl.json"); \
 	[ -n "$$udid" ] || { echo "没有已配对且在线的真机（xcrun devicectl list devices 看一眼）"; exit 1; }; \
 	echo "→ 装到 $$udid"; \
 	xcrun devicectl device install app --device "$$udid" "$(DEVICE_RELEASE_APP)"
