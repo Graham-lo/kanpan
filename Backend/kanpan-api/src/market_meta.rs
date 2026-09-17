@@ -442,11 +442,18 @@ pub fn meta_payload(market:&Market,symbols:Option<&str>)->Value {
    if out.contains_key(&key) {continue}
    if let Some(meta)=market.meta(&key) {out.insert(key,meta.value());}
   },
-  // The unfiltered form lists coins only: the share table holds every stock
-  // Nasdaq quotes, thousands of which Binance never made a contract for.
-  None=>for (base,meta) in &market.coins {
-   let symbol=format!("{base}USDT");
-   if market.kind(&symbol)==Kind::Crypto {out.insert(symbol,meta.value());}
+  // The unfiltered form is the whole contract table: the coin rows are keyed
+  // by base asset and only count when the contract of that name really is a
+  // coin (`COINUSDT` is Coinbase, not the altcoin COIN), and the equity rows
+  // are already keyed by contract symbol.
+  None=>{
+   for (base,meta) in &market.coins {
+    let symbol=format!("{base}USDT");
+    if market.kind(&symbol)==Kind::Crypto {out.insert(symbol,meta.value());}
+   }
+   for symbol in market.equities.keys() {
+    if let Some(meta)=market.meta(symbol) {out.insert(symbol.clone(),meta.value());}
+   }
   },
  }
  Value::Object(out)
