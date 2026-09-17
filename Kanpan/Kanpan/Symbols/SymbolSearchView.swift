@@ -89,6 +89,8 @@ struct SymbolSearchView: View {
       .scrollIndicators(.hidden)
       .scrollDismissesKeyboard(.interactively)
     }
+    // iPad 上这一页是满屏的：不封顶的话品种名钉在最左、价格钉在最右，隔着一米。
+    .readableColumn()
     .background(theme.app)
     .foregroundStyle(theme.ink)
     .confirmationDialog("清除搜索记录", isPresented: $askClear, titleVisibility: .visible) {

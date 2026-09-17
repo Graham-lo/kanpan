@@ -56,6 +56,8 @@ public struct ReviewBook: View {
           .searchable(text: $filter, prompt: "品种或原话")
         }
       }
+      // iPad 满屏时这一列封顶居中，不然分段控件摊成 1300pt、行里的胜率被甩到一米外。
+      .readableColumn()
       .background(t.app)
       .navigationTitle("复盘").navigationBarTitleDisplayMode(.inline)
       .toolbar {
@@ -214,6 +216,8 @@ public struct ReviewRecordView: View {
           .sheet(isPresented: $feature.searchOpen) { ReviewSearchView(feature: feature, range: record.draft.range, cutoff: record.draft.created) }
       } else { ContentUnavailableView("记录暂不可用", systemImage: "book.closed") }
     }
+    .readableColumn()
+    .background(t.app)
     .tint(t.accent)
     .navigationTitle("记录详情").navigationBarTitleDisplayMode(.inline)
       .confirmationDialog("作废后保留内容，退出战绩统计", isPresented: $confirmVoid) {

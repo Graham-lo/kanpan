@@ -49,6 +49,8 @@ struct SymbolPickerView: View {
       filters
       list
     }
+    // 同搜索页：这一页也是满屏的一列行，iPad 上不封顶就两端拉开一米（见 `readableColumn`）。
+    .readableColumn()
     .background(Color(hex: seed.app))
     .confirmationDialog(filterSelection == .market ? "市场" : "板块",
       isPresented: Binding(get: { filterSelection != nil }, set: { if !$0 { filterSelection = nil } }),
