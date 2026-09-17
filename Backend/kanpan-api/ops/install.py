@@ -43,7 +43,11 @@ TasksMax=256
 [Install]
 WantedBy=multi-user.target
 '''
-pathlib.Path('/etc/systemd/system/kanpan-api.service').write_text(unit)
+# Only the API keeps a cache: it is where the open interest archive stores the
+# day slices it downloads. The worker must not declare the same directory --
+# each dynamic user owns its own, and the second one to start would take it.
+cache='CacheDirectory=kanpan-api\nEnvironment=KANPAN_OI_CACHE=/var/cache/kanpan-api/oi\n'
+pathlib.Path('/etc/systemd/system/kanpan-api.service').write_text(unit.replace('[Install]',cache+'[Install]'))
 pathlib.Path('/etc/systemd/system/kanpan-worker.service').write_text(unit.replace('Kanpan accounts and personal sync','Kanpan review and maintenance worker').replace('kanpan-api serve','kanpan-api worker'))
 pathlib.Path('/etc/systemd/system/kanpan-backup.service').write_text("""[Unit]
 Description=Kanpan database backup

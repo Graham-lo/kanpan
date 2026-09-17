@@ -34,6 +34,13 @@ impl AppState {
  }
 }
 pub fn envelope(value: Value) -> Json<Value> { Json(json!({"data":value})) }
+/// The market fallback host answers open interest and nothing else. It keeps no
+/// accounts, so it gets no database — which is why these routes are split out
+/// rather than served by `router` with a pool nobody would query.
+pub fn metrics_router() -> Router {
+ Router::new().route("/health",get(||async{envelope(json!({"ok":true}))}))
+  .merge(oi_archive::routes())
+}
 pub fn router(s: AppState) -> Router {
  Router::new().route("/health",get(||async{envelope(json!({"ok":true}))}))
   .merge(auth::routes()).merge(sync::routes()).merge(review::routes()).merge(search::routes()).merge(market_meta::routes()).merge(oi_archive::routes())

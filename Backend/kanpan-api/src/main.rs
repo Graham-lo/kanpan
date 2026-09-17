@@ -5,6 +5,16 @@ use std::{sync::Arc,net::SocketAddr};
 async fn main()->anyhow::Result<()> {
  tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
  let command=std::env::args().nth(1).unwrap_or_else(||"serve".into());
+ // The market fallback host runs `metrics`: open interest only, no accounts and
+ // so no database. Answered before the pool, or it would demand a connection
+ // string it has no reason to hold.
+ if command=="metrics" {
+  kanpan_api::oi_archive::spawn_warm();
+  let address:SocketAddr=std::env::var("KANPAN_BIND").unwrap_or_else(|_|"127.0.0.1:8794".into()).parse()?;
+  let listener=tokio::net::TcpListener::bind(address).await?;
+  axum::serve(listener,kanpan_api::metrics_router()).with_graceful_shutdown(async{let _=tokio::signal::ctrl_c().await;}).await?;
+  return Ok(());
+ }
  let pool=PgPoolOptions::new().max_connections(8).connect(&std::env::var("KANPAN_DATABASE_URL")?).await?;
  if command=="migrate" {sqlx::migrate!().run(&pool).await?;return Ok(())}
  let privileged:bool=sqlx::query_scalar("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user").fetch_one(&pool).await?;
@@ -43,7 +53,7 @@ async fn main()->anyhow::Result<()> {
   return Ok(());
 
  }
- anyhow::ensure!(command=="serve","Use serve, worker or migrate");
+ anyhow::ensure!(command=="serve","Use serve, metrics, worker or migrate");
  // Public supply data has no owner and no database; warm it before the first request.
  kanpan_api::market_meta::spawn_refresh();
  // The open interest archive keeps its own disk cache; index it before the

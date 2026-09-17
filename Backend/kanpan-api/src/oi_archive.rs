@@ -16,7 +16,6 @@
 //! background, all the way back to 2020, so the second look costs nothing.
 //!
 //! Nothing here is personal: no authentication, no database, no per-user state.
-use crate::AppState;
 use axum::{Router,extract::{Path,Query},http::{StatusCode,header},response::{IntoResponse,Response},routing::get};
 use chrono::{DateTime,Datelike,NaiveDate,NaiveDateTime,Utc};
 use std::collections::{HashMap,HashSet,VecDeque};
@@ -51,7 +50,9 @@ const DEFAULT_LIMIT:u64=4*1024*1024*1024;
 /// yet evidence of anything and must not be remembered as a gap.
 const SETTLED:i64=2*DAY;
 
-pub fn routes()->Router<AppState> {
+/// Generic over the state because these routes never read it: the standby
+/// gateway serves open interest with no database behind it at all.
+pub fn routes<S:Clone+Send+Sync+'static>()->Router<S> {
  // One route rather than a static `/range` beside a dynamic `/{day}.json`:
  // the two shapes differ only in the last segment, and dispatching here keeps
  // the router free of sibling rules whose precedence would have to be trusted.
