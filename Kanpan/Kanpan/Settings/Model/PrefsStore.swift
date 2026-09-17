@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import KanpanCore
+import KanpanData
 
 /// 存档落在哪儿。真机上是 `UserDefaults.standard`，单测里换成内存里的一份。
 protocol PrefsStorage: AnyObject, Sendable {
@@ -88,7 +89,20 @@ final class PrefsStore {
     if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
        selectedStorage.prefsData(forKey: PrefsCodec.key) == nil {
       self.prefs.quickIntervals = PrefsStore.uiTestQuick
+      // UI 用例要验网关那条线路（OKX 历史）时从这儿起步，不用在用例里去点设置。
+      if let raw = ProcessInfo.processInfo.environment["KANPAN_TEST_ROUTE_POLICY"],
+         let policy = MarketRoutePolicy(rawValue: raw) {
+        self.prefs.routePolicy = policy
+      }
     }
+    mirrorRoutePolicy()
+  }
+
+  /// 行情线路的真身在 `prefs.routePolicy`（随账号同步 / 访客档案），而
+  /// `KanpanData` 那边的 `RoutedMarketFeed` 只认 `MarketRoutePolicyStore`。
+  /// 设置每变一次就镜像过去；没变的话 `set` 自己会跳过，不会把行情重开。
+  private func mirrorRoutePolicy() {
+    MarketRoutePolicyStore.set(prefs.routePolicy)
   }
 
   /// 见上：UI 测试沙盒专用的常用行。
@@ -160,16 +174,20 @@ final class PrefsStore {
 
   private func persist() {
     storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
+    mirrorRoutePolicy()
     onChange?(prefs)
   }
 
+  /// 换档案（登录 / 退登）：线路跟着档案走，登录后用的是账号里记的那条。
   func useStorage(_ storage: any PrefsStorage, prefs: Prefs) {
     self.storage = storage; self.prefs = prefs
     storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
+    mirrorRoutePolicy()
   }
   func applySynced(_ value: Prefs) {
     guard value != prefs else { return }
     prefs = value; storage.setPrefsData(PrefsCodec.encode(value), forKey: PrefsCodec.key)
+    mirrorRoutePolicy()
   }
 
   // ---------------------------------------------------------------- 缓存

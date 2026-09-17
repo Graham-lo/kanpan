@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import KanpanData
 
 // MARK: - 落盘格式
 
@@ -47,7 +48,7 @@ extension Prefs: Codable {
     case dataDisplay, crossPrice, allowMainInversion, allowSubInversion
     case adaptiveIndicators, compactValues, portraitHeight, hiddenOutputs, rsiUpper, rsiLower
     case overlays, subs, params, subHeights, subHeightOverrides
-    case apiHost, streamHost, smartMarketRoute
+    case apiHost, streamHost, smartMarketRoute, routePolicy
   }
 
   func encode(to encoder: Encoder) throws {
@@ -96,6 +97,7 @@ extension Prefs: Codable {
     try c.encode(apiHost, forKey: .apiHost)
     try c.encode(streamHost, forKey: .streamHost)
     try c.encode(smartMarketRoute, forKey: .smartMarketRoute)
+    try c.encode(routePolicy.rawValue, forKey: .routePolicy)
   }
 
   /// 历次出厂的常用行。存档里一字不差地躺着其中一串，就说明用户从没动过常用行。
@@ -213,6 +215,8 @@ extension Prefs: Codable {
     }
 
     smartMarketRoute = (try? c.decode(Bool.self, forKey: .smartMarketRoute)) ?? true
+    // 认不出的值（比如旧版本的「自动」）退回直连。
+    if let raw = str(.routePolicy), let v = MarketRoutePolicy(rawValue: raw) { routePolicy = v }
     if let raw = str(.apiHost) { apiHost = APIHost.sanitize(raw) }
     if let raw = str(.streamHost) {
       let host = APIHost.normalize(raw)

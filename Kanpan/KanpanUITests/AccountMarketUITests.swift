@@ -35,6 +35,9 @@ import XCTest
     app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launchEnvironment["KANPAN_LOG"] = "1"
+    // 线路是用户定的，不再有「币安坏了自动退 OKX」：这条用例验的是「网关」线路，
+    // 从网关拿 OKX 的历史与实时。REST_DOWN 只是把币安直连彻底封死，证明没有偷偷走它。
+    app.launchEnvironment["KANPAN_TEST_ROUTE_POLICY"] = "gateway"
     app.launchEnvironment["KANPAN_TEST_BINANCE_REST_DOWN"] = "1"
     app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io"
     app.launch()
@@ -60,7 +63,7 @@ import XCTest
       }
     }
     XCTAssertTrue(wait { (info()["bars"] as? Int ?? 0) > 300 }, "OKX history must prepend: \(info()) network=\(app.staticTexts["market.network"].label)")
-    let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "OKX历史兜底"; shot.lifetime = .keepAlways; add(shot)
+    let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "网关线路-OKX历史"; shot.lifetime = .keepAlways; add(shot)
     app.buttons["bottom.settings"].tap()
     app.buttons["settings.account"].tap()
     XCTAssertTrue(app.buttons["注册"].waitForExistence(timeout: 5)); app.buttons["注册"].tap()

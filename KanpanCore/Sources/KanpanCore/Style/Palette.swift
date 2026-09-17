@@ -50,10 +50,15 @@ public struct PaletteSeed: Sendable, Equatable {
   /// 界面强调色。
   public var accent: Hex
   public var palette: [Hex]
+  /// 副图线（MAVOL / DIF、DEA / RSI）依次取色。不给就跟主图 `palette` 同一组。
+  /// AICoin 的副图线走的是它自己那张「槽位色板」（青绿、黄、紫、蓝…），和主图均线
+  /// 按周期挑的颜色不是一个顺序，所以「经典」得单独给一组。
+  public var sub: [Hex]
 
   public init(dark: Bool, ground: Hex, app: Hex, chart: Hex, raised: Hex, raised2: Hex,
               line: Hex, grid: Hex, hair: Hex, ink: Hex, ink2: Hex, ink3: Hex,
-              up: Hex, down: Hex, amber: Hex, accent: Hex? = nil, palette: [Hex]) {
+              up: Hex, down: Hex, amber: Hex, accent: Hex? = nil, palette: [Hex],
+              sub: [Hex]? = nil) {
     self.dark = dark
     self.ground = ground; self.app = app; self.chart = chart
     self.raised = raised; self.raised2 = raised2
@@ -62,6 +67,7 @@ public struct PaletteSeed: Sendable, Equatable {
     self.up = up; self.down = down; self.amber = amber
     self.accent = accent ?? amber
     self.palette = palette
+    self.sub = sub ?? palette
   }
 }
 
@@ -76,8 +82,11 @@ public struct ChartColors: Sendable, Equatable {
   public var amberSoft, amberLine: Hex
   /// 涨 / 跌。注意这两个会被「红涨绿跌」开关对调。
   public var up, down: Hex
-  /// 指标线依次取色。
+  /// 主图指标线（MA / EMA / BOLL）依次取色。
   public var palette: [Hex]
+  /// 副图线（MAVOL / DIF、DEA / RSI…）依次取色。青苔、陶土和 `palette` 同一组；
+  /// 经典按 AICoin 的槽位色板另给一组。
+  public var sub: [Hex]
 }
 
 /// 三套配色：青苔（冷，出厂）、陶土（暖）与经典（白），各有浅深两版。
@@ -90,8 +99,8 @@ public struct ChartColors: Sendable, Equatable {
 /// 连成一块了，但蜡烛和均线全压在一层带色的底上，看久了分不清价格结构——这正是 AICoin
 /// 十年如一日用白底的原因。接缝交给 `ground` / `raised` 去收，那本来就是它们的活。
 ///
-/// 跟着皮肤走的只剩涨跌色、`amber` 和 MA 那组 `palette`：这几样在头部胶囊、自选列表里
-/// 也出现，图里图外必须是同一个红、同一个绿。
+/// 跟着皮肤走的只剩涨跌色、`amber`、MA 那组 `palette` 和副图那组 `sub`：涨跌与 MA 色在头部胶囊、
+/// 自选列表里也出现，图里图外必须是同一个红、同一个绿。
 /// 种子里的 `chart` 字段因此只用于图表以外的容器，不再是画布底色。
 public enum Palette: Sendable {
   // ---------------------------------------------------------------- 青苔（冷）
@@ -136,27 +145,41 @@ public enum Palette: Sendable {
 
   // ---------------------------------------------------------------- 经典（白）
 
-  /// 经典 · 浅。青苔那套原样，只把底换成 AICoin 的白：页面底 `#F7F9FF`、面 `#FFFFFF`、
+  /// 经典 · 浅。青苔的文字与强调色原样，底换成 AICoin 的白：页面底 `#F7F9FF`、面 `#FFFFFF`、
   /// 徽章底 `#F3F5F7`、分割线 `#DEE1E5`（`docs/AICoin-安卓包-UI规格提取.md` §8）。
-  /// 文字、涨跌、强调色、MA 那组线色一个都不动——用户要的只是「背景换成 AICoin 那种白」，
-  /// 图里图外从此同一张白纸，接缝自然没了。
+  /// 涨跌与指标线色也照 AICoin：用户 2026-09-17 拿手机截图说「经典模式下 K 线颜色和 AICoin 不一样」。
+  /// 蜡烛 `#36B257` / `#E64552` 是从他 iPhone 截图逐像素统计的众数（比安卓包 `#32A853` /
+  /// `#EB4236` 略亮），MA10/30/120/256 = 黄 / 紫 / 绿 / 珊瑚，副图线见 `aicoinSlots`。
   public static let classicSeed = PaletteSeed(
     dark: false,
     ground: "#F7F9FF", app: "#F7F9FF", chart: "#F7F9FF", raised: "#FFFFFF", raised2: "#F3F5F7",
     line: "#DEE1E5", grid: "#EAEAEA", hair: "#14211B0F",
     ink: "#14211B", ink2: "#4E6158", ink3: "#606F67",
-    up: "#2E7D6B", down: "#C34642", amber: "#B57C28", accent: "#2E7D6B",
-    palette: ["#BD8229", "#5A79C4", "#2E7D6B", "#B4617F", "#7A6BC0", "#3E86A8"])
+    up: "#36B257", down: "#E64552", amber: "#FFB400", accent: "#2E7D6B",
+    palette: ["#FFB400", "#E849B9", "#6EBF26", "#F55B58", "#1478C8", "#2FD2B2"],
+    sub: aicoinSlots)
 
-  /// 经典 · 深。底换成 AICoin 夜间那张深蓝：页面底 `#0D111C`（和夜画布同色）、
-  /// 弹窗面 `#202126`、徽章底 `#303442`、分割线 `#25282E`。其余仍是青苔 · 深的值。
+  /// 经典 · 深。底是 AICoin 夜间的 `#0D111C` / `#202126` / `#303442` / `#25282E`；
+  /// 涨跌取安卓包 `sh_base_text_color_green_night` / `_red_night`（`#2F9347` / `#CC3333`），
+  /// 指标线沿用安卓默认槽位色。深色这组没在真机上量过（镜像后台点不动，切不了夜间模式）。
   public static let classicNightSeed = PaletteSeed(
     dark: true,
     ground: "#080B14", app: "#0D111C", chart: "#0D111C", raised: "#202126", raised2: "#303442",
     line: "#25282E", grid: "#20232E", hair: "#FFFFFF0A",
     ink: "#E9F2EC", ink2: "#A5B8AE", ink3: "#7B8D85",
-    up: "#4FB69C", down: "#E36159", amber: "#E0A544", accent: "#4FB69C",
-    palette: ["#E0A544", "#7D9AE8", "#4FB69C", "#E894B4", "#BDAEDC", "#7FD0FF"])
+    up: "#2F9347", down: "#CC3333", amber: "#FFB400", accent: "#4FB69C",
+    palette: ["#FFB400", "#E849B9", "#B2DF8A", "#FB9A99", "#1478C8", "#2FD2B2"],
+    sub: aicoinNightSlots)
+
+  /// AICoin 指标线的槽位色板前六格：青绿、黄、紫、蓝、绿、珊瑚。安卓包
+  /// `refs/aicoin/java/sp/aicoin_kline/core/indicator/config/L.java` 里 MA1…MA6 的默认色就是
+  /// `#2FD2B2 #FFB400 #E849B9 #1478C8 #B2DF8A #FB9A99`，MAVOL / RSI / BOLL 和 MACD 的
+  /// DIF、DEA、MACD 三条线全按这个顺序取；主图 MA(10,30,120,256) 在用户手机上占的是
+  /// 第 2、3、5、6 格。用户 iPhone 浅色截图逐像素实测：DIF `#2FD2B2`、DEA `#FFB400`、
+  /// MA30 `#E849B9` 和安卓常量逐位相同，第 5、6 格 iOS 浅色用的是压深的 `#6EBF26` / `#F55B58`
+  /// （浅绿、珊瑚压在白底上看不清），深色沿用安卓常量——深色没在真机上量过。
+  public static let aicoinSlots: [Hex] = ["#2FD2B2", "#FFB400", "#E849B9", "#1478C8", "#6EBF26", "#F55B58"]
+  public static let aicoinNightSlots: [Hex] = ["#2FD2B2", "#FFB400", "#E849B9", "#1478C8", "#B2DF8A", "#FB9A99"]
 
   /// 「浅 / 深」这两个词在代码里到处都是，指的就是出厂那一套的两版。
   public static let lightSeed = sageSeed
@@ -260,7 +283,7 @@ public enum Palette: Sendable {
       hair: t.hair,
       amberSoft: t.amber.alpha(d ? "1A" : "16"), amberLine: t.amber.alpha("55"),
       up: t.up, down: t.down,
-      palette: t.palette)
+      palette: t.palette, sub: t.sub)
   }
 
   public static func chart(dark: Bool, redUp: Bool = false) -> ChartColors {

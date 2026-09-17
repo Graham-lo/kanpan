@@ -6,13 +6,13 @@ public actor RoutedMarketFeed {
   private let hosts: BinanceHosts
   private let log: FeedLog
   private let paths: Paths
-  private let preferenceURL: URL
   private var freshHistory = false
   private let primary: BinanceREST
   private let backup: BinanceREST
   /// WS 工厂。默认就是真 `URLSessionSocketFactory`，测试里注假件。
   private let sockets: any WSSocketFactory
-  /// 行情线路策略。见 `MarketRoutePolicy`。
+  /// 行情线路。用户定的，见 `MarketRoutePolicy`：线路决定交易所（直连=币安、网关=OKX），
+  /// 这里从不自己换线。
   private var policy: MarketRoutePolicy
   /// 自己听 `marketRoutePolicyDidChange`，app 侧改完设置就不用再管了。
   private nonisolated(unsafe) var policyObserver: (any NSObjectProtocol)?
@@ -25,6 +25,9 @@ public actor RoutedMarketFeed {
   private let cache = BarCache()
   private var source: MarketSource = .binance
   private var feed: MarketFeed?
+  /// 当前这份 `feed` 是按哪家交易所建的。`source` 可能已经先一步改成新线路的交易所
+  /// （见 `setRoutePolicy`），这里记的才是真正在跑的那家。
+  private var activeSource: MarketSource?
   private var pump: Task<Void, Never>?
   private var monitor: Task<Void, Never>?
   private var selection = UUID()
@@ -33,7 +36,6 @@ public actor RoutedMarketFeed {
   private var interval: Interval = .h1
   private var snapshots = true
   private var foreground = true
-  private var recovery = MarketRecoverySchedule()
   private var announcingSwitch = false
   private var pendingHistoryError: String?
   private var historyBoundary: Int64?
@@ -49,31 +51,25 @@ public actor RoutedMarketFeed {
   /// 一个品种一发 300 根（限频权重 2），20 个合计 40 点权重，币安一分钟的配额是 2400。
   public static let prefetchLimit = 20
 
-  public init(hosts: BinanceHosts, paths: Paths = .caches(), preferenceURL: URL? = nil, log: FeedLog = .silent) {
+  public init(hosts: BinanceHosts, paths: Paths = .caches(), log: FeedLog = .silent) {
     self.hosts = hosts; self.paths = paths; self.log = log
-    self.preferenceURL = preferenceURL ?? paths.root.appendingPathComponent("market-source.json")
     let policy = MarketRoutePolicyStore.current
     self.policy = policy
+    self.source = policy.source
     self.sockets = URLSessionSocketFactory()
-    if let data = try? Data(contentsOf: self.preferenceURL), let saved = try? JSONDecoder().decode(MarketSource.self, from: data) { source = saved }
-    // 「直连」下 OKX 不是一个合法的落点：上次退到 OKX 存下来的偏好也不算数，
-    // 开机就回币安，不用等 `MarketRecoverySchedule` 排的 5/10/15 分钟。
-    if policy == .direct { source = .binance }
     primary = .upstream(.binance, hosts: hosts, log: log, policy: policy)
     backup = .upstream(.okx, hosts: hosts, log: log, policy: policy)
     observePolicy()
   }
 
   /// 测试注入：两条线路的 REST 与 socket 工厂全换成假件，整条路由就能离线跑。
-  init(hosts: BinanceHosts, paths: Paths, preferenceURL: URL? = nil, log: FeedLog = .silent,
+  init(hosts: BinanceHosts, paths: Paths, log: FeedLog = .silent,
        primary: BinanceREST, backup: BinanceREST, sockets: any WSSocketFactory,
        policy: MarketRoutePolicy) {
     self.hosts = hosts; self.paths = paths; self.log = log
-    self.preferenceURL = preferenceURL ?? paths.root.appendingPathComponent("market-source.json")
     self.policy = policy
+    self.source = policy.source
     self.sockets = sockets
-    if let data = try? Data(contentsOf: self.preferenceURL), let saved = try? JSONDecoder().decode(MarketSource.self, from: data) { source = saved }
-    if policy == .direct { source = .binance }
     self.primary = primary
     self.backup = backup
   }
@@ -90,23 +86,23 @@ public actor RoutedMarketFeed {
     if let policyObserver { NotificationCenter.default.removeObserver(policyObserver) }
   }
 
-  /// 换线路策略：转给两条线路的 transport，并且立刻把「直连」该有的样子摆正。
+  /// 换线路：转给两条线路的 transport，并且立刻切到这条线路对应的交易所。
+  ///
+  /// 不等下一次换品种：REST 和已经连着的 WebSocket 一起换。不然 REST 已经改走
+  /// 网关了，连着的直连 WS 还会一直挂到下次重连——「网关」就成了只管历史
+  /// 不管实时的半个开关。
   public func setRoutePolicy(_ policy: MarketRoutePolicy) async {
-    let changed = self.policy != policy
+    guard self.policy != policy else { return }
     self.policy = policy
+    // 先把交易所定下来再去等 transport：这是个 actor，下面两个 await 期间 `start`
+    // 可能抢先进来，它按 `source` 起步，得让它看到的已经是新线路的交易所。
+    source = policy.source
     await primary.setRoutePolicy(policy)
     await backup.setRoutePolicy(policy)
-    // 用户刚说了「我这网能直连」，那就别让他再等恢复排期——现在就回币安。
-    if policy == .direct, source == .okx, !symbol.isEmpty {
-      announceSwitch()
-      await activate(.binance)
-      return
-    }
-    // 其他改法也不等下一次换品种：当前线路原地重开一次，socket 工厂才拿得到新策略。
-    // 不然 REST 已经改走网关了，已经连着的直连 WS 还会一直挂到下次重连——
-    // 「网关」就成了只管历史不管实时的半个开关。重开顺带把旧策略留下的
-    // 判断（比如正在等网关竞速）一起清掉。
-    if changed, !symbol.isEmpty { announceSwitch(); await activate(source) }
+    // 等的这两拍里线路又被改了，或者 `start` 已经按新交易所把 feed 起好了，都不用再起一遍。
+    guard self.policy == policy, !symbol.isEmpty, activeSource != policy.source else { return }
+    announceSwitch()
+    await activate(policy.source)
   }
   public func events() -> AsyncStream<FeedUpdate> {
     let (stream, sink) = AsyncStream<FeedUpdate>.makeStream(); continuation = sink; return stream
@@ -149,7 +145,8 @@ public actor RoutedMarketFeed {
     guard request == selection, generation == route, !Task.isCancelled else { return }
     freshHistory = false
     pendingStatus = .offline
-    source = next; recovery = MarketRecoverySchedule()
+    source = next
+    activeSource = next
     let rest = next == .binance ? primary : backup
     var directHosts = hosts; directHosts.streamFallbacks = []
     let ws = BinanceWS(hosts: directHosts,
@@ -195,7 +192,7 @@ public actor RoutedMarketFeed {
         startMonitoring(immediate: true)
         return // Internal retries stay quiet; report only when no complete source is available.
       }
-      freshHistory = true; saveSourceIfReady()
+      freshHistory = true; settleRoute()
       if source == .binance { historyRetry = .distantPast; historyBoundary = nil }
       continuation?.yield(update)
       return
@@ -214,23 +211,18 @@ public actor RoutedMarketFeed {
       continuation?.yield(FeedUpdate(selection: selection, event: .status(pendingStatus)))
     }
     continuation?.yield(update)
-    saveSourceIfReady()
+    settleRoute()
   }
-  private var savedSource: MarketSource?
-  private func saveSourceIfReady() {
+  /// 新线路的历史和实时都到齐了：收掉「切换中」的提示。
+  ///
+  /// 不落盘。线路是用户在设置里定的（`Prefs.routePolicy`），开机按它起步就行，
+  /// 没有「上次落在哪家交易所」这回事要记。
+  private func settleRoute() {
     guard freshHistory, pendingStatus == .live, publishedRoute == route else { return }
-    // 「直连」下 OKX 只可能是策略切换途中的残留，别把它写成下次开机的起点。
-    guard !(policy == .direct && source == .okx) else { return }
     if announcingSwitch {
       announcingSwitch = false
       continuation?.yield(FeedUpdate(selection: selection, event: .routing(.switched)))
     }
-    guard savedSource != source else { return }
-    do {
-      try FileManager.default.createDirectory(at: preferenceURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-      try JSONEncoder().encode(source).write(to: preferenceURL, options: .atomic)
-      savedSource = source
-    } catch { log("行情线路偏好未保存：\(error)") }
   }
   private func healthy(_ candidate: MarketSource, symbol: String, interval: Interval,
                        requireStream: Bool = true) async -> Bool {
@@ -286,11 +278,10 @@ public actor RoutedMarketFeed {
       if !immediate { do { try await Task.sleep(for: .seconds(20)) } catch { return } }
       while !Task.isCancelled {
         await self.checkSource(selection: request)
-        do { let seconds = await self.monitorDelay(); try await Task.sleep(for: .seconds(seconds)) } catch { return }
+        do { try await Task.sleep(for: .seconds(20)) } catch { return }
       }
     }
   }
-  private func monitorDelay() -> Double { source == .okx && recovery.confirming ? 10 : 20 }
   private func announceSwitch() {
     guard !announcingSwitch else { return }
     announcingSwitch = true
@@ -301,53 +292,19 @@ public actor RoutedMarketFeed {
     continuation?.yield(FeedUpdate(selection: request, event: .routing(.idle)))
     continuation?.yield(FeedUpdate(selection: request, event: .historyError("暂时无法连接，点此重试")))
   }
+  /// 定时巡检。线路是用户定的，这里**不换线**：
+  /// 活着的 feed 什么都不用做；历史真的报错了就探一次当前线路——探通了就在**同一条线路**上
+  /// 重拉一遍（首屏那一发可能只是撞上了网关的一次 busy），探不通照实说「点此重试」，
+  /// 无论哪种都不会悄悄换成另一家交易所。OKX 的 24h 行情不在 WS 里，顺手补一份。
   private func checkSource(selection request: UUID) async {
     guard request == selection, foreground, !Task.isCancelled else { return }
-    // A healthy active Binance feed already proves connectivity; avoid duplicate startup probes.
-    if source == .binance, pendingStatus == .live, pendingHistoryError == nil, Date() >= historyRetry { return }
     let sym = symbol, iv = interval, chosen = source
-    // Source choice survives navigation. Healthy OKX never waits for a Binance probe.
-    if source == .okx, pendingStatus == .live, pendingHistoryError == nil, !recovery.isDue(at: Date()) {
-      await refreshBackupTicker(symbol: sym, selection: request)
-      return
-    }
-    let primaryReady = Date() >= historyRetry ? await healthy(.binance, symbol: sym, interval: iv) : false
+    if chosen == .okx { await refreshBackupTicker(symbol: sym, selection: request) }
+    guard request == selection, foreground, !Task.isCancelled, pendingHistoryError != nil else { return }
+    // 刚报错那 60 秒内不去探：feed 自己还在重试，探了也是重复打同一条线。
+    let ready = Date() >= historyRetry ? await healthy(chosen, symbol: sym, interval: iv) : false
     guard request == selection, foreground, !Task.isCancelled, chosen == source else { return }
-    if source == .binance {
-      // The active Binance feed already made the full request and received a
-      // real history error. Do not make the user wait for a second OKX probe:
-      // activating OKX starts its REST and WS checks concurrently and only
-      // publishes the source after a valid series arrives. A standalone
-      // health check is still kept for WS-only failures where REST has not
-      // conclusively failed yet.
-      var fallbackReady = false
-      // 「直连」是用户按下的：币安探不通就照实说「点此重试」，不许偷偷换成 OKX。
-      if policy == .direct {
-        if !primaryReady, pendingHistoryError != nil { unavailable(request) }
-        return
-      }
-      if !primaryReady, !hosts.oiProxies.isEmpty {
-        fallbackReady = pendingHistoryError != nil
-          ? true
-          : await healthy(.okx, symbol: sym, interval: iv)
-      }
-      if fallbackReady {
-        guard request == selection, foreground, !Task.isCancelled else { return }
-        if pendingHistoryError == nil, pendingStatus == .live { return }
-        announceSwitch()
-        await activate(.okx)
-      } else if !primaryReady, pendingHistoryError != nil {
-        unavailable(request)
-      }
-    } else {
-      let recovered = recovery.record(healthy: primaryReady, at: Date())
-      // A second complete REST + live-frame success confirms recovery, in the background.
-      if primaryReady && (pendingHistoryError != nil || recovered) { await activate(.binance) }
-      else {
-        if pendingHistoryError != nil { unavailable(request) }
-        await refreshBackupTicker(symbol: sym, selection: request)
-      }
-    }
+    if ready { await activate(chosen) } else { unavailable(request) }
   }
   private func refreshBackupTicker(symbol: String, selection request: UUID) async {
     if let ticker = try? await backup.ticker24h(symbol: symbol), request == selection, source == .okx, !Task.isCancelled {
@@ -468,10 +425,7 @@ public actor RoutedMarketFeed {
 
   public func networkChanged(online: Bool) async {
     await feed?.networkChanged(online: online)
-    if online {
-      recovery.networkRestored(at: Date())
-      startMonitoring()
-    } else { monitor?.cancel() }
+    if online { startMonitoring() } else { monitor?.cancel() }
   }
   public func enterBackground() async { foreground = false; monitor?.cancel(); await feed?.enterBackground() }
   public func enterForeground() async { foreground = true; await feed?.enterForeground(); startMonitoring() }

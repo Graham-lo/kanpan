@@ -27,14 +27,15 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test data-test diag-test diag-ios-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release
+.PHONY: help core-test network-test data-test diag-test diag-ios-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
+	@echo "network-test 跑 KanpanNetwork 单测（HTTP/WS 接口、币安客户端、线路与网关竞速）"
 	@echo "data-test    跑 KanpanData 单测（全离线：假 transport / 假 socket / 假时钟）"
 	@echo "chart-build  编 KanpanChart（UIKit，必须走 xcodebuild）"
 	@echo "chart-test   跑 KanpanChart 单测（需要一台模拟器）"
-	@echo "test         core-test + data-test + chart-build"
+	@echo "test         core-test + network-test + data-test + app-logic-test + chart-test"
 	@echo "strict       两个包都按 Swift 6 严格并发 + 警告即错误编一遍（A2.13）"
 	@echo "evidence     出 M3 全套取证产物到 docs/acceptance/M3/（A3.1–A3.10）"
 	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库）"
@@ -78,6 +79,14 @@ endif
 
 core-test:
 	cd $(CORE) && swift test $(CORE_TEST_FLAGS)
+
+# ---------------------------------------------------------------- 网络层
+# 怎么连到交易所：HTTP / WS 最小接口、币安 REST / WS 客户端与限流、行情线路（直连 / 网关）、
+# 网关竞速与冷却。KanpanData 依赖它并整包 @_exported 转出去，app 照旧只 import KanpanData。
+NETWORK := KanpanNetwork
+
+network-test:
+	cd $(NETWORK) && swift test $(CORE_TEST_FLAGS)
 
 # ---------------------------------------------------------------- A2 Data
 DATA := KanpanData
@@ -125,11 +134,12 @@ diag-ios-test:
 
 app-logic-test: symbols-test settings-test diag-test
 
-test: core-test data-test app-logic-test chart-test
+test: core-test network-test data-test app-logic-test chart-test
 
 # A2.13：零警告零错误。警告即错误，谁也别想蒙混过去。
 strict:
 	cd $(CORE) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+	cd $(NETWORK) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
 	cd $(DATA) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
 	cd $(CHART) && KANPAN_STRICT=1 xcodebuild -scheme KanpanChart \
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build

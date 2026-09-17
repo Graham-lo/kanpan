@@ -11,7 +11,7 @@
 
 ## 2. 当前界面（2026-09-17）
 
-- 皮肤：青苔·冷（默认）/ 陶土·暖 / 经典（2026-09-17 用户点名加的：青苔原样、底换成 AICoin 白 `#F7F9FF` / 夜 `#0D111C`，其他令牌一个不动），各有浅深两版，`ThemeSkin` + `ThemeChoice`；种子色在 `KanpanCore/Sources/KanpanCore/Style/Palette.swift`。
+- 皮肤：青苔·冷（默认）/ 陶土·暖 / 经典（2026-09-17 用户点名加的：青苔的文字 / 强调色原样、底换成 AICoin 白 `#F7F9FF` / 夜 `#0D111C`；同日又按用户要求把涨跌色、MA 线色和副图线色 `sub` 全换成 AICoin iPhone 端实测值——蜡烛 `#36B257` / `#E64552`，副图槽位序 `#2FD2B2 #FFB400 #E849B9 #1478C8 …`；深色版取安卓包常量，没在真机量过），各有浅深两版，`ThemeSkin` + `ThemeChoice`；种子色在 `KanpanCore/Sources/KanpanCore/Style/Palette.swift`。
 - 底栏「复盘｜指标｜自选｜设置」（`Kanpan/Kanpan/Main/BottomBar.swift`）。无横屏格、无风格格。
 - 行情页顶栏：品种徽章 + 品种名（点开半屏快捷自选 / 搜索）+ 状态点 + 自选星；最新价 22pt medium + 涨跌药丸 11.5pt，下一行成交额 / 振幅；不显示 24h 高低（`Main/TopBar.swift`）。
 - 自选页「琉璃」版（`Symbols/FavoritesView.swift`，提交 `a2cbb0d`，`fda4e1c` 起去掉玻璃纸改为融合）：浅色光斑底（底部叠同色渐变保可读）、深色素底不画光斑（2026-09-17 用户要求去掉）、行直接长在底上只留发丝线、衬线标题 22pt 与正放的数量印章、涨跌比例条、品种徽章 33pt、价格 15.5pt、涨跌药丸；迷你走势图默认关闭，「…」菜单里 `favorites.sparkline` 可打开（本机 AppStorage）；排序与涨跌幅口径在 `favorites.sort` 弹层里；没有领涨 / 领跌行。
@@ -22,6 +22,7 @@
 ## 3. 行情、账号、复盘（技术结论，沿用 09-15/16 的验证）
 
 - 线路：设置里「行情线路」两档，**出厂默认直连，没有自动切换**（2026-09-17 定）。直连 = 只走币安自己的域名（REST + WS），探不通照实说「点此重试」，绝不切 OKX；网关 = 只走两台 VPS 网关（主 `kanpan.107-174-172-10.sslip.io`，备 `kanpan.96-44-162-222.sslip.io:8443`）供 OKX 行情，两台之间竞速、失败的歇 10 秒（听 `Retry-After`）。选择存在 `Prefs.routePolicy`：登录了随账号同步（`PersonalSyncCodec.fields`），没登录记在本机访客档案；`PrefsStore` 把它镜像到 `MarketRoutePolicyStore`（`UserDefaults` 键 `market.routePolicy`，测试档案下用 `kanpan.tests.*` 套件），`RoutedMarketFeed` 听通知立刻换线（REST 与已连的 WS 一起）。旧的 `market-source.json`、`MarketRecoverySchedule`、直连冷却/对冲都已删除。
+- 网络层单独成包 `KanpanNetwork`（2026-09-17）：HTTP / WS 接口、币安 REST / WS 客户端、限流、线路策略与网关竞速都在这里，`KanpanData` 依赖并 `@_exported` 转出，app 与 pbxproj 不用改。改线路逻辑只碰这一包；`make network-test`。`BinanceREST.upstream` 不传 policy 就读用户当前线路，OI / 目录 / 报价簿客户端都跟设置走。网络这块之前做过速度优化，改完必须拿真机实测对比、不许变慢。
 - 冷启动 / 切换靠多品种快照、后台加深、自选预热做到不等网络；登录用户的自选表要等账号恢复后再判首屏（09-16 修过「冷启动进行情页」「自选一行行慢慢加载」）。
 - 账号：用户名 + 密码，Keychain 会话，设备管理、改密、注销；服务端 `Backend/kanpan-api`（Rust，主 VPS `/opt/kanpan-api`，API 8794，PostgreSQL loopback 55434，RLS 隔离，同机每日备份 30 天）。邮箱注册停掉了。
 - 复盘：`KanpanReview` 接现有图表，记一笔 / 列表 / 待办 / 统计 / 详情 / 逐根重温 / 私有 OHLC 找相似；记录固定行情源；公开相似索引只是首批种子。
@@ -31,7 +32,7 @@
 ## 4. 用户稳定偏好
 
 - 极致好看优先，不要工程风 / 后台风；元素尺寸克制，大字号与粗字重会被判「廉价」；装饰元素正放不倾斜；整屏是一块连续材料，不要硬拼接。
-- 配色不自创色板：青苔 / 陶土两套是定版，第三套「经典」只是青苔换 AICoin 白底，是用户自己点名要的；图表底座不是设计对象。
+- 配色不自创色板：青苔 / 陶土两套是定版，第三套「经典」是青苔换 AICoin 白底加 AICoin 的涨跌 / K 线 / 指标线色，是用户自己点名要的；图表底座不是设计对象。
 - 合并入口不能丢功能；发现残留问题直接修不请示；面板选完即收起。
 - 界面不出现「行情实时」之类状态字段，不堆解释文案，能自动做的不弹窗。
 - 验证只跑受影响的一两条真机 UI 用例并开超时；视觉改动真机看一眼即可。真机 iPhone 16 Pro 常连在 Mac 上。

@@ -85,11 +85,16 @@ class KanpanUICase: XCTestCase {
   static let short: TimeInterval = 8
   static let long: TimeInterval = 30
 
+  /// 子类要给 app 额外的启动环境（比如一份自己的持久化档案）就覆写这个；
+  /// 默认什么都不加，Prefs 只留在内存里。
+  var extraLaunchEnvironment: [String: String] { [:] }
+
   override func setUp() async throws {
     continueAfterFailure = false
     app = XCUIApplication()
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
+    for (key, value) in extraLaunchEnvironment { app.launchEnvironment[key] = value }
     app.launch()
     // 主界面就是第一帧，没有启动页也没有弹窗（X1）；顶栏出来就算起来了。
     XCTAssertTrue(

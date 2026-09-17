@@ -120,7 +120,7 @@ extension ChartRenderer {
   ) {
     guard let v = displayed(key) else { return }
     let t = state.colors
-    let pal = t.palette
+    let pal = t.sub
     let ext = subExtent(key, lo: lo, hi: hi)
     let guides = key == .rsi ? [state.rsiLower, state.rsiUpper] : key.guides
     if key == .rsi {
@@ -162,7 +162,7 @@ extension ChartRenderer {
       ctx.fill(CGRect(x: snap(xc - bodyW / 2, scale: s), y: min(y, zero), width: bodyW, height: abs(zero - y)))
     }
     if let v = displayed(.vol) {
-      let pal = t.palette
+      let pal = t.sub
       for (k, a) in v.lines.enumerated() { poly(ctx, box, ext, L, a, lo, hi, pal[k % pal.count], width: 2 / s) }
     }
   }
@@ -209,7 +209,7 @@ extension ChartRenderer {
       }
     }
     ctx.hairLine(from: 0, to: L.plotW, y: zero, scale: CGFloat(s), color: Paint.cg(t.grid))
-    let pal = t.palette
+    let pal = t.sub
     poly(ctx, box, e, L, v.lines[0], lo, hi, pal[0], width: 2 / s)
     poly(ctx, box, e, L, v.lines[1], lo, hi, pal[1], width: 2 / s)
   }
@@ -323,7 +323,7 @@ extension ChartRenderer {
   private func subLegend(_ ctx: CGContext, pane: Pane, key: IndicatorID, plotW: Double) {
     let t = state.colors
     let i = legendIndex
-    let pal = t.palette
+    let pal = t.sub
     var x = 8.0
     var y = pane.y + 8
     let put = { (text: String, color: Hex) in

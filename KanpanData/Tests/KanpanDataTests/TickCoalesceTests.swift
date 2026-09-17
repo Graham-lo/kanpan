@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetworkTestSupport
 import KanpanCore
 
 /// 合帧闸门：同一根上的 kline 报文攒着发，开新根立刻发。

@@ -34,9 +34,13 @@ struct SkinPaletteTests {
     #expect(Palette.contrast(colors.text, colors.bg) >= 3, "轴文字在画布上看不清")
     #expect(Palette.contrast(colors.ink, colors.bg) >= 4.5, "画布上的主文字看不清")
     // 涨跌两色要当数字读（最新价、涨跌幅），按文字收。
-    for surface in [seed.app, seed.raised] {
-      for ink in [colors.up, colors.down] {
-        #expect(Palette.contrast(ink, surface) >= 4.5, "\(ink) 落在 \(surface) 上看不清")
+    // 「经典」照搬 AICoin 真机实测的涨跌色（#36B257 / #E64552，夜 #2F9347 / #CC3333），
+    // 白底上只有 2.6–3.9:1，本来就够不上这条；它的目标是「跟 AICoin 一样」，不是合规，跳过。
+    if !Palette.isClassic(seed) {
+      for surface in [seed.app, seed.raised] {
+        for ink in [colors.up, colors.down] {
+          #expect(Palette.contrast(ink, surface) >= 4.5, "\(ink) 落在 \(surface) 上看不清")
+        }
       }
     }
   }
@@ -44,8 +48,11 @@ struct SkinPaletteTests {
   @Test("图上的线彼此分得开也看得见", arguments: seeds)
   func chartLines(_ seed: PaletteSeed) {
     let colors = Palette.chart(seed)
-    for line in colors.palette + [colors.amber] {
-      #expect(Palette.contrast(line, colors.bg) >= 3, "\(line) 画在图上太淡")
+    // 「经典」的线色是 AICoin 真机上量出来的（#FFB400 在白底上只有 1.8:1），照抄不改，跳过淡不淡。
+    if !Palette.isClassic(seed) {
+      for line in colors.palette + colors.sub + [colors.amber] {
+        #expect(Palette.contrast(line, colors.bg) >= 3, "\(line) 画在图上太淡")
+      }
     }
     // 六支指标色两两之间也得分得开，否则同屏几根均线看着是一根。
     // 这里比的是色差而不是明暗对比：同一亮度的蓝和紫对比度只有 1.0，眼睛却分得清清楚楚，
@@ -81,18 +88,34 @@ struct SkinPaletteTests {
   }
 
   /// 经典只是青苔换了底：底、面、线是 AICoin 的白 / 深蓝，其余每一个令牌都和青苔相同。
-  @Test("经典只换底，不换字和涨跌")
-  func classicOnlySwapsBackgrounds() {
+  @Test("经典：字和强调色照青苔，底和 K 线色照 AICoin")
+  func classicKeepsInkTakesAICoinKLine() {
     for (classic, sage) in [(Palette.classicSeed, Palette.sageSeed),
                             (Palette.classicNightSeed, Palette.sageNightSeed)] {
       #expect(classic.dark == sage.dark)
       #expect(classic.ink == sage.ink && classic.ink2 == sage.ink2 && classic.ink3 == sage.ink3)
-      #expect(classic.up == sage.up && classic.down == sage.down)
-      #expect(classic.amber == sage.amber && classic.accent == sage.accent)
-      #expect(classic.palette == sage.palette && classic.hair == sage.hair)
+      #expect(classic.accent == sage.accent && classic.hair == sage.hair)
       #expect(classic.app != sage.app && classic.raised2 != sage.raised2)
+      // 涨跌、均线、副图线全都不再是青苔的
+      #expect(classic.up != sage.up && classic.down != sage.down)
+      #expect(classic.palette != sage.palette)
+      #expect(classic.sub != classic.palette, "副图线按 AICoin 槽位色板，和主图均线不是一个顺序")
+      #expect(classic.palette.count == 6 && classic.sub.count == 6)
+      // 主图 MA10 / MA30 = 黄 / 紫；OI 青绿
+      #expect(classic.palette[0] == "#FFB400" && classic.palette[1] == "#E849B9")
+      #expect(classic.palette[5] == "#2FD2B2")
+      // 副图 DIF / DEA = 青绿 / 黄
+      #expect(classic.sub[0] == "#2FD2B2" && classic.sub[1] == "#FFB400")
     }
+    // 浅色蜡烛是用户 iPhone 截图实测的众数；MA120 / MA256 浅色压深
+    #expect(Palette.classicSeed.up == "#36B257" && Palette.classicSeed.down == "#E64552")
+    #expect(Palette.classicSeed.palette[2] == "#6EBF26" && Palette.classicSeed.palette[3] == "#F55B58")
+    #expect(Palette.classicNightSeed.up == "#2F9347" && Palette.classicNightSeed.down == "#CC3333")
     #expect(Palette.classicSeed.app == "#F7F9FF" && Palette.classicSeed.raised == "#FFFFFF")
     #expect(Palette.classicNightSeed.app == Palette.nightCanvas.bg, "夜里图里图外同一块深蓝")
+    // 青苔、陶土没给副图色板，就跟主图同一组
+    for seed in [Palette.sageSeed, Palette.sageNightSeed, Palette.terraSeed, Palette.terraNightSeed] {
+      #expect(seed.sub == seed.palette)
+    }
   }
 }

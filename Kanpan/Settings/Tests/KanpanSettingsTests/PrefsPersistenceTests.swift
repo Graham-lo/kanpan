@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import KanpanCore
+import KanpanData
 @testable import KanpanSettings
 
 /// A6.12：所有设置项持久化，键 `kanpan.prefs.v2`。
@@ -25,6 +26,7 @@ struct PrefsPersistenceTests {
     p.params = [.ma: [10, 30, 120], .macd: [8, 21, 5], .atr: [7]]
     p.subHeights = [.atr: .large, .vol: .small]
     p.apiHost = "fapi.example.com"
+    p.routePolicy = .gateway
     p.candleKind = .heikin
     p.gridChoice = .off
     p.bodyChoice = .hollowUp

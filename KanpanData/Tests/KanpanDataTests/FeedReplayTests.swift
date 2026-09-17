@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetworkTestSupport
 import KanpanCore
 
 // 录制报文的回放：把 3000 条真报文按顺序喂给 `BinanceWS` → `MarketFeed`，

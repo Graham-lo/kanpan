@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetworkTestSupport
 import KanpanCore
 
 @Suite("报价快照与整屏补价")

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetworkTestSupport
 import KanpanCore
 
 /// 缓存这一层：预热的错误分级、快照目录的进程内索引、不 touch 的读。

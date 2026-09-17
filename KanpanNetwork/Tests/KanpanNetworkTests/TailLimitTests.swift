@@ -1,6 +1,7 @@
 import Foundation
 import Testing
-@testable import KanpanData
+@testable import KanpanNetwork
+import KanpanNetworkTestSupport
 import KanpanCore
 
 @Suite("补缺按需：一根就别拉一千五")

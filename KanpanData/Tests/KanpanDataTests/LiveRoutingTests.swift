@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetworkTestSupport
 import KanpanCore
 
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["KANPAN_LIVE_ROUTING"] == "1"))
@@ -10,7 +11,10 @@ struct LiveRoutingTests {
     let path = Paths(root: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     defer { try? FileManager.default.removeItem(at: path.root) }
     try FileManager.default.createDirectory(at: path.root, withIntermediateDirectories: true)
-    try JSONEncoder().encode(MarketSource.okx).write(to: path.root.appendingPathComponent("market-source.json"))
+    // 线路是用户定的：网关 = OKX。跑完还原，别把这台机器的线路改掉。
+    let before = MarketRoutePolicyStore.current
+    MarketRoutePolicyStore.set(.gateway)
+    defer { MarketRoutePolicyStore.set(before) }
     let feed = RoutedMarketFeed(hosts: hosts, paths: path, log: .stdout)
     let events = await feed.events()
     await feed.start(symbol: "BTCUSDT", interval: .m1)
@@ -33,8 +37,6 @@ struct LiveRoutingTests {
     }
     await feed.stop()
     #expect(realPush && prepended)
-    let preference = try JSONDecoder().decode(MarketSource.self, from: Data(contentsOf: path.root.appendingPathComponent("market-source.json")))
-    #expect(preference == .okx)
     let reopened = RoutedMarketFeed(hosts: hosts, paths: path, log: .stdout)
     let restored = await reopened.events()
     await reopened.start(symbol: "BTCUSDT", interval: .m1)

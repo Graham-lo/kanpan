@@ -46,6 +46,8 @@ final class MarketModel {
   private(set) var interval: Interval
 
   private var feed: RoutedMarketFeed
+  // `deinit` 不在主 actor 上，注销通知得能从那儿读到它。
+  nonisolated(unsafe) private var policyObserver: (any NSObjectProtocol)?
   /// 品种表。域名可以改（A6.10），而品种页握着的是一条早就交出去的 `@Sendable`
   /// 闭包——中间夹这个盒子，换域名时换掉里面那份，闭包不用重发。
   nonisolated private let catalog: CatalogBox
@@ -64,41 +66,42 @@ final class MarketModel {
     self.interval = interval
     self.hosts = hosts
     self.info = MarketModel.placeholder(symbol)
-    let initialSource = Self.preferredSource()
+    // 线路是用户定的（`Prefs.routePolicy` 镜像到 `MarketRoutePolicyStore`），
+    // 交易所跟着线路走：直连=币安、网关=OKX。品种页也从同一家起步，不用等一次失败再换。
+    let initialSource = MarketRoutePolicyStore.current.source
     self.source = initialSource
     let binanceRest = BinanceREST.upstream(.binance, hosts: hosts, log: MarketModel.log)
     let rest = BinanceREST.upstream(initialSource, hosts: hosts, log: MarketModel.log)
     self.oiSource = OISource(hosts: hosts, rest: binanceRest, store: OIStore(paths: .caches()))
-    self.feed = RoutedMarketFeed(hosts: hosts, preferenceURL: Self.sourcePreferenceURL, log: MarketModel.log)
+    self.feed = RoutedMarketFeed(hosts: hosts, log: MarketModel.log)
     self.catalog = CatalogBox(SymbolCatalog(rest: rest, paths: Self.catalogPaths(for: initialSource)))
+    // 换线路时 `RoutedMarketFeed` 自己会切；历史 OI 的客户端是这里建的，也得跟着换，
+    // 不然设置改成「网关」之后 OI 还在直连币安。
+    policyObserver = NotificationCenter.default.addObserver(
+      forName: .marketRoutePolicyDidChange, object: nil, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated { self?.routePolicyDidChange() }
+      }
   }
 
-  /// 排查「图有数据但一动不动」的时候需要看得见连了没有、推没推进来。
-  /// 默认静音；`KANPAN_LOG=1` 打开（Xcode Scheme 的环境变量，或 `simctl launch` 的
-  /// `SIMCTL_CHILD_KANPAN_LOG=1`）。
-  private static var sourcePreferenceURL: URL {
-    var root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("kanpan-market")
-    #if DEBUG
-    if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" {
-      root = root.appendingPathComponent("tests/" + (ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"] ?? "normal"))
-    }
-    #endif
-    return root.appendingPathComponent("source.json")
+  deinit {
+    if let policyObserver { NotificationCenter.default.removeObserver(policyObserver) }
   }
 
-  /// `RoutedMarketFeed` reads the same preference before it starts probing. The
-  /// favorites page must use that source immediately too; otherwise it briefly
-  /// creates a Binance catalog and waits for a failed request before switching.
-  private static func preferredSource() -> MarketSource {
-    guard let data = try? Data(contentsOf: sourcePreferenceURL),
-          let value = try? JSONDecoder().decode(MarketSource.self, from: data) else { return .binance }
-    return value
+  private func routePolicyDidChange() {
+    oiTask?.cancel()
+    oiSource = OISource(hosts: hosts, rest: .upstream(.binance, hosts: hosts, log: MarketModel.log),
+                        store: OIStore(paths: .caches()))
+    oi = nil; oiRegion = nil
+    if let lastView { loadOI(view: lastView, refresh: true) }
   }
 
   private static func catalogPaths(for source: MarketSource) -> Paths {
     source == .binance ? .caches() : Paths(root: Paths.caches().root.appendingPathComponent("sources/" + source.rawValue))
   }
 
+  /// 排查「图有数据但一动不动」的时候需要看得见连了没有、推没推进来。
+  /// 默认静音；`KANPAN_LOG=1` 打开（Xcode Scheme 的环境变量，或 `simctl launch` 的
+  /// `SIMCTL_CHILD_KANPAN_LOG=1`）。
   private static let log: FeedLog =
     ProcessInfo.processInfo.environment["KANPAN_LOG"] == "1" ? FeedLog { line in
       print(line)
@@ -186,7 +189,7 @@ final class MarketModel {
     let rest = BinanceREST.upstream(source, hosts: next, log: MarketModel.log)
     oiSource = OISource(hosts: next, rest: binanceRest, store: OIStore(paths: .caches()))
     oi = nil; oiRegion = nil
-    feed = RoutedMarketFeed(hosts: next, preferenceURL: Self.sourcePreferenceURL, log: MarketModel.log)
+    feed = RoutedMarketFeed(hosts: next, log: MarketModel.log)
     let box = catalog
     Task { await box.replace(SymbolCatalog(rest: rest, paths: Self.catalogPaths(for: source))) }
     status = .offline

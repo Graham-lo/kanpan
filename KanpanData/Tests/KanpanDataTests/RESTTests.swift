@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetworkTestSupport
 import KanpanCore
 
 @Suite("REST 与 DTO")
@@ -102,16 +103,6 @@ struct RESTTests {
     // 请求串固定字典序，日志可比对。
     let q = try #require(await server.urls().first?.query)
     #expect(q == "interval=1h&limit=1500&symbol=BTCUSDT")
-  }
-
-  @Test("kline 行数字可以是字符串也可以是数字")
-  func klineRowDecode() throws {
-    let a = Data(#"[[1700000000000,"1.5","2.5","0.5","2.0","10.0",1700003599999,"1",1,"1","1","0"]]"#.utf8)
-    let b = Data(#"[[1700000000000,1.5,2.5,0.5,2.0,10.0,1700003599999,1,1,1,1,0]]"#.utf8)
-    let ra = try JSONDecoder().decode([KlineRow].self, from: a)
-    let rb = try JSONDecoder().decode([KlineRow].self, from: b)
-    #expect(ra[0].bar == rb[0].bar)
-    #expect(ra[0].bar == Bar(openTime: 1700000000000, open: 1.5, high: 2.5, low: 0.5, close: 2.0, volume: 10.0))
   }
 
   // ---------------------------------------------------------------- A2.3

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetworkTestSupport
 import KanpanCore
 
 /// 快照的字节格式是**持久化格式**：手机上装着的那一版写下的文件，升级之后必须还读得出来。

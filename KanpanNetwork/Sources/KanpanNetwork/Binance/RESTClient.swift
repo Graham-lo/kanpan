@@ -154,7 +154,7 @@ public actor BinanceREST {
   }
 
   /// Reconnects can span several pages; never treat the first 1500 bars as the whole gap.
-  func contiguousTail(symbol: String, interval: Interval, from: Int64) async throws -> [Bar] {
+  public func contiguousTail(symbol: String, interval: Interval, from: Int64) async throws -> [Bar] {
     var cursor = from
     var result: [Bar] = []
     let now = Int64(Date().timeIntervalSince1970 * 1000)

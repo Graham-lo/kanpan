@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import KanpanCore
+import KanpanData
 @testable import KanpanSettings
 
 /// 默认值一律以原型为准：`prototype/src/chart.js` 358–369 与 `app.js` 的 `S` 初始化。
@@ -23,6 +24,7 @@ struct PrefsDefaultsTests {
     #expect(!p.countdown)                             // §10.4 默认开
     #expect(p.keepAwake)                             // §10.4 默认开
     #expect(p.launchSnapshot)                        // §4.3 默认开
+    #expect(p.routePolicy == .direct)                // 行情线路出厂直连，没有「自动」
   }
 
   @Test("「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效")

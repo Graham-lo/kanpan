@@ -62,6 +62,7 @@ struct StyleTableTests {
     #expect(c.up == seed.up && c.down == seed.down)
     #expect(c.hair == seed.hair)
     #expect(c.palette == seed.palette)
+    #expect(c.sub == seed.sub)
     #expect(c.band == seed.palette[4] && c.oi == seed.palette[5])
     #expect(c.panel == seed.app)
     #expect(c.chip == (seed.dark ? seed.ground : seed.app))

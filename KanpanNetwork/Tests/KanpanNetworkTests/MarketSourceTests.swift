@@ -1,6 +1,7 @@
 import Foundation
 import Testing
-@testable import KanpanData
+@testable import KanpanNetwork
+import KanpanNetworkTestSupport
 
 @Suite("行情来源隔离") struct MarketSourceTests {
   let url = URL(string: "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=3")!
@@ -13,14 +14,6 @@ import Testing
       calls += 1; hosts.append(url.host!)
       if calls == 1 { throw URLError(failure) }
       return json("[]")
-    }
-  }
-  actor TimeoutThenGateway: HTTPTransport {
-    var hosts: [String] = []
-    func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
-      hosts.append(url.host!)
-      if hosts.count == 1 { throw URLError(.timedOut) }
-      return json(#"{"source":"binance","symbol":"BTCUSDT","interval":"1m","bars":[]}"#)
     }
   }
   actor RacingGateways: HTTPTransport {
@@ -38,30 +31,24 @@ import Testing
     _ = try await transport.get(url, timeout: 10)
     #expect(await network.hosts == ["fapi.binance.com", "fapi.binance.com"])
   }
-  @Test func timeoutEntersCooldownAndDoesNotRepeatDirectAttempt() async throws {
+  /// 直连是用户定的：超时也不记冷却、也不退网关，下一笔照样直连。
+  @Test func timeoutDoesNotCoolDownDirectRoute() async throws {
     let network = CancelFirst(.timedOut)
-    let transport = MarketRESTTransport(source: .binance, gateways: [], transport: network)
+    let transport = MarketRESTTransport(source: .binance, gateways: ["gateway.test"], transport: network)
     await #expect(throws: (any Error).self) { try await transport.get(url, timeout: 10) }
     let next = URL(string: "https://fapi.binance.com/fapi/v1/klines?symbol=ETHUSDT&interval=1m&limit=3")!
-    await #expect(throws: (any Error).self) { try await transport.get(next, timeout: 10) }
-    #expect(await network.hosts == ["fapi.binance.com"])
+    _ = try await transport.get(next, timeout: 10)
+    #expect(await network.hosts == ["fapi.binance.com", "fapi.binance.com"])
   }
-  @Test func timeoutFallsBackAndNextRequestReusesGateway() async throws {
-    let network = TimeoutThenGateway()
-    let transport = MarketRESTTransport(source: .binance, gateways: ["gateway.test"], transport: network)
-    _ = try await transport.get(url, timeout: 10)
-    _ = try await transport.get(url, timeout: 10)
-    #expect(await network.hosts == ["fapi.binance.com", "gateway.test", "gateway.test"])
-  }
-  @Test func blockedBinanceUsesOnlyBinanceGateway() async throws {
+  @Test func gatewayRouteAsksBinanceGatewayWithSource() async throws {
     let server = FakeServer { url in
       if url.host == "fapi.binance.com" { return json("{}", status: 451) }
       return json(#"{"source":"binance","symbol":"BTCUSDT","interval":"1m","bars":[]}"#)
     }
-    let transport = MarketRESTTransport(source: .binance, gateways: ["gateway.test"], transport: FakeTransport(server))
+    let transport = MarketRESTTransport(source: .binance, gateways: ["gateway.test"], transport: FakeTransport(server), policy: .gateway)
     _ = try await transport.get(url, timeout: 10)
     let urls = await server.urls()
-    #expect(urls.count == 2)
+    #expect(urls.count == 1)
     #expect(urls.last?.query?.contains("source=binance") == true)
   }
   @Test func rejectsWrongSourceAndRange() async throws {

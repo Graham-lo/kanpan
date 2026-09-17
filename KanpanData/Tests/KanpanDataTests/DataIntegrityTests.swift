@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetworkTestSupport
 import KanpanCore
 
 @Suite("Data identity, snapshots and duplicate delivery")
@@ -58,20 +59,6 @@ struct DataIntegrityTests {
     #expect(first == .updated && second == .updated && duplicate == .ignored)
     #expect(composer.series.volume.last == 1005)
   }
-  @Test func invalidOHLCVIsRejectedBeforeIndicators() throws {
-    let bad = Data("[[60000,\"100\",\"99\",\"90\",\"105\",\"1\",119999]]".utf8)
-    #expect(throws: FeedError.self) { try JSONDecoder().decode([KlineRow].self, from: bad) }
-  }
-
-  @Test func decoderRetainsExchangeClock() throws {
-    let rest = try JSONDecoder().decode(Ticker24hDTO.self, from: Data(#"{"symbol":"BTCUSDT","lastPrice":"105","priceChangePercent":"1","highPrice":"110","lowPrice":"90","quoteVolume":"1000","closeTime":2000,"lastId":30}"#.utf8)).ticker
-    let ws = try JSONDecoder().decode(StreamPayload.self, from: Data(#"{"e":"24hrTicker","s":"BTCUSDT","c":"105","P":"1","h":"110","l":"90","q":"1000","C":2000,"L":30}"#.utf8))
-    guard case .ticker(let ticker) = ws else { Issue.record("Expected ticker"); return }
-    #expect(ticker.timeMs == rest.timeMs)
-    #expect(ticker.lastTradeID == rest.lastTradeID)
-    #expect(!LatestQuote.accepts(rest, after: ticker))
-  }
-
   @Test func concurrentCatalogReadersShareOneRequest() async {
     let transport = HeldCatalog()
     let catalog = SymbolCatalog(rest: BinanceREST(transport: transport),

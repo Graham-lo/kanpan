@@ -47,11 +47,9 @@ final class AICoinBaseUITests: XCTestCase {
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launchEnvironment["KANPAN_LOG"] = "1"
-    // 行情线路是**落盘**的（`MarketModel.sourcePreferenceURL`），而且掉到 OKX 兜底之后
-    // 头一次回探要等 5 分钟（`MarketRecoverySchedule` 起手就是 now+300s）。真机上只要有
-    // 一次跑到了兜底，共用的这个测试档案就一直停在 OKX——那条线路压根没有持仓量
-    // （`OISource` 只连币安），后面的 `oiReady` 就永远等不到，和本次改动无关地红着。
-    // 每次给一个全新的档案，线路从默认的币安起步。
+    // 每次给一个全新的档案：行情线路记在 Prefs 里（出厂直连=币安），全新档案保证
+    // 这条用例从币安起步，不会被别的用例留下的「网关」设置带到 OKX——那条线路
+    // 压根没有持仓量（`OISource` 只连币安），后面的 `oiReady` 就永远等不到。
     app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
     app.launch()
     let canvas = app.otherElements["chart.canvas"]

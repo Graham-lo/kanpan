@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetworkTestSupport
 import KanpanCore
 
 /// 多品种启动快照。关心的是三件事：存得回来、不串味、不无限长大。

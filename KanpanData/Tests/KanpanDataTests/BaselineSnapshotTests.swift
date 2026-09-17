@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetworkTestSupport
 
 @Suite("当日开盘价快照")
 struct BaselineSnapshotTests {

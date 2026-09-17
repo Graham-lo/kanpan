@@ -10,11 +10,15 @@ let package = Package(
   ],
   dependencies: [
     .package(path: "../KanpanCore"),
+    .package(path: "../KanpanNetwork"),
   ],
   targets: [
     .target(
       name: "KanpanData",
-      dependencies: [.product(name: "KanpanCore", package: "KanpanCore")],
+      dependencies: [
+        .product(name: "KanpanCore", package: "KanpanCore"),
+        .product(name: "KanpanNetwork", package: "KanpanNetwork"),
+      ],
       path: "Sources/KanpanData"
     ),
     .executableTarget(
@@ -24,7 +28,11 @@ let package = Package(
     ),
     .testTarget(
       name: "KanpanDataTests",
-      dependencies: ["KanpanData", .product(name: "KanpanCore", package: "KanpanCore")],
+      dependencies: [
+        "KanpanData",
+        .product(name: "KanpanCore", package: "KanpanCore"),
+        .product(name: "KanpanNetworkTestSupport", package: "KanpanNetwork"),
+      ],
       path: "Tests/KanpanDataTests",
       resources: [.copy("Fixtures")]
     ),

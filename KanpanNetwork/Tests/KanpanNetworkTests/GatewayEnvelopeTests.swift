@@ -1,6 +1,7 @@
 import Foundation
 import Testing
-@testable import KanpanData
+@testable import KanpanNetwork
+import KanpanNetworkTestSupport
 
 @Suite("网关信封：只扫一趟就把载荷切出来")
 struct GatewayEnvelopeTests {
