@@ -120,7 +120,15 @@ struct SkinPaletteTests {
     // sh_base_bg_color，K 线页不用它，写成那个会让纯白画布显成一块更亮的补丁。
     #expect(Palette.classicSeed.app == "#FFFFFF" && Palette.classicSeed.chart == "#FFFFFF")
     #expect(Palette.classicSeed.raised == "#FFFFFF" && Palette.classicSeed.ground == "#F7F8FA")
-    #expect(Palette.classicSeed.raised2 == "#F3F5F7" && Palette.classicSeed.line == "#DEE1E5")
+    #expect(Palette.classicSeed.raised2 == "#F3F5F7")
+    // 分割线取 K 线页自己的 ui_kline_indicator_bar_divider_color = #eaeaea；
+    // 通用列表的 sh_base_divider_dim_fill_color = #dee1e5 在纯白页面上明显发灰，别拿错令牌。
+    #expect(Palette.classicSeed.line == "#EAEAEA")
+    #expect(Palette.classicNightSeed.line == "#20232E")
+    // 图内的结构分隔线（主图 / 时间轴 / 各副图之间、右轴那条竖线）同理：ui_kline_divider_color。
+    // #DEE1E5 离纯白的亮度差是 #F2F4F7 的七倍，整屏 8 条就把一块连续的白切成了格子。
+    #expect(Palette.dayCanvas.axis == "#F2F4F7")
+    #expect(Palette.nightCanvas.axis == "#191C21")
     for seed in [Palette.classicSeed, Palette.classicNightSeed] {
       let (r, g, b, _) = seed.app.bytes
       #expect(r == g && g == b || seed.dark, "经典浅色的底不许带色偏，蓝白也不行")

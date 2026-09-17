@@ -144,7 +144,9 @@ AICoin **不用 `values-night`**，而是同一份 `colors.xml` 里 `xxx` / `xxx
 | 二级文字 `sh_base_two_text_color` | `#525a66` | — |
 | 三级文字 `sh_base_three_text_color` | `#7a8899` | — |
 | 四级文字 `sh_base_four_text_color` | `#b7bfc8` | `#515a66` |
-| 分割线 `sh_base_divider_dim_fill_color` | `#dee1e5` | `#25282e` |
+| **K 线页分隔线** `ui_kline_divider_color` | `#f2f4f7` | `#191c21` |
+| **周期 / 指标条分隔线** `ui_kline_indicator_bar_divider_color` | `#eaeaea` | `#20232e` |
+| 通用列表分割线 `sh_base_divider_dim_fill_color` | `#dee1e5` | `#25282e` |
 | 弹窗底 `sh_base_dialog_bg_fill_color` | `#ffffff` | `#202126` |
 | 画线默认色 `ui_kline_drawing_default_line_color` | `#1990ff` | — |
 
@@ -152,6 +154,15 @@ AICoin **不用 `values-night`**，而是同一份 `colors.xml` 里 `xxx` / `xxx
 配「经典·浅」，用户在真机上一眼看出「AICoin 的白没这么白亮」。真机逐像素量过 AICoin 行情页：
 标题、价格行、周期行、主图、副图全是 `#ffffff`，只有最底下的标签栏是 `#f3f3f5`。安卓侧对得上——
 `sh_base_view_bg` 被引用 23 次、`ui_kline_menu_bg_color` 7 次，都是纯白。
+
+**分割线也别拿错令牌。** 和上面同一类错误：2026-09-17 把 `sh_base_divider_dim_fill_color`
+（`#dee1e5`，通用列表分割线）当成了 K 线页的分隔线，于是主图 / 时间轴 / VOL / 持仓量 / MACD
+之间，加上右轴那条竖线，整屏 8 条灰线把一张纯白页面切成了格子。K 线页自己的那支是
+`ui_kline_divider_color` = `#f2f4f7`（`res-full/layout-land/ui_kline_frg_ticker_detail_kline.xml:23`
+里那条 1dp 竖线用的就是它），周期条 / 指标条上下那条是 `ui_kline_indicator_bar_divider_color`
+= `#eaeaea`。量化对比：`#dee1e5` 离纯白的亮度差约 0.257（对比度 1.32），`#f2f4f7` 只有约 0.035
+（对比度 1.04），旧值是新值的七倍。AICoin 真机镜像上同位置量到 `#f6f8fc` / `#f9fafe`
+（镜像把颜色往白里洗约 12%，还原回去正是 `#f2f4f7`）。
 
 注意涨跌块还有 `_transparent_10`（`#1a…`）和 `_transparent_50`（`#80…`）两档透明变体，
 用于成交量柱/背景填充这类需要压低权重的场合。

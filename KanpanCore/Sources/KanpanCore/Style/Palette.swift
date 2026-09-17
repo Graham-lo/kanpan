@@ -159,24 +159,26 @@ public enum Palette: Sendable {
   ///
   /// 所以：页面与画布 `#FFFFFF`（`sh_base_view_bg`），再往下一层的自选页底 `#F7F8FA`
   /// （`sh_base_page_bg`，中性灰、不带蓝），徽章底 `#F3F5F7`（`ui_kline_scale_auto_bg_color`），
-  /// 分割线 `#DEE1E5`（`sh_base_divider_dim_fill_color`）。
+  /// 分割线 `#EAEAEA`（`ui_kline_indicator_bar_divider_color`，就是 AICoin 周期 / 指标条上下那条）——
+  /// 不要再拿通用列表的 `sh_base_divider_dim_fill_color` = `#DEE1E5`，那支在纯白页面上明显发灰。
   /// 涨跌与指标线色跟青苔 / 陶土浅色一样都是 AICoin 的（见 `aicoinDayUp` 一组）。
   public static let classicSeed = PaletteSeed(
     dark: false,
     ground: "#F7F8FA", app: "#FFFFFF", chart: "#FFFFFF", raised: "#FFFFFF", raised2: "#F3F5F7",
-    line: "#DEE1E5", grid: "#EAEAEA", hair: "#14211B0F",
+    line: "#EAEAEA", grid: "#EAEAEA", hair: "#14211B0F",
     ink: "#14211B", ink2: "#4E6158", ink3: "#606F67",
     up: aicoinDayUp, down: aicoinDayDown, amber: "#B57C28", accent: "#2E7D6B",
     palette: aicoinDayMA, sub: aicoinSlots)
 
   /// 经典 · 深。底是 AICoin 夜间的 `#0D111C`（`sh_base_view_bg_night`）/ `#090C14`
-  /// （`sh_base_page_bg_night`）/ `#202126` / `#303442` / `#25282E`；
+  /// （`sh_base_page_bg_night`）/ `#202126` / `#303442` / `#20232E`
+  /// （`ui_kline_indicator_bar_divider_color_night`）；
   /// 涨跌取安卓包 `sh_base_text_color_green_night` / `_red_night`（`#2F9347` / `#CC3333`），
   /// 指标线沿用安卓默认槽位色。深色这组没在真机上量过（镜像后台点不动，切不了夜间模式）。
   public static let classicNightSeed = PaletteSeed(
     dark: true,
     ground: "#090C14", app: "#0D111C", chart: "#0D111C", raised: "#202126", raised2: "#303442",
-    line: "#25282E", grid: "#20232E", hair: "#FFFFFF0A",
+    line: "#20232E", grid: "#20232E", hair: "#FFFFFF0A",
     ink: "#E9F2EC", ink2: "#A5B8AE", ink3: "#7B8D85",
     up: "#2F9347", down: "#CC3333", amber: "#E0A544", accent: "#4FB69C",
     palette: ["#FFB400", "#E849B9", "#B2DF8A", "#FB9A99", "#1478C8", "#2FD2B2"],
@@ -285,17 +287,35 @@ public enum Palette: Sendable {
 
   /// 白天的画布。
   ///
+  /// `axis` 是主图 / 时间轴 / 各副图之间那几条结构分隔线，**必须用 K 线页自己的
+  /// `ui_kline_divider_color` = `#F2F4F7`**，不是通用列表分割线 `sh_base_divider_dim_fill_color`
+  /// = `#DEE1E5`。这跟当初把页面底错拿成 `sh_base_bg_color` = `#F7F9FF` 是同一类错误：
+  /// 名字像就拿，没去量 K 线页那一像素。`ui_kline_frg_ticker_detail_kline.xml:23` 里那条
+  /// 1dp 的竖线用的就是 `ui_kline_divider_color`。
+  ///
+  /// 量给的结论：`#DEE1E5` 离纯白的亮度差约 0.257（对比度 1.32），`#F2F4F7` 只有约 0.035
+  /// （对比度 1.04）——旧值是新值的七倍，而整屏有 8 条这样的线，等于把一张纯白的页面
+  /// 切成一格一格，正犯「整屏要读成一块连续的材料」那条。AICoin 真机镜像上同位置量到
+  /// `#F6F8FC` / `#F9FAFE`（镜像会往白里洗约 12%，还原回去正好是 `#F2F4F7`）。
+  ///
+  /// `grid` 仍是 `line_grid` = `#C5C5C5`：那是用户主动打开网格时才画的价格网格线和 MACD 零轴，
+  /// AICoin 默认也不画网格，两边这一项没有分歧。
+  ///
   /// `cross` 是唯一没照抄的一项：AICoin 那份表里日间十字线写的是 `#EEEEEE`，那是画在
   /// 深底上的值，落到 `#FFFFFF` 的画布上等于看不见。取和轴文字同一档的灰蓝，
   /// 权重跟换肤前的 `ink3` 一致。
   public static let dayCanvas = ChartCanvas(
-    bg: "#FFFFFF", grid: "#C5C5C5", axis: "#DEE1E5",
+    bg: "#FFFFFF", grid: "#C5C5C5", axis: "#F2F4F7",
     text: "#7A8899", dim: "#B7BFC8", ink: "#292D33", cross: "#7A8899")
 
   /// 夜里的画布。轴文字仍用 `#7A8899`——在 `#0D111C` 上对比度约 5:1，过得去；
   /// 夜间那组更暗的 `#515A66` 留给 `dim` 这类次要读数。
+  ///
+  /// `axis` 同样改成 K 线页自己的 `ui_kline_divider_color_night` = `#191C21`，
+  /// 原来的 `#25282E` 是通用列表分割线 `sh_base_divider_dim_fill_color_night`。
+  /// 深色这组没在真机上量过（镜像里切不了 AICoin 的夜间模式），只按安卓常量对齐。
   public static let nightCanvas = ChartCanvas(
-    bg: "#0D111C", grid: "#1C2236", axis: "#25282E",
+    bg: "#0D111C", grid: "#1C2236", axis: "#191C21",
     text: "#7A8899", dim: "#515A66", ink: "#E6EAF2", cross: "#FFFFFF")
 
   private static func expanded(_ t: PaletteSeed) -> ChartColors {
