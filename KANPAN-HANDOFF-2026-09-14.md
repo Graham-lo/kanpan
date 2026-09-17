@@ -1,6 +1,6 @@
-# 看盘 · Codex 接手核验
+# 看盘 · Codex 接手核验（历史快照，2026-09-14）
 
-> 本文是2026-09-14接手现场的历史快照。后续已完成代码实现、真机与模拟器验证；当前状态见 `docs/acceptance/AICoin-base/foundation/IMPLEMENTATION.md` 和 `compatibility/README.md`；后续配色/数据/新分类栏见 `docs/acceptance/护眼配色与数据完整性.md`。不要据下文恢复旧默认值、重启已停止的任务或重复实现。
+> **本文已过时，仅供追溯。** 它记录的是 2026-09-14 Codex 接手当天的现场；此后 Codex 已退出本项目，代码由 Claude 窗口实现。皮肤、底栏、K 线风格、自选页、账号方式等都已改变，现状见 `README.md`、`AGENTS.md`、`.project-memory/PROJECT.md` 与 `docs/账号复盘-实施进度.md`。不要据下文恢复旧默认值、重启已停止的任务、重复实现或恢复 Codex 分工。
 
 核验时间：2026-09-14T21:41:00+08:00
 本轮用户要求：同步 Claude 记忆，查看具体窗口，准备接手。已导入记忆、核验窗口与仓库；本轮未修改实现、运行构建测试、提交或安装 App。
