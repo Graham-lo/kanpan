@@ -1,6 +1,6 @@
 # Hntcoin（看盘 / Kanpan）跨窗口项目记忆
 
-更新：2026-09-17。给任何新开的模型窗口恢复上下文用。用户当前指示优先；下面是整理时的快照，接手前用 `git log`、`git status` 和源码核对。
+更新：2026-09-18。给任何新开的模型窗口恢复上下文用。用户当前指示优先；下面是整理时的快照，接手前用 `git log`、`git status` 和源码核对。
 
 ## 1. 身份与分工
 
@@ -13,7 +13,9 @@
 
 - 皮肤：青苔·冷（默认）/ 陶土·暖 / 经典（2026-09-17 用户点名加的：青苔的文字 / 强调色原样、底换成 AICoin 白）。**经典的白是纯白 `#FFFFFF`，不是 `#F7F9FF`**——后者是安卓包的 `sh_base_bg_color`，K 线页不用它，写成那支蓝白会让纯白画布在页面上显成一块更亮的补丁；真机实测 AICoin 行情页从标题到副图全是 `#FFFFFF`，自选页那一层用中性灰 `#F7F8FA`，深色 `#0D111C` / `#090C14`。**分割线同理别拿错令牌**：图内结构线用 `ui_kline_divider_color` = `#F2F4F7`（夜 `#191C21`，`Palette.dayCanvas.axis` / `nightCanvas.axis`），周期条上下用 `ui_kline_indicator_bar_divider_color` = `#EAEAEA`（夜 `#20232E`，`classicSeed.line`）；原先拿的 `sh_base_divider_dim_fill_color` = `#DEE1E5` 是通用列表分割线，离纯白的亮度差是 `#F2F4F7` 的七倍，整屏 8 条把纯白页面切成了格子，用户读成「更刺眼」。**K 线色只有 AICoin 一套、以后不再另起**（2026-09-17 用户定）：浅色三套皮肤的涨跌色、MA 线色 `palette` 和副图线色 `sub` 都是 AICoin iPhone 端实测值（`Palette.aicoinDayUp/Down/MA`、`aicoinSlots`：蜡烛 `#36B257` / `#E64552`，副图槽位序 `#2FD2B2 #FFB400 #E849B9 #1478C8 …`）；深色 AICoin 没在真机量过，经典深色用安卓包常量，青苔 / 陶土深色暂留自己那组，各有浅深两版，`ThemeSkin` + `ThemeChoice`；种子色在 `KanpanCore/Sources/KanpanCore/Style/Palette.swift`。
 - 底栏「复盘｜指标｜自选｜设置」（`Kanpan/Kanpan/Main/BottomBar.swift`）。无横屏格、无风格格。
-- 行情页顶栏：品种徽章 + 品种名（点开半屏快捷自选 / 搜索）+ 状态点 + 自选星；最新价 22pt medium + 涨跌药丸 11.5pt，下一行成交额 / 振幅；不显示 24h 高低（`Main/TopBar.swift`）。
+- 行情页顶栏：品种徽章 + 品种名 + 状态点 + 放大镜（搜索）+ 自选星；最新价 22pt medium + 涨跌药丸 11.5pt，下一行成交额 / 振幅；不显示 24h 高低（`Main/TopBar.swift`）。**品种名只是标签，点上去什么都不弹**（2026-09-18 用户点名去掉那个半屏快捷选择框，`FavoritesQuickPicker` 已删除）；换品种两条路：顶栏放大镜进搜索页、底栏「自选」进分类自选页。
+- 行情页头部四格：持仓量 / 成交额 / 市值 / 费率，只有这四个，数额统一 K/M/B/T。市值 = 总市值 = 总供应量 × 现价；持仓量与市值都由 VPS 的 `kanpan-api` 提供。**非币合约（美股 / 港韩 A 股 / ETF / 商品 / 指数 / 未上市）的市值口径与数据来源见 `docs/市值口径与数据来源-2026-09-18.md`**，服务端存的是「市值 ÷ 合约价」的乘数而不是股数，认不出的一律留空。
+- 品种搜索：先最匹配、同档按 24h 成交额降序（`KanpanSymbols/SymbolQuery.swift`、`SymbolSections.swift`）。
 - 自选页「琉璃」版（`Symbols/FavoritesView.swift`，提交 `a2cbb0d`，`fda4e1c` 起去掉玻璃纸改为融合）：浅色光斑底（底部叠同色渐变保可读）、深色素底不画光斑（2026-09-17 用户要求去掉）、行直接长在底上只留发丝线、衬线标题 22pt 与正放的数量印章、涨跌比例条、品种徽章 33pt、价格 15.5pt、涨跌药丸；迷你走势图默认关闭，「…」菜单里 `favorites.sparkline` 可打开（本机 AppStorage）；排序与涨跌幅口径在 `favorites.sort` 弹层里；没有领涨 / 领跌行。
 - 品种徽章一品种一记号（`Main/CoinBadge.swift`、`CoinBadgeBrands.swift`），配色随皮肤。
 - K 线只有 AICoin 一套造型（`CandleStyle.all == [aicoin]`），主图 MA(10,30,120,256)，副图默认 MACD + RSI；14 档周期，不含 3d；横屏仅画线用，画线时主副图指标不画。
