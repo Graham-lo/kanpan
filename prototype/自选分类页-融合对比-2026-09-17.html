@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="zh-CN" data-skin="sage" data-mode="dark" data-redup="1" data-font="a" data-lite="mint">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>看盘 · 自选分类页 · 玻璃纸 vs 融合 · 2026-09-17</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   自选分类页 · 极致版
+   这一版的方向是「加」：层次、材质、光、字体、装饰，全部往上叠，
+   但每一样都收进青苔·冷 / 陶土·暖两套皮肤的色带里，所以叠得再多也不违和。
+   四套 token 的底子取自 app 里 Palette.swift 的 seed，再往外延伸出玻璃、光斑、金线。
+   ══════════════════════════════════════════════════════════════════════ */
+html[data-skin="sage"][data-mode="light"]{
+  --ground:#C6D8CD; --ground2:#E6EFEA; --app:#F3F7F4; --raised:#FFFFFF; --raised2:#E7EFE9;
+  --line:#D6E3DA; --hair:#14211B14; --rule:#14211B1C;
+  --ink:#14211B; --ink2:#4E6158; --ink3:#606F67; --ink4:#8E9B95;
+  --acc:#2E7D6B; --acc2:#5FB39B; --acc3:#BFE3D6; --amber:#B57C28; --amber2:#E2B56A;
+  --green:#2E7D6B; --red:#C34642;
+  --glass:#FFFFFFB8; --glass2:#FFFFFF7A; --edge:#FFFFFFE6; --shadow:#14211B;
+  --lobe:.62; --grain:.5; --bleed:.34; --bloom:.20; --ring:.55; --gold:#B37B25; --gold2:#E7C784;
+  --lacq:#F7F1E6; --lacq2:#FFFBF3; --lobe1:var(--acc); --lobe2:var(--acc2); --lobe3:var(--amber);
+}
+html[data-skin="sage"][data-mode="dark"]{
+  --ground:#050907; --ground2:#0E1813; --app:#0B120F; --raised:#131C18; --raised2:#1A241F;
+  --line:#25332C; --hair:#FFFFFF12; --rule:#FFFFFF1C;
+  --ink:#E9F2EC; --ink2:#A5B8AE; --ink3:#7B8D85; --ink4:#5C6B64;
+  --acc:#4FB69C; --acc2:#7FD9C1; --acc3:#1E4A3E; --amber:#E0A544; --amber2:#F3CB7E;
+  --green:#4FB69C; --red:#E36159;
+  --glass:#FFFFFF10; --glass2:#FFFFFF0A; --edge:#FFFFFF2E; --shadow:#000000;
+  --lobe:.55; --grain:.6; --bleed:.26; --bloom:.34; --ring:.6; --gold:#D9A64C; --gold2:#F6DC9A;
+  --lacq:#0E0B07; --lacq2:#17120B; --lobe1:var(--acc); --lobe2:var(--acc2); --lobe3:var(--amber);
+}
+html[data-skin="terra"][data-mode="light"]{
+  --ground:#DCCBB8; --ground2:#F1E7DB; --app:#FBF6F0; --raised:#FFFFFF; --raised2:#F2E8DE;
+  --line:#E7DACB; --hair:#241A1314; --rule:#241A131C;
+  --ink:#241A13; --ink2:#6E5C4D; --ink3:#756659; --ink4:#9C8B7B;
+  --acc:#B25735; --acc2:#D98A62; --acc3:#F3D3C0; --amber:#B37B25; --amber2:#E0B267;
+  --green:#2F7D62; --red:#C4483C;
+  --glass:#FFFFFFB8; --glass2:#FFFFFF7A; --edge:#FFFFFFE6; --shadow:#241A13;
+  --lobe:.6; --grain:.5; --bleed:.34; --bloom:.20; --ring:.55; --gold:#B37B25; --gold2:#E7C784;
+  --lacq:#F8F1E7; --lacq2:#FFFBF4; --lobe1:var(--acc); --lobe2:var(--acc2); --lobe3:var(--amber);
+}
+html[data-skin="terra"][data-mode="dark"]{
+  --ground:#0A0604; --ground2:#1B120B; --app:#16100C; --raised:#211812; --raised2:#2A1F17;
+  --line:#37281D; --hair:#FFFFFF12; --rule:#FFFFFF1C;
+  --ink:#F7EFE6; --ink2:#C2AC98; --ink3:#958576; --ink4:#6C5E52;
+  --acc:#E2874F; --acc2:#F5B27E; --acc3:#4E2C1B; --amber:#E0A544; --amber2:#F3CB7E;
+  --green:#3FA783; --red:#E0584A;
+  --glass:#FFFFFF10; --glass2:#FFFFFF0A; --edge:#FFFFFF2E; --shadow:#000000;
+  --lobe:.55; --grain:.6; --bleed:.26; --bloom:.34; --ring:.6; --gold:#D9A64C; --gold2:#F6DC9A;
+  --lacq:#100A06; --lacq2:#1A110A; --lobe1:var(--acc); --lobe2:var(--acc2); --lobe3:var(--amber);
+}
+/* 浅色底的四种光斑配色：只在浅色下生效，底色一起换成更浅的 */
+html[data-mode="light"][data-lite="mint"][data-skin="sage"]{ --ground:#E9F3F1; --lobe1:#A9DDF3; --lobe2:#BFEFD6; --lobe3:#DCEFF6; --lobe:.9 }
+html[data-mode="light"][data-lite="mint"][data-skin="terra"]{ --ground:#F4EFEA; --lobe1:#B5D9F1; --lobe2:#F5D8C3; --lobe3:#D3EDE0; --lobe:.9 }
+html[data-mode="light"][data-lite="lake"][data-skin="sage"]{ --ground:#E5F0F1; --lobe1:#8ED0E0; --lobe2:#9FDFC8; --lobe3:#C9E6EF; --lobe:.85 }
+html[data-mode="light"][data-lite="lake"][data-skin="terra"]{ --ground:#F2EEE9; --lobe1:#9BD0DE; --lobe2:#EAC9B2; --lobe3:#B8E0D2; --lobe:.85 }
+html[data-mode="light"][data-lite="mist"][data-skin="sage"]{ --ground:#EBF1F6; --lobe1:#B4D0EE; --lobe2:#CBDEF4; --lobe3:#D5E9F1; --lobe:.9 }
+html[data-mode="light"][data-lite="mist"][data-skin="terra"]{ --ground:#F3F0EC; --lobe1:#BFD3EB; --lobe2:#EBD5C9; --lobe3:#D4E3EF; --lobe:.9 }
+html[data-redup="1"]{ --rise:var(--red); --fall:var(--green); }
+/* 字体集：a 系统（New York / 宋体 + SF）· b 思源宋 + Inter · c 小薇 + Manrope */
+html[data-font="a"]{ --f-title:ui-serif,"New York","Songti SC","STSong",Georgia,serif; --f-num:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",sans-serif;
+  --f-body:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif; --w-title:500; --w-num:500; --ls-title:.06em }
+html[data-font="b"]{ --f-title:"Noto Serif SC","Songti SC",serif; --f-num:"Inter",-apple-system,sans-serif; --f-body:"Inter",-apple-system,"PingFang SC",sans-serif; --w-title:500; --w-num:480; --ls-title:.08em }
+html[data-font="c"]{ --f-title:"ZCOOL XiaoWei","Songti SC",serif; --f-num:"Manrope",-apple-system,sans-serif; --f-body:"Manrope",-apple-system,"PingFang SC",sans-serif; --w-title:400; --w-num:500; --ls-title:.1em }
+html[data-redup="0"]{ --rise:var(--green); --fall:var(--red); }
+
+*{box-sizing:border-box}
+body{margin:0;background:#0E1013;color:#e4e8ea;
+  font:14px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1560px;margin:0 auto;padding:30px 22px 110px}
+h1{font-size:25px;margin:0 0 10px;font-weight:660;letter-spacing:.2px}
+.lede{color:#959ca3;font-size:13.5px;max-width:960px;margin:0 0 24px}
+.lede b{color:#dde2e5;font-weight:600}
+.bar{position:sticky;top:0;z-index:40;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  background:#181b1feb;backdrop-filter:blur(14px);border:1px solid #292e34;border-radius:14px;
+  padding:9px 13px;margin-bottom:30px}
+.bar .grp{display:flex;gap:4px;background:#0c0e11;border-radius:10px;padding:3px}
+.bar button{appearance:none;border:0;background:transparent;color:#959ca3;font-size:12.5px;
+  padding:6px 13px;border-radius:8px;cursor:pointer;font-family:inherit}
+.bar button[aria-pressed="true"]{background:#333941;color:#fff}
+.bar .lbl{color:#6a7279;font-size:11.5px}
+section{margin:0 0 64px}
+.head{display:flex;align-items:baseline;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.head h2{font-size:21px;margin:0;font-weight:640;letter-spacing:.5px}
+.head .en{font:600 11px/1 ui-monospace,monospace;color:#6b737a;letter-spacing:.26em}
+.head .tag{font-size:11.5px;color:#7d858c;border:1px solid #2d3339;border-radius:999px;padding:2px 11px}
+.head .rec{border-color:#3d6a55;color:#82d6b0}
+.duo{display:grid;grid-template-columns:393px minmax(330px,1fr);gap:40px;align-items:start}
+@media(max-width:860px){.duo{grid-template-columns:1fr}}
+.notes{font-size:13px;color:#acb3b9;padding-top:2px}
+.notes p{margin:0 0 13px}.notes b{color:#e4e8ea;font-weight:600}
+.notes .k{color:#87d5b4;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.notes ol{margin:0 0 14px;padding-left:20px}.notes li{margin:0 0 7px}
+.spec{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.spec span{font-size:11px;color:#899198;background:#1d2227;border-radius:6px;padding:3px 9px;
+  font-family:ui-monospace,Menlo,monospace}
+table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:10px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid #22272c;vertical-align:top}
+th{color:#899198;font-weight:600;font-size:11.5px}
+td code{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#87d5b4}
+td.num{font-family:ui-monospace,Menlo,monospace;color:#ccd2d7}
+
+/* ───────────────────────────── 手机壳 ───────────────────────────── */
+.phone{width:393px;height:852px;border-radius:54px;position:relative;overflow:hidden;
+  box-shadow:0 0 0 9px #222528,0 0 0 10px #383d43,0 30px 70px -22px #000d;
+  color:var(--ink);font:13px/1.45 var(--f-body);font-feature-settings:"tnum";
+  background:var(--ground)}
+.phone .island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:126px;height:37px;
+  background:#000;border-radius:20px;z-index:9}
+.phone .homebar{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;
+  border-radius:9px;background:var(--ink);opacity:.35;z-index:9}
+.screen{position:relative;height:100%;display:flex;flex-direction:column;isolation:isolate}
+.status{height:56px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;
+  padding:0 30px 6px;font-size:13.5px;font-weight:600;font-family:var(--f-num);letter-spacing:.2px;position:relative;z-index:5}
+.scroll{flex:1;overflow:auto;scrollbar-width:none;position:relative;z-index:2}
+.scroll::-webkit-scrollbar{display:none}
+.sp{flex:1}
+.fade{position:absolute;left:0;right:0;bottom:0;height:90px;pointer-events:none;z-index:4;
+  background:linear-gradient(180deg,transparent,var(--ground) 80%)}
+
+/* 底：所有方向共用的三层——渐变底、颗粒、装饰线 */
+.bg{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.bg .lobe{position:absolute;border-radius:50%;filter:blur(70px);opacity:var(--lobe);
+  animation:drift 22s ease-in-out infinite alternate}
+.bg .lobe:nth-child(2){animation-duration:27s;animation-delay:-9s}
+.bg .lobe:nth-child(3){animation-duration:31s;animation-delay:-17s}
+@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(18px,-26px) scale(1.08)}}
+@media(prefers-reduced-motion:reduce){.bg .lobe{animation:none}}
+.grain{position:absolute;inset:0;pointer-events:none;opacity:var(--grain);mix-blend-mode:overlay;z-index:1;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23n)' opacity='.32'/></svg>")}
+.orn{position:absolute;pointer-events:none;z-index:1}
+
+/* ───────────────────────────── 头部 ───────────────────────────── */
+.hdr{position:relative;z-index:6;padding:0 0 4px}
+.nav{display:flex;align-items:center;height:44px;padding:0 16px;gap:10px}
+.cbtn{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  color:var(--ink);background:var(--glass2);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  box-shadow:inset 0 0 0 .5px var(--edge),inset 0 1px 0 var(--edge)}
+.cbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.titlerow{display:flex;align-items:center;gap:10px;padding:4px 20px 0}
+.titlerow h3{margin:0;font:var(--w-title) 22px/1.15 var(--f-title);
+  letter-spacing:var(--ls-title);color:var(--ink)}
+.seal{min-width:20px;height:20px;padding:0 5px;border-radius:5px;background:var(--acc);color:#fff;
+  font:600 10.5px/20px var(--f-num);text-align:center;transform:translateY(-3px);
+  box-shadow:0 3px 8px -2px color-mix(in srgb,var(--acc) 60%,transparent),inset 0 0 0 1px #ffffff55,inset 0 0 0 2.5px var(--acc);
+  font-variant-numeric:tabular-nums}
+.breadth{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:500;font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.breadth .bar2{width:62px;height:4px;border-radius:9px;background:var(--fall);position:relative;overflow:hidden;
+  box-shadow:0 0 10px color-mix(in srgb,var(--fall) 45%,transparent)}
+.breadth .bar2 b{position:absolute;left:0;top:0;bottom:0;border-radius:9px;background:linear-gradient(90deg,var(--rise),color-mix(in srgb,var(--rise) 70%,#fff));
+  box-shadow:0 0 10px color-mix(in srgb,var(--rise) 60%,transparent)}
+.subline{padding:2px 20px 0;font-size:10.5px;color:var(--ink3);letter-spacing:.02em}
+.subline i{display:inline-block;width:5px;height:5px;border-radius:9px;background:var(--acc);margin:0 6px 2px 0;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 22%,transparent);animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 30%,transparent)}50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--acc) 8%,transparent)}}
+
+/* 分类：玻璃分段 */
+.segwrap{padding:14px 16px 0;display:flex;align-items:center;gap:8px}
+.seg{display:inline-flex;padding:3px;border-radius:15px;background:var(--glass2);
+  backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);
+  box-shadow:inset 0 0 0 .5px var(--edge),inset 0 1px 0 var(--edge)}
+.seg .it{height:30px;padding:0 12px;border-radius:11px;display:flex;align-items:center;gap:4px;
+  font-size:12.5px;font-weight:500;color:var(--ink2);white-space:nowrap}
+.seg .it b{font-size:9px;font-weight:500;font-family:var(--f-num);color:var(--ink4);font-variant-numeric:tabular-nums;transform:translateY(-4px)}
+.seg .it.on{color:#fff;background:linear-gradient(135deg,var(--acc2),var(--acc));
+  box-shadow:inset 0 1px 0 #ffffff66,0 8px 16px -8px var(--acc)}
+.seg .it.on b{color:#ffffffcc}
+.segadd{width:30px;height:30px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:var(--ink3);
+  background:var(--glass2);box-shadow:inset 0 0 0 .5px var(--edge)}
+.segadd svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round}
+.sortrow{display:flex;align-items:center;padding:12px 22px 6px;font-size:10.5px;color:var(--ink4)}
+.sortrow .s{color:var(--ink3);font-size:11px;margin-left:16px;display:flex;align-items:center;gap:3px}
+.sortrow .s svg{width:8px;height:8px;fill:var(--acc)}
+.microlab{font:500 9px/1 var(--f-num);letter-spacing:.2em;color:var(--ink4)}
+
+/* ───────────────────────────── 列表 ───────────────────────────── */
+.sheet{margin:12px 12px 30px;border-radius:26px;position:relative;
+  background:var(--glass);backdrop-filter:blur(26px) saturate(1.6);-webkit-backdrop-filter:blur(26px) saturate(1.6);
+  box-shadow:inset 0 1px 0 var(--edge),inset 0 0 0 .5px color-mix(in srgb,var(--edge) 55%,transparent),
+    0 30px 60px -34px color-mix(in srgb,var(--shadow) 70%,transparent)}
+.row{display:flex;align-items:center;gap:12px;padding:0 14px 0 15px;height:66px;position:relative}
+.row+.row::before{content:"";position:absolute;left:14px;right:14px;top:0;height:.5px;
+  background:linear-gradient(90deg,transparent,var(--rule) 18%,var(--rule) 82%,transparent)}
+.bw{position:relative;flex:none;display:flex;align-items:center;justify-content:center;border-radius:31%}
+.bw svg{position:relative;z-index:1;display:block}
+.bw::after{content:"";position:absolute;inset:-5px;border-radius:50%;background:var(--brand);filter:blur(11px);
+  opacity:var(--bloom);z-index:0}
+.bw::before{content:"";position:absolute;inset:-3.5px;border-radius:42%;padding:1px;z-index:1;
+  background:conic-gradient(from 210deg,var(--brand) 0deg,color-mix(in srgb,var(--brand) 20%,transparent) 110deg,
+    var(--brand) 200deg,color-mix(in srgb,var(--brand) 15%,transparent) 300deg,var(--brand) 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
+  opacity:var(--ring)}
+.col{flex:1;min-width:0}
+.nm{font-size:13.5px;font-weight:560;letter-spacing:.1px;font-family:var(--f-num);color:var(--ink);white-space:nowrap;display:flex;align-items:baseline;gap:3px}
+.nm em{font-style:normal;font-size:9px;font-weight:450;color:var(--ink4);letter-spacing:.04em}
+.sub{font-size:10px;color:var(--ink3);margin-top:4px;font-family:var(--f-num);white-space:nowrap;overflow:hidden;font-variant-numeric:tabular-nums;letter-spacing:.1px}
+.sub s{text-decoration:none;color:var(--ink4);margin:0 5px}
+.spk{flex:none;margin-right:6px;overflow:visible}
+.rt{flex:none;min-width:90px;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.px{font-size:15.5px;font-weight:var(--w-num);letter-spacing:-.2px;font-family:var(--f-num);font-variant-numeric:tabular-nums;color:var(--ink);line-height:1}
+.chg{display:inline-flex;align-items:center;gap:4px;height:19px;padding:0 7px;border-radius:7px;font-family:var(--f-num);
+  font-size:11px;font-weight:560;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.1px;color:var(--c);
+  background:color-mix(in srgb,var(--c) 14%,transparent);
+  box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--c) 30%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 22%,transparent)}
+.chg svg{width:6px;height:5px;fill:var(--c)}
+
+/* ═══════════ 方向 02 · 晕染 ═══════════ */
+.d-yunran .cbtn{background:transparent;backdrop-filter:none;box-shadow:none;width:auto;height:auto}
+.d-yunran .cbtn svg{width:18px;height:18px;stroke-width:1.5}
+.d-yunran .titlerow h3{position:relative;padding-bottom:6px}
+.d-yunran .titlerow h3 .brush{position:absolute;left:-2px;right:-6px;bottom:0;height:8px;width:auto}
+.d-yunran .seal{background:transparent;color:var(--acc);box-shadow:inset 0 0 0 1.2px var(--acc);transform:translateY(-4px)}
+.d-yunran .tabs{display:flex;gap:22px;padding:14px 22px 0}
+.d-yunran .tab{position:relative;padding:0 1px 8px;font-size:13.5px;font-weight:500;color:var(--ink3);display:flex;align-items:baseline;gap:4px}
+.d-yunran .tab b{font-size:9px;font-weight:500;font-family:var(--f-num);color:var(--ink4);font-variant-numeric:tabular-nums}
+.d-yunran .tab.on{color:var(--ink);font-weight:600}
+.d-yunran .tab .brush{position:absolute;left:-3px;right:-5px;bottom:0;height:7px;width:auto}
+.d-yunran .sheet{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;margin:6px 0 30px;border-radius:0}
+.d-yunran .row{padding:0 20px 0 18px;height:68px;
+  background:radial-gradient(150px 80px at 0% 50%,color-mix(in srgb,var(--brand) calc(var(--bleed)*100%),transparent),transparent 72%)}
+.d-yunran .row+.row::before{left:20px;right:20px}
+.d-yunran .bw::before,.d-yunran .bw::after{display:none}
+.d-yunran .chg{background:transparent;box-shadow:none;padding:0;height:auto;font-size:11.5px}
+.d-yunran .merc{width:3px;height:24px;border-radius:2px;background:var(--hair);position:relative;flex:none;margin-left:2px}
+.d-yunran .merc b{position:absolute;left:0;right:0;bottom:0;border-radius:2px;background:var(--c);
+  box-shadow:0 0 6px color-mix(in srgb,var(--c) 50%,transparent)}
+.d-yunran .merc.dn b{bottom:auto;top:0}
+.d-yunran .sortrow{padding:10px 22px 4px}
+.d-yunran .fade{background:linear-gradient(180deg,transparent,var(--app) 80%)}
+
+/* ═══════════ 方向 03 · 鎏金 ═══════════ */
+.d-liujin .cbtn{background:transparent;backdrop-filter:none;box-shadow:inset 0 0 0 .8px color-mix(in srgb,var(--gold) 55%,transparent);color:var(--gold)}
+.d-liujin .titlerow h3{background:linear-gradient(120deg,var(--gold2),var(--gold) 55%,var(--gold2));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.d-liujin .seal{background:transparent;color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold);border-radius:50%;
+  transform:none;min-width:22px;height:22px;padding:0;font-size:10.5px;line-height:22px}
+.d-liujin .breadth .bar2{box-shadow:none}
+.d-liujin .caps{display:flex;gap:7px;padding:14px 16px 0;overflow-x:auto;scrollbar-width:none}
+.d-liujin .cap{height:29px;padding:0 12px;border-radius:999px;display:flex;align-items:center;gap:4px;font-size:12.5px;font-weight:500;
+  color:var(--ink2);box-shadow:inset 0 0 0 .8px color-mix(in srgb,var(--gold) 45%,transparent);white-space:nowrap}
+.d-liujin .cap b{font-size:9px;font-weight:500;font-family:var(--f-num);color:var(--ink4);transform:translateY(-3px)}
+.d-liujin .cap.on{color:#2A1B08;background:linear-gradient(135deg,var(--gold2),var(--gold));box-shadow:inset 0 1px 0 #ffffff80,0 6px 14px -8px var(--gold)}
+.d-liujin .cap.on b{color:#2A1B0899}
+.d-liujin .sheet{background:var(--lacq2);backdrop-filter:none;-webkit-backdrop-filter:none;border-radius:22px;
+  box-shadow:0 30px 60px -34px color-mix(in srgb,var(--shadow) 70%,transparent)}
+.d-liujin .sheet::before{content:"";position:absolute;inset:0;border-radius:22px;padding:1px;pointer-events:none;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--gold) 85%,transparent),color-mix(in srgb,var(--gold) 30%,transparent) 50%,color-mix(in srgb,var(--gold) 10%,transparent));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+.d-liujin .row+.row::before{background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--gold) 26%,transparent) 20%,color-mix(in srgb,var(--gold) 26%,transparent) 80%,transparent)}
+.d-liujin .bw::after{display:none}
+.d-liujin .bw::before{background:conic-gradient(from 200deg,var(--gold2),var(--gold) 40%,var(--gold2) 70%,var(--gold));opacity:.75;inset:-3px;padding:.9px}
+.d-liujin .chg{background:transparent;box-shadow:inset 0 0 0 .6px color-mix(in srgb,var(--c) 45%,transparent);border-radius:999px}
+.d-liujin .sortrow .s svg{fill:var(--gold)}
+.d-liujin .fade{background:linear-gradient(180deg,transparent,var(--lacq) 80%)}
+
+/* ───────────────────────────── 状态 ───────────────────────────── */
+.states{display:grid;grid-template-columns:repeat(auto-fill,minmax(318px,1fr));gap:28px}
+.states .phone{zoom:.78}
+.stcap{font-size:12.5px;color:#a9b0b6;margin:12px 3px 0;line-height:1.75}
+.stcap b{color:#e4e8ea}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;gap:10px;color:var(--ink3);text-align:center;padding:0 40px}
+.empty .t{font-size:15.5px;color:var(--ink);font-weight:var(--w-title);font-family:var(--f-title);letter-spacing:var(--ls-title)}
+.empty .btn{margin-top:12px;height:36px;padding:0 20px;border-radius:12px;display:flex;align-items:center;color:#fff;font-size:13px;font-weight:600;
+  background:linear-gradient(135deg,var(--acc2),var(--acc));box-shadow:inset 0 1px 0 #ffffff66,0 10px 20px -10px var(--acc)}
+.skel{border-radius:5px;background:linear-gradient(90deg,var(--hair),color-mix(in srgb,var(--rule) 70%,transparent),var(--hair));background-size:200% 100%;animation:sk 1.6s linear infinite}
+@keyframes sk{from{background-position:200% 0}to{background-position:-200% 0}}
+.notice{margin:12px 12px 0;padding:9px 14px;display:flex;align-items:center;gap:9px;font-size:11px;color:var(--ink2);border-radius:14px;
+  background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:inset 0 1px 0 var(--edge),inset 0 0 0 .5px color-mix(in srgb,var(--edge) 55%,transparent)}
+.cbox{width:20px;height:20px;border-radius:50%;box-shadow:inset 0 0 0 1.4px var(--ink4);flex:none;position:relative}
+.cbox.on{box-shadow:inset 0 1px 0 #ffffff66;background:linear-gradient(135deg,var(--acc2),var(--acc))}
+.cbox.on::after{content:"";position:absolute;left:6.6px;top:4px;width:4.6px;height:9px;border:solid #fff;border-width:0 1.7px 1.7px 0;transform:rotate(42deg)}
+.editbar{position:absolute;left:12px;right:12px;bottom:22px;height:52px;border-radius:18px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;
+  font-size:13px;color:var(--acc);font-weight:600;z-index:8;
+  background:var(--glass);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);
+  box-shadow:inset 0 1px 0 var(--edge),inset 0 0 0 .5px color-mix(in srgb,var(--edge) 55%,transparent),0 20px 40px -20px color-mix(in srgb,var(--shadow) 70%,transparent)}
+.detail{margin:0 12px 30px;border-radius:0 0 26px 26px;padding:14px 18px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:13px 10px;
+  background:var(--glass);backdrop-filter:blur(26px) saturate(1.6);-webkit-backdrop-filter:blur(26px) saturate(1.6);
+  box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--edge) 55%,transparent),0 30px 60px -34px color-mix(in srgb,var(--shadow) 70%,transparent)}
+.detail .c{font:500 9px/1 var(--f-num);letter-spacing:.16em;color:var(--ink4)}
+.detail .v{font-size:12px;font-weight:500;margin-top:5px;font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.sheetup{position:absolute;left:0;right:0;bottom:0;border-radius:30px 30px 0 0;padding:9px 0 34px;z-index:8;
+  background:var(--glass);backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);
+  box-shadow:inset 0 1px 0 var(--edge),0 -20px 60px -20px color-mix(in srgb,var(--shadow) 60%,transparent)}
+.grab{width:36px;height:4.5px;border-radius:9px;background:var(--rule);margin:0 auto 12px}
+.dim{position:absolute;inset:0;background:color-mix(in srgb,var(--ground) 55%,transparent);z-index:7}
+.closed{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:var(--ink4);letter-spacing:.06em}
+.closed i{width:5px;height:5px;border-radius:9px;background:var(--ink4);display:inline-block}
+
+/* 解剖 */
+.anat{background:var(--ground);border-radius:22px;padding:26px 24px 20px;overflow:hidden;position:relative;box-shadow:inset 0 0 0 1px #ffffff10}
+.anat .zoomer{transform:scale(2);transform-origin:top left;width:50%;font:13px/1.45 var(--f-body);font-feature-settings:"tnum"}
+.anat .sheet{margin:0}
+.callouts{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px 22px;margin-top:16px;font-size:12.5px;color:#acb3b9}
+.callouts div{display:flex;gap:9px;align-items:flex-start;line-height:1.55}
+.callouts i{flex:none;width:18px;height:18px;border-radius:50%;background:#2a3036;color:#87d5b4;font:600 10px/18px ui-monospace,monospace;text-align:center;font-style:normal;margin-top:2px}
+.callouts b{color:#e4e8ea;font-weight:600}
+.sw{display:inline-block;width:13px;height:13px;border-radius:3px;vertical-align:-2px;margin-right:7px;box-shadow:inset 0 0 0 1px #ffffff20}
+
+/* ═══════════ 融合：行直接长在极光上 ═══════════ */
+/* 一个旋钮 --g（0…1）：1 = 现状的玻璃纸，0 = 完全融合。
+   纸的浓度、边缘高光、圆角、留白、行内边距全部跟着这一个数走，中间任何一档都成立。 */
+.screen{--g:1;--wash:0;--lobek:1}
+.screen .sheet{
+  background:color-mix(in srgb,var(--glass) calc(var(--g)*100%),transparent);
+  backdrop-filter:blur(calc(26px*var(--g))) saturate(calc(1 + .6*var(--g)));
+  -webkit-backdrop-filter:blur(calc(26px*var(--g))) saturate(calc(1 + .6*var(--g)));
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--edge) calc(var(--g)*100%),transparent),
+    inset 0 0 0 .5px color-mix(in srgb,var(--edge) calc(var(--g)*55%),transparent),
+    0 30px 60px -34px color-mix(in srgb,var(--shadow) calc(var(--g)*70%),transparent);
+  margin:calc(6px + 6px*var(--g)) calc(12px*var(--g)) 30px;
+  border-radius:calc(26px*var(--g))}
+.screen .row{padding:0 calc(14px + 6px*(1 - var(--g))) 0 calc(15px + 4px*(1 - var(--g)))}
+.screen .row+.row::before{left:calc(14px + 6px*(1 - var(--g)));right:calc(14px + 6px*(1 - var(--g)))}
+.screen .bg .lobe{opacity:calc(var(--lobe)*var(--lobek))}
+/* 融合之后玻璃不再替文字挡光，底部改用同色渐变把光斑压下去——
+   头部那一截保留全部极光，越往下越接近纯底色，行越多越稳。 */
+.screen .wash{position:absolute;inset:0;pointer-events:none;z-index:1;
+  background:linear-gradient(180deg,transparent 22%,
+    color-mix(in srgb,var(--ground) calc(var(--wash)*100%),transparent) 100%)}
+.m-fuse{--g:0;--wash:.7}
+
+/* app 里迷你走势线现在默认关闭（「…」里可开），这里照真机来 */
+.screen .spk{display:none}
+.screen .rt{min-width:0}
+
+/* 对比区 */
+.trio{display:grid;grid-template-columns:repeat(auto-fit,minmax(393px,393px));gap:34px 40px;justify-content:start;align-items:start}
+.cap{font-size:12.5px;color:#a9b0b6;margin:12px 3px 0;line-height:1.75;max-width:393px}
+.cap b{color:#e4e8ea}
+.knobs{margin:16px 0 0;max-width:393px;background:#15181c;border:1px solid #262b31;border-radius:14px;padding:12px 16px 6px}
+.knob{display:grid;grid-template-columns:78px 1fr 44px;align-items:center;gap:12px;font-size:12px;color:#aab1b8;height:34px}
+.knob b{font-family:ui-monospace,Menlo,monospace;color:#87d5b4;text-align:right;font-weight:500}
+.knob input{appearance:none;width:100%;height:3px;border-radius:9px;background:#2b3138;outline:none}
+.knob input::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border-radius:50%;background:#e6ebee;box-shadow:0 0 0 3px #15181c,0 0 0 4px #3a4148;cursor:pointer}
+.presets{display:flex;gap:6px;margin:8px 0 6px;flex-wrap:wrap}
+.presets button{appearance:none;border:1px solid #2c3238;background:#0f1215;color:#aab1b8;font-size:11.5px;padding:5px 11px;border-radius:8px;cursor:pointer;font-family:inherit}
+.presets button:hover{color:#fff;border-color:#3d6a55}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>自选分类页 · 玻璃纸 vs 融合</h1>
+<p class="lede">问题只有一个：列表要不要继续躺在一块玻璃纸上。左边是<b>现状</b>（琉璃：极光底 + 一块带高光边的玻璃，列表在玻璃里），
+中间是<b>融合</b>（玻璃去掉，行直接长在极光上，只留行与行之间的发丝线，靠底部同色渐变保可读），
+右边把这两者之间的<b>浓度</b>做成了滑杆——玻璃从 100% 拧到 0% 是一条连续的路，你可以停在任何一档。
+头部、分类段、行结构、徽章、涨跌药丸三台完全相同，唯一的变量是那张纸。</p>
+
+<div class="bar">
+  <span class="lbl">皮肤</span>
+  <div class="grp" id="skin"><button data-v="sage" aria-pressed="true">青苔 · 冷</button><button data-v="terra">陶土 · 暖</button></div>
+  <span class="lbl">外观</span>
+  <div class="grp" id="mode"><button data-v="light">浅色</button><button data-v="dark" aria-pressed="true">深色</button></div>
+  <span class="lbl">涨跌</span>
+  <div class="grp" id="redup"><button data-v="1" aria-pressed="true">红涨绿跌</button><button data-v="0">绿涨红跌</button></div>
+  <span class="lbl">浅色底</span>
+  <div class="grp" id="lite"><button data-v="mint" aria-pressed="true">天青 · 薄荷</button><button data-v="lake">湖蓝 · 青</button><button data-v="mist">雾蓝</button><button data-v="deep">皮肤原色</button></div>
+  <span class="lbl">字体</span>
+  <div class="grp" id="font"><button data-v="a" aria-pressed="true">书宋 · SF</button><button data-v="b">思源宋 · Inter</button><button data-v="c">小薇 · Manrope</button></div>
+</div>
+
+<section>
+  <div class="head"><span class="en">01</span><h2>三台并排</h2><span class="tag">同一套头部与行，只换那张纸</span></div>
+  <div class="trio">
+    <div>
+      <div class="phone" id="p1"></div>
+      <div class="cap"><b>现状 · 玻璃纸</b><br>列表是一件「东西」：有边、有高光、有落影，看上去是一块托盘摆在光斑上。
+      好处是行永远可读，光斑再亮也被玻璃压成一层雾；代价是纸的四条边——尤其上沿那根高光线和 12pt 的两侧留白——把屏幕切成了「底」和「纸」两层。</div>
+    </div>
+    <div>
+      <div class="phone" id="p2"></div>
+      <div class="cap"><b>融合 · 行长在极光上</b><br>没有纸。行与行之间只剩一根两头淡出的发丝线，行的左右内边距放宽到 20pt 与头部的标题对齐，整屏读成一块连续的材料。
+      为了不让光斑穿过文字，底部 22% 往下叠一层同色渐变（70%），越往下越接近纯底色；头部那一截极光完整保留。</div>
+    </div>
+    <div>
+      <div class="phone" id="p3"></div>
+      <div class="knobs">
+        <div class="knob"><span>玻璃浓度</span><input type="range" id="kg" min="0" max="100" value="45"><b id="vg">45%</b></div>
+        <div class="knob"><span>底部收敛</span><input type="range" id="kw" min="0" max="100" value="50"><b id="vw">50%</b></div>
+        <div class="knob"><span>光斑强度</span><input type="range" id="kl" min="0" max="140" value="100"><b id="vl">100%</b></div>
+        <div class="presets">
+          <button data-g="100" data-w="0" data-l="100">现状</button>
+          <button data-g="45" data-w="50" data-l="100">半透</button>
+          <button data-g="15" data-w="60" data-l="100">薄纱</button>
+          <button data-g="0" data-w="70" data-l="100">融合</button>
+          <button data-g="0" data-w="0" data-l="70">融合 · 不收底</button>
+        </div>
+      </div>
+      <div class="cap"><b>自己调</b><br>玻璃浓度是那张纸的存在感：浓度、高光边、圆角、两侧留白一起变。底部收敛是融合时压住光斑的那层同色渐变。光斑强度是极光本身的亮度。</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="head"><span class="en">02</span><h2>怎么选</h2></div>
+  <div class="notes" style="max-width:820px">
+    <p><b>融合更好看，前提是底部收敛跟上。</b> 玻璃纸的「分层」感来自它的四条边，不来自它的颜色——把纸拧到 15% 以下，边一消失，
+    屏幕立刻变成一块整料；这时列表和头部之间也没有边了，「自选」标题、分类段、行，是同一张纸上的三段。这和你此前定下的「整屏一块连续材料、不要硬边」是一个方向。</p>
+    <p><b>玻璃真正在做的事是保可读。</b> 光斑穿过 15.5pt 的价格和 10pt 的灰字时，对比度会掉一截；玻璃用 6.5% 的白雾把它们垫平。
+    融合版把这个活交给底部同色渐变：22% 以上全是极光，往下逐渐回到纯底色，行越靠下越稳，而最上面两三行正好在光斑最亮的地方——那几行是你最常看的，所以我把光斑也压了 30%。
+    「融合 · 不收底」那一档是不做这些处理的样子，可以直接对比。</p>
+    <p><b>中间档也成立。</b> 「薄纱」（15%）保留了极淡的一层纸但没有边，是折中；「半透」（45%）能看出纸的轮廓，和现状差别不大，不建议。</p>
+    <p><b>实施成本。</b> 这一页对应 <span class="k">FavoritesView.swift</span> 的 <span class="k">sheetSkin</span>：融合就是把玻璃填充、高光、描边去掉，两侧留白从 12 收到 0，行内边距放到 20，再在极光底上叠一层同色线性渐变。是个半小时的活，不动交互。</p>
+  </div>
+</section>
+
+</div>
+<script>const B={"specs":{"BTC":{"f":"#F9B34A","t":"#EE7A12","m":{"text":"₿"}},"ETH":{"f":"#8F97F2","t":"#4B54C8","m":{"parts":[{"d":["M12 2.6l5.6 9.1-5.6 3.3-5.6-3.3z","M12 21.6l5.6-7.9-5.6 3.3-5.6-3.3z"],"s":null}]}},"SOL":{"f":"#19F0A0","t":"#9945FF","m":{"parts":[{"d":["M5.4 7.4h11.4l2.2-2.6H7.6z","M5.4 13.3h11.4l2.2-2.6H7.6z","M5.4 19.2h11.4l2.2-2.6H7.6z"],"s":null}]}},"BNB":{"f":"#F8D661","t":"#EFB40A","m":{"parts":[{"d":["M12 3.1l2.6 2.6L12 8.3 9.4 5.7z","M12 15.7l2.6 2.6L12 20.9l-2.6-2.6z","M5.7 9.4l2.6 2.6-2.6 2.6L3.1 12z","M18.3 9.4l2.6 2.6-2.6 2.6L15.7 12z","M12 9.4l2.6 2.6-2.6 2.6L9.4 12z"],"s":null}]}},"DOGE":{"f":"#E3C368","t":"#BFA033","m":{"text":"Ð"}},"XRP":{"f":"#5B667A","t":"#252B33","m":{"parts":[{"d":["M6.2 5.6l3.6 3.7 1.1.5 1.1-.5 3.6-3.7","M6.2 18.4l3.6-3.7 1.1-.5 1.1.5 3.6 3.7"],"s":2.1}]}},"SUI":{"f":"#7CC6F7","t":"#3E8FF0","m":{"parts":[{"d":["M12 4.2c3.9 4.7 5.9 7.7 5.9 10.1a5.9 5.9 0 0 1-11.8 0c0-2.4 2-5.4 5.9-10.1z"],"s":2.1}]}},"LINK":{"f":"#6AA0FF","t":"#2450D4","m":{"parts":[{"d":["M12 3.2l7.2 4.2v8.9L12 20.5l-7.2-4.2V7.4z"],"s":2.0}]}},"ARB":{"f":"#5FA8F5","t":"#2B6FD6","m":{"parts":[{"d":["M12 3.2l7.2 4.2v8.9L12 20.5l-7.2-4.2V7.4z"],"s":2.0}]}},"AVAX":{"f":"#F1616B","t":"#C42832","m":{"parts":[{"d":["M12 4.2l8.8 15.4h-5.3L12 13.4 8.5 19.6H3.2z"],"s":null}]}},"ADA":{"f":"#6FA8F0","t":"#1C4FBF","m":{"parts":[{"d":["M12 9.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"],"s":null},{"d":["M12 2.6a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z","M12 18.4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z","M4.4 6.8a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z","M19.6 6.8a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z","M4.4 14.2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z","M19.6 14.2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"],"s":null}]}},"DOT":{"f":"#F583B4","t":"#D4136B","m":{"parts":[{"d":["M12 9.2a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6z","M12 2.8a2 2 0 1 1 0 4 2 2 0 0 1 0-4z","M12 17.2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z","M4.6 7.1a2 2 0 1 1 0 4 2 2 0 0 1 0-4z","M19.4 7.1a2 2 0 1 1 0 4 2 2 0 0 1 0-4z","M4.6 13a2 2 0 1 1 0 4 2 2 0 0 1 0-4z","M19.4 13a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"],"s":null}]}},"TRX":{"f":"#EE6C6C","t":"#C1272D","m":{"parts":[{"d":["M3.4 5.2l17.2 3-9.2 11.6-1.4-8.2z","M3.4 5.2l6.6 6.4-1.4-.2z"],"s":null}]}},"LTC":{"f":"#B9C2CC","t":"#6A7480","m":{"text":"Ł"}},"TON":{"f":"#63C4F0","t":"#1E88C9","m":{"parts":[{"d":["M4.2 6.4h15.6L12 20.2z"],"s":null}]}},"UNI":{"f":"#F98CC4","t":"#D1348C","m":{"parts":[{"d":["M8.4 5.6v10.2","M15.6 18.4V8.2"],"s":2.0},{"d":["M8.4 20.4l-3.2-5h6.4z","M15.6 3.6l3.2 5h-6.4z"],"s":null}]}},"OP":{"f":"#F2686E","t":"#CE1F26","m":{"parts":[{"d":["M12 5.6a6.4 6.4 0 1 1 0 12.8 6.4 6.4 0 0 1 0-12.8z"],"s":2.4}]}},"APT":{"f":"#8E95A3","t":"#2C333F","m":{"parts":[{"d":["M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z","M5.4 9.8h13.2"],"s":1.9}]}},"PEPE":{"f":"#8CD46A","t":"#3E8B2C","m":{"parts":[{"d":["M4.6 12.8c0-3.2 3.3-5.4 7.4-5.4s7.4 2.2 7.4 5.4c0 3.6-3.3 6-7.4 6s-7.4-2.4-7.4-6z","M8 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z","M16 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z","M7.6 14.4c2.6 2 6.2 2 8.8 0"],"s":1.8},{"d":["M8 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z","M16 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"],"s":null}]}},"AAPL":{"f":"#B9BFC9","t":"#61686F","m":{"parts":[{"d":["M16.8 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.7-1.8-3.3-1.8-1.4-.1-2.8.8-3.5.8s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.1 9.3.8 1.1 1.7 2.4 2.9 2.3 1.1 0 1.6-.7 3-.7s1.7.7 3 .7c1.2 0 2-1.1 2.8-2.3.9-1.3 1.2-2.5 1.2-2.6-.1 0-2.4-.9-2.4-3.7z","M14.6 5.4c.6-.8 1.1-1.8 1-2.9-.9.1-2 .6-2.7 1.4-.6.7-1.1 1.7-1 2.7 1 .1 2.1-.5 2.7-1.2z"],"s":null}]},"i":0.58},"MSFT":{"f":"#7FC4F0","t":"#2B7CB8","m":{"parts":[{"d":["M4.4 4.4h7v7h-7z","M12.6 4.4h7v7h-7z","M4.4 12.6h7v7h-7z","M12.6 12.6h7v7h-7z"],"s":null}]}},"NVDA":{"f":"#9BE36A","t":"#3F8A16","m":{"parts":[{"d":["M4.4 12c2.9-3.7 5.4-5.5 7.6-5.5s4.7 1.8 7.6 5.5c-2.9 3.7-5.4 5.5-7.6 5.5S7.3 15.7 4.4 12z"],"s":1.9},{"d":["M12 9.6a2.4 2.4 0 1 1 0 4.8 2.4 2.4 0 0 1 0-4.8z"],"s":null}]}},"TSLA":{"f":"#F08080","t":"#B71C1C","m":{"parts":[{"d":["M5 6.2c2.1-1 4.4-1.5 7-1.5s4.9.5 7 1.5l-1.4 2.5c-1.3-.5-2.7-.9-4.1-1.1L12 20.2 10.5 7.6c-1.4.2-2.8.6-4.1 1.1z"],"s":null}]}},"GOOGL":{"f":"#8FB6F2","t":"#2F6BD6","m":{"parts":[{"d":["M19.2 12.2h-7","M19 8.1a7.4 7.4 0 1 0 .4 7"],"s":2.3}]}},"AMZN":{"f":"#F6C06A","t":"#C97A16","m":{"parts":[{"d":["M3.8 14.8c2.7 2.3 5.9 3.5 9 3.5 2.1 0 4.3-.5 6.2-1.6"],"s":2.0},{"d":["M17.6 15l3.6-.6-1.4 3.4z"],"s":null}]}},"META":{"f":"#7EA9F5","t":"#1D5BD6","m":{"parts":[{"d":["M8.5 8.2c2.1 0 3.5 7.6 7 7.6 2.1 0 3.6-1.7 3.6-3.8s-1.5-3.8-3.6-3.8c-3.5 0-4.9 7.6-7 7.6-2.1 0-3.6-1.7-3.6-3.8s1.5-3.8 3.6-3.8z"],"s":2.0}]}},"NFLX":{"f":"#EF7B7B","t":"#B81D24","m":{"parts":[{"d":["M6.9 3.8h3.5v16.4H6.9z","M13.6 3.8h3.5v16.4h-3.5z","M6.9 3.8h3.5l6.7 16.4h-3.5z"],"s":null}]}},"AMD":{"f":"#9BD4A0","t":"#2E7D46","m":{"parts":[{"d":["M4.4 4.4h9.8v2.7H7.1v7H4.4z","M19.6 19.6H9.8l9.8-9.8z"],"s":null}]}},"ANTHROPIC":{"f":"#E8A87C","t":"#C4603A","m":{"parts":[{"d":["M12 3.4v6.4","M12 14.2v6.4","M3.4 12h6.4","M14.2 12h6.4","M5.9 5.9l4.5 4.5","M13.6 13.6l4.5 4.5","M5.9 18.1l4.5-4.5","M13.6 10.4l4.5-4.5"],"s":1.8}]}},"OPENAI":{"f":"#8FC7C0","t":"#2E7D6B","m":{"parts":[{"d":["M12 3.6l7.3 4.2v8.4L12 20.4l-7.3-4.2V7.8z","M12 8.4l3.4 2v4L12 16.4l-3.4-2v-4z"],"s":1.8}]}},"MRVL":{"f":"#7FA8E8","t":"#1E4FA8","m":{"parts":[{"d":["M4.8 17.8V7.2l7.2 6.2 7.2-6.2v10.6"],"s":2.4}]}},"AVGO":{"f":"#F0907A","t":"#B23023","m":{"parts":[{"d":["M6 17.4V13a6 6 0 0 1 12 0v4.4"],"s":2.4}]}},"ARM":{"f":"#6FC3D6","t":"#1D7A93","m":{"parts":[{"d":["M8.6 8.6h6.8v6.8H8.6z"],"s":null},{"d":["M10.2 5.4v3","M13.8 5.4v3","M10.2 15.6v3","M13.8 15.6v3","M5.4 10.2h3","M5.4 13.8h3","M15.6 10.2h3","M15.6 13.8h3"],"s":1.5}]}},"ASML":{"f":"#8FB6F2","t":"#2F63C0","m":{"parts":[{"d":["M8.8 3.6h6.4l-2 6.6h-2.4z"],"s":null},{"d":["M12 13a4.4 4.4 0 1 1 0 8.8 4.4 4.4 0 0 1 0-8.8z"],"s":1.8}]}},"AMAT":{"f":"#A9C0E8","t":"#3E62A8","m":{"parts":[{"d":["M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z"],"s":1.9},{"d":["M9.4 4.9h5.2l-2.6 3.4z"],"s":null}]}},"KLAC":{"f":"#8FC7C0","t":"#2E7D6B","m":{"parts":[{"d":["M12 6.2a5.8 5.8 0 1 1 0 11.6 5.8 5.8 0 0 1 0-11.6z"],"s":1.8},{"d":["M12 2.8v3.2","M12 18v3.2","M2.8 12h3.2","M18 12h3.2"],"s":1.8}]}},"LRCX":{"f":"#E8B98C","t":"#A8642C","m":{"parts":[{"d":["M4.6 4.6h14.8v14.8H4.6z","M8.4 8.4h7.2v7.2H8.4z"],"s":1.8}]}},"MU":{"f":"#7FB6E8","t":"#1F5E9E","m":{"parts":[{"d":["M4.4 5.6h15.2v3.4h-6.4v-1.2h-2.4v1.2H4.4z","M4.4 10.3h15.2v3.4h-6.4v-1.2h-2.4v1.2H4.4z","M4.4 15h15.2v3.4h-6.4v-1.2h-2.4v1.2H4.4z"],"s":null}]}},"TXN":{"f":"#EF7B7B","t":"#B3202A","m":{"parts":[{"d":["M12 4.8a7.2 7.2 0 1 1 0 14.4 7.2 7.2 0 0 1 0-14.4z"],"s":1.9},{"d":["M7.4 13.6c1.6-4.4 3-4.4 4.6 0s3 4.4 4.6 0"],"s":1.8}]}},"TER":{"f":"#A9B8C8","t":"#4E637A","m":{"parts":[{"d":["M12 3.6v9.8"],"s":2.2},{"d":["M9.6 13.4h4.8l-2.4 3.4z","M5.4 18.2h13.2v2.2H5.4z"],"s":null}]}},"COHR":{"f":"#C8A8E8","t":"#6A40A8","m":{"parts":[{"d":["M4.4 5.4L19.6 18.6","M19.6 5.4L4.4 18.6"],"s":2.1},{"d":["M12 9.6a2.4 2.4 0 1 1 0 4.8 2.4 2.4 0 0 1 0-4.8z"],"s":null}]}},"CIEN":{"f":"#8FD4C0","t":"#2E8A6B","m":{"parts":[{"d":["M4.4 16.4c3.8 0 3.8-8.8 7.6-8.8s3.8 8.8 7.6 8.8"],"s":2.1},{"d":["M5.8 14.6a2 2 0 1 1 0 4 2 2 0 0 1 0-4z","M18.2 14.6a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"],"s":null}]}},"CRDO":{"f":"#9FB8E8","t":"#3F60B8","m":{"parts":[{"d":["M8.6 12l4-4 4 4-4 4z","M3.4 12l4-4","M20.6 12l-4 4"],"s":2.0}]}},"ALAB":{"f":"#E8A8C8","t":"#B0407A","m":{"parts":[{"d":["M4.4 12h15.2"],"s":2.0},{"d":["M6.2 9.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z","M12 9.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z","M17.8 9.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"],"s":null}]}},"AAOI":{"f":"#8FC0E8","t":"#2F72A8","m":{"parts":[{"d":["M4.6 8.8h10.2v6.4H4.6z"],"s":null},{"d":["M14.8 12h4.8"],"s":2.0}]}},"AXTI":{"f":"#C0C8D4","t":"#65707F","m":{"parts":[{"d":["M12 3.6l7.2 4.2v8.4L12 20.4l-7.2-4.2V7.8z"],"s":2.0}]}},"SNDK":{"f":"#E8C07A","t":"#B08420","m":{"parts":[{"d":["M7 4.4h7.2l3.8 3.8v11.4H7z"],"s":null}]}},"WDC":{"f":"#8FA8C8","t":"#34506E","m":{"parts":[{"d":["M12 4.8a7.2 7.2 0 1 1 0 14.4 7.2 7.2 0 0 1 0-14.4z"],"s":1.8},{"d":["M12 10.6a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8z","M14.4 6.2l4.6 3.2-1.2 1.8-4.6-3.2z"],"s":null}]}},"SMCI":{"f":"#7FC4A8","t":"#2E7D5B","m":{"parts":[{"d":["M4.6 5.4h14.8v4H4.6z","M4.6 10h14.8v4H4.6z","M4.6 14.6h14.8v4H4.6z"],"s":1.6},{"d":["M6.6 6.8a.8 .8 0 1 1 0 1.6 .8 .8 0 0 1 0-1.6z","M6.6 11.4a.8 .8 0 1 1 0 1.6 .8 .8 0 0 1 0-1.6z","M6.6 16a.8 .8 0 1 1 0 1.6 .8 .8 0 0 1 0-1.6z"],"s":null}]}},"DELL":{"f":"#7FB6E8","t":"#1F5E9E","m":{"parts":[{"d":["M16.4 6.6a7 7 0 1 0 2.2 3.4"],"s":2.2},{"d":["M12 9.6a2.4 2.4 0 1 1 0 4.8 2.4 2.4 0 0 1 0-4.8z"],"s":null}]}},"HPE":{"f":"#7FD4A8","t":"#1E8A5B","m":{"parts":[{"d":["M3.8 8.4h7.4v2.4H6.2v2.4h5v2.4H3.8z","M12.8 8.4h7.4v2.4h-5v2.4h5v2.4h-7.4z"],"s":null}]}},"INTC":{"f":"#7FB6E8","t":"#1050A8","m":{"parts":[{"d":["M15.8 5.8a7.2 7.2 0 1 0 3.2 4.6"],"s":2.1},{"d":["M17.6 4a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6z"],"s":null}]}},"NOK":{"f":"#8FA8E8","t":"#2A4FA8","m":{"parts":[{"d":["M3.6 9.2h12v-2.4l5 4-5 4V12h-12z","M20.4 14.8h-12v2.4l-5-4 5-4V12h12z"],"s":null}]}},"GLW":{"f":"#A8C8D4","t":"#3E6070","m":{"parts":[{"d":["M12 3.6l7.4 8.4-7.4 8.4-7.4-8.4z"],"s":1.9},{"d":["M12 7.2l3.8 4.8-3.8 4.8z"],"s":null}]}},"LITE":{"f":"#C8A8E8","t":"#6A40A8","m":{"parts":[{"d":["M12 4.4l6.4 11.2H5.6z"],"s":1.9},{"d":["M2.6 10h4.2","M17.2 17.4h4.2","M17.2 19.8h4.2"],"s":1.7}]}},"NBIS":{"f":"#8FB6E8","t":"#2F5FA8","m":{"parts":[{"d":["M12 3.8l7.4 4.1v8.2L12 20.2l-7.4-4.1V7.9z","M12 12l7.4-4.1","M12 12v8.2","M12 12L4.6 7.9"],"s":1.7}]}},"IREN":{"f":"#8FD4C0","t":"#2E8A78","m":{"parts":[{"d":["M12 11.2V3.6","M12 12.8l6.6 3.8","M12 12.8l-6.6 3.8"],"s":2.2},{"d":["M12 10.2a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6z"],"s":null}]}},"TSM":{"f":"#7FA8E8","t":"#1F4FA8","m":{"parts":[{"d":["M12 4.8a7.2 7.2 0 1 1 0 14.4 7.2 7.2 0 0 1 0-14.4z"],"s":1.8},{"d":["M8.6 8.6h6.8v6.8H8.6z"],"s":1.6}]}},"QCOM":{"f":"#7FA8E8","t":"#2F5FD0","m":{"parts":[{"d":["M12 7.6a4.4 4.4 0 1 1 0 8.8 4.4 4.4 0 0 1 0-8.8z"],"s":1.9},{"d":["M16.2 5.4a8.4 8.4 0 0 1 0 13.2","M7.8 5.4a8.4 8.4 0 0 0 0 13.2"],"s":1.7}]}},"CRM":{"f":"#7FC4F0","t":"#1E7BC0","m":{"parts":[{"d":["M7.4 18.4a4.4 4.4 0 0 1-.5-8.8 5.6 5.6 0 0 1 10.6-1 3.9 3.9 0 0 1-.7 9.8z"],"s":null}]}},"NOW":{"f":"#7FD4A8","t":"#1E8A5B","m":{"parts":[{"d":["M7.4 8.6h9.2","M7.4 8.6v6.8","M7.4 15.4h9.2"],"s":2.0},{"d":["M7.4 5.8a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6z","M16.6 12.6a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6z"],"s":null}]}},"SNOW":{"f":"#8FD4F0","t":"#2F8FC0","m":{"parts":[{"d":["M12 3.2v17.6","M4.4 7.6l15.2 8.8","M19.6 7.6L4.4 16.4"],"s":2.0},{"d":["M9.4 5.4L12 8l2.6-2.6","M9.4 18.6L12 16l2.6 2.6"],"s":1.8}]}},"MDB":{"f":"#9FD48C","t":"#3E8B2C","m":{"parts":[{"d":["M12 3.2c3.4 3.6 5 6.6 5 9.4 0 3.4-2.2 5.6-5 6.4-2.8-.8-5-3-5-6.4 0-2.8 1.6-5.8 5-9.4z"],"s":null},{"d":["M12 19v2.2"],"s":1.8}]}},"DDOG":{"f":"#C0A8E8","t":"#6A3FB0","m":{"parts":[{"d":["M5.6 9.4l3-3.4v3.2h6.2l3.6-2.4v9.6h-4.6v3.6H8.2v-3.6H5.6z"],"s":null},{"d":["M15.8 10.6a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z"],"s":null}]}},"NET":{"f":"#F0B47A","t":"#C87A18","m":{"parts":[{"d":["M8.6 15.4a3.6 3.6 0 0 1 .3-7.2 4.8 4.8 0 0 1 9 .8 3.2 3.2 0 0 1-.5 6.4z"],"s":null},{"d":["M3.6 18.2h12.8"],"s":2.0}]}},"ZS":{"f":"#8FC4E8","t":"#2F6FA8","m":{"parts":[{"d":["M12 3.4l7 2.6v6c0 4-3 7-7 8.6-4-1.6-7-4.6-7-8.6V6z"],"s":1.9},{"d":["M8.8 12.2l2.4 2.4 4-4.6"],"s":2.0}]}},"PANW":{"f":"#F0A07A","t":"#C05020","m":{"parts":[{"d":["M12 3.4l7 4v9.2l-7 4-7-4V7.4z"],"s":1.9},{"d":["M9.6 11h4.8v4.4H9.6z"],"s":null},{"d":["M10.4 11V9.4a1.6 1.6 0 0 1 3.2 0V11"],"s":1.5}]}},"CRWD":{"f":"#EF8080","t":"#B02028","m":{"parts":[{"d":["M11.2 4.4v15.2L3.4 12z","M12.8 4.4v15.2L20.6 12z"],"s":null}]}},"GTLB":{"f":"#F0A47A","t":"#C25A18","m":{"parts":[{"d":["M12 20.6L4 11.2l1.8-6.4 3 6.4h6.4l3-6.4L20 11.2z"],"s":null}]}},"TEAM":{"f":"#7FA8F0","t":"#1F5FD0","m":{"parts":[{"d":["M9.8 3.6L18.8 20H12L9.8 3.6z","M8.4 9.8L13 20H3.8L8.4 9.8z"],"s":null}]}},"PLTR":{"f":"#A8B4C0","t":"#3E4A56","m":{"parts":[{"d":["M12 3.6l7.4 4.6H4.6z","M12 9.6l7.4 4.6H4.6z","M12 15.6l7.4 4.6H4.6z"],"s":null}]}},"APP":{"f":"#8FC4A8","t":"#2E7D5B","m":{"parts":[{"d":["M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z"],"s":1.9},{"d":["M10.2 8.6l6 3.4-6 3.4z"],"s":null}]}},"EBAY":{"f":"#F0A07A","t":"#C04020","m":{"parts":[{"d":["M5.6 9.8a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z","M9.9 9.8a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z","M14.2 9.8a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z","M18.5 9.8a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"],"s":null}]}},"SHOP":{"f":"#9FD48C","t":"#4A8B2C","m":{"parts":[{"d":["M5.4 8.2h13.2l-1.2 12H6.6z"],"s":null},{"d":["M9 9.4V7a3 3 0 0 1 6 0v2.4"],"s":1.8}]}},"UBER":{"f":"#9AA4B0","t":"#20262E","m":{"parts":[{"d":["M4.6 4.6h14.8v14.8H4.6z"],"s":2.0},{"d":["M8.6 15.4l6.8-6.8"],"s":2.4}]}},"DKNG":{"f":"#7FD4A8","t":"#1E8A4B","m":{"parts":[{"d":["M3.8 8.2l3.8 3.4L12 5.4l4.4 6.2 3.8-3.4-1.8 10H5.6z"],"s":null}]}},"TTWO":{"f":"#C0A8E8","t":"#6A3FB0","m":{"parts":[{"d":["M9.2 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10z","M14.8 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10z"],"s":1.9}]}},"RDDT":{"f":"#F0A07A","t":"#E04020","m":{"parts":[{"d":["M12 8.4c4.4 0 8 2.6 8 5.8s-3.6 5.8-8 5.8-8-2.6-8-5.8 3.6-5.8 8-5.8z"],"s":null},{"d":["M12 8.4V5.2","M15.4 3.4a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6z"],"s":1.7}]}},"ZM":{"f":"#8FB6F0","t":"#1F5FD0","m":{"parts":[{"d":["M4.4 8h9.2c.9 0 1.6.7 1.6 1.6v4.8c0 .9-.7 1.6-1.6 1.6H4.4c-.9 0-1.6-.7-1.6-1.6V9.6c0-.9.7-1.6 1.6-1.6z","M16.4 11.2l4.8-3v7.6l-4.8-3z"],"s":null}]}},"DJT":{"f":"#EF8080","t":"#B02028","m":{"parts":[{"d":["M12 3.6l1.9 3.9 4.3.6-3.1 3 .7 4.3-3.8-2-3.8 2 .7-4.3-3.1-3 4.3-.6z"],"s":null},{"d":["M5 19.4h14"],"s":2.0}]}},"GPRO":{"f":"#A8B4C0","t":"#3E4A56","m":{"parts":[{"d":["M4.4 6.6h15.2v10.8H4.4z"],"s":2.0},{"d":["M12 8.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4z"],"s":1.8}]}},"HIMS":{"f":"#8FD4C0","t":"#2E8A6B","m":{"parts":[{"d":["M8.2 12.4l4.2-4.2a3 3 0 0 1 4.2 4.2l-4.2 4.2a3 3 0 0 1-4.2-4.2z"],"s":1.8},{"d":["M4 20c0-3.2 2-5 5-5 0 3.2-2 5-5 5z"],"s":null}]}},"ORCL":{"f":"#EF8080","t":"#C0302A","m":{"parts":[{"d":["M8.6 8a4 4 0 1 0 0 8h6.8a4 4 0 1 0 0-8z"],"s":2.3}]}},"IBM":{"f":"#7FB6E8","t":"#1F5EA8","m":{"parts":[{"d":["M4.4 5.6h15.2v1.5H4.4z","M4.4 8.1h15.2v1.5H4.4z","M4.4 10.6h15.2v1.5H4.4z","M4.4 13.1h15.2v1.5H4.4z","M4.4 15.6h15.2v1.5H4.4z","M4.4 18.1h15.2v1.5H4.4z"],"s":null}]}},"SONY":{"f":"#A8B4C0","t":"#20262E","m":{"parts":[{"d":["M3.4 7.6h17.2v8.8H3.4z"],"s":2.1},{"d":["M7 12h10"],"s":2.1}]}},"DIS":{"f":"#8FA8E8","t":"#2A3FA8","m":{"parts":[{"d":["M12 9a5 5 0 1 1 0 10 5 5 0 0 1 0-10z","M6.4 3.8a3 3 0 1 1 0 6 3 3 0 0 1 0-6z","M17.6 3.8a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"],"s":null}]}},"KO":{"f":"#EF7B7B","t":"#B3202A","m":{"parts":[{"d":["M3.4 14.6c4-5.2 8-7.8 12-7.8 2 0 3.6.5 5.2 1.4-3.6 1-6.6 2.6-9 4.8"],"s":null},{"d":["M20.6 9.4c-4 5.2-8 7.8-12 7.8-2 0-3.6-.5-5.2-1.4 3.6-1 6.6-2.6 9-4.8"],"s":null}]}},"COST":{"f":"#EF8080","t":"#B0202A","m":{"parts":[{"d":["M4.6 5.2h6.2v4.4H4.6z","M13.2 5.2h6.2v4.4h-6.2z","M4.6 11.4h6.2v4.4H4.6z","M13.2 11.4h6.2v4.4h-6.2z","M3.4 17.6h17.2v2.4H3.4z"],"s":null}]}},"WMT":{"f":"#7FC4F0","t":"#1E6FC0","m":{"parts":[{"d":["M12 2.8v5.6","M12 15.6v5.6","M4.9 6.9l4.8 2.8","M14.3 14.3l4.8 2.8","M19.1 6.9l-4.8 2.8","M9.7 14.3l-4.8 2.8"],"s":2.3}]}},"HD":{"f":"#F0A07A","t":"#D06018","m":{"parts":[{"d":["M4.8 4.8h14.4v14.4H4.8z"],"s":2.2},{"d":["M8.4 9.6h7.2v1.9H8.4z","M10.8 8.4h2.4v6.4h-2.4z"],"s":null}]}},"BABA":{"f":"#F0A07A","t":"#D06018","m":{"parts":[{"d":["M6.4 8.8c1.8-2.6 4-3.8 6.6-3.8 3 0 5 1.6 5 3.8 0 3.4-4.2 4-4.2 6.4"],"s":2.1},{"d":["M6.6 13.4a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4z","M13.8 16.4a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4z"],"s":null}]}},"PDD":{"f":"#EF8080","t":"#C0302A","m":{"parts":[{"d":["M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z","M12 8.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4z"],"s":2.0}]}},"GME":{"f":"#EF8080","t":"#B02028","m":{"parts":[{"d":["M7.4 8h9.2a4.6 4.6 0 0 1 0 9.2H7.4a4.6 4.6 0 0 1 0-9.2z"],"s":null},{"d":["M8.2 12.6h2.6","M9.5 11.3v2.6"],"s":1.5}]}},"WEN":{"f":"#EF8080","t":"#B02028","m":{"parts":[{"d":["M4.6 8.2c0-2.4 3.3-4 7.4-4s7.4 1.6 7.4 4z","M4.4 10h15.2v2.6H4.4z","M4.6 14.4h14.8c0 2.6-3.3 4.4-7.4 4.4s-7.4-1.8-7.4-4.4z"],"s":null}]}},"LLY":{"f":"#EF8080","t":"#C0302A","m":{"parts":[{"d":["M7.6 13.2l5.6-5.6a4 4 0 0 1 5.6 5.6l-5.6 5.6a4 4 0 0 1-5.6-5.6z"],"s":1.9},{"d":["M10.4 10.4l5.6 5.6"],"s":1.9}]}},"MRK":{"f":"#7FC4B8","t":"#0E7C6E","m":{"parts":[{"d":["M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z"],"s":1.9},{"d":["M10.6 8.2h2.8v2.4h2.4v2.8h-2.4v2.4h-2.8v-2.4H8.2v-2.8h2.4z"],"s":null}]}},"MRNA":{"f":"#F08080","t":"#B31B1B","m":{"parts":[{"d":["M8 3.6c0 5.6 8 6.8 8 12.4 0 2-1 3.4-2.6 4.4","M16 3.6c0 5.6-8 6.8-8 12.4 0 2 1 3.4 2.6 4.4"],"s":2.0},{"d":["M8.6 8h6.8","M8.6 13.2h6.8"],"s":1.6}]}},"NVO":{"f":"#7FA8E8","t":"#1F4FA8","m":{"parts":[{"d":["M3.6 7.6c0 5.4 3.8 8.8 8.4 8.8s8.4-3.4 8.4-8.8","M3.6 7.6c1.8-1.4 3.4-2 4.8-1.8","M20.4 7.6c-1.8-1.4-3.4-2-4.8-1.8"],"s":2.1}]}},"COIN":{"f":"#7FA8F0","t":"#1652F0","m":{"parts":[{"d":["M12 4.4a7.6 7.6 0 1 1 0 15.2 7.6 7.6 0 0 1 0-15.2z"],"s":2.1},{"d":["M9.6 9.6h4.8v4.8H9.6z"],"s":null}]}},"HOOD":{"f":"#9FD48C","t":"#3E8B2C","m":{"parts":[{"d":["M18.4 4.4c1 6.6-2.4 11-8.4 11.6l-2.8.3c.4-6.6 4.2-10.6 11.2-11.9z"],"s":null},{"d":["M5 20.4l5.6-6"],"s":2.0}]}},"SOFI":{"f":"#F0A07A","t":"#C0502A","m":{"parts":[{"d":["M5.4 17.6a4 4 0 0 1 4-4","M5.4 17.6a8 8 0 0 1 8-8","M5.4 17.6a12 12 0 0 1 12-12"],"s":2.0}]}},"JPM":{"f":"#8FA8C8","t":"#2E4A6E","m":{"parts":[{"d":["M8.6 3.8h6.8l5 5v6.4l-5 5H8.6l-5-5V8.8z"],"s":2.0},{"d":["M9.6 9.6h4.8v4.8H9.6z"],"s":null}]}},"GS":{"f":"#A8B8C8","t":"#45607A","m":{"parts":[{"d":["M3.8 5.4h16.4v2.6H3.8z","M6.6 9h3.2v9.4H6.6z","M14.2 9h3.2v9.4h-3.2z","M3.8 19.8h16.4v1.4H3.8z"],"s":null}]}},"BX":{"f":"#9AA4B0","t":"#20262E","m":{"parts":[{"d":["M4.4 4.4h7.2v7.2H4.4z","M12.4 8.4h7.2v7.2h-7.2z","M4.4 12.4h7.2v7.2H4.4z"],"s":null}]}},"BRKB":{"f":"#A8B4C0","t":"#3E4A56","m":{"parts":[{"d":["M12 3.4l7 2.6v6c0 4-3 7-7 8.6-4-1.6-7-4.6-7-8.6V6z"],"s":1.9},{"d":["M5.6 11h12.8v2.6H5.6z"],"s":null}]}},"V":{"f":"#8FA8E8","t":"#1A3F9E","m":{"parts":[{"d":["M3.6 6.6h4.2L12 16.4l4.2-9.8h4.2L13.8 20h-3.6z"],"s":null}]}},"PYPL":{"f":"#7FB6E8","t":"#1A4FA8","m":{"parts":[{"d":["M5.4 4.4h5.8a4 4 0 0 1 0 8H8.2l-1 7.2H4z","M11 8.4h4.4a4 4 0 0 1 0 8h-2.8l-1 5.2h-2.4z"],"s":null}]}},"PAYP":{"f":"#7FB6E8","t":"#1A4FA8","m":{"parts":[{"d":["M3.6 7.4h16.8v11.2H3.6z"],"s":2.0},{"d":["M14.8 11.4h5.6v3.2h-5.6z"],"s":null}]}},"MSTR":{"f":"#8FB6E8","t":"#2F5FA8","m":{"parts":[{"d":["M4.4 8.6h2.6v10.8H4.4z","M8.4 5.4h2.6v14H8.4z","M13 5.4h2.6v14H13z","M17 8.6h2.6v10.8H17z"],"s":null}]}},"MARA":{"f":"#7FC4A8","t":"#2E7D5B","m":{"parts":[{"d":["M4.4 7.6c5-3.4 10.2-3.4 15.2 0-5 1.6-10.2 1.6-15.2 0z"],"s":null},{"d":["M12 7v13.4"],"s":2.2}]}},"CRCL":{"f":"#8FC4E8","t":"#2F7FC8","m":{"parts":[{"d":["M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z"],"s":2.2},{"d":["M12 10.2a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6z"],"s":null}]}},"CRWV":{"f":"#C0A8E8","t":"#6A3FB0","m":{"parts":[{"d":["M4.4 9.4h15.2","M4.4 14.6h15.2","M9.4 4.4v15.2","M14.6 4.4v15.2"],"s":2.0}]}},"BMNR":{"f":"#E8C07A","t":"#A8802C","m":{"parts":[{"d":["M4.4 7h15.2v10H4.4z"],"s":1.9},{"d":["M7.4 9.6h2.2v4.8H7.4z","M11 9.6h2.2v4.8H11z","M14.6 9.6h2.2v4.8h-2.2z"],"s":null},{"d":["M7 19.4h10"],"s":1.8}]}},"CAT":{"f":"#F0C860","t":"#B88A10","m":{"parts":[{"d":["M3.6 15.6h3.2L11 7.4h9.4v3.2h-7.4l-4.2 8.2H3.6z"],"s":null}]}},"GEV":{"f":"#7FC4E8","t":"#1F7FB8","m":{"parts":[{"d":["M12 10.6c0-4 1.4-6.6 4-7.6-.6 3.2-1.8 5.6-4 7.6z","M13 12.6c3.6-1.8 6.4-1.8 8.4 0-3 1.6-5.8 1.6-8.4 0z","M11 13.4c-.8 3.8-2.4 6.2-5 7 .2-3.2 1.8-5.6 5-7z"],"s":null},{"d":["M12 10.4a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6z"],"s":null}]}},"VST":{"f":"#F0C860","t":"#C09010","m":{"parts":[{"d":["M13.6 2.8l-8 11h4.4l-1.6 7.4 8-11.4h-4.6z"],"s":null}]}},"VRT":{"f":"#9FD48C","t":"#4A8B2C","m":{"parts":[{"d":["M12 11.4c-1-3.4-.4-5.8 2-7.2.6 3.2.2 5.6-2 7.2z","M12.6 12.4c3.4-1 5.8-.4 7.2 2-3.2.6-5.6.2-7.2-2z","M11.4 12.6c-1 3.4-3 5-6 5 1.4-2.8 3.4-4.6 6-5z"],"s":null},{"d":["M12 10.6a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2z"],"s":null}]}},"BE":{"f":"#9FD48C","t":"#3E8B4C","m":{"parts":[{"d":["M12 3.4c2.6 2 3.8 4 3.6 6-2.2.2-3.4-1.8-3.6-6z","M20.6 12c-2 2.6-4 3.8-6 3.6-.2-2.2 1.8-3.4 6-3.6z","M12 20.6c-2.6-2-3.8-4-3.6-6 2.2-.2 3.4 1.8 3.6 6z","M3.4 12c2-2.6 4-3.8 6-3.6.2 2.2-1.8 3.4-6 3.6z"],"s":null}]}},"FLNC":{"f":"#8FC4E8","t":"#2F6FA8","m":{"parts":[{"d":["M3.6 7.4h14.2v9.2H3.6z"],"s":2.0},{"d":["M19 10.4h1.8v3.2H19z","M11.8 8.8l-3 4.4h2.4l-1 3.6 3.6-5h-2.4z"],"s":null}]}},"ONDS":{"f":"#A8B4C0","t":"#3E4A56","m":{"parts":[{"d":["M9.8 9.8h4.4v4.4H9.8z"],"s":null},{"d":["M9.8 9.8L6 6","M14.2 9.8L18 6","M9.8 14.2L6 18","M14.2 14.2L18 18"],"s":1.8},{"d":["M3.4 5.2h5.2","M15.4 5.2h5.2","M3.4 18.8h5.2","M15.4 18.8h5.2"],"s":1.8}]}},"USAR":{"f":"#EF8080","t":"#B02028","m":{"parts":[{"d":["M6.4 19.4V12a5.6 5.6 0 0 1 11.2 0v7.4"],"s":3.0},{"d":["M4.9 16.4h3v3h-3z","M16.1 16.4h3v3h-3z"],"s":null}]}},"RKLB":{"f":"#A8B4C0","t":"#2E3A46","m":{"parts":[{"d":["M12 2.6c2.4 2.6 3.6 5.6 3.6 9v4.2H8.4v-4.2c0-3.4 1.2-6.4 3.6-9z"],"s":null},{"d":["M8.4 12.4L5.4 18h3z","M15.6 12.4L18.6 18h-3z","M10.4 17.4h3.2l-1.6 4z"],"s":null}]}},"ASTS":{"f":"#8FB6E8","t":"#2F5FA8","m":{"parts":[{"d":["M10 10h4v4h-4z"],"s":null},{"d":["M2.8 9h6.2v6H2.8z","M15 9h6.2v6H15z"],"s":1.7},{"d":["M12 10V5.6","M12 14v4.4"],"s":1.7}]}},"IONQ":{"f":"#C0A8E8","t":"#6A3FB0","m":{"parts":[{"d":["M12 10.4a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6z"],"s":null},{"d":["M12 4.4c4.4 0 8 3.4 8 7.6s-3.6 7.6-8 7.6-8-3.4-8-7.6 3.6-7.6 8-7.6z"],"s":1.6},{"d":["M5.6 8.2c2.2-3.8 6.8-5.2 10.4-3.2s4.6 6.6 2.4 10.4-6.8 5.2-10.4 3.2-4.6-6.6-2.4-10.4z"],"s":1.6}]}},"TEM":{"f":"#8FC4C0","t":"#2E7D6B","m":{"parts":[{"d":["M4.4 18.6c0-4 2.6-6 7.6-6s7.6-2 7.6-6"],"s":2.1},{"d":["M6.6 15.4h4","M13.4 8.6h4"],"s":1.8}]}},"FLEX":{"f":"#8FA8C8","t":"#34506E","m":{"parts":[{"d":["M4.4 6.6h9.2v5H4.4","M10.4 12.4h9.2v5h-9.2"],"s":2.0}]}},"TENCENT":{"f":"#7FC4E8","t":"#2F6FA8","m":{"parts":[{"d":["M12 3.2c2.9 0 4.6 2.3 4.6 5.4 0 1.5.9 2.8 2.2 4.6 1 1.4 1 2.6.2 3.2-.9.7-2.1.2-3-.8-.5 2.2-2.1 3.6-4 3.6s-3.5-1.4-4-3.6c-.9 1-2.1 1.5-3 .8-.8-.6-.8-1.8.2-3.2 1.3-1.8 2.2-3.1 2.2-4.6 0-3.1 1.7-5.4 4.6-5.4z"],"s":null},{"d":["M10.3 7.4a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2z","M13.7 7.4a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2z"],"s":null}]}},"MEITUAN":{"f":"#F0D060","t":"#D0A000","m":{"parts":[{"d":["M8.4 8.6c0-2.8 1.6-4.6 3.6-4.6s3.6 1.8 3.6 4.6v2.2c0 4.4-1.6 7-3.6 8.8-2-1.8-3.6-4.4-3.6-8.8z"],"s":null},{"d":["M6.2 5.2l2.6 3.6","M17.8 5.2l-2.6 3.6"],"s":2.0}]}},"KUAISHOU":{"f":"#F0A0C0","t":"#E0307A","m":{"parts":[{"d":["M12 4.4a7.6 7.6 0 1 1 0 15.2 7.6 7.6 0 0 1 0-15.2z"],"s":2.0},{"d":["M13 7.6l-4 5.2h2.6l-.8 3.8 4.2-5.6h-2.8z"],"s":null}]}},"HK1810":{"f":"#F0A07A","t":"#E04020","m":{"parts":[{"d":["M6.4 6.4h11.2c.9 0 1.6.7 1.6 1.6v8c0 .9-.7 1.6-1.6 1.6H6.4c-.9 0-1.6-.7-1.6-1.6v-8c0-.9.7-1.6 1.6-1.6z"],"s":2.0},{"d":["M8.2 15.4V9.4c1.8 0 2.6.8 2.6 2.6v3.4","M15.8 9.4v6"],"s":1.8}]}},"HK0700":{"f":"#7FC4E8","t":"#2F6FA8","m":{"parts":[{"d":["M12 3.2c2.9 0 4.6 2.3 4.6 5.4 0 1.5.9 2.8 2.2 4.6 1 1.4 1 2.6.2 3.2-.9.7-2.1.2-3-.8-.5 2.2-2.1 3.6-4 3.6s-3.5-1.4-4-3.6c-.9 1-2.1 1.5-3 .8-.8-.6-.8-1.8.2-3.2 1.3-1.8 2.2-3.1 2.2-4.6 0-3.1 1.7-5.4 4.6-5.4z"],"s":null},{"d":["M10.3 7.4a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2z","M13.7 7.4a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2z"],"s":null}]}},"HK0625":{"f":"#8FA8C8","t":"#2E4A6E","m":{"parts":[{"d":["M12 3.6l7 2.4v6.2c0 3.8-2.9 6.6-7 8.2-4.1-1.6-7-4.4-7-8.2V6z"],"s":2.0},{"d":["M8.6 10.4h6.8v3.2H8.6z"],"s":null}]}},"HK0992":{"f":"#EF8080","t":"#B02028","m":{"parts":[{"d":["M3.6 6.6h16.8v10.8H3.6z"],"s":2.2},{"d":["M7.4 10.4h9.2v3.2H7.4z"],"s":null}]}},"BYD":{"f":"#7FA8E8","t":"#1F4FA8","m":{"parts":[{"d":["M5.4 8a6.6 4 0 1 1 0 8 6.6 4 0 0 1 0-8z"],"s":2.1},{"d":["M9 11h6v2H9z"],"s":null}]}},"POPMART":{"f":"#7FC4C0","t":"#2E8A7B","m":{"parts":[{"d":["M12 6.4a6.4 6.4 0 1 1 0 12.8 6.4 6.4 0 0 1 0-12.8z"],"s":null},{"d":["M7 3.4l2.6 4.4","M17 3.4l-2.6 4.4"],"s":2.1}]}},"SAMSUNG":{"f":"#7FA8E8","t":"#1428A0","m":{"parts":[{"d":["M4.8 15.8a6.4 4.2 -18 0 1 14.4-6.6 6.4 4.2 -18 0 1-14.4 6.6z"],"s":null}]}},"SAMSUNGEM":{"f":"#8FB6E8","t":"#2040B0","m":{"parts":[{"d":["M4.8 15.8a6.4 4.2 -18 0 1 14.4-6.6 6.4 4.2 -18 0 1-14.4 6.6z"],"s":2.0}]}},"CSOPSAMSUNG2L":{"f":"#9FC0E8","t":"#2A44B8","m":{"parts":[{"d":["M4.8 14.4a6.2 4 -18 0 1 14-6.4 6.2 4 -18 0 1-14 6.4z"],"s":null},{"d":["M5 19.4h14"],"s":2.0}]}},"SKHYNIX":{"f":"#EF8080","t":"#C0302A","m":{"parts":[{"d":["M7.4 7.4h9.2v9.2H7.4z"],"s":2.0},{"d":["M10.4 4.2v3.2","M13.6 4.2v3.2","M10.4 16.6v3.2","M13.6 16.6v3.2"],"s":1.7}]}},"CSOPSKHYNIX2L":{"f":"#F09090","t":"#C84038","m":{"parts":[{"d":["M7.4 6.4h9.2v9.2H7.4z"],"s":2.0},{"d":["M5 19.4h14"],"s":2.0}]}},"HYUNDAI":{"f":"#8FB6D4","t":"#2E5A7A","m":{"parts":[{"d":["M4.6 8.4a7.4 4.4 0 1 1 0 7.2 7.4 4.4 0 0 1 0-7.2z"],"s":2.0},{"d":["M9 9.6l6 4.8"],"s":2.0}]}},"LGELECTRONICS":{"f":"#EF8080","t":"#A50034","m":{"parts":[{"d":["M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z"],"s":2.0},{"d":["M10 9.4a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z"],"s":null},{"d":["M8.6 14.6c1.8 1.6 5 1.6 6.8 0"],"s":1.8}]}},"NAVER":{"f":"#7FD4A8","t":"#03C75A","m":{"parts":[{"d":["M5.4 4.6h4.4l4.6 7V4.6h4.2v14.8h-4.4l-4.6-7v7H5.4z"],"s":null}]}},"HANMI":{"f":"#8FC4D4","t":"#2E6A8A","m":{"parts":[{"d":["M12 5.6a6.4 6.4 0 1 1 0 12.8 6.4 6.4 0 0 1 0-12.8z"],"s":2.0},{"d":["M7.4 9.4h9.2"],"s":1.8}]}},"ZHIPU":{"f":"#8FB6E8","t":"#2F5FA8","m":{"parts":[{"d":["M15.6 6a7.2 7.2 0 1 0 3.4 5.2"],"s":2.1},{"d":["M12 9.2a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6z"],"s":null}]}},"MINIMAX":{"f":"#C0A8E8","t":"#6A3FB0","m":{"parts":[{"d":["M4.6 16.4V9.6l3.6 3.4 3.6-3.4v6.8","M13.4 7.6h6","M16.4 7.6v11"],"s":2.1}]}},"CXMT":{"f":"#7FB6C8","t":"#2E6A7A","m":{"parts":[{"d":["M4.4 8.4h15.2v7.2H4.4z"],"s":1.9},{"d":["M7.4 10.4h2.4v3.2H7.4z","M11 10.4h2.4v3.2H11z","M14.6 10.4h2.4v3.2h-2.4z"],"s":null}]}},"UNITREE":{"f":"#A8B4C0","t":"#3E4A56","m":{"parts":[{"d":["M6.4 8.6h11.2v5H6.4z"],"s":null},{"d":["M7.6 13.6v5.4","M10.4 13.6v5.4","M13.6 13.6v5.4","M16.4 13.6v5.4","M15.4 8.6l2.6-3.8"],"s":1.9}]}},"GIGADEV":{"f":"#8FC4A8","t":"#2E7D5B","m":{"parts":[{"d":["M8.4 8.4h7.2v7.2H8.4z"],"s":1.9},{"d":["M5.2 10.4h3.2","M5.2 13.6h3.2","M15.6 10.4h3.2","M15.6 13.6h3.2"],"s":1.7}]}},"ZHONGJI":{"f":"#8FC0E8","t":"#2F72A8","m":{"parts":[{"d":["M3.6 9.4h7.2v5.2H3.6z","M13.2 9.4h7.2v5.2h-7.2z"],"s":1.9},{"d":["M10.8 12h2.4"],"s":2.0}]}}},"outers":[{"d":["M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z"],"s":2.1},{"d":["M12 4.2l6.9 4v8L12 20.2l-6.9-4v-8z"],"s":2.1},{"d":["M7.2 4.9h9.6a2.3 2.3 0 0 1 2.3 2.3v9.6a2.3 2.3 0 0 1-2.3 2.3H7.2a2.3 2.3 0 0 1-2.3-2.3V7.2a2.3 2.3 0 0 1 2.3-2.3z"],"s":2.1},{"d":["M12 3.9l8.1 8.1-8.1 8.1L3.9 12z"],"s":2.1},{"d":["M12 4.2l6.6 2.5v5c0 3.9-2.7 6.6-6.6 8.3-3.9-1.7-6.6-4.4-6.6-8.3v-5z"],"s":2.1},{"d":["M8.9 4.4h6.2l3.9 3.9v6.2l-3.9 3.9H8.9L5 14.5V8.3z"],"s":2.1},{"d":["M16.8 6.4a7.3 7.3 0 1 0 2.6 4.2"],"s":2.2},{"d":["M12 4.1l7.5 5.45-2.87 8.85H7.37L4.5 9.55z"],"s":2.1},{"d":["M12 4.6a4.6 4.6 0 0 1 4.6 4.6v5.6a4.6 4.6 0 0 1-9.2 0V9.2A4.6 4.6 0 0 1 12 4.6z"],"s":2.1},{"d":["M8.1 5.6h7.8l3.9 6.4-3.9 6.4H8.1L4.2 12z"],"s":2.1},{"d":["M4.9 19.1v-7.1a7.1 7.1 0 0 1 14.2 0v7.1"],"s":2.2},{"d":["M6.4 6.6h11.2a2.2 2.2 0 0 1 2.2 2.2v6.4a2.2 2.2 0 0 1-2.2 2.2H6.4a2.2 2.2 0 0 1-2.2-2.2V8.8a2.2 2.2 0 0 1 2.2-2.2z"],"s":2.1}],"cores":[{"d":[],"s":null},{"d":["M12 9.2a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6z"],"s":null},{"d":["M9.4 9.4h5.2v5.2H9.4z"],"s":null},{"d":["M12 9.1l2.9 2.9-2.9 2.9L9.1 12z"],"s":null},{"d":["M9.2 11h5.6v2H9.2z"],"s":null},{"d":["M11 9.2h2v5.6h-2z"],"s":null},{"d":["M11 9.2h2v5.6h-2z","M9.2 11h5.6v2H9.2z"],"s":null},{"d":["M10.6 10.7a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z","M13.4 10.7a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z"],"s":null},{"d":["M12 9.3a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z","M12 12.1a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z"],"s":null},{"d":["M9.8 10.85a1.15 1.15 0 1 1 0 2.3 1.15 1.15 0 0 1 0-2.3z","M12 10.85a1.15 1.15 0 1 1 0 2.3 1.15 1.15 0 0 1 0-2.3z","M14.2 10.85a1.15 1.15 0 1 1 0 2.3 1.15 1.15 0 0 1 0-2.3z"],"s":null},{"d":["M12 8.7a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z","M9.8 12.9a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z","M14.2 12.9a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z"],"s":null},{"d":["M10.3 9.15a1.15 1.15 0 1 1 0 2.3 1.15 1.15 0 0 1 0-2.3z","M13.7 9.15a1.15 1.15 0 1 1 0 2.3 1.15 1.15 0 0 1 0-2.3z","M10.3 12.55a1.15 1.15 0 1 1 0 2.3 1.15 1.15 0 0 1 0-2.3z","M13.7 12.55a1.15 1.15 0 1 1 0 2.3 1.15 1.15 0 0 1 0-2.3z"],"s":null},{"d":["M12 9.2l3 5.6H9z"],"s":null},{"d":["M9 9.2h6L12 14.8z"],"s":null},{"d":["M12 9.2l3 5.6h-1.9L12 12.4l-1.1 2.4H9z"],"s":null},{"d":["M10.2 14.8L12.9 9.2h1.5L11.7 14.8z"],"s":null},{"d":["M9.8 9.2h2v3.6h3.2v2H9.8z"],"s":null},{"d":["M12 9.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"],"s":2.0},{"d":["M9.2 10h5.6v1.7H9.2z","M9.2 12.8h5.6v1.7H9.2z"],"s":null},{"d":["M12 9.2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z","M9.4 13.3h5.2v1.6H9.4z"],"s":null},{"d":["M9.4 9.4h5.2l-5.2 5.4h5.2"],"s":2.0},{"d":["M9.2 13.8l1.9-2.6 1.8 1.8 1.9-2.8"],"s":2.0},{"d":["M12 9.2a2.8 2.8 0 0 1 0 5.6z"],"s":null},{"d":["M12 9.2v5.6","M9.6 10.6l4.8 2.8","M14.4 10.6l-4.8 2.8"],"s":1.9}],"material":{"XAU":["#F5D07A","#C08A1E"],"XAG":["#C3CCD6","#6E7B8A"],"XPT":["#D6E0E4","#7B8B93"],"XPD":["#CBD4CF","#73827B"],"XAUT":["#F5D07A","#C08A1E"],"PAXG":["#F2CE85","#B8862A"],"COPPER":["#E3A778","#A9552A"],"CL":["#5A6672","#232B33"],"BZ":["#6B7784","#2C343D"],"NATGAS":["#7FC8E8","#2C7BA8"]},"spare":[["#B9B3C6","#6E6880"],["#8FC7C0","#3E8178"],["#E8B98C","#B87333"],["#9FB8E8","#4C6CB5"],["#D7A8C8","#95568A"],["#A9C98C","#5E8A45"],["#E0C27A","#A8812C"],["#93BCD4","#3D7391"]]};</script>
+<script>
+/* ═════════════════ 徽章：CoinBadge 的 JS 移植 ═════════════════ */
+const SEEDS={sage:{light:'#2E7D6B',dark:'#4FB69C'},terra:{light:'#B25735',dark:'#E2874F'}};
+const SHARED={
+  ingot:{parts:[{d:["M8.6 7.4h6.8l4 9.2H4.6z","M7.6 11h8.8"],s:2.1}],i:.68},
+  drop:{parts:[{d:["M12 4.2c3.9 4.7 5.9 7.7 5.9 10.1a5.9 5.9 0 0 1-11.8 0c0-2.4 2-5.4 5.9-10.1z"],s:2.1}],i:.6},
+  flame:{parts:[{d:["M12 3.4c3.2 3.4 5.1 6.1 5.1 8.9a5.1 5.1 0 0 1-10.2 0c0-1.8.6-3.2 1.8-4.6 .2 1.4.8 2.3 1.8 2.8-.4-2.8.4-5.3 1.5-7.1z"],s:2.1}],i:.6}
+};
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+function hex2rgb(h){h=h.replace('#','');return [parseInt(h.slice(0,2),16)/255,parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255]}
+function rgb2hsb(r,g,b){const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;let h=0;
+  if(d>0){if(mx===r)h=((g-b)/d)%6;else if(mx===g)h=(b-r)/d+2;else h=(r-g)/d+4;h/=6;if(h<0)h+=1}
+  return {h,s:mx?d/mx:0,b:mx}}
+function hsb2hex(h,s,b){const i=Math.floor(h*6),f=h*6-i,p=b*(1-s),q=b*(1-f*s),t=b*(1-(1-f)*s);
+  const [r,g,bl]=[[b,t,p],[q,b,p],[p,b,t],[p,q,b],[t,p,b],[b,p,q]][i%6];
+  return '#'+[r,g,bl].map(v=>Math.round(clamp(v,0,1)*255).toString(16).padStart(2,'0')).join('').toUpperCase()}
+const hsb=h=>rgb2hsb(...hex2rgb(h));
+function pull(h,t,k){let d=t-h;if(d>.5)d-=1;if(d<-.5)d+=1;return ((h+d*k)%1+1)%1}
+function tint(from,to,accent,dark){
+  const a=hsb(from),b=hsb(to),sk=hsb(accent);
+  if(Math.max(a.s,b.s)<.12){const s=dark?.15:.13;
+    return [hsb2hex(sk.h,s,dark?.46:.74),hsb2hex(sk.h,s+.05,dark?.30:.52)]}
+  const gold=h=>h>.07&&h<.20;
+  const hueA=pull(a.h,sk.h,gold(a.h)?.04:.11),hueB=pull(b.h,sk.h,gold(b.h)?.04:.11);
+  const give=gold(a.h)?.14:0;
+  const hi=clamp(a.s,dark?.20:.24,(dark?.56:.52)+give),lo=clamp(b.s,dark?.26:.30,(dark?.66:.60)+give);
+  const tb=clamp(a.b,dark?.42:.62,(dark?.70:.88)+(give>0?.04:0)),bb=clamp(b.b,dark?.30:.46,dark?.56:.70);
+  return [hsb2hex(hueA,hi,tb),hsb2hex(hueB,lo,bb)]}
+function lineWeight(decl,size){const band=clamp(2+(decl-2)*.28,1.86,2.16);return band*Math.pow(size/33,.72)}
+function scatter(key,salt){const M=(1n<<64n)-1n;let h=(0xcbf29ce484222325n+BigInt(salt))&M;
+  for(const b of new TextEncoder().encode(key)){h^=BigInt(b);h=(h*0x100000001b3n)&M}
+  h^=h>>33n;return Number(h&0x7FFFFFFFn)}
+function specOf(base){
+  let key=base.toUpperCase();
+  const hit=k=>{const s=B.specs[k];return s?{f:s.f,t:s.t,m:s.m,i:s.i??.62}:null};
+  let s=hit(key);if(s)return s;
+  key=key.replace(/^\d+/,'');s=hit(key);if(s)return s;
+  const mat=B.material[key];
+  if(mat){if(/^(XAU|XAG|XPT|XPD|XAUT|PAXG|COPPER)$/.test(key))return {f:mat[0],t:mat[1],m:{parts:SHARED.ingot.parts},i:SHARED.ingot.i};
+    if(/^(CL|BZ)$/.test(key))return {f:mat[0],t:mat[1],m:{parts:SHARED.drop.parts},i:SHARED.drop.i};
+    if(key==='NATGAS')return {f:mat[0],t:mat[1],m:{parts:SHARED.flame.parts},i:SHARED.flame.i}}
+  let idx=0;for(const b of new TextEncoder().encode(key))idx=(idx*31+b)%8;
+  const pair=B.spare[idx];
+  const outer=B.outers[scatter(key,0x9E37)%12],core=B.cores[scatter(key,0x85EB)%24];
+  return {f:pair[0],t:pair[1],m:{parts:[outer,core]},i:.58}}
+let gid=0;
+function badge(base,size){
+  const html=document.documentElement,dark=html.dataset.mode==='dark',skin=html.dataset.skin;
+  const sp=specOf(base),[top,bot]=tint(sp.f,sp.t,SEEDS[skin][dark?'dark':'light'],dark);
+  const k=sp.i*size/24,off=(size-sp.i*size)/2,id='g'+(gid++);
+  let mark='';
+  if(sp.m.text){mark=`<text x="12" y="12.6" text-anchor="middle" dominant-baseline="central" font-family="-apple-system,'SF Pro Rounded','PingFang SC',sans-serif" font-weight="800" font-size="14.6" fill="#fff" fill-opacity=".97">${sp.m.text}</text>`}
+  else{mark=sp.m.parts.map(p=>{const d=p.d.join(' ');if(!d)return '';
+    if(p.s!=null){const w=lineWeight(p.s,size)/k;return `<path d="${d}" fill="none" stroke="#fff" stroke-opacity=".97" stroke-width="${w.toFixed(3)}" stroke-linecap="round" stroke-linejoin="round"/>`}
+    return `<path d="${d}" fill="#fff" fill-opacity=".97" fill-rule="evenodd"/>`}).join('')}
+  const rx=(size*.31).toFixed(2);
+  return {svg:`<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><defs>
+<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bot}"/></linearGradient>
+<linearGradient id="${id}s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".30"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+<rect width="${size}" height="${size}" rx="${rx}" fill="url(#${id})"/><rect width="${size}" height="${size}" rx="${rx}" fill="url(#${id}s)"/>
+<rect x=".5" y=".5" width="${size-1}" height="${size-1}" rx="${rx}" fill="none" stroke="#fff" stroke-opacity=".14"/>
+<g transform="translate(${off.toFixed(3)} ${off.toFixed(3)}) scale(${k.toFixed(4)})">${mark}</g></svg>`,top,bot}}
+function bw(base,size){const b=badge(base,size);return `<span class="bw" style="--brand:${b.bot};width:${size}px;height:${size}px">${b.svg}</span>`}
+function brandOf(base){const html=document.documentElement,dark=html.dataset.mode==='dark';const sp=specOf(base);return tint(sp.f,sp.t,SEEDS[html.dataset.skin][dark?'dark':'light'],dark)[1]}
+
+/* ═════════════════ 数据 ═════════════════ */
+const ROWS=[
+  ['BTC','76487.20',0.77,'123.26亿','2.27',1],['ETH','2441.46',1.82,'109.43亿','3.38',5],['SOL','99.7500',2.74,'18.22亿','4.13',6],
+  ['XRP','1.3012',0.60,'13.24亿','5.57',7],['DOGE','0.080970',1.17,'4.27亿','3.82',8],['BNB','726.330',1.83,'3.31亿','3.54',9],
+  ['SUI','1.8420',-1.24,'2.14亿','4.41',12],['1000PEPE','0.0034654',2.71,'1.82亿','5.82',2],['ADA','0.19740',1.18,'1.65亿','3.95',10],
+  ['LINK','11.174',3.69,'1.60亿','5.53',11],['AVAX','18.930',0.92,'1.12亿','3.10',13],['0G','0.1954000',6.20,'426.17万','7.66',3],
+  ['1000000BOB','0.0182400',0.55,'51.49万','4.69',4]].map(r=>({b:r[0],p:r[1],c:r[2],v:r[3],a:r[4],s:r[5],q:'USDT'}));
+const STOCKS=[['AAPL','232.14',1.12,'92.4亿','1.8',21],['NVDA','178.36',-0.84,'241.6亿','2.6',22],['TSLA','412.90',2.31,'188.0亿','4.1',23],
+  ['MSFT','511.20',0.44,'74.2亿','1.2',24],['AMZN','228.75',-0.31,'63.9亿','1.6',25],['META','742.10',0.92,'58.1亿','2.0',26],
+  ['GOOGL','246.33',1.57,'41.7亿','1.9',27],['AMD','158.02',-1.46,'39.3亿','3.3',28]].map(r=>({b:r[0],p:r[1],c:r[2],v:r[3],a:r[4],s:r[5],q:'USD'}));
+function series(seed,change,n=22){let x=seed*9301+49297;const o=[];let v=50;
+  for(let i=0;i<n;i++){x=(x*1103515245+12345)%2147483648;v+=(x/2147483648-.5)*9+change*.9;o.push(v)}return o}
+const price=p=>{const [i,d]=p.split('.');return i.replace(/\B(?=(\d{3})+(?!\d))/g,',')+(d?'.'+d:'')};
+const cvar=c=>c>=0?'var(--rise)':'var(--fall)';
+const tri=c=>c>=0?'<svg viewBox="0 0 6 5"><path d="M3 0l3 5H0z"/></svg>':'<svg viewBox="0 0 6 5"><path d="M3 5L0 0h6z"/></svg>';
+const chg=c=>`<span class="chg" style="--c:${cvar(c)}">${tri(c)}${Math.abs(c).toFixed(2)}%</span>`;
+function spark(seed,c){const pts=series(seed,c),w=48,h=24,mn=Math.min(...pts),mx=Math.max(...pts),id='s'+(gid++);
+  const xy=pts.map((v,i)=>[(i/(pts.length-1))*(w-4)+2,h-3-((v-mn)/((mx-mn)||1))*(h-7)]);
+  const d=xy.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const last=xy[xy.length-1],col=cvar(c);
+  return `<svg class="spk" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" style="stop-color:${col};stop-opacity:.28"/><stop offset="1" style="stop-color:${col};stop-opacity:0"/></linearGradient></defs>
+<path d="${d} L${last[0].toFixed(1)} ${h} L2 ${h}z" fill="url(#${id})"/>
+<path d="${d}" fill="none" style="stroke:${col}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="5" style="fill:${col}" opacity=".18"/>
+<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="2.2" style="fill:${col}"/></svg>`}
+
+/* ═════════════════ 零件 ═════════════════ */
+const I={
+  back:'<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
+  plus:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  pen:'<svg viewBox="0 0 24 24"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17z M13 8l3 3"/></svg>',
+  more:'<svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18" cy="12" r="1.2"/></svg>',
+  grip:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 9h14M5 15h14"/></svg>',
+  x:'<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  chart:'<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l5-6 4 3 7-8"/></svg>',
+  folder:'<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>'
+};
+const brush=(cls='brush')=>`<svg class="${cls}" viewBox="0 0 100 8" preserveAspectRatio="none"><path d="M0 4.6C14 1.8 27 6.4 41 3.4S71 6.2 100 2.8L100 5.4C72 7.8 57 4.6 42 6.6S16 7.2 0 6.9z" fill="var(--acc)" opacity=".85"/><path d="M6 6.2C30 4.4 55 7.4 94 4.9" fill="none" stroke="var(--acc)" stroke-width=".5" opacity=".45"/></svg>`;
+const statusBar=()=>`<div class="status"><span>9:41</span><span style="display:flex;gap:5px;align-items:center">
+<svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx=".8"/><rect x="4.5" y="5" width="3" height="6" rx=".8"/><rect x="9" y="2.5" width="3" height="8.5" rx=".8"/><rect x="13.5" y="0" width="3" height="11" rx=".8"/></svg>
+<svg width="15" height="11" viewBox="0 0 15 11" fill="currentColor"><path d="M7.5 9.2l2-2.2a2.8 2.8 0 0 0-4 0zM3.4 4.9l1.6 1.7a3.6 3.6 0 0 1 5 0l1.6-1.7a5.9 5.9 0 0 0-8.2 0zM0 1.4l1.6 1.7a8.2 8.2 0 0 1 11.8 0L15 1.4a10.6 10.6 0 0 0-15 0z"/></svg>
+<svg width="26" height="12" viewBox="0 0 26 12"><rect x=".5" y=".5" width="21" height="11" rx="3" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="18" height="8" rx="1.8" fill="currentColor"/><rect x="23" y="4" width="2" height="4" rx="1" fill="currentColor" opacity=".4"/></svg></span></div>`;
+function bg(dir){
+  if(dir==='yunran')return `<div class="bg"><i class="lobe" style="width:300px;height:300px;right:-120px;top:-110px;background:var(--lobe1);opacity:.3"></i></div><div class="grain" style="opacity:calc(var(--grain)*.6)"></div>`;
+  if(dir==='liujin')return `<div class="bg"><i class="lobe" style="width:280px;height:280px;right:-110px;top:-90px;background:var(--gold);opacity:.14"></i><i class="lobe" style="width:260px;height:260px;left:-120px;bottom:60px;background:var(--lobe2);opacity:.22"></i></div><div class="grain"></div>
+<svg class="orn" style="right:14px;top:66px;width:86px;height:86px" viewBox="0 0 86 86" fill="none" stroke="var(--gold)" stroke-width=".9" opacity=".32"><path d="M86 0A86 86 0 0 0 0 86"/><path d="M86 14A72 72 0 0 0 14 86"/><path d="M86 30A56 56 0 0 0 30 86"/><circle cx="43" cy="43" r="1.6" fill="var(--gold)" stroke="none"/></svg>`;
+  return `<div class="bg"><i class="lobe" style="width:280px;height:280px;left:-90px;top:-70px;background:var(--lobe1)"></i><i class="lobe" style="width:230px;height:230px;right:-70px;top:250px;background:var(--lobe2)"></i><i class="lobe" style="width:260px;height:260px;left:-60px;bottom:-40px;background:var(--lobe3)"></i></div><div class="grain"></div>`}
+function header(o={}){const rows=o.rows||ROWS,up=rows.filter(r=>r.c>=0).length,dn=rows.length-up;
+  const right=o.editing?`<span style="font-size:14px;font-weight:600;color:var(--acc)">完成</span>`:`<span class="cbtn">${I.plus}</span><span class="cbtn">${I.pen}</span>`;
+  return `<div class="hdr"><div class="nav"><span class="cbtn">${I.back}</span><span class="sp"></span>${right}</div>
+<div class="titlerow"><h3>自选${o.brush?brush():''}</h3><span class="seal">${rows.length}</span><span class="sp"></span>
+<div class="breadth"><span style="color:var(--rise)">${up}</span><div class="bar2"><b style="width:${Math.round(up/rows.length*100)}%"></b></div><span style="color:var(--fall)">${dn}</span></div></div>
+<div class="subline">${o.sub||`<i></i>今日 ${up} 涨 ${dn} 跌 · 平均振幅 ${(rows.reduce((a,r)=>a+parseFloat(r.a),0)/rows.length).toFixed(1)}%`}</div></div>`}
+const CATS=[['加密',13],['美股',8],['大宗',4]];
+function tabs(dir,on=0,yun){
+  if(dir==='yunran')return `<div class="tabs">${CATS.map((c,i)=>`<span class="tab${i===on?' on':''}">${c[0]}<b>${c[1]}</b>${i===on?brush():''}</span>`).join('')}<span class="tab" style="color:var(--ink4)">＋</span></div>`;
+  if(dir==='liujin')return `<div class="caps">${CATS.map((c,i)=>`<span class="cap${i===on?' on':''}">${c[0]}<b>${c[1]}</b></span>`).join('')}<span class="cap" style="padding:0 11px">＋</span></div>`;
+  return `<div class="segwrap"><div class="seg">${CATS.map((c,i)=>`<span class="it${i===on?' on':''}">${c[0]}<b>${c[1]}</b></span>`).join('')}</div><span class="segadd">${I.plus}</span></div>`}
+function sortrow(left,sort='成交额'){return `<div class="sortrow">${left||'<span class="microlab">按</span>'}<span class="sp"></span><span class="s">${sort}<svg viewBox="0 0 8 8"><path d="M4 7L0 1h8z"/></svg></span></div>`}
+function row(r,dir,opt={}){const brand=brandOf(r.b);
+  const merc=dir==='yunran'?`<span class="merc${r.c<0?' dn':''}" style="--c:${cvar(r.c)}"><b style="height:${Math.round(Math.min(1,Math.abs(r.c)/7)*100)}%"></b></span>`:'';
+  const pre=opt.check!=null?`<span class="cbox${opt.check?' on':''}"></span>`:'';
+  const px=opt.skel?`<span class="skel" style="width:72px;height:14px;display:block"></span>`:`<div class="px"${opt.dim?' style="opacity:.5"':''}>${price(r.p)}</div>`;
+  const ch=opt.skel?`<span class="skel" style="width:46px;height:14px;display:block"></span>`:chg(r.c);
+  const sub=opt.skel?`<span class="skel" style="width:96px;height:9px;display:block;margin-top:6px"></span>`:`<div class="sub">额 ${r.v}<s>·</s>幅 ${r.a}%</div>`;
+  const spk=opt.skel?`<span class="skel spk" style="width:48px;height:16px;display:block"></span>`:spark(r.s,r.c);
+  return `<div class="row" style="--brand:${brand}">${pre}${bw(r.b,33)}<div class="col"><div class="nm">${r.b}<em>${r.q}</em></div>${sub}</div>${spk}<div class="rt">${px}${ch}</div>${merc}</div>`}
+function sheet(rows,dir,opt={},style=''){return `<div class="sheet"${style?` style="${style}"`:''}>${rows.map((r,i)=>row(r,dir,typeof opt==='function'?opt(r,i):opt)).join('')}</div>`}
+function shell(dir,inner,extra='',bgc){
+  return `<div class="screen d-${dir}"${bgc?` style="background:${bgc}"`:''}>${bg(dir)}${statusBar()}${inner}<div class="fade"></div>${extra}</div><div class="island"></div><div class="homebar"></div>`}
+function phone(dir){
+  const yun=dir==='yunran',lj=dir==='liujin';
+  const body=header({brush:yun})+`<div class="scroll">${tabs(dir,0)}${sortrow(`<span class="microlab">${ROWS.length} 个品种</span>`)}${sheet(ROWS,dir)}</div>`;
+  return shell(dir,body,'',yun?'var(--app)':lj?'var(--lacq)':'')}
+
+function tuned(){const g=+kg.value/100,w=+kw.value/100,l=+kl.value/100;
+  vg.textContent=kg.value+'%';vw.textContent=kw.value+'%';vl.textContent=kl.value+'%';
+  const s=document.querySelector('#p3 .screen');if(!s)return;
+  s.style.setProperty('--g',g);s.style.setProperty('--wash',w);s.style.setProperty('--lobek',l)}
+function screenWith(cls,extraLobe){
+  const body=header()+`<div class="scroll">${tabs('liuli',0)}${sortrow(`<span class="microlab">${ROWS.length} 个品种</span>`)}${sheet(ROWS,'liuli')}</div>`;
+  let html=shell('liuli',body);
+  html=html.replace('<div class="screen d-liuli"',`<div class="screen d-liuli ${cls}"${extraLobe?` style="--lobek:${extraLobe}"`:''}`);
+  return html.replace('<div class="grain">','<div class="wash"></div><div class="grain">')}
+function build(){gid=0;
+  document.getElementById('p1').innerHTML=screenWith('');
+  document.getElementById('p2').innerHTML=screenWith('m-fuse',.7);
+  document.getElementById('p3').innerHTML=screenWith('');
+  tuned()}
+for(const id of ['skin','mode','redup','font','lite']){const g=document.getElementById(id);
+  g.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+    [...g.children].forEach(x=>x.setAttribute('aria-pressed',x===b));document.documentElement.dataset[id]=b.dataset.v;build()})}
+for(const k of [kg,kw,kl])k.addEventListener('input',tuned);
+document.querySelector('.presets').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  kg.value=b.dataset.g;kw.value=b.dataset.w;kl.value=b.dataset.l;tuned()});
+build();
+</script>
+</body>
+</html>
