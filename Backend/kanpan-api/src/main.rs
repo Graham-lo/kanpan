@@ -44,6 +44,8 @@ async fn main()->anyhow::Result<()> {
 
  }
  anyhow::ensure!(command=="serve","Use serve, worker or migrate");
+ // Public supply data has no owner and no database; warm it before the first request.
+ kanpan_api::market_meta::spawn_refresh();
  let address:SocketAddr=std::env::var("KANPAN_BIND").unwrap_or_else(|_|"127.0.0.1:8794".into()).parse()?;
  let listener=tokio::net::TcpListener::bind(address).await?;
  axum::serve(listener,kanpan_api::router(s).into_make_service_with_connect_info::<SocketAddr>()).with_graceful_shutdown(async{let _=tokio::signal::ctrl_c().await;}).await?;

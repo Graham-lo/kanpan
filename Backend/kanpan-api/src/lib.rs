@@ -7,6 +7,7 @@ pub mod mail;
 pub mod review;
 pub mod review_worker;
 pub mod search;
+pub mod market_meta;
 pub mod maintenance;
 use axum::{Router,Json,routing::get,extract::DefaultBodyLimit};
 use serde_json::{Value,json};
@@ -34,7 +35,7 @@ impl AppState {
 pub fn envelope(value: Value) -> Json<Value> { Json(json!({"data":value})) }
 pub fn router(s: AppState) -> Router {
  Router::new().route("/health",get(||async{envelope(json!({"ok":true}))}))
-  .merge(auth::routes()).merge(sync::routes()).merge(review::routes()).merge(search::routes())
+  .merge(auth::routes()).merge(sync::routes()).merge(review::routes()).merge(search::routes()).merge(market_meta::routes())
   .layer(DefaultBodyLimit::max(512*1024))
   .with_state(s)
 }
