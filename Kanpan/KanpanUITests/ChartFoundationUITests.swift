@@ -407,7 +407,6 @@ final class ChartFoundationUITests: XCTestCase {
     favoritesAction("favorites.edit")
     let btc = app.buttons["favorites.open.BTCUSDT"]
     let sndk = app.buttons["favorites.open.SOLUSDT"]
-    let before = btc.frame.minY
     let quote = app.staticTexts["favorites.price.BTCUSDT"]
     var previousFrame = quote.frame
     var stableFrames = 0
@@ -423,9 +422,17 @@ final class ChartFoundationUITests: XCTestCase {
       XCTAssertEqual(quote.label, frozenPrice, "编辑期间报价冻结，退出后恢复实时")
       XCTAssertEqual(quote.frame, frozenFrame, "编辑右侧报价不能随WS抖动")
     }
+    // 这一行整条都是 `favorites.open.<symbol>` 那个按钮，排序靠的是 List 自带的
+    // 长按拖动——两个手势在抢同一个落点，按得不够久就被按钮先认走了（机器忙的时候
+    // 0.6s 就会输）。按满 1.2s 让排序会话先起来，拖完再按住 0.8s 才松手，
+    // 免得 SwiftUI 把它当成一次甩动而不是放下。
+    let before = btc.frame.minY
     let source = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
       .withOffset(CGVector(dx: btc.frame.midX, dy: btc.frame.midY))
-    source.press(forDuration: 0.6, thenDragTo: source.withOffset(CGVector(dx: 0, dy: sndk.frame.midY - btc.frame.midY + 10)))
+    source.press(forDuration: 1.2,
+                 thenDragTo: source.withOffset(CGVector(dx: 0, dy: sndk.frame.midY - btc.frame.midY + 10)),
+                 withVelocity: .slow,
+                 thenHoldForDuration: 0.8)
     XCTAssertTrue(wait(seconds: 5) { btc.frame.minY > before + 30 }, "编辑拖动应移动完整品种行")
     app.buttons["favorites.open.BTCUSDT"].tap()
     app.buttons["favorites.open.ETHUSDT"].tap()
