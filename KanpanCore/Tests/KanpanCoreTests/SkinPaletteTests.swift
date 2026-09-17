@@ -115,7 +115,18 @@ struct SkinPaletteTests {
       #expect(classic.accent == sage.accent && classic.hair == sage.hair && classic.amber == sage.amber)
       #expect(classic.app != sage.app && classic.raised2 != sage.raised2)
     }
-    #expect(Palette.classicSeed.app == "#F7F9FF" && Palette.classicSeed.raised == "#FFFFFF")
+    // 行情页底必须是纯白：AICoin iPhone 上标题、价格行、周期行、主副图实测全是 #FFFFFF，
+    // 安卓的 sh_base_view_bg / ui_kline_menu_bg_color 也都是 #ffffff。带蓝的 #F7F9FF 是
+    // sh_base_bg_color，K 线页不用它，写成那个会让纯白画布显成一块更亮的补丁。
+    #expect(Palette.classicSeed.app == "#FFFFFF" && Palette.classicSeed.chart == "#FFFFFF")
+    #expect(Palette.classicSeed.raised == "#FFFFFF" && Palette.classicSeed.ground == "#F7F8FA")
+    #expect(Palette.classicSeed.raised2 == "#F3F5F7" && Palette.classicSeed.line == "#DEE1E5")
+    for seed in [Palette.classicSeed, Palette.classicNightSeed] {
+      let (r, g, b, _) = seed.app.bytes
+      #expect(r == g && g == b || seed.dark, "经典浅色的底不许带色偏，蓝白也不行")
+      _ = (r, g, b)
+    }
+    #expect(Palette.classicNightSeed.ground == "#090C14")
     #expect(Palette.classicNightSeed.app == Palette.nightCanvas.bg, "夜里图里图外同一块深蓝")
     // 深色只有经典拿 AICoin 夜间常量；青苔、陶土深色还各带一组、副图跟主图同色
     #expect(Palette.classicNightSeed.up == "#2F9347" && Palette.classicNightSeed.down == "#CC3333")

@@ -136,7 +136,10 @@ AICoin **不用 `values-night`**，而是同一份 `colors.xml` 里 `xxx` / `xxx
 | 跌（红） `base_ui_color_red` | `#eb4236` | `#a61717` |
 | 实心涨块 `sh_base_block_fill_green` | `#32a853` | `#2f9347` |
 | 实心跌块 `sh_base_block_fill_red` | `#eb4236` | `#992323` |
-| 页面底色 `sh_base_bg_color` | `#f7f9ff` | `#0d111c` |
+| **行情页底 / 画布** `sh_base_view_bg` | `#ffffff` | `#0d111c` |
+| **周期栏 / 指标条底** `ui_kline_menu_bg_color` | `#ffffff` | `#0d111c` |
+| 列表页底（自选那一层） `sh_base_page_bg` | `#f7f8fa` | `#090c14` |
+| 带蓝的浅底 `sh_base_bg_color` | `#f7f9ff` | `#0d111c` |
 | 一级文字 `sh_base_one_text_color` | `#292d33` | — |
 | 二级文字 `sh_base_two_text_color` | `#525a66` | — |
 | 三级文字 `sh_base_three_text_color` | `#7a8899` | — |
@@ -144,6 +147,11 @@ AICoin **不用 `values-night`**，而是同一份 `colors.xml` 里 `xxx` / `xxx
 | 分割线 `sh_base_divider_dim_fill_color` | `#dee1e5` | `#25282e` |
 | 弹窗底 `sh_base_dialog_bg_fill_color` | `#ffffff` | `#202126` |
 | 画线默认色 `ui_kline_drawing_default_line_color` | `#1990ff` | — |
+
+**别拿 `sh_base_bg_color` 当行情页底。** 它是那支带蓝的浅白，K 线页根本不引用它；2026-09-17 照它
+配「经典·浅」，用户在真机上一眼看出「AICoin 的白没这么白亮」。真机逐像素量过 AICoin 行情页：
+标题、价格行、周期行、主图、副图全是 `#ffffff`，只有最底下的标签栏是 `#f3f3f5`。安卓侧对得上——
+`sh_base_view_bg` 被引用 23 次、`ui_kline_menu_bg_color` 7 次，都是纯白。
 
 注意涨跌块还有 `_transparent_10`（`#1a…`）和 `_transparent_50`（`#80…`）两档透明变体，
 用于成交量柱/背景填充这类需要压低权重的场合。

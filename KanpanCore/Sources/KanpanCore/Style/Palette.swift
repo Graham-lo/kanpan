@@ -148,23 +148,34 @@ public enum Palette: Sendable {
 
   // ---------------------------------------------------------------- 经典（白）
 
-  /// 经典 · 浅。青苔的文字与强调色原样，底换成 AICoin 的白：页面底 `#F7F9FF`、面 `#FFFFFF`、
-  /// 徽章底 `#F3F5F7`、分割线 `#DEE1E5`（`docs/AICoin-安卓包-UI规格提取.md` §8）。
+  /// 经典 · 浅。青苔的文字与强调色原样，底换成 AICoin 的白。
+  ///
+  /// **行情页底是纯白，不是带蓝的白。** 2026-09-17 第一版把 `app` 写成了 `#F7F9FF`，那是安卓包里的
+  /// `sh_base_bg_color`，K 线页根本不用它；用户在真机上一眼看出「AICoin 的白没这么白亮」。逐像素实测
+  /// 他手机上的 AICoin 行情页：顶部标题、价格行、周期行、主图、副图**全是 `#FFFFFF`**，只有最底下的
+  /// 标签栏是 `#F3F3F5`。安卓资源对得上——`sh_base_view_bg` = `#ffffff`（通用页面底，引用 23 次）、
+  /// `ui_kline_menu_bg_color` = `#ffffff`（周期栏 / 指标条 / 画线条底，7 次）。`#F7F9FF` 那支蓝白既不是
+  /// AICoin 的页面底，又让纯白的画布在上面显成一块更亮的补丁，正好犯了「整屏一块连续材料」那条。
+  ///
+  /// 所以：页面与画布 `#FFFFFF`（`sh_base_view_bg`），再往下一层的自选页底 `#F7F8FA`
+  /// （`sh_base_page_bg`，中性灰、不带蓝），徽章底 `#F3F5F7`（`ui_kline_scale_auto_bg_color`），
+  /// 分割线 `#DEE1E5`（`sh_base_divider_dim_fill_color`）。
   /// 涨跌与指标线色跟青苔 / 陶土浅色一样都是 AICoin 的（见 `aicoinDayUp` 一组）。
   public static let classicSeed = PaletteSeed(
     dark: false,
-    ground: "#F7F9FF", app: "#F7F9FF", chart: "#F7F9FF", raised: "#FFFFFF", raised2: "#F3F5F7",
+    ground: "#F7F8FA", app: "#FFFFFF", chart: "#FFFFFF", raised: "#FFFFFF", raised2: "#F3F5F7",
     line: "#DEE1E5", grid: "#EAEAEA", hair: "#14211B0F",
     ink: "#14211B", ink2: "#4E6158", ink3: "#606F67",
     up: aicoinDayUp, down: aicoinDayDown, amber: "#B57C28", accent: "#2E7D6B",
     palette: aicoinDayMA, sub: aicoinSlots)
 
-  /// 经典 · 深。底是 AICoin 夜间的 `#0D111C` / `#202126` / `#303442` / `#25282E`；
+  /// 经典 · 深。底是 AICoin 夜间的 `#0D111C`（`sh_base_view_bg_night`）/ `#090C14`
+  /// （`sh_base_page_bg_night`）/ `#202126` / `#303442` / `#25282E`；
   /// 涨跌取安卓包 `sh_base_text_color_green_night` / `_red_night`（`#2F9347` / `#CC3333`），
   /// 指标线沿用安卓默认槽位色。深色这组没在真机上量过（镜像后台点不动，切不了夜间模式）。
   public static let classicNightSeed = PaletteSeed(
     dark: true,
-    ground: "#080B14", app: "#0D111C", chart: "#0D111C", raised: "#202126", raised2: "#303442",
+    ground: "#090C14", app: "#0D111C", chart: "#0D111C", raised: "#202126", raised2: "#303442",
     line: "#25282E", grid: "#20232E", hair: "#FFFFFF0A",
     ink: "#E9F2EC", ink2: "#A5B8AE", ink3: "#7B8D85",
     up: "#2F9347", down: "#CC3333", amber: "#E0A544", accent: "#4FB69C",
