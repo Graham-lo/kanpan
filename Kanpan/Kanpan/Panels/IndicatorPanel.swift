@@ -16,7 +16,8 @@ struct IndicatorPanel: View {
         row(id)
       }
 
-      PanelGroupTitle(text: "副图")
+      // 上限写在标题里：满了再点第四个是「换一个」而不是「点不动」，先把规矩摆出来。
+      PanelGroupTitle(text: "副图 · 同时最多三个")
       ForEach([IndicatorID.vol, .macd, .rsi, .kdj, .srsi, .atr, .oi], id: \.self) { id in
         row(id)
       }
@@ -36,7 +37,7 @@ struct IndicatorPanel: View {
     let on = prefs.isOn(id)
     PanelRow(name: id.name, meta: IndicatorPanel.hint(id), swatch: t.swatch(id)) {
       PanelSwitch(isOn: on) {
-        store.attempt { $0.toggle(id) }
+        store.toggleIndicator(id)
       }
       .accessibilityIdentifier("indicator.switch.\(id.rawValue)")
     }

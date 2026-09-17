@@ -4,6 +4,10 @@ import SwiftUI
 
 /// 顶栏：品种按钮 · 自选星（§9.1）。
 ///
+/// 品种名右边原来还有一颗连接状态圆点。用户的话是界面上不要出现「行情源 / 线路 /
+/// 已同步」这类后台字段——连没连上、走的哪条线，是我们该自己搞定的事，
+/// 摆出来只会让人盯着一颗点猜。断了就重连，重连不上会在拉不到历史时明说。
+///
 /// 搜索原来是这儿的一个放大镜。换品种一共有三个入口——顶栏品种名（半屏自选）、
 /// 顶栏放大镜（全屏搜索）、底栏「自选」（全屏自选页）——三个入口三种界面，
 /// 想换个币先要想「该点哪个」。现在只留品种名这一个：点开半屏弹层，搜索和完整
@@ -16,11 +20,7 @@ struct TopBar: View {
   var theme: PanelTheme
   var symbol: String
   var starred: Bool
-  /// 连接状态（§10.5「飞行模式 / 断网」）。绿实时、黄重连、灰离线。
-  var status: FeedStatus
   var onSymbol: () -> Void
-  /// 长按圆点：报一行当前状态（§10.5「状态圆点旁不写字；长按圆点弹一行」）。
-  var onStatus: () -> Void = {}
   var onStar: () -> Void
 
   /// 「BTCUSDT」拆成「BTC」+「/USDT」：基础币用正文色、计价币降一级，
@@ -65,8 +65,6 @@ struct TopBar: View {
       .buttonStyle(.plain)
       .accessibilityLabel("换品种，当前 \(symbol)")
       .accessibilityIdentifier("top.symbol")
-
-      StatusDot(status: status, onLongPress: onStatus)
 
       Spacer(minLength: 0)
 
@@ -117,6 +115,11 @@ struct PriceRow: View {
   var ticker: Ticker?
   var lastPrice: Double?
   var decimals: Int
+  /// 成交额的单位由外面按品种钉住（见 `MarketModel.volumeUnit`），这儿不自己挑。
+  var volumeUnit: VolUnit?
+  /// 这口价是上一条线路留下的。灰显，不改字号也不加任何说明文字——
+  /// 「为什么是灰的」不需要解释，新数据到了它自己就亮回来（§2B #54）。
+  var stale = false
 
   private var pct: Double? {
     guard let value = ticker?.changePercent, value.isFinite else { return nil }
@@ -133,7 +136,7 @@ struct PriceRow: View {
         Text(lastText)
           .font(.system(size: 22, weight: .medium))
           .monospacedDigit()
-          .foregroundStyle(lastPrice == nil ? theme.ink : tint)
+          .foregroundStyle(lastPrice == nil ? theme.ink : (stale ? theme.ink3 : tint))
           .lineLimit(1)
           .minimumScaleFactor(0.6)
           .accessibilityIdentifier("top.lastPrice")
@@ -156,10 +159,10 @@ struct PriceRow: View {
         .font(.system(size: 11.5, weight: .semibold))
         .monospacedDigit()
     }
-    .foregroundStyle(pct == nil ? theme.ink3 : theme.badgeInk)
+    .foregroundStyle(pct == nil || stale ? theme.ink3 : theme.badgeInk)
     .padding(.horizontal, 7)
     .padding(.vertical, 3.5)
-    .background(pct == nil ? theme.raised2 : theme.badgeFill(up: pct! >= 0),
+    .background(pct == nil || stale ? theme.raised2 : theme.badgeFill(up: pct! >= 0),
                 in: RoundedRectangle(cornerRadius: 7, style: .continuous))
     .accessibilityIdentifier("top.changePercent")
   }
@@ -173,7 +176,7 @@ struct PriceRow: View {
   /// 不加边框——它们是配角，配角只要在那儿能查到就够了。
   private var stats: some View {
     HStack(spacing: 7) {
-      stat("成交额", ticker.map { fmtVol($0.quoteVolume) })
+      stat("成交额", ticker.map { fmtVol($0.quoteVolume, unit: volumeUnit ?? volUnit($0.quoteVolume)) })
       Text("·").font(.system(size: 11)).foregroundStyle(theme.ink3.opacity(0.6))
       stat("振幅", ticker?.amplitude24h.map { toFixed($0, 2) + "%" })
       Spacer(minLength: 0)
@@ -212,48 +215,4 @@ func grouped(_ text: String) -> String {
 }
 
 
-/// 连接状态圆点（§10.5）。
-///
-/// 摆在品种名右边，**旁边不写字**——常驻文字只留品种和价格那两行。状态是
-/// 「不出事就不该被注意到」的东西，所以只给一颗 7pt 的点；想知道细节长按它。
-struct StatusDot: View {
-  var status: FeedStatus
-  var onLongPress: () -> Void
-  @Environment(\.panelTheme) private var theme
 
-  /// 连上的时候用**当前皮肤自己的强调色**，不是一颗固定的 `#22C55E`。
-  ///
-  /// 那颗绿是从别处抄来的通用绿，落在青苔的浅灰绿纸面上比整屏任何一处都跳，
-  /// 换到陶土那套暖色里更像是画错了色号——它就挨着品种徽章，徽章的颜色都按皮肤
-  /// 特调过了，旁边这一点却不认识皮肤。
-  ///
-  /// 「离线」同理，跟着皮肤的弱化文字色走。只有「重连中」保留那抹橙：它要的就是
-  /// 「和平时不一样」，两套皮肤里都跟强调色分得开。
-  private var color: Color {
-    switch status {
-    case .live: theme.amber
-    case .reconnecting: Color(hex: "#F5A524")
-    case .offline: theme.ink3
-    }
-  }
-
-  private var label: String {
-    switch status {
-    case .live: "实时"
-    case .reconnecting: "重连中"
-    case .offline: "离线"
-    }
-  }
-
-  var body: some View {
-    Circle()
-      .fill(color)
-      .frame(width: 7, height: 7)
-      // 7pt 的点手指够不着，撑到 28pt 再让它透出来。
-      .frame(width: 28, height: 28)
-      .contentShape(Rectangle())
-      .onLongPressGesture(minimumDuration: 0.35, perform: onLongPress)
-      .accessibilityLabel("连接状态：" + label)
-      .accessibilityIdentifier("top.status")
-  }
-}

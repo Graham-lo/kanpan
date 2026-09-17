@@ -40,16 +40,23 @@ struct StyleTableTests {
   /// 配色不再对着原型那张表逐字比。2026-09-16 换成青苔 / 陶土两套（见 `Palette`），
   /// 旧 `styles.json` 里的浅 / 深两行说的是上一版的蓝白配色，留着比只会比出旧值。
   /// 现在守的是**接线**：每个令牌有没有接到该接的地方，四套配色一视同仁。
+  ///
+  /// 2026-09-17 又分成两半：画布那几样（底、网格、轴线、轴文字、次要读数、主文字、十字线）
+  /// 固定用 AICoin 的日 / 夜两套，只认 `seed.dark`；跟着皮肤走的只剩涨跌色、`amber`
+  /// 和 MA 那组 `palette`——它们在头部和自选列表里也出现，图里图外得是同一个红、同一个绿。
   @Test("令牌接线正确", arguments: [Palette.sageSeed, Palette.sageNightSeed,
                                     Palette.terraSeed, Palette.terraNightSeed])
   func tokensWireThrough(_ seed: PaletteSeed) {
     let c = Palette.chart(seed)
-    #expect(c.bg == seed.chart)
-    #expect(c.grid == seed.grid)
-    #expect(c.axis == seed.line)
-    #expect(c.text == seed.ink2)
-    #expect(c.dim == seed.ink3)
-    #expect(c.ink == seed.ink)
+    let canvas = seed.dark ? Palette.nightCanvas : Palette.dayCanvas
+    #expect(c.bg == canvas.bg)
+    #expect(c.grid == canvas.grid)
+    #expect(c.axis == canvas.axis)
+    #expect(c.text == canvas.text)
+    #expect(c.dim == canvas.dim)
+    #expect(c.ink == canvas.ink)
+    #expect(c.cross == canvas.cross)
+    #expect(c.bg != seed.chart || seed.chart == canvas.bg, "画布不许再跟着皮肤染")
     #expect(c.amber == seed.amber, "图上那支暖色不跟界面强调色走")
     #expect(c.up == seed.up && c.down == seed.down)
     #expect(c.hair == seed.hair)

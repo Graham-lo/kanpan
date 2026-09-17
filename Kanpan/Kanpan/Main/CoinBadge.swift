@@ -82,9 +82,8 @@ struct CoinBadge: View {
 private struct CoinShape: Shape {
   var paths: [String]
   func path(in rect: CGRect) -> Path {
-    var p = Path()
-    for d in paths { SVGPath.append(d, to: &p) }
-    return p.applying(CGAffineTransform(scaleX: rect.width / 24, y: rect.height / 24))
+    // 解析走 `SVGPath.parsed` 的缓存；这儿只剩一次等比变换。
+    SVGPath.parsed(paths).applying(CGAffineTransform(scaleX: rect.width / 24, y: rect.height / 24))
   }
 }
 
@@ -252,7 +251,24 @@ extension CoinSpec {
     ("#E0C27A", "#A8812C"), ("#93BCD4", "#3D7391"),
   ]
 
+  private struct SpecKey: Hashable {
+    var base: String
+    var asset: SymbolClassification.Asset?
+  }
+
+  /// 品种不多（几百支），一支一条，存满一屏一屏地滚也不会涨到哪儿去。
+  private static let memo = RenderMemo<SpecKey, CoinSpec>(limit: 2048)
+
+  /// 这个品种画什么记号。
+  ///
+  /// 查表 + 剥数字前缀 + 散列出一枚长尾标，一趟下来要过八张字典。结果只取决于
+  /// 代号和事实分类，所以按这两样记住——自选表滚一屏是二十几次查表，滚回来又是
+  /// 二十几次，都是同样的答案。
   static func of(_ base: String, asset: SymbolClassification.Asset? = nil) -> CoinSpec {
+    memo.value(for: SpecKey(base: base.uppercased(), asset: asset)) { resolve(base, asset: asset) }
+  }
+
+  private static func resolve(_ base: String, asset: SymbolClassification.Asset?) -> CoinSpec {
     let key = base.uppercased()
     if let hit = known[key] ?? brand(key) { return hit }
     // 「1000PEPE」「1000000BOB」这类杠杆代号：把前缀的数字剥掉再认一次品牌。
@@ -310,8 +326,28 @@ extension CoinSpec {
 /// 牌子本身就是中性灰的（苹果、IBM 这种），色相留不住也不必留，直接借皮肤的灰：
 /// 出来是青苔灰或陶土灰，看着仍是那块牌子，但和背景是一家的。
 enum BadgeTint {
+  private struct TintKey: Hashable {
+    var from: Hex
+    var to: Hex
+    /// 只有这两项参与计算，整份 `PaletteSeed` 不必进 key（它也不是 `Hashable`）。
+    var accent: Hex
+    var dark: Bool
+  }
+
+  private static let memo = RenderMemo<TintKey, (top: Color, bottom: Color)>()
+
   /// 一对渐变端点。`from` 是左上那头（浅），`to` 是右下那头（深）。
+  ///
+  /// 里头是三趟 hex→HSB、几次色相插值和六次钳位，全是浮点数学。一枚徽章要算一对，
+  /// 自选表一行一枚，`FavoritesView` 的光晕还要再算一次同样的值。入参只有
+  /// 「品牌两端 + 皮肤主色 + 深浅」，皮肤一次会话里最多换几回，所以按 key 记住。
   static func gradient(from: Hex, to: Hex, seed: PaletteSeed) -> (top: Color, bottom: Color) {
+    memo.value(for: TintKey(from: from, to: to, accent: seed.accent, dark: seed.dark)) {
+      compute(from: from, to: to, seed: seed)
+    }
+  }
+
+  private static func compute(from: Hex, to: Hex, seed: PaletteSeed) -> (top: Color, bottom: Color) {
     let a = hsb(from), b = hsb(to)
     let skin = hsb(seed.accent)
     let dark = seed.dark

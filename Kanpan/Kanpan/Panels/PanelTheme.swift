@@ -21,9 +21,16 @@ struct PanelTheme: Sendable, Equatable {
   var dark: Bool { seed.dark }
 
   // 底 / 面
-  var app: Color { Color(hex: chart.bg) }
+  /// 图区**以外**那张大底：面板、列表、底栏、头部全站在它上面，跟着皮肤走。
+  ///
+  /// 这儿原来取的是 `chart.bg`——那会儿种子里 `app` 和 `chart` 本来就是同一个值，
+  /// 取哪个都一样，还顺带保证了「上下不出拼缝」。2026-09-17 画布改成固定的 AICoin 之后
+  /// 这条捷径就反了：整屏会跟着画布一起变成纯白 / 深蓝，皮肤等于没换。
+  /// 所以改回从种子取，画布归画布（`chartBG`），图区外归皮肤。
+  var app: Color { Color(hex: seed.app) }
   var raised: Color { Color(hex: seed.raised) }
   var raised2: Color { Color(hex: seed.raised2) }
+  /// 画布本身：固定的 AICoin 底，不跟皮肤走（见 `Palette.dayCanvas` / `nightCanvas`）。
   var chartBG: Color { Color(hex: chart.bg) }
 
   // 线

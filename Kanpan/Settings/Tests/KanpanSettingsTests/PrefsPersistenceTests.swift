@@ -13,7 +13,7 @@ struct PrefsPersistenceTests {
     p.interval = .m15
     p.quickIntervals = [.m3, .m30, .h2, .h12, .w1, .mo1, .y1]
     p.theme = .dark
-    p.redUp = true
+    p.redUp = false
     p.priceMode = .log
     p.magnet = false
     p.countdown = false
@@ -63,7 +63,7 @@ struct PrefsPersistenceTests {
     #expect(PrefsCodec.key == "kanpan.prefs.v2")
     let box = InMemoryPrefsStorage()
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
-    store.update { $0.redUp = true }
+    store.update { $0.redUp = false }
     #expect(box.keys == ["kanpan.prefs.v2"])
   }
 

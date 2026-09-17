@@ -24,8 +24,9 @@ struct Prefs: Sendable, Equatable {
   var skin: ThemeSkin = .sage
   // Keep the manual choice intact; automatic brightness selection is runtime-only.
   var ambientTheme = false
-  /// 涨跌对调（A6.7）。`false` = 绿涨红跌（原型默认）。
-  var redUp: Bool = false
+  /// 涨跌对调（A6.7）。国内看盘习惯是红涨绿跌，出厂就给红涨；
+  /// 老用户存档里存过什么就还是什么，这儿只改「从没设过」的那一档默认值。
+  var redUp: Bool = true
 
   // ---------------------------------------------------------------- 图
   /// 价格轴 常规 / 对数 / 百分比（A6.8）。
@@ -95,8 +96,9 @@ struct Prefs: Sendable, Equatable {
   /// 全新安装就是这一份（A6.4「首次安装即如此」）。
   static let defaults = Prefs()
 
-  /// 最多同时打开七个副图，屏下内容通过页面纵向滚动可达。
-  static let maxSubs = 7
+  /// 最多同时开三个副图。再多主图就被挤没了——「主图和副图要同时落在一屏里」是
+  /// 这张图的底线，所以这里卡死在三个，第四个进来就把最早开的那个换下去。
+  static let maxSubs = 3
   /// 常用行最多几档（§10.6）。周期条右端从四颗药丸减到两颗之后腾出了位置，
   /// 上限跟着从 8 抬到 10——排不下的那几档会在右边淡出去，滑一下就到。
   static let maxQuick = 10
@@ -174,7 +176,11 @@ struct Prefs: Sendable, Equatable {
 
   // ---------------------------------------------------------------- 改
 
-  /// 开 / 关一个指标。副图满三个时不动，返回一句提示（原型的 toast）。
+  /// 开 / 关一个指标。
+  ///
+  /// 副图满三个时**不再拒绝**：拒绝等于让用户自己回去找一个关掉，白跑一趟。
+  /// 改成把最早打开的那个换下去（`subs` 本来就是按打开先后排的，队首即最早），
+  /// 再返回一句「换下了谁」——调用方拿它弹一条带「撤销」的 toast，后悔一下就能还原。
   @discardableResult
   mutating func toggle(_ id: IndicatorID) -> String? {
     switch id.placement {
@@ -183,9 +189,11 @@ struct Prefs: Sendable, Equatable {
       return nil
     case .sub:
       if let at = subs.firstIndex(of: id) { subs.remove(at: at); return nil }
-      guard subs.count < Prefs.maxSubs else { return "副图最多同时开七个" }
+      var evicted: IndicatorID?
+      while subs.count >= Prefs.maxSubs, !subs.isEmpty { evicted = subs.removeFirst() }
       subs.append(id)
-      return nil
+      guard let evicted else { return nil }
+      return "副图最多三个 · 已换下 \(evicted.rawValue)"
     }
   }
 

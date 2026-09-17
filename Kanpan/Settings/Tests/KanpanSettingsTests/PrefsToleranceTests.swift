@@ -82,10 +82,11 @@ struct PrefsToleranceTests {
     #expect(p.subs == [.rsi, .kdj])
   }
 
-  @Test("保留五副图的选择顺序")
+  @Test("旧存档里多出来的副图按顺序截到三个")
   func 副图截断() {
+    // 副图上限从七收到三之后，老存档里存着的五个要按原顺序留前三个，不是整包丢掉。
     let p = decode(#"{"subs":["MACD","RSI","KDJ","ATR","VOL"]}"#)
-    #expect(p.subs == [.macd, .rsi, .kdj, .atr, .vol])
+    #expect(p.subs == [.macd, .rsi, .kdj])
     #expect(p.subs.count <= Prefs.maxSubs)
   }
 

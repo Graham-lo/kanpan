@@ -84,6 +84,15 @@ public struct ChartColors: Sendable, Equatable {
 ///
 /// K 线与指标的**画法**一个像素都不改——这里换的只有颜色。蜡烛的宽度、间距、
 /// 副图的分区、读数那一行的排布全在 `KanpanChart` 里，和这份表没有关系。
+///
+/// **画布不跟皮肤走。** K 线绘图区（主图 + 副图 + 坐标轴）一律用 AICoin 那套固定配色，
+/// 皮肤只染图区以外的一切（顶栏、周期条、底栏、面板、自选页）。染过一版画布：整屏是
+/// 连成一块了，但蜡烛和均线全压在一层带色的底上，看久了分不清价格结构——这正是 AICoin
+/// 十年如一日用白底的原因。接缝交给 `ground` / `raised` 去收，那本来就是它们的活。
+///
+/// 跟着皮肤走的只剩涨跌色、`amber` 和 MA 那组 `palette`：这几样在头部胶囊、自选列表里
+/// 也出现，图里图外必须是同一个红、同一个绿。
+/// 种子里的 `chart` 字段因此只用于图表以外的容器，不再是画布底色。
 public enum Palette: Sendable {
   // ---------------------------------------------------------------- 青苔（冷）
 
@@ -168,11 +177,35 @@ public enum Palette: Sendable {
     return result
   }
 
+  /// 画布那几样固定色。日 / 夜各一套，和皮肤无关。
+  ///
+  /// 取自 `docs/AICoin-安卓包-UI规格提取.md`（页面底、分割线、三 / 四级文字、`line_grid`）
+  /// 与 `docs/acceptance/M8/aicoin-对比.md` §4 的实测值。
+  public struct ChartCanvas: Sendable, Equatable {
+    public var bg, grid, axis, text, dim, ink, cross: Hex
+  }
+
+  /// 白天的画布。
+  ///
+  /// `cross` 是唯一没照抄的一项：AICoin 那份表里日间十字线写的是 `#EEEEEE`，那是画在
+  /// 深底上的值，落到 `#FFFFFF` 的画布上等于看不见。取和轴文字同一档的灰蓝，
+  /// 权重跟换肤前的 `ink3` 一致。
+  public static let dayCanvas = ChartCanvas(
+    bg: "#FFFFFF", grid: "#C5C5C5", axis: "#DEE1E5",
+    text: "#7A8899", dim: "#B7BFC8", ink: "#292D33", cross: "#7A8899")
+
+  /// 夜里的画布。轴文字仍用 `#7A8899`——在 `#0D111C` 上对比度约 5:1，过得去；
+  /// 夜间那组更暗的 `#515A66` 留给 `dim` 这类次要读数。
+  public static let nightCanvas = ChartCanvas(
+    bg: "#0D111C", grid: "#1C2236", axis: "#25282E",
+    text: "#7A8899", dim: "#515A66", ink: "#E6EAF2", cross: "#FFFFFF")
+
   private static func expanded(_ t: PaletteSeed) -> ChartColors {
     let d = t.dark
+    let c = d ? nightCanvas : dayCanvas
     return ChartColors(
-      bg: t.chart, grid: t.grid, axis: t.line, text: t.ink2, dim: t.ink3,
-      ink: t.ink, amber: t.amber, cross: t.ink3,
+      bg: c.bg, grid: c.grid, axis: c.axis, text: c.text, dim: c.dim,
+      ink: c.ink, amber: t.amber, cross: c.cross,
       band: t.palette[4], oi: t.palette[5], oiFill: t.palette[5].alpha(d ? "33" : "2E"),
       chip: d ? t.ground : t.app, panel: t.app,
       crossBg: d ? t.line : t.ink, crossInk: d ? t.ink : t.app,

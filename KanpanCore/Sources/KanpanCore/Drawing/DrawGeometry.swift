@@ -43,9 +43,21 @@ public struct DrawGeometry: Sendable {
 
 /// One geometry source for normal rendering, selected rendering, previews and hit testing.
 /// Infinite lines/rays are clipped parametrically, without arbitrary extension lengths.
+///
+/// `decimals` 是**价格轴当前的小数位**（`ChartState.decimals`）。图上这些标签写的都是
+/// 价格，价格轴右边写着 `77017.10`，标签上却是 `%.8g` 跑出来的 `77017.099999999`，
+/// 同一个数在同一屏上两种写法，读起来像两回事（§2E6）。传 nil 就退回原来的 `%.8g`，
+/// 单测和命中测试不关心标签，不用为它编一个小数位。
 public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
-                            xOf: (Double) -> Double, yOf: (Double) -> Double) -> DrawGeometry {
+                            xOf: (Double) -> Double, yOf: (Double) -> Double,
+                            decimals: Int? = nil) -> DrawGeometry {
   var g = DrawGeometry()
+  /// 价格照坐标轴写。没给小数位就按老样子来。
+  func price(_ v: Double) -> String {
+    guard let decimals else { return String(format: "%.8g", v) }
+    return fmtNum(v, decimals)
+  }
+  func signedPrice(_ v: Double) -> String { (v < 0 ? "-" : "+") + price(abs(v)) }
   guard d.isValid, !d.hidden else { return g }
   let pts = d.points.map { DrawPixel(xOf($0.t), yOf($0.p)) }
   guard pts.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) else { return g }
@@ -68,25 +80,33 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
   switch d.kind {
   case .hline:
     line(DrawPixel(r.left, a.y), DrawPixel(r.right, a.y)); g.handles = []
-    g.labels = [(DrawPixel(r.right - 4, a.y - 4), String(format: "%.8g", d.a.p))]
+    g.labels = [(DrawPixel(r.right - 4, a.y - 4), price(d.a.p))]
   case .vline:
     line(DrawPixel(a.x, r.top), DrawPixel(a.x, r.bottom)); g.handles = []
   case .hray:
     line(a, DrawPixel(a.x + 1, a.y), to: .infinity)
-    g.labels = [(DrawPixel(r.right - 4, a.y - 4), String(format: "%.8g", d.a.p))]
+    g.labels = [(DrawPixel(r.right - 4, a.y - 4), price(d.a.p))]
   case .trend: line(a, b)
   case .ray: line(a, b, to: .infinity)
   case .extended: line(a, b, from: -.infinity, to: .infinity)
-  case .rectangle, .measure:
+  case .rectangle:
     let c = DrawPixel(b.x, a.y), e = DrawPixel(a.x, b.y)
     g.polygon = [a, c, b, e]
     line(a, c); line(c, b); line(b, e); line(e, a)
-    if d.kind == .measure {
-      let delta = d.points[1].p - d.a.p
-      let pct = d.a.p != 0 ? String(format: "%+.2f%%", delta / abs(d.a.p) * 100) : "—"
-      let hours = abs(d.points[1].t - d.a.t) / 3_600_000
-      g.labels = [(DrawPixel(max(a.x, b.x), min(a.y, b.y) - 6), String(format: "%+.8g", delta) + " · " + pct + " · " + String(format: "%.1f 小时", hours))]
-    }
+  case .measure:
+    // 「测量」是两点之间的一条线加一句读数，不是一个框（§2E4）。
+    //
+    // 原来它和矩形走同一支：四条边围出一个矩形，`filled` 还能给它填个底。可量的是
+    // 「从 A 到 B 涨了多少、花了多久」——一根对角线；围出来的那个框既不是结构也不是
+    // 区间，填上底之后更像是在图上圈了一块地，把底下的 K 线整段盖住。现在只连 A→B，
+    // 读数压在终点上方，量完抬眼就能看见，K 线一根不挡。
+    line(a, b)
+    g.polygon = []
+    let delta = d.points[1].p - d.a.p
+    let pct = d.a.p != 0 ? String(format: "%+.2f%%", delta / abs(d.a.p) * 100) : "—"
+    let hours = abs(d.points[1].t - d.a.t) / 3_600_000
+    g.labels = [(DrawPixel(b.x, b.y - 6),
+                 signedPrice(delta) + " · " + pct + " · " + String(format: "%.1f 小时", hours))]
   case .channel:
     let c = pts[2], dx = b.x - a.x, dy = b.y - a.y
     let len = dx * dx + dy * dy
@@ -105,11 +125,12 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     line(a, b)
     for level in d.levels {
       // Retracement: 0 is the end of the measured move; 1 is its origin.
-      let price = d.points[1].p + (d.a.p - d.points[1].p) * level
-      let y = yOf(price)
+      let value = d.points[1].p + (d.a.p - d.points[1].p) * level
+      let y = yOf(value)
       guard y.isFinite else { continue }
       line(DrawPixel(min(a.x, b.x), y), DrawPixel(max(a.x, b.x), y))
-      g.labels.append((DrawPixel(max(a.x, b.x), y - 3), String(format: "%.3g · %.8g", level, price)))
+      g.labels.append((DrawPixel(max(a.x, b.x), y - 3),
+                       String(format: "%.3g", level) + " · " + price(value)))
     }
   }
   return g

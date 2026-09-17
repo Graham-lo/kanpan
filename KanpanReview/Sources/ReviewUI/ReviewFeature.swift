@@ -77,9 +77,14 @@ import ReviewData
     bookOpen = false; captureOpen = false; searchOpen = false; selectedRecord = nil
     reload()
   }
+  /// 复盘本每次打开都落在「待办」（§2G2）。
+  ///
+  /// 原来这儿读的是 `archive.lastTab`：上次翻到「战绩」，下次进来还停在战绩，可打开
+  /// 复盘本九成是奔着「有什么该我处理的」去的，落在别的标签上等于每次都要先自己拨回来。
+  /// `lastTab` 字段留在存档里没动（老档照旧能读），只是不再拿它定开场。
   private func reload() {
     guard let store else { return }
-    records = store.archive.records; draft = store.archive.draft; tab = store.archive.lastTab
+    records = store.archive.records; draft = store.archive.draft; tab = "todo"
   }
   @discardableResult private func change(_ edit: (inout ReviewArchive) throws -> Void) -> Bool {
     guard let store else { notice = "复盘存档暂时不可用，原文件已保留"; return false }
@@ -90,6 +95,9 @@ import ReviewData
   public func begin(_ value: ReviewDraft) {
     draft = value; saveDraft(); captureOpen = true
   }
+  /// 刚记下的那一条（§2F2）。图上的标记照它闪一次，toast 上的「查看」也开它。
+  public var lastSaved: UUID?
+
   public func saveRecord() -> Bool {
     guard var value = draft else { return false }
     let now = ReviewClock.now
@@ -102,7 +110,9 @@ import ReviewData
         guard !archive.records.contains(where: { $0.id == value.id }) else { return }
         archive.records.insert(record, at: 0); archive.queue.append(op); archive.draft = nil
       }) else { return false }
-      draft = nil; saveDraft(); captureOpen = false; notice = "已记下"; synchronize(); return true
+      // toast 那句话交给 `MainScreen` 说（要带一颗「查看」，见 §2F2），这儿只负责
+      // 把「刚记下的是哪条」留下来。`notice` 是纯提示通道，挂不了动作。
+      draft = nil; saveDraft(); captureOpen = false; lastSaved = value.id; synchronize(); return true
     } catch { notice = error.localizedDescription; return false }
   }
   public func saveReflection(_ id: UUID, note: String, nextTime: String, publish: Bool) {
@@ -151,7 +161,6 @@ import ReviewData
     do { try store?.saveReplay(id, position: position) } catch { notice = error.localizedDescription }
   }
   public func savedReplay(_ id: UUID) -> ReviewReplayPosition? { store?.savedReplay(id) }
-  public func rememberTab() { let value = tab; _ = change { $0.lastTab = value } }
   public func loadHistory(query: String = "", page target: Int = 0) async {
     guard let client else { history = records; return }
     let requestedTab = tab

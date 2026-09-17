@@ -25,7 +25,10 @@ enum Ids {
   // 周期条
   static func intervalChip(_ raw: String) -> String { "interval.chip.\(raw)" }
   static let intervalMore = "interval.more"
-  /// 常用行默认那七档（`Interval.quick`）。
+  /// UI 测试沙盒里铺出来的那七档（`PrefsStore.uiTestQuick`）。
+  ///
+  /// 出厂默认已经收成五档（`Interval.quick` = 5m 30m 1h 4h 1d），但测试沙盒照旧铺七档：
+  /// 禁改的 `ChartFoundationUITests` 里按 `interval.chip.1m` 直接点，收窄了就点不着。
   static let quickIntervals = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
   // 底栏
   /// 底栏第三批之后是「自选 · 复盘 · 指标 · 设置」四格：没有「风格」也没有「横屏」。
@@ -53,6 +56,7 @@ enum Ids {
   /// 「图表」面板里「阳线」那一行的某一档（实心 / 空心）。风格卡撤掉之后，拿它当这张面板的招牌元素。
   static func chartBody(_ raw: String) -> String { "chart.bodyChoice.\(raw)" }
   static func periodRow(_ raw: String) -> String { "period.row.\(raw)" }
+  static func periodPin(_ raw: String) -> String { "period.pin.\(raw)" }
   static func indicatorSwitch(_ raw: String) -> String { "indicator.switch.\(raw)" }
   static let settingsMagnet = "settings.magnet"
   /// 半屏面板顶上的标题。当作往下甩的把手用（它在滚动区外面，甩它动的是面板不是内容）。
@@ -133,6 +137,22 @@ class KanpanUICase: XCTestCase {
     return condition()
   }
 
+  /// 「这颗现在能点吗」——问之前先确认它站稳了。
+  ///
+  /// `isHittable` 不是个老实的布尔量：元素正在插入或移除的那一帧，它的 frame 是空的，
+  /// XCTest 算不出可激活的点，于是**当场把用例判失败**
+  /// （`Failed to determine hittability … Activation point invalid and no suggested
+  /// hit points based on element frame`），而不是返回 false。
+  /// 「最新」这颗按钮本来就是随视野进出的（带 `.opacity` 过渡），轮询时正好撞上那一帧
+  /// 的概率不低——之前 `waitForLiveChart` 就是这么红的。
+  /// 所以先自己看一眼：在不在、有没有面积；都有了才敢问 `isHittable`。
+  func hittable(_ el: XCUIElement) -> Bool {
+    guard el.exists else { return false }
+    let box = el.frame
+    guard box.width > 1, box.height > 1 else { return false }
+    return el.isHittable
+  }
+
   // ------------------------------------------------------------ 点击
 
   /// 只接受一次中心点击，不用偏移重试掩盖产品命中问题。
@@ -171,12 +191,12 @@ class KanpanUICase: XCTestCase {
   func waitForLiveChart(timeout: TimeInterval = long) -> Bool {
     let latest = app.buttons[Ids.latestButton]
     let live = waitUntil(timeout: timeout, poll: 0.5) {
-      if latest.isHittable { return true }
+      if hittable(latest) { return true }
       dragChartRight()
-      return latest.isHittable
+      return hittable(latest)
     }
-    if live, latest.isHittable {
-      _ = tapButton(latest, Self.short) { !latest.isHittable }
+    if live, hittable(latest) {
+      _ = tapButton(latest, Self.short) { !hittable(latest) }
     }
     return live
   }

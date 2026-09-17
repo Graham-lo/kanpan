@@ -63,7 +63,15 @@ struct MainScreen: View {
   @State private var landscapeForDrawing = false
   @StateObject private var draw = DrawingController()
   @State private var toast: String?
+  /// 这句话右边那颗按钮。和 `toast` 同一拍赋值。
+  @State private var toastUndo: (() -> Void)?
+  /// 那颗按钮上的字。默认「撤销」，「已记下 · 查看」时是「查看」（§2F2）。
+  @State private var toastAction = "撤销"
   @State private var toastID = 0
+  /// 「更多」那张周期网格摊开了没有。开着时它把图往下推，所以状态得住在这一层。
+  @State private var intervalGrid = false
+  /// 图还停在最新那根上没有。周期条行尾那颗「最新」靠它决定露不露面。
+  @State private var atLatest = true
   /// Historical OHLC belongs only to the crosshair container.
   @State private var crosshair: Crosshair?
   /// 倒计时的当前时刻（毫秒）。`nil` = 不画。
@@ -227,15 +235,20 @@ struct MainScreen: View {
     .onChange(of: market.source) { _, next in quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next) }
     .onChange(of: showFavorites || showSymbols || coveringLaunch) { _, on in quotes.setVisible(on) }
     .onChange(of: picker.prefs.favorites) { _, symbols in settleFavorites(symbols) }
-    .onChange(of: market.routing) { _, state in
-      if state == .switched { say("已切换成功") }
-    }
     .onChange(of: market.tradeQuote) { _, trade in
       if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
     }
     .onChange(of: market.symbol) { _, symbol in quotes.setChartSymbol(symbol); accountBridge?.focus(symbol) }
     .onChange(of: store.notice) { _, note in
-      if let note { say(note); store.clearNotice() }
+      // 设置那一侧说的话（换下了哪个副图、常用行满了、已恢复默认）分两处落：
+      // 面板开着的时候它归面板自己的 `panelToast` 说——主 toast 压在面板底下
+      // 根本看不见；面板没开（比如周期网格里点图钉）才接到主 toast 上。
+      // 两处加起来永远只有一层。
+      if let note, panel == nil {
+        let undo = store.noticeUndo
+        store.clearNotice()
+        say(note, undo: undo)
+      }
     }
     .onChange(of: draw.full) { _, full in
       // A7.7：一个品种最多 50 条，满了只提示、不悄悄丢。
@@ -286,25 +299,34 @@ struct MainScreen: View {
       hairline
       if !reviewChart.active { IntervalBar(
         theme: theme, quick: prefs.quickIntervals, current: market.interval,
-        onPick: pick(interval:), onMore: { panel = .period },
+        atLatest: atLatest, gridOpen: $intervalGrid,
+        onPick: pick(interval:),
+        onPin: { iv in store.attempt { $0.toggleQuick(iv) } },
+        onLatest: { proxy.scrollToLatest() },
         // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
         onChart: { panel = .chart }
       )
       .background(theme.app) }
       hairline
-      chart
-      reviewControls
+      chart.overlay(alignment: .bottom) { captureCard }
+      replayControls
       hairline
       if draw.active {
         DrawingBar(controller: draw)
       }
-      BottomBar(
-        theme: theme, active: panel,
-        onPanel: { p in panel = (panel == p) ? nil : p },
-        onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() }, reviewCount: review.pendingCount,
-        onFavorites: { dismissPanel(); showFavorites = true; quotes.setVisible(true) }
-      )
-      .background(theme.app)
+      // 记一笔和回放这两种状态下底栏收起来（§2F1 / §2G4）。
+      // 理由一样：这时候屏幕上已经有一套自己的操作（记下 / 收起、播放 / 退出），
+      // 底下再摆一排「复盘 指标 自选 设置」，等于同时给两套出口，点哪个都像是要跑题。
+      // 两种状态各自都有明确的回头路（卡片的「收起」、回放条的「退出」），功能没断。
+      if !reviewChart.active {
+        BottomBar(
+          theme: theme, active: panel,
+          onPanel: { p in panel = (panel == p) ? nil : p },
+          onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() }, reviewCount: review.pendingCount,
+          onFavorites: { dismissPanel(); showFavorites = true; quotes.setVisible(true) }
+        )
+        .background(theme.app)
+      }
     }
   }
 
@@ -333,18 +355,22 @@ struct MainScreen: View {
             .accessibilityIdentifier("chart.topOHLC")
         }
         }
-        chart
-        reviewControls
+        // 选中一条线之后的 样式 / 锁定 / 复制 / 删除 排在**图外**这一条属性栏上（§2E2）。
+        // 竖屏它是浮在图下沿的一条，横屏不能照搬：横屏的图就是画布，浮在上面的东西
+        // 正好压着刚画的那一笔，也和「画布上不浮任何控件」相冲。挂在图上方、和标题
+        // 同一根 `VStack` 里，选中 / 取消选中只在图外增减一行，K 线不会跟着跳。
+        if draw.active, draw.selected != nil {
+          DrawingSelectionBar(controller: draw, flat: true)
+        }
+        chart.overlay(alignment: .bottom) { captureCard }
+        replayControls
       }
       if draw.active {
         DrawingRail(controller: draw)
       }
       ToolRail(
-        theme: theme, active: panel, drawing: draw.active,
-        onPanel: { p in panel = (panel == p) ? nil : p },
+        theme: theme, drawing: draw.active,
         onDraw: { dismissPanel(); if reviewChart.active { endReview() }; draw.toggle() },
-        onReview: { review.bookOpen = true; review.synchronize() },
-        onRecord: startReviewCapture,
         onPortrait: {
           dismissPanel()
           landscapeForDrawing = false
@@ -388,7 +414,17 @@ struct MainScreen: View {
   /// 两个都只影响画出来的这一帧，`prefs.subs` 和 `prefs.overlays` 一个字没动——画完
   /// 退出画线，副图和均线原样回来，用户开着的那几个指标不需要重新打开。
   private var drawingCanvasOnly: Bool { draw.active && landscape }
-  private var visibleSubs: [IndicatorID] { drawingCanvasOnly ? [] : prefs.subs }
+  /// 备用线路上持仓量整格不画（§2B）。
+  ///
+  /// `OISource` 只连币安，走兜底线路时这一格永远是空的。以前它照样占一格高度、
+  /// 中间写一句「当前行情线路不提供持仓量」——那正是用户不想在界面上看到的
+  /// 「线路」两个字，而且还白占了主图的地方。现在直接不排这一格，主图拿回高度；
+  /// `prefs.subs` 一个字没动，线路回到币安它自己就回来了。
+  private var visibleSubs: [IndicatorID] {
+    if drawingCanvasOnly { return [] }
+    guard market.source != .binance else { return prefs.subs }
+    return prefs.subs.filter { $0 != .oi }
+  }
   private var visibleOverlays: [IndicatorID] { drawingCanvasOnly ? [] : prefs.overlays }
 
   @ViewBuilder private var sidePanelContent: some View {
@@ -396,7 +432,7 @@ struct MainScreen: View {
       PanelSide(store: store, seed: seed, onClose: PanelDismiss { dismissPanel() }) {
         switch which {
         case .indicator: IndicatorPanel(store: store)
-        case .period: PeriodPanel(store: store, onPick: pick(interval:))
+        case .period: IntervalGridPanel(store: store, onPick: pick(interval:))
         case .settings: SettingsPanel(store: store)
         case .chart: ChartPanel(store: store)
         }
@@ -409,17 +445,19 @@ struct MainScreen: View {
       TopBar(
         theme: theme, symbol: market.symbol,
         starred: picker.isFavorite(market.symbol),
-        status: market.status,
         onSymbol: { dismissPanel(); showQuickFavorites = true },
-        onStatus: { say(statusLine) },
         onStar: {
           dismissPanel()
           let now = picker.toggleFavorite(market.symbol, info: market.info)
-          say(now ? "已加入自选" : "已移出自选")
+          // 星标最容易误触（它就在品种名旁边），所以这一条给「撤销」：再点一次而已。
+          let symbol = market.symbol, info = market.info
+          say(now ? "已加入自选" : "已移出自选",
+              undo: { picker.toggleFavorite(symbol, info: info) })
         })
       ZStack {
         PriceRow(theme: theme, ticker: displayedTicker, lastPrice: readoutPrice,
-          decimals: market.info.pricePrecision)
+          decimals: market.info.pricePrecision,
+          volumeUnit: market.volumeUnit, stale: market.tickerStale)
           .opacity(topCandleData == nil ? 1 : 0)
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
@@ -437,12 +475,10 @@ struct MainScreen: View {
     .background(theme.app)
   }
 
-  /// 长按状态圆点报的那一行（§10.5）。
-  ///
-  /// 除了状态本身还报「多久没推了」：WS 能连上但一帧不推的时候 `status` 仍是
-  /// `.live`，光看颜色会以为一切正常——这一行是那种情况唯一看得见的线索。
   private var displayedTicker: Ticker? {
-    if market.source == .okx { return market.ticker }
+    // 备用线路上先用它自己的一帧；它还没到（或这个品种它根本没有）就退回
+    // 共享报价层里那口最后的价，顶栏灰显而不是退成骨架（§2B #54）。
+    if market.source == .okx { return market.ticker ?? quotes.raw[market.symbol].map { quotes.presented($0) } }
     if let quote = quotes.raw[market.symbol] { return quotes.presented(quote) }
     // MarketModel already receives Binance ticker frames as part of the
     // chart feed. Use that value immediately instead of waiting for the
@@ -455,21 +491,9 @@ struct MainScreen: View {
     return "symbol=\(market.symbol);last=\(displayedTicker?.last ?? .nan);time=\(displayedTicker?.timeMs ?? 0)"
   }
 
-  private var statusLine: String {
-    let head: String
-    switch market.status {
-    case .live: head = "实时"
-    case .reconnecting: head = "重连中"
-    case .offline: head = "离线"
-    }
-    guard let at = market.lastPushAt else { return head + " · 还没收到推送" }
-    let age = Int(Date().timeIntervalSince(at))
-    return head + (age < 2 ? " · 刚刚更新" : " · \(age) 秒没动了")
-  }
-
   /// Latest trade quote only; changing candle interval must never change its source.
   private var readoutPrice: Double? {
-    return market.source == .okx ? market.series?.close.last : displayedTicker?.last
+    return market.source == .okx ? (market.series?.close.last ?? displayedTicker?.last) : displayedTicker?.last
   }
 
   private var topCandleData: String? {
@@ -504,7 +528,12 @@ struct MainScreen: View {
         panelOpen: panel != nil || draw.panel != nil,
         state: reviewChart.active ? reviewChart.state : chartState,
         proxy: reviewChart.active ? reviewChart.proxy : proxy,
-        onView: { view in if !reviewChart.active { market.loadOI(view: view) } },
+        onView: { view in
+          if !reviewChart.active { market.loadOI(view: view) }
+          // 视野一动就重算一次：周期条行尾那颗「最新」靠它露面 / 收起。
+          let now = (reviewChart.active ? reviewChart.proxy : proxy).isAtLatest
+          if now != atLatest { atLatest = now }
+        },
         onSubResize: { id, scale in store.update { $0.subHeightOverrides[id] = scale } },
         onSubReorder: { order in store.update { $0.subs = order } },
         onCrosshair: { crosshair = $0 },
@@ -515,17 +544,15 @@ struct MainScreen: View {
         drawing: reviewChart.active ? nil : draw
       )
       .id(reviewChart.mode.rawValue)
-      ReviewRangeOverlay(feature: review, bridge: reviewChart, liveProxy: proxy)
+      // 横屏画线时复盘的区间框、目标线和「等答案」标签一律不画（§2E5）：横屏那一屏
+      // 要的是干净的原始 K 线，和「指标一律不画」是同一条理由——画布上多一根线，
+      // 画的时候就多一次「这是我画的还是本来就有的」。记录本身没动，转回竖屏原样都在。
+      ReviewRangeOverlay(feature: review, bridge: reviewChart, liveProxy: proxy,
+                         suppressed: drawingCanvasOnly, flash: review.lastSaved)
         .allowsHitTesting(reviewChart.mode == .capture)
-      if market.routing == .switching, !reviewChart.active {
-        Text("检测到当前链路不可用，正在切换智能链路")
-          .font(.caption).foregroundStyle(theme.ink2)
-          .padding(.horizontal, 12).padding(.vertical, 8)
-          .background(theme.raised, in: Capsule())
-          .overlay(Capsule().strokeBorder(theme.line, lineWidth: 1))
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).padding(.top, 8)
-          .allowsHitTesting(false).accessibilityIdentifier("market.routeSwitching")
-      } else if let error = market.historyError, !reviewChart.active {
+      // 切线路一律静默：用户要看的是 K 线，不是我们从哪台机器取的数。
+      // 历史数据真拉不下来才出这一条——那是「图不全」，得让人知道并且能重试。
+      if let error = market.historyError, !reviewChart.active {
         Button(error) { market.retryHistory() }.font(.caption).foregroundStyle(theme.ink2)
           .padding(.horizontal, 12).padding(.vertical, 8)
           .background(theme.raised, in: Capsule())
@@ -596,22 +623,46 @@ struct MainScreen: View {
       }
     }.padding(.horizontal).padding(.vertical, 8)
   }
-  /// 记一笔卡片 / 回放条。两个都在 `ReviewUI` 里，配色靠环境灌进去（见 `PanelTheme.review`）。
-  @ViewBuilder private var reviewControls: some View {
-    reviewControlsBody.environment(\.reviewTheme, theme.review)
+  /// 记一笔卡片（§2F1）。**盖在图上**，不再排在图下面。
+  ///
+  /// 原来它和图是同一根 `VStack` 里的两格，卡片一出来图就被压到剩下三分之一——
+  /// 而记一笔恰恰是「看着这段行情写点什么」，图被压扁了正好把要看的东西挤没了。
+  /// 现在它压在图的下沿，图一根 K 线都不动；用户想看被盖住的那截，点「收起」就是。
+  ///
+  /// 卡片自带 `t.raised` 的不透明底（见 `ReviewCaptureCard`），所以盖上去不会
+  /// 透出 K 线；上沿补一条 `hairline`，让它读起来是「叠上来的一层」而不是图的一部分。
+  @ViewBuilder private var captureCard: some View {
+    if reviewChart.mode == .capture {
+      VStack(spacing: 0) {
+        hairline
+        ReviewCaptureCard(feature: review, onSave: {
+          if review.saveRecord() {
+            reviewChart.endCapture(feature: review)
+            // 「已记下 · 查看」：右边那颗直接翻到刚记的那条（§2F2）。
+            // 图上那个新记号同时闪一下，两边指的是同一件事。
+            say("已记下", actionTitle: "查看") {
+              review.selectedRecord = review.lastSaved
+              dismissPanel(); review.bookOpen = true; review.synchronize()
+            }
+          }
+        }, onClose: { reviewChart.endCapture(feature: review) })
+        // 横屏图本来就矮，卡片不能占掉一半；竖屏给 280pt，正好是交接说明里的数。
+        .frame(maxHeight: landscape ? 150 : 280)
+      }
+      .environment(\.reviewTheme, theme.review)
+      .transition(.move(edge: .bottom))
+    }
   }
 
-  @ViewBuilder private var reviewControlsBody: some View {
-    if reviewChart.mode == .capture {
-      ReviewCaptureCard(feature: review, onSave: {
-        if review.saveRecord() { reviewChart.endCapture(feature: review) }
-      }, onClose: { reviewChart.endCapture(feature: review) })
-      .frame(maxHeight: landscape ? 150 : 290)
-    } else if reviewChart.mode == .replay {
+  /// 回放条。它是一条细的走带控制，压着图没意义（要看的就是图在往前走），
+  /// 所以照旧排在图下面——被它顶掉的是主底栏，见 `portraitBody`（§2G4）。
+  @ViewBuilder private var replayControls: some View {
+    if reviewChart.mode == .replay {
       ReviewReplayControls(time: reviewChart.replayTime, playing: reviewChart.playing, speed: reviewChart.speed,
         onStep: { reviewChart.step($0, feature: review) }, onPlay: { reviewChart.togglePlay(feature: review) },
         onSpeed: { reviewChart.speed = reviewChart.speed == 4 ? 1 : reviewChart.speed * 2 },
         onJudgment: { reviewChart.jumpToJudgment(feature: review) }, onExit: endReview)
+      .environment(\.reviewTheme, theme.review)
     }
   }
 
@@ -621,9 +672,12 @@ struct MainScreen: View {
 
   @ViewBuilder private var toastLayer: some View {
     if let toast {
-      Toast(theme: theme, text: toast)
+      Toast(theme: theme, text: toast, actionTitle: toastAction, undo: toastUndo.map { act in
+        { act(); withAnimation(.easeOut(duration: 0.22)) { self.toast = nil; toastUndo = nil } }
+      })
         .padding(.bottom, 92)
-        .allowsHitTesting(false)
+        // 带撤销的那一条要能点；不带的照旧穿透，别挡住底下的图。
+        .allowsHitTesting(toastUndo != nil)
     }
   }
 
@@ -815,6 +869,7 @@ struct MainScreen: View {
     // unchanged sheet binding from that callback while the chart is updating.
     if panel != nil { panel = nil }
     if draw.panel != nil { draw.panel = nil }
+    if intervalGrid { withAnimation(.easeOut(duration: 0.18)) { intervalGrid = false } }
   }
 
   private func pick(interval iv: Interval) {
@@ -826,13 +881,23 @@ struct MainScreen: View {
     UISelectionFeedbackGenerator().selectionChanged()
   }
 
-  private func say(_ text: String) {
+  /// 说一句话。全屏只有这一层，新的一句直接顶掉旧的（`toastID` 就是用来作废旧计时器的）。
+  ///
+  /// 给了 `undo` 就在右边画一颗按钮并停 5 秒：1.6 秒只够读完，来不及看清、
+  /// 决定、再抬手点。不给就还是 1.6 秒。按钮上的字默认是「撤销」，
+  /// 「已记下 · 查看」这类「去看看」用 `actionTitle` 换掉。
+  private func say(_ text: String, actionTitle: String = "撤销", undo: (() -> Void)? = nil) {
     toastID += 1
     let mine = toastID
+    toastUndo = undo
+    toastAction = actionTitle
     withAnimation(.easeOut(duration: 0.18)) { toast = text }
+    let stay = undo == nil ? 1600 : 5000
     Task {
-      try? await Task.sleep(for: .milliseconds(1600))
-      if mine == toastID { withAnimation(.easeOut(duration: 0.22)) { toast = nil } }
+      try? await Task.sleep(for: .milliseconds(stay))
+      if mine == toastID {
+        withAnimation(.easeOut(duration: 0.22)) { toast = nil; toastUndo = nil }
+      }
     }
   }
 }

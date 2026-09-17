@@ -105,11 +105,31 @@ public func fmtNum(_ x: Double, _ p: Int) -> String {
 /// 成交量 / 持仓量：亿、万、整数、两位小数。
 public func fmtVol(_ x: Double) -> String {
   guard x.isFinite else { return "--" }
+  return fmtVol(x, unit: volUnit(x))
+}
+
+/// 成交额用哪个单位。
+///
+/// 拆出来是为了「按品种固定单位」（§2B / 审查 §3.10 #53）：换一条行情线路，
+/// 同一个品种回来的成交额口径可能差一截，数字一跨过一亿的坎，单位就从「万」
+/// 翻成「亿」，顶栏那一行看上去像换了个品种。所以选单位这件事交给外面记住，
+/// 不再每帧按当前数字现算。
+public enum VolUnit: Int, Sendable, Equatable { case plain, wan, yi }
+
+public func volUnit(_ x: Double) -> VolUnit {
   let a = abs(x)
-  if a >= 1e8 { return toFixed(x / 1e8, 2) + "亿" }
-  if a >= 1e4 { return toFixed(x / 1e4, 2) + "万" }
-  if a >= 100 { return toFixed(x, 0) }
-  return toFixed(x, 2)
+  if a >= 1e8 { return .yi }
+  if a >= 1e4 { return .wan }
+  return .plain
+}
+
+public func fmtVol(_ x: Double, unit: VolUnit) -> String {
+  guard x.isFinite else { return "--" }
+  switch unit {
+  case .yi: return toFixed(x / 1e8, 2) + "亿"
+  case .wan: return toFixed(x / 1e4, 2) + "万"
+  case .plain: return abs(x) >= 100 ? toFixed(x, 0) : toFixed(x, 2)
+  }
 }
 
 /// JS `Number.prototype.toFixed` 的语义：对**二进制精确值**四舍五入，逢五进一（远离零）。

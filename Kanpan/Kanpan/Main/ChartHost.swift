@@ -26,7 +26,6 @@ enum ViewIntent: Equatable {
 final class ChartBox: UIView, UIGestureRecognizerDelegate {
   let chart = ChartView(frame: .zero)
   private let scroll = ChartPageScrollView()
-  private let latest = UIButton(type: .custom)
   private let panelDismiss = UIControl()
   var onOverlayUpdate: () -> Void = {}
   var onPanelDismiss: () -> Void = {}
@@ -56,11 +55,6 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
     reorder.minimumPressDuration = 0.35; reorder.delegate = self
     chart.addGestureRecognizer(reorder)
     scroll.panGestureRecognizer.require(toFail: reorder)
-    latest.setImage(UIImage(systemName: "chevron.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)), for: .normal)
-    latest.layer.cornerRadius = 22; latest.layer.borderWidth = 1
-    latest.accessibilityIdentifier = "chart.latest"; latest.accessibilityLabel = "回到最新"
-    latest.addTarget(self, action: #selector(goLatest), for: .touchUpInside)
-    scroll.addSubview(latest)
     panelDismiss.isHidden = true
     panelDismiss.accessibilityIdentifier = "chart.dismissPanel"
     panelDismiss.accessibilityLabel = "收起面板"
@@ -96,21 +90,14 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
 
   @objc private func closePanel() { onPanelDismiss() }
 
-  @objc private func goLatest() { chart.scrollToLatest() }
-
+  /// 图上的把手 / 覆盖层跟着新布局走一遍。
+  ///
+  /// 这儿原来还摆着一颗 44×44 的「回到最新」圆钮，浮在主图右下角。用户定过规矩：
+  /// 画布上不允许浮任何控件——它会压着 K 线，改副图高度时还得跟着主图的下沿挪。
+  /// 那颗按钮已经搬到周期条行尾（见 `IntervalBar` 的「最新」），id 仍叫 `chart.latest`。
   func updateControls() {
     onOverlayUpdate()
-    guard let state = chart.state, let layout = chart.chartLayout else {
-      latest.isHidden = true; return
-    }
-    // Chart-local positions move with the main pane; no fixed overlay can land on a subplot.
-    let x = max(0, layout.plotW - 52), y = max(0, layout.mainH - 52)
-    latest.frame = CGRect(x: x, y: y, width: 44, height: 44)
-    latest.isHidden = chart.isAtLatest || layout.mainH < 60
-    let colors = state.colors
-    latest.backgroundColor = UIColor(Color(hex: colors.bg)).withAlphaComponent(0.92)
-    latest.tintColor = UIColor(Color(hex: colors.ink))
-    latest.layer.borderColor = UIColor(Color(hex: colors.hair)).cgColor
+    guard let state = chart.state, let layout = chart.chartLayout else { return }
     for id in Array(grips.keys) where !state.subs.contains(id) { grips.removeValue(forKey: id)?.removeFromSuperview() }
     for pane in layout.panes.dropFirst() {
       guard let id = pane.indicator else { continue }
@@ -129,7 +116,6 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
       grip.frame = CGRect(x: 0, y: min(layout.H - 16, pane.y + pane.h - 8), width: layout.W, height: 16)
       grip.accessibilityValue = String(format: "%.0f", pane.h)
     }
-    scroll.bringSubviewToFront(latest)
     if panelOpen { bringSubviewToFront(panelDismiss) }
   }
 

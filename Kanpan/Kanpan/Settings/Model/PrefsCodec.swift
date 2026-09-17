@@ -98,8 +98,15 @@ extension Prefs: Codable {
     try c.encode(smartMarketRoute, forKey: .smartMarketRoute)
   }
 
-  /// 扩档之前出厂的那六档。存档里一字不差地躺着这一串，就说明用户从没动过常用行。
-  fileprivate static let legacyQuick: [Interval] = [.m1, .m5, .m15, .h1, .h4, .d1]
+  /// 历次出厂的常用行。存档里一字不差地躺着其中一串，就说明用户从没动过常用行。
+  ///
+  /// 常用行是每次装完就写进存档的，所以「没存过」这条路只对全新安装有效；老用户要吃到
+  /// 新默认，只能靠认出「这串就是上一版出厂的样子」。反过来只要有一处不一样，那就是
+  /// 用户自己钉的，一个字都不动。
+  fileprivate static let factoryQuicks: [[Interval]] = [
+    [.m1, .m5, .m15, .h1, .h4, .d1],        // 更早的六档
+    [.m1, .m5, .m15, .m30, .h1, .h4, .d1],  // 收成五档之前的七档
+  ]
 
   init(from decoder: Decoder) throws {
     // 从新默认起步：存档只往上盖它真有的那几项（A6.13）。
@@ -119,10 +126,9 @@ extension Prefs: Codable {
         guard let iv = Interval(rawValue: r), !seen.contains(iv) else { continue }
         seen.append(iv)
       }
-      // 常用行从六档扩到七档（周期条右端腾出了「画线」和「记」两颗药丸的位置）。
-      // 存档里原样躺着老的那六档就当没动过，直接给新默认；只要有一处不一样就是
-      // 用户自己钉过的，一个字都不改。
-      if seen == Self.legacyQuick { seen = Interval.quick }
+      // 存档里原样躺着上一版出厂的那串就当没动过，直接给新默认；只要有一处不一样
+      // 就是用户自己钉过的，一个字都不改。
+      if Self.factoryQuicks.contains(seen) { seen = Interval.quick }
       if !seen.isEmpty { quickIntervals = Array(seen.prefix(Prefs.maxQuick)) }
     }
 

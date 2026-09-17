@@ -116,7 +116,7 @@ extension View {
       PanelHost(store: store) {
         switch which {
         case .indicator: IndicatorPanel(store: store)
-        case .period: PeriodPanel(store: store, onPick: onPickInterval)
+        case .period: IntervalGridPanel(store: store, onPick: onPickInterval)
         case .settings: SettingsPanel(store: store)
         case .chart: ChartPanel(store: store, onDraw: onDraw, onRecord: onRecord)
         }

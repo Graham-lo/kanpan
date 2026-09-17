@@ -16,10 +16,17 @@ public struct ReviewSearchView: View {
         if feature.searching && feature.matches.isEmpty {
           VStack(spacing: 16) { ProgressView(feature.searchProgress); Button("取消") { feature.cancelSearch(); dismiss() } }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        else if !feature.isConnected {
+          // 没登录就一句「登录后可用」+ 一颗「登录」，不给「重试」（§2G3）——
+          // 这件事不是失败，是还没轮到它，重试多少次结果都一样。
+          ContentUnavailableView { Label("登录后可用", systemImage: "magnifyingglass") } actions: {
+            Button("登录") { dismiss(); feature.onLogin() }
+              .accessibilityIdentifier("review.search.login")
+          }
+        }
         else if let error = feature.searchError {
           ContentUnavailableView { Label(error, systemImage: "magnifyingglass") } actions: {
             Button("重试") { feature.search(range, cutoff: cutoff, scope: scope) }
-            if !feature.isConnected { Button("登录") { dismiss(); feature.onLogin() } }
           }
         } else if feature.matches.isEmpty { ContentUnavailableView("没有很像的区间", systemImage: "magnifyingglass") }
         else {

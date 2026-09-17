@@ -17,7 +17,7 @@ struct PrefsDefaultsTests {
     #expect(p.priceMode == .log)                  // chart.js: price.mode = 'linear'
     #expect(!p.magnet)                                // chart.js: this.magnet = true
     #expect(p.timeZone == .local)                    // chart.js: this.tz = 'local'
-    #expect(p.redUp == false)                        // app.js: S.redUp = !!saved.redUp
+    #expect(p.redUp == true)                         // 国内习惯红涨绿跌，出厂即如此
     #expect(p.theme == .system)                      // app.js: 'auto'
     #expect(p.apiHost == "fapi.binance.com")         // §4.1
     #expect(!p.countdown)                             // §10.4 默认开
@@ -98,13 +98,13 @@ struct IntervalTableTests {
     #expect(!want.contains("8h"))
   }
 
-  @Test("常用行 7 档，与 Interval.quick 相同")
+  @Test("常用行 5 档，与 Interval.quick 相同")
   func 常用行() {
-    // 周期条右端从「更多 / 画线 / 记 / 图表」减到「更多 / 图表」之后腾出的位置补给了周期，
-    // 六档加到七档（补 30m）。七档是 iPhone 16 Pro 竖屏一行排得下的上限，
-    // 第八档只能藏进滑动里，等于没展示。
-    #expect(Prefs.defaults.quickIntervals == [.m1, .m5, .m15, .m30, .h1, .h4, .d1])
-    #expect(Prefs.defaults.quickIntervals.count == 7)
+    // 出厂钉五档：5m 30m 1h 4h 1d，用户按自己实际怎么看盘定的。
+    // 一行其实排得下七档，但天天点的就这五档；钉少了还能按铺满规则平分整行，
+    // 每颗更宽、更难点错。没钉住的档都在「更多」网格里，一个没少。
+    #expect(Prefs.defaults.quickIntervals == [.m5, .m30, .h1, .h4, .d1])
+    #expect(Prefs.defaults.quickIntervals.count == 5)
     #expect(Prefs.defaults.quickIntervals == Interval.quick)
   }
 
@@ -112,12 +112,13 @@ struct IntervalTableTests {
   func 常用行增删() {
     var p = Prefs.defaults
     #expect(p.toggleQuick(.h2) == nil)
-    #expect(p.quickIntervals == [.m1, .m5, .m15, .m30, .h1, .h2, .h4, .d1])  // 插在 1h 与 4h 之间
+    #expect(p.quickIntervals == [.m5, .m30, .h1, .h2, .h4, .d1])  // 插在 1h 与 4h 之间
 
     #expect(p.toggleQuick(.h2) == nil)                                    // 再按一次移出
     #expect(p.quickIntervals == Interval.quick)
 
-    for iv in [Interval.m3, .h2, .h6] {
+    // 出厂五档，再钉五档正好顶到上限。
+    for iv in [Interval.m1, .m3, .m15, .h2, .h6] {
       _ = p.toggleQuick(iv)
     }
     #expect(p.quickIntervals.count == 10)

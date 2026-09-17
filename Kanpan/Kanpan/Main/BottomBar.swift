@@ -72,17 +72,35 @@ struct BottomBar: View {
   }
 }
 
-/// 图区右下角的「回到最新」（G14）。
+/// 一句话提示（原型 `.toast`）。
 ///
-/// 视野离开最新一根就淡入，回到最新就淡出。位置按原型：离右 60pt——刚好让开价格轴，
-/// 离底 28pt。
-/// 一句话提示，1.6 秒后自己消失（原型 `.toast`）。
+/// 没有「撤销」时 1.6 秒自己消失；带「撤销」时停 5 秒——按钮得给人反应过来的时间，
+/// 1.6 秒够不上「看清楚 + 决定 + 抬手点」。停多久由外面的 `say(_:undo:)` 定，
+/// 这儿只管画。
+///
+/// 全屏同一时刻只有这一层：新的一句直接顶掉旧的，不叠不排队。
 struct Toast: View {
   var theme: PanelTheme
   var text: String
+  /// 右边那颗按钮上的字。绝大多数带动作的提示都是「撤销」，所以它是默认值；
+  /// 「已记下 · 查看」那种「去看看刚才那条」也走同一条通道（§2F2），
+  /// 免得为一颗按钮再养一套 toast。
+  var actionTitle = "撤销"
+  /// 右边那颗按钮。nil 就是一条普通提示，不画按钮。
+  var undo: (() -> Void)?
 
   var body: some View {
-    Text(text)
+    HStack(spacing: 10) {
+      Text(text)
+      if let undo {
+        // 中间点一个间隔点，别让文案和按钮糊成一句话。
+        Text("·").foregroundStyle(theme.ink3)
+        Button(actionTitle, action: undo)
+          .buttonStyle(.plain)
+          .foregroundStyle(theme.amber)
+          .accessibilityIdentifier(actionTitle == "撤销" ? "toast.undo" : "toast.action")
+      }
+    }
       .font(.system(size: 12.5))
       .foregroundStyle(theme.ink)
       .padding(.horizontal, 14)

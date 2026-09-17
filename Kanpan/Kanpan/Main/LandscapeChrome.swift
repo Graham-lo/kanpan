@@ -106,33 +106,31 @@ struct IntervalRail: View {
   }
 }
 
-/// 右侧竖排工具条：风格 · 指标 · 画线 · 设置 · 回竖屏（§10.7）。
+/// 右侧竖排工具条：画线 · 回竖屏。
 ///
-/// 原型横屏把整条工具栏 `display: none` 了，横屏下这四件事就都够不着——A8.6 要求
-/// 「横竖屏各用 5 分钟，全部功能可达」，够不着就过不了。所以这里按任务书补一条竖排。
+/// 横屏不是一个独立的行情界面，它是**画线的工作台**——点「画线」自动横屏，点「完成」
+/// 自动转回。这条竖栏上原来还排着 记 / 复盘 / 指标 / 图表 / 设置，那是照着「横竖屏
+/// 各用 5 分钟、全部功能可达」一条条补出来的，结果横屏被做成了竖屏的缩小复刻：
+/// 手边七格里有五格和画线无关，真正要用的工具列反倒被挤到另一根竖栏上。
+/// 这五件事竖屏全都到得了（记 / 复盘在底栏，指标 / 图表 / 设置在底栏与周期条尾巴上），
+/// 功能一件没丢。
+///
+/// 留下的两格各有各的理由：
+/// - 「画线」是横屏里唯一的开工入口。用手把机器转过来的时候画线态还没开，没有它
+///   就得转回竖屏点一下再转过来。
+/// - 「竖屏」是出口。锁了方向的手机转不回去，没有它横屏就是一张单程票。
+///
+/// 工具列、撤销 / 重做、完成都在画线自己那根 `DrawingRail` 上，不在这儿重复一份。
 struct ToolRail: View {
   var theme: PanelTheme
-  var active: Panel?
   var drawing: Bool
-  var onPanel: (Panel) -> Void
   var onDraw: () -> Void
-  var onReview: () -> Void
-  var onRecord: () -> Void
   var onPortrait: () -> Void
 
   var body: some View {
     VStack(spacing: 0) {
       Spacer(minLength: 0)
-      item(VectorIcon.chart, "记", on: false, action: onRecord)
-      item(VectorIcon.chart, "复盘", on: false, action: onReview)
-      item(VectorIcon.indicator, "指标", on: active == .indicator) { onPanel(.indicator) }
-      // A8.6「横竖屏各用 5 分钟，全部功能可达」：竖屏的「图表」在周期条上，
-      // 横屏没有周期条的尾巴，所以挂到工具栏来，不然横屏根本开不出 K 线设置。
-      item(VectorIcon.chart, "图表", on: active == .chart) { onPanel(.chart) }
       item(VectorIcon.draw, "画线", on: drawing, action: onDraw)
-      item(VectorIcon.settings, "设置", on: active == .settings) { onPanel(.settings) }
-      // 手机上也得有这一格。以前只给 iPad 留，理由是「手机转回去就行了」——
-      // 可锁了方向的手机转不回去，进了横屏就只能靠关掉 app 出来，横屏成了单程票。
       item(VectorIcon.landscape, "竖屏", on: false, action: onPortrait)
         .accessibilityIdentifier("land.exit")
       Spacer(minLength: 0)

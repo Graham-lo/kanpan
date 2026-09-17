@@ -35,6 +35,19 @@ public struct ReviewRange: Codable, Sendable, Equatable {
   public init(venue: String = "binance", symbol: String, interval: String, start: Int64, end: Int64, bars: Int) {
     self.venue = venue; self.symbol = symbol; self.interval = interval; self.start = start; self.end = end; self.bars = bars
   }
+
+  /// 复盘本里露脸的短名：`BTCUSDT` → `BTC`（§2G5）。
+  ///
+  /// 列表一行里，计价币那四个字母每条都一样，占着位置却不带信息量；真正要一眼认出来的
+  /// 是前半截。和顶栏把品种拆成「BTC / USDT」是同一套切法（见 `TopBar.base`）。
+  /// 美股代码没有计价后缀，原样返回。
+  public var shortSymbol: String {
+    for quote in ["USDT", "USDC", "USD", "BUSD", "FDUSD"]
+    where symbol.hasSuffix(quote) && symbol.count > quote.count {
+      return String(symbol.dropLast(quote.count))
+    }
+    return symbol
+  }
 }
 public struct ReviewRule: Codable, Sendable, Equatable {
   public var version = "criteria-v2"
@@ -117,6 +130,16 @@ public struct ReviewRecord: Codable, Sendable, Equatable, Identifiable {
   public init(draft: ReviewDraft) { self.draft = draft }
   public var outcome: ReviewOutcome { voided ? .voided : assessment?.outcome ?? (draft.rule.direction == .observe ? .observation : .waiting) }
   public var needsAction: Bool { !voided && (groupPending == true || syncError != nil || outcome == .needsVerification || ([.realized, .unrealized].contains(outcome) && reflection.publishedAt == nil)) }
+
+  /// 这一条该不该画在**当前这张图**上（§2F3）。
+  ///
+  /// 三个条件缺一不可：没作废、品种一样、周期一样。品种那条本来就有；周期是这次补的——
+  /// 记录里的起止时间是绝对时刻，1 小时图上框的那 48 根，换到 1 分钟图上是同样两个时刻
+  /// 之间的 2880 根，框还在原地画，位置对得上、意思全错了。一个品种在十几个周期上各记
+  /// 一笔，切周期时满屏都是别的周期留下的框。
+  public func paints(symbol: String, interval: String) -> Bool {
+    !voided && draft.range.symbol == symbol && draft.range.interval == interval
+  }
 }
 public struct ReviewReplayPosition: Codable, Sendable {
   public var cursor: Int64

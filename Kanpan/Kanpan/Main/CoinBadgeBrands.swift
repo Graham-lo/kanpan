@@ -24,6 +24,7 @@ extension CoinSpec {
   /// 查品牌标。分成几张小表纯粹是为了别让类型检查器在一个大字面量上卡死。
   static func brand(_ key: String) -> CoinSpec? {
     chips[key] ?? software[key] ?? consumer[key] ?? finance[key] ?? industry[key] ?? asia[key]
+      ?? chainsA[key] ?? chainsB[key]
   }
 
   // ---------------------------------------------------------------- 半导体与硬件
@@ -374,6 +375,59 @@ extension CoinSpec {
       Part(d: ["M4.4 7h15.2v10H4.4z"], stroke: 1.9),
       Part(d: ["M7.4 9.6h2.2v4.8H7.4z", "M11 9.6h2.2v4.8H11z", "M14.6 9.6h2.2v4.8h-2.2z"], stroke: nil),
       Part(d: ["M7 19.4h10"], stroke: 1.8)])),
+
+    // ── ETF：也是一支一个记号，别让它们共用「三根柱」。
+    // SPY：标普：三根柱加地平线
+    "SPY": CoinSpec(from: "#B9C7E8", to: "#2F4F9E", mark: fill([
+      "M6 10.5h2.8V16H6z",
+      "M10.6 6.5h2.8V16h-2.8z",
+      "M15.2 8.5H18V16h-2.8z",
+      "M5 17.6h14v1.6H5z"
+    ])),
+    // QQQ：纳指：一条往上走的折线带箭头
+    "QQQ": CoinSpec(from: "#9CD3EC", to: "#0F7CB6", mark: stroke([
+      "M4.8 16.4l4.2-4.2 3.2 2.2 7-7",
+      "M15 7.4h4.2v4.2"
+    ], 2.2)),
+    // SOXL：三倍做多半导体：芯片加向上小三角
+    "SOXL": CoinSpec(from: "#F5B183", to: "#D2521E", mark: .parts([
+      Part(d: [
+        "M7.6 7.6h8.8v8.8H7.6z",
+        "M10 4.6v3",
+        "M14 4.6v3",
+        "M10 16.4v3",
+        "M14 16.4v3",
+        "M4.6 10h3",
+        "M4.6 14h3",
+        "M16.4 10h3",
+        "M16.4 14h3"
+      ], stroke: 1.8),
+      Part(d: [
+        "M12 9.4l2.6 4.4H9.4z"
+      ], stroke: nil)
+    ])),
+    // SOXS：三倍做空半导体：芯片加向下小三角
+    "SOXS": CoinSpec(from: "#9EC2E8", to: "#2E5A9C", mark: .parts([
+      Part(d: [
+        "M7.6 7.6h8.8v8.8H7.6z",
+        "M10 4.6v3",
+        "M14 4.6v3",
+        "M10 16.4v3",
+        "M14 16.4v3",
+        "M4.6 10h3",
+        "M4.6 14h3",
+        "M16.4 10h3",
+        "M16.4 14h3"
+      ], stroke: 1.8),
+      Part(d: [
+        "M9.4 10.2h5.2L12 14.6z"
+      ], stroke: nil)
+    ])),
+    // EWY：韩国 ETF：太极那道 S
+    "EWY": CoinSpec(from: "#F2A3A3", to: "#3459B5", mark: stroke([
+      "M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z",
+      "M12 4.6a3.7 3.7 0 0 1 0 7.4 3.7 3.7 0 0 0 0 7.4"
+    ], 2)),
   ]
 
   // ---------------------------------------------------------------- 工业与能源
@@ -613,6 +667,379 @@ extension CoinSpec {
     Part(d: ["M9.2 13.8l1.9-2.6 1.8 1.8 1.9-2.8"], stroke: 2),
     Part(d: ["M12 9.2a2.8 2.8 0 0 1 0 5.6z"], stroke: nil),
     Part(d: ["M12 9.2v5.6", "M9.6 10.6l4.8 2.8", "M14.4 10.6l-4.8 2.8"], stroke: 1.9),
+  ]
+
+  // ---------------------------------------------------------------- 链与代币
+  //
+  // 常看的那批币原来大多落在 `generated` 的长尾标上——散列出来的几何形每支不重样，
+  // 但它回答不了「这是哪个币」。这两张表按各自的标补上真记号：门罗是那个 M 的三角、
+  // Cosmos 是三环轨道、SHIB 是狗头、PENGU 是企鹅。分成两张纯粹是为了别让类型
+  // 检查器在一个几十条的大字面量上卡死，和上面那几张表一个道理。
+
+  private static let chainsA: [String: CoinSpec] = [
+    // ZEC：Zcash 的 Z，上下各一截竖线
+    "ZEC": CoinSpec(from: "#F4C95D", to: "#B8860B", mark: stroke([
+      "M7.2 7.4h9.6L7.2 16.6h9.6",
+      "M12 4.6v2.8",
+      "M12 16.6v2.8"
+    ], 2.2)),
+    // LSK：Lisk 盾形轮廓，中间一颗菱心
+    "LSK": CoinSpec(from: "#7FB2F0", to: "#1F4E9A", mark: .parts([
+      Part(d: [
+        "M12 4l6.4 7L12 20l-6.4-9z"
+      ], stroke: 2),
+      Part(d: [
+        "M12 8.8l2.8 3.2L12 15.8l-2.8-3.8z"
+      ], stroke: nil)
+    ])),
+    // HYPE：Hyperliquid 两道液面波
+    "HYPE": CoinSpec(from: "#9CF5DF", to: "#2FB59A", mark: stroke([
+      "M4.2 9.6c2.6-3.4 5.2-3.4 7.8 0s5.2 3.4 7.8 0",
+      "M4.2 15.4c2.6-3.4 5.2-3.4 7.8 0s5.2 3.4 7.8 0"
+    ], 2.1)),
+    // NEAR：NEAR 的斜折线 N
+    "NEAR": CoinSpec(from: "#CBD2DA", to: "#3A424D", mark: stroke([
+      "M6.6 18V6l10.8 12V6"
+    ], 2.4)),
+    // ENA：Ethena 两道正弦曲线
+    "ENA": CoinSpec(from: "#8A98F5", to: "#3B4CC0", mark: stroke([
+      "M4.6 10c2.4-3.2 4.8-3.2 7.4 0s5 3.2 7.4 0",
+      "M4.6 15.2c2.4-3.2 4.8-3.2 7.4 0s5 3.2 7.4 0"
+    ], 2.1)),
+    // ONE：Harmony 双环
+    "ONE": CoinSpec(from: "#6FD8F2", to: "#1E8FB5", mark: stroke([
+      "M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z",
+      "M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"
+    ], 2.1)),
+    // PUMP：pump.fun 那粒斜放的胶囊
+    "PUMP": CoinSpec(from: "#7CEBB0", to: "#1FA36A", mark: stroke([
+      "M5.8 13.6l7.8-7.8a3.3 3.3 0 0 1 4.6 4.6l-7.8 7.8a3.3 3.3 0 0 1-4.6-4.6z",
+      "M9.7 9.7l4.6 4.6"
+    ], 2)),
+    // DASH：Dash 的 D 加一横
+    "DASH": CoinSpec(from: "#6CBCF2", to: "#1C75BC", mark: stroke([
+      "M6.4 6.8h7.2a5.2 5.2 0 0 1 0 10.4H6.4",
+      "M4.2 12h8.4"
+    ], 2.2)),
+    // WLD：Worldcoin 的环中一竖
+    "WLD": CoinSpec(from: "#CFD4DA", to: "#2B2F35", mark: stroke([
+      "M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z",
+      "M12 8.2v7.6"
+    ], 2.1)),
+    // AAVE：Aave 的小幽灵
+    "AAVE": CoinSpec(from: "#9FD6DF", to: "#8A3E9E", mark: .parts([
+      Part(d: [
+        "M12 4.4c-3.8 0-6.4 2.8-6.4 6.6v8.4l2.1-1.6 2.15 1.6L12 17.8l2.15 1.6 2.15-1.6 2.1 1.6V11c0-3.8-2.6-6.6-6.4-6.6z"
+      ], stroke: 1.9),
+      Part(d: [
+        "M9.6 9.6a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z",
+        "M14.4 9.6a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z"
+      ], stroke: nil)
+    ])),
+    // FIL：Filecoin 的 f，两道横杠
+    "FIL": CoinSpec(from: "#7ED6F2", to: "#0B7FD6", mark: stroke([
+      "M15 5.2c-3.2-.6-4.6 1.4-5 4.4L8.6 19",
+      "M6.4 10.6h9.8",
+      "M5.8 14.2h9.6"
+    ], 2.1)),
+    // TAO：Bittensor 的希腊字母 τ
+    "TAO": CoinSpec(from: "#D3D7DD", to: "#2F343B", mark: stroke([
+      "M5.8 8.4h12.4",
+      "M11.6 8.4v6.6c0 2.2 1.3 3.2 3.6 2.9"
+    ], 2.3)),
+    // TRUMP：那顶棒球帽
+    "TRUMP": CoinSpec(from: "#F2C562", to: "#1E3A8A", mark: stroke([
+      "M6.6 14.6V12a5.4 5.4 0 0 1 10.8 0v2.6",
+      "M4 14.6h16v2.6H4z"
+    ], 2)),
+    // ONDO：Ondo 三层递减的水平条
+    "ONDO": CoinSpec(from: "#BAC5EA", to: "#1C2E6B", mark: fill([
+      "M4.8 6.2h14.4v2.6H4.8z",
+      "M7.2 10.7h9.6v2.6H7.2z",
+      "M9.6 15.2h4.8v2.6H9.6z"
+    ])),
+    // XLM：Stellar 的弧加两道斜线
+    "XLM": CoinSpec(from: "#CBD2DB", to: "#2A3139", mark: stroke([
+      "M17.6 8.6a6.6 6.6 0 1 1-1.6-2",
+      "M4.2 15.6l15.6-8.2",
+      "M4.2 19.2l15.6-8.2"
+    ], 2)),
+    // AVA：Travala 的山峰
+    "AVA": CoinSpec(from: "#F5D26A", to: "#C9861E", mark: stroke([
+      "M4.8 18.2l7.2-12.4 7.2 12.4",
+      "M8.8 13.2h6.4"
+    ], 2.1)),
+    // IOST：六边形里一粒圆芯
+    "IOST": CoinSpec(from: "#7FA6F0", to: "#2C6DE6", mark: .parts([
+      Part(d: [
+        "M12 4.2l6.9 4v8L12 20.2l-6.9-4v-8z"
+      ], stroke: 2.1),
+      Part(d: [
+        "M12 9.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"
+      ], stroke: nil)
+    ])),
+    // BCH：比特币符号，绿的
+    "BCH": CoinSpec(from: "#9EDC72", to: "#2F7A2E", mark: .text("₿")),
+    // ASTER：一枚星号
+    "ASTER": CoinSpec(from: "#F2D480", to: "#C58A18", mark: stroke([
+      "M12 4.8v14.4",
+      "M5.8 8.4l12.4 7.2",
+      "M18.2 8.4L5.8 15.6"
+    ], 2.2)),
+    // INJ：Injective 两道旋弧
+    "INJ": CoinSpec(from: "#8BDCF2", to: "#0A7BC4", mark: stroke([
+      "M6.6 8.6c2.8-3 6.4-3 9 0s2.8 6.4 0 9.2",
+      "M17.4 15.4c-2.8 3-6.4 3-9 0s-2.8-6.4 0-9.2"
+    ], 2)),
+    // PENGU：企鹅：身子、两只眼、尖嘴
+    "PENGU": CoinSpec(from: "#A6D4F7", to: "#2F6EC7", mark: .parts([
+      Part(d: [
+        "M12 4.6c3.6 0 5.8 3.4 5.8 8.2 0 3.8-2.6 6.6-5.8 6.6s-5.8-2.8-5.8-6.6c0-4.8 2.2-8.2 5.8-8.2z"
+      ], stroke: 1.9),
+      Part(d: [
+        "M9.8 9.2a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2z",
+        "M14.2 9.2a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2z",
+        "M10.4 12.4h3.2L12 14.6z"
+      ], stroke: nil)
+    ])),
+    // XMR：Monero 圆里一个 M
+    "XMR": CoinSpec(from: "#F5A96B", to: "#C24A12", mark: stroke([
+      "M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z",
+      "M7 15V8.8l5 5 5-5V15"
+    ], 2)),
+    // SAGA：菱形里一颗菱心
+    "SAGA": CoinSpec(from: "#DCCBB0", to: "#8A6A46", mark: .parts([
+      Part(d: [
+        "M12 4l8 8-8 8-8-8z"
+      ], stroke: 2),
+      Part(d: [
+        "M12 8.6l3.4 3.4-3.4 3.4-3.4-3.4z"
+      ], stroke: nil)
+    ])),
+    // SHIB：柴犬：两只耳朵、脸、眼睛
+    "SHIB": CoinSpec(from: "#F5B75A", to: "#D4522A", mark: .parts([
+      Part(d: [
+        "M6 5.6l2.6 3.2h6.8L18 5.6v6c0 3.8-2.6 6.6-6 6.6s-6-2.8-6-6.6z"
+      ], stroke: 1.9),
+      Part(d: [
+        "M9.6 11a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2z",
+        "M14.4 11a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2z",
+        "M11 14.6h2l-1 1.4z"
+      ], stroke: nil)
+    ])),
+    // WIF：戴帽子的狗：帽子实心，脸描边
+    "WIF": CoinSpec(from: "#CFAB86", to: "#7A4E2A", mark: .parts([
+      Part(d: [
+        "M8.4 4.6h7.2L17 8.6H7z",
+        "M5.4 8.6h13.2v2H5.4z"
+      ], stroke: nil),
+      Part(d: [
+        "M12 11.2a5.2 5.2 0 0 1 5.2 5.2v2.6H6.8v-2.6a5.2 5.2 0 0 1 5.2-5.2z"
+      ], stroke: 1.9),
+      Part(d: [
+        "M10.2 14.4a1 1 0 1 1 0 2 1 1 0 0 1 0-2z",
+        "M13.8 14.4a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"
+      ], stroke: nil)
+    ])),
+    // BONK：那根球棒加一记敲击
+    "BONK": CoinSpec(from: "#F7B24E", to: "#E8532B", mark: .parts([
+      Part(d: [
+        "M5.4 18.6l8.8-8.8",
+        "M13 8.6l2.4 2.4"
+      ], stroke: 2.2),
+      Part(d: [
+        "M13.4 6.2l4.4 4.4a1.8 1.8 0 0 1-2.6 2.6l-4.4-4.4z",
+        "M18.4 4.2l1.2 1.2",
+        "M20.4 8.2l-1.6 0"
+      ], stroke: nil)
+    ])),
+  ]
+
+  // ---------------------------------------------------------------- 链与代币（下半）
+
+  private static let chainsB: [String: CoinSpec] = [
+    // SEI：Sei 的 S 形涡
+    "SEI": CoinSpec(from: "#E38A94", to: "#8F2233", mark: stroke([
+      "M16.4 7.4c-1.4-1.8-5.6-1.8-6.4.6s3.4 3 5.2 4.2 2.4 4-.8 5.2-6-.6-7.2-2.4"
+    ], 2.1)),
+    // TIA：Celestia 一圈模块点
+    "TIA": CoinSpec(from: "#C9B6F5", to: "#6E4CD6", mark: fill([
+      "M12 3.6a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4z",
+      "M12 17a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4z",
+      "M5.2 7.6a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4z",
+      "M18.8 7.6a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4z",
+      "M5.2 13a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4z",
+      "M18.8 13a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4z"
+    ])),
+    // JUP：带环的行星
+    "JUP": CoinSpec(from: "#8FE5C0", to: "#1F9B72", mark: stroke([
+      "M12 6.6a5.4 5.4 0 1 1 0 10.8 5.4 5.4 0 0 1 0-10.8z",
+      "M3.4 15.2C8.2 9.4 16 7.2 20.8 8.4"
+    ], 2)),
+    // LDO：Lido 外滴里滴
+    "LDO": CoinSpec(from: "#F0A6CD", to: "#B5326F", mark: .parts([
+      Part(d: [
+        "M12 4.2c3.6 4.4 5.6 7.4 5.6 9.7a5.6 5.6 0 0 1-11.2 0c0-2.3 2-5.3 5.6-9.7z"
+      ], stroke: 1.9),
+      Part(d: [
+        "M12 10.2c1.7 2.1 2.6 3.5 2.6 4.6a2.6 2.6 0 0 1-5.2 0c0-1.1.9-2.5 2.6-4.6z"
+      ], stroke: nil)
+    ])),
+    // ATOM：Cosmos 两道轨道加核
+    "ATOM": CoinSpec(from: "#B8B5E8", to: "#3F3D8C", mark: .parts([
+      Part(d: [
+        "M12 5.4c2.4 0 4.4 3 4.4 6.6s-2 6.6-4.4 6.6-4.4-3-4.4-6.6 2-6.6 4.4-6.6z",
+        "M5.4 12c0-2.4 3-4.4 6.6-4.4s6.6 2 6.6 4.4-3 4.4-6.6 4.4S5.4 14.4 5.4 12z"
+      ], stroke: 1.8),
+      Part(d: [
+        "M12 10.6a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8z"
+      ], stroke: nil)
+    ])),
+    // POL：Polygon 两个连体六边形
+    "POL": CoinSpec(from: "#C8A5F5", to: "#7B3FE4", mark: stroke([
+      "M4.6 9.4l3.7-2.1 3.7 2.1v4.2l-3.7 2.1-3.7-2.1z",
+      "M12 9.4l3.7-2.1 3.7 2.1v4.2l-3.7 2.1-3.7-2.1z"
+    ], 1.9)),
+    // MATIC：同 POL
+    "MATIC": CoinSpec(from: "#C8A5F5", to: "#7B3FE4", mark: stroke([
+      "M4.6 9.4l3.7-2.1 3.7 2.1v4.2l-3.7 2.1-3.7-2.1z",
+      "M12 9.4l3.7-2.1 3.7 2.1v4.2l-3.7 2.1-3.7-2.1z"
+    ], 1.9)),
+    // NOT：一枚硬币，中间一块方
+    "NOT": CoinSpec(from: "#D5D9E0", to: "#2A2E35", mark: .parts([
+      Part(d: [
+        "M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z"
+      ], stroke: 2.1),
+      Part(d: [
+        "M9.6 9.6h4.8v4.8H9.6z"
+      ], stroke: nil)
+    ])),
+    // ETC：以太坊那颗钻石，描边、绿的
+    "ETC": CoinSpec(from: "#9BD8A0", to: "#2E8B57", mark: stroke([
+      "M12 3l5.6 9.1-5.6 3.3-5.6-3.3z",
+      "M6.4 13.9L12 21l5.6-7.1"
+    ], 1.9)),
+    // HBAR：Hedera 圆里一个 H
+    "HBAR": CoinSpec(from: "#C5CAD1", to: "#25292E", mark: stroke([
+      "M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z",
+      "M8.8 7.4v9.2",
+      "M15.2 7.4v9.2",
+      "M8.8 10.4h6.4",
+      "M8.8 13.6h6.4"
+    ], 1.9)),
+    // ICP：无穷环
+    "ICP": CoinSpec(from: "#E9A7E0", to: "#6A2FBE", mark: stroke([
+      "M7 15.5c-2.4 0-3.6-1.6-3.6-3.5S4.6 8.5 7 8.5c3.4 0 6.6 7 10 7 2.4 0 3.6-1.6 3.6-3.5S19.4 8.5 17 8.5c-3.4 0-6.6 7-10 7z"
+    ], 2)),
+    // RENDER：六边形里一颗方芯（渲染像素）
+    "RENDER": CoinSpec(from: "#E9A0A0", to: "#B22B2B", mark: .parts([
+      Part(d: [
+        "M12 4.2l6.9 4v8L12 20.2l-6.9-4v-8z"
+      ], stroke: 2.1),
+      Part(d: [
+        "M9.6 9.6h4.8v4.8H9.6z"
+      ], stroke: nil)
+    ])),
+    // FET：菱形加十字
+    "FET": CoinSpec(from: "#9CC7F5", to: "#2D63C8", mark: stroke([
+      "M12 4l8 8-8 8-8-8z",
+      "M12 8.6v6.8",
+      "M8.6 12h6.8"
+    ], 1.9)),
+    // STX：Stacks 两横夹两个 V
+    "STX": CoinSpec(from: "#B49CF0", to: "#4A3AD6", mark: stroke([
+      "M5.6 9.6h12.8",
+      "M5.6 14.4h12.8",
+      "M8.4 4.6l3.6 5",
+      "M15.6 4.6l-3.6 5",
+      "M8.4 19.4l3.6-5",
+      "M15.6 19.4l-3.6-5"
+    ], 2)),
+    // ALGO：一座尖峰，中间一竖
+    "ALGO": CoinSpec(from: "#CDD2D8", to: "#2C3138", mark: stroke([
+      "M5.6 17.8L12 6.2l6.4 11.6",
+      "M12 12.2v5.6"
+    ], 2.1)),
+    // VET：VeChain 的 V 勾
+    "VET": CoinSpec(from: "#86C6F2", to: "#1D62C6", mark: stroke([
+      "M5.2 6.4l6.8 11.2 6.8-11.2",
+      "M9 6.4l3 5.2"
+    ], 2.2)),
+    // KAS：六边形里一个 K
+    "KAS": CoinSpec(from: "#7FE0D0", to: "#1C9B8E", mark: stroke([
+      "M12 4.2l6.9 4v8L12 20.2l-6.9-4v-8z",
+      "M9.8 8.8v6.4",
+      "M9.8 12l4-3.2",
+      "M9.8 12l4 3.2"
+    ], 1.9)),
+    // CRV：三条曲线
+    "CRV": CoinSpec(from: "#F2C6A1", to: "#C86A2A", mark: stroke([
+      "M4.8 18.4c3-10 5.4-12.2 14.4-13.2",
+      "M4.8 18.4c5-4.2 8.4-4.2 14.4-2.2",
+      "M8 18.4c2-5 5-7.2 11.2-8.2"
+    ], 1.8)),
+    // SAND：一个立方体
+    "SAND": CoinSpec(from: "#8AD3F7", to: "#1E8FE0", mark: stroke([
+      "M12 4.6l6.4 3.7v7.4L12 19.4l-6.4-3.7V8.3z",
+      "M12 12v7.4",
+      "M12 12l6.4-3.7",
+      "M12 12L5.6 8.3"
+    ], 1.9)),
+    // AXS：Axie 的小脸：圆脸两耳
+    "AXS": CoinSpec(from: "#B5C9F5", to: "#2E5BC7", mark: .parts([
+      Part(d: [
+        "M12 7.2a5.8 5.8 0 1 1 0 11.6 5.8 5.8 0 0 1 0-11.6z",
+        "M7.6 8.6L6 4.6l4 2.2",
+        "M16.4 8.6L18 4.6l-4 2.2"
+      ], stroke: 1.9),
+      Part(d: [
+        "M9.8 12a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2z",
+        "M14.2 12a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2z"
+      ], stroke: nil)
+    ])),
+    // GALA：六边形里一竖
+    "GALA": CoinSpec(from: "#D2D2D6", to: "#4A4A52", mark: stroke([
+      "M12 4.4l6.6 3.8v7.6L12 19.6l-6.6-3.8V8.2z",
+      "M12 12v7.6",
+      "M12 12l6.6-3.8"
+    ], 1.9)),
+    // MANA：圆里一个实心三角
+    "MANA": CoinSpec(from: "#F5B0A0", to: "#C6392D", mark: .parts([
+      Part(d: [
+        "M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z"
+      ], stroke: 2),
+      Part(d: [
+        "M7.8 15.4L12 8.4l4.2 7z"
+      ], stroke: nil)
+    ])),
+    // CFX：六边形套六边形
+    "CFX": CoinSpec(from: "#CFCFD3", to: "#3B3B45", mark: stroke([
+      "M12 4.2l6.9 4v8L12 20.2l-6.9-4v-8z",
+      "M12 8.6l3 1.7v3.4l-3 1.7-3-1.7v-3.4z"
+    ], 1.9)),
+    // ORDI：Ordinals 双环
+    "ORDI": CoinSpec(from: "#F5B37A", to: "#C4511E", mark: stroke([
+      "M12 4.6a7.4 7.4 0 1 1 0 14.8 7.4 7.4 0 0 1 0-14.8z",
+      "M12 8.6a3.4 3.4 0 1 1 0 6.8 3.4 3.4 0 0 1 0-6.8z"
+    ], 2)),
+    // ETHFI：以太坊上半颗钻石，底下一道水
+    "ETHFI": CoinSpec(from: "#A79AF2", to: "#5638C6", mark: .parts([
+      Part(d: [
+        "M12 3.4l5.6 9.1-5.6 3.3-5.6-3.3z"
+      ], stroke: nil),
+      Part(d: [
+        "M6.4 18.6c2 1.8 9.2 1.8 11.2 0"
+      ], stroke: 2)
+    ])),
+    // ETHW：以太坊上半颗钻石，底下一个 W
+    "ETHW": CoinSpec(from: "#8D9BB8", to: "#3B4E73", mark: .parts([
+      Part(d: [
+        "M12 3l5.6 9.1-5.6 3.3-5.6-3.3z"
+      ], stroke: nil),
+      Part(d: [
+        "M6.6 14.6l2.4 6 3-4.4 3 4.4 2.4-6"
+      ], stroke: 1.9)
+    ])),
   ]
 
   /// 长尾标：代号决定套哪个外形、嵌哪枚内芯、配哪对色，一支一个样，且每次都一样。

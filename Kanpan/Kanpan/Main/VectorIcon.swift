@@ -1,4 +1,36 @@
+import Foundation
 import SwiftUI
+
+/// 按 key 记住算过的结果。
+///
+/// 徽章那三层（记号定义、渐变配色、`d=` 串解析）都是纯函数：同样的入参永远算出
+/// 同样的结果，而自选表一滚就要把它们整屏重算——每一帧、每一行、每一层。
+/// `Shape.path(in:)` 不保证在主线程上调用，所以这里用锁，不用 `@MainActor`。
+///
+/// 满了就整桶倒掉：留在桶里的本来就是「这几屏在用的那些」，挑着淘汰不比
+/// 重新攒一遍便宜。
+final class RenderMemo<Key: Hashable, Value>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var box: [Key: Value] = [:]
+  private let limit: Int
+
+  init(limit: Int = 512) { self.limit = limit }
+
+  func value(for key: Key, _ make: () -> Value) -> Value {
+    lock.lock()
+    let hit = box[key]
+    lock.unlock()
+    if let hit { return hit }
+    // 算的时候不持锁：这几个函数都不便宜，也都不依赖缓存本身。
+    // 两条线程同时算同一个 key 只是白算一次，结果一模一样。
+    let made = make()
+    lock.lock()
+    if box.count >= limit { box.removeAll(keepingCapacity: true) }
+    box[key] = made
+    lock.unlock()
+    return made
+  }
+}
 
 /// 原型里那些手画的小图标，原样搬过来。
 ///
@@ -36,7 +68,7 @@ private struct IconShape: Shape {
     for item in items {
       switch item {
       case .path(let d):
-        SVGPath.append(d, to: &p)
+        p.addPath(SVGPath.parsed([d]))
       case .circle(let x, let y, let r):
         p.addEllipse(in: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r))
       case .rect(let x, let y, let w, let h, let r):
@@ -54,6 +86,21 @@ private struct IconShape: Shape {
 /// 而「图标是两个字母」正是用户挑出来的毛病。遇到不认识的命令仍旧直接忽略，
 /// 不要让它悄悄画歪。
 enum SVGPath {
+  /// 解析好的路径，坐标还是 `d=` 串自己那套（调用方自己缩）。同一串只解析一次。
+  ///
+  /// 一枚徽章的记号是一到两层、每层一串到七串 `d=`；一屏自选二十几行，每行一枚，
+  /// 每次重画都要把这些串重新扫一遍字符、拆成命令和数字、再一段段 `addCurve`。
+  /// 这些串是写死在代码里的常量，解析结果永远一样。
+  static func parsed(_ paths: [String]) -> Path {
+    memo.value(for: paths) {
+      var p = Path()
+      for d in paths { append(d, to: &p) }
+      return p
+    }
+  }
+
+  private static let memo = RenderMemo<[String], Path>()
+
   static func append(_ d: String, to p: inout Path) {
     var cur = CGPoint.zero
     var start = CGPoint.zero

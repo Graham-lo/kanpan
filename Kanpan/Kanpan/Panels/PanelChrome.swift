@@ -302,21 +302,33 @@ struct PanelStepper: View {
 
 // MARK: - toast
 
-/// 原型 `toast()`：被拒绝的动作说一句就走（副图开满三个、参数越界、域名不对）。
+/// 原型 `toast()`：一句话说完就走（换下了哪个副图、参数越界、域名不对）。
+///
+/// `undo` 给了就在右边补一颗「撤销」，和竖屏主界面那条 toast 长一个样：
+/// 有后悔药的提示停 5s，没有的 1.6s——按不到的按钮等于没有。
 struct PanelToast: View {
   var text: String
+  var undo: (() -> Void)?
   @Environment(\.panelTheme) private var t
 
   var body: some View {
-    Text(text)
-      .font(PanelFont.name)
-      .foregroundStyle(Color(hex: t.chart.crossInk))
-      .padding(.horizontal, 14)
-      .padding(.vertical, 9)
-      .background(Capsule().fill(Color(hex: t.chart.crossBg)))
-      .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
-      .transition(.move(edge: .bottom).combined(with: .opacity))
-      .accessibilityAddTraits(.isStaticText)
+    HStack(spacing: 10) {
+      Text(text)
+      if let undo {
+        Text("·").opacity(0.45)
+        Button("撤销", action: undo)
+          .buttonStyle(.plain)
+          .foregroundStyle(Color(hex: t.chart.amber))
+          .accessibilityIdentifier("panel.toast.undo")
+      }
+    }
+    .font(PanelFont.name)
+    .foregroundStyle(Color(hex: t.chart.crossInk))
+    .padding(.horizontal, 14)
+    .padding(.vertical, 9)
+    .background(Capsule().fill(Color(hex: t.chart.crossBg)))
+    .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+    .transition(.move(edge: .bottom).combined(with: .opacity))
   }
 }
 
@@ -328,10 +340,11 @@ struct PanelToastLayer: ViewModifier {
     content
       .overlay(alignment: .bottom) {
         if let notice = store.notice {
-          PanelToast(text: notice)
+          let undo = store.noticeUndo
+          PanelToast(text: notice, undo: undo.map { act in { act(); store.clearNotice() } })
             .padding(.bottom, 28)
             .task(id: notice) {
-              try? await Task.sleep(for: .seconds(1.8))
+              try? await Task.sleep(for: .seconds(undo == nil ? 1.6 : 5))
               store.clearNotice()
             }
         }

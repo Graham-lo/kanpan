@@ -22,6 +22,16 @@ final class MarketModel {
   private(set) var ticker: Ticker?
   private(set) var tradeQuote: TradeQuote?
   private(set) var info: SymbolInfo
+  /// 这个品种的小数位与成交额单位，一旦定下来这一程就不再变（§2B / 审查 §3.10 #53）。
+  ///
+  /// 换线路会把整张品种表换掉，备用源对同一个品种给的 `pricePrecision` 未必一样；
+  /// 成交额口径也可能差一截，数字一跨过一亿的坎单位就从「万」跳成「亿」。用户看到的
+  /// 是「我什么都没动，价格突然多了一位、成交额换了个单位」——那比数字本身更像出错。
+  /// 展示口径按品种钉死：换品种才重新认，换线路一律沿用。
+  private var lockedPrecision: [String: (precision: Int, tick: Double)] = [:]
+  private(set) var volumeUnit: VolUnit?
+  /// 当前这份 `ticker` 是不是「上一条线路留下的」。真 = 顶栏灰显（§2B #54）。
+  private(set) var tickerStale = false
   private(set) var status: FeedStatus = .offline
   private(set) var source: MarketSource
   private(set) var historyError: String?
@@ -192,7 +202,11 @@ final class MarketModel {
       routing = state
       if state == .switching { historyError = nil }
     case .source(let next):
-      source = next; ticker = nil; tradeQuote = nil; markPrice = nil; markTime = 0
+      // 这儿**不**清 `ticker`：清掉顶栏立刻退回「—」，用户看到的是一屏骨架，
+      // 而他什么都没做，只是我们换了台机器取数。备用线路本来就未必有这个品种，
+      // 那样会一直空着。留着上一条线路的最后一口价，灰显标明「这是旧的」（§2B #54），
+      // 新线路第一帧到了就自己转正。
+      source = next; tickerStale = ticker != nil; tradeQuote = nil; markPrice = nil; markTime = 0
       oiTask?.cancel(); oi = nil; oiRegion = nil; historyError = nil
       let paths = Paths(root: Paths.caches().root.appendingPathComponent("sources/" + next.rawValue))
       let catalog = SymbolCatalog(rest: .upstream(next, hosts: hosts), paths: paths)
@@ -221,9 +235,11 @@ final class MarketModel {
       tradeQuote = quote
     case .ticker(let t):
       guard t.symbol.uppercased() == symbol.uppercased() else { return }
-      guard LatestQuote.accepts(t, after: ticker) else { return }
+      guard tickerStale || LatestQuote.accepts(t, after: ticker) else { return }
       var next = t; next.markPrice = markPrice
       ticker = next
+      tickerStale = false
+      if volumeUnit == nil, next.quoteVolume.isFinite { volumeUnit = volUnit(next.quoteVolume) }
       lastPushAt = Date()
     case .markPrice(let sym, let price, let time):
       guard sym.uppercased() == symbol, price.isFinite, price > 0,
@@ -255,8 +271,13 @@ final class MarketModel {
     oiTask?.cancel(); oi = nil; oiRegion = nil; lastView = nil
     if cold {
       ticker = nil
+      tickerStale = false
+      volumeUnit = nil                      // 单位按品种记，换品种就重新认
       markPrice = nil; markTime = 0
-      info = MarketModel.placeholder(sym)
+      // 这个品种以前认过小数位就照旧顶上，别让冷切换先用 2 位画一帧再跳回去。
+      var seed = MarketModel.placeholder(sym)
+      if let locked = lockedPrecision[sym] { seed.pricePrecision = locked.precision; seed.tickSize = locked.tick }
+      info = seed
     }
     switchTask = Task { [feed] in
       guard !Task.isCancelled else { return }
@@ -348,7 +369,17 @@ final class MarketModel {
   private func refreshInfo() async {
     let want = symbol
     guard let found = await catalog.find(want) else { return }
-    if want == symbol { info = found }
+    guard want == symbol else { return }
+    // 小数位只认第一次：见 `lockedPrecision`。
+    if let locked = lockedPrecision[want] {
+      var value = found
+      value.pricePrecision = locked.precision
+      value.tickSize = locked.tick
+      info = value
+    } else {
+      lockedPrecision[want] = (found.pricePrecision, found.tickSize)
+      info = found
+    }
   }
 }
 

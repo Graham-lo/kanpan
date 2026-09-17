@@ -297,6 +297,8 @@ struct DrawAxes {
   var range: PriceRange
   var mode: PriceMode
   var view: ViewWindow
+  /// 价格轴当前的小数位。画线标签照它写，别在同一屏上出现两种价格写法（§2E6）。
+  var decimals: Int = 2
   var bounds: DrawBounds { DrawBounds(left: 0, top: pane.y, right: layout.plotW, bottom: pane.y + pane.h) }
 
   func x(_ t: Double) -> Double { view.x(t, plotW: layout.plotW) }
@@ -309,7 +311,8 @@ extension ChartView {
   var drawAxes: DrawAxes? {
     guard let s = state, !s.series.isEmpty, let L = chartLayout, let r = chartPriceRange
     else { return nil }
-    return DrawAxes(layout: L, pane: L.main, range: r, mode: s.price.mode, view: s.view)
+    return DrawAxes(layout: L, pane: L.main, range: r, mode: s.price.mode, view: s.view,
+                    decimals: s.decimals)
   }
 
   /// 屏幕坐标 → 画线端点。磁吸开着就吸到最近那根的 OHLC（A7.2、§10.8）。
@@ -772,7 +775,7 @@ final class DrawingOverlayView: UIView {
 
 func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartColors,
                   selected: Bool = false, handles: Bool = false) {
-  let g = drawingGeometry(d, bounds: axes.bounds, xOf: axes.x, yOf: axes.y)
+  let g = drawingGeometry(d, bounds: axes.bounds, xOf: axes.x, yOf: axes.y, decimals: axes.decimals)
   guard !d.hidden else { return }
   let color = d.color ?? t.band
   ctx.saveGState(); defer { ctx.restoreGState() }

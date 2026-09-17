@@ -59,7 +59,7 @@ final class MainScreenUITests: KanpanUICase {
 
   // ---------------------------------------------------------------- 周期条
 
-  /// 常用行六档挨个点一遍，选中态跟着走：点谁谁 selected，其余都不 selected。
+  /// 常用行铺出来的那几档挨个点一遍，选中态跟着走：点谁谁 selected，其余都不 selected。
   func testIntervalChipsSelectOneAtATime() {
     let chips = Ids.quickIntervals.map { app.buttons[Ids.intervalChip($0)] }
     for (raw, chip) in zip(Ids.quickIntervals, chips) {
@@ -82,13 +82,20 @@ final class MainScreenUITests: KanpanUICase {
     if let original { app.buttons[Ids.intervalChip(original)].tap() }
   }
 
-  /// 周期条右端「更多」→ 周期面板（十四档都在）→ 收起。
+  /// 周期条右端「更多」→ **内联**周期网格（十四档都在、每格带图钉）→ 再点一下收起。
+  ///
+  /// 原来这是一张半屏 sheet，收起走 `dismissSheet`（拖面板 / 点「完成」）。网格改成
+  /// 内联展开之后（§2C4）既没有 `panel.done` 也没有 `panel.header`，那条路整条不适用；
+  /// 现在「更多」自己就是开关，点第二下收起。`period.row.*` / `period.pin.*` 两个 id
+  /// 原样挪到了格子上，所以这条用例验的还是同一件事。
   func testMoreOpensPeriodPanel() {
     app.buttons[Ids.intervalMore].tap()
     let row = app.buttons[Ids.periodRow("1h")]
-    expectExists(row, Self.short, "点「更多」没开出周期面板")
-    expectExists(app.buttons[Ids.periodRow("1M")], Self.short, "周期面板里没有冷门档（1M）")
-    dismissSheet(until: row)
+    expectExists(row, Self.short, "点「更多」没摊开周期网格")
+    expectExists(app.buttons[Ids.periodRow("1M")], Self.short, "周期网格里没有冷门档（1M）")
+    expectExists(app.buttons[Ids.periodPin("1M")], Self.short, "周期网格的格子上没有图钉")
+    app.buttons[Ids.intervalMore].tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !row.exists }, "再点一下「更多」，网格没收起来")
   }
 
   // ---------------------------------------------------------------- 底栏三个面板
@@ -201,12 +208,22 @@ final class MainScreenUITests: KanpanUICase {
     let latest = app.buttons[Ids.latestButton]
     // `waitForLiveChart()` 末尾按过一次「回到最新」，但视野归位是一帧一帧滑过去的
     // （iPad 上图宽、滑得久），所以这里轮询等它收回去，不瞬时断言。
-    XCTAssertTrue(waitUntil(timeout: Self.long) { !latest.isHittable },
+    XCTAssertTrue(waitUntil(timeout: Self.long) { !hittable(latest) },
                   "视野就在最新一根上，「回到最新」不该露面")
-    dragChartRight()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { latest.isHittable },
-                  "视野离开最新一根了，「回到最新」没出现")
-    XCTAssertTrue(tapButton(latest) { !latest.isHittable },
+    // 往回拖最多试三次。历史是边拖边补的，补齐之前只有一屏数据，`clampView` 会把窗口
+    // 按回右缘——视野自己弹回最新一根，「最新」跟着收回去。那是图与行情层的既有行为，
+    // 不是这颗 chip 的事，所以这里等它**站稳**再点（连着两拍都在），中途被弹回去就重拖一次，
+    // 而不是把断言放宽：真出不来照样红。
+    var appeared = false
+    for _ in 0..<3 {
+      dragChartRight()
+      guard waitUntil(timeout: Self.short, { hittable(latest) }) else { continue }
+      if waitUntil(timeout: 1, poll: 0.5, { !hittable(latest) }) { continue }
+      appeared = true
+      break
+    }
+    XCTAssertTrue(appeared, "视野离开最新一根了，「回到最新」没出现")
+    XCTAssertTrue(tapButton(latest) { !hittable(latest) },
                   "点了「回到最新」，按钮没收回去")
   }
 }

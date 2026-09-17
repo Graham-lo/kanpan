@@ -10,32 +10,33 @@ import KanpanCore
 @Suite("涨跌对调")
 struct PrefsColorTests {
 
-  @Test("默认绿涨红跌")
+  @Test("默认红涨绿跌")
   func 默认方向() {
+    // 出厂跟国内看盘习惯：红涨绿跌。`redUp` 为真时 up/down 两色是对调过来取的。
     let p = Prefs.defaults
-    #expect(p.redUp == false)
-    #expect(p.upColor(dark: false) == Palette.lightSeed.up)     // 绿
-    #expect(p.downColor(dark: false) == Palette.lightSeed.down) // 红
-    #expect(p.upColor(dark: true) == Palette.darkSeed.up)
-    #expect(p.downColor(dark: true) == Palette.darkSeed.down)
-  }
-
-  @Test("打开之后涨红跌绿，浅深都对调")
-  func 对调() {
-    var p = Prefs.defaults
-    p.redUp = true
-    #expect(p.upColor(dark: false) == Palette.lightSeed.down)
-    #expect(p.downColor(dark: false) == Palette.lightSeed.up)
+    #expect(p.redUp == true)
+    #expect(p.upColor(dark: false) == Palette.lightSeed.down)   // 红
+    #expect(p.downColor(dark: false) == Palette.lightSeed.up)   // 绿
     #expect(p.upColor(dark: true) == Palette.darkSeed.down)
     #expect(p.downColor(dark: true) == Palette.darkSeed.up)
+  }
+
+  @Test("关掉之后绿涨红跌，浅深都对调")
+  func 对调() {
+    var p = Prefs.defaults
+    p.redUp = false
+    #expect(p.upColor(dark: false) == Palette.lightSeed.up)
+    #expect(p.downColor(dark: false) == Palette.lightSeed.down)
+    #expect(p.upColor(dark: true) == Palette.darkSeed.up)
+    #expect(p.downColor(dark: true) == Palette.darkSeed.down)
   }
 
   @Test("只动涨跌两色，其余令牌一个不变")
   func 只动两色() {
     for dark in [false, true] {
-      var on = Prefs.defaults; on.redUp = true
+      var off = Prefs.defaults; off.redUp = false
       let a = Prefs.defaults.chartColors(dark: dark)
-      let b = on.chartColors(dark: dark)
+      let b = off.chartColors(dark: dark)
       #expect(a.up == b.down && a.down == b.up)
       #expect(a.bg == b.bg && a.grid == b.grid && a.axis == b.axis)
       #expect(a.text == b.text && a.ink == b.ink && a.amber == b.amber)
@@ -57,9 +58,10 @@ struct PrefsColorTests {
 
   @Test("开关能存下来")
   func 持久化() {
+    // 出厂已经是红涨，所以这儿存的是「关掉」那一边，才验得到真的落了盘。
     var p = Prefs.defaults
-    p.redUp = true
-    #expect(PrefsCodec.decode(PrefsCodec.encode(p)).redUp)
+    p.redUp = false
+    #expect(!PrefsCodec.decode(PrefsCodec.encode(p)).redUp)
   }
 }
 
@@ -80,15 +82,19 @@ struct IndicatorToggleTests {
     #expect(!p.isOn(.ma))
   }
 
-  @Test("七个副图可同时选择，移除保留其余顺序")
+  @Test("副图最多三个，第四个挤掉最早打开的那个")
   func 副图上限() {
     var p = Prefs.defaults
     p.subs = []
-    let ids: [IndicatorID] = [.vol, .oi, .macd, .kdj, .rsi, .srsi, .atr]
+    let ids: [IndicatorID] = [.vol, .oi, .macd]
     for id in ids { #expect(p.toggle(id) == nil) }
     #expect(p.subs == ids)
-    #expect(p.toggle(.kdj) == nil)
-    #expect(p.subs == ids.filter { $0 != .kdj })
+    // 第四个不再被拒绝：队首（最早打开的 VOL）让位，并把「换下了谁」说回来。
+    #expect(p.toggle(.kdj) == "副图最多三个 · 已换下 VOL")
+    #expect(p.subs == [.oi, .macd, .kdj])
+    // 关掉一个照旧只是关掉，不带提示，其余顺序不动。
+    #expect(p.toggle(.macd) == nil)
+    #expect(p.subs == [.oi, .kdj])
   }
 
   @Test("拖动排序")

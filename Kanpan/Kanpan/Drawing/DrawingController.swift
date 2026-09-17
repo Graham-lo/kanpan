@@ -56,9 +56,18 @@ final class DrawingController: ObservableObject {
   /// 原来是 `drawTool == t ? nil : t`。画完一条想接着画同一种线，很自然会再点一下工具，
   /// 结果把工具关掉了，之后点画布什么都不发生——实测连着画 14 次只成了 7 条，
   /// 失败的那 7 次没有任何反馈。要收手有「完成」和点空白处，不需要工具按钮兼任开关。
-  func pick(_ t: DrawingStore.Tool) {
+  ///
+  /// `repeating` 就是「长按 = 连续画」（§2E3）：点一下只画一笔，画完工具自动退回选择态
+  /// （那是 `continuous == false` 时图自己的行为，见 `ChartView+Drawing`）；长按则把
+  /// 连续画打开，同一把工具一直画到手动收手。两条路都在这儿把开关摆正，免得上一次
+  /// 长按留下的「连续」偷偷跟着下一次轻点走——用户点一下只想画一笔。
+  func pick(_ t: DrawingStore.Tool, repeating: Bool = false) {
     active = true
     chart?.selectedDrawingID = nil   // 手上拿着工具就不该还选中着上一条线
+    if preferences.continuous != repeating {
+      preferences.continuous = repeating
+      savePreferences()
+    }
     chart?.drawTool = t
     panel = nil
     sync()

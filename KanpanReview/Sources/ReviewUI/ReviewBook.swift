@@ -31,9 +31,16 @@ public struct ReviewBook: View {
               Button("重试") { Task { await feature.loadHistory(query: filter, page: feature.historyPage) } }.listRowBackground(t.app)
             }
             if filtered.isEmpty && !feature.historyLoading && feature.historyError == nil {
-              Button { feature.bookOpen = false; feature.onCapture() } label: { ContentUnavailableView("还没有记录", systemImage: "book.closed", description: Text("记一笔")) }
-                .listRowBackground(t.app)
-                .listRowSeparator(.hidden)
+              // 空状态一行字就够（§2G5）。原来是一整块 `ContentUnavailableView`：一个大图标、
+              // 一行标题、一行说明，占掉大半屏来说「这儿是空的」——空本身不需要这么大声。
+              Button { feature.bookOpen = false; feature.onCapture() } label: {
+                Text(feature.tab == "todo" ? "没有待办 · 记一笔" : "还没有记录 · 记一笔")
+                  .foregroundStyle(t.ink3)
+                  .frame(maxWidth: .infinity, minHeight: 44)
+              }
+              .listRowBackground(t.app)
+              .listRowSeparator(.hidden)
+              .accessibilityIdentifier("review.empty")
             }
             if feature.isConnected && (feature.historyPage > 0 || feature.nextPage != nil) {
               HStack {
@@ -61,8 +68,13 @@ public struct ReviewBook: View {
           Button { feature.bookOpen = false; feature.onCapture() } label: { Image(systemName: "plus") }.accessibilityLabel("记一笔")
         }
       }
+      // 「已记下 · 查看」那颗按钮先把 id 放进 `selectedRecord` 再开复盘本（§2F2），
+      // 这一行负责把它翻到那条上。列表里正常点进去走的还是 `NavigationLink`，
+      // 两条路互不干扰；退回列表时把 id 清掉，免得下次开复盘本又自己弹进去。
+      .navigationDestination(item: $feature.selectedRecord) { id in
+        ReviewRecordView(feature: feature, id: id)
+      }
       .refreshable { feature.synchronize(manual: true); await feature.loadHistory(query: filter) }
-      .onChange(of: feature.tab) { _, _ in feature.rememberTab() }
       .task(id: feature.tab) { if feature.tab == "stats" { await feature.loadStatistics() } else { await feature.loadHistory(query: filter) } }
       .task(id: filter) { do { try await Task.sleep(for: .milliseconds(350)); if feature.tab != "stats" { await feature.loadHistory(query: filter) } } catch {} }
     }
@@ -81,9 +93,14 @@ public struct ReviewBook: View {
   }
   private var statistics: some View {
     List {
-      if let error = feature.statisticsError {
-        Text(error).foregroundStyle(t.ink3).listRowBackground(t.app)
+      if !feature.isConnected {
+        // 没登录不是「出错」，是这一页还没轮到它：一句话 + 一颗「登录」，不给「重试」——
+        // 重试一百次也还是没登录（§2G3）。
+        Text("登录后可用").foregroundStyle(t.ink3).listRowBackground(t.app)
         Button("登录") { feature.onLogin() }.listRowBackground(t.app)
+          .accessibilityIdentifier("review.stats.login")
+      } else if let error = feature.statisticsError {
+        Text(error).foregroundStyle(t.ink3).listRowBackground(t.app)
       } else if feature.statistics.isEmpty {
         Text("暂无已判定样本").foregroundStyle(t.ink3).listRowBackground(t.app)
       }
@@ -110,15 +127,28 @@ struct ReviewRecordRow: View {
   @Environment(\.reviewTheme) private var t
   var body: some View {
     VStack(alignment: .leading, spacing: 7) {
-      HStack { Text(record.draft.range.symbol).fontWeight(.semibold).foregroundStyle(t.ink); Text(record.draft.range.interval).foregroundStyle(t.ink3); Spacer(); Text(record.outcome.title).foregroundStyle(t.accent) }
+      HStack {
+        // 短名（§2G5）：`BTCUSDT` 里后面那四个字母每行都一样，认的是前半截。
+        Text(record.draft.range.shortSymbol).fontWeight(.semibold).foregroundStyle(t.ink)
+        Text(record.draft.range.interval).foregroundStyle(t.ink3)
+        Spacer()
+        Text(record.outcome.title).foregroundStyle(t.accent)
+      }
       Text(record.draft.text.isEmpty ? "未写原话" : record.draft.text).lineLimit(2).foregroundStyle(record.draft.text.isEmpty ? t.ink3 : t.ink2)
       HStack {
         Text(record.draft.rule.direction.title); Text(record.draft.origin.title)
+        // 「把握」填了就在这儿露一个小百分比（§2F4）：当时觉得有几成，事后回看才对得上
+        // 「我是不是总在七成的时候栽」。没填就不占位置。
+        if let confidence = record.draft.confidence { Text("把握 \(confidence)%").monospacedDigit() }
         Spacer(); Text(Date(timeIntervalSince1970: Double(record.draft.created) / 1000), style: .date)
       }.font(.caption).foregroundStyle(t.ink3)
-      if let error = record.syncError { Text(error).font(.caption).foregroundStyle(t.down) }
-      else if record.serverId == nil { Text("已存本机 · 待同步").font(.caption).foregroundStyle(t.ink3) }
-      else if !record.eligible && record.draft.rule.direction != .observe { Text(record.draft.originalClaimed != nil || record.submitted.map { abs($0 - record.draft.created) > 60_000 } == true ? "补记" : "核验中").font(.caption).foregroundStyle(t.ink3) }
+      // 同步状态不在这儿说了（§2G1）。「已存本机 · 待同步」「同步失败」是后台的事，
+      // 每条记录下面挂一行，复盘本就变成了一张同步报表。同步真出问题只在设置的账号行
+      // 说一次（见 `SettingsPanel.syncMeta`）。下面这一行说的是记录本身的性质，留着。
+      if !record.eligible && record.draft.rule.direction != .observe {
+        Text(record.draft.originalClaimed != nil || record.submitted.map { abs($0 - record.draft.created) > 60_000 } == true ? "补记" : "核验中")
+          .font(.caption).foregroundStyle(t.ink3)
+      }
     }.padding(.vertical, 7)
   }
 }
@@ -146,6 +176,9 @@ public struct ReviewRecordView: View {
           }
           Section("当时") {
             LabeledContent("区间", value: "\(record.draft.range.bars) 根 · \(record.draft.range.interval)")
+            if let confidence = record.draft.confidence {
+              LabeledContent("把握", value: "\(confidence)%")
+            }
             if record.draft.rule.direction != .observe {
               LabeledContent("目标", value: price(record.draft.rule.target))
               LabeledContent("失效", value: price(record.draft.rule.invalidation))

@@ -9,12 +9,18 @@ struct ReviewRangeOverlay: UIViewRepresentable {
   var feature: ReviewFeature
   var bridge: ReviewChartBridge
   var liveProxy: ChartProxy
+  /// 横屏画线时置真：这一层什么都不画（§2E5）。记录一条没少，只是这一帧不上图。
+  var suppressed = false
+  /// 刚记下的那一条（§2F2）：进来一个新 id 就闪一下，告诉用户「记号落在这儿了」。
+  var flash: UUID?
   func makeUIView(context: Context) -> RangeOverlayView { RangeOverlayView() }
   func updateUIView(_ view: RangeOverlayView, context: Context) {
     view.feature = feature; view.bridge = bridge
     view.proxy = bridge.active ? bridge.proxy : liveProxy
-    view.draft = bridge.mode == .capture ? feature.draft : nil
-    view.records = feature.records
+    view.draft = (bridge.mode == .capture && !suppressed) ? feature.draft : nil
+    view.records = suppressed ? [] : feature.records
+    view.suppressed = suppressed
+    view.flash(suppressed ? nil : flash)
     view.isUserInteractionEnabled = bridge.mode == .capture
     view.proxy?.box?.onOverlayUpdate = { [weak view] in view?.setNeedsDisplay() }
     view.setNeedsDisplay()
@@ -26,12 +32,33 @@ final class RangeOverlayView: UIView {
   weak var proxy: ChartProxy?
   var draft: ReviewDraft?
   var records: [ReviewRecord] = []
+  /// 见 `ReviewRangeOverlay.suppressed`。回放态那一支不吃 `records`，所以得单独挡一道。
+  var suppressed = false
+  /// 闪一下的实现（§2F2）：只记「闪的是哪一条」和「这一帧是亮还是暗」，
+  /// 剩下的交给一个短定时器。不用 CoreAnimation 是因为这一层是手绘的 `draw(_:)`，
+  /// 没有可以动画的 layer 属性；三次明暗切换共 0.9 秒，够看见，不至于闪得人眼晕。
+  private var flashID: UUID?
+  private var flashOn = false
+  private var flashTimer: Timer?
   private var dragPart = ""
   private var startIndex = 0
   private var before: ReviewDraft?
   override init(frame: CGRect) { super.init(frame: frame); isOpaque = false; backgroundColor = .clear; isMultipleTouchEnabled = false; accessibilityIdentifier = "review.range" }
   required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
   private var chart: ChartView? { proxy?.box?.chart }
+  func flash(_ id: UUID?) {
+    guard id != flashID else { return }
+    flashID = id; flashTimer?.invalidate(); flashOn = false
+    guard id != nil else { setNeedsDisplay(); return }
+    var left = 6   // 亮灭各三次
+    flashTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] timer in
+      guard let self else { timer.invalidate(); return }
+      self.flashOn.toggle(); left -= 1
+      if left <= 0 { timer.invalidate(); self.flashOn = false; self.flashTimer = nil }
+      self.setNeedsDisplay()
+    }
+    setNeedsDisplay()
+  }
   override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
     guard let layout = chart?.chartLayout else { return false }
     return point.x >= 0 && point.x <= layout.plotW && point.y >= 0 && point.y < layout.mainH
@@ -40,9 +67,15 @@ final class RangeOverlayView: UIView {
     guard let chart, let state = chart.state, let layout = chart.chartLayout, let ctx = UIGraphicsGetCurrentContext() else { return }
     ctx.saveGState(); ctx.clip(to: CGRect(x: 0, y: 0, width: layout.plotW, height: layout.mainH))
     if let draft { paint(draft, state: state, layout: layout, ctx: ctx, editing: true, outcome: nil) }
+    else if suppressed { ctx.restoreGState(); return }
     else if bridge?.mode == .live {
-      for record in records.filter({ !$0.voided && $0.draft.range.symbol == state.series.symbol }).prefix(50) {
-        paint(record.draft, state: state, layout: layout, ctx: ctx, editing: false, outcome: record.outcome)
+      // 落图的条件统一在 `ReviewRecord.paints(symbol:interval:)` 里（§2F3），
+      // 那儿有单测盯着「BTC 的记号不许画到 ETH 上、1h 的不许画到 1m 上」。
+      for record in records.filter({
+        $0.paints(symbol: state.series.symbol, interval: state.series.interval.rawValue)
+      }).prefix(50) {
+        paint(record.draft, state: state, layout: layout, ctx: ctx, editing: false,
+              outcome: record.outcome, emphasis: record.id == flashID && flashOn)
       }
     } else if let record = bridge?.replayRecord, state.series.lastTime >= record.draft.range.start {
       // Outcomes and target annotations stay hidden until the judgment is known.
@@ -52,13 +85,14 @@ final class RangeOverlayView: UIView {
     }
     ctx.restoreGState()
   }
-  private func paint(_ draft: ReviewDraft, state: ChartState, layout: KanpanCore.Layout, ctx: CGContext, editing: Bool, outcome: ReviewOutcome?) {
+  private func paint(_ draft: ReviewDraft, state: ChartState, layout: KanpanCore.Layout, ctx: CGContext, editing: Bool, outcome: ReviewOutcome?, emphasis: Bool = false) {
     let a = state.view.x(Double(draft.range.start), plotW: layout.plotW)
     let b = state.view.x(Double(draft.range.end), plotW: layout.plotW)
     let color = UIColor.systemOrange
-    ctx.setFillColor(color.withAlphaComponent(editing ? 0.1 : 0.035).cgColor)
+    ctx.setFillColor(color.withAlphaComponent(editing ? 0.1 : (emphasis ? 0.14 : 0.035)).cgColor)
     ctx.fill(CGRect(x: a, y: 0, width: b - a, height: layout.mainH))
-    ctx.setStrokeColor(color.withAlphaComponent(editing ? 0.8 : 0.35).cgColor); ctx.setLineWidth(1)
+    ctx.setStrokeColor(color.withAlphaComponent(editing ? 0.8 : (emphasis ? 0.9 : 0.35)).cgColor)
+    ctx.setLineWidth(emphasis && !editing ? 1.5 : 1)
     for x in [a, b] { ctx.move(to: CGPoint(x: x, y: 0)); ctx.addLine(to: CGPoint(x: x, y: layout.mainH)); ctx.strokePath() }
     if editing {
       for x in [a, b] { handle(CGPoint(x: x, y: layout.mainH * 0.52), ctx: ctx) }

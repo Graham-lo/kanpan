@@ -47,6 +47,7 @@ struct DrawingBar: View {
                 .background(controller.tool == kind ? theme.amberSoft : .clear, in: RoundedRectangle(cornerRadius: 8))
                 .foregroundStyle(controller.tool == kind ? theme.amber : theme.ink2)
                 .accessibilityIdentifier("draw.\(kind.rawValue)")
+                .drawRepeatOnLongPress(controller, kind)
             }
           }.padding(.trailing, 4)
         }
@@ -88,8 +89,13 @@ struct DrawingBar: View {
 ///
 /// 它浮在图区下沿，不进那根 `VStack`——选中 / 取消选中是很频繁的事，多一行少一行
 /// 会把整张图一跳一跳地改高，K 线看着就乱了。
+///
+/// 横屏用的是同一根条的**平板样式**（`flat`）：横屏它不浮在图上，而是排在图外、
+/// 标题下面那一行（见 `MainScreen.landscapeBody`），所以不要圆角、阴影和左右留白，
+/// 只留一条贴着的横栏和底下一根发丝线。标识符两边一模一样——横竖屏永远只有一根在场。
 struct DrawingSelectionBar: View {
   @ObservedObject var controller: DrawingController
+  var flat = false
   @Environment(\.panelTheme) private var theme
   var body: some View {
     if let item = controller.selected {
@@ -105,11 +111,17 @@ struct DrawingSelectionBar: View {
         act("删除", "trash", "draw.delete", tint: theme.down) { controller.deleteSelected() }
           .padding(.trailing, 8)
       }
-      .frame(height: 48)
-      .background(theme.raised2, in: RoundedRectangle(cornerRadius: 12))
-      .overlay { RoundedRectangle(cornerRadius: 12).stroke(theme.line, lineWidth: 0.5) }
-      .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
-      .padding(.horizontal, 8)
+      .frame(height: flat ? 44 : 48)
+      .background {
+        if flat { theme.raised }
+        else { RoundedRectangle(cornerRadius: 12).fill(theme.raised2) }
+      }
+      .overlay(alignment: flat ? .bottom : .center) {
+        if flat { theme.line.frame(height: 0.5) }
+        else { RoundedRectangle(cornerRadius: 12).stroke(theme.line, lineWidth: 0.5) }
+      }
+      .shadow(color: .black.opacity(flat ? 0 : 0.18), radius: flat ? 0 : 8, y: flat ? 0 : 2)
+      .padding(.horizontal, flat ? 0 : 8)
       .buttonStyle(.plain)
       // `children: .contain` 必须写在标识之前：直接给这根 `HStack` 挂标识，
       // SwiftUI 会把它**盖到每个子按钮头上**——四个按钮全叫 `draw.selection`，
@@ -146,6 +158,12 @@ struct DrawingHintStrip: View {
   }
 }
 
+/// 横屏那根 64pt 的竖栏：工具列 · 收藏的几把工具 · 撤销 / 重做 · 完成（§2E1）。
+///
+/// 选中一条线之后的 样式 / 锁定 / 复制 / 删除 原来也挤在这根栏上，位置还跟着选中态
+/// 一跳一跳地变——刚点完「重做」，下一次同一个位置已经换成了「删除」。现在它们搬到
+/// 图外顶部那条属性栏上（`DrawingSelectionBar(flat:)`），这根栏从头到尾长一个样，
+/// 「完成」「撤销」不会再被顶着走。
 struct DrawingRail: View {
   @ObservedObject var controller: DrawingController
   @Environment(\.panelTheme) private var theme
@@ -156,12 +174,7 @@ struct DrawingRail: View {
         ForEach(controller.preferences.favorites) { kind in
           Button(kind.shortTitle) { controller.pick(kind) }.accessibilityIdentifier("draw.\(kind.rawValue)")
             .foregroundStyle(controller.tool == kind ? theme.amber : theme.ink2)
-        }
-        if controller.selected != nil {
-          Button("样式") { controller.panel = .style }.accessibilityIdentifier("draw.style")
-          Button(controller.selected?.locked == true ? "解锁" : "锁定") { controller.toggleLock() }.accessibilityIdentifier("draw.lock")
-          Button("复制") { controller.duplicate() }.accessibilityIdentifier("draw.copy")
-          Button("删除") { controller.deleteSelected() }.accessibilityIdentifier("draw.delete")
+            .drawRepeatOnLongPress(controller, kind)
         }
         Button("撤销") { controller.undo() }.disabled(!controller.canUndo).accessibilityIdentifier("draw.undo")
         Button("重做") { controller.redo() }.disabled(!controller.canRedo).accessibilityIdentifier("draw.redo")
@@ -209,6 +222,7 @@ struct DrawingSheet: View {
                       Text(kind.title).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
                     }
                       .accessibilityIdentifier("draw.tool.\(kind.rawValue)")
+                      .drawRepeatOnLongPress(controller, kind)
                     Button { controller.toggleFavorite(kind) } label: {
                       Image(systemName: controller.preferences.favorites.contains(kind) ? "star.fill" : "star")
                         .frame(width: 44, height: 44)
@@ -276,7 +290,8 @@ private struct DrawingStyleEditor: View {
           DrawingColorControl(title: "颜色", color: Binding(get: { item.color ?? "#D6A64F" }, set: { item.color = $0 }))
           Stepper("粗细：\(item.lineWidth, specifier: "%.1f")", value: $item.lineWidth, in: 0.5...6, step: 0.5)
           Picker("线型", selection: $item.dash) { ForEach(Drawing.Dash.allCases, id: \.self) { Text($0.title).tag($0) } }
-          if [.rectangle, .channel, .measure].contains(item.kind) { Toggle("背景填充", isOn: $item.filled) }
+          // 「测量」不在这儿了：它已经不是一个框，是两点之间的一条线（§2E4），没有底可填。
+          if [.rectangle, .channel].contains(item.kind) { Toggle("背景填充", isOn: $item.filled) }
           Toggle("锁定位置", isOn: $item.locked)
         }
         Section("坐标") {
@@ -343,5 +358,20 @@ struct DrawingColorControl: View {
     var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
     UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
     return Hex(String(format: "#%02X%02X%02X", Int((r * 255).rounded()), Int((g * 255).rounded()), Int((b * 255).rounded())))
+  }
+}
+
+/// 「点一下画一笔，长按接着画」（§2E3）。
+///
+/// 画完一笔工具自己退回选择态，本来就是 `continuous == false` 时的行为；这里把
+/// 那个开关和手势绑在一起：**点**＝这一把只画一笔，**长按**＝这一把一直画下去。
+/// 开关本身（画线栏上的「连续开 / 连续关」、工具表里的「连续画线」）留着不动，
+/// 它现在同时是这次长按的结果显示——用户按完低头一看就知道自己进了哪种模式。
+///
+/// 按住 0.45s 才算长按，和周期条上「长按钉住」一个数：比系统默认的 0.5s 稍快一点，
+/// 又远够不着误触。
+extension View {
+  func drawRepeatOnLongPress(_ controller: DrawingController, _ kind: Drawing.Kind) -> some View {
+    onLongPressGesture(minimumDuration: 0.45) { controller.pick(kind, repeating: true) }
   }
 }
