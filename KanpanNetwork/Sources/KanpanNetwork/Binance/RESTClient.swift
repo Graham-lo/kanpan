@@ -66,6 +66,12 @@ public actor BinanceREST {
         // 记完就抛：这一笔让调用方按自己的节奏重试，别占着并发位空等。
         log("限流 \(error.status)（上游），记录罚停")
         await limiter.penalize(retryAfterSeconds: nil)
+        // 记完就在这儿重试，和下面 `reply.status` 那条 429 共用同一份 `attempts`。
+        // 这里原来是直接抛，注释写的是「让调用方按自己的节奏重试」——可冷启动那个
+        // 调用方（`MarketFeed.fillOnce`）从来没有重试过，于是上游随手回一个 429
+        // 就能把整张 K 线钉死在 WS 推来的那一根上。罚停要等多久由下一圈开头的
+        // `limiter.acquire` 兑现，这儿不自己睡。
+        if tried < attempts { continue }
         throw error
       }
       let ms = await pacer.nowMs() - t0

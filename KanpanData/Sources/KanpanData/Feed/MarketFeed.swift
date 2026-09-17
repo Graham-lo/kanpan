@@ -79,6 +79,9 @@ public actor MarketFeed {
   /// 「图一直空着」的主因。先要一小页画出来，完整深度另一发并行补，
   /// 两发都落在同一个绝对时间窗里，补在左边不会让视野跳（见 `.prepend` 那段注释）。
   static let firstScreenLimit = 300
+  /// 首屏历史最多发几次。上游偶发的 429 / 5xx 退避重试到这个次数为止，
+  /// 之后才亮「历史行情暂未加载，点此重试」把决定权交回给用户。
+  static let firstFillAttempts = 3
   /// 首屏之后在后台往回多铺到这个根数。
   ///
   /// app 里首发只拉 300 根——够画一屏，弱网上也快。代价是往左一拖就要现拉，
@@ -662,7 +665,24 @@ public actor MarketFeed {
       // 会让实时尾部在动、整张历史却迟迟没有首屏。
       let revision = composer.wsRevision
       let sourceRevision = sourceComposer?.wsRevision
-      let bars = try await rest.klines(symbol: sym, interval: iv, limit: initialLimit)
+      // 首屏历史是整张图的地基：这一发拿不到，图上就只剩 WS 推来的那一根
+      // （诊断里的 `bars: 1`），而实时价、成交量、持仓量各走各的路，照样有数，
+      // 看上去就像「只有 K 线没加载」。上游一个随机的 429/5xx 不该把图钉死在
+      // 那儿等用户去点横幅，所以这里自己退避重试几轮。只在失败路径上生效，
+      // 顺利的首屏一次也不会多等。
+      var bars: [Bar] = []
+      var attempt = 0
+      while true {
+        attempt += 1
+        do { bars = try await rest.klines(symbol: sym, interval: iv, limit: initialLimit); break }
+        catch is CancellationError { throw CancellationError() }
+        catch {
+          guard current(request), sym == symbol, iv == interval, !Task.isCancelled else { throw CancellationError() }
+          guard attempt < Self.firstFillAttempts else { throw error }
+          log("首屏历史第 \(attempt) 发失败，退避重试：\(error)")
+          try await pacer.sleep(ms: Double(attempt) * 1000)
+        }
+      }
       guard current(request), sym == symbol, iv == interval else { return }
       if iv.source != iv {
         let src = BarSeries(symbol: sym, interval: iv.source, bars: BinanceREST.dedup(bars))
