@@ -339,6 +339,18 @@ impl Store {
   Some(day)
  }
 
+ /// What the caches already know about a day, without parsing or reading it:
+ /// the answer prefetching needs to skip a day it has.
+ fn known(&self,stem:&str)->Option<bool> {
+  if let Ok(memory)=self.memory.lock() {
+   if let Some(day)=memory.map.get(stem) {return Some(matches!(day,Day::Points(_)))}
+  }
+  let dir=self.dir.as_ref()?;
+  if dir.join(format!("{stem}.none")).exists() {return Some(false)}
+  if dir.join(format!("{stem}.json")).exists() {return Some(true)}
+  None
+ }
+
  fn remember(&self,stem:&str,day:Day) {
   let Ok(mut memory)=self.memory.lock() else {return};
   if memory.map.insert(stem.to_owned(),day).is_none() {memory.order.push_back(stem.to_owned());}
@@ -445,11 +457,20 @@ impl Store {
    let mut day=last;
    let mut tasks=tokio::task::JoinSet::new();
    while day>=first&&absent<30 {
-    while tasks.len()<PREFETCH_LANES&&day>=first {
-     let (store,symbol,at)=(store.clone(),symbol.clone(),day);
+    while tasks.len()<PREFETCH_LANES&&day>=first&&absent<30 {
+     let at=day;
      day-=1;
+     // A day already on disk is left there: reading it back would buy nothing
+     // and would push the days a chart is using out of the memory cache.
+     match store.known(&format!("{symbol}-{}",day_name(at))) {
+      Some(true)=>{absent=0;continue}
+      Some(false)=>{absent+=1;continue}
+      None=>{}
+     }
+     let (store,symbol)=(store.clone(),symbol.clone());
      tasks.spawn(async move {store.day(&symbol,at).await.0});
     }
+    if tasks.is_empty() {break}
     match tasks.join_next().await {
      Some(Ok(Ok(Day::Absent)))=>absent+=1,
      Some(Ok(Ok(Day::Points(_))))=>absent=0,
