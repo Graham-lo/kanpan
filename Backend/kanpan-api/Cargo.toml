@@ -33,6 +33,7 @@ lettre = { version = "0.11", default-features = false, features = ["builder", "s
 tower-http = { version = "0.6", features = ["limit", "timeout"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
