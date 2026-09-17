@@ -81,8 +81,7 @@ struct SymbolPickerView: View {
   private var header: some View {
     HStack(spacing: 8) {
       Button {
-        searchFocused = false
-        onClose?()
+        leave { onClose?() }
       } label: {
         Chevron()
           .stroke(Color(hex: seed.ink2), style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
@@ -141,6 +140,16 @@ struct SymbolPickerView: View {
     .padding(.top, 8)
     .padding(.bottom, 10)
     .overlay(alignment: .bottom) { Divider().overlay(Color(hex: seed.line)) }
+  }
+
+  /// 收起键盘再把这一页交出去。和搜索页那一份同理：失焦跟 `fullScreenCover` 的拆除
+  /// 落在同一次更新里，键盘那层 `UITextEffectsWindow` 会停在全屏尺寸不再隐藏，
+  /// 透明地盖住主窗口把之后所有点击吞掉。见 `SymbolSearchView.leave(_:)`。
+  private func leave(_ body: @escaping () -> Void) {
+    searchFocused = false
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                    to: nil, from: nil, for: nil)
+    DispatchQueue.main.async(execute: body)
   }
 
   private func openFilter(_ kind: FilterSelection) {
@@ -225,9 +234,10 @@ struct SymbolPickerView: View {
                   priceSize: priceSize, pctSize: pctSize,
                   onStar: { haptic(.light); model.toggleFavorite(row.id) },
                   onPick: {
-                    searchFocused = false
                     haptic(.medium)
-                    if let onSelect { onSelect(row.info) } else { model.pick(row.info) }
+                    leave {
+                      if let onSelect { onSelect(row.info) } else { model.pick(row.info) }
+                    }
                   })
     .onAppear { onVisible?(row.id); onRowVisibility?(row.id, true) }
     .onDisappear { onRowVisibility?(row.id, false) }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import KanpanCore
 
 // ============================================================ 搜索页
@@ -147,10 +148,7 @@ struct SymbolSearchView: View {
       .overlay(RoundedRectangle(cornerRadius: 9).stroke(
         focused ? theme.amberLine : theme.line, lineWidth: focused ? 2 : 1))
 
-      Button("取消") {
-        focused = false
-        close()
-      }
+      Button("取消") { close() }
       .font(.system(size: 14, weight: .medium))
       .foregroundStyle(theme.amber)
       .buttonStyle(.plain)
@@ -237,7 +235,7 @@ struct SymbolSearchView: View {
       if hitCount > Self.previewRows {
         Button {
           history.remember(trimmed)
-          onAll()
+          leave(onAll)
         } label: {
           HStack(spacing: 4) {
             Text("查看全部 \(hitCount) 个品种").font(.system(size: 13))
@@ -296,18 +294,38 @@ struct SymbolSearchView: View {
     }
   }
 
-  /// 选中一个品种：把这一次搜的词记下来（真搜到了才算数），再交给宿主换图。
-  private func pick(_ info: SymbolInfo) {
+  /// 收起键盘、再把这一页交还给宿主。
+  ///
+  /// 这一拍不能省。`@FocusState` 的失焦和 `fullScreenCover` 的拆除要是落在同一次
+  /// SwiftUI 更新里，输入框会在 UIKit 真正走完 `resignFirstResponder` 之前就被拆掉，
+  /// 键盘那层 `UITextEffectsWindow` 于是停在全屏尺寸上不再隐藏——它是透明的，屏幕
+  /// 看着完全正常，但它盖在主窗口上面，之后整页的点击全被它吞掉（UI 测试里表现为
+  /// 任何按钮都 `Computed hit point {-1, -1}` / not hittable，真机上就是「点哪都不应」）。
+  /// 所以先同步让当前响应者让位，等 UIKit 把键盘那一层收干净，下一拍才关页。
+  private func leave(_ body: @escaping () -> Void) {
     focused = false
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                    to: nil, from: nil, for: nil)
+    DispatchQueue.main.async(execute: body)
+  }
+
+  /// 选中一个品种：把这一次搜的词记下来（真搜到了才算数），再交给宿主换图。
+  ///
+  /// `model.pick(_:)` 自己就是关页的那一下——行情页把 `picker.onPick` 接成了
+  /// 「`showSearch = false` + 换图」，所以它和 `onPicked?()` 都得等在 `leave` 里面，
+  /// 不能抢在键盘收干净之前跑。
+  private func pick(_ info: SymbolInfo) {
     if searching { history.remember(trimmed) }
     model.query = ""
-    onPicked?()
-    model.pick(info)
+    leave {
+      onPicked?()
+      model.pick(info)
+    }
   }
 
   private func close() {
     model.query = ""
-    onClose()
+    leave(onClose)
   }
 }
 
