@@ -209,7 +209,7 @@ final class MainScreenUITests: KanpanUICase {
     let latest = app.buttons[Ids.latestButton]
     // `waitForLiveChart()` 末尾按过一次「回到最新」，但视野归位是一帧一帧滑过去的
     // （iPad 上图宽、滑得久），所以这里轮询等它收回去，不瞬时断言。
-    XCTAssertTrue(waitUntil(timeout: Self.long) { !hittable(latest) },
+    XCTAssertTrue(waitUntil(timeout: Self.long) { !onScreen(latest) },
                   "视野就在最新一根上，「回到最新」不该露面")
     // 往回拖最多试三次。历史是边拖边补的，补齐之前只有一屏数据，`clampView` 会把窗口
     // 按回右缘——视野自己弹回最新一根，「最新」跟着收回去。那是图与行情层的既有行为，
@@ -218,13 +218,13 @@ final class MainScreenUITests: KanpanUICase {
     var appeared = false
     for _ in 0..<3 {
       dragChartRight()
-      guard waitUntil(timeout: Self.short, { hittable(latest) }) else { continue }
-      if waitUntil(timeout: 1, poll: 0.5, { !hittable(latest) }) { continue }
+      guard waitUntil(timeout: Self.short, { onScreen(latest) }) else { continue }
+      if waitUntil(timeout: 1, poll: 0.5, { !onScreen(latest) }) { continue }
       appeared = true
       break
     }
     XCTAssertTrue(appeared, "视野离开最新一根了，「回到最新」没出现")
-    XCTAssertTrue(tapButton(latest) { !hittable(latest) },
+    XCTAssertTrue(tapButton(latest) { !onScreen(latest) },
                   "点了「回到最新」，按钮没收回去")
   }
 }

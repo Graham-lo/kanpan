@@ -23,7 +23,11 @@ enum Tab: String, CaseIterable, Sendable {
     }
   }
 
-  var icon: VectorIcon {
+  /// 四个 `VectorIcon` 静态成员都挂在主 actor 上（`VectorIcon` 是 `View`），
+  /// 而 `Tab` 本身是非隔离的 `Sendable` 枚举，所以这个取值得跟着标主 actor，
+  /// 否则 Swift 6 会报四条「main actor-isolated … from a nonisolated context」。
+  /// 唯一的调用点是下面 `TabBar.item` 的 `tab.icon.sized(18)`，本来就在 `body` 里。
+  @MainActor var icon: VectorIcon {
     switch self {
     case .draw: VectorIcon.draw
     case .chart: VectorIcon.chart

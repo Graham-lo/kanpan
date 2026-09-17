@@ -156,7 +156,7 @@ class KanpanUICase: XCTestCase {
     return condition()
   }
 
-  /// 「这颗现在能点吗」——只问一遍，而且只问快照。
+  /// 「这颗现在露在屏幕上吗」——只问一遍，而且只问快照。
   ///
   /// 这个函数是被同一颗雷炸出来的：`XCUIElement` 上几乎每个属性都会在「元素这一帧
   /// 正好走了」的时候**当场把用例判失败**，而不是老实答 false。三种说法都见过——
@@ -171,8 +171,18 @@ class KanpanUICase: XCTestCase {
   ///
   /// 所以**一个属性都不许再问**：`snapshot()` 是这组接口里唯一会把「没这个元素」
   /// 交成 Swift 错误的，在不在、可不可用、有没有面积、在不在屏幕上，全从同一张快照上读，
-  /// 读不到就算「现在点不了」。走了就是从树上没了，这一遍就答得出来。
-  func hittable(_ el: XCUIElement) -> Bool {
+  /// 读不到就算「现在露不出来」。走了就是从树上没了，这一遍就答得出来。
+  ///
+  /// **它答不了遮挡。** `isHittable` 会在控件被别的视图盖住时答 false，这一层跟着没了：
+  /// 一颗被半屏面板压住的按钮，在这里仍然算「露着」。所以它叫 `onScreen` 不叫 `hittable`，
+  /// 别拿它去验「面板有没有盖住底栏」那类事——真要验遮挡就直接问 `isHittable`，那种地方
+  /// 树是稳的（`dismissSheet` 里那一问就是），撞不上过场帧。
+  ///
+  /// 也别想着「拿 `try? el.isHittable` 兜一层」：`isHittable` 在头文件里是
+  /// `@property (readonly, getter = isHittable) BOOL hittable`，一个不抛错的普通属性，
+  /// 它判红走的是 XCTest 自己那套、不是 Swift 的 throw，`try?` 接不住（只会换来一条
+  /// 「no calls to throwing functions」的警告）。
+  func onScreen(_ el: XCUIElement) -> Bool {
     guard let snap = try? el.snapshot(), snap.isEnabled else { return false }
     guard snap.frame.width > 1, snap.frame.height > 1 else { return false }
     guard let window = try? app.windows.firstMatch.snapshot() else { return false }
@@ -228,12 +238,12 @@ class KanpanUICase: XCTestCase {
     else { return false }
     let latest = app.buttons[Ids.latestButton]
     let live = waitUntil(timeout: max(Self.short, deadline.timeIntervalSinceNow), poll: 0.5) {
-      if hittable(latest) { return true }
+      if onScreen(latest) { return true }
       dragChartRight()
-      return hittable(latest)
+      return onScreen(latest)
     }
-    if live, hittable(latest) {
-      _ = tapButton(latest, Self.short) { !hittable(latest) }
+    if live, onScreen(latest) {
+      _ = tapButton(latest, Self.short) { !onScreen(latest) }
     }
     return live
   }
