@@ -8,9 +8,10 @@ import SwiftUI
 /// 已同步」这类后台字段——连没连上、走的哪条线，是我们该自己搞定的事，
 /// 摆出来只会让人盯着一颗点猜。断了就重连，重连不上会在拉不到历史时明说。
 ///
-/// 右上角两颗圆按钮：放大镜进搜索页（`SymbolSearchView`），星是自选。品种名仍然
-/// 点开半屏弹层（`FavoritesQuickPicker`）——那一层是「最近看过的几个，换一个就走」，
-/// 搜索页是「我知道要找什么，直接打字」，两件事不该挤在同一个入口里。
+/// 右上角两颗圆按钮：放大镜进搜索页（`SymbolSearchView`），星是自选。品种名
+/// 本身**不再可点**——它以前开一个「最近看过的几个」的半屏弹层，搜索页做出来
+/// 之后那一层就是重复入口了（用户 2026-09-18 定的）。左上角现在只负责回答
+/// 「我正在看哪个」，换品种走放大镜，浏览走底栏的自选。
 ///
 /// 字号、间距、图标都按原型 `style.css` 的 `.top` 那一段抄，别自己发挥——
 /// 这一条和价格行是整个 app 里唯一常驻的文字，差一点点立刻显得不像同一个应用。
@@ -19,7 +20,6 @@ struct TopBar: View {
   var theme: PanelTheme
   var symbol: String
   var starred: Bool
-  var onSymbol: () -> Void
   var onSearch: () -> Void
   var onStar: () -> Void
 
@@ -35,35 +35,31 @@ struct TopBar: View {
 
   var body: some View {
     HStack(spacing: 9) {
-      Button(action: onSymbol) {
-        HStack(spacing: 9) {
-          CoinBadge(base: base, size: 29)
-          HStack(alignment: .firstTextBaseline, spacing: 3) {
-            Text(base)
-              .font(.system(size: 15.5, weight: .bold))
-              .foregroundStyle(theme.ink)
-            if !quote.isEmpty {
-              Text("/" + quote)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(theme.ink3)
-            }
-            VectorIcon.chevron(9, w: 1.7)
+      HStack(spacing: 9) {
+        CoinBadge(base: base, size: 29)
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
+          Text(base)
+            .font(.system(size: 15.5, weight: .bold))
+            .foregroundStyle(theme.ink)
+          if !quote.isEmpty {
+            Text("/" + quote)
+              .font(.system(size: 12, weight: .medium))
               .foregroundStyle(theme.ink3)
-              .padding(.leading, 1)
-            Text("永续")
-              .font(.system(size: 9.5, weight: .medium))
-              .foregroundStyle(theme.ink3)
-              .padding(.horizontal, 4)
-              .padding(.vertical, 1.5)
-              .background(theme.raised2, in: RoundedRectangle(cornerRadius: 4))
-              .padding(.leading, 3)
           }
-          .lineLimit(1)
+          // 这儿原来还有一个 ▾。弹层没了，箭头就不能留——一个点不动的控件画着
+          // 「点我展开」的记号，比没有记号更糟。
+          Text("永续")
+            .font(.system(size: 9.5, weight: .medium))
+            .foregroundStyle(theme.ink3)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1.5)
+            .background(theme.raised2, in: RoundedRectangle(cornerRadius: 4))
+            .padding(.leading, 3)
         }
-        .contentShape(Rectangle())
+        .lineLimit(1)
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel("换品种，当前 \(symbol)")
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel("当前品种 \(symbol)")
       .accessibilityIdentifier("top.symbol")
 
       Spacer(minLength: 0)

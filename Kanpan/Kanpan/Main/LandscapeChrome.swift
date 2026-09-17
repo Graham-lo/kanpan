@@ -13,34 +13,31 @@ struct LandscapeHeadline: View {
   var price: Double?
   var changePercent: Double?
   var decimals: Int
-  var onSymbol: () -> Void
 
   private var up: Bool { (changePercent ?? 0) >= 0 }
 
   var body: some View {
-    Button(action: onSymbol) {
-      HStack(spacing: 8) {
-        Text(symbol)
-          .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(theme.ink)
-        if let price {
-          Text(fmtNum(price, decimals))
-            .font(.system(size: 13, weight: .semibold).monospacedDigit())
-            .foregroundStyle(up ? theme.up : theme.down)
-        }
-        if let changePercent, changePercent.isFinite {
-          Text((changePercent >= 0 ? "+" : "") + toFixed(changePercent, 2) + "%")
-            .font(.system(size: 11, weight: .medium).monospacedDigit())
-            .foregroundStyle(up ? theme.up : theme.down)
-        }
-        VectorIcon.chevron(9).foregroundStyle(theme.ink3)
+    HStack(spacing: 8) {
+      Text(symbol)
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(theme.ink)
+      if let price {
+        Text(fmtNum(price, decimals))
+          .font(.system(size: 13, weight: .semibold).monospacedDigit())
+          .foregroundStyle(up ? theme.up : theme.down)
       }
-      .padding(.horizontal, 9)
-      .padding(.vertical, 5)
-      .background(Capsule().fill(theme.raised2.opacity(0.82)))
-      .contentShape(Capsule())
+      if let changePercent, changePercent.isFinite {
+        Text((changePercent >= 0 ? "+" : "") + toFixed(changePercent, 2) + "%")
+          .font(.system(size: 11, weight: .medium).monospacedDigit())
+          .foregroundStyle(up ? theme.up : theme.down)
+      }
+      // 竖屏的品种名不再开换品种弹层，横屏这一行跟着走：它本来就只是图例，
+      // 横屏是画线的工作台，不是挑品种的地方。
     }
-    .buttonStyle(.plain)
+    .padding(.horizontal, 9)
+    .padding(.vertical, 5)
+    .background(Capsule().fill(theme.raised2.opacity(0.82)))
+    .accessibilityElement(children: .combine)
     .accessibilityIdentifier("land.symbol")
   }
 }

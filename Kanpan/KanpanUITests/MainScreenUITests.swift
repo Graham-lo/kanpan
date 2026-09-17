@@ -14,28 +14,23 @@ final class MainScreenUITests: KanpanUICase {
 
   // ---------------------------------------------------------------- 顶栏
 
-  /// 顶栏品种按钮 → 半屏弹层 → 关掉回主界面。
+  /// 左上角的品种名只报「我正在看哪个」，点它不该弹出任何东西。
   ///
-  /// 第三批 15 之后这颗按钮开的不再是整张品种页，而是一张半屏弹层：头两行是
-  /// 「搜索品种」和「全部自选与分组」，下面直接列自选，常看的那几个一点就换。
-  /// 换品种最短的那条路不该再让人先翻一整页。
-  func testSymbolButtonOpensQuickSheet() {
-    app.buttons[Ids.symbolButton].tap()
-    let search = app.buttons[Ids.quickSearch]
-    expectExists(search, Self.short, "点品种按钮没开出半屏弹层")
-    expectExists(app.buttons[Ids.quickAll], Self.short, "弹层里没有「全部自选与分组」")
-    app.buttons["quickFavorites.close"].tap()
-    expectGone(search, Self.short, "弹层关不掉")
-    expectExists(app.buttons[Ids.symbolButton], Self.short, "关掉弹层后没回到主界面")
+  /// 它以前开一张半屏弹层（头两行是搜索和完整自选，下面列自选）。搜索页做出来
+  /// 之后那一层就是重复入口，用户 2026-09-18 让把它撤掉：换品种走放大镜，
+  /// 浏览走底栏的自选，左上角回到纯展示。
+  func testSymbolNameIsNotATrigger() {
+    let label = app.symbolLabel
+    expectExists(label, Self.short, "左上角没有品种名")
+    app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+      .withOffset(CGVector(dx: label.frame.midX, dy: label.frame.midY)).tap()
+    expectGone(app.textFields[Ids.symbolsQuery], Self.short, "点品种名还是弹出了换品种的层")
+    expectExists(app.buttons[Ids.searchButton], Self.short, "点完还应停在主界面")
   }
 
-  /// 顶栏品种名 → 半屏弹层第一行「搜索品种」→ 品种页，且落在搜索框上。
-  ///
-  /// 顶栏那颗放大镜在第三批 15 里撤了：换品种原来有三个入口（顶栏品种名、顶栏放大镜、
-  /// 底栏自选），三条路通向两张不同的页，现在只剩品种名这一条，搜索和完整自选页
-  /// 都是那个弹层里的头两行。
+  /// 顶栏放大镜 → 品种搜索页，且落在搜索框上。换品种只有这一条路。
   func testSearchEntryOpensSymbolPage() {
-    XCTAssertTrue(app.openSymbolSearch(), "品种名弹层里的「搜索品种」没开出品种页的搜索框")
+    XCTAssertTrue(app.openSymbolSearch(), "顶栏放大镜没开出品种页的搜索框")
     app.buttons[Ids.symbolsBack].tap()
     expectGone(app.buttons[Ids.symbolsBack], Self.short, "品种页返回没关掉")
   }

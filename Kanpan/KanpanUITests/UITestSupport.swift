@@ -15,13 +15,13 @@ import XCTest
 /// 一起改，别让它们漂移。
 enum Ids {
   // 顶栏
+  /// 左上角的品种名。2026-09-18 起它不再是按钮（半屏换品种弹层已撤），
+  /// 只是一块文字，所以用例要找它得走 `symbolLabel`，不能再用 `buttons[...]`。
   static let symbolButton = "top.symbol"
   static let starButton = "top.star"
-  /// 换品种的三个入口收敛成顶栏品种名那一个之后（第三批 15），搜索页和完整自选页
-  /// 都在那个半屏弹层的头两行里。顶栏的放大镜、底栏的「自选」都没了，
-  /// 用例统一走 `openSymbolSearch()` / `openFavorites()`，别再直接找那两个 id。
-  static let quickSearch = "quickFavorites.search"
-  static let quickAll = "quickFavorites.all"
+  /// 顶栏放大镜：换品种唯一的入口。浏览走底栏的「自选」。
+  static let searchButton = "top.search"
+  static let favoritesTab = "bottom.favorites"
   // 周期条
   static func intervalChip(_ raw: String) -> String { "interval.chip.\(raw)" }
   static let intervalMore = "interval.more"
@@ -266,9 +266,13 @@ class KanpanUICase: XCTestCase {
 
 extension XCUIApplication {
   /// 顶栏品种名 →「搜索品种」→ 全屏搜索页。返回是否真的到了搜索页。
+  /// 左上角那块品种名。它不是按钮了，但用例还要拿它的位置点顶栏。
+  var symbolLabel: XCUIElement {
+    descendants(matching: .any).matching(identifier: Ids.symbolButton).firstMatch
+  }
+
   @discardableResult func openSymbolSearch() -> Bool {
-    buttons[Ids.symbolButton].tap()
-    let entry = buttons[Ids.quickSearch]
+    let entry = buttons[Ids.searchButton]
     guard entry.waitForExistence(timeout: 10) else { return false }
     entry.tap()
     return textFields[Ids.symbolsQuery].waitForExistence(timeout: 10)
@@ -331,8 +335,7 @@ extension XCUIApplication {
         if done.exists, done.isHittable { done.tap() }
         _ = header.waitForNonExistence(timeout: 3)
       }
-      buttons[Ids.symbolButton].tap()
-      let entry = buttons[Ids.quickAll]
+      let entry = buttons[Ids.favoritesTab]
       guard entry.waitForExistence(timeout: 10) else { continue }
       entry.tap()
       if buttons["favorites.back"].waitForExistence(timeout: 15) { return true }

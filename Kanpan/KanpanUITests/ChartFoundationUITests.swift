@@ -375,7 +375,7 @@ final class ChartFoundationUITests: XCTestCase {
     app.launchEnvironment.removeValue(forKey: "KANPAN_TEST_FAVORITES")
     app.launch()
     if !app.buttons["favorites.more"].waitForExistence(timeout: 3) {
-      XCTAssertTrue(app.buttons["top.symbol"].waitForExistence(timeout: 20))
+      XCTAssertTrue(app.symbolLabel.waitForExistence(timeout: 20))
       XCTAssertTrue(app.openFavorites())
     }
     let groups: [(String, [String])] = [
@@ -533,20 +533,22 @@ final class ChartFoundationUITests: XCTestCase {
     }
   }
 
-  func testQuickFavoritesAndMarketSectors() throws {
+  /// 换品种只剩放大镜一条路：左上角的品种名不再弹任何东西（用户 2026-09-18 定的），
+  /// 这条用例连着验「点了不弹」和「搜索页照样能按板块筛、能换过去」。
+  func testSymbolSearchAndMarketSectors() throws {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SNDKUSDT"
     app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     favoritesAction("favorites.close")
-    app.buttons["top.symbol"].tap()
-    for symbol in ["BTCUSDT", "ETHUSDT", "SNDKUSDT"] {
-      XCTAssertTrue(app.buttons["quickFavorites.open." + symbol].waitForExistence(timeout: 5))
-    }
-    XCTAssertFalse(app.scrollViews["favorites.groups"].exists)
-    shot("左上角-全部收藏快捷切换")
-    app.buttons["quickFavorites.search"].tap()
-    XCTAssertTrue(app.textFields["symbols.query"].waitForExistence(timeout: 5))
+    let top = app.symbolLabel
+    XCTAssertTrue(top.waitForExistence(timeout: 20))
+    app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+      .withOffset(CGVector(dx: top.frame.midX, dy: top.frame.midY)).tap()
+    XCTAssertFalse(app.textFields["symbols.query"].waitForExistence(timeout: 2),
+                   "左上角品种名不该再弹换品种的层")
+    shot("行情页-左上角品种名不可点")
+    XCTAssertTrue(app.openSymbolSearch())
     app.buttons["symbols.market"].tap()
     let equities = app.buttons["美股"]
     XCTAssertTrue(equities.waitForExistence(timeout: 5)); equities.tap()
@@ -752,14 +754,13 @@ final class ChartFoundationUITests: XCTestCase {
     app.buttons["favorites.open.BTCUSDT"].tap()
     XCTAssertTrue(canvas.waitForExistence(timeout: 15))
     XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
-    // 顶栏品种名那块也只负责收起，不应穿透打开换品种弹层。
-    // （原来点的是顶栏的放大镜，那个入口在第三批 15 里并进了品种名。）
-    let top = app.buttons["top.symbol"].frame
+    // 顶栏品种名那块也只负责收起，不应穿透打开任何东西。
+    let top = app.symbolLabel.frame
     app.buttons["bottom.indicator"].tap()
     XCTAssertTrue(app.staticTexts["panel.header"].waitForExistence(timeout: 5))
     app.windows.firstMatch.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: top.midX, dy: top.midY)).tap()
     XCTAssertTrue(wait(seconds: 5) { !self.app.staticTexts["panel.header"].exists })
-    XCTAssertFalse(app.buttons["quickFavorites.search"].exists)
+    XCTAssertFalse(app.textFields["symbols.query"].exists)
     try testOutsideTapOnlyDismissesPanel()
     let original = try XCTUnwrap(info()["subs"] as? [String])
     let panes = try XCTUnwrap(info()["panes"] as? [[String: Any]])

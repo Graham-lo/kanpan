@@ -29,12 +29,9 @@ struct MainScreen: View {
   @State private var reviewChart = ReviewChartBridge()
 
   @State private var panel: Panel?
-  @State private var showQuickFavorites = false
-  @State private var quickSearchPending = false
-  /// 半屏弹层里点了「全部自选与分组」：等它关完再开全屏自选页。
-  @State private var quickListPending = false
   @State private var showSymbols = false
-  /// 顶栏放大镜开的搜索页。品种名开的半屏层（`showQuickFavorites`）照旧，两条路各管各的。
+  /// 顶栏放大镜开的搜索页。换品种只有这一条路了：左上角的品种名以前开一个
+  /// 半屏的「最近看过」弹层，搜索页做出来之后它就是重复入口，已经撤掉。
   @State private var showSearch = false
   /// 搜索页里点了「查看全部 N 个品种」：这一层关掉之后接着开品种整页，查询词跟着过去。
   @State private var searchAllPending = false
@@ -143,16 +140,6 @@ struct MainScreen: View {
 
   private var presentation: some View {
     basePresentation
-    .sheet(isPresented: $showQuickFavorites, onDismiss: {
-      if quickSearchPending { quickSearchPending = false; showSymbols = true }
-      else if quickListPending { quickListPending = false; showFavorites = true }
-    }) {
-      FavoritesQuickPicker(model: picker, current: market.symbol,
-        onClose: { showQuickFavorites = false },
-        onSearch: { quickSearchPending = true; showQuickFavorites = false },
-        onAll: { quickListPending = true; showQuickFavorites = false })
-        .preferredColorScheme(effectiveTheme.forced)
-    }
     .fullScreenCover(isPresented: $showSearch, onDismiss: {
       if searchAllPending { searchAllPending = false; showSymbols = true }
     }) {
@@ -366,8 +353,7 @@ struct MainScreen: View {
         LandscapeHeadline(
           theme: theme, symbol: market.symbol, price: readoutPrice,
           changePercent: displayedTicker?.changePercent,
-          decimals: market.info.pricePrecision,
-          onSymbol: { dismissPanel(); showQuickFavorites = true })
+          decimals: market.info.pricePrecision)
           .padding(.horizontal, 8).padding(.vertical, 4)
         if let text = topCandleData {
           Text(text).font(.system(size: 10, design: .monospaced)).foregroundStyle(theme.ink)
@@ -464,7 +450,6 @@ struct MainScreen: View {
       TopBar(
         theme: theme, symbol: market.symbol,
         starred: picker.isFavorite(market.symbol),
-        onSymbol: { dismissPanel(); showQuickFavorites = true },
         onSearch: { dismissPanel(); showSearch = true },
         onStar: {
           dismissPanel()
@@ -829,7 +814,7 @@ struct MainScreen: View {
     quotes.setChartSymbol(market.symbol)
     quotes.setForeground(phase != .background)
     picker.onPick = { info in
-      showSymbols = false; showFavorites = false; showQuickFavorites = false
+      showSymbols = false; showFavorites = false
       showSearch = false; searchAllPending = false
       launchCover = false; didLeaveLaunch = true
       if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
@@ -858,7 +843,7 @@ struct MainScreen: View {
       bridge.onSwitch = {
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
         else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
-        showFavorites = false; showSymbols = false; showQuickFavorites = false
+        showFavorites = false; showSymbols = false
         showSearch = false; searchAllPending = false
         // 换号要把首屏盖层也掀掉（别让人对着上一个账号的自选表）；但冷启动恢复
         // 登录态是同一条路走过来的第一次，那一次盖层必须留着，否则第一眼看到的
