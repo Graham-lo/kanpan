@@ -851,10 +851,19 @@ public actor MarketFeed {
   /// detached 任务。顺序靠 `await previous?.value` 串起来：同一条 feed 的写盘
   /// 严格按提交顺序发生，所以换品种之前那一份旧序列绝不会落在新序列后面。
   /// 落的文件本来也是按 (品种, 周期) 分开的，串行只是再堵死同一个 key 的乱序。
+  /// 快照最少要几根。和 `RoutedMarketFeed` 放行一条线路的门槛（3 根）对齐：
+  /// 存不出第一帧的快照没有意义，只会覆盖掉上一份能用的。
+  static let snapshotFloor = 3
+
   private func writeSnapshotNow() {
     snapshotTask?.cancel()
     snapshotTask = nil
-    guard snapshotEnabled, composer.series.count > 0 else { return }
+    // 至少要 `snapshotFloor` 根才值得落盘。快照存在的唯一理由是「下次点进来第一帧
+    // 就有图」，而 `RoutedMarketFeed` 要收够 3 根才肯把这条线路的图交给界面——不到
+    // 这个数的快照画不出第一帧，却会把上一次那份好的覆盖掉。首屏 429 拉不到历史时
+    // 正好撞上这一条：序列里只剩 WS 推来的那一根，落盘之后下次冷启动读回来还是
+    // 一根，图就永远停在「行情加载中」。宁可不存。
+    guard snapshotEnabled, composer.series.count >= Self.snapshotFloor else { return }
     lastSnapshotMs = Self.monotonicMs()
     let series = composer.series
     let dir = paths.series

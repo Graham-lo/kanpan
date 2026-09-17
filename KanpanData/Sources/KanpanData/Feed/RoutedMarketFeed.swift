@@ -187,10 +187,14 @@ public actor RoutedMarketFeed {
     if case .historyError(let message) = update.event {
       pendingHistoryError = message
       if message != nil {
-        announceSwitch()
+        // 这儿**不**报 `.routing(.switching)`。历史没拉下来不是换线路——本来也没换
+        // （见本类开头：线路是用户定的，这里不换线）。而行情页收到 `.switching`
+        // 的第一件事就是 `historyError = nil`（`MarketModel`），于是内部每重试一次
+        // 就把「点此重试」那条横幅抹掉一次：巡检刚把它亮起来，下一发 429 回来又抹掉，
+        // 用户最后看到的是一张空图 + 一个「行情加载中」，既没有错误也没有重试的路。
         if source == .binance { historyBoundary = seriesStart; historyRetry = Date().addingTimeInterval(60) }
         startMonitoring(immediate: true)
-        return // Internal retries stay quiet; report only when no complete source is available.
+        return // 内部重试保持安静，由巡检统一决定要不要报「暂时无法连接」。
       }
       freshHistory = true; settleRoute()
       if source == .binance { historyRetry = .distantPast; historyBoundary = nil }
