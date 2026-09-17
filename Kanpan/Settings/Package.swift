@@ -17,7 +17,7 @@ import PackageDescription
 // 只链 KanpanCore，走的是 `#else` 的占位实现，由 `make build` 覆盖。
 let package = Package(
   name: "KanpanSettings",
-  platforms: [.iOS(.v17), .macOS(.v14)],
+  platforms: [.iOS(.v18), .macOS(.v14)],
   products: [
     .library(name: "KanpanSettings", targets: ["KanpanSettings"]),
   ],

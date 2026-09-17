@@ -198,7 +198,13 @@
           String(cString: $0)
         }
       }
-      let hz = UIScreen.main.maximumFramesPerSecond
+      // `UIScreen.main` 在 iPad 多窗口下指的不一定是这个 app 所在的屏，
+      // 顺着当前前台 scene 走才拿得到这块屏真正的刷新率。
+      let screen = (UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .first { $0.activationState == .foregroundActive } ?? UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }.first)?.screen
+      let hz = screen?.maximumFramesPerSecond ?? UIScreen.main.maximumFramesPerSecond
       return "\(machine) · iOS \(UIDevice.current.systemVersion) · \(hz)Hz"
     }
 

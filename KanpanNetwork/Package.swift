@@ -12,7 +12,7 @@ import PackageDescription
 // `KanpanData` 的测试也用同一份，所以做成产品而不是藏在测试目录里。
 let package = Package(
   name: "KanpanNetwork",
-  platforms: [.iOS(.v17), .macOS(.v14)],
+  platforms: [.iOS(.v18), .macOS(.v14)],
   products: [
     .library(name: "KanpanNetwork", targets: ["KanpanNetwork"]),
     .library(name: "KanpanNetworkTestSupport", targets: ["KanpanNetworkTestSupport"]),

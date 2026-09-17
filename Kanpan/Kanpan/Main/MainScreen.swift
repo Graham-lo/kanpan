@@ -86,6 +86,9 @@ struct MainScreen: View {
   @Environment(\.colorScheme) private var scheme
   @Environment(\.scenePhase) private var phase
   @Environment(\.verticalSizeClass) private var vClass
+  // iPad 上一个 app 可能同时开两个窗口，落在不同缩放的屏上；`UIScreen.main`
+  // 只认主屏，发丝线会画粗或画糊。环境里的 displayScale 跟着当前窗口走。
+  @Environment(\.displayScale) private var displayScale
 
   /// 上次存下来的自选表非空吗。只读一次，值在这一整次启动里不会变——
   /// 自选表本身是 `SymbolPickerModel` 在管，这儿只关心「第一帧该盖谁」。
@@ -670,7 +673,7 @@ struct MainScreen: View {
   }
 
   private var hairline: some View {
-    Rectangle().fill(theme.line).frame(height: 1 / UIScreen.main.scale)
+    Rectangle().fill(theme.line).frame(height: 1 / displayScale)
   }
 
   @ViewBuilder private var toastLayer: some View {

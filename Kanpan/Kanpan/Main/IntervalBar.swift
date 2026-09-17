@@ -8,7 +8,8 @@ import SwiftUI
 /// 选了个不在常用里的周期，它插进自己那个位置，不会把后面整排顶偏一格。
 ///
 /// 钉得少的时候各档平分铺满整行，不在右边留一条空白；钉得多到排不下才退回横向滚动
-/// 加边缘渐隐（见 `chips`）。
+/// 加边缘渐隐（见 `chips`）。药丸有个 76pt 的封顶（`maxChipWidth`），手机上够不着，
+/// iPad 那种两三倍宽的行才会用上——否则同样几档会被摊成一排横向拉长的色块。
 ///
 /// 右端原来还有「画线」「记一笔」，用户的话是「这个功能不是经常用到啊」「记和画线都
 /// 放到图表栏目里」，两个都收进「图表」那一页（见 `ChartPanel`）。
@@ -67,6 +68,15 @@ struct IntervalBar: View {
   }
 
   // ---------------------------------------------------------------- 常用那一排
+
+  /// 一颗药丸铺满时最宽能到多少。
+  ///
+  /// 「钉得少就平分铺满整行」这条是按 iPhone 的行宽定的：最宽的 17 Pro Max 上五档也就各
+  /// 摊到 57pt 左右，离这个上限还远，行为一点没变。iPad 的行宽是它的两三倍，不封顶的话
+  /// 同样五档会各摊到 130～210pt——一排横向拉长的大色块，字还缩在正中央，一眼就是拉伸。
+  /// 封在 76pt：手机上照旧铺满，iPad 上药丸保持正常大小，多出来的宽度留成末档与行尾
+  /// 「更多／图表」之间的一段空白，读起来是自然的间距而不是被撑开的控件。
+  private static let maxChipWidth: CGFloat = 76
 
   /// 那一排按自然宽度排出来有多宽。
   ///
@@ -159,7 +169,7 @@ struct IntervalBar: View {
       // 第一眼看到的就是「1d 被渐隐吃掉半颗」。字号和高度都没动，只收了内边距。
       // （出厂只钉五档，这时候是各自摊宽，收内边距不影响它。）
       .padding(.horizontal, 6)
-      .frame(maxWidth: .infinity)
+      .frame(maxWidth: Self.maxChipWidth)
       .frame(height: 28)
       // 选中态填 10% 的强调色，不是整颗实心。
       //
@@ -231,6 +241,10 @@ struct IntervalBar: View {
         .foregroundStyle(theme.ink3)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+    // 四列 `.flexible()` 会把整行宽度平分：iPad 上一格能摊到 250pt 宽、还是 42pt 高，
+    // 十四个横躺的长条。封一个和手机相当的上限，网格照旧从左边起排。
+    .frame(maxWidth: 460, alignment: .leading)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.horizontal, 10)
     .padding(.bottom, 10)
     .transition(.move(edge: .top).combined(with: .opacity))

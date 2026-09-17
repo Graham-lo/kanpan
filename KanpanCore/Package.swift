@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
   name: "KanpanCore",
-  platforms: [.iOS(.v17), .macOS(.v14)],
+  platforms: [.iOS(.v18), .macOS(.v14)],
   products: [
     .library(name: "KanpanCore", targets: ["KanpanCore"]),
   ],
