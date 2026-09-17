@@ -502,8 +502,12 @@ struct FavoritesView: View {
     return ticker.changePercent
   }
 
-  // MARK: - 列表玻璃纸
+  // MARK: - 列表：行直接长在极光上
 
+  /// 这里原来铺着一张玻璃纸（圆角 22、白雾填充、上沿高光、半像素描边，两侧各留 12pt）。
+  /// 用户看过对比之后选了「融合」：纸的四条边把屏幕切成「底」和「纸」两层，去掉之后
+  /// 头部、分类段、列表读成同一块材料。玻璃原本干的活是替文字挡光斑，现在交给
+  /// `AuroraBackdrop` 底部那层同色渐变。行与行之间只剩一根两头淡出的发丝线。
   private var listSheet: some View {
     List {
       ForEach(symbols, id: \.self) { symbol in
@@ -539,21 +543,9 @@ struct FavoritesView: View {
     .listStyle(.plain)
     .scrollContentBackground(.hidden)
     .environment(\.defaultMinListRowHeight, 0)
-    // 玻璃纸只铺到内容那么高，品种少的时候不在下半屏拖一大块空白；
-    // 但 List 本身仍旧占满——收窄的话，长按把一行拖到最后一行下面就落到列表外面去了。
-    .background(alignment: .top) { sheetSkin }
-    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    // List 占满剩下的整屏：长按把一行拖到最后一行下面，落点还在列表里。
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 8)
-  }
-
-  /// 那张玻璃纸。展开了详情行高就量不准，这时让它照旧占满。
-  private var sheetSkin: some View {
-    let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
-    return shape.fill(skin.glass)
-      .overlay(alignment: .top) { skin.topHighlight(inset: 10) }
-      .overlay { shape.strokeBorder(skin.edgeSoft, lineWidth: 0.5) }
-      .frame(maxHeight: expanded.isEmpty ? CGFloat(symbols.count) * 66 : .infinity, alignment: .top)
+    .padding(.top, 6).padding(.bottom, 8)
   }
 
   private func row(_ symbol: String, first: Bool) -> some View {
@@ -607,13 +599,14 @@ struct FavoritesView: View {
           .accessibilityIdentifier("favorites.expand." + symbol)
       }
     }
-    .padding(.leading, 15).padding(.trailing, 14)
+    // 没有纸之后行的左右内边距放宽到 20pt 上下，徽章和「自选」标题、分类段对齐同一条竖线。
+    .padding(.leading, 19).padding(.trailing, 20)
     .frame(height: 66)
     .overlay(alignment: .top) {
       if !first {
         LinearGradient(colors: [.clear, skin.rule, skin.rule, .clear],
                        startPoint: .leading, endPoint: .trailing)
-          .frame(height: 0.5).padding(.horizontal, 14)
+          .frame(height: 0.5).padding(.horizontal, 20)
       }
     }
   }
@@ -756,7 +749,7 @@ struct FavoritesView: View {
       .background(skin.glassThin)
       .overlay(alignment: .top) {
         LinearGradient(colors: [.clear, skin.rule, skin.rule, .clear], startPoint: .leading, endPoint: .trailing)
-          .frame(height: 0.5).padding(.horizontal, 14)
+          .frame(height: 0.5).padding(.horizontal, 20)
       }
       .accessibilityElement(children: .contain).accessibilityIdentifier("favorites.details." + symbol)
   }
@@ -826,12 +819,7 @@ struct FavoritesView: View {
       }.buttonStyle(.plain).padding(.top, 8)
       Spacer(minLength: 0)
     }.frame(maxWidth: .infinity, maxHeight: .infinity)
-      .background {
-        RoundedRectangle(cornerRadius: 22, style: .continuous).fill(skin.glass)
-          .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .strokeBorder(skin.edgeSoft, lineWidth: 0.5))
-      }
-      .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 8)
+      .padding(.top, 6).padding(.bottom, 8)
   }
 
   private var editBar: some View {
@@ -885,10 +873,16 @@ private struct LiuliSkin {
   }
   /// 第三团是 amber。深色下它和青苔的墨绿差着一个色系，按 55% 铺出来会在屏幕
   /// 下半截烧出一块橘斑，收到 34% 才只剩「墙角一点暖」。
+  ///
+  /// 列表不再垫玻璃之后光斑直接穿过文字，整体再收 30%——最亮的那一团正好压在
+  /// 最上面两三行，那几行是最常看的。
   func lobeOpacity(_ index: Int) -> Double {
-    guard dark else { return 0.9 }
-    return index == 2 ? 0.34 : 0.55
+    guard dark else { return 0.9 * 0.7 }
+    return (index == 2 ? 0.34 : 0.55) * 0.7
   }
+  /// 底部同色收敛：从 22% 高度起往下渐渐回到底色，到底部盖住七成。
+  /// 头部那一截极光完整保留，越往下行越多也越稳。
+  var washStrength: Double { 0.7 }
   var grainOpacity: Double { dark ? 0.05 : 0.035 }
 
   var accent: Color { Color(hex: seed.accent) }
@@ -947,6 +941,11 @@ private struct AuroraBackdrop: View {
         lobe(0, size: 300, x: -95, y: -80, seconds: 22)
         lobe(1, size: 250, x: width - 170, y: 240, seconds: 27)
         lobe(2, size: 280, x: -70, y: height - 230, seconds: 31)
+        LinearGradient(stops: [
+          .init(color: skin.ground.opacity(0), location: 0.22),
+          .init(color: skin.ground.opacity(skin.washStrength), location: 1)],
+          startPoint: .top, endPoint: .bottom)
+          .frame(width: width, height: height)
         if let grain = Grain.image {
           grain.resizable(resizingMode: .tile).opacity(skin.grainOpacity)
         }
