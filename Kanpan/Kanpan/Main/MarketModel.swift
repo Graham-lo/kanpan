@@ -67,8 +67,10 @@ final class MarketModel {
   private(set) var interval: Interval
 
   private var feed: RoutedMarketFeed
-  // `deinit` 不在主 actor 上，注销通知得能从那儿读到它。
-  nonisolated(unsafe) private var policyObserver: (any NSObjectProtocol)?
+  // `deinit` 不在主 actor 上，注销通知得能从那儿读到它。它不是界面状态，别让
+  // `@Observable` 把它包进跟踪存储——包进去之后 `nonisolated(unsafe)` 落在合成的
+  // 后备变量上，写在这儿的那个就成了空话，编译器会照实报「没有效果」。
+  @ObservationIgnored nonisolated(unsafe) private var policyObserver: (any NSObjectProtocol)?
   /// 品种表。域名可以改（A6.10），而品种页握着的是一条早就交出去的 `@Sendable`
   /// 闭包——中间夹这个盒子，换域名时换掉里面那份，闭包不用重发。
   nonisolated private let catalog: CatalogBox
