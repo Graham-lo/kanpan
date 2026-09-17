@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import KanpanCore
 import KanpanData
+import KanpanNetwork
 
 /// 前台跨页面共享自选/可见品种WS；后台释放。日开盘只按需取一次。
 @MainActor @Observable
@@ -142,6 +143,14 @@ final class QuoteBook {
     return "session=\(session.generation);firstQuoteMs=\(firstQuoteMs ?? -1);rows=\(raw.count);status=\(status.rawValue)"
   }
   private(set) var status: FeedStatus = .reconnecting
+
+  /// 排查「列表连上了但不跳」：`KANPAN_LOG=1` 时把这条流的连接和收帧量打出来。
+  /// 图那条流一直有日志，列表这条一直是哑的——两边都不跳的时候根本分不清是谁的问题。
+  private static let log: FeedLog =
+    ProcessInfo.processInfo.environment["KANPAN_LOG"] == "1" ? .stdout : .silent
+  private var ingestCount = 0
+  private var ingestDropped = 0
+  private var ingestReport = Date()
   var onReset: (() -> Void)?
   var onScopeChange: ((Set<String>) -> Void)?
   private var visibleRows = Set<String>()
@@ -369,7 +378,17 @@ final class QuoteBook {
     Task { await socket.replaceStreams(names) }
   }
 
+  /// 每 5 秒报一次列表这条流收了多少行情、其中多少不在订阅集里被丢掉。
+  private func noteIngest(_ n: Int) {
+    ingestCount += n
+    let now = Date()
+    guard now.timeIntervalSince(ingestReport) >= 5 else { return }
+    Self.log("列表收行情 \(ingestCount) 条/\(Int(now.timeIntervalSince(ingestReport) * 1000))ms 订阅\(subscribedStreams.count) 想要\(wanted.count) 连接\(socket == nil ? "无" : "有")")
+    ingestCount = 0; ingestDropped = 0; ingestReport = now
+  }
+
   func ingest(_ batch: [Ticker]) {
+    noteIngest(batch.count)
     guard accepting else { return }
     var valid: [Ticker] = []
     for ticker in batch where wanted.contains(ticker.symbol) {
@@ -388,6 +407,7 @@ final class QuoteBook {
   }
 
   func ingestTrade(_ trade: TradeQuote) {
+    noteIngest(1)
     guard accepting, wanted.contains(trade.symbol) else { return }
     var state = latestReceived[trade.symbol] ?? QuoteState()
     guard state.receive(trade), let ticker = state.value else { return }
@@ -676,8 +696,8 @@ final class QuoteBook {
     var socketHosts = hosts
     socketHosts.streamFallbacks = []
     let socket = BinanceWS(hosts: socketHosts,
-                           factory: SourceSocketFactory(source: source, hosts: hosts),
-                           silenceMs: 15_000)
+                           factory: SourceSocketFactory(source: source, hosts: hosts, log: Self.log),
+                           silenceMs: 15_000, log: Self.log)
     let generation = session.generation
     self.socket = socket
     let names = streamNames()

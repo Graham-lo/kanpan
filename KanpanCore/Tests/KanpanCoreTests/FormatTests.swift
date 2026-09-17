@@ -5,8 +5,8 @@ import Testing
 
 /// A1.11：数字、成交量、时间标签全部对齐原型。
 ///
-/// 注意：任务书 A1.11 写的是「量 K/M/B」，定版原型 `fmtVol` 用的是**万 / 亿**。
-/// 按「原型即规格」，这里以原型为准（冲突记在 `docs/acceptance/M1.md`）。
+/// 例外是 `fmtVol`：定版原型给的是万 / 亿，2026-09-18 用户把成交额单位定为
+/// 千进制 K / M / B / T，这一条以用户决定为准，黄金值不再从原型导。
 @Suite("格式化")
 struct FormatTests {
   @Test("fmtNum 与原型全等")
@@ -18,25 +18,39 @@ struct FormatTests {
     #expect(fmtNum(.infinity, 2) == "--")
   }
 
-  @Test("fmtVol 与原型全等")
-  func volMatches() {
-    for (x, want) in Fx.fmtVolCases {
-      #expect(fmtVol(x) == want, "fmtVol(\(x)) = \(fmtVol(x))，原型 \(want)")
-    }
+  /// 分档边界：100 以下两位小数、100 起整数、1e3 起 K、1e6 起 M、1e9 起 B、1e12 起 T。
+  @Test("成交量分档")
+  func volBuckets() {
+    #expect(fmtVol(0) == "0.00")
+    #expect(fmtVol(1.5) == "1.50")
+    #expect(fmtVol(99.994) == "99.99")
+    #expect(fmtVol(100) == "100")
+    #expect(fmtVol(999) == "999")
+    #expect(fmtVol(1000) == "1.00K")
+    #expect(fmtVol(1234) == "1.23K")
+    #expect(fmtVol(9999.5) == "10.00K")
+    #expect(fmtVol(123456) == "123.46K")
+    #expect(fmtVol(1e6) == "1.00M")
+    #expect(fmtVol(84_200_000) == "84.20M")
+    #expect(fmtVol(98_765_432) == "98.77M")
+    #expect(fmtVol(1e9) == "1.00B")
+    #expect(fmtVol(8.32e9) == "8.32B")
+    #expect(fmtVol(-5.5e9) == "-5.50B")
+    #expect(fmtVol(1e12) == "1.00T")
+    #expect(fmtVol(1.5415e12) == "1.54T")
     #expect(fmtVol(.nan) == "--")
   }
 
-  /// 分档边界：100 以下两位小数、100 起整数、1 万起「万」、1 亿起「亿」。
-  @Test("成交量分档")
-  func volBuckets() {
-    #expect(fmtVol(99.994) == "99.99")
-    #expect(fmtVol(100) == "100")
-    #expect(fmtVol(9999.5) == "10000")
-    #expect(fmtVol(10000) == "1.00万")
-    #expect(fmtVol(123456) == "12.35万")
-    #expect(fmtVol(1e8) == "1.00亿")
-    #expect(fmtVol(-5.5e8) == "-5.50亿")
-    #expect(fmtVol(0) == "0.00")
+  /// 单位由外面钉住：同一个数字，换一个单位就换一种读法（`MarketModel.volumeUnit`
+  /// 记住品种第一次见到的档位，换线路时不跟着数字跳档）。
+  @Test("单位由外面传进来")
+  func volPinnedUnit() {
+    #expect(fmtVol(8.32e9, unit: .m) == "8320.00M")
+    #expect(fmtVol(9.9e8, unit: .b) == "0.99B")
+    #expect(fmtVol(1234, unit: .plain) == "1234")
+    #expect(volUnit(8.32e9) == .b)
+    #expect(volUnit(999) == .plain)
+    #expect(volUnit(-1.2e12) == .t)
   }
 
   /// `toFixed` 用 JS 的「逢五远离零」，不是 printf 的「逢五取偶」。

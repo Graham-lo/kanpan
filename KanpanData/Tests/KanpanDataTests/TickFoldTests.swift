@@ -215,10 +215,10 @@ struct TickFoldTests {
     #expect(ms == 1789382760891)
   }
 
-  @Test("组合行情端点使用 market 路由，替换品种仍可复用连接")
+  @Test("组合行情端点用币安自己的 /stream，替换品种仍可复用连接")
   func marketEndpoint() throws {
     let url = BinanceHosts.default.combinedStream(["btcusdt@kline_1m", "btcusdt@ticker", "btcusdt@markPrice@1s"])
-    #expect(url.path == "/market/stream")
+    #expect(url.path == "/stream")
     let query = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first?.value)
     #expect(query == "btcusdt@kline_1m/btcusdt@ticker/btcusdt@markPrice@1s")
     #expect(BinanceHosts(stream: "custom.example").combinedStream([]).host == "custom.example")

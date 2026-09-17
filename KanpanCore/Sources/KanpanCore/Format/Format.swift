@@ -2,7 +2,7 @@ import Foundation
 
 /// 文案与数字格式（§A1.11，原型 `fmtNum / fmtVol / fmtTick / fmtFull`）。
 ///
-/// 成交量走 万 / 亿——任务书附录写的是 K/M/B，原型是万/亿，以原型为准（见 `docs/acceptance/M1.md`）。
+/// 成交量 / 成交额走千进制金融单位 K / M / B / T（2026-09-18 用户决定，取代原型的万/亿）。
 
 /// 时区口径（§9.4）：跟系统 / UTC / 交易所（固定 UTC+8）。
 public enum TZChoice: String, Sendable, Codable, CaseIterable {
@@ -102,7 +102,7 @@ public func fmtNum(_ x: Double, _ p: Int) -> String {
   return toFixed(x, p)
 }
 
-/// 成交量 / 持仓量：亿、万、整数、两位小数。
+/// 成交量 / 持仓量 / 市值：K / M / B / T，两位小数；不满一千给原数。
 public func fmtVol(_ x: Double) -> String {
   guard x.isFinite else { return "--" }
   return fmtVol(x, unit: volUnit(x))
@@ -111,23 +111,27 @@ public func fmtVol(_ x: Double) -> String {
 /// 成交额用哪个单位。
 ///
 /// 拆出来是为了「按品种固定单位」（§2B / 审查 §3.10 #53）：换一条行情线路，
-/// 同一个品种回来的成交额口径可能差一截，数字一跨过一亿的坎，单位就从「万」
-/// 翻成「亿」，顶栏那一行看上去像换了个品种。所以选单位这件事交给外面记住，
+/// 同一个品种回来的成交额口径可能差一截，数字一跨过进位的坎，单位就从 `M`
+/// 翻成 `B`，顶栏那一格看上去像换了个品种。所以选单位这件事交给外面记住，
 /// 不再每帧按当前数字现算。
-public enum VolUnit: Int, Sendable, Equatable { case plain, wan, yi }
+public enum VolUnit: Int, Sendable, Equatable { case plain, k, m, b, t }
 
 public func volUnit(_ x: Double) -> VolUnit {
   let a = abs(x)
-  if a >= 1e8 { return .yi }
-  if a >= 1e4 { return .wan }
+  if a >= 1e12 { return .t }
+  if a >= 1e9 { return .b }
+  if a >= 1e6 { return .m }
+  if a >= 1e3 { return .k }
   return .plain
 }
 
 public func fmtVol(_ x: Double, unit: VolUnit) -> String {
   guard x.isFinite else { return "--" }
   switch unit {
-  case .yi: return toFixed(x / 1e8, 2) + "亿"
-  case .wan: return toFixed(x / 1e4, 2) + "万"
+  case .t: return toFixed(x / 1e12, 2) + "T"
+  case .b: return toFixed(x / 1e9, 2) + "B"
+  case .m: return toFixed(x / 1e6, 2) + "M"
+  case .k: return toFixed(x / 1e3, 2) + "K"
   case .plain: return abs(x) >= 100 ? toFixed(x, 0) : toFixed(x, 2)
   }
 }

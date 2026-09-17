@@ -30,6 +30,20 @@ final class MarketModel {
   /// 展示口径按品种钉死：换品种才重新认，换线路一律沿用。
   private var lockedPrecision: [String: (precision: Int, tick: Double)] = [:]
   private(set) var volumeUnit: VolUnit?
+  /// 顶栏右侧四格里 FR 那一格：`markPrice@1s` 那条流顺带捎回来的资金费率整帧。
+  private(set) var funding: MarkPriceTick?
+  /// 持仓量（币本位数量 / 美元名义）与总供应量，都由 VPS 后端给，客户端不自己算。
+  /// 取不到就是 `nil`，那一格显示 `--`。
+  private(set) var openInterestQty: Double?
+  private(set) var openInterestValue: Double?
+  /// 持仓量的单位也按品种钉住，理由和 `volumeUnit` 一样：币安和 OKX 的持仓口径
+  /// 差着一截，换线路时数字跨过进位坎，顶栏那一格看上去像换了个品种。
+  private(set) var openInterestUnit: VolUnit?
+  private(set) var totalSupply: Double?
+  /// 顶栏「仓」那一格显示的数：美元名义优先，后端没给名义就退回币本位数量。
+  var openInterestDisplay: Double? { openInterestValue ?? openInterestQty }
+  /// 总市值在顶栏那一格里现乘（`totalSupply × 正在显示的那口价`），这儿只管存供应量：
+  /// 用户明确要总市值，不是流通市值。
   /// 当前这份 `ticker` 是不是「上一条线路留下的」。真 = 顶栏灰显（§2B #54）。
   private(set) var tickerStale = false
   private(set) var status: FeedStatus = .offline
@@ -124,6 +138,7 @@ final class MarketModel {
   private var switchTask: Task<Void, Never>?
   private var markTime: Int64 = 0
   private var markPrice: Double?
+  private var statsTask: Task<Void, Never>?
 
   func start(snapshot: Bool, interval requestedInterval: Interval? = nil) {
     if let requestedInterval { interval = requestedInterval }
@@ -157,6 +172,7 @@ final class MarketModel {
       }
     }
     Task { await refreshInfo() }
+    startStats()
   }
 
   func stop() {
@@ -164,13 +180,23 @@ final class MarketModel {
     switchTask?.cancel(); switchTask = nil
     network.stop()
     oiTask?.cancel(); oiTask = nil
+    statsTask?.cancel(); statsTask = nil
     pump?.cancel()
     pump = nil
     Task { [feed] in await feed.stop() }
   }
 
-  func enterBackground() { foreground = false; Task { [feed] in await feed.enterBackground() } }
-  func enterForeground() { foreground = true; Task { [feed] in await feed.enterForeground() } }
+  func enterBackground() {
+    foreground = false
+    statsTask?.cancel(); statsTask = nil     // 后台不轮询持仓量
+    Task { [feed] in await feed.enterBackground() }
+  }
+
+  func enterForeground() {
+    foreground = true
+    if pump != nil { startStats() }
+    Task { [feed] in await feed.enterForeground() }
+  }
   func memoryWarning() { Task { [feed] in await feed.memoryWarning() } }
   func setSnapshotEnabled(_ on: Bool) {
     snapshot = on
@@ -201,7 +227,19 @@ final class MarketModel {
 
   // ---------------------------------------------------------------- 事件
 
+  private var applied = 0
+  private var appliedDropped = 0
+  private var applyReport = Date()
+
   private func apply(_ update: FeedUpdate) {
+    // 「帧到了但图不动」最常见的哑法是事件在这一关被 `selection` 判出局：WS 那边
+    // 收帧计数照样涨，界面却一帧不更新。所以收多少、丢多少都要报出来。
+    if update.selection == selection { applied += 1 } else { appliedDropped += 1 }
+    let now = Date()
+    if now.timeIntervalSince(applyReport) >= 5 {
+      Self.log("图表事件 收\(applied) 丢\(appliedDropped)/\(Int(now.timeIntervalSince(applyReport) * 1000))ms")
+      applied = 0; appliedDropped = 0; applyReport = now
+    }
     guard update.selection == selection else { return }
     switch update.event {
     case .routing(let state):
@@ -213,6 +251,10 @@ final class MarketModel {
       // 那样会一直空着。留着上一条线路的最后一口价，灰显标明「这是旧的」（§2B #54），
       // 新线路第一帧到了就自己转正。
       source = next; tickerStale = ticker != nil; tradeQuote = nil; markPrice = nil; markTime = 0
+      funding = nil
+      // 持仓量是按交易所报的，换了线路就得按新交易所重取；供应量与交易所无关，留着。
+      openInterestQty = nil; openInterestValue = nil; openInterestUnit = nil
+      startStats()
       oiTask?.cancel(); oi = nil; oiRegion = nil; historyError = nil
       let paths = Paths(root: Paths.caches().root.appendingPathComponent("sources/" + next.rawValue))
       let catalog = SymbolCatalog(rest: .upstream(next, hosts: hosts), paths: paths)
@@ -247,15 +289,61 @@ final class MarketModel {
       tickerStale = false
       if volumeUnit == nil, next.quoteVolume.isFinite { volumeUnit = volUnit(next.quoteVolume) }
       lastPushAt = Date()
-    case .markPrice(let sym, let price, let time):
-      guard sym.uppercased() == symbol, price.isFinite, price > 0,
-            time > markTime else { return }
-      markTime = time; markPrice = price
+    case .markPrice(let sym, let price, let tick):
+      guard sym.uppercased() == symbol, tick.timeMs >= markTime else { return }
+      markTime = tick.timeMs
+      // 费率那一格只认有值的帧：镜像偶尔发不带 `r` 的帧，别把已经显示的费率抹成 `--`。
+      if tick.fundingRate != nil || funding == nil { funding = tick }
+      guard price.isFinite, price > 0 else { return }
+      markPrice = price
       ticker?.markPrice = price
     case .oi:
       break                                   // 副图 OI 由指标层自己取
     case .status(let s):
       status = s
+    }
+  }
+
+  // ---------------------------------------------------------------- 顶栏右侧四格
+
+  /// 持仓量轮询间隔。OI 本来就是分钟级统计，再密只是白跑请求。
+  private static let oiPollSeconds: UInt64 = 45
+
+  /// 供应量取一次（客户端缓存一天），持仓量按 `oiPollSeconds` 续着取。
+  /// 两条都失败就让那两格一直是 `--`，不报错、不弹窗。
+  private func startStats() {
+    statsTask?.cancel()
+    let sym = symbol, src = source, base = info.base, proxies = hosts.oiProxies
+    guard !proxies.isEmpty else {
+      openInterestQty = nil; openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
+      return
+    }
+    statsTask = Task { [weak self] in
+      if let meta = await MarketStatsClient.shared.meta(symbol: sym, base: base, hosts: proxies) {
+        await MainActor.run { self?.applyMeta(meta, for: sym) }
+      }
+      while !Task.isCancelled {
+        let stat = await MarketStatsClient.shared.openInterest(symbol: sym, source: src, hosts: proxies)
+        if Task.isCancelled { return }
+        await MainActor.run { self?.applyOpenInterest(stat, for: sym) }
+        try? await Task.sleep(for: .seconds(Double(Self.oiPollSeconds)))
+      }
+    }
+  }
+
+  private func applyMeta(_ meta: SymbolMeta, for sym: String) {
+    guard sym == symbol else { return }
+    totalSupply = meta.totalSupply.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+  }
+
+  private func applyOpenInterest(_ stat: OpenInterestStat?, for sym: String) {
+    guard sym == symbol else { return }
+    // 取不到就保持上一口值：一次超时把已经在屏上的数字抹成 `--` 反而更像出错。
+    guard let stat else { return }
+    if let qty = stat.openInterest, qty.isFinite { openInterestQty = qty }
+    if let value = stat.openInterestValue, value.isFinite { openInterestValue = value }
+    if openInterestUnit == nil, let shown = openInterestDisplay, shown.isFinite {
+      openInterestUnit = volUnit(shown)
     }
   }
 
@@ -285,11 +373,14 @@ final class MarketModel {
       tickerStale = false
       volumeUnit = nil                      // 单位按品种记，换品种就重新认
       markPrice = nil; markTime = 0
+      funding = nil
+      openInterestQty = nil; openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
       // 这个品种以前认过小数位就照旧顶上，别让冷切换先用 2 位画一帧再跳回去。
       var seed = MarketModel.placeholder(sym)
       if let locked = lockedPrecision[sym] { seed.pricePrecision = locked.precision; seed.tickSize = locked.tick }
       info = seed
     }
+    if cold { startStats() }
     switchTask = Task { [feed] in
       guard !Task.isCancelled else { return }
       await feed.switchTo(symbol: sym, interval: iv, coldStart: cold, selection: request)

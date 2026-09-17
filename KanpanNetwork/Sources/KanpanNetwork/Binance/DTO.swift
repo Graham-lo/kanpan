@@ -151,7 +151,9 @@ public enum StreamPayload: Sendable {
   case kline(KlineEvent)
   case ticker(Ticker)
   case tickerBatch([Ticker])
-  case markPrice(symbol: String, price: Double, timeMs: Int64)
+  /// 标记价。第三个位置从「事件时间」换成了整帧 `MarkPriceTick`（资金费率、下次结算、
+  /// 指数价、预估结算价都在里面），事件时间挪到 `tick.timeMs`。
+  case markPrice(symbol: String, price: Double, tick: MarkPriceTick)
   /// 逐笔成交。K 线的实时跳动现在靠它（见 `BinanceHosts.tradeStream`）。
   case trade(TradeEvent)
   /// 最优挂单：只给价格线一个心跳，不进成交量。
@@ -182,8 +184,19 @@ extension StreamPayload: Decodable {
                             lastTradeID: try c.decodeIfPresent(Int64.self, forKey: .L)))
     case "markPriceUpdate":
       let sym = try c.decode(String.self, forKey: .s)
-      let p = (try? c.decode(String.self, forKey: .p)).flatMap(Double.init) ?? .nan
-      self = .markPrice(symbol: sym, price: p, timeMs: (try? c.decode(Int64.self, forKey: .E)) ?? 0)
+      // 数值字段币安一律发字符串，但回放文件 / 镜像偶尔发数字，两种都收。
+      func num(_ k: K) -> Double? {
+        if let text = try? c.decode(String.self, forKey: k) { return Double(text) }
+        return try? c.decode(Double.self, forKey: k)
+      }
+      let p = num(.p) ?? .nan
+      // `r` 空串表示这个品种没有资金费率（例如某些交割合约），当缺失处理。
+      let tick = MarkPriceTick(timeMs: (try? c.decode(Int64.self, forKey: .E)) ?? 0,
+                               fundingRate: num(.r).flatMap { $0.isFinite ? $0 : nil },
+                               nextFundingTimeMs: (try? c.decode(Int64.self, forKey: .T)).flatMap { $0 > 0 ? $0 : nil },
+                               indexPrice: num(.i).flatMap { $0.isFinite ? $0 : nil },
+                               estimatedSettlePrice: num(.P).flatMap { $0.isFinite ? $0 : nil })
+      self = .markPrice(symbol: sym, price: p, tick: tick)
     case "trade":
       self = .trade(try TradeEvent(from: decoder))
     case "bookTicker":
@@ -196,7 +209,7 @@ extension StreamPayload: Decodable {
       self = .other(e)
     }
   }
-  enum K: String, CodingKey { case e, s, c, o, P, h, l, q, p, k, b, a, T, E, C, L }
+  enum K: String, CodingKey { case e, s, c, o, P, h, l, q, p, k, b, a, r, i, T, E, C, L }
 }
 
 /// `kline` 事件。`x == true` 表示这根收了（§4.4）。

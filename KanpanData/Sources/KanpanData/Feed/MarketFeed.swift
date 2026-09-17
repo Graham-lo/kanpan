@@ -13,7 +13,9 @@ public enum FeedEvent: Sendable {
   case ticker(Ticker)
   case tradeQuote(TradeQuote)
   /// Mark price is independent of last trade price.
-  case markPrice(symbol: String, price: Double, timeMs: Int64)
+  /// 第三位是整帧 `MarkPriceTick`：资金费率、下次结算、指数价、预估结算价都在里面，
+  /// 事件时间在 `tick.timeMs`。顶栏的 FR 那一格吃的就是它，不额外发请求。
+  case markPrice(symbol: String, price: Double, tick: MarkPriceTick)
   case oi([OIPoint])
   case status(FeedStatus)
 }
@@ -391,8 +393,8 @@ public actor MarketFeed {
           lastTickerReceivedMs = received
           emit(.ticker(t))
         }
-      case .markPrice(let s, let px, let ms):
-        if s.uppercased() == symbol { emit(.markPrice(symbol: s, price: px, timeMs: ms)) }
+      case .markPrice(let s, let px, let tick):
+        if s.uppercased() == symbol { emit(.markPrice(symbol: s, price: px, tick: tick)) }
       case .trade(let t):
         guard t.symbol.uppercased() == symbol else { return }
         lastTradeMs = max(lastTradeMs, t.timeMs)

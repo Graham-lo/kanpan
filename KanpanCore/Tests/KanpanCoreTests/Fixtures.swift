@@ -214,13 +214,6 @@ enum Fx {
     }
   }()
 
-  /// `(x, 文本)`
-  static let fmtVolCases: [(Double, String)] = {
-    ((try! Fixture.dict("format"))["vol"] as! [[Any]]).map {
-      (($0[0] as! NSNumber).doubleValue, $0[1] as! String)
-    }
-  }()
-
   /// A1.10：原型风格表（几何字段都在顶层）。
   static let styles: [StyleRow] = {
     ((try! Fixture.dict("styles"))["styles"] as! [[String: Any]]).map(StyleRow.init)

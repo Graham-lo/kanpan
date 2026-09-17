@@ -34,6 +34,12 @@ struct MainScreen: View {
   /// 半屏弹层里点了「全部自选与分组」：等它关完再开全屏自选页。
   @State private var quickListPending = false
   @State private var showSymbols = false
+  /// 顶栏放大镜开的搜索页。品种名开的半屏层（`showQuickFavorites`）照旧，两条路各管各的。
+  @State private var showSearch = false
+  /// 搜索页里点了「查看全部 N 个品种」：这一层关掉之后接着开品种整页，查询词跟着过去。
+  @State private var searchAllPending = false
+  /// 历史搜索词。放在宿主身上，来回进出搜索页不丢。
+  @State private var searchHistory = SearchHistory()
   @State private var showFavorites = false
   /// 冷启动的自选盖层还在吗。详见 `launchFavorites`。
   @State private var launchCover = MainScreen.startsOnFavorites
@@ -147,8 +153,21 @@ struct MainScreen: View {
         onAll: { quickListPending = true; showQuickFavorites = false })
         .preferredColorScheme(effectiveTheme.forced)
     }
+    .fullScreenCover(isPresented: $showSearch, onDismiss: {
+      if searchAllPending { searchAllPending = false; showSymbols = true }
+    }) {
+      SymbolSearchView(model: picker, history: searchHistory, redUp: prefs.redUp,
+                       onClose: { showSearch = false },
+                       onAll: { searchAllPending = true; showSearch = false },
+                       onVisible: { quotes.watch($0) },
+                       onRowVisibility: { quotes.watchRow($0, visible: $1) })
+        .preferredColorScheme(effectiveTheme.forced)
+    }
     .fullScreenCover(isPresented: $showSymbols) {
-      SymbolPickerView(model: picker, redUp: prefs.redUp, onClose: { showSymbols = false },
+      // 关掉品种页顺手把查询词清了：搜索页和它共用一个 `SymbolPickerModel`，
+      // 词留着的话，下次点放大镜进来看到的是上一轮的结果，而不是「历史搜索 / 最近看过」。
+      SymbolPickerView(model: picker, redUp: prefs.redUp,
+                       onClose: { showSymbols = false; picker.query = "" },
                        onVisible: { quotes.watch($0) },
                        onRowVisibility: { quotes.watchRow($0, visible: $1) })
         .preferredColorScheme(effectiveTheme.forced)
@@ -233,7 +252,7 @@ struct MainScreen: View {
     .onChange(of: hosts) { _, next in market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis, source: market.source) }
     .onChange(of: prefs.changeBasis) { _, next in quotes.configure(hosts: hosts, basis: next, source: market.source) }
     .onChange(of: market.source) { _, next in quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next) }
-    .onChange(of: showFavorites || showSymbols || coveringLaunch) { _, on in quotes.setVisible(on) }
+    .onChange(of: showFavorites || showSymbols || showSearch || coveringLaunch) { _, on in quotes.setVisible(on) }
     .onChange(of: picker.prefs.favorites) { _, symbols in settleFavorites(symbols) }
     .onChange(of: market.tradeQuote) { _, trade in
       if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
@@ -446,6 +465,7 @@ struct MainScreen: View {
         theme: theme, symbol: market.symbol,
         starred: picker.isFavorite(market.symbol),
         onSymbol: { dismissPanel(); showQuickFavorites = true },
+        onSearch: { dismissPanel(); showSearch = true },
         onStar: {
           dismissPanel()
           let now = picker.toggleFavorite(market.symbol, info: market.info)
@@ -457,7 +477,12 @@ struct MainScreen: View {
       ZStack {
         PriceRow(theme: theme, ticker: displayedTicker, lastPrice: readoutPrice,
           decimals: market.info.pricePrecision,
-          volumeUnit: market.volumeUnit, stale: market.tickerStale)
+          volumeUnit: market.volumeUnit,
+          openInterest: market.openInterestDisplay,
+          openInterestUnit: market.openInterestUnit,
+          totalSupply: market.totalSupply,
+          fundingRate: market.funding?.fundingRate,
+          stale: market.tickerStale)
           .opacity(topCandleData == nil ? 1 : 0)
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
@@ -524,7 +549,7 @@ struct MainScreen: View {
       theme.chartBG
       ChartHost(
         portrait: !landscape,
-        renderingActive: !showFavorites && !showSymbols && !coveringLaunch,
+        renderingActive: !showFavorites && !showSymbols && !showSearch && !coveringLaunch,
         panelOpen: panel != nil || draw.panel != nil,
         state: reviewChart.active ? reviewChart.state : chartState,
         proxy: reviewChart.active ? reviewChart.proxy : proxy,
@@ -773,7 +798,7 @@ struct MainScreen: View {
     // 不该跨启动生效——这一份表是刚刚才定下来的（登录用户还等过一次账号恢复），
     // 所以这里才是重置的时机。
     picker.resetSelectedGroup()
-    quotes.setVisible(showFavorites || showSymbols || coveringLaunch)
+    quotes.setVisible(showFavorites || showSymbols || showSearch || coveringLaunch)
     // 冷启动第一屏就是自选页。趁用户在这儿看报价，把自选的 K 线、以及当前品种
     // 其他常用周期的 K 线先拉好，点进去、切周期第一帧就有图。
     market.prefetchFavorites(symbols, intervals: prefs.quickIntervals)
@@ -805,6 +830,7 @@ struct MainScreen: View {
     quotes.setForeground(phase != .background)
     picker.onPick = { info in
       showSymbols = false; showFavorites = false; showQuickFavorites = false
+      showSearch = false; searchAllPending = false
       launchCover = false; didLeaveLaunch = true
       if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
       crosshair = nil
@@ -833,6 +859,7 @@ struct MainScreen: View {
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
         else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
         showFavorites = false; showSymbols = false; showQuickFavorites = false
+        showSearch = false; searchAllPending = false
         // 换号要把首屏盖层也掀掉（别让人对着上一个账号的自选表）；但冷启动恢复
         // 登录态是同一条路走过来的第一次，那一次盖层必须留着，否则第一眼看到的
         // 就是行情页——这正是真机上「冷启动没进自选」的成因，模拟器没登录才看不出来。
