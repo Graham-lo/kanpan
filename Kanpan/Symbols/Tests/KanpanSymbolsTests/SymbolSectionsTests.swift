@@ -95,6 +95,38 @@ struct SymbolSectionsTests {
     #expect(s[0].rows.map(\.id) == ["ETHUSDT", "ETHFIUSDT", "ETHWUSDT"])
   }
 
+  /// 用户 2026-09-18：「首先选最匹配的，然后如果出现多个应该按照成交额来排序，
+  /// 这样用户如果不是输入全匹配的品种就可以第一时间搜到最热门的品种」。
+  @Test("搜索结果同档内按 24h 成交额降序")
+  func searchOrdersByTurnover() {
+    // 「USDT」只命中 quote 段，全是同一档；品种表原序不是成交额序，
+    // 所以这一组的次序只能来自成交额。
+    let rows = build(query: "USDT")[0].rows
+    #expect(rows.map(\.id) == ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
+                               "DOGEUSDT", "1000PEPEUSDT", "AVAXUSDT", "BCHUSDT",
+                               "LTCUSDT", "ETHFIUSDT", "ETHWUSDT"])
+    #expect(rows.map(\.quoteVolume) == rows.map(\.quoteVolume).sorted(by: >))
+  }
+
+  @Test("打全了的压过成交额：搜 eth，ETHUSDT 在最前")
+  func exactBeatsTurnover() {
+    // ETHFI / ETHW 的成交额都不如 ETH，但就算它们更大也该排在 ETHUSDT 后面——
+    // 这里把 ETHUSDT 的成交额压到最低来证明「最匹配」是第一顺位。
+    var t = tickers
+    t["ETHUSDT"] = Ticker(symbol: "ETHUSDT", last: 2_913.45, changePercent: -0.86,
+                          high: 3_000, low: 2_800, quoteVolume: 1)
+    let rows = SymbolSections.build(catalog: catalog, tickers: t,
+                                    prefs: SymbolPrefs(), query: "eth")[0].rows
+    #expect(rows.map(\.id) == ["ETHUSDT", "ETHFIUSDT", "ETHWUSDT"])
+  }
+
+  @Test("一条行情都没有时，搜索结果回落到品种表原序")
+  func searchWithoutTickersKeepsCatalogOrder() {
+    let rows = SymbolSections.build(catalog: catalog, tickers: [:],
+                                    prefs: SymbolPrefs(), query: "USDT")[0].rows
+    #expect(rows.map(\.id) == catalog.map(\.symbol))
+  }
+
   @Test("搜不到给空分区，页面自己去显示「没有这个品种」")
   func searchMiss() {
     let s = build(query: "zzzz")

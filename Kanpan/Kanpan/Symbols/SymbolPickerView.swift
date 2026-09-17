@@ -261,7 +261,7 @@ struct SymbolPickerView: View {
 
 // ============================================================ 一行
 
-private struct SymbolRowView: View {
+struct SymbolRowView: View {
   let row: SymbolRow
   let isFavorite: Bool
   let seed: PaletteSeed

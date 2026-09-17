@@ -12,6 +12,11 @@ import KanpanCore
 // 「base 前缀匹配排最前（搜 eth 先出 ETHUSDT 再出 ETHFIUSDT）」＋「匹配片段高亮」，
 // 所以名次和高亮按任务书补上——这是原型少做的一件事，不是和原型打架。
 // 差异已记在 docs/acceptance/M5/品种页.md。
+//
+// 排序分两层，用户 2026-09-18 定的：**先最匹配、再按 24h 成交额降序**。
+// 这里只管第一层（`Tier`，纯字面比较，不需要行情）；第二层要拿到 24h 成交额，
+// 落在 `SymbolSections.build` 里。这样打半个词也能第一眼看到最热门的那个，
+// 而不是撞上交易所原表里排在前面的冷门合约。
 
 /// 一条命中：品种 + 名次档 + 高亮片段。
 ///
@@ -25,17 +30,18 @@ struct SymbolMatch: Sendable, Equatable, Identifiable {
 
   var id: String { info.symbol }
 
-  /// 名次档，小的排前。同档保持原列表次序（稳定）。
+  /// 名次档，小的排前。同档之间由调用方按 24h 成交额排（`SymbolSections.build`）。
   enum Tier: Int, Sendable, Comparable, CaseIterable {
-    case basePrefix = 0        // 搜 ETH → ETHUSDT
-    case symbolPrefix = 1      // 搜 ETHU → ETHUSDT（base 不前缀，但 symbol 前缀）
-    case baseContains = 2      // 搜 TH  → ETHUSDT
-    case symbolContains = 3    // 搜 USD → 任何 USDT 对
+    case exact = 0             // 搜 ETH → ETHUSDT；搜 ETHUSDT → ETHUSDT
+    case basePrefix = 1        // 搜 ET  → ETHUSDT
+    case symbolPrefix = 2      // 搜 ETHU → ETHUSDT（base 不前缀，但 symbol 前缀）
+    case baseContains = 3      // 搜 TH  → ETHUSDT
+    case symbolContains = 4    // 搜 USD → 任何 USDT 对
 
     static func < (a: Tier, b: Tier) -> Bool { a.rawValue < b.rawValue }
   }
 
-  init(info: SymbolInfo, tier: Tier = .basePrefix, highlight: Range<Int>? = nil) {
+  init(info: SymbolInfo, tier: Tier = .exact, highlight: Range<Int>? = nil) {
     self.info = info
     self.tier = tier
     self.highlight = highlight
@@ -59,7 +65,8 @@ enum SymbolQuery {
       guard let m = match(info, query: q) else { continue }
       out.append((i, m))
     }
-    // 稳定排序：先比档，再比原序。
+    // 稳定排序：先比档，再比原序。同档内的成交额排序由 `SymbolSections.build`
+    // 接着做——这一层看不到行情，也不该为了排序把行情灌进来。
     return out
       .sorted { a, b in a.1.tier == b.1.tier ? a.0 < b.0 : a.1.tier < b.1.tier }
       .map(\.1)
@@ -77,8 +84,11 @@ enum SymbolQuery {
     // 原型的口径：symbol 含 或 base 含。base ⊂ symbol，所以 inSymbol 为空即落选。
     guard inBase != nil || inSymbol != nil else { return nil }
 
+    // 打全了就该排第一：搜 ETH 出 ETHUSDT，不能被 ETHFIUSDT 挤到后面去；
+    // 搜 ETHUSDT 也一样（用户 2026-09-18 定的「首先选最匹配的」）。
     let tier: SymbolMatch.Tier
-    if inBase == 0 { tier = .basePrefix }
+    if needle == base || needle == symbol { tier = .exact }
+    else if inBase == 0 { tier = .basePrefix }
     else if inSymbol == 0 { tier = .symbolPrefix }
     else if inBase != nil { tier = .baseContains }
     else { tier = .symbolContains }

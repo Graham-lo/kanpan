@@ -106,8 +106,18 @@ enum SymbolSections {
     // ---- 搜索态：只有一组，不分自选 / 最近 / 全部（同原型）
     let q = SymbolQuery.normalize(query)
     if !q.isEmpty {
-      let hits = SymbolQuery.match(catalog, query: q)
-      let shown = Array(hits.prefix(searchLimit)).map(row)
+      // 先最匹配，再按 24h 成交额降序（用户 2026-09-18 定的）。`SymbolQuery.match`
+      // 已经按档排好、同档里保着交易所原序，这儿只在同档内改用成交额，
+      // 成交额也一样（含都没有行情的）时回落到那个原序，排序仍然稳定。
+      let hits = SymbolQuery.match(catalog, query: q).map(row)
+        .enumerated()
+        .sorted { a, b in
+          if a.element.match.tier != b.element.match.tier { return a.element.match.tier < b.element.match.tier }
+          if a.element.quoteVolume != b.element.quoteVolume { return a.element.quoteVolume > b.element.quoteVolume }
+          return a.offset < b.offset
+        }
+        .map(\.element)
+      let shown = Array(hits.prefix(searchLimit))
       return [SymbolSection(kind: .search,
                             title: "搜到 \(hits.count) 个",
                             rows: shown,

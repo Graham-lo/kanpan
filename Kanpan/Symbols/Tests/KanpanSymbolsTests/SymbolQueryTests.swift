@@ -32,6 +32,16 @@ struct SymbolQueryTests {
     #expect(ids.firstIndex(of: "ETHUSDT")! < ids.firstIndex(of: "ETHFIUSDT")!)
   }
 
+  /// 用户 2026-09-18：「首先选最匹配的」。打全了的那个要压过同前缀的兄弟，
+  /// 哪怕兄弟在品种表里排得更靠前。
+  @Test("打全了的排第一档")
+  func exactWins() {
+    #expect(SymbolQuery.match(SymbolFixtures.info("ETHUSDT"), query: "ETH")?.tier == .exact)
+    #expect(SymbolQuery.match(SymbolFixtures.info("ETHUSDT"), query: "ETHUSDT")?.tier == .exact)
+    #expect(SymbolQuery.match(SymbolFixtures.info("ETHFIUSDT"), query: "ETH")?.tier == .basePrefix)
+    #expect(SymbolQuery.match(catalog, query: "eth").first?.id == "ETHUSDT")
+  }
+
   @Test("同档保持品种表原序（稳定排序）")
   func stableWithinTier() {
     // U 在这批里只会命中 quote 段（USDT），全是同一档
@@ -39,9 +49,10 @@ struct SymbolQueryTests {
     #expect(ids == catalog.map(\.symbol))
   }
 
-  @Test("四档名次各就各位")
+  @Test("五档名次各就各位")
   func tiers() {
-    #expect(SymbolQuery.match(SymbolFixtures.info("ETHUSDT"), query: "ETH")?.tier == .basePrefix)
+    #expect(SymbolQuery.match(SymbolFixtures.info("ETHUSDT"), query: "ETH")?.tier == .exact)
+    #expect(SymbolQuery.match(SymbolFixtures.info("ETHFIUSDT"), query: "ETH")?.tier == .basePrefix)
     #expect(SymbolQuery.match(SymbolFixtures.info("ETHUSDT"), query: "ETHU")?.tier == .symbolPrefix)
     #expect(SymbolQuery.match(SymbolFixtures.info("ETHFIUSDT"), query: "THF")?.tier == .baseContains)
     #expect(SymbolQuery.match(SymbolFixtures.info("BTCUSDT"), query: "SDT")?.tier == .symbolContains)
