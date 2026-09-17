@@ -310,15 +310,10 @@ public final class ChartView: UIView {
       && sameSeriesExceptLast(a.series, b.series)
   }
 
+  /// 搬到了 `BarSeries.samePrefix(as:)`：判定条件和从前逐字相同，只是在逐列比之前
+  /// 先看一眼前缀戳。留着这层壳是因为它是 `sameFrame` 的一部分，名字在这儿读着顺。
   private static func sameSeriesExceptLast(_ a: BarSeries, _ b: BarSeries) -> Bool {
-    guard a.symbol == b.symbol, a.interval == b.interval, a.t0 == b.t0, a.step == b.step,
-      a.count == b.count, a.count > 0, a.openTime == b.openTime
-    else { return a == b }
-    return a.open.dropLast().elementsEqual(b.open.dropLast())
-      && a.high.dropLast().elementsEqual(b.high.dropLast())
-      && a.low.dropLast().elementsEqual(b.low.dropLast())
-      && a.close.dropLast().elementsEqual(b.close.dropLast())
-      && a.volume.dropLast().elementsEqual(b.volume.dropLast())
+    a.samePrefix(as: b)
   }
 
   private static func sameLastBar(_ a: BarSeries, _ b: BarSeries) -> Bool {
@@ -332,17 +327,47 @@ public final class ChartView: UIView {
   // ---------------------------------------------------------------- DisplayLink
 
   private var link: CADisplayLink?
+  /// 上一次给 `link` 设的是不是高刷区间。只在真的换档时才写 `preferredFrameRateRange`。
+  private var linkWantsHighRate: Bool?
+
+  /// 跟手的那几种脏位来源：拖图、捏合、拖价格轴、拖副图轴、纵向平移、十字线跟手，
+  /// 外加惯性 / 回弹（`FlingRun` 走的是 `animation`）。
+  ///
+  /// tick、倒计时、外部换 state 这类「一帧刷一次」的不算——给它们 120 Hz 只是白烧电。
+  private var wantsHighFrameRate: Bool {
+    if animation != nil { return true }
+    guard !gesture.touches.isEmpty, let mode = gesture.mode else { return false }
+    switch mode {
+    case .pan, .pinch, .axisPrice, .subAxis, .verticalPan, .crosshair: return true
+    case .parentScroll, .autoFit: return false
+    }
+  }
 
   /// `CADisplayLink` 每帧只干一件事：把脏位刷成 `setNeedsDisplay`；没脏位就把自己停掉。
   /// 静止时不跑帧，这是 A3.12 的全部内容。
+  ///
+  /// 帧率区间按脏位来源分两档：手势 / 动画要 120 Hz（`Info.plist` 里的
+  /// `CADisableMinimumFrameDurationOnPhone` 把 iPhone 的 60 Hz 钳制解开了），
+  /// 其余单帧刷新压回 60 Hz。
   private func resumeLink() {
     if link == nil {
       let l = CADisplayLink(target: LinkProxy(self), selector: #selector(LinkProxy.tick))
-      l.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
       l.add(to: .main, forMode: .common)
       link = l
+      linkWantsHighRate = nil
     }
+    applyFrameRateRange()
     link?.isPaused = false
+  }
+
+  private func applyFrameRateRange() {
+    guard let link else { return }
+    let high = wantsHighFrameRate
+    guard linkWantsHighRate != high else { return }
+    linkWantsHighRate = high
+    link.preferredFrameRateRange = high
+      ? CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
+      : CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
   }
 
   /// 每帧跑一次的动画：惯性、回弹、十字线淡出这类自己会走完的东西。
@@ -358,7 +383,8 @@ public final class ChartView: UIView {
       // 用 `link.targetTimestamp` 而不是 `CACurrentMediaTime()`：动画该按这一帧
       // **将要显示**的时刻算位置，否则 120Hz 下每帧都慢半拍，甩起来有拖影。
       let now = link?.targetTimestamp ?? CACurrentMediaTime()
-      if step(now) { animation = nil }
+      // 动画演完就把帧率区间落回 60：`animation` 的 didSet 只在挂上时抬档。
+      if step(now) { animation = nil; applyFrameRateRange() }
     }
     if dirty.isEmpty {
       if animation == nil { link?.isPaused = true }

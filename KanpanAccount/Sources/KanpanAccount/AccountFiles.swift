@@ -23,7 +23,13 @@ import Foundation
   }
   /// Existing files survive corrupt/newer data; callers must handle failure explicitly.
   public static func write<T: Encodable>(_ value: T, to url: URL) throws {
-    let data = try JSONEncoder().encode(value)
+    try writeData(try JSONEncoder().encode(value), to: url)
+  }
+  /// 已经编码好的字节直接落盘。
+  ///
+  /// 编码在调用方做完，这里只剩建目录 + 原子写，因此不需要主线程——`SyncStore`
+  /// 的落盘队列就是用这个口子把「编码 + 写盘」整段挪出主线程的。
+  public nonisolated static func writeData(_ data: Data, to url: URL) throws {
     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
   }

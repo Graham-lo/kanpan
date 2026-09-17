@@ -29,12 +29,24 @@ public struct ChartRenderer {
   /// 平均 K 线的可见段。`kind == .candle` 时恒为 `nil`——默认路径一个数都不多算。
   public private(set) var heikin: HeikinSlice?
 
+  /// 同一份 `state` 下算出来的几何。见 `GeometryCache`。
+  private var geometry = GeometryCache()
+
   public init(state: ChartState) {
     self.state = state
     recalc()
   }
 
   private mutating func recalc(previous: ChartState? = nil) {
+    // 换了 state 就换一只新盒子：旧的那只留给还拿着旧值的副本，谁也串不到谁。
+    geometry = GeometryCache()
+    // 缓存键里塞上持仓量的身份。
+    //
+    // `IndicatorEngine.cacheKey` 只认「数据键|品种|周期|指标:参数|根数」，压根没有持仓量的
+    // 影子——只有持仓量变了（K 线、参数、根数都没动）的时候，`ensure` 会算出一模一样的键
+    // 然后直接返回，OI 那条副图就一直挂着旧值。把 `revision`（全局唯一）拼进数据键，
+    // 这种情况就能被认出来；而它本身不变的时候键也不变，不会平白多重建。
+    let dataKey = state.oi.map { "\(state.symbol.symbol)#oi\($0.revision)" } ?? state.symbol.symbol
     let seriesChanged = previous == nil || previous!.series != state.series
     let oiChanged = previous?.oi != state.oi
     let inputsChanged = seriesChanged || oiChanged || previous?.params != state.params
@@ -42,40 +54,59 @@ public struct ChartRenderer {
     // Same count does not imply same candles: REST can replace a stale snapshot,
     // and every live tick changes the last MA/MACD value.
     if let old = previous, seriesChanged || oiChanged {
-      if old.series.symbol == state.series.symbol,
-         old.series.interval == state.series.interval,
-         old.series.t0 == state.series.t0,
-         old.series.count == state.series.count,
-         old.series.openTime == state.series.openTime,
-         old.series.close.dropLast().elementsEqual(state.series.close.dropLast()),
-         old.series.high.dropLast().elementsEqual(state.series.high.dropLast()),
-         old.series.low.dropLast().elementsEqual(state.series.low.dropLast()),
-         old.series.volume.dropLast().elementsEqual(state.series.volume.dropLast()),
-         old.oi == state.oi {
-        engine.updateTail(series: state.series, oi: state.oi, dataKey: state.symbol.symbol)
+      // 从前这儿是「符号 / 周期 / t0 / 根数 / openTime 全等 + 四列 `dropLast` 逐个比」，
+      // 每个 tick 都是四趟 O(n)。`samePrefix` 先看前缀戳（`replaceLast` 会原样留着它），
+      // 对不上才退回同一套逐列比，所以判定只会更严不会更松——它比老条件多比了
+      // `open` 的前缀和 `step`，也就是「只有 open 的历史根被改了」这种情况
+      // 从前会错误地走增量，现在会老老实实重建。
+      // `isOneBarAfter`：新周期开盘（老的整条成了新的前缀）也走增量。从前这里只认
+      // 「根数相同」，所以每根新 K 线一落地就把十几条指标从头算一遍——而引擎的
+      // `updateTail` 本来就会处理追加（既有的 1000 轮随机逐位一致测试正是这么测的）。
+      if old.series.samePrefix(as: state.series) || state.series.isOneBarAfter(old.series),
+        old.oi == state.oi {
+        engine.updateTail(series: state.series, oi: state.oi, dataKey: dataKey)
       } else {
         engine = IndicatorEngine()
       }
     }
     if inputsChanged { engine.ensure(
       series: state.series, wanted: state.overlays + state.subs,
-      params: state.params, oi: state.oi, dataKey: state.symbol.symbol) }
+      params: state.params, oi: state.oi, dataKey: dataKey) }
     if seriesChanged || previous?.view != state.view || previous?.options.kind != state.options.kind {
       heikin = HeikinSlice.make(state: state)
     }
   }
 
   /// Mask outputs without changing their slots, periods, colors or computational dependencies.
+  ///
+  /// 一帧里图例、叠加、副图、价格区间会各问一遍同一个指标，所以结果存一份；
+  /// 被藏起来的那条线原本每次现开一条 n 长的 NaN 数组，现在整帧共用同一条。
   func displayed(_ id: IndicatorID) -> IndicatorResult? {
+    if let hit = geometry.displayed[id] { return hit }
+    let value = computeDisplayed(id)
+    geometry.displayed[id] = value
+    return value
+  }
+
+  private func computeDisplayed(_ id: IndicatorID) -> IndicatorResult? {
     guard var result = engine[id] else { return nil }
     let hidden = state.hiddenOutputs[id] ?? []
+    guard !hidden.isEmpty else { return result }
     for k in result.lines.indices where hidden.contains(k) {
-      result.lines[k] = Array(repeating: .nan, count: result.lines[k].count)
+      result.lines[k] = blankLine(result.lines[k].count)
     }
     if hidden.contains(result.lines.count), let histogram = result.histogram {
-      result.histogram = Array(repeating: .nan, count: histogram.count)
+      result.histogram = blankLine(histogram.count)
     }
     return result
+  }
+
+  /// 整帧共用的一条 NaN 线。数组是 COW，返回的是同一块内存，谁也不会去写它。
+  private func blankLine(_ n: Int) -> [Double] {
+    if let hit = geometry.blank, hit.count == n { return hit }
+    let value = [Double](repeating: .nan, count: n)
+    geometry.blank = value
+    return value
   }
 
   func indicatorColor(_ id: IndicatorID, _ index: Int) -> Hex {
@@ -94,6 +125,13 @@ public struct ChartRenderer {
 
   // Adaptive mode reserves legend rows, never changes pane allocation.
   func mainLegendInset(plotW: Double) -> Double {
+    if let hit = geometry.legendInset, hit.plotW == plotW { return hit.value }
+    let value = computeMainLegendInset(plotW: plotW)
+    geometry.legendInset = (plotW, value)
+    return value
+  }
+
+  private func computeMainLegendInset(plotW: Double) -> Double {
     guard state.options.adaptiveIndicators else { return AICoinBehavior.mainTopInset }
     var x = 8.0, rows = 1.0
     for id in state.overlays {
@@ -109,7 +147,37 @@ public struct ChartRenderer {
 
   // ---------------------------------------------------------------- 入口
 
+  /// 一帧里被反复问到的那几样几何。
+  ///
+  /// `layout` / `priceRange` / `mainLegendInset` / `overlayLines` 在**同一份 state** 下
+  /// 都是纯函数：同样的入参必然是同样的出参。可从前一帧要走一趟
+  /// `drawPlot` → `drawLive` → `drawCross`，三层各自算一遍，加上 `priceRange`
+  /// 内部还要回头再问两次 `layout`，一帧下来 core 的价格扫描跑 ≥8 次、`layout` ≥10 次——
+  /// 算的全是同一个数。
+  ///
+  /// 所以挂一只引用型备忘录：`ChartRenderer` 仍是值类型，但每次 `recalc`（也就是
+  /// 每次 `state` 变）都换一只新盒子，旧盒子跟着旧副本走，不会把上一份 state 的
+  /// 结果串到新的上面来。**这里存的是计算结果本身，不是近似或简化，像素一个不差。**
+  private final class GeometryCache {
+    var layout: (size: CGSize, value: Layout)?
+    var legendInset: (plotW: Double, value: Double)?
+    var overlayLines: [[Double]]?
+    var displayed: [IndicatorID: IndicatorResult?] = [:]
+    /// 被藏起来的输出统一指向的那条 NaN 线。
+    var blank: [Double]?
+    /// 手势探针会拿别的 `view` / `transform` 来问（`panPrice` 的自动区间、回弹预演），
+    /// 所以这里按入参存几条。条数极少（常见 1～2 条），线性找比哈希还快。
+    var ranges: [(size: CGSize, view: ViewWindow, transform: PriceTransform, value: PriceRange)] = []
+  }
+
   public func layout(size: CGSize) -> Layout {
+    if let hit = geometry.layout, hit.size == size { return hit.value }
+    let value = computeLayout(size: size)
+    geometry.layout = (size, value)
+    return value
+  }
+
+  private func computeLayout(size: CGSize) -> Layout {
     let mainWeight = ChartContentLayout.mainWeight(height: Double(size.height), control: state.options.portraitHeight, count: state.subs.count)
     let initial = Layout(width: Double(size.width), height: Double(size.height), subs: state.subs, subScale: state.subScale, mainWeight: mainWeight)
     // Height changes must not alter plot width/time mapping through padded-range label sizes.
@@ -137,13 +205,22 @@ public struct ChartRenderer {
 
   /// Probe another visible range using the same geometry and indicators.
   public func priceRange(size: CGSize, view: ViewWindow, transform: PriceTransform) -> PriceRange {
-    KanpanCore.priceRange(
+    for hit in geometry.ranges where hit.size == size && hit.view == view && hit.transform == transform {
+      return hit.value
+    }
+    // 从前这儿是 `paneHeight: layout(size:).main.h, topInset: ...layout(size:).plotW`，
+    // 一次调用把 `layout` 算两遍。算一次，两处都用它。
+    let L = layout(size: size)
+    let value = KanpanCore.priceRange(
       view: view, series: state.series, overlayValues: overlayLines(),
       // 画线关掉了就别再让它撑价格区间：一条看不见的线把蜡烛压扁，用户只会觉得图坏了。
       drawingPrices: [],
       transform: transform,
       extraPrices: heikin?.extremes ?? [], bias: state.options.bias,
-      paneHeight: layout(size: size).main.h, topInset: mainLegendInset(plotW: layout(size: size).plotW), anchorPrice: transform.isManual ? state.axisScaleAnchor : nil)
+      paneHeight: L.main.h, topInset: mainLegendInset(plotW: L.plotW), anchorPrice: transform.isManual ? state.axisScaleAnchor : nil)
+    if geometry.ranges.count >= 8 { geometry.ranges.removeFirst() }
+    geometry.ranges.append((size, view, transform, value))
+    return value
   }
 
   /// 底图：背景、网格、K 线、叠加、画线、最新价、副图、时间轴、图例。
@@ -270,7 +347,17 @@ public struct ChartRenderer {
   private var visible: (lo: Int, hi: Int) { visibleRange(view: state.view, series: state.series) }
 
   /// 进价格区间的那几条叠加线：MA / EMA 全部，BOLL 只要上下轨（原型 `priceRange`）。
+  ///
+  /// 只跟 `state.overlays` / `hiddenOutputs` 与 `engine` 有关，同一份 state 下恒定；
+  /// `layout` 与每次 `priceRange` 都要，所以存一份（数组是 COW，存的是引用不是拷贝）。
   private func overlayLines() -> [[Double]] {
+    if let hit = geometry.overlayLines { return hit }
+    let value = computeOverlayLines()
+    geometry.overlayLines = value
+    return value
+  }
+
+  private func computeOverlayLines() -> [[Double]] {
     var out: [[Double]] = []
     for id in state.overlays {
       guard let v = displayed(id) else { continue }
@@ -415,6 +502,15 @@ public struct ChartRenderer {
     ctx.addRect(CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
     ctx.clip()
     ctx.setLineCap(roundCap ? .round : .butt)
+    // 整帧不变的四种颜色：涨/跌的实体色、以及按 `tint` 兑淡后的影线色。
+    // 从前 `Paint.mix` 和 `Paint.cg` 都写在逐根循环里——一屏两百根就是两百次
+    // `String(format:)` 拼十六进制加两百次加锁查表，算出来的还都是同两个值。
+    // 这里提到循环外算一次，混色公式、入参、位数一个没动，像素完全一致。
+    let map = PriceMapping(range: r, mode: state.price.mode)
+    let cgBg = Paint.cg(t.bg)
+    let cgUp = Paint.cg(t.up), cgDown = Paint.cg(t.down)
+    let cgWickUp = tint < 1 ? Paint.cg(Paint.mix(t.bg, t.up, tint)) : cgUp
+    let cgWickDown = tint < 1 ? Paint.cg(Paint.mix(t.bg, t.down, tint)) : cgDown
     let rendering = AICoinBehavior.rendering(spacing: spacing, scale: s)
     if rendering == .closeLine {
       line(ctx, pane: pane, r: r, plotW: L.plotW, arr: b.close,
@@ -429,27 +525,27 @@ public struct ChartRenderer {
       // 平均 K 线只换这四个数，别处（最新价、指标、读数）一律还是真实价。
       let bar = ha?.bar(i) ?? (o: b.open[i], h: b.high[i], l: b.low[i], c: b.close[i])
       let up = bar.c >= bar.o
-      let col = up ? t.up : t.down
-      let wick = tint < 1 ? Paint.mix(t.bg, col, tint) : col
-      let highY = yOf(bar.h, pane, r), lowY = yOf(bar.l, pane, r)
+      let col = up ? cgUp : cgDown
+      let wick = up ? cgWickUp : cgWickDown
+      let highY = map.y(bar.h, pane: pane), lowY = map.y(bar.l, pane: pane)
       let yh = snap(min(highY, lowY), scale: s), yl = snap(max(highY, lowY), scale: s)
 
       // 影线：可以比实体淡，端头可以是圆的
       if roundCap && !m.thin {
-        ctx.setStrokeColor(Paint.cg(wick))
+        ctx.setStrokeColor(wick)
         ctx.setLineWidth(m.wickW)
         ctx.beginPath()
         ctx.move(to: CGPoint(x: hairline(xc, scale: s), y: yh + m.wickW / 2))
         ctx.addLine(to: CGPoint(x: hairline(xc, scale: s), y: yl - m.wickW / 2))
         ctx.strokePath()
       } else {
-        ctx.setFillColor(Paint.cg(wick))
+        ctx.setFillColor(wick)
         let xw = snap(xc - m.wickW / 2, scale: s)
         ctx.fill(CGRect(x: xw, y: yh, width: m.wickW, height: max(m.wickW, yl - yh)))
       }
       if rendering == .highLow { continue }
 
-      let yo = yOf(bar.o, pane, r), yc = yOf(bar.c, pane, r)
+      let yo = map.y(bar.o, pane: pane), yc = map.y(bar.c, pane: pane)
       let top = snap(min(yo, yc), scale: s)
       let h = max(minBodyH, snap(max(yo, yc), scale: s) - top)
       let xb = snap(xc - m.bodyW / 2, scale: s)
@@ -461,21 +557,21 @@ public struct ChartRenderer {
         ctx.setLineWidth(lw)
         if m.radius > 0 {
           ctx.addRoundRect(rect, radius: m.radius)
-          ctx.setFillColor(Paint.cg(t.bg))
-          ctx.setStrokeColor(Paint.cg(col))
+          ctx.setFillColor(cgBg)
+          ctx.setStrokeColor(col)
           ctx.drawPath(using: .fillStroke)
         } else {
-          ctx.setFillColor(Paint.cg(t.bg))
+          ctx.setFillColor(cgBg)
           ctx.fill(rect)
-          ctx.setStrokeColor(Paint.cg(col))
+          ctx.setStrokeColor(col)
           ctx.stroke(rect.insetBy(dx: lw / 2, dy: lw / 2), width: lw)
         }
       } else if m.radius > 0 && h > m.radius * 2 {
-        ctx.setFillColor(Paint.cg(col))
+        ctx.setFillColor(col)
         ctx.addRoundRect(rect, radius: m.radius)
         ctx.fillPath()
       } else {
-        ctx.setFillColor(Paint.cg(col))
+        ctx.setFillColor(col)
         ctx.fill(rect)
       }
     }
@@ -495,12 +591,14 @@ public struct ChartRenderer {
     ctx.setLineWidth(width)
     ctx.setLineJoin(.round)
     ctx.beginPath()
+    // 区间固定，`a`/`z` 只算一次；逐点还是原来那套算式（见 `PriceMapping`）。
+    let map = PriceMapping(range: r, mode: state.price.mode)
     var on = false
     for i in lo...hi where i < arr.count {
       let v = arr[i]
       if !v.isFinite { on = false; continue }
       let px = x(b.time(at: i), plotW: plotW)
-      let py = yOf(v, pane, r)
+      let py = map.y(v, pane: pane)
       if on { ctx.addLine(to: CGPoint(x: px, y: py)) } else { ctx.move(to: CGPoint(x: px, y: py)); on = true }
     }
     ctx.strokePath()

@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import KanpanCore
 import KanpanAccount
 import ReviewDomain
@@ -22,6 +23,18 @@ import ReviewUI
   private var debounce: Task<Void, Never>?
   private var applying = false
   private var symbol = ""
+  /// 上一次真的做过全量 bootstrap 的时刻。
+  private var lastBootstrap = Date.distantPast
+  /// 下一次同步必须做全量：登录 / 恢复会话 / 刚被服务端顶回来（版本冲突）之后置上。
+  private var needsBootstrap = true
+  /// 这个会话里已经按品种拉过画线的品种。切回老品种不再重复拉。
+  private var bootstrappedDrawings: Set<String> = []
+  /// 已经 prepare 过的属主。`.none` 是「一次都没 prepare 过」。
+  private var preparedOwner: UUID??
+  /// 两次全量 bootstrap 之间的最小间隔。
+  private static let bootstrapInterval: TimeInterval = 300
+  /// 服务端一次最多收 100 条操作（`Backend/kanpan-api/src/sync.rs:91`）。
+  private static let pushBatchLimit = 100
   var canApply: () -> Bool = { true }
   var onSwitch: () -> Void = {}
 
@@ -48,6 +61,11 @@ import ReviewUI
         updateStatus()
       } catch { account.syncStatus = error.localizedDescription }
     }
+    // 存档写盘走后台串行队列；退到后台时把排队的写全部落地，免得被系统挂起/回收时
+    // 最后一次 transaction 还停在内存里。
+    NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.sync?.flushNow() }
+    }
   }
   private func migrateLegacy() throws {
     let marker = files.root.appendingPathComponent("legacy-imported.json")
@@ -68,12 +86,17 @@ import ReviewUI
     try AccountFiles.write(true, to: marker)
   }
   private func prepare(_ user: AccountUser?) throws -> (@MainActor () -> Void) {
+    // 同一个属主重复 prepare 是纯浪费：整套读盘 + 解码 + ReviewStore 初始化白做一遍，
+    // 账号状态又原样换回去。冷启动的 `prepare(nil)` 和退登的 `prepare(nil)` 属主不同，
+    // 不会被这里挡掉（一次都没 prepare 过时 `preparedOwner` 是 `.none`）。
+    if let prepared = preparedOwner, prepared == user?.id, personal != nil { return {} }
     let directory = try files.directory(user: user?.id)
     let nextStorage = try PersonalFileStorage(directory: directory)
-    var nextPrefs = PrefsStore.load(from: nextStorage)
+    var nextPrefs = PrefsDecodeCache.load(from: nextStorage)
     var nextSymbols = SymbolPrefsStore(storage: nextStorage).load()
     let drawStore = DrawStore(url: directory.appendingPathComponent("draws.json"))
     var nextDrawings = try drawStore.read()
+    let loadedDrawings = nextDrawings
     let nextReview = try ReviewStore(directory: directory)
     let nextSync = user == nil ? nil : try SyncStore(directory: directory)
     let claim = try user.flatMap { try files.claimGuest(user: $0.id) }
@@ -107,7 +130,8 @@ import ReviewUI
       }
       if let nextSync {
         let imported = try [PersonalSyncCodec.settings(guestPrefs)] + PersonalSyncCodec.drawings(guestDrawings) + PersonalSyncCodec.symbols(guestSymbols)
-        for object in imported { try nextSync.capture(object, device: account.device.id, importing: claim.id) }
+        // 一次事务记完：逐条来的话这一档要被整份重写几十上百遍。
+        try nextSync.capture(imported, device: account.device.id, importing: claim.id)
       }
     }
     if let nextSync {
@@ -121,10 +145,14 @@ import ReviewUI
     }
     PersonalSyncCodec.keepDeviceFields(prefs.prefs, in: &nextPrefs)
     // Complete all fallible disk preparation before replacing any visible account state.
-    nextStorage.setPrefsData(PrefsCodec.encode(nextPrefs), forKey: PrefsCodec.key)
-    nextStorage.setSymbolPrefsData(try JSONEncoder().encode(nextSymbols), forKey: SymbolPrefsStore.defaultsKey)
+    // 这三份以前每次冷启动都原样重写一遍，只是为了「确保文件在」。读一次小 JSON 比
+    // 一次原子写（临时文件 + rename + fsync）便宜得多，只在内容真的不一样时才落盘。
+    let encodedPrefs = PrefsCodec.encode(nextPrefs)
+    if encodedPrefs != nextStorage.prefsData(forKey: PrefsCodec.key) { nextStorage.setPrefsData(encodedPrefs, forKey: PrefsCodec.key) }
+    let encodedSymbols = try JSONEncoder().encode(nextSymbols)
+    if encodedSymbols != nextStorage.symbolPrefsData(forKey: SymbolPrefsStore.defaultsKey) { nextStorage.setSymbolPrefsData(encodedSymbols, forKey: SymbolPrefsStore.defaultsKey) }
     if nextStorage.error != nil { throw AccountError.storage }
-    try drawStore.save(nextDrawings)
+    if nextDrawings != loadedDrawings { try drawStore.save(nextDrawings) }
     if let nextSync {
       let initial = try [PersonalSyncCodec.settings(nextPrefs)] + PersonalSyncCodec.drawings(nextDrawings) + PersonalSyncCodec.symbols(nextSymbols)
       try nextSync.transaction { archive in for object in initial where archive.local[object.key] == nil { archive.local[object.key] = object } }
@@ -139,6 +167,9 @@ import ReviewUI
       task?.cancel(); debounce?.cancel(); task = nil; taskID = UUID(); epoch = UUID(); applying = true
       onSwitch()
       owner = user?.id; personal = nextStorage; sync = nextSync
+      preparedOwner = .some(user?.id)
+      // 换属主之后本机拿到的是空档，下一次同步必须把服务端那份整份拉回来。
+      needsBootstrap = true; lastBootstrap = .distantPast; bootstrappedDrawings = []
       prefs.useStorage(nextStorage, prefs: nextPrefs)
       symbols.useStorage(SymbolPrefsStore(storage: nextStorage), prefs: nextSymbols)
       drawings.useStorage(drawStore, archive: nextDrawings)
@@ -153,8 +184,19 @@ import ReviewUI
     }
     return value
   }
+  /// 图上换了品种。
+  ///
+  /// 以前这里直接 `synchronize()`：推完待发操作还要无条件走一遍四个 collection 的
+  /// 全量 bootstrap 再加一次复盘同步，已登录用户每换一个品种就是五六次跨洋往返
+  /// 加好几次整档重写。现在只做两件事——有待发就推，以及**这个会话里第一次**
+  /// 看到这个品种时把它的画线拉一次（别的设备上画的线还是会出现，只是不再每次重拉）。
   func focus(_ symbol: String) {
-    guard self.symbol != symbol else { return }; self.symbol = symbol; synchronize()
+    guard self.symbol != symbol else { return }
+    self.symbol = symbol
+    guard let sync, owner != nil else { return }
+    let fresh = !symbol.isEmpty && !bootstrappedDrawings.contains(symbol)
+    guard fresh || !sync.archive.operations.isEmpty else { return }
+    run(fresh ? .drawings : .push, manual: false)
   }
   private func capture(_ objects: [SyncObject], collections: Set<String>) {
     guard !applying, owner != nil, let sync else { return }
@@ -162,11 +204,12 @@ import ReviewUI
       if let error = personal?.error { account.syncStatus = error; return }
       let keys = Set(objects.map(\.key))
       let deleted = sync.archive.local.values.filter { collections.contains($0.collection) && !keys.contains($0.key) && !$0.deleted }
-      for object in objects { try sync.capture(object, device: account.device.id) }
-      for var object in deleted { object.deleted = true; try sync.capture(object, device: account.device.id) }
+      // 一次事务记完：自选每条都带 `order`，往头部插一个品种会让后面每一条都变，
+      // 逐条 capture 等于整档重写 N 次。
+      try sync.capture(objects + deleted.map { var value = $0; value.deleted = true; return value }, device: account.device.id)
       updateStatus(); debounce?.cancel()
       debounce = Task { [weak self] in
-        try? await Task.sleep(for: .milliseconds(500)); guard !Task.isCancelled else { return }; self?.synchronize()
+        try? await Task.sleep(for: .milliseconds(500)); guard !Task.isCancelled else { return }; self?.run(.push, manual: false)
       }
     } catch { account.syncStatus = error.localizedDescription }
   }
@@ -176,7 +219,7 @@ import ReviewUI
   private func setAutoSync(_ enabled: Bool) {
     do {
       try sync?.transaction { $0.autoSync = enabled }; updateStatus()
-      if enabled { synchronize() } else { task?.cancel(); task = nil; taskID = UUID(); review.pauseAutomaticSync() }
+      if enabled { run(.push, manual: false) } else { task?.cancel(); task = nil; taskID = UUID(); review.pauseAutomaticSync() }
     } catch { account.syncStatus = error.localizedDescription }
   }
   private func updateStatus() {
@@ -185,7 +228,22 @@ import ReviewUI
     account.lastSync = sync?.archive.lastSync.map { Date(timeIntervalSince1970: Double($0) / 1000) }
     account.syncStatus = owner == nil ? "" : !account.autoSync ? "已暂停" : account.pending > 0 ? "待同步" : account.lastSync == nil ? "尚未同步" : "已同步"
   }
+  /// 这一轮同步做到哪一步。
+  private enum SyncPlan {
+    /// 只把待发操作推上去。切品种、本地改动去抖之后走这条。
+    case push
+    /// 推完再拉一次当前品种的画线（每个品种每个会话一次）。
+    case drawings
+    /// 推完拉四档全量，再带一次复盘同步。只在登录 / 恢复会话 / 手动同步 /
+    /// 距上次全量 ≥5 分钟的回前台 / 被服务端顶回来之后发生。
+    case full
+  }
+  /// 外部（回前台、设置页、登录回调）唯一的入口。到点了才做全量。
   func synchronize(manual: Bool = false) {
+    let due = needsBootstrap || Date().timeIntervalSince(lastBootstrap) >= Self.bootstrapInterval
+    run(manual || due ? .full : .push, manual: manual)
+  }
+  private func run(_ plan: SyncPlan, manual: Bool) {
     guard task == nil, let sync, let api = account.client, owner != nil, manual || sync.archive.autoSync else { return }
     let requestEpoch = epoch; let requestedSymbol = symbol
     let runID = UUID(); taskID = runID
@@ -195,18 +253,34 @@ import ReviewUI
       defer {
         if requestEpoch == epoch && taskID == runID {
           task = nil
-          if requestedSymbol != symbol { synchronize() }
+          // 这一轮跑的时候用户又换了品种：补一次，但只补新品种要的那点。
+          if requestedSymbol != symbol {
+            let fresh = !symbol.isEmpty && !bootstrappedDrawings.contains(symbol)
+            if fresh || !sync.archive.operations.isEmpty { run(fresh ? .drawings : .push, manual: false) }
+          }
         }
       }
       do {
-        while let op = sync.archive.operations.first {
-          try Task.checkCancellation(); try sync.markSent(op.id)
+        // 一次一批，最多 100 条（服务端上限）。幂等落在每条操作的 id 上，
+        // 整批重发时已生效的那几条按 digest 原样返回，不会重复应用。
+        while !sync.archive.operations.isEmpty {
+          try Task.checkCancellation()
+          let batch = Array(sync.archive.operations.prefix(Self.pushBatchLimit))
+          let before = sync.archive.operations.count
+          try sync.markSent(batch.map(\.id))
           struct Push: Encodable { var operations: [SyncOperation] }
-          let result: SyncPushResponse = try await api.request("v1/sync/operations", method: "POST", body: JSONEncoder().encode(Push(operations: [op])), key: op.id)
+          let result: SyncPushResponse = try await api.request("v1/sync/operations", method: "POST", body: JSONEncoder().encode(Push(operations: batch)), key: batch[0].id)
           try Task.checkCancellation(); guard requestEpoch == epoch && taskID == runID else { return }
           try sync.acknowledge(result)
+          // 服务端没认掉任何一条就别空转。
+          guard sync.archive.operations.count < before else { break }
         }
-        let scopes = ["settings", "drawingPreferences", "favorites", "groups"] + (requestedSymbol.isEmpty ? [] : ["drawings"])
+        var scopes: [String] = []
+        switch plan {
+        case .push: scopes = []
+        case .drawings: scopes = requestedSymbol.isEmpty ? [] : ["drawings"]
+        case .full: scopes = ["settings", "drawingPreferences", "favorites", "groups"] + (requestedSymbol.isEmpty ? [] : ["drawings"])
+        }
         for collection in scopes {
           var after: String?
           repeat {
@@ -219,10 +293,18 @@ import ReviewUI
             try sync.receive(page); after = page.next
           } while after != nil
         }
+        if scopes.contains("drawings") { bootstrappedDrawings.insert(requestedSymbol) }
+        if case .full = plan { needsBootstrap = false; lastBootstrap = Date() }
         try sync.transaction { $0.lastSync = Int64(Date().timeIntervalSince1970 * 1000) }
-        try applyPending(); updateStatus(); review.synchronize(manual: manual)
+        try applyPending(); updateStatus()
+        // 复盘同步只跟着全量走：登录 / 恢复会话 / 手动 / 到点的回前台。
+        if case .full = plan { review.synchronize(manual: manual) }
       } catch is CancellationError { if requestEpoch == epoch && taskID == runID { updateStatus() } }
-      catch { if requestEpoch == epoch && taskID == runID { account.pending = sync.archive.operations.count; account.syncStatus = error.localizedDescription } }
+      catch {
+        // 被服务端按版本顶回来了：本机这份不再可信，下一轮必须整份重拉。
+        if case AccountError.http(let code, _) = error, (400..<500).contains(code), code != 401, code != 429 { needsBootstrap = true }
+        if requestEpoch == epoch && taskID == runID { account.pending = sync.archive.operations.count; account.syncStatus = error.localizedDescription }
+      }
     }
   }
   func applyPending() throws {

@@ -10,6 +10,19 @@ public actor RoutedMarketFeed {
   private var freshHistory = false
   private let primary: BinanceREST
   private let backup: BinanceREST
+  /// WS 工厂。默认就是真 `URLSessionSocketFactory`，测试里注假件。
+  private let sockets: any WSSocketFactory
+  /// 行情线路策略。见 `MarketRoutePolicy`。
+  private var policy: MarketRoutePolicy
+  /// 自己听 `marketRoutePolicyDidChange`，app 侧改完设置就不用再管了。
+  private nonisolated(unsafe) var policyObserver: (any NSObjectProtocol)?
+  /// 整条路由共用的一份内存缓存。
+  ///
+  /// 原来每次 `activate` 都 `MarketFeed(...)` 一个新的，而 `cache` 是有默认值的
+  /// 参数——于是每换一次线路（币安 ↔ OKX、每一次自动重建 feed）内存缓存就被清零，
+  /// 「本次会话里切回去不重拉」这件事在换线路之后完全失效。缓存本来就是按
+  /// (品种, 周期) 建键的，跨线路共用没有混源问题：一次只有一条线路在写。
+  private let cache = BarCache()
   private var source: MarketSource = .binance
   private var feed: MarketFeed?
   private var pump: Task<Void, Never>?
@@ -39,9 +52,61 @@ public actor RoutedMarketFeed {
   public init(hosts: BinanceHosts, paths: Paths = .caches(), preferenceURL: URL? = nil, log: FeedLog = .silent) {
     self.hosts = hosts; self.paths = paths; self.log = log
     self.preferenceURL = preferenceURL ?? paths.root.appendingPathComponent("market-source.json")
+    let policy = MarketRoutePolicyStore.current
+    self.policy = policy
+    self.sockets = URLSessionSocketFactory()
     if let data = try? Data(contentsOf: self.preferenceURL), let saved = try? JSONDecoder().decode(MarketSource.self, from: data) { source = saved }
-    primary = .upstream(.binance, hosts: hosts, log: log)
-    backup = .upstream(.okx, hosts: hosts, log: log)
+    // 「直连」下 OKX 不是一个合法的落点：上次退到 OKX 存下来的偏好也不算数，
+    // 开机就回币安，不用等 `MarketRecoverySchedule` 排的 5/10/15 分钟。
+    if policy == .direct { source = .binance }
+    primary = .upstream(.binance, hosts: hosts, log: log, policy: policy)
+    backup = .upstream(.okx, hosts: hosts, log: log, policy: policy)
+    observePolicy()
+  }
+
+  /// 测试注入：两条线路的 REST 与 socket 工厂全换成假件，整条路由就能离线跑。
+  init(hosts: BinanceHosts, paths: Paths, preferenceURL: URL? = nil, log: FeedLog = .silent,
+       primary: BinanceREST, backup: BinanceREST, sockets: any WSSocketFactory,
+       policy: MarketRoutePolicy) {
+    self.hosts = hosts; self.paths = paths; self.log = log
+    self.preferenceURL = preferenceURL ?? paths.root.appendingPathComponent("market-source.json")
+    self.policy = policy
+    self.sockets = sockets
+    if let data = try? Data(contentsOf: self.preferenceURL), let saved = try? JSONDecoder().decode(MarketSource.self, from: data) { source = saved }
+    if policy == .direct { source = .binance }
+    self.primary = primary
+    self.backup = backup
+  }
+
+  private nonisolated func observePolicy() {
+    policyObserver = NotificationCenter.default.addObserver(
+      forName: .marketRoutePolicyDidChange, object: nil, queue: nil) { [weak self] _ in
+        let next = MarketRoutePolicyStore.current
+        Task { await self?.setRoutePolicy(next) }
+      }
+  }
+
+  deinit {
+    if let policyObserver { NotificationCenter.default.removeObserver(policyObserver) }
+  }
+
+  /// 换线路策略：转给两条线路的 transport，并且立刻把「直连」该有的样子摆正。
+  public func setRoutePolicy(_ policy: MarketRoutePolicy) async {
+    let changed = self.policy != policy
+    self.policy = policy
+    await primary.setRoutePolicy(policy)
+    await backup.setRoutePolicy(policy)
+    // 用户刚说了「我这网能直连」，那就别让他再等恢复排期——现在就回币安。
+    if policy == .direct, source == .okx, !symbol.isEmpty {
+      announceSwitch()
+      await activate(.binance)
+      return
+    }
+    // 其他改法也不等下一次换品种：当前线路原地重开一次，socket 工厂才拿得到新策略。
+    // 不然 REST 已经改走网关了，已经连着的直连 WS 还会一直挂到下次重连——
+    // 「网关」就成了只管历史不管实时的半个开关。重开顺带把旧策略留下的
+    // 判断（比如正在等网关竞速）一起清掉。
+    if changed, !symbol.isEmpty { announceSwitch(); await activate(source) }
   }
   public func events() -> AsyncStream<FeedUpdate> {
     let (stream, sink) = AsyncStream<FeedUpdate>.makeStream(); continuation = sink; return stream
@@ -87,11 +152,25 @@ public actor RoutedMarketFeed {
     source = next; recovery = MarketRecoverySchedule()
     let rest = next == .binance ? primary : backup
     var directHosts = hosts; directHosts.streamFallbacks = []
-    let ws = BinanceWS(hosts: directHosts, factory: SourceSocketFactory(source: next, hosts: hosts), silenceMs: 15_000, log: log)
+    let ws = BinanceWS(hosts: directHosts,
+                       factory: SourceSocketFactory(source: next, hosts: hosts, factory: sockets, policy: policy),
+                       silenceMs: 15_000, log: log)
     let sourcePaths = next == .binance ? paths : Paths(root: paths.root.appendingPathComponent("sources/okx"))
-    let created = MarketFeed(rest: rest, ws: ws,
+    // 首屏要多深，两条线路不一样：
+    //
+    // 直连币安：一次就要满深度（`deepenTarget` 会被夹到单请求上限 1500 根）。
+    // `MarketFeed.fillOnce` 看见 `initialLimit > firstScreenLimit` 会另外并行发一发
+    // 300 根的小页，谁先回谁先画——弱网上先看见图，满深度回来再铺开。原来这里写死
+    // 300，那个条件永远不成立，两段式等于没开，而且满深度要等后台加深那一页（1.2 秒
+    // 之后才发）才到手。请求数没变：以前是 300 + 加深一页，现在是 300 小页 + 1500 满页。
+    //
+    // OKX：网关只有「最新窗口且 limit ≤ 300」才是一次请求，再深就要在 VPS 上按 100 根
+    // 翻十几页拼出来（见 Backend/kanpan-gateway/market_rest.py 的 klines 分支），首屏
+    // 反而更慢、还平白给线上网关加活儿。所以 OKX 仍旧只要 300 根，深度交给后台加深。
+    let initial = next == .binance ? MarketFeed.deepenTarget : MarketFeed.firstScreenLimit
+    let created = MarketFeed(rest: rest, ws: ws, cache: cache,
       paths: sourcePaths,
-      includeTicker: next == .binance, initialLimit: 300, log: log)
+      includeTicker: next == .binance, initialLimit: initial, log: log)
     feed = created
     await created.setSnapshotEnabled(snapshots)
     let stream = await created.events()
@@ -140,6 +219,8 @@ public actor RoutedMarketFeed {
   private var savedSource: MarketSource?
   private func saveSourceIfReady() {
     guard freshHistory, pendingStatus == .live, publishedRoute == route else { return }
+    // 「直连」下 OKX 只可能是策略切换途中的残留，别把它写成下次开机的起点。
+    guard !(policy == .direct && source == .okx) else { return }
     if announcingSwitch {
       announcingSwitch = false
       continuation?.yield(FeedUpdate(selection: selection, event: .routing(.switched)))
@@ -155,7 +236,7 @@ public actor RoutedMarketFeed {
                        requireStream: Bool = true) async -> Bool {
     let rest = candidate == .binance ? primary : backup
     let boundary = historyBoundary
-    let streamFactory = SourceSocketFactory(source: candidate, hosts: hosts)
+    let streamFactory = SourceSocketFactory(source: candidate, hosts: hosts, factory: sockets, policy: policy)
     let streamURL = hosts.combinedStream([
       BinanceHosts.klineStream(symbol: symbol, interval: interval.source.rawValue)
     ])
@@ -240,6 +321,11 @@ public actor RoutedMarketFeed {
       // health check is still kept for WS-only failures where REST has not
       // conclusively failed yet.
       var fallbackReady = false
+      // 「直连」是用户按下的：币安探不通就照实说「点此重试」，不许偷偷换成 OKX。
+      if policy == .direct {
+        if !primaryReady, pendingHistoryError != nil { unavailable(request) }
+        return
+      }
       if !primaryReady, !hosts.oiProxies.isEmpty {
         fallbackReady = pendingHistoryError != nil
           ? true
@@ -308,18 +394,24 @@ public actor RoutedMarketFeed {
     warmTask = run(jobs: jobs, delayMs: 2500)
   }
 
-  /// 预热的活儿本身：挨个拉回来写盘。只花请求和磁盘，不占内存。
+  /// 预热的活儿本身：挨个拉回来，写盘**并且**塞进内存缓存。
+  ///
+  /// 原来只写盘。可点进一个预热过的品种时，`MarketFeed.switchTo` 先问的是内存缓存，
+  /// 问不到才去读盘——等于每次都要走一趟「开文件 + 解码 + 改 mtime」。
+  /// 一份 300 根只有 14KB，20 份合计不到 300KB，放内存里完全划得来。
   private func run(jobs: [(symbol: String, interval: Interval)], delayMs: Int) -> Task<Void, Never>? {
     guard !jobs.isEmpty else { return nil }
     let rest = source == .binance ? primary : backup
     let dir = (source == .binance ? paths : Paths(root: paths.root.appendingPathComponent("sources/okx"))).series
     let log = self.log
+    let cache = self.cache
     return Task.detached(priority: .utility) {
       if delayMs > 0 {
         try? await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
         guard !Task.isCancelled else { return }
       }
       var done = 0
+      var skipped = 0
       for job in jobs {
         guard !Task.isCancelled else { return }
         // 已经有一份够新的就跳过——落后不到几根的快照，点进去照样是秒开。
@@ -329,16 +421,40 @@ public actor RoutedMarketFeed {
         do {
           let bars = try await rest.klines(symbol: job.symbol, interval: job.interval, limit: MarketFeed.firstScreenLimit)
           guard !bars.isEmpty else { continue }
-          _ = try SeriesStore.write(BarSeries(symbol: job.symbol, interval: job.interval, bars: BinanceREST.dedup(bars)), in: dir)
+          let series = BarSeries(symbol: job.symbol, interval: job.interval, bars: BinanceREST.dedup(bars))
+          _ = try SeriesStore.write(series, in: dir)
+          await cache.put(series)
           done += 1
         } catch {
-          // 一个失败多半意味着线路本身不行，后面几个也别再试了。
+          // 原来是「一个失败就整轮收工」。可自选里留着一个已下市的代号
+          // （币安回 400 `Invalid symbol`）就会把后面十几个全带走——
+          // 用户永远不知道，只觉得「有些品种点进去总是要转圈」。
+          //
+          // 现在分开看：这一个自己的问题（4xx，代号没了 / 参数不对）就跳过它接着干；
+          // 只有线路层面的问题（超时、断网、429、5xx）才停——那种情况下
+          // 后面几个确实也没戏，接着打只会把限流器顶得更死。
+          if RoutedMarketFeed.skippable(error) {
+            skipped += 1
+            log("预热跳过 \(job.symbol) \(job.interval.rawValue)：\(error)")
+            continue
+          }
           log("预热停在 \(job.symbol) \(job.interval.rawValue)：\(error)")
-          return
+          break
         }
       }
-      log("预热 \(done)/\(jobs.count) 份快照")
+      log("预热 \(done)/\(jobs.count) 份快照\(skipped > 0 ? "，跳过 \(skipped) 个" : "")")
     }
+  }
+
+  /// 这个错误只是「这一个品种不行」，还是「整条线路不行」。
+  ///
+  /// 只有前者才跳过接着干。判据取严：**确知**是单品种问题（4xx，但不含 408 超时
+  /// 和 418/429 限流）才算跳过，其余一律当线路问题停下——宁可少预热几份，
+  /// 也不要在网络已经不行的时候接着打二十发。
+  nonisolated static func skippable(_ error: any Error) -> Bool {
+    guard let e = error as? BinanceError else { return false }
+    guard (400..<500).contains(e.status) else { return false }
+    return !e.isRateLimited && e.status != 408
   }
 
   /// Retry the currently selected source after a visible history failure.

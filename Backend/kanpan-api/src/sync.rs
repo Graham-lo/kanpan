@@ -135,15 +135,23 @@ async fn changes(State(s):State<AppState>,i:Identity,Query(v):Query<Scope>)->Res
  if let Some(c)=&v.collection{collection(c)?}
  let cursor=v.cursor.unwrap_or(0);if cursor<0{return Err(ApiError::bad("invalid_cursor"))}
  let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
- let rows=sqlx::query("SELECT sequence,collection,object_id,revision,deleted FROM sync_changes WHERE user_id=$1 AND sequence>$2 ORDER BY sequence LIMIT 201").bind(i.user).bind(cursor).fetch_all(&mut *tx).await?;
+ // One join instead of one query per changed row. A device coming back after a
+ // long trip made up to 201 extra round trips inside a single locked
+ // transaction, which is also how long every other device of that user waited.
+ // The join condition carries the subscription filter, so a row outside the
+ // scope simply has no object attached and stays an invalidation.
+ let rows=sqlx::query("SELECT c.sequence,c.collection,c.object_id,c.revision,c.deleted,o.body AS current_body,o.fields AS current_fields,o.revision AS current_revision,o.deleted AS current_deleted,o.generation AS current_generation FROM sync_changes c LEFT JOIN sync_objects o ON o.user_id=c.user_id AND o.collection=c.collection AND o.id=c.object_id AND c.collection IS NOT DISTINCT FROM $3::text AND ($4::text IS NULL OR starts_with(c.object_id,$4)) WHERE c.user_id=$1 AND c.sequence>$2 ORDER BY c.sequence LIMIT 201")
+  .bind(i.user).bind(cursor).bind(v.collection.as_deref()).bind(v.prefix.as_deref()).fetch_all(&mut *tx).await?;
  let has_more=rows.len()>200;let next=rows.iter().take(200).last().map(|r|r.get::<i64,_>("sequence")).unwrap_or(cursor);
  let mut items=vec![];let mut invalidations=vec![];
  for r in rows.iter().take(200) {
   let c:String=r.get("collection");let id:String=r.get("object_id");
   let subscribed=v.collection.as_ref().is_some_and(|want|want==&c)&&v.prefix.as_ref().is_none_or(|p|id.starts_with(p));
   if subscribed {
-   let current=sqlx::query("SELECT * FROM sync_objects WHERE user_id=$1 AND collection=$2 AND id=$3").bind(i.user).bind(&c).bind(&id).fetch_one(&mut *tx).await?;
-   items.push(object(&current)?);
+   // Absent here means the object row vanished under us, which the old
+   // fetch_one reported the same way.
+   let body:Option<Value>=r.get("current_body");let body=body.ok_or(sqlx::Error::RowNotFound)?;
+   items.push(Object{collection:c,id,body:serde_json::from_value(body)?,fields:serde_json::from_value(r.get::<Value,_>("current_fields"))?,revision:r.get("current_revision"),deleted:r.get("current_deleted"),generation:r.get("current_generation")});
   }else{invalidations.push(json!({"collection":c,"id":id,"deleted":r.get::<bool,_>("deleted"),"revision":r.get::<i64,_>("revision")}));}
  }
  tx.commit().await?;Ok(envelope(json!({"objects":items,"invalidations":invalidations,"cursor":next,"hasMore":has_more,"serverTime":Utc::now().timestamp_millis()})))

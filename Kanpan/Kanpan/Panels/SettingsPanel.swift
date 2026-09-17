@@ -24,6 +24,8 @@ struct SettingsPanel: View {
   @Environment(\.panelTheme) private var t
   @Environment(\.accountFeature) private var account
   @State private var clearing = false
+  /// 行情线路不走 `Prefs`：它只有一个键，而且要能在 `KanpanData` 那边被直接读到。
+  @State private var routePolicy = MarketRoutePolicyStore.current
 
   private var prefs: Prefs { store.prefs }
 
@@ -72,6 +74,17 @@ struct SettingsPanel: View {
       switchRow("启动快照", "先显示上次图表", prefs.launchSnapshot) { $0.launchSnapshot = $1 }
         .accessibilityIdentifier("settings.launchSnapshot")
 
+      // 「自动」是原来那套对冲 + 自动切源。可它偶尔会把一次探测失败当成
+      // 「这台机器上不去币安」，整套换到 OKX 还要等好几分钟才肯回头——
+      // 用户自己知道他这条网通不通，这一行是让他说了算。
+      PanelRow(name: "行情线路") {
+        PanelSegment(options: SettingsPanel.routes, selection: routePolicy,
+                     id: "settings.routePolicy") { v in
+          routePolicy = v
+          MarketRoutePolicyStore.set(v)
+        }
+      }
+
       cacheRow
 
       // 不弹确认框：确认框把「点错了」的代价前置给每一次点击，而这件事本来就
@@ -88,6 +101,7 @@ struct SettingsPanel: View {
     }
     .panelToast(store)
     .sensoryFeedback(.selection, trigger: prefs)
+    .sensoryFeedback(.selection, trigger: routePolicy)
   }
 
   // MARK: - 行
@@ -143,6 +157,10 @@ struct SettingsPanel: View {
 
   /// A6.9。原型写的是 本地 / UTC / 交易所——任务书写的是 设备 / UTC+8 / UTC，以原型为准。
   static let zones: [(String, TZChoice)] = [("本地", .local), ("UTC", .utc), ("交易所", .exchange)]
+
+  /// 行情线路三档。顺序照 `MarketRoutePolicy.allCases`：自动 / 直连 / 网关。
+  static let routes: [(String, MarketRoutePolicy)] =
+    MarketRoutePolicy.allCases.map { ($0.title, $0) }
 }
 
 #Preview("设置") {

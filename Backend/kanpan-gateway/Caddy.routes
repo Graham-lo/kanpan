@@ -7,11 +7,15 @@ handle @market {
 }
 @archive path /oi/v1/metrics/* /market/v1/* /chart-gateway/health
 handle @archive {
+    # Kline pages and OI ranges are highly compressible JSON; the phone pays for
+    # every byte over mobile data. Never applied to the 8793 WebSocket site.
+    encode zstd gzip
     reverse_proxy 127.0.0.1:8792 {
         header_up X-Kanpan-Client-IP {remote_host}
     }
 }
 @account path /v1/auth/* /v1/sync/* /v1/native-review/* /v1/capabilities
 handle @account {
+    encode zstd gzip
     reverse_proxy 127.0.0.1:8794
 }

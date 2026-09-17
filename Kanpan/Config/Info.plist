@@ -15,5 +15,14 @@
 <dict>
   <key>KanpanAccountAPIURL</key>
   <string>https://kanpan.107-174-172-10.sslip.io</string>
+  <!--
+    不加这一条，ProMotion 的 iPhone 上 CADisplayLink 会被系统钳死在 60 Hz：
+    `preferredFrameRateRange(80…120)` 照样能设，但一帧都不会多给。
+    图表拖 / 捏 / 甩全靠 DisplayLink 推帧，钳在 60 Hz 就是「跟手一半」。
+    iPad 不受此限制，这个键只对 iPhone 生效；副作用是静止时也允许高刷，
+    所以 `ChartView.resumeLink()` 必须按脏位来源把非手势帧压回 60。
+  -->
+  <key>CADisableMinimumFrameDurationOnPhone</key>
+  <true/>
 </dict>
 </plist>

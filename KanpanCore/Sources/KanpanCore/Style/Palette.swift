@@ -171,9 +171,28 @@ public enum Palette: Sendable {
   }
 
   /// 由原始令牌推出图表用色，逐行对应原型 `expand()`。
+  ///
+  /// `ChartState.colors` 是个计算属性，画一帧要读几十次；每读一次 `expanded` 就重拼
+  /// 一遍 `.alpha()` 的十六进制串、重建一次调色板数组。可全仓一共就四套种子，
+  /// 结果永远是同样几份。这里挂一张小表：种子数量有限，线性比 `==` 就够，
+  /// 不用给 `PaletteSeed` 加 `Hashable`（那是公开 API，能不动就不动）。
+  private nonisolated(unsafe) static var chartCache: [(seed: PaletteSeed, redUp: Bool, value: ChartColors)] = []
+  private static let chartCacheLock = NSLock()
+
   public static func chart(_ t: PaletteSeed, redUp: Bool = false) -> ChartColors {
+    chartCacheLock.lock()
+    if let hit = chartCache.first(where: { $0.redUp == redUp && $0.seed == t }) {
+      chartCacheLock.unlock()
+      return hit.value
+    }
+    chartCacheLock.unlock()
     var result = expanded(t)
     if redUp { swap(&result.up, &result.down) }
+    chartCacheLock.lock()
+    // 皮肤是用户挑的，种类有限；真要被自定义种子撑大了就整只倒掉重来。
+    if chartCache.count >= 32 { chartCache.removeAll(keepingCapacity: true) }
+    chartCache.append((t, redUp, result))
+    chartCacheLock.unlock()
     return result
   }
 

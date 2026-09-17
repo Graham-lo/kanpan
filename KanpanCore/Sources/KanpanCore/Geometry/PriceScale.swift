@@ -146,6 +146,36 @@ public func priceRange(
   }
 }
 
+/// 一帧里固定不变的那半个 `yOf`。
+///
+/// `yOf` 每次都要把区间上下沿再 `forward` 一遍——对数轴上就是两次 `log()`，
+/// 而一根蜡烛要问四次 y（开高低收），一屏两百根就是一千六百次白算的 `log()`。
+/// 区间和模式在一帧里是定死的，这里把 `a`/`z` 先算出来，剩下的算式和 `yOf`
+/// 逐字一致（连括号顺序都没动），所以结果是逐位相同的，不是「近似相同」。
+///
+/// 只给热循环用；零星几处照旧调 `yOf` 就行。
+public struct PriceMapping: Sendable {
+  public let mode: PriceMode
+  public let base: Double
+  public let a: Double
+  public let z: Double
+  public let inverted: Bool
+
+  public init(range: PriceRange, mode: PriceMode) {
+    self.mode = mode
+    self.base = range.base
+    self.a = mode.forward(range.lo, base: range.base)
+    self.z = mode.forward(range.hi, base: range.base)
+    self.inverted = range.inverted
+  }
+
+  public func y(_ p: Double, pane: Pane) -> Double {
+    let f = mode.forward(p, base: base)
+    let fraction = (f - a) / (z - a)
+    return pane.y + (inverted ? fraction : 1 - fraction) * pane.h
+  }
+}
+
 /// 价格 → y（在 pane 内）。
 public func yOf(_ p: Double, pane: Pane, range: PriceRange, mode: PriceMode) -> Double {
   let a = mode.forward(range.lo, base: range.base)

@@ -5,10 +5,24 @@ set -euo pipefail
 
 DEVICE="$1"
 OUT="${2:-docs/acceptance/shots}"
-APP="DerivedData/Build/Products/Debug-iphonesimulator/Kanpan.app"
+# RELEASE=1 时装 Release 包。Debug 包关了优化、开了运行时检查，拿它量帧率不作数；
+# 取证截图与帧率取证要走同一条路，所以开关放在这里而不是再复制一份脚本。
+if [ "${RELEASE:-0}" = "1" ]; then
+  CONFIG="Release"
+else
+  CONFIG="Debug"
+fi
+APP="DerivedData/Build/Products/${CONFIG}-iphonesimulator/Kanpan.app"
 BUNDLE="com.mdd.kanpan"
 
-[ -d "$APP" ] || { echo "没找到 $APP，先跑 make build"; exit 1; }
+[ -d "$APP" ] || {
+  if [ "$CONFIG" = "Release" ]; then
+    echo "没找到 $APP，先跑：xcodebuild build -workspace Kanpan.xcworkspace -scheme Kanpan -configuration Release -destination 'platform=iOS Simulator,name=$DEVICE' -derivedDataPath DerivedData"
+  else
+    echo "没找到 $APP，先跑 make build"
+  fi
+  exit 1
+}
 
 slug=$(echo "$DEVICE" | tr ' ' '-' | tr -d '()')
 

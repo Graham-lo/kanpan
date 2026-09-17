@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 import unittest
 from aiohttp import ClientSession, WSServerHandshakeError, WSMsgType, web
 from stream_hub import Hub, Peer, Pending, app_for, streams, client_key
@@ -40,13 +41,30 @@ class BudgetTests(unittest.TestCase):
         self.assertEqual(client_key(request), '192.0.2.1')
 
     def test_http_isolation_and_key_limit(self):
-        guard = HTTPGuard(limit=2)
+        guard = HTTPGuard(limit=2, concurrency=2)
         self.assertTrue(guard.enter('a', 0)); self.assertTrue(guard.enter('a', 0))
         self.assertFalse(guard.enter('a', 0))
         self.assertTrue(guard.enter('b', 0))
         self.assertFalse(guard.enter('c', 0))
         guard.leave('a'); guard.leave('a'); guard.leave('b')
         self.assertTrue(guard.enter('c', 121))
+
+    def test_default_budget_fits_one_app_opening_many_panels(self):
+        guard = HTTPGuard()
+        self.assertEqual((guard.concurrency, guard.rate, guard.burst), (12, 10, 40))
+        # An archive backfill alone runs eight parallel requests; the old
+        # per-IP limit of two throttled a single legitimate phone.
+        for _ in range(12):
+            self.assertTrue(guard.enter('a', 0))
+        self.assertFalse(guard.enter('a', 0))  # the runaway-client floor still holds
+
+    def test_upstream_block_does_not_spend_the_callers_quota(self):
+        guard = HTTPGuard(concurrency=2, rate=1, burst=1)
+        self.assertTrue(guard.enter('a', 0))
+        guard.leave('a', refund=True)  # a 451 is the exchange's answer, not a mistake
+        self.assertTrue(guard.enter('a', 0))
+        guard.leave('a')
+        self.assertFalse(guard.enter('a', 0))
 
 
 class SharedHubTests(unittest.IsolatedAsyncioTestCase):
@@ -111,6 +129,21 @@ class SharedHubTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(.5)
         self.assertFalse(self.hub.channels)
         self.assertIsNone(self.hub.upstream)
+
+    async def test_first_change_after_a_quiet_period_is_not_debounced(self):
+        a = await self.connect()
+        await self.frame(a)
+        await asyncio.sleep(1.1)  # go quiet, so the next change is a cold start
+        started = time.monotonic()
+        b = await self.connect('192.0.2.3', 'ethusdt@ticker')
+        while 'ethusdt@ticker' not in self.hub.sent:
+            await asyncio.sleep(.005)
+            if time.monotonic() - started > 3:
+                self.fail('subscribe never reached upstream')
+        # The old sync() slept .3s before every control frame, including the
+        # cold-start one that has nothing to coalesce with.
+        self.assertLess(time.monotonic() - started, .25)
+        await a.close(); await b.close()
 
     async def test_single_source_cannot_fill_node(self):
         sockets = [await self.connect() for _ in range(12)]

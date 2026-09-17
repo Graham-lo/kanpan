@@ -12,6 +12,9 @@ struct KanpanApp: App {
     DiagnosticsCenter.shared.start()
     // 趁界面还没起来，把到行情域名的连接先握好（见 `LaunchPrewarm`）。
     LaunchPrewarm.run()
+    // 系统喊内存紧张时得有人去放 K 线缓存。通知只能在这儿听，
+    // 真正要收的 `MarketModel` 在 `MainScreen` 里，中间隔一个转接。
+    MemoryWarningRelay.shared.start()
   }
 
   var body: some Scene {

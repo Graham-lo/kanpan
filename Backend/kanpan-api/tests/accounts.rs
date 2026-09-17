@@ -55,6 +55,25 @@ async fn real_postgres_accounts_isolation_and_retry() {
  let ops:Vec<_>=(0..60).map(|n|operation(&a_device,&format!("BTCUSDT/{n:03}"),0,"patch",json!({"lineWidth":1}))).collect();
  assert_eq!(request(&app,"/v1/sync/operations","POST",Some(at),json!({"operations":ops})).await.0,200);
  let (_,v)=request(&app,"/v1/sync/bootstrap?collection=drawings","GET",Some(at),json!({})).await;assert_eq!(v["data"]["objects"].as_array().unwrap().len(),61);
+ // /v1/sync/changes resolves subscribed rows through one join instead of a
+ // query per change: in-scope rows carry the current object, everything else
+ // stays an invalidation, and the cursor still walks past both kinds.
+ let (_,ch)=request(&app,"/v1/sync/changes?cursor=0&collection=drawings&prefix=binance/usd_m/BTCUSDT/00","GET",Some(at),json!({})).await;
+ let objects=ch["data"]["objects"].as_array().unwrap().clone();let invalidations=ch["data"]["invalidations"].as_array().unwrap().clone();
+ assert_eq!(objects.len(),10,"{ch}");
+ assert!(objects.iter().all(|o|o["id"].as_str().unwrap().starts_with("binance/usd_m/BTCUSDT/00")&&o["body"]["lineWidth"]==1&&o["collection"]=="drawings"),"{ch}");
+ assert!(invalidations.iter().any(|v|v["id"]=="binance/usd_m/BTCUSDT/line"&&v["deleted"]==true),"{ch}");
+ assert_eq!(objects.len()+invalidations.len(),63,"every change is reported exactly once: {ch}");
+ assert_eq!(ch["data"]["hasMore"],false);
+ let (_,all)=request(&app,"/v1/sync/changes?cursor=0","GET",Some(at),json!({})).await;
+ assert!(all["data"]["objects"].as_array().unwrap().is_empty(),"an unscoped poll invalidates, it does not download: {all}");
+ assert_eq!(all["data"]["invalidations"].as_array().unwrap().len(),63,"{all}");
+ let tail=ch["data"]["cursor"].as_i64().unwrap();
+ let (_,none)=request(&app,&format!("/v1/sync/changes?cursor={tail}&collection=drawings"),"GET",Some(at),json!({})).await;
+ assert!(none["data"]["objects"].as_array().unwrap().is_empty()&&none["data"]["invalidations"].as_array().unwrap().is_empty(),"{none}");
+ let (_,other)=request(&app,"/v1/sync/changes?cursor=0&collection=drawings","GET",Some(bt),json!({})).await;
+ let mine=other["data"]["objects"].as_array().unwrap();
+ assert!(mine.len()==1&&mine[0]["id"]=="binance/usd_m/BTCUSDT/line"&&mine[0]["body"]["color"]["value"]=="#000000","the join must stay owner-scoped: {other}");
  review_contract(&app,&s,&admin,at,bt).await;
  search_contract(&app,&s,&admin,at,bt).await;
  // Registration works without mail; normalized names cannot be claimed twice.

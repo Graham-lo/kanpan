@@ -1,7 +1,10 @@
 import csv
 import io
+import os
 import json
 import tempfile
+import socket
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -63,6 +66,60 @@ class GatewayTests(unittest.TestCase):
             second, state = server.fetch_day('BTCUSDT', '2021-12-01')
             self.assertEqual((first, state), (second, 'HIT'))
             self.assertEqual(get.call_count, 1)
+
+    def test_eviction_reads_the_index_not_the_directory(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            for name, size, age in [('old.json', 40, 100), ('new.json', 40, 300)]:
+                (root / name).write_bytes(b'x' * size)
+                os.utime(root / name, (age, age))  # the sweep orders by mtime, so pin it
+            index = server.CacheIndex()
+            index.warm(root)
+            self.assertEqual(index.bytes, 80)
+            with patch.object(Path, 'glob', side_effect=AssertionError('rescanned the cache directory')):
+                victims = index.store(root, root / 'fresh.json', 40, 400, 100)
+            # Oldest first, and never the slice this request just produced.
+            self.assertEqual(victims, [root / 'old.json'])
+            self.assertEqual(index.bytes, 80)
+            self.assertNotIn(root / 'old.json', index.entries)
+
+    def test_upstream_block_is_a_stable_client_signal(self):
+        handler = server.Handler.__new__(server.Handler)
+        handler.refund = False
+        seen = {}
+        handler.reply = lambda status, payload, cache='no-store', hit=None, extra=(): seen.update(
+            status=status, payload=payload, extra=list(extra))
+        handler.blocked('binance')
+        self.assertEqual(seen['status'], 451)
+        self.assertIn(('X-Kanpan-Upstream', 'binance-blocked'), seen['extra'])
+        self.assertEqual(json.loads(seen['payload']), {'error': 'upstream_blocked', 'source': 'binance', 'code': 451})
+        self.assertTrue(handler.refund)  # a geo block must not spend the caller's quota
+
+    def test_hung_up_client_skips_the_upstream_fetch(self):
+        # Real sockets, with the same 30 s timeout the server sets: a timed-out
+        # socket's recv() would block for the whole timeout before honouring
+        # MSG_DONTWAIT, so an idle keep-alive must come back at once.
+        server_side, client_side = socket.socketpair()
+        try:
+            server_side.settimeout(30)
+            handler = server.Handler.__new__(server.Handler)
+            handler.connection = server_side
+            started = time.monotonic()
+            self.assertFalse(handler.abandoned())  # idle keep-alive, still waiting
+            self.assertLess(time.monotonic() - started, 0.5)
+            client_side.sendall(b'GET / HTTP/1.1\r\n')  # pipelined bytes are not a hang-up
+            self.assertFalse(handler.abandoned())
+            server_side.recv(64)  # the server consumes that request line
+            client_side.close()
+            self.assertTrue(handler.abandoned())
+        finally:
+            server_side.close()
+
+    def test_range_and_market_slots_are_separate_pools(self):
+        # An OI backfill must never be able to starve klines/ticker.
+        self.assertIsNot(server.RANGE_SLOTS, server.MARKET_SLOTS)
+        self.assertEqual(server.RANGE_SLOTS._initial_value, 16)
+        self.assertEqual(server.MARKET_SLOTS._initial_value, 16)
 
     def test_route_is_not_an_arbitrary_forward_proxy(self):
         self.assertIsNone(server.PATTERN.fullmatch('/oi/v1/metrics/../../secret.json'))

@@ -20,6 +20,11 @@ public actor BinanceWS {
   private let hosts: BinanceHosts
   private let factory: WSSocketFactory
   private let pacer: Pacer
+  /// 注进来的是真机那把系统时钟吗？是的话读时刻就不必再 `await` 一次 `pacer`。
+  private let systemClock: Bool
+  /// 每帧都 `JSONDecoder()` 新建一个：热门品种一秒几十帧，建的全是同一套配置。
+  /// 这个类型是线程安全的（只读配置），存成静态的复用。
+  private static let decoder = JSONDecoder()
   private let log: FeedLog
   private let silenceMs: Double
   private let baseBackoffMs: Double
@@ -59,6 +64,7 @@ public actor BinanceWS {
     self.factory = hosts.streamFallbacks.isEmpty ? factory
       : MarketSocketRouter(factory: factory, fallbacks: hosts.streamFallbacks, log: log)
     self.pacer = pacer
+    self.systemClock = pacer is SystemPacer
     self.silenceMs = hosts.streamFallbacks.isEmpty ? silenceMs : min(silenceMs, 15_000)
     self.baseBackoffMs = baseBackoffMs
     self.capBackoffMs = capBackoffMs
@@ -121,14 +127,14 @@ public actor BinanceWS {
       guard let socket else { return }
       let want = streams
       guard want != sentStreams else { return }
-      let wait = controlGapMs - (await pacer.nowMs() - lastControlMs)
+      let wait = controlGapMs - (await nowMs() - lastControlMs)
       if wait > 0 {
         // 睡完重新取 want——这一觉里切过的那些中间周期就这么被合并掉了。
         do { try await pacer.sleep(ms: wait) } catch { return }
         continue
       }
       // 一觉一帧。退订先于订阅：先把旧流停掉，旧品种的报文就不会再挤进来。
-      lastControlMs = await pacer.nowMs()
+      lastControlMs = await nowMs()
       let drop = sentStreams.subtracting(want)
       if !drop.isEmpty {
         do {
@@ -173,7 +179,7 @@ public actor BinanceWS {
         socket = s
         // 连接 URL 自己带了流，这套就算服务器已经知道了。
         sentStreams = connectingStreams
-        lastControlMs = await pacer.nowMs()
+        lastControlMs = await nowMs()
         connectionID += 1
         gotFrame = false
         log("WS 连上 #\(connectionID) \(url.absoluteString)")
@@ -200,9 +206,9 @@ public actor BinanceWS {
 
   /// 收帧，直到断开或静默超时。
   private func pump(_ s: WSSocket) async throws {
-    var lastMarketMs = await pacer.nowMs()
+    var lastMarketMs = await nowMs()
     while !stopped, !Task.isCancelled {
-      let remaining = max(1, silenceMs - (await pacer.nowMs() - lastMarketMs))
+      let remaining = max(1, silenceMs - (await nowMs() - lastMarketMs))
       let frame = try await withSilenceTimeout(s, timeout: remaining) { try await s.receive() }
       switch frame {
       case .ping:
@@ -212,14 +218,19 @@ public actor BinanceWS {
         throw FeedError.badResponse("连接关闭：\(why)")
       case .text(let text):
         guard let data = text.data(using: .utf8) else { continue }
-        guard let env = try? JSONDecoder().decode(StreamEnvelope.self, from: data),
+        guard let env = try? Self.decoder.decode(StreamEnvelope.self, from: data),
               let payload = env.payload else { continue }   // SUBSCRIBE 的应答没有 e 字段，忽略
         if case .other = payload { continue }
-        lastMarketMs = await pacer.nowMs()
+        lastMarketMs = await nowMs()
         if !gotFrame { gotFrame = true; backoff.reset() }
         continuation?.yield(.payload(payload))
       }
     }
+  }
+
+  /// 当前时刻，毫秒。真机上走 `MonoClock`，只有测试注了虚拟时钟时才去问 `pacer`。
+  private func nowMs() async -> Double {
+    systemClock ? MonoClock.nowMs() : await pacer.nowMs()
   }
 
   /// 静默 `silenceMs` 没有任何帧就当断了，主动重连（A2.8）。

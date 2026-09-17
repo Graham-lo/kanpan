@@ -12,6 +12,9 @@ public struct IndicatorEngine: Sendable {
   private var states: [IndicatorID: State] = [:]
   private var params: [IndicatorID: [Int]] = [:]
   private var key = ""
+  /// 现有这些状态是照着哪一份 K 线算出来的（`BarSeries.revision`，全局唯一）。
+  /// 0 是「还没算过」——戳从 1 开始发，永远撞不上。
+  private var dataRevision: UInt64 = 0
 
   public init() {}
 
@@ -28,14 +31,36 @@ public struct IndicatorEngine: Sendable {
     let k = Self.cacheKey(series: series, wanted: ids, params: resolved, dataKey: dataKey)
     if k == key { return false }
     key = k
-    self.params = resolved
-    states = [:]
-    values = [:]
+
+    // 按指标失效，不再一有风吹草动就全量重建。
+    //
+    // 键里塞了品种、周期、根数、指标集合、全部参数，任何一样变了都会走到这儿；
+    // 但「改了 MA 的周期」不该让 MACD、KDJ、BOLL 陪着从头算一遍——加一个副图指标
+    // 同理，已经算好的那几个一个字都没变。
+    //
+    // 敢留用的前提有两条，缺一不可：这份 K 线还是刚才那份（`revision` 全局唯一，
+    // 相等就一定同内容），以及这个指标自己的参数没动。
+    let sameData = dataRevision == series.revision && dataRevision != 0
+    let oldParams = self.params
+    var keptStates: [IndicatorID: State] = [:]
+    var keptValues: [IndicatorID: IndicatorResult] = [:]
     for id in ids {
-      let st = Self.build(id, p: resolved[id]!, series: series, oi: oi)
-      states[id] = st
-      values[id] = st.result
+      let p = resolved[id]!
+      // `.oi` 例外：它的输入除了 K 线还有那份持仓量，而缓存键里根本没有持仓量的影子
+      // （见 `cacheKey`），`revision` 也管不着它。宁可每次重建。
+      if sameData, id != .oi, oldParams[id] == p, let st = states[id], let v = values[id] {
+        keptStates[id] = st
+        keptValues[id] = v
+      } else {
+        let st = Self.build(id, p: p, series: series, oi: oi)
+        keptStates[id] = st
+        keptValues[id] = st.result
+      }
     }
+    self.params = resolved
+    states = keptStates
+    values = keptValues
+    dataRevision = series.revision
     return true
   }
 
@@ -52,6 +77,7 @@ public struct IndicatorEngine: Sendable {
       values[id] = st.result
     }
     key = Self.cacheKey(series: series, wanted: Array(states.keys), params: params, dataKey: dataKey)
+    dataRevision = series.revision
   }
 
   /// 参数或指标集合没变、只是想拿值。
@@ -86,7 +112,7 @@ public struct IndicatorEngine: Sendable {
     case .kdj: .kdj(KDJState(b, n: p[0], kn: p[1], dn: p[2]))
     case .srsi: .srsi(SRSIState(b.close, rlen: p[0], slen: p[1], kn: p[2], dn: p[3]))
     case .atr: .atr(ATRState(b, n: p[0]))
-    case .oi: .oi(oi?.aligned(to: b) ?? nanArray(b.count))
+    case .oi: .oi(oi?.aligned(to: b) ?? nanArray(b.count), oi?.revision ?? 0)
     }
   }
 
@@ -99,7 +125,9 @@ public struct IndicatorEngine: Sendable {
     case kdj(KDJState)
     case srsi(SRSIState)
     case atr(ATRState)
-    case oi([Double])
+    /// 对齐好的那一列，外加它是从哪份持仓量来的（`OISeries.revision`，没有持仓量时 0）。
+    /// 记着来源才敢在 `update` 里只对齐尾巴。
+    case oi([Double], UInt64)
 
     var result: IndicatorResult {
       switch self {
@@ -111,7 +139,7 @@ public struct IndicatorEngine: Sendable {
       case .kdj(let s): IndicatorResult(lines: [s.k, s.d, s.j])
       case .srsi(let s): IndicatorResult(lines: [s.k.out, s.d.out])
       case .atr(let s): IndicatorResult(lines: [s.line.out])
-      case .oi(let v): IndicatorResult(lines: [v])
+      case .oi(let v, _): IndicatorResult(lines: [v])
       }
     }
 
@@ -135,7 +163,26 @@ public struct IndicatorEngine: Sendable {
       case .kdj(var s): s.update(b, from: start); self = .kdj(s)
       case .srsi(var s): s.update(b.close, from: start); self = .srsi(s)
       case .atr(var s): s.update(b, from: start); self = .atr(s)
-      case .oi: self = .oi(oi?.aligned(to: b) ?? nanArray(b.count))
+      case .oi(let prev, let rev):
+        guard let oi, oi.revision != 0 else {
+          // 没有持仓量：上次也没有的话，那一列已经全是 NaN，追长就行，
+          // 不必每个 tick 现开一条几千长的 NaN 数组。
+          if rev == 0, prev.count <= b.count {
+            var out = prev
+            grow(to: b.count, &out)
+            self = .oi(out, 0)
+          } else {
+            self = .oi(nanArray(b.count), 0)
+          }
+          return
+        }
+        // 还是同一份持仓量、前缀也没动：只对齐尾巴，结果逐位相同。
+        // 换了一份就老老实实整列重来。
+        if oi.revision == rev, prev.count <= b.count, start <= prev.count {
+          self = .oi(oi.aligned(to: b, from: start, previous: prev), oi.revision)
+        } else {
+          self = .oi(oi.aligned(to: b), oi.revision)
+        }
       }
     }
   }
@@ -274,8 +321,29 @@ struct RSIState: Sendable, Equatable {
     }
   }
 
+  /// 只补 `[start, count)` 这一段的涨跌幅。
+  ///
+  /// `up[i]/dn[i]` 只看 `close[i]` 和 `close[i-1]`，前缀没动就一个字都不会变；
+  /// 从前每个 tick 都把整列重算一遍（几千根），纯浪费。列比收盘还长（序列缩短了）
+  /// 说明前缀的假设不成立，退回整列。
+  private mutating func tailDeltas(_ close: [Double], from start: Int) {
+    guard up.count <= close.count, dn.count <= close.count else {
+      (up, dn) = Self.deltas(close)
+      return
+    }
+    grow(to: close.count, &up, &dn)
+    guard !close.isEmpty else { return }
+    let s = max(0, min(start, close.count))
+    if s == 0 { up[0] = 0; dn[0] = 0 }
+    for i in max(1, s)..<close.count {
+      let d = close[i] - close[i - 1]
+      up[i] = d > 0 ? d : 0
+      dn[i] = d < 0 ? -d : 0
+    }
+  }
+
   mutating func update(_ close: [Double], from start: Int) {
-    (up, dn) = Self.deltas(close)
+    tailDeltas(close, from: start)
     if au.canTail(from: start), ad.canTail(from: start) {
       au.recompute(up, from: start)
       ad.recompute(dn, from: start)
@@ -397,8 +465,24 @@ struct ATRState: Sendable, Equatable {
     return tr
   }
 
+  /// 只补 `[start, count)` 这一段的真实波幅。理由同 RSI 的 `tailDeltas`：
+  /// `tr[i]` 只看第 i 根和第 i-1 根的收盘，前缀没动就不会变。
+  private mutating func tailTrueRange(_ b: BarSeries, from start: Int) {
+    guard tr.count <= b.count else {
+      tr = Self.trueRange(b)
+      return
+    }
+    grow(to: b.count, &tr)
+    guard b.count > 0 else { return }
+    let s = max(0, min(start, b.count))
+    if s == 0 { tr[0] = b.high[0] - b.low[0] }
+    for i in max(1, s)..<b.count {
+      tr[i] = max(b.high[i] - b.low[i], max(abs(b.high[i] - b.close[i - 1]), abs(b.low[i] - b.close[i - 1])))
+    }
+  }
+
   mutating func update(_ b: BarSeries, from start: Int) {
-    tr = Self.trueRange(b)
+    tailTrueRange(b, from: start)
     if line.canTail(from: start) { line.recompute(tr, from: start) }
     else { line = RecursiveLine(tr, n, kind: .rma) }
   }

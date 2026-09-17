@@ -60,6 +60,12 @@ final class QuoteBook {
   /// 攒着等一起发的首帧行。见 `publish(_:)`。
   private var coalesced: [String: Ticker] = [:]
   private var coalesceFlush: Task<Void, Never>?
+  /// 稳态合批的缓冲：按品种覆盖，所以攒多久都只发最新值。见 `emit(_:)`。
+  private var steady: [String: Ticker] = [:]
+  private var steadyFlush: Task<Void, Never>?
+  private var lastEmit = Date.distantPast
+  /// 下一次落盘不晚于这个时刻。`distantFuture` 表示当前没有排队的写。
+  private var persistDeadline = Date.distantFuture
   /// 宿主把自选表送进来了吗。
   ///
   /// 冷启动的顺序是「`restoreQuotes()` 先把上次的报价摆好 → 宿主接着告诉我们自选是哪些」。
@@ -114,6 +120,18 @@ final class QuoteBook {
   private static let idleGraceSeconds: Double = 25
   /// 定时落盘的最小间隔。
   private static let persistEverySeconds: Double = 30
+  /// 盘上出现没存过的品种时，落盘最多再等这么久（见 `notePersist()`）。
+  private static let persistNewFaceSeconds: Double = 2
+  /// 稳态下最多多久画一帧列表。
+  ///
+  /// 取 0.3 秒：比屏幕刷新慢一个量级，用户看到的仍然是「一直在跳」，
+  /// 但整表重算从一秒十几次降到三次。再快没有意义——价格本身也没那么快变。
+  private static let steadyCoalesceSeconds: Double = 0.3
+  /// 列表不可见时的合批窗口。
+  ///
+  /// 行情照收（`raw` 是跨页共享的，回到列表要立刻有值），只是不再为一张
+  /// 看不见的表一帧帧地重算。看图的时候整个自选表的重算就从后台消失了。
+  private static let hiddenCoalesceSeconds: Double = 2
   /// 内存里最多留多少个品种的当日开盘价。一个品种一个 Double，留着是为了
   /// 翻来翻去不用重取；到这个数才按当前可见范围收一次。
   private static let maxRememberedOpens = 512
@@ -151,6 +169,7 @@ final class QuoteBook {
   private func persistQuotes() {
     persistPending?.cancel()
     persistPending = nil
+    persistDeadline = .distantFuture
     lastPersist = Date()
     let values = Array(raw.values)
     guard !values.isEmpty else { return }
@@ -166,17 +185,28 @@ final class QuoteBook {
   /// 杀掉是没有通知的，那一次的报价就全丢了，下次冷启动照样是空列表。定时写一遍，
   /// 最多丢掉这一个间隔里的变化。写的是后台低优先级的一小段 JSON，代价可以忽略。
   private func notePersist() {
-    // 出现了盘上没有的品种（多半是刚加的自选）就不走节流，立刻写一遍。
-    // 否则用户加完自选顺手把 app 划掉，这一行下次冷启动就是空的，只能干等网络——
-    // 「自选一个个慢慢加载」看到的正是这个。
-    if !persistedSymbols.isSuperset(of: raw.keys) { persistQuotes(); return }
-    guard persistPending == nil else { return }
-    let wait = Self.persistEverySeconds - Date().timeIntervalSince(lastPersist)
+    // 出现了盘上没有的品种（多半是刚加的自选）要尽快写一遍：否则用户加完自选
+    // 顺手把 app 划掉，这一行下次冷启动就是空的，只能干等网络——「自选一个个
+    // 慢慢加载」看到的正是这个。
+    //
+    // 但「尽快」不等于「立刻」。原来是新面孔一出现就当场整表编码 + 写盘，而
+    // 一屏自选头一次补价就是二十几个新面孔陆续到达，于是一轮冷启动里整表 JSON
+    // 被写了二十几遍。现在只是把这次写的截止时间从 30 秒提到 2 秒，够把
+    // 这一轮的新面孔攒成一次写，「划掉 app 就丢」那条也仍然堵着。
+    let fresh = !persistedSymbols.isSuperset(of: raw.keys)
+    let periodic = lastPersist.addingTimeInterval(Self.persistEverySeconds)
+    let deadline = fresh ? min(periodic, Date().addingTimeInterval(Self.persistNewFaceSeconds)) : periodic
+    let wait = deadline.timeIntervalSinceNow
     guard wait > 0 else { persistQuotes(); return }
+    // 已经排着一次更早（或一样早）的写，就跟着那一次走。
+    if persistPending != nil, deadline >= persistDeadline { return }
+    persistPending?.cancel()
+    persistDeadline = deadline
     persistPending = Task { [weak self] in
       try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
       guard let self, !Task.isCancelled else { return }
       self.persistPending = nil
+      self.persistDeadline = .distantFuture
       self.persistQuotes()
     }
   }
@@ -246,6 +276,11 @@ final class QuoteBook {
       flushCoalesced()
       historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
     }
+    // 可见性一变，稳态合批的窗口宽度就换了一档（见 `steadyCoalesceSeconds`）。
+    // 把攒着的那一帧当场结掉：离开列表时最后一次变动不留在缓冲里，
+    // 回到列表时也不必先等满一个 2 秒的窗口才看见第一帧。
+    lastEmit = .distantPast
+    flushSteady()
   }
 
   private func reconcileConnection() {
@@ -286,16 +321,30 @@ final class QuoteBook {
     network.stop(); stopStream(); cancelQuotes(); resetBaselineRequests()
     historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
     lastListUpdate = nil
+    flushSteady()
     persistQuotes()
   }
 
+  /// 列表这条流订哪些品种。
+  ///
+  /// **不含图上那个品种。** 图表有自己的 `MarketFeed`，头部的价格走的是
+  /// `ingestTrade(_:)` 那条，列表从来不靠这条流拿它；真取不到还有
+  /// `watch(_:)` 的那次 REST 兜底。原来把它塞进来的代价是：每切一次品种
+  /// `streamNames()` 就变一次，于是列表这条 socket 跟着 `replaceStreams`
+  /// 退订重订一轮——自选表几十行的价格在那一瞬间全停，切得快一点就一直停着。
+  /// 它照样留在 `wanted` 里（见 `updateStreams()`），所以 `raw` 里那一行
+  /// 不会被裁掉，跨页回来仍然有值。
+  private func listSymbols() -> [String] {
+    QuoteSubscriptionPlan.symbols(favorites: favorites, visible: visible ? visibleRows : [])
+  }
+
   private func streamNames() -> [String] {
-    let symbols = QuoteSubscriptionPlan.symbols(favorites: [chartSymbol].compactMap { $0 } + favorites, visible: visible ? visibleRows : [])
+    let symbols = listSymbols()
     return (symbols.isEmpty ? ["BTCUSDT"] : symbols).map { BinanceHosts.tickerStream(symbol: $0) }
   }
 
   private func updateStreams() {
-    let symbols = QuoteSubscriptionPlan.symbols(favorites: [chartSymbol].compactMap { $0 } + favorites, visible: visible ? visibleRows : [])
+    let symbols = listSymbols()
     wanted = Set(symbols + [chartSymbol].compactMap { $0 })
     // 自选表还没到，先把上次恢复出来的那批一起算进来，别把它们裁掉（见 `favoritesKnown`）。
     if !favoritesKnown { wanted.formUnion(raw.keys) }
@@ -569,10 +618,45 @@ final class QuoteBook {
     }
   }
 
+  /// 攒一帧，够钟才发。
+  ///
+  /// 首帧合帧（`coalesced`）解决的是「一行行往外冒」，这里解决的是相反的一头：
+  /// 稳定下来之后，二十几行各自按自己的节奏推 ticker，一秒能进来十几次，
+  /// 每一次都让整张自选表重算一遍行。合批之后最多每 `steadyCoalesceSeconds`
+  /// 画一帧——数字照样是最新的（缓冲按品种覆盖，不排队），只是不再一帧一行地画。
+  ///
+  /// 前沿先发：第一笔立刻出去，不给「点进列表先愣一下」的机会；之后落在窗口里的
+  /// 才攒到窗口末尾一起发。
   private func emit(_ batch: [Ticker]) {
-    for ticker in batch { everPublished.insert(ticker.symbol) }
-    onUpdate?(batch.map(presented))
+    for ticker in batch {
+      everPublished.insert(ticker.symbol)
+      steady[ticker.symbol] = ticker
+    }
     notePersist()
+    deliver()
+  }
+
+  private func deliver() {
+    guard !steady.isEmpty else { return }
+    let window = visible ? Self.steadyCoalesceSeconds : Self.hiddenCoalesceSeconds
+    let wait = window - Date().timeIntervalSince(lastEmit)
+    guard wait > 0 else { flushSteady(); return }
+    guard steadyFlush == nil else { return }
+    steadyFlush = Task { [weak self] in
+      try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+      guard let self, !Task.isCancelled else { return }
+      self.steadyFlush = nil
+      self.flushSteady()
+    }
+  }
+
+  private func flushSteady() {
+    steadyFlush?.cancel(); steadyFlush = nil
+    guard !steady.isEmpty else { return }
+    let batch = Array(steady.values)
+    steady.removeAll(keepingCapacity: true)
+    lastEmit = Date()
+    onUpdate?(batch.map(presented))
   }
 
   /// 把攒着的首帧行一次发出去。首轮补价排空、或者等满 `coalesceMaxSeconds` 就走这儿——

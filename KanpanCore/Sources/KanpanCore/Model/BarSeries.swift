@@ -1,5 +1,20 @@
 import Foundation
 
+/// 全局递增的身份戳。
+///
+/// 用「全局唯一」而不是「每条序列自己的计数器」：两条刚建好的序列各自都是 0，
+/// 拿计数器当身份会把两条不相干的序列判成同一条。
+enum SeriesStamp {
+  private static let lock = NSLock()
+  private nonisolated(unsafe) static var counter: UInt64 = 0
+
+  static func next() -> UInt64 {
+    lock.lock(); defer { lock.unlock() }
+    counter &+= 1
+    return counter
+  }
+}
+
 /// 列式 K 线序列（§4.2）。
 ///
 /// 列式而不是 `[Bar]`：指标逐列扫、绘制逐列扫、快照逐列写，三处都省一次拆包。
@@ -11,13 +26,31 @@ public struct BarSeries: Sendable, Equatable {
   /// 周期毫秒。1M 是名义 30 天，真实位置看 `openTime`。
   public let step: Int64
 
-  public var open: [Double]
-  public var high: [Double]
-  public var low: [Double]
-  public var close: [Double]
-  public var volume: [Double]
+  // 六列都挂了 `didSet`：列是 `public var`，外面（测试、复盘桥）可以直接
+  // `series.close[i] = x`，不挂观察器的话戳就会说谎。`didSet` 里没有碰
+  // `oldValue`，所以编译器不会为了它多拷一份数组（SE-0268），`close[i] = x`
+  // 仍然是原地改。直接改列时两个戳都作废——谁也不知道改的是哪一根。
+  public var open: [Double] { didSet { stampAll() } }
+  public var high: [Double] { didSet { stampAll() } }
+  public var low: [Double] { didSet { stampAll() } }
+  public var close: [Double] { didSet { stampAll() } }
+  public var volume: [Double] { didSet { stampAll() } }
   /// 不等距周期（1M）必须带；等距周期留空，由 `t0 + i*step` 推。
-  public var openTime: [Int64]
+  public var openTime: [Int64] { didSet { stampAll() } }
+
+  /// 这条序列的身份。全局唯一：任何一次改动都会换一个新值，两条 `revision`
+  /// 相同的序列内容一定相同（反过来不成立——内容相同但各自建出来的两条，
+  /// 戳不一样，这时候 `==` 会退回逐列比）。
+  public private(set) var revision: UInt64 = 0
+  /// 「除末根以外的部分」的身份。末根被覆盖（`replaceLast`）时它不变，
+  /// 这就是「只动了末根」的标记。追加一根时它变成老的 `revision`——
+  /// 新序列的前缀正好是老序列的全部。
+  public private(set) var prefixRevision: UInt64 = 0
+
+  private mutating func stampAll() {
+    revision = SeriesStamp.next()
+    prefixRevision = SeriesStamp.next()
+  }
 
   public var count: Int { close.count }
   public var isEmpty: Bool { close.isEmpty }
@@ -37,6 +70,8 @@ public struct BarSeries: Sendable, Equatable {
     self.close = close
     self.volume = volume
     self.openTime = openTime
+    self.revision = SeriesStamp.next()
+    self.prefixRevision = SeriesStamp.next()
   }
 
   public init(symbol: String, interval: Interval, bars: [Bar]) {
@@ -90,13 +125,18 @@ public struct BarSeries: Sendable, Equatable {
   /// 覆盖末根。openTime 不同则是新根，走 `append`。
   public mutating func replaceLast(with bar: Bar) {
     guard count > 0 else { append(bar); return }
+    let prefix = prefixRevision   // 前缀一个字节都没动，戳原样留着
     let i = count - 1
     open[i] = bar.open; high[i] = bar.high; low[i] = bar.low
     close[i] = bar.close; volume[i] = bar.volume
     if !openTime.isEmpty { openTime[i] = bar.openTime }
+    revision = SeriesStamp.next()
+    prefixRevision = prefix
   }
 
   public mutating func append(_ bar: Bar) {
+    // 追加之后「除末根以外」＝追加之前的整条，所以新前缀的身份就是老的 `revision`。
+    let prefix = revision
     if count == 0 { t0 = bar.openTime }
     open.append(bar.open); high.append(bar.high); low.append(bar.low)
     close.append(bar.close); volume.append(bar.volume)
@@ -104,6 +144,8 @@ public struct BarSeries: Sendable, Equatable {
       if openTime.isEmpty { openTime = (0..<count - 1).map { t0 + Int64($0) * step } }
       openTime.append(bar.openTime)
     }
+    revision = SeriesStamp.next()
+    prefixRevision = prefix
   }
 
   /// WS 事件合成：openTime 等于末根就覆盖，大于就追加，更早就忽略。
@@ -132,6 +174,47 @@ public struct BarSeries: Sendable, Equatable {
     close.insert(contentsOf: cut.map(\.close), at: 0)
     volume.insert(contentsOf: cut.map(\.volume), at: 0)
     t0 = cut[0].openTime
+    // 补历史把每一根的下标都挪了，两个戳都作废（`didSet` 已经作废过一次，这里不必再写）。
+  }
+
+  // ------------------------------------------------------------ 身份比较
+
+  /// 逐列比之前先看戳。
+  ///
+  /// 从前这是编译器合成的 `==`：`ChartRenderer.recalc` 和 `ChartView.sameFrame`
+  /// 每个 tick 都要靠它扫五列。戳相同就一定同内容，可以直接收工；戳不同**不**代表
+  /// 内容不同（两条分别建出来的一样的序列），所以老的逐列比一个字没删，留在后面兜底。
+  public static func == (a: BarSeries, b: BarSeries) -> Bool {
+    if a.revision == b.revision { return true }
+    return a.symbol == b.symbol && a.interval == b.interval && a.t0 == b.t0 && a.step == b.step
+      && a.close == b.close && a.open == b.open && a.high == b.high
+      && a.low == b.low && a.volume == b.volume && a.openTime == b.openTime
+  }
+
+  /// 除末根以外的一切是否一样。
+  ///
+  /// 「只有末根在动」是行情的常态（每个 WS tick 都是），指标能不能走增量、
+  /// 底图要不要重画，问的都是这一句。先看前缀戳——`replaceLast` 会原样留着它，
+  /// 所以正常 tick 一次比较就够；戳对不上再退回逐列比。
+  public func samePrefix(as other: BarSeries) -> Bool {
+    guard symbol == other.symbol, interval == other.interval, t0 == other.t0, step == other.step,
+      count == other.count, count > 0, openTime == other.openTime
+    else { return self == other }
+    if prefixRevision == other.prefixRevision { return true }
+    return open.dropLast().elementsEqual(other.open.dropLast())
+      && high.dropLast().elementsEqual(other.high.dropLast())
+      && low.dropLast().elementsEqual(other.low.dropLast())
+      && close.dropLast().elementsEqual(other.close.dropLast())
+      && volume.dropLast().elementsEqual(other.volume.dropLast())
+  }
+
+  /// 我是不是「`other` 后面又长了一根」——即我的前 `count - 1` 根就是 `other` 的全部。
+  ///
+  /// 新周期开盘时行情就走这一条：老的整条原样变成新的前缀，指标只要接着算最后
+  /// 那一根就行，没必要从头重建。判定只认戳（`append` 会把新的 `prefixRevision`
+  /// 设成老的 `revision`），对不上就当不是——宁可多重建一次，绝不会误判成增量。
+  public func isOneBarAfter(_ other: BarSeries) -> Bool {
+    count == other.count + 1 && other.count > 0 && prefixRevision == other.revision
   }
 }
 

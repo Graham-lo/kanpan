@@ -79,8 +79,12 @@ final class SymbolPickerModel {
     self.catalogLoader = catalogLoader
     reindex()
     self.prefs = store.load()
-    classifyUnassigned()
-    store.save(self.prefs)
+    // 只有真给未分类的自选补了分类才回写。
+    //
+    // 原来是无条件 `save`：每次冷启动都要把整份自选编码一遍再塞进 UserDefaults，
+    // 而绝大多数启动里这份数据一个字节都没变。`load()` 自己那层清洗（去重、
+    // 大写、截断）是幂等的，每次读都会再做一遍，不落盘也丢不了东西。
+    if classifyUnassigned() { store.save(self.prefs) }
     apply(tickers)
     rebuildFilter()
   }
@@ -177,13 +181,23 @@ final class SymbolPickerModel {
     apply(changed)
     guard sectionsActive else { return }
     // Keep rows under the user's finger stable; rebuild/sort only on navigation or filtering.
+    //
+    // 这一批里有几个是盘上真有的行？`onUpdate` 给的是整个 `QuoteBook` 的范围
+    // （图上那个品种、别的分组、搜索页点过的），落到当前这张表里常常一行都没有。
+    // 先把命中的下标找出来，一个没有就直接回——不然每来一批行情都要把整份
+    // `sections`（分区 + 行的值类型数组）复制一遍再整体赋回去，`@Observable`
+    // 那边跟着判定「变了」，一整张表重新求值。
     let keys = Set(changed.map { $0.symbol.uppercased() })
-    var updated = sections
-    for section in updated.indices {
-      for row in updated[section].rows.indices where keys.contains(updated[section].rows[row].id) {
-        updated[section].rows[row].ticker = tickers[updated[section].rows[row].id]
+    let current = sections  // 只取一次；下面找下标的过程不碰 `@Observable` 的存取。
+    var hits: [(section: Int, row: Int)] = []
+    for section in current.indices {
+      for row in current[section].rows.indices where keys.contains(current[section].rows[row].id) {
+        hits.append((section, row))
       }
     }
+    guard !hits.isEmpty else { return }
+    var updated = current
+    for hit in hits { updated[hit.section].rows[hit.row].ticker = tickers[updated[hit.section].rows[hit.row].id] }
     sections = updated
   }
 
@@ -212,12 +226,17 @@ final class SymbolPickerModel {
     commit()
   }
 
-  private func classifyUnassigned() {
+  /// 给还没分类的自选补一个分类。返回是否真改了东西——调用方据此决定要不要回写。
+  @discardableResult
+  private func classifyUnassigned() -> Bool {
+    var changed = false
     for symbol in prefs.favorites where prefs.groupForSymbol[symbol] == nil {
       let name = FavoriteCategory.name(symbol: symbol, info: self.info(for: symbol))
       let group = prefs.createGroup(name)
       prefs.assign(symbol, to: group)
+      if prefs.groupForSymbol[symbol] != nil { changed = true }
     }
+    return changed
   }
 
   func removeFavorite(_ symbol: String) {

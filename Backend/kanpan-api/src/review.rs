@@ -142,11 +142,15 @@ pub fn signature(d:&NativeDraft)->String {
 }
 async fn stats(State(s):State<AppState>,i:Identity)->Result<Json<Value>> {
  let mut tx=s.personal(i.user).await?;
- let rows=sqlx::query("SELECT record,episode_id,group_pending FROM review_records WHERE user_id=$1 ORDER BY submitted,id").bind(i.user).fetch_all(&mut *tx).await?;
+ // Statistics only needs the draft plus five scalars. Selecting the whole
+ // record shipped every reflection and its five-deep history out of Postgres
+ // and through serde on every call; the projection keeps the payload to what
+ // the summary actually reads.
+ let rows=sqlx::query("SELECT record->'draft' AS draft,(record->>'serverId')::uuid AS server_id,(record->>'submitted')::bigint AS submitted,COALESCE(record->'assessment'->>'outcome','pending') AS state,(record->>'eligible')::bool AS eligible,(record->>'voided')::bool AS voided,episode_id,group_pending FROM review_records WHERE user_id=$1 ORDER BY submitted,id").bind(i.user).fetch_all(&mut *tx).await?;
  let mut samples=vec![];let mut labels=BTreeMap::new();
- for row in rows {let r:NativeRecord=parse(row.get("record"))?;let sig=signature(&r.draft);
-  labels.entry(sig.clone()).or_insert_with(||format!("{} · {} · {}",r.draft.range.symbol,match r.draft.origin.as_str(){"chart_first"=>"图在先","thought_first"=>"想法在先","interwoven"=>"两者交织",_=>"不确定"},if r.draft.rule.confirmation=="bar_close"{"收盘"}else{"触价"}));
-  samples.push(statistics::Sample{call_id:r.server_id,claim_no:0,submitted_at:core(domain::time(r.submitted))?,episode_id:Some(row.get("episode_id")),group_pending:row.get("group_pending"),signature:sig,state:r.assessment.as_ref().map(|a|a.outcome.clone()).unwrap_or_else(||"pending".into()),eligible:r.eligible,voided:r.voided});
+ for row in rows {let d:NativeDraft=parse(row.get("draft"))?;let sig=signature(&d);
+  labels.entry(sig.clone()).or_insert_with(||format!("{} · {} · {}",d.range.symbol,match d.origin.as_str(){"chart_first"=>"图在先","thought_first"=>"想法在先","interwoven"=>"两者交织",_=>"不确定"},if d.rule.confirmation=="bar_close"{"收盘"}else{"触价"}));
+  samples.push(statistics::Sample{call_id:row.get("server_id"),claim_no:0,submitted_at:core(domain::time(row.get("submitted")))?,episode_id:Some(row.get("episode_id")),group_pending:row.get("group_pending"),signature:sig,state:row.get("state"),eligible:row.get("eligible"),voided:row.get("voided")});
  }
  let proof=statistics::summarize(&samples,0);
  let groups:Vec<Value>=proof["compatible_groups"].as_object().into_iter().flatten().map(|(id,v)|json!({"id":id,"title":labels[id],"total":v["denominator"],"correct":v["numerator"]})).collect();

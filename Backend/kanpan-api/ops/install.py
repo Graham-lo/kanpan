@@ -37,9 +37,9 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-MemoryMax=256M
-CPUQuota=100%
-TasksMax=128
+MemoryMax=1G
+CPUQuota=200%
+TasksMax=256
 [Install]
 WantedBy=multi-user.target
 '''

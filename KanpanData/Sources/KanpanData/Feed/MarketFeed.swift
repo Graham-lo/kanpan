@@ -59,6 +59,14 @@ public actor MarketFeed {
   private var gapFrom: Int64 = 0
   private var backgroundTask: Task<Void, Never>?
   private var snapshotTask: Task<Void, Never>?
+  /// 落盘队列的队尾。写盘全在这条链上串行发生，不占 actor。
+  private var snapshotWrite: Task<Void, Never>?
+  /// 写盘与「关掉启动快照」之间的互斥闸门。
+  private let snapshotGate = SnapshotGate()
+  /// 两次落盘之间至少隔这么久。
+  private let snapshotThrottleMs: Double = 15_000
+  /// 上一次真正把序列交出去落盘的时刻（本地单调时钟）。
+  private var lastSnapshotMs = -Double.infinity
   /// 设置页「启动快照」。关掉：不写，并把已有的那份删掉。
   private var snapshotEnabled = true
   /// 旧版 `last.kbar` 清过了没有。快照改成按对存之后它就是死文件。
@@ -89,6 +97,11 @@ public actor MarketFeed {
   private var tickFlush: Task<Void, Never>?
   private var tickDirty = false
   private let tickCoalesceMs: Double = 80
+  /// 上一次真正把末根抛上去的时刻（走 `nowMs()` 那把钟）。
+  private var lastTickEmitMs = -Double.infinity
+  /// 注进来的是真时钟吗。真时钟就直接读本地单调时钟，省掉每帧一次的异步调用；
+  /// 测试注了虚拟时钟（`StepPacer` / `FastPacer`）才去问它。
+  private let systemClock: Bool
   /// REST 对表循环。
   private var reconcileTask: Task<Void, Never>?
   /// 对表跑了第几拍：24h 行情每拍取，K 线每两拍取一次。
@@ -114,6 +127,7 @@ public actor MarketFeed {
     self.cache = cache
     self.paths = paths
     self.pacer = pacer
+    self.systemClock = pacer is SystemPacer
     self.log = log
   }
 
@@ -129,10 +143,12 @@ public actor MarketFeed {
 
   public func setSnapshotEnabled(_ on: Bool) {
     snapshotEnabled = on
-    if !on {
-      Snapshot.remove(paths.snapshot)
-      SeriesStore.clear(in: paths.series)
-    }
+    if on { snapshotGate.enable(); return }
+    snapshotTask?.cancel(); snapshotTask = nil
+    snapshotWrite?.cancel()
+    // 写盘已经挪到别的线程了，删文件必须和它互斥：`disable` 会等在途的那一笔
+    // 写完再清盘，清完之后闸门关着，后面排队的那几笔什么都不会写。
+    snapshotGate.disable(clearing: paths.series, legacy: paths.snapshot)
   }
 
   /// 冷启动：先读快照画第一帧，再拉网络（§4.3）。
@@ -147,6 +163,7 @@ public actor MarketFeed {
     loadTask?.cancel()
     deepenTask?.cancel(); deepenTask = nil
     tickFlush?.cancel(); tickFlush = nil; tickDirty = false
+    lastTickEmitMs = -.infinity
     lastTradeMs = 0
     lastKlineReceivedMs = -.infinity; lastTickerReceivedMs = -.infinity
     gapFrom = 0
@@ -252,9 +269,31 @@ public actor MarketFeed {
     await ws.replaceStreams(streamNames())
     let sym = symbol, iv = interval, request = selection
     loadTask?.cancel()
+    // 缺口不到一根就别发请求了。切出去看一眼消息再回来是最常见的情形，这时候
+    // 末根还是原来那根，WS 一帧（合约 kline 约 250ms 一条）就能把它带回来；
+    // 万一 WS 没起来，对表任务 10 秒后也会用 limit=2 把它捞回来。
+    // 原来这儿是无条件补缺，等于每次回前台都白花一个请求。
+    guard pendingBars() > 1 else {
+      log("回前台缺口不足一根，跳过补缺，交给 WS 和对表")
+      return
+    }
+    // 补缺期间把 WS 事件挂起来排队。原来这条路径没有 `beginBackfill`，于是
+    // 这一发 REST 在路上的时候 `reconcileOnce` 的 `!composer.isBackfilling`
+    // 拦不住它，两边会同时朝同一段末根发请求、各自合并各自的结果。
+    composer.beginBackfill()
     loadTask = Task { [weak self] in
       await self?.backfill(symbol: sym, interval: iv, selection: request)
     }
+  }
+
+  /// 回前台时还欠多少根。序列空着、另外记着缺口、或者是聚出来的周期（1y），
+  /// 一律返回一个大数交给 `backfill` 走完整路径，这儿只负责认出「几乎没缺」。
+  private func pendingBars() -> Int {
+    guard composer.series.count > 0, gapFrom == 0, interval.source == interval else { return .max }
+    let from = composer.series.lastTime
+    guard from > 0 else { return .max }
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    return Int(max(0, (now - from) / max(interval.stepMs, 1)) + 1)
   }
 
   public func memoryWarning() async {
@@ -317,7 +356,7 @@ public actor MarketFeed {
 
   private func handle(_ ev: WSEvent, generation: UUID) async {
     let request = selection
-    let received = await pacer.nowMs()
+    let received = await nowMs()
     guard current(request), generation == wsGeneration else { return }
     switch ev {
     case .connected:
@@ -346,7 +385,7 @@ public actor MarketFeed {
         if k.eventTime > 0, let id = k.lastTradeID {
           emit(.tradeQuote(TradeQuote(symbol: symbol, price: k.bar.close, timeMs: k.eventTime, tradeID: id)))
         }
-        applyKline(k)
+        applyKline(k, now: received)
       case .ticker(let t):
         if t.symbol.uppercased() == symbol {
           lastTickerReceivedMs = received
@@ -357,7 +396,8 @@ public actor MarketFeed {
       case .trade(let t):
         guard t.symbol.uppercased() == symbol else { return }
         lastTradeMs = max(lastTradeMs, t.timeMs)
-        foldTick(price: t.price, qty: t.qty, timeMs: t.timeMs, allowAppend: true, tradeID: t.tradeID)
+        foldTick(price: t.price, qty: t.qty, timeMs: t.timeMs, allowAppend: true,
+                 tradeID: t.tradeID, now: received)
       case .bookTicker(let s, let bid, let ask, let ms):
         guard s.uppercased() == symbol, bid.isFinite, ask.isFinite, bid > 0, ask > 0, bid <= ask
         else { return }
@@ -371,7 +411,7 @@ public actor MarketFeed {
         let cur = composer.series.close[composer.series.count - 1]
         let px = min(max(cur, bid), ask)
         guard px != cur else { return }
-        foldTick(price: px, qty: 0, timeMs: ms, allowAppend: false)
+        foldTick(price: px, qty: 0, timeMs: ms, allowAppend: false, now: received)
       case .tickerBatch:
         break
       case .other:
@@ -394,7 +434,7 @@ public actor MarketFeed {
     return t
   }
 
-  private func applyKline(_ k: KlineEvent) {
+  private func applyKline(_ k: KlineEvent, now: Double) {
     // 年线是聚出来的：WS 推的是月线，收一条就把当年那根重算（§4.2）。
     if interval == .y1 {
       guard var monthly = sourceComposer, monthly.series.count > 0 else { return }
@@ -406,15 +446,25 @@ public actor MarketFeed {
       scheduleSnapshot()
       return
     }
+    let before = composer.series.count > 0 ? composer.series.lastTime : 0
     guard composer.apply(k) else { return }
-    emitTick(force: true)
+    // 同一根上的更新走合帧闸门；**开新的一根立刻放行**。
+    //
+    // 原来 kline 一律 `force: true`，等于 WS 那条最密的流完全绕开了 80ms 闸门：
+    // 忙的时候一秒上百条报文，每条都往主线程抛一次 `.lastBar`。而逐笔（`foldTick`）
+    // 早就是合帧的——两条路推的是同一根 K 线，没道理一条限速一条不限。
+    //
+    // 开新根是结构性变化（时间戳变了，图上要多出一根），晚 80ms 收线肉眼就是
+    // 「顿一下」，所以它不受闸门管，和 `foldTick` 的 `.appended` 同一个规矩。
+    emitTick(force: composer.series.lastTime != before, now: now)
     scheduleSnapshot()
   }
 
   // ------------------------------------------------------------------ 逐笔折线
 
   /// 一次报价折进当前那根（细节见 `FeedComposer.applyTick`）。
-  private func foldTick(price: Double, qty: Double, timeMs: Int64, allowAppend: Bool, tradeID: Int64? = nil) {
+  private func foldTick(price: Double, qty: Double, timeMs: Int64, allowAppend: Bool,
+                        tradeID: Int64? = nil, now: Double) {
     // 1y 是聚出来的：折进月线源，再把当年那根重算（和 applyKline 一个路数，§4.2）。
     if interval == .y1 {
       guard var src = sourceComposer, src.series.count > 0 else { return }
@@ -431,40 +481,48 @@ public actor MarketFeed {
     case .ignored:
       return
     case .updated:
-      emitTick(force: false)
+      emitTick(force: false, now: now)
     case .appended:
       // 开新的一根是结构性变化，不进合帧闸门——晚 80ms 收线会看见图「顿一下」。
-      emitTick(force: true)
+      emitTick(force: true, now: now)
       log("逐笔开新根 \(composer.series.lastTime)，现在 \(composer.series.count) 根")
     }
     scheduleSnapshot()
   }
 
   /// 合帧后往上抛末根。`force` 用于开新根这种不能等的事件。
-  private func emitTick(force: Bool) {
+  ///
+  /// 闸门量的是**两次抛出之间隔了多久**（用注进来的那把钟），不是「有没有一个
+  /// 定时任务挂着」。差别在于：报文密的时候两者一样都是 80ms 一拍；报文稀
+  /// （真机上单品种 kline 大约一秒一条）的时候，前者每条都立刻放行，后者却要看
+  /// 定时任务的调度延迟——那不是设计，是运气。
+  private func emitTick(force: Bool, now: Double) {
     guard composer.series.count > 0 else { return }
-    if force {
-      tickFlush?.cancel(); tickFlush = nil; tickDirty = false
+    if force || now - lastTickEmitMs >= tickCoalesceMs {
+      tickFlush?.cancel(); tickFlush = nil
+      tickDirty = false
+      lastTickEmitMs = now
       pushLastBar()
       return
     }
-    guard tickFlush == nil else { tickDirty = true; return }
-    pushLastBar()
+    // 还在这一拍里：攒着，到拍子末尾收口。在途最多一发。
+    tickDirty = true
+    guard tickFlush == nil else { return }
+    let wait = tickCoalesceMs - (now - lastTickEmitMs)
     let request = selection
-    let gap = tickCoalesceMs
     tickFlush = Task { [weak self, pacer] in
-      try? await pacer.sleep(ms: gap)
+      try? await pacer.sleep(ms: wait)
       guard !Task.isCancelled else { return }
       await self?.tickFlushed(selection: request)
     }
   }
 
-  private func tickFlushed(selection request: UUID) {
-    guard current(request) else { return }
+  private func tickFlushed(selection request: UUID) async {
     tickFlush = nil
-    guard tickDirty else { return }
+    guard current(request), tickDirty else { return }
     tickDirty = false
-    emitTick(force: false)
+    lastTickEmitMs = await nowMs()
+    pushLastBar()
   }
 
   private func pushLastBar() {
@@ -503,7 +561,7 @@ public actor MarketFeed {
     guard !sym.isEmpty, composer.series.count > 0, !composer.isBackfilling else { return }
     reconcileTicks += 1
 
-    let now = await pacer.nowMs()
+    let now = await nowMs()
     let tickerStamp = lastTickerReceivedMs
     if includeTicker, now - tickerStamp >= 5000,
        let t = try? await rest.ticker24h(symbol: sym), current(request), sym == symbol, iv == interval,
@@ -524,7 +582,7 @@ public actor MarketFeed {
       if composer.reconcile(bars) {
         await cache.put(composer.series)
         guard current(request) else { return }
-        emitTick(force: true)
+        emitTick(force: true, now: await nowMs())
       }
     } catch {
       log("对表失败：\(error)")
@@ -682,6 +740,10 @@ public actor MarketFeed {
   private func scheduleDeepen(symbol sym: String, interval iv: Interval, selection request: UUID) {
     deepenTask?.cancel()
     guard current(request), composer.series.count > 0, composer.series.count < Self.deepenTarget else { return }
+    // 首发本身已经按单请求上限要过一整页了，再翻一页只是多花一个权重 10 的请求
+    // 换第 13 屏往后——边际很小。只有首发拉得浅（两段式的 300 根档、OKX 那条路）
+    // 才值得在后台补这一页。这条保证「首屏改深」不会把请求数和权重顶上去。
+    guard initialLimit < BinanceREST.maxKlines else { return }
     deepenTask = Task { [weak self, pacer] in
       // 让实时报文和 ticker 先走，别和首屏抢带宽。
       try? await pacer.sleep(ms: 1200)
@@ -728,32 +790,120 @@ public actor MarketFeed {
 
   // ------------------------------------------------------------------ 快照
 
-  /// 合并 2 秒内的写（§4.3）。
+  /// 快照落盘的**节流**（§4.3）。
+  ///
+  /// 原来是防抖：每收一帧就把 2 秒的定时器取消重排。可 BTCUSDT 忙的时候一秒上百笔，
+  /// 报文间隔远小于 2 秒 —— 那个定时器永远排不到头，**正在看的那个品种几乎从来不落盘**，
+  /// 反倒是没人看的冷门品种才写得下去。冷启动想秒开的恰恰是热门品种，整件事是反的。
+  ///
+  /// 现在改成节流：距上次落盘已经 ≥ `snapshotThrottleMs` 就立刻写；不到就排一发到
+  /// 「上次 + 间隔」那个点，在途最多一发，后来的帧只是搭这班车，不再重排。
+  /// 于是无论报文多密，磁盘最多每 15 秒被碰一次，而热门品种一定写得下去。
   private func scheduleSnapshot() {
     guard snapshotEnabled else { return }
-    snapshotTask?.cancel()
+    let elapsed = Self.monotonicMs() - lastSnapshotMs
+    if elapsed >= snapshotThrottleMs { writeSnapshotNow(); return }
+    // 已经有一发在途了，搭它的车——不重排，不然又变回防抖。
+    guard snapshotTask == nil else { return }
+    let wait = snapshotThrottleMs - elapsed
     snapshotTask = Task { [weak self, pacer] in
-      try? await pacer.sleep(ms: 2000)
+      try? await pacer.sleep(ms: wait)
       guard !Task.isCancelled else { return }
-      await self?.writeSnapshotNow()
+      await self?.snapshotDeadline()
     }
   }
 
+  private func snapshotDeadline() {
+    snapshotTask = nil
+    writeSnapshotNow()
+  }
+
+  /// 把当前序列排进落盘队列。**不等磁盘**。
+  ///
+  /// 原来这儿是同步写：`Snapshot.encode` 把几千根编成几百 KB，再做一次原子写
+  /// （临时文件 + 替换），还可能顺带触发 `SeriesStore.prune` 那次 60 秒一回的
+  /// 目录扫描。而调用它的第一个地方是 `switchTo` 的第一行——用户点下一个品种、
+  /// 手指还按在屏幕上的那一刻，整条 feed actor 就卡在磁盘上。
+  ///
+  /// 现在把序列（值类型，拷出去就跟 actor 无关了）交给一条 utility 优先级的
+  /// detached 任务。顺序靠 `await previous?.value` 串起来：同一条 feed 的写盘
+  /// 严格按提交顺序发生，所以换品种之前那一份旧序列绝不会落在新序列后面。
+  /// 落的文件本来也是按 (品种, 周期) 分开的，串行只是再堵死同一个 key 的乱序。
   private func writeSnapshotNow() {
     snapshotTask?.cancel()
     snapshotTask = nil
     guard snapshotEnabled, composer.series.count > 0 else { return }
-    do {
-      let n = try SeriesStore.write(composer.series, in: paths.series)
-      // 旧版只有一份 `last.kbar`，按对存之后它就是死文件，清一次。
-      if !legacyCleaned { legacyCleaned = true; Snapshot.remove(paths.snapshot) }
-      log("快照 \(n)B → \(composer.series.symbol)|\(composer.series.interval.rawValue)")
-    } catch {
-      log("写快照失败：\(error)")
+    lastSnapshotMs = Self.monotonicMs()
+    let series = composer.series
+    let dir = paths.series
+    let legacy = paths.snapshot
+    let cleanLegacy = !legacyCleaned
+    if cleanLegacy { legacyCleaned = true }
+    let log = self.log
+    let gate = snapshotGate
+    let previous = snapshotWrite
+    snapshotWrite = Task.detached(priority: .utility) {
+      _ = await previous?.value
+      guard !Task.isCancelled else { return }
+      do {
+        guard let n = try gate.write(series, in: dir) else { return }
+        // 旧版只有一份 `last.kbar`，按对存之后它就是死文件，清一次。
+        if cleanLegacy { Snapshot.remove(legacy) }
+        log("快照 \(n)B → \(series.symbol)|\(series.interval.rawValue)")
+      } catch {
+        log("写快照失败：\(error)")
+      }
     }
+  }
+
+
+  /// 进程内单调时钟，毫秒。
+  ///
+  /// 这些地方要的只是「两件事之间隔了多久」。`Pacer` 是给**可控睡眠**用的协议，
+  /// 拿它当钟表读，每读一次就是一次跨 actor 的 `await`（读一个 `DispatchTime` 而已，
+  /// 却要挂起、切执行器、再恢复）。单调时钟不跨 actor，也不受系统时间被改动影响。
+  static func monotonicMs() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e6 }
+
+  /// 当前时刻，毫秒。真机上就是上面那把单调钟（和 `SystemPacer.nowMs()` 同一个量），
+  /// 只有测试注了虚拟时钟时才真的去问 `pacer`——回放用例要在被加速的时间里
+  /// 观察合帧闸门，那把钟不能被绕过。
+  private func nowMs() async -> Double {
+    systemClock ? Self.monotonicMs() : await pacer.nowMs()
   }
 
   private func current(_ id: UUID) -> Bool { selection == id && !Task.isCancelled }
 
   private func emit(_ e: FeedEvent) { continuation?.yield(FeedUpdate(selection: selection, event: e)) }
+}
+
+/// 快照落盘的开关兼互斥锁。
+///
+/// 写盘已经挪到 feed actor 之外的 detached 任务里（换品种那一下不能卡在磁盘上），
+/// 而「设置页关掉启动快照」要求立刻把磁盘上的那几份删干净。这两件事必须互斥：
+/// 不然删完之后一笔在途的写又把文件建回来，用户关了开关磁盘上照样有东西。
+///
+/// 锁只在真正写/删的那一小段里握着，feed actor 不碰它。
+final class SnapshotGate: @unchecked Sendable {
+  private let lock = NSLock()
+  private var enabled = true
+
+  /// 写一份。闸门关着就什么都不做，返回 nil。
+  func write(_ series: BarSeries, in dir: URL) throws -> Int? {
+    lock.lock(); defer { lock.unlock() }
+    guard enabled else { return nil }
+    return try SeriesStore.write(series, in: dir)
+  }
+
+  /// 关闸并清盘。会等在途的那一笔写完。
+  func disable(clearing dir: URL, legacy: URL) {
+    lock.lock(); defer { lock.unlock() }
+    enabled = false
+    Snapshot.remove(legacy)
+    SeriesStore.clear(in: dir)
+  }
+
+  func enable() {
+    lock.lock(); defer { lock.unlock() }
+    enabled = true
+  }
 }

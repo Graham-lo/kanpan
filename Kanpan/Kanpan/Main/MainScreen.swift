@@ -858,6 +858,8 @@ struct MainScreen: View {
         dismissPanel(); crosshair = nil
       }
       accountBridge = bridge; bridge.focus(market.symbol)
+      // 内存告警时放掉 K 线缓存：入口只负责听（`KanpanApp`），这里登记谁来收。
+      MemoryWarningRelay.shared.register(id: "market") { [weak market] in market?.memoryWarning() }
       awaitingAccount = true
       Task { await account.restore(); awaitingAccount = false }
     } catch { say(error.localizedDescription) }

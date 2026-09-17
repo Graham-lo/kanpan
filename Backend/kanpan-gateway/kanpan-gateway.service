@@ -8,6 +8,7 @@ Type=simple
 DynamicUser=yes
 WorkingDirectory=/opt/kanpan-gateway
 ExecStart=/usr/bin/python3 /opt/kanpan-gateway/server.py
+EnvironmentFile=-/etc/kanpan-gateway/limits.env
 Environment=PORT=8792
 CacheDirectory=kanpan-gateway
 Restart=on-failure
@@ -16,10 +17,13 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-MemoryMax=256M
-CPUQuota=50%
-TasksMax=64
-LimitNOFILE=256
+# Sized for the 7-core / 8 GB primary. Fewer than ten people share this host,
+# so the budget exists only to stop a runaway process, not to ration service.
+# The 3-core / 4 GB standby halves it via kanpan-gateway.service.d/.
+MemoryMax=1G
+CPUQuota=300%
+TasksMax=256
+LimitNOFILE=4096
 
 [Install]
 WantedBy=multi-user.target

@@ -103,7 +103,7 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
  let mut tx=s.pool.begin().await?;
  let owner:Option<Uuid>=sqlx::query_scalar("SELECT user_id FROM search_dispatch WHERE next_at<=now() ORDER BY next_at,user_id FOR UPDATE SKIP LOCKED LIMIT 1").fetch_optional(&mut *tx).await?;
  let Some(owner)=owner else{return Ok(false)};
- sqlx::query("UPDATE search_dispatch SET next_at=now()+interval '2 seconds' WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;tx.commit().await?;
+ sqlx::query("UPDATE search_dispatch SET next_at=now()+interval '1 second' WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;tx.commit().await?;
  let mut tx=s.personal(owner).await?;
  let row=sqlx::query("SELECT * FROM review_searches WHERE user_id=$1 AND status IN ('queued','running') AND next_at<=now() AND expires_at>now() AND (lease_until IS NULL OR lease_until<now()) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1").bind(owner).fetch_optional(&mut *tx).await?;
  let Some(row)=row else{sqlx::query("UPDATE search_dispatch SET next_at=now()+interval '10 seconds' WHERE user_id=$1").bind(owner).execute(&mut *tx).await?;tx.commit().await?;return Ok(false)};
@@ -113,8 +113,10 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
  let work=async {
   let bars=range_bars(market,&q.range,q.cutoff).await?;let candles=core(chart_match::from_bars(&bars))?;
   let candidates:Vec<Candidate>=match old_candidates{Some(v)=>parse(v)?,None=>candidates(s,owner,&q,&core(chart_match::descriptor(&candles))?).await?};
-  // Four candidates per lease bounds memory and lets saved records progress between batches.
-  for candidate in candidates.iter().skip(position).take(4) {
+  // Sixteen candidates per lease: the bound exists to let other saved records
+  // progress between batches, and on a 7-core host with a handful of users the
+  // old four made a search take four times as many leases as it needed to.
+  for candidate in candidates.iter().skip(position).take(16) {
    if let Ok(bars)=range_bars(market,&candidate.range,q.cutoff).await {
     let score=core(chart_match::rerank(&candles,&core(chart_match::from_bars(&bars))?,false))?.score;checked+=1;
     if score>=0.60 {items.push(json!({"id":candidate.id,"range":candidate.range,"score":score,"source":q.scope}));}

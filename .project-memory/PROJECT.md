@@ -21,11 +21,11 @@
 
 ## 3. 行情、账号、复盘（技术结论，沿用 09-15/16 的验证）
 
-- 线路：官方直连、用户线路、两台 VPS 网关（主 `kanpan.107-174-172-10.sslip.io`，备 `kanpan.96-44-162-222.sslip.io:8443`）自动选路并落盘 `market-source.json`。Binance 不能完整使用时历史、补页、WS 整套切 OKX，不混源；后台首次 5 分钟、最长 15 分钟低频确认恢复后切回。取消请求与单次超时不惩罚线路。
+- 线路：官方直连、用户线路、两台 VPS 网关（主 `kanpan.107-174-172-10.sslip.io`，备 `kanpan.96-44-162-222.sslip.io:8443`）自动选路并落盘 `market-source.json`。 2026-09-17 起设置里有「行情线路」三档（自动 / 直连 / 网关，`MarketRoutePolicyStore`，`UserDefaults.standard` 键 `market.routePolicy`）：直连只走币安自己的域名、不切 OKX，网关只走两台网关；用户真机目前设的是直连。Binance 不能完整使用时历史、补页、WS 整套切 OKX，不混源；后台首次 5 分钟、最长 15 分钟低频确认恢复后切回。取消请求与单次超时不惩罚线路。
 - 冷启动 / 切换靠多品种快照、后台加深、自选预热做到不等网络；登录用户的自选表要等账号恢复后再判首屏（09-16 修过「冷启动进行情页」「自选一行行慢慢加载」）。
 - 账号：用户名 + 密码，Keychain 会话，设备管理、改密、注销；服务端 `Backend/kanpan-api`（Rust，主 VPS `/opt/kanpan-api`，API 8794，PostgreSQL loopback 55434，RLS 隔离，同机每日备份 30 天）。邮箱注册停掉了。
 - 复盘：`KanpanReview` 接现有图表，记一笔 / 列表 / 待办 / 统计 / 详情 / 逐根重温 / 私有 OHLC 找相似；记录固定行情源；公开相似索引只是首批种子。
-- 网关：`Backend/kanpan-gateway`，`/opt/kanpan-gateway`，REST 8792、共享 WS 8793，服务 `kanpan-gateway`、`kanpan-stream-hub`。线上服务，只读探测，不改 Caddyfile。
+- 网关：`Backend/kanpan-gateway`，`/opt/kanpan-gateway`，REST 8792、共享 WS 8793，服务 `kanpan-gateway`、`kanpan-stream-hub`。线上服务，只读探测，不改 Caddyfile。 2026-09-17 性能轮已按「备份 → 先备节点 → 只读验证 → 主节点」部署过一次（备份在 `/opt/kanpan-gateway/backup-20260917-*`，API 在 `/opt/kanpan-api/backup-20260917`）；Caddy `admin off`，改完要 `systemctl restart caddy`。Release 基准用各包 `PerfBenchmarkTests.swift`（`swift test -c release --filter PerfBenchmark`），验收报告见桌面 `看盘-性能优化-验收-2026-09-17.md`。
 - 原型静态托管：主 VPS `/var/www/kanpan/ui/`（`ssh orderflow-vps`，`install -o caddy -g caddy -m 644`），浏览器地址 `https://kanpan.107-174-172-10.sslip.io/ui/`。
 
 ## 4. 用户稳定偏好

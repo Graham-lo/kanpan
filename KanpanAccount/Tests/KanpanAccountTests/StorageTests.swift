@@ -24,13 +24,15 @@ import Testing
     #expect(throws: (any Error).self) { try AccountFiles(root: root) }
     #expect(try Data(contentsOf: url) == bad)
   }
-  @Test func uncertainOperationsKeepIdentityAndPayload() throws {
+  @Test func uncertainOperationsKeepIdentityAndPayload() async throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try SyncStore(directory: root); let device = UUID()
     var object = SyncObject(collection: "drawings", id: "BTCUSDT/a"); object.body["color"] = .string("red")
     try store.capture(object, device: device)
     let first = try #require(store.archive.operations.first); try store.markSent(first.id)
     object.body["color"] = .string("blue"); try store.capture(object, device: device)
+    // 落盘挪到后台队列了，"重开一遍存档"之前得等它写完。
+    await store.flush()
     let reopened = try SyncStore(directory: root)
     #expect(reopened.archive.operations.count == 2)
     #expect(try JSONEncoder().encode(reopened.archive.operations[0]).count == JSONEncoder().encode(first).count)
@@ -42,7 +44,7 @@ import Testing
     #expect(reopened.archive.operations[0].baseRevision == 1)
     #expect(reopened.archive.local[object.key]?.body["color"] == .string("blue"))
   }
-  @Test func offlineDeleteThenUndoRetainsExplicitRestoreAfterRestart() throws {
+  @Test func offlineDeleteThenUndoRetainsExplicitRestoreAfterRestart() async throws {
     let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
     let store = try SyncStore(directory: root); let device = UUID()
     var line = SyncObject(collection: "drawings", id: "BTCUSDT/line")
@@ -51,6 +53,7 @@ import Testing
     line.deleted = true; try store.capture(line, device: device)
     let deletion = try #require(store.archive.operations.first)
     line.deleted = false; try store.capture(line, device: device)
+    await store.flush()
     let restored = try SyncStore(directory: root)
     #expect(restored.archive.operations.map(\.action) == ["delete", "restore"])
     line.deleted = true; line.revision = 5
@@ -60,4 +63,76 @@ import Testing
     #expect(restored.archive.local[line.key]?.deleted == false)
   }
 
+
+  @Test func batchedCaptureWritesOnce() async throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let store = try SyncStore(directory: root); let device = UUID()
+    var batch: [SyncObject] = []
+    for index in 0..<20 {
+      var value = SyncObject(collection: "favorites", id: "s\(index)")
+      value.body["symbol"] = .string("S\(index)"); value.body["order"] = .number(Double(index))
+      batch.append(value)
+    }
+    try store.capture(batch, device: device)
+    await store.flush()
+    #expect(store.archive.operations.count == 20)
+    #expect(store.writeCount == 1)
+    // 逐条走的话是 20 次整档重写。
+    var again = batch
+    for index in again.indices { again[index].body["order"] = .number(Double(index + 100)) }
+    try store.capture(again, device: device)
+    await store.flush()
+    #expect(store.archive.operations.count == 40)
+    #expect(store.writeCount == 2)
+    let reopened = try SyncStore(directory: root)
+    #expect(reopened.archive.operations.count == 40)
+    #expect(reopened.archive.local["favorites:s0"]?.body["order"] == .number(100))
+  }
+  @Test func capturesWithoutChangesDoNotWrite() async throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let store = try SyncStore(directory: root); let device = UUID()
+    var value = SyncObject(collection: "settings", id: "chart"); value.body["theme"] = .string("moss")
+    try store.capture(value, device: device)
+    await store.flush()
+    #expect(store.writeCount == 1)
+    try store.capture(value, device: device)
+    try store.capture([value, value], device: device)
+    await store.flush()
+    #expect(store.writeCount == 1)
+    #expect(store.archive.operations.count == 1)
+  }
+  @Test func orderedWritesLandInOrderAndLastOneIsReadable() async throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let store = try SyncStore(directory: root); let device = UUID()
+    // 连续 50 次事务全部排到后台串行队列，盘上必须是最后一次的完整快照。
+    for index in 1...50 {
+      var value = SyncObject(collection: "settings", id: "chart")
+      value.body["tick"] = .number(Double(index))
+      try store.capture(value, device: device)
+    }
+    #expect(store.archive.operations.count == 50)
+    await store.flush()
+    #expect(store.writeCount == 50)
+    let reopened = try SyncStore(directory: root)
+    #expect(reopened.archive.operations.count == 50)
+    #expect(reopened.archive.operations.map(\.logical) == Array(1...50).map(UInt64.init))
+    #expect(reopened.archive.local["settings:chart"]?.body["tick"] == .number(50))
+  }
+  @Test func lastWriteBeforeATeardownIsReadable() async throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let device = UUID()
+    do {
+      let store = try SyncStore(directory: root)
+      var value = SyncObject(collection: "favorites", id: "btc")
+      value.body["symbol"] = .string("BTCUSDT")
+      try store.capture(value, device: device)
+      try store.transaction { $0.lastSync = 1234 }
+      // 模拟"进程要没了"：同步排空，不靠 await。
+      store.flushNow()
+    }
+    let reopened = try SyncStore(directory: root)
+    #expect(reopened.archive.lastSync == 1234)
+    #expect(reopened.archive.local["favorites:btc"]?.body["symbol"] == .string("BTCUSDT"))
+    #expect(reopened.archive.operations.count == 1)
+  }
 }

@@ -78,8 +78,10 @@ class Peer:
 class Hub:
     def __init__(self, upstream=UPSTREAM, capacity=None, idle_seconds=2):
         self.upstream_url = upstream  # injected only by local tests, never by client requests
-        self.capacity = capacity or Capacity(int(os.environ.get('MAX_CLIENTS', '128')), int(os.environ.get('EGRESS_BYTES_PER_SECOND', '1500000')))
-        self.sampler = HostSampler(int(os.environ.get('MEMORY_BUDGET_BYTES', str(256 * 1024 * 1024))), int(os.environ.get('HOST_EGRESS_BYTES_PER_SECOND', '5000000')))
+        # Defaults match the widened systemd budget (MemoryMax=1G) and the
+        # quadrupled connection budget in /etc/kanpan-gateway/limits.env.
+        self.capacity = capacity or Capacity(int(os.environ.get('MAX_CLIENTS', '512')), int(os.environ.get('EGRESS_BYTES_PER_SECOND', '6000000')))
+        self.sampler = HostSampler(int(os.environ.get('MEMORY_BUDGET_BYTES', str(1024 * 1024 * 1024))), int(os.environ.get('HOST_EGRESS_BYTES_PER_SECOND', '20000000')))
         self.idle_seconds = idle_seconds
         self.peers, self.channels = set(), defaultdict(set)
         self.identities = {}
@@ -236,10 +238,15 @@ class Hub:
 
     async def sync(self, upstream):
         identity = 0
+        last_control = 0.0
         while True:
             await self.changed.wait()
             self.changed.clear()
-            await asyncio.sleep(.3)  # coalesce rapid client changes; <= ~3 control frames/s
+            # The first change after a quiet second is the cold-start critical
+            # path and has nothing to coalesce; only back-to-back changes back
+            # off to .3 so rapid chart switching stays <= ~3 control frames/s.
+            pause = .03 if time.monotonic() - last_control > 1 else .3
+            await asyncio.sleep(pause)
             wanted = set(self.channels)
             if not wanted:
                 await asyncio.sleep(self.idle_seconds)
@@ -252,11 +259,12 @@ class Hub:
                 if values:
                     identity += 1
                     await upstream.send_json({'method': method, 'params': sorted(values), 'id': identity})
+                    last_control = time.monotonic()
                     if method == 'SUBSCRIBE':
                         self.sent |= values
                     else:
                         self.sent -= values
-                    await asyncio.sleep(.3)
+                    await asyncio.sleep(pause)
 
     async def run(self):
         backoff = 1

@@ -263,8 +263,15 @@ struct FeedReplayTests {
     }
     await feed.start(symbol: "BTCUSDT", interval: .m1)
     #expect(await waitUntil(20) { await deck.progress() >= rec.lines.count })
-    // 末根事件至少和 kline 报文一样多（去掉排队期间的）。
-    #expect(await waitUntil(5) { seen.value > rec.klines.count / 2 })
+    // 末根事件够密：闸门没有把实时推送掐掉。
+    //
+    // 阈值从「≥ 报文数的一半」放宽到 1/8，是因为 kline 报文现在也要过 80ms 合帧闸门
+    // （`MarketFeed.emitTick`，原来 kline 是 `force: true` 直接绕过去的）。
+    // 这份录制是把 32 分钟的行情在几十毫秒里放完的——牌堆里没有任何 `.silence`，
+    // 帧与帧之间等于零间隔，被加速了上千倍，闸门自然合得很狠（实测 2090 条报文
+    // 合成 655 次末根事件）。真机上单品种的 kline 流约每 250ms 一条，拍子是 80ms，
+    // 每条照样立刻放行，这条链路上的事件密度并不会变。
+    #expect(await waitUntil(5) { seen.value > rec.klines.count / 8 })
 
     let want = ex.bars(now: rec.lines.count)
     // 牌堆把帧发完 ≠ 报文已经落进序列：中间还隔着 socket → AsyncStream → MarketFeed

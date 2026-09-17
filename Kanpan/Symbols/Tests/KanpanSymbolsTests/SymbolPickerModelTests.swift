@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 import KanpanCore
 
@@ -222,5 +223,72 @@ struct SymbolPickerModelTests {
     #expect(!m.isEmpty)
     #expect(m.countText == "\(SymbolFixtures.catalog.count) 个永续合约")
     #expect(m.sections.first { $0.kind == .all }?.rows.isEmpty == false)
+  }
+
+  /// 数一数到底写了几次盘。「同样的字节写回去」在文件上看不出来，但那一次编码
+  /// 加一次 `UserDefaults` 写是实打实花在冷启动主线程上的。
+  private final class CountingStorage: SymbolPrefsStorage {
+    private let inner = MemoryPrefsStorage()
+    private let lock = NSLock()
+    private var count = 0
+    var writes: Int { lock.lock(); defer { lock.unlock() }; return count }
+    var raw: [String: Data] { inner.raw }
+    func symbolPrefsData(forKey key: String) -> Data? { inner.symbolPrefsData(forKey: key) }
+    func setSymbolPrefsData(_ data: Data?, forKey key: String) {
+      lock.lock(); count += 1; lock.unlock()
+      inner.setSymbolPrefsData(data, forKey: key)
+    }
+  }
+
+  @Test("存档已经齐整时，开页一次盘都不写")
+  func openingACleanArchiveWritesNothing() throws {
+    var prefs = SymbolPrefs(favorites: ["BTCUSDT", "ETHUSDT"])
+    for symbol in prefs.favorites {
+      let group = prefs.createGroup(FavoriteCategory.name(symbol: symbol, info: SymbolFixtures.info(symbol)))
+      prefs.assign(symbol, to: group)
+    }
+    let storage = CountingStorage()
+    let store = SymbolPrefsStore(storage: storage, key: "t")
+    store.save(prefs)
+    let before = try #require(storage.raw["t"])
+    let writesBeforeOpening = storage.writes
+
+    let m = SymbolPickerModel(catalog: SymbolFixtures.catalog, tickers: SymbolFixtures.tickers, store: store)
+    #expect(storage.writes == writesBeforeOpening)
+    #expect(storage.raw["t"] == before)
+    #expect(m.prefs.favorites == ["BTCUSDT", "ETHUSDT"])
+  }
+
+  @Test("还没分类的自选照样补齐并落盘")
+  func openingStillClassifiesAndSavesUnassignedFavorites() throws {
+    let storage = CountingStorage()
+    let store = SymbolPrefsStore(storage: storage, key: "t")
+    store.save(SymbolPrefs(favorites: ["BTCUSDT"]))
+    let writesBeforeOpening = storage.writes
+
+    let m = SymbolPickerModel(catalog: SymbolFixtures.catalog, store: store)
+    #expect(storage.writes == writesBeforeOpening + 1)
+    #expect(m.prefs.groupForSymbol["BTCUSDT"] != nil)
+    #expect(SymbolPrefsStore(storage: storage, key: "t").load().groupForSymbol["BTCUSDT"] != nil)
+  }
+
+  @Test("这一批行情一行都没落在表里，就不碰 sections")
+  func quotesOutsideTheTableLeaveSectionsAlone() throws {
+    final class Flag: @unchecked Sendable { var hit = false }
+    let (m, _) = make()
+    let touched = Flag()
+    withObservationTracking { _ = m.sections } onChange: { touched.hit = true }
+
+    m.updateQuotes([Ticker(symbol: "ZZZUSDT", last: 1, changePercent: 0,
+                           high: 1, low: 1, quoteVolume: 0)])
+    #expect(!touched.hit)
+    // 但报价本身照收：下次这一行真的出现在表里时，数字已经在手上了。
+    #expect(m.ticker(for: "ZZZUSDT")?.last == 1)
+
+    var btc = try #require(m.ticker(for: "BTCUSDT"))
+    btc.last += 1
+    m.updateQuotes([btc])
+    #expect(touched.hit)
+    #expect(m.sections.flatMap(\.rows).first { $0.id == "BTCUSDT" }?.ticker?.last == btc.last)
   }
 }

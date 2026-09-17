@@ -27,7 +27,7 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test data-test diag-test diag-ios-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures
+.PHONY: help core-test data-test diag-test diag-ios-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -41,7 +41,9 @@ help:
 	@echo "app-test     跑 app target 的测试"
 	@echo "ui-test      A8.4：13 台机型跑同一套 XCUITest 用例，逐台记结果"
 	@echo "ui-test-one  只跑一台（DEVICE=\"iPhone 16 Pro\"）"
-	@echo "snap         在单台模拟器上装 app 并截一张图（DEVICE=\"iPhone 16 Pro\"）"
+	@echo "device-release  编真机 Release 包（generic/platform=iOS，签名走 -allowProvisioningUpdates）"
+	@echo "install-release 把 Release 包装到第一台 connected 真机"
+	@echo "snap         在单台模拟器上装 app 并截一张图（DEVICE=\"iPhone 16 Pro\"，RELEASE=1 走 Release 包）"
 	@echo "screenshots  13 台机型全跑一遍，出 docs/acceptance/shots/"
 	@echo "devices      备齐 当前范围的 13 台模拟器（缺的自动 create）"
 	@echo "boot         把13 台全 boot 起来"
@@ -181,6 +183,40 @@ build:
 		-scheme $(SCHEME) \
 		-destination 'platform=iOS Simulator,name=$(DEVICE)' \
 		-derivedDataPath DerivedData
+
+# ---------------------------------------------------------------- 真机 Release
+# 到 2026-09-17 为止真机上装的一直是 Debug 包：`DerivedData-device*/Build/Products/`
+# 底下只有 `Debug-iphoneos`。Debug 关了优化、开了运行时检查，用它量图表帧率等于
+# 自己给自己扣分。下面两条把「编 Release 真机包 → 装到连着的那台」补齐。
+#
+# 注意：`make device-release` 会真的去签名（`-allowProvisioningUpdates`），
+# 不要在没插机器 / 没登录开发者账号的环境里跑。
+DEVICE_RELEASE_DD := DerivedData-device-release
+DEVICE_RELEASE_APP := $(DEVICE_RELEASE_DD)/Build/Products/Release-iphoneos/Kanpan.app
+
+device-release:
+	xcodebuild \
+		-project Kanpan/Kanpan.xcodeproj \
+		-scheme $(SCHEME) \
+		-configuration Release \
+		-destination 'generic/platform=iOS' \
+		-derivedDataPath $(DEVICE_RELEASE_DD) \
+		-allowProvisioningUpdates \
+		build
+	@echo "Release 真机包：$(DEVICE_RELEASE_APP)"
+
+# 装到第一台 connected 真机。UDID 从 `xcrun devicectl list devices` 解析，
+# 只认 state=connected 的那几行；一台都没有就直接报错，不去碰模拟器。
+install-release:
+	@[ -d "$(DEVICE_RELEASE_APP)" ] || { echo "没找到 $(DEVICE_RELEASE_APP)，先跑 make device-release"; exit 1; }
+	@udid=$$(xcrun devicectl list devices --json-output /dev/stdout 2>/dev/null | python3 -c "\
+import json,sys;\
+d=json.load(sys.stdin);\
+xs=[x for x in d.get('result',{}).get('devices',[]) if x.get('connectionProperties',{}).get('tunnelState')!='unavailable' and x.get('connectionProperties',{}).get('pairingState')=='paired'];\
+print(xs[0]['hardwareProperties']['udid'] if xs else '')"); \
+	[ -n "$$udid" ] || { echo "没有已配对且在线的真机（xcrun devicectl list devices 看一眼）"; exit 1; }; \
+	echo "→ 装到 $$udid"; \
+	xcrun devicectl device install app --device "$$udid" "$(DEVICE_RELEASE_APP)"
 
 # ---------------------------------------------------------------- A0.3 取证
 snap: build

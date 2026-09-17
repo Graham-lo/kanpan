@@ -218,6 +218,70 @@ struct BarSeriesTests {
     #expect(dirty.count == s.count && dirty.filter(\.isNaN).count == dirty.count)
   }
 
+  // ------------------------------------------------------------ 身份戳
+
+  /// 戳只是加速器：说「相同」必须真的相同，说「不同」时逐列比照样兜底。
+  @Test("身份戳：同内容一定同判定")
+  func revisionAgreesWithContent() {
+    var rng = SystemRandomNumberGenerator()
+    for _ in 0..<1000 {
+      var a = regular(Int.random(in: 1...40, using: &rng))
+      var b = a
+      switch Int.random(in: 0...5, using: &rng) {
+      case 0: break
+      case 1: b.replaceLast(with: bar(b.lastTime, Double.random(in: 0...100, using: &rng)))
+      case 2: b.append(bar(b.lastTime + b.step, 7))
+      case 3: b.close[Int.random(in: 0..<b.count, using: &rng)] += 1
+      case 4: b.prepend([bar(b.t0 - b.step, 5)])
+      default: a = regular(a.count)   // 内容一样、戳不一样的两条
+      }
+      // 逐列比是唯一的真相，`==` 必须和它一个结论。
+      let byColumns = a.symbol == b.symbol && a.interval == b.interval && a.t0 == b.t0
+        && a.step == b.step && a.open == b.open && a.high == b.high && a.low == b.low
+        && a.close == b.close && a.volume == b.volume && a.openTime == b.openTime
+      #expect((a == b) == byColumns)
+
+      let prefixByColumns: Bool
+      if a.symbol == b.symbol, a.interval == b.interval, a.t0 == b.t0, a.step == b.step,
+         a.count == b.count, a.count > 0, a.openTime == b.openTime {
+        prefixByColumns = a.open.dropLast().elementsEqual(b.open.dropLast())
+          && a.high.dropLast().elementsEqual(b.high.dropLast())
+          && a.low.dropLast().elementsEqual(b.low.dropLast())
+          && a.close.dropLast().elementsEqual(b.close.dropLast())
+          && a.volume.dropLast().elementsEqual(b.volume.dropLast())
+      } else {
+        prefixByColumns = byColumns
+      }
+      #expect(a.samePrefix(as: b) == prefixByColumns)
+    }
+  }
+
+  @Test("身份戳：覆盖末根不动前缀，追加一根把老整条当前缀")
+  func revisionMoves() {
+    let a = regular(10)
+    var tick = a
+    tick.replaceLast(with: bar(a.lastTime, 99))
+    #expect(tick.revision != a.revision)
+    #expect(tick.prefixRevision == a.prefixRevision)   // 这就是「只动了末根」的快路
+
+    var grown = a
+    grown.append(bar(a.lastTime + a.step, 11))
+    #expect(grown.prefixRevision == a.revision)
+
+    // 直接改列的人不走 `replaceLast`，两个戳都得作废，不然前缀会说谎。
+    var poked = a
+    poked.close[3] += 1
+    #expect(poked.revision != a.revision)
+    #expect(poked.prefixRevision != a.prefixRevision)
+    #expect(!poked.samePrefix(as: a))
+
+    // 另建一条内容相同的：戳不同，但判定仍要是「相同」。
+    let twin = regular(10)
+    #expect(twin.revision != a.revision)
+    #expect(twin == a)
+    #expect(twin.samePrefix(as: a))
+  }
+
   /// 品种精度与显示名。
   @Test("品种字段")
   func symbolInfo() {

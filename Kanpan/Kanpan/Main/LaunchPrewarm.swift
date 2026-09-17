@@ -21,7 +21,8 @@ enum LaunchPrewarm {
     guard !started else { return }
     started = true
     guard ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] != "1" else { return }
-    let prefs = PrefsStore.load(from: UserDefaults.standard)
+    // 走一格记忆：账号桥紧接着要解同一份设置，字节一样就省掉第二次整份解码。
+    let prefs = PrefsDecodeCache.load(from: UserDefaults.standard)
     warm(host: prefs.apiHost, path: "/fapi/v1/ping", method: "GET")
     // 推送域名只要把 DNS 和 TLS 走通，回什么状态码都无所谓，所以用 HEAD。
     warm(host: prefs.streamHost, path: "/", method: "HEAD")

@@ -23,7 +23,7 @@ class Bucket:
 
 class Capacity:
     """Sampled host headroom; quick bounded reductions, slow recovery avoid flapping."""
-    def __init__(self, clients=128, bytes_per_second=1_500_000):
+    def __init__(self, clients=512, bytes_per_second=6_000_000):
         self.maximum_clients = clients
         self.maximum_bytes = bytes_per_second
         self.scale = 1.0
@@ -44,7 +44,7 @@ class Capacity:
 
 
 class HostSampler:
-    def __init__(self, memory_limit=256 * 1024 * 1024, network_limit=5_000_000):
+    def __init__(self, memory_limit=1024 * 1024 * 1024, network_limit=20_000_000):
         self.memory_limit, self.network_limit = memory_limit, network_limit
         self.previous_cpu = self.previous_net = None
         self.previous_time = time.monotonic()
@@ -69,9 +69,16 @@ class HostSampler:
 
 
 class HTTPGuard:
-    """Per-source rate/concurrency plus bounded bookkeeping, safe from key flooding."""
-    def __init__(self, limit=2048):
+    """Per-source rate/concurrency plus bounded bookkeeping, safe from key flooding.
+
+    The whole host serves fewer than ten people, so the budget is sized for one
+    app opening many panels at once (archive backfill alone runs eight parallel
+    requests). What remains is only the floor that stops a single broken client
+    from monopolising the worker threads.
+    """
+    def __init__(self, limit=2048, concurrency=12, rate=10, burst=40):
         self.limit = limit
+        self.concurrency, self.rate, self.burst = concurrency, rate, burst
         self.peers = {}
         self.lock = threading.Lock()
 
@@ -82,15 +89,19 @@ class HTTPGuard:
                 self.peers = {k: v for k, v in self.peers.items() if v[1] or now - v[2] < 120}
                 if len(self.peers) >= self.limit:
                     return False
-                self.peers[key] = [Bucket(2, 8, now), 0, now]
+                self.peers[key] = [Bucket(self.rate, self.burst, now), 0, now]
             peer = self.peers[key]
             peer[2] = now
-            if peer[1] >= 2 or not peer[0].take(now=now):
+            if peer[1] >= self.concurrency or not peer[0].take(now=now):
                 return False
             peer[1] += 1
             return True
 
-    def leave(self, key):
+    def leave(self, key, refund=False):
+        """refund returns the token too: upstream geo-blocks are not the caller's fault."""
         with self.lock:
-            if key in self.peers:
-                self.peers[key][1] = max(0, self.peers[key][1] - 1)
+            peer = self.peers.get(key)
+            if peer:
+                peer[1] = max(0, peer[1] - 1)
+                if refund:
+                    peer[0].tokens = min(peer[0].burst, peer[0].tokens + 1)

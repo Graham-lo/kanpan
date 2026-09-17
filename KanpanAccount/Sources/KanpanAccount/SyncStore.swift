@@ -40,33 +40,109 @@ public struct SyncArchive: Codable, Sendable {
   public var logical: UInt64 = 0
   public var offset: Int64 = 0
 }
+
+/// 存档落盘器：一条串行队列，把「编码 + 原子写」整段挪出主线程。
+///
+/// 为什么是 `DispatchQueue` 而不是 actor：串行队列是 FIFO 的，第 N 次
+/// `schedule` 一定排在第 N+1 次前面，所以盘上的内容永远是某一次 transaction
+/// 的完整快照，不会出现新档被旧档盖回去。往 actor 里塞 `Task` 没有这个保证。
+///
+/// 整个进程共用一条队列：切换用户时旧档还可能有没写完的活儿，共用一条队列
+/// 就不会出现两个 `SyncStore` 对同一个文件交错写。量级很小（一次几十 KB），
+/// 串起来也不会堵。
+final class ArchiveWriter: @unchecked Sendable {
+  private static let queue = DispatchQueue(label: "kanpan.account.archive", qos: .utility)
+  private let url: URL
+  private let lock = NSLock()
+  private var failure: Error?
+  private var writes = 0
+  init(url: URL) { self.url = url }
+
+  /// `SyncArchive` 是值类型，拷出来之后主线程就可以接着改自己的那份。
+  func schedule(_ value: SyncArchive) {
+    let url = self.url
+    Self.queue.async { [weak self] in
+      var caught: Error?
+      do { try AccountFiles.writeData(try JSONEncoder().encode(value), to: url) } catch { caught = error }
+      guard let self else { return }
+      lock.lock()
+      writes += 1
+      if failure == nil { failure = caught }
+      lock.unlock()
+    }
+  }
+  /// 等队列排空（阻塞当前线程）。退到后台、以及「写完必须立刻能被重新打开」的场合用。
+  func drain() { Self.queue.sync {} }
+  /// 不阻塞的排空。
+  func drain(_ done: @escaping @Sendable () -> Void) { Self.queue.async { done() } }
+  /// 取走并清掉攒下的写盘错误。落盘是异步的，错误只能由下一次 transaction 抛出来。
+  func takeFailure() -> Error? {
+    lock.lock(); defer { lock.unlock() }
+    let value = failure; failure = nil; return value
+  }
+  /// 真正落盘的次数。只用于观测与测试（「一次批量只写一次」）。
+  var writeCount: Int { lock.lock(); defer { lock.unlock() }; return writes }
+}
+
 @MainActor public final class SyncStore {
   public private(set) var archive: SyncArchive
   private let url: URL
+  private let writer: ArchiveWriter
   public init(directory: URL) throws {
     url = directory.appendingPathComponent("sync-v1.json")
     archive = try AccountFiles.read(SyncArchive.self, at: url) ?? SyncArchive()
     guard archive.version == 1 else { throw AccountError.storage }
+    writer = ArchiveWriter(url: url)
   }
+  /// 一次事务 = 一次编码 + 一次写盘。
+  ///
+  /// 以前每次都先把整档从盘上重读一遍只为校验 version：这个档只有本进程在写，
+  /// version 在 `init` 里已经验过，重读纯属白花主线程时间。改成进程内持有已加载的
+  /// 那一份，启动 / 切用户时读一次。落盘排到后台队列，上一次写盘的错误由这一次抛出。
   public func transaction(_ edit: (inout SyncArchive) throws -> Void) throws {
-    if let disk = try AccountFiles.read(SyncArchive.self, at: url), disk.version != 1 { throw AccountError.storage }
-    var next = archive; try edit(&next); try AccountFiles.write(next, to: url); archive = next
+    if let failure = writer.takeFailure() { throw failure }
+    var next = archive; try edit(&next)
+    guard next.version == 1 else { throw AccountError.storage }
+    archive = next
+    writer.schedule(next)
   }
   /// Record only actual field changes. Uncertain requests are immutable; retry them with their original ID.
   public func capture(_ value: SyncObject, device: UUID, importing batch: UUID? = nil) throws {
-    let previous = archive.local[value.key]
-    guard previous?.body != value.body || previous?.deleted != value.deleted else { return }
-    let base = archive.objects[value.key] ?? SyncObject(collection: value.collection, id: value.id)
-    if batch != nil && base.deleted { return }
+    try capture([value], device: device, importing: batch)
+  }
+  /// 批量记账：N 个对象一次事务、一次写盘。
+  ///
+  /// 自选列表每条都带 `order`，往头部插一个品种会让后面每一条的 `order` 都变；
+  /// 逐条 `capture` 等于整档重写 N 次。批量之后是 1 次。
+  public func capture(_ values: [SyncObject], device: UUID, importing batch: UUID? = nil) throws {
+    guard !values.isEmpty else { return }
+    var staged = archive
+    var changed = false
+    for value in values where stage(value, device: device, importing: batch, into: &staged) { changed = true }
+    guard changed else { return }
+    try transaction { $0 = staged }
+  }
+  /// 把一个对象记进给定的存档副本，返回「有没有真的产生一条操作」。
+  private func stage(_ value: SyncObject, device: UUID, importing batch: UUID?, into a: inout SyncArchive) -> Bool {
+    let previous = a.local[value.key]
+    guard previous?.body != value.body || previous?.deleted != value.deleted else { return false }
+    let base = a.objects[value.key] ?? SyncObject(collection: value.collection, id: value.id)
+    if batch != nil && base.deleted { return false }
     var changed = value.body.filter { previous?.body[$0.key] != $0.value }
     for key in previous?.body.keys ?? Dictionary<String, JSONValue>().keys where value.body[key] == nil { changed[key] = .null }
     let action = value.deleted ? "delete" : (previous?.deleted == true || base.deleted) ? "restore" : "patch"
     let op = SyncOperation(collection: value.collection, objectId: value.id, deviceId: device,
-      baseRevision: base.revision, generation: base.generation, timestamp: Int64(Date().timeIntervalSince1970 * 1000) + archive.offset,
-      logical: archive.logical + 1, action: action, fields: changed, importBatch: batch)
-    try transaction { $0.logical += 1; $0.operations.append(op); $0.local[value.key] = value }
+      baseRevision: base.revision, generation: base.generation, timestamp: Int64(Date().timeIntervalSince1970 * 1000) + a.offset,
+      logical: a.logical + 1, action: action, fields: changed, importBatch: batch)
+    a.logical += 1; a.operations.append(op); a.local[value.key] = value
+    return true
   }
   public func markSent(_ id: UUID) throws { try transaction { $0.sent.insert(id) } }
+  /// 一批已发操作一次记完，别一条一条来。
+  public func markSent(_ ids: [UUID]) throws {
+    guard !ids.isEmpty else { return }
+    try transaction { a in for id in ids { a.sent.insert(id) } }
+  }
   public func acknowledge(_ response: SyncPushResponse) throws {
     try transaction { a in
       a.offset = response.serverTime - Int64(Date().timeIntervalSince1970 * 1000)
@@ -91,4 +167,14 @@ public struct SyncArchive: Codable, Sendable {
       }
     }
   }
+  /// 等排队的写盘全部落地。
+  public func flush() async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      writer.drain { continuation.resume() }
+    }
+  }
+  /// 阻塞版排空：退到后台这种「必须现在就保证在盘上」的路径用。
+  public func flushNow() { writer.drain() }
+  /// 真正落盘的次数。观测与测试用。
+  public var writeCount: Int { writer.writeCount }
 }

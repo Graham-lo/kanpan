@@ -37,6 +37,8 @@ public actor RateLimiter {
   public static let sharedOKX = RateLimiter(budget: 1000, minGapMs: 40)
 
   private let pacer: Pacer
+  /// 见 `MonoClock`：真机上读时刻不必再跨一次 `await`。
+  private let systemClock: Bool
   private let budget: Int
   private let minGapMs: Double
   private let windowMs: Double = 60_000
@@ -52,6 +54,7 @@ public actor RateLimiter {
               budget: Int = RateLimiter.weightPerMinute,
               minGapMs: Double = 120) {
     self.pacer = pacer
+    self.systemClock = pacer is SystemPacer
     self.budget = budget
     self.minGapMs = minGapMs
   }
@@ -59,7 +62,7 @@ public actor RateLimiter {
   /// 拿到发一次请求的许可。该等就在这儿等够。
   public func acquire(weight: Int) async throws {
     while true {
-      let now = await pacer.nowMs()
+      let now = await nowMs()
       prune(now: now)
 
       if now < blockedUntilMs {
@@ -88,7 +91,7 @@ public actor RateLimiter {
   public func penalize(retryAfterSeconds: Double?) async {
     penaltyCount += 1
     let secs = retryAfterSeconds ?? min(30, pow(2, Double(penaltyCount - 1)))
-    let now = await pacer.nowMs()
+    let now = await nowMs()
     blockedUntilMs = max(blockedUntilMs, now + secs * 1000)
   }
 
@@ -99,17 +102,22 @@ public actor RateLimiter {
 
   /// 还要等多久才能发（测试和日志用）。
   public func waitMs() async -> Double {
-    let now = await pacer.nowMs()
+    let now = await nowMs()
     prune(now: now)
     return max(0, max(blockedUntilMs - now, lastSendMs + minGapMs - now))
   }
 
   public func usedWeight() async -> Int {
-    prune(now: await pacer.nowMs())
+    prune(now: await nowMs())
     return spent.reduce(0) { $0 + $1.weight }
   }
 
   private func prune(now: Double) {
     while let f = spent.first, now - f.at >= windowMs { spent.removeFirst() }
+  }
+
+  /// 当前时刻，毫秒。真机上走 `MonoClock`，测试注了虚拟时钟时仍然问 `pacer`。
+  private func nowMs() async -> Double {
+    systemClock ? MonoClock.nowMs() : await pacer.nowMs()
   }
 }

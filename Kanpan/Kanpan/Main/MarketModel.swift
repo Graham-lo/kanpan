@@ -130,9 +130,12 @@ final class MarketModel {
     // 连续内存，读完直接是可画的值），图和价格一起出现。
     if snapshot, series == nil,
        let saved = SeriesStore.read(symbol: symbol, interval: interval,
-                                    in: Self.catalogPaths(for: source).series) {
+                                    in: Self.catalogPaths(for: source).series, touch: false) {
       series = saved
     }
+    // 顺手让快照目录的索引在后台扫一遍：之后换品种、淘汰旧文件都不用再碰 `contentsOfDirectory`。
+    // 扫过一次就记住了，重复调用是空操作。
+    if snapshot { SeriesStore.warm(Self.catalogPaths(for: source).series) }
     guard pump == nil else { return }
     network.start { [weak self] online in
       Task { @MainActor [weak self] in
@@ -266,7 +269,12 @@ final class MarketModel {
     symbol = sym
     interval = iv
     switching = true
-    series = nil
+    // 切换不留空白帧：盘上有新品种这个周期的快照就同步摆出来（和 `start` 一样，
+    // 几十 KB 连续内存，读完即可画），feed 那份随后到了再覆盖。老图不能留——
+    // 那是上一个品种的 K 线，顶着新品种的名字多一帧都是错的；没有快照才留空。
+    series = snapshot
+      ? SeriesStore.read(symbol: sym, interval: iv, in: Self.catalogPaths(for: source).series, touch: false)
+      : nil
     loading = false
     oiTask?.cancel(); oi = nil; oiRegion = nil; lastView = nil
     if cold {

@@ -49,16 +49,27 @@ final class DiagnosticsCenter: @unchecked Sendable {
     guard first else { return }
 
     #if canImport(MetricKit) && os(iOS)
+      // 订阅本身必须同步挂上（见上面第 1 条），这一步几乎不花时间。
       MXMetricManager.shared.add(subscriber)
       // `pastPayloads` / `pastDiagnosticPayloads` 是**已经交付过**的历史副本，
       // 系统留最近 24 份。首次装上订阅（或用户升级到带诊断的版本）时补收一次，
       // 否则「装了新版之前的崩溃」全看不到。重复的那些会被 id 去重吗？不会——
       // 所以只在第一次 start 时补，靠上面的 `first` 挡住。
-      for p in MXMetricManager.shared.pastPayloads {
-        store.ingest(p.jsonRepresentation(), kind: .metric)
-      }
-      for p in MXMetricManager.shared.pastDiagnosticPayloads {
-        store.ingest(p.jsonRepresentation(), kind: .diagnostic)
+      //
+      // 补收这一段是**冷启动主线程上最贵的一笔**：最多 24 份，每份都要 JSON 化、
+      // 解一遍、算摘要、写一次盘，再加一次淘汰扫描。`start()` 是在 `KanpanApp.init()`
+      // 里、Scene 还没起来之前调的，压在那儿等于白等。MetricKit 真正的回调本来
+      // 就不在主线程（上面第 2 条），挪到后台不改任何语义。
+      Task { @MainActor in
+        // payload 对象只能在这儿摸，取出字节就够了，剩下的活全丢给后台。
+        let metrics = MXMetricManager.shared.pastPayloads.map { $0.jsonRepresentation() }
+        let diagnostics = MXMetricManager.shared.pastDiagnosticPayloads.map { $0.jsonRepresentation() }
+        guard !metrics.isEmpty || !diagnostics.isEmpty else { return }
+        let store = self.store
+        Task.detached(priority: .utility) {
+          for data in metrics { store.ingest(data, kind: .metric) }
+          for data in diagnostics { store.ingest(data, kind: .diagnostic) }
+        }
       }
     #endif
   }

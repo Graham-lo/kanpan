@@ -21,7 +21,7 @@
 
 只读检查主机分别为7核/约8GB和3核/约4GB，部署时空闲内存约5.1GB/3.2GB、负载较低。先采用保守预算：主节点128连接、1.5MB/s应用出站；备用64连接、0.75MB/s。它们是上线保护参数，**不是压测得出的最大承载人数或供应商带宽保证**。
 
-每5秒采样宿主CPU、可用内存、服务RSS、默认出口发送速度。压力升高时逐步减少新连接及发送预算，回落时缓慢恢复，避免抖动。整个服务由systemd限制256MB内存、50%单核CPU、64任务；历史服务独立受限。预算在`/etc/kanpan-gateway/limits.env`配置，不影响同机其他应用。公开HTTP健康接口只返回必要服务状态。
+每5秒采样宿主CPU、可用内存、服务RSS、默认出口发送速度。压力升高时逐步减少新连接及发送预算，回落时缓慢恢复，避免抖动。整个服务由systemd限制1GB内存、300%CPU（备用节点用`kanpan-stream-hub.service.d/10-standby-node.conf`降为150%）、256任务；历史服务独立受限。预算在`/etc/kanpan-gateway/limits.env`配置（默认`MAX_CLIENTS=512`、`EGRESS_BYTES_PER_SECOND=6000000`、`MEMORY_BUDGET_BYTES=1073741824`、`HOST_EGRESS_BYTES_PER_SECOND=20000000`），不影响同机其他应用。公开HTTP健康接口只返回必要服务状态。
 
 ## 历史 K 线与 OI
 
@@ -40,11 +40,11 @@
 
 ## 运行、验证与回滚
 
-Python3.11+，独立venv，`pip install -r requirements.txt`；aiohttp固定3.14.3。本地运行 `python -m unittest discover -s Backend/kanpan-gateway`。19项测试含100个本地客户端复用一条假上游、来源限额、异常控制帧隔离、慢客户端释放、OI周期与缓存。100客户端测试只证明共享/隔离功能，不是生产容量承诺。
+Python3.11+，独立venv，`pip install -r requirements.txt`；aiohttp固定3.14.3。本地运行 `python -m unittest discover -s Backend/kanpan-gateway`。42项测试含100个本地客户端复用一条假上游、来源限额、异常控制帧隔离、慢客户端释放、OI周期与缓存，以及历史分页并行不丢连续性、响应字节缓存而serverTime保持新鲜、上游451作为独立信号不扣调用方配额。100客户端测试只证明共享/隔离功能，不是生产容量承诺。
 
 源码部署在`/opt/kanpan-gateway`，`kanpan-gateway.service`监听127.0.0.1:8792，`kanpan-stream-hub.service`监听127.0.0.1:8793；DynamicUser、NoNewPrivileges、ProtectSystem=strict、ProtectHome、PrivateTmp。历史缓存位于`/var/cache/kanpan-gateway`，可清理重建。
 
-仅在项目独立Caddy站点导入`Caddy.routes`，其它主机规则保留。两台现有Caddy均admin off，配置备份并validate成功后各短重启一次激活；未升级Caddy或更改管理接口。后续Python更新只重启项目服务。恢复`/etc/caddy/Caddyfile.backup-before-shared-<部署时间>`并validate/激活可回滚路由；主节点旧源码另备份在`/var/backups/kanpan-gateway`。未修改Mac网络代理规则。
+仅在项目独立Caddy站点导入`Caddy.routes`（REST/OI与账号两段开启`encode zstd gzip`，WebSocket段不压缩），其它主机规则保留。两台现有Caddy均admin off，配置备份并validate成功后各短重启一次激活；未升级Caddy或更改管理接口。后续Python更新只重启项目服务。恢复`/etc/caddy/Caddyfile.backup-before-shared-<部署时间>`并validate/激活可回滚路由；主节点旧源码另备份在`/var/backups/kanpan-gateway`。未修改Mac网络代理规则。
 
 两台VPS的实时共享与 OI 验证记录见`docs/acceptance/AICoin-base/foundation/dual-gateway-live.json`；市场源的 OKX 历史、实时和分页应通过 `LiveRoutingTests` 在当前公网环境单独复验，不能用本地单元测试代替 VPS 或真机覆盖。
 

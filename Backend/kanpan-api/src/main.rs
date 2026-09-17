@@ -22,9 +22,11 @@ async fn main()->anyhow::Result<()> {
    if kanpan_api::review_worker::run_one(&s,&market).await.is_err(){tracing::warn!("Review work will retry");}
    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
   }};
+  // Chart search is the one job a person actively waits on, and this host is
+  // shared by fewer than ten of them: poll every second, not every two.
   let search_loop=async {loop {
    if kanpan_api::search::run_one(&s,&market).await.is_err(){tracing::warn!("Search work will retry");}
-   tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+   tokio::time::sleep(std::time::Duration::from_secs(1)).await;
   }};
   let mail_loop=async {loop {
    if let Some(ref mail)=mail {if mail.deliver_one(&s).await.is_err(){tracing::warn!("Email delivery will retry");}}

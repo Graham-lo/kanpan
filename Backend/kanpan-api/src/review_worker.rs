@@ -121,7 +121,13 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
    fresh.assessment=Some(a);sqlx::query("UPDATE review_records SET checkpoint=COALESCE($3,checkpoint) WHERE user_id=$1 AND id=$2").bind(j.owner).bind(j.record).bind(c).execute(&mut *tx).await?;
    delay=if c.is_some_and(|at|at<now-60_000){2}else if fresh.draft.rule.confirmation=="trade_touch"{5}else{30};
   },
-  Err(_)=>{delay=60;if j.kind=="assess"&&fresh.assessment.as_ref().is_none_or(|a|!matches!(a.outcome.as_str(),"realized"|"unrealized"|"observation")){fresh.assessment=Some(NativeAssessment{outcome:"needs_verification".into(),reason:"行情待补齐".into(),event_at:None,assessed_at:now});}}
+  Err(e)=>{
+   // A regional block is not a transient fault. Retrying it every 60 seconds
+   // left one permanent ghost job per record, polling an upstream that will
+   // keep saying no. Back off a day instead of giving up entirely, so a node
+   // failover or a lifted block still recovers without anyone intervening.
+   let region=e.1==crate::review_market::BLOCKED;delay=if region{86_400}else{60};
+   if j.kind=="assess"&&fresh.assessment.as_ref().is_none_or(|a|!matches!(a.outcome.as_str(),"realized"|"unrealized"|"observation")){fresh.assessment=Some(NativeAssessment{outcome:"needs_verification".into(),reason:if region{"行情源在本节点被封锁"}else{"行情待补齐"}.into(),event_at:None,assessed_at:now});}}
  }}
  sqlx::query("UPDATE review_records SET record=$3,changed_at=now() WHERE user_id=$1 AND id=$2").bind(j.owner).bind(j.record).bind(json!(fresh)).execute(&mut *tx).await?;
  sqlx::query("UPDATE review_jobs SET finished=$4,lease_id=NULL,lease_until=NULL,next_at=now()+make_interval(secs=>$5) WHERE user_id=$1 AND id=$2 AND lease_id=$3").bind(j.owner).bind(j.id).bind(j.lease).bind(done).bind(delay).execute(&mut *tx).await?;

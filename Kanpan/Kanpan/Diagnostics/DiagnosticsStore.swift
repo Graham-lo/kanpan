@@ -116,11 +116,17 @@ final class DiagnosticsStore: @unchecked Sendable {
 
     let name = Self.fileName(kind: kind, at: now, id: record.id)
     guard let encoded = try? Self.encoder.encode(record) else { return nil }
+    let url = directory.appendingPathComponent(name)
     do {
-      try encoded.write(to: directory.appendingPathComponent(name), options: .atomic)
+      try encoded.write(to: url, options: .atomic)
     } catch {
       return nil
     }
+    // 索引是增量维护的：刚写的这一份直接加进去，不必为了淘汰再扫一遍目录。
+    var entries = indexLocked()
+    entries.append(Slot(url: url, name: name, size: encoded.count))
+    entries.sort(by: Self.older)
+    slots = entries
     pruneLocked()
     return record
   }
@@ -174,13 +180,15 @@ final class DiagnosticsStore: @unchecked Sendable {
     where f.pathExtension == "json" {
       try? FileManager.default.removeItem(at: f)
     }
+    slots = []
   }
 
   /// 当前占用字节数。P9.4 取证时报这个数。
   func diskUsageBytes() -> Int {
     lock.lock()
     defer { lock.unlock() }
-    return recordsLocked().reduce(0) { $0 + $1.size }
+    // 走索引：只问文件大小，不用把每份 payload 都解出来。
+    return indexLocked().reduce(0) { $0 + $1.size }
   }
 
   // ---------------------------------------------------------------- 内部
@@ -189,6 +197,50 @@ final class DiagnosticsStore: @unchecked Sendable {
     var url: URL
     var record: DiagnosticsRecord
     var size: Int
+  }
+
+  /// 目录的轻量索引：淘汰只需要「谁最旧、各自多大」，这两样文件名和
+  /// `.fileSizeKey` 里都有（文件名带毫秒时间戳，见 `fileName(kind:at:id:)`），
+  /// 一个字节的 JSON 都不用解。
+  ///
+  /// 以前 `pruneLocked` 每收一份就把整个目录读一遍、每份都 `JSONDecoder` 解一遍，
+  /// 冷启动补收 24 份历史 payload 时这一步是 24 × 全目录。现在启动扫一次，
+  /// 之后收一份加一条、淘汰一份减一条。
+  private struct Slot {
+    var url: URL
+    var name: String
+    var size: Int
+  }
+
+  /// nil = 还没扫过。
+  private var slots: [Slot]?
+
+  /// 文件名里的毫秒时间戳：`<kind>-<015d 毫秒>-<id 前 8 位>.json`。
+  private static func stamp(_ name: String) -> Int64 {
+    let parts = name.split(separator: "-")
+    guard parts.count > 1, let value = Int64(parts[1]) else { return 0 }
+    return value
+  }
+
+  /// 同一毫秒时按文件名兜底，保证顺序是确定的。
+  private static func older(_ a: Slot, _ b: Slot) -> Bool {
+    let x = stamp(a.name), y = stamp(b.name)
+    return x == y ? a.name < b.name : x < y
+  }
+
+  private func indexLocked() -> [Slot] {
+    if let slots { return slots }
+    let fm = FileManager.default
+    let files = (try? fm.contentsOfDirectory(
+      at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+    var out: [Slot] = []
+    for f in files where f.pathExtension == "json" {
+      let size = (try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+      out.append(Slot(url: f, name: f.lastPathComponent, size: size))
+    }
+    out.sort(by: Self.older)
+    slots = out
+    return out
   }
 
   private func recordsLocked() -> [Entry] {
@@ -209,7 +261,7 @@ final class DiagnosticsStore: @unchecked Sendable {
   /// 超限就从最旧的开始删。**先删到条数达标，再删到字节达标**，
   /// 顺序无所谓（都是删最旧），分两步只是读起来清楚。
   private func pruneLocked() {
-    var entries = recordsLocked()
+    var entries = indexLocked()
 
     while entries.count > limits.maxRecords, let oldest = entries.first {
       try? FileManager.default.removeItem(at: oldest.url)
@@ -223,6 +275,7 @@ final class DiagnosticsStore: @unchecked Sendable {
       total -= oldest.size
       entries.removeFirst()
     }
+    slots = entries
   }
 
   private func ensureDirectory() -> Bool {

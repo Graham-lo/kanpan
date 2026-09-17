@@ -40,6 +40,14 @@ public actor BinanceREST {
     }
   }
 
+  /// 把「行情线路」策略转给底下的 transport。假 transport（测试里）没有这层，
+  /// 就是一次空操作。
+  public func setRoutePolicy(_ policy: MarketRoutePolicy) async {
+    if let routed = transport as? MarketRESTTransport {
+      await routed.setPolicy(policy)
+    }
+  }
+
   // ------------------------------------------------------------------ 底层
 
   /// 发一次 GET。418 / 429 按 `Retry-After` 停够重发，最多 `attempts` 次。
@@ -131,17 +139,35 @@ public actor BinanceREST {
     return rows.map(\.bar)
   }
 
+  /// 补一次缺要拉几根：`from` 到 `now` 之间有多少根就拉多少根，外加 2 根余量。
+  ///
+  /// 原来这儿走的是 `klines` 的默认 `limit = 1500`：切出去抽根烟回来只缺一根，
+  /// 也照样收一份 250KB 的报文、在限流器上花掉权重 10。按需之后常见情形是
+  /// 几根到几十根、权重 1，回前台那一下的等待和流量都少一个数量级。
+  ///
+  /// 下限 5 根：再往下省不出什么，留点余量反而能盖住时钟偏移和边界那一根。
+  /// 上限仍是一页 1500，翻页逻辑不变。
+  static func tailLimit(interval: Interval, from: Int64, now: Int64) -> Int {
+    let step = max(interval.stepMs, 1)
+    let needed = Int(max(0, (now - from) / step) + 1)
+    return min(max(needed + 2, 5), maxKlines)
+  }
+
   /// Reconnects can span several pages; never treat the first 1500 bars as the whole gap.
   func contiguousTail(symbol: String, interval: Interval, from: Int64) async throws -> [Bar] {
     var cursor = from
     var result: [Bar] = []
-    for _ in 0..<4 {
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    for p in 0..<4 {
       try Task.checkCancellation()
-      let page = try await klines(symbol: symbol, interval: interval, startTime: cursor)
+      // 只有第一页按需；能翻到第二页说明第一页被拉满了，那就是真的断了很久，
+      // 后面几页照旧按整页拉。
+      let limit = p == 0 ? Self.tailLimit(interval: interval, from: cursor, now: now) : Self.maxKlines
+      let page = try await klines(symbol: symbol, interval: interval, limit: limit, startTime: cursor)
       guard let last = page.last else { return result }
       guard page.first!.openTime >= cursor, last.openTime >= cursor else { throw FeedError.badResponse("行情翻页没有推进") }
       result.append(contentsOf: page)
-      if page.count < Self.maxKlines { return result }
+      if page.count < limit { return result }
       cursor = last.openTime + 1
     }
     throw FeedError.badResponse("断线时间较长，需要重新加载行情")
