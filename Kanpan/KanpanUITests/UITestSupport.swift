@@ -159,10 +159,14 @@ class KanpanUICase: XCTestCase {
   /// 「最新」这颗按钮本来就是随视野进出的（带 `.opacity` 过渡），轮询时正好撞上那一帧
   /// 的概率不低——之前 `waitForLiveChart` 就是这么红的。
   /// 所以先自己看一眼：在不在、有没有面积；都有了才敢问 `isHittable`。
+  /// `exists` 也挡不住它：答「在」之后、取 `frame` 之前的那一帧里按钮可能已经走了，
+  /// 那一下 `.frame` 直接抛 `Failed to get matching snapshot: No matches found`，
+  /// 同样是当场判红（iPad mini 上就这么红过——图宽、视野归位滑得久，窗口更容易撞上）。
+  /// `snapshot()` 是这组接口里唯一会把「没这个元素」老实交成 Swift 错误的，
+  /// 所以在不在、有没有面积都从它这一张快照上读，读不到就算「现在点不了」。
   func hittable(_ el: XCUIElement) -> Bool {
-    guard el.exists else { return false }
-    let box = el.frame
-    guard box.width > 1, box.height > 1 else { return false }
+    guard let snap = try? el.snapshot() else { return false }
+    guard snap.frame.width > 1, snap.frame.height > 1 else { return false }
     return el.isHittable
   }
 
