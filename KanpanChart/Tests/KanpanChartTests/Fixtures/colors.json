@@ -1,49 +1,49 @@
 {
-  "note": "A3.3：7 个取色点 × AICoin 一套风格 × 明暗两套 = 14 个取样点。风格表收成 AICoin 一套（用户 2026-09-15 的要求），色值也不再是原型 styles.js 那一版——涨跌/底色/网格都照着手机 AICoin App 重新定过，这里记的就是定版后的 `Palette` 值，改配色时这个文件要跟着改，改不动说明改错了地方。",
-  "points": [
-    "upBody",
-    "downBody",
-    "wick",
-    "grid",
-    "bg",
-    "lastLine",
-    "axisText"
-  ],
-  "lastBarUp": false,
-  "themes": {
-    "light": {
-      "aicoin": {
-        "upBody": "#34B257",
-        "downBody": "#E64553",
-        "wick": "#34B257",
-        "wickDown": "#E64553",
-        "grid": "#EDEFF6",
-        "bg": "#FFFFFF",
-        "lastLine": "#E64553",
-        "axisText": "#8B90B2",
-        "gridMode": "none",
-        "shape": "solid",
-        "wickDevicePx": 1.3333333333333333,
-        "outlineDevicePx": 3,
-        "lastDash": true
-      }
-    },
-    "dark": {
-      "aicoin": {
-        "upBody": "#3DC65C",
-        "downBody": "#F2555B",
-        "wick": "#3DC65C",
-        "wickDown": "#F2555B",
-        "grid": "#232858",
-        "bg": "#161A3F",
-        "lastLine": "#F2555B",
-        "axisText": "#6D719A",
-        "gridMode": "none",
-        "shape": "solid",
-        "wickDevicePx": 1.3333333333333333,
-        "outlineDevicePx": 3,
-        "lastDash": true
-      }
-    }
+ "note": "A3.3：7 个取色点 × AICoin 一套风格 × 明暗两套 = 14 个取样点。K 线的画法仍旧是 AICoin 那一套（形状、间距、影线量化一个数都没动），但色值跟着配色走：这里记的是出厂配色「青苔」浅 / 深两档下 `Palette` 的定版值，换配色或调对比度时这个文件要跟着改，改不动说明改错了地方。陶土那一套不在这儿比像素，四套 seed 的令牌接线由 KanpanCore 的 StyleTableTests 守。",
+ "points": [
+  "upBody",
+  "downBody",
+  "wick",
+  "grid",
+  "bg",
+  "lastLine",
+  "axisText"
+ ],
+ "lastBarUp": false,
+ "themes": {
+  "light": {
+   "aicoin": {
+    "upBody": "#2E7D6B",
+    "downBody": "#C34642",
+    "wick": "#2E7D6B",
+    "wickDown": "#C34642",
+    "grid": "#E2EBE5",
+    "bg": "#F3F7F4",
+    "lastLine": "#C34642",
+    "axisText": "#606F67",
+    "gridMode": "none",
+    "shape": "solid",
+    "wickDevicePx": 1.3333333333333333,
+    "outlineDevicePx": 3,
+    "lastDash": true
+   }
+  },
+  "dark": {
+   "aicoin": {
+    "upBody": "#4FB69C",
+    "downBody": "#E36159",
+    "wick": "#4FB69C",
+    "wickDown": "#E36159",
+    "grid": "#1A241F",
+    "bg": "#0B120F",
+    "lastLine": "#E36159",
+    "axisText": "#7B8D85",
+    "gridMode": "none",
+    "shape": "solid",
+    "wickDevicePx": 1.3333333333333333,
+    "outlineDevicePx": 3,
+    "lastDash": true
+   }
   }
+ }
 }

@@ -22,8 +22,15 @@ struct BottomBar: View {
     HStack(spacing: 0) {
       item(VectorIcon.chart, "复盘", on: false, action: onReview)
         .accessibilityIdentifier("bottom.review")
-        .overlay(alignment: .topTrailing) {
-          if reviewCount > 0 { Text("\(min(reviewCount, 99))").font(.system(size: 9)).padding(3).background(theme.amber, in: Capsule()).foregroundStyle(.white).padding(.trailing, 14) }
+        .overlay(alignment: .top) {
+          if reviewCount > 0 {
+            Text("\(min(reviewCount, 99))")
+              .font(.system(size: 9, weight: .semibold))
+              .foregroundStyle(theme.badgeInk)
+              .padding(.horizontal, 4).padding(.vertical, 1.5)
+              .background(theme.amber, in: Capsule())
+              .offset(x: 19, y: 1)
+          }
         }
       tool(.indicator, VectorIcon.indicator, "指标") { onPanel(.indicator) }
         .accessibilityIdentifier("bottom.indicator")
@@ -32,6 +39,8 @@ struct BottomBar: View {
       tool(.settings, VectorIcon.settings, "设置") { onPanel(.settings) }
         .accessibilityIdentifier("bottom.settings")
     }
+    .padding(.top, 6)
+    .padding(.bottom, 2)
   }
 
   private func tool(
@@ -40,16 +49,20 @@ struct BottomBar: View {
     item(icon, title, on: active == which, action: action)
   }
 
+  /// 一格：18pt 的线性图标坐在一颗 42×27 的胶囊里，下面 10pt 的名字（原型 `.tabs`）。
+  /// 亮着的那格不是只把字染色——胶囊垫一层 15% 的强调底，四格并排时一眼看得出在哪儿。
   private func item(
     _ icon: VectorIcon, _ title: String, on: Bool, action: @escaping () -> Void
   ) -> some View {
     Button(action: action) {
       VStack(spacing: 3) {
-        icon
-        Text(title).font(.system(size: 10, weight: .medium))
+        icon.sized(18)
+          .frame(width: 42, height: 27)
+          .background(on ? theme.amberSoft : .clear, in: Capsule())
+        Text(title).font(.system(size: 10, weight: on ? .semibold : .medium))
       }
       .foregroundStyle(on ? theme.amber : theme.ink3)
-      .padding(.top, 7)
+      .padding(.top, 4)
       .padding(.bottom, 6)
       .frame(maxWidth: .infinity)
       .contentShape(Rectangle())

@@ -83,11 +83,11 @@ async fn remove(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>,headers:
 }
 #[derive(Serialize,Deserialize,Clone)] struct Candidate {id:Uuid,range:ChartRange}
 async fn candidates(s:&AppState,owner:Uuid,q:&NativeSearch,vector:&[f32])->Result<Vec<Candidate>> {
- if q.scope=="history" && q.range.venue!="binance" {return Ok(vec![])}
+ if q.scope=="history" && !matches!(q.range.venue.as_str(),"binance"|"okx") {return Ok(vec![])}
  let feature=format!("{vector:?}");let mut tx=s.personal(owner).await?;
  let rows=if q.scope=="history" {
-  sqlx::query("SELECT id,symbol,market,timeframe,start_at,end_at,bars_count FROM market_features WHERE published AND model_id='candle-geometry-v2' AND render_version='ohlc-geometry-resample64-v2' AND market=$2 AND timeframe=$3 AND end_at<=$4 AND symbol LIKE '%USDT' AND NOT(symbol=$5 AND start_at<$7 AND end_at>$6) ORDER BY embedding<=>$1::vector,id LIMIT 300")
-  .bind(&feature).bind(&q.range.market).bind(&q.range.interval).bind(q.cutoff).bind(&q.range.symbol).bind(q.range.start).bind(q.range.end).fetch_all(&mut *tx).await?
+  sqlx::query("SELECT id,symbol,market,timeframe,start_at,end_at,bars_count FROM market_features WHERE published AND model_id='candle-geometry-v2' AND render_version='ohlc-geometry-resample64-v2' AND market=$2 AND timeframe=$3 AND source=$4 AND end_at<=$5 AND symbol LIKE '%USDT' AND NOT(symbol=$6 AND start_at<$7 AND end_at>$8) ORDER BY embedding<=>$1::vector,id LIMIT 300")
+  .bind(&feature).bind(&q.range.market).bind(&q.range.interval).bind(&q.range.venue).bind(q.cutoff).bind(&q.range.symbol).bind(q.range.end).bind(q.range.start).fetch_all(&mut *tx).await?
  }else{
   sqlx::query("SELECT id,symbol,'usd_m'::text AS market,timeframe,range_start AS start_at,range_end AS end_at,(record#>>'{draft,range,bars}')::int AS bars_count FROM review_records WHERE user_id=$2 AND feature IS NOT NULL AND feature_version='candle-geometry-v2' AND record->>'voided'='false' AND record#>>'{draft,range,venue}'=$8 AND timeframe=$3 AND range_end<=$4 AND submitted<=$4 AND NOT(symbol=$5 AND range_start<$7 AND range_end>$6) ORDER BY feature<=>$1::vector,id LIMIT 300")
   .bind(&feature).bind(owner).bind(&q.range.interval).bind(q.cutoff).bind(&q.range.symbol).bind(q.range.start).bind(q.range.end).bind(&q.range.venue).fetch_all(&mut *tx).await?

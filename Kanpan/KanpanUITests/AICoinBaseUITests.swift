@@ -162,8 +162,8 @@ final class AICoinBaseUITests: XCTestCase {
     let portraitWidth = try XCTUnwrap(info()["plotW"] as? Double)
     let portraitSpacing = try XCTUnwrap(info()["spacing"] as? Double)
     let portraitHeight = try XCTUnwrap(info()["height"] as? Double)
-    // 底栏没有单独的「横屏」了：横屏是画线的工作台，点周期行的「画线」直接横过去。
-    app.buttons["interval.draw"].tap()
+    // 底栏没有单独的「横屏」了：横屏是画线的工作台，点「图表」面板里的「画线」直接横过去。
+    XCTAssertTrue(app.tapDrawEntry(), "「图表」面板里没有「画线」")
     if UIDevice.current.userInterfaceIdiom == .pad {
       // iPad windows can keep their orientation. Full chart mode must still open.
       XCTAssertTrue(wait { app.buttons["land.exit"].exists &&

@@ -269,7 +269,9 @@ struct FavoritesView: View {
         let live = feedStatus == .live && (updatedAt.map { context.date.timeIntervalSince($0) < 5 } ?? false)
         HStack(spacing: 5) {
           Circle().fill(live ? theme.up : theme.ink3).frame(width: 5, height: 5)
-          Text((live ? "实时 · " : "") + basisTitle.replacingOccurrences(of: "涨跌幅", with: ""))
+          // 这儿原来还写着「实时 · 」：连没连上是程序自己的事，用户在自选页要看的是
+          // 涨跌幅按什么口径算。连接状态交给左边那颗点，不占文字。
+          Text(basisTitle.replacingOccurrences(of: "涨跌幅", with: ""))
         }.foregroundStyle(theme.ink3)
       }
     }.font(.system(size: 11)).padding(.horizontal, 16).padding(.vertical, 8)
@@ -324,8 +326,6 @@ struct FavoritesView: View {
   private func row(_ symbol: String) -> some View {
     let ticker = displayQuote(symbol)
     let base = model.info(for: symbol)?.base ?? String(symbol.dropLast(4))
-    let index = symbol.utf8.reduce(0) { ($0 + Int($1)) % 6 }
-    let tint = Color(hex: theme.chart.palette[index % theme.chart.palette.count])
     let amplitude = ticker?.amplitude24h
     let volumeText = ticker.map { $0.quoteVolume.isFinite ? fmtVol($0.quoteVolume) : "—" } ?? "—"
     let amplitudeText = amplitude.map { toFixed($0, 2) + "%" } ?? "—"
@@ -338,10 +338,7 @@ struct FavoritesView: View {
       }
       HStack(spacing: 10) {
           if !editing {
-            Text(base == "BTC" ? "₿" : String(base.prefix(2)))
-              .font(.system(size: 12, weight: .bold)).foregroundStyle(tint).frame(width: 30, height: 30)
-              .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 9))
-              .overlay(RoundedRectangle(cornerRadius: 9).stroke(tint.opacity(0.24), lineWidth: 0.5))
+            CoinBadge(base: base, size: 33)
           }
           VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 1) {

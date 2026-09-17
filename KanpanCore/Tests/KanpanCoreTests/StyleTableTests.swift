@@ -37,41 +37,33 @@ struct StyleTableTests {
 
   }
 
-  @Test("浅色配色与原型逐一相等")
-  func lightPalette() { Self.checkPalette(Palette.chart(Palette.lightSeed), Fx.light, "浅色") }
-
-  @Test("深色配色与原型逐一相等")
-  func darkPalette() { Self.checkPalette(Palette.chart(Palette.darkSeed), Fx.dark, "深色") }
-
-  static func checkPalette(
-    _ c: ChartColors, _ fx: PaletteRow, _ label: String,
-    sourceLocation: SourceLocation = #_sourceLocation
-  ) {
-    let fromChart: [(String, Hex)] = [
-      ("bg", c.bg), ("grid", c.grid), ("axis", c.axis), ("text", c.text), ("dim", c.dim),
-      ("ink", c.ink), ("amber", c.amber), ("cross", c.cross), ("band", c.band), ("oi", c.oi),
-      ("oiFill", c.oiFill), ("chip", c.chip), ("panel", c.panel),
-      ("crossBg", c.crossBg), ("crossInk", c.crossInk),
-    ]
-    for (k, v) in fromChart {
-      #expect(v.value == fx.chart[k], "\(label) \(k)：原型 \(fx.chart[k] ?? "无")，这里 \(v.value)",
-              sourceLocation: sourceLocation)
-    }
-    let fromCSS: [(String, Hex)] = [
-      ("--up", c.up), ("--down", c.down), ("--hair", c.hair),
-      ("--amber-soft", c.amberSoft), ("--amber-line", c.amberLine),
-    ]
-    for (k, v) in fromCSS {
-      #expect(v.value == fx.css[k], "\(label) \(k)：原型 \(fx.css[k] ?? "无")，这里 \(v.value)",
-              sourceLocation: sourceLocation)
-    }
-    #expect(c.palette.map(\.value) == fx.palette, "\(label) 指标配色", sourceLocation: sourceLocation)
-    #expect(c.up.value == fx.green, "\(label) 涨色", sourceLocation: sourceLocation)
-    #expect(c.down.value == fx.red, "\(label) 跌色", sourceLocation: sourceLocation)
+  /// 配色不再对着原型那张表逐字比。2026-09-16 换成青苔 / 陶土两套（见 `Palette`），
+  /// 旧 `styles.json` 里的浅 / 深两行说的是上一版的蓝白配色，留着比只会比出旧值。
+  /// 现在守的是**接线**：每个令牌有没有接到该接的地方，四套配色一视同仁。
+  @Test("令牌接线正确", arguments: [Palette.sageSeed, Palette.sageNightSeed,
+                                    Palette.terraSeed, Palette.terraNightSeed])
+  func tokensWireThrough(_ seed: PaletteSeed) {
+    let c = Palette.chart(seed)
+    #expect(c.bg == seed.chart)
+    #expect(c.grid == seed.grid)
+    #expect(c.axis == seed.line)
+    #expect(c.text == seed.ink2)
+    #expect(c.dim == seed.ink3)
+    #expect(c.ink == seed.ink)
+    #expect(c.amber == seed.amber, "图上那支暖色不跟界面强调色走")
+    #expect(c.up == seed.up && c.down == seed.down)
+    #expect(c.hair == seed.hair)
+    #expect(c.palette == seed.palette)
+    #expect(c.band == seed.palette[4] && c.oi == seed.palette[5])
+    #expect(c.panel == seed.app)
+    #expect(c.chip == (seed.dark ? seed.ground : seed.app))
+    #expect(c.amberSoft.value.hasPrefix(seed.amber.value))
+    #expect(c.amberLine.value == seed.amber.value + "55")
   }
 
   /// 红涨绿跌只换 up/down 两个，别的一个都不许动。
-  @Test("redUp 只翻转涨跌两色", arguments: [Palette.lightSeed, Palette.darkSeed])
+  @Test("redUp 只翻转涨跌两色", arguments: [Palette.sageSeed, Palette.sageNightSeed,
+                                           Palette.terraSeed, Palette.terraNightSeed])
   func redUpSwapsOnlyUpDown(_ seed: PaletteSeed) {
     let a = Palette.chart(seed)
     let b = Palette.chart(seed, redUp: true)
@@ -83,7 +75,8 @@ struct StyleTableTests {
   }
 
   /// 颜色都得是能解析的十六进制。
-  @Test("颜色格式合法", arguments: [Palette.lightSeed, Palette.darkSeed])
+  @Test("颜色格式合法", arguments: [Palette.sageSeed, Palette.sageNightSeed,
+                                           Palette.terraSeed, Palette.terraNightSeed])
   func hexParses(_ seed: PaletteSeed) {
     let c = Palette.chart(seed)
     for h in [c.bg, c.grid, c.axis, c.text, c.dim, c.ink, c.amber, c.cross, c.band, c.oi,

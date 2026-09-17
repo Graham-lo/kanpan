@@ -70,11 +70,13 @@ struct AccountView: View {
               .accessibilityIdentifier("account.newPassword")
           }
         }
-        if feature.page == .close { Text("注销后云端数据将删除").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading) }
-        if let error = feature.error { Text(error).font(.footnote).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("account.error") }
+        if feature.page == .close { Text("注销后云端数据将删除").font(.footnote).foregroundStyle(theme.ink3).frame(maxWidth: .infinity, alignment: .leading) }
+        // 出错的字走跌色。原来写死了橙，那是上一版的品牌色，换了配色以后它是全页唯一
+        // 一处跟谁都不像的颜色；错误本来就该跟「跌」同一支红。
+        if let error = feature.error { Text(error).font(.footnote).foregroundStyle(theme.down).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("account.error") }
         Button { focused = nil; feature.submit() } label: {
-          Group { if feature.busy { ProgressView().tint(.white) } else { Text(primary) } }.frame(maxWidth: .infinity, minHeight: 48)
-        }.buttonStyle(.borderedProminent).tint(feature.page == .close ? .red : theme.amber)
+          Group { if feature.busy { ProgressView().tint(theme.badgeInk) } else { Text(primary) } }.frame(maxWidth: .infinity, minHeight: 48)
+        }.buttonStyle(.borderedProminent).tint(feature.page == .close ? theme.down : theme.amber)
           .disabled(feature.busy).accessibilityIdentifier("account.submit")
         if feature.page == .login {
           HStack {
@@ -85,52 +87,78 @@ struct AccountView: View {
         }
       }.padding(20)
     }.scrollDismissesKeyboard(.interactively)
+      .scrollContentBackground(.hidden)
+      .background(theme.app)
   }
   private var primary: String {
     switch feature.page { case .changePassword: "保存"; default: title }
   }
   private func input<Content: View>(_ title: String, field: Field, @ViewBuilder content: () -> Content) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text(title).font(.subheadline).foregroundStyle(.secondary)
+      Text(title).font(.subheadline).foregroundStyle(theme.ink3)
       content().padding(.horizontal, 12).frame(minHeight: 48)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+        .foregroundStyle(theme.ink)
+        .background(theme.raised2, in: RoundedRectangle(cornerRadius: 10))
     }
   }
   private var account: some View {
     List {
       Section { LabeledContent("用户名", value: feature.user?.email ?? "") }
+        .listRowBackground(theme.raised)
       Section {
         row("同步") { feature.move(.sync) }
         row("登录设备") { feature.move(.devices) }
         row("修改密码") { feature.move(.changePassword) }
       }
-      Section { Button("退出登录", role: .destructive) { Task { await feature.logout() } } }
-      Section { Button("注销账号", role: .destructive) { feature.move(.close) } }
+      .listRowBackground(theme.raised)
+      Section { Button("退出登录") { Task { await feature.logout() } }.foregroundStyle(theme.down) }
+        .listRowBackground(theme.raised)
+      Section { Button("注销账号") { feature.move(.close) }.foregroundStyle(theme.down) }
+        .listRowBackground(theme.raised)
     }
+    .listed(theme)
   }
   private var sync: some View {
     List {
       Section {
         Toggle("自动同步", isOn: Binding(get: { feature.autoSync }, set: { feature.onAutoSync?($0) }))
         LabeledContent("上次同步") { if let last = feature.lastSync { Text(last, style: .relative) } else { Text("尚未同步") } }
-        if !feature.syncStatus.isEmpty { Text(feature.syncStatus).foregroundStyle(.secondary) }
+        if !feature.syncStatus.isEmpty { Text(feature.syncStatus).foregroundStyle(theme.ink3) }
         if feature.pending > 0 { LabeledContent("待同步", value: "\(feature.pending) 项") }
       }
+      .listRowBackground(theme.raised)
       Section { Button("立即同步") { feature.onSynchronize?() } }
+        .listRowBackground(theme.raised)
     }
+    .listed(theme)
   }
   private var deviceList: some View {
     List {
       ForEach(feature.devices) { item in
         HStack {
-          VStack(alignment: .leading) { Text(item.name); Text(item.current ? "本机" : Date(timeIntervalSince1970: Double(item.lastSeen) / 1000).formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
-          Spacer(); Button("退出", role: .destructive) { feature.revoke(item) }.frame(minHeight: 44)
+          VStack(alignment: .leading) { Text(item.name); Text(item.current ? "本机" : Date(timeIntervalSince1970: Double(item.lastSeen) / 1000).formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(theme.ink3) }
+          Spacer(); Button("退出") { feature.revoke(item) }.foregroundStyle(theme.down).frame(minHeight: 44)
         }
+        .listRowBackground(theme.raised)
       }
-      if let error = feature.error { Text(error).foregroundStyle(.orange) }
-    }.task { await feature.loadDevices() }.refreshable { await feature.loadDevices() }
+      if let error = feature.error {
+        Text(error).foregroundStyle(theme.down).listRowBackground(theme.raised)
+      }
+    }
+    .listed(theme)
+    .task { await feature.loadDevices() }.refreshable { await feature.loadDevices() }
   }
   private func row(_ title: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) { HStack { Text(title); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.tertiary) } }.foregroundStyle(.primary)
+    Button(action: action) { HStack { Text(title); Spacer(); VectorIcon.chevron(10, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(theme.ink3) } }.foregroundStyle(theme.ink)
+  }
+}
+
+private extension View {
+  /// 账号里那几张 `List` 共用的底：系统那抹灰换成皮肤的 `app`。
+  /// 不换的话它们是全 app 仅存的系统配色，和左右两页对不上。
+  /// 行的底得逐个 `Section` 自己写 `.listRowBackground(theme.raised)`，
+  /// 那是行的属性，挂在 `List` 上不生效。
+  func listed(_ theme: PanelTheme) -> some View {
+    scrollContentBackground(.hidden).background(theme.app).foregroundStyle(theme.ink)
   }
 }

@@ -3,6 +3,7 @@ import ReviewDomain
 
 public struct ReviewBook: View {
   @Bindable var feature: ReviewFeature
+  @Environment(\.reviewTheme) private var t
   @State private var filter = ""
   public init(feature: ReviewFeature) { self.feature = feature }
   public var body: some View {
@@ -18,26 +19,37 @@ public struct ReviewBook: View {
               Button { feature.bookOpen = false; feature.onCapture() } label: {
                 Label("继续未完成的记录", systemImage: "square.and.pencil")
               }
+              .listRowBackground(t.app)
             }
             if feature.tab == "todo" {
               group("待处理", records: filtered.filter { $0.needsAction })
               group("等答案", records: filtered.filter { $0.outcome == .waiting && !$0.needsAction })
             } else { group(nil, records: filtered) }
-            if feature.historyLoading { ProgressView() }
-            if let error = feature.historyError { Text(error).foregroundStyle(.secondary); Button("重试") { Task { await feature.loadHistory(query: filter, page: feature.historyPage) } } }
+            if feature.historyLoading { ProgressView().listRowBackground(t.app) }
+            if let error = feature.historyError {
+              Text(error).foregroundStyle(t.ink3).listRowBackground(t.app)
+              Button("重试") { Task { await feature.loadHistory(query: filter, page: feature.historyPage) } }.listRowBackground(t.app)
+            }
             if filtered.isEmpty && !feature.historyLoading && feature.historyError == nil {
               Button { feature.bookOpen = false; feature.onCapture() } label: { ContentUnavailableView("还没有记录", systemImage: "book.closed", description: Text("记一笔")) }
+                .listRowBackground(t.app)
+                .listRowSeparator(.hidden)
             }
             if feature.isConnected && (feature.historyPage > 0 || feature.nextPage != nil) {
               HStack {
                 Button("上一页") { Task { await feature.loadHistory(query: filter, page: feature.historyPage - 1) } }.disabled(feature.historyPage == 0 || feature.historyLoading)
                 Spacer(); Text("\(feature.historyPage + 1)").monospacedDigit(); Spacer()
                 Button("下一页") { Task { await feature.loadHistory(query: filter, page: feature.historyPage + 1) } }.disabled(feature.nextPage == nil || feature.historyLoading)
-              }.buttonStyle(.borderless).frame(minHeight: 44)
+              }.buttonStyle(.borderless).frame(minHeight: 44).listRowBackground(t.app)
             }
-          }.listStyle(.plain).searchable(text: $filter, prompt: "品种或原话")
+          }
+          .listStyle(.plain)
+          .scrollContentBackground(.hidden)
+          .background(t.app)
+          .searchable(text: $filter, prompt: "品种或原话")
         }
       }
+      .background(t.app)
       .navigationTitle("复盘").navigationBarTitleDisplayMode(.inline)
       .toolbar {
         // 左上角统一成「‹ 返回」，和看盘其余各页一致（2026-09-15）。
@@ -53,7 +65,8 @@ public struct ReviewBook: View {
       .onChange(of: feature.tab) { _, _ in feature.rememberTab() }
       .task(id: feature.tab) { if feature.tab == "stats" { await feature.loadStatistics() } else { await feature.loadHistory(query: filter) } }
       .task(id: filter) { do { try await Task.sleep(for: .milliseconds(350)); if feature.tab != "stats" { await feature.loadHistory(query: filter) } } catch {} }
-    }.tint(.orange)
+    }
+    .tint(t.accent)
   }
   private var filtered: [ReviewRecord] { feature.bookRecords.filter { filter.isEmpty || $0.draft.range.symbol.localizedCaseInsensitiveContains(filter) || $0.draft.text.localizedCaseInsensitiveContains(filter) } }
   @ViewBuilder private func group(_ title: String?, records: [ReviewRecord]) -> some View {
@@ -61,39 +74,51 @@ public struct ReviewBook: View {
       Section {
         ForEach(records) { record in
           NavigationLink { ReviewRecordView(feature: feature, id: record.id) } label: { ReviewRecordRow(record: record) }
+            .listRowBackground(t.app)
         }
-      } header: { if let title { Text(title) } }
+      } header: { if let title { Text(title).foregroundStyle(t.ink3) } }
     }
   }
   private var statistics: some View {
     List {
       if let error = feature.statisticsError {
-        Text(error).foregroundStyle(.secondary)
-        Button("登录") { feature.onLogin() }
-      } else if feature.statistics.isEmpty { Text("暂无已判定样本").foregroundStyle(.secondary) }
+        Text(error).foregroundStyle(t.ink3).listRowBackground(t.app)
+        Button("登录") { feature.onLogin() }.listRowBackground(t.app)
+      } else if feature.statistics.isEmpty {
+        Text("暂无已判定样本").foregroundStyle(t.ink3).listRowBackground(t.app)
+      }
       ForEach(feature.statistics) { group in
         HStack {
-          VStack(alignment: .leading) { Text(group.title); Text("\(group.total) 条有效记录").font(.caption).foregroundStyle(.secondary) }
+          VStack(alignment: .leading) {
+            Text(group.title).foregroundStyle(t.ink)
+            Text("\(group.total) 条有效记录").font(.caption).foregroundStyle(t.ink3)
+          }
           Spacer()
-          Text(group.rate.map { String(format: "%.0f%%", $0 * 100) } ?? "—").font(.title2.monospacedDigit())
+          Text(group.rate.map { String(format: "%.0f%%", $0 * 100) } ?? "—")
+            .font(.title2.monospacedDigit()).foregroundStyle(t.ink)
         }
+        .listRowBackground(t.app)
       }
-    }.listStyle(.plain)
+    }
+    .listStyle(.plain)
+    .scrollContentBackground(.hidden)
+    .background(t.app)
   }
 }
 struct ReviewRecordRow: View {
   let record: ReviewRecord
+  @Environment(\.reviewTheme) private var t
   var body: some View {
     VStack(alignment: .leading, spacing: 7) {
-      HStack { Text(record.draft.range.symbol).fontWeight(.semibold); Text(record.draft.range.interval).foregroundStyle(.secondary); Spacer(); Text(record.outcome.title).foregroundStyle(.orange) }
-      Text(record.draft.text.isEmpty ? "未写原话" : record.draft.text).lineLimit(2).foregroundStyle(record.draft.text.isEmpty ? .secondary : .primary)
+      HStack { Text(record.draft.range.symbol).fontWeight(.semibold).foregroundStyle(t.ink); Text(record.draft.range.interval).foregroundStyle(t.ink3); Spacer(); Text(record.outcome.title).foregroundStyle(t.accent) }
+      Text(record.draft.text.isEmpty ? "未写原话" : record.draft.text).lineLimit(2).foregroundStyle(record.draft.text.isEmpty ? t.ink3 : t.ink2)
       HStack {
         Text(record.draft.rule.direction.title); Text(record.draft.origin.title)
         Spacer(); Text(Date(timeIntervalSince1970: Double(record.draft.created) / 1000), style: .date)
-      }.font(.caption).foregroundStyle(.secondary)
-      if let error = record.syncError { Text(error).font(.caption).foregroundStyle(.orange) }
-      else if record.serverId == nil { Text("已存本机 · 待同步").font(.caption).foregroundStyle(.secondary) }
-      else if !record.eligible && record.draft.rule.direction != .observe { Text(record.draft.originalClaimed != nil || record.submitted.map { abs($0 - record.draft.created) > 60_000 } == true ? "补记" : "核验中").font(.caption).foregroundStyle(.secondary) }
+      }.font(.caption).foregroundStyle(t.ink3)
+      if let error = record.syncError { Text(error).font(.caption).foregroundStyle(t.down) }
+      else if record.serverId == nil { Text("已存本机 · 待同步").font(.caption).foregroundStyle(t.ink3) }
+      else if !record.eligible && record.draft.rule.direction != .observe { Text(record.draft.originalClaimed != nil || record.submitted.map { abs($0 - record.draft.created) > 60_000 } == true ? "补记" : "核验中").font(.caption).foregroundStyle(t.ink3) }
     }.padding(.vertical, 7)
   }
 }
@@ -104,19 +129,20 @@ public struct ReviewRecordView: View {
   @State private var nextTime = ""
   @State private var confirmVoid = false
   @State private var searchScope = "history"
+  @Environment(\.reviewTheme) private var t
   public init(feature: ReviewFeature, id: UUID) { self.feature = feature; self.id = id }
   private var record: ReviewRecord? { feature.record(id) }
   public var body: some View {
     Group {
       if let record {
         List {
-          Section { ReviewRecordRow(record: record) }
+          Section { ReviewRecordRow(record: record) }.listRowBackground(t.raised)
           if record.groupPending == true {
             Section("这次判断") {
-              Text("与最近一笔是同一次判断吗？").font(.subheadline)
+              Text("与最近一笔是同一次判断吗？").font(.subheadline).foregroundStyle(t.ink2)
               Button("同一次判断") { feature.resolveGroup(id, sameEpisode: true) }
               Button("独立判断") { feature.resolveGroup(id, sameEpisode: false) }
-            }
+            }.listRowBackground(t.raised)
           }
           Section("当时") {
             LabeledContent("区间", value: "\(record.draft.range.bars) 根 · \(record.draft.range.interval)")
@@ -128,23 +154,35 @@ public struct ReviewRecordView: View {
             }
             Button("在图上重温") { feature.bookOpen = false; feature.onOpenChart(record) }
             Button("找相似") { feature.search(record.draft.range, cutoff: record.draft.created, scope: searchScope) }
-          }
-          Section("市场的答案") { Text(record.outcome.title); if let result = record.assessment { Text(result.reason).font(.caption).foregroundStyle(.secondary) } }
+          }.listRowBackground(t.raised)
+          Section("市场的答案") { Text(record.outcome.title).foregroundStyle(t.ink); if let result = record.assessment { Text(result.reason).font(.caption).foregroundStyle(t.ink3) } }
+            .listRowBackground(t.raised)
           Section("现在怎么看") { TextField("当时的判断，哪些成立", text: $note, axis: .vertical).lineLimit(3...8) }
+            .listRowBackground(t.raised)
           Section("下次怎么做") { TextField("同样的局面再来，改哪儿", text: $nextTime, axis: .vertical).lineLimit(2...6) }
+            .listRowBackground(t.raised)
           Section {
             Button("保存草稿") { feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) }
             Button("完成复盘") { feature.saveReflection(id, note: note, nextTime: nextTime, publish: true) }
-          }
+          }.listRowBackground(t.raised)
           if !record.reflectionHistory.isEmpty {
-            Section("历史复盘") { ForEach(Array(record.reflectionHistory.enumerated()), id: \.offset) { _, reflection in Text(reflection.note.isEmpty ? "未写内容" : reflection.note) } }
+            Section("历史复盘") { ForEach(Array(record.reflectionHistory.enumerated()), id: \.offset) { _, reflection in Text(reflection.note.isEmpty ? "未写内容" : reflection.note).foregroundStyle(t.ink2) } }
+              .listRowBackground(t.raised)
           }
-          if !record.voided { Section { Button("作废记录", role: .destructive) { confirmVoid = true } } }
-        }.onAppear { note = record.reflection.note; nextTime = record.reflection.nextTime }
+          if !record.voided {
+            Section { Button("作废记录") { confirmVoid = true }.foregroundStyle(t.down) }
+              .listRowBackground(t.raised)
+          }
+        }
+        .scrollContentBackground(.hidden)
+        .background(t.app)
+        .onAppear { note = record.reflection.note; nextTime = record.reflection.nextTime }
           .onDisappear { if note != record.reflection.note || nextTime != record.reflection.nextTime { feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) } }
           .sheet(isPresented: $feature.searchOpen) { ReviewSearchView(feature: feature, range: record.draft.range, cutoff: record.draft.created) }
       } else { ContentUnavailableView("记录暂不可用", systemImage: "book.closed") }
-    }.navigationTitle("记录详情").navigationBarTitleDisplayMode(.inline)
+    }
+    .tint(t.accent)
+    .navigationTitle("记录详情").navigationBarTitleDisplayMode(.inline)
       .confirmationDialog("作废后保留内容，退出战绩统计", isPresented: $confirmVoid) {
         Button("作废记录", role: .destructive) { feature.voidRecord(id) }
       }

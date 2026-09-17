@@ -195,7 +195,7 @@ struct PanelSegment<Value: Hashable>: View {
 
 // MARK: - 开关
 
-/// 原型 `.sw`：44 × 26，开着是涨色。不用系统 `Toggle`，因为开着的颜色要跟涨跌对调走。
+/// 原型 `.sw`：44 × 26，开着填强调色。不用系统 `Toggle`，因为系统的绿不在配色里。
 struct PanelSwitch: View {
   var isOn: Bool
   var toggle: () -> Void
@@ -207,7 +207,7 @@ struct PanelSwitch: View {
       ZStack(alignment: isOn ? .trailing : .leading) {
         Capsule().fill(isOn ? t.switchOn : t.switchOff)
         Circle()
-          .fill(isOn ? t.up : t.switchKnob)
+          .fill(t.switchKnob)
           .frame(width: 20, height: 20)
           .shadow(color: .black.opacity(0.2), radius: 1.5, y: 1)
           .padding(3)

@@ -43,6 +43,12 @@ struct FavoritesQuickPicker: View {
           let row = SymbolRow(match: SymbolMatch(info: info), ticker: model.ticker(for: symbol))
           Button { model.pick(info) } label: {
             HStack(spacing: 10) {
+              // 这张半屏弹层原来是**唯一**没有徽章的品种列表：底下的自选页、品种页、
+              // 顶栏各带各的记号，一拉起它就剩两列光秃秃的字。同一个 BTC 在上一屏
+              // 有一枚金色的 ₿、在这一屏没有，看着像两个东西。尺寸跟复盘记录行一样取
+              // 29——这儿的行比自选页紧一档，33 会把行高顶起来。
+              CoinBadge(base: info.base,
+                        asset: SymbolClassifier.classify(info).asset, size: 29)
               VStack(alignment: .leading, spacing: 3) {
                 Text(info.base).font(.system(size: 15, weight: .semibold))
                 Text(info.quote + " 永续").font(.system(size: 10)).foregroundStyle(theme.ink3)

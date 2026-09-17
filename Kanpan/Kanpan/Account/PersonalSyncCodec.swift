@@ -4,7 +4,7 @@ import KanpanAccount
 
 /// Explicit allowlist shared by cloud preferences and review chart snapshots.
 enum PersonalSyncCodec {
-  static let fields: Set<String> = ["overlays", "subs", "subHeights", "subHeightOverrides", "params", "indicatorColors", "hiddenOutputs", "portraitHeight", "quickIntervals", "theme", "ambientTheme", "redUp", "priceMode", "timeZone", "magnet", "countdown", "lastLine", "sinceChange", "showDrawings", "candleKind", "gridChoice", "bodyChoice", "viewAnchor", "priceBias", "dataDisplay", "crossPrice", "allowMainInversion", "allowSubInversion", "adaptiveIndicators", "compactValues", "changeBasis"]
+  static let fields: Set<String> = ["overlays", "subs", "subHeights", "subHeightOverrides", "params", "indicatorColors", "hiddenOutputs", "portraitHeight", "quickIntervals", "theme", "skin", "ambientTheme", "redUp", "priceMode", "timeZone", "magnet", "countdown", "lastLine", "sinceChange", "showDrawings", "candleKind", "gridChoice", "bodyChoice", "viewAnchor", "priceBias", "dataDisplay", "crossPrice", "allowMainInversion", "allowSubInversion", "adaptiveIndicators", "compactValues", "changeBasis"]
   static let nested: Set<String> = ["params", "indicatorColors", "hiddenOutputs", "subHeights", "subHeightOverrides", "styles"]
   static func flatten(_ value: [String: KanpanAccount.JSONValue]) -> [String: KanpanAccount.JSONValue] {
     var result: [String: KanpanAccount.JSONValue] = [:]

@@ -134,7 +134,7 @@ async fn search_contract(app:&Router,s:&AppState,admin:&sqlx::PgPool,at:&str,bt:
  let sample=fixture_bars(chrono::DateTime::from_timestamp_millis(cutoff-1_200_000).unwrap(),chrono::DateTime::from_timestamp_millis(cutoff).unwrap());
  let vector=format!("{:?}",chart_match::descriptor(&chart_match::from_bars(&sample).unwrap()).unwrap());let candidate=Uuid::new_v4();
  for (id,symbol,end) in [(candidate,"ETHUSDT",cutoff-86_400_000),(Uuid::new_v4(),"BTCUSDT",cutoff),(Uuid::new_v4(),"SOLUSDT",cutoff+60_000)] {
-  sqlx::query("INSERT INTO market_features(id,market,symbol,timeframe,start_at,end_at,bars_count,model_id,render_version,embedding,input_hash,source,published) VALUES($1,'usd_m',$2,'1m',$3,$4,20,'candle-geometry-v2','ohlc-geometry-resample64-v2',$5::vector,'fixture','isolated_test',true)").bind(id).bind(symbol).bind(end-1_200_000).bind(end).bind(&vector).execute(admin).await.unwrap();
+  sqlx::query("INSERT INTO market_features(id,market,symbol,timeframe,start_at,end_at,bars_count,model_id,render_version,embedding,input_hash,source,published) VALUES($1,'usd_m',$2,'1m',$3,$4,20,'candle-geometry-v2','ohlc-geometry-resample64-v2',$5::vector,'fixture','binance',true)").bind(id).bind(symbol).bind(end-1_200_000).bind(end).bind(&vector).execute(admin).await.unwrap();
  }
  let id=Uuid::new_v4();let query=json!({"_testKey":id,"range":{"venue":"binance","market":"usd_m","symbol":"BTCUSDT","interval":"1m","start":cutoff-1_200_000,"end":cutoff,"bars":20},"cutoff":cutoff,"scope":"history"});
  let (status,value)=request(app,"/v1/native-review/searches","POST",Some(at),query.clone()).await;assert_eq!(status,200,"{value}");assert_eq!(value,request(app,"/v1/native-review/searches","POST",Some(at),query).await.1);

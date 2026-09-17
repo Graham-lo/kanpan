@@ -1,0 +1,49 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "D6C41248-C78E-46B8-B391-311F373D24A8",
+        "deviceName" : "iPhone 16 Pro",
+        "modelName" : "iPhone 16 Pro",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 1,
+      "passedTests" : 1,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "Kanpan · Built with macOS 26.5.1",
+  "expectedFailures" : 0,
+  "failedTests" : 1,
+  "finishTime" : 1789447534.402,
+  "passedTests" : 1,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1789447415.646,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "Failed to tap \"indicator.edit.EMA\" Button: No matches found for Elements matching predicate '\"indicator.edit.EMA\" IN identifiers' from input {(\n    Button, label: '表单控制柄', value: 半屏,\n    Button, identifier: 'top.symbol', label: '换品种，当前 BTCUSDT',\n    Button, identifier: 'top.search', label: '搜索品种', value: 0,\n    Button, identifier: 'top.star', label: '加入自选', value: 0,\n    Button, identifier: 'interval.draw', label: '画线',\n    Button, identifier: 'interval.more', label: '更多',\n    Button, identifier: 'interval.chart', label: '图表',\n    Button, identifier: 'bottom.style', label: '风格',\n    Button, identifier: 'bottom.indicator', label: '指标', Selected,\n    Button, identifier: 'bottom.favorites', label: '自选',\n    Button, identifier: 'bottom.settings', label: '设置',\n    Button, identifier: 'bottom.landscape', label: '横屏',\n    Button, identifier: 'panel.outside', label: '收起面板',\n    Button, identifier: 'interval.chip.1m', label: '1 分钟',\n    Button, identifier: 'interval.chip.5m', label: '5 分钟',\n    Button, identifier: 'interval.chip.15m', label: '15 分钟',\n    Button, identifier: 'interval.chip.1h', label: '1 小时', Selected,\n    Button, identifier: 'interval.chip.4h', label: '4 小时',\n    Button, identifier: 'interval.chip.1d', label: '1 天',\n    Button, identifier: 'indicator.switch.MA', value: 开,\n    Button, identifier: 'indicator.edit.MA', label: '参数与输出设置',\n    Button, identifier: 'indicator.switch.EMA', value: 关,\n    Button, identifier: 'indicator.switch.BOLL', value: 关,\n    Button, identifier: 'indicator.switch.VOL', value: 开,\n    Button, identifier: 'indicator.edit.VOL', label: '参数与输出设置',\n    Button, label: '小',\n    Button, label: '中', Selected,\n    Button, label: '大',\n    Button, identifier: 'indicator.switch.MACD', value: 开,\n    Button, identifier: 'indicator.edit.MACD', label: '参数与输出设置',\n    Button, label: '小',\n    Button, label: '中', Selected,\n    Button, label: '大',\n    Button, identifier: 'indicator.switch.RSI', value: 关,\n    Button, identifier: 'indicator.switch.KDJ', value: 关,\n    Button, identifier: 'indicator.switch.SRSI', value: 关,\n    Button, identifier: 'indicator.switch.ATR', value: 关,\n    Button, identifier: 'indicator.switch.OI', value: 开,\n    Button, identifier: 'indicator.edit.OI', label: '参数与输出设置',\n    Button, label: '小',\n    Button, label: '中', Selected,\n    Button, label: '大'\n)}",
+      "targetName" : "KanpanUITests",
+      "testIdentifier" : 2,
+      "testIdentifierString" : "ChartFoundationUITests/testIndicatorColorSaveCancelAndRestart()",
+      "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/ChartFoundationUITests/testIndicatorColorSaveCancelAndRestart",
+      "testName" : "testIndicatorColorSaveCancelAndRestart()"
+    }
+  ],
+  "title" : "Test - Kanpan",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 2
+}

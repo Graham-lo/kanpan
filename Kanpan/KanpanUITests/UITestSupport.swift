@@ -25,17 +25,20 @@ enum Ids {
   // 周期条
   static func intervalChip(_ raw: String) -> String { "interval.chip.\(raw)" }
   static let intervalMore = "interval.more"
-  /// 常用行默认那六档（`Interval.quick`）。
-  static let quickIntervals = ["1m", "5m", "15m", "1h", "4h", "1d"]
+  /// 常用行默认那七档（`Interval.quick`）。
+  static let quickIntervals = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
   // 底栏
   /// 底栏第三批之后是「自选 · 复盘 · 指标 · 设置」四格：没有「风格」也没有「横屏」。
-  /// 横屏收在「画线」上（`interval.draw` 直接横过去）。要量图区下沿就用底栏第一格。
+  /// 横屏收在「画线」上，而「画线」本身在「图表」面板里（`chart.draw` 直接横过去）。
+  /// 要量图区下沿就用底栏第一格。
   static let bottomFavorites = "bottom.favorites"
   static let bottomReview = "bottom.review"
   static let bottomIndicator = "bottom.indicator"
   /// 周期行右端的「图表」：网格、阳线实心/空心、价格轴这些都在这张面板里。
   static let intervalChart = "interval.chart"
-  static let bottomDraw = "interval.draw"
+  /// 「画线」：周期条右端那颗常驻药丸撤了（用户：「记和画线都放到图表栏目里」），
+  /// 现在要先开「图表」面板才点得到，走 `enterDrawing()` 那一步。
+  static let drawEntry = "chart.draw"
   static let bottomSettings = "bottom.settings"
   /// 横屏工具栏上的「竖屏」。以前只有 iPad 有，第三批 17 起手机也有。
   static let landscapeExit = "land.exit"
@@ -248,12 +251,21 @@ extension XCUIApplication {
 
   /// 点「画线」→ 先横过去 →  按横屏工具栏上的「竖屏」转回来，停在**竖屏画线态**。
   ///
-  /// 画线入口改成「点画线直接横屏」之后，`interval.draw` 那一下已经不再留在竖屏了。
+  /// 画线入口改成「点画线直接横屏」之后，那一下已经不再留在竖屏了。
   /// 但「管理 / 吸附 / 连续」这几个快捷键只有竖屏那条画线栏上有，用例里按坐标点的
   /// 位置也都是按竖屏量的，所以这些用例统一走这个入口：横过去再转回来——这也正是
   /// 用户「横屏画完转回竖屏接着看」走的那条路，顺带把它一并验了。
+  /// 开「图表」面板点「画线」——竖屏下进画线态的唯一一条路。
+  @discardableResult func tapDrawEntry() -> Bool {
+    buttons[Ids.intervalChart].tap()
+    let entry = buttons[Ids.drawEntry]
+    guard entry.waitForExistence(timeout: 10) else { return false }
+    entry.tap()
+    return true
+  }
+
   @discardableResult func enterDrawingInPortrait() -> Bool {
-    buttons[Ids.bottomDraw].tap()
+    _ = tapDrawEntry()
     let exit = buttons[Ids.landscapeExit]
     if exit.waitForExistence(timeout: 15) { exit.tap() }
     return buttons["draw.objects.quick"].waitForExistence(timeout: 15)

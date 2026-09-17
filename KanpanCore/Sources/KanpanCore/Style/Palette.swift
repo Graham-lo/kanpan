@@ -35,14 +35,34 @@ public struct Hex: Sendable, Equatable, Hashable, Codable, ExpressibleByStringLi
   public func alpha(_ aa: String) -> Hex { Hex(value + aa) }
 }
 
-/// 一套配色的原始令牌（原型 `INDIGO.light` / `INDIGO.dark`）。
+/// 一套配色的原始令牌。
+///
+/// `amber` 是**画在图上**的那支暖色（BOLL 中轴、画线手柄）；`accent` 是**界面**的强调色
+/// （选中的周期、底栏当前项、面板里的动作字）。两者分开是因为这一版的两套配色里，
+/// 界面强调色是配色自己的主色（青苔的墨绿、陶土的赤陶），而图上那支暖色仍要和
+/// K 线、均线区分得开——合成一支的话，要么图上多一支绿线和涨色撞，要么界面变土黄。
 public struct PaletteSeed: Sendable, Equatable {
   public var dark: Bool
   public var ground, app, chart, raised, raised2: Hex
   public var line, grid, hair: Hex
   public var ink, ink2, ink3: Hex
   public var up, down, amber: Hex
+  /// 界面强调色。
+  public var accent: Hex
   public var palette: [Hex]
+
+  public init(dark: Bool, ground: Hex, app: Hex, chart: Hex, raised: Hex, raised2: Hex,
+              line: Hex, grid: Hex, hair: Hex, ink: Hex, ink2: Hex, ink3: Hex,
+              up: Hex, down: Hex, amber: Hex, accent: Hex? = nil, palette: [Hex]) {
+    self.dark = dark
+    self.ground = ground; self.app = app; self.chart = chart
+    self.raised = raised; self.raised2 = raised2
+    self.line = line; self.grid = grid; self.hair = hair
+    self.ink = ink; self.ink2 = ink2; self.ink3 = ink3
+    self.up = up; self.down = down; self.amber = amber
+    self.accent = accent ?? amber
+    self.palette = palette
+  }
 }
 
 /// 图表用色（原型 `expand(t).chart` 加上几个常用的派生令牌）。
@@ -60,57 +80,63 @@ public struct ChartColors: Sendable, Equatable {
   public var palette: [Hex]
 }
 
-/// 靛——从头到尾只有这一套，浅深各一版（§6）。
+/// 两套配色：青苔（冷，出厂）与陶土（暖），各有浅深两版。
+///
+/// K 线与指标的**画法**一个像素都不改——这里换的只有颜色。蜡烛的宽度、间距、
+/// 副图的分区、读数那一行的排布全在 `KanpanChart` 里，和这份表没有关系。
 public enum Palette: Sendable {
-  public static let lightSeed = PaletteSeed(
+  // ---------------------------------------------------------------- 青苔（冷）
+
+  /// 青苔 · 浅。全新安装就是这一套。
+  public static let sageSeed = PaletteSeed(
     dark: false,
-    ground: "#C7CCE4", app: "#FFFFFF", chart: "#FFFFFF", raised: "#FFFFFF", raised2: "#ECEFF9",
-    line: "#DCE0F0", grid: "#EDEFF6", hair: "#12163A0F",
-    ink: "#12163A", ink2: "#565C85", ink3: "#8B90B2",
-    up: "#34B257", down: "#E64553", amber: "#B26A00",
-    palette: ["#B26A00", "#4A55D6", "#0E8F73", "#C43A7E", "#7A5BD6", "#1A7FC4"])
+    ground: "#C3D6CA", app: "#F3F7F4", chart: "#F3F7F4", raised: "#FFFFFF", raised2: "#E7EFE9",
+    line: "#D6E3DA", grid: "#E2EBE5", hair: "#14211B0F",
+    ink: "#14211B", ink2: "#4E6158", ink3: "#606F67",
+    up: "#2E7D6B", down: "#C34642", amber: "#B57C28", accent: "#2E7D6B",
+    palette: ["#BD8229", "#5A79C4", "#2E7D6B", "#B4617F", "#7A6BC0", "#3E86A8"])
 
-  public static let darkSeed = PaletteSeed(
+  /// 青苔 · 深。
+  public static let sageNightSeed = PaletteSeed(
     dark: true,
-    ground: "#07091C", app: "#0F1230", chart: "#161A3F", raised: "#1C2154", raised2: "#232858",
-    line: "#2A2E6E", grid: "#232858", hair: "#FFFFFF0A",
-    ink: "#EDEEF8", ink2: "#A6A9C0", ink3: "#6D719A",
-    up: "#3DC65C", down: "#F2555B", amber: "#FFB454",
-    palette: ["#FFB454", "#8C95FF", "#4FD1B5", "#F78FB3", "#C8B6FF", "#7FD0FF"])
+    ground: "#060A08", app: "#0B120F", chart: "#0B120F", raised: "#131C18", raised2: "#1A241F",
+    line: "#25332C", grid: "#1A241F", hair: "#FFFFFF0A",
+    ink: "#E9F2EC", ink2: "#A5B8AE", ink3: "#7B8D85",
+    up: "#4FB69C", down: "#E36159", amber: "#E0A544", accent: "#4FB69C",
+    palette: ["#E0A544", "#7D9AE8", "#4FB69C", "#E894B4", "#BDAEDC", "#7FD0FF"])
 
-  public static let paperSeed = PaletteSeed(
+  // ---------------------------------------------------------------- 陶土（暖）
+
+  /// 陶土 · 浅。
+  public static let terraSeed = PaletteSeed(
     dark: false,
-    ground: "#B7B2A0", app: "#F4F0E4", chart: "#EDE8D9", raised: "#FAF7EE", raised2: "#E5DFCD",
-    line: "#D9D2BD", grid: "#E3DDC9", hair: "#3A35241A",
-    ink: "#2F2C25", ink2: "#625D4D", ink3: "#736D5D",
-    up: "#387A58", down: "#B74B3F", amber: "#96660F",
-    palette: ["#96660F", "#5A63A8", "#3F8A63", "#A85A78", "#7A6BA8", "#3F7FA0"])
+    ground: "#D9C7B4", app: "#FBF6F0", chart: "#FBF6F0", raised: "#FFFFFF", raised2: "#F2E8DE",
+    line: "#E7DACB", grid: "#F0E6DA", hair: "#241A130F",
+    ink: "#241A13", ink2: "#6E5C4D", ink3: "#756659",
+    up: "#2F7D62", down: "#C4483C", amber: "#B37B25", accent: "#B25735",
+    palette: ["#C18030", "#5566C4", "#2F7D62", "#B85A82", "#8A6FC0", "#3E7FA8"])
 
-  public static let nightSeed = PaletteSeed(
+  /// 陶土 · 深。
+  public static let terraNightSeed = PaletteSeed(
     dark: true,
-    ground: "#0D0C0A", app: "#191712", chart: "#201D17", raised: "#262219", raised2: "#2C281F",
-    line: "#3A342A", grid: "#2C281F", hair: "#FFFFFF0A",
-    ink: "#E0DAC9", ink2: "#A19A86", ink3: "#887F6A",
-    up: "#56A883", down: "#D3766A", amber: "#D3A15C",
-    palette: ["#D3A15C", "#9AA0D8", "#6FC2A4", "#D99BB0", "#BDAEDC", "#85B8D6"])
+    ground: "#0C0805", app: "#16100C", chart: "#16100C", raised: "#211812", raised2: "#2A1F17",
+    line: "#37281D", grid: "#2A1F17", hair: "#FFFFFF0A",
+    ink: "#F7EFE6", ink2: "#C2AC98", ink3: "#958576",
+    up: "#3FA783", down: "#E0584A", amber: "#E0A544", accent: "#E2874F",
+    palette: ["#E0A544", "#9B8AE0", "#3FA783", "#E894B4", "#C0AEE0", "#85B8D6"])
 
-  public static func isComfort(_ t: PaletteSeed) -> Bool {
-    t.ground == paperSeed.ground || t.ground == nightSeed.ground
+  /// 「浅 / 深」这两个词在代码里到处都是，指的就是出厂那一套的两版。
+  public static let lightSeed = sageSeed
+  public static let darkSeed = sageNightSeed
+
+  /// 暖色那一套（陶土）。渐变、徽章那几处要按冷暖分别让一让。
+  public static func isWarm(_ t: PaletteSeed) -> Bool {
+    t.ground == terraSeed.ground || t.ground == terraNightSeed.ground
   }
 
-  /// Preserve prototype seeds; derive readable small text for actual surfaces.
-  public static func secondaryInk(_ t: PaletteSeed) -> Hex {
-    if t == paperSeed { return paperSecondary }
-    if t == nightSeed { return nightSecondary }
-    return t.ink3
-  }
+  /// 小字用的第三级墨色。四套种子都是手配的，直接用。
+  public static func secondaryInk(_ t: PaletteSeed) -> Hex { t.ink3 }
 
-  private static let paperSecondary = readable(paperSeed.ink3, on: [paperSeed.app, paperSeed.raised, paperSeed.raised2], toward: paperSeed.ink)
-  private static let nightSecondary = readable(nightSeed.ink3, on: [nightSeed.app, nightSeed.raised, nightSeed.raised2], toward: nightSeed.ink)
-  private static let paperColors = expanded(paperSeed)
-  private static let nightColors = expanded(nightSeed)
-
-  /// Relative luminance contrast for opaque sRGB tokens. Composite alpha layers first.
   public static func contrast(_ foreground: Hex, _ background: Hex) -> Double {
     func luminance(_ c: Hex) -> Double {
       let v = c.rgba
@@ -137,24 +163,23 @@ public enum Palette: Sendable {
 
   /// 由原始令牌推出图表用色，逐行对应原型 `expand()`。
   public static func chart(_ t: PaletteSeed, redUp: Bool = false) -> ChartColors {
-    var result = t == paperSeed ? paperColors : (t == nightSeed ? nightColors : expanded(t))
+    var result = expanded(t)
     if redUp { swap(&result.up, &result.down) }
     return result
   }
 
   private static func expanded(_ t: PaletteSeed) -> ChartColors {
     let d = t.dark
-    let colors = isComfort(t) ? t.palette.map { readable($0, on: [t.app], toward: t.ink) } : t.palette
     return ChartColors(
-      bg: isComfort(t) ? t.app : t.chart, grid: t.grid, axis: t.line, text: t.ink2, dim: secondaryInk(t),
-      ink: t.ink, amber: isComfort(t) ? colors[0] : t.amber, cross: t.ink3,
-      band: colors[4], oi: colors[5], oiFill: colors[5].alpha(d ? "33" : "2E"),
+      bg: t.chart, grid: t.grid, axis: t.line, text: t.ink2, dim: t.ink3,
+      ink: t.ink, amber: t.amber, cross: t.ink3,
+      band: t.palette[4], oi: t.palette[5], oiFill: t.palette[5].alpha(d ? "33" : "2E"),
       chip: d ? t.ground : t.app, panel: t.app,
       crossBg: d ? t.line : t.ink, crossInk: d ? t.ink : t.app,
       hair: t.hair,
       amberSoft: t.amber.alpha(d ? "1A" : "16"), amberLine: t.amber.alpha("55"),
       up: t.up, down: t.down,
-      palette: colors)
+      palette: t.palette)
   }
 
   public static func chart(dark: Bool, redUp: Bool = false) -> ChartColors {

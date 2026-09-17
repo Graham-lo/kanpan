@@ -14,4 +14,17 @@ The existing Scorebook services are separate. Frozen `vendor/scorebook-core` and
 
 `cargo test` includes unit tests; the integration suite needs its dedicated PostgreSQL test configuration and must never target production. Tests cover username registration, session rotation/retry, isolation, field merge, deletion tombstones and private native-review search.
 
-The deployed public similarity index is empty until an explicit history-index import is configured. Personal OHLC search is available. Exact OKX trade-touch adjudication is not available through candle data alone. See `docs/账号复盘-实施进度.md` at repository root for device evidence and remaining review interactions.
+The public similarity index is populated by an explicit, provenance-bound history import. The current seed covers Binance and OKX USDⓈ-M 1h candles for ten liquid USDT perpetuals over the latest 180 days; it is a useful seed, not full-market coverage. Personal OHLC search is available. Exact OKX trade-touch adjudication is not available through candle data alone. See `docs/账号复盘-实施进度.md` at repository root for device evidence and remaining review interactions.
+
+To extend the public seed on the main host, run the release importer with the API service environment loaded:
+
+```sh
+cd /opt/kanpan-api
+set -a; . /etc/kanpan-api/service.env; set +a
+KANPAN_INDEX_SYMBOLS=BTCUSDT,ETHUSDT \
+KANPAN_INDEX_INTERVALS=1h \
+KANPAN_INDEX_DAYS=180 \
+target/release/import_public_history
+```
+
+The importer reads the official Binance REST endpoint when `KANPAN_INDEX_SOURCE=binance`, or the local OKX market gateway when `KANPAN_INDEX_SOURCE=okx`; it validates candle continuity and the frozen `candle-geometry-v2` descriptor, and is idempotent on the public-window identity.

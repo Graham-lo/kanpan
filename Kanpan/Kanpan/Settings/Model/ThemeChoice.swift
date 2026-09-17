@@ -1,33 +1,61 @@
 import Foundation
 import KanpanCore
 
-/// 外观三档（A6.3）。原型 `S.theme` 存的是 `'auto' | 'light' | 'dark'`，
-/// 存档里的字面量照抄原型，不自己换词。
+/// 配色两套：青苔（冷）与陶土（暖）。出厂是青苔。
+///
+/// 这一层只决定**颜色**。K 线底座的形状、尺寸，以及指标那几行读数的排布，
+/// 一个字都不经过这里——换配色换的只有 `PaletteSeed` 里那十几个色值。
+enum ThemeSkin: String, Sendable, Codable, CaseIterable, Hashable {
+  case sage
+  case terra
+
+  var display: String {
+    switch self {
+    case .sage: "青苔"
+    case .terra: "陶土"
+    }
+  }
+
+  /// 卡片上那行小字。只说冷暖和主色，不写使用说明。
+  var note: String {
+    switch self {
+    case .sage: "冷 · 墨绿"
+    case .terra: "暖 · 赤陶"
+    }
+  }
+
+  func seed(dark: Bool) -> PaletteSeed {
+    switch self {
+    case .sage: dark ? Palette.sageNightSeed : Palette.sageSeed
+    case .terra: dark ? Palette.terraNightSeed : Palette.terraSeed
+    }
+  }
+
+  static let fallback: ThemeSkin = .sage
+}
+
+/// 深浅三档（A6.3）。存档里的字面量照抄原型，不自己换词。
+///
+/// 配色和深浅是两根独立的轴：选了陶土照样可以跟随系统深浅，这是原来
+/// 「护眼 / 夜读」那种把配色和深浅焊在一起的写法给不了的。
 enum ThemeChoice: String, Sendable, Codable, CaseIterable, Hashable {
   case system = "auto"
   case light
   case dark
-  case paper
-  case night
 
-  /// 面板上的三个字。原型 `renderSettings` / `renderStyleSheet` 里逐字如此。
   var display: String {
     switch self {
     case .system: "跟随系统"
     case .light: "浅色"
     case .dark: "深色"
-    case .paper: "护眼"
-    case .night: "夜读"
     }
   }
 
-  func seed(systemDark: Bool) -> PaletteSeed {
+  func seed(skin: ThemeSkin, systemDark: Bool) -> PaletteSeed {
     switch self {
-    case .system: systemDark ? Palette.darkSeed : Palette.lightSeed
-    case .light: Palette.lightSeed
-    case .dark: Palette.darkSeed
-    case .paper: Palette.paperSeed
-    case .night: Palette.nightSeed
+    case .system: skin.seed(dark: systemDark)
+    case .light: skin.seed(dark: false)
+    case .dark: skin.seed(dark: true)
     }
   }
 

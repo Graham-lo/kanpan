@@ -27,8 +27,8 @@ extension ThemeChoice {
   var forced: ColorScheme? {
     switch self {
     case .system: nil
-    case .light, .paper: .light
-    case .dark, .night: .dark
+    case .light: .light
+    case .dark: .dark
     }
   }
 }
@@ -41,7 +41,7 @@ struct PanelHost<Content: View>: View {
   @Environment(\.colorScheme) private var systemScheme
 
   @Environment(\.panelTheme) private var inheritedTheme
-  private var seed: PaletteSeed { store.prefs.ambientTheme ? inheritedTheme.seed : store.prefs.theme.seed(systemDark: systemScheme == .dark) }
+  private var seed: PaletteSeed { store.prefs.ambientTheme ? inheritedTheme.seed : store.prefs.seed(systemDark: systemScheme == .dark) }
 
   var body: some View {
     content()
@@ -109,14 +109,16 @@ extension View {
   /// 主界面用这一个：`.prefsPanel($panel, store: store)`。
   func prefsPanel(_ panel: Binding<Panel?>,
                   store: PrefsStore,
-                  onPickInterval: ((Interval) -> Void)? = nil) -> some View {
+                  onPickInterval: ((Interval) -> Void)? = nil,
+                  onDraw: (() -> Void)? = nil,
+                  onRecord: (() -> Void)? = nil) -> some View {
     sheet(item: panel) { which in
       PanelHost(store: store) {
         switch which {
         case .indicator: IndicatorPanel(store: store)
         case .period: PeriodPanel(store: store, onPick: onPickInterval)
         case .settings: SettingsPanel(store: store)
-        case .chart: ChartPanel(store: store)
+        case .chart: ChartPanel(store: store, onDraw: onDraw, onRecord: onRecord)
         }
       }
     }
@@ -134,7 +136,7 @@ struct PanelPreviewHost<Content: View>: View {
   @Environment(\.colorScheme) private var scheme
 
   var body: some View {
-    let seed = store.prefs.theme.seed(systemDark: scheme == .dark)
+    let seed = store.prefs.seed(systemDark: scheme == .dark)
     content(store)
       .environment(\.panelTheme, PanelTheme(seed: seed, redUp: store.prefs.redUp))
       .preferredColorScheme(store.prefs.theme.forced)

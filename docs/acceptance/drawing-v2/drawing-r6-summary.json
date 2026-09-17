@@ -1,0 +1,49 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "D6C41248-C78E-46B8-B391-311F373D24A8",
+        "deviceName" : "iPhone 16 Pro",
+        "modelName" : "iPhone 16 Pro",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 1,
+      "passedTests" : 0,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "Kanpan · Built with macOS 26.5.1",
+  "expectedFailures" : 0,
+  "failedTests" : 1,
+  "finishTime" : 1789448691.098,
+  "passedTests" : 0,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1789448591.949,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "XCTAssertTrue failed",
+      "targetName" : "KanpanUITests",
+      "testIdentifier" : 1,
+      "testIdentifierString" : "ChartFoundationUITests/testDrawingToolsAndPersistentStyles()",
+      "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/ChartFoundationUITests/testDrawingToolsAndPersistentStyles",
+      "testName" : "testDrawingToolsAndPersistentStyles()"
+    }
+  ],
+  "title" : "Test - Kanpan",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 1
+}

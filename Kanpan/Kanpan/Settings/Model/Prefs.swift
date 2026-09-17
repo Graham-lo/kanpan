@@ -14,12 +14,14 @@ struct Prefs: Sendable, Equatable {
   // ---------------------------------------------------------------- 周期
   /// 当前周期。原型 `S.interval` 恒从 `'1h'` 起步。
   var interval: Interval = .h1
-  /// 周期条第一行的常用档（原型 `QUICK`）。§10.6：长按可增删，最多 8 个。
+  /// 周期条第一行的常用档（原型 `QUICK`）。§10.6：长按可增删，最多 10 个。
   var quickIntervals: [Interval] = Interval.quick
 
   // ---------------------------------------------------------------- 外观
   /// 跟随系统 / 浅 / 深（A6.3）。
   var theme: ThemeChoice = .system
+  /// 配色：青苔（冷）/ 陶土（暖）。出厂青苔。
+  var skin: ThemeSkin = .sage
   // Keep the manual choice intact; automatic brightness selection is runtime-only.
   var ambientTheme = false
   /// 涨跌对调（A6.7）。`false` = 绿涨红跌（原型默认）。
@@ -95,8 +97,9 @@ struct Prefs: Sendable, Equatable {
 
   /// 最多同时打开七个副图，屏下内容通过页面纵向滚动可达。
   static let maxSubs = 7
-  /// 常用行最多几档（§10.6）。
-  static let maxQuick = 8
+  /// 常用行最多几档（§10.6）。周期条右端从四颗药丸减到两颗之后腾出了位置，
+  /// 上限跟着从 8 抬到 10——排不下的那几档会在右边淡出去，滑一下就到。
+  static let maxQuick = 10
 
   // ---------------------------------------------------------------- 取用
 
@@ -159,8 +162,11 @@ struct Prefs: Sendable, Equatable {
     id.placement == .main ? overlays.contains(id) : subs.contains(id)
   }
 
+  /// 当前这一套配色 + 深浅下的原始令牌。全 app 只有这一处把两根轴合起来。
+  func seed(systemDark: Bool) -> PaletteSeed { theme.seed(skin: skin, systemDark: systemDark) }
+
   /// 当前深浅下的图表用色，涨跌已按 `redUp` 对调（A6.7 靠这一个入口，不会漏）。
-  func chartColors(dark: Bool) -> ChartColors { Palette.chart(theme.seed(systemDark: dark), redUp: redUp) }
+  func chartColors(dark: Bool) -> ChartColors { Palette.chart(seed(systemDark: dark), redUp: redUp) }
 
   /// 涨色 / 跌色。胶囊、VOL 柱、MACD 柱都从这儿取，免得各处自己判 `redUp`。
   func upColor(dark: Bool) -> Hex { chartColors(dark: dark).up }
@@ -207,7 +213,7 @@ struct Prefs: Sendable, Equatable {
     subs.insert(id, at: clamped)
   }
 
-  /// 长按常用行 / 更多面板里的增删（§10.6），最多 8 个，至少留 1 个。
+  /// 长按常用行 / 更多面板里的增删（§10.6），最多 10 个，至少留 1 个。
   @discardableResult
   mutating func toggleQuick(_ iv: Interval) -> String? {
     if let at = quickIntervals.firstIndex(of: iv) {

@@ -3,6 +3,7 @@ import ReviewDomain
 
 public struct ReviewCaptureCard: View {
   @Bindable var feature: ReviewFeature
+  @Environment(\.reviewTheme) private var t
   public var onSave: () -> Void
   public var onClose: () -> Void
   public init(feature: ReviewFeature, onSave: @escaping () -> Void, onClose: @escaping () -> Void) {
@@ -13,10 +14,10 @@ public struct ReviewCaptureCard: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 12) {
           HStack {
-            Text("记一笔").font(.headline)
-            Text("\(draft.range.bars) 根 · \(draft.range.interval)").font(.caption).foregroundStyle(.secondary)
+            Text("记一笔").font(.headline).foregroundStyle(t.ink)
+            Text("\(draft.range.bars) 根 · \(draft.range.interval)").font(.caption).foregroundStyle(t.ink3)
             Spacer()
-            Button("收起", action: onClose)
+            Button("收起", action: onClose).foregroundStyle(t.ink2)
           }
           Picker("方向", selection: binding(\.rule.direction, fallback: .observe)) {
             ForEach(ReviewDirection.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -27,7 +28,7 @@ public struct ReviewCaptureCard: View {
               priceField("失效", key: \.rule.invalidation, flag: \.rule.invalidationEdited)
             }
             HStack {
-              Text("参考价 \(draft.rule.reference.formatted(.number.precision(.fractionLength(0...8))))").font(.caption).foregroundStyle(.secondary)
+              Text("参考价 \(draft.rule.reference.formatted(.number.precision(.fractionLength(0...8))))").font(.caption).foregroundStyle(t.ink3)
               Spacer()
               Button("按方向重置") {
                 guard var value = feature.draft else { return }
@@ -47,7 +48,7 @@ public struct ReviewCaptureCard: View {
             }), in: Date()..., displayedComponents: [.date, .hourAndMinute]).font(.subheadline)
           }
           HStack {
-            Text("把握").font(.subheadline)
+            Text("把握").font(.subheadline).foregroundStyle(t.ink2)
             Picker("把握", selection: binding(\.confidence, fallback: nil)) {
               Text("未填写").tag(Int?.none)
               ForEach([50, 60, 70, 80, 90], id: \.self) { Text("\($0)%").tag(Optional($0)) }
@@ -62,11 +63,12 @@ public struct ReviewCaptureCard: View {
           HStack {
             Button("找相似") { feature.search(draft.range, cutoff: ReviewClock.now, scope: "history") }.frame(minHeight: 44)
             Spacer()
-            Button("记下", action: onSave).buttonStyle(.borderedProminent).tint(.orange).frame(minHeight: 44)
+            Button("记下", action: onSave).buttonStyle(.borderedProminent).tint(t.accent).frame(minHeight: 44)
           }
         }.padding()
       }.scrollDismissesKeyboard(.interactively)
-        .background(.regularMaterial)
+        .tint(t.accent)
+        .background(t.raised)
         .onChange(of: feature.draft?.rule.direction) { _, direction in
           guard let direction, var value = feature.draft, direction != .observe else { return }
           let high = max(value.rule.target, value.rule.invalidation), low = min(value.rule.target, value.rule.invalidation)
@@ -82,7 +84,7 @@ public struct ReviewCaptureCard: View {
   }
   private func priceField(_ title: String, key: WritableKeyPath<ReviewDraft, Double>, flag: WritableKeyPath<ReviewDraft, Bool>) -> some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text(title).font(.caption).foregroundStyle(.secondary)
+      Text(title).font(.caption).foregroundStyle(t.ink3)
       TextField(title, value: Binding(get: { feature.draft?[keyPath: key] ?? 0 }, set: {
         feature.draft?[keyPath: key] = $0; feature.draft?[keyPath: flag] = true; feature.saveDraft()
       }), format: .number.precision(.fractionLength(0...8))).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)

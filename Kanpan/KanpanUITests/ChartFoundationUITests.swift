@@ -64,22 +64,26 @@ final class ChartFoundationUITests: XCTestCase {
     let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
   }
 
-  /// 「记」在图**外面**：它是周期条右端的一格，不许再浮在主图上。
+  /// 「记一笔」收在「更多」那一屏里，而且开出的取景卡一个像素都不占图。
   ///
-  /// 这颗按钮以前是浮在主图上、能拖着到处摆的一枚圆钮。浮着就一定挡图——停哪儿糊哪儿，
-  /// 还在画布上挖出一块点不动的死区，画线时尤其碍事。现在它跟「画线」「图表」排在
-  /// 一起，和横屏工具栏（`ToolRail` 的「记」）是同一套摆法。
+  /// 这颗按钮走过两站：先是浮在主图上、能拖着到处摆的一枚圆钮（浮着就一定挡图，
+  /// 停哪儿糊哪儿，还在画布上挖出一块点不动的死区），后来挪到周期条右端常驻。
+  /// 用户看过之后说「这个功能不是经常用到啊」「记和画线都放到图表栏目里」，于是
+  /// 再收进「图表」面板——常驻的格子留给天天要点的东西。这条用例守两件事：
+  /// 路还走得通，且图上没有浮着的控件。
   func testRecordSitsOutsideTheChart() throws {
-    let record = app.buttons["interval.record"]
-    XCTAssertTrue(record.waitForExistence(timeout: 10), "周期条上没有「记」")
     XCTAssertFalse(app.buttons["review.record"].exists, "主图上不该再浮着「记」")
-    XCTAssertLessThanOrEqual(record.frame.maxY, canvas.frame.minY + 1, "「记」压在图上了")
+    XCTAssertFalse(app.buttons["interval.record"].exists, "「记」不该再占周期条的常驻格")
     let span = try XCTUnwrap(info()["span"] as? Double)
+    app.buttons["interval.chart"].tap()
+    let record = app.buttons["chart.record"]
+    XCTAssertTrue(record.waitForExistence(timeout: 10), "「图表」面板里没有「记一笔」")
     record.tap()
     // 点一下开的是复盘取景卡（`ReviewCaptureCard`）：收起来之后，图的横向视野一格不许动。
     let close = app.buttons["收起"]
-    XCTAssertTrue(close.waitForExistence(timeout: 10), "点「记」没开出取景卡")
-    shot("记-周期条入口")
+    XCTAssertTrue(close.waitForExistence(timeout: 10), "点「记一笔」没开出取景卡")
+    XCTAssertGreaterThanOrEqual(close.frame.minY, canvas.frame.maxY - 1, "取景卡压在图上了")
+    shot("记一笔-图表面板入口")
     close.tap()
     XCTAssertTrue(wait(seconds: 5) { !close.exists }, "取景卡收不回去")
     XCTAssertEqual(try XCTUnwrap(info()["span"] as? Double), span, accuracy: 0.001)
@@ -238,7 +242,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(row.waitForExistence(timeout: 5)); shot("独立自选页-分类与品种")
     row.tap()
     XCTAssertTrue(wait(seconds: 45) { self.info()["symbol"] as? String == "SNDKUSDT" })
-    XCTAssertTrue(app.buttons["interval.draw"].exists)
+    XCTAssertTrue(app.buttons["interval.chart"].exists)
     XCTAssertFalse(app.buttons["bottom.draw"].exists)
   }
 
@@ -481,17 +485,21 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     favoritesAction("favorites.close")
     let original = info()
-    for (choice, background) in [("light", "#FFFFFF"), ("dark", "#161A3F"), ("paper", "#F4F0E4"), ("night", "#191712")] {
+    // 配色（青苔 / 陶土）和深浅（浅 / 深）是两根独立的轴，所以两两都要走一遍：
+    // 换的只有颜色，K 线底座的 span / plotW / spacing / mainH / height 一个数都不许动。
+    for (skin, mode, background) in [("sage", "浅色", "#F3F7F4"), ("sage", "深色", "#0B120F"),
+                                     ("terra", "浅色", "#FBF6F0"), ("terra", "深色", "#16100C")] {
       app.buttons["bottom.settings"].tap()
-      let strip = app.scrollViews["display.themes"]
-      XCTAssertTrue(strip.waitForExistence(timeout: 5))
-      let card = app.buttons["display.theme." + choice]
-      for _ in 0..<4 {
-        if card.exists && strip.frame.contains(card.frame) { break }
-        strip.swipeLeft()
-      }
-      XCTAssertTrue(card.isHittable)
+      let card = app.buttons["display.theme." + skin]
+      XCTAssertTrue(card.waitForExistence(timeout: 5), "配色卡要在树里：\(skin)")
+      // 面板是往上推出来的：`waitForExistence` 一过就去问 `isHittable`，问到的是
+      // 动画还在半路上的那一帧——卡片已经在无障碍树里，但还没落到它最终的位置上，
+      // 于是「存在但点不着」。等它真能点，别拿存在当能点。
+      XCTAssertTrue(wait(seconds: 5) { card.isHittable }, "配色卡要能点：\(skin)")
       card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+      let segment = app.buttons["display.mode." + mode]
+      XCTAssertTrue(segment.waitForExistence(timeout: 5))
+      segment.tap()
       XCTAssertFalse(app.buttons["display.still"].exists)
       XCTAssertFalse(app.buttons["display.eyeBreak"].exists)
       closePanel()
@@ -499,7 +507,7 @@ final class ChartFoundationUITests: XCTestCase {
       for key in ["span", "plotW", "spacing", "mainH", "height"] {
         XCTAssertEqual(try XCTUnwrap(info()[key] as? Double), try XCTUnwrap(original[key] as? Double), accuracy: 0.001)
       }
-      shot("配色-" + choice + "-图表")
+      shot("配色-" + skin + mode + "-图表")
       XCTAssertTrue(app.openFavorites())
       let feed = app.descendants(matching: .any).matching(identifier: "favorites.feed").firstMatch
       XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].waitForExistence(timeout: 5))
@@ -513,7 +521,7 @@ final class ChartFoundationUITests: XCTestCase {
         XCTAssertLessThanOrEqual(tab.frame.maxX, app.buttons["favorites.add"].frame.minX)
       }
       XCTAssertFalse(app.buttons["favorites.search"].exists)
-      shot("配色-" + choice + "-自选")
+      shot("配色-" + skin + mode + "-自选")
       favoritesAction("favorites.close")
     }
   }
@@ -836,6 +844,46 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(wait { self.info()["hiddenMA"] as? [Int] == [0] })
     shot("MA输出关闭-曲线图例同步")
   }
+  /// 均线周期能直接打字，也能加一条、删一条。
+  ///
+  /// 步进器按 ±1 走，从 5 调到 120 要按 115 下；这条用例就是守着「能打字」这件事，
+  /// 顺带把加减线时输出开关和颜色跟着挪位的那段逻辑走一遍。
+  func testMAPeriodsTypedAndAddRemove() throws {
+    let original = try XCTUnwrap(info()["ma"] as? [Int])
+    app.buttons["bottom.indicator"].tap()
+    app.buttons["indicator.edit.MA"].tap()
+
+    let field = app.textFields["indicator.param.0.field"]
+    XCTAssertTrue(field.waitForExistence(timeout: 5))
+    field.tap()
+    field.typeText("34")
+
+    let add = app.buttons["indicator.param.add"]
+    XCTAssertTrue(add.waitForExistence(timeout: 5))
+    add.tap()
+    XCTAssertTrue(app.textFields["indicator.param.\(original.count).field"].waitForExistence(timeout: 5))
+
+    app.buttons["保存"].tap(); closePanel()
+    XCTAssertTrue(wait {
+      guard let now = self.info()["ma"] as? [Int] else { return false }
+      return now.count == original.count + 1 && now.first == 34
+    })
+    shot("均线周期-手输并加一条")
+
+    app.buttons["bottom.indicator"].tap()
+    app.buttons["indicator.edit.MA"].tap()
+    let last = app.cells.containing(.textField,
+                                    identifier: "indicator.param.\(original.count).field").firstMatch
+    XCTAssertTrue(last.waitForExistence(timeout: 5))
+    last.swipeLeft()
+    let delete = app.buttons["Delete"].exists ? app.buttons["Delete"] : app.buttons["删除"]
+    XCTAssertTrue(delete.waitForExistence(timeout: 5))
+    delete.tap()
+    app.buttons["保存"].tap(); closePanel()
+    XCTAssertTrue(wait { (self.info()["ma"] as? [Int])?.count == original.count })
+    shot("均线周期-删回原来的条数")
+  }
+
   func testDeviceHistoricalPanPinchAndManualY() throws {
     let initial = info()
     let origin = canvas.coordinate(withNormalizedOffset: .zero)

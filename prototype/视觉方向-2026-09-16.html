@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>看盘 · 四套视觉方向</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --page:#101114; --page2:#17181c; --pink:#E9EAEE; --pink2:#9A9CA4; --pink3:#63656D;
+  --rule:rgba(255,255,255,.09);
+}
+body{background:var(--page);color:var(--pink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;-webkit-font-smoothing:antialiased;padding:56px 32px 96px}
+.wrap{max-width:1360px;margin:0 auto}
+h1{font-size:30px;font-weight:600;letter-spacing:-.02em}
+.lede{color:var(--pink2);margin-top:10px;max-width:760px;font-size:14.5px}
+.note{color:var(--pink3);margin-top:10px;max-width:760px;font-size:12.5px}
+.dir{margin-top:72px;padding-top:36px;border-top:1px solid var(--rule)}
+.dh{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.dh .idx{font:500 12px/1 ui-monospace,monospace;color:var(--pink3);letter-spacing:.18em;padding-top:4px}
+.dh h2{font-size:24px;font-weight:600;letter-spacing:-.01em}
+.dh .en{color:var(--pink3);font:400 13px/1 ui-monospace,monospace;letter-spacing:.06em}
+.dh .rec{font-size:11px;color:#0b0c0e;background:#E9EAEE;border-radius:999px;padding:3px 9px;font-weight:600}
+.sig{margin-top:14px;font-size:15px;color:var(--pink);max-width:720px}
+.sig b{font-weight:600}
+.why{margin-top:8px;font-size:13px;color:var(--pink2);max-width:760px}
+.tok{display:flex;gap:28px;flex-wrap:wrap;margin:26px 0 30px;align-items:flex-start}
+.sw{display:flex;gap:7px}
+.sw i{width:26px;height:26px;border-radius:7px;display:block;border:1px solid rgba(255,255,255,.12)}
+.tk-l{font:500 10px/1 ui-monospace,monospace;color:var(--pink3);letter-spacing:.16em;margin-bottom:9px}
+.frames{display:flex;gap:28px;flex-wrap:wrap}
+.fw{}
+.cap{margin-top:14px;font-size:12px;color:var(--pink3);text-align:center;letter-spacing:.02em}
+.device{width:411px;padding:9px;border-radius:53px;background:linear-gradient(160deg,#3a3d44,#1a1c20 40%,#26282d);box-shadow:0 40px 70px -20px rgba(0,0,0,.7)}
+.phone{width:393px;height:852px;border-radius:44px;overflow:hidden;position:relative;display:flex;flex-direction:column}
+
+/* ============ 通用屏内结构 ============ */
+.scr{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);color:var(--ink1);overflow:hidden}
+.sb{height:52px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 4px;font:600 15px/1 -apple-system;color:var(--ink1);flex:none}
+.sb .dots{display:flex;gap:5px;align-items:center}
+.sb .dots u{display:block;width:17px;height:11px;border:1.4px solid currentColor;border-radius:3px;opacity:.55}
+.sb .dots s{display:block;width:15px;height:11px;background:currentColor;opacity:.55;-webkit-mask:linear-gradient(#000 0 0);mask:linear-gradient(#000 0 0);clip-path:polygon(0 100%,25% 100%,25% 62%,0 62%,0 100%,33% 100%,33% 42%,58% 42%,58% 100%,66% 100%,66% 20%,91% 20%,91% 100%,100% 100%,100% 0,0 0)}
+.chart{flex:1;min-height:0;position:relative}
+.chart svg{display:block;width:100%;height:100%}
+.hz{height:5px;width:130px;background:var(--ink1);opacity:.28;border-radius:3px;margin:0 auto}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+
+/* ============ 方向 A · 墨玉 ============ */
+.tA{--bg:#08090B;--surf:#0F1114;--ink1:#F3F4F6;--ink2:#8D929B;--ink3:#565B64;--rule:rgba(255,255,255,.07);--rule2:rgba(255,255,255,.12);--up:#2EBD85;--down:#F6465D;--sel:#FFFFFF}
+.tA .scr{font-family:-apple-system,"SF Pro Text","PingFang SC",sans-serif}
+.tA .num{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.tA .top{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex:none}
+.tA .sym{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;letter-spacing:.01em}
+.tA .sym em{font-style:normal;color:var(--ink3);font-weight:500;font-size:12px}
+.tA .sym .cv{color:var(--ink3);font-size:9px;transform:translateY(1px)}
+.tA .tr{display:flex;align-items:center;gap:14px}
+.tA .st{font-size:10.5px;color:var(--ink3);letter-spacing:.06em}
+.tA .price{padding:14px 16px 16px;flex:none}
+.tA .pnow{font-size:42px;font-weight:500;letter-spacing:-.025em;line-height:1;color:var(--dn)}
+.tA .pchg{font-size:15px;font-weight:500;margin-left:10px;letter-spacing:-.01em;color:var(--dn)}
+.tA .psub{margin-top:14px;display:flex;gap:0;color:var(--ink3);font-size:10.5px}
+.tA .psub div{flex:1}
+.tA .psub b{display:block;font-weight:500;color:var(--ink2);font-size:12px;margin-top:3px;letter-spacing:-.01em}
+.tA .iv{height:46px;display:flex;align-items:stretch;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);flex:none}
+.tA .iv a{flex:1;display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--ink3);position:relative;letter-spacing:.02em}
+.tA .iv a.on{color:var(--sel);font-weight:600}
+.tA .iv a.on:after{content:"";position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:20px;height:1.5px;background:var(--sel)}
+.tA .iv .sep{width:1px;background:var(--rule);flex:none;margin:11px 4px}
+.tA .iv a.draw{flex:0 0 62px;color:var(--ink2)}
+.tA .tabs{height:86px;border-top:1px solid var(--rule);display:flex;padding-bottom:22px;flex:none;background:var(--bg)}
+.tA .tabs a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--ink3);font-size:10px;letter-spacing:.04em}
+.tA .tabs a.on{color:var(--sel)}
+
+/* ============ 方向 B · 宣纸 ============ */
+.tB{--bg:#F7F5F0;--surf:#FFFFFF;--ink1:#17181B;--ink2:#6C6F75;--ink3:#A3A199;--rule:#E4E0D7;--rule2:#D6D1C5;--up:#1F7A5C;--down:#C0402C;--sel:#17181B}
+.tB .scr{font-family:-apple-system,"SF Pro Text","PingFang SC",sans-serif}
+.tB .top{height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;flex:none}
+.tB .sym{display:flex;align-items:baseline;gap:5px;font-size:17px;font-weight:700;letter-spacing:-.01em}
+.tB .sym em{font-style:normal;color:var(--ink3);font-weight:500;font-size:12px}
+.tB .sym .cv{font-size:9px;color:var(--ink3)}
+.tB .tr{display:flex;align-items:center;gap:14px}
+.tB .st{font-size:10px;color:var(--ink3);letter-spacing:.22em}
+.tB .price{padding:20px 22px 20px;flex:none}
+.tB .pnow{font-size:52px;font-weight:600;letter-spacing:-.045em;line-height:.94;color:var(--ink1)}
+.tB .pchg{font-size:16px;font-weight:600;margin-top:10px;display:inline-block;letter-spacing:-.01em;color:var(--dn)}
+.tB .pchg s{text-decoration:none;color:var(--ink3);font-weight:400;margin:0 8px}
+.tB .psub{margin-top:18px;display:flex;border-top:1px solid var(--rule);padding-top:11px}
+.tB .psub div{flex:1;border-left:1px solid var(--rule);padding-left:10px}
+.tB .psub div:first-child{border-left:0;padding-left:0}
+.tB .psub i{font-style:normal;display:block;font-size:9.5px;color:var(--ink3);letter-spacing:.18em}
+.tB .psub b{display:block;font-weight:600;font-size:12.5px;margin-top:4px;letter-spacing:-.02em}
+.tB .iv{height:48px;display:flex;align-items:center;padding:0 22px;gap:0;flex:none}
+.tB .iv a{flex:1;text-align:center;font-size:13px;color:var(--ink3);position:relative;font-weight:500}
+.tB .iv a.on{color:var(--ink1);font-weight:700}
+.tB .iv a.on:after{content:"";position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:99px;background:var(--ink1)}
+.tB .iv .sep{flex:0 0 1px;height:16px;background:var(--rule);margin:0 10px}
+.tB .iv a.draw{flex:0 0 46px;color:var(--ink1);font-weight:600}
+.tB .chart{border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.tB .tabs{height:88px;display:flex;padding-bottom:24px;flex:none;background:var(--bg)}
+.tB .tabs a{flex:1;display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:13.5px;letter-spacing:.04em;font-weight:500}
+.tB .tabs a.on{color:var(--ink1);font-weight:700}
+
+/* ============ 方向 C · 极光 ============ */
+.tC{--bg:#0A0C12;--surf:rgba(255,255,255,.055);--ink1:#F4F5F8;--ink2:#9DA2B0;--ink3:#666C7D;--rule:rgba(255,255,255,.08);--up:#2EBD85;--down:#FF5D73;--sel:#7C86FF}
+.tC .scr{font-family:-apple-system,"SF Pro Rounded","SF Pro Text","PingFang SC",sans-serif}
+.tC .glow{position:absolute;top:-180px;left:50%;transform:translateX(-50%);width:640px;height:460px;border-radius:50%;filter:blur(70px);opacity:.42;background:radial-gradient(closest-side,var(--dn),transparent 72%);pointer-events:none}
+.tC .top{height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex:none;position:relative}
+.tC .sym{display:flex;align-items:center;gap:7px;font-size:15.5px;font-weight:600}
+.tC .sym em{font-style:normal;color:var(--ink3);font-weight:500;font-size:12px}
+.tC .sym .cv{font-size:9px;color:var(--ink3)}
+.tC .tr{display:flex;align-items:center;gap:12px}
+.tC .st{font-size:10.5px;color:var(--up);background:rgba(46,189,133,.14);padding:4px 9px;border-radius:99px;font-weight:600}
+.tC .price{padding:12px 18px 18px;flex:none;position:relative}
+.tC .pnow{font-size:44px;font-weight:700;letter-spacing:-.035em;line-height:1}
+.tC .pchg{display:inline-block;margin-top:12px;font-size:13.5px;font-weight:700;padding:5px 11px;border-radius:99px;color:var(--dn);background:color-mix(in srgb,var(--dn) 16%,transparent)}
+.tC .psub{margin-top:14px;display:flex;gap:8px}
+.tC .psub div{flex:1;background:var(--surf);border:1px solid var(--rule);border-radius:14px;padding:9px 11px}
+.tC .psub i{font-style:normal;display:block;font-size:9.5px;color:var(--ink3)}
+.tC .psub b{display:block;font-weight:600;font-size:12.5px;margin-top:3px;letter-spacing:-.01em}
+.tC .iv{height:52px;display:flex;align-items:center;padding:0 12px;gap:2px;flex:none;position:relative}
+.tC .iv a{flex:1;text-align:center;font-size:12.5px;color:var(--ink3);padding:7px 0;border-radius:11px;font-weight:600}
+.tC .iv a.on{color:#fff;background:var(--sel);box-shadow:0 6px 16px -6px var(--sel)}
+.tC .iv .sep{flex:0 0 1px;height:16px;background:var(--rule);margin:0 6px}
+.tC .iv a.draw{flex:0 0 54px;color:var(--ink1);background:var(--surf)}
+.tC .tabs{height:94px;display:flex;align-items:flex-start;justify-content:center;padding-top:8px;flex:none;position:relative}
+.tC .pill{display:flex;gap:4px;background:rgba(22,24,32,.82);border:1px solid var(--rule);border-radius:26px;padding:6px;backdrop-filter:blur(20px);box-shadow:0 14px 34px -12px rgba(0,0,0,.8)}
+.tC .pill a{width:78px;height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--ink3);font-size:10px;border-radius:20px;font-weight:600}
+.tC .pill a.on{color:#fff;background:rgba(124,134,255,.18)}
+.tC .pill a.hero{color:#fff;background:var(--sel);box-shadow:0 8px 18px -6px var(--sel)}
+
+
+/* ============ 方向 D · 夜昙（墨玉 × 极光） ============ */
+.tD{--bg:#07080A;--surf:rgba(255,255,255,.05);--ink1:#F4F5F7;--ink2:#8E939C;--ink3:#575C65;--rule:rgba(255,255,255,.07);--rule2:rgba(255,255,255,.13);--up:#2EBD85;--down:#F6465D;--sel:#FFFFFF}
+.tD .scr{font-family:-apple-system,"SF Pro Text","PingFang SC",sans-serif}
+.tD .num{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.tD .halo{position:absolute;top:-172px;left:50%;transform:translateX(-50%);width:600px;height:400px;border-radius:50%;filter:blur(66px);opacity:.30;background:radial-gradient(closest-side,var(--dn),transparent 70%);pointer-events:none}
+.tD .top{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex:none;position:relative}
+.tD .sym{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;letter-spacing:.01em}
+.tD .sym em{font-style:normal;color:var(--ink3);font-weight:500;font-size:12px}
+.tD .sym .cv{color:var(--ink3);font-size:9px;transform:translateY(1px)}
+.tD .tr{display:flex;align-items:center;gap:13px}
+.tD .st{font-size:10.5px;color:var(--ink3);letter-spacing:.06em}
+.tD .price{padding:12px 16px 14px;flex:none;position:relative}
+.tD .pnow{font-size:44px;font-weight:500;letter-spacing:-.03em;line-height:1}
+.tD .pchg{font-size:15px;font-weight:600;margin-left:11px;color:var(--dn);letter-spacing:-.01em}
+.tD .psub{margin-top:16px;display:flex;border-top:1px solid var(--rule);padding-top:11px}
+.tD .psub div{flex:1}
+.tD .psub i{font-style:normal;display:block;font-size:9.5px;color:var(--ink3);letter-spacing:.12em}
+.tD .psub b{display:block;font-weight:500;font-size:12px;margin-top:4px;color:var(--ink2);letter-spacing:-.01em}
+.tD .iv{height:46px;display:flex;align-items:stretch;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);flex:none;position:relative}
+.tD .iv a{flex:1;display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--ink3);position:relative}
+.tD .iv a.on{color:var(--sel);font-weight:600}
+.tD .iv a.on:after{content:"";position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:20px;height:1.5px;background:var(--sel)}
+.tD .iv .sep{width:1px;background:var(--rule);flex:none;margin:11px 4px}
+.tD .iv a.draw{flex:0 0 62px;color:var(--ink2)}
+.tD .tabs{height:88px;border-top:1px solid var(--rule);display:flex;align-items:flex-start;padding-top:10px;flex:none;background:var(--bg)}
+.tD .tabs a{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--ink3);font-size:10px;letter-spacing:.04em}
+.tD .tabs a.on{color:var(--sel)}
+.tD .tabs a.hero{color:var(--sel)}
+.tD .tabs a.hero u{width:36px;height:30px;border-radius:11px;background:#fff;color:#07080A;display:flex;align-items:center;justify-content:center;text-decoration:none}
+.tD .glass{background:rgba(17,19,24,.86);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);border:1px solid var(--rule2)}
+
+/* ============ 自选层 / 面板 通用 ============ */
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.42)}
+.tB .dim{background:rgba(30,26,18,.26)}
+.layer{position:absolute;left:0;right:0;top:0;display:flex;flex-direction:column;overflow:hidden}
+.sheet{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden}
+.srch{display:flex;align-items:center;gap:8px;font-size:14px}
+.row{display:flex;align-items:center;gap:11px}
+.mono{font-variant-numeric:tabular-nums}
+.badge{font-size:8.5px;padding:1.5px 4px;border-radius:4px;letter-spacing:.04em}
+.sw-track{width:44px;height:26px;border-radius:99px;position:relative;flex:none}
+.sw-track:after{content:"";position:absolute;top:2.5px;width:21px;height:21px;border-radius:99px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.sw-on:after{right:2.5px}
+.sw-off:after{left:2.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>看盘 · 视觉方向</h1>
+  <p class="lede">图表底座、指标和它们的读数保持原样，四套方向里的 K 线画法完全一致（只随浅／深主题走）。被重新设计的是它之外的全部：顶栏、价格区、周期条、自选层、调图面板、底栏，以及字阶、色板、圆角、控件、分隔方式。</p>
+  <p class="note">每套方向都是一个完整系统，不是配色换肤——排版、分隔逻辑、控件形态、强调方式都不一样。04「夜昙」是 01 与 03 的融合：墨玉的排版骨架 + 极光只保留在浮层与价格光晕上。挑一套，我再把它铺到全部页面并出实施规范。</p>
+  <div id="out"></div>
+</div>
+<script>
+/* ---------- 行情数据（三套共用同一份，保证可比） ---------- */
+function rng(s){return function(){s=(s*1664525+1013904223)%4294967296;return s/4294967296;}}
+function series(n,seed){
+  var r=rng(seed),p=0,out=[];
+  for(var i=0;i<n;i++){
+    var o=p,c=o-0.42+(r()-0.5)*3.1;
+    var h=Math.max(o,c)+r()*1.35,l=Math.min(o,c)-r()*1.35;
+    out.push({o:o,h:h,l:l,c:c,v:0.30+r()*0.85}); p=c;
+  }
+  var first=out[0].o,last=out[n-1].c;
+  var A=77588,B=75942,k=(B-A)/(last-first);
+  out.forEach(function(d){['o','h','l','c'].forEach(function(K){d[K]=A+(d[K]-first)*k;});});
+  return out;
+}
+var S=series(62,20260916);
+var P0=S[0].o,PN=S[S.length-1].c;
+var HI=Math.max.apply(null,S.map(function(d){return d.h;}));
+var LO=Math.min.apply(null,S.map(function(d){return d.l;}));
+var CHG=(PN-P0)/P0*100;
+function f2(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function ma(k){return S.map(function(_,i){if(i<k-1)return null;var s=0;for(var j=i-k+1;j<=i;j++)s+=S[j].c;return s/k;});}
+var MA7=ma(7),MA30=ma(30);
+
+/* ---------- 图表底座（冻结区，三套完全一致） ---------- */
+function chart(P){
+  var W=393,H=470,padR=54,x0=6,cw=(W-padR-x0)/S.length,bw=Math.max(3,cw*0.62);
+  var mT=8,mH=282,vT=302,vH=62,dT=376,dH=62;
+  var lo=LO-40,hi=HI+40;
+  var y=function(p){return mT+(hi-p)/(hi-lo)*mH;};
+  var g='';
+  for(var i=0;i<=4;i++){var gy=mT+mH/4*i;g+='<line x1="0" y1="'+gy+'" x2="'+(W-padR+4)+'" y2="'+gy+'" stroke="'+P.grid+'" stroke-width=".5"/>';
+    g+='<text x="'+(W-padR+8)+'" y="'+(gy+3.4)+'" fill="'+P.axis+'" font-size="9" font-family="ui-monospace,monospace">'+f2(hi-(hi-lo)/4*i).split('.')[0]+'</text>';}
+  var c='';
+  S.forEach(function(d,i){
+    var cx=x0+cw*i+cw/2,up=d.c>=d.o,col=up?P.up:P.down;
+    c+='<line x1="'+cx.toFixed(1)+'" y1="'+y(d.h).toFixed(1)+'" x2="'+cx.toFixed(1)+'" y2="'+y(d.l).toFixed(1)+'" stroke="'+col+'" stroke-width="1"/>';
+    var yy=Math.min(y(d.o),y(d.c)),hh=Math.max(1,Math.abs(y(d.o)-y(d.c)));
+    c+='<rect x="'+(cx-bw/2).toFixed(1)+'" y="'+yy.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hh.toFixed(1)+'" fill="'+col+'"/>';
+  });
+  function poly(arr,col){var pts=arr.map(function(v,i){return v==null?null:(x0+cw*i+cw/2).toFixed(1)+','+y(v).toFixed(1);}).filter(Boolean).join(' ');
+    return '<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="1" stroke-linejoin="round"/>';}
+  var mv=Math.max.apply(null,S.map(function(d){return d.v;}));
+  var v='';
+  S.forEach(function(d,i){var cx=x0+cw*i+cw/2,hh=d.v/mv*(vH-8),col=d.c>=d.o?P.up:P.down;
+    v+='<rect x="'+(cx-bw/2).toFixed(1)+'" y="'+(vT+vH-hh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hh.toFixed(1)+'" fill="'+col+'" opacity=".5"/>';});
+  var dif=S.map(function(_,i){return (MA7[i]==null||MA30[i]==null)?null:(MA7[i]-MA30[i]);});
+  var md=Math.max.apply(null,dif.filter(function(x){return x!=null;}).map(Math.abs))||1;
+  var m='',mid=dT+dH/2;
+  dif.forEach(function(val,i){if(val==null)return;var cx=x0+cw*i+cw/2,hh=val/md*(dH/2-6),col=val>=0?P.up:P.down;
+    m+='<rect x="'+(cx-bw/2+0.6).toFixed(1)+'" y="'+(val>=0?mid-hh:mid).toFixed(1)+'" width="'+(bw-1.2).toFixed(1)+'" height="'+Math.max(0.8,Math.abs(hh)).toFixed(1)+'" fill="'+col+'" opacity=".78"/>';});
+  var lab='<text x="10" y="'+(mT+11)+'" fill="'+P.axis+'" font-size="9" font-family="ui-monospace,monospace">MA7 '+f2(MA7[61])+'  MA30 '+f2(MA30[61])+'</text>'
+        + '<text x="10" y="'+(vT+11)+'" fill="'+P.axis+'" font-size="9" font-family="ui-monospace,monospace">VOL</text>'
+        + '<text x="10" y="'+(dT+11)+'" fill="'+P.axis+'" font-size="9" font-family="ui-monospace,monospace">MACD 12 26 9</text>';
+  var lastY=y(PN);
+  var lastLine='<line x1="0" y1="'+lastY.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+lastY.toFixed(1)+'" stroke="'+P.down+'" stroke-width=".7" stroke-dasharray="2 3" opacity=".8"/>'
+    +'<rect x="'+(W-padR+3)+'" y="'+(lastY-8).toFixed(1)+'" width="49" height="16" rx="2.5" fill="'+P.down+'"/>'
+    +'<text x="'+(W-padR+7)+'" y="'+(lastY+3.6).toFixed(1)+'" fill="#fff" font-size="9.5" font-family="ui-monospace,monospace">'+f2(PN)+'</text>';
+  var sepc='<line x1="0" y1="'+(vT-6)+'" x2="'+(W-padR+4)+'" y2="'+(vT-6)+'" stroke="'+P.grid+'" stroke-width=".5"/><line x1="0" y1="'+(dT-6)+'" x2="'+(W-padR+4)+'" y2="'+(dT-6)+'" stroke="'+P.grid+'" stroke-width=".5"/>';
+  return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'+g+sepc+c+poly(MA7,P.ma1)+poly(MA30,P.ma2)+v+m+lastLine+lab+'</svg>';
+}
+
+/* ---------- 图标 ---------- */
+function ic(n,s){s=s||1.6;var a='fill="none" stroke="currentColor" stroke-width="'+s+'" stroke-linecap="round" stroke-linejoin="round"';
+ var d={
+  fav:'<path '+a+' d="M4 6h10M4 11h10M4 16h7"/><path '+a+' d="M17.5 3.5l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6L12.3 7.3l3.6-.5z" transform="scale(.82) translate(3 2)"/>',
+  rev:'<path '+a+' d="M4 12a8 8 0 1 0 2.5-5.8"/><path '+a+' d="M4 4v4h4"/><path '+a+' d="M12 8v4.5l3 1.8"/>',
+  pen:'<path '+a+' d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19l-4 1z"/><path '+a+' d="M14.5 6.5l3 3"/>',
+  set:'<path '+a+' d="M4 7h10M18 7h2M4 12h4M12 12h8M4 17h9M17 17h3"/><circle '+a+' cx="16" cy="7" r="2"/><circle '+a+' cx="10" cy="12" r="2"/><circle '+a+' cx="15" cy="17" r="2"/>',
+  star:'<path '+a+' d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8L3.5 9.7l5.9-.9z"/>',
+  starf:'<path fill="currentColor" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8L3.5 9.7l5.9-.9z"/>',
+  srch:'<circle '+a+' cx="11" cy="11" r="6.2"/><path '+a+' d="M15.6 15.6L20 20"/>'
+ };
+ return '<svg viewBox="0 0 24 24" width="20" height="20">'+d[n]+'</svg>';
+}
+function statusbar(){return '<div class="sb"><span>9:41</span><span class="dots"><s></s><u></u></span></div>';}
+
+/* ---------- 自选清单数据 ---------- */
+var FAV=[
+ ['BTC','USDT',75942.00,-2.12],['ETH','USDT',3184.62,-1.48],['SOL','USDT',213.40,2.31],
+ ['BNB','USDT',842.17,0.36],['DOGE','USDT',0.3412,-5.64],['XRP','USDT',2.8140,1.02],
+ ['SUI','USDT',4.1820,-0.77],['LINK','USDT',26.940,3.18]
+];
+function fnum(v){return v<10?v.toFixed(4):v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function sgn(v){return (v>=0?'+':'−')+Math.abs(v).toFixed(2)+'%';}
+
+/* ================= 方向 A ================= */
+var PA={grid:'rgba(255,255,255,.055)',axis:'#565B64',up:'#2EBD85',down:'#F6465D',ma1:'#C9A227',ma2:'#5B8DEF'};
+function A_market(){return '<div class="scr" style="--dn:var(--down)">'+statusbar()+
+ '<div class="top"><div class="sym">BTC<em>/USDT</em><span class="cv">▼</span></div>'+
+ '<div class="tr"><span class="st">实时</span><span style="color:#F3F4F6">'+ic('starf')+'</span></div></div>'+
+ '<div class="price"><div><span class="pnow num">'+f2(PN)+'</span><span class="pchg num">'+sgn(CHG)+'</span></div>'+
+ '<div class="psub"><div>24h 高<b class="num">'+f2(HI)+'</b></div><div>24h 低<b class="num">'+f2(LO)+'</b></div><div>成交额<b class="num">170.6 亿</b></div><div>振幅<b class="num">3.59%</b></div></div></div>'+
+ '<div class="iv"><a>1m</a><a>5m</a><a>15m</a><a class="on">1h</a><a>4h</a><a>1d</a><a style="flex:0 0 34px">⌄</a><span class="sep"></span><a class="draw">画线</a></div>'+
+ '<div class="chart">'+chart(PA)+'</div>'+
+ '<div class="tabs"><a class="on">'+ic('fav')+'自选</a><a>'+ic('rev')+'复盘</a><a>'+ic('pen')+'记</a><a>'+ic('set')+'调图</a></div>'+
+ '</div>';}
+function A_fav(){
+ var rows=FAV.map(function(r){var neg=r[3]<0,col=neg?'var(--down)':'var(--up)';
+  return '<div style="height:58px;display:flex;align-items:center;padding:0 16px;border-top:1px solid var(--rule)">'+
+   (Math.abs(r[3])>=5?'<span style="position:absolute;left:0;width:2px;height:30px;background:'+col+'"></span>':'')+
+   '<div style="flex:1"><div style="font-size:14.5px;font-weight:600;letter-spacing:.01em">'+r[0]+'<span style="color:var(--ink3);font-weight:500;font-size:11px">/'+r[1]+'</span> <span class="badge" style="border:1px solid var(--rule2);color:var(--ink3)">永续</span></div>'+
+   '<div class="num" style="font-size:10.5px;color:var(--ink3);margin-top:3px;font-family:ui-monospace,monospace">额 '+(12+r[2]%9).toFixed(1)+'亿 · 振幅 '+(1+Math.abs(r[3])).toFixed(2)+'%</div></div>'+
+   '<div style="text-align:right"><div class="num" style="font-size:14.5px;font-family:ui-monospace,monospace">'+fnum(r[2])+'</div>'+
+   '<div class="num" style="font-size:12px;color:'+col+';margin-top:3px;font-family:ui-monospace,monospace;font-weight:600">'+sgn(r[3])+'</div></div></div>';}).join('');
+ return '<div class="scr" style="--dn:var(--down)">'+statusbar()+
+  '<div class="top"><div class="sym">BTC<em>/USDT</em><span class="cv">▲</span></div><div class="tr"><span class="st">实时</span><span style="color:#F3F4F6">'+ic('starf')+'</span></div></div>'+
+  '<div class="chart" style="opacity:.25">'+chart(PA)+'</div>'+
+  '<div class="tabs"><a class="on">'+ic('fav')+'自选</a><a>'+ic('rev')+'复盘</a><a>'+ic('pen')+'记</a><a>'+ic('set')+'调图</a></div>'+
+  '<div class="dim"></div>'+
+  '<div class="layer" style="height:690px;background:var(--bg);border-bottom:1px solid var(--rule2);box-shadow:0 28px 50px rgba(0,0,0,.7)">'+
+   statusbar()+
+   '<div style="padding:4px 16px 12px"><div class="srch" style="height:40px;border-bottom:1px solid var(--rule);color:var(--ink3);gap:9px"><span>'+ic('srch',1.7)+'</span><span style="font-size:14px">搜 BTC、ETH、SOL</span></div></div>'+
+   '<div style="display:flex;align-items:center;padding:0 16px 12px;gap:8px"><span style="font-size:12px;color:#fff;font-weight:600;border-bottom:1.5px solid #fff;padding-bottom:4px">全部</span><span style="font-size:12px;color:var(--ink3);padding-bottom:4px">加密</span><span style="font-size:12px;color:var(--ink3);padding-bottom:4px">美股</span><span style="flex:1"></span><span class="num" style="font-size:10.5px;color:var(--ink3);font-family:ui-monospace,monospace">涨 3 · 跌 5</span></div>'+
+   '<div style="flex:1;position:relative">'+rows+'</div>'+
+   '<div style="padding:10px 0 12px"><div class="hz"></div></div>'+
+  '</div></div>';}
+function A_panel(){
+ function line(t,r,top){return '<div class="row" style="height:50px;padding:0 16px;'+(top?'':'border-top:1px solid var(--rule);')+'"><span style="flex:1;font-size:14.5px">'+t+'</span>'+r+'</div>';}
+ var swOn='<span class="sw-track sw-on" style="background:#fff"></span>',swOff='<span class="sw-track sw-off" style="background:rgba(255,255,255,.14)"></span>';
+ var chev='<span style="color:var(--ink3);font-size:12px">›</span>';
+ var val=function(v){return '<span class="num" style="color:var(--ink3);font-size:13px;margin-right:8px;font-family:ui-monospace,monospace">'+v+'</span>'+chev;};
+ return '<div class="scr" style="--dn:var(--down)">'+statusbar()+
+  '<div class="top"><div class="sym">BTC<em>/USDT</em><span class="cv">▼</span></div><div class="tr"><span class="st">实时</span><span style="color:#F3F4F6">'+ic('starf')+'</span></div></div>'+
+  '<div class="price"><div><span class="pnow num">'+f2(PN)+'</span><span class="pchg num">'+sgn(CHG)+'</span></div></div>'+
+  '<div class="chart" style="opacity:.4">'+chart(PA)+'</div><div class="dim"></div>'+
+  '<div class="sheet" style="height:560px;background:var(--bg);border-top:1px solid var(--rule2);border-radius:18px 18px 0 0;box-shadow:0 -24px 50px rgba(0,0,0,.7)">'+
+   '<div style="padding:10px 0 6px"><div class="hz" style="width:38px;height:4px"></div></div>'+
+   '<div style="display:flex;align-items:center;padding:6px 16px 14px"><div style="display:flex;gap:18px"><span style="font-size:15px;font-weight:600;color:#fff;border-bottom:1.5px solid #fff;padding-bottom:5px">图表</span><span style="font-size:15px;color:var(--ink3)">指标</span><span style="font-size:15px;color:var(--ink3)">偏好</span></div><span style="flex:1"></span><span style="font-size:14px;color:var(--ink2)">完成</span></div>'+
+   '<div style="padding:0 16px 8px;font-size:10.5px;color:var(--ink3);letter-spacing:.14em">主图</div>'+
+   line('主图指标',val('MA 7 · 30'),1)+line('K 线风格',val('经典'))+line('最新价线',swOn)+
+   '<div style="height:26px"></div><div style="padding:0 16px 8px;font-size:10.5px;color:var(--ink3);letter-spacing:.14em">副图</div>'+
+   line('副图一',val('MACD'),1)+line('副图二',val('RSI'))+line('持仓量',swOff)+
+   '<div style="height:26px"></div><div style="padding:0 16px 8px;font-size:10.5px;color:var(--ink3);letter-spacing:.14em">交互</div>'+
+   line('十字线磁吸',swOn,1)+line('盯盘时不锁屏',swOff)+
+   '<div style="flex:1"></div><div style="padding:10px 0 12px"><div class="hz"></div></div>'+
+  '</div></div>';}
+
+/* ================= 方向 B ================= */
+var PB={grid:'#ECE7DC',axis:'#A3A199',up:'#1F7A5C',down:'#C0402C',ma1:'#B8892B',ma2:'#4A6FA5'};
+function B_market(){return '<div class="scr" style="--dn:var(--down)">'+statusbar()+
+ '<div class="top"><div class="sym">BTC<em>/ USDT</em><span class="cv">▼</span></div>'+
+ '<div class="tr"><span class="st">实时</span><span style="color:var(--ink1)">'+ic('starf')+'</span></div></div>'+
+ '<div class="price"><div class="pnow num">'+f2(PN)+'</div>'+
+ '<div class="pchg num">'+sgn(CHG)+'<s>|</s><span style="color:var(--ink2);font-weight:500">−1,646.00</span></div>'+
+ '<div class="psub"><div><i>24H 高</i><b class="num">'+f2(HI)+'</b></div><div><i>24H 低</i><b class="num">'+f2(LO)+'</b></div><div><i>成交额</i><b class="num">170.6 亿</b></div><div><i>振幅</i><b class="num">3.59%</b></div></div></div>'+
+ '<div class="iv"><a>1m</a><a>5m</a><a>15m</a><a class="on">1h</a><a>4h</a><a>1d</a><a style="flex:0 0 26px">⌄</a><span class="sep"></span><a class="draw">画线</a></div>'+
+ '<div class="chart">'+chart(PB)+'</div>'+
+ '<div class="tabs"><a class="on">自选</a><a>复盘</a><a>记</a><a>调图</a></div>'+
+ '</div>';}
+function B_fav(){
+ var rows=FAV.map(function(r,i){var neg=r[3]<0,col=neg?'var(--down)':'var(--up)';
+  return '<div style="height:60px;display:flex;align-items:center;padding:0 22px;'+(i?'border-top:1px solid var(--rule);':'')+'">'+
+   '<div style="flex:1"><div style="font-size:15.5px;font-weight:700;letter-spacing:-.01em">'+r[0]+'<span style="color:var(--ink3);font-weight:500;font-size:11.5px"> / '+r[1]+'</span></div>'+
+   '<div class="num" style="font-size:10px;color:var(--ink3);margin-top:3px;letter-spacing:.06em">永续 · 额 '+(12+r[2]%9).toFixed(1)+'亿</div></div>'+
+   '<div style="text-align:right"><div class="num" style="font-size:16px;font-weight:600;letter-spacing:-.02em">'+fnum(r[2])+'</div>'+
+   '<div class="num" style="font-size:12px;color:'+col+';margin-top:2px;font-weight:600">'+sgn(r[3])+'</div></div></div>';}).join('');
+ return '<div class="scr" style="--dn:var(--down)">'+statusbar()+
+  '<div class="top"><div class="sym">BTC<em>/ USDT</em><span class="cv">▲</span></div><div class="tr"><span class="st">实时</span><span style="color:var(--ink1)">'+ic('starf')+'</span></div></div>'+
+  '<div class="chart" style="opacity:.3">'+chart(PB)+'</div>'+
+  '<div class="tabs"><a class="on">自选</a><a>复盘</a><a>记</a><a>调图</a></div>'+
+  '<div class="dim"></div>'+
+  '<div class="layer" style="height:700px;background:var(--bg);border-bottom:1px solid var(--rule2);box-shadow:0 26px 44px rgba(60,52,38,.22)">'+
+   statusbar()+
+   '<div style="padding:8px 22px 14px"><div style="font-size:26px;font-weight:700;letter-spacing:-.03em">自选</div></div>'+
+   '<div style="padding:0 22px 14px"><div class="srch" style="height:38px;border-bottom:1px solid var(--rule2);color:var(--ink3);gap:9px"><span>'+ic('srch',1.7)+'</span><span style="font-size:14px">搜 BTC、ETH、SOL</span></div></div>'+
+   '<div style="display:flex;align-items:baseline;padding:0 22px 12px;gap:16px"><span style="font-size:12.5px;font-weight:700">全部</span><span style="font-size:12.5px;color:var(--ink3)">加密</span><span style="font-size:12.5px;color:var(--ink3)">美股</span><span style="flex:1"></span><span class="num" style="font-size:10px;color:var(--ink3);letter-spacing:.14em">涨 3 · 跌 5</span></div>'+
+   '<div style="flex:1;border-top:1px solid var(--rule2)">'+rows+'</div>'+
+   '<div style="padding:10px 0 12px"><div class="hz"></div></div>'+
+  '</div></div>';}
+function B_panel(){
+ function line(t,r,i){return '<div class="row" style="height:52px;padding:0 22px;'+(i?'border-top:1px solid var(--rule);':'')+'"><span style="flex:1;font-size:15px">'+t+'</span>'+r+'</div>';}
+ var swOn='<span class="sw-track sw-on" style="background:var(--ink1)"></span>',swOff='<span class="sw-track sw-off" style="background:#DFDAD0"></span>';
+ var val=function(v){return '<span class="num" style="color:var(--ink2);font-size:13.5px;margin-right:8px">'+v+'</span><span style="color:var(--ink3);font-size:12px">›</span>';};
+ return '<div class="scr" style="--dn:var(--down)">'+statusbar()+
+  '<div class="top"><div class="sym">BTC<em>/ USDT</em><span class="cv">▼</span></div><div class="tr"><span class="st">实时</span><span style="color:var(--ink1)">'+ic('starf')+'</span></div></div>'+
+  '<div class="price"><div class="pnow num">'+f2(PN)+'</div><div class="pchg num">'+sgn(CHG)+'</div></div>'+
+  '<div class="chart" style="opacity:.45">'+chart(PB)+'</div><div class="dim"></div>'+
+  '<div class="sheet" style="height:560px;background:var(--bg);border-radius:16px 16px 0 0;box-shadow:0 -22px 44px rgba(60,52,38,.26)">'+
+   '<div style="padding:10px 0 4px"><div class="hz" style="width:38px;height:4px"></div></div>'+
+   '<div style="display:flex;align-items:baseline;padding:14px 22px 16px;gap:18px"><span style="font-size:20px;font-weight:700;letter-spacing:-.02em">图表</span><span style="font-size:15px;color:var(--ink3)">指标</span><span style="font-size:15px;color:var(--ink3)">偏好</span><span style="flex:1"></span><span style="font-size:14px;color:var(--ink1);font-weight:600">完成</span></div>'+
+   '<div style="padding:0 22px 9px;font-size:9.5px;color:var(--ink3);letter-spacing:.22em">主图</div><div style="border-top:1px solid var(--rule2)"></div>'+
+   line('主图指标',val('MA 7 · 30'))+line('K 线风格',val('经典'),1)+line('最新价线',swOn,1)+
+   '<div style="height:24px"></div><div style="padding:0 22px 9px;font-size:9.5px;color:var(--ink3);letter-spacing:.22em">副图</div><div style="border-top:1px solid var(--rule2)"></div>'+
+   line('副图一',val('MACD'))+line('副图二',val('RSI'),1)+line('持仓量',swOff,1)+
+   '<div style="height:24px"></div><div style="padding:0 22px 9px;font-size:9.5px;color:var(--ink3);letter-spacing:.22em">交互</div><div style="border-top:1px solid var(--rule2)"></div>'+
+   line('十字线磁吸',swOn)+line('盯盘时不锁屏',swOff,1)+
+   '<div style="flex:1"></div><div style="padding:10px 0 12px"><div class="hz"></div></div>'+
+  '</div></div>';}
+
+/* ================= 方向 C ================= */
+var PC={grid:'rgba(255,255,255,.055)',axis:'#666C7D',up:'#2EBD85',down:'#FF5D73',ma1:'#F0B429',ma2:'#7C86FF'};
+function C_market(){return '<div class="scr" style="--dn:var(--down)">'+'<div class="glow"></div>'+statusbar()+
+ '<div class="top"><div class="sym">BTC<em>/USDT</em><span class="cv">▼</span></div>'+
+ '<div class="tr"><span class="st">● 实时</span><span style="color:#FFC53D">'+ic('starf')+'</span></div></div>'+
+ '<div class="price"><div class="pnow num">'+f2(PN)+'</div><div class="pchg num">'+sgn(CHG)+' · −1,646.00</div>'+
+ '<div class="psub"><div><i>24h 高</i><b class="num">'+f2(HI)+'</b></div><div><i>24h 低</i><b class="num">'+f2(LO)+'</b></div><div><i>额 / 振幅</i><b class="num">170.6亿 · 3.59%</b></div></div></div>'+
+ '<div class="iv"><a>1m</a><a>5m</a><a>15m</a><a class="on">1h</a><a>4h</a><a>1d</a><a style="flex:0 0 30px">⌄</a><span class="sep"></span><a class="draw">画线</a></div>'+
+ '<div class="chart">'+chart(PC)+'</div>'+
+ '<div class="tabs"><div class="pill"><a class="on">'+ic('fav')+'自选</a><a>'+ic('rev')+'复盘</a><a class="hero">'+ic('pen')+'记</a><a>'+ic('set')+'调图</a></div></div>'+
+ '</div>';}
+function C_fav(){
+ var rows=FAV.map(function(r){var neg=r[3]<0,col=neg?'var(--down)':'var(--up)';
+  return '<div style="height:62px;display:flex;align-items:center;gap:12px;padding:0 14px;margin:0 4px;border-radius:18px">'+
+   '<span style="width:34px;height:34px;border-radius:12px;background:color-mix(in srgb,'+col+' 16%,transparent);color:'+col+';display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">'+r[0][0]+'</span>'+
+   '<div style="flex:1"><div style="font-size:14.5px;font-weight:600">'+r[0]+'<span style="color:var(--ink3);font-weight:500;font-size:11px">/'+r[1]+'</span></div>'+
+   '<div class="num" style="font-size:10.5px;color:var(--ink3);margin-top:2px">额 '+(12+r[2]%9).toFixed(1)+'亿</div></div>'+
+   '<div style="text-align:right"><div class="num" style="font-size:14.5px;font-weight:600">'+fnum(r[2])+'</div>'+
+   '<div class="num" style="display:inline-block;margin-top:3px;font-size:11px;font-weight:700;color:'+col+';background:color-mix(in srgb,'+col+' 15%,transparent);padding:2.5px 7px;border-radius:99px">'+sgn(r[3])+'</div></div></div>';}).join('');
+ return '<div class="scr" style="--dn:var(--down)"><div class="glow"></div>'+statusbar()+
+  '<div class="top"><div class="sym">BTC<em>/USDT</em><span class="cv">▲</span></div><div class="tr"><span class="st">● 实时</span><span style="color:#FFC53D">'+ic('starf')+'</span></div></div>'+
+  '<div class="chart" style="opacity:.25">'+chart(PC)+'</div>'+
+  '<div class="tabs"><div class="pill"><a class="on">'+ic('fav')+'自选</a><a>'+ic('rev')+'复盘</a><a class="hero">'+ic('pen')+'记</a><a>'+ic('set')+'调图</a></div></div>'+
+  '<div class="dim"></div>'+
+  '<div class="layer" style="height:700px;background:rgba(14,16,23,.92);backdrop-filter:blur(26px);border-radius:0 0 30px 30px;border-bottom:1px solid var(--rule);box-shadow:0 26px 54px rgba(0,0,0,.75)">'+
+   '<div class="glow" style="opacity:.3"></div>'+statusbar()+
+   '<div style="padding:6px 18px 14px"><div class="srch" style="height:42px;background:var(--surf);border:1px solid var(--rule);border-radius:15px;padding:0 13px;color:var(--ink3);gap:9px"><span>'+ic('srch',1.7)+'</span><span style="font-size:14px">搜 BTC、ETH、SOL</span></div></div>'+
+   '<div style="display:flex;align-items:center;padding:0 18px 10px;gap:7px"><span style="font-size:12px;font-weight:700;color:#fff;background:var(--sel);padding:6px 13px;border-radius:99px">全部</span><span style="font-size:12px;color:var(--ink2);background:var(--surf);padding:6px 13px;border-radius:99px">加密</span><span style="font-size:12px;color:var(--ink2);background:var(--surf);padding:6px 13px;border-radius:99px">美股</span><span style="flex:1"></span><span class="num" style="font-size:10.5px;color:var(--ink3)">涨 3 · 跌 5</span></div>'+
+   '<div style="flex:1;padding:0 10px">'+rows+'</div>'+
+   '<div style="padding:10px 0 12px"><div class="hz"></div></div>'+
+  '</div></div>';}
+function C_panel(){
+ function line(t,r,last){return '<div class="row" style="height:52px;padding:0 15px;'+(last?'':'border-bottom:1px solid var(--rule);')+'"><span style="flex:1;font-size:14.5px">'+t+'</span>'+r+'</div>';}
+ var swOn='<span class="sw-track sw-on" style="background:var(--sel)"></span>',swOff='<span class="sw-track sw-off" style="background:rgba(255,255,255,.13)"></span>';
+ var val=function(v){return '<span class="num" style="color:var(--ink2);font-size:13px;margin-right:7px">'+v+'</span><span style="color:var(--ink3);font-size:12px">›</span>';};
+ var card=function(title,inner){return '<div style="margin:0 14px 14px"><div style="font-size:10.5px;color:var(--ink3);padding:0 4px 8px;font-weight:600;letter-spacing:.08em">'+title+'</div><div style="background:var(--surf);border:1px solid var(--rule);border-radius:20px;overflow:hidden">'+inner+'</div></div>';};
+ return '<div class="scr" style="--dn:var(--down)"><div class="glow"></div>'+statusbar()+
+  '<div class="top"><div class="sym">BTC<em>/USDT</em><span class="cv">▼</span></div><div class="tr"><span class="st">● 实时</span><span style="color:#FFC53D">'+ic('starf')+'</span></div></div>'+
+  '<div class="price"><div class="pnow num">'+f2(PN)+'</div><div class="pchg num">'+sgn(CHG)+'</div></div>'+
+  '<div class="chart" style="opacity:.4">'+chart(PC)+'</div><div class="dim"></div>'+
+  '<div class="sheet" style="height:576px;background:rgba(14,16,23,.94);backdrop-filter:blur(26px);border-top:1px solid var(--rule);border-radius:30px 30px 0 0;box-shadow:0 -24px 54px rgba(0,0,0,.8)">'+
+   '<div style="padding:10px 0 4px"><div class="hz" style="width:38px;height:4px"></div></div>'+
+   '<div style="display:flex;align-items:center;padding:10px 14px 16px;gap:10px">'+
+    '<div style="flex:1;display:flex;background:var(--surf);border-radius:14px;padding:3px">'+
+     '<span style="flex:1;text-align:center;font-size:13px;font-weight:700;color:#fff;background:var(--sel);border-radius:11px;padding:7px 0">图表</span>'+
+     '<span style="flex:1;text-align:center;font-size:13px;color:var(--ink2);padding:7px 0">指标</span>'+
+     '<span style="flex:1;text-align:center;font-size:13px;color:var(--ink2);padding:7px 0">偏好</span></div>'+
+    '<span style="font-size:14px;color:var(--sel);font-weight:600">完成</span></div>'+
+   card('主图',line('主图指标',val('MA 7 · 30'))+line('K 线风格',val('经典'))+line('最新价线',swOn,1))+
+   card('副图',line('副图一',val('MACD'))+line('副图二',val('RSI'))+line('持仓量',swOff,1))+
+   card('交互',line('十字线磁吸',swOn)+line('盯盘时不锁屏',swOff,1))+
+   '<div style="flex:1"></div><div style="padding:6px 0 12px"><div class="hz"></div></div>'+
+  '</div></div>';}
+
+
+/* ================= 方向 D · 夜昙 ================= */
+var PD={grid:'rgba(255,255,255,.055)',axis:'#575C65',up:'#2EBD85',down:'#F6465D',ma1:'#C9A227',ma2:'#5B8DEF'};
+function D_top(dirdown){return '<div class="top"><div class="sym">BTC<em>/USDT</em><span class="cv">'+(dirdown?'\u25bc':'\u25b2')+'</span></div><div class="tr"><span class="st">实时</span><span style="color:#F4F5F7">'+ic('starf')+'</span></div></div>';}
+function D_tabs(active){
+ var it=function(k,n,lab){return '<a'+(active===k?' class="on"':'')+'>'+ic(n)+lab+'</a>';};
+ return '<div class="tabs">'+it('fav','fav','自选')+it('rev','rev','复盘')+
+  '<a class="hero"><u>'+ic('pen',1.8)+'</u>记</a>'+it('set','set','调图')+'</div>';}
+function D_market(){return '<div class="scr" style="--dn:var(--down)">'+statusbar()+
+ '<div style="position:relative">'+'<div class="halo"></div>'+D_top(1)+
+ '<div class="price"><div><span class="pnow num">'+f2(PN)+'</span><span class="pchg num">'+sgn(CHG)+'</span></div>'+
+ '<div class="psub"><div><i>24H 高</i><b class="num">'+f2(HI)+'</b></div><div><i>24H 低</i><b class="num">'+f2(LO)+'</b></div><div><i>成交额</i><b class="num">170.6 亿</b></div><div><i>振幅</i><b class="num">3.59%</b></div></div></div></div>'+
+ '<div class="iv"><a>1m</a><a>5m</a><a>15m</a><a class="on">1h</a><a>4h</a><a>1d</a><a style="flex:0 0 34px">\u2304</a><span class="sep"></span><a class="draw">画线</a></div>'+
+ '<div class="chart">'+chart(PD)+'</div>'+D_tabs('')+'</div>';}
+function D_fav(){
+ var rows=FAV.map(function(r,i){var neg=r[3]<0,col=neg?'var(--down)':'var(--up)';
+  return '<div style="height:58px;display:flex;align-items:center;padding:0 18px;position:relative;'+(i?'border-top:1px solid var(--rule);':'')+'">'+
+   (Math.abs(r[3])>=5?'<span style="position:absolute;left:0;top:14px;width:2px;height:30px;background:'+col+'"></span>':'')+
+   '<div style="flex:1"><div style="font-size:14.5px;font-weight:600">'+r[0]+'<span style="color:var(--ink3);font-weight:500;font-size:11px">/'+r[1]+'</span> <span class="badge" style="border:1px solid var(--rule2);color:var(--ink3)">永续</span></div>'+
+   '<div class="num" style="font-size:10.5px;color:var(--ink3);margin-top:3px">额 '+(12+r[2]%9).toFixed(1)+'亿 · 振幅 '+(1+Math.abs(r[3])).toFixed(2)+'%</div></div>'+
+   '<div style="text-align:right"><div class="num" style="font-size:14.5px">'+fnum(r[2])+'</div>'+
+   '<div class="num" style="font-size:12px;color:'+col+';margin-top:3px;font-weight:600">'+sgn(r[3])+'</div></div></div>';}).join('');
+ return '<div class="scr" style="--dn:var(--down)">'+statusbar()+D_top(0)+
+  '<div class="chart" style="opacity:.22">'+chart(PD)+'</div>'+D_tabs('fav')+
+  '<div class="dim"></div>'+
+  '<div class="layer glass" style="height:700px;border-radius:0 0 30px 30px;border-top:0;box-shadow:0 30px 56px rgba(0,0,0,.78)">'+
+   '<div class="halo" style="opacity:.2"></div>'+statusbar()+
+   '<div style="padding:4px 18px 12px;position:relative"><div class="srch" style="height:42px;border-bottom:1px solid var(--rule);color:var(--ink3);gap:9px"><span>'+ic('srch',1.7)+'</span><span style="font-size:14px">搜 BTC、ETH、SOL</span></div></div>'+
+   '<div style="display:flex;align-items:center;padding:0 18px 12px;gap:16px;position:relative"><span style="font-size:12.5px;color:#fff;font-weight:600;border-bottom:1.5px solid #fff;padding-bottom:5px">全部</span><span style="font-size:12.5px;color:var(--ink3)">加密</span><span style="font-size:12.5px;color:var(--ink3)">美股</span><span style="flex:1"></span><span class="num" style="font-size:10.5px;color:var(--ink3)">涨 3 · 跌 5</span></div>'+
+   '<div style="flex:1;position:relative;border-top:1px solid var(--rule)">'+rows+'</div>'+
+   '<div style="padding:10px 0 12px"><div class="hz"></div></div></div></div>';}
+function D_panel(){
+ function line(t,r,top){return '<div class="row" style="height:50px;padding:0 18px;'+(top?'':'border-top:1px solid var(--rule);')+'"><span style="flex:1;font-size:14.5px">'+t+'</span>'+r+'</div>';}
+ var swOn='<span class="sw-track sw-on" style="background:#fff"></span>',swOff='<span class="sw-track sw-off" style="background:rgba(255,255,255,.14)"></span>';
+ var val=function(v){return '<span class="num" style="color:var(--ink3);font-size:13px;margin-right:8px">'+v+'</span><span style="color:var(--ink3);font-size:12px">\u203a</span>';};
+ var grp=function(t){return '<div style="height:26px"></div><div style="padding:0 18px 9px;font-size:9.5px;color:var(--ink3);letter-spacing:.2em">'+t+'</div>';};
+ return '<div class="scr" style="--dn:var(--down)">'+statusbar()+
+  '<div style="position:relative"><div class="halo"></div>'+D_top(1)+
+  '<div class="price"><div><span class="pnow num">'+f2(PN)+'</span><span class="pchg num">'+sgn(CHG)+'</span></div></div></div>'+
+  '<div class="chart" style="opacity:.32">'+chart(PD)+'</div><div class="dim"></div>'+
+  '<div class="sheet glass" style="height:566px;border-radius:30px 30px 0 0;border-bottom:0;box-shadow:0 -28px 56px rgba(0,0,0,.8)">'+
+   '<div style="padding:10px 0 6px"><div class="hz" style="width:38px;height:4px"></div></div>'+
+   '<div style="display:flex;align-items:center;padding:8px 18px 16px"><div style="display:flex;gap:20px"><span style="font-size:15.5px;font-weight:600;color:#fff;border-bottom:1.5px solid #fff;padding-bottom:6px">图表</span><span style="font-size:15.5px;color:var(--ink3)">指标</span><span style="font-size:15.5px;color:var(--ink3)">偏好</span></div><span style="flex:1"></span><span style="font-size:14px;color:var(--ink2)">完成</span></div>'+
+   '<div style="padding:0 18px 9px;font-size:9.5px;color:var(--ink3);letter-spacing:.2em">主图</div>'+
+   line('主图指标',val('MA 7 · 30'),1)+line('K 线风格',val('经典'))+line('最新价线',swOn)+
+   grp('副图')+line('副图一',val('MACD'),1)+line('副图二',val('RSI'))+line('持仓量',swOff)+
+   grp('交互')+line('十字线磁吸',swOn,1)+line('盯盘时不锁屏',swOff)+
+   '<div style="flex:1"></div><div style="padding:10px 0 12px"><div class="hz"></div></div></div></div>';}
+function D_note(){
+ var seg=function(t,on){return '<span style="flex:1;text-align:center;font-size:13.5px;padding:9px 0;border-radius:11px;'+(on?'background:#fff;color:#07080A;font-weight:600':'color:var(--ink2)')+'">'+t+'</span>';};
+ var dot=function(on){return '<span style="flex:1;height:4px;border-radius:99px;background:'+(on?'#fff':'rgba(255,255,255,.14)')+'"></span>';};
+ return '<div class="scr" style="--dn:var(--down)">'+statusbar()+
+  '<div style="position:relative"><div class="halo"></div>'+D_top(1)+
+  '<div class="price"><div><span class="pnow num">'+f2(PN)+'</span><span class="pchg num">'+sgn(CHG)+'</span></div></div></div>'+
+  '<div class="iv"><a>1m</a><a>5m</a><a>15m</a><a class="on">1h</a><a>4h</a><a>1d</a><a style="flex:0 0 34px">\u2304</a><span class="sep"></span><a class="draw">画线</a></div>'+
+  '<div class="chart">'+chart(PD)+'<div style="position:absolute;left:96px;right:86px;top:0;bottom:0;background:rgba(255,255,255,.055);border-left:1px solid rgba(255,255,255,.28);border-right:1px solid rgba(255,255,255,.28)"></div>'+
+   '<div class="num" style="position:absolute;left:96px;top:8px;font-size:9.5px;color:#fff;background:rgba(0,0,0,.55);padding:3px 7px;border-radius:5px;font-family:ui-monospace,monospace">49 根 · 9/14 13:00 – 9/16 14:00</div></div>'+
+  '<div class="sheet glass" style="height:352px;border-radius:30px 30px 0 0;border-bottom:0;box-shadow:0 -28px 56px rgba(0,0,0,.82)">'+
+   '<div style="padding:10px 0 6px"><div class="hz" style="width:38px;height:4px"></div></div>'+
+   '<div style="display:flex;align-items:baseline;padding:8px 18px 14px"><span style="font-size:17px;font-weight:600">记一笔</span><span style="flex:1"></span><span class="num" style="font-size:11px;color:var(--ink3)">BTC/USDT · 1h</span></div>'+
+   '<div style="padding:0 18px 14px;display:flex;gap:6px;background:transparent"><div style="flex:1;display:flex;background:rgba(255,255,255,.055);border-radius:13px;padding:3px">'+seg('看多',0)+seg('看空',1)+seg('观望',0)+'</div></div>'+
+   '<div style="margin:0 18px 16px;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:13px 0;font-size:14.5px;color:var(--ink1)">跌破 76,000 支撑，等回踩确认<span style="opacity:.5">|</span></div>'+
+   '<div style="padding:0 18px 18px;display:flex;align-items:center;gap:12px"><span style="font-size:12px;color:var(--ink3);letter-spacing:.1em">把握</span><span style="flex:1;display:flex;gap:5px">'+dot(1)+dot(1)+dot(1)+dot(0)+dot(0)+'</span><span class="num" style="font-size:12px;color:var(--ink2)">3 / 5</span></div>'+
+   '<div style="padding:0 18px"><div style="height:50px;border-radius:15px;background:#fff;color:#07080A;display:flex;align-items:center;justify-content:center;font-size:15.5px;font-weight:600">记下</div></div>'+
+   '<div style="flex:1"></div><div style="padding:10px 0 12px"><div class="hz"></div></div></div></div>';}
+
+/* ---------- 输出 ---------- */
+var DIRS=[
+ {i:'01',cls:'tA',name:'墨玉',en:'OBSIDIAN',rec:1,
+  sig:'<b>整块屏幕上只有价格有颜色。</b>近黑底 + 0.5pt 发丝线分区，选中态一律是纯白，没有品牌强调色——于是涨跌的红绿成了唯一的色彩事件，眼睛永远先落在它上面。',
+  why:'数字全部等宽，价格 42pt／权重 500，比现在大一倍还多；卡片、阴影、圆角全部取消，只靠发丝线和留白分区。和冻结的 K 线底座最合拍，长时间盯盘不累。',
+  tok:[['底 / 面','#08090B','#0F1114','#161A1F'],['墨','#F3F4F6','#8D929B','#565B64'],['涨 / 跌','#2EBD85','#F6465D'],['选中','#FFFFFF']],
+  s:[A_market,A_fav,A_panel]},
+ {i:'02',cls:'tB',name:'宣纸',en:'PAPER & INK',rec:0,
+  sig:'<b>把行情排成一份印刷品。</b>暖白纸底、朱砂与青绿代替红绿、数字大到像杂志封面；没有一张卡片、没有一个阴影，全部用细线和留白分栏。',
+  why:'52pt 的价格 + 字距收紧到 −0.045em，是三套里视觉冲击最强的；底栏只有四个字、没有图标。白天户外可读性最好，代价是深色夜盘党会不适应。',
+  tok:[['纸 / 面','#F7F5F0','#FFFFFF','#EFEBE2'],['墨','#17181B','#6C6F75','#A3A199'],['涨 / 跌','#1F7A5C','#C0402C'],['线','#E4E0D7']],
+  s:[B_market,B_fav,B_panel]},
+ {i:'03',cls:'tC',name:'极光',en:'AURORA',rec:0,
+  sig:'<b>整个界面的环境光跟着行情走。</b>顶部一层弥散的光晕由当前涨跌染色——绿天红天一眼分辨；玻璃面板、22–30pt 大圆角、悬浮胶囊底栏，「记」是那颗发光的主按钮。',
+  why:'三套里最现代、最像消费级 App 的一套，截图最好看。风险是装饰元素多，长期盯盘时比前两套吵一点；光晕强度需要在真机上压到刚好能感知。',
+  tok:[['底 / 玻璃','#0A0C12','rgba(255,255,255,.055)','#161A24'],['墨','#F4F5F8','#9DA2B0','#666C7D'],['涨 / 跌','#2EBD85','#FF5D73'],['强调','#7C86FF']],
+  s:[C_market,C_fav,C_panel]},
+ {i:'04',cls:'tD',name:'夜昙',en:'NOCTURNE',rec:2,
+  sig:'<b>静止的东西零装饰，浮起来的东西才有材质。</b>图表、清单、周期条沿用墨玉的发丝线与等宽数字，一点装饰都没有；只有升起到图表之上的东西——自选层、调图面板、记一笔——才是玻璃、30pt 大圆角、带一层被涨跌染色的光。',
+  why:'颜色不再靠色块，而是以「光」的形式出现：价格背后那层光晕由当前涨跌染色，绿天红天在锁屏第一眼就分辨得出，但它糊在背景里，不和 K 线抢注意力。选中态仍是纯白，全 app 没有第二个强调色；底栏的「记」是唯一一块实心白，成为屏幕上唯一的召唤点。',
+  tok:[['底 / 浮层','#07080A','rgba(17,19,24,.86)','#12141A'],['墨','#F4F5F7','#8E939C','#575C65'],['涨 / 跌（光）','#2EBD85','#F6465D'],['选中','#FFFFFF']],
+  caps:['盘面（首屏）','自选层（玻璃下拉）','调图面板','记一笔'],
+  s:[D_market,D_fav,D_panel,D_note]}
+];
+var CAPS=['盘面（首屏）','自选层（顶部下拉）','调图面板'];
+document.getElementById('out').innerHTML=DIRS.map(function(d){
+  var toks=d.tok.map(function(t){
+    return '<div><div class="tk-l">'+t[0]+'</div><div class="sw">'+t.slice(1).map(function(c){return '<i style="background:'+c+'"></i>';}).join('')+'</div></div>';}).join('');
+  var frames=d.s.map(function(fn,i){
+    return '<div class="fw"><div class="device"><div class="phone '+d.cls+'">'+fn()+'</div></div><div class="cap">'+CAPS[i]+'</div></div>';}).join('');
+  return '<section class="dir"><div class="dh"><span class="idx">'+d.i+'</span><h2>'+d.name+'</h2><span class="en">'+d.en+'</span>'+(d.rec?'<span class="rec">'+(d.rec==2?'融合方向':'推荐')+'</span>':'')+'</div>'+
+   '<p class="sig">'+d.sig+'</p><p class="why">'+d.why+'</p><div class="tok">'+toks+'</div><div class="frames">'+frames+'</div></section>';
+}).join('');
+</script>
+</body>
+</html>

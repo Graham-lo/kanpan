@@ -23,24 +23,44 @@ struct TopBar: View {
   var onStatus: () -> Void = {}
   var onStar: () -> Void
 
+  /// 「BTCUSDT」拆成「BTC」+「/USDT」：基础币用正文色、计价币降一级，
+  /// 一眼扫过去认的是前半截。
+  private var base: String {
+    for quote in ["USDT", "USDC", "USD", "BUSD", "FDUSD"] where symbol.hasSuffix(quote) && symbol.count > quote.count {
+      return String(symbol.dropLast(quote.count))
+    }
+    return symbol
+  }
+  private var quote: String { String(symbol.dropFirst(base.count)) }
+
   var body: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: 9) {
       Button(action: onSymbol) {
-        HStack(spacing: 6) {
-          Text(symbol)
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(theme.ink)
-          Text("永续")
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(theme.ink3)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-            .overlay(RoundedRectangle(cornerRadius: 4).stroke(theme.line, lineWidth: 1))
-          VectorIcon.chevron()
-            .foregroundStyle(theme.ink.opacity(0.55))
+        HStack(spacing: 9) {
+          CoinBadge(base: base, size: 29)
+          HStack(alignment: .firstTextBaseline, spacing: 3) {
+            Text(base)
+              .font(.system(size: 15.5, weight: .bold))
+              .foregroundStyle(theme.ink)
+            if !quote.isEmpty {
+              Text("/" + quote)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(theme.ink3)
+            }
+            VectorIcon.chevron(9, w: 1.7)
+              .foregroundStyle(theme.ink3)
+              .padding(.leading, 1)
+            Text("永续")
+              .font(.system(size: 9.5, weight: .medium))
+              .foregroundStyle(theme.ink3)
+              .padding(.horizontal, 4)
+              .padding(.vertical, 1.5)
+              .background(theme.raised2, in: RoundedRectangle(cornerRadius: 4))
+              .padding(.leading, 3)
+          }
+          .lineLimit(1)
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
+        .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
       .accessibilityLabel("换品种，当前 \(symbol)")
@@ -50,11 +70,14 @@ struct TopBar: View {
 
       Spacer(minLength: 0)
 
-      iconButton(VectorIcon.star(), label: starred ? "移出自选" : "加入自选", on: starred, action: onStar)
+      iconButton(VectorIcon.star(15), label: starred ? "移出自选" : "加入自选", on: starred, action: onStar)
         .accessibilityIdentifier("top.star")
     }
   }
 
+  /// 右上角的圆按钮：30pt 的托底 + 15pt 的线性图标（用户定过的尺度）。
+  /// 选中的那颗用强调色的字配一层 15% 的强调底，不要整颗填满——它旁边就是价格，
+  /// 填满会把视线从价格上抢走。
   private func iconButton(
     _ icon: VectorIcon, label: String, on: Bool, action: @escaping () -> Void
   ) -> some View {
@@ -64,9 +87,9 @@ struct TopBar: View {
     } label: {
       icon
         .foregroundStyle(on ? theme.amber : theme.ink2)
-        .frame(width: 32, height: 32)
-        .background(theme.app)
-        .contentShape(Rectangle())
+        .frame(width: 30, height: 30)
+        .background(on ? theme.amberSoft : theme.raised, in: Circle())
+        .contentShape(Circle())
     }
     .buttonStyle(.plain)
     .accessibilityLabel(label)
@@ -75,17 +98,20 @@ struct TopBar: View {
   }
 }
 
-/// 价格行：左边一个价 + 涨跌幅，右边 24h 高/低/额（§9.1）。
+
+/// 价格块：一行大价 + 涨跌幅药丸，下面一行灰字（§9.1）。
 ///
 /// 涨跌幅用币安 `ticker24h` 的 `P` 字段，不自己算（§4.4）；最新价的颜色跟着它走，
 /// 和原型 `renderTop()` 一致——不是跟着「这一根的涨跌」走。
 ///
-/// 左边这一格是**这个品种的展示价**，它和涨跌幅永远是头部的主角：一屏看下来
-/// 先看到的就该是「现在多少钱、今天涨没涨」。24h 高/低/额是背景信息，
-/// 压到右边、用小一号的字，把原本空着的右半边填上，但不抢主角的位置。
+/// 价和涨跌幅永远是头部的主角：一屏看下来先看到的就该是「现在多少钱、今天涨没涨」。
+/// 主角地位靠对比建立而不是靠字号——价停在 29pt 的等宽数字（跳数时行宽不动），
+/// 涨跌幅做成填色药丸带方向箭头，这两样一起就够抢眼了，别再往大里加。
 ///
-/// 字号从原来的 22pt 降到 18pt 并换成等宽数字：22pt 那版又大又糙，数字一跳整行
-/// 宽度跟着变。降一档、锁住字宽，跳数的时候行不动，右边那三项也就有地方站。
+/// 底下只跟一行灰字：成交额、振幅。24h 高 / 低 不显示——用户看过之后说「高低其实
+/// 没必要展示」，那两个数一天里几乎不动，摆在最新价旁边只是把视线分散掉。
+/// 这一行也不要再装进小卡片里：四张等宽圆角卡试过，用户的评价是「方框有点太方了」，
+/// 头部本来就该是一块干净的留白，加边框等于把两个配角也框成了主角。
 struct PriceRow: View {
   var theme: PanelTheme
   var ticker: Ticker?
@@ -102,22 +128,39 @@ struct PriceRow: View {
   }
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Text(lastText)
-        .font(.system(size: 18, weight: .semibold))
-        .monospacedDigit()
-        .foregroundStyle(lastPrice == nil ? theme.ink : tint)
-        .accessibilityIdentifier("top.lastPrice")
+    VStack(alignment: .leading, spacing: 5) {
+      HStack(alignment: .firstTextBaseline, spacing: 9) {
+        Text(lastText)
+          .font(.system(size: 29, weight: .semibold, design: .monospaced))
+          .foregroundStyle(lastPrice == nil ? theme.ink : tint)
+          .lineLimit(1)
+          .minimumScaleFactor(0.6)
+          .accessibilityIdentifier("top.lastPrice")
+        pill
+        Spacer(minLength: 0)
+      }
+      stats
+    }
+  }
+
+  /// 涨跌幅药丸：填色 + 白字 + 方向箭头。填的色和自选表里那一列是同一支
+  /// （`badgeFill`），两处对不上会让人以为是两个口径。
+  private var pill: some View {
+    HStack(spacing: 3) {
+      if let pct {
+        Image(systemName: pct >= 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
+          .font(.system(size: 7.5))
+      }
       Text(pct.map { ($0 >= 0 ? "+" : "") + toFixed($0, 2) + "%" } ?? "—")
         .font(.system(size: 12.5, weight: .semibold))
         .monospacedDigit()
-        .foregroundStyle(pct == nil ? theme.ink3 : tint)
-        .accessibilityIdentifier("top.changePercent")
-      Spacer(minLength: 10)
-      stats
     }
-    .lineLimit(1)
-    .padding(.top, 3)
+    .foregroundStyle(pct == nil ? theme.ink3 : theme.badgeInk)
+    .padding(.horizontal, 7)
+    .padding(.vertical, 3.5)
+    .background(pct == nil ? theme.raised2 : theme.badgeFill(up: pct! >= 0),
+                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    .accessibilityIdentifier("top.changePercent")
   }
 
   private var lastText: String {
@@ -125,37 +168,25 @@ struct PriceRow: View {
     return grouped(fmtNum(p, decimals))
   }
 
-  /// 24h 高 / 低 / 额：贴右横排，标签 10.5pt 次级色、数值 11pt 等宽数字。
-  ///
-  /// 挤不下的时候**整项整项地让**，不截断：先去掉「24h」那两个字（高/低/额 这三个
-  /// 词本来就只有 24h 这一个口径），再去掉成交额（VOL 副图里一直画着）。
-  /// 截断出来的「7957…」比没有还糟——一个看不全的价位会让人读错一档。
+  /// 成交额、振幅：一行灰字，标签更淡、数值稍重，中间一个圆点隔开。不给底色、
+  /// 不加边框——它们是配角，配角只要在那儿能查到就够了。
   private var stats: some View {
-    ViewThatFits(in: .horizontal) {
-      statRow(prefixed: true, volume: true)
-      statRow(prefixed: false, volume: true)
-      statRow(prefixed: false, volume: false)
+    HStack(spacing: 7) {
+      stat("成交额", ticker.map { fmtVol($0.quoteVolume) })
+      Text("·").font(.system(size: 11)).foregroundStyle(theme.ink3.opacity(0.6))
+      stat("振幅", ticker?.amplitude24h.map { toFixed($0, 2) + "%" })
+      Spacer(minLength: 0)
     }
+    .lineLimit(1)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("top.stats")
   }
 
-  private func statRow(prefixed: Bool, volume: Bool) -> some View {
-    HStack(spacing: 8) {
-      stat(prefixed ? "24h 高" : "高", ticker.map { fmtNum($0.high, decimals) })
-      stat("低", ticker.map { fmtNum($0.low, decimals) })
-      if volume { stat("额", ticker.map { fmtVol($0.quoteVolume) }) }
-    }
-    .fixedSize()
-  }
-
   private func stat(_ label: String, _ value: String?) -> some View {
     HStack(spacing: 4) {
-      Text(label)
-        .font(.system(size: 10.5))
-        .foregroundStyle(theme.ink3)
+      Text(label).font(.system(size: 11)).foregroundStyle(theme.ink3)
       Text(value ?? "—")
-        .font(.system(size: 11))
+        .font(.system(size: 11.5, weight: .medium))
         .monospacedDigit()
         .foregroundStyle(theme.ink2)
     }
@@ -187,12 +218,21 @@ func grouped(_ text: String) -> String {
 struct StatusDot: View {
   var status: FeedStatus
   var onLongPress: () -> Void
+  @Environment(\.panelTheme) private var theme
 
+  /// 连上的时候用**当前皮肤自己的强调色**，不是一颗固定的 `#22C55E`。
+  ///
+  /// 那颗绿是从别处抄来的通用绿，落在青苔的浅灰绿纸面上比整屏任何一处都跳，
+  /// 换到陶土那套暖色里更像是画错了色号——它就挨着品种徽章，徽章的颜色都按皮肤
+  /// 特调过了，旁边这一点却不认识皮肤。
+  ///
+  /// 「离线」同理，跟着皮肤的弱化文字色走。只有「重连中」保留那抹橙：它要的就是
+  /// 「和平时不一样」，两套皮肤里都跟强调色分得开。
   private var color: Color {
     switch status {
-    case .live: Color(hex: "#22C55E")
+    case .live: theme.amber
     case .reconnecting: Color(hex: "#F5A524")
-    case .offline: Color(hex: "#9AA0A6")
+    case .offline: theme.ink3
     }
   }
 

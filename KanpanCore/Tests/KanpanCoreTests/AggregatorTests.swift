@@ -244,7 +244,7 @@ struct AggregatorTests {
       "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w", "1M", "1y",
     ])
     #expect(Interval.allCases.count == 14)
-    #expect(Interval.quick.map(\.rawValue) == ["1m", "5m", "15m", "1h", "4h", "1d"])
+    #expect(Interval.quick.map(\.rawValue) == ["1m", "5m", "15m", "30m", "1h", "4h", "1d"])
     #expect(Interval.y1.api == nil, "币安没有 1y，不能往 API 上传")
     #expect(Interval.y1.source == .mo1)
     for iv in Interval.allCases where iv != .y1 {

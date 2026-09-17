@@ -1,6 +1,10 @@
 import KanpanCore
 
 struct IndicatorDraft {
+  /// 均线 / EMA / 均量最多几条。和 `IndicatorParamRule.sanitize` 的 `prefix(20)` 是同一个数：
+  /// 界面上加不出第 21 条，存档里塞进来的第 21 条也会被砍掉。
+  static let maxPeriods = 20
+
   var id: IndicatorID
   var params: [Int]
   var colors: [Int: Hex]

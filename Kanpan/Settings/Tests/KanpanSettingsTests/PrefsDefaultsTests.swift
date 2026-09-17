@@ -84,7 +84,7 @@ struct PrefsDefaultsTests {
   }
 }
 
-/// A6.6：周期 14 档，常用行 6 档。
+/// A6.6：周期 14 档，常用行 7 档。
 @Suite("周期表")
 struct IntervalTableTests {
 
@@ -98,28 +98,31 @@ struct IntervalTableTests {
     #expect(!want.contains("8h"))
   }
 
-  @Test("常用行 6 档，与原型 QUICK 相同")
+  @Test("常用行 7 档，与 Interval.quick 相同")
   func 常用行() {
-    #expect(Prefs.defaults.quickIntervals == [.m1, .m5, .m15, .h1, .h4, .d1])
-    #expect(Prefs.defaults.quickIntervals.count == 6)
+    // 周期条右端从「更多 / 画线 / 记 / 图表」减到「更多 / 图表」之后腾出的位置补给了周期，
+    // 六档加到七档（补 30m）。七档是 iPhone 16 Pro 竖屏一行排得下的上限，
+    // 第八档只能藏进滑动里，等于没展示。
+    #expect(Prefs.defaults.quickIntervals == [.m1, .m5, .m15, .m30, .h1, .h4, .d1])
+    #expect(Prefs.defaults.quickIntervals.count == 7)
     #expect(Prefs.defaults.quickIntervals == Interval.quick)
   }
 
-  @Test("常用行增删：最多 8 档、至少留 1 档，且按 14 档的顺序排")
+  @Test("常用行增删：最多 10 档、至少留 1 档，且按 14 档的顺序排")
   func 常用行增删() {
     var p = Prefs.defaults
-    #expect(p.toggleQuick(.m30) == nil)
-    #expect(p.quickIntervals == [.m1, .m5, .m15, .m30, .h1, .h4, .d1])   // 插在 15m 与 1h 之间
+    #expect(p.toggleQuick(.h2) == nil)
+    #expect(p.quickIntervals == [.m1, .m5, .m15, .m30, .h1, .h2, .h4, .d1])  // 插在 1h 与 4h 之间
 
-    #expect(p.toggleQuick(.m30) == nil)                                   // 再按一次移出
+    #expect(p.toggleQuick(.h2) == nil)                                    // 再按一次移出
     #expect(p.quickIntervals == Interval.quick)
 
-    for iv in [Interval.m3, .h2, .h6, .h12, .w1, .mo1] {
+    for iv in [Interval.m3, .h2, .h6] {
       _ = p.toggleQuick(iv)
     }
-    #expect(p.quickIntervals.count == 8)
-    #expect(p.toggleQuick(.y1) != nil)                                    // 第 9 档按不进去
-    #expect(p.quickIntervals.count == 8)
+    #expect(p.quickIntervals.count == 10)
+    #expect(p.toggleQuick(.y1) != nil)                                    // 第 11 档按不进去
+    #expect(p.quickIntervals.count == 10)
 
     var one = Prefs.defaults
     one.quickIntervals = [.h1]

@@ -83,7 +83,7 @@ struct MainScreen: View {
   private var prefs: Prefs { store.prefs }
 
   private var effectiveTheme: ThemeChoice { prefs.ambientTheme ? (comfort.automaticTheme ?? prefs.theme) : prefs.theme }
-  private var seed: PaletteSeed { effectiveTheme.seed(systemDark: scheme == .dark) }
+  private var seed: PaletteSeed { effectiveTheme.seed(skin: prefs.skin, systemDark: scheme == .dark) }
   private var dark: Bool { seed.dark }
   private var theme: PanelTheme { PanelTheme(seed: seed, redUp: prefs.redUp) }
 
@@ -123,7 +123,8 @@ struct MainScreen: View {
     // 横屏的面板走自己那层侧栏，不挂系统 sheet：半屏 sheet 在 compact 高度下会被
     // 系统顶成全屏，图就整个没了。
     .prefsPanel(landscape ? .constant(nil) : $panel, store: store,
-                onPickInterval: pick(interval:))
+                onPickInterval: pick(interval:),
+                onDraw: chartDrawAction, onRecord: chartRecordAction)
   }
 
   private var presentation: some View {
@@ -264,7 +265,9 @@ struct MainScreen: View {
       }
     }
     .fullScreenCover(isPresented: $review.bookOpen) {
-      ReviewBook(feature: review).sheet(isPresented: $account.presented) { AccountView(feature: account).environment(\.panelTheme, theme) }
+      ReviewBook(feature: review)
+        .environment(\.reviewTheme, theme.review)
+        .sheet(isPresented: $account.presented) { AccountView(feature: account).environment(\.panelTheme, theme) }
     }
     .onAppear { wireReview() }
     .onChange(of: review.notice) { _, note in if let note { say(note); review.notice = nil } }
@@ -285,9 +288,7 @@ struct MainScreen: View {
         theme: theme, quick: prefs.quickIntervals, current: market.interval,
         onPick: pick(interval:), onMore: { panel = .period },
         // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
-        onChart: { panel = .chart }, drawing: draw.active,
-        onDraw: { dismissPanel(); draw.toggle() },
-        onRecord: chartRecordAction
+        onChart: { panel = .chart }
       )
       .background(theme.app) }
       hairline
@@ -404,7 +405,7 @@ struct MainScreen: View {
   }
 
   private var header: some View {
-    VStack(spacing: 0) {
+    VStack(spacing: 9) {
       TopBar(
         theme: theme, symbol: market.symbol,
         starred: picker.isFavorite(market.symbol),
@@ -431,7 +432,8 @@ struct MainScreen: View {
       }
     }
     .padding(.horizontal, 12)
-    .padding(.vertical, 8)
+    .padding(.top, 6)
+    .padding(.bottom, 9)
     .background(theme.app)
   }
 
@@ -480,11 +482,17 @@ struct MainScreen: View {
       + "  量 " + fmtVol(series.volume[i])
   }
 
-  /// 周期条上那颗「记」。复盘回放里没有「记」这回事，横屏归 `ToolRail` 管，
-  /// 这两种情形返回 nil，条上那一格直接不排。
+  /// 「图表」那一页顶上的「记一笔」。复盘回放里没有「记」这回事，横屏归 `ToolRail` 管，
+  /// 这两种情形返回 nil，那一条直接不排。
   private var chartRecordAction: (() -> Void)? {
     guard !reviewChart.active, !landscape else { return nil }
     return { startReviewCapture() }
+  }
+
+  /// 「图表」那一页顶上的「画线」。横屏有自己的 `ToolRail`，那边不排这一条。
+  private var chartDrawAction: (() -> Void)? {
+    guard !landscape else { return nil }
+    return { if reviewChart.active { endReview() }; draw.toggle() }
   }
 
   private var chart: some View {
@@ -511,15 +519,28 @@ struct MainScreen: View {
         .allowsHitTesting(reviewChart.mode == .capture)
       if market.routing == .switching, !reviewChart.active {
         Text("检测到当前链路不可用，正在切换智能链路")
-          .font(.caption).padding(10).background(.regularMaterial, in: Capsule())
+          .font(.caption).foregroundStyle(theme.ink2)
+          .padding(.horizontal, 12).padding(.vertical, 8)
+          .background(theme.raised, in: Capsule())
+          .overlay(Capsule().strokeBorder(theme.line, lineWidth: 1))
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).padding(.top, 8)
           .allowsHitTesting(false).accessibilityIdentifier("market.routeSwitching")
       } else if let error = market.historyError, !reviewChart.active {
-        Button(error) { market.retryHistory() }.font(.caption).padding(10)
-          .background(.regularMaterial, in: Capsule()).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        Button(error) { market.retryHistory() }.font(.caption).foregroundStyle(theme.ink2)
+          .padding(.horizontal, 12).padding(.vertical, 8)
+          .background(theme.raised, in: Capsule())
+          .overlay(Capsule().strokeBorder(theme.line, lineWidth: 1))
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
           .padding(.top, 8)
       }
-      if reviewChart.loading { ProgressView("加载重温行情").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) }
+      if reviewChart.loading {
+        ProgressView("加载重温行情")
+          .tint(theme.amber)
+          .foregroundStyle(theme.ink2)
+          .padding(16)
+          .background(theme.raised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+          .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(theme.line, lineWidth: 1))
+      }
       // 提示条压在图区上沿（§10.8），不占版面高度，所以走 overlay 不进 VStack。
       if draw.hint != nil {
         DrawingHintStrip(controller: draw)
@@ -575,7 +596,12 @@ struct MainScreen: View {
       }
     }.padding(.horizontal).padding(.vertical, 8)
   }
+  /// 记一笔卡片 / 回放条。两个都在 `ReviewUI` 里，配色靠环境灌进去（见 `PanelTheme.review`）。
   @ViewBuilder private var reviewControls: some View {
+    reviewControlsBody.environment(\.reviewTheme, theme.review)
+  }
+
+  @ViewBuilder private var reviewControlsBody: some View {
     if reviewChart.mode == .capture {
       ReviewCaptureCard(feature: review, onSave: {
         if review.saveRecord() { reviewChart.endCapture(feature: review) }

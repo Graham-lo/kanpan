@@ -53,7 +53,7 @@ struct ChartViewDirtyTests {
   func paletteChange() {
     let original = fixtureState()
     var changed = original
-    changed.paletteSeed = Palette.paperSeed
+    changed.paletteSeed = Palette.terraSeed
     #expect(ChartView.changed(from: original, to: changed) == .all)
     let size = CGSize(width: 393, height: 720)
     let a = ChartRenderer(state: original).layout(size: size)

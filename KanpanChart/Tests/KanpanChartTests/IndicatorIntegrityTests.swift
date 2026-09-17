@@ -54,7 +54,7 @@ struct IndicatorIntegrityTests {
     for i in 0..<300 {
       state.crosshair = Crosshair(index: i % state.series.count)
       state.nowMs = Double(i * 1000)
-      state.paletteSeed = i.isMultiple(of: 2) ? Palette.paperSeed : Palette.nightSeed
+      state.paletteSeed = i.isMultiple(of: 2) ? Palette.terraSeed : Palette.terraNightSeed
       renderer.state = state
     }
     verify(renderer, state)

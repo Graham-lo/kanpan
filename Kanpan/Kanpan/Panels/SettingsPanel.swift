@@ -42,10 +42,17 @@ struct SettingsPanel: View {
         }
       }
       PanelRow(name: "开盘时间") {
-        Menu(prefs.changeBasis.title) {
+        // 自带标签的 `Menu(_:)` 会用系统强调色（蓝），整页就这一处跳出配色之外。
+        // 自己搭标签，颜色从 `PanelTheme` 取。
+        Menu {
           ForEach(ChangeBasis.allCases, id: \.self) { basis in
             Button(basis.title) { store.update { $0.changeBasis = basis } }
           }
+        } label: {
+          HStack(spacing: 3) {
+            Text(prefs.changeBasis.title).font(PanelFont.seg)
+            VectorIcon.chevron(9, w: 1.7)
+          }.foregroundStyle(t.amber)
         }.accessibilityIdentifier("settings.changeBasis")
       }
       PanelRow(name: "时区") {

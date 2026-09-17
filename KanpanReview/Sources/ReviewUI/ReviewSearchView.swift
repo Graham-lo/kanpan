@@ -6,6 +6,7 @@ public struct ReviewSearchView: View {
   public var range: ReviewRange
   public var cutoff: Int64
   @State private var scope = "history"
+  @Environment(\.reviewTheme) private var t
   @Environment(\.dismiss) private var dismiss
   public init(feature: ReviewFeature, range: ReviewRange, cutoff: Int64) { self.feature = feature; self.range = range; self.cutoff = cutoff }
   public var body: some View {
@@ -23,7 +24,7 @@ public struct ReviewSearchView: View {
         } else if feature.matches.isEmpty { ContentUnavailableView("没有很像的区间", systemImage: "magnifyingglass") }
         else {
           List {
-            if feature.partialSearch { Text("部分行情暂缺，已列出完成比对的结果").font(.caption).foregroundStyle(.secondary) }
+            if feature.partialSearch { Text("部分行情暂缺，已列出完成比对的结果").font(.caption).foregroundStyle(t.ink3) }
             ForEach(feature.matches) { match in
             Button {
               dismiss(); feature.bookOpen = false; feature.captureOpen = false
@@ -31,22 +32,27 @@ public struct ReviewSearchView: View {
             } label: {
               HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                  Text(match.range.symbol + " · " + match.range.interval).fontWeight(.medium)
-                  Text(Date(timeIntervalSince1970: Double(match.range.start) / 1000), style: .date).font(.caption).foregroundStyle(.secondary)
-                  Text("\(match.range.bars) 根").font(.caption).foregroundStyle(.secondary)
+                  Text(match.range.symbol + " · " + match.range.interval).fontWeight(.medium).foregroundStyle(t.ink)
+                  Text(Date(timeIntervalSince1970: Double(match.range.start) / 1000), style: .date).font(.caption).foregroundStyle(t.ink3)
+                  Text("\(match.range.bars) 根").font(.caption).foregroundStyle(t.ink3)
                 }
-                Spacer(); Text(String(format: "相似度 %.0f%%", match.score * 100)).monospacedDigit()
-                Image(systemName: "chevron.right").font(.caption)
+                Spacer(); Text(String(format: "相似度 %.0f%%", match.score * 100)).monospacedDigit().foregroundStyle(t.ink2)
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(t.ink3)
               }.padding(.vertical, 5)
-            }.foregroundStyle(.primary)
+            }.foregroundStyle(t.ink)
               .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button { Task { await feature.saveMatch(match) } } label: { Label(feature.savedMatchIDs.contains(match.id) ? "已保存" : "保存", systemImage: "bookmark") }.tint(.orange)
+                Button { Task { await feature.saveMatch(match) } } label: { Label(feature.savedMatchIDs.contains(match.id) ? "已保存" : "保存", systemImage: "bookmark") }.tint(t.accent)
               }
             }
             if feature.searchNext != nil { Button("更多结果") { Task { await feature.loadMoreMatches() } }.disabled(feature.searching) }
-          }.listStyle(.plain)
+          }
+          .listStyle(.plain)
+          .scrollContentBackground(.hidden)
+          .background(t.app)
         }
-      }.navigationTitle("找相似").navigationBarTitleDisplayMode(.inline)
+      }
+      .background(t.app)
+      .navigationTitle("找相似").navigationBarTitleDisplayMode(.inline)
         .toolbar {
           ToolbarItem(placement: .cancellationAction) {
             Button { dismiss() } label: { Label("返回", systemImage: "chevron.left") }
@@ -55,7 +61,8 @@ public struct ReviewSearchView: View {
         }
         .onChange(of: scope) { _, value in feature.search(range, cutoff: cutoff, scope: value) }
         .onDisappear { feature.cancelSearch() }
-    }.tint(.orange)
+    }
+    .tint(t.accent)
   }
 }
 public struct ReviewReplayControls: View {
@@ -67,6 +74,7 @@ public struct ReviewReplayControls: View {
   public var onSpeed: () -> Void
   public var onJudgment: () -> Void
   public var onExit: () -> Void
+  @Environment(\.reviewTheme) private var t
   public init(time: Int64, playing: Bool, speed: Int, onStep: @escaping (Int) -> Void, onPlay: @escaping () -> Void, onSpeed: @escaping () -> Void, onJudgment: @escaping () -> Void, onExit: @escaping () -> Void) {
     self.time = time; self.playing = playing; self.speed = speed; self.onStep = onStep; self.onPlay = onPlay; self.onSpeed = onSpeed; self.onJudgment = onJudgment; self.onExit = onExit
   }
@@ -80,6 +88,10 @@ public struct ReviewReplayControls: View {
       Button("\(speed)×", action: onSpeed).frame(width: 44, height: 44)
       Spacer(minLength: 4)
       Button("判断处", action: onJudgment).frame(minWidth: 52, minHeight: 44)
-    }.font(.subheadline).tint(.orange).padding(.horizontal, 8).background(.regularMaterial)
+    }
+    .font(.subheadline)
+    .tint(t.accent)
+    .padding(.horizontal, 8)
+    .background(t.raised)
   }
 }

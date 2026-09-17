@@ -161,7 +161,7 @@ final class MainScreenUITests: KanpanUICase {
 
     XCTAssertTrue(app.enterDrawingInPortrait(), "第二次进画线态失败")
     expectExists(trend, Self.short, "第二次进画线态失败")
-    app.buttons[Ids.bottomDraw].tap()
+    XCTAssertTrue(app.tapDrawEntry(), "「图表」面板里没有「画线」")
     expectGone(trend, Self.short, "再点一次「画线」没退出画线态")
   }
 
@@ -178,7 +178,7 @@ final class MainScreenUITests: KanpanUICase {
     XCTAssertFalse(subsBefore.isEmpty, "竖屏默认就该有副图，否则这条用例验不到东西")
     XCTAssertFalse(overlaysBefore.isEmpty, "竖屏默认就该有均线，否则这条用例验不到东西")
 
-    app.buttons[Ids.bottomDraw].tap()
+    XCTAssertTrue(app.tapDrawEntry(), "「图表」面板里没有「画线」")
     expectExists(app.buttons[Ids.landscapeSymbol], Self.long, "点「画线」没横过去")
     XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["subs"] as? [String])?.isEmpty == true },
                   "画线横屏里还留着副图：\(chartInfo()["subs"] ?? "?")")

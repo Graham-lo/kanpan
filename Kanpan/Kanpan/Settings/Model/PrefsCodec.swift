@@ -33,7 +33,7 @@ extension Prefs: Codable {
   enum CodingKeys: String, CodingKey {
     case v
     case interval, quickIntervals
-    case theme, redUp
+    case theme, skin, redUp
     // 这儿原来还有 `styleID`：十二款蜡烛造型里挑一款的那阵子存的选择。现在只剩 AICoin
     // 一套，老存档里的那个键读的时候认不出来，直接忽略。
     // 这儿原来还有 `recordButtonX/Y`：「记」还浮在图上、能拖着摆的那阵子存的位置。
@@ -56,6 +56,7 @@ extension Prefs: Codable {
     try c.encode(interval.rawValue, forKey: .interval)
     try c.encode(quickIntervals.map(\.rawValue), forKey: .quickIntervals)
     try c.encode(theme.rawValue, forKey: .theme)
+    try c.encode(skin.rawValue, forKey: .skin)
     try c.encode(ambientTheme, forKey: .ambientTheme)
     try c.encode(redUp, forKey: .redUp)
     try c.encode(priceMode.rawValue, forKey: .priceMode)
@@ -97,6 +98,9 @@ extension Prefs: Codable {
     try c.encode(smartMarketRoute, forKey: .smartMarketRoute)
   }
 
+  /// 扩档之前出厂的那六档。存档里一字不差地躺着这一串，就说明用户从没动过常用行。
+  fileprivate static let legacyQuick: [Interval] = [.m1, .m5, .m15, .h1, .h4, .d1]
+
   init(from decoder: Decoder) throws {
     // 从新默认起步：存档只往上盖它真有的那几项（A6.13）。
     self = .defaults
@@ -115,10 +119,17 @@ extension Prefs: Codable {
         guard let iv = Interval(rawValue: r), !seen.contains(iv) else { continue }
         seen.append(iv)
       }
+      // 常用行从六档扩到七档（周期条右端腾出了「画线」和「记」两颗药丸的位置）。
+      // 存档里原样躺着老的那六档就当没动过，直接给新默认；只要有一处不一样就是
+      // 用户自己钉过的，一个字都不改。
+      if seen == Self.legacyQuick { seen = Interval.quick }
       if !seen.isEmpty { quickIntervals = Array(seen.prefix(Prefs.maxQuick)) }
     }
 
+    // 老存档里可能还写着「护眼 / 夜读」那两档（`paper` / `night`）：那时候配色和深浅
+    // 焊在一起，现在拆成了两根轴，认不出来的字面量一律退回出厂的「跟随系统 + 青苔」。
     if let raw = str(.theme), let v = ThemeChoice(rawValue: raw) { theme = v }
+    if let raw = str(.skin), let v = ThemeSkin(rawValue: raw) { skin = v }
     if let v = bool(.ambientTheme) { ambientTheme = v }
     if let v = bool(.redUp) { redUp = v }
 

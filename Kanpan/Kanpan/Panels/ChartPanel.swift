@@ -16,8 +16,16 @@ import KanpanCore
 /// 头一块原来是那张四选一的「K 线风格」卡（经典 / 圆角 / 空心 / 轮廓）。风格表收成
 /// AICoin 一套之后（见 `CandleStyle`）它没有可选项了，整块撤掉；下面「阳线」那行
 /// 的「跟随风格」也一并撤了，剩实心 / 空心两档。
+/// 顶上那一组「这张图」是两个动作而不是设置：「画线」和「记一笔」。它们原来常驻在
+/// 周期条右端，用户的话是「这个功能不是经常用到啊」「记和画线都放到图表栏目里」——
+/// 周期条是一路要点的地方，一天用不到一次的东西不该在那儿占格。放这一页也讲得通：
+/// 这一页管的就是「画在图上的东西」，画线和取景本来就是往图上添东西。
 struct ChartPanel: View {
   var store: PrefsStore
+  /// 「画线」：关掉面板直接横过去画（见 `MainScreen.onChange(of: draw.active)`）。
+  var onDraw: (() -> Void)?
+  /// 「记一笔」：把当前这张图存进复盘本。复盘回放里没有这回事，调用方传 nil。
+  var onRecord: (() -> Void)?
 
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -26,12 +34,27 @@ struct ChartPanel: View {
 
   private var prefs: Prefs { store.prefs }
 
-  /// 关自己的唯一出口。这一页现在没有哪一行该关掉自己（配置页不连着关），
-  /// 但真要加一行时必须走这里——竖屏是 sheet、横屏是侧栏，面板本身不该知道。
+  /// 关自己的唯一出口。设置那些行不连着关（一次调好几项），但顶上那两个**动作**
+  /// 必须先把面板收掉——画线要横屏、记一笔要看见图。竖屏是 sheet、横屏是侧栏，
+  /// 面板本身不该知道是哪种，所以一律走这里。
   private var close: PanelCloser { PanelCloser(side: sideDismiss, sheet: dismiss) }
 
   var body: some View {
     PanelSheet(title: "图表", subtitle: nil) {
+      if onDraw != nil || onRecord != nil {
+        PanelGroupTitle(text: "这张图")
+        if let onDraw {
+          PanelRow(name: "画线", meta: "横过去画，画完自动转回",
+                   divider: onRecord != nil, onTap: { close(); onDraw() })
+            .accessibilityIdentifier("chart.draw")
+        }
+        if let onRecord {
+          PanelRow(name: "记一笔", meta: "存进复盘本",
+                   divider: false, onTap: { close(); onRecord() })
+            .accessibilityIdentifier("chart.record")
+        }
+      }
+
       PanelGroupTitle(text: "布局与读数")
       PanelRow(name: "K 线数据") {
         PanelSegment(options: [("K线内", CandleDataDisplay.inside), ("顶部", .top), ("跟随K线", .follow)],

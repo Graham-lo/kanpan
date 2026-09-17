@@ -109,14 +109,17 @@ struct PrefsToleranceTests {
     #expect(p.height(for: .rsi) == .large)
   }
 
-  @Test("常用行：去重、认不出的丢掉、超过 8 档截断、空数组不生效")
+  @Test("常用行：去重、认不出的丢掉、超过 10 档截断、空数组不生效")
   func 脏常用行() {
     let a = decode(#"{"quickIntervals":["1h","1h","8h","5m"]}"#)
     #expect(a.quickIntervals == [.h1, .m5])
     let b = decode(#"{"quickIntervals":[]}"#)
     #expect(b.quickIntervals == Prefs.defaults.quickIntervals)
-    let c = decode(#"{"quickIntervals":["1m","3m","5m","15m","30m","1h","2h","4h","6h","12h"]}"#)
+    // 十三档进去，只留得下十档——上限是 `Prefs.maxQuick`，原来这儿只喂了十档，
+    // 正好等于上限，截断那一步其实没被走到。
+    let c = decode(#"{"quickIntervals":["1m","3m","5m","15m","30m","1h","2h","4h","6h","12h","1d","1w","1M"]}"#)
     #expect(c.quickIntervals.count == Prefs.maxQuick)
+    #expect(c.quickIntervals.last == .h12)
   }
 
   @Test("域名：修得好就修，修不好退回默认")

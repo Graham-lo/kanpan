@@ -12,7 +12,7 @@ import UIKit
 //   .row     11/16，名 500 14、小字 400 11 ink3、数 mono 500 13.5、涨跌 mono 500 11
 //   .groupt  14/16/6，500 11，字距 .09em，ink3
 //   .note    10/16/2，400 11.5，ink3
-//   .star    ink3，选中 amber
+//   .star    ink3，选中强调色（`seed.accent`，随皮肤走，不是画在图上那支暖色）
 //
 // 页面进入自动聚焦搜索框弹键盘（§10.5「这是来搜的」），返回时收键盘。
 
@@ -122,7 +122,7 @@ struct SymbolPickerView: View {
         .padding(.horizontal, 11)
         .background(RoundedRectangle(cornerRadius: 9).fill(Color(hex: seed.raised2)))
         .overlay(RoundedRectangle(cornerRadius: 9).stroke(
-          Color(hex: searchFocused ? colors.amberLine : seed.line),
+          searchFocused ? theme.amberLine : Color(hex: seed.line),
           lineWidth: searchFocused ? 2 : 1))
         .accessibilityIdentifier("symbols.query")
 
@@ -130,7 +130,7 @@ struct SymbolPickerView: View {
         model.query = ""
       }
       .font(.system(size: 14, weight: .medium))
-      .foregroundStyle(Color(hex: seed.amber))
+      .foregroundStyle(Color(hex: seed.accent))
       .buttonStyle(.plain)
       .padding(6)
     }
@@ -277,6 +277,9 @@ private struct SymbolRowView: View {
     HStack(spacing: 10) {
       Button(action: onPick) {
         HStack(spacing: 10) {
+      // 这一页原先一个徽章都没有——搜索结果十几行全靠代号分辨，和自选页对不上。
+      // 事实分类直接从 `row.info` 算，比让徽章自己去猜准。
+      CoinBadge(base: row.info.base, asset: SymbolClassifier.classify(row.info).asset, size: 33)
       VStack(alignment: .leading, spacing: 2) {
         name
         Text(row.meta)
@@ -298,9 +301,9 @@ private struct SymbolRowView: View {
       }.buttonStyle(.plain).accessibilityIdentifier("symbols.row.\(row.id)")
       Button(action: onStar) {
         StarShape()
-          .fill(isFavorite ? Color(hex: seed.amber) : .clear)
+          .fill(isFavorite ? Color(hex: seed.accent) : .clear)
           .overlay(StarShape().stroke(
-            Color(hex: isFavorite ? seed.amber : seed.ink3),
+            Color(hex: isFavorite ? seed.accent : seed.ink3),
             style: StrokeStyle(lineWidth: 1.5, lineJoin: .round)))
           .frame(width: 15, height: 15)
           .padding(4)
@@ -320,13 +323,13 @@ private struct SymbolRowView: View {
     for seg in SymbolQuery.split(base, highlight: row.match.highlight, offset: 0) {
       out = out + Text(seg.text)
         .font(.system(size: nameSize, weight: .medium))
-        .foregroundStyle(Color(hex: seg.hit ? seed.amber : seed.ink))
+        .foregroundStyle(Color(hex: seg.hit ? seed.accent : seed.ink))
     }
     out = out + Text(" / ").font(.system(size: nameSize)).foregroundStyle(Color(hex: seed.ink3))
     for seg in SymbolQuery.split(quote, highlight: row.match.highlight, offset: base.count) {
       out = out + Text(seg.text)
         .font(.system(size: nameSize))
-        .foregroundStyle(Color(hex: seg.hit ? seed.amber : seed.ink3))
+        .foregroundStyle(Color(hex: seg.hit ? seed.accent : seed.ink3))
     }
     return out
   }

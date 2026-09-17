@@ -47,16 +47,25 @@ private struct IconShape: Shape {
   }
 }
 
-/// `d=` 串的最小解析器：只认 M/L/H/V/Z 和它们的小写。
+/// `d=` 串的解析器：M/L/H/V/Z 加三条曲线命令 C/S/Q/T 和圆弧 A，大小写都认。
 ///
-/// 原型的图标只用到这几条命令（圆弧只出现在假状态栏的 wifi 上，真机不画），
-/// 所以不做完整实现——遇到没见过的命令直接忽略，不要让它悄悄画歪。
+/// 原来只有直线，够画原型里那些线性图标，但品种徽章要的是真的品牌记号——
+/// 苹果那一口、亚马逊那道弧、Meta 那个无限符，没有曲线就只能退回去写字母，
+/// 而「图标是两个字母」正是用户挑出来的毛病。遇到不认识的命令仍旧直接忽略，
+/// 不要让它悄悄画歪。
 enum SVGPath {
   static func append(_ d: String, to p: inout Path) {
     var cur = CGPoint.zero
     var start = CGPoint.zero
     var open = false
+    // 平滑命令（S / T）要拿上一条曲线的控制点做镜像；上一条不是同类曲线时，
+    // 按 SVG 规矩镜像点就取当前点本身。
+    var lastCubic: CGPoint?
+    var lastQuad: CGPoint?
     for (cmd, a) in tokenize(d) {
+      let lower = Character(cmd.lowercased())
+      if lower != "c" && lower != "s" { lastCubic = nil }
+      if lower != "q" && lower != "t" { lastQuad = nil }
       let rel = cmd.isLowercase
       switch Character(cmd.lowercased()) {
       case "m":
@@ -92,12 +101,138 @@ enum SVGPath {
           if open { p.addLine(to: q) }
           cur = q
         }
+      case "c":
+        var i = 0
+        while i + 5 < a.count {
+          let c1 = point(a[i], a[i + 1], rel: rel, from: cur)
+          let c2 = point(a[i + 2], a[i + 3], rel: rel, from: cur)
+          let q = point(a[i + 4], a[i + 5], rel: rel, from: cur)
+          if open { p.addCurve(to: q, control1: c1, control2: c2) }
+          lastCubic = c2
+          cur = q
+          i += 6
+        }
+      case "s":
+        var i = 0
+        while i + 3 < a.count {
+          let c1 = mirror(lastCubic, about: cur)
+          let c2 = point(a[i], a[i + 1], rel: rel, from: cur)
+          let q = point(a[i + 2], a[i + 3], rel: rel, from: cur)
+          if open { p.addCurve(to: q, control1: c1, control2: c2) }
+          lastCubic = c2
+          cur = q
+          i += 4
+        }
+      case "q":
+        var i = 0
+        while i + 3 < a.count {
+          let c = point(a[i], a[i + 1], rel: rel, from: cur)
+          let q = point(a[i + 2], a[i + 3], rel: rel, from: cur)
+          if open { p.addQuadCurve(to: q, control: c) }
+          lastQuad = c
+          cur = q
+          i += 4
+        }
+      case "t":
+        var i = 0
+        while i + 1 < a.count {
+          let c = mirror(lastQuad, about: cur)
+          let q = point(a[i], a[i + 1], rel: rel, from: cur)
+          if open { p.addQuadCurve(to: q, control: c) }
+          lastQuad = c
+          cur = q
+          i += 2
+        }
+      case "a":
+        var i = 0
+        while i + 6 < a.count {
+          let q = point(a[i + 5], a[i + 6], rel: rel, from: cur)
+          if open {
+            arc(from: cur, to: q, rx: a[i], ry: a[i + 1], rotation: a[i + 2],
+                large: a[i + 3] != 0, sweep: a[i + 4] != 0, into: &p)
+          }
+          cur = q
+          i += 7
+        }
       case "z":
         if open { p.closeSubpath() }
         cur = start
       default:
         break
       }
+    }
+  }
+
+  private static func mirror(_ control: CGPoint?, about c: CGPoint) -> CGPoint {
+    guard let control else { return c }
+    return CGPoint(x: 2 * c.x - control.x, y: 2 * c.y - control.y)
+  }
+
+  /// SVG 的 `A` 是「端点参数」写法，CoreGraphics 要的是圆心加起止角，
+  /// 所以照规范附录 F.6.5 换算一遍。半径给小了就按规范放大到刚好够。
+  private static func arc(from p0: CGPoint, to p1: CGPoint, rx: Double, ry: Double,
+                          rotation: Double, large: Bool, sweep: Bool, into path: inout Path) {
+    var rx = abs(rx), ry = abs(ry)
+    guard rx > 0, ry > 0, p0 != p1 else {
+      path.addLine(to: p1)
+      return
+    }
+    let phi = rotation * .pi / 180
+    let cosPhi = cos(phi), sinPhi = sin(phi)
+    let dx = (p0.x - p1.x) / 2, dy = (p0.y - p1.y) / 2
+    let x1 = cosPhi * dx + sinPhi * dy
+    let y1 = -sinPhi * dx + cosPhi * dy
+    let over = (x1 * x1) / (rx * rx) + (y1 * y1) / (ry * ry)
+    if over > 1 {
+      let k = over.squareRoot()
+      rx *= k
+      ry *= k
+    }
+    let num = max(0, rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1)
+    let den = rx * rx * y1 * y1 + ry * ry * x1 * x1
+    let coef = (large == sweep ? -1.0 : 1.0) * (den == 0 ? 0 : (num / den).squareRoot())
+    let cx1 = coef * rx * y1 / ry
+    let cy1 = -coef * ry * x1 / rx
+    let cx = cosPhi * cx1 - sinPhi * cy1 + (p0.x + p1.x) / 2
+    let cy = sinPhi * cx1 + cosPhi * cy1 + (p0.y + p1.y) / 2
+    func angle(_ x: Double, _ y: Double) -> Double { atan2((y - cy1) / ry, (x - cx1) / rx) }
+    let start = atan2((y1 - cy1) / ry, (x1 - cx1) / rx)
+    let end = atan2((-y1 - cy1) / ry, (-x1 - cx1) / rx)
+    _ = angle
+    // 椭圆弧先在单位圆上摆好，再用一个仿射把它拉成 rx × ry 并转 `phi`。
+    var unit = Path()
+    unit.addArc(center: .zero, radius: 1, startAngle: .radians(start), endAngle: .radians(end),
+                clockwise: !sweep)
+    let t = CGAffineTransform(translationX: cx, y: cy)
+      .rotated(by: phi)
+      .scaledBy(x: rx, y: ry)
+    // 接到当前子路径上，**不能**用 `addPath`——那会另起一条子路径。
+    //
+    // 一个圆常写成 `M12 5a7 7 0 1 1 0 14 7 7 0 0 1 0-14z`：上半弧、下半弧、闭合。
+    // 两段弧各自成子路径的话，最后那个 `z` 闭的就只是下半弧，于是从弧尾拉一条弦回弧头，
+    // 描边出来是「圆里横着一根杠」。品种徽章里凡是圆环的记号（Coinbase 的圆中方、
+    // 长尾那枚环）都中过这一刀。所以把弧的各段直接续到当前子路径上，起点那一下
+    // 由 `move` 改成 `line`。
+    append(unit.applying(t), to: &path)
+  }
+
+  /// 把一条已经算好的子路径续到 `path` 末尾：头一个 `move` 当 `line` 用，其余照搬。
+  private static func append(_ piece: Path, to path: inout Path) {
+    var first = true
+    piece.forEach { element in
+      switch element {
+      case .move(let to):
+        if first, path.currentPoint != nil { path.addLine(to: to) } else { path.move(to: to) }
+      case .line(let to):
+        path.addLine(to: to)
+      case .quadCurve(let to, let control):
+        path.addQuadCurve(to: to, control: control)
+      case .curve(let to, let control1, let control2):
+        path.addCurve(to: to, control1: control1, control2: control2)
+      case .closeSubpath:
+        path.closeSubpath()
+      }
+      first = false
     }
   }
 
@@ -156,6 +291,14 @@ enum SVGPath {
 // MARK: - 原型里的那几个
 
 extension VectorIcon {
+  /// 换个边长再用。图标表里那几个是 `static var`，尺寸写死在定义里；
+  /// 底栏要 18、圆按钮要 15，不必为每个尺寸各写一份。
+  func sized(_ s: Double) -> VectorIcon {
+    var copy = self
+    copy.size = s
+    return copy
+  }
+
   /// 顶栏品种按钮上的下箭头。
   static func chevron(_ size: Double = 11, w: Double = 1.6) -> VectorIcon {
     VectorIcon(box: 12, size: size, lineWidth: w, items: [.path("M3 4.5 6 7.5 9 4.5")])
