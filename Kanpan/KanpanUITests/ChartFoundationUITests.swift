@@ -15,7 +15,20 @@ final class ChartFoundationUITests: XCTestCase {
     if name.contains("Record") { app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io" }
     app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
-    XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
+    XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, feedEvidence())
+  }
+  /// 首屏等不到 K 线时，把「链路现场」一起写进失败信息。
+  ///
+  /// 光报一句 `[:]` 说明不了任何事——它只表示 `chart.canvas` 还停在「行情加载中」。
+  /// 真正要回答的是：走的哪条线路、状态停在哪一档、REST/WS 各自到哪一步断的。
+  /// 这三样分别挂在 `market.source`（label = 线路，value = 状态）和 `market.network`
+  /// （`MarketNetworkDiagnostics.shared.lines`，DEBUG + `KANPAN_CHART_DIAGNOSTICS` 下才有）上。
+  func feedEvidence() -> String {
+    let source = app.staticTexts["market.source"]
+    let route = source.exists ? "\(source.label)/\(String(describing: source.value))" : "未知"
+    let net = app.staticTexts["market.network"]
+    let lines = net.exists ? net.label : ""
+    return "图 \(info())；线路 \(route)；链路日志：\n" + (lines.isEmpty ? "（空——一条请求都没发出去）" : lines)
   }
   override func tearDown() async throws {
     // 手动用例（`testUserSession*`、`testInstallRequestedFavoritesInUserStore`）在 setUp 里
@@ -612,7 +625,13 @@ final class ChartFoundationUITests: XCTestCase {
         let tab = app.buttons["favorites.group." + name]
         XCTAssertTrue(tab.exists)
         XCTAssertGreaterThanOrEqual(tab.frame.height, 44)
-        XCTAssertLessThanOrEqual(tab.frame.maxX, app.buttons["favorites.add"].frame.minX)
+        // 分类胶囊不能和上面那条搜索框挤在一起。原来这里比的是 `maxX <= add.minX`——
+        // 那是「加号还蹲在同一行最右边」年代的写法；`1f6f220` 之后头部改成了两行，
+        // `favorites.add` 就是那条横贯整行的长搜索框（`minX` 12），胶囊自然从它下面
+        // 重新起头，横向比一定不成立。真正要守的是纵向不压：胶囊整条在搜索框下沿以下。
+        XCTAssertGreaterThanOrEqual(tab.frame.minY, app.buttons["favorites.add"].frame.maxY)
+        // 也别让它甩出页面右缘——这条是原来那句横向断言真正想拦的事。
+        XCTAssertLessThanOrEqual(tab.frame.maxX, app.windows.firstMatch.frame.maxX)
       }
       shot("配色-" + skin + mode + "-自选")
       favoritesAction("favorites.close")
@@ -1271,11 +1290,27 @@ extension ChartFoundationUITests {
 
   func testDrawingRectangleChannelAndFibonacci() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
-    for (index, entry) in [("rectangle", 2), ("channel", 3), ("fibonacci", 2)].enumerated() {
+    // 第三项是这把工具所在的分类。「绘图」面板（`DrawingToolPicker`）一次只列一类，
+    // 所以先点标签、再在那一类的格子里找工具。这里原来是 `app.swipeUp()` 划八下——
+    // 那是 `007adc1` 之前 AICoin 那套「一整条清单」的找法；改成 TV 那套分类面板之后，
+    // 不切到对应标签，这三把工具根本不会出现在树里，划多少下都是白划。
+    for (index, entry) in [("rectangle", 2, "几何"), ("channel", 3, "通道"),
+                           ("fibonacci", 2, "斐波那契")].enumerated() {
       app.buttons["draw.tools"].tap()
+      XCTAssertTrue(app.buttons["draw.sheet.done"].waitForExistence(timeout: 5))
+      tapDrawGroup(entry.2)
       let target = app.buttons["draw.tool.\(entry.0)"]
-      for _ in 0..<8 { if target.exists && target.isHittable { break }; app.swipeUp() }
-      XCTAssertTrue(target.isHittable); target.tap()
+      // 翻格子只能翻面板自己那个 ScrollView，不能翻整个 app——理由同
+      // `testDrawingAllToolsAndFingerTargets` 里那段注释：划到行情页上会把整条用例带飞。
+      let list = app.scrollViews.containing(.button, identifier: "draw.tool.\(entry.0)").firstMatch
+      XCTAssertTrue(list.waitForExistence(timeout: 5), "没找到画线工具面板的格子区")
+      for _ in 0..<8 {
+        if target.exists && target.isHittable { break }
+        list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).press(forDuration: 0.05,
+          thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)),
+          withVelocity: .slow, thenHoldForDuration: 0.1)
+      }
+      XCTAssertTrue(target.isHittable, entry.0); target.tap()
       XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["draw.sheet.done"].exists })
       let h = try XCTUnwrap(info()["mainH"] as? Double)
       let origin = canvas.coordinate(withNormalizedOffset: .zero)

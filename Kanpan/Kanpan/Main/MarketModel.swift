@@ -124,13 +124,28 @@ final class MarketModel {
   /// 排查「图有数据但一动不动」的时候需要看得见连了没有、推没推进来。
   /// 默认静音；`KANPAN_LOG=1` 打开（Xcode Scheme 的环境变量，或 `simctl launch` 的
   /// `SIMCTL_CHILD_KANPAN_LOG=1`）。
-  private static let log: FeedLog =
-    ProcessInfo.processInfo.environment["KANPAN_LOG"] == "1" ? FeedLog { line in
-      print(line)
+  ///
+  /// `KANPAN_CHART_DIAGNOSTICS=1`（DEBUG 构建）也要打开它，只是不往 stdout 打印。
+  /// 原因是 `MainScreen` 那层诊断浮层里有一格 `market.network`，读的正是
+  /// `MarketNetworkDiagnostics.shared.lines`——以前它只在 `KANPAN_LOG=1` 时才有内容，
+  /// 而 UI 测试只开 `KANPAN_CHART_DIAGNOSTICS`，于是那一格永远是空的。
+  /// 「首屏取不到行情」这类用例挂在 CI 上时，恰恰只有这一格能回答「哪条路、哪个主机、
+  /// 第几步断的」，空着等于把唯一的现场证据丢了。
+  private static let log: FeedLog = {
+    let env = ProcessInfo.processInfo.environment
+    let stdout = env["KANPAN_LOG"] == "1"
+    var collect = false
+    #if DEBUG
+    collect = env["KANPAN_CHART_DIAGNOSTICS"] == "1"
+    #endif
+    guard stdout || collect else { return .silent }
+    return FeedLog { line in
+      if stdout { print(line) }
       #if DEBUG
       Task { @MainActor in MarketNetworkDiagnostics.shared.lines = String((MarketNetworkDiagnostics.shared.lines + "\n" + line).suffix(8000)) }
       #endif
-    } : .silent
+    }
+  }()
 
   /// `exchangeInfo` 回来之前先顶上。冷启动第一帧不该等网络。
   private static func placeholder(_ symbol: String) -> SymbolInfo {

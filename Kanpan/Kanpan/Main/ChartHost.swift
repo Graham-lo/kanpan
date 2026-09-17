@@ -42,6 +42,9 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   var onSubReorder: ([IndicatorID]) -> Void = { _ in }
   var portrait = true
   var pending: ViewIntent = .reset
+  /// 视野兑现完还欠一下「回到最新」。见 `ChartProxy.scrollToLatest(animated:)`：
+  /// 那一下经常提在图还没量出宽度的时候，只能记账、等 `layoutSubviews` 兑现。
+  var pendingLatest = false
 
   override init(frame: CGRect) {
     super.init(frame: frame)
@@ -85,6 +88,12 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
       pending = .resize(spacing: oldSpacing)
     }
     applyPending()
+    // 顺序不能反：`applyPending()` 先把根间距/视野落到位（换页回来走的是
+    // `.resize`，保住用户缩放过的根宽），然后这一下只把视野推到右缘。
+    if pendingLatest, chart.chartLayout != nil, (chart.state?.series.count ?? 0) > 0 {
+      pendingLatest = false
+      chart.scrollToLatest(animated: false)
+    }
     updateControls()
   }
 
@@ -232,8 +241,35 @@ final class ChartProxy {
   weak var box: ChartBox?
   var savedState: ChartState?
   var savedPlotWidth: Double?
+  /// 还欠一下「回到最新」。
+  ///
+  /// 竖屏的三张整页是 `switch tab` 拆出来的：换到自选再换回行情，`chartPage` 整棵树
+  /// 重建一遍，`box` 这根弱引用在那一瞬是空的。而两处「回到最新」——底栏点「图表」格
+  /// （`switchTo(tab:)`）和自选里点回**同一个**品种（`picker.onPick`）——恰恰都在
+  /// `tab = .chart` 的同一轮里发出，那时候图还没建出来，这一下全打在空气上。
+  /// 表现出来就是：拖到历史区，去自选转一圈再点回来，图还停在历史那一段。
+  /// 所以这里记一笔，等图建好、量出图区宽度（`chartLayout`）之后再兑现。
+  fileprivate var wantsLatest = false
 
-  func scrollToLatest(animated: Bool = true) { box?.chart.scrollToLatest(animated: animated) }
+  func scrollToLatest(animated: Bool = true) {
+    // 没有图、还没量出布局、或者数据还没到——`ChartView.scrollToLatest` 这三种情况
+    // 都会直接 return，等于这一下丢了。记账，别丢。
+    guard let box, box.chart.chartLayout != nil, (box.chart.state?.series.count ?? 0) > 0 else {
+      wantsLatest = true
+      return
+    }
+    box.chart.scrollToLatest(animated: animated)
+  }
+
+  /// 把欠的那一下交给图；交完就销账。
+  fileprivate func handOverLatest(to box: ChartBox) {
+    guard wantsLatest else { return }
+    wantsLatest = false
+    box.pendingLatest = true
+    // 盒子可能已经躺在那儿不动了（比如只是 `renderingActive` 翻了个面，帧没变），
+    // 那样 `layoutSubviews` 不会自己来。这里点它一下，欠的账才有人兑现。
+    box.setNeedsLayout()
+  }
   var isAtLatest: Bool { box?.chart.isAtLatest ?? true }
 }
 
@@ -269,6 +305,7 @@ struct ChartHost: UIViewRepresentable {
     guard renderingActive else { return box }
     box.portrait = portrait
     wire(box)
+    proxy?.handOverLatest(to: box)
     var incoming = state
     if var next = incoming, let saved = proxy?.savedState, let width = proxy?.savedPlotWidth,
        next.series.symbol == saved.series.symbol, next.series.interval == saved.series.interval {
@@ -289,6 +326,7 @@ struct ChartHost: UIViewRepresentable {
     guard renderingActive else { return }
     box.portrait = portrait
     wire(box)
+    proxy?.handOverLatest(to: box)
     guard var s = state else {
       box.chart.state = nil
       box.pending = .reset
