@@ -100,4 +100,27 @@ iPad 上更容易撞：图更宽、视野归位滑得更久。
 - 全量 13 台矩阵（`Tools/ui-test.sh`）**押后**：另外两个窗口的改动此刻还在工作树里没落提交，
   现在跑出来的红绿归谁说不清。等它们落地后再跑一遍。
 
+## 七、真机（iPhone 16 Pro / iOS 26.6.1）
+
+**已完成**：按 iOS 18 下限编出的真机 Debug 包签名、安装都成功
+（`Apple Development` + `iOS Team Provisioning Profile: com.mdd.kanpan`），
+说明抬高下限没有影响真机侧的构建与分发。
+
+**未完成**：三条受影响的 UI 用例没跑成。runner 两次都是
+`Early unexpected exit … before establishing connection`，
+直接 `devicectl process launch` 给出了根因——`BSErrorCodeDescription = Locked`，
+**手机锁着屏**，锁屏状态下 app 起不来、XCUITest 的 runner 也连不上。
+
+解锁后重跑即可，产物已经编好在 `dd-dev`：
+
+```
+xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan \
+  -destination "platform=iOS,id=02E38904-6C11-53D5-9114-2AB4D6E755DC" \
+  -only-testing:KanpanUITests/IPadLayoutUITests \
+  -only-testing:KanpanUITests/MainScreenUITests/testLandscapeDrawingHidesEveryIndicator \
+  -only-testing:KanpanUITests/MainScreenUITests/testLatestButtonAppearsAfterLeavingLatest
+```
+
+（`IPadLayoutUITests` 在 iPhone 上会按设计跳过——402pt 的窗口谈不上封顶。）
+
 截图存于 `docs/acceptance/兼容-2026-09-18/`。
