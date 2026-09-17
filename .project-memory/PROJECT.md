@@ -14,7 +14,7 @@
 - 皮肤：青苔·冷（默认）/ 陶土·暖，各有浅深两版，`ThemeSkin` + `ThemeChoice`；种子色在 `KanpanCore/Sources/KanpanCore/Style/Palette.swift`。
 - 底栏「复盘｜指标｜自选｜设置」（`Kanpan/Kanpan/Main/BottomBar.swift`）。无横屏格、无风格格。
 - 行情页顶栏：品种徽章 + 品种名（点开半屏快捷自选 / 搜索）+ 状态点 + 自选星；最新价 22pt medium + 涨跌药丸 11.5pt，下一行成交额 / 振幅；不显示 24h 高低（`Main/TopBar.swift`）。
-- 自选页「琉璃」版（`Symbols/FavoritesView.swift`，提交 `a2cbb0d`）：光斑底、玻璃纸、衬线标题 22pt 与正放的数量印章、涨跌比例条、品种徽章 33pt、价格 15.5pt、涨跌药丸；迷你走势图默认关闭，「…」菜单里 `favorites.sparkline` 可打开（本机 AppStorage）；排序与涨跌幅口径在 `favorites.sort` 弹层里；没有领涨 / 领跌行。
+- 自选页「琉璃」版（`Symbols/FavoritesView.swift`，提交 `a2cbb0d`，`fda4e1c` 起去掉玻璃纸改为融合）：光斑底（底部叠同色渐变保可读）、行直接长在底上只留发丝线、衬线标题 22pt 与正放的数量印章、涨跌比例条、品种徽章 33pt、价格 15.5pt、涨跌药丸；迷你走势图默认关闭，「…」菜单里 `favorites.sparkline` 可打开（本机 AppStorage）；排序与涨跌幅口径在 `favorites.sort` 弹层里；没有领涨 / 领跌行。
 - 品种徽章一品种一记号（`Main/CoinBadge.swift`、`CoinBadgeBrands.swift`），配色随皮肤。
 - K 线只有 AICoin 一套造型（`CandleStyle.all == [aicoin]`），主图 MA(10,30,120,256)，副图默认 MACD + RSI；14 档周期，不含 3d；横屏仅画线用，画线时主副图指标不画。
 - 「记」按钮可拖动、限主图内、记住位置。
