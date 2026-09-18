@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="zh-CN" data-skin="sage" data-mode="light" data-redup="0">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>板块 · 气泡</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   板块气泡 · 2026-09-18
+   板块不是新的一页，是「自选」整页里的一个视图 —— 列表看准数，气泡看结构。
+   视觉承接自选页那版「琉璃」：光斑底、颗粒、玻璃卡、发丝线、正放的印章。
+   气泡就是这套语言里的一颗琉璃珠：球面渐变 + 底下一团同色的光 + 顶上一道高光。
+   四套 token 取自 app 的 Palette.swift；涨跌色浅色统一 AICoin（#36B257 / #E64552），
+   深色各皮肤自己那组；红涨绿跌只对调这一对。
+   ══════════════════════════════════════════════════════════════════════ */
+html[data-skin="sage"][data-mode="light"]{
+  --ground:#C6D8CD; --app:#F3F7F4; --raised:#FFFFFF; --raised2:#E7EFE9;
+  --line:#D6E3DA; --hair:#14211B14; --rule:#14211B1C;
+  --ink:#14211B; --ink2:#4E6158; --ink3:#606F67; --ink4:#8E9B95;
+  --acc:#2E7D6B; --accB:#55A891; --onAcc:#FFFFFF; --amber:#B57C28;
+  --green:#36B257; --red:#E64552;
+  --glass:#FFFFFFB8; --glass2:#FFFFFF7A; --edge:#FFFFFFE6; --shadow:#14211B;
+  --lobe:.44; --grain:.5; --gold:#B37B25;
+  --lobe1:#2E7D6B; --lobe2:#5FB39B; --lobe3:#B57C28;
+}
+html[data-skin="sage"][data-mode="dark"]{
+  --ground:#050907; --app:#0B120F; --raised:#131C18; --raised2:#1A241F;
+  --line:#25332C; --hair:#FFFFFF12; --rule:#FFFFFF1C;
+  --ink:#E9F2EC; --ink2:#A5B8AE; --ink3:#7B8D85; --ink4:#5C6B64;
+  --acc:#4FB69C; --accB:#63CDB1; --onAcc:#06231C; --amber:#E0A544;
+  --green:#4FB69C; --red:#E36159;
+  --glass:#FFFFFF10; --glass2:#FFFFFF0A; --edge:#FFFFFF2E; --shadow:#000000;
+  --lobe:.40; --grain:.6; --gold:#D9A64C;
+  --lobe1:#4FB69C; --lobe2:#7FD9C1; --lobe3:#E0A544;
+}
+html[data-skin="terra"][data-mode="light"]{
+  --ground:#DCCBB8; --app:#FBF6F0; --raised:#FFFFFF; --raised2:#F2E8DE;
+  --line:#E7DACB; --hair:#241A1314; --rule:#241A131C;
+  --ink:#241A13; --ink2:#6E5C4D; --ink3:#756659; --ink4:#9C8B7B;
+  --acc:#B25735; --accB:#E5975C; --onAcc:#FFFFFF; --amber:#B37B25;
+  --green:#36B257; --red:#E64552;
+  --glass:#FFFFFFB8; --glass2:#FFFFFF7A; --edge:#FFFFFFE6; --shadow:#241A13;
+  --lobe:.44; --grain:.5; --gold:#B37B25;
+  --lobe1:#B25735; --lobe2:#D98A62; --lobe3:#B37B25;
+}
+html[data-skin="terra"][data-mode="dark"]{
+  --ground:#0A0604; --app:#16100C; --raised:#211812; --raised2:#2A1F17;
+  --line:#37281D; --hair:#FFFFFF12; --rule:#FFFFFF1C;
+  --ink:#F7EFE6; --ink2:#C2AC98; --ink3:#958576; --ink4:#6C5E52;
+  --acc:#E2874F; --accB:#F0A468; --onAcc:#2A1206; --amber:#E0A544;
+  --green:#3FA783; --red:#E0584A;
+  --glass:#FFFFFF10; --glass2:#FFFFFF0A; --edge:#FFFFFF2E; --shadow:#000000;
+  --lobe:.40; --grain:.6; --gold:#D9A64C;
+  --lobe1:#E2874F; --lobe2:#F5B27E; --lobe3:#E0A544;
+}
+html[data-redup="0"]{ --rise:var(--green); --fall:var(--red) }
+html[data-redup="1"]{ --rise:var(--red);   --fall:var(--green) }
+
+:root{
+  --f-title:ui-serif,"New York","Songti SC","STSong",Georgia,serif;
+  --f-num:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",sans-serif;
+  --f-body:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#0E1013;color:#e4e8ea;
+  font:14px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1360px;margin:0 auto;padding:30px 22px 110px}
+h1{font-size:25px;margin:0 0 10px;font-weight:660;letter-spacing:.2px}
+.lede{color:#959ca3;font-size:13.5px;max-width:900px;margin:0 0 24px}
+.lede b{color:#dde2e5;font-weight:600}
+.bar{position:sticky;top:0;z-index:40;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  background:#181b1feb;backdrop-filter:blur(14px);border:1px solid #292e34;border-radius:14px;
+  padding:9px 13px;margin-bottom:30px}
+.bar .grp{display:flex;gap:4px;background:#0c0e11;border-radius:10px;padding:3px}
+.bar button{appearance:none;border:0;background:transparent;color:#959ca3;font-size:12.5px;
+  padding:6px 13px;border-radius:8px;cursor:pointer;font-family:inherit}
+.bar button[aria-pressed="true"]{background:#333941;color:#fff}
+.bar .lbl{color:#6a7279;font-size:11.5px}
+.duo{display:grid;grid-template-columns:393px minmax(320px,1fr);gap:44px;align-items:start}
+@media(max-width:840px){.duo{grid-template-columns:1fr}}
+.notes{font-size:13px;color:#acb3b9;padding-top:2px;max-width:640px}
+.notes h3{font-size:14px;color:#e4e8ea;margin:26px 0 8px;font-weight:620}
+.notes h3:first-child{margin-top:0}
+.notes p{margin:0 0 12px}.notes b{color:#e4e8ea;font-weight:600}
+.notes code{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#87d5b4}
+
+/* ───────────────────────────── 手机壳 ───────────────────────────── */
+.phone{width:393px;height:852px;border-radius:54px;position:relative;overflow:hidden;
+  box-shadow:0 0 0 9px #222528,0 0 0 10px #383d43,0 30px 70px -22px #000d;
+  color:var(--ink);font:13px/1.45 var(--f-body);font-feature-settings:"tnum";
+  background:var(--ground)}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:126px;height:37px;
+  background:#000;border-radius:20px;z-index:9}
+.homebar{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;
+  border-radius:9px;background:var(--ink);opacity:.35;z-index:9}
+.screen{position:relative;height:100%;display:flex;flex-direction:column;isolation:isolate}
+.status{height:56px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;
+  padding:0 30px 6px;font-size:13.5px;font-weight:600;font-family:var(--f-num);position:relative;z-index:5}
+
+/* 底：光斑 + 颗粒，整屏一块连续材料 */
+.bg{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+/* 深色是素底。2026-09-17 用户在真机上看自选页说深色那两团光晕影响视觉，去掉了；
+   这一页和自选页是同一块底，照办。浅色才有光斑。 */
+html[data-mode="dark"] .bg{display:none}
+.bg .lobe{position:absolute;border-radius:50%;filter:blur(86px);opacity:var(--lobe);
+  animation:drift 22s ease-in-out infinite alternate}
+.bg .lobe:nth-child(2){animation-duration:27s;animation-delay:-9s}
+.bg .lobe:nth-child(3){animation-duration:31s;animation-delay:-17s}
+@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(18px,-26px) scale(1.08)}}
+.grain{position:absolute;inset:0;pointer-events:none;opacity:var(--grain);mix-blend-mode:overlay;z-index:1;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23n)' opacity='.32'/></svg>")}
+
+/* ───────────────────────────── 头部 ───────────────────────────── */
+.hdr{position:relative;z-index:6;flex:none}
+.nav{display:flex;align-items:center;height:44px;padding:0 14px;gap:9px}
+.cbtn{width:32px;height:32px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+  color:var(--ink);background:var(--glass2);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  box-shadow:inset 0 0 0 .5px var(--edge)}
+.sbox{flex:1;height:32px;border-radius:11px;display:flex;align-items:center;gap:7px;padding:0 11px;
+  background:var(--glass2);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  box-shadow:inset 0 0 0 .5px var(--edge);color:var(--ink4);font-size:12.5px}
+.chips{display:flex;align-items:center;gap:7px;padding:4px 14px 10px}
+.chip{height:28px;padding:0 13px;border-radius:11px;display:flex;align-items:center;gap:5px;
+  font-size:12.5px;font-weight:500;color:var(--ink2);background:var(--glass2);
+  box-shadow:inset 0 0 0 .5px var(--edge);cursor:pointer;white-space:nowrap;
+  transition:color .16s,box-shadow .16s}
+.chip.on{color:var(--onAcc);background:linear-gradient(135deg,var(--acc),var(--accB));
+  box-shadow:0 4px 12px -4px color-mix(in srgb,var(--acc) 65%,transparent)}
+.chip .dot{width:4px;height:4px;border-radius:50%;background:var(--gold);opacity:.85}
+.seg{margin-left:auto;display:flex;padding:2px;border-radius:11px;background:var(--glass2);
+  box-shadow:inset 0 0 0 .5px var(--edge)}
+.seg b{width:30px;height:24px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  color:var(--ink4);cursor:pointer;transition:background .18s,color .18s}
+.seg b.on{color:var(--onAcc);background:linear-gradient(135deg,var(--acc),var(--accB))}
+
+/* ───────────────────────────── 气泡场 ───────────────────────────── */
+.field{position:relative;z-index:3;flex:none;height:326px}
+.fmeta{display:flex;align-items:center;gap:9px;padding:0 18px 2px}
+.fmeta .t{font:500 19px/1.2 var(--f-title);letter-spacing:.06em;color:var(--ink)}
+.seal{min-width:20px;height:20px;padding:0 5px;border-radius:5px;background:var(--acc);color:#fff;
+  font:600 10.5px/20px var(--f-num);text-align:center;transform:translateY(-1px);
+  box-shadow:0 3px 8px -2px color-mix(in srgb,var(--acc) 60%,transparent),inset 0 0 0 1px #ffffff55,inset 0 0 0 2.5px var(--acc);
+  font-variant-numeric:tabular-nums}
+.breadth{margin-left:auto;display:flex;align-items:center;gap:7px;font:500 10.5px/1 var(--f-num);
+  font-variant-numeric:tabular-nums;color:var(--ink3)}
+.bar2{width:56px;height:4px;border-radius:9px;background:var(--fall);position:relative;overflow:hidden;
+  box-shadow:0 0 10px color-mix(in srgb,var(--fall) 45%,transparent)}
+.bar2 b{position:absolute;left:0;top:0;bottom:0;border-radius:9px;
+  background:linear-gradient(90deg,var(--rise),color-mix(in srgb,var(--rise) 70%,#fff));
+  box-shadow:0 0 10px color-mix(in srgb,var(--rise) 60%,transparent);transition:width .4s cubic-bezier(.3,.9,.3,1)}
+.plot{width:100%;height:288px;display:block;overflow:visible}
+
+.bub{cursor:pointer}
+.bub .body{transition:cx .42s cubic-bezier(.3,.9,.3,1),cy .42s cubic-bezier(.3,.9,.3,1),r .42s cubic-bezier(.3,.9,.3,1)}
+.bub .halo{transition:cx .42s cubic-bezier(.3,.9,.3,1),cy .42s cubic-bezier(.3,.9,.3,1),r .42s cubic-bezier(.3,.9,.3,1)}
+.bub .gloss{transition:transform .42s cubic-bezier(.3,.9,.3,1)}
+.bub text{fill:#fff;text-anchor:middle;paint-order:stroke;
+  transition:x .42s cubic-bezier(.3,.9,.3,1),y .42s cubic-bezier(.3,.9,.3,1)}
+.bub .nm{font:500 13px/1 var(--f-body);letter-spacing:.02em}
+.bub .pc{font:500 11.5px/1 var(--f-num);font-variant-numeric:tabular-nums;opacity:.92}
+.bub .hit{fill:transparent}
+.bub .rim,.bub .gloss,.bub .cut,.bub .ring{transition:cx .42s cubic-bezier(.3,.9,.3,1),cy .42s cubic-bezier(.3,.9,.3,1),r .42s cubic-bezier(.3,.9,.3,1)}
+.bub.in{animation:pop .5s cubic-bezier(.34,1.4,.44,1) backwards}
+@keyframes pop{from{opacity:0;transform:scale(.52)}to{opacity:1;transform:scale(1)}}
+.bub.sel .body{filter:brightness(1.08) saturate(1.04)}
+.bub.sel .halo{opacity:.6}
+.bub.sel .cut,.bub.sel .ring{opacity:1}
+.cut{fill:none;stroke:var(--ground);stroke-width:3;opacity:0;transition:opacity .2s}
+.ring{fill:none;stroke:var(--acc);stroke-width:1.2;opacity:0;transition:opacity .2s}
+html[data-mode="dark"] .cut{stroke:#000}
+
+/* ───────────────────────────── 排行 ───────────────────────────── */
+.scroll{flex:1;overflow:auto;scrollbar-width:none;position:relative;z-index:2}
+.scroll::-webkit-scrollbar{display:none}
+.sheet{margin:2px 12px 24px;border-radius:26px;position:relative;overflow:hidden;
+  background:var(--glass);backdrop-filter:blur(26px) saturate(1.6);-webkit-backdrop-filter:blur(26px) saturate(1.6);
+  box-shadow:inset 0 1px 0 var(--edge),inset 0 0 0 .5px color-mix(in srgb,var(--edge) 55%,transparent),
+    0 30px 60px -34px color-mix(in srgb,var(--shadow) 70%,transparent)}
+.row{display:flex;align-items:center;gap:11px;padding:0 15px;height:62px;position:relative;cursor:pointer}
+.row+.row::before,.mem::before{content:"";position:absolute;left:15px;right:15px;top:0;height:.5px;
+  background:linear-gradient(90deg,transparent,var(--rule) 18%,var(--rule) 82%,transparent)}
+.row.on{background:color-mix(in srgb,var(--acc) 9%,transparent)}
+.row .nm{font:500 15px/1.25 var(--f-body);color:var(--ink)}
+.row .mt{font:400 11px/1.3 var(--f-body);color:var(--ink3);margin-top:3px;display:flex;align-items:center;gap:6px}
+.pill{margin-left:auto;min-width:74px;height:26px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  font:500 13px/1 var(--f-num);font-variant-numeric:tabular-nums;color:#fff;
+  background:var(--rise);box-shadow:0 4px 12px -5px color-mix(in srgb,var(--rise) 70%,transparent)}
+.pill.dn{background:var(--fall);box-shadow:0 4px 12px -5px color-mix(in srgb,var(--fall) 70%,transparent)}
+/* 药丸里的字永远是白的。下面那条通用的 .dn 是给成分行的涨跌数字用的，
+   排在后面会把药丸的白字盖成红字——红底红字等于没字，这里显式压回来。 */
+.pill,.pill.dn{color:#fff}
+.mem{position:relative;background:color-mix(in srgb,var(--raised2) 42%,transparent)}
+.mem .r{display:flex;align-items:center;gap:10px;padding:0 15px 0 30px;height:48px;position:relative}
+.mem .r+.r::before{content:"";position:absolute;left:30px;right:15px;top:0;height:.5px;background:var(--hair)}
+.mem .bs{font:500 13.5px/1 var(--f-body);color:var(--ink)}
+.mem .px{margin-left:auto;font:400 12px/1 var(--f-num);color:var(--ink3);font-variant-numeric:tabular-nums}
+.mem .pp{width:62px;text-align:right;font:500 12.5px/1 var(--f-num);font-variant-numeric:tabular-nums}
+.up{color:var(--rise)} .dn{color:var(--fall)}
+.fade{position:absolute;left:0;right:0;bottom:0;height:78px;pointer-events:none;z-index:4;
+  background:linear-gradient(180deg,transparent,var(--ground) 82%)}
+
+/* ───────────────────────────── 底栏 ───────────────────────────── */
+.dock{position:relative;z-index:6;flex:none;height:60px;margin:0 12px 26px;border-radius:26px;
+  display:flex;align-items:center;background:var(--glass);backdrop-filter:blur(26px) saturate(1.6);
+  -webkit-backdrop-filter:blur(26px) saturate(1.6);
+  box-shadow:inset 0 1px 0 var(--edge),inset 0 0 0 .5px color-mix(in srgb,var(--edge) 55%,transparent),
+    0 24px 44px -30px color-mix(in srgb,var(--shadow) 70%,transparent)}
+.dock div{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;
+  font:500 10px/1 var(--f-body);color:var(--ink4)}
+.dock div.on{color:var(--acc)}
+@media(prefers-reduced-motion:reduce){
+  .bg .lobe{animation:none}
+  .bub.in{animation:none}
+  .bub .body,.bub .halo,.bub text,.bar2 b{transition:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>板块 · 气泡</h1>
+<p class="lede">板块不是新的一格底栏，是 <b>自选整页里的一个视图</b>——右上角切「列表 ⇄ 气泡」。
+气泡看结构（谁是龙头、谁最弱），下面的排行看准数；点气泡，排行就地展开那一板块的成分，点成分回盘面。
+配色只在<b>青苔·冷</b>与<b>陶土·暖</b>里，涨跌直接用 AICoin 那对红绿。</p>
+
+<div class="bar">
+  <span class="lbl">皮肤</span>
+  <div class="grp" id="gSkin"><button data-v="sage">青苔·冷</button><button data-v="terra">陶土·暖</button></div>
+  <span class="lbl">深浅</span>
+  <div class="grp" id="gMode"><button data-v="light">浅</button><button data-v="dark">深</button></div>
+  <span class="lbl">涨跌</span>
+  <div class="grp" id="gRed"><button data-v="0">绿涨红跌</button><button data-v="1">红涨绿跌</button></div>
+  <span class="lbl">口径</span>
+  <div class="grp" id="gMode2"><button data-v="med">中位数</button><button data-v="avg">均值</button><button data-v="wtd">成交额加权</button></div>
+</div>
+
+<div class="duo">
+<div class="phone">
+  <div class="bg"><i class="lobe" id="l1"></i><i class="lobe" id="l2"></i><i class="lobe" id="l3"></i></div>
+  <div class="grain"></div>
+  <div class="island"></div>
+  <div class="screen">
+    <div class="status"><span>9:41</span><span>●●● ⌁</span></div>
+    <div class="hdr">
+      <div class="nav">
+        <div class="cbtn"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M11 3.5 5.5 9l5.5 5.5"/></svg></div>
+        <div class="sbox"><svg width="13" height="13" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.2"/><path d="M12 12l3.8 3.8" stroke-linecap="round"/></svg><span>搜品种</span></div>
+        <div class="cbtn"><svg width="16" height="16" viewBox="0 0 18 18" fill="currentColor"><circle cx="4" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="14" cy="9" r="1.5"/></svg></div>
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="field">
+      <div class="fmeta">
+        <span class="t">板块</span><span class="seal" id="seal">13</span>
+        <span class="breadth"><span id="bUp">3</span><span class="bar2"><b id="bFill" style="width:23%"></b></span><span id="bDn">10</span></span>
+      </div>
+      <svg class="plot" id="plot" viewBox="0 0 393 288" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div class="scroll"><div class="sheet" id="sheet"></div></div>
+    <div class="dock">
+      <div><svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 17 17 3"/><circle cx="4.3" cy="15.7" r="1.7"/><circle cx="15.7" cy="4.3" r="1.7"/></svg>画线</div>
+      <div><svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 14 7 8.5 10.5 12 17 4.5"/><path d="M3 17h14"/></svg>图表</div>
+      <div class="on"><svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2.4l2.2 4.6 5 .7-3.7 3.5 1 5.1L10 13.9l-4.5 2.4 1-5.1L2.8 7.7l5-.7z"/></svg>自选</div>
+      <div><svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="2.7"/><path d="M10 2.4v2.2M10 15.4v2.2M2.4 10h2.2M15.4 10h2.2M4.7 4.7l1.5 1.5M13.8 13.8l1.5 1.5M15.3 4.7l-1.5 1.5M6.2 13.8l-1.5 1.5" stroke-linecap="round"/></svg>设置</div>
+    </div>
+    <div class="fade"></div>
+  </div>
+  <div class="homebar"></div>
+</div>
+<div class="notes">
+<h3>为什么长这样</h3>
+<p>上一版被否的原因很具体：琥珀色的 chips 是已经废弃的那套靛色原型留下的，气泡是 17% 的淡色填充加虚线框，
+底下压着一块带边框的灰色画布——三样都是工程风，和自选页那版「琉璃」不是一个产品。这一版把它们全换掉。</p>
+
+<h3>气泡就是一颗琉璃珠</h3>
+<p>球面径向渐变（高光偏左上 32%/26%）＋ 底下一团同色的模糊光 ＋ 顶上一道白色高光弧。
+这三层正是自选页玻璃卡的做法，换到圆上而已，所以它和这一屏是同一种材料。
+颜色<b>直接用 AICoin 那对红绿</b>（浅色 <code>#36B257</code> / <code>#E64552</code>，深色各皮肤自己那组），
+不再兑淡、不再描虚线边。</p>
+
+<h3>拿掉的东西</h3>
+<p>0 轴那条虚线和「弱 ⋮ 强」两个字：红的在左绿的在右，颜色已经说完了，画一条线只是把脚手架留在成品上。
+带边框的画布：气泡直接长在光斑底上，和下面的排行共用同一块底，整屏是一块连续材料。
+列表底下那段「虚线边框＝被单票拉动…」的说明：展示页只放事实。
+那一整行口径按钮：中位数/均值/成交额加权是一个月调一次的东西，收进右上角「···」，默认中位数。</p>
+
+<h3>尺寸压住了</h3>
+<p>气泡里的板块名 13px / 数字 11.5px，字重 500 不加粗；标题走衬线 19px 配一枚正放的印章，和自选页同款。
+最大的字是排行里的板块名 15px。没有一处超过字阶允许的范围——大字号粗字重会显廉价。</p>
+
+<h3>动效</h3>
+<p>气泡错落弹入（cubic-bezier(.34,1.4,.44,1)，每颗延迟 30ms）；换市场 / 换口径时圆心和半径补间 420ms，
+不是重画；光斑在底下缓慢漂移；点中的气泡描一圈墨线、排行那一行同时亮起。
+<code>prefers-reduced-motion</code> 下全部关掉。</p>
+
+<h3>接进 app 时</h3>
+<p>这些效果在 Core Graphics 里都是原生的：径向渐变 <code>CGGradient</code>、光晕 <code>shadow</code>、
+高光一个椭圆、文字 CoreText 先量后画。装箱算法是纯几何，应该进 <code>KanpanCore</code>，
+和 <code>layout</code> / <code>niceStep</code> 放一起，可单测。
+加密的板块划分直接吃 <code>MarketSector.tags</code>（币安 <code>underlyingSubType</code>，就是这里用的这 13 个），
+不再手写表；美股那张 AI 产业链归属表币安不给，放服务端 <code>kanpan-api</code>，
+和市值、持仓量同一个模式。</p>
+
+<h3>数据</h3>
+<p>加密是 2026-09-14 币安永续快照的真实聚合；美股那一档币安接口在这台机器上取不到，
+数字是示意的，chip 上有一枚金点标着。</p>
+</div>
+</div>
+</div>
+
+<script>
+const SECTORS = {"crypto":[{"id":"layer-1","market":"crypto","name":"Layer 1","perf":{"1d":{"med":0.13,"avg":-0.63,"wtd":-0.32,"n":29,"up":15,"down":14,"vol":9796275153,"skew":-0.76},"5d":null,"20d":null},"members":[{"sym":"XTZUSDT","base":"XTZ","price":0.2803,"chg":4.63,"vol":17509150},{"sym":"INJUSDT","base":"INJ","price":6.171,"chg":4.49,"vol":46198108},{"sym":"ALGOUSDT","base":"ALGO","price":0.09626,"chg":4.07,"vol":13008492},{"sym":"ICPUSDT","base":"ICP","price":2.772,"chg":2.82,"vol":28022357},{"sym":"TIAUSDT","base":"TIA","price":0.3566,"chg":2.21,"vol":21668613},{"sym":"VETUSDT","base":"VET","price":0.007951,"chg":1.98,"vol":10841755},{"sym":"NEARUSDT","base":"NEAR","price":2.387,"chg":1.97,"vol":165282097},{"sym":"ROSEUSDT","base":"ROSE","price":0.006921,"chg":1.55,"vol":3633182},{"sym":"HBARUSDT","base":"HBAR","price":0.07627,"chg":1.49,"vol":22321699},{"sym":"IOTAUSDT","base":"IOTA","price":0.04158,"chg":1.39,"vol":3472696},{"sym":"DOTUSDT","base":"DOT","price":1.0163,"chg":1.15,"vol":45121996},{"sym":"ZILUSDT","base":"ZIL","price":0.002933,"chg":0.96,"vol":15249376},{"sym":"APTUSDT","base":"APT","price":0.5953,"chg":0.49,"vol":31441478},{"sym":"AVAXUSDT","base":"AVAX","price":7.409,"chg":0.18,"vol":68636091},{"sym":"SEIUSDT","base":"SEI","price":0.04474,"chg":0.13,"vol":10712259},{"sym":"TRXUSDT","base":"TRX","price":0.33882,"chg":-0.12,"vol":32930875},{"sym":"ADAUSDT","base":"ADA","price":0.2069,"chg":-0.14,"vol":119809253},{"sym":"ATOMUSDT","base":"ATOM","price":1.592,"chg":-0.25,"vol":15636499},{"sym":"BNBUSDT","base":"BNB","price":724.75,"chg":-0.28,"vol":280861557},{"sym":"ETHUSDT","base":"ETH","price":2512.14,"chg":-0.29,"vol":7304837882},{"sym":"SOLUSDT","base":"SOL","price":101.04,"chg":-0.63,"vol":1274518958},{"sym":"SUIUSDT","base":"SUI","price":0.7168,"chg":-0.82,"vol":188854067},{"sym":"FLOWUSDT","base":"FLOW","price":0.0288,"chg":-0.83,"vol":2524013},{"sym":"CELOUSDT","base":"CELO","price":0.08284,"chg":-1.39,"vol":3388390},{"sym":"NEOUSDT","base":"NEO","price":2.28,"chg":-1.72,"vol":6894551},{"sym":"EGLDUSDT","base":"EGLD","price":4.207,"chg":-2.52,"vol":8542842},{"sym":"QTUMUSDT","base":"QTUM","price":0.9555,"chg":-3.08,"vol":5598121},{"sym":"KAVAUSDT","base":"KAVA","price":0.06292,"chg":-16.85,"vol":33759313},{"sym":"MINAUSDT","base":"MINA","price":0.08716,"chg":-18.94,"vol":14999483}]},{"id":"layer-2","market":"crypto","name":"Layer 2","perf":{"1d":{"med":-1.29,"avg":-1.34,"wtd":-1.57,"n":13,"up":4,"down":9,"vol":139995490,"skew":-0.05},"5d":null,"20d":null},"members":[{"sym":"CTSIUSDT","base":"CTSI","price":0.026,"chg":0.74,"vol":10084217},{"sym":"POLUSDT","base":"POL","price":0.09633,"chg":0.32,"vol":7305600},{"sym":"STRKUSDT","base":"STRK","price":0.02863,"chg":0.28,"vol":5122611},{"sym":"OPUSDT","base":"OP","price":0.09566,"chg":0.26,"vol":20913923},{"sym":"ZKUSDT","base":"ZK","price":0.009604,"chg":-0.22,"vol":3599319},{"sym":"IMXUSDT","base":"IMX","price":0.1236,"chg":-1.28,"vol":2572590},{"sym":"MANTAUSDT","base":"MANTA","price":0.06141,"chg":-1.29,"vol":1213953},{"sym":"SKLUSDT","base":"SKL","price":0.003757,"chg":-2.11,"vol":1979074},{"sym":"CYBERUSDT","base":"CYBER","price":0.2951,"chg":-2.12,"vol":6028772},{"sym":"ARBUSDT","base":"ARB","price":0.13733,"chg":-2.6,"vol":74186465},{"sym":"METISUSDT","base":"METIS","price":3.034,"chg":-2.6,"vol":1136063},{"sym":"SCRUSDT","base":"SCR","price":0.02182,"chg":-2.89,"vol":4072929},{"sym":"TAIKOUSDT","base":"TAIKO","price":0.08254,"chg":-3.87,"vol":1779974}]},{"id":"defi","market":"crypto","name":"DeFi","perf":{"1d":{"med":-0.29,"avg":1.03,"wtd":3.34,"n":26,"up":10,"down":16,"vol":1158350387,"skew":1.32},"5d":null,"20d":null},"members":[{"sym":"REZUSDT","base":"REZ","price":0.004555,"chg":28.89,"vol":114417914},{"sym":"CAKEUSDT","base":"CAKE","price":2.3163,"chg":4.86,"vol":14465350},{"sym":"CRVUSDT","base":"CRV","price":0.3531,"chg":4.31,"vol":30318320},{"sym":"PENDLEUSDT","base":"PENDLE","price":2.2251,"chg":3.46,"vol":16752417},{"sym":"AEROUSDT","base":"AERO","price":0.5724,"chg":1.31,"vol":8804801},{"sym":"HYPEUSDT","base":"HYPE","price":79.982,"chg":1.11,"vol":500429290},{"sym":"1INCHUSDT","base":"1INCH","price":0.09259,"chg":0.65,"vol":2112605},{"sym":"UNIUSDT","base":"UNI","price":6.383,"chg":0.28,"vol":150853227},{"sym":"DYDXUSDT","base":"DYDX","price":0.1137,"chg":0.18,"vol":2627387},{"sym":"ASTERUSDT","base":"ASTER","price":0.6959,"chg":0.09,"vol":34237432},{"sym":"LDOUSDT","base":"LDO","price":0.3691,"chg":-0.03,"vol":11101107},{"sym":"SUSHIUSDT","base":"SUSHI","price":0.2221,"chg":-0.14,"vol":4382734},{"sym":"SKYUSDT","base":"SKY","price":0.06278,"chg":-0.16,"vol":4314671},{"sym":"MORPHOUSDT","base":"MORPHO","price":2.1984,"chg":-0.43,"vol":5798395},{"sym":"ENAUSDT","base":"ENA","price":0.14062,"chg":-0.49,"vol":105967993},{"sym":"EULUSDT","base":"EUL","price":1.297,"chg":-0.71,"vol":2059605},{"sym":"AAVEUSDT","base":"AAVE","price":126.1,"chg":-0.8,"vol":61778778},{"sym":"COMPUSDT","base":"COMP","price":19.69,"chg":-0.96,"vol":2223216},{"sym":"YFIUSDT","base":"YFI","price":2190,"chg":-0.99,"vol":1395214},{"sym":"JUPUSDT","base":"JUP","price":0.2363,"chg":-1.05,"vol":15436659},{"sym":"GMXUSDT","base":"GMX","price":7.863,"chg":-1.58,"vol":971044},{"sym":"SOLVUSDT","base":"SOLV","price":0.004489,"chg":-1.64,"vol":16074060},{"sym":"SYRUPUSDT","base":"SYRUP","price":0.2141,"chg":-1.92,"vol":3252765},{"sym":"RPLUSDT","base":"RPL","price":1.779,"chg":-2.15,"vol":619720},{"sym":"SNXUSDT","base":"SNX","price":0.2155,"chg":-2.18,"vol":2069831},{"sym":"ETHFIUSDT","base":"ETHFI","price":0.664,"chg":-3.02,"vol":45885852}]},{"id":"ai","market":"crypto","name":"AI","perf":{"1d":{"med":-1.3,"avg":-2.12,"wtd":-4.75,"n":17,"up":5,"down":12,"vol":440732943,"skew":-0.82},"5d":null,"20d":null},"members":[{"sym":"UAIUSDT","base":"UAI","price":0.5433,"chg":6.26,"vol":39063810},{"sym":"ARKMUSDT","base":"ARKM","price":0.1042,"chg":1.66,"vol":2805091},{"sym":"FETUSDT","base":"FET","price":0.1695,"chg":0.95,"vol":23515376},{"sym":"RENDERUSDT","base":"RENDER","price":1.392,"chg":0.94,"vol":8285635},{"sym":"VIRTUALUSDT","base":"VIRTUAL","price":0.6199,"chg":0.94,"vol":14835448},{"sym":"TAOUSDT","base":"TAO","price":234.68,"chg":-0.67,"vol":98317824},{"sym":"ARCUSDT","base":"ARC","price":0.07106,"chg":-1.04,"vol":2786599},{"sym":"NMRUSDT","base":"NMR","price":9.316,"chg":-1.23,"vol":782674},{"sym":"IOUSDT","base":"IO","price":0.1293,"chg":-1.3,"vol":1967702},{"sym":"AIXBTUSDT","base":"AIXBT","price":0.02022,"chg":-1.8,"vol":1684754},{"sym":"CGPTUSDT","base":"CGPT","price":0.02016,"chg":-1.99,"vol":858731},{"sym":"PHAUSDT","base":"PHA","price":0.02763,"chg":-2.47,"vol":5571407},{"sym":"WLDUSDT","base":"WLD","price":0.3848,"chg":-2.93,"vol":91045842},{"sym":"SWARMSUSDT","base":"SWARMS","price":0.007222,"chg":-4.09,"vol":1286298},{"sym":"GRASSUSDT","base":"GRASS","price":0.3159,"chg":-4.93,"vol":4284322},{"sym":"GRIFFAINUSDT","base":"GRIFFAIN","price":0.012438,"chg":-9.86,"vol":16294445},{"sym":"FLOCKUSDT","base":"FLOCK","price":0.06812,"chg":-14.46,"vol":127346985}]},{"id":"meme","market":"crypto","name":"Meme","perf":{"1d":{"med":-1.02,"avg":-1.69,"wtd":-2.26,"n":24,"up":5,"down":19,"vol":856292717,"skew":-0.67},"5d":null,"20d":null},"members":[{"sym":"SPXUSDT","base":"SPX","price":0.4972,"chg":1.84,"vol":3841844},{"sym":"WIFUSDT","base":"WIF","price":0.1916,"chg":1.32,"vol":11297563},{"sym":"TRUMPUSDT","base":"TRUMP","price":1.998,"chg":0.5,"vol":73289453},{"sym":"MEWUSDT","base":"MEW","price":0.0004074,"chg":0.42,"vol":911346},{"sym":"FARTCOINUSDT","base":"FARTCOIN","price":0.1423,"chg":0.07,"vol":14989665},{"sym":"1000PEPEUSDT","base":"1000PEPE","price":0.0034416,"chg":-0.25,"vol":166766797},{"sym":"1000FLOKIUSDT","base":"1000FLOKI","price":0.02456,"chg":-0.45,"vol":3445007},{"sym":"MEMEUSDT","base":"MEME","price":0.0005403,"chg":-0.46,"vol":1673492},{"sym":"1000SHIBUSDT","base":"1000SHIB","price":0.005214,"chg":-0.74,"vol":22600109},{"sym":"DOGEUSDT","base":"DOGE","price":0.08396,"chg":-0.85,"vol":317341033},{"sym":"TURBOUSDT","base":"TURBO","price":0.0009199,"chg":-0.88,"vol":1926143},{"sym":"1000BONKUSDT","base":"1000BONK","price":0.002754,"chg":-0.94,"vol":10808654},{"sym":"BOMEUSDT","base":"BOME","price":0.0008448,"chg":-1.11,"vol":5292265},{"sym":"DOGSUSDT","base":"DOGS","price":5.275e-05,"chg":-1.11,"vol":4892206},{"sym":"ACTUSDT","base":"ACT","price":0.009712,"chg":-1.2,"vol":856235},{"sym":"BRETTUSDT","base":"BRETT","price":0.004891,"chg":-1.55,"vol":590019},{"sym":"POPCATUSDT","base":"POPCAT","price":0.04724,"chg":-1.73,"vol":1771020},{"sym":"PENGUUSDT","base":"PENGU","price":0.007124,"chg":-2.08,"vol":35475155},{"sym":"GOATUSDT","base":"GOAT","price":0.01652,"chg":-2.59,"vol":1984750},{"sym":"NEIROUSDT","base":"NEIRO","price":8.406e-05,"chg":-2.85,"vol":4127729},{"sym":"PNUTUSDT","base":"PNUT","price":0.04589,"chg":-3.1,"vol":2835719},{"sym":"BANANAUSDT","base":"BANANA","price":3.95,"chg":-3.92,"vol":734931},{"sym":"PONSUSDT","base":"PONS","price":0.545,"chg":-7.91,"vol":104084209},{"sym":"USELESSUSDT","base":"USELESS","price":0.20519,"chg":-10.98,"vol":64757373}]},{"id":"nft","market":"crypto","name":"NFT","perf":{"1d":{"med":-0.7,"avg":-0.35,"wtd":-1.01,"n":4,"up":1,"down":3,"vol":51990671,"skew":0.35},"5d":null,"20d":null},"members":[{"sym":"BLURUSDT","base":"BLUR","price":0.01806,"chg":2.09,"vol":11777734},{"sym":"MEUSDT","base":"ME","price":0.06635,"chg":-0.14,"vol":2299722},{"sym":"APEUSDT","base":"APE","price":0.1342,"chg":-1.25,"vol":2438060},{"sym":"PENGUUSDT","base":"PENGU","price":0.007124,"chg":-2.08,"vol":35475155}]},{"id":"gaming","market":"crypto","name":"游戏","perf":{"1d":{"med":-1.28,"avg":-1.42,"wtd":-2.49,"n":13,"up":3,"down":10,"vol":80398340,"skew":-0.14},"5d":null,"20d":null},"members":[{"sym":"GALAUSDT","base":"GALA","price":0.001694,"chg":1.38,"vol":7594696},{"sym":"BEAMXUSDT","base":"BEAMX","price":0.001673,"chg":0.66,"vol":3085070},{"sym":"YGGUSDT","base":"YGG","price":0.02384,"chg":0.46,"vol":1831981},{"sym":"AXSUSDT","base":"AXS","price":0.9462,"chg":-0.04,"vol":5223371},{"sym":"GMTUSDT","base":"GMT","price":0.007677,"chg":-0.63,"vol":6820224},{"sym":"MANAUSDT","base":"MANA","price":0.07583,"chg":-1.02,"vol":4789892},{"sym":"IMXUSDT","base":"IMX","price":0.1236,"chg":-1.28,"vol":2572590},{"sym":"BIGTIMEUSDT","base":"BIGTIME","price":0.007386,"chg":-1.36,"vol":3814378},{"sym":"SANDUSDT","base":"SAND","price":0.03541,"chg":-1.39,"vol":7232389},{"sym":"PIXELUSDT","base":"PIXEL","price":0.004949,"chg":-2.44,"vol":1675050},{"sym":"ENJUSDT","base":"ENJ","price":0.02645,"chg":-2.97,"vol":1875693},{"sym":"ACEUSDT","base":"ACE","price":0.14929,"chg":-4.42,"vol":8756293},{"sym":"ILVUSDT","base":"ILV","price":3.498,"chg":-5.46,"vol":25126713}]},{"id":"infrastructure","market":"crypto","name":"基础设施","perf":{"1d":{"med":-1.28,"avg":-1.25,"wtd":-2.94,"n":15,"up":4,"down":11,"vol":258247959,"skew":0.03},"5d":null,"20d":null},"members":[{"sym":"IOTXUSDT","base":"IOTX","price":0.003457,"chg":10.84,"vol":16831269},{"sym":"PYTHUSDT","base":"PYTH","price":0.05808,"chg":5.6,"vol":10332311},{"sym":"API3USDT","base":"API3","price":0.2528,"chg":3.14,"vol":23511635},{"sym":"TRBUSDT","base":"TRB","price":17.13,"chg":0.1,"vol":3671286},{"sym":"BANDUSDT","base":"BAND","price":0.1951,"chg":-0.1,"vol":1290939},{"sym":"LINKUSDT","base":"LINK","price":11.383,"chg":-0.92,"vol":119855662},{"sym":"SSVUSDT","base":"SSV","price":2.925,"chg":-1.08,"vol":1468810},{"sym":"REDUSDT","base":"RED","price":0.1311,"chg":-1.28,"vol":3349809},{"sym":"IOUSDT","base":"IO","price":0.1293,"chg":-1.3,"vol":1967702},{"sym":"JASMYUSDT","base":"JASMY","price":0.003899,"chg":-1.61,"vol":2688736},{"sym":"EIGENUSDT","base":"EIGEN","price":0.2049,"chg":-2.71,"vol":8110519},{"sym":"UMAUSDT","base":"UMA","price":0.3712,"chg":-3.73,"vol":890273},{"sym":"GRASSUSDT","base":"GRASS","price":0.3159,"chg":-4.93,"vol":4284322},{"sym":"ATHUSDT","base":"ATH","price":0.004593,"chg":-5.38,"vol":1806000},{"sym":"POWRUSDT","base":"POWR","price":0.06114,"chg":-15.37,"vol":58188686}]},{"id":"storage","market":"crypto","name":"存储","perf":{"1d":{"med":10.16,"avg":8.24,"wtd":18.53,"n":3,"up":2,"down":1,"vol":494589809,"skew":-1.92},"5d":null,"20d":null},"members":[{"sym":"FILUSDT","base":"FIL","price":0.9677,"chg":18.93,"vol":473515201},{"sym":"ARUSDT","base":"AR","price":2.808,"chg":10.16,"vol":20065074},{"sym":"HOTUSDT","base":"HOT","price":0.0003743,"chg":-4.37,"vol":1009534}]},{"id":"payment","market":"crypto","name":"支付","perf":{"1d":{"med":0.39,"avg":-0.62,"wtd":0.1,"n":7,"up":5,"down":2,"vol":859651705,"skew":-1.01},"5d":null,"20d":null},"members":[{"sym":"XLMUSDT","base":"XLM","price":0.18209,"chg":1.23,"vol":32756523},{"sym":"LTCUSDT","base":"LTC","price":54.29,"chg":0.95,"vol":63076124},{"sym":"XRPUSDT","base":"XRP","price":1.375,"chg":0.84,"vol":611423162},{"sym":"ACHUSDT","base":"ACH","price":0.005184,"chg":0.39,"vol":1558121},{"sym":"WLFIUSDT","base":"WLFI","price":0.05765,"chg":0.14,"vol":26789571},{"sym":"BCHUSDT","base":"BCH","price":224,"chg":-0.62,"vol":55136853},{"sym":"PUNDIXUSDT","base":"PUNDIX","price":0.11328,"chg":-7.28,"vol":68911351}]},{"id":"metaverse","market":"crypto","name":"元宇宙","perf":{"1d":{"med":-1.25,"avg":-1.69,"wtd":-3.59,"n":5,"up":1,"down":4,"vol":42672124,"skew":-0.44},"5d":null,"20d":null},"members":[{"sym":"BEAMXUSDT","base":"BEAMX","price":0.001673,"chg":0.66,"vol":3085070},{"sym":"MANAUSDT","base":"MANA","price":0.07583,"chg":-1.02,"vol":4789892},{"sym":"APEUSDT","base":"APE","price":0.1342,"chg":-1.25,"vol":2438060},{"sym":"SANDUSDT","base":"SAND","price":0.03541,"chg":-1.39,"vol":7232389},{"sym":"ILVUSDT","base":"ILV","price":3.498,"chg":-5.46,"vol":25126713}]},{"id":"pow","market":"crypto","name":"PoW","perf":{"1d":{"med":-0.67,"avg":1.46,"wtd":0.5,"n":14,"up":3,"down":11,"vol":9700067324,"skew":2.13},"5d":null,"20d":null},"members":[{"sym":"BTWUSDT","base":"BTW","price":0.74803,"chg":35.93,"vol":156265729},{"sym":"LTCUSDT","base":"LTC","price":54.29,"chg":0.95,"vol":63076124},{"sym":"BTCUSDT","base":"BTC","price":77560.1,"chg":0.49,"vol":7543202245},{"sym":"ETCUSDT","base":"ETC","price":7.592,"chg":-0.13,"vol":19361674},{"sym":"BSVUSDT","base":"BSV","price":17.11,"chg":-0.29,"vol":2042560},{"sym":"ZENUSDT","base":"ZEN","price":6.29,"chg":-0.57,"vol":13662070},{"sym":"BCHUSDT","base":"BCH","price":224,"chg":-0.62,"vol":55136853},{"sym":"ORDIUSDT","base":"ORDI","price":4.131,"chg":-0.72,"vol":8358367},{"sym":"XMRUSDT","base":"XMR","price":521.69,"chg":-1.66,"vol":37811640},{"sym":"DASHUSDT","base":"DASH","price":54.21,"chg":-1.79,"vol":41327587},{"sym":"1000SATSUSDT","base":"1000SATS","price":1.043e-05,"chg":-2.07,"vol":1009779},{"sym":"ZECUSDT","base":"ZEC","price":1114.45,"chg":-2.44,"vol":1744575981},{"sym":"STXUSDT","base":"STX","price":0.2666,"chg":-3.23,"vol":10733641},{"sym":"KASUSDT","base":"KAS","price":0.03381,"chg":-3.37,"vol":3503074}]},{"id":"rwa","market":"crypto","name":"RWA","perf":{"1d":{"med":-0.13,"avg":-0.05,"wtd":0.64,"n":7,"up":3,"down":4,"vol":139732888,"skew":0.08},"5d":null,"20d":null},"members":[{"sym":"POLYXUSDT","base":"POLYX","price":0.04111,"chg":2.26,"vol":25454148},{"sym":"ONDOUSDT","base":"ONDO","price":0.3513,"chg":1.21,"vol":53408483},{"sym":"PLUMEUSDT","base":"PLUME","price":0.01308,"chg":0.61,"vol":3835541},{"sym":"RSRUSDT","base":"RSR","price":0.001504,"chg":-0.13,"vol":2524524},{"sym":"XAUTUSDT","base":"XAUT","price":4328.33,"chg":-0.47,"vol":22527089},{"sym":"PAXGUSDT","base":"PAXG","price":4332.17,"chg":-0.54,"vol":29525668},{"sym":"CFGUSDT","base":"CFG","price":0.1063,"chg":-3.28,"vol":2457435}]}],"us":[{"id":"gpu","market":"us","name":"算力 GPU","perf":{"1d":{"med":-0.45,"avg":0.94,"wtd":0.36,"n":3,"up":1,"down":2,"vol":14347192942,"skew":1.39},"5d":null,"20d":null},"members":[{"sym":"INTCUSDT","base":"INTC","price":118.68,"chg":4.01,"vol":3130216029},{"sym":"AMDUSDT","base":"AMD","price":712.0,"chg":-0.45,"vol":3363094583},{"sym":"NVDAUSDT","base":"NVDA","price":807.99,"chg":-0.74,"vol":7853882330}],"demo":true},{"id":"asic","market":"us","name":"定制 ASIC","perf":{"1d":{"med":1.56,"avg":1.63,"wtd":0.98,"n":3,"up":3,"down":0,"vol":11991845830,"skew":0.07},"5d":null,"20d":null},"members":[{"sym":"AVGOUSDT","base":"AVGO","price":211.13,"chg":2.89,"vol":1385941343},{"sym":"CRDOUSDT","base":"CRDO","price":226.2,"chg":1.56,"vol":2818382793},{"sym":"MRVLUSDT","base":"MRVL","price":755.11,"chg":0.43,"vol":7787521694}],"demo":true},{"id":"hbm","market":"us","name":"HBM 存储","perf":{"1d":{"med":2.01,"avg":1.72,"wtd":1.82,"n":5,"up":5,"down":0,"vol":19640023337,"skew":-0.29},"5d":null,"20d":null},"members":[{"sym":"SKHYNIXUSDT","base":"SKHYNIX","price":383.2,"chg":2.45,"vol":3588342864},{"sym":"SKHYUSDT","base":"SKHY","price":160.75,"chg":2.38,"vol":1663084211},{"sym":"SNDKUSDT","base":"SNDK","price":80.44,"chg":2.01,"vol":8937341017},{"sym":"MUUSDT","base":"MU","price":492.03,"chg":0.93,"vol":4627420369},{"sym":"WDCUSDT","base":"WDC","price":165.66,"chg":0.84,"vol":823834876}],"demo":true},{"id":"foundry","market":"us","name":"晶圆代工","perf":{"1d":{"med":-2.33,"avg":-1.88,"wtd":-1.92,"n":3,"up":0,"down":3,"vol":16737363733,"skew":0.45},"5d":null,"20d":null},"members":[{"sym":"TSMUSDT","base":"TSM","price":484.75,"chg":-0.95,"vol":5157922961},{"sym":"UMCUSDT","base":"UMC","price":74.64,"chg":-2.33,"vol":4704182090},{"sym":"GFSUSDT","base":"GFS","price":165.95,"chg":-2.37,"vol":6875258681}],"demo":true},{"id":"semicap","market":"us","name":"半导体设备","perf":{"1d":{"med":-0.31,"avg":-0.21,"wtd":0.09,"n":4,"up":2,"down":2,"vol":22955240305,"skew":0.1},"5d":null,"20d":null},"members":[{"sym":"ASMLUSDT","base":"ASML","price":413.12,"chg":1.09,"vol":8969512793},{"sym":"AMATUSDT","base":"AMAT","price":280.05,"chg":0.15,"vol":5700000491},{"sym":"KLACUSDT","base":"KLAC","price":234.6,"chg":-0.77,"vol":4088310584},{"sym":"LRCXUSDT","base":"LRCX","price":127.09,"chg":-1.3,"vol":4197416436}],"demo":true},{"id":"eda","market":"us","name":"EDA","perf":{"1d":{"med":2.63,"avg":2.63,"wtd":2.76,"n":2,"up":2,"down":0,"vol":11064328287,"skew":0.0},"5d":null,"20d":null},"members":[{"sym":"SNPSUSDT","base":"SNPS","price":799.47,"chg":3.08,"vol":7097093873},{"sym":"CDNSUSDT","base":"CDNS","price":644.04,"chg":2.18,"vol":3967234414}],"demo":true},{"id":"package","market":"us","name":"先进封装","perf":{"1d":{"med":0.56,"avg":0.56,"wtd":-0.19,"n":2,"up":1,"down":1,"vol":3862672933,"skew":0.0},"5d":null,"20d":null},"members":[{"sym":"ASXUSDT","base":"ASX","price":422.82,"chg":1.5,"vol":373313123},{"sym":"AMKRUSDT","base":"AMKR","price":108.81,"chg":-0.37,"vol":3489359810}],"demo":true},{"id":"optical","market":"us","name":"光互连","perf":{"1d":{"med":-0.72,"avg":-0.01,"wtd":-0.06,"n":5,"up":2,"down":3,"vol":21739893897,"skew":0.71},"5d":null,"20d":null},"members":[{"sym":"COHRUSDT","base":"COHR","price":693.79,"chg":2.16,"vol":4254487552},{"sym":"CIENUSDT","base":"CIEN","price":868.97,"chg":0.2,"vol":3570899160},{"sym":"FNUSDT","base":"FN","price":704.16,"chg":-0.72,"vol":5225922053},{"sym":"ANETUSDT","base":"ANET","price":673.93,"chg":-0.83,"vol":3131327727},{"sym":"LITEUSDT","base":"LITE","price":137.6,"chg":-0.87,"vol":5557257405}],"demo":true},{"id":"server","market":"us","name":"服务器 ODM","perf":{"1d":{"med":-2.3,"avg":-0.86,"wtd":-1.4,"n":3,"up":1,"down":2,"vol":7869860855,"skew":1.44},"5d":null,"20d":null},"members":[{"sym":"SMCIUSDT","base":"SMCI","price":633.72,"chg":2.34,"vol":1756661814},{"sym":"HPEUSDT","base":"HPE","price":216.58,"chg":-2.3,"vol":2712998444},{"sym":"DELLUSDT","base":"DELL","price":751.42,"chg":-2.61,"vol":3400200598}],"demo":true},{"id":"power","market":"us","name":"电源散热","perf":{"1d":{"med":-2.17,"avg":-2.87,"wtd":-3.56,"n":3,"up":0,"down":3,"vol":15705785124,"skew":-0.7},"5d":null,"20d":null},"members":[{"sym":"ETNUSDT","base":"ETN","price":752.6,"chg":-1.26,"vol":852513737},{"sym":"NVTUSDT","base":"NVT","price":453.02,"chg":-2.17,"vol":7338427132},{"sym":"VRTUSDT","base":"VRT","price":371.15,"chg":-5.17,"vol":7514844256}],"demo":true},{"id":"grid","market":"us","name":"电网公用","perf":{"1d":{"med":-0.95,"avg":-0.84,"wtd":-0.44,"n":3,"up":1,"down":2,"vol":12692246779,"skew":0.11},"5d":null,"20d":null},"members":[{"sym":"GEVUSDT","base":"GEV","price":499.74,"chg":0.21,"vol":7169610327},{"sym":"VSTUSDT","base":"VST","price":493.3,"chg":-0.95,"vol":3316473861},{"sym":"CEGUSDT","base":"CEG","price":51.73,"chg":-1.78,"vol":2206162591}],"demo":true},{"id":"cloud","market":"us","name":"云与模型","perf":{"1d":{"med":-1.65,"avg":-1.43,"wtd":-1.73,"n":5,"up":0,"down":5,"vol":20999668501,"skew":0.22},"5d":null,"20d":null},"members":[{"sym":"ORCLUSDT","base":"ORCL","price":555.72,"chg":-0.48,"vol":2326899889},{"sym":"GOOGLUSDT","base":"GOOGL","price":477.17,"chg":-0.92,"vol":2523094628},{"sym":"METAUSDT","base":"META","price":116.41,"chg":-1.65,"vol":4816278612},{"sym":"AMZNUSDT","base":"AMZN","price":393.43,"chg":-1.74,"vol":2851050825},{"sym":"MSFTUSDT","base":"MSFT","price":273.68,"chg":-2.35,"vol":8482344547}],"demo":true},{"id":"software","market":"us","name":"AI 软件","perf":{"1d":{"med":-0.35,"avg":-0.36,"wtd":-0.4,"n":4,"up":0,"down":4,"vol":20983058936,"skew":-0.01},"5d":null,"20d":null},"members":[{"sym":"CRMUSDT","base":"CRM","price":242.36,"chg":-0.17,"vol":4847790275},{"sym":"NOWUSDT","base":"NOW","price":737.59,"chg":-0.25,"vol":2205163001},{"sym":"PLTRUSDT","base":"PLTR","price":234.05,"chg":-0.46,"vol":8043193470},{"sym":"SNOWUSDT","base":"SNOW","price":689.86,"chg":-0.58,"vol":5886912190}],"demo":true}]};
+
+const $ = s => document.querySelector(s)
+const H = document.documentElement
+const S = { market:'crypto', stat:'med', open:null, first:true }
+
+// ── 颜色：从 CSS 令牌上取，所以皮肤 / 深浅 / 红涨绿跌全都自动跟
+const cv = n => getComputedStyle(H).getPropertyValue(n).trim()
+function hex2rgb(h){ h=h.replace('#',''); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)] }
+function mix(h, to, t){ const a=hex2rgb(h), b=hex2rgb(to)
+  return '#'+a.map((v,i)=>Math.round(v+(b[i]-v)*t).toString(16).padStart(2,'0')).join('') }
+
+const TOP = 8, MIN_N = 3
+const rows = () => (SECTORS[S.market]||[]).map(s => {
+  const p = s.perf['1d']
+  return { sec:s, perf:p, v:p ? p[S.stat] : null, thin:!p || p.n < MIN_N }
+}).sort((a,b) => (b.v ?? -1e9) - (a.v ?? -1e9))
+
+function bubbles(all){
+  const live = all.filter(r => !r.thin && r.v !== null)
+  return live.filter(r => r.v > 0).slice(0, TOP)
+    .concat(live.filter(r => r.v === 0), live.filter(r => r.v < 0).slice(-TOP))
+}
+
+// ── 布局：半径 sqrt(真实最大值)，横轴用 85 分位的稳健尺，确定性螺旋装箱
+function layout(list, W, H2){
+  if(!list.length) return []
+  const maxAbs = Math.max(...list.map(r => Math.abs(r.v)), .01)
+  const abs = list.map(r => Math.abs(r.v)).sort((a,b) => a-b)
+  const p85 = abs[Math.min(abs.length-1, Math.floor(abs.length*.85))] || maxAbs
+  const spread = v => Math.sign(v) * Math.min(1, Math.sqrt(Math.min(Math.abs(v), p85) / Math.max(.01, p85)))
+  const cx = W/2, pad = 10, rMin = 19, rMax = Math.min(W, H2) * .27
+  // 半径用 0.42 次方而不是 0.5：真实的一天常常是「一个板块 +10%、其余全在 ±1.5% 里挤」，
+  // 开平方会把那一堆压成一样大的小球，谁强谁弱全看不出来。压低指数让异常值仍是最大的，
+  // 但把剩下的差异重新拉开。横轴那把 85 分位的尺是同一个道理的另一半。
+  const it = list.map(r => ({ row:r, r: rMin + (rMax-rMin) * Math.pow(Math.abs(r.v)/maxAbs, .42) }))
+  const area = it.reduce((s,x) => s + Math.PI*x.r*x.r, 0), cap = W*H2*.34
+  if(area > cap){ const k = Math.sqrt(cap/area); for(const x of it) x.r = Math.max(17, x.r*k) }
+  for(const x of it){ const span = W/2 - pad - x.r
+    x.tx = Math.min(W-pad-x.r, Math.max(pad+x.r, cx + spread(x.row.v)*span)) }
+  it.sort((a,b) => b.r - a.r)
+
+  const cy = H2/2, done = [], TRIES = 9000
+  const step = Math.max(1.2, Math.hypot(W,H2) / (2.2*Math.sqrt(TRIES)))
+  const free = (x,X,Y) => {
+    if(X-x.r < 2 || X+x.r > W-2 || Y-x.r < 2 || Y+x.r > H2-2) return false
+    for(const p of done){ const dx=X-p.x, dy=Y-p.y, need=x.r+p.r+8
+      if(dx*dx+dy*dy < need*need) return false }
+    return true }
+  const spiral = (x,sq) => { for(let t=0;t<TRIES;t++){
+      const a=t*2.399963229728653, rad=step*Math.sqrt(t)
+      const X=x.tx+Math.cos(a)*rad*sq, Y=cy+Math.sin(a)*rad
+      if(free(x,X,Y)) return {x:X,y:Y} } return null }
+  const grid = x => { let best=null,bd=Infinity
+      for(let Y=x.r+2;Y<=H2-x.r-2;Y+=4) for(let X=x.r+2;X<=W-x.r-2;X+=4){
+        const d=Math.abs(X-x.tx)+Math.abs(Y-cy)*.35
+        if(d<bd && free(x,X,Y)){best={x:X,y:Y};bd=d} } return best }
+  for(const x of it){ const at = spiral(x,.5) || spiral(x,1) || grid(x) || {x:x.tx,y:cy}
+    x.x=at.x; x.y=at.y; done.push(x) }
+  return it
+}
+
+const pct = v => (v>=0?'+':'') + v.toFixed(2) + '%'
+const NS = 'http://www.w3.org/2000/svg'
+const el = (t,a) => { const n=document.createElementNS(NS,t); for(const k in a) n.setAttribute(k,a[k]); return n }
+
+function defs(){
+  const rise = cv('--rise'), fall = cv('--fall')
+  return `<defs>
+    <radialGradient id="gU" cx="32%" cy="26%" r="78%">
+      <stop offset="0" stop-color="${mix(rise,'#ffffff',.30)}"/>
+      <stop offset="48%" stop-color="${rise}"/>
+      <stop offset="100%" stop-color="${mix(rise,'#000000',.26)}"/></radialGradient>
+    <radialGradient id="gD" cx="32%" cy="26%" r="78%">
+      <stop offset="0" stop-color="${mix(fall,'#ffffff',.30)}"/>
+      <stop offset="48%" stop-color="${fall}"/>
+      <stop offset="100%" stop-color="${mix(fall,'#000000',.26)}"/></radialGradient>
+    <radialGradient id="gG" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".34"/>
+      <stop offset="65%" stop-color="#ffffff" stop-opacity=".08"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gR" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".55"/>
+      <stop offset="45%" stop-color="#ffffff" stop-opacity=".06"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity=".22"/></linearGradient>
+    <filter id="blr" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="9"/></filter>
+  </defs>`
+}
+
+function drawBubbles(list){
+  const svg = $('#plot'), W = 393, H2 = 288
+  svg.innerHTML = defs()
+  const items = layout(list, W, H2)
+  items.forEach((x,i) => {
+    const r = x.row, up = r.v >= 0
+    const col = up ? cv('--rise') : cv('--fall')
+    const g = el('g', { class:'bub' + (S.first?' in':'') + (S.open===r.sec.id?' sel':'') })
+    if(S.first) g.style.animationDelay = (i*30) + 'ms'
+    g.appendChild(el('circle',{ class:'halo', cx:x.x, cy:x.y+4, r:x.r*.94, fill:col, opacity:.34, filter:'url(#blr)' }))
+    g.appendChild(el('circle',{ class:'body', cx:x.x, cy:x.y, r:x.r, fill:up?'url(#gU)':'url(#gD)' }))
+    g.appendChild(el('ellipse',{ class:'gloss', cx:x.x, cy:x.y-x.r*.46, rx:x.r*.54, ry:x.r*.28, fill:'url(#gG)' }))
+    // 一圈极薄的内描边：上沿提亮、下沿压暗，玻璃的厚度就是靠这一条读出来的
+    g.appendChild(el('circle',{ class:'rim', cx:x.x, cy:x.y, r:x.r-.6, fill:'none',
+      stroke:'url(#gR)', 'stroke-width':1.1 }))
+    g.appendChild(el('circle',{ class:'cut',  cx:x.x, cy:x.y, r:x.r+2.6 }))
+    g.appendChild(el('circle',{ class:'ring', cx:x.x, cy:x.y, r:x.r+4.8 }))
+    if(x.r >= 25){
+      // 字号被半径和名字长度一起夹住，长名字自己缩，不靠截断；下限 9 是还读得出的底
+      const nm = r.sec.name
+      const fs = Math.max(9, Math.min(12.5, x.r*.36, x.r*1.48/Math.max(2, nm.length)))
+      const t1 = el('text',{ class:'nm', x:x.x, y:x.y-1, 'font-size':fs.toFixed(1) }); t1.textContent = nm
+      const t2 = el('text',{ class:'pc', x:x.x, y:x.y+fs+2.5, 'font-size':Math.min(11.5,fs*.88).toFixed(1) }); t2.textContent = pct(r.v)
+      g.append(t1,t2)
+    } else if(x.r >= 19){
+      const t = el('text',{ class:'pc', x:x.x, y:x.y+3.6, 'font-size':Math.min(10,x.r*.36).toFixed(1) })
+      t.textContent = pct(r.v); g.appendChild(t)
+    }
+    g.appendChild(el('circle',{ class:'hit', cx:x.x, cy:x.y, r:Math.max(x.r,22) }))
+    g.onclick = () => pick(r.sec.id)
+    svg.appendChild(g)
+  })
+}
+
+function drawList(all){
+  const box = $('#sheet'); box.innerHTML = ''
+  for(const r of all){
+    const row = document.createElement('div')
+    row.className = 'row' + (S.open===r.sec.id ? ' on' : '')
+    const w = r.perf ? Math.round(r.perf.up / Math.max(1, r.perf.up + r.perf.down) * 100) : 0
+    row.innerHTML = `<div><div class="nm">${r.sec.name}</div>
+      <div class="mt">${r.perf ? r.perf.n + ' 只' : '无数据'}
+        <span class="bar2" style="width:44px"><b style="width:${w}%"></b></span>
+        ${r.perf ? r.perf.up + ' · ' + r.perf.down : ''}</div></div>
+      <div class="pill ${r.v>=0?'':'dn'}">${r.v===null?'—':pct(r.v)}</div>`
+    row.onclick = () => pick(r.sec.id, true)
+    box.appendChild(row)
+    if(S.open === r.sec.id){
+      const m = document.createElement('div'); m.className = 'mem'
+      m.innerHTML = r.sec.members.map(x => `<div class="r"><span class="bs">${x.base}</span>
+        <span class="px">${x.price}</span>
+        <span class="pp ${x.chg>=0?'up':'dn'}">${pct(x.chg)}</span></div>`).join('')
+      box.appendChild(m)
+    }
+  }
+}
+
+function pick(id, toggle){
+  S.open = (toggle && S.open===id) ? null : id
+  S.first = false; render()
+}
+
+function chips(){
+  const box = $('#chips'); box.innerHTML = ''
+  const list = [['all','全部',0],['crypto','加密',0],['us','美股',1],['own','自建',0]]
+  for(const [id,name,demo] of list){
+    const b = document.createElement('div')
+    b.className = 'chip' + (id===S.market ? ' on' : '')
+    b.innerHTML = name + (demo ? '<i class="dot"></i>' : '')
+    b.onclick = () => { if(id==='all'||id==='own') return
+      S.market = id; S.open = null; S.first = true; render() }
+    box.appendChild(b)
+  }
+  const seg = document.createElement('div'); seg.className = 'seg'
+  seg.innerHTML = `<b><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg></b>
+    <b class="on"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5.4" cy="6" r="3.1"/><circle cx="11.4" cy="10.6" r="4"/><circle cx="11.8" cy="4" r="1.7"/></svg></b>`
+  box.appendChild(seg)
+}
+
+function render(){
+  const all = rows()
+  chips()
+  drawBubbles(bubbles(all))
+  drawList(all)
+  const u = all.filter(r => r.v !== null && r.v > 0).length
+  const d = all.filter(r => r.v !== null && r.v < 0).length
+  $('#seal').textContent = all.length
+  $('#bUp').textContent = u; $('#bDn').textContent = d
+  $('#bFill').style.width = Math.round(u / Math.max(1, u+d) * 100) + '%'
+  S.first = false
+}
+
+// ── 光斑位置
+function lobes(){
+  // 三团光推到边角：气泡场正中那一片要留得干净，
+  // 底色和球同色时会互相吃掉，看着就糊成一团
+  const p = [[ -110, -40, 330],[ 285, 120, 250],[ -40, 600, 340]]
+  ;['#l1','#l2','#l3'].forEach((s,i) => { const e = $(s), c = ['--lobe1','--lobe2','--lobe3'][i]
+    e.style.left = p[i][0]+'px'; e.style.top = p[i][1]+'px'
+    e.style.width = e.style.height = p[i][2]+'px'; e.style.background = cv(c) })
+}
+
+// ── 设计板的开关
+function grp(id, attr, init){
+  const box = document.getElementById(id)
+  const set = v => { if(attr==='stat') S.stat = v; else H.setAttribute(attr, v)
+    ;[...box.children].forEach(b => b.setAttribute('aria-pressed', b.dataset.v===v))
+    lobes(); S.first = true; render() }
+  ;[...box.children].forEach(b => b.onclick = () => set(b.dataset.v))
+  set(init)
+}
+grp('gSkin','data-skin','sage'); grp('gMode','data-mode','light')
+grp('gRed','data-redup','0');    grp('gMode2','stat','med')
+</script>
+</body>
+</html>

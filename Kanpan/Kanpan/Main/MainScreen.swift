@@ -30,6 +30,9 @@ struct MainScreen: View {
   /// 画线工作台里那一层换品种开着没有。只在横屏画线时有意义。
   @State private var showDrawSwitcher = false
   @State private var quotes = QuoteBook()
+  /// 板块页那一路的行情。它拉的是**全市场 24h ticker**（一趟就够），和 `QuoteBook`
+  /// 那条按可见范围订阅的线完全不搭界，所以单独一份，只在板块页看得见时才跑。
+  @State private var sectorFeed = SectorFeed()
   @State private var didBoot = false
   @State private var grace = BackgroundGrace()
   @State private var proxy = ChartProxy()
@@ -193,6 +196,24 @@ struct MainScreen: View {
                   onHistoryVisibility: { quotes.watchHistory($0, visible: $1) })
   }
 
+  /// 板块气泡页那一整页。计算全在 `KanpanCore`，画全在 `Kanpan/Sector/`，
+  /// 这儿只把行情、红涨绿跌和「点中一行去看图」三根线接上。
+  ///
+  /// 点一行品种走的是 `picker.onPick` 同一条路——切到行情页、换品种、回到最新那一根，
+  /// 而不是另起一套跳转，免得板块页进来的图和自选页进来的图行为不一样。
+  private var sectorPage: some View {
+    SectorPage(feed: sectorFeed, redUp: prefs.redUp,
+               symbolForBase: { sectorFeed.symbol(forBase: $0) },
+               onPickSymbol: { symbol in
+                 if let info = picker.info(for: symbol) { picker.pick(info) }
+                 else {
+                   tab = .chart; didLeaveLaunch = true
+                   crosshair = nil
+                   market.switchTo(symbol: symbol)
+                 }
+               })
+  }
+
   /// 此刻画的是不是自选页。账号还在恢复的那一小段里，`picker.prefs` 挂的是访客那份
   /// 空档案，不能拿「自选是空的」当真——所以 `awaitingAccount` 也算数。
   private var showingFavorites: Bool {
@@ -216,10 +237,10 @@ struct MainScreen: View {
         // 先把后台运行额度要下来，再进后台状态：下面两处的宽限窗口靠它才有
         // CPU 可跑，短暂切走再回来就不必重连。
         grace.begin()
-        market.enterBackground(); quotes.setForeground(false)
+        market.enterBackground(); quotes.setForeground(false); sectorFeed.setForeground(false)
       case .active:
         grace.end()
-        market.enterForeground(); quotes.setForeground(true)
+        market.enterForeground(); quotes.setForeground(true); sectorFeed.setForeground(true)
       default: break
       }
     }
@@ -239,9 +260,18 @@ struct MainScreen: View {
 
   private var marketContent: some View {
     observedContent
-    .onChange(of: hosts) { _, next in market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis, source: market.source) }
+    .onChange(of: hosts) { _, next in
+      market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis, source: market.source)
+      sectorFeed.configure(hosts: next, source: market.source)
+    }
     .onChange(of: prefs.changeBasis) { _, next in quotes.configure(hosts: hosts, basis: next, source: market.source) }
-    .onChange(of: market.source) { _, next in quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next) }
+    .onChange(of: market.source) { _, next in
+      quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next)
+      sectorFeed.configure(hosts: hosts, source: next)
+    }
+    // 品种表是板块页认 base 的依据（兜底桶按它的标签凑，点行去看图也靠它拼全名）。
+    // 它是异步载进来的，所以不能只在 `boot()` 里交一次。
+    .onChange(of: picker.catalog.count) { _, _ in sectorFeed.setCatalog(picker.catalog) }
     .onChange(of: listVisible) { _, on in quotes.setVisible(on) }
     .onChange(of: picker.prefs.favorites) { _, symbols in settleFavorites(symbols) }
     .onChange(of: market.tradeQuote) { _, trade in
@@ -339,6 +369,7 @@ struct MainScreen: View {
       // 「画线」不是一张页：点它是把当前这张图横过来画，所以它落在行情页上。
       case .chart, .draw: chartPage
       case .favorites: favoritesPage
+      case .sectors: sectorPage
       case .settings: SettingsPanel(store: store, asPage: true)
       }
     }
@@ -960,6 +991,9 @@ struct MainScreen: View {
     if !picker.prefs.favorites.isEmpty { quotes.setFavorites(picker.prefs.favorites) }
     quotes.setChartSymbol(market.symbol)
     quotes.setForeground(phase != .background)
+    sectorFeed.configure(hosts: hosts, source: market.source)
+    sectorFeed.setCatalog(picker.catalog)
+    sectorFeed.setForeground(phase != .background)
     picker.onPick = { info in
       showSymbols = false
       showSearch = false; searchAllPending = false

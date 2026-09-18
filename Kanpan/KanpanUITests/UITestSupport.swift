@@ -31,14 +31,18 @@ enum Ids {
   /// 禁改的 `ChartFoundationUITests` 里按 `interval.chip.1m` 直接点，收窄了就点不着。
   static let quickIntervals = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
   // 底栏
-  /// 2026-09-18 起底栏是一条**常驻标签栏**：从左到右「画线 · 图表 · 自选 · 设置」，
-  /// 四格各是一整页，切到哪一页它都还在（用户：「大部分 app 把常用的大分页都固定在底部」）。
+  /// 2026-09-18 起底栏是一条**常驻标签栏**：从左到右「画线 · 图表 · 自选 · 板块分类 · 设置」，
+  /// 五格各是一整页，切到哪一页它都还在（用户：「大部分 app 把常用的大分页都固定在底部」）。
   /// 所以不再有「复盘」「指标」两格——复盘挪进了顶栏那颗带角标的按钮（`topReview`），
   /// 指标整段并进了「图表设置」面板（`intervalChart` 开的那张）。
   /// 要量图区下沿就用标签栏任意一格，这儿沿用第一格。
+  ///
+  /// 第五格「板块分类」是同一天加的：加密／美股在那一页里用顶部硬切换，
+  /// 不占底栏第六格（`kanpan-bottom-tab-bar`）。
   static let bottomDraw = "bottom.draw"
   static let bottomChart = "bottom.chart"
   static let bottomFavorites = "bottom.favorites"
+  static let bottomSectors = "bottom.sectors"
   static let bottomSettings = "bottom.settings"
   /// 顶栏的「复盘」：右上角那颗带待办角标的按钮，开复盘本。
   static let topReview = "top.review"

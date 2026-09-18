@@ -372,13 +372,17 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertFalse(app.buttons["favorites.more"].exists, "普通前后台切换不重置首页")
   }
 
-  /// 底栏四格轮一圈，报价还在跳。
+  /// 底栏五格轮一圈，报价还在跳。
   ///
-  /// 2026-09-18 底栏改成常驻标签栏（画线 · 图表 · 自选 · 设置），每一格都是独立一页
-  /// （用户：「这四个底部拦都单独是一个页面」「切换页面下面还是那样」）。四页来回切
+  /// 2026-09-18 底栏改成常驻标签栏（画线 · 图表 · 自选 · 板块分类 · 设置），每一格都是独立一页
+  /// （用户：「这四个底部拦都单独是一个页面」「切换页面下面还是那样」）。多页来回切
   /// 最容易出的事是把行情订阅切断——所以这条走满一圈，最后回自选页看价格还在不在刷新，
   /// 顺带确认标签栏本身每一步都在。
-  func testQuotesKeepTickingAcrossAllFourTabs() throws {
+  ///
+  /// 同一天加的第五格「板块分类」也走进这一圈：它自己另起一条 24h 全市场轮询
+  /// （`SectorFeed`，只在可见且前台时跑），最容易出的事就是它启停的时候顺手把
+  /// 行情页那条订阅也带停了，所以它必须夹在中间走一遍。
+  func testQuotesKeepTickingAcrossAllFiveTabs() throws {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
     // 这条会真画一根线，给它一份只属于自己的档案，别把画线留给后面的用例。
@@ -401,13 +405,19 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["interval.chart"].waitForExistence(timeout: 20), "画完没回行情页")
     XCTAssertTrue(app.buttons["bottom.chart"].exists, "行情页上没有标签栏")
 
-    // ③ 设置：整页，不是半屏。
+    // ③ 板块分类：整页，顶上是加密／美股的硬切换，不占底栏第六格。
+    app.buttons["bottom.sectors"].tap()
+    XCTAssertTrue(app.otherElements["sector.page"].waitForExistence(timeout: 15), "点「板块分类」没进板块页")
+    XCTAssertTrue(app.buttons["sector.market.us"].exists, "板块页顶上没有「美股」那一档")
+    XCTAssertTrue(app.buttons["bottom.settings"].exists, "板块页上没有标签栏")
+
+    // ④ 设置：整页，不是半屏。
     app.buttons["bottom.settings"].tap()
     XCTAssertTrue(app.buttons["settings.magnet"].waitForExistence(timeout: 10), "点「设置」没进设置页")
     XCTAssertFalse(app.buttons["panel.done"].exists, "设置是整页，不该有半屏那颗「完成」")
     XCTAssertTrue(app.buttons["bottom.favorites"].exists, "设置页上没有标签栏")
 
-    // ④ 回自选：报价要接着跳，不能因为中间走了三页就断掉。
+    // ⑤ 回自选：报价要接着跳，不能因为中间走了四页就断掉。
     app.buttons["bottom.favorites"].tap()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 10), "点「自选」没回自选页")
     XCTAssertTrue(price.exists && price.label != "—", "转一圈回来自选页首帧应直接有真实报价")
@@ -415,8 +425,8 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(wait(seconds: 25) {
       if price.exists { values.insert(price.label) }
       return values.count >= 2
-    }, "四页轮一圈之后自选报价不再刷新")
-    shot("标签栏-四页轮一圈后报价仍在刷新")
+    }, "五页轮一圈之后自选报价不再刷新")
+    shot("标签栏-五页轮一圈后报价仍在刷新")
   }
 
   func testChangeBasisUpdatesFavorites() throws {
