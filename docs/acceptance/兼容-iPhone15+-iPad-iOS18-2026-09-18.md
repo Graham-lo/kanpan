@@ -79,6 +79,42 @@ func readableColumn(_ max: CGFloat = 560) -> some View {
 **机型覆盖说明**：仓库的 13 台清单覆盖 iPhone 宽度 393 / 402 / 430 / 440pt 四档与全部四档 iPad。
 iPhone 15 Plus、15 Pro Max、16、16e 与清单内机型同宽同 size class，不另跑。
 
+### 全量 13 台 × 49 条（基线 `9c3a79b`）
+
+`Tools/ui-test.sh` 一次 `build-for-testing`、逐台 `test-without-building`，每台 49 条，
+约 22～25 分钟。下面是那一轮跑完的原始成绩（日志在 `docs/acceptance/M8/ui-test/`）：
+
+| 机型 | 宽度 | 结果 | 用时 |
+|---|---|---|---|
+| iPhone 15 | 393pt | PASS 49 | 1434s |
+| iPhone 16 Pro | 402pt | PASS 49 | 1324s |
+| iPhone 16 Plus | 430pt | FAIL 48 / 1 | 1376s |
+| iPhone 17 | 402pt | PASS 49 | 1364s |
+| iPhone 17 Pro | 402pt | FAIL 48 / 1 | 1512s |
+| iPhone 17e | 393pt | FAIL 47 / 2 | 1449s |
+| iPhone 17 Pro Max | 440pt | PASS 49 | 1430s |
+| iPhone Air | 420pt | PASS 49 | 1396s |
+| iPad mini (A17 Pro) | 744pt | FAIL 48 / 3 | 1443s |
+| iPad (A16) | 820pt | FAIL 47 / 4 | 1504s |
+| iPad Air 11-inch (M4) | 820pt | FAIL 48 / 3 | 1463s |
+| iPad Pro 11-inch (M5) | 834pt | FAIL 45 / 6 | 1494s |
+| iPad Pro 13-inch (M5) | 1024pt | FAIL 46 / 5 | 1527s |
+
+红的分布（同一条红会在多台上现形）：
+
+| 用例 | 出事的机型 | 归到第几条红 |
+|---|---|---|
+| `testDeviceHistoricalPanPinchAndManualY` | 五台 iPad 全中 | 第 7 条（捏合 pt 死区） |
+| `testMAPeriodsTypedAndAddRemove` | 五台 iPad 全中 | 第 8 条（表单纸被键盘顶飞） |
+| `testMAParameterCancelAndSaveOutput` | iPad (A16)、iPhone 16 Plus、17 Pro | 第 8 条同因 + 手机侧那条 |
+| `testCompactChartStylesAndRotation` | 五台 iPad 全中 | 第 9 条（横屏出口问错问题） |
+| `testDrawingAllToolsAndFingerTargets`、`testIntervalChipsSelectOneAtATime` | iPhone 17e | 第 6 条 |
+| `testChangeBasisUpdatesFavorites`、`testFavoritesCategoriesAndNavigation` | iPad Pro 11" / 13" | **第 10 条（星的感应区）** |
+| `testFavoritesCategoryOverflow` | iPad Pro 11" | 未复现，见第七节 |
+
+矩阵跑的是基线 `9c3a79b`，第 1～6 条红在它之前就修掉了（所以这一轮只剩后面那几条现形）；
+第 7～9 条在 `9be45c3` 修完并复验；第 10 条是这张表逼出来的，修在本轮最后。
+
 ## 五、顺手修掉的一颗雷
 
 三台 iPad 第一轮各红一条，且都不是断言红，是 XCUI 当场抛
@@ -93,15 +129,16 @@ iPad 上更容易撞：图更宽、视野归位滑得更久。
 
 这是存量问题，不是这轮引入的；按项目规矩直接修了，没停下来请示。
 
-## 六、全量矩阵翻出来的十条红（都已从根因修掉）
+## 六、全量矩阵翻出来的十一条红（都已从根因修掉）
 
-把 13 台矩阵真跑起来之后，一共红了十条。查到底之后分成两类：
-**四条是 app 自己的缺陷**（首屏空图、自选页被标签栏吃掉一栏安全区，
-以及 iPad 上那两条——双指缩放的死区、指标编辑纸被键盘顶飞导致第一下被吃掉），
+把 13 台矩阵真跑起来之后，一共红了十一条。查到底之后分成两类：
+**五条是 app 自己的缺陷**（首屏空图、自选页被标签栏吃掉一栏安全区，
+以及 iPad 上那三条——双指缩放的死区、指标编辑纸被键盘顶飞导致第一下被吃掉、
+搜索结果里那颗星的感应区被整行压过去），
 **六条是用例的点法不对**（周期条药丸判不着、自选拖动排序、MA 输出开关，
 17e 上那两条——周期条药丸与「工具」，和 MA 开关是同一个机制，
 外加 iPad 上的「横屏出口」——那条是用例在 iPad 上问错了问题）。
-app 那四条各自补了会红的回归用例；用例那六条改的是用例，一行产品代码都没动。
+app 那五条里，前四条各自补了会红的回归用例；第 10 条不用补——`testChangeBasisUpdatesFavorites` 与 `testFavoritesCategoriesAndNavigation` 在 iPad Pro 上本来就替它红了，只要矩阵还跑这两台，它就有人盯着。用例那六条改的是用例，一行产品代码都没动。
 
 前六条来自手机，**后三条只在 iPad 上红**，单独放在第 7～9 条里。
 
@@ -331,7 +368,80 @@ iPad 上那条「画线 → 工作台」的路由由 `AICoinBaseUITests` 守着�
 等于把手机侧的死区也放宽了，所以必须确认手机上的缩放与画线没有跟着变松——`testDeviceHistoricalPanPinchAndManualY`
 16.6s 通过，捏一下就缩放的误触防线由没动过的激活门槛（`2 * panSlopPt`）继续守着。
 
+**10. iPad Pro 上点搜索结果里的星，加不上自选，反而跳去开图表（app 侧；矩阵跑完才翻出来的一条）**
+
+`testChangeBasisUpdatesFavorites` 与 `testFavoritesCategoriesAndNavigation` 只在 iPad Pro 11"（834pt）
+和 13"（1024pt）上红，报的是 `search.cancel` 找不到；把当时的界面树打出来才看清，搜索页早就没了，
+底栏停在「图表」——也就是说点星那一下走的是**开品种**，不是**加自选**。
+
+三台 iPad 同时探，结论很干净（`favoriteAdded` 是点完星之后回自选页看那一行在不在）：
+
+| 机型 | 窗口宽 | 行按钮框 | 星框 | 点完星 | 加上了吗 |
+|---|---|---|---|---|---|
+| iPad Pro 11" (M5) | 834pt | 153…648 | 663.25…675.75 | 搜索页关了、底栏跳到图表 | **否** |
+| iPad Air 11" (M4) | 820pt | 146…641 | 656.25…668.75 | 留在搜索页 | 是 |
+| iPad mini (A17 Pro) | 744pt | 108…603 | 618.25…630.75 | 留在搜索页 | 是 |
+
+三台的行宽都是 495pt（560 封顶减两侧 16pt 内边距、再减星和 10pt 间距），相对排版一模一样，
+只有左边距不同——所以光看框子看不出为什么只有 Pro 会输。于是沿着星横扫一排落点，逐点记谁接走了这一下：
+
+| 落点（相对星心） | iPad Pro 11" | iPad Air 11" |
+|---|---|---|
+| −40pt | 行 | 行 |
+| −24pt | 行 | 行 |
+| −16pt | 行 | 行 |
+| −8pt | 行 | 行 |
+| **0（星的正中）** | **行** | 星 |
+| +6pt | 星 | 星 |
+
+**点在星自己报出来的正中，接走这一下的却是「行」**——而行按钮的框子只到 648，
+说明它的实际感应区往右溢出了二十来点。根因是两头一起夹：
+
+- 星这一侧，`Button` 的 label 是 `StarShape().fill(...)`，`.buttonStyle(.plain)` 下 SwiftUI
+  拿 **label 的路径**当感应区，那是个带凹口的 12×12 星形，能接的面积本来就只剩一小撮；
+- 行这一侧，铺满整行的按钮感应区会往外溢出一截，正好压在星上。
+
+窄一点的 iPad 上星心刚好还在星的路径里，所以侥幸能点中；Pro 的宽度让这两块的重叠多了那么几点，
+星心就落进了行的势力范围。这不是测试的问题——真人在大 iPad 上点那颗星，点到的就是整行。
+
+修法是给星按钮补一块矩形感应区、并把它从 23pt 撑到 35pt（星本身还是 15pt，视觉没动）：
+`.frame(width: 15, height: 15).padding(10).contentShape(Rectangle())`。
+同一把横扫尺子复测，两台的交界都回到了行与星之间该在的位置，宽度带来的差别消失：
+
+| 落点（相对星心） | iPad Pro 11"（修后） | iPad Air 11"（修后） |
+|---|---|---|
+| −40pt | 行 | 行 |
+| −24pt | 行 | 行 |
+| −16pt | **星** | **星** |
+| −8pt | 星 | 星 |
+| 0 | 星 | 星 |
+| +6pt | 星 | 星 |
+
+**第 10 条修完之后的复验**
+
+受影响的三条用例（`testChangeBasisUpdatesFavorites`、`testFavoritesCategoriesAndNavigation`、
+`testFavoritesCategoryOverflow`）在三台上各跑一遍，全绿：
+
+| 机型 | 结果 | 用时 |
+|---|---|---|
+| iPad Pro 11" (M5) | 3/3 通过 | 137s |
+| iPhone 16 Pro | 3/3 通过 | 112s |
+| iPad mini (A17 Pro) | 3/3 通过 | 129s |
+
+手机与 mini 那两台是**防倒退**跑的：星的感应区从 23pt 撑到 35pt，行按钮相应窄了 12pt，
+要确认窄屏上行本身还点得开、价格那一列没有被挤坏——三条都过，其中
+`testFavoritesCategoriesAndNavigation` 走的就是「点行进图表」那条路。
+`testFavoritesCategoryOverflow` 另在 iPad Pro 11" 上连跑四遍全绿（70s / 65.6s / 63.8s / 52.6s）。
+
 ## 七、未做 / 边界
+
+- **`testFavoritesCategoryOverflow` 在 iPad Pro 11" 上红过一次，但复不出来。** 矩阵那一轮它挂在
+  第三次开「…」菜单之后——日志里有 8.7 秒空档，接着是 `Open com.mdd.kanpan` / `Activate com.mdd.kanpan`，
+  然后 `favorites.newGroup` 一直没出现。修完星的感应区之后在同一台上连跑四遍、在 iPhone 16 Pro 与
+  iPad mini 上各跑一遍，全绿，那个空档再没出现过。按项目口径「没复现出来就不许命名根因」，
+  这里不给它安一个假设的根因，只记在这：**它是这一轮唯一一条红了但没查实的**，
+  下次全量矩阵要盯着它；日志里那两行 `Restarting after unexpected exit...` 是
+  `continueAfterFailure = false` 之后 XCTest 的正常重启，不构成崩溃的证据。
 
 - **没有下载 iOS 18 模拟器运行时**，按用户口径，18 这一侧只有静态核查；实测全在 26.5 上。
 - **没有做 iPad 宽屏分栏**，按「不破」的口径，这不在这一轮范围里。

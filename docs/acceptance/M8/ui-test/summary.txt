@@ -1,8 +1,13 @@
-iPhone 13 mini	PASS	11	129
-iPhone 15	PASS	11	127
-iPhone 16 Pro	PASS	11	126
-iPhone 16 Plus	PASS	11	127
-iPhone 17 Pro Max	PASS	11	132
-iPhone Air	PASS	11	136
-iPad mini (A17 Pro)	PASS	11	146
-iPad Pro 11-inch (M5)	PASS	11	170
+iPhone 15	PASS	49	1434
+iPhone 16 Pro	PASS	49	1324
+iPhone 16 Plus	FAIL	48/1	1376
+iPhone 17	PASS	49	1364
+iPhone 17 Pro	FAIL	48/1	1512
+iPhone 17e	FAIL	47/2	1449
+iPhone 17 Pro Max	PASS	49	1430
+iPhone Air	PASS	49	1396
+iPad mini (A17 Pro)	FAIL	48/3	1443
+iPad (A16)	FAIL	47/4	1504
+iPad Air 11-inch (M4)	FAIL	48/3	1463
+iPad Pro 11-inch (M5)	FAIL	45/6	1494
+iPad Pro 13-inch (M5)	FAIL	46/5	1527

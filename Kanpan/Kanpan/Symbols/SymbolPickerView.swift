@@ -312,7 +312,13 @@ struct SymbolRowView: View {
             Color(hex: isFavorite ? seed.accent : seed.ink3),
             style: StrokeStyle(lineWidth: 1.5, lineJoin: .round)))
           .frame(width: 15, height: 15)
-          .padding(4)
+          // 星画得小是视觉上的克制，但感应区不能跟着小：`.plain` 的 Button 拿 label
+          // 的**路径**当感应区，`StarShape` 那个带凹口的 12×12 星本来就没多少面积，
+          // 旁边那个铺满整行的「行」按钮感应区又会往外溢出二十来点，两边一挤，
+          // 点在星的正中都会被行接走（iPad Pro 11" 上必现：点星变成开图表）。
+          // 所以补一块矩形感应区，并把它撑到 35pt——手指按得着，星本身还是 15pt。
+          .padding(10)
+          .contentShape(Rectangle())
           .animation(.easeOut(duration: 0.2), value: isFavorite)
       }
       .buttonStyle(.plain)
