@@ -95,6 +95,7 @@ final class PrefsStore {
         self.prefs.routePolicy = policy
       }
     }
+    self.liveBarSpacing = self.prefs.barSpacing
     mirrorRoutePolicy()
   }
 
@@ -150,6 +151,72 @@ final class PrefsStore {
     if let why { note(why, undo: { [weak self] in self?.restore(before) }) }
   }
 
+  // ---------------------------------------------------------------- 图上量出来的习惯
+
+  /// 用户此刻缩放到的根间距，**内存里的那一份**。
+  ///
+  /// 和 `prefs.barSpacing` 分工：这一份手一动就变，谁来读都是最新的；`prefs.barSpacing`
+  /// 是落到盘上的那一份，节流之后才跟上，只管下次冷启动。用户捏完**立刻**换周期、
+  /// 换品种、开另一张图，新图要按刚刚那个宽度开，读的就是这儿——不能等定时器。
+  ///
+  /// `@ObservationIgnored` 是有意的：它每帧都在变，不该把所有读过设置的视图每帧重算
+  /// 一遍。换品种 / 换周期本来就会让 `MainScreen` 重算一次 body，那一下顺手读到的
+  /// 就是新值，正好是需要它的时刻。
+  @ObservationIgnored private(set) var liveBarSpacing: Double = AICoinBehavior.initialSpacing
+
+  /// 还没落盘的那个根间距。同样不进 `@Observable` 的追踪。
+  @ObservationIgnored private var pendingSpacing: Double?
+  @ObservationIgnored private var spacingTask: Task<Void, Never>?
+
+  /// 记下用户缩放到的根间距（`ChartHost` 每次视野变化都会报一次）。
+  ///
+  /// 分两层，缺一不可：
+  ///
+  /// **① 内存里立刻生效。** `liveBarSpacing` 当场就改。用户捏完立刻切周期、切品种，
+  /// 新图按的必须是刚刚那个宽度——「等手停下来才算数」在这条路径上是错的。
+  ///
+  /// **② 写盘才节流。** 双指缩放时这个数每帧都在变，每帧写一次 `UserDefaults` 是白耗；
+  /// 更要紧的是 `prefs` 是整份结构体，`@Observable` 认的是「`prefs` 这个属性被读过」，
+  /// 不是里面的哪一项——每帧改一次，所有读过设置的视图每帧都要重算一遍。所以落盘等
+  /// 手指停下来（400ms 内没有新值）再写一次；中途来的新值把上一轮定时器顶掉，
+  /// 惯性滑行和回弹那一串也就只写最后一次。落盘只影响下次冷启动，不参与本程内的读取。
+  func noteBarSpacing(_ value: Double) {
+    let want = Prefs.clampSpacing(value)
+    guard abs(want - liveBarSpacing) > 0.001 else { return }
+    liveBarSpacing = want                       // ① 立刻
+    pendingSpacing = want                       // ② 待会儿
+    spacingTask?.cancel()
+    spacingTask = Task { [weak self] in
+      try? await Task.sleep(for: .milliseconds(400))
+      guard !Task.isCancelled else { return }
+      self?.flushBarSpacing()
+    }
+  }
+
+  /// 把欠着的那一次立刻落盘。切后台时叫一下——最后一次缩放刚好落在定时器里的话，
+  /// 用户直接杀 app 就丢了。
+  func flushBarSpacing() {
+    spacingTask?.cancel(); spacingTask = nil
+    guard let want = pendingSpacing else { return }
+    pendingSpacing = nil
+    update { $0.barSpacing = want }
+  }
+
+  /// 整份设置被换掉了（恢复出厂 / 撤销 / 换账号 / 同步下来一份）：内存里那份根间距
+  /// 也得认新主人，顺手把还欠着的那一次作废——它属于上一份档案。
+  private func adoptSpacing() {
+    spacingTask?.cancel(); spacingTask = nil; pendingSpacing = nil
+    liveBarSpacing = prefs.barSpacing
+  }
+
+  /// 记下主图 / 副图的上下翻转。
+  ///
+  /// 这个不节流：它是一次双击就翻一下的离散动作，一次写一次；`update` 自己会挡住
+  /// 没真改动的那些回调（图每改一次状态都会报一遍）。
+  func noteInversion(main: Bool, subs: Set<IndicatorID>) {
+    update { $0.mainInverted = main; $0.subInverted = subs }
+  }
+
   /// 说一句话。`undo` 给了就在 toast 右边画一颗「撤销」。
   func note(_ text: String, undo: (() -> Void)? = nil) {
     noticeUndo = undo
@@ -163,12 +230,14 @@ final class PrefsStore {
     clearNotice()
     guard value != prefs else { return }
     prefs = value
+    adoptSpacing()
     persist()
   }
 
   /// 恢复出厂：把当前键抹掉，回到新默认。
   func resetToDefaults() {
     prefs = .defaults
+    adoptSpacing()
     persist()
   }
 
@@ -181,12 +250,14 @@ final class PrefsStore {
   /// 换档案（登录 / 退登）：线路跟着档案走，登录后用的是账号里记的那条。
   func useStorage(_ storage: any PrefsStorage, prefs: Prefs) {
     self.storage = storage; self.prefs = prefs
+    adoptSpacing()
     storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
     mirrorRoutePolicy()
   }
   func applySynced(_ value: Prefs) {
     guard value != prefs else { return }
-    prefs = value; storage.setPrefsData(PrefsCodec.encode(value), forKey: PrefsCodec.key)
+    prefs = value; adoptSpacing()
+    storage.setPrefsData(PrefsCodec.encode(value), forKey: PrefsCodec.key)
     mirrorRoutePolicy()
   }
 

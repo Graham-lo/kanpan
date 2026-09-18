@@ -38,6 +38,10 @@ struct PrefsDefaultsTests {
     #expect(p.lastLine)                   // 最新价横线 + 右轴胶囊，默认开
     #expect(p.showDrawings)               // 画好的线默认看得见
     #expect(p.sinceChange == false)       // 十字线上多报一段涨跌幅，默认不报
+    // 根宽出厂就是图表底座那个常数：没缩放过的人看到的第一屏和以前一模一样。
+    #expect(p.barSpacing == AICoinBehavior.initialSpacing)
+    #expect(!p.mainInverted)              // 上下翻转是可选项，出厂不翻
+    #expect(p.subInverted.isEmpty)
   }
 
   @Test("chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏")

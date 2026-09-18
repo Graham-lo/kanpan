@@ -46,6 +46,7 @@ extension Prefs: Codable {
     case candleKind, gridChoice, bodyChoice, lastLine, showDrawings, sinceChange
     case viewAnchor, priceBias
     case dataDisplay, crossPrice, allowMainInversion, allowSubInversion
+    case barSpacing, mainInverted, subInverted
     case adaptiveIndicators, compactValues, portraitHeight, hiddenOutputs, rsiUpper, rsiLower
     case overlays, subs, params, subHeights, subHeightOverrides
     case apiHost, streamHost, smartMarketRoute, routePolicy
@@ -79,6 +80,9 @@ extension Prefs: Codable {
     try c.encode(crossPrice, forKey: .crossPrice)
     try c.encode(allowMainInversion, forKey: .allowMainInversion)
     try c.encode(allowSubInversion, forKey: .allowSubInversion)
+    try c.encode(barSpacing, forKey: .barSpacing)
+    try c.encode(mainInverted, forKey: .mainInverted)
+    try c.encode(subInverted.map(\.rawValue).sorted(), forKey: .subInverted)
     try c.encode(adaptiveIndicators, forKey: .adaptiveIndicators)
     try c.encode(compactValues, forKey: .compactValues)
     try c.encode(portraitHeight, forKey: .portraitHeight)
@@ -165,6 +169,11 @@ extension Prefs: Codable {
     if let raw = str(.crossPrice), let v = CrossPriceMode(rawValue: raw) { crossPrice = v }
     if let v = bool(.allowMainInversion) { allowMainInversion = v }
     if let v = bool(.allowSubInversion) { allowSubInversion = v }
+    // 存档里的根间距同样夹一道：手改过存档、或者以后动了上下限，都不能让图开在
+    // 一个画不出来的宽度上。
+    if let v = try? c.decode(Double.self, forKey: .barSpacing) { barSpacing = Prefs.clampSpacing(v) }
+    if let v = bool(.mainInverted) { mainInverted = v }
+    if let raw = strs(.subInverted) { subInverted = Set(Prefs.ids(raw, placement: .sub)) }
     if let v = bool(.adaptiveIndicators) { adaptiveIndicators = v }
     if let v = bool(.compactValues) { compactValues = v }
     if let v = try? c.decode(Double.self, forKey: .portraitHeight), v.isFinite { portraitHeight = min(1, max(0, v)) }

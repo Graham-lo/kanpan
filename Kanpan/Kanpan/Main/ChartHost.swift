@@ -6,10 +6,18 @@ import UIKit
 /// 换了数据之后视野该怎么办。
 ///
 /// 冷启动、切周期和布局改变通过同一底座调整视野，
-/// 差别在于「保住什么」：换品种什么都不保，换周期保根宽，风格变化保留整个视野。
+/// 差别在于「保住什么」：**换品种保根宽、不保位置**，换周期保根宽，风格变化保留整个视野。
+///
+/// 换品种为什么位置和根宽分开处理：
+/// - **位置不保**。位置是「我在看 3 月 14 号那一段」。换到另一个品种，同一段时间上
+///   什么都没有——那儿的行情和我刚才在看的事没有关系。所以位置一律回到最新。
+/// - **根宽要保**。根宽是「我要一屏看多少根」，这是人的看盘习惯，和看的是哪个品种无关。
+///   以前这里连根宽一起清掉，用户捏小了图去自选点下一个品种，K 线又变回一屏五十根，
+///   每换一个品种就得重捏一次。现在根宽住在 `Prefs.barSpacing`，所有品种、所有周期
+///   共用一份，跨 app 重启也在（见 `ChartBox.resetSpacing`）。
 enum ViewIntent: Equatable {
   case keep
-  /// 换品种、第一次拿到数据：回到最新，按共用默认根间距。
+  /// 换品种、第一次拿到数据：回到最新，根宽按用户存下来的那一份（`ChartBox.resetSpacing`）。
   case reset
   /// 换周期：根宽不变，看见的时间跨度跟着周期走。带的是切之前量出来的实际根间距。
   case switchInterval(spacing: Double)
@@ -42,6 +50,12 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   var onSubReorder: ([IndicatorID]) -> Void = { _ in }
   var portrait = true
   var pending: ViewIntent = .reset
+  /// `.reset` 时用哪个根间距。外面每次接线都灌一遍（`ChartHost.wire`），值来自
+  /// `Prefs.barSpacing`——用户上次捏到的那个宽度。没存过就是出厂的 `initialSpacing`。
+  var resetSpacing = AICoinBehavior.initialSpacing
+  /// 上一次报出去的翻转状态。图每改一次状态都会回调一次，先在这儿比一下，
+  /// 没变就不劳烦 `PrefsStore` 去比整份设置。
+  var lastInversion: (main: Bool, subs: Set<IndicatorID>)?
   /// 视野兑现完还欠一下「回到最新」。见 `ChartProxy.scrollToLatest(animated:)`：
   /// 那一下经常提在图还没量出宽度的时候，只能记账、等 `layoutSubviews` 兑现。
   var pendingLatest = false
@@ -210,7 +224,7 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
       case .keep: return
       case .reset:
         s.view = ViewMath.reset(series: s.series, plotW: plotW,
-          spacing: AICoinBehavior.initialSpacing, anchor: s.options.anchor)
+          spacing: resetSpacing, anchor: s.options.anchor)
       case .switchInterval(let spacing):
         s.view = ViewMath.switchInterval(to: s.series, plotW: plotW, spacing: spacing, anchorRight: nil)
       case .resize(let spacing):
@@ -287,6 +301,15 @@ struct ChartHost: UIViewRepresentable {
   /// 手势改了视野。视野是**图自己**的状态，不走 SwiftUI 的 `@State` 回环——
   /// 每帧 60/120 次穿过 SwiftUI 的 diff 太贵，所以图自己改自己，改完通知外面记一笔。
   var onView: (ViewWindow) -> Void = { _ in }
+  /// `.reset`（换品种 / 第一次拿到数据）时回到多宽的根间距。见 `ViewIntent`。
+  /// 传下来的是 `PrefsStore.liveBarSpacing`——内存里那一份，不是节流之后才落盘的那一份：
+  /// 用户捏完下一秒就换品种，新图得按刚刚那个宽度开。
+  var resetSpacing = AICoinBehavior.initialSpacing
+  /// 图上量出来的根间距。用户捏一下就是一串，接的人内存里立刻认、落盘自己节流
+  /// （`PrefsStore.noteBarSpacing`）。
+  var onBarSpacing: (Double) -> Void = { _ in }
+  /// 主图 / 副图的上下翻转变了。只在真变了的那一下报。
+  var onInversion: (Bool, Set<IndicatorID>) -> Void = { _, _ in }
   var onSubResize: (IndicatorID, Double) -> Void = { _, _ in }
   var onSubReorder: ([IndicatorID]) -> Void = { _ in }
   var onCrosshair: (Crosshair?) -> Void = { _ in }
@@ -385,19 +408,34 @@ struct ChartHost: UIViewRepresentable {
   private func wire(_ box: ChartBox) {
     box.panelOpen = panelOpen
     box.onPanelDismiss = onTapped
+    box.resetSpacing = resetSpacing
     drawing?.attach(box.chart)
-    box.chart.onViewChanged = onView
+    // 视野一变就顺手把根间距量出来报上去。量它要图区宽度，那是 UIKit 这一侧才知道的事，
+    // 所以在这儿落笔而不是让 SwiftUI 那边自己去翻 `proxy.box`。
+    let onView = self.onView, onBarSpacing = self.onBarSpacing
+    box.chart.onViewChanged = { [weak box] view in
+      onView(view)
+      guard let box, let layout = box.chart.chartLayout,
+            let series = box.chart.state?.series, series.count > 0 else { return }
+      onBarSpacing(view.barSpacing(step: series.step, plotW: layout.plotW))
+    }
     box.onSubResize = onSubResize
     box.onSubReorder = onSubReorder
     box.chart.onCrosshairChanged = onCrosshair
     box.chart.onNeedsHistory = onNeedsHistory
     box.chart.onTapped = onTapped
     box.chart.onNotice = onNotice
+    let onInversion = self.onInversion
     box.chart.onStateChanged = { [weak proxy, weak box] state in
       box?.updateControls()
-      guard let state, let layout = box?.chart.chartLayout else { return }
+      guard let state, let box, let layout = box.chart.chartLayout else { return }
       proxy?.savedState = state
       proxy?.savedPlotWidth = layout.plotW
+      // 翻转是双击翻一下的离散动作，但这个回调每改一次状态都来一趟，先自己比一下。
+      let now = (main: state.price.inverted, subs: state.subInverted)
+      if let last = box.lastInversion, last == now { return }
+      box.lastInversion = now
+      onInversion(now.main, now.subs)
     }
   }
 }

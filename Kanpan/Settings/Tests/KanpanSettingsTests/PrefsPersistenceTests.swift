@@ -35,6 +35,9 @@ struct PrefsPersistenceTests {
     p.sinceChange = true
     p.viewAnchor = .left
     p.priceBias = .up
+    p.barSpacing = 9.5
+    p.mainInverted = true
+    p.subInverted = [.vol]
     return p
   }
 
@@ -57,6 +60,100 @@ struct PrefsPersistenceTests {
     #expect(back.sinceChange)
     #expect(back.viewAnchor == .left)
     #expect(back.priceBias == .up)
+  }
+
+  /// 用户报的那件事：「缩小了 K 线让它显示更多的 K 线，回到自选点另一个品种，
+  /// 并没有缩小到我需要的大小」。根宽是人的习惯，不是品种的属性，所以它得跟设置一起活着。
+  @Test("根宽和上下翻转跨 app 重启都在")
+  func 图表习惯往返() {
+    let back = PrefsCodec.decode(PrefsCodec.encode(Self.mutated()))
+    #expect(back.barSpacing == 9.5)
+    #expect(back.mainInverted)
+    #expect(back.subInverted == [.vol])
+  }
+
+  @Test("没存过根宽的老存档退回出厂 4pt，不是 0")
+  func 老存档没有根宽() {
+    var p = Prefs.defaults
+    p.redUp = false
+    // 把 barSpacing 那个键从 JSON 里抠掉，模拟这轮改动之前存下来的档案。
+    var obj = try! JSONSerialization.jsonObject(with: PrefsCodec.encode(p)) as! [String: Any]
+    obj.removeValue(forKey: "barSpacing")
+    let data = try! JSONSerialization.data(withJSONObject: obj)
+    #expect(PrefsCodec.decode(data).barSpacing == AICoinBehavior.initialSpacing)
+  }
+
+  @Test("离谱的根宽存不进去：读回来一定夹在上下限之间")
+  func 根宽夹紧() {
+    #expect(Prefs.clampSpacing(0) == AICoinBehavior.minimumSpacing)
+    #expect(Prefs.clampSpacing(9_999) == AICoinBehavior.maximumSpacing)
+    #expect(Prefs.clampSpacing(.nan) == AICoinBehavior.initialSpacing)
+    var p = Prefs.defaults
+    p.barSpacing = 1_000                       // 绕过 store，直接往档案里写一个越界值
+    #expect(PrefsCodec.decode(PrefsCodec.encode(p)).barSpacing == AICoinBehavior.maximumSpacing)
+  }
+
+  /// 双指缩放时根宽每帧都在变，每帧写一次 `UserDefaults` 不行；
+  /// 但**内存里那一份必须当场就变**——用户捏完可能下一秒就换周期换品种。
+  /// 所以 `liveBarSpacing` 立刻跟上，落盘等手停下来。
+  @Test("根宽写入是节流的：连报一串只在停下之后落一次盘")
+  @MainActor
+  func 根宽节流() async {
+    let box = InMemoryPrefsStorage()
+    let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
+    for w in stride(from: 4.0, to: 12.0, by: 0.25) { store.noteBarSpacing(w) }
+    #expect(box.keys.isEmpty)                  // 手指还在捏，一个字节都没写
+    #expect(store.prefs.barSpacing == AICoinBehavior.initialSpacing)
+    store.flushBarSpacing()                    // 等价于「手抬起来 / 切后台」
+    #expect(box.keys == ["kanpan.prefs.v2"])
+    #expect(store.prefs.barSpacing == 11.75)
+    #expect(PrefsStore(storage: box, cache: UnavailableMarketCache()).prefs.barSpacing == 11.75)
+  }
+
+  /// 用户要的那条：「缩放了，立马切换新周期缩放也要同步」。切周期 / 切品种时
+  /// 图问的是 `liveBarSpacing`，它不等定时器——节流只管盘，不管读。
+  @Test("捏完立刻换周期换品种：内存里那份根宽当场就是新的，不用等落盘")
+  @MainActor
+  func 根宽立刻跟人走() {
+    let box = InMemoryPrefsStorage()
+    let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
+    #expect(store.liveBarSpacing == AICoinBehavior.initialSpacing)   // 冷启动从存档起步
+    store.noteBarSpacing(9.5)
+    #expect(store.liveBarSpacing == 9.5)       // 手还没抬，换品种读到的已经是 9.5
+    #expect(box.keys.isEmpty)                  // 盘上还没写
+    #expect(store.prefs.barSpacing == AICoinBehavior.initialSpacing)
+    store.noteBarSpacing(20)                   // 再捏一下，还是当场生效
+    #expect(store.liveBarSpacing == 20)
+    store.noteBarSpacing(9_999)                // 越界的也先夹再生效
+    #expect(store.liveBarSpacing == AICoinBehavior.maximumSpacing)
+  }
+
+  @Test("恢复出厂 / 换账号：内存里那份根宽也认新档案，欠着的那次作废")
+  @MainActor
+  func 根宽跟着档案换() {
+    let box = InMemoryPrefsStorage()
+    let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
+    store.noteBarSpacing(9.5); store.flushBarSpacing()
+    #expect(store.liveBarSpacing == 9.5)
+    store.noteBarSpacing(12)                   // 这一次还欠着
+    store.resetToDefaults()
+    #expect(store.liveBarSpacing == AICoinBehavior.initialSpacing)
+    store.flushBarSpacing()                    // 上一份档案欠的那次不能再落下来
+    #expect(store.prefs.barSpacing == AICoinBehavior.initialSpacing)
+  }
+
+  @Test("翻转不节流：一次双击就落一次盘，重复报不重复写")
+  @MainActor
+  func 翻转立刻落盘() {
+    let box = InMemoryPrefsStorage()
+    let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
+    store.noteInversion(main: true, subs: [.macd])
+    #expect(store.prefs.mainInverted)
+    #expect(store.prefs.subInverted == [.macd])
+    #expect(box.keys == ["kanpan.prefs.v2"])
+    let snapshot = store.prefs
+    store.noteInversion(main: true, subs: [.macd])
+    #expect(store.prefs == snapshot)
   }
 
   @Test("落在 UserDefaults 的键就是 kanpan.prefs.v2")

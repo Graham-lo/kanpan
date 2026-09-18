@@ -371,7 +371,9 @@ struct MainScreen: View {
     .onChange(of: review.notice) { _, note in if let note { say(note); review.notice = nil } }
     .onChange(of: reviewChart.notice) { _, note in if let note { say(note); reviewChart.notice = nil } }
     .onChange(of: phase) { _, phase in
-      if phase != .active { review.saveDraft(); if reviewChart.playing { reviewChart.togglePlay(feature: review) } }
+      // 根间距是节流写的（见 `PrefsStore.noteBarSpacing`）：最后一次缩放要是正卡在
+      // 那 400ms 里，用户切后台顺手杀掉 app 就丢了。这儿先把欠的那一次落下去。
+      if phase != .active { store.flushBarSpacing(); review.saveDraft(); if reviewChart.playing { reviewChart.togglePlay(feature: review) } }
       else { accountBridge?.synchronize(); review.synchronize() }
     }
   }
@@ -762,6 +764,13 @@ struct MainScreen: View {
           let now = (reviewChart.active ? reviewChart.proxy : proxy).isAtLatest
           if now != atLatest { atLatest = now }
         },
+        // 读的是 store 里**内存那一份**，不是 `prefs.barSpacing`：落盘是节流的，
+        // 而用户捏完可能下一秒就换品种，那一下必须按刚刚捏出来的宽度开图。
+        resetSpacing: store.liveBarSpacing,
+        // 复盘只读这份根宽、不写回去：一进复盘 K 线不该突然变宽变窄，但复盘是在重放
+        // 一段历史，它那边怎么拉怎么捏都不该改写用户平时看盘的习惯。
+        onBarSpacing: { if !reviewChart.active { store.noteBarSpacing($0) } },
+        onInversion: { main, subs in if !reviewChart.active { store.noteInversion(main: main, subs: subs) } },
         onSubResize: { id, scale in store.update { $0.subHeightOverrides[id] = scale } },
         onSubReorder: { order in store.update { $0.subs = order } },
         onCrosshair: { crosshair = $0 },
@@ -949,6 +958,11 @@ struct MainScreen: View {
   /// 三种情形各自算一份真的（见 `ViewIntent`）。
   private var chartState: ChartState? {
     guard let s = market.series, s.symbol == market.symbol, s.interval == market.interval, s.count > 0 else { return nil }
+    // 上下翻转跟着人走，不跟着品种走：换品种时这份 state 是新造的，翻转要是不从设置里
+    // 带出来，图就会自己翻回去。开关关掉时不认存档里那一份——否则翻过去之后把开关一关，
+    // 就再也没有把它翻回来的入口了。
+    var price = PriceTransform(mode: prefs.priceMode)
+    price.inverted = prefs.allowMainInversion && prefs.mainInverted
     var result = ChartState(
       series: s,
       symbol: market.info,
@@ -956,7 +970,7 @@ struct MainScreen: View {
       style: prefs.style,
       dark: dark,
       redUp: prefs.redUp,
-      price: PriceTransform(mode: prefs.priceMode),
+      price: price,
       overlays: visibleOverlays,
       subs: visibleSubs,
       params: prefs.params,
@@ -970,6 +984,7 @@ struct MainScreen: View {
     // 走 OKX 兜底线路时持仓量根本取不到（`OISource` 只连币安）——让副图说实话，
     // 别一直挂「加载中」。
     result.oiSupported = market.source == .binance
+    result.subInverted = prefs.allowSubInversion ? prefs.subInverted : []
     result.paletteSeed = seed
     result.hiddenOutputs = prefs.hiddenOutputs
     result.indicatorColors = prefs.indicatorColors

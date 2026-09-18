@@ -58,6 +58,25 @@ struct Prefs: Sendable, Equatable {
   /// 默认关，理由见 `ChartOptions.allowMainInversion`。
   var allowMainInversion = false
   var allowSubInversion = false
+  /// 用户缩放到的根间距（pt）。
+  ///
+  /// 「我要一屏看多少根」是**人的习惯**，不是某个品种的属性：以前它只活在图自己身上，
+  /// 换品种一律回到出厂的 4pt，用户捏小了去自选点下一个品种，K 线又变回一屏五十根。
+  /// 所以把它挪到设置里，跟皮肤、副图高度同一等级——所有品种、所有周期共用一份，
+  /// 跨 app 重启也在。没存过就是出厂的 `initialSpacing`。
+  ///
+  /// 唯一不读它的是显式的「重置视野」：重置的语义就是回出厂值（见
+  /// `ChartView.resetView()`），跟着偏好走就没有「回到出厂」这个动作了。
+  ///
+  /// ⚠️ **这一份是「盘上那一份」，写入是节流的**（`PrefsStore.noteBarSpacing`），
+  /// 它只管下次冷启动。本程内要「用户此刻捏到多宽」请读 `PrefsStore.liveBarSpacing`，
+  /// 那一份手一动就变——用户捏完立刻换周期换品种，靠的是它。
+  var barSpacing: Double = AICoinBehavior.initialSpacing
+  /// 主图上下翻转（双击价格轴）。和根间距同理：是「我习惯怎么看」，不是这个品种的属性。
+  /// 要 `allowMainInversion` 开着才生效——开关关掉时不认这一份，免得翻过去再也翻不回来。
+  var mainInverted = false
+  /// 哪几个副图被上下翻转（双击副图那一侧）。同上，要 `allowSubInversion` 开着才生效。
+  var subInverted: Set<IndicatorID> = []
   var adaptiveIndicators = false
   var compactValues = false
   var portraitHeight = 0.5
@@ -107,6 +126,16 @@ struct Prefs: Sendable, Equatable {
   /// 常用行最多几档（§10.6）。周期条右端从四颗药丸减到两颗之后腾出了位置，
   /// 上限跟着从 8 抬到 10——排不下的那几档会在右边淡出去，滑一下就到。
   static let maxQuick = 10
+
+  /// 根间距存进档案之前夹一道。
+  ///
+  /// `ViewMath.reset` 里本来就夹了一次，但那是「画的时候不许越界」；这一道管的是
+  /// 「不许把离谱的数写进存档」——真写进去了，下次冷启动第一帧就得靠画图那一道兜，
+  /// 而存档里躺着一个永远兑现不了的数，看日志的人只会更糊涂。
+  static func clampSpacing(_ value: Double) -> Double {
+    guard value.isFinite else { return AICoinBehavior.initialSpacing }
+    return min(AICoinBehavior.maximumSpacing, max(AICoinBehavior.minimumSpacing, value))
+  }
 
   // ---------------------------------------------------------------- 取用
 
