@@ -6,7 +6,17 @@ import Foundation
 /// UI 用例各自有自己的一套 defaults，跑测不会把真机上的镜像改掉。
 /// `LaunchHostMirror` 和 `LaunchThemeMirror` 共用这一份，免得两处各写一遍走样。
 enum LaunchMirror {
+  /// 单测专用：把整份镜像挪进**这条用例自己的**柜子。
+  ///
+  /// 用 task-local 而不是普通全局变量，是因为 swift-testing 默认并发跑用例：
+  /// 镜像是进程级的一格 `UserDefaults`，任何一条用例只要建了 `PrefsStore` 就会
+  /// 顺手把出厂皮肤镜像出去，隔壁那条正在断言「记下什么读回什么」的用例就随机变红
+  /// （2026-09-19 查到的存量毛病，不是这轮改出来的）。task-local 只在当前这条用例
+  /// 的任务里可见，写者各写各的。生产路径上它永远是 nil，行为一个字没变。
+  @TaskLocal static var override: UserDefaults?
+
   static var defaults: UserDefaults {
+    if let override { return override }
     let env = ProcessInfo.processInfo.environment
     if env["KANPAN_TEST_PROFILE"] == "1", let profile = env["KANPAN_PERSISTENCE_PROFILE"],
        UUID(uuidString: profile) != nil, let suite = UserDefaults(suiteName: "kanpan.tests." + profile) {

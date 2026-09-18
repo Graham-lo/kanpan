@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import KanpanData
 import KanpanNetwork
 
 /// 板块页「5 日」那一档要的日线收盘。
@@ -164,22 +165,33 @@ import KanpanNetwork
   // MARK: 磁盘
 
   /// Caches 里那一份。取回来的原样存，下次进页先顶上。
-  private nonisolated static var cacheURL: URL? {
-    let dirs = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
-    return dirs.first?.appendingPathComponent("sector-history.json")
+  ///
+  /// 路径问 `Paths` 要，不自己拼 `Library/Caches`：自己拼出来的那一份直接挂在
+  /// Caches 根上，既躲开了「清缓存」（清的是 `Paths` 指的那几处），也躲开了测试档
+  /// 隔离（`KANPAN_TEST_PROFILE` 那棵子树）。板块历史是**取得回来**的数据，
+  /// 它本来就该跟别的行情缓存一起被清。
+  private nonisolated static var cacheURL: URL { Paths.caches().sectorHistory }
+
+  /// 老位置（`Library/Caches/sector-history.json`）上那一份，谁也管不着它。
+  /// 搬家不必留情：丢的只是一次板块历史，进页重新取一趟就回来了。
+  private nonisolated static func dropLegacyCache() {
+    guard let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+    try? FileManager.default.removeItem(at: base.appendingPathComponent("sector-history.json"))
   }
 
   private func loadCache() {
     guard !loadedCache, history.isEmpty else { return }
     loadedCache = true
-    guard let url = Self.cacheURL, let body = try? Data(contentsOf: url),
+    Self.dropLegacyCache()
+    guard let body = try? Data(contentsOf: Self.cacheURL),
           let parsed = Self.decode(body), Self.fresh(parsed.asof) else { return }
     apply(parsed)
   }
 
   private nonisolated static func writeCache(_ body: Data) {
-    guard let url = cacheURL else { return }
-    try? body.write(to: url, options: .atomic)
+    let paths = Paths.caches()
+    try? paths.ensureRoot()
+    try? body.write(to: paths.sectorHistory, options: .atomic)
   }
 
   /// 磁盘上那份还认不认。`asof` 解不出来就不认。

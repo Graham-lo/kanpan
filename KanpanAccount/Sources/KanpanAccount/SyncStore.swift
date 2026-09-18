@@ -26,7 +26,18 @@ public struct SyncOperation: Codable, Sendable, Identifiable {
   public var fields: [String: JSONValue]
   public var importBatch: UUID?
 }
-public struct SyncResult: Codable, Sendable { public var operationId: UUID; public var object: SyncObject; public var cursor: Int64 }
+/// 服务端对一条操作的回执。
+///
+/// `droppedFields`：服务端认下了这条操作，但其中这几个字段它**不认识、没有收下**
+/// （新服务端把「未知字段」从「整条拒绝」降级成了「丢掉该字段并回报」）。
+/// 这几项的脏标记**不许清**——它其实没推上去。老服务端不回这个字段，
+/// 可选类型的合成解码会当它不存在，不会解码失败。
+public struct SyncResult: Codable, Sendable {
+  public var operationId: UUID
+  public var object: SyncObject
+  public var cursor: Int64
+  public var droppedFields: [String]?
+}
 public struct SyncPushResponse: Codable, Sendable { public var results: [SyncResult]; public var serverTime: Int64 }
 public struct SyncPage: Codable, Sendable { public var objects: [SyncObject]; public var next: String?; public var cursor: Int64; public var serverTime: Int64 }
 public struct SyncArchive: Codable, Sendable {
@@ -138,6 +149,28 @@ final class ArchiveWriter: @unchecked Sendable {
     return true
   }
   public func markSent(_ id: UUID) throws { try transaction { $0.sent.insert(id) } }
+  /// 隔离一条**永远不会成功**的操作：把它从待发队列里拿走，并把这个对象的本地记账
+  /// 退回服务端那一份。
+  ///
+  /// 用在服务端按语义顶回来（400 / 422）的时候。不这么做的话这条操作会被无限重发，
+  /// 而 `run` 那句「没进展就 break」会让它**把后面所有人的操作一起堵死**——
+  /// 一次缩放就能让这个账号从此再也同步不上任何东西。
+  ///
+  /// 退回 `local` 这一步是关键：`stage` 是拿 `local` 做差分的，只拿走操作而不退回
+  /// 记账的话，下次同样的值再 `capture` 会被判成「没变」，用户这一改就**真的丢了**。
+  /// 退回之后，下一次 `capture` 会拿当前的值重新和服务端那份比，重新组一条新操作。
+  /// 本地值和脏标记一个都不动。
+  public func quarantine(_ id: UUID) throws {
+    try transaction { a in
+      guard let index = a.operations.firstIndex(where: { $0.id == id }) else { return }
+      let op = a.operations.remove(at: index)
+      a.sent.remove(id)
+      let key = op.collection + ":" + op.objectId
+      if !a.operations.contains(where: { $0.collection == op.collection && $0.objectId == op.objectId }) {
+        a.local[key] = a.objects[key]
+      }
+    }
+  }
   /// 一批已发操作一次记完，别一条一条来。
   public func markSent(_ ids: [UUID]) throws {
     guard !ids.isEmpty else { return }

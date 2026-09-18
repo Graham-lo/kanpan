@@ -34,8 +34,11 @@ struct MainScreen: View {
   /// 那一刻只有 `UserDefaults` 可读（里头没有 prefs 这个键）。不给起点的话，
   /// 一个选了「陶土 · 深色」的人每次冷启动都会先看一眼青苔、等档案回来再整屏换一次。
   /// 所以拿本机镜像当起点，见 `LaunchThemeMirror`。
-  @State private var store = PrefsStore(storage: PrefsStore.deviceStorage(),
-                                        fallback: LaunchThemeMirror.prefs())
+  @State private var store: PrefsStore
+  /// 图的视野（根宽）由它一个人说了算：什么时候记、什么时候写、什么时候听档案的，
+  /// 规则全在 `ChartViewport` 里。这一层只负责**报事件**——用户在捏、手松了、
+  /// 档案到货了——**一个字都不许自己决定要不要写盘**。
+  @State private var viewport: ChartViewport
   @State private var picker = SymbolPickerModel(store: SymbolPrefsStore(storage: SymbolPrefsStore.deviceStorage()))
   /// 自选页上正在做的那次批量编辑（编辑模式 + 勾中的那几行 + 冻住的报价）。
   ///
@@ -127,7 +130,20 @@ struct MainScreen: View {
   /// 从外面喂进去。喂的人就是下面那个 `heartbeat()`。
   @State private var nowMs: Double?
 
+  /// `store` 要先造出来才能交给 `viewport` 当属主，`@State` 的默认值互相引用不了，
+  /// 所以这里显式写一个 init。
+  @MainActor init() {
+    // 哨兵单开一层：`storage` 这一份等账号桥就位就会被换成账号目录里的那份，
+    // 哨兵要留在这台机器上，否则「档案被清空」和「第一次装」分不出来。
+    let store = PrefsStore(storage: PrefsStore.deviceStorage(), fallback: LaunchThemeMirror.prefs(),
+                           sentinel: PrefsStore.deviceStorage())
+    _store = State(initialValue: store)
+    _viewport = State(initialValue: ChartViewport(owner: store))
+  }
+
   @Environment(\.colorScheme) private var scheme
+  /// **全 app 唯一一处读 `scenePhase`**。它只干一件事：把话递给 `AppLifecycle`。
+  /// 别在任何别的地方再读一次，也别在这儿顺手做事——落盘顺序是有规定的，见那个文件。
   @Environment(\.scenePhase) private var phase
   @Environment(\.verticalSizeClass) private var vClass
   // iPad 上一个 app 可能同时开两个窗口，落在不同缩放的屏上；`UIScreen.main`
@@ -172,6 +188,13 @@ struct MainScreen: View {
         VStack {
         Text(market.source.rawValue).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.source").accessibilityValue(market.status.rawValue)
         Text(MarketNetworkDiagnostics.shared.lines).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.network")
+        // 根宽的三份拷贝，排查「捏完杀 app」那个 bug 用：
+        // `stored` = `PrefsStore` 手上这份（`update` 是同步落盘的，它等于盘上那份）；
+        // `live` = `ChartViewport` 内存里那份；图自己量出来的那份在 `chart.canvas` 的
+        // `spacing` 里。三份对不上，就知道是哪一步把用户的值写掉了。
+        Text("layout").font(.system(size: 1)).opacity(0.01)
+          .accessibilityIdentifier("layout.diagnostics")
+          .accessibilityValue("stored=\(prefs.barSpacing);live=\(viewport.barSpacing);token=\(viewport.adoptToken)")
         }.allowsHitTesting(false)
       }
       #endif
@@ -272,19 +295,8 @@ struct MainScreen: View {
     .task { boot() }
     // 开关一变、或前后台一切，这个 task 就整个重来（旧的先被取消），心跳跟着起停。
     .task(id: beating) { await heartbeat() }
-    .onChange(of: phase) { _, now in
-      switch now {
-      case .background:
-        // 先把后台运行额度要下来，再进后台状态：下面两处的宽限窗口靠它才有
-        // CPU 可跑，短暂切走再回来就不必重连。
-        grace.begin()
-        market.enterBackground(); quotes.setForeground(false); sectorFeed.setForeground(false)
-      case .active:
-        grace.end()
-        market.enterForeground(); quotes.setForeground(true); sectorFeed.setForeground(true)
-      default: break
-      }
-    }
+    // 前后台只走这一条路，落盘顺序由 `AppLifecycle` 排（产数据的先、排空存档的最后）。
+    .onChange(of: phase) { _, now in AppLifecycle.shared.phaseChanged(to: now) }
   }
 
   private var observedContent: some View {
@@ -390,12 +402,6 @@ struct MainScreen: View {
     .onAppear { wireReview() }
     .onChange(of: review.notice) { _, note in if let note { say(note); review.notice = nil } }
     .onChange(of: reviewChart.notice) { _, note in if let note { say(note); reviewChart.notice = nil } }
-    .onChange(of: phase) { _, phase in
-      // 根间距是节流写的（见 `PrefsStore.noteBarSpacing`）：最后一次缩放要是正卡在
-      // 那 400ms 里，用户切后台顺手杀掉 app 就丢了。这儿先把欠的那一次落下去。
-      if phase != .active { store.flushBarSpacing(); review.saveDraft(); if reviewChart.playing { reviewChart.togglePlay(feature: review) } }
-      else { accountBridge?.synchronize(); review.synchronize() }
-    }
   }
 
   // ---------------------------------------------------------------- 各段
@@ -812,12 +818,17 @@ struct MainScreen: View {
           let now = (reviewChart.active ? reviewChart.proxy : proxy).isAtLatest
           if now != atLatest { atLatest = now }
         },
-        // 读的是 store 里**内存那一份**，不是 `prefs.barSpacing`：落盘是节流的，
-        // 而用户捏完可能下一秒就换品种，那一下必须按刚刚捏出来的宽度开图。
-        resetSpacing: store.liveBarSpacing,
+        // 读的是 `ChartViewport` 内存里那一份，不是 `prefs.barSpacing`：落盘虽然钉在
+        // 手指抬起那一刻，但用户捏完可能下一帧就换品种，那一下必须按刚捏出来的宽度开图。
+        resetSpacing: viewport.barSpacing,
         // 复盘只读这份根宽、不写回去：一进复盘 K 线不该突然变宽变窄，但复盘是在重放
         // 一段历史，它那边怎么拉怎么捏都不该改写用户平时看盘的习惯。
-        onBarSpacing: { if !reviewChart.active { store.noteBarSpacing($0) } },
+        //
+        // **这一路只收用户手上的动作**（`ChartHost.onBarSpacing` ← `ChartView.onUserViewChanged`）。
+        // 程序自己摆出来的视野绝不会走到这儿——那正是用户那个 bug 的「杀法甲」。
+        onBarSpacing: { if !reviewChart.active { viewport.userIsZooming(to: $0) } },
+        onInteractionEnded: { if !reviewChart.active { viewport.interactionEnded() } },
+        adoptToken: viewport.adoptToken,
         onInversion: { main, subs in if !reviewChart.active { store.noteInversion(main: main, subs: subs) } },
         onSubResize: { id, scale in store.update { $0.subHeightOverrides[id] = scale } },
         onSubReorder: { order in let next = merged(subs: order); store.update { $0.subs = next } },
@@ -1113,9 +1124,43 @@ struct MainScreen: View {
     market.prefetchFavorites(symbols, intervals: prefs.quickIntervals)
   }
 
+  /// 向 `AppLifecycle` 报到：离开前台要落什么、进后台要停什么。
+  ///
+  /// 这些以前散在两个 `scenePhase` 的 `onChange` 里，还有一份在 `AppAccountBridge`
+  /// 自己挂的通知里。谁先谁后没人定义，而「根宽先落到 `PrefsStore` 还是存档先排空写盘
+  /// 队列」这个顺序，恰恰就是用户那个 bug 的一半。现在顺序写死在 `AppLifecycle` 的
+  /// `Priority` 上：产数据的 `.data` 全跑完，排空存档的 `.sync` 最后一个。
+  private func wireLifecycle() {
+    // 手指抬起那一刻就该写完了（`ChartViewport.interactionEnded`），这一条纯属保险：
+    // 万一有一次捏合还卡在那 400ms 的降采样里，人就把 app 切走了。
+    AppLifecycle.shared.register(id: "viewport", priority: .data) { viewport.willLeaveForeground() }
+    AppLifecycle.shared.register(id: "review", priority: .data) {
+      review.saveDraft()
+      if reviewChart.playing { reviewChart.togglePlay(feature: review) }
+    }
+    // 内存告警时放掉 K 线缓存：入口只负责听（`KanpanApp`），这里登记谁来收。
+    // 以前这行写在 `wireAccount()` 的 `do` 里，没有账号桥的那条路上一次都不登记。
+    MemoryWarningRelay.shared.register(id: "market") { [weak market] in market?.memoryWarning() }
+    // 档案到货（访客档案装进来、账号档案读回来、云端推下来、换号、恢复出厂）：
+    // 图得按新到货的根宽重新起点。**谁到的货、是不是同一个人**由 `arrival` 说明，
+    // `ChartViewport` 据此决定要不要把用户刚捏了一半的那份保下来。
+    store.onAdopt = { prefs, arrival in viewport.adopt(barSpacing: prefs.barSpacing, reason: arrival) }
+    AppLifecycle.shared.registerResources(id: "feeds") {
+      // 先把后台运行额度要下来，再进后台状态：两处宽限窗口靠它才有 CPU 可跑，
+      // 短暂切走再回来就不必重连。
+      grace.begin()
+      market.enterBackground(); quotes.setForeground(false); sectorFeed.setForeground(false)
+    } enter: {
+      grace.end()
+      market.enterForeground(); quotes.setForeground(true); sectorFeed.setForeground(true)
+      accountBridge?.synchronize(); review.synchronize()
+    }
+  }
+
   private func boot() {
     guard !didBoot else { return }
     didBoot = true
+    wireLifecycle()
     // 先把档案装进来，再开行情。
     //
     // 以前是反过来的（注释写着「让网络 I/O 和首帧渲染重叠」）：`market.start` 跑在
@@ -1202,8 +1247,9 @@ struct MainScreen: View {
       awaitingAccount = true
       try bridge.activate()
       accountBridge = bridge; bridge.focus(market.symbol)
-      // 内存告警时放掉 K 线缓存：入口只负责听（`KanpanApp`），这里登记谁来收。
-      MemoryWarningRelay.shared.register(id: "market") { [weak market] in market?.memoryWarning() }
+      // 视野的「云端那条腿」。没有桥（或没登录）时它是 nil，模块照常工作——
+      // 登录与否只差这一个引用，对外行为一模一样，调用方一个字的分支都不许写。
+      viewport.sync = bridge
       Task {
         await account.restore()
         awaitingAccount = false

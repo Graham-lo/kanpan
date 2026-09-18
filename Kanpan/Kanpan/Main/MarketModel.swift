@@ -120,8 +120,11 @@ final class MarketModel {
     if let lastView { loadOI(view: lastView, refresh: true) }
   }
 
+  /// 非默认行情源的品种表另存一棵：okx 的 BTCUSDT 不是币安那根，共用一份表会串。
+  /// 目录一律问 `Paths` 要、不在这儿手拼字符串——手拼出来的那棵树「清缓存」逐个点名时
+  /// 点不到，会永远躺在盘上，用量也算不进去。
   private static func catalogPaths(for source: MarketSource) -> Paths {
-    source == .binance ? .caches() : Paths(root: Paths.caches().root.appendingPathComponent("sources/" + source.rawValue))
+    source == .binance ? .caches() : Paths.caches().source(source.rawValue)
   }
 
   /// 排查「图有数据但一动不动」的时候需要看得见连了没有、推没推进来。
@@ -286,7 +289,9 @@ final class MarketModel {
       openInterestQty = nil; openInterestValue = nil; openInterestUnit = nil
       startStats()
       resetOI(); historyError = nil
-      let paths = Paths(root: Paths.caches().root.appendingPathComponent("sources/" + next.rawValue))
+      // 和启动时同一条规则（含「切回币安就用根上那份」）：这儿以前单独手拼，
+      // 于是切回币安后品种表会落到 `sources/binance/` 下、和启动时读的那份对不上。
+      let paths = Self.catalogPaths(for: next)
       let catalog = SymbolCatalog(rest: .upstream(next, hosts: hosts), paths: paths)
       Task { await self.catalog.replace(catalog); await self.refreshInfo() }
     case .historyError(let error):

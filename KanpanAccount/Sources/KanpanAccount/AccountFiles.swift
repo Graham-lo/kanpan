@@ -16,9 +16,38 @@ import Foundation
     } else { registry = Registry(); try Self.write(registry, to: url) }
   }
   public var guestBatch: UUID { registry.guest }
+
+  /// 现在装着的是谁的档案：`u-<账号 uuid>`，或没登录时的 `local/<访客批次 uuid>`。
+  ///
+  /// 谁要它：`Library/Caches` 下那几份**内容随当前账号派生**的行情缓存（报价、
+  /// 当日开盘价）得按身份分目录，否则 A 退出、B 登录，第一帧闪的是 A 的自选报价。
+  /// `KanpanData.Paths` 是数据层，不认识账号包，身份只能由 app 那一层注入给它
+  /// （`Paths.caches(profile:)`）。所以这个值就留在**算这条路径的地方**——
+  /// 一处计算、两处用，绝不另发明一套 id。
+  ///
+  /// 它标的是「档案」，不是「登录状态」：没登录时也有一份（访客批次）。
+  public private(set) static var currentProfile: String = ""
+
+  /// 这个属主的档案 id。路径与 id 是同一个字符串，见 `currentProfile`。
+  public func profileID(user: UUID?) -> String {
+    user.map { "u-" + $0.uuidString.lowercased() } ?? "local/" + registry.guest.uuidString.lowercased()
+  }
+
+  /// 取（并建好）某个属主的档案目录。
+  ///
+  /// **调到这儿就等于「现在换成这个人了」**：装档案唯一的入口就是它
+  /// （`AppAccountBridge.prepare`），所以顺手把 `currentProfile` 记上。
+  /// `claimGuest` 里那次取访客目录**不走这儿**——那是登录时把访客草稿搬过来的
+  /// *来源*，不是当前档案；走这儿会在登录那一刻把身份又倒回访客，行情缓存
+  /// 跟着写进上一段访客批次的目录里。
   public func directory(user: UUID?) throws -> URL {
-    let path = user.map { "u-" + $0.uuidString.lowercased() } ?? "local/" + registry.guest.uuidString.lowercased()
-    let url = root.appendingPathComponent(path, isDirectory: true)
+    let id = profileID(user: user)
+    Self.currentProfile = id
+    return try makeDirectory(id)
+  }
+
+  private func makeDirectory(_ id: String) throws -> URL {
+    let url = root.appendingPathComponent(id, isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true); return url
   }
   /// Existing files survive corrupt/newer data; callers must handle failure explicitly.
@@ -46,7 +75,8 @@ import Foundation
   public func claimGuest(user: UUID) throws -> (id: UUID, directory: URL)? {
     if let pending = try pendingGuest(user: user) { return pending }
     let batch = registry.guest
-    let source = try directory(user: nil)
+    // 搬家的**来源**目录，不是「当前档案」——所以不走 `directory(user:)`（见那儿的注释）。
+    let source = try makeDirectory(profileID(user: nil))
     let files = try FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: nil)
     guard !files.isEmpty else { return nil }
     var next = registry; next.claims[batch.uuidString] = user; next.guest = UUID()

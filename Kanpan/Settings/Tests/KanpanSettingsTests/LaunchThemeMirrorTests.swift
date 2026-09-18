@@ -12,6 +12,12 @@ import KanpanData
 @Suite("首帧底色镜像", .serialized)
 struct LaunchThemeMirrorTests {
 
+  /// 这个套件断言的是一格**进程级**的镜像，而任何一条用例只要建了 `PrefsStore`
+  /// 就会顺手往那一格写出厂皮肤。swift-testing 默认并发跑，隔壁套件的写就会
+  /// 随机把这里的断言打红。所以整套挪进自己的柜子（`LaunchMirror.override`），
+  /// 各写各的，互不串味。
+  static let box = UserDefaults(suiteName: "kanpan.tests.launch-theme-mirror")!
+
   /// 每条用例自己收拾干净，免得互相串味，也免得把跑测这台机器上的镜像留成脏值。
   private func wipe() {
     let d = LaunchMirror.defaults
@@ -21,56 +27,66 @@ struct LaunchThemeMirrorTests {
 
   @Test("没记过就按出厂值走：青苔 · 跟随系统")
   func 空镜像退回出厂() {
-    wipe()
-    #expect(LaunchThemeMirror.choice.skin == ThemeSkin.fallback)
-    #expect(LaunchThemeMirror.choice.theme == ThemeChoice.fallback)
-    #expect(LaunchThemeMirror.prefs().skin == Prefs.defaults.skin)
-    #expect(LaunchThemeMirror.prefs().theme == Prefs.defaults.theme)
+    LaunchMirror.$override.withValue(Self.box) {
+      wipe()
+      #expect(LaunchThemeMirror.choice.skin == ThemeSkin.fallback)
+      #expect(LaunchThemeMirror.choice.theme == ThemeChoice.fallback)
+      #expect(LaunchThemeMirror.prefs().skin == Prefs.defaults.skin)
+      #expect(LaunchThemeMirror.prefs().theme == Prefs.defaults.theme)
+    }
   }
 
   @Test("记下什么读回什么")
   func 往返() {
-    wipe()
-    LaunchThemeMirror.set(skin: .terra, theme: .dark)
-    #expect(LaunchThemeMirror.choice.skin == .terra)
-    #expect(LaunchThemeMirror.choice.theme == .dark)
-    #expect(LaunchThemeMirror.prefs().skin == .terra)
-    #expect(LaunchThemeMirror.prefs().theme == .dark)
-    wipe()
+    LaunchMirror.$override.withValue(Self.box) {
+      wipe()
+      LaunchThemeMirror.set(skin: .terra, theme: .dark)
+      #expect(LaunchThemeMirror.choice.skin == .terra)
+      #expect(LaunchThemeMirror.choice.theme == .dark)
+      #expect(LaunchThemeMirror.prefs().skin == .terra)
+      #expect(LaunchThemeMirror.prefs().theme == .dark)
+      wipe()
+    }
   }
 
   @Test("镜像里写了别的东西不算数，退回出厂而不是崩")
   func 脏值() {
-    wipe()
-    LaunchMirror.defaults.set("不是皮肤", forKey: LaunchThemeMirror.skinKey)
-    LaunchMirror.defaults.set(42, forKey: LaunchThemeMirror.themeKey)
-    #expect(LaunchThemeMirror.choice.skin == ThemeSkin.fallback)
-    #expect(LaunchThemeMirror.choice.theme == ThemeChoice.fallback)
-    wipe()
+    LaunchMirror.$override.withValue(Self.box) {
+      wipe()
+      LaunchMirror.defaults.set("不是皮肤", forKey: LaunchThemeMirror.skinKey)
+      LaunchMirror.defaults.set(42, forKey: LaunchThemeMirror.themeKey)
+      #expect(LaunchThemeMirror.choice.skin == ThemeSkin.fallback)
+      #expect(LaunchThemeMirror.choice.theme == ThemeChoice.fallback)
+      wipe()
+    }
   }
 
   @Test("只兑现皮肤与深浅，别的偏好一个字不猜")
   func 只管底色() {
-    wipe()
-    LaunchThemeMirror.set(skin: .classic, theme: .light)
-    let p = LaunchThemeMirror.prefs()
-    #expect(p.skin == .classic)
-    #expect(p.theme == .light)
-    #expect(p.interval == Prefs.defaults.interval)
-    #expect(p.apiHost == Prefs.defaults.apiHost)
-    #expect(p.subs == Prefs.defaults.subs)
-    wipe()
+    LaunchMirror.$override.withValue(Self.box) {
+      wipe()
+      LaunchThemeMirror.set(skin: .classic, theme: .light)
+      let p = LaunchThemeMirror.prefs()
+      #expect(p.skin == .classic)
+      #expect(p.theme == .light)
+      #expect(p.interval == Prefs.defaults.interval)
+      #expect(p.apiHost == Prefs.defaults.apiHost)
+      #expect(p.subs == Prefs.defaults.subs)
+      wipe()
+    }
   }
 
   @Test("落一次盘就把皮肤与深浅镜像出来")
   @MainActor
   func 落盘时同步() {
-    wipe()
-    let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache())
-    store.update { $0.skin = .terra; $0.theme = .dark }
-    #expect(LaunchThemeMirror.choice.skin == .terra)
-    #expect(LaunchThemeMirror.choice.theme == .dark)
-    wipe()
+    LaunchMirror.$override.withValue(Self.box) {
+      wipe()
+      let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache())
+      store.update { $0.skin = .terra; $0.theme = .dark }
+      #expect(LaunchThemeMirror.choice.skin == .terra)
+      #expect(LaunchThemeMirror.choice.theme == .dark)
+      wipe()
+    }
   }
 
   /// 登录的人那份档案是 `AppAccountBridge` 异步装进来的，走的是 `useStorage`。
@@ -78,41 +94,45 @@ struct LaunchThemeMirrorTests {
   @Test("换档案（登录 / 退登）也把镜像改过来")
   @MainActor
   func 换档案时同步() {
-    wipe()
-    let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache())
-    var mine = Prefs.defaults
-    mine.skin = .classic
-    mine.theme = .dark
-    store.useStorage(InMemoryPrefsStorage(), prefs: mine)
-    #expect(LaunchThemeMirror.choice.skin == .classic)
-    #expect(LaunchThemeMirror.choice.theme == .dark)
-    wipe()
+    LaunchMirror.$override.withValue(Self.box) {
+      wipe()
+      let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache())
+      var mine = Prefs.defaults
+      mine.skin = .classic
+      mine.theme = .dark
+      store.useStorage(InMemoryPrefsStorage(), prefs: mine, arrival: .ownerSwitched)
+      #expect(LaunchThemeMirror.choice.skin == .classic)
+      #expect(LaunchThemeMirror.choice.theme == .dark)
+      wipe()
+    }
   }
 
   /// 这是 `MainScreen` 那一行真正依赖的东西：柜子是空的就从镜像起步。
   @Test("柜子空着时从镜像起步，有存档时一个字不掺")
   @MainActor
   func 空柜子拿镜像起步() {
-    wipe()
-    LaunchThemeMirror.set(skin: .terra, theme: .dark)
+    LaunchMirror.$override.withValue(Self.box) {
+      wipe()
+      LaunchThemeMirror.set(skin: .terra, theme: .dark)
 
-    let empty = InMemoryPrefsStorage()
-    let cold = PrefsStore(storage: empty, cache: UnavailableMarketCache(),
-                          fallback: LaunchThemeMirror.prefs())
-    #expect(cold.prefs.skin == .terra)
-    #expect(cold.prefs.theme == .dark)
+      let empty = InMemoryPrefsStorage()
+      let cold = PrefsStore(storage: empty, cache: UnavailableMarketCache(),
+                            fallback: LaunchThemeMirror.prefs())
+      #expect(cold.prefs.skin == .terra)
+      #expect(cold.prefs.theme == .dark)
 
-    // 柜子里有存档：以存档为准，镜像只是个起点，不许覆盖真档案。
-    let filled = InMemoryPrefsStorage()
-    var saved = Prefs.defaults
-    saved.skin = .sage
-    saved.theme = .light
-    filled.setPrefsData(PrefsCodec.encode(saved), forKey: PrefsCodec.key)
-    let warm = PrefsStore(storage: filled, cache: UnavailableMarketCache(),
-                          fallback: LaunchThemeMirror.prefs())
-    #expect(warm.prefs.skin == .sage)
-    #expect(warm.prefs.theme == .light)
-    wipe()
+      // 柜子里有存档：以存档为准，镜像只是个起点，不许覆盖真档案。
+      let filled = InMemoryPrefsStorage()
+      var saved = Prefs.defaults
+      saved.skin = .sage
+      saved.theme = .light
+      filled.setPrefsData(PrefsCodec.encode(saved), forKey: PrefsCodec.key)
+      let warm = PrefsStore(storage: filled, cache: UnavailableMarketCache(),
+                            fallback: LaunchThemeMirror.prefs())
+      #expect(warm.prefs.skin == .sage)
+      #expect(warm.prefs.theme == .light)
+      wipe()
+    }
   }
 
   /// 同一台机器上两个人轮着用，冷启动那一帧读到的是谁。
@@ -134,38 +154,40 @@ struct LaunchThemeMirrorTests {
   @Test("同机换号：第一帧还是上一个人的，档案一到货就自愈，下次冷启动不再闪")
   @MainActor
   func 同机两个账号轮换() {
-    wipe()
+    LaunchMirror.$override.withValue(Self.box) {
+      wipe()
 
-    // 1. A 这一轮：A 在这台机器上用过，落了盘，镜像里留下的是 A 的。
-    let aStore = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache())
-    aStore.update { $0.skin = .terra; $0.theme = .dark }
-    #expect(LaunchThemeMirror.choice.skin == .terra)
-    #expect(LaunchThemeMirror.choice.theme == .dark)
+      // 1. A 这一轮：A 在这台机器上用过，落了盘，镜像里留下的是 A 的。
+      let aStore = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache())
+      aStore.update { $0.skin = .terra; $0.theme = .dark }
+      #expect(LaunchThemeMirror.choice.skin == .terra)
+      #expect(LaunchThemeMirror.choice.theme == .dark)
 
-    // 2. app 被杀掉，B 来开。柜子是空的（账号目录里那份还没到货），
-    //    第一帧只有镜像可读——读到的是 A 的陶土 · 深色。这一帧就是取舍本身。
-    let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache(),
-                           fallback: LaunchThemeMirror.prefs())
-    #expect(store.prefs.skin == .terra)
-    #expect(store.prefs.theme == .dark)
+      // 2. app 被杀掉，B 来开。柜子是空的（账号目录里那份还没到货），
+      //    第一帧只有镜像可读——读到的是 A 的陶土 · 深色。这一帧就是取舍本身。
+      let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache(),
+                             fallback: LaunchThemeMirror.prefs())
+      #expect(store.prefs.skin == .terra)
+      #expect(store.prefs.theme == .dark)
 
-    // 3. B 的档案到货（`AppAccountBridge.onProfileReady` → `useStorage`）：
-    //    内存里当场换成 B，镜像也必须跟着改成 B——这是「下次冷启动不再闪 A」的保证。
-    var b = Prefs.defaults
-    b.skin = .classic
-    b.theme = .light
-    store.useStorage(InMemoryPrefsStorage(), prefs: b)
-    #expect(store.prefs.skin == .classic)
-    #expect(store.prefs.theme == .light)
-    #expect(LaunchThemeMirror.choice.skin == .classic)
-    #expect(LaunchThemeMirror.choice.theme == .light)
+      // 3. B 的档案到货（`AppAccountBridge.onProfileReady` → `useStorage`）：
+      //    内存里当场换成 B，镜像也必须跟着改成 B——这是「下次冷启动不再闪 A」的保证。
+      var b = Prefs.defaults
+      b.skin = .classic
+      b.theme = .light
+      store.useStorage(InMemoryPrefsStorage(), prefs: b, arrival: .ownerSwitched)
+      #expect(store.prefs.skin == .classic)
+      #expect(store.prefs.theme == .light)
+      #expect(LaunchThemeMirror.choice.skin == .classic)
+      #expect(LaunchThemeMirror.choice.theme == .light)
 
-    // 4. B 的下一次冷启动：同样是空柜子 + 镜像起步，这次第一帧就已经是 B 的了。
-    let again = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache(),
-                           fallback: LaunchThemeMirror.prefs())
-    #expect(again.prefs.skin == .classic)
-    #expect(again.prefs.theme == .light)
+      // 4. B 的下一次冷启动：同样是空柜子 + 镜像起步，这次第一帧就已经是 B 的了。
+      let again = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache(),
+                             fallback: LaunchThemeMirror.prefs())
+      #expect(again.prefs.skin == .classic)
+      #expect(again.prefs.theme == .light)
 
-    wipe()
+      wipe()
+    }
   }
 }

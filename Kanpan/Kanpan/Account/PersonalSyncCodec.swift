@@ -4,14 +4,12 @@ import KanpanAccount
 
 /// Explicit allowlist shared by cloud preferences and review chart snapshots.
 enum PersonalSyncCodec {
-  static let fields: Set<String> = ["overlays", "subs", "subHeights", "subHeightOverrides", "params", "indicatorColors", "hiddenOutputs", "portraitHeight", "quickIntervals", "theme", "skin", "ambientTheme", "redUp", "priceMode", "timeZone", "magnet", "countdown", "lastLine", "sinceChange", "showDrawings", "candleKind", "gridChoice", "bodyChoice", "viewAnchor", "priceBias", "dataDisplay", "crossPrice", "allowMainInversion", "allowSubInversion", "adaptiveIndicators", "compactValues", "changeBasis", "routePolicy", "barSpacing", "mainInverted", "subInverted", "interval", "keepAwake",
-    // 他在各页上摆出来的样子（见 `Prefs` 末尾那一节）。这些以前要么是纯 `@State`，
-    // 要么是裸 `@AppStorage`——换台设备登同一个账号就全回出厂值。判据同上：
-    // 排序口径、看哪一档、上次拿的哪把工具、几倍速，都是人的习惯，不是这台手机的属性。
-    "favoritesSort", "favoritesAscending", "favoritesAmount", "favoritesSparkline", "favoritesExpanded",
-    "sectorMarket", "sectorWindow", "sectorSort",
-    "drawToolGroup", "lastDrawTool",
-    "replaySpeed", "reviewSearchScope"]
+  /// 随账号同步的字段清单。
+  ///
+  /// 真身 2026-09-19 搬去了 `Prefs.syncedFieldNames`（设置包里）：脏标识要按这张表
+  /// 计字段，而脏标识做在 `PrefsStore` 那一层（包里，M1 抽 `PersonalStore` 时整块搬走），
+  /// 包看不见 app 靶子里的这个文件。**一份清单，两处用**——别在这儿再抄一份。
+  static var fields: Set<String> { Prefs.syncedFieldNames }
   static let nested: Set<String> = ["params", "indicatorColors", "hiddenOutputs", "subHeights", "subHeightOverrides", "styles"]
   static func flatten(_ value: [String: KanpanAccount.JSONValue]) -> [String: KanpanAccount.JSONValue] {
     var result: [String: KanpanAccount.JSONValue] = [:]

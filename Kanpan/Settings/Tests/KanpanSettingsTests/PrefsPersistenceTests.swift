@@ -8,6 +8,13 @@ import KanpanData
 @Suite("持久化")
 struct PrefsPersistenceTests {
 
+  /// 一次用户改动落盘之后，柜子里该有的那三格。
+  ///
+  /// 偏好本身是那一份要随人走的值；另两格是这一轮补的「本地这一侧的标识」：
+  /// 脏字段集（还没推上去的是哪几项）和哨兵（本地这份为什么读不到）。
+  /// **三格同一步写完**——落本地和记标识不许分成两次，中间被杀就会丢标识。
+  static let oneSave = ["kanpan.prefs.v2", "kanpan.settings.sentinel.v1", "kanpan.settings.stamp.v1"]
+
   /// 把每一项都改成「不是默认」的样子，用来验往返。
   static func mutated() -> Prefs {
     var p = Prefs.defaults
@@ -94,52 +101,99 @@ struct PrefsPersistenceTests {
   }
 
   /// 双指缩放时根宽每帧都在变，每帧写一次 `UserDefaults` 不行；
-  /// 但**内存里那一份必须当场就变**——用户捏完可能下一秒就换周期换品种。
-  /// 所以 `liveBarSpacing` 立刻跟上，落盘等手停下来。
-  @Test("根宽写入是节流的：连报一串只在停下之后落一次盘")
+  /// 但**内存里那一份必须当场就变**——用户捏完可能下一帧就换周期换品种。
+  ///
+  /// 那 400ms 现在只是「手势进行中的降采样」，**不是保存时机**。保存时机只有一个：
+  /// 手指离开屏幕（`interactionEnded`）。用户的原话是「用户手离开的瞬间就应该做同步
+  /// 做持久保存啊」。
+  @Test("捏的过程中不写盘，手一松立刻落盘")
   @MainActor
-  func 根宽节流() async {
+  func 手一松就落盘() {
     let box = InMemoryPrefsStorage()
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
-    for w in stride(from: 4.0, to: 12.0, by: 0.25) { store.noteBarSpacing(w) }
+    let viewport = ChartViewport(owner: store)
+    for w in stride(from: 4.0, to: 12.0, by: 0.25) { viewport.userIsZooming(to: w) }
     #expect(box.keys.isEmpty)                  // 手指还在捏，一个字节都没写
     #expect(store.prefs.barSpacing == AICoinBehavior.initialSpacing)
-    store.flushBarSpacing()                    // 等价于「手抬起来 / 切后台」
-    #expect(box.keys == ["kanpan.prefs.v2"])
+    viewport.interactionEnded()                // 手抬起来
+    #expect(box.keys == Self.oneSave)
     #expect(store.prefs.barSpacing == 11.75)
     #expect(PrefsStore(storage: box, cache: UnavailableMarketCache()).prefs.barSpacing == 11.75)
   }
 
   /// 用户要的那条：「缩放了，立马切换新周期缩放也要同步」。切周期 / 切品种时
-  /// 图问的是 `liveBarSpacing`，它不等定时器——节流只管盘，不管读。
+  /// 图问的是 `ChartViewport.barSpacing`，它不等任何定时器。
   @Test("捏完立刻换周期换品种：内存里那份根宽当场就是新的，不用等落盘")
   @MainActor
   func 根宽立刻跟人走() {
     let box = InMemoryPrefsStorage()
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
-    #expect(store.liveBarSpacing == AICoinBehavior.initialSpacing)   // 冷启动从存档起步
-    store.noteBarSpacing(9.5)
-    #expect(store.liveBarSpacing == 9.5)       // 手还没抬，换品种读到的已经是 9.5
+    let viewport = ChartViewport(owner: store)
+    #expect(viewport.barSpacing == AICoinBehavior.initialSpacing)   // 冷启动从存档起步
+    viewport.userIsZooming(to: 9.5)
+    #expect(viewport.barSpacing == 9.5)        // 手还没抬，换品种读到的已经是 9.5
     #expect(box.keys.isEmpty)                  // 盘上还没写
     #expect(store.prefs.barSpacing == AICoinBehavior.initialSpacing)
-    store.noteBarSpacing(20)                   // 再捏一下，还是当场生效
-    #expect(store.liveBarSpacing == 20)
-    store.noteBarSpacing(9_999)                // 越界的也先夹再生效
-    #expect(store.liveBarSpacing == AICoinBehavior.maximumSpacing)
+    viewport.userIsZooming(to: 20)             // 再捏一下，还是当场生效
+    #expect(viewport.barSpacing == 20)
+    viewport.userIsZooming(to: 9_999)          // 越界的也先夹再生效
+    #expect(viewport.barSpacing == AICoinBehavior.maximumSpacing)
   }
 
-  @Test("恢复出厂 / 换账号：内存里那份根宽也认新档案，欠着的那次作废")
+  /// **换属主才作废，同属主晚到要保留。**
+  ///
+  /// 冷启动 → 图先按出厂宽度开张 → 用户马上捏一下 → 300ms 后 `account.restore()`
+  /// 才把这个人自己的档案读回来。这一下到货**不能**把他刚捏的那份扔掉：那是同一个人
+  /// 自己的档案晚到了，不是换了个人。
+  @Test("同一个人的档案晚到：手上没落盘的那一捏要保住")
   @MainActor
-  func 根宽跟着档案换() {
+  func 档案晚到保住这一捏() {
     let box = InMemoryPrefsStorage()
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
-    store.noteBarSpacing(9.5); store.flushBarSpacing()
-    #expect(store.liveBarSpacing == 9.5)
-    store.noteBarSpacing(12)                   // 这一次还欠着
-    store.resetToDefaults()
-    #expect(store.liveBarSpacing == AICoinBehavior.initialSpacing)
-    store.flushBarSpacing()                    // 上一份档案欠的那次不能再落下来
-    #expect(store.prefs.barSpacing == AICoinBehavior.initialSpacing)
+    let viewport = ChartViewport(owner: store)
+    viewport.userIsZooming(to: 2.0)            // 用户捏小了，还没抬手
+    viewport.adopt(barSpacing: 7.0, reason: .sameProfile)
+    #expect(viewport.barSpacing == 2.0)        // 用户刚做的那一下赢
+    #expect(store.prefs.barSpacing == 2.0)     // 而且当场落了盘，不再欠着
+  }
+
+  @Test("真的换了个人：手上没落盘的那一捏必须作废，不许写到新属主头上")
+  @MainActor
+  func 换属主那一捏作废() {
+    let box = InMemoryPrefsStorage()
+    let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
+    let viewport = ChartViewport(owner: store)
+    viewport.userIsZooming(to: 2.0)
+    viewport.adopt(barSpacing: 7.0, reason: .ownerSwitched)
+    #expect(viewport.barSpacing == 7.0)
+    #expect(box.keys.isEmpty)                  // 上一个人欠的那次没落到新档案上
+    viewport.interactionEnded()                // 再抬一次手也不该把它翻出来
+    #expect(box.keys.isEmpty)
+  }
+
+  /// 「换档案」这件事本身也要把图叫起来重画一次，否则图会一直停在出厂宽度上，
+  /// 然后把那个宽度当成用户意图报回来、反过来盖掉档案里对的那份（杀法甲）。
+  @Test("每到一次货，adoptToken 都要跳一格")
+  @MainActor
+  func 到货要叫图重量() {
+    let box = InMemoryPrefsStorage()
+    let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
+    let viewport = ChartViewport(owner: store)
+    let before = viewport.adoptToken
+    viewport.adopt(barSpacing: 2.0, reason: .sameProfile)
+    #expect(viewport.adoptToken == before + 1)
+    viewport.adopt(barSpacing: 2.0, reason: .ownerSwitched)
+    #expect(viewport.adoptToken == before + 2)
+  }
+
+  /// 本机那份和云端那份谁说了算。规则写在 `ChartLayoutReconcile` 里。
+  @Test("本机与云端对账：没基线只播种、不一样以本机为准、一样就什么都不做")
+  func 本地云端对账() {
+    var mine = Prefs.defaults; mine.barSpacing = 2.0
+    var theirs = Prefs.defaults; theirs.barSpacing = 7.0
+    #expect(ChartLayoutReconcile.decide(onDisk: mine, baseline: nil) == .seed)
+    #expect(ChartLayoutReconcile.decide(onDisk: mine, baseline: theirs) == .recapture)
+    #expect(ChartLayoutReconcile.decide(onDisk: mine, baseline: mine) == .agree)
   }
 
   @Test("翻转不节流：一次双击就落一次盘，重复报不重复写")
@@ -150,7 +204,7 @@ struct PrefsPersistenceTests {
     store.noteInversion(main: true, subs: [.macd])
     #expect(store.prefs.mainInverted)
     #expect(store.prefs.subInverted == [.macd])
-    #expect(box.keys == ["kanpan.prefs.v2"])
+    #expect(box.keys == Self.oneSave)
     let snapshot = store.prefs
     store.noteInversion(main: true, subs: [.macd])
     #expect(store.prefs == snapshot)
@@ -163,7 +217,7 @@ struct PrefsPersistenceTests {
     let box = InMemoryPrefsStorage()
     let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
     store.update { $0.redUp = false }
-    #expect(box.keys == ["kanpan.prefs.v2"])
+    #expect(box.keys == Self.oneSave)
   }
 
   @Test("重开一个 store 读回同一份")
@@ -184,7 +238,7 @@ struct PrefsPersistenceTests {
     store.update { $0.magnet = false }            // Current default
     #expect(box.keys.isEmpty)
     store.update { $0.magnet = true }
-    #expect(box.keys == ["kanpan.prefs.v2"])
+    #expect(box.keys == Self.oneSave)
   }
 
   @Test("恢复默认把键抹掉")

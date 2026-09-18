@@ -137,8 +137,17 @@ public final class ChartView: UIView {
   /// 这里只放这一个存储属性——扩展加不了存储属性。
   let gesture = GestureState()
 
-  /// 视野被手势改了（拖、甩、捏、轴拖、回弹的每一帧都会叫）。
+  /// 视野变了。**谁造成的都叫**：手势、回弹、「回到最新」、外面灌进来的重排都算。
+  /// 补历史、周期条行尾那颗「最新」这类「跟着视野走」的事读它。
   public var onViewChanged: ((ViewWindow) -> Void)?
+  /// 视野被**用户手上的动作**改了（拖、甩、捏、轴拖、回弹的每一帧）。
+  ///
+  /// 和上面那个的分工是这次 bug 的要害：「用户想要多宽」**只能**从这儿读。
+  /// 程序自己造成的视野变化（换品种的 `.reset`、换周期的 `.switchInterval`、
+  /// 转屏/换页的 `.resize`、档案到货的 `.adopt`、「回到最新」）一律不走这个口子——
+  /// 走了的话，图会把自己开张时那份出厂宽度当成用户意图报回去，把档案里真正的那份
+  /// 覆盖写掉（见 `ChartViewport` 的「杀法甲」）。
+  public var onUserViewChanged: ((ViewWindow) -> Void)?
   /// 十字线出现 / 移动 / 消失。`nil` 表示消失。
   public var onCrosshairChanged: ((Crosshair?) -> Void)?
   /// 视野左缘推进到头部 200 根以内，该补历史了（§13 G9）。序列长出来之前只叫一次。
@@ -149,6 +158,15 @@ public final class ChartView: UIView {
   /// 只给这种「不说一声就找不回来」的动作用，别拿它做常规反馈。
   public var onNotice: ((String) -> Void)?
   public var onStateChanged: ((ChartState?) -> Void)?
+  /// **这次交互结束了：手指全部离开了画布。**
+  ///
+  /// 每次抬手都响一次（拖、甩、点、捏都算），而且 `.ended` 和 `.cancelled` 都响——
+  /// 系统把手势掐掉（来电、上滑回桌面）时手指同样已经离开了屏幕，那一下更该存。
+  /// 捏合中途抬掉一根手指、还剩指头按着时**不**响。
+  ///
+  /// 存在的理由只有一个：用户的原话是「用户手离开的瞬间就应该做同步做持久保存啊」。
+  /// 落盘与同步的时机钉在这儿，不是钉在定时器上，也不是钉在切后台上。
+  public var onInteractionEnded: (() -> Void)?
 
   // ---------------------------------------------------------------- 生命周期
 

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import KanpanAccount
 import KanpanCore
 import KanpanData
 import KanpanNetwork
@@ -47,7 +48,9 @@ final class QuoteBook {
   /// 每个品种最后一次真正收到值的本机时间。判「要不要补价」看它，
   /// 不再看「有没有值」——留着上次的价格显示，不等于那个价格还新鲜。
   private var receivedAt: [String: Date] = [:]
-  private let paths = Paths.caches()
+  /// 报价与开盘价的落点。**跟着当前档案走**（见 `retargetProfile()`），
+  /// 所以它是 `var`：换个人，这两份缓存立刻换一个目录。
+  private var paths = Paths.caches()
   private var persistTask: Task<Void, Never>?
   /// 下一次定时落盘。`nil` 表示当前没有排队的写。
   private var persistPending: Task<Void, Never>?
@@ -160,10 +163,37 @@ final class QuoteBook {
   var onHistory: ((String, [Bar]) -> Void)?
   var onUpdate: (([Ticker]) -> Void)?
 
+  /// 换人了：报价和开盘价这两份缓存立刻改指向新档案的目录。
+  ///
+  /// 它们存的是**当前这个人自选表里的那些品种**——价格是公开数据，但「这台机器上
+  /// 刚才关注的是哪几十个品种」随人走。所以档案一换，盘上这批既不能留在屏幕上
+  /// 给下一个人看，也绝不能被写进新档案的目录里。
+  ///
+  /// 身份只从一个地方拿（`AccountFiles.currentProfile`，和账号目录同一套 id），
+  /// 这儿不自己拼、不自己记。读写前都过一遍这个口子，就不存在「档案已经换了、
+  /// 缓存还写在上一个人名下」那一小段窗口。
+  private func retargetProfile() {
+    let id = AccountFiles.currentProfile
+    guard id != paths.profile else { return }
+    // 冷启动第一次认主（`""` → 某个档案）：盘上还什么都没有，直接认下就行。
+    let switching = !paths.profile.isEmpty || restored
+    paths = Paths.caches(profile: id)
+    persistedSymbols.removeAll()
+    persistedOpens.removeAll(); persistedBoundary = nil
+    guard switching else { return }
+    raw.removeAll(keepingCapacity: true); receivedAt.removeAll(keepingCapacity: true)
+    everPublished.removeAll(keepingCapacity: true)
+    opens.removeAll(); provisionalOpens.removeAll()
+    onReset?()
+    restored = false
+    restoreQuotes()   // 换上新档案自己那份，别让这个人对着一张空表等网络。
+  }
+
   /// 冷启动第一帧：先把上次看到的报价摆出来，再去取新的。存的是交易所
   /// 真实返回过的值，`timeMs` 一并留着——列表顶部的实时指示灯只认 5 秒内
   /// 的更新，所以它不会被当成实时价。
   func restoreQuotes() {
+    retargetProfile()
     guard !restored else { return }
     restored = true
     guard raw.isEmpty else { return }
@@ -176,6 +206,7 @@ final class QuoteBook {
   }
 
   private func persistQuotes() {
+    retargetProfile()
     persistPending?.cancel()
     persistPending = nil
     persistDeadline = .distantFuture
@@ -261,6 +292,9 @@ final class QuoteBook {
   }
 
   func setFavorites(_ symbols: [String]) {
+    // 换号之后宿主就是从这儿把新的自选表交下来的，所以这一步之前先认一次主：
+    // 晚一拍的话，新表配的还是上一个人那份缓存。
+    retargetProfile()
     favoritesKnown = true
     favorites = symbols
     for symbol in symbols { wanted.insert(symbol); watchBaseline(symbol) }
@@ -471,6 +505,9 @@ final class QuoteBook {
   }
 
   func tick() {
+    // 兜底的认主点。退登到一张空自选表时宿主不一定会再交一次 `setFavorites`，
+    // 而一秒一拍地比一个字符串是免费的。
+    retargetProfile()
     let next = basis.boundary(now: Int64(Date().timeIntervalSince1970 * 1000))
     if next != boundary { rollBoundary(to: next) }
     for symbol in wanted { watchBaseline(symbol) }
@@ -550,6 +587,7 @@ final class QuoteBook {
   ///
   /// `read` 自己对边界，跨了一天就返回空——那时本来也该重新取。
   private func restoreBaselines() {
+    retargetProfile()
     guard let boundary else { return }
     let saved = BaselineSnapshot.read(paths.opens, boundary: boundary)
     guard !saved.isEmpty else { return }
@@ -558,6 +596,7 @@ final class QuoteBook {
   }
 
   private func persistBaselines() {
+    retargetProfile()
     guard let boundary else { return }
     // 顶上去的那批不落盘：下次冷启动读回来的必须是交易所口径的开盘价。
     let rows = opens.filter { $0.value.time == boundary && !provisionalOpens.contains($0.key) }.mapValues(\.price)

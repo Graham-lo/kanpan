@@ -65,7 +65,35 @@ final class PrefsStore {
 
   @ObservationIgnored private var storage: any PrefsStorage
   @ObservationIgnored var onChange: ((Prefs) -> Void)?
+  /// 整份设置被换掉了（装档案 / 换号 / 退登 / 云端落地 / 恢复出厂 / 撤销）。
+  ///
+  /// 和 `onChange` 的分工：`onChange` 是「这个人改了一项，记下来、推上去」；
+  /// 这一个是「手上这份档案换人了」，接的人要拿它重新起点。`ChartViewport` 靠它
+  /// 决定「手上还没落盘的那一捏」是保还是弃——`reason` 就是为这件事带的。
+  @ObservationIgnored var onAdopt: ((Prefs, ChartLayoutArrival) -> Void)?
   @ObservationIgnored private let cache: any MarketCacheStore
+
+  // ---------------------------------------------------------------- 状态标识
+  //
+  // 「值 + 属主 + 脏字段集 + 修改时间」里除了值以外的那三样，形状见 `SettingsStamp`。
+  // 这一层暂时兼着 M1 `PersonalStore` 的活：抽出去的时候整块搬走，形状不用改。
+
+  /// 脏标识跟着**真身**走：它和 `prefs.json` 同一个柜子，换档案就换一份。
+  /// 所以「A 的脏标识算不到 B 头上」是天然成立的，`owner` 只是再兜一层。
+  @ObservationIgnored private(set) var stamp: SettingsStamp
+
+  /// 哨兵跟着**这台机器**走，和真身**不在同一层**（真身在账号目录里的 prefs.json，
+  /// 它在 `UserDefaults`）。同一层就会一起消失，「第一次装」和「被清空」就分不出来了。
+  @ObservationIgnored private let sentinelStorage: any PrefsStorage
+  @ObservationIgnored private(set) var sentinel: SettingsSentinel
+
+  /// 最近一次装档案时，本地那份的体检结论。
+  @ObservationIgnored private(set) var verdict: SettingsCacheVerdict = .intact
+
+  /// 还没推上去的那些字段。
+  var dirtyFields: Set<String> { stamp.dirtyFields }
+  /// 交给推送方的那一份快照（字段 → 改动时刻）。推成功之后原样交回 `syncPushed`。
+  var dirtyMarks: [String: Double] { stamp.dirty }
 
   /// 这台机器上这份设置该落在哪。
   ///
@@ -85,12 +113,22 @@ final class PrefsStore {
   /// - Parameter fallback: 这个柜子里还没有存档时，从哪一份 `Prefs` 起步。
   ///   默认是出厂值；`MainScreen` 传的是 `LaunchThemeMirror.prefs()`——设置的真身在
   ///   账号目录里，第一帧之前读不到，皮肤与深浅先按本机镜像铺，见 `LaunchThemeMirror`。
+  /// - Parameter sentinel: 哨兵落在哪一层。**不要和 `storage` 传同一个柜子**——
+  ///   真身以后会被 `useStorage` 换成账号目录里的那份，哨兵必须留在这台机器上，
+  ///   否则「档案被清空」和「第一次装」分不出来。不传就先和 `storage` 同层
+  ///   （登录之前本来就只有这一层，没什么可分辨的）。
   init(storage: any PrefsStorage,
        cache: any MarketCacheStore = MarketCacheFactory.make(),
-       fallback: Prefs = .defaults) {
+       fallback: Prefs = .defaults,
+       sentinel: (any PrefsStorage)? = nil) {
     let selectedStorage = storage
     self.storage = selectedStorage
     self.cache = cache
+    let sentinelStorage = sentinel ?? selectedStorage
+    self.sentinelStorage = sentinelStorage
+    self.sentinel = PrefsStore.storedSentinel(in: sentinelStorage)
+      ?? SettingsSentinel(install: UUID().uuidString)
+    self.stamp = PrefsStore.storedStamp(in: selectedStorage) ?? SettingsStamp()
     self.prefs = PrefsStore.load(from: selectedStorage, fallback: fallback)
     // UI 测试沙盒里的常用行仍然按老的那七档铺。
     //
@@ -108,7 +146,6 @@ final class PrefsStore {
         self.prefs.routePolicy = policy
       }
     }
-    self.liveBarSpacing = self.prefs.barSpacing
     mirrorToDevice()
   }
 
@@ -155,14 +192,21 @@ final class PrefsStore {
   //
   // 所以：
   //
-  // 1. **内存里那一份当场就改**，读取方一律读内存（`prefs`，或某些每帧都在变的项
-  //    专门开的那个 `@ObservationIgnored` 字段，如 `liveBarSpacing`）。
+  // 1. **内存里那一份当场就改**，读取方一律读内存（`prefs`）。
   //    **任何读取路径都不许回头去读 `UserDefaults`** —— 盘上那份可能还没跟上，
   //    而且那是冷启动才需要的东西。
-  // 2. **写盘可以节流**，但只在「这个值会每帧变一次」时才需要（双指缩放的根宽是
-  //    唯一一例）。离散动作（点一下、双击一下、手势松手那一下）直接走 `update`，
-  //    它自己会挡住没真改动的那些回调。节流只影响下次冷启动，永远不参与本程内的读取；
-  //    切后台前记得把欠的那一次 flush 掉（见 `flushBarSpacing`）。
+  // 2. **写盘可以在手势进行中降采样**，但只在「这个值会每帧变一次」时才需要
+  //    （双指缩放的根宽是唯一一例，那件事已经整个搬去 `ChartViewport` 了）。
+  //    离散动作（点一下、双击一下、手势松手那一下）直接走 `update`，它自己会挡住
+  //    没真改动的那些回调。
+  //
+  // 2026-09-19 补一条，这条比上面两条都硬：
+  //
+  //   **「落盘节流」的下限是「用户的手离开屏幕」。**
+  //
+  // 根宽以前是 400ms 定时器写的，于是「捏完立刻杀 app」必丢——用户报的就是这个。
+  // 现在保存时机钉在手指抬起那一刻（`ChartViewport.interactionEnded`），
+  // 切后台那一刀只是兜底。别再给任何一项偏好加「等一会儿再写」的定时器。
   //
   // 看到某处「手势改完了内存值却要等一会儿才更新」，那是 bug，不是设计。
 
@@ -171,8 +215,9 @@ final class PrefsStore {
     var next = prefs
     change(&next)
     guard next != prefs else { return }
+    let changed = Prefs.changedStampedFields(from: prefs, to: next)
     prefs = next
-    persist()
+    persist(marking: changed)
   }
 
   /// 带提示的改法：`change` 返回一句话就说明这次没改成（原型的 toast）。
@@ -181,8 +226,9 @@ final class PrefsStore {
     let why = change(&next)
     if let why { note(why); return }
     guard next != prefs else { return }
+    let changed = Prefs.changedStampedFields(from: prefs, to: next)
     prefs = next
-    persist()
+    persist(marking: changed)
   }
 
   /// 开 / 关一个指标。
@@ -195,68 +241,13 @@ final class PrefsStore {
     var next = prefs
     let why = next.toggle(id)
     guard next != prefs else { return }
+    let changed = Prefs.changedStampedFields(from: prefs, to: next)
     prefs = next
-    persist()
+    persist(marking: changed)
     if let why { note(why, undo: { [weak self] in self?.restore(before) }) }
   }
 
   // ---------------------------------------------------------------- 图上量出来的习惯
-
-  /// 用户此刻缩放到的根间距，**内存里的那一份**。
-  ///
-  /// 和 `prefs.barSpacing` 分工：这一份手一动就变，谁来读都是最新的；`prefs.barSpacing`
-  /// 是落到盘上的那一份，节流之后才跟上，只管下次冷启动。用户捏完**立刻**换周期、
-  /// 换品种、开另一张图，新图要按刚刚那个宽度开，读的就是这儿——不能等定时器。
-  ///
-  /// `@ObservationIgnored` 是有意的：它每帧都在变，不该把所有读过设置的视图每帧重算
-  /// 一遍。换品种 / 换周期本来就会让 `MainScreen` 重算一次 body，那一下顺手读到的
-  /// 就是新值，正好是需要它的时刻。
-  @ObservationIgnored private(set) var liveBarSpacing: Double = AICoinBehavior.initialSpacing
-
-  /// 还没落盘的那个根间距。同样不进 `@Observable` 的追踪。
-  @ObservationIgnored private var pendingSpacing: Double?
-  @ObservationIgnored private var spacingTask: Task<Void, Never>?
-
-  /// 记下用户缩放到的根间距（`ChartHost` 每次视野变化都会报一次）。
-  ///
-  /// 分两层，缺一不可：
-  ///
-  /// **① 内存里立刻生效。** `liveBarSpacing` 当场就改。用户捏完立刻切周期、切品种，
-  /// 新图按的必须是刚刚那个宽度——「等手停下来才算数」在这条路径上是错的。
-  ///
-  /// **② 写盘才节流。** 双指缩放时这个数每帧都在变，每帧写一次 `UserDefaults` 是白耗；
-  /// 更要紧的是 `prefs` 是整份结构体，`@Observable` 认的是「`prefs` 这个属性被读过」，
-  /// 不是里面的哪一项——每帧改一次，所有读过设置的视图每帧都要重算一遍。所以落盘等
-  /// 手指停下来（400ms 内没有新值）再写一次；中途来的新值把上一轮定时器顶掉，
-  /// 惯性滑行和回弹那一串也就只写最后一次。落盘只影响下次冷启动，不参与本程内的读取。
-  func noteBarSpacing(_ value: Double) {
-    let want = Prefs.clampSpacing(value)
-    guard abs(want - liveBarSpacing) > 0.001 else { return }
-    liveBarSpacing = want                       // ① 立刻
-    pendingSpacing = want                       // ② 待会儿
-    spacingTask?.cancel()
-    spacingTask = Task { [weak self] in
-      try? await Task.sleep(for: .milliseconds(400))
-      guard !Task.isCancelled else { return }
-      self?.flushBarSpacing()
-    }
-  }
-
-  /// 把欠着的那一次立刻落盘。切后台时叫一下——最后一次缩放刚好落在定时器里的话，
-  /// 用户直接杀 app 就丢了。
-  func flushBarSpacing() {
-    spacingTask?.cancel(); spacingTask = nil
-    guard let want = pendingSpacing else { return }
-    pendingSpacing = nil
-    update { $0.barSpacing = want }
-  }
-
-  /// 整份设置被换掉了（恢复出厂 / 撤销 / 换账号 / 同步下来一份）：内存里那份根间距
-  /// 也得认新主人，顺手把还欠着的那一次作废——它属于上一份档案。
-  private func adoptSpacing() {
-    spacingTask?.cancel(); spacingTask = nil; pendingSpacing = nil
-    liveBarSpacing = prefs.barSpacing
-  }
 
   /// 记下主图 / 副图的上下翻转。
   ///
@@ -278,36 +269,122 @@ final class PrefsStore {
   func restore(_ value: Prefs) {
     clearNotice()
     guard value != prefs else { return }
+    let changed = Prefs.changedStampedFields(from: prefs, to: value)
     prefs = value
-    adoptSpacing()
-    persist()
+    persist(marking: changed)
+    // 撤销 = 整份换掉，等同换属主：手上还欠着的那一下属于被撤销掉的那份，作废。
+    onAdopt?(prefs, .ownerSwitched)
   }
 
   /// 恢复出厂：把当前键抹掉，回到新默认。
   func resetToDefaults() {
+    let changed = Prefs.changedStampedFields(from: prefs, to: .defaults)
     prefs = .defaults
-    adoptSpacing()
-    persist()
+    persist(marking: changed)
+    onAdopt?(prefs, .ownerSwitched)
   }
 
-  private func persist() {
+  /// 落盘 + 记脏 + 记时间，**同一步、同步完成**。
+  ///
+  /// 「推云端」才是异步的那一半，而且**推成功才清脏字段**（`syncPushed`）。
+  /// 推失败、断网、app 被杀，脏标识都留着，下次启动本地照样赢——用户要的
+  /// 「避免云端没同步，下次进来对不上又覆盖回去」就靠这个顺序。
+  private func persist(marking changed: Set<String> = []) {
+    if !changed.isEmpty {
+      let now = SettingsClock.now()
+      stamp.mark(changed, at: now)
+      sentinel.owner = stamp.owner
+      sentinel.wroteAt = now
+    }
     storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
+    if !changed.isEmpty { writeStamp(); writeSentinel() }
     mirrorToDevice()
     onChange?(prefs)
   }
 
-  /// 换档案（登录 / 退登）：线路跟着档案走，登录后用的是账号里记的那条。
-  func useStorage(_ storage: any PrefsStorage, prefs: Prefs) {
-    self.storage = storage; self.prefs = prefs
-    adoptSpacing()
-    storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
-    mirrorToDevice()
+  /// 服务端认掉了。**只有这一条路能清脏标识。**
+  ///
+  /// - Parameters:
+  ///   - pushed: 推上去那一刻的脏字段快照。只清「时刻没变的」那几个，推的过程中
+  ///     用户又改过的那些留着（见 `SettingsStamp.clear`）。
+  ///   - acked: 被 ACK 的那些操作里带的**线上键名**（`rsiRange` 会映回上下轨两个字段）。
+  ///
+  /// 「发出去了」不算成功——真正的成功是 `SyncPushResponse` 里按 `operationId`
+  /// 对上的那几条（`SyncStore.acknowledge`）。断网、服务端拒绝、半路被杀，
+  /// 脏标识一个都不许清，下次启动本地照样赢。
+  func syncPushed(_ pushed: [String: Double], acked: Set<String>) {
+    guard !pushed.isEmpty, !acked.isEmpty else { return }
+    let before = stamp
+    let now = SettingsClock.now()
+    stamp.clear(acked: acked, from: pushed, at: now)
+    guard stamp != before else { return }
+    sentinel.pushedAt = now
+    writeStamp(); writeSentinel()
   }
-  func applySynced(_ value: Prefs) {
-    guard value != prefs else { return }
-    prefs = value; adoptSpacing()
-    storage.setPrefsData(PrefsCodec.encode(value), forKey: PrefsCodec.key)
+
+  private func writeStamp() { storage.setPrefsData(try? JSONEncoder().encode(stamp), forKey: SettingsStamp.storageKey) }
+  private func writeSentinel() { sentinelStorage.setPrefsData(try? JSONEncoder().encode(sentinel), forKey: SettingsSentinel.storageKey) }
+
+  static func storedStamp(in storage: any PrefsStorage) -> SettingsStamp? {
+    storage.prefsData(forKey: SettingsStamp.storageKey).flatMap { try? JSONDecoder().decode(SettingsStamp.self, from: $0) }
+  }
+  static func storedSentinel(in storage: any PrefsStorage) -> SettingsSentinel? {
+    storage.prefsData(forKey: SettingsSentinel.storageKey).flatMap { try? JSONDecoder().decode(SettingsSentinel.self, from: $0) }
+  }
+
+  /// 这份字节解得开、字段齐不齐。解不开或者连版本号都没有就算「损坏 / 不完整」。
+  static func isReadable(_ data: Data?) -> Bool {
+    guard let data, !data.isEmpty,
+          let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+    return object["v"] != nil
+  }
+
+  /// 换档案（装访客档案 / 登录 / 换号 / 退登）：线路跟着档案走，登录后用的是账号里记的那条。
+  ///
+  /// - Parameter arrival: 这是「同一个人的档案晚到了」还是「换了个人」。调用方
+  ///   （`AppAccountBridge.prepare`）知道上一次装的是谁，只有它分得清；
+  ///   分不清的后果见 `ChartViewport.adopt(barSpacing:reason:)`——冷启动图一出来
+  ///   立刻捏、300ms 后档案回来，那一捏会被无条件作废掉。
+  /// - Parameter owner: 现在这份档案该是谁的（账号 id / 访客档案 id）。用来体检：
+  ///   档案里记着别人的名字就当它不存在，**绝不能用**（防「B 登进来看到 A 的东西」）。
+  func useStorage(_ storage: any PrefsStorage, prefs: Prefs, arrival: ChartLayoutArrival, owner: String = "") {
+    // 先体检，再换手：诊断要看的是这个柜子里原来躺着什么。
+    let archived = storage.prefsData(forKey: PrefsCodec.key)
+    let found = PrefsStore.storedStamp(in: storage)
+    verdict = SettingsCacheDoctor.diagnose(archive: archived, readable: PrefsStore.isReadable(archived),
+                                           stamp: found, sentinel: sentinel, owner: owner)
+    self.storage = storage; self.prefs = prefs
+    switch verdict {
+    case .ownerMismatch:
+      // 上一个人留下的那份脏标识跟这个人没关系，从头记。
+      stamp = .fresh(owner: owner)
+    default:
+      stamp = found ?? .fresh(owner: owner)
+      stamp.owner = owner
+    }
+    storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
+    writeStamp()
     mirrorToDevice()
+    onAdopt?(prefs, arrival)
+  }
+
+  /// 云端那份落地。**这是「合并」，不是「覆盖」。**
+  ///
+  /// 合并规则（用户 2026-09-19 定的）：
+  ///
+  /// - **本地脏的字段一律跳过**——它说明「用户刚改的，还没推上去」，盖回去就是
+  ///   用户说的「相当于没改」。
+  /// - 干净的字段跟着云端走。谁新由服务端那一侧的 `revision` 单调序回答
+  ///   （`SyncStore.receive` 只收比本地新的那一版），比拿两边的墙上钟去比可靠；
+  ///   `SettingsStamp.updatedAt` 留着给 M1 做本地侧的比较。
+  func applySynced(_ value: Prefs) {
+    let merged = Prefs.keeping(stamp.dirtyFields, of: prefs, over: value)
+    guard merged != prefs else { return }
+    prefs = merged
+    storage.setPrefsData(PrefsCodec.encode(merged), forKey: PrefsCodec.key)
+    mirrorToDevice()
+    // 云端落地是同一个人的档案到货，不是换人。
+    onAdopt?(prefs, .sameProfile)
   }
 
   // ---------------------------------------------------------------- 缓存
@@ -322,4 +399,14 @@ final class PrefsStore {
     cacheUsage = await cache.usage()
     note("已清缓存")
   }
+}
+
+// MARK: - 图的视野那一侧要的起点与去处
+
+/// `PrefsStore` 暂时兼着 M1 `PersonalStore` 的活：图的视野向它要起点、把结果交回去。
+/// 下一轮抽出 `PersonalStore` 之后，把这个 conformance 整块搬过去即可，
+/// `ChartViewport` 一个字都不用改。
+extension PrefsStore: ChartViewport.Owner {
+  var storedBarSpacing: Double { prefs.barSpacing }
+  func storeBarSpacing(_ value: Double) { update { $0.barSpacing = value } }
 }

@@ -23,6 +23,14 @@ enum ViewIntent: Equatable {
   case switchInterval(spacing: Double)
   /// 布局改尺寸：保留实际根间距和历史右缘。
   case resize(spacing: Double)
+  /// **档案到货，按新根宽重量一次。** 位置（历史右缘）保住，只换宽度。
+  ///
+  /// 为什么非有这一档不可：登录的人冷启动时档案要等 `account.restore()` 那条异步链才到，
+  /// 图早就按出厂宽度开完张了。到货之后只改内存里那份是不够的——`resetSpacing` 只有
+  /// `.reset` 那一支会消费，`.switchInterval` / `.resize` 都是从**图自己身上**取宽度，
+  /// 没有任何一条会回头去读新到货的值。于是图会一直画在错的宽度上，直到某次视野变化
+  /// 把它当成用户意图报回去、反过来把档案里对的那份覆盖掉（`ChartViewport` 的「杀法甲」）。
+  case adopt(spacing: Double)
 }
 
 /// 装着 `ChartView` 的盒子，外加一件事：等布局出来再兑现视野。
@@ -53,6 +61,8 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
   /// `.reset` 时用哪个根间距。外面每次接线都灌一遍（`ChartHost.wire`），值来自
   /// `Prefs.barSpacing`——用户上次捏到的那个宽度。没存过就是出厂的 `initialSpacing`。
   var resetSpacing = AICoinBehavior.initialSpacing
+  /// 上一次兑现过的「档案到货」序号。见 `ChartHost.adoptToken`。
+  var lastAdoptToken = 0
   /// 上一次报出去的翻转状态。图每改一次状态都会回调一次，先在这儿比一下，
   /// 没变就不劳烦 `PrefsStore` 去比整份设置。
   var lastInversion: (main: Bool, subs: Set<IndicatorID>)?
@@ -226,7 +236,7 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
           spacing: resetSpacing, anchor: s.options.anchor)
       case .switchInterval(let spacing):
         s.view = ViewMath.switchInterval(to: s.series, plotW: plotW, spacing: spacing, anchorRight: nil)
-      case .resize(let spacing):
+      case .resize(let spacing), .adopt(let spacing):
         s.view = ViewMath.resized(s.view, series: s.series, plotW: plotW, spacing: spacing, anchor: s.options.anchor)
       }
       chart.state = s
@@ -304,9 +314,18 @@ struct ChartHost: UIViewRepresentable {
   /// 传下来的是 `PrefsStore.liveBarSpacing`——内存里那一份，不是节流之后才落盘的那一份：
   /// 用户捏完下一秒就换品种，新图得按刚刚那个宽度开。
   var resetSpacing = AICoinBehavior.initialSpacing
-  /// 图上量出来的根间距。用户捏一下就是一串，接的人内存里立刻认、落盘自己节流
-  /// （`PrefsStore.noteBarSpacing`）。
+  /// **用户**在图上捏出来的根间距。一次捏合就是一串，接的人内存里立刻认、
+  /// 手一松就落盘（`ChartViewport`）。
+  ///
+  /// 只有手势来源的视野变化才走这儿：程序自己造成的（`.reset` / `.switchInterval` /
+  /// `.resize` / `.adopt` / 「回到最新」）**一律不报**，否则图会把自己开张时那份
+  /// 出厂宽度当成用户意图，反过来把档案里真正的那份覆盖掉。见 `ChartView.onUserViewChanged`。
   var onBarSpacing: (Double) -> Void = { _ in }
+  /// 手指全部离开画布了。落盘与同步的时机钉在这儿，见 `ChartView.onInteractionEnded`。
+  var onInteractionEnded: () -> Void = {}
+  /// 「档案到货」的序号。变一次，图就按 `resetSpacing` 重量一次（`ViewIntent.adopt`）。
+  /// 由 `ChartViewport.adoptToken` 提供——它是个事件计数器，不是值，理由写在那儿。
+  var adoptToken = 0
   /// 主图 / 副图的上下翻转变了。只在真变了的那一下报。
   var onInversion: (Bool, Set<IndicatorID>) -> Void = { _, _ in }
   var onSubResize: (IndicatorID, Double) -> Void = { _, _ in }
@@ -339,6 +358,8 @@ struct ChartHost: UIViewRepresentable {
       box.pending = .resize(spacing: saved.view.barSpacing(step: saved.series.step, plotW: width))
     }
     box.chart.state = incoming
+    // 第一帧本来就按 `resetSpacing` 走 `.reset`，别再补一次多余的 `.adopt`。
+    box.lastAdoptToken = adoptToken
     return box
   }
 
@@ -402,6 +423,12 @@ struct ChartHost: UIViewRepresentable {
     } else {
       box.pending = .reset
     }
+    // 档案到货：图得按新到货的根宽重新起点。放在所有 `pending` 赋值之后——
+    // `.reset`（换品种 / 第一次拿到数据）本来就用 `resetSpacing` 开张，不用再重量一次。
+    if adoptToken != box.lastAdoptToken {
+      box.lastAdoptToken = adoptToken
+      if box.pending != .reset { box.pending = .adopt(spacing: resetSpacing) }
+    }
     let previousWidth = box.chart.chartLayout?.plotW
     let previousSpacing = box.chart.state.flatMap { old in previousWidth.map { old.view.barSpacing(step: old.series.step, plotW: $0) } }
     box.chart.state = s
@@ -422,13 +449,19 @@ struct ChartHost: UIViewRepresentable {
     drawing?.attach(box.chart)
     // 视野一变就顺手把根间距量出来报上去。量它要图区宽度，那是 UIKit 这一侧才知道的事，
     // 所以在这儿落笔而不是让 SwiftUI 那边自己去翻 `proxy.box`。
+    // 两个口子分工严格，别合回一个：
+    // - `onViewChanged`：**谁造成的都来**。位置类的事（补 OI、周期条行尾那颗「最新」）读它。
+    // - `onUserViewChanged`：**只有用户手上的动作**。「用户想要多宽」只能从这儿量。
+    //   合回一个的后果就是这次的 bug：`applyPending()` 末尾那句 `chart.onViewChanged?(s.view)`
+    //   会把程序刚摆好的宽度当成用户意图报出去。
     let onView = self.onView, onBarSpacing = self.onBarSpacing
-    box.chart.onViewChanged = { [weak box] view in
-      onView(view)
+    box.chart.onViewChanged = { view in onView(view) }
+    box.chart.onUserViewChanged = { [weak box] view in
       guard let box, let layout = box.chart.chartLayout,
             let series = box.chart.state?.series, series.count > 0 else { return }
       onBarSpacing(view.barSpacing(step: series.step, plotW: layout.plotW))
     }
+    box.chart.onInteractionEnded = onInteractionEnded
     box.onSubResize = onSubResize
     box.onSubReorder = onSubReorder
     box.chart.onCrosshairChanged = onCrosshair

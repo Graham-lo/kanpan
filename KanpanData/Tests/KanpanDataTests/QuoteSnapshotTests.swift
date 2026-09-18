@@ -55,6 +55,9 @@ struct QuoteSnapshotTests {
     defer { try? FileManager.default.removeItem(at: p.root) }
 
     #expect(QuoteSnapshot.read(p.quotes).isEmpty)
+    // 报价现在落在 `profiles/<档案>/` 底下（不串号）。生产代码那条路由
+    // `QuoteSnapshot.write` 自己建目录；这儿是绕过它手写一个坏文件，得自己先建。
+    try p.ensure(p.quotes.deletingLastPathComponent())
     try Data("not json".utf8).write(to: p.quotes)
     #expect(QuoteSnapshot.read(p.quotes).isEmpty)
     QuoteSnapshot.remove(p.quotes)

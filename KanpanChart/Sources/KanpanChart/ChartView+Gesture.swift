@@ -182,6 +182,14 @@ extension ChartView {
   }
 
   private func finishTouches(_ touches: Set<UITouch>, event: UIEvent?, cancelled: Bool) {
+    processTouchEnd(touches, event: event, cancelled: cancelled)
+    // 手指全离开画布的那一刻 = 这次交互结束（见 `onInteractionEnded`）。
+    // `gesture.reset()` 有意不清 `gesture.touches`，所以这一句是可靠的「还有指头按着吗」。
+    // 放在正文之后：正文里那几条 early return（捏合中途抬掉一根、还剩指头）本来就不该响。
+    if gesture.touches.isEmpty { onInteractionEnded?() }
+  }
+
+  private func processTouchEnd(_ touches: Set<UITouch>, event: UIEvent?, cancelled: Bool) {
     let now = Self.ms(event)
     let wasPinch = gesture.mode == .pinch
     let endPoint = touches.first?.location(in: self) ?? gesture.startPoint
@@ -474,7 +482,11 @@ extension ChartView {
     onNotice?(s.price.inverted ? "主图已上下翻转，再双击价格轴翻回来" : "主图已翻回正常方向")
   }
 
-  /// Explicit reset action restores the shared initial spacing.
+  /// 把视野重置回出厂根宽。**程序动作，不算用户意图**——它硬写着
+  /// `AICoinBehavior.initialSpacing`，报成用户意图就等于替用户把他的宽度改成出厂值。
+  ///
+  /// 顺带一句：全仓（`Kanpan/Kanpan` 与 `KanpanChart/Sources`）目前**一个调用方都没有**。
+  /// 留着是因为它是 `public` API，删不删是另一轮的事。
   public func resetView() {
     guard var s = state, let L = chartLayout, s.series.count > 0 else { return }
     s.view = ViewMath.reset(
@@ -482,7 +494,7 @@ extension ChartView {
     s.price.reset()
     s.crosshair = nil
     state = s
-    viewDidChange(s.view)
+    viewDidChange(s.view, source: .program)
     onCrosshairChanged?(nil)
   }
 
@@ -496,10 +508,11 @@ extension ChartView {
     guard animated, !Haptics.reduceMotion else {
       s.view = target
       state = s
-      viewDidChange(target)
+      // 「回到最新」只动位置、不动根宽，而且是按钮点出来的程序动作，不是用户在图上捏。
+      viewDidChange(target, source: .program)
       return
     }
-    animate(from: s.view, to: target)
+    animate(from: s.view, to: target, source: .program)
   }
 
   /// 末根还在视野里吗——「回到最新」按钮的显隐看它（G14）。
@@ -541,11 +554,12 @@ extension ChartView {
     if !Haptics.reduceMotion, abs(s.view.to - target.to) / s.view.span * L.plotW > 0.01 {
       animate(from: s.view, to: target, rebound: true)
     } else {
-      s.view = target; state = s; onViewChanged?(s.view)
+      s.view = target; state = s; viewDidChange(s.view)
     }
   }
 
-  private func animate(from a: ViewWindow, to b: ViewWindow, rebound: Bool = false) {
+  private func animate(from a: ViewWindow, to b: ViewWindow, rebound: Bool = false,
+                       source: ViewChangeSource = .gesture) {
     let t0 = CACurrentMediaTime()
     animation = { [weak self] now in
       guard let self, var cur = self.state else { return true }
@@ -554,7 +568,7 @@ extension ChartView {
                               : ViewTransition.frame(from: a, to: b, elapsedMs: elapsed)
       cur.view = v
       self.state = cur
-      self.viewDidChange(v)
+      self.viewDidChange(v, source: source)
       return done
     }
   }
@@ -566,9 +580,16 @@ extension ChartView {
     return clampView(v, series: s.series, plotW: plotW, anchor: s.options.anchor)
   }
 
+  /// 这一下视野是谁造成的。见 `ChartView.onUserViewChanged`。
+  enum ViewChangeSource { case gesture, program }
+
   /// 视野变了之后统一走这里：通知外面 + 判断该不该补历史。
-  private func viewDidChange(_ v: ViewWindow) {
+  ///
+  /// 默认算**用户手上的动作**——这个文件里除了「回到最新」和 `resetView()`，
+  /// 其余每一条路（拖、捏、甩、回弹、轴拖）都是手指直接或间接造成的。
+  private func viewDidChange(_ v: ViewWindow, source: ViewChangeSource = .gesture) {
     onViewChanged?(v)
+    if source == .gesture { onUserViewChanged?(v) }
     guard let s = state else { return }
     if ViewMath.needsMoreHistory(v, series: s.series) {
       if !gesture.askedHistory {
