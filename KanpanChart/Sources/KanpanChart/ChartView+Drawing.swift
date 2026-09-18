@@ -837,7 +837,13 @@ func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartC
   }
   for label in g.labels where label.point.y >= axes.pane.y && label.point.y <= axes.pane.y + axes.pane.h {
     let width = Double(label.text.width(ChartFont.axis))
-    label.text.drawRightBottom(at: CGPoint(x: max(width + 3, min(axes.layout.plotW - 3, label.point.x)), y: label.point.y), font: ChartFont.axis, color: paint(label.tint))
+    let ink = paint(label.tint)
+    if label.centered {
+      let x = max(width / 2 + 3, min(axes.layout.plotW - width / 2 - 3, label.point.x))
+      label.text.drawCentered(at: CGPoint(x: x, y: label.point.y), font: ChartFont.axis, color: ink)
+    } else {
+      label.text.drawRightBottom(at: CGPoint(x: max(width + 3, min(axes.layout.plotW - 3, label.point.x)), y: label.point.y), font: ChartFont.axis, color: ink)
+    }
   }
   if selected, handles {
     ctx.setLineDash(phase: 0, lengths: [])

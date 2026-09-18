@@ -34,8 +34,13 @@ public struct DrawLabel: Sendable {
   public var point: DrawPixel
   public var text: String
   public var tint: DrawTint = .line
-  public init(point: DrawPixel, text: String, tint: DrawTint = .line) {
-    self.point = point; self.text = text; self.tint = tint
+  /// 以 `point` 为**中心**画，而不是默认的「右对齐、底边对齐」。
+  ///
+  /// 绝大多数读数是贴着线的右端或刻度的右端写的，右对齐正好把字压在线上方；
+  /// 「测量」的读数要压在框的正中间那条轴上，只有居中才对得齐。
+  public var centered = false
+  public init(point: DrawPixel, text: String, tint: DrawTint = .line, centered: Bool = false) {
+    self.point = point; self.text = text; self.tint = tint; self.centered = centered
   }
 }
 
@@ -132,7 +137,7 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     }
   }
   /// 箭头尖。用一块三角填充画，因为描边的两笔在细线宽下几乎看不出方向。
-  func arrowHead(at tip: DrawPixel, from tail: DrawPixel, size: Double = 9) {
+  func arrowHead(at tip: DrawPixel, from tail: DrawPixel, size: Double = 9, tint: DrawTint = .line) {
     let dx = tip.x - tail.x, dy = tip.y - tail.y
     let len = (dx * dx + dy * dy).squareRoot()
     guard len > 1e-6 else { return }
@@ -141,7 +146,7 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
       tip,
       DrawPixel(tip.x - ux * size - uy * w, tip.y - uy * size + ux * w),
       DrawPixel(tip.x - ux * size + uy * w, tip.y - uy * size - ux * w),
-    ]))
+    ], tint: tint))
   }
   /// 一个闭合多边形：填充 + 描边。椭圆、三角形、旗标、箭头标记都用它。
   func shape(_ ps: [DrawPixel], tint: DrawTint = .line) {
@@ -173,18 +178,27 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     g.polygon = [a, c, b, e]
     line(a, c); line(c, b); line(b, e); line(e, a)
   case .measure:
-    // 「测量」是两点之间的一条线加一句读数，不是一个框（§2E4）。
+    // 「测量」是一个按涨跌上色的框，不是一根对角线（§2E4）。
     //
-    // 原来它和矩形走同一支：四条边围出一个矩形，`filled` 还能给它填个底。可量的是
-    // 「从 A 到 B 涨了多少、花了多久」——一根对角线；围出来的那个框既不是结构也不是
-    // 区间，填上底之后更像是在图上圈了一块地，把底下的 K 线整段盖住。现在只连 A→B，
-    // 读数压在终点上方，量完抬眼就能看见，K 线一根不挡。
-    line(a, b)
-    g.polygon = []
+    // 中间有一版把它改成了只连 A→B 的一根线，理由是「框既不是结构也不是区间」。
+    // 用户看过之后否掉了：那根对角线本身不表达任何东西——它的斜率取决于当前缩放，
+    // 量的是两端的**差值**，线只是把两个端点连起来的一道多余笔画。TradingView 的
+    // 量尺是**一个框**：框住被量的那段横竖范围，整块按涨还是跌染成绿或红，
+    // 一眼就知道这段是涨是跌、覆盖了多宽的一段行情。所以现在回到框：
+    // 四条边 + 一层同色的底，中间一根竖轴带箭头指出方向，读数居中压在框上沿。
+    let rose = d.points[1].p >= d.a.p
+    let tint: DrawTint = rose ? .up : .down
+    let x0 = min(a.x, b.x), x1 = max(a.x, b.x)
+    let y0 = min(a.y, b.y), y1 = max(a.y, b.y)
+    shape([DrawPixel(x0, y0), DrawPixel(x1, y0), DrawPixel(x1, y1), DrawPixel(x0, y1)], tint: tint)
+    let mid = (x0 + x1) / 2
+    g.segments.append(DrawSegment(a: DrawPixel(mid, a.y), b: DrawPixel(mid, b.y), tint: tint))
+    arrowHead(at: DrawPixel(mid, b.y), from: DrawPixel(mid, a.y), tint: tint)
     let delta = d.points[1].p - d.a.p
     let pct = d.a.p != 0 ? String(format: "%+.2f%%", delta / abs(d.a.p) * 100) : "—"
-    g.labels = [DrawLabel(point: DrawPixel(b.x, b.y - 6),
-                          text: signedPrice(delta) + " · " + pct + " · " + span(abs(d.points[1].t - d.a.t)))]
+    g.labels = [DrawLabel(point: DrawPixel(mid, max(r.top + 7, y0 - 8)),
+                          text: signedPrice(delta) + " · " + pct + " · " + span(abs(d.points[1].t - d.a.t)),
+                          tint: tint, centered: true)]
   case .channel:
     let c = pts[2], dx = b.x - a.x, dy = b.y - a.y
     let len = dx * dx + dy * dy

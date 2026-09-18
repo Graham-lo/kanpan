@@ -90,7 +90,9 @@ struct DrawKindGlyph: View {
         line(3, 19, 8, 8); line(8, 8, 12, 15)
         for y in [4.0, 10.0, 18.0] { line(12, y, 21, y, dash: y == 10 ? [] : [3, 2.5]) }
       case .measure:
-        line(5, 19, 19, 6); arrow(19.6, 5.4, dx: 1, dy: -0.93); arrow(4.4, 19.6, dx: -1, dy: 0.93)
+        // 一个框 + 中间一根指向的竖轴，和画布上量出来的那个框同形。
+        box4(4, 5, 20, 19, fill: 0.16)
+        line(12, 18, 12, 8); arrow(12, 6.4, dx: 0, dy: -1)
       case .position:
         box4(5, 5, 19, 12, fill: 0.22); box4(5, 12, 19, 19, fill: 0.1)
         line(3, 12, 21, 12)
