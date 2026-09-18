@@ -387,7 +387,10 @@ extension ChartRenderer {
     guard state.options.drawings else { return }
     ctx.saveGState(); defer { ctx.restoreGState() }
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
-    let axes = DrawAxes(layout: L, pane: pane, range: r, mode: state.price.mode, view: state.view)
+    // `decimals` 必须传：漏了就退回默认的 2 位，同一条线被底层和覆盖层画出两串
+    // 不一样长的字（BTC 看不出来，PEPE 上就是「+0.00」压着「+0.0000147」）。
+    let axes = DrawAxes(layout: L, pane: pane, range: r, mode: state.price.mode,
+                        view: state.view, decimals: state.decimals)
     for d in state.drawings where d.id != state.drawingPreviewID { paintDrawing(d, ctx: ctx, axes: axes, colors: state.colors) }
   }
 }

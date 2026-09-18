@@ -485,8 +485,14 @@ extension ChartDrawingTests {
   func allToolsCreate() throws {
     for tool in Drawing.Kind.allCases {
       let (v, axes) = try makeView(); v.drawTool = tool
-      let coords = [CGPoint(x: 80, y: axes.pane.h * 0.65), CGPoint(x: 240, y: axes.pane.h * 0.4), CGPoint(x: 140, y: axes.pane.h * 0.25)]
-      for i in 0..<tool.pointCount { tap(v, at: coords[i], ms: Double(10000 + i * 1000)) }
+      // 点几下由 `placeCount` 说了算，不是 `pointCount`：回归通道只让用户点两下，
+      // 第三点是拿区间里的 K 线拟合出来的。从前这里用 `pointCount`，多出来的那一下
+      // 落在已经收口的线外面，等于「点空白处取消选中」，选中断言就红了。
+      // 坐标也要够 8 个：形态类最多七点（头肩），从前只给三个，第四点直接下标越界。
+      let coords = (0 ..< Drawing.Part.anchors.count).map { i in
+        CGPoint(x: 70 + Double(i) * 34, y: axes.pane.h * (i % 2 == 0 ? 0.65 : 0.3))
+      }
+      for i in 0 ..< tool.placeCount { tap(v, at: coords[i], ms: Double(10000 + i * 1000)) }
       let result = try #require(v.drawings.first, "Missing \(tool)")
       #expect(result.kind == tool && result.points.count == tool.pointCount)
       #expect(v.selectedDrawingID == result.id)

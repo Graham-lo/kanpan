@@ -149,12 +149,16 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
       }
     }
     /// 画出来是「一块面」的那几种——样式表里的「背景填充」开关只对它们露出来。
-    /// 「测量」不在里面：它已经不是一个框，是两点之间的一条线（§2E4），没有底可填。
+    ///
+    /// 「测量」不在里面：它的底色**就是结论**（涨=绿、跌=红），关掉底只剩四条边，
+    /// 读不出方向，所以那个框恒亮、不给开关。注释从前写的是「测量已经不是一个框，
+    /// 是两点之间的一条线」——那一版早就被推翻了（见 `DrawGeometry` 里 `.measure`
+    /// 那段），现在它就是一个框。
     public var usesFill: Bool {
       switch self {
       case .rectangle, .channel, .regression, .position, .priceRange, .dateRange,
            .ellipse, .triangle, .datePriceRange, .gannBox, .pitchfork, .fibChannel,
-           .callout, .flag, .markerUp, .markerDown: true
+           .xabcd, .callout, .flag, .markerUp, .markerDown: true
       default: false
       }
     }

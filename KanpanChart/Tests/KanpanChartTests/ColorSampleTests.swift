@@ -242,10 +242,18 @@ struct ColorSampleTests {
         do {
           let ink = t.dim.rgb8
           let x0 = Int(((p.plotW + 5) * s).rounded()), x1 = min(W, Int((dev.w - 2) * s))
+          // 最新价那枚胶囊也压在价格轴上。它是**实心的涨跌色**，比 60% 不透明度的轴文字
+          // 离底色更远：`coverage` 只看差最大的那个通道，深色下那支 #E36159 算出来是 0.64
+          // 的假覆盖率，正好压过真正的字像素（约 0.6），`best` 就被它抢走，
+          // 于是断言拿胶囊的红去和「底色→轴文字」那条线比，差 144。
+          // 胶囊画在 `drawLastPrice` 里、高 15pt、中心 y 被夹在主图上下各 8pt 之内，
+          // 这里照同样的规则把它那一条横带排掉再扫。
+          let tagY = r.lastPriceY(size: dev.size).map { max(8, min(p.mainH - 8, $0.y)) }
+          let skip = tagY.map { Int(($0 - 9) * s) ... Int(($0 + 9) * s) }
           var best = (d: Int.max, cov: 0.0, x: 0, y: 0, got: (r: 0, g: 0, b: 0))
           for y in r.priceGridYs(size: dev.size) {
             let y0 = max(0, Int((y - 6) * s)), y1 = min(H, Int((y + 6) * s))
-            for yy in y0..<y1 {
+            for yy in y0..<y1 where skip?.contains(yy) != true {
               for xx in x0..<x1 {
                 let got = px.rgb(xx, yy)
                 let cov = coverage(of: got, bg: bg, fg: ink)

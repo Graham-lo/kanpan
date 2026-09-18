@@ -592,7 +592,10 @@ extension ChartView {
       s.drawings.append(item)
       state = s
       d.tool = d.continuous ? tool : nil
-      d.selected = item.id
+      // 连续模式下别顺手选中：手里还攥着同一把工具要接着画，底下却弹出一条
+      // 「样式／锁定／复制／删除」的选中条，画一条弹一次，挡着图还得先点空白取消。
+      // 一次性模式才选中——那一刻用户多半正想调它的颜色粗细。
+      d.selected = d.continuous ? nil : item.id
       d.pending = nil
       d.aim = nil
       if snap.index >= 0 { Haptics.magnetTick() }
@@ -735,7 +738,12 @@ final class DrawingOverlayView: UIView {
     ctx.clip(to: CGRect(x: 0, y: axes.pane.y, width: axes.layout.plotW, height: axes.pane.h))
 
     if let sel = d.selected, let item = s.drawings.first(where: { $0.id == sel }) {
-      strokeSelected(d.preview ?? item, ctx: ctx, axes: axes, colors: t, decimals: s.decimals)
+      // 正在拖的那条底层跳过了（`drawingPreviewID`），得由覆盖层整只画；
+      // 没在拖的那条底层已经画好，这里只补手柄——再整只画一遍就是两层字叠在一起。
+      let live = s.drawingPreviewID == sel
+      let shown = d.preview ?? item
+      paintDrawing(shown, ctx: ctx, axes: axes, colors: t,
+                   selected: true, handles: !shown.locked, shape: live)
     }
     if let tool = d.tool, !d.anchors.isEmpty || d.aim != nil {
       var points = d.anchors
@@ -750,8 +758,13 @@ final class DrawingOverlayView: UIView {
         paintDrawing(preview, ctx: ctx, axes: axes, colors: t, selected: true, handles: true)
       } else {
         for pt in points { handle(ctx: ctx, x: axes.x(pt.t), y: axes.y(pt.p), colors: t) }
-        if points.count > 1 {
-          paintDrawing(Drawing(kind: .trend, points: Array(points.prefix(2))), ctx: ctx, axes: axes, colors: t, selected: true, handles: false)
+        // 还没点够的时候把**已经落下的点全连起来**，不是只连前两个。
+        // XABCD 要点五下、头肩要点七下，从前点到第四下屏幕上还是当初那一小段，
+        // 用户看不出自己画到哪儿了。
+        for i in 1 ..< max(points.count, 1) {
+          var link = Drawing(kind: .trend, points: Array(points[(i - 1)...i]))
+          link.dash = .dashed
+          paintDrawing(link, ctx: ctx, axes: axes, colors: t, selected: true, handles: false)
         }
       }
       if let aim = d.aim { readout(ctx, at: CGPoint(x: axes.x(aim.t), y: axes.y(aim.p)), point: aim, host: host, axes: axes) }
@@ -763,10 +776,6 @@ final class DrawingOverlayView: UIView {
         readout(ctx, at: CGPoint(x: axes.x(pt.t), y: axes.y(pt.p)), point: pt, host: host, axes: axes)
       }
     }
-  }
-
-  private func strokeSelected(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartColors, decimals: Int) {
-    paintDrawing(d, ctx: ctx, axes: axes, colors: t, selected: true, handles: !d.locked)
   }
 
   /// Visual handle stays compact; the selected handle accepts a 44pt touch target.
@@ -808,8 +817,61 @@ final class DrawingOverlayView: UIView {
   }
 }
 
+/// 把一条画线画出来。
+///
+/// `shape` 关掉时只画手柄：**同一条线不能被画两遍**。底层（`ChartRenderer.drawDrawings`）
+/// 已经把除了正在拖的那条以外的全画过了，覆盖层要是再整只画一遍，两遍字叠在一个锚点上——
+/// 只要两遍的小数位不一样（底层从前漏传 `decimals`，默认 2；覆盖层传的是品种真实位数），
+/// 屏幕上就是「+0.00」压着「+0.0000147」的一团墨。选中态要加的只有手柄。
+/// 一条线上的那些字。
+///
+/// 两件从前没人管的事在这儿一起做了：
+///
+/// **底板。** 9pt 的小字直接压在 K 线上是读不出来的——一根绿柱穿过小数点，
+/// 「+1600.96」就成了「+1600 96」。读数给实心胶囊配反白字（和价格轴上的现价标签
+/// 同一套语言），刻度只垫一层图表底色把线挡掉（见 `DrawPlate`）。
+///
+/// **避让。** 斐波那契一口气铺七八档，缩放到某个倍数上相邻两档只差三四个像素，
+/// 几串数字糊在一起谁也认不出。先按纵向排一遍，横向真的有交叠就把后来的那条
+/// 往下让一行；让到图外就干脆不画——图上少一档刻度，好过多一团墨。
+private func paintDrawingLabels(_ labels: [DrawLabel], ctx: CGContext, axes: DrawAxes,
+                                colors t: ChartColors, ink: (DrawTint) -> Hex) {
+  guard !labels.isEmpty else { return }
+  let lineH = 13.0
+  var placed: [CGRect] = []
+  for label in labels.sorted(by: { $0.point.y < $1.point.y }) where !label.text.isEmpty {
+    let size = ChartFont.measure(label.text, ChartFont.axis)
+    let w = Double(size.width)
+    // 横向先夹进图区；胶囊左右各留 4pt 的内边，所以夹的是含内边的那个宽度。
+    let pad = label.plate == .none ? 0.0 : 4.0
+    let half = w / 2 + pad
+    let cx = max(half + 2, min(axes.layout.plotW - half - 2, label.centered ? label.point.x : label.point.x - w / 2))
+    var cy = label.centered ? label.point.y : label.point.y - Double(size.height) / 2
+    var rect = CGRect(x: cx - half, y: cy - lineH / 2, width: half * 2, height: lineH)
+    var tries = 0
+    while tries < 16, placed.contains(where: { $0.intersects(rect) }) {
+      cy += lineH; tries += 1
+      rect = CGRect(x: cx - half, y: cy - lineH / 2, width: half * 2, height: lineH)
+    }
+    guard cy - lineH / 2 >= axes.pane.y, cy + lineH / 2 <= axes.pane.y + axes.pane.h else { continue }
+    placed.append(rect)
+    let tint = ink(label.tint)
+    switch label.plate {
+    case .none: break
+    case .wash:
+      ctx.saveGState(); ctx.setAlpha(0.85)
+      ctx.setFillColor(Paint.cg(t.bg)); ctx.addRoundRect(rect, radius: 3); ctx.fillPath()
+      ctx.restoreGState()
+    case .chip:
+      ctx.setFillColor(Paint.cg(tint)); ctx.addRoundRect(rect, radius: 3); ctx.fillPath()
+    }
+    label.text.drawCentered(at: CGPoint(x: cx, y: cy), font: ChartFont.axis,
+                            color: label.plate == .chip ? t.bg : tint)
+  }
+}
+
 func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartColors,
-                  selected: Bool = false, handles: Bool = false) {
+                  selected: Bool = false, handles: Bool = false, shape: Bool = true) {
   let g = drawingGeometry(d, bounds: axes.bounds, xOf: axes.x, yOf: axes.y, decimals: axes.decimals)
   guard !d.hidden else { return }
   let color = d.color ?? t.band
@@ -822,7 +884,9 @@ func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartC
   }
   ctx.setStrokeColor(Paint.cg(color)); ctx.setLineWidth(d.lineWidth)
   ctx.setLineDash(phase: 0, lengths: d.dash == .solid ? [] : (d.dash == .dashed ? [6, 4] : [1, 3]))
-  if d.filled, !selected {
+  // 填充不看选中态：从前「选中就不画底」，于是一拖动矩形／量尺／持仓框，
+  // 整块颜色就没了，手一松又回来——闪一下的是这条线自己的身份。
+  if d.filled, shape {
     for fill in g.fills {
       guard let first = fill.points.first else { continue }
       ctx.saveGState(); ctx.setAlpha(0.12); ctx.setFillColor(Paint.cg(paint(fill.tint)))
@@ -831,20 +895,13 @@ func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartC
       ctx.closePath(); ctx.fillPath(); ctx.restoreGState()
     }
   }
-  for line in g.segments {
-    ctx.setStrokeColor(Paint.cg(paint(line.tint)))
-    ctx.beginPath(); ctx.move(to: CGPoint(x: line.a.x, y: line.a.y)); ctx.addLine(to: CGPoint(x: line.b.x, y: line.b.y)); ctx.strokePath()
-  }
-  for label in g.labels where label.point.y >= axes.pane.y && label.point.y <= axes.pane.y + axes.pane.h {
-    let width = Double(label.text.width(ChartFont.axis))
-    let ink = paint(label.tint)
-    if label.centered {
-      let x = max(width / 2 + 3, min(axes.layout.plotW - width / 2 - 3, label.point.x))
-      label.text.drawCentered(at: CGPoint(x: x, y: label.point.y), font: ChartFont.axis, color: ink)
-    } else {
-      label.text.drawRightBottom(at: CGPoint(x: max(width + 3, min(axes.layout.plotW - 3, label.point.x)), y: label.point.y), font: ChartFont.axis, color: ink)
+  if shape {
+    for line in g.segments {
+      ctx.setStrokeColor(Paint.cg(paint(line.tint)))
+      ctx.beginPath(); ctx.move(to: CGPoint(x: line.a.x, y: line.a.y)); ctx.addLine(to: CGPoint(x: line.b.x, y: line.b.y)); ctx.strokePath()
     }
   }
+  if shape { paintDrawingLabels(g.labels, ctx: ctx, axes: axes, colors: t, ink: paint) }
   if selected, handles {
     ctx.setLineDash(phase: 0, lengths: [])
     let points = g.handles.isEmpty ? [DrawPixel(d.kind == .hline ? axes.layout.plotW / 2 : axes.x(d.a.t), d.kind == .vline ? axes.pane.y + axes.pane.h / 2 : axes.y(d.a.p))] : g.handles

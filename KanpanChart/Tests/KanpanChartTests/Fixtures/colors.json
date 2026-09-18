@@ -1,49 +1,49 @@
 {
- "note": "A3.3：7 个取色点 × AICoin 一套风格 × 明暗两套 = 14 个取样点。K 线的画法仍旧是 AICoin 那一套（形状、间距、影线量化一个数都没动），但色值跟着配色走：这里记的是出厂配色「青苔」浅 / 深两档下 `Palette` 的定版值，换配色或调对比度时这个文件要跟着改，改不动说明改错了地方。陶土那一套不在这儿比像素，四套 seed 的令牌接线由 KanpanCore 的 StyleTableTests 守。",
- "points": [
-  "upBody",
-  "downBody",
-  "wick",
-  "grid",
-  "bg",
-  "lastLine",
-  "axisText"
- ],
- "lastBarUp": false,
- "themes": {
-  "light": {
-   "aicoin": {
-    "upBody": "#2E7D6B",
-    "downBody": "#C34642",
-    "wick": "#2E7D6B",
-    "wickDown": "#C34642",
-    "grid": "#C5C5C5",
-    "bg": "#FFFFFF",
-    "lastLine": "#C34642",
-    "axisText": "#B7BFC8",
-    "gridMode": "none",
-    "shape": "solid",
-    "wickDevicePx": 1.3333333333333333,
-    "outlineDevicePx": 3,
-    "lastDash": true
-   }
-  },
-  "dark": {
-   "aicoin": {
-    "upBody": "#4FB69C",
-    "downBody": "#E36159",
-    "wick": "#4FB69C",
-    "wickDown": "#E36159",
-    "grid": "#1C2236",
-    "bg": "#0D111C",
-    "lastLine": "#E36159",
-    "axisText": "#515A66",
-    "gridMode": "none",
-    "shape": "solid",
-    "wickDevicePx": 1.3333333333333333,
-    "outlineDevicePx": 3,
-    "lastDash": true
-   }
+  "note": "A3.3：7 个取色点 × AICoin 一套风格 × 明暗两套 = 14 个取样点。K 线的画法仍旧是 AICoin 那一套（形状、间距、影线量化一个数都没动），但色值跟着配色走：这里记的是出厂配色「青苔」浅 / 深两档下 `Palette` 的定版值，换配色或调对比度时这个文件要跟着改，改不动说明改错了地方。2026-09-18 重导过一次：浅色那一档还停在 2026-09-17 之前的原型值（#2E7D6B / #C34642 / 纯白底），而 `Palette.sageSeed` 早已改成实测 AICoin 手机端的 #36B257 / #E64552，图区的底也跟着青苔走了（只有「经典」才是纯白），于是这条用例一直红着。**不要再用 `make fixtures` 重导这一份**——`Tools/export-chart-fixtures.mjs` 读的是原型的 styles.js，那边没有这批真机采样值，重导只会把它打回旧色；这份的真源是 `KanpanCore/Style/Palette.swift`。陶土那一套不在这儿比像素，四套 seed 的令牌接线由 KanpanCore 的 StyleTableTests 守。",
+  "points": [
+    "upBody",
+    "downBody",
+    "wick",
+    "grid",
+    "bg",
+    "lastLine",
+    "axisText"
+  ],
+  "lastBarUp": false,
+  "themes": {
+    "light": {
+      "aicoin": {
+        "upBody": "#36B257",
+        "downBody": "#E64552",
+        "wick": "#36B257",
+        "wickDown": "#E64552",
+        "grid": "#D6E3DA",
+        "bg": "#F3F7F4",
+        "lastLine": "#E64552",
+        "axisText": "#606F6799",
+        "gridMode": "none",
+        "shape": "solid",
+        "wickDevicePx": 1.3333333333333333,
+        "outlineDevicePx": 3,
+        "lastDash": true
+      }
+    },
+    "dark": {
+      "aicoin": {
+        "upBody": "#4FB69C",
+        "downBody": "#E36159",
+        "wick": "#4FB69C",
+        "wickDown": "#E36159",
+        "grid": "#25332C",
+        "bg": "#0B120F",
+        "lastLine": "#E36159",
+        "axisText": "#7B8D858C",
+        "gridMode": "none",
+        "shape": "solid",
+        "wickDevicePx": 1.3333333333333333,
+        "outlineDevicePx": 3,
+        "lastDash": true
+      }
+    }
   }
- }
 }

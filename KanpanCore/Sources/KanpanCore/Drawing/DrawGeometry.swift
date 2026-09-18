@@ -30,6 +30,25 @@ public struct DrawFill: Sendable {
   public init(points: [DrawPixel], tint: DrawTint = .line) { self.points = points; self.tint = tint }
 }
 
+/// 字底下垫什么。
+///
+/// 从前所有标签都是**直接写在 K 线上**的：一段「+1600.96 · +2.09% · 2.3 天」压过去，
+/// 正好有根绿柱穿过小数点，读出来是「+1600 96」。图上本来就有蜡烛、均线、网格，
+/// 9pt 的小字没有底根本站不住（TradingView 的量尺读数是一枚实心胶囊，就是这个道理）。
+///
+/// 分三档是因为三种字的性质不同：**读数**（测量的涨跌、持仓的盈亏比、区间的跨度）
+/// 是这把工具的结论，要像价格轴上的现价标签一样抢眼，给实心胶囊加反白字；
+/// **刻度**（斐波那契、江恩的一排比例）数量多，全上实心会变成一片色块，只垫一层
+/// 图表底色把线挡住就够；**形态的字母**（X/A/B/C/D）本来就短，留 `.none`。
+public enum DrawPlate: Sendable, Equatable {
+  /// 什么都不垫。
+  case none
+  /// 垫一层图表底色，把穿过去的线和蜡烛挡掉，字还是原色。
+  case wash
+  /// 实心胶囊 + 反白字。
+  case chip
+}
+
 public struct DrawLabel: Sendable {
   public var point: DrawPixel
   public var text: String
@@ -39,8 +58,11 @@ public struct DrawLabel: Sendable {
   /// 绝大多数读数是贴着线的右端或刻度的右端写的，右对齐正好把字压在线上方；
   /// 「测量」的读数要压在框的正中间那条轴上，只有居中才对得齐。
   public var centered = false
-  public init(point: DrawPixel, text: String, tint: DrawTint = .line, centered: Bool = false) {
-    self.point = point; self.text = text; self.tint = tint; self.centered = centered
+  public var plate: DrawPlate = .none
+  public init(point: DrawPixel, text: String, tint: DrawTint = .line,
+              centered: Bool = false, plate: DrawPlate = .none) {
+    self.point = point; self.text = text; self.tint = tint
+    self.centered = centered; self.plate = plate
   }
 }
 
@@ -132,8 +154,11 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
   }
   /// 在每个端点上压一个记号：形态图上「这是 B 点」比线本身还重要。
   func marks(_ ps: [DrawPixel], _ names: [String]) {
-    for (i, p) in ps.enumerated() where i < names.count {
-      g.labels.append(DrawLabel(point: DrawPixel(p.x, p.y - 5), text: names[i]))
+    // 空名字（头肩形里那几个不署名的点）直接跳过，别往 labels 里塞空串。
+    // 字母压在点的**正上方**：右对齐会把它甩到折线的左上角，看着像是标给上一段的。
+    for (i, p) in ps.enumerated() where i < names.count && !names[i].isEmpty {
+      g.labels.append(DrawLabel(point: DrawPixel(p.x, p.y - 10), text: names[i],
+                                centered: true, plate: .wash))
     }
   }
   /// 箭头尖。用一块三角填充画，因为描边的两笔在细线宽下几乎看不出方向。
@@ -164,12 +189,12 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
   switch d.kind {
   case .hline:
     line(DrawPixel(r.left, a.y), DrawPixel(r.right, a.y)); g.handles = []
-    g.labels = [DrawLabel(point: DrawPixel(r.right - 4, a.y - 4), text: price(d.a.p))]
+    g.labels = [DrawLabel(point: DrawPixel(r.right - 4, a.y - 4), text: price(d.a.p), plate: .chip)]
   case .vline:
     line(DrawPixel(a.x, r.top), DrawPixel(a.x, r.bottom)); g.handles = []
   case .hray:
     line(a, DrawPixel(a.x + 1, a.y), to: .infinity)
-    g.labels = [DrawLabel(point: DrawPixel(r.right - 4, a.y - 4), text: price(d.a.p))]
+    g.labels = [DrawLabel(point: DrawPixel(r.right - 4, a.y - 4), text: price(d.a.p), plate: .chip)]
   case .trend: line(a, b)
   case .ray: line(a, b, to: .infinity)
   case .extended: line(a, b, from: -.infinity, to: .infinity)
@@ -196,9 +221,12 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     arrowHead(at: DrawPixel(mid, b.y), from: DrawPixel(mid, a.y), tint: tint)
     let delta = d.points[1].p - d.a.p
     let pct = d.a.p != 0 ? String(format: "%+.2f%%", delta / abs(d.a.p) * 100) : "—"
-    g.labels = [DrawLabel(point: DrawPixel(mid, max(r.top + 7, y0 - 8)),
+    // 读数贴在框**外面**：压在框里会盖住被量的那段 K 线，正是要看的东西。
+    // 默认在上沿，上面挤不下（框顶贴着图顶，那儿还有均线图例）就翻到下沿去。
+    let readoutY = y0 - 12 >= r.top + 10 ? y0 - 10 : min(r.bottom - 9, y1 + 10)
+    g.labels = [DrawLabel(point: DrawPixel(mid, readoutY),
                           text: signedPrice(delta) + " · " + pct + " · " + span(abs(d.points[1].t - d.a.t)),
-                          tint: tint, centered: true)]
+                          tint: tint, centered: true, plate: .chip)]
   case .channel:
     let c = pts[2], dx = b.x - a.x, dy = b.y - a.y
     let len = dx * dx + dy * dy
@@ -222,7 +250,7 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
       guard y.isFinite else { continue }
       line(DrawPixel(min(a.x, b.x), y), DrawPixel(max(a.x, b.x), y))
       g.labels.append(DrawLabel(point: DrawPixel(max(a.x, b.x), y - 3),
-                                text: String(format: "%.3g", level) + " · " + price(value)))
+                                text: String(format: "%.3g", level) + " · " + price(value), plate: .wash))
     }
 
   case .regression:
@@ -257,11 +285,22 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     g.segments.append(DrawSegment(a: DrawPixel(x0, a.y), b: DrawPixel(x1, a.y)))
     let gain = abs(target - entry), risk = abs(entry - stop)
     let ratio = risk > 0 ? String(format: "%.2f", gain / risk) : "—"
+    // 三个读数各贴各的线。从前「目标」锚在 `min(a.y, b.y)`、「盈亏比」锚在 `a.y`，
+    // 做空时目标在入场**下方**，`min` 取到的就是入场那条 —— 两串字完全重合，
+    // 读出来是一团墨。现在目标跟着目标线走、止损跟着止损线走，各自甩到框外那一侧，
+    // 盈亏比居中压在入场线上；三条线两两不同高，怎么画都不会撞。
+    let long = target >= entry
     g.labels = [
-      DrawLabel(point: DrawPixel(x1, min(a.y, b.y) - 4), text: "目标 " + percent(entry, target), tint: .up),
-      DrawLabel(point: DrawPixel(x1, max(a.y, c.y) + 12), text: "止损 " + percent(entry, stop), tint: .down),
-      DrawLabel(point: DrawPixel(x1, a.y - 4), text: "盈亏比 " + ratio),
+      DrawLabel(point: DrawPixel(x1 - 3, b.y + (long ? -4 : 13)),
+                text: "目标 " + percent(entry, target), tint: .up, plate: .chip),
+      DrawLabel(point: DrawPixel(x1 - 3, c.y + (long ? 13 : -4)),
+                text: "止损 " + percent(entry, stop), tint: .down, plate: .chip),
+      DrawLabel(point: DrawPixel((x0 + x1) / 2, a.y), text: "盈亏比 " + ratio,
+                centered: true, plate: .chip),
     ]
+    // 手柄挪到框的右边沿：目标点和止损点的横坐标本来就不参与作图（框宽由入场和
+    // 目标两点定），停在用户当初点的那个 x 上只会和别的手柄叠在一起。
+    g.handles = [a, DrawPixel(x1, b.y), DrawPixel(x1, c.y)]
 
   case .fibExtension:
     // 三点：A → B 是被量的那一段，C 是从哪儿开始往外投。刻度值 = C + (B − A) × 比例。
@@ -274,7 +313,7 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
       guard y.isFinite else { continue }
       line(DrawPixel(c.x, y), DrawPixel(r.right, y))
       g.labels.append(DrawLabel(point: DrawPixel(r.right - 4, y - 3),
-                                text: String(format: "%.3g", level) + " · " + price(value)))
+                                text: String(format: "%.3g", level) + " · " + price(value), plate: .wash))
     }
 
   case .priceRange:
@@ -286,7 +325,8 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     line(DrawPixel(r.left, b.y), DrawPixel(r.right, b.y))
     let delta = d.points[1].p - d.a.p
     g.labels = [DrawLabel(point: DrawPixel(r.right - 4, top - 4),
-                          text: signedPrice(delta) + " · " + percent(d.a.p, d.points[1].p))]
+                          text: signedPrice(delta) + " · " + percent(d.a.p, d.points[1].p),
+                          plate: .chip)]
 
   case .dateRange:
     // 对称的另一半：只认两个时间，竖着铺满整张图。
@@ -295,12 +335,14 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
                  DrawPixel(right, r.bottom), DrawPixel(left, r.bottom)]
     line(DrawPixel(a.x, r.top), DrawPixel(a.x, r.bottom))
     line(DrawPixel(b.x, r.top), DrawPixel(b.x, r.bottom))
-    g.labels = [DrawLabel(point: DrawPixel(right, r.top + 14), text: span(d.points[1].t - d.a.t))]
+    g.labels = [DrawLabel(point: DrawPixel(right, r.top + 16), text: span(d.points[1].t - d.a.t),
+                          plate: .chip)]
 
   case .note:
     // 一个点加一句话。没有线可画，标签就是它本身；空着的时候给一句占位，
     // 不然刚点下去图上什么都没有，用户会以为没画上。
-    g.labels = [DrawLabel(point: DrawPixel(a.x, a.y - 4), text: d.text.isEmpty ? "点这里写字" : d.text)]
+    g.labels = [DrawLabel(point: DrawPixel(a.x, a.y - 4), text: d.text.isEmpty ? "点这里写字" : d.text,
+                          plate: .wash)]
 
   // ---------------------------------------------------------------- 线条
 
@@ -308,7 +350,7 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     // 一个点上的横竖两条。十字线是「这一根、这个价」的书签，不是可拖的十字光标。
     line(DrawPixel(r.left, a.y), DrawPixel(r.right, a.y))
     line(DrawPixel(a.x, r.top), DrawPixel(a.x, r.bottom))
-    g.labels = [DrawLabel(point: DrawPixel(r.right - 4, a.y - 4), text: price(d.a.p))]
+    g.labels = [DrawLabel(point: DrawPixel(r.right - 4, a.y - 4), text: price(d.a.p), plate: .chip)]
 
   case .arrowLine:
     line(a, b)
@@ -336,7 +378,8 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     for level in d.levels {
       let ox = -ch.dy * ch.f * level, oy = ch.dx * ch.f * level
       line(DrawPixel(a.x + ox, a.y + oy), DrawPixel(b.x + ox, b.y + oy), from: -.infinity, to: .infinity)
-      g.labels.append(DrawLabel(point: DrawPixel(b.x + ox, b.y + oy - 3), text: String(format: "%.3g", level)))
+      g.labels.append(DrawLabel(point: DrawPixel(b.x + ox, b.y + oy - 3),
+                                text: String(format: "%.3g", level), plate: .wash))
     }
     if d.filled {
       let ox = -ch.dy * ch.f, oy = ch.dx * ch.f
@@ -380,8 +423,8 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     let delta = d.points[1].p - d.a.p
     g.labels = [
       DrawLabel(point: DrawPixel(x1, y0 - 4),
-                text: signedPrice(delta) + " · " + percent(d.a.p, d.points[1].p)),
-      DrawLabel(point: DrawPixel(x1, y1 + 12), text: span(d.points[1].t - d.a.t)),
+                text: signedPrice(delta) + " · " + percent(d.a.p, d.points[1].p), plate: .chip),
+      DrawLabel(point: DrawPixel(x1, y1 + 13), text: span(d.points[1].t - d.a.t), plate: .chip),
     ]
 
   // ---------------------------------------------------------------- 斐波那契
@@ -394,7 +437,8 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
       let x = xOf(d.a.t + unit * level)
       guard x.isFinite else { continue }
       line(DrawPixel(x, r.top), DrawPixel(x, r.bottom))
-      g.labels.append(DrawLabel(point: DrawPixel(x, r.top + 14), text: String(format: "%.3g", level)))
+      g.labels.append(DrawLabel(point: DrawPixel(x, r.top + 16), text: String(format: "%.3g", level),
+                                plate: .wash))
     }
 
   case .fibFan:
@@ -402,7 +446,8 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     for level in d.levels {
       let through = DrawPixel(b.x, a.y + (b.y - a.y) * level)
       line(a, through, to: .infinity)
-      g.labels.append(DrawLabel(point: DrawPixel(b.x, through.y - 3), text: String(format: "%.3g", level)))
+      g.labels.append(DrawLabel(point: DrawPixel(b.x, through.y - 3),
+                                text: String(format: "%.3g", level), plate: .wash))
     }
     line(a, b)
 
@@ -441,7 +486,7 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     polyline(pts); marks(pts, ["A", "B", "C", "D"])
   case .headShoulders:
     polyline(pts); marks(pts, ["", "左肩", "", "头", "", "右肩", ""])
-    // 颈线：第 2 和第 6 个点（两个谷）连起来往两头延伸，这才是形态的判定线。
+    // 颈线：两个谷（第 3、第 5 个点）连起来往两头延伸，这才是形态的判定线。
     if pts.count >= 7 { line(pts[2], pts[4], from: -.infinity, to: .infinity) }
   case .elliottImpulse:
     polyline(pts); marks(pts, ["0", "1", "2", "3", "4", "5"])
@@ -454,18 +499,21 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     // A 是要指的那个点，B 是气泡落在哪儿。指引线从气泡指回 A，箭头在 A 那头。
     line(b, a)
     arrowHead(at: a, from: b, size: 8)
-    g.labels = [DrawLabel(point: DrawPixel(b.x, b.y - 4), text: d.text.isEmpty ? "点这里写字" : d.text)]
+    g.labels = [DrawLabel(point: DrawPixel(b.x, b.y - 4), text: d.text.isEmpty ? "点这里写字" : d.text,
+                          plate: .wash)]
 
   case .priceLabel:
     // 只标一个价。和「文字标注」的区别是它写的不是人话，是那一点的价——
     // 价格会跟着端点走，不会因为拖过位置就说谎。
-    g.labels = [DrawLabel(point: DrawPixel(a.x, a.y - 4), text: price(d.a.p))]
+    g.labels = [DrawLabel(point: DrawPixel(a.x, a.y - 4), text: price(d.a.p), plate: .chip)]
 
   case .flag:
     // 一根旗杆加一面小旗，钉在某一根 K 线上。旗面朝右，不遮住它自己站的那一根。
     line(DrawPixel(a.x, a.y), DrawPixel(a.x, a.y - 22))
     shape([DrawPixel(a.x, a.y - 22), DrawPixel(a.x + 16, a.y - 18), DrawPixel(a.x, a.y - 14)])
-    if !d.text.isEmpty { g.labels = [DrawLabel(point: DrawPixel(a.x + 18, a.y - 12), text: d.text)] }
+    if !d.text.isEmpty {
+      g.labels = [DrawLabel(point: DrawPixel(a.x + 18, a.y - 12), text: d.text, plate: .wash)]
+    }
 
   case .markerUp:
     // 一个朝上的三角，钉在点的下方——它标的是「从这里往上」。
