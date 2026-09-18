@@ -10,7 +10,7 @@
 
 2026-09-17 复核（Codex 已退出项目，现行约定见 `../PROJECT.md`）：
 - kanpan-implementation-by-collaborator.md 已删除：「代码由协作者写、Claude 不要开发」完全失效，现在代码由 Claude 窗口实现。
-- kanpan-project-location-and-spec.md：仓库路径仍对；「先读实施任务书」已不成立，任务书的默认风格、指标、底栏布局都被后续决定覆盖，先读 `README.md` 与 `../PROJECT.md`。
+- kanpan-project-location-and-spec.md：仓库路径仍对；「先读实施任务书」已不成立，任务书的默认风格、指标、底栏布局都被后续决定覆盖，先读 `README.md` 与 `../PROJECT.md`。（2026-09-18 已在该文件头部打上历史标注并取消 `pinned`，里面的 iOS 17+、「只有品种/周期/K 线/指标四件事」都是旧的。）
 - kanpan-dev-environment.md：Xcode / 模拟器信息是 09-14 快照，真机验证以 iOS 26 的 iPhone 16 Pro 为主。
 - kanpan-default-subplots.md：仍然成立（`IndicatorID.defaultSubs == [.macd, .rsi]`）。
 - kanpan-period-list.md、kanpan-chart-zoom-fixed-box.md、kanpan-no-persistent-kline-storage.md、panels-close-after-pick.md、verify-feel-against-real-aicoin.md：仍然成立。
