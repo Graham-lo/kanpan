@@ -4,16 +4,16 @@
 
 ## 1. 身份与分工
 
-- 产品 Hkline（桌面显示名即 Hkline，2026-09-18 定；旧名已停用，活文档里不要再写），工程名 Kanpan。仓库 `/Users/mdd/zhk/kanpan`，远程 `https://github.com/Graham-lo/kanpan`，分支 `main`，2026-09-17 HEAD `a2cbb0d`。
-- Swift 6、目标 iOS 17+、真机验证 iOS 26；SwiftUI + UIKit/CoreGraphics 自绘图表；零第三方依赖；不做交易。
+- 产品 Hkline（桌面显示名即 Hkline，2026-09-18 定；旧名已停用，活文档里不要再写），工程名 Kanpan。仓库 `/Users/mdd/zhk/kanpan`，远程 `https://github.com/Graham-lo/kanpan`，分支 `main`，2026-09-18 HEAD `3b9fb44`。
+- Swift 6、最低系统 iOS 18.0（2026-09-18 从 17.0 抬上来，app 与各 SPM 包同步）、真机验证 iOS 26；SwiftUI + UIKit/CoreGraphics 自绘图表；零第三方依赖；不做交易。
 - 代码由 Claude 窗口实现，视觉 / 交互原型定稿后可派 Opus 5（high）子代理写、主窗口验收、装真机、push。Codex 已不参与；`HISTORY-2026-09-15-codex.md` 与根目录 `KANPAN-HANDOFF-2026-09-14.md` 是历史。
 - 常常有第二个窗口在同一工作树改交互逻辑。只动自己范围内的文件，不提交别人的改动。
 
-## 2. 当前界面（2026-09-17）
+## 2. 当前界面（2026-09-18）
 
 - 皮肤：青苔·冷（默认）/ 陶土·暖 / 经典（2026-09-17 用户点名加的：青苔的文字 / 强调色原样、底换成 AICoin 白）。**经典的白是纯白 `#FFFFFF`，不是 `#F7F9FF`**——后者是安卓包的 `sh_base_bg_color`，K 线页不用它，写成那支蓝白会让纯白画布在页面上显成一块更亮的补丁；真机实测 AICoin 行情页从标题到副图全是 `#FFFFFF`，自选页那一层用中性灰 `#F7F8FA`，深色 `#0D111C` / `#090C14`。**分割线同理别拿错令牌**：图内结构线用 `ui_kline_divider_color` = `#F2F4F7`（夜 `#191C21`，`Palette.dayCanvas.axis` / `nightCanvas.axis`），周期条上下用 `ui_kline_indicator_bar_divider_color` = `#EAEAEA`（夜 `#20232E`，`classicSeed.line`）；原先拿的 `sh_base_divider_dim_fill_color` = `#DEE1E5` 是通用列表分割线，离纯白的亮度差是 `#F2F4F7` 的七倍，整屏 8 条把纯白页面切成了格子，用户读成「更刺眼」。**K 线色只有 AICoin 一套、以后不再另起**（2026-09-17 用户定）：浅色三套皮肤的涨跌色、MA 线色 `palette` 和副图线色 `sub` 都是 AICoin iPhone 端实测值（`Palette.aicoinDayUp/Down/MA`、`aicoinSlots`：蜡烛 `#36B257` / `#E64552`，副图槽位序 `#2FD2B2 #FFB400 #E849B9 #1478C8 …`）；深色 AICoin 没在真机量过，经典深色用安卓包常量，青苔 / 陶土深色暂留自己那组，各有浅深两版，`ThemeSkin` + `ThemeChoice`；种子色在 `KanpanCore/Sources/KanpanCore/Style/Palette.swift`。
 - 底栏是常驻标签栏「画线 · 图表 · 自选 · 板块分类 · 设置」五格等宽（`Kanpan/Kanpan/Main/TabBar.swift`，`BottomBar.swift` 已废）。每格各是一整页，切到哪一页它都还在；「画线」那一格是动作不是去处（点它把当前这张图横过来画）。复盘挪进行情页顶栏那颗带角标的按钮，指标并进「图表设置」面板，无横屏格、无风格格。**第五格「板块分类」2026-09-18 晚落地**（`Kanpan/Kanpan/Sector/`，口径在 `KanpanCore/Sources/KanpanCore/Sector/`）：加密／美股是那一页顶上的硬切换，不再开第六格。
-- 行情页顶栏：品种徽章 + 品种名 + 状态点 + 放大镜（搜索）+ 自选星；最新价 22pt medium + 涨跌药丸 11.5pt，下一行成交额 / 振幅；不显示 24h 高低（`Main/TopBar.swift`）。**品种名只是标签，点上去什么都不弹**（2026-09-18 用户点名去掉那个半屏快捷选择框，`FavoritesQuickPicker` 已删除）；换品种两条路：顶栏放大镜进搜索页、底栏「自选」进分类自选页。
+- 行情页顶栏：品种徽章 + 品种名 + 复盘（带待办角标）+ 放大镜（搜索）；连接状态点与顶栏自选星 2026-09-18 一起撤掉（状态点是后台字段，星和行上的星重复且贴着品种名易误触）；最新价 22pt medium + 涨跌药丸 11.5pt，下一行成交额 / 振幅；不显示 24h 高低（`Main/TopBar.swift`）。**品种名只是标签，点上去什么都不弹**（2026-09-18 用户点名去掉那个半屏快捷选择框，`FavoritesQuickPicker` 已删除）；换品种两条路：顶栏放大镜进搜索页、底栏「自选」进分类自选页。
 - 行情页头部四格：持仓量 / 成交额 / 市值 / 费率，只有这四个，数额统一 K/M/B/T。市值 = 总市值 = 总供应量 × 现价；持仓量与市值都由 VPS 的 `kanpan-api` 提供。**非币合约（美股 / 港韩 A 股 / ETF / 商品 / 指数 / 未上市）的市值口径与数据来源见 `docs/市值口径与数据来源-2026-09-18.md`**，服务端存的是「市值 ÷ 合约价」的乘数而不是股数，认不出的一律留空。
 - 品种搜索：先最匹配、同档按 24h 成交额降序（`KanpanSymbols/SymbolQuery.swift`、`SymbolSections.swift`）。
 - 自选页「琉璃」版（`Symbols/FavoritesView.swift`，提交 `a2cbb0d`，`fda4e1c` 起去掉玻璃纸改为融合）：浅色光斑底（底部叠同色渐变保可读）、深色素底不画光斑（2026-09-17 用户要求去掉）、行直接长在底上只留发丝线、衬线标题 22pt 与正放的数量印章、涨跌比例条、品种徽章 33pt、价格 15.5pt、涨跌药丸；迷你走势图默认关闭，「…」菜单里 `favorites.sparkline` 可打开（本机 AppStorage）；排序与涨跌幅口径在 `favorites.sort` 弹层里；没有领涨 / 领跌行。
