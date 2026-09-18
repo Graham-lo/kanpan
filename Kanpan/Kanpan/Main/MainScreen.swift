@@ -1115,7 +1115,7 @@ struct MainScreen: View {
     if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
        ProcessInfo.processInfo.environment["KANPAN_ACCOUNT_API_URL"] == nil { return }
     do {
-      let bridge = try AppAccountBridge(account: account, prefs: store, symbols: picker, drawings: draw, review: review)
+      let bridge = try AppAccountBridge(account: account, prefs: store, symbols: picker, drawings: draw, review: review, search: searchHistory)
       bridge.canApply = { syncGate }
       bridge.onSwitch = {
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }

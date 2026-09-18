@@ -2,7 +2,7 @@ import Foundation
 import KanpanAccount
 
 /// Adapter for the existing stores: account integration does not replace their models or UI.
-final class PersonalFileStorage: PrefsStorage, SymbolPrefsStorage, @unchecked Sendable {
+final class PersonalFileStorage: PrefsStorage, SymbolPrefsStorage, SearchHistoryStorage, @unchecked Sendable {
   private let directory: URL
   private let lock = NSLock()
   private var failed: String?
@@ -38,4 +38,12 @@ final class PersonalFileStorage: PrefsStorage, SymbolPrefsStorage, @unchecked Se
   func setPrefsData(_ data: Data?, forKey key: String) { write(data, name: "prefs.json") }
   func symbolPrefsData(forKey key: String) -> Data? { read("symbols.json") }
   func setSymbolPrefsData(_ data: Data?, forKey key: String) { write(data, name: "symbols.json") }
+  /// 最近搜过的词。按身份存——同一台机器上 A 退出、B 登录，B 不该看见 A 搜过什么。
+  func searchHistory(forKey key: String) -> [String]? {
+    guard let data = read("search.json") else { return nil }
+    return try? JSONDecoder().decode([String].self, from: data)
+  }
+  func setSearchHistory(_ value: [String]?, forKey key: String) {
+    write(value.flatMap { try? JSONEncoder().encode($0) }, name: "search.json")
+  }
 }

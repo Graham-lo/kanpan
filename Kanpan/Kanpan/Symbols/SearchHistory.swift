@@ -7,8 +7,13 @@ import Observation
 //
 // **为什么不塞进 `SymbolPrefs`**：那一份是随账号同步的（`AppAccountBridge`），
 // 换个账号会被整份覆盖；而且 `SymbolPrefsStore.load()` 是一个字段一个字段重建的，
-// 多加一个字段等于要同时改同步那一侧。搜索词是「这台机器上我刚才在找什么」，
-// 本来就不该跟着账号跑，所以单开一个只记在本机的小仓。
+// 多加一个字段等于要同时改同步那一侧。所以单开一个小仓。
+//
+// 但「只记在本机」这条早先的判断是错的，2026-09-19 已改掉：搜索词记在
+// `UserDefaults.standard` 里意味着同一台机器上 A 退出、B 登录，**B 看得见 A 搜过
+// 什么**。这不是「设置丢了」那一类体验问题，是别人的东西被看见了。现在它跟着
+// 账号／访客档案走（`PersonalFileStorage` 的 search.json，见 `useStorage(_:)`），
+// 但仍然不进云同步——它是「我刚才在这台机器上找什么」，换台设备不需要跟过去。
 
 /// 存储口子。测试塞内存实现，app 用 `UserDefaults`。
 protocol SearchHistoryStorage: AnyObject {
@@ -40,7 +45,7 @@ final class SearchHistory {
 
   private(set) var terms: [String] = []
 
-  @ObservationIgnored private let storage: SearchHistoryStorage
+  @ObservationIgnored private var storage: SearchHistoryStorage
   @ObservationIgnored private let key: String
 
   init(storage: SearchHistoryStorage? = nil, key: String = SearchHistory.defaultsKey) {
@@ -48,6 +53,13 @@ final class SearchHistory {
       ? MemorySearchHistoryStorage() : UserDefaults.standard)
     self.key = key
     terms = Self.clean(self.storage.searchHistory(forKey: self.key) ?? [])
+  }
+
+  /// 换档案：登录、退登、换号。照 `PrefsStore.useStorage` 的路子——换仓 + 重读，
+  /// 调用方一个字都不用改。
+  func useStorage(_ next: SearchHistoryStorage) {
+    storage = next
+    terms = Self.clean(next.searchHistory(forKey: key) ?? [])
   }
 
   /// 记一个词。空白、太长、重复都在这儿收拾干净。

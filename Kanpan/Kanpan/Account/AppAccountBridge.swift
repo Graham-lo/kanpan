@@ -14,6 +14,7 @@ import ReviewUI
   private let symbols: SymbolPickerModel
   private let drawings: DrawingController
   private let review: ReviewFeature
+  private let search: SearchHistory
   private var personal: PersonalFileStorage?
   private var sync: SyncStore?
   private var owner: UUID?
@@ -47,12 +48,13 @@ import ReviewUI
   /// 上一次 `applyPending()` 被 `canApply()` 挡回去了，等条件到齐要补跑。
   private var pendingApply = false
 
-  init(account: AccountFeature, prefs: PrefsStore, symbols: SymbolPickerModel, drawings: DrawingController, review: ReviewFeature) throws {
-    self.account = account; self.prefs = prefs; self.symbols = symbols; self.drawings = drawings; self.review = review
+  init(account: AccountFeature, prefs: PrefsStore, symbols: SymbolPickerModel, drawings: DrawingController, review: ReviewFeature, search: SearchHistory) throws {
+    self.account = account; self.prefs = prefs; self.symbols = symbols; self.drawings = drawings; self.review = review; self.search = search
     var root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("kanpan/accounts")
     if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1", let profile = ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"], UUID(uuidString: profile) != nil { root = root.appendingPathComponent("tests/" + profile) }
     files = try AccountFiles(root: root)
     try migrateLegacy()
+    dropSharedSearchHistory()
     account.onPrepareAccount = { [weak self] user in guard let self else { return {} }; return try self.prepare(user) }
     account.onSynchronize = { [weak self] in self?.synchronize(manual: true) }
     account.onAutoSync = { [weak self] enabled in self?.setAutoSync(enabled) }
@@ -82,6 +84,19 @@ import ReviewUI
   /// （R3-2：没登录过的人「上次看的那张图 / 落地页」整套失效）。现在拆成两步：
   /// 构造 → 宿主挂回调 → `activate()`，第一次装档案也走完整的通知。
   func activate() throws { try prepare(nil)() }
+  /// 把 `UserDefaults.standard` 里那份旧的历史搜索一次性清掉，不归给任何身份。
+  ///
+  /// 这份历史是多个身份混在一起的——这台机器上所有登录过的人搜的词都记在同一个键里，
+  /// 无法归属到具体的人，所以在搬到按身份存储（`PersonalFileStorage` 的 search.json）时
+  /// 一次性清掉。归给「升级那一刻登录着的人」比不迁更糟：A 搜过的词会正式写进 B 的档案，
+  /// B 之后怎么清自己的历史都清不掉那几条的来路。搜索历史是最不值钱的状态，
+  /// 用几天自己就回来了，不值得为它担这个风险。
+  ///
+  /// 不挂 `legacy-imported.json` 那个标记：老用户早就越过那道标记了，挂上去等于不清。
+  /// 清完之后写入已经改道到档案里，这个键不会再被写第二次，所以每次启动跑一遍是幂等的。
+  private func dropSharedSearchHistory() {
+    UserDefaults.standard.removeObject(forKey: SearchHistory.defaultsKey)
+  }
   private func migrateLegacy() throws {
     let marker = files.root.appendingPathComponent("legacy-imported.json")
     guard !FileManager.default.fileExists(atPath: marker.path) else { return }
@@ -188,6 +203,7 @@ import ReviewUI
       prefs.useStorage(nextStorage, prefs: nextPrefs)
       symbols.useStorage(SymbolPrefsStore(storage: nextStorage), prefs: nextSymbols)
       drawings.useStorage(drawStore, archive: nextDrawings)
+      search.useStorage(nextStorage)
       review.activate(store: nextReview, client: client)
       applying = false; updateStatus()
       // 档案已经全部就位，宿主现在可以按它重新兑现首屏那几件事。
