@@ -28,7 +28,14 @@ struct MainScreen: View {
   /// 才知道，见 `honorProfile()`；`boot()` 里 `market.start(symbol:)` 会拿着那份
   /// 档案里的值开张，不会先开一张别的图再切过去。
   @State private var market = MarketModel(symbol: "BTCUSDT")
-  @State private var store = PrefsStore(storage: PrefsStore.deviceStorage())
+  /// 第一帧的底色不能等档案。
+  ///
+  /// 设置的真身在账号目录里的 `prefs.json`，而这个 `store` 是在第一帧**之前**构造的，
+  /// 那一刻只有 `UserDefaults` 可读（里头没有 prefs 这个键）。不给起点的话，
+  /// 一个选了「陶土 · 深色」的人每次冷启动都会先看一眼青苔、等档案回来再整屏换一次。
+  /// 所以拿本机镜像当起点，见 `LaunchThemeMirror`。
+  @State private var store = PrefsStore(storage: PrefsStore.deviceStorage(),
+                                        fallback: LaunchThemeMirror.prefs())
   @State private var picker = SymbolPickerModel(store: SymbolPrefsStore(storage: SymbolPrefsStore.deviceStorage()))
   /// 自选页上正在做的那次批量编辑（编辑模式 + 勾中的那几行 + 冻住的报价）。
   ///

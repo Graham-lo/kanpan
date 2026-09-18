@@ -125,3 +125,17 @@ extension EnvironmentValues {
     set { self[PanelThemeKey.self] = newValue }
   }
 }
+
+// MARK: - Hex → Color
+
+extension Color {
+  /// `Hex` → SwiftUI `Color`。
+  ///
+  /// 原先住在 `LaunchScreen.swift` 里，注释写着「Theme 层做好之前先放这儿」；
+  /// Theme 层就是这个文件，那张 M0 的空壳首屏早已没人用（真正的启动屏是系统按
+  /// `Info.plist` 里 `UILaunchScreen` 画的），所以随文件一起搬到了这儿。
+  init(hex: Hex) {
+    let c = hex.rgba
+    self.init(.sRGB, red: c.r, green: c.g, blue: c.b, opacity: c.a)
+  }
+}

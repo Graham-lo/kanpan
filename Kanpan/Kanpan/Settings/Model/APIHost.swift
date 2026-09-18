@@ -102,16 +102,8 @@ enum LaunchHostMirror {
   static let apiKey = "kanpan.launch.apiHost"
   static let streamKey = "kanpan.launch.streamHost"
 
-  /// 测试沙盒里用自己的一份 defaults，选法和 `PrefsStore.deviceStorage()` /
-  /// `MarketRoutePolicyStore.defaults` 一致——UI 用例不会把真机上的镜像改掉。
-  private static var defaults: UserDefaults {
-    let env = ProcessInfo.processInfo.environment
-    if env["KANPAN_TEST_PROFILE"] == "1", let profile = env["KANPAN_PERSISTENCE_PROFILE"],
-       UUID(uuidString: profile) != nil, let suite = UserDefaults(suiteName: "kanpan.tests." + profile) {
-      return suite
-    }
-    return .standard
-  }
+  /// 测试沙盒里用自己的一份 defaults（见 `LaunchMirror`）——UI 用例不会把真机上的镜像改掉。
+  private static var defaults: UserDefaults { LaunchMirror.defaults }
 
   /// 镜像里记着的两个域名。没记过、或记的东西形状不对，都退回出厂值。
   static var hosts: (api: String, stream: String) {

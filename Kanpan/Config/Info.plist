@@ -13,6 +13,31 @@
 -->
 <plist version="1.0">
 <dict>
+  <!--
+    启动屏的底色。必须手写在这儿，不能交给 `INFOPLIST_KEY_UILaunchScreen_*`。
+
+    2026-09-19 在 Xcode 26（17F113）上逐条对照构建量过：
+    · `INFOPLIST_KEY_UILaunchScreen_Generation = YES` 生成出来的是
+      `UILaunchScreen = { UILaunchScreen = {} }`——多套了一层同名空字典；
+    · `INFOPLIST_KEY_UILaunchScreen_BackgroundColor = LaunchBackground` 单独留着时，
+      包里连 `UILaunchScreen` 这个键都不出现，它是彻底的空转；
+    · 两条一起写，得到的就是那个**空字典**，`LaunchBackground` 一次都没被用上。
+    没有 `UIColorName` 的启动屏，系统按纯白铺——于是选了深色的人每次冷启动先吃一屏白，
+    再被系统的启动屏淡出动画拖成一条白→深的渐变。
+
+    这份 `Info.plist` 和 `GENERATE_INFOPLIST_FILE` 生成的那份是**按键合并**的
+    （对照构建里我们手写的 `UIColorName` 和生成的那个空字典同时出现在包里），
+    所以手写这一条不会被生成器盖掉；pbxproj 里那两条已经删掉，免得再合进来一坨空字典。
+
+    颜色只能跟**系统**深浅走（`Assets.xcassets/LaunchBackground.colorset` 的
+    Any/Dark 两档）：启动屏是 app 进程起来之前由系统渲染并缓存的，读不到 UserDefaults，
+    更读不到账号档案里的皮肤与深浅。app 自己那一帧跟着人走，见 `LaunchThemeMirror`。
+  -->
+  <key>UILaunchScreen</key>
+  <dict>
+    <key>UIColorName</key>
+    <string>LaunchBackground</string>
+  </dict>
   <key>KanpanAccountAPIURL</key>
   <string>https://kanpan.107-174-172-10.sslip.io</string>
   <!--
