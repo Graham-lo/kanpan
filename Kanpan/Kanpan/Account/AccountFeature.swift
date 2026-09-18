@@ -105,7 +105,9 @@ import KanpanAccount
       try await client?.signOut()
       apply?()
       // Personal views are removed immediately; network revocation may finish later.
-      user = nil; presented = false; password = ""; newPassword = ""; devices = []
+      // `email`（登录页那个用户名输入框）也要清：不清的话下次打开登录页预填着上一个人的
+      // 账号名，同一台设备换人用一眼就看见别人用的是什么号。
+      user = nil; presented = false; email = ""; password = ""; newPassword = ""; devices = []
     } catch { self.error = error.localizedDescription }
   }
   func loadDevices() async {

@@ -348,6 +348,8 @@ private struct DrawingStyleEditor: View {
   var decimals: Int = 2
   @Environment(\.dismiss) private var dismiss
   @State private var levelText = ""
+  /// 进来那一刻这条线的样式。保存时拿它比一比，只有真的动过才把新样式提成该类默认。
+  @State private var original: DrawingStyle?
   var body: some View {
     NavigationStack {
       Form {
@@ -384,13 +386,18 @@ private struct DrawingStyleEditor: View {
         }
       }
       .navigationTitle(item.kind.title).navigationBarTitleDisplayMode(.inline)
-      .onAppear { levelText = item.levels.map { String($0) }.joined(separator: ", ") }
+      .onAppear {
+        levelText = item.levels.map { String($0) }.joined(separator: ", ")
+        if original == nil { original = DrawingStyle(item) }
+      }
       .toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
         ToolbarItem(placement: .confirmationAction) {
           Button("保存") {
             if item.kind.usesLevels, let levels = parsedLevels { item.levels = levels }
-            controller.update(item); dismiss()
+            // 只有颜色 / 粗细 / 线型 / 填充 / 比例真的动过，才把它提成这类工具以后的默认。
+            // 只挪了端点、改了文字、上了个锁的，别人下次画的线不该跟着变。
+            controller.update(item, promoteStyle: DrawingStyle(item) != original); dismiss()
           }.disabled(!item.isValid || (item.kind.usesLevels && parsedLevels == nil)).accessibilityIdentifier("draw.save")
         }
       }
@@ -435,10 +442,15 @@ struct DrawingColorControl: View {
 
 /// 「点一下画一笔，长按接着画」（§2E3）。
 ///
-/// 画完一笔工具自己退回选择态，本来就是 `continuous == false` 时的行为；这里把
-/// 那个开关和手势绑在一起：**点**＝这一把只画一笔，**长按**＝这一把一直画下去。
-/// 开关本身（画线栏上的「连续开 / 连续关」、工具表里的「连续画线」）留着不动，
-/// 它现在同时是这次长按的结果显示——用户按完低头一看就知道自己进了哪种模式。
+/// 画完一笔工具自己退回选择态，本来就是 `continuous == false` 时的行为；长按则把
+/// 「连续」打开，同一把工具一直画下去。
+///
+/// **2026-09-19 改：长按只负责「开」，轻点不再负责「关」。** 这儿原来写着「开关本身
+/// 留着不动，它现在同时是这次长按的结果显示」——把画线栏上那个「连续」开关重定义成了
+/// 长按的回显，于是用户自己打开连续画之后随手点一下工具，它就自己关了。同一个知识点
+/// 不能有两个打架的入口（`kanpan-one-entry-per-action`），而且「我打开了连续画线，
+/// 画一条它自己关了」正是「同一个动作两次结果不一样」。现在开关的值只由用户自己动它，
+/// 长按是其中一条明确的「打开」路径。
 ///
 /// 按住 0.45s 才算长按，和周期条上「长按钉住」一个数：比系统默认的 0.5s 稍快一点，
 /// 又远够不着误触。

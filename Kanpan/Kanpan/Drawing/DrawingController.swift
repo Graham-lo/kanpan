@@ -66,15 +66,21 @@ final class DrawingController: ObservableObject {
   /// 结果把工具关掉了，之后点画布什么都不发生——实测连着画 14 次只成了 7 条，
   /// 失败的那 7 次没有任何反馈。要收手有「完成」和点空白处，不需要工具按钮兼任开关。
   ///
-  /// `repeating` 就是「长按 = 连续画」（§2E3）：点一下只画一笔，画完工具自动退回选择态
-  /// （那是 `continuous == false` 时图自己的行为，见 `ChartView+Drawing`）；长按则把
-  /// 连续画打开，同一把工具一直画到手动收手。两条路都在这儿把开关摆正，免得上一次
-  /// 长按留下的「连续」偷偷跟着下一次轻点走——用户点一下只想画一笔。
+  /// `repeating` 就是「长按 = 连续画」（§2E3）：长按把连续画**打开**，同一把工具一直画到
+  /// 手动收手。连续画关着时，画完一笔工具自己退回选择态（那是图自己的行为，见
+  /// `ChartView+Drawing`）。
+  ///
+  /// **2026-09-19 改：轻点不再把「连续」关掉。** 这儿原来写的是「两条路都在这儿把开关
+  /// 摆正，免得上一次长按留下的『连续』偷偷跟着下一次轻点走」——于是画线栏上那个
+  /// 「连续」开关和短按工具成了两个打架的入口：用户明明自己把连续画打开了，随手点一下
+  /// 工具它就自己关了（`kanpan-one-entry-per-action`，而且正是「同一个动作两次结果
+  /// 不一样」）。现在这条按「用户用手改过的状态跟着人走」翻掉：开关的值只由用户自己
+  /// 动它——画线栏的「连续」、工具表里的「连续画线」，以及长按工具这一下明确的「开」。
   func pick(_ t: DrawingStore.Tool, repeating: Bool = false) {
     active = true
     chart?.selectedDrawingID = nil   // 手上拿着工具就不该还选中着上一条线
-    if preferences.continuous != repeating {
-      preferences.continuous = repeating
+    if repeating, !preferences.continuous {
+      preferences.continuous = true
       savePreferences()
     }
     chart?.drawTool = t
@@ -89,10 +95,21 @@ final class DrawingController: ObservableObject {
   func duplicate() { chart?.duplicateSelectedDrawing(); sync() }
   func clear() { chart?.clearDrawings(); sync() }
   func hideAll() { chart?.setAllDrawingsHidden(!items.allSatisfy(\.hidden)); sync() }
-  func update(_ item: Drawing) {
+  /// 改一条线。
+  ///
+  /// `promoteStyle` 只有在用户**真的在样式面板上动了**颜色 / 粗细 / 线型 / 填充 / 比例时
+  /// 才为 true，这时才把这条线的样式提成该类工具以后的默认。以前这儿是无条件提升的：
+  /// `toggleLock()` 只是给线上了个锁，却顺手把它当前的颜色粗细写成了「以后所有趋势线
+  /// 的默认样式」——用户没做任何改样式的动作，下一条线却变了样，正是「同一个动作两次
+  /// 结果不一样」。锁定、隐藏、移动、改端点一律不碰 `preferences.styles`
+  /// （`toggleHidden` 本来就绕开了这个方法，那个写法是对的）。
+  func update(_ item: Drawing, promoteStyle: Bool = false) {
     chart?.updateDrawing(item)
-    preferences.styles[item.kind.rawValue] = DrawingStyle(item)
-    savePreferences(); sync()
+    if promoteStyle {
+      preferences.styles[item.kind.rawValue] = DrawingStyle(item)
+      savePreferences()
+    }
+    sync()
   }
   func toggleLock() { if var item = selected { item.locked.toggle(); update(item) } }
   func toggleHidden(_ item: Drawing) { var next = item; next.hidden.toggle(); chart?.updateDrawing(next); sync() }

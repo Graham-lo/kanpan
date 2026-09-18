@@ -127,7 +127,12 @@ struct FavoritesView: View {
       }
     }
     .onChange(of: model.tickers.isEmpty) { _, empty in
-      if empty { editQuotes.removeAll(); editing = false; selection.removeAll() }
+      // 报价表空掉只是数据状态——设置里直连↔网关切一下，`QuoteBook` 就 reset 一次、
+      // 把整张表清空。它不是用户的动作，不该拿来推翻用户正在做的事：以前这儿顺手
+      // `editing = false` 加清空 `selection`，人正批量选着品种准备改分类，别处切一次
+      // 线路，选择当场没了。编辑模式和多选只由用户自己的动作退出。
+      // 编辑时那份冻结的报价（`editQuotes`）也别清，等新报价上来原地续上就是了。
+      if !empty, editing { editQuotes = model.tickers }
     }
     .alert(renamedID == nil ? "新建分类" : "重命名分类", isPresented: $editingName) {
       TextField("分类名称", text: $name)
