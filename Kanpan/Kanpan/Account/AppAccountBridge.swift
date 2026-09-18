@@ -122,7 +122,7 @@ import ReviewUI
     if let prepared = preparedOwner, prepared == user?.id, personal != nil { return {} }
     let directory = try files.directory(user: user?.id)
     let nextStorage = try PersonalFileStorage(directory: directory)
-    var nextPrefs = PrefsDecodeCache.load(from: nextStorage)
+    var nextPrefs = PrefsStore.load(from: nextStorage)
     var nextSymbols = SymbolPrefsStore(storage: nextStorage).load()
     let drawStore = DrawStore(url: directory.appendingPathComponent("draws.json"))
     var nextDrawings = try drawStore.read()

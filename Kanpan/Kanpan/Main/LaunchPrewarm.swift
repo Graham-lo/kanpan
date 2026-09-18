@@ -21,11 +21,14 @@ enum LaunchPrewarm {
     guard !started else { return }
     started = true
     guard ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] != "1" else { return }
-    // 走一格记忆：账号桥紧接着要解同一份设置，字节一样就省掉第二次整份解码。
-    let prefs = PrefsDecodeCache.load(from: UserDefaults.standard)
-    warm(host: prefs.apiHost, path: "/fapi/v1/ping", method: "GET")
+    // 这儿原来是 `PrefsDecodeCache.load(from: UserDefaults.standard)`——解整份设置只为
+    // 取两个域名，而且解错了柜子：设置档案早搬进账号目录的 prefs.json，这一读永远读到
+    // 出厂域名，改过域名的人热的是一台他不会连的机器。现在读本机镜像（`LaunchHostMirror`），
+    // 不解码、不读账号目录，热身该在哪一刻跑还在哪一刻跑。
+    let hosts = LaunchHostMirror.hosts
+    warm(host: hosts.api, path: "/fapi/v1/ping", method: "GET")
     // 推送域名只要把 DNS 和 TLS 走通，回什么状态码都无所谓，所以用 HEAD。
-    warm(host: prefs.streamHost, path: "/", method: "HEAD")
+    warm(host: hosts.stream, path: "/", method: "HEAD")
   }
 
   private static func warm(host: String, path: String, method: String) {

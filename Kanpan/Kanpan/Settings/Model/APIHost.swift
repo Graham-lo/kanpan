@@ -84,3 +84,49 @@ enum APIHost {
     return isValid(host) ? host : `default`
   }
 }
+
+/// 冷启动热身要用的那两个域名，在本机留的一份镜像。
+///
+/// 域名的真身在 `Prefs.apiHost` / `Prefs.streamHost`，而设置档案早就搬进了账号目录里的
+/// `prefs.json`（`AppAccountBridge`）。`LaunchPrewarm` 偏偏跑在账号桥把档案装进来之前
+/// ——那一刻只有 `UserDefaults.standard` 可读，读出来的是出厂域名。于是改过域名的人
+/// 每次冷启动热的都是一台他根本不会连的机器：白付一次 DNS + TLS，真正要连的那台一点
+/// 没热，正好把热身想省下来的那几百毫秒又赔回去。
+///
+/// 按 `MarketRoutePolicyStore` 的老规矩办：域名是**这台机器所处网络的属性**
+/// （`PersonalSyncCodec.keepDeviceFields` 里就有这两个，本来就不跟人走），所以在本机
+/// 留一份镜像，`PrefsStore` 每次落盘顺手同步一次；热身直接读镜像，不解整份 `Prefs`，
+/// 也不用等账号桥。没镜像（全新安装、或升上这版的第一次启动）就按出厂域名热——
+/// 和原来一样，不会更差，而第二次冷启动开始就对了。
+enum LaunchHostMirror {
+  static let apiKey = "kanpan.launch.apiHost"
+  static let streamKey = "kanpan.launch.streamHost"
+
+  /// 测试沙盒里用自己的一份 defaults，选法和 `PrefsStore.deviceStorage()` /
+  /// `MarketRoutePolicyStore.defaults` 一致——UI 用例不会把真机上的镜像改掉。
+  private static var defaults: UserDefaults {
+    let env = ProcessInfo.processInfo.environment
+    if env["KANPAN_TEST_PROFILE"] == "1", let profile = env["KANPAN_PERSISTENCE_PROFILE"],
+       UUID(uuidString: profile) != nil, let suite = UserDefaults(suiteName: "kanpan.tests." + profile) {
+      return suite
+    }
+    return .standard
+  }
+
+  /// 镜像里记着的两个域名。没记过、或记的东西形状不对，都退回出厂值。
+  static var hosts: (api: String, stream: String) {
+    let api = defaults.string(forKey: apiKey).map(APIHost.sanitize) ?? APIHost.default
+    let stream = defaults.string(forKey: streamKey).flatMap { raw -> String? in
+      let host = APIHost.normalize(raw)
+      return APIHost.isValid(host) ? host : nil
+    } ?? APIHost.defaultStream
+    return (api, stream)
+  }
+
+  /// 落盘时同步一次。没变就不写。
+  static func set(api: String, stream: String) {
+    let d = defaults
+    if d.string(forKey: apiKey) != api { d.set(api, forKey: apiKey) }
+    if d.string(forKey: streamKey) != stream { d.set(stream, forKey: streamKey) }
+  }
+}

@@ -105,14 +105,21 @@ final class PrefsStore {
       }
     }
     self.liveBarSpacing = self.prefs.barSpacing
-    mirrorRoutePolicy()
+    mirrorDeviceNetwork()
   }
 
-  /// 行情线路的真身在 `prefs.routePolicy`（随账号同步 / 访客档案），而
-  /// `KanpanData` 那边的 `RoutedMarketFeed` 只认 `MarketRoutePolicyStore`。
-  /// 设置每变一次就镜像过去；没变的话 `set` 自己会跳过，不会把行情重开。
-  private func mirrorRoutePolicy() {
+  /// 把「这台机器怎么上网」的那几项镜像到本机。
+  ///
+  /// 两个去处，理由是一样的：**要读它们的人比档案先到，或者根本不该认识 `Prefs`。**
+  ///
+  /// - 线路：真身在 `prefs.routePolicy`（随账号同步 / 访客档案），而 `KanpanData`
+  ///   那边的 `RoutedMarketFeed` 只认 `MarketRoutePolicyStore`。没变的话 `set`
+  ///   自己会跳过，不会把行情重开。
+  /// - 域名：`LaunchPrewarm` 跑在账号桥把档案装进来之前，只能读本机的一份，
+  ///   见 `LaunchHostMirror`。
+  private func mirrorDeviceNetwork() {
     MarketRoutePolicyStore.set(prefs.routePolicy)
+    LaunchHostMirror.set(api: prefs.apiHost, stream: prefs.streamHost)
   }
 
   /// 见上：UI 测试沙盒专用的常用行。
@@ -274,7 +281,7 @@ final class PrefsStore {
 
   private func persist() {
     storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
-    mirrorRoutePolicy()
+    mirrorDeviceNetwork()
     onChange?(prefs)
   }
 
@@ -283,13 +290,13 @@ final class PrefsStore {
     self.storage = storage; self.prefs = prefs
     adoptSpacing()
     storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)
-    mirrorRoutePolicy()
+    mirrorDeviceNetwork()
   }
   func applySynced(_ value: Prefs) {
     guard value != prefs else { return }
     prefs = value; adoptSpacing()
     storage.setPrefsData(PrefsCodec.encode(value), forKey: PrefsCodec.key)
-    mirrorRoutePolicy()
+    mirrorDeviceNetwork()
   }
 
   // ---------------------------------------------------------------- 缓存
