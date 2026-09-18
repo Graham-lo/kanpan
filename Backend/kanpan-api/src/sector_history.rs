@@ -19,7 +19,7 @@ use axum::{Router,extract::State,http::{StatusCode,header},response::{IntoRespon
 use chrono::{DateTime,Days,NaiveDate,Utc};
 use serde_json::{Value,json};
 use sqlx::PgPool;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap,HashSet};
 use std::sync::{Arc,OnceLock,RwLock};
 use std::time::Duration;
 
@@ -256,14 +256,16 @@ async fn prune(pool:&PgPool,live:&[String])->sqlx::Result<()> {
  Ok(())
 }
 
-/// One sweep: the contract list, then a day of candles for each of them, then
-/// retention. Returns how many rows were written.
-pub async fn collect(pool:&PgPool)->anyhow::Result<usize> {
- let body=market_meta::exchange_info().await.map_err(|_|anyhow::anyhow!("exchangeInfo unavailable"))?;
- let symbols=perpetuals(&body);
- anyhow::ensure!(!symbols.is_empty(),"exchangeInfo listed no tradable perpetual");
+/// Three weeks of candles for each contract in `targets`, upserted as they
+/// arrive. Returns `(rows written, contracts skipped)`.
+///
+/// The list is given rather than derived so the caller can hand over only the
+/// contracts that are actually short of history: one request a second means a
+/// full list is a twelve minute sweep, and re-asking for the six hundred
+/// contracts already stored would buy nothing.
+pub async fn collect(pool:&PgPool,targets:&[String])->anyhow::Result<(usize,usize)> {
  let (mut written,mut skipped)=(0usize,0usize);
- for symbol in &symbols {
+ for symbol in targets {
   let Some(body)=klines(symbol).await else {tracing::warn!("Daily closes: {symbol} unavailable, skipped");skipped+=1;continue};
   let bars=parse_daily_closes(&body);
   if bars.is_empty() {skipped+=1;continue}
@@ -272,17 +274,42 @@ pub async fn collect(pool:&PgPool)->anyhow::Result<usize> {
    Err(e)=>{tracing::warn!("Daily closes: {symbol} not stored ({e})");skipped+=1}
   }
  }
- prune(pool,&symbols).await?;
- tracing::info!("Daily closes: {} contracts, {written} rows written, {skipped} skipped",symbols.len());
- Ok(written)
+ Ok((written,skipped))
 }
 
-/// Has today's sweep already happened? Asked of the newest day it would have
-/// written — yesterday — because that is the row only a completed sweep leaves
-/// behind, and it is what lets a restart at noon skip straight to serving.
-async fn collected_today(pool:&PgPool,today:NaiveDate)->sqlx::Result<bool> {
- sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM daily_close WHERE day=$1)")
-  .bind(window_day(today,1)).fetch_one(pool).await
+/// Which contracts already have the newest day a finished sweep would have
+/// written. Yesterday, because today's candle is still open and never stored.
+async fn collected(pool:&PgPool,day:NaiveDate)->sqlx::Result<Vec<String>> {
+ sqlx::query_scalar("SELECT symbol FROM daily_close WHERE day=$1").bind(day).fetch_all(pool).await
+}
+
+/// The contracts still owed a sweep: listed and trading, but without that day's
+/// row. In `live` order, which is sorted.
+///
+/// This is what makes the job incremental. A restart in the middle of the
+/// afternoon used to see one stored row for yesterday and conclude the whole
+/// day was done, so a contract that was newly listed — or newly *readable*,
+/// which is how the two hundred `TRADIFI_PERPETUAL` symbols arrived — waited
+/// until the next 00:10 UTC for any history at all. Asking per contract instead
+/// of per day closes that window without re-requesting what is already stored.
+pub fn missing(live:&[String],have:&[String])->Vec<String> {
+ let stored:HashSet<&str>=have.iter().map(String::as_str).collect();
+ live.iter().filter(|s|!stored.contains(s.as_str())).cloned().collect()
+}
+
+/// One pass of the daily job: the contract list, the ones still owed a day,
+/// their candles, then retention. Returns how many rows were written.
+pub async fn sweep(pool:&PgPool)->anyhow::Result<usize> {
+ let body=market_meta::exchange_info().await.map_err(|_|anyhow::anyhow!("exchangeInfo unavailable"))?;
+ let symbols=perpetuals(&body);
+ anyhow::ensure!(!symbols.is_empty(),"exchangeInfo listed no tradable perpetual");
+ let yesterday=window_day(Utc::now().date_naive(),1);
+ let targets=missing(&symbols,&collected(pool,yesterday).await?);
+ let (written,skipped)=if targets.is_empty() {(0,0)} else {collect(pool,&targets).await?};
+ prune(pool,&symbols).await?;
+ tracing::info!("Daily closes: {} contracts, {} to collect, {written} rows written, {skipped} skipped",
+  symbols.len(),targets.len());
+ Ok(written)
 }
 
 /// The daily job, started from `serve` beside `market_meta::spawn_refresh`.
@@ -291,12 +318,12 @@ async fn collected_today(pool:&PgPool,today:NaiveDate)->sqlx::Result<bool> {
 pub fn spawn_daily(pool:PgPool) {
  tokio::spawn(async move {
   loop {
-   let today=Utc::now().date_naive();
-   let wait=if collected_today(&pool,today).await.unwrap_or(false) {until_next_run(Utc::now())} else {
-    match collect(&pool).await {
-     Ok(_)=>until_next_run(Utc::now()),
-     Err(e)=>{tracing::warn!("Daily closes: collection will retry ({e})");RETRY}
-    }
+   // Every pass asks what is missing first, so the one that runs at startup
+   // costs nothing on a node that is already up to date and still picks up a
+   // contract listed since the last sweep.
+   let wait=match sweep(&pool).await {
+    Ok(_)=>until_next_run(Utc::now()),
+    Err(e)=>{tracing::warn!("Daily closes: collection will retry ({e})");RETRY}
    };
    if let Err(e)=rebuild(&pool,Utc::now().date_naive()).await {tracing::warn!("Daily closes: cache not refreshed ({e})")}
    tokio::time::sleep(wait).await;
@@ -363,6 +390,21 @@ mod tests {
   assert_eq!(perpetuals(&body),
    vec!["BTCUSDT".to_owned(),"ETHUSDT".to_owned(),"NVDAUSDT".to_owned()]);
   assert!(perpetuals(&json!({})).is_empty());
+ }
+
+ #[test]
+ fn only_the_contracts_short_of_yesterday_are_asked_for() {
+  let own=|names:&[&str]|names.iter().map(|s|(*s).to_owned()).collect::<Vec<String>>();
+  let live=own(&["AAAUSDT","BBBUSDT","CCCUSDT","NVDAUSDT"]);
+  // The everyday case: the sweep ran, one contract was newly listed since.
+  assert_eq!(missing(&live,&own(&["AAAUSDT","BBBUSDT","CCCUSDT"])),own(&["NVDAUSDT"]));
+  // Nothing stored for the day — a cold table, or the first run after
+  // `perpetuals` learned a whole new contract type.
+  assert_eq!(missing(&live,&[]),live);
+  // Everything stored: no request at all, which is what makes the restart free.
+  assert!(missing(&live,&live).is_empty());
+  // A delisted contract still holding rows is not a contract to ask about.
+  assert_eq!(missing(&own(&["AAAUSDT"]),&own(&["ZZZUSDT"])),own(&["AAAUSDT"]));
  }
 
  #[test]
