@@ -351,6 +351,29 @@ struct MainScreen: View {
         TabBar(theme: theme, current: tab, drawing: draw.active, onPick: switchTo(tab:))
       }
     }
+    // 键盘不许顶这三张常驻页，也不许顶标签栏。
+    //
+    // 用户报的是「锁屏解锁 / 从后台回来，图整个被挤到上半屏，底下空出一大块，必须划掉
+    // 后台才好」。量他那张照片：选中格的中心在 617.6pt，正常是 814.3pt——底部安全区
+    // 从 34pt 涨到了约 231pt，页面和标签栏被一起抬高了约 197pt。顶栏、周期条的位置和
+    // 高度都没变，只有会伸缩的图区被压掉，这正是「底部安全区被撑大」的形状，不是丢数据。
+    //
+    // 这 197pt 是键盘留下的。SwiftUI 的键盘避让是加在**窗口**安全区上的一份 inset，
+    // 而 `SymbolSearchView` / `SymbolPickerView` / `IndicatorPanel` / `AccountView` 都开着
+    // `scrollDismissesKeyboard(.interactively)`——手指往下拖时键盘跟着走，停在任意高度；
+    // 这时候把那层 `fullScreenCover` 撤掉（或者正好锁屏），第一响应者的辞职和页面的拆除
+    // 撞在一起，窗口就留着一份半高的键盘 inset 不还。`f68b543` 当时记的那个「关搜索页
+    // 之后留了一层铺满全屏的 `UITextEffectsWindow`」是同一件事的另一副样子。
+    //
+    // 根因修在这儿而不是去追那一次辞职的时序：图表 / 自选 / 设置这三张常驻页身上
+    // 一个输入框都没有（搜索、选品种、指标参数、登录、重命名分类全在 cover / sheet /
+    // alert 里，它们是各自独立的呈现，不吃这一层的安全区），所以键盘本来就没有理由动它们。
+    // 只要它们不参与键盘避让，窗口那份 inset 就算真的卡住了也推不动画面。
+    //
+    // 唯一的例外是画线：iPad 上 `vClass` 恒为 `.regular`，横屏工作台也是走的这条
+    // `portraitBody`，而 `DrawingBar` 的价格 / 文字 / 斐波那契那几个输入框是真的贴在
+    // 底边、真的需要被键盘顶起来。所以画线开着的时候 `edges` 给空集，避让照旧。
+    .ignoresSafeArea(.keyboard, edges: draw.active ? [] : .bottom)
   }
 
   /// 换一格标签。
