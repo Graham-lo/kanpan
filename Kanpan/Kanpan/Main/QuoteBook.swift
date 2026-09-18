@@ -695,11 +695,8 @@ final class QuoteBook {
     // generic stream fallback list here so BinanceWS does not wrap it twice.
     var socketHosts = hosts
     socketHosts.streamFallbacks = []
-    // 这儿本来还往 `SourceSocketFactory` 里递了 `log:`，但那个形参是 kanpan-d2 还没提交的
-    // 那一半，app 侧先落了提交，干净检出的 main 就编不过了。先把实参摘掉——`BinanceWS`
-    // 自己那条 `log:` 还在，路由层的日志等 d2 把 `MarketSource.swift` 落了之后再接回来。
     let socket = BinanceWS(hosts: socketHosts,
-                           factory: SourceSocketFactory(source: source, hosts: hosts),
+                           factory: SourceSocketFactory(source: source, hosts: hosts, log: Self.log),
                            silenceMs: 15_000, log: Self.log)
     let generation = session.generation
     self.socket = socket
