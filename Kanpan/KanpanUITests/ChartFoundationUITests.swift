@@ -435,8 +435,16 @@ final class ChartFoundationUITests: XCTestCase {
                  thenHoldForDuration: 0.8)
     XCTAssertTrue(wait(seconds: 5) { btc.frame.minY > before + 30 }, "编辑拖动应移动完整品种行")
     app.buttons["favorites.open.BTCUSDT"].tap()
-    app.buttons["favorites.open.ETHUSDT"].tap()
-    XCTAssertFalse(app.buttons["置顶"].exists)
+    // ETH 这一下故意打在勾选框上而不是整行。没选中的勾选框是一圈 `Circle().strokeBorder`，
+    // 20×20 的 frame 不会自己变成命中区，圆圈正中是空的——手指点在正中没反应，只能退回去
+    // 点整行才选得中（`2c5ce80` 给它补了 20×44 的实心命中区）。`tap()` 打的正是元素中心，
+    // 所以这一下修之前落空、修之后才选得中。
+    let ethCheck = app.buttons["favorites.select.ETHUSDT"]
+    XCTAssertTrue(ethCheck.waitForExistence(timeout: 5))
+    XCTAssertGreaterThanOrEqual(ethCheck.frame.height, 44,
+                                "勾选框的命中区至少要有一行高：\(ethCheck.frame)")
+    ethCheck.tap()
+    XCTAssertFalse(app.buttons["置顶"].exists, "选中两个之后不该还留着单选才有的「置顶」")
     app.buttons["favorites.open.BTCUSDT"].tap()
     let remove = app.buttons["删除"]
     XCTAssertTrue(remove.isEnabled)
@@ -1347,6 +1355,26 @@ extension ChartFoundationUITests {
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })
     shot("画线-多工具跨周期与重启")
+  }
+
+  /// 画线工作台里点品种名：出来的是「常看」那两列，键盘**不许**自己弹出来。
+  ///
+  /// 用户 2026-09-18 报的：「都还没点搜索框键盘就弹出来了」。这一层的主体是底下那格
+  /// 「常看」，横屏里键盘一上来就盖掉小半块屏，用户要的那几个常看品种反而看不见。
+  /// 真要打字的人点一下搜索框，键盘照常上来——这一条两头都要验。
+  func testDrawingSymbolSwitcherKeepsKeyboardDown() throws {
+    XCTAssertTrue(app.tapDrawEntry(), "没能进入画线")
+    let symbol = app.buttons[Ids.landscapeSymbol]
+    XCTAssertTrue(symbol.waitForExistence(timeout: 20), "横屏标题上没有品种名")
+    symbol.tap()
+    let switcher = app.descendants(matching: .any)["draw.symbol.switcher"].firstMatch
+    XCTAssertTrue(switcher.waitForExistence(timeout: 8), "换品种那一层没出来")
+    XCTAssertFalse(app.keyboards.element.waitForExistence(timeout: 3), "还没点搜索框，键盘就自己弹出来了")
+    let field = app.textFields["draw.symbol.search"]
+    XCTAssertTrue(field.waitForExistence(timeout: 5), "没找到搜索框\n" + app.debugDescription)
+    field.tap()
+    XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 8), "点了搜索框，键盘却没上来")
+    shot("画线-换品种-键盘")
   }
 }
 
