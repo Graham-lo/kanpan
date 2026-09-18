@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>看盘 · 应用图标四个方向</title>
+<style>
+  :root{
+    --page:#0E1412; --page2:#141C19; --ink:#E9F2EC; --ink2:#A5B8AE; --ink3:#7B8D85;
+    --line:#25332C; --accent:#4FB69C; --gold:#E0A544;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:
+      radial-gradient(1200px 700px at 12% -10%, #1A2A24 0%, transparent 60%),
+      radial-gradient(900px 600px at 95% 5%, #221A12 0%, transparent 55%),
+      var(--page);
+    color:var(--ink);
+    font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:56px 28px 120px}
+  h1{font-size:30px;font-weight:600;letter-spacing:.02em;margin:0 0 10px}
+  .lede{color:var(--ink2);max-width:760px;margin:0 0 6px}
+  .lede b{color:var(--ink);font-weight:600}
+  h2{font-size:19px;font-weight:600;margin:64px 0 6px;letter-spacing:.02em}
+  h2 span{color:var(--ink3);font-weight:400;font-size:14px;margin-left:10px;letter-spacing:0}
+  .sub{color:var(--ink3);font-size:14px;margin:0 0 26px;max-width:800px}
+
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:26px}
+  .col-head{text-align:center;padding-bottom:4px}
+  .col-head .t{font-size:16px;font-weight:600}
+  .col-head .n{font-size:13px;color:var(--ink3)}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .cap{font-size:12.5px;color:var(--ink3);letter-spacing:.04em}
+
+  .ico{display:block;border-radius:0;filter:drop-shadow(0 14px 26px rgba(0,0,0,.45))}
+  .ico.sm{filter:drop-shadow(0 6px 12px rgba(0,0,0,.4))}
+
+  .rowhead{display:flex;align-items:baseline;gap:12px;margin:34px 0 14px}
+  .rowhead .k{font-size:16px;font-weight:600}
+  .rowhead .d{font-size:13.5px;color:var(--ink3)}
+  .ladder{display:flex;align-items:flex-end;gap:30px;padding:22px 26px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.02)}
+  .ladder .cell{gap:8px}
+
+  .desk{border-radius:26px;padding:34px 30px 26px;margin-top:18px;
+    background:
+      radial-gradient(700px 420px at 20% 0%, #33473F 0%, transparent 60%),
+      radial-gradient(600px 400px at 88% 25%, #4A3626 0%, transparent 55%),
+      linear-gradient(170deg,#16211D,#0B100E 70%);
+    border:1px solid rgba(255,255,255,.06);
+  }
+  .desk.day{
+    background:
+      radial-gradient(700px 420px at 20% 0%, #DCE8E1 0%, transparent 60%),
+      radial-gradient(600px 400px at 88% 25%, #EBDCCB 0%, transparent 55%),
+      linear-gradient(170deg,#F4F8F5,#E4EBE6 70%);
+  }
+  .deskrow{display:flex;gap:34px;flex-wrap:wrap}
+  .app{display:flex;flex-direction:column;align-items:center;gap:8px;width:92px}
+  .app .name{font-size:12.5px;color:#EAF1EC;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+  .desk.day .app .name{color:#22302A;text-shadow:0 1px 2px rgba(255,255,255,.6)}
+
+  .mono{filter:grayscale(1) brightness(1.06) contrast(1.02)}
+  .note{margin-top:14px;color:var(--ink3);font-size:13.5px}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;border:1px solid var(--line);
+       color:var(--ink2);font-size:12px;margin-left:8px;vertical-align:middle}
+  .tag.rec{border-color:rgba(224,165,68,.45);color:var(--gold)}
+  hr{border:0;border-top:1px solid var(--line);margin:0}
+  @media (max-width:900px){ .grid{grid-template-columns:repeat(2,1fr)} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>看盘 · 应用图标</h1>
+  <p style="margin:0 0 16px;padding:12px 16px;border:1px solid rgba(224,165,68,.45);border-radius:14px;background:rgba(224,165,68,.07);color:var(--ink)">
+    <b>定稿：经典 · 山月</b>（2026-09-18）。已导出 1024 方图（无 alpha）装进 <code style="color:var(--ink2)">Kanpan/Kanpan/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png</code>，
+    模拟器桌面已验。三枚随皮肤切换的备用图标暂不做。下面这页保留作选型记录。
+  </p>
+  <p class="lede">四个方向，题材<b>都和行情无关</b>——没有蜡烛、曲线、涨跌、图表。颜色只从青苔 / 陶土 / 经典三套皮肤的色板里取，每个方向都出三枚同构不同色，切皮肤时桌面上那枚跟着换。</p>
+  <p class="lede" style="color:var(--ink3);font-size:13.5px">全部是矢量现画，页面里看到的就是最终形状；定稿后直接导 1024 PNG 装进 assets。</p>
+
+  <h2>四个方向 × 三套皮肤<span>180px，接近 iPhone 桌面上的真实大小</span></h2>
+  <p class="sub" id="dirnotes"></p>
+  <div id="matrix"></div>
+
+  <h2>缩到最小还认得出吗<span>180 / 120 / 87 / 60 / 40px</span></h2>
+  <p class="sub">40px 是设置列表里那一行的尺寸。这一档糊掉的方向不能要。</p>
+  <div id="ladders"></div>
+  <p class="note">我的读数：月、珠、山月到 40px 都还成立。<b style="color:var(--ink2)">开片到 40px 会退成一块纯色砖</b>——裂纹全糊掉，只剩一格漂亮的釉色。桌面那一档（180 / 120）它最出彩，设置列表那一档它最平。这是选它要接受的代价。</p>
+
+  <h2>放到桌面上<span>深色与浅色壁纸各一遍</span></h2>
+  <p class="sub">图标好不好看，最后是在一堆别的 app 中间判断的。</p>
+  <div class="desk" id="deskDark"></div>
+  <div class="desk day" id="deskLight"></div>
+
+  <h2>着色模式（单色）<span>iOS 18 的第三态</span></h2>
+  <p class="sub">桌面切到「着色」时系统只认明暗关系。层次全靠明度拉开的方向在这里还立得住，靠色相区分的会塌成一块灰。</p>
+  <div id="monos"></div>
+  <p class="note">月和山月在单色里层次最清楚；珠还立得住；开片在单色里就是一块灰砖。</p>
+
+</div>
+
+<script>
+/* ---------------------------------------------------------------- 工具 */
+const SQ = (()=>{ const a=512,n=5,p=[];
+  for(let i=0;i<=320;i++){ const t=i/320*Math.PI*2, c=Math.cos(t), s=Math.sin(t);
+    const x=a*Math.sign(c)*Math.pow(Math.abs(c),2/n), y=a*Math.sign(s)*Math.pow(Math.abs(s),2/n);
+    p.push((a+x).toFixed(1)+','+(a+y).toFixed(1)); }
+  return 'M'+p.join('L')+'Z'; })();
+
+const hex2rgb = h => { h=h.replace('#',''); return [0,2,4].map(i=>parseInt(h.substr(i,2),16)); };
+const rgb2hex = c => '#'+c.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');
+const mix = (a,b,t)=>{ const A=hex2rgb(a),B=hex2rgb(b); return rgb2hex(A.map((v,i)=>v+(B[i]-v)*t)); };
+const rng = seed => { let s=seed; return ()=>{ s=(s*1664525+1013904223)%4294967296; return s/4294967296; }; };
+
+/* ---------------------------------------------------------------- 皮肤 */
+const SKINS = [
+  { key:'sage', name:'青苔', note:'冷 · 墨绿', light:false,
+    deep:'#080D0B', deep2:'#16241E', mid:'#2E7D6B', accent:'#4FB69C', gold:'#E0A544',
+    pale:'#E7EFE9', ink:'#0A100D', glazeHi:'#4E8E7C', glazeLo:'#0D1E18' },
+  { key:'terra', name:'陶土', note:'暖 · 赤陶', light:false,
+    deep:'#120C08', deep2:'#332014', mid:'#B25735', accent:'#E2874F', gold:'#E0A544',
+    pale:'#F2E8DE', ink:'#150F0A', glazeHi:'#C97C50', glazeLo:'#241108' },
+  { key:'classic', name:'经典', note:'白 · 月白釉', light:true,
+    deep:'#FFFFFF', deep2:'#EEF2EF', mid:'#2E7D6B', accent:'#14211B', gold:'#B57C28',
+    pale:'#FFFFFF', ink:'#14211B', glazeHi:'#FFFFFF', glazeLo:'#D6E0DA' },
+];
+
+/* ---------------------------------------------------------------- 方向 */
+
+/* 甲 · 开片：一整块单色釉，全靠材质与冰裂纹说话 */
+function crackleWeb(){
+  const r = rng(20260918), N = 7, S = 1024/N, jit = S*0.32, V = [];
+  for(let i=0;i<=N;i++){ V[i]=[]; for(let j=0;j<=N;j++){
+    const edgeI = (i===0||i===N), edgeJ = (j===0||j===N);
+    V[i][j] = { x: i*S + (edgeI ? (i===0?-40:40) : (r()-.5)*2*jit),
+                y: j*S + (edgeJ ? (j===0?-40:40) : (r()-.5)*2*jit) };
+  }}
+  const seg = (a,b)=>{ const n=3; let d='M'+a.x.toFixed(0)+','+a.y.toFixed(0);
+    for(let k=1;k<=n;k++){ const f=k/n, w=(k===n)?0:1;
+      d+='L'+(a.x+(b.x-a.x)*f+(r()-.5)*22*w).toFixed(0)+','+(a.y+(b.y-a.y)*f+(r()-.5)*22*w).toFixed(0); }
+    return '<path d="'+d+'"/>'; };
+  const iron=[], gold=[];
+  for(let i=0;i<=N;i++) for(let j=0;j<N;j++){ if(r()<0.10) continue; (r()<0.66?iron:gold).push(seg(V[i][j],V[i][j+1])); }
+  for(let j=0;j<=N;j++) for(let i=0;i<N;i++){ if(r()<0.10) continue; (r()<0.66?iron:gold).push(seg(V[i][j],V[i+1][j])); }
+  for(let i=0;i<N;i++) for(let j=0;j<N;j++){ if(r()<0.70) continue;
+    const a={x:(V[i][j].x+V[i+1][j].x)/2, y:(V[i][j].y+V[i][j+1].y)/2};
+    gold.push(seg(a, r()<.5 ? V[i+1][j+1] : V[i][j+1])); }
+  return { iron: iron.join(''), gold: gold.join('') };
+}
+const WEB = crackleWeb();
+
+function dGlaze(P,u){
+  const iron = P.light ? 'rgba(20,33,27,.22)' : 'rgba(0,0,0,.26)';
+  const gold = P.light ? 'rgba(129,92,38,.20)' : 'rgba(224,165,68,.16)';
+  const lit  = P.light ? 'rgba(255,255,255,.80)' : 'rgba(255,255,255,.10)';
+  return {
+    defs:`
+    <radialGradient id="gg${u}" cx="34%" cy="24%" r="94%">
+      <stop offset="0" stop-color="${mix(P.glazeHi,'#ffffff',P.light?0:.22)}"/>
+      <stop offset=".42" stop-color="${P.glazeHi}"/>
+      <stop offset=".82" stop-color="${mix(P.glazeHi,P.glazeLo,.72)}"/>
+      <stop offset="1" stop-color="${P.glazeLo}"/>
+    </radialGradient>
+    <linearGradient id="gs${u}" x1="0" y1="0" x2=".85" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="${P.light?.85:.30}"/>
+      <stop offset=".46" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="gp${u}" cx="50%" cy="44%" r="70%">
+      <stop offset=".5" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="${P.light?'#5A6B62':'#000'}" stop-opacity="${P.light?.16:.42}"/>
+    </radialGradient>
+    <filter id="gb${u}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="52"/></filter>`,
+    body:`
+    <rect width="1024" height="1024" fill="url(#gg${u})"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <g stroke="${lit}" stroke-width="1.3" transform="translate(2,2)">${WEB.iron}${WEB.gold}</g>
+      <g stroke="${iron}" stroke-width="2.1">${WEB.iron}</g>
+      <g stroke="${gold}" stroke-width="1.4">${WEB.gold}</g>
+    </g>
+    <ellipse cx="286" cy="222" rx="450" ry="290" transform="rotate(-24 286 222)" fill="url(#gs${u})" filter="url(#gb${u})"/>
+    <rect width="1024" height="1024" fill="url(#gp${u})"/>`
+  };
+}
+
+/* 乙 · 月：深釉天幕上的一弯月 */
+function dMoon(P,u){
+  const moon = P.light ? P.ink : P.gold;
+  let stars='';
+  if(!P.light){ const r=rng(77); for(let i=0;i<30;i++){
+    const x=r()*1024, y=r()*700, s=.8+r()*2.2;
+    stars+=`<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${s.toFixed(1)}" fill="#fff" opacity="${(.14+r()*.34).toFixed(2)}"/>`; } }
+  return {
+    defs:`
+    <linearGradient id="ms${u}" x1=".2" y1="0" x2=".8" y2="1">
+      <stop offset="0" stop-color="${P.light ? mix(P.deep2,P.mid,.10) : mix(P.deep2,P.mid,.30)}"/>
+      <stop offset=".55" stop-color="${P.light ? mix(P.deep2,'#ffffff',.5) : P.deep2}"/>
+      <stop offset="1" stop-color="${P.light ? P.deep : P.deep}"/>
+    </linearGradient>
+    <linearGradient id="mg${u}" x1="0" y1="0" x2=".3" y2="1">
+      <stop offset="0" stop-color="${mix(moon,'#ffffff',P.light?.0:.30)}"/>
+      <stop offset="1" stop-color="${mix(moon,P.light?'#ffffff':'#8A5A16',.28)}"/>
+    </linearGradient>
+    <mask id="mm${u}">
+      <rect width="1024" height="1024" fill="#000"/>
+      <circle cx="486" cy="500" r="262" fill="#fff"/>
+      <circle cx="622" cy="386" r="252" fill="#000"/>
+    </mask>
+    <radialGradient id="mh${u}" cx="47%" cy="49%" r="52%">
+      <stop offset=".4" stop-color="${moon}" stop-opacity="${P.light?.10:.22}"/>
+      <stop offset="1" stop-color="${moon}" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="mb${u}" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="30"/></filter>`,
+    body:`
+    <rect width="1024" height="1024" fill="url(#ms${u})"/>
+    ${stars}
+    <rect width="1024" height="1024" fill="url(#mh${u})"/>
+    <g mask="url(#mm${u})" filter="url(#mb${u})" opacity="${P.light?.26:.5}"><rect width="1024" height="1024" fill="${moon}"/></g>
+    <g mask="url(#mm${u})"><rect width="1024" height="1024" fill="url(#mg${u})"/></g>`
+  };
+}
+
+/* 丙 · 山月：一轮盘与三道山脊 */
+function dRidge(P,u){
+  const far  = P.light ? mix(P.mid,'#ffffff',.60) : mix(P.deep2,P.mid,.46);
+  const midR = P.light ? mix(P.mid,'#ffffff',.26) : mix(P.deep2,P.mid,.20);
+  const near = P.light ? P.ink : mix(P.deep,P.deep2,.35);
+  return {
+    defs:`
+    <linearGradient id="rs${u}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${P.light ? mix(P.deep2,P.mid,.18) : mix(P.deep2,P.mid,.16)}"/>
+      <stop offset=".40" stop-color="${P.light ? mix(P.gold,'#ffffff',.86) : mix(P.deep2,P.gold,.14)}"/>
+      <stop offset=".64" stop-color="${P.light ? mix(P.gold,'#ffffff',.66) : mix(P.deep2,P.gold,.34)}"/>
+      <stop offset="1" stop-color="${P.light ? mix(P.gold,'#ffffff',.74) : mix(P.deep2,P.gold,.22)}"/>
+    </linearGradient>
+    <filter id="rb${u}" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="64"/></filter>
+    <filter id="rb2${u}" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="26"/></filter>`,
+    body:`
+    <rect width="1024" height="1024" fill="url(#rs${u})"/>
+    <circle cx="668" cy="474" r="220" fill="${P.gold}" filter="url(#rb${u})" opacity=".42"/>
+    <circle cx="668" cy="474" r="132" fill="${P.gold}"/>
+    <path d="M0,652 Q118,596 220,626 Q302,650 362,608 Q462,540 562,606 Q662,670 762,616 Q884,558 1024,622 L1024,1024 L0,1024 Z" fill="${far}"/>
+    <ellipse cx="512" cy="666" rx="620" ry="44" fill="${P.light?'#ffffff':mix(P.deep2,P.gold,.3)}" opacity="${P.light?.55:.20}" filter="url(#rb2${u})"/>
+    <path d="M-40,940 Q168,782 322,566 Q356,520 392,566 Q516,724 700,900 L1024,1024 L-40,1024 Z" fill="${midR}"/>
+    <ellipse cx="512" cy="852" rx="620" ry="40" fill="${P.light?'#ffffff':mix(P.deep2,P.gold,.22)}" opacity="${P.light?.40:.13}" filter="url(#rb2${u})"/>
+    <path d="M0,878 Q204,818 424,864 Q642,908 822,858 Q942,826 1024,846 L1024,1024 L0,1024 Z" fill="${near}"/>`
+  };
+}
+
+/* 丁 · 珠：一颗釉珠 */
+function dBead(P,u){
+  const hi = P.light ? mix(P.mid,'#ffffff',.52) : mix(P.accent,'#ffffff',.34);
+  const md = P.light ? P.mid : P.accent;
+  const lo = P.light ? P.ink : mix(P.deep,P.mid,.34);
+  return {
+    defs:`
+    <radialGradient id="bg${u}" cx="50%" cy="38%" r="80%">
+      <stop offset="0" stop-color="${P.light ? P.deep : mix(P.deep,P.deep2,.9)}"/>
+      <stop offset="1" stop-color="${P.light ? mix(P.deep2,P.mid,.12) : P.deep}"/>
+    </radialGradient>
+    <radialGradient id="bs${u}" cx="33%" cy="25%" r="88%">
+      <stop offset="0" stop-color="${hi}"/>
+      <stop offset=".44" stop-color="${md}"/>
+      <stop offset=".88" stop-color="${mix(md,lo,.78)}"/>
+      <stop offset="1" stop-color="${lo}"/>
+    </radialGradient>
+    <mask id="brm${u}">
+      <circle cx="512" cy="488" r="300" fill="#fff"/>
+      <circle cx="488" cy="462" r="294" fill="#000"/>
+    </mask>
+    <linearGradient id="bh${u}" x1=".1" y1="0" x2=".9" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="${P.light?.9:.72}"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="bb${u}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="30"/></filter>
+    <filter id="bb2${u}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="44"/></filter>
+    <filter id="bb3${u}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="12"/></filter>`,
+    body:`
+    <rect width="1024" height="1024" fill="url(#bg${u})"/>
+    <ellipse cx="512" cy="864" rx="272" ry="46" fill="${P.light?'#2A3B34':'#000'}" opacity="${P.light?.30:.6}" filter="url(#bb2${u})"/>
+    <circle cx="512" cy="488" r="316" fill="${md}" opacity="${P.light?.22:.3}" filter="url(#bb2${u})"/>
+    <circle cx="512" cy="488" r="300" fill="url(#bs${u})"/>
+    <g mask="url(#brm${u})" filter="url(#bb3${u})"><rect width="1024" height="1024" fill="${P.gold}" opacity="${P.light?.42:.48}"/></g>
+    <ellipse cx="416" cy="352" rx="136" ry="84" transform="rotate(-32 416 352)" fill="url(#bh${u})" opacity="${P.light?.55:.42}" filter="url(#bb${u})"/>
+    <ellipse cx="400" cy="336" rx="42" ry="24" transform="rotate(-32 400 336)" fill="#fff" opacity="${P.light?.8:.62}" filter="url(#bb3${u})"/>`
+  };
+}
+
+const DIRS = [
+  { key:'glaze', name:'甲 · 开片', rec:true,
+    desc:'一整块单色青瓷釉，微微隆起，表面是极细的冰裂开片，光从左上斜进来在釉面上拉出一道柔光。没有任何图形符号，好看全部由材质承担。三枚就是三种釉色。', fn:dGlaze },
+  { key:'moon', name:'乙 · 月', rec:false,
+    desc:'深釉天幕上一弯月，月牙外缘一圈柔晕，底下压一层更深的暮霭，天幕上有几粒极淡的星尘。最干净的一个。', fn:dMoon },
+  { key:'ridge', name:'丙 · 山月', rec:false,
+    desc:'一轮盘悬在渐变天上，两道圆润的山脊一前一后压住下半张。大块面，最有画意，也最挑小尺寸。', fn:dRidge },
+  { key:'bead', name:'丁 · 珠', rec:false,
+    desc:'一颗有厚度的釉珠浮在皮肤底色上，顶部一点高光，下缘一道金色反射，底下落一片柔影。像一颗被含住的光。', fn:dBead },
+];
+
+/* ---------------------------------------------------------------- 渲染 */
+let uid=0;
+function svgFor(dir,P){
+  const u=(++uid), inner=dir.fn(P,u);
+  const rim = P.light ? 'rgba(20,33,27,.12)' : 'rgba(255,255,255,.10)';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <clipPath id="sq${u}"><path d="${SQ}"/></clipPath>
+    <filter id="gr${u}" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="4" seed="11"/>
+      <feColorMatrix type="saturate" values="0"/>
+    </filter>
+    ${inner.defs}
+  </defs>
+  <g clip-path="url(#sq${u})">
+    ${inner.body}
+    <rect width="1024" height="1024" filter="url(#gr${u})" opacity="${P.light?'0.035':'0.05'}" style="mix-blend-mode:overlay"/>
+    <path d="${SQ}" fill="none" stroke="${rim}" stroke-width="3"/>
+  </g>
+</svg>`;
+}
+
+const URLS = {};
+DIRS.forEach(d=>{ URLS[d.key]={}; SKINS.forEach(s=>{
+  URLS[d.key][s.key]=URL.createObjectURL(new Blob([svgFor(d,s)],{type:'image/svg+xml'}));
+});});
+
+const img=(dk,sk,size,cls='')=>`<img class="ico ${size<100?'sm':''} ${cls}" src="${URLS[dk][sk]}" width="${size}" height="${size}" alt="">`;
+
+/* 方向说明 */
+document.getElementById('dirnotes').innerHTML =
+  DIRS.map(d=>`<span style="display:block;margin-bottom:8px"><b style="color:var(--ink)">${d.name}</b>${d.rec?'<span class="tag rec">我推这个</span>':''} — ${d.desc}</span>`).join('');
+
+/* 矩阵 */
+let m = `<div class="grid" style="margin-bottom:18px">` +
+  DIRS.map(d=>`<div class="col-head"><div class="t">${d.name.split(' · ')[1]}</div><div class="n">${d.name.split(' · ')[0]}</div></div>`).join('') +
+  `</div>`;
+SKINS.forEach(s=>{
+  m += `<div class="rowhead"><span class="k">${s.name}</span><span class="d">${s.note}</span></div>`;
+  m += `<div class="grid">` + DIRS.map(d=>
+    `<div class="cell">${img(d.key,s.key,180)}</div>`).join('') + `</div>`;
+});
+document.getElementById('matrix').innerHTML = m;
+
+/* 尺寸阶梯 */
+const SIZES=[180,120,87,60,40];
+document.getElementById('ladders').innerHTML = DIRS.map(d=>`
+  <div class="rowhead"><span class="k">${d.name}</span><span class="d">青苔</span></div>
+  <div class="ladder">${SIZES.map(z=>`<div class="cell">${img(d.key,'sage',z)}<div class="cap">${z}</div></div>`).join('')}</div>
+`).join('');
+
+/* 桌面 */
+const deskApps = (skin)=>`<div class="deskrow">` + DIRS.map(d=>
+  `<div class="app">${img(d.key,skin,88)}<div class="name">看盘</div></div>`).join('') + `</div>`;
+document.getElementById('deskDark').innerHTML =
+  `<div class="cap" style="margin-bottom:16px">深色壁纸 · 青苔</div>` + deskApps('sage') +
+  `<div class="cap" style="margin:26px 0 16px">深色壁纸 · 陶土</div>` + deskApps('terra');
+document.getElementById('deskLight').innerHTML =
+  `<div class="cap" style="margin-bottom:16px;color:#4E6158">浅色壁纸 · 经典</div>` + deskApps('classic');
+
+/* 单色 */
+document.getElementById('monos').innerHTML =
+  `<div class="grid">` + DIRS.map(d=>
+    `<div class="cell">${img(d.key,'sage',140,'mono')}<div class="cap">${d.name}</div></div>`).join('') + `</div>`;
+</script>
+</body>
+</html>

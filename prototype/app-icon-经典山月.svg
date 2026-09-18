@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <filter id="gr1" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="4" seed="11"/>
+      <feColorMatrix type="saturate" values="0"/>
+    </filter>
+    
+    <linearGradient id="rs1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#cbddd7"/>
+      <stop offset=".40" stop-color="#f5ede1"/>
+      <stop offset=".64" stop-color="#e6d2b6"/>
+      <stop offset="1" stop-color="#ecddc7"/>
+    </linearGradient>
+    <filter id="rb1" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="64"/></filter>
+    <filter id="rb21" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="26"/></filter>
+  </defs>
+  <rect width="1024" height="1024" fill="#FFFFFF"/>
+  
+    <rect width="1024" height="1024" fill="url(#rs1)"/>
+    <circle cx="668" cy="474" r="220" fill="#B57C28" filter="url(#rb1)" opacity=".42"/>
+    <circle cx="668" cy="474" r="132" fill="#B57C28"/>
+    <path d="M0,652 Q118,596 220,626 Q302,650 362,608 Q462,540 562,606 Q662,670 762,616 Q884,558 1024,622 L1024,1024 L0,1024 Z" fill="#abcbc4"/>
+    <ellipse cx="512" cy="666" rx="620" ry="44" fill="#ffffff" opacity="0.55" filter="url(#rb21)"/>
+    <path d="M-40,940 Q168,782 322,566 Q356,520 392,566 Q516,724 700,900 L1024,1024 L-40,1024 Z" fill="#649f91"/>
+    <ellipse cx="512" cy="852" rx="620" ry="40" fill="#ffffff" opacity="0.4" filter="url(#rb21)"/>
+    <path d="M0,878 Q204,818 424,864 Q642,908 822,858 Q942,826 1024,846 L1024,1024 L0,1024 Z" fill="#14211B"/>
+  <rect width="1024" height="1024" filter="url(#gr1)" opacity="0.035" style="mix-blend-mode:overlay"/>
+</svg>
