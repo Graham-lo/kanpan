@@ -495,6 +495,24 @@ final class ChartFoundationUITests: XCTestCase {
                                 "勾选框的命中区至少要有一行高：\(ethCheck.frame)")
     ethCheck.tap()
     XCTAssertFalse(app.buttons["置顶"].exists, "选中两个之后不该还留着单选才有的「置顶」")
+    // 勾着东西切一格再切回来：编辑模式和勾好的那几行都得还在。
+    //
+    // 自选页每切走一次就整个重建（`MainScreen.portraitBody` 里的 `switch tab` 只留
+    // 当前那一格），编辑态原来是页面自己的 `@State`，跟着一起死——用户勾完去设置页
+    // 什么都没碰，回来编辑模式自己退了、勾全没了。现在它住在宿主手里
+    // （`FavoritesEditSession`），活过重建但不落盘。
+    app.buttons["bottom.settings"].tap()
+    XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists }, "没切到设置页")
+    app.buttons["bottom.favorites"].tap()
+    XCTAssertTrue(app.buttons["全选"].waitForExistence(timeout: 8), "切一格再回来，编辑模式自己退了")
+    let ethBack = app.buttons["favorites.select.ETHUSDT"]
+    XCTAssertTrue(ethBack.waitForExistence(timeout: 5))
+    XCTAssertEqual(ethBack.label, "取消选择", "切一格再回来，勾中的品种没了")
+    // 编辑态下整页读的是冻住的那份报价。页面重建之后它要重新填上，别让行里空着。
+    if frozenPrice != "—" {
+      XCTAssertTrue(wait(seconds: 5) { self.app.staticTexts["favorites.price.ETHUSDT"].label != "—" },
+                    "回到编辑态之后行里的报价空着")
+    }
     app.buttons["favorites.open.BTCUSDT"].tap()
     let remove = app.buttons["删除"]
     XCTAssertTrue(remove.isEnabled)

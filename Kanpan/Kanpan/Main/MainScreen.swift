@@ -30,6 +30,12 @@ struct MainScreen: View {
   @State private var market = MarketModel(symbol: "BTCUSDT")
   @State private var store = PrefsStore(storage: PrefsStore.deviceStorage())
   @State private var picker = SymbolPickerModel(store: SymbolPrefsStore(storage: SymbolPrefsStore.deviceStorage()))
+  /// 自选页上正在做的那次批量编辑（编辑模式 + 勾中的那几行 + 冻住的报价）。
+  ///
+  /// 它必须挂在宿主身上：`portraitBody` 里的 `switch tab` 会把自选页整个拆掉，
+  /// 放在页面自己的 `@State` 里，人切去设置页看一眼回来，勾好的就全没了。
+  /// 但它也只活在这一次使用里，不落盘——理由见 `FavoritesEditSession`。
+  @State private var favoritesEdit = FavoritesEditSession()
   /// 画线工作台里那一层换品种开着没有。只在横屏画线时有意义。
   @State private var showDrawSwitcher = false
   @State private var quotes = QuoteBook()
@@ -213,7 +219,7 @@ struct MainScreen: View {
 
   /// 自选那一整页。标签栏上的一格，所以没有「返回」——返回就是换一格标签。
   private var favoritesPage: some View {
-    FavoritesView(model: picker, history: searchHistory, store: store, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
+    FavoritesView(model: picker, session: favoritesEdit, history: searchHistory, store: store, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
                   onVisible: { quotes.watch($0) },
                   onRowVisibility: { quotes.watchRow($0, visible: $1) },
                   onHistoryVisibility: { quotes.watchHistory($0, visible: $1) })
@@ -472,7 +478,18 @@ struct MainScreen: View {
     if next != .chart { draw.finish() }
     tab = next
     if next == .favorites { quotes.setVisible(true) }
-    if next == .chart { proxy.scrollToLatest(animated: false) }
+    // 回到图上时**不要**一律跳到最新那根。
+    //
+    // 这一句是从旧的自选盖层那儿搬过来的：那会儿关掉盖层多半意味着「刚挑完品种」，
+    // 跳最新是对的。改成常驻标签栏之后它变成了「每次点『图表』都跳一次」——人把图
+    // 推回三月那一段，去设置里改个时区再点回来，位置没了。图那边本来是接得住的
+    // （`ChartHost.makeUIView` 会把 `proxy.savedState` 里的视野、缩放、翻转原样接回
+    // 来），是这一句把接回来的东西又推走了。
+    //
+    // 留下的只有一种情形：走的时候本来就停在最新那根上。那时候续上离开期间新到的
+    // 那几根才是「他离开时的样子」，不是「回到默认」。真想从历史里回到最新，
+    // 周期条行尾那颗「最新」就是干这个的。
+    if next == .chart, atLatest { proxy.scrollToLatest(animated: false) }
   }
 
   /// 行情页那一整页：顶栏 → 价格行 → 周期条 → 图。
@@ -1166,6 +1183,9 @@ struct MainScreen: View {
         // 冷启动那一段不算：装访客档案、以及 `account.restore()` 把登录态读回来，
         // 走的是同一条路，那时候该停哪一格交给 `honorProfile()` 按真档案定。
         if !awaitingAccount { tab = .chart; didLeaveLaunch = true }
+        // 正勾着的那次批量编辑跟着走：换了号，表就不是刚才那张表了，
+        // 勾中的代号留着只会落到别人的自选上。
+        if !awaitingAccount { favoritesEdit.end() }
         dismissPanel(); crosshair = nil
       }
       // 档案真的装进来之后才谈「该开哪张图、该停在哪一格、该用哪个周期」。

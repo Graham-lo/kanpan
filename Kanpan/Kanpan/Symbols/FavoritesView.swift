@@ -14,6 +14,9 @@ import KanpanData
 /// 排序、展开详情、右滑删除、长按拖动、进图表，`accessibilityIdentifier` 一个没换。
 struct FavoritesView: View {
   @Bindable var model: SymbolPickerModel
+  /// 正在进行的那次批量编辑。它住在宿主手里，不是这一页自己的 `@State`——
+  /// 理由见 `FavoritesEditSession`。
+  var session: FavoritesEditSession
   /// 搜索页的历史词仓。自选页自己开搜索页（见 `searching`），所以得跟着传进来。
   var history: SearchHistory
   /// 这一页上「他摆出来的样子」存在哪：排序口径、方向、涨跌额/幅、迷你走势、展开的行。
@@ -43,9 +46,20 @@ struct FavoritesView: View {
   @State private var editingName = false
   @State private var renamedID: String?
   @State private var name = ""
-  @State private var editing = false
-  @State private var editQuotes: [String: Ticker] = [:]
-  @State private var selection = Set<String>()
+  // 编辑模式 / 勾中的那几行 / 编辑期间冻住的报价：三项都在 `session` 上，写法照旧
+  // 是直接赋值（`editing = false`、`selection.removeAll()`），调用处一个字没改。
+  private var editing: Bool {
+    get { session.editing }
+    nonmutating set { session.editing = newValue }
+  }
+  private var editQuotes: [String: Ticker] {
+    get { session.quotes }
+    nonmutating set { session.quotes = newValue }
+  }
+  private var selection: Set<String> {
+    get { session.selection }
+    nonmutating set { session.selection = newValue }
+  }
   /// 已经替它开了历史订阅的品种。页面整体消失时要逐个关掉——
   /// 行自己的 `onDisappear` 在整页被拆掉时不保证会走到。
   @State private var historyOn = Set<String>()
@@ -64,6 +78,11 @@ struct FavoritesView: View {
   //
   // 写法照旧是直接赋值（`sort = "name"`、`expanded.removeAll()`），只是底下换成了
   // `store.update`——调用处一个字都不用改。
+  //
+  // 2026-09-19 补：搬家的时候漏了一组——批量编辑（编辑模式 + 勾中的那几行 + 冻住的
+  // 报价）还是裸 `@State`，于是「勾好几个品种 → 切去设置页什么都没碰 → 切回来」
+  // 编辑模式自己退了、勾全没了。它跟排序口径不一样，不该落盘（冷启动举着三个勾
+  // 进来是另一种惊悚），所以搬去了只活一次使用的 `FavoritesEditSession`。
   private var sort: String {
     get { store.prefs.favoritesSort }
     nonmutating set { store.update { $0.favoritesSort = newValue } }
@@ -137,6 +156,13 @@ struct FavoritesView: View {
     .safeAreaInset(edge: .bottom, spacing: 0) { if editing { editBar } }
     .tint(theme.amber)
     .task { await model.appear() }
+    .onAppear {
+      // 这一页每切走一次就整个重建（`MainScreen.portraitBody` 里的 `switch tab`）。
+      // 编辑还开着的时候重新露面，那份冻住的报价跟着 `session` 活了下来，但它停在
+      // 切走的那一刻：离开期间新加进来的品种在它里面没有条目，行里的价格就空着。
+      // 这儿按手上最新的报价重铺一次——刚重建完，没有「布局跟着 WS 抖」的顾虑。
+      if editing, !model.tickers.isEmpty { editQuotes = model.tickers }
+    }
     .onDisappear {
       moreTask?.cancel()
       model.disappear()
@@ -466,9 +492,8 @@ struct FavoritesView: View {
   private var currentGroup: FavoriteGroup? { model.prefs.groups.first(where: { $0.id == selected }) }
 
   private func toggleEditing() {
-    if editing { editing = false; editQuotes.removeAll() }
-    else { editQuotes = model.tickers; editing = true }
-    selection.removeAll(); expanded.removeAll()
+    if editing { session.end() } else { session.begin(quotes: model.tickers) }
+    expanded.removeAll()
   }
 
   // MARK: - 排序行
@@ -1141,6 +1166,46 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
       && lhs.theme == rhs.theme && lhs.width == rhs.width
   }
   var body: some View { content }
+}
+
+// MARK: - 正在做的那次批量编辑
+
+/// 自选页上「他这会儿正勾着的那几个品种」：编辑模式开着没有、勾了哪几行、
+/// 以及编辑期间冻住的那份报价。
+///
+/// **为什么不是 `FavoritesView` 自己的 `@State`**：底栏是常驻标签栏，
+/// `MainScreen.portraitBody` 里那个 `switch tab` 只留当前这一格，别的页整个拆掉，
+/// 自选页每切走一次就重建一遍——挂在视图上的东西跟着一起死。用户复现的就是这条路：
+/// 「…」→「编辑自选」→ 勾一个品种 → 切到设置页什么都不碰 → 切回来，编辑模式自己
+/// 退了、勾全没了。`68aa979` 修的是另一条路（切行情线路把报价表清空，顺手退出编辑），
+/// 最常走的这条还漏着。排序口径、升降序、展开收起早就因为同一件事搬去了持久层，
+/// 唯独这一组被落下。
+///
+/// **为什么又不落盘**：半做完的批量选择是「一个正在做的动作」，不是「他改出来的
+/// 习惯」——下次冷启动进来还举着三个勾、底下还挂着「删除」，比丢了更吓人。所以它
+/// 住在宿主（`MainScreen`）手里，活过视图的一次次重建（切页签、进出横屏画线工作台、
+/// 切后台再回来），但只活在这一次使用里：不进 `Prefs`、不进 `PersonalFileStorage`、
+/// 不进 `PersonalSyncCodec.fields`。换账号时由宿主清掉——那时候整张表都不是他的了。
+@MainActor @Observable final class FavoritesEditSession {
+  /// 编辑模式开着没有。只由用户自己的动作进出（「编辑自选」/「完成」/ 换账号）。
+  var editing = false
+  /// 勾中的那几行。
+  var selection = Set<String>()
+  /// 进编辑那一刻冻住的报价。编辑时整页读它而不是读实时报价，行布局才不会
+  /// 随每批 WS 报价重排（见 `FavoritesView.displayQuote`）。
+  var quotes: [String: Ticker] = [:]
+
+  func begin(quotes: [String: Ticker]) {
+    self.quotes = quotes
+    selection.removeAll()
+    editing = true
+  }
+
+  func end() {
+    editing = false
+    selection.removeAll()
+    quotes.removeAll()
+  }
 }
 
 /// 记下「设置」「排序」两颗按钮的位置，好让浮层菜单吊在它们下面。
