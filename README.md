@@ -1,4 +1,4 @@
-# 看盘 · Kanpan（产品名 Hntcoin）
+# 看盘 · Kanpan（产品名 Hkline）
 
 Swift 原生 iOS 行情、自选与复盘应用。SwiftUI 页面 + UIKit/CoreGraphics 自绘图表，零第三方依赖，不提供交易下单。数据来自币安 USDT 永续公开接口，币安不能完整使用时整套切换 OKX（不混源）。
 

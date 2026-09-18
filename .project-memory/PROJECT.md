@@ -1,10 +1,10 @@
-# Hntcoin（看盘 / Kanpan）跨窗口项目记忆
+# Hkline（看盘 / Kanpan）跨窗口项目记忆
 
 更新：2026-09-18。给任何新开的模型窗口恢复上下文用。用户当前指示优先；下面是整理时的快照，接手前用 `git log`、`git status` 和源码核对。
 
 ## 1. 身份与分工
 
-- 产品 Hntcoin，工程名 Kanpan。仓库 `/Users/mdd/zhk/kanpan`，远程 `https://github.com/Graham-lo/kanpan`，分支 `main`，2026-09-17 HEAD `a2cbb0d`。
+- 产品 Hkline（桌面显示名即 Hkline，2026-09-18 定；旧名已停用，活文档里不要再写），工程名 Kanpan。仓库 `/Users/mdd/zhk/kanpan`，远程 `https://github.com/Graham-lo/kanpan`，分支 `main`，2026-09-17 HEAD `a2cbb0d`。
 - Swift 6、目标 iOS 17+、真机验证 iOS 26；SwiftUI + UIKit/CoreGraphics 自绘图表；零第三方依赖；不做交易。
 - 代码由 Claude 窗口实现，视觉 / 交互原型定稿后可派 Opus 5（high）子代理写、主窗口验收、装真机、push。Codex 已不参与；`HISTORY-2026-09-15-codex.md` 与根目录 `KANPAN-HANDOFF-2026-09-14.md` 是历史。
 - 常常有第二个窗口在同一工作树改交互逻辑。只动自己范围内的文件，不提交别人的改动。

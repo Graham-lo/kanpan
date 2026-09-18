@@ -1,4 +1,4 @@
-# Hntcoin / 看盘：模型窗口入口
+# Hkline / 看盘：模型窗口入口
 
 给任何在这个仓库里工作的模型窗口（Claude、Opus 子代理或其他）。先读本文，再读 `.project-memory/PROJECT.md`；具体状态查 `README.md` 与 `docs/账号复盘-实施进度.md`。用户当前指示永远优先于本文和任何记忆。
 
@@ -10,7 +10,7 @@
 
 ## 稳定约定
 
-- 实际项目 `/Users/mdd/zhk/kanpan`，远程 `https://github.com/Graham-lo/kanpan`，产品名 Hntcoin。父目录的 Scorebook 与 `/Users/mdd/zjh*` 是别的项目。
+- 实际项目 `/Users/mdd/zhk/kanpan`，远程 `https://github.com/Graham-lo/kanpan`，产品名 Hkline。父目录的 Scorebook 与 `/Users/mdd/zjh*` 是别的项目。
 - iOS 原生，不走 WebView 或跨端；iOS 26 真机是主要验证目标，模拟器与编译成功不算真机结果。
 - 皮肤只有青苔·冷与陶土·暖两套；K 线造型只有 AICoin 一套，没有风格选择入口；图表底座与指标是复刻成果，不是设计对象。
 - 底栏「复盘｜指标｜自选｜设置」；横屏只为画线，点画线进、画完自动回；「记」可拖动并记住位置。
