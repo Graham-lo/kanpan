@@ -4,7 +4,7 @@ import KanpanAccount
 
 /// Explicit allowlist shared by cloud preferences and review chart snapshots.
 enum PersonalSyncCodec {
-  static let fields: Set<String> = ["overlays", "subs", "subHeights", "subHeightOverrides", "params", "indicatorColors", "hiddenOutputs", "portraitHeight", "quickIntervals", "theme", "skin", "ambientTheme", "redUp", "priceMode", "timeZone", "magnet", "countdown", "lastLine", "sinceChange", "showDrawings", "candleKind", "gridChoice", "bodyChoice", "viewAnchor", "priceBias", "dataDisplay", "crossPrice", "allowMainInversion", "allowSubInversion", "adaptiveIndicators", "compactValues", "changeBasis", "routePolicy"]
+  static let fields: Set<String> = ["overlays", "subs", "subHeights", "subHeightOverrides", "params", "indicatorColors", "hiddenOutputs", "portraitHeight", "quickIntervals", "theme", "skin", "ambientTheme", "redUp", "priceMode", "timeZone", "magnet", "countdown", "lastLine", "sinceChange", "showDrawings", "candleKind", "gridChoice", "bodyChoice", "viewAnchor", "priceBias", "dataDisplay", "crossPrice", "allowMainInversion", "allowSubInversion", "adaptiveIndicators", "compactValues", "changeBasis", "routePolicy", "barSpacing", "mainInverted", "subInverted", "interval", "keepAwake"]
   static let nested: Set<String> = ["params", "indicatorColors", "hiddenOutputs", "subHeights", "subHeightOverrides", "styles"]
   static func flatten(_ value: [String: KanpanAccount.JSONValue]) -> [String: KanpanAccount.JSONValue] {
     var result: [String: KanpanAccount.JSONValue] = [:]
@@ -50,9 +50,20 @@ enum PersonalSyncCodec {
     if case .array(let range) = values["rsiRange"], range.count == 2 { all["rsiLower"] = range[0]; all["rsiUpper"] = range[1] }
     return try JSONDecoder().decode(Prefs.self, from: JSONEncoder().encode(all))
   }
+  /// 换档案（登录 / 退登 / 切账号）时，从内存里那份**留在本机**、不被新档案覆盖的字段。
+  ///
+  /// 判据只有一条：**这是不是「这台机器自己的属性」**。行情域名与线路（`apiHost` /
+  /// `streamHost` / `smartMarketRoute`）是这台手机所处网络的属性，本机缓存
+  /// `launchSnapshot` 更是只对这台机器有意义，它们留在这里是对的。
+  ///
+  /// `interval`（周期）和 `keepAwake`（屏幕常亮）**2026-09-19 从这张表里拿掉了**：
+  /// 早先把它们当成本机设置，结果是「换台设备登同一个账号，周期回到出厂 1h」。
+  /// 按「用户用手改过的一切状态都跟着人走，无论怎么切换」这条规矩，看哪个周期、
+  /// 要不要常亮都是他的习惯而不是这台手机的属性，所以两项改成随账号同步
+  /// （已进 `fields`），不再在换档案时被上一份内存值盖住。
   static func keepDeviceFields(_ source: Prefs, in target: inout Prefs) {
-    target.interval = source.interval; target.apiHost = source.apiHost; target.streamHost = source.streamHost
-    target.smartMarketRoute = source.smartMarketRoute; target.keepAwake = source.keepAwake; target.launchSnapshot = source.launchSnapshot
+    target.apiHost = source.apiHost; target.streamHost = source.streamHost
+    target.smartMarketRoute = source.smartMarketRoute; target.launchSnapshot = source.launchSnapshot
   }
   static func snapshot(_ prefs: Prefs) throws -> Data {
     // Format marker distinguishes the allowlisted snapshot from legacy full-Prefs drafts.
