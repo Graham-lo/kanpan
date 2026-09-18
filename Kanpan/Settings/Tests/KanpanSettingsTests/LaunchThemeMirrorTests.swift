@@ -114,4 +114,58 @@ struct LaunchThemeMirrorTests {
     #expect(warm.prefs.theme == .light)
     wipe()
   }
+
+  /// 同一台机器上两个人轮着用，冷启动那一帧读到的是谁。
+  ///
+  /// 镜像本来就只是「这台机器上最后一次落盘的那个人的皮肤」——一份给第一帧顶上用的缓存，
+  /// 它不认识账号。所以 A（陶土 · 深色）用过之后换 B（经典 · 浅色）来开，
+  /// **B 的第一帧是 A 的陶土**：B 的档案要等 `AppAccountBridge` 那条异步链
+  /// （`account.restore()` → `onProfileReady` → `useStorage`）回来才到货，
+  /// 而第一帧在那之前就画出去了。这一帧不是 bug，是这份缓存已知且可接受的取舍
+  /// ——不装镜像的话那一帧是出厂的青苔，一样不是 B 的，还连 A 自己都伺候不了。
+  ///
+  /// 真正要守的是它**只错一帧、并且会自愈**：
+  ///
+  /// - 第 3 步：B 的档案一到货，内存里当场换成 B，**镜像也跟着变成 B**；
+  /// - 第 4 步：所以 B 的下一次冷启动，第一帧就已经是 B 的经典，不会再闪一下 A 的陶土。
+  ///
+  /// 断言的重点在 3 和 4。第 2 步那句写成显式断言，只是为了把「那一帧是 A」摆在明面上，
+  /// 而不是让它成为一件没人知道、改坏了也没人发现的行为。
+  @Test("同机换号：第一帧还是上一个人的，档案一到货就自愈，下次冷启动不再闪")
+  @MainActor
+  func 同机两个账号轮换() {
+    wipe()
+
+    // 1. A 这一轮：A 在这台机器上用过，落了盘，镜像里留下的是 A 的。
+    let aStore = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache())
+    aStore.update { $0.skin = .terra; $0.theme = .dark }
+    #expect(LaunchThemeMirror.choice.skin == .terra)
+    #expect(LaunchThemeMirror.choice.theme == .dark)
+
+    // 2. app 被杀掉，B 来开。柜子是空的（账号目录里那份还没到货），
+    //    第一帧只有镜像可读——读到的是 A 的陶土 · 深色。这一帧就是取舍本身。
+    let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache(),
+                           fallback: LaunchThemeMirror.prefs())
+    #expect(store.prefs.skin == .terra)
+    #expect(store.prefs.theme == .dark)
+
+    // 3. B 的档案到货（`AppAccountBridge.onProfileReady` → `useStorage`）：
+    //    内存里当场换成 B，镜像也必须跟着改成 B——这是「下次冷启动不再闪 A」的保证。
+    var b = Prefs.defaults
+    b.skin = .classic
+    b.theme = .light
+    store.useStorage(InMemoryPrefsStorage(), prefs: b)
+    #expect(store.prefs.skin == .classic)
+    #expect(store.prefs.theme == .light)
+    #expect(LaunchThemeMirror.choice.skin == .classic)
+    #expect(LaunchThemeMirror.choice.theme == .light)
+
+    // 4. B 的下一次冷启动：同样是空柜子 + 镜像起步，这次第一帧就已经是 B 的了。
+    let again = PrefsStore(storage: InMemoryPrefsStorage(), cache: UnavailableMarketCache(),
+                           fallback: LaunchThemeMirror.prefs())
+    #expect(again.prefs.skin == .classic)
+    #expect(again.prefs.theme == .light)
+
+    wipe()
+  }
 }
