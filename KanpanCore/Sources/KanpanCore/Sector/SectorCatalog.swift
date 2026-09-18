@@ -15,9 +15,9 @@ import Foundation
 ///   由调用方传 `SectorFallbackBucket`，不是这张静态表的事。
 /// - 美股头 10 个细分照 `美股-AI产业链.py` 的 `MEDIUM`，已过 `DEDUP` 归并与
 ///   `EXCLUDE_ETP` / `EXCLUDE_ETF` / `EXCLUDE_OTHER` / `NON_AI` 剔除；
-///   「软件」「硬件」「电力」是 2026-09-18 手工补的三个：软件把原先落在「其他」里的一批软件
-///   公司捞了回来，硬件把不卖商用算力芯片、只卖 IP 与定制 ASIC 的那几家从「算力芯片」里分了
-///   出去，电力则是把原「服务器与电力」里供电散热那半边单独立了一格。
+///   「软件」「电力」是 2026-09-18 手工补的两个：软件把原先落在「其他」里的一批软件公司捞了
+///   回来，电力则是把原「服务器与电力」里供电散热那半边单独立了一格。当天一度还分出过一格
+///   「硬件」，同日按用户要求并回了「算力芯片」——ARM / AVGO / ALAB 仍在算力芯片里。
 /// - 一个品种允许跨板块（SOL 同时在 `sol-eco` 与 `l1`，高通同时在 `gpu` 与 `edge`），
 ///   每个板块各自算各自的中位数。
 
@@ -35,7 +35,7 @@ public struct SectorDef: Sendable, Equatable, Identifiable {
 }
 
 public enum SectorCatalog {
-  /// 固定顺序：加密 24 个在前，美股 13 个在后；各自照原型 `SECTOR_ORDER` 排。
+  /// 固定顺序：加密 24 个在前，美股 12 个在后；各自照原型 `SECTOR_ORDER` 排。
   public static let all: [SectorDef] = crypto + us
 
   public static func sectors(_ m: SectorMarket) -> [SectorDef] {
@@ -207,17 +207,14 @@ public enum SectorCatalog {
     ]),  // 1 个
   ]
 
-  // MARK: - 美股 13 个细分板块（AI 产业链）
+  // MARK: - 美股 12 个细分板块（AI 产业链）
 
   public static let us: [SectorDef] = [
     SectorDef(id: "gpu", name: "算力芯片", market: .us, members: [
-      "NVDA", "AMD", "INTC", "QCOM", "CBRS", "IONQ", "QNTX"
-    ]),  // 7 个。只留设计算力芯片的那几家，代工和封装在「设备与材料」。
-    // 不卖商用算力芯片，卖的是 IP、定制 ASIC 和板级连接。这几家的景气跟着云厂商的自研节奏走，
-    // 和 NVDA 那条按片卖的线常常反着来，放一起算中位数两边都被对方拖平。
-    SectorDef(id: "hardware", name: "硬件", market: .us, members: [
-      "ARM", "AVGO", "ALAB"
-    ]),  // 3 个。ARM 在「端侧 AI」里还有一份，那是它另一条腿，不冲突；ALAB 做的是 PCIe / CXL 板级互连，不走光。
+      "NVDA", "AMD", "AVGO", "INTC", "QCOM", "ARM", "ALAB", "CBRS", "IONQ", "QNTX"
+    ]),  // 10 个。算力这颗芯片本身怎么来的都算这一格：按片卖的商用加速卡、给云厂商做的定制
+    // ASIC、授权出去的 IP，以及把它们插在一块板上的互连（ALAB 做 PCIe / CXL 板级互连，不走光）。
+    // 代工和封装不在这儿，在「设备与材料」。ARM 在「端侧 AI」里还有一份，那是它另一条腿，不冲突。
     SectorDef(id: "mem", name: "存储", market: .us, members: [
       "MU", "SNDK", "WDC", "STXX", "SKHY", "SKHYNIX", "SAMSUNG", "GIGADEV", "CXMT"
     ]),  // 9 个。SKHY 是 SK 海力士的 ADR，和 SKHYNIX 在币安上是两个独立合约，两档都要在。
@@ -284,7 +281,7 @@ public enum SectorCatalog {
     "zk": "ZK", "rwa": "RWA", "oracle-bridge": "预言机", "payment": "支付",
     "perp-dex": "永续 DEX", "pow": "PoW", "privacy": "隐私", "eth-eco": "ETH 生态",
     "metaverse": "元宇宙", "meme-cn": "华语 Meme", "fan-token": "粉丝代币", "desci": "DeSci",
-    "gpu": "算力芯片", "hardware": "硬件", "mem": "存储", "equip": "设备材料", "optic": "光通信",
+    "gpu": "算力芯片", "mem": "存储", "equip": "设备材料", "optic": "光通信",
     "hyper": "云厂商", "neo": "算力租赁", "server": "服务器", "power": "电力", "edge": "端侧 AI",
     "robot": "机器人", "software": "软件", "app": "模型应用",
   ]
@@ -327,7 +324,7 @@ public enum SectorCatalog {
   /// 4 个粗段只是分类表里的说明性分组，**不是 UI 维度**——
   /// 用户 2026-09-18 砍掉了粗细粒度切换，界面上永远只有「细分」这一层。
   /// 留在这里纯粹是为了让归类表跟源文件对得上，任何 UI 都不许拿它做控件。
-  /// 所以 2026-09-18 手工补的「软件」「硬件」「电力」故意不往里加——源文件里没有它们，
+  /// 所以 2026-09-18 手工补的「软件」「电力」故意不往里加——源文件里没有它们，
   /// 硬塞进去反而对不上了。
   static let coarseGroupsNotAUIDimension: [(id: String, name: String, medium: [String])] = [
     ("silicon", "硅与制造", ["gpu", "mem", "equip"]),

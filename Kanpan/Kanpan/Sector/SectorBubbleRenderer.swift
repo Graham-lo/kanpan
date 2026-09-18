@@ -174,7 +174,7 @@ enum SectorShortName {
     "payment": "支付", "perp-dex": "永续 DEX", "pow": "PoW", "privacy": "隐私", "eth-eco": "ETH 生态",
     "metaverse": "元宇宙", "meme-cn": "华语 Meme", "fan-token": "粉丝代币", "desci": "DeSci",
     "tag-infrastructure": "基础设施", "tag-alpha": "币安 Alpha", "tag-defi": "DeFi 其他", "misc": "其他",
-    "gpu": "算力芯片", "hardware": "硬件", "mem": "存储", "equip": "设备材料", "optic": "光通信",
+    "gpu": "算力芯片", "mem": "存储", "equip": "设备材料", "optic": "光通信",
     "hyper": "云厂商",
     "neo": "算力租赁", "server": "服务器", "power": "电力", "edge": "端侧 AI", "robot": "机器人",
     "software": "软件", "app": "模型应用",

@@ -10,9 +10,9 @@ import Testing
 /// 四舍五入到 2 位小数的值，所以容差取 0.0051（半个末位再放一点点）。
 ///
 /// 归类一改，对得上数的就只剩没动过的那些段：2026-09-18 晚美股这边重分了几刀
-/// （「软件」拆出「模型与应用」、「硬件」拆出「算力芯片」、「电力」拆出「服务器与电力」，
-/// MRVL 与 CRDO 归光通信、TSM 归设备与材料），被动过那几段的行是拿同一批 quotes
-/// 按同样的公式重算后写回夹具的，其余各段和快照里一个字都没变。
+/// （「软件」拆出「模型与应用」、「电力」拆出「服务器与电力」，MRVL 与 CRDO 归光通信、
+/// TSM 归设备与材料，一度分出的「硬件」当日又按用户要求并回「算力芯片」），被动过那几段
+/// 的行是拿同一批 quotes 按同样的公式重算后写回夹具的，其余各段和快照里一个字都没变。
 @Suite("板块口径")
 struct SectorTests {
   static let tol = 0.0051
@@ -104,20 +104,26 @@ struct SectorTests {
     #expect(SectorCatalog.sectors(.crypto).count == 24)
   }
 
-  /// 顺序也是被钉住的：产业链从芯片往上走——设计、IP 与连接、存储、制造与封装、
+  /// 顺序也是被钉住的：产业链从芯片往上走——算力芯片、存储、制造与封装、
   /// 光、云、算力、机器、供电，然后才是端侧、机器人和跑在上面的软件与模型。
   /// 「软件」是应用层的下一级，所以它排在「模型与应用」前面。
-  @Test func usHasTheThirteenMediumSegments() {
-    let want = ["gpu", "hardware", "mem", "equip", "optic", "hyper", "neo", "server",
+  @Test func usHasTheTwelveMediumSegments() {
+    let want = ["gpu", "mem", "equip", "optic", "hyper", "neo", "server",
                 "power", "edge", "robot", "software", "app"]
     #expect(SectorCatalog.sectors(.us).map(\.id) == want)
+    // 「硬件」是 2026-09-18 多分出来的一格，同日按用户要求并回「算力芯片」。
+    #expect(SectorCatalog.sector(id: "hardware") == nil)
+    #expect(SectorCatalog.sector(id: "gpu")?.members.count == 10)
+    for b in ["ARM", "AVGO", "ALAB"] {
+      #expect(SectorCatalog.sector(id: "gpu")?.members.contains(b) == true, "\(b) 要在算力芯片里")
+    }
   }
 
   @Test func catalogIsCryptoThenUSAndIDsAreUnique() {
     let all = SectorCatalog.all
-    #expect(all.count == 37)
+    #expect(all.count == 36)
     #expect(all.prefix(24).allSatisfy { $0.market == .crypto })
-    #expect(all.suffix(13).allSatisfy { $0.market == .us })
+    #expect(all.suffix(12).allSatisfy { $0.market == .us })
     #expect(Set(all.map(\.id)).count == all.count)
     for d in all { #expect(SectorCatalog.sector(id: d.id) == d) }
     #expect(SectorCatalog.sector(id: "silicon") == nil, "粗段不是板块，不许进目录")
@@ -220,10 +226,10 @@ struct SectorTests {
     // 目录顺序在前、兜底桶在后。
     #expect(got.firstIndex(where: \.isFallback) == 24)
     let us = try Self.snapshot("us")
-    // 13 个板块，一个不落——「软件」在这份快照里只有 4 家有行情（那 9 家是
-    // 2026-09-18 之后才收进来的，快照没抓到），但 4 家也够上场；拆出来的「硬件」3 家、
-    // 「电力」5 家也都够，段数是 13。
-    #expect(SectorAggregator.stats(market: .us, quotes: us.quotes, fallbackBuckets: []).count == 13)
+    // 12 个板块，一个不落——「软件」在这份快照里只有 4 家有行情（那 9 家是
+    // 2026-09-18 之后才收进来的，快照没抓到），但 4 家也够上场；拆出来的「电力」5 家
+    // 也够，段数是 12。
+    #expect(SectorAggregator.stats(market: .us, quotes: us.quotes, fallbackBuckets: []).count == 12)
   }
 
   /// 板块只有中位数一个口径（2026-09-18 起均值 / 成交额加权整个撤掉）。
