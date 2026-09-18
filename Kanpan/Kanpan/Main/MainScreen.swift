@@ -662,6 +662,23 @@ struct MainScreen: View {
     return prefs.subs.filter { $0 != .oi }
   }
   private var visibleOverlays: [IndicatorID] { drawingCanvasOnly ? [] : prefs.overlays }
+  /// 长按拖完副图顺序之后，把这份新顺序合回 `prefs.subs`。
+  ///
+  /// 图上拖的是 `visibleSubs`——**只有看得见的那几格**。备用线路上持仓量整格不排，
+  /// 横屏画线台干脆一格都不排。以前这里直接 `$0.subs = order`，等于把没排进来的
+  /// 那几格当成用户删掉了：在非币安线路上拖一次副图顺序，持仓量就**永久消失**，
+  /// 换回币安线路也回不来。
+  ///
+  /// 现在按「看得见的格子按新顺序重排，看不见的留在原来的坑里」合并：`prefs.subs`
+  /// 从头走一遍，遇到这次参与拖动的位置就依次填 `order`，其余原样不动。
+  private func merged(subs order: [IndicatorID]) -> [IndicatorID] {
+    var queue = order[...]
+    let moving = Set(order)
+    return prefs.subs.map { id in
+      guard moving.contains(id), let next = queue.popFirst() else { return id }
+      return next
+    }
+  }
 
   @ViewBuilder private var sidePanelContent: some View {
     if let which = panel {
@@ -774,7 +791,7 @@ struct MainScreen: View {
         onBarSpacing: { if !reviewChart.active { store.noteBarSpacing($0) } },
         onInversion: { main, subs in if !reviewChart.active { store.noteInversion(main: main, subs: subs) } },
         onSubResize: { id, scale in store.update { $0.subHeightOverrides[id] = scale } },
-        onSubReorder: { order in store.update { $0.subs = order } },
+        onSubReorder: { order in let next = merged(subs: order); store.update { $0.subs = next } },
         onCrosshair: { crosshair = $0 },
         onNeedsHistory: { if reviewChart.mode == .replay { reviewChart.loadReplayPage(forward: false, feature: review) } else if !reviewChart.active { market.loadMore() } },
         // 面板打开时由原生遮罩消费首个触摸，只收起面板。

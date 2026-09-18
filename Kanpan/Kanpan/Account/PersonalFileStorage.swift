@@ -13,8 +13,11 @@ final class PersonalFileStorage: PrefsStorage, SymbolPrefsStorage, SearchHistory
       let url = directory.appendingPathComponent(name)
       if FileManager.default.fileExists(atPath: url.path) {
         let data = try Data(contentsOf: url)
-        guard let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw AccountError.storage }
-        if name == "prefs.json", let version = value["v"] as? Int, version != PrefsCodec.version { throw AccountError.storage }
+        // 只确认它是一份读得动的 JSON 对象。**版本号不在这儿判**：以前这里撞上
+        // 对不上的版本就 `throw`，于是 `AppAccountBridge.init` 整个失败——用户一升级
+        // （或者从新版本降回来）就连账号档案都挂不上，自选、画线、偏好全看不见。
+        // 版本差异交给 `Prefs.init(from:)` 逐字段容错 + `PrefsCodec.migrate` 处理。
+        guard (try JSONSerialization.jsonObject(with: data) as? [String: Any]) != nil else { throw AccountError.storage }
       }
     }
   }

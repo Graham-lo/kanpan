@@ -6,8 +6,23 @@ import KanpanData
 
 /// Current chart preferences only. Old prototype archives are not migrated.
 enum PrefsCodec {
-  /// 当前存档版本。**改任何一个默认值都要把它 +1**。
+  /// 当前存档版本。
+  ///
+  /// **改了默认值要把它 +1，同时在 `migrate` 里补一条——版本号自己什么都不做了。**
+  ///
+  /// 这儿原来写的是「改任何一个默认值都要把它 +1」，而 `Prefs.init(from:)` 撞上对不上的
+  /// 版本号就直接 `return`：整份存档连一个字段都不读，全退出厂值。也就是说下一个改
+  /// 默认值的人只要照着这句注释把版本号 +1，就会把**所有人的全部偏好清空一次**。
+  /// `UserDefaults` 那一侧还看不太出来（键名带版本号，换版本等于换键，旧档躺在旧键上
+  /// 谁也没删），账号档案那一侧跑不掉——`PersonalFileStorage` 读的是固定的 prefs.json，
+  /// 版本一变，四十多个字段当场归零。
+  ///
+  /// 2026-09-19 改成：版本对不上也照读每一个字段（每个字段本来就是一项一项容错解码的），
+  /// 这一版真正改了默认值的那几项交给 `migrate` 点名修。
   static let version = 2
+  /// 认得的最老存档。比它还老的是原型期那份键名完全不同的档（`styleID` / `recordButtonX`
+  /// 那一代），读进来只会是一堆认不出的字段，不如直接退出厂值。
+  static let oldestSupported = 2
   static let keyPrefix = "kanpan.prefs.v"
 
   /// 写进 `UserDefaults` 的那个键。
@@ -25,6 +40,20 @@ enum PrefsCodec {
   static func decode(_ data: Data?) -> Prefs {
     guard let data, !data.isEmpty else { return .defaults }
     return (try? JSONDecoder().decode(Prefs.self, from: data)) ?? .defaults
+  }
+
+  /// 老存档读完之后的逐版修补。
+  ///
+  /// 每次 `version` +1 就在这儿补一段 `if from < N { ... }`，**只动这一版真的改了默认值的
+  /// 那几个字段**，别的一个字都不碰。`from` 是存档里写着的版本；比当前还新（用户从更高
+  /// 版本降级回来）时什么都不做，那一版新加的字段解码时已经当认不出忽略掉了。
+  ///
+  /// 现在是空的：版本 2 就是目前这一版，还没有需要往上修的老档。
+  static func migrate(_ prefs: inout Prefs, from: Int) {
+    guard from < version else { return }
+    // 样板（真要用时照这个写）：版本 3 把出厂皮肤从青苔改成陶土，没手动挑过皮肤的
+    // 老用户该跟着换，挑过的一个字不动——
+    // if from < 3, prefs.skin == .moss { prefs.skin = .clay }
   }
 }
 
@@ -118,7 +147,11 @@ extension Prefs: Codable {
     // 从新默认起步：存档只往上盖它真有的那几项（A6.13）。
     self = .defaults
     guard let c = try? decoder.container(keyedBy: CodingKeys.self) else { return }
-    if let version = try? c.decode(Int.self, forKey: .v), version != PrefsCodec.version { return }
+    // 存档里写着的版本。没写的当成当前版本（`encode` 一直都写，读到没有多半是手写的档）。
+    // 只有比 `oldestSupported` 还老的原型档才整份不读；其余版本一律**照读每一个字段**，
+    // 该按版本修的那几项走末尾的 `PrefsCodec.migrate`。详见 `PrefsCodec.version` 的注释。
+    let archived = (try? c.decode(Int.self, forKey: .v)) ?? PrefsCodec.version
+    guard archived >= PrefsCodec.oldestSupported else { return }
 
     func str(_ k: CodingKeys) -> String? { (try? c.decodeIfPresent(String.self, forKey: k)) ?? nil }
     func bool(_ k: CodingKeys) -> Bool? { (try? c.decodeIfPresent(Bool.self, forKey: k)) ?? nil }
@@ -234,6 +267,8 @@ extension Prefs: Codable {
       if APIHost.legacyStreams.contains(host) { streamHost = APIHost.defaultStream }
       else { streamHost = APIHost.isValid(host) ? host : APIHost.defaultStream }
     }
+
+    PrefsCodec.migrate(&self, from: archived)
   }
 
   /// 一串 rawValue → 去重、去掉认不出的、去掉放错位置的指标。
