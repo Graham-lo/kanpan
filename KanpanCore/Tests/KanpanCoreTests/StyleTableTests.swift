@@ -49,7 +49,7 @@ struct StyleTableTests {
                                     Palette.classicSeed, Palette.classicNightSeed])
   func tokensWireThrough(_ seed: PaletteSeed) {
     let c = Palette.chart(seed)
-    let canvas = seed.dark ? Palette.nightCanvas : Palette.dayCanvas
+    let canvas = Palette.canvas(seed)
     #expect(c.bg == canvas.bg)
     #expect(c.grid == canvas.grid)
     #expect(c.axis == canvas.axis)
@@ -57,7 +57,7 @@ struct StyleTableTests {
     #expect(c.dim == canvas.dim)
     #expect(c.ink == canvas.ink)
     #expect(c.cross == canvas.cross)
-    #expect(c.bg != seed.chart || seed.chart == canvas.bg, "画布不许再跟着皮肤染")
+    #expect(c.bg == seed.chart, "图区的底就是皮肤自己的底；经典那支正好等于 AICoin 的白 / 深蓝")
     #expect(c.amber == seed.amber, "图上那支暖色不跟界面强调色走")
     #expect(c.up == seed.up && c.down == seed.down)
     #expect(c.hair == seed.hair)

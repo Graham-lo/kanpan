@@ -19,8 +19,12 @@ struct SkinPaletteTests {
   @Test("文字在所有表面上都够黑（或够白）", arguments: seeds)
   func resolvedSmallText(_ seed: PaletteSeed) {
     let colors = Palette.chart(seed)
-    // 画布是固定的 AICoin 那套，不跟皮肤走；它只按深浅二选一。
-    #expect(colors.bg == (seed.dark ? Palette.nightCanvas.bg : Palette.dayCanvas.bg))
+    // 画布只有「经典」固定用 AICoin 那套；青苔 / 陶土的图区跟着皮肤的底走
+    // （用户 2026-09-18：「还是用之前那两种风格的背景颜色即可，这样整体就搭配了」）。
+    #expect(colors.bg == seed.chart)
+    if Palette.isClassic(seed) {
+      #expect(colors.bg == (seed.dark ? Palette.nightCanvas.bg : Palette.dayCanvas.bg))
+    }
     for surface in [seed.app, seed.raised, seed.raised2] {
       for ink in [seed.ink, seed.ink2] {
         #expect(Palette.contrast(ink, surface) >= 4.5, "\(ink) 落在 \(surface) 上看不清")

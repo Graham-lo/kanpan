@@ -94,17 +94,22 @@ public struct ChartColors: Sendable, Equatable {
 /// K 线与指标的**画法**一个像素都不改——这里换的只有颜色。蜡烛的宽度、间距、
 /// 副图的分区、读数那一行的排布全在 `KanpanChart` 里，和这份表没有关系。
 ///
-/// **画布不跟皮肤走。** K 线绘图区（主图 + 副图 + 坐标轴）一律用 AICoin 那套固定配色，
-/// 皮肤只染图区以外的一切（顶栏、周期条、底栏、面板、自选页）。染过一版画布：整屏是
-/// 连成一块了，但蜡烛和均线全压在一层带色的底上，看久了分不清价格结构——这正是 AICoin
-/// 十年如一日用白底的原因。接缝交给 `ground` / `raised` 去收，那本来就是它们的活。
+/// **画布只有「经典」不跟皮肤走。** 2026-09-17 曾把 K 线绘图区（主图 + 副图 + 坐标轴）
+/// 一律固定成 AICoin 那套白 / 深蓝，理由是染过底的画布会让蜡烛和均线压在一层带色的面上。
+/// 2026-09-18 用户推翻了这条：「既然现在有了经典这个风格复刻了 aicoin，那么青苔冷和陶土暖的
+/// k 线指标展示区域也不再用 aicoin 那种白色的颜色。会显得特别割接这是最大的原因之一」
+/// 「还是用之前那两种风格的背景颜色即可，这样整体就搭配了」。
+///
+/// 所以现在：**想要原汁原味的 AICoin 就切「经典」**，那一套一个像素不差；青苔和陶土是两套
+/// 自己的皮肤，图区的底、网格、分隔线、轴文字全跟着种子走（见 `Palette.canvas(_:)`），
+/// 整屏不再在图区的四条边上各切一刀。
 ///
 /// 种子里仍带着涨跌色、`amber`、MA 那组 `palette` 和副图那组 `sub`，因为涨跌与 MA 色在头部胶囊、
 /// 自选列表里也出现，图里图外必须是同一个红、同一个绿。但**浅色下这几组三套皮肤完全一样，都是
 /// AICoin 手机端的那套**（`aicoinDayUp` / `aicoinDayDown` / `aicoinDayMA` / `aicoinSlots`）：用户 2026-09-17
 /// 看完真机说「浅色所有模式下的 K 线颜色都统一成 AICoin 那种」「以后不再另起一套」。皮肤要融的是
 /// 图外，不是图。深色版 AICoin 没在真机量过，青苔 / 陶土深色暂时还各带自己的一组。
-/// 种子里的 `chart` 字段因此只用于图表以外的容器，不再是画布底色。
+/// 种子里的 `chart` 字段就是画布底色（经典的那支正好等于 AICoin 的白 / 深蓝，所以两条路同归）。
 public enum Palette: Sendable {
   // ---------------------------------------------------------------- 青苔（冷）
 
@@ -318,9 +323,31 @@ public enum Palette: Sendable {
     bg: "#0D111C", grid: "#1C2236", axis: "#191C21",
     text: "#7A8899", dim: "#515A66", ink: "#E6EAF2", cross: "#FFFFFF")
 
+  /// 图区那几样（底、网格、结构分隔线、轴文字、次要读数、主文字、十字线）。
+  ///
+  /// **只有「经典」照抄 AICoin。** 2026-09-17 定过一版「画布一律固定成 AICoin 那套白 / 深蓝，
+  /// 不跟皮肤走」，理由是染过底的画布会让蜡烛和均线压在一层带色的面上。2026-09-18 用户推翻了
+  /// 这条，理由比当初那条更硬：「既然现在有了经典这个风格复刻了 aicoin，那么青苔冷和陶土暖的
+  /// k 线指标展示区域也不再用 aicoin 那种白色的颜色。会显得特别割接这是最大的原因之一」。
+  /// 想要原汁原味的 AICoin 就切「经典」——那一套仍然一个像素不差；青苔和陶土是两套自己的皮肤，
+  /// 图区跟着皮肤染，整屏才不会在图区的四条边上各切一刀
+  /// （`kanpan-no-seams-one-continuous-surface`）。
+  ///
+  /// 跟着皮肤走的时候，线与字也得换成皮肤自己的那几支：AICoin 的分隔线 `#F2F4F7` 落在
+  /// 青苔的 `#F3F7F4` 上等于没画，轴文字那支蓝灰 `#7A8899` 压在带绿的底上也不是一家人。
+  /// 对应关系照搬 AICoin 里的**轻重次序**——网格比结构分隔线重，所以网格取 `line`、
+  /// 分隔线取更淡的 `grid`。
+  public static func canvas(_ t: PaletteSeed) -> ChartCanvas {
+    let base = t.dark ? nightCanvas : dayCanvas
+    guard !isClassic(t) else { return base }
+    return ChartCanvas(bg: t.chart, grid: t.line, axis: t.grid,
+                       text: t.ink3, dim: t.ink3.alpha(t.dark ? "8C" : "99"),
+                       ink: t.ink, cross: t.ink2)
+  }
+
   private static func expanded(_ t: PaletteSeed) -> ChartColors {
     let d = t.dark
-    let c = d ? nightCanvas : dayCanvas
+    let c = canvas(t)
     return ChartColors(
       bg: c.bg, grid: c.grid, axis: c.axis, text: c.text, dim: c.dim,
       ink: c.ink, amber: t.amber, cross: c.cross,
