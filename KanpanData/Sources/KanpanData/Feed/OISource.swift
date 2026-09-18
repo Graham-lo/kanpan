@@ -308,6 +308,26 @@ public actor OISource {
     return m.keys.sorted().map { m[$0]! }
   }
 
+  /// 请求区间 → 这一轮真正覆盖到的区间。
+  ///
+  /// `loadOI` 为了把最后一根 K 线整根圈进来，会把 `want.to` 放到「最后一根开盘 +
+  /// 2 × step」；而 `openInterestHist` 最新只答得到当前这根桶的开盘，那两根是未来，
+  /// 谁也拿不到。把请求区间原样记成已有区间再落盘，下次开图（或后台待过两根桶再
+  /// 回前台）就从这个虚高的右端往后补，中间那一根桶谁也不管——`OISeries.aligned`
+  /// 又不肯拿前一根的持仓量往后顶，曲线上就永久留一个洞。所以右端只认「真到手的
+  /// 最后一个点所在那根桶的末尾」。
+  ///
+  /// 左端不做同样的收敛：往左是历史，品种上市日之前本来就没有数据，收了左端等于
+  /// 每平移一次就把上市前那一截重下一遍。
+  ///
+  /// 一个点都没拿到时不推进右端，退回 `want.from`（空区间），由调用方决定是保留
+  /// 原有区间还是当作没有；总之不让区间倒过来。
+  public static func coveredRegion(want: (from: Int64, to: Int64), points: [OIPoint],
+                                   step: Int64) -> (from: Int64, to: Int64) {
+    guard let last = points.max(by: { $0.time < $1.time })?.time else { return (want.from, want.from) }
+    return (want.from, max(want.from, min(want.to, last + max(step, 1))))
+  }
+
   /// App 与查询入口共用这条管线，不能将原始5m归档直接交给高周期图表。
   public static func chartSeries(_ raw: [OIPoint], interval: Interval) -> OISeries {
     OISeries(points: downsample(dedup(raw), to: interval),

@@ -511,7 +511,7 @@ final class MarketModel {
         return all
       }
       guard !Task.isCancelled, request == self.selection, self.symbol == sym, self.interval == iv else { return }
-      self.mergeOI(points, want: want, symbol: sym, interval: iv)
+      self.mergeOI(points, want: want, step: step, symbol: sym, interval: iv)
     }
   }
 
@@ -537,14 +537,16 @@ final class MarketModel {
     oi = OISource.chartSeries(merged, interval: iv)
   }
 
-  private func mergeOI(_ points: [OIPoint], want: (from: Int64, to: Int64),
+  private func mergeOI(_ points: [OIPoint], want: (from: Int64, to: Int64), step: Int64,
                        symbol sym: String, interval iv: Interval) {
     let previous = oiRegion
     let joins = previous.map { want.from <= $0.to && want.to >= $0.from } ?? false
     let merged = OISource.dedup(joins ? oiPoints + points : points)   // 同一时刻留新到的
     guard !merged.isEmpty else { return }
-    var region = want
-    if joins, let old = previous { region = (from: min(old.from, want.from), to: max(old.to, want.to)) }
+    // 记「真拿到的」而不是「请求的」：`want.to` 伸到最后一根 K 线之后两根，那两根
+    // 还没发生，原样记下来并落盘，下一次会话的接缝上就留一个永远补不上的空桶。
+    var region = OISource.coveredRegion(want: want, points: merged, step: step)
+    if joins, let old = previous { region = (from: min(old.from, region.from), to: max(old.to, region.to)) }
     oiPoints = merged
     oiRegion = region
     oi = OISource.chartSeries(merged, interval: iv)

@@ -386,6 +386,54 @@ struct OIIncrementalTests {
     #expect(OISource.missingSegments(have: nil, want: (200, 100), step: Self.step, refresh: false).isEmpty)
   }
 
+  @Test("请求区间收敛成实际覆盖：伸到未来那两根不许记成已有")
+  func coveredClampsFuture() {
+    let step = Self.step
+    let last = Aggregator.utcMs(year: 2025, month: 1, day: 15)
+    let pts = (0...9).map { OIPoint(time: last - Int64(9 - $0) * step, value: 1_000 + Double($0)) }
+    // `loadOI` 的 want.to 最远到「最后一根开盘 + 2 × step」，而数据只到 last。
+    let region = OISource.coveredRegion(want: (from: pts[0].time, to: last + 2 * step),
+                                        points: pts, step: step)
+    #expect(region.from == pts[0].time)
+    #expect(region.to == last + step)               // 只到真拿到的那根桶的末尾
+    // 一个点都没拿到：右端不推进，也不许倒过来。
+    let empty = OISource.coveredRegion(want: (from: pts[0].time, to: last + 2 * step),
+                                       points: [], step: step)
+    #expect(empty.from == pts[0].time)
+    #expect(empty.to == pts[0].time)
+    #expect(empty.to >= empty.from)
+  }
+
+  @Test("左端不收：上市前那一截照样算问过，不会每次平移重下一遍")
+  func coveredKeepsLeftEdge() {
+    let step = Self.step
+    let listing = Aggregator.utcMs(year: 2025, month: 1, day: 15)   // 这根之前没有任何数据
+    let want = (from: listing - 500 * step, to: listing + 2 * step)
+    let pts = [OIPoint(time: listing, value: 1_000), OIPoint(time: listing + step, value: 1_001)]
+    let region = OISource.coveredRegion(want: want, points: pts, step: step)
+    #expect(region.from == want.from)               // 左端保持 want.from，没被推到右边去
+    #expect(region.to == listing + 2 * step)
+    // 下一轮同样的视野：左边不再重取，只剩尾巴那一小段。
+    let again = OISource.missingSegments(have: region, want: want, step: step, refresh: true)
+    #expect(again.allSatisfy { $0.from >= want.to - 3 * step })
+  }
+
+  @Test("会话接缝不留洞：下一轮从空洞那根接着补，不是从虚高的右端")
+  func seamLeavesNoHole() throws {
+    let step = Self.step
+    let last = Aggregator.utcMs(year: 2025, month: 1, day: 15)
+    let first = last - 100 * step
+    let pts = (0...100).map { OIPoint(time: first + Int64($0) * step, value: 1_000) }
+    // 第一轮：请求伸到「最后一根 K 线 + 2 × step」，但币安最新只给得到 last 这一根。
+    let have = OISource.coveredRegion(want: (from: first, to: last + 2 * step), points: pts, step: step)
+    // 第二轮（下次开图 / 后台待过两根桶再回前台）：又走了 5 根，照样请求到「最后一根 + 2 × step」。
+    let want = (from: first, to: last + 7 * step)
+    let out = OISource.missingSegments(have: have, want: want, step: step, refresh: true)
+    let head = try #require(out.first)
+    // last + 1 × step 那根桶必须被重新取到，否则它永远是 NaN，曲线中间断一格。
+    #expect(head.from <= last + step)
+  }
+
   @Test("已聚好的一段存盘：编解码一致，区间跟着回来")
   func rangeCodec() throws {
     let day = Aggregator.utcMs(year: 2025, month: 1, day: 15)
