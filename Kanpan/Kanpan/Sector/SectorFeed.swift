@@ -50,10 +50,21 @@ import KanpanNetwork
   }
 
   /// 品种表。用来把 `BTCUSDT` 还原成 `BTC`，以及给没被任何板块收录的币凑兜底桶。
+  ///
+  /// 比的是 symbol 集合的内容，不是条数：一张合约下架、另一张同时上架时条数一模一样，
+  /// 只比数量会让整页一直拿着旧表算兜底桶。
   func setCatalog(_ catalog: [SymbolInfo]) {
-    guard catalog.count != self.catalog.count else { return }
+    let ids = Set(catalog.map { $0.symbol.uppercased() })
+    guard ids != catalogIDs else { return }
+    catalogIDs = ids
     self.catalog = catalog
+    // 两张派生表按代次作废——条数相同、内容不同的那一版正是它们会看走眼的地方。
+    catalogGeneration &+= 1
   }
+
+  /// 品种表换了几版。派生缓存拿它当钥匙。
+  @ObservationIgnored private var catalogGeneration: UInt64 = 0
+  @ObservationIgnored private var catalogIDs: Set<String> = []
 
   /// 板块页在不在屏幕上。
   func setVisible(_ on: Bool) {
@@ -103,15 +114,22 @@ import KanpanNetwork
 
   private func ingest(_ tickers: [Ticker]) {
     var next: [String: SectorQuote] = [:]
+    // base → 已选中那张的（计价币档次，成交额）。
+    var picked: [String: (rank: Int, volume: Double)] = [:]
     next.reserveCapacity(tickers.count)
+    picked.reserveCapacity(tickers.count)
     for ticker in tickers {
       guard ticker.changePercent.isFinite, ticker.last.isFinite else { continue }
       let base = base(of: ticker.symbol)
       guard !base.isEmpty else { continue }
-      // 同一个 base 可能有多个计价对（USDT / USDC）。留成交额大的那一个，
-      // 别让一条清淡的 USDC 盘把整个板块的中位数带偏。
+      // 同一个 base 可能有多张合约（USDT / USDC / FDUSD）。先按计价币的固定优先级挑，
+      // 同一档才比成交额——USDT 和 USDC 两张的 24h 涨幅并不相同，按成交额挑会在
+      // 两张之间来回切，球就一直在抖。
       let volume = ticker.quoteVolume.isFinite ? ticker.quoteVolume : 0
-      if let old = next[base], old.quoteVolume >= volume { continue }
+      let rank = quoteRank(of: ticker.symbol)
+      if let old = picked[base],
+         !SectorQuotePreference.prefers(rank: rank, volume: volume, over: old) { continue }
+      picked[base] = (rank, volume)
       next[base] = SectorQuote(base: base, pct: ticker.changePercent, quoteVolume: volume, price: ticker.last)
     }
     quotes = next
@@ -129,19 +147,31 @@ import KanpanNetwork
     return upper
   }
 
-  private static let quoteAssets = ["USDT", "USDC", "FDUSD", "BUSD", "USD1", "TUSD"]
+  /// 计价币的档次，越小越优先：`USDT > USDC > FDUSD > 其它`。品种表里有就照表，
+  /// 没有就按后缀猜（交易所偶尔会在品种表回来之前先给出行情）。
+  private func quoteRank(of symbol: String) -> Int {
+    let upper = symbol.uppercased()
+    if let info = catalogIndex[upper] { return SectorQuotePreference.rank(info.quote) }
+    for (index, quote) in Self.quoteAssets.enumerated()
+    where upper.hasSuffix(quote) && upper.count > quote.count {
+      return index
+    }
+    return Self.quoteAssets.count
+  }
+
+  private static let quoteAssets = SectorQuotePreference.quoteAssets
 
   private var catalogIndex: [String: SymbolInfo] {
-    if cachedIndexCount == catalog.count { return cachedIndex }
+    if cachedIndexCount == catalogGeneration { return cachedIndex }
     var index: [String: SymbolInfo] = [:]
     index.reserveCapacity(catalog.count)
     for info in catalog { index[info.symbol.uppercased()] = info }
     cachedIndex = index
-    cachedIndexCount = catalog.count
+    cachedIndexCount = catalogGeneration
     return index
   }
   @ObservationIgnored private var cachedIndex: [String: SymbolInfo] = [:]
-  @ObservationIgnored private var cachedIndexCount = -1
+  @ObservationIgnored private var cachedIndexCount: UInt64? = nil
 
   /// 大写 base → 完整合约代号（`BTC` → `BTCUSDT`）。
   ///
@@ -157,23 +187,23 @@ import KanpanNetwork
   }
 
   private var baseIndex: [String: String] {
-    if cachedBaseCount == catalog.count { return cachedBase }
+    if cachedBaseCount == catalogGeneration { return cachedBase }
     var rank: [String: Int] = [:]
     var index: [String: String] = [:]
     for info in catalog {
       let base = info.base.uppercased()
       let quote = info.quote.uppercased()
-      let score = Self.quoteAssets.firstIndex(of: quote) ?? Self.quoteAssets.count
+      let score = SectorQuotePreference.rank(quote)
       if let old = rank[base], old <= score { continue }
       rank[base] = score
       index[base] = info.symbol.uppercased()
     }
     cachedBase = index
-    cachedBaseCount = catalog.count
+    cachedBaseCount = catalogGeneration
     return index
   }
   @ObservationIgnored private var cachedBase: [String: String] = [:]
-  @ObservationIgnored private var cachedBaseCount = -1
+  @ObservationIgnored private var cachedBaseCount: UInt64? = nil
 
   // MARK: 兜底桶
 

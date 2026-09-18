@@ -72,7 +72,6 @@ struct SectorLayout: Equatable, Sendable {
     let radii = Self.radii(selection, knobs: knobs, field: field)
     let strongCount = max(1, selection.picks.filter { $0.side == .strong }.count)
     let fillerCount = max(1, selection.picks.filter { $0.side == .filler }.count)
-    let maxAbs = max(1e-6, selection.maxAbsPct)
 
     bubbles = selection.picks.enumerated().map { index, pick in
       let hv = Self.hash(pick.id)
@@ -95,7 +94,7 @@ struct SectorLayout: Equatable, Sendable {
         center: CGPoint(x: Double(field.minX) + Self.clamp(t + (hv - 0.5) * 0.16, 0.09, 0.91) * w,
                         y: anchorY + (hv - 0.5) * h * (filler ? 0.16 : 0.10)),
         radius: radii[index],
-        norm: abs(pick.stat.pct) / maxAbs,
+        norm: selection.norm(pick.stat.pct),
         upSide: pick.isUpSide(total: selection.total),
         phase: hv * 2 * .pi,
         phase2: Self.hash(pick.id + "b") * 2 * .pi,
@@ -113,12 +112,11 @@ struct SectorLayout: Equatable, Sendable {
   mutating func retune(_ selection: SectorSelection) {
     guard bubbles.count == selection.picks.count else { return }
     let radii = Self.radii(selection, knobs: knobs, field: field)
-    let maxAbs = max(1e-6, selection.maxAbsPct)
     for index in bubbles.indices {
       let pick = selection.picks[index]
       bubbles[index].pick = pick
       bubbles[index].radius = radii[index]
-      bubbles[index].norm = abs(pick.stat.pct) / maxAbs
+      bubbles[index].norm = selection.norm(pick.stat.pct)
       bubbles[index].upSide = pick.isUpSide(total: selection.total)
     }
     relax(iterations: Self.warmIterations)
@@ -168,13 +166,13 @@ struct SectorLayout: Equatable, Sendable {
 
   // MARK: - 半径
 
-  /// 面积 ∝ |涨跌幅| → 半径 ∝ √|pct|，对全场 max|pct| 归一，带最小半径地板，
+  /// 面积 ∝ |涨跌幅| → 半径 ∝ √|pct|，按 `selection.norm`（全场最大 |pct|、超出截到 1）
+  /// 归一，带最小半径地板，
   /// 然后按「球场面积 × 铺满度 / 球面积和」反算一个自适应系数 k 整体缩放。
   private static func radii(_ selection: SectorSelection,
                             knobs: SectorFieldKnobs, field: CGRect) -> [CGFloat] {
-    let maxAbs = max(1e-6, selection.maxAbsPct)
     let raw = selection.picks.map {
-      max(knobs.rmin, knobs.rmax * (abs($0.stat.pct) / maxAbs).squareRoot())
+      max(knobs.rmin, knobs.rmax * selection.norm($0.stat.pct).squareRoot())
     }
     let area = raw.reduce(0) { $0 + .pi * $1 * $1 }
     guard area > 0, field.width > 0, field.height > 0 else { return raw.map { CGFloat($0) } }

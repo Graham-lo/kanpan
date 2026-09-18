@@ -24,6 +24,8 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
   let price: Double
   let pct: Double
   let quoteVolume: Double
+  /// 前沿成员：跑赢池基准、且相对收益排在全池 90 分位以上。
+  let isFrontier: Bool
 
   var id: String { symbol }
 
@@ -50,11 +52,13 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
   /// 把成员名单和行情拼成行。没有行情的成员直接不出现——聚合那边也没算它。
   static func build(members: [String], quotes: [String: SectorQuote],
                     symbolForBase: (String) -> String,
+                    frontier: Set<String> = [],
                     sort: SectorSymbolSort) -> [SectorSymbolRow] {
     let rows = members.compactMap { base -> SectorSymbolRow? in
       guard let quote = quotes[base] else { return nil }
       return SectorSymbolRow(base: base, symbol: symbolForBase(base), price: quote.price,
-                             pct: quote.pct, quoteVolume: quote.quoteVolume)
+                             pct: quote.pct, quoteVolume: quote.quoteVolume,
+                             isFrontier: frontier.contains(base))
     }
     switch sort {
     case .change: return rows.sorted { $0.pct > $1.pct }
@@ -76,7 +80,6 @@ struct SectorSymbolList: View {
   /// 板块成员（大写 base）。兜底桶也走这条路。
   var members: [String]
   var quotes: [String: SectorQuote]
-  var basis: SectorBasis
   var symbolForBase: (String) -> String
   var onBack: () -> Void
   /// 点中一行：交出完整 symbol。
@@ -91,7 +94,8 @@ struct SectorSymbolList: View {
 
   var body: some View {
     let rows = SectorSymbolRow.build(members: members, quotes: quotes,
-                                     symbolForBase: symbolForBase, sort: sort)
+                                     symbolForBase: symbolForBase,
+                                     frontier: Set(stat.frontier), sort: sort)
     return VStack(spacing: 0) {
       header
       sortBar(rows.count)
@@ -115,8 +119,19 @@ struct SectorSymbolList: View {
 
   // MARK: - 头
 
-  /// 原型 `enterList()`：返回、记号、板块名、「N 个品种 · 成交额 X」，右边是
-  /// 聚合涨跌幅和它的口径名。
+  /// 原型 `enterList()`：返回、记号、板块名、一行副文案，右边是聚合涨跌幅。
+  ///
+  /// 副文案 `17 个品种 · 14/17 跑赢 · 成交额 4.86B` 和「全部板块」每行的完全同一格式。
+  /// 「跑赢」几家说的是整体在动还是一只在爆——右边那个大字只说动了多少，这两件事
+  /// 分不开。涨跌幅不在这行重写一遍（右边已经有了），分母是有行情的成员数，
+  /// 页面上不出现算法名，也不出现目录登记数。
+  private var subtitle: String {
+    let head = "\(stat.memberCount) 个品种"
+    let tail = " · 成交额 \(fmtVol(stat.quoteVolume))"
+    guard stat.memberCount >= SectorAggregator.minEligibleMembers else { return head + tail }
+    return head + " · \(stat.outperformCount)/\(stat.memberCount) 跑赢" + tail
+  }
+
   private var header: some View {
     HStack(spacing: 6) {
       SectorBackButton(skin: skin, id: "sector.list.back", action: onBack)
@@ -126,20 +141,17 @@ struct SectorSymbolList: View {
       VStack(alignment: .leading, spacing: 2) {
         Text(stat.name).font(skin.serif(19)).tracking(0.76).foregroundStyle(theme.ink)
           .lineLimit(1).minimumScaleFactor(0.7)
-        Text("\(stat.memberCount) 个品种 · 成交额 \(fmtVol(stat.quoteVolume))")
+        Text(subtitle)
           .font(.system(size: 11)).monospacedDigit().tracking(0.33)
           .foregroundStyle(skin.ink4)
           .lineLimit(1).minimumScaleFactor(0.8)
+          .accessibilityIdentifier("sector.list.breadth")
       }
       .padding(.leading, 5)
       Spacer(minLength: 8)
-      VStack(alignment: .trailing, spacing: 2) {
-        Text(sectorPctText(stat.pct))
-          .font(.system(size: 19, weight: .medium)).monospacedDigit()
-          .foregroundStyle(stat.pct >= 0 ? theme.up : theme.down)
-        Text(basis.title).font(.system(size: 10)).tracking(1)
-          .foregroundStyle(skin.ink4)
-      }
+      Text(sectorPctText(stat.pct))
+        .font(.system(size: 19, weight: .medium)).monospacedDigit()
+        .foregroundStyle(stat.pct >= 0 ? theme.up : theme.down)
     }
     .padding(.leading, 15).padding(.trailing, 20).padding(.top, 6)
   }
@@ -184,9 +196,19 @@ struct SectorSymbolList: View {
         }.lineLimit(1).minimumScaleFactor(0.75)
         // 自选页那行是「额 … · 幅 …」，振幅要 24h 高低价，全市场 ticker 的那一趟
         // 里没带回来，所以这儿只留成交额，排版和字号一模一样。
-        Text("额 " + item.volumeText)
-          .font(.system(size: 10)).monospacedDigit().foregroundStyle(theme.ink3)
-          .lineLimit(1).minimumScaleFactor(0.8)
+        //
+        // 前沿成员的「领涨」就接在成交额后面，同一个分隔点、同一个字号，只换涨色：
+        // `额 3.05M · 领涨`。悬在名字和价格中间的空档里它像掉在那儿的。
+        HStack(spacing: 0) {
+          Text("额 " + item.volumeText)
+            .font(.system(size: 10)).monospacedDigit().foregroundStyle(theme.ink3)
+          if item.isFrontier {
+            Text(" · 领涨")
+              .font(.system(size: 10)).tracking(0.3)
+              .foregroundStyle(theme.up)
+              .accessibilityIdentifier("sector.frontier." + item.symbol)
+          }
+        }.lineLimit(1).minimumScaleFactor(0.8)
       }.frame(maxWidth: .infinity, alignment: .leading)
       quote(item)
     }

@@ -14,7 +14,6 @@ import KanpanCore
 struct SectorAllSheet: View {
   /// 已按涨跌幅降序排好（含兜底桶）。
   var stats: [SectorStat]
-  var basis: SectorBasis
   var onBack: () -> Void
   var onPick: (SectorStat) -> Void
 
@@ -50,18 +49,25 @@ struct SectorAllSheet: View {
       Text("全部板块").font(skin.serif(19)).tracking(0.76).foregroundStyle(theme.ink)
         .padding(.leading, 5)
       Spacer(minLength: 8)
-      VStack(alignment: .trailing, spacing: 2) {
-        Text("\(stats.count) 个")
-          .font(.system(size: 10.5, design: .monospaced)).tracking(0.63)
-          .foregroundStyle(skin.ink4)
-        Text(basis.title).font(.system(size: 10)).tracking(1)
-          .foregroundStyle(skin.ink4)
-      }
+      Text("\(stats.count) 个")
+        .font(.system(size: 10.5, design: .monospaced)).tracking(0.63)
+        .foregroundStyle(skin.ink4)
     }
     .padding(.leading, 15).padding(.trailing, 20).padding(.top, 6)
   }
 
-  /// 原型 `.srow`：26 的记号 + 名字 +「N 个品种 · 成交额 X」，右边一列涨跌幅。
+  /// 副文案：`18 个品种 · 15/18 跑赢 · 成交额 1.2B`。
+  ///
+  /// 有行情成员不到 3 个的板块（`desci` 就一只 BIO）没有「广度」可言
+  /// ——一只币的涨跌不是板块强弱。这种少写「跑赢」那一段，不解释为什么。
+  private func subtitle(_ stat: SectorStat) -> String {
+    let head = "\(stat.memberCount) 个品种"
+    let tail = " · 成交额 \(fmtVol(stat.quoteVolume))"
+    guard stat.memberCount >= SectorAggregator.minEligibleMembers else { return head + tail }
+    return head + " · \(stat.outperformCount)/\(stat.memberCount) 跑赢" + tail
+  }
+
+  /// 原型 `.srow`：26 的记号 + 名字 + 副文案，右边一列涨跌幅。
   private func row(_ stat: SectorStat, first: Bool) -> some View {
     HStack(spacing: 11) {
       if let art = SectorIcons.art(stat.id) {
@@ -73,7 +79,7 @@ struct SectorAllSheet: View {
       VStack(alignment: .leading, spacing: 2) {
         Text(stat.name).font(.system(size: 14, weight: .medium)).foregroundStyle(theme.ink)
           .lineLimit(1).minimumScaleFactor(0.75)
-        Text("\(stat.memberCount) 个品种 · 成交额 \(fmtVol(stat.quoteVolume))")
+        Text(subtitle(stat))
           .font(.system(size: 10.5)).monospacedDigit().tracking(0.32)
           .foregroundStyle(skin.ink4)
           .lineLimit(1).minimumScaleFactor(0.8)

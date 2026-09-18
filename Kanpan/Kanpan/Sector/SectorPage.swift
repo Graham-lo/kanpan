@@ -34,12 +34,18 @@ struct SectorPage: View {
 
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  /// 停在哪个市场、按哪个口径聚合，都记在本机——这是「上次看到哪儿」，
-  /// 不是需要跟账号走的偏好。
+  /// 停在哪个市场记在本机——这是「上次看到哪儿」，不是需要跟账号走的偏好。
   @AppStorage("sector.market") private var marketID = SectorMarket.crypto.rawValue
-  @AppStorage("sector.basis") private var basisID = SectorBasis.median.rawValue
   /// 压在气泡页上面的那几层。空 = 只有球场。最多两层（全部板块 → 某板块的品种列表）。
   @State private var route: [Route] = []
+  /// 面积分母的迟滞记忆。
+  ///
+  /// 它必须活过一次次重画，又不能是 `@State` 的值类型——`snapshot()` 是在 `body`
+  /// 里算的，在那儿写 `@State` 会把视图再拍一遍。装在一个不被观察的盒子里，
+  /// 只当上一次的读数用。换市场时清空：两个市场各有各的尺子。
+  @State private var scaleMemo = ScaleMemo()
+
+  private final class ScaleMemo { var value: Double? }
 
   private enum Route: Equatable {
     case all
@@ -48,7 +54,6 @@ struct SectorPage: View {
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
   private var market: SectorMarket { SectorMarket(rawValue: marketID) ?? .crypto }
-  private var basis: SectorBasis { SectorBasis(rawValue: basisID) ?? .median }
 
   // MARK: - 口径
 
@@ -69,10 +74,10 @@ struct SectorPage: View {
     let market = market
     let buckets = feed.fallbackBuckets(for: market)
     let quotes = feed.quotes
-    let stats = SectorAggregator.stats(market: market, quotes: quotes, basis: basis,
-                                       fallbackBuckets: buckets)
-    // N/M 按市场取各自的默认档（加密 5+3、美股 3+2）。
-    let selection = SectorSelector.select(stats, market: market)
+    let stats = SectorAggregator.stats(market: market, quotes: quotes, fallbackBuckets: buckets)
+    // N/M 按市场取各自的默认档（加密 5+3、美股 3+2）。上一次的尺子传进去做迟滞。
+    let selection = SectorSelector.select(stats, market: market, previousScale: scaleMemo.value)
+    scaleMemo.value = selection.scalePct
     // 统计行里那个「品种」数不能拿各板块成员数相加——一个品种可以同时属于好几个
     // 板块（允许交叉归属），加起来会比实际多出一大截。这儿数的是去重之后、
     // 当前真有行情的那些。
@@ -91,7 +96,7 @@ struct SectorPage: View {
     return ZStack {
       fieldLayer(snap)
       if route.contains(.all) {
-        SectorAllSheet(stats: snap.stats.sorted { $0.pct > $1.pct }, basis: basis,
+        SectorAllSheet(stats: snap.stats.sorted { $0.pct > $1.pct },
                        onBack: pop, onPick: { push(.list($0.id)) })
           .transition(.opacity)
       }
@@ -126,26 +131,25 @@ struct SectorPage: View {
     }
   }
 
-  /// 顶栏两行：上一行是标题 + 市场硬切换 +「…」，下一行是聚合口径 + 统计行。
+  /// 顶栏一行：标题 + 市场硬切换 +「…」，统计行贴在标题右边。
   ///
   /// 统计行照原型 `paintHeader()`：`N / M 板块 · K 品种`。这不是取数状态，
   /// 是这一屏自己的规模——上场几颗、一共几个板块、盖住了多少品种。
+  ///
+  /// 聚合口径那行药丸 2026-09-18 整行撤了：板块只有中位数一个口径，
+  /// 不再让用户挑（也不退进「…」菜单）。
   private func header(_ snap: Snapshot) -> some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(spacing: 12) {
+    HStack(spacing: 10) {
+      HStack(alignment: .firstTextBaseline, spacing: 9) {
         Text("板块").font(skin.serif(21)).tracking(1.26).foregroundStyle(theme.ink)
-        Spacer(minLength: 0)
-        marketSwitch
-        moreButton
-      }
-      HStack(spacing: 7) {
-        ForEach(SectorBasis.allCases, id: \.rawValue) { basisChip($0) }
-        Spacer(minLength: 0)
         Text("\(snap.selection.picks.count) / \(snap.stats.count) 板块 · \(snap.covered) 品种")
           .font(.system(size: 10.5, design: .monospaced)).tracking(0.63)
           .foregroundStyle(skin.ink4)
           .lineLimit(1).minimumScaleFactor(0.8)
       }
+      Spacer(minLength: 0)
+      marketSwitch
+      moreButton
     }
     .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 2)
   }
@@ -170,6 +174,8 @@ struct SectorPage: View {
     return Button {
       guard !on else { return }
       marketID = value.rawValue
+      // 换市场就是换一整套尺子，上一档的分母不能带过去。
+      scaleMemo.value = nil
       route.removeAll()
     } label: {
       Text(title).font(.system(size: 12)).tracking(0.48)
@@ -187,24 +193,6 @@ struct SectorPage: View {
       .accessibilityLabel(title)
       .accessibilityAddTraits(on ? .isSelected : [])
       .accessibilityIdentifier("sector.market." + value.rawValue)
-  }
-
-  /// 聚合口径。默认中位数——它不受一两个成员暴涨暴跌牵着走。
-  private func basisChip(_ value: SectorBasis) -> some View {
-    let on = basis == value
-    return Button { basisID = value.rawValue } label: {
-      Text(value.title).font(.system(size: 11.5)).tracking(0.23)
-        .foregroundStyle(on ? theme.ink : theme.ink3)
-        .padding(.horizontal, 10).frame(height: 25)
-        .background {
-          Capsule().fill(on ? skin.chipOn : Color.clear)
-            .overlay(Capsule().strokeBorder(on ? skin.chipEdge : skin.rule, lineWidth: 0.5))
-        }
-        .contentShape(Capsule())
-    }.buttonStyle(.plain)
-      .accessibilityLabel(value.title)
-      .accessibilityAddTraits(on ? .isSelected : [])
-      .accessibilityIdentifier("sector.basis." + value.rawValue)
   }
 
   /// 右上角那颗「…」：没上场的板块只有这一条路。
@@ -230,7 +218,7 @@ struct SectorPage: View {
   @ViewBuilder private func listLayer(_ id: String, _ snap: Snapshot) -> some View {
     if let stat = snap.stats.first(where: { $0.id == id }) {
       SectorSymbolList(stat: stat, members: members(of: id, snap), quotes: feed.quotes,
-                       basis: basis, symbolForBase: symbolForBase,
+                       symbolForBase: symbolForBase,
                        onBack: pop, onPick: onPickSymbol)
     } else {
       Color.clear.onAppear { pop() }
