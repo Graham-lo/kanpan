@@ -192,10 +192,15 @@ class KanpanUICase: XCTestCase {
   // ------------------------------------------------------------ 点击
 
   /// 只接受一次中心点击，不用偏移重试掩盖产品命中问题。
+  ///
+  /// `tap` 留成可换的一手，是给滚不动的横向 `ScrollView` 里那些控件用的
+  /// （周期条的药丸就是），那儿要走 `XCUIApplication.tapIntervalChip(_:)`
+  /// 那样的坐标点，绕开 XCUI 自己会抖的可点性判定。默认仍是元素中心点一下。
   @discardableResult
   func tapButton(_ el: XCUIElement, _ timeout: TimeInterval = short,
+                 tap: (XCUIElement) -> Void = { $0.tap() },
                  until settled: () -> Bool) -> Bool {
-    el.tap()
+    tap(el)
     if waitUntil(timeout: timeout, settled) { return true }
     let evidence = XCTAttachment(string: "Button: \(el.debugDescription)\nChart: \(String(describing: app.otherElements["chart.canvas"].value))\n" + app.debugDescription)
     evidence.name = "单次中心命中失败"; evidence.lifetime = .keepAlways; add(evidence)
@@ -324,6 +329,29 @@ extension XCUIApplication {
   /// 左上角那块品种名。它不是按钮了，但用例还要拿它的位置点顶栏。
   var symbolLabel: XCUIElement {
     descendants(matching: .any).matching(identifier: Ids.symbolButton).firstMatch
+  }
+
+  /// 点一档周期。**按坐标点，不走 `XCUIElement.tap()`。**
+  ///
+  /// 药丸挂在 `interval.quick` 这个横向 `ScrollView` 里，而那条内容宽度正好等于它自己的
+  /// 宽度（钉几档就铺满几档，从来不溢出），也就是说它是一个**滚不动的滚动视图**。
+  /// `XCUIElement.tap()` 点滚动视图里的东西之前一定先做「滚到可见」，对滚不动的那种，
+  /// 这一步算回来的命中点偶尔就是 `{-1, -1}`，于是 XCUI 判它 not hittable 直接放弃——
+  /// 报错原文就是 `Computed hit point {-1, -1} after scrolling to visible`。
+  ///
+  /// 这是 XCUI 自己的判定抖动，不是 app 的毛病：2026-09-18 在卡住的那一刻从 app 里
+  /// 对药丸中心做过跨窗口取证，`UIWindow.hitTest` 命中的正是药丸自己的容器，
+  /// `accessibilityHitTest` 也落在它的无障碍节点上，键盘那层 `UITextEffectsWindow`
+  /// 两种命中测试都返回 `nil`——真人的手指和 VoiceOver 的焦点从来没被挡过。
+  ///
+  /// 坐标点绕开可点性判定（和条上那几下 `swipe` 一样），打在药丸中心。
+  /// 调用方仍然要先确认它画在条的可视范围里，那是版面的事，这儿不管。
+  func tapIntervalChip(_ raw: String) {
+    let chip = buttons[Ids.intervalChip(raw)]
+    let frame = chip.frame
+    coordinate(withNormalizedOffset: .zero)
+      .withOffset(CGVector(dx: frame.midX, dy: frame.midY))
+      .tap()
   }
 
   /// 顶栏放大镜 → 搜索页。这一页是「我知道要找什么」那条路：打字、历史词、

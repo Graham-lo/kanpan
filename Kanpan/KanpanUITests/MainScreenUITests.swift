@@ -58,16 +58,18 @@ final class MainScreenUITests: KanpanUICase {
     for raw in Ids.quickIntervals {
       let chip = app.buttons[Ids.intervalChip(raw)]
       // 走 `tapButton` 而不是裸 `tap()`：`market.interval` 是同步赋值的，点到了就该
-      // 立刻选中；iPad mini 上实测出现过「点了 1m，等满 30s 也不选中」，和顶栏搜索
-      // 那颗一样是正中心那一点吃掉了——退到框内 1/3 处再点就中。
-      XCTAssertTrue(tapButton(chip) { chip.isSelected },
+      // 立刻选中，点不中要当场留证据。真正落手的那一下换成坐标点
+      // （`tapIntervalChip`）——药丸挂在一条滚不动的横向 `ScrollView` 里，
+      // `XCUIElement.tap()` 那套「先滚到可见」在这种条上会算出 `{-1, -1}`，
+      // 于是明明画得好好的按钮被判 not hittable 直接放弃。
+      XCTAssertTrue(tapButton(chip, tap: { _ in app.tapIntervalChip(raw) }) { chip.isSelected },
                     "点了 \(raw)，它自己没变成选中")
       for other in Ids.quickIntervals where other != raw {
         XCTAssertFalse(app.buttons[Ids.intervalChip(other)].isSelected,
                        "选了 \(raw)，\(other) 还亮着——同一时刻只能有一档选中")
       }
     }
-    if let original { app.buttons[Ids.intervalChip(original)].tap() }
+    if let original { app.tapIntervalChip(original) }
   }
 
   /// 周期条右端「更多」→ **内联**周期网格（十四档都在、每格带图钉）→ 再点一下收起。

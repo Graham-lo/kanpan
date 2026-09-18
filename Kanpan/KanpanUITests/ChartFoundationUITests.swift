@@ -248,10 +248,10 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(day.waitForExistence(timeout: 5))
     let quick = app.scrollViews["interval.quick"]
     for _ in 0..<4 {
-      if day.isHittable, quick.frame.contains(day.frame) { break }
+      if quick.frame.contains(day.frame) { break }
       quick.swipeLeft()
     }
-    day.tap()
+    app.tapIntervalChip("1d")
     XCTAssertTrue(wait(seconds: 90) {
       self.info()["interval"] as? String == "1d" && self.info()["oiPeriod"] as? String == "1d" &&
       (self.info()["oiTimes"] as? [Double] ?? []).count > 35
@@ -698,7 +698,7 @@ final class ChartFoundationUITests: XCTestCase {
         strip.swipeRight()
         for _ in 0..<3 { if chip.exists && strip.frame.contains(chip.frame) { break }; strip.swipeLeft() }
         let previousSpacing = info()["spacing"] as? Double
-        chip.tap()
+        app.tapIntervalChip(interval)
         // Read during the actual transition, before the REST candle request finishes.
         for _ in 0..<3 {
           let value = quote()
@@ -1329,7 +1329,7 @@ extension ChartFoundationUITests {
     }
     let ids = info()["drawingIDs"] as? [String]
     app.buttons["draw.finish"].tap()
-    app.buttons["interval.chip.4h"].tap()
+    app.tapIntervalChip("4h")
     XCTAssertTrue(wait { self.info()["interval"] as? String == "4h" })
     XCTAssertEqual(info()["drawingIDs"] as? [String], ids)
     app.terminate(); app.launch()
