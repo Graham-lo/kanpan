@@ -69,6 +69,33 @@ final class ChartFoundationUITests: XCTestCase {
     if done.exists, done.isHittable { done.tap() }
     XCTAssertTrue(wait { !header.exists }, "面板关不掉：拖不走，「完成」也没反应")
   }
+  /// 把 Form 里的一个开关翻到指定值：打在滑块上，没翻就照原点再来一下。
+  ///
+  /// 为什么这儿要重试，而 `tapButton` 明写着「只接受一次中心点击」——因为那条规矩防的是
+  /// 拿偏移重试去掩盖**产品的命中区问题**，这儿的丢点已经取证证明不是命中区的事：
+  ///
+  /// 2026-09-18 全量 13 台矩阵上，iPhone 16 Plus 和 iPhone 17 Pro 各红一次，都卡在
+  /// `testMAParameterCancelAndSaveOutput` 关 MA 输出的那一下。取证做到了 app 里面——
+  /// 临时给 `IndicatorPanel` 那个 `Toggle` 的 setter 挂一个计数器，再用「开面板 → 点一下
+  /// → 关面板」的探针跑 40 轮，复现出没翻的那一次：点前点后元素的 frame 一模一样
+  /// （`(20, 519.3, 390, 52.3)`），`isHittable` 为真，而 setter 的计数一动没动。
+  /// 也就是说这一下压根没进 app，事件丢在 XCUI「合成 → 投递」那一段；既不是点歪了，
+  /// 也不是 app 收到了又把状态弹回去。孤立探针上约 3% 丢一下，整套 49 条跑下来机器更忙，
+  /// 矩阵里两台就都撞上了。
+  ///
+  /// 也别想着换个点躲开：同一轮探针里打在整行文字那半边（`dx 0.25`）点了 20 次、20 次都不翻——
+  /// Form 里这一行只有开关本体认点击。目标点只能是滑块，能做的只有没翻就再点一下。
+  ///
+  /// 重试不会把真缺陷放过去：开关要是真的翻不动，三下点完照样红。
+  func flip(_ toggle: XCUIElement, to expected: String,
+            file: StaticString = #filePath, line: UInt = #line) {
+    for _ in 0..<3 {
+      toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+      if wait(seconds: 5, { toggle.value as? String == expected }) { return }
+    }
+    XCTFail("开关点了三下还是 \(String(describing: toggle.value))，没到 \(expected)：\(toggle.frame)",
+            file: file, line: line)
+  }
   /// 离开设置页。
   ///
   /// 设置 2026-09-18 起不是半屏面板而是标签栏上的一整页：它既拖不走，也没有「完成」，
@@ -1048,9 +1075,8 @@ final class ChartFoundationUITests: XCTestCase {
     let output = app.switches["indicator.output.0"]
     XCTAssertTrue(output.waitForExistence(timeout: 5))
     XCTAssertEqual(output.value as? String, "1")
-    // SwiftUI exposes the whole Form row as the switch; hit the visible thumb.
-    output.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
-    XCTAssertTrue(wait { output.value as? String == "0" })
+    // SwiftUI 把整行暴露成这个开关，真正认点击的只有右边那颗滑块（见 `flip`）。
+    flip(output, to: "0")
     shot("MA草稿-输出已关闭")
     app.buttons["保存"].tap(); closePanel()
     XCTAssertTrue(wait { self.info()["hiddenMA"] as? [Int] == [0] })

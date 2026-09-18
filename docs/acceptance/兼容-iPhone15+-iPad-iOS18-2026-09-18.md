@@ -93,12 +93,12 @@ iPad 上更容易撞：图更宽、视野归位滑得更久。
 
 这是存量问题，不是这轮引入的；按项目规矩直接修了，没停下来请示。
 
-## 六、全量矩阵翻出来的四条红（都已从根因修掉）
+## 六、全量矩阵翻出来的五条红（都已从根因修掉）
 
-把 13 台矩阵真跑起来之后，iPhone 15 上一共红了四条。查到底之后分成两类：
+把 13 台矩阵真跑起来之后，一共红了五条。查到底之后分成两类：
 **两条是 app 自己的缺陷**（首屏空图、自选页被标签栏吃掉一栏安全区），
-**两条是用例的点法不对**（周期条药丸、自选拖动排序）。
-app 那两条各自补了会红的回归用例；用例那两条改的是用例，一行产品代码都没动。
+**三条是用例的点法不对**（周期条药丸、自选拖动排序、MA 输出开关）。
+app 那两条各自补了会红的回归用例；用例那三条改的是用例，一行产品代码都没动。
 
 **1. 周期条的药丸被 XCUI 判成「点不着」——是判定抖动，不是 app 的毛病（用例侧）**
 
@@ -186,6 +186,32 @@ app 那两条各自补了会红的回归用例；用例那两条改的是用例�
 两个品种都不在，那条断言是空过的，红在下一行。现在直接量两个框：编辑条的「删除」不许和
 `bottom.settings` 相交。
 
+**5. 关 MA 输出的那一下偶尔没进 app——事件丢在 XCUI 那一侧（`590724d` 之后的用例侧修复）**
+
+`testMAParameterCancelAndSaveOutput` 在 iPhone 16 Plus 和 iPhone 17 Pro 上各红一次，
+都停在同一行：点完开关之后 `output.value` 四十秒里一直是 `1`。两台机型同一行，说明不是机型的事。
+
+**先把两个顺手的解释按掉了。** 从 xcresult 导出的合成事件里读出那一下打在 (382.7, 545.5)，
+而无障碍层级里开关本体是 `{{329, 531.7}, {63, 28}}`——点在开关里面，不是点歪了；
+`IndicatorPanel` 那个 `draft` 是 `init` 里建一次的 `@State`，没有任何异步重载，
+所以也不是「app 把草稿刷回去了」。
+
+**取证做进了 app。** 在一棵临时工作树里给那个 `Toggle` 的 setter 挂了一个计数器
+（`indicator.setcount`，取完证已还原，没进任何提交），再写探针跑「开面板 → 点一下 → 关面板」
+四十轮，就是为了把「事件没进 app」和「进了 app 又被弹回去」分开。复现到的那一次是前者：
+点前点后元素的 frame 一模一样（`(20, 519.3, 390, 52.3)`）、`isHittable` 为真，
+而 setter 的计数一动没动。**这一下压根没到 app**，丢在 XCUI「合成 → 投递」那一段。
+孤立探针上约 3% 丢一下；整套 49 条跑下来机器更忙，矩阵里就撞到了两台。
+
+**换个点躲不开。** 同一轮探针把目标点挪到整行文字那半边（`dx 0.25`）打了 20 次，20 次全不翻——
+SwiftUI 把整行暴露成这个开关，可 Form 里真正认点击的只有右边那颗滑块。目标点只能是它。
+
+所以改法是给用例加一颗 `flip(_:to:)`：照原点最多点三下，每下等 5 秒看值有没有过去，
+三下还不过去照样红。这没有违反 `tapButton` 上「只接受一次中心点击」那条规矩——那条防的是
+拿偏移重试掩盖**产品的命中区问题**，这儿已经证明命中区是好的，丢的是测试框架自己的事件。
+反向对照：把 `flip` 的目标点改成那个怎么点都不翻的 `dx 0.25`，三下点完准时红在
+「开关点了三下还是 1」。
+
 ## 七、未做 / 边界
 
 - **没有下载 iOS 18 模拟器运行时**，按用户口径，18 这一侧只有静态核查；实测全在 26.5 上。
@@ -194,27 +220,18 @@ app 那两条各自补了会红的回归用例；用例那两条改的是用例�
   （`git worktree add --detach`），所以那一轮的红绿能准确归到一个 sha 上，别的窗口此刻
   还没提交的改动不会混进来。基线见第四节。
 
-## 八、真机（iPhone 16 Pro / iOS 26.6.1）
+## 八、真机（不做，按用户口径）
 
-**已完成**：按 iOS 18 下限编出的真机 Debug 包签名、安装都成功
-（`Apple Development` + `iOS Team Provisioning Profile: com.mdd.kanpan`），
-说明抬高下限没有影响真机侧的构建与分发。
+**用户 2026-09-18 定的口径：「模拟器测完就可以了，真机不用管」。** 所以这一轮的验收基准是
+模拟器矩阵，真机实测不再是收尾条件。
 
-**未完成**：三条受影响的 UI 用例没跑成。runner 两次都是
-`Early unexpected exit … before establishing connection`，
-直接 `devicectl process launch` 给出了根因——`BSErrorCodeDescription = Locked`，
-**手机锁着屏**，锁屏状态下 app 起不来、XCUITest 的 runner 也连不上。
+真机这一侧只留下一条**仍然成立的结论**：按 iOS 18.0 下限编出的真机 Debug 包，签名与安装都成功
+（`Apple Development` + `iOS Team Provisioning Profile: com.mdd.kanpan`，iPhone 16 Pro / iOS 26.6.1），
+说明抬高下限没有影响真机侧的构建与分发。这是抬下限这件事唯一需要真机回答的问题，它已经答了。
 
-解锁后重跑即可，产物已经编好在 `dd-dev`：
-
-```
-xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan \
-  -destination "platform=iOS,id=02E38904-6C11-53D5-9114-2AB4D6E755DC" \
-  -only-testing:KanpanUITests/IPadLayoutUITests \
-  -only-testing:KanpanUITests/MainScreenUITests/testLandscapeDrawingHidesEveryIndicator \
-  -only-testing:KanpanUITests/MainScreenUITests/testLatestButtonAppearsAfterLeavingLatest
-```
-
-（`IPadLayoutUITests` 在 iPhone 上会按设计跳过——402pt 的窗口谈不上封顶。）
+那三条受影响的 UI 用例**没有在真机上跑**，也不补跑：两次 runner 都是
+`Early unexpected exit … before establishing connection`，`devicectl process launch` 给出的根因是
+`BSErrorCodeDescription = Locked`（手机锁着屏，runner 连不上），不是代码问题；同样的三条在模拟器
+矩阵里全绿。
 
 截图存于 `docs/acceptance/兼容-2026-09-18/`。
