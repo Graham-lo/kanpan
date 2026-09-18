@@ -48,6 +48,7 @@ help:
 	@echo "             构建号每次上传必须递增，也用来分开历史归档和 dSYM：make archive BUILD=7；不传 BUILD 出的是 -dev 那份"
 	@echo "ipa          把同一构建号的归档导成可上传的 ipa：make ipa BUILD=7（Team ID 可覆盖：TEAM_ID=XXXX）"
 	@echo "upload       用 App Store Connect API Key 传同一构建号的 ipa：make upload BUILD=7（需 ASC_KEY_ID / ASC_ISSUER_ID）"
+	@echo "             传成功后自动往 docs/testflight-uploads.md 追加一行，归档与 dSYM 按它算 90 天保留期"
 	@echo "snap         在单台模拟器上装 app 并截一张图（DEVICE=\"iPhone 16 Pro\"，RELEASE=1 走 Release 包）"
 	@echo "screenshots  13 台机型全跑一遍，出 docs/acceptance/shots/"
 	@echo "devices      备齐 当前范围的 13 台模拟器（缺的自动 create）"
@@ -284,6 +285,8 @@ ARCHIVE_PATH := $(ARCHIVE_DD)/Kanpan-$(BUILD_TAG).xcarchive
 EXPORT_DIR   := $(ARCHIVE_DD)/export-$(BUILD_TAG)
 EXPORT_PLIST := $(EXPORT_DIR)/ExportOptions.plist
 IPA          := $(ARCHIVE_DD)/Kanpan-$(BUILD_TAG).ipa
+# 上传台账（进 git，见下面 upload 上方那段注释）。
+UPLOAD_LEDGER := docs/testflight-uploads.md
 
 archive:
 	@echo "→ 归档 Release$(if $(BUILD), · 构建号 $(BUILD),（构建号用工程里的值）)"
@@ -320,6 +323,23 @@ ipa:
 #   3. export ASC_KEY_ID=XXXXXXXXXX    # 就是文件名里那段
 #      export ASC_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx   # 密钥页顶上的 Issuer ID
 # 少了哪一样下面各有一句中文报错，不会甩一屏 altool 的 usage 出来。
+#
+# 传成功之后往 $(UPLOAD_LEDGER) 追加一行，这不是「顺手记个账」，是 dSYM 的保质期表：
+# 一个 TestFlight 构建有 90 天有效期，这期间测试者还装着它用，回来的崩溃日志只能拿
+# **那个构建号**的 dSYM 符号化（重编一遍二进制 UUID 就对不上了，补不回来）。也就是说
+# `DerivedData-archive/Kanpan-<构建号>.xcarchive` 能不能删，取决于它是哪天传上去的。
+# 而这台机器上查不到这个日期：`~/Library/Logs/ContentDelivery*` 和 `~/.itmstransporter`
+# ——Transporter 会留上传日志的那两个地方——在本机根本不存在（2026-09-19 实地确认过），
+# 也就是说上传这件事没在本地留下任何痕迹；归档目录本身又被 .gitignore 挡在仓库外、
+# 没有备份，mtime 也只说明它是哪天编的、不说明哪天传的。以前只能靠人嘴上传一句
+# 「这份传过了」，换个窗口就断。所以把「哪份归档哪天传的」落进仓库里的一个纯追加文件，
+# 清理磁盘的人照着它算 90 天，谁来接手都查得到。
+#
+# 追加那几行故意单独成一条 recipe 行摆在 altool 之后：make 里一行非零就中止这个目标，
+# altool 失败根本走不到下面，台账不会留下假记录（别把它们用 `;` 接到 altool 那行去，
+# 那样 altool 的退出码会被最后一条命令盖掉，传挂了照样记一笔）。
+# 版本号不写死，从归档的 Info.plist 里取 —— 那是**真正打进这个 ipa 的**版本，比读工程
+# 设置更贴事实；归档万一被清了，再退回 xcodebuild -showBuildSettings 问一次。
 upload:
 	@[ -f "$(IPA)" ] || { echo "没找到 $(IPA)，先跑 make archive$(BUILD_ARG) && make ipa$(BUILD_ARG)——archive / ipa / upload 三条必须用同一个构建号"; exit 1; }
 	@[ -n "$$ASC_KEY_ID" ] || { echo "缺环境变量 ASC_KEY_ID（App Store Connect API 密钥 ID，形如 ABC123DEF4）：export ASC_KEY_ID=..."; exit 1; }
@@ -330,6 +350,15 @@ upload:
 	@echo "→ 上传 $(IPA)（密钥 $$ASC_KEY_ID）"
 	xcrun altool --upload-app -f "$(IPA)" -t ios \
 		--apiKey "$$ASC_KEY_ID" --apiIssuer "$$ASC_ISSUER_ID"
+	@ver=$$(plutil -extract ApplicationProperties.CFBundleShortVersionString raw -o - "$(ARCHIVE_PATH)/Info.plist" 2>/dev/null); \
+	[ -n "$$ver" ] || ver=$$(xcodebuild -showBuildSettings -project Kanpan/Kanpan.xcodeproj -scheme $(SCHEME) -configuration Release 2>/dev/null | awk '$$1=="MARKETING_VERSION" { print $$3 }'); \
+	[ -n "$$ver" ] || ver="?"; \
+	keep=$$(date -v+90d "+%Y-%m-%d"); \
+	printf '| %s | %s | %s | %s | %s | %s |\n' \
+		"$$(date "+%Y-%m-%d %H:%M")" "$$ver" "$(BUILD_TAG)" "$(ARCHIVE_PATH)" "$$(basename "$(IPA)")" "$$keep" \
+		>> $(UPLOAD_LEDGER); \
+	echo "已记入台账 $(UPLOAD_LEDGER)：版本 $$ver · 构建号 $(BUILD_TAG)"; \
+	echo "这份归档 $(ARCHIVE_PATH) 连同里面的 dSYM 请留到 $$keep 之后再删（TestFlight 构建 90 天有效期内崩溃日志还要靠它符号化）。"
 	@echo "传完了。App Store Connect 上处理完（几分钟到半小时）才会出现在 TestFlight 里。"
 
 # ---------------------------------------------------------------- A0.3 取证
