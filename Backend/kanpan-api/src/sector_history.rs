@@ -90,14 +90,23 @@ fn num(v:&Value)->Option<f64> {
 
 /// The symbols worth collecting: perpetual contracts that are open for trading.
 ///
+/// Both perpetual flavours count. Binance marks the equity, ETF and metal
+/// contracts `TRADIFI_PERPETUAL` rather than `PERPETUAL`, and those two hundred
+/// symbols are the whole of the phone's "US" market — collecting only
+/// `PERPETUAL` left that market with no history at all and its five-day window
+/// permanently empty.
+///
 /// `exchangeInfo` also lists quarterly futures and contracts in `SETTLING`,
 /// `PENDING_TRADING` or `BREAK`. A quarterly's history belongs to a contract
 /// that expires, and a contract that is not trading has no live price for the
 /// phone to divide, so neither earns a daily request.
+const PERPETUAL_TYPES:[&str;2]=["PERPETUAL","TRADIFI_PERPETUAL"];
+
 pub fn perpetuals(body:&Value)->Vec<String> {
  let Some(rows)=body["symbols"].as_array() else {return Vec::new()};
  let mut out:Vec<String>=rows.iter().filter(|row|{
-  row["contractType"].as_str()==Some("PERPETUAL")&&row["status"].as_str()==Some("TRADING")
+  row["contractType"].as_str().is_some_and(|kind|PERPETUAL_TYPES.contains(&kind))
+   &&row["status"].as_str()==Some("TRADING")
  }).filter_map(|row|row["symbol"].as_str()).filter(|symbol|{
   // The name goes into a query string; anything that is not a contract name
   // is a row we cannot read rather than a request to make.
@@ -335,6 +344,10 @@ mod tests {
   let body=json!({"symbols":[
    {"symbol":"BTCUSDT","contractType":"PERPETUAL","status":"TRADING"},
    {"symbol":"ETHUSDT","contractType":"PERPETUAL","status":"TRADING"},
+   // The equities, ETFs and metals: a second perpetual flavour, and the whole
+   // of the phone's "US" market. Collected like any other perpetual.
+   {"symbol":"NVDAUSDT","contractType":"TRADIFI_PERPETUAL","status":"TRADING"},
+   {"symbol":"XAUTUSDT","contractType":"TRADIFI_PERPETUAL","status":"BREAK"},
    // A quarterly: its history belongs to a contract that expires.
    {"symbol":"BTCUSDT_250926","contractType":"CURRENT_QUARTER","status":"TRADING"},
    {"symbol":"ETHUSDT_251226","contractType":"NEXT_QUARTER","status":"TRADING"},
@@ -347,7 +360,8 @@ mod tests {
    {"symbol":"BAD/SYMBOL","contractType":"PERPETUAL","status":"TRADING"},
    {"symbol":"SOLUSDT","status":"TRADING"},
   ]});
-  assert_eq!(perpetuals(&body),vec!["BTCUSDT".to_owned(),"ETHUSDT".to_owned()]);
+  assert_eq!(perpetuals(&body),
+   vec!["BTCUSDT".to_owned(),"ETHUSDT".to_owned(),"NVDAUSDT".to_owned()]);
   assert!(perpetuals(&json!({})).is_empty());
  }
 

@@ -36,8 +36,14 @@ struct SectorPage: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   /// 停在哪个市场记在本机——这是「上次看到哪儿」，不是需要跟账号走的偏好。
   @AppStorage("sector.market") private var marketID = SectorMarket.crypto.rawValue
+  /// 看今日还是看 5 日。只有这两档（`kanpan-sector-page-no-basis-picker`），
+  /// 记在本机。停在 5 日的人切到一个没有历史的市场时页面会静默退回今日，
+  /// **但不改这个偏好**——那个市场有了历史，或者他切回来，5 日自己就回来了。
+  @AppStorage("sector.window") private var windowID = SectorWindow.today.rawValue
   /// 压在气泡页上面的那几层。空 = 只有球场。最多两层（全部板块 → 某板块的品种列表）。
   @State private var route: [Route] = []
+  /// 「5 日」要的日线收盘。取不到就是空，页面回到只有今日的样子，不提示。
+  @State private var historyFeed = SectorHistoryFeed()
   /// 面积分母的迟滞记忆。
   ///
   /// 它必须活过一次次重画，又不能是 `@State` 的值类型——`snapshot()` 是在 `body`
@@ -45,7 +51,9 @@ struct SectorPage: View {
   /// 只当上一次的读数用。换市场时清空：两个市场各有各的尺子。
   @State private var scaleMemo = ScaleMemo()
 
-  private final class ScaleMemo { var value: Double? }
+  /// 每个窗口一把尺子。今日跳 3% 是大事，5 日跳 3% 不是；两档共用一个分母会让
+  /// 切过去的第一屏球整体大一圈或小一圈，然后再慢慢缩回来。
+  private final class ScaleMemo { var values: [String: Double] = [:] }
 
   private enum Route: Equatable {
     case all
@@ -54,41 +62,63 @@ struct SectorPage: View {
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
   private var market: SectorMarket { SectorMarket(rawValue: marketID) ?? .crypto }
+  /// 用户选的那一档。这个市场有没有这一档是另一回事，见 `snapshot()`。
+  private var preferredWindow: SectorWindow { SectorWindow(rawValue: windowID) ?? .today }
 
   // MARK: - 口径
 
   /// 这一屏的全部算料。一次算齐，三层共用——聚合和兜底桶都不便宜，
   /// 不能让每个子视图各算一遍。
   private struct Snapshot {
-    /// 当前市场的板块统计（含兜底桶）。
+    /// 当前市场的板块统计（含兜底桶），按**当前窗口**算。
     var stats: [SectorStat]
     /// 上场的那几颗。`SectorSelector` 自己会把兜底桶摘掉，气泡场吃不到它们。
     var selection: SectorSelection
-    /// 当前市场、去重之后真有行情的品种数。
+    /// 当前市场、这段窗口上真算得出收益的品种数（去重）。
     var covered: Int
     /// 兜底桶，用来在下钻时还原成员名单。
     var buckets: [SectorFallbackBucket]
+    /// 这一屏真正在用的窗口。用户停在 5 日、这个市场却没有历史时它是今日。
+    var window: SectorWindow
+    /// 「5 日」那一档在这个市场有没有东西可看。没有就连药丸行都不出现。
+    var hasD5: Bool
+    /// 日线收盘。下钻到品种列表时那一层还要拿它算每一行的 5 日 / 20 日。
+    var history: SectorHistory
   }
 
   private func snapshot() -> Snapshot {
     let market = market
     let buckets = feed.fallbackBuckets(for: market)
     let quotes = feed.quotes
-    let stats = SectorAggregator.stats(market: market, quotes: quotes, fallbackBuckets: buckets)
-    // N/M 按市场取各自的默认档（加密 5+3、美股 3+2）。上一次的尺子传进去做迟滞。
-    let selection = SectorSelector.select(stats, market: market, previousScale: scaleMemo.value)
-    scaleMemo.value = selection.scalePct
+    let history = historyFeed.history
+    // 「5 日」有没有东西可看，决定的是药丸行在不在；停在 5 日的人在没有历史的市场里
+    // 就地退回今日，偏好不动。这一问不算池基准，比再聚合一遍便宜得多。
+    let hasD5 = SectorAggregator.hasEligible(market: market, quotes: quotes,
+                                             window: .d5, history: history)
+    let window: SectorWindow = (preferredWindow == .d5 && hasD5) ? .d5 : .today
+    let stats = SectorAggregator.stats(market: market, quotes: quotes, fallbackBuckets: buckets,
+                                       window: window, history: history)
+    // N/M 按市场取各自的默认档（加密 5+3、美股 3+2）。上一次的尺子传进去做迟滞——
+    // 每个窗口各记各的，不借别人的分母。
+    let selection = SectorSelector.select(stats, market: market,
+                                          previousScale: scaleMemo.values[window.rawValue])
+    scaleMemo.values[window.rawValue] = selection.scalePct
     // 统计行里那个「品种」数不能拿各板块成员数相加——一个品种可以同时属于好几个
     // 板块（允许交叉归属），加起来会比实际多出一大截。这儿数的是去重之后、
-    // 当前真有行情的那些。
+    // 这段窗口上真算得出收益的那些。
     var seen = Set<String>()
-    for def in SectorCatalog.sectors(market) {
-      for base in def.members where quotes[base] != nil { seen.insert(base) }
+    func cover(_ members: [String]) {
+      for base in members {
+        guard let q = quotes[base],
+              SectorAggregator.windowReturn(q, window: window, closes: history.closes[base]) != nil
+        else { continue }
+        seen.insert(base)
+      }
     }
-    for bucket in buckets {
-      for base in bucket.members where quotes[base] != nil { seen.insert(base) }
-    }
-    return Snapshot(stats: stats, selection: selection, covered: seen.count, buckets: buckets)
+    for def in SectorCatalog.sectors(market) { cover(def.members) }
+    for bucket in buckets { cover(bucket.members) }
+    return Snapshot(stats: stats, selection: selection, covered: seen.count, buckets: buckets,
+                    window: window, hasD5: hasD5, history: history)
   }
 
   var body: some View {
@@ -110,8 +140,18 @@ struct SectorPage: View {
     // 只是一层淡入淡出。弹跳、抖动、回弹一概没有。
     .animation(reduceMotion ? nil : .easeOut(duration: 0.24), value: route)
     .accessibilityIdentifier("sector.page")
-    .onAppear { feed.setVisible(true) }
-    .onDisappear { feed.setVisible(false) }
+    .onAppear {
+      feed.setVisible(true)
+      historyFeed.configure(hosts: feed.backendHosts)
+      historyFeed.setVisible(true)
+    }
+    .onDisappear {
+      feed.setVisible(false)
+      historyFeed.setVisible(false)
+    }
+    // 网关名单是宿主在启动时配进 `feed` 的，可能比这一页出现得晚一步；
+    // 换线路时也会变。变一次就重新接一次线，免得「5 日」那一档等到下次进页才活。
+    .onChange(of: feed.backendHosts) { _, next in historyFeed.configure(hosts: next) }
   }
 
   /// 最上面那一层如果是品种列表，是哪个板块。
@@ -125,6 +165,7 @@ struct SectorPage: View {
   private func fieldLayer(_ snap: Snapshot) -> some View {
     VStack(spacing: 0) {
       header(snap)
+      if snap.hasD5 { windowBar(snap) }
       SectorBubbleField(selection: snap.selection, knobs: knobs, redUp: redUp,
                         onPick: { push(.list($0.stat.id)) })
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -137,7 +178,8 @@ struct SectorPage: View {
   /// 是这一屏自己的规模——上场几颗、一共几个板块、盖住了多少品种。
   ///
   /// 聚合口径那行药丸 2026-09-18 整行撤了：板块只有中位数一个口径，
-  /// 不再让用户挑（也不退进「…」菜单）。
+  /// 不再让用户挑（也不退进「…」菜单）。那一行现在站着「今日 / 5 日」两颗——
+  /// 换的是看多长一段，不是换算法。
   private func header(_ snap: Snapshot) -> some View {
     HStack(spacing: 10) {
       HStack(alignment: .firstTextBaseline, spacing: 9) {
@@ -152,6 +194,38 @@ struct SectorPage: View {
       moreButton
     }
     .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 2)
+  }
+
+  /// 「今日 / 5 日」。就这两颗，没有第三颗，也没有任何解释文字。
+  ///
+  /// 这一行只在 5 日那档真有东西可看时才出现（`snap.hasD5`）；美股那边服务端还没采
+  /// 日线，那一格就整行不在，页面和甲版一模一样。样式照品种列表里「涨跌幅 / 成交额」
+  /// 那两颗，整页只有这一种药丸。
+  private func windowBar(_ snap: Snapshot) -> some View {
+    HStack(spacing: 7) {
+      windowChip(.today, "今日", on: snap.window == .today)
+      windowChip(.d5, "5 日", on: snap.window == .d5)
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 20).padding(.top, 8)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("sector.window")
+  }
+
+  private func windowChip(_ value: SectorWindow, _ title: String, on: Bool) -> some View {
+    Button { windowID = value.rawValue } label: {
+      Text(title).font(.system(size: 11.5)).tracking(0.23)
+        .foregroundStyle(on ? theme.ink : theme.ink3)
+        .padding(.horizontal, 10).frame(height: 25)
+        .background {
+          Capsule().fill(on ? skin.chipOn : Color.clear)
+            .overlay(Capsule().strokeBorder(on ? skin.chipEdge : skin.rule, lineWidth: 0.5))
+        }
+        .contentShape(Capsule())
+    }.buttonStyle(.plain)
+      .accessibilityLabel(title)
+      .accessibilityAddTraits(on ? .isSelected : [])
+      .accessibilityIdentifier("sector.window." + value.rawValue)
   }
 
   /// 市场硬切换。两个市场永远不共处一屏，换一格就是换一整套尺子。
@@ -175,7 +249,7 @@ struct SectorPage: View {
       guard !on else { return }
       marketID = value.rawValue
       // 换市场就是换一整套尺子，上一档的分母不能带过去。
-      scaleMemo.value = nil
+      scaleMemo.values.removeAll()
       route.removeAll()
     } label: {
       Text(title).font(.system(size: 12)).tracking(0.48)
@@ -217,7 +291,14 @@ struct SectorPage: View {
   /// 不如把人放回去。
   @ViewBuilder private func listLayer(_ id: String, _ snap: Snapshot) -> some View {
     if let stat = snap.stats.first(where: { $0.id == id }) {
-      SectorSymbolList(stat: stat, members: members(of: id, snap), quotes: feed.quotes,
+      let members = members(of: id, snap)
+      // 20 日不是一个模式，只是 5 日那一档里头部补的一句。没有 20 日数据就不补。
+      let d20 = snap.window == .d5
+        ? SectorAggregator.windowMedian(members: members, quotes: feed.quotes,
+                                        history: snap.history, window: .d20)
+        : nil
+      SectorSymbolList(stat: stat, members: members, quotes: feed.quotes,
+                       window: snap.window, history: snap.history, medianD20: d20,
                        symbolForBase: symbolForBase,
                        onBack: pop, onPick: onPickSymbol)
     } else {

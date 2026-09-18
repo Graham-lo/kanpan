@@ -506,3 +506,156 @@ struct SectorTests {
     #expect(SectorQuotePreference.rank("BTC") == SectorQuotePreference.quoteAssets.count)
   }
 }
+
+/// 乙版：日线 5 日 / 20 日那一段窗口。
+///
+/// 口径和今日**完全是同一套**——给每个成员一个收益值，再算中位数 / 广度 / 领涨 /
+/// 删一。这一组用例钉的是那个收益值怎么来、以及「这段数据不够就不上场」那条门槛。
+@Suite("板块窗口")
+struct SectorWindowTests {
+  /// 挑一个成员够多的真板块来搭台。用例不写死 id，免得分类表一调就红。
+  static let sector = SectorCatalog.sectors(.crypto).max { $0.members.count < $1.members.count }!
+
+  /// 全市场只有这个板块的成员有行情：池基准就是它们自己，用例里算得出来。
+  static func quotes(_ bases: [String], price: Double) -> [String: SectorQuote] {
+    var out: [String: SectorQuote] = [:]
+    for base in bases {
+      out[base] = SectorQuote(base: base, pct: 1, quoteVolume: 1, price: price)
+    }
+    return out
+  }
+
+  static func history(_ bases: [String], c5: Double?, c20: Double? = nil,
+                      asof: String = "2026-09-18") -> SectorHistory {
+    var closes: [String: SectorCloses] = [:]
+    for base in bases { closes[base] = SectorCloses(c5: c5, c20: c20) }
+    return SectorHistory(asof: asof, closes: closes)
+  }
+
+  // MARK: - 收益值本身
+
+  @Test func fiveDayIsTheLivePriceOverTheClose() {
+    let q = SectorQuote(base: "BTC", pct: 1, quoteVolume: 1, price: 110)
+    let closes = SectorCloses(c5: 100, c20: 50)
+    func near(_ got: Double?, _ want: Double) -> Bool { abs((got ?? .nan) - want) < 1e-9 }
+    #expect(SectorAggregator.windowReturn(q, window: .today, closes: closes) == 1)
+    #expect(near(SectorAggregator.windowReturn(q, window: .d5, closes: closes), 10))
+    #expect(near(SectorAggregator.windowReturn(q, window: .d20, closes: closes), 120))
+    // 现价一动，5 日跟着动——它不是一天只变一次的死数。
+    let moved = SectorQuote(base: "BTC", pct: 1, quoteVolume: 1, price: 121)
+    #expect(near(SectorAggregator.windowReturn(moved, window: .d5, closes: closes), 21))
+  }
+
+  @Test func aMissingCloseIsAbsentNotZero() {
+    let q = SectorQuote(base: "BTC", pct: 1, quoteVolume: 1, price: 110)
+    // 这一档没有 → 没有这个成员，而不是 0（`last/0` 是 +∞，一个就够毁掉中位数）。
+    #expect(SectorAggregator.windowReturn(q, window: .d5, closes: SectorCloses(c20: 50)) == nil)
+    #expect(SectorAggregator.windowReturn(q, window: .d5, closes: nil) == nil)
+    #expect(SectorAggregator.windowReturn(q, window: .d5, closes: SectorCloses(c5: 0)) == nil)
+    #expect(SectorAggregator.windowReturn(q, window: .d5, closes: SectorCloses(c5: -1)) == nil)
+    let dead = SectorQuote(base: "BTC", pct: 1, quoteVolume: 1, price: .nan)
+    #expect(SectorAggregator.windowReturn(dead, window: .d5, closes: SectorCloses(c5: 1)) == nil)
+  }
+
+  // MARK: - 一段窗口的成员集与门槛
+
+  @Test func aWindowWithoutHistoryHasNothingOnTheField() {
+    let members = Self.sector.members
+    let quotes = Self.quotes(members, price: 110)
+    // 服务端还没采这个市场的日线（美股此刻就是这样）：5 日一个板块都排不出来，
+    // 于是页面上连那行药丸都不出现。
+    let five = SectorAggregator.stats(market: .crypto, quotes: quotes, fallbackBuckets: [],
+                                      window: .d5, history: .empty)
+    #expect(five.isEmpty)
+    #expect(!SectorAggregator.hasEligible(market: .crypto, quotes: quotes,
+                                          window: .d5, history: .empty))
+    #expect(SectorAggregator.hasEligible(market: .crypto, quotes: quotes,
+                                         window: .today, history: .empty))
+  }
+
+  @Test func shortCoverageStaysOffTheFieldButKeepsItsRow() {
+    let members = Self.sector.members
+    let quotes = Self.quotes(members, price: 110)
+    // 只有一半成员有 5 日收盘：这一半的中位数不是这个板块的 5 日强弱。
+    let half = Array(members.prefix(members.count / 2))
+    let thin = SectorAggregator.stats(market: .crypto, quotes: quotes, fallbackBuckets: [],
+                                      window: .d5, history: Self.history(half, c5: 100))
+    let row = thin.first { $0.id == Self.sector.id }
+    #expect(row != nil, "覆盖不够也还在「全部板块」里，只是不上场")
+    #expect(row?.memberCount == half.count)
+    #expect(row?.eligible == false)
+
+    // 八成以上就上得了场。
+    let wide = Array(members.prefix(Int((0.9 * Double(members.count)).rounded(.up))))
+    let full = SectorAggregator.stats(market: .crypto, quotes: quotes, fallbackBuckets: [],
+                                      window: .d5, history: Self.history(wide, c5: 100))
+    #expect(full.first { $0.id == Self.sector.id }?.eligible == true)
+  }
+
+  @Test func theMedianAndBreadthComeFromTheWindowNotFromToday() {
+    let members = Array(Self.sector.members.prefix(4))
+    var quotes: [String: SectorQuote] = [:]
+    var closes: [String: SectorCloses] = [:]
+    // 今日全是 +1%，5 日却是 +10 / +20 / −10 / −20：两档读出来必须不一样。
+    let fiveDay = [10.0, 20, -10, -20]
+    for (index, base) in members.enumerated() {
+      quotes[base] = SectorQuote(base: base, pct: 1, quoteVolume: 1, price: 100 + fiveDay[index])
+      closes[base] = SectorCloses(c5: 100, c20: 80)
+    }
+    let history = SectorHistory(asof: "2026-09-18", closes: closes)
+    let today = SectorAggregator.stats(market: .crypto, quotes: quotes, fallbackBuckets: [],
+                                       window: .today, history: history)
+      .first { $0.id == Self.sector.id }
+    let five = SectorAggregator.stats(market: .crypto, quotes: quotes, fallbackBuckets: [],
+                                      window: .d5, history: history)
+      .first { $0.id == Self.sector.id }
+    #expect(abs((today?.pct ?? 0) - 1) < 1e-9)
+    #expect(abs((five?.pct ?? 0) - 0) < 1e-9)
+    // 今日人人齐平，谁也没跑赢池基准；5 日有两只跑赢。
+    #expect(today?.outperformCount == 0)
+    #expect(five?.outperformCount == 2)
+    // 头部那句「20 日 …」走的是同一套，只换一段窗口。
+    let d20 = SectorAggregator.windowMedian(members: members, quotes: quotes,
+                                            history: history, window: .d20)
+    #expect(d20 != nil)
+    #expect(abs((d20 ?? 0) - 25) < 1e-9)
+    // 没有 20 日收盘就没有这一句——不写「暂无」。
+    let only5 = SectorHistory(asof: "2026-09-18",
+                              closes: closes.mapValues { SectorCloses(c5: $0.c5) })
+    #expect(SectorAggregator.windowMedian(members: members, quotes: quotes,
+                                          history: only5, window: .d20) == nil)
+  }
+
+  // MARK: - 取历史失败不碰今日
+
+  @Test func todayIsUntouchedWhenTheHistoryRequestFails() throws {
+    let snap = try SectorTests.snapshot("crypto")
+    let withHistory = SectorAggregator.stats(market: .crypto, quotes: snap.quotes,
+                                             fallbackBuckets: snap.buckets,
+                                             window: .today,
+                                             history: Self.history(["BTC"], c5: 1, c20: 2))
+    // 历史整个取不回来（`.empty`）时，今日那一档和带着历史时一模一样，
+    // 也和不传窗口的老写法一模一样。
+    let blind = SectorAggregator.stats(market: .crypto, quotes: snap.quotes,
+                                       fallbackBuckets: snap.buckets,
+                                       window: .today, history: .empty)
+    let legacy = SectorAggregator.stats(market: .crypto, quotes: snap.quotes,
+                                        fallbackBuckets: snap.buckets)
+    #expect(withHistory == blind)
+    #expect(blind == legacy)
+  }
+
+  // MARK: - 同一天的那份不重算
+
+  @Test func theSameAsofDoesNotSupersede() {
+    let held = SectorHistory(asof: "2026-09-18", closes: ["BTC": SectorCloses(c5: 1, c20: 2)])
+    // 每小时问一趟，回来的还是同一天：不赋值，整页不重算。
+    #expect(!SectorHistory(asof: "2026-09-18", closes: ["BTC": SectorCloses(c5: 9)])
+      .supersedes(held))
+    // 换了天就认。
+    #expect(SectorHistory(asof: "2026-09-19", closes: ["BTC": SectorCloses(c5: 1)])
+      .supersedes(held))
+    // 手上还没有：任何一份都认（磁盘上那份就是这么顶上来的）。
+    #expect(held.supersedes(.empty))
+  }
+}

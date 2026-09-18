@@ -17,6 +17,77 @@ public struct SectorQuote: Sendable, Equatable {
   }
 }
 
+/// 看哪一段时间。
+///
+/// 页面上只给用户两颗：「今日」和「5 日」（`kanpan-sector-page-no-basis-picker`：
+/// 一页上的模式最多两个）。`d20` 不是一个模式，它只在品种列表头部补一句
+/// 「20 日 +12.1%」——同一个算法，换一段窗口，不另开一颗药丸。
+///
+/// 三个窗口共用一套口径：给每个成员**一个收益值**，然后照样算中位数、广度、
+/// 领涨、删一。差别只在这个收益值怎么来。
+public enum SectorWindow: String, Sendable, CaseIterable, Equatable {
+  /// 24h 涨跌幅。交易所在 ticker 里直接给，永远有。
+  case today
+  /// 5 个交易日：现价 ÷ 5 个交易日前的收盘。
+  case d5
+  /// 20 个交易日。
+  case d20
+
+  /// 要不要日线收盘。`today` 不要——所以取历史失败时今日这一档一点都不受影响。
+  public var needsHistory: Bool { self != .today }
+}
+
+/// 一个品种的日线收盘。缺一档就是**没有**，不是 0——0 会让 `last/c − 1` 变成 +∞。
+public struct SectorCloses: Sendable, Equatable {
+  /// 5 个交易日前那根日线的收盘价。
+  public let c5: Double?
+  /// 20 个交易日前那根日线的收盘价。
+  public let c20: Double?
+  public init(c5: Double? = nil, c20: Double? = nil) {
+    self.c5 = c5
+    self.c20 = c20
+  }
+
+  /// 某个窗口要的那一档收盘。`today` 不看收盘。
+  public func close(_ window: SectorWindow) -> Double? {
+    switch window {
+    case .today: return nil
+    case .d5: return c5
+    case .d20: return c20
+    }
+  }
+}
+
+/// 服务端那份日线收盘的一次快照。
+///
+/// `asof` 是它算到哪一天（`YYYY-MM-DD`），**只用来判这份数据有没有换过**，
+/// 界面上一个字都不出现（`kanpan-no-engineering-status-fields`：更新时间、数据截至、
+/// 数据来源、覆盖率都不是给用户看的东西）。
+public struct SectorHistory: Sendable, Equatable {
+  public let asof: String
+  /// 大写 base → 收盘。取数那一侧已经把 `BTCUSDT` 折成 `BTC` 了，板块这一路只认 base。
+  public let closes: [String: SectorCloses]
+
+  public init(asof: String, closes: [String: SectorCloses]) {
+    self.asof = asof
+    self.closes = closes
+  }
+
+  /// 没有历史。取数没回来、失败、或这个市场服务端根本还没采——都是这一份。
+  public static let empty = SectorHistory(asof: "", closes: [:])
+
+  public var isEmpty: Bool { closes.isEmpty }
+
+  /// 新取回来的这份要不要顶掉手上那份。
+  ///
+  /// 日线一天才换一次，同一个 `asof` 就是同一份数据。手上已经有同一天的还照样赋值，
+  /// 整页会为一份一模一样的收盘重算一遍聚合、重排一遍球——用户看得见的是无缘无故
+  /// 抖一下。所以只有换了天（或者手上根本还没有）才认。
+  public func supersedes(_ old: SectorHistory) -> Bool {
+    old.isEmpty || asof != old.asof
+  }
+}
+
 /// 一个板块此刻的统计。`pct` 是成员涨跌幅的中位数——板块只有这一个口径。
 ///
 /// 除了主数字，这儿还带着「这个数是怎么来的」：`breadth` 说整体跑赢池基准的比例，
@@ -27,9 +98,10 @@ public struct SectorStat: Sendable, Equatable, Identifiable {
   public let id: String
   public let name: String
   public let market: SectorMarket
-  /// 成员涨跌幅的中位数，百分数。
+  /// 成员在**当前窗口**上的收益中位数，百分数。今日是 24h 涨跌幅，5 日是
+  /// `100·(现价/5 日前收盘 − 1)`——板块只有中位数这一个口径，换的只是窗口。
   public let pct: Double
-  /// 有行情的成员数（没行情的成员不参与，也不计数）。
+  /// 这段窗口上算得出收益的成员数（没行情、这段没收盘的都不参与，也不计数）。
   public let memberCount: Int
   /// 分类表里登记的成员数（按 base 去重后）。`memberCount` 少于它就是有成员没行情。
   public let staticCount: Int
@@ -47,6 +119,8 @@ public struct SectorStat: Sendable, Equatable, Identifiable {
   /// 删一区间：逐个删掉一个成员再取中位数，落在这个范围里。成员 ≤ 2 时没有意义，缺省。
   public let jackknife: ClosedRange<Double>?
   /// 进不进气泡场。有行情成员 < 3 的板块（以及兜底桶）不上场——一只币的涨跌不是板块强弱。
+  /// 5 日 / 20 日窗口还多一条：这段有收盘的成员要占到有行情成员的八成
+  /// （`SectorAggregator.minWindowCoverage`），不然这个中位数说的不是这个板块。
   public let eligible: Bool
 
   /// 跑赢池基准的家数。`breadth` 就是它除以 `memberCount`，这儿还原回整数给界面用。
@@ -128,52 +202,124 @@ struct SectorPool: Sendable {
 }
 
 /// 把静态归类 × 实时行情聚成板块统计。
+///
+/// 三个窗口共用这一套：外面给定 `window`，里面给每个成员算出**一个收益值**
+/// （今日是 24h 涨跌幅，5 日 / 20 日是 `100·(现价/收盘 − 1)`），之后中位数、广度、
+/// 领涨、删一全都照着这一个向量算，一行分支都不多。
 public enum SectorAggregator {
   /// 有行情成员少于这个数的板块不进气泡场。
   public static let minEligibleMembers = 3
 
+  /// 5 日 / 20 日窗口另加的一条上场门槛：这一段有收盘的成员，得占到有行情成员的这个比例。
+  ///
+  /// 服务端的日线是逐个合约采的，新上市的币根本没有 5 根日线。一个 20 个成员的板块
+  /// 只剩 4 个算得出 5 日收益时，那 4 个的中位数不是这个板块的 5 日强弱。
+  /// 覆盖不够的板块就不上场，退到「全部板块」里去——不解释，也不标注。
+  public static let minWindowCoverage = 0.8
+
   /// - Parameters:
   ///   - quotes: 以**大写 base** 为键。
   ///   - fallbackBuckets: 兜底桶，聚出来的 `isFallback = true`。
+  ///   - window: 看哪一段。缺省是今日，于是老调用方一个字都不用改。
+  ///   - history: 日线收盘。`today` 窗口用不着它，取历史失败也只是这一项为空，
+  ///     今日那一档照常。
   /// - Returns: 顺序 = 目录顺序在前、兜底桶按传入顺序在后。
-  ///            **一个成员都没行情的板块直接不出现**（不是给个 0）。
+  ///            **这一段里一个成员都算不出收益的板块直接不出现**（不是给个 0）。
   public static func stats(market: SectorMarket,
                            quotes: [String: SectorQuote],
-                           fallbackBuckets: [SectorFallbackBucket]) -> [SectorStat] {
-    // 池基准只算一次：它是整个市场的事，不是某个板块的事。
-    let pool = pool(market: market, quotes: quotes, fallbackBuckets: fallbackBuckets)
+                           fallbackBuckets: [SectorFallbackBucket],
+                           window: SectorWindow = .today,
+                           history: SectorHistory = .empty) -> [SectorStat] {
+    // 池基准只算一次：它是整个市场的事，不是某个板块的事。每个窗口各算各的——
+    // 5 日的超额收益不能拿 24h 的基准去减。
+    let pool = pool(market: market, quotes: quotes, fallbackBuckets: fallbackBuckets,
+                    window: window, history: history)
     var out: [SectorStat] = []
     out.reserveCapacity(SectorCatalog.sectors(market).count + fallbackBuckets.count)
     for def in SectorCatalog.sectors(market) {
       if let s = stat(id: def.id, name: def.name, market: market,
-                      members: def.members, quotes: quotes, pool: pool, isFallback: false) {
+                      members: def.members, quotes: quotes, pool: pool, isFallback: false,
+                      window: window, history: history) {
         out.append(s)
       }
     }
     for b in fallbackBuckets {
       if let s = stat(id: b.id, name: b.name, market: market,
-                      members: b.members, quotes: quotes, pool: pool, isFallback: true) {
+                      members: b.members, quotes: quotes, pool: pool, isFallback: true,
+                      window: window, history: history) {
         out.append(s)
       }
     }
     return out
   }
 
+  /// 这个市场在这段窗口上还有没有板块上得了场。
+  ///
+  /// 「5 日」那颗药丸只在有东西可看时才出现：某个市场服务端还没采日线（美股就是），
+  /// 或者整段历史断了，那一行药丸就整行不在，页面读起来和只有今日时一模一样。
+  /// 这一问不需要池基准、也不需要领涨，所以不走完整的 `stats`。
+  public static func hasEligible(market: SectorMarket,
+                                 quotes: [String: SectorQuote],
+                                 window: SectorWindow,
+                                 history: SectorHistory) -> Bool {
+    if window.needsHistory && history.isEmpty { return false }
+    for def in SectorCatalog.sectors(market) {
+      let set = memberSet(members: def.members, quotes: quotes, window: window, history: history)
+      if set.returns.count >= minEligibleMembers && covered(set, window: window) { return true }
+    }
+    return false
+  }
+
+  // MARK: - 一个成员、一段窗口、一个收益
+
+  /// 这个成员在这段窗口上的收益，百分数。算不出来就是**没有**，不是 0。
+  ///
+  /// 5 日 / 20 日拿的是**现价**除以那一天的收盘，所以这两档跟着 ticker 一起动，
+  /// 不是一天只变一次的死数。收盘 ≤ 0 或者现价没回来都当没有——`last/0` 是 +∞，
+  /// 一个 +∞ 就能把整段中位数和池基准全带走。
+  public static func windowReturn(_ quote: SectorQuote, window: SectorWindow,
+                                  closes: SectorCloses?) -> Double? {
+    switch window {
+    case .today:
+      return quote.pct.isFinite ? quote.pct : nil
+    case .d5, .d20:
+      guard let close = closes?.close(window), close.isFinite, close > 0,
+            quote.price.isFinite, quote.price > 0 else { return nil }
+      return (quote.price / close - 1) * 100
+    }
+  }
+
+  /// 某个板块在某段窗口上的中位数。覆盖不够（或一个都算不出来）时返回 nil。
+  ///
+  /// 品种列表头部那句「20 日 +12.1%」要的就是它：20 日不是一个模式，用不着为它
+  /// 把整个市场再聚合一遍。
+  public static func windowMedian(members: [String], quotes: [String: SectorQuote],
+                                  history: SectorHistory, window: SectorWindow) -> Double? {
+    let set = memberSet(members: members, quotes: quotes, window: window, history: history)
+    guard !set.returns.isEmpty, covered(set, window: window) else { return nil }
+    return median(set.returns)
+  }
+
   // MARK: - 市场池
 
-  /// 池 `G` = 该市场所有有行情、按 base 去重的品种（分类表收录的 + 兜底桶里的）。
+  /// 池 `G` = 该市场所有在这段窗口上算得出收益、按 base 去重的品种
+  /// （分类表收录的 + 兜底桶里的）。
   ///
   /// 基准 `b` 取等权均值而不是中位数：中位数会把「全场普涨」这件事本身吃掉一半。
   static func pool(market: SectorMarket,
                    quotes: [String: SectorQuote],
-                   fallbackBuckets: [SectorFallbackBucket]) -> SectorPool {
+                   fallbackBuckets: [SectorFallbackBucket],
+                   window: SectorWindow = .today,
+                   history: SectorHistory = .empty) -> SectorPool {
     var seen = Set<String>()
     var returns: [String: Double] = [:]
     func collect(_ members: [String]) {
       for raw in members {
         let base = raw.uppercased()
-        guard seen.insert(base).inserted, let q = quotes[base], q.pct.isFinite else { continue }
-        returns[base] = logReturn(q.pct)
+        guard seen.insert(base).inserted, let q = quotes[base],
+              let r = windowReturn(q, window: window, closes: history.closes[base])
+        else { continue }
+        returns[base] = logReturn(r)
       }
     }
     for def in SectorCatalog.sectors(market) { collect(def.members) }
@@ -204,34 +350,59 @@ public enum SectorAggregator {
 
   // MARK: - 单个桶
 
-  /// 单个桶的聚合。成员按 base 去重，没行情的跳过（但仍计进 `staticCount`）。
-  private static func stat(id: String, name: String, market: SectorMarket,
-                           members: [String], quotes: [String: SectorQuote],
-                           pool: SectorPool, isFallback: Bool) -> SectorStat? {
+  /// 一个板块在一段窗口上的成员集 `S_s^W = 目录成员 ∩ 有行情 ∩ 这段有收盘`。
+  struct MemberSet {
     var bases: [String] = []
-    var pcts: [Double] = []
-    var vols: [Double] = []
-    var seen = Set<String>()
+    /// 和 `bases` 一一对应的窗口收益，百分数。
+    var returns: [Double] = []
+    var volumes: [Double] = []
+    /// 分类表里登记的成员数（按 base 去重后）。
     var staticCount = 0
-    bases.reserveCapacity(members.count)
-    pcts.reserveCapacity(members.count)
-    vols.reserveCapacity(members.count)
+    /// 有行情的成员数 `n_s`。5 日 / 20 日的覆盖率就是拿它当分母。
+    var quotedCount = 0
+  }
+
+  static func memberSet(members: [String], quotes: [String: SectorQuote],
+                        window: SectorWindow, history: SectorHistory) -> MemberSet {
+    var set = MemberSet()
+    var seen = Set<String>()
+    set.bases.reserveCapacity(members.count)
+    set.returns.reserveCapacity(members.count)
+    set.volumes.reserveCapacity(members.count)
     for raw in members {
       let base = raw.uppercased()
       guard seen.insert(base).inserted else { continue }
-      staticCount += 1
+      set.staticCount += 1
       guard let q = quotes[base], q.pct.isFinite else { continue }
-      bases.append(base)
-      pcts.append(q.pct)
-      vols.append(q.quoteVolume.isFinite ? q.quoteVolume : 0)
+      set.quotedCount += 1
+      guard let r = windowReturn(q, window: window, closes: history.closes[base]) else { continue }
+      set.bases.append(base)
+      set.returns.append(r)
+      set.volumes.append(q.quoteVolume.isFinite ? q.quoteVolume : 0)
     }
-    guard !pcts.isEmpty else { return nil }
+    return set
+  }
+
+  /// 这段窗口上，有收盘的成员够不够多。今日窗口不设这条（成员集就是有行情的那些）。
+  static func covered(_ set: MemberSet, window: SectorWindow) -> Bool {
+    guard window.needsHistory else { return true }
+    return Double(set.returns.count) >= minWindowCoverage * Double(set.quotedCount)
+  }
+
+  /// 单个桶的聚合。成员按 base 去重，这段窗口算不出收益的跳过（但仍计进 `staticCount`）。
+  private static func stat(id: String, name: String, market: SectorMarket,
+                           members: [String], quotes: [String: SectorQuote],
+                           pool: SectorPool, isFallback: Bool,
+                           window: SectorWindow, history: SectorHistory) -> SectorStat? {
+    let set = memberSet(members: members, quotes: quotes, window: window, history: history)
+    let rets = set.returns
+    guard !rets.isEmpty else { return nil }
 
     var outperform = 0
     var up = 0
     var frontier: [(base: String, excess: Double)] = []
-    for (index, base) in bases.enumerated() {
-      if pcts[index] > 0 { up += 1 }
+    for (index, base) in set.bases.enumerated() {
+      if rets[index] > 0 { up += 1 }
       guard let e = pool.excess[base], e > 0 else { continue }
       outperform += 1
       if e >= pool.frontierCut { frontier.append((base, e)) }
@@ -240,13 +411,14 @@ public enum SectorAggregator {
     frontier.sort { $0.excess == $1.excess ? $0.base < $1.base : $0.excess > $1.excess }
 
     return SectorStat(id: id, name: name, market: market,
-                      pct: median(pcts),
-                      memberCount: pcts.count, staticCount: staticCount,
-                      quoteVolume: vols.reduce(0, +), isFallback: isFallback,
-                      breadth: Double(outperform) / Double(pcts.count),
+                      pct: median(rets),
+                      memberCount: rets.count, staticCount: set.staticCount,
+                      quoteVolume: set.volumes.reduce(0, +), isFallback: isFallback,
+                      breadth: Double(outperform) / Double(rets.count),
                       upCount: up, frontier: frontier.map(\.base),
-                      jackknife: jackknife(pcts),
-                      eligible: pcts.count >= minEligibleMembers && !isFallback)
+                      jackknife: jackknife(rets),
+                      eligible: rets.count >= minEligibleMembers && !isFallback
+                        && covered(set, window: window))
   }
 
   /// 偶数个取中间两个的平均——跟分类表 README 的口径一致。

@@ -49,6 +49,12 @@ import KanpanNetwork
     restart()
   }
 
+  /// 后端网关名单，顺序就是 `MarketStatsClient` 问供应量 / 持仓量时试的那个顺序。
+  ///
+  /// 「5 日」那一档的日线收盘（`SectorHistoryFeed`）问的是同样这几台。板块页手里
+  /// 已经有这个 feed，不必为一条只读接口再从 `MainScreen` 另牵一根线下来。
+  var backendHosts: [String] { hosts.oiProxies }
+
   /// 品种表。用来把 `BTCUSDT` 还原成 `BTC`，以及给没被任何板块收录的币凑兜底桶。
   ///
   /// 比的是 symbol 集合的内容，不是条数：一张合约下架、另一张同时上架时条数一模一样，

@@ -1,0 +1,198 @@
+import Foundation
+import KanpanCore
+import KanpanNetwork
+
+/// 板块页「5 日」那一档要的日线收盘。
+///
+/// 服务端每天收盘后采一次，这一边只管取回来：
+/// ```
+/// GET https://<网关>/v1/market/sector-history
+/// → {"data":{"asof":"2026-09-18","symbols":{"BTCUSDT":{"c5":…,"c20":…}}}}
+/// ```
+/// 主备两台按 `BinanceHosts.oiProxies` 的顺序试（和 `MarketStatsClient.meta` 同一份
+/// 名单、同一个顺序）：非 200 或解不开就换下一台，全都不成就**什么也不做**——
+/// 界面上不出现取数状态、不出现更新时间、不出现数据来源
+/// （`kanpan-no-engineering-status-fields`）。没历史时页面自己会退回只有「今日」的样子。
+///
+/// 节奏：进页取一趟，之后每小时一趟（日线一天才换一次，秒级刷新毫无意义）。
+/// 回来的 `asof` 和手上这份一样就原地不动，连 `history` 都不赋值——否则整页会为一份
+/// 一模一样的数据重算一遍聚合。取回来的原样存进 Caches，下次进页先拿它顶上，
+/// 不让「5 日」那颗药丸在每次冷启动时先消失一秒再出现。
+///
+/// 缺字段就是**没有**，不是 0：`last / 0` 是 +∞，一个 +∞ 能把整段中位数带走。
+@MainActor @Observable final class SectorHistoryFeed {
+  /// 当前这份日线收盘。取不到就是 `.empty`。
+  private(set) var history: SectorHistory = .empty
+
+  @ObservationIgnored private var hosts: [String] = []
+  @ObservationIgnored private var visible = false
+  @ObservationIgnored private var job: Task<Void, Never>?
+  @ObservationIgnored private var lastPull: Date?
+  @ObservationIgnored private var loadedCache = false
+
+  /// 两趟之间隔多久。日线一天换一次，一小时问一趟已经比需要的勤快。
+  private static let refreshSeconds: TimeInterval = 3600
+  /// 循环的步长。取失败了下一步就再试一次，不必等满一小时。
+  private static let tickSeconds: TimeInterval = 600
+  /// 磁盘上那份最多认几天。超过就当没有——用一周前的收盘算「5 日」，
+  /// 算出来的是十二天，不如不算。
+  private static let cacheMaxDays = 7
+
+  // MARK: 外部接线
+
+  /// 后端网关名单。口径和顶栏那两格（`MarketStatsClient`）完全一致。
+  func configure(hosts: [String]) {
+    guard hosts != self.hosts else { return }
+    self.hosts = hosts
+    // 换了线路就当手上这份过期，下一拍立刻重取。
+    lastPull = nil
+    restart()
+  }
+
+  /// 板块页在不在屏幕上。
+  func setVisible(_ on: Bool) {
+    guard on != visible else { return }
+    visible = on
+    restart()
+  }
+
+  // MARK: 取数
+
+  private func restart() {
+    job?.cancel()
+    job = nil
+    guard visible, !hosts.isEmpty else { return }
+    job = Task { [weak self] in await self?.run() }
+  }
+
+  private func run() async {
+    loadCache()
+    while !Task.isCancelled {
+      if stale { await pull() }
+      try? await Task.sleep(for: .seconds(Self.tickSeconds))
+    }
+  }
+
+  private var stale: Bool {
+    guard let last = lastPull else { return true }
+    return Date().timeIntervalSince(last) >= Self.refreshSeconds
+  }
+
+  private func pull() async {
+    let hosts = self.hosts
+    guard let body = await Self.fetch(hosts: hosts) else { return }
+    guard let parsed = Self.decode(body) else { return }
+    lastPull = Date()
+    apply(parsed)
+    Self.writeCache(body)
+  }
+
+  /// 同一天的那份不重新赋值：`history` 是被观察的，赋一次整页就重算一次聚合。
+  /// 认不认由 `SectorHistory.supersedes` 说了算（口径在 Core，那儿有用例钉着）。
+  private func apply(_ next: SectorHistory) {
+    guard next.supersedes(history) else { return }
+    history = next
+  }
+
+  private nonisolated static func fetch(hosts: [String]) async -> Data? {
+    let session = URLSession(configuration: {
+      let c = URLSessionConfiguration.ephemeral
+      c.timeoutIntervalForRequest = 8
+      c.timeoutIntervalForResource = 12
+      c.waitsForConnectivity = false
+      return c
+    }())
+    defer { session.invalidateAndCancel() }
+    for host in hosts {
+      guard let url = URL(string: "https://\(host)/v1/market/sector-history") else { continue }
+      guard let (body, response) = try? await session.data(from: url) else { continue }
+      guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
+      return body
+    }
+    return nil
+  }
+
+  // MARK: 解包
+
+  /// `{"data":{"asof":…,"symbols":{…}}}` → 以**大写 base** 为键的收盘表。
+  ///
+  /// 服务端给的是合约名（`BTCUSDT`），板块这一路只认 base。同一个币可能有好几张
+  /// 合约（`1000BONKUSDT` 和 `1000BONKUSDC` 都在表里），按 `SectorQuotePreference`
+  /// 的计价币档次留一张——和 `SectorFeed` 挑行情用的是同一把尺子，不然「5 日」用的
+  /// 收盘和「现价」来自两张不同的合约。
+  static func decode(_ body: Data) -> SectorHistory? {
+    guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+          let data = root["data"] as? [String: Any],
+          let asof = data["asof"] as? String, !asof.isEmpty,
+          let symbols = data["symbols"] as? [String: Any] else { return nil }
+    var closes: [String: SectorCloses] = [:]
+    var rank: [String: Int] = [:]
+    closes.reserveCapacity(symbols.count)
+    for (raw, any) in symbols {
+      guard let row = any as? [String: Any] else { continue }
+      let symbol = raw.uppercased()
+      let split = Self.split(symbol)
+      if let old = rank[split.base], old <= split.rank { continue }
+      let c5 = num(row["c5"])
+      let c20 = num(row["c20"])
+      guard c5 != nil || c20 != nil else { continue }
+      rank[split.base] = split.rank
+      closes[split.base] = SectorCloses(c5: c5, c20: c20)
+    }
+    guard !closes.isEmpty else { return nil }
+    return SectorHistory(asof: asof, closes: closes)
+  }
+
+  /// `BTCUSDT` → （`BTC`，计价币档次）。认不出计价币就整条当 base，档次垫底。
+  private static func split(_ symbol: String) -> (base: String, rank: Int) {
+    for (index, quote) in SectorQuotePreference.quoteAssets.enumerated()
+    where symbol.hasSuffix(quote) && symbol.count > quote.count {
+      return (String(symbol.dropLast(quote.count)), index)
+    }
+    return (symbol, SectorQuotePreference.quoteAssets.count)
+  }
+
+  /// 数可能是数也可能是字符串。`null`、非数、非正数一律当**缺失**
+  /// ——缺一档只是这个币的这段窗口没有，不是 0。
+  private static func num(_ any: Any?) -> Double? {
+    let value: Double? = if let n = any as? NSNumber { n.doubleValue }
+      else if let s = any as? String { Double(s) } else { nil }
+    guard let value, value.isFinite, value > 0 else { return nil }
+    return value
+  }
+
+  // MARK: 磁盘
+
+  /// Caches 里那一份。取回来的原样存，下次进页先顶上。
+  private nonisolated static var cacheURL: URL? {
+    let dirs = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
+    return dirs.first?.appendingPathComponent("sector-history.json")
+  }
+
+  private func loadCache() {
+    guard !loadedCache, history.isEmpty else { return }
+    loadedCache = true
+    guard let url = Self.cacheURL, let body = try? Data(contentsOf: url),
+          let parsed = Self.decode(body), Self.fresh(parsed.asof) else { return }
+    apply(parsed)
+  }
+
+  private nonisolated static func writeCache(_ body: Data) {
+    guard let url = cacheURL else { return }
+    try? body.write(to: url, options: .atomic)
+  }
+
+  /// 磁盘上那份还认不认。`asof` 解不出来就不认。
+  static func fresh(_ asof: String, now: Date = Date()) -> Bool {
+    var parts = DateComponents()
+    let pieces = asof.split(separator: "-")
+    guard pieces.count == 3, let y = Int(pieces[0]), let m = Int(pieces[1]), let d = Int(pieces[2])
+    else { return false }
+    parts.year = y; parts.month = m; parts.day = d
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+    guard let date = calendar.date(from: parts) else { return false }
+    let days = now.timeIntervalSince(date) / 86_400
+    return days >= -2 && days <= Double(cacheMaxDays)
+  }
+}

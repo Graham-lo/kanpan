@@ -50,19 +50,37 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
   var signedText: String { sectorPctText(pct) }
 
   /// 把成员名单和行情拼成行。没有行情的成员直接不出现——聚合那边也没算它。
+  ///
+  /// `pct` 跟着当前窗口走：今日是 24h 涨跌幅，5 日是 `100·(现价/5 日前收盘 − 1)`。
+  /// **价格那一列永远是实时价**，不跟窗口变——看 5 日的人也要知道现在多少钱。
+  /// 这一段没有收盘的成员仍旧列在表里（它有行情、有价格），只是涨跌那一格写「—」，
+  /// 排序时沉到最后；把它整行藏掉才是骗人。
   static func build(members: [String], quotes: [String: SectorQuote],
                     symbolForBase: (String) -> String,
                     frontier: Set<String> = [],
-                    sort: SectorSymbolSort) -> [SectorSymbolRow] {
+                    sort: SectorSymbolSort,
+                    window: SectorWindow = .today,
+                    history: SectorHistory = .empty) -> [SectorSymbolRow] {
     let rows = members.compactMap { base -> SectorSymbolRow? in
       guard let quote = quotes[base] else { return nil }
+      let pct = SectorAggregator.windowReturn(quote, window: window,
+                                              closes: history.closes[base]) ?? .nan
       return SectorSymbolRow(base: base, symbol: symbolForBase(base), price: quote.price,
-                             pct: quote.pct, quoteVolume: quote.quoteVolume,
+                             pct: pct, quoteVolume: quote.quoteVolume,
                              isFrontier: frontier.contains(base))
     }
+    // 并列（以及一整排「—」）按代号排，免得两次刷新之间互换位置。
     switch sort {
-    case .change: return rows.sorted { $0.pct > $1.pct }
-    case .volume: return rows.sorted { $0.quoteVolume > $1.quoteVolume }
+    case .change:
+      return rows.sorted { a, b in
+        let x = a.pct.isFinite ? a.pct : -.infinity
+        let y = b.pct.isFinite ? b.pct : -.infinity
+        return x == y ? a.base < b.base : x > y
+      }
+    case .volume:
+      return rows.sorted {
+        $0.quoteVolume == $1.quoteVolume ? $0.base < $1.base : $0.quoteVolume > $1.quoteVolume
+      }
     }
   }
 }
@@ -80,6 +98,12 @@ struct SectorSymbolList: View {
   /// 板块成员（大写 base）。兜底桶也走这条路。
   var members: [String]
   var quotes: [String: SectorQuote]
+  /// 看今日还是看 5 日。大数字、每行的涨跌、领涨、以及「涨跌幅」那颗排序都跟着它。
+  var window: SectorWindow = .today
+  /// 日线收盘。今日那一档用不着。
+  var history: SectorHistory = .empty
+  /// 这个板块的 20 日中位数。只在 5 日那一档、且真有 20 日数据时才有值。
+  var medianD20: Double?
   var symbolForBase: (String) -> String
   var onBack: () -> Void
   /// 点中一行：交出完整 symbol。
@@ -95,7 +119,8 @@ struct SectorSymbolList: View {
   var body: some View {
     let rows = SectorSymbolRow.build(members: members, quotes: quotes,
                                      symbolForBase: symbolForBase,
-                                     frontier: Set(stat.frontier), sort: sort)
+                                     frontier: Set(stat.frontier), sort: sort,
+                                     window: window, history: history)
     return VStack(spacing: 0) {
       header
       sortBar(rows.count)
@@ -125,9 +150,17 @@ struct SectorSymbolList: View {
   /// 「跑赢」几家说的是整体在动还是一只在爆——右边那个大字只说动了多少，这两件事
   /// 分不开。涨跌幅不在这行重写一遍（右边已经有了），分母是有行情的成员数，
   /// 页面上不出现算法名，也不出现目录登记数。
+  ///
+  /// 看 5 日的时候最后一段换成「20 日 +12.1%」：两段窗口摆在一起，才知道这一周的劲
+  /// 是刚起来的还是月线上一直就有。20 日只在这儿出现一次，不做成第三颗药丸。
+  /// 没有 20 日数据就只剩前两段——不写「暂无」，也不解释。
   private var subtitle: String {
     let head = "\(stat.memberCount) 个品种"
-    let tail = " · 成交额 \(fmtVol(stat.quoteVolume))"
+    let tail: String = if window == .d5 {
+      medianD20.map { " · 20 日 " + sectorPctText($0) } ?? ""
+    } else {
+      " · 成交额 \(fmtVol(stat.quoteVolume))"
+    }
     guard stat.memberCount >= SectorAggregator.minEligibleMembers else { return head + tail }
     return head + " · \(stat.outperformCount)/\(stat.memberCount) 跑赢" + tail
   }
@@ -142,9 +175,9 @@ struct SectorSymbolList: View {
         Text(stat.name).font(skin.serif(19)).tracking(0.76).foregroundStyle(theme.ink)
           .lineLimit(1).minimumScaleFactor(0.7)
         Text(subtitle)
-          .font(.system(size: 11)).monospacedDigit().tracking(0.33)
+          .font(.system(size: 11)).monospacedDigit().tracking(0.2)
           .foregroundStyle(skin.ink4)
-          .lineLimit(1).minimumScaleFactor(0.8)
+          .lineLimit(1).minimumScaleFactor(0.6)
           .accessibilityIdentifier("sector.list.breadth")
       }
       .padding(.leading, 5)
