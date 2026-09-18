@@ -191,19 +191,43 @@ class KanpanUICase: XCTestCase {
 
   // ------------------------------------------------------------ 点击
 
-  /// 只接受一次中心点击，不用偏移重试掩盖产品命中问题。
+  /// 打在同一个点上，最多两下：**不换点、不加偏移**，只是容忍 XCUI 偶尔丢一下事件。
   ///
   /// `tap` 留成可换的一手，是给滚不动的横向 `ScrollView` 里那些控件用的
   /// （周期条的药丸就是），那儿要走 `XCUIApplication.tapIntervalChip(_:)`
   /// 那样的坐标点，绕开 XCUI 自己会抖的可点性判定。默认仍是元素中心点一下。
+  ///
+  /// **为什么从「只接受一次中心点击」改成了两下（2026-09-18）。** 那条规矩防的是拿偏移重试
+  /// 掩盖**产品的命中区问题**，这条现在仍然守着：重试打的是同一个点，一个像素都不挪，
+  /// 命中区真有问题时两下照样红，失败证据也照旧存进 xcresult。改的只是对「合成事件丢了」
+  /// 这一种情况的容忍度，而它是当场取证证明存在的：
+  ///
+  /// 全量 13 台矩阵上三个互不相干的地方各红过一次——MA 输出开关（iPhone 16 Plus / 17 Pro）、
+  /// 周期条 1m 药丸（17e）、画线工具面板的入口（17e）——签名一模一样：
+  /// 从 xcresult 里解出来的合成事件是干净的一对 50ms 按下/抬起，坐标正落在控件中心
+  /// （药丸那次是 `(27.5, 154.3)`，控件框 `{{12, 140.3}, {31, 28}}`），
+  /// 无障碍层级显示控件在、位置没变、app 也没被别的东西盖住，而 app 毫无反应。
+  ///
+  /// MA 开关那一处还把取证做进了 app：临时给 `Toggle` 的 setter 挂计数器跑四十轮探针，
+  /// 复现到的那一次计数一动没动——**这一下压根没进 app**，丢在 XCUI「合成 → 投递」那一段，
+  /// 既不是点歪了，也不是 app 收到后把状态弹了回去。（计数器没有进任何提交。）
+  ///
+  /// 空跑机器上复现不出来：药丸连点 160 下（50ms 与 200ms 各 80）一下没丢，
+  /// 开关连点 80 下也一下没丢。只有整套 49 条跑下来才撞得到，概率量级在千分之几。
   @discardableResult
   func tapButton(_ el: XCUIElement, _ timeout: TimeInterval = short,
                  tap: (XCUIElement) -> Void = { $0.tap() },
                  until settled: () -> Bool) -> Bool {
-    tap(el)
-    if waitUntil(timeout: timeout, settled) { return true }
+    for attempt in 0..<2 {
+      tap(el)
+      if waitUntil(timeout: timeout, settled) { return true }
+      if attempt == 0 {
+        let lost = XCTAttachment(string: "第一下没反应，照原点再打一下：\(el.debugDescription)")
+        lost.name = "疑似丢了一次合成事件"; lost.lifetime = .keepAlways; add(lost)
+      }
+    }
     let evidence = XCTAttachment(string: "Button: \(el.debugDescription)\nChart: \(String(describing: app.otherElements["chart.canvas"].value))\n" + app.debugDescription)
-    evidence.name = "单次中心命中失败"; evidence.lifetime = .keepAlways; add(evidence)
+    evidence.name = "同一点打两下都没反应"; evidence.lifetime = .keepAlways; add(evidence)
     let shot = XCTAttachment(screenshot: app.screenshot()); shot.lifetime = .keepAlways; add(shot)
     return false
   }

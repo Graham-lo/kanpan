@@ -96,6 +96,19 @@ final class ChartFoundationUITests: XCTestCase {
     XCTFail("开关点了三下还是 \(String(describing: toggle.value))，没到 \(expected)：\(toggle.frame)",
             file: file, line: line)
   }
+  /// 开画线工具面板：点「工具」，面板没上来就照原点再点一下。
+  ///
+  /// 理由和 `flip(_:to:)`、`tapButton` 那两处一样——2026-09-18 的全量矩阵上，
+  /// 17e 这一条就是点完「工具」之后面板整整 5 秒没出来。合成事件是干净的一对按下/抬起、
+  /// 坐标也在按钮上，app 那边没有任何反应；同一轮矩阵里周期条药丸和 MA 开关各自撞到一次
+  /// 同样的事。重试不换点也不加偏移：按钮真打不开，两下之后照样红。
+  func openDrawTools(file: StaticString = #filePath, line: UInt = #line) {
+    for _ in 0..<2 {
+      app.buttons["draw.tools"].tap()
+      if app.buttons["draw.sheet.done"].waitForExistence(timeout: 5) { return }
+    }
+    XCTFail("点了两下「工具」，画线工具面板都没上来", file: file, line: line)
+  }
   /// 离开设置页。
   ///
   /// 设置 2026-09-18 起不是半屏面板而是标签栏上的一整页：它既拖不走，也没有「完成」，
@@ -1158,7 +1171,7 @@ final class ChartFoundationUITests: XCTestCase {
 extension ChartFoundationUITests {
   func testDrawingToolsAndPersistentStyles() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
-    app.buttons["draw.tools"].tap()
+    openDrawTools()
     XCTAssertTrue(app.buttons["draw.tool.ray"].waitForExistence(timeout: 5))
     shot("画线-工具分类")
     app.buttons["draw.tool.ray"].tap()
@@ -1200,8 +1213,7 @@ extension ChartFoundationUITests {
     XCTAssertTrue(wait(seconds: 5) { self.canvas.frame.width > self.canvas.frame.height && self.app.buttons["draw.tools"].isHittable })
     // 横屏的「绘图」面板不是半屏表单，是贴着左边推出来的一块卡片（`drawToolsLayer`），
     // 但里头的搜索框、分类标签、格子和关闭按钮跟竖屏是同一个视图，标识符也一样。
-    app.buttons["draw.tools"].tap()
-    XCTAssertTrue(app.buttons["draw.sheet.done"].waitForExistence(timeout: 5))
+    openDrawTools()
     for _ in 0..<8 {
       if app.buttons["draw.tool.ray"].exists && app.buttons["draw.tool.ray"].isHittable { break }
       let list = app.scrollViews.containing(.button, identifier: "draw.tool.trend").firstMatch
@@ -1277,8 +1289,7 @@ extension ChartFoundationUITests {
       ("hray", 1, "线条"), ("extended", 2, "线条"), ("vline", 1, "线条"), ("rectangle", 2, "几何"),
       ("channel", 3, "通道"), ("fibonacci", 2, "斐波那契"), ("measure", 2, "测量")]
     for (index, tool) in tools.enumerated() {
-      app.buttons["draw.tools"].tap()
-      XCTAssertTrue(app.buttons["draw.sheet.done"].waitForExistence(timeout: 5))
+      openDrawTools()
       tapDrawGroup(tool.2)
       let target = app.buttons["draw.tool.\(tool.0)"]
       // 滚动必须**限定在工具面板自己的格子区里**。早先用的是 `app.collectionViews.firstMatch`：
@@ -1348,8 +1359,7 @@ extension ChartFoundationUITests {
     // 不切到对应标签，这三把工具根本不会出现在树里，划多少下都是白划。
     for (index, entry) in [("rectangle", 2, "几何"), ("channel", 3, "通道"),
                            ("fibonacci", 2, "斐波那契")].enumerated() {
-      app.buttons["draw.tools"].tap()
-      XCTAssertTrue(app.buttons["draw.sheet.done"].waitForExistence(timeout: 5))
+      openDrawTools()
       tapDrawGroup(entry.2)
       let target = app.buttons["draw.tool.\(entry.0)"]
       // 翻格子只能翻面板自己那个 ScrollView，不能翻整个 app——理由同
