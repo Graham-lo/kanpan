@@ -32,6 +32,24 @@ public struct DrawingPreferences: Sendable, Equatable, Codable {
   public var continuous = false
   public var styles: [String: DrawingStyle] = [:]
   public init() {}
+
+  /// 缺的键取默认，别整份抛掉——和 `DrawArchive` 是同一条规矩（A6.13）。
+  ///
+  /// 这儿不是为老存档留的活口，是云端那份**一定**缺键：往上推的时候
+  /// `PersonalSyncCodec.flatten` 把 `styles` 拍成 `styles/<工具>` 一串子键，
+  /// 用户没改过任何一把工具的样式时 `styles` 是空的，一个子键都拍不出来，
+  /// 于是线上那份 `drawingPreferences:tools` 里**根本没有 `styles` 这个键**。
+  /// 合成的 `init(from:)` 认死每个键都得在，拉回来就抛「数据缺失」——而它是在
+  /// `AppAccountBridge.applyPending()` 的开头抛的，后面的自选、分类、设置一份都落不了地。
+  /// 用户看到的是：换台设备登同一个账号，自选页空空如也，偏好也一个都没跟过来。
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    let fallback = DrawingPreferences()
+    favorites = try c.decodeIfPresent([Drawing.Kind].self, forKey: .favorites) ?? fallback.favorites
+    magnet = try c.decodeIfPresent(Bool.self, forKey: .magnet) ?? fallback.magnet
+    continuous = try c.decodeIfPresent(Bool.self, forKey: .continuous) ?? fallback.continuous
+    styles = try c.decodeIfPresent([String: DrawingStyle].self, forKey: .styles) ?? fallback.styles
+  }
 }
 
 public struct DrawArchive: Sendable, Equatable, Codable {
