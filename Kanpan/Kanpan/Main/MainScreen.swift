@@ -1149,7 +1149,11 @@ struct MainScreen: View {
   private func wireAccount() {
     // Existing drawing fixtures keep their own isolated profile; account tests explicitly configure an endpoint.
     if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
-       ProcessInfo.processInfo.environment["KANPAN_ACCOUNT_API_URL"] == nil { return }
+       ProcessInfo.processInfo.environment["KANPAN_ACCOUNT_API_URL"] == nil {
+      // 没有账号桥，就没有「档案到货」那个事件；但档案本身在建 store 的那一刻就已经
+      // 读进来了，落地页照样得按它兑现一次，否则有自选的人也停在行情页。
+      honorProfile(); return
+    }
     do {
       let bridge = try AppAccountBridge(account: account, prefs: store, symbols: picker, drawings: draw, review: review, search: searchHistory)
       bridge.canApply = { syncGate }
@@ -1181,7 +1185,13 @@ struct MainScreen: View {
         // 少了它「有自选的访客冷启动一定落在行情页」（R3-2）就修不掉。
         honorProfile()
       }
-    } catch { say(error.localizedDescription) }
+    } catch {
+      // 桥没建起来（存储目录不可写之类）：档案换不进来了，但手上这份仍然是从本机
+      // 读出来的真档案，落地页同样要兑现一次——不能因为同步坏了就把人扔回行情页。
+      say(error.localizedDescription)
+      awaitingAccount = false
+      honorProfile()
+    }
   }
 
   /// 面板 / 画线 / 复盘都不开着——云端设置可以往下落了。
