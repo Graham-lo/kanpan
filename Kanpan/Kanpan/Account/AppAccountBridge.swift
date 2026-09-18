@@ -37,6 +37,15 @@ import ReviewUI
   private static let pushBatchLimit = 100
   var canApply: () -> Bool = { true }
   var onSwitch: () -> Void = {}
+  /// 档案（prefs / symbols / 画线）**真的换进来之后**响一次。
+  ///
+  /// 和 `onSwitch` 的分工：`onSwitch` 在换属主**之前**响，用来把复盘、面板、浮层收干净；
+  /// 这一个在 `useStorage` 全做完之后响，宿主可以在这儿按新档案重新兑现「该开哪张图、
+  /// 该停在哪一格、该用哪个周期」。冷启动装访客档案、恢复登录态、换号、退登、
+  /// 以及云端设置落地（`applyPending`）都会走到它。
+  var onProfileReady: () -> Void = {}
+  /// 上一次 `applyPending()` 被 `canApply()` 挡回去了，等条件到齐要补跑。
+  private var pendingApply = false
 
   init(account: AccountFeature, prefs: PrefsStore, symbols: SymbolPickerModel, drawings: DrawingController, review: ReviewFeature) throws {
     self.account = account; self.prefs = prefs; self.symbols = symbols; self.drawings = drawings; self.review = review
@@ -44,7 +53,6 @@ import ReviewUI
     if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1", let profile = ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"], UUID(uuidString: profile) != nil { root = root.appendingPathComponent("tests/" + profile) }
     files = try AccountFiles(root: root)
     try migrateLegacy()
-    try prepare(nil)()
     account.onPrepareAccount = { [weak self] user in guard let self else { return {} }; return try self.prepare(user) }
     account.onSynchronize = { [weak self] in self?.synchronize(manual: true) }
     account.onAutoSync = { [weak self] enabled in self?.setAutoSync(enabled) }
@@ -67,6 +75,13 @@ import ReviewUI
       MainActor.assumeIsolated { self?.sync?.flushNow() }
     }
   }
+  /// 把本机档案（没登录时是访客那份）装进各个 store。
+  ///
+  /// 以前这一步写在 `init` 里，于是它跑完之后宿主才有机会给 `onSwitch` / `onProfileReady`
+  /// 赋值——冷启动这一次装档案调的是默认空闭包，宿主根本不知道档案已经换过了
+  /// （R3-2：没登录过的人「上次看的那张图 / 落地页」整套失效）。现在拆成两步：
+  /// 构造 → 宿主挂回调 → `activate()`，第一次装档案也走完整的通知。
+  func activate() throws { try prepare(nil)() }
   private func migrateLegacy() throws {
     let marker = files.root.appendingPathComponent("legacy-imported.json")
     guard !FileManager.default.fileExists(atPath: marker.path) else { return }
@@ -175,6 +190,8 @@ import ReviewUI
       drawings.useStorage(drawStore, archive: nextDrawings)
       review.activate(store: nextReview, client: client)
       applying = false; updateStatus()
+      // 档案已经全部就位，宿主现在可以按它重新兑现首屏那几件事。
+      onProfileReady()
     }
   }
   private func sanitize(_ input: ReviewDraft) -> ReviewDraft {
@@ -307,8 +324,19 @@ import ReviewUI
       }
     }
   }
+  /// 面板 / 画线 / 复盘关掉之后补跑一次被挡下的 `applyPending()`。
+  ///
+  /// 以前 `applyPending()` 撞上 `canApply() == false` 就直接 return、不留任何补跑的钩子，
+  /// 云端刚改的设置最坏要等下一轮全量（`bootstrapInterval` = 300 秒）才落地——正是
+  /// 「改完要等一下才生效」。现在挡下来时记一笔，条件一到齐就补。
+  func resumeApply() {
+    guard pendingApply, canApply(), sync != nil else { return }
+    do { try applyPending(); updateStatus() } catch { account.syncStatus = error.localizedDescription }
+  }
   func applyPending() throws {
-    guard canApply(), let sync else { return }
+    guard let sync else { return }
+    guard canApply() else { pendingApply = true; return }
+    pendingApply = false
     applying = true; defer { applying = false }
     let objects = sync.archive.local
     if let settings = objects["settings:chart"] { prefs.applySynced(try PersonalSyncCodec.apply(settings, to: prefs.prefs)) }
@@ -349,5 +377,7 @@ import ReviewUI
                             selectedGroupID: symbols.prefs.selectedGroupID,
                             viewScores: symbols.prefs.viewScores, scoredAt: symbols.prefs.scoredAt)
     symbols.applySynced(value)
+    // 云端那份设置也是「档案换进来了」的一种：周期、落地页这些要跟着重新兑现一次。
+    onProfileReady()
   }
 }

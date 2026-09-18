@@ -24,7 +24,10 @@ struct MainScreen: View {
   @State private var accountBridge: AppAccountBridge?
   @State private var comfort = DisplayComfort()
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-  @State private var market = MarketModel(symbol: MainScreen.launchSymbol)
+  /// 图上这个品种只是个占位。真正「上次看的那张图」要等档案（访客或账号）装进来
+  /// 才知道，见 `honorProfile()`；`boot()` 里 `market.start(symbol:)` 会拿着那份
+  /// 档案里的值开张，不会先开一张别的图再切过去。
+  @State private var market = MarketModel(symbol: "BTCUSDT")
   @State private var store = PrefsStore()
   @State private var picker = SymbolPickerModel()
   /// 画线工作台里那一层换品种开着没有。只在横屏画线时有意义。
@@ -66,16 +69,17 @@ struct MainScreen: View {
   /// 这就是原来那个「冷启动自选盖层」的去处。以前得专门铺一层 `overlay`（不能用
   /// `fullScreenCover`：UIKit 的 present 一定会先画一帧宿主，实测漏出 0.57 s 的
   /// 行情页）。改成标签栏之后这件事自己就成立了——第一帧画的就是 `tab` 指着的那一页。
-  @State private var tab: Tab = MainScreen.startsOnFavorites ? .favorites : .chart
-  /// 账号那一侧已经「切」过一次了吗。
-  ///
-  /// 冷启动时 `account.restore()` 把登录态恢复回来，走的是和用户主动换号完全
-  /// 同一条 `AppAccountBridge.onSwitch`。第一次不能当换号看——用户刚开 app，
-  /// 本来就该停在自选页；盖层里那张表会跟着恢复出来的账号自己换
-  /// （`onChange(of: picker.prefs.favorites)`）。
-  @State private var didRestoreAccount = false
+  /// 初值只是「还不知道」的占位。档案装进来（`boot()` 里同步装访客那份、
+  /// 账号那份随 `account.restore()` 异步到）之后由 `honorProfile()` 定。
+  @State private var tab: Tab = .chart
   /// 自选表的预热跑过了吗。见 `primeFavorites(_:)`。
   @State private var didPrimeFavorites = false
+  /// `boot()` 已经把行情、报价簿、品种表这套线全接好了吗。
+  ///
+  /// `honorProfile()` 在 `boot()` **中间**也会被调到（冷启动同步装访客档案那一下），
+  /// 那一刻行情还没开张、报价簿还没 configure，不能去动它们——`boot()` 自己接着
+  /// 就会拿着刚装好的档案把这两件事做对。
+  @State private var live = false
   /// 用户已经从首屏走开了吗（点了品种、自己换了一格标签、或者主动换了账号）。
   ///
   /// 首屏那一格只能在「还没走开」的时候改。`tab` 的初值是拿上次存下的自选表猜的，
@@ -117,20 +121,12 @@ struct MainScreen: View {
   // 只认主屏，发丝线会画粗或画糊。环境里的 displayScale 跟着当前窗口走。
   @Environment(\.displayScale) private var displayScale
 
-  /// 上次关掉 app 时存下的那份品种档案。只读一次，值在这一整次启动里不会变——
-  /// 档案本身是 `SymbolPickerModel` 在管，这儿只关心「第一帧该是什么样」。
-  private static let launchPrefs = SymbolPrefsStore().load()
-
-  /// 上次存下来的自选表非空吗。决定第一帧停在哪一格。
-  private static var startsOnFavorites: Bool { !launchPrefs.favorites.isEmpty }
-
-  /// 冷启动开哪张图：上次看的最后一个品种。
-  ///
-  /// 用户的话是「无论用户是否跳到了其它页面，系统都记录了他最后看的一张图，
-  /// 如果第一次就是 btc」——`SymbolPrefs.visit(_:)` 一直在记这份 `recents`，
-  /// 只是以前没人读它，冷启动一律从 BTCUSDT 开始，「最后看的那张图」在关掉 app
-  /// 之后就不算数了。头一次用（没有 recents）才落到 BTCUSDT。
-  private static var launchSymbol: String { launchPrefs.recents.first ?? "BTCUSDT" }
+  // 「上次看的那张图」「第一帧停在哪一格」以前是这儿两个 `static` 在管，读的是
+  // `SymbolPrefsStore()`——不注入存储时它落 `UserDefaults.standard`，而档案真身早就
+  // 搬进了账号目录里的 `symbols.json`（`AppAccountBridge`）。写在文件里、读在
+  // UserDefaults 里，两条道：新装机每次冷启动都开 BTCUSDT、第一帧永远是行情页，
+  // 老用户则永远停在「升级到文件存储那一刻」的品种上。现在这两件事一律跟着
+  // 档案自己的到达走，见 `honorProfile()`。
 
   private var prefs: Prefs { store.prefs }
 
@@ -237,6 +233,9 @@ struct MainScreen: View {
                    if tab != .chart { chartOrigin = tab }
                    tab = .chart; didLeaveLaunch = true
                    crosshair = nil
+                   // 目录还没载回来时点一行，以前只换图不记「最近」——同一个动作在
+                   // 目录加载前后结果不一样，而且这张图下次冷启动也回不来。
+                   picker.visit(symbol)
                    market.switchTo(symbol: symbol)
                  }
                },
@@ -285,6 +284,9 @@ struct MainScreen: View {
     }
     .onChange(of: prefs.subs) { _, subs in market.setOIEnabled(subs.contains(.oi)) }
     .onChange(of: prefs.launchSnapshot) { _, on in market.setSnapshotEnabled(on) }
+    // 面板 / 画线 / 复盘开着的时候云端设置是被挡下来的（会把人正在做的事掀掉）。
+    // 关掉的这一刻补跑一次，别让人等下一轮全量（300 秒）。
+    .onChange(of: syncGate) { _, open in if open { accountBridge?.resumeApply() } }
   }
 
   private var marketContent: some View {
@@ -1057,11 +1059,17 @@ struct MainScreen: View {
   private func boot() {
     guard !didBoot else { return }
     didBoot = true
-    // Start the chart feed before the account/catalog wiring so network I/O
-    // overlaps the synchronous view setup and first frame rendering.
-    market.setHosts(hosts)
-    market.start(snapshot: prefs.launchSnapshot, interval: prefs.interval)
+    // 先把档案装进来，再开行情。
+    //
+    // 以前是反过来的（注释写着「让网络 I/O 和首帧渲染重叠」）：`market.start` 跑在
+    // `wireAccount()` 前面，那一刻 `prefs` 还是出厂值——域名、周期、快照开关、
+    // 「上次看的那张图」全是错的，得等档案装进来再逐个 `onChange` 补回去。实测就是
+    // 「切到 4h、杀掉重开，回到 1h」。而且补回去意味着白打一趟跨洋请求、还让人先
+    // 看一眼不是他上次那张图，比晚开这十几毫秒（几个小 JSON 的同步读盘）贵得多。
+    // 连接预热本来就在 `LaunchPrewarm` 里更早跑着，这里挪后不影响握手。
     wireAccount()
+    market.setHosts(hosts)
+    market.start(snapshot: prefs.launchSnapshot, symbol: picker.prefs.recents.first, interval: prefs.interval)
     picker.setSectionsActive(false)
     quotes.onReset = { picker.clearQuotes() }
     quotes.onScopeChange = { picker.retainQuotes(for: $0) }
@@ -1097,8 +1105,9 @@ struct MainScreen: View {
     // Configure the catalog and its source before presenting the favorites list.
     // Otherwise FavoritesView can start its first catalog request against the
     // default Binance route while the host/source setup is still in flight.
-    // 第一帧停在哪一格是 `tab` 的初值定的（见 `startsOnFavorites`），这儿只补预热。
+    // 停在哪一格由 `honorProfile()` 按刚装进来的那份档案定，这儿只补预热。
     if !picker.prefs.favorites.isEmpty { primeFavorites(picker.prefs.favorites) }
+    live = true
   }
 
   private func wireAccount() {
@@ -1107,42 +1116,72 @@ struct MainScreen: View {
        ProcessInfo.processInfo.environment["KANPAN_ACCOUNT_API_URL"] == nil { return }
     do {
       let bridge = try AppAccountBridge(account: account, prefs: store, symbols: picker, drawings: draw, review: review)
-      bridge.canApply = { !draw.active && panel == nil && !reviewChart.active }
+      bridge.canApply = { syncGate }
       bridge.onSwitch = {
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
         else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
         showSymbols = false; symbolsFromSearch = false
         showSearch = false; searchAllPending = false
-        // 换号要把人从自选页带走（别让他对着上一个账号的表）；但冷启动恢复登录态
-        // 是同一条路走过来的第一次，那一次必须留在自选，否则第一眼看到的就是行情页
-        // ——这正是真机上「冷启动没进自选」的成因，模拟器没登录才看不出来。
-        if didRestoreAccount { tab = .chart; didLeaveLaunch = true }
-        else {
-          didRestoreAccount = true
-          // `onSwitch()` 在 `symbols.useStorage` **之前**调用，这会儿 `picker.prefs`
-          // 还是旧的。等这一趟同步的切换做完再看：恢复出来的账号要是根本没有自选，
-          // 就没有盖层可留，照旧落在行情页。
-          //
-          // 顺带把这份表正式交给报价簿。`onChange(of: picker.prefs.favorites)` 只在
-          // 表真的变了时才响；恢复出来还是空表的话它不响，而 `boot()` 那会儿也故意
-          // 没交——不在这儿补一句，`QuoteBook` 就永远等着一份不会来的自选表。
-          Task { @MainActor in
-            // 恢复出来的这份表才是准的，首屏该停哪一格按它重判一次：有自选就停在
-            // 自选（默认档案是空的、`tab` 初值猜成 `.chart` 的机器也能进自选页），
-            // 没有就落到行情页。前提是用户还没自己走开。
-            if picker.prefs.favorites.isEmpty { if !didLeaveLaunch { tab = .chart } }
-            else if !didLeaveLaunch, !showSymbols { tab = .favorites }
-            settleFavorites(picker.prefs.favorites)
-          }
-        }
+        // 用户自己换号 / 退登，要把人从自选页带走（别让他对着上一个账号的表）。
+        // 冷启动那一段不算：装访客档案、以及 `account.restore()` 把登录态读回来，
+        // 走的是同一条路，那时候该停哪一格交给 `honorProfile()` 按真档案定。
+        if !awaitingAccount { tab = .chart; didLeaveLaunch = true }
         dismissPanel(); crosshair = nil
       }
+      // 档案真的装进来之后才谈「该开哪张图、该停在哪一格、该用哪个周期」。
+      bridge.onProfileReady = { honorProfile() }
+      // 冷启动这一段（装访客档案 → 等 `account.restore()`）里手上可能还是访客那份
+      // 空档案，落地页不能拿它当真，所以先把旗子举起来再装档案。
+      awaitingAccount = true
+      try bridge.activate()
       accountBridge = bridge; bridge.focus(market.symbol)
       // 内存告警时放掉 K 线缓存：入口只负责听（`KanpanApp`），这里登记谁来收。
       MemoryWarningRelay.shared.register(id: "market") { [weak market] in market?.memoryWarning() }
-      awaitingAccount = true
-      Task { await account.restore(); awaitingAccount = false }
+      Task {
+        await account.restore()
+        awaitingAccount = false
+        // 从没登录过的人在 `restore()` 里 `guard let client` / `savedUser()` 就返回了，
+        // `onPrepareAccount` 一次都不调——这一句是他们那条路上唯一的兑现点，
+        // 少了它「有自选的访客冷启动一定落在行情页」（R3-2）就修不掉。
+        honorProfile()
+      }
     } catch { say(error.localizedDescription) }
+  }
+
+  /// 面板 / 画线 / 复盘都不开着——云端设置可以往下落了。
+  private var syncGate: Bool { !draw.active && panel == nil && !reviewChart.active }
+
+  /// 档案（prefs / symbols）真的换进来之后，把「该开哪张图、该停在哪一格、
+  /// 该用哪个周期」按新档案重新兑现一次。
+  ///
+  /// 这三件事以前各修各的，而且各漏各的：品种去读 `SymbolPrefsStore()` 那个没注入
+  /// 存储的柜子（写在账号文件里、读在 UserDefaults 里）；周期只在 `boot()` 里读一次，
+  /// 那一刻档案还没装进来，读到的是出厂 1h，而 `launchSnapshot` / `subs` /
+  /// `changeBasis` 各自有 `onChange` 兜底、唯独它没有；落地页则挂在 `onSwitch` 上，
+  /// 没登录过的人一次都不响。它们是同一个时序病根——**逐个字段补 `onChange` 本身
+  /// 就是会漏的结构**，所以统一挂到「档案到货」这一个事件上
+  /// （`AppAccountBridge.onProfileReady`，冷启动、登录、退登、云端设置落地都会响）。
+  private func honorProfile() {
+    let profile = picker.prefs
+    if !didLeaveLaunch {
+      // 落地页：有自选就停在自选。还在等 `account.restore()` 的那一小段里手上挂的
+      // 是访客那份空档案，不能拿「自选是空的」当真，否则会先翻到行情页、账号回来
+      // 再翻回自选，闪一下。
+      if !profile.favorites.isEmpty { if !showSymbols, !showSearch { tab = .favorites } }
+      else if !awaitingAccount { tab = .chart }
+      // 上次看的那张图。`boot()` 中途调到这儿时行情还没开张，那一次交给
+      // `market.start(symbol:)` 直接开对，不在这儿切。
+      if live, let last = profile.recents.first, last != market.symbol {
+        crosshair = nil; market.switchTo(symbol: last)
+      }
+    }
+    // 周期跟着人走（已经从 `PersonalSyncCodec.keepDeviceFields` 里拿出来了）。
+    // 复盘在跑的时候图是复盘自己的，别动。
+    if live, !reviewChart.active, prefs.interval != market.interval {
+      crosshair = nil; market.switchTo(interval: prefs.interval)
+    }
+    // 报价簿要等 `boot()` 把线接好才认表；`boot()` 自己会交一次。
+    if live { settleFavorites(profile.favorites) }
   }
 
   /// 收起面板。选完一项、或者手指落到图和别的控件上，都走这儿。

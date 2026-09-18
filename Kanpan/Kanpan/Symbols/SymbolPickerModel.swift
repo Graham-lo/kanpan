@@ -310,6 +310,18 @@ final class SymbolPickerModel {
     pick(info)
   }
 
+  /// 只记「最近看过」，不走 `onPick`。
+  ///
+  /// 目录还没载回来时（板块页点一行就可能撞上）拿不到 `SymbolInfo`，换图那条路是
+  /// 宿主自己走的，但这一笔「他看过这张图」照样得记下——否则同一个动作在目录加载
+  /// 前后结果不一样，冷启动「上次看的那张图」也会落到别的品种上。
+  func visit(_ symbol: String) {
+    let key = SymbolPrefs.key(symbol)
+    guard !key.isEmpty, prefs.recents.first != key else { return }
+    prefs.visit(key)
+    commit()
+  }
+
   // ---------------------------------------------------------------- 常看
 
   /// 在某个品种的图上真待了一会儿——记一分。见 `SymbolPrefs.noteDwell(_:)`。

@@ -166,7 +166,11 @@ final class MarketModel {
   private var markPrice: Double?
   private var statsTask: Task<Void, Never>?
 
-  func start(snapshot: Bool, interval requestedInterval: Interval? = nil) {
+  /// 开张。`symbol` / `interval` 给了就先按它们落位再开——冷启动那一刻档案（访客或账号）
+  /// 才刚装进来，「上次看的那张图、上次用的那个周期」只有到这一步才知道；先开再
+  /// `switchTo` 等于白打一趟请求，还会让人先看一眼不是他上次那张图。
+  func start(snapshot: Bool, symbol requestedSymbol: String? = nil, interval requestedInterval: Interval? = nil) {
+    if let requestedSymbol, !requestedSymbol.isEmpty { symbol = requestedSymbol.uppercased() }
     if let requestedInterval { interval = requestedInterval }
     self.snapshot = snapshot
     // 第一帧就把盘上的快照摆出来。`feed` 是 actor，它那份快照要等一次跨执行器的
