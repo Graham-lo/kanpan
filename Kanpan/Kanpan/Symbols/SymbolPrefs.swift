@@ -24,7 +24,13 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   var groups: [FavoriteGroup] = []
   var groupForSymbol: [String: String] = [:]
   var pinned: [String] = []
-  var selectedGroupID: String?
+  /// 老存档里那个「停在哪个分类」。**真身 2026-09-19 搬去了 `Prefs.favoritesGroup`**，
+  /// 跟着账号走（换台设备登同一个账号，自选页还停在同一个分类上）。
+  ///
+  /// 这儿只剩一个读得懂老存档的壳：JSON 键仍然是 `selectedGroupID`（动了老存档就读不出来），
+  /// 迁移在 `AppAccountBridge.prepare(_:)` 里做一次——搬到 `Prefs` 上，然后清空这儿。
+  /// 属性名换成 `legacySelectedGroup` 是为了让下一个人一眼看出它不是真身，别再往里写。
+  var legacySelectedGroup: String?
   /// 「看得勤不勤」的分数表，键是品种代号。见 `noteDwell(_:)`。
   var viewScores: [String: Double] = [:]
   /// `viewScores` 上一次衰减到的时刻（Unix 秒）。0 表示还没记过。
@@ -40,7 +46,8 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   static let scoreFloor = 0.02
 
   init(favorites: [String] = [], recents: [String] = [], groups: [FavoriteGroup] = [],
-       groupForSymbol: [String: String] = [:], pinned: [String] = [], selectedGroupID: String? = nil,
+       groupForSymbol: [String: String] = [:], pinned: [String] = [],
+       legacySelectedGroup: String? = nil,
        viewScores: [String: Double] = [:], scoredAt: Double = 0) {
     self.viewScores = viewScores.reduce(into: [:]) { out, pair in
       let key = Self.key(pair.key)
@@ -54,11 +61,17 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     self.groups = groups.filter { !$0.id.isEmpty && !$0.name.isEmpty && seen.insert($0.id).inserted }
     self.pinned = Self.clean(pinned).filter { self.favorites.contains($0) }
     self.groupForSymbol = groupForSymbol.filter { self.favorites.contains($0.key) && seen.contains($0.value) }
-    self.selectedGroupID = selectedGroupID.flatMap { seen.contains($0) ? $0 : nil }
+    // 老存档里那个分类可能早就被删了，读进来就洗掉——免得迁移把一个指向空气的
+    // id 搬进 `Prefs.favoritesGroup`。
+    self.legacySelectedGroup = legacySelectedGroup.flatMap { seen.contains($0) ? $0 : nil }
   }
 
   private enum CodingKeys: String, CodingKey {
-    case favorites, recents, groups, groupForSymbol, pinned, selectedGroupID, viewScores, scoredAt
+    case favorites, recents, groups, groupForSymbol, pinned, viewScores, scoredAt
+    /// ⚠️ 键名不是属性名。老存档里写的是 `selectedGroupID`，不能改；
+    /// 属性叫 `legacySelectedGroup`，见上面那段说明。`SymbolFieldPlan.codingKey(forProperty:)`
+    /// 记着这一处错位，穷举守卫靠它对账。
+    case legacySelectedGroup = "selectedGroupID"
   }
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -67,7 +80,7 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
               groups: try values.decodeIfPresent([FavoriteGroup].self, forKey: .groups) ?? [],
               groupForSymbol: try values.decodeIfPresent([String: String].self, forKey: .groupForSymbol) ?? [:],
               pinned: try values.decodeIfPresent([String].self, forKey: .pinned) ?? [],
-              selectedGroupID: try values.decodeIfPresent(String.self, forKey: .selectedGroupID),
+              legacySelectedGroup: try values.decodeIfPresent(String.self, forKey: .legacySelectedGroup),
               viewScores: try values.decodeIfPresent([String: Double].self, forKey: .viewScores) ?? [:],
               scoredAt: try values.decodeIfPresent(Double.self, forKey: .scoredAt) ?? 0)
   }
@@ -79,17 +92,22 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   }
 
   /// 原型 `toggleWatch()`：在里面就删掉，不在就 **push 到末尾**。
-  mutating func toggleFavorite(_ symbol: String) {
+  mutating func toggleFavorite(_ symbol: String, in group: String? = nil) {
     let s = Self.key(symbol)
     guard !s.isEmpty else { return }
-    if favorites.contains(s) { removeFavorite(s) } else { addFavorite(s) }
+    if favorites.contains(s) { removeFavorite(s) } else { addFavorite(s, in: group) }
   }
 
-  mutating func addFavorite(_ symbol: String) {
+  /// 加一条自选，落进 `group` 那一类。
+  ///
+  /// `group` 就是「自选页此刻停在哪一类」，它 2026-09-19 从这份档案搬去了
+  /// `Prefs.favoritesGroup`，所以由调用方灌进来。传 `nil`（或者传的那一类已经没了）
+  /// 时退回第一个分类——和搬家之前 `selectedGroupID ?? groups.first?.id` 逐字同义。
+  mutating func addFavorite(_ symbol: String, in group: String? = nil) {
     let s = Self.key(symbol)
     guard !s.isEmpty, !favorites.contains(s) else { return }
     favorites.append(s)
-    if let group = selectedGroupID ?? groups.first?.id { groupForSymbol[s] = group }
+    if let group = self.group(group) { groupForSymbol[s] = group }
   }
 
   mutating func removeFavorite(_ symbol: String) {
@@ -151,22 +169,34 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     groups[index].name = trimmed
   }
 
-  mutating func deleteGroup(_ id: String) {
+  /// 删掉一类。`selected` 是删之前自选页停在哪一类。
+  ///
+  /// 删掉的**正好是选中的那一类**时，落单的成员进第一个分类——这一条以前靠
+  /// 「`selectedGroupID == id` 就清空」实现，现在由 `group(_:)` 在读的时候接住：
+  /// 那个 id 已经不在 `groups` 里了，`group(_:)` 自己就退回第一个。行为逐字不变，
+  /// 而且顺带修掉了原来那条路的隐患——清空的是这份档案里的字段，调用方手里那份
+  /// 「选中的分类」并不知道。
+  mutating func deleteGroup(_ id: String, selected: String? = nil) {
     groups.removeAll { $0.id == id }
     groupForSymbol = groupForSymbol.filter { $0.value != id }
-    if selectedGroupID == id { selectedGroupID = nil }
-    classifyUnassigned()
+    classifyUnassigned(into: selected)
   }
 
   /// 去掉虚拟默认分类后，旧未归类成员进入当前/首个实际分类；没有分类时原样保留。
-  mutating func classifyUnassigned() {
-    guard let group = selectedGroupID ?? groups.first?.id else { return }
+  mutating func classifyUnassigned(into group: String? = nil) {
+    guard let group = self.group(group) else { return }
     for symbol in favorites where groupForSymbol[symbol] == nil { groupForSymbol[symbol] = group }
   }
 
-  mutating func selectGroup(_ id: String) {
-    guard groups.contains(where: { $0.id == id }) else { return }
-    selectedGroupID = id
+  /// 「此刻该看哪一类」的唯一解法：他挑的那一类还在就是它，不在（或者还没挑过）
+  /// 就是第一类，一个分类都没有就是 `nil`。
+  ///
+  /// 选中的分类现在存在 `Prefs.favoritesGroup` 里，而那份存档管不着这边的分类有没有被删，
+  /// 所以「存回来的 id 可能已经不存在」这件事必须在**读的时候**兜住，不能指望删除那一刻
+  /// 去把它清掉。空串按「还没挑过」算（`Prefs.favoritesGroup` 的出厂值就是空串）。
+  func group(_ preferred: String?) -> String? {
+    if let preferred, !preferred.isEmpty, groups.contains(where: { $0.id == preferred }) { return preferred }
+    return groups.first?.id
   }
 
   mutating func assign(_ symbol: String, to group: String?) {
@@ -341,7 +371,7 @@ final class SymbolPrefsStore {
     // 过一遍 init 的清洗（去重、大写、截断到 10）。
     return SymbolPrefs(favorites: prefs.favorites, recents: prefs.recents,
                        groups: prefs.groups, groupForSymbol: prefs.groupForSymbol, pinned: prefs.pinned,
-                       selectedGroupID: prefs.selectedGroupID,
+                       legacySelectedGroup: prefs.legacySelectedGroup,
                        viewScores: prefs.viewScores, scoredAt: prefs.scoredAt)
   }
 

@@ -162,6 +162,16 @@ struct Prefs: Sendable, Equatable {
   var favoritesSparkline: Bool = false
   /// 展开着行详情的那几个品种。
   var favoritesExpanded: Set<String> = []
+  /// 自选页停在哪个分类。空串 = 还没挑过，按第一个分类开。
+  ///
+  /// 2026-09-19 从 `SymbolPrefs.selectedGroupID` 搬过来的。它本来和自选名单、分组名单
+  /// 挤在一个对象里，但那个对象存的是**他收藏了哪些品种**（内容），这一条存的是
+  /// **他把自选页摆成什么样**（习惯），和上面几行是同一类东西。搬过来之后它才跟着人走：
+  /// 换台设备登同一个账号，自选页还停在同一个分类上。
+  ///
+  /// 存回来的分类可能已经不在了（那一格被删掉），由 `SymbolPrefs.group(_:)` 接住
+  /// 退回第一个分类——和搬家之前 `SymbolPrefs` 自己那条兜底是同一个行为。
+  var favoritesGroup: String = ""
 
   /// 板块页停在哪个市场（加密 / 美股）。
   var sectorMarket: SectorMarket = .crypto

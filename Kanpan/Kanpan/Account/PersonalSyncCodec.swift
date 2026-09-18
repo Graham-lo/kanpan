@@ -66,9 +66,11 @@ enum PersonalSyncCodec {
   /// 按「用户用手改过的一切状态都跟着人走，无论怎么切换」这条规矩，看哪个周期、
   /// 要不要常亮都是他的习惯而不是这台手机的属性，所以两项改成随账号同步
   /// （已进 `fields`），不再在换档案时被上一份内存值盖住。
+  ///
+  /// 实现从「手抄四行赋值」改成了**按 `deviceOnly` 表在 JSON 键上覆盖**：清单只有
+  /// `PrefsFieldPlan` 那一张，这儿加不加字段不再取决于下一个人记不记得回来改这里。
   static func keepDeviceFields(_ source: Prefs, in target: inout Prefs) {
-    target.apiHost = source.apiHost; target.streamHost = source.streamHost
-    target.smartMarketRoute = source.smartMarketRoute; target.launchSnapshot = source.launchSnapshot
+    target = Prefs.keeping(Prefs.deviceOnlyFieldNames, of: source, over: target)
   }
   static func snapshot(_ prefs: Prefs) throws -> Data {
     // Format marker distinguishes the allowlisted snapshot from legacy full-Prefs drafts.

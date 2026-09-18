@@ -63,17 +63,20 @@ struct FavoriteGroupTests {
     let cryptoID = prefs.createGroup("加密"), stocksID = prefs.createGroup("美股")
     let crypto = try #require(cryptoID), stocks = try #require(stocksID)
     prefs.classifyUnassigned()
-    prefs.assign("MUUSDT", to: stocks); prefs.selectGroup(stocks)
-    prefs.addFavorite("SOXLUSDT")
+    prefs.assign("MUUSDT", to: stocks)
+    // 「他停在哪一类」2026-09-19 搬去了 `Prefs.favoritesGroup`（跟着账号走），
+    // 这份档案不再存它，由调用方灌进来——这儿就拿一个局部变量当那一份。
+    let selected = stocks
+    prefs.addFavorite("SOXLUSDT", in: selected)
     store.save(prefs)
-    #expect(store.load().selectedGroupID == stocks)
     #expect(store.load().favorites(in: stocks) == ["MUUSDT", "SOXLUSDT"])
     #expect(store.load().favorites(in: crypto) == ["BTCUSDT"])
     prefs.assign("MUUSDT", to: crypto)
     #expect(prefs.favorites == ["BTCUSDT", "MUUSDT", "SOXLUSDT"])
-    prefs.deleteGroup(stocks)
+    prefs.deleteGroup(stocks, selected: selected)
     #expect(prefs.favorites(in: crypto).count == 3)
-    #expect(prefs.selectedGroupID == nil)
+    // 停在那一类被删了：读的时候自己退回第一类（见 `SymbolFieldPlanTests`）。
+    #expect(prefs.group(selected) == crypto)
   }
 
 }

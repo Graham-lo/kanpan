@@ -81,6 +81,7 @@ extension Prefs: Codable {
     case apiHost, streamHost, smartMarketRoute, routePolicy
     // 他在各页上摆出来的样子。全是加法加进来的新键，老存档里没有就退默认值。
     case favoritesSort, favoritesAscending, favoritesAmount, favoritesSparkline, favoritesExpanded
+    case favoritesGroup
     case sectorMarket, sectorWindow, sectorSort
     case drawToolGroup, lastDrawTool
     case replaySpeed, reviewSearchScope
@@ -141,6 +142,7 @@ extension Prefs: Codable {
     try c.encode(favoritesAmount, forKey: .favoritesAmount)
     try c.encode(favoritesSparkline, forKey: .favoritesSparkline)
     try c.encode(favoritesExpanded.sorted(), forKey: .favoritesExpanded)
+    try c.encode(favoritesGroup, forKey: .favoritesGroup)
     try c.encode(sectorMarket.rawValue, forKey: .sectorMarket)
     try c.encode(sectorWindow.rawValue, forKey: .sectorWindow)
     try c.encode(sectorSort, forKey: .sectorSort)
@@ -293,6 +295,9 @@ extension Prefs: Codable {
     if let v = bool(.favoritesSparkline) { favoritesSparkline = v }
     // 展开的行数按自选条数走，理论上不会多，但存档里躺着一份没有上限的名单不是好事。
     if let raw = strs(.favoritesExpanded) { favoritesExpanded = Set(raw.filter { !$0.isEmpty }.prefix(Prefs.maxExpanded)) }
+    // 分类 id 是本机生成的 UUID 串，认不认得出交给 `SymbolPrefs.group(_:)`；
+    // 这儿只拦长度，128 这个数和服务端 `sync_validation.rs` 给它的上限逐字相同。
+    if let raw = str(.favoritesGroup), raw.count <= 128 { favoritesGroup = raw }
     if let raw = str(.sectorMarket), let v = SectorMarket(rawValue: raw) { sectorMarket = v }
     if let raw = str(.sectorWindow), let v = SectorWindow(rawValue: raw) { sectorWindow = v }
     // 排序口径那个枚举在 app target 里，这一层认不出来，只做长度这一道；

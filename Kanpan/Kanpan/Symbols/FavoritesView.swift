@@ -105,7 +105,20 @@ struct FavoritesView: View {
   }
   @State private var moving: MoveRequest?
   private struct MoveRequest: Identifiable { let id = UUID(); let symbols: [String] }
-  private var selected: String? { model.prefs.selectedGroupID ?? model.prefs.groups.first?.id }
+  /// 他停在哪一类。和上面几项一样住在 `Prefs` 里（`favoritesGroup`），随账号同步——
+  /// 2026-09-19 从 `SymbolPrefs.selectedGroupID` 搬过来的：停在哪一类是「把这张表摆成
+  /// 什么样」，不是自选名单自己的属性。
+  private var group: String {
+    get { store.prefs.favoritesGroup }
+    nonmutating set { store.update { $0.favoritesGroup = newValue } }
+  }
+  /// 切到某一类。分类可能刚被别处删掉，认不出来就什么都不做。
+  private func select(_ id: String) {
+    guard model.prefs.groups.contains(where: { $0.id == id }) else { return }
+    group = id
+  }
+  /// 真正画出来的那一类：存的那个可能已经被删了，`SymbolPrefs.group(_:)` 退回第一类。
+  private var selected: String? { model.prefs.group(group) }
   private var groupID: String? { selected }
   private var skin: LiuliSkin { LiuliSkin(theme: theme) }
   private var symbols: [String] {
@@ -191,7 +204,7 @@ struct FavoritesView: View {
       Button("取消", role: .cancel) { }
       Button("保存") {
         if let renamedID { model.renameGroup(renamedID, name: name) }
-        else if let id = model.createGroup(name) { model.selectGroup(id) }
+        else if let id = model.createGroup(name) { select(id) }
       }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
     .fullScreenCover(isPresented: $searching) {
@@ -202,7 +215,7 @@ struct FavoritesView: View {
                        onPicked: { searching = false },
                        // 星点亮之后跟着品种走：它落进哪一组就切到哪一组，
                        // 收起搜索页第一眼就能看见刚加的那一行。
-                       onStarred: { if let group = model.prefs.groupForSymbol[$0] { model.selectGroup(group) } },
+                       onStarred: { if let group = model.prefs.groupForSymbol[$0] { select(group) } },
                        onVisible: onVisible,
                        onRowVisibility: onRowVisibility)
     }
@@ -213,7 +226,7 @@ struct FavoritesView: View {
         if addingFromSearch { addingFromSearch = false; searching = true }
       }, onSelect: { info in
         model.addFavorite(info.symbol, info: info)
-        if let group = model.prefs.groupForSymbol[info.symbol] { model.selectGroup(group) }
+        if let group = model.prefs.groupForSymbol[info.symbol] { select(group) }
         adding = false; addingFromSearch = false
       }, onVisible: onVisible, onRowVisibility: onRowVisibility)
     }
@@ -388,7 +401,7 @@ struct FavoritesView: View {
 
   private func chip(_ title: String, id: String, count: Int) -> some View {
     let on = selected == id
-    return Button { model.selectGroup(id); selection.removeAll(); expanded.removeAll() } label: {
+    return Button { select(id); selection.removeAll(); expanded.removeAll() } label: {
       // 名字后面原来还挂着一个上标的数量，用户 2026-09-18 让去掉——数量在列表上面
       // 那行「N 个品种」已经写着了，格子里只留名字更干净。数量仍留在朗读标签里。
       Text(title).font(.system(size: 15, weight: .medium))

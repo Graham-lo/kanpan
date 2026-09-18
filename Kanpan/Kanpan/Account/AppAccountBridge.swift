@@ -61,6 +61,10 @@ import ReviewUI
     account.onAutoSync = { [weak self] enabled in self?.setAutoSync(enabled) }
     prefs.onChange = { [weak self] _ in self?.captureSettings() }
     symbols.onPrefsChange = { [weak self] _ in self?.captureSymbols() }
+    // 自选页停在哪一类，真身在 `Prefs.favoritesGroup`（跟着账号走）。`KanpanSymbols`
+    // 看不见设置包，所以在这儿——两边都认识的地方——把读法接过去。加自选 / 新建分类 /
+    // 删分类时「落单的成员进哪一类」要问它。
+    symbols.selectedGroupSource = { [weak prefs] in prefs?.prefs.favoritesGroup }
     drawings.onArchiveChange = { [weak self] _ in self?.captureDrawings() }
     review.onLogin = { [weak account] in account?.open() }
     review.onSyncComplete = { [weak self] in
@@ -201,6 +205,18 @@ import ReviewUI
       }
     }
     PersonalSyncCodec.keepDeviceFields(prefs.prefs, in: &nextPrefs)
+    // 「自选页停在哪一类」从自选档案搬进偏好：老存档里它写在 `symbols.json` 的
+    // `selectedGroupID` 上，新家是 `prefs.json` 的 `favoritesGroup`（随账号同步）。
+    //
+    // 搬完立刻把老键清空，两个理由：一是它不清空就会在每次 `prepare` 里再搬一次，
+    // 把用户之后挑的那一类顶回升级那一刻的值；二是那份档案要整份推给服务端，
+    // 留着一个谁也不读的死键只会让下一个人猜它还算不算数。
+    // 两份都在这一步之后才写盘，所以搬家和清空是同一次落盘里的事，中途断电也不会
+    // 出现「老的清了、新的没写上」。
+    if nextPrefs.favoritesGroup.isEmpty, let legacy = nextSymbols.legacySelectedGroup {
+      nextPrefs.favoritesGroup = legacy
+    }
+    nextSymbols.legacySelectedGroup = nil
     // Complete all fallible disk preparation before replacing any visible account state.
     // 这三份以前每次冷启动都原样重写一遍，只是为了「确保文件在」。读一次小 JSON 比
     // 一次原子写（临时文件 + rename + fsync）便宜得多，只在内容真的不一样时才落盘。
@@ -546,11 +562,13 @@ import ReviewUI
     }
     // 服务端只同步自选/分组这几张表，「最近」「常看」一直是本机的事——
     // 重建时要把它们原样带回去，否则每来一次同步就把常看清零。
-    let value = SymbolPrefs(favorites: names, recents: symbols.prefs.recents, groups: groups,
-                            groupForSymbol: membership, pinned: pinned,
-                            selectedGroupID: symbols.prefs.selectedGroupID,
-                            viewScores: symbols.prefs.viewScores, scoredAt: symbols.prefs.scoredAt)
-    symbols.applySynced(value)
+    //
+    // 这儿原来是手抄一行 `SymbolPrefs(favorites:recents:…:viewScores:scoredAt:)`，
+    // 少抄一个本机字段就是「每同步一次，常看被清空一次」，而且不报任何错。现在改成
+    // **云端重建出来的那份当底，再按 `SymbolFieldPlan` 的 localOnly 表把本机字段抄回去**：
+    // 清单只有那一张表，加字段的人不必记得回这儿补参数（`SymbolFieldPlanTests` 替他记）。
+    let rebuilt = SymbolPrefs(favorites: names, groups: groups, groupForSymbol: membership, pinned: pinned)
+    symbols.applySynced(SymbolPrefs.keeping(SymbolPrefs.localOnlyFieldNames, of: symbols.prefs, over: rebuilt))
     // 云端那份设置也是「档案换进来了」的一种：周期、落地页这些要跟着重新兑现一次。
     onProfileReady()
   }

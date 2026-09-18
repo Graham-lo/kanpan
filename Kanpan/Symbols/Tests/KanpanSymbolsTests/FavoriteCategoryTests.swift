@@ -21,17 +21,20 @@ struct FavoriteCategoryTests {
   @Test @MainActor func autoCreateReuseManualMoveAndReload() throws {
     let memory = MemoryPrefsStorage(), store = SymbolPrefsStore(storage: memory)
     let model = SymbolPickerModel(store: store)
+    // 「他停在哪一类」2026-09-19 搬去了 `Prefs.favoritesGroup`，这个包看不见设置包，
+    // 所以是宿主灌一个读法进来（真接线在 `AppAccountBridge.init`）。
+    var selected: String? = nil
+    model.selectedGroupSource = { selected }
     model.addFavorite("BTCUSDT"); model.addFavorite("ETHUSDT")
     #expect(model.prefs.groups.map(\.name) == ["加密"])
     let customID = model.createGroup("长期")
     let custom = try #require(customID)
-    model.assign("BTCUSDT", to: custom); model.selectGroup(custom)
+    model.assign("BTCUSDT", to: custom); selected = custom
     model.addFavorite("BTCUSDT") // 重复收藏不覆盖用户选择、不复制品种。
     model.addFavorite("MYSTERYUSDT")
     #expect(model.prefs.groups.map(\.name) == ["加密", "长期", "其他"])
     let reloaded = SymbolPickerModel(store: store)
     #expect(reloaded.prefs.groupForSymbol["BTCUSDT"] == custom)
-    #expect(reloaded.prefs.selectedGroupID == custom)
     #expect(reloaded.prefs.favorites == ["BTCUSDT", "ETHUSDT", "MYSTERYUSDT"])
   }
 }

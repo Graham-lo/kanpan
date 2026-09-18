@@ -55,6 +55,15 @@ final class SymbolPickerModel {
 
   private var store: SymbolPrefsStore
   @ObservationIgnored var onPrefsChange: ((SymbolPrefs) -> Void)?
+  /// 自选页此刻停在哪个分类。
+  ///
+  /// 真身在 `Prefs.favoritesGroup`（设置包里，跟着账号走），这个包看不见那边，
+  /// 所以由宿主灌一个读法进来（接线在 `AppAccountBridge.init`）。没接线时按
+  /// 「还没挑过」办——`SymbolPrefs.group(_:)` 退回第一个分类，和搬家之前
+  /// `selectedGroupID` 是 nil 那一路一模一样。
+  @ObservationIgnored var selectedGroupSource: (() -> String?)?
+  /// 加自选 / 新建分类 / 删分类时，落单的成员该进哪一类。
+  private var currentGroup: String? { prefs.group(selectedGroupSource?()) }
   private let feed: SymbolTickerFeed?
   /// 品种表的来源，宿主用 `KanpanData.SymbolCatalog` 填。
   private var catalogLoader: (@Sendable () async -> [SymbolInfo])?
@@ -219,7 +228,7 @@ final class SymbolPickerModel {
     guard !prefs.isFavorite(symbol) else { return }
     let key = SymbolPrefs.key(symbol)
     guard !key.isEmpty else { return }
-    prefs.addFavorite(key)
+    prefs.addFavorite(key, in: currentGroup)
     let name = FavoriteCategory.name(symbol: key, info: info ?? self.info(for: key))
     let group = prefs.createGroup(name)
     prefs.assign(key, to: group)
@@ -264,21 +273,21 @@ final class SymbolPickerModel {
 
   @discardableResult
   func createGroup(_ name: String) -> String? {
-    let id = prefs.createGroup(name); prefs.classifyUnassigned(); commit(); return id
+    let id = prefs.createGroup(name); prefs.classifyUnassigned(into: currentGroup); commit(); return id
   }
-  /// 切到哪一类看。落盘 + 同步，跨启动保留。
-  ///
-  /// 这儿原来还带一个 `pickedGroupThisRun` 记号，配一个 `resetSelectedGroup()`，
-  /// 执行的是「冷启动回到第一个分类」（旧注释：「同一次使用里要记住，下一次开 app
-  /// 该从头看起，这和 AICoin 一致」）。**2026-09-19 整套删掉**：按「所有交互状态
-  /// 跟着人走，无论怎么切换」，上次停在哪一类是他的习惯，冷启动照样要还给他。
-  /// 顺带也修掉了旧实现里一个纯 bug——它只改内存那一份、不 `commit()`，内存和盘上
-  /// 从此对不上，还会被账号同步把这份不一致带出去。删掉的调用点在
-  /// `MainScreen.primeFavorites()`，那儿留了同一段说明。
-  func selectGroup(_ id: String) { prefs.selectGroup(id); commit() }
+  // 「切到哪一类看」原来是这儿的 `selectGroup(_:)`，改的是 `SymbolPrefs.selectedGroupID`。
+  //
+  // **2026-09-19 那个字段搬去了 `Prefs.favoritesGroup`**：他停在哪一类是「把自选页摆成
+  // 什么样」，和自选表按什么排、板块看今日还是 5 日是同一等级的东西，该跟着体验类设置
+  // 一起走；留在自选档案里它只能跟着这台机器。切换现在由 `FavoritesView` 直接写
+  // `PrefsStore`（和那一页上 `favoritesSort` / `favoritesExpanded` 走同一条路），
+  // 这一层只负责在需要「此刻是哪一类」时通过 `selectedGroupSource` 问一声。
+  //
+  // 更早还有一个 `pickedGroupThisRun` 记号配 `resetSelectedGroup()`，执行「冷启动回到
+  // 第一个分类」，2026-09-19 一并删掉：上次停在哪一类是他的习惯，冷启动照样要还给他。
   func setPinned(_ symbol: String, _ on: Bool) { prefs.setPinned(symbol, on); commit() }
   func renameGroup(_ id: String, name: String) { prefs.renameGroup(id, name: name); commit() }
-  func deleteGroup(_ id: String) { prefs.deleteGroup(id); commit() }
+  func deleteGroup(_ id: String) { prefs.deleteGroup(id, selected: currentGroup); commit() }
   func assign(_ symbol: String, to group: String?) { prefs.assign(symbol, to: group); commit() }
   func moveVisible(_ visible: [String], from source: IndexSet, to destination: Int) {
     prefs.moveVisible(visible, from: source, to: destination); commit()

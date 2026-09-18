@@ -255,26 +255,21 @@ extension Prefs {
   /// 这张表以前长在 `PersonalSyncCodec.fields`（app 靶子里），而脏标识要做在
   /// `PrefsStore` 这一层（包里，M1 抽 `PersonalStore` 时要整块搬走），包看不见 app 靶子。
   /// 所以真身搬到这儿，`PersonalSyncCodec.fields` 改成引用它——**一份清单，两处用**。
-  static let syncedFieldNames: Set<String> = [
-    "overlays", "subs", "subHeights", "subHeightOverrides", "params", "indicatorColors",
-    "hiddenOutputs", "portraitHeight", "quickIntervals", "theme", "skin", "ambientTheme",
-    "redUp", "priceMode", "timeZone", "magnet", "countdown", "lastLine", "sinceChange",
-    "showDrawings", "candleKind", "gridChoice", "bodyChoice", "viewAnchor", "priceBias",
-    "dataDisplay", "crossPrice", "allowMainInversion", "allowSubInversion",
-    "adaptiveIndicators", "compactValues", "changeBasis", "routePolicy", "barSpacing",
-    "mainInverted", "subInverted", "interval", "keepAwake",
-    // 他在各页上摆出来的样子（见 `Prefs` 末尾那一节）。
-    "favoritesSort", "favoritesAscending", "favoritesAmount", "favoritesSparkline",
-    "favoritesExpanded", "sectorMarket", "sectorWindow", "sectorSort",
-    "drawToolGroup", "lastDrawTool", "replaySpeed", "reviewSearchScope",
-  ]
+  ///
+  /// 2026-09-19 再往前一步：字面量那一份也撤了，改成从 `PrefsFieldPlan.table` 派生。
+  /// 那张表是**唯一**一处说「哪个字段跟着人走 / 留在本机」的地方，穷举守卫
+  /// （`PrefsFieldPlanTests`）钉着它必须盖住 `Prefs` 的每一个存储字段。
+  static let syncedFieldNames: Set<String> = PrefsFieldPlan.names(.synced)
+
+  /// 换档案时**留在本机**、不被新档案覆盖的那些字段（`PersonalSyncCodec.keepDeviceFields`）。
+  static let deviceOnlyFieldNames: Set<String> = PrefsFieldPlan.names(.deviceOnly)
 
   /// 打脏标识时认的字段。
   ///
   /// 就是上面那张白名单，外加 RSI 的上下轨：它俩在同步对象里被合成 `rsiRange`
   /// 一个键发出去（见 `SettingsWire`），键名和本地字段名对不上，但它们照样是
-  /// 「用户改过的体验类设置」，一样要能挡住云端回拉。
-  static let stampedFieldNames: Set<String> = syncedFieldNames.union(SettingsWire.rsiFields)
+  /// 「用户改过的体验类设置」，一样要能挡住云端回拉——也就是 `.syncedMerged` 那一档。
+  static let stampedFieldNames: Set<String> = PrefsFieldPlan.names([.synced, .syncedMerged])
 
   /// 两份档案之间，**哪些体验类字段真的变了**。
   ///

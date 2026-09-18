@@ -71,6 +71,12 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // A tab label on the drawing panel, not an enum with any server meaning; the client
    // falls back when the saved one is gone, so the length is the only real rule.
    "drawToolGroup"=>string(v,128),
+   // The favorites category the person is parked on: a client-side UUID, and the client falls
+   // back to the first category when the saved one is gone. Same tier as `drawToolGroup`:
+   // length is the only rule the server can honestly enforce. Empty means "has not picked one".
+   // Being on the allowlist without a rule here would make the field a poison pill — the
+   // `_=>false` fallthrough rejects the whole operation with a 400.
+   "favoritesGroup"=>string(v,128),
    // Capped at `Prefs.maxExpanded`.
    "favoritesExpanded"=>v.as_array().is_some_and(|a|a.len()<=500&&a.iter().all(symbol)),
    "ambientTheme"|"redUp"|"magnet"|"countdown"|"lastLine"|"sinceChange"|"showDrawings"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
@@ -157,6 +163,7 @@ mod tests {
   assert!(field("settings","reviewSearchScope",&json!("private"))&&!field("settings","reviewSearchScope",&json!("world")));
   assert!(field("settings","lastDrawTool",&json!(""))&&field("settings","lastDrawTool",&json!("gannFan"))&&!field("settings","lastDrawTool",&json!("laser")));
   assert!(field("settings","drawToolGroup",&json!("斐波那契"))&&!field("settings","drawToolGroup",&json!("x".repeat(129))));
+  assert!(field("settings","favoritesGroup",&json!("F1E0A6C2-0000-4000-8000-000000000001"))&&!field("settings","favoritesGroup",&json!("x".repeat(129))));
   assert!(field("settings","replaySpeed",&json!(4))&&!field("settings","replaySpeed",&json!(8)));
   assert!(field("settings","favoritesExpanded",&json!(["BTCUSDT"]))&&!field("settings","favoritesExpanded",&json!(["btc"])));
   for flag in ["mainInverted","keepAwake","favoritesAscending","favoritesAmount","favoritesSparkline"] {

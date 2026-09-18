@@ -39,7 +39,7 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 // `styleID`, which only old archives still carry. Adding a synced field on iOS means adding
 // a name here AND a value rule in `sync_validation::field`; forget the rule and the value is
 // silently refused. `the_allowlist_is_what_ios_sends` fails loudly when the lists drift.
-pub const SETTINGS_FIELDS:[&str;52]=[
+pub const SETTINGS_FIELDS:[&str;53]=[
  "overlays","subs","subHeights","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange",
  "portraitHeight","quickIntervals","theme","skin","ambientTheme","styleID","redUp","priceMode","timeZone",
  "magnet","countdown","lastLine","sinceChange","showDrawings","candleKind","gridChoice","bodyChoice",
@@ -48,6 +48,9 @@ pub const SETTINGS_FIELDS:[&str;52]=[
  "keepAwake","routePolicy",
  // How the person left each page looking: sort order, which market, which tool.
  "favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline","favoritesExpanded",
+ // Which category the favorites page is parked on. It used to live in the phone's own symbol
+ // archive (`SymbolPrefs.selectedGroupID`), so it never followed the person to a second device.
+ "favoritesGroup",
  "sectorMarket","sectorWindow","sectorSort","drawToolGroup","lastDrawTool","replaySpeed","reviewSearchScope",
 ];
 pub const DRAWING_PREFERENCE_FIELDS:[&str;4]=["favorites","magnet","continuous","styles"];
@@ -208,8 +211,8 @@ mod tests {
    "viewAnchor","priceBias","dataDisplay","crossPrice","allowMainInversion","allowSubInversion",
    "adaptiveIndicators","compactValues","changeBasis","barSpacing","mainInverted","subInverted","interval",
    "keepAwake","routePolicy","favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline",
-   "favoritesExpanded","sectorMarket","sectorWindow","sectorSort","drawToolGroup","lastDrawTool",
-   "replaySpeed","reviewSearchScope",
+   "favoritesExpanded","favoritesGroup","sectorMarket","sectorWindow","sectorSort","drawToolGroup",
+   "lastDrawTool","replaySpeed","reviewSearchScope",
   ];
   let expected=[
    ("settings",&settings[..]),
