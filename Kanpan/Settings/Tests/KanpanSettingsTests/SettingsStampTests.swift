@@ -105,6 +105,64 @@ struct SettingsStampTests {
     #expect(store.dirtyFields == ["barSpacing"])
   }
 
+  // ------------------------------------------------ 清：拍平之后的那些线上路径
+
+  @Test("嵌套字段发上去的是拍平后的路径：params/MA 和 params/EMA 都认下了就清 params")
+  func clearsNestedWirePaths() {
+    let (store, _, _) = makeStore()
+    store.update { $0.params[.ma] = [7, 30, 60]; $0.params[.ema] = [9, 21] }
+    #expect(store.dirtyFields == ["params"], "脏标识记的是顶层字段名，不是拍平后的路径")
+
+    // 线上收到的是 `PersonalSyncCodec.flatten` 拍出来的路径，不是 `params` 本身。
+    store.syncPushed(store.dirtyMarks, acked: ["params/MA", "params/EMA"])
+    #expect(store.dirtyFields.isEmpty,
+            "服务端都认下了还留着脏标识的话，云端那份 params 永远打不赢本地——另一台设备改的指标参数再也收不到")
+  }
+
+  @Test("subHeightOverrides/MACD 被认下就清 subHeightOverrides")
+  func clearsNestedSubHeightOverride() {
+    let (store, _, _) = makeStore()
+    store.update { $0.subHeightOverrides[.macd] = 140 }
+    store.syncPushed(store.dirtyMarks, acked: ["subHeightOverrides/MACD"])
+    #expect(store.dirtyFields.isEmpty, "拖一次副图分隔线就让这个字段从此永远脏着，每轮同步都白推一份 settings")
+  }
+
+  @Test("三段的那条也一样：indicatorColors/MACD/0 映得回 indicatorColors")
+  func clearsThreeSegmentWirePath() {
+    let (store, _, _) = makeStore()
+    store.update { $0.indicatorColors[.macd] = [0: "#FF0000"] }
+    store.syncPushed(store.dirtyMarks, acked: ["indicatorColors/MACD/0"])
+    #expect(store.dirtyFields.isEmpty)
+  }
+
+  @Test("一个字段拍成好几条路径：只要有一条被 droppedFields 丢了，这个字段就还得脏着")
+  func keepsFieldWhenOneWirePathIsDropped() {
+    let (store, _, _) = makeStore()
+    store.update { $0.params[.ma] = [7, 30, 60]; $0.params[.ema] = [9, 21] }
+    // 服务端认下了这条操作，但 `params/EMA` 那一项没收下。
+    store.syncPushed(store.dirtyMarks, acked: ["params/MA"], dropped: ["params/EMA"])
+    #expect(store.dirtyFields == ["params"],
+            "兄弟路径被丢掉时还把整个字段清掉，等于把没推上去的那一改当成推过了，下次回拉照样盖回去")
+
+    // 补推一次、这回一条都没丢：到这儿才能清。
+    store.syncPushed(store.dirtyMarks, acked: ["params/MA", "params/EMA"])
+    #expect(store.dirtyFields.isEmpty)
+  }
+
+  @Test("rsiRange 被认下，仍然清掉 rsiLower 和 rsiUpper 两个本地字段")
+  func clearsBothRSIBoundsOnRangeAck() {
+    let (store, _, _) = makeStore()
+    store.update { $0.rsiLower = 25; $0.rsiUpper = 75 }
+    #expect(store.dirtyFields == ["rsiLower", "rsiUpper"])
+    store.syncPushed(store.dirtyMarks, acked: [SettingsWire.rsiRange])
+    #expect(store.dirtyFields.isEmpty)
+
+    // 反过来：rsiRange 被丢掉，上下轨两个都得留着。
+    store.update { $0.rsiLower = 30 }
+    store.syncPushed(store.dirtyMarks, acked: [], dropped: [SettingsWire.rsiRange])
+    #expect(store.dirtyFields == ["rsiLower"])
+  }
+
   @Test("线上键名对得上，RSI 那一对来回都不丢")
   func wireKeysLineUp() {
     // 脏标识认的字段名，映到线上之后必须全都是服务端那张表上的键。

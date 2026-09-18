@@ -402,6 +402,12 @@ import ReviewUI
         // 不算成功；成功以 `SyncPushResponse` 里按 `operationId` 对上的为准，
         // 而且要扣掉它回报的 `droppedFields`（认了这条，但这几项没收下）。
         var acked: Set<String> = []
+        // 这一轮**没落地**的那些线上字段名：被 `droppedFields` 顶回来的、整条没回执的、
+        // 被隔离的。它得和 `acked` 一起交给 `SettingsStamp`——本地一个 `params` 字段
+        // 在线上是 `params/MA`、`params/EMA`… 好几条路径（`PersonalSyncCodec.flatten`），
+        // 只认下一条就把整个字段的脏标记清掉，等于把另外那条没推上去的改动当成推过了。
+        // 哪些算「没落地」在这儿算，别让 `SettingsStamp` 去猜。
+        var dropped: Set<String> = []
         // 撞过一次「这条永远不会成功」之后改成一条一条发，把坏的那条揪出来单独隔离，
         // 不让它替后面所有好操作挡路。
         var oneByOne = false
@@ -424,23 +430,36 @@ import ReviewUI
             try sync.quarantine(batch[0].id)
             stuck.append(batch[0])
             // **本地值和脏标记一个都不动**：下次启动本地照样赢，服务端修好之后
-            // 用户下一次改动会拿当前的值重新组一条新操作补上去。
+            // 用户下一次改动会拿当前的值重新组一条新操作补上去。被隔离的这条里
+            // 那几条线上路径记进 `dropped`，免得同一个字段的兄弟路径在别的操作里
+            // 被认下，反倒把这个字段的脏标记顺手清了。
+            if batch[0].collection == "settings" && batch[0].objectId == "chart" {
+              dropped.formUnion(batch[0].fields.keys)
+            }
             updateStatus()
             continue
           }
           try Task.checkCancellation(); guard requestEpoch == epoch && taskID == runID else { return }
-          let dropped = Dictionary(result.results.map { ($0.operationId, Set($0.droppedFields ?? [])) }, uniquingKeysWith: { a, _ in a })
+          let receipts = Dictionary(result.results.map { ($0.operationId, Set($0.droppedFields ?? [])) }, uniquingKeysWith: { a, _ in a })
           for op in batch where op.collection == "settings" && op.objectId == "chart" {
-            guard let missed = dropped[op.id] else { continue }         // 没回执 = 没认掉
+            guard let missed = receipts[op.id] else {                   // 没回执 = 没认掉
+              dropped.formUnion(op.fields.keys); continue
+            }
             acked.formUnion(op.fields.keys.filter { !missed.contains($0) })
+            dropped.formUnion(missed)
           }
           try sync.acknowledge(result)
           // 服务端没认掉任何一条就别空转。
           guard sync.archive.operations.count < before else { break }
         }
+        // 跳出循环时队列里还剩下的（服务端一条没认、被隔离的顶在前面挡着）：也算没落地。
+        // 同一个字段的另一条路径还躺在队列里时，不能因为先发的那条被认下就把它清了。
+        for op in sync.archive.operations where op.collection == "settings" && op.objectId == "chart" {
+          dropped.formUnion(op.fields.keys)
+        }
         // **只清服务端认下的那几个字段。** 被隔离的、被 `droppedFields` 丢掉的、
         // 还在队列里没发的，脏标记全都留着——下次启动本地照样赢。
-        prefs.syncPushed(marks, acked: acked)
+        prefs.syncPushed(marks, acked: acked, dropped: dropped)
         var scopes: [String] = []
         switch plan {
         case .push: scopes = []

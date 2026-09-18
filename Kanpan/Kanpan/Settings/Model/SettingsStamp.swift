@@ -88,13 +88,34 @@ struct SettingsStamp: Codable, Equatable, Sendable {
   /// （`SyncStore.acknowledge`）。断网重发、服务端拒绝、app 半路被杀，
   /// 脏标识都必须原样留着。
   ///
+  /// ## 一个本地字段，线上好几条路径
+  ///
+  /// 脏标识按**顶层字段名**记（`params`），发上去的却是 `PersonalSyncCodec.flatten`
+  /// 拍平后的一串路径（`params/MA`、`params/EMA`、`params/VOL`…，见 `SettingsWire`）。
+  /// 服务端是**按项**收的：同一条操作里，它可能认下 `params/MA` 却把 `params/EMA`
+  /// 放进 `droppedFields` 顶回来。
+  ///
+  /// 所以清的判据是「**这个字段这一轮报上来的路径里，一条都没被丢**」：只要有一条
+  /// 落在 `dropped` 里，那个顶层脏标识就必须留着。少了这一道，清掉的等于把没推上去的
+  /// 那一改当成推过了——下次云端回拉照样把它盖回去，就是用户说的「相当于没改」。
+  ///
+  /// 既没被认下、也没被丢（整条操作没回执、被隔离、还躺在队列里）的路径，
+  /// 由调用方一并塞进 `dropped`：在这儿它和「被丢掉」是同一件事——没落地。
+  ///
   /// - Parameters:
-  ///   - keys: 被 ACK 的那些操作里带的线上字段名。
+  ///   - keys: 被 ACK 的那些操作里**真收下了**的线上字段名 / 路径。
+  ///   - dropped: 同一批里**没收下**的线上字段名 / 路径（`droppedFields` + 没回执的）。
   ///   - pushed: 推上去那一刻的脏字段快照（本地字段名 → 时刻）。
-  mutating func clear(acked keys: Set<String>, from pushed: [String: Double], at now: Double) {
+  mutating func clear(acked keys: Set<String>, dropped: Set<String> = [],
+                      from pushed: [String: Double], at now: Double) {
+    // 有一条路径没落地，这个顶层字段这一轮就整个不清。
+    var blocked: Set<String> = []
+    for key in dropped { blocked.formUnion(SettingsWire.fields(for: key)) }
     var batch: [String: Double] = [:]
     for key in keys {
-      for field in SettingsWire.fields(for: key) where pushed[field] != nil { batch[field] = pushed[field] }
+      for field in SettingsWire.fields(for: key) where !blocked.contains(field) {
+        if let when = pushed[field] { batch[field] = when }
+      }
     }
     guard !batch.isEmpty else { return }
     clear(batch, at: now)
@@ -181,24 +202,48 @@ enum SettingsCacheDoctor {
 // MARK: - 本地字段名 ↔ 线上键名
 
 /// 脏标识认的是**本地字段名**（也就是 `Prefs.syncedFieldNames` 那张白名单里的键，
-/// flatten 之前的那一层），而推上去的操作认的是**线上键名**。两边只有一处对不齐：
+/// flatten 之前的那一层），而推上去的操作认的是**线上键名**。两边有两处对不齐：
 ///
-/// `rsiLower` / `rsiUpper` 在 `PersonalSyncCodec.settings` 里被合成 `rsiRange`
-/// 一个数组键发出去，`apply` 再把它拆回两个。所以任一变脏，线上认的都是 `rsiRange`；
-/// 反过来 ACK 回来一个 `rsiRange`，要清的是**两个**本地字段。
+/// 1. `rsiLower` / `rsiUpper` 在 `PersonalSyncCodec.settings` 里被合成 `rsiRange`
+///    一个数组键发出去，`apply` 再把它拆回两个。所以任一变脏，线上认的都是 `rsiRange`；
+///    反过来 ACK 回来一个 `rsiRange`，要清的是**两个**本地字段。
+/// 2. **嵌套字段被 `PersonalSyncCodec.flatten` 拍成了带斜杠的路径。** 本地一个
+///    `params` 字段，上线之后是 `params/MA`、`params/EMA`、`params/VOL`… 一串；
+///    `indicatorColors` 更深一层，是 `indicatorColors/MACD/0`。`subHeights`、
+///    `subHeightOverrides`、`hiddenOutputs` 同理。服务端 ACK 回来的、
+///    `droppedFields` 里报回来的，全是这些**路径**，不是顶层字段名。
 ///
-/// 这一处显式写在这儿、并且有用例钉着（「线上键名对得上，RSI 那一对来回都不丢」），
-/// 免得它成为唯一一个默默对不上的字段——对不上的后果是脏标识永远清不掉（一直以为
-/// 没推成功），或者清错了（把没推上去的改动当成推过了，下次回拉照样盖回去）。
+/// 第 2 条曾经漏掉过，代价是**所有嵌套字段的脏标识永远清不掉**（2026-09-19 实测：
+/// 某个账号的 `settings-stamp.json` 里 `dirty` 一直挂着 `subHeightOverrides`，
+/// 而云端那份 `body` 明明已经收下了 `subHeightOverrides/MACD`）。后果有两层：
+/// 一是 `PrefsStore.applySynced` 里 `Prefs.keeping(dirtyFields, …)` 会让云端的
+/// `params` / `indicatorColors` / `subHeightOverrides` / `hiddenOutputs` / `subHeights`
+/// **永远打不赢本地**——换台设备改的指标参数、指标颜色、副图高度，另一台再也收不到，
+/// 这几类设置事实上变成单向同步；二是 `AppAccountBridge.applyPending` 里
+/// `if prefs.stamp.isDirty { captureSettings() }` 永远为真，每轮同步都白推一整份 settings。
+///
+/// 所以这一处显式写在这儿、并且有用例钉着，免得它再一次默默对不上——对不上的后果
+/// 要么是脏标识永远清不掉（一直以为没推成功），要么是清错了（把没推上去的改动当成
+/// 推过了，下次回拉照样盖回去）。
 enum SettingsWire {
   static let rsiRange = "rsiRange"
   static let rsiFields: Set<String> = ["rsiLower", "rsiUpper"]
 
   /// 本地字段名 → 线上键名。
+  ///
+  /// 这一头不用管拍平：脏标识本来就只记顶层字段名，`params` 映出去还是 `params`。
   static func key(for field: String) -> String { rsiFields.contains(field) ? rsiRange : field }
 
-  /// 线上键名 → 本地字段名（`rsiRange` 映回两个）。
-  static func fields(for key: String) -> Set<String> { key == rsiRange ? rsiFields : [key] }
+  /// 线上键名（含拍平后的路径）→ 本地字段名。
+  ///
+  /// `rsiRange` 映回上下轨两个；带斜杠的路径取**第一段**（`params/MA` → `params`，
+  /// `indicatorColors/MACD/0` → `indicatorColors`），因为拍平只在顶层字段的值里往下拆，
+  /// 顶层字段名自己不含斜杠（见 `PersonalSyncCodec.flatten` / `expand`）。
+  static func fields(for key: String) -> Set<String> {
+    if key == rsiRange { return rsiFields }
+    guard let slash = key.firstIndex(of: "/") else { return [key] }
+    return [String(key[key.startIndex..<slash])]
+  }
 }
 
 // MARK: - 按字段比对

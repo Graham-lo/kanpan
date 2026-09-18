@@ -307,16 +307,21 @@ final class PrefsStore {
   /// - Parameters:
   ///   - pushed: 推上去那一刻的脏字段快照。只清「时刻没变的」那几个，推的过程中
   ///     用户又改过的那些留着（见 `SettingsStamp.clear`）。
-  ///   - acked: 被 ACK 的那些操作里带的**线上键名**（`rsiRange` 会映回上下轨两个字段）。
+  ///   - acked: 服务端**真收下了**的那些**线上键名 / 路径**。嵌套字段在线上是拍平的
+  ///     （`params/MA`、`indicatorColors/MACD/0`），`rsiRange` 会映回上下轨两个字段，
+  ///     映射见 `SettingsWire`。
+  ///   - dropped: 同一批里**没落地**的那些线上键名 / 路径：被 `droppedFields` 顶回来的、
+  ///     没回执的、被隔离的。一个顶层字段在线上是好几条路径，只要有一条在这儿，
+  ///     那个字段的脏标识就得留着——否则等于把没推上去的那一改当成推过了。
   ///
   /// 「发出去了」不算成功——真正的成功是 `SyncPushResponse` 里按 `operationId`
   /// 对上的那几条（`SyncStore.acknowledge`）。断网、服务端拒绝、半路被杀，
   /// 脏标识一个都不许清，下次启动本地照样赢。
-  func syncPushed(_ pushed: [String: Double], acked: Set<String>) {
+  func syncPushed(_ pushed: [String: Double], acked: Set<String>, dropped: Set<String> = []) {
     guard !pushed.isEmpty, !acked.isEmpty else { return }
     let before = stamp
     let now = SettingsClock.now()
-    stamp.clear(acked: acked, from: pushed, at: now)
+    stamp.clear(acked: acked, dropped: dropped, from: pushed, at: now)
     guard stamp != before else { return }
     sentinel.pushedAt = now
     writeStamp(); writeSentinel()
