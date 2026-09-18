@@ -21,6 +21,9 @@ final class MarketModel {
   /// 「这张图上已经有什么」，平移和刷新都据此只补差的那一段，不整段重下。
   private var oiPoints: [OIPoint] = []
   private var oiRegion: (from: Int64, to: Int64)?
+  /// 这一程已经去补过的洞（按洞的左端记）。币安确实没有那一根时补也补不回来，
+  /// 记一笔就不会每次平移、每次开图都为它重发同一个请求。换品种 / 换周期时清空。
+  private var oiPatched: Set<Int64> = []
   /// 磁盘上那份「品种 + 周期」只认一次，认过就以内存里的为准。
   private var oiDiskKey: String?
   private var oiEnabled = false
@@ -493,7 +496,17 @@ final class MarketModel {
       // 上次留在磁盘上的那一段先上屏，用户不用对着「持仓量加载中」等一个往返。
       await self.seedOI(symbol: sym, interval: iv, step: step)
       guard !Task.isCancelled, request == self.selection, self.symbol == sym, self.interval == iv else { return }
-      let segments = OISource.missingSegments(have: self.oiRegion, want: want, step: step, refresh: refresh)
+      // 端点段（视野露出来的那截 + 刷新的尾巴）之外，还要扫一遍手里这串点自己断没断：
+      // `oiRegion` 只是一对端点，表达不了「区间内部有洞」，旧版本漏在区间里面的那根
+      // 空桶 `missingSegments` 永远看不见，跟着盘一起传到下一次会话（见 `holeSegments`）。
+      var holes: [(from: Int64, to: Int64)] = []
+      for hole in OISource.holeSegments(points: self.oiPoints, want: want, interval: iv,
+                                        now: Int64(Date().timeIntervalSince1970 * 1000))
+      where self.oiPatched.insert(hole.from).inserted {
+        holes.append(hole)
+      }
+      let segments = OISource.mergeSegments(
+        OISource.missingSegments(have: self.oiRegion, want: want, step: step, refresh: refresh) + holes)
       guard !segments.isEmpty else { return }
       let points = await withTaskGroup(of: [OIPoint].self) { group in
         for segment in segments {
@@ -523,8 +536,10 @@ final class MarketModel {
     guard oiRegion == nil, let cached = await oiStore.loadSeries(symbol: sym, interval: iv),
           !cached.points.isEmpty, sym == symbol, iv == interval, oiRegion == nil else { return }
     oiPoints = cached.points
-    // 盘上那份 `to` 可能是旧版本留下的虚高右端（记的是请求区间），照单全收就会把
-    // 它当初漏掉的那根空桶一直漏下去。同样按真拿到的点收敛一次，旧盘自己就愈合了。
+    // 盘上那份 `to` 可能是旧版本留下的虚高右端（记的是请求区间），照单全收就会从这个
+    // 虚高的右端往后补，在接缝上再留一个新洞。所以同样按真拿到的点收敛一次。
+    // 注意收敛只防**新**洞：已经漏在区间内部的那根空桶，端点怎么收都碰不到它，
+    // 得靠 `loadOI` 里的 `OISource.holeSegments` 扫点序列本身才补得回来。
     oiRegion = OISource.coveredRegion(want: (cached.from, cached.to), points: cached.points, step: step)
     oi = OISource.chartSeries(cached.points, interval: iv)
   }
@@ -559,7 +574,7 @@ final class MarketModel {
   /// 换品种、换周期、换线路都得从头来：手里的点要么周期对不上，要么是另一家交易所报的。
   private func resetOI() {
     oiTask?.cancel(); oiTask = nil
-    oi = nil; oiPoints = []; oiRegion = nil; oiDiskKey = nil
+    oi = nil; oiPoints = []; oiRegion = nil; oiDiskKey = nil; oiPatched = []
   }
 
   /// 品种页要的品种表。`@Sendable` 是因为品种页把它当闭包存着，

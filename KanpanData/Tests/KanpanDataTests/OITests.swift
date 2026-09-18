@@ -434,6 +434,125 @@ struct OIIncrementalTests {
     #expect(head.from <= last + step)
   }
 
+  // -------------------------------------------------- 区间内部的洞（端点看不见的那种）
+
+  /// `now` 取一个固定值，所有用例都在它的近 30 天窗口里摆点，免得跟着真实时间漂。
+  private static let now = Aggregator.utcMs(year: 2025, month: 1, day: 15)
+
+  @Test("旧盘里的洞：端点法看不见，扫点序列才扫得出来")
+  func holeInsideRegionIsInvisibleToEndpoints() throws {
+    let step = Self.step, now = Self.now
+    let first = now - 20 * step
+    // 桶 3 被旧版本漏掉了：它落在已有区间**内部**，右端还虚高了两根。
+    var times = (0...11).map { first + Int64($0) * step }
+    times.remove(at: 3)
+    let pts = times.map { OIPoint(time: $0, value: 1_000) }
+    let have = (from: first, to: first + 13 * step)          // 盘上记的虚高右端
+    let want = (from: first, to: first + 13 * step)
+
+    // 端点法：区间全在手里，一个请求都不发——洞就这么被带进下一次会话。
+    #expect(OISource.missingSegments(have: have, want: want, step: step, refresh: false).isEmpty)
+
+    let holes = OISource.holeSegments(points: pts, want: want, interval: .h1, now: now)
+    let hole = try #require(holes.first)
+    #expect(holes.count == 1)
+    #expect(hole.from <= first + 3 * step)                   // 端点要真的把桶 3 圈进去
+    #expect(hole.to >= first + 3 * step)
+  }
+
+  @Test("1m 图上 OI 本来就是 5 分钟一条：正常间隔不许当成洞")
+  func minuteChartKeepsFiveMinuteCadence() {
+    let now = Self.now
+    let first = now - 100 * 300_000
+    let pts = (0...100).map { OIPoint(time: first + Int64($0) * 300_000, value: 1_000) }
+    let want = (from: first, to: now)
+    #expect(OISource.holeSegments(points: pts, want: want, interval: .m1, now: now).isEmpty)
+    #expect(OISource.holeSegments(points: pts, want: want, interval: .m3, now: now).isEmpty)
+    // 同一串点在 5m 图上也是齐的；真缺一根才扫得出来。
+    #expect(OISource.holeSegments(points: pts, want: want, interval: .m5, now: now).isEmpty)
+    var holed = pts; holed.remove(at: 50)
+    #expect(OISource.holeSegments(points: holed, want: want, interval: .m5, now: now).count == 1)
+  }
+
+  @Test("30 天以外的洞：不扫，别为归档站本来就没有的那几天每次开图白发请求")
+  func oldHolesAreLeftAlone() {
+    let step: Int64 = 86_400_000, now = Self.now
+    let first = now - 90 * step
+    var times = (0...80).map { first + Int64($0) * step }
+    times.remove(at: 10)                                     // 90 天前那一天，归档站可能真没有
+    let pts = times.map { OIPoint(time: $0, value: 1_000) }
+    let want = (from: first, to: now)
+    #expect(OISource.holeSegments(points: pts, want: want, interval: .d1, now: now).isEmpty)
+    // 同样一个洞挪进近 30 天：那就是我们自己漏的，要补。
+    var recent = (0...80).map { first + Int64($0) * step }
+    recent.remove(at: 70)                                    // now - 20 天
+    let inWindow = recent.map { OIPoint(time: $0, value: 1_000) }
+    #expect(OISource.holeSegments(points: inWindow, want: want, interval: .d1, now: now).count == 1)
+  }
+
+  @Test("两个挨着的洞并成一段；洞太碎就退化成一整段，不发一串小请求")
+  func holesMergeAndDegrade() throws {
+    let step = Self.step, now = Self.now
+    let first = now - 60 * step
+    let want = (from: first, to: now)
+    // 相邻的两个洞（中间只隔一根）：并成一段。
+    var times = (0...59).map { first + Int64($0) * step }
+    times.removeAll { $0 == first + 10 * step || $0 == first + 12 * step }
+    let near = times.map { OIPoint(time: $0, value: 1_000) }
+    #expect(OISource.holeSegments(points: near, want: want, interval: .h1, now: now).count == 1)
+    // 五个散落的洞，上限 4：退化成从第一个洞一直取到 want.to 的一段。
+    var many = (0...59).map { first + Int64($0) * step }
+    let gone: Set<Int64> = [5, 15, 25, 35, 45].reduce(into: []) { $0.insert(first + $1 * step) }
+    many.removeAll { gone.contains($0) }
+    let scattered = OISource.holeSegments(points: many.map { OIPoint(time: $0, value: 1_000) },
+                                          want: want, interval: .h1, now: now)
+    try #require(scattered.count == 1)
+    #expect(scattered[0].from <= first + 5 * step)
+    #expect(scattered[0].to >= want.to)
+  }
+
+  @Test("洞段和端点段一起并：同一截数据不发两次请求")
+  func holeAndEdgeSegmentsMerge() throws {
+    let step = Self.step, now = Self.now
+    let first = now - 20 * step
+    var times = (0...11).map { first + Int64($0) * step }
+    times.remove(at: 10)                                     // 洞紧挨着右端露出来的那截
+    let pts = times.map { OIPoint(time: $0, value: 1_000) }
+    let have = OISource.coveredRegion(want: (from: first, to: first + 13 * step), points: pts, step: step)
+    let want = (from: first, to: first + 15 * step)
+    let edges = OISource.missingSegments(have: have, want: want, step: step, refresh: false)
+    let holes = OISource.holeSegments(points: pts, want: want, interval: .h1, now: now)
+    let merged = OISource.mergeSegments(edges + holes)
+    #expect(merged.count == 1)
+    let all = try #require(merged.first)
+    #expect(all.from <= first + 10 * step)                   // 洞在里面
+    #expect(all.to >= want.to)                               // 右边那截也在里面
+  }
+
+  @Test("1M / 1y 月长年长不等：连着的两根不许当成洞")
+  func calendarIntervalsHaveNoFakeHoles() {
+    // 12 个自然月的桶头，一根不缺。月是 30 天的名义 step，2 月只有 28 天——
+    // 拿 step 做减法就会把 1 月→2 月判成「隔了一根」。
+    let months = (1...12).map { OIPoint(time: Aggregator.utcMs(year: 2024, month: $0, day: 1), value: 1_000) }
+    let now = Aggregator.utcMs(year: 2025, month: 1, day: 1)
+    // 月线的近 30 天窗口只装得下最后一两根桶，这里只要求「不误报」。
+    #expect(OISource.holeSegments(points: months, want: (from: months[0].time, to: now),
+                                  interval: .mo1, now: now).isEmpty)
+    #expect(OISource.nextBucket(Aggregator.utcMs(year: 2024, month: 1, day: 1), interval: .mo1)
+            == Aggregator.utcMs(year: 2024, month: 2, day: 1))
+    #expect(OISource.nextBucket(Aggregator.utcMs(year: 2024, month: 1, day: 1), interval: .y1)
+            == Aggregator.utcMs(year: 2025, month: 1, day: 1))
+  }
+
+  @Test("点不够 / 窗口退化：不扫出任何段")
+  func holeDegenerate() {
+    let now = Self.now
+    #expect(OISource.holeSegments(points: [], want: (now - 10 * Self.step, now), interval: .h1, now: now).isEmpty)
+    let one = [OIPoint(time: now - Self.step, value: 1)]
+    #expect(OISource.holeSegments(points: one, want: (now - 10 * Self.step, now), interval: .h1, now: now).isEmpty)
+    #expect(OISource.holeSegments(points: one, want: (now, now), interval: .h1, now: now).isEmpty)
+  }
+
   @Test("已聚好的一段存盘：编解码一致，区间跟着回来")
   func rangeCodec() throws {
     let day = Aggregator.utcMs(year: 2025, month: 1, day: 15)

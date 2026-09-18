@@ -159,10 +159,15 @@ public actor OISource {
       let tail = (from: max(want.from, want.to - max(step, 60_000) * 3), to: want.to)
       if !out.contains(where: { $0.from <= tail.from && $0.to >= tail.to }) { out.append(tail) }
     }
-    out = out.filter { $0.to > $0.from }.sorted { $0.from < $1.from }
     // 尾巴常常和右边露出来的那截叠在一起，叠了就并成一段，别发两次几乎一样的请求。
+    return mergeSegments(out)
+  }
+
+  /// 排序、丢掉空段、把叠在一起或首尾相接的并成一段。
+  /// 缺口段和端点段最后要一起进这道工序，否则会为同一截数据发两次几乎一样的请求。
+  public static func mergeSegments(_ segments: [(from: Int64, to: Int64)]) -> [(from: Int64, to: Int64)] {
     var merged: [(from: Int64, to: Int64)] = []
-    for segment in out {
+    for segment in segments.filter({ $0.to > $0.from }).sorted(by: { $0.from < $1.from }) {
       if let last = merged.last, segment.from <= last.to {
         merged[merged.count - 1].to = max(last.to, segment.to)
       } else {
@@ -170,6 +175,65 @@ public actor OISource {
       }
     }
     return merged
+  }
+
+  /// 手里这串点自己断了没有——`missingSegments` 看不见的那种洞。
+  ///
+  /// 覆盖记账只有 `(from, to)` 一对端点（`MarketModel.oiRegion`，落盘成 `KOI2` 的
+  /// from/to），这个模型**表达不了「区间内部有缺口」**：`missingSegments` 只比两个
+  /// 端点，一旦某根桶漏在已有区间里面，它就再也不会被请求，跟着盘一起传到下一次
+  /// 会话、下一个版本。`coveredRegion` 收敛右端只防**新**洞；已经落盘的**旧**洞得
+  /// 靠这里——不看端点，直接扫点序列本身。
+  ///
+  /// 判定粒度按 OI 的真实粒度 `max(step, 5m)`（和 `chartSeries`、`OISeries.aligned`
+  /// 同一套规矩）：1m / 3m 图的 OI 本来就只有 5 分钟一条，相邻两条差 5 分钟是数据
+  /// 本来的样子，不是洞。1M / 1y 月长年长不等，靠 `nextBucket` 走日历，不做减法。
+  ///
+  /// 只扫近 30 天（`restWindowMs`）：这个窗口里 `openInterestHist` 是齐的，缺了就是
+  /// 我们自己漏的，重问一次就补得回来；更早的历史段（归档 / 网关）本来就可能真的
+  /// 没有那几天（上市前、归档站缺档），扫出来只会每次开图白发一轮永远填不上的请求。
+  /// 会话接缝留下的洞必然在近期，这个窗口够用。
+  ///
+  /// 段数有上限：洞太碎就退化成「从第一个洞一直取到 want.to」一段，
+  /// 宁可多取一截，也不发一串小请求去抢同一条链路。
+  public static func holeSegments(points: [OIPoint], want: (from: Int64, to: Int64),
+                                  interval: Interval, now: Int64,
+                                  maxSegments: Int = 4) -> [(from: Int64, to: Int64)] {
+    let granularity = max(300_000, interval.stepMs)
+    let lower = max(want.from, now - restWindowMs)
+    guard want.to > lower else { return [] }
+    let inside = points.map(\.time).filter { $0 >= lower && $0 <= want.to }.sorted()
+    guard inside.count > 1 else { return [] }
+
+    var holes: [(from: Int64, to: Int64)] = []
+    var previous = bucket(inside[0], interval: interval)
+    for time in inside.dropFirst() {
+      let current = bucket(time, interval: interval)
+      guard current > previous else { continue }     // 同一根桶里的好几条（细周期的 5m 源）
+      let expected = nextBucket(previous, interval: interval)
+      if current > expected {
+        // 端点各留一格余量：`rawPoints` 是闭区间 `[from, to]`，`restRange` 又是从 to
+        // 往前翻页的，贴着桶头请求容易让那一根正好掉在页外。
+        holes.append((from: expected - granularity, to: current + granularity))
+      }
+      previous = current
+    }
+    let merged = mergeSegments(holes)
+    guard merged.count > maxSegments, let first = merged.first, let last = merged.last else { return merged }
+    return [(from: first.from, to: max(want.to, last.to))]
+  }
+
+  /// OI 的桶头。和 `OISeries.aligned` 同一套规矩：5 分钟以上按图表周期的自然桶，
+  /// 1m / 3m 按 5 分钟桶——数据本身就只有这个粒度。
+  static func bucket(_ ms: Int64, interval: Interval) -> Int64 {
+    Aggregator.bucketStart(ms: ms, interval: interval.stepMs >= 300_000 ? interval : .m5)
+  }
+
+  /// 下一根桶的桶头。1M / 1y 不等距，不能直接加一个固定 step（2 月只有 28 天，
+  /// 加 30 天会跳过它）；往前挪一个半桶再落回自然边界就都对：一个半月一定落在
+  /// 下个月里，一年半一定落在下一年里，等距周期上则恰好等于加一个 step。
+  static func nextBucket(_ start: Int64, interval: Interval) -> Int64 {
+    bucket(start + max(300_000, interval.stepMs) * 3 / 2, interval: interval)
   }
 
   /// 对齐到 K 线：每根取「不晚于这根开盘」的最近一条（原型 `oiAligned` 的规矩）。
