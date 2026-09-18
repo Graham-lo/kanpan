@@ -599,9 +599,11 @@ final class ChartFoundationUITests: XCTestCase {
     let original = info()
     // 配色（青苔 / 陶土）和深浅（浅 / 深）是两根独立的轴，所以两两都要走一遍：
     // 换的只有颜色，K 线底座的 span / plotW / spacing / mainH / height 一个数都不许动。
-    // 画布本身固定 AICoin 配色（浅 #FFFFFF / 深 #0D111C），皮肤只染图区以外，所以四组期望值只随深浅变。
-    for (skin, mode, background) in [("sage", "浅色", "#FFFFFF"), ("sage", "深色", "#0D111C"),
-                                     ("terra", "浅色", "#FFFFFF"), ("terra", "深色", "#0D111C"),
+    // 画布的底跟着皮肤走（`367d572`）：只有「经典」照抄 AICoin 的白 / 深蓝，青苔和陶土
+    // 取自己种子里的 `chart`，图区和页面读成一块材料。所以这里每一格的期望值都不一样，
+    // 而不是从前那样只随深浅变。蜡烛 / 涨跌 / 均线仍然只有 AICoin 那一套，不在这条的射程里。
+    for (skin, mode, background) in [("sage", "浅色", "#F3F7F4"), ("sage", "深色", "#0B120F"),
+                                     ("terra", "浅色", "#FBF6F0"), ("terra", "深色", "#16100C"),
                                      ("classic", "浅色", "#FFFFFF"), ("classic", "深色", "#0D111C")] {
       app.buttons["bottom.settings"].tap()
       let card = app.buttons["display.theme." + skin]
