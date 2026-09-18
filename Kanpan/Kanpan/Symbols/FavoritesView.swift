@@ -571,8 +571,11 @@ struct FavoritesView: View {
     return HStack(spacing: 10) {
       if editing {
         Button { if !selection.insert(symbol).inserted { selection.remove(symbol) } } label: {
+          // 没选中的勾选框只有一圈描边，不给它一块实心命中区的话，点圆圈正中是点不着的。
           checkbox(selection.contains(symbol))
+            .frame(width: 20, height: 44).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel(selection.contains(symbol) ? "取消选择" : "选择")
+          .accessibilityIdentifier("favorites.select." + symbol)
       }
       HStack(spacing: 10) {
         badge(base)
