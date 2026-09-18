@@ -24,6 +24,11 @@ final class DrawingController: ObservableObject {
   private weak var chart: ChartView?
   private var store: DrawStore
   var onArchiveChange: ((DrawArchive) -> Void)?
+  /// 记下「上次用的是哪把工具」。宿主接到 `Prefs.lastDrawTool`（随账号同步）。
+  ///
+  /// 它**只**用来在工具面板上把那把工具预选高亮，不是「此刻正举着笔」——
+  /// 待画状态归图自己（`ChartView+Drawing`），换品种照样清掉。
+  var onPickTool: ((DrawingStore.Tool) -> Void)?
   var storedArchive: DrawArchive { archive }
   private var archive: DrawArchive
   private var symbol = ""
@@ -84,6 +89,7 @@ final class DrawingController: ObservableObject {
       savePreferences()
     }
     chart?.drawTool = t
+    onPickTool?(t)
     panel = nil; picker = false
     sync()
   }

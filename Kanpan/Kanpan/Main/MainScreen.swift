@@ -213,7 +213,7 @@ struct MainScreen: View {
 
   /// 自选那一整页。标签栏上的一格，所以没有「返回」——返回就是换一格标签。
   private var favoritesPage: some View {
-    FavoritesView(model: picker, history: searchHistory, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
+    FavoritesView(model: picker, history: searchHistory, store: store, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
                   onVisible: { quotes.watch($0) },
                   onRowVisibility: { quotes.watchRow($0, visible: $1) },
                   onHistoryVisibility: { quotes.watchHistory($0, visible: $1) })
@@ -226,7 +226,7 @@ struct MainScreen: View {
   /// 而不是另起一套跳转，免得板块页进来的图和自选页进来的图行为不一样。
   private var sectorPage: some View {
     SectorPage(feed: sectorFeed, redUp: prefs.redUp,
-               symbolForBase: { sectorFeed.symbol(forBase: $0) },
+               symbolForBase: { sectorFeed.symbol(forBase: $0) }, store: store,
                onPickSymbol: { symbol in
                  if let info = picker.info(for: symbol) { picker.pick(info) }
                  else {
@@ -287,6 +287,11 @@ struct MainScreen: View {
     // 面板 / 画线 / 复盘开着的时候云端设置是被挡下来的（会把人正在做的事掀掉）。
     // 关掉的这一刻补跑一次，别让人等下一轮全量（300 秒）。
     .onChange(of: syncGate) { _, open in if open { accountBridge?.resumeApply() } }
+    // 「找相似」的范围两头对接（R3-5）：面板上改了就落进偏好，云端换下来一份
+    // （或者换了账号）也照样灌回面板。两条都靠 `PrefsStore.update` 自带的
+    // 「没真改动就不写」挡住回环，不会你来我往。
+    .onChange(of: review.searchScope) { _, value in store.update { $0.reviewSearchScope = value } }
+    .onChange(of: prefs.reviewSearchScope) { _, value in review.searchScope = value }
   }
 
   private var marketContent: some View {
@@ -344,7 +349,7 @@ struct MainScreen: View {
     // 竖屏的「绘图」面板是一张半屏表单；横屏走 `drawToolsLayer` 那块贴边卡片，
     // 所以这儿要把横屏挡掉，不然两份会同时在场。
     .sheet(isPresented: Binding(get: { draw.picker && !landscape }, set: { draw.picker = $0 })) {
-      DrawingToolPicker(controller: draw) { draw.picker = false }
+      DrawingToolPicker(controller: draw, store: store, onClose: { draw.picker = false })
         .presentationDetents([.large])
         .environment(\.panelTheme, theme)
     }
@@ -505,7 +510,7 @@ struct MainScreen: View {
   /// 靠左是因为右边那两条竖栏（画线动作、周期）都在右手底下，卡片压过去就挡住了。
   @ViewBuilder private var drawToolsLayer: some View {
     if draw.active, draw.picker {
-      DrawingToolPicker(controller: draw) { draw.picker = false }
+      DrawingToolPicker(controller: draw, store: store, onClose: { draw.picker = false })
         .frame(width: 340)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.line, lineWidth: 0.5))
@@ -853,6 +858,12 @@ struct MainScreen: View {
 
   private func wireReview() {
     review.onCapture = startReviewCapture
+    // 回放倍速跟着人走：初值从偏好来，那颗按钮一改就写回去（R3-4）。
+    reviewChart.preferredSpeed = { store.prefs.replaySpeed }
+    reviewChart.onSpeedChange = { value in store.update { $0.replaySpeed = Prefs.clampSpeed(value) } }
+    // 「找相似」的范围同理。`ReviewUI` 那个包看不见 `Prefs`，所以在这儿对接两头：
+    // 这一句灌初值，下面 `lifecycleContent` 里那两条 `onChange` 管往返（R3-5）。
+    review.searchScope = prefs.reviewSearchScope
     review.onOpenChart = { record in
       dismissPanel(); draw.finish()
       replayOrigin = .record(record.id)
@@ -947,7 +958,7 @@ struct MainScreen: View {
     if reviewChart.mode == .replay {
       ReviewReplayControls(time: reviewChart.replayTime, playing: reviewChart.playing, speed: reviewChart.speed,
         onStep: { reviewChart.step($0, feature: review) }, onPlay: { reviewChart.togglePlay(feature: review) },
-        onSpeed: { reviewChart.speed = reviewChart.speed == 4 ? 1 : reviewChart.speed * 2 },
+        onSpeed: { reviewChart.cycleSpeed() },
         onJudgment: { reviewChart.jumpToJudgment(feature: review) },
         onExit: { endReview(backToOrigin: true) })
       .environment(\.reviewTheme, theme.review)
@@ -1124,6 +1135,9 @@ struct MainScreen: View {
     // default Binance route while the host/source setup is still in flight.
     // 停在哪一格由 `honorProfile()` 按刚装进来的那份档案定，这儿只补预热。
     if !picker.prefs.favorites.isEmpty { primeFavorites(picker.prefs.favorites) }
+    // 上次用的是哪把画线工具。只用来在工具面板上把那一格预选高亮（见 `Prefs.lastDrawTool`），
+    // 不是「此刻正举着笔」——待画状态归图自己管，换品种照样清掉，冷启动也不会举着笔进来。
+    draw.onPickTool = { tool in store.update { $0.lastDrawTool = tool.rawValue } }
     live = true
   }
 

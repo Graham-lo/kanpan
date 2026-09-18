@@ -16,6 +16,9 @@ struct FavoritesView: View {
   @Bindable var model: SymbolPickerModel
   /// 搜索页的历史词仓。自选页自己开搜索页（见 `searching`），所以得跟着传进来。
   var history: SearchHistory
+  /// 这一页上「他摆出来的样子」存在哪：排序口径、方向、涨跌额/幅、迷你走势、展开的行。
+  /// 见下面那一段注释——它们和皮肤、副图高度是同一等级的偏好，跟着人走。
+  var store: PrefsStore
   var redUp: Bool
   var basisTitle: String
   var updatedAt: Date?
@@ -43,21 +46,44 @@ struct FavoritesView: View {
   @State private var editing = false
   @State private var editQuotes: [String: Ticker] = [:]
   @State private var selection = Set<String>()
-  @State private var expanded = Set<String>()
   /// 已经替它开了历史订阅的品种。页面整体消失时要逐个关掉——
   /// 行自己的 `onDisappear` 在整页被拆掉时不保证会走到。
   @State private var historyOn = Set<String>()
-  /// 排序口径、升降序、涨跌额还是涨跌幅：三项都记在本机。
-  ///
-  /// 这本来是三个 `@State`——底栏换成常驻标签栏之后，自选页每切走一次就整个重建，
-  /// 排好的顺序当场退回「自选顺序」，人回来还得再排一遍。它们和 `favorites.sparkline`
-  /// 是同一类东西：这台机器上这张表想怎么看，跟着机器走，不跟账号走。
-  @AppStorage("favorites.sort") private var sort = "custom"
-  @AppStorage("favorites.sortAscending") private var ascending = false
-  @AppStorage("favorites.amount") private var amount = false
-  /// 行尾那条迷你走势线。默认不画——它挤在价格旁边会把整行的视觉打散；
-  /// 想看的人在「…」里自己打开，开关记在本机。
-  @AppStorage("favorites.sparkline") private var sparkline = false
+  // 这张表「他摆成了什么样」：排序口径、升降序、涨跌额还是涨跌幅、画不画迷你走势线、
+  // 哪几行展开着详情。
+  //
+  // 这几项一路搬过两次家。最早是 `@State`——底栏换成常驻标签栏之后，自选页每切走
+  // 一次就整个重建，排好的顺序当场退回「自选顺序」，人回来还得再排一遍。于是搬去了
+  // `@AppStorage`，注释写的是「这台机器上这张表想怎么看，跟着机器走，不跟账号走」。
+  //
+  // **「跟着机器走」这条判断 2026-09-19 推翻了**：判据不是「它在不在设置页上」，而是
+  // 「这是他改出来的习惯，还是这个对象自己的属性」。按成交额排、看涨跌额、把某几行
+  // 展开着，全是前者——换台设备登同一个账号，这张表就该还是这个样子，而同一台机器上
+  // 换个人登进来，就不该还是上一个人排的那个顺序。裸 `@AppStorage` 两头都反了。
+  // 现在它们住在 `Prefs` 里（见 `Prefs` 末尾那一节），随账号同步，未登录记在访客档案。
+  //
+  // 写法照旧是直接赋值（`sort = "name"`、`expanded.removeAll()`），只是底下换成了
+  // `store.update`——调用处一个字都不用改。
+  private var sort: String {
+    get { store.prefs.favoritesSort }
+    nonmutating set { store.update { $0.favoritesSort = newValue } }
+  }
+  private var ascending: Bool {
+    get { store.prefs.favoritesAscending }
+    nonmutating set { store.update { $0.favoritesAscending = newValue } }
+  }
+  private var amount: Bool {
+    get { store.prefs.favoritesAmount }
+    nonmutating set { store.update { $0.favoritesAmount = newValue } }
+  }
+  private var sparkline: Bool {
+    get { store.prefs.favoritesSparkline }
+    nonmutating set { store.update { $0.favoritesSparkline = newValue } }
+  }
+  private var expanded: Set<String> {
+    get { store.prefs.favoritesExpanded }
+    nonmutating set { store.update { $0.favoritesExpanded = newValue } }
+  }
   @State private var moving: MoveRequest?
   private struct MoveRequest: Identifiable { let id = UUID(); let symbols: [String] }
   private var selected: String? { model.prefs.selectedGroupID ?? model.prefs.groups.first?.id }

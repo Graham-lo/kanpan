@@ -79,6 +79,11 @@ extension Prefs: Codable {
     case adaptiveIndicators, compactValues, portraitHeight, hiddenOutputs, rsiUpper, rsiLower
     case overlays, subs, params, subHeights, subHeightOverrides
     case apiHost, streamHost, smartMarketRoute, routePolicy
+    // 他在各页上摆出来的样子。全是加法加进来的新键，老存档里没有就退默认值。
+    case favoritesSort, favoritesAscending, favoritesAmount, favoritesSparkline, favoritesExpanded
+    case sectorMarket, sectorWindow, sectorSort
+    case drawToolGroup, lastDrawTool
+    case replaySpeed, reviewSearchScope
   }
 
   func encode(to encoder: Encoder) throws {
@@ -131,6 +136,18 @@ extension Prefs: Codable {
     try c.encode(streamHost, forKey: .streamHost)
     try c.encode(smartMarketRoute, forKey: .smartMarketRoute)
     try c.encode(routePolicy.rawValue, forKey: .routePolicy)
+    try c.encode(favoritesSort, forKey: .favoritesSort)
+    try c.encode(favoritesAscending, forKey: .favoritesAscending)
+    try c.encode(favoritesAmount, forKey: .favoritesAmount)
+    try c.encode(favoritesSparkline, forKey: .favoritesSparkline)
+    try c.encode(favoritesExpanded.sorted(), forKey: .favoritesExpanded)
+    try c.encode(sectorMarket.rawValue, forKey: .sectorMarket)
+    try c.encode(sectorWindow.rawValue, forKey: .sectorWindow)
+    try c.encode(sectorSort, forKey: .sectorSort)
+    try c.encode(drawToolGroup, forKey: .drawToolGroup)
+    try c.encode(lastDrawTool, forKey: .lastDrawTool)
+    try c.encode(replaySpeed, forKey: .replaySpeed)
+    try c.encode(reviewSearchScope, forKey: .reviewSearchScope)
   }
 
   /// 历次出厂的常用行。存档里一字不差地躺着其中一串，就说明用户从没动过常用行。
@@ -267,6 +284,24 @@ extension Prefs: Codable {
       if APIHost.legacyStreams.contains(host) { streamHost = APIHost.defaultStream }
       else { streamHost = APIHost.isValid(host) ? host : APIHost.defaultStream }
     }
+
+    // 他在各页上摆出来的样子。全走 `decodeIfPresent`：老存档里一个都没有，
+    // 缺了就留在上面那份 `.defaults` 给的出厂值上。
+    if let raw = str(.favoritesSort), Prefs.favoriteSorts.contains(raw) { favoritesSort = raw }
+    if let v = bool(.favoritesAscending) { favoritesAscending = v }
+    if let v = bool(.favoritesAmount) { favoritesAmount = v }
+    if let v = bool(.favoritesSparkline) { favoritesSparkline = v }
+    // 展开的行数按自选条数走，理论上不会多，但存档里躺着一份没有上限的名单不是好事。
+    if let raw = strs(.favoritesExpanded) { favoritesExpanded = Set(raw.filter { !$0.isEmpty }.prefix(Prefs.maxExpanded)) }
+    if let raw = str(.sectorMarket), let v = SectorMarket(rawValue: raw) { sectorMarket = v }
+    if let raw = str(.sectorWindow), let v = SectorWindow(rawValue: raw) { sectorWindow = v }
+    // 排序口径那个枚举在 app target 里，这一层认不出来，只做长度这一道；
+    // 认不认得出交给读的那一边（`SectorSymbolSort(rawValue:) ?? .change`）。
+    if let raw = str(.sectorSort), !raw.isEmpty, raw.count <= 32 { sectorSort = raw }
+    if let raw = str(.drawToolGroup), raw.count <= 32 { drawToolGroup = raw }
+    if let raw = str(.lastDrawTool), raw.count <= 32 { lastDrawTool = raw }
+    if let v = (try? c.decodeIfPresent(Int.self, forKey: .replaySpeed)) ?? nil { replaySpeed = Prefs.clampSpeed(v) }
+    if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }
 
     PrefsCodec.migrate(&self, from: archived)
   }

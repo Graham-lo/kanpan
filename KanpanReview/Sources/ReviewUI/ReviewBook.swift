@@ -160,7 +160,6 @@ public struct ReviewRecordView: View {
   @State private var note = ""
   @State private var nextTime = ""
   @State private var confirmVoid = false
-  @State private var searchScope = "history"
   @Environment(\.reviewTheme) private var t
   public init(feature: ReviewFeature, id: UUID) { self.feature = feature; self.id = id }
   private var record: ReviewRecord? { feature.record(id) }
@@ -190,7 +189,12 @@ public struct ReviewRecordView: View {
             Button("在图上重温") { feature.bookOpen = false; feature.onOpenChart(record) }
             Button("找相似") {
               feature.searchRecord = id
-              feature.search(record.draft.range, cutoff: record.draft.created, scope: searchScope)
+              // 范围跟着人走，存在 `feature.searchScope` 里（宿主再落到偏好）。
+              // 这儿原来读的是本视图自己的一个 `@State searchScope`：**没有任何 UI
+              // 写它**，恒为「市场历史」，而搜索层上那颗分段控件改的是另一份状态——
+              // 用户选了「我的记录」，从这颗按钮发起的第一次搜索照样按「市场历史」找。
+              // 死字段已经删掉，两处合成一处。
+              feature.search(record.draft.range, cutoff: record.draft.created, scope: feature.searchScope)
             }
           }.listRowBackground(t.raised)
           Section("市场的答案") { Text(record.outcome.title).foregroundStyle(t.ink); if let result = record.assessment { Text(result.reason).font(.caption).foregroundStyle(t.ink3) } }

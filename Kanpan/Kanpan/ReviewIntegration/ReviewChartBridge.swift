@@ -13,7 +13,18 @@ import ReviewUI
   var proxy = ChartProxy()
   var loading = false
   var playing = false
+  /// 此刻的回放倍速（1 / 2 / 4）。
+  ///
+  /// **倍速是人的习惯，不是这条记录的属性。** 以前它从 `ReviewReplayPosition` 里读
+  /// （每条记录各存一份），于是调到 4× 点「退出」再进同一条记录回 1×，换一条记录
+  /// 也回 1×——那颗按钮改的东西没有一条路径留得住。现在初值从偏好来
+  /// （`Prefs.replaySpeed`，随账号同步），改一下就写回去；游标位置仍按记录存，
+  /// 那个是这条记录自己的属性，没跟着一起动。
   var speed = 1
+  /// 偏好里那一份倍速。宿主接上（见 `MainScreen.wireReview`）。
+  @ObservationIgnored var preferredSpeed: () -> Int = { 1 }
+  /// 倍速改了，写回偏好。宿主接上。
+  @ObservationIgnored var onSpeedChange: (Int) -> Void = { _ in }
   var cursor = 0
   var replayRecord: ReviewRecord?
   var notice: String?
@@ -117,7 +128,7 @@ import ReviewUI
         bars = ordered
         base.series = BarSeries(symbol: range.symbol, interval: interval, bars: ordered)
         base.symbol = SymbolInfo(symbol: range.symbol, base: String(range.symbol.dropLast(4)), pricePrecision: base.decimals, tickSize: pow(10, -Double(base.decimals)))
-        replayBase = base; replayRecord = record; speed = feature.savedReplay(record.id)?.speed ?? 1
+        replayBase = base; replayRecord = record; speed = preferredSpeed()
         let saved = savedPosition
         cursor = max(2, ordered.lastIndex(where: { Self.closeTime($0.openTime, interval: interval) <= saved }) ?? 2)
         proxy = ChartProxy(); mode = .replay; updateReplay(feature: feature); loading = false
@@ -128,6 +139,11 @@ import ReviewUI
     var draft = ReviewDraft(range: match.range, reference: 1, high: 1, low: 1, now: cutoff)
     draft.rule.expires = cutoff
     open(ReviewRecord(draft: draft), feature: feature, live: live, hosts: hosts, cutoff: cutoff)
+  }
+  /// 回放条上那颗倍速按钮：1× → 2× → 4× → 1×。写回偏好，跟着人走。
+  func cycleSpeed() {
+    speed = speed == 4 ? 1 : speed * 2
+    onSpeedChange(speed)
   }
   func step(_ amount: Int, feature: ReviewFeature) {
     if amount > 0 && cursor >= bars.count - 2 { loadReplayPage(forward: true, feature: feature) }

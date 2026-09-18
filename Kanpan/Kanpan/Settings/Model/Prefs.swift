@@ -115,6 +115,57 @@ struct Prefs: Sendable, Equatable {
   /// 没登录就落在本机的访客档案里；`PrefsStore` 再把它镜像给 `MarketRoutePolicyStore`。
   var routePolicy: MarketRoutePolicy = .direct
 
+  // ------------------------------------------------ 他在各页上摆出来的样子
+  //
+  // 这一节全是「用户用手改出来的习惯」，不属于四个设置面板，但和皮肤、副图高度
+  // 完全是同一等级的东西。以前它们要么是纯 `@State`（切一次页签就没了），要么是
+  // 裸 `@AppStorage`（跟着这台机器走：换个账号还在，换台设备又不在）。
+  //
+  // 判据只有一条：**这是他改出来的习惯，还是这个对象自己的属性。** 自选表按什么
+  // 排、板块看今日还是 5 日、上次拿的哪把画线工具、回放几倍速，全是前者，所以
+  // 一律搬进这里跟着人走——每一项都同时进了 `PersonalSyncCodec.fields`，
+  // 一个都不在 `keepDeviceFields` 里（它们都不是「这台手机的属性」）。
+
+  /// 自选表的排序口径：`custom`（自选顺序）/ `name` / `price` / `change` / `volume`。
+  var favoritesSort: String = "custom"
+  /// 排序方向。`custom` 那一档用不上它，但仍然记着——换回某个口径时接着上次的方向。
+  var favoritesAscending: Bool = false
+  /// 涨跌那一列看涨跌额还是涨跌幅。
+  var favoritesAmount: Bool = false
+  /// 行尾那条迷你走势线。默认不画，想看的人在「…」里自己打开。
+  var favoritesSparkline: Bool = false
+  /// 展开着行详情的那几个品种。
+  var favoritesExpanded: Set<String> = []
+
+  /// 板块页停在哪个市场（加密 / 美股）。
+  var sectorMarket: SectorMarket = .crypto
+  /// 板块页上**他点的那一档**窗口：今日 / 5 日。
+  ///
+  /// ⚠️ 只存他点的那一档。真正画出来的那一档是派生值——5 日数据没齐时页面就地退回
+  /// 今日，而那一刻「今日 / 5 日」的切换条整条都不画。把那个降级结果回写到这儿，
+  /// 等于在一个当时根本没有入口的页面上永久改掉了他的选择，数据齐了也回不来。
+  var sectorWindow: SectorWindow = .today
+  /// 板块里那张品种列表的排序口径（`SectorSymbolSort` 的 rawValue）。
+  /// 存字符串不存枚举：那个枚举住在 app target 里，这一层（`KanpanSettings`）看不见它。
+  var sectorSort: String = "change"
+
+  /// 「绘图」面板上次停在哪个分类。空串 = 还没挑过，按出厂第一个分类开。
+  /// 存回来的分类可能已经不在了（收藏清空「收藏」那一格就没了），
+  /// 由 `DrawingToolPicker` 里既有的那条兜底接住。
+  var drawToolGroup: String = ""
+  /// 最近用过的那把画线工具（`Drawing.Kind` 的 rawValue），用来在工具面板上预选高亮。
+  ///
+  /// 它**不是**「此刻正举着笔」：换品种要把待画状态清掉（`ChartView+Drawing.setDrawings`
+  /// 里那行 `d.tool = nil` 保持不动），冷启动更不许一进来就处于待画状态。
+  /// 这儿记的只是「上次用的是哪把」这个习惯。
+  var lastDrawTool: String = ""
+
+  /// 回放倍速。**是人的习惯，不是这条记录的属性**——调到 4× 退出去，再进另一条记录
+  /// 也该还是 4×。游标位置按记录存（`ReviewReplayPosition.cursor`），那个不跟着人走。
+  var replaySpeed: Int = 1
+  /// 「找相似」的搜索范围：`history`（市场历史）/ `private`（我的记录）。
+  var reviewSearchScope: String = "history"
+
   init() {}
 
   /// 全新安装就是这一份（A6.4「首次安装即如此」）。
@@ -126,6 +177,19 @@ struct Prefs: Sendable, Equatable {
   /// 常用行最多几档（§10.6）。周期条右端从四颗药丸减到两颗之后腾出了位置，
   /// 上限跟着从 8 抬到 10——排不下的那几档会在右边淡出去，滑一下就到。
   static let maxQuick = 10
+
+  /// 自选表认得的排序口径。存档里写着别的（降级回旧版本、手改存档）就退回 `custom`。
+  static let favoriteSorts: Set<String> = ["custom", "name", "price", "change", "volume"]
+
+  /// 「找相似」认得的两档范围。
+  static let searchScopes: Set<String> = ["history", "private"]
+
+  /// 展开着的自选行最多记多少个。这份名单跟着自选条数走，正常情况下远小于它；
+  /// 上限只是别让手改过的存档把一份无限长的名单带进来。
+  static let maxExpanded = 500
+
+  /// 回放倍速只有 1 / 2 / 4 三档（`ReviewReplayControls` 上那颗按钮就是这么转的）。
+  static func clampSpeed(_ value: Int) -> Int { [1, 2, 4].contains(value) ? value : 1 }
 
   /// 根间距存进档案之前夹一道。
   ///

@@ -105,16 +105,23 @@ struct SectorSymbolList: View {
   /// 这个板块的 20 日中位数。只在 5 日那一档、且真有 20 日数据时才有值。
   var medianD20: Double?
   var symbolForBase: (String) -> String
+  /// 这张列表按什么排，存在哪。见 `sort`。
+  var store: PrefsStore
   var onBack: () -> Void
   /// 点中一行：交出完整 symbol。
   var onPick: (String) -> Void
 
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @AppStorage("sector.sort") private var sortID = SectorSymbolSort.change.rawValue
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
-  private var sort: SectorSymbolSort { SectorSymbolSort(rawValue: sortID) ?? .change }
+  /// 这张列表按什么排。原来是裸 `@AppStorage("sector.sort")`，跟着这台机器走；
+  /// 2026-09-19 按「用手改过的状态跟着人走」搬进 `Prefs.sectorSort`，随账号同步。
+  /// 认不出的字面量（降级回旧版本、手改存档）退回出厂的「涨跌幅」。
+  private var sort: SectorSymbolSort {
+    get { SectorSymbolSort(rawValue: store.prefs.sectorSort) ?? .change }
+    nonmutating set { store.update { $0.sectorSort = newValue.rawValue } }
+  }
 
   var body: some View {
     let rows = SectorSymbolRow.build(members: members, quotes: quotes,
@@ -204,7 +211,7 @@ struct SectorSymbolList: View {
 
   private func sortChip(_ value: SectorSymbolSort) -> some View {
     let on = sort == value
-    return Button { sortID = value.rawValue } label: {
+    return Button { sort = value } label: {
       Text(value.title).font(.system(size: 11.5)).tracking(0.23)
         .foregroundStyle(on ? theme.ink : theme.ink3)
         .padding(.horizontal, 10).frame(height: 25)

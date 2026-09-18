@@ -5,14 +5,13 @@ public struct ReviewSearchView: View {
   @Bindable var feature: ReviewFeature
   public var range: ReviewRange
   public var cutoff: Int64
-  @State private var scope = "history"
   @Environment(\.reviewTheme) private var t
   @Environment(\.dismiss) private var dismiss
   public init(feature: ReviewFeature, range: ReviewRange, cutoff: Int64) { self.feature = feature; self.range = range; self.cutoff = cutoff }
   public var body: some View {
     NavigationStack {
       VStack {
-        Picker("范围", selection: $scope) { Text("市场历史").tag("history"); Text("我的记录").tag("private") }.pickerStyle(.segmented).padding()
+        Picker("范围", selection: $feature.searchScope) { Text("市场历史").tag("history"); Text("我的记录").tag("private") }.pickerStyle(.segmented).padding()
         if feature.searching && feature.matches.isEmpty {
           VStack(spacing: 16) { ProgressView(feature.searchProgress); Button("取消") { feature.cancelSearch(); dismiss() } }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -26,7 +25,7 @@ public struct ReviewSearchView: View {
         }
         else if let error = feature.searchError {
           ContentUnavailableView { Label(error, systemImage: "magnifyingglass") } actions: {
-            Button("重试") { feature.search(range, cutoff: cutoff, scope: scope) }
+            Button("重试") { feature.search(range, cutoff: cutoff, scope: feature.searchScope) }
           }
         } else if feature.matches.isEmpty { ContentUnavailableView("没有很像的区间", systemImage: "magnifyingglass") }
         else {
@@ -66,7 +65,7 @@ public struct ReviewSearchView: View {
               .accessibilityIdentifier("review.search.back")
           }
         }
-        .onChange(of: scope) { _, value in feature.search(range, cutoff: cutoff, scope: value) }
+        .onChange(of: feature.searchScope) { _, value in feature.search(range, cutoff: cutoff, scope: value) }
         .onDisappear { feature.cancelSearch() }
     }
     .tint(t.accent)

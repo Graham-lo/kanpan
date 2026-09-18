@@ -14,11 +14,27 @@ import SwiftUI
 /// 标题和关闭都画在里面——两种呈现方式下长得一模一样。
 struct DrawingToolPicker: View {
   @ObservedObject var controller: DrawingController
+  /// 「上次停在哪个分类」「上次用的是哪把工具」存在哪。见 `group` 和 `tile(_:)`。
+  var store: PrefsStore
   var onClose: () -> Void
   @Environment(\.panelTheme) private var theme
   @Environment(\.displayScale) private var displayScale
   @State private var query = ""
-  @State private var group = Drawing.Kind.groups.first ?? ""
+
+  /// 上次停在哪个分类。
+  ///
+  /// 原来是纯 `@State`，面板每关一次就回到第一个分类——常用「斐波那契」的人每次
+  /// 开面板都得先再点一次分类。按「他用手改过的状态跟着人走」，2026-09-19 搬进
+  /// `Prefs.drawToolGroup`，随账号同步。空串 = 还没挑过，按出厂第一个分类开；
+  /// 存回来的分类要是已经不在了（收藏清空了，「收藏」那一格就没了），
+  /// 走 `body` 里 `onAppear` 那条既有的兜底。
+  private var group: String {
+    get {
+      let saved = store.prefs.drawToolGroup
+      return saved.isEmpty ? (Drawing.Kind.groups.first ?? "") : saved
+    }
+    nonmutating set { store.update { $0.drawToolGroup = newValue } }
+  }
 
   /// 收藏排在分类前面，和竖栏那一截同一个道理：用户自己挑出来的那几把最该先够到。
   private var tabs: [String] {
@@ -117,7 +133,13 @@ struct DrawingToolPicker: View {
   /// 一格：图形在上、全名在下。名字写全不缩写——三十多把工具里靠「斐扩」认线太费劲，
   /// 短名留给竖屏那排一眼扫过去的 chip。右上角那颗星就是收藏开关，按一下不关面板。
   private func tile(_ kind: Drawing.Kind) -> some View {
+    // 手上正举着的那把优先；空着手的时候把「上次用的那把」预选高亮出来。
+    //
+    // 这两件事必须分清：**待画状态**换品种就该清掉（`ChartView+Drawing.setDrawings`
+    // 里那行 `d.tool = nil` 保持不动），冷启动更不许一进来就举着笔；而**上次用的是
+    // 哪把**是习惯，该记住并跨启动保留，只体现在这一格的高亮上（见 `Prefs.lastDrawTool`）。
     let picked = controller.tool == kind
+      || (controller.tool == nil && store.prefs.lastDrawTool == kind.rawValue)
     let fav = controller.preferences.favorites.contains(kind)
     return Button { controller.pick(kind) } label: {
       VStack(spacing: 8) {

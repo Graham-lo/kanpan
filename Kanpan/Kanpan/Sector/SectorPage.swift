@@ -29,17 +29,14 @@ struct SectorPage: View {
   /// 但开行情页要的是 `BTCUSDT` 这样的全名。默认按 USDT 本位拼，宿主手里有品种表，
   /// 传一个照表查的实现能把 USDC 本位那几个也认对。
   var symbolForBase: (String) -> String = { $0 + "USDT" }
+  /// 这一页上「他摆出来的样子」存在哪：停在哪个市场、看今日还是 5 日，
+  /// 以及下钻那层品种列表按什么排。
+  var store: PrefsStore
   /// 点中一行品种：交出完整 symbol（如 `BTCUSDT`），由 `MainScreen` 切过去。
   var onPickSymbol: (String) -> Void
 
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  /// 停在哪个市场记在本机——这是「上次看到哪儿」，不是需要跟账号走的偏好。
-  @AppStorage("sector.market") private var marketID = SectorMarket.crypto.rawValue
-  /// 看今日还是看 5 日。只有这两档（`kanpan-sector-page-no-basis-picker`），
-  /// 记在本机。停在 5 日的人切到一个没有历史的市场时页面会静默退回今日，
-  /// **但不改这个偏好**——那个市场有了历史，或者他切回来，5 日自己就回来了。
-  @AppStorage("sector.window") private var windowID = SectorWindow.today.rawValue
   /// 压在气泡页上面的那几层。空 = 只有球场。最多两层（全部板块 → 某板块的品种列表）。
   ///
   /// 它由宿主（`MainScreen`）持有：底栏是常驻标签栏，这一页每切走一次就整个重建，
@@ -60,9 +57,18 @@ struct SectorPage: View {
   private final class ScaleMemo { var values: [String: Double] = [:] }
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
-  private var market: SectorMarket { SectorMarket(rawValue: marketID) ?? .crypto }
-  /// 用户选的那一档。这个市场有没有这一档是另一回事，见 `snapshot()`。
-  private var preferredWindow: SectorWindow { SectorWindow(rawValue: windowID) ?? .today }
+  /// 停在哪个市场。
+  ///
+  /// 这两项原来是裸 `@AppStorage`，注释写的是「记在本机——这是『上次看到哪儿』，
+  /// 不是需要跟账号走的偏好」。**2026-09-19 推翻**：判据是「这是他改出来的习惯，
+  /// 还是这个对象自己的属性」，「我看的是加密不是美股」「我看 5 日不看今日」都是
+  /// 前者。跟着机器走的后果是两头都反了——换台设备登同一个账号全回出厂值，
+  /// 同一台机器上换个人登进来又还停在上一个人看的那一档。现在进 `Prefs`
+  /// （`sectorMarket` / `sectorWindow`），随账号同步，未登录记在访客档案。
+  private var market: SectorMarket { store.prefs.sectorMarket }
+  /// 用户选的那一档。这个市场有没有这一档是另一回事，见 `snapshot()`——
+  /// 那一行算出来的是**当前真正在显示的那档**，是取数结果的派生值，不许回写到这儿。
+  private var preferredWindow: SectorWindow { store.prefs.sectorWindow }
 
   // MARK: - 口径
 
@@ -221,7 +227,7 @@ struct SectorPage: View {
   }
 
   private func windowChip(_ value: SectorWindow, _ title: String, on: Bool) -> some View {
-    Button { windowID = value.rawValue } label: {
+    Button { store.update { $0.sectorWindow = value } } label: {
       Text(title).font(.system(size: 11.5)).tracking(0.23)
         .foregroundStyle(on ? theme.ink : theme.ink3)
         .padding(.horizontal, 10).frame(height: 25)
@@ -243,7 +249,7 @@ struct SectorPage: View {
 
   /// 换市场。球场和「全部板块」那张清单共用这一段。
   private func switchMarket(_ value: SectorMarket) {
-    marketID = value.rawValue
+    store.update { $0.sectorMarket = value }
     // 换市场就是换一整套尺子，上一档的分母不能带过去。
     scaleMemo.values.removeAll()
     // 人在「全部板块」里换市场，是想看另一个市场的那张清单，不是想被送回球场；
@@ -281,7 +287,7 @@ struct SectorPage: View {
         : nil
       SectorSymbolList(stat: stat, members: members, quotes: feed.quotes,
                        window: snap.window, history: snap.history, medianD20: d20,
-                       symbolForBase: symbolForBase,
+                       symbolForBase: symbolForBase, store: store,
                        onBack: pop, onPick: onPickSymbol)
     } else {
       Color.clear.onAppear { pop() }

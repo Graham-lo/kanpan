@@ -29,6 +29,16 @@ import ReviewData
   public var statisticsError: String?
   public var tab = "todo"
   public var replayPosition: ReviewReplayPosition?
+  /// 「找相似」在哪个范围里找：`history`（市场历史）/ `private`（我的记录）。
+  ///
+  /// 以前这是 `ReviewSearchView` 自己的一个 `@State`，每呈现一次就回到「市场历史」；
+  /// `ReviewRecordView` 里还另有一个同名 `@State`，没有任何 UI 写它，却被「找相似」
+  /// 那颗按钮拿去发起第一次搜索。两处合成这一处：范围是人的习惯，不是某条记录的属性。
+  ///
+  /// 这个包看不见 app 的 `Prefs`，所以落盘交给宿主：`MainScreen` 把它和
+  /// `Prefs.reviewSearchScope`（随账号同步）两头对接——进来时灌初值，
+  /// 改了就写回去，云端换了一份也照样灌回来。
+  public var searchScope = "history"
   public var onOpenChart: (ReviewRecord) -> Void = { _ in }
   public var onOpenMatch: (ReviewMatch, Int64) -> Void = { _, _ in }
   public var onCapture: () -> Void = {}
