@@ -220,7 +220,10 @@ extension Prefs: Codable {
     if let raw = str(.apiHost) { apiHost = APIHost.sanitize(raw) }
     if let raw = str(.streamHost) {
       let host = APIHost.normalize(raw)
-      streamHost = APIHost.isValid(host) ? host : APIHost.defaultStream
+      // 存过旧推送域名的设备直接迁到新默认值：那几台要么已经不发成交/K 线，要么
+      // 推的是测试网数据，留着等于让老用户永远看着一张不动的图。手动改过别的域名的不动。
+      if APIHost.legacyStreams.contains(host) { streamHost = APIHost.defaultStream }
+      else { streamHost = APIHost.isValid(host) ? host : APIHost.defaultStream }
     }
   }
 

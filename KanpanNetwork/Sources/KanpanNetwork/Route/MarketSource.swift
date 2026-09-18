@@ -260,22 +260,23 @@ public struct SourceSocketFactory: WSSocketFactory {
   let source: MarketSource
   let hosts: BinanceHosts
   let factory: any WSSocketFactory
-  /// 币安的 WS 也有直连（`fstream.binance.com`）与网关（`streamFallbacks`，
+  /// 币安的 WS 也有直连（`hosts.stream`，默认 `dstream.binance.me`）与网关（`streamFallbacks`，
   /// 就是那两台 VPS）两条路，用户选了哪条就只拨哪条；OKX 只有网关这一条路，不受影响。
   let policy: MarketRoutePolicy
+  let log: FeedLog
   public init(source: MarketSource, hosts: BinanceHosts, factory: any WSSocketFactory = URLSessionSocketFactory(),
-              policy: MarketRoutePolicy = .direct) {
-    self.source = source; self.hosts = hosts; self.factory = factory; self.policy = policy
+              policy: MarketRoutePolicy = .direct, log: FeedLog = .silent) {
+    self.source = source; self.hosts = hosts; self.factory = factory; self.policy = policy; self.log = log
   }
   public func connect(to url: URL) async throws -> any WSSocket {
     if source == .binance {
       switch policy {
       case .direct:
         // 不带退路：只连币安自己的域名。
-        return try await MarketSocketRouter(factory: factory, fallbacks: []).connect(to: url)
+        return try await MarketSocketRouter(factory: factory, fallbacks: [], log: log).connect(to: url)
       case .gateway:
         // 把首选也换成网关，`MarketSocketRouter` 才不会仍旧把直连塞进候选里。
-        // `streamFallbacks` 里可能混着直连域名本身（app 侧把 `fstream.binance.com`
+        // `streamFallbacks` 里可能混着直连域名本身（app 侧把 `APIHost.defaultStream`
         // 也列在第一位），先把它剔掉，剩下的才是真正的网关。
         let direct = [hosts.stream.lowercased(), (url.host ?? "").lowercased()]
         let gateways = hosts.streamFallbacks.filter { host in
@@ -289,16 +290,18 @@ public struct SourceSocketFactory: WSSocketFactory {
           throw FeedError.badResponse("行情服务暂不可用")
         }
         parts.host = name; parts.port = endpoint.port
+        // 网关的组合流挂在它自己的 `/market/stream` 上，不是币安的 `/stream`。
+        parts.path = "/market/stream"
         guard let target = parts.url else { throw FeedError.badResponse("行情地址无效") }
         return try await MarketSocketRouter(factory: factory,
-                                            fallbacks: Array(gateways.dropFirst())).connect(to: target)
+                                            fallbacks: Array(gateways.dropFirst()), log: log).connect(to: target)
       }
     }
     guard let first = hosts.oiProxies.first, var parts = URLComponents(string: "wss://" + first),
           parts.host != nil, parts.user == nil, parts.password == nil else { throw FeedError.badResponse("行情服务暂不可用") }
     parts.path = "/market/okx/stream"; parts.queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
     guard let target = parts.url else { throw FeedError.badResponse("行情地址无效") }
-    return try await MarketSocketRouter(factory: factory, fallbacks: Array(hosts.oiProxies.dropFirst())).connect(to: target)
+    return try await MarketSocketRouter(factory: factory, fallbacks: Array(hosts.oiProxies.dropFirst()), log: log).connect(to: target)
   }
 }
 

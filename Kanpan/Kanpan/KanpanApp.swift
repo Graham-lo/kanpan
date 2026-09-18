@@ -15,6 +15,10 @@ struct KanpanApp: App {
     // 系统喊内存紧张时得有人去放 K 线缓存。通知只能在这儿听，
     // 真正要收的 `MarketModel` 在 `MainScreen` 里，中间隔一个转接。
     MemoryWarningRelay.shared.start()
+    // 只有 `KANPAN_WS_SWEEP=1` 时才动：真机上挨个拨候选推送域名，看哪条真收得到行情。
+    StreamHostProbe.runIfRequested()
+    // 开日志时每秒报一次主线程滞后：界面冻住和行情没到，日志里长得不一样。
+    MainThreadHeartbeat.startIfRequested()
   }
 
   var body: some Scene {

@@ -207,6 +207,10 @@ public actor BinanceWS {
   /// 收帧，直到断开或静默超时。
   private func pump(_ s: WSSocket) async throws {
     var lastMarketMs = await nowMs()
+    // 开 `KANPAN_LOG=1` 时每 5 秒报一次收帧量：连上了但界面不跳的时候，这一行
+    // 能立刻分清是「帧根本没来」还是「帧来了但没画出去」。
+    var frames = 0
+    var reportMs = lastMarketMs
     while !stopped, !Task.isCancelled {
       let remaining = max(1, silenceMs - (await nowMs() - lastMarketMs))
       let frame = try await withSilenceTimeout(s, timeout: remaining) { try await s.receive() }
@@ -224,6 +228,11 @@ public actor BinanceWS {
         lastMarketMs = await nowMs()
         if !gotFrame { gotFrame = true; backoff.reset() }
         continuation?.yield(.payload(payload))
+        frames += 1
+        if lastMarketMs - reportMs >= 5000 {
+          log("WS 收帧 \(frames) 条/\(Int(lastMarketMs - reportMs))ms")
+          frames = 0; reportMs = lastMarketMs
+        }
       }
     }
   }

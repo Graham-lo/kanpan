@@ -53,7 +53,7 @@ func has(_ name: String) -> Bool { CommandLine.arguments.contains(name) }
 
 let env = ProcessInfo.processInfo.environment
 let hosts = BinanceHosts(fapi: env["KANPAN_FAPI"] ?? "fapi.binance.com",
-                         stream: env["KANPAN_STREAM"] ?? "fstream.binance.com")
+                         stream: env["KANPAN_STREAM"] ?? "dstream.binance.me")
 let rest = BinanceREST(hosts: hosts, log: has("-v") ? log : .silent)
 let paths = Paths(root: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("kanpan-feed"))
 

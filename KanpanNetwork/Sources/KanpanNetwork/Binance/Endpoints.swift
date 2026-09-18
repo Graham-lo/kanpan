@@ -4,7 +4,12 @@ import Foundation
 public struct BinanceHosts: Sendable, Equatable {
   /// USDT 本位合约 REST，默认 `fapi.binance.com`。
   public var fapi: String
-  /// 组合流 WS，默认 `fstream.binance.com`。
+  /// 组合流 WS，默认 `dstream.binance.me`（生产盘，国内可直连）。
+  ///
+  /// 不是 `fstream.binance.com`：2026-09-18 实测那台只剩 `bookTicker`/`depth` 还在发，
+  /// `aggTrade`/`markPrice`/`ticker`/`kline` 整族一帧不发。也不是官方文档并列的
+  /// `stream.binancefuture.com`——那台推的是**合约测试网**的数据。选型的完整实测记录
+  /// 见 `APIHost.defaultStream`。
   public var stream: String
   /// 公开归档站，OI 的 metrics zip 在这儿。
   public var vision: String
@@ -17,7 +22,7 @@ public struct BinanceHosts: Sendable, Equatable {
   }
 
   public init(fapi: String = "fapi.binance.com",
-              stream: String = "fstream.binance.com",
+              stream: String = "dstream.binance.me",
               vision: String = "data.binance.vision",
               streamFallbacks: [String] = [], oiProxy: String? = nil, oiProxyFallbacks: [String] = []) {
     self.fapi = fapi
@@ -82,11 +87,16 @@ public struct BinanceHosts: Sendable, Equatable {
   // ------------------------------------------------------------------ WS
 
   /// 组合流。一条连接，后续靠 SUBSCRIBE / UNSUBSCRIBE 换流，不重连（§4.4）。
+  ///
+  /// 路径是币安自己的 `/stream`（§4.1）。网关那条路上的 `/market/stream` 是 VPS
+  /// 自己的路由（`Backend/kanpan-gateway/stream_hub.py`），由 `SourceSocketFactory`
+  /// 在换主机的时候一并改掉——不能拿它当这里的默认值，否则直连会拨到币安根本
+  /// 没有的路径上，握手当场被拒，WS 永远连不上。
   public func combinedStream(_ streams: [String]) -> URL {
     var c = URLComponents()
     c.scheme = "wss"
     c.host = stream
-    c.path = "/market/stream"
+    c.path = "/stream"
     if !streams.isEmpty { c.queryItems = [URLQueryItem(name: "streams", value: streams.joined(separator: "/"))] }
     return c.url!
   }

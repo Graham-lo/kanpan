@@ -150,7 +150,7 @@ public actor RoutedMarketFeed {
     let rest = next == .binance ? primary : backup
     var directHosts = hosts; directHosts.streamFallbacks = []
     let ws = BinanceWS(hosts: directHosts,
-                       factory: SourceSocketFactory(source: next, hosts: hosts, factory: sockets, policy: policy),
+                       factory: SourceSocketFactory(source: next, hosts: hosts, factory: sockets, policy: policy, log: log),
                        silenceMs: 15_000, log: log)
     let sourcePaths = next == .binance ? paths : Paths(root: paths.root.appendingPathComponent("sources/okx"))
     // 首屏要多深，两条线路不一样：

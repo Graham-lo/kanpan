@@ -83,6 +83,11 @@ public struct MarketSocketRouter: WSSocketFactory {
       return PrefetchedMarketSocket(socket: socket, first: frame)
     } catch {
       await socket.cancel()
+      // 失败原因必须留一行：只报「所有行情线路均未收到有效数据」的话，
+      // 握手被拒（路径不对）和 TLS 被掐（域名不通）在日志里长得一模一样。
+      if !(error is CancellationError) {
+        log("WS拨号失败 \(url.host ?? "")\(url.path) \(Int(-start.timeIntervalSinceNow * 1000))ms：\(error)")
+      }
       throw error
     }
   }

@@ -161,17 +161,18 @@ struct MarketRoutePolicyTests {
   /// 记下每台被拨过的 WS 主机，然后一律连不上——只看路由把谁列进了候选。
   private final class SocketSpy: WSSocketFactory, @unchecked Sendable {
     private let lock = NSLock()
-    private var dialed: [String] = []
-    var hosts: [String] { lock.withLock { dialed } }
+    private var dialed: [URL] = []
+    var hosts: [String] { lock.withLock { dialed.map { $0.host! } } }
+    var paths: [String] { lock.withLock { dialed.map(\.path) } }
     func connect(to url: URL) async throws -> WSSocket {
-      lock.withLock { dialed.append(url.host!) }
+      lock.withLock { dialed.append(url) }
       throw FeedError.badResponse("测试：WS 不可用")
     }
   }
 
-  private static let stream = URL(string: "wss://fstream.binance.com/stream?streams=btcusdt@kline_1m")!
+  private static let stream = URL(string: "wss://dstream.binance.me/stream?streams=btcusdt@kline_1m")!
   /// app 侧 `MainScreen.hosts` 就是这么填的：直连域名自己也排在 fallbacks 第一位。
-  private static let appHosts = BinanceHosts(streamFallbacks: ["fstream.binance.com", "gw1.test", "gw2.test:8443"])
+  private static let appHosts = BinanceHosts(streamFallbacks: ["dstream.binance.me", "gw1.test", "gw2.test:8443"])
 
   @Test("网关：WS 只拨网关，直连域名混在 fallbacks 里也不算")
   func gatewaySocketsSkipDirect() async {
@@ -179,8 +180,10 @@ struct MarketRoutePolicyTests {
     let factory = SourceSocketFactory(source: .binance, hosts: Self.appHosts, factory: spy, policy: .gateway)
     _ = try? await factory.connect(to: Self.stream)
     let dialed = Set(spy.hosts)
-    #expect(!dialed.contains("fstream.binance.com"))
+    #expect(!dialed.contains("dstream.binance.me"))
     #expect(dialed == ["gw1.test", "gw2.test"])
+    // 网关的组合流挂在它自己的路由上。
+    #expect(Set(spy.paths) == ["/market/stream"])
   }
 
   @Test("直连：WS 只拨币安自己的域名")
@@ -188,7 +191,9 @@ struct MarketRoutePolicyTests {
     let spy = SocketSpy()
     let factory = SourceSocketFactory(source: .binance, hosts: Self.appHosts, factory: spy, policy: .direct)
     _ = try? await factory.connect(to: Self.stream)
-    #expect(spy.hosts == ["fstream.binance.com"])
+    #expect(spy.hosts == ["dstream.binance.me"])
+    // 直连不许改路径：币安只有 `/stream`，拨到 `/market/stream` 会被当场拒掉。
+    #expect(spy.paths == ["/stream"])
   }
 
   // ---------------------------------------------------------------- 运行中换档
