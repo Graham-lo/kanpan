@@ -49,6 +49,9 @@ fn validate(d:&NativeDraft,now:i64)->Result<()> {
   if v["version"]!=1 || v.as_object().is_none_or(|o|o.keys().any(|k|k!="version"&&k!="fields")) {return Err(ApiError::bad("invalid_chart_snapshot"))}
   let fields:BTreeMap<String,Value>=parse(v["fields"].clone())?;
   let op=crate::sync::Operation{id:Uuid::nil(),collection:"settings".into(),object_id:"prefs".into(),device_id:Uuid::nil(),base_revision:0,generation:0,timestamp:now,logical:0,action:"patch".into(),fields,import_batch:None};op.validate()?;
+  // A snapshot is stored whole and never merged, so there is no receipt to report a dropped
+  // field on: an unfamiliar key here is refused outright rather than silently kept.
+  if !op.unknown_fields().is_empty() {return Err(ApiError::bad("invalid_chart_snapshot"))}
  }
  if let Some(encoded)=&d.drawing_snapshot {
   let bytes=STANDARD.decode(encoded).map_err(|_|ApiError::bad("invalid_drawing_snapshot"))?;

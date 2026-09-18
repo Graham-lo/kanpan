@@ -32,23 +32,48 @@ pub struct Object {
 }
 const COLLECTIONS:[&str;5]=["settings","drawingPreferences","drawings","favorites","groups"];
 fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::bad("invalid_collection"))}else{Ok(())}}
-fn valid_field(c:&str,path:&str)->bool {
- if path.is_empty() || path.len()>160 || path.split('/').any(|p|p.is_empty()||p==".."||p.starts_with('_')) {return false}
- let root=path.split('/').next().unwrap_or_default();
- match c {
- "settings"=>["overlays","subs","subHeights","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange","portraitHeight","quickIntervals","theme","ambientTheme","styleID","redUp","priceMode","timeZone","magnet","countdown","lastLine","sinceChange","showDrawings","candleKind","gridChoice","bodyChoice","viewAnchor","priceBias","dataDisplay","crossPrice","allowMainInversion","allowSubInversion","adaptiveIndicators","compactValues","changeBasis"].contains(&root),
- "drawingPreferences"=>["favorites","magnet","continuous","styles"].contains(&root),
- "drawings"=>["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created"].contains(&root),
- "favorites"=>["symbol","market","venue","groupId","order","pinned","alerts"].contains(&root),
- "groups"=>["name","order","members"].contains(&root),_=>false
- }
+// One enumerable allowlist per collection, mirroring what iOS actually sends.
+//
+// `settings` mirrors `Prefs.syncedFieldNames` (Kanpan/Settings/Model/SettingsStamp.swift),
+// with `rsiRange` standing in for the `rsiLower`/`rsiUpper` pair the client merges, plus
+// `styleID`, which only old archives still carry. Adding a synced field on iOS means adding
+// a name here AND a value rule in `sync_validation::field`; forget the rule and the value is
+// silently refused. `the_allowlist_is_what_ios_sends` fails loudly when the lists drift.
+pub const SETTINGS_FIELDS:[&str;52]=[
+ "overlays","subs","subHeights","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange",
+ "portraitHeight","quickIntervals","theme","skin","ambientTheme","styleID","redUp","priceMode","timeZone",
+ "magnet","countdown","lastLine","sinceChange","showDrawings","candleKind","gridChoice","bodyChoice",
+ "viewAnchor","priceBias","dataDisplay","crossPrice","allowMainInversion","allowSubInversion",
+ "adaptiveIndicators","compactValues","changeBasis","barSpacing","mainInverted","subInverted","interval",
+ "keepAwake","routePolicy",
+ // How the person left each page looking: sort order, which market, which tool.
+ "favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline","favoritesExpanded",
+ "sectorMarket","sectorWindow","sectorSort","drawToolGroup","lastDrawTool","replaySpeed","reviewSearchScope",
+];
+pub const DRAWING_PREFERENCE_FIELDS:[&str;4]=["favorites","magnet","continuous","styles"];
+// `text` is the note/callout/flag caption; `created` only old archives carry.
+pub const DRAWING_FIELDS:[&str;14]=["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"];
+pub const FAVORITE_FIELDS:[&str;7]=["symbol","market","venue","groupId","order","pinned","alerts"];
+pub const GROUP_FIELDS:[&str;3]=["name","order","members"];
+pub fn allowlist(c:&str)->&'static [&'static str] {
+ match c {"settings"=>&SETTINGS_FIELDS,"drawingPreferences"=>&DRAWING_PREFERENCE_FIELDS,"drawings"=>&DRAWING_FIELDS,"favorites"=>&FAVORITE_FIELDS,"groups"=>&GROUP_FIELDS,_=>&[]}
 }
+// Malformed paths are rejected; unknown-but-well-formed names are only dropped.
+fn valid_path(path:&str)->bool {!path.is_empty() && path.len()<=160 && !path.split('/').any(|p|p.is_empty()||p==".."||p.starts_with('_'))}
+fn known_field(c:&str,path:&str)->bool {allowlist(c).contains(&path.split('/').next().unwrap_or_default())}
 impl Operation {
+ /// Well-formed paths this server has never heard of. A newer client always runs
+ /// ahead of a deployed server, and rejecting the whole operation left it in the
+ /// client's queue forever, so the field is dropped and reported back instead.
+ pub fn unknown_fields(&self)->Vec<String> {
+  self.fields.keys().filter(|k|!known_field(&self.collection,k)).cloned().collect()
+ }
  pub fn validate(&self)->Result<()> {
   collection(&self.collection)?;
   if self.object_id.is_empty()||self.object_id.len()>180||self.base_revision<0||self.generation<0||self.logical>i64::MAX as u64||self.timestamp<0
    || !matches!(self.action.as_str(),"patch"|"delete"|"restore") || self.fields.len()>256
-   || self.fields.iter().any(|(k,v)|!valid_field(&self.collection,k)||!crate::sync_validation::field(&self.collection,k,v))
+   || self.fields.keys().any(|k|!valid_path(k))
+   || self.fields.iter().any(|(k,v)|known_field(&self.collection,k)&&!crate::sync_validation::field(&self.collection,k,v))
    || self.fields.values().any(|v|serde_json::to_vec(v).map_or(true,|s|s.len()>64_000)) {return Err(ApiError::bad("invalid_operation"))}
   Ok(())
  }
@@ -64,6 +89,7 @@ pub fn merge(mut object:Object,op:&Operation,now:i64)->Result<Object> {
  let next=object.revision+1;
  if !object.deleted {
   for (path,value) in &op.fields {
+   if !known_field(&op.collection,path) {continue}
    let previous=object.fields.get(path).and_then(|s|serde_json::from_value::<Stamp>(s.clone()).ok());
    if op.import_batch.is_some()&&object.body.contains_key(path) {continue}
    let stamp=Stamp{revision:next,timestamp:op.timestamp.min(now+300_000),logical:op.logical,device_id:op.device_id.to_string(),operation_id:op.id.to_string()};
@@ -114,7 +140,10 @@ async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Js
   sqlx::query("INSERT INTO sync_objects(user_id,collection,id,body,fields,revision,deleted,generation) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(user_id,collection,id) DO UPDATE SET body=excluded.body,fields=excluded.fields,revision=excluded.revision,deleted=excluded.deleted,generation=excluded.generation,changed_at=now()")
    .bind(i.user).bind(&next.collection).bind(&next.id).bind(json!(next.body)).bind(json!(next.fields)).bind(next.revision).bind(next.deleted).bind(next.generation).execute(&mut *tx).await?;
   let cursor:i64=sqlx::query_scalar("INSERT INTO sync_changes(user_id,collection,object_id,revision,deleted) VALUES($1,$2,$3,$4,$5) RETURNING sequence").bind(i.user).bind(&next.collection).bind(&next.id).bind(next.revision).bind(next.deleted).fetch_one(&mut *tx).await?;
-  let result=json!({"operationId":op.id,"object":next,"cursor":cursor});
+  // `droppedFields` is always present, so a client can tell "this server does not
+  // report drops" (field absent) from "nothing was dropped" (empty list). Older
+  // clients decode it as an unknown key and ignore it.
+  let result=json!({"operationId":op.id,"object":next,"cursor":cursor,"droppedFields":op.unknown_fields()});
   sqlx::query("INSERT INTO sync_operations(user_id,id,digest,result) VALUES($1,$2,$3,$4)").bind(i.user).bind(op.id).bind(hash).bind(&result).execute(&mut *tx).await?;results.push(result);
  }
  tx.commit().await?;Ok(envelope(json!({"results":results,"serverTime":Utc::now().timestamp_millis()})))
@@ -155,4 +184,101 @@ async fn changes(State(s):State<AppState>,i:Identity,Query(v):Query<Scope>)->Res
   }else{invalidations.push(json!({"collection":c,"id":id,"deleted":r.get::<bool,_>("deleted"),"revision":r.get::<i64,_>("revision")}));}
  }
  tx.commit().await?;Ok(envelope(json!({"objects":items,"invalidations":invalidations,"cursor":next,"hasMore":has_more,"serverTime":Utc::now().timestamp_millis()})))
+}
+
+#[cfg(test)]
+mod tests {
+ use super::*;
+ fn op(collection:&str,fields:&[(&str,Value)])->Operation {
+  Operation{id:Uuid::nil(),collection:collection.into(),object_id:"chart".into(),device_id:Uuid::nil(),
+   base_revision:0,generation:0,timestamp:1,logical:1,action:"patch".into(),
+   fields:fields.iter().map(|(k,v)|((*k).to_string(),v.clone())).collect(),import_batch:None}
+ }
+ fn blank(collection:&str,id:&str)->Object {
+  Object{collection:collection.into(),id:id.into(),body:BTreeMap::new(),fields:BTreeMap::new(),revision:0,deleted:false,generation:0}
+ }
+ fn applied(collection:&str,fields:&[(&str,Value)])->Object {merge(blank(collection,"chart"),&op(collection,fields),1_800_000_000_000).unwrap()}
+ /// The server cannot read Swift, so the expectation is spelled out twice on purpose:
+ /// change one copy without the other and this test says so.
+ #[test] fn the_allowlist_is_what_ios_sends() {
+  let settings=[
+   "overlays","subs","subHeights","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange",
+   "portraitHeight","quickIntervals","theme","skin","ambientTheme","styleID","redUp","priceMode","timeZone",
+   "magnet","countdown","lastLine","sinceChange","showDrawings","candleKind","gridChoice","bodyChoice",
+   "viewAnchor","priceBias","dataDisplay","crossPrice","allowMainInversion","allowSubInversion",
+   "adaptiveIndicators","compactValues","changeBasis","barSpacing","mainInverted","subInverted","interval",
+   "keepAwake","routePolicy","favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline",
+   "favoritesExpanded","sectorMarket","sectorWindow","sectorSort","drawToolGroup","lastDrawTool",
+   "replaySpeed","reviewSearchScope",
+  ];
+  let expected=[
+   ("settings",&settings[..]),
+   ("drawingPreferences",&["favorites","magnet","continuous","styles"][..]),
+   ("drawings",&["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"][..]),
+   ("favorites",&["symbol","market","venue","groupId","order","pinned","alerts"][..]),
+   ("groups",&["name","order","members"][..]),
+  ];
+  for (collection,want) in expected {
+   let (mut have,mut want)=(allowlist(collection).to_vec(),want.to_vec());
+   have.sort_unstable();want.sort_unstable();
+   assert_eq!(have,want,
+    "{collection} allowlist drifted. iOS sends `Prefs.syncedFieldNames` (settings) and \
+     `PersonalSyncCodec.drawings`/`symbols` (the rest); a field added there needs one line in \
+     sync::{{SETTINGS,DRAWING_PREFERENCE,DRAWING,FAVORITE,GROUP}}_FIELDS, one line in this \
+     expectation, and a value rule in sync_validation::field — or the setting silently never \
+     reaches the person's other device.");
+  }
+ }
+ /// The bug this whole allowlist pass is about: one pinch on the chart used to come back
+ /// 400, sit in the client's outbox and block every later preference behind it.
+ #[test] fn pinching_the_chart_now_reaches_the_server() {
+  let object=applied("settings",&[("barSpacing",json!(9.5)),("skin",json!("terra")),("interval",json!("15m"))]);
+  assert_eq!(object.body["barSpacing"],json!(9.5));
+  assert_eq!(object.body["skin"],json!("terra"));
+  assert_eq!(object.revision,1);
+ }
+ /// A newer client always runs ahead of a deployed server. The unknown name is dropped and
+ /// named in the receipt; everything else in the same operation still merges.
+ #[test] fn a_name_this_server_never_heard_of_loses_the_field_not_the_operation() {
+  let operation=op("settings",&[("barSpacing",json!(9.5)),("telepathy",json!(true))]);
+  assert!(operation.validate().is_ok());
+  assert_eq!(operation.unknown_fields(),vec!["telepathy".to_string()]);
+  let object=merge(blank("settings","chart"),&operation,1_800_000_000_000).unwrap();
+  assert_eq!(object.body["barSpacing"],json!(9.5));
+  assert!(!object.body.contains_key("telepathy"));
+  assert!(!object.fields.contains_key("telepathy"));
+ }
+ /// Unknown *names* are forgiven. Known names with impossible values are not.
+ #[test] fn a_value_that_cannot_be_right_is_still_refused() {
+  for bad in [json!(0.0),json!(4000.0),json!("wide"),json!(f64::MAX)] {
+   assert!(op("settings",&[("barSpacing",bad.clone())]).validate().is_err(),"barSpacing {bad} should be refused");
+  }
+  assert!(op("settings",&[("skin",json!("neon"))]).validate().is_err());
+  assert!(op("settings",&[("interval",json!("7h"))]).validate().is_err());
+  assert!(op("settings",&[("replaySpeed",json!(3))]).validate().is_err());
+  assert!(op("settings",&[("keepAwake",json!("yes"))]).validate().is_err());
+ }
+ #[test] fn a_malformed_path_is_still_refused() {
+  for path in ["","../secrets","params/../..","_internal","a//b",&"x".repeat(161)] {
+   assert!(op("settings",&[(path,json!(true))]).validate().is_err(),"path {path:?} should be refused");
+  }
+ }
+ #[test] fn bulk_and_oversized_payloads_are_still_refused() {
+  assert!(op("settings",&[("telepathy",json!("x".repeat(70_000)))]).validate().is_err());
+  let many:Vec<_>=(0..257).map(|i|(format!("f{i}"),json!(true))).collect();
+  let mut operation=op("settings",&[]);operation.fields=many.into_iter().collect();
+  assert!(operation.validate().is_err());
+  let mut wrong=op("settings",&[]);wrong.collection="secrets".into();
+  assert!(wrong.validate().is_err());
+  let mut action=op("settings",&[]);action.action="drop".into();
+  assert!(action.validate().is_err());
+ }
+ /// Dropping a field must not pretend the value landed: the receipt has to carry the name
+ /// so the client keeps its dirty mark and retries the value later.
+ #[test] fn a_dropped_field_keeps_its_name_in_the_receipt() {
+  let operation=op("settings",&[("telepathy",json!(true)),("moodRing",json!("blue"))]);
+  let mut named=operation.unknown_fields();named.sort();
+  assert_eq!(named,vec!["moodRing".to_string(),"telepathy".to_string()]);
+  assert!(op("settings",&[("barSpacing",json!(9.5))]).unknown_fields().is_empty());
+ }
 }
