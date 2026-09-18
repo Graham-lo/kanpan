@@ -1,0 +1,538 @@
+//! Daily closes, and the one route that reads them: `/v1/market/sector-history`.
+//!
+//! Sector strength over five and twenty days needs two numbers per contract —
+//! the close five complete UTC days ago and the close twenty complete UTC days
+//! ago — which the phone divides its live price by. That is one candle per
+//! contract per day, so this is a daily collection and a table of about seven
+//! hundred rows a day, not a streaming job.
+//!
+//! Unlike `market_meta`, which is a cache with no storage behind it, history is
+//! the whole point here: a day that is not collected is a day nobody can
+//! recover later. So it lands in PostgreSQL, in a public table with no owner
+//! and no row level security, and the served answer is a process cache in front
+//! of it — thirty kilobytes for the whole market.
+//!
+//! Like the rest of the public market surface this route carries no
+//! authentication.
+use crate::{AppState,market_meta};
+use axum::{Router,extract::State,http::{StatusCode,header},response::{IntoResponse,Response},routing::get};
+use chrono::{DateTime,Days,NaiveDate,Utc};
+use serde_json::{Value,json};
+use sqlx::PgPool;
+use std::collections::BTreeMap;
+use std::sync::{Arc,OnceLock,RwLock};
+use std::time::Duration;
+
+/// Read through the website host, never `fapi.binance.com`: both market VPS sit
+/// in the United States, where the API hosts answer 451 and the same paths
+/// served off `www.binance.com` answer 200 with production data. The reasoning
+/// and the measurement are in `market_meta.rs`, which reaches the same family
+/// of paths for open interest and prices.
+const KLINES:&str="https://www.binance.com/fapi/v1/klines";
+/// Twenty-one complete days are what the twenty-day window needs; the
+/// twenty-second is today's unfinished candle, which is dropped on arrival.
+const HISTORY_LIMIT:usize=22;
+/// One request a second across the whole process. Seven hundred contracts is
+/// then a twelve minute sweep once a day, which costs Binance less in an hour
+/// than a single chart does, and leaves the weight budget to the live routes.
+const REQUEST_GAP:Duration=Duration::from_secs(1);
+/// 429 (rate limited) and 418 (banned for ignoring 429) both mean "wait"; this
+/// is the first wait, doubled on each repeat.
+const BACKOFF:Duration=Duration::from_secs(2);
+const ATTEMPTS:u32=4;
+/// The collection starts ten minutes after midnight UTC, by which time the day
+/// Binance closed at midnight is settled.
+const RUN_MINUTE:u32=10;
+/// A failed sweep is retried within the hour rather than waited out until
+/// tomorrow: the five-day window would survive the gap, a cold table would not.
+const RETRY:Duration=Duration::from_secs(600);
+/// How long a row lives. A year is far more than the twenty-day window asks
+/// for; it is what makes the table worth keeping at all if a longer window is
+/// ever wanted, and at thirteen megabytes a year it is not worth trimming.
+const RETENTION_DAYS:u64=365;
+/// A contract that has left `exchangeInfo` keeps its history for a month. Long
+/// enough that a symbol suspended over a weekend is not thrown away, short
+/// enough that delistings do not accumulate.
+const DELISTED_GRACE_DAYS:u64=30;
+
+pub fn routes()->Router<AppState> {
+ Router::new().route("/v1/market/sector-history",get(sector_history))
+}
+
+// --------------------------------------------------------------- the calendar
+
+/// `asof` minus `back` complete UTC days. Calendar arithmetic, not milliseconds:
+/// five days before the first of March is the twenty-fourth of February in a
+/// leap year and the twenty-third in every other one, and subtracting a fixed
+/// number of seconds would get exactly one of those right.
+pub fn window_day(asof:NaiveDate,back:u64)->NaiveDate {
+ asof.checked_sub_days(Days::new(back)).unwrap_or(asof)
+}
+
+/// How long until the next collection. The next 00:10 UTC strictly after `now`,
+/// so a sweep that finishes at 00:22 waits for tomorrow rather than starting
+/// again immediately.
+pub fn until_next_run(now:DateTime<Utc>)->Duration {
+ let at=|day:NaiveDate|day.and_hms_opt(0,RUN_MINUTE,0).map(|t|t.and_utc());
+ let today=now.date_naive();
+ let next=match at(today) {
+  Some(t) if t>now=>Some(t),
+  _=>at(today.checked_add_days(Days::new(1)).unwrap_or(today)),
+ };
+ next.and_then(|t|(t-now).to_std().ok()).unwrap_or(RETRY)
+}
+
+// ----------------------------------------------------------------- the parsers
+
+fn num(v:&Value)->Option<f64> {
+ match v {Value::String(s)=>s.parse().ok(),_=>v.as_f64()}.filter(|x:&f64|x.is_finite())
+}
+
+/// The symbols worth collecting: perpetual contracts that are open for trading.
+///
+/// `exchangeInfo` also lists quarterly futures and contracts in `SETTLING`,
+/// `PENDING_TRADING` or `BREAK`. A quarterly's history belongs to a contract
+/// that expires, and a contract that is not trading has no live price for the
+/// phone to divide, so neither earns a daily request.
+pub fn perpetuals(body:&Value)->Vec<String> {
+ let Some(rows)=body["symbols"].as_array() else {return Vec::new()};
+ let mut out:Vec<String>=rows.iter().filter(|row|{
+  row["contractType"].as_str()==Some("PERPETUAL")&&row["status"].as_str()==Some("TRADING")
+ }).filter_map(|row|row["symbol"].as_str()).filter(|symbol|{
+  // The name goes into a query string; anything that is not a contract name
+  // is a row we cannot read rather than a request to make.
+  !symbol.is_empty()&&symbol.len()<=32&&symbol.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')
+ }).map(str::to_ascii_uppercase).collect();
+ out.sort_unstable();out.dedup();out
+}
+
+/// `[[openTime,open,high,low,close,volume,closeTime,quoteAssetVolume,…],…]`,
+/// oldest first, into `(UTC day, close, quote volume)`.
+///
+/// The last row is dropped unread: a daily candle asked for at 00:10 ends with
+/// the day that started ten minutes ago, whose close is whatever the price
+/// happens to be right now. Writing it would put a number in the table that
+/// changes all day, and every window that touched it would move under the
+/// phone. Only complete days are stored.
+pub fn parse_daily_closes(body:&Value)->Vec<(NaiveDate,f64,f64)> {
+ let Some(rows)=body.as_array() else {return Vec::new()};
+ let complete=rows.len().saturating_sub(1);
+ let mut out=Vec::with_capacity(complete);
+ for row in &rows[..complete] {
+  let Some(day)=row[0].as_i64().and_then(DateTime::from_timestamp_millis).map(|t|t.date_naive()) else {continue};
+  let (Some(close),Some(volume))=(num(&row[4]),num(&row[7])) else {continue};
+  if close<=0.0||volume<0.0 {continue}
+  out.push((day,close,volume));
+ }
+ // The upsert writes one statement per contract, and PostgreSQL refuses to let
+ // a single `ON CONFLICT` statement touch the same row twice. Binance does not
+ // repeat a day, but one repeated day would otherwise fail a whole contract.
+ out.dedup_by(|a,b|a.0==b.0);
+ out
+}
+
+/// The served body: every contract that has a close at one or both window
+/// starts, keyed by symbol.
+///
+/// A missing figure is an absent field, never a zero — the phone divides by it,
+/// and a zero would read as an infinite gain rather than as "no history yet".
+/// A contract with neither figure is left out of `symbols` altogether instead of
+/// appearing as an empty object.
+pub fn payload(asof:NaiveDate,rows:&[(String,NaiveDate,f64)])->Value {
+ let (five,twenty)=(window_day(asof,5),window_day(asof,20));
+ let mut symbols:BTreeMap<&str,serde_json::Map<String,Value>>=BTreeMap::new();
+ for (symbol,day,close) in rows {
+  let field=if *day==five {"c5"} else if *day==twenty {"c20"} else {continue};
+  if !close.is_finite()||*close<=0.0 {continue}
+  symbols.entry(symbol.as_str()).or_default().insert(field.to_owned(),json!(close));
+ }
+ let symbols:serde_json::Map<String,Value>=symbols.into_iter()
+  .filter(|(_,fields)|!fields.is_empty())
+  .map(|(symbol,fields)|(symbol.to_owned(),Value::Object(fields))).collect();
+ json!({"asof":asof.to_string(),"symbols":symbols})
+}
+
+// ---------------------------------------------------------------- the cache
+
+/// The whole answer, serialised once. `asof` is the day it was built for, which
+/// is how a snapshot is noticed to be yesterday's.
+pub struct Snapshot {pub asof:NaiveDate,pub body:Vec<u8>}
+fn cache()->&'static RwLock<Option<Arc<Snapshot>>> {
+ static C:OnceLock<RwLock<Option<Arc<Snapshot>>>>=OnceLock::new();
+ C.get_or_init(||RwLock::new(None))
+}
+fn stale()->Option<Arc<Snapshot>> {cache().read().unwrap_or_else(|e|e.into_inner()).clone()}
+fn cached(asof:NaiveDate)->Option<Arc<Snapshot>> {stale().filter(|s|s.asof==asof)}
+
+/// Reads the two window days out of the table and replaces the cache.
+///
+/// Called after every collection, and by the first request of a new UTC day:
+/// `asof` moves at midnight even though nothing new has been collected, because
+/// the day five days back moves with it.
+pub async fn rebuild(pool:&PgPool,asof:NaiveDate)->sqlx::Result<Arc<Snapshot>> {
+ let rows:Vec<(String,NaiveDate,f64)>=sqlx::query_as("SELECT symbol,day,close FROM daily_close WHERE day=$1 OR day=$2")
+  .bind(window_day(asof,5)).bind(window_day(asof,20)).fetch_all(pool).await?;
+ // The `{"data":…}` wrapper `crate::envelope` writes, spelled out because this
+ // route sets `Cache-Control` and so builds its own response rather than
+ // returning `Json`.
+ let body=serde_json::to_vec(&json!({"data":payload(asof,&rows)})).unwrap_or_default();
+ let snapshot=Arc::new(Snapshot{asof,body});
+ *cache().write().unwrap_or_else(|e|e.into_inner())=Some(snapshot.clone());
+ Ok(snapshot)
+}
+
+// -------------------------------------------------------------- the collection
+
+/// One request a second for the whole process, retries included. The lock is
+/// held across the wait on purpose: that is what makes the sweep serial, so two
+/// callers cannot each believe they are the one request this second.
+async fn throttle() {
+ static LAST:OnceLock<tokio::sync::Mutex<Option<tokio::time::Instant>>>=OnceLock::new();
+ let mut last=LAST.get_or_init(||tokio::sync::Mutex::new(None)).lock().await;
+ let now=tokio::time::Instant::now();
+ let earliest=last.map(|t|t+REQUEST_GAP).unwrap_or(now);
+ if earliest>now {tokio::time::sleep_until(earliest).await}
+ *last=Some(tokio::time::Instant::now());
+}
+
+/// One contract's daily candles, or nothing.
+///
+/// 429 and 418 are waited out with a doubling backoff; anything else is one
+/// contract we do not have today, which is not worth abandoning the other seven
+/// hundred for.
+async fn klines(symbol:&str)->Option<Value> {
+ let url=format!("{KLINES}?symbol={symbol}&interval=1d&limit={HISTORY_LIMIT}");
+ let mut wait=BACKOFF;
+ for _ in 0..ATTEMPTS {
+  throttle().await;
+  let reply=match market_meta::http().get(&url).send().await {
+   Ok(reply)=>reply,
+   Err(_)=>{tokio::time::sleep(wait).await;wait*=2;continue}
+  };
+  if matches!(reply.status(),StatusCode::TOO_MANY_REQUESTS|StatusCode::IM_A_TEAPOT) {
+   tracing::warn!("Daily closes: rate limited, waiting {}s",wait.as_secs());
+   tokio::time::sleep(wait).await;wait*=2;continue;
+  }
+  return reply.error_for_status().ok()?.json::<Value>().await.ok();
+ }
+ None
+}
+
+async fn upsert(pool:&PgPool,symbol:&str,bars:&[(NaiveDate,f64,f64)])->sqlx::Result<()> {
+ let days:Vec<NaiveDate>=bars.iter().map(|b|b.0).collect();
+ let closes:Vec<f64>=bars.iter().map(|b|b.1).collect();
+ let volumes:Vec<f64>=bars.iter().map(|b|b.2).collect();
+ // One statement for the contract's three weeks rather than twenty-one round
+ // trips. Re-running the day rewrites the same values, which is what makes a
+ // retried sweep free of consequence.
+ sqlx::query("INSERT INTO daily_close(symbol,day,close,quote_volume) \
+  SELECT $1,d,c,q FROM UNNEST($2::date[],$3::double precision[],$4::double precision[]) AS t(d,c,q) \
+  ON CONFLICT(symbol,day) DO UPDATE SET close=EXCLUDED.close,quote_volume=EXCLUDED.quote_volume")
+  .bind(symbol).bind(&days).bind(&closes).bind(&volumes).execute(pool).await?;
+ Ok(())
+}
+
+/// Retention. Rows older than a year go unconditionally; a contract that has
+/// left `exchangeInfo` goes once its newest row is a month old, all of it at
+/// once, so the table does not keep a stub of every delisting forever.
+async fn prune(pool:&PgPool,live:&[String])->sqlx::Result<()> {
+ let today=Utc::now().date_naive();
+ sqlx::query("DELETE FROM daily_close WHERE day<$1").bind(window_day(today,RETENTION_DAYS)).execute(pool).await?;
+ // An empty list would mean every contract is delisted. `collect` refuses to
+ // get this far with one, and this is the second lock on that door.
+ if live.is_empty() {return Ok(())}
+ sqlx::query("DELETE FROM daily_close WHERE symbol IN \
+  (SELECT symbol FROM daily_close WHERE symbol<>ALL($1::text[]) GROUP BY symbol HAVING max(day)<$2)")
+  .bind(live).bind(window_day(today,DELISTED_GRACE_DAYS)).execute(pool).await?;
+ Ok(())
+}
+
+/// One sweep: the contract list, then a day of candles for each of them, then
+/// retention. Returns how many rows were written.
+pub async fn collect(pool:&PgPool)->anyhow::Result<usize> {
+ let body=market_meta::exchange_info().await.map_err(|_|anyhow::anyhow!("exchangeInfo unavailable"))?;
+ let symbols=perpetuals(&body);
+ anyhow::ensure!(!symbols.is_empty(),"exchangeInfo listed no tradable perpetual");
+ let (mut written,mut skipped)=(0usize,0usize);
+ for symbol in &symbols {
+  let Some(body)=klines(symbol).await else {tracing::warn!("Daily closes: {symbol} unavailable, skipped");skipped+=1;continue};
+  let bars=parse_daily_closes(&body);
+  if bars.is_empty() {skipped+=1;continue}
+  match upsert(pool,symbol,&bars).await {
+   Ok(())=>written+=bars.len(),
+   Err(e)=>{tracing::warn!("Daily closes: {symbol} not stored ({e})");skipped+=1}
+  }
+ }
+ prune(pool,&symbols).await?;
+ tracing::info!("Daily closes: {} contracts, {written} rows written, {skipped} skipped",symbols.len());
+ Ok(written)
+}
+
+/// Has today's sweep already happened? Asked of the newest day it would have
+/// written — yesterday — because that is the row only a completed sweep leaves
+/// behind, and it is what lets a restart at noon skip straight to serving.
+async fn collected_today(pool:&PgPool,today:NaiveDate)->sqlx::Result<bool> {
+ sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM daily_close WHERE day=$1)")
+  .bind(window_day(today,1)).fetch_one(pool).await
+}
+
+/// The daily job, started from `serve` beside `market_meta::spawn_refresh`.
+/// It shares the process with the route so the cache it refreshes is the one
+/// requests are answered from.
+pub fn spawn_daily(pool:PgPool) {
+ tokio::spawn(async move {
+  loop {
+   let today=Utc::now().date_naive();
+   let wait=if collected_today(&pool,today).await.unwrap_or(false) {until_next_run(Utc::now())} else {
+    match collect(&pool).await {
+     Ok(_)=>until_next_run(Utc::now()),
+     Err(e)=>{tracing::warn!("Daily closes: collection will retry ({e})");RETRY}
+    }
+   };
+   if let Err(e)=rebuild(&pool,Utc::now().date_naive()).await {tracing::warn!("Daily closes: cache not refreshed ({e})")}
+   tokio::time::sleep(wait).await;
+  }
+ });
+}
+
+// ------------------------------------------------------------------- handler
+
+fn reply(status:StatusCode,body:Vec<u8>,cache:&'static str)->Response {
+ (status,[(header::CONTENT_TYPE,"application/json"),(header::CACHE_CONTROL,cache)],body).into_response()
+}
+
+async fn sector_history(State(s):State<AppState>)->Response {
+ let today=Utc::now().date_naive();
+ let snapshot=match cached(today) {
+  Some(snapshot)=>Some(snapshot),
+  None=>match rebuild(&s.pool,today).await {
+   Ok(fresh)=>Some(fresh),
+   // Yesterday's snapshot is still five- and twenty-day history, and the phone
+   // reads `asof` to see how old it is. Only a cold process with an
+   // unreachable database has nothing at all to say.
+   Err(e)=>{tracing::warn!("Sector history unavailable ({e})");stale()}
+  }
+ };
+ match snapshot {
+  Some(snapshot)=>reply(StatusCode::OK,snapshot.body.clone(),"public, max-age=3600"),
+  None=>reply(StatusCode::SERVICE_UNAVAILABLE,
+   serde_json::to_vec(&json!({"error":{"code":"temporarily_unavailable"}})).unwrap_or_default(),"no-store"),
+ }
+}
+
+#[cfg(test)]
+mod tests {
+ use super::*;
+
+ fn day(text:&str)->NaiveDate {NaiveDate::parse_from_str(text,"%Y-%m-%d").unwrap()}
+ fn ms(text:&str)->i64 {day(text).and_hms_opt(0,0,0).unwrap().and_utc().timestamp_millis()}
+ fn bar(date:&str,close:&str,volume:&str)->Value {
+  json!([ms(date),"1","2","0",close,"10",ms(date)+86_399_999,volume,42,"5","5","0"])
+ }
+
+ #[test]
+ fn only_trading_perpetuals_are_collected() {
+  let body=json!({"symbols":[
+   {"symbol":"BTCUSDT","contractType":"PERPETUAL","status":"TRADING"},
+   {"symbol":"ETHUSDT","contractType":"PERPETUAL","status":"TRADING"},
+   // A quarterly: its history belongs to a contract that expires.
+   {"symbol":"BTCUSDT_250926","contractType":"CURRENT_QUARTER","status":"TRADING"},
+   {"symbol":"ETHUSDT_251226","contractType":"NEXT_QUARTER","status":"TRADING"},
+   // Perpetual, but not open: no live price for the phone to divide.
+   {"symbol":"LUNAUSDT","contractType":"PERPETUAL","status":"SETTLING"},
+   {"symbol":"NEWUSDT","contractType":"PERPETUAL","status":"PENDING_TRADING"},
+   {"symbol":"HALTUSDT","contractType":"PERPETUAL","status":"BREAK"},
+   // Rows we cannot read are skipped rather than guessed at.
+   {"contractType":"PERPETUAL","status":"TRADING"},
+   {"symbol":"BAD/SYMBOL","contractType":"PERPETUAL","status":"TRADING"},
+   {"symbol":"SOLUSDT","status":"TRADING"},
+  ]});
+  assert_eq!(perpetuals(&body),vec!["BTCUSDT".to_owned(),"ETHUSDT".to_owned()]);
+  assert!(perpetuals(&json!({})).is_empty());
+ }
+
+ #[test]
+ fn todays_unfinished_candle_is_dropped() {
+  let body=json!([
+   bar("2026-09-15","100.5","1000"),
+   bar("2026-09-16","101.5","1100"),
+   bar("2026-09-17","102.5","1200"),
+   // 00:10 UTC on the 18th: this one closes tonight.
+   bar("2026-09-18","103.5","7"),
+  ]);
+  let bars=parse_daily_closes(&body);
+  assert_eq!(bars.len(),3,"the day in progress must not be stored");
+  assert_eq!(bars[0],(day("2026-09-15"),100.5,1000.0));
+  assert_eq!(bars[2].0,day("2026-09-17"));
+  // A single candle is only the day in progress, so nothing is complete.
+  assert!(parse_daily_closes(&json!([bar("2026-09-18","103.5","7")])).is_empty());
+  assert!(parse_daily_closes(&json!([])).is_empty());
+  assert!(parse_daily_closes(&json!({"code":-1121})).is_empty());
+ }
+
+ #[test]
+ fn unreadable_rows_are_skipped_not_zeroed() {
+  let body=json!([
+   bar("2026-09-15","100.0","1000"),
+   json!([ms("2026-09-16"),"1","2","0","not a number","10",0,"1200",1,"1","1","0"]),
+   json!(["2026-09-17"]),
+   bar("2026-09-18","0","1200"),
+   bar("2026-09-19","105.0","1300"),
+   bar("2026-09-20","106.0","1400"),
+  ]);
+  let bars=parse_daily_closes(&body);
+  assert_eq!(bars,vec![(day("2026-09-15"),100.0,1000.0),(day("2026-09-19"),105.0,1300.0)]);
+ }
+
+ #[test]
+ fn window_days_are_calendar_days() {
+  // Plain case.
+  assert_eq!(window_day(day("2026-09-18"),5),day("2026-09-13"));
+  assert_eq!(window_day(day("2026-09-18"),20),day("2026-08-29"));
+  // Across a month boundary, and across one with thirty-one days.
+  assert_eq!(window_day(day("2026-09-03"),5),day("2026-08-29"));
+  assert_eq!(window_day(day("2026-11-05"),20),day("2026-10-16"));
+  // Across a year boundary.
+  assert_eq!(window_day(day("2027-01-03"),5),day("2026-12-29"));
+  assert_eq!(window_day(day("2027-01-10"),20),day("2026-12-21"));
+  // February in a leap year: the twenty-ninth exists and must be counted.
+  assert_eq!(window_day(day("2028-03-04"),5),day("2028-02-28"));
+  assert_eq!(window_day(day("2028-03-01"),1),day("2028-02-29"));
+  assert_eq!(window_day(day("2028-03-10"),20),day("2028-02-19"));
+  // The same dates in a common year land one day later in February.
+  assert_eq!(window_day(day("2026-03-04"),5),day("2026-02-27"));
+  assert_eq!(window_day(day("2026-03-01"),1),day("2026-02-28"));
+  // A leap day is a legal `asof` of its own.
+  assert_eq!(window_day(day("2028-02-29"),5),day("2028-02-24"));
+  assert_eq!(window_day(day("2028-02-29"),20),day("2028-02-09"));
+ }
+
+ #[test]
+ fn the_next_run_is_the_next_ten_past_midnight() {
+  let at=|text:&str|DateTime::parse_from_rfc3339(text).unwrap().with_timezone(&Utc);
+  assert_eq!(until_next_run(at("2026-09-18T00:00:00Z")),Duration::from_secs(600));
+  // A sweep that ran long waits for tomorrow instead of starting again.
+  assert_eq!(until_next_run(at("2026-09-18T00:22:00Z")),Duration::from_secs(23*3600+48*60));
+  assert_eq!(until_next_run(at("2026-09-18T23:00:00Z")),Duration::from_secs(70*60));
+  // Exactly on the minute counts as done, not as due.
+  assert_eq!(until_next_run(at("2026-09-18T00:10:00Z")),Duration::from_secs(24*3600));
+ }
+
+ #[test]
+ fn the_payload_omits_what_it_does_not_have() {
+  let asof=day("2026-09-18");
+  let rows=vec![
+   ("BTCUSDT".to_owned(),day("2026-09-13"),61234.5),
+   ("BTCUSDT".to_owned(),day("2026-08-29"),58900.1),
+   // Listed nine days ago: five days of history, not twenty.
+   ("NEWUSDT".to_owned(),day("2026-09-13"),1.25),
+   // Twenty days of history but no candle at the five-day mark.
+   ("GAPUSDT".to_owned(),day("2026-08-29"),9.5),
+   // Neither window: the symbol itself is left out.
+   ("OLDUSDT".to_owned(),day("2026-09-01"),3.0),
+  ];
+  let body=payload(asof,&rows);
+  assert_eq!(body["asof"],json!("2026-09-18"));
+  assert_eq!(body["symbols"]["BTCUSDT"],json!({"c5":61234.5,"c20":58900.1}));
+  assert_eq!(body["symbols"]["NEWUSDT"],json!({"c5":1.25}));
+  assert!(body["symbols"]["NEWUSDT"].get("c20").is_none(),"a missing close is absent, never zero");
+  assert_eq!(body["symbols"]["GAPUSDT"],json!({"c20":9.5}));
+  assert!(body["symbols"].get("OLDUSDT").is_none());
+  assert_eq!(body["symbols"].as_object().unwrap().len(),3);
+  // A cold table answers with the day and an empty market, not with an error.
+  assert_eq!(payload(asof,&[]),json!({"asof":"2026-09-18","symbols":{}}));
+ }
+
+ /// The isolated database `ops/test.py` builds, or nothing.
+ ///
+ /// The assertions below are about what PostgreSQL does — the primary key, the
+ /// `ON CONFLICT` rewrite, the retention deletes — so they cannot be faked, and
+ /// they only run where a throwaway database is offered. Plain `cargo test`
+ /// skips them rather than failing, and nothing here may reach a database that
+ /// is not on this machine.
+ async fn isolated_pool()->Option<PgPool> {
+  let (Ok(admin),Ok(url),Ok(role))=(std::env::var("KANPAN_TEST_ADMIN_URL"),std::env::var("KANPAN_TEST_DATABASE_URL"),std::env::var("KANPAN_TEST_ROLE")) else {
+   eprintln!("Skipping the daily_close database assertions: run ops/test.py for an isolated PostgreSQL");
+   return None;
+  };
+  assert!(role.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'));
+  for target in [&admin,&url] {
+   assert!(target.contains("@127.0.0.1:")||target.contains("@localhost:"),"tests must never target a database off this machine");
+  }
+  let admin=PgPool::connect(&admin).await.unwrap();
+  sqlx::migrate!().run(&admin).await.unwrap();
+  for sql in [format!("GRANT USAGE ON SCHEMA public TO {role}"),format!("GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO {role}")] {
+   sqlx::query(&sql).execute(&admin).await.unwrap();
+  }
+  Some(PgPool::connect(&url).await.unwrap())
+ }
+
+ #[tokio::test]
+ async fn the_table_takes_a_repeated_sweep_without_growing_or_drifting() {
+  let Some(pool)=isolated_pool().await else {return};
+  sqlx::query("DELETE FROM daily_close").execute(&pool).await.unwrap();
+  let rows=|pool:PgPool|async move{sqlx::query_scalar::<_,i64>("SELECT count(*) FROM daily_close").fetch_one(&pool).await.unwrap()};
+  let asof=Utc::now().date_naive();
+  let (five,twenty)=(window_day(asof,5),window_day(asof,20));
+  let bars=vec![(twenty,100.0,1.0),(five,200.0,2.0),(window_day(asof,1),300.0,3.0)];
+  upsert(&pool,"AAAUSDT",&bars).await.unwrap();
+  assert_eq!(rows(pool.clone()).await,3);
+  // The sweep that retried, or simply ran twice: the same three rows.
+  upsert(&pool,"AAAUSDT",&bars).await.unwrap();
+  assert_eq!(rows(pool.clone()).await,3,"a repeated sweep must not duplicate a day");
+  // A day Binance restates is corrected in place, not appended beside itself.
+  upsert(&pool,"AAAUSDT",&[(five,222.0,2.5)]).await.unwrap();
+  assert_eq!(rows(pool.clone()).await,3);
+  let (close,volume):(f64,f64)=sqlx::query_as("SELECT close,quote_volume FROM daily_close WHERE symbol='AAAUSDT' AND day=$1")
+   .bind(five).fetch_one(&pool).await.unwrap();
+  assert_eq!((close,volume),(222.0,2.5));
+
+  // A contract with only part of the history gets only the field it has.
+  upsert(&pool,"BBBUSDT",&[(five,9.0,1.0)]).await.unwrap();
+  let snapshot=rebuild(&pool,asof).await.unwrap();
+  let body:Value=serde_json::from_slice(&snapshot.body).unwrap();
+  assert_eq!(body["data"]["asof"],json!(asof.to_string()));
+  assert_eq!(body["data"]["symbols"]["AAAUSDT"],json!({"c5":222.0,"c20":100.0}));
+  assert_eq!(body["data"]["symbols"]["BBBUSDT"],json!({"c5":9.0}));
+  // Yesterday's close is stored, but no window starts there, so it is not served.
+  assert_eq!(body["data"]["symbols"].as_object().unwrap().len(),2);
+
+  // Retention: a year old goes whatever its listing, a delisted contract keeps
+  // its history for a month, and a listed one is never touched.
+  upsert(&pool,"OLDUSDT",&[(window_day(asof,400),1.0,1.0),(window_day(asof,40),2.0,1.0)]).await.unwrap();
+  upsert(&pool,"GONEUSDT",&[(window_day(asof,3),4.0,1.0)]).await.unwrap();
+  prune(&pool,&["AAAUSDT".to_owned(),"BBBUSDT".to_owned()]).await.unwrap();
+  let held=|pool:PgPool,symbol:&'static str,day:NaiveDate|async move{
+   sqlx::query_scalar::<_,bool>("SELECT EXISTS(SELECT 1 FROM daily_close WHERE symbol=$1 AND day=$2)")
+    .bind(symbol).bind(day).fetch_one(&pool).await.unwrap()
+  };
+  assert!(!held(pool.clone(),"OLDUSDT",window_day(asof,400)).await,"past a year");
+  assert!(!held(pool.clone(),"OLDUSDT",window_day(asof,40)).await,"delisted over a month ago");
+  assert!(held(pool.clone(),"GONEUSDT",window_day(asof,3)).await,"delisted three days ago, still held");
+  assert!(held(pool.clone(),"AAAUSDT",five).await,"a listed contract is never pruned");
+
+  // The route itself: no token, the envelope the account API writes, and an
+  // hour of caching.
+  use axum::{body::Body,http::Request};
+  use http_body_util::BodyExt;
+  use tower::ServiceExt;
+  let secrets=Arc::new(crate::crypto::Secrets{pepper:vec![31;32],encryption:[43;32]});
+  let dummy_hash=Arc::new(secrets.hash_password("dummy123456").unwrap());
+  let app=crate::router(AppState{pool:pool.clone(),secrets,dummy_hash,mail_enabled:false});
+  let reply=app.oneshot(Request::builder().uri("/v1/market/sector-history").body(Body::empty()).unwrap()).await.unwrap();
+  assert_eq!(reply.status(),StatusCode::OK);
+  assert_eq!(reply.headers()[header::CACHE_CONTROL],"public, max-age=3600");
+  let served:Value=serde_json::from_slice(&reply.into_body().collect().await.unwrap().to_bytes()).unwrap();
+  assert_eq!(served["data"]["symbols"]["AAAUSDT"]["c5"],json!(222.0));
+  sqlx::query("DELETE FROM daily_close").execute(&pool).await.unwrap();
+ }
+
+ #[test]
+ fn the_payload_windows_move_with_asof() {
+  // The same row is the five-day close on one day and nothing on the next.
+  let rows=vec![("BTCUSDT".to_owned(),day("2026-09-13"),61234.5)];
+  assert_eq!(payload(day("2026-09-18"),&rows)["symbols"]["BTCUSDT"],json!({"c5":61234.5}));
+  assert!(payload(day("2026-09-19"),&rows)["symbols"].as_object().unwrap().is_empty());
+  assert_eq!(payload(day("2026-10-03"),&rows)["symbols"]["BTCUSDT"],json!({"c20":61234.5}));
+ }
+}

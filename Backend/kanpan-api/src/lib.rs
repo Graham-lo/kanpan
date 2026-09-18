@@ -8,6 +8,7 @@ pub mod review;
 pub mod review_worker;
 pub mod search;
 pub mod market_meta;
+pub mod sector_history;
 pub mod oi_archive;
 pub mod maintenance;
 use axum::{Router,Json,routing::get,extract::DefaultBodyLimit};
@@ -43,7 +44,7 @@ pub fn metrics_router() -> Router {
 }
 pub fn router(s: AppState) -> Router {
  Router::new().route("/health",get(||async{envelope(json!({"ok":true}))}))
-  .merge(auth::routes()).merge(sync::routes()).merge(review::routes()).merge(search::routes()).merge(market_meta::routes()).merge(oi_archive::routes())
+  .merge(auth::routes()).merge(sync::routes()).merge(review::routes()).merge(search::routes()).merge(market_meta::routes()).merge(sector_history::routes()).merge(oi_archive::routes())
   .layer(DefaultBodyLimit::max(512*1024))
   .with_state(s)
 }

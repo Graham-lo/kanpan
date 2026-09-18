@@ -31,6 +31,35 @@ does not. The full rule, the source table and the per-family audit are in
 `open-interest` reads Binance or OKX live; `oi_archive` keeps the history on
 disk and warms its index at startup.
 
+## Daily closes for sector strength
+
+`/v1/market/sector-history` is the third ownerless route, and the only one with
+a table behind it. Sector strength over five and twenty days needs the close
+five and twenty complete UTC days ago; the phone divides its live price by
+those. It answers `{"asof":"YYYY-MM-DD","symbols":{"BTCUSDT":{"c5":…,"c20":…}}}`
+inside the usual `{"data":…}` envelope, with `Cache-Control: public,
+max-age=3600`. A figure we do not have is an absent field, never a zero — the
+phone divides by it — and a contract with neither figure is left out. The whole
+market is about thirty kilobytes, so the served body is a process cache, rebuilt
+after every collection and whenever the UTC day turns under it.
+
+`sector_history::spawn_daily` collects at 00:10 UTC, and immediately at startup
+if that day's sweep has not run. It reads the perpetuals that are `TRADING` from
+`www.binance.com/fapi/v1/exchangeInfo` — the same host and the same fetch
+`market_meta` uses, for the same 451 reason — then one `klines?interval=1d` per
+contract at a global one request per second, backing off on 429 and 418. Today's
+unfinished candle is dropped, so only settled days are stored; a contract that
+fails is logged and skipped rather than failing the sweep. Rows older than a
+year are deleted, and a contract that has left `exchangeInfo` keeps its history
+for thirty days. Seven hundred contracts is a twelve minute sweep once a day and
+about thirteen megabytes a year.
+
+The table, `daily_close(symbol, day, close, quote_volume)`, is public market
+data: no owner column and no row level security, like `market_features`. The
+runtime role still neither owns it nor bypasses RLS — `ops/install.py` grants it
+the four statement rights on everything in the schema after the admin role
+migrates. Caddy's existing `/v1/market/*` rule already forwards the route.
+
 ## Validation / current boundary
 
 `cargo test` includes unit tests; the integration suite needs its dedicated PostgreSQL test configuration and must never target production. Tests cover username registration, session rotation/retry, isolation, field merge, deletion tombstones and private native-review search.

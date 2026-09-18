@@ -529,7 +529,7 @@ fn binance_oi_cache()->&'static Recent<OpenInterest> {static C:OnceLock<Recent<O
 // -------------------------------------------------------------------- fetching
 
 fn upstream()->ApiError {ApiError(StatusCode::SERVICE_UNAVAILABLE,"market_upstream_unavailable")}
-fn http()->&'static reqwest::Client {
+pub(crate) fn http()->&'static reqwest::Client {
  static HTTP:OnceLock<reqwest::Client>=OnceLock::new();
  HTTP.get_or_init(||reqwest::Client::builder().timeout(Duration::from_secs(20))
   // These are the endpoints binance.com itself calls; the default agent string
@@ -537,6 +537,11 @@ fn http()->&'static reqwest::Client {
   .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
   .build().expect("HTTP client"))
 }
+/// The contract list exactly as Binance publishes it, for callers that need
+/// fields `parse_exchange_info` does not keep — `sector_history` reads
+/// `contractType` and `status` from the same body rather than fetching it a
+/// second time from a host of its own.
+pub async fn exchange_info()->Result<Value> {get_json(EXCHANGE_INFO).await}
 async fn get_json(url:&str)->Result<Value> {
  let response=http().get(url).send().await.map_err(|_|upstream())?.error_for_status().map_err(|_|upstream())?;
  response.json::<Value>().await.map_err(|_|upstream())

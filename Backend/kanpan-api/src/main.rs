@@ -56,6 +56,9 @@ async fn main()->anyhow::Result<()> {
  anyhow::ensure!(command=="serve","Use serve, metrics, worker or migrate");
  // Public supply data has no owner and no database; warm it before the first request.
  kanpan_api::market_meta::spawn_refresh();
+ // Daily closes are history, not a cache: the sweep and the route share this
+ // process so the answer served is the one the sweep just refreshed.
+ kanpan_api::sector_history::spawn_daily(s.pool.clone());
  // The open interest archive keeps its own disk cache; index it before the
  // first chart asks rather than inside that request.
  kanpan_api::oi_archive::spawn_warm();

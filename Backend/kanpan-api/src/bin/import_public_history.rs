@@ -110,7 +110,10 @@ fn parse_bar(row: &Value, interval: Interval) -> Result<Bar> {
 
 async fn fetch_page(client: &Client, source: &str, gateway: &str, symbol: &str, interval: &str, start: i64, end: i64, limit: usize) -> Result<Vec<Bar>> {
     let url = if source == "binance" {
-        "https://fapi.binance.com/fapi/v1/klines".to_owned()
+        // `www.binance.com`, not `fapi.binance.com`: both market VPS sit in
+        // the United States, where the API host answers 451 and the website
+        // host serves the same paths with production data (`market_meta.rs`).
+        "https://www.binance.com/fapi/v1/klines".to_owned()
     } else {
         format!("{gateway}/market/v1/klines")
     };
