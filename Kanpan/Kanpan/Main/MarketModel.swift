@@ -491,7 +491,7 @@ final class MarketModel {
       do { try await Task.sleep(for: .milliseconds(quiet)) } catch { return }
       guard request == self.selection, self.symbol == sym, self.interval == iv else { return }
       // 上次留在磁盘上的那一段先上屏，用户不用对着「持仓量加载中」等一个往返。
-      await self.seedOI(symbol: sym, interval: iv)
+      await self.seedOI(symbol: sym, interval: iv, step: step)
       guard !Task.isCancelled, request == self.selection, self.symbol == sym, self.interval == iv else { return }
       let segments = OISource.missingSegments(have: self.oiRegion, want: want, step: step, refresh: refresh)
       guard !segments.isEmpty else { return }
@@ -516,14 +516,16 @@ final class MarketModel {
   }
 
   /// 磁盘上那份「品种 + 周期」只认一次：认过之后内存里的才是最新的。
-  private func seedOI(symbol sym: String, interval iv: Interval) async {
+  private func seedOI(symbol sym: String, interval iv: Interval, step: Int64) async {
     let key = sym + "|" + iv.rawValue
     guard oiDiskKey != key else { return }
     oiDiskKey = key
     guard oiRegion == nil, let cached = await oiStore.loadSeries(symbol: sym, interval: iv),
           !cached.points.isEmpty, sym == symbol, iv == interval, oiRegion == nil else { return }
     oiPoints = cached.points
-    oiRegion = (cached.from, cached.to)
+    // 盘上那份 `to` 可能是旧版本留下的虚高右端（记的是请求区间），照单全收就会把
+    // 它当初漏掉的那根空桶一直漏下去。同样按真拿到的点收敛一次，旧盘自己就愈合了。
+    oiRegion = OISource.coveredRegion(want: (cached.from, cached.to), points: cached.points, step: step)
     oi = OISource.chartSeries(cached.points, interval: iv)
   }
 
