@@ -33,14 +33,15 @@ enum Tab: String, CaseIterable, Sendable {
 
 /// 常驻标签栏：四格等宽，谁亮着谁是当前页。
 ///
-/// 2026-09-18 重画了一版视觉，是用户在四套方案里挑的 **C「釉面卡片」**。前两版都被否了
+/// 2026-09-18 重画了一版视觉，底子是用户在四套方案里挑的 **C「釉面卡片」**。前两版都被否了
 /// （「这看起来太工程太后台风了」「一点都不精致好看唯美」），否掉的不是尺寸而是整个画法：
 /// 灰色细线线框 + 一行小灰字，正是后台管理系统的长相。这一版换了三件事：
 ///
-/// 1. **底栏收成一块悬浮的釉面卡片。** 左右各留 10pt，圆角 25，面上是一道
-///    `raised → raised2` 的釉，上沿压一条白高光，底下垫一层很浅的投影——它是一块有厚度的
-///    材料，不是页面随手切下来的一条。卡片身下仍垫一道从**全透明**沉到 `raised2` 的渐变，
-///    并且 `ignoresSafeArea` 一直铺到 home 条，所以和上面那张页之间没有任何硬边
+/// 1. **底栏没有自己的材料，它就是页面的底。** 这一条起初做成了左右内缩、带发丝边和投影的
+///    悬浮卡片，用户看过真机之后连否两次：「好像有点突兀能融合起来吗，因为其它都是融合的」
+///    「下方那块区域先是纯白显得不搭，然后四个底栏还悬浮在这块白色区域」。现在卡片、发丝边、
+///    投影、渐变带全部没有了，底栏身下平铺的就是 `theme.app`，`ignoresSafeArea` 一直到
+///    home 条——整屏只有一块材料，四个记号直接长在上面
 ///    （`kanpan-no-seams-one-continuous-surface`）。
 /// 2. **文字标签全部去掉，空间让给记号。** 用户的话是「其实没必要把名字标出来，
 ///    这图表 icon 一看就懂」「空间全部留给 icon」。省下那一行字之后记号从 20 放到 36，
@@ -69,10 +70,6 @@ struct TabBar: View {
   /// 选中那颗胶囊。比记号宽出一圈，高度只比记号高 14——横着的胶囊才像个「格」。
   private static let pillW: CGFloat = 66
   private static let pillH: CGFloat = 50
-  /// 卡片离屏幕左右两边的距离，和它的圆角。圆角跟着卡片变高一起加，
-  /// 让上下两条弧线始终是同一条釉面的边。
-  private static let inset: CGFloat = 10
-  private static let radius: CGFloat = 25
 
   /// 亮着的是哪一格。
   private var active: Tab { drawing ? .draw : current }
@@ -83,42 +80,28 @@ struct TabBar: View {
         item(tab).accessibilityIdentifier("bottom.\(tab.rawValue)")
       }
     }
-    .background { card }
-    .padding(.horizontal, Self.inset)
-    .padding(.top, 6)
+    .padding(.top, 10)
     .padding(.bottom, 10)
     .background { shelf }
     .animation(.spring(response: 0.34, dampingFraction: 0.82), value: active)
   }
 
-  /// 那块釉面卡片：一道 `raised → raised2` 的釉，一圈发丝边，上沿一条白高光，身下一层浅影。
+  /// 底栏身下那块底。
   ///
-  /// 高光只在上沿：`strokeBorder` 用一道从白渐隐到透明的渐变描边，它读起来就是「光从上面
-  /// 打下来打在一块瓷面上」。深色皮肤下白高光压到 14%，再亮就成了一圈描边。
-  private var card: some View {
-    RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
-      .fill(LinearGradient(colors: [theme.raised, theme.raised2],
-                           startPoint: .top, endPoint: .bottom))
-      .overlay(
-        RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
-          .strokeBorder(LinearGradient(
-            colors: [Color.white.opacity(theme.dark ? 0.14 : 0.9), theme.line.opacity(0.0)],
-            startPoint: .top, endPoint: .bottom), lineWidth: 1))
-      .overlay(
-        RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
-          .strokeBorder(theme.line.opacity(theme.dark ? 0.9 : 0.7), lineWidth: 0.5))
-      .shadow(color: .black.opacity(theme.dark ? 0.48 : 0.10), radius: 12, y: 4)
-  }
-
-  /// 卡片身下那层托板。
+  /// 这儿先后错了两回，都是同一个毛病：给底栏配了一块「自己的」材料。第一版是左右内缩、
+  /// 带发丝边和投影的悬浮釉面卡片，第二版把卡片拿掉了但还留着一道沉到 `raised2` 的渐变。
+  /// 用户两句话都指着这件事：「好像有点突兀能融合起来吗，因为其它都是融合的」
+  /// 「下方那块区域先是纯白显得不搭，然后四个底栏还悬浮在这块白色区域」。
   ///
-  /// 顶上那一档是**全透明**的：卡片和上面那张页在这儿是同一块底色，过渡完全交给渐变，
-  /// 不出一条硬边。底下要 `ignoresSafeArea`——home 条那一条也得是同一块材料，
-  /// 否则渐变在安全区边界上戛然而止，那才是真的拼缝。
+  /// 所以现在这儿一点花样都没有：就是 `theme.app`，和上面那张页一模一样的底色，平铺到底。
+  /// 底栏没有轮廓、没有渐变带、没有明度差，它不是一块托着图标的板子，而是页面自己的底
+  /// 在最下面多留出来的一段。屏幕从上到下只有一块材料，图标直接长在上面
+  /// （`kanpan-no-seams-one-continuous-surface`）。
+  ///
+  /// `ignoresSafeArea` 是必须的——home 条那一条也得是同一块底色，否则颜色在安全区边界上
+  /// 断一次，那就又是一条拼缝。
   private var shelf: some View {
-    LinearGradient(
-      colors: [theme.raised2.opacity(0), theme.raised2.opacity(0.55), theme.raised2],
-      startPoint: .top, endPoint: .bottom)
+    theme.app
       .ignoresSafeArea(edges: .bottom)
       .allowsHitTesting(false)
   }
@@ -143,18 +126,17 @@ struct TabBar: View {
 
   /// 选中那格身下的胶囊：一层往下渐淡的强调色玻璃，上沿一条高光，身下一团同色的光。
   ///
-  /// 浓度压在 20% 起步：卡片本身已经是一块亮面，胶囊再浓就成了贴在瓷面上的色块，
-  /// 和「半透明的主色玻璃」不是一回事。
+  /// 浓度压在 22% 起步：它是**染在页面底色上的一片主色**，不是贴上去的色块。
+  ///
+  /// 原来它还带一圈白描边和一层投影，那是按「浮在瓷面卡片上的一颗玻璃」画的。卡片没了之后
+  /// 这两样也一并去掉——投影意味着它离开了页面，白描边意味着它有自己的边界，两样都和
+  /// 「整屏一块材料」相抵。现在只剩渐变本身：上浓下淡，边缘由 `Capsule` 自己收住。
   private var selectedPill: some View {
     Capsule()
       .fill(LinearGradient(
-        colors: [theme.amber.opacity(theme.dark ? 0.34 : 0.20),
-                 theme.amber.opacity(theme.dark ? 0.16 : 0.09)],
+        colors: [theme.amber.opacity(theme.dark ? 0.36 : 0.22),
+                 theme.amber.opacity(theme.dark ? 0.14 : 0.08)],
         startPoint: .top, endPoint: .bottom))
-      .overlay(Capsule().strokeBorder(LinearGradient(
-        colors: [Color.white.opacity(theme.dark ? 0.16 : 0.75), .clear],
-        startPoint: .top, endPoint: .bottom), lineWidth: 1))
-      .shadow(color: theme.amber.opacity(theme.dark ? 0.26 : 0.14), radius: 6, y: 2)
       .matchedGeometryEffect(id: "pill", in: pill)
   }
 }
