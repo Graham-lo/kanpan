@@ -9,7 +9,7 @@ struct ChartFoundationTests {
     for count in [3, 4] {
       let subs = Array([IndicatorID.vol, .oi, .macd, .kdj].prefix(count))
       let layouts = [0.0, 0.5, 1.0].map { control in
-        let h = ChartContentLayout.height(viewport: 540, control: control, subs: subs, subScale: [:], portrait: true)
+        let h = ChartContentLayout.height(viewport: 540, subs: subs, portrait: true)
         return Layout(width: 393, height: h, subs: subs,
           mainWeight: ChartContentLayout.mainWeight(height: h, control: control, count: count))
       }

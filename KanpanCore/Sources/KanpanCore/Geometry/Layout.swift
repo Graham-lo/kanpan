@@ -76,8 +76,15 @@ public struct Layout: Sendable, Equatable {
 /// The user's one-screen preference takes priority for the usual 3–4 panels.
 /// Only windows too small for readable panes need overflow scrolling.
 public enum ChartContentLayout {
-  public static func height(viewport: Double, control: Double, subs: [IndicatorID],
-                            subScale: [IndicatorID: Double], portrait: Bool) -> Double {
+  /// 这张图一共要多高。绝大多数时候就是视口本身——只有窗口矮到连一格都读不出来时
+  /// 才溢出来滚动。
+  ///
+  /// 以前这个签名还收 `control:`（主副图比例）和 `subScale:`（各副图的高度倍率），
+  /// 函数体一个都没用到，调用处那句 `control: state.options.portraitHeight` 是喂给
+  /// 空气的——`portraitHeight` 真正起作用的地方是 `mainWeight(height:control:count:)`。
+  /// 2026-09-19 删掉这两个参数：留着只会让人以为高度还受它们影响，进而去找一个
+  /// 根本不存在的写入端。
+  public static func height(viewport: Double, subs: [IndicatorID], portrait: Bool) -> Double {
     max(viewport, (portrait ? 120 : 72) + Double(subs.count) * (portrait ? 40 : 28) + AICoinBehavior.timeHeight)
   }
   public static func mainWeight(height: Double, control: Double, count: Int) -> Double {

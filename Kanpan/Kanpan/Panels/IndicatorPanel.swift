@@ -208,7 +208,15 @@ struct FlowRow: SwiftUI.Layout {
   }
 }
 
-// Separate draft lifetime makes Back/Cancel/swipe-to-dismiss equivalent.
+/// 指标参数编辑：全 app **唯一**一处「要按『保存』才生效」的设置，是**已知且有意的例外**。
+///
+/// 别处的开关一律即时生效（用户定的规矩：改过的东西要立刻跟上）。这一张不行——
+/// 一组指标参数是要一起改的几个数（周期、快慢线、上下轨），逐字符生效意味着把
+/// 「20」改成「60」的路上图会先按「6」重算一次，画面当场乱跳；而且删到空的那一瞬
+/// 参数是非法的。所以这儿拿一份 `draft`，按「保存」才一次性落进 `Prefs`。
+///
+/// 独立的 draft 生命周期同时让「返回 / 取消 / 下滑关掉」三种退出方式结果一致——
+/// 都是不保存。下一个人看到这儿别当 bug 修掉。
 extension IndicatorID: @retroactive Identifiable { public var id: String { rawValue } }
 private struct IndicatorEditor: View {
   var store: PrefsStore
@@ -302,8 +310,9 @@ private struct IndicatorEditor: View {
       .navigationBarTitleDisplayMode(.inline)
       .toolbarBackground(t.raised, for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)
-      // 数字键盘没有回车键：下滑把它划走，或者直接按右上角「保存」——
-      // 输进去的数字是边打边生效的，不需要再多一颗「完成」。
+      // 数字键盘没有回车键：下滑把它划走，或者直接按右上角「保存」，不用再多一颗「完成」。
+      // （原来这儿写「输进去的数字是边打边生效的」，和这张表的 draft 模型对不上——
+      //   它就是要按「保存」才生效的那一张，见上面 `IndicatorEditor` 的说明。）
       .scrollDismissesKeyboard(.interactively)
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {

@@ -32,7 +32,14 @@ struct Prefs: Sendable, Equatable {
   // ---------------------------------------------------------------- 图
   /// 价格轴 常规 / 对数 / 百分比（A6.8）。
   var priceMode: PriceMode = .log
-  /// 十字线磁吸（§7 长按那一行）。原型 `chart.magnet = true`。
+  /// 十字线磁吸（§7 长按那一行）：长按出来的十字线吸不吸到最近那根 K 线的价位上。
+  /// 设置页里写「十字线磁吸」，出厂**关**。
+  ///
+  /// 注释以前写的是「原型 `chart.magnet = true`」，和下面这行 `false` 对不上——
+  /// 原型那个值早就按实机手感翻掉了，注释没跟着改。
+  ///
+  /// 另外还有一个 `DrawingPreferences.magnet`（画线栏上的「吸附」，出厂**开**），
+  /// 两者**不合并**：一个管看盘时读价，一个管画线时端点对齐，出厂档位本来就该不一样。
   var magnet: Bool = false
   /// 本根倒计时，默认关；前台时钟独立更新。
   var countdown: Bool = false
@@ -79,6 +86,16 @@ struct Prefs: Sendable, Equatable {
   var subInverted: Set<IndicatorID> = []
   var adaptiveIndicators = false
   var compactValues = false
+  /// 主图在竖屏里占多少（0…1，越大主图越高）。**只有读端，没有写端。**
+  ///
+  /// 读端是活的：`ChartRenderer` 拿它算主图权重（`ChartContentLayout.mainWeight`）。
+  /// 但全仓库没有任何地方改过它——没有设置项、没有手势、没有迁移，它永远是 0.5，
+  /// 落盘和跨设备同步的都是同一个常数。
+  ///
+  /// **这不是漏了持久化，也不该靠新增一个旋钮来「修」。** 主副图比例该由我们定一个
+  /// 好用的值，不是摆出来让人调（`kanpan-sector-page-no-basis-picker`：算法口径、
+  /// 比例参数这类东西不交给用户选）。字段和 codec 键留着是因为老存档里带着它，
+  /// 删了解码会踩空、版本号又不许动；留这段注释是免得下一个人以为哪儿漏了写入。
   var portraitHeight = 0.5
   var indicatorColors: [IndicatorID: [Int: Hex]] = [:]
   var hiddenOutputs: [IndicatorID: Set<Int>] = [:]
@@ -99,9 +116,18 @@ struct Prefs: Sendable, Equatable {
   var subs: [IndicatorID] = AICoinBehavior.subpanels
   /// 每个指标的参数。没记的取 `IndicatorID.defaultParams`。
   var params: [IndicatorID: [Int]] = [.ma: AICoinBehavior.maPeriods, .ema: [12, 144, 169, 200], .vol: AICoinBehavior.volumePeriods, .macd: AICoinBehavior.macdPeriods]
-  /// 每个副图的高度档（A6.4）。没记的是「中」。
+  /// 每个副图的高度档（A6.4，高 / 中 / 低）。**和 `portraitHeight` 一样只有读端。**
+  ///
+  /// 读端在 `scale(for:)` 和 `height(for:)`；写端一个也没有——副图高度早就改成了
+  /// 直接拖分隔线，走的是下面那份 `subHeightOverrides`，档位式的这一份被架空了。
+  /// 同样按「清死重 + 留注释」处理：字段和 codec 键留着（老存档带着它，版本号不许动），
+  /// 但别再往这儿加入口，高度统一走拖拽。
   var subHeights: [IndicatorID: SubPaneHeight] = [:]
-  /// Direct divider drags override the three preset heights, keyed by panel identity.
+  /// 拖分隔线拖出来的副图高度倍率，按面板身份记。这是**唯一**活着的高度写入端。
+  ///
+  /// 横竖屏共用这一份，是有意的：这里存的是**权重**（占内容高度的比例），不是绝对
+  /// 点数——`Layout` 拿它和主图权重一起分配当前视口，所以同一个值在两种朝向下给出
+  /// 的是同一个比例。拆成横竖两份等于「设置跟着页面走」，恰恰是要避免的那一类。
   var subHeightOverrides: [IndicatorID: Double] = [:]
 
   // ---------------------------------------------------------------- 网络

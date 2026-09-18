@@ -90,8 +90,7 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
     panelDismiss.frame = bounds
     scroll.frame = bounds
     let contentHeight = chart.state.map { state in
-      ChartContentLayout.height(viewport: Double(bounds.height), control: state.options.portraitHeight,
-        subs: state.subs, subScale: state.subScale, portrait: portrait)
+      ChartContentLayout.height(viewport: Double(bounds.height), subs: state.subs, portrait: portrait)
     } ?? Double(bounds.height)
     scroll.contentSize = CGSize(width: bounds.width, height: contentHeight)
     scroll.contentOffset.y = min(scroll.contentOffset.y, max(0, contentHeight - bounds.height))
