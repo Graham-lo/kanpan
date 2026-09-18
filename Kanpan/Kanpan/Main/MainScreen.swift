@@ -46,6 +46,19 @@ struct MainScreen: View {
   @State private var showSearch = false
   /// 搜索页里点了「查看全部 N 个品种」：这一层关掉之后接着开品种整页，查询词跟着过去。
   @State private var searchAllPending = false
+  /// 品种整页是从搜索页「查看全部」进来的吗。是的话它那颗返回要退回搜索页，
+  /// 而不是一路退回主界面——人是从搜索页走过来的，返回就该原路走回去，
+  /// 查询词也一并留着。挑中品种就作废（人已经走到图上了）。
+  @State private var symbolsFromSearch = false
+  /// 把人送进这张图的是哪一格。nil = 没有来路（底栏直接点的「图表」），顶栏不画返回。
+  ///
+  /// 底栏是常驻标签栏，每一格都是家；但板块下钻和自选行是「走进来」的，
+  /// 走进来就得走得回去（用户：点进去之后没有返回按钮）。
+  @State private var chartOrigin: Tab?
+  /// 板块页压着的那几层。页归页，路由归宿主——见 `SectorPage.route`。
+  @State private var sectorRoute: [SectorRoute] = []
+  /// 这次复盘是从哪儿开的。退出复盘时按它把人放回原处。
+  @State private var replayOrigin: ReplayOrigin?
   /// 历史搜索词。放在宿主身上，来回进出搜索页不丢。
   @State private var searchHistory = SearchHistory()
   /// 停在哪一格。冷启动落在自选还是行情，看上次存下的自选表空不空。
@@ -168,7 +181,7 @@ struct MainScreen: View {
   private var presentation: some View {
     basePresentation
     .fullScreenCover(isPresented: $showSearch, onDismiss: {
-      if searchAllPending { searchAllPending = false; showSymbols = true }
+      if searchAllPending { searchAllPending = false; symbolsFromSearch = true; showSymbols = true }
     }) {
       SymbolSearchView(model: picker, history: searchHistory, redUp: prefs.redUp,
                        onClose: { showSearch = false },
@@ -180,11 +193,25 @@ struct MainScreen: View {
     .fullScreenCover(isPresented: $showSymbols) {
       // 关掉品种页顺手把查询词清了：搜索页和它共用一个 `SymbolPickerModel`，
       // 词留着的话，下次点放大镜进来看到的是上一轮的结果，而不是「历史搜索 / 最近看过」。
+      // 例外是从搜索页「查看全部」走进来的那一趟：那颗返回要原路退回搜索页，
+      // 词得留着，不然退回去看到的是一张空搜索页。
       SymbolPickerView(model: picker, redUp: prefs.redUp,
-                       onClose: { showSymbols = false; picker.query = "" },
+                       onClose: { closeSymbolPicker() },
                        onVisible: { quotes.watch($0) },
                        onRowVisibility: { quotes.watchRow($0, visible: $1) })
         .preferredColorScheme(effectiveTheme.forced)
+    }
+  }
+
+  /// 品种整页那颗返回。从搜索页「查看全部」走进来的，原路退回搜索页（词留着）；
+  /// 别的路进来的就是关掉，顺手把词清了。
+  private func closeSymbolPicker() {
+    showSymbols = false
+    if symbolsFromSearch {
+      symbolsFromSearch = false
+      showSearch = true
+    } else {
+      picker.query = ""
     }
   }
 
@@ -207,11 +234,13 @@ struct MainScreen: View {
                onPickSymbol: { symbol in
                  if let info = picker.info(for: symbol) { picker.pick(info) }
                  else {
+                   if tab != .chart { chartOrigin = tab }
                    tab = .chart; didLeaveLaunch = true
                    crosshair = nil
                    market.switchTo(symbol: symbol)
                  }
-               })
+               },
+               route: $sectorRoute)
   }
 
   /// 此刻画的是不是自选页。账号还在恢复的那一小段里，`picker.prefs` 挂的是访客那份
@@ -417,10 +446,19 @@ struct MainScreen: View {
     didLeaveLaunch = true
     guard next != .draw else {
       if reviewChart.active { endReview() }
+      // 从别的一格点「画线」等于被带到了图上：这一格就是来路，画完退得回去。
+      // 本来就在图上的话来路不变（可能是板块或自选带进来的，别把它抹了）。
+      if tab != .chart { chartOrigin = tab }
       tab = .chart
       draw.toggle()
       return
     }
+    // 底栏是常驻标签栏，自己点一格就是「回家」——上一次的来路作废，
+    // 顶栏那颗返回跟着收起来。
+    chartOrigin = nil
+    // 再点一下已经站着的那一格 = 回到这一页的根。板块页下钻了两层时尤其需要：
+    // 底栏那一格是它唯一的出口。
+    if next == tab, next == .sectors { sectorRoute = [] }
     guard next != tab else { return }
     if next != .chart { draw.finish() }
     tab = next
@@ -641,6 +679,8 @@ struct MainScreen: View {
       TopBar(
         theme: theme, symbol: market.symbol,
         reviewCount: review.pendingCount,
+        // 有来路才有返回。复盘态走的是另一副页头（`reviewHeader`），不经过这儿。
+        onBack: chartOrigin.map { origin in { switchTo(tab: origin) } },
         onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() },
         onSearch: { dismissPanel(); showSearch = true })
       ZStack {
@@ -773,14 +813,26 @@ struct MainScreen: View {
     .clipped()
   }
 
+  /// 这次重温是从哪儿开的。复盘本会在开图之前把自己关掉，退出时照这个把它开回来——
+  /// 人是从一条记录（或那条记录的「找相似」）走进来的，出来就该站回那条记录上，
+  /// 而不是被扔在一张不相干的行情图上。
+  private enum ReplayOrigin: Equatable {
+    /// 复盘本里的某一条记录。
+    case record(UUID)
+    /// 某条记录的「找相似」结果。退出时把记录和那张搜索层一并开回来。
+    case search(UUID)
+  }
+
   private func wireReview() {
     review.onCapture = startReviewCapture
     review.onOpenChart = { record in
       dismissPanel(); draw.finish()
+      replayOrigin = .record(record.id)
       reviewChart.open(record, feature: review, live: proxy.box?.chart.state ?? chartState, hosts: hosts)
     }
     review.onOpenMatch = { match, cutoff in
       dismissPanel(); draw.finish()
+      replayOrigin = review.searchRecord.map { .search($0) }
       reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: proxy.box?.chart.state ?? chartState, hosts: hosts)
     }
     review.synchronize()
@@ -789,9 +841,28 @@ struct MainScreen: View {
     dismissPanel(); draw.finish()
     reviewChart.beginCapture(feature: review, live: proxy.box?.chart.state ?? chartState, prefs: prefs, source: market.source)
   }
-  private func endReview() {
+  /// 退出复盘。
+  ///
+  /// `backToOrigin` 只有回放条上那颗「退出」才给 true——它是人主动说「看完了」，
+  /// 该被放回复盘本。另外两个调用点（点「画线」、横屏工具栏的「绘图」）是人要去干
+  /// 别的事，把复盘本糊在画线上面就成了挡路的。
+  private func endReview(backToOrigin: Bool = false) {
+    let replaying = reviewChart.mode == .replay
+    let origin = replayOrigin
+    replayOrigin = nil
     if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
     else { reviewChart.exitReplay(feature: review) }
+    guard backToOrigin, replaying, let origin else { return }
+    switch origin {
+    case .record(let id):
+      review.bookOpen = true
+      review.selectedRecord = id
+    case .search(let id):
+      review.bookOpen = true
+      review.selectedRecord = id
+      review.searchOpen = true
+    }
+    review.synchronize()
   }
   private var reviewHeader: some View {
     VStack(alignment: .leading, spacing: 5) {
@@ -849,7 +920,8 @@ struct MainScreen: View {
       ReviewReplayControls(time: reviewChart.replayTime, playing: reviewChart.playing, speed: reviewChart.speed,
         onStep: { reviewChart.step($0, feature: review) }, onPlay: { reviewChart.togglePlay(feature: review) },
         onSpeed: { reviewChart.speed = reviewChart.speed == 4 ? 1 : reviewChart.speed * 2 },
-        onJudgment: { reviewChart.jumpToJudgment(feature: review) }, onExit: endReview)
+        onJudgment: { reviewChart.jumpToJudgment(feature: review) },
+        onExit: { endReview(backToOrigin: true) })
       .environment(\.reviewTheme, theme.review)
     }
   }
@@ -995,9 +1067,11 @@ struct MainScreen: View {
     sectorFeed.setCatalog(picker.catalog)
     sectorFeed.setForeground(phase != .background)
     picker.onPick = { info in
-      showSymbols = false
+      showSymbols = false; symbolsFromSearch = false
       showSearch = false; searchAllPending = false
       // 挑完品种落到行情页：自选、搜索、品种整页三条路都是「去看哪张图」。
+      // 从别的一格走进来的，记下来路，顶栏那颗返回才回得去。
+      if tab != .chart { chartOrigin = tab }
       tab = .chart; didLeaveLaunch = true
       if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
       crosshair = nil
@@ -1022,7 +1096,7 @@ struct MainScreen: View {
       bridge.onSwitch = {
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
         else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
-        showSymbols = false
+        showSymbols = false; symbolsFromSearch = false
         showSearch = false; searchAllPending = false
         // 换号要把人从自选页带走（别让他对着上一个账号的表）；但冷启动恢复登录态
         // 是同一条路走过来的第一次，那一次必须留在自选，否则第一眼看到的就是行情页

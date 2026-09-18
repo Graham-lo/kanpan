@@ -139,6 +139,8 @@ struct SectorSymbolList: View {
     .contentShape(Rectangle())
     .onTapGesture { }
     .background { SectorBackdrop(skin: skin, reduceMotion: reduceMotion).ignoresSafeArea() }
+    // 先成组再挂 id，否则这个 id 会盖掉底下每一行自己的（见 `SectorPage`）。
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("sector.list")
   }
 

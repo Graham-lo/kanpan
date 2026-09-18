@@ -28,6 +28,10 @@ struct TopBar: View {
   var symbol: String
   /// 复盘本里还欠着答案的条数。0 就不画角标。
   var reviewCount: Int = 0
+  /// 有来路就有返回。非 nil 时最左边多一颗返回箭头，回到把人送进这张图的那一页
+  /// （板块下钻、自选行）。从底栏直接点进来的「图表」没有来路，这颗就不画——
+  /// 常驻标签栏那一格自己就是家，返回无处可去。
+  var onBack: (() -> Void)?
   var onReview: (() -> Void)?
   var onSearch: () -> Void
 
@@ -43,6 +47,9 @@ struct TopBar: View {
 
   var body: some View {
     HStack(spacing: 9) {
+      if let onBack {
+        backButton(onBack)
+      }
       HStack(spacing: 9) {
         CoinBadge(base: base, size: 29)
         HStack(alignment: .firstTextBaseline, spacing: 3) {
@@ -91,6 +98,25 @@ struct TopBar: View {
       iconButton(VectorIcon.search(15), label: "搜索品种", action: onSearch)
         .accessibilityIdentifier("top.search")
     }
+  }
+
+  /// 最左边那颗返回。和右上角两颗圆按钮同一副托底（30pt `raised` 圆 + 二级墨色），
+  /// 箭头照板块页 `SectorBackButton` 的 15pt semibold —— 整个 app 的返回只有一种长相。
+  private func backButton(_ action: @escaping () -> Void) -> some View {
+    Button {
+      iconTapCount += 1
+      action()
+    } label: {
+      Image(systemName: "chevron.left")
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(theme.ink2)
+        .frame(width: 30, height: 30)
+        .background(theme.raised, in: Circle())
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("返回")
+    .accessibilityIdentifier("top.back")
   }
 
   /// 右上角的圆按钮：30pt 的托底 + 15pt 的线性图标（用户定过的尺度）。

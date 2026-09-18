@@ -20,6 +20,10 @@ enum Ids {
   static let symbolButton = "top.symbol"
   /// 顶栏放大镜：换品种唯一的入口。浏览走底栏的「自选」。
   static let searchButton = "top.search"
+  /// 顶栏最左那颗返回。**只在有来路时才存在**：板块下钻点中一行品种、自选页点中一行，
+  /// 人是「走进」这张图的，这颗把他原路送回去（并且原来那一页下钻到哪层还在哪层）。
+  /// 从底栏直接点「图表」是回家，不是走进来，那时它不该在——冷启动更不该有。
+  static let topBack = "top.back"
   /// 底栏「自选」那一格。标签栏常驻，任何一页上都点得到。
   static let favoritesTab = "bottom.favorites"
   // 周期条

@@ -7,6 +7,9 @@ import ReviewData
   public var bookOpen = false
   public var captureOpen = false
   public var searchOpen = false
+  /// 这一轮「找相似」是从哪条记录上发起的。宿主拿它记住重温的来路：看完某个相似
+  /// 行情退出来，人该站回那条记录和它的搜索层上，而不是被扔在一张行情图上。
+  public var searchRecord: UUID?
   public var selectedRecord: UUID?
   public var draft: ReviewDraft?
   public private(set) var records: [ReviewRecord] = []
@@ -74,7 +77,7 @@ import ReviewData
     self.store = store; self.client = client; store.cloudCache = client != nil
     syncing = false; searching = false; matches = []; statistics = []; searchID = nil; searchGeneration = UUID(); searchNext = nil; savedMatchIDs = []
     nextPage = nil; searchError = nil; statisticsError = nil; history = []; historyCursors = [nil]; historyPage = 0; historyGeneration = UUID(); historyLoading = false; historyError = nil; historyLoaded = false
-    bookOpen = false; captureOpen = false; searchOpen = false; selectedRecord = nil
+    bookOpen = false; captureOpen = false; searchOpen = false; selectedRecord = nil; searchRecord = nil
     reload()
   }
   /// 复盘本每次打开都落在「待办」（§2G2）。

@@ -30,6 +30,9 @@ struct FavoritesView: View {
   @State private var adding = false
   /// 搜索页盖层。加自选统一在这儿做（用户 2026-09-18 定的），不用先跳回行情页。
   @State private var searching = false
+  /// 品种整页是从搜索页「查看全部」进来的吗。是的话它那颗返回退回搜索页，
+  /// 而不是一路退回自选页——人是从搜索页走过来的，返回就该原路走回去。
+  @State private var addingFromSearch = false
   @State private var more = false
   @State private var sorting = false
   @State private var afterMore: (() -> Void)?
@@ -44,9 +47,14 @@ struct FavoritesView: View {
   /// 已经替它开了历史订阅的品种。页面整体消失时要逐个关掉——
   /// 行自己的 `onDisappear` 在整页被拆掉时不保证会走到。
   @State private var historyOn = Set<String>()
-  @State private var sort = "custom"
-  @State private var ascending = false
-  @State private var amount = false
+  /// 排序口径、升降序、涨跌额还是涨跌幅：三项都记在本机。
+  ///
+  /// 这本来是三个 `@State`——底栏换成常驻标签栏之后，自选页每切走一次就整个重建，
+  /// 排好的顺序当场退回「自选顺序」，人回来还得再排一遍。它们和 `favorites.sparkline`
+  /// 是同一类东西：这台机器上这张表想怎么看，跟着机器走，不跟账号走。
+  @AppStorage("favorites.sort") private var sort = "custom"
+  @AppStorage("favorites.sortAscending") private var ascending = false
+  @AppStorage("favorites.amount") private var amount = false
   /// 行尾那条迷你走势线。默认不画——它挤在价格旁边会把整行的视觉打散；
   /// 想看的人在「…」里自己打开，开关记在本机。
   @AppStorage("favorites.sparkline") private var sparkline = false
@@ -133,7 +141,7 @@ struct FavoritesView: View {
       SymbolSearchView(model: model, history: history, redUp: redUp,
                        onClose: { searching = false },
                        // 搜到的比一屏多时那行「查看全部」：交给品种整页，查询词跟着过去。
-                       onAll: { searching = false; adding = true },
+                       onAll: { searching = false; addingFromSearch = true; adding = true },
                        onPicked: { searching = false },
                        // 星点亮之后跟着品种走：它落进哪一组就切到哪一组，
                        // 收起搜索页第一眼就能看见刚加的那一行。
@@ -142,10 +150,14 @@ struct FavoritesView: View {
                        onRowVisibility: onRowVisibility)
     }
     .sheet(isPresented: $adding) {
-      SymbolPickerView(model: model, redUp: redUp, onClose: { adding = false }, onSelect: { info in
+      // 「查看全部」走进来的那一趟，返回要退回搜索页（词留着）；别的路进来的照旧关掉。
+      SymbolPickerView(model: model, redUp: redUp, onClose: {
+        adding = false
+        if addingFromSearch { addingFromSearch = false; searching = true }
+      }, onSelect: { info in
         model.addFavorite(info.symbol, info: info)
         if let group = model.prefs.groupForSymbol[info.symbol] { model.selectGroup(group) }
-        adding = false
+        adding = false; addingFromSearch = false
       }, onVisible: onVisible, onRowVisibility: onRowVisibility)
     }
     .sheet(item: $moving) { request in

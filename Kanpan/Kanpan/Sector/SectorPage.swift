@@ -41,7 +41,11 @@ struct SectorPage: View {
   /// **但不改这个偏好**——那个市场有了历史，或者他切回来，5 日自己就回来了。
   @AppStorage("sector.window") private var windowID = SectorWindow.today.rawValue
   /// 压在气泡页上面的那几层。空 = 只有球场。最多两层（全部板块 → 某板块的品种列表）。
-  @State private var route: [Route] = []
+  ///
+  /// 它由宿主（`MainScreen`）持有：底栏是常驻标签栏，这一页每切走一次就整个重建，
+  /// 存在自己身上的 `@State` 会跟着死掉——下钻到品种列表、点进行情页再返回，
+  /// 人就被扔回球场了。挪到宿主手里，来回一趟才回得到原来那一层。
+  @Binding var route: [SectorRoute]
   /// 「5 日」要的日线收盘。取不到就是空，页面回到只有今日的样子，不提示。
   @State private var historyFeed = SectorHistoryFeed()
   /// 面积分母的迟滞记忆。
@@ -54,11 +58,6 @@ struct SectorPage: View {
   /// 每个窗口一把尺子。今日跳 3% 是大事，5 日跳 3% 不是；两档共用一个分母会让
   /// 切过去的第一屏球整体大一圈或小一圈，然后再慢慢缩回来。
   private final class ScaleMemo { var values: [String: Double] = [:] }
-
-  private enum Route: Equatable {
-    case all
-    case list(String)
-  }
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
   private var market: SectorMarket { SectorMarket(rawValue: marketID) ?? .crypto }
@@ -124,10 +123,13 @@ struct SectorPage: View {
   var body: some View {
     let snap = snapshot()
     return ZStack {
-      fieldLayer(snap)
+      // 上面压了层就把球场整个从可及性树里摘掉：它被盖住了，读屏不该读它，
+      // 市场胶囊那套 id 也就不会同时出现两份。
+      fieldLayer(snap).accessibilityHidden(!route.isEmpty)
       if route.contains(.all) {
-        SectorAllSheet(stats: snap.stats.sorted { $0.pct > $1.pct },
-                       onBack: pop, onPick: { push(.list($0.id)) })
+        SectorAllSheet(stats: snap.stats.sorted { $0.pct > $1.pct }, market: market,
+                       onBack: pop, onPick: { push(.list($0.id)) },
+                       onPickMarket: switchMarket)
           .transition(.opacity)
       }
       if let id = listedSector {
@@ -139,6 +141,9 @@ struct SectorPage: View {
     .tint(theme.amber)
     // 只是一层淡入淡出。弹跳、抖动、回弹一概没有。
     .animation(reduceMotion ? nil : .easeOut(duration: 0.24), value: route)
+    // 先成组再挂 id：SwiftUI 会把容器上的 identifier 按到底下每一个叶子上，
+    // 不成组的话整页的按钮全叫 `sector.page`，自己那颗 id 就被顶掉了。
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("sector.page")
     .onAppear {
       feed.setVisible(true)
@@ -233,43 +238,17 @@ struct SectorPage: View {
 
   /// 市场硬切换。两个市场永远不共处一屏，换一格就是换一整套尺子。
   private var marketSwitch: some View {
-    HStack(spacing: 2) {
-      marketTab(.crypto, "加密")
-      marketTab(.us, "美股")
-    }
-    .padding(2)
-    .background {
-      Capsule().fill(skin.well)
-        .overlay(Capsule().strokeBorder(skin.rule, lineWidth: 0.5))
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("sector.market")
+    SectorMarketSwitch(skin: skin, market: market, onPick: switchMarket)
   }
 
-  private func marketTab(_ value: SectorMarket, _ title: String) -> some View {
-    let on = market == value
-    return Button {
-      guard !on else { return }
-      marketID = value.rawValue
-      // 换市场就是换一整套尺子，上一档的分母不能带过去。
-      scaleMemo.values.removeAll()
-      route.removeAll()
-    } label: {
-      Text(title).font(.system(size: 12)).tracking(0.48)
-        .foregroundStyle(on ? Color.white : theme.ink3)
-        .padding(.horizontal, 11).frame(height: 26)
-        .background {
-          if on {
-            Capsule().fill(skin.accentGradient)
-              .overlay(alignment: .top) { skin.topHighlight(inset: 7) }
-              .shadow(color: skin.accent.opacity(skin.dark ? 0.45 : 0.32), radius: 5, x: 0, y: 2)
-          }
-        }
-        .contentShape(Capsule())
-    }.buttonStyle(.plain)
-      .accessibilityLabel(title)
-      .accessibilityAddTraits(on ? .isSelected : [])
-      .accessibilityIdentifier("sector.market." + value.rawValue)
+  /// 换市场。球场和「全部板块」那张清单共用这一段。
+  private func switchMarket(_ value: SectorMarket) {
+    marketID = value.rawValue
+    // 换市场就是换一整套尺子，上一档的分母不能带过去。
+    scaleMemo.values.removeAll()
+    // 人在「全部板块」里换市场，是想看另一个市场的那张清单，不是想被送回球场；
+    // 所以清单留着，只把它上面压着的品种列表收掉。
+    route = route.first == .all ? [.all] : []
   }
 
   /// 右上角那颗「…」：没上场的板块只有这一条路。
@@ -314,7 +293,7 @@ struct SectorPage: View {
     return snap.buckets.first { $0.id == id }?.members ?? []
   }
 
-  private func push(_ layer: Route) {
+  private func push(_ layer: SectorRoute) {
     guard route.last != layer else { return }
     route.append(layer)
   }
@@ -322,6 +301,63 @@ struct SectorPage: View {
   private func pop() {
     guard !route.isEmpty else { return }
     route.removeLast()
+  }
+}
+
+// MARK: - 导航
+
+/// 压在球场上面的那几层。宿主持有它（见 `SectorPage.route`），所以它得是 internal。
+enum SectorRoute: Equatable {
+  case all
+  case list(String)
+}
+
+// MARK: - 市场硬切换
+
+/// 「加密 / 美股」那颗胶囊。球场的顶栏和「全部板块」的页头共用同一颗——
+/// 同一个动作只有一种长相，也只有一套 id。
+struct SectorMarketSwitch: View {
+  var skin: SectorSkin
+  var market: SectorMarket
+  var onPick: (SectorMarket) -> Void
+
+  private var theme: PanelTheme { skin.theme }
+
+  var body: some View {
+    HStack(spacing: 2) {
+      tab(.crypto, "加密")
+      tab(.us, "美股")
+    }
+    .padding(2)
+    .background {
+      Capsule().fill(skin.well)
+        .overlay(Capsule().strokeBorder(skin.rule, lineWidth: 0.5))
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("sector.market")
+  }
+
+  private func tab(_ value: SectorMarket, _ title: String) -> some View {
+    let on = market == value
+    return Button {
+      guard !on else { return }
+      onPick(value)
+    } label: {
+      Text(title).font(.system(size: 12)).tracking(0.48)
+        .foregroundStyle(on ? Color.white : theme.ink3)
+        .padding(.horizontal, 11).frame(height: 26)
+        .background {
+          if on {
+            Capsule().fill(skin.accentGradient)
+              .overlay(alignment: .top) { skin.topHighlight(inset: 7) }
+              .shadow(color: skin.accent.opacity(skin.dark ? 0.45 : 0.32), radius: 5, x: 0, y: 2)
+          }
+        }
+        .contentShape(Capsule())
+    }.buttonStyle(.plain)
+      .accessibilityLabel(title)
+      .accessibilityAddTraits(on ? .isSelected : [])
+      .accessibilityIdentifier("sector.market." + value.rawValue)
   }
 }
 

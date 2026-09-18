@@ -14,8 +14,12 @@ import KanpanCore
 struct SectorAllSheet: View {
   /// 已按涨跌幅降序排好（含兜底桶）。
   var stats: [SectorStat]
+  /// 当前市场。这张清单也是按市场分的，页头那颗胶囊要知道自己亮在哪一档。
+  var market: SectorMarket
   var onBack: () -> Void
   var onPick: (SectorStat) -> Void
+  /// 在这张清单里换市场。换完清单还留在原处，换的是清单的内容。
+  var onPickMarket: (SectorMarket) -> Void
 
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -40,18 +44,23 @@ struct SectorAllSheet: View {
     .contentShape(Rectangle())
     .onTapGesture { }
     .background { SectorBackdrop(skin: skin, reduceMotion: reduceMotion).ignoresSafeArea() }
+    // 先成组再挂 id，否则这个 id 会盖掉底下每一行自己的（见 `SectorPage`）。
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("sector.all")
   }
 
+  /// 页头：返回 ·「全部板块」· 市场硬切换。
+  ///
+  /// 加密／美股那颗胶囊是这张清单自己的——它和球场是同一个市场，人进了清单照样换得动，
+  /// 不用先退回球场再换再进来。右边原来那个「N 个」撤了：一共几个板块不是用户要的数，
+  /// 那个位置该留给能按的东西。
   private var header: some View {
     HStack(spacing: 6) {
       SectorBackButton(skin: skin, id: "sector.all.back", action: onBack)
       Text("全部板块").font(skin.serif(19)).tracking(0.76).foregroundStyle(theme.ink)
         .padding(.leading, 5)
       Spacer(minLength: 8)
-      Text("\(stats.count) 个")
-        .font(.system(size: 10.5, design: .monospaced)).tracking(0.63)
-        .foregroundStyle(skin.ink4)
+      SectorMarketSwitch(skin: skin, market: market, onPick: onPickMarket)
     }
     .padding(.leading, 15).padding(.trailing, 20).padding(.top, 6)
   }

@@ -188,7 +188,10 @@ public struct ReviewRecordView: View {
               LabeledContent("到期") { Text(Date(timeIntervalSince1970: Double(record.draft.rule.expires) / 1000), style: .date) }
             }
             Button("在图上重温") { feature.bookOpen = false; feature.onOpenChart(record) }
-            Button("找相似") { feature.search(record.draft.range, cutoff: record.draft.created, scope: searchScope) }
+            Button("找相似") {
+              feature.searchRecord = id
+              feature.search(record.draft.range, cutoff: record.draft.created, scope: searchScope)
+            }
           }.listRowBackground(t.raised)
           Section("市场的答案") { Text(record.outcome.title).foregroundStyle(t.ink); if let result = record.assessment { Text(result.reason).font(.caption).foregroundStyle(t.ink3) } }
             .listRowBackground(t.raised)

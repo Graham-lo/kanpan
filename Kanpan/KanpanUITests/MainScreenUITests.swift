@@ -43,6 +43,61 @@ final class MainScreenUITests: KanpanUICase {
   func testTopBarHasOnlySearch() {
     expectExists(app.buttons[Ids.searchButton])
     XCTAssertFalse(app.buttons["top.star"].exists, "顶栏还留着自选星")
+    // 冷启动是「回家」不是「走进来」，左边不该有返回箭头。
+    XCTAssertFalse(app.buttons[Ids.topBack].exists, "冷启动的顶栏上出现了返回")
+  }
+
+  // ---------------------------------------------------------------- 来回一趟
+
+  /// 板块 →「全部板块」→ 某个板块的品种列表 → 行情页 → 顶栏返回 → **还站在那张品种列表上**。
+  ///
+  /// 两件事一起验：顶栏那颗返回在「走进来」的图上要存在；退回去之后板块页下钻到
+  /// 第几层就还在第几层（路由挪到宿主身上之前，切走一次就整页重建，人被扔回球场）。
+  func testSectorDrillDownRoundTripsThroughChart() {
+    app.buttons[Ids.bottomSectors].tap()
+    expectExists(app.otherElements["sector.page"], Self.long, "点「板块分类」没进板块页")
+    let more = app.buttons["sector.more"]
+    expectExists(more, Self.long, "板块页上没有「…」")
+    more.tap()
+
+    let sectorRow = app.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "sector.all.row.")).firstMatch
+    expectExists(sectorRow, Self.long, "「全部板块」里一行都没有")
+    sectorRow.tap()
+
+    let listBack = app.buttons["sector.list.back"]
+    expectExists(listBack, Self.long, "点一个板块没进它的品种列表")
+    let symbolRow = app.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "sector.open.")).firstMatch
+    expectExists(symbolRow, Self.long, "板块的品种列表里一行都没有")
+    symbolRow.tap()
+
+    let back = app.buttons[Ids.topBack]
+    expectExists(back, Self.long, "从板块下钻点进图表，顶栏没有返回")
+    back.tap()
+
+    expectExists(listBack, Self.long, "顶栏返回没把人放回那张品种列表")
+    listBack.tap()
+    let allBack = app.buttons["sector.all.back"]
+    expectExists(allBack, Self.long, "品种列表退不回「全部板块」")
+    allBack.tap()
+    expectExists(more, Self.long, "「全部板块」退不回气泡场")
+  }
+
+  /// 自选行 → 行情页 → 顶栏返回 → 自选页。自选是「走进来」的另一条路。
+  func testFavoritesRowRoundTripsThroughChart() {
+    app.terminate()
+    app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
+    app.launch()
+    expectExists(app.buttons["favorites.more"], Self.long, "有自选时冷启动该停在自选页")
+    let row = app.buttons["favorites.open.BTCUSDT"]
+    expectExists(row, Self.long, "自选页上没有 BTCUSDT 这一行")
+    row.tap()
+
+    let back = app.buttons[Ids.topBack]
+    expectExists(back, Self.long, "从自选点进图表，顶栏没有返回")
+    back.tap()
+    expectExists(app.buttons["favorites.more"], Self.long, "顶栏返回没把人送回自选页")
   }
 
   // ---------------------------------------------------------------- 周期条

@@ -48,6 +48,14 @@ struct SectorLayout: Equatable, Sendable {
   /// 轮数少 = 位移小 = 看不出「碰撞回弹」。
   static let warmIterations = 30
 
+  /// 半径那把尺子的**基准颗数**：加密默认档 5+3+5 = 13 颗。
+  ///
+  /// k 原来是拿「球场面积 ÷ 实际球面积和」反算的，颗数越少球面积和越小，k 就越大——
+  /// 美股默认档只有 3+2+3 = 8 颗，同样的涨跌幅，球比加密胖出一圈（用户：美股气泡太大）。
+  /// 尺子不该跟着场上有几颗球变：8 颗不许比 13 颗胖。所以分母换成
+  /// 「单颗平均面积 × 13」——场上颗数再变，量出来的仍是同一把尺子。
+  static let referenceCount = 13
+
   private(set) var bubbles: [SectorBubble] = []
   /// 球场矩形（已内缩）。
   private(set) var field: CGRect = .zero
@@ -168,18 +176,24 @@ struct SectorLayout: Equatable, Sendable {
 
   /// 面积 ∝ |涨跌幅| → 半径 ∝ √|pct|，按 `selection.norm`（全场最大 |pct|、超出截到 1）
   /// 归一，带最小半径地板，
-  /// 然后按「球场面积 × 铺满度 / 球面积和」反算一个自适应系数 k 整体缩放。
+  /// 然后按「球场面积 × 铺满度 ÷（单颗平均面积 × 基准颗数）」反算一个自适应系数 k 整体缩放。
   private static func radii(_ selection: SectorSelection,
                             knobs: SectorFieldKnobs, field: CGRect) -> [CGFloat] {
     let raw = selection.picks.map {
       max(knobs.rmin, knobs.rmax * selection.norm($0.stat.pct).squareRoot())
     }
     let area = raw.reduce(0) { $0 + .pi * $1 * $1 }
-    guard area > 0, field.width > 0, field.height > 0 else { return raw.map { CGFloat($0) } }
+    guard area > 0, !raw.isEmpty, field.width > 0, field.height > 0 else {
+      return raw.map { CGFloat($0) }
+    }
     let fieldArea = Double(field.width) * Double(field.height)
+    // 分母不是「这一场球的面积和」，而是「单颗平均面积 × 基准颗数」：
+    // 场上 8 颗还是 13 颗，量出来都是同一把尺子（见 `referenceCount`）。
+    let meanArea = area / Double(raw.count)
     // 上限原型里从 1.7 放到 2.2：1.7 时美股默认档（8 颗）正好顶满，
     // 「铺满度」那根滑杆在后半程等于失效。
-    let k = clamp((fieldArea * (knobs.fill / 100) / area).squareRoot(), 0.55, 2.2)
+    let k = clamp((fieldArea * (knobs.fill / 100)
+                   / (meanArea * Double(Self.referenceCount))).squareRoot(), 0.55, 2.2)
     return raw.map { CGFloat($0 * k) }
   }
 
