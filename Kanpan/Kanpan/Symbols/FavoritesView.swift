@@ -73,26 +73,34 @@ struct FavoritesView: View {
   }
 
   var body: some View {
-    NavigationStack {
-      GeometryReader { geometry in
-        VStack(spacing: 0) {
-          FavoritesHeader(prefs: model.prefs, editing: editing, more: more,
-                          theme: theme, width: geometry.size.width,
-                          content: headerBar).equatable()
-          sortBar
-          if symbols.isEmpty { emptyState } else { listSheet }
-        }
-        .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
-        .overlayPreferenceValue(MenuAnchors.self) { anchors in
-          GeometryReader { proxy in floatingMenu(proxy: proxy, anchors: anchors) }
-        }
-        .animation(.easeOut(duration: 0.16), value: more)
-        .animation(.easeOut(duration: 0.16), value: sorting)
+    // 这一页外面曾经套着一层 `NavigationStack`。整页没有一个 `NavigationLink`，
+    // 它唯一干的事就是给自己配一条导航栏、再用 `.toolbar(.hidden, for: .navigationBar)`
+    // 关掉——白套一层壳。可这层壳顺手把安全区接管了：`cb0c4c3` 把标签栏从 `VStack`
+    // 的一节改成 `MainScreen` 那一层的 `safeAreaInset` 之后，栏让出来的那 50pt 是加在
+    // 外面那层 SwiftUI 视图的安全区上的，而 `NavigationStack` 背后的
+    // `UINavigationController` 只认窗口自己那份，于是整页都短了一栏：列表滚到底，最后
+    // 一行仍压在标签栏底下推不上来；编辑条更是整条沉进「设置」格里——「删除」的中心
+    // 落在 (348, 784)，而「设置」格占着 (294.7–393, 768–818)，点删除直接跳去设置页，
+    // 自选的批量删除整条是坏的。
+    //
+    // 壳去掉之后，这一页老老实实吃到已经减掉标签栏的那份安全区，列表和编辑条一起归位。
+    GeometryReader { geometry in
+      VStack(spacing: 0) {
+        FavoritesHeader(prefs: model.prefs, editing: editing, more: more,
+                        theme: theme, width: geometry.size.width,
+                        content: headerBar).equatable()
+        sortBar
+        if symbols.isEmpty { emptyState } else { listSheet }
       }
-      .background { AuroraBackdrop(skin: skin, reduceMotion: reduceMotion).ignoresSafeArea() }
-      .toolbar(.hidden, for: .navigationBar)
-      .safeAreaInset(edge: .bottom, spacing: 0) { if editing { editBar } }
+      .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+      .overlayPreferenceValue(MenuAnchors.self) { anchors in
+        GeometryReader { proxy in floatingMenu(proxy: proxy, anchors: anchors) }
+      }
+      .animation(.easeOut(duration: 0.16), value: more)
+      .animation(.easeOut(duration: 0.16), value: sorting)
     }
+    .background { AuroraBackdrop(skin: skin, reduceMotion: reduceMotion).ignoresSafeArea() }
+    .safeAreaInset(edge: .bottom, spacing: 0) { if editing { editBar } }
     .tint(theme.amber)
     .task { await model.appear() }
     .onDisappear {

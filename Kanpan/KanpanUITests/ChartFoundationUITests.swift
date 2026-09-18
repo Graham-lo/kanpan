@@ -439,7 +439,16 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertFalse(app.buttons["置顶"].exists)
     app.buttons["favorites.open.BTCUSDT"].tap()
     let remove = app.buttons["删除"]
-    XCTAssertTrue(remove.isEnabled); remove.tap()
+    XCTAssertTrue(remove.isEnabled)
+    // 编辑条必须整条落在标签栏上面。`cb0c4c3` 把标签栏改成 `safeAreaInset` 之后，
+    // 编辑条那层 `safeAreaInset` 挂在 `NavigationStack` 里面，吃不到外面让出来的那一栏，
+    // 于是「删除」的中心压进了「设置」格里——点删除会跳去设置页。光看「品种还在不在」
+    // 抓不住它（跳页之后两个都不在，断言会空过），所以这儿直接量两个框。
+    let tabBar = app.buttons["bottom.settings"]
+    XCTAssertTrue(tabBar.exists)
+    XCTAssertFalse(remove.frame.intersects(tabBar.frame),
+                   "编辑条压在标签栏上：删除 \(remove.frame)，设置格 \(tabBar.frame)")
+    remove.tap()
     XCTAssertFalse(app.buttons["favorites.open.ETHUSDT"].exists)
     XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].exists)
     XCTAssertTrue(app.buttons["favorites.open.SOLUSDT"].exists)
