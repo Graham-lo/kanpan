@@ -209,10 +209,25 @@ public actor RoutedMarketFeed {
       if status != .live { startMonitoring(immediate: true) }
     }
     if publishedRoute != generation {
-      guard case .series(let series) = update.event, series.count >= 3 else { return }
+      // 交接给界面的门槛。原来只认一条：历史至少 3 根。于是首屏历史一慢（撞上 429
+      // 罚停、网关 busy），`.status` 和 `.ticker` 全被这道门吃掉——WS 明明已经在推
+      // 实时价了，顶栏还是死死的「—」，状态停在「离线」，而持仓量走的是网关那条独立
+      // 的路照样有数。用户看到的是一屏自相矛盾的假象，而且那是**假的**：线路没离线。
+      //
+      // 所以多开一条出路：WS 报了 `.live` 就交接。图还是空的，但那件事由
+      // `historyError` 的横幅去说（巡检那句「暂时无法连接，点此重试」不走这道门），
+      // 报价是真的，状态也不再撒谎。
+      //
+      // 换线路那一路不放行（`announcingSwitch`）：用户手动切线时新交易所的 WS 往往
+      // 先于历史活过来，这时候交接等于把旧线路还能看的那张图换成一张空图，比等着更糟。
+      let live = pendingStatus == .live && !announcingSwitch
+      let enough = { if case .series(let series) = update.event { return series.count >= 3 }; return false }()
+      guard enough || live else { return }
       publishedRoute = generation
       continuation?.yield(FeedUpdate(selection: selection, event: .source(source)))
       continuation?.yield(FeedUpdate(selection: selection, event: .status(pendingStatus)))
+      // 开门这一下已经把状态发出去了，别紧接着再发一遍同样的。
+      if case .status = update.event { settleRoute(); return }
     }
     continuation?.yield(update)
     settleRoute()
