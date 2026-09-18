@@ -119,6 +119,7 @@ struct SymbolSearchView: View {
           Text("搜 BTC、ETH、SOL…").foregroundStyle(theme.ink3))
           .font(.system(size: 13.5))
           .foregroundStyle(theme.ink)
+          .keyboardType(.asciiCapable)
           .textInputAutocapitalization(.characters)
           .autocorrectionDisabled()
           .submitLabel(.search)

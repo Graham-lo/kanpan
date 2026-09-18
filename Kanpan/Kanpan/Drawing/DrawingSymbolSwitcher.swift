@@ -43,12 +43,23 @@ struct DrawingSymbolSwitcher: View {
 
   private let columns = [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)]
 
+  /// 列表留多高：键盘起来时压到 92pt，没起来时 208pt。
+  ///
+  /// 横屏的键盘就是半块屏（iPhone 上约 209pt / 393pt）。208pt 的列表在键盘上来之后
+  /// 有四分之三被盖住，用户看着一堆结果却只能点最上面一行。压到 92pt——正好是两行
+  /// 加上下的留白——整块浮层就落在键盘上沿以内，前四个匹配结果始终露着，再多的照样滑。
+  /// 而键盘没起来的时候（也就是一进来那会儿）列表是满的，「常看」十来个一眼看全。
+  private var listHeight: Double { focused ? 92 : 208 }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 6) {
         Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(theme.ink3)
         TextField("搜索品种", text: $query)
           .font(.system(size: 13))
+          // 品种代号全是 ASCII（BTCUSDT、TSLA、XAUUSD…）。不锁 `.asciiCapable` 的话，
+          // 用户上次用的是中文输入法，这里就弹一副中文键盘出来——打 BTC 还得先切一次输入法。
+          .keyboardType(.asciiCapable)
           .textInputAutocapitalization(.characters)
           .autocorrectionDisabled()
           .submitLabel(.go)
@@ -89,7 +100,9 @@ struct DrawingSymbolSwitcher: View {
           }
           .padding(.horizontal, 8).padding(.vertical, 6)
         }
-        .frame(maxHeight: 208)
+        .frame(maxHeight: listHeight)
+        .animation(.easeOut(duration: 0.2), value: focused)
+        .accessibilityIdentifier("draw.symbol.list")
       }
     }
     .frame(width: 236)
@@ -97,9 +110,16 @@ struct DrawingSymbolSwitcher: View {
     .overlay(RoundedRectangle(cornerRadius: 12).stroke(theme.line, lineWidth: 0.5))
     .shadow(color: .black.opacity(0.22), radius: 12, y: 4)
     .buttonStyle(.plain)
-    // 键盘一进来就在：用户点品种名就是为了打字，多按一下输入框是白让他按的。
-    .onAppear { focused = true }
-    .accessibilityIdentifier("draw.symbol.switcher")
+    // 进来**不**自动弹键盘。
+    //
+    // 原来一 `onAppear` 就 `focused = true`，理由是「点品种名就是为了打字」。可这块浮层
+    // 的主体是底下那格「常看」——横屏里键盘一上来就盖掉小半块屏，用户要的那几个常看品种
+    // 反而看不见了，还得先把键盘收了才能点。真要打字的人点一下搜索框就是了，那一下比
+    // 每次都先关一次键盘便宜得多。
+    // 这里**不**给整块浮层挂 `accessibilityIdentifier`：SwiftUI 会把容器上的这个标识
+    // 盖到下面每个子元素头上，搜索框的 `draw.symbol.search` 会被一起改写成容器的名字，
+    // 用例就再也点不到它了（实测过：树里那个 TextField 的 identifier 变成了容器的）。
+    // 「这一层开着没有」用搜索框本身认——它只在这一层里有。
   }
 
   /// 点中就**立刻**收起——用户点名要的「直接收起搜索框」。换品种本身交给宿主：

@@ -116,6 +116,8 @@ struct SymbolPickerView: View {
         Text("搜 BTC、ETH、SOL…").foregroundStyle(Color(hex: seed.ink3)))
         .font(.system(size: fieldSize))
         .foregroundStyle(Color(hex: seed.ink))
+        // 品种代号全是 ASCII，锁住输入法语言，别让上次用中文输入法的人在这儿先切一次。
+        .keyboardType(.asciiCapable)
         .textInputAutocapitalization(.characters)
         .autocorrectionDisabled()
         .submitLabel(.search)

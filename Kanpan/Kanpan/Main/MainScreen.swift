@@ -490,6 +490,16 @@ struct MainScreen: View {
         })
     }
     .overlay(alignment: .topLeading) { drawSwitcherLayer }
+    // 换品种那一层开着的时候，键盘不许推整块横屏。
+    //
+    // 横屏的键盘是**半块屏**（iPhone 上约 209pt / 393pt）。默认的键盘避让会把整个
+    // `HStack` 连 K 线一起往上顶，图被挤成一条，浮层自己也被顶出屏外——而用户点品种名
+    // 的时候还在看图。所以这一层开着时整块不参与避让，改由 `DrawingSymbolSwitcher`
+    // 自己把列表压到键盘上沿以内（见那边的 `listHeight`）。
+    //
+    // 只在这一层开着时关掉：画线的样式面板里还有价格 / 文字 / 斐波那契那几个输入框，
+    // 它们仍然要被键盘顶起来。
+    .ignoresSafeArea(.keyboard, edges: showDrawSwitcher ? .bottom : [])
     // 动画只裹住这一块。挂到整个 `body` 上会把图一起带进过渡，开合面板时 K 线跟着晃。
     .overlay(alignment: .leading) { drawToolsLayer.animation(.easeOut(duration: 0.18), value: draw.picker) }
     .overlay(alignment: .trailing) {

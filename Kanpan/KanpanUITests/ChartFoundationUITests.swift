@@ -1367,13 +1367,22 @@ extension ChartFoundationUITests {
     let symbol = app.buttons[Ids.landscapeSymbol]
     XCTAssertTrue(symbol.waitForExistence(timeout: 20), "横屏标题上没有品种名")
     symbol.tap()
-    let switcher = app.descendants(matching: .any)["draw.symbol.switcher"].firstMatch
-    XCTAssertTrue(switcher.waitForExistence(timeout: 8), "换品种那一层没出来")
-    XCTAssertFalse(app.keyboards.element.waitForExistence(timeout: 3), "还没点搜索框，键盘就自己弹出来了")
+    // 搜索框只在这一层里有，拿它当「这一层开着没有」的凭据。
     let field = app.textFields["draw.symbol.search"]
-    XCTAssertTrue(field.waitForExistence(timeout: 5), "没找到搜索框\n" + app.debugDescription)
+    XCTAssertTrue(field.waitForExistence(timeout: 8), "换品种那一层没出来")
+    XCTAssertFalse(app.keyboards.element.waitForExistence(timeout: 3), "还没点搜索框，键盘就自己弹出来了")
+    let list = app.scrollViews["draw.symbol.list"]
+    XCTAssertTrue(list.waitForExistence(timeout: 5), "没找到品种列表")
+    let tall = list.frame.height
     field.tap()
-    XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 8), "点了搜索框，键盘却没上来")
+    let keyboard = app.keyboards.element
+    XCTAssertTrue(keyboard.waitForExistence(timeout: 8), "点了搜索框，键盘却没上来")
+    // 键盘起来之后列表要自己缩到键盘上沿以内：横屏的键盘是半块屏，不缩的话
+    // 用户看着一列结果却只点得到最上面一行（用户：「弹出来的键盘是不是占比太大了」）。
+    XCTAssertTrue(wait { list.frame.height < tall - 40 },
+                  "键盘起来了列表却没缩：\(tall) → \(list.frame.height)")
+    XCTAssertLessThanOrEqual(list.frame.maxY, keyboard.frame.minY + 1,
+                             "列表底边压在键盘底下了：列表 \(list.frame.maxY)，键盘顶边 \(keyboard.frame.minY)")
     shot("画线-换品种-键盘")
   }
 }
