@@ -381,6 +381,17 @@ struct ChartHost: UIViewRepresentable {
         let plotW = box.chart.chartLayout?.plotW ?? proxy?.savedPlotWidth ?? Double(box.bounds.width)
         box.pending = .switchInterval(
           spacing: old.view.barSpacing(step: old.series.step, plotW: plotW))
+        // 换周期要把竖着拉出来的倍率留住。
+        //
+        // 这两行以前只写在下面那个 `else` 里，而那条分支的前提是「品种没换**且**周期
+        // 没换」——于是一换周期，`s.price` 就用 SwiftUI 快照里的出厂值（zoom = 1、
+        // 居中 0.5），人刚在价格轴上拉出来的倍率当场没了。根宽（`switchInterval` 那句）
+        // 早就是保住的，纵向没跟上，同一次换周期里横着的习惯留着、竖着的丢了。
+        //
+        // **换品种仍然要丢**，所以这两行不能提到上面去：不同品种的价格区间不一样，
+        // 把上一个品种拉出来的倍率搬过去没有意义。
+        if old.price.mode == s.price.mode { s.price = old.price }
+        else { s.price.inverted = old.price.inverted }
       } else {
         if let layout = box.chart.chartLayout {
           s.view = AICoinBehavior.reconcile(old.view, from: old.series, to: s.series, plotW: layout.plotW, anchor: s.options.anchor)
