@@ -55,6 +55,7 @@ import ReviewUI
     files = try AccountFiles(root: root)
     try migrateLegacy()
     dropSharedSearchHistory()
+    dropLegacySymbols()
     account.onPrepareAccount = { [weak self] user in guard let self else { return {} }; return try self.prepare(user) }
     account.onSynchronize = { [weak self] in self?.synchronize(manual: true) }
     account.onAutoSync = { [weak self] enabled in self?.setAutoSync(enabled) }
@@ -96,6 +97,29 @@ import ReviewUI
   /// 清完之后写入已经改道到档案里，这个键不会再被写第二次，所以每次启动跑一遍是幂等的。
   private func dropSharedSearchHistory() {
     UserDefaults.standard.removeObject(forKey: SearchHistory.defaultsKey)
+  }
+  /// 搬完清原件：`UserDefaults` 里那份旧的自选档案（`kanpan.symbols.v1`）搬进
+  /// 账号目录之后就抹掉。
+  ///
+  /// 和历史搜索不同，这份是**归当前这个人**的（自选、分组、置顶、最近看过的品种都在
+  /// 这台机器上由他一个人攒出来的），所以先搬后清，不是直接丢。
+  ///
+  /// 为什么非清不可：`migrateLegacy()` 只复制、不清原件，于是同一份档案在机器上留了
+  /// 两个真身——写在 `symbols.json`（`PersonalFileStorage`），读却可能读回
+  /// `UserDefaults`。这正是 R3-1 那个「新装机每次冷启动都开 BTCUSDT、老用户永远停在
+  /// 升级那一刻的品种上」的病根：那份 UserDefaults 副本在搬家那一刻冻住了，之后
+  /// 一个字都不会再更新，谁不小心读到它谁就看到一份几个月前的自选表。清掉之后
+  /// 这条错路在运行时就不存在了。
+  ///
+  /// 时机：一定跑在 `migrateLegacy()` **之后**——那一步要么已经把内容写进了访客目录，
+  /// 要么因为目录里已经有 `symbols.json` 而跳过（文件那份更新，本来就该赢）；
+  /// 它抛错的话 `init` 直接失败，这一行不会跑到，原件留着。
+  ///
+  /// 不挂 `legacy-imported.json` 那个标记（理由同 `dropSharedSearchHistory()`）：
+  /// 早就越过标记的老用户机器上，那份冻住的副本还躺着，挂上标记等于不清。
+  /// 写入早已改道到文件，这个键不会再被写第二次，所以每次启动跑一遍是幂等的。
+  private func dropLegacySymbols() {
+    UserDefaults.standard.removeObject(forKey: SymbolPrefsStore.defaultsKey)
   }
   private func migrateLegacy() throws {
     let marker = files.root.appendingPathComponent("legacy-imported.json")
