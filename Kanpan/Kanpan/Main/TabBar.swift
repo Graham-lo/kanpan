@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import KanpanCore
 
 /// 底栏那四格。
 ///
@@ -37,11 +39,15 @@ enum Tab: String, CaseIterable, Sendable {
 /// （「这看起来太工程太后台风了」「一点都不精致好看唯美」），否掉的不是尺寸而是整个画法：
 /// 灰色细线线框 + 一行小灰字，正是后台管理系统的长相。这一版换了三件事：
 ///
-/// 1. **底栏没有自己的材料，它就是页面的底。** 这一条起初做成了左右内缩、带发丝边和投影的
-///    悬浮卡片，用户看过真机之后连否两次：「好像有点突兀能融合起来吗，因为其它都是融合的」
-///    「下方那块区域先是纯白显得不搭，然后四个底栏还悬浮在这块白色区域」。现在卡片、发丝边、
-///    投影、渐变带全部没有了，底栏身下平铺的就是 `theme.app`，`ignoresSafeArea` 一直到
-///    home 条——整屏只有一块材料，四个记号直接长在上面
+/// 1. **底栏根本没有底。** 这一条前后错了三回，一次比一次淡，但错的是同一件事——总想给底栏
+///    配一块「自己的」材料：先是左右内缩、带发丝边和投影的悬浮卡片，然后是沉到 `raised2`
+///    的渐变带，最后是平铺的 `theme.app`。第三版看着已经和页面同色了，用户还是说
+///    「我觉得白色不太好，应该和整体风格融合太突兀了」「其它地方全是融合的」。
+///    原因是**页面的底本来就不是一个色**：自选页身下是 `AuroraBackdrop`——底色加几团漂移的光，
+///    再往下压一道越走越浓的 wash，最后铺一层颗粒。底栏在那道 wash 最浓的地方盖一块
+///    「和 `app` 同色」的平面，等于把整页最有味道的一段裁掉换成一块白板，拼缝就在那儿。
+///    所以现在底栏一个 `background` 都不画：它由 `safeAreaInset(edge: .bottom)` 挂在页面上，
+///    页面自己的材料（光斑、wash、颗粒）原样从它身后穿过去，一直流到 home 条
 ///    （`kanpan-no-seams-one-continuous-surface`）。
 /// 2. **文字标签全部去掉，空间让给记号。** 用户的话是「其实没必要把名字标出来，
 ///    这图表 icon 一看就懂」「空间全部留给 icon」。省下那一行字之后记号从 20 放到 36，
@@ -60,16 +66,19 @@ struct TabBar: View {
   /// 让选中胶囊在四格之间滑动的那份坐标系。
   @Namespace private var pill
 
-  /// 记号的边长。18 → 20 → 32 → 36：前两次只在原来的画法上往大里推，用户照样说素；
-  /// 真正让它撑得住的是「把那行字去掉」——没有字要垫在下面，记号就能占满整格。
-  /// 36 是最后一档：用户看过 32 那版之后说「底栏稍微大一点点有辨识性和层次」。
-  static let glyph: Double = 36
-  /// 记号在卡片里上下各留多少。36 + 11 + 11 = 58，比系统标签栏的 49 高一点点，
-  /// 够撑起层次又不至于变成一块面板（用户要的「不能大得特别突兀」）。
-  private static let padY: CGFloat = 11
-  /// 选中那颗胶囊。比记号宽出一圈，高度只比记号高 14——横着的胶囊才像个「格」。
-  private static let pillW: CGFloat = 66
-  private static let pillH: CGFloat = 50
+  /// 记号的边长。18 → 20 → 32 → 36 → 26。往大里推那几档是为了治「太素」，可推到 36 之后
+  /// 整条栏在屏幕上占了 112 点（78 的身子 + 34 的 home 条），用户看真机的话是
+  /// 「而且显得占比那么大」「不仅浪费空间，而且下面会显得空很多」。
+  ///
+  /// 治「素」的不是尺寸，是材料：现在选中那格自己是一枚釉面方块（`selectedTile`），
+  /// 分量由那块釉承担，记号本身就可以收回到 26——比当初被判「有点小」的 20 仍大出四分之一，
+  /// 而整条栏落到 50，和系统标签栏的 49 基本齐平。
+  static let glyph: Double = 26
+  /// 选中那枚釉面方块的边长。26 / 40 = 0.65，和 `CoinBadge` 里记号占徽章的 0.62 是同一档，
+  /// 所以底栏这枚和自选页上每一行的品种徽章看着是同一种东西。
+  private static let tile: CGFloat = 40
+  /// 一格的宽。方块两边各留 6，指头点得着，四格之间又不会挤。
+  private static let cellW: CGFloat = 52
 
   /// 亮着的是哪一格。
   private var active: Tab { drawing ? .draw : current }
@@ -80,30 +89,14 @@ struct TabBar: View {
         item(tab).accessibilityIdentifier("bottom.\(tab.rawValue)")
       }
     }
-    .padding(.top, 10)
-    .padding(.bottom, 10)
-    .background { shelf }
+    // 上下这两道留白原来各是 10，那是给「悬浮卡片」留的外边距。卡片没了之后它们只是在
+    // 把栏撑高；底下这一道尤其多余——`safeAreaInset` 已经把栏摆在 home 条正上方了。
+    // 底下不留空：`safeAreaInset` 已经把栏摆在 home 条正上方，再垫一道就是把整排记号
+    // 往屏幕中间顶。用户要的是「往下移一点」——所以留白全给上面那一侧。
+    .padding(.top, 8)
+    .padding(.bottom, 0)
+    .background { glowBed }
     .animation(.spring(response: 0.34, dampingFraction: 0.82), value: active)
-  }
-
-  /// 底栏身下那块底。
-  ///
-  /// 这儿先后错了两回，都是同一个毛病：给底栏配了一块「自己的」材料。第一版是左右内缩、
-  /// 带发丝边和投影的悬浮釉面卡片，第二版把卡片拿掉了但还留着一道沉到 `raised2` 的渐变。
-  /// 用户两句话都指着这件事：「好像有点突兀能融合起来吗，因为其它都是融合的」
-  /// 「下方那块区域先是纯白显得不搭，然后四个底栏还悬浮在这块白色区域」。
-  ///
-  /// 所以现在这儿一点花样都没有：就是 `theme.app`，和上面那张页一模一样的底色，平铺到底。
-  /// 底栏没有轮廓、没有渐变带、没有明度差，它不是一块托着图标的板子，而是页面自己的底
-  /// 在最下面多留出来的一段。屏幕从上到下只有一块材料，图标直接长在上面
-  /// （`kanpan-no-seams-one-continuous-surface`）。
-  ///
-  /// `ignoresSafeArea` 是必须的——home 条那一条也得是同一块底色，否则颜色在安全区边界上
-  /// 断一次，那就又是一条拼缝。
-  private var shelf: some View {
-    theme.app
-      .ignoresSafeArea(edges: .bottom)
-      .allowsHitTesting(false)
   }
 
   /// 一格。只有记号，没有字——无障碍那一份由 `accessibilityLabel` 顶上。
@@ -111,11 +104,11 @@ struct TabBar: View {
     let on = tab == active
     return Button { onPick(tab) } label: {
       ZStack {
-        if on { selectedPill }
+        if on { selectedTile } else { restingTile }
         TabGlyph(tab: tab, theme: theme, on: on)
       }
-      .frame(width: Self.pillW, height: Self.pillH)
-      .padding(.vertical, Self.padY - (Self.pillH - CGFloat(Self.glyph)) / 2)
+      .frame(width: Self.cellW, height: Self.tile)
+      .padding(.vertical, 5)
       .frame(maxWidth: .infinity)
       .contentShape(Rectangle())
     }
@@ -124,20 +117,77 @@ struct TabBar: View {
     .accessibilityAddTraits(on ? [.isSelected] : [])
   }
 
-  /// 选中那格身下的胶囊：一层往下渐淡的强调色玻璃，上沿一条高光，身下一团同色的光。
+  /// 底栏那一段的「灯座」：一团从屏幕下沿往上化开的强调色光，穿过 home 条一直铺满整条栏。
   ///
-  /// 浓度压在 22% 起步：它是**染在页面底色上的一片主色**，不是贴上去的色块。
+  /// 这一团是**设计元素**，不是底色——它没有边、没有轮廓，最浓的地方在屏幕最下沿，往上
+  /// 五十来点就化干净了，所以它不会在页面上切出任何一条线。有了它，底栏那一段不再是
+  /// 「页面结束之后空出来的一条」：页面的极光往下走的时候被这团光接住，收在屏幕底边上。
   ///
-  /// 原来它还带一圈白描边和一层投影，那是按「浮在瓷面卡片上的一颗玻璃」画的。卡片没了之后
-  /// 这两样也一并去掉——投影意味着它离开了页面，白描边意味着它有自己的边界，两样都和
-  /// 「整屏一块材料」相抵。现在只剩渐变本身：上浓下淡，边缘由 `Capsule` 自己收住。
-  private var selectedPill: some View {
-    Capsule()
-      .fill(LinearGradient(
-        colors: [theme.amber.opacity(theme.dark ? 0.36 : 0.22),
-                 theme.amber.opacity(theme.dark ? 0.14 : 0.08)],
-        startPoint: .top, endPoint: .bottom))
+  /// 用户的话是「极致利用下方的空间，不能显得太空，搞点设计视觉元素，让这块不那么突兀」
+  /// 「下面会显得空很多」。答案不是把栏做高，是让那一段有东西可看。
+  private var glowBed: some View {
+    // `endRadius` 必须正好等于这块底的高（含 home 条那一截），光才会在栏顶那一行化到全透明。
+    // 写死一个大半径的话，渐变会在框的上沿被切断，那条切口就是一道横着的硬边——第一版
+    // 190 的时候真机上看得清清楚楚。高度随机型变，所以得现场量。
+    GeometryReader { geo in
+      RadialGradient(colors: [theme.amber.opacity(theme.dark ? 0.20 : 0.13), .clear],
+                     center: .bottom, startRadius: 0, endRadius: geo.size.height)
+        // 横着拉宽：正圆的话光会在左右两格之外就断掉，只托住中间两格。
+        .scaleEffect(x: 2.4, y: 1, anchor: .bottom)
+    }
+    .ignoresSafeArea(edges: .bottom)
+    .allowsHitTesting(false)
+  }
+
+  /// 没选中那三格身下的座。极淡的一层同色釉——淡到单看几乎看不见，但四格并排时
+  /// 它们是同一种东西的四个位置，而不是「一枚徽章加三个飘着的灰记号」。
+  private var restingTile: some View {
+    RoundedRectangle(cornerRadius: Self.tile * 0.31, style: .continuous)
+      .fill(theme.amber.opacity(theme.dark ? 0.10 : 0.06))
+      .frame(width: Self.tile, height: Self.tile)
+  }
+
+  /// 选中那格：一枚釉面方块，和自选页上每一行的品种徽章、「加密 / 美股」那颗药丸
+  /// 是同一种材料——`accentLift → accent` 的斜向渐变，圆角 0.31，身下拖一点同色的影。
+  ///
+  /// 这儿原来是一片 22% 的强调色玻璃胶囊。它「不难看」，但它不是这个 app 的东西：整页的
+  /// 视觉语言是**釉面 + 渐变 + 白记号**（品种徽章、分类药丸、勾选圆点全是这一套），底栏却
+  /// 是「浅色底上一个灰记号」，于是那一栏读起来像别的 app 贴过来的。用户的话是
+  /// 「针对这块重点设计」「不能因为底栏破坏 ui 的完整性，不然显得格格不入」。
+  /// 换成同一枚釉之后，底栏那一格和列表里的徽章是一家人，整屏才是一套东西。
+  ///
+  /// 影子沿用 `CoinBadge` 的分寸：淡、贴着，只是让这枚方块离纸面一点点，不是让它飞起来。
+  private var selectedTile: some View {
+    RoundedRectangle(cornerRadius: Self.tile * 0.31, style: .continuous)
+      .fill(LinearGradient(colors: [Self.lift(theme.seed.accent, 0.42), theme.amber],
+                           startPoint: .topLeading, endPoint: .bottomTrailing))
+      .frame(width: Self.tile, height: Self.tile)
+      .shadow(color: theme.amber.opacity(theme.dark ? 0.34 : 0.26),
+              radius: Self.tile * 0.2, x: 0, y: Self.tile * 0.11)
+      .background {
+        // 方块身下再化开一团同色的光，铺得比方块宽得多。自选页的底本来就是几团漂移的
+        // 极光（`AuroraBackdrop`），这一团等于底栏自己长出来的第四团——有了它，底栏那一段
+        // 不再是「页面结束之后空出来的一条」，而是极光收在这儿（「下面会显得空很多」）。
+        // 框必须是正方形、且边长正好是 `endRadius` 的两倍：框比直径矮的话，那团光会在
+        // 上下沿被切平，凭空多出两条横边——正是这一栏一直在犯的「拼缝」。
+        RadialGradient(colors: [theme.amber.opacity(theme.dark ? 0.26 : 0.16), .clear],
+                       center: .center, startRadius: 0, endRadius: Self.tile * 1.5)
+          .frame(width: Self.tile * 3, height: Self.tile * 3)
+          .allowsHitTesting(false)
+      }
       .matchedGeometryEffect(id: "pill", in: pill)
+  }
+
+  /// 往亮里提一档：色相不动，饱和收一点、明度往上走。和自选页 `LiuliSkin.lift` 同一支算法——
+  /// 那支是 `private` 的，跨文件借不到，所以这儿照抄一份；两处必须给出同一枚釉，
+  /// 不然底栏这一枚和列表里的徽章会差半档色。
+  private static func lift(_ hex: Hex, _ amount: Double) -> Color {
+    let rgba = hex.rgba
+    var h: CGFloat = 0, sat: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+    UIColor(red: rgba.r, green: rgba.g, blue: rgba.b, alpha: 1)
+      .getHue(&h, saturation: &sat, brightness: &b, alpha: &a)
+    return Color(hue: Double(h), saturation: Double(sat) * (1 - amount * 0.6),
+                 brightness: Double(b) + (1 - Double(b)) * amount)
   }
 }
 
@@ -166,12 +216,13 @@ private struct TabGlyph: View {
   /// 记号的框。所有坐标都按 28 排，改形状只要照着这个框改数。
   private static let box: Double = 28
 
-  /// 记号本身的颜色。选中是强调色；没选中是 `ink3`，再由整组统一压淡——四格并排时
-  /// 要能看清，但不能和亮着的那格抢。
+  /// 记号本身的颜色。选中的那格站在釉面方块上，所以它是**白的**——和品种徽章里的记号、
+  /// 分类药丸上的字一样，白记号压在渐变釉上是这个 app 通用的那一套。没选中是 `ink3`，
+  /// 再由整组统一压淡：四格并排时要能看清，但不能和亮着的那格抢。
   ///
   /// 淡是**压在整组上**而不是压在颜色上：星是「填充 + 同色圆角描边」叠出来的，
   /// 颜色本身带了透明度的话，两层交叠的那一圈会比中间深，星就凭空多出一道黑边。
-  private var ink: Color { on ? theme.amber : theme.ink3 }
+  private var ink: Color { on ? .white : theme.ink3 }
 
   var body: some View {
     Group {
@@ -207,11 +258,11 @@ private struct TabGlyph: View {
 
   /// 图表：一根涨、一根跌。
   ///
-  /// 只有选中时才上真的涨跌色——卡片上同时亮着两支高饱和的红绿，会把另外三格压没了。
-  /// 没选中时和别的记号同一个灰，整条栏才是一套字。
+  /// 两根都用 `ink`，不上真的涨跌色：选中时它站在渐变釉上，红绿压在强调色上互相打架；
+  /// 没选中时两支高饱和的红绿又会把另外三格压没了。整条栏是一套字，颜色的事交给身下那枚釉。
   private var candles: some View {
-    let up = on ? theme.up : ink
-    let down = on ? theme.down : ink
+    let up = ink
+    let down = ink
     return ZStack {
       shape([.rect(x: 4.2, y: 8, w: 8, h: 12.6, r: 2)]).fill(up)
       shape([.path("M8.2 4.6v3.4M8.2 20.6v2.8")]).stroke(up, style: stroke)

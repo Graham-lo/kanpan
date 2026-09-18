@@ -323,23 +323,31 @@ struct MainScreen: View {
   ///
   /// 三张整页共用同一棵视图树，所以行情的连接、报价、复盘那几个模型都挂在这一层
   /// 的宿主身上（`@State`），换页不重建、行情不断线。
+  /// 底栏是**挂在页面上的**，不是页面下面再接的一节。
+  ///
+  /// 原来这儿是个 `VStack`：页占上面一段，底栏占下面一段，各画各的底。可页面的底不是
+  /// 一个纯色——自选页身下是 `AuroraBackdrop`（光斑 + 越往下越浓的 wash + 颗粒），
+  /// 于是底栏那一段等于把整页味道最足的收尾裁掉，换成一块平的 `theme.app`。用户连着指了
+  /// 三回：「好像有点突兀能融合起来吗，因为其它都是融合的」「下方那块区域先是纯白显得不搭」
+  /// 「我觉得白色不太好……其它地方全是融合的」。
+  ///
+  /// 换成 `safeAreaInset` 之后，页面仍然铺满整屏（它的底一直流到 home 条），底栏只是浮在
+  /// 它上面的一排记号，同时把页面内容往上顶开一栏的高度——内容不会被压住，底也不再断。
   private var portraitBody: some View {
-    VStack(spacing: 0) {
-      Group {
-        switch tab {
-        // 「画线」不是一张页：点它是把当前这张图横过来画，所以它落在行情页上。
-        case .chart, .draw: chartPage
-        case .favorites: favoritesPage
-        case .settings: SettingsPanel(store: store, asPage: true)
-        }
+    Group {
+      switch tab {
+      // 「画线」不是一张页：点它是把当前这张图横过来画，所以它落在行情页上。
+      case .chart, .draw: chartPage
+      case .favorites: favoritesPage
+      case .settings: SettingsPanel(store: store, asPage: true)
       }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      // 记一笔和回放这两种状态下标签栏收起来（§2F1 / §2G4）：这时候屏幕上已经有
-      // 一套自己的操作（记下 / 收起、播放 / 退出），底下再摆一排分页，点哪个都像是
-      // 要跑题。两种状态各自都有明确的回头路（卡片的「收起」、回放条的「退出」）。
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    // 记一笔和回放这两种状态下标签栏收起来（§2F1 / §2G4）：这时候屏幕上已经有
+    // 一套自己的操作（记下 / 收起、播放 / 退出），底下再摆一排分页，点哪个都像是
+    // 要跑题。两种状态各自都有明确的回头路（卡片的「收起」、回放条的「退出」）。
+    .safeAreaInset(edge: .bottom, spacing: 0) {
       if !reviewChart.active {
-        // 底栏自己是一块悬浮的釉面卡片，身下那道渐变一直铺到 home 条，所以这儿既不补
-        // `hairline` 也不垫 `theme.app`——补了就是在一块连续的材料上画一条拼缝。
         TabBar(theme: theme, current: tab, drawing: draw.active, onPick: switchTo(tab:))
       }
     }
