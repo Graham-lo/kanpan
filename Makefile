@@ -27,7 +27,7 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test network-test data-test diag-test diag-ios-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release
+.PHONY: help core-test network-test data-test diag-test diag-ios-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -44,6 +44,10 @@ help:
 	@echo "ui-test-one  只跑一台（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "device-release  编真机 Release 包（generic/platform=iOS，签名走 -allowProvisioningUpdates）"
 	@echo "install-release 把 Release 包装到第一台 connected 真机"
+	@echo "archive      归档 Release 真机包到 DerivedData-archive/Kanpan.xcarchive（TestFlight 第一步）"
+	@echo "             构建号每次上传必须递增：make archive BUILD=7；不传 BUILD 就用工程里的值"
+	@echo "ipa          把上一步的 .xcarchive 导成可上传的 ipa（Team ID 可覆盖：make ipa TEAM_ID=XXXX）"
+	@echo "upload       用 App Store Connect API Key 把 ipa 传上去（需 ASC_KEY_ID / ASC_ISSUER_ID）"
 	@echo "snap         在单台模拟器上装 app 并截一张图（DEVICE=\"iPhone 16 Pro\"，RELEASE=1 走 Release 包）"
 	@echo "screenshots  13 台机型全跑一遍，出 docs/acceptance/shots/"
 	@echo "devices      备齐 当前范围的 13 台模拟器（缺的自动 create）"
@@ -232,6 +236,87 @@ print(xs[0]['hardwareProperties']['udid'] if xs else '')" "$(TMPDIR)devicectl.js
 	[ -n "$$udid" ] || { echo "没有已配对且在线的真机（xcrun devicectl list devices 看一眼）"; exit 1; }; \
 	echo "→ 装到 $$udid"; \
 	xcrun devicectl device install app --device "$$udid" "$(DEVICE_RELEASE_APP)"
+
+# ---------------------------------------------------------------- TestFlight
+# 三步走：archive → ipa → upload。`device-release` 出的是能装到自己手机上的 .app，
+# 交付不了 TestFlight——App Store Connect 只收归档导出的 ipa，所以这三条是另一条路，
+# 不复用上面那个 DerivedData。
+#
+# 2026-09-19 现状：这台机器上只有**免费个人 Team**（27Y32PT2HZ），
+# 只签得出 Apple Development 证书、描述文件 7 天到期。实测的卡点不在 `archive`
+# 而在 `ipa`：`make archive` 会成功，但它是拿 "Apple Development: …" 那张证书
+# 和 Team Provisioning Profile 签的；到 `make ipa` 要按 app-store-connect 重签时
+# 就报
+#     error: exportArchive No Accounts
+#     error: exportArchive No profiles for 'com.mdd.kanpan' were found
+# （xcodebuild 命令行里没有登录的 App Store Connect 账号，免费 Team 也生成不出
+# App Store 的分发描述文件）。这是预期的，别为了让它过去把 method 改成
+# development——那样导出的 ipa 传上去照样被拒。入会之后在 Xcode 里登录一次
+# 付费账号，这两条报错就都没了。
+#
+# 入会拿到分发证书之后要改的地方只有 Team ID（如果换了账号）：
+#   1. 下面的 `TEAM_ID ?=`（或者临时 `make ipa TEAM_ID=XXXXXXXXXX`）
+#   2. Kanpan/Kanpan.xcodeproj/project.pbxproj 里四处 `DEVELOPMENT_TEAM = 27Y32PT2HZ`
+# `Kanpan/Config/ExportOptions.plist` 不用动，`ipa` 会 sed 出一份带新 Team ID 的副本。
+TEAM_ID ?= 27Y32PT2HZ
+ARCHIVE_DD   := DerivedData-archive
+ARCHIVE_PATH := $(ARCHIVE_DD)/Kanpan.xcarchive
+EXPORT_PLIST := $(ARCHIVE_DD)/ExportOptions.plist
+IPA          := $(ARCHIVE_DD)/$(SCHEME).ipa
+
+# 构建号。App Store Connect 不收重复的 (MARKETING_VERSION, CURRENT_PROJECT_VERSION)
+# 组合，所以每传一版都得递增。工程里现在写死 CURRENT_PROJECT_VERSION = 1，
+# 命令行传 BUILD 就地覆盖，不用去改 pbxproj（也就不会和别的窗口抢那个文件）：
+#     make archive BUILD=7
+# 不传 BUILD 时下面这个变量整个是空的，xcodebuild 用工程里的值。
+BUILD ?=
+BUILD_SETTING := $(if $(BUILD),CURRENT_PROJECT_VERSION=$(BUILD),)
+
+archive:
+	@echo "→ 归档 Release$(if $(BUILD), · 构建号 $(BUILD),（构建号用工程里的值）)"
+	xcodebuild archive \
+		-project Kanpan/Kanpan.xcodeproj \
+		-scheme $(SCHEME) \
+		-configuration Release \
+		-destination 'generic/platform=iOS' \
+		-archivePath $(ARCHIVE_PATH) \
+		-derivedDataPath $(ARCHIVE_DD) \
+		-allowProvisioningUpdates \
+		$(BUILD_SETTING)
+	@echo "归档：$(ARCHIVE_PATH)"
+
+ipa:
+	@[ -d "$(ARCHIVE_PATH)" ] || { echo "没找到 $(ARCHIVE_PATH)，先跑 make archive"; exit 1; }
+	@mkdir -p $(ARCHIVE_DD)
+	@sed 's/27Y32PT2HZ/$(TEAM_ID)/' Kanpan/Config/ExportOptions.plist > $(EXPORT_PLIST)
+	@rm -f $(IPA)
+	xcodebuild -exportArchive \
+		-archivePath $(ARCHIVE_PATH) \
+		-exportOptionsPlist $(EXPORT_PLIST) \
+		-exportPath $(ARCHIVE_DD) \
+		-allowProvisioningUpdates
+	@echo "ipa：$(IPA)"
+
+# 上传走 App Store Connect API Key，不用 Apple ID + 应用专用密码：密钥不进仓库、
+# 不进命令行历史，也不会因为двух步验证卡住。准备工作（只做一次）：
+#   1. App Store Connect → 用户和访问 → 集成 → App Store Connect API → 生成密钥
+#      （角色至少 App Manager），下载 AuthKey_XXXXXXXXXX.p8，**只能下一次**
+#   2. mkdir -p ~/.appstoreconnect/private_keys && mv AuthKey_*.p8 ~/.appstoreconnect/private_keys/
+#      （altool 认死这个目录，不用再传路径）
+#   3. export ASC_KEY_ID=XXXXXXXXXX    # 就是文件名里那段
+#      export ASC_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx   # 密钥页顶上的 Issuer ID
+# 少了哪一样下面各有一句中文报错，不会甩一屏 altool 的 usage 出来。
+upload:
+	@[ -f "$(IPA)" ] || { echo "没找到 $(IPA)，先跑 make archive && make ipa"; exit 1; }
+	@[ -n "$$ASC_KEY_ID" ] || { echo "缺环境变量 ASC_KEY_ID（App Store Connect API 密钥 ID，形如 ABC123DEF4）：export ASC_KEY_ID=..."; exit 1; }
+	@[ -n "$$ASC_ISSUER_ID" ] || { echo "缺环境变量 ASC_ISSUER_ID（密钥页顶上的 Issuer ID，一串 UUID）：export ASC_ISSUER_ID=..."; exit 1; }
+	@[ -f "$$HOME/.appstoreconnect/private_keys/AuthKey_$$ASC_KEY_ID.p8" ] || { \
+		echo "没找到私钥 ~/.appstoreconnect/private_keys/AuthKey_$$ASC_KEY_ID.p8"; \
+		echo "把从 App Store Connect 下载的 .p8 放进那个目录（文件名保持 AuthKey_<KEY_ID>.p8）"; exit 1; }
+	@echo "→ 上传 $(IPA)（密钥 $$ASC_KEY_ID）"
+	xcrun altool --upload-app -f "$(IPA)" -t ios \
+		--apiKey "$$ASC_KEY_ID" --apiIssuer "$$ASC_ISSUER_ID"
+	@echo "传完了。App Store Connect 上处理完（几分钟到半小时）才会出现在 TestFlight 里。"
 
 # ---------------------------------------------------------------- A0.3 取证
 snap: build

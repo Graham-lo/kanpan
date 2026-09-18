@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  隐私清单（App Store 强制要求，2024 年春起没有它连审核队列都进不去）。
+
+  这个文件放在 `Kanpan/Kanpan/` 下就够了：本工程的 app target 用的是 Xcode 16 起的
+  「文件系统同步组」（project.pbxproj 里的 `PBXFileSystemSynchronizedRootGroup`，
+  路径就是 `Kanpan`），这个目录底下的资源会自动进 Copy Bundle Resources，
+  不需要往 pbxproj 里手写一条 PBXBuildFile——`Assets.xcassets` 就是这么进包的。
+  改动之后用 `ls DerivedData-device-release/Build/Products/Release-iphoneos/Kanpan.app/PrivacyInfo.xcprivacy`
+  确认它真的落进了 .app 根目录。
+
+  各 SPM 包（KanpanCore / KanpanChart / KanpanData / KanpanNetwork / KanpanAccount /
+  KanpanReview）不单独放清单：它们是**源码依赖**，随 app 一起编进同一个可执行文件，
+  不是 Apple 要求单独签名清单的那类「第三方 SDK 二进制」。Apple 的规则是
+  二进制分发的 SDK 各带各的，源码依赖由宿主 app 的清单统一申报——所以下面这份
+  已经把各包里的调用一并算进去了（文件时间戳来自 KanpanData，系统启动时间有一处
+  在 KanpanAccount）。以后如果引入预编译 xcframework，那个包要自己带清单。
+
+  下面每一条都标了「命中在哪」，是 2026-09-19 按 Apple 那四类 required reason API
+  在全仓库（app + 各包 Sources，排除 Tests 与 .build）逐个 grep 核出来的。
+  加代码时如果动到这几类 API，回来对一遍。
+-->
+<plist version="1.0">
+<dict>
+  <!--
+    不追踪。看盘没有广告 SDK、没有分析 SDK、零第三方依赖，也不把任何数据
+    跨 app / 跨网站与别家的数据拼起来，所以 NSPrivacyTracking = false、
+    追踪域名表为空。诊断数据（FrameProbe 那套帧统计）只在本机看，从不上传。
+  -->
+  <key>NSPrivacyTracking</key>
+  <false/>
+  <key>NSPrivacyTrackingDomains</key>
+  <array/>
+
+  <!--
+    ================= Required reason API =================
+    没申报就用的话，构建上传会被 ITMS-91053 挡回来。
+  -->
+  <key>NSPrivacyAccessedAPITypes</key>
+  <array>
+    <dict>
+      <!--
+        UserDefaults。CA92.1 = 只读写本 app 自己容器里的数据，不碰 App Group、
+        不跟别的 app 共享——本工程正是这样：没有任何 App Group entitlement，
+        唯一一处 `UserDefaults(suiteName:)`（PrefsStore.swift:75，测试档案用的
+        `kanpan.tests.<uuid>` 套件）也还在 app 自己的容器里。
+
+        命中（12 处非测试源文件）：
+          Kanpan/Kanpan/Main/LaunchPrewarm.swift
+          Kanpan/Kanpan/PrefsDecodeCache.swift
+          Kanpan/Kanpan/Sector/SectorPage.swift
+          Kanpan/Kanpan/Sector/SectorSymbolList.swift
+          Kanpan/Kanpan/Settings/Model/PrefsCodec.swift
+          Kanpan/Kanpan/Settings/Model/PrefsStore.swift
+          Kanpan/Kanpan/Symbols/FavoritesView.swift
+          Kanpan/Kanpan/Symbols/SearchHistory.swift
+          Kanpan/Kanpan/Symbols/SymbolPickerModel.swift
+          Kanpan/Kanpan/Symbols/SymbolPickerView.swift
+          Kanpan/Kanpan/Symbols/SymbolPrefs.swift
+          KanpanNetwork/Sources/KanpanNetwork/Route/MarketRoutePolicy.swift
+        （`@AppStorage` 也走 UserDefaults，一并算在这条里。）
+      -->
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>CA92.1</string>
+      </array>
+    </dict>
+    <dict>
+      <!--
+        文件时间戳。C617.1 = 读写 app 自己容器（含 App Group / CloudKit 容器）里
+        文件的时间戳、大小等元数据——本工程全部命中都在 Caches / Documents 里
+        自己写出来的缓存文件上，用途是按 mtime 做 LRU 淘汰和判缓存新旧。
+
+        命中：
+          KanpanData/Sources/KanpanData/Store/SeriesStore.swift:144,168,215
+            （`.contentModificationDateKey` 读、`setAttributes(.modificationDate)` 写，
+              K 线分片缓存按 mtime 倒序淘汰）
+          KanpanData/Sources/KanpanData/Store/OIStore.swift:34,53,83
+            （持仓量缓存，同一套淘汰逻辑）
+          KanpanReview/Sources/ReviewData/ReviewStore.swift:73
+            （`.contentModificationDateKey`）
+          Kanpan/Kanpan/Settings/Model/MarketCache.swift:93,102
+          Kanpan/Kanpan/Diagnostics/DiagnosticsStore.swift:238
+            （后两处只取 `.fileSizeKey` / `.isRegularFileKey` 这类大小与类型元数据，
+              同属 C617.1 这条的覆盖范围，一并算进来。）
+      -->
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>C617.1</string>
+      </array>
+    </dict>
+    <dict>
+      <!--
+        系统启动时间。35F9.1 = 用来量 app 内两个事件之间过了多久 / 做计时器，
+        不拿它当设备指纹——这正是这两处的用法：
+
+          KanpanAccount/Sources/KanpanAccount/AccountClient.swift:70,104
+            （`ProcessInfo.processInfo.systemUptime` 算访问令牌的到期时刻。
+              刻意不用墙钟：用户改系统时间不该把会话弄乱。）
+          Kanpan/Kanpan/Main/DisplayComfort.swift:12
+            （同一个单调时钟，判护眼/主题该不该重算。）
+
+        `CACurrentMediaTime()`（KanpanChart 的手势与帧调度、Diagnostics 的 FrameProbe）
+        走的是同一条单调时间轴，Apple 的清单里没单列，但既然这条已经申报，
+        一并覆盖，不另加。
+      -->
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>35F9.1</string>
+      </array>
+    </dict>
+    <!--
+      另外两类 required reason API 全仓库一处都没有，所以不申报（申报了反而是假话）：
+        · 磁盘可用空间（volumeAvailableCapacity* / NSFileSystemFreeSize / statfs）：0 处。
+          `MarketCache` 只量自己缓存目录占了多少，不问系统还剩多少。
+        · Active keyboards（UITextInputMode.activeInputModes）：0 处。搜索框锁 ASCII
+          键盘是靠 `keyboardType` / `textInputAutocapitalization` 设的，不去读用户装了哪些键盘。
+    -->
+  </array>
+
+  <!--
+    ================= 收集的数据 =================
+    口径：只有真的离开这台手机、进了我们 VPS 上 kanpan-api 数据库的才算「收集」。
+    只存在本机的（搜索历史 SearchHistory、K 线缓存、帧率诊断、未登录时的访客档案）
+    不算，所以不在下面。
+
+    三条的共同点：都跟账号绑着（Linked = true），都只为 App 功能，
+    都不用于追踪、不用于广告（Tracking = false）。
+  -->
+  <key>NSPrivacyCollectedDataTypes</key>
+  <array>
+    <dict>
+      <!--
+        用户名。注册 / 登录往 `v1/auth/register`、`v1/auth/login` 发的就是
+        { username, password, device }（Kanpan/Kanpan/Account/AccountFeature.swift:74-76）。
+        用户名属 Apple 口径里的 User ID（账号级标识）。
+        密码只用于校验身份、不落本机明文（会话令牌进 Keychain）。
+        没有邮箱：邮箱注册 2026 年已经停掉，`AccountUser.email` 只是没改完的旧字段名，
+        装的是用户名。
+        随账号一起上去的设备名是 `UIDevice.current.model`（AccountFeature.swift:19），
+        只会是 "iPhone" / "iPad" 这种机型词，不是设备标识符，所以不申报 Device ID。
+      -->
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeUserID</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+    <dict>
+      <!--
+        用户自己造的内容，登录后随账号跨设备同步：
+          · 自选品种与自选分类名（PersonalSyncCodec.symbols，collection "favorites" / "groups"）
+          · 图上画的线与画线工具偏好（PersonalSyncCodec.drawings，collection "drawings" /
+            "drawingPreferences"，含每条线的锚点、品种、周期）
+          · 复盘记录：自己写的笔记与反思、框选的那段行情的品种 / 周期 / 起止时刻
+            （KanpanReview/Sources/ReviewData/ScorebookClient.swift 的 `v1/native-review/records`）
+          · 「找相似」提交的框选区间（同上的 `v1/native-review/searches`）
+        都存在自己账号名下，服务端按行级隔离，不与别的用户混、不做人群分析。
+      -->
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+    <dict>
+      <!--
+        app 设置本身，也随账号同步：主题 / 皮肤、涨跌配色、主副图指标与参数、
+        指标线色、周期条钉住的周期、行情线路（直连 / 网关）等
+        （白名单写死在 Kanpan/Kanpan/Account/PersonalSyncCodec.swift 的 `fields`，
+        collection "settings"）。这些既不是身份信息也不是内容，归「其他数据」。
+        `keepDeviceFields` 明确把当前周期、主机名、常亮这几项留在本机，不上传。
+      -->
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeOtherDataTypes</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+  </array>
+</dict>
+</plist>

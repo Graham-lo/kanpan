@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  这份 Info.plist 只放 Xcode 自己生成不了的那一个键，其余键仍由
+  这份 Info.plist 只放 Xcode 自己生成不了的那几个键，其余键仍由
   `GENERATE_INFOPLIST_FILE = YES` 生成后合并进来（两者可以同时用）。
 
   为什么不能继续写 `INFOPLIST_KEY_KanpanAccountAPIURL`：`INFOPLIST_KEY_*` 这套
@@ -24,5 +24,24 @@
   -->
   <key>CADisableMinimumFrameDurationOnPhone</key>
   <true/>
+  <!--
+    出口合规。不写这一条，每个传上 App Store Connect 的构建都会停在
+    「缺少出口合规信息」那一步，要人进网页里一问一答填一遍才能发给测试者——
+    一个构建填一次，TestFlight 一天传几版就要填几版。
+
+    填 false 的依据（2026-09-19 全仓库核过一遍）：app 自己不做任何加解密，
+    只用系统给的 HTTPS / WSS（`URLSession` / `URLSessionWebSocketTask`）与
+    Keychain（`KanpanAccount/Sources/KanpanAccount/CredentialVault.swift`、
+    `KanpanReview/Sources/ReviewData/ReviewCredentials.swift`，都只是
+    `SecItemAdd` / `SecItemCopyMatching` 存取会话令牌）。这两样都在
+    Apple 的豁免清单里。仓库里唯一 `import CryptoKit` 的地方是
+    `KanpanChart/Tests/KanpanChartTests/EvidenceRenderTests.swift`，
+    拿 SHA256 给取证图算指纹，在测试 target 里，不随 App Store 包发出去。
+
+    以后如果真加了自研加密（自己实现的对称/非对称算法、端到端加密的同步等），
+    这里不能继续写 false：要么改成 true 并走年度自查报告，要么按新情况重判。
+  -->
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
 </dict>
 </plist>

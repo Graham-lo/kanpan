@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  `xcodebuild -exportArchive` 的导出选项：把 `make archive` 出的 .xcarchive
+  导成一个能传 App Store Connect 的 ipa。只给 `make ipa` 用，别的目标不读它。
+
+  Team ID 写死在下面这一行，但 `make` 不会直接把这份文件交给 xcodebuild：
+  `ipa` 那条会先 `sed` 出一份副本到 DerivedData-archive/ExportOptions.plist，
+  把 `27Y32PT2HZ` 换成 `$(TEAM_ID)`。所以入会拿到付费账号、Team ID 变了的话，
+  改一个地方就够：Makefile 顶上的 `TEAM_ID ?= ...`，或者临时
+  `make ipa TEAM_ID=XXXXXXXXXX`。这份文件本身不用动。
+
+  （Team ID 还有第二处：Kanpan/Kanpan.xcodeproj/project.pbxproj 里四份
+  build configuration 各有一行 `DEVELOPMENT_TEAM = 27Y32PT2HZ`，那是编译期签名用的，
+  换账号时要一起改。）
+-->
+<plist version="1.0">
+<dict>
+  <!--
+    app-store-connect 是现在的写法；老文档里的 `app-store` 仍被接受但已废弃。
+    这一档导出时要用**分发证书**（Apple Distribution）+ App Store 描述文件重签。
+    免费个人 Team 只发得出 Apple Development 证书，所以入会之前 `make archive`
+    能过（它拿开发证书签），卡的是 `make ipa`：
+        error: exportArchive No Accounts
+        error: exportArchive No profiles for 'com.mdd.kanpan' were found
+    这是预期行为，不要为了让它过去改成 development —— development 导出的 ipa
+    传不上 App Store Connect，白跑一趟。
+  -->
+  <key>method</key>
+  <string>app-store-connect</string>
+
+  <!-- 让 Xcode 自己挑分发证书与描述文件（配合 archive 那条的 -allowProvisioningUpdates）。 -->
+  <key>signingStyle</key>
+  <string>automatic</string>
+
+  <key>teamID</key>
+  <string>27Y32PT2HZ</string>
+
+  <!-- 传符号表，TestFlight / Organizer 里的崩溃才有可读堆栈。 -->
+  <key>uploadSymbols</key>
+  <true/>
+
+  <!--
+    关键：false = 版本号和构建号以工程里写的为准，不让 Xcode 自作主张替我们递增。
+    我们自己管：MARKETING_VERSION 在 pbxproj 里改，构建号用 `make archive BUILD=7`。
+    设成 true 的话 Xcode 会在导出时改写构建号，工程里记的和实际传上去的就对不上了。
+  -->
+  <key>manageAppVersionAndBuildNumber</key>
+  <false/>
+
+  <!-- 位码早已废除；显式写 false 免得某些 Xcode 版本啰嗦。 -->
+  <key>uploadBitcode</key>
+  <false/>
+
+  <!--
+    App Store 分发不做精简（App Store Connect 自己按机型切片），
+    导出一个通用 ipa 就行。
+  -->
+  <key>thinning</key>
+  <string>&lt;none&gt;</string>
+</dict>
+</plist>
