@@ -226,6 +226,10 @@ struct SectorBubbleRenderer {
 
   private var dark: Bool { theme.dark }
 
+  /// 环光宽度的绝对下限（pt）。见 `paint(for:)` 里那一段：只兜住撞到半径下限的那几颗球，
+  /// 让环在最小的球上仍然是一条带子而不是一条描边。
+  static let rimWidthFloor = 1.5
+
   // MARK: 配方
 
   func paint(for bubble: SectorBubble) -> SectorBubblePaint {
@@ -246,7 +250,17 @@ struct SectorBubbleRenderer {
     let rimL = knobs.rimL / 100
     var p = SectorBubblePaint()
 
-    p.rimWidthRatio = (0.028 + knobs.rim / 100 * 0.060) * (0.78 + 0.34 * n)
+    // 原型那一行是纯比例：`r*(0.028 + S.rim/100*0.060)*(0.78+0.34*n)`。
+    // 比例照搬，但补一条**绝对下限**：半径撞到 `rmin`（18pt）又恰好 n≈0 的那颗球，
+    // 按比例算出来的环只有 0.9pt——它还在，可它已经不是一圈「被照亮的釉」了，
+    // 是一条描边。偏偏这种球小到连名称都不画（见 `SectorBubbleLabel.make` 的三级降级），
+    // 环是它身上仅剩的那条「属于哪一头」的通道，退化成线就等于这颗球没话说了。
+    // 1.5pt 是让环重新读成一条带子的最低值，且只在 r < 30pt 时起作用——
+    // 那一段里按比例算出来的宽度本来就只有 0.92→1.53 的差，粗细通道读不出信息，
+    // 垫上去不会吃掉任何幅度表达；30pt 以上仍然完全走原型的比例。
+    let rimRatio = (0.028 + knobs.rim / 100 * 0.060) * (0.78 + 0.34 * n)
+    let rPt = Double(bubble.radius)
+    p.rimWidthRatio = rPt > 0 ? max(rimRatio, SectorBubbleRenderer.rimWidthFloor / rPt) : rimRatio
     p.poolInnerRatio = max(0, 1 - p.rimWidthRatio * 3.4)
     p.glowCapRatio = 1 + 0.05 + knobs.glow / 100 * 0.16
 
