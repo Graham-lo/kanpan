@@ -1450,9 +1450,17 @@ extension ChartFoundationUITests {
     XCUIDevice.shared.orientation = .landscapeLeft
     XCTAssertTrue(wait(seconds: 8) { self.canvas.frame.width > self.canvas.frame.height })
     XCTAssertFalse(app.buttons["chart.expand"].isHittable)
-    // 横屏工具栏常驻一颗「竖屏」。以前这儿断言它**不存在**，理由是「手机转回去就行了」——
-    // 可锁了方向的手机转不回去，进了横屏就只能杀进程，横屏成了单程票（见 `LandscapeChrome`）。
-    XCTAssertTrue(app.buttons["land.exit"].waitForExistence(timeout: 5), "横屏没有回竖屏的出口")
+    if UIDevice.current.userInterfaceIdiom == .pad {
+      // iPad 横过来还是同一张常规宽度的页，不进画线工作台（`MainScreen.enterLandscape`
+      // 在 iPad 上走的是 `expandedChart`，不是转屏），所以这儿没有横屏工具栏也没有「竖屏」。
+      // 出口该在的地方是画线：那条路由 `AICoinBaseUITests` 守着。
+      XCTAssertFalse(app.buttons["land.exit"].exists, "iPad 转个屏就进了横屏工作台")
+      XCTAssertTrue(app.buttons["bottom.settings"].isHittable, "iPad 横过来底栏没了")
+    } else {
+      // 横屏工具栏常驻一颗「竖屏」。以前这儿断言它**不存在**，理由是「手机转回去就行了」——
+      // 可锁了方向的手机转不回去，进了横屏就只能杀进程，横屏成了单程票（见 `LandscapeChrome`）。
+      XCTAssertTrue(app.buttons["land.exit"].waitForExistence(timeout: 5), "横屏没有回竖屏的出口")
+    }
     let landscapeShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
     landscapeShot.name = "手机-自动横屏"; landscapeShot.lifetime = .keepAlways; add(landscapeShot)
     XCUIDevice.shared.orientation = .portrait

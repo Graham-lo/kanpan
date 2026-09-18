@@ -93,13 +93,17 @@ iPad 上更容易撞：图更宽、视野归位滑得更久。
 
 这是存量问题，不是这轮引入的；按项目规矩直接修了，没停下来请示。
 
-## 六、全量矩阵翻出来的七条红（都已从根因修掉）
+## 六、全量矩阵翻出来的十条红（都已从根因修掉）
 
-把 13 台矩阵真跑起来之后，一共红了七条。查到底之后分成两类：
-**两条是 app 自己的缺陷**（首屏空图、自选页被标签栏吃掉一栏安全区），
-**五条是用例的点法不对**（周期条药丸判不着、自选拖动排序、MA 输出开关，
-以及 17e 上那两条——周期条药丸与「工具」，和 MA 开关是同一个机制）。
-app 那两条各自补了会红的回归用例；用例那五条改的是用例，一行产品代码都没动。
+把 13 台矩阵真跑起来之后，一共红了十条。查到底之后分成两类：
+**四条是 app 自己的缺陷**（首屏空图、自选页被标签栏吃掉一栏安全区，
+以及 iPad 上那两条——双指缩放的死区、指标编辑纸被键盘顶飞导致第一下被吃掉），
+**六条是用例的点法不对**（周期条药丸判不着、自选拖动排序、MA 输出开关，
+17e 上那两条——周期条药丸与「工具」，和 MA 开关是同一个机制，
+外加 iPad 上的「横屏出口」——那条是用例在 iPad 上问错了问题）。
+app 那四条各自补了会红的回归用例；用例那六条改的是用例，一行产品代码都没动。
+
+前六条来自手机，**后三条只在 iPad 上红**，单独放在第 7～9 条里。
 
 **1. 周期条的药丸被 XCUI 判成「点不着」——是判定抖动，不是 app 的毛病（用例侧）**
 
@@ -237,6 +241,95 @@ iPhone 16 Plus 的时段（12:39–13:02）里我一个任务都没跑却红了�
 对照跑在 iPhone 16 Plus 模拟器上：正向 5 条全过（310s，三条画线用例 + 周期条药丸 + 回到最新）；
 反向把 `openDrawTools` 的目标点挪到 `chart.canvas`、把「回到最新」那一下换成空动作，
 两条都在两下之后准时红在自己的话上（31.4s），没有变成无限重试。
+
+**7. iPad 上双指怎么捏都不缩放——缩放被一条按像素密度算的死区全挡掉了（app 侧）**
+
+`testDeviceHistoricalPanPinchAndManualY` 在两台 iPad 上稳定红在 `chart.canvas` 捏完之后
+「间距没变」。先复现机制：在 app 侧给手势装了一个只进不出的累加器，把每一帧两指的
+**实际间距**写进图表的无障碍 `value`（`gestureTrace`），再让用例原样捏一次。读出来的样本是：
+`pinch(withScale: 1.5)` 全程最大只分开到 **≈20pt**，`scale: 2` 到 **≈28pt**，`scale: 3` 到 **≈42pt**——
+XCUI 合成的两个触点起手就只隔 ≈6pt，**分开的绝对距离跟被捏的视图多大毫无关系**。
+
+而 `ChartView+Gesture.updatePinch` 里的门槛写的是 `50.0 / displayScale`：
+3x 的手机 = 16.7pt，**2x 的 iPad = 25pt**。于是 1.5 倍那一捏在 iPad 上**每一帧都被丢掉**，
+手机上却刚好够得着——这就是「只有 iPad 红」的全部原因。真手指捏得开，所以人测不出来，
+它是一条**只在小幅捏合时发作**的真缺陷：iPad 上轻捏一下同样不动。
+
+同一个 `guard` 里还藏着第二颗雷：基准 `pinchD0` 只在 `pinchActive` 时才重新对齐，
+于是一路被丢掉的那些帧把比例攒了起来，等间距一跨过门槛，`d / d0` 会**一次性甩出去**——
+`scale: 2` 实测把 spacing 从 4 直接甩到 18.4（×4.6），图会「嘭」地跳一下。
+
+改法两处，都在根上：
+
+- `Chart.minPinchSpanPt = 10`，单位是 **pt（物理尺寸）**，`KanpanCore/Geometry/Constants.swift`。
+  不再按 `displayScale` 换算——那等于让 2x 的 iPad 比 3x 的手机多出一截死区，
+  而「两指有多近算噪声」是个物理问题，跟屏幕密度没关系。
+- 低于门槛的那几帧**照样丢，但基准跟着它走**（`pinchD0 = d; pinchMid0 = m; pinchActive = false`），
+  这样跨过门槛的那一帧只放大它自己那一点位移，不会把攒下来的比例甩出来。
+
+激活用的 `abs(d - pinchD0) > 2 * panSlopPt` 没动，捏一下就缩放的误触防线还在。
+改完 iPad mini 上该用例 15.8s 通过，手机侧同一条也跟着回归验证过（见第四节）。
+
+**8. iPad 上给 MA 加周期，第一下永远只用来收键盘（app 侧）**
+
+`testMAPeriodsTypedAndAddRemove`（iPad A16 上还多带一条 `testMAParameterCancelAndSaveOutput`）
+红在「点了『添加周期』但周期数没变」。先复现机制：在用例里把**导航栏的 frame** 和
+**键盘的 frame** 一起打出来，得到的是硬数字（iPad mini，屏 744×1133）：
+
+- 指标编辑器是一张 620pt 高的表单纸，正常居中，导航栏在 **y = 256.5**；
+- 数字键盘的 frame 是 `(0, 848, 744, 282)`，跟纸的下沿只重叠 **28.5pt**；
+- 可键盘一起来，UIKit 把**整张纸重新居中**，导航栏跳到 **y = 86.5**——为了让开 28.5pt，
+  纸整体抬了 **170pt**。
+
+于是这一下的时序是：手指落在「添加周期」上 → 焦点离开输入框 → 键盘收起 →
+**纸在手指还没抬起时落回原位** → SwiftUI `Button` 的按压跟踪把这一跳读成「手指移出去了」，
+按压被取消，`action` 不触发。用户的第一下只换来一个收键盘。
+
+排除过的三个方向（每个都实测，然后回退）：
+
+- 去掉 `.scrollDismissesKeyboard(.interactively)`——数字一模一样，不是它；
+- 换成 `.scrollDismissesKeyboard(.never)`——照样红；
+- `.presentationSizing(.form.fitted(...))`——**更糟**，纸缩到键盘起来时只剩一行可见，
+  `indicator.param.add` 连找都找不到了。
+- 「等纸稳定再点」也不行：专门写的 `testZZZMAAddSettled`（等 frame 不再变化才点）同样红——
+  因为纸是**在这一下自己引发的键盘收起里**跳的，点之前它还没开始跳。
+
+改法：把表单里这两行从 `Button` 换成 `Text` + `contentShape(Rectangle())` + `.onTapGesture`
+（`Kanpan/Panels/IndicatorPanel.swift` 的「添加周期」与「恢复默认颜色」），
+并补回 `.accessibilityAddTraits(.isButton)`。**手势识别器不跟着视图跑**，纸怎么跳它都认这一下。
+顺带量过：导航栏上的「保存」「取消」是 toolbar item，**不在这张纸里，不受影响**，所以没动。
+
+这是一条真缺陷而不只是用例问题——真人在 iPad 上编指标周期时，第一下同样是废的。
+
+**9. iPad 转个屏没有「竖屏」按钮——用例在 iPad 上问错了问题（用例侧）**
+
+`testCompactChartStylesAndRotation` 在 iPad 上红在「横屏没有回竖屏的出口」。
+查下来 app 是**按设计在跑**：iPad 横过来 `verticalSizeClass` 仍然是 `.regular`，
+`landscape` 判定为假，所以根本不进横屏画线工作台，也就没有 `land.exit`；
+`MainScreen.enterLandscape()` 在 iPad 上走的本来就是 `expandedChart` 而不是转屏
+（横屏是画线的工作台，不是一个独立入口——这是定过的口径）。
+
+所以改的是用例：按 `userInterfaceIdiom` 分叉（`AICoinBaseUITests:165` 已有同样的先例）。
+iPad 分支反过来断言**不该**有 `land.exit`、底栏还在；手机分支保留原断言，
+并且把它从原来的「断言 `land.exit` **不存在**」改成**断言它存在**——
+锁了方向的手机转不回去，进了横屏却没有出口就成了单程票，只能杀进程。
+iPad 上那条「画线 → 工作台」的路由由 `AICoinBaseUITests` 守着，没有漏掉。
+
+**第 7～9 条修完之后的复验**
+
+受影响的六条用例（`testMAPeriodsTypedAndAddRemove`、`testMAParameterCancelAndSaveOutput`、
+`testIndicatorColorSaveCancelAndRestart`、`testDeviceHistoricalPanPinchAndManualY`、
+`testCompactChartStylesAndRotation`、`testOutsideTapOnlyDismissesPanel`）在三台上各跑一遍，全绿：
+
+| 机型 | 结果 | 用时 |
+|---|---|---|
+| iPad mini (A17 Pro) | 6/6 通过 | 188s |
+| iPad (A16) | 6/6 通过 | 204s |
+| iPhone 16 Pro | 6/6 通过 | 190s |
+
+手机那一台是**防倒退**跑的：捏合的门槛从 `50/displayScale`（手机 16.7pt）改成固定 10pt，
+等于把手机侧的死区也放宽了，所以必须确认手机上的缩放与画线没有跟着变松——`testDeviceHistoricalPanPinchAndManualY`
+16.6s 通过，捏一下就缩放的误触防线由没动过的激活门槛（`2 * panSlopPt`）继续守着。
 
 ## 七、未做 / 边界
 

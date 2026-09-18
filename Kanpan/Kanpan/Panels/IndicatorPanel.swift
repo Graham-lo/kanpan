@@ -232,8 +232,17 @@ private struct IndicatorEditor: View {
             ForEach(Array(draft.params.indices), id: \.self) { paramRow($0) }
               .onDelete(perform: removePeriods)
             if draft.params.count < IndicatorDraft.maxPeriods {
-              Button("添加周期") { addPeriod() }
+              // 这一行不能用 `Button`：小尺寸 iPad 上数字键盘一起来，系统会把整张
+              // 表单纸重新居中（实测抬高 170pt）；手指落下时焦点丢了、键盘收了、纸又
+              // 落回去，`Button` 的按压跟踪就被这一跳判成「手指移出去了」而取消，
+              // 用户的第一下只用来收键盘。点击手势不跟着视图跑，所以这一下能活下来。
+              Text("添加周期")
+                .foregroundStyle(t.amber)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { addPeriod() }
                 .accessibilityIdentifier("indicator.param.add")
+                .accessibilityAddTraits(.isButton)
             }
           } else {
             ForEach(Array(draft.params.indices), id: \.self) { paramRow($0) }
@@ -270,7 +279,14 @@ private struct IndicatorEditor: View {
                 return draft.colors[index] ?? palette[(index + (draft.id == .ema ? 3 : 0)) % palette.count]
               }, set: { draft.colors[index] = $0 }))
             }
-            Button("恢复默认颜色") { draft.colors = [:] }.accessibilityIdentifier("indicator.colors.reset")
+            // 同上：表单纸会在键盘起落时整张跳一下，按钮的按压跟踪扛不住，点击手势能。
+            Text("恢复默认颜色")
+              .foregroundStyle(t.amber)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .contentShape(Rectangle())
+              .onTapGesture { draft.colors = [:] }
+              .accessibilityIdentifier("indicator.colors.reset")
+              .accessibilityAddTraits(.isButton)
           } header: {
             sectionTitle("线条颜色")
           }

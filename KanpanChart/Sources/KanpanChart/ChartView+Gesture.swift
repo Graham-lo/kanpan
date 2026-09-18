@@ -326,12 +326,11 @@ extension ChartView {
     guard var s = state else { return }
     let (d, m) = twoFinger()
     gesture.trace = "move d=\(d) previous=\(gesture.pinchD0) active=\(gesture.pinchActive)"
-    let minimumSpan = 50.0 / max(1, Double(traitCollection.displayScale))
     guard gesture.pinchD0 > 0 else { gesture.pinchD0 = d; return }
-    guard d >= minimumSpan else {
-      if gesture.pinchActive {
-        gesture.pinchD0 = d; gesture.pinchMid0 = m; gesture.pinchActive = false
-      }
+    // 两指太近的那几帧只当噪声，但基准要跟着它走：不跟的话，等间距一跨过门槛，
+    // d/d0 会把这一路攒下来的比例一次性甩出去，图会「嘭」地跳一下。
+    guard d >= Chart.minPinchSpanPt else {
+      gesture.pinchD0 = d; gesture.pinchMid0 = m; gesture.pinchActive = false
       return
     }
     if !gesture.pinchActive {
