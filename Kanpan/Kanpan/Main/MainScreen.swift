@@ -1074,10 +1074,15 @@ struct MainScreen: View {
   private func primeFavorites(_ symbols: [String]) {
     guard !didPrimeFavorites, !symbols.isEmpty else { return }
     didPrimeFavorites = true
-    // 冷启动从第一个分类看起。存下来的那个选中分组是给「同一次使用里来回切」用的，
-    // 不该跨启动生效——这一份表是刚刚才定下来的（登录用户还等过一次账号恢复），
-    // 所以这里才是重置的时机。
-    picker.resetSelectedGroup()
+    // 这儿原来有一行 `picker.resetSelectedGroup()`，执行的是「冷启动从第一个分类
+    // 看起」——理由写的是「存下来的那个选中分组只给『同一次使用里来回切』用，
+    // 不该跨启动生效」。
+    //
+    // **2026-09-19 这条决定被推翻了，连那行代码一起删掉。** 新规矩是「所有交互状态
+    // 跟着人走，无论怎么切换」，而「上次停在哪个分类」正是他用手改出来的习惯，不是
+    // 分类自己的属性；冷启动也在必须穷举的切换路径里。旧做法恰恰是用户点名的那一类
+    // ——「改过的设置在某条路径上悄悄回到默认值」。现在选中的分类跨启动保留，
+    // 跟着账号同步（`SymbolPrefs.selectedGroupID`，本来就在存档里）。
     quotes.setVisible(listVisible)
     // 冷启动第一屏就是自选页。趁用户在这儿看报价，把自选的 K 线、以及当前品种
     // 其他常用周期的 K 线先拉好，点进去、切周期第一帧就有图。

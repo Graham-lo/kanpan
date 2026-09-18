@@ -266,24 +266,16 @@ final class SymbolPickerModel {
   func createGroup(_ name: String) -> String? {
     let id = prefs.createGroup(name); prefs.classifyUnassigned(); commit(); return id
   }
-  func selectGroup(_ id: String) { pickedGroupThisRun = true; prefs.selectGroup(id); commit() }
-
-  /// 这一次使用里用户自己定过看哪一类没有。
+  /// 切到哪一类看。落盘 + 同步，跨启动保留。
   ///
-  /// 新装机上「第一次添加品种」和「自选表第一次非空」是同一件事，宿主的冷启动预热
-  /// 正好挂在后者上——不挡一下的话，刚落进新分类的品种会被那次重置弹回第一个分类，
-  /// 用户点了添加却看见一张空列表。
-  private var pickedGroupThisRun = false
-
-  /// 冷启动回到第一个分类。
-  ///
-  /// 分组的选中在同一次使用里要记住（来回切别跳回去），但下一次开 app 该从头看起，
-  /// 这和 AICoin 一致。只改内存里这一份、不落盘也不同步——用户这一次自己切过才算数。
-  func resetSelectedGroup() {
-    guard !pickedGroupThisRun, prefs.selectedGroupID != nil else { return }
-    prefs.selectedGroupID = nil
-    rebuild()
-  }
+  /// 这儿原来还带一个 `pickedGroupThisRun` 记号，配一个 `resetSelectedGroup()`，
+  /// 执行的是「冷启动回到第一个分类」（旧注释：「同一次使用里要记住，下一次开 app
+  /// 该从头看起，这和 AICoin 一致」）。**2026-09-19 整套删掉**：按「所有交互状态
+  /// 跟着人走，无论怎么切换」，上次停在哪一类是他的习惯，冷启动照样要还给他。
+  /// 顺带也修掉了旧实现里一个纯 bug——它只改内存那一份、不 `commit()`，内存和盘上
+  /// 从此对不上，还会被账号同步把这份不一致带出去。删掉的调用点在
+  /// `MainScreen.primeFavorites()`，那儿留了同一段说明。
+  func selectGroup(_ id: String) { prefs.selectGroup(id); commit() }
   func setPinned(_ symbol: String, _ on: Bool) { prefs.setPinned(symbol, on); commit() }
   func renameGroup(_ id: String, name: String) { prefs.renameGroup(id, name: name); commit() }
   func deleteGroup(_ id: String) { prefs.deleteGroup(id); commit() }
