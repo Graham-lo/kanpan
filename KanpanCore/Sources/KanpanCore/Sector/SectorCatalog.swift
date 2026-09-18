@@ -13,8 +13,11 @@ import Foundation
 /// - 加密固定 24 个 id，照 `加密-板块定义.md`，**不得自创**。
 /// - TSV 里标 `NONE` 的 48 个币不进任何板块；它们在运行时按交易所自带 tag 兜底，
 ///   由调用方传 `SectorFallbackBucket`，不是这张静态表的事。
-/// - 美股 10 个细分照 `美股-AI产业链.py` 的 `MEDIUM`，已过 `DEDUP` 归并与
-///   `EXCLUDE_ETP` / `EXCLUDE_ETF` / `EXCLUDE_OTHER` / `NON_AI` 剔除。
+/// - 美股头 10 个细分照 `美股-AI产业链.py` 的 `MEDIUM`，已过 `DEDUP` 归并与
+///   `EXCLUDE_ETP` / `EXCLUDE_ETF` / `EXCLUDE_OTHER` / `NON_AI` 剔除；
+///   「软件」「硬件」「电力」是 2026-09-18 手工补的三个：软件把原先落在「其他」里的一批软件
+///   公司捞了回来，硬件把不卖商用算力芯片、只卖 IP 与定制 ASIC 的那几家从「算力芯片」里分了
+///   出去，电力则是把原「服务器与电力」里供电散热那半边单独立了一格。
 /// - 一个品种允许跨板块（SOL 同时在 `sol-eco` 与 `l1`，高通同时在 `gpu` 与 `edge`），
 ///   每个板块各自算各自的中位数。
 
@@ -32,7 +35,7 @@ public struct SectorDef: Sendable, Equatable, Identifiable {
 }
 
 public enum SectorCatalog {
-  /// 固定顺序：加密 24 个在前，美股 10 个在后；各自照原型 `SECTOR_ORDER` 排。
+  /// 固定顺序：加密 24 个在前，美股 13 个在后；各自照原型 `SECTOR_ORDER` 排。
   public static let all: [SectorDef] = crypto + us
 
   public static func sectors(_ m: SectorMarket) -> [SectorDef] {
@@ -204,32 +207,45 @@ public enum SectorCatalog {
     ]),  // 1 个
   ]
 
-  // MARK: - 美股 10 个细分板块（AI 产业链）
+  // MARK: - 美股 13 个细分板块（AI 产业链）
 
   public static let us: [SectorDef] = [
     SectorDef(id: "gpu", name: "算力芯片", market: .us, members: [
-      "NVDA", "AMD", "AVGO", "MRVL", "INTC", "ARM", "QCOM", "CBRS",
-      "ALAB", "CRDO", "TSM", "IONQ", "QNTX"
-    ]),  // 13 个
+      "NVDA", "AMD", "INTC", "QCOM", "CBRS", "IONQ", "QNTX"
+    ]),  // 7 个。只留设计算力芯片的那几家，代工和封装在「设备与材料」。
+    // 不卖商用算力芯片，卖的是 IP、定制 ASIC 和板级连接。这几家的景气跟着云厂商的自研节奏走，
+    // 和 NVDA 那条按片卖的线常常反着来，放一起算中位数两边都被对方拖平。
+    SectorDef(id: "hardware", name: "硬件", market: .us, members: [
+      "ARM", "AVGO", "ALAB"
+    ]),  // 3 个。ARM 在「端侧 AI」里还有一份，那是它另一条腿，不冲突；ALAB 做的是 PCIe / CXL 板级互连，不走光。
     SectorDef(id: "mem", name: "存储", market: .us, members: [
-      "MU", "SNDK", "WDC", "STXX", "SKHYNIX", "SAMSUNG", "GIGADEV", "CXMT"
-    ]),  // 8 个
+      "MU", "SNDK", "WDC", "STXX", "SKHY", "SKHYNIX", "SAMSUNG", "GIGADEV", "CXMT"
+    ]),  // 9 个。SKHY 是 SK 海力士的 ADR，和 SKHYNIX 在币安上是两个独立合约，两档都要在。
+    // TSM 2026-09-18 从「算力芯片」挪过来：台积电是代工厂，吃的是制造与先进封装这个环节，
+    // 和 ASML、AMAT、HANMI（韩美半导体做封装设备）是同一条线，不跟着芯片设计公司的定价权走。
     SectorDef(id: "equip", name: "设备与材料", market: .us, members: [
-      "ASML", "AMAT", "LRCX", "KLAC", "TER", "HANMI", "AXTI"
-    ]),  // 7 个
-    SectorDef(id: "optic", name: "光通信与网络", market: .us, members: [
-      "LITE", "COHR", "AAOI", "CIEN", "ZHONGJI", "CSCO", "GLW", "NOK"
+      "ASML", "AMAT", "LRCX", "KLAC", "TER", "HANMI", "AXTI", "TSM"
     ]),  // 8 个
+    // MRVL 与 CRDO 2026-09-18 从「算力芯片」挪过来：Marvell 的主业是光模块 DSP 和定制互连，
+    // Credo 的主力是 AEC 有源电缆和光 DSP，两家吃的都是光模块那条出货节奏，不是卖商用算力芯片的。
+    SectorDef(id: "optic", name: "光通信与网络", market: .us, members: [
+      "LITE", "COHR", "AAOI", "CIEN", "ZHONGJI", "CSCO", "GLW", "NOK", "MRVL", "CRDO"
+    ]),  // 10 个
     SectorDef(id: "hyper", name: "云厂商", market: .us, members: [
       "MSFT", "GOOGL", "AMZN", "META", "ORCL", "IBM", "BABA", "TENCENT"
     ]),  // 8 个
     SectorDef(id: "neo", name: "算力租赁", market: .us, members: [
       "CRWV", "NBIS", "IREN", "SHAZ", "NET"
     ]),  // 5 个
-    SectorDef(id: "server", name: "服务器与电力", market: .us, members: [
-      "DELL", "SMCI", "HPE", "PENG", "VRT", "FLEX", "SAMSUNGEM", "HK0992",
-      "GEV", "VST", "BE", "FLNC"
-    ]),  // 12 个
+    SectorDef(id: "server", name: "服务器", market: .us, members: [
+      "DELL", "SMCI", "HPE", "PENG", "FLEX", "SAMSUNGEM", "HK0992"
+    ]),  // 7 个。整机与代工这一层，只跟着服务器出货走。
+    // 2026-09-18 从「服务器与电力」里拆出来：机柜供电、散热、发电和储能是另一门生意，
+    // 跟的是数据中心开工与电价，不是服务器出货。VRT（Vertiv）做的是数据中心的供电与散热
+    // 基础设施，不是服务器本身，所以归电力不归服务器。
+    SectorDef(id: "power", name: "电力", market: .us, members: [
+      "VRT", "GEV", "VST", "BE", "FLNC"
+    ]),  // 5 个
     SectorDef(id: "edge", name: "端侧 AI", market: .us, members: [
       "QCOM", "ARM", "AAPL", "HK1810", "SONY", "TXN", "LGELECTRONICS", "HK0992",
       "SAMSUNG"
@@ -237,10 +253,16 @@ public enum SectorCatalog {
     SectorDef(id: "robot", name: "机器人与具身", market: .us, members: [
       "UNITREE", "TSLA", "TER", "HYUNDAI", "ONDS", "RIVN"
     ]),  // 6 个
-    SectorDef(id: "app", name: "模型与应用", market: .us, members: [
-      "OPENAI", "ANTHROPIC", "ZHIPU", "MINIMAX", "PLTR", "CRM", "NOW", "ADBE",
-      "SNOW", "APP", "TEM", "KUAISHOU", "NAVER"
+    // 卖软件的那一层：安全、可观测、数据库、开发协作、自动化。它们的强弱跟着 IT 预算走，
+    // 和「模型与应用」里那批靠模型讲故事的公司不是一回事，混在一起两边的中位数都读不准。
+    SectorDef(id: "software", name: "软件", market: .us, members: [
+      "CRM", "NOW", "ADBE", "SNOW", "CRWD", "PANW", "ZS", "DDOG",
+      "MDB", "GTLB", "TEAM", "PATH", "ZM"
     ]),  // 13 个
+    SectorDef(id: "app", name: "模型与应用", market: .us, members: [
+      "OPENAI", "ANTHROPIC", "ZHIPU", "MINIMAX", "PLTR", "APP", "TEM", "KUAISHOU",
+      "NAVER"
+    ]),  // 9 个。PLTR / APP / TEM 的故事是模型驱动的，所以留在这儿，不跟 CRM 那批走。
   ]
 
   // MARK: - 索引
@@ -262,9 +284,9 @@ public enum SectorCatalog {
     "zk": "ZK", "rwa": "RWA", "oracle-bridge": "预言机", "payment": "支付",
     "perp-dex": "永续 DEX", "pow": "PoW", "privacy": "隐私", "eth-eco": "ETH 生态",
     "metaverse": "元宇宙", "meme-cn": "华语 Meme", "fan-token": "粉丝代币", "desci": "DeSci",
-    "gpu": "算力芯片", "mem": "存储", "equip": "设备材料", "optic": "光通信",
-    "hyper": "云厂商", "neo": "算力租赁", "server": "服务器", "edge": "端侧 AI",
-    "robot": "机器人", "app": "模型应用",
+    "gpu": "算力芯片", "hardware": "硬件", "mem": "存储", "equip": "设备材料", "optic": "光通信",
+    "hyper": "云厂商", "neo": "算力租赁", "server": "服务器", "power": "电力", "edge": "端侧 AI",
+    "robot": "机器人", "software": "软件", "app": "模型应用",
   ]
 
   private static let usChineseNames: [String: String] = [
@@ -274,7 +296,8 @@ public enum SectorCatalog {
     "CRDO": "Credo", "TSM": "台积电", "IONQ": "IonQ",
     "QNTX": "Quantinuum", "MU": "美光", "SNDK": "闪迪",
     "WDC": "西部数据", "STXX": "希捷", "SKHYNIX": "SK 海力士",
-    "SAMSUNG": "三星电子", "GIGADEV": "兆易创新", "CXMT": "长鑫存储",
+    "SKHY": "SK 海力士 ADR", "SAMSUNG": "三星电子", "GIGADEV": "兆易创新",
+    "CXMT": "长鑫存储",
     "ASML": "ASML", "AMAT": "应用材料", "LRCX": "泛林",
     "KLAC": "科天", "TER": "泰瑞达", "HANMI": "韩美半导体",
     "AXTI": "AXT", "LITE": "Lumentum", "COHR": "Coherent",
@@ -296,11 +319,16 @@ public enum SectorCatalog {
     "PLTR": "Palantir", "CRM": "Salesforce", "NOW": "ServiceNow",
     "ADBE": "Adobe", "SNOW": "Snowflake", "APP": "AppLovin",
     "TEM": "Tempus AI", "KUAISHOU": "快手", "NAVER": "Naver",
+    "CRWD": "CrowdStrike", "PANW": "Palo Alto", "ZS": "Zscaler",
+    "DDOG": "Datadog", "MDB": "MongoDB", "GTLB": "GitLab",
+    "TEAM": "Atlassian", "PATH": "UiPath", "ZM": "Zoom",
   ]
 
   /// 4 个粗段只是分类表里的说明性分组，**不是 UI 维度**——
   /// 用户 2026-09-18 砍掉了粗细粒度切换，界面上永远只有「细分」这一层。
   /// 留在这里纯粹是为了让归类表跟源文件对得上，任何 UI 都不许拿它做控件。
+  /// 所以 2026-09-18 手工补的「软件」「硬件」「电力」故意不往里加——源文件里没有它们，
+  /// 硬塞进去反而对不上了。
   static let coarseGroupsNotAUIDimension: [(id: String, name: String, medium: [String])] = [
     ("silicon", "硅与制造", ["gpu", "mem", "equip"]),
     ("iron", "机房与互连", ["optic", "server"]),

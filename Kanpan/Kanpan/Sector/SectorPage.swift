@@ -178,7 +178,7 @@ struct SectorPage: View {
   /// 是这一屏自己的规模——上场几颗、一共几个板块、盖住了多少品种。
   ///
   /// 聚合口径那行药丸 2026-09-18 整行撤了：板块只有中位数一个口径，
-  /// 不再让用户挑（也不退进「…」菜单）。那一行现在站着「今日 / 5 日」两颗——
+  /// 不再让用户挑（也不退进「…」菜单）。那一行现在站着「板块明星 / 潜力明星」两颗——
   /// 换的是看多长一段，不是换算法。
   private func header(_ snap: Snapshot) -> some View {
     HStack(spacing: 10) {
@@ -196,15 +196,18 @@ struct SectorPage: View {
     .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 2)
   }
 
-  /// 「今日 / 5 日」。就这两颗，没有第三颗，也没有任何解释文字。
+  /// 「板块明星 / 潜力明星」。就这两颗，没有第三颗，也没有任何解释文字。
+  ///
+  /// 名字讲的是这一屏在挑什么样的板块，底下取的还是今日 24h 与 5 日两段数据
+  /// （`SectorWindow.today` / `.d5` 一个字没动）——换名字不是换口径。
   ///
   /// 这一行只在 5 日那档真有东西可看时才出现（`snap.hasD5`）；美股那边服务端还没采
   /// 日线，那一格就整行不在，页面和甲版一模一样。样式照品种列表里「涨跌幅 / 成交额」
   /// 那两颗，整页只有这一种药丸。
   private func windowBar(_ snap: Snapshot) -> some View {
     HStack(spacing: 7) {
-      windowChip(.today, "今日", on: snap.window == .today)
-      windowChip(.d5, "5 日", on: snap.window == .d5)
+      windowChip(.today, "板块明星", on: snap.window == .today)
+      windowChip(.d5, "潜力明星", on: snap.window == .d5)
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 20).padding(.top, 8)

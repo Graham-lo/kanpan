@@ -8,6 +8,11 @@ import Testing
 /// 对数材料是 `Fixtures/sectors.json`——2026-09-18 币安真实快照，
 /// 从定版原型 `proto2/data.json` 抽出来的。原型侧的 median 存的是
 /// 四舍五入到 2 位小数的值，所以容差取 0.0051（半个末位再放一点点）。
+///
+/// 归类一改，对得上数的就只剩没动过的那些段：2026-09-18 晚美股这边重分了几刀
+/// （「软件」拆出「模型与应用」、「硬件」拆出「算力芯片」、「电力」拆出「服务器与电力」，
+/// MRVL 与 CRDO 归光通信、TSM 归设备与材料），被动过那几段的行是拿同一批 quotes
+/// 按同样的公式重算后写回夹具的，其余各段和快照里一个字都没变。
 @Suite("板块口径")
 struct SectorTests {
   static let tol = 0.0051
@@ -99,16 +104,20 @@ struct SectorTests {
     #expect(SectorCatalog.sectors(.crypto).count == 24)
   }
 
-  @Test func usHasTheTenMediumSegments() {
-    let want = ["gpu", "mem", "equip", "optic", "hyper", "neo", "server", "edge", "robot", "app"]
+  /// 顺序也是被钉住的：产业链从芯片往上走——设计、IP 与连接、存储、制造与封装、
+  /// 光、云、算力、机器、供电，然后才是端侧、机器人和跑在上面的软件与模型。
+  /// 「软件」是应用层的下一级，所以它排在「模型与应用」前面。
+  @Test func usHasTheThirteenMediumSegments() {
+    let want = ["gpu", "hardware", "mem", "equip", "optic", "hyper", "neo", "server",
+                "power", "edge", "robot", "software", "app"]
     #expect(SectorCatalog.sectors(.us).map(\.id) == want)
   }
 
   @Test func catalogIsCryptoThenUSAndIDsAreUnique() {
     let all = SectorCatalog.all
-    #expect(all.count == 34)
+    #expect(all.count == 37)
     #expect(all.prefix(24).allSatisfy { $0.market == .crypto })
-    #expect(all.suffix(10).allSatisfy { $0.market == .us })
+    #expect(all.suffix(13).allSatisfy { $0.market == .us })
     #expect(Set(all.map(\.id)).count == all.count)
     for d in all { #expect(SectorCatalog.sector(id: d.id) == d) }
     #expect(SectorCatalog.sector(id: "silicon") == nil, "粗段不是板块，不许进目录")
@@ -142,18 +151,25 @@ struct SectorTests {
 
   @Test func excludedTickersNeverMadeItIntoTheUSTable() {
     // 杠杆/反向 ETP、宽基与行业 ETF、判为非 AI 的，一个都不许在表里。
+    // 板块读的是正股强弱，混一只两倍做多进去就能把中位数拽歪。
+    //
+    // 2026-09-18 放行了两个：`CRWD` 进「软件」（原来按 `NON_AI` 剔的，
+    // 但软件板块要的就是这批卖订阅的公司），`SKHY` 进「存储」——它不是
+    // `SKHYNIX` 的旧代号，币安上是两个各自在交易的合约，正股与 ADR 各一档。
     let banned = [
       "SOXL", "SOXS", "TQQQ", "SQQQ", "NVDL", "UVXY", "CSOPSAMSUNG2L",  // ETP
       "QQQ", "SPY", "SMH", "IWM", "BITO", "DRAM", "BOT",                // ETF
       "STRC",                                                            // OTHER
-      "COIN", "MSTR", "TSM_X", "NFLX", "LLY", "UBER", "CRWD", "PYPL",    // 非 AI
-      "SKHY", "HK0700", "PAYP",                                          // DEDUP 的旧代号
+      "COIN", "MSTR", "TSM_X", "NFLX", "LLY", "UBER", "PYPL",            // 非 AI
+      "HK0700", "PAYP",                                                  // DEDUP 的旧代号
+      "SKDD", "SKUU", "MUU", "SNXX", "MVLL", "RAM", "CSOPSKHYNIX2L",     // 存储那批杠杆/衍生品
     ]
     let inTable = Set(SectorCatalog.sectors(.us).flatMap(\.members))
     for b in banned { #expect(!inTable.contains(b), "\(b) 不该出现在美股板块表里") }
-    #expect(inTable.count == 84, "美股 84 只进 AI 板块")
-    // DEDUP 归并后的正名在表里。
+    #expect(inTable.count == 94, "美股 94 只进 AI 板块")
+    // DEDUP 归并后的正名在表里；SK 海力士的正股与 ADR 两档都在存储里。
     #expect(inTable.contains("SKHYNIX") && inTable.contains("TENCENT"))
+    #expect(inTable.contains("SKHY"))
   }
 
   @Test func everyUSTickerHasAChineseName() {
@@ -204,7 +220,10 @@ struct SectorTests {
     // 目录顺序在前、兜底桶在后。
     #expect(got.firstIndex(where: \.isFallback) == 24)
     let us = try Self.snapshot("us")
-    #expect(SectorAggregator.stats(market: .us, quotes: us.quotes, fallbackBuckets: []).count == 10)
+    // 13 个板块，一个不落——「软件」在这份快照里只有 4 家有行情（那 9 家是
+    // 2026-09-18 之后才收进来的，快照没抓到），但 4 家也够上场；拆出来的「硬件」3 家、
+    // 「电力」5 家也都够，段数是 13。
+    #expect(SectorAggregator.stats(market: .us, quotes: us.quotes, fallbackBuckets: []).count == 13)
   }
 
   /// 板块只有中位数一个口径（2026-09-18 起均值 / 成交额加权整个撤掉）。
