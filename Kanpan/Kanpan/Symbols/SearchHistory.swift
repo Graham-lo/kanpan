@@ -48,9 +48,15 @@ final class SearchHistory {
   @ObservationIgnored private var storage: SearchHistoryStorage
   @ObservationIgnored private let key: String
 
-  init(storage: SearchHistoryStorage? = nil, key: String = SearchHistory.defaultsKey) {
-    self.storage = storage ?? (ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1"
-      ? MemorySearchHistoryStorage() : UserDefaults.standard)
+  /// 这台机器上这份历史该落在哪。理由同 `SymbolPrefsStore.deviceStorage()`：
+  /// 「不写参数就静默落到 UserDefaults」的缺省值整类去掉，存哪儿必须写出来。
+  static func deviceStorage() -> SearchHistoryStorage {
+    ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1"
+      ? MemorySearchHistoryStorage() : UserDefaults.standard
+  }
+
+  init(storage: SearchHistoryStorage, key: String = SearchHistory.defaultsKey) {
+    self.storage = storage
     self.key = key
     terms = Self.clean(self.storage.searchHistory(forKey: self.key) ?? [])
   }

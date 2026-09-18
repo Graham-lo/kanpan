@@ -69,7 +69,7 @@ final class SymbolPickerModel {
 
   init(catalog: [SymbolInfo] = [],
        tickers: [Ticker] = [],
-       store: SymbolPrefsStore = SymbolPrefsStore(),
+       store: SymbolPrefsStore,
        feed: SymbolTickerFeed? = nil,
        catalogLoader: (@Sendable () async -> [SymbolInfo])? = nil) {
     self.catalog = catalog

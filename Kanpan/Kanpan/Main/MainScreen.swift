@@ -28,8 +28,8 @@ struct MainScreen: View {
   /// 才知道，见 `honorProfile()`；`boot()` 里 `market.start(symbol:)` 会拿着那份
   /// 档案里的值开张，不会先开一张别的图再切过去。
   @State private var market = MarketModel(symbol: "BTCUSDT")
-  @State private var store = PrefsStore()
-  @State private var picker = SymbolPickerModel()
+  @State private var store = PrefsStore(storage: PrefsStore.deviceStorage())
+  @State private var picker = SymbolPickerModel(store: SymbolPrefsStore(storage: SymbolPrefsStore.deviceStorage()))
   /// 画线工作台里那一层换品种开着没有。只在横屏画线时有意义。
   @State private var showDrawSwitcher = false
   @State private var quotes = QuoteBook()
@@ -63,7 +63,7 @@ struct MainScreen: View {
   /// 这次复盘是从哪儿开的。退出复盘时按它把人放回原处。
   @State private var replayOrigin: ReplayOrigin?
   /// 历史搜索词。放在宿主身上，来回进出搜索页不丢。
-  @State private var searchHistory = SearchHistory()
+  @State private var searchHistory = SearchHistory(storage: SearchHistory.deviceStorage())
   /// 停在哪一格。冷启动落在自选还是行情，看上次存下的自选表空不空。
   ///
   /// 这就是原来那个「冷启动自选盖层」的去处。以前得专门铺一层 `overlay`（不能用

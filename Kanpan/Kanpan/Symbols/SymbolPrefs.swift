@@ -313,9 +313,20 @@ final class SymbolPrefsStore {
   private let storage: SymbolPrefsStorage
   private let key: String
 
-  init(storage: SymbolPrefsStorage? = nil, key: String = SymbolPrefsStore.defaultsKey) {
-    self.storage = storage ?? (ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1"
-      ? MemoryPrefsStorage() : UserDefaults.standard)
+  /// 这台机器上这份自选档案该落在哪。**存哪儿必须在建 store 的地方写出来。**
+  ///
+  /// 以前 `storage` 是可选的、缺省落 `UserDefaults.standard`，于是 `SymbolPrefsStore()`
+  /// 看着像「用默认的」，实际是「悄悄换了个柜子」——档案真身早就搬进了账号目录里的
+  /// `symbols.json`，写在文件里、读在 UserDefaults 里，两条道（R3-1：新装机每次冷启动
+  /// 都开 BTCUSDT，老用户永远停在升级那一刻的品种上）。这种「不写参数就静默换存储」
+  /// 的缺省值是那个 bug 能长期不被发现的原因，所以整类去掉。
+  static func deviceStorage() -> SymbolPrefsStorage {
+    ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1"
+      ? MemoryPrefsStorage() : UserDefaults.standard
+  }
+
+  init(storage: SymbolPrefsStorage, key: String = SymbolPrefsStore.defaultsKey) {
+    self.storage = storage
     self.key = key
   }
 

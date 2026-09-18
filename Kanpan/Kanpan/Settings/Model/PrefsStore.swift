@@ -67,15 +67,24 @@ final class PrefsStore {
   @ObservationIgnored var onChange: ((Prefs) -> Void)?
   @ObservationIgnored private let cache: any MarketCacheStore
 
-  init(storage: any PrefsStorage = UserDefaults.standard,
+  /// 这台机器上这份设置该落在哪。
+  ///
+  /// 以前这段挑选埋在 `init` 里，而 `storage` 还带一个 `= UserDefaults.standard` 的
+  /// 默认值——于是「不写参数」看着像「用默认的」，实际是「悄悄落到 UserDefaults」。
+  /// `SymbolPrefsStore()` 就是这么把「上次看的那张图」读到另一个柜子里去的（R3-1）。
+  /// 现在存哪儿必须在建store的地方写出来，这个函数只是把那句话写短一点。
+  static func deviceStorage() -> any PrefsStorage {
+    guard ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" else { return UserDefaults.standard }
+    if let profile = ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"],
+       UUID(uuidString: profile) != nil, let defaults = UserDefaults(suiteName: "kanpan.tests." + profile) {
+      return defaults
+    }
+    return InMemoryPrefsStorage()
+  }
+
+  init(storage: any PrefsStorage,
        cache: any MarketCacheStore = MarketCacheFactory.make()) {
-    let selectedStorage: any PrefsStorage
-    if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" {
-      if let profile = ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"],
-         UUID(uuidString: profile) != nil, let defaults = UserDefaults(suiteName: "kanpan.tests." + profile) {
-        selectedStorage = defaults
-      } else { selectedStorage = InMemoryPrefsStorage() }
-    } else { selectedStorage = storage }
+    let selectedStorage = storage
     self.storage = selectedStorage
     self.cache = cache
     self.prefs = PrefsStore.load(from: selectedStorage)
