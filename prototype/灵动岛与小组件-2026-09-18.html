@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>盯 · 灵动岛与小组件</title>
+<style>
+:root{
+  --pg:#0B0C10;--pg2:#12141A;--fg:#EEF0F4;--fg2:#9AA1AE;--fg3:#5E6573;--hair:rgba(255,255,255,.08);
+  --app:#F3F7F4;--ground:#C3D6CA;--raised:#FFFFFF;--raised2:#E7EFE9;--line:#D6E3DA;--ink:#14211B;--ink2:#4E6158;--ink3:#606F67;
+  --up:#36B257;--down:#E64552;--amber:#B57C28;--accent:#2E7D6B;
+  --lobe1:#A9DDF3;--lobe2:#BFEFD6;--lobe3:#DCEFF6;
+  --sparkH:52px;--fill:.16;--badge:24px;--glow:1;--tick:1400;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--pg);color:var(--fg);font:14px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","SF Pro Text",sans-serif;-webkit-font-smoothing:antialiased;padding:0 0 120px}
+body::before{content:"";position:fixed;inset:0;background:
+  radial-gradient(900px 500px at 12% -10%,rgba(78,160,140,.16),transparent 60%),
+  radial-gradient(700px 460px at 95% 10%,rgba(200,120,80,.12),transparent 60%);pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 28px}
+header{padding:64px 0 22px}
+h1{font-size:34px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
+h1 em{font-style:normal;font-family:"Songti SC","STSong","Noto Serif SC",serif;font-weight:600;letter-spacing:.06em;margin-right:14px;
+  background:linear-gradient(120deg,#F5F1E6,#C9B48A 60%,#8FB6A8);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:var(--fg2);margin-top:12px;max-width:760px;font-size:14.5px}
+.bar{position:sticky;top:0;z-index:50;margin:18px -28px 0;padding:12px 28px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  background:rgba(11,12,16,.72);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);border-bottom:1px solid var(--hair)}
+.seg{display:flex;background:rgba(255,255,255,.06);border:1px solid var(--hair);border-radius:999px;padding:3px}
+.seg button{border:0;background:transparent;color:var(--fg2);font:500 12.5px/1 inherit;padding:8px 13px;border-radius:999px;cursor:pointer;transition:.18s}
+.seg button.on{background:rgba(255,255,255,.14);color:var(--fg)}
+.bar .sp{flex:1}
+.bar .k{border:1px solid var(--hair);background:rgba(255,255,255,.06);color:var(--fg);font:500 12.5px/1 inherit;padding:9px 14px;border-radius:999px;cursor:pointer}
+.bar .k.on{background:rgba(255,255,255,.16)}
+section{margin-top:64px}
+.sh{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+.sh .n{font:600 11px/1 ui-monospace,SFMono-Regular,monospace;letter-spacing:.24em;color:var(--fg3)}
+.sh h2{font-size:21px;font-weight:600;letter-spacing:-.01em}
+.sub{color:var(--fg2);max-width:820px;font-size:13.5px;margin-bottom:22px}
+.grid{display:grid;gap:26px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.cap{color:var(--fg2);font-size:12.5px;margin-top:12px;max-width:420px}
+.cap b{color:var(--fg);font-weight:500}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{padding:18px 18px 16px;border-radius:18px;background:rgba(255,255,255,.045);border:1px solid var(--hair)}
+.card h4{font-size:14px;font-weight:600;margin-bottom:6px}
+.card p{color:var(--fg2);font-size:12.5px}
+.card .tag{display:inline-block;font:600 10px/1 ui-monospace,monospace;letter-spacing:.18em;color:var(--fg3);margin-bottom:10px}
+
+/* ---------- 手机机身 ---------- */
+.phone{position:relative;width:402px;height:874px;border-radius:56px;background:#000;overflow:hidden;
+  box-shadow:0 0 0 10px #16171b,0 0 0 11px #2a2b30,0 40px 90px -30px rgba(0,0,0,.9);margin:0 auto}
+.phone.top{height:300px;border-radius:56px 56px 24px 24px}
+.screen{position:absolute;inset:0;overflow:hidden}
+.island{position:absolute;left:50%;top:11px;transform:translateX(-50%);height:37px;width:126px;border-radius:999px;background:#000;z-index:20;
+  transition:width .42s cubic-bezier(.32,1.4,.4,1),height .42s cubic-bezier(.32,1.4,.4,1),border-radius .3s;color:#fff;overflow:hidden;
+  box-shadow:0 0 0 .5px rgba(255,255,255,.06) inset}
+.status{position:absolute;top:16px;left:0;right:0;display:flex;justify-content:space-between;padding:0 40px;font:600 15px/1 inherit;color:#fff;z-index:5}
+.mkt-page .status{color:var(--ink)} .dark .mkt-page .status{color:#fff}
+.status i{display:inline-block;width:26px;height:12px;border:1.5px solid rgba(255,255,255,.5);border-radius:4px;position:relative;vertical-align:-1px}
+.status i::after{content:"";position:absolute;left:2px;top:2px;bottom:2px;width:70%;background:#fff;border-radius:2px}
+
+/* 桌面 */
+.home{background:
+  radial-gradient(60% 40% at 30% 20%,var(--lobe1) 0%,transparent 70%),
+  radial-gradient(55% 45% at 80% 60%,var(--lobe2) 0%,transparent 70%),
+  radial-gradient(50% 40% at 20% 90%,var(--lobe3) 0%,transparent 70%),
+  linear-gradient(180deg,var(--ground),var(--app))}
+.dark .home{background:
+  radial-gradient(60% 40% at 30% 10%,color-mix(in srgb,var(--accent) 30%,transparent) 0%,transparent 70%),
+  radial-gradient(55% 45% at 85% 70%,color-mix(in srgb,var(--amber) 16%,transparent) 0%,transparent 70%),
+  linear-gradient(180deg,var(--ground),var(--app))}
+.home .status{color:var(--ink)} .dark .home .status{color:#fff}
+.icons{position:absolute;left:27px;right:27px;display:grid;grid-template-columns:repeat(4,62px);justify-content:space-between;gap:26px 0}
+.icons i{display:block;width:62px;height:62px;border-radius:15px;background:rgba(255,255,255,.34);border:1px solid rgba(255,255,255,.45);
+  box-shadow:0 8px 20px -10px rgba(0,0,0,.25);backdrop-filter:blur(10px)}
+.dark .icons i{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.14)}
+.dock{position:absolute;left:14px;right:14px;bottom:14px;height:98px;border-radius:34px;background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.4);backdrop-filter:blur(20px)}
+.dark .dock{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.12)}
+.dock i{position:absolute;top:18px;width:62px;height:62px;border-radius:15px;background:rgba(255,255,255,.34);border:1px solid rgba(255,255,255,.45)}
+.dark .dock i{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.14)}
+
+/* ---------- 组件通用 ---------- */
+.w{position:absolute;border-radius:24px;overflow:hidden;background:var(--app);color:var(--ink);
+  box-shadow:0 1px 0 rgba(255,255,255,.55) inset,0 18px 40px -22px rgba(0,0,0,.45);
+  font-variant-numeric:tabular-nums;isolation:isolate}
+.dark .w{box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 18px 40px -22px rgba(0,0,0,.8)}
+.w::before{content:"";position:absolute;inset:0;z-index:-1;opacity:var(--glow);background:
+  radial-gradient(70% 55% at 18% 0%,color-mix(in srgb,var(--lobe1) 55%,transparent),transparent 70%),
+  radial-gradient(60% 50% at 100% 100%,color-mix(in srgb,var(--lobe2) 50%,transparent),transparent 70%)}
+.dark .w::before,.classic .w::before{display:none}
+.w.sm{width:170px;height:170px}.w.md{width:364px;height:170px}.w.lg{width:364px;height:382px}
+.pad{position:absolute;inset:0;padding:16px}
+.row{display:flex;align-items:center;gap:8px}
+.sym{font-size:13px;font-weight:600;letter-spacing:.01em}
+.mkt{font-size:10.5px;color:var(--ink3);font-weight:500;letter-spacing:.06em}
+.px{font-size:22px;font-weight:500;letter-spacing:-.01em;line-height:1.1;margin-top:8px;white-space:nowrap}
+.px.stale{color:var(--ink3);transition:color .6s}
+.pill{display:inline-block;font-size:11.5px;font-weight:600;line-height:1;padding:4px 7px;border-radius:999px;letter-spacing:.01em}
+.pill.u{color:var(--up);background:color-mix(in srgb,var(--up) 14%,transparent)}
+.pill.d{color:var(--down);background:color-mix(in srgb,var(--down) 14%,transparent)}
+.spark{position:absolute;left:0;right:0;bottom:0;height:var(--sparkH);display:block}
+.spark path{transition:d .4s}
+.lrow{display:flex;align-items:center;gap:9px;height:36px}
+.lrow .nm{font-size:12.5px;font-weight:600;flex:1}
+.lrow .pr{font-size:12.5px;font-weight:500;letter-spacing:-.01em}
+.lrow .pill{font-size:10.5px;padding:3px 6px;min-width:52px;text-align:center}
+.hr{height:1px;background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.vr{position:absolute;top:16px;bottom:16px;left:150px;width:1px;background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.ch{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--ink3);opacity:.5;margin-right:4px;vertical-align:1px}
+
+/* 字滚动 */
+.d{display:inline-block;position:relative}
+.d.rl{animation:rl .32s cubic-bezier(.2,.8,.2,1)}
+.d.rr{animation:rr .32s cubic-bezier(.2,.8,.2,1)}
+@keyframes rl{from{transform:translateY(.55em);opacity:0}to{transform:none;opacity:1}}
+@keyframes rr{from{transform:translateY(-.55em);opacity:0}to{transform:none;opacity:1}}
+
+/* 板块气泡 */
+.bub{position:absolute;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.18);transition:transform .25s;cursor:pointer;
+  box-shadow:0 10px 24px -14px rgba(0,0,0,.5),0 0 0 .5px rgba(255,255,255,.35) inset}
+.bub:hover{transform:scale(1.04)}
+.bub b{font-size:12px;font-weight:600;letter-spacing:.02em;line-height:1.1}
+.bub s{text-decoration:none;font-size:10.5px;font-weight:500;opacity:.92;margin-top:2px}
+.bub.u{background:radial-gradient(90% 90% at 30% 25%,color-mix(in srgb,var(--up) 75%,#fff),var(--up) 60%,color-mix(in srgb,var(--up) 78%,#000))}
+.bub.d{background:radial-gradient(90% 90% at 30% 25%,color-mix(in srgb,var(--down) 75%,#fff),var(--down) 60%,color-mix(in srgb,var(--down) 78%,#000))}
+.bub.n{background:radial-gradient(90% 90% at 30% 25%,color-mix(in srgb,var(--ink3) 45%,#fff),color-mix(in srgb,var(--ink3) 55%,var(--app)))}
+.dark .bub.n{background:radial-gradient(90% 90% at 30% 25%,color-mix(in srgb,var(--ink3) 70%,#000),color-mix(in srgb,var(--ink3) 40%,#000))}
+.bub.n b,.bub.n s{color:var(--ink);text-shadow:none;opacity:.8}
+
+/* ---------- 锁屏 ---------- */
+.lock{background:
+  radial-gradient(70% 50% at 50% 0%,color-mix(in srgb,var(--accent) 42%,#000),transparent 70%),
+  radial-gradient(60% 40% at 90% 90%,color-mix(in srgb,var(--amber) 22%,#000),transparent 70%),
+  linear-gradient(180deg,#0a0d10,#05070a)}
+.lock .t{position:absolute;left:0;right:0;top:86px;text-align:center;color:#fff}
+.lock .inl{font-size:14px;font-weight:500;opacity:.85;letter-spacing:.01em;display:flex;justify-content:center;align-items:center;gap:6px}
+.lock .time{font-size:88px;font-weight:200;letter-spacing:-.03em;line-height:1;margin-top:6px;font-variant-numeric:tabular-nums}
+.lock .acc{position:absolute;top:214px;left:0;right:0;display:flex;justify-content:center;gap:12px;color:#fff}
+.acc .circ{width:76px;height:76px;border-radius:50%;background:rgba(255,255,255,.12);position:relative;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
+.acc .rect{width:172px;height:76px;border-radius:20px;background:rgba(255,255,255,.12);padding:10px 12px;backdrop-filter:blur(6px);position:relative;overflow:hidden}
+.rect .l1{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600}
+.rect .l2{font-size:17px;font-weight:500;margin-top:2px;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.rect .l2 small{font-size:11px;font-weight:600;margin-left:6px;opacity:.85}
+.rect svg.mini{position:absolute;right:10px;bottom:6px;width:64px;height:26px;opacity:.6}
+.la{position:absolute;left:14px;right:14px;bottom:126px;height:150px;border-radius:26px;overflow:hidden;color:#fff;
+  background:color-mix(in srgb,var(--app) 86%,#000);box-shadow:0 0 0 .5px rgba(255,255,255,.12) inset,0 20px 44px -22px rgba(0,0,0,.8)}
+.lock .home-ind{position:absolute;left:50%;bottom:10px;width:140px;height:5px;border-radius:3px;background:rgba(255,255,255,.6);transform:translateX(-50%)}
+.lock .tools{position:absolute;bottom:40px;left:44px;right:44px;display:flex;justify-content:space-between}
+.lock .tools i{width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.14);backdrop-filter:blur(8px)}
+
+/* ---------- 岛内容 ---------- */
+.isl-c{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 10px;opacity:0;transition:opacity .2s}
+.island[data-s="compact"] .isl-c.compact,.island[data-s="minimal"] .isl-c.minimal,.island[data-s="expanded"] .isl-c.expanded,.island[data-s="alert"] .isl-c.expanded,.island[data-s="ended"] .isl-c.compact{opacity:1;transition-delay:.18s}
+.island[data-s="expanded"],.island[data-s="alert"]{width:372px;height:158px;border-radius:44px}
+.island[data-s="minimal"]{width:46px}
+.island[data-s="ended"]{color:rgba(255,255,255,.5)}
+.isl-c.compact .p{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.isl-c.minimal{justify-content:center;padding:0}
+.ring{width:26px;height:26px;border-radius:50%;padding:2px;background:conic-gradient(var(--c,#36B257) 0 100%);display:flex;align-items:center;justify-content:center}
+.ring>*{border-radius:6px}
+.isl-c.expanded{display:block;padding:16px 18px 14px}
+.ex-top{display:flex;align-items:flex-start;justify-content:space-between}
+.ex-top .l{display:flex;align-items:center;gap:9px}
+.ex-top .nm{font-size:14px;font-weight:600;line-height:1.1}
+.ex-top .sub{font-size:11px;color:rgba(255,255,255,.55);margin:2px 0 0;font-weight:500}
+.ex-top .r{text-align:right}
+.ex-top .px{margin:0;font-size:22px;color:#fff}
+.ex-top .pill{margin-top:5px}
+.ex-sp{position:relative;height:52px;margin-top:8px}
+.ex-sp svg{position:absolute;inset:0;width:100%;height:100%}
+.ex-bt{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+.ex-bt .m{font-size:11px;color:rgba(255,255,255,.62);font-weight:500;letter-spacing:.02em;display:flex;gap:14px}
+.ex-bt .m b{color:#fff;font-weight:500;margin-left:5px;font-variant-numeric:tabular-nums}
+.ex-bt .b{display:flex;gap:6px}
+.ex-bt button{width:34px;height:26px;border-radius:999px;border:0;background:rgba(255,255,255,.14);color:#fff;font:600 12px/1 inherit;cursor:pointer}
+.ex-bt button:hover{background:rgba(255,255,255,.24)}
+.island[data-s="alert"]{box-shadow:0 0 0 1.5px var(--accent),0 0 32px -4px color-mix(in srgb,var(--accent) 70%,transparent)}
+.island[data-s="alert"] .ex-top .pill{background:var(--accent);color:#fff}
+.tgt{position:absolute;left:0;right:0;border-top:1px dashed color-mix(in srgb,var(--accent) 80%,#fff);opacity:.9}
+.tgt span{position:absolute;right:0;top:-8px;font-size:9.5px;font-weight:600;color:#fff;background:var(--accent);padding:2px 5px;border-radius:5px;line-height:1}
+
+/* 状态切换 */
+.states{display:flex;gap:6px;flex-wrap:wrap;margin-top:16px;justify-content:center}
+.states button{border:1px solid var(--hair);background:rgba(255,255,255,.05);color:var(--fg2);font:500 12px/1 inherit;padding:8px 12px;border-radius:999px;cursor:pointer}
+.states button.on{background:rgba(255,255,255,.16);color:var(--fg)}
+.states button.acc{border-color:color-mix(in srgb,var(--accent) 60%,transparent)}
+
+/* 行情页 长按 */
+.mkt-page{background:var(--app);color:var(--ink)}
+.mkt-page .tb{position:absolute;top:64px;left:18px;right:18px}
+.mkt-page .tb .row{gap:9px}
+.mkt-page .tb .nm{font-size:15px;font-weight:600}
+.mkt-page .tb .icons2{margin-left:auto;display:flex;gap:16px;color:var(--ink2)}
+.hold{position:relative;display:inline-block;margin-top:10px;cursor:pointer;user-select:none;-webkit-user-select:none;border-radius:12px;padding:4px 8px;margin-left:-8px}
+.hold .px{margin:0}
+.hold .prog{position:absolute;inset:-3px;border-radius:14px;padding:1.5px;background:conic-gradient(var(--accent) var(--p,0%),transparent 0);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:0;transition:opacity .15s}
+.hold.pressing .prog{opacity:1}
+.mkt-page .sub2{font-size:11px;color:var(--ink3);margin-top:6px}
+.mkt-page .cells{display:flex;gap:18px;margin-top:14px;font-size:11px;color:var(--ink3)}
+.mkt-page .cells b{display:block;color:var(--ink);font-weight:500;font-size:12.5px;font-variant-numeric:tabular-nums}
+.mkt-page .kl{position:absolute;left:0;right:0;top:214px;bottom:0}
+.fly{position:absolute;z-index:30;font-size:22px;font-weight:500;color:var(--ink);pointer-events:none;font-variant-numeric:tabular-nums}
+.hint{position:absolute;left:0;right:0;bottom:22px;text-align:center;font-size:11.5px;color:var(--ink3)}
+
+/* StandBy */
+.standby{position:relative;width:874px;max-width:100%;height:402px;border-radius:44px;background:#000;overflow:hidden;margin:0 auto;box-shadow:0 0 0 10px #16171b,0 0 0 11px #2a2b30,0 40px 90px -30px rgba(0,0,0,.9)}
+.sb-card{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;color:#fff}
+.sb-l{padding:52px 56px;display:flex;flex-direction:column;justify-content:space-between}
+.sb-l .nm{display:flex;align-items:center;gap:12px;font-size:20px;font-weight:600}
+.sb-l .px{font-size:64px;font-weight:300;letter-spacing:-.03em;margin:0}
+.sb-l .pill{font-size:15px;padding:6px 11px;margin-top:10px}
+.sb-r{position:relative}
+.sb-r svg{position:absolute;inset:0;width:100%;height:100%}
+.standby.night{filter:sepia(1) saturate(4) hue-rotate(-32deg) brightness(.55)}
+
+/* 控件 */
+.cc{width:402px;margin:0 auto;padding:26px;border-radius:40px;background:linear-gradient(180deg,#22262e,#0d0f13);box-shadow:0 0 0 10px #16171b,0 0 0 11px #2a2b30}
+.cc .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.tile{aspect-ratio:1;border-radius:20px;background:rgba(255,255,255,.1);backdrop-filter:blur(10px)}
+.tile.big{grid-column:span 2;grid-row:span 2;aspect-ratio:auto;display:flex;flex-direction:column;justify-content:space-between;padding:16px;cursor:pointer;transition:.2s;border:1px solid rgba(255,255,255,.08)}
+.tile.big.on{background:color-mix(in srgb,var(--accent) 80%,#000)}
+.tile .ic{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600}
+.tile .tt{font-size:13px;font-weight:600}
+.tile .ts{font-size:11.5px;color:rgba(255,255,255,.6);margin-top:2px}
+
+/* 表 */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--hair);vertical-align:top}
+th{color:var(--fg3);font-weight:500;font-size:11.5px;letter-spacing:.08em}
+td:first-child{color:var(--fg);font-weight:500;white-space:nowrap}
+td{color:var(--fg2)}
+code{font:12px ui-monospace,SFMono-Regular,monospace;color:#CBD3E1;background:rgba(255,255,255,.07);padding:1px 6px;border-radius:5px}
+
+/* 调参抽屉 */
+.drawer{position:fixed;right:20px;bottom:20px;width:300px;z-index:60;padding:18px 18px 12px;border-radius:22px;background:rgba(18,20,26,.86);backdrop-filter:blur(24px);border:1px solid var(--hair);
+  transform:translateY(20px);opacity:0;pointer-events:none;transition:.25s}
+.drawer.on{transform:none;opacity:1;pointer-events:auto}
+.drawer h5{font-size:12px;font-weight:600;letter-spacing:.14em;color:var(--fg3);margin-bottom:10px}
+.kn{display:grid;grid-template-columns:86px 1fr 44px;gap:10px;align-items:center;font-size:12.5px;color:var(--fg2);margin:8px 0}
+.kn output{text-align:right;font-variant-numeric:tabular-nums;color:var(--fg)}
+input[type=range]{-webkit-appearance:none;height:3px;background:rgba(255,255,255,.18);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+@media(max-width:900px){.two{grid-template-columns:1fr}.phone{transform:scale(.86);transform-origin:top center}}
+footer{margin-top:80px;color:var(--fg3);font-size:12px}
+</style>
+</head>
+<body class="sage">
+<div class="wrap">
+<header>
+  <h1><em>盯</em>灵动岛与小组件</h1>
+  <p class="lead">桌面组件回答「刚才多少」，灵动岛回答「正在跳」。整套只有一个动词——盯。四件事已替你定：岛的入口是<b>长按价格</b>；<b>到价线</b>做，穿越时岛自己亮一下；<b>板块两极</b>大组件排进第三期、等气泡页；第二期把推送模块加进 <code>kanpan-api</code>。下面每个机身都在跳真价，能点。</p>
+  <div class="bar">
+    <div class="seg" id="skin"><button data-v="sage" class="on">青苔</button><button data-v="terra">陶土</button><button data-v="classic">经典</button></div>
+    <div class="seg" id="mode"><button data-v="light" class="on">浅</button><button data-v="dark">深</button></div>
+    <div class="seg" id="ud"><button data-v="gu" class="on">绿涨红跌</button><button data-v="ru">红涨绿跌</button></div>
+    <span class="sp"></span>
+    <button class="k" id="knob">调</button>
+  </div>
+</header>
+
+<section id="s0">
+  <div class="sh"><span class="n">00</span><h2>四个决断</h2></div>
+  <div class="cards">
+    <div class="card"><span class="tag">入口</span><h4>长按价格，价格缩进岛里</h4><p>行情页顶栏的最新价按住半秒，一圈进度描完、震一下，价格飞进灵动岛。自选行的长按菜单不重复放；岛盯的是你钉住的那个品种，app 里换品种它不跟。</p></div>
+    <div class="card"><span class="tag">到价</span><h4>画一条水平线，按住它「盯到这条线」</h4><p>不做独立的提醒设置。到价线借现有画线工具，穿越时服务端发一条 alert 活动推送——岛展开 3 秒、镶一圈强调色、震一下，然后自己退回去。</p></div>
+    <div class="card"><span class="tag">板块</span><h4>两极大组件排第三期</h4><p>和气泡页共用同一条数据管道、同一把尺子（半径 ∝ √|涨跌幅|，全视图一个比例尺）。强绿弱红，中间只留两个陪衬。等另一个窗口的页面落地就接。</p></div>
+    <div class="card"><span class="tag">链路</span><h4>第一期不动服务端</h4><p>组件在系统给的刷新机会里按你选的线路自己拉一次行情；岛在 app 活着时由 app 直接更新。第二期再上 APNs：活动每 5–10 秒一推、价没变不推、7 小时 50 分无缝续一个。</p></div>
+  </div>
+</section>
+
+<section id="s1">
+  <div class="sh"><span class="n">01</span><h2>灵动岛 · 盯</h2></div>
+  <p class="sub">左边是入口：在行情页按住价格不放。右边是岛的五个状态，点岛本身可在紧凑与展开之间切；展开态里「换」切到自选的下一个，「停」结束。失效不写字——三分钟没更新，价格褪成墨灰。</p>
+  <div class="two">
+    <div>
+      <div class="phone top" id="entry">
+        <div class="screen mkt-page">
+          <div class="island" id="isl-entry" data-s="none"></div>
+          <div class="status"><span>9:41</span><span><i></i></span></div>
+          <div class="tb">
+            <div class="row"><span class="bdg" data-sym="BTC" data-size="29"></span><span class="nm">BTC</span><span class="mkt">USDT 永续</span><span class="icons2"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg></span></div>
+            <div class="hold" id="hold"><div class="prog"></div><div class="px" data-price="BTC"></div></div>
+            <span class="pill" data-pill="BTC"></span>
+            <div class="sub2"><span class="ch"></span>成交额 <b data-cell="vol"></b>&nbsp;&nbsp;振幅 2.14%</div>
+            <div class="cells"><span>持仓量<b>12.4B</b></span><span>成交额<b>38.2B</b></span><span>市值<b>2.23T</b></span><span>费率<b>0.0100%</b></span></div>
+          </div>
+          <div class="hint" id="hint">按住价格不放</div>
+        </div>
+      </div>
+      <p class="cap"><b>入口只有这一个。</b>按住 0.5 秒，价格外描一圈强调色进度；描完震一下，价格缩进岛里。松手太早什么都不发生。再次长按 = 停。</p>
+    </div>
+    <div>
+      <div class="phone top" id="island-demo">
+        <div class="screen mkt-page">
+          <div class="island" id="isl" data-s="compact">
+            <div class="isl-c compact"><span class="bdg" data-sym="ISL" data-size="22"></span><span class="p" data-price="ISL" data-color="1"></span></div>
+            <div class="isl-c minimal"><span class="ring" id="ring"><span class="bdg" data-sym="ISL" data-size="20"></span></span></div>
+            <div class="isl-c expanded">
+              <div class="ex-top">
+                <div class="l"><span class="bdg" data-sym="ISL" data-size="34"></span><div><div class="nm" data-name="ISL"></div><p class="sub">USDT 永续</p></div></div>
+                <div class="r"><div class="px" data-price="ISL"></div><span class="pill" data-pill="ISL"></span></div>
+              </div>
+              <div class="ex-sp" id="exsp"></div>
+              <div class="ex-bt">
+                <div class="m"><span>持仓量<b data-cell="oi"></b></span><span>费率<b>0.0100%</b></span></div>
+                <div class="b"><button id="next" title="换到自选的下一个">换</button><button id="stop" title="停止盯">停</button></div>
+              </div>
+            </div>
+          </div>
+          <div class="status"><span>9:41</span><span><i></i></span></div>
+          <div class="tb" style="opacity:.35;filter:blur(1px)">
+            <div class="row"><span class="bdg" data-sym="ETH" data-size="29"></span><span class="nm">ETH</span><span class="mkt">USDT 永续</span></div>
+            <div class="px" data-price="ETH" style="margin-top:14px"></div>
+            <span class="pill" data-pill="ETH"></span>
+          </div>
+        </div>
+      </div>
+      <div class="states" id="states">
+        <button data-s="compact" class="on">紧凑</button><button data-s="minimal">极简</button><button data-s="expanded">展开</button><button data-s="alert" class="acc">到价</button><button data-s="ended">结束后</button><button data-s="stale">失效</button>
+      </div>
+      <p class="cap"><b>紧凑</b>：左徽章右价格，涨跌只用颜色说，数字末位滚动。<b>极简</b>：徽章外一圈发丝细环，环色即涨跌。<b>展开</b>：顶栏同款 22pt 价格与药丸、60 分钟走势线加开盘虚线、持仓量与费率两格、换与停。<b>到价</b>：镶一圈强调色，药丸换成到价色，3 秒退回。<b>结束后</b>：系统留 4 小时，整体退成半透明。</p>
+    </div>
+  </div>
+</section>
+
+<section id="s2">
+  <div class="sh"><span class="n">02</span><h2>桌面组件 · 一枚 / 一排 / 一页</h2></div>
+  <p class="sub">桌面不假装实时。它读 App Group 里 app 留下的那份快照，系统给刷新机会时按你选的线路自己拉一次。皮肤跟 app 走：浅色是光斑底，深色素底，经典就是那张白。字号全部沿用顶栏与自选页现值。</p>
+  <div class="grid g2">
+    <div>
+      <div class="phone"><div class="screen home">
+        <div class="status"><span>9:41</span><span><i></i></span></div>
+        <div class="w sm" style="left:27px;top:70px" data-widget="small"></div>
+        <div class="w sm" style="left:205px;top:70px" data-widget="small2"></div>
+        <div class="w md" style="left:19px;top:258px" data-widget="medium"></div>
+        <div class="icons" style="top:448px"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="dock"><i style="left:22px"></i><i style="left:112px"></i><i style="left:202px"></i><i style="left:292px"></i></div>
+      </div></div>
+      <p class="cap"><b>一枚</b>（小）：徽章 + 名称，价格 22pt，药丸，底部 24 小时走势线与开盘价虚线。长按「编辑」从自选里换品种。<b>一排</b>（中）：左半是一枚，右半三行自选，每行点进各自那张图。</p>
+    </div>
+    <div>
+      <div class="phone"><div class="screen home">
+        <div class="status"><span>9:41</span><span><i></i></span></div>
+        <div class="w lg" style="left:19px;top:70px" data-widget="large"></div>
+        <div class="icons" style="top:472px"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="dock"><i style="left:22px"></i><i style="left:112px"></i><i style="left:202px"></i><i style="left:292px"></i></div>
+      </div></div>
+      <p class="cap"><b>一页</b>（大）：顶部一枚横放、走势线拉宽，下面六行自选，和自选页同一套行语言。没有标题、没有「更新于」。</p>
+    </div>
+    <div>
+      <div class="phone"><div class="screen home">
+        <div class="status"><span>9:41</span><span><i></i></span></div>
+        <div class="w lg" style="left:19px;top:70px" data-widget="sector"></div>
+        <div class="icons" style="top:472px"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="dock"><i style="left:22px"></i><i style="left:112px"></i><i style="left:202px"></i><i style="left:292px"></i></div>
+      </div></div>
+      <p class="cap"><b>两极</b>（大 · 第三期）：强的几个在上、弱的几个在下，中间两个灰色陪衬只是填空。大小 = |涨跌幅|，位置 = 强弱，不再叠名次或徽章。点一个气泡进它的品种列表。</p>
+    </div>
+  </div>
+</section>
+
+<section id="s3">
+  <div class="sh"><span class="n">03</span><h2>锁屏 · 三枚组件与活动卡片</h2></div>
+  <p class="sub">锁屏组件是单色玻璃，系统不让上色，涨跌只能靠形状：▲▼ 和环。圆形那枚的环 = 现价在 24 小时高低区间里的位置，一眼知道是在顶上还是底下。底部那张是灵动岛的锁屏形态，夜里放到 StandBy 上就是床头的价签。</p>
+  <div class="two">
+    <div>
+      <div class="phone"><div class="screen lock">
+        <div class="island" data-s="none"></div>
+        <div class="status"><span></span><span><i></i></span></div>
+        <div class="t">
+          <div class="inl"><svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><path d="M12 5l7 8H5z"/></svg><span data-name="BTC"></span>&nbsp;<span data-price="BTC" data-short="1"></span>&nbsp;<span data-pct="BTC" data-arrow="1"></span></div>
+          <div class="time">9:41</div>
+        </div>
+        <div class="acc">
+          <div class="circ" id="circ"></div>
+          <div class="rect">
+            <div class="l1"><span class="bdg mono" data-sym="ETH" data-size="18"></span><span data-name="ETH"></span><small data-pct="ETH" data-arrow="1" style="margin-left:auto;font-size:11px;opacity:.85"></small></div>
+            <div class="l2"><span data-price="ETH"></span></div>
+            <svg class="mini" id="mini-eth"></svg>
+          </div>
+        </div>
+        <div class="la" id="la">
+          <div class="isl-c expanded" style="opacity:1;position:absolute">
+            <div class="ex-top">
+              <div class="l"><span class="bdg" data-sym="ISL" data-size="34"></span><div><div class="nm" data-name="ISL"></div><p class="sub">USDT 永续 · 盯</p></div></div>
+              <div class="r"><div class="px" data-price="ISL"></div><span class="pill" data-pill="ISL"></span></div>
+            </div>
+            <div class="ex-sp" id="lasp"></div>
+          </div>
+        </div>
+        <div class="tools"><i></i><i></i></div>
+        <div class="home-ind"></div>
+      </div></div>
+      <p class="cap">时钟上方那一行是行内组件：「BTC 112,480 ▲1.84%」。下面左圆右矩：圆形 = 徽章 + 位置环，矩形 = 徽章 + 名称 + 价格 + 涨跌 + 微走势。</p>
+    </div>
+    <div>
+      <div class="standby" id="standby">
+        <div class="sb-card">
+          <div class="sb-l">
+            <div class="nm"><span class="bdg" data-sym="ISL" data-size="34"></span><span data-name="ISL"></span><span class="mkt" style="color:rgba(255,255,255,.5)">USDT 永续</span></div>
+            <div><div class="px" data-price="ISL"></div><span class="pill" data-pill="ISL"></span></div>
+          </div>
+          <div class="sb-r" id="sbsp"></div>
+        </div>
+      </div>
+      <div class="states" style="justify-content:flex-start"><button id="night">夜间红光</button></div>
+      <p class="cap"><b>StandBy</b>：横放充电时活动占满整块屏，64pt 细体价格，右半是走势。系统夜间模式会把它整体染红，我们不用做什么，设计时只保证褪色后仍读得出高低。</p>
+    </div>
+  </div>
+</section>
+
+<section id="s4">
+  <div class="sh"><span class="n">04</span><h2>控件 · 盯</h2></div>
+  <p class="sub">iOS 18 的控件：放进控制中心、锁屏底部两个圆钮之一，或绑到操作按钮。它对「一枚」小组件里那个品种开始或停止盯，app 不用打开——不在 app 里，所以不算第二个入口。</p>
+  <div class="cc"><div class="tiles">
+    <div class="tile"></div><div class="tile"></div><div class="tile big on" id="ctl"><div class="ic">盯</div><div><div class="tt"><span data-name="ISL"></span> · 盯着</div><div class="ts">点一下停止</div></div></div>
+    <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
+  </div></div>
+  <p class="cap" style="margin:14px auto 0;text-align:center">开着时是皮肤强调色，关着是玻璃灰。</p>
+</section>
+
+<section id="s5">
+  <div class="sh"><span class="n">05</span><h2>尺寸、数据链路与分期</h2></div>
+  <div class="grid g2">
+    <div>
+      <table>
+        <tr><th>位置</th><th>尺寸（iPhone 16 Pro，pt）</th><th>内容</th></tr>
+        <tr><td>一枚</td><td>170 × 170</td><td>徽章 24 · 名称 13 · 价格 22 medium · 药丸 11.5 · 走势线 52 高</td></tr>
+        <tr><td>一排</td><td>364 × 170</td><td>左 150 是一枚，右三行：徽章 20 · 名称 12.5 · 价格 12.5 · 药丸 10.5</td></tr>
+        <tr><td>一页</td><td>364 × 382</td><td>顶部一枚横放（走势 72 高）+ 六行</td></tr>
+        <tr><td>两极</td><td>364 × 382</td><td>强 3 弱 3 陪衬 2，半径 ∝ √|涨跌幅|，最小半径 22</td></tr>
+        <tr><td>锁屏圆</td><td>76 × 76</td><td>徽章单色 26 + 位置环 3pt</td></tr>
+        <tr><td>锁屏矩</td><td>172 × 76</td><td>徽章 18 · 名称 12.5 · 价格 17 · ▲ 11 · 微走势 80 × 34</td></tr>
+        <tr><td>岛 · 紧凑</td><td>126 × 37</td><td>徽章 22 · 价格 15 semibold</td></tr>
+        <tr><td>岛 · 展开</td><td>372 × 158</td><td>徽章 34 · 名称 14 · 价格 22 · 走势 52 · 小字 11 · 钮 34 × 26</td></tr>
+        <tr><td>活动卡片</td><td>374 × 150</td><td>展开态同布局，底 = 皮肤深色 app 色 86%</td></tr>
+      </table>
+    </div>
+    <div>
+      <table>
+        <tr><th>链路</th><th>做法</th></tr>
+        <tr><td>共享</td><td>新建 App Group；app 每 5 秒节流写 <code>glance.json</code>（自选各品种：最新价、涨跌、24h 开盘、5 分钟粒度 288 点）；退后台时 <code>WidgetCenter.reloadAllTimelines()</code></td></tr>
+        <tr><td>组件取数</td><td>timeline provider 里按 <code>Prefs.routePolicy</code> 直连或走网关拉一次 <code>ticker/24hr</code>，不擅自换线；失败就用快照，价格褪灰</td></tr>
+        <tr><td>组件推送</td><td>iOS 26 才有 <code>WidgetPushHandler</code>：服务端在某个自选波动 &gt; 0.5% 或每 15 分钟推一次 reload；iOS 18 退回 timeline</td></tr>
+        <tr><td>活动更新</td><td>app 在前台用自己的 WS 直接 <code>update</code>；不在时 <code>kanpan-api</code> 持一条上游 WS，对每个活动 token 每 5–10 秒推一次，价没变不推，申请 <code>NSSupportsLiveActivitiesFrequentUpdates</code></td></tr>
+        <tr><td>续命</td><td>7 小时 50 分服务端 push-to-start 一个新的接上；用户按停或 app 删除才真结束</td></tr>
+        <tr><td>到价</td><td>水平线长按「盯到这条线」→ 目标价随活动登记到服务端；穿越时推 <code>alert</code>，岛展开 3 秒</td></tr>
+        <tr><td>深链</td><td><code>kanpan://symbol/BTCUSDT</code>；所有点击都落到那张图</td></tr>
+        <tr><td>徽章</td><td><code>CoinBadge</code> / <code>CoinBadgeBrands</code> / <code>BadgeTint</code> 抽到共享包让组件画；着色模式下退化成单色形状</td></tr>
+      </table>
+      <table style="margin-top:22px">
+        <tr><th>分期</th><th>范围</th></tr>
+        <tr><td>一</td><td>App Group、小 / 中 / 大、锁屏三枚、控件、灵动岛（前台实时 + 后台宽限）。不动 VPS。</td></tr>
+        <tr><td>二</td><td>APNs 密钥上主 VPS、token 登记接口（归账号，RLS）、推送任务；活动推送、push-to-start、iOS 26 组件推送。</td></tr>
+        <tr><td>三</td><td>到价线 + 岛 alert；两极大组件（等气泡页）。</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<footer>2026-09-18 · 价格是随机游走的演示数据；徽章记号与皮肤调色算法照抄 app 里的 <code>CoinBadge</code> 与 <code>BadgeTint</code>；K 线红绿是 AICoin 那一套。</footer>
+</div>
+
+<div class="drawer" id="drawer">
+  <h5>调</h5>
+  <label class="kn">走势线高<input type="range" min="36" max="72" value="52" data-k="sparkH" data-u="px"><output>52</output></label>
+  <label class="kn">渐变浓度<input type="range" min="0" max="30" value="16" data-k="fill" data-div="100"><output>.16</output></label>
+  <label class="kn">徽章<input type="range" min="20" max="28" value="24" data-k="badge" data-u="px"><output>24</output></label>
+  <label class="kn">光斑<input type="range" min="0" max="100" value="100" data-k="glow" data-div="100"><output>1</output></label>
+  <label class="kn">跳动间隔<input type="range" min="400" max="4000" value="1400" step="100" data-k="tick"><output>1.4s</output></label>
+  <label class="kn">陪衬个数<input type="range" min="0" max="4" value="2" data-k="filler"><output>2</output></label>
+</div>
+
+<script>
+/* ---------------- 皮肤 ---------------- */
+const SKINS={
+  sage:{light:{ground:"#C3D6CA",app:"#F3F7F4",raised:"#FFFFFF",raised2:"#E7EFE9",line:"#D6E3DA",ink:"#14211B",ink2:"#4E6158",ink3:"#606F67",up:"#36B257",down:"#E64552",amber:"#B57C28",accent:"#2E7D6B",lobes:["#A9DDF3","#BFEFD6","#DCEFF6"]},
+        dark:{ground:"#060A08",app:"#0B120F",raised:"#131C18",raised2:"#1A241F",line:"#25332C",ink:"#E9F2EC",ink2:"#A5B8AE",ink3:"#7B8D85",up:"#4FB69C",down:"#E36159",amber:"#E0A544",accent:"#4FB69C",lobes:["#4FB69C","#4FB69C","#E0A544"]}},
+  terra:{light:{ground:"#D9C7B4",app:"#FBF6F0",raised:"#FFFFFF",raised2:"#F2E8DE",line:"#E7DACB",ink:"#241A13",ink2:"#6E5C4D",ink3:"#756659",up:"#36B257",down:"#E64552",amber:"#B37B25",accent:"#B25735",lobes:["#B5D9F1","#F5D8C3","#D3EDE0"]},
+        dark:{ground:"#0C0805",app:"#16100C",raised:"#211812",raised2:"#2A1F17",line:"#37281D",ink:"#F7EFE6",ink2:"#C2AC98",ink3:"#958576",up:"#3FA783",down:"#E0584A",amber:"#E0A544",accent:"#E2874F",lobes:["#E2874F","#E2874F","#E0A544"]}},
+  classic:{light:{ground:"#F7F8FA",app:"#FFFFFF",raised:"#FFFFFF",raised2:"#F3F5F7",line:"#EAEAEA",ink:"#14211B",ink2:"#4E6158",ink3:"#606F67",up:"#36B257",down:"#E64552",amber:"#B57C28",accent:"#2E7D6B",lobes:["#DDE7F3","#E4EEF6","#EEF2F7"]},
+        dark:{ground:"#090C14",app:"#0D111C",raised:"#202126",raised2:"#303442",line:"#20232E",ink:"#E9F2EC",ink2:"#A5B8AE",ink3:"#7B8D85",up:"#2F9347",down:"#CC3333",amber:"#E0A544",accent:"#4FB69C",lobes:["#4FB69C","#4FB69C","#E0A544"]}}
+};
+const S={skin:"sage",mode:"light",ud:"gu",island:"compact",isl:0,stale:false};
+function seed(){return SKINS[S.skin][S.mode]}
+function applySkin(){
+  const s=seed(),r=document.documentElement.style;
+  for(const k of ["ground","app","raised","raised2","line","ink","ink2","ink3","amber","accent"]) r.setProperty("--"+k,s[k]);
+  const up=S.ud==="gu"?s.up:s.down, dn=S.ud==="gu"?s.down:s.up;
+  r.setProperty("--up",up); r.setProperty("--down",dn);
+  s.lobes.forEach((c,i)=>r.setProperty("--lobe"+(i+1),c));
+  document.body.className=S.skin+(S.mode==="dark"?" dark":"");
+  renderAll();
+}
+
+/* ---------------- 徽章：记号与皮肤调色（照抄 CoinBadge / BadgeTint） ---------------- */
+const fill=(d)=>[{d,stroke:null}], stroke=(d,w)=>[{d,stroke:w}];
+const MARKS={
+  BTC:{from:"#F9B34A",to:"#EE7A12",text:"₿"},
+  ETH:{from:"#8F97F2",to:"#4B54C8",parts:fill(["M12 2.6l5.6 9.1-5.6 3.3-5.6-3.3z","M12 21.6l5.6-7.9-5.6 3.3-5.6-3.3z"])},
+  SOL:{from:"#19F0A0",to:"#9945FF",parts:fill(["M5.4 7.4h11.4l2.2-2.6H7.6z","M5.4 13.3h11.4l2.2-2.6H7.6z","M5.4 19.2h11.4l2.2-2.6H7.6z"])},
+  BNB:{from:"#F8D661",to:"#EFB40A",parts:fill(["M12 3.1l2.6 2.6L12 8.3 9.4 5.7z","M12 15.7l2.6 2.6L12 20.9l-2.6-2.6z","M5.7 9.4l2.6 2.6-2.6 2.6L3.1 12z","M18.3 9.4l2.6 2.6-2.6 2.6L15.7 12z","M12 9.4l2.6 2.6-2.6 2.6L9.4 12z"])},
+  XRP:{from:"#5B667A",to:"#252B33",parts:stroke(["M6.2 5.6l3.6 3.7 1.1.5 1.1-.5 3.6-3.7","M6.2 18.4l3.6-3.7 1.1-.5 1.1.5 3.6 3.7"],2.1)},
+  DOGE:{from:"#E3C368",to:"#BFA033",text:"Ð"},
+  LINK:{from:"#6AA0FF",to:"#2450D4",parts:stroke(["M12 3.2l7.2 4.2v8.9L12 20.5l-7.2-4.2V7.4z"],2)},
+  AVAX:{from:"#F1616B",to:"#C42832",parts:fill(["M12 4.2l8.8 15.4h-5.3L12 13.4 8.5 19.6H3.2z"])},
+  NVDA:{from:"#9BE36A",to:"#3F8A16",parts:[{d:["M4.4 12c2.9-3.7 5.4-5.5 7.6-5.5s4.7 1.8 7.6 5.5c-2.9 3.7-5.4 5.5-7.6 5.5S7.3 15.7 4.4 12z"],stroke:1.9},{d:["M12 9.6a2.4 2.4 0 1 1 0 4.8 2.4 2.4 0 0 1 0-4.8z"],stroke:null}]},
+  TSLA:{from:"#F08080",to:"#B71C1C",parts:fill(["M5 6.2c2.1-1 4.4-1.5 7-1.5s4.9.5 7 1.5l-1.4 2.5c-1.3-.5-2.7-.9-4.1-1.1L12 20.2 10.5 7.6c-1.4.2-2.8.6-4.1 1.1z"])},
+  AAPL:{from:"#B9BFC9",to:"#61686F",inset:.58,parts:fill(["M16.8 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.7-1.8-3.3-1.8-1.4-.1-2.8.8-3.5.8s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.1 9.3.8 1.1 1.7 2.4 2.9 2.3 1.1 0 1.6-.7 3-.7s1.7.7 3 .7c1.2 0 2-1.1 2.8-2.3.9-1.3 1.2-2.5 1.2-2.6-.1 0-2.4-.9-2.4-3.7z","M14.6 5.4c.6-.8 1.1-1.8 1-2.9-.9.1-2 .6-2.7 1.4-.6.7-1.1 1.7-1 2.7 1 .1 2.1-.5 2.7-1.2z"])},
+  MSFT:{from:"#7FC4F0",to:"#2B7CB8",parts:fill(["M4.4 4.4h7v7h-7z","M12.6 4.4h7v7h-7z","M4.4 12.6h7v7h-7z","M12.6 12.6h7v7h-7z"])},
+};
+function hsb(hex){const n=parseInt(hex.slice(1),16),r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;let h=0;if(d>0){if(mx===r)h=(g-b)/d+(g<b?6:0);else if(mx===g)h=(b-r)/d+2;else h=(r-g)/d+4;h/=6}return{h,s:mx?d/mx:0,b:mx}}
+function hsbHex(h,s,v){const i=Math.floor(h*6),f=h*6-i,p=v*(1-s),q=v*(1-f*s),t=v*(1-(1-f)*s);let r,g,b;switch(i%6){case 0:[r,g,b]=[v,t,p];break;case 1:[r,g,b]=[q,v,p];break;case 2:[r,g,b]=[p,v,t];break;case 3:[r,g,b]=[p,q,v];break;case 4:[r,g,b]=[t,p,v];break;default:[r,g,b]=[v,p,q]}return"#"+[r,g,b].map(x=>Math.round(x*255).toString(16).padStart(2,"0")).join("")}
+const clamp=(v,lo,hi)=>Math.min(Math.max(v,Math.min(lo,hi)),hi), gold=h=>h>0.07&&h<0.20;
+function pull(h,t,k){let d=t-h;if(d>.5)d-=1;else if(d<-.5)d+=1;const r=h+d*k;return r<0?r+1:(r>=1?r-1:r)}
+function tint(from,to){
+  const a=hsb(from),b=hsb(to),skin=hsb(seed().accent),dark=S.mode==="dark";
+  if(Math.max(a.s,b.s)<.12){const s=dark?.15:.13;return[hsbHex(skin.h,s,dark?.46:.74),hsbHex(skin.h,s+.05,dark?.30:.52)]}
+  const hA=pull(a.h,skin.h,gold(a.h)?.04:.11),hB=pull(b.h,skin.h,gold(b.h)?.04:.11),give=gold(a.h)?.14:0;
+  const hi=clamp(a.s,dark?.20:.24,(dark?.56:.52)+give),lo=clamp(b.s,dark?.26:.30,(dark?.66:.60)+give);
+  const top=clamp(a.b,dark?.42:.62,(dark?.70:.88)+(give>0?.04:0));
+  return[hsbHex(hA,hi,top),hsbHex(hB,lo,clamp(b.b,dark?.30:.46,dark?.56:.70))]
+}
+const lineW=(d,size)=>Math.min(Math.max(2+(d-2)*.28,1.86),2.16)*Math.pow(size/33,.72);
+let gid=0;
+function badge(sym,size,mono){
+  const m=MARKS[sym]||MARKS.BTC,[c1,c2]=mono?["rgba(255,255,255,.92)","rgba(255,255,255,.7)"]:tint(m.from,m.to),id="g"+(gid++);
+  const inset=m.inset||.66,ms=size*inset,off=(size-ms)/2,rad=size*.31;
+  let inner="";
+  if(m.text) inner=`<text x="${size/2}" y="${size/2}" text-anchor="middle" dominant-baseline="central" font-size="${size*.5}" font-weight="700" fill="${mono?'#000':'#fff'}" font-family="-apple-system,PingFang SC,sans-serif">${m.text}</text>`;
+  else inner=`<g transform="translate(${off} ${off}) scale(${ms/24})">`+m.parts.map(p=>p.d.map(d=>p.stroke?`<path d="${d}" fill="none" stroke="${mono?'#000':'#fff'}" stroke-width="${lineW(p.stroke,size)*24/ms}" stroke-linecap="round" stroke-linejoin="round"/>`:`<path d="${d}" fill="${mono?'#000':'#fff'}"/>`).join("")).join("")+"</g>";
+  const shadow=mono?"":`filter="url(#sh${id})"`;
+  return`<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block;overflow:visible"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient><filter id="sh${id}" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="${size*.1}" stdDeviation="${size*.12}" flood-color="${c2}" flood-opacity="${S.mode==='dark'?.26:.18}"/></filter></defs><rect width="${size}" height="${size}" rx="${rad}" fill="url(#${id})" ${shadow}/>${inner}</svg>`;
+}
+
+/* ---------------- 行情：随机游走 ---------------- */
+const NAMES={BTC:"BTC",ETH:"ETH",SOL:"SOL",BNB:"BNB",XRP:"XRP",DOGE:"DOGE",LINK:"LINK",AVAX:"AVAX",NVDA:"NVDA",TSLA:"TSLA",AAPL:"AAPL",MSFT:"MSFT"};
+const Q={
+  BTC:{p:112480.5,o:110450,d:1},ETH:{p:4215.8,o:4302,d:2},SOL:{p:218.4,o:206.9,d:2},BNB:{p:862.1,o:855,d:1},XRP:{p:2.842,o:2.91,d:3},
+  DOGE:{p:.2412,o:.2308,d:4},LINK:{p:22.15,o:22.6,d:2},AVAX:{p:31.62,o:30.2,d:2},NVDA:{p:182.3,o:178.9,d:2},TSLA:{p:412.6,o:428.1,d:2},AAPL:{p:236.4,o:234.9,d:2},MSFT:{p:508.2,o:511.4,d:2}
+};
+function rng(s){return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296}}
+for(const k in Q){const q=Q[k],r=rng(k.charCodeAt(0)*131+k.length),n=120,arr=[];let v=q.o;for(let i=0;i<n;i++){v*=1+(r()-.5)*.006+(q.p/q.o-1)/n*1.4;arr.push(v)}arr[n-1]=q.p;q.s=arr;q.hi=Math.max(...arr)*1.004;q.lo=Math.min(...arr)*.996}
+const FAV=["BTC","ETH","SOL","BNB","XRP","DOGE","LINK","AVAX"];
+const ISL=["BTC","ETH","SOL","NVDA"]; // 岛里能「换」的自选
+const islSym=()=>ISL[S.isl];
+const pct=k=>(Q[k].p/Q[k].o-1)*100;
+function fmt(k,short){const q=Q[k];let v=q.p,d=q.d;if(short&&v>=1000)d=0;return v.toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d})}
+const fpct=k=>{const v=pct(k);return(v>=0?"+":"−")+Math.abs(v).toFixed(2)+"%"}
+const arrow=k=>(pct(k)>=0?"▲":"▼")+Math.abs(pct(k)).toFixed(2)+"%";
+
+function sparkSVG(k,w,h,opt={}){
+  const q=Q[k],s=q.s,n=s.length,mx=Math.max(...s,q.o),mn=Math.min(...s,q.o),pad=opt.pad??4;
+  const X=i=>i/(n-1)*w,Y=v=>pad+(1-(v-mn)/(mx-mn||1))*(h-pad*2);
+  let d=`M${X(0)} ${Y(s[0])}`;for(let i=1;i<n;i++)d+=`L${X(i).toFixed(1)} ${Y(s[i]).toFixed(1)}`;
+  const up=q.p>=q.o,c=opt.color||(up?"var(--up)":"var(--down)"),id="sp"+(gid++),fa=opt.fill??(parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--fill"))||.16);
+  const base=Y(q.o).toFixed(1);
+  return`<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" width="${w}" height="${h}" style="display:block"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity="${fa}"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs>
+  <path d="${d}L${w} ${h}L0 ${h}Z" fill="url(#${id})"/>
+  ${opt.base!==false?`<path d="M0 ${base}H${w}" stroke="${opt.baseColor||'currentColor'}" stroke-opacity=".22" stroke-width="1" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"/>`:""}
+  <path d="${d}" fill="none" stroke="${c}" stroke-width="${opt.sw||1.2}" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  ${opt.dot!==false?`<circle cx="${X(n-1)}" cy="${Y(s[n-1])}" r="2" fill="${c}"/>`:""}${opt.extra||""}</svg>`;
+}
+
+/* ---------------- 组件渲染 ---------------- */
+const B=()=>parseInt(getComputedStyle(document.documentElement).getPropertyValue("--badge"))||24;
+function tile(k,opt={}){
+  const wide=opt.wide;
+  return`<div class="pad" style="${opt.style||''}">
+    <div class="row">${badge(k,B())}<span class="sym">${NAMES[k]}</span><span class="mkt">${opt.mkt||""}</span></div>
+    <div class="px" data-price="${k}"></div><span class="pill" data-pill="${k}"></span>
+  </div><div class="spark" data-spark="${k}" style="${wide?'height:72px':''}"></div>`;
+}
+function rows(list,h){
+  return list.map(k=>`<div class="lrow" style="height:${h||36}px">${badge(k,20)}<span class="nm">${NAMES[k]}</span><span class="pr" data-price="${k}"></span><span class="pill" data-pill="${k}"></span></div>`).join(`<div class="hr"></div>`);
+}
+const SECT=[["AI 概念",6.2],["Layer2",4.1],["Meme",3.3],["公链",1.2],["DeFi",.4],["存储",-.6],["GameFi",-2.8],["RWA",-3.9],["隐私",-5.1]];
+function sector(){
+  const filler=+document.querySelector('[data-k="filler"]').value;
+  const sorted=[...SECT].sort((a,b)=>b[1]-a[1]);
+  const strong=sorted.slice(0,3),weak=sorted.slice(-3),mid=sorted.slice(3,-3).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).slice(0,filler);
+  const mx=Math.max(...[...strong,...weak].map(x=>Math.abs(x[1])));
+  const R=v=>Math.max(22,Math.sqrt(Math.abs(v)/mx)*62);
+  // 位置：强在上两排，弱在下，陪衬在中间
+  const pos=[[110,122],[240,102],[312,192],[318,302],[222,320],[100,300]];
+  const midPos=[[190,212],[42,232],[330,88],[40,60]];
+  let html=`<div class="pad" style="padding:14px 16px"><div class="row"><span class="sym">板块 · 两极</span><span class="mkt">加密 · 中位数</span></div></div>`;
+  const put=(s,cls,p)=>{const r=R(s[1]);return`<div class="bub ${cls}" style="left:${p[0]-r}px;top:${p[1]-r}px;width:${r*2}px;height:${r*2}px"><b>${s[0]}</b><s>${(s[1]>=0?"+":"−")+Math.abs(s[1]).toFixed(1)}%</s></div>`};
+  strong.forEach((s,i)=>html+=put(s,"u",pos[i]));weak.forEach((s,i)=>html+=put(s,"d",pos[3+i]));
+  mid.forEach((s,i)=>{const r=Math.max(18,R(s[1])*.7);html+=`<div class="bub n" style="left:${midPos[i][0]-r}px;top:${midPos[i][1]-r}px;width:${r*2}px;height:${r*2}px"><b>${s[0]}</b><s>${(s[1]>=0?"+":"−")+Math.abs(s[1]).toFixed(1)}%</s></div>`});
+  return html;
+}
+function renderWidgets(){
+  document.querySelectorAll("[data-widget]").forEach(el=>{
+    const t=el.dataset.widget;
+    if(t==="small")el.innerHTML=tile("BTC");
+    else if(t==="small2")el.innerHTML=tile("NVDA");
+    else if(t==="medium")el.innerHTML=tile("BTC")+`<div class="vr"></div><div class="pad" style="left:150px;padding:14px 16px 14px 14px">${rows(["ETH","SOL","XRP"],44)}</div>`;
+    else if(t==="large")el.innerHTML=`<div class="pad" style="height:150px">
+        <div class="row">${badge("BTC",B())}<span class="sym">BTC</span><span class="mkt">USDT 永续</span><span style="flex:1"></span><span class="pill" data-pill="BTC"></span></div>
+        <div class="px" data-price="BTC"></div></div><div class="spark" data-spark="BTC" style="top:78px;bottom:auto;height:72px"></div>
+        <div class="pad" style="top:150px;padding:6px 16px 12px">${rows(["ETH","SOL","BNB","XRP","DOGE","LINK"],37)}</div>`;
+    else if(t==="sector")el.innerHTML=sector();
+  });
+  const sm=document.querySelector('[data-widget="small"] .spark');
+  document.querySelectorAll(".spark[data-spark]").forEach(el=>{const w=el.parentElement.classList.contains("md")?150:el.parentElement.offsetWidth;el.innerHTML=sparkSVG(el.dataset.spark,w,el.offsetHeight,{pad:6})});
+}
+function renderBadges(){
+  document.querySelectorAll(".bdg").forEach(el=>{const k=el.dataset.sym==="ISL"?islSym():el.dataset.sym;el.innerHTML=badge(k,+el.dataset.size,el.classList.contains("mono"))});
+}
+function renderIsland(){
+  const k=islSym();
+  document.getElementById("exsp").innerHTML=sparkSVG(k,336,52,{pad:6,baseColor:"#fff",extra:S.island==="alert"?`<g><line x1="0" x2="336" y1="14" y2="14" stroke="var(--accent)" stroke-dasharray="3 3" stroke-width="1"/><rect x="266" y="6" width="70" height="14" rx="4" fill="var(--accent)"/><text x="301" y="16" text-anchor="middle" font-size="9" font-weight="600" fill="#fff" font-family="-apple-system,sans-serif">到价 ${fmt(k,true)}</text></g>`:""});
+  document.getElementById("lasp").innerHTML=sparkSVG(k,340,54,{pad:6,baseColor:"#fff"});
+  document.getElementById("sbsp").innerHTML=sparkSVG(k,437,402,{pad:70,sw:2,baseColor:"#fff",dot:true});
+  document.getElementById("ring").style.setProperty("--c",pct(k)>=0?"var(--up)":"var(--down)");
+}
+function renderLock(){
+  const k="BTC",q=Q[k],t=(q.p-q.lo)/(q.hi-q.lo),r=33,c=2*Math.PI*r;
+  document.getElementById("circ").innerHTML=`<svg width="76" height="76" viewBox="0 0 76 76" style="position:absolute;inset:0"><circle cx="38" cy="38" r="${r}" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="3"/><circle cx="38" cy="38" r="${r}" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-dasharray="${(c*t).toFixed(1)} ${c}" transform="rotate(-90 38 38)"/></svg>${badge(k,26,true)}`;
+  document.getElementById("mini-eth").outerHTML=`<svg class="mini" id="mini-eth" viewBox="0 0 64 26" preserveAspectRatio="none">${sparkSVG("ETH",64,26,{pad:4,color:"#fff",base:false,dot:false,fill:.25,sw:1.2}).replace(/<svg[^>]*>|<\/svg>/g,"")}</svg>`;
+}
+function renderPrices(init){
+  document.querySelectorAll("[data-price]").forEach(el=>{const k=el.dataset.price==="ISL"?islSym():el.dataset.price;roll(el,fmt(k,el.dataset.short));
+    if(el.dataset.color)el.style.color=pct(k)>=0?"var(--up)":"var(--down)";
+    el.classList.toggle("stale",S.stale&&el.closest("#isl")!=null)});
+  document.querySelectorAll("[data-pill]").forEach(el=>{const k=el.dataset.pill==="ISL"?islSym():el.dataset.pill;el.textContent=fpct(k);el.className="pill "+(pct(k)>=0?"u":"d")});
+  document.querySelectorAll("[data-pct]").forEach(el=>{el.textContent=arrow(el.dataset.pct)});
+  document.querySelectorAll("[data-name]").forEach(el=>{el.textContent=NAMES[el.dataset.name==="ISL"?islSym():el.dataset.name]});
+  document.querySelectorAll('[data-cell="vol"]').forEach(el=>el.textContent="38.2B");
+  document.querySelectorAll('[data-cell="oi"]').forEach(el=>el.textContent={BTC:"12.4B",ETH:"6.8B",SOL:"1.9B",NVDA:"318M"}[islSym()]);
+}
+function roll(el,txt){
+  const old=el.dataset.txt||"";if(old===txt)return;
+  const dir=(parseFloat(txt.replace(/,/g,""))>=parseFloat(old.replace(/,/g,"")||0))?"rl":"rr";
+  const a=[...txt],b=[...old];
+  // 从右往左对齐比较；长度不同则整段刷新
+  el.innerHTML=a.map((ch,i)=>{const same=old&&a.length===b.length&&b[i]===ch;return`<span class="d${same?"":" "+dir}">${ch}</span>`}).join("");
+  el.dataset.txt=txt;
+}
+function renderAll(){renderWidgets();renderBadges();renderIsland();renderLock();renderPrices(true)}
+
+/* ---------------- 跳动 ---------------- */
+let timer;
+function tick(){
+  for(const k in Q){const q=Q[k];const step=(Math.random()-.5)*.0016+(Math.random()<.5?-1:1)*.0002;q.p=+(q.p*(1+step)).toFixed(q.d);q.s.push(q.p);if(q.s.length>120)q.s.shift();q.hi=Math.max(q.hi,q.p);q.lo=Math.min(q.lo,q.p)}
+  if(!S.stale)renderPrices();
+  document.querySelectorAll(".spark[data-spark]").forEach(el=>{const w=el.parentElement.classList.contains("md")?150:el.parentElement.offsetWidth;el.innerHTML=sparkSVG(el.dataset.spark,w,el.offsetHeight,{pad:6})});
+  renderIsland();renderLock();
+}
+function startTick(){clearInterval(timer);timer=setInterval(tick,+getComputedStyle(document.documentElement).getPropertyValue("--tick")||1400)}
+
+/* ---------------- 交互 ---------------- */
+function segs(id,fn){document.querySelectorAll("#"+id+" button").forEach(b=>b.onclick=()=>{document.querySelectorAll("#"+id+" button").forEach(x=>x.classList.remove("on"));b.classList.add("on");fn(b.dataset.v)})}
+segs("skin",v=>{S.skin=v;applySkin()});segs("mode",v=>{S.mode=v;applySkin()});segs("ud",v=>{S.ud=v;applySkin()});
+document.getElementById("knob").onclick=e=>{e.target.classList.toggle("on");document.getElementById("drawer").classList.toggle("on")};
+document.querySelectorAll(".drawer input").forEach(inp=>inp.oninput=()=>{
+  const k=inp.dataset.k,v=inp.dataset.div?inp.value/inp.dataset.div:inp.value,out=inp.nextElementSibling;
+  if(k==="tick"){document.documentElement.style.setProperty("--tick",v);out.textContent=(v/1000).toFixed(1)+"s";startTick();return}
+  if(k==="filler"){out.textContent=v;renderWidgets();renderPrices();return}
+  document.documentElement.style.setProperty("--"+k,v+(inp.dataset.u||""));out.textContent=inp.dataset.div?String(v).replace(/^0/,""):v;
+  if(k==="sparkH"||k==="badge"||k==="fill"){renderWidgets();renderBadges();renderPrices()}
+});
+const isl=document.getElementById("isl");
+function setIsland(s){S.stale=(s==="stale");S.island=S.stale?"compact":s;isl.dataset.s=S.island;
+  document.querySelectorAll("#states button").forEach(b=>b.classList.toggle("on",b.dataset.s===s));renderIsland();renderPrices();
+  if(s==="alert"){clearTimeout(isl._t);isl._t=setTimeout(()=>{if(S.island==="alert")setIsland("compact")},3200)}}
+document.querySelectorAll("#states button").forEach(b=>b.onclick=()=>setIsland(b.dataset.s));
+isl.onclick=e=>{if(e.target.tagName==="BUTTON")return;setIsland(S.island==="compact"||S.island==="minimal"?"expanded":"compact")};
+document.getElementById("next").onclick=e=>{e.stopPropagation();S.isl=(S.isl+1)%ISL.length;renderBadges();renderIsland();renderPrices();document.getElementById("ctl").querySelector("[data-name]").textContent=NAMES[islSym()]};
+document.getElementById("stop").onclick=e=>{e.stopPropagation();setIsland("ended");document.getElementById("ctl").classList.remove("on");document.getElementById("ctl").querySelector(".ts").textContent="点一下开始盯"};
+document.getElementById("ctl").onclick=function(){const on=this.classList.toggle("on");this.querySelector(".ts").textContent=on?"点一下停止":"点一下开始盯";setIsland(on?"compact":"ended")};
+document.getElementById("night").onclick=function(){document.getElementById("standby").classList.toggle("night");this.classList.toggle("on")};
+
+/* 长按价格 → 进岛 */
+(function(){
+  const hold=document.getElementById("hold"),prog=hold.querySelector(".prog"),islE=document.getElementById("isl-entry"),hint=document.getElementById("hint"),phone=document.getElementById("entry");
+  let t0,raf,tm,done=false;
+  const reset=()=>{cancelAnimationFrame(raf);clearTimeout(tm);hold.classList.remove("pressing");prog.style.setProperty("--p","0%")};
+  const step=()=>{const p=Math.min(1,(performance.now()-t0)/520);prog.style.setProperty("--p",(p*100)+"%");if(p<1)raf=requestAnimationFrame(step)};
+  function fire(){reset();
+    if(done){islE.dataset.s="none";islE.innerHTML="";islE.style.width="";done=false;hint.textContent="按住价格不放";return}
+    hold.animate([{transform:"scale(1)"},{transform:"scale(.96)"},{transform:"scale(1)"}],{duration:180});
+    const px=hold.querySelector(".px"),r=px.getBoundingClientRect(),pr=phone.getBoundingClientRect();
+    const fly=document.createElement("div");fly.className="fly";fly.textContent=px.dataset.txt;fly.style.left=(r.left-pr.left)+"px";fly.style.top=(r.top-pr.top)+"px";phone.appendChild(fly);
+    islE.dataset.s="minimal";islE.style.width="46px";
+    const ir=islE.getBoundingClientRect();
+    fly.animate([{transform:"none",opacity:1},{transform:`translate(${ir.left+ir.width/2-r.left-r.width/2}px,${ir.top+ir.height/2-r.top-r.height/2}px) scale(.62)`,opacity:.2}],{duration:520,easing:"cubic-bezier(.3,.9,.3,1)",fill:"forwards"});setTimeout(()=>{fly.remove();
+      islE.style.width="";islE.dataset.s="compact";islE.innerHTML=`<div class="isl-c compact">${badge("BTC",22)}<span class="p" data-price="BTC" data-color="1"></span></div>`;renderPrices();
+      done=true;hint.textContent="已在盯 · 再按住一次 = 停"},540);
+  }
+  const down=e=>{e.preventDefault();reset();t0=performance.now();hold.classList.add("pressing");raf=requestAnimationFrame(step);tm=setTimeout(fire,520)};
+  hold.addEventListener("pointerdown",down);["pointerup","pointerleave","pointercancel"].forEach(ev=>hold.addEventListener(ev,reset));
+})();
+
+applySkin();startTick();
+</script>
+</body>
+</html>
