@@ -44,10 +44,10 @@ help:
 	@echo "ui-test-one  只跑一台（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "device-release  编真机 Release 包（generic/platform=iOS，签名走 -allowProvisioningUpdates）"
 	@echo "install-release 把 Release 包装到第一台 connected 真机"
-	@echo "archive      归档 Release 真机包到 DerivedData-archive/Kanpan.xcarchive（TestFlight 第一步）"
-	@echo "             构建号每次上传必须递增：make archive BUILD=7；不传 BUILD 就用工程里的值"
-	@echo "ipa          把上一步的 .xcarchive 导成可上传的 ipa（Team ID 可覆盖：make ipa TEAM_ID=XXXX）"
-	@echo "upload       用 App Store Connect API Key 把 ipa 传上去（需 ASC_KEY_ID / ASC_ISSUER_ID）"
+	@echo "archive      归档 Release 真机包到 DerivedData-archive/Kanpan-<构建号>.xcarchive（TestFlight 第一步）"
+	@echo "             构建号每次上传必须递增，也用来分开历史归档和 dSYM：make archive BUILD=7；不传 BUILD 出的是 -dev 那份"
+	@echo "ipa          把同一构建号的归档导成可上传的 ipa：make ipa BUILD=7（Team ID 可覆盖：TEAM_ID=XXXX）"
+	@echo "upload       用 App Store Connect API Key 传同一构建号的 ipa：make upload BUILD=7（需 ASC_KEY_ID / ASC_ISSUER_ID）"
 	@echo "snap         在单台模拟器上装 app 并截一张图（DEVICE=\"iPhone 16 Pro\"，RELEASE=1 走 Release 包）"
 	@echo "screenshots  13 台机型全跑一遍，出 docs/acceptance/shots/"
 	@echo "devices      备齐 当前范围的 13 台模拟器（缺的自动 create）"
@@ -259,18 +259,31 @@ print(xs[0]['hardwareProperties']['udid'] if xs else '')" "$(TMPDIR)devicectl.js
 #   2. Kanpan/Kanpan.xcodeproj/project.pbxproj 里四处 `DEVELOPMENT_TEAM = 27Y32PT2HZ`
 # `Kanpan/Config/ExportOptions.plist` 不用动，`ipa` 会 sed 出一份带新 Team ID 的副本。
 TEAM_ID ?= 27Y32PT2HZ
-ARCHIVE_DD   := DerivedData-archive
-ARCHIVE_PATH := $(ARCHIVE_DD)/Kanpan.xcarchive
-EXPORT_PLIST := $(ARCHIVE_DD)/ExportOptions.plist
-IPA          := $(ARCHIVE_DD)/$(SCHEME).ipa
-
 # 构建号。App Store Connect 不收重复的 (MARKETING_VERSION, CURRENT_PROJECT_VERSION)
 # 组合，所以每传一版都得递增。工程里现在写死 CURRENT_PROJECT_VERSION = 1，
 # 命令行传 BUILD 就地覆盖，不用去改 pbxproj（也就不会和别的窗口抢那个文件）：
 #     make archive BUILD=7
-# 不传 BUILD 时下面这个变量整个是空的，xcodebuild 用工程里的值。
+# 不传 BUILD 时 BUILD_SETTING 整个是空的，xcodebuild 用工程里的值。
 BUILD ?=
 BUILD_SETTING := $(if $(BUILD),CURRENT_PROJECT_VERSION=$(BUILD),)
+BUILD_ARG     := $(if $(BUILD), BUILD=$(BUILD),)
+BUILD_TAG     := $(if $(BUILD),$(BUILD),dev)
+
+ARCHIVE_DD   := DerivedData-archive
+# 归档路径按构建号分开。2026-09-19 之前这里写死 Kanpan.xcarchive，磁盘上永远只有
+# 一份，下一次 `make archive` 会把上一份连同它的 dSYM 一起顶掉。这是会真出事的：
+# 一个 TestFlight 构建在 90 天有效期里测试者还在装着用，那期间回来的崩溃日志只能拿
+# **那个构建号**的 dSYM 符号化——重编一遍出来的二进制 UUID 对不上，补不回来。而
+# DerivedData-archive/ 被 .gitignore 挡在仓库外，本机独一份、没有任何备份，顶掉就没了。
+# 所以现在每个构建号各占一份归档，历史自然堆积（磁盘满了自己挑旧的删，别让 make 删）。
+# 不传 BUILD 的那份叫 -dev，随手覆盖无所谓：它没有唯一构建号，本来也传不上去。
+ARCHIVE_PATH := $(ARCHIVE_DD)/Kanpan-$(BUILD_TAG).xcarchive
+# xcodebuild -exportArchive 只收目录、导出来的 ipa 一律叫 $(SCHEME).ipa，没法直接指定
+# 文件名；所以先导进各自的 export-<构建号>/（DistributionSummary.plist 那几个副产物
+# 也跟着分开），再改名成带号的 ipa 摆到 $(ARCHIVE_DD) 根下，和归档对得上。
+EXPORT_DIR   := $(ARCHIVE_DD)/export-$(BUILD_TAG)
+EXPORT_PLIST := $(EXPORT_DIR)/ExportOptions.plist
+IPA          := $(ARCHIVE_DD)/Kanpan-$(BUILD_TAG).ipa
 
 archive:
 	@echo "→ 归档 Release$(if $(BUILD), · 构建号 $(BUILD),（构建号用工程里的值）)"
@@ -283,18 +296,19 @@ archive:
 		-derivedDataPath $(ARCHIVE_DD) \
 		-allowProvisioningUpdates \
 		$(BUILD_SETTING)
-	@echo "归档：$(ARCHIVE_PATH)"
+	@echo "归档：$(ARCHIVE_PATH)（dSYM 在它的 dSYMs/ 里，崩溃日志要靠它，别删）"
 
 ipa:
-	@[ -d "$(ARCHIVE_PATH)" ] || { echo "没找到 $(ARCHIVE_PATH)，先跑 make archive"; exit 1; }
-	@mkdir -p $(ARCHIVE_DD)
+	@[ -d "$(ARCHIVE_PATH)" ] || { echo "没找到 $(ARCHIVE_PATH)，先跑 make archive$(BUILD_ARG)——archive / ipa / upload 三条必须用同一个构建号"; exit 1; }
+	@mkdir -p $(EXPORT_DIR)
 	@sed 's/27Y32PT2HZ/$(TEAM_ID)/' Kanpan/Config/ExportOptions.plist > $(EXPORT_PLIST)
-	@rm -f $(IPA)
+	@rm -f $(IPA) $(EXPORT_DIR)/$(SCHEME).ipa
 	xcodebuild -exportArchive \
 		-archivePath $(ARCHIVE_PATH) \
 		-exportOptionsPlist $(EXPORT_PLIST) \
-		-exportPath $(ARCHIVE_DD) \
+		-exportPath $(EXPORT_DIR) \
 		-allowProvisioningUpdates
+	@mv $(EXPORT_DIR)/$(SCHEME).ipa $(IPA)
 	@echo "ipa：$(IPA)"
 
 # 上传走 App Store Connect API Key，不用 Apple ID + 应用专用密码：密钥不进仓库、
@@ -307,7 +321,7 @@ ipa:
 #      export ASC_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx   # 密钥页顶上的 Issuer ID
 # 少了哪一样下面各有一句中文报错，不会甩一屏 altool 的 usage 出来。
 upload:
-	@[ -f "$(IPA)" ] || { echo "没找到 $(IPA)，先跑 make archive && make ipa"; exit 1; }
+	@[ -f "$(IPA)" ] || { echo "没找到 $(IPA)，先跑 make archive$(BUILD_ARG) && make ipa$(BUILD_ARG)——archive / ipa / upload 三条必须用同一个构建号"; exit 1; }
 	@[ -n "$$ASC_KEY_ID" ] || { echo "缺环境变量 ASC_KEY_ID（App Store Connect API 密钥 ID，形如 ABC123DEF4）：export ASC_KEY_ID=..."; exit 1; }
 	@[ -n "$$ASC_ISSUER_ID" ] || { echo "缺环境变量 ASC_ISSUER_ID（密钥页顶上的 Issuer ID，一串 UUID）：export ASC_ISSUER_ID=..."; exit 1; }
 	@[ -f "$$HOME/.appstoreconnect/private_keys/AuthKey_$$ASC_KEY_ID.p8" ] || { \
