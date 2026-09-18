@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="zh-CN" data-skin="sage" data-mode="light" data-grid="a" data-history="on" data-quick="keep" data-redup="0">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>看盘 · 顶栏 AICoin 模式 + 搜索页</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@500;600;700&family=Noto+Serif+SC:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* ──────────────────────────────────────────────────────────────
+   皮肤令牌：一比一抄自 KanpanCore/Style/Palette.swift 的 PaletteSeed。
+   图区（.canvas）不跟皮肤走，用固定的 AICoin dayCanvas / nightCanvas。
+   ────────────────────────────────────────────────────────────── */
+html[data-skin="sage"][data-mode="light"]{
+  --ground:#C3D6CA; --app:#F3F7F4; --raised:#FFFFFF; --raised2:#E7EFE9;
+  --line:#D6E3DA; --grid:#E2EBE5; --hair:rgba(20,33,27,.06);
+  --ink:#14211B; --ink2:#4E6158; --ink3:#606F67; --acc:#2E7D6B; --warm:#B57C28;
+  --up:#36B257; --down:#E64552; --pillInk:#FFFFFF;
+}
+html[data-skin="sage"][data-mode="dark"]{
+  --ground:#060A08; --app:#0B120F; --raised:#131C18; --raised2:#1A241F;
+  --line:#25332C; --grid:#1F2B25; --hair:rgba(255,255,255,.04);
+  --ink:#E9F2EC; --ink2:#A5B8AE; --ink3:#7B8D85; --acc:#4FB69C; --warm:#E0A544;
+  --up:#4FB69C; --down:#E36159; --pillInk:#060A08;
+}
+html[data-skin="terra"][data-mode="light"]{
+  --ground:#D9C7B4; --app:#FBF6F0; --raised:#FFFFFF; --raised2:#F2E8DE;
+  --line:#E7DACB; --grid:#EFE4D8; --hair:rgba(36,26,19,.06);
+  --ink:#241A13; --ink2:#6E5C4D; --ink3:#756659; --acc:#B25735; --warm:#B37B25;
+  --up:#36B257; --down:#E64552; --pillInk:#FFFFFF;
+}
+html[data-skin="terra"][data-mode="dark"]{
+  --ground:#0C0805; --app:#16100C; --raised:#211812; --raised2:#2A1F17;
+  --line:#37281D; --grid:#2E2117; --hair:rgba(255,255,255,.04);
+  --ink:#F7EFE6; --ink2:#C2AC98; --ink3:#958576; --acc:#E2874F; --warm:#E0A544;
+  --up:#3FA783; --down:#E0584A; --pillInk:#0C0805;
+}
+html[data-skin="classic"][data-mode="light"]{
+  --ground:#F7F8FA; --app:#FFFFFF; --raised:#FFFFFF; --raised2:#F3F5F7;
+  --line:#EAEAEA; --grid:#EAEAEA; --hair:rgba(20,33,27,.06);
+  --ink:#14211B; --ink2:#4E6158; --ink3:#606F67; --acc:#2E7D6B; --warm:#B57C28;
+  --up:#36B257; --down:#E64552; --pillInk:#FFFFFF;
+}
+html[data-skin="classic"][data-mode="dark"]{
+  --ground:#090C14; --app:#0D111C; --raised:#202126; --raised2:#303442;
+  --line:#20232E; --grid:#1C2236; --hair:rgba(255,255,255,.04);
+  --ink:#E9F2EC; --ink2:#A5B8AE; --ink3:#7B8D85; --acc:#4FB69C; --warm:#E0A544;
+  --up:#2F9347; --down:#CC3333; --pillInk:#090C14;
+}
+html[data-redup="1"]{ --up2:var(--down); --down2:var(--up); }
+html[data-redup="0"]{ --up2:var(--up); --down2:var(--down); }
+
+/* 画布固定色（Palette.dayCanvas / nightCanvas） */
+html[data-mode="light"]{
+  --cbg:#FFFFFF; --cgrid:#C5C5C5; --caxis:#F2F4F7; --ctext:#7A8899; --cdim:#B7BFC8; --cink:#292D33;
+  --divChart:#F2F4F7; --divBar:#EAEAEA;
+  --page:#ECEEF0; --ptext:#23292F; --pdim:#6A747D; --pcard:#FFFFFF; --pline:#DCE0E4; --scrim:rgba(20,33,27,.30);
+}
+html[data-mode="dark"]{
+  --cbg:#0D111C; --cgrid:#1C2236; --caxis:#191C21; --ctext:#7A8899; --cdim:#515A66; --cink:#E6EAF2;
+  --divChart:#191C21; --divBar:#20232E;
+  --page:#0E1013; --ptext:#E7ECEF; --pdim:#8A949C; --pcard:#15181C; --pline:#23272C; --scrim:rgba(0,0,0,.55);
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--page);color:var(--ptext);
+  font-family:Inter,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  font-size:13px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1580px;margin:0 auto;padding:26px 22px 120px}
+h1{font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:.2px}
+h2{font-size:14px;font-weight:600;margin:38px 0 12px;letter-spacing:.3px;
+   padding-bottom:8px;border-bottom:1px solid var(--pline)}
+h3{font-size:12.5px;font-weight:600;margin:0 0 8px}
+.lede{color:var(--pdim);font-size:12.5px;max-width:860px;margin:0 0 16px}
+a{color:inherit}
+
+/* 控制条 */
+.bar{position:sticky;top:0;z-index:40;background:var(--page);border-bottom:1px solid var(--pline);
+  padding:10px 0 12px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+.grp{display:flex;align-items:center;gap:6px}
+.grp>i{font-style:normal;color:var(--pdim);font-size:11px;letter-spacing:.4px;margin-right:2px}
+.bar button{font:inherit;font-size:11.5px;padding:5px 11px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--pline);background:var(--pcard);color:var(--pdim)}
+.bar button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.tagq{font-size:10px;padding:2px 6px;border-radius:5px;background:var(--pcard);border:1px dashed var(--pline);color:var(--pdim)}
+
+.duo{display:grid;grid-template-columns:393px minmax(320px,1fr);gap:40px;align-items:start}
+.notes{font-size:12.3px;color:var(--pdim);line-height:1.75}
+.notes b{color:var(--ptext);font-weight:600}
+.notes ul{margin:6px 0 14px;padding-left:18px}
+.notes li{margin:3px 0}
+.notes .k{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+  background:var(--pcard);border:1px solid var(--pline);border-radius:5px;padding:1px 5px;color:var(--ptext)}
+table{border-collapse:collapse;width:100%;font-size:12px;margin:6px 0 4px}
+th,td{border-bottom:1px solid var(--pline);padding:6px 8px;text-align:left;vertical-align:top}
+th{color:var(--pdim);font-weight:600;font-size:11px;letter-spacing:.3px}
+td.m{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--ptext)}
+
+/* 手机壳 */
+.phone{width:393px;height:852px;border-radius:54px;position:relative;overflow:hidden;
+  background:var(--app);box-shadow:0 0 0 9px #222528,0 0 0 10px #3c4045,0 26px 60px rgba(0,0,0,.34)}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:118px;height:33px;
+  border-radius:20px;background:#0b0b0c;z-index:30;pointer-events:none}
+.homebar{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:138px;height:5px;
+  border-radius:3px;background:var(--ink);opacity:.26;z-index:30;pointer-events:none}
+.screen{position:absolute;inset:0;border-radius:54px;overflow:hidden;background:var(--app);
+  display:flex;flex-direction:column}
+.statusbar{height:54px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;
+  padding:0 26px 4px;font-size:12.5px;font-weight:600;color:var(--ink);letter-spacing:.2px}
+.statusbar .rt{display:flex;gap:5px;align-items:center;opacity:.8}
+
+/* 裁切卡（状态图廊） */
+.crop{width:393px;border-radius:20px;overflow:hidden;background:var(--app);
+  border:1px solid var(--pline);box-shadow:0 6px 18px rgba(0,0,0,.08)}
+.cropcap{font-size:11.5px;color:var(--pdim);margin:0 0 6px;display:flex;gap:6px;align-items:baseline}
+.cropcap b{color:var(--ptext);font-weight:600;font-size:12px}
+.gal{display:flex;flex-wrap:wrap;gap:26px 30px}
+.gal>div{width:393px}
+.tall{height:620px;position:relative}
+.tall .screen{position:absolute;inset:0;border-radius:0}
+
+/* ─────────── app 内部：顶栏 ─────────── */
+.hdr{background:var(--app);padding:6px 12px 9px;flex:none}
+.tbar{height:38px;display:flex;align-items:center;gap:9px}
+.icb{width:30px;height:30px;border-radius:15px;border:0;background:transparent;color:var(--ink2);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;padding:0}
+.icb.on{background:color-mix(in srgb,var(--acc) 12%,transparent);color:var(--acc)}
+.icb.back{margin-left:-7px}
+.ident{display:flex;align-items:center;gap:6px;border:0;background:transparent;padding:0;cursor:pointer;
+  min-width:0;flex:0 1 auto;max-width:252px;overflow:hidden}
+.ident .bg{flex:none}
+.ident .base{font-size:15.5px;font-weight:700;color:var(--ink);letter-spacing:.1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+.ident .quote{font-size:12px;font-weight:500;color:var(--ink3);white-space:nowrap}
+.perp{font-size:9.5px;font-weight:500;color:var(--ink3);background:var(--raised2);
+  border-radius:4px;padding:1px 4px;line-height:1.35;flex:none}
+.sp{flex:1}
+
+/* 价格区 */
+.pblk{display:flex;align-items:flex-start;gap:10px;margin-top:7px}
+.pleft{min-width:0;flex:1}
+.prow{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
+.px{font-size:22px;font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;
+  font-family:Manrope,Inter,system-ui,sans-serif;letter-spacing:-.2px;white-space:nowrap}
+.px.up{color:var(--up2)} .px.down{color:var(--down2)} .px.stale{color:var(--ink3)}
+.pill{display:inline-flex;align-items:center;gap:3px;height:20px;padding:0 7px;border-radius:7px;
+  font-size:11.5px;font-weight:600;color:var(--pillInk);font-variant-numeric:tabular-nums;
+  font-family:Manrope,Inter,system-ui,sans-serif;flex:none}
+.pill svg{display:block}
+.pill.stale{background:var(--raised2)!important;color:var(--ink3)}
+.pline{font-size:11px;color:var(--ink3);margin-top:3px;white-space:nowrap}
+.pline b{font-size:11.5px;font-weight:500;color:var(--ink2);font-variant-numeric:tabular-nums;
+  font-family:Manrope,Inter,system-ui,sans-serif}
+.prow2{margin-top:4px}
+.pgrid{width:200px;flex:none;display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;padding-top:2px;
+  border:0;background:transparent;cursor:default;font:inherit;text-align:left}
+.pgrid.c{width:200px;align-content:center}
+.cell{display:flex;align-items:baseline;justify-content:space-between;gap:6px;min-width:0}
+.cell i{font-style:normal;font-size:9.5px;color:var(--ink3);flex:none;white-space:nowrap}
+.cell b{font-size:11.5px;font-weight:500;color:var(--ink2);font-variant-numeric:tabular-nums;
+  font-family:Manrope,Inter,system-ui,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell b.up{color:var(--up2)} .cell b.down{color:var(--down2)}
+.stale .cell b,.stale .pline b{color:var(--ink3)}
+@keyframes flashup{0%{background:color-mix(in srgb,var(--up2) 18%,transparent)}100%{background:transparent}}
+@keyframes flashdn{0%{background:color-mix(in srgb,var(--down2) 18%,transparent)}100%{background:transparent}}
+.fl-up{animation:flashup .55s ease-out;border-radius:7px;margin:0 -5px;padding:0 5px}
+.fl-dn{animation:flashdn .55s ease-out;border-radius:7px;margin:0 -5px;padding:0 5px}
+
+.hair{height:1px;background:var(--divChart);flex:none}
+.hairbar{height:1px;background:var(--divBar);flex:none}
+
+/* 周期条 */
+.ivbar{height:44px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--app)}
+.chips{display:flex;gap:4px;flex:1;min-width:0}
+.chip{flex:1;height:28px;border-radius:14px;border:0;background:var(--raised);color:var(--ink2);
+  font-size:12.5px;font-family:inherit;cursor:pointer;padding:0 6px;white-space:nowrap}
+.chip.on{background:var(--acc);color:var(--pillInk);font-weight:600}
+.tailbtn{height:28px;border-radius:14px;border:0;background:var(--raised2);color:var(--ink2);
+  font-size:12.5px;font-weight:600;font-family:inherit;padding:0 9px;cursor:pointer;flex:none;
+  display:flex;align-items:center;gap:3px}
+
+/* 画布 */
+.canvas{flex:1;min-height:0;background:var(--cbg);position:relative;overflow:hidden}
+.canvas svg{display:block;width:100%;height:100%}
+.ax{position:absolute;inset:0;pointer-events:none;
+  font-family:Manrope,sans-serif;font-size:9px;color:var(--ctext)}
+.ax span{line-height:1;font-variant-numeric:tabular-nums}
+.malab{position:absolute;left:8px;top:5px;font-size:9px;color:var(--ctext);font-family:Manrope,sans-serif;
+  pointer-events:none;letter-spacing:.2px}
+.malab b{font-weight:500;margin-right:7px}
+.dbar{height:46px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--app)}
+.dbar span{font-size:12px;color:var(--ink3)}
+
+/* 底栏 */
+.tabbar{height:62px;flex:none;display:flex;align-items:flex-start;padding:6px 6px 0;background:var(--app)}
+.tab{flex:1;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:3px;
+  cursor:pointer;color:var(--ink3);font-size:10.5px;font-family:inherit;padding:2px 0}
+.tab.on{color:var(--acc);font-weight:600}
+
+/* ─────────── 搜索页 ─────────── */
+.sbar{flex:none;display:flex;align-items:center;gap:6px;padding:7px 6px 8px 12px;background:var(--app)}
+.field{flex:1;height:34px;border-radius:9px;background:var(--raised2);border:1px solid var(--line);
+  display:flex;align-items:center;gap:7px;padding:0 10px;min-width:0}
+.field.focus{border-color:color-mix(in srgb,var(--acc) 40%,transparent);border-width:2px;padding:0 9px}
+.field input{flex:1;border:0;background:transparent;outline:none;font-family:inherit;font-size:13.5px;
+  color:var(--ink);min-width:0;padding:0}
+.field input::placeholder{color:var(--ink3)}
+.cancel{border:0;background:transparent;color:var(--acc);font-size:14px;font-weight:500;font-family:inherit;
+  padding:0 10px;cursor:pointer;flex:none}
+.filters{flex:none;display:flex;align-items:center;gap:6px;padding:2px 12px 9px;background:var(--app);
+  overflow-x:auto;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.fchip{height:24px;border-radius:7px;border:1px solid transparent;background:var(--raised2);color:var(--ink2);
+  font-size:11.5px;font-family:inherit;padding:0 9px;cursor:pointer;white-space:nowrap;flex:none}
+.fchip.on{background:color-mix(in srgb,var(--acc) 12%,transparent);color:var(--acc);
+  border-color:color-mix(in srgb,var(--acc) 34%,transparent);font-weight:600}
+.fsep{width:1px;height:14px;background:var(--line);flex:none;margin:0 2px}
+.scroll{flex:1;min-height:0;overflow-y:auto;background:var(--app)}
+.scroll::-webkit-scrollbar{width:0}
+.ghead{display:flex;align-items:baseline;gap:7px;padding:14px 16px 6px}
+.ghead h4{margin:0;font-size:11px;font-weight:500;letter-spacing:1px;color:var(--ink3)}
+.ghead em{font-style:normal;font-size:11px;color:var(--ink3);font-variant-numeric:tabular-nums;
+  font-family:Manrope,Inter,sans-serif}
+.ghead .more{margin-left:auto;font-size:11.5px;color:var(--acc);border:0;background:transparent;
+  font-family:inherit;cursor:pointer;padding:0}
+.ghead .trash{margin-left:auto;border:0;background:transparent;color:var(--ink3);cursor:pointer;padding:0 0 0 8px;
+  display:flex;align-items:center}
+.hchips{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 10px}
+.hchip{height:30px;border-radius:8px;border:0;background:var(--raised2);color:var(--ink2);
+  font-size:12.5px;font-family:inherit;padding:0 13px;cursor:pointer}
+.row{display:flex;align-items:center;gap:11px;padding:11px 16px;cursor:pointer;position:relative;
+  background:transparent;border:0;width:100%;font-family:inherit;text-align:left}
+.row+.row::before{content:"";position:absolute;left:60px;right:0;top:0;height:1px;background:var(--hair)}
+.row .nm{flex:1;min-width:0}
+.row .n1{font-size:14px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;display:block;line-height:1.35}
+.row .n1 u{text-decoration:none;color:var(--acc);font-weight:600}
+.row .n1 s{text-decoration:none;color:var(--ink3);font-weight:400;font-size:12.5px;margin-left:4px}
+.row .n2{font-size:11px;color:var(--ink3);margin-top:1px;display:flex;align-items:center;gap:6px;
+  white-space:nowrap;overflow:hidden}
+.tag{font-size:9.5px;line-height:1.5;padding:1px 5px;border-radius:4px;flex:none}
+.tag.new{color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.tag.pend{color:var(--ink3);background:var(--raised2)}
+.row .pr{text-align:right;flex:none;display:flex;flex-direction:column;align-items:flex-end}
+.row .p1{font-size:13.5px;font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;
+  font-family:Manrope,Inter,sans-serif}
+.row .p2{font-size:11px;font-variant-numeric:tabular-nums;font-family:Manrope,Inter,sans-serif;margin-top:1px}
+.p2.up{color:var(--up2)} .p2.down{color:var(--down2)} .p2.nil{color:var(--ink3)}
+.starbtn{width:30px;height:30px;border:0;background:transparent;display:flex;align-items:center;
+  justify-content:center;cursor:pointer;flex:none;color:var(--ink3);margin-right:-8px}
+.starbtn.on{color:var(--acc)}
+.morerow{height:44px;display:flex;align-items:center;justify-content:center;gap:4px;color:var(--acc);
+  font-size:13px;border:0;background:transparent;width:100%;font-family:inherit;cursor:pointer}
+.entry{display:flex;align-items:center;gap:10px;padding:0 16px;height:46px;width:100%;border:0;
+  background:transparent;font-family:inherit;cursor:pointer;color:var(--ink);font-size:14px;text-align:left}
+.entry .ch{margin-left:auto;color:var(--ink3)}
+.empty{padding:26px 16px;text-align:center;color:var(--ink3);font-size:12.5px}
+.empty button{margin-top:12px;border:1px solid var(--line);background:var(--raised);color:var(--acc);
+  font-size:13px;font-family:inherit;border-radius:9px;padding:8px 18px;cursor:pointer}
+
+/* 自选分类页（示意） */
+.favtop{padding:10px 16px 6px;background:var(--app);flex:none;display:flex;align-items:center;gap:9px}
+.favtop .t{font-family:"Noto Serif SC",serif;font-size:19px;font-weight:600;color:var(--ink);letter-spacing:1px}
+.favtop em{font-style:normal;font-size:11px;color:var(--ink3);font-family:Manrope,sans-serif}
+.cats{display:flex;gap:7px;padding:4px 16px 10px;background:var(--app);flex:none;overflow-x:auto;scrollbar-width:none}
+.cats::-webkit-scrollbar{display:none}
+.cat{height:28px;border-radius:9px;border:0;background:var(--raised2);color:var(--ink2);font-size:12.5px;
+  font-family:inherit;padding:0 12px;cursor:pointer;flex:none}
+.cat.on{background:var(--acc);color:var(--pillInk);font-weight:600}
+.favbody{flex:1;min-height:0;overflow-y:auto;position:relative}
+html[data-mode="light"] .favbody{background:
+  radial-gradient(120% 60% at 12% 0%,color-mix(in srgb,var(--acc) 9%,transparent),transparent 62%),
+  radial-gradient(100% 50% at 96% 22%,color-mix(in srgb,var(--warm) 9%,transparent),transparent 60%),
+  var(--app)}
+html[data-mode="dark"] .favbody{background:var(--app)}
+
+/* 半屏层 / 弹窗 */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:20;display:flex;flex-direction:column;
+  justify-content:flex-end;border-radius:54px}
+.sheet{background:var(--app);border-radius:18px 18px 0 0;max-height:62%;display:flex;flex-direction:column;
+  overflow:hidden;box-shadow:0 -10px 34px rgba(0,0,0,.2);animation:rise .22s ease-out}
+@keyframes rise{from{transform:translateY(22px);opacity:.6}to{transform:none;opacity:1}}
+.sheet .sh{display:flex;align-items:center;gap:8px;padding:11px 16px 9px}
+.sheet .sh b{font-size:15px;font-weight:600;color:var(--ink)}
+.sheet .sh em{font-style:normal;font-size:12px;color:var(--ink3);font-family:Manrope,sans-serif}
+.dlgwrap{position:absolute;inset:0;background:var(--scrim);z-index:24;display:flex;align-items:center;
+  justify-content:center;border-radius:54px}
+.dlg{width:270px;background:var(--raised);border-radius:14px;overflow:hidden;
+  box-shadow:0 18px 40px rgba(0,0,0,.28);animation:pop .16s ease-out}
+@keyframes pop{from{transform:scale(.96);opacity:.5}to{transform:none;opacity:1}}
+.dlg .dt{height:44px;display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--ink3)}
+.dlg button{width:100%;height:50px;border:0;border-top:1px solid var(--hair);background:transparent;
+  font-size:15px;font-family:inherit;cursor:pointer;color:var(--ink)}
+.dlg button.danger{color:var(--down2);font-weight:500}
+.toast{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);z-index:26;
+  background:color-mix(in srgb,var(--ink) 88%,transparent);color:var(--app);font-size:12.5px;
+  padding:8px 14px;border-radius:10px;white-space:nowrap;animation:pop .18s ease-out}
+.cellpick{padding:2px 8px 16px}
+.cellpick .ci{display:flex;align-items:center;gap:10px;padding:11px 10px;font-size:14px;color:var(--ink);
+  cursor:pointer;border-radius:10px}
+.cellpick .ci em{font-style:normal;margin-left:auto;font-size:11.5px;color:var(--ink3);font-family:Manrope,sans-serif}
+.cellpick .box{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--line);flex:none;
+  display:flex;align-items:center;justify-content:center;color:var(--pillInk)}
+.cellpick .ci.on .box{background:var(--acc);border-color:var(--acc)}
+.cellpick .ci.dis{opacity:.42}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>看盘 · 行情页顶栏（AICoin 手机端模式）+ 搜索页</h1>
+  <p class="lede">左上返回 · 右上搜索；不要净流入；头部只有最新价与涨跌幅，成交额／振幅是小字。
+     蓝色的都是可点的：返回进自选分类页，搜索进搜索页，点搜索结果回到行情页且品种已换。
+     控制条右半边那三组是<b>留给你定</b>的开关，我没有替你选。</p>
+
+  <div class="bar">
+    <div class="grp"><i>皮肤</i>
+      <button data-set="skin" data-v="sage">青苔</button>
+      <button data-set="skin" data-v="terra">陶土</button>
+      <button data-set="skin" data-v="classic">经典</button></div>
+    <div class="grp"><i>明暗</i>
+      <button data-set="mode" data-v="light">浅</button>
+      <button data-set="mode" data-v="dark">深</button></div>
+    <div class="grp"><i>涨跌色</i>
+      <button data-set="redup" data-v="0">绿涨</button>
+      <button data-set="redup" data-v="1">红涨</button></div>
+    <div class="grp"><span class="tagq">待定 ①</span><i>头部右侧</i>
+      <button data-set="grid" data-v="a">A 2×3 六格</button>
+      <button data-set="grid" data-v="b">B 不要格子</button>
+      <button data-set="grid" data-v="c">C 自选四格</button></div>
+    <div class="grp"><span class="tagq">待定 ②</span><i>历史搜索</i>
+      <button data-set="history" data-v="on">显示</button>
+      <button data-set="history" data-v="off">不显示</button></div>
+    <div class="grp"><span class="tagq">待定 ③</span><i>品种名点开</i>
+      <button data-set="quick" data-v="keep">保留半屏层</button>
+      <button data-set="quick" data-v="drop">直接进搜索页</button></div>
+  </div>
+
+  <div class="duo">
+    <div>
+      <div class="phone" id="live">
+        <div class="island"></div><div class="homebar"></div>
+        <div class="screen" id="screen"></div>
+      </div>
+    </div>
+    <div class="notes" id="notes"></div>
+  </div>
+
+  <h2>一、顶栏状态</h2>
+  <div class="gal" id="galTop"></div>
+
+  <h2>二、头部右侧三个方案（待定 ①）</h2>
+  <div class="gal" id="galGrid"></div>
+
+  <h2>三、搜索页状态</h2>
+  <div class="gal" id="galSearch"></div>
+
+  <h2>四、流转</h2>
+  <div class="gal" id="galFlow"></div>
+
+  <h2>五、AICoin 尺寸 → 看盘尺寸对照</h2>
+  <div id="specTable"></div>
+</div>
+<script>
+/* ══════════════ 徽章：BadgeTint + CoinSpec 的 JS 移植 ══════════════ */
+const MARK = {
+  BTC:{f:"#F9B34A",t:"#EE7A12",txt:"₿"},
+  ETH:{f:"#8F97F2",t:"#4B54C8",fill:["M12 2.6l5.6 9.1-5.6 3.3-5.6-3.3z","M12 21.6l5.6-7.9-5.6 3.3-5.6-3.3z"]},
+  SOL:{f:"#19F0A0",t:"#9945FF",fill:["M5.4 7.4h11.4l2.2-2.6H7.6z","M5.4 13.3h11.4l2.2-2.6H7.6z","M5.4 19.2h11.4l2.2-2.6H7.6z"]},
+  BNB:{f:"#F8D661",t:"#EFB40A",fill:["M12 3.1l2.6 2.6L12 8.3 9.4 5.7z","M12 15.7l2.6 2.6L12 20.9l-2.6-2.6z","M5.7 9.4l2.6 2.6-2.6 2.6L3.1 12z","M18.3 9.4l2.6 2.6-2.6 2.6L15.7 12z","M12 9.4l2.6 2.6-2.6 2.6L9.4 12z"]},
+  DOGE:{f:"#E3C368",t:"#BFA033",txt:"Ð"},
+  XRP:{f:"#5B667A",t:"#252B33",stroke:[["M6.2 5.6l3.6 3.7 1.1.5 1.1-.5 3.6-3.7","M6.2 18.4l3.6-3.7 1.1-.5 1.1.5 3.6 3.7"],2.1]},
+  SUI:{f:"#7CC6F7",t:"#3E8FF0",stroke:[["M12 4.2c3.9 4.7 5.9 7.7 5.9 10.1a5.9 5.9 0 0 1-11.8 0c0-2.4 2-5.4 5.9-10.1z"],2.1]},
+  LINK:{f:"#6AA0FF",t:"#2450D4",stroke:[["M12 3.2l7.2 4.2v8.9L12 20.5l-7.2-4.2V7.4z"],2]},
+  AVAX:{f:"#F1616B",t:"#C42832",fill:["M12 4.2l8.8 15.4h-5.3L12 13.4 8.5 19.6H3.2z"]},
+  TON:{f:"#63C4F0",t:"#1E88C9",fill:["M4.2 6.4h15.6L12 20.2z"]},
+  PEPE:{f:"#8CD46A",t:"#3E8B2C",stroke:[["M4.6 12.8c0-3.2 3.3-5.4 7.4-5.4s7.4 2.2 7.4 5.4c0 3.6-3.3 6-7.4 6s-7.4-2.4-7.4-6z","M8 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z","M16 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z","M7.6 14.4c2.6 2 6.2 2 8.8 0"],1.8],
+       fill:["M8 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z","M16 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"]},
+  AAPL:{f:"#B9BFC9",t:"#61686F",inset:.58,fill:["M16.8 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.7-1.8-3.3-1.8-1.4-.1-2.8.8-3.5.8s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.1 9.3.8 1.1 1.7 2.4 2.9 2.3 1.1 0 1.6-.7 3-.7s1.7.7 3 .7c1.2 0 2-1.1 2.8-2.3.9-1.3 1.2-2.5 1.2-2.6-.1 0-2.4-.9-2.4-3.7z","M14.6 5.4c.6-.8 1.1-1.8 1-2.9-.9.1-2 .6-2.7 1.4-.6.7-1.1 1.7-1 2.7 1 .1 2.1-.5 2.7-1.2z"]},
+  NVDA:{f:"#9BE36A",t:"#3F8A16",stroke:[["M4.4 12c2.9-3.7 5.4-5.5 7.6-5.5s4.7 1.8 7.6 5.5c-2.9 3.7-5.4 5.5-7.6 5.5S7.3 15.7 4.4 12z"],1.9],
+        fill:["M12 9.6a2.4 2.4 0 1 1 0 4.8 2.4 2.4 0 0 1 0-4.8z"]},
+  TSLA:{f:"#F08080",t:"#B71C1C",fill:["M5 6.2c2.1-1 4.4-1.5 7-1.5s4.9.5 7 1.5l-1.4 2.5c-1.3-.5-2.7-.9-4.1-1.1L12 20.2 10.5 7.6c-1.4.2-2.8.6-4.1 1.1z"]},
+  AMD:{f:"#9BD4A0",t:"#2E7D46",fill:["M4.4 4.4h9.8v2.7H7.1v7H4.4z","M19.6 19.6H9.8l9.8-9.8z"]},
+  XAU:{f:"#F5D07A",t:"#C08A1E",inset:.6,stroke:[["M8.6 7.4h6.8l4 9.2H4.6z","M7.6 11h8.8"],2.1]},
+  ANTHROPIC:{f:"#E8A87C",t:"#C4603A",stroke:[["M12 3.4v6.4","M12 14.2v6.4","M3.4 12h6.4","M14.2 12h6.4","M5.9 5.9l4.5 4.5","M13.6 13.6l4.5 4.5","M5.9 18.1l4.5-4.5","M13.6 10.4l4.5-4.5"],1.8]},
+};
+function hex2rgb(h){h=h.replace('#','');return [parseInt(h.slice(0,2),16)/255,parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255];}
+function rgb2hsb(h){const[r,g,b]=hex2rgb(h);const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;let hh=0;
+  if(d>0){if(mx===r)hh=(g-b)/d+(g<b?6:0);else if(mx===g)hh=(b-r)/d+2;else hh=(r-g)/d+4;hh/=6;}
+  return{h:hh,s:mx===0?0:d/mx,b:mx};}
+function hsb2css(h,s,b){const i=Math.floor(h*6),f=h*6-i,p=b*(1-s),q=b*(1-f*s),t=b*(1-(1-f)*s);
+  let r,g,bl;switch(i%6){case 0:r=b;g=t;bl=p;break;case 1:r=q;g=b;bl=p;break;case 2:r=p;g=b;bl=t;break;
+  case 3:r=p;g=q;bl=b;break;case 4:r=t;g=p;bl=b;break;default:r=b;g=p;bl=q;}
+  const f2=v=>Math.round(v*255);return `rgb(${f2(r)},${f2(g)},${f2(bl)})`;}
+function pull(a,b,amt){let d=b-a;if(d>0.5)d-=1;if(d<-0.5)d+=1;let v=a+d*amt;return (v+1)%1;}
+const cl=(v,lo,hi)=>Math.min(Math.max(v,Math.min(lo,hi)),hi);
+function badgeTint(from,to){
+  const st=getComputedStyle(document.documentElement);
+  const dark=document.documentElement.dataset.mode==='dark';
+  const seedAcc=st.getPropertyValue('--acc').trim();
+  const sk=rgb2hsb(seedAcc);
+  const a=rgb2hsb(from),b=rgb2hsb(to);
+  if(Math.max(a.s,b.s)<0.12){
+    return[hsb2css(sk.h,dark?0.15:0.13,dark?0.46:0.74),hsb2css(sk.h,dark?0.15:0.15,dark?0.30:0.52)];
+  }
+  const gold=h=>h>0.07&&h<0.20;
+  const isGold=gold(a.h)||gold(b.h);
+  const hue=pull(a.h,sk.h,isGold?0.04:0.11), hue2=pull(b.h,sk.h,isGold?0.04:0.11);
+  const give=isGold?0.14:0;
+  const hi=cl(a.s,dark?0.20:0.24,(dark?0.56:0.52)+give);
+  const lo=cl(b.s,dark?0.26:0.30,(dark?0.66:0.60)+give);
+  const top=cl(a.b,dark?0.42:0.62,(dark?0.70:0.88)+(give>0?0.04:0));
+  const bot=cl(b.b,dark?0.30:0.46,dark?0.56:0.70);
+  return[hsb2css(hue,hi,top),hsb2css(hue2,lo,bot)];
+}
+function badge(base,size){
+  const m=MARK[base]||MARK.BTC;
+  const [c1,c2]=badgeTint(m.f,m.t);
+  const r=(size*0.31).toFixed(1), ins=(m.inset||0.62), g=size*ins, off=(size-g)/2;
+  let inner='';
+  if(m.txt){
+    inner=`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      color:#fff;font-weight:700;font-size:${(size*0.5).toFixed(1)}px;line-height:1">${m.txt}</div>`;
+  }
+  let sv='';
+  if(m.stroke){const w=(Math.min(Math.max(2+(m.stroke[1]-2)*0.28,1.86),2.16)*Math.pow(size/33,0.72)*(24/g)).toFixed(2);
+    sv+=m.stroke[0].map(d=>`<path d="${d}" fill="none" stroke="#fff" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`).join('');}
+  if(m.fill){sv+=m.fill.map(d=>`<path d="${d}" fill="#fff"/>`).join('');}
+  if(sv)inner+=`<svg viewBox="0 0 24 24" style="position:absolute;left:${off.toFixed(1)}px;top:${off.toFixed(1)}px;width:${g.toFixed(1)}px;height:${g.toFixed(1)}px">${sv}</svg>`;
+  return `<span class="bg" style="position:relative;display:inline-block;width:${size}px;height:${size}px;
+    border-radius:${r}px;background:linear-gradient(135deg,${c1},${c2});
+    box-shadow:0 ${(size*0.1).toFixed(1)}px ${(size*0.17).toFixed(1)}px ${c2}${document.documentElement.dataset.mode==='dark'?'42':'2e'}">${inner}</span>`;
+}
+
+/* ══════════════ 图标 ══════════════ */
+const I={
+  back:'<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11.4 3.6L5.6 9l5.8 5.4"/></svg>',
+  chevD:'<svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1.6 3.1L4.5 6l2.9-2.9"/></svg>',
+  chevR:'<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 1.6L6.8 5 3.4 8.4"/></svg>',
+  search:'<svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7.9" cy="7.9" r="5.4"/><path d="M11.9 11.9l3.6 3.6"/></svg>',
+  search13:'<svg width="13" height="13" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7.9" cy="7.9" r="5.4"/><path d="M11.9 11.9l3.6 3.6"/></svg>',
+  starOn:'<svg width="15" height="15" viewBox="0 0 18 18" fill="currentColor"><path d="M9 2.2l2 4.2 4.6.6-3.4 3.2.9 4.6L9 12.6 4.9 14.8l.9-4.6L2.4 7l4.6-.6z"/></svg>',
+  starOff:'<svg width="15" height="15" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M9 2.2l2 4.2 4.6.6-3.4 3.2.9 4.6L9 12.6 4.9 14.8l.9-4.6L2.4 7l4.6-.6z"/></svg>',
+  clr:'<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" opacity=".28"/><path d="M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8" stroke="var(--app)" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>',
+  trash:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 4.2h10.8M6.2 4.2V2.8h3.6v1.4M4 4.2l.6 8.4h6.8l.6-8.4M6.6 6.6v3.8M9.4 6.6v3.8"/></svg>',
+  up:'<svg width="7" height="6" viewBox="0 0 8 7" fill="currentColor"><path d="M4 0l4 7H0z"/></svg>',
+  dn:'<svg width="7" height="6" viewBox="0 0 8 7" fill="currentColor"><path d="M4 7L0 0h8z"/></svg>',
+  chk:'<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.3l2.4 2.4L9.6 3.6"/></svg>',
+  tabReplay:'<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 10a6.6 6.6 0 1 0 1.9-4.6M3.4 3.4v3.6h3.6"/></svg>',
+  tabInd:'<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 13.6l4-4.6 3.2 2.6 4-5.4 3.2 3"/></svg>',
+  tabFav:'<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M10 2.6l2.3 4.8 5.2.7-3.8 3.6 1 5.2-4.7-2.5-4.7 2.5 1-5.2L2.5 8.1l5.2-.7z"/></svg>',
+  tabSet:'<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.4v2M10 15.6v2M2.4 10h2M15.6 10h2M4.6 4.6l1.4 1.4M14 14l1.4 1.4M15.4 4.6L14 6M6 14l-1.4 1.4"/></svg>',
+};
+</script>
+<script>
+/* ══════════════ 数据：只用 ticker24h / exchangeInfo / klines 拿得到的字段 ══════════════ */
+const SYM={
+ BTCUSDT:{base:'BTC',quote:'USDT',kind:'crypto',dec:1,price:112480.5,pct:2.34,turn:'84.2亿',vol:'7.48万',amp:3.12,mark:112472.8,open:109912.1},
+ ETHUSDT:{base:'ETH',quote:'USDT',kind:'crypto',dec:2,price:4218.66,pct:-1.12,turn:'32.1亿',vol:'76.2万',amp:2.48,mark:4218.20,open:4266.42},
+ SOLUSDT:{base:'SOL',quote:'USDT',kind:'crypto',dec:2,price:236.84,pct:4.07,turn:'18.6亿',vol:'795万',amp:5.33,mark:236.79,open:227.58,tag:'new'},
+ BNBUSDT:{base:'BNB',quote:'USDT',kind:'crypto',dec:2,price:1042.30,pct:0.86,turn:'9.4亿',vol:'90.6万',amp:1.94,mark:1042.11,open:1033.41},
+ DOGEUSDT:{base:'DOGE',quote:'USDT',kind:'crypto',dec:5,price:0.24186,pct:-2.31,turn:'6.8亿',vol:'28.1亿',amp:3.76,mark:0.24180,open:0.24758},
+ XRPUSDT:{base:'XRP',quote:'USDT',kind:'crypto',dec:4,price:3.0142,pct:1.05,turn:'11.2亿',vol:'3.72亿',amp:2.11,mark:3.0138,open:2.9829},
+ SUIUSDT:{base:'SUI',quote:'USDT',kind:'crypto',dec:4,price:3.8420,pct:6.72,turn:'4.1亿',vol:'1.09亿',amp:8.04,mark:3.8408,open:3.6001,tag:'new'},
+ LINKUSDT:{base:'LINK',quote:'USDT',kind:'crypto',dec:3,price:24.118,pct:-0.44,turn:'2.6亿',vol:'1077万',amp:1.62,mark:24.112,open:24.225},
+ AVAXUSDT:{base:'AVAX',quote:'USDT',kind:'crypto',dec:3,price:32.470,pct:1.88,turn:'1.9亿',vol:'588万',amp:2.90,mark:32.462,open:31.871},
+ TONUSDT:{base:'TON',quote:'USDT',kind:'crypto',dec:4,price:5.1260,pct:-0.92,turn:'8600万',vol:'1680万',amp:2.05,mark:5.1244,open:5.1736},
+ '1000PEPEUSDT':{base:'PEPE',disp:'1000PEPE',quote:'USDT',kind:'crypto',dec:5,price:0.00984,pct:3.41,turn:'1.4亿',vol:'142亿',amp:6.18,mark:0.00984,open:0.00951},
+ XAUUSDT:{base:'XAU',quote:'USDT',kind:'metal',dec:2,price:3922.40,pct:0.35,turn:'7400万',vol:'1.89万',amp:0.71,mark:3922.05,open:3908.72},
+ AAPLUSDT:{base:'AAPL',quote:'USDT',kind:'us',dec:2,price:241.86,pct:0.42,turn:'3100万',vol:'12.8万',amp:0.96,mark:241.80,open:240.85,tag:'pend'},
+ NVDAUSDT:{base:'NVDA',quote:'USDT',kind:'us',dec:2,price:183.24,pct:2.06,turn:'8800万',vol:'48.1万',amp:2.64,mark:183.19,open:179.54},
+ TSLAUSDT:{base:'TSLA',quote:'USDT',kind:'us',dec:2,price:428.90,pct:-1.33,turn:'5200万',vol:'12.1万',amp:2.18,mark:428.81,open:434.68,tag:'pend'},
+ AMDUSDT:{base:'AMD',quote:'USDT',kind:'us',dec:2,price:164.72,pct:1.21,turn:'2400万',vol:'14.6万',amp:1.88,mark:164.66,open:162.75},
+ ANTHROPICUSDT:{base:'ANTHROPIC',quote:'USDT',kind:'crypto',dec:2,price:68.40,pct:3.21,turn:'1900万',vol:'27.8万',amp:4.42,mark:68.36,open:66.27,tag:'new'},
+};
+const ORDER=Object.keys(SYM);
+const KIND={crypto:'加密',us:'美股',metal:'贵金属'};
+const CELLS={turn:['额',s=>s.turn],vol:['量',s=>s.vol],amp:['振幅',s=>s.amp.toFixed(2)+'%'],
+  mark:['标记',s=>grouped(s.mark,s.dec)],open:['开盘',s=>grouped(s.open,s.dec)],
+  chg:['涨跌',s=>(s.pct>=0?'+':'')+grouped(s.price-s.open,s.dec),'signed']};
+const CELLNAME={turn:'成交额',vol:'成交量',amp:'振幅',mark:'标记价',open:'开盘价',chg:'涨跌额'};
+const CELL_A=['turn','vol','amp','mark','open','chg'];
+
+function grouped(v,dec){const n=Math.abs(v).toFixed(dec).split('.');
+  n[0]=n[0].replace(/\B(?=(\d{3})+(?!\d))/g,',');return (v<0?'-':'')+n.join('.');}
+function name(s){return s.disp||s.base;}
+
+/* ══════════════ 状态 ══════════════ */
+const D={skin:'sage',mode:'light',redup:'0',grid:'a',history:'on',quick:'keep'};
+const S={page:'market',sym:'BTCUSDT',q:'',fMarket:'all',fQuote:'all',sheet:null,toast:null,
+  star:new Set(['BTCUSDT','ETHUSDT','SOLUSDT','XAUUSDT','NVDAUSDT','DOGEUSDT']),
+  cells:['turn','amp','mark','open'],flash:null,stale:false,cat:'加密',
+  hist:['SOL','以太','NVDA','黄金','1000PEPE','TON'],focus:false};
+
+/* ══════════════ 顶栏 ══════════════ */
+function topbar(st){
+  const s=SYM[st.sym],on=st.star.has(st.sym);
+  return `<div class="tbar">
+    <button class="icb back" data-a="back" title="返回自选分类页">${I.back}</button>
+    <button class="ident" data-a="ident">
+      ${badge(s.base,26)}
+      <span class="base">${name(s)}</span><span class="quote">/${s.quote}</span>
+      <span class="perp">${s.kind==='us'?'美股':'永续'}</span>
+      <span style="color:var(--ink3);display:flex">${I.chevD}</span>
+    </button>
+    <div class="sp"></div>
+    <button class="icb star ${on?'on':''}" data-a="star">${on?I.starOn:I.starOff}</button>
+    <button class="icb" data-a="search">${I.search}</button>
+  </div>`;
+}
+function priceBlock(st){
+  const s=SYM[st.sym],up=s.pct>=0,stale=st.stale;
+  const dir=up?'up':'down';
+  const flash=st.flash?(st.flash==='up'?'fl-up':'fl-dn'):'';
+  const pillBG=`background:color-mix(in srgb,var(--${up?'up2':'down2'}) 92%,var(--ink))`;
+  const grid=D.grid;
+  let right='';
+  if(grid==='a'||grid==='c'){
+    const keys=grid==='a'?CELL_A:S.cells;
+    right=`<div class="pgrid ${grid==='c'?'c':''}" data-a="cells">`+keys.map(k=>{
+      const [lb,fn,sg]=CELLS[k];let cls='';
+      if(sg)cls=up?'up':'down';
+      return `<div class="cell"><i>${lb}</i><b class="${stale?'':cls}">${fn(s)}</b></div>`;
+    }).join('')+`</div>`;
+  }
+  const line=(grid==='b')
+    ?`<div class="pline">成交额 <b>${s.turn}</b> · 振幅 <b>${s.amp.toFixed(2)}%</b></div>`:'';
+  const pxHTML=`<span class="px ${stale?'stale':dir}">${grouped(s.price,s.dec)}</span>`;
+  const pillHTML=`<span class="pill ${stale?'stale':''}" style="${stale?'':pillBG}">
+      ${stale?'':(up?I.up:I.dn)}${(up?'+':'')+s.pct.toFixed(2)}%</span>`;
+  const stack=(grid==='a'||grid==='c');
+  const core=stack
+    ? `<div class="prow">${pxHTML}</div><div class="prow prow2">${pillHTML}</div>`
+    : `<div class="prow">${pxHTML}${pillHTML}</div>`;
+  return `<div class="pblk ${stale?'stale':''}">
+    <div class="pleft ${flash}">${core}${line}</div>${right}</div>`;
+}
+function header(st){return `<div class="hdr">${topbar(st)}${priceBlock(st)}</div>`;}
+
+/* ══════════════ 周期条 + 画布 + 底栏 ══════════════ */
+const IVS=['1分','5分','15分','1时','4时','日'];
+function ivbar(){
+  return `<div class="ivbar"><div class="chips">`+
+    IVS.map((t,i)=>`<button class="chip ${i===2?'on':''}">${t}</button>`).join('')+
+    `</div><button class="tailbtn">更多${I.chevD}</button><button class="tailbtn">图表</button></div>`;
+}
+let CANDLES=null;
+function candles(){
+  if(CANDLES)return CANDLES;
+  let seed=20260917,rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;};
+  let p=104,out=[];
+  for(let i=0;i<58;i++){const o=p,c=p*(1+(rnd()-0.47)*0.021);
+    const h=Math.max(o,c)*(1+rnd()*0.008),l=Math.min(o,c)*(1-rnd()*0.008);
+    out.push({o,c,h,l,v:0.3+rnd()*0.7});p=c;}
+  CANDLES=out;return out;
+}
+function chart(){
+  const cs=candles(),W=393,H=100; // viewBox 单位，用 preserveAspectRatio=none 铺满
+  const hi=Math.max(...cs.map(c=>c.h)),lo=Math.min(...cs.map(c=>c.l));
+  const top=6,mainH=62,volTop=72,volH=22;
+  const y=v=>top+(hi-v)/(hi-lo)*mainH;
+  const cw=(W-46)/cs.length, bw=cw*0.62;
+  let g='';
+  for(let i=1;i<5;i++)g+=`<line x1="0" y1="${top+mainH*i/5}" x2="${W-46}" y2="${top+mainH*i/5}" stroke="var(--cgrid)" stroke-width="0.3" opacity=".55" stroke-dasharray="2 2"/>`;
+  let body='';
+  cs.forEach((c,i)=>{const x=i*cw+cw/2,up=c.c>=c.o,col=up?'var(--up2)':'var(--down2)';
+    body+=`<line x1="${x.toFixed(1)}" y1="${y(c.h).toFixed(1)}" x2="${x.toFixed(1)}" y2="${y(c.l).toFixed(1)}" stroke="${col}" stroke-width="0.5"/>`;
+    const y1=y(Math.max(c.o,c.c)),y2=y(Math.min(c.o,c.c));
+    body+=`<rect x="${(x-bw/2).toFixed(1)}" y="${y1.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0.5,y2-y1).toFixed(1)}" fill="${col}"/>`;
+    const vh=c.v*volH;
+    body+=`<rect x="${(x-bw/2).toFixed(1)}" y="${(volTop+volH-vh).toFixed(1)}" width="${bw.toFixed(1)}" height="${vh.toFixed(1)}" fill="${col}" opacity=".55"/>`;});
+  // 均线
+  const ma=(n,col)=>{let d='';cs.forEach((c,i)=>{if(i<n-1)return;
+    let s=0;for(let k=i-n+1;k<=i;k++)s+=cs[k].c;const x=i*cw+cw/2,yy=y(s/n);
+    d+=(d?'L':'M')+x.toFixed(1)+' '+yy.toFixed(1);});
+    return `<path d="${d}" fill="none" stroke="${col}" stroke-width="0.6" opacity=".9"/>`;};
+  let axis='';
+  for(let i=0;i<=5;i++){const v=hi-(hi-lo)*i/5;
+    axis+=`<span style="position:absolute;right:5px;top:calc(${(top+mainH*i/5).toFixed(2)}% - 5px)">${v.toFixed(0)}</span>`;}
+  return `<div class="canvas"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <rect width="${W}" height="${H}" fill="var(--cbg)"/>${g}${ma(7,'#FFB400')}${ma(25,'#E849B9')}${body}
+    <line x1="0" y1="${volTop-3}" x2="${W}" y2="${volTop-3}" stroke="var(--caxis)" stroke-width="0.6"/>
+  </svg>
+  <div class="malab"><b style="color:#FFB400">MA7</b><b style="color:#E849B9">MA25</b></div>
+  <div class="ax">${axis}</div></div>`;
+}
+function tabbar(active){
+  const T=[['复盘',I.tabReplay],['指标',I.tabInd],['自选',I.tabFav],['设置',I.tabSet]];
+  return `<div class="tabbar">`+T.map(([t,ic])=>
+    `<button class="tab ${t===active?'on':''}" data-a="${t==='自选'?'favs':''}">${ic}<span>${t}</span></button>`).join('')+`</div>`;
+}
+function statusbar(){return `<div class="statusbar"><span>9:41</span><span class="rt">
+  <svg width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><rect x="0" y="7" width="2.6" height="4" rx=".6"/><rect x="4" y="5" width="2.6" height="6" rx=".6"/><rect x="8" y="2.6" width="2.6" height="8.4" rx=".6"/><rect x="12" y="0" width="2.6" height="11" rx=".6"/></svg>
+  <svg width="22" height="11" viewBox="0 0 24 12" fill="none" stroke="currentColor" stroke-width="1"><rect x=".5" y=".5" width="19" height="11" rx="3"/><rect x="2" y="2" width="15" height="8" rx="1.6" fill="currentColor" stroke="none"/><path d="M21.4 4.2v3.6" stroke-width="2" stroke-linecap="round"/></svg>
+</span></div>`;}
+
+/* ══════════════ 行情页 ══════════════ */
+function marketPage(st){
+  return statusbar()+header(st)+`<div class="hair"></div>`+ivbar()+`<div class="hairbar"></div>`+
+    chart()+`<div class="hairbar"></div>`+
+    `<div class="dbar"><button class="tailbtn">画线</button><button class="tailbtn">指标</button><span>十字线随手指</span></div>`+
+    tabbar('');
+}
+
+/* ══════════════ 搜索页 ══════════════ */
+function rowHTML(key,st,hi){
+  const s=SYM[key],on=st.star.has(key),up=s.pct>=0;
+  let nm=name(s);
+  if(hi){const i=nm.toUpperCase().indexOf(hi.toUpperCase());
+    if(i>=0)nm=nm.slice(0,i)+'<u>'+nm.slice(i,i+hi.length)+'</u>'+nm.slice(i+hi.length);}
+  const tag=s.tag==='new'?'<span class="tag new">新增</span>':
+            s.tag==='pend'?'<span class="tag pend">交易时间待定</span>':'';
+  return `<button class="row" data-a="pick" data-k="${key}">
+    ${badge(s.base,33)}
+    <span class="nm"><span class="n1">${nm}<s>/ ${s.quote}</s></span>
+      <span class="n2">${KIND[s.kind]} · ${s.kind==='us'?'美股':'永续'} ${tag}</span></span>
+    <span class="pr"><span class="p1">${grouped(s.price,s.dec)}</span>
+      <span class="p2 ${up?'up':'down'}">${(up?'+':'')+s.pct.toFixed(2)}%</span></span>
+    <span class="starbtn ${on?'on':''}" data-a="fav" data-k="${key}">${on?I.starOn:I.starOff}</span>
+  </button>`;
+}
+function matches(st){
+  const q=st.q.trim().toUpperCase();
+  const alias={'以太':'ETH','比特':'BTC','黄金':'XAU','狗':'DOGE','英伟达':'NVDA','苹果':'AAPL','特斯拉':'TSLA'};
+  const qq=alias[st.q.trim()]||q;
+  let out=ORDER.filter(k=>{const s=SYM[k];
+    return name(s).toUpperCase().includes(qq)||s.base.toUpperCase().includes(qq);});
+  if(st.fMarket!=='all')out=out.filter(k=>SYM[k].kind===st.fMarket);
+  if(st.fQuote!=='all')out=out.filter(k=>SYM[k].quote===st.fQuote);
+  return {out,qq};
+}
+function searchPage(st){
+  const q=st.q.trim();
+  let bodyHTML='';
+  if(!q){
+    if(D.history==='on'){
+      bodyHTML+=`<div class="ghead"><h4>历史搜索</h4><button class="trash" data-a="clearAsk">${I.trash}</button></div>
+        <div class="hchips">`+st.hist.map(h=>`<button class="hchip" data-a="hist" data-h="${h}">${h}</button>`).join('')+`</div>`;
+    }
+    const favs=ORDER.filter(k=>st.star.has(k));
+    if(D.quick==='drop'){
+      bodyHTML+=`<div class="ghead"><h4>自选</h4><em>${favs.length}</em></div>`+
+        favs.slice(0,5).map(k=>rowHTML(k,st,'')).join('')+
+        `<button class="entry" data-a="favs" style="border-top:1px solid var(--hair);margin-top:2px">
+          <span style="color:var(--ink2);display:flex">${I.tabFav}</span>全部自选与分组<span class="ch">${I.chevR}</span></button>`;
+    }else{
+      bodyHTML+=`<div class="ghead"><h4>最近看过</h4></div>`+
+        ['SOLUSDT','NVDAUSDT','XAUUSDT','1000PEPEUSDT'].map(k=>rowHTML(k,st,'')).join('');
+    }
+  }else{
+    const {out,qq}=matches(st);
+    if(!out.length){
+      bodyHTML=`<div class="empty">没有找到「${q}」<br>
+        <button data-a="resetFilter">清掉筛选再试</button></div>`;
+    }else{
+      const show=out.slice(0,6);
+      bodyHTML=`<div class="ghead"><h4>品种</h4><em>${out.length}</em>`+
+        (out.length>6?`<button class="more" data-a="more">查看更多</button>`:'')+`</div>`+
+        show.map(k=>rowHTML(k,st,qq)).join('')+
+        (out.length>6?`<button class="morerow" data-a="more">查看全部 ${out.length} 个品种${I.chevR}</button>`:'');
+    }
+  }
+  const filters=q?`<div class="filters">
+      ${['all','crypto','us','metal'].map(m=>`<button class="fchip ${st.fMarket===m?'on':''}" data-a="fm" data-v="${m}">${m==='all'?'全部':KIND[m]}</button>`).join('')}
+      <span class="fsep"></span>
+      ${['USDT','USDC'].map(m=>`<button class="fchip ${st.fQuote===m?'on':''}" data-a="fq" data-v="${m}">${m}</button>`).join('')}
+    </div>`:'';
+  return statusbar()+`<div class="sbar">
+      <div class="field ${st.focus?'focus':''}">
+        <span style="color:var(--ink3);display:flex">${I.search13}</span>
+        <input id="qin" placeholder="搜 BTC、ETH、SOL…" value="${st.q.replace(/"/g,'&quot;')}">
+        ${q?`<span data-a="clearq" style="color:var(--ink3);display:flex;cursor:pointer">${I.clr}</span>`:''}
+      </div>
+      <button class="cancel" data-a="cancel">取消</button>
+    </div>${filters}<div class="scroll">${bodyHTML}<div style="height:26px"></div></div>`;
+}
+
+/* ══════════════ 自选分类页（示意） ══════════════ */
+function favsPage(st){
+  const cats=['加密','美股','贵金属'];
+  const keys=ORDER.filter(k=>st.star.has(k)&&KIND[SYM[k].kind]===st.cat);
+  const list=keys.length?keys:ORDER.filter(k=>KIND[SYM[k].kind]===st.cat).slice(0,5);
+  return statusbar()+`<div class="favtop">
+      <button class="icb back" data-a="tomarket">${I.back}</button>
+      <span class="t">自选</span><em>${st.star.size}</em>
+      <div class="sp"></div>
+      <button class="icb" data-a="search">${I.search}</button></div>
+    <div class="cats">`+cats.map(c=>`<button class="cat ${c===st.cat?'on':''}" data-a="cat" data-v="${c}">${c}</button>`).join('')+
+    `<button class="cat" style="opacity:.7">+ 分组</button></div>
+    <div class="favbody">`+list.map(k=>rowHTML(k,st,'')).join('')+
+    `<div style="padding:18px 16px;color:var(--ink3);font-size:11.5px">（这张页是用户已定稿的「融合」版自选页，这里只画个示意——顶栏返回落在这里。）</div></div>`+
+    tabbar('自选');
+}
+
+/* ══════════════ 覆盖层 ══════════════ */
+function quickSheet(st){
+  const favs=ORDER.filter(k=>st.star.has(k));
+  return `<div class="scrim" data-a="closeSheet"><div class="sheet" data-stop="1">
+    <div class="sh"><b>自选</b><em>${favs.length}</em><div class="sp"></div>
+      <button class="icb" data-a="closeSheet" style="color:var(--ink3);font-size:16px">✕</button></div>
+    <button class="entry" data-a="search"><span style="color:var(--ink2);display:flex">${I.search13}</span>搜索品种<span class="ch">${I.chevR}</span></button>
+    <button class="entry" data-a="favs"><span style="color:var(--ink2);display:flex">${I.tabFav}</span>全部自选与分组<span class="ch">${I.chevR}</span></button>
+    <div style="height:1px;background:var(--hair);margin:2px 0"></div>
+    <div style="overflow-y:auto">`+favs.map(k=>rowHTML(k,st,'')).join('')+`</div>
+  </div></div>`;
+}
+function clearDlg(){
+  return `<div class="dlgwrap" data-a="closeSheet"><div class="dlg" data-stop="1">
+    <div class="dt">清除搜索记录</div>
+    <button class="danger" data-a="clearDo">清除</button>
+    <button data-a="closeSheet">取消</button></div></div>`;
+}
+function cellSheet(st){
+  const all=Object.keys(CELLS);
+  return `<div class="scrim" data-a="closeSheet"><div class="sheet" data-stop="1">
+    <div class="sh"><b>头部显示哪几项</b><em>最多 4 个</em></div>
+    <div class="cellpick">`+all.map(k=>{
+      const on=st.cells.includes(k),dis=!on&&st.cells.length>=4;
+      return `<div class="ci ${on?'on':''} ${dis?'dis':''}" data-a="cell" data-v="${k}">
+        <span class="box">${on?I.chk:''}</span>${CELLNAME[k]}<em>${CELLS[k][1](SYM[st.sym])}</em></div>`;
+    }).join('')+`</div></div></div>`;
+}
+
+/* ══════════════ 渲染 ══════════════ */
+function screenHTML(st){
+  let inner=st.page==='market'?marketPage(st):st.page==='search'?searchPage(st):favsPage(st);
+  if(st.sheet==='quick')inner+=quickSheet(st);
+  if(st.sheet==='clear')inner+=clearDlg();
+  if(st.sheet==='cells')inner+=cellSheet(st);
+  if(st.toast)inner+=`<div class="toast">${st.toast}</div>`;
+  return inner;
+}
+function render(){
+  const el=document.getElementById('screen');
+  const keep=document.activeElement&&document.activeElement.id==='qin';
+  const pos=keep?document.activeElement.selectionStart:0;
+  el.innerHTML=screenHTML(S);
+  if(keep){const inp=el.querySelector('#qin');if(inp){inp.focus();try{inp.setSelectionRange(pos,pos);}catch(e){}}}
+  notes();
+}
+function toast(t){S.toast=t;render();clearTimeout(toast._t);toast._t=setTimeout(()=>{S.toast=null;render();},1400);}
+
+/* ══════════════ 交互 ══════════════ */
+document.getElementById('live').addEventListener('click',e=>{
+  const stop=e.target.closest('[data-stop]');
+  const t=e.target.closest('[data-a]');
+  if(!t){return;}
+  const a=t.dataset.a;
+  if(a==='closeSheet'&&stop&&t.dataset.a!=='closeSheet')return;
+  switch(a){
+    case 'back': S.page='favs';break;
+    case 'tomarket': S.page='market';break;
+    case 'favs': S.page='favs';S.sheet=null;break;
+    case 'search': S.page='search';S.sheet=null;S.focus=true;break;
+    case 'cancel': S.page='market';S.q='';S.focus=false;break;
+    case 'ident': if(D.quick==='keep'){S.sheet='quick';}else{S.page='search';S.focus=true;} break;
+    case 'star': {const on=S.star.has(S.sym);on?S.star.delete(S.sym):S.star.add(S.sym);
+      render();toast(on?'已移出自选':'已加入自选');return;}
+    case 'fav': {e.stopPropagation();const k=t.dataset.k;const on=S.star.has(k);
+      on?S.star.delete(k):S.star.add(k);render();toast(on?'已移出自选':'已加入自选');return;}
+    case 'pick': {const k=t.dataset.k;S.sym=k;S.page='market';S.sheet=null;S.q='';
+      S.flash=SYM[k].pct>=0?'up':'down';render();
+      setTimeout(()=>{S.flash=null;render();},600);
+      toast('已切到 '+name(SYM[k])+'/'+SYM[k].quote);return;}
+    case 'hist': S.q=t.dataset.h;break;
+    case 'clearAsk': S.sheet='clear';break;
+    case 'clearDo': S.hist=[];S.sheet=null;break;
+    case 'clearq': S.q='';break;
+    case 'more': toast('展开全部结果（原型略）');return;
+    case 'resetFilter': S.fMarket='all';S.fQuote='all';break;
+    case 'fm': S.fMarket=t.dataset.v;break;
+    case 'fq': S.fQuote=(S.fQuote===t.dataset.v)?'all':t.dataset.v;break;
+    case 'cells': if(D.grid==='c')S.sheet='cells';else return;break;
+    case 'cat': S.cat=t.dataset.v;break;
+    case 'cell': {const k=t.dataset.v,i=S.cells.indexOf(k);
+      if(i>=0){if(S.cells.length>1)S.cells.splice(i,1);}
+      else if(S.cells.length<4)S.cells.push(k);break;}
+    default: return;
+  }
+  render();
+});
+document.getElementById('live').addEventListener('input',e=>{
+  if(e.target.id==='qin'){S.q=e.target.value;render();}
+});
+document.getElementById('live').addEventListener('focusin',e=>{
+  if(e.target.id==='qin'&&!S.focus){S.focus=true;}
+});
+
+/* ══════════════ 控制条 ══════════════ */
+document.querySelectorAll('.bar button').forEach(b=>{
+  b.addEventListener('click',()=>{D[b.dataset.set]=b.dataset.v;apply();});
+});
+function apply(){
+  const r=document.documentElement;
+  r.dataset.skin=D.skin;r.dataset.mode=D.mode;r.dataset.redup=D.redup;
+  r.dataset.grid=D.grid;r.dataset.history=D.history;r.dataset.quick=D.quick;
+  document.querySelectorAll('.bar button').forEach(b=>
+    b.setAttribute('aria-pressed',D[b.dataset.set]===b.dataset.v));
+  if(D.quick==='drop'&&S.sheet==='quick')S.sheet=null;
+  if(D.grid!=='c'&&S.sheet==='cells')S.sheet=null;
+  render();galleries();
+}
+
+/* ══════════════ 静态图廊 ══════════════ */
+function stFrom(over){return Object.assign({},S,{sheet:null,toast:null,flash:null,stale:false},over);}
+function crop(inner,h){
+  return `<div class="crop" ${h?`style="height:${h}px"`:''}>
+    <div class="screen" style="position:relative;border-radius:0;height:${h?h+'px':'auto'}">${inner}</div></div>`;
+}
+function card(cap,note,inner,h){
+  return `<div><p class="cropcap"><b>${cap}</b>${note?'· '+note:''}</p>${crop(inner,h)}</div>`;
+}
+function galleries(){
+  const gt=document.getElementById('galTop');
+  const mk=o=>header(stFrom(o));
+  gt.innerHTML=[
+    card('常态','已加自选',mk({sym:'BTCUSDT'})),
+    card('涨一跳','价格与药丸都是涨色，底闪一下 0.55s',mk({sym:'SOLUSDT',flash:'up'})),
+    card('跌一跳','',mk({sym:'ETHUSDT',flash:'down'})),
+    card('未加自选','星是空心 ink3',mk({sym:'TONUSDT'})),
+    card('断线 / 数据过期','沿用现在的语义：价格与药丸整体转灰，不加点也不加字',mk({sym:'BTCUSDT',stale:true})),
+    card('超长品种名','ANTHROPIC/USDT，名字先省略，价格不缩',mk({sym:'ANTHROPICUSDT'})),
+  ].join('');
+  const gg=document.getElementById('galGrid');
+  const withGrid=(g,o)=>{const old=D.grid;D.grid=g;const h=header(stFrom(o));D.grid=old;return h;};
+  gg.innerHTML=[
+    card('A · 2×3 六格','额 / 量 · 振幅 / 标记 · 开盘 / 涨跌额，全是 ticker24h 里现成的',withGrid('a',{sym:'BTCUSDT'})),
+    card('B · 不要格子','只留一行小字，等于现在的实现，头部矮 22pt',withGrid('b',{sym:'BTCUSDT'})),
+    card('C · 自己挑四格','点格子区弹选择层，六选四',withGrid('c',{sym:'BTCUSDT'})),
+  ].join('');
+  const gs=document.getElementById('galSearch');
+  const withD=(o,f)=>{const old={h:D.history,q:D.quick};Object.assign(D,o);const r=f();D.history=old.h;D.quick=old.q;return r;};
+  gs.innerHTML=[
+    card('落地页 · 有历史','待定②选「显示」时',withD({history:'on',quick:'keep'},()=>searchPage(stFrom({page:'search',q:''}))),620),
+    card('落地页 · 没历史','待定②选「不显示」，第一屏直接是行情',withD({history:'off',quick:'keep'},()=>searchPage(stFrom({page:'search',q:''}))),620),
+    card('落地页 · 半屏层删掉之后','顶上多出「自选」组和「全部自选与分组」，半屏层那两个入口落在这儿',withD({history:'on',quick:'drop'},()=>searchPage(stFrom({page:'search',q:''}))),620),
+    card('打字联想','组头「品种」+ 数量 + 查看更多，命中的字母上强调色',searchPage(stFrom({page:'search',q:'S',focus:true})),620),
+    card('结果行 + 标签','「新增」用强调色不用红，免得读成跌；「交易时间待定」是灰',searchPage(stFrom({page:'search',q:'A',focus:true})),620),
+    card('筛选后无结果','',searchPage(stFrom({page:'search',q:'ZKX',focus:true})),620),
+    card('清除历史确认','',searchPage(stFrom({page:'search',q:''}))+clearDlg(),620),
+  ].join('');
+  const gf=document.getElementById('galFlow');
+  gf.innerHTML=[
+    card('① 顶栏左上返回 →','落到完整自选分类页（加密 / 美股 / 贵金属）',favsPage(stFrom({page:'favs'})),620),
+    card('② 品种名点开（保留半屏层）','待定③选「保留」时还是这张半屏',marketPage(stFrom({}))+quickSheet(stFrom({})),620),
+    card('③ 选中结果回到行情页','品种已换成 SOL，价格闪一下',header(stFrom({sym:'SOLUSDT',flash:'up'}))+`<div class="hair"></div>`+ivbar()),
+  ].join('');
+}
+
+/* ══════════════ 侧栏说明 ══════════════ */
+function notes(){
+  const gridTxt={a:'A · 2×3 六格（额/量·振幅/标记·开盘/涨跌额）',b:'B · 不要格子，只一行小字',c:'C · 自己挑四格'}[D.grid];
+  document.getElementById('notes').innerHTML=`
+  <h3>现在这一台的设定</h3>
+  <ul>
+    <li>皮肤 <b>${{sage:'青苔·冷',terra:'陶土·暖',classic:'经典'}[D.skin]}</b>，${D.mode==='light'?'浅色':'深色'}；图区固定 AICoin 白 / 夜底，不跟皮肤。</li>
+    <li>头部右侧：<b>${gridTxt}</b></li>
+    <li>历史搜索：<b>${D.history==='on'?'显示':'不显示'}</b>；品种名点开：<b>${D.quick==='keep'?'半屏快捷层':'直接进搜索页'}</b></li>
+    ${D.quick==='drop'?'<li>半屏层那两个入口没丢：<b>「搜索品种」</b>本来就是这个页，<b>「全部自选与分组」</b>挪到了搜索落地页「自选」组末尾那一行，自选列表本身也在同一屏。</li>':''}
+  </ul>
+  <h3>可以点的</h3>
+  <ul>
+    <li>左上 <span class="k">‹</span> → 自选分类页；右上 <span class="k">🔍</span> → 搜索页</li>
+    <li>星 → 加/移出自选（有回执）；品种名 → 看待定③</li>
+    <li>搜索页：点历史词、打字联想、筛市场/计价、点行右侧星、点行本身回行情页并换品种</li>
+    ${D.grid==='c'?'<li>头部右侧那四格 → 点一下开「六选四」</li>':''}
+    ${D.history==='on'?'<li>历史搜索右边的垃圾桶 → 清除确认弹窗</li>':''}
+  </ul>
+  <h3>几条定死的</h3>
+  <ul>
+    <li><b>没有净流入。</b>AICoin 价格块第三行那个字段整条去掉。</li>
+    <li><b>没有 24h 高 / 低。</b>AICoin 的 2×3 里占两格的高/低，六个方案里一个都没放。</li>
+    <li><b>没有持仓量、资金费率、买一卖一。</b>顶栏只用 ticker24h / exchangeInfo / klines 拿得到的字段。</li>
+    <li><b>离线不写字。</b>价格与药丸转灰就是全部信号，不放圆点也不放「行情实时」这类字段。</li>
+    <li><b>徽章一品种一记号</b>，颜色按皮肤特调（BadgeTint 同一套算法搬到了 JS）。</li>
+  </ul>`;
+}
+
+/* ══════════════ 尺寸对照表 ══════════════ */
+document.getElementById('specTable').innerHTML=`<table>
+<tr><th>部位</th><th>AICoin（手机端）</th><th>看盘</th><th>怎么缩的</th></tr>
+<tr><td>标题栏</td><td class="m">44dp，返回在左</td><td class="m">38pt 行 + 6/9 内边距</td><td>高度基本照搬，返回同位；标题换成「徽章 + 品种名」左对齐</td></tr>
+<tr><td>品种名 / 副标题</td><td class="m">16sp + 10sp</td><td class="m">15.5pt bold + 12pt + 9.5pt「永续」</td><td>沿用看盘现有顶栏字号，不动</td></tr>
+<tr><td>主价</td><td class="m">26sp</td><td class="m">22pt medium 等宽</td><td>×0.85，看盘现有值就是上限</td></tr>
+<tr><td>涨跌</td><td class="m">13sp 文字（涨跌值 + 幅）</td><td class="m">11.5pt 药丸，只留幅</td><td>×0.88，并且合成一颗药丸，涨跌值挪进 2×3 里的「涨跌额」</td></tr>
+<tr><td>价格块高</td><td class="m">95dp</td><td class="m">A/C 约 56pt，B 约 42pt</td><td>去掉净流入那一行 + 字号收小，省出约 40dp</td></tr>
+<tr><td>2×3 网格</td><td class="m">标题 11sp #b7bfc8 / 值 13sp</td><td class="m">标题 10pt ink3 / 值 11.5pt ink2 等宽</td><td>×0.9，内容换成看盘自己有的字段</td></tr>
+<tr><td>搜索框</td><td class="m">30dp 高，hint 14sp</td><td class="m">34pt 高（触控），13.5pt</td><td>高度反而加大到可点，字号 ×0.96</td></tr>
+<tr><td>取消</td><td class="m">14.5sp</td><td class="m">14pt 强调色</td><td>照搬</td></tr>
+<tr><td>历史搜索标题</td><td class="m">16sp 粗</td><td class="m">11pt medium + 1px 字距</td><td>×0.69，换成看盘列表现有的分组头口径</td></tr>
+<tr><td>历史词条</td><td class="m">31dp 高 / 13sp / 圆角 3dp</td><td class="m">30pt / 12.5pt / 圆角 8pt</td><td>尺寸照搬，圆角按看盘（9 / 7 / 8 这一档）</td></tr>
+<tr><td>联想分组头</td><td class="m">58dp，17sp 粗 + 数量 14sp + 查看更多 13sp</td><td class="m">约 32pt，11pt + 11pt + 11.5pt</td><td>×0.55，AICoin 那行在手机上是整屏最大的字，太抢</td></tr>
+<tr><td>结果行</td><td class="m">60dp：logo 23dp / 名 16sp / 副 12sp / 价 16sp 粗 / 幅 13sp</td><td class="m">56pt：徽章 33 / 名 14 / 副 11 / 价 13.5 等宽 / 幅 11</td><td>直接用看盘 SymbolRowView 现有口径，徽章反而比 AICoin 大一圈</td></tr>
+<tr><td>加/减自选</td><td class="m">20dp 的 + / −</td><td class="m">15pt 星（实心 = 已选）</td><td>换成看盘自己的星，跟顶栏、自选页一致</td></tr>
+<tr><td>「新增」标签</td><td class="m">11sp 红字红底</td><td class="m">9.5pt 强调色 + 12% 底</td><td>红色在行情里等于跌，换成皮肤强调色</td></tr>
+<tr><td>「交易时间待定」</td><td class="m">12sp #848484 / #efefef</td><td class="m">9.5pt ink3 / raised2</td><td>×0.8，颜色走令牌</td></tr>
+<tr><td>计价币筛选</td><td class="m">50×25dp，12sp，圆角 2dp</td><td class="m">自适应宽 ×24pt，11.5pt，圆角 7pt</td><td>高度照搬，圆角按看盘</td></tr>
+<tr><td>查看更多整行</td><td class="m">50dp / 15sp</td><td class="m">44pt / 13pt</td><td>×0.87</td></tr>
+<tr><td>清除记录弹窗</td><td class="m">标题 44dp 14sp，动作 55dp 18sp</td><td class="m">标题 44pt 12.5pt，动作 50pt 15pt</td><td>动作字 ×0.83，红色只留给「清除」</td></tr>
+<tr><td>空态</td><td class="m">#999999 文案 + 181×44dp 按钮</td><td class="m">ink3 12.5pt + 一颗描边按钮</td><td>文案改成带关键词的一句，去掉「联系我们」</td></tr>
+</table>`;
+
+apply();
+
+</script>
+</body>
+</html>
