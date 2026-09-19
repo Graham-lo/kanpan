@@ -20,6 +20,17 @@
 - 手机可能经本机 Mac 的 Surge 网关上网。按真实网络路径排查，不改 Mac 的网关、代理与其他应用路由。
 - 验证只跑受影响的一两条真机 UI 用例并开超时；纯视觉改动真机看一眼即可。
 
+## 加 / 删一个同步字段
+
+「哪些设置跟着人走、服务端认哪些键」母表只有一张：`Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift` 的 `PrefsFieldPlan.table`。两边不再手抄，中间是一份生成物 `Backend/kanpan-api/contract/settings-fields.json`（**不要手改**）。
+
+1. 改 `PrefsFieldPlan.table`（判据只有一条：用手改出来的习惯 → `.synced`；这台机器 / 这张网的属性 → `.deviceOnly`；自动累积的统计 → `.derivedLocal`）。
+2. 仓库根跑 `make sync-contract` 重新生成契约。
+3. 新增 `.synced` 字段还要去 `Backend/kanpan-api/src/sync.rs` 的 `SETTINGS_FIELDS` 加名字（长度不用改，它是切片），**并且**去 `src/sync_validation.rs` 的 `field` 加值规则——只进白名单不配值规则，`_=>false` 会让整条同步操作 400，那个字段就是毒丸。
+4. 两边对账：`make app-logic-test` 与 `cd Backend/kanpan-api && cargo test --lib`。差在哪个键、该往哪边改，失败信息里写着。
+
+对不齐的代价是实打实的：提交 `a161bb0` 里服务端少认十九个字段，服务端对含未知字段的操作整条拒绝，那个账号的同步队列被一条永远推不上去的操作堵死。
+
 ## 文档维护
 
 完成里程碑时更新 `.project-memory/PROJECT.md` 的状态与日期，区分「本地已改 / 已推送 / 已部署 / 已真机验收」，不把计划写成已完成。旧文档不要删，改用「历史」标注并指向现行文档。

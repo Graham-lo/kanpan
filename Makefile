@@ -27,7 +27,7 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test network-test data-test diag-test diag-ios-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
+.PHONY: help core-test network-test data-test sync-contract diag-test diag-ios-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -39,6 +39,7 @@ help:
 	@echo "strict       两个包都按 Swift 6 严格并发 + 警告即错误编一遍（A2.13）"
 	@echo "evidence     出 M3 全套取证产物到 docs/acceptance/M3/（A3.1–A3.10）"
 	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库）"
+	@echo "sync-contract 从 PrefsFieldPlan.table 重新生成 iOS↔Rust 的 settings 字段契约（Backend/kanpan-api/contract/settings-fields.json）"
 	@echo "app-test     跑 app target 的测试"
 	@echo "ui-test      A8.4：13 台机型跑同一套 XCUITest 用例，逐台记结果"
 	@echo "ui-test-one  只跑一台（DEVICE=\"iPhone 16 Pro\"）"
@@ -138,6 +139,23 @@ diag-ios-test:
 	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
 
 app-logic-test: symbols-test settings-test diag-test
+
+# ---------------------------------------------------------------- 跨语言契约
+# 「客户端会发哪些 settings 键 / 服务端认哪些」这件事，母表只有一张：
+# Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift 的 `PrefsFieldPlan.table`。
+# 这条命令把它导成下面那个 JSON，iOS 与 Rust 两边的测试都读那一份对账，谁也不再手抄
+# （手抄三份的代价见提交 a161bb0：服务端少认十九个字段，那个账号从此同步不上任何东西）。
+#
+#   加 / 删一个同步字段：改 table → make sync-contract → 两边测试自动告诉你还差什么。
+#
+# 走的是 settings 那条测试的「写文件」模式（KANPAN_WRITE_SYNC_CONTRACT=1），
+# 不另起一个可执行：生成器和对账用的是同一段代码，不可能各说各话。
+SYNC_CONTRACT := Backend/kanpan-api/contract/settings-fields.json
+
+sync-contract:
+	cd $(SETTINGS) && KANPAN_WRITE_SYNC_CONTRACT=1 swift test $(CORE_TEST_FLAGS) \
+	  --filter theContractFileIsTheOneListBothSidesRead
+	@echo "→ $(SYNC_CONTRACT) 已按 PrefsFieldPlan.table 重新生成；跑 make app-logic-test 与 (cd Backend/kanpan-api && cargo test --lib) 对账"
 
 test: core-test network-test data-test app-logic-test chart-test
 

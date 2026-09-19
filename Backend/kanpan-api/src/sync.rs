@@ -34,12 +34,20 @@ const COLLECTIONS:[&str;5]=["settings","drawingPreferences","drawings","favorite
 fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::bad("invalid_collection"))}else{Ok(())}}
 // One enumerable allowlist per collection, mirroring what iOS actually sends.
 //
-// `settings` mirrors `Prefs.syncedFieldNames` (Kanpan/Settings/Model/SettingsStamp.swift),
-// with `rsiRange` standing in for the `rsiLower`/`rsiUpper` pair the client merges, plus
-// `styleID`, which only old archives still carry. Adding a synced field on iOS means adding
-// a name here AND a value rule in `sync_validation::field`; forget the rule and the value is
-// silently refused. `the_allowlist_is_what_ios_sends` fails loudly when the lists drift.
-pub const SETTINGS_FIELDS:[&str;53]=[
+// `settings` is not a hand-copy any more: it must equal, name for name, the `wireKeys` array
+// in `contract/settings-fields.json`, which `make sync-contract` generates from the single
+// table on the client (`PrefsFieldPlan.table`, Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift).
+// `the_allowlist_is_what_ios_sends` reads that file with `include_str!` and fails loudly on any
+// drift, so the two sides can no longer disagree in silence — which is exactly how commit
+// a161bb0 happened: this list was nineteen names short, and because an operation carrying an
+// unknown field used to be refused whole, that account never synced anything again.
+//
+// A name here still needs a value rule in `sync_validation::field`, or the field is a poison
+// pill: the `_=>false` fallthrough 400s the whole operation. `every_wire_key_has_a_value_rule`
+// is the guard for that half.
+//
+// A slice rather than `[&str;N]`: adding a field should not also mean editing a length.
+pub const SETTINGS_FIELDS:&[&str]=&[
  "overlays","subs","subHeights","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange",
  "portraitHeight","quickIntervals","theme","skin","ambientTheme","styleID","redUp","priceMode","timeZone",
  "magnet","countdown","lastLine","sinceChange","showDrawings","candleKind","gridChoice","bodyChoice",
@@ -59,7 +67,7 @@ pub const DRAWING_FIELDS:[&str;14]=["kind","symbol","market","venue","anchors","
 pub const FAVORITE_FIELDS:[&str;7]=["symbol","market","venue","groupId","order","pinned","alerts"];
 pub const GROUP_FIELDS:[&str;3]=["name","order","members"];
 pub fn allowlist(c:&str)->&'static [&'static str] {
- match c {"settings"=>&SETTINGS_FIELDS,"drawingPreferences"=>&DRAWING_PREFERENCE_FIELDS,"drawings"=>&DRAWING_FIELDS,"favorites"=>&FAVORITE_FIELDS,"groups"=>&GROUP_FIELDS,_=>&[]}
+ match c {"settings"=>SETTINGS_FIELDS,"drawingPreferences"=>&DRAWING_PREFERENCE_FIELDS,"drawings"=>&DRAWING_FIELDS,"favorites"=>&FAVORITE_FIELDS,"groups"=>&GROUP_FIELDS,_=>&[]}
 }
 // Malformed paths are rejected; unknown-but-well-formed names are only dropped.
 fn valid_path(path:&str)->bool {!path.is_empty() && path.len()<=160 && !path.split('/').any(|p|p.is_empty()||p==".."||p.starts_with('_'))}
@@ -105,6 +113,7 @@ pub fn merge(mut object:Object,op:&Operation,now:i64)->Result<Object> {
   if !v.as_array().is_some_and(|a|a.len()==2&&a[0].as_f64().is_some_and(|lo|lo>=0.0&&a[1].as_f64().is_some_and(|hi|hi>lo&&hi<=100.0))) {return Err(ApiError::bad("invalid_rsi_range"))}
  }
  if let Some(v)=object.body.get("lineWidth") {if !v.as_f64().is_some_and(|n|n>0.0&&n<=12.0){return Err(ApiError::bad("invalid_line_width"))}}
+ crate::sync_validation::clear_tombstones(&mut object);
  crate::sync_validation::object(&object)?;
  object.revision=next;Ok(object)
 }
@@ -201,21 +210,54 @@ mod tests {
   Object{collection:collection.into(),id:id.into(),body:BTreeMap::new(),fields:BTreeMap::new(),revision:0,deleted:false,generation:0}
  }
  fn applied(collection:&str,fields:&[(&str,Value)])->Object {merge(blank(collection,"chart"),&op(collection,fields),1_800_000_000_000).unwrap()}
- /// The server cannot read Swift, so the expectation is spelled out twice on purpose:
- /// change one copy without the other and this test says so.
+ /// The cross-language contract, generated from the client's one table by `make sync-contract`.
+ ///
+ /// Compiled in, not read at run time: `include_str!` resolves against this source file, so the
+ /// test cannot be broken by whatever directory cargo happens to be invoked from, and a missing
+ /// or unparseable contract is a compile error rather than a test that quietly skips.
+ const CONTRACT:&str=include_str!("../contract/settings-fields.json");
+
+ /// The wire keys the contract says exist, sorted.
+ fn contract_wire_keys()->Vec<String> {
+  let contract:Value=serde_json::from_str(CONTRACT)
+   .expect("contract/settings-fields.json is not valid JSON; regenerate it with `make sync-contract`");
+  assert_eq!(contract["version"],json!(1),
+   "contract/settings-fields.json is a format version this test does not know how to read; \
+    update both readers (Swift SettingsFieldContract and this test) together");
+  let mut keys:Vec<String>=contract["wireKeys"].as_array()
+   .expect("contract/settings-fields.json has no `wireKeys` array")
+   .iter().map(|v|v.as_str().expect("`wireKeys` must be strings").to_string()).collect();
+  keys.sort_unstable();
+  keys
+ }
+
+ /// **`SETTINGS_FIELDS` ≡ the contract's `wireKeys`, name for name.**
+ ///
+ /// The settings half used to be a hand-copy of a hand-copy: the same 53 strings lived here, in
+ /// `SETTINGS_FIELDS`, and a third time in the iOS test. Three copies only work while three
+ /// people all remember to edit them together, and commit a161bb0 is what it costs when they do
+ /// not. Now both sides read `contract/settings-fields.json`, which is generated from
+ /// `PrefsFieldPlan.table` — the one place a field is declared.
+ ///
+ /// The other four collections have no client-side table to generate from, so they keep the
+ /// written-twice trick: the expectation below is a second copy on purpose.
  #[test] fn the_allowlist_is_what_ios_sends() {
-  let settings=[
-   "overlays","subs","subHeights","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange",
-   "portraitHeight","quickIntervals","theme","skin","ambientTheme","styleID","redUp","priceMode","timeZone",
-   "magnet","countdown","lastLine","sinceChange","showDrawings","candleKind","gridChoice","bodyChoice",
-   "viewAnchor","priceBias","dataDisplay","crossPrice","allowMainInversion","allowSubInversion",
-   "adaptiveIndicators","compactValues","changeBasis","barSpacing","mainInverted","subInverted","interval",
-   "keepAwake","routePolicy","favoritesSort","favoritesAscending","favoritesAmount","favoritesSparkline",
-   "favoritesExpanded","favoritesGroup","sectorMarket","sectorWindow","sectorSort","drawToolGroup",
-   "lastDrawTool","replaySpeed","reviewSearchScope",
-  ];
+  let mut have:Vec<String>=allowlist("settings").iter().map(|s|s.to_string()).collect();
+  have.sort_unstable();
+  let want=contract_wire_keys();
+  let missing:Vec<_>=want.iter().filter(|k|!have.contains(k)).collect();
+  let extra:Vec<_>=have.iter().filter(|k|!want.contains(k)).collect();
+  assert!(missing.is_empty()&&extra.is_empty(),
+   "settings allowlist drifted from contract/settings-fields.json.\n\
+    in the contract, missing from SETTINGS_FIELDS: {missing:?}\n\
+    in SETTINGS_FIELDS, not in the contract:       {extra:?}\n\
+    The contract is generated from the client's `PrefsFieldPlan.table`, so it is the side that \
+    is right: add each missing name to SETTINGS_FIELDS *and* a value rule for it in \
+    sync_validation::field (a name without a rule 400s the whole operation). Only if the \
+    contract itself is stale — because someone edited PrefsFieldPlan.table without \
+    regenerating — run `make sync-contract` from the repo root first.");
+
   let expected=[
-   ("settings",&settings[..]),
    ("drawingPreferences",&["favorites","magnet","continuous","styles"][..]),
    ("drawings",&["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"][..]),
    ("favorites",&["symbol","market","venue","groupId","order","pinned","alerts"][..]),
@@ -225,11 +267,43 @@ mod tests {
    let (mut have,mut want)=(allowlist(collection).to_vec(),want.to_vec());
    have.sort_unstable();want.sort_unstable();
    assert_eq!(have,want,
-    "{collection} allowlist drifted. iOS sends `Prefs.syncedFieldNames` (settings) and \
-     `PersonalSyncCodec.drawings`/`symbols` (the rest); a field added there needs one line in \
-     sync::{{SETTINGS,DRAWING_PREFERENCE,DRAWING,FAVORITE,GROUP}}_FIELDS, one line in this \
-     expectation, and a value rule in sync_validation::field — or the setting silently never \
-     reaches the person's other device.");
+    "{collection} allowlist drifted. iOS sends `PersonalSyncCodec.drawings`/`symbols` for these; \
+     a field added there needs one line in \
+     sync::{{DRAWING_PREFERENCE,DRAWING,FAVORITE,GROUP}}_FIELDS, one line in this expectation, \
+     and a value rule in sync_validation::field — or the setting silently never reaches the \
+     person's other device.");
+  }
+ }
+
+ /// **Every wire key also has a value rule.** A name on the allowlist that
+ /// `sync_validation::field` has no arm for is a poison pill: the `_=>false` fallthrough makes
+ /// `validate` reject the *whole* operation with a 400, the client quarantines it, and every
+ /// later preference queues up behind it. Being on the allowlist is only half of "supported".
+ ///
+ /// `field` takes a value, so the only honest way to ask "is there a rule for this name?" is to
+ /// offer it values and see whether any is accepted. The probes below cover every shape the
+ /// settings rules accept today, at the three path depths settings fields use (top level,
+ /// `key/<indicator>`, `key/<indicator>/<slot>`). A new field whose rule accepts none of them
+ /// fails here — add a probe for it in the same commit that adds the rule.
+ #[test] fn every_wire_key_has_a_value_rule() {
+  let probes=[
+   json!(true),json!(""),json!(0.5),json!(1),json!(4.0),json!([5]),
+   json!(["MA"]),json!(["VOL"]),json!(["1m"]),json!(["BTCUSDT"]),json!([30,70]),
+   json!("1m"),json!("sage"),json!("direct"),json!("custom"),json!("crypto"),json!("today"),
+   json!("change"),json!("history"),json!("medium"),json!({"value":"#112233"}),
+  ];
+  let accepts=|key:&str|{
+   [key.to_string(),format!("{key}/MA"),format!("{key}/MA/0")].iter()
+    .any(|path|probes.iter().any(|v|crate::sync_validation::field("settings",path,v)))
+  };
+  // The probe sweep would be vacuous if `field` said yes to anything, so prove it discriminates.
+  assert!(!accepts("telepathy"),"a name with no rule must be refused for every probe");
+  for key in contract_wire_keys() {
+   assert!(accepts(&key),
+    "`{key}` is on the settings allowlist but sync_validation::field has no rule that accepts \
+     any probe value for it. Either the rule is missing — and the field is a poison pill that \
+     400s every operation carrying it (see commit a161bb0) — or its rule is real and none of \
+     the probes in this test fit its shape, in which case add one.");
   }
  }
  /// The bug this whole allowlist pass is about: one pinch on the chart used to come back
