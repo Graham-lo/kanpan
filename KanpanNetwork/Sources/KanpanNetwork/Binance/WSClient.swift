@@ -36,6 +36,9 @@ public actor BinanceWS {
   /// 服务器在这条连接上已经知道的那套流。和 `streams` 的差就是还欠发的控制帧。
   private var sentStreams: Set<String> = []
   private var syncTask: Task<Void, Never>?
+  /// 当前这一发控制帧同步任务的号。控制帧要等一次真的网络往返，醒来时这一轮
+  /// 可能早就退场了——号对不上的那一发只许安静收手，不许清句柄、不许改订阅账。
+  private var syncToken = 0
   private var lastControlMs: Double = -.greatestFiniteMagnitude
   private var reqID = 0
   private var connectionID = 0
@@ -77,15 +80,38 @@ public actor BinanceWS {
 
   // ------------------------------------------------------------------ 生命周期
 
+  /// 起一轮。再叫一次就是**换一轮**：旧的那一轮必须在这儿当场收走。
+  ///
+  /// 原来这儿只是覆盖 `continuation` 和 `runTask` 两个字段，旧的那一轮什么都没动：
+  /// 它还挂在 `receive()` 上，旧 socket 还连着服务器。等它醒过来，`continuation?.yield`
+  /// 读到的是**新一轮**那份 continuation——旧连接的报文就这么投进了新订阅者的流里
+  /// （切品种那一下，新品种的图上会跳出旧品种的价）。旧流也没人收口，订它的人
+  /// 永远等不到结束。
   public func start(streams initial: [String]) -> AsyncStream<WSEvent> {
     streams = Set(initial)
     stopped = false
+    retireRun()
     let (s, c) = AsyncStream<WSEvent>.makeStream(bufferingPolicy: .unbounded)
     continuation = c
     runGeneration += 1
     let generation = runGeneration
-    runTask = Task { [weak self] in await self?.loop(generation: generation) }
+    // 这一轮自带自己的出口：`sink` 是捕获进去的，不再去读那个会被下一轮改掉的字段。
+    runTask = Task { [weak self] in await self?.loop(generation: generation, sink: c) }
     return s
+  }
+
+  /// 把当前这一轮收走：任务、控制帧、socket、出口各归各位。
+  ///
+  /// socket 的 `cancel()` 另派一条任务去做，不在这儿等：`start` 是首屏路径上的一步，
+  /// 而关一条 WebSocket 要等一次真的往返，等在这儿就是首屏白白多等一个 RTT。
+  private func retireRun() {
+    runTask?.cancel(); runTask = nil
+    syncTask?.cancel(); syncTask = nil
+    syncToken += 1
+    let dying = socket, sink = continuation
+    socket = nil; sentStreams = []; continuation = nil
+    if let dying { Task { await dying.cancel() } }
+    sink?.finish()
   }
 
   public func stop() async {
@@ -94,9 +120,10 @@ public actor BinanceWS {
     runTask = nil
     syncTask?.cancel()
     syncTask = nil
+    syncToken += 1
     runGeneration += 1
     let oldSocket = socket, oldContinuation = continuation
-    socket = nil; continuation = nil
+    socket = nil; sentStreams = []; continuation = nil
     oldContinuation?.yield(.status(.offline)); oldContinuation?.finish()
     await oldSocket?.cancel()
   }
@@ -112,19 +139,28 @@ public actor BinanceWS {
 
   private func scheduleSync() {
     guard socket != nil, syncTask == nil, streams != sentStreams else { return }
-    syncTask = Task { [weak self] in await self?.syncStreams() }
+    syncToken += 1
+    let token = syncToken
+    syncTask = Task { [weak self, token] in await self?.syncStreams(token: token) }
   }
 
-  private func syncStreams() async {
+  private func syncStreams(token: Int) async {
     defer {
-      syncTask = nil
-      // A socket send can fail while the connection itself is still present.
-      // Leave the desired set intact and retry the diff instead of claiming
-      // the server has a subscription it never received.
-      if !stopped, socket != nil, streams != sentStreams { scheduleSync() }
+      // 只许清自己那份句柄。控制帧卡在网络上的那一会儿，`start` / `stop` 可能已经
+      // 换了一轮并派了新的一发——把新那发的句柄清掉，新一轮从此再也排不进控制帧，
+      // 订阅就永远追不平了。
+      if token == syncToken {
+        syncTask = nil
+        // A socket send can fail while the connection itself is still present.
+        // Leave the desired set intact and retry the diff instead of claiming
+        // the server has a subscription it never received.
+        if !stopped, socket != nil, streams != sentStreams { scheduleSync() }
+      }
     }
-    while !stopped, !Task.isCancelled {
+    while !stopped, !Task.isCancelled, token == syncToken {
       guard let socket else { return }
+      // 这一帧是发给哪条连接的。发完之后要拿它核对：账只能记在自己这条连接上。
+      let connection = connectionID
       let want = streams
       guard want != sentStreams else { return }
       let wait = controlGapMs - (await nowMs() - lastControlMs)
@@ -139,6 +175,11 @@ public actor BinanceWS {
       if !drop.isEmpty {
         do {
           try await send(socket, method: "UNSUBSCRIBE", params: drop.sorted())
+          // 发完这一帧世界可能已经变了：换了一轮、或者重连上了另一条连接。这条退订
+          // 属于一条已经退场的连接，拿它去减**当前**这条连接的订阅账，等于凭空宣布
+          // 服务器不知道一条它其实知道的流——接着就会在新连接上补一条没人要的
+          // SUBSCRIBE（币安对入站控制帧是 10 条/秒，白发的每一条都在挤真需要的那条）。
+          guard token == syncToken, connection == connectionID else { return }
           sentStreams.subtract(drop)
         } catch {
           log("WS 控制帧发送失败，保留退订差异：\(error)")
@@ -148,6 +189,7 @@ public actor BinanceWS {
         let add = want.subtracting(sentStreams)
         do {
           try await send(socket, method: "SUBSCRIBE", params: add.sorted())
+          guard token == syncToken, connection == connectionID else { return }
           sentStreams.formUnion(add)
         } catch {
           log("WS 控制帧发送失败，保留订阅差异：\(error)")
@@ -168,8 +210,9 @@ public actor BinanceWS {
 
   // ------------------------------------------------------------------ 主循环
 
-  private func loop(generation: Int) async {
+  private func loop(generation: Int, sink: AsyncStream<WSEvent>.Continuation) async {
     while !stopped, !Task.isCancelled, generation == runGeneration {
+      var connection = 0
       do {
         // 首连用 URL 带上流；重连也一样，省一次 SUBSCRIBE 往返。
         let connectingStreams = streams
@@ -181,31 +224,39 @@ public actor BinanceWS {
         sentStreams = connectingStreams
         lastControlMs = await nowMs()
         connectionID += 1
+        connection = connectionID
         gotFrame = false
         log("WS 连上 #\(connectionID) \(url.absoluteString)")
-        continuation?.yield(.connected(id: connectionID))
-        continuation?.yield(.status(.live))
+        sink.yield(.connected(id: connectionID))
+        sink.yield(.status(.live))
         scheduleSync()   // 连上那一刻又切走了的话，这里补发
-        try await pump(s)
+        try await pump(s, generation: generation, connection: connection, sink: sink)
       } catch {
         if stopped || Task.isCancelled { break }
         log("WS 断了：\(error)")
       }
       guard generation == runGeneration else { return }
-      await socket?.cancel()
+      // 先把共享字段交出去再去 await。`cancel()` 要等一次真的往返，这中间完全可能
+      // 又起了新的一轮（回前台重启 WS 就是这个时序）；放在 await 之后清的话，
+      // 清掉的是**新一轮**的 socket 和订阅账——新连接从此发不出任何控制帧，
+      // 因为 `scheduleSync` 的第一道门就是 `socket != nil`。
+      let dying = socket
       socket = nil
       sentStreams = []
+      await dying?.cancel()
+      guard generation == runGeneration else { return }
       if stopped || Task.isCancelled { break }
-      continuation?.yield(.status(.reconnecting))
+      sink.yield(.status(.reconnecting))
       let wait = backoff.next()
       log("WS 退避 \(Int(wait))ms 后重连（第 \(backoff.attempt) 次）")
       do { try await pacer.sleep(ms: wait) } catch { break }
     }
-    if !stopped, generation == runGeneration { continuation?.yield(.status(.offline)) }
+    if !stopped, generation == runGeneration { sink.yield(.status(.offline)) }
   }
 
   /// 收帧，直到断开或静默超时。
-  private func pump(_ s: WSSocket) async throws {
+  private func pump(_ s: WSSocket, generation: Int, connection: Int,
+                    sink: AsyncStream<WSEvent>.Continuation) async throws {
     var lastMarketMs = await nowMs()
     // 开 `KANPAN_LOG=1` 时每 5 秒报一次收帧量：连上了但界面不跳的时候，这一行
     // 能立刻分清是「帧根本没来」还是「帧来了但没画出去」。
@@ -214,6 +265,10 @@ public actor BinanceWS {
     while !stopped, !Task.isCancelled {
       let remaining = max(1, silenceMs - (await nowMs() - lastMarketMs))
       let frame = try await withSilenceTimeout(s, timeout: remaining) { try await s.receive() }
+      // 收帧是挂着等的，一等可能就是几十秒。醒来先确认自己还是当前这一轮、
+      // 手上这条连接也还是当前那条：不是的话这条帧属于一条已经退场的连接，
+      // 既不该投出去，也不该拿它去清退避。
+      guard generation == runGeneration, connection == connectionID else { return }
       switch frame {
       case .ping:
         log("WS ← ping，回 pong")
@@ -227,7 +282,7 @@ public actor BinanceWS {
         if case .other = payload { continue }
         lastMarketMs = await nowMs()
         if !gotFrame { gotFrame = true; backoff.reset() }
-        continuation?.yield(.payload(payload))
+        sink.yield(.payload(payload))
         frames += 1
         if lastMarketMs - reportMs >= 5000 {
           log("WS 收帧 \(frames) 条/\(Int(lastMarketMs - reportMs))ms")

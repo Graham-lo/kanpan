@@ -27,7 +27,7 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test network-test data-test sync-contract diag-test diag-ios-test account-codec-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
+.PHONY: help core-test network-test data-test sync-contract diag-test diag-ios-test main-ios-test account-codec-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -144,6 +144,16 @@ account-codec-test:
 # 真机取证前必须跑一遍。
 diag-ios-test:
 	cd $(DIAG) && xcodebuild test -scheme KanpanDiagnostics \
+	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
+
+# 主屏那几条生命周期用例（宿主销毁收摊、合批缓冲换人就丢、转屏复位只认最后一次、
+# 后台额度必须还）离不开真的 UIKit：UIApplication 的后台任务、CADisplayLink、
+# 窗口挂接在 mac 上根本没有，`swift test` 连 import UIKit 都过不去。所以和
+# `diag-ios-test` 一样单独起模拟器跑，也一样故意不挂进 `test`。
+MAIN := Kanpan/KanpanTests
+
+main-ios-test:
+	cd $(MAIN) && xcodebuild test -scheme KanpanMain \
 	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
 
 app-logic-test: symbols-test settings-test diag-test account-codec-test

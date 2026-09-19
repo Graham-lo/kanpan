@@ -2,10 +2,10 @@ use crate::{AppState,error::Result};
 use uuid::Uuid;
 pub async fn cleanup(s:&AppState)->Result<()> {
  for sql in [
- "DELETE FROM account_mail WHERE created_at<now()-interval '1 day'",
- "UPDATE account_tokens SET response_sealed=NULL WHERE used_at<now()-interval '60 seconds' AND response_sealed IS NOT NULL",
- "UPDATE account_challenges SET response_sealed=NULL WHERE response_at<now()-interval '60 seconds' AND response_sealed IS NOT NULL",
- "DELETE FROM account_challenges WHERE expires_at<now()-interval '1 day'",
+ // 刷新结果的保留窗。手机断网、切后台、进电梯都可能让一次刷新悬在半路，
+ // 六十秒远不够一次真实的中断；留够一天，重试回来还能拿到当时那份令牌，
+ // 用不着重新登录。密封件本身是加密存的，和令牌表同生共死。
+ "UPDATE account_tokens SET response_sealed=NULL WHERE used_at<now()-interval '24 hours' AND response_sealed IS NOT NULL",
  "DELETE FROM account_sessions WHERE expires_at<now()-interval '1 day' OR revoked_at<now()-interval '31 days'",
  "DELETE FROM account_tokens WHERE kind='access' AND expires_at<now()-interval '1 hour'",
  "DELETE FROM account_limits WHERE window_start<now()-interval '1 day' AND (locked_until IS NULL OR locked_until<now())"

@@ -37,6 +37,14 @@ import ReviewUI
   private static let bootstrapInterval: TimeInterval = 300
   /// 服务端一次最多收 100 条操作（`Backend/kanpan-api/src/sync.rs:91`）。
   private static let pushBatchLimit = 100
+  /// 一批**编码之后**最多多少字节。
+  ///
+  /// 条数从来不是唯一的上限：服务端整个请求体只收 512 KiB（`kanpan-api/src/lib.rs`
+  /// 的 `DefaultBodyLimit`），而一条画线操作的大小完全由用户画了多少点决定——
+  /// 一百条大操作轻轻松松越线。越线的下场是 413：**整批一条都不落库**，而这一批
+  /// 又会原样重发，于是这个账号的队列从此再也前进不了。所以按真实字节往回削，
+  /// 384 KiB 给 HTTP 头、令牌、以及 JSON 编码的余量留够空间。
+  private static let pushBatchBytes = 384 * 1024
   var canApply: () -> Bool = { true }
   var onSwitch: () -> Void = {}
   /// 档案（prefs / symbols / 画线）**真的换进来之后**响一次。
@@ -75,7 +83,7 @@ import ReviewUI
           try files.completeGuestClaim(user: owner, batch: batch.id)
         }
         updateStatus()
-      } catch { account.syncStatus = error.localizedDescription }
+      } catch { account.report(sync: error) }
     }
     // 存档写盘走后台串行队列；离开前台时把排队的写全部落地，免得被系统挂起/回收时
     // 最后一次 transaction 还停在内存里。
@@ -309,6 +317,11 @@ import ReviewUI
     } else { client = nil }
     let previouslyPrepared = preparedOwner
     return { [self] in
+      // 身份跟着**提交**走，不跟着取目录走。上面那一长串读盘、解码、`ReviewStore`
+      // 初始化里任何一步抛出来，人就还留在原来的档案里；身份要是在 `files.directory`
+      // 那一步就已经挪过去了，这次半路失败之后 `Library/Caches` 下那几份按身份分目录的
+      // 行情缓存会写进另一个人的目录（见 `AccountFiles.activate`）。
+      files.activate(user: user?.id)
       task?.cancel(); debounce?.cancel(); task = nil; taskID = UUID(); epoch = UUID(); gate.rotate(); gate.enter()
       onSwitch()
       owner = user?.id; personal = nextStorage; sync = nextSync
@@ -379,14 +392,14 @@ import ReviewUI
       debounce = Task { [weak self] in
         try? await Task.sleep(for: .milliseconds(500)); guard !Task.isCancelled else { return }; self?.run(.push, manual: false)
       }
-    } catch { account.syncStatus = error.localizedDescription }
+    } catch { account.report(sync: error) }
   }
   private func captureSettings() {
     do {
       let object = try PersonalSyncCodec.settings(prefs.prefs)
       capture([object], collections: ["settings"])
       settleAgreedSettings(object)
-    } catch { account.syncStatus = error.localizedDescription }
+    } catch { account.report(sync: error) }
   }
   /// 记完账再对一遍账：**脏着、却和存档一致、队列里也没它的**字段，清掉脏标识。
   ///
@@ -413,12 +426,12 @@ import ReviewUI
     prefs.syncAgreed(agreed)
   }
   private func captureSymbols() { capture(PersonalSyncCodec.symbols(symbols.prefs), collections: ["favorites", "groups"]) }
-  private func captureDrawings() { do { capture(try PersonalSyncCodec.drawings(drawings.storedArchive), collections: ["drawings", "drawingPreferences"]) } catch { account.syncStatus = error.localizedDescription } }
+  private func captureDrawings() { do { capture(try PersonalSyncCodec.drawings(drawings.storedArchive), collections: ["drawings", "drawingPreferences"]) } catch { account.report(sync: error) } }
   private func setAutoSync(_ enabled: Bool) {
     do {
       try sync?.transaction { $0.autoSync = enabled }; updateStatus()
       if enabled { run(.push, manual: false) } else { task?.cancel(); task = nil; taskID = UUID(); review.pauseAutomaticSync() }
-    } catch { account.syncStatus = error.localizedDescription }
+    } catch { account.report(sync: error) }
   }
   private func updateStatus() {
     account.autoSync = sync?.archive.autoSync ?? true; review.autoSync = account.autoSync
@@ -471,6 +484,12 @@ import ReviewUI
     if reason == "idempotency_mismatch" { return true }
     if code == 401 || code == 409 || code == 429 { return false }
     return code == 400 || code == 422 || reason == "invalid_operation"
+  }
+  /// 请求体太大被服务端挡在门外（413）。它和 409 一样证明这一批一条都没落库：
+  /// `DefaultBodyLimit` 是在进 handler 之前拒的，根本没到数据库。
+  private static func isTooLarge(_ error: AccountError) -> Bool {
+    guard case .http(413, _) = error else { return false }
+    return true
   }
   /// 这个错误能不能证明**这一批服务端一条都没落库**。
   ///
@@ -565,17 +584,43 @@ import ReviewUI
         var oneByOne = false
         // 还剩几次「回滚 → 重拉 → 重整 → 接着推」的机会。
         var resyncs = Self.resyncBudget
+        // 这一轮的字节上限。撞过 413 就对半砍，砍到单条也过不去时把那条隔离掉。
+        var byteBudget = Self.pushBatchBytes
         while !sync.archive.operations.isEmpty {
           try Task.checkCancellation()
           // 一批不是「队首一百条」，是「队首一百条里**能安全同批**的那几条」：
           // 删除后面紧跟的恢复、恢复后面带旧 generation 的那些，同批必定整批回滚
           // （`SyncStore.batch` 写了服务端 `merge()` 逐条推出来的那几条边）。
-          let batch = sync.nextBatch(limit: oneByOne ? 1 : Self.pushBatchLimit)
+          // 两道闸：条数（服务端 `sync.rs` 的上限）和**编码之后的真实字节数**
+          // （`DefaultBodyLimit`）。削法与理由都在 `SyncStore.nextBatch(limit:maxBytes:)`。
+          let batch = sync.nextBatch(limit: oneByOne ? 1 : Self.pushBatchLimit, maxBytes: byteBudget)
+          let payload = try JSONEncoder().encode(SyncPushRequest(batch))
+          if payload.count > byteBudget {
+            // 单独一条就超限：它再发一万次也只会换回 413。和语义错误那一档同一个
+            // 处置——隔离掉，本地值与脏标记一个不动，别让它把后面所有人的操作堵死。
+            if batch[0].collection == "settings" && batch[0].objectId == "chart" {
+              dropped.formUnion(batch[0].fields.keys)
+            }
+            try sync.quarantine(batch[0].id, reason: "payload_too_large")
+            updateStatus()
+            continue
+          }
           let before = sync.archive.operations.count
           try sync.markSent(batch.map(\.id))
           let result: SyncPushResponse
           do {
-            result = try await api.request("v1/sync/operations", method: "POST", body: JSONEncoder().encode(SyncPushRequest(batch)), key: batch[0].id)
+            result = try await api.request("v1/sync/operations", method: "POST", body: payload, key: batch[0].id)
+          } catch let error as AccountError where Self.isTooLarge(error) {
+            // 413：服务端连读都没读完，**这一批一条都没落库**（和 `resync_required`
+            // 同一个性质），所以先把 `sent` 清掉，再把上限对半砍了重来。原样重发
+            // 是死循环——这正是「一条大画线把整条队列堵死」的走法。
+            try Task.checkCancellation(); guard requestEpoch == epoch && taskID == runID else { return }
+            try sync.rollback(batch.map(\.id))
+            // 砍到 16 KiB 就不再往下砍：再小也只能说明是那一条本身发不上去，
+            // 下一圈开头那道字节闸会把它认出来并隔离掉，循环一定收敛。
+            byteBudget = max(16 * 1024, min(byteBudget, payload.count) / 2)
+            updateStatus()
+            continue
           } catch let error as AccountError where Self.isRollback(error) && resyncs > 0 {
             // 服务端那一整个事务已经回滚，这批**一条都没落地**。所以：先把 `sent`
             // 清掉（不清就没法重整，那些操作会一直被当成「结果不明、不许碰」），
@@ -669,7 +714,7 @@ import ReviewUI
       catch {
         // 被服务端按版本顶回来了：本机这份不再可信，下一轮必须整份重拉。
         if case AccountError.http(let code, _) = error, (400..<500).contains(code), code != 401, code != 429 { needsBootstrap = true }
-        if requestEpoch == epoch && taskID == runID { account.pending = sync.archive.operations.count; account.syncStatus = error.localizedDescription }
+        if requestEpoch == epoch && taskID == runID { account.pending = sync.archive.operations.count; account.report(sync: error) }
       }
     }
   }
@@ -680,7 +725,7 @@ import ReviewUI
   /// 「改完要等一下才生效」。现在挡下来时记一笔，条件一到齐就补。
   func resumeApply() {
     guard pendingApply, canApply(), sync != nil else { return }
-    do { try applyPending(); updateStatus() } catch { account.syncStatus = error.localizedDescription }
+    do { try applyPending(); updateStatus() } catch { account.report(sync: error) }
   }
   /// 把云端那批装进本机：**准备 → 落盘 → 发布**三段。
   ///

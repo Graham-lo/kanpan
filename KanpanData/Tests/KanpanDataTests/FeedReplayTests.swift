@@ -465,7 +465,10 @@ struct FeedReplayTests {
     await feed.start(symbol: "BTCUSDT", interval: .m1)
     // 第一帧来自快照，不用等网络。
     #expect(await waitUntil(2) { firstEvent.value >= 1 })
-    #expect(await waitUntil(10) { await feed.currentSeries.count > old.count })
+    // 「补缺回来了」的判据不能是「比快照多一根」：WS 推来的实时那根先到，而它落在
+    // 100 根缺口的另一头——那一刻序列本来就是断的，断的是**还没补**，不是**补错了**。
+    // 要等的是 REST 那一发 `startTime=快照末根` 真的合进来，缺口的 100 根都到位。
+    #expect(await waitUntil(10) { await feed.currentSeries.count >= old.count + 100 })
 
     // 补缺请求带了 startTime=快照末根。
     let urls = await server.urls()

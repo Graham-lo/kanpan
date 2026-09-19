@@ -69,7 +69,10 @@ final class MarketModel {
   private(set) var symbol: String
   private(set) var interval: Interval
 
-  private var feed: RoutedMarketFeed
+  // `deinit` 要把这条流停掉，所以和 `policyObserver` 一样不进主 actor 的隔离存储，
+  // 也不进 `@Observable` 的跟踪存储（它是条 actor 引用，界面从不读它）。
+  // 写只发生在主 actor；`deinit` 读到它的时候已经没有第二个引用了。
+  @ObservationIgnored nonisolated(unsafe) private var feed: RoutedMarketFeed
   // `deinit` 不在主 actor 上，注销通知得能从那儿读到它。它不是界面状态，别让
   // `@Observable` 把它包进跟踪存储——包进去之后 `nonisolated(unsafe)` 落在合成的
   // 后备变量上，写在这儿的那个就成了空话，编译器会照实报「没有效果」。
@@ -80,7 +83,8 @@ final class MarketModel {
   private var hosts: BinanceHosts
   /// 启动快照开关的当前值。换域名要把整条流重建一遍，得记着用哪个值重启。
   private var snapshot = true
-  private var pump: Task<Void, Never>?
+  // 同上：`deinit` 要 cancel 它。
+  @ObservationIgnored nonisolated(unsafe) private var pump: Task<Void, Never>?
   private let network = MarketNetworkMonitor()
   private var foreground = true
   /// 补历史一次只放一发在路上，别一路拖着就连喊十几次。
@@ -111,6 +115,11 @@ final class MarketModel {
 
   deinit {
     if let policyObserver { NotificationCenter.default.removeObserver(policyObserver) }
+    // 宿主销毁时的停机契约。能跑到这儿，就说明再没有人要这份数据了——
+    // 那条事件流和它身后的 `RoutedMarketFeed`（socket、重连、后台宽限）必须一起收。
+    // 光靠 `pump` 弱持有只是让模型**能**被释放；真正把流关掉的是这两行。
+    pump?.cancel()
+    Task { [feed] in await feed.stop() }
   }
 
   private func routePolicyDidChange() {
@@ -195,16 +204,25 @@ final class MarketModel {
       }
     }
     let sym = symbol, iv = interval, request = selection
-    pump = Task { [feed] in
+    // `[weak self]` 是这条流的命门。它原来强持有 self：`pump` 握着闭包、闭包握着
+    // 模型、模型握着 `pump`——这个环只有 `stop()` 能拆，而宿主被销毁时没人叫 `stop()`。
+    // 于是「这个模型没人要了」这件事永远不会发生，socket、重连计时器、45 秒一轮的
+    // 持仓量轮询就在没有界面的情况下一直跑下去。
+    pump = Task { [weak self, feed] in
       let stream = await feed.events()
       await feed.setSnapshotEnabled(snapshot)
       await feed.start(symbol: sym, interval: iv, selection: request)
       for await e in stream {
         if Task.isCancelled { break }
+        // 宿主已经走了：这条流没有收件人了，顺手把 feed 也关掉再退出。
+        guard let self else { await feed.stop(); return }
         await MainActor.run { self.apply(e) }
       }
     }
-    Task { await refreshInfo() }
+    // `[weak self]`：这一发只是去补品种的小数位与名字。宿主要是在这一个往返里
+    // 就没了，它不该成为「模型还活着」的最后一根绳子——强持有的话，模型至少要陪
+    // 它等到超时才肯释放。
+    Task { [weak self] in await self?.refreshInfo() }
     startStats()
   }
 
@@ -356,15 +374,25 @@ final class MarketModel {
     statsTask = Task { [weak self] in
       // 供应量和持仓量是两条互不相干的接口，谁先回来先填谁那一格。以前是先等供应量
       // （取不到就得等它超时），顶栏的「仓」跟着白等一次往返。
-      Task { [weak self] in
-        guard let meta = await MarketStatsClient.shared.meta(symbol: sym, base: base, hosts: proxies) else { return }
-        await MainActor.run { self?.applyMeta(meta, for: sym) }
-      }
-      while !Task.isCancelled {
-        let stat = await MarketStatsClient.shared.openInterest(symbol: sym, source: src, hosts: proxies)
-        if Task.isCancelled { return }
-        await MainActor.run { self?.applyOpenInterest(stat, for: sym) }
-        try? await Task.sleep(for: .seconds(Double(Self.oiPollSeconds)))
+      //
+      // 两条都必须是 `statsTask` 的**结构化**子任务。供应量那条原来是另起的
+      // `Task {}`：`statsTask.cancel()`（换品种、进后台、`stop()`）拦不住它，
+      // 它照样会在几秒后带着**上一个品种**的供应量回来，撞上 `applyMeta` 那道
+      // `sym == symbol` 的门才停下——门后面是对的，门本身不该指望。
+      await withTaskGroup(of: Void.self) { group in
+        group.addTask { [weak self] in
+          guard let meta = await MarketStatsClient.shared.meta(symbol: sym, base: base, hosts: proxies) else { return }
+          if Task.isCancelled { return }
+          await MainActor.run { self?.applyMeta(meta, for: sym) }
+        }
+        group.addTask { [weak self] in
+          while !Task.isCancelled {
+            let stat = await MarketStatsClient.shared.openInterest(symbol: sym, source: src, hosts: proxies)
+            if Task.isCancelled { return }
+            await MainActor.run { self?.applyOpenInterest(stat, for: sym) }
+            try? await Task.sleep(for: .seconds(Double(Self.oiPollSeconds)))
+          }
+        }
       }
     }
   }

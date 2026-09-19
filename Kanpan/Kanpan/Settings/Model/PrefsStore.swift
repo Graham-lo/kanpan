@@ -102,12 +102,17 @@ final class PrefsStore {
   /// `SymbolPrefsStore()` 就是这么把「上次看的那张图」读到另一个柜子里去的（R3-1）。
   /// 现在存哪儿必须在建store的地方写出来，这个函数只是把那句话写短一点。
   static func deviceStorage() -> any PrefsStorage {
+    #if DEBUG
     guard ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" else { return UserDefaults.standard }
     if let profile = ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"],
        UUID(uuidString: profile) != nil, let defaults = UserDefaults(suiteName: "kanpan.tests." + profile) {
       return defaults
     }
     return InMemoryPrefsStorage()
+    #else
+    // Release 包里没有测试模式这回事：柜子只有一个。
+    return UserDefaults.standard
+    #endif
   }
 
   /// - Parameter fallback: 这个柜子里还没有存档时，从哪一份 `Prefs` 起步。
@@ -137,6 +142,8 @@ final class PrefsStore {
     // 那几条用例要验的是「点哪一档图就换到哪一档」，不是「出厂钉了哪几档」，所以
     // 沙盒里把 chip 铺全，真正的出厂默认交给 `PrefsDefaultsTests` 在单元层面守。
     // 只在测试沙盒、且这轮还没有任何存档时生效，用例自己钉过的照样按存档走。
+    // 种子只在 Debug 包里存在：Release 里这几行连编都不编（A.4）。
+    #if DEBUG
     if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
        selectedStorage.prefsData(forKey: PrefsCodec.key) == nil {
       self.prefs.quickIntervals = PrefsStore.uiTestQuick
@@ -146,6 +153,7 @@ final class PrefsStore {
         self.prefs.routePolicy = policy
       }
     }
+    #endif
     mirrorToDevice()
   }
 

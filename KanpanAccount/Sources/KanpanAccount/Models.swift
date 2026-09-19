@@ -42,7 +42,7 @@ public struct AccountSessionDevice: Codable, Sendable, Identifiable {
 public struct AccountDevices: Decodable, Sendable { public var devices: [AccountSessionDevice] }
 public struct AccountOK: Decodable, Sendable { public var ok: Bool }
 public enum AccountError: LocalizedError, Equatable {
-  case unavailable, invalidURL, invalidResponse, keychain, storage, cancelled, http(Int, String)
+  case unavailable, invalidURL, invalidResponse, keychain, storage, cancelled, reauthenticationRequired, http(Int, String)
   public var errorDescription: String? {
     switch self {
     case .unavailable: "账号服务暂不可用"
@@ -51,9 +51,11 @@ public enum AccountError: LocalizedError, Equatable {
     case .keychain: "暂时无法保存登录状态，请重试"
     case .storage: "未能保存，请检查设备空间"
     case .cancelled: "操作已取消"
+    case .reauthenticationRequired: "登录已失效，请重新登录"
     case .http(_, "invalid_username"): "用户名需 3–32 位字母、数字或下划线"
     case .http(_, "username_taken"): "用户名已被使用"
     case .http(_, "invalid_password"): "密码至少 8 位，需含字母和数字"
+    case .http(_, "wrong_password"): "密码不对"
     case .http(_, "invalid_code"): "验证码不对"
     case .http(_, "code_expired"): "验证码已失效，请重新发送"
     case .http(_, "email_unavailable"): "邮件暂时发不出，请稍后重试"

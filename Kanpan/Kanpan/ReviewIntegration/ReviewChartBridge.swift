@@ -41,9 +41,24 @@ import ReviewUI
   var lastPrice: Double? { state?.series.close.last }
   var replayTime: Int64 { state?.series.lastTime ?? 0 }
 
+  /// 复盘那份老档案（并入看盘之前的位置）在哪。只剩 `AppAccountBridge.migrateLegacy`
+  /// 一个读者：把它搬进访客档案。
+  ///
+  /// 测试子目录这条岔路原来只看一个 `KANPAN_PERSISTENCE_PROFILE`——不要求测试模式、
+  /// 不要求它是个 UUID，原样拼进路径。于是 Release 包里一串环境变量就能把复盘档案的
+  /// 位置挪走，而 `../` 这类片段还能把它挪出 `kanpan-review` 之外。现在三道闸一起上：
+  /// `#if DEBUG`、`KANPAN_TEST_PROFILE=1`、以及**必须是一个合法 UUID**——
+  /// UUID 这一条顺手把所有路径片段（`..`、`/`、`%2e%2e`）都挡在外面，口径和
+  /// `AppAccountBridge` / `PrefsStore.deviceStorage()` 对齐。
   static func storageDirectory() -> URL {
     let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("kanpan-review")
-    if let test = ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"] { return root.appendingPathComponent("tests/" + test) }
+    #if DEBUG
+    let env = ProcessInfo.processInfo.environment
+    if env["KANPAN_TEST_PROFILE"] == "1", let test = env["KANPAN_PERSISTENCE_PROFILE"],
+       let uuid = UUID(uuidString: test) {
+      return root.appendingPathComponent("tests/" + uuid.uuidString)
+    }
+    #endif
     return root
   }
   static func closeTime(_ time: Int64, interval: Interval) -> Int64 {

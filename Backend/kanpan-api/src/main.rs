@@ -1,5 +1,4 @@
-use kanpan_api::{AppState,crypto::Secrets,mail::Mailer};
-use sqlx::postgres::PgPoolOptions;
+use kanpan_api::{AppState,crypto::Secrets};
 use std::{sync::Arc,net::SocketAddr};
 #[tokio::main]
 async fn main()->anyhow::Result<()> {
@@ -15,7 +14,7 @@ async fn main()->anyhow::Result<()> {
   axum::serve(listener,kanpan_api::metrics_router()).with_graceful_shutdown(async{let _=tokio::signal::ctrl_c().await;}).await?;
   return Ok(());
  }
- let pool=PgPoolOptions::new().max_connections(8).connect(&std::env::var("KANPAN_DATABASE_URL")?).await?;
+ let pool=kanpan_api::pool_options(command=="serve").connect(&std::env::var("KANPAN_DATABASE_URL")?).await?;
  if command=="migrate" {sqlx::migrate!().run(&pool).await?;return Ok(())}
  let privileged:bool=sqlx::query_scalar("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user").fetch_one(&pool).await?;
  anyhow::ensure!(!privileged,"Runtime role must not be superuser or BYPASSRLS");
@@ -24,8 +23,7 @@ async fn main()->anyhow::Result<()> {
  let encryption:[u8;32]=key.try_into().map_err(|_|anyhow::anyhow!("Encryption key must be 32 bytes"))?;
  let secrets=Arc::new(Secrets{pepper,encryption});
  let dummy_hash=Arc::new(secrets.hash_password(&kanpan_api::crypto::random_token()).map_err(|_|anyhow::anyhow!("Password hashing unavailable"))?);
- let mail=Mailer::from_env()?;
- let s=AppState{pool,secrets,dummy_hash,mail_enabled:mail.is_some()};
+ let s=AppState{pool,secrets,dummy_hash};
  if command=="worker" {
   let market=scorebook_market::adapters::binance::Binance::new(s.pool.clone())?;
   let review_loop=async {loop {
@@ -38,16 +36,12 @@ async fn main()->anyhow::Result<()> {
    if kanpan_api::search::run_one(&s,&market).await.is_err(){tracing::warn!("Search work will retry");}
    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
   }};
-  let mail_loop=async {loop {
-   if let Some(ref mail)=mail {if mail.deliver_one(&s).await.is_err(){tracing::warn!("Email delivery will retry");}}
-   tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-  }};
   let cleanup_loop=async {loop {
    if kanpan_api::maintenance::cleanup(&s).await.is_err(){tracing::warn!("Cleanup will retry");}
    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
   }};
   tokio::select! {
-   _=async {tokio::join!(review_loop,search_loop,mail_loop,cleanup_loop);} => {},
+   _=async {tokio::join!(review_loop,search_loop,cleanup_loop);} => {},
    _=tokio::signal::ctrl_c()=>{}
   }
   return Ok(());

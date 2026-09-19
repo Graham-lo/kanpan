@@ -35,12 +35,26 @@ final class AppLifecycle {
     case sync = 100
   }
 
-  private struct Hook { let priority: Int; let seq: Int; let flush: () -> Void }
+  private struct Hook { let token: HookToken; let priority: Int; let seq: Int; let flush: () -> Void }
   private var hooks: [String: Hook] = [:]
   private var seq = 0
 
-  private struct Resources { let leave: () -> Void; let enter: () -> Void }
+  /// 一次落盘登记的凭证。和 `ResourceToken` 同一个理由：注销要对得上才作数。
+  struct HookToken: Equatable, Sendable {
+    let id: String
+    let seq: Int
+  }
+
+  private struct Resources { let token: ResourceToken; let leave: () -> Void; let enter: () -> Void }
   private var resources: [String: Resources] = [:]
+
+  /// 一次资源登记的凭证。注销时要对得上才作数——**迟到的旧宿主不能把新宿主
+  /// 那份撤掉**。没有它的话，一个正在销毁的旧 `MainScreen` 按 id 注销，
+  /// 顺手就把刚接上的新根的前后台钩子摘了：app 从此进后台不停流、回前台不续。
+  struct ResourceToken: Equatable, Sendable {
+    let id: String
+    let seq: Int
+  }
 
   private var observers: [NSObjectProtocol] = []
   /// 这一轮「离开前台」是不是已经落过盘了。`.inactive` 紧接着 `.background`，
@@ -53,11 +67,24 @@ final class AppLifecycle {
 
   /// 登记一件「离开前台前必须落下去」的事。同一个 `id` 再登记会替换上一个
   /// （`MainScreen` 重建时不会叠加），传 `nil` 注销。
-  func register(id: String, priority: Priority, flush: (() -> Void)?) {
-    guard let flush else { hooks.removeValue(forKey: id); return }
+  @discardableResult
+  func register(id: String, priority: Priority, flush: (() -> Void)?) -> HookToken {
+    guard let flush else { hooks.removeValue(forKey: id); return HookToken(id: id, seq: 0) }
     seq += 1
-    hooks[id] = Hook(priority: priority.rawValue, seq: seq, flush: flush)
+    let token = HookToken(id: id, seq: seq)
+    hooks[id] = Hook(token: token, priority: priority.rawValue, seq: seq, flush: flush)
+    return token
   }
+
+  /// 注销一件落盘登记。token 对不上就什么都不做——正在销毁的旧宿主不能顺手
+  /// 把新宿主刚登记的同名钩子摘掉。
+  func unregister(hook token: HookToken) {
+    guard hooks[token.id]?.token == token else { return }
+    hooks.removeValue(forKey: token.id)
+  }
+
+  /// 当前登记着的落盘钩子数。给用例看的。
+  var hookCount: Int { hooks.count }
 
   /// 登记一件「进后台要停、回前台要续」的事（行情连接、后台运行额度这类）。
   ///
@@ -65,9 +92,29 @@ final class AppLifecycle {
   /// - 落盘看的是 `.inactive`（切出去的那一下就写，别赌还能等到 `.background`）。
   /// - 资源看的是 `.background`。`.inactive` 只是弹了个控制中心或系统弹窗，
   ///   这时候掐连接，用户回来还得重连一次，纯亏。
-  func registerResources(id: String, leave: @escaping () -> Void, enter: @escaping () -> Void) {
-    resources[id] = Resources(leave: leave, enter: enter)
+  ///
+  /// 同一个 id 再登记会顶掉上一份，并且**先让被顶掉的那份按「离开前台」收一次摊**。
+  /// 覆盖不等于停机：旧的那份从此一句话也听不见，可它身后的 socket、轮询、
+  /// 后台运行额度还开着。顶掉它之前那一下 `leave()`，是它最后一次听得见话的机会。
+  /// 真正的销毁另有出口——宿主的 `RootTeardown` 会带着 token 来 `unregisterResources`。
+  @discardableResult
+  func registerResources(id: String, leave: @escaping () -> Void, enter: @escaping () -> Void) -> ResourceToken {
+    seq += 1
+    let token = ResourceToken(id: id, seq: seq)
+    let displaced = resources[id]
+    resources[id] = Resources(token: token, leave: leave, enter: enter)
+    displaced?.leave()
+    return token
   }
+
+  /// 注销一份资源登记。token 对不上就什么都不做（见 `ResourceToken`）。
+  func unregisterResources(token: ResourceToken) {
+    guard resources[token.id]?.token == token else { return }
+    resources.removeValue(forKey: token.id)
+  }
+
+  /// 当前登记着的资源条目数。给用例看的。
+  var resourceCount: Int { resources.count }
 
   // ---------------------------------------------------------------- 入口
 

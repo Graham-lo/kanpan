@@ -34,7 +34,7 @@ async fn real_postgres_accounts_isolation_and_retry() {
  for sql in [format!("GRANT USAGE ON SCHEMA public TO {role}"),format!("GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO {role}"),format!("GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO {role}")] {sqlx::query(&sql).execute(&admin).await.unwrap();}
  let pool=sqlx::postgres::PgPoolOptions::new().max_connections(6).connect(&std::env::var("KANPAN_TEST_DATABASE_URL").unwrap()).await.unwrap();
  let secrets=Arc::new(Secrets{pepper:vec![31;32],encryption:[43;32]});let dummy_hash=Arc::new(secrets.hash_password("dummy123456").unwrap());
- let s=AppState{pool,secrets,dummy_hash,mail_enabled:false};let app=kanpan_api::router(s.clone());
+ let s=AppState{pool,secrets,dummy_hash};let app=kanpan_api::router(s.clone());
  let a_device=device("A phone");let b_device=device("B phone");
  let a=signup(&app,&s,"alice_test",&a_device).await;let b=signup(&app,&s,"bob_test",&b_device).await;
  let at=a["accessToken"].as_str().unwrap();let bt=b["accessToken"].as_str().unwrap();
@@ -76,11 +76,11 @@ async fn real_postgres_accounts_isolation_and_retry() {
  assert!(mine.len()==1&&mine[0]["id"]=="binance/usd_m/BTCUSDT/line"&&mine[0]["body"]["color"]["value"]=="#000000","the join must stay owner-scoped: {other}");
  review_contract(&app,&s,&admin,at,bt).await;
  search_contract(&app,&s,&admin,at,bt).await;
- // Registration works without mail; normalized names cannot be claimed twice.
+ // 用户名归一化之后不能被重复注册。
  assert_eq!(request(&app,"/v1/auth/register","POST",None,json!({"username":"ALICE_TEST","password":"Passcode123","device":a_device})).await.0,409);
  assert_eq!(request(&app,"/v1/auth/register","POST",None,json!({"username":"x","password":"Passcode123","device":a_device})).await.0,400);
+ // 邮箱验证码那条路已经整条下线，连路由都不该还在。
  assert_eq!(request(&app,"/v1/auth/password/code","POST",None,json!({"email":"alice_test"})).await.0,404);
- let queued:i64=sqlx::query_scalar("SELECT count(*) FROM account_mail").fetch_one(&admin).await.unwrap();assert_eq!(queued,0);
  // Identical refresh retry returns the same rotated pair, a different reuse revokes the family.
  let rid=Uuid::new_v4();let refresh=json!({"refreshToken":a["refreshToken"],"requestId":rid,"device":a_device});
  let (status,new)=request(&app,"/v1/auth/refresh","POST",None,refresh.clone()).await;assert_eq!(status,200,"{new}");
@@ -94,7 +94,6 @@ async fn real_postgres_accounts_isolation_and_retry() {
  let (status,v)=request(&app,"/v1/auth/account","DELETE",Some(bt),json!({"password":"Passcode123"})).await;assert_eq!(status,200,"{v}");
  assert_eq!(request(&app,"/v1/auth/me","GET",Some(bt),json!({})).await.0,401);
  let remaining:i64=sqlx::query_scalar("SELECT count(*) FROM sync_objects WHERE user_id=$1").bind(Uuid::parse_str(b["user"]["id"].as_str().unwrap()).unwrap()).fetch_one(&admin).await.unwrap();assert_eq!(remaining,0);
- let mail_count:i64=sqlx::query_scalar("SELECT count(*) FROM account_mail WHERE recipient_hash=$1").bind(s.secrets.keyed("mail:bob_test")).fetch_one(&admin).await.unwrap();assert_eq!(mail_count,0,"Account deletion purges queued recipient data");
  s.pool.close().await;admin.close().await;
 }
 

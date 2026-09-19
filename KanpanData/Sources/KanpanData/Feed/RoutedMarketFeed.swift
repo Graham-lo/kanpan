@@ -141,12 +141,18 @@ public actor RoutedMarketFeed {
   }
   private func activate(_ next: MarketSource, coldStart: Bool = false) async {
     let request = selection; let generation = UUID(); route = generation
-    pump?.cancel(); await feed?.stop()
+    pump?.cancel()
+    // 先把旧的那份摘下来再去停它。`stop()` 要等落盘和一次 WS 收尾，这中间进来的
+    // `switchTo` 看到 `feed` 还在，就会把「切品种」交给一份正在被拆掉的 feed，
+    // 那一笔切换从此没有下文。
+    let dying = feed
+    feed = nil
+    activeSource = nil
+    await dying?.stop()
     guard request == selection, generation == route, !Task.isCancelled else { return }
     freshHistory = false
     pendingStatus = .offline
     source = next
-    activeSource = next
     let rest = next == .binance ? primary : backup
     var directHosts = hosts; directHosts.streamFallbacks = []
     let ws = BinanceWS(hosts: directHosts,
@@ -168,9 +174,24 @@ public actor RoutedMarketFeed {
     let created = MarketFeed(rest: rest, ws: ws, cache: cache,
       paths: sourcePaths,
       includeTicker: next == .binance, initialLimit: initial, log: log)
-    feed = created
+    // 装配（挂快照开关、取事件流）全在本地做完再挂到 `feed` 上。
+    //
+    // 原来是先 `feed = created` 再 await 装配：这中间进来的 `switchTo` 看见
+    // `feed` 非空，就把新品种交给这份**还没 start** 的 feed，然后本方法回来又拿
+    // 旧的 `request` 把它 start 一遍——`forward` 只认当前 selection，从此这份 feed
+    // 吐的每一条都被丢掉，用户面前就是一张不再更新的空图。
     await created.setSnapshotEnabled(snapshots)
     let stream = await created.events()
+    // 装配的这两拍里世界可能已经变了（又切了品种、又换了线路），这份 feed 已经
+    // 没人要了：就地扔掉，别让它挂上去顶掉真正在跑的那份。
+    guard request == selection, generation == route, !Task.isCancelled else {
+      await created.stop()
+      return
+    }
+    // 从这儿开始对外才存在这份 feed。挂上、接管、开跑之间不再有任何挂起点，
+    // 别人插不进来。
+    feed = created
+    activeSource = next
     pump = Task { [weak self] in
       for await update in stream {
         guard !Task.isCancelled, let self else { return }
@@ -293,10 +314,16 @@ public actor RoutedMarketFeed {
     guard foreground else { return }
     let request = selection
     monitor = Task { [weak self] in
-      guard let self else { return }
+      // `weak` 只在这儿弱一下是不够的：循环前先 `guard let self` 等于把强引用
+      // 一路握到任务结束，这条巡检 20 秒一轮、永不自然收尾，于是整份路由
+      // （连同它手里的 feed、WS、REST）在页面关掉之后也一直活着。
+      // 强引用只在真正要调的那一刻取，取完就放。
       if !immediate { do { try await Task.sleep(for: .seconds(20)) } catch { return } }
       while !Task.isCancelled {
-        await self.checkSource(selection: request)
+        // 强引用只在这一句里短暂存在：用 `self?.` 直接调，调完就放掉，
+        // 绝不让它跨过下面那一觉——睡着的 20 秒里没人引用这份路由，该释放就能释放。
+        await self?.checkSource(selection: request)
+        if self == nil { return }
         do { try await Task.sleep(for: .seconds(20)) } catch { return }
       }
     }

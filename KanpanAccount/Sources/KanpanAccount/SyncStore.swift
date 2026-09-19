@@ -394,6 +394,31 @@ final class ArchiveWriter: @unchecked Sendable {
   /// 待发队首的下一批。
   public func nextBatch(limit: Int) -> [SyncOperation] { Self.batch(archive.operations, limit: limit) }
 
+  /// 待发队首的下一批，**同时受条数和字节数两道闸**。
+  ///
+  /// 条数从来不是唯一的上限：服务端整个请求体只收 512 KiB
+  /// （`Backend/kanpan-api/src/lib.rs` 的 `DefaultBodyLimit`），而一条画线操作有多大
+  /// 完全由用户画了多少个点决定——一百条大操作轻轻松松越线。越线的下场是 413：
+  /// 请求在进 handler **之前**就被拒了，这一批一条都没落库，而客户端会把同一批原样
+  /// 再发一次，于是这个账号的同步队列从此再也前进不了。
+  ///
+  /// 削的办法是砍尾巴：`batch()` 给的是一段**有序且能同批**的操作，取它的前缀仍然
+  /// 安全（谁的前驱都不会被留在后面）。对半砍到只剩一条为止——一条还超，那就是
+  /// 这条本身发不上去，由调用方隔离它（`quarantine`），本函数不做这个决定。
+  public func nextBatch(limit: Int, maxBytes: Int) -> [SyncOperation] {
+    var picked = Self.batch(archive.operations, limit: limit)
+    while picked.count > 1, Self.encodedSize(picked) > maxBytes {
+      picked = Array(picked.prefix(max(1, picked.count / 2)))
+    }
+    return picked
+  }
+
+  /// 这一批按**线上那份格式**编码之后有多大。编不出来就当无穷大（宁可切小）。
+  public static func encodedSize(_ operations: [SyncOperation]) -> Int {
+    guard let data = try? JSONEncoder().encode(SyncPushRequest(operations)) else { return .max }
+    return data.count
+  }
+
   // MARK: - 409 之后的恢复
 
   /// 把一批**确认整体回滚**的操作退回「未发送」。

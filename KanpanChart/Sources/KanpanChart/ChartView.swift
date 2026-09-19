@@ -244,6 +244,12 @@ public final class ChartView: UIView {
       // 不在窗口上就没有帧可跑；脏位留着，回来再刷。
       link?.invalidate()
       link = nil
+      // 画线那条 link 也得在这儿收。它原来只在「下一帧发现触点、动画都空了」时
+      // 自灭——而离屏之后根本没有下一帧，于是它连同 `CADisplayLink` 注册在主
+      // runloop 上的那份强引用一起活到进程结束（转屏、来电、切页都能撞上）。
+      // 触点和 claimed 一起收掉：手指是随着视图一起离开的，留着那半截状态，
+      // 回来第一下会被当成上一次拖动的续拍。
+      teardownDrawingLink()
     } else {
       if renderScale != lastScale { setNeedsLayout() }
       if !dirty.isEmpty { resumeLink() }
@@ -344,7 +350,8 @@ public final class ChartView: UIView {
 
   // ---------------------------------------------------------------- DisplayLink
 
-  private var link: CADisplayLink?
+  /// 主图那条帧循环。读权限放到模块内是给生命周期用例看的（出窗之后它必须是 nil）。
+  private(set) var link: CADisplayLink?
   /// 上一次给 `link` 设的是不是高刷区间。只在真的换档时才写 `preferredFrameRateRange`。
   private var linkWantsHighRate: Bool?
 
@@ -368,8 +375,12 @@ public final class ChartView: UIView {
   /// `CADisableMinimumFrameDurationOnPhone` 把 iPhone 的 60 Hz 钳制解开了），
   /// 其余单帧刷新压回 60 Hz。
   private func resumeLink() {
+    // 不在窗口上就不许建帧循环。以前 `animation` 的 didSet 是无条件 resume 的，
+    // 于是一次「离屏时挂上的惯性」会在没人看的地方建起一条 `CADisplayLink`，
+    // 而出窗清理已经跑过了，没人再来收它。
+    guard window != nil else { return }
     if link == nil {
-      let l = CADisplayLink(target: LinkProxy(self), selector: #selector(LinkProxy.tick))
+      let l = CADisplayLink(target: LinkProxy(self), selector: #selector(LinkProxy.tick(_:)))
       l.add(to: .main, forMode: .common)
       link = l
       linkWantsHighRate = nil
@@ -393,7 +404,12 @@ public final class ChartView: UIView {
   /// 返回 `true` 表示演完了，视图会把它摘掉。只要挂着动画 `CADisplayLink` 就不停——
   /// 但动画自己走完那一帧之后立刻回到「没脏位就暂停」的老规矩（A3.12）。
   var animation: ((CFTimeInterval) -> Bool)? {
-    didSet { if animation != nil { resumeLink() } }
+    // 挂动画才需要帧；离屏时直接丢掉——没有窗口就没有帧，留着它只会让下一次
+    // 入窗从半截惯性开始，而这半截是用户早就看不见的那一程。
+    didSet {
+      guard animation != nil else { return }
+      if window == nil { animation = nil } else { resumeLink() }
+    }
   }
 
   fileprivate func onFrame() {
@@ -477,6 +493,10 @@ final class CanvasLayer: CALayer {
 
 /// `CADisplayLink` 会**强引用** target，直接指向视图就成环了。这层壳弱引用视图，
 /// 视图被释放后帧回调空转一次就没了。
+///
+/// 「空转一次就没了」原来是句空话：宿主释放之后没人再叫 `invalidate()`，link 仍然
+/// 挂在主 runloop 上，每帧醒来一次、一直醒到进程结束。所以回调要把 link 自己收进来
+/// （`CADisplayLink` 调 selector 时把自己当参数传过来），发现宿主没了就地作废。
 @MainActor
 private final class LinkProxy: NSObject {
   private weak var view: ChartView?
@@ -485,5 +505,8 @@ private final class LinkProxy: NSObject {
     super.init()
   }
 
-  @objc func tick() { view?.onFrame() }
+  @objc func tick(_ link: CADisplayLink) {
+    guard let view else { link.invalidate(); return }
+    view.onFrame()
+  }
 }

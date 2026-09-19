@@ -186,24 +186,46 @@ final class ReplaySocket: WSSocket {
   }
 }
 
-/// 一次性的叫醒闸。`wait()` 里那个 `withCheckedContinuation` 不可取消，正是要点。
-actor Gate {
+/// 叫醒闸。`wait()` 里那个 `withCheckedContinuation` 不可取消，正是要点——
+/// 真 `URLSessionWebSocketTask.receive()`、真网络请求的回包都是这个脾气：
+/// 上层把任务取消了，它照样挂在那儿，回包该来还是会来。并发用例要复现
+/// 「旧任务醒来时世界已经变了」，靠的就是这种不理会取消的挂起。
+///
+/// 三种叫醒方式，语义不同，别混：
+/// - `wake()`：把此刻挂着的放行一次，**不落闩**，之后再 `wait()` 还会挂住（回放器的定时唤醒）。
+/// - `open()`：落闩放行，之后所有 `wait()` 直接过（「放行这一笔网络请求，后面的也照常走」）。
+/// - `kill()`：落闩并标记已取消（socket 被掐）。
+public actor Gate {
   private var waiters: [CheckedContinuation<Void, Never>] = []
-  private(set) var killed = false
+  public private(set) var killed = false
+  private var opened = false
+  /// 到过闸门前的次数。测试用来确认「那笔活儿真的被挡住了」再往下走，
+  /// 不然就成了靠 sleep 猜时序。
+  public private(set) var arrived = 0
 
-  func wait() async {
-    if killed { return }
+  public init() {}
+
+  public func wait() async {
+    arrived += 1
+    if killed || opened { return }
     await withCheckedContinuation { waiters.append($0) }
   }
-  func wake() {
+  public func wake() {
     let w = waiters
     waiters = []
     for c in w { c.resume() }
   }
-  func kill() {
+  /// 落闩放行：挂着的全部过，之后来的也不再挡。
+  public func open() {
+    opened = true
+    wake()
+  }
+  public func kill() {
     killed = true
     wake()
   }
+  /// 现在有几个挂在闸门上。
+  public var waiting: Int { waiters.count }
 }
 
 // ---------------------------------------------------------------- 小工具

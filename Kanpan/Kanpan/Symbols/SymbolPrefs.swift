@@ -372,7 +372,14 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
 protocol SymbolPrefsStorage: AnyObject {
   func symbolPrefsData(forKey key: String) -> Data?
   func setSymbolPrefsData(_ data: Data?, forKey key: String)
+  /// 这个柜子是不是**测试专用的隔离仓**。
+  ///
+  /// 只有一处要它：UI 测试用环境变量灌自选的那条路（`SymbolPrefsStore.testSeed`）。
+  /// 默认 `false`——「不写就不是隔离仓」是安全的那一侧，新写的柜子忘了表态
+  /// 只会让种子不生效，而不是让种子去顶真实档案。
+  var isIsolatedForTests: Bool { get }
 }
+extension SymbolPrefsStorage { var isIsolatedForTests: Bool { false } }
 
 extension UserDefaults: SymbolPrefsStorage {
   func symbolPrefsData(forKey key: String) -> Data? { data(forKey: key) }
@@ -431,7 +438,9 @@ final class SymbolPrefsStore {
   /// 所以能走到这个 `throw` 的只剩「根本不是一份 JSON 对象」「零字节」这类
   /// 整份读不动的档案；局部坏只丢局部，不会连累别的字段。
   func read() throws -> SymbolPrefs {
-    if let seeded = Self.testSeed() { return seeded }
+    #if DEBUG
+    if let seeded = Self.testSeed(isolated: storage.isIsolatedForTests) { return seeded }
+    #endif
     guard let data = storage.symbolPrefsData(forKey: key) else { return SymbolPrefs() }
     // 零字节不是「没有档案」：文件在，只是写到一半断电了。当解不动处理，
     // 免得拿空档把它盖掉之后连挽回的机会都没有。
@@ -453,12 +462,27 @@ final class SymbolPrefsStore {
   /// 把「解不动」当异常处理，绝不能拿空档去覆盖。
   func load() -> SymbolPrefs { (try? read()) ?? SymbolPrefs() }
 
+  #if DEBUG
   /// UI 测试沙盒里用环境变量灌进来的那份自选。
-  private static func testSeed() -> SymbolPrefs? {
-    guard ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
-          let seed = ProcessInfo.processInfo.environment["KANPAN_TEST_FAVORITES"] else { return nil }
+  ///
+  /// 三道闸，缺一不给种子：
+  /// 1. `#if DEBUG`——种子是测试脚手架，Release 包里连这段代码都不该存在。
+  /// 2. 进程确实处在测试模式（`KANPAN_TEST_PROFILE=1`）。
+  /// 3. **这一份档案落在隔离仓上**（`storage.isIsolatedForTests`）：内存仓，或者
+  ///    `accounts/tests/<uuid>` 那棵测试子树里的档案仓。
+  ///
+  /// 第 3 条是这轮补的（A-07）。原来只看两个环境变量，于是「测试种子生效」和
+  /// 「账号目录隔离生效」由两组互不相干的开关各自决定：桥挂在**真账号目录**上时
+  /// 种子照样生效，几串环境变量就能顶掉这个账号真实的自选——而 `read()` 的结果
+  /// 接着会被 `AppAccountBridge.prepare` 当成「盘上那份的最新值」回写进 `symbols.json`，
+  /// 用户的自选就此被一份种子永久盖掉。现在种子只认隔离仓。
+  static func testSeed(environment: [String: String] = ProcessInfo.processInfo.environment,
+                       isolated: Bool) -> SymbolPrefs? {
+    guard environment["KANPAN_TEST_PROFILE"] == "1", isolated,
+          let seed = environment["KANPAN_TEST_FAVORITES"] else { return nil }
     return SymbolPrefs(favorites: seed.split(separator: ",").map(String.init))
   }
+  #endif
 
   func save(_ prefs: SymbolPrefs) {
     guard let data = try? JSONEncoder().encode(prefs) else { return }
@@ -470,6 +494,8 @@ final class SymbolPrefsStore {
 
 /// 内存版存档，预览与单测用（不落真 UserDefaults）。
 final class MemoryPrefsStorage: SymbolPrefsStorage {
+  /// 内存仓天然隔离：它只活在这个进程里，谁也够不着别人的档案。
+  var isIsolatedForTests: Bool { true }
   private var box: [String: Data] = [:]
   init(_ seed: [String: Data] = [:]) { box = seed }
   func symbolPrefsData(forKey key: String) -> Data? { box[key] }

@@ -74,10 +74,36 @@ private let drawTapMs: Double = 500
 extension ChartView {
   /// 这张图的画线会话。第一次问的时候建。
   var drawing: DrawingSession {
-    if let s = objc_getAssociatedObject(self, drawingSessionKey) as? DrawingSession { return s }
+    if let s = drawingSessionIfLoaded { return s }
     let s = DrawingSession()
     objc_setAssociatedObject(self, drawingSessionKey, s, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     return s
+  }
+
+  /// 已经建过的那份会话，没建过就是 `nil`。
+  ///
+  /// 出窗清理要用它：那条路上问 `drawing` 会把会话**建出来**——一张从没开过画线的图
+  /// 只是转了个屏，就凭空多挂一个关联对象。只有真开过画线的图才有东西要收。
+  var drawingSessionIfLoaded: DrawingSession? {
+    objc_getAssociatedObject(self, drawingSessionKey) as? DrawingSession
+  }
+
+  /// 视图离开窗口：把画线那条帧循环和半截交互态一起收掉。
+  ///
+  /// 它原来只有一条自灭路径（`drawingTick` 里发现触点、动画都空了才 invalidate），
+  /// 而离屏之后根本不会再有下一帧——于是 link 连同 `CADisplayLink` 注册在主 runloop
+  /// 上的那份强引用一直活到进程结束。手指是跟着视图一起离开的，`claimed` 和拖动快照
+  /// 留着，回来第一下会被当成上一次拖动的续拍；预览线留着，下次入窗先闪一根上一程的线。
+  /// 待落点（`anchors`）不收：那是用户明确点下的第一点，转个屏不该让它消失。
+  func teardownDrawingLink() {
+    guard let session = drawingSessionIfLoaded else { return }
+    session.link?.invalidate()
+    session.link = nil
+    session.claimed = nil
+    session.drag = nil
+    session.preview = nil
+    session.aim = nil
+    session.loupe = nil
   }
 }
 
@@ -658,12 +684,13 @@ extension ChartView {
   /// 图表自己的脏位通道进不来（那是 `ChartState` 的事），所以在有触摸或有动画的时候
   /// 挂一条自己的 `CADisplayLink`，两样都没了立刻摘掉——A3.12 的「静止不跑帧」不破。
   fileprivate func startDrawingLink() {
-    guard drawing.overlay != nil else { return }
+    // 和主图那条一样：不在窗口上就不建帧循环——没有下一帧，也就没人来收它。
+    guard drawing.overlay != nil, window != nil else { return }
     if let l = drawing.link {
       l.isPaused = false
       return
     }
-    let l = CADisplayLink(target: DrawingLinkProxy(self), selector: #selector(DrawingLinkProxy.tick))
+    let l = CADisplayLink(target: DrawingLinkProxy(self), selector: #selector(DrawingLinkProxy.tick(_:)))
     l.add(to: .main, forMode: .common)
     drawing.link = l
   }
@@ -677,6 +704,9 @@ extension ChartView {
 }
 
 /// 和 `LinkProxy` 同样的理由：`CADisplayLink` 强引用 target，直接指向视图会成环。
+/// 弱引用之外还得管一件事：宿主一旦释放就没人再来 `invalidate()` 这条 link，它会挂在
+/// 主 runloop 上每帧醒一次、一直醒到进程结束。所以把 link 自己收进回调里
+/// （selector 带一个参数时 `CADisplayLink` 会把自己传过来），宿主空了就地作废。
 @MainActor
 private final class DrawingLinkProxy: NSObject {
   private weak var view: ChartView?
@@ -684,7 +714,10 @@ private final class DrawingLinkProxy: NSObject {
     self.view = view
     super.init()
   }
-  @objc func tick() { view?.drawingTick() }
+  @objc func tick(_ link: CADisplayLink) {
+    guard let view else { link.invalidate(); return }
+    view.drawingTick()
+  }
 }
 
 // MARK: - 覆盖层

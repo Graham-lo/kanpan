@@ -38,19 +38,50 @@ enum Orientation {
   static func rotate(to landscape: Bool) {
     guard let scene else { return }
     OrientationBridge.mask = landscape ? .landscape : .portrait
-    for window in scene.windows {
-      window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-    }
+    refreshSupportedOrientations()
     scene.requestGeometryUpdate(
       .iOS(interfaceOrientations: landscape ? .landscape : .portrait)
     ) { _ in }
-    // 下一拍放开。放得太早系统还没转完就会被自动方向拽回去，太晚用户会觉得手机卡住。
-    Task { @MainActor in
-      try? await Task.sleep(for: .milliseconds(600))
+    scheduleRelease()
+  }
+
+  /// 正排着的那次「放开方向锁」。见 `scheduleRelease(after:)`。
+  private static var release: Task<Void, Never>?
+  /// 第几次转屏。任务已经醒了、取消标记来不及生效的那一小段里，靠它认人。
+  private static var intent = 0
+
+  /// 下一拍放开方向锁。放得太早系统还没转完就会被自动方向拽回去，太晚用户会觉得手机卡住。
+  ///
+  /// 这一拍必须**只认最后一次意图**。画线工作台正是连着转两次的场景（点「画线」进横屏、
+  /// 画完自动回竖屏），两次之间往往不到 600ms。原来这个复位任务没人拿着、也没人取消：
+  /// 它会在新意图刚把 mask 设成 `.portrait` 之后，把 mask 抹回 `.allButUpsideDown`，
+  /// 于是手一斜，系统按自动方向又把人转回横屏——用户看到的是「转回去了又自己转回来」。
+  ///
+  /// 所以留一个句柄：新的一次转屏先取消上一次的复位；再加一个序号兜底，任务已经醒来
+  /// 但还没跑完那一小段里，也只有最后一次说了算。600ms 这个值本身不动。
+  static func scheduleRelease(after milliseconds: Int = 600) {
+    release?.cancel()
+    intent &+= 1
+    let mine = intent
+    release = Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(milliseconds))
+      guard !Task.isCancelled, mine == intent else { return }
+      release = nil
       OrientationBridge.mask = .allButUpsideDown
-      for window in scene.windows {
-        window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-      }
+      refreshSupportedOrientations()
     }
   }
+
+  /// 改完 `OrientationBridge.mask` 必须叫这一下，否则 UIKit 不会回来问。
+  private static func refreshSupportedOrientations() {
+    for window in scene?.windows ?? [] {
+      window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+    }
+  }
+
+  /// 还排着复位吗。给用例看的。
+  static var hasPendingRelease: Bool { release != nil }
+
+  /// 丢掉排着的复位（不动 mask）。用例收尾用，免得它跨用例醒来。
+  static func cancelPendingRelease() { release?.cancel(); release = nil }
 }

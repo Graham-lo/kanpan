@@ -2,7 +2,29 @@ import os,pathlib,secrets,subprocess,time
 from urllib.parse import urlsplit
 root=pathlib.Path('/etc/kanpan-api');root.mkdir(mode=0o700,exist_ok=True)
 envfile=root/'service.env';dbfile=root/'database.env'
+def quiet(*command):
+ return subprocess.run(command,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
+def accounts_present():
+ """库里还留着账号吗。True 有、False 没有、None 问不出来（有数据但现在够不着）。"""
+ if not quiet('docker','volume','inspect','kanpan-postgres'):return False
+ if not quiet('docker','inspect','kanpan-postgres'):return None
+ p=subprocess.run(['docker','exec','-i','kanpan-postgres','psql','-tAq','-U','kanpan_admin','-d','kanpan','-c','SELECT count(*) FROM account_users'],capture_output=True,text=True)
+ if p.returncode:return False if 'does not exist' in (p.stderr or '') else None
+ return int((p.stdout.strip() or '0').splitlines()[-1])>0
 if not envfile.exists():
+ # 没有 env 文件就现生成一把新密钥——但 KANPAN_PASSWORD_PEPPER 是拌进 Argon2 的，
+ # 换一把等于把库里每个人的密码都改成没人知道的值；KANPAN_ENCRYPTION_KEY 换掉之后
+ # 密封的刷新结果也再解不开。这两件事都不会报错，只会让每个人登录时被告知
+ # 「用户名或密码不对」，而且旧密钥一旦没被写下来就再也补不回来。
+ # 所以库里还有账号时必须停在这里，让人先去把原来那份钥匙找回来。
+ if accounts_present() is not False:
+  raise SystemExit(
+   '中止：/etc/kanpan-api/service.env 不在，但 kanpan-postgres 的数据还在。\n'
+   '现在生成的新 KANPAN_PASSWORD_PEPPER 会让所有现存密码永远验不过，\n'
+   '新的 KANPAN_ENCRYPTION_KEY 会让已密封的数据永远解不开，而且不会有任何报错。\n'
+   '请先把原来那份 service.env（至少是其中的 PEPPER 与 ENCRYPTION_KEY）放回 /etc/kanpan-api/，\n'
+   '它和数据库备份是分开保存的两样东西，缺一不可。\n'
+   '确实要从零开始（放弃所有账号）：docker volume rm kanpan-postgres 之后再装。')
  admin=secrets.token_hex(32);password=secrets.token_hex(32)
  dbfile.write_text('POSTGRES_USER=kanpan_admin\nPOSTGRES_DB=kanpan\nPOSTGRES_PASSWORD='+admin+'\n');dbfile.chmod(0o600)
  envfile.write_text('KANPAN_DATABASE_URL=postgres://kanpan_app:'+password+'@127.0.0.1:55434/kanpan\nKANPAN_PASSWORD_PEPPER='+secrets.token_hex(32)+'\nKANPAN_ENCRYPTION_KEY='+secrets.token_hex(32)+'\nKANPAN_BIND=127.0.0.1:8794\nRUST_LOG=warn\n');envfile.chmod(0o600)

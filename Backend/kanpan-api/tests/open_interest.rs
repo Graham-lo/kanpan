@@ -14,7 +14,7 @@ fn app()->Router {
  let pool=sqlx::postgres::PgPoolOptions::new().connect_lazy("postgres://unused@127.0.0.1:1/unused").unwrap();
  let secrets=Arc::new(Secrets{pepper:vec![31;32],encryption:[43;32]});
  let dummy_hash=Arc::new(secrets.hash_password("dummy123456").unwrap());
- kanpan_api::router(AppState{pool,secrets,dummy_hash,mail_enabled:false})
+ kanpan_api::router(AppState{pool,secrets,dummy_hash})
 }
 
 async fn get(path:&str)->(StatusCode,String) {

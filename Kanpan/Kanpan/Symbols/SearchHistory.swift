@@ -51,8 +51,13 @@ final class SearchHistory {
   /// 这台机器上这份历史该落在哪。理由同 `SymbolPrefsStore.deviceStorage()`：
   /// 「不写参数就静默落到 UserDefaults」的缺省值整类去掉，存哪儿必须写出来。
   static func deviceStorage() -> SearchHistoryStorage {
-    ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1"
+    #if DEBUG
+    return ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1"
       ? MemorySearchHistoryStorage() : UserDefaults.standard
+    #else
+    // Release 包里没有测试模式这回事（A.4）。
+    return UserDefaults.standard
+    #endif
   }
 
   init(storage: SearchHistoryStorage, key: String = SearchHistory.defaultsKey) {

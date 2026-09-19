@@ -14,6 +14,10 @@ public actor MarketRESTTransport: HTTPTransport {
   private let transport: any HTTPTransport
   private var gatewayRetry: [String: Date] = [:]
   private var preferred: String?
+  /// 路由账本的版本号。换线路、清冷却都会把它 +1。
+  /// 一场竞速要等好几秒，赢家回来的时候用户可能已经换了线路、或者刚按过重试，
+  /// 那份结果就是上一档的旧账，不能再写进来。
+  private var routeEpoch = 0
   /// 行情线路。用户定的，见 `MarketRoutePolicy`：直连就只直连，网关就只网关。
   private var policy: MarketRoutePolicy
 
@@ -47,11 +51,15 @@ public actor MarketRESTTransport: HTTPTransport {
     resetRouteCooldowns()
   }
 
+  /// 把在飞的那些竞速结果作废：从这一刻起回来的赢家/输家都不许再改路由账本。
+  private func invalidateRoutes() { routeEpoch &+= 1 }
+
   /// A user-requested retry may bypass a gateway cooldown once. Automatic
   /// monitoring still observes the cooldowns; this is only for an explicit
   /// tap on the visible retry affordance.
   public func resetRouteCooldowns() {
     gatewayRetry.removeAll()
+    invalidateRoutes()
   }
 
   public func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
@@ -72,17 +80,26 @@ public actor MarketRESTTransport: HTTPTransport {
       log("\(url.path) 没有网关路线（行情线路=\(policy.rawValue)），直接跳过")
       throw failure
     }
+    // 竞速前记下路由账本的版本。竞速要等好几秒，这中间用户完全可能换了线路
+    // 或者按了重试（两者都会清冷却），那时这一场的输赢属于上一档，不能再记账。
+    let epoch = routeEpoch
     let raced = await Self.race(plan)
     guard let winner = raced.winner else {
       // 是这一笔自己被取消了（换品种、换线路把上一份 feed 停掉），不是网关不行：
       // 不能给网关记冷却，不然紧接着的新一份 feed 首屏会「没有网关路线」白等 10 秒。
       try Task.checkCancellation()
+      guard epoch == routeEpoch else { throw failure }
       for candidate in plan.candidates {
         let seconds = raced.retryAfter[candidate.host] ?? Self.gatewayCooldownSeconds
         gatewayRetry[candidate.host] = Date().addingTimeInterval(seconds)
       }
       throw failure
     }
+    // 赢家这条路原来既不查取消也不查版本：一笔在取消窗口里回来的成功，会把两台
+    // 网关里的输家按 10 秒冷却，紧接着重开的那份 feed 于是只剩一台可用；换线路
+    // 那一下更糟——刚清干净的冷却被上一档的旧结果重新写满。
+    try Task.checkCancellation()
+    guard epoch == routeEpoch else { return HTTPReply(status: 200, body: winner.payload) }
     settle(winner, plan: plan)
     return HTTPReply(status: 200, body: winner.payload)
   }

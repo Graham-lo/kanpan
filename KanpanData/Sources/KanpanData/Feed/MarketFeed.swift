@@ -60,6 +60,17 @@ public actor MarketFeed {
   /// 永远补不回来（`apply(bar:)` 又会把它的报文当乱序丢掉，这根就定格在半截上）。
   private var gapFrom: Int64 = 0
   private var backgroundTask: Task<Void, Never>?
+  /// 重连 / 回前台那一发补缺的句柄。原来它是个没人拿着的裸 `Task`：停掉这份 feed、
+  /// 切走品种之后它照样在路上，回来还会对着新品种的序列做一次 `endBackfill`。
+  private var backfillTask: Task<Void, Never>?
+  /// 期望的运行状态（前台=要连着，后台=可以挂起）与它的版本号。
+  ///
+  /// 进后台那记 25 秒的闹钟醒来时，人可能早就回到前台、WS 也已经重新连上了。
+  /// 光看「任务有没有被取消」是不够的：闹钟醒来到 `suspendWS` 真的执行之间还隔着
+  /// 一次 actor 调度，取消信号可能来晚一步。版本号对不上就说明那记闹钟属于上一轮
+  /// 生命周期，绝不能拿它去掐一条正用着的连接。
+  private var wantsForeground = true
+  private var lifecycleEpoch = 0
   private var snapshotTask: Task<Void, Never>?
   /// 落盘队列的队尾。写盘全在这条链上串行发生，不占 actor。
   private var snapshotWrite: Task<Void, Never>?
@@ -126,11 +137,16 @@ public actor MarketFeed {
   /// 成交静默多久之后才让挂单接手。
   private let quoteTakeoverMs: Int64 = 3_000
   private let reconcileStepMs: Double
+  /// 墙上时钟。只有 `pendingBars()` 用它算「回前台欠了几根」——那是真实时刻的差，
+  /// 不是 `pacer` 那套可加速的节拍。测试要把「差一根」和「差两根」摆出来看，
+  /// 总不能真等一分钟，所以做成可注入的。
+  private let clock: @Sendable () -> Date
 
   /// - Parameter reconcileMs: REST 对表的节拍，0 = 不对表。回放测试要的是「WS 报文
   ///   按规矩合出来是什么」，多一路 REST 在旁边改序列就测不出那件事，所以那边传 0。
   public init(rest: BinanceREST, ws: BinanceWS, cache: BarCache = BarCache(),
               paths: Paths = .caches(), pacer: Pacer = SystemPacer(),
+              clock: @escaping @Sendable () -> Date = { Date() },
               reconcileMs: Double = 5000, includeTicker: Bool = true, initialLimit: Int = BinanceREST.maxKlines, log: FeedLog = .silent) {
     self.includeTicker = includeTicker
     self.initialLimit = min(BinanceREST.maxKlines, max(3, initialLimit))
@@ -141,6 +157,7 @@ public actor MarketFeed {
     self.paths = paths
     self.pacer = pacer
     self.systemClock = pacer is SystemPacer
+    self.clock = clock
     self.log = log
   }
 
@@ -174,6 +191,9 @@ public actor MarketFeed {
     selection = requested
     writeSnapshotNow()
     loadTask?.cancel()
+    // 上一品种那一发补缺跟着一起走。它只认 `selection`，但句柄留着才谈得上取消，
+    // 不然它还会占着 `isBackfilling`，新品种的补缺要等它回来才排得上。
+    backfillTask?.cancel(); backfillTask = nil
     deepenTask?.cancel(); deepenTask = nil
     tickFlush?.cancel(); tickFlush = nil; tickDirty = false
     lastTickEmitMs = -.infinity
@@ -266,23 +286,44 @@ public actor MarketFeed {
   public func enterBackground() {
     writeSnapshotNow()
     backgroundTask?.cancel()
+    wantsForeground = false
+    lifecycleEpoch &+= 1
+    let epoch = lifecycleEpoch
     backgroundTask = Task { [weak self, pacer] in
       try? await pacer.sleep(ms: Self.backgroundGraceMs)
       guard !Task.isCancelled else { return }
-      await self?.suspendWS()
+      // 带上这一轮的号。醒来时要是已经回过前台（号变了），这记闹钟就作废。
+      await self?.suspendWS(lifecycle: epoch)
     }
   }
 
   public func enterForeground() async {
     backgroundTask?.cancel()
     backgroundTask = nil
+    // 先把「现在要连着」这件事记下来，再去做后面那些 await。25 秒的闹钟哪怕
+    // 已经醒在半路上，也会在这儿被这个号判废。
+    wantsForeground = true
+    lifecycleEpoch &+= 1
     // 内存里的序列还在，先把它重新发出去，让图表立刻有东西可画。
     // 下面的补齐是网络往返，不该由它决定用户什么时候看见行情。
     if composer.series.count > 0 { emit(.series(composer.series)) }
     if wsTask == nil { await startWS() } else { startReconcile() }
     await ws.replaceStreams(streamNames())
     let sym = symbol, iv = interval, request = selection
+    // 首屏还没到手就切出去过：这一发 `loadTask` 要么还在路上，要么刚才在后台被
+    // 掐了。下面那句 `cancel()` 会把它彻底送走，而「缺口不足一根」又会让这个方法
+    // 直接返回——于是首屏永远不会补发，图就空在那儿等用户自己再切一次品种。
+    // 所以先认出这种情形：它要的不是补缺，是重开一整轮首屏。
+    let needsFirstScreen = filling || composer.series.count < Self.snapshotFloor
     loadTask?.cancel()
+    if needsFirstScreen {
+      filling = true
+      loadTask = Task { [weak self] in
+        await self?.fill(symbol: sym, interval: iv, since: 0, selection: request, quickFirst: true)
+      }
+      log("回前台补发首屏（上一发没落地）")
+      return
+    }
     // 缺口不到一根就别发请求了。切出去看一眼消息再回来是最常见的情形，这时候
     // 末根还是原来那根，WS 一帧（合约 kline 约 250ms 一条）就能把它带回来；
     // 万一 WS 没起来，对表任务 10 秒后也会用 limit=2 把它捞回来。
@@ -306,7 +347,7 @@ public actor MarketFeed {
     guard composer.series.count > 0, gapFrom == 0, interval.source == interval else { return .max }
     let from = composer.series.lastTime
     guard from > 0 else { return .max }
-    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    let now = Int64(clock().timeIntervalSince1970 * 1000)
     return Int(max(0, (now - from) / max(interval.stepMs, 1)) + 1)
   }
 
@@ -318,8 +359,10 @@ public actor MarketFeed {
   public func stop() async {
     selection = UUID()
     wsGeneration = UUID()
+    lifecycleEpoch &+= 1
     writeSnapshotNow()
     loadTask?.cancel(); loadTask = nil
+    backfillTask?.cancel(); backfillTask = nil
     deepenTask?.cancel(); deepenTask = nil
     backgroundTask?.cancel(); backgroundTask = nil
     stopReconcile()
@@ -357,16 +400,34 @@ public actor MarketFeed {
     }
   }
 
-  private func suspendWS() async {
+  /// 挂起 WS。`lifecycle` 是发起这次挂起时的生命周期号：
+  /// 只有后台那记延时闹钟会带号（它醒来时世界可能已经变了），
+  /// 网络切换、`stop` 这类「此刻就要断」的调用不带号，照断不误。
+  private func suspendWS(lifecycle epoch: Int? = nil) async {
+    if let epoch, epoch != lifecycleEpoch || wantsForeground {
+      log("后台挂起闹钟醒来时已回前台，保留当前连接")
+      return
+    }
     wsGeneration = UUID()
     stopReconcile()
     tickFlush?.cancel(); tickFlush = nil; tickDirty = false
+    backfillTask?.cancel(); backfillTask = nil
     wsTask?.cancel(); wsTask = nil
     await ws.stop()
     noteGap(at: composer.series.count > 0 ? composer.series.lastTime : 0)
-    emit(.status(.offline))
+    // `ws.stop()` 要等一次真的收尾，这中间回了前台的话，`enterForeground` 已经排在
+    // 它后面把连接重新拉起来了。这时候再报一次「离线」，图上会平白闪一下断连。
+    if epoch == nil || (epoch == lifecycleEpoch && !wantsForeground) { emit(.status(.offline)) }
     log("暂停WS，保留当前图表与待补缺口")
   }
+
+  // ---------------------------------------------------------------- 测试缝
+
+  /// 直接触发「后台闹钟醒了」这一步，不必真等 25 秒。
+  /// 不放在 `#if DEBUG` 里：`swift test -c release` 也要能跑这条用例。
+  func suspendForTests(lifecycle epoch: Int) async { await suspendWS(lifecycle: epoch) }
+  var lifecycleEpochForTests: Int { lifecycleEpoch }
+  var isWSRunningForTests: Bool { wsTask != nil }
 
   private func handle(_ ev: WSEvent, generation: UUID) async {
     let request = selection
@@ -385,7 +446,10 @@ public actor MarketFeed {
       // 重连成功：先补缺再让 WS 落地（§4.4）。
       composer.beginBackfill()
       let sym = symbol, iv = interval
-      Task { [weak self] in await self?.backfill(symbol: sym, interval: iv, selection: request) }
+      backfillTask?.cancel()
+      backfillTask = Task { [weak self] in
+        await self?.backfill(symbol: sym, interval: iv, selection: request)
+      }
     case .status(let s):
       // 断了：从当时的末根起就不可信了——那根是半截的，它之后的整段没收到。
       if s != .live, composer.series.count > 0 { noteGap(at: composer.series.lastTime) }
@@ -725,6 +789,10 @@ public actor MarketFeed {
       emit(.historyError(nil))
       emit(.series(composer.series))
       scheduleSnapshot()
+      // 首屏历史到手了，这面旗就该落下——它的含义是「首屏还在路上」。下面还有
+      // ticker 校准、快照缺口要走，但那些都不是首屏；继续挂着它，回前台那条路会把
+      // 「ticker 正在往返」误判成「首屏没到手」，白拉一整屏 1500 根。
+      if current(request), sym == symbol, iv == interval { filling = false }
     } catch is CancellationError {
       gapTask?.cancel()
       return

@@ -33,18 +33,19 @@ import Foundation
     user.map { "u-" + $0.uuidString.lowercased() } ?? "local/" + registry.guest.uuidString.lowercased()
   }
 
-  /// 取（并建好）某个属主的档案目录。
+  /// 现在起装的是这个人的档案。
   ///
-  /// **调到这儿就等于「现在换成这个人了」**：装档案唯一的入口就是它
-  /// （`AppAccountBridge.prepare`），所以顺手把 `currentProfile` 记上。
-  /// `claimGuest` 里那次取访客目录**不走这儿**——那是登录时把访客草稿搬过来的
-  /// *来源*，不是当前档案；走这儿会在登录那一刻把身份又倒回访客，行情缓存
-  /// 跟着写进上一段访客批次的目录里。
-  public func directory(user: UUID?) throws -> URL {
-    let id = profileID(user: user)
-    Self.currentProfile = id
-    return try makeDirectory(id)
-  }
+  /// 装档案是「先把所有会失败的活干完，再一次性提交」（`AppAccountBridge.prepare`
+  /// 返回的那个闭包就是提交点），身份必须跟着**提交**走：取目录只是把地方准备好，
+  /// 那之后还有读盘、解码、`ReviewStore` 初始化，任何一步抛出来，人都还留在原来
+  /// 那个档案里——而身份要是已经改了，行情缓存就会写进另一个人的目录。
+  ///
+  /// `claimGuest` 里那次取访客目录也因此不需要特殊对待：它只是搬家的*来源*，
+  /// 根本碰不到身份。
+  public func activate(user: UUID?) { Self.currentProfile = profileID(user: user) }
+
+  /// 取（并建好）某个属主的档案目录。**只建目录，不换身份**（见 `activate`）。
+  public func directory(user: UUID?) throws -> URL { try makeDirectory(profileID(user: user)) }
 
   private func makeDirectory(_ id: String) throws -> URL {
     let url = root.appendingPathComponent(id, isDirectory: true)

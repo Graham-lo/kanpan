@@ -53,6 +53,9 @@ struct MainScreen: View {
   /// 那条按可见范围订阅的线完全不搭界，所以单独一份，只在板块页看得见时才跑。
   @State private var sectorFeed = SectorFeed()
   @State private var didBoot = false
+  /// 「这棵根真的没了」的信号。行情、报价簿、后台额度都挂在上面这些 `@State` 上，
+  /// 而 SwiftUI 从不说「这个 View 销毁了」——见 `RootTeardown`。
+  @State private var teardown = RootTeardown()
   @State private var grace = BackgroundGrace()
   @State private var proxy = ChartProxy()
   @State private var review = ReviewFeature(directory: ReviewChartBridge.storageDirectory())
@@ -1134,8 +1137,8 @@ struct MainScreen: View {
   private func wireLifecycle() {
     // 手指抬起那一刻就该写完了（`ChartViewport.interactionEnded`），这一条纯属保险：
     // 万一有一次捏合还卡在那 400ms 的降采样里，人就把 app 切走了。
-    AppLifecycle.shared.register(id: "viewport", priority: .data) { viewport.willLeaveForeground() }
-    AppLifecycle.shared.register(id: "review", priority: .data) {
+    let viewportHook = AppLifecycle.shared.register(id: "viewport", priority: .data) { viewport.willLeaveForeground() }
+    let reviewHook = AppLifecycle.shared.register(id: "review", priority: .data) {
       review.saveDraft()
       if reviewChart.playing { reviewChart.togglePlay(feature: review) }
     }
@@ -1146,7 +1149,7 @@ struct MainScreen: View {
     // 图得按新到货的根宽重新起点。**谁到的货、是不是同一个人**由 `arrival` 说明，
     // `ChartViewport` 据此决定要不要把用户刚捏了一半的那份保下来。
     store.onAdopt = { prefs, arrival in viewport.adopt(barSpacing: prefs.barSpacing, reason: arrival) }
-    AppLifecycle.shared.registerResources(id: "feeds") {
+    let feedsToken = AppLifecycle.shared.registerResources(id: "feeds") {
       // 先把后台运行额度要下来，再进后台状态：两处宽限窗口靠它才有 CPU 可跑，
       // 短暂切走再回来就不必重连。
       grace.begin()
@@ -1155,6 +1158,24 @@ struct MainScreen: View {
       grace.end()
       market.enterForeground(); quotes.setForeground(true); sectorFeed.setForeground(true)
       accountBridge?.synchronize(); review.synchronize()
+    }
+    // 根真的没了才停机（场景断开、根被顶掉）。判据是 `@State` 存储的寿命，
+    // 不是 `onDisappear`——后者在盖 cover、切标签、转屏时都会响，那时候停流
+    // 等于把用户自己的行情掐掉。
+    //
+    // 捕获列表是必须的：不写的话闭包捕获的是 `MainScreen` 这个结构体，而它的
+    // `@State` 包装器正握着 `teardown` 的存储，成环之后 `deinit` 永远不来。
+    // 登记全部按 token 撤，撤不到别人的那一份（同一时刻可能已经有新的根接上了）。
+    teardown.onTeardown { [market, quotes, sectorFeed, grace] in
+      AppLifecycle.shared.unregisterResources(token: feedsToken)
+      AppLifecycle.shared.unregister(hook: viewportHook)
+      AppLifecycle.shared.unregister(hook: reviewHook)
+      // `MemoryWarningRelay` 那条不撤：它登记的是 `[weak market]`，模型一释放就成了
+      // 空操作；按 id 撤反而可能把新根刚登记的那份摘掉。
+      grace.end()          // 系统那份后台额度必须还回去
+      market.stop()        // 事件流、重连、OI 轮询
+      quotes.shutdown()    // 列表那条 socket，不走 25 秒宽限：没有「回来」了
+      sectorFeed.setForeground(false)
     }
   }
 

@@ -20,7 +20,10 @@ enum LaunchPrewarm {
   static func run() {
     guard !started else { return }
     started = true
+    // 测试模式下不热身（UI 用例不该为两笔无认证预热等网络）。Release 包里没有这回事。
+    #if DEBUG
     guard ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] != "1" else { return }
+    #endif
     // 这儿原来是 `PrefsDecodeCache.load(from: UserDefaults.standard)`——解整份设置只为
     // 取两个域名，而且解错了柜子：设置档案早搬进账号目录的 prefs.json，这一读永远读到
     // 出厂域名，改过域名的人热的是一台他不会连的机器。现在读本机镜像（`LaunchHostMirror`），

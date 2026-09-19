@@ -574,7 +574,7 @@ mod tests {
   use tower::ServiceExt;
   let secrets=Arc::new(crate::crypto::Secrets{pepper:vec![31;32],encryption:[43;32]});
   let dummy_hash=Arc::new(secrets.hash_password("dummy123456").unwrap());
-  let app=crate::router(AppState{pool:pool.clone(),secrets,dummy_hash,mail_enabled:false});
+  let app=crate::router(AppState{pool:pool.clone(),secrets,dummy_hash});
   let reply=app.oneshot(Request::builder().uri("/v1/market/sector-history").body(Body::empty()).unwrap()).await.unwrap();
   assert_eq!(reply.status(),StatusCode::OK);
   assert_eq!(reply.headers()[header::CACHE_CONTROL],"public, max-age=3600");

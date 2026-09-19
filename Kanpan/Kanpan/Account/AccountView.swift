@@ -101,8 +101,28 @@ struct AccountView: View {
         .background(theme.raised2, in: RoundedRectangle(cornerRadius: 10))
     }
   }
+  /// 「登录已失效」那一条。
+  ///
+  /// 服务端明确拒过这条会话之后，客户端就不再重试了（再试也是同一堵墙），同步会一直
+  /// 停着。不摆这条的话用户在账号页上看到的是一个永远「同步失败」、点什么都没用的页面。
+  /// 文案要说清楚**本机数据没丢**：云端只是同步通道，掉线不等于退登。
+  @ViewBuilder private var expired: some View {
+    if feature.needsReauthentication {
+      Section {
+        VStack(alignment: .leading, spacing: 8) {
+          Text("登录已失效").foregroundStyle(theme.down)
+          Text("同步暂停了，本机的自选、画线、复盘都还在。重新登录就接着同步。")
+            .font(.footnote).foregroundStyle(theme.ink3)
+          Button("重新登录") { feature.reauthenticate() }
+            .frame(minHeight: 44).accessibilityIdentifier("account.reauthenticate")
+        }.padding(.vertical, 4)
+      }
+      .listRowBackground(theme.raised)
+    }
+  }
   private var account: some View {
     List {
+      expired
       Section { LabeledContent("用户名", value: feature.user?.email ?? "") }
         .listRowBackground(theme.raised)
       Section {
@@ -120,6 +140,7 @@ struct AccountView: View {
   }
   private var sync: some View {
     List {
+      expired
       Section {
         Toggle("自动同步", isOn: Binding(get: { feature.autoSync }, set: { feature.onAutoSync?($0) }))
         LabeledContent("上次同步") { if let last = feature.lastSync { Text(last, style: .relative) } else { Text("尚未同步") } }

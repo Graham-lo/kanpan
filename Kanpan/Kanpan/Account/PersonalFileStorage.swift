@@ -7,8 +7,16 @@ final class PersonalFileStorage: PrefsStorage, SymbolPrefsStorage, SearchHistory
   private let lock = NSLock()
   private var failed: String?
   var error: String? { lock.lock(); defer { lock.unlock() }; return failed }
+  /// 这份档案是不是落在**测试专用的那棵子树**里（`accounts/tests/<uuid>/…`）。
+  ///
+  /// `AppAccountBridge.init` 只有在 `KANPAN_TEST_PROFILE=1` 且拿到一个合法 UUID 时
+  /// 才会把根换到 `accounts/tests/<uuid>`，所以这条路径本身就是「隔离上下文成套成立」
+  /// 的凭证。唯一的用处是给 UI 测试的自选种子当闸（`SymbolPrefsStore.testSeed`）：
+  /// 挂在真账号目录上的这份档案永远答 `false`，种子顶不掉用户真实的自选。
+  let isIsolatedForTests: Bool
   init(directory: URL) throws {
     self.directory = directory
+    self.isIsolatedForTests = directory.path.contains("/kanpan/accounts/tests/")
     for name in ["prefs.json", "symbols.json"] {
       let url = directory.appendingPathComponent(name)
       if FileManager.default.fileExists(atPath: url.path) {

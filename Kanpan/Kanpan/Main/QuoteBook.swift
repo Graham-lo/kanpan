@@ -64,9 +64,21 @@ final class QuoteBook {
   /// 攒着等一起发的首帧行。见 `publish(_:)`。
   private var coalesced: [String: Ticker] = [:]
   private var coalesceFlush: Task<Void, Never>?
+  /// `coalesced` 里这批攒于哪一代。见 `batchEpoch`。
+  private var coalescedEpoch = 0
   /// 稳态合批的缓冲：按品种覆盖，所以攒多久都只发最新值。见 `emit(_:)`。
   private var steady: [String: Ticker] = [:]
   private var steadyFlush: Task<Void, Never>?
+  /// `steady` 里这批攒于哪一代。见 `batchEpoch`。
+  private var steadyEpoch = 0
+  /// 合批缓冲的「这一代是谁的」。换人（`retargetProfile()`）、换上游
+  /// （`configure(...)` 里 `changedSource`）、清空重连（`restartStream(clearing:)`）
+  /// 各自把它 +1。
+  ///
+  /// 两个缓冲原来不随这三件事一起清：换号那一刻攒在 `coalesced` 里的，是**上一个人**
+  /// 自选表里的行；换上游那一刻攒在 `steady` 里的，是上一家交易所的价格。
+  /// 它们照样会被那个已经排上队的 flush 任务发出去，于是新表上先闪一批不属于这里的行。
+  private var batchEpoch = 0
   private var lastEmit = Date.distantPast
   /// 下一次落盘不晚于这个时刻。`distantFuture` 表示当前没有排队的写。
   private var persistDeadline = Date.distantFuture
@@ -181,6 +193,8 @@ final class QuoteBook {
     persistedSymbols.removeAll()
     persistedOpens.removeAll(); persistedBoundary = nil
     guard switching else { return }
+    // 攒着的两批是上一个人的行，跟着 `raw` 一起丢——留着就会在新表上闪一下。
+    discardBatches()
     raw.removeAll(keepingCapacity: true); receivedAt.removeAll(keepingCapacity: true)
     everPublished.removeAll(keepingCapacity: true)
     opens.removeAll(); provisionalOpens.removeAll()
@@ -270,7 +284,10 @@ final class QuoteBook {
       if changedSource { opens.removeAll(); provisionalOpens.removeAll() }
       for symbol in Array(quoteJobs.keys) where symbol != chartSymbol { quoteJobs.removeValue(forKey: symbol)?.cancel() }
       quoteQueue.removeAll { $0 != chartSymbol }
-      flushCoalesced()
+      // 换镜像只是换台机器取同一家的数据，攒着的照发；换上游则整代作废
+      // （`needsConnection` 为假时不会走到 `restartStream(clearing:)`，
+      // 这儿不丢就真没人丢了）。
+      if changedSource { discardBatches() } else { flushCoalesced() }
       historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll(); historyRequested.removeAll()
     }
     self.basis = basis
@@ -668,11 +685,13 @@ final class QuoteBook {
     }
     if !immediate.isEmpty { emit(immediate) }
     guard !held.isEmpty else { return }
+    if coalescedEpoch != batchEpoch { coalesced.removeAll(keepingCapacity: true); coalescedEpoch = batchEpoch }
     for ticker in held { coalesced[ticker.symbol] = ticker }
     guard coalesceFlush == nil else { return }
+    let epoch = batchEpoch
     coalesceFlush = Task { [weak self] in
       try? await Task.sleep(nanoseconds: UInt64(Self.coalesceMaxSeconds * 1_000_000_000))
-      guard let self, !Task.isCancelled else { return }
+      guard let self, !Task.isCancelled, epoch == self.batchEpoch else { return }
       self.flushCoalesced()
     }
   }
@@ -687,6 +706,7 @@ final class QuoteBook {
   /// 前沿先发：第一笔立刻出去，不给「点进列表先愣一下」的机会；之后落在窗口里的
   /// 才攒到窗口末尾一起发。
   private func emit(_ batch: [Ticker]) {
+    if steadyEpoch != batchEpoch { steady.removeAll(keepingCapacity: true); steadyEpoch = batchEpoch }
     for ticker in batch {
       everPublished.insert(ticker.symbol)
       steady[ticker.symbol] = ticker
@@ -701,19 +721,40 @@ final class QuoteBook {
     let wait = window - Date().timeIntervalSince(lastEmit)
     guard wait > 0 else { flushSteady(); return }
     guard steadyFlush == nil else { return }
+    let epoch = batchEpoch
     steadyFlush = Task { [weak self] in
       try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
-      guard let self, !Task.isCancelled else { return }
+      guard let self, !Task.isCancelled, epoch == self.batchEpoch else { return }
       self.steadyFlush = nil
       self.flushSteady()
     }
   }
 
+  /// 把攒着的两批整代作废：任务停掉、缓冲清掉、代号 +1。
+  ///
+  /// 单靠 `cancel()` 不够——真正危险的不是那两个任务，而是**缓冲里的内容**：
+  /// 换号 / 换上游之后随便谁再触发一次 flush，上一代的行照样出得去。
+  private func discardBatches() {
+    coalesceFlush?.cancel(); coalesceFlush = nil
+    steadyFlush?.cancel(); steadyFlush = nil
+    coalesced.removeAll(keepingCapacity: true)
+    steady.removeAll(keepingCapacity: true)
+    batchEpoch &+= 1
+  }
+
+  /// 两个合批缓冲里还攒着、没发出去的行数。给用例看「换号那一刻它们有没有跟着丢」。
+  var pendingBatchRows: Int { coalesced.count + steady.count }
+
   private func flushSteady() {
     steadyFlush?.cancel(); steadyFlush = nil
+    // 攒的时候还是上一代：一行都不发。
+    guard steadyEpoch == batchEpoch else { steady.removeAll(keepingCapacity: true); return }
     guard !steady.isEmpty else { return }
-    let batch = Array(steady.values)
+    // 盘上已经没有的品种不发：它要么被换号清掉了，要么已经不在当前范围里，
+    // 发出去就是一行没人认领的价格。
+    let batch = steady.values.filter { raw[$0.symbol] != nil }
     steady.removeAll(keepingCapacity: true)
+    guard !batch.isEmpty else { return }
     lastEmit = Date()
     onUpdate?(batch.map(presented))
   }
@@ -722,9 +763,11 @@ final class QuoteBook {
   /// 哪个先到算哪个，慢的那几行不会把整屏一起拖住。
   private func flushCoalesced() {
     coalesceFlush?.cancel(); coalesceFlush = nil
+    guard coalescedEpoch == batchEpoch else { coalesced.removeAll(keepingCapacity: true); return }
     guard !coalesced.isEmpty else { return }
-    let batch = Array(coalesced.values)
+    let batch = coalesced.values.filter { raw[$0.symbol] != nil }
     coalesced.removeAll(keepingCapacity: true)
+    guard !batch.isEmpty else { return }
     emit(batch)
   }
 
@@ -780,6 +823,10 @@ final class QuoteBook {
   /// `clearing` 只在换交易所时为真。断线重连不清价：`latestReceived` 这类
   /// 跨连接不能延用的顺序状态照清，显示值留着，第一帧到了自然覆盖。
   private func restartStream(clearing: Bool = false) {
+    // 清空重连（换交易所）：先把合批缓冲整代作废，再往下走。
+    // 顺序要紧——下面的 `cancelQuotes()` 会 `flushCoalesced()`，那一步正是把
+    // 上一家交易所攒着的行发出去的地方。
+    if clearing { discardBatches() }
     stopStream(); cancelQuotes(); resetBaselineRequests()
     historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
     batchJob?.cancel(); batchJob = nil
@@ -869,5 +916,18 @@ final class QuoteBook {
     pump?.cancel(); pump = nil
     let old = socket; socket = nil; subscribedStreams = []
     Task { await old?.stop() }
+  }
+
+  /// 宿主销毁：立刻放连接，不走那 25 秒宽限。
+  ///
+  /// 宽限是给「切出去一下就回来」留的；根都没了就没有「回来」这回事，
+  /// 再留着 socket 只是在没有界面的情况下继续收帧。
+  func shutdown() {
+    foreground = false
+    visible = false
+    favorites = []
+    teardown()   // 它自己会落一次盘
+    discardBatches()
+    onUpdate = nil; onReset = nil; onScopeChange = nil; onHistory = nil
   }
 }

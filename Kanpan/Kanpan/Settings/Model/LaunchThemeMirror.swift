@@ -15,13 +15,24 @@ enum LaunchMirror {
   /// 的任务里可见，写者各写各的。生产路径上它永远是 nil，行为一个字没变。
   @TaskLocal static var override: UserDefaults?
 
+  /// 测试模式但**没给**有效 UUID 时共用的那一格。
+  ///
+  /// 以前这种情况回的是 `.standard`：跑一次 UI 用例就把这台机器（包括真机）上
+  /// 「冷启动第一帧的皮肤」给改了。镜像本身是可再生的小东西，但没有任何理由让
+  /// 测试去写用户那一格。名字是固定的，所以同一条用例里反复冷启动照样读得回来
+  /// ——这正是启动镜像要验的东西。
+  private static let sharedTestSuite = "kanpan.tests.shared"
+
   static var defaults: UserDefaults {
     if let override { return override }
+    #if DEBUG
     let env = ProcessInfo.processInfo.environment
-    if env["KANPAN_TEST_PROFILE"] == "1", let profile = env["KANPAN_PERSISTENCE_PROFILE"],
-       UUID(uuidString: profile) != nil, let suite = UserDefaults(suiteName: "kanpan.tests." + profile) {
-      return suite
+    if env["KANPAN_TEST_PROFILE"] == "1" {
+      let profile = env["KANPAN_PERSISTENCE_PROFILE"].flatMap { UUID(uuidString: $0)?.uuidString }
+      let name = profile.map { "kanpan.tests." + $0 } ?? sharedTestSuite
+      if let suite = UserDefaults(suiteName: name) { return suite }
     }
+    #endif
     return .standard
   }
 }
