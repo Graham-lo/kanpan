@@ -17,7 +17,7 @@ struct RESTTests {
     #expect(batch[0].symbol == "SNDKUSDT" && batch[0].last == 100.25 && batch[0].changePercent == -2.3)
   }
 
-  @Test("USDT TradFi全保留，USD1、普通USDC、交割与停牌排除；旧目录即时刷新")
+  @Test("USDT TradFi全保留，USD1、普通USDC、交割排除；停牌的行留在表里带下架标记；旧目录即时刷新")
   func tradFiAndOldCatalog() async throws {
     let names = ["SNDKUSDT", "MUUSDT", "SKHYUSDT", "SKHYNIXUSDT", "FUTUREUSDT", "STOPUSDT", "XUSDC", "SPCXUSD1", "USDCUSDT"]
     let rows: [[String: Any]] = names.enumerated().map { index, symbol in
@@ -27,8 +27,13 @@ struct RESTTests {
        "status": index == 5 ? "SETTLING" : "TRADING", "filters": []]
     }
     let body = try JSONSerialization.data(withJSONObject: ["symbols": rows])
-    #expect(BinanceREST.parseExchangeInfo(body).map(\.symbol) == Array(names.prefix(4)).sorted())
-    #expect(BinanceREST.parseExchangeInfo(body).first { $0.symbol == "SPCXUSD1" } == nil)
+    // 停牌那一行（STOPUSDT）现在**留在表里**，带 `.delisted`（审查 B-06）：
+    // 扔掉它等于把「已下架」和「根本不存在」压成同一件事。
+    let parsed = try BinanceREST.parseExchangeInfo(body)
+    #expect(parsed.map(\.symbol) == (Array(names.prefix(4)) + ["STOPUSDT"]).sorted())
+    #expect(parsed.filter { $0.status.hasLivePrice }.map(\.symbol) == Array(names.prefix(4)).sorted())
+    #expect(parsed.first { $0.symbol == "STOPUSDT" }?.status == .delisted)
+    #expect(parsed.first { $0.symbol == "SPCXUSD1" } == nil)
     let server = FakeServer { _ in HTTPReply(status: 200, body: body) }
     let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("catalog-\(UUID())")
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -37,16 +42,21 @@ struct RESTTests {
       SymbolInfo(symbol: "BTCUSDT", base: "BTC", pricePrecision: 2, tickSize: 0.1)]))
     try JSONSerialization.data(withJSONObject: ["at": 1000, "list": oldList]).write(to: paths.exchangeInfo)
     let catalog = SymbolCatalog(rest: BinanceREST(transport: FakeTransport(server), pacer: StepPacer()), paths: paths)
-    #expect(await catalog.all(now: 1100).count == 4)
-    #expect(await catalog.all(now: 1200).count == 4)
+    #expect(await catalog.all(now: 1100).count == 5)
+    #expect(await catalog.all(now: 1200).count == 5)
     #expect(await server.urls().count == 1)
   }
 
-  @Test("当前全部717个产品品种进入独立分类模块，保留细分元数据")
-  func completeCatalogClassification() {
-    let list = BinanceREST.parseExchangeInfo(Fixture.data("catalog-classification-2026-09-15.json"))
-    #expect(list.count == 717)
-    let classified = list.map(SymbolClassifier.classify)
+  @Test("当前全部717个产品品种进入独立分类模块，保留细分元数据；停牌与待开盘的行带状态留着")
+  func completeCatalogClassification() throws {
+    let list = try BinanceREST.parseExchangeInfo(Fixture.data("catalog-classification-2026-09-15.json"))
+    // 全表 847 行：717 在交易、129 已停止交易、1 还没开盘（审查 B-06 起不再丢弃后两类）。
+    #expect(list.count == 847)
+    #expect(list.filter { $0.status == .delisted }.count == 129)
+    #expect(list.filter { $0.status == .pending }.count == 1)
+    let trading = list.filter { $0.status.hasLivePrice }
+    #expect(trading.count == 717)
+    let classified = trading.map(SymbolClassifier.classify)
     #expect(classified.filter { $0.asset == .crypto }.count == 525)
     #expect(classified.filter { $0.asset == .equity }.count == 180)
     #expect(classified.filter { $0.asset == .preciousMetal }.count == 4)
@@ -54,16 +64,19 @@ struct RESTTests {
     #expect(classified.filter { $0.asset == .index }.count == 2)
     #expect(classified.filter { $0.asset == .preMarket }.count == 2)
     #expect(classified.filter { $0.source == .unknown }.isEmpty)
-    #expect(list.allSatisfy { $0.underlyingSubTypes != nil && $0.contractType != nil })
+    #expect(trading.allSatisfy { $0.underlyingSubTypes != nil && $0.contractType != nil })
   }
 
   // ---------------------------------------------------------------- A2.1
 
   @Test("exchangeInfo 只留 USDT 永续，tickSize 解析正确")
   func exchangeInfo() throws {
-    let list = BinanceREST.parseExchangeInfo(Fixture.data("exchangeInfo-sample.json"))
-    // 样本里塞了 USDC 永续和 SETTLING 的负样本，都得被滤掉。
-    #expect(list.map(\.symbol) == ["1000BONKUSDT", "BTCUSDT", "ETHUSDT", "SOLUSDT"])
+    let list = try BinanceREST.parseExchangeInfo(Fixture.data("exchangeInfo-sample.json"))
+    // 样本里塞了 USDC 永续（滤掉）和 SETTLING 的负样本（留着，带 `.delisted`）。
+    #expect(list.filter { $0.status.hasLivePrice }.map(\.symbol)
+              == ["1000BONKUSDT", "BTCUSDT", "ETHUSDT", "SOLUSDT"])
+    #expect(list.filter { $0.status == .delisted }.map(\.symbol)
+              == ["DEFIUSDT", "MKRUSDT", "OMGUSDT", "WAVESUSDT"])
     let btc = try #require(list.first { $0.symbol == "BTCUSDT" })
     #expect(btc.base == "BTC")
     #expect(btc.quote == "USDT")
@@ -81,7 +94,8 @@ struct RESTTests {
     let server = FakeServer { _ in HTTPReply(status: 200, body: body) }
     let rest = BinanceREST(transport: FakeTransport(server), pacer: StepPacer())
     let list = try await rest.exchangeInfo()
-    #expect(list.count == 4)
+    #expect(list.count == 8)
+    #expect(list.filter { $0.status.hasLivePrice }.count == 4)
     #expect(await server.urls().first?.path == "/fapi/v1/exchangeInfo")
   }
 

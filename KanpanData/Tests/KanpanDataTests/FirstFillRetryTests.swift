@@ -35,6 +35,9 @@ struct FirstFillRetryTests {
       guard url.path.contains("klines") else {
         return json(#"{"symbol":"BTCUSDT","lastPrice":"1","priceChangePercent":"0","highPrice":"1","lowPrice":"1","quoteVolume":"1","closeTime":3000}"#)
       }
+      // 带 startTime 的是补缺（`.connected` 排在首屏之后被处理时派的那一发）：
+      // 它不属于「首屏那几发」，既不该吃掉注定失败的那几次，也不该被当成整屏答。
+      if (url.query ?? "").contains("startTime") { return json("[]") }
       klineCalls += 1
       if klineCalls <= failures { throw error }
       let limit = URLComponents(url: url, resolvingAgainstBaseURL: false)?

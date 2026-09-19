@@ -81,10 +81,14 @@ struct SectorPage: View {
     var selection: SectorSelection
     /// 当前市场、这段窗口上真算得出收益的品种数（去重）。
     var covered: Int
+    /// 上面这些里**报得出成交额**的有几个。只给球场那句读屏文案用，不画到屏上。
+    var volumed: Int
     /// 兜底桶，用来在下钻时还原成员名单。
     var buckets: [SectorFallbackBucket]
     /// 这一屏真正在用的窗口。用户停在 5 日、这个市场却没有历史时它是今日。
     var window: SectorWindow
+    /// 当前这一档在屏上叫什么。和 `window` 同源（`SectorWindowChoice.resolve`）。
+    var windowTitle: String
     /// 「5 日」那一档在这个市场有没有东西可看。没有就连药丸行都不出现。
     var hasD5: Bool
     /// 日线收盘。下钻到品种列表时那一层还要拿它算每一行的 5 日 / 20 日。
@@ -100,7 +104,11 @@ struct SectorPage: View {
     // 就地退回今日，偏好不动。这一问不算池基准，比再聚合一遍便宜得多。
     let hasD5 = SectorAggregator.hasEligible(market: market, quotes: quotes,
                                              window: .d5, history: history)
-    let window: SectorWindow = (preferredWindow == .d5 && hasD5) ? .d5 : .today
+    // 「显示哪一档 + 药丸行在不在 + 那一档叫什么」三样一起定，在
+    // `SectorWindowChoice` 里（纯函数，`Kanpan/Sector` 那个壳包有用例盯着，
+    // 复核项 7）。原来这儿只算窗口，名字在 `windowBar` 里另写一遍。
+    let choice = SectorWindowChoice.resolve(preferred: preferredWindow, hasD5: hasD5)
+    let window = choice.window
     let stats = SectorAggregator.stats(market: market, quotes: quotes, fallbackBuckets: buckets,
                                        window: window, history: history)
     // N/M 按市场取各自的默认档（加密 5+3、美股 3+2）。上一次的尺子传进去做迟滞——
@@ -122,8 +130,13 @@ struct SectorPage: View {
     }
     for def in SectorCatalog.sectors(market) { cover(def.members) }
     for bucket in buckets { cover(bucket.members) }
-    return Snapshot(stats: stats, selection: selection, covered: seen.count, buckets: buckets,
-                    window: window, hasD5: hasD5, history: history)
+    let volumed = seen.reduce(into: 0) { n, base in
+      if quotes[base]?.quoteVolume.isFinite == true { n += 1 }
+    }
+    return Snapshot(stats: stats, selection: selection, covered: seen.count, volumed: volumed,
+                    buckets: buckets,
+                    window: window, windowTitle: choice.title,
+                    hasD5: choice.showsBar, history: history)
   }
 
   var body: some View {
@@ -177,10 +190,50 @@ struct SectorPage: View {
     VStack(spacing: 0) {
       header(snap)
       if snap.hasD5 { windowBar(snap) }
-      SectorBubbleField(selection: snap.selection, knobs: knobs, redUp: redUp,
-                        onPick: { push(.list($0.stat.id)) })
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      if feed.showsEmptyState {
+        emptyState
+      } else if feed.quotes.isEmpty {
+        // 第一趟还在路上：整块留白，不闪那句「暂无行情」，也不写「加载中」
+        // （复核项 2 / `kanpan-no-engineering-status-fields`）。
+        Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        SectorBubbleField(selection: snap.selection, knobs: knobs, redUp: redUp,
+                          onPick: { push(.list($0.stat.id)) })
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          // 球场整个是一块 Canvas，底下没有可及的叶子。给它一个 id 和一句
+          // 「几颗球 · 多少个品种报得出成交额」，读屏念得出来，UI 用例也拿它当准星
+          // （`SectorRouteUITests` 靠它证明网关那条线路上这一页真有全市场行情）。
+          .accessibilityElement()
+          .accessibilityLabel("板块气泡")
+          .accessibilityValue("\(snap.selection.picks.count) 个板块 · \(snap.volumed) 个品种有成交额")
+          .accessibilityIdentifier("sector.bubbles")
+      }
     }
+  }
+
+  /// 一颗球都没有的时候。
+  ///
+  /// 以前这儿是一张空球场：底还在、统计行写着「0 / 0 板块 · 0 品种」，但中间那块
+  /// 什么都没有，用户看不出是在加载、还是这一页坏了、还是他该做点什么。现在给一句
+  /// 中文和一个可以点的动作，就这两行——不说「网络异常」、不说「数据截至」、
+  /// 不报线路状态（`kanpan-no-engineering-status-fields`），点一下就重取一趟。
+  private var emptyState: some View {
+    Button { feed.retry() } label: {
+      VStack(spacing: 7) {
+        Text("暂无行情")
+          .font(skin.serif(17)).tracking(0.85)
+          .foregroundStyle(theme.ink2)
+        Text("点此重试")
+          .font(.system(size: 11.5)).tracking(0.23)
+          .foregroundStyle(theme.ink3)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("暂无行情，点此重试")
+    .accessibilityIdentifier("sector.empty")
   }
 
   /// 顶栏一行：标题 + 市场硬切换 +「…」，统计行贴在标题右边。
@@ -217,18 +270,22 @@ struct SectorPage: View {
   /// 那两颗，整页只有这一种药丸。
   private func windowBar(_ snap: Snapshot) -> some View {
     HStack(spacing: 7) {
-      windowChip(.today, "板块明星", on: snap.window == .today)
-      windowChip(.d5, "潜力明星", on: snap.window == .d5)
+      windowChip(.today, on: snap.window == .today)
+      windowChip(.d5, on: snap.window == .d5)
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 20).padding(.top, 8)
     .accessibilityElement(children: .contain)
+    // 读屏上这一行念的就是当下那一档，名字来自定这一档的那个函数本身，
+    // 不在页面上另存一份（复核项 4）。
+    .accessibilityValue(snap.windowTitle)
     .accessibilityIdentifier("sector.window")
   }
 
-  private func windowChip(_ value: SectorWindow, _ title: String, on: Bool) -> some View {
+  /// 药丸上的名字只有 `SectorWindowChoice.title` 一个来源——页面这边一个字面量都不留。
+  private func windowChip(_ value: SectorWindow, on: Bool) -> some View {
     Button { store.update { $0.sectorWindow = value } } label: {
-      Text(title).font(.system(size: 11.5)).tracking(0.23)
+      Text(SectorWindowChoice.title(value)).font(.system(size: 11.5)).tracking(0.23)
         .foregroundStyle(on ? theme.ink : theme.ink3)
         .padding(.horizontal, 10).frame(height: 25)
         .background {
@@ -237,7 +294,7 @@ struct SectorPage: View {
         }
         .contentShape(Capsule())
     }.buttonStyle(.plain)
-      .accessibilityLabel(title)
+      .accessibilityLabel(SectorWindowChoice.title(value))
       .accessibilityAddTraits(on ? .isSelected : [])
       .accessibilityIdentifier("sector.window." + value.rawValue)
   }
@@ -287,7 +344,8 @@ struct SectorPage: View {
         : nil
       SectorSymbolList(stat: stat, members: members, quotes: feed.quotes,
                        window: snap.window, history: snap.history, medianD20: d20,
-                       symbolForBase: symbolForBase, store: store,
+                       symbolForBase: symbolForBase,
+                       decimalsForBase: { feed.priceDecimals(forBase: $0) }, store: store,
                        onBack: pop, onPick: onPickSymbol)
     } else {
       Color.clear.onAppear { pop() }
@@ -576,10 +634,4 @@ struct SectorTriangle: Shape {
     path.closeSubpath()
     return path
   }
-}
-
-/// `+1.23%` / `-0.45%`，两位小数带符号。
-func sectorPctText(_ value: Double) -> String {
-  guard value.isFinite else { return "—" }
-  return (value >= 0 ? "+" : "") + toFixed(value, 2) + "%"
 }

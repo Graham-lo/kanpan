@@ -6,7 +6,8 @@ public struct SectorQuote: Sendable, Equatable {
   public let base: String
   /// 24h 涨跌幅，百分数（-3.42 就是跌 3.42%），不是小数。
   public let pct: Double
-  /// 24h 成交额（计价币）。
+  /// 24h 成交额（计价币）。**拿不到就是 NaN**，不是 0——0 是「真的零成交」，
+  /// 而缺数不许冒充它（审查复核项 1）。加总、排序、挑合约都各自把非有限值排除。
   public let quoteVolume: Double
   public let price: Double
   public init(base: String, pct: Double, quoteVolume: Double, price: Double) {
@@ -249,7 +250,13 @@ public enum SectorQuotePreference {
   /// 新来的这张是不是比手上那张更该留下。
   public static func prefers(rank: Int, volume: Double,
                              over other: (rank: Int, volume: Double)) -> Bool {
-    rank != other.rank ? rank < other.rank : volume > other.volume
+    guard rank == other.rank else { return rank < other.rank }
+    // 缺失的成交额一律算最低档。NaN 参与 `>` 时两边都是假，于是先到的那张
+    // 「没有成交额」的合约永远顶不掉、也永远不被真有成交额的那张顶掉——
+    // 挑哪张合约就成了「谁先到」（审查复核项 1）。
+    let mine = volume.isFinite ? volume : -.infinity
+    let theirs = other.volume.isFinite ? other.volume : -.infinity
+    return mine > theirs
   }
 }
 
@@ -420,7 +427,11 @@ public enum SectorAggregator {
     var bases: [String] = []
     /// 和 `bases` 一一对应的窗口收益，百分数。
     var returns: [Double] = []
-    var volumes: [Double] = []
+    /// 有成交额的那几个成员加总起来是多少。一个都没有时是 nil。
+    ///
+    /// 这儿只留和、不留数组（复核项 5）：缺成交额的成员根本不进来，所以它跟
+    /// `bases` / `returns` 既不同序也不等长，留成数组迟早会有人按下标去对齐。
+    var volumeSum: Double?
     /// 分类表里登记的成员数（按 base 去重后）。
     var staticCount = 0
     /// 有行情的成员数 `n_s`。5 日 / 20 日的覆盖率就是拿它当分母。
@@ -433,7 +444,6 @@ public enum SectorAggregator {
     var seen = Set<String>()
     set.bases.reserveCapacity(members.count)
     set.returns.reserveCapacity(members.count)
-    set.volumes.reserveCapacity(members.count)
     for raw in members {
       let base = raw.uppercased()
       guard seen.insert(base).inserted else { continue }
@@ -443,7 +453,12 @@ public enum SectorAggregator {
       guard let r = windowReturn(q, window: window, closes: history.closes[base]) else { continue }
       set.bases.append(base)
       set.returns.append(r)
-      set.volumes.append(q.quoteVolume.isFinite ? q.quoteVolume : 0)
+      // 成交额缺失就不进这个数组：编成 0 等于替交易所宣布「这个成员零成交」，
+      // 板块成交额的加总会被它稀释成一个偏小的真数（审查复核项 1）。
+      // 一个成员都没有成交额时 `quoteVolume` 是 NaN，界面照缺数显示。
+      if q.quoteVolume.isFinite, q.quoteVolume >= 0 {
+        set.volumeSum = (set.volumeSum ?? 0) + q.quoteVolume
+      }
     }
     return set
   }
@@ -478,7 +493,8 @@ public enum SectorAggregator {
     return SectorStat(id: id, name: name, market: market,
                       pct: median(rets),
                       memberCount: rets.count, staticCount: set.staticCount,
-                      quoteVolume: set.volumes.reduce(0, +), isFallback: isFallback,
+                      quoteVolume: set.volumeSum ?? .nan,
+                      isFallback: isFallback,
                       breadth: Double(outperform) / Double(rets.count),
                       upCount: up, frontier: frontier.map(\.base),
                       jackknife: jackknife(rets),

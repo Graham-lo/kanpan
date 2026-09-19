@@ -12,8 +12,10 @@
 | `service.env` | `KANPAN_PASSWORD_PEPPER`、`KANPAN_ENCRYPTION_KEY`、`KANPAN_DATABASE_URL` | 库恢复出来了，但所有人都登不回来，而且**一个错都不报**——只会被告知「用户名或密码不对」 |
 | `database.env` | `kanpan_admin` 的口令 | 连不上自己的库 |
 
-`ops/install.py` 已经在 env 缺失而库里还有账号时拒绝安装，就是为了拦住「拿转储单独恢复」
-这条死路。下面两条链路把这三件当作**一组**带走：
+三件里只有 `service.env` 是**丢了就真的补不回来**的：`database.env` 里只有数据库超级用户的
+口令，它不参与任何加密，`ops/install.py` 会自己补一把新的（见第三节第 0 步）。所以真正要
+命的组合是「有转储、没 `service.env`」，`ops/install.py` 已经在 env 缺失而库里还有账号时
+拒绝安装，就是为了拦住这条死路。下面两条链路把这三件当作**一组**带走：
 
 - **`ops/offsite-push.sh`** — 主服务器 00:20 推到备用服务器 `96.44.162.222` 的
   `/var/backups/kanpan-offsite/<UTC 时间戳>/`，留 30 份。主服务器自己出事时用它。
@@ -215,16 +217,36 @@ ls -1 ~/kanpan-backups/ | tail -5
 「env 缺失而库里还有账号就拒绝安装」的告警说的就是这件事：pepper 对不上时没有任何报错，
 只有真去登一次才知道这份备份是不是活的。
 
+**顺序只有一种：先把转储灌回来，再跑 migrations。** 反过来——让 `install.py` 先把 schema
+建全、再往上灌转储——只有两种结局：`pg_restore --single-transaction` 撞上已经存在的表，整趟
+回滚；或者没开 `--exit-on-error` 时把两份 schema 掺在一起，留下一个谁也说不清的库。而灌完
+不跑 migrations 也一样错：上个月的转储配这个月的二进制，第一次写就撞在缺掉的列上。
+下面五步就是这个顺序，第 2 步只借 `install.py` 把容器和角色建出来，真正算数的那次 migrate
+在第 4 步、也就是灌完之后。
+
 ### 0. 先看清 `ops/install.py` 要什么
+
+它认四种起手状态，差别全在密钥上：
+
+| `/etc/kanpan-api/` 里有什么 | 它怎么做 |
+| --- | --- |
+| `service.env` + `database.env` 都在 | 全读，一把新密钥都不生成。恢复演练走的是这一行 |
+| `service.env` 在、`database.env` 不在 | 只现生成一把新的 `kanpan_admin` 口令写回 `database.env`（目录 700 / 文件 600），并在 migrate **之前**用容器内的 psql `ALTER ROLE kanpan_admin PASSWORD` 把角色改成这一把；`KANPAN_PASSWORD_PEPPER` 与 `KANPAN_ENCRYPTION_KEY` 一个字都不动。所以只带回来半套 env 也救得回来 |
+| `service.env` 不在、库里还有账号 | **中止**，并告诉你去把原来那份 env 找回来 |
+| `service.env` 不在、库也是空的 | 全新安装，三把钥匙都是新的 |
+
+（第二行为什么非得 `ALTER ROLE`：`POSTGRES_PASSWORD` 只在 initdb 那一次生效，卷已经存在时
+容器里那个角色的口令还是旧的，而 migrate 是走 `127.0.0.1:55434` 的 TCP、要口令；容器内的
+psql 走 Unix socket、认 trust，不要口令。所以先改角色，再 migrate，顺序不能反。）
 
 它做的事按顺序是：
 
-1. `/etc/kanpan-api/service.env` **存在**时，读里面的 `KANPAN_DATABASE_URL`（取出
-   `kanpan_app` 的口令）和 `database.env` 的 `POSTGRES_PASSWORD`（`kanpan_admin` 的口令）；
-   **不存在**时它才生成新密钥，而只要库里还有账号就会中止。所以 env 必须在跑它之前就位。
+1. 按上表读或补出 `kanpan_app`（来自 `KANPAN_DATABASE_URL`）与 `kanpan_admin`
+   （来自 `database.env`）这两个口令。所以 `service.env` 必须在跑它之前就位。
 2. 没有 `kanpan-postgres` 容器就起一个（`pgvector/pgvector:0.8.2-pg17`，回环 55434，
    卷名 `kanpan-postgres`）。
-3. 建 `kanpan_app` 角色（口令取自 URL），用 `kanpan_admin` 跑
+3. 需要时先 `ALTER ROLE kanpan_admin`（见上表第二行），再建 `kanpan_app` 角色
+   （口令取自 URL），然后用 `kanpan_admin` 跑
    `/opt/kanpan-api/target/release/kanpan-api migrate`，再把四种语句权限授给 `kanpan_app`。
 4. 写 `kanpan-api` / `kanpan-worker` / `kanpan-backup` 的单元文件并 `enable --now`。
 
@@ -246,39 +268,61 @@ scp -r trade-vps-old:/var/backups/kanpan-offsite/<时间戳>/ root@<演练机>:/
 ```sh
 install -d -m 700 /etc/kanpan-api
 install -m 600 /root/restore/service.env  /etc/kanpan-api/service.env
-install -m 600 /root/restore/database.env /etc/kanpan-api/database.env
+install -m 600 /root/restore/database.env /etc/kanpan-api/database.env   # 这一份丢了也行，见第 0 步
 
 cd /opt/kanpan-api
 python3 ops/install.py
+# 它跑完会 `enable --now kanpan-api kanpan-worker kanpan-backup.timer`。三个都要停：
+# 前两个连着下一步要 DROP 的库，timer 则会在演练中途（每天 00:10）给这个半恢复状态的库
+# 打一份转储，那一份会挤进 30 份保留队列，还会被离机链路当成「最新一份」带走。
+systemctl stop kanpan-api kanpan-worker kanpan-backup.timer
+# 正式机上才有这一个（第一节装的）；演练机上没有就不用管。
+systemctl stop kanpan-offsite-push.timer 2>/dev/null || true
 ```
 
-这一趟建容器、建 `kanpan_app` 角色、建空的 schema。`kanpan_app` 必须先存在——转储里带着
-指向它的 `GRANT`，角色不在就恢复不进去。
+这一趟要的只有两样：容器，和 `kanpan_app` 角色——转储里带着指向它的 `GRANT`，角色不在就
+恢复不进去。它顺手建出来的那套空 schema 是垃圾，下一步整个库都会被 `DROP`；这一趟的
+migrate 也不算数，算数的那次在第 4 步。
 
 ### 3. 演练机：把转储灌进去
 
 ```sh
-systemctl stop kanpan-api kanpan-worker
+systemctl stop kanpan-api kanpan-worker      # 上一步已经停过；再确认一次，有连接在就 DROP 不掉
+
+# 要灌的是哪一份，先说清楚再用。`< /root/restore/kanpan-*.dump` 这种写法在目录里有两份
+# 转储时是 ambiguous redirect（sh 直接报错不跑），只有一份时又让人以为自己选过了。
+dump=$(ls -1t /root/restore/kanpan-*.dump | head -n 1)
+ls -l "$dump"
 
 docker exec -i kanpan-postgres psql -U kanpan_admin -d postgres -v ON_ERROR_STOP=1 \
   -c 'DROP DATABASE kanpan WITH (FORCE);' -c 'CREATE DATABASE kanpan OWNER kanpan_admin;'
 
 docker exec -i kanpan-postgres pg_restore -U kanpan_admin -d kanpan \
-  --exit-on-error --single-transaction < /root/restore/kanpan-*.dump
+  --exit-on-error --single-transaction --no-owner < "$dump"
 ```
 
 先 `DROP` 再 `CREATE` 是为了灌进一个干净的库：第 2 步刚 migrate 出来的空表和转储里的表
 会打架，而 `--single-transaction` 要求整趟不出错。转储是 `-Fc`（custom），
 所以只能用 `pg_restore`，不是 `psql`。
 
-### 4. 演练机：再跑一次 install.py，然后起服务
+`--no-owner` 是必须的：转储里每张表都带着 `ALTER ... OWNER TO`，写的是**备份那台机器上**的
+属主名。演练机（或者重建出来的新机器）上那个角色未必叫同一个名字、也未必存在，于是
+`--exit-on-error --single-transaction` 会让整趟回滚，看上去像转储坏了。`--no-owner` 让所有
+对象归执行恢复的 `kanpan_admin`，权限则由第 4 步的 `install.py` 重新授给 `kanpan_app`——
+两边合起来正好是这个库该有的样子。
+
+### 4. 演练机：再跑一次 install.py——**这一趟的 migrate 才是算数的那次**
 
 ```sh
 cd /opt/kanpan-api
-python3 ops/install.py     # 幂等：migrate 空跑，重新把权限授给 kanpan_app
+python3 ops/install.py     # 幂等；migrate 把刚灌进去的库升到当前二进制，并重新把权限授给 kanpan_app
 systemctl start kanpan-api kanpan-worker
 systemctl status kanpan-api --no-pager
 ```
+
+转储是那天的 schema，`/opt/kanpan-api` 里的二进制是今天的。这一趟的 `migrate` 把中间缺的
+那几次迁移补上——所以**不能跳过**，哪怕上一趟已经跑过一次：上一趟跑的是那个已经被 `DROP`
+掉的库。`pg_restore` 只负责把那天的样子放回来，往前走这一段是 migrations 的事。
 
 ### 5. 验收：数据在不在，钥匙对不对
 
@@ -314,19 +358,29 @@ T=<上一步的 accessToken>
 curl -sS -H "authorization: Bearer $T" http://127.0.0.1:8794/v1/sync/bootstrap | head -c 400; echo
 ```
 
-### 6. 收摊
+### 收摊（第 5 步过了之后）
 
 演练机**不要**接进 Caddy、不要对外开端口（`KANPAN_BIND` 本来就只听 `127.0.0.1:8794`），
 也不要让它的 `kanpan-backup.timer` 继续跑，否则会多出一份来路不明的转储：
 
 ```sh
 systemctl disable --now kanpan-backup.timer kanpan-api kanpan-worker
+systemctl disable --now kanpan-offsite-push.timer 2>/dev/null || true
 docker rm -f kanpan-postgres && docker volume rm kanpan-postgres
 shred -u /root/restore/* 2>/dev/null || rm -rf /root/restore
 rm -rf /etc/kanpan-api
 ```
 
 演练机上留着一份 pepper 就是多一个泄漏面。做完就擦干净。
+
+**如果这不是演练、而是真在一台要继续服务的机器上恢复**，那就反过来：别擦任何东西，把第 2
+步停掉的两个 timer 重新起来，否则这台机器从此不再备份、也不再往外推。
+
+```sh
+systemctl enable --now kanpan-backup.timer
+systemctl enable --now kanpan-offsite-push.timer     # 第一节装过才有
+systemctl list-timers 'kanpan-*' --no-pager          # 两条都该列出下一次触发时间
+```
 
 ---
 
@@ -339,6 +393,9 @@ rm -rf /etc/kanpan-api
 | `offsite-push: service.env 里 KANPAN_PASSWORD_PEPPER 是空的` | env 被改坏了 | **先别动**，去 Mac 或备用服务器上最近一份副本里把原值找回来 |
 | `pull.log` 好几天没有新行 | Mac 关着，或者到主服务器的钥匙带口令了 | 第二节第 1 步重验一遍免口令 |
 | 远端 `<时间戳>.part` 目录堆着没转正 | 复验没过或者 ssh 断在收尾那一步 | 看 journal；`.part` 超过 12 小时下一轮会自己清掉，不占保留名额 |
+| `kanpan backup aborted: … needs N KiB (twice the last dump)` | `/var/backups/kanpan` 的剩余空间不够写下一份 | 这是主动停手、**没有**写出半份转储。清掉旧转储或者扩盘，再 `systemctl start kanpan-backup.service` |
+| 本机 `/var/backups/kanpan` 里有 `kanpan-*.dump.part` | 上一次 `pg_dump` 没写完（容器没起来、盘满、机器重启） | 那一份是废的；下一轮开头会扫掉十二小时以上的 `.part`，要立刻重备就 `systemctl start kanpan-backup.service` |
+| `install.py` 打印「database.env 不在，已生成一把新的数据库管理员口令」 | 只带回来半套 env | 正常，不用管：加密用的两把在 `service.env` 里，没被动过 |
 
 两条链路各自独立：一条断了另一条照旧。但**两条都断了不会有人告诉你**——所以上面那两条
 「平时怎么看」的命令值得偶尔手动敲一次，以及每隔一段时间把第三节的恢复演练真的走一遍。

@@ -324,6 +324,9 @@ struct MainScreen: View {
     // 「没真改动就不写」挡住回环，不会你来我往。
     .onChange(of: review.searchScope) { _, value in store.update { $0.reviewSearchScope = value } }
     .onChange(of: prefs.reviewSearchScope) { _, value in review.searchScope = value }
+    // 时区那一档也要跟着改：设置里从「本地」切到「交易所」，复盘本、找相似列表、
+    // 到期轮盘要和 K 线时间轴一起换口径（审查 B-08）。
+    .onChange(of: prefs.timeZone) { _, value in review.timezone = value }
   }
 
   private var marketContent: some View {
@@ -751,8 +754,8 @@ struct MainScreen: View {
           openInterest: market.openInterestDisplay,
           openInterestUnit: market.openInterestUnit,
           totalSupply: market.totalSupply,
-          fundingRate: market.funding?.fundingRate,
-          stale: market.tickerStale)
+          fundingRate: market.displayedFundingRate,
+          stale: !market.priceFresh)
           .modifier(HiddenWhileCrosshairReads(readout: crosshairReadout, context: crosshairContext))
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
@@ -900,6 +903,17 @@ struct MainScreen: View {
     // 「找相似」的范围同理。`ReviewUI` 那个包看不见 `Prefs`，所以在这儿对接两头：
     // 这一句灌初值，下面 `lifecycleContent` 里那两条 `onChange` 管往返（R3-5）。
     review.searchScope = prefs.reviewSearchScope
+    // 复盘本里的时刻与口价（审查 B-07 / B-08，复核项 5）。`ReviewUI` 那个包既看不见
+    // `Prefs` 也看不见品种目录，所以两样都在这儿灌：时刻跟着图表那一档时区
+    // （`prefs.timeZone`，下面 `lifecycleContent` 里有 `onChange` 跟着改），
+    // 小数位问品种表要 `pricePrecision`。占位行的精度是 0（表示「不知道」），
+    // 那就交回 nil，让它按那口价自己猜，别把 0.0000004 写成 `0`。
+    review.timezone = prefs.timeZone
+    let picker = self.picker
+    review.priceDecimals = { symbol in
+      guard let p = picker.info(for: symbol)?.pricePrecision, p > 0 else { return nil }
+      return p
+    }
     review.onOpenChart = { record in
       dismissPanel(); draw.finish()
       replayOrigin = .record(record.id)
@@ -942,17 +956,23 @@ struct MainScreen: View {
   private var reviewHeader: some View {
     VStack(alignment: .leading, spacing: 5) {
       Text("重温 · " + (reviewChart.state?.series.symbol ?? "")).font(.headline)
+      // 时间跟着**这张图自己的时区档**走，和时间轴、十字线、选区标签同一口径（审查 B-08）。
+      // `Text(Date, style:)` 认的是设备时区：图表切到「交易所」之后，这一行和轴上
+      // 写着两个时刻。
       HStack {
-        Text(Date(timeIntervalSince1970: Double(reviewChart.replayTime) / 1000), style: .date)
-        Text(Date(timeIntervalSince1970: Double(reviewChart.replayTime) / 1000), style: .time)
+        Text(fmtFull(ms: Double(reviewChart.replayTime),
+                     offsetMinutes: (reviewChart.state?.timezone ?? prefs.timeZone).offsetMinutes))
         Spacer()
       }.font(.caption.monospacedDigit())
       if let series = reviewChart.state?.series, let open = series.open.last, let high = series.high.last, let low = series.low.last, let close = series.close.last {
+        // 小数位由品种自己说（审查 B-07）：原来按「有效数字 1–7 位」写，
+        // 回放头部的开高低收和顶栏的最新价能是两种写法。
+        let p = reviewChart.state?.decimals ?? market.info.pricePrecision
         HStack(spacing: 10) {
-          Text("开 " + open.formatted(.number.precision(.significantDigits(1...7))))
-          Text("高 " + high.formatted(.number.precision(.significantDigits(1...7))))
-          Text("低 " + low.formatted(.number.precision(.significantDigits(1...7))))
-          Text("收 " + close.formatted(.number.precision(.significantDigits(1...7))))
+          Text("开 " + fmtPrice(open, decimals: p))
+          Text("高 " + fmtPrice(high, decimals: p))
+          Text("低 " + fmtPrice(low, decimals: p))
+          Text("收 " + fmtPrice(close, decimals: p))
         }.font(.caption.monospacedDigit()).lineLimit(1).minimumScaleFactor(0.65)
       }
     }.padding(.horizontal).padding(.vertical, 8)
@@ -1197,6 +1217,12 @@ struct MainScreen: View {
     quotes.onScopeChange = { picker.retainQuotes(for: $0) }
     quotes.onUpdate = { picker.updateQuotes($0) }
     quotes.onHistory = { picker.setHistory($0, $1) }
+    // 交易所不认这个代号：只把它标成下架，自选一行都不删（审查 B-06）。
+    // 两处都标是因为品种页手里握的是目录的一份副本，标了它这一屏才立刻一致。
+    quotes.onSymbolRejected = { symbol in
+      picker.markDelisted(symbol)
+      market.noteSymbolRejected(symbol)
+    }
     quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: market.source)
     // 自选表要赶在 `setChartSymbol` 前面：后者会重算订阅范围，那时候如果自选还是空的，
     // `configure` 刚恢复出来的那批报价就会被裁到只剩图上这一个品种。
@@ -1223,6 +1249,8 @@ struct MainScreen: View {
       market.switchTo(symbol: info.symbol)
     }
     picker.setLoader(market.catalogLoader)
+    // 搜了一个表里没有的代号：那是「用户点名」，允许立刻问一次目录（审查 B-06）。
+    picker.onMissingSymbol = { [market] symbol in await market.lookupMissingSymbol(symbol) }
     market.setOIEnabled(prefs.subs.contains(.oi))
     // Configure the catalog and its source before presenting the favorites list.
     // Otherwise FavoritesView can start its first catalog request against the

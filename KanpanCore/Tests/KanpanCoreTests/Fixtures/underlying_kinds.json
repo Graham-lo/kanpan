@@ -1,0 +1,10 @@
+[
+  {"underlyingType": "COIN",              "kind": "crypto",      "clientAsset": "crypto",    "clientRegion": "unspecified"},
+  {"underlyingType": "EQUITY",            "kind": "equityUS",    "clientAsset": "equity",    "clientRegion": "us"},
+  {"underlyingType": "HK_EQUITY",         "kind": "equityNamed", "clientAsset": "equity",    "clientRegion": "hk"},
+  {"underlyingType": "KR_EQUITY",         "kind": "equityNamed", "clientAsset": "equity",    "clientRegion": "kr"},
+  {"underlyingType": "CN_EQUITY",         "kind": "equityNamed", "clientAsset": "equity",    "clientRegion": "cn"},
+  {"underlyingType": "PREMARKET",         "kind": "preMarket",   "clientAsset": "preMarket", "clientRegion": "unspecified"},
+  {"underlyingType": "FUTURE_ASSET_KIND", "kind": "other",       "clientAsset": "other",     "clientRegion": "unspecified"},
+  {"underlyingType": null,                "kind": "unknown",     "clientAsset": "other",     "clientRegion": "unspecified"}
+]

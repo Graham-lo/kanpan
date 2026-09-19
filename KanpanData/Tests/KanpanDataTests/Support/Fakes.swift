@@ -36,3 +36,24 @@ public func makeSeries(_ symbol: String, _ iv: Interval, count: Int, t0: Int64 =
 }
 
 
+
+// ---------------------------------------------------------------- 稳态
+
+/// 等 feed 把启动期的异步尾巴都跑完：首屏那一发落了地、补缺不在途、缺口不欠着。
+///
+/// 为什么非等不可：WS 的 `.connected` 一旦排在首屏之后才被处理，`MarketFeed` 就会为
+/// 「REST 快照到 WS 连上」之间那一段派一发补缺——生产上那段确实缺，所以这是对的。
+/// 但补缺期间 WS 帧只排进合成器的队列，落地时统一走 `.series`，一条 `.lastBar` 都不发。
+/// 用例要是在这之前就放报文进来、或者开始数补缺请求，量到的就是机器快慢而不是行为。
+///
+/// 调用前先确认 `.connected` 已经被处理过（等一次 `.status(.live)`：WS 连上就紧跟着
+/// 发它，而 feed 处理事件是顺序的），否则这里可能在补缺开始之前就判定稳态。
+@discardableResult
+public func waitForSteadyState(_ feed: MarketFeed, timeout: Double = 15) async -> Bool {
+  // `&&` 的右边是不支持并发的 autoclosure，两个 await 不能串在一句里。
+  await waitUntil(timeout) {
+    if await feed.isFillingForTests { return false }
+    if await feed.isBackfillingForTests { return false }
+    return await feed.pendingGapForTests == 0
+  }
+}

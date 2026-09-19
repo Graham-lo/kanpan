@@ -22,7 +22,37 @@ struct SymbolClassificationTests {
     let data = Data(#"{"symbol":"BTCUSDT","base":"BTC","quote":"USDT","pricePrecision":2,"quantityPrecision":3,"tickSize":0.01}"#.utf8)
     let info = try JSONDecoder().decode(SymbolInfo.self, from: data)
     #expect(info.underlyingType == nil && info.underlyingSubTypes == nil)
-    #expect(SymbolClassifier.classify(info).source == .knownSymbol)
-    #expect(SymbolClassifier.classify(info).asset == .crypto)
+    // 旧盘上的缓存没有 status，解出来当「正常挂牌」，不能因此整张表解不开。
+    #expect(info.status == .tradable)
+  }
+
+  /// B-04：缺 `underlyingType` 不再按写死的代号白名单猜，连 BTC 也不例外。
+  @Test func missingUnderlyingTypeIsNotGuessed() {
+    for base in ["BTC", "ETH", "SOL", "XRP", "DOGE", "AAPL", "NVDA", "SKHYNIX", "NEW"] {
+      let info = SymbolInfo(symbol: base + "USDT", base: base, pricePrecision: 2, tickSize: 0.01)
+      let c = SymbolClassifier.classify(info)
+      #expect(c.asset == .other, "\(base) 缺类型时必须判成 other")
+      #expect(c.source == .unknown)
+    }
+  }
+
+  /// B-04：贵金属是按 ISO 资产代码认的，不算猜，缺类型也保留。
+  @Test func preciousMetalsStayRecognizedWithoutType() {
+    for base in ["XAU", "XAG", "XPT", "XPD"] {
+      let info = SymbolInfo(symbol: base + "USDT", base: base, pricePrecision: 2, tickSize: 0.01)
+      #expect(SymbolClassifier.classify(info).asset == .preciousMetal)
+    }
+  }
+
+  /// B-T12（Swift 半边）：网关合成出来的 OKX 行带上 `underlyingType: "COIN"` 之后，
+  /// 客户端必须判成加密——这一行原来是靠白名单才对的，现在靠字段。
+  @Test func gatewaySyntheticRowWithCoinTypeIsCrypto() {
+    let info = SymbolInfo(symbol: "ADA-USDT-SWAP", base: "ADA", quote: "USDT",
+                          pricePrecision: 4, tickSize: 0.0001,
+                          underlyingType: "COIN", contractType: "PERPETUAL")
+    let c = SymbolClassifier.classify(info)
+    #expect(c.asset == .crypto)
+    #expect(c.source == .exchangeMetadata)
+    #expect(MarketSector.market(info) == "crypto")
   }
 }

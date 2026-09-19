@@ -69,9 +69,10 @@ struct SectorAllSheet: View {
   ///
   /// 有行情成员不到 3 个的板块（`desci` 就一只 BIO）没有「广度」可言
   /// ——一只币的涨跌不是板块强弱。这种少写「跑赢」那一段，不解释为什么。
+  /// 成交额拿不到时同理：那一段整个不写，不排一列「成交额 —」。
   private func subtitle(_ stat: SectorStat) -> String {
     let head = "\(stat.memberCount) 个品种"
-    let tail = " · 成交额 \(fmtVol(stat.quoteVolume))"
+    let tail = sectorVolumeClause(stat.quoteVolume)
     guard stat.memberCount >= SectorAggregator.minEligibleMembers else { return head + tail }
     return head + " · \(stat.outperformCount)/\(stat.memberCount) 跑赢" + tail
   }

@@ -117,14 +117,32 @@ struct RateLimitTests {
 
   @Test("重连退避 1/2/4/…≤30s")
   func backoffSequence() {
-    var b = Backoff()
+    // 名义序列（不抖）：文档和日志对的就是这一串。
     #expect(Backoff.sequence(10) == [1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000, 30000])
-    b.reset()
+    var b = Backoff(jitter: .none)
     #expect(b.peek() == 1000)
     #expect(b.next() == 1000)
     #expect(b.attempt == 1)
     b.reset()
     #expect(b.attempt == 0)
+  }
+
+  /// 抖动是为了别让所有客户端在同一毫秒一起回来把刚缓过来的上游再撞一次（A.2）。
+  @Test("每一档再抖 ±20%，档位与上限不变")
+  func backoffJitter() {
+    #expect(Backoff.sequence(4, jitter: .fixed(1)) == [1200, 2400, 4800, 9600])
+    #expect(Backoff.sequence(4, jitter: .fixed(-1)) == [800, 1600, 3200, 6400])
+    // 上限那一档抖完也不许越过 30 秒。
+    #expect(Backoff.sequence(6, jitter: .fixed(1)).last == 30_000)
+    // 随机源：每一档都落在名义值的 ±20% 之内，而且不会退化成常数。
+    var b = Backoff()
+    var seen: Set<Double> = []
+    for nominal in [1000.0, 2000, 4000, 8000] {
+      let d = b.next()
+      #expect(d >= nominal * 0.8 && d <= nominal * 1.2)
+      seen.insert(d / nominal)
+    }
+    #expect(seen.count > 1)
   }
 
   @Test("60 秒没帧就算断了")

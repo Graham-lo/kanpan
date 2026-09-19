@@ -96,7 +96,9 @@ public enum SectorSelector {
   ///     免得球场每来一批行情就整体呼吸一次。
   public static func select(_ stats: [SectorStat], n: Int, m: Int,
                             previousScale: Double? = nil) -> SectorSelection {
-    let ranked = stats.filter { !$0.isFallback && $0.eligible }
+    // `pct` 非数的行直接不上场（审查 B-T20）：NaN 参与 `>` 比较会让排序谓词不再是严格弱序，
+    // 排出来的名次就没定义了；infinite 还会把面积分母（`scalePct`）拉到无穷，整屏球缩成点。
+    let ranked = stats.filter { !$0.isFallback && $0.eligible && $0.pct.isFinite }
       // 并列按 id 排。不这么钉，两个 pct 相同的板块会在每次刷新里互换位置。
       .sorted { $0.pct == $1.pct ? $0.id < $1.id : $0.pct > $1.pct }
     let count = ranked.count

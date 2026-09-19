@@ -1,6 +1,9 @@
 import os,pathlib,secrets,subprocess,time
 from urllib.parse import urlsplit
 root=pathlib.Path('/etc/kanpan-api');root.mkdir(mode=0o700,exist_ok=True)
+# exist_ok 不会去改一个已经存在的目录的权限，而这个目录里放的是 pepper 和加密密钥：
+# 恢复演练时它常常是手工 mkdir 出来的，按 umask 就成了 755。每次都按回 700。
+root.chmod(0o700)
 envfile=root/'service.env';dbfile=root/'database.env'
 def quiet(*command):
  return subprocess.run(command,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
@@ -24,15 +27,34 @@ if not envfile.exists():
    '新的 KANPAN_ENCRYPTION_KEY 会让已密封的数据永远解不开，而且不会有任何报错。\n'
    '请先把原来那份 service.env（至少是其中的 PEPPER 与 ENCRYPTION_KEY）放回 /etc/kanpan-api/，\n'
    '它和数据库备份是分开保存的两样东西，缺一不可。\n'
-   '确实要从零开始（放弃所有账号）：docker volume rm kanpan-postgres 之后再装。')
- admin=secrets.token_hex(32);password=secrets.token_hex(32)
+   '确实要从零开始（放弃所有账号）：docker volume rm kanpan-postgres 之后再装。\n'
+   '（只丢了 database.env、service.env 还在，是另一回事：那种情况这个脚本会自己补一把'
+   '数据库口令，PEPPER 与 ENCRYPTION_KEY 一个字都不动。）')
+ admin=secrets.token_hex(32);password=secrets.token_hex(32);reset_admin=True
  dbfile.write_text('POSTGRES_USER=kanpan_admin\nPOSTGRES_DB=kanpan\nPOSTGRES_PASSWORD='+admin+'\n');dbfile.chmod(0o600)
  envfile.write_text('KANPAN_DATABASE_URL=postgres://kanpan_app:'+password+'@127.0.0.1:55434/kanpan\nKANPAN_PASSWORD_PEPPER='+secrets.token_hex(32)+'\nKANPAN_ENCRYPTION_KEY='+secrets.token_hex(32)+'\nKANPAN_BIND=127.0.0.1:8794\nRUST_LOG=warn\n');envfile.chmod(0o600)
 else:
  config=dict(line.split('=',1) for line in envfile.read_text().splitlines() if '=' in line)
- database=dict(line.split('=',1) for line in dbfile.read_text().splitlines() if '=' in line)
- admin=database['POSTGRES_PASSWORD'];password=urlsplit(config['KANPAN_DATABASE_URL']).password
+ password=urlsplit(config['KANPAN_DATABASE_URL']).password
  assert password and all(c in '0123456789abcdef' for c in password)
+ if dbfile.exists():
+  database=dict(line.split('=',1) for line in dbfile.read_text().splitlines() if '=' in line)
+  admin=database['POSTGRES_PASSWORD'];reset_admin=False
+ else:
+  # service.env 在、database.env 不在。这是离机恢复最常见的半套状态（两份 env 是分开
+  # 保存的，只带回来一份），以前到这里是一个 FileNotFoundError。
+  #
+  # 这一把补起来是安全的：database.env 里只有 kanpan_admin 这个数据库超级用户的口令，
+  # 它不参与任何加密——换掉它没人会因此登不上。真正不能重生成的两把（拌进 Argon2 的
+  # KANPAN_PASSWORD_PEPPER、密封数据用的 KANPAN_ENCRYPTION_KEY）都在 service.env 里，
+  # 而那一份还在，所以这条分支一个字都不碰它。
+  #
+  # 但只写文件是不够的：POSTGRES_PASSWORD 只在 initdb 那一次生效，卷已经存在时容器里
+  # 那个角色的口令还是旧的，而下面的 migrate 是走 127.0.0.1:55434（TCP，要口令）的。
+  # 所以下面在 migrate 之前，先用容器内的 psql 把角色的口令改成这一把。
+  admin=secrets.token_hex(32);reset_admin=True
+  dbfile.write_text('POSTGRES_USER=kanpan_admin\nPOSTGRES_DB=kanpan\nPOSTGRES_PASSWORD='+admin+'\n');dbfile.chmod(0o600)
+  print('database.env 不在，已生成一把新的数据库管理员口令；service.env 里的 PEPPER 与 ENCRYPTION_KEY 未改动。')
 if subprocess.run(['docker','inspect','kanpan-postgres'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode!=0:
  subprocess.run(['docker','run','-d','--name','kanpan-postgres','--restart','unless-stopped','--memory','512m','--cpus','0.75','--env-file',str(dbfile),'-p','127.0.0.1:55434:5432','-v','kanpan-postgres:/var/lib/postgresql/data','pgvector/pgvector:0.8.2-pg17'],check=True,stdout=subprocess.DEVNULL)
 for _ in range(30):
@@ -41,6 +63,9 @@ for _ in range(30):
 def sql(query):
  p=subprocess.run(['docker','exec','-i','kanpan-postgres','psql','-q','-U','kanpan_admin','-d','kanpan','-v','ON_ERROR_STOP=1'],input=query,text=True,capture_output=True)
  if p.returncode:raise RuntimeError('Database configuration failed (details withheld)')
+# 容器内的 psql 走 Unix socket，认的是 trust，不需要口令——所以这一步在口令还没对上的
+# 时候也做得到，而下一步走 TCP 的 migrate 做不到。顺序不能反。
+if reset_admin:sql(f"ALTER ROLE kanpan_admin PASSWORD '{admin}';")
 sql(f"DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='kanpan_app') THEN CREATE ROLE kanpan_app LOGIN PASSWORD '{password}' NOSUPERUSER NOBYPASSRLS; END IF; END $$;")
 env=dict(os.environ);env['KANPAN_DATABASE_URL']='postgres://kanpan_admin:'+admin+'@127.0.0.1:55434/kanpan'
 subprocess.run(['/opt/kanpan-api/target/release/kanpan-api','migrate'],env=env,check=True)

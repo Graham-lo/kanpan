@@ -174,6 +174,13 @@ final class QuoteBook {
   private var historyRequested: [String: Date] = [:]
   var onHistory: ((String, [Bar]) -> Void)?
   var onUpdate: (([Ticker]) -> Void)?
+  /// 交易所拿这个代号答不出来（400 `-1121 Invalid symbol` / 404）。
+  ///
+  /// 「下架」这件事只有一个判据，就是品种表里的 `SymbolInfo.status`（审查 B-06）；
+  /// 这条回调是把交易所的那句否认**送到目录层**去落成那个判据，不是自己在这儿下结论。
+  /// 限流、地域拒绝、超时一概不算——那些拒的是整条线路，照它判会把整张自选表
+  /// 一次标成下架（判定写在 `SymbolCatalog.rejectsSymbol`）。
+  var onSymbolRejected: ((String) -> Void)?
 
   /// 换人了：报价和开盘价这两份缓存立刻改指向新档案的目录。
   ///
@@ -230,7 +237,8 @@ final class QuoteBook {
     persistedSymbols = Set(values.map(\.symbol))
     let url = paths.quotes
     persistTask?.cancel()
-    persistTask = Task.detached(priority: .utility) { QuoteSnapshot.write(values, to: url) }
+    let log = Self.log
+    persistTask = Task.detached(priority: .utility) { QuoteSnapshot.write(values, to: url, log: log) }
   }
 
   /// 有新报价就记一笔「该存了」，真正写盘按 `persistEverySeconds` 节流。
@@ -642,7 +650,13 @@ final class QuoteBook {
     if let bar = bars?.first, bar.openTime == boundary, bar.open.isFinite, bar.open > 0 { return bar.open }
     guard bars != nil else { return nil }  // 请求本身失败了，不是「这个小时没成交」。
     let previous = try? await rest.klines(symbol: symbol, interval: .h1, limit: 1, endTime: boundary - 1)
-    // 太老的那种是已经下架的品种，拿它的价格当基准只会得到一个荒唐的涨跌幅。
+    // 最后一根成交比边界早过一周，就当「这一档没有可用的基准」：休市最长也就是
+    // 元旦那种连着几天，一周以前的收盘价拿来当今天的开盘价只会得出一个荒唐的涨跌幅。
+    //
+    // 注意这**只**决定涨跌幅要不要留空（显示 `--`），价格照常显示，也不代表这个品种
+    // 下架了——「下架」只由品种表里的 `SymbolInfo.status` 说（审查 B.5）。老注释写的
+    // 「太老的那种是已经下架的品种」把一个显示口径当成了下架判据，那是错的：一个刚
+    // 停牌两天的合约在这儿会被判成有基准，一个只是长期不活跃的 TradFi 反而被判成下架。
     guard let bar = previous?.first, boundary - bar.openTime <= 7 * 86_400_000,
           bar.close.isFinite, bar.close > 0 else { return nil }
     return bar.close
@@ -779,7 +793,11 @@ final class QuoteBook {
     socketHosts.streamFallbacks = []
     let socket = BinanceWS(hosts: socketHosts,
                            factory: SourceSocketFactory(source: source, hosts: hosts, log: Self.log),
-                           silenceMs: 15_000, log: Self.log)
+                           // 首帧前的窗口：报告要求直连 60 秒、只有真的有备用流域名可换时
+                           // 才收到 15 秒。这里 `streamFallbacks` 已经被清空（换路由由
+                           // `SourceSocketFactory` 管），所以传 60 秒——冷门永续 15 秒内
+                           // 真可能一帧都没有，收窄就变成「订阅没生效」的重连循环（A-07）。
+                           silenceMs: 60_000, log: Self.log)
     let generation = session.generation
     self.socket = socket
     let names = streamNames()
@@ -902,9 +920,15 @@ final class QuoteBook {
       quoteAttempt[symbol] = Date()
       let request = session.request(symbol), rest = self.rest
       quoteJobs[symbol] = Task { [weak self] in
-        let ticker = try? await rest.ticker24h(symbol: symbol, timeout: 5)
+        // 原来这儿是 `try?`：交易所回「我不认识这个代号」和「网络不通」被压成同一个
+        // `nil`，于是一个已经下架的自选就永远停在最后看到的那口价上（审查 B-06）。
+        var ticker: Ticker?
+        var rejected = false
+        do { ticker = try await rest.ticker24h(symbol: symbol, timeout: 5) }
+        catch { rejected = SymbolCatalog.rejectsSymbol(error) }
         guard let self, !Task.isCancelled, request.generation == self.session.generation else { return }
         self.quoteJobs[symbol] = nil
+        if rejected { self.onSymbolRejected?(symbol) }
         if let ticker, self.session.accepts(request, symbol: symbol) { self.ingest([ticker]) }
         self.drainQuotes()
         if self.quoteJobs.isEmpty, self.quoteQueue.isEmpty { self.flushCoalesced() }
@@ -929,5 +953,6 @@ final class QuoteBook {
     teardown()   // 它自己会落一次盘
     discardBatches()
     onUpdate = nil; onReset = nil; onScopeChange = nil; onHistory = nil
+    onSymbolRejected = nil
   }
 }

@@ -27,8 +27,12 @@ enum SymbolFixtures {
   ]
 
   /// 品种表，顺序即「交易所给的顺序」（不是成交额序，正好用来验排序）。
+  ///
+  /// 这十二行都是币，所以照真实 `exchangeInfo` 那样带上 `underlyingType: "COIN"`——
+  /// 缺这个字段就等于「不知道这是什么」，分类那一层不会再去猜（审查 B-04）。
   static let catalog: [SymbolInfo] = raw.map {
-    SymbolInfo(symbol: $0.0, base: $0.1, pricePrecision: $0.2, tickSize: $0.3)
+    SymbolInfo(symbol: $0.0, base: $0.1, pricePrecision: $0.2, tickSize: $0.3,
+               underlyingType: "COIN")
   }
 
   /// 24h 行情快照。

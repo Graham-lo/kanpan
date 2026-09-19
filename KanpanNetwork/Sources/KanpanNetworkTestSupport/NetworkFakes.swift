@@ -186,12 +186,19 @@ public actor ReplayDeck {
   public nonisolated let cursor = Counter()
   public private(set) var connects = 0
   public private(set) var pongs = 0
+  /// 上层主动发过多少次传输层保活探针（A-07 第①层）。
+  public private(set) var keepalives = 0
+  /// 这条假连接答不答保活。`false` 就是「传输层也哑了」，看门狗该重连。
+  public let answersKeepalive: Bool
   public private(set) var sent: [String] = []
   public private(set) var urls: [URL] = []
   /// 掉线时跳过的报文数，验收日志用。
   public private(set) var skipped = 0
 
-  public init(_ steps: [ReplayStep]) { self.steps = steps }
+  public init(_ steps: [ReplayStep], answersKeepalive: Bool = false) {
+    self.steps = steps
+    self.answersKeepalive = answersKeepalive
+  }
 
   func next() -> ReplayStep? {
     guard i < steps.count else { return nil }
@@ -205,9 +212,12 @@ public actor ReplayDeck {
   }
   func noteConnect(_ url: URL) { connects += 1; urls.append(url) }
   func notePong() { pongs += 1 }
+  /// 记一次保活探针，并回答「传输层还在不在」。
+  func noteKeepalive() -> Bool { keepalives += 1; return answersKeepalive }
   func noteSend(_ s: String) { sent.append(s) }
-  public func stats() -> (connects: Int, pongs: Int, skipped: Int, sent: [String], urls: [URL]) {
-    (connects, pongs, skipped, sent, urls)
+  public func stats() -> (connects: Int, pongs: Int, skipped: Int, sent: [String], urls: [URL],
+                         keepalives: Int) {
+    (connects, pongs, skipped, sent, urls, keepalives)
   }
 }
 
@@ -230,6 +240,12 @@ final class ReplaySocket: WSSocket {
 
   func send(_ text: String) async throws { await deck.noteSend(text) }
   func pong() async throws { await deck.notePong() }
+  /// 传输层保活：回放器按 `ReplayDeck(answersKeepalive:)` 的设定回答。
+  /// 连接已经被掐掉的话一律探不通。
+  func keepalive(timeoutMs: Double) async -> Bool {
+    if await gate.killed { return false }
+    return await deck.noteKeepalive()
+  }
   func cancel() async { await gate.kill() }
 
   func receive() async throws -> WSFrame {

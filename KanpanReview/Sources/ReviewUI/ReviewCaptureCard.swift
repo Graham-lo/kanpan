@@ -1,4 +1,5 @@
 import SwiftUI
+import KanpanCore
 import ReviewDomain
 
 public struct ReviewCaptureCard: View {
@@ -28,7 +29,10 @@ public struct ReviewCaptureCard: View {
               priceField("失效", key: \.rule.invalidation, flag: \.rule.invalidationEdited)
             }
             HStack {
-              Text("参考价 \(draft.rule.reference.formatted(.number.precision(.fractionLength(0...8))))").font(.caption).foregroundStyle(t.ink3)
+              // 参考价按品种自己的小数位写（审查 B-07）：原来「最多 8 位、能省就省」，
+              // 同一张卡上参考价 `76800`、目标价框里 `76800.5`，看着像两个量级。
+              Text("参考价 " + feature.price(draft.rule.reference, symbol: draft.range.symbol))
+                .font(.caption).foregroundStyle(t.ink3)
               Spacer()
               Button("按方向重置") {
                 guard var value = feature.draft else { return }
@@ -46,6 +50,10 @@ public struct ReviewCaptureCard: View {
             DatePicker("到期", selection: Binding(get: { Date(timeIntervalSince1970: Double(feature.draft?.rule.expires ?? ReviewClock.now) / 1000) }, set: {
               feature.draft?.rule.expires = Int64($0.timeIntervalSince1970 * 1000); feature.draft?.rule.expiryEdited = true; feature.saveDraft()
             }), in: Date()..., displayedComponents: [.date, .hourAndMinute]).font(.subheadline)
+              // 挑到期时刻用的时区 = 复盘本里写这个时刻用的时区（审查 B-08）。
+              // 不灌的话这颗原生轮盘认设备时区：在「交易所」档上设 20:00，
+              // 记录详情里会写成 12:00。
+              .environment(\.timeZone, feature.tzOffset.timeZone)
           }
           HStack {
             Text("把握").font(.subheadline).foregroundStyle(t.ink2)
@@ -87,7 +95,15 @@ public struct ReviewCaptureCard: View {
       Text(title).font(.caption).foregroundStyle(t.ink3)
       TextField(title, value: Binding(get: { feature.draft?[keyPath: key] ?? 0 }, set: {
         feature.draft?[keyPath: key] = $0; feature.draft?[keyPath: flag] = true; feature.saveDraft()
-      }), format: .number.precision(.fractionLength(0...8))).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
+      }), format: .number.precision(.fractionLength(0...decimals))).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
     }
+  }
+
+  /// 这张卡上所有口价的小数位：品种自己说（`SymbolInfo.pricePrecision`，宿主注入到
+  /// `feature.priceDecimals`），问不到才按参考价猜。写死 8 位会把 76800 显示成
+  /// 一个能填到 `76800.00000001` 的框，也会让摆出来的口价和 K 线价格轴不是一个写法。
+  private var decimals: Int {
+    guard let draft = feature.draft else { return 2 }
+    return feature.priceDecimals(draft.range.symbol) ?? priceDecimalsFallback(draft.rule.reference)
   }
 }

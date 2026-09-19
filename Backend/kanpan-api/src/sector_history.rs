@@ -14,12 +14,14 @@
 //!
 //! Like the rest of the public market surface this route carries no
 //! authentication.
-use crate::{AppState,market_meta};
+use crate::{AppState,binance_gate,market_meta};
 use axum::{Router,extract::State,http::{StatusCode,header},response::{IntoResponse,Response},routing::get};
 use chrono::{DateTime,Days,NaiveDate,Utc};
 use serde_json::{Value,json};
 use sqlx::PgPool;
 use std::collections::{BTreeMap,HashSet};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc,OnceLock,RwLock};
 use std::time::Duration;
 
@@ -36,10 +38,11 @@ const HISTORY_LIMIT:usize=22;
 /// then a twelve minute sweep once a day, which costs Binance less in an hour
 /// than a single chart does, and leaves the weight budget to the live routes.
 const REQUEST_GAP:Duration=Duration::from_secs(1);
-/// 429 (rate limited) and 418 (banned for ignoring 429) both mean "wait"; this
-/// is the first wait, doubled on each repeat.
-const BACKOFF:Duration=Duration::from_secs(2);
-const ATTEMPTS:u32=4;
+/// 429 和 418 不在这里退避了：它们说的是「这个 IP 现在别出站」，是整个进程的事，
+/// 归 [`binance_gate`] 那条共享截止时间管（A-06）。这里只留传输层的一次重试：
+/// keep-alive 连接被掐断是家常事，跟限速无关。
+const TRANSPORT_TRIES:u32=2;
+const TRANSPORT_PAUSE:Duration=Duration::from_secs(2);
 /// The collection starts ten minutes after midnight UTC, by which time the day
 /// Binance closed at midnight is settled.
 const RUN_MINUTE:u32=10;
@@ -204,27 +207,58 @@ async fn throttle() {
  *last=Some(tokio::time::Instant::now());
 }
 
-/// One contract's daily candles, or nothing.
-///
-/// 429 and 418 are waited out with a doubling backoff; anything else is one
-/// contract we do not have today, which is not worth abandoning the other seven
-/// hundred for.
-async fn klines(symbol:&str)->Option<Value> {
- let url=format!("{KLINES}?symbol={symbol}&interval=1d&limit={HISTORY_LIMIT}");
- let mut wait=BACKOFF;
- for _ in 0..ATTEMPTS {
-  throttle().await;
-  let reply=match market_meta::http().get(&url).send().await {
-   Ok(reply)=>reply,
-   Err(_)=>{tokio::time::sleep(wait).await;wait*=2;continue}
-  };
-  if matches!(reply.status(),StatusCode::TOO_MANY_REQUESTS|StatusCode::IM_A_TEAPOT) {
-   tracing::warn!("Daily closes: rate limited, waiting {}s",wait.as_secs());
-   tokio::time::sleep(wait).await;wait*=2;continue;
-  }
-  return reply.error_for_status().ok()?.json::<Value>().await.ok();
+/// 上游这一次的回答，只留下判断退避需要的东西。
+enum Reply {Body(Value),Status(u16,Option<String>),Transport}
+/// 抓一个品种的日 K 这一步抽成 trait，好让「两个品种先后被 418」这种时序在不联网
+/// 的情况下也跑得出来——原来它只有真的撞上币安的封禁才走得到，于是「换个品种就把
+/// 退避重置一遍」这个毛病没有任何测试拦得住。
+trait Klines:Send+Sync {
+ fn get<'a>(&'a self,symbol:&'a str)->Pin<Box<dyn Future<Output=Reply>+Send+'a>>;
+}
+struct Binance;
+impl Klines for Binance {
+ fn get<'a>(&'a self,symbol:&'a str)->Pin<Box<dyn Future<Output=Reply>+Send+'a>> {
+  Box::pin(async move {
+   let url=format!("{KLINES}?symbol={symbol}&interval=1d&limit={HISTORY_LIMIT}");
+   let reply=match market_meta::http().get(&url).send().await {Ok(reply)=>reply,Err(_)=>return Reply::Transport};
+   let status=reply.status();
+   if !status.is_success() {
+    let retry_after=reply.headers().get(header::RETRY_AFTER).and_then(|v|v.to_str().ok()).map(str::to_owned);
+    return Reply::Status(status.as_u16(),retry_after);
+   }
+   match reply.json::<Value>().await {Ok(body)=>Reply::Body(body),Err(_)=>Reply::Transport}
+  })
  }
- None
+}
+/// 一个品种这一轮的结果。`Banned` 是整轮的事，不是这一个品种的事。
+enum Fetch {Body(Value),Skip,Banned}
+
+/// One contract's daily candles.
+///
+/// 429 / 418 记进共享闸门，然后本轮就到此为止：原来每个品种都从 2 秒重新起一轮
+/// 2/4/8/16 秒的退避，还把 `Retry-After` 丢在一边，七百个品种就是七百次撞同一道
+/// 墙。其它状态码（404、451、5xx）只是这一个品种今天没有，不值得为它放掉另外
+/// 七百个。
+async fn klines(source:&dyn Klines,symbol:&str)->Fetch {
+ for attempt in 0..TRANSPORT_TRIES {
+  // 每一次出站前都查一遍闸门，不是进函数时查一次就算了：传输失败要等
+  // TRANSPORT_PAUSE 再重试，那两秒里别的品种完全可能已经把闸门按下去了，
+  // 而重试出去的那一下正好落在封禁期里、只会把封禁撞得更长。
+  if let Some(left)=binance_gate::wait() {
+   tracing::warn!("Daily closes: this egress is held for another {}s; stopping the round",left.as_secs());
+   return Fetch::Banned;
+  }
+  throttle().await;
+  match source.get(symbol).await {
+   Reply::Body(body)=>return Fetch::Body(body),
+   Reply::Status(status,retry_after)=>{
+    if binance_gate::note(status,retry_after.as_deref()) {return Fetch::Banned}
+    return Fetch::Skip;
+   }
+   Reply::Transport=>{if attempt+1<TRANSPORT_TRIES {tokio::time::sleep(TRANSPORT_PAUSE).await}}
+  }
+ }
+ Fetch::Skip
 }
 
 async fn upsert(pool:&PgPool,symbol:&str,bars:&[(NaiveDate,f64,f64)])->sqlx::Result<()> {
@@ -257,16 +291,23 @@ async fn prune(pool:&PgPool,live:&[String])->sqlx::Result<()> {
 }
 
 /// Three weeks of candles for each contract in `targets`, upserted as they
-/// arrive. Returns `(rows written, contracts skipped)`.
+/// arrive. Returns `(rows written, contracts skipped, ran into a ban)`.
 ///
 /// The list is given rather than derived so the caller can hand over only the
 /// contracts that are actually short of history: one request a second means a
 /// full list is a twelve minute sweep, and re-asking for the six hundred
 /// contracts already stored would buy nothing.
-pub async fn collect(pool:&PgPool,targets:&[String])->anyhow::Result<(usize,usize)> {
+///
+/// 撞上封禁就停本轮，下一轮再来：接着往下走只会把几百个品种各自记成一次失败，
+/// 同时把封禁越撞越久。
+pub async fn collect(pool:&PgPool,targets:&[String])->anyhow::Result<(usize,usize,bool)> {
  let (mut written,mut skipped)=(0usize,0usize);
  for symbol in targets {
-  let Some(body)=klines(symbol).await else {tracing::warn!("Daily closes: {symbol} unavailable, skipped");skipped+=1;continue};
+  let body=match klines(&Binance,symbol).await {
+   Fetch::Body(body)=>body,
+   Fetch::Skip=>{tracing::warn!("Daily closes: {symbol} unavailable, skipped");skipped+=1;continue}
+   Fetch::Banned=>return Ok((written,skipped,true)),
+  };
   let bars=parse_daily_closes(&body);
   if bars.is_empty() {skipped+=1;continue}
   match upsert(pool,symbol,&bars).await {
@@ -274,7 +315,7 @@ pub async fn collect(pool:&PgPool,targets:&[String])->anyhow::Result<(usize,usiz
    Err(e)=>{tracing::warn!("Daily closes: {symbol} not stored ({e})");skipped+=1}
   }
  }
- Ok((written,skipped))
+ Ok((written,skipped,false))
 }
 
 /// Which contracts already have the newest day a finished sweep would have
@@ -305,10 +346,13 @@ pub async fn sweep(pool:&PgPool)->anyhow::Result<usize> {
  anyhow::ensure!(!symbols.is_empty(),"exchangeInfo listed no tradable perpetual");
  let yesterday=window_day(Utc::now().date_naive(),1);
  let targets=missing(&symbols,&collected(pool,yesterday).await?);
- let (written,skipped)=if targets.is_empty() {(0,0)} else {collect(pool,&targets).await?};
+ let (written,skipped,banned)=if targets.is_empty() {(0,0,false)} else {collect(pool,&targets).await?};
  prune(pool,&symbols).await?;
  tracing::info!("Daily closes: {} contracts, {} to collect, {written} rows written, {skipped} skipped",
   symbols.len(),targets.len());
+ // 本轮被封禁打断：已经写下的那些留着，这一轮算失败，让 `spawn_daily` 按 RETRY
+ // 再来一次。到时候要是封禁还在，第一个品种出站前就会被闸门拦住，代价是零。
+ anyhow::ensure!(!banned,"Binance is holding this egress; the round stopped early");
  Ok(written)
 }
 
@@ -590,5 +634,78 @@ mod tests {
   assert_eq!(payload(day("2026-09-18"),&rows)["symbols"]["BTCUSDT"],json!({"c5":61234.5}));
   assert!(payload(day("2026-09-19"),&rows)["symbols"].as_object().unwrap().is_empty());
   assert_eq!(payload(day("2026-10-03"),&rows)["symbols"]["BTCUSDT"],json!({"c20":61234.5}));
+ }
+
+ /// 只会拒绝的上游，记下被问过几次。
+ struct Refusing {status:u16,retry_after:Option<String>,asked:std::sync::atomic::AtomicUsize}
+ impl Klines for Refusing {
+  fn get<'a>(&'a self,_symbol:&'a str)->Pin<Box<dyn Future<Output=Reply>+Send+'a>> {
+   self.asked.fetch_add(1,std::sync::atomic::Ordering::Relaxed);
+   let (status,retry_after)=(self.status,self.retry_after.clone());
+   Box::pin(async move {Reply::Status(status,retry_after)})
+  }
+ }
+
+ /// A-T17：两个品种都撞上 418，第二个不得把截止时间重置，也不得绕过它出站。
+ ///
+ /// 旧代码每个品种各自从 2 秒起退避四次，于是「换个品种」就等于「把退避忘了」——
+ /// 七百个品种就是七百次往同一道墙上撞，418 只会越滚越长。
+ #[tokio::test(start_paused=true)]
+ async fn a_second_contract_neither_resets_nor_slips_past_the_ban() {
+  let _guard=binance_gate::test_lock().lock().unwrap();
+  binance_gate::clear();
+  let source=Refusing{status:418,retry_after:None,asked:std::sync::atomic::AtomicUsize::new(0)};
+
+  // 第一个品种：出站一次，撞上 418，本轮到此为止。
+  assert!(matches!(klines(&source,"AAAUSDT").await,Fetch::Banned));
+  assert_eq!(source.asked.load(std::sync::atomic::Ordering::Relaxed),1);
+  let first=binance_gate::wait().expect("418 must hold this egress");
+  assert!(first>Duration::from_secs(119),"headerless 418 starts at two minutes, got {first:?}");
+
+  // 第二个品种：连出站都不该发生，闸门直接把它拦下。
+  tokio::time::advance(Duration::from_secs(30)).await;
+  assert!(matches!(klines(&source,"BBBUSDT").await,Fetch::Banned));
+  assert_eq!(source.asked.load(std::sync::atomic::Ordering::Relaxed),1,
+   "the second contract must not go out while the egress is held");
+  let left=binance_gate::wait().expect("still held");
+  assert!(left<first,"the deadline must keep counting down, not restart: {first:?} -> {left:?}");
+
+  // 传输层失败要重试的那条路也一样过闸门：闸门按下时它一次都不出站。原来的守卫在
+  // 循环外面，重试的那一下是绕过去的。
+  struct Broken {asked:std::sync::atomic::AtomicUsize}
+  impl Klines for Broken {
+   fn get<'a>(&'a self,_symbol:&'a str)->Pin<Box<dyn Future<Output=Reply>+Send+'a>> {
+    self.asked.fetch_add(1,std::sync::atomic::Ordering::Relaxed);
+    Box::pin(async {Reply::Transport})
+   }
+  }
+  let broken=Broken{asked:std::sync::atomic::AtomicUsize::new(0)};
+  assert!(matches!(klines(&broken,"DDDUSDT").await,Fetch::Banned));
+  assert_eq!(broken.asked.load(std::sync::atomic::Ordering::Relaxed),0,
+   "the gate is checked before every attempt, retries included");
+
+  // 截止时间过了才重新放行；这一次又被拒，于是又是一轮完整的封禁。
+  tokio::time::advance(Duration::from_secs(120)).await;
+  assert!(binance_gate::wait().is_none());
+  assert!(matches!(klines(&source,"CCCUSDT").await,Fetch::Banned));
+  assert_eq!(source.asked.load(std::sync::atomic::Ordering::Relaxed),2);
+  binance_gate::clear();
+ }
+
+ /// 429 带 Retry-After 就按它说的等；别的状态码只是这一个品种今天没有。
+ #[tokio::test(start_paused=true)]
+ async fn a_told_wait_is_believed_and_other_failures_are_just_one_contract() {
+  let _guard=binance_gate::test_lock().lock().unwrap();
+  binance_gate::clear();
+  let told=Refusing{status:429,retry_after:Some("45".to_owned()),asked:std::sync::atomic::AtomicUsize::new(0)};
+  assert!(matches!(klines(&told,"AAAUSDT").await,Fetch::Banned));
+  let left=binance_gate::wait().expect("429 holds the egress too");
+  assert!(left>Duration::from_secs(44)&&left<=Duration::from_secs(45),"got {left:?}");
+  binance_gate::clear();
+
+  let missing=Refusing{status:404,retry_after:None,asked:std::sync::atomic::AtomicUsize::new(0)};
+  assert!(matches!(klines(&missing,"GONEUSDT").await,Fetch::Skip));
+  assert!(binance_gate::wait().is_none(),"a 404 is not a ban");
+  binance_gate::clear();
  }
 }

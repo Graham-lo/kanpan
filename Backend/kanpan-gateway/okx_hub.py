@@ -142,9 +142,15 @@ class OKXHub(Hub):
                 confirmed = next((r[8] == '1' for r in raw if int(r[0]) == row[0]), False)
                 if interval in ('8h', '3d'):
                     confirmed = row[6] < received and all(r[8] == '1' for r in raw if row[0] <= int(r[0]) <= row[6])
+                # `v` is the bar's base-coin volume (OKX volCcy) and `q` its quote
+                # turnover (OKX volCcyQuote) -- the same two columns normalize_okx
+                # puts in row[5] and row[7]. A candle really does carry both, which
+                # is why they are both published here and neither is reused as the
+                # 24h ticker turnover the tickers channel does not have.
                 data = {'e': 'kline', 'E': received, 's': symbol,
                         'k': {'t': row[0], 'T': row[6], 's': symbol, 'i': interval,
-                              'o': row[1], 'h': row[2], 'l': row[3], 'c': row[4], 'v': row[5], 'x': confirmed}}
+                              'o': row[1], 'h': row[2], 'l': row[3], 'c': row[4],
+                              'v': row[5], 'q': row[7], 'x': confirmed}}
                 frame = json.dumps({'stream': channel, 'source': 'okx', 'data': data}, separators=(',', ':'))
                 for peer in tuple(self.channels.get(channel, ())):
                     if not peer.closing and not peer.offer(channel, frame):
@@ -154,7 +160,20 @@ class OKXHub(Hub):
 
     @staticmethod
     def ticker_frame(channel, symbol, row):
-        """Adapt one OKX `tickers` row to the existing Binance ticker envelope."""
+        """Adapt one OKX `tickers` row to the existing Binance ticker envelope.
+
+        Units decide which key a number may go in. OKX `volCcy24h` is 24h turnover
+        counted in the base coin, which is Binance's `v`; `vol24h` is contracts,
+        which is nothing Binance publishes. OKX V5 tickers carry no quote-currency
+        turnover at all, so `q` -- Binance's quote volume, the number the phone
+        shows as 「额」 and sorts favourites by -- is published empty. It used to
+        carry `volCcy24h`, so a coin count was read as a USDT amount.
+
+        `volCcy24h` x `last` is not a substitute: it prices a whole day of trades
+        at one instant. An empty `q` makes the phone show `--`, which is the truth;
+        the REST path in market_rest.ticker leaves `quoteVolume` empty for the same
+        reason, so both routes mean exactly the same thing.
+        """
         try:
             last = float(row['last'])
             opened = float(row['open24h'])
@@ -173,7 +192,8 @@ class OKXHub(Hub):
         data = {
             'e': '24hrTicker', 'E': timestamp, 's': symbol,
             'o': str(row['open24h']), 'c': str(row['last']), 'P': str(change),
-            'h': str(row['high24h']), 'l': str(row['low24h']), 'q': str(row['volCcy24h']),
+            'h': str(row['high24h']), 'l': str(row['low24h']),
+            'v': str(row['volCcy24h']), 'q': '',
             'C': timestamp,
         }
         return json.dumps({'stream': channel, 'source': 'okx', 'data': data}, separators=(',', ':'))

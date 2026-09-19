@@ -17,11 +17,27 @@ import KanpanNetwork
 /// 是几十个成员的中位数，不需要秒级刷新；页面一离开就停，不在后台烧流量。
 /// 取数失败就退避重试（2→4→8…最多 30 秒），**界面上不显示任何取数状态**
 /// （`kanpan-no-engineering-status-fields`）。
+///
+/// 手里那份行情**有寿命**（审查 A-04）。原来它只增不减：换线路之后仍旧拿上一家
+/// 报的数算板块；连着取不到时整页就那么定在一分钟前、十分钟前、一小时前的数字上，
+/// 而球、药丸、统计行看上去和实时的一模一样。现在两种情形都会把它清空：
+/// * 换线路 / 换镜像（`configure`）——那是换了一家交易所，一条都不能留；
+/// * 连着 `failuresBeforeDropping` 趟取不到、且手里这份已经超过 `dropAfterSeconds`
+///   （`noteFailure`）。
+/// 清空之后页面是空的，`SectorPage` 那层给一句「暂无行情」和「点此重试」，
+/// 没有第二句话、也不说是为什么。
 @MainActor @Observable final class SectorFeed {
   /// 大写 base → 行情。板块聚合只认 base（分类表里记的就是代号）。
   private(set) var quotes: [String: SectorQuote] = [:]
   /// 最近一次成功取回的时刻。只给内部判新旧用，**不要画到界面上**。
   private(set) var lastUpdate: Date?
+
+  /// 这条线路上**问过**一趟了吗（成功或失败都算）。
+  ///
+  /// 只给空态判「还没取回来」用（复核项 2）：从前空态的判据只有「手里没行情」，
+  /// 于是首屏那一两百毫秒里「暂无行情 / 点此重试」会先闪一下再被球场顶掉。
+  /// 换线路会把它清回 false——换了一家交易所，之前问过什么都不作数。
+  private(set) var attempted = false
 
   private var rest = BinanceREST.upstream(.binance, hosts: .default)
   private var hosts: BinanceHosts = .default
@@ -37,6 +53,12 @@ import KanpanNetwork
   private static let refreshSeconds: Double = 10
   /// 失败之后的退避上限。
   private static let maxBackoffSeconds: Double = 30
+  /// 连着几趟取不到才考虑丢掉手里那份行情。一趟超时就清屏太急——退避是 2→4→8 秒，
+  /// 三趟之后基本可以断定不是一次抖动。
+  static let failuresBeforeDropping = 3
+  /// 手里那份行情最多能顶多久。板块是 10 秒一趟的聚合值，超过一分钟没换过
+  /// 就不该再摆出实时的样子了。
+  static let dropAfterSeconds: Double = 60
 
   // MARK: 外部接线
 
@@ -46,7 +68,84 @@ import KanpanNetwork
     self.hosts = hosts
     self.source = source
     rest = BinanceREST.upstream(source, hosts: hosts)
+    // 手里这份是上一条线路报的，换了就一条都不留（审查 A-04）。两家的 24h 口径
+    // 和品种集合都不一样，混着算出来的中位数不属于任何一个市场。
+    drop()
+    // 新线路还一趟都没问过：这会儿是在加载，不是「暂无行情」。
+    attempted = false
+    failures = 0
     restart()
+  }
+
+  /// 空态上那一下「点此重试」。不等退避，立刻重开一轮。
+  ///
+  /// 重开之前先把**线路冷却**清掉（审查复核项 2）。上一轮失败会给这条线路记一段
+  /// 冷却时间，不清掉的话「点此重试」只是让循环立刻再问一次、然后被冷却挡回来，
+  /// 用户按了等于没按。清的只是冷却，不动封禁——真被交易所封的线路照旧不走。
+  func retry() {
+    let rest = self.rest
+    let reset = self.resetCooldowns
+    // 清冷却和重开必须在**同一条**任务里按顺序来（复核项 1）。分成两个 Task
+    // 的话「先清再取」只是概率成立：轮询那一趟可能抢在 reset 之前发出去，
+    // 照样被冷却挡回来，用户按了还是等于没按。
+    restart(preflight: { await reset(rest) })
+  }
+
+  /// 清线路冷却走哪条路。默认就是当前线路的 `BinanceREST`；用例把它换掉，
+  /// 好证明它确实排在第一趟取数前面（和 `fetchTickers` 同一种接法）。
+  @ObservationIgnored var resetCooldowns: @Sendable (BinanceREST) async -> Void
+    = { await $0.resetRouteCooldowns() }
+
+  /// 把手里那份行情丢掉。清完页面就是空的，`SectorPage` 会显示空态。
+  private func drop() {
+    guard !quotes.isEmpty || lastUpdate != nil else { return }
+    quotes = [:]
+    lastUpdate = nil
+  }
+
+  // MARK: 失败记账
+  //
+  // 循环里那几行判定本身没法在用例里守（要等真实的退避时间），所以规则做成纯函数 +
+  // 两个可以直接叫的记账方法。
+
+  @ObservationIgnored private var failures = 0
+
+  /// 连着失败到这个程度、手里那份又已经这么旧了，就该丢掉。
+  ///
+  /// 从来没成功过（`age == nil`）时不必等寿命：本来也没有什么可丢的，
+  /// 这一条只是让「第一次进页就取不到」也走同一条路。
+  static func shouldDrop(failures: Int, age: TimeInterval?) -> Bool {
+    guard failures >= failuresBeforeDropping else { return false }
+    guard let age else { return true }
+    return age >= dropAfterSeconds
+  }
+
+  /// 屏幕中间那句「暂无行情 / 点此重试」现在该不该出现。
+  ///
+  /// 「还没问回来」和「问过了但没有」是两件事，只有后者才是空态。首屏那一趟
+  /// 还在路上时整块留白——不写「加载中」，那是工程状态
+  /// （`kanpan-no-engineering-status-fields`）。
+  static func showsEmptyState(hasQuotes: Bool, attempted: Bool) -> Bool {
+    !hasQuotes && attempted
+  }
+
+  /// 同一条规则，页面直接问这一个。
+  var showsEmptyState: Bool {
+    Self.showsEmptyState(hasQuotes: !quotes.isEmpty, attempted: attempted)
+  }
+
+  /// 取到了。
+  func noteSuccess() {
+    failures = 0
+    attempted = true
+  }
+
+  /// 取不到。够旧够久就把屏上那份清掉。
+  func noteFailure(now: Date = Date()) {
+    failures += 1
+    attempted = true
+    let age = lastUpdate.map { now.timeIntervalSince($0) }
+    if Self.shouldDrop(failures: failures, age: age) { drop() }
   }
 
   /// 后端网关名单，顺序就是 `MarketStatsClient` 问供应量 / 持仓量时试的那个顺序。
@@ -90,11 +189,17 @@ import KanpanNetwork
 
   private var running: Bool { visible && foreground }
 
-  private func restart() {
+  /// - Parameter preflight: 轮询开始之前先做完的事（「点此重试」要先清线路冷却）。
+  ///   和循环在同一条任务里，顺序是确定的。
+  private func restart(preflight: (@Sendable () async -> Void)? = nil) {
     job?.cancel()
     job = nil
     guard running else { return }
-    job = Task { [weak self] in await self?.loop() }
+    job = Task { [weak self] in
+      await preflight?()
+      guard !Task.isCancelled else { return }
+      await self?.loop()
+    }
   }
 
   private func loop() async {
@@ -102,18 +207,25 @@ import KanpanNetwork
     while !Task.isCancelled {
       let ok = await pull()
       if ok {
+        noteSuccess()
         backoff = 2
         try? await Task.sleep(for: .seconds(Self.refreshSeconds))
       } else {
+        noteFailure()
         try? await Task.sleep(for: .seconds(backoff))
         backoff = min(Self.maxBackoffSeconds, backoff * 2)
       }
     }
   }
 
+  /// 全市场 24h 行情从哪儿来。默认走当前线路的 `BinanceREST`；用例把它换成离线的
+  /// 假数据——这一路要守的规则全是「取不到时屏上留什么」，不换掉就只能靠真网络。
+  @ObservationIgnored var fetchTickers: @Sendable (BinanceREST) async throws -> [Ticker]
+    = { try await $0.tickers24h(timeout: 8) }
+
   private func pull() async -> Bool {
     let rest = self.rest
-    guard let tickers = try? await rest.tickers24h(timeout: 8), !tickers.isEmpty else { return false }
+    guard let tickers = try? await fetchTickers(rest), !tickers.isEmpty else { return false }
     ingest(tickers)
     return true
   }
@@ -131,7 +243,11 @@ import KanpanNetwork
       // 同一个 base 可能有多张合约（USDT / USDC / FDUSD）。先按计价币的固定优先级挑，
       // 同一档才比成交额——USDT 和 USDC 两张的 24h 涨幅并不相同，按成交额挑会在
       // 两张之间来回切，球就一直在抖。
-      let volume = ticker.quoteVolume.isFinite ? ticker.quoteVolume : 0
+      // 成交额拿不到就是**没有**，不是 0（审查复核项 1）：编成 0 之后这个成员会
+      // 带着一个假的「零成交」进板块成交额的加总、也会在「成交额」那档排序里
+      // 冒充一个真实的最小值，而列表上那条「—」分支永远走不到。NaN 原样留着，
+      // 用到它的地方各自把它当缺数处理（挑合约、加总、排序都已经过滤非有限值）。
+      let volume = ticker.quoteVolume
       let rank = quoteRank(of: ticker.symbol)
       if let old = picked[base],
          !SectorQuotePreference.prefers(rank: rank, volume: volume, over: old) { continue }
@@ -166,6 +282,12 @@ import KanpanNetwork
   }
 
   private static let quoteAssets = SectorQuotePreference.quoteAssets
+
+  /// 这个 base 对应品种的价格小数位。品种表里没有就 `nil`——列表那一层会退回
+  /// 按大小猜，但绝不在这儿编一个位数出来（审查 B-07）。
+  func priceDecimals(forBase base: String) -> Int? {
+    catalogIndex[symbol(forBase: base)]?.pricePrecision
+  }
 
   private var catalogIndex: [String: SymbolInfo] {
     if cachedIndexCount == catalogGeneration { return cachedIndex }

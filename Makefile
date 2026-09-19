@@ -27,7 +27,7 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test network-test data-test sync-contract diag-test diag-ios-test main-ios-test account-codec-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
+.PHONY: help core-test network-test data-test sync-contract symbols-test sector-test settings-test app-logic-test diag-test diag-ios-test main-ios-test account-codec-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -35,7 +35,7 @@ help:
 	@echo "data-test    跑 KanpanData 单测（全离线：假 transport / 假 socket / 假时钟）"
 	@echo "chart-build  编 KanpanChart（UIKit，必须走 xcodebuild）"
 	@echo "chart-test   跑 KanpanChart 单测（需要一台模拟器）"
-	@echo "test         core-test + network-test + data-test + app-logic-test + chart-test"
+	@echo "test         core-test + network-test + data-test + app-logic-test + chart-test + main-ios-test"
 	@echo "strict       两个包都按 Swift 6 严格并发 + 警告即错误编一遍（A2.13）"
 	@echo "evidence     出 M3 全套取证产物到 docs/acceptance/M3/（A3.1–A3.10）"
 	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库）"
@@ -126,6 +126,13 @@ symbols-test:
 settings-test:
 	cd $(SETTINGS) && swift test $(CORE_TEST_FLAGS)
 
+# 板块页那两件不吃 SwiftUI 的：取数（`SectorFeed`：换线路清行情、连着失败就丢）
+# 和品种列表的值与文案（`SectorRows`：小数位听品种表的、缺数不许伪排序）。
+SECTOR := Kanpan/Sector
+
+sector-test:
+	cd $(SECTOR) && swift test $(CORE_TEST_FLAGS)
+
 DIAG := Kanpan/Diagnostics
 
 diag-test:
@@ -148,15 +155,18 @@ diag-ios-test:
 
 # 主屏那几条生命周期用例（宿主销毁收摊、合批缓冲换人就丢、转屏复位只认最后一次、
 # 后台额度必须还）离不开真的 UIKit：UIApplication 的后台任务、CADisplayLink、
-# 窗口挂接在 mac 上根本没有，`swift test` 连 import UIKit 都过不去。所以和
-# `diag-ios-test` 一样单独起模拟器跑，也一样故意不挂进 `test`。
+# 窗口挂接在 mac 上根本没有，`swift test` 连 import UIKit 都过不去，所以单独起模拟器跑。
+#
+# 但它**挂在 `test` 里**（审查复核项 8）：顶栏纯显示（A-T20）、报价簿（B-T10）这些
+# 规则只有这一套能守，不挂进去就等于没人跑。走 xcodebuild 不是例外——`chart-test`
+# 一直是这么跑的，`test` 里本来就有它。
 MAIN := Kanpan/KanpanTests
 
 main-ios-test:
 	cd $(MAIN) && xcodebuild test -scheme KanpanMain \
 	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
 
-app-logic-test: symbols-test settings-test diag-test account-codec-test
+app-logic-test: symbols-test sector-test settings-test diag-test account-codec-test
 
 # ---------------------------------------------------------------- 跨语言契约
 # 「客户端会发哪些 settings 键 / 服务端认哪些」这件事，母表只有一张：
@@ -175,7 +185,7 @@ sync-contract:
 	  --filter theContractFileIsTheOneListBothSidesRead
 	@echo "→ $(SYNC_CONTRACT) 已按 PrefsFieldPlan.table 重新生成；跑 make app-logic-test 与 (cd Backend/kanpan-api && cargo test --lib) 对账"
 
-test: core-test network-test data-test app-logic-test chart-test
+test: core-test network-test data-test app-logic-test chart-test main-ios-test
 
 # A2.13：零警告零错误。警告即错误，谁也别想蒙混过去。
 strict:

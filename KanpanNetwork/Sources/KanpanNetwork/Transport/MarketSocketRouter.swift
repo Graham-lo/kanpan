@@ -104,5 +104,7 @@ private actor PrefetchedMarketSocket: WSSocket {
   }
   func send(_ text: String) async throws { try await socket.send(text) }
   func pong() async throws { try await socket.pong() }
+  /// 保活探针要一路透到真 socket 上，不然选路一赢，第①层看门狗就瞎了（A-07）。
+  func keepalive(timeoutMs: Double) async -> Bool { await socket.keepalive(timeoutMs: timeoutMs) }
   func cancel() async { await socket.cancel() }
 }

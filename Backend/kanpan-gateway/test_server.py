@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 import zipfile
 import server
+from test_market_rest import wired  # same directory: one fake upstream for both halves
 
 
 def archive():
@@ -17,6 +18,130 @@ def archive():
     with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
         z.writestr('metrics.csv', 'create_time,symbol,sum_open_interest\n2021-12-01 00:00:00,BTCUSDT,100\n2021-12-01 00:05:00,BTCUSDT,101\n2021-12-01 00:00:00,BTCUSDT,102\n')
     return out.getvalue()
+
+
+class Recorder(server.Handler):
+    """The real reply path with the socket replaced: status, headers and body.
+
+    Retry-After is chosen inside `reply`, so a test that stubbed `reply` out
+    could not see the one header this contract is about.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.status = None
+        self.sent = []
+        self.refund = False
+        self.close_connection = False
+        self.client_address = ('192.0.2.7', 40000)
+        self.headers = {}
+        self.wfile = io.BytesIO()
+
+    def send_response(self, code, message=None):
+        self.status = code
+
+    def send_header(self, name, value):
+        self.sent.append((name, str(value)))
+
+    def end_headers(self):
+        pass
+
+    def abandoned(self):
+        return False  # covered on its own by the socket test below
+
+    def header(self, name):
+        return [value for sent, value in self.sent if sent.lower() == name.lower()]
+
+    def body(self):
+        return json.loads(self.wfile.getvalue())
+
+
+class UpstreamStopTests(unittest.TestCase):
+    """A-T06 (Python half): the stop condition the phone receives over the wire."""
+
+    PATH = '/market/v1/ticker?source=okx&symbol=BTCUSDT'
+
+    def answer(self, *replies):
+        market, upstream = wired('okx', *replies)
+        handler = Recorder(self.PATH)
+        with patch.object(server, 'MARKET', market):
+            handler.get_market_data()
+        self.assertEqual(len(upstream.calls), 1)  # the fetch really was attempted
+        return handler
+
+    def test_a_published_deadline_reaches_the_client_intact(self):
+        handler = self.answer((429, b'{}', {'Retry-After': '120'}))
+        self.assertEqual(handler.status, 429)
+        self.assertEqual(handler.header('Retry-After'), ['120'])  # exactly once, not the flat 2
+        self.assertEqual(handler.header('X-Kanpan-Upstream'), ['okx-limited'])
+        self.assertEqual(handler.body(), {'error': 'upstream_rate_limited', 'source': 'okx',
+                                          'code': 429, 'retryAfter': 120, 'upstreamStatus': '429'})
+
+    def test_a_ban_without_a_header_still_stops_for_two_minutes(self):
+        handler = self.answer((418, b'{}', {}))
+        self.assertEqual(handler.status, 429)
+        self.assertEqual(handler.header('Retry-After'), ['120'])
+        self.assertEqual(handler.body()['retryAfter'], 120)
+        self.assertEqual(handler.body()['upstreamStatus'], '418')
+
+    def test_an_okx_business_limit_travels_as_its_own_code(self):
+        handler = self.answer((200, b'{"code":"50011","msg":"Too Many Requests","data":[]}', {}))
+        self.assertEqual(handler.status, 429)
+        self.assertEqual(handler.header('Retry-After'), ['10'])
+        self.assertEqual(handler.body()['upstreamStatus'], '50011')
+
+    def test_a_waf_ban_is_a_rate_limit_not_a_dead_route(self):
+        """A-T06: 403 is Binance's WAF banning this node -- a wait, not a fault.
+
+        It used to share 451's cooldown and surface as a plain 503, which told
+        the phone "broken, try the other gateway" when the truth was "come back
+        in a minute". On the wire it is now the 429 contract, with the real
+        upstream status kept so the client can tell the two apart.
+        """
+        handler = self.answer((403, b'{}', {}))
+        self.assertEqual(handler.status, 429)
+        self.assertEqual(handler.header('Retry-After'), ['60'])
+        self.assertEqual(handler.header('X-Kanpan-Upstream'), ['okx-limited'])
+        self.assertEqual(handler.body(), {'error': 'upstream_rate_limited', 'source': 'okx',
+                                          'code': 429, 'retryAfter': 60, 'upstreamStatus': '403'})
+        # A header on a 403 is obeyed like any other published deadline.
+        headed = self.answer((403, b'{}', {'Retry-After': '30'}))
+        self.assertEqual((headed.status, headed.body()['retryAfter']), (429, 30))
+
+    def test_a_geographic_block_is_unchanged(self):
+        handler = self.answer((451, b'{}', {}))
+        self.assertEqual(handler.status, 451)
+        self.assertEqual(handler.header('X-Kanpan-Upstream'), ['okx-blocked'])
+        self.assertEqual(handler.body(), {'error': 'upstream_blocked', 'source': 'okx', 'code': 451})
+        self.assertTrue(handler.refund)
+
+    def test_every_other_failure_is_still_a_plain_503(self):
+        handler = self.answer((500, b'{}', {}))
+        self.assertEqual(handler.status, 503)
+        self.assertEqual(handler.body(), {'error': 'market unavailable'})
+        self.assertEqual(handler.header('Retry-After'), ['2'])
+
+    def test_this_node_being_busy_is_a_different_429(self):
+        # Same status code, opposite advice: `busy` means try the other gateway
+        # now, `upstream_rate_limited` means nobody may ask the exchange yet.
+        class Full:
+            def enter(self, key):
+                return False
+
+            def leave(self, key, refund=False):
+                pass
+
+        handler = Recorder(self.PATH)
+        with patch.object(server, 'HTTP_GUARD', Full()):
+            handler.do_GET()
+        self.assertEqual(handler.status, 429)
+        self.assertEqual(handler.body(), {'error': 'busy'})
+        self.assertEqual(handler.header('Retry-After'), ['2'])
+        queued = Recorder(self.PATH)
+        with patch.object(server.MARKET_SLOTS, 'acquire', return_value=False):
+            queued.get_market_data()
+        self.assertEqual((queued.status, queued.body()), (503, {'error': 'busy'}))
+        self.assertNotEqual(handler.body()['error'], 'upstream_rate_limited')
 
 
 class GatewayTests(unittest.TestCase):

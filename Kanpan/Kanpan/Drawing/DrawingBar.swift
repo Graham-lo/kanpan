@@ -304,7 +304,10 @@ struct DrawingSheet: View {
                   Button { controller.select(item.id); dismiss() } label: {
                     VStack(alignment: .leading, spacing: 3) {
                       Text(item.kind.title + (item.locked ? " · 已锁定" : ""))
-                      Text(item.a.p.formatted(.number.precision(.significantDigits(2...10))))
+                      // 价格的写法全 app 一个口径：品种自己的小数位 + 极小正价自动多给
+                      // 几位（审查 B-07）。原来这儿按「有效数字 2–10 位」写，同一条线
+                      // 在图上和在这张清单里能差出好几位。
+                      Text(fmtPrice(item.a.p, decimals: decimals))
                         .font(.caption).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                   }.accessibilityIdentifier("draw.object.\(item.id)")

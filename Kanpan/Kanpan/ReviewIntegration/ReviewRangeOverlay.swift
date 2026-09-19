@@ -108,7 +108,14 @@ final class RangeOverlayView: UIView {
     for x in [a, b] { ctx.move(to: CGPoint(x: x, y: 0)); ctx.addLine(to: CGPoint(x: x, y: layout.mainH)); ctx.strokePath() }
     if editing {
       for x in [a, b] { handle(CGPoint(x: x, y: layout.mainH * 0.52), ctx: ctx) }
-      let label = "\(draft.range.bars) 根 · \(date(draft.range.start)) – \(date(draft.range.end))"
+      // 时间跟着**图表自己的时区档**走，和时间轴、十字线读数同一口径（审查 B-08）。
+      // 原来这儿现造一个 `DateFormatter`，它认的是设备时区：图表切到「交易所（UTC+8）」
+      // 或者 UTC 之后，同一根 K 线在轴上和在这条选区标签上写着两个时刻。
+      // 文案本体在 `ReviewLabels.range` 里——那是复盘本、找相似列表、这条选区标签
+      // 共用的同一个纯函数，用例直接驱动它（B-T18），测的就是屏上这一行。
+      let label = ReviewLabels.range(bars: draft.range.bars, start: draft.range.start,
+                                     end: draft.range.end,
+                                     offsetMinutes: state.timezone.offsetMinutes)
       label.draw(at: CGPoint(x: 8, y: layout.mainH - 24), withAttributes: [.font: UIFont.systemFont(ofSize: 11), .foregroundColor: color])
     }
     if draft.rule.direction != .observe, let priceRange = chart?.chartPriceRange {
@@ -118,7 +125,11 @@ final class RangeOverlayView: UIView {
         ctx.move(to: CGPoint(x: max(0, a), y: y)); ctx.addLine(to: CGPoint(x: layout.plotW, y: y)); ctx.strokePath()
         if editing {
           handle(CGPoint(x: layout.plotW - 18, y: max(18, min(layout.mainH - 42, y))), ctx: ctx)
-          (title + " " + value.formatted(.number.precision(.fractionLength(0...6)))).draw(at: CGPoint(x: max(8, layout.plotW - 125), y: max(2, min(layout.mainH - 52, y - 17))), withAttributes: [.font: UIFont.systemFont(ofSize: 11), .foregroundColor: color])
+          // 目标价 / 失效价的小数位由品种自己说（`ChartState.decimals`，也就是
+          // `SymbolInfo.pricePrecision`），和顶栏、K 线价格轴一致（审查 B-07）。
+          // 原来是「最多 6 位、能省就省」，于是 76800 写成 `76800`、0.0000004 写成
+          // `0.0000004`，同一张图上两条线的写法能差出四位。
+          ReviewLabels.price(title, value: value, decimals: state.decimals).draw(at: CGPoint(x: max(8, layout.plotW - 125), y: max(2, min(layout.mainH - 52, y - 17))), withAttributes: [.font: UIFont.systemFont(ofSize: 11), .foregroundColor: color])
         }
       }
       let expiry = min(layout.plotW - 18, max(18, state.view.x(Double(draft.rule.expires), plotW: layout.plotW)))
@@ -135,9 +146,6 @@ final class RangeOverlayView: UIView {
   private func handle(_ point: CGPoint, ctx: CGContext) {
     ctx.setFillColor(UIColor.systemOrange.cgColor); ctx.fillEllipse(in: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))
     ctx.setStrokeColor(UIColor.white.cgColor); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))
-  }
-  private func date(_ time: Int64) -> String {
-    let f = DateFormatter(); f.dateFormat = "M/d HH:mm"; return f.string(from: Date(timeIntervalSince1970: Double(time) / 1000))
   }
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
     guard let q = touches.first?.location(in: self), let draft, let state = chart?.state, let layout = chart?.chartLayout else { return }

@@ -9,7 +9,7 @@
 //! The Binance marketing endpoints are the ones its own website calls; they are
 //! undocumented and may change without warning, so every parser skips the rows
 //! and the fields it cannot read instead of failing the whole table.
-use crate::{AppState,envelope,error::{ApiError,Result}};
+use crate::{AppState,binance_gate,envelope,error::{ApiError,Result}};
 use axum::{Router,Json,extract::Query,routing::get,http::StatusCode};
 use serde::{Deserialize,Serialize};
 use serde_json::{Value,json};
@@ -18,7 +18,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc,OnceLock,atomic::{AtomicBool,Ordering}};
-use std::time::{Duration,Instant};
+use std::time::{Duration,Instant,SystemTime};
 
 const APEX:&str="https://www.binance.com/bapi/apex/v1/public/apex/marketing/symbol/list";
 const PRODUCTS:&str="https://www.binance.com/bapi/asset/v2/public/asset-service/product/get-products";
@@ -61,6 +61,21 @@ const LIVE_TTL:Duration=Duration::from_secs(15);
 /// The quote assets a perpetual symbol can end with, longest spelling first.
 const QUOTES:[&str;7]=["FDUSD","BUSD","TUSD","USDT","USDC","USDD","USD"];
 
+// 缓存可以一直留着当恢复材料，但**送出去**的数字有年龄上限：拿不到新数据时留空，
+// 绝不把一个不知道多久以前的数字当现在的答案（B-03）。
+/// 供应量与股票乘数最多带着七天的年龄出门。供应量按月变，七天内的偏差看不出来；
+/// 再往上就说不准了——被摘牌、增发、拆股都会让它彻底失真，而那正是留空的场合。
+/// 连续七天一次都没刷成功也意味着上游或出口坏了整整一周，那时候留空是实话。
+pub const MAX_PUBLISH_AGE:Duration=Duration::from_secs(7*24*60*60);
+/// 名义持仓量 = 张数 × 价格，价格超过五分钟就不再乘：那是「现在的持仓 × 半小时前
+/// 的价格」，一个谁都对不上的数。超时就只给张数，不给 `value`（A-02）。
+pub const OI_PRICE_MAX_AGE:Duration=Duration::from_secs(300);
+/// OKX 的持仓量整张表一起抓。十五分钟没刷成功就不再拿它答题：持仓量是分钟级的量，
+/// 一刻钟前的表已经不是「现在」了。
+pub const OKX_OI_MAX_AGE:Duration=Duration::from_secs(900);
+/// 不带 `symbols` 时最多答多少个品种，跟 `symbols` 那一路同一个上限。
+const PAYLOAD_LIMIT:usize=1000;
+
 pub fn routes()->Router<AppState> {
  Router::new().route("/v1/market/meta",get(meta))
  .route("/v1/market/open-interest",get(open_interest))
@@ -70,7 +85,20 @@ pub fn routes()->Router<AppState> {
 // 送给手机的 JSON 由 `Meta::value()` 拼，字段名不一样。
 #[derive(Clone,Copy,Debug,Default,PartialEq,Serialize,Deserialize)]
 #[serde(default)]
-pub struct Meta {pub total_supply:Option<f64>,pub circulating_supply:Option<f64>,pub max_supply:Option<f64>,pub rank:Option<i64>}
+pub struct Meta {pub total_supply:Option<f64>,pub circulating_supply:Option<f64>,pub max_supply:Option<f64>,pub rank:Option<i64>,
+ /// 这一行的身份是谁认的。**内部字段**：[`Meta::value`] 不会把它写进客户端看到的
+ /// JSON，客户端也永远不会拿到「来源」这种字段。它存在只为一件事——`lookup` 要能
+ /// 分辨「币安自己就把 `1000SATS` 当成一个资产」和「CoinGecko 上有个叫这名字的
+ /// 东西」，这两者一个是证据、一个是巧合。落盘快照里带着它，否则重启之后每一行都
+ /// 退化成「没人认领」，`1000SATS` 就会被当成有歧义而留空。
+ pub family:Option<Family>}
+/// 一行供应量的身份是哪一族的口径认的。
+///
+/// 币安自己的两个表（apex / product）用的是同一套资产代号，所以它们是同一族，
+/// 可以按代号相互补字段；CoinGecko 用的是自己的 `id`，跟币安的代号没有任何保证的
+/// 对应关系，所以它自成一族，绝不跟币安那一族互相填字段（B-02）。
+#[derive(Clone,Copy,Debug,PartialEq,Eq,Serialize,Deserialize)]
+pub enum Family {Binance,CoinGecko}
 impl Meta {
  fn empty(&self)->bool {self.total_supply.is_none()&&self.circulating_supply.is_none()&&self.max_supply.is_none()&&self.rank.is_none()}
  /// A `1000PEPE` contract is a bundle of 1000 coins, so its price is 1000x the
@@ -80,7 +108,7 @@ impl Meta {
  pub fn scaled(self,multiplier:f64)->Self {
   if !(multiplier.is_finite()&&multiplier>0.0) {return self}
   let by=|v:Option<f64>|v.map(|x|x/multiplier);
-  Self{total_supply:by(self.total_supply),circulating_supply:by(self.circulating_supply),max_supply:by(self.max_supply),rank:self.rank}
+  Self{total_supply:by(self.total_supply),circulating_supply:by(self.circulating_supply),max_supply:by(self.max_supply),rank:self.rank,family:self.family}
  }
  pub fn value(&self)->Value {
   let mut out=serde_json::Map::new();
@@ -107,44 +135,100 @@ pub type SupplyTable=HashMap<String,Meta>;
 /// unrelated American company. Guessing is not merely useless: `stocks/ANTH`
 /// resolves to AN2 Therapeutics, nothing to do with Anthropic. The pre-IPO
 /// names sit on the named arm too, under `private/<slug>`.
+///
+/// `PreMarket` 和 `Unknown` 都是「不给市值」的档位，但理由不同：未上市的公司根本
+/// 没有市值可言（二级市场的估值页已经不再公布，见 B-09），而 `Unknown` 是币安没说
+/// 这个合约写在什么上面——没说就不猜，不给数（B-01）。
 #[derive(Clone,Copy,Debug,PartialEq,Eq,Serialize,Deserialize)]
-pub enum Kind {Crypto,TickerEquity,NamedEquity,Other}
+pub enum Kind {Crypto,TickerEquity,NamedEquity,PreMarket,Other,Unknown}
 impl Kind {
  pub fn equity(self)->bool {matches!(self,Kind::TickerEquity|Kind::NamedEquity)}
+ /// 这个分类在契约里的写法。客户端的品种目录用它对账（见 B-T11 的样本文件）。
+ pub fn wire(self)->&'static str {
+  match self {
+   Kind::Crypto=>"crypto",Kind::TickerEquity=>"equityUS",Kind::NamedEquity=>"equityNamed",
+   Kind::PreMarket=>"preMarket",Kind::Other=>"other",Kind::Unknown=>"unknown",
+  }
+ }
 }
 
 /// One row of Binance's contract list, reduced to what the supply table needs.
 #[derive(Clone,Debug,PartialEq)]
 pub struct Contract {pub symbol:String,pub base:String,pub kind:Kind}
 
+/// 一个股票乘数，连着它是什么时候算出来的。
+///
+/// 时刻用 [`SystemTime`] 而不是 `Instant`：进程刚起来时 `Instant` 减不出开机之前的
+/// 时刻，于是快照里那些「已经三天大」的乘数一重启就会被当成刚算的，七天上限也就
+/// 白设了。
+#[derive(Clone,Copy,Debug,PartialEq,Serialize,Deserialize)]
+pub struct Priced {pub k:f64,pub at:SystemTime,
+ /// 算这个 k 时用的合约价格。留着它是为了认出拆股：见 [`unit_changed`]。
+ #[serde(default)] pub price:f64}
+
+/// 合约的计价单位变了吗——拆股、合股、换股都长这个样子。
+///
+/// `k = 市值 / 价格`，所以 k 只在「价格还是同一个单位」的前提下有效。2 拆 1 之后股价
+/// 腰斩、股数翻倍、市值不变，拿旧 k 乘新价格报出来的市值正好是真值的一半。七天的年龄
+/// 上限拦不住这件事：它可能发生在 k 算出来的第二天（B-T09）。阈值取 1.5 倍：一只股票
+/// 一天之内涨跌五成已经是极端事件，而最小的拆股就是 2 比 1；宁可多留空几只。
+pub fn unit_changed(before:f64,now:f64)->bool {
+ if !(before>0.0&&now>0.0) {return true}
+ let ratio=now/before;
+ !(0.667..=1.5).contains(&ratio)
+}
+/// Contract symbol (`AAPLUSDT`) -> the number its price is multiplied by to get
+/// the listed company's market capitalisation, and when that number was taken.
+pub type EquityTable=HashMap<String,Priced>;
+
+/// 送出去的数字够不够新。`None`（不知道是什么时候的）一律算过期——不知道年龄的
+/// 数字跟没有数字是一回事。落在未来的时刻不算过期：那是机器对时，不是数据变旧。
+pub fn expired(at:Option<SystemTime>)->bool {
+ match at {
+  None=>true,
+  Some(at)=>SystemTime::now().duration_since(at).is_ok_and(|age|age>MAX_PUBLISH_AGE),
+ }
+}
+
 /// Everything a `/v1/market/meta` answer is built from, refreshed as one unit.
 #[derive(Default)]
 pub struct Market {
  /// Coin supply, keyed by base asset (`BTC`).
  pub coins:SupplyTable,
- /// Contract symbol (`AAPLUSDT`) -> the number its price is multiplied by to
- /// get the listed company's market capitalisation. See [`multiplier`]: it is
- /// deliberately not a share count.
- pub equities:HashMap<String,f64>,
+ /// 股票乘数，各自带着自己的时刻。
+ pub equities:EquityTable,
  /// Contract symbol (`AAPLUSDT`) -> what it tracks.
  pub kinds:HashMap<String,Kind>,
+ /// 币的那张表是什么时候抓下来的。`None` = 不知道，于是一个都不发布。
+ pub coins_at:Option<SystemTime>,
 }
 impl Market {
- /// An unlisted symbol is read as a coin, which is what every OKX-only
- /// perpetual is; Binance lists no equity we would then get wrong.
- pub fn kind(&self,symbol:&str)->Kind {self.kinds.get(&plain(symbol)).copied().unwrap_or(Kind::Crypto)}
+ /// 刚抓下来的一张表。
+ pub fn fresh(coins:SupplyTable,equities:EquityTable,kinds:HashMap<String,Kind>)->Self {
+  Market{coins,equities,kinds,coins_at:Some(SystemTime::now())}
+ }
+ /// 币安没说这个合约写在什么上面时是 [`Kind::Unknown`]，不是「币」。
+ ///
+ /// 以前这里兜底成 `Crypto`，理由是「OKX 独有的永续本来就都是币」。但兜底的代价
+ /// 是反过来那一半：exchangeInfo 抓不到、或者币安新加了一类标的还没被认出来时，
+ /// 每一只股票都会被当成同名的币去查供应量——NVDAUSDT 报出某个叫 NVDA 的山寨币的
+ /// 市值，正是这么来的。查不到分类就不给市值：少一个数字，不给一个错数字（B-01）。
+ pub fn kind(&self,symbol:&str)->Kind {self.kinds.get(&plain(symbol)).copied().unwrap_or(Kind::Unknown)}
  /// The supply to publish for a contract symbol, or nothing.
  pub fn meta(&self,symbol:&str)->Option<Meta> {
   match self.kind(symbol) {
-   Kind::Crypto=>lookup(&self.coins,symbol),
+   // 七天没刷成功的供应量不再出门：见 MAX_PUBLISH_AGE。
+   Kind::Crypto=>(!expired(self.coins_at)).then(||lookup(&self.coins,symbol)).flatten(),
    // A stock whose capitalisation we could not resolve stays blank. Falling
    // back to the coin table here is exactly the bug this split exists to
    // prevent: NVDAUSDT would report the market cap of an altcoin that happens
    // to be called NVDA. ETFs, metals, indices and pre-IPO names have no
    // capitalisation at all, and blank is the honest answer for them too.
    Kind::TickerEquity|Kind::NamedEquity=>self.equities.get(&plain(symbol))
-    .map(|k|Meta{total_supply:Some(*k),..Meta::default()}),
-   Kind::Other=>None,
+    .filter(|priced|!expired(Some(priced.at)))
+    .map(|priced|Meta{total_supply:Some(priced.k),..Meta::default()}),
+   // 未上市（B-09）、金属与指数、以及币安没说过的东西：都没有可发布的市值。
+   Kind::PreMarket|Kind::Other|Kind::Unknown=>None,
   }
  }
 }
@@ -159,34 +243,54 @@ impl Market {
 /// is Tencent quoted in Hong Kong dollars, `TENCENT` the same company quoted in
 /// dollars per ordinary share. Both are pinned to the one listing, and
 /// [`multiplier`] absorbs the difference in quote currency.
-const LISTINGS:[(&str,&str);26]=[
+/// 第三列是这一页该有的公司名开头（大写、只留字母数字）。它是页面身份校验的第二条
+/// 证据：光有代码相等已经很难认错人，但 stockanalysis 偶尔会把一个下市的代码指到
+/// 别处，而名字对得上就基本排除了这种可能。见 [`page_is`]。
+const LISTINGS:[(&str,&str,Option<&str>);24]=[
  // 香港
- ("HK0700","quote/hkg/0700"),("TENCENT","quote/hkg/0700"),
- ("HK1810","quote/hkg/1810"),("HK0625","quote/hkg/0625"),("HK0992","quote/hkg/0992"),
- ("MEITUAN","quote/hkg/3690"),("KUAISHOU","quote/hkg/1024"),("POPMART","quote/hkg/9992"),
- ("BYD","quote/hkg/1211"),("MINIMAX","quote/hkg/0100"),("GIGADEV","quote/hkg/3986"),
- ("ZHONGJI","quote/hkg/3308"),("ZHIPU","quote/hkg/2513"),
+ ("HK0700","quote/hkg/0700",Some("TENCENT")),("TENCENT","quote/hkg/0700",Some("TENCENT")),
+ ("HK1810","quote/hkg/1810",Some("XIAOMI")),("HK0625","quote/hkg/0625",Some("SHEIN")),
+ ("HK0992","quote/hkg/0992",Some("LENOVO")),
+ ("MEITUAN","quote/hkg/3690",Some("MEITUAN")),("KUAISHOU","quote/hkg/1024",Some("KUAISHOU")),
+ ("POPMART","quote/hkg/9992",Some("POPMART")),
+ ("BYD","quote/hkg/1211",Some("BYD")),("MINIMAX","quote/hkg/0100",Some("MINIMAX")),
+ ("GIGADEV","quote/hkg/3986",Some("GIGADEVICE")),
+ ("ZHONGJI","quote/hkg/3308",Some("ZHONGJI")),("ZHIPU","quote/hkg/2513",Some("ZAI")),
  // 韩国
- ("SKHYNIX","quote/krx/000660"),("SAMSUNG","quote/krx/005930"),("HYUNDAI","quote/krx/005380"),
- ("SAMSUNGEM","quote/krx/009150"),("HANMI","quote/krx/042700"),
- ("LGELECTRONICS","quote/krx/066570"),("NAVER","quote/krx/035420"),
+ ("SKHYNIX","quote/krx/000660",Some("SKHYNIX")),("SAMSUNG","quote/krx/005930",Some("SAMSUNGELECTRONICS")),
+ ("HYUNDAI","quote/krx/005380",Some("HYUNDAIMOTOR")),
+ ("SAMSUNGEM","quote/krx/009150",Some("SAMSUNGELECTRO")),("HANMI","quote/krx/042700",Some("HANMISEMICONDUCTOR")),
+ ("LGELECTRONICS","quote/krx/066570",Some("LGELECTRONICS")),("NAVER","quote/krx/035420",Some("NAVER")),
  // 上海
- ("CXMT","quote/sha/688825"),("UNITREE","quote/sha/688836"),
- // 未上市：估值页在 private/<slug> 下，用二级市场的「Implied Valuation」。
- ("ANTHROPIC","private/anthropic"),("OPENAI","private/openai"),
+ ("CXMT","quote/sha/688825",Some("CXMT")),("UNITREE","quote/sha/688836",Some("YUSHU")),
  // 美国，但合约名不是那个代码：伯克希尔 B 股写作 BRK.B，Quantinuum 的 QNT
  // 在币安被改名成 QNTX，因为 QNT 已经是一个币。
- ("BRKB","stocks/BRK.B"),("QNTX","stocks/QNT"),
+ ("BRKB","stocks/BRK.B",Some("BERKSHIRE")),("QNTX","stocks/QNT",Some("QUANTINUUM")),
 ];
+// ANTHROPIC / OPENAI 不在这张表里了：它们是未上市公司，没有市值。二级市场的
+// 「Implied Valuation」既不是市值、也已经不在那两页上公布，拿它当市值发布是把一个
+// 不同口径的数字冒充成市值（B-09）。PREMARKET 那一类合约同理，一律留空。
 /// The page to read for a contract, or nothing when we have no listing for it.
 ///
 /// A foreign name we have never mapped stays blank on purpose: guessing
 /// `stocks/<name>` is how a Korean contract ends up reporting an American
 /// company's market cap.
 pub fn listing(kind:Kind,base:&str)->Option<String> {
- if let Some((_,path))=LISTINGS.iter().find(|(name,_)|*name==base) {return Some((*path).to_owned())}
+ // 未上市与非公司标的没有可读的页面，连找都不找。
+ if !kind.equity() {return None}
+ if let Some((_,path,_))=LISTINGS.iter().find(|(name,_,_)|*name==base) {return Some((*path).to_owned())}
  let plain_ticker=!base.is_empty()&&base.chars().all(|c|c.is_ascii_alphanumeric());
  (kind==Kind::TickerEquity&&plain_ticker).then(||format!("stocks/{base}"))
+}
+/// 这一页该是谁：代码（路径最后一段）和可选的公司名开头。
+pub fn expected_identity(base:&str,path:&str)->(String,Option<&'static str>) {
+ let code=normalise(path.rsplit('/').next().unwrap_or(""));
+ let keyword=LISTINGS.iter().find(|(name,listing,_)|*name==base&&*listing==path).and_then(|(_,_,word)|*word);
+ (code,keyword)
+}
+/// 大写，只留字母数字：`BRK.B` -> `BRKB`，`000660` -> `000660`，`SK hynix` -> `SKHYNIX`。
+pub fn normalise(text:&str)->String {
+ text.to_ascii_uppercase().chars().filter(char::is_ascii_alphanumeric).collect()
 }
 /// The currency a listing's page reports its market capitalisation in.
 pub fn listing_currency(path:&str)->&'static str {
@@ -234,10 +338,15 @@ pub fn strip_quote(symbol:&str)->String {
 /// counts, plus the older `1M`/`1K` spelling of the same thing.
 pub fn strip_multiplier(base:&str)->(&str,f64) {
  let digits=base.chars().take_while(char::is_ascii_digit).count();
- if digits>=3 {
+ // 前缀必须是 10 的整数次幂、而且至少一千：币安的打包只有 1000 / 1000000 这两种
+ // 写法。不卡这一条的话 `2024ABC` 这种名字会被当成「2024 个 ABC」，供应量凭空缩
+ // 两千倍——它只是一个以年份开头的名字。剩下的部分还得以字母开头且不止一个字符，
+ // 所以 `1000X`、`1INCH`、`123ABC` 都是名字本身。
+ let power_of_ten=digits>=4&&base.starts_with('1')&&base[1..digits].bytes().all(|b|b==b'0');
+ if power_of_ten {
   if let Ok(multiplier)=base[..digits].parse::<f64>() {
    let rest=&base[digits..];
-   if multiplier>=1000.0 && rest.len()>=2 {return (rest,multiplier)}
+   if rest.len()>=2&&rest.starts_with(|c:char|c.is_ascii_alphabetic()) {return (rest,multiplier)}
   }
  }
  for (prefix,multiplier) in [("1M",1e6),("1K",1e3)] {
@@ -255,11 +364,7 @@ pub fn strip_multiplier(base:&str)->(&str,f64) {
 /// knows the bundle we must take its figure rather than divide a second time.
 /// Only a bundle it has never heard of (`1000PEPE`) falls through to the coin.
 pub fn base_candidates(symbol:&str)->Vec<(String,f64)> {
- let clean=plain(symbol);
- let mut names=vec![clean.clone()];
- for quote in QUOTES {
-  if let Some(rest)=clean.strip_suffix(quote) {if !rest.is_empty()&&!names.iter().any(|n|n==rest) {names.push(rest.to_owned())}}
- }
+ let names=base_readings(symbol);
  let mut out:Vec<(String,f64)>=names.iter().map(|n|(n.clone(),1.0)).collect();
  for name in &names {
   let (base,multiplier)=strip_multiplier(name);
@@ -267,11 +372,45 @@ pub fn base_candidates(symbol:&str)->Vec<(String,f64)> {
  }
  out
 }
-/// Resolves a contract symbol against the supply table, taking the first
-/// reading the table actually knows. That is also what settles an ambiguous
-/// pair: `USDTUSD` could be read as USD/TUSD, but only USDT is a listed asset.
+/// 一个合约符号能读成哪些资产名，最像的在前：整个符号，然后去掉计价资产之后的部分。
+pub fn base_readings(symbol:&str)->Vec<String> {
+ let clean=plain(symbol);
+ let mut names=vec![clean.clone()];
+ for quote in QUOTES {
+  if let Some(rest)=clean.strip_suffix(quote) {if !rest.is_empty()&&!names.iter().any(|n|n==rest) {names.push(rest.to_owned())}}
+ }
+ names
+}
+/// Resolves a contract symbol against the supply table.
+///
+/// 每一种读法都可能对上两行：名字原样那一行（`1000SATS`），和剥掉打包前缀之后那一行
+/// （`SATS`，供应量要除以 1000）。谁说了算看身份（B-02）：
+///
+/// * 币安自己的表里就有这个名字 -> 它已经是按张算的了，原样拿走，绝不再除一次。
+///   `1000SATS`、`1000CAT`、`1MBABYDOGE` 都是这种，币安给的供应量已经除过。
+/// * 币安自己的表里有剥掉前缀后的资产 -> 这是「1000 个 PEPE」的证据，除以 1000。
+///   它比「CoinGecko 上有个东西叫 1000PEPE」这种弱证据更可信。
+/// * 两边都只有弱证据（CoinGecko 既有原名又有剥掉前缀的名字）-> 说不清是哪一个，
+///   留空。绝不让市值排行榜替我们选一个。
+///
+/// 读法之间仍然是「第一个对得上的赢」，这也是歧义对的解法：`USDTUSD` 可以读成
+/// USD/TUSD，但表里只有 USDT 这个资产。
 pub fn lookup(table:&SupplyTable,symbol:&str)->Option<Meta> {
- base_candidates(symbol).into_iter().find_map(|(base,multiplier)|table.get(&base).map(|meta|meta.scaled(multiplier)))
+ for name in base_readings(symbol) {
+  let original=table.get(&name);
+  let (stripped_name,multiplier)=strip_multiplier(&name);
+  let stripped=(multiplier!=1.0).then(||table.get(stripped_name)).flatten();
+  let binance=|meta:&&Meta|meta.family==Some(Family::Binance);
+  if let Some(meta)=original.filter(binance) {return Some(*meta)}
+  if let Some(meta)=stripped.filter(binance) {return Some(meta.scaled(multiplier))}
+  match (original,stripped) {
+   (Some(_),Some(_))=>return None,
+   (Some(meta),None)=>return Some(*meta),
+   (None,Some(meta))=>return Some(meta.scaled(multiplier)),
+   (None,None)=>{}
+  }
+ }
+ None
 }
 /// `BTCUSDT` -> `BTC-USDT-SWAP`; an instrument id passed in as-is stays intact.
 pub fn okx_instrument(symbol:&str)->String {
@@ -301,43 +440,102 @@ fn rows(body:&Value)->&[Value] {
  }
  &[]
 }
-/// Fills only the fields the table is still missing, so earlier (better) sources win.
-fn fill(table:&mut SupplyTable,base:&str,meta:Meta) {
- if base.is_empty()||meta.empty() {return}
- let slot=table.entry(base.to_owned()).or_default();
+/// 一个上游说的一项资产：它在**那个上游自己的口径**里的身份、它挂的代号，和数字。
+///
+/// 身份和代号分开是这一层的全部意义（B-02）。币安的口径里资产代号就是身份，一个代号
+/// 一个东西；CoinGecko 的口径里身份是 `id`（`pepe`、`pepe-2`、`wrapped-pepe`），代号
+/// （`symbol`）可以有一大把重名的。只按代号合表，等于让「谁的市值大谁占住这个代号」
+/// 替我们做判断——那正是要改掉的东西。
+#[derive(Clone,Debug,PartialEq)]
+pub struct Asset {pub id:String,pub ticker:String,pub meta:Meta}
+
+/// 只补空字段，所以同一身份里先来的（更可信的）源赢。
+fn merge_into(slot:&mut Meta,meta:&Meta) {
  slot.total_supply=slot.total_supply.or(meta.total_supply);
  slot.circulating_supply=slot.circulating_supply.or(meta.circulating_supply);
  slot.max_supply=slot.max_supply.or(meta.max_supply);
  slot.rank=slot.rank.or(meta.rank);
 }
+/// 把一个源的资产按身份收拢，再按代号索引。
+///
+/// 返回值里的 `None` 是「这个代号在这个源里指向好几个不同的东西」——歧义。字段只在
+/// 同一身份内部相互补，跨身份一个字段都不填。
+pub fn by_identity(assets:&[Asset],family:Family)->HashMap<String,Option<Meta>> {
+ let mut per_id:HashMap<&str,(String,Meta)>=HashMap::new();
+ for asset in assets {
+  if asset.id.is_empty()||asset.ticker.is_empty() {continue}
+  let slot=per_id.entry(&asset.id).or_insert_with(||(asset.ticker.clone(),Meta{family:Some(family),..Meta::default()}));
+  merge_into(&mut slot.1,&asset.meta);
+ }
+ let mut owner:HashMap<String,&str>=HashMap::new();
+ let mut out:HashMap<String,Option<Meta>>=HashMap::new();
+ for (id,(ticker,meta)) in &per_id {
+  // 什么数字都没有的那一行不算一个候选：它既当不了答案，也没资格把唯一那个有数字
+  // 的同名资产拖成「有歧义」。
+  if meta.empty() {continue}
+  match owner.get(ticker) {
+   Some(other) if other!=id=>{out.insert(ticker.clone(),None);}
+   Some(_)=>{}
+   None=>{owner.insert(ticker.clone(),id);out.insert(ticker.clone(),Some(*meta));}
+  }
+ }
+ out
+}
+/// 两族合成一张按代号索引的表。
+///
+/// 币安自己的表说了算：它认领的代号直接盖掉 CoinGecko 那一行，绝不互相补字段。
+/// 币安那边有歧义（同一个代号指向两个资产）就把这个代号整个去掉——留空比挑一个强。
+pub fn merge_assets(binance:&[Asset],coingecko:&[Asset])->SupplyTable {
+ let mut out=SupplyTable::new();
+ for (ticker,meta) in by_identity(coingecko,Family::CoinGecko) {
+  if let Some(meta)=meta {out.insert(ticker,meta);}
+ }
+ for (ticker,meta) in by_identity(binance,Family::Binance) {
+  match meta {Some(meta)=>{out.insert(ticker,meta);},None=>{out.remove(&ticker);}}
+ }
+ out
+}
 /// Binance apex marketing list: `symbol` is a spot pair such as `BTCUSDT` and
 /// `baseAsset` names its coin outright, which is the only way to read a pair
-/// like `USDTUSD` correctly.
-pub fn parse_apex(body:&Value,table:&mut SupplyTable) {
+/// like `USDTUSD` correctly. 币安自己的口径里，资产代号就是资产的身份。
+///
+/// 所以 `baseAsset` 缺位的那一行整行丢掉，绝不退回去切 `symbol` 的尾巴猜一个代号
+/// （B-02）：`USDTUSD` 切出来的不是 USDT，而这一行还会盖上 `Family::Binance` 的戳，
+/// 于是一个猜出来的身份能把 CoinGecko 那个正确的同名资产顶掉、甚至把它判成有歧义
+/// 后整个删掉。认不出身份的数字不进表。
+pub fn parse_apex(body:&Value)->Vec<Asset> {
+ let mut out=Vec::new();
  for row in rows(body) {
-  let base=match (row["baseAsset"].as_str(),row["symbol"].as_str()) {
-   (Some(base),_)=>base.to_ascii_uppercase(),
-   (None,Some(symbol))=>strip_quote(symbol),
-   (None,None)=>continue,
-  };
-  let meta=Meta{total_supply:positive(&row["totalSupply"]),circulating_supply:positive(&row["circulatingSupply"]),max_supply:positive(&row["maxSupply"]),rank:rank_of(&row["rank"])};
-  fill(table,&base,meta);
+  let Some(base)=row["baseAsset"].as_str() else {continue};
+  let base=base.to_ascii_uppercase();
+  let meta=Meta{total_supply:positive(&row["totalSupply"]),circulating_supply:positive(&row["circulatingSupply"]),max_supply:positive(&row["maxSupply"]),rank:rank_of(&row["rank"]),family:Some(Family::Binance)};
+  out.push(Asset{id:base.clone(),ticker:base,meta});
  }
+ out
 }
 /// Binance product list: `b` is the base asset, `cs` its circulating supply.
-pub fn parse_products(body:&Value,table:&mut SupplyTable) {
+/// 跟 apex 是同一套资产代号，所以同一个代号的两行会被合成一行。
+pub fn parse_products(body:&Value)->Vec<Asset> {
+ let mut out=Vec::new();
  for row in rows(body) {
   let Some(base)=row["b"].as_str() else {continue};
-  fill(table,&base.to_ascii_uppercase(),Meta{circulating_supply:positive(&row["cs"]),..Meta::default()});
+  let base=base.to_ascii_uppercase();
+  let meta=Meta{circulating_supply:positive(&row["cs"]),family:Some(Family::Binance),..Meta::default()};
+  out.push(Asset{id:base.clone(),ticker:base,meta});
  }
+ out
 }
 /// CoinGecko markets page, used only for coins Binance never listed on spot.
-pub fn parse_coingecko(body:&Value,table:&mut SupplyTable) {
+/// 身份是 `id`，不是 `symbol`：几十个币都叫 `BTC`，只有 `id` 分得开。没有 `id` 的
+/// 行整行丢掉——认不出身份的数字不能进表。
+pub fn parse_coingecko(body:&Value)->Vec<Asset> {
+ let mut out=Vec::new();
  for row in rows(body) {
-  let Some(symbol)=row["symbol"].as_str() else {continue};
-  let meta=Meta{total_supply:positive(&row["total_supply"]),circulating_supply:positive(&row["circulating_supply"]),max_supply:positive(&row["max_supply"]),rank:rank_of(&row["market_cap_rank"])};
-  fill(table,&symbol.to_ascii_uppercase(),meta);
+  let (Some(id),Some(symbol))=(row["id"].as_str(),row["symbol"].as_str()) else {continue};
+  let meta=Meta{total_supply:positive(&row["total_supply"]),circulating_supply:positive(&row["circulating_supply"]),max_supply:positive(&row["max_supply"]),rank:rank_of(&row["market_cap_rank"]),family:Some(Family::CoinGecko)};
+  out.push(Asset{id:id.to_ascii_lowercase(),ticker:symbol.to_ascii_uppercase(),meta});
  }
+ out
 }
 /// A capitalisation as these pages print it: `"1,271.87T"`, `"$4.90T"`, or a
 /// bare number. Only positive amounts count; anything else is unknown.
@@ -369,34 +567,50 @@ pub fn parse_stockanalysis_cap(body:&Value)->Option<f64> {
   let Some(index)=head.get("marketCap").and_then(Value::as_u64) else {continue};
   if let Some(cap)=data.get(index as usize).and_then(money) {return Some(cap)}
  }
- parse_private_valuation(body)
+ None
 }
-/// A company that has not listed has no market capitalisation, so its page
-/// carries a stat list instead of a `marketCap` field. Two entries there could
-/// stand in: `Valuation`, the post-money figure of the last funding round, and
-/// `Implied Valuation`, what the secondary market is paying right now. The
-/// implied one is preferred because it moves with the same trading the
-/// perpetual tracks; the round figure is months stale by construction and only
-/// used when no implied one is published.
-fn parse_private_valuation(body:&Value)->Option<f64> {
- let mut fallback=None;
- for node in body["nodes"].as_array()? {
+/// 页面上所有能当身份用的字符串：代码与公司名，规范化之后。
+///
+/// 这些字段藏在 `nodes[n].data[m]` 的**嵌套**对象里（`marketCap` 在另一个节点上），
+/// 而且跟页面上的其它东西一样是索引：`{"symbol":7}` 指的是 `data[7]`。
+pub fn page_identities(body:&Value)->Vec<String> {
+ const KEYS:[&str;7]=["symbol","db_symbol","nameFull","name","titleName","ticker","exchange_symbol"];
+ let mut out=Vec::new();
+ let Some(nodes)=body["nodes"].as_array() else {return out};
+ for node in nodes {
   let Some(data)=node["data"].as_array() else {continue};
-  let Some(head)=data.first().and_then(Value::as_object) else {continue};
-  let Some(index)=head.get("statsLeft").and_then(Value::as_u64) else {continue};
-  let Some(stats)=data.get(index as usize).and_then(Value::as_array) else {continue};
-  for entry in stats {
-   let Some(row)=entry.as_u64().and_then(|i|data.get(i as usize)).and_then(Value::as_object) else {continue};
-   let label=row.get("label").and_then(Value::as_u64).and_then(|i|data.get(i as usize)).and_then(Value::as_str);
-   let value=row.get("value").and_then(Value::as_u64).and_then(|i|data.get(i as usize)).and_then(money);
-   match (label,value) {
-    (Some("Implied Valuation"),Some(cap))=>return Some(cap),
-    (Some("Valuation"),Some(cap))=>fallback=fallback.or(Some(cap)),
-    _=>{}
+  for cell in data {
+   let Some(map)=cell.as_object() else {continue};
+   for key in KEYS {
+    let text=match map.get(key) {
+     Some(Value::String(text))=>Some(text.as_str()),
+     Some(Value::Number(n))=>n.as_u64().and_then(|i|data.get(i as usize)).and_then(Value::as_str),
+     _=>None,
+    };
+    if let Some(text)=text {
+     let clean=normalise(text);
+     if !clean.is_empty()&&!out.contains(&clean) {out.push(clean)}
+    }
    }
   }
  }
- fallback
+ out
+}
+/// 这一页真的是我们要的那家公司吗（B.3 / A.7）。
+///
+/// 市值本身读得出来还不够：`stocks/<代码>` 这条路是拼出来的，代码一改名、一下市，
+/// 同一个地址就会答成另一家公司，而那个市值照样是个合法的数字——错得毫无破绽。所以
+/// 每一页都要自证身份：代码对得上，或者公司名以我们登记的那个词开头。一条证据都举不
+/// 出来（页面上根本没有身份字段，比如一张验证码页）时按「不是」处理，宁可留空。
+pub fn page_is(body:&Value,code:&str,keyword:Option<&str>)->bool {
+ let found=page_identities(body);
+ if found.is_empty() {return false}
+ let code=normalise(code);
+ if !code.is_empty()&&found.iter().any(|text|*text==code) {return true}
+ match keyword {
+  Some(word)=>{let word=normalise(word);!word.is_empty()&&found.iter().any(|text|text.starts_with(&word))}
+  None=>false,
+ }
 }
 /// `{"result":"success","base_code":"USD","rates":{"HKD":7.844,...}}` — units of
 /// the listed currency per dollar.
@@ -412,18 +626,25 @@ pub fn parse_fx(body:&Value)->HashMap<String,f64> {
 /// Binance `exchangeInfo` -> what each contract is and what it is written on.
 /// The base asset is taken from the row rather than sliced off the symbol:
 /// Binance quotes in USDT, USDC, USD1, U and BTC, so `SPCXUSD1` reads as SPCX
-/// only because the row says so. A symbol with no `underlyingType` counts as a
-/// coin, which is what everything here was before Binance listed anything else.
+/// only because the row says so.
+///
+/// 没有 `underlyingType` 的行是 [`Kind::Unknown`]，不是「币」。以前它算币，理由是
+/// 「币安加这个字段之前这里全都是币」——但那是历史，不是证据。这个字段缺了只说明一件
+/// 事：币安没告诉我们这个合约写在什么上面。猜成币的代价是把一只股票按同名山寨币的
+/// 供应量算市值，而留空的代价只是少一个数字（B-01）。
 pub fn parse_exchange_info(body:&Value)->Vec<Contract> {
  let mut out=Vec::new();
  for row in rows(&body["symbols"]) {
   let Some(symbol)=row["symbol"].as_str() else {continue};
-  let kind=match row["underlyingType"].as_str() {
-   None|Some("COIN")=>Kind::Crypto,
+  let kind=match row["underlyingType"].as_str().map(str::trim).filter(|text|!text.is_empty()) {
+   Some("COIN")=>Kind::Crypto,
    Some("EQUITY")=>Kind::TickerEquity,
-   Some("HK_EQUITY")|Some("KR_EQUITY")|Some("CN_EQUITY")|Some("PREMARKET")=>Kind::NamedEquity,
+   Some("HK_EQUITY")|Some("KR_EQUITY")|Some("CN_EQUITY")=>Kind::NamedEquity,
+   // 未上市：没有市值（B-09）。
+   Some("PREMARKET")=>Kind::PreMarket,
    // Metals, oil and the BTCDOM index: no company, so no capitalisation.
    Some(_)=>Kind::Other,
+   None=>Kind::Unknown,
   };
   let base=match row["baseAsset"].as_str() {
    Some(base)=>base.to_ascii_uppercase(),
@@ -443,22 +664,26 @@ pub fn kinds_of(contracts:&[Contract])->HashMap<String,Kind> {
 pub fn meta_payload(market:&Market,symbols:Option<&str>)->Value {
  let mut out=serde_json::Map::new();
  match symbols {
-  Some(list)=>for name in list.split(',').map(str::trim).filter(|s|!s.is_empty()).take(1000) {
+  Some(list)=>for name in list.split(',').map(str::trim).filter(|s|!s.is_empty()).take(PAYLOAD_LIMIT) {
    let key=name.to_ascii_uppercase();
    if out.contains_key(&key) {continue}
    if let Some(meta)=market.meta(&key) {out.insert(key,meta.value());}
   },
-  // The unfiltered form is the whole contract table: the coin rows are keyed
-  // by base asset and only count when the contract of that name really is a
-  // coin (`COINUSDT` is Coinbase, not the altcoin COIN), and the equity rows
-  // are already keyed by contract symbol.
+  // The unfiltered form is the whole contract table: the equity rows are
+  // already keyed by contract symbol, and a coin row is turned into a
+  // `<base>USDT` symbol only when the contract of that name really is a coin
+  // （`COINUSDT` 是 Coinbase，不是那个叫 COIN 的币）。每一行都走 `market.meta`，
+  // 所以分类未知的、以及七天没刷新的，一样答不出来（B.9）。
+  // 上限跟 `symbols` 那一路一样，先股票再币，好让几百只股票不被几千个币挤掉。
   None=>{
-   for (base,meta) in &market.coins {
-    let symbol=format!("{base}USDT");
-    if market.kind(&symbol)==Kind::Crypto {out.insert(symbol,meta.value());}
-   }
-   for symbol in market.equities.keys() {
-    if let Some(meta)=market.meta(symbol) {out.insert(symbol.clone(),meta.value());}
+   let mut names:Vec<String>=market.equities.keys().cloned().collect();
+   names.sort();
+   let mut coins:Vec<String>=market.coins.keys().map(|base|format!("{base}USDT")).collect();
+   coins.sort();
+   names.extend(coins);
+   for symbol in names.into_iter().take(PAYLOAD_LIMIT) {
+    if out.contains_key(&symbol) {continue}
+    if let Some(meta)=market.meta(&symbol) {out.insert(symbol,meta.value());}
    }
   },
  }
@@ -545,6 +770,10 @@ fn upstream()->ApiError {ApiError(StatusCode::SERVICE_UNAVAILABLE,"market_upstre
 pub(crate) fn http()->&'static reqwest::Client {
  static HTTP:OnceLock<reqwest::Client>=OnceLock::new();
  HTTP.get_or_init(||reqwest::Client::builder().timeout(Duration::from_secs(20))
+  // 单独的连接超时。只有整体超时的话，一个黑洞路由（SYN 出去没人回）会把这个请求
+  // 按满 20 秒，而刷新是串着跑的：几百个页面各占 20 秒，一轮就再也跑不完。连上
+  // 一个活着的主机从来不需要五秒。
+  .connect_timeout(Duration::from_secs(5))
   // These are the endpoints binance.com itself calls; the default agent string
   // is the kind of thing such a front door refuses.
   .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
@@ -556,27 +785,57 @@ pub(crate) fn http()->&'static reqwest::Client {
 /// second time from a host of its own.
 pub async fn exchange_info()->Result<Value> {get_json(EXCHANGE_INFO).await}
 async fn get_json(url:&str)->Result<Value> {
- let response=http().get(url).send().await.map_err(|_|upstream())?.error_for_status().map_err(|_|upstream())?;
+ // 同一个出口被币安封着的时候连出站都不出：429 之后继续敲门换来的是 418，418 之后
+ // 继续敲门换来的是几天（A-06）。这道闸门是进程级的，`sector_history` 和
+ // `oi_archive` 的 exchangeInfo / ticker / klines 共用同一份截止时间。
+ if binance_gate::covers(url)&&binance_gate::blocked() {return Err(upstream())}
+ let response=http().get(url).send().await.map_err(|_|upstream())?;
+ // 记闸门也要先问 covers：这个函数同时服务 CoinGecko、stockanalysis.com 和
+ // open.er-api.com，而 CoinGecko 对匿名调用者是按分钟限速的。少了这道守卫，
+ // CoinGecko 的一个 429 就会把币安的出口按停两分钟，连带 sector_history 与
+ // oi_archive——那道闸门只该由 binance.com 自己按下（A-06）。
+ if binance_gate::covers(url)&&binance_gate::note_reply(&response) {return Err(upstream())}
+ let response=response.error_for_status().map_err(|_|upstream())?;
  response.json::<Value>().await.map_err(|_|upstream())
 }
-/// One equity contract's multiplier, or nothing when it has no listing we can
-/// read. `Err` means the page could not be fetched at all, which is the only
-/// case where the previous refresh's answer should be kept: a page that loads
-/// and carries no capitalisation (every ETF) is genuinely blank.
-async fn equity_multiplier(source:&dyn Source,contract:&Contract,fx:&HashMap<String,f64>,prices:&HashMap<String,f64>)->Result<Option<f64>> {
- let Some(path)=listing(contract.kind,&contract.base) else {return Ok(None)};
- let Some(price)=prices.get(&contract.symbol).copied() else {return Ok(None)};
+/// 一个股票合约这一轮该发布什么。
+///
+/// 三种结局分得很清楚，因为它们的正确处置完全不同（A.7）：
+/// * `Value` 算出来了；
+/// * `Blank` 这个合约确实没有可发布的市值——页面读到了但没有市值（每一只 ETF）、
+///   或者页面根本不是这家公司（身份校验没过）。要把旧值清掉。
+/// * `Carry` 这一轮问不出来——页面抓不到、汇率缺这个币种、价格表里没有这个合约。
+///   留着上一轮的数字（还要过七天上限那一关），而不是当成「没有市值」。
+enum Priceable {Value(f64),Blank,Carry}
+async fn equity_price(source:&dyn Source,contract:&Contract,fx:&HashMap<String,f64>,prices:&HashMap<String,f64>)->Priceable {
+ // 没有登记过页面的名字：不猜地址，这个合约就是没有市值。
+ let Some(path)=listing(contract.kind,&contract.base) else {return Priceable::Blank};
+ // 价格表 200 了但没有这个合约：这是表里缺一行，不是「这家公司没有市值」。
+ let Some(price)=prices.get(&contract.symbol).copied() else {return Priceable::Carry};
+ // 汇率缺这个币种就跳过它这一轮。绝不把缺失的汇率当成 1——那等于把 1369 韩元
+ // 报成 1369 美元。
+ let Some(rate)=fx.get(listing_currency(&path)).copied().filter(|rate|*rate>0.0) else {
+  tracing::warn!("Supply: no rate for {}, {} carried this round",listing_currency(&path),contract.symbol);
+  return Priceable::Carry;
+ };
  let url=format!("{STOCKANALYSIS}{path}/__data.json");
  // The site occasionally answers a real listing with a challenge page instead
  // of JSON; one immediate retry is what separates "Visa is blank today" from
  // "Visa is blank for one refresh". Two failures in a row count as unreadable.
  let body=match source.json(&url).await {
   Ok(body)=>body,
-  Err(_)=>{tokio::time::sleep(source.gap()).await;source.json(&url).await?}
+  Err(_)=>{
+   tokio::time::sleep(source.gap()).await;
+   match source.json(&url).await {Ok(body)=>body,Err(_)=>return Priceable::Carry}
+  }
  };
- let Some(cap)=parse_stockanalysis_cap(&body) else {return Ok(None)};
- let rate=fx.get(listing_currency(&path)).copied().unwrap_or(0.0);
- Ok(multiplier(cap,rate,price))
+ let (code,keyword)=expected_identity(&contract.base,&path);
+ if !page_is(&body,&code,keyword) {
+  tracing::warn!("Supply: {} answered with another company's page; publishing nothing",path);
+  return Priceable::Blank;
+ }
+ let Some(cap)=parse_stockanalysis_cap(&body) else {return Priceable::Blank};
+ match multiplier(cap,rate,price) {Some(k)=>Priceable::Value(k),None=>Priceable::Blank}
 }
 /// Asks stockanalysis.com for every equity contract, one page at a time.
 ///
@@ -584,7 +843,7 @@ async fn equity_multiplier(source:&dyn Source,contract:&Contract,fx:&HashMap<Str
 /// a guess: a blank cell beats another company's market cap. If the rates or
 /// the price list are missing there is nothing to compute at all, so the whole
 /// previous table is kept.
-async fn refresh_equities(source:&dyn Source,contracts:&[Contract],previous:Option<&HashMap<String,f64>>)->HashMap<String,f64> {
+async fn refresh_equities(source:&dyn Source,contracts:&[Contract],previous:Option<&EquityTable>)->EquityTable {
  let carried=||previous.cloned().unwrap_or_default();
  let wanted:Vec<&Contract>=contracts.iter().filter(|c|c.kind.equity()).collect();
  if wanted.is_empty() {return carried()}
@@ -596,19 +855,32 @@ async fn refresh_equities(source:&dyn Source,contracts:&[Contract],previous:Opti
   Ok(body)=>parse_binance_prices(&body),
   Err(_)=>{tracing::warn!("Supply: contract prices unavailable");return carried()}
  };
- let mut out=HashMap::new();
+ // 价格表 200 了但一行都没有，跟抓不到是一回事：它算不出任何一个乘数，却会把整张
+ // 旧表清空。这种空数组见过不止一次，不能当成「所有股票都没有市值了」。
+ if prices.is_empty() {tracing::warn!("Supply: the price list came back empty");return carried()}
+ let now=SystemTime::now();
+ let mut out=EquityTable::new();
  let mut kept=0usize;
  for contract in wanted {
-  match equity_multiplier(source,contract,&fx,&prices).await {
-   Ok(Some(k))=>{out.insert(contract.symbol.clone(),k);},
-   Ok(None)=>{}
-   Err(_)=>{
-    if let Some(k)=previous.and_then(|p|p.get(&contract.symbol)) {out.insert(contract.symbol.clone(),*k);kept+=1;}
+  match equity_price(source,contract,&fx,&prices).await {
+   Priceable::Value(k)=>{out.insert(contract.symbol.clone(),Priced{k,at:now,price:prices.get(&contract.symbol).copied().unwrap_or(0.0)});},
+   Priceable::Blank=>{}
+   Priceable::Carry=>{
+    // 带着上一次的时刻一起留着，所以它会继续变老，七天之后自己就不再发布了。
+    // 但年龄不是唯一的判据：价格的单位一变（拆股），旧 k 当天就作废。
+    if let Some(priced)=previous.and_then(|p|p.get(&contract.symbol)) {
+     match prices.get(&contract.symbol) {
+      Some(price) if unit_changed(priced.price,*price)=>{
+       tracing::warn!("Supply: {} changed units since its multiplier was taken; dropping it",contract.symbol);
+      }
+      _=>{out.insert(contract.symbol.clone(),*priced);kept+=1;}
+     }
+    }
    }
   }
   tokio::time::sleep(source.gap()).await;
  }
- if kept>0 {tracing::warn!("Supply: {kept} equity pages unreadable, kept the previous figures")}
+ if kept>0 {tracing::warn!("Supply: {kept} equity contracts could not be recomputed, kept the previous figures")}
  out
 }
 // ------------------------------------------------------------ refresh 的调度
@@ -627,9 +899,12 @@ impl Source for Upstream {
 }
 
 /// 落盘快照的版本号。表的结构变了就换这个数，旧文件会被当成「没有快照」。
-const SNAPSHOT_VERSION:u32=1;
+const SNAPSHOT_VERSION:u32=2;
 #[derive(Serialize,Deserialize)]
-struct Snapshot {version:u32,coins:SupplyTable,equities:HashMap<String,f64>,kinds:HashMap<String,Kind>}
+struct Snapshot {version:u32,coins:SupplyTable,equities:EquityTable,kinds:HashMap<String,Kind>,
+ /// 币那张表是什么时候抓的。快照里必须带着它，否则重启就等于把所有年龄清零，
+ /// 七天上限会被一次重启绕过去（B-03）。
+ #[serde(default)] coins_at:Option<SystemTime>}
 
 /// 快照落在服务自己的缓存目录里，跟 open interest 的日切片同在一个
 /// `CacheDirectory=kanpan-api` 下（见 `ops/install.py`）。`KANPAN_MARKET_CACHE`
@@ -730,17 +1005,21 @@ impl Supply {
  /// without losing the others.
  async fn refresh(&'static self)->Result<Arc<Market>> {
   let previous=self.cache.stale();
-  let mut coins=SupplyTable::new();
-  match self.source.json(APEX).await {Ok(body)=>parse_apex(&body,&mut coins),Err(_)=>tracing::warn!("Supply: apex list unavailable")}
-  match self.source.json(PRODUCTS).await {Ok(body)=>parse_products(&body,&mut coins),Err(_)=>tracing::warn!("Supply: product list unavailable")}
+  // 两族分开收，最后按身份合（B-02）。币安自己的两个表共用一套资产代号，所以它们
+  // 进同一个篮子；CoinGecko 的 `id` 是另一套口径，单独一个篮子。
+  let mut binance:Vec<Asset>=Vec::new();
+  match self.source.json(APEX).await {Ok(body)=>binance.extend(parse_apex(&body)),Err(_)=>tracing::warn!("Supply: apex list unavailable")}
+  match self.source.json(PRODUCTS).await {Ok(body)=>binance.extend(parse_products(&body)),Err(_)=>tracing::warn!("Supply: product list unavailable")}
+  let mut coingecko:Vec<Asset>=Vec::new();
   for page in 1..=COINGECKO_PAGES {
    match self.source.json(&format!("{COINGECKO}{page}")).await {
-    Ok(body)=>parse_coingecko(&body,&mut coins),
+    Ok(body)=>coingecko.extend(parse_coingecko(&body)),
     // CoinGecko rate-limits anonymous callers; one refused page ends the sweep.
     Err(_)=>{tracing::warn!("Supply: CoinGecko page {page} unavailable");break}
    }
    tokio::time::sleep(Duration::from_millis(1200)).await;
   }
+  let coins=merge_assets(&binance,&coingecko);
   let contracts=match self.source.json(EXCHANGE_INFO).await {
    Ok(body)=>parse_exchange_info(&body),
    Err(_)=>{tracing::warn!("Supply: exchangeInfo unavailable");Vec::new()}
@@ -750,16 +1029,27 @@ impl Supply {
   // Without the contract list every stock would read as a coin, so the old
   // classification stands until Binance answers again.
   let kinds=if contracts.is_empty() {old.map(|m|m.kinds.clone()).unwrap_or_default()} else {kinds_of(&contracts)};
+  // 一个分类都没有（这一轮 exchangeInfo 没答，上一轮也没留下任何东西可继承）：这一轮
+  // 什么都不发布，返回 Err 让预热循环 600 秒后再来。
+  //
+  // 从前这里照发一张「有币表、没分类」的表，理由是每个品种都读成 Unknown、于是一个
+  // 市值都答不出来。但发布这件事本身有副作用：`coins_at` 写成此刻，`table()` 在
+  // 接下来 24 小时里都认这张表新鲜，预热循环也因为这一轮「成功」把下一轮推到
+  // SUPPLY_TTL 之后。冷启动时 exchangeInfo 失败一次，代价就是整整一天的空表。
+  // 不发布的话缓存里仍然是空的，请求收到 503，十分钟后再试一次（B-01）。
+  if kinds.is_empty() {
+   tracing::warn!("Supply: no contract classification this round and none to carry over; publishing nothing and retrying in ten minutes");
+   return Err(upstream());
+  }
   let carried=old.map(|m|m.equities.clone()).unwrap_or_default();
   // 分两次发布：合约分类一到手，币的那一半就先交出去，不必等股票页面逐个抓完
   // ——那是上百次请求，每次之间还隔着 LISTING_GAP。此刻分类已经在表里，所以
   // 一只还没定价的股票答的是空，而不是同名币种的供应量；NVDAUSDT 报出某个
   // 叫 NVDA 的山寨币的市值，正是这个拆分存在的理由。
-  // 分类还没拿到（kinds 为空）时不提前发布：那种表分不出股票和币。
-  if !kinds.is_empty() {self.publish(Market{coins:coins.clone(),equities:carried.clone(),kinds:kinds.clone()});}
+  self.publish(Market::fresh(coins.clone(),carried.clone(),kinds.clone()));
   let equities=if contracts.is_empty() {carried} else {refresh_equities(self.source.as_ref(),&contracts,old.map(|m|&m.equities)).await};
   tracing::info!("Supply table refreshed: {} coins, {} equities priced, {} contracts classified",coins.len(),equities.len(),kinds.len());
-  let table=self.publish(Market{coins,equities,kinds});
+  let table=self.publish(Market::fresh(coins,equities,kinds));
   // 只有这一轮真的问到了合约分类才留快照：存一份分不出股票和币的表，等于让
   // 下次启动从一张会报错数的表开始。
   if !contracts.is_empty() {self.save(table.clone()).await}
@@ -785,7 +1075,11 @@ impl Supply {
   };
   // 分类为空的快照跟没有快照一样危险：那张表会把每只股票读成同名的币。
   if snapshot.version!=SNAPSHOT_VERSION||snapshot.coins.is_empty()||snapshot.kinds.is_empty() {return false}
-  self.cache.store_stale(Market{coins:snapshot.coins,equities:snapshot.equities,kinds:snapshot.kinds},SUPPLY_TTL);
+  // 年龄跟着快照一起回来：重启不会让一张三天大的表变成「刚抓的」。快照里没写时刻
+  // （不该发生）就当不知道年龄，于是币那一半一个都不发布，等这一轮刷新填上。
+  let coins_at=snapshot.coins_at;
+  if coins_at.is_none() {tracing::warn!("Supply snapshot carries no time; the coin half stays blank until the next refresh")}
+  self.cache.store_stale(Market{coins:snapshot.coins,equities:snapshot.equities,kinds:snapshot.kinds,coins_at},SUPPLY_TTL);
   true
  }
  /// 写快照。先写临时文件再改名：断电或被杀时留下的要么是上一份完整快照、要么
@@ -793,7 +1087,7 @@ impl Supply {
  async fn save(&self,table:Arc<Market>) {
   let Some(path)=self.snapshot.clone() else {return};
   let _=tokio::task::spawn_blocking(move||{
-   let snapshot=Snapshot{version:SNAPSHOT_VERSION,coins:table.coins.clone(),equities:table.equities.clone(),kinds:table.kinds.clone()};
+   let snapshot=Snapshot{version:SNAPSHOT_VERSION,coins:table.coins.clone(),equities:table.equities.clone(),kinds:table.kinds.clone(),coins_at:table.coins_at};
    let Ok(payload)=serde_json::to_vec(&snapshot) else {return};
    let temporary=path.with_extension(format!("tmp{}",std::process::id()));
    if std::fs::write(&temporary,&payload).is_err()||std::fs::rename(&temporary,&path).is_err() {
@@ -824,7 +1118,9 @@ async fn binance_price(symbol:&str)->Option<f64> {
   None=>match get_json(BINANCE_PRICES).await {
    Ok(body)=>price_cache().store(parse_binance_prices(&body)),
    // Without a price the notional is simply absent; the amount still stands.
-   Err(_)=>price_cache().stale()?,
+   // 旧价格只在五分钟内还算价格：再往前的价格乘上现在的持仓量，算出来的是一个
+   // 哪个时刻都不成立的名义金额，不如不给（A-02 / B-03）。
+   Err(_)=>price_cache().fresh(OI_PRICE_MAX_AGE)?,
   }
  };
  prices.get(symbol).copied()
@@ -844,7 +1140,8 @@ async fn binance_open_interest(symbol:&str)->Result<OpenInterest> {
 async fn okx_open_interest(symbol:&str)->Result<OpenInterest> {
  let table=match okx_cache().fresh(LIVE_TTL) {
   Some(table)=>table,
-  None=>match get_json(OKX_OI).await {Ok(body)=>okx_cache().store(parse_okx_oi(&body)),Err(e)=>okx_cache().stale().ok_or(e)?}
+  // 一刻钟没刷成功就不再拿旧表答题：持仓量是分钟级的量。
+  None=>match get_json(OKX_OI).await {Ok(body)=>okx_cache().store(parse_okx_oi(&body)),Err(e)=>okx_cache().fresh(OKX_OI_MAX_AGE).ok_or(e)?}
  };
  table.get(&okx_instrument(symbol)).copied().ok_or_else(ApiError::missing)
 }
@@ -877,16 +1174,32 @@ mod tests {
  use super::*;
 
  fn table(pairs:&[(&str,Meta)])->SupplyTable {pairs.iter().map(|(k,v)|((*k).to_owned(),*v)).collect()}
- fn supply(total:f64)->Meta {Meta{total_supply:Some(total),circulating_supply:Some(total),max_supply:None,rank:None}}
- fn market(coins:SupplyTable)->Market {Market{coins,..Market::default()}}
+ /// 币安自己认领的一行：它的身份是证据，剥前缀的判断要靠它。
+ fn supply(total:f64)->Meta {Meta{total_supply:Some(total),circulating_supply:Some(total),max_supply:None,rank:None,family:Some(Family::Binance)}}
+ /// CoinGecko 那一族的一行：同样的数字，但身份是弱的。
+ fn weak(total:f64)->Meta {Meta{family:Some(Family::CoinGecko),..supply(total)}}
+ /// 一张币表，外加「这些合约写的确实是币」这句声明。没有声明就是 Unknown，
+ /// 什么都答不出来——这正是 B-01 要的行为，所以测试里也得明写。
+ fn market(coins:SupplyTable,crypto:&[&str])->Market {
+  let kinds=crypto.iter().map(|s|(plain(s),Kind::Crypto)).collect();
+  Market::fresh(coins,EquityTable::new(),kinds)
+ }
+ /// 刚算出来的一个股票乘数。
+ fn priced(k:f64,price:f64)->Priced {Priced{k,at:SystemTime::now(),price}}
+ fn aged(k:f64,price:f64,age:Duration)->Priced {
+  Priced{k,at:SystemTime::now()-age,price}
+ }
+
+ /// 只有币安那一族的表，合出来给 lookup 用。
+ fn binance_table(body:&Value)->SupplyTable {merge_assets(&parse_apex(body),&[])}
 
  #[test]
  fn apex_rows_parse_and_an_absent_cap_means_unknown() {
   let body=json!({"code":"000000","success":true,"data":[
    {"symbol":"BTCUSDT","baseAsset":"BTC","quoteAsset":"USDT","circulatingSupply":19_800_000.0,"totalSupply":19_800_000.0,"maxSupply":21_000_000.0,"rank":1},
    {"symbol":"ETHUSDT","baseAsset":"ETH","quoteAsset":"USDT","circulatingSupply":"120500000","totalSupply":"120500000","maxSupply":null,"rank":"2"}]});
-  let mut t=SupplyTable::new();parse_apex(&body,&mut t);
-  assert_eq!(t["BTC"],Meta{total_supply:Some(19_800_000.0),circulating_supply:Some(19_800_000.0),max_supply:Some(21_000_000.0),rank:Some(1)});
+  let t=binance_table(&body);
+  assert_eq!(t["BTC"],Meta{total_supply:Some(19_800_000.0),circulating_supply:Some(19_800_000.0),max_supply:Some(21_000_000.0),rank:Some(1),family:Some(Family::Binance)});
   assert_eq!(t["ETH"].max_supply,None);
   assert_eq!(t["ETH"].rank,Some(2));
  }
@@ -895,9 +1208,32 @@ mod tests {
   // USDTUSD is USDT against USD; read off the suffix alone it looks like USD
   // against TUSD, which would file the supply of Tether under the wrong name.
   let body=json!({"data":[{"symbol":"USDTUSD","baseAsset":"USDT","quoteAsset":"USD","circulatingSupply":183_442_587_855.0_f64,"totalSupply":183_442_587_855.0_f64}]});
-  let mut t=SupplyTable::new();parse_apex(&body,&mut t);
+  let t=binance_table(&body);
   assert!(t.contains_key("USDT")&&!t.contains_key("USD"));
   assert!(lookup(&t,"USDTUSD").is_some(),"and the same pair resolves back out");
+ }
+ /// B-02：apex 那张表里 `baseAsset` 缺位的一行整行丢掉，不许从 symbol 尾巴上猜身份。
+ ///
+ /// 猜出来的代号还会盖上 `Family::Binance` 的戳，于是它在合并里的权重跟币安真的
+ /// 认领过一样：轻则把 CoinGecko 那个正确的同名资产顶掉，重则被判成有歧义、连
+ /// 那个正确的一起删掉。
+ #[test]
+ fn an_apex_row_without_a_base_asset_is_dropped_instead_of_guessed() {
+  let body=json!({"data":[
+   {"symbol":"BTCUSDT","baseAsset":"BTC","totalSupply":19_800_000.0},
+   // `baseAsset` 缺位。切尾巴的话这一行会被记成 USD 的供应量（`USDTUSD` 的后缀
+   // 是 `TUSD`），而它其实是 Tether 的。
+   {"symbol":"USDTUSD","totalSupply":183_442_587_855.0_f64},
+   {"symbol":"NOSYMBOL","circulatingSupply":7.0}]});
+  let assets=parse_apex(&body);
+  assert_eq!(assets.len(),1,"只有写了 baseAsset 的那一行进表");
+  assert_eq!(assets[0].ticker,"BTC");
+  // 而 CoinGecko 那个有身份的 USDT 因此活了下来，值还是对的。
+  let cg=parse_coingecko(&json!([{"id":"tether","symbol":"usdt","total_supply":183_442_587_855.0_f64}]));
+  let merged=merge_assets(&assets,&cg);
+  assert_eq!(merged["USDT"].total_supply,Some(183_442_587_855.0_f64));
+  assert_eq!(merged["USDT"].family,Some(Family::CoinGecko));
+  assert!(!merged.contains_key("USD"),"猜出来的那个代号一个都没进表");
  }
  #[test]
  fn a_quote_that_is_a_prefix_of_the_base_still_resolves() {
@@ -908,26 +1244,32 @@ mod tests {
  #[test]
  fn a_broken_row_does_not_break_the_table() {
   let body=json!({"data":[{"nonsense":true},{"symbol":"BTCUSDT","baseAsset":"BTC","totalSupply":"n/a"},{"symbol":"SOLUSDT","baseAsset":"SOL","totalSupply":600_000_000.0}]});
-  let mut t=SupplyTable::new();parse_apex(&body,&mut t);
+  let t=binance_table(&body);
   assert_eq!(t.len(),1);
   assert_eq!(t["SOL"].total_supply,Some(600_000_000.0));
  }
  #[test]
  fn products_only_fill_what_apex_left_empty() {
+  let apex=json!({"data":[{"symbol":"BTCUSDT","baseAsset":"BTC","totalSupply":21_000_000.0}]});
   let body=json!({"data":[{"s":"BTCUSDT","b":"BTC","q":"USDT","cs":19_900_000.0},{"s":"HYPEUSDT","b":"HYPE","q":"USDT","cs":333_000_000.0}]});
-  let mut t=table(&[("BTC",Meta{total_supply:Some(21_000_000.0),..Meta::default()})]);
-  parse_products(&body,&mut t);
+  // 同一套资产代号就是同一个身份，所以这两行补成一行。
+  let mut binance=parse_apex(&apex);binance.extend(parse_products(&body));
+  let t=merge_assets(&binance,&[]);
   assert_eq!(t["BTC"].total_supply,Some(21_000_000.0));
   assert_eq!(t["BTC"].circulating_supply,Some(19_900_000.0));
   assert_eq!(t["HYPE"].circulating_supply,Some(333_000_000.0));
  }
  #[test]
  fn coingecko_fills_the_gap_binance_never_listed() {
-  let body=json!([{"symbol":"xmr","total_supply":18_400_000.0,"circulating_supply":18_400_000.0,"max_supply":null,"market_cap_rank":42}]);
-  let mut t=SupplyTable::new();parse_coingecko(&body,&mut t);
+  let body=json!([{"id":"monero","symbol":"xmr","total_supply":18_400_000.0,"circulating_supply":18_400_000.0,"max_supply":null,"market_cap_rank":42},
+   // 没有 id 的行认不出身份，整行丢掉。
+   {"symbol":"ghost","total_supply":1.0}]);
+  let t=merge_assets(&[],&parse_coingecko(&body));
   assert_eq!(t["XMR"].total_supply,Some(18_400_000.0));
   assert_eq!(t["XMR"].max_supply,None);
   assert_eq!(t["XMR"].rank,Some(42));
+  assert_eq!(t["XMR"].family,Some(Family::CoinGecko));
+  assert!(!t.contains_key("GHOST"),"没有 id 的行不进表");
  }
  #[test]
  fn quote_assets_come_off_the_symbol() {
@@ -945,17 +1287,36 @@ mod tests {
   assert_eq!(strip_multiplier("1INCH"),("1INCH",1.0));
   assert_eq!(strip_multiplier("BTC"),("BTC",1.0));
  }
+ /// B-T05：语法边界。这些名字都是合成的，故意不在现行合约表里——要钉的是规则本身，
+ /// 不是「今天恰好没有这样的品种」。
+ #[test]
+ fn a_name_that_merely_starts_with_digits_is_not_a_bundle() {
+  // 一个数字开头的币名，不是打包。
+  assert_eq!(strip_multiplier("1INCH"),("1INCH",1.0));
+  // 三位数字、而且不是一千：123 个什么都不是币安的写法。
+  assert_eq!(strip_multiplier("123ABC"),("123ABC",1.0));
+  // 四位数字但不是 10 的整数次幂：以年份开头的名字。以前这里会缩两千倍。
+  assert_eq!(strip_multiplier("2024ABC"),("2024ABC",1.0));
+  // 剩下的部分只有一个字符：`1000X` 是名字，不是「1000 个 X」。
+  assert_eq!(strip_multiplier("1000X"),("1000X",1.0));
+  // 老写法的 1K / 1M 仍然算打包。
+  assert_eq!(strip_multiplier("1KABC"),("ABC",1e3));
+  assert_eq!(strip_multiplier("1MABC"),("ABC",1e6));
+ }
+ /// B-T06（上半）：打包合约的单位恒等式——供应量除以倍数，市值不变。
  #[test]
  fn a_bundle_keeps_the_coins_market_cap() {
   // One 1000PEPE contract is 1000 PEPE, so it trades at 1000x the coin price.
   // Dividing the supply is the only direction that leaves the cap unchanged.
   let coin_supply=420_690_000_000.0_f64;let coin_price=0.000_012_f64;
   let t=table(&[("PEPE",supply(coin_supply))]);
+  assert_eq!(lookup(&t,"1000PEPEUSDT").map(|m|m.total_supply),Some(Some(coin_supply/1000.0)));
   let meta=lookup(&t,"1000PEPEUSDT").expect("bundle resolves to its coin");
   assert_eq!(meta.total_supply,Some(coin_supply/1000.0));
   let bundle_cap=meta.total_supply.unwrap()*(coin_price*1000.0);
   assert!((bundle_cap-coin_supply*coin_price).abs()<1e-6,"{bundle_cap}");
  }
+ /// B-T06（下半）：原名本身就已经打包过的（1000SATS）不许再除第二次。
  #[test]
  fn a_bundle_binance_itself_lists_is_not_divided_again() {
   // Binance files 1000SATS as its own asset with the supply already divided:
@@ -965,9 +1326,50 @@ mod tests {
   let t=table(&[("1000SATS",supply(coin_supply/1000.0)),("SATS",supply(coin_supply))]);
   assert_eq!(lookup(&t,"1000SATSUSDT").unwrap().total_supply,Some(coin_supply/1000.0));
  }
+ /// B-T04：币安自己有 PEPE，CoinGecko 上另有个不相干的东西也叫 1000PEPE。
+ /// 原名不得凭「名字一样」抢占一个已经被证明的资产。
+ #[test]
+ fn a_proven_asset_beats_a_lookalike_on_the_packaged_name() {
+  let coin_supply=420_690_000_000.0_f64;
+  let t=table(&[("PEPE",supply(coin_supply)),("1000PEPE",weak(7.0))]);
+  assert_eq!(lookup(&t,"1000PEPEUSDT").unwrap().total_supply,Some(coin_supply/1000.0),
+   "币安自己的 PEPE 说明这是 1000 个 PEPE；CoinGecko 上那个同名的东西不算证据");
+  // 反过来：币安两边都没有，只有 CoinGecko 上有个叫这个名字的东西，那就照它的数字
+  // 发布，不额外除。
+  let only_weak=table(&[("1000PEPE",weak(1_000.0))]);
+  assert_eq!(lookup(&only_weak,"1000PEPEUSDT").unwrap().total_supply,Some(1_000.0));
+  // 两个都是弱证据：说不清 1000PEPE 是「那个叫 1000PEPE 的东西」还是「1000 个
+  // PEPE」，留空。
+  let both_weak=table(&[("1000PEPE",weak(1_000.0)),("PEPE",weak(420_690_000_000.0))]);
+  assert_eq!(lookup(&both_weak,"1000PEPEUSDT"),None,"说不清就留空，绝不让市值大的那个占住");
+ }
+ /// B-T03：CoinGecko 上两个不同 id 挂同一个代号，一个有 total、一个没有。
+ /// 字段绝不跨 id 拼。
+ #[test]
+ fn fields_are_never_stitched_across_two_identities() {
+  let body=json!([
+   {"id":"abc-token","symbol":"abc","total_supply":null,"circulating_supply":1_000.0,"market_cap_rank":50},
+   {"id":"abc-finance","symbol":"abc","total_supply":9_999.0,"circulating_supply":null,"market_cap_rank":900}]);
+  let t=merge_assets(&[],&parse_coingecko(&body));
+  assert!(!t.contains_key("ABC"),"同一个代号指向两个东西，就没有一个能答");
+  // 只剩一个身份时照常答，而且答的是它自己那一行，不是两行拼出来的。
+  let single=json!([{"id":"abc-token","symbol":"abc","total_supply":null,"circulating_supply":1_000.0}]);
+  let t=merge_assets(&[],&parse_coingecko(&single));
+  assert_eq!(t["ABC"].total_supply,None,"另一个 id 的 total 不许补进来");
+  assert_eq!(t["ABC"].circulating_supply,Some(1_000.0));
+ }
+ /// 币安那一族有歧义（同一个代号两个资产）时，整个代号留空——哪怕 CoinGecko 有话说。
+ #[test]
+ fn an_ambiguous_ticker_is_published_by_nobody() {
+  let binance=vec![
+   Asset{id:"ABC".to_owned(),ticker:"ABC".to_owned(),meta:supply(1.0)},
+   Asset{id:"ABC2".to_owned(),ticker:"ABC".to_owned(),meta:supply(2.0)}];
+  let gecko=vec![Asset{id:"abc".to_owned(),ticker:"ABC".to_owned(),meta:weak(3.0)}];
+  assert!(!merge_assets(&binance,&gecko).contains_key("ABC"));
+ }
  #[test]
  fn symbols_filter_omits_what_we_cannot_resolve() {
-  let t=market(table(&[("BTC",supply(19_800_000.0)),("ETH",supply(120_500_000.0))]));
+  let t=market(table(&[("BTC",supply(19_800_000.0)),("ETH",supply(120_500_000.0))]),&["BTCUSDT","ETHUSDT","HYPEUSDT"]);
   let payload=meta_payload(&t,Some("BTCUSDT, ethusdt ,HYPEUSDT,,BTCUSDT"));
   let map=payload.as_object().unwrap();
   assert_eq!(map.len(),2);
@@ -977,15 +1379,40 @@ mod tests {
  }
  #[test]
  fn omitting_symbols_returns_the_whole_table() {
-  let t=market(table(&[("BTC",supply(19_800_000.0))]));
+  let t=market(table(&[("BTC",supply(19_800_000.0))]),&["BTCUSDT"]);
   let payload=meta_payload(&t,None);
   assert_eq!(payload.as_object().unwrap().len(),1);
   assert!(payload["BTCUSDT"]["circulatingSupply"].is_number());
+ }
+ /// B.9：不带 `symbols` 时只给证明了是币的那些合成 `<base>USDT`，而且跟另一路同一个
+ /// 上限。分类未知的一个都不出现。
+ #[test]
+ fn the_unfiltered_answer_only_synthesises_symbols_for_proven_coins() {
+  let coins=table(&[("BTC",supply(19_800_000.0)),("NVDA",supply(91_937.5)),("MYSTERY",supply(5.0))]);
+  let kinds=[("BTCUSDT",Kind::Crypto),("NVDAUSDT",Kind::TickerEquity)]
+   .iter().map(|(k,v)|((*k).to_owned(),*v)).collect();
+  let equities=[("NVDAUSDT".to_owned(),priced(24_100_000_000.0,180.0))].into_iter().collect();
+  let m=Market::fresh(coins,equities,kinds);
+  let payload=meta_payload(&m,None);
+  let map=payload.as_object().unwrap();
+  assert_eq!(map.len(),2);
+  assert_eq!(map["NVDAUSDT"]["totalSupply"],json!(24_100_000_000.0),"股票走自己那张表");
+  assert!(map.contains_key("BTCUSDT"));
+  assert!(!map.contains_key("NVDAUSDTUSDT"),"股票不再被合成一次");
+  assert!(!map.contains_key("MYSTERYUSDT"),"没有分类的币不合成品种名");
+  // 上限跟 symbols 那一路一样，不是无限制。
+  let many:SupplyTable=(0..PAYLOAD_LIMIT+50).map(|i|(format!("C{i}"),supply(1.0))).collect();
+  let kinds=(0..PAYLOAD_LIMIT+50).map(|i|(format!("C{i}USDT"),Kind::Crypto)).collect();
+  let big=Market::fresh(many,EquityTable::new(),kinds);
+  assert_eq!(meta_payload(&big,None).as_object().unwrap().len(),PAYLOAD_LIMIT);
  }
  #[test]
  fn missing_fields_are_dropped_rather_than_nulled() {
   let value=Meta{total_supply:Some(1.0),..Meta::default()}.value();
   assert_eq!(value,json!({"totalSupply":1.0}));
+  // 身份是内部字段：它绝不出现在客户端看到的 JSON 里。
+  let owned=Meta{total_supply:Some(1.0),family:Some(Family::Binance),..Meta::default()}.value();
+  assert_eq!(owned,json!({"totalSupply":1.0}));
  }
  #[test]
  fn binance_open_interest_parses_its_coin_amount() {
@@ -1028,8 +1455,8 @@ mod tests {
   // NVDA and META are both a listed company and an unrelated altcoin. Before
   // the contract list was consulted, NVDAUSDT reported the altcoin's supply,
   // which put a 15-million-dollar market cap on Nvidia.
-  let mut m=market(table(&[("NVDA",supply(91_937.5)),("BTC",supply(19_800_000.0))]));
-  m.equities=[("NVDAUSDT".to_owned(),24_100_000_000.0)].into_iter().collect();
+  let mut m=market(table(&[("NVDA",supply(91_937.5)),("BTC",supply(19_800_000.0))]),&["BTCUSDT"]);
+  m.equities=[("NVDAUSDT".to_owned(),priced(24_100_000_000.0,180.0))].into_iter().collect();
   m.kinds=[("NVDAUSDT",Kind::TickerEquity),("BTCUSDT",Kind::Crypto),("XAUUSDT",Kind::Other)]
    .iter().map(|(k,v)|((*k).to_owned(),*v)).collect();
   assert_eq!(m.meta("NVDAUSDT").unwrap().total_supply,Some(24_100_000_000.0));
@@ -1041,18 +1468,67 @@ mod tests {
   // ETFs (SPY holds shares, it does not issue a capitalisation) and companies
   // that are not listed anywhere yet. Blank is the answer; the coin table must
   // not be consulted, however well the ticker matches a coin.
-  let mut m=market(table(&[("SPY",supply(1_000_000.0))]));
+  let mut m=market(table(&[("SPY",supply(1_000_000.0))]),&[]);
   m.kinds=[("SPYUSDT".to_owned(),Kind::TickerEquity)].into_iter().collect();
   assert_eq!(m.meta("SPYUSDT"),None);
   assert!(meta_payload(&m,Some("SPYUSDT")).as_object().unwrap().is_empty());
  }
+ /// B-01 / B-T01 / B-T02：币安没说这个合约写在什么上面，就什么都不答。
  #[test]
- fn an_unlisted_symbol_is_still_read_as_a_coin() {
-  // OKX lists perpetuals Binance never did; those have no classification and
-  // must keep resolving the way they always have.
-  let m=market(table(&[("PEPE",supply(420_690_000_000.0))]));
-  assert!(m.meta("PEPE-USDT-SWAP").is_some());
-  assert!(m.meta("1000PEPEUSDT").is_some());
+ fn an_unclassified_symbol_is_answered_with_nothing() {
+  // 以前这里兜底成「币」，于是 exchangeInfo 一失败，NVDAUSDT 就会报出那个叫 NVDA
+  // 的山寨币的供应量。OKX 独有的永续也走这条路：少一个市值，不给一个错市值。
+  let unknown=market(table(&[("PEPE",supply(420_690_000_000.0)),("NVDA",supply(91_937.5))]),&[]);
+  assert_eq!(unknown.kind("PEPE-USDT-SWAP"),Kind::Unknown);
+  assert_eq!(unknown.meta("PEPE-USDT-SWAP"),None);
+  assert_eq!(unknown.meta("NVDAUSDT"),None,"股票的查询绝不落到币表上");
+  assert!(meta_payload(&unknown,Some("NVDAUSDT,PEPEUSDT")).as_object().unwrap().is_empty());
+  // 说清楚是币之后照常答，打包合约也照常。
+  let known=market(table(&[("PEPE",supply(420_690_000_000.0))]),&["PEPE-USDT-SWAP","1000PEPEUSDT"]);
+  assert!(known.meta("PEPE-USDT-SWAP").is_some());
+  assert!(known.meta("1000PEPEUSDT").is_some());
+ }
+ /// B-T02：exchangeInfo 的行缺 `underlyingType`，结果是 unknown，不是「放行股票市值」。
+ #[test]
+ fn a_row_without_an_underlying_type_classifies_as_unknown() {
+  let body=json!({"symbols":[{"symbol":"MYSTERYUSDT","baseAsset":"MYSTERY"},
+   {"symbol":"BLANKUSDT","baseAsset":"BLANK","underlyingType":""}]});
+  let contracts=parse_exchange_info(&body);
+  assert!(contracts.iter().all(|c|c.kind==Kind::Unknown));
+  let m=Market::fresh(table(&[("MYSTERY",supply(1_000.0))]),EquityTable::new(),kinds_of(&contracts));
+  assert_eq!(m.meta("MYSTERYUSDT"),None);
+ }
+ /// B-03：发布出去的数字有年龄上限。缓存可以一直留着，但七天没刷成功就留空。
+ #[test]
+ fn a_figure_nobody_could_refresh_for_a_week_stops_being_published() {
+  let coins=table(&[("BTC",supply(19_800_000.0))]);
+  let kinds:HashMap<String,Kind>=[("BTCUSDT",Kind::Crypto),("NVDAUSDT",Kind::TickerEquity)]
+   .iter().map(|(k,v)|((*k).to_owned(),*v)).collect();
+  let day=Duration::from_secs(24*60*60);
+  let equities:EquityTable=[
+   ("NVDAUSDT".to_owned(),aged(24_100_000_000.0,180.0,6*day))].into_iter().collect();
+  let fresh=Market{coins:coins.clone(),equities:equities.clone(),kinds:kinds.clone(),coins_at:Some(SystemTime::now()-6*day)};
+  assert!(fresh.meta("BTCUSDT").is_some(),"六天大的表照常发布");
+  assert!(fresh.meta("NVDAUSDT").is_some());
+
+  let stale=Market{coins:coins.clone(),equities:[("NVDAUSDT".to_owned(),aged(24_100_000_000.0,180.0,8*day))].into_iter().collect(),
+   kinds:kinds.clone(),coins_at:Some(SystemTime::now()-8*day)};
+  assert_eq!(stale.meta("BTCUSDT"),None,"八天没刷成功的供应量不再出门");
+  assert_eq!(stale.meta("NVDAUSDT"),None,"股票乘数同一把尺子");
+  // 表还在缓存里——留着是为了下一轮刷新有底可依，只是不发布。
+  assert!(stale.coins.contains_key("BTC"));
+  // 不知道年龄跟过期一样处理。
+  let ageless=Market{coins,equities,kinds,coins_at:None};
+  assert_eq!(ageless.meta("BTCUSDT"),None);
+  assert!(!expired(Some(SystemTime::now()+Duration::from_secs(60))),"机器对时不算数据变旧");
+ }
+ /// B-T09：k 的有效期不只是年龄——拆股当天它就作废。
+ #[test]
+ fn a_split_retires_the_multiplier_even_inside_its_window() {
+  assert!(!unit_changed(180.0,183.0),"日常波动不算换单位");
+  assert!(unit_changed(180.0,90.0),"2 拆 1：股价腰斩，旧 k 会把市值报成一半");
+  assert!(unit_changed(90.0,180.0),"合股同理");
+  assert!(unit_changed(0.0,180.0),"不知道旧价格时不敢留");
  }
  #[test]
  fn a_capitalisation_reads_in_every_spelling_these_pages_use() {
@@ -1074,6 +1550,39 @@ mod tests {
    {"type":"data","data":[{"marketCap":3,"sharesOut":4,"info":1},{"name":2},"SK hynix","1,271.87T","728.87M"]}]});
   assert_eq!(parse_stockanalysis_cap(&body),Some(1_271.87e12));
  }
+ /// 一张跟真页面同形的页：身份字段在嵌套对象里、而且也是索引，市值在另一个节点上。
+ fn listing_page(symbol:&str,name:&str,cap:&str)->Value {
+  json!({"type":"data","nodes":[
+   {"type":"data","data":[{"symbol":1,"db_symbol":1,"nameFull":2,"name":2,"exchange_symbol":3},symbol,name,"KRX"]},
+   {"type":"data","data":[{"marketCap":1,"sharesOut":2},cap,"728.87M"]}]})
+ }
+ /// B.3 / B-T08：页面 200 了、市值也是个合法数字，但那是另一家公司——不许发布。
+ #[test]
+ fn a_page_about_another_company_publishes_nothing() {
+  let right=listing_page("000660","SK hynix Inc.","929.61B");
+  let (code,keyword)=expected_identity("SKHYNIX","quote/krx/000660");
+  assert_eq!(code,"000660");
+  assert_eq!(keyword,Some("SKHYNIX"));
+  assert!(page_is(&right,&code,keyword));
+  assert_eq!(parse_stockanalysis_cap(&right),Some(929.61e9));
+
+  // 同一个地址答成了别人：代码不对、名字也不对。市值再合法也不是我们要的那个。
+  let wrong=listing_page("ANTH","AN2 Therapeutics, Inc.","192.40M");
+  assert!(!page_is(&wrong,&code,keyword),"身份不符就当没有市值");
+  // 名字对得上也算：有些页面把代码写成 `000660.KS` 这种带后缀的形式。
+  let suffixed=listing_page("000660.KS","SK hynix Inc.","929.61B");
+  assert!(page_is(&suffixed,&code,keyword));
+  // 一条身份证据都举不出来（验证码页、空壳页）：按「不是」处理。
+  assert!(!page_is(&json!({"nodes":[{"data":[{"marketCap":1},"929.61B"]}]}),&code,keyword));
+  // 美股那一路的代码就是合约名自己。
+  let (code,keyword)=expected_identity("AAPL","stocks/AAPL");
+  assert_eq!((code.as_str(),keyword),("AAPL",None));
+  assert!(page_is(&listing_page("AAPL","Apple Inc.","4.39T"),"AAPL",None));
+  assert!(!page_is(&listing_page("AAPU","Apple 2x Bull ETF","1.2B"),"AAPL",None));
+  // BRK.B 这种带点的代码，两边都规范化之后才比。
+  let (code,keyword)=expected_identity("BRKB","stocks/BRK.B");
+  assert!(page_is(&listing_page("BRK.B","Berkshire Hathaway Inc.","1.07T"),&code,keyword));
+ }
  #[test]
  fn an_etf_page_carries_no_capitalisation() {
   // It reports assets under management instead, which is not a market cap and
@@ -1081,20 +1590,24 @@ mod tests {
   let body=json!({"nodes":[{"data":[{"aum":1,"nav":2},"$475.29B","716.47"]}]});
   assert_eq!(parse_stockanalysis_cap(&body),None);
  }
+ /// B-09 / B-T10：未上市公司没有市值，二级市场的估值不当市值发布。
  #[test]
- fn an_unlisted_company_is_valued_off_its_stat_list() {
-  // `private/<slug>` has no `marketCap`; the figure sits in `statsLeft`, and
-  // the implied one wins because it moves with the trading the perpetual
-  // tracks, while the round figure is stale the day it is published.
-  let body=json!({"nodes":[{"data":[
-   {"statsLeft":1},[2,5],
-   {"label":3,"value":4},"Valuation","$965B",
-   {"label":6,"value":7},"Implied Valuation","$880.67B"]}]});
-  assert_eq!(parse_stockanalysis_cap(&body),Some(880.67e9));
-  let round_only=json!({"nodes":[{"data":[
-   {"statsLeft":1},[2],
-   {"label":3,"value":4},"Valuation","$965B"]}]});
-  assert_eq!(parse_stockanalysis_cap(&round_only),Some(965e9));
+ fn an_unlisted_company_has_no_market_cap_at_all() {
+  // 这两个名字已经不在 LISTINGS 里，所以连页面地址都不存在；分类也不再是「股票」。
+  assert_eq!(listing(Kind::PreMarket,"OPENAI"),None);
+  assert_eq!(listing(Kind::PreMarket,"ANTHROPIC"),None);
+  assert_eq!(listing(Kind::NamedEquity,"OPENAI"),None,"就算被误分成股票，也没有地址可猜");
+  // 估值页那种 `statsLeft` 里的「Implied Valuation」不再被读成市值。
+  let valuation=json!({"nodes":[{"data":[
+   {"statsLeft":1},[2],{"label":3,"value":4},"Implied Valuation","$880.67B"]}]});
+  assert_eq!(parse_stockanalysis_cap(&valuation),None);
+  // payload 那一路也一样：PREMARKET 的合约一个字段都不给。
+  let m=Market::fresh(table(&[("OPENAI",supply(1_000.0))]),
+   [("OPENAIUSDT".to_owned(),priced(5.0,10.0))].into_iter().collect(),
+   [("OPENAIUSDT".to_owned(),Kind::PreMarket)].into_iter().collect());
+  assert_eq!(m.meta("OPENAIUSDT"),None);
+  assert!(meta_payload(&m,Some("OPENAIUSDT")).as_object().unwrap().is_empty(),
+   "字段不是给个 0，是整个不出现");
  }
  #[test]
  fn rates_come_out_of_the_fx_feed_with_the_dollar_itself() {
@@ -1112,11 +1625,12 @@ mod tests {
   assert_eq!(listing(Kind::NamedEquity,"SKHYNIX").as_deref(),Some("quote/krx/000660"));
   assert_eq!(listing(Kind::NamedEquity,"HK0700").as_deref(),Some("quote/hkg/0700"));
   assert_eq!(listing(Kind::NamedEquity,"ZHIPU").as_deref(),Some("quote/hkg/2513"));
-  assert_eq!(listing(Kind::NamedEquity,"OPENAI").as_deref(),Some("private/openai"));
   // Never guessed: `stocks/ANTH` is AN2 Therapeutics, a 192M biotech, and
   // publishing that as Anthropic's market cap is worse than publishing nothing.
   assert_eq!(listing(Kind::NamedEquity,"MOONSHOT"),None);
   assert_eq!(listing(Kind::Other,"XAU"),None);
+  assert_eq!(listing(Kind::Unknown,"AAPL"),None,"分类都不知道就不去读任何页面");
+  assert_eq!(listing(Kind::PreMarket,"ANTHROPIC"),None);
  }
  #[test]
  fn a_listings_currency_follows_its_exchange() {
@@ -1124,7 +1638,6 @@ mod tests {
   assert_eq!(listing_currency("quote/krx/000660"),"KRW");
   assert_eq!(listing_currency("quote/sha/688825"),"CNY");
   assert_eq!(listing_currency("stocks/BRK.B"),"USD");
-  assert_eq!(listing_currency("private/openai"),"USD");
  }
  #[test]
  fn two_contracts_on_one_company_report_the_same_market_cap() {
@@ -1173,8 +1686,8 @@ mod tests {
   assert_eq!(by["CXMTUSDT"].kind,Kind::NamedEquity);
   assert_eq!(by["XAUUSDT"].kind,Kind::Other);
   assert_eq!(by["BTCDOMUSDT"].kind,Kind::Other);
-  assert_eq!(by["OPENAIUSDT"].kind,Kind::NamedEquity,"pre-IPO names are read off their private page");
-  assert_eq!(by["LEGACYUSDT"].kind,Kind::Crypto,"no field means a coin");
+  assert_eq!(by["OPENAIUSDT"].kind,Kind::PreMarket,"未上市：没有市值可发布");
+  assert_eq!(by["LEGACYUSDT"].kind,Kind::Unknown,"没有这个字段就是不知道，不是「币」");
   // USD1 is a quote asset too, so the base has to come off the row, not off
   // the end of the symbol.
   assert_eq!(by["SPCXUSD1"].base,"SPCX");
@@ -1183,7 +1696,7 @@ mod tests {
  #[test]
  fn a_cached_value_expires_but_stays_readable() {
   let cache=Cache::new();
-  cache.store(market(table(&[("BTC",supply(19_800_000.0))])));
+  cache.store(market(table(&[("BTC",supply(19_800_000.0))]),&["BTCUSDT"]));
   assert!(cache.fresh(Duration::from_secs(60)).is_some());
   std::thread::sleep(Duration::from_millis(20));
   assert!(cache.fresh(Duration::from_millis(5)).is_none(),"a lapsed entry is not fresh");
@@ -1242,7 +1755,8 @@ mod tests {
     {"symbol":"NVDAUSDT","baseAsset":"NVDA","underlyingType":"EQUITY"}]})),
    (FX.to_owned(),json!({"rates":{"USD":1.0,"HKD":7.8}})),
    (BINANCE_PRICES.to_owned(),json!([{"symbol":"NVDAUSDT","price":"180.0"}])),
-   (stock_page(),json!({"nodes":[{"data":[{"marketCap":1},"4.39T"]}]})),
+   // 页面要自证身份，否则一律留空（B.3）。
+   (stock_page(),listing_page("NVDA","NVIDIA Corporation","4.39T")),
   ]))
  }
  /// 每条用例一份自己的调度，互不干扰；泄漏是为了拿到方法要求的 `&'static`。
@@ -1286,6 +1800,65 @@ mod tests {
   assert_eq!(table.kind("NVDAUSDT"),Kind::TickerEquity,"提前发布的表已经分得清股票和币");
  }
 
+ /// B-01：这一轮没拿到任何合约分类、上一轮也没留下可继承的，就一个字都不发布。
+ ///
+ /// 发了的代价不是「表里全是 Unknown」这么轻——`coins_at` 会写成此刻，于是
+ /// `table()` 在 24 小时内都认这张表新鲜，预热循环也把下一轮推到 SUPPLY_TTL 之后。
+ /// 冷启动时 exchangeInfo 失败一次，换来的是整天答不出一个市值。
+ #[tokio::test]
+ async fn a_round_with_no_classification_at_all_publishes_nothing_and_fails() {
+  let mut bodies=fake_upstream().bodies;
+  bodies.remove(EXCHANGE_INFO);
+  let fake=Arc::new(Fake::new(bodies));
+  let supply=instance(fake.clone(),None);
+  assert!(supply.cycle().await.is_err(),"这一轮算失败，预热循环 600 秒后再来，而不是 24 小时");
+  assert!(supply.cache.stale().is_none(),"一张分不出股票和币的表连旧表都不算，缓存里什么都没有");
+  assert_eq!(fake.hits(&stock_page()),0,"没有分类就没有股票要定价");
+  // 请求这时拿到的是 503，而不是一张会把 NVDAUSDT 报成同名山寨币的表。
+  assert!(supply.table().await.is_err(),"没有表就明说没有");
+
+  // exchangeInfo 回来的那一轮照常发布。
+  let back=instance(Arc::new(fake_upstream()),None);
+  let table=back.cycle().await.expect("分类到手，这一轮就成立");
+  assert_eq!(table.kind("NVDAUSDT"),Kind::TickerEquity);
+ }
+
+ /// A-06：这道闸门只该由 binance.com 自己按下。
+ ///
+ /// `get_json` 同一个函数同时服务 CoinGecko、stockanalysis.com 和 open.er-api.com，
+ /// 而 CoinGecko 对匿名调用者是按分钟限速的。写侧少一道 `covers` 守卫，它的一个 429
+ /// 就会把币安的出口按停两分钟，还连坐 `sector_history` 与 `oi_archive`。
+ #[tokio::test]
+ async fn a_rate_limited_third_party_does_not_press_the_binance_gate() {
+  let _guard=binance_gate::test_lock().lock().unwrap();
+  binance_gate::clear();
+  // 一个只会回 429 的本地服务器，答两次就收摊。两次的回答完全一样，唯一的变量是
+  // 请求的 URL 长得像谁——`covers` 认的就是这个。
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+  let port=listener.local_addr().expect("addr").port();
+  let server=tokio::spawn(async move {
+   for _ in 0..2 {
+    let (mut socket,_)=listener.accept().await.expect("accept");
+    use tokio::io::{AsyncReadExt,AsyncWriteExt};
+    let _=socket.read(&mut [0u8;2048]).await;
+    let _=socket.write_all(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 60\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}").await;
+    let _=socket.shutdown().await;
+   }
+  });
+
+  let third_party=format!("http://127.0.0.1:{port}/api/v3/coins/markets?page=1");
+  assert!(!binance_gate::covers(&third_party));
+  assert!(get_json(&third_party).await.is_err(),"429 仍然是这一次抓取失败");
+  assert!(!binance_gate::blocked(),"第三方的 429 不许按下币安的闸门");
+
+  let binance=format!("http://127.0.0.1:{port}/fapi.binance.com/fapi/v1/ticker");
+  assert!(binance_gate::covers(&binance));
+  assert!(get_json(&binance).await.is_err());
+  assert!(binance_gate::blocked(),"币安自己的 429 照常按下闸门");
+  binance_gate::clear();
+  server.await.expect("server task");
+ }
+
  #[tokio::test]
  async fn the_snapshot_serves_the_next_start_and_a_broken_file_only_means_no_snapshot() {
   let dir=tempfile::tempdir().expect("temp dir");
@@ -1309,5 +1882,171 @@ mod tests {
   let wrong=json!({"version":SNAPSHOT_VERSION+1,"coins":{"BTC":{}},"equities":{},"kinds":{"BTCUSDT":"Crypto"}});
   std::fs::write(&path,serde_json::to_vec(&wrong).expect("encode")).expect("write");
   assert!(!instance(offline,Some(path)).restore(),"版本对不上也只当没有快照");
+ }
+
+ /// 快照里必须带着年龄，否则一次重启就把七天上限清零了（B-03）。
+ #[tokio::test]
+ async fn a_restored_snapshot_keeps_its_age() {
+  let dir=tempfile::tempdir().expect("temp dir");
+  let path=dir.path().join("supply.json");
+  let fake=Arc::new(fake_upstream());
+  instance(fake,Some(path.clone())).cycle().await.expect("first process fills the table");
+  let raw=std::fs::read(&path).expect("read");
+  let mut snapshot:Value=serde_json::from_slice(&raw).expect("decode");
+  assert!(!snapshot["coins_at"].is_null(),"时刻写进了快照");
+  // 把它改成八天前：装回来之后就不该再发布了，尽管文件是刚写的。
+  let eight_days_ago=SystemTime::now()-Duration::from_secs(8*24*60*60);
+  snapshot["coins_at"]=serde_json::to_value(eight_days_ago).expect("encode time");
+  for (_,priced) in snapshot["equities"].as_object_mut().expect("equities").iter_mut() {
+   priced["at"]=serde_json::to_value(eight_days_ago).expect("encode time");
+  }
+  std::fs::write(&path,serde_json::to_vec(&snapshot).expect("encode")).expect("write");
+  let next=instance(Arc::new(Fake::new(HashMap::new())),Some(path));
+  assert!(next.restore(),"照样装得进来——缓存是恢复材料，留着");
+  let table=next.cache.stale().expect("restored table");
+  assert!(table.coins.contains_key("BTC"),"表还在");
+  assert_eq!(table.meta("BTCUSDT"),None,"但八天没刷新的数字不再发布");
+  assert_eq!(table.meta("NVDAUSDT"),None);
+ }
+
+ /// B-T01：币表里有个不相干的 NVDA，exchangeInfo 这一轮失败。股票的查询不得用币的
+ /// 供应量作答——而且「有币表、没分类」这种组合本身连发布都不该发生（B-01）。
+ #[tokio::test]
+ async fn without_the_contract_list_the_table_answers_nothing() {
+  let mut bodies=fake_upstream().bodies;
+  bodies.remove(EXCHANGE_INFO);
+  let fake=Arc::new(Fake::new(bodies));
+  let supply=instance(fake.clone(),None);
+  assert!(supply.table().await.is_err(),"没有分类就没有表，请求收到的是 503");
+  assert!(supply.cache.stale().is_none(),"连半张表都没留在缓存里");
+
+  // 万一这样一张表还是到了手上（比如某个旧版本存下来的快照），它也一个字都答不出来。
+  let table=Market::fresh(merge_assets(&parse_apex(&fake.bodies[APEX]),&[]),EquityTable::new(),HashMap::new());
+  assert!(table.coins.contains_key("NVDA"),"那个同名山寨币确实在币表里");
+  assert_eq!(table.meta("NVDAUSDT"),None,"股票不会拿它作答");
+  assert_eq!(table.meta("BTCUSDT"),None,"分类没到手时连币也不答——不猜");
+  assert!(meta_payload(&table,None).as_object().unwrap().is_empty());
+ }
+
+ fn equity_contracts()->Vec<Contract> {
+  vec![Contract{symbol:"NVDAUSDT".to_owned(),base:"NVDA".to_owned(),kind:Kind::TickerEquity},
+   Contract{symbol:"SKHYNIXUSDT".to_owned(),base:"SKHYNIX".to_owned(),kind:Kind::NamedEquity}]
+ }
+ fn hynix_page()->String {format!("{STOCKANALYSIS}quote/krx/000660/__data.json")}
+ /// 一份上一轮留下的股票表，一天大。
+ fn yesterdays_equities()->EquityTable {
+  let day=Duration::from_secs(24*60*60);
+  [("NVDAUSDT".to_owned(),aged(24_000_000_000.0,180.0,day)),
+   // 929.61e9 韩元市值 / 1369.81 / 183.79：按韩元算出来的那个数。
+   ("SKHYNIXUSDT".to_owned(),aged(3_692_674.0,183.79,day))].into_iter().collect()
+ }
+ fn equity_fake(rows:Vec<(String,Value)>)->Arc<Fake> {Arc::new(Fake::new(rows.into_iter().collect()))}
+ fn good_prices()->Value {json!([{"symbol":"NVDAUSDT","price":"180.0"},{"symbol":"SKHYNIXUSDT","price":"183.79"}])}
+
+ /// B-T07 / A.7：汇率与价格表的四种坏法，各自该怎么处置。
+ #[tokio::test]
+ async fn each_way_the_inputs_can_fail_has_its_own_answer() {
+  let contracts=equity_contracts();
+  let previous=yesterdays_equities();
+  let both_pages=||vec![(stock_page(),listing_page("NVDA","NVIDIA Corporation","4.39T")),
+   (hynix_page(),listing_page("000660","SK hynix Inc.","929.61B"))];
+
+  // 1. 汇率整个抓不到：算不出任何一个，整张旧表留着。
+  let mut rows=both_pages();rows.push((BINANCE_PRICES.to_owned(),good_prices()));
+  let out=refresh_equities(&equity_fake(rows),&contracts,Some(&previous)).await;
+  assert_eq!(out,previous,"FX Err：旧表原样留着，连时刻都不变");
+
+  // 2. 汇率 200 但缺 KRW：美元那只照算，韩元那只这一轮跳过——绝不把汇率当 1。
+  let mut rows=both_pages();
+  rows.push((BINANCE_PRICES.to_owned(),good_prices()));
+  rows.push((FX.to_owned(),json!({"rates":{"USD":1.0}})));
+  let out=refresh_equities(&equity_fake(rows),&contracts,Some(&previous)).await;
+  assert!((out["NVDAUSDT"].k-4.39e12/180.0).abs()<1.0,"美元那只重算了：{}",out["NVDAUSDT"].k);
+  assert!(out["NVDAUSDT"].at>previous["NVDAUSDT"].at);
+  assert_eq!(out["SKHYNIXUSDT"],previous["SKHYNIXUSDT"],"韩元那只原样留着，继续变老");
+  // 汇率真当成 1 的话会是这个数——差了一千三百倍。
+  assert!((out["SKHYNIXUSDT"].k-929.61e9/183.79).abs()>1e9);
+
+  // 3. 价格表抓不到：同样是整张旧表留着。
+  let mut rows=both_pages();rows.push((FX.to_owned(),json!({"rates":{"USD":1.0,"KRW":1369.81}})));
+  let out=refresh_equities(&equity_fake(rows),&contracts,Some(&previous)).await;
+  assert_eq!(out,previous,"价格 Err：旧表留着");
+
+  // 4. 价格表 200 但是个空数组：算不出任何东西，跟抓不到一模一样，绝不清表。
+  let mut rows=both_pages();
+  rows.push((FX.to_owned(),json!({"rates":{"USD":1.0,"KRW":1369.81}})));
+  rows.push((BINANCE_PRICES.to_owned(),json!([])));
+  let out=refresh_equities(&equity_fake(rows),&contracts,Some(&previous)).await;
+  assert_eq!(out,previous,"价格 200 + 空数组：不许把旧乘数删掉");
+ }
+
+ /// B-T08 / A.7：页面本身的三种坏法。
+ #[tokio::test]
+ async fn a_page_we_could_read_decides_between_blank_and_carried() {
+  let contracts=equity_contracts();
+  let previous=yesterdays_equities();
+  let inputs=||vec![(FX.to_owned(),json!({"rates":{"USD":1.0,"KRW":1369.81}})),
+   (BINANCE_PRICES.to_owned(),good_prices())];
+
+  // 页面 200、市值也是个合法数字，但那是另一家公司：留空，把旧值清掉。
+  let mut rows=inputs();
+  rows.push((stock_page(),listing_page("AAPU","Apple 2x Bull ETF","1.20B")));
+  rows.push((hynix_page(),listing_page("000660","SK hynix Inc.","929.61B")));
+  let out=refresh_equities(&equity_fake(rows),&contracts,Some(&previous)).await;
+  assert!(!out.contains_key("NVDAUSDT"),"身份不符的页面：留空，不是留旧值");
+  assert_eq!(out["SKHYNIXUSDT"].k,929.61e9/1369.81/183.79);
+
+  // 页面 200、读得出来、就是没有市值（每一只 ETF）：这一项留空。
+  let mut rows=inputs();
+  rows.push((stock_page(),json!({"nodes":[{"data":[{"symbol":1,"nameFull":2},"NVDA","NVIDIA Corporation"]},
+   {"data":[{"aum":1},"$475.29B"]}]})));
+  rows.push((hynix_page(),listing_page("000660","SK hynix Inc.","929.61B")));
+  let out=refresh_equities(&equity_fake(rows),&contracts,Some(&previous)).await;
+  assert!(!out.contains_key("NVDAUSDT"),"200 但没有市值：那就是没有市值");
+
+  // 页面两次都抓不到：这一轮问不出来，留旧值（还要过七天那一关）。
+  let mut rows=inputs();
+  rows.push((hynix_page(),listing_page("000660","SK hynix Inc.","929.61B")));
+  let fake=equity_fake(rows);
+  let out=refresh_equities(&fake,&contracts,Some(&previous)).await;
+  assert_eq!(out["NVDAUSDT"],previous["NVDAUSDT"],"抓不到不等于没有市值");
+  assert_eq!(fake.hits(&stock_page()),2,"抓不到会立刻重试一次，两次都失败才算");
+ }
+
+ /// B-T09 的另一半：拆股之后旧乘数不许再被留下来。
+ #[tokio::test]
+ async fn a_carried_multiplier_is_dropped_when_the_price_changed_units() {
+  let contracts=vec![Contract{symbol:"NVDAUSDT".to_owned(),base:"NVDA".to_owned(),kind:Kind::TickerEquity}];
+  let previous:EquityTable=[("NVDAUSDT".to_owned(),aged(24_000_000_000.0,180.0,Duration::from_secs(3600)))].into_iter().collect();
+  // 页面抓不到（本该留旧值），但股价从 180 变成了 90：2 拆 1。
+  let rows=vec![(FX.to_owned(),json!({"rates":{"USD":1.0}})),
+   (BINANCE_PRICES.to_owned(),json!([{"symbol":"NVDAUSDT","price":"90.0"}]))];
+  let out=refresh_equities(&equity_fake(rows),&contracts,Some(&previous)).await;
+  assert!(out.is_empty(),"拆股之后的旧 k 会把市值报成一半，宁可留空");
+ }
+
+ /// B-T11 的 Rust 那一半：`underlyingType` 到分类的真值表跟 Swift 那边共用同一个
+ /// 样本文件。只对这一列——客户端那两列由 KanpanCore 自己断言。
+ #[test]
+ fn the_underlying_type_truth_table_is_shared_with_the_client() {
+  const FIXTURE:&str=concat!(env!("CARGO_MANIFEST_DIR"),"/../../KanpanCore/Tests/KanpanCoreTests/Fixtures/underlying_kinds.json");
+  let raw=std::fs::read(FIXTURE).unwrap_or_else(|e|panic!(
+   "两端共用的分类真值表读不出来（{FIXTURE}）：{e}。这个文件是契约的一部分，    丢了就等于两端各说各话——不要把这条用例跳过，把文件补回来。"));
+  let rows:Vec<Value>=serde_json::from_slice(&raw).expect("分类真值表不是合法 JSON");
+  assert!(rows.len()>=8,"真值表至少要覆盖每一个 underlyingType 加上「缺这个字段」那一行");
+  for row in &rows {
+   let expected=row["kind"].as_str().expect("每一行都要写明 kind");
+   let mut contract=json!({"symbol":"XUSDT","baseAsset":"X"});
+   // null 代表币安根本没给这个字段，那一行不写进合约里。
+   if let Some(name)=row["underlyingType"].as_str() {contract["underlyingType"]=json!(name);}
+   let parsed=parse_exchange_info(&json!({"symbols":[contract]}));
+   let kind=parsed.first().expect("一行进一行出").kind;
+   assert_eq!(kind.wire(),expected,"underlyingType={:?} 两端对不上",row["underlyingType"]);
+  }
+  // 反过来也要全：每一个分类都得在真值表里出现过，新增一个分类就必须同时更新契约。
+  for kind in [Kind::Crypto,Kind::TickerEquity,Kind::NamedEquity,Kind::PreMarket,Kind::Other,Kind::Unknown] {
+   assert!(rows.iter().any(|row|row["kind"].as_str()==Some(kind.wire())),
+    "真值表里没有 {} 这一档",kind.wire());
+  }
  }
 }

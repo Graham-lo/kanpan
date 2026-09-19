@@ -168,16 +168,21 @@ struct PriceRow: View {
   var decimals: Int
   /// 成交额的单位由外面按品种钉住（见 `MarketModel.volumeUnit`），这儿不自己挑。
   var volumeUnit: VolUnit?
-  /// 持仓量（美元名义优先，没有名义就是币本位数量）和它钉住的单位。
+  /// 持仓量（**只认美元名义**，见 `HeaderStats.openInterestText`）和它钉住的单位。
   var openInterest: Double?
   var openInterestUnit: VolUnit?
   /// 总供应量（后端给）。市值在这儿乘出来，乘的就是上面那口正在显示的价，
   /// 不会出现「价已经跳了、市值还是上一口算的」。
   var totalSupply: Double?
-  /// 资金费率，已经是小数（`0.0001` = 0.01%）。
+  /// 资金费率，已经是小数（`0.0001` = 0.01%）。超过展示寿命的帧由外面先判成 `nil`
+  /// （`MarketModel.displayedFundingRate`），这儿看到的就是「现在还算数」的值。
   var fundingRate: Double?
-  /// 这口价是上一条线路留下的。灰显，不改字号也不加任何说明文字——
-  /// 「为什么是灰的」不需要解释，新数据到了它自己就亮回来（§2B #54）。
+  /// 这口价不能当「现在的价」看：上一条线路留下的，或者这个品种已经不在交易了。
+  /// 灰显，不改字号也不加任何说明文字——「为什么是灰的」不需要解释，新数据到了
+  /// 它自己就亮回来（§2B #54）。
+  ///
+  /// 除了灰显，它还会把「额 / 市值 / 费率」三格压成 `--`（审查 B.8）：那三个数
+  /// 和价来自同一帧，价已经判定为旧的，它们摆在那儿只会让人当成现在的数。
   var stale = false
 
   private var pct: Double? {
@@ -228,32 +233,31 @@ struct PriceRow: View {
     .accessibilityIdentifier("top.changePercent")
   }
 
+  /// 价格的小数位由品种自己说（`pricePrecision`），极小的正价会自动多给几位，
+  /// 绝不四舍五入成 `0.00`（审查 B-07，规则在 `fmtPrice`）。
   private var lastText: String {
     guard let p = lastPrice else { return "—" }
-    return grouped(fmtNum(p, decimals))
+    return grouped(fmtPrice(p, decimals: decimals))
   }
 
   // ---------------------------------------------------------------- 右侧四格
+  // 四格取什么值全在 `HeaderStats` 里（纯函数，用例守着）；这儿只管画。
+  // 单位由外面按品种钉住（§2B #53），`HeaderStats` 只在还没钉上时按眼前这个数认一次。
 
   private var turnoverText: String? {
-    guard let v = ticker?.quoteVolume, v.isFinite else { return nil }
-    return fmtVol(v, unit: pinned(volumeUnit, for: v))
+    HeaderStats.turnoverText(quoteVolume: ticker?.quoteVolume, unit: volumeUnit, fresh: !stale)
   }
 
   private var openInterestText: String? {
-    guard let v = openInterest, v.isFinite else { return nil }
-    return fmtVol(v, unit: pinned(openInterestUnit, for: v))
-  }
-
-  /// 单位由外面按品种钉住（§2B #53），这儿只在还没钉上时按眼前这个数认一次。
-  private func pinned(_ unit: VolUnit?, for value: Double) -> VolUnit {
-    unit ?? volUnit(value)
+    HeaderStats.openInterestText(value: openInterest, unit: openInterestUnit)
   }
 
   private var marketCapText: String? {
-    guard let supply = totalSupply, supply.isFinite, supply > 0,
-          let price = lastPrice, price.isFinite, price > 0 else { return nil }
-    return fmtVol(supply * price)
+    HeaderStats.marketCapText(totalSupply: totalSupply, price: lastPrice, fresh: !stale)
+  }
+
+  private var fundingText: String? {
+    HeaderStats.fundingText(rate: fundingRate, fresh: !stale)
   }
 
   /// 2×2：上排 仓 / 额，下排 市值 / 费率。宽度写死，否则数字一长一短两列会来回抖。
@@ -267,7 +271,7 @@ struct PriceRow: View {
       }
       GridRow {
         cell("市值", marketCapText)
-        cell("费率", fundingRate.map { fmtFundingRate($0) }, tint: frTint)
+        cell("费率", fundingText, tint: frTint)
       }
     }
     .frame(width: 184)

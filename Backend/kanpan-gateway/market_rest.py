@@ -1,14 +1,16 @@
 """Bounded public market data. Each response belongs to exactly one exchange."""
 import bisect
-from collections import deque, OrderedDict
+from collections import deque, namedtuple, OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
+import email.utils
 import http.client
 import json
 import math
 import os
 from pathlib import Path
 import re
+import sys
 import tempfile
 import threading
 import time
@@ -40,10 +42,53 @@ BARS_IN_MEMORY = 64_000
 BARS_SERIES = 32
 BARS_ON_DISK = 256 * 1024 * 1024
 BARS_WRITE_INTERVAL = 30
+# Binance publishes no per-step table for 418: the documented range is "2 minutes
+# to 3 days", so an unheaded ban is worth the documented minimum, not seconds.
+# 403 is the WAF refusing this node, which is a ban too -- not the geographic 451,
+# and not a request that can be fixed by asking again in two seconds.
+RATE_LIMIT_DEFAULTS = {429: 10, 418: 120, 403: 60}
+# OKX answers HTTP 200 and puts the refusal in `code`. These three are the ones
+# that mean "stop for a moment", not "your request is wrong":
+#   50011 rate limit reached -- an explicit limiter hit, so it gets the same
+#         10 s a headerless HTTP 429 gets; OKX's public buckets are per 1-2 s
+#         windows, but a breach we already caused deserves more than one window.
+#   50013 system busy / 50026 system error -- the request never reached a
+#         limiter, so a few seconds is enough to break a hot retry loop without
+#         stalling a chart that could be fine on the next try.
+# Every other non-zero code is a rejected request, not a stop condition.
+# OKX `state` -> Binance `status`. The client's listing state machine reads this
+# field, so the fact has to travel instead of being flattened to TRADING.
+OKX_STATE_STATUS = {'live': 'TRADING', 'preopen': 'PENDING_TRADING', 'suspend': 'BREAK'}
+
+OKX_RATE_LIMIT_CODES = {'50011': 10, '50013': 5, '50026': 5}
+# What a source-level cooldown is: when it lifts, why it exists, and what the
+# phone must be told. `kind` is one of blocked / rate_limited / unavailable --
+# a single bool could not tell "the exchange told us to wait 120 s" apart from
+# "one request failed", and the phone needs that difference to stop retrying.
+Cooldown = namedtuple('Cooldown', ('until', 'kind', 'retry_after', 'upstream_status'),
+                      defaults=(0, ''))
+COOLDOWN_RANK = {'unavailable': 0, 'rate_limited': 1, 'blocked': 2}
 
 
 class Unavailable(Exception):
     pass
+
+
+class RateLimited(Unavailable):
+    """The exchange told this node to stop for a while, with a deadline.
+
+    HTTP 429/418, or an OKX HTTP 200 whose `code` is a rate-limit / system-busy
+    code. This is not a transient fault: retrying before `retry_after` only digs
+    the ban deeper, so the category and the deadline travel as their own type all
+    the way out to the HTTP reply instead of being flattened into a 503.
+    """
+    def __init__(self, source, retry_after, upstream_status):
+        super().__init__('%s rate limited' % source)
+        self.source = source
+        # Whole seconds, and never zero: "wait no time at all" is not a stop
+        # condition the phone can act on.
+        self.retry_after = max(1, int(math.ceil(retry_after)))
+        self.upstream_status = str(upstream_status)
 
 
 class Blocked(Unavailable):
@@ -56,6 +101,30 @@ class Blocked(Unavailable):
     def __init__(self, source):
         super().__init__(source + ' blocked')
         self.source = source
+
+
+def retry_after_seconds(headers):
+    """Read Retry-After (RFC 9110): delta-seconds or an HTTP-date, else None.
+
+    A `0` or an already-past date is treated as absent: an exchange that just
+    refused us is not credibly inviting an immediate retry, so the caller's
+    documented default is the safer number.
+    """
+    value = headers.get('Retry-After') if hasattr(headers, 'get') else None
+    if not value:
+        return None
+    text = str(value).strip()
+    if text.isdigit():
+        return int(text) or None
+    try:
+        when = email.utils.parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=dt.timezone.utc)  # HTTP-dates are GMT
+    return max(0, int(math.ceil(when.timestamp() - time.time()))) or None
 
 
 class RateGate:
@@ -126,7 +195,11 @@ class Upstream:
             self.idle.append(connection)
 
     def fetch(self, path, headers, timeout, limit):
-        """Return (status, body). Only a reused connection is retried."""
+        """Return (status, body, response headers). Only a reused connection is retried.
+
+        The headers come back because a 429/418 without its Retry-After is just a
+        guess: the deadline the exchange published is the only accurate one.
+        """
         failure = None
         for _ in range(2):
             connection = self._take()
@@ -141,6 +214,7 @@ class Upstream:
                 connection.request('GET', path, headers=headers)
                 response = connection.getresponse()
                 body = response.read(limit + 1)
+                reply_headers = response.headers
                 overflow = len(body) > limit
                 # Only a fully drained, keep-alive response leaves the socket reusable.
                 if overflow or response.will_close or not response.isclosed():
@@ -149,7 +223,7 @@ class Upstream:
                     self._keep(connection)
                 if overflow:
                     raise Unavailable('response too large')
-                return response.status, body
+                return response.status, body, reply_headers
             except Unavailable:
                 raise
             except (OSError, http.client.HTTPException) as error:
@@ -442,6 +516,8 @@ class PublicMarket:
         # The SWAP instrument table is 518 KB and changes about never; keeping it
         # parsed turns a per-request 10 ms decode-and-scan into a dict lookup.
         self.instruments = None
+        # OKX states we have no mapping for, so the warning is printed once each.
+        self.unknown_states = set()
         self.bars = BarCache()
 
     def get(self, source, path, query, ttl=1, retry=True):
@@ -486,30 +562,75 @@ class PublicMarket:
         return self.get(source, path, query, ttl, retry=False)  # this time on our own
 
     def check_cooldown(self, source):
-        """Caller already holds self.lock, or does not need to."""
-        until, blocked = self.cooldown.get(source, (0, False))
-        if until > time.monotonic():
-            raise Blocked(source) if blocked else Unavailable('upstream cooling down')
+        """Caller already holds self.lock, or does not need to.
+
+        The remaining wait is recomputed from the deadline, so a request that sat
+        in the pacing queue is told how long is actually left, not how long the
+        exchange said when the first request was refused.
+        """
+        entry = self.cooldown.get(source)
+        if entry is None:
+            return
+        remaining = entry.until - time.monotonic()
+        if remaining <= 0:
+            return
+        if entry.kind == 'blocked':
+            raise Blocked(source)
+        if entry.kind == 'rate_limited':
+            raise RateLimited(source, remaining, entry.upstream_status)
+        raise Unavailable('upstream cooling down')
+
+    def note_cooldown(self, source, kind, seconds, upstream_status):
+        """Record why this source is closed, keeping the longest known deadline.
+
+        Two refusals can be in flight at once. The later deadline wins, because
+        letting the shorter one expire would put requests back on the wire while
+        the exchange is still counting; a tie keeps the stronger category.
+        """
+        entry = Cooldown(time.monotonic() + seconds, kind, int(seconds), str(upstream_status))
+        with self.lock:
+            current = self.cooldown.get(source)
+            if current is None or (entry.until, COOLDOWN_RANK[kind]) \
+                    >= (current.until, COOLDOWN_RANK[current.kind]):
+                self.cooldown[source] = entry
 
     def download(self, key, ttl, background=False):
         source, path, query = key
         self.gates[source].reserve(background=background)
-        status, data = self.connections[source].fetch(
+        # The pacing gate can hold a request for seconds, and the answer that
+        # closed this source may have arrived during that wait. Look again before
+        # going out: a request admitted before the ban must not be the one that
+        # extends it.
+        self.check_cooldown(source)
+        status, data, headers = self.connections[source].fetch(
             path + ('?' + query if query else ''),
             {'User-Agent': 'Kanpan-Market-Probe/1.0', 'Accept': 'application/json',
              'Host': HOSTS[source], 'Connection': 'keep-alive'},
             10, 2 * 1024 * 1024)
         if status != 200:
-            if status in (403, 418, 429, 451):
-                with self.lock:
-                    self.cooldown[source] = (time.monotonic() + (60 if status in (403, 451) else 10), status == 451)
+            # Three different upstream refusals, three different client actions:
+            # 403/418/429 are "wait and come back" (WAF ban, IP ban, rate limit),
+            # 451 is "this node can never serve you", anything else is a fault.
+            if status in RATE_LIMIT_DEFAULTS:
+                seconds = retry_after_seconds(headers) or RATE_LIMIT_DEFAULTS[status]
+                self.note_cooldown(source, 'rate_limited', seconds, status)
+                raise RateLimited(source, seconds, status)
             if status == 451:
+                self.note_cooldown(source, 'blocked', 60, status)
                 raise Blocked(source)
             raise Unavailable('upstream unavailable')
         value = json.loads(data)
         if source == 'okx':
-            if value.get('code') != '0':
-                raise Unavailable('instrument unavailable')
+            code = str(value.get('code'))
+            if code in OKX_RATE_LIMIT_CODES:
+                # HTTP 200 with a limiter code is still a stop condition, and it
+                # is never an empty market: refusing it as no data would show the
+                # phone a chart with nothing in it.
+                seconds = OKX_RATE_LIMIT_CODES[code]
+                self.note_cooldown(source, 'rate_limited', seconds, code)
+                raise RateLimited(source, seconds, code)
+            if code != '0':
+                raise Unavailable('upstream rejected request: ' + code)
             value = value['data']; data = json.dumps(value, separators=(',', ':')).encode()
         with self.lock:
             old = self.cache.pop(key, None)
@@ -538,8 +659,13 @@ class PublicMarket:
         # Exact USDT perpetuals only. Never silently substitute a spot market or multiplier token.
         inst = symbol[:-4] + '-USDT-SWAP'
         item = self.okx_instruments().get(inst)
+        # A halted contract (`suspend` -> BREAK) still has a price history and a
+        # last trade, and the catalogue now tells the phone it exists; refusing
+        # its chart with a 503 would make "temporarily halted" unreadable. Any
+        # other state -- `preopen` with nothing traded yet, `test`, anything new
+        # -- is still not a symbol this gateway will fetch data for.
         if item is None or item.get('settleCcy') != 'USDT' or item.get('ctType') != 'linear' \
-                or item.get('state') != 'live':
+                or item.get('state') not in ('live', 'suspend'):
             raise Unavailable('instrument unavailable')
         return item
 
@@ -681,7 +807,20 @@ class PublicMarket:
         if source not in ('binance', 'okx') or not SYMBOL.fullmatch(symbol):
             raise ValueError('invalid request')
         return self.cached_response(('ticker', source, symbol), 1, lambda: json.dumps(
-            {'source': source, 'ticker': self.ticker(source, symbol)}, separators=(',', ':')).encode())
+            {'source': source, 'symbol': symbol, 'ticker': self.ticker(source, symbol)},
+            separators=(',', ':')).encode())
+
+    def tickers_response(self, source):
+        """Same envelope as the single quote, with `symbol` empty and an array.
+
+        Five seconds of cache: three phones watching the sector page cost at most
+        one OKX request per five seconds, and the board is a ranking, not a tape.
+        """
+        if source not in ('binance', 'okx'):
+            raise ValueError('invalid request')
+        return self.cached_response(('tickers', source), 5, lambda: json.dumps(
+            {'source': source, 'symbol': '', 'ticker': self.tickers(source)},
+            separators=(',', ':')).encode())
 
     def instruments_response(self, source):
         if source not in ('binance', 'okx'):
@@ -804,6 +943,32 @@ class PublicMarket:
         self.bars.merge(series, interval, closed)
         return answer(rows)
 
+    @staticmethod
+    def okx_ticker(symbol, r):
+        """One OKX ticker row in Binance's /ticker/24hr shape.
+
+        Both the single-symbol route and the whole-market route go through here,
+        so the two can never drift into different field sets or units.
+
+        Units, not names: OKX `volCcy24h` is 24h turnover in the base coin, which
+        is exactly Binance's `volume`. OKX V5 tickers carry no quote-currency
+        turnover at all (`vol24h` is contracts), so `quoteVolume` stays empty --
+        the phone reads that as "no turnover" and keeps it out of money sorting.
+        volCcy24h x last would be an estimate at one price, not a 24h sum; a
+        wrong number here is worse than a missing one, so it is never invented.
+        The WS path in okx_hub.ticker_frame must publish the same two facts.
+
+        `openTime` and `count` have no source either: OKX reports a rolling 24h
+        window without its start, and no trade count at all. They are left out
+        rather than filled with a computed guess.
+        """
+        last = float(r['last']); opened = float(r['open24h'])
+        return {'symbol': symbol, 'lastPrice': r['last'], 'openPrice': r['open24h'],
+                'highPrice': r['high24h'], 'lowPrice': r['low24h'], 'volume': r['volCcy24h'],
+                'quoteVolume': '', 'priceChange': str(last - opened),
+                'priceChangePercent': str((last / opened - 1) * 100 if opened else 0),
+                'closeTime': int(r['ts'])}
+
     def ticker(self, source, symbol):
         if source == 'binance':
             return self.get(source, '/fapi/v1/ticker/24hr', {'symbol': symbol})
@@ -811,12 +976,115 @@ class PublicMarket:
         rows = self.get('okx', '/api/v5/market/ticker', {'instId': item['instId']})
         if len(rows) != 1 or rows[0].get('instId') != item['instId']:
             raise Unavailable('invalid ticker')
-        r = rows[0]; last = float(r['last']); opened = float(r['open24h'])
-        return {'symbol': symbol, 'lastPrice': r['last'], 'openPrice': r['open24h'],
-                'highPrice': r['high24h'], 'lowPrice': r['low24h'], 'volume': r['volCcy24h'],
-                'quoteVolume': '', 'priceChange': str(last - opened),
-                'priceChangePercent': str((last / opened - 1) * 100 if opened else 0),
-                'closeTime': int(r['ts'])}
+        return self.okx_ticker(symbol, rows[0])
+
+    def tickers(self, source):
+        """The whole board in one answer, for the sector page.
+
+        Gateway mode had no all-market quote, so the page either stayed empty or
+        kept showing whatever the previous source had left in memory. OKX serves
+        every SWAP ticker in one call, which is also the only affordable shape:
+        several hundred single-symbol requests would spend the pacing budget the
+        chart needs.
+
+        Only contracts this gateway already publishes in `exchange_info` are
+        emitted, so the sector page can join these rows to the catalogue by
+        symbol without meeting a name the catalogue never mentioned. A row that
+        cannot be read (missing or non-numeric price fields) is dropped on its
+        own; one broken contract may not blank the whole board.
+        """
+        if source == 'binance':
+            # Binance's own endpoint already answers in this shape when the
+            # symbol is omitted, so it is passed through untouched.
+            return self.get(source, '/fapi/v1/ticker/24hr', {}, ttl=5)
+        known = {row['symbol'] for row in self.exchange_info('okx')['symbols']}
+        rows = self.get('okx', '/api/v5/market/tickers', {'instType': 'SWAP'}, ttl=5)
+        quotes = []
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            parts = str(r.get('instId', '')).split('-')
+            if len(parts) != 3 or parts[1:] != ['USDT', 'SWAP']:
+                continue
+            symbol = parts[0] + 'USDT'
+            if symbol not in known:
+                continue
+            try:
+                quote = self.okx_ticker(symbol, r)
+                numbers = [float(quote[k]) for k in
+                           ('lastPrice', 'openPrice', 'highPrice', 'lowPrice')]
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not all(math.isfinite(n) for n in numbers):
+                continue
+            quotes.append(quote)
+        # Sorted so the cached bytes of one upstream answer are stable.
+        quotes.sort(key=lambda q: q['symbol'])
+        return quotes
+
+    @staticmethod
+    def okx_underlying_type(row, base):
+        """'COIN' only when OKX's own fields prove the underlying is a coin.
+
+        Binance sends `underlyingType`; the client classifies by it, and with no
+        value it falls back to a short list of familiar tickers, which drops real
+        coins (ADA among them) into "other". So the adapter has to supply the
+        fact -- but only where it is a fact, never as a blanket default.
+
+        What counts as proof for one row:
+          * `instType` is SWAP and `ctType` is linear/inverse -- a perpetual,
+            the only product this catalogue publishes;
+          * `settleCcy`/`ctValCcy` are currencies, and `ctValCcy` is the base
+            asset itself, i.e. the contract is denominated in the asset;
+          * `uly` and `instFamily` are both `<base>-<settleCcy>`, so the
+            underlying is that currency pair and not an index, a basket or a
+            share price quoted in it.
+        OKX's SWAP universe is crypto perpetuals today (equities and other asset
+        classes are not listed as SWAP), and every one of them satisfies all of
+        the above. Anything that does not -- a missing field, an underlying that
+        is not the base currency, a family shaped like an index -- returns None
+        and no `underlyingType` is written, so the client stays conservative
+        instead of being told a guess. The day OKX lists a non-crypto SWAP, that
+        row will need a real asset-class source, not this function.
+
+        An inverse swap keeps the coin in `settleCcy` and quotes `ctValCcy` in
+        USD, so it fails the denomination test and stays unlabelled. This
+        catalogue only publishes linear USDT perpetuals, so nothing is lost.
+        """
+        settle = row.get('settleCcy')
+        if row.get('instType') != 'SWAP' or row.get('ctType') not in ('linear', 'inverse'):
+            return None
+        if not base or not settle or row.get('ctValCcy') != base:
+            return None
+        pair = base + '-' + settle
+        if row.get('uly') != pair or row.get('instFamily') != pair:
+            return None
+        return 'COIN'
+
+    def okx_listing_status(self, state):
+        """OKX `state` as Binance's `status`, or None when the row must be dropped.
+
+        The client runs a listing state machine on this field, and the gateway
+        used to starve it: every non-live contract was thrown away and every live
+        one was hard-written as TRADING, so "not listed yet" and "halted" were
+        indistinguishable from "gone". Now the fact travels -- `preopen` is
+        PENDING_TRADING (waiting to list), `suspend` is BREAK (a halt, not a
+        delisting) -- and the row stays in the catalogue with everything else
+        synthesised as usual.
+
+        `test` contracts are dropped: they are OKX's own sandbox products, not
+        symbols a phone should ever show. An unrecognised state is dropped too --
+        calling an unknown word tradable is how a symbol that does not exist
+        reaches the catalogue -- and printed once per value per process so it can
+        be mapped for real instead of silently disappearing.
+        """
+        status = OKX_STATE_STATUS.get(state)
+        if status is None and state != 'test' and state not in self.unknown_states:
+            self.unknown_states.add(state)
+            sys.stderr.write('kanpan-gateway: unmapped OKX instrument state %r, rows dropped\n'
+                             % (state,))
+            sys.stderr.flush()
+        return status
 
     def exchange_info(self, source):
         if source == 'binance':
@@ -824,15 +1092,26 @@ class PublicMarket:
         rows = self.get('okx', '/api/v5/public/instruments', {'instType': 'SWAP'}, ttl=300)
         symbols = []
         for r in rows:
-            if r.get('settleCcy') != 'USDT' or r.get('ctType') != 'linear' or r.get('state') != 'live':
+            if r.get('settleCcy') != 'USDT' or r.get('ctType') != 'linear':
+                continue
+            status = self.okx_listing_status(r.get('state'))
+            if status is None:
                 continue
             parts = r['instId'].split('-')
             if len(parts) != 3 or parts[1:] != ['USDT', 'SWAP']:
                 continue
             precision = len(r['tickSz'].rstrip('0').split('.')[-1]) if '.' in r['tickSz'] else 0
-            symbols.append({'symbol': parts[0] + 'USDT', 'baseAsset': parts[0], 'quoteAsset': 'USDT',
-                            'status': 'TRADING', 'contractType': 'PERPETUAL', 'pricePrecision': precision,
-                            'quantityPrecision': 8, 'filters': [{'filterType': 'PRICE_FILTER', 'tickSize': r['tickSz']}]})
+            entry = {'symbol': parts[0] + 'USDT', 'baseAsset': parts[0], 'quoteAsset': 'USDT',
+                     'status': status, 'contractType': 'PERPETUAL', 'pricePrecision': precision,
+                     'quantityPrecision': 8,
+                     'filters': [{'filterType': 'PRICE_FILTER', 'tickSize': r['tickSz']}]}
+            underlying = self.okx_underlying_type(r, parts[0])
+            if underlying:
+                # Same two fields Binance sends, same shape: the client reads the
+                # subtype list and must not have to guess its emptiness either.
+                entry['underlyingType'] = underlying
+                entry['underlyingSubType'] = []
+            symbols.append(entry)
         return {'symbols': symbols}
 
 

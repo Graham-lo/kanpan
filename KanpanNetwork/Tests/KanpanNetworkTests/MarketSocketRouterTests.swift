@@ -21,6 +21,26 @@ private actor RouteSocket: WSSocket {
     return .text(marketFrame)
   }
 }
+/// 只回订阅应答和 ping、一帧行情都不推的线路（A-T14）。
+/// 网关那一档最典型的坏法：连接握手成功、`SUBSCRIBE` 也回了 `{"result":null}`，
+/// 但上游的行情压根没到网关这边来。
+private actor AckOnlySocket: WSSocket {
+  private var acked = false
+  var closed = false
+  var pongs = 0
+  func send(_ text: String) async throws {}
+  func pong() async throws { pongs += 1 }
+  func cancel() async { closed = true }
+  /// 传输层探得通——正是要点：通不等于我们要的流在推。
+  func keepalive(timeoutMs: Double) async -> Bool { !closed }
+  func receive() async throws -> WSFrame {
+    if !acked { acked = true; return .text("{\"result\":null,\"id\":1}") }
+    try await Task.sleep(for: .milliseconds(10))
+    if closed { throw FeedError.badResponse("closed") }
+    return .ping
+  }
+}
+
 private actor RouteFactory: WSSocketFactory {
   let sockets: [String: RouteSocket]
   var connections = 0
@@ -28,6 +48,16 @@ private actor RouteFactory: WSSocketFactory {
   init(_ sockets: [String: RouteSocket]) { self.sockets = sockets }
   func connect(to url: URL) async throws -> any WSSocket {
     connections += 1
+    urls.append(url)
+    return sockets[url.host!]!
+  }
+}
+
+private actor AckFactory: WSSocketFactory {
+  let sockets: [String: AckOnlySocket]
+  var urls: [URL] = []
+  init(_ sockets: [String: AckOnlySocket]) { self.sockets = sockets }
+  func connect(to url: URL) async throws -> any WSSocket {
     urls.append(url)
     return sockets[url.host!]!
   }
@@ -85,6 +115,26 @@ private actor RouteFactory: WSSocketFactory {
     } catch {}
     #expect(await local.closed)
     #expect(await vps.closed)
+  }
+
+  /// A-T14：网关只回订阅成功 + pong，6 秒没有任何有效行情。
+  ///
+  /// 两件事都要成立：① 这些候选连接必须被关掉（不许留着一条永远不推数据的连接
+  /// 在后台耗着）；② 选路失败就是失败，**绝不自动改去连币安**——线路是用户在
+  /// 设置里定的两档之一，自动混源是明令禁止的。
+  @Test("A-T14 网关只回订阅成功和 pong：候选全关，且不自动改连币安")
+  func ackAndPongOnlyIsNotAValidRoute() async throws {
+    let one = AckOnlySocket(), two = AckOnlySocket()
+    let factory = AckFactory(["local.example": one, "gw2.example": two])
+    let router = MarketSocketRouter(factory: factory, fallbacks: ["gw2.example"], timeoutMs: 120)
+    await #expect(throws: (any Error).self) { _ = try await router.connect(to: url) }
+    #expect(await one.closed)
+    #expect(await two.closed)
+    // 只拨过这两台网关，币安自己的域名一次都没有出现。
+    let hosts = Set(await factory.urls.compactMap(\.host))
+    #expect(hosts == ["local.example", "gw2.example"])
+    // ping 照回了（传输层是通的），但通不算「订阅生效」。
+    #expect(await one.pongs >= 1)
   }
 
   @Test("选路期间换品种，连接完成后补订新流，不误记已同步")

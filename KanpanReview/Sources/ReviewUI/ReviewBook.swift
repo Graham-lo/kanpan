@@ -87,7 +87,7 @@ public struct ReviewBook: View {
     if !records.isEmpty {
       Section {
         ForEach(records) { record in
-          NavigationLink { ReviewRecordView(feature: feature, id: record.id) } label: { ReviewRecordRow(record: record) }
+          NavigationLink { ReviewRecordView(feature: feature, id: record.id) } label: { ReviewRecordRow(record: record, feature: feature) }
             .listRowBackground(t.app)
         }
       } header: { if let title { Text(title).foregroundStyle(t.ink3) } }
@@ -126,6 +126,8 @@ public struct ReviewBook: View {
 }
 struct ReviewRecordRow: View {
   let record: ReviewRecord
+  /// 只为了写时刻：时区那一档在 `feature` 上（和图表同一口径，审查 B-08）。
+  let feature: ReviewFeature
   @Environment(\.reviewTheme) private var t
   var body: some View {
     VStack(alignment: .leading, spacing: 7) {
@@ -142,7 +144,10 @@ struct ReviewRecordRow: View {
         // 「把握」填了就在这儿露一个小百分比（§2F4）：当时觉得有几成，事后回看才对得上
         // 「我是不是总在七成的时候栽」。没填就不占位置。
         if let confidence = record.draft.confidence { Text("把握 \(confidence)%").monospacedDigit() }
-        Spacer(); Text(Date(timeIntervalSince1970: Double(record.draft.created) / 1000), style: .date)
+        // 记于什么时候。跟着图表那一档时区写（审查 B-08）：原来是
+        // `Text(Date, style: .date)`，只有日期、而且认设备时区——图表在「交易所」档上，
+        // 同一条记录在选区标签上写 1/6、在这儿写 1/5。
+        Spacer(); Text(feature.dayTime(record.draft.created))
       }.font(.caption).foregroundStyle(t.ink3)
       // 同步状态不在这儿说了（§2G1）。「已存本机 · 待同步」「同步失败」是后台的事，
       // 每条记录下面挂一行，复盘本就变成了一张同步报表。同步真出问题只在设置的账号行
@@ -167,7 +172,7 @@ public struct ReviewRecordView: View {
     Group {
       if let record {
         List {
-          Section { ReviewRecordRow(record: record) }.listRowBackground(t.raised)
+          Section { ReviewRecordRow(record: record, feature: feature) }.listRowBackground(t.raised)
           if record.groupPending == true {
             Section("这次判断") {
               Text("与最近一笔是同一次判断吗？").font(.subheadline).foregroundStyle(t.ink2)
@@ -181,10 +186,11 @@ public struct ReviewRecordView: View {
               LabeledContent("把握", value: "\(confidence)%")
             }
             if record.draft.rule.direction != .observe {
-              LabeledContent("目标", value: price(record.draft.rule.target))
-              LabeledContent("失效", value: price(record.draft.rule.invalidation))
+              LabeledContent("目标", value: price(record.draft.rule.target, record))
+              LabeledContent("失效", value: price(record.draft.rule.invalidation, record))
               LabeledContent("判定", value: record.draft.rule.confirmation.title)
-              LabeledContent("到期") { Text(Date(timeIntervalSince1970: Double(record.draft.rule.expires) / 1000), style: .date) }
+              // 到期常跨月跨年，写全（`yyyy-MM-dd HH:mm`），时区同上。
+              LabeledContent("到期", value: feature.fullTime(record.draft.rule.expires))
             }
             Button("在图上重温") { feature.bookOpen = false; feature.onOpenChart(record) }
             Button("找相似") {
@@ -231,5 +237,10 @@ public struct ReviewRecordView: View {
         Button("作废记录", role: .destructive) { feature.voidRecord(id) }
       }
   }
-  private func price(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(0...8))) }
+  /// 一口价的小数位由品种自己说（`SymbolInfo.pricePrecision`，宿主注入给
+  /// `feature.priceDecimals`），和顶栏、K 线价格轴、图上的目标线一致（审查 B-07）。
+  /// 原来是「最多 8 位、能省就省」：同一张记录里目标写 `76800`、失效写 `76812.5`。
+  private func price(_ value: Double, _ record: ReviewRecord) -> String {
+    feature.price(value, symbol: record.draft.range.symbol)
+  }
 }

@@ -42,6 +42,17 @@ public func timeTicks(view: ViewWindow, plotW: Double, offsetMinutes: Int, perLa
   return out
 }
 
+/// 同上，但时区口径按「这一屏右边缘那个时刻」解一次（审查 B-08）。
+///
+/// 刻度的**对齐**只能用一个偏移（整屏同一套网格线），跨夏令时那一屏最多差一格；
+/// 每个刻度上的**文案**是 `fmtTick(ms:step:offsetMinutes: TZOffset)` 各自按自己的时刻算的，
+/// 所以历史标签不会整段平移。
+public func timeTicks(view: ViewWindow, plotW: Double, offsetMinutes: TZOffset,
+                      perLabelPx: Double = Chart.timeLabelPx) -> [(t: Double, step: Int64)] {
+  timeTicks(view: view, plotW: plotW,
+            offsetMinutes: offsetMinutes.minutes(at: view.to), perLabelPx: perLabelPx)
+}
+
 /// 价格轴刻度（原型 `drawPriceGrid` 的循环）：在**变换后**的空间里等距。
 public func priceTicks(range: PriceRange, mode: PriceMode, paneH: Double) -> [Double] {
   let a = mode.forward(range.lo, base: range.base)

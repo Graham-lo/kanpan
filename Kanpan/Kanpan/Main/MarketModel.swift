@@ -42,16 +42,20 @@ final class MarketModel {
   private(set) var volumeUnit: VolUnit?
   /// 顶栏右侧四格里 FR 那一格：`markPrice@1s` 那条流顺带捎回来的资金费率整帧。
   private(set) var funding: MarkPriceTick?
-  /// 持仓量（币本位数量 / 美元名义）与总供应量，都由 VPS 后端给，客户端不自己算。
+  /// 持仓量（**美元名义**）与总供应量，都由 VPS 后端给，客户端不自己算。
   /// 取不到就是 `nil`，那一格显示 `--`。
-  private(set) var openInterestQty: Double?
+  ///
+  /// 审查 A-02：币本位数量（后端照发的 `openInterest`）这儿**不存也不显示**。
+  /// 名义拿不到时退回数量，等于同一格一会儿是「多少钱」一会儿是「多少个币」，
+  /// 而界面上没有任何记号能区分——宁可空着。
   private(set) var openInterestValue: Double?
   /// 持仓量的单位也按品种钉住，理由和 `volumeUnit` 一样：币安和 OKX 的持仓口径
   /// 差着一截，换线路时数字跨过进位坎，顶栏那一格看上去像换了个品种。
+  /// 单位和值同生同死：值被清掉时单位也要清，否则下一个品种会沿用上一个的坎。
   private(set) var openInterestUnit: VolUnit?
   private(set) var totalSupply: Double?
-  /// 顶栏「仓」那一格显示的数：美元名义优先，后端没给名义就退回币本位数量。
-  var openInterestDisplay: Double? { openInterestValue ?? openInterestQty }
+  /// 顶栏「仓」那一格显示的数。就是美元名义，没有第二个来源。
+  var openInterestDisplay: Double? { openInterestValue }
   /// 总市值在顶栏那一格里现乘（`totalSupply × 正在显示的那口价`），这儿只管存供应量：
   /// 用户明确要总市值，不是流通市值。
   /// 当前这份 `ticker` 是不是「上一条线路留下的」。真 = 顶栏灰显（§2B #54）。
@@ -302,9 +306,9 @@ final class MarketModel {
       // 那样会一直空着。留着上一条线路的最后一口价，灰显标明「这是旧的」（§2B #54），
       // 新线路第一帧到了就自己转正。
       source = next; tickerStale = ticker != nil; tradeQuote = nil; markPrice = nil; markTime = 0
-      funding = nil
+      funding = nil; fundingExpired = false
       // 持仓量是按交易所报的，换了线路就得按新交易所重取；供应量与交易所无关，留着。
-      openInterestQty = nil; openInterestValue = nil; openInterestUnit = nil
+      openInterestValue = nil; openInterestUnit = nil
       startStats()
       resetOI(); historyError = nil
       // 和启动时同一条规则（含「切回币安就用根上那份」）：这儿以前单独手拼，
@@ -347,6 +351,7 @@ final class MarketModel {
       markTime = tick.timeMs
       // 费率那一格只认有值的帧：镜像偶尔发不带 `r` 的帧，别把已经显示的费率抹成 `--`。
       if tick.fundingRate != nil || funding == nil { funding = tick }
+      sweepDisplayLifetimes()
       guard price.isFinite, price > 0 else { return }
       markPrice = price
       ticker?.markPrice = price
@@ -368,7 +373,7 @@ final class MarketModel {
     statsTask?.cancel()
     let sym = symbol, src = source, base = info.base, proxies = hosts.oiProxies
     guard !proxies.isEmpty else {
-      openInterestQty = nil; openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
+      openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
       return
     }
     statsTask = Task { [weak self] in
@@ -390,6 +395,16 @@ final class MarketModel {
             let stat = await MarketStatsClient.shared.openInterest(symbol: sym, source: src, hosts: proxies)
             if Task.isCancelled { return }
             await MainActor.run { self?.applyOpenInterest(stat, for: sym) }
+            // 顺着这条循环做两件跟时间有关的事（审查 B-03 / B.8）：
+            // 供应量过了 12 小时缓存就续一次（挂着不动的会话原来永远用开图那一下
+            // 取的那个数算市值）；费率的展示寿命也在这儿扫——流断了之后没有任何
+            // 事件会再进 `apply`，寿命判定要有人替它推一下。
+            if let meta = await MarketStatsClient.shared.metaIfStale(symbol: sym, base: base, hosts: proxies) {
+              if Task.isCancelled { return }
+              await MainActor.run { self?.applyMeta(meta, for: sym) }
+            }
+            if Task.isCancelled { return }
+            await MainActor.run { self?.sweepDisplayLifetimes() }
             try? await Task.sleep(for: .seconds(Double(Self.oiPollSeconds)))
           }
         }
@@ -397,21 +412,54 @@ final class MarketModel {
     }
   }
 
+  /// 后端答了就以它为准：它给不出供应量（`meta` 里那几项全空）就把市值清掉。
+  /// 「一台都没问通」不会走到这儿——`MarketStatsClient.meta` 那时返回 `nil`。
   private func applyMeta(_ meta: SymbolMeta, for sym: String) {
     guard sym == symbol else { return }
     totalSupply = meta.totalSupply.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
   }
 
+  /// 规则全在 `MarketStatsClient.notionalOpenInterest` 里（纯函数，用例守着）：
+  /// 请求没回来沿用旧值，回来了没有名义就清空。单位跟着值走。
   private func applyOpenInterest(_ stat: OpenInterestStat?, for sym: String) {
     guard sym == symbol else { return }
-    // 取不到就保持上一口值：一次超时把已经在屏上的数字抹成 `--` 反而更像出错。
-    guard let stat else { return }
-    if let qty = stat.openInterest, qty.isFinite { openInterestQty = qty }
-    if let value = stat.openInterestValue, value.isFinite { openInterestValue = value }
-    if openInterestUnit == nil, let shown = openInterestDisplay, shown.isFinite {
-      openInterestUnit = volUnit(shown)
+    let next = MarketStatsClient.notionalOpenInterest(stat, previous: openInterestValue)
+    openInterestValue = next
+    if let next {
+      if openInterestUnit == nil { openInterestUnit = volUnit(next) }
+    } else {
+      openInterestUnit = nil
     }
   }
+
+  // ---------------------------------------------------------------- 展示寿命
+
+  /// 费率那一格是不是已经过了展示寿命（`markPrice` 帧超过一小时没更新）。
+  /// 规则在 `HeaderStats.expired`；这儿存成状态是因为「时间流过去」本身不是事件，
+  /// 流断掉之后没有任何帧会再进来触发重算，只能由持仓轮询每 45 秒推一下。
+  private(set) var fundingExpired = false
+
+  /// 顶栏上「拿到的时候是对的、现在不一定还对」的那几格，寿命在这儿统一扫。
+  func sweepDisplayLifetimes(now: Date = Date()) {
+    fundingExpired = HeaderStats.expired(frameMs: markTime, now: now,
+                                         maxAge: HeaderStats.fundingMaxAge)
+  }
+
+  /// 这口价还能不能当「现在的价」看。假 = 顶栏整块灰显，额 / 费率 / 市值显示 `--`。
+  ///
+  /// 两种情形都算不新鲜：
+  /// * `tickerStale`——换线路之后新线路还没推第一帧，屏上是上一条线路留下的那口价；
+  /// * 品种已经不在交易（`SymbolInfo.status.hasLivePrice == false`，也就是已下架 /
+  ///   已交割 / 还没开盘）——那种合约没有「现在的价」这回事，最后那口成交价不该
+  ///   摆出一副实时的样子（审查 B-06）。
+  ///
+  /// **临时停牌（`.halted`）不在内**（审查复核项 3）：美股永续和贵金属每天收盘都是
+  /// 这一档，它们的身份和外观一律照正常合约走；收盘之后价格自然停着不动，
+  /// 那一面由 `tickerStale` 这条价格不新鲜的规则去说，不必让状态再说一遍。
+  var priceFresh: Bool { !tickerStale && info.status.hasLivePrice }
+
+  /// 顶栏费率那一格真正要显示的值。
+  var displayedFundingRate: Double? { fundingExpired ? nil : funding?.fundingRate }
 
   // ---------------------------------------------------------------- 切换
 
@@ -440,7 +488,8 @@ final class MarketModel {
       volumeUnit = nil                      // 单位按品种记，换品种就重新认
       markPrice = nil; markTime = 0
       funding = nil
-      openInterestQty = nil; openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
+      openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
+      fundingExpired = false
       // 这个品种以前认过小数位就照旧顶上，别让冷切换先用 2 位画一帧再跳回去。
       var seed = MarketModel.placeholder(sym)
       if let locked = lockedPrecision[sym] { seed.pricePrecision = locked.precision; seed.tickSize = locked.tick }
@@ -638,9 +687,46 @@ final class MarketModel {
     return { await c.all() }
   }
 
+  /// 品种页搜了一个**本机目录里没有**的代号（审查 B-06）。
+  ///
+  /// 这是「用户明确点名」的信号，允许不等 24 小时的 TTL 立刻重拉一次整表；
+  /// 去抖（5 分钟）在 `SymbolCatalog.lookup` 那一层。表真的变了才回一份新的，
+  /// 否则回 `nil`——没变还灌一次，品种页白重建一遍分区。
+  func lookupMissingSymbol(_ symbol: String) async -> [SymbolInfo]? {
+    let before = await catalog.all().count
+    let found = await catalog.lookup(symbol)
+    let after = await catalog.all()
+    guard found != nil || after.count != before else { return nil }
+    return after
+  }
+
+#if DEBUG
+  /// 用例用：直接摆一份品种事实进来。真身那条路要品种表（网络 / 磁盘），
+  /// 而要守的规则（`priceFresh` 之类）只关心 `info` 里的字段。
+  func overrideInfoForTesting(_ value: SymbolInfo) { info = value }
+#endif
+
+  /// 交易所拿这个代号答不出来（`QuoteBook.onSymbolRejected`）。
+  ///
+  /// 唯一要做的事是把品种表里那一行标成下架——「下架」这个事实只存在一处
+  /// （`SymbolInfo.status`），自选、搜索、图表三处都从那里读，所以标一次三处一致。
+  /// 图上恰好就是它时顺手把手里这份 `info` 也翻过来，不然要等下一次目录刷新
+  /// 头部才会跟着灰掉。自选表一个字都不动。
+  func noteSymbolRejected(_ symbol: String) {
+    let key = symbol.uppercased()
+    Task { [catalog] in await catalog.markDelisted(key) }
+    guard key == self.symbol, info.status != .delisted else { return }
+    var value = info
+    value.status = .delisted
+    info = value
+    sweepDisplayLifetimes()
+  }
+
   private func refreshInfo() async {
     let want = symbol
-    guard let found = await catalog.find(want) else { return }
+    // 进一张图就是「用户点名了这个品种」：表里没有它（刚上市的新合约）时允许为他
+    // 立刻重拉一次整表，不必等满 24 小时的 TTL（审查 B-06）。去抖在目录层。
+    guard let found = await catalog.lookup(want) else { return }
     guard want == symbol else { return }
     // 小数位只认第一次：见 `lockedPrecision`。
     if let locked = lockedPrecision[want] {
@@ -664,6 +750,10 @@ actor CatalogBox {
   func replace(_ next: SymbolCatalog) { catalog = next }
   func all() async -> [SymbolInfo] { await catalog.all() }
   func find(_ symbol: String) async -> SymbolInfo? { await catalog.find(symbol) }
+  /// 用户明确点名的那次查询：表里没有就为他立刻重拉一次（带去抖，见 `SymbolCatalog.lookup`）。
+  func lookup(_ symbol: String) async -> SymbolInfo? { await catalog.lookup(symbol) }
+  /// 交易所不认这个代号：在表里把它标成下架，**不删**。
+  func markDelisted(_ symbol: String) async { await catalog.markDelisted(symbol) }
 }
 
 #if DEBUG

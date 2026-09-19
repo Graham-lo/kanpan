@@ -582,7 +582,11 @@ struct FavoritesView: View {
   }
 
   private func sortValue(_ symbol: String) -> Double? {
-    guard let ticker = displayQuote(symbol) else { return nil }
+    // 已下架 / 还没开盘的行没有实时价可排：它的涨跌幅、成交额在界面上是「—」，
+    // 拿一个界面上看不见的数去决定它排第几，用户只会觉得顺序是乱的（审查 B.5 / B-06）。
+    // 这里返回 `nil`，上面那个比较器会把它沉到末尾，而且照旧留在表里。
+    guard model.listing(of: symbol).hasLivePrice,
+          let ticker = displayQuote(symbol) else { return nil }
     if sort == "price" { return ticker.last }
     if sort == "volume" { return ticker.quoteVolume }
     if amount, ticker.changePercent > -100 {
@@ -642,8 +646,14 @@ struct FavoritesView: View {
   }
 
   private func row(_ symbol: String, first: Bool) -> some View {
-    let ticker = displayQuote(symbol)
-    let base = model.info(for: symbol)?.base ?? String(symbol.dropLast(4))
+    let info = model.info(for: symbol)
+    // 这一行还有没有实时价可言，判据只有「目录里查出来的那一档」（审查 B-06 / 复核项 4）。
+    // 停牌 / 已下架 / 还没开盘 / 目录里根本没有这个代号的自选**照旧留在表里**，
+    // 只是最后那口真价变灰，所有由实时价算出来的数（额、幅、涨跌幅）留空——
+    // 不显示、也不解释。目录还没到的时候不算，那会把整页自选一起打灰。
+    let stale = !model.listing(of: symbol).hasLivePrice
+    let ticker = stale ? nil : displayQuote(symbol)
+    let base = info?.base ?? String(symbol.dropLast(4))
     let amplitude = ticker?.amplitude24h
     let volumeText = ticker.map { $0.quoteVolume.isFinite ? fmtVol($0.quoteVolume) : "—" } ?? "—"
     let amplitudeText = amplitude.map { toFixed($0, 2) + "%" } ?? "—"
@@ -757,12 +767,21 @@ struct FavoritesView: View {
 
   private func quote(_ symbol: String) -> some View {
     let ticker = displayQuote(symbol)
-    let value = ticker?.changePercent ?? .nan
-    let decimals = model.info(for: symbol)?.pricePrecision ?? 2
+    let info = model.info(for: symbol)
+    // 和 `row(_:first:)` 同一个判据（审查 B-06 / 复核项 4）。
+    let stale = !model.listing(of: symbol).hasLivePrice
     let price = ticker?.last ?? .nan
+    // 小数位由品种自己说（`pricePrecision`）。目录里没有这个代号时走全 app 唯一那把
+    // 梯子，不再在这一页写死 2 位（审查 B-07）。
+    let decimals = info?.displayDecimals(for: price) ?? priceDecimalsFallback(price)
+    let value: Double = stale ? .nan : (ticker?.changePercent ?? .nan)
     let change = amount && value.isFinite && price.isFinite && value > -100 ? price - price / (1 + value / 100) : value
-    let priceText = price.isFinite ? grouped(fmtNum(price, decimals)) : "—"
+    // `fmtPrice` 而不是 `fmtNum`：0.0000004 这种合法极小价按 2 位四舍五入会写成
+    // `0.00`，那等于说这东西不值钱（审查 B-07）。
+    let priceText = price.isFinite ? grouped(fmtPrice(price, decimals: decimals)) : "—"
     let tint = value.isFinite ? (value >= 0 ? theme.up : theme.down) : skin.ink4
+    // 没有实时价时最后那口真价照旧摆着，只是退成次要文字色——不加标签、不弹窗。
+    let priceInk: Color = stale ? skin.ink4 : (price.isFinite ? theme.ink : .clear)
     // 还没到的涨跌幅和还没到的价格用同一种骨架：一块底色，不写字。
     // 写「—」会让人以为这个品种没有涨跌幅，而不是还在路上。
     let changeText = change.isFinite ? toFixed(abs(change), amount ? decimals : 2) + (amount ? "" : "%") : "—"
@@ -771,9 +790,11 @@ struct FavoritesView: View {
       Text(priceText)
         .font(.system(size: 15.5, weight: .medium)).monospacedDigit()
         .lineLimit(1).minimumScaleFactor(0.7)
-        .foregroundStyle(price.isFinite ? theme.ink : .clear)
+        .foregroundStyle(priceInk)
         .overlay(alignment: .trailing) {
-          if !price.isFinite {
+          // 骨架块只表示「还在路上」。已下架 / 还没开盘的行不摆骨架，摆「—」，
+          // 否则那块灰底会永远亮着，读起来像永远加载不完。
+          if !price.isFinite, !stale {
             RoundedRectangle(cornerRadius: 4).fill(skin.rule).frame(width: 70, height: 13)
               .accessibilityHidden(true)
           }
@@ -785,7 +806,7 @@ struct FavoritesView: View {
         }
         Text(changeText)
           .font(.system(size: 11, weight: .semibold)).monospacedDigit()
-          .foregroundStyle(change.isFinite ? tint : .clear)
+          .foregroundStyle(change.isFinite ? tint : (stale ? skin.ink4 : .clear))
           .accessibilityLabel(signed)
           .accessibilityIdentifier("favorites.change." + symbol)
       }
@@ -820,17 +841,27 @@ struct FavoritesView: View {
 
   private func details(_ symbol: String) -> some View {
     let ticker = displayQuote(symbol)
-    let decimals = model.info(for: symbol)?.pricePrecision ?? 2
+    let info = model.info(for: symbol)
+    // 同一档状态（审查 B-06 / 复核项 4）：没有实时价时，凡是由实时价算出来的格子
+    // 一律「—」，24 小时高 / 低 / 额也在内（审查 B.8）——摆一个上周的统计比空着更像在骗人。
+    let stale = !model.listing(of: symbol).hasLivePrice
+    let live = stale ? nil : ticker
+    let decimals = info?.displayDecimals(for: ticker?.last ?? .nan)
+      ?? priceDecimalsFallback(ticker?.last ?? .nan)
     return VStack(spacing: 12) {
       LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3), spacing: 12) {
-        cell("1H", percent(historyChange(symbol, hours: 1)))
-        cell("4H", percent(historyChange(symbol, hours: 4)))
-        cell(basisTitle, percent(ticker?.changePercent))
-        cell("24H 高", number(ticker?.high, decimals))
-        cell("24H 低", number(ticker?.low, decimals))
-        cell("24H 额", ticker.map { fmtVol($0.quoteVolume) + " " + quoteAsset(symbol) } ?? "—")
+        // 标题一律中文，不用 H 这种英文缩写（`kanpan-ui-labels-are-chinese`）。
+        cell("1小时", percent(stale ? nil : historyChange(symbol, hours: 1)))
+        cell("4小时", percent(stale ? nil : historyChange(symbol, hours: 4)))
+        cell(basisTitle, percent(live?.changePercent))
+        cell("24小时高", number(live?.high, decimals))
+        cell("24小时低", number(live?.low, decimals))
+        // 缺成交额也写「—」，和紧挨着的 24 小时高 / 低同一个写法（复核项 3）。
+        cell("24小时额", live.flatMap {
+          $0.quoteVolume.isFinite ? fmtVol($0.quoteVolume) + " " + quoteAsset(symbol) : nil
+        } ?? "—")
       }
-      if let ticker, ticker.high > ticker.low, ticker.last.isFinite {
+      if let ticker = live, ticker.high > ticker.low, ticker.last.isFinite {
         GeometryReader { geometry in
           Capsule().fill(skin.rule).frame(height: 4)
           Capsule().fill(skin.accentGradient).frame(width: 2, height: 10)
@@ -869,7 +900,8 @@ struct FavoritesView: View {
     return (price / bar.open - 1) * 100
   }
   private func percent(_ value: Double?) -> String { guard let value, value.isFinite else { return "—" }; return (value >= 0 ? "+" : "") + toFixed(value, 2) + "%" }
-  private func number(_ value: Double?, _ decimals: Int) -> String { guard let value, value.isFinite else { return "—" }; return grouped(fmtNum(value, decimals)) }
+  /// 详情里的价格格子。`fmtPrice` 兜住极小的正价（审查 B-07）。
+  private func number(_ value: Double?, _ decimals: Int) -> String { guard let value, value.isFinite else { return "—" }; return grouped(fmtPrice(value, decimals: decimals)) }
   private func cell(_ title: String, _ value: String) -> some View {
     VStack(alignment: .leading, spacing: 5) {
       Text(title).font(.system(size: 9, weight: .medium)).tracking(1.2).foregroundStyle(skin.ink4)
@@ -887,8 +919,16 @@ struct FavoritesView: View {
       (["USDT", "USDC", "BUSD"].first { symbol.hasSuffix($0) } ?? "USDT")
   }
   private func open(_ symbol: String) {
-    let info = model.info(for: symbol) ?? SymbolInfo(symbol: symbol, base: String(symbol.dropLast(4)), quote: quoteAsset(symbol), pricePrecision: 2, tickSize: 0.01)
-    model.pick(info)
+    // 目录里没有这个代号（刚上市、或者目录还在路上）时才临时造一行：小数位按最后
+    // 看到的价退回那把共用的梯子，不再写死 2 位 / 0.01（审查 B-07）。真正的位数由
+    // 行情页进图时那趟目录补查覆盖（`MarketModel.refreshInfo`，审查 B-06）。
+    let quote = quoteAsset(symbol)
+    let fallback = SymbolInfo(symbol: symbol,
+                              base: symbol.hasSuffix(quote) ? String(symbol.dropLast(quote.count)) : symbol,
+                              quote: quote,
+                              pricePrecision: priceDecimalsFallback(displayQuote(symbol)?.last ?? .nan),
+                              tickSize: 0)
+    model.pick(model.info(for: symbol) ?? fallback)
   }
   private func assign(_ symbols: [String], to group: String?) {
     symbols.forEach { model.assign($0, to: group) }; moving = nil; selection.removeAll()

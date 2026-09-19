@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import KanpanCore
 import ReviewDomain
 import ReviewData
 
@@ -39,6 +40,36 @@ import ReviewData
   /// `Prefs.reviewSearchScope`（随账号同步）两头对接——进来时灌初值，
   /// 改了就写回去，云端换了一份也照样灌回来。
   public var searchScope = "history"
+
+  /// 复盘里的时刻按哪一档时区写（审查 B-08，复核项 5）。
+  ///
+  /// 和图表、时间轴、十字线读数同一口径：宿主把 `ChartState.timezone`（也就是
+  /// `Prefs.timeZone`）灌进来，改了再灌一次。原来这几页用 `Text(Date, style: .date)`，
+  /// 那认的是**设备**时区：图表切到「交易所（UTC+8）」之后，同一根 K 线在轴上是 1/6，
+  /// 在复盘本里还写着 1/5。
+  public var timezone: TZChoice = .exchange
+
+  /// 某个代号的价格小数位（`SymbolInfo.pricePrecision`），宿主从品种目录里接进来。
+  ///
+  /// 查不到给 `nil`，那就按这口价自己猜（`priceDecimalsFallback`）。这个包看不见
+  /// 品种目录，所以只留一个口子；不留的话就只能像原来那样「最多 8 位、能省就省」，
+  /// 同一张记录里目标价写 `76800`、失效价写 `76812.5`（审查 B-07）。
+  public var priceDecimals: (String) -> Int? = { _ in nil }
+
+  /// 当前这一档时区在「被格式化的那一刻」的偏移口径。
+  public var tzOffset: TZOffset { timezone.offsetMinutes }
+
+  /// 一口价：小数位问品种目录，非有限值按项目规矩写 `--`。
+  public func price(_ value: Double, symbol: String) -> String {
+    ReviewLabels.price(value, decimals: priceDecimals(symbol))
+  }
+
+  /// 列表里那种短时刻：`9/20 14:03`。
+  public func dayTime(_ ms: Int64) -> String { ReviewLabels.dayTime(ms: ms, offsetMinutes: tzOffset) }
+
+  /// 带年份的完整时刻（到期这类跨月跨年的）：`2026-09-20 14:03`。
+  public func fullTime(_ ms: Int64) -> String { ReviewLabels.full(ms: ms, offsetMinutes: tzOffset) }
+
   public var onOpenChart: (ReviewRecord) -> Void = { _ in }
   public var onOpenMatch: (ReviewMatch, Int64) -> Void = { _, _ in }
   public var onCapture: () -> Void = {}

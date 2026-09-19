@@ -87,7 +87,14 @@ struct DataIntegrityTests {
     }.joined(separator: ",")
     let server = FakeServer { url in
       if url.path.contains("ticker") { return json("{}", status: 503) }
-      if url.path.contains("klines") { return json("[\(rows)]") }
+      if url.path.contains("klines") {
+        // 带 startTime 的是补缺：`.connected` 一旦排在首屏之后被处理，feed 就会为
+        // 「快照到连上」那段派一发（生产上那段确实缺）。这时候必须按游标往后答，
+        // 把整屏又扔回去会让 `contiguousTail` 判成「行情翻页没有推进」抛错，于是
+        // 冒出一条 `.historyError`——正是这条用例断言「不许有」的那个东西。
+        if (url.query ?? "").contains("startTime") { return json("[]") }
+        return json("[\(rows)]")
+      }
       return json("[]")
     }
     let pacer = SystemPacer()

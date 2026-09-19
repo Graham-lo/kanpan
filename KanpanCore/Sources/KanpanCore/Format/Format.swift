@@ -16,12 +16,60 @@ public enum TZChoice: String, Sendable, Codable, CaseIterable {
     }
   }
 
-  /// 相对 UTC 的分钟偏移。`local` 取当下的系统偏移（夏令时会变，所以每次现问）。
-  public var offsetMinutes: Int {
+  /// 相对 UTC 的偏移**口径**——注意它不是一个数，而是一条「怎么算偏移」的规则（审查 B-08）。
+  ///
+  /// 原来这里直接给 `TimeZone.current.secondsFromGMT() / 60`，也就是**此刻**的偏移，
+  /// 然后拿它去格式化历史上的每一根 K 线。于是夏天打开 app 看纽约的冬季行情，
+  /// 整段历史会整体平移一小时：`2026-01-05 09:30` 的开盘被写成 `10:30`。
+  /// 正确的口径是「被格式化的那个时刻当时的偏移」，所以这里交出去的是 `TZOffset`，
+  /// 由 `fmtTick` / `fmtFull` / `DateParts` 在知道 ms 之后再问一次。
+  ///
+  /// 名字保留 `offsetMinutes` 不改，是为了让图表层那些
+  /// `fmtFull(ms:, offsetMinutes: state.timezone.offsetMinutes)` 的调用点一个字都不用动。
+  public var offsetMinutes: TZOffset {
     switch self {
-    case .utc: 0
-    case .exchange: 480
-    case .local: TimeZone.current.secondsFromGMT() / 60
+    case .utc: .fixed(0)
+    case .exchange: .fixed(480)      // 交易所口径固定 UTC+8，不随任何地方的夏令时动
+    case .local: .zone(.autoupdatingCurrent)
+    }
+  }
+}
+
+/// 「怎么把 UTC 毫秒换成挂在墙上的那个时间」——固定偏移，或者某个真实时区在那一刻的偏移。
+///
+/// 两条分支的区别只在夏令时：`fixed` 永远是同一个数（UTC、交易所 +8 都是这种），
+/// `zone` 要拿被格式化的那个时刻去问时区数据库（纽约冬天 −5、夏天 −4）。
+public struct TZOffset: Sendable, Equatable {
+  public enum Basis: Sendable, Equatable {
+    case fixed(Int)                  // 分钟
+    case zone(TimeZone)
+  }
+  public var basis: Basis
+  public init(_ basis: Basis) { self.basis = basis }
+
+  public static func fixed(_ minutes: Int) -> TZOffset { .init(.fixed(minutes)) }
+  public static func zone(_ zone: TimeZone) -> TZOffset { .init(.zone(zone)) }
+  /// 跟着系统走，且系统在运行中改了时区也跟得上。
+  public static var system: TZOffset { .zone(.autoupdatingCurrent) }
+
+  /// 交给系统控件（`DatePicker`、SwiftUI 的 `\.timeZone` 环境值）用的那份时区。
+  ///
+  /// 显示一律走 `minutes(at:)`，这里只服务「让用户在原生控件里挑一个时刻」的场合：
+  /// 挑的时候和挑完写出来的必须是同一个时区，否则设了 20:00 到期、列表里写 12:00。
+  public var timeZone: TimeZone {
+    switch basis {
+    case .fixed(let m): return TimeZone(secondsFromGMT: m * 60) ?? .gmt
+    case .zone(let z): return z
+    }
+  }
+
+  /// 指定时刻的偏移（分钟）。这是整条时区口径的唯一入口。
+  public func minutes(at ms: Double) -> Int {
+    switch basis {
+    case .fixed(let m): return m
+    case .zone(let z):
+      guard ms.isFinite else { return z.secondsFromGMT() / 60 }
+      return z.secondsFromGMT(for: Date(timeIntervalSince1970: ms / 1000)) / 60
     }
   }
 }
@@ -58,6 +106,13 @@ public struct DateParts: Sendable, Equatable {
 @inlinable
 func pad2(_ n: Int) -> String { n < 10 ? "0\(n)" : "\(n)" }
 
+/// 拆好的年月日时分，偏移按**这个时刻**的口径算（跨夏令时的历史才不会整段平移）。
+extension DateParts {
+  public init(ms: Double, offsetMinutes: TZOffset) {
+    self.init(ms: ms, offsetMinutes: offsetMinutes.minutes(at: ms))
+  }
+}
+
 /// 时间轴刻度文案：≥180 天给年-月，≥1 天给月-日，跨零点给月-日，其余给时:分。
 public func fmtTick(ms: Double, step: Double, offsetMinutes: Int) -> String {
   let p = DateParts(ms: ms, offsetMinutes: offsetMinutes)
@@ -72,6 +127,22 @@ public func fmtTick(ms: Double, step: Double, offsetMinutes: Int) -> String {
 public func fmtFull(ms: Double, offsetMinutes: Int) -> String {
   let p = DateParts(ms: ms, offsetMinutes: offsetMinutes)
   return "\(p.year)-\(pad2(p.month))-\(pad2(p.day)) \(pad2(p.hour)):\(pad2(p.minute))"
+}
+
+/// 同上，但偏移按被格式化的那个时刻现问（审查 B-08）。
+public func fmtTick(ms: Double, step: Double, offsetMinutes: TZOffset) -> String {
+  fmtTick(ms: ms, step: step, offsetMinutes: offsetMinutes.minutes(at: ms))
+}
+
+public func fmtFull(ms: Double, offsetMinutes: TZOffset) -> String {
+  fmtFull(ms: ms, offsetMinutes: offsetMinutes.minutes(at: ms))
+}
+
+/// 复盘选区那种「几月几日 时:分」的短时间。和十字线同一个口径（同一个 `TZOffset`），
+/// 不再各自 `DateFormatter()` 拿设备时区、也不跟随地区习惯换分隔符（审查 B-07 / B-08）。
+public func fmtDayTime(ms: Double, offsetMinutes: TZOffset) -> String {
+  let p = DateParts(ms: ms, offsetMinutes: offsetMinutes)
+  return "\(p.month)/\(p.day) \(pad2(p.hour)):\(pad2(p.minute))"
 }
 
 /// 本根倒计时的文案（K 线设置·本根倒计时）。
@@ -100,6 +171,34 @@ public func fmtCountdown(msRemaining ms: Double) -> String? {
 public func fmtNum(_ x: Double, _ p: Int) -> String {
   guard x.isFinite else { return "--" }
   return toFixed(x, p)
+}
+
+/// 价格文案：小数位由品种自己说（`SymbolInfo.pricePrecision` / `priceDecimals`），
+/// 不再按数值大小现猜几位（审查 B-07：同一个价在头部、板块页、复盘浮层给出三种写法）。
+///
+/// 唯一的例外是**极小的正价**：如果按品种的位数四舍五入之后变成了 0，
+/// 就自动多给几位直到第一个有效数字露出来。一个真实存在的价显示成 `0.00`
+/// 比少两位小数严重得多——那等于告诉用户这东西不要钱。
+public func fmtPrice(_ x: Double, decimals: Int) -> String {
+  guard x.isFinite else { return "--" }
+  let p = max(0, min(12, decimals))
+  let s = toFixed(x, p)
+  guard x != 0, Double(s) == 0 else { return s }
+  let need = min(12, Int(ceil(-log10(abs(x)))) + 1)
+  return toFixed(x, max(p, need))
+}
+
+/// 品种表还没到时的临时小数位。**只在这一种情形下用。**
+///
+/// 正常路径上小数位一律由品种自己说（`SymbolInfo.pricePrecision`）；这把梯子是给
+/// 「冷启动第一帧目录还没回来」「自选里那个代号不在这份目录里」这两种空档用的。
+/// 单独放在这儿是为了全 app 只有一把：原来自选页写死 2 位、板块页另有一套
+/// 2/4/5/7，于是同一个价在两页上写法不同（审查 B-07）。
+public func priceDecimalsFallback(_ price: Double) -> Int {
+  let magnitude = abs(price)
+  return if !magnitude.isFinite { 2 }
+    else if magnitude >= 100 { 2 } else if magnitude >= 1 { 4 }
+    else if magnitude >= 0.01 { 5 } else { 7 }
 }
 
 /// 成交量 / 持仓量 / 市值：K / M / B / T，两位小数；不满一千给原数。

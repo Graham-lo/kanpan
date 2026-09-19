@@ -36,6 +36,8 @@ struct FeedLifecycleTests {
     init(hold: Bool) { self.hold = hold }
 
     var klineCalls: Int { urls.filter { $0.path.contains("klines") }.count }
+    /// 断言失败时要说清「多打的那一发是什么」，不然只知道数字不对。
+    var klineQueries: [String] { urls.filter { $0.path.contains("klines") }.map { $0.query ?? "" } }
     var backfillCalls: Int {
       urls.filter { ($0.query ?? "").contains("startTime") }.count
     }
@@ -49,8 +51,17 @@ struct FeedLifecycleTests {
         return json(#"{"symbol":"X","lastPrice":"1","priceChangePercent":"0","highPrice":"1","lowPrice":"1","quoteVolume":"1","closeTime":3000}"#)
       }
       let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-      let limit = q.first { $0.name == "limit" }?.value.flatMap(Int.init) ?? 300
-      return FeedLifecycleTests.klines(min(limit, 1500))
+      let limit = min(q.first { $0.name == "limit" }?.value.flatMap(Int.init) ?? 300, 1500)
+      // 带 startTime 的是补缺：必须从那一根往后给。整屏那一套（末根固定是 lastOpen、
+      // 往前铺 limit 根）第一根会比游标还早，`contiguousTail` 判成「行情翻页没有推进」
+      // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+      // 派的）一失手，后面所有「稳态」判据都等不到。
+      if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+        let span = FeedLifecycleTests.lastOpen - start
+        guard span >= 0 else { return json("[]") }
+        return FeedLifecycleTests.klines(min(Int(span / FeedLifecycleTests.step) + 1, limit))
+      }
+      return FeedLifecycleTests.klines(limit)
     }
   }
 
@@ -160,6 +171,7 @@ struct FeedLifecycleTests {
     /// 那会儿 `fillOnce` 还卡在 `cache.put` 上（`filling` 仍是 true），这时候回前台
     /// 走的是「补发首屏」那条路，测不到这儿要测的缺口判定。
     let depth = Counter()
+    let live = Counter()
     func rig(_ clock: MovableClock) async -> (MarketFeed, HeldHistory, Task<Void, Never>) {
       let transport = HeldHistory(hold: false)
       let deck = ReplayDeck([.hang])
@@ -171,33 +183,41 @@ struct FeedLifecycleTests {
       await feed.setSnapshotEnabled(false)
       let events = await feed.events()
       depth.setTo(0)
-      let collector = Task { [depth] in
+      live.setTo(0)
+      let collector = Task { [depth, live] in
         for await update in events {
           if case .series(let s) = update.event, s.count > depth.value { depth.setTo(s.count) }
+          if case .status(let st) = update.event, st == .live { live.setTo(1) }
         }
       }
       await feed.start(symbol: "BTCUSDT", interval: .m1)
-      #expect(await waitUntil(5) { depth.value == BinanceREST.maxKlines })
+      #expect(await waitUntil(10) { depth.value == BinanceREST.maxKlines })
+      // 连上了（`.connected` 已经处理过），而且启动那一发补缺也收了工——它是
+      // 「快照到连上」那段的正常补缺，不等完就往下走会被算成回前台补的那一发。
+      #expect(await waitUntil(10) { live.value == 1 })
+      #expect(await waitForSteadyState(feed, timeout: 10))
       return (feed, transport, collector)
     }
 
     // ① 还在末根那一分钟之内：一根都不欠，不许发补缺请求。
     let sameBucket = MovableClock(Double(Self.lastOpen) / 1000 + 5)
     let (feedA, netA, collectorA) = await rig(sameBucket)
-    #expect(await netA.backfillCalls == 0)
+    // 启动那一发补缺（如果派过）已经收工，从这儿的读数起算增量。
+    let backfillsBefore = await netA.backfillCalls
     await feedA.enterBackground()
     await feedA.enterForeground()
     // 等一秒钟，确认那一笔补缺请求**始终没有**发出来（它是异步派的，光看这一刻不算数）。
-    #expect(await waitUntil(1) { await netA.backfillCalls > 0 } == false)
+    #expect(await waitUntil(1) { await netA.backfillCalls > backfillsBefore } == false)
     await feedA.stop(); collectorA.cancel()
 
     // ② 过了一根：欠两根（末根 + 新开的那根），必须补。
     let nextBucket = MovableClock(Double(Self.lastOpen) / 1000 + 5)
     let (feedB, netB, collectorB) = await rig(nextBucket)
+    let backfillsBeforeB = await netB.backfillCalls
     nextBucket.set(Double(Self.lastOpen) / 1000 + 65)
     await feedB.enterBackground()
     await feedB.enterForeground()
-    #expect(await waitUntil(5) { await netB.backfillCalls > 0 })
+    #expect(await waitUntil(5) { await netB.backfillCalls > backfillsBeforeB })
     await feedB.stop(); collectorB.cancel()
   }
 
@@ -430,6 +450,18 @@ struct FeedLifecycleTests {
     /// 带 `startTime` 的才是补缺（首屏和对表都不带）。
     var backfillCalls: Int { urls.filter { ($0.query ?? "").contains("startTime") }.count }
     var klineCalls: Int { urls.filter { $0.path.contains("klines") }.count }
+    /// 断言失败时要说清「多打的那一发是什么」，不然只知道数字不对。
+    var klineQueries: [String] { urls.filter { $0.path.contains("klines") }.map { $0.query ?? "" } }
+    /// 非补缺的那种取数：只排掉带 `startTime` 的（补缺 / 对表）。
+    ///
+    /// **不排 `endTime`**：往回翻页（加深）也是真的出站请求，回前台多发一发加深
+    /// 同样是「白重拉」，排掉它这条用例就再也看不见了。
+    var firstScreenKlineCalls: Int {
+      urls.filter {
+        guard $0.path.contains("klines") else { return false }
+        return !($0.query ?? "").contains("startTime")
+      }.count
+    }
 
     func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
       urls.append(url)
@@ -466,7 +498,11 @@ struct FeedLifecycleTests {
     let clock = MovableClock(Double(Self.lastOpen) / 1000 + offsetS)
     let pacer = ManualPacer()
     let net = MovingExchange(last: Self.lastOpen)
-    let deck = ReplayDeck([.hang])
+    // 推一帧末根行情（值和 REST 那一屏一模一样，序列不会变），只为让这条连接
+    // 走到 `.live`：`.live` 到了就说明启动期那几条非 live 的状态事件都已经处理完，
+    // 不会在后面某个时刻才冒出来给序列记一个缺口。
+    let deck = ReplayDeck([.frame(.text(Self.frame(open: Self.lastOpen, close: 100,
+                                                   closed: false, seq: 1))), .hang])
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: SystemPacer()))
     let feed = MarketFeed(rest: BinanceREST(transport: net, limiter: RateLimiter(minGapMs: 0)),
                           ws: ws, paths: tempPaths(), pacer: pacer,
@@ -475,15 +511,22 @@ struct FeedLifecycleTests {
     // 首屏真正落地只能听事件流：`currentSeries` 满了的那会儿 `filling` 可能还挂着，
     // 那时候回前台走的是「补发首屏」而不是这儿要测的宽限判定（见 BT-12）。
     let depth = Counter()
+    let live = Counter()
     let events = await feed.events()
-    let collector = Task { [depth] in
+    let collector = Task { [depth, live] in
       for await u in events {
         if case .series(let s) = u.event, s.count > depth.value { depth.setTo(s.count) }
+        if case .status(let st) = u.event, st == .live { live.setTo(1) }
       }
     }
     await feed.start(symbol: "BTCUSDT", interval: .m1)
-    #expect(await waitUntil(5) { depth.value == BinanceREST.maxKlines })
-    #expect(await waitUntil(5) { await ws.currentConnectionID == 1 })
+    #expect(await waitUntil(10) { depth.value == BinanceREST.maxKlines })
+    #expect(await waitUntil(10) { await ws.currentConnectionID == 1 })
+    #expect(await waitUntil(10) { live.value == 1 })
+    // 稳态：首屏那一发已经回来（`filling` 落下）、启动那一发补缺不在途、缺口不欠着。
+    // 这几件事都是启动期的异步尾巴，机器忙的时候可能排在首屏之后才跑到；不等它们
+    // 就往下走，后面「回前台不该补缺」这条断言测的就不是宽限判定了。
+    #expect(await waitForSteadyState(feed, timeout: 10))
     return GraceRig(feed: feed, ws: ws, deck: deck, net: net, pacer: pacer, clock: clock,
                     collector: collector)
   }
@@ -495,7 +538,11 @@ struct FeedLifecycleTests {
 
     // ① 24.9 秒就回来了：闹钟还没响，连接原地复用，一个补缺请求都不许发。
     let a = await graceRig(enteringBackgroundAt: 5)
-    let firstScreenCalls = await a.net.klineCalls
+    let firstScreenCalls = await a.net.firstScreenKlineCalls
+    // 启动期可能已经补过一发（`.connected` 排在首屏之后被处理时，feed 会补上
+    // 「快照到连上」那一段——生产上那段确实缺）。这条用例要问的是**回前台**有没有
+    // 再补，所以从这儿的读数起算增量，而不是断言它是 0。
+    let backfillsBefore = await a.net.backfillCalls
     await a.feed.enterBackground()
     // 那记 25 秒的闹钟真的排在钟上了，再拨针，不然拨的是空。
     #expect(await waitUntil(5) { await a.pacer.sleeping == 1 })
@@ -507,10 +554,14 @@ struct FeedLifecycleTests {
     #expect(await a.feed.isWSRunningForTests)
     #expect(await a.ws.currentConnectionID == 1)
     #expect(await a.deck.stats().connects == 1)   // 没重连
-    #expect(await a.net.backfillCalls == 0)
+    #expect(await a.net.backfillCalls == backfillsBefore)
     // 补缺是异步派的，光看这一刻不算数：确认它**始终**没发出来。
-    #expect(await waitUntil(1) { await a.net.backfillCalls > 0 } == false)
-    #expect(await a.net.klineCalls == firstScreenCalls)   // 首屏也没白重拉
+    #expect(await waitUntil(1) { await a.net.backfillCalls > backfillsBefore } == false)
+    // 首屏也没白重拉。
+    // （`#expect` 的说明是不支持并发的 autoclosure，先把读数取出来再断言。）
+    let klineCallsAfter = await a.net.firstScreenKlineCalls
+    let klineQueries = await a.net.klineQueries
+    #expect(klineCallsAfter == firstScreenCalls, "回前台又重拉了一整屏：\(klineQueries)")
     await a.feed.stop()
     a.collector.cancel()
     await a.pacer.drain()

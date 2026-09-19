@@ -39,7 +39,10 @@ public struct ReviewSearchView: View {
               HStack {
                 VStack(alignment: .leading, spacing: 5) {
                   Text(match.range.symbol + " · " + match.range.interval).fontWeight(.medium).foregroundStyle(t.ink)
-                  Text(Date(timeIntervalSince1970: Double(match.range.start) / 1000), style: .date).font(.caption).foregroundStyle(t.ink3)
+                  // 相似区间大多在几个月甚至几年前，所以写全年份；时区跟着图表那一档走
+                  // （审查 B-08）。原来是 `Text(Date, style: .date)`：只有日期、认设备时区，
+                  // 点进去在图上看到的那一段和这一行写的日子能差一天。
+                  Text(feature.fullTime(match.range.start)).font(.caption).foregroundStyle(t.ink3)
                   Text("\(match.range.bars) 根").font(.caption).foregroundStyle(t.ink3)
                 }
                 Spacer(); Text(String(format: "相似度 %.0f%%", match.score * 100)).monospacedDigit().foregroundStyle(t.ink2)

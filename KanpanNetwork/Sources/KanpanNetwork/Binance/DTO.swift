@@ -51,6 +51,8 @@ struct ExchangeInfoDTO: Decodable {
     var contractType: String?
     var underlyingType: String?
     var underlyingSubType: [String]?
+    /// `TRADING` / `PENDING_TRADING` / `SETTLING` / `CLOSE`…
+    /// 不再当过滤条件用，而是原样映射成 `SymbolInfo.status`（审查 B-06）。
     var status: String?
     var pricePrecision: Int
     var quantityPrecision: Int
@@ -284,4 +286,37 @@ public struct TradeEvent: Sendable, Equatable, Decodable {
   }
 
   enum K: String, CodingKey { case e, s, p, q, T, E, t, m }
+}
+
+// ---------------------------------------------------------------- 运行时限额
+
+/// `exchangeInfo` 里那份 `rateLimits`：上游自己公布的当前限额（A.2）。
+///
+/// 硬编码 2400 是抄文档抄来的，币安调整过就只能靠我们发现 429 才知道。
+/// 每次取品种表都会回这份，顺手把 `RateLimiter` 的预算对上去
+/// （`RateLimiter.apply(rules:)`）。
+public struct BinanceRateLimitRule: Decodable, Sendable, Equatable {
+  /// `REQUEST_WEIGHT` / `ORDERS` / `RAW_REQUESTS`。
+  public var rateLimitType: String
+  /// `MINUTE` / `SECOND` / `DAY`。
+  public var interval: String
+  public var intervalNum: Int
+  public var limit: Int
+
+  public init(rateLimitType: String, interval: String, intervalNum: Int, limit: Int) {
+    self.rateLimitType = rateLimitType
+    self.interval = interval
+    self.intervalNum = intervalNum
+    self.limit = limit
+  }
+
+  /// 这一条是不是「每 1 分钟的请求权重」那条。
+  public var isRequestWeightPerMinute: Bool {
+    rateLimitType.uppercased() == "REQUEST_WEIGHT"
+      && interval.uppercased() == "MINUTE" && intervalNum == 1
+  }
+}
+
+struct RateLimitsDTO: Decodable {
+  var rateLimits: [BinanceRateLimitRule]?
 }

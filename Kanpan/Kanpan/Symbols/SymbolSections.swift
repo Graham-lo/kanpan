@@ -15,9 +15,17 @@ import KanpanCore
 struct SymbolRow: Sendable, Equatable, Identifiable {
   var match: SymbolMatch
   var ticker: Ticker?
+  /// 这个代号在品种目录里是什么情况（审查复核项 4）。
+  ///
+  /// `nil` 是常态：这一行本来就是从目录里挑出来的，那就按它自己那一档状态算。
+  /// 只有「目录里查不到这个代号」时上层才会给一个明确的 `.unknown` / `.unloaded`——
+  /// 那种行是拿 `SymbolInfo.placeholder` 凑出来的，`info.status` 说明不了任何事。
+  var listing: SymbolListing?
 
   var id: String { match.info.symbol }
   var info: SymbolInfo { match.info }
+  /// 这一行的目录状态，`listing` 没给就按目录里那一档算。
+  var catalogListing: SymbolListing { listing ?? .listed(info.status) }
 
   /// 行首大字：`BTC`。
   var name: String { info.base }
@@ -35,13 +43,24 @@ struct SymbolRow: Sendable, Equatable, Identifiable {
   /// 差异记在 docs/acceptance/M5/品种页.md。
   var priceText: String {
     guard let t = ticker, t.last.isFinite else { return "—" }
-    return fmtNum(t.last, info.pricePrecision)
+    // `fmtPrice` 而不是 `fmtNum`：0.0000004 这种合法极小价按 `pricePrecision`
+    // 四舍五入会变成 `0.00`，那是在说「这个东西不值钱」（审查 B-07）。
+    // 占位行没有精度可言（目录里查不到），`displayDecimals` 会按这口价自己猜。
+    return fmtPrice(t.last, decimals: info.displayDecimals(for: t.last))
   }
+
+  /// 这一行还有没有实时价可言。没有的时候界面按「旧值」渲染（灰掉），
+  /// 而**由它算出来的**那些字段一律留空——涨跌幅就是第一个（审查 B-06）。
+  ///
+  /// 判据只有一个：`SymbolListing`——目录里有它就是那一档 `SymbolInfo.status`，
+  /// 目录里没有它就是「未知」（同样没有实时价，但不划掉、不删、也不算下架）。
+  /// 自选、搜索、图表三处都问这一个，所以同一个品种在三处的说法必然一致。
+  var isStale: Bool { !catalogListing.hasLivePrice }
 
   /// 涨跌幅：`+1.23%` / `-1.23%`，两位小数，照原型 `pct.toFixed(2)`。
   /// 没有报价或日开盘基准时留空，不把缺失值写成0%或nan%。
   var changeText: String {
-    guard let p = ticker?.changePercent, p.isFinite else { return "—" }
+    guard !isStale, let p = ticker?.changePercent, p.isFinite else { return "—" }
     return (p >= 0 ? "+" : "") + toFixed(p, 2) + "%"
   }
 
@@ -87,7 +106,12 @@ enum SymbolSections {
   static let emptyText = "没有这个品种"
 
   /// 页头右边那行小字：原型 `D.catalog.length + ' 个永续合约'`。
-  static func countText(_ catalog: [SymbolInfo]) -> String { "\(catalog.count) 个永续合约" }
+  ///
+  /// 数的是**还在交易的**那些。停牌和还没开盘的行现在也留在表里（审查 B-06），
+  /// 把它们一起数进去，这行小字就会比「全部合约」里真能点的条数多出一百多个。
+  static func countText(_ catalog: [SymbolInfo]) -> String {
+    "\(catalog.count { $0.status.hasLivePrice }) 个永续合约"
+  }
 
   /// 搭出整页的分区。
   ///
@@ -96,10 +120,15 @@ enum SymbolSections {
   ///   - tickers: symbol → 24h 行情，缺的行就显示 `—`。
   ///   - prefs: 自选与最近。
   ///   - query: 搜索框里的原文，空串表示没搜。
+  ///   - catalogKeys: **没被市场/板块药丸筛过**的那份目录里有哪些代号（大写）。
+  ///     `nil` 表示就按 `catalog` 算。这一份只用来回答一件事：一个自选
+  ///     「是被药丸筛掉了」还是「目录里根本没有它」（审查复核项 4）——
+  ///     前者照旧不列，后者要按「未知」列出来。
   static func build(catalog: [SymbolInfo],
                     tickers: [String: Ticker],
                     prefs: SymbolPrefs,
-                    query: String) -> [SymbolSection] {
+                    query: String,
+                    catalogKeys: Set<String>? = nil) -> [SymbolSection] {
     let bySymbol = Dictionary(catalog.map { ($0.symbol.uppercased(), $0) }, uniquingKeysWith: { a, _ in a })
     func row(_ m: SymbolMatch) -> SymbolRow { SymbolRow(match: m, ticker: tickers[m.info.symbol.uppercased()]) }
 
@@ -113,6 +142,9 @@ enum SymbolSections {
         .enumerated()
         .sorted { a, b in
           if a.element.match.tier != b.element.match.tier { return a.element.match.tier < b.element.match.tier }
+          // 已停牌 / 还没开盘的排在同档的后面，但**照旧列出来**：用户要能搜到自己
+          // 那个已下架的自选，不然「找不到」和「不存在」又成了同一件事（审查 B-06）。
+          if a.element.isStale != b.element.isStale { return b.element.isStale }
           if a.element.quoteVolume != b.element.quoteVolume { return a.element.quoteVolume > b.element.quoteVolume }
           return a.offset < b.offset
         }
@@ -128,27 +160,45 @@ enum SymbolSections {
     var out: [SymbolSection] = []
     var shownAlready = Set<String>()
 
-    let favorites = prefs.favorites.compactMap { bySymbol[$0] }
+    // 目录里查不到的自选 / 最近**照旧摆出来**（审查复核项 4）。原来这儿是
+    // `compactMap { bySymbol[$0] }`：目录里没有这个代号，那一行就凭空消失了——
+    // 用户只会以为是自己手滑删的。现在按代号凑一行占位，标成「未知」：
+    // 价还是最后看到的那口（灰的），由实时价算出来的全留空，一个字的解释都不加。
+    // 目录还没到的时候不算「未知」（`.unloaded`），那会把整页自选一起打灰。
+    let known = catalogKeys ?? Set(bySymbol.keys)
+    let loaded = !known.isEmpty
+    /// `nil` = 这一行不该出现在这一页（被药丸筛掉了）。
+    func rowForKey(_ key: String) -> SymbolRow? {
+      let id = key.uppercased()
+      if let info = bySymbol[id] { return row(SymbolMatch(info: info)) }
+      // 目录里有它、只是不属于当前这颗药丸：照旧不列，药丸就是这么用的。
+      if known.contains(id) { return nil }
+      return SymbolRow(match: SymbolMatch(info: .placeholder(symbol: id)),
+                       ticker: tickers[id],
+                       listing: loaded ? .unknown : .unloaded)
+    }
+
+    let favorites = prefs.favorites.map { $0.uppercased() }.compactMap(rowForKey)
     if !favorites.isEmpty {
-      shownAlready.formUnion(favorites.map { $0.symbol.uppercased() })
-      out.append(SymbolSection(kind: .favorites,
-                               title: favoritesTitle,
-                               rows: favorites.map { row(SymbolMatch(info: $0)) }))
+      shownAlready.formUnion(favorites.map { $0.info.symbol.uppercased() })
+      out.append(SymbolSection(kind: .favorites, title: favoritesTitle, rows: favorites))
     }
 
     // 原型：中间那组剔掉已经在自选里的（`filter(s => !S.watch.includes(s))`）。
-    let recents = prefs.recents.compactMap { bySymbol[$0] }.filter { !shownAlready.contains($0.symbol.uppercased()) }
+    let recents = prefs.recents.map { $0.uppercased() }
+      .filter { !shownAlready.contains($0) }
+      .compactMap(rowForKey)
     if !recents.isEmpty {
-      shownAlready.formUnion(recents.map { $0.symbol.uppercased() })
-      out.append(SymbolSection(kind: .recents,
-                               title: recentsTitle,
-                               rows: recents.map { row(SymbolMatch(info: $0)) }))
+      shownAlready.formUnion(recents.map { $0.info.symbol.uppercased() })
+      out.append(SymbolSection(kind: .recents, title: recentsTitle, rows: recents))
     }
 
     // 「全部」：剔掉上面露过脸的，按 24h 成交额降序（A5.7）。
     // 没有行情的品种成交额算 0，落在末尾，同额时保持交易所给的原序。
+    // 「全部合约」列的是**还能交易的**合约：停牌、已交割、还没开盘的行留在品种表里
+    // 是为了自选和搜索认得它（审查 B-06），但它不属于这张「有哪些合约可以看」的清单。
     let pool = catalog
-      .filter { !shownAlready.contains($0.symbol.uppercased()) }
+      .filter { !shownAlready.contains($0.symbol.uppercased()) && $0.status.hasLivePrice }
       .map { row(SymbolMatch(info: $0)) }
       .enumerated()
       .sorted { a, b in

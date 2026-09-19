@@ -2,6 +2,20 @@ import asyncio
 import json
 import time
 import unittest
+
+# The WS half of the gateway lives on aiohttp, so this module cannot even be
+# imported without it. A bare ImportError here reads like "the WS tests are
+# broken"; it actually means the wrong interpreter was used. Skip with the fix
+# in the message instead -- and never let the suite look green when this
+# happens by accident, so the reason is spelled out in full.
+try:
+    import aiohttp  # noqa: F401  (imported for the check, used via the modules below)
+except ImportError as missing:  # pragma: no cover - depends on the interpreter
+    raise unittest.SkipTest(
+        '%s: run the suite with the gateway venv that has aiohttp installed '
+        '(python3 -m venv .venv && .venv/bin/pip install -r requirements.txt, '
+        'then .venv/bin/python -m unittest) -- see README' % missing)
+
 from aiohttp import ClientSession, WSServerHandshakeError, WSMsgType, web
 from stream_hub import Hub, Peer, Pending, app_for, streams, client_key
 from types import SimpleNamespace

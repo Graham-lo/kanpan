@@ -504,6 +504,65 @@ struct SectorTests {
     #expect(sel.norm(.nan) == 0)
   }
 
+  /// B-T19：板块那个数就是成员涨跌幅的**中位数本身**（原始百分数），
+  /// 不是对数收益。三个成员都 −50% 的板块必须显示 −50，不是 ln(0.5)·100 = −69.3。
+  ///
+  /// 对数只活在「相对广度 / 前沿」那条支线上（池基准要可加），两条路不能接错。
+  @Test func aSectorWhereEveryoneHalvedShowsMinusFifty() throws {
+    let stats = Self.aggregate(["ADA": -50, "ALGO": -50, "APT": -50])
+    let l1 = try #require(stats.first { $0.id == "l1" })
+    #expect(l1.pct == -50)
+    #expect(abs(l1.pct - (-50)) < 1e-9, "中位数不能是对数口径的 -69.3")
+    #expect(l1.memberCount == 3 && l1.eligible)
+    // 全场只有这三个、而且一模一样：谁也没跑赢池基准，广度是 0。
+    #expect(l1.breadth == 0 && l1.upCount == 0)
+    // 对数口径确实是 -69.3，钉一下，免得以后有人把它接到 pct 上。
+    #expect(abs(SectorAggregator.logReturn(-50) * 100 - (-69.3147)) < 0.001)
+  }
+
+  /// B-T19 的另一半：广度在**对数池**上独立算，和 pct 那个中位数互不影响。
+  /// 半数成员跑赢基准时，pct 仍是原始中位数，breadth 却只看超额收益的正负。
+  @Test func breadthComesFromTheLogPoolNotFromThePct() throws {
+    // l1 的四个成员：两个 +10、两个 −10；全场（= 这四个）基准在中间。
+    let stats = Self.aggregate(["ADA": 10, "ALGO": 10, "APT": -10, "ATOM": -10])
+    let l1 = try #require(stats.first { $0.id == "l1" })
+    #expect(abs(l1.pct - 0) < 1e-9, "原始口径的中位数是 0")
+    #expect(abs(l1.breadth - 0.5) < 1e-9, "四个成员里两个跑赢基准")
+    #expect(l1.upCount == 2, "绝对上涨家数和广度不是一回事")
+  }
+
+  /// B-T20：合格全场固定时，只改选球档位（N/M）不能动尺子——
+  /// 分母取的是**全场**，不是上场那几颗。
+  @Test func changingTheBoardSizeDoesNotMoveTheRuler() {
+    let board = Self.fakes([12, 7, 3, 0, -2, -6, -18])
+    let scales = [(1, 0), (2, 1), (3, 3), (5, 8), (0, 0)].map {
+      SectorSelector.select(board, n: $0.0, m: $0.1).scalePct
+    }
+    #expect(Set(scales) == [18], "换档位之后尺子变了：\(scales)")
+    let totals = [(1, 0), (5, 8)].map { SectorSelector.select(board, n: $0.0, m: $0.1).total }
+    #expect(Set(totals) == [7], "参与排序的板块数不该随档位变")
+  }
+
+  /// B-T20：伪造的 NaN / ±∞ 输入必须被安全拒绝——既不上场、也不撑尺子、
+  /// 更不能把排序谓词弄成非严格弱序。
+  @Test func forgedNonFiniteStatsAreRefused() {
+    let board = Self.fakes([5, 2, -3]) + [
+      SectorStat(id: "nan", name: "假的", market: .crypto, pct: .nan,
+                 memberCount: 5, quoteVolume: 1, isFallback: false),
+      SectorStat(id: "inf", name: "更假的", market: .crypto, pct: .infinity,
+                 memberCount: 5, quoteVolume: 1, isFallback: false),
+      SectorStat(id: "ninf", name: "还有", market: .crypto, pct: -.infinity,
+                 memberCount: 5, quoteVolume: 1, isFallback: false),
+    ]
+    let sel = SectorSelector.select(board, n: 5, m: 3)
+    #expect(sel.total == 3)
+    #expect(Set(sel.picks.map(\.id)) == ["s0", "s1", "s2"])
+    #expect(sel.scalePct == 5, "±∞ 不能变成面积分母")
+    #expect(sel.upCount + sel.downCount == 3)
+    // 非数一律归一到 0（球画成最小），不是 1：伪造的数不该长成全场最大那颗。
+    #expect(sel.norm(.nan) == 0 && sel.norm(.infinity) == 0)
+  }
+
   @Test func ineligibleSectorsAreDroppedBeforeRankingAndScaling() {
     // 上不了场的那两段 pct 最极端，没被摘掉的话既上场又把尺子撑大。
     let sel = SectorSelector.select(Self.fakes([3, 1, -2], ineligible: [99, -99]), n: 5, m: 3)
@@ -529,6 +588,38 @@ struct SectorTests {
     #expect(usdc == 1)
     #expect(SectorQuotePreference.rank("FDUSD") == 2)
     #expect(SectorQuotePreference.rank("BTC") == SectorQuotePreference.quoteAssets.count)
+  }
+
+  // MARK: - 8. 拿不到成交额的成员
+
+  /// 缺失的成交额一律当「没有」，绝不当 0（审查复核项 1）。
+  ///
+  /// 从前 `quoteVolume.isFinite ? … : 0` 把「不知道」写成了「零成交」：挑合约时
+  /// 那张假 0 永远输、板块成交额被拉低、界面上还显示得像真的。
+  @Test func missingVolumeIsMissingNotZero() {
+    // ① 挑合约：没成交额的那张顶不掉别人，也一定被有成交额的那张顶掉。
+    let r = SectorQuotePreference.rank("USDT")
+    #expect(!SectorQuotePreference.prefers(rank: r, volume: .nan, over: (r, 1)))
+    #expect(SectorQuotePreference.prefers(rank: r, volume: 1, over: (r, .nan)))
+    #expect(!SectorQuotePreference.prefers(rank: r, volume: .nan, over: (r, .nan)))
+    #expect(!SectorQuotePreference.prefers(rank: r, volume: .infinity, over: (r, 1)))
+
+    // ② 聚合：缺的那几个不进求和——不是加 0，是根本不算。
+    let bucket = SectorFallbackBucket(id: "fb-v", name: "其他", members: ["ZZA", "ZZB", "ZZC"])
+    let mixed = ["ZZA": SectorQuote(base: "ZZA", pct: 1, quoteVolume: .nan, price: 1),
+                 "ZZB": SectorQuote(base: "ZZB", pct: 2, quoteVolume: 7, price: 1),
+                 "ZZC": SectorQuote(base: "ZZC", pct: 3, quoteVolume: .infinity, price: 1)]
+    let got = SectorAggregator.stats(market: .crypto, quotes: mixed, fallbackBuckets: [bucket])
+    #expect(got.count == 1)
+    #expect(got.first?.memberCount == 3, "成交额缺不影响成员数，涨跌幅照算")
+    #expect(got.first?.quoteVolume == 7)
+
+    // ③ 一个都没有就是 NaN（不是 0），界面照缺数显示；中位数不受影响。
+    let none = ["ZZA": SectorQuote(base: "ZZA", pct: 1, quoteVolume: .nan, price: 1),
+                "ZZB": SectorQuote(base: "ZZB", pct: 2, quoteVolume: -1, price: 1)]
+    let blank = SectorAggregator.stats(market: .crypto, quotes: none, fallbackBuckets: [bucket])
+    #expect(blank.first?.quoteVolume.isNaN == true)
+    #expect(blank.first?.pct == 1.5)
   }
 }
 

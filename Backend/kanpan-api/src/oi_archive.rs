@@ -17,13 +17,14 @@
 //!
 //! Nothing here is personal: no authentication, no database, no per-user state.
 use axum::{Router,extract::{Path,Query},http::{StatusCode,header},response::{IntoResponse,Response},routing::get};
+use crate::binance_gate;
 use chrono::{DateTime,Datelike,NaiveDate,NaiveDateTime,Utc};
 use std::collections::{HashMap,HashSet,VecDeque};
 use std::future::Future;
 use std::io::Read;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::{Arc,Mutex,OnceLock,atomic::{AtomicI64,AtomicU64,Ordering}};
+use std::sync::{Arc,Mutex,OnceLock,atomic::{AtomicI64,AtomicU32,AtomicU64,Ordering}};
 use std::time::{Duration,SystemTime};
 use tokio::sync::Semaphore;
 
@@ -48,6 +49,26 @@ const MEM_DAYS:usize=4096;
 /// anyone here looks at are ~320 MB, and the host has 121 GB free: the point of
 /// the ceiling is that the directory cannot grow without bound, not thrift.
 const DEFAULT_LIMIT:u64=4*1024*1024*1024;
+/// 目录条目上限。
+///
+/// 字节预算只数字节，而缺口标记是 0 字节的空文件：上市日之前的那些天，一个合约能
+/// 写出上千个标记，528 个合约就是几十万个——`disk.bytes` 一动不动，ext4 的目录项和
+/// inode 却是实打实被占掉的，`read_dir` 启动扫描也跟着变慢。所以再加一条只数条目的
+/// 上限。二十万是这么来的：真按最费的用法算，开机预热是 528 个合约 × 180 天 ≈ 9.5 万
+/// 条，加上有人真的看过的二十来个品种的全量历史（每个 ~2200 天）≈ 4.4 万条，合起来
+/// 还不到十四万；二十万在这之上留了余量，又远在单目录塌掉的量级之下。
+const MAX_FILES:usize=200_000;
+/// 一轮里连着这么多次被拒，就不再往前翻日期了。
+///
+/// 一次尝试算一次，`download` 一天最多试两次，所以这条线大约是「连着两天都没抓到」。
+const REFUSALS:u32=3;
+/// 被拒到上面那条线之后，这个源歇多久。
+///
+/// 403 / 超时 / 5xx 说的是「这会儿这个源不理这台机器」，不是「这一天没有数据」。
+/// 不歇的话，一次预热会拿同一个拒绝把 528 × 180 天全撞一遍，每天两次尝试；歇太久
+/// 又会让一次偶发的边缘故障把整段历史推迟到几十分钟以后。五分钟够让边缘节点换一台，
+/// 也短到一次图表请求的重试就能自己恢复。
+const SOURCE_COOLDOWN:i64=5*60_000;
 /// A day that has just ended may not be published yet, so its absence is not
 /// yet evidence of anything and must not be remembered as a gap.
 const SETTLED:i64=2*DAY;
@@ -113,7 +134,12 @@ pub fn spawn_warm() {
 /// The order is the whole point of the second request: warming alphabetically
 /// would spend the first hour on contracts nobody here has ever opened.
 async fn perpetuals(client:&reqwest::Client)->Option<Vec<Arc<str>>> {
- let listing:serde_json::Value=client.get(LISTING).send().await.ok()?.json().await.ok()?;
+ // 合约列表和 24h 榜单都在 binance.com 上，跟 `market_meta`、`sector_history` 撞的是
+ // 同一道按 IP 算的限速墙，所以走同一条封禁截止时间：被封期间这轮预热直接不开。
+ if binance_gate::blocked() {return None}
+ let reply=client.get(LISTING).send().await.ok()?;
+ if binance_gate::note_reply(&reply) {return None}
+ let listing:serde_json::Value=reply.json().await.ok()?;
  let mut symbols:Vec<&str>=listing.get("symbols")?.as_array()?.iter()
   .filter(|row|{
    let field=|key|row.get(key).and_then(serde_json::Value::as_str);
@@ -125,9 +151,11 @@ async fn perpetuals(client:&reqwest::Client)->Option<Vec<Arc<str>>> {
  symbols.dedup();
  // Turnover is a nicety: without it the list is still correct, just ordered badly.
  let mut turnover:HashMap<&str,f64>=HashMap::new();
- let ticker:Option<serde_json::Value>=match client.get(TICKER).send().await {
-  Ok(reply)=>reply.json().await.ok(),
-  Err(_)=>None,
+ let ticker:Option<serde_json::Value>=if binance_gate::blocked() {None} else {
+  match client.get(TICKER).send().await {
+   Ok(reply)=>{if binance_gate::note_reply(&reply) {None} else {reply.json().await.ok()}}
+   Err(_)=>None,
+  }
  };
  if let Some(rows)=ticker.as_ref().and_then(serde_json::Value::as_array) {
   for row in rows {
@@ -339,7 +367,9 @@ impl Clock {
 }
 
 /// 一次抓取的结果。三种情况要分开：`Missing` 是归档明确说没有（404），
-/// `Failed` 是这一次没问到，两者对缓存的意义完全不同。
+/// `Failed` 是这一次没问到，两者对缓存的意义完全不同——只有 `Missing` 能变成缺口，
+/// `Failed`（403 / 超时 / 5xx / 连接断了）永远不许写永久标记，它说的是这个源现在
+/// 不理我们，不是这一天没有数据。
 enum Reply {Body(Vec<u8>),Missing,Failed}
 /// 抓归档这一步抽成 trait，好让测试造出「先 404、过一会儿变 200」这种时序——
 /// 真的 data.binance.vision 没法按需切换。
@@ -378,6 +408,8 @@ struct Store {
  /// it just pays the network every time.
  dir:Option<PathBuf>,
  limit:u64,
+ /// 目录条目上限，见 `MAX_FILES`。
+ entries:usize,
  client:reqwest::Client,
  origin:Box<dyn Origin>,
  clock:Clock,
@@ -387,6 +419,10 @@ struct Store {
  inflight:Mutex<HashMap<String,Arc<tokio::sync::Mutex<()>>>>,
  gate:Semaphore,
  prefetching:Mutex<HashSet<Arc<str>>>,
+ /// 连着被拒了几次。抓到任何一个回答（包括 404）就清零。
+ refusals:AtomicU32,
+ /// 这个源歇到什么时候（`clock` 的毫秒）；0 表示没在歇。
+ cold_until:AtomicI64,
 }
 
 /// Days kept parsed, oldest arrival evicted first.
@@ -408,6 +444,8 @@ impl Memory {
  }
 }
 /// What the cache directory holds, so eviction never has to stat it again.
+///
+/// `bytes` 不含 0 字节的缺口标记，`files` 含——两条上限分别看这两个数。
 #[derive(Default)]
 struct Disk {bytes:u64,files:HashMap<PathBuf,(u64,SystemTime)>}
 
@@ -415,21 +453,29 @@ impl Store {
  fn detached()->Store {
   // 归档和合约列表共用同一个 client，keep-alive 的连接池也就只有这一个。
   let client=client();
-  Store{dir:None,limit:DEFAULT_LIMIT,origin:Box::new(Vision(client.clone())),client,clock:Clock::System,
+  Store{dir:None,limit:DEFAULT_LIMIT,entries:MAX_FILES,origin:Box::new(Vision(client.clone())),client,clock:Clock::System,
    memory:Mutex::default(),disk:Mutex::default(),
-   inflight:Mutex::default(),gate:Semaphore::new(GATE),prefetching:Mutex::default()}
+   inflight:Mutex::default(),gate:Semaphore::new(GATE),prefetching:Mutex::default(),
+   refusals:AtomicU32::new(0),cold_until:AtomicI64::new(0)}
  }
  /// 测试用的实例：自己的目录、自己的时钟、自己的上游。
  #[cfg(test)]
  fn fake(dir:PathBuf,clock:Arc<AtomicI64>,origin:Box<dyn Origin>)->Arc<Store> {
-  Arc::new(Store{dir:Some(dir),limit:DEFAULT_LIMIT,origin,clock:Clock::Fixed(clock),client:client(),
+  Store::fake_capped(dir,clock,origin,MAX_FILES)
+ }
+ /// 同上，外加一条能在测试里够得着的条目数上限——真的写二十万个文件是没法测的。
+ #[cfg(test)]
+ fn fake_capped(dir:PathBuf,clock:Arc<AtomicI64>,origin:Box<dyn Origin>,entries:usize)->Arc<Store> {
+  Arc::new(Store{dir:Some(dir),limit:DEFAULT_LIMIT,entries,origin,clock:Clock::Fixed(clock),client:client(),
    memory:Mutex::default(),disk:Mutex::default(),
-   inflight:Mutex::default(),gate:Semaphore::new(GATE),prefetching:Mutex::default()})
+   inflight:Mutex::default(),gate:Semaphore::new(GATE),prefetching:Mutex::default(),
+   refusals:AtomicU32::new(0),cold_until:AtomicI64::new(0)})
  }
 
  fn new()->Store {
   let mut store=Store::detached();
   store.limit=std::env::var("KANPAN_OI_CACHE_BYTES").ok().and_then(|v|v.parse().ok()).unwrap_or(DEFAULT_LIMIT);
+  store.entries=std::env::var("KANPAN_OI_CACHE_FILES").ok().and_then(|v|v.parse().ok()).unwrap_or(MAX_FILES);
   let dir=PathBuf::from(std::env::var("KANPAN_OI_CACHE").unwrap_or_else(|_|"/var/cache/kanpan-api/oi".into()));
   if std::fs::create_dir_all(&dir).is_err() {tracing::warn!("Open interest cache is unavailable; answers will not be stored");return store}
   let (mut files,mut bytes)=(HashMap::new(),0u64);
@@ -507,6 +553,10 @@ impl Store {
  }
 
  async fn download(self:&Arc<Self>,symbol:&str,day:i64,stem:&str)->Result<Day,()> {
+  // 这个源刚刚连着拒了好几次，本轮就不再往前翻日期了：一张图或者一次预热排着几百天，
+  // 少了这一句它们会把同一个 403 撞几百遍，还每天各撞两次。查得比闸门更早，是为了让
+  // 排在信号量后面的那几百天当场散掉，而不是一个一个挤过去再各自返回失败。
+  if self.cooling() {return Err(())}
   let date=day_name(day);
   let url=format!("{ARCHIVE}{symbol}/{symbol}-metrics-{date}.zip");
   let _permit=self.gate.acquire().await.map_err(|_|())?;
@@ -526,21 +576,39 @@ impl Store {
      // 再问一次。不带到期时刻的话，这一天要等到被 FIFO 挤出内存或者进程重启才
      // 会被重新看一眼，用户那张图在此之前一直缺着最近这一段。
      self.remember(stem,Day::Absent,(!settled).then(||self.clock.now()+RECENT_ABSENT_TTL));
+     self.answered();
      return Ok(Day::Absent);
     }
     Reply::Body(bytes)=>{
      if bytes.len()>2*1024*1024 {return Err(())}
      let Ok(rows)=tokio::task::spawn_blocking(move ||parse(&bytes)).await.map_err(|_|())? else {continue};
+     self.answered();
      let day=Day::Points(Arc::new(rows));
      if let Day::Points(ref rows)=day {if !rows.is_empty() {self.store(stem,rows);}}
      self.remember(stem,day.clone(),None);
      return Ok(day);
     }
-    Reply::Failed=>last=Err(()),
+    // 403 / 超时 / 5xx / 断开：这一天没问到，但绝不当成缺口——不写 `.none`，也不记
+    // 进内存。连着撞到 `REFUSALS` 次就把这个源按下去，后面那些天连出站都不出。
+    Reply::Failed=>{last=Err(()); if self.refused() {break}}
    }
   }
   last
  }
+
+ /// 这个源正在歇吗。
+ fn cooling(&self)->bool {self.cold_until.load(Ordering::Relaxed)>self.clock.now()}
+ /// 记一次被拒；返回「就是这一次把源按下去了」。
+ fn refused(&self)->bool {
+  if self.refusals.fetch_add(1,Ordering::Relaxed)+1<REFUSALS {return false}
+  // 计数清零：冷却结束之后要从头再数，否则歇完第一次被拒就又歇一轮。
+  self.refusals.store(0,Ordering::Relaxed);
+  self.cold_until.store(self.clock.now()+SOURCE_COOLDOWN,Ordering::Relaxed);
+  tracing::warn!("The open interest archive refused {REFUSALS} times in a row; holding this source for {}s",SOURCE_COOLDOWN/1000);
+  true
+ }
+ /// 上游回话了（200 或 404 都算），连续计数归零。
+ fn answered(&self) {self.refusals.store(0,Ordering::Relaxed);}
 
  /// Write the slice, then bring the directory back under its ceiling.
  fn store(&self,stem:&str,rows:&[(i64,f64)]) {
@@ -556,19 +624,36 @@ impl Store {
    if let Some((size,_))=disk.files.remove(&path) {disk.bytes-=size.min(disk.bytes);}
    disk.bytes+=payload.len() as u64;
    disk.files.insert(path.clone(),(payload.len() as u64,SystemTime::now()));
-   let mut evicted=Vec::new();
-   if disk.bytes>self.limit {
-    let mut ages:Vec<(PathBuf,SystemTime)>=disk.files.iter().map(|(p,(_,at))|(p.clone(),*at)).collect();
-    ages.sort_by_key(|(_,at)|*at);
-    for (victim,_) in ages {
-     if disk.bytes<=self.limit {break}
-     if victim==path {continue}                   // never the slice just written
-     if let Some((size,_))=disk.files.remove(&victim) {disk.bytes-=size.min(disk.bytes);evicted.push(victim);}
-    }
-   }
-   evicted
+   self.shrink(&mut disk,&path)
   };
   for victim in evicted {let _=std::fs::remove_file(victim);}
+ }
+
+ /// 越界了吗——两条上限，字节预算和条目数，谁先满算谁。
+ fn over(&self,disk:&Disk)->bool {disk.bytes>self.limit||disk.files.len()>self.entries}
+
+ /// 把目录拉回两条上限以内，返回该从磁盘上删掉的那些路径。
+ ///
+ /// 先扔最旧的缺口标记，再扔最旧的切片。标记一个字节都不占，所以撑爆条目数的只会是
+ /// 它们；而丢掉一个标记的代价只是下次为那一天多问一次 404，丢掉一个切片却要重新下载
+ /// 整天的数据。`keep` 是刚写进去的那个，永远不做牺牲品。
+ fn shrink(&self,disk:&mut Disk,keep:&std::path::Path)->Vec<PathBuf> {
+  let mut evicted=Vec::new();
+  if !self.over(disk) {return evicted}
+  let mut ages:Vec<(PathBuf,SystemTime)>=disk.files.iter().map(|(p,(_,at))|(p.clone(),*at)).collect();
+  ages.sort_by_key(|(_,at)|*at);
+  for markers_first in [true,false] {
+   for (victim,_) in &ages {
+    if !self.over(disk) {return evicted}
+    if victim.as_path()==keep {continue}
+    if victim.extension().is_some_and(|kind|kind=="none")!=markers_first {continue}
+    if let Some((size,_))=disk.files.remove(victim) {
+     disk.bytes-=size.min(disk.bytes);
+     evicted.push(victim.clone());
+    }
+   }
+  }
+  evicted
  }
 
  fn touch(&self,path:&std::path::Path) {
@@ -578,12 +663,19 @@ impl Store {
  }
 
  /// A zero-byte marker: this day is not in the archive and will not appear.
+ ///
+ /// 标记不花字节，但它花一个目录项，所以写完也要过一遍条目数上限——否则「上市日
+ /// 之前的每一天各一个标记」这条路能把目录撑到几十万个文件，而字节预算一声不响。
  fn mark_absent(&self,stem:&str) {
   let Some(dir)=self.dir.as_ref() else {return};
   let path=dir.join(format!("{stem}.none"));
-  if std::fs::write(&path,b"").is_ok() {
-   if let Ok(mut disk)=self.disk.lock() {disk.files.insert(path,(0,SystemTime::now()));}
-  }
+  if std::fs::write(&path,b"").is_err() {return}
+  let evicted={
+   let Ok(mut disk)=self.disk.lock() else {return};
+   disk.files.insert(path.clone(),(0,SystemTime::now()));
+   self.shrink(&mut disk,&path)
+  };
+  for victim in evicted {let _=std::fs::remove_file(victim);}
  }
 
  // ------------------------------------------------------------- prefetching
@@ -748,16 +840,20 @@ mod tests {
 
  // ---------------------------------------- 最近缺失的那一天只记一小会儿
 
- /// 一个能在 404 和 200 之间切换的假归档，外加它被问了几次。
+ /// 一个能在 404、200 和「拒绝」之间切换的假归档，外加它被问了几次。
  #[derive(Default)]
- struct Upstream {zip:Mutex<Option<Vec<u8>>>,asked:AtomicU64}
+ struct Upstream {zip:Mutex<Option<Vec<u8>>>,asked:AtomicU64,refusing:std::sync::atomic::AtomicBool}
  impl Upstream {
   fn asked(&self)->u64 {self.asked.load(Ordering::Relaxed)}
   fn publish(&self,bytes:Vec<u8>) {*self.zip.lock().unwrap()=Some(bytes);}
+  fn withdraw(&self) {*self.zip.lock().unwrap()=None;}
+  /// 403 / 超时 / 5xx——`Vision` 把这些都归成 `Reply::Failed`，这里就直接发那一种。
+  fn refuse(&self,yes:bool) {self.refusing.store(yes,Ordering::Relaxed);}
  }
  impl Origin for Arc<Upstream> {
   fn fetch<'a>(&'a self,_url:&'a str)->Pin<Box<dyn Future<Output=Reply>+Send+'a>> {
    self.asked.fetch_add(1,Ordering::Relaxed);
+   if self.refusing.load(Ordering::Relaxed) {return Box::pin(async {Reply::Failed})}
    let body=self.zip.lock().unwrap().clone();
    Box::pin(async move {body.map_or(Reply::Missing,Reply::Body)})
   }
@@ -808,5 +904,79 @@ mod tests {
   upstream.publish(one_day());
   assert!(matches!(store.day("ETHUSDT",day).await.0,Ok(Day::Absent)),"永久缺口不受那条短 TTL 影响");
   assert_eq!(upstream.asked(),1,"再也不问上游");
+ }
+
+ // ---------------------------------------- 被拒的源歇一会儿（A-T18）
+
+ #[tokio::test]
+ async fn a_source_that_keeps_refusing_is_held_off_instead_of_being_asked_for_every_day() {
+  let dir=tempfile::tempdir().expect("temp dir");
+  let day=EPOCH.div_euclid(DAY)+400;
+  // 这些天早就结算了：要是把拒绝当成「没有」，就会在这里落下永久缺口。
+  let (store,upstream,clock)=store_at(dir.path(),(day+40)*DAY);
+  upstream.refuse(true);
+
+  // 第一天：两次尝试都被拒，算两次。
+  assert!(store.day("ETHUSDT",day).await.0.is_err());
+  assert_eq!(upstream.asked(),2);
+  assert!(!dir.path().join(format!("ETHUSDT-{}.none",day_name(day))).exists(),
+   "403 / 超时 / 5xx 不是缺口，永远不许写永久标记");
+
+  // 第二天：第三次被拒把这个源按下去，连这一天的第二次尝试都不发了。
+  assert!(store.day("ETHUSDT",day-1).await.0.is_err());
+  assert_eq!(upstream.asked(),3);
+
+  // 后面那十天是一张图里剩下的日期：一次都不出站。
+  for back in 2..12 {assert!(store.day("ETHUSDT",day-back).await.0.is_err());}
+  assert_eq!(upstream.asked(),3,"冷却期内不再往前翻日期");
+  for back in 0..12 {
+   assert!(!dir.path().join(format!("ETHUSDT-{}.none",day_name(day-back))).exists(),"冷却期内也不许留下缺口");
+  }
+
+  // 歇满五分钟，边缘节点也好了。
+  clock.fetch_add(SOURCE_COOLDOWN+1,Ordering::Relaxed);
+  upstream.refuse(false);
+  upstream.publish(one_day());
+  assert!(matches!(store.day("ETHUSDT",day-2).await.0,Ok(Day::Points(_))),"冷却到期就自己恢复，不用重启");
+  assert_eq!(upstream.asked(),4);
+
+  // 抓到一天就把连续计数清了：接下来偶发的两次失败不该立刻又按下去。
+  upstream.refuse(true);
+  assert!(store.day("ETHUSDT",day-3).await.0.is_err());
+  assert_eq!(upstream.asked(),6,"两次尝试都发了出去，说明没在歇");
+ }
+
+ // ---------------------------------------- 目录条目上限（A.8）
+
+ #[tokio::test]
+ async fn the_entry_ceiling_evicts_the_zero_byte_markers_before_any_real_slice() {
+  let dir=tempfile::tempdir().expect("temp dir");
+  let day=EPOCH.div_euclid(DAY)+400;
+  let clock=Arc::new(AtomicI64::new((day+40)*DAY));
+  let upstream=Arc::new(Upstream::default());
+  // 上限压到两条，好在测试里真的越界；线上是 `MAX_FILES`。
+  let store=Store::fake_capped(dir.path().to_path_buf(),clock.clone(),Box::new(upstream.clone()),2);
+  let marker=|d:i64|dir.path().join(format!("ETHUSDT-{}.none",day_name(d)));
+  let slice=dir.path().join(format!("ETHUSDT-{}.json",day_name(day-2)));
+
+  // 两个缺口标记：0 字节，字节预算一动不动，占的却是两个目录项。
+  for back in [0,1] {assert!(matches!(store.day("ETHUSDT",day-back).await.0,Ok(Day::Absent)));}
+  assert!(marker(day).exists()&&marker(day-1).exists());
+  assert_eq!(store.disk.lock().unwrap().bytes,0,"标记不花字节，所以只有条目数能拦住它们");
+
+  // 第三个条目是一天真的数据：越界了，牺牲的是最旧的那个标记，不是这一天。
+  upstream.publish(one_day());
+  assert!(matches!(store.day("ETHUSDT",day-2).await.0,Ok(Day::Points(_))));
+  assert!(slice.exists(),"刚写下的切片不许被自己挤掉");
+  assert!(!marker(day).exists(),"先淘汰最旧的标记");
+  assert!(marker(day-1).exists(),"还没越界就不再多扔");
+
+  // 再来一个标记：又越界，扔的还是剩下那个标记，切片仍然在。
+  upstream.withdraw();
+  assert!(matches!(store.day("ETHUSDT",day-3).await.0,Ok(Day::Absent)));
+  assert!(marker(day-3).exists());
+  assert!(!marker(day-1).exists(),"标记先走");
+  assert!(slice.exists(),"真数据比标记值钱：重下一天要 0.4 s，重问一次 404 只要一个往返");
+  assert_eq!(store.disk.lock().unwrap().files.len(),2);
  }
 }

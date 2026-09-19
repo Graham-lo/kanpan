@@ -157,7 +157,11 @@ public actor RoutedMarketFeed {
     var directHosts = hosts; directHosts.streamFallbacks = []
     let ws = BinanceWS(hosts: directHosts,
                        factory: SourceSocketFactory(source: next, hosts: hosts, factory: sockets, policy: policy, log: log),
-                       silenceMs: 15_000, log: log)
+                       // 首帧前的静默窗口给 60 秒（A-07 第②层）。线路是用户在设置里
+                       // 定死的、这里没有竞速可言（`directHosts.streamFallbacks` 已清空），
+                       // 所以直连和网关一视同仁；OKX 档只订 kline，冷门永续 15 秒内完全
+                       // 可能一帧都不推，收到 15 秒就会变成无休止的重连。
+                       silenceMs: 60_000, log: log)
     let sourcePaths = next == .binance ? paths : Paths(root: paths.root.appendingPathComponent("sources/okx"))
     // 首屏要多深，两条线路不一样：
     //
@@ -454,10 +458,19 @@ public actor RoutedMarketFeed {
   /// 只有前者才跳过接着干。判据取严：**确知**是单品种问题（4xx，但不含 408 超时
   /// 和 418/429 限流）才算跳过，其余一律当线路问题停下——宁可少预热几份，
   /// 也不要在网络已经不行的时候接着打二十发。
+  ///
+  /// 「单品种问题」指的是币安拿这个代号答不出来：400 `Invalid symbol`、-1121、404。
+  /// 下面这几种都不是，一个都不许当成跳过：
+  /// - 429/418 限流与 IP 封禁（`isRateLimited`，含本机限流器挡下的 `.blocked`）：
+  ///   停的是整个出口，接着打二十发只会把封禁续下去；
+  /// - 408 超时：线路的事；
+  /// - 451 `upstream_blocked`（网关替上游转述的地域拒绝，`isGeoBlocked`）：
+  ///   它虽然落在 4xx 里，但拒的是这条线路的出口 IP，跟品种没有半点关系——
+  ///   当成「这个品种不行」就会把整张自选表一个个试完，每一个都失败（A-05）。
   nonisolated static func skippable(_ error: any Error) -> Bool {
     guard let e = error as? BinanceError else { return false }
     guard (400..<500).contains(e.status) else { return false }
-    return !e.isRateLimited && e.status != 408
+    return !e.isRateLimited && !e.isGeoBlocked && e.status != 408
   }
 
   /// Retry the currently selected source after a visible history failure.
@@ -476,6 +489,13 @@ public actor RoutedMarketFeed {
   public func enterBackground() async { foreground = false; monitor?.cancel(); await feed?.enterBackground() }
   public func enterForeground() async { foreground = true; await feed?.enterForeground(); startMonitoring() }
   public func memoryWarning() async { await feed?.memoryWarning() }
+
+  // ---------------------------------------------------------------- 测试缝
+
+  /// 当前这条线路上、WS 等第一帧行情的窗口（毫秒）。两档线路都该是 60 秒：
+  /// 这里给的 `hosts` 已经清空了 `streamFallbacks`，`BinanceWS` 那道
+  /// 「有竞速候选就夹到 15 秒」的钳子够不着（A-07 第②层）。
+  func wsSilenceMsForTests() async -> Double? { await feed?.wsSilenceMsForTests() }
   public func stop() async {
     selection = UUID(); route = UUID(); monitor?.cancel(); pump?.cancel()
     prefetchTask?.cancel(); warmTask?.cancel()

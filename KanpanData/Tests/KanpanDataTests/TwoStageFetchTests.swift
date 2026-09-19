@@ -19,6 +19,10 @@ struct TwoStageFetchTests {
       guard url.path.contains("klines") else {
         return json(#"{"symbol":"BTCUSDT","lastPrice":"1","priceChangePercent":"0","highPrice":"1","lowPrice":"1","quoteVolume":"1","closeTime":3000}"#)
       }
+      // 带 startTime 的是补缺（`.connected` 排在首屏之后被处理时派的那一发），
+      // 不是两段式取数的一部分：直接答「游标之后没有新的」，别挂到 `deep` 上去，
+      // 不然「完整那发只挂着一笔」这条断言会随机多数出一笔。
+      if (url.query ?? "").contains("startTime") { return json("[]") }
       let limit = URLComponents(url: url, resolvingAgainstBaseURL: false)?
         .queryItems?.first { $0.name == "limit" }?.value.flatMap(Int.init) ?? 0
       limits.append(limit)

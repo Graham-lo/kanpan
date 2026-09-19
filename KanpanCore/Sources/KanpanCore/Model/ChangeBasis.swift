@@ -11,7 +11,9 @@ public enum ChangeBasis: String, Codable, Sendable, CaseIterable {
     }
   }
   public var shortTitle: String {
-    switch self { case .rolling24h: "24H涨跌幅"; case .shanghaiMidnight: "0点涨跌幅"; case .utcMidnight: "8点涨跌幅" }
+    // 中文，不用 24H 这种英文缩写（`kanpan-ui-labels-are-chinese`）；`title` 那边
+    // 一直写的是「24小时」，这儿跟上去，免得同一页上两种写法并排。
+    switch self { case .rolling24h: "24小时涨跌幅"; case .shanghaiMidnight: "0点涨跌幅"; case .utcMidnight: "8点涨跌幅" }
   }
   public func boundary(now: Int64) -> Int64? {
     guard self != .rolling24h else { return nil }

@@ -6,6 +6,7 @@ pub mod sync_validation;
 pub mod review;
 pub mod review_worker;
 pub mod search;
+pub mod binance_gate;
 pub mod market_meta;
 pub mod sector_history;
 pub mod oi_archive;

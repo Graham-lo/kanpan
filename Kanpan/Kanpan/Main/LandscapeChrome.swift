@@ -31,7 +31,8 @@ struct LandscapeHeadline: View {
           .padding(.leading, -4)
       }
       if let price {
-        Text(fmtNum(price, decimals))
+        // 横屏这颗药丸和竖屏顶栏是同一口价，写法也必须一样（审查 B-07）。
+        Text(fmtPrice(price, decimals: decimals))
           .font(.system(size: 13, weight: .semibold).monospacedDigit())
           .foregroundStyle(up ? theme.up : theme.down)
       }

@@ -35,6 +35,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
+# `test-util` is what lets the ban-gate and cooldown tests run on paused time:
+# they assert "this deadline is still in force two seconds later", which must
+# not cost two seconds of wall clock, and must not be flaky either.
+tokio = { version = "1", features = ["full", "test-util"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tempfile = "3"

@@ -343,7 +343,9 @@ struct FeedReplayTests {
     await feed.stop()
   }
 
-  @Test("连断三次：退避 1s / 2s / 4s，日志可见")
+  /// 退避每一档都再抖 ±20%（A.2：别让所有客户端在同一毫秒一起回来把上游再撞一次），
+  /// 所以这里断言的是「第 N 次落在第 N 档的 ±20% 带里」，不是一个固定毫秒数。
+  @Test("连断三次：退避 1s / 2s / 4s（各再抖 ±20%），日志可见")
   func backoffOnRepeatedDrops() async throws {
     let deck = ReplayDeck([.drop("1"), .drop("2"), .drop("3"), .hang])
     let pacer = FastPacer()        // 1000×，1 秒退避真的等 1 毫秒
@@ -356,9 +358,19 @@ struct FeedReplayTests {
     await ws.stop()
     t.cancel()
     let log = waits.all()
-    #expect(log.contains { $0.contains("退避 1000ms 后重连（第 1 次）") })
-    #expect(log.contains { $0.contains("退避 2000ms 后重连（第 2 次）") })
-    #expect(log.contains { $0.contains("退避 4000ms 后重连（第 3 次）") })
+    /// 从「退避 1234ms 后重连（第 1 次）」里把毫秒数抠出来。
+    func waited(attempt: Int) -> Double? {
+      guard let line = log.first(where: { $0.contains("后重连（第 \(attempt) 次）") }),
+            let range = line.range(of: #"退避 \d+ms"#, options: .regularExpression) else { return nil }
+      return Double(line[range].dropFirst(3).dropLast(2))
+    }
+    for (attempt, nominal) in [(1, 1000.0), (2, 2000.0), (3, 4000.0)] {
+      guard let ms = waited(attempt: attempt) else {
+        Issue.record("日志里没有第 \(attempt) 次重连的退避")
+        continue
+      }
+      #expect(ms >= nominal * 0.8 && ms <= nominal * 1.2, "第 \(attempt) 次退避 \(ms)ms 不在 \(nominal)ms 的 ±20% 内")
+    }
   }
 
   // ---------------------------------------------------------------- A2.8

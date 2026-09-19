@@ -33,7 +33,11 @@ public actor BinanceREST {
     self.log = log
   }
 
-  /// Clear only the in-memory route backoff before an explicit user retry.
+  /// 只清线路冷却，给用户点「点此重试」用。
+  ///
+  /// **不动限流器上的 IP 封禁**：418/429 是上游对我们整个出口 IP 下的判决，
+  /// 用户点一下并不能让它提前结束。封禁期内点重试，`fetch` 开头的 `acquire`
+  /// 照旧当场拒发，一个包都不出站（A-03 第 4 点）。
   public func resetRouteCooldowns() async {
     if let routed = transport as? MarketRESTTransport {
       await routed.resetRouteCooldowns()
@@ -50,12 +54,24 @@ public actor BinanceREST {
 
   // ------------------------------------------------------------------ 底层
 
-  /// 发一次 GET。418 / 429 按 `Retry-After` 停够重发，最多 `attempts` 次。
-  func fetch(_ url: URL, weight: Int, attempts: Int = 4, timeout: TimeInterval = 15) async throws -> Data {
+  /// 发一次 GET。429 按 `Retry-After` 停够重发，最多 `attempts` 次。
+  ///
+  /// 三种「别再撞了」的情形在这一层就收住，不往上叠（A-03 / A.3.4）：
+  /// - 限流器还在封禁期内：`acquire` 直接抛 `.blocked`，这一笔不出站，当场抛给调用方；
+  /// - 418（IP 级封禁）：只发一次，不占 `attempts`——秒级重试正是把 2 分钟滚成几天的做法；
+  /// - 429：照旧按 `Retry-After` 停够重发，停多久由下一圈开头的 `acquire` 兑现。
+  func fetch(_ url: URL, weight: Int, attempts: Int = 4, timeout: TimeInterval = 15,
+             quota: EndpointQuota? = nil) async throws -> Data {
     var tried = 0
     while true {
       tried += 1
-      try await limiter.acquire(weight: weight)
+      do { try await limiter.acquire(weight: weight, quota: quota) }
+      catch let error as BinanceError where error.isBlocked {
+        log("上游封禁未解除（还剩 \(Int((error.retryAfter ?? 0).rounded(.up))) 秒），这一笔不发：\(url.path)")
+        throw BinanceError(status: error.status, code: error.code, msg: error.msg,
+                           url: url.absoluteString, retryAfter: error.retryAfter,
+                           reason: .blocked)
+      }
       let t0 = await pacer.nowMs()
       let reply: HTTPReply
       do { reply = try await transport.get(url, timeout: timeout) }
@@ -63,19 +79,30 @@ public actor BinanceREST {
         // 走网关/对冲那条路时，上游的状态码是被 transport 吞掉再抛出来的，
         // 到不了下面 `reply.status` 那段。不在这儿记一笔，限流器就永远不知道
         // 自己已经被 ban 了，只会接着往枪口上撞——表现成「用一会儿涨跌幅全空」。
-        // 记完就抛：这一笔让调用方按自己的节奏重试，别占着并发位空等。
-        log("限流 \(error.status)（上游），记录罚停")
-        await limiter.penalize(retryAfterSeconds: nil)
+        log("限流 \(error.status)（\(error.proxied ? "网关上游" : "上游")），Retry-After=\(error.retryAfter.map { "\(Int($0.rounded(.up)))s" } ?? "无")\(error.proxied ? "，只冷却那台网关" : "，记录罚停")")
+        // 网关转述的限流不罚我们自己这把限流器：被限的是网关的出口 IP，
+        // 该歇的是那台网关（`MarketRESTTransport` 已按 `Retry-After` 记下冷却）。
+        if !error.proxied {
+          await limiter.penalize(status: error.status, retryAfterSeconds: error.retryAfter)
+        }
         // 记完就在这儿重试，和下面 `reply.status` 那条 429 共用同一份 `attempts`。
         // 这里原来是直接抛，注释写的是「让调用方按自己的节奏重试」——可冷启动那个
         // 调用方（`MarketFeed.fillOnce`）从来没有重试过，于是上游随手回一个 429
         // 就能把整张 K 线钉死在 WS 推来的那一根上。罚停要等多久由下一圈开头的
-        // `limiter.acquire` 兑现，这儿不自己睡。
-        if tried < attempts { continue }
+        // `limiter.acquire` 兑现，这儿不自己睡。418 例外：那是 IP 级封禁，重发没有意义。
+        // 网关那条路上，这一笔失败意味着「本轮结束」：不许在同一次调用里改去打
+        // 另一台网关、也不许叠加重试（A-05）。冷却按主机各记各的，下一轮自然分流。
+        if tried < attempts, !error.isIPBan, !error.proxied { continue }
         throw error
       }
       let ms = await pacer.nowMs() - t0
       log("GET \(url.path)\(url.query.map { "?\($0)" } ?? "") → \(reply.status) \(reply.body.count)B \(Int(ms))ms")
+
+      // 币安每个响应都带 `X-MBX-USED-WEIGHT-1M`，那是上游按我们这个出口 IP 记的账。
+      // 本地只数自己发出去的，两者不一致时以上游为准（A.3.2 / A-T19）。
+      if let used = reply.header("X-MBX-USED-WEIGHT-1M").flatMap(Int.init) {
+        await limiter.observe(usedWeight: used)
+      }
 
       if reply.status == 200 {
         await limiter.succeeded()
@@ -83,10 +110,9 @@ public actor BinanceREST {
       }
       let err = decodeError(reply, url: url)
       if err.isRateLimited {
-        let ra = reply.header("Retry-After").flatMap(Double.init)
-        log("限流 \(reply.status)，Retry-After=\(ra.map { "\($0)s" } ?? "无")，记录罚停")
-        await limiter.penalize(retryAfterSeconds: ra)
-        if tried < attempts {
+        log("限流 \(reply.status)，Retry-After=\(err.retryAfter.map { "\(Int($0.rounded(.up)))s" } ?? "无")，记录罚停")
+        await limiter.penalize(status: err.status, retryAfterSeconds: err.retryAfter)
+        if tried < attempts, !err.isIPBan {
           continue
         }
       }
@@ -94,10 +120,14 @@ public actor BinanceREST {
     }
   }
 
+  /// 把响应翻成 `BinanceError`，并且**把上游说的话原样带上**：`Retry-After`
+  /// （秒数或 HTTP-date）、错误体里的 `code`、以及 418/429/451 的类别（A-03 / A.10）。
   private func decodeError(_ reply: HTTPReply, url: URL) -> BinanceError {
     struct E: Decodable { var code: Int?; var msg: String? }
     let e = try? JSONDecoder().decode(E.self, from: reply.body)
-    return BinanceError(status: reply.status, code: e?.code, msg: e?.msg, url: url.absoluteString)
+    return BinanceError(status: reply.status, code: e?.code, msg: e?.msg,
+                        url: url.absoluteString,
+                        retryAfter: BinanceError.retryAfterSeconds(reply.header("Retry-After")))
   }
 
   private func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
@@ -105,29 +135,58 @@ public actor BinanceREST {
     catch { throw FeedError.badResponse("解不开 \(T.self)：\(error)") }
   }
 
-  // ------------------------------------------------------------------ 品种表
+  // ------------------------------------------------------------------ 运行时限额
 
-  /// 全部USDT普通与TradFi永续，只显示TRADING；按产品范围排除USD1等计价。
-  public func exchangeInfo() async throws -> [SymbolInfo] {
-    let data = try await fetch(hosts.exchangeInfo(), weight: 1, timeout: 30)
-    return Self.parseExchangeInfo(data)
+  /// 从 `exchangeInfo` 的响应里挑出 `rateLimits`（A.2）。
+  ///
+  /// 单独一个函数、不碰 `exchangeInfo()` 的解析路径：调用方拿到同一份 `data`
+  /// 顺手调一次 `RateLimiter.sharedBinance.apply(rules:)` 就够了，解析不到就维持默认。
+  public static func parseRateLimits(_ data: Data) -> [BinanceRateLimitRule] {
+    (try? JSONDecoder().decode(RateLimitsDTO.self, from: data))?.rateLimits ?? []
   }
 
-  public static func parseExchangeInfo(_ data: Data) -> [SymbolInfo] {
-    guard let dto = try? JSONDecoder().decode(ExchangeInfoDTO.self, from: data) else { return [] }
+  // ------------------------------------------------------------------ 品种表
+
+  /// 全部USDT普通与TradFi永续；按产品范围排除USD1等计价。
+  ///
+  /// 非 `TRADING` 的行**不再被扔掉**，而是带着 `SymbolInfo.status` 留在表里（审查 B-06）：
+  /// 扔掉等于把「已下架」和「根本不存在」压成同一件事，用户自选里那一行会凭空消失。
+  public func exchangeInfo() async throws -> [SymbolInfo] {
+    let data = try await fetch(hosts.exchangeInfo(), weight: 1, timeout: 30)
+    // A.2：上游在同一份响应里公布了 `rateLimits`，顺手把分钟预算对到它身上。
+    await limiter.apply(rules: Self.parseRateLimits(data))
+    return try Self.parseExchangeInfo(data)
+  }
+
+  /// 解不开就**抛**，不再给一张空表（审查 B-05）。
+  ///
+  /// 原来返回 `[]`：目录层看到空表分不清「交易所今天真的一个品种都没有」和
+  /// 「我们解错了/收到的是一份错误 JSON」，于是把一张空目录当成功结果缓存下来，
+  /// 单飞的等待方还会跟着一起拿到它。
+  public static func parseExchangeInfo(_ data: Data) throws -> [SymbolInfo] {
+    let dto: ExchangeInfoDTO
+    do { dto = try JSONDecoder().decode(ExchangeInfoDTO.self, from: data) }
+    catch { throw FeedError.badResponse("解不开品种表：\(error)") }
+    // 准入条件仍是原来那四条，只有第四条换了作用（审查 B-04 / B-06）：
+    // ① `baseAsset` 不是稳定币（USDC/FDUSD… 的普通永续不进产品范围）；
+    // ② `quoteAsset == "USDT"`；③ `contractType` 只收两种永续（交割合约不收）；
+    // ④ `status`——过去它把非 TRADING 的行**滤掉**，现在改成**带上去**（`SymbolStatus`）。
+    // 第四条不能再当滤子：滤掉等于把「已下架」和「根本不存在」压成一件事。
+    // `underlyingType` 不做准入，只原样带给分类器：类型缺失时按 `.other`，不猜白名单。
     return dto.symbols
       .filter {
         let type = $0.contractType ?? "PERPETUAL"
         let stableBases: Set<String> = ["USDC", "FDUSD", "TUSD", "USDP", "DAI", "USDE", "PYUSD", "USD1", "USDD"]
         let stablePair = type == "PERPETUAL" && stableBases.contains($0.baseAsset)
-        return !stablePair && ($0.status ?? "TRADING") == "TRADING" && $0.quoteAsset == "USDT" &&
+        return !stablePair && $0.quoteAsset == "USDT" &&
           ["PERPETUAL", "TRADIFI_PERPETUAL"].contains(type)
       }
       .map {
         SymbolInfo(symbol: $0.symbol, base: $0.baseAsset, quote: $0.quoteAsset,
                    pricePrecision: $0.pricePrecision, quantityPrecision: $0.quantityPrecision,
                    tickSize: $0.tickSize, underlyingType: $0.underlyingType,
-                   underlyingSubTypes: $0.underlyingSubType, contractType: $0.contractType)
+                   underlyingSubTypes: $0.underlyingSubType, contractType: $0.contractType,
+                   status: SymbolStatus.exchange($0.status))
       }
       .sorted { $0.symbol < $1.symbol }
   }
@@ -236,7 +295,9 @@ public actor BinanceREST {
                                startTime: Int64? = nil, endTime: Int64? = nil) async throws -> [OIPoint] {
     let url = hosts.openInterestHist(symbol: symbol, period: period, limit: min(limit, 500),
                                      startTime: startTime, endTime: endTime)
-    let data = try await fetch(url, weight: 1)
+    // 这个端点权重算 1（上游标的是 0），但它另有一条 1000 次 / 5 分钟的独立限制，
+    // 只按权重算等于不受限，翻长历史时会一路撞到 429（A.2）。
+    let data = try await fetch(url, weight: 1, quota: .openInterestHist)
     let rows = try decode([OIHistDTO].self, data)
     guard rows.allSatisfy({ $0.symbol.uppercased() == symbol.uppercased()
       && $0.point.value.isFinite && $0.point.value >= 0 && $0.timestamp > 0 }) else {

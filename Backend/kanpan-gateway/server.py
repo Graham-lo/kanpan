@@ -20,7 +20,7 @@ from urllib.parse import urlsplit, parse_qs
 import zipfile
 import ipaddress
 from resource_limits import HTTPGuard
-from market_rest import MARKET, Blocked, Unavailable
+from market_rest import MARKET, Blocked, RateLimited, Unavailable
 
 CACHE = Path(os.environ.get('KANPAN_OI_CACHE', '/var/cache/kanpan-gateway'))
 LIMIT = 200 * 1024 * 1024
@@ -222,11 +222,15 @@ class Handler(BaseHTTPRequestHandler):
     refund = False
 
     def reply(self, status, payload, cache='no-store', hit=None, extra=()):
+        extra = list(extra)
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(payload)))
         self.send_header('Cache-Control', cache)
-        if status in (429, 503):
+        # A caller that already knows the real deadline sends it in `extra`; the
+        # flat 2 s is only the fallback for this node being momentarily busy, and
+        # must never override, or duplicate, an upstream's own Retry-After.
+        if status in (429, 503) and not any(name.lower() == 'retry-after' for name, _ in extra):
             self.send_header('Retry-After', '2')
         if hit:
             self.send_header('X-OI-Cache', hit)
@@ -246,6 +250,28 @@ class Handler(BaseHTTPRequestHandler):
         payload = json.dumps({'error': 'upstream_blocked', 'source': source, 'code': 451},
                              separators=(',', ':')).encode()
         return self.reply(451, payload, 'no-store', extra=[('X-Kanpan-Upstream', source + '-blocked')])
+
+    def rate_limited(self, limited):
+        """The exchange told this node to stop, and the phone must hear that.
+
+        Flattened into a 503 it looked like "this gateway is unwell", so the phone
+        tried the other node and then this one again a couple of seconds later --
+        the one behaviour that lengthens a ban. So it travels as 429 plus the real
+        deadline in both the header and the body, and `error` says who is limited:
+        `upstream_rate_limited` here versus `busy` for this node's own admission
+        control, which is the same status code but the opposite advice.
+
+        Unlike a geographic block this does not refund the caller's local quota:
+        the correct response is to wait, so a client that keeps asking anyway
+        should also meet this node's own limiter.
+        """
+        payload = json.dumps({'error': 'upstream_rate_limited', 'source': limited.source,
+                              'code': 429, 'retryAfter': limited.retry_after,
+                              'upstreamStatus': limited.upstream_status},
+                             separators=(',', ':')).encode()
+        return self.reply(429, payload, 'no-store',
+                          extra=[('Retry-After', str(limited.retry_after)),
+                                 ('X-Kanpan-Upstream', limited.source + '-limited')])
 
     def abandoned(self):
         """True once the client closed the connection: skip the upstream fetch.
@@ -290,7 +316,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/chart-gateway/health':
             return self.reply(200, b'{"status":"ok","service":"kanpan-gateway"}')
         parts = urlsplit(self.path)
-        if parts.path in ('/market/v1/klines', '/market/v1/ticker', '/market/v1/instruments'):
+        if parts.path in ('/market/v1/klines', '/market/v1/ticker', '/market/v1/tickers',
+                          '/market/v1/instruments'):
             # Market requests own their slots: an OI backfill cannot starve the chart.
             if not MARKET_SLOTS.acquire(blocking=False):
                 return self.reply(503, b'{"error":"busy"}')
@@ -318,6 +345,13 @@ class Handler(BaseHTTPRequestHandler):
                     if self.abandoned():
                         return self.give_up()
                     payload = MARKET.ticker_response(source, q['symbol'])
+                elif parts.path.endswith('/tickers'):
+                    # Whole market, no symbol: the sector page reads one array.
+                    if q:
+                        raise ValueError('invalid query')
+                    if self.abandoned():
+                        return self.give_up()
+                    payload = MARKET.tickers_response(source)
                 else:
                     if q:
                         raise ValueError('invalid query')
@@ -325,6 +359,8 @@ class Handler(BaseHTTPRequestHandler):
                         return self.give_up()
                     payload = MARKET.instruments_response(source)
                 return self.reply(200, payload, 'no-store')
+            except RateLimited as limited:
+                return self.rate_limited(limited)
             except Blocked as blocked:
                 return self.blocked(blocked.source)
             except (KeyError, ValueError, TypeError):

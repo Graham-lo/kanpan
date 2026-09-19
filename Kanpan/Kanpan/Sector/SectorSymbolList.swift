@@ -1,90 +1,6 @@
 import SwiftUI
 import KanpanCore
 
-/// 品种列表的排序。原型 `.lsort` 那两颗。
-enum SectorSymbolSort: String, CaseIterable, Sendable {
-  case change, volume
-
-  var title: String {
-    switch self {
-    case .change: "涨跌幅"
-    case .volume: "成交额"
-    }
-  }
-}
-
-/// 板块品种列表里的一行。
-///
-/// 纯值、好断言，写法照 `SymbolSections.swift`：视图只管摆，文案在这儿算完。
-struct SectorSymbolRow: Sendable, Equatable, Identifiable {
-  /// 大写代号，如 `BTC`。
-  let base: String
-  /// 完整合约代号，如 `BTCUSDT`。开行情页要的是它。
-  let symbol: String
-  let price: Double
-  let pct: Double
-  let quoteVolume: Double
-  /// 前沿成员：跑赢池基准、且相对收益排在全池 90 分位以上。
-  let isFrontier: Bool
-
-  var id: String { symbol }
-
-  /// 代号后面那截计价币。`BTCUSDT` → `USDT`。
-  var quoteText: String {
-    symbol.hasPrefix(base) ? String(symbol.dropFirst(base.count)) : ""
-  }
-
-  /// 价格小数位照原型 `fmtPx`：越小的币留越多位，不然一屏全是 0.00。
-  var priceText: String {
-    guard price.isFinite else { return "—" }
-    let magnitude = abs(price)
-    let decimals: Int = if magnitude >= 100 { 2 } else if magnitude >= 1 { 4 }
-      else if magnitude >= 0.01 { 5 } else { 7 }
-    return sectorGrouped(fmtNum(price, decimals))
-  }
-
-  var volumeText: String { quoteVolume.isFinite ? fmtVol(quoteVolume) : "—" }
-  var isUp: Bool { pct >= 0 }
-  /// 药丸里只写数，符号由前面那个小三角表达（和自选页一致）。
-  var changeText: String { pct.isFinite ? toFixed(abs(pct), 2) + "%" : "—" }
-  var signedText: String { sectorPctText(pct) }
-
-  /// 把成员名单和行情拼成行。没有行情的成员直接不出现——聚合那边也没算它。
-  ///
-  /// `pct` 跟着当前窗口走：今日是 24h 涨跌幅，5 日是 `100·(现价/5 日前收盘 − 1)`。
-  /// **价格那一列永远是实时价**，不跟窗口变——看 5 日的人也要知道现在多少钱。
-  /// 这一段没有收盘的成员仍旧列在表里（它有行情、有价格），只是涨跌那一格写「—」，
-  /// 排序时沉到最后；把它整行藏掉才是骗人。
-  static func build(members: [String], quotes: [String: SectorQuote],
-                    symbolForBase: (String) -> String,
-                    frontier: Set<String> = [],
-                    sort: SectorSymbolSort,
-                    window: SectorWindow = .today,
-                    history: SectorHistory = .empty) -> [SectorSymbolRow] {
-    let rows = members.compactMap { base -> SectorSymbolRow? in
-      guard let quote = quotes[base] else { return nil }
-      let pct = SectorAggregator.windowReturn(quote, window: window,
-                                              closes: history.closes[base]) ?? .nan
-      return SectorSymbolRow(base: base, symbol: symbolForBase(base), price: quote.price,
-                             pct: pct, quoteVolume: quote.quoteVolume,
-                             isFrontier: frontier.contains(base))
-    }
-    // 并列（以及一整排「—」）按代号排，免得两次刷新之间互换位置。
-    switch sort {
-    case .change:
-      return rows.sorted { a, b in
-        let x = a.pct.isFinite ? a.pct : -.infinity
-        let y = b.pct.isFinite ? b.pct : -.infinity
-        return x == y ? a.base < b.base : x > y
-      }
-    case .volume:
-      return rows.sorted {
-        $0.quoteVolume == $1.quoteVolume ? $0.base < $1.base : $0.quoteVolume > $1.quoteVolume
-      }
-    }
-  }
-}
-
 /// 第二层：某一个板块里的品种。
 ///
 /// 视觉照抄自选页（`FavoritesView.row(_:first:)`）——同样的 66 高、同样的徽章、
@@ -105,6 +21,8 @@ struct SectorSymbolList: View {
   /// 这个板块的 20 日中位数。只在 5 日那一档、且真有 20 日数据时才有值。
   var medianD20: Double?
   var symbolForBase: (String) -> String
+  /// 这个 base 对应品种的价格小数位。品种表还没到就返回 nil（见 `SectorSymbolRow.priceText`）。
+  var decimalsForBase: (String) -> Int? = { _ in nil }
   /// 这张列表按什么排，存在哪。见 `sort`。
   var store: PrefsStore
   var onBack: () -> Void
@@ -126,6 +44,7 @@ struct SectorSymbolList: View {
   var body: some View {
     let rows = SectorSymbolRow.build(members: members, quotes: quotes,
                                      symbolForBase: symbolForBase,
+                                     decimalsForBase: decimalsForBase,
                                      frontier: Set(stat.frontier), sort: sort,
                                      window: window, history: history)
     return VStack(spacing: 0) {
@@ -162,13 +81,14 @@ struct SectorSymbolList: View {
   ///
   /// 看 5 日的时候最后一段换成「20 日 +12.1%」：两段窗口摆在一起，才知道这一周的劲
   /// 是刚起来的还是月线上一直就有。20 日只在这儿出现一次，不做成第三颗药丸。
-  /// 没有 20 日数据就只剩前两段——不写「暂无」，也不解释。
+  /// 没有 20 日数据就只剩前两段——不写「暂无」，也不解释；成交额拿不到时那一段
+  /// 也是整个不写（`sectorVolumeClause`），不排一句「成交额 —」。
   private var subtitle: String {
     let head = "\(stat.memberCount) 个品种"
     let tail: String = if window == .d5 {
       medianD20.map { " · 20 日 " + sectorPctText($0) } ?? ""
     } else {
-      " · 成交额 \(fmtVol(stat.quoteVolume))"
+      sectorVolumeClause(stat.quoteVolume)
     }
     guard stat.memberCount >= SectorAggregator.minEligibleMembers else { return head + tail }
     return head + " · \(stat.outperformCount)/\(stat.memberCount) 跑赢" + tail
@@ -321,20 +241,4 @@ struct SectorSymbolList: View {
       }
     }.frame(minWidth: 86, alignment: .trailing)
   }
-}
-
-/// 价格千分位。`fmtNum` 只管小数位，逗号在这儿补。和自选页同一份实现。
-func sectorGrouped(_ text: String) -> String {
-  let parts = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-  var head = String(parts[0])
-  let negative = head.hasPrefix("-")
-  if negative { head.removeFirst() }
-  guard head.count > 3 else { return text }
-  var out = ""
-  for (index, character) in head.reversed().enumerated() {
-    if index > 0, index % 3 == 0 { out.append(",") }
-    out.append(character)
-  }
-  let body = (negative ? "-" : "") + String(out.reversed())
-  return parts.count > 1 ? body + "." + parts[1] : body
 }

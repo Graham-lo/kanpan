@@ -22,6 +22,15 @@ final class SymbolPickerModel {
   @ObservationIgnored private var index: [String: SymbolInfo] = [:]
   /// 按 symbol 取品种信息。取不到返回 `nil`，调用方自己兜底。
   func info(for symbol: String) -> SymbolInfo? { index[symbol.uppercased()] }
+
+  /// 这个代号在目录里是什么情况（审查复核项 4）。
+  ///
+  /// 自选页所有「还有没有实时价」的判断都走这一个口子：目录里有它就按它那一档状态，
+  /// 目录到了却没有它就是「未知」（灰着、派生值留空，但照旧留在表里、不划掉、不删），
+  /// 目录还没到就先按正常渲染——那口价是刚从交易所来的，不能因为目录慢就冤枉它。
+  func listing(of symbol: String) -> SymbolListing {
+    .of(info(for: symbol), catalogLoaded: !catalog.isEmpty)
+  }
   /// `catalog` 只在 `setCatalog` 和初始化时换，索引跟着换。不用 `didSet`：
   /// `@Observable` 会把存储属性改写成计算属性，属性观察器放在这儿只会让人猜。
   private func reindex() {
@@ -67,6 +76,15 @@ final class SymbolPickerModel {
   private let feed: SymbolTickerFeed?
   /// 品种表的来源，宿主用 `KanpanData.SymbolCatalog` 填。
   private var catalogLoader: (@Sendable () async -> [SymbolInfo])?
+  /// 用户在搜索框里点名了一个**这份表里没有**的代号时问一次目录（审查 B-06）。
+  ///
+  /// 「刚上市的新合约」和「根本不存在的代号」在界面上是同一句「没有这个品种」，
+  /// 而前者其实只是本机这份目录还没到期。TTL 是 24 小时，不该让人等一天。
+  /// 返回新的一整张表（`nil` = 没查到 / 还在去抖期里）。去抖（5 分钟）与 TTL 都在
+  /// `SymbolCatalog.lookup` 那一层，这儿只负责把「他确实在找这个」传过去。
+  @ObservationIgnored var onMissingSymbol: ((String) async -> [SymbolInfo]?)?
+  /// 已经为哪些词问过了。同一个词只问一次，免得每敲一个字母都发一趟。
+  @ObservationIgnored private var asked: Set<String> = []
   private var subscribed = false
   private var sectionsActive = true
 
@@ -229,8 +247,14 @@ final class SymbolPickerModel {
     let key = SymbolPrefs.key(symbol)
     guard !key.isEmpty else { return }
     prefs.addFavorite(key, in: currentGroup)
-    let name = FavoriteCategory.name(symbol: key, info: info ?? self.info(for: key))
-    let group = prefs.createGroup(name)
+    let facts = info ?? self.info(for: key)
+    // 目录里还没有这一行、或者它没带 `underlyingType`：我们就是**不知道**它是什么
+    // （审查 B-04），那就不给它编一个分类名。它刚才已经落进用户此刻站着的那一类
+    // （`addFavorite(_:in:)`），一个分类都还没有时落在「没有分类」那格——而那一格
+    // 正是此时自选页显示的东西，所以两种情形下这一行都看得见。等目录到了他自己
+    // 一拖就归好类，比现在按代号猜一个「加密」强。
+    guard FavoriteCategory.knows(symbol: key, info: facts) else { commit(); return }
+    let group = prefs.createGroup(FavoriteCategory.name(symbol: key, info: facts))
     prefs.assign(key, to: group)
     commit()
   }
@@ -240,8 +264,15 @@ final class SymbolPickerModel {
   private func classifyUnassigned() -> Bool {
     var changed = false
     for symbol in prefs.favorites where prefs.groupForSymbol[symbol] == nil {
-      let name = FavoriteCategory.name(symbol: symbol, info: self.info(for: symbol))
-      let group = prefs.createGroup(name)
+      let facts = self.info(for: symbol)
+      // 不知道它是什么就不编分类（审查 B-04）。已经有分类在时把它归到他此刻看的
+      // 那一类——未归类的自选在分类页上根本看不见，宁可放错一格也不能让它消失；
+      // 一个分类都没有就原样留着，那一格本身就是页面此刻显示的东西。
+      guard FavoriteCategory.knows(symbol: symbol, info: facts) else {
+        if let group = currentGroup { prefs.assign(symbol, to: group); changed = true }
+        continue
+      }
+      let group = prefs.createGroup(FavoriteCategory.name(symbol: symbol, info: facts))
       prefs.assign(symbol, to: group)
       if prefs.groupForSymbol[symbol] != nil { changed = true }
     }
@@ -364,17 +395,51 @@ final class SymbolPickerModel {
   func matchingSymbols(_ query: String, limit: Int = 60) -> [String] {
     let q = SymbolQuery.normalize(query)
     guard !q.isEmpty else { return [] }
+    // 成交额拿不到、或者拿回来是 NaN / 负数时按「没有」办，一律沉到同档的最后，
+    // 彼此之间保交易所原序（审查 B.5）。原来写的是 `?? 0` 而且不过滤非有限值：
+    // `nil` 和 0 被压成同一件事、NaN 参与比较还会毁掉排序的传递性——同一个词
+    // 敲两遍能得到两个顺序。这儿不做「假的排序」，只做「没有就排后面」。
+    func volume(_ info: SymbolInfo) -> Double? {
+      guard let value = tickers[info.symbol.uppercased()]?.quoteVolume,
+            value.isFinite, value >= 0 else { return nil }
+      return value
+    }
     return SymbolQuery.match(catalog, query: q)
       .enumerated()
       .sorted { a, b in
         if a.element.tier != b.element.tier { return a.element.tier < b.element.tier }
-        let x = tickers[a.element.info.symbol.uppercased()]?.quoteVolume ?? 0
-        let y = tickers[b.element.info.symbol.uppercased()]?.quoteVolume ?? 0
-        if x != y { return x > y }
-        return a.offset < b.offset
+        // 已停牌 / 还没开盘的排在同档后面，但照旧列出来（审查 B-06）。
+        let aStale = !a.element.info.status.hasLivePrice, bStale = !b.element.info.status.hasLivePrice
+        if aStale != bStale { return bStale }
+        switch (volume(a.element.info), volume(b.element.info)) {
+        case let (x?, y?) where x != y: return x > y
+        case (nil, .some): return false            // 没有成交额的排在有的后面
+        case (.some, nil): return true
+        default: return a.offset < b.offset        // 同额、或都没有：保原序
+        }
       }
       .prefix(limit)
       .map { $0.element.info.symbol.uppercased() }
+  }
+
+  /// 交易所不认这个代号了：在本地这份品种表里把它标成下架，**不删**，
+  /// 索引和分区跟着重算一遍（审查 B-06）。自选表一个字都不动。
+  ///
+  /// 权威那份在 `SymbolCatalog`（磁盘也会跟着改），这儿改的是这一页手里的副本，
+  /// 免得用户要等下一次目录刷新才看到一致的样子。
+  func markDelisted(_ symbol: String) {
+    let key = SymbolPrefs.key(symbol)
+    var next = catalog
+    if let i = next.firstIndex(where: { $0.symbol.uppercased() == key }) {
+      guard next[i].status != .delisted else { return }
+      next[i].status = .delisted
+    } else {
+      // 目录里连这个代号都没有：那就补一行占位记着「交易所说它没了」（审查复核项 4）。
+      // 不补的话这一行只会一直是「未知」，而「未知」和「下架」是两件事——
+      // 前者是我们不知道，后者是交易所明确拒了这个代号。
+      next.append(.placeholder(symbol: key, status: .delisted))
+    }
+    setCatalog(next)
   }
 
   // ---------------------------------------------------------------- 内务
@@ -403,6 +468,27 @@ final class SymbolPickerModel {
   }
 
   private func rebuild() {
-    sections = SymbolSections.build(catalog: filteredCatalog, tickers: tickers, prefs: prefs, query: query)
+    // `catalogKeys` 给的是**没筛过**的那份目录：被药丸筛掉的自选照旧不列，
+    // 目录里根本没有的那个代号才算「未知」（审查复核项 4）。
+    sections = SymbolSections.build(catalog: filteredCatalog, tickers: tickers, prefs: prefs,
+                                    query: query, catalogKeys: Set(index.keys))
+    lookUpMissingSymbolIfNeeded()
+  }
+
+  /// 搜了一个词、一条都没命中，而这个词看着就是个合约代号：问一次目录（审查 B-06）。
+  ///
+  /// 只在「零命中」这一种情形下问，所以它天然是「用户明确点名」的信号；
+  /// 打到一半的前缀（`BT`）不算，长度不够 3 或者带非字母数字的字符一律不问。
+  private func lookUpMissingSymbolIfNeeded() {
+    guard let onMissingSymbol, let section = sections.first, section.kind == .search,
+          section.rows.isEmpty else { return }
+    let want = SymbolQuery.normalize(query).uppercased()
+    guard want.count >= 3, want.allSatisfy({ $0.isLetter || $0.isNumber }),
+          !asked.contains(want), index[want] == nil else { return }
+    asked.insert(want)
+    Task { [weak self] in
+      guard let list = await onMissingSymbol(want), !list.isEmpty else { return }
+      self?.setCatalog(list)
+    }
   }
 }

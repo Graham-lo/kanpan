@@ -22,9 +22,11 @@ struct CacheLayerTests {
     // 这一个品种不行：跳过，后面的还要预热。
     #expect(RoutedMarketFeed.skippable(BinanceError(status: 404)))
     #expect(RoutedMarketFeed.skippable(BinanceError(status: 400, code: -1121, msg: "Invalid symbol.")))
-    #expect(RoutedMarketFeed.skippable(BinanceError(status: 451)))
 
     // 整条线路不行：必须停，不然是拿一串失败去砸交易所。
+    // 451（地域拒绝 / 网关的 `upstream_blocked`）拒的是这条线路的出口 IP，
+    // 跟品种没关系——当成「这个品种不行」就会把整张自选表一个个试完（A-05）。
+    #expect(!RoutedMarketFeed.skippable(BinanceError(status: 451)))
     #expect(!RoutedMarketFeed.skippable(BinanceError(status: 429)))
     #expect(!RoutedMarketFeed.skippable(BinanceError(status: 418)))
     #expect(!RoutedMarketFeed.skippable(BinanceError(status: 408)))

@@ -31,7 +31,9 @@ struct CrosshairContext {
   var symbol: String
   var interval: Interval
   var decimals: Int
-  var offsetMinutes: Int
+  /// 时区**口径**，不是一个偏移数（审查 B-08）。本地那一档要按被格式化的那一刻
+  /// 去问时区数据库，否则夏天看冬季的历史 K 线，整段时间会整体平移一小时。
+  var offsetMinutes: TZOffset
   /// 「顶部」那档显示模式开着吗（`prefs.dataDisplay == .top`）。
   var enabled: Bool
 }
@@ -42,9 +44,11 @@ func crosshairOHLCText(_ crosshair: Crosshair?, _ context: CrosshairContext) -> 
         series.symbol == context.symbol, series.interval == context.interval,
         series.close.indices.contains(c.index) else { return nil }
   let i = c.index, p = context.decimals
+  // 价格一律 `fmtPrice`：按品种的位数四舍五入之后变成 0 的极小正价会自动多给几位，
+  // 不会在读数里写出「开 0.00 高 0.00」（审查 B-07）。
   return fmtFull(ms: Double(series.time(at: i)), offsetMinutes: context.offsetMinutes)
-    + "\n开 " + fmtNum(series.open[i], p) + "  高 " + fmtNum(series.high[i], p)
-    + "\n低 " + fmtNum(series.low[i], p) + "  收 " + fmtNum(series.close[i], p)
+    + "\n开 " + fmtPrice(series.open[i], decimals: p) + "  高 " + fmtPrice(series.high[i], decimals: p)
+    + "\n低 " + fmtPrice(series.low[i], decimals: p) + "  收 " + fmtPrice(series.close[i], decimals: p)
     + "  量 " + fmtVol(series.volume[i])
 }
 

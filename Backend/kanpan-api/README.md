@@ -6,7 +6,7 @@ Username/password registration, sessions, personal preferences, drawings, favori
 
 Build with `cargo build --release`. Copy source and binary under `/opt/kanpan-api`; run `python3 ops/install.py` as root on a host with Docker and systemd. It creates a dedicated pgvector PostgreSQL container (`kanpan-postgres`, loopback port 55434), migrates with the admin role, and grants the separate runtime role table access. Root-only secrets live in `/etc/kanpan-api/`; repeated installation reuses them. No SMTP is needed.
 
-The API binds to `127.0.0.1:8794`; Caddy forwards `/v1/auth/*`, `/v1/sync/*`, `/v1/native-review/*`, `/v1/capabilities`, `/v1/market/*` and `/oi/v1/metrics/*`. The last of these is the historical open-interest archive, which was moved here from the Python gateway because that service read the daily zips four at a time on connections it opened per day, so a cold year of chart took 54 s. It keeps its day slices under `CacheDirectory=kanpan-api` (`KANPAN_OI_CACHE`, `KANPAN_OI_CACHE_BYTES`, 4 GiB by default) in the same format the gateway wrote, so an existing `/var/cache/private/kanpan-gateway` can simply be copied in. Without a writable cache the routes still answer; they just pay the network every time. The gateway keeps the streams and `/market/v1/*`. Do not reuse ports 8790/8791: the existing image service uses them. Services `kanpan-api` and `kanpan-worker` run as dynamic, restricted users. `kanpan-backup.timer` writes daily PostgreSQL custom-format dumps with 30-day retention. These are local server backups, not offsite disaster recovery.
+The API binds to `127.0.0.1:8794`; Caddy forwards `/v1/auth/*`, `/v1/sync/*`, `/v1/native-review/*`, `/v1/capabilities`, `/v1/market/*` and `/oi/v1/metrics/*`. The last of these is the historical open-interest archive, which was moved here from the Python gateway because that service read the daily zips four at a time on connections it opened per day, so a cold year of chart took 54 s. It keeps its day slices under `CacheDirectory=kanpan-api` (`KANPAN_OI_CACHE`, `KANPAN_OI_CACHE_BYTES`, 4 GiB by default, and `KANPAN_OI_CACHE_FILES`, 200 000 entries — the byte budget alone cannot bound a directory whose zero-byte "this day is not in the archive" markers are free, and those markers are what eviction drops first) in the same format the gateway wrote, so an existing `/var/cache/private/kanpan-gateway` can simply be copied in. Without a writable cache the routes still answer; they just pay the network every time. The gateway keeps the streams and `/market/v1/*`. Do not reuse ports 8790/8791: the existing image service uses them. Services `kanpan-api` and `kanpan-worker` run as dynamic, restricted users. `kanpan-backup.timer` writes daily PostgreSQL custom-format dumps with 30-day retention; it applies that retention and sweeps stale `.part` files at the top of the run, before the space check, so a filesystem already full of old dumps cannot lock the job out of ever clearing them; it then refuses up front, writing nothing, if the filesystem does not hold twice the last dump's size, and it removes its own half-written `.part` on any failure. These are local server backups, not offsite disaster recovery — that is `ops/OFFSITE.md`, including the restore drill, whose one rule is `pg_restore` first and `migrate` after.
 
 The existing Scorebook services are separate. Frozen `vendor/scorebook-core` and market adapter sources are reused without modifying those services. OKX review OHLC uses the local market gateway at port 8792 with explicit source identity. No Binance candles are substituted into OKX records. Unsupported exact trade-touch evidence remains `needs_verification`.
 
@@ -17,19 +17,60 @@ owner and no database behind them: they are a cache in front of public
 upstreams, refreshed in the background and served stale while refreshing.
 
 `meta` publishes, per contract symbol, what the phone multiplies the live price
-by to get a market capitalisation. For a coin that is its supply. For the 193
-perpetuals whose underlying is not a coin — US, Hong Kong, Korean and Shanghai
-listings, ETFs, metals, indices and two pre-IPO names — it is
+by to get a market capitalisation. For a coin that is its supply. For a
+perpetual whose underlying is not a coin — US, Hong Kong, Korean and Shanghai
+listings, ETFs, metals and indices — it is
 `company capitalisation in USD / that contract's own price`, which absorbs the
 quote currency, the depositary ratio and dual-class structure at once. A
 contract we cannot identify is left out rather than guessed at. Upstreams are
 stockanalysis.com, open.er-api.com and `www.binance.com/fapi/v1/*` — note the
 host: `fapi.binance.com` answers 451 from this US server, `www.binance.com`
 does not. The full rule, the source table and the per-family audit are in
-`docs/市值口径与数据来源-2026-09-18.md` at repository root.
+`docs/市值口径与数据来源-2026-09-18.md` at repository root — that document
+predates this round, which removed the two pre-IPO keywords and added the
+`unknown` class below.
+
+Classification is fail-closed. Binance's `underlyingType` maps to exactly one
+kind, and anything else — an absent field, an empty string, a value this build
+has never seen, a contract missing from `exchangeInfo` altogether — becomes
+`unknown`, which publishes nothing. The wire values are `crypto`, `equityUS`,
+`equityNamed`, `preMarket`, `other` and `unknown`; `preMarket`, `other` and
+`unknown` never carry a multiplier, so a pre-IPO contract is blank by
+construction rather than by keyword.
+
+Nothing published is older than its shelf life. A supply or equity multiplier
+whose refresh is more than **7 days** old stops being served; the open-interest
+notional price falls back to a cached quote only within **5 minutes**, and the
+OKX open-interest table only within **15 minutes**. The snapshot on disk carries
+the time each figure was taken, so a restart cannot reset those clocks. None of
+this is visible on the wire: an expired figure is an absent field, never a stale
+number and never a timestamp or a source name for the phone to render.
+
+`GET /v1/market/meta` with no `symbols` argument answers the whole table it can
+prove: every equity contract symbol in sorted order, then every coin base as
+`<base>USDT` in sorted order, capped at 1000 entries — equities first so a few
+hundred listings cannot be crowded out by thousands of coins. A coin base
+becomes a `<base>USDT` key only when the contract of that name really is a coin
+(`COINUSDT` is Coinbase, not a coin called COIN), and every row goes through the
+same lookup the filtered form uses, so unknown classes and expired figures are
+simply absent. The response shape is identical either way: a map from contract
+symbol to that contract's fields, inside the usual `{"data":…}` envelope. Which
+source a figure was adopted from is kept internally (it is what stops a
+`1000`-prefixed contract from being scaled twice) and is never serialised.
 
 `open-interest` reads Binance or OKX live; `oi_archive` keeps the history on
 disk and warms its index at startup.
+
+Every call this process makes to `binance.com` — metadata, daily closes, the
+contract list behind the archive warm-up — shares one ban deadline
+(`src/binance_gate.rs`). A 429 or 418 anywhere sets it, `Retry-After` is
+believed, 418 never waits less than two minutes, the deadline only ever grows,
+and while it stands nothing leaves for that host; a collector that hits it stops
+the round instead of recording several hundred per-contract failures.
+`data.binance.vision` is a different service and has its own rule: 403, a
+timeout or a 5xx is only ever "not fetched", never a gap — three refusals in a
+row hold that source for five minutes so a walk backwards through the calendar
+cannot repeat one refusal several hundred times.
 
 ## Daily closes for sector strength
 

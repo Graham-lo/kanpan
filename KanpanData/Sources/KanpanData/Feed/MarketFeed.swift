@@ -428,6 +428,20 @@ public actor MarketFeed {
   func suspendForTests(lifecycle epoch: Int) async { await suspendWS(lifecycle: epoch) }
   var lifecycleEpochForTests: Int { lifecycleEpoch }
   var isWSRunningForTests: Bool { wsTask != nil }
+  /// 首屏那一发还在路上没有？用例要拿它当「稳态」的判据：`currentSeries` 满了的
+  /// 那一刻 `filling` 可能还挂着，这时候回前台走的是「补发首屏」而不是宽限判定。
+  var isFillingForTests: Bool { filling }
+  /// 还欠着的缺口起点（0 = 不欠）。启动期那条非 live 的状态事件会记一个缺口，
+  /// 它什么时候被处理是竞速；用例等它归零再往下走，才不会把「回前台不该补缺」
+  /// 测成「机器够不够快」。
+  var pendingGapForTests: Int64 { gapFrom }
+  /// 补缺是不是正在途中。补缺期间 WS 帧只进合成器的队列（`isBackfilling`），
+  /// 落地时统一走 `.series` 而不是 `.lastBar`——`handle(.connected)` 只要排在首屏
+  /// 之后被处理就会派这一发（生产上「快照到连上」之间那段确实缺）。用例必须等它
+  /// 结束再放报文 / 再数补缺请求，否则量到的是机器快慢，不是被测的行为。
+  var isBackfillingForTests: Bool { composer.isBackfilling }
+  /// 这份 feed 的 WS 在等第一帧行情时用的窗口（毫秒，A-07 第②层）。
+  func wsSilenceMsForTests() async -> Double { await ws.firstFrameSilenceMs }
 
   private func handle(_ ev: WSEvent, generation: UUID) async {
     let request = selection
@@ -767,6 +781,15 @@ public actor MarketFeed {
         catch is CancellationError { throw CancellationError() }
         catch {
           guard current(request), sym == symbol, iv == interval, !Task.isCancelled else { throw CancellationError() }
+          // 「短时间内不可能成功」的那几种（418 IP 封禁、429 超频、本机限流器在封禁期内
+          // 挡下的那一笔）不在这儿重试：`BinanceREST.fetch` 已经按上游给的截止时间
+          // 处理过一轮了，外面再叠 3 发只是把同一个封禁撞成 3×4＝12 次，反而把封禁
+          // 续得更长（A.3.4）。立刻结束本轮，落到下面那条既有的「点此重试」入口，
+          // 本地图表（快照打的底、WS 推的末根）原样留着。
+          if let limited = error as? BinanceError, limited.stopsRetrying {
+            log("首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：\(limited)")
+            throw limited
+          }
           guard attempt < Self.firstFillAttempts else { throw error }
           log("首屏历史第 \(attempt) 发失败，退避重试：\(error)")
           try await pacer.sleep(ms: Double(attempt) * 1000)

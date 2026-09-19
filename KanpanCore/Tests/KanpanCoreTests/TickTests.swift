@@ -74,13 +74,14 @@ struct TickTests {
   /// 时间刻度对齐到步长整数倍（按时区平移后）。
   @Test("时间刻度按时区对齐", arguments: TZChoice.allCases)
   func timeTicksAligned(_ tz: TZChoice) {
-    let off = Double(tz.offsetMinutes) * 60_000
     var r = Rng(919)
     for _ in 0..<400 {
       let from = r.d(1.6e12, 1.8e12)
       let span = pow(10, r.d(5, 10.5))
       let plotW = r.d(120, 900)
       let v = ViewWindow(from: from, to: from + span)
+      // 对齐用的是「这一屏右边缘那个时刻」的偏移（本地口径跨夏令时会变，见 TZOffset）。
+      let off = Double(tz.offsetMinutes.minutes(at: v.to)) * 60_000
       let ticks = timeTicks(view: v, plotW: plotW, offsetMinutes: tz.offsetMinutes)
       for (t, step) in ticks {
         #expect(t >= v.from - 1 && t <= v.to + 1, "刻度跑到视野外 \(t)")
