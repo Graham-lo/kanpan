@@ -2,12 +2,19 @@ import Foundation
 import Security
 
 public protocol CredentialVault: Sendable {
+  /// 这份凭据住在哪个「槽」里。**同一个槽就是同一套凭据**，哪怕分属两个
+  /// `AccountClient` 实例。刷新的单飞与代际按它共享（见 `RefreshCoordinator`）：
+  /// 两个客户端同时去刷同一把 refresh 令牌，服务端会当成令牌重用，把整条会话家族吊销。
+  /// 所以这不是个可有可无的标识——认错槽就等于没有保护。
+  var slotIdentifier: String { get }
   func read() throws -> SavedAccount?
   func write(_ value: SavedAccount?) throws
 }
 public struct KeychainCredentialVault: CredentialVault {
   public let service: String
   public init(service: String = "kanpan.account") { self.service = service }
+  /// 钥匙串这一侧，一个 service 名就是一份凭据（account 固定是 `active-session`）。
+  public var slotIdentifier: String { "keychain:" + service }
   private var query: [String: Any] { [kSecClass as String: kSecClassGenericPassword,
     kSecAttrService as String: service, kSecAttrAccount as String: "active-session"] }
   public func read() throws -> SavedAccount? {

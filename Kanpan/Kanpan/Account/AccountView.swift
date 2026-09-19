@@ -73,7 +73,11 @@ struct AccountView: View {
         if feature.page == .close { Text("注销后云端数据将删除").font(.footnote).foregroundStyle(theme.ink3).frame(maxWidth: .infinity, alignment: .leading) }
         // 出错的字走跌色。原来写死了橙，那是上一版的品牌色，换了配色以后它是全页唯一
         // 一处跟谁都不像的颜色；错误本来就该跟「跌」同一支红。
-        if let error = feature.error { Text(error).font(.footnote).foregroundStyle(theme.down).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("account.error") }
+        // 登录页上那一行字：这一趟出的错优先，没出错时摆「被顶下去」那一句
+        // ——人是被顶回登录页来的，得让他看见为什么。
+        if let message = feature.error ?? (feature.page == .login ? feature.replacedNotice : nil) {
+          Text(message).font(.footnote).foregroundStyle(theme.down).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("account.error")
+        }
         Button { focused = nil; feature.submit() } label: {
           Group { if feature.busy { ProgressView().tint(theme.badgeInk) } else { Text(primary) } }.frame(maxWidth: .infinity, minHeight: 48)
         }.buttonStyle(.borderedProminent).tint(feature.page == .close ? theme.down : theme.amber)
@@ -110,7 +114,9 @@ struct AccountView: View {
     if feature.needsReauthentication {
       Section {
         VStack(alignment: .leading, spacing: 8) {
-          Text("登录已失效").foregroundStyle(theme.down)
+          // 被同类设备顶下去时说得出是什么顶的（「这个账号在另一台手机上登录了」）；
+          // 其余的失效仍旧是笼统那一句。
+          Text(feature.replacedNotice ?? "登录已失效").foregroundStyle(theme.down)
           Text("同步暂停了，本机的自选、画线、复盘都还在。重新登录就接着同步。")
             .font(.footnote).foregroundStyle(theme.ink3)
           Button("重新登录") { feature.reauthenticate() }
@@ -157,7 +163,13 @@ struct AccountView: View {
     List {
       ForEach(feature.devices) { item in
         HStack {
-          VStack(alignment: .leading) { Text(item.name); Text(item.current ? "本机" : Date(timeIntervalSince1970: Double(item.lastSeen) / 1000).formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(theme.ink3) }
+          VStack(alignment: .leading) {
+            Text(item.name)
+            // 「每类设备只许一台在线」这条规则要在这张表上看得见：手机 / 平板 / 电脑
+            // 各占一行，同一类里再登一台就会把这一行顶掉。
+            Text([item.kind.label, item.current ? "本机" : Date(timeIntervalSince1970: Double(item.lastSeen) / 1000).formatted(date: .abbreviated, time: .shortened)].joined(separator: " · "))
+              .font(.caption).foregroundStyle(theme.ink3)
+          }
           Spacer(); Button("退出") { feature.revoke(item) }.foregroundStyle(theme.down).frame(minHeight: 44)
         }
         .listRowBackground(theme.raised)

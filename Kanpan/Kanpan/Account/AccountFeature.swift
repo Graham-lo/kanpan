@@ -16,7 +16,7 @@ import KanpanAccount
   var resendAt = Date.distantPast
   var devices: [AccountSessionDevice] = []
   private(set) var user: AccountUser?
-  private(set) var device = AccountDevice(name: UIDevice.current.model)
+  private(set) var device = AccountDevice(name: UIDevice.current.model, kind: .current)
   private(set) var client: AccountClient?
   private var challenge: AccountChallenge?
   private var attempt = UUID()
@@ -34,6 +34,12 @@ import KanpanAccount
   /// 否则用户看到的就是一个永远停在「同步失败」、点什么都没用的账号页。
   /// 本机档案一个字都不动——云端只是同步通道，掉线不等于退登。
   private(set) var needsReauthentication = false
+  /// 被顶下去时那一句话：「这个账号在另一台手机／平板／电脑上登录了」。
+  ///
+  /// 一个账号每一类设备只许一台在线（服务端 `auth.rs`）。这和「登录失效」是两回事：
+  /// 失效只说得出「再签一次名」，被顶下去说得出**是什么把你顶掉的**——用户看一眼
+  /// 就知道发生了什么，不会以为 app 坏了。本机档案一个字都不动。
+  private(set) var replacedNotice: String?
 
   init() {
     // Shipping endpoint is supplied by the app build, never typed into the product UI.
@@ -106,7 +112,7 @@ import KanpanAccount
     try await client.accept(value, device: device)
     apply?()
     user = value.user; email = value.user.email; password = ""; newPassword = ""; code = ""
-    needsReauthentication = false
+    needsReauthentication = false; replacedNotice = nil
     page = .account; presented = false; notice = "已登录"; onSynchronize?()
   }
   /// 退出登录。
@@ -129,15 +135,23 @@ import KanpanAccount
     // `email`（登录页那个用户名输入框）也要清：不清的话下次打开登录页预填着上一个人的
     // 账号名，同一台设备换人用一眼就看见别人用的是什么号。
     user = nil; presented = false; email = ""; password = ""; newPassword = ""; devices = []
-    needsReauthentication = false
+    needsReauthentication = false; replacedNotice = nil
     do { let apply = try onPrepareAccount?(nil); apply?() }
     catch { failure = failure ?? error }
     if let failure { error = failure.localizedDescription }
   }
   /// 同步那边报上来的错误统一从这儿进：把「该重新登录了」这一种单独挑出来。
   func report(sync error: any Error) {
-    if case AccountError.reauthenticationRequired = error { needsReauthentication = true }
+    lost(error)
     syncStatus = error.localizedDescription
+  }
+  /// 「这条会话还算不算数」这一问，两个入口（同步、账号页）给的是同一个答案。
+  private func lost(_ error: any Error) {
+    switch error {
+    case AccountError.reauthenticationRequired: needsReauthentication = true
+    case AccountError.sessionReplaced: needsReauthentication = true; replacedNotice = error.localizedDescription
+    default: break
+    }
   }
   /// 把登录页摆到用户面前（会话失效之后那条路）。账号还在、档案还在，只是要再签一次名。
   func reauthenticate() {
@@ -147,7 +161,7 @@ import KanpanAccount
   }
   /// 账号页上的错误统一从这儿进（同 `report(sync:)`，只是摆在另一处）。
   private func note(_ error: any Error) {
-    if case AccountError.reauthenticationRequired = error { needsReauthentication = true }
+    lost(error)
     self.error = error.localizedDescription
   }
   func loadDevices() async {
@@ -162,6 +176,21 @@ import KanpanAccount
         let _: AccountOK = try await client.request("v1/auth/devices/" + item.id.uuidString, method: "DELETE")
         if item.current { await logout() } else { await loadDevices() }
       } catch { note(error) }
+    }
+  }
+}
+extension DeviceKind {
+  /// 这台机器算哪一类。判断留在 app 壳层：`KanpanAccount` 是个不碰 UIKit 的包，
+  /// 把 `UIDevice` 搬进去就把它钉死在 iOS 上了。
+  ///
+  /// 「iPad 上跑的 iPhone 版」（兼容模式）报的 idiom 就是 `.phone`，那也正是它该占的
+  /// 名额——服务端按报上来的类别算，界面上也确实是一部手机的样子。
+  static var current: DeviceKind {
+    if ProcessInfo.processInfo.isiOSAppOnMac { return .desktop }
+    switch UIDevice.current.userInterfaceIdiom {
+    case .pad: return .tablet
+    case .mac: return .desktop
+    default: return .phone
     }
   }
 }

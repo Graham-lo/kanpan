@@ -5,12 +5,45 @@ public struct AccountUser: Codable, Sendable, Equatable, Identifiable {
   public var email: String
   public init(id: UUID, email: String) { self.id = id; self.email = email }
 }
+/// 设备类别。一个账号每一类同时只准一台在线：手机一类、平板一类、电脑一类
+/// （服务端 `Backend/kanpan-api/src/auth.rs` 的 `DeviceKind`）。
+///
+/// **同一台设备每一趟请求都得报同一个类别**：刷新时报的类别和会话记录对不上，
+/// 服务端判 `invalid_device`。所以这个值一旦跟着凭据落了盘，就照着盘上那份走，
+/// 不要每次开机重新推断一遍。
+public enum DeviceKind: String, Codable, Sendable, Equatable, CaseIterable {
+  case phone, tablet, desktop
+  /// 界面上的叫法。
+  public var label: String {
+    switch self { case .phone: "手机"; case .tablet: "平板"; case .desktop: "电脑" }
+  }
+  /// 不认识的类别按手机算，和服务端 `DeviceKind::parse` 一致。
+  /// 将来服务端多出一类（手表之类）时，老客户端解不开的应该只是那一个字段，
+  /// 而不是整张设备列表、整条错误响应。
+  public init(from decoder: any Decoder) throws {
+    let raw = try decoder.singleValueContainer().decode(String.self)
+    self = DeviceKind(rawValue: raw) ?? .phone
+  }
+}
 public struct AccountDevice: Codable, Sendable, Equatable {
   public var id: UUID
   public var name: String
   public var secret: String
-  public init(id: UUID = UUID(), name: String, secret: String = UUID().uuidString + UUID().uuidString) {
-    self.id = id; self.name = name; self.secret = secret
+  /// 这台机器算哪一类。平台判断在 app 壳层做（`AccountFeature`），包里不碰 UIKit。
+  public var kind: DeviceKind
+  public init(id: UUID = UUID(), name: String, kind: DeviceKind = .phone,
+              secret: String = UUID().uuidString + UUID().uuidString) {
+    self.id = id; self.name = name; self.kind = kind; self.secret = secret
+  }
+  /// 老版本写下的钥匙串存档里没有 `kind`。它对应的那条服务端会话也是按「手机」记的
+  /// （服务端那个枚举的 `#[default]`），所以缺省必须是手机——解成别的类别，
+  /// 下一次刷新就会被判 `invalid_device`，人白白被登出。
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(UUID.self, forKey: .id)
+    name = try c.decode(String.self, forKey: .name)
+    secret = try c.decode(String.self, forKey: .secret)
+    kind = try c.decodeIfPresent(DeviceKind.self, forKey: .kind) ?? .phone
   }
 }
 public struct AccountTokens: Codable, Sendable {
@@ -27,6 +60,19 @@ public struct SavedAccount: Codable, Sendable {
   public var device: AccountDevice
   public var refreshToken: String
   public var refreshRequestId: UUID?
+  /// 是谁签发的这份凭据（服务器主机名）。
+  ///
+  /// 令牌只对签它的那台服务器有意义，换一台就是把 A 家的钥匙往 B 家的锁上试
+  /// ——最轻也是把自己的 refresh 令牌递给了别人。恢复会话时对不上就当作没有会话。
+  /// 老版本写下的存档没有这个字段（`nil`），按当前地址算数：迁移不清人。
+  public var origin: String?
+  /// 这条会话被**同一类设备**顶掉了（服务端 401 `session_replaced`），是被哪一类顶的。
+  ///
+  /// 记在存档里，同时把 `refreshToken` 清空：那把令牌服务端已经作废，留着只会在
+  /// 下一次刷新时再撞一次墙；**身份留着**是因为本机档案（自选、画线、复盘）是按
+  /// 用户 id 存的，把整条存档删掉，下次开 app 装进来的就是访客那份了——
+  /// 云端只是同步通道，不是可用性依赖。
+  public var replacedBy: DeviceKind?
 }
 public struct AccountChallenge: Codable, Sendable {
   public var challengeId: UUID
@@ -35,14 +81,36 @@ public struct AccountChallenge: Codable, Sendable {
 public struct AccountSessionDevice: Codable, Sendable, Identifiable {
   public var id: UUID
   public var name: String
+  public var kind: DeviceKind
   public var createdAt: Int64
   public var lastSeen: Int64
   public var current: Bool
+  public init(id: UUID, name: String, kind: DeviceKind = .phone, createdAt: Int64, lastSeen: Int64, current: Bool) {
+    self.id = id; self.name = name; self.kind = kind
+    self.createdAt = createdAt; self.lastSeen = lastSeen; self.current = current
+  }
+  /// 网关有两台，可能一台已经在发 `kind` 另一台还没有。缺了的那一条按手机算，
+  /// 别让整张设备列表解不开。
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(UUID.self, forKey: .id)
+    name = try c.decode(String.self, forKey: .name)
+    kind = try c.decodeIfPresent(DeviceKind.self, forKey: .kind) ?? .phone
+    createdAt = try c.decode(Int64.self, forKey: .createdAt)
+    lastSeen = try c.decode(Int64.self, forKey: .lastSeen)
+    current = try c.decode(Bool.self, forKey: .current)
+  }
 }
 public struct AccountDevices: Decodable, Sendable { public var devices: [AccountSessionDevice] }
 public struct AccountOK: Decodable, Sendable { public var ok: Bool }
 public enum AccountError: LocalizedError, Equatable {
   case unavailable, invalidURL, invalidResponse, keychain, storage, cancelled, reauthenticationRequired, http(Int, String)
+  /// 这条会话被**同一类设备**顶下去了（服务端 401 `session_replaced`）。
+  ///
+  /// 和 `reauthenticationRequired` 分开是因为它们在界面上是两句话：一句是「登录
+  /// 失效了」，另一句是「这个账号刚在另一台手机上登录了」——后者用户看一眼就知道
+  /// 发生了什么，前者只会让人以为出了毛病。重试一万次也是同一堵墙。
+  case sessionReplaced(DeviceKind)
   public var errorDescription: String? {
     switch self {
     case .unavailable: "账号服务暂不可用"
@@ -52,6 +120,7 @@ public enum AccountError: LocalizedError, Equatable {
     case .storage: "未能保存，请检查设备空间"
     case .cancelled: "操作已取消"
     case .reauthenticationRequired: "登录已失效，请重新登录"
+    case .sessionReplaced(let kind): "这个账号在另一台\(kind.label)上登录了"
     case .http(_, "invalid_username"): "用户名需 3–32 位字母、数字或下划线"
     case .http(_, "username_taken"): "用户名已被使用"
     case .http(_, "invalid_password"): "密码至少 8 位，需含字母和数字"

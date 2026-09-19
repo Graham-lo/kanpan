@@ -152,3 +152,102 @@ async fn a_wrong_password_is_told_apart_from_a_dead_session() {
  assert_eq!(status,401);assert_eq!(v["error"]["code"],"wrong_password","{v}");
  s.pool.close().await;admin.close().await;
 }
+
+// ---- 每一类设备同时只准一台在线（2026-09-19）----
+//
+// 手机一类、平板一类、电脑一类：一部 iPhone + 一台 iPad + 一台 Mac 同时在线是允许的，
+// 两部手机不行，后登录的把先登录的顶下去。这是服务端的规矩，不是客户端的提示，
+// 所以被顶掉的那条会话要从服务端拿到一个自己的错误码。
+
+fn device_of(name:&str,kind:&str)->Value {let mut d=device(name);d["kind"]=json!(kind);d}
+async fn login(app:&Router,username:&str,d:&Value)->Value {
+ let (status,v)=request(app,"/v1/auth/login","POST","127.0.0.1:19000",&[],None,json!({"username":username,"password":"Passcode123","device":d})).await;
+ assert_eq!(status,200,"{v}");v["data"].clone()
+}
+async fn refresh(app:&Router,token:&Value,d:&Value)->(StatusCode,Value) {
+ request(app,"/v1/auth/refresh","POST","127.0.0.1:19000",&[],None,json!({"refreshToken":token,"requestId":Uuid::new_v4(),"device":d})).await
+}
+
+/// 第二部手机登录，第一部被顶下去——而且它要知道自己是被顶掉的。
+/// 笼统的 authentication_failed 只能写成「登录已失效」，界面上就说不出
+/// 「这个账号在另一台手机上登录了」。
+#[tokio::test]
+async fn a_second_phone_replaces_the_first_one() {
+ let (s,app,admin)=boot().await;
+ let user=name("phones");
+ let first=device_of("旧 iPhone","phone");
+ let a=signup(&app,&user,&first).await;
+ let second=device_of("新 iPhone","phone");
+ let b=login(&app,&user,&second).await;
+ let (status,v)=refresh(&app,&a["refreshToken"],&first).await;
+ assert_eq!(status,401,"{v}");
+ assert_eq!(v["error"]["code"],"session_replaced","被顶掉要有自己的错误码：{v}");
+ assert_eq!(v["error"]["deviceKind"],"phone","还要说清是哪一类设备把它顶掉的：{v}");
+ let (status,v)=request(&app,"/v1/auth/me","GET","127.0.0.1:19000",&[],a["accessToken"].as_str(),json!({})).await;
+ assert_eq!(status,401);assert_eq!(v["error"]["code"],"session_replaced","access 这条路也一样：{v}");
+ // 后登录的那条照常活着。
+ assert_eq!(request(&app,"/v1/auth/me","GET","127.0.0.1:19000",&[],b["accessToken"].as_str(),json!({})).await.0,200);
+ let (status,v)=refresh(&app,&b["refreshToken"],&second).await;assert_eq!(status,200,"{v}");
+ let sid=Uuid::parse_str(a["sessionId"].as_str().unwrap()).unwrap();
+ let reason:Option<String>=sqlx::query_scalar("SELECT revoked_reason FROM account_sessions WHERE id=$1").bind(sid).fetch_one(&admin).await.unwrap();
+ assert_eq!(reason.as_deref(),Some("replaced"),"撤销原因要落在库里");
+ s.pool.close().await;admin.close().await;
+}
+
+/// 手机 + 平板 + 电脑各一台同时在线，互不影响。
+#[tokio::test]
+async fn one_device_of_each_kind_may_be_online_together() {
+ let (s,app,admin)=boot().await;
+ let user=name("kinds");
+ let phone=device_of("iPhone","phone");let tablet=device_of("iPad","tablet");let desktop=device_of("Mac","desktop");
+ let a=signup(&app,&user,&phone).await;
+ let b=login(&app,&user,&tablet).await;
+ let c=login(&app,&user,&desktop).await;
+ for (session,d) in [(&a,&phone),(&b,&tablet),(&c,&desktop)] {
+  assert_eq!(request(&app,"/v1/auth/me","GET","127.0.0.1:19000",&[],session["accessToken"].as_str(),json!({})).await.0,200,"三类设备互不相干");
+  let (status,v)=refresh(&app,&session["refreshToken"],d).await;assert_eq!(status,200,"{v}");
+ }
+ let owner=Uuid::parse_str(a["user"]["id"].as_str().unwrap()).unwrap();
+ let live:i64=sqlx::query_scalar("SELECT count(*) FROM account_sessions WHERE user_id=$1 AND revoked_at IS NULL").bind(owner).fetch_one(&admin).await.unwrap();
+ assert_eq!(live,3,"三条会话都要活着");
+ let (_,list)=request(&app,"/v1/auth/devices","GET","127.0.0.1:19000",&[],a["accessToken"].as_str(),json!({})).await;
+ let mut kinds:Vec<String>=list["data"]["devices"].as_array().unwrap().iter().map(|d|d["kind"].as_str().unwrap_or("missing").to_owned()).collect();
+ kinds.sort();
+ assert_eq!(kinds,vec!["desktop","phone","tablet"],"设备列表要报出类别：{list}");
+ s.pool.close().await;admin.close().await;
+}
+
+/// 线上现在装着的那个 iPhone 包不发 kind，它必须照常登录、照常刷新，并且算作手机——
+/// 再来一台手机就该把它顶掉。
+#[tokio::test]
+async fn a_device_without_a_kind_counts_as_a_phone() {
+ let (s,app,admin)=boot().await;
+ let user=name("legacy");
+ let old=device("旧版 iPhone");
+ let a=signup(&app,&user,&old).await;
+ let (status,rotated)=refresh(&app,&a["refreshToken"],&old).await;assert_eq!(status,200,"旧客户端要能刷新：{rotated}");
+ let rotated=rotated["data"].clone();
+ let sid=Uuid::parse_str(a["sessionId"].as_str().unwrap()).unwrap();
+ let stored:String=sqlx::query_scalar("SELECT device_kind FROM account_sessions WHERE id=$1").bind(sid).fetch_one(&admin).await.unwrap();
+ assert_eq!(stored,"phone","不带 kind 就是手机");
+ let _new=login(&app,&user,&device_of("新 iPhone","phone")).await;
+ let (status,v)=refresh(&app,&rotated["refreshToken"],&old).await;
+ assert_eq!(status,401,"{v}");assert_eq!(v["error"]["code"],"session_replaced","旧包也会被新手机顶掉：{v}");
+ s.pool.close().await;admin.close().await;
+}
+
+/// 刷新时改口说自己是别的类别，就是在绕开「每类一台」的限制。
+#[tokio::test]
+async fn a_refresh_may_not_rename_its_device_kind() {
+ let (s,app,admin)=boot().await;
+ let phone=device_of("iPhone","phone");
+ let a=signup(&app,&name("liar"),&phone).await;
+ let mut lying=phone.clone();lying["kind"]=json!("tablet");
+ let (status,v)=refresh(&app,&a["refreshToken"],&lying).await;
+ assert_eq!(status,400,"{v}");assert_eq!(v["error"]["code"],"invalid_device","会话记的是手机，就不许改口叫平板：{v}");
+ let (status,v)=refresh(&app,&a["refreshToken"],&phone).await;assert_eq!(status,200,"说实话照常刷新：{v}");
+ let mut junk=phone.clone();junk["kind"]=json!("watch");
+ let (status,v)=refresh(&app,&a["refreshToken"],&junk).await;
+ assert!(status.is_client_error(),"没有这一类设备：{v}");
+ s.pool.close().await;admin.close().await;
+}

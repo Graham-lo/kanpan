@@ -1,0 +1,16 @@
+[Unit]
+Description=Kanpan offsite copy of the dump and the account secrets
+Documentation=file:/opt/kanpan-api/ops/OFFSITE.md
+# 00:20 跑，比 kanpan-backup.timer 的 00:00 + 最多 10 分钟随机延迟晚。两者碰巧
+# 排在同一批启动时，After= 还能保证顺序；平时它们各自被定时器叫起来，互不相干。
+After=network-online.target kanpan-backup.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# 以 root 跑：要读 /etc/kanpan-api/*.env 和 /root/.ssh/kanpan-offsite，所以不能 DynamicUser。
+ExecStart=/bin/bash /opt/kanpan-api/ops/offsite-push.sh
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+TimeoutStartSec=30min

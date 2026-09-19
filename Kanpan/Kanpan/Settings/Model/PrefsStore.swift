@@ -161,9 +161,11 @@ final class PrefsStore {
   ///
   /// 三个去处，理由是同一个：**要读它们的人比档案先到，或者根本不该认识 `Prefs`。**
   ///
-  /// - 线路：真身在 `prefs.routePolicy`（随账号同步 / 访客档案），而 `KanpanData`
-  ///   那边的 `RoutedMarketFeed` 只认 `MarketRoutePolicyStore`。没变的话 `set`
-  ///   自己会跳过，不会把行情重开。
+  /// - 线路：真身在 `prefs.routePolicy`（2026-09-19 起是本机字段，不随账号同步），
+  ///   而 `KanpanData` 那边的 `RoutedMarketFeed` 只认 `MarketRoutePolicyStore`。
+  ///   镜像挂在**落盘**那一步（`init` / `persist` / `useStorage` / `applySynced` 都调它），
+  ///   所以用户在设置里点一下就走 `update` → `persist` → 这里，和同步那条路没关系。
+  ///   没变的话 `set` 自己会跳过，不会把行情重开。
   /// - 域名：`LaunchPrewarm` 跑在账号桥把档案装进来之前，只能读本机的一份，
   ///   见 `LaunchHostMirror`。
   /// - 皮肤与深浅：第一帧的底色就要用它，而登录过的人那份档案要等

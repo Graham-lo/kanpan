@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily offsite copy of the Kanpan dump and the account secrets
+Documentation=file:/opt/kanpan-api/ops/OFFSITE.md
+
+[Timer]
+# 服务器本地时区（timedatectl 看一眼，线上是 UTC）。备份 00:00 起跑、随机延迟最多
+# 10 分钟，所以这里定 00:20，推的一定是当天那份。关机错过的开机补跑。
+OnCalendar=*-*-* 00:20:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

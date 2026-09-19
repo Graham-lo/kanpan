@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  看盘离机副本 · Mac 侧定时。每天 01:00（本机时区）把主服务器最新的 pg_dump 连同
+  /etc/kanpan-api/ 的两个 env 拉到 ~/kanpan-backups/。服务器的备份 00:00 开跑、
+  带最多 10 分钟随机延迟，01:00 拉的一定是当天那份。
+
+  装（一次即可）：
+    mkdir -p ~/kanpan-backups
+    cp /Users/mdd/zhk/kanpan/Backend/kanpan-api/ops/offsite-pull.launchd.plist \
+       ~/Library/LaunchAgents/com.mdd.kanpan.offsite-pull.plist
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.mdd.kanpan.offsite-pull.plist
+    launchctl enable gui/$(id -u)/com.mdd.kanpan.offsite-pull
+  立刻试跑一次：launchctl kickstart -p gui/$(id -u)/com.mdd.kanpan.offsite-pull
+  看结果：      tail -n 20 ~/kanpan-backups/pull.log
+  查状态：      launchctl print gui/$(id -u)/com.mdd.kanpan.offsite-pull
+  改完重装：    launchctl bootout gui/$(id -u)/com.mdd.kanpan.offsite-pull 之后再 bootstrap
+  卸掉：        launchctl bootout gui/$(id -u)/com.mdd.kanpan.offsite-pull
+
+  RunAtLoad 是 false：装的时候不要顺手跑一次，试跑用上面的 kickstart，失败才看得见。
+  ~/kanpan-backups 要先存在，否则 launchd 开不了 pull.log，任务会一直报 5。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mdd.kanpan.offsite-pull</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/mdd/zhk/kanpan/Backend/kanpan-api/ops/offsite-pull.sh</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>1</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/mdd/kanpan-backups/pull.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/mdd/kanpan-backups/pull.log</string>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/mdd</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+    <key>HOME</key>
+    <string>/Users/mdd</string>
+  </dict>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+</dict>
+</plist>

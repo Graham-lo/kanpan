@@ -23,6 +23,81 @@ public actor StepPacer: Pacer {
   public func sleepLog() -> [Double] { slept }
 }
 
+/// 手拨的虚拟时钟：`sleep` 一直挂着，直到测试把针拨过它的醒点。
+///
+/// 和 `StepPacer` 的差别正是「后台 25 秒宽限」这类用例要的那一点：`StepPacer.sleep`
+/// 自己就把针推到醒点再 `yield`，所以那记闹钟在它手上是**立刻**响的，根本摆不出
+/// 「24.9 秒就回来了」和「25.1 秒才回来」这两种局面。这把钟只认 `advance`：
+/// 没拨够就一直挂着，拨过了才醒，两条分支于是完全确定，一秒真实时间都不用等。
+///
+/// 取消是认的：挂着的那一笔被 `Task.cancel()` 掐掉会当场抛 `CancellationError`
+/// 退场（`enterForeground` 掐后台闹钟走的就是这条路），不会把 continuation 悬在那儿。
+public actor ManualPacer: Pacer {
+  private struct Waiter {
+    var deadline: Double
+    var cont: CheckedContinuation<Void, Error>
+  }
+  private var now: Double
+  private var waiters: [Int: Waiter] = [:]
+  /// 还没来得及登记就被取消的那些号。
+  private var cancelledEarly: Set<Int> = []
+  private var nextID = 0
+  public private(set) var slept: [Double] = []
+
+  public init(start: Double = 1_000_000) { now = start }
+
+  public func nowMs() async -> Double { now }
+
+  /// 此刻有几个人挂在这把钟上。测试用它确认「那记闹钟真的排上了」再拨针，
+  /// 免得拨了个空。
+  public var sleeping: Int { waiters.count }
+  public func sleepLog() -> [Double] { slept }
+
+  public func sleep(ms: Double) async throws {
+    guard ms > 0 else { return }
+    slept.append(ms)
+    let id = nextID
+    nextID &+= 1
+    let deadline = now + ms
+    try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+        if cancelledEarly.remove(id) != nil || Task.isCancelled {
+          c.resume(throwing: CancellationError())
+          return
+        }
+        waiters[id] = Waiter(deadline: deadline, cont: c)
+      }
+    } onCancel: {
+      Task { await self.cancelSleep(id) }
+    }
+  }
+
+  private func cancelSleep(_ id: Int) {
+    if let w = waiters.removeValue(forKey: id) { w.cont.resume(throwing: CancellationError()) }
+    else { cancelledEarly.insert(id) }
+  }
+
+  /// 把针往前拨。醒点被越过的全部放行，并让它们真的跑起来再返回——
+  /// 返回之后测试看到的就是「这段时间过完了」的世界。
+  public func advance(_ ms: Double) async {
+    now += ms
+    let due = waiters.filter { $0.value.deadline <= now }.sorted { $0.value.deadline < $1.value.deadline }
+    for (id, w) in due {
+      waiters[id] = nil
+      w.cont.resume()
+    }
+    for _ in 0..<20 { await Task.yield() }
+  }
+
+  /// 收摊：还挂着的一律放掉。测试结束时必须叫一次——挂着的 `CheckedContinuation`
+  /// 要是跟着 actor 一起释放，运行时会直接报 continuation 泄漏。
+  public func drain() {
+    let all = waiters
+    waiters = [:]
+    for (_, w) in all { w.cont.resume(throwing: CancellationError()) }
+  }
+}
+
 /// 快进时钟：真的等，但按 `scale` 缩短（默认 1000×，1 秒 → 1 毫秒）。
 /// 涉及多个任务抢跑的用例（WS 静默、重连）用它——真并发、真顺序，只是快。
 public struct FastPacer: Pacer {
@@ -92,6 +167,11 @@ public enum ReplayStep: Sendable {
   case drop(String)
   /// 一段什么都不发的静默（虚拟毫秒）。配 `FastPacer` 用。
   case silence(Double)
+  /// 停在这儿等测试放行（`gate.open()`）。
+  ///
+  /// 和 `.silence` 的区别是它不靠时间：要的是「先把 REST 首屏等落地，再让报文进来」
+  /// 这种确定的先后，拿一段 300ms 的静默去赌机器够快，正是用例会闪的原因。
+  case hold(Gate)
   /// 脚本放完了，之后 `receive()` 一直挂着。
   case hang
 }
@@ -163,6 +243,7 @@ final class ReplaySocket: WSSocket {
       case .frame(let f): return f
       case .drop(let why): return .closed(why)
       case .silence(let ms): try await deafSleep(ms: ms)
+      case .hold(let g): await g.wait()
       case .hang: try await deafSleep(ms: 600_000)
       }
     }

@@ -80,7 +80,7 @@
     "redUp" : "synced",
     "replaySpeed" : "synced",
     "reviewSearchScope" : "synced",
-    "routePolicy" : "synced",
+    "routePolicy" : "deviceOnly",
     "rsiLower" : "syncedMerged",
     "rsiUpper" : "syncedMerged",
     "sectorMarket" : "synced",
@@ -191,6 +191,7 @@
   ],
   "wireKeysNote" : "线上真正会出现的 settings 顶层键 = synced 的字段名 + wireOnlyKeys。Backend/kanpan-api/src/sync.rs 的 SETTINGS_FIELDS 必须逐字等于这一集合。少一个：含那个键的操作被服务端整条拒绝，客户端的同步队列被它堵死（提交 a161bb0）。多一个而 sync_validation::field 没配值规则：同一种死法，_=>false 让整条操作 400。",
   "wireOnlyKeys" : {
+    "routePolicy" : "直连 / 网关那两档。2026-09-19 起是本机字段（PrefsFieldClass.deviceOnly）：它说的是这台手机这张网连得通哪一头，不跟着人走，新客户端既不发也不收。服务端仍然认这个键，是为了口袋里那些还在发它的老版本客户端——服务端对含未知字段的操作是整条拒绝，删掉它等于把那台手机的同步队列堵死。",
     "rsiRange" : "客户端的 rsiUpper / rsiLower 合成的一个键（PrefsFieldClass.syncedMerged）；那两个字段自己的名字从不上线，所以服务端只认合成后的 rsiRange。",
     "styleID" : "十二款蜡烛造型那一阵子的选择，客户端早就不发了。服务端留着是为了不把老客户端的操作整条拒掉——服务端对含未知字段的操作是整条拒绝，删掉它等于把老版本的同步队列堵死。"
   },

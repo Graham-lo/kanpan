@@ -64,7 +64,12 @@ final class StubVault: CredentialVault, @unchecked Sendable {
   private let lock = NSLock()
   private var value: SavedAccount?
   private var refuse = false
-  init(_ value: SavedAccount?) { self.value = value }
+  /// 默认每个假钥匙串自成一槽（刷新协调者是进程级的，用例之间不许串味）；
+  /// 要演「两个客户端共用同一份凭据」时把同一个 `StubVault` 实例传给两边。
+  let slotIdentifier: String
+  init(_ value: SavedAccount?, slot: String = "memory:" + UUID().uuidString) {
+    self.value = value; self.slotIdentifier = slot
+  }
   var stored: SavedAccount? { lock.lock(); defer { lock.unlock() }; return value }
   func refuseWrite() { lock.lock(); defer { lock.unlock() }; refuse = true }
   func read() throws -> SavedAccount? { stored }
@@ -84,7 +89,8 @@ struct SessionLifecycleTests {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [StubProtocol.self]
     return try AccountClient(baseURL: URL(string: "https://accounts.invalid")!, vault: vault,
-                             session: URLSession(configuration: configuration))
+                             session: URLSession(configuration: configuration),
+                             options: AccountClient.Options(allowAnyHostForTests: true))
   }
   private func saved() -> SavedAccount {
     SavedAccount(user: AccountUser(id: UUID(), email: "someone"), sessionId: UUID(),

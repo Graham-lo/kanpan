@@ -1,5 +1,5 @@
 use crate::{AppState,crypto::digest,envelope,error::{ApiError,Result}};
-use axum::{Router,Json,extract::{State,Path,ConnectInfo,FromRequestParts},routing::{get,post,delete},http::{HeaderMap,request::Parts,StatusCode}};
+use axum::{Router,Json,extract::{State,Path,ConnectInfo,FromRequestParts},routing::{get,post,delete},http::{HeaderMap,request::Parts,StatusCode},response::{IntoResponse,Response}};
 use chrono::{DateTime,Duration,Utc};
 use serde::{Deserialize,Serialize};
 use serde_json::{Value,json};
@@ -8,20 +8,61 @@ use std::net::{IpAddr,SocketAddr};
 use uuid::Uuid;
 use subtle::ConstantTimeEq;
 
+/// 认证这条路上多出来的一个结果：会话被同一类设备顶下去了。
+///
+/// 「登录已失效」和「这个账号在另一台手机上登录了」在界面上是两句话，服务端两边
+/// 都回 `authentication_failed` 时客户端只能写成同一句。被顶掉这件事要带着设备类别
+/// 一起说出来（`{"error":{"code":"session_replaced","deviceKind":"phone"}}`），
+/// 其余的撤销（退登、踢设备、改密、注销）仍旧是笼统的那一句。
+pub enum AuthError {Api(ApiError),Replaced(DeviceKind)}
+pub type AuthResult<T>=std::result::Result<T,AuthError>;
+impl From<ApiError> for AuthError {fn from(v:ApiError)->Self {Self::Api(v)}}
+impl From<sqlx::Error> for AuthError {fn from(v:sqlx::Error)->Self {Self::Api(v.into())}}
+impl From<serde_json::Error> for AuthError {fn from(v:serde_json::Error)->Self {Self::Api(v.into())}}
+impl IntoResponse for AuthError {
+ fn into_response(self)->Response {
+  match self {
+   Self::Api(e)=>e.into_response(),
+   Self::Replaced(kind)=>(StatusCode::UNAUTHORIZED,Json(json!({"error":{"code":"session_replaced","deviceKind":kind.as_str()}}))).into_response(),
+  }
+ }
+}
+fn kind_of(row:&sqlx::postgres::PgRow)->DeviceKind {DeviceKind::parse(&row.get::<String,_>("device_kind"))}
+/// 会话已经不在了，要说清是怎么没的。只有「被顶下去」有自己的码。
+fn dead_session(row:&sqlx::postgres::PgRow)->AuthError {
+ if row.get::<Option<String>,_>("revoked_reason").as_deref()==Some("replaced") {AuthError::Replaced(kind_of(row))} else {AuthError::Api(ApiError::unauthorized())}
+}
+
 #[derive(Clone,Copy)]
 pub struct Identity {pub user:Uuid,pub session:Uuid}
 impl FromRequestParts<AppState> for Identity {
- type Rejection=ApiError;
- async fn from_request_parts(parts:&mut Parts,s:&AppState)->Result<Self> {
+ type Rejection=AuthError;
+ async fn from_request_parts(parts:&mut Parts,s:&AppState)->AuthResult<Self> {
   let token=parts.headers.get("authorization").and_then(|h|h.to_str().ok()).and_then(|v|v.strip_prefix("Bearer ")).filter(|t|t.len()<=128).ok_or_else(ApiError::unauthorized)?;
-  let row=sqlx::query("SELECT s.user_id,s.id FROM account_tokens t JOIN account_sessions s ON s.id=t.session_id JOIN account_users u ON u.id=s.user_id WHERE t.token_hash=$1 AND t.kind='access' AND t.expires_at>now() AND s.expires_at>now() AND s.revoked_at IS NULL AND u.disabled_at IS NULL")
+  // 会话死没死改在 Rust 这边判：令牌本身对得上、还能定位到会话时，被顶下去的那条
+  // 要回 `session_replaced`，所以不能像以前那样在 SQL 里把撤销过的会话直接滤掉。
+  // 令牌对不上仍旧什么都问不出来。
+  let row=sqlx::query("SELECT s.user_id,s.id,s.device_kind,s.revoked_at,s.revoked_reason,s.expires_at,u.disabled_at FROM account_tokens t JOIN account_sessions s ON s.id=t.session_id JOIN account_users u ON u.id=s.user_id WHERE t.token_hash=$1 AND t.kind='access' AND t.expires_at>now()")
    .bind(digest(token)).fetch_optional(&s.pool).await?.ok_or_else(ApiError::unauthorized)?;
+  if row.get::<Option<DateTime<Utc>>,_>("revoked_at").is_some() {return Err(dead_session(&row))}
+  if row.get::<DateTime<Utc>,_>("expires_at")<=Utc::now() || row.get::<Option<DateTime<Utc>>,_>("disabled_at").is_some() {return Err(ApiError::unauthorized().into())}
   Ok(Self{user:row.get("user_id"),session:row.get("id")})
  }
 }
+/// 设备类别。一个账号每一类同时只准一台在线：手机一类、平板一类、电脑一类。
+///
+/// 线上现在装着的那些包还不发这个字段，缺省就当手机——它们本来也全是 iPhone，
+/// 而且这样一来新旧两个包指的是同一条「手机」名额，不会各占一条。
+#[derive(Deserialize,Serialize,Clone,Copy,PartialEq,Eq,Debug,Default)]
+#[serde(rename_all="lowercase")]
+pub enum DeviceKind {#[default] Phone,Tablet,Desktop}
+impl DeviceKind {
+ pub fn as_str(self)->&'static str {match self {Self::Phone=>"phone",Self::Tablet=>"tablet",Self::Desktop=>"desktop"}}
+ fn parse(v:&str)->Self {match v {"tablet"=>Self::Tablet,"desktop"=>Self::Desktop,_=>Self::Phone}}
+}
 #[derive(Deserialize,Serialize,Clone)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
-pub struct Device {pub id:Uuid,pub name:String,pub secret:String}
+pub struct Device {pub id:Uuid,pub name:String,pub secret:String,#[serde(default)] pub kind:DeviceKind}
 impl Device {
  fn validate(&self)->Result<()> {
   if self.name.trim().is_empty() || self.name.len()>120 || !(32..=128).contains(&self.secret.len()) {return Err(ApiError::bad("invalid_device"))} Ok(())
@@ -115,11 +156,20 @@ async fn register(State(s):State<AppState>,ConnectInfo(peer):ConnectInfo<SocketA
  let response=new_session(&s,&mut tx,id,&v.device).await?;
  tx.commit().await?;Ok((StatusCode::CREATED,envelope(response)))
 }
+/// 建一条新会话，并把该让位的那几条顶下去。
+///
+/// 一个账号每一类设备同时只准一台在线：新开的这条是手机，就把这个人名下所有还活着的
+/// 手机会话撤掉；平板和电脑各自不受影响。同一台设备（`device_id` 相同）重新登录也一样
+/// 让位——哪怕它这次报的类别变了，否则同一台机器会在两个类别里各留一条。
+///
+/// 登录与注册都在 `lock_email` 的账号级顾问锁里，所以「先撤旧的再插新的」不会
+/// 被另一次并发登录穿过去。
 async fn new_session(s:&AppState,tx:&mut Transaction<'_,Postgres>,user:Uuid,device:&Device)->Result<Value> {
  let session=Uuid::new_v4();
- sqlx::query("UPDATE account_sessions SET revoked_at=now() WHERE user_id=$1 AND device_id=$2 AND revoked_at IS NULL").bind(user).bind(device.id).execute(&mut **tx).await?;
- sqlx::query("INSERT INTO account_sessions(id,user_id,device_id,device_name,binding_hash,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '30 days')")
-  .bind(session).bind(user).bind(device.id).bind(device.name.trim()).bind(digest(&device.secret)).execute(&mut **tx).await?;
+ sqlx::query("UPDATE account_sessions SET revoked_at=now(),revoked_reason='replaced' WHERE user_id=$1 AND revoked_at IS NULL AND (device_kind=$2 OR device_id=$3)")
+  .bind(user).bind(device.kind.as_str()).bind(device.id).execute(&mut **tx).await?;
+ sqlx::query("INSERT INTO account_sessions(id,user_id,device_id,device_name,device_kind,binding_hash,expires_at) VALUES($1,$2,$3,$4,$5,$6,now()+interval '30 days')")
+  .bind(session).bind(user).bind(device.id).bind(device.name.trim()).bind(device.kind.as_str()).bind(digest(&device.secret)).execute(&mut **tx).await?;
  tokens(s,tx,user,session).await
 }
 async fn tokens(_s:&AppState,tx:&mut Transaction<'_,Postgres>,user:Uuid,session:Uuid)->Result<Value> {
@@ -150,22 +200,29 @@ async fn login(State(s):State<AppState>,ConnectInfo(peer):ConnectInfo<SocketAddr
  sqlx::query("DELETE FROM account_limits WHERE key=$1").bind(key).execute(&mut *tx).await?;
  let response=new_session(&s,&mut tx,row.unwrap().get("id"),&v.device).await?;tx.commit().await?;Ok(envelope(response))
 }
-async fn refresh(State(s):State<AppState>,Json(v):Json<RefreshInput>)->Result<Json<Value>> {
- v.device.validate()?;if v.refresh_token.len()>128{return Err(ApiError::unauthorized())}
+async fn refresh(State(s):State<AppState>,Json(v):Json<RefreshInput>)->AuthResult<Json<Value>> {
+ v.device.validate()?;if v.refresh_token.len()>128{return Err(ApiError::unauthorized().into())}
  // 刷新没有密码那一关，只有一把令牌，此前也没有任何节流。access 十五分钟才换一次，
  // 正常客户端一条会话一分钟内绝到不了三十次；到了就是有人在拿它磨服务器。
  // 键取会话而不是令牌：轮换之后令牌每次都是新的，只有会话是同一条。
  let paced:Option<Uuid>=sqlx::query_scalar("SELECT session_id FROM account_tokens WHERE token_hash=$1 AND kind='refresh'").bind(digest(&v.refresh_token)).fetch_optional(&s.pool).await?;
  if let Some(sid)=paced {
-  if !hit_limit(&s,&format!("refresh-sid:{sid}"),30,60).await? {return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"try_later"))}
+  if !hit_limit(&s,&format!("refresh-sid:{sid}"),30,60).await? {return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"try_later").into())}
  }
  let mut tx=s.pool.begin().await?;
- let row=sqlx::query("SELECT t.*,s.user_id,s.device_id,s.binding_hash,s.revoked_at,s.expires_at AS session_expires,u.disabled_at FROM account_tokens t JOIN account_sessions s ON s.id=t.session_id JOIN account_users u ON u.id=s.user_id WHERE t.token_hash=$1 AND t.kind='refresh' FOR UPDATE OF t,s,u")
+ let row=sqlx::query("SELECT t.*,s.user_id,s.device_id,s.device_kind,s.binding_hash,s.revoked_at,s.revoked_reason,s.expires_at AS session_expires,u.disabled_at FROM account_tokens t JOIN account_sessions s ON s.id=t.session_id JOIN account_users u ON u.id=s.user_id WHERE t.token_hash=$1 AND t.kind='refresh' FOR UPDATE OF t,s,u")
   .bind(digest(&v.refresh_token)).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::unauthorized)?;
  let sid:Uuid=row.get("session_id");let user:Uuid=row.get("user_id");
- if row.get::<Option<DateTime<Utc>>,_>("revoked_at").is_some() || row.get::<Option<DateTime<Utc>>,_>("disabled_at").is_some() || row.get::<DateTime<Utc>,_>("session_expires")<=Utc::now() || row.get::<DateTime<Utc>,_>("expires_at")<=Utc::now() {return Err(ApiError::unauthorized())}
+ // 设备绑定先过。`session_replaced` 等于告诉对方「这个账号刚在另一台手机上登录了」，
+ // 这话只该说给真正拿着这台设备密钥的人听。
  let bound=row.get::<Uuid,_>("device_id")==v.device.id && row.get::<String,_>("binding_hash").as_bytes().ct_eq(digest(&v.device.secret).as_bytes()).unwrap_u8()==1;
- if !bound {return Err(ApiError::unauthorized())}
+ if !bound {return Err(ApiError::unauthorized().into())}
+ if row.get::<Option<DateTime<Utc>>,_>("revoked_at").is_some() {return Err(dead_session(&row))}
+ if row.get::<Option<DateTime<Utc>>,_>("disabled_at").is_some() || row.get::<DateTime<Utc>,_>("session_expires")<=Utc::now() || row.get::<DateTime<Utc>,_>("expires_at")<=Utc::now() {return Err(ApiError::unauthorized().into())}
+ // 会话是哪一类设备开的，刷新时就得还是那一类。改口说自己是平板，无非是想让同一台
+ // 机器在两个类别里各占一条会话，绕开「每类一台」。旧包不发 kind、算作手机，
+ // 和它自己那条手机会话对得上，不受这一条影响。
+ if kind_of(&row)!=v.device.kind {return Err(ApiError::bad("invalid_device").into())}
  if row.get::<Option<DateTime<Utc>>,_>("used_at").is_some() {
   // 同一个 request_id 就是同一次请求的重试，隔多久回来都还是重试：手机断网、切后台、
   // 进电梯，一次真实的中断远不止六十秒。此前超过六十秒就连整条会话一起吊销，
@@ -174,11 +231,11 @@ async fn refresh(State(s):State<AppState>,Json(v):Json<RefreshInput>)->Result<Js
    // 保留窗（`maintenance` 那边扫的二十四小时）之外结果已被清掉，只能重新登录；
    // 但这仍然不是「令牌被别人捡去用了」，会话不该因此被吊销——那一轮换到的新令牌
    // 也许正在别的设备上好好用着。
-   let Some(sealed)=row.get::<Option<String>,_>("response_sealed") else {return Err(ApiError::unauthorized())};
+   let Some(sealed)=row.get::<Option<String>,_>("response_sealed") else {return Err(ApiError::unauthorized().into())};
    let response=serde_json::from_slice(&s.secrets.open(&sealed)?)?;tx.commit().await?;return Ok(envelope(response));
   }
   // 换了 request_id 还拿着已经用过的 refresh：这才是重用，整条会话就此结束。
-  sqlx::query("UPDATE account_sessions SET revoked_at=now() WHERE id=$1").bind(sid).execute(&mut *tx).await?;tx.commit().await?;return Err(ApiError::unauthorized());
+  sqlx::query("UPDATE account_sessions SET revoked_at=now() WHERE id=$1 AND revoked_at IS NULL").bind(sid).execute(&mut *tx).await?;tx.commit().await?;return Err(ApiError::unauthorized().into());
  }
  let response=tokens(&s,&mut tx,user,sid).await?;
  sqlx::query("UPDATE account_tokens SET used_at=now(),request_id=$2,response_sealed=$3 WHERE token_hash=$1")
@@ -191,7 +248,7 @@ async fn me(State(s):State<AppState>,i:Identity)->Result<Json<Value>> {
  Ok(envelope(json!({"id":i.user,"email":email,"sessionId":i.session})))
 }
 async fn logout(State(s):State<AppState>,i:Identity)->Result<Json<Value>> {
- sqlx::query("UPDATE account_sessions SET revoked_at=now() WHERE id=$1 AND user_id=$2").bind(i.session).bind(i.user).execute(&s.pool).await?;Ok(envelope(json!({"ok":true})))
+ sqlx::query("UPDATE account_sessions SET revoked_at=now(),revoked_reason='logout' WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL").bind(i.session).bind(i.user).execute(&s.pool).await?;Ok(envelope(json!({"ok":true})))
 }
 /// 冷启动之后手上只有 refresh——access 从不落盘。退登要让服务端那条会话真的结束，
 /// 就得有一条不依赖 access 的吊销路：拿 refresh + 设备绑定认证，和 `refresh` 同一把尺子。
@@ -206,15 +263,15 @@ async fn revoke_session(State(s):State<AppState>,Json(v):Json<RevokeInput>)->Res
  let bound=row.get::<Uuid,_>("device_id")==v.device.id && row.get::<String,_>("binding_hash").as_bytes().ct_eq(digest(&v.device.secret).as_bytes()).unwrap_u8()==1;
  if !bound {return Err(ApiError::unauthorized())}
  let sid:Uuid=row.get("session_id");
- sqlx::query("UPDATE account_sessions SET revoked_at=now() WHERE id=$1 AND revoked_at IS NULL").bind(sid).execute(&mut *tx).await?;
+ sqlx::query("UPDATE account_sessions SET revoked_at=now(),revoked_reason='logout' WHERE id=$1 AND revoked_at IS NULL").bind(sid).execute(&mut *tx).await?;
  tx.commit().await?;Ok(envelope(json!({"ok":true})))
 }
 async fn devices(State(s):State<AppState>,i:Identity)->Result<Json<Value>> {
- let rows=sqlx::query("SELECT id,device_name,created_at,seen_at FROM account_sessions WHERE user_id=$1 AND revoked_at IS NULL AND expires_at>now() ORDER BY seen_at DESC").bind(i.user).fetch_all(&s.pool).await?;
- Ok(envelope(json!({"devices":rows.iter().map(|r|json!({"id":r.get::<Uuid,_>("id"),"name":r.get::<String,_>("device_name"),"createdAt":r.get::<DateTime<Utc>,_>("created_at").timestamp_millis(),"lastSeen":r.get::<DateTime<Utc>,_>("seen_at").timestamp_millis(),"current":r.get::<Uuid,_>("id")==i.session})).collect::<Vec<_>>()})))
+ let rows=sqlx::query("SELECT id,device_name,device_kind,created_at,seen_at FROM account_sessions WHERE user_id=$1 AND revoked_at IS NULL AND expires_at>now() ORDER BY seen_at DESC").bind(i.user).fetch_all(&s.pool).await?;
+ Ok(envelope(json!({"devices":rows.iter().map(|r|json!({"id":r.get::<Uuid,_>("id"),"name":r.get::<String,_>("device_name"),"kind":r.get::<String,_>("device_kind"),"createdAt":r.get::<DateTime<Utc>,_>("created_at").timestamp_millis(),"lastSeen":r.get::<DateTime<Utc>,_>("seen_at").timestamp_millis(),"current":r.get::<Uuid,_>("id")==i.session})).collect::<Vec<_>>()})))
 }
 async fn revoke_device(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>)->Result<Json<Value>> {
- sqlx::query("UPDATE account_sessions SET revoked_at=now() WHERE id=$1 AND user_id=$2").bind(id).bind(i.user).execute(&s.pool).await?;Ok(envelope(json!({"ok":true})))
+ sqlx::query("UPDATE account_sessions SET revoked_at=now(),revoked_reason='device_revoked' WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL").bind(id).bind(i.user).execute(&s.pool).await?;Ok(envelope(json!({"ok":true})))
 }
 async fn change_password(State(s):State<AppState>,i:Identity,Json(v):Json<ChangeInput>)->Result<Json<Value>> {
  password(&v.new_password)?;
@@ -226,7 +283,7 @@ async fn change_password(State(s):State<AppState>,i:Identity,Json(v):Json<Change
  if !verify(&s,v.current_password,row.get("password_hash")).await? {return Err(ApiError(StatusCode::UNAUTHORIZED,"wrong_password"))}
  let h=hash(&s,v.new_password).await?;
  sqlx::query("UPDATE account_users SET password_hash=$2 WHERE id=$1").bind(i.user).bind(h).execute(&mut *tx).await?;
- sqlx::query("UPDATE account_sessions SET revoked_at=now() WHERE user_id=$1 AND id<>$2").bind(i.user).bind(i.session).execute(&mut *tx).await?;
+ sqlx::query("UPDATE account_sessions SET revoked_at=now(),revoked_reason='password_change' WHERE user_id=$1 AND id<>$2 AND revoked_at IS NULL").bind(i.user).bind(i.session).execute(&mut *tx).await?;
  tx.commit().await?;Ok(envelope(json!({"ok":true})))
 }
 async fn delete_account(State(s):State<AppState>,i:Identity,Json(v):Json<DeleteInput>)->Result<Json<Value>> {

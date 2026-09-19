@@ -190,33 +190,45 @@ struct PrefsFieldPlanTests {
     #expect(PrefsCodec.decode(PrefsCodec.encode(prefs)).favoritesGroup.isEmpty)
   }
 
-  /// **「线路」这一摊分在两边，是产品决定，不是分类漂移。**
+  /// **「线路」这一摊整个留在这台设备上——直连 / 网关那两档也不再跟着人走。**
   ///
-  /// 这条测试是拿来钉住那个决定的，不是拿来描述现状的。审查报告曾经按「行情域名、
-  /// 线路开关一概是本机属性」这句话读出「`routePolicy` 应该改成 `deviceOnly`」——
-  /// 那是把两件事混成了一件：
+  /// 这条钉的是 2026-09-19 按 GPT Pro 第二轮审查 B7 定下的决定。在那之前 `routePolicy`
+  /// 是 `.synced`，于是有过这么一出：A 在自己的网络里选了网关并同步上去，B 本来是直连、
+  /// 这个字段还干净，B 同步一轮之后存档里就成了网关——B 从头到尾没碰过线路那两档。
   ///
-  /// - `apiHost` / `streamHost` / `smartMarketRoute` 是**具体主机名与探测开关**，
-  ///   取决于这台手机现在挂在哪张网上，跟着人走只会把 A 的网络环境带到 B。`deviceOnly`。
-  /// - `routePolicy` 是他在设置里**用手点的「直连 / 网关」两档**，和皮肤、周期同一类：
-  ///   用手改出来的习惯。`synced`。
+  /// 现在这一摊四项全部 `deviceOnly`，判据是同一条「这是不是这台机器 / 这张网的属性」：
   ///
-  /// 产品规则的原话在 `AGENTS.md` 的稳定约定里：行情线路两档由用户自己选、出厂默认直连、
-  /// 没有任何自动切换，「**选择随账号同步、未登录记在本机**」。
+  /// - `apiHost` / `streamHost` / `smartMarketRoute`：具体主机名与探测开关。
+  /// - `routePolicy`：直连还是走 VPS 网关，取决于这台手机这张网连得通哪一头，
+  ///   不是他摆出来的样子。
   ///
-  /// **这条红了不要改测试，也不要改 `PrefsFieldPlan`——先去改产品规则。** 真要改，
-  /// `AGENTS.md`、这条测试、`PrefsFieldPlan` 的注释和服务端 `SETTINGS_FIELDS` 一起改。
-  @Test("直连 / 网关跟着人走，域名和探测开关留在本机")
-  func routePolicyFollowsThePerson() {
-    #expect(PrefsFieldPlan.table["routePolicy"] == .synced, "这是产品决定：选择随账号同步、未登录记在本机")
-    #expect(Prefs.syncedFieldNames.contains("routePolicy"), "不在同步白名单里就发不上去，等于没同步")
-    for name in ["apiHost", "streamHost", "smartMarketRoute", "launchSnapshot"] {
+  /// **产品规则本身一个字没变**：出厂默认直连、只有两档、手动选、没有任何自动切换。
+  /// 变的只有一件事——这个选择不再跨设备覆盖。
+  ///
+  /// 服务端那一侧仍然认 `routePolicy`（进了 `PrefsFieldPlan.wireOnlyKeys`）：口袋里还有
+  /// 老版本客户端在发它，而服务端对含未知字段的操作是**整条拒绝**，把它从白名单上删掉
+  /// 等于把那台手机的同步队列堵死。新客户端既不发也不收。
+  @Test("直连 / 网关留在这台设备上，域名和探测开关也是")
+  func routePolicyStaysOnThisDevice() {
+    for name in ["routePolicy", "apiHost", "streamHost", "smartMarketRoute", "launchSnapshot"] {
       #expect(PrefsFieldPlan.table[name] == .deviceOnly, "\(name) 是这台机器 / 这张网的属性，不跟人走")
-      #expect(!Prefs.syncedFieldNames.contains(name))
+      #expect(!Prefs.syncedFieldNames.contains(name), "\(name) 进了同步白名单就会被发上去")
     }
+    #expect(Prefs.deviceOnlyFieldNames.contains("routePolicy"), "不在这张表里，换档案时就保不住这台设备的选择")
+
+    // 记脏 = 会生成一条同步操作。本机字段一条都不该生成。
+    #expect(!Prefs.stampedFieldNames.contains("routePolicy"))
+    var gateway = Prefs.defaults
+    gateway.routePolicy = .gateway
+    #expect(Prefs.changedStampedFields(from: .defaults, to: gateway).isEmpty,
+            "改线路不该记脏，更不该推一条操作上去")
+
+    // 但服务端还得继续认这个键：老客户端还在发。
+    #expect(PrefsFieldPlan.wireOnlyKeys["routePolicy"] != nil,
+            "服务端不认它，老客户端那条操作会被整条拒绝，队列从此堵死（提交 a161bb0）")
 
     // 换档案（登录 / 退登 / 切账号）时按 `deviceOnlyFieldNames` 保本机值：
-    // 主机名留住，线路那两档让新档案说了算。
+    // 主机名留住，线路那两档也一起留住。
     var mine = Prefs.defaults
     mine.apiHost = "mine.example.com"
     mine.streamHost = "mine-stream.example.com"
@@ -224,10 +236,40 @@ struct PrefsFieldPlanTests {
     mine.routePolicy = .gateway
     var theirs = Prefs.defaults
     theirs.routePolicy = .direct
+    theirs.skin = .terra
     let merged = Prefs.keeping(Prefs.deviceOnlyFieldNames, of: mine, over: theirs)
     #expect(merged.apiHost == "mine.example.com" && merged.streamHost == "mine-stream.example.com")
     #expect(merged.smartMarketRoute == false)
-    #expect(merged.routePolicy == .direct, "线路那两档跟着账号那份走，不被这台机器的上一份值盖住")
+    #expect(merged.routePolicy == .gateway, "这台设备选的那一档不被新档案盖掉")
+    #expect(merged.skin == .terra, "真正跟着人走的那些照旧由新档案说了算")
+  }
+
+  /// **升级不许把这台设备上已经选好的线路弄丢。**
+  ///
+  /// 「改归类」这件事最容易出的事故是拿出厂值把存量档案洗一遍：用户本来在网关上，
+  /// 升完级回到直连，行情那一头当场连不上。`routePolicy` 照旧写在 `prefs.json` 里
+  /// （`deviceOnly` 说的是「不跟人走」，不是「不落盘」），所以存档怎么写的，起来就该是什么。
+  @Test("老存档里选的是网关，升级之后这台机器还是网关")
+  @MainActor
+  func routePolicyMigrationKeepsThisDevicesChoice() {
+    var archived = Prefs.defaults
+    archived.routePolicy = .gateway
+    let box = InMemoryPrefsStorage([PrefsCodec.key: PrefsCodec.encode(archived)])
+
+    let store = PrefsStore(storage: box, cache: UnavailableMarketCache())
+    #expect(store.prefs.routePolicy == .gateway, "存档里是网关，起来还得是网关，不许重置成出厂直连")
+
+    // 改别的设置照旧落盘，线路那一档跟着留在档案里。
+    store.update { $0.skin = .terra }
+    #expect(PrefsStore(storage: box, cache: UnavailableMarketCache()).prefs.routePolicy == .gateway)
+    #expect(store.dirtyFields.contains("skin"), "皮肤是跟着人走的那一类，改了要记脏")
+
+    // 用手点回直连：当场生效、落盘，但不记脏（不生成同步操作，也就不会被推上去）。
+    store.update { $0.routePolicy = .direct }
+    #expect(store.prefs.routePolicy == .direct)
+    #expect(!store.dirtyFields.contains("routePolicy"), "本机字段不该记脏")
+    #expect(PrefsStore(storage: box, cache: UnavailableMarketCache()).prefs.routePolicy == .direct,
+            "本机字段照样落盘，杀掉 app 再起来还是这一档")
   }
 }
 

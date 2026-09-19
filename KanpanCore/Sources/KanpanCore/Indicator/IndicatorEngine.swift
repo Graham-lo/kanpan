@@ -65,10 +65,29 @@ public struct IndicatorEngine: Sendable {
   }
 
   /// 末根改了或者新追了一根：只重算尾巴，结果与全量逐位相同。
+  ///
+  /// 这里的写法有两处看着多余、实则是这条路径**不随历史长度变慢**的全部原因。
+  /// 递推算术本来只碰最后几十根（`tailBars`），可数组的所有权会把它拖成整列的活：
+  ///
+  /// 1. **先把上一批发布出去的结果放掉**（`values.removeAll`）。`values` 里的每条线
+  ///    和 `states` 里的递推状态指着同一块缓冲——引擎自己一手攥一份，引用数恒 ≥2，
+  ///    于是每次往状态里写一个数，写时复制都得先把整列 N 个 Double 抄一遍。
+  ///    先放手，缓冲就是独占的，改尾巴就是真的只改尾巴。算完再挂回去，
+  ///    `values` 仍然是那份完整结果，外面一个字都不用改。
+  ///    （调用方要是自己攥着上一次拿到的快照，写时复制照常分家，他手里的数不会被改掉——
+  ///    值语义没丢，丢的只是这一次的省事。）
+  /// 2. **按键就地改**（`states[id]?.update`，不是 `for (id, var st) in states`）。
+  ///    后者把字典里的值复制出来改完再写回去，改的全程字典也攥着同一块缓冲，
+  ///    同样一次整列复制。字典下标的 `_modify` 是就地借出去改，没有这份副本；
+  ///    键先抄成数组，是为了别在遍历字典视图的同时改字典（那又会把字典复制一份）。
+  ///
+  /// 量过：N=10000、MA×3+BOLL+MACD+KDJ+RSI 共 15 条线，改前每次末根更新要重新分配
+  /// 并复制 15 条整列（1.2 MB），改后 0 条。
   public mutating func updateTail(series: BarSeries, oi: OISeries? = nil, dataKey: String = "") {
     // 空序列没有末根可更（WS 事件可能比 REST 历史先到），直接放过。
     guard !states.isEmpty, series.count > 0 else { return }
-    for (id, var st) in states {
+    values.removeAll(keepingCapacity: true)
+    for id in Array(states.keys) {
       let p = params[id] ?? id.defaultParams
       // 下限是 0 而不是 1：序列短到 `count <= tailBars` 时（新上市的品种只有一两根），
       // 首根同时也是末根，它自己就是这次被改掉的那一根。夹到 1 的话重算区间退化成
@@ -78,9 +97,8 @@ public struct IndicatorEngine: Sendable {
       // 这种极短状态本来就没有几根可算，全量不构成负担；长序列的起点仍是
       // `count - tailBars`，增量路径一点没动。
       let start = max(0, series.count - id.tailBars(params: p))
-      st.update(series: series, from: start, oi: oi)
-      states[id] = st
-      values[id] = st.result
+      states[id]?.update(series: series, from: start, oi: oi)
+      values[id] = states[id]?.result
     }
     key = Self.cacheKey(series: series, wanted: Array(states.keys), params: params, dataKey: dataKey)
     dataRevision = series.revision
@@ -134,6 +152,9 @@ public struct IndicatorEngine: Sendable {
     /// 对齐好的那一列，外加它是从哪份持仓量来的（`OISeries.revision`，没有持仓量时 0）。
     /// 记着来源才敢在 `update` 里只对齐尾巴。
     case oi([Double], UInt64)
+    /// 负载刚被掏出去的那一瞬间（见 `update`）。`update` 的每条路径都会在返回前填回来，
+    /// 外面永远碰不到这个值。
+    case moved
 
     var result: IndicatorResult {
       switch self {
@@ -146,12 +167,24 @@ public struct IndicatorEngine: Sendable {
       case .srsi(let s): IndicatorResult(lines: [s.k.out, s.d.out])
       case .atr(let s): IndicatorResult(lines: [s.line.out])
       case .oi(let v, _): IndicatorResult(lines: [v])
+      case .moved: IndicatorResult(lines: [])
       }
     }
 
+    /// 尾部重算。每个分支都是「先把 self 掏空，再改掏出来的那一份」。
+    ///
+    /// `case .sma(var l, let src)` 只是把负载**复制**一份出来——数组结构复制等于缓冲多一个
+    /// 引用，而 self 那边还攥着同一块。接着往 `l` 里写一个数，写时复制就得先把整列抄一遍：
+    /// 几千根的历史，改末根一个数要搬几万个字节，算术只碰最后几十根也没用。
+    /// 中间那句 `self = .moved` 把 self 这一侧的引用放掉，掏出来的那份就成了独占，
+    /// 尾巴是真的只改尾巴。
+    ///
+    /// Release 下优化器有时能自己看出这是一次搬移，Debug 下不会（量过：`-Onone` 里
+    /// 不写这一句，15 条线每次更新整列复制 15 次）。写明白，模拟器上跑的也是同一条快路。
     mutating func update(series b: BarSeries, from start: Int, oi: OISeries?) {
       switch self {
       case .sma(var l, let src):
+        self = .moved
         let col = src.column(b)
         for i in l.indices {
           if l[i].canTail(from: start) { l[i].recompute(col, from: start) }
@@ -159,24 +192,27 @@ public struct IndicatorEngine: Sendable {
         }
         self = .sma(l, src)
       case .ema(var l):
+        self = .moved
         for i in l.indices { l[i].recompute(b.close, from: start) }
         self = .ema(l)
-      case .boll(var s): s.update(b.close, from: start); self = .boll(s)
-      case .macd(var s): s.update(b.close, from: start); self = .macd(s)
+      case .boll(var s): self = .moved; s.update(b.close, from: start); self = .boll(s)
+      case .macd(var s): self = .moved; s.update(b.close, from: start); self = .macd(s)
       case .rsi(var l):
+        self = .moved
         for i in l.indices { l[i].update(b.close, from: start) }
         self = .rsi(l)
-      case .kdj(var s): s.update(b, from: start); self = .kdj(s)
-      case .srsi(var s): s.update(b.close, from: start); self = .srsi(s)
-      case .atr(var s): s.update(b, from: start); self = .atr(s)
-      case .oi(let prev, let rev):
+      case .kdj(var s): self = .moved; s.update(b, from: start); self = .kdj(s)
+      case .srsi(var s): self = .moved; s.update(b.close, from: start); self = .srsi(s)
+      case .atr(var s): self = .moved; s.update(b, from: start); self = .atr(s)
+      case .moved: break
+      case .oi(var prev, let rev):
+        self = .moved
         guard let oi, oi.revision != 0 else {
           // 没有持仓量：上次也没有的话，那一列已经全是 NaN，追长就行，
           // 不必每个 tick 现开一条几千长的 NaN 数组。
           if rev == 0, prev.count <= b.count {
-            var out = prev
-            grow(to: b.count, &out)
-            self = .oi(out, 0)
+            grow(to: b.count, &prev)
+            self = .oi(prev, 0)
           } else {
             self = .oi(nanArray(b.count), 0)
           }

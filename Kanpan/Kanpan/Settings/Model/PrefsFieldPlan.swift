@@ -11,28 +11,34 @@ import Foundation
 /// - 皮肤、周期、副图高度、自选表按什么排、板块停在哪个市场、上次拿的哪把画线工具——
 ///   都是他用手点出来的，换台设备登同一个账号就该还是那样。`synced`。
 /// - 行情**域名**（`apiHost` / `streamHost`）、**自动探测开关**（`smartMarketRoute`）、
-///   本机启动快照（`launchSnapshot`）——是**这台手机所处网络 / 这台手机自己**的属性，
-///   不是他摆出来的样子：跟着人走只会把 A 手机的网络环境带到 B 手机上。`deviceOnly`。
+///   **直连 / 网关那两档**（`routePolicy`）、本机启动快照（`launchSnapshot`）——是
+///   **这台手机所处网络 / 这台手机自己**的属性，不是他摆出来的样子：跟着人走只会把
+///   A 手机的网络环境带到 B 手机上。`deviceOnly`。
 /// - 「最近打开过哪些品种」「哪些品种看得勤」这类**每开一张图就变的统计**——不是他摆出来的
 ///   样子，而且每变一次就得生成一条同步操作，代价远大于收益。`derivedLocal`。
 ///
-/// ## 「线路」这一摊分在两边，不是分错了
+/// ## 「线路」这一摊整个留在本机（2026-09-19 改的）
 ///
-/// 一句「行情相关的都留本机」会把 `routePolicy` 也扫进去，已经有人照着这么读过一次，
-/// 所以这条分界写死在这里：
+/// `apiHost` / `streamHost` / `smartMarketRoute` / `routePolicy` 四项**全是 `deviceOnly`**，
+/// 判据是同一条：它们说的是**这台手机挂在哪张网上、这张网连得通哪一头**。
 ///
-/// - **`apiHost` / `streamHost` / `smartMarketRoute` 留本机**（`deviceOnly`）。它们是
-///   **具体的主机名和探测开关**——连哪个域名、要不要备着几个备用域名，取决于这台手机现在
-///   挂在哪张网上（家里 Wi‑Fi、运营商、有没有过 Surge）。把 A 手机测出来的域名带到 B 手机，
-///   B 只会连得更慢甚至连不上。
-/// - **`routePolicy` 跟着人走**（`synced`）。它不是域名，是他在设置里**用手点的那两档**
-///   「直连 / 网关」——和皮肤、周期同一类东西：用手改出来的习惯。判据没有例外，
-///   结论就该是 `synced`。
+/// `routePolicy` 曾经是 `.synced`（理由是「直连 / 网关是他用手点的两档」），2026-09-19 按
+/// GPT Pro 第二轮审查 B7 改了过来。改的原因不是判据变了，是那条路上有一个真实的坏结果：
 ///
-/// 而且这是**产品已经定下的规则**，写在 `AGENTS.md` 的稳定约定里：行情线路两档由用户自己选、
-/// 出厂默认直连、**没有任何自动切换**，「选择随账号同步、未登录记在本机」。
-/// `PrefsFieldPlanTests.routePolicyFollowsThePerson` 把这个决定钉住了：要改它，
-/// 先改产品规则，不是先改这张表。
+/// > A 在自己的网络里选了网关并同步上去。B 本来是直连，而且这个字段还干净，
+/// > B 同步一轮之后存档里就成了网关——B 从头到尾没碰过线路那两档，行情却换了一头。
+///
+/// 「用手点的」和「跟着人走」在这一项上分了家：他点的是**这台手机怎么连得上行情**，
+/// 不是他想让所有设备都长成什么样。同一个账号的两台手机完全可能一台直连通、一台非走网关不可。
+///
+/// **产品规则一个字没变**（`AGENTS.md` 的稳定约定）：行情线路两档由用户自己选、
+/// 出厂默认直连、**没有任何自动切换**。变的只有一件事——这个选择不再跨设备覆盖。
+/// `PrefsFieldPlanTests.routePolicyStaysOnThisDevice` 与
+/// `RoutePolicyStaysHomeTests` 把这件事钉住了。
+///
+/// 服务端那一侧**仍然认 `routePolicy`**（见下面的 `wireOnlyKeys`）：口袋里还有老版本
+/// 客户端在发它，而服务端对含未知字段的操作是整条拒绝，把它从白名单上删掉等于把那台手机的
+/// 同步队列堵死。新客户端既不发也不收。
 ///
 /// 来回搬过的字段各留了一条记录，免得下一个人再翻一次：`interval` / `keepAwake` 曾经被当成
 /// 本机设置，结果是「换台设备登同一个账号，周期回到出厂 1h」，2026-09-19 改回 `synced`；
@@ -89,9 +95,6 @@ enum PrefsFieldPlan {
     "keepAwake": .synced, "timeZone": .synced, "changeBasis": .synced,
     "overlays": .synced, "subs": .synced, "params": .synced,
     "subHeights": .synced, "subHeightOverrides": .synced,
-    // 直连 / 网关那两档是他用手点的选择，不是这台手机的网络属性（域名和探测开关才是，
-    // 在下面 `deviceOnly` 那一节）。产品规则原话：「选择随账号同步、未登录记在本机」。
-    "routePolicy": .synced,
     // 他在各页上摆出来的样子（见 `Prefs` 末尾那一节）。
     "favoritesSort": .synced, "favoritesAscending": .synced, "favoritesAmount": .synced,
     "favoritesSparkline": .synced, "favoritesExpanded": .synced, "favoritesGroup": .synced,
@@ -103,9 +106,11 @@ enum PrefsFieldPlan {
     "rsiUpper": .syncedMerged, "rsiLower": .syncedMerged,
 
     // ---------------------------------------------------------------- 留在这台机器上
-    // 具体连哪个主机名、要不要备着几个备用域名，是这台手机所处网络的属性，不是他的习惯。
-    // 注意这一行**不包括** `routePolicy`（直连 / 网关那两档），理由见上面那一节。
+    // 具体连哪个主机名、要不要备着几个备用域名、走直连还是走 VPS 网关，都是这台手机
+    // 所处网络的属性，不是他的习惯。`routePolicy` 2026-09-19 从 `.synced` 搬到这儿，
+    // 理由见上面那一节（A 选网关，B 从没碰过线路却跟着换了头）。
     "apiHost": .deviceOnly, "streamHost": .deviceOnly, "smartMarketRoute": .deviceOnly,
+    "routePolicy": .deviceOnly,
     // 本机缓存的开关，只对这台机器有意义。
     "launchSnapshot": .deviceOnly,
   ]
@@ -132,5 +137,9 @@ enum PrefsFieldPlan {
       + "那两个字段自己的名字从不上线，所以服务端只认合成后的 rsiRange。",
     "styleID": "十二款蜡烛造型那一阵子的选择，客户端早就不发了。服务端留着是为了不把老客户端"
       + "的操作整条拒掉——服务端对含未知字段的操作是整条拒绝，删掉它等于把老版本的同步队列堵死。",
+    "routePolicy": "直连 / 网关那两档。2026-09-19 起是本机字段（PrefsFieldClass.deviceOnly）："
+      + "它说的是这台手机这张网连得通哪一头，不跟着人走，新客户端既不发也不收。"
+      + "服务端仍然认这个键，是为了口袋里那些还在发它的老版本客户端——"
+      + "服务端对含未知字段的操作是整条拒绝，删掉它等于把那台手机的同步队列堵死。",
   ]
 }
