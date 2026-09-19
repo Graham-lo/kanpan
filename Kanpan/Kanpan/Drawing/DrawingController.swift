@@ -136,17 +136,32 @@ final class DrawingController: ObservableObject {
     guard !symbol.isEmpty else { return }
     archive[symbol] = items; write(); sync()
   }
+  /// 先落同步存档，再落正式文件。**顺序不能反。**
+  ///
+  /// 同步存档那一份里同时装着「新的本地值」和「那条待发操作」，它是「用户刚才
+  /// 要的是什么」的权威副本；`draws.json` 只是渲染用的正式文件。两次写之间断电
+  /// 的话，「新存档 + 旧 draws.json」下次启动能前向补回来；反过来的
+  /// 「新 draws.json + 旧存档」补不回来——存档里既没有新值也没有待发操作，
+  /// 下一次拉取会拿云端那份旧的把用户刚存的几何盖回去（B2）。
   private func write() {
-    do { try store.save(archive); onArchiveChange?(archive) }
+    onArchiveChange?(archive)
+    do { try store.save(archive) }
     catch { notice = "画线未能保存，原存档已保留。请检查设备存储空间。" }
   }
   func useStorage(_ store: DrawStore, archive: DrawArchive) {
     finish(); self.store = store; self.archive = archive; preferences = archive.preferences
     chart?.setDrawings(archive[symbol]); applyPreferences(); sync()
   }
-  func applySynced(_ value: DrawArchive) throws {
+  /// 三段式里的「落盘」那一段：只写文件，内存里可见的状态一个都不动。
+  /// 这一步抛错时，界面上还是老样子，等于这一批整个没发生。
+  func commitSynced(_ value: DrawArchive) throws {
     guard value != archive else { return }
-    try store.save(value); archive = value; preferences = value.preferences
+    try store.save(value)
+  }
+  /// 三段式里的「发布」那一段：内存与界面换成刚落下去的那一版。
+  func publishSynced(_ value: DrawArchive) {
+    guard value != archive else { return }
+    archive = value; preferences = value.preferences
     chart?.setDrawings(value[symbol]); applyPreferences(); sync()
   }
   private func sync() {

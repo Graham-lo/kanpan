@@ -41,7 +41,14 @@ import Testing
     let response = SyncPushResponse(results: [SyncResult(operationId: first.id, object: object, cursor: 3)], serverTime: Int64(Date().timeIntervalSince1970 * 1000))
     try reopened.acknowledge(response)
     #expect(reopened.archive.operations.count == 1)
-    #expect(reopened.archive.operations[0].baseRevision == 1)
+    // 剩下那条是普通 patch：**base 不许跟着回执往上抬**。
+    // 从前这儿断言的是 1，也就是「第一条推上去之后，第二条改口说自己是基于
+    // revision 1 改的」。用户并没有看过 revision 1，他是拿着 revision 0 那一版
+    // 连着改了两次。抬上去等于替他声明「我见过云端新版本之后还是要我这个值」，
+    // 于是同一串离线操作，积压 100 条（一批发完，没人抬）和 101 条（第 101 条
+    // 被抬）的最终赢家不一样——结果由分批边界决定，而不是由谁改得更晚决定（B5）。
+    #expect(reopened.archive.operations[0].baseRevision == 0)
+    #expect(reopened.archive.operations[0].generation == 0)
     #expect(reopened.archive.local[object.key]?.body["color"] == .string("blue"))
   }
   @Test func offlineDeleteThenUndoRetainsExplicitRestoreAfterRestart() async throws {
@@ -112,7 +119,13 @@ import Testing
     }
     #expect(store.archive.operations.count == 50)
     await store.flush()
-    #expect(store.writeCount == 50)
+    // 从前这儿断言的是 50——每一次 transaction 都独立编码 + 写一遍整档。
+    // 落盘器改成合并写之后，还没开写的旧快照会被新快照顶掉（存档是整份快照，
+    // 第 k 版整个被第 k+1 版包住，丢掉旧版一个字节都不少）。真正写了几次取决于
+    // 后台队列跑得有多快，唯一确定的是「不会比 50 次更多」，以及下面这三条：
+    // 盘上必须是最后那一次的完整快照，50 条操作一条不少、顺序不乱。
+    #expect(store.writeCount <= 50)
+    #expect(store.writeCount >= 1)
     let reopened = try SyncStore(directory: root)
     #expect(reopened.archive.operations.count == 50)
     #expect(reopened.archive.operations.map(\.logical) == Array(1...50).map(UInt64.init))

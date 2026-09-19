@@ -22,7 +22,8 @@ import ReviewUI
   private var task: Task<Void, Never>?
   private var taskID = UUID()
   private var debounce: Task<Void, Never>?
-  private var applying = false
+  /// 「正在把云端那批装进本机」这段保护区，外加出了保护区才做的那些事（B6）。
+  private let gate = ApplyGate()
   private var symbol = ""
   /// 上一次真的做过全量 bootstrap 的时刻。
   private var lastBootstrap = Date.distantPast
@@ -203,6 +204,35 @@ import ReviewUI
           nextDrawings[name].removeAll { $0.id == id }
         }
       }
+      // 画线的启动前向对账（B2）。
+      //
+      // 画线落两个文件：`DrawingController.write()` 先落同步存档（新的本地值和
+      // 那条待发操作在同一份档里），再落 `draws.json`。两次写之间进程没了，盘上
+      // 就是「新存档 + 旧 draws.json」。这里把差额向前补进 `draws.json`。
+      //
+      // **只向前**：只补那些存档里「本机说了算」（有待发操作或未了结的拒绝记录）
+      // 的对象。云端下发的那些一个都不碰，否则这一步就成了拿存档去回滚用户
+      // 已经落在盘上的画线。
+      let onDisk = (try? PersonalSyncCodec.drawings(nextDrawings)) ?? []
+      for object in nextSync.unpersistedLocalChanges(in: ["drawings", "drawingPreferences"], onDisk: onDisk) {
+        if object.collection == "drawingPreferences" {
+          if let value = try? KanpanAccount.JSONValue.object(PersonalSyncCodec.expand(object.body)).decode(DrawingPreferences.self) {
+            nextDrawings.preferences = value
+          }
+          continue
+        }
+        guard case .string(let name) = object.body["symbol"] else { continue }
+        let id = String(object.id.split(separator: "/").last ?? "")
+        if object.deleted {
+          nextDrawings[name].removeAll { $0.id == id }
+          continue
+        }
+        // 解不开的那条就跳过：待发操作还在队列里，用户的意图不会丢，
+        // 而云端那份也进不了 `local`，下一轮还有机会。
+        guard let drawing = try? PersonalSyncCodec.drawing(object) else { continue }
+        if let index = nextDrawings[name].firstIndex(where: { $0.id == id }) { nextDrawings[name][index] = drawing }
+        else { nextDrawings[name].append(drawing) }
+      }
     }
     PersonalSyncCodec.keepDeviceFields(prefs.prefs, in: &nextPrefs)
     // 「自选页停在哪一类」从自选档案搬进偏好：老存档里它写在 `symbols.json` 的
@@ -254,7 +284,7 @@ import ReviewUI
     } else { client = nil }
     let previouslyPrepared = preparedOwner
     return { [self] in
-      task?.cancel(); debounce?.cancel(); task = nil; taskID = UUID(); epoch = UUID(); applying = true
+      task?.cancel(); debounce?.cancel(); task = nil; taskID = UUID(); epoch = UUID(); gate.rotate(); gate.enter()
       onSwitch()
       owner = user?.id; personal = nextStorage; sync = nextSync
       preparedOwner = .some(user?.id)
@@ -273,9 +303,12 @@ import ReviewUI
       drawings.useStorage(drawStore, archive: nextDrawings)
       search.useStorage(nextStorage)
       review.activate(store: nextReview, client: client)
-      applying = false; updateStatus()
+      gate.leave(); updateStatus()
       // 档案已经全部就位，宿主现在可以按它重新兑现首屏那几件事。
       onProfileReady()
+      // 上一次运行拉回来了、但没装进本机就没了的那一批，在这儿补装（B4）。
+      // 判据在存档里，所以断电重开照样看得出来，不用等下一轮全量。
+      if nextSync?.needsApply == true { pendingApply = true; resumeApply() }
     }
   }
   private func sanitize(_ input: ReviewDraft) -> ReviewDraft {
@@ -300,7 +333,7 @@ import ReviewUI
     run(fresh ? .drawings : .push, manual: false)
   }
   private func capture(_ objects: [SyncObject], collections: Set<String>) {
-    guard !applying, owner != nil, let sync else { return }
+    guard !gate.isApplying, owner != nil, let sync else { return }
     do {
       if let error = personal?.error { account.syncStatus = error; return }
       let keys = Set(objects.map(\.key))
@@ -337,8 +370,12 @@ import ReviewUI
     account.lastSync = sync?.archive.lastSync.map { Date(timeIntervalSince1970: Double($0) / 1000) }
     // 被隔离的那几条要说出来：它们不在 `pending` 里（不会永远挂着归不了零），
     // 但用户的改动确实还没上云——这句就是那件事的唯一交代。
+    //
+    // 数是从**存档**里读的，不是内存里的一个数组：那些改动重启之后还在本机、
+    // 还没推上去，这句话重启之后也就还得成立（B3）。
+    let stuck = sync?.archive.rejected.count ?? 0
     account.syncStatus = owner == nil ? "" : !account.autoSync ? "已暂停" : account.pending > 0 ? "待同步"
-      : !stuck.isEmpty ? "有 \(stuck.count) 项这台服务器还不认，已留在本机"
+      : stuck > 0 ? "有 \(stuck) 项这台服务器还不认，已留在本机"
       : account.lastSync == nil ? "尚未同步" : "已同步"
   }
   /// 这一轮同步做到哪一步。
@@ -363,22 +400,65 @@ import ReviewUI
   /// app 要是这会儿被杀，云端就永远停在旧值上。
   private var queuedPush: Bool?
 
-  /// 被服务端按语义顶回来、已经从待发队列里隔离出来的那些操作。
-  ///
-  /// 只活在这次会话里：用户的值和脏标记都还在本机，服务端修好之后下一次改动会
-  /// 重新组一条新操作补上去，所以不需要把它们写进存档。留着是为了能在状态里
-  /// 说清「有几项这台服务器还不认」，而不是让用户看见一个永远归不了零的 pending。
-  private var stuck: [SyncOperation] = []
+  /// 被服务端按语义顶回来的那些操作现在记在**存档**里（`SyncArchive.rejected`），
+  /// 不再是内存里的一个数组。见 `SyncStore.quarantine`。
 
   /// 这个错误是不是「再发一万次也不会成功」。
   ///
   /// 400 / 422 这类是服务端对内容本身的判决（字段不认、格式不对），重试没有意义；
-  /// 401 要重新登录、409 要重拉、429 是限流、5xx 与网络错误都是「这次不行」，
-  /// 那些该留在队列里等下一轮。
+  /// 401 要重新登录、429 是限流、5xx 与网络错误都是「这次不行」，那些该留在队列里
+  /// 等下一轮。409 分两种，见 `isRollback`：`resync_required` 要重拉重整，
+  /// `idempotency_mismatch` 是「同 id 的操作已经落过库、载荷却对不上」——那条
+  /// 再发一万次也只会拿到同一个 409，只能隔离。
   private static func isPermanent(_ error: AccountError) -> Bool {
     guard case .http(let code, let reason) = error else { return false }
+    if reason == "idempotency_mismatch" { return true }
     if code == 401 || code == 409 || code == 429 { return false }
     return code == 400 || code == 422 || reason == "invalid_operation"
+  }
+  /// 这个错误能不能证明**这一批服务端一条都没落库**。
+  ///
+  /// `merge()` 在事务里抛 `resync_required`，`tx.commit()` 根本没跑到，所以整批
+  /// 确定回滚，可以把 `sent` 清掉重整。别的理由不行：`idempotency_mismatch`
+  /// 恰恰说明同 id 的操作确实已经落过库。
+  private static func isRollback(_ error: AccountError) -> Bool {
+    guard case .http(409, let reason) = error else { return false }
+    return reason == "resync_required"
+  }
+  /// 一轮同步里最多做几次「回滚 → 重拉 → 重整 → 接着推」。
+  ///
+  /// 恢复本身要花两三次跨洋往返，正常最多用一次（服务端顶回来的那一下）。给三次
+  /// 是为了容下「重拉的同时别的设备又改了一次」；再多就不是冲突而是打转了，
+  /// 剩下的留给下一轮。
+  private static let resyncBudget = 3
+  /// 被 409 顶回来之后，把这一批碰过的对象重新拉一遍。
+  ///
+  /// **必须在这一轮里就拉。** `resync_required` 之后只置 `needsBootstrap` 是不够的：
+  /// 下一轮 `.full` 照样**先跑推送循环**，照样撞同一个 409，永远到不了用来修复它的
+  /// 拉取阶段——整个账号的队列就此再也前进不了（B1）。
+  ///
+  /// 按 collection 归并着拉，画线再按品种那一层的前缀收窄（画线 id 是
+  /// `venue/market/symbol/<线 id>`）：既不会退化成一条一个请求，也不会为了一条线
+  /// 把这个人所有品种的画线都拖回来。
+  private func refetch(_ batch: [SyncOperation], api: AccountClient, into sync: SyncStore) async throws {
+    var scopes: Set<[String]> = []
+    for op in batch {
+      guard op.collection == "drawings" else { scopes.insert([op.collection]); continue }
+      let folder = op.objectId.split(separator: "/").dropLast().joined(separator: "/")
+      scopes.insert(folder.isEmpty ? [op.collection] : [op.collection, folder + "/"])
+    }
+    for scope in scopes.sorted(by: { $0.joined(separator: "/") < $1.joined(separator: "/") }) {
+      var after: String?
+      repeat {
+        var query = [URLQueryItem(name: "collection", value: scope[0])]
+        if scope.count > 1 { query.append(URLQueryItem(name: "prefix", value: scope[1])) }
+        if let after { query.append(URLQueryItem(name: "after", value: after)) }
+        var components = URLComponents(); components.queryItems = query
+        let page: SyncPage = try await api.request("v1/sync/bootstrap" + (components.string ?? ""))
+        try Task.checkCancellation()
+        try sync.receive(page); after = page.next
+      } while after != nil
+    }
   }
   private func run(_ plan: SyncPlan, manual: Bool) {
     guard task == nil else {
@@ -427,15 +507,33 @@ import ReviewUI
         // 撞过一次「这条永远不会成功」之后改成一条一条发，把坏的那条揪出来单独隔离，
         // 不让它替后面所有好操作挡路。
         var oneByOne = false
+        // 还剩几次「回滚 → 重拉 → 重整 → 接着推」的机会。
+        var resyncs = Self.resyncBudget
         while !sync.archive.operations.isEmpty {
           try Task.checkCancellation()
-          let batch = Array(sync.archive.operations.prefix(oneByOne ? 1 : Self.pushBatchLimit))
+          // 一批不是「队首一百条」，是「队首一百条里**能安全同批**的那几条」：
+          // 删除后面紧跟的恢复、恢复后面带旧 generation 的那些，同批必定整批回滚
+          // （`SyncStore.batch` 写了服务端 `merge()` 逐条推出来的那几条边）。
+          let batch = sync.nextBatch(limit: oneByOne ? 1 : Self.pushBatchLimit)
           let before = sync.archive.operations.count
           try sync.markSent(batch.map(\.id))
-          struct Push: Encodable { var operations: [SyncOperation] }
           let result: SyncPushResponse
           do {
-            result = try await api.request("v1/sync/operations", method: "POST", body: JSONEncoder().encode(Push(operations: batch)), key: batch[0].id)
+            result = try await api.request("v1/sync/operations", method: "POST", body: JSONEncoder().encode(SyncPushRequest(batch)), key: batch[0].id)
+          } catch let error as AccountError where Self.isRollback(error) && resyncs > 0 {
+            // 服务端那一整个事务已经回滚，这批**一条都没落地**。所以：先把 `sent`
+            // 清掉（不清就没法重整，那些操作会一直被当成「结果不明、不许碰」），
+            // 然后**在同一轮里**把受影响的对象拉回来，按新版本重整本地意图，
+            // 最后接着推。等下一轮就是回到同一个 409 里打转。
+            try Task.checkCancellation(); guard requestEpoch == epoch && taskID == runID else { return }
+            resyncs -= 1
+            try sync.rollback(batch.map(\.id))
+            try await refetch(batch, api: api, into: sync)
+            guard requestEpoch == epoch && taskID == runID else { return }
+            try sync.realign()
+            // 重拉过之后本机这份已经是新的了，这一轮的全量不必再为它重来一次。
+            updateStatus()
+            continue
           } catch let error as AccountError where Self.isPermanent(error) {
             // 语义错误（400 / 422）：这条**再发一万次也不会成功**。重试只会把
             // 整条队列堵死——一次缩放就能让这个账号从此再也同步不上任何东西
@@ -443,12 +541,14 @@ import ReviewUI
             // 整条操作被 `invalid_operation` 顶回来）。
             try Task.checkCancellation(); guard requestEpoch == epoch && taskID == runID else { return }
             guard batch.count == 1 else { oneByOne = true; continue }   // 先揪出是哪一条
-            try sync.quarantine(batch[0].id)
-            stuck.append(batch[0])
-            // **本地值和脏标记一个都不动**：下次启动本地照样赢，服务端修好之后
-            // 用户下一次改动会拿当前的值重新组一条新操作补上去。被隔离的这条里
-            // 那几条线上路径记进 `dropped`，免得同一个字段的兄弟路径在别的操作里
-            // 被认下，反倒把这个字段的脏标记顺手清了。
+            let reason: String = { if case .http(_, let code) = error { return code }; return "request_failed" }()
+            try sync.quarantine(batch[0].id, reason: reason)
+            // **本地值和脏标记一个都不动**：下次启动本地照样赢。这条连同用户当时的
+            // 意图一起写进了存档（`SyncArchive.rejected`），所以它既挡得住云端那份
+            // 把本地值盖回去，也能在服务端修好之后由 `retryRejected` 用一条**新 id**
+            // 的操作自己补上去，不用用户再改一次。被隔离的这条里那几条线上路径
+            // 记进 `dropped`，免得同一个字段的兄弟路径在别的操作里被认下，
+            // 反倒把这个字段的脏标记顺手清了。
             if batch[0].collection == "settings" && batch[0].objectId == "chart" {
               dropped.formUnion(batch[0].fields.keys)
             }
@@ -495,8 +595,17 @@ import ReviewUI
           } while after != nil
         }
         if scopes.contains("drawings") { bootstrappedDrawings.insert(requestedSymbol) }
-        if case .full = plan { needsBootstrap = false; lastBootstrap = Date() }
-        try sync.transaction { $0.lastSync = Int64(Date().timeIntervalSince1970 * 1000) }
+        if case .full = plan {
+          needsBootstrap = false; lastBootstrap = Date()
+          // 服务端修好之后，被它顶回来过的那几项自己补上去，不用用户再改一次。
+          // **只在全量这一档。** 每次推送后都重试就是个忙循环：服务端要是真的
+          // 永远不认这个字段，那就是每 500 毫秒一次跨洋往返换一次 400。
+          // 这儿刚把云端那份拉回来，正好拿它和当前本地值现做差分。
+          try sync.retryRejected(device: account.device.id)
+          if !sync.archive.operations.isEmpty { queuedPush = queuedPush ?? false }
+        }
+        // 只记「拉到哪儿了」。「装进本机没有」由 `applyPending()` 落盘成功后自己记（B4）。
+        try sync.markFetched(at: Int64(Date().timeIntervalSince1970 * 1000))
         try applyPending(); updateStatus()
         // 复盘同步只跟着全量走：登录 / 恢复会话 / 手动 / 到点的回前台。
         if case .full = plan { review.synchronize(manual: manual) }
@@ -517,18 +626,31 @@ import ReviewUI
     guard pendingApply, canApply(), sync != nil else { return }
     do { try applyPending(); updateStatus() } catch { account.syncStatus = error.localizedDescription }
   }
+  /// 把云端那批装进本机：**准备 → 落盘 → 发布**三段。
+  ///
+  /// 从前是一段：进门先把 `pendingApply` 清掉，先把设置装进去，再去做会抛错的
+  /// 画线解码与保存。中途抛一次，留下的是「设置换了、画线没换、`pendingApply`
+  /// 也没了」；而 `lastSync` 在调它之前就已经写上了，下一轮认定这批已经消化过，
+  /// 于是这批的画线永远不会落到本机（B4）。
+  ///
+  /// 现在：会抛错的活儿全在第一段做完，第一段抛错时**一个字节都没写、一个 store
+  /// 都没碰**，`pendingApply` 原样留着等下一轮重来；第二段把整套候选态一次性落盘
+  /// （各文件 + 存档里的 `lastApplied`），落盘成功之后才清 `pendingApply`；
+  /// 第三段才把同一代值推给内存里的 store 与界面。
   func applyPending() throws {
     guard let sync else { return }
     guard canApply() else { pendingApply = true; return }
-    pendingApply = false
-    applying = true; defer { applying = false }
+    // 进门先记成「这一批还没装进去」，而不是从前那样先把它清掉。中途抛错时这一笔
+    // 还在，面板一关 `resumeApply()` 就会重来；清掉的时机在第二段落盘成功之后。
+    pendingApply = true
     let objects = sync.archive.local
+
+    // —— 一、准备。只算不写，也不碰任何可见状态。这一段抛错等于这一批整个没发生。
+    var nextPrefs: Prefs?
     if let settings = objects["settings:chart"] {
-      // `applySynced` 是**按字段合并**：本地脏的一律跳过，干净的跟着云端走。
-      // 合并完本地还脏，就说明云端那份在这几个字段上是旧的——反过来把本地这份推上去，
-      // 别等下一次用户改动才捎带。
-      prefs.applySynced(try PersonalSyncCodec.apply(settings, to: prefs.prefs))
-      if prefs.stamp.isDirty { captureSettings() }
+      // 按字段合并：本地脏的一律跳过，干净的跟着云端走。这里先算出合并结果，
+      // 第三段 `prefs.applySynced` 会把同一套规则再走一遍（幂等）。
+      nextPrefs = Prefs.keeping(prefs.dirtyFields, of: prefs.prefs, over: try PersonalSyncCodec.apply(settings, to: prefs.prefs))
     }
     var archive = drawings.storedArchive
     if let tools = objects["drawingPreferences:tools"] {
@@ -544,7 +666,6 @@ import ReviewUI
         else { archive[name].append(drawing) }
       }
     }
-    try drawings.applySynced(archive)
     func order(_ a: SyncObject, _ b: SyncObject) -> Bool {
       let x: Double = { if case .number(let n) = a.body["order"] { return n }; return 0 }()
       let y: Double = { if case .number(let n) = b.body["order"] { return n }; return 0 }()
@@ -568,7 +689,41 @@ import ReviewUI
     // **云端重建出来的那份当底，再按 `SymbolFieldPlan` 的 localOnly 表把本机字段抄回去**：
     // 清单只有那一张表，加字段的人不必记得回这儿补参数（`SymbolFieldPlanTests` 替他记）。
     let rebuilt = SymbolPrefs(favorites: names, groups: groups, groupForSymbol: membership, pinned: pinned)
-    symbols.applySynced(SymbolPrefs.keeping(SymbolPrefs.localOnlyFieldNames, of: symbols.prefs, over: rebuilt))
+    let nextSymbols = SymbolPrefs.keeping(SymbolPrefs.localOnlyFieldNames, of: symbols.prefs, over: rebuilt)
+    let encodedSymbols = try JSONEncoder().encode(nextSymbols)
+
+    // —— 二、落盘。整套候选态一次性提交；成功之后才准清 `pendingApply`。
+    if let nextPrefs, nextPrefs != prefs.prefs {
+      personal?.setPrefsData(PrefsCodec.encode(nextPrefs), forKey: PrefsCodec.key)
+    }
+    if nextSymbols != symbols.prefs {
+      personal?.setSymbolPrefsData(encodedSymbols, forKey: SymbolPrefsStore.defaultsKey)
+    }
+    if personal?.error != nil { throw AccountError.storage }
+    try drawings.commitSynced(archive)
+    // 「拉到哪儿了」和「装进本机没有」是两个时刻。这一句必须排在所有文件落盘之后：
+    // 它一旦落下去，下一次启动就不会再重做这一批了。
+    try sync.markApplied(at: Int64(Date().timeIntervalSince1970 * 1000))
+    sync.flushNow()
+    pendingApply = false
+
+    // —— 三、发布。到这儿盘上已经是新的一代，内存与界面跟上。
+    gate.enter(); defer { gate.leave() }
+    if let nextPrefs {
+      prefs.applySynced(nextPrefs)
+      // 合并完本地还脏，说明云端那份在这几个字段上是旧的——反过来把本地这份推上去，
+      // 别等下一次用户改动才捎带。
+      //
+      // **必须等离开保护区之后再做**：记账那一步的第一道门就是 `!gate.isApplying`，
+      // 写在保护区里面等于一条操作都产生不了（B6）。代次交给 `ApplyGate` 校验：
+      // 中途换了账号、或者又起了一轮应用，这个快照就作废。
+      gate.afterApplying { [weak self] in
+        guard let self, prefs.stamp.isDirty else { return }
+        captureSettings()
+      }
+    }
+    drawings.publishSynced(archive)
+    symbols.applySynced(nextSymbols)
     // 云端那份设置也是「档案换进来了」的一种：周期、落地页这些要跟着重新兑现一次。
     onProfileReady()
   }
