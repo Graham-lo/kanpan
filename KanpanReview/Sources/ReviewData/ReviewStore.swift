@@ -44,11 +44,25 @@ public enum ReviewStorageError: LocalizedError {
   private var replayWrittenAt = Date.distantPast
   private var replayDirty = false
 
+  /// 三个文件，**只有主档坏了才拒绝开门**。
+  ///
+  /// 以前三份里任何一份解不动，`init` 就整个抛；而 `init` 抛就等于
+  /// `AppAccountBridge.prepare` 抛，整份账号档案（设置、自选、画线、复盘）都换不进来。
+  /// 拿一个书签（重温进度）或者一条写了一半的草稿去换「整个复盘打不开」，
+  /// 代价对不上：
+  ///
+  /// - `replay-positions.json`（进度）坏了 → 丢这个书签，别的照常。
+  /// - `draft-v1.json`（草稿）坏了 → 丢这条草稿，记录与待发队列一条不少。
+  /// - `review-v1.json`（主档）坏了 → **照旧抛**。那里面是用户全部的记录和还没推上去的
+  ///   队列，拿一份空档接着跑等于把它们一起丢掉，还会被下一次写盘盖死。
+  ///
+  /// 坏掉的那份不静默抹掉：先留一份 `.backup`（和 `DrawStore.save`、
+  /// `PersonalFileStorage.write` 同一个做法），再按缺省值往下走。
   public init(directory: URL) throws {
     url = directory.appendingPathComponent("review-v1.json")
     replayURL = directory.appendingPathComponent("replay-positions.json")
     draftURL = directory.appendingPathComponent("draft-v1.json")
-    if FileManager.default.fileExists(atPath: replayURL.path) { positions = try JSONDecoder().decode([String: ReviewReplayPosition].self, from: Data(contentsOf: replayURL)) } else { positions = [:] }
+    positions = Self.recover([String: ReviewReplayPosition].self, at: replayURL) ?? [:]
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     if FileManager.default.fileExists(atPath: url.path) {
       let value = try JSONDecoder().decode(ReviewArchive.self, from: Data(contentsOf: url))
@@ -57,10 +71,52 @@ public enum ReviewStorageError: LocalizedError {
       stamp = Self.fingerprint(url)
     } else { archive = ReviewArchive() }
     if FileManager.default.fileExists(atPath: draftURL.path) {
-      let saved = try JSONDecoder().decode(DraftFile.self, from: Data(contentsOf: draftURL)).draft
-      archive.draft = saved.flatMap { value in archive.records.contains(where: { $0.id == value.id }) ? nil : value }
+      // 解不动时 `recover` 给 nil，这儿要和「文件里明写着没有草稿」区分开：
+      // 前者保留主档里那一份（登录时从访客档案并过来的草稿就住在那儿），
+      // 后者照旧清空（草稿提交完 `saveDraft(nil)` 留下的就是它）。
+      if let saved = Self.recover(DraftFile.self, at: draftURL) {
+        archive.draft = saved.draft.flatMap { value in archive.records.contains(where: { $0.id == value.id }) ? nil : value }
+      }
     }
   }
+
+  /// 读一份**侧文件**：解不动就留一份 `.backup` 再返回 nil，不抛。
+  private static func recover<T: Decodable>(_ type: T.Type, at url: URL) -> T? {
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    if let data = try? Data(contentsOf: url), let value = try? JSONDecoder().decode(type, from: data) { return value }
+    let backup = url.appendingPathExtension("backup")
+    if !FileManager.default.fileExists(atPath: backup.path) { try? FileManager.default.copyItem(at: url, to: backup) }
+    return nil
+  }
+
+  /// 把另一份档案的两份**侧文件**并过来：草稿与重温进度。
+  ///
+  /// 记录与待发队列由调用方自己在 `transaction` 里挑（要按 `serverId` 去重、要
+  /// 重编 `create` 的 body），侧文件这两样没得挑，规则只有一条：**这边没有的才收**。
+  ///
+  /// 草稿**必须落回 `draft-v1.json`**，不能只塞进主档的 `archive.draft`：`init` 末尾
+  /// 是拿这份侧文件去盖 `archive.draft` 的，只写主档的话，账号目录里那份写着
+  /// 「现在没有草稿」的 `draft-v1.json`（上一条草稿提交时 `saveDraft(nil)` 留下的）
+  /// 会在下一次冷启动把刚并过来的草稿当场抹掉——游客转正式账号丢草稿就是这么丢的。
+  /// 进度则是压根没人并过。
+  public func adoptSideFiles(from other: ReviewStore, sanitizingDraft: (ReviewDraft) -> ReviewDraft = { $0 }) throws {
+    if archive.draft == nil, let draft = other.archive.draft { try saveDraft(sanitizingDraft(draft)) }
+    try adoptReplay(from: other)
+  }
+
+  /// 重温进度：这边没有的才收（这边有的那一条是这个人自己更晚看到的位置）。
+  public func adoptReplay(from other: ReviewStore) throws {
+    var next = positions
+    for (key, value) in other.allReplay where next[key] == nil { next[key] = value }
+    while next.count > 500, let key = next.keys.sorted().first { next.removeValue(forKey: key) }
+    guard next.keys != positions.keys else { return }
+    positions = next
+    replayDirty = true
+    try flushReplay()
+  }
+
+  /// 这份档案知道的全部重温进度：侧文件那份为主，老存档里并进主档的那份兜底。
+  public var allReplay: [String: ReviewReplayPosition] { archive.replay.merging(positions) { _, live in live } }
   public func saveDraft(_ value: ReviewDraft?) throws {
     try JSONEncoder().encode(DraftFile(draft: value)).write(to: draftURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     archive.draft = value

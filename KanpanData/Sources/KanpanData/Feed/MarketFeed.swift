@@ -101,6 +101,14 @@ public actor MarketFeed {
   /// 图本身还是跟着 DisplayLink 走 120Hz。开新的一根不受闸门管，立刻放行。
   private var tickFlush: Task<Void, Never>?
   private var tickDirty = false
+  /// 最后一次真正抛上去的那根末根。
+  ///
+  /// 消费端（`MarketModel.apply` 的 `.lastBar`）是 `upsert` 语义：一根 K 线只有被
+  /// 抛上去过，图上才有它的值。而换桶那一刻上一根很可能正压在合帧闸门里——
+  /// `emitTick(force:)` 会把那发 flush 取消掉，`pushLastBar` 又只发 `count - 1`
+  /// （此时已经是新开的那根），于是上一根就永远冻在它最后一次被抛出去的半截值上，
+  /// 连交易所 `x=true` 的定盘价都到不了图表。记住抛过什么，换桶时先把上一根补发掉。
+  private var lastPushed: Bar?
   private let tickCoalesceMs: Double = 80
   /// 上一次真正把末根抛上去的时刻（走 `nowMs()` 那把钟）。
   private var lastTickEmitMs = -Double.infinity
@@ -198,6 +206,7 @@ public actor MarketFeed {
     }
 
     sourceComposer = nil
+    lastPushed = nil
     // ② 换订阅。同一条连接，连接 id 不变。
     await ws.replaceStreams(streamNames())
     guard current(requested) else { return }
@@ -461,7 +470,9 @@ public actor MarketFeed {
     //
     // 开新根是结构性变化（时间戳变了，图上要多出一根），晚 80ms 收线肉眼就是
     // 「顿一下」，所以它不受闸门管，和 `foldTick` 的 `.appended` 同一个规矩。
-    emitTick(force: composer.series.lastTime != before, now: now)
+    // 换桶要立刻放行（结构性变化），`x=true` 也要——那是交易所宣布的定盘值，
+    // 一根只会来一条，被闸门攒掉就再也不会有第二条把它带上去。
+    emitTick(force: composer.series.lastTime != before || k.closed, now: now)
     scheduleSnapshot()
   }
 
@@ -531,8 +542,17 @@ public actor MarketFeed {
   }
 
   private func pushLastBar() {
-    guard composer.series.count > 0 else { return }
-    let b = composer.series.bar(at: composer.series.count - 1)
+    let s = composer.series
+    guard s.count > 0 else { return }
+    let i = s.count - 1
+    // 换桶补发：上一根如果被闸门拦着、最后一次抛出去的还不是它的定盘值，先补一发。
+    // 不补的话消费端那根就停在半截上——它再也不会有新报文了。
+    if i > 0, let pushed = lastPushed {
+      let prev = s.bar(at: i - 1)
+      if pushed.openTime <= prev.openTime, pushed != prev { emit(.lastBar(prev)) }
+    }
+    let b = s.bar(at: i)
+    lastPushed = b
     emit(.lastBar(b))
   }
 
@@ -655,6 +675,11 @@ public actor MarketFeed {
     }
     // 启动快照缺口请求，但不要等待它挡住最新窗口。BinanceREST / transport
     // 都是 actor，可重入地让两个请求同时在路上；首屏先用最新窗口，缺口回来后再合并。
+    // 一个请求一个基线，而且基线必须取在请求发出**之前**：请求在路上的时候到的
+    // WS 更新要算进「这一发回包已经过期了」那一边。取晚了（比如等回包时才取）那段
+    // 窗口里的实时末根会被算进基线，`preservingLiveTail` 判成 false，陈旧的 REST
+    // 回包就把活着的末根盖回去。
+    let gapRevision = composer.wsRevision
     let gapTask: Task<[Bar], Error>? = (since > 0 && iv.source == iv)
       ? Task { [rest] in try await rest.contiguousTail(symbol: sym, interval: iv, from: since) }
       : nil
@@ -717,12 +742,11 @@ public actor MarketFeed {
     // 可用行情降级为离线。
     if since > 0, iv.source == iv {
       do {
-        let revision = composer.wsRevision
         let gap: [Bar]
         if let gapTask { gap = try await gapTask.value }
         else { gap = try await rest.contiguousTail(symbol: sym, interval: iv, from: since) }
         guard current(request), sym == symbol, iv == interval else { return }
-        composer.merge(gap, preservingLiveTail: composer.wsRevision != revision)
+        composer.merge(gap, preservingLiveTail: composer.wsRevision != gapRevision)
         await cache.put(composer.series)
         emit(.historyError(nil))
         emit(.series(composer.series))

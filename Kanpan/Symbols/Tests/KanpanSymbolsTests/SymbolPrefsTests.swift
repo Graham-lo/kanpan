@@ -149,11 +149,17 @@ struct SymbolPrefsTests {
     #expect(text.contains("favorites"))
   }
 
-  @Test("存档坏了当空处理，不崩")
+  /// `load()` 是「没有档案也得开得起来」那条路（`SymbolPickerModel.init` 的占位档案）。
+  /// 要回写磁盘的调用方走 `read()`，它对同一份坏档是**抛**的——见
+  /// `SymbolPrefsDurabilityTests`，那才是不让空档盖掉自选的那道闸。
+  @Test("存档坏了：load() 当空处理不崩，read() 照实抛")
   @MainActor
   func brokenArchive() {
     let storage = MemoryPrefsStorage(["k": Data("这不是 JSON".utf8)])
     #expect(SymbolPrefsStore(storage: storage, key: "k").load() == SymbolPrefs())
+    #expect(throws: SymbolPrefsStore.StoreError.unreadable) {
+      try SymbolPrefsStore(storage: storage, key: "k").read()
+    }
   }
 
   @Test("清空存档")

@@ -139,11 +139,23 @@ import ReviewUI
       if !FileManager.default.fileExists(atPath: target.path) { try data.write(to: target, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
     }
     // Only the unowned local review archive is eligible for automatic migration.
-    let old = ReviewChartBridge.storageDirectory().appendingPathComponent("local/review-v1.json")
-    let next = guest.appendingPathComponent("review-v1.json")
-    if FileManager.default.fileExists(atPath: old.path), !FileManager.default.fileExists(atPath: next.path) {
-      _ = try ReviewStore(directory: old.deletingLastPathComponent())
-      try FileManager.default.copyItem(at: old, to: next)
+    //
+    // 复盘落**三个**文件，不是一个：主档 `review-v1.json`、草稿 `draft-v1.json`、
+    // 重温进度 `replay-positions.json`。这儿原来只搬主档，于是老用户升上来那一刻
+    // 「写了一半还没提交的那条草稿」和「每条记录重温到哪一根」全留在老目录里再也读不到——
+    // 那两份是纯粹的用户产出，不是可以重算的缓存。主档能不能搬得通仍然是前提
+    // （`ReviewStore(directory:)` 解不动就抛，整次迁移不做）。
+    let source = ReviewChartBridge.storageDirectory().appendingPathComponent("local", isDirectory: true)
+    let old = source.appendingPathComponent("review-v1.json")
+    if FileManager.default.fileExists(atPath: old.path),
+       !FileManager.default.fileExists(atPath: guest.appendingPathComponent("review-v1.json").path) {
+      _ = try ReviewStore(directory: source)
+      for name in ["review-v1.json", "draft-v1.json", "replay-positions.json"] {
+        let from = source.appendingPathComponent(name), to = guest.appendingPathComponent(name)
+        guard FileManager.default.fileExists(atPath: from.path),
+              !FileManager.default.fileExists(atPath: to.path) else { continue }
+        try FileManager.default.copyItem(at: from, to: to)
+      }
     }
     try AccountFiles.write(true, to: marker)
   }
@@ -155,7 +167,14 @@ import ReviewUI
     let directory = try files.directory(user: user?.id)
     let nextStorage = try PersonalFileStorage(directory: directory)
     var nextPrefs = PrefsStore.load(from: nextStorage)
-    var nextSymbols = SymbolPrefsStore(storage: nextStorage).load()
+    // 自选要和画线同一个姿态：**读不动就把整段 `prepare` 中断**，绝不拿一份凭空造出来的
+    // 空档往下走（下面 `:255` 那一步会把它回写进 `symbols.json`，用户的自选就永久没了）。
+    // 以前这儿是 `load()`，解不动静默退成空档；画线那一行一直是 `try drawStore.read()`，
+    // 两侧不对称正是 B-01。`prepare` 抛之后各调用方的行为见 `AccountFeature`：
+    // 冷启动 `activate()` 由 `MainScreen` 接住（提示一句 + 照常兑现落地页，档案不换），
+    // 登录 / 退登 / 恢复会话则是把错误摆在账号页上、那一次动作不生效——
+    // 都不崩，也都不会写盘。
+    var nextSymbols = try SymbolPrefsStore(storage: nextStorage).read()
     let drawStore = DrawStore(url: directory.appendingPathComponent("draws.json"))
     var nextDrawings = try drawStore.read()
     let loadedDrawings = nextDrawings
@@ -165,7 +184,9 @@ import ReviewUI
     if let claim {
       let guestStorage = try PersonalFileStorage(directory: claim.directory)
       let guestPrefs = PrefsStore.load(from: guestStorage)
-      let guestSymbols = SymbolPrefsStore(storage: guestStorage).load()
+      // 访客那份同理：解不动就中断这次登录，而不是把访客的自选当成「本来就没有」
+      // 悄悄丢掉（下一行的画线一直是这个姿态）。
+      let guestSymbols = try SymbolPrefsStore(storage: guestStorage).read()
       let guestDrawings = try DrawStore(url: claim.directory.appendingPathComponent("draws.json")).read()
       if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("prefs.json").path) { nextPrefs = guestPrefs }
       for (key, values) in guestDrawings.bySymbol {
@@ -188,8 +209,12 @@ import ReviewUI
           if op.kind == "create", let value = try? JSONDecoder().decode(ReviewDraft.self, from: op.body) { op.body = try JSONEncoder().encode(sanitize(value)); op.attempted = nil }
           archive.queue.append(op)
         }
-        if archive.draft == nil { archive.draft = guestReview.archive.draft.map(sanitize) }
       }
+      // 草稿与重温进度是两份**侧文件**，各自有自己的落盘位置，不能只改主档里那份镜像：
+      // 草稿只写进 `archive.draft` 的话，下次 `ReviewStore.init` 会拿账号目录里那份
+      // 写着「现在没有草稿」的 `draft-v1.json` 把它盖掉（游客写了一半的那条当场消失），
+      // 进度则是压根没人并。规则与证据都在 `ReviewStore.adoptSideFiles(from:)`。
+      try nextReview.adoptSideFiles(from: guestReview, sanitizingDraft: sanitize)
       if let nextSync {
         let imported = try [PersonalSyncCodec.settings(guestPrefs)] + PersonalSyncCodec.drawings(guestDrawings) + PersonalSyncCodec.symbols(guestSymbols)
         // 一次事务记完：逐条来的话这一档要被整份重写几十上百遍。

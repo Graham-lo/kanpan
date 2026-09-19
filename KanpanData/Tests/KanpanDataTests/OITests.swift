@@ -743,3 +743,133 @@ struct OIPartialTests {
     #expect(!out.isEmpty)
   }
 }
+
+@Suite("OI 覆盖记账：只有真问到的那一段才算覆盖")
+struct OICoverageTests {
+
+  private static let step: Int64 = 3_600_000
+  private static let day: Int64 = 86_400_000
+
+  /// 覆盖记账只有一对端点（`MarketModel.oiRegion`，落盘成 `KOI2` 的 from/to）。
+  /// 请求失败时把 `want.from` 记成已有，那一截就永远补不回来：`missingSegments`
+  /// 只比端点，`holeSegments` 又只看得见**点与点之间**的洞。
+  @Test("左边那截整段失败：记账一步都不推进，下一轮还会再问它")
+  func aFailedSegmentIsNotCoverage() throws {
+    let step = Self.step
+    let now = Aggregator.utcMs(year: 2026, month: 9, day: 19)
+    // 会话一：右边这 10 根真拿到了，落盘的区间就是它。
+    let have = (from: now - 10 * step, to: now)
+    let points = (0...10).map { OIPoint(time: now - Int64(10 - $0) * step, value: 100) }
+    // 用户往左拖，想要更早的 20 根。
+    let want = (from: now - 30 * step, to: now + 2 * step)
+    let left = try #require(OISource.missingSegments(have: have, want: want, step: step,
+                                                     refresh: false).first)
+    #expect(left.from == want.from)
+    // 这一段整段没问到（网络错 / 451 / 网关超时 / 归档站给不出）。
+    let failed = OIFetch(want: left, points: [], complete: false)
+    #expect(OISource.coveredRegion(of: [failed], step: step) == nil)
+    // `mergeOI` 拿到 nil 就一步都不推进，记账还是老样子 → 下一轮照样认得出缺这一截。
+    let again = OISource.missingSegments(have: have, want: want, step: step, refresh: false)
+    #expect(again.contains { $0.from == want.from })
+    // 另一条路救不了它：缺的是第一个点**之前**那一截，扫点序列只看得见点与点之间的洞。
+    #expect(OISource.holeSegments(points: points, want: want, interval: .h1, now: now).isEmpty)
+  }
+
+  /// 「问到了、但这几天本来就没有」不是失败：上市前那一截收进覆盖，
+  /// 否则每平移一次就把它重下一遍。
+  @Test("问到了却是空的：照样算覆盖，不会每平移一次重下一遍")
+  func anAnsweredEmptySegmentIsStillCoverage() throws {
+    let step = Self.step
+    let now = Aggregator.utcMs(year: 2026, month: 9, day: 19)
+    let have = (from: now - 10 * step, to: now)
+    let want = (from: now - 30 * step, to: now + 2 * step)
+    let left = try #require(OISource.missingSegments(have: have, want: want, step: step,
+                                                     refresh: false).first)
+    let answered = OIFetch(want: left, points: [], complete: true)
+    let span = try #require(OISource.coveredRegion(of: [answered], step: step))
+    #expect(span.from == want.from)
+    let region = (from: min(have.from, span.from), to: max(have.to, span.to))
+    #expect(!OISource.missingSegments(have: region, want: (want.from, have.to), step: step,
+                                      refresh: false).contains { $0.from == want.from })
+  }
+
+  /// 右端仍然只认真到手的点：`want.to` 伸到最后一根 K 线之后两根，那两根还没发生。
+  @Test("几段合起来：失败的那段不算，右端只认真到手的点")
+  func mixedSegmentsOnlyCountTheAnsweredOnes() throws {
+    let step = Self.step
+    let now = Aggregator.utcMs(year: 2026, month: 9, day: 19)
+    let left = (from: now - 30 * step, to: now - 10 * step)
+    let right = (from: now - 10 * step, to: now + 2 * step)
+    let got = (0...10).map { OIPoint(time: now - Int64(10 - $0) * step, value: 100) }
+    let span = try #require(OISource.coveredRegion(
+      of: [OIFetch(want: left, points: [], complete: false),
+           OIFetch(want: right, points: got, complete: true)], step: step))
+    #expect(span.from == right.from)          // 失败的左边那段没被收进去
+    #expect(span.to == now + step)            // 未来那两根没发生，右端停在最后一个点之后一格
+    #expect(OISource.coveredRegion(of: [], step: step) == nil)
+  }
+
+  // ---------------------------------------------------------------- 到线上那一头
+
+  private static func source(_ handler: @escaping @Sendable (URL) -> HTTPReply,
+                             dir: URL) -> OISource {
+    let pacer = StepPacer()
+    let transport = FakeTransport(FakeServer(pacer: pacer, handler: handler))
+    return OISource(rest: BinanceREST(transport: transport, pacer: pacer), transport: transport,
+                    store: OIStore(paths: Paths(root: dir)))
+  }
+
+  @Test("REST 整段报错：点是空的，而且说清楚「没问到」")
+  func restFailureIsReported() async throws {
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let src = Self.source({ _ in HTTPReply(status: 500) }, dir: dir)
+    let now = Aggregator.utcMs(year: 2026, month: 9, day: 19)
+    let got = await src.fetch(symbol: "BTCUSDT", interval: .h1,
+                              from: now - 5 * Self.step, to: now, now: now)
+    #expect(got.points.isEmpty)
+    #expect(!got.complete)
+    #expect(OISource.coveredRegion(of: [got], step: Self.step) == nil)
+  }
+
+  @Test("REST 翻到一半断了：到手的几页留住，但这一段仍然不算问全")
+  func partialPagesAreNotFullCoverage() async throws {
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let now = Aggregator.utcMs(year: 2026, month: 2, day: 20)
+    let src = Self.source({ url in
+      guard url.path == "/futures/data/openInterestHist" else { return HTTPReply(status: 404) }
+      let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+      let endTime = q.first { $0.name == "endTime" }?.value.flatMap { Int64($0) }
+      guard endTime == now else { return HTTPReply(status: 500) }   // 更早的那一页断掉
+      let rows = (0..<500).map { i -> String in
+        let t = now - Int64(499 - i) * 3_600_000
+        return #"{"symbol":"BTCUSDT","sumOpenInterest":"50.0","sumOpenInterestValue":"1","timestamp":\#(t)}"#
+      }
+      return json("[" + rows.joined(separator: ",") + "]")
+    }, dir: dir)
+    let got = await src.fetch(symbol: "BTCUSDT", interval: .h1,
+                              from: now - 29 * Self.day, to: now, now: now)
+    #expect(got.points.count == 500)      // 到手的留住
+    #expect(!got.complete)                // 但少的那一截下一轮还要问
+  }
+
+  @Test("归档站 404 是答复（上市前），别的状态码不是")
+  func archiveAnswers() async throws {
+    let now = Aggregator.utcMs(year: 2026, month: 9, day: 19)
+    let window = (from: now - 100 * Self.day, to: now - 40 * Self.day)
+    for (status, complete) in [(404, true), (503, false)] {
+      let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let src = Self.source({ url in
+        url.host == "data.binance.vision" ? HTTPReply(status: status) : HTTPReply(status: 500)
+      }, dir: dir)
+      let got = await src.fetch(symbol: "NEWUSDT", interval: .h1,
+                                from: window.from, to: window.to, now: now)
+      #expect(got.points.isEmpty)
+      #expect(got.complete == complete)
+      // 404 那一路算覆盖（上市前那一截不必每次重下），503 那一路一点都不算。
+      #expect((OISource.coveredRegion(of: [got], step: Self.step) != nil) == complete)
+    }
+  }
+}

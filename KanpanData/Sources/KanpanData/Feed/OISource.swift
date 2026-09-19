@@ -1,6 +1,26 @@
 import Foundation
 import KanpanCore
 
+/// 一次取数的结果：点，外加**这一轮是不是真的问到了答复**。
+///
+/// 「这几天本来就没有」和「没问到」是两件事，而覆盖记账（`MarketModel.oiRegion`）
+/// 只有一对端点，它表达不了后者。失败的那一段照样记成「已有」，之后就再也不会被
+/// 请求——一次网络错、一次 451、一次网关超时，永久变成曲线上的一段空白。
+public struct OIFetch: Sendable {
+  /// 这一轮问的是哪一段。
+  public let want: (from: Int64, to: Int64)
+  public let points: [OIPoint]
+  /// 每一段都给出了答复才是 true。归档站 404（上市前 / 还没归档）算答复；
+  /// 网络错、别的状态码、翻页中断、被取消都不算。
+  public let complete: Bool
+
+  public init(want: (from: Int64, to: Int64), points: [OIPoint], complete: Bool) {
+    self.want = want
+    self.points = points
+    self.complete = complete
+  }
+}
+
 /// 持仓量：两个源，一条序列（§4.5）。
 ///
 /// 近 30 天走 REST，更早走归档站的每日 metrics zip。只有 OI 副图打开时才取；
@@ -33,48 +53,62 @@ public actor OISource {
 
   // ------------------------------------------------------------------ 取数
 
-  /// `[from, to]` 的 OI 点。REST用原生period，网关历史已经按图表周期聚合。
-  /// 网关不可用时才下载5m归档供本地回退，最终统一走chartSeries对齐。
-  /// `onDay` 每下完一天调一次，面板用它走进度条、画已到的部分。
-  /// `onPartial` 在两段中先到的那一段落地时调一次：并发不等于同时到，REST 那半秒
-  /// 就回来的东西没有理由陪着归档一起等。只有真的分了两段才会调。
+  /// `[from, to]` 的 OI 点。只要点、不管这一轮问到没问到的调用方用它。
   public func rawPoints(symbol: String, interval: Interval, from: Int64, to: Int64,
                         now: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
                         onDay: (@Sendable (Int64, [OIPoint]) -> Void)? = nil,
                         onPartial: (@Sendable ([OIPoint]) -> Void)? = nil) async -> [OIPoint] {
+    await fetch(symbol: symbol, interval: interval, from: from, to: to, now: now,
+                onDay: onDay, onPartial: onPartial).points
+  }
+
+  /// `[from, to]` 的 OI 点，外加「这一段问到没问到」。REST用原生period，网关历史已经
+  /// 按图表周期聚合。网关不可用时才下载5m归档供本地回退，最终统一走chartSeries对齐。
+  /// `onDay` 每下完一天调一次，面板用它走进度条、画已到的部分。
+  /// `onPartial` 在两段中先到的那一段落地时调一次：并发不等于同时到，REST 那半秒
+  /// 就回来的东西没有理由陪着归档一起等。只有真的分了两段才会调。
+  public func fetch(symbol: String, interval: Interval, from: Int64, to: Int64,
+                    now: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
+                    onDay: (@Sendable (Int64, [OIPoint]) -> Void)? = nil,
+                    onPartial: (@Sendable ([OIPoint]) -> Void)? = nil) async -> OIFetch {
     let cutoff = now - Self.restWindowMs
     // 两段谁也不等谁：① 近 30 天问币安 REST，② 更早的问网关归档。串着做等于把两次
     // 往返加起来，而它们各查各的、互不依赖——历史那段本来就是慢的那一段。
     let wantsRecent = to > cutoff, wantsHistory = from < cutoff
     // 只有一段时不必回调：那一段就是全部，调了等于让调用方把同一批点画两遍。
     let partial = wantsRecent && wantsHistory ? onPartial : nil
-    async let recent: [OIPoint] = {
-      guard wantsRecent else { return [] }
-      let points = await restSegment(symbol: symbol, interval: interval, from: max(from, cutoff), to: to)
-      if !points.isEmpty, !Task.isCancelled { partial?(points) }
-      return points
+    async let recent: (points: [OIPoint], complete: Bool) = {
+      guard wantsRecent else { return ([], true) }
+      let got = await restSegment(symbol: symbol, interval: interval, from: max(from, cutoff), to: to)
+      if !got.points.isEmpty, !Task.isCancelled { partial?(got.points) }
+      return got
     }()
-    async let history: [OIPoint] = {
-      guard wantsHistory else { return [] }
-      let points = await historySegment(symbol: symbol, interval: interval,
-                                        from: max(from, Self.archiveEpoch),
-                                        to: min(to, cutoff), onDay: onDay)
-      if !points.isEmpty, !Task.isCancelled { partial?(points) }
-      return points
+    async let history: (points: [OIPoint], complete: Bool) = {
+      guard wantsHistory else { return ([], true) }
+      let got = await historySegment(symbol: symbol, interval: interval,
+                                     from: max(from, Self.archiveEpoch),
+                                     to: min(to, cutoff), onDay: onDay)
+      if !got.points.isEmpty, !Task.isCancelled { partial?(got.points) }
+      return got
     }()
     let (early, late) = await (history, recent)
-    guard !Task.isCancelled else { return [] }
-    return Self.dedup(early + late)  // 接缝重叠时近期统计优先。
+    // 被取消 = 没问到。半路收工的那一轮不能算这一段已经覆盖过。
+    guard !Task.isCancelled else { return OIFetch(want: (from, to), points: [], complete: false) }
+    return OIFetch(want: (from, to),
+                   points: Self.dedup(early.points + late.points),  // 接缝重叠时近期统计优先。
+                   complete: early.complete && late.complete)
   }
 
-  /// ① 近 30 天。取不到就是没有——OI 副图少一段总比整条空着强。
-  private func restSegment(symbol: String, interval: Interval, from: Int64, to: Int64) async -> [OIPoint] {
+  /// ① 近 30 天。取不到就是没有——OI 副图少一段总比整条空着强；但「没取到」要说出来，
+  /// 不然调用方会把这一段记成「已有」，从此再也不问。
+  private func restSegment(symbol: String, interval: Interval, from: Int64,
+                           to: Int64) async -> (points: [OIPoint], complete: Bool) {
     let period = interval.oiPeriod ?? (interval.stepMs >= 86_400_000 ? "1d" : "5m")
     do {
       return try await restRange(symbol: symbol, period: period, from: from, to: to)
     } catch {
       log("OI REST 失败：\(error)")
-      return []
+      return ([], false)
     }
   }
 
@@ -104,15 +138,18 @@ public actor OISource {
   }
 
   private func historySegment(symbol: String, interval: Interval, from: Int64, to: Int64,
-                              onDay: (@Sendable (Int64, [OIPoint]) -> Void)?) async -> [OIPoint] {
-    guard from <= to else { return [] }
+                              onDay: (@Sendable (Int64, [OIPoint]) -> Void)?)
+    async -> (points: [OIPoint], complete: Bool) {
+    guard from <= to else { return ([], true) }
     let chunks = Self.historyChunks(from: from, to: to, step: interval.stepMs)
     guard chunks.count > 1 else {
       return await historyChunk(symbol: symbol, interval: interval, from: from, to: to, onDay: onDay)
     }
     log("OI 历史切成 \(chunks.count) 块（网关一次最多 \(Self.historySpan(step: interval.stepMs) / 86_400_000) 天）")
     var out: [OIPoint] = []
-    await withTaskGroup(of: [OIPoint].self) { group in
+    // 一块没问到，整段就不算问到：记账只有一对端点，它分不出中间少了哪一块。
+    var complete = true
+    await withTaskGroup(of: (points: [OIPoint], complete: Bool).self) { group in
       var next = 0
       func spawn() {
         guard next < chunks.count else { return }
@@ -125,20 +162,22 @@ public actor OISource {
       }
       for _ in 0..<min(Self.maxParallelChunks, chunks.count) { spawn() }
       while let part = await group.next() {
-        out += part
+        out += part.points
+        complete = complete && part.complete
         spawn()
       }
     }
-    return Self.dedup(out)
+    return (Self.dedup(out), complete)
   }
 
   /// 一块历史：先问网关，网关不行才逐天下归档。回退是按块来的，一块失手不会把
   /// 已经从网关拿到的其它块也拖进逐天下载。
   private func historyChunk(symbol: String, interval: Interval, from: Int64, to: Int64,
-                            onDay: (@Sendable (Int64, [OIPoint]) -> Void)?) async -> [OIPoint] {
-    guard from <= to else { return [] }
+                            onDay: (@Sendable (Int64, [OIPoint]) -> Void)?)
+    async -> (points: [OIPoint], complete: Bool) {
+    guard from <= to else { return ([], true) }
     if let history = await gatewayHistory(symbol: symbol, interval: interval, from: from, to: to) {
-      return history
+      return (history, true)
     }
     return await archiveDays(symbol: symbol, days: OIArchive.days(from: from, to: to), onDay: onDay)
   }
@@ -248,9 +287,12 @@ public actor OISource {
 
   // ------------------------------------------------------------------ REST
 
-  private func restRange(symbol: String, period: String, from: Int64, to: Int64) async throws -> [OIPoint] {
+  private func restRange(symbol: String, period: String, from: Int64,
+                        to: Int64) async throws -> (points: [OIPoint], complete: Bool) {
     var out: [OIPoint] = []
     var end = to
+    // 翻完了才算问到这一段。断在半路、或者 20 页还没翻到头，都是「没问全」。
+    var complete = false
     // 500 条一页，最多翻 20 页（30 天 × 5m = 8640 条）。
     for _ in 0..<20 {
       try Task.checkCancellation()
@@ -259,18 +301,19 @@ public actor OISource {
         page = try await rest.openInterestHist(symbol: symbol, period: period, limit: 500, endTime: end)
       } catch {
         // 翻到第几页断了就用到第几页：已经到手的几页是好数据，为了更早的一页
-        // 把它们一起丢掉，屏幕上就从「少一截」变成「整条没有」。
+        // 把它们一起丢掉，屏幕上就从「少一截」变成「整条没有」。少的那一截仍然算
+        // 没问到，下一轮还要再问一次。
         if error is CancellationError || Task.isCancelled { throw error }
         log("OI REST 翻页中断：\(error)")
         break
       }
       try Task.checkCancellation()
-      guard let first = page.first else { break }
+      guard let first = page.first else { complete = true; break }
       out += page
-      if page.count < 500 || first.time <= from { break }
+      if page.count < 500 || first.time <= from { complete = true; break }
       end = first.time - 1
     }
-    return out.filter { $0.time >= from && $0.time <= to }
+    return (out.filter { $0.time >= from && $0.time <= to }, complete)
   }
 
   // ------------------------------------------------------------------ 归档
@@ -292,8 +335,11 @@ public actor OISource {
     return nil
   }
 
+  /// 逐日归档。`complete` 说的是「每一天都问到了答复」——归档站 404（上市前、
+  /// 还没归档）也是答复，那天本来就没有；网络错和别的状态码不是，那几天下次还得问。
   private func archiveDays(symbol: String, days: [Int64],
-                           onDay: (@Sendable (Int64, [OIPoint]) -> Void)?) async -> [OIPoint] {
+                           onDay: (@Sendable (Int64, [OIPoint]) -> Void)?)
+    async -> (points: [OIPoint], complete: Bool) {
     var out: [OIPoint] = []
     var missing: [Int64] = []
     for d in days {
@@ -304,7 +350,7 @@ public actor OISource {
         missing.append(d)
       }
     }
-    guard !missing.isEmpty else { return out }
+    guard !missing.isEmpty else { return (out, true) }
     log("OI 归档缺 \(missing.count) 天，并发 \(Self.maxParallelDays) 下载")
 
     let order = OIArchive.centerOut(missing)
@@ -312,7 +358,8 @@ public actor OISource {
     let transport = self.transport
     let log = self.log
     var results: [[OIPoint]] = []
-    await withTaskGroup(of: (Int64, [OIPoint]).self) { group in
+    var complete = true
+    await withTaskGroup(of: (day: Int64, points: [OIPoint], answered: Bool).self) { group in
       var next = 0
       func spawn() {
         guard next < order.count else { return }
@@ -322,33 +369,34 @@ public actor OISource {
           let url = hosts.metricsZip(symbol: symbol, day: OIArchive.dayString(day))
           do {
             for proxy in hosts.oiProxies {
-              guard !Task.isCancelled else { return (day, []) }
+              guard !Task.isCancelled else { return (day, [], false) }
               if let proxyURL = URL(string: "https://\(proxy)/oi/v1/metrics/\(symbol)/\(OIArchive.dayString(day)).json"),
                  let reply = try? await transport.get(proxyURL, timeout: 6), reply.status == 200,
                  let points = try? Self.decodeGateway(reply.body) {
-                return (day, points)
+                return (day, points, true)
               }
             }
             let reply = try await transport.get(url, timeout: 20)
-            if reply.status == 404 { return (day, []) }      // 上市前 / 还没归档，不是错误
-            guard reply.status == 200 else { return (day, []) }
-            return (day, try OIArchive.parseZip(reply.body))
+            if reply.status == 404 { return (day, [], true) }   // 上市前 / 还没归档，不是错误
+            guard reply.status == 200 else { return (day, [], false) }
+            return (day, try OIArchive.parseZip(reply.body), true)
           } catch {
             log("OI 归档 \(OIArchive.dayString(day)) 失败：\(error)")
-            return (day, [])
+            return (day, [], false)
           }
         }
       }
       for _ in 0..<min(Self.maxParallelDays, order.count) { spawn() }
-      while let (day, pts) = await group.next() {
+      while let (day, pts, answered) = await group.next() {
         if !pts.isEmpty { await store.save(symbol: symbol, dayStart: day, points: pts) }
         onDay?(day, pts)
         results.append(pts)
+        complete = complete && answered
         spawn()
       }
     }
     for r in results { out += r }
-    return out
+    return (out, complete)
   }
 
   /// Gateway returns real timestamps, including archives older than the REST window.
@@ -390,6 +438,25 @@ public actor OISource {
                                    step: Int64) -> (from: Int64, to: Int64) {
     guard let last = points.max(by: { $0.time < $1.time })?.time else { return (want.from, want.from) }
     return (want.from, max(want.from, min(want.to, last + max(step, 1))))
+  }
+
+  /// 这一轮真正覆盖到的区间：只由**问到了答复**的那几段算出来，问不到的一段都不算。
+  ///
+  /// 覆盖记账（`MarketModel.oiRegion`）只有一对端点。把失败的那一段照样记成「已有」，
+  /// `missingSegments` 之后只比端点，这一截就再也不会被请求，而 `holeSegments` 又
+  /// 看不见它（只扫近 30 天，而且只看得见**点与点之间**的洞，看不见第一个点之前
+  /// 缺的那一截）——一次超时就永久变成一段空白，还跟着落盘传到下一次会话。
+  ///
+  /// 「问到了但这几天本来就没有」（归档站 404、上市前）仍然算覆盖：那一段是真的空，
+  /// 收了它左端才不会每平移一次就把上市前那一截重下一遍。
+  /// 一段都没问到时返回 nil——由调用方保留原有记账。
+  public static func coveredRegion(of fetches: [OIFetch], step: Int64) -> (from: Int64, to: Int64)? {
+    var out: (from: Int64, to: Int64)?
+    for fetch in fetches where fetch.complete {
+      let span = coveredRegion(want: fetch.want, points: fetch.points, step: step)
+      out = out.map { (from: min($0.from, span.from), to: max($0.to, span.to)) } ?? span
+    }
+    return out
   }
 
   /// App 与查询入口共用这条管线，不能将原始5m归档直接交给高周期图表。

@@ -11,9 +11,40 @@ import Foundation
 // 差异记在 docs/acceptance/M5/品种页.md。
 
 /// 自选与最近两份列表。纯值，全部操作都在这上面做，方便单测。
+/// 解不开的那一项只丢它自己，不带垮整个数组 / 字典。
+///
+/// 数组里混进一个类型不对的元素（`favorites` 里躺着一个数字、`groups` 里躺着一个字符串），
+/// `JSONDecoder` 默认是让**整个数组**解码失败的；这份档案里整个数组失败就等于
+/// 「用户的自选整份消失」。套上这一层之后，坏的那一项解出 `nil`，别的照常。
+private struct Lenient<T: Decodable>: Decodable {
+  let value: T?
+  init(from decoder: Decoder) throws { value = try? T(from: decoder) }
+}
+
 struct FavoriteGroup: Codable, Sendable, Equatable, Identifiable {
   var id: String
   var name: String
+
+  init(id: String, name: String) { self.id = id; self.name = name }
+
+  private enum CodingKeys: String, CodingKey { case id, name }
+
+  /// 逐字段容错，和 `SymbolPrefs.init(from:)` 一个姿态。
+  ///
+  /// 这儿原来用的是**合成的 Codable**，于是 `name` 是必需的：老存档里只要有一项
+  /// 缺 `name`（或者写成了别的类型），整个 `[FavoriteGroup]` 就解不开，连带整份
+  /// `SymbolPrefs` 解码失败，`SymbolPrefsStore.load()` 再把失败当空档返回——
+  /// 用户的自选就整份没了（B-01）。一个坏分组只该丢它自己那点东西。
+  ///
+  /// 名字缺了拿 `id` 顶上，不把这一类整个丢掉：`SymbolPrefs.init` 会滤掉空名的分类，
+  /// 而滤掉一类等于把用户分好的那一摊自选打散，比顶一个难看的名字严重得多。
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    let rawID = ((try? c.decodeIfPresent(String.self, forKey: .id)) ?? nil) ?? ""
+    let rawName = ((try? c.decodeIfPresent(String.self, forKey: .name)) ?? nil) ?? ""
+    id = rawID
+    name = rawName.isEmpty ? rawID : rawName
+  }
 }
 
 struct SymbolPrefs: Codable, Sendable, Equatable {
@@ -73,16 +104,38 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     /// 记着这一处错位，穷举守卫靠它对账。
     case legacySelectedGroup = "selectedGroupID"
   }
+  /// **一个坏字段只丢它自己。**
+  ///
+  /// 原来这儿是「顶层缺 key 能容忍，类型不对就整份抛」：`scoredAt` 写成字符串、
+  /// 或者 `groups` 里一项缺 `name`，`init(from:)` 就抛；`SymbolPrefsStore.load()`
+  /// 又把抛当空档返回，`AppAccountBridge.prepare` 再拿这份空档把 `symbols.json`
+  /// 回写一遍——用户的自选、分类、置顶全没了，而且盘上的原件也被盖掉（B-01）。
+  ///
+  /// 设置那一份（`PrefsCodec` 里的 `Prefs.init(from:)`）一直是逐字段容错的：
+  /// 从默认值起步，每一项 `try?` 取，取不到就留默认。自选这一份是漏网的，
+  /// 现在补齐成同一个姿态，数组 / 字典再往里套一层 `Lenient` 做到元素级。
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
-    self.init(favorites: try values.decodeIfPresent([String].self, forKey: .favorites) ?? [],
-              recents: try values.decodeIfPresent([String].self, forKey: .recents) ?? [],
-              groups: try values.decodeIfPresent([FavoriteGroup].self, forKey: .groups) ?? [],
-              groupForSymbol: try values.decodeIfPresent([String: String].self, forKey: .groupForSymbol) ?? [:],
-              pinned: try values.decodeIfPresent([String].self, forKey: .pinned) ?? [],
-              legacySelectedGroup: try values.decodeIfPresent(String.self, forKey: .legacySelectedGroup),
-              viewScores: try values.decodeIfPresent([String: Double].self, forKey: .viewScores) ?? [:],
-              scoredAt: try values.decodeIfPresent(Double.self, forKey: .scoredAt) ?? 0)
+    /// 取一项：缺了、或者类型不对，都退回 `fallback`，绝不让它带垮整份档案。
+    func field<T: Decodable>(_ key: CodingKeys, or fallback: T) -> T {
+      ((try? values.decodeIfPresent(T.self, forKey: key)) ?? nil) ?? fallback
+    }
+    /// 取一串代号：坏的那一项跳过，剩下的一个不少。
+    func list(_ key: CodingKeys) -> [String] {
+      field(key, or: [Lenient<String>]()).compactMap(\.value)
+    }
+    /// 取一张表：值坏了的那一条跳过，剩下的一个不少。
+    func table<T: Decodable>(_ key: CodingKeys, of: T.Type) -> [String: T] {
+      field(key, or: [String: Lenient<T>]()).compactMapValues(\.value)
+    }
+    self.init(favorites: list(.favorites),
+              recents: list(.recents),
+              groups: field(.groups, or: [Lenient<FavoriteGroup>]()).compactMap(\.value),
+              groupForSymbol: table(.groupForSymbol, of: String.self),
+              pinned: list(.pinned),
+              legacySelectedGroup: field(.legacySelectedGroup, or: String?.none),
+              viewScores: table(.viewScores, of: Double.self),
+              scoredAt: field(.scoredAt, or: 0))
   }
 
   // ---------------------------------------------------------------- 自选
@@ -360,19 +413,51 @@ final class SymbolPrefsStore {
     self.key = key
   }
 
-  /// 读不出来 / 解不动（老版本、被人手改坏）一律当空，绝不抛。
-  func load() -> SymbolPrefs {
-    if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
-       let seed = ProcessInfo.processInfo.environment["KANPAN_TEST_FAVORITES"] {
-      return SymbolPrefs(favorites: seed.split(separator: ",").map(String.init))
+  /// 读不动的档案。
+  enum StoreError: Error, Equatable { case unreadable }
+
+  /// 读。**「柜子里没有」和「有但解不动」是两件事**，这儿分开。
+  ///
+  /// - 柜子里压根没有这份档案（新装、还没存过、`clear()` 过）→ 合法的空档，返回 `SymbolPrefs()`。
+  /// - 有档案但解不动 → 抛 `StoreError.unreadable`。
+  ///
+  /// 以前这两种都当「空档」返回，于是 `AppAccountBridge.prepare` 拿着一份凭空造出来的
+  /// 空自选，编码之后发现和盘上的字节不一样，就把它回写进 `symbols.json`——
+  /// 用户的自选被一份空档永久盖掉，而且过程里一个字的痕迹都没有（B-01）。
+  /// 画线那一侧 `try drawStore.read()` 一直是抛的，能把 `prepare` 整段中断；
+  /// 自选这一侧现在补齐成同一个姿态。
+  ///
+  /// 注意：解码本身已经是**逐字段容错**的（见 `SymbolPrefs.init(from:)`），
+  /// 所以能走到这个 `throw` 的只剩「根本不是一份 JSON 对象」「零字节」这类
+  /// 整份读不动的档案；局部坏只丢局部，不会连累别的字段。
+  func read() throws -> SymbolPrefs {
+    if let seeded = Self.testSeed() { return seeded }
+    guard let data = storage.symbolPrefsData(forKey: key) else { return SymbolPrefs() }
+    // 零字节不是「没有档案」：文件在，只是写到一半断电了。当解不动处理，
+    // 免得拿空档把它盖掉之后连挽回的机会都没有。
+    guard !data.isEmpty, let prefs = try? JSONDecoder().decode(SymbolPrefs.self, from: data) else {
+      throw StoreError.unreadable
     }
-    guard let data = storage.symbolPrefsData(forKey: key),
-          let prefs = try? JSONDecoder().decode(SymbolPrefs.self, from: data) else { return SymbolPrefs() }
     // 过一遍 init 的清洗（去重、大写、截断到 10）。
     return SymbolPrefs(favorites: prefs.favorites, recents: prefs.recents,
                        groups: prefs.groups, groupForSymbol: prefs.groupForSymbol, pinned: prefs.pinned,
                        legacySelectedGroup: prefs.legacySelectedGroup,
                        viewScores: prefs.viewScores, scoredAt: prefs.scoredAt)
+  }
+
+  /// 读不出来就当空档。
+  ///
+  /// **只给「没有档案也得开得起来」的地方用**——`SymbolPickerModel.init` 手上那份
+  /// 落在本机 `UserDefaults` 的占位档案就是（真身要等 `AppAccountBridge` 把账号目录
+  /// 换进来）。凡是**接下来要回写磁盘**的调用方，一律走 `read()`，
+  /// 把「解不动」当异常处理，绝不能拿空档去覆盖。
+  func load() -> SymbolPrefs { (try? read()) ?? SymbolPrefs() }
+
+  /// UI 测试沙盒里用环境变量灌进来的那份自选。
+  private static func testSeed() -> SymbolPrefs? {
+    guard ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
+          let seed = ProcessInfo.processInfo.environment["KANPAN_TEST_FAVORITES"] else { return nil }
+    return SymbolPrefs(favorites: seed.split(separator: ",").map(String.init))
   }
 
   func save(_ prefs: SymbolPrefs) {

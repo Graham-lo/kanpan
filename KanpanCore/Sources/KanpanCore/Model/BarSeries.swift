@@ -35,7 +35,15 @@ public struct BarSeries: Sendable, Equatable {
   public var low: [Double] { didSet { stampAll() } }
   public var close: [Double] { didSet { stampAll() } }
   public var volume: [Double] { didSet { stampAll() } }
-  /// 不等距周期（1M）必须带；等距周期留空，由 `t0 + i*step` 推。
+  /// 每根的真实 openTime。
+  ///
+  /// **不变量：这一列为空 ⟺ 整段已经被验过严格等距**（`openTime[i] == t0 + i*step`
+  /// 对每一个 i 成立），这时才允许省掉它、由 `t0 + i*step` 推。不等距周期（1M / 1y）
+  /// 永远带着它；等距周期只要中间缺了一根（交易所停盘、REST 缺根、聚合缺桶），
+  /// 列就必须原样留着——省掉的话洞后面每一根都会整体前移一格，`time(at:)` 从此说谎，
+  /// 而 `merge` 又会拿这条错时间去建字典，把错位的旧根和正确时间的新根混在一起，
+  /// 序列就被永久污染。所有会改变下标 ↔ 时间对应关系的入口（`append`、`replaceLast`、
+  /// `prepend`、以及构造器）都必须自己守住这条不变量。
   public var openTime: [Int64] { didSet { stampAll() } }
 
   /// 这条序列的身份。全局唯一：任何一次改动都会换一个新值，两条 `revision`
@@ -69,6 +77,8 @@ public struct BarSeries: Sendable, Equatable {
     self.low = low
     self.close = close
     self.volume = volume
+    // 这里不替调用方做主：给什么列就存什么列。省列（走 `t0 + i*step` 快路）
+    // 是调用方自己验过严格等距之后的决定，见下面 `init(symbol:interval:bars:)`。
     self.openTime = openTime
     self.revision = SeriesStamp.next()
     self.prefixRevision = SeriesStamp.next()
@@ -80,11 +90,39 @@ public struct BarSeries: Sendable, Equatable {
       t0: bars.first?.openTime ?? 0, step: interval.stepMs,
       open: bars.map(\.open), high: bars.map(\.high), low: bars.map(\.low),
       close: bars.map(\.close), volume: bars.map(\.volume),
-      openTime: interval.isIrregular ? bars.map(\.openTime) : []
+      // 丢列走快路的唯一许可：等距周期 + 逐根验过严格等距。哪怕中间只缺一根，
+      // 列也必须原样留着，否则洞后面每一根的时间都要整体前移一格。
+      openTime: Self.canDropTimes(bars, interval: interval) ? [] : bars.map(\.openTime)
     )
   }
 
+  /// 这一串 bar 能不能省掉 `openTime` 列。
+  private static func canDropTimes(_ bars: [Bar], interval: Interval) -> Bool {
+    guard !interval.isIrregular else { return false }
+    guard let t0 = bars.first?.openTime else { return true }
+    let step = interval.stepMs
+    guard step > 0 else { return false }
+    for (i, b) in bars.enumerated() where b.openTime != t0 + Int64(i) * step { return false }
+    return true
+  }
+
   // ------------------------------------------------------------ 时间 ↔ 下标
+
+  /// 整段是不是严格等距：`times[i] == t0 + i*step` 逐根成立。
+  ///
+  /// 这是「可以省掉 `openTime` 列」的充要条件，只在构造和补历史这种低频路径上算，
+  /// 实时那条路（`append` / `replaceLast`）只做 O(1) 的单根校验。
+  static func isStrictlyRegular(_ times: [Int64], t0: Int64, step: Int64) -> Bool {
+    guard step > 0 else { return false }
+    for (i, t) in times.enumerated() where t != t0 + Int64(i) * step { return false }
+    return true
+  }
+
+  /// 把省掉的列摊开成真实时间（调用前这条序列一定是严格等距的，所以推出来就是真值）。
+  private mutating func materializeTimes() {
+    guard openTime.isEmpty else { return }
+    openTime = (0..<count).map { t0 + Int64($0) * step }
+  }
 
   /// 第 i 根的 openTime。等距周期算出来，不等距周期查表。
   public func time(at i: Int) -> Int64 {
@@ -127,6 +165,8 @@ public struct BarSeries: Sendable, Equatable {
     guard count > 0 else { append(bar); return }
     let prefix = prefixRevision   // 前缀一个字节都没动，戳原样留着
     let i = count - 1
+    // 末根被换成了另一个时间（调用方直接改写末根），快路的前提就破了：先摊开列。
+    if openTime.isEmpty, bar.openTime != t0 + Int64(i) * step { materializeTimes() }
     open[i] = bar.open; high[i] = bar.high; low[i] = bar.low
     close[i] = bar.close; volume[i] = bar.volume
     if !openTime.isEmpty { openTime[i] = bar.openTime }
@@ -138,12 +178,16 @@ public struct BarSeries: Sendable, Equatable {
     // 追加之后「除末根以外」＝追加之前的整条，所以新前缀的身份就是老的 `revision`。
     let prefix = revision
     if count == 0 { t0 = bar.openTime }
+    // 这一根没有正好落在 `t0 + count*step`（中间缺了根），或者本来就是不等距周期：
+    // 省列的前提没了，这一根之后必须带着列。先决定带不带，再摊开、再接上去——
+    // 不能拿 `materializeTimes()` 之后的 `openTime.isEmpty` 去判：空序列摊出来仍是空列，
+    // 1M/1y 的第一根就会把列漏掉，和 `init(symbol:interval:bars:)` 造出来的不是同一条。
+    let keepTimes = !openTime.isEmpty || interval.isIrregular
+      || bar.openTime != t0 + Int64(count) * step
+    if keepTimes { materializeTimes() }
     open.append(bar.open); high.append(bar.high); low.append(bar.low)
     close.append(bar.close); volume.append(bar.volume)
-    if !openTime.isEmpty || interval.isIrregular {
-      if openTime.isEmpty { openTime = (0..<count - 1).map { t0 + Int64($0) * step } }
-      openTime.append(bar.openTime)
-    }
+    if keepTimes { openTime.append(bar.openTime) }
     revision = SeriesStamp.next()
     prefixRevision = prefix
   }
@@ -164,16 +208,17 @@ public struct BarSeries: Sendable, Equatable {
     let sorted = bars.sorted { $0.openTime < $1.openTime }
     let cut = sorted.filter { count == 0 || $0.openTime < t0 }
     guard !cut.isEmpty else { return }
-    if !openTime.isEmpty || interval.isIrregular {
-      if openTime.isEmpty { openTime = (0..<count).map { t0 + Int64($0) * step } }
-      openTime.insert(contentsOf: cut.map(\.openTime), at: 0)
-    }
+    // 补在前面的这段和原来的 t0 之间可能缺根，`cut` 自己也可能带洞：先无条件摊开
+    // 接上真实时间，接完再看整段是不是仍然严格等距——是的话把列重新丢掉走快路。
+    materializeTimes()
+    openTime.insert(contentsOf: cut.map(\.openTime), at: 0)
     open.insert(contentsOf: cut.map(\.open), at: 0)
     high.insert(contentsOf: cut.map(\.high), at: 0)
     low.insert(contentsOf: cut.map(\.low), at: 0)
     close.insert(contentsOf: cut.map(\.close), at: 0)
     volume.insert(contentsOf: cut.map(\.volume), at: 0)
     t0 = cut[0].openTime
+    if !interval.isIrregular, Self.isStrictlyRegular(openTime, t0: t0, step: step) { openTime = [] }
     // 补历史把每一根的下标都挪了，两个戳都作废（`didSet` 已经作废过一次，这里不必再写）。
   }
 

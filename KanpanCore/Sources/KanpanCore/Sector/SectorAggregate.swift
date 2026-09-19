@@ -60,7 +60,7 @@ public struct SectorCloses: Sendable, Equatable {
 
 /// 服务端那份日线收盘的一次快照。
 ///
-/// `asof` 是它算到哪一天（`YYYY-MM-DD`），**只用来判这份数据有没有换过**，
+/// `asof` 是它算到哪一天（`YYYY-MM-DD`），**只用来判这份数据有没有换过、够不够新**，
 /// 界面上一个字都不出现（`kanpan-no-engineering-status-fields`：更新时间、数据截至、
 /// 数据来源、覆盖率都不是给用户看的东西）。
 public struct SectorHistory: Sendable, Equatable {
@@ -78,13 +78,78 @@ public struct SectorHistory: Sendable, Equatable {
 
   public var isEmpty: Bool { closes.isEmpty }
 
+  /// `asof` 解成那一天的 UTC 零点。严格 `YYYY-MM-DD`：四位年、两位月、两位日，
+  /// 全是 ASCII 数字，而且日历上真有这一天（`2026-02-30` 不算）。解不出来一律 nil
+  /// ——服务端给的是 `NaiveDate` 的原样字符串，别的形状只可能是坏包。
+  public static func day(_ asof: String) -> Date? {
+    let pieces = asof.split(separator: "-", omittingEmptySubsequences: false)
+    guard pieces.count == 3, pieces[0].count == 4, pieces[1].count == 2, pieces[2].count == 2,
+          pieces.allSatisfy({ $0.allSatisfy { $0.isASCII && $0.isNumber } }),
+          let y = Int(pieces[0]), let m = Int(pieces[1]), let d = Int(pieces[2])
+    else { return nil }
+    var parts = DateComponents()
+    parts.year = y; parts.month = m; parts.day = d
+    guard let date = utcCalendar.date(from: parts) else { return nil }
+    // `date(from:)` 会把 2 月 30 号顺延到 3 月 2 号。折回来对一遍才知道是不是真有这天。
+    let back = utcCalendar.dateComponents([.year, .month, .day], from: date)
+    guard back.year == y, back.month == m, back.day == d else { return nil }
+    return date
+  }
+
+  private static let utcCalendar: Calendar = {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+    return calendar
+  }()
+
+  /// 这一份是哪一天的。解不出来就是 nil——那就不是一份能用的快照。
+  public var day: Date? { Self.day(asof) }
+
+  /// 一份快照最多认几天。
+  ///
+  /// `c5` 是 `asof − 5 天`那根日线的收盘：快照旧一天，「5 日」那一档就多算一天。
+  /// 旧到一周前，挂在「5 日」上的其实是十二天的收益——宁可留空（那颗药丸整行不出现）
+  /// 也不能给错的数。
+  public static let maxAgeDays = 7
+
+  /// 这一份（不管来自网络还是磁盘）还认不认。
+  public func isFresh(now: Date = Date()) -> Bool { Self.isFresh(asof, now: now) }
+
+  public static func isFresh(_ asof: String, now: Date = Date()) -> Bool {
+    guard let date = day(asof) else { return false }
+    let days = now.timeIntervalSince(date) / 86_400
+    // 未来那头留两天：服务端按 UTC 跨日，手机的钟还可能偏。
+    return days >= -2 && days <= Double(maxAgeDays)
+  }
+
   /// 新取回来的这份要不要顶掉手上那份。
   ///
-  /// 日线一天才换一次，同一个 `asof` 就是同一份数据。手上已经有同一天的还照样赋值，
-  /// 整页会为一份一模一样的收盘重算一遍聚合、重排一遍球——用户看得见的是无缘无故
-  /// 抖一下。所以只有换了天（或者手上根本还没有）才认。
+  /// 日线一天才换一次，同一个 `asof` 基本就是同一份数据。手上已经有同一天的还照样
+  /// 赋值，整页会为一份一模一样的收盘重算一遍聚合、重排一遍球——用户看得见的是
+  /// 无缘无故抖一下。
+  ///
+  /// 三条，都按**日期**判，不按字符串判：
+  /// - `asof` 解不成一天（空、`banana`、`2026-02-30`）的一律不认。字符串比的时候
+  ///   这些全都「不等于」手上那份，于是全都会被收下。
+  /// - 更老的那一天不认：服务端算不出今天那份时会拿上一份垫着（`sector_history.rs`
+  ///   的 `stale()`），老基线配现价算出来的不是「5 日」。
+  /// - 同一天只在**覆盖面更大**时才认：采集是增量的，当天晚些时候会补齐几个合约；
+  ///   一样多或更少就是同一份，不值得整页重算。
   public func supersedes(_ old: SectorHistory) -> Bool {
-    old.isEmpty || asof != old.asof
+    guard !isEmpty, let mine = Self.day(asof) else { return false }
+    guard !old.isEmpty, let theirs = Self.day(old.asof) else { return true }
+    if mine != theirs { return mine > theirs }
+    return closes.count > old.closes.count
+  }
+
+  /// 一份新到的快照要不要装进界面。网络和磁盘两条路共用这一道闸。
+  ///
+  /// 先问新鲜度再问新旧：过期的那份既不能顶掉手上这份，也不能在手上还空着的时候
+  /// 顶上来——它配现价算出来的收益挂着「5 日」的名字却不是 5 日。被挡住时
+  /// `history` 保持原样（冷启动就是 `.empty`），页面照现有的样子办：`hasEligible`
+  /// 问不出东西，「5 日」那颗药丸整行不出现，停在 5 日的人就地退回今日。
+  public func accepts(_ next: SectorHistory, now: Date = Date()) -> Bool {
+    next.isFresh(now: now) && next.supersedes(self)
   }
 }
 

@@ -683,4 +683,69 @@ struct SectorWindowTests {
     // 手上还没有：任何一份都认（磁盘上那份就是这么顶上来的）。
     #expect(held.supersedes(.empty))
   }
+
+  // MARK: - 旧快照 / 坏快照一律不认
+
+  /// 服务端算不出今天那一份时会拿上一份垫着（`sector_history.rs` 的 `stale()`），
+  /// 于是手机上这一头会收到一个更老的 `asof`。老基线配现价算出来的不是「5 日」，
+  /// 是六天、十二天——宁可留空也不能给错的数。
+  @Test func anOlderOrBrokenSnapshotIsRefused() {
+    let held = SectorHistory(asof: "2026-09-18", closes: ["BTC": SectorCloses(c5: 1, c20: 2)])
+    // 更老的那一天：不认。
+    #expect(!SectorHistory(asof: "2026-09-17", closes: ["BTC": SectorCloses(c5: 9)]).supersedes(held))
+    #expect(!SectorHistory(asof: "2026-08-01", closes: ["BTC": SectorCloses(c5: 9)]).supersedes(held))
+    // `asof` 根本不是一天：不认。字符串比大小的时候这些全都「不等于」，于是全都被收下。
+    #expect(!SectorHistory(asof: "banana", closes: ["BTC": SectorCloses(c5: 9)]).supersedes(held))
+    #expect(!SectorHistory(asof: "2026-13-01", closes: ["BTC": SectorCloses(c5: 9)]).supersedes(held))
+    #expect(!SectorHistory(asof: "2026-02-30", closes: ["BTC": SectorCloses(c5: 9)]).supersedes(held))
+    #expect(!SectorHistory(asof: "", closes: ["BTC": SectorCloses(c5: 9)]).supersedes(held))
+    #expect(!SectorHistory(asof: "banana", closes: ["BTC": SectorCloses(c5: 9)]).supersedes(.empty))
+    // 同一天补全的（采集是增量的，当天晚些时候补齐几个合约）：覆盖面更大就认。
+    let thin = SectorHistory(asof: "2026-09-18", closes: ["BTC": SectorCloses(c5: 1)])
+    let fat = SectorHistory(asof: "2026-09-18",
+                            closes: ["BTC": SectorCloses(c5: 1), "ETH": SectorCloses(c5: 2)])
+    #expect(fat.supersedes(thin))
+    // 同一天更少的：还是同一份数据的残缺版，不认。
+    #expect(!thin.supersedes(fat))
+  }
+
+  /// 网络和磁盘共用同一道闸（`SectorHistoryFeed.apply` 只问这一句）。
+  /// 从前只有磁盘那条路查新鲜度，网络那条路 `pull()` 直接 `apply(parsed)`。
+  @Test func aStaleSnapshotNeverReachesTheUI() {
+    let day = { (s: String) in SectorHistory.day(s)! }
+    let now = day("2026-09-19").addingTimeInterval(12 * 3_600)
+    func snapshot(_ asof: String) -> SectorHistory {
+      SectorHistory(asof: asof, closes: ["BTC": SectorCloses(c5: 1, c20: 2)])
+    }
+    // 冷启动，网络回来的是今天这一份：认。
+    #expect(SectorHistory.empty.accepts(snapshot("2026-09-19"), now: now))
+    // 冷启动，网络回来的是服务端垫的旧快照：手上宁可继续空着。
+    #expect(!SectorHistory.empty.accepts(snapshot("2026-09-05"), now: now))
+    #expect(!SectorHistory.empty.accepts(snapshot("banana"), now: now))
+    // 手上已经有今天那份，网络回来一份更老的：不顶。
+    #expect(!snapshot("2026-09-19").accepts(snapshot("2026-09-11"), now: now))
+    // 闸门的两头（按零点量，整天数）：满七天还认，第八天不认；
+    // 未来两天之内认——服务端按 UTC 跨日，手机的钟还会偏。
+    let midnight = day("2026-09-19")
+    #expect(SectorHistory.isFresh("2026-09-12", now: midnight))
+    #expect(!SectorHistory.isFresh("2026-09-11", now: midnight))
+    #expect(SectorHistory.isFresh("2026-09-21", now: midnight))
+    #expect(!SectorHistory.isFresh("2026-09-22", now: midnight))
+    #expect(!SectorHistory.isFresh("banana", now: midnight))
+    // 被挡住之后界面就是「没有历史」那一套：5 日排不出板块，那行药丸不出现。
+    let quotes = SectorWindowTests.quotes(SectorWindowTests.sector.members, price: 110)
+    #expect(!SectorAggregator.hasEligible(market: .crypto, quotes: quotes,
+                                          window: .d5, history: .empty))
+  }
+
+  @Test func theDayParserOnlyTakesRealDays() {
+    #expect(SectorHistory.day("2026-09-19") != nil)
+    #expect(SectorHistory.day("2028-02-29") != nil)          // 闰日是一天
+    #expect(SectorHistory.day("2026-02-29") == nil)          // 平年的 2 月 29 不是
+    #expect(SectorHistory.day("2026-9-19") == nil)           // 没补零的不认
+    #expect(SectorHistory.day("2026-09-19T00:00:00Z") == nil)
+    #expect(SectorHistory.day(" 2026-09-19") == nil)
+    #expect(SectorHistory.day("banana") == nil)
+    #expect(SectorHistory.day("") == nil)
+  }
 }

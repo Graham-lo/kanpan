@@ -33,9 +33,29 @@ final class PersonalFileStorage: PrefsStorage, SymbolPrefsStorage, SearchHistory
     guard failed == nil else { return }
     do {
       let url = directory.appendingPathComponent(name)
-      if let data { try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
+      if let data {
+        try Self.backupOnce(url)
+        try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+      }
       else if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
     } catch { failed = AccountError.storage.localizedDescription }
+  }
+  /// 覆盖之前留一份一次性备份。
+  ///
+  /// 这套「读不动就拒绝覆盖 + 覆盖前留 `.backup`」原来只有画线有
+  /// （`KanpanCore/Drawing/DrawStore.save`）。账号目录里这几份都属于「没了拿不回来」
+  /// 那一类，凭什么只有画线有？所以搬到这一层，`prefs.json` 与 `symbols.json`
+  /// 一视同仁——上面那道 `guard failed == nil` 是「读失败拒绝覆盖」那一半，
+  /// 这儿是「留一份原件」那一半。
+  ///
+  /// **一次性**：备份只在还没有备份时留，之后再怎么写都不动它，和 `DrawStore` 逐字同义。
+  /// 它兜的是「这份档案第一次被程序改写之前长什么样」——真出事时那一份才是完整的，
+  /// 每次写都刷新的话，坏掉的那一版第二次写就把好的那份盖了。
+  private static func backupOnce(_ url: URL) throws {
+    guard FileManager.default.fileExists(atPath: url.path) else { return }
+    let backup = url.appendingPathExtension("backup")
+    guard !FileManager.default.fileExists(atPath: backup.path) else { return }
+    try FileManager.default.copyItem(at: url, to: backup)
   }
   /// 一个键一个文件。
   ///

@@ -517,23 +517,28 @@ final class MarketModel {
       let segments = OISource.mergeSegments(
         OISource.missingSegments(have: self.oiRegion, want: want, step: step, refresh: refresh) + holes)
       guard !segments.isEmpty else { return }
-      let points = await withTaskGroup(of: [OIPoint].self) { group in
+      let fetched = await withTaskGroup(of: OIFetch.self) { group in
         for segment in segments {
           group.addTask {
-            await source.rawPoints(symbol: sym, interval: iv, from: segment.from, to: segment.to,
-                                   onPartial: paint)
+            await source.fetch(symbol: sym, interval: iv, from: segment.from, to: segment.to,
+                               onPartial: paint)
           }
         }
-        var all: [OIPoint] = []
+        var all: [OIFetch] = []
         for await part in group {
-          all += part
+          all.append(part)
           // 缺口不止一个时，先回来的那个缺口也立刻上屏。
-          if segments.count > 1 { paint(part) }
+          if segments.count > 1 { paint(part.points) }
         }
         return all
       }
       guard !Task.isCancelled, request == self.selection, self.symbol == sym, self.interval == iv else { return }
-      self.mergeOI(points, want: want, step: step, symbol: sym, interval: iv)
+      // `oiPatched` 是「这个洞补过了」的记号，不是「试过了」的记号：这一轮只要有一段
+      // 没问到，这些洞就当没补过，下次开图还会再问一次。
+      if fetched.contains(where: { !$0.complete }) { for hole in holes { self.oiPatched.remove(hole.from) } }
+      self.mergeOI(fetched.flatMap(\.points),
+                   covered: OISource.coveredRegion(of: fetched, step: step),
+                   want: want, step: step, symbol: sym, interval: iv)
     }
   }
 
@@ -563,19 +568,31 @@ final class MarketModel {
     oi = OISource.chartSeries(merged, interval: iv)
   }
 
-  private func mergeOI(_ points: [OIPoint], want: (from: Int64, to: Int64), step: Int64,
+  /// - Parameter covered: 这一轮**真的问到了**的那部分区间（`OISource.coveredRegion(of:)`）。
+  ///   nil = 一段都没问到，那就一步都不推进记账。
+  private func mergeOI(_ points: [OIPoint], covered: (from: Int64, to: Int64)?,
+                       want: (from: Int64, to: Int64), step: Int64,
                        symbol sym: String, interval iv: Interval) {
     let previous = oiRegion
     let joins = previous.map { want.from <= $0.to && want.to >= $0.from } ?? false
     let merged = OISource.dedup(joins ? oiPoints + points : points)   // 同一时刻留新到的
     guard !merged.isEmpty else { return }
-    // 记「真拿到的」而不是「请求的」：`want.to` 伸到最后一根 K 线之后两根，那两根
-    // 还没发生，原样记下来并落盘，下一次会话的接缝上就留一个永远补不上的空桶。
-    var region = OISource.coveredRegion(want: want, points: merged, step: step)
-    if joins, let old = previous { region = (from: min(old.from, region.from), to: max(old.to, region.to)) }
     oiPoints = merged
-    oiRegion = region
     oi = OISource.chartSeries(merged, interval: iv)
+    // 记「真问到的」而不是「请求的」，两头各有一个理由：
+    // 右端——`want.to` 伸到最后一根 K 线之后两根，那两根还没发生，原样记下来并落盘，
+    // 下一次会话的接缝上就留一个永远补不上的空桶（`OISource.coveredRegion` 收右端）。
+    // 左端——请求整段失败（网络错 / 451 / 网关超时 / 归档站给不出）时，把 `want.from`
+    // 记成已有，那一截就再也不会被请求：`missingSegments` 只比端点，`holeSegments`
+    // 又看不见第一个点之前缺的那一截。所以失败的段一段都不算覆盖。
+    guard var region = covered else {
+      // 视野整个跳到别处又什么都没问到：手里这串点和旧记账已经对不上了，记账清掉，
+      // 下一轮整段重取；还挨着的话就原样留着旧记账，下一轮照样认得出缺哪一截。
+      if !joins { oiRegion = nil }
+      return
+    }
+    if joins, let old = previous { region = (from: min(old.from, region.from), to: max(old.to, region.to)) }
+    oiRegion = region
     let store = oiStore
     Task { await store.saveSeries(symbol: sym, interval: iv, points: merged, from: region.from, to: region.to) }
   }

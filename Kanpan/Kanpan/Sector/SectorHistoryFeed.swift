@@ -17,7 +17,11 @@ import KanpanNetwork
 ///
 /// 节奏：进页取一趟，之后每小时一趟（日线一天才换一次，秒级刷新毫无意义）。
 /// 回来的 `asof` 和手上这份一样就原地不动，连 `history` 都不赋值——否则整页会为一份
-/// 一模一样的数据重算一遍聚合。取回来的原样存进 Caches，下次进页先拿它顶上，
+/// 一模一样的数据重算一遍聚合。**取回来的那份和磁盘上那份一样要过 `apply` 那道闸**：
+/// 服务端算不出今天那份时会拿上一份垫着（`sector_history.rs` 的 `stale()`），
+/// 旧收盘配现价算出来的收益挂着「5 日」的名字却不是 5 日；拦下来之后页面就是
+/// 「没有历史」那一套——那颗药丸整行不出现，停在 5 日的人就地退回今日。
+/// 取回来的原样存进 Caches，下次进页先拿它顶上，
 /// 不让「5 日」那颗药丸在每次冷启动时先消失一秒再出现。
 ///
 /// 缺字段就是**没有**，不是 0：`last / 0` 是 +∞，一个 +∞ 能把整段中位数带走。
@@ -35,9 +39,6 @@ import KanpanNetwork
   private static let refreshSeconds: TimeInterval = 3600
   /// 循环的步长。取失败了下一步就再试一次，不必等满一小时。
   private static let tickSeconds: TimeInterval = 600
-  /// 磁盘上那份最多认几天。超过就当没有——用一周前的收盘算「5 日」，
-  /// 算出来的是十二天，不如不算。
-  private static let cacheMaxDays = 7
 
   // MARK: 外部接线
 
@@ -88,10 +89,12 @@ import KanpanNetwork
     Self.writeCache(body)
   }
 
-  /// 同一天的那份不重新赋值：`history` 是被观察的，赋一次整页就重算一次聚合。
-  /// 认不认由 `SectorHistory.supersedes` 说了算（口径在 Core，那儿有用例钉着）。
+  /// 网络和磁盘两条路都从这儿进，一道闸：过期的不要（服务端算不出今天那份时会拿
+  /// 上一份垫着，老基线配现价算出来的不是「5 日」），同一天的原样那份也不要
+  /// （`history` 是被观察的，赋一次整页就重算一次聚合、重排一遍球）。
+  /// 口径在 Core 的 `SectorHistory.accepts`，那儿有用例钉着。
   private func apply(_ next: SectorHistory) {
-    guard next.supersedes(history) else { return }
+    guard history.accepts(next) else { return }
     history = next
   }
 
@@ -124,7 +127,7 @@ import KanpanNetwork
   static func decode(_ body: Data) -> SectorHistory? {
     guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
           let data = root["data"] as? [String: Any],
-          let asof = data["asof"] as? String, !asof.isEmpty,
+          let asof = data["asof"] as? String, SectorHistory.day(asof) != nil,
           let symbols = data["symbols"] as? [String: Any] else { return nil }
     var closes: [String: SectorCloses] = [:]
     var rank: [String: Int] = [:]
@@ -184,7 +187,7 @@ import KanpanNetwork
     loadedCache = true
     Self.dropLegacyCache()
     guard let body = try? Data(contentsOf: Self.cacheURL),
-          let parsed = Self.decode(body), Self.fresh(parsed.asof) else { return }
+          let parsed = Self.decode(body) else { return }
     apply(parsed)
   }
 
@@ -192,19 +195,5 @@ import KanpanNetwork
     let paths = Paths.caches()
     try? paths.ensureRoot()
     try? body.write(to: paths.sectorHistory, options: .atomic)
-  }
-
-  /// 磁盘上那份还认不认。`asof` 解不出来就不认。
-  static func fresh(_ asof: String, now: Date = Date()) -> Bool {
-    var parts = DateComponents()
-    let pieces = asof.split(separator: "-")
-    guard pieces.count == 3, let y = Int(pieces[0]), let m = Int(pieces[1]), let d = Int(pieces[2])
-    else { return false }
-    parts.year = y; parts.month = m; parts.day = d
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
-    guard let date = calendar.date(from: parts) else { return false }
-    let days = now.timeIntervalSince(date) / 86_400
-    return days >= -2 && days <= Double(cacheMaxDays)
   }
 }
