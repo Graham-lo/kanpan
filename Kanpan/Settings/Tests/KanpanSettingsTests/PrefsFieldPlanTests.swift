@@ -86,7 +86,13 @@ struct PrefsFieldPlanTests {
   /// （`make sync-contract`），Swift 这边跟它对账，Rust 那边 `include_str!` 读同一份对账。
   /// 母表变了而契约没重新生成 → 这条红；契约变了而服务端没跟上 → `cargo test` 那条红。
   ///
-  /// 这条红了**不要改契约文件**（它是生成物），改母表再跑 `make sync-contract`。
+  /// 同一份契约还捎带两份**词表**：`IndicatorID` 与 `Drawing.Kind` 的 rawValue。它们不在母表里
+  /// （不是「字段」，是字段的**取值**），但服务端的值规则手抄了它们——`sync_validation.rs` 的
+  /// `OVERLAY_INDICATORS` / `SUB_INDICATORS` / `KINDS`。手抄就会漂，漂了就是同一种死法：
+  /// 新加一把画线工具而服务端不认，用它画出来的线被整条拒绝，永远离不开这台手机。
+  /// 指标那份连**顺序**都算数——服务端是按「前 N 个是主图、其余是副图」切的。
+  ///
+  /// 这条红了**不要改契约文件**（它是生成物），改母表 / 枚举再跑 `make sync-contract`。
   @Test("客户端会发的字段和契约文件一个不差")
   func theContractFileIsTheOneListBothSidesRead() throws {
     let rendered = try SettingsFieldContract.rendered()
@@ -125,6 +131,42 @@ struct PrefsFieldPlanTests {
       理由不一样的 \(PrefsFieldPlan.wireOnlyKeys.filter { contract.wireOnlyKeys[$0.key] != nil && contract.wireOnlyKeys[$0.key] != $0.value }.keys.sorted())。
       这一档是「服务端认、客户端不发」的键（老存档遗留 / 合成键），加一个就要在母表里写清楚为什么。
       跑 `make sync-contract` 重新生成。
+      """)
+
+    // 指标与画线工具那两份词表：服务端是拿它们做值校验的，客户端这边是枚举。
+    // 这几条在**生成模式之外**也跑，所以「改了枚举没重新生成契约」当场红，
+    // 不用等到 Rust 那边才发现。
+    let indicators = IndicatorID.allCases.map(\.rawValue)
+    #expect(contract.indicatorIDs == indicators, """
+      契约里的 `indicatorIDs` 和 `IndicatorID` 对不上（顺序也算）：
+      契约 \(contract.indicatorIDs)
+      枚举 \(indicators)
+      跑 `make sync-contract` 重新生成。
+      """)
+
+    let overlays = IndicatorID.allCases.filter { $0.placement == .main }.map(\.rawValue)
+    let subs = IndicatorID.allCases.filter { $0.placement == .sub }.map(\.rawValue)
+    #expect(contract.overlayIndicatorIDs == overlays && contract.subIndicatorIDs == subs, """
+      契约里的主副划分和 `IndicatorID.placement` 对不上：
+      主图 契约 \(contract.overlayIndicatorIDs) / 枚举 \(overlays)
+      副图 契约 \(contract.subIndicatorIDs) / 枚举 \(subs)
+      跑 `make sync-contract` 重新生成。
+      """)
+
+    #expect(contract.overlayIndicatorIDs + contract.subIndicatorIDs == contract.indicatorIDs, """
+      主图那几种必须排在副图前面：服务端是按「前 N 个是主图、其余是副图」切这份词表的
+      （`sync_validation.rs` 的 OVERLAY_INDICATORS / SUB_INDICATORS）。
+      `IndicatorID` 的 case 顺序被打乱成主副交错了，把它排回去——
+      新指标落错一边，`overlays` / `subs` / `subInverted` 就会拒掉它，整条同步操作 400。
+      """)
+
+    let kinds = Drawing.Kind.allCases.map(\.rawValue)
+    #expect(contract.drawingKinds == kinds, """
+      契约里的 `drawingKinds` 和 `Drawing.Kind` 对不上：
+      枚举有、契约没有 \(Set(kinds).subtracting(contract.drawingKinds).sorted())，
+      契约有、枚举没有 \(Set(contract.drawingKinds).subtracting(kinds).sorted())。
+      新加一把工具就跑一次 `make sync-contract`，否则服务端不认它，
+      用它画出来的线被整条拒绝，永远离不开这台手机。
       """)
 
     #expect(onDisk == rendered, """
@@ -211,6 +253,10 @@ enum SettingsFieldContract {
   static let relativePath = "Backend/kanpan-api/contract/settings-fields.json"
 
   /// 契约的格式版本。字段含义变了（不是内容变了）才 +1，两边的读法都要跟着改。
+  ///
+  /// 2026-09-19 往里加了 `indicatorIDs` / `overlayIndicatorIDs` / `subIndicatorIDs` /
+  /// `drawingKinds` 四个键，**没有** +1：老键一个没动、含义一个没变，加的是新的一摊，
+  /// 已经在读 v1 的那几条 Rust 测试照旧读得懂。+1 只会让它们全红一遍，换不来任何保护。
   static let version = 1
 
   /// 环境变量置 1 时这条测试不对账，改为把母表重新导出成契约文件。`make sync-contract` 走的就是这条。
@@ -236,6 +282,18 @@ enum SettingsFieldContract {
     var wireOnlyKeysNote: String
     /// 服务端认、客户端不发的键 → 它为什么只在线上存在。
     var wireOnlyKeys: [String: String]
+    var indicatorIDsNote: String
+    /// `IndicatorID.allCases` 的全部 rawValue，**顺序照抄枚举**：主图那几种在前，副图那几种在后。
+    var indicatorIDs: [String]
+    var overlayIndicatorIDsNote: String
+    /// 画在主图上的那几种（`IndicatorID.placement == .main`）。
+    var overlayIndicatorIDs: [String]
+    var subIndicatorIDsNote: String
+    /// 画在副图上的那几种（`placement == .sub`）。
+    var subIndicatorIDs: [String]
+    var drawingKindsNote: String
+    /// `Drawing.Kind` 的全部 rawValue。
+    var drawingKinds: [String]
   }
 
   // MARK: 定位
@@ -260,13 +318,18 @@ enum SettingsFieldContract {
   static func generated() -> Document {
     Document(
       version: version,
-      whatThisIs: "iOS 与 Rust 后端之间那份 settings 字段白名单的唯一权威副本。"
-        + "客户端按 fieldClasses 决定一个字段跟不跟人走；服务端 sync::SETTINGS_FIELDS 必须逐字等于 wireKeys。",
-      generatedFrom: "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table",
+      whatThisIs: "iOS 与 Rust 后端之间那份 settings 字段白名单的唯一权威副本，"
+        + "外加两份服务端做值校验时要照抄的词表（indicatorIDs 与 drawingKinds）。"
+        + "客户端按 fieldClasses 决定一个字段跟不跟人走；服务端 sync::SETTINGS_FIELDS 必须逐字等于 wireKeys，"
+        + "sync_validation 的指标与画线词表必须逐项等于这里的两份。",
+      generatedFrom: "Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift · PrefsFieldPlan.table；"
+        + "KanpanCore/Indicator/IndicatorID.swift · IndicatorID；KanpanCore/Drawing/Drawing.swift · Drawing.Kind",
       generatedBy: "Kanpan/Settings/Tests/KanpanSettingsTests/PrefsFieldPlanTests.swift · SettingsFieldContract",
-      howToRegenerate: "这是生成物，不要手改。改 PrefsFieldPlan.table，然后在仓库根跑 `make sync-contract`。"
+      howToRegenerate: "这是生成物，不要手改。改 PrefsFieldPlan.table（或 IndicatorID / Drawing.Kind），"
+        + "然后在仓库根跑 `make sync-contract`。"
         + "改完两边的测试自动对账：Kanpan/Settings 的 theContractFileIsTheOneListBothSidesRead，"
-        + "Backend/kanpan-api 的 the_allowlist_is_what_ios_sends 与 every_wire_key_has_a_value_rule。",
+        + "Backend/kanpan-api 的 the_allowlist_is_what_ios_sends、every_wire_key_has_a_value_rule、"
+        + "the_indicator_vocabulary_is_the_contract_one 与 every_drawing_tool_is_in_the_contract。",
       fieldClassesNote: "synced=随账号同步、线上用自己的名字；"
         + "syncedMerged=随账号同步但线上并成别的键（见 wireOnlyKeys）；"
         + "deviceOnly=这台机器 / 这张网的属性，不跟人走；"
@@ -278,7 +341,24 @@ enum SettingsFieldContract {
         + "多一个而 sync_validation::field 没配值规则：同一种死法，_=>false 让整条操作 400。",
       wireKeys: PrefsFieldPlan.names(.synced).union(PrefsFieldPlan.wireOnlyKeys.keys).sorted(),
       wireOnlyKeysNote: "服务端认、客户端不发的键，以及它们为什么只在线上存在。",
-      wireOnlyKeys: PrefsFieldPlan.wireOnlyKeys
+      wireOnlyKeys: PrefsFieldPlan.wireOnlyKeys,
+      indicatorIDsNote: "`IndicatorID` 的全部 rawValue，顺序就是枚举的顺序：主图那几种在前、副图那几种在后。"
+        + "服务端 sync_validation 的 OVERLAY_INDICATORS ++ SUB_INDICATORS 必须逐项等于它——"
+        + "`params` / `hiddenOutputs` / `indicatorColors` / `subHeights` 这些带指标名的路径，"
+        + "第二段只认这份词表，不在表里的整条操作 400。",
+      indicatorIDs: IndicatorID.allCases.map(\.rawValue),
+      overlayIndicatorIDsNote: "画在主图上的那几种（`IndicatorID.placement == .main`）。"
+        + "settings.overlays 只认这一档，条数上限也是它的长度。",
+      overlayIndicatorIDs: IndicatorID.allCases.filter { $0.placement == .main }.map(\.rawValue),
+      subIndicatorIDsNote: "画在副图上的那几种（`placement == .sub`）。"
+        + "settings.subs 与 settings.subInverted 只认这一档。"
+        + "主副分界也是契约的一部分：服务端是按「前 N 个是主图、其余是副图」切的，"
+        + "新指标落错一边 = 那条设置永远同步不上去。",
+      subIndicatorIDs: IndicatorID.allCases.filter { $0.placement == .sub }.map(\.rawValue),
+      drawingKindsNote: "`Drawing.Kind` 的全部 rawValue。服务端 sync_validation 的 KINDS 必须和它一样——"
+        + "drawings.kind、drawingPreferences.favorites 与 styles/<kind>、settings.lastDrawTool "
+        + "四条值规则都拿它当词表。少一个：用那把工具画出来的线被服务端整条拒绝，永远离不开这台手机。",
+      drawingKinds: Drawing.Kind.allCases.map(\.rawValue)
     )
   }
 

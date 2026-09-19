@@ -29,6 +29,13 @@
 3. 新增 `.synced` 字段还要去 `Backend/kanpan-api/src/sync.rs` 的 `SETTINGS_FIELDS` 加名字（长度不用改，它是切片），**并且**去 `src/sync_validation.rs` 的 `field` 加值规则——只进白名单不配值规则，`_=>false` 会让整条同步操作 400，那个字段就是毒丸。
 4. 两边对账：`make app-logic-test` 与 `cd Backend/kanpan-api && cargo test --lib`。差在哪个键、该往哪边改，失败信息里写着。
 
+**加一把画线工具或一个指标也走同一条路。** 同一份契约除了字段清单还捎带两份词表——
+`drawingKinds`（`Drawing.Kind`）和 `indicatorIDs` / `overlayIndicatorIDs` / `subIndicatorIDs`
+（`IndicatorID`，主图那几种排在副图前面，**顺序和主副分界都算数**）。改完 `KanpanCore` 里那两个枚举
+照样跑 `make sync-contract`，然后 `cargo test --lib` 会点名告诉你服务端还差哪一条：
+`sync_validation.rs` 顶上的 `KINDS` / `OVERLAY_INDICATORS` / `SUB_INDICATORS` 都是切片，
+加名字不用改长度；新工具若不是两个锚点，还要在 `anchor_count` 里加一条（默认 `_=>2` 会把它整条拒掉）。
+
 对不齐的代价是实打实的：提交 `a161bb0` 里服务端少认十九个字段，服务端对含未知字段的操作整条拒绝，那个账号的同步队列被一条永远推不上去的操作堵死。
 
 ## 文档维护

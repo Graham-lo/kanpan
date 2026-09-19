@@ -1,11 +1,22 @@
 //! Mirrors the native wire types at the boundary, before a merged value can reach another device.
 use crate::{error::{ApiError,Result},sync::Object};
 use serde_json::Value;
-const INDICATORS:[&str;10]=["MA","EMA","BOLL","VOL","MACD","RSI","KDJ","SRSI","ATR","OI"];
+// `IndicatorID` (KanpanCore/Indicator/IndicatorID.swift), split the way `IndicatorID.placement`
+// splits it: main chart first, sub-panels second. `overlays` accepts only the first half and
+// `subs` / `subInverted` only the second, so which half an indicator is in is part of the
+// contract, not a detail — an indicator on the wrong side is refused and 400s the whole
+// operation. Both halves are generated into `contract/settings-fields.json` as
+// `overlayIndicatorIDs` / `subIndicatorIDs`; `the_indicator_vocabulary_is_the_contract_one`
+// holds these to it. Slices, not fixed arrays: adding one is a single string, no length to
+// keep in step (same reason `sync::SETTINGS_FIELDS` is a slice).
+const OVERLAY_INDICATORS:&[&str]=&["MA","EMA","BOLL"];
+const SUB_INDICATORS:&[&str]=&["VOL","MACD","RSI","KDJ","SRSI","ATR","OI"];
+fn indicator(name:&str)->bool {OVERLAY_INDICATORS.contains(&name)||SUB_INDICATORS.contains(&name)}
 // `Drawing.Kind` in full (KanpanCore/Drawing/Drawing.swift:22). The first ten are the
 // original tools; the rest arrived with the TradingView-aligned panel and must be listed
-// here or the drawing that uses one can never leave the phone.
-const KINDS:[&str;38]=[
+// here or the drawing that uses one can never leave the phone. Generated into the contract as
+// `drawingKinds`; `every_drawing_tool_is_in_the_contract` is what notices when this drifts.
+const KINDS:&[&str]=&[
  "hline","trend","ray","hray","extended","vline","rectangle","channel","fibonacci","measure",
  "position","regression","fibExtension","priceRange","dateRange","note","crossLine","arrowLine",
  "pitchfork","fibChannel","ellipse","triangle","curve","datePriceRange","fibTimeZone","fibFan",
@@ -46,7 +57,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
  if v.is_null(){return p.len()==1&&matches!(path,"color"|"groupId"|"text") || collection=="settings"&&p.len()>=2 || collection=="drawingPreferences"&&p.len()==2}
  if collection=="settings" {
   if p.len()>1 {
-   if !INDICATORS.contains(&p[1]) {return false}
+   if !indicator(p[1]) {return false}
    return match p[0] {
     "params"=>p.len()==2&&integers(v,20,1,400),
     "hiddenOutputs"=>p.len()==2&&integers(v,21,0,20),
@@ -56,9 +67,9 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    }
   }
   return match path {
-   "overlays"=>names(v,3,&INDICATORS[..3]),"subs"=>names(v,7,&INDICATORS[3..]),
+   "overlays"=>names(v,OVERLAY_INDICATORS.len(),OVERLAY_INDICATORS),"subs"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
    // `subInverted` is a set of sub-panel ids, same vocabulary as `subs`.
-   "subInverted"=>names(v,7,&INDICATORS[3..]),
+   "subInverted"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
    "quickIntervals"=>names(v,10,&INTERVALS),"interval"=>one_of(v,&INTERVALS),
    "rsiRange"=>v.as_array().is_some_and(|a|a.len()==2&&number(&a[0],0.0,100.0)&&number(&a[1],0.0,100.0)&&a[0].as_f64()<a[1].as_f64()),
    "portraitHeight"=>number(v,0.1,1.0),
@@ -91,7 +102,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
   }
  }
- if collection=="drawingPreferences" {return match path {"favorites"=>names(v,KINDS.len(),&KINDS),"magnet"|"continuous"=>v.is_boolean(),_=>p.len()==2&&p[0]=="styles"&&KINDS.contains(&p[1])&&style(v)}}
+ if collection=="drawingPreferences" {return match path {"favorites"=>names(v,KINDS.len(),KINDS),"magnet"|"continuous"=>v.is_boolean(),_=>p.len()==2&&p[0]=="styles"&&KINDS.contains(&p[1])&&style(v)}}
  if p.len()!=1 {return false}
  match (collection,path) {
   ("drawings","kind")=>v.as_str().is_some_and(|s|KINDS.contains(&s)),
@@ -161,8 +172,72 @@ mod tests {
    ("venue",json!("binance")),("anchors",json!(points))].into_iter().map(|(k,v)|(k.to_string(),v)).collect();
   crate::sync::Object{collection:"drawings".into(),id:format!("binance/usd_m/BTCUSDT/{kind}-1"),body,fields:BTreeMap::new(),revision:0,deleted:false,generation:0}
  }
+ /// The same generated contract `sync`'s tests read, compiled in for the same reason: a file
+ /// that is missing or unparseable is a compile error here, not a test that quietly passes.
+ const CONTRACT:&str=include_str!("../contract/settings-fields.json");
+ /// One array of strings out of the contract.
+ fn contract_list(key:&str)->Vec<String> {
+  let contract:Value=serde_json::from_str(CONTRACT)
+   .expect("contract/settings-fields.json is not valid JSON; regenerate it with `make sync-contract`");
+  contract[key].as_array()
+   .unwrap_or_else(||panic!("contract/settings-fields.json has no `{key}` array. It is generated \
+     from the client's enums, so the file is stale: run `make sync-contract` from the repo root."))
+   .iter().map(|v|v.as_str().expect("contract list entries must be strings").to_string()).collect()
+ }
+
+ /// **The indicator vocabulary is the client's `IndicatorID`, in the client's order.**
+ ///
+ /// Both lists used to be hand-copied here with a length baked into the type, guarded by
+ /// nothing: today's ten happen to match, and the next indicator would have matched only if
+ /// whoever added it remembered this file. That is exactly how a161bb0 and 0f09f7e happened on
+ /// the settings half.
+ ///
+ /// Order matters as much as membership. `overlays` accepts the main-chart half only and
+ /// `subs` / `subInverted` the sub-panel half only, so an indicator that lands on the wrong
+ /// side is refused — and a refused value fails the *whole* operation with a 400, which the
+ /// client then queues behind forever.
+ #[test] fn the_indicator_vocabulary_is_the_contract_one() {
+  let all=contract_list("indicatorIDs");
+  let overlays=contract_list("overlayIndicatorIDs");
+  let subs=contract_list("subIndicatorIDs");
+  let ours=|list:&[&str]|list.iter().map(|s|s.to_string()).collect::<Vec<_>>();
+  let note="contract/settings-fields.json is generated from `IndicatorID`, so it is the side \
+   that is right: edit the lists at the top of sync_validation.rs to match. Only if the \
+   contract itself is stale — because someone edited IndicatorID without regenerating — run \
+   `make sync-contract` from the repo root first.";
+  assert_eq!(ours(OVERLAY_INDICATORS),overlays,
+   "OVERLAY_INDICATORS drifted from the contract's `overlayIndicatorIDs`. {note}");
+  assert_eq!(ours(SUB_INDICATORS),subs,
+   "SUB_INDICATORS drifted from the contract's `subIndicatorIDs`. {note}");
+  let joined:Vec<String>=OVERLAY_INDICATORS.iter().chain(SUB_INDICATORS).map(|s|s.to_string()).collect();
+  assert_eq!(joined,all,
+   "main chart + sub panels is not the contract's `indicatorIDs`, so the two halves here are \
+    not the whole vocabulary — `params/<id>` and friends would refuse an indicator the client \
+    really does send. {note}");
+ }
+
+ /// **Every drawing tool the client can draw with is a tool this server stores.**
+ ///
+ /// A kind missing from `KINDS` is not a cosmetic gap: `drawings.kind` refuses it, the whole
+ /// operation 400s, and the line drawn with that tool never leaves the phone.
+ #[test] fn every_drawing_tool_is_in_the_contract() {
+  let want=contract_list("drawingKinds");
+  let have:Vec<String>=KINDS.iter().map(|s|s.to_string()).collect();
+  let missing:Vec<_>=want.iter().filter(|k|!have.contains(k)).collect();
+  let extra:Vec<_>=have.iter().filter(|k|!want.contains(k)).collect();
+  assert!(missing.is_empty()&&extra.is_empty(),
+   "the drawing vocabulary drifted from contract/settings-fields.json.\n\
+    in the contract (`Drawing.Kind`), missing from KINDS: {missing:?}\n\
+    in KINDS, not in the contract:                        {extra:?}\n\
+    The contract is generated from the client's `Drawing.Kind`, so it is the side that is \
+    right: add each missing name to KINDS *and*, if the tool does not take two anchors, an arm \
+    in `anchor_count` (the `_=>2` default would otherwise refuse every drawing of that kind). \
+    Only if the contract itself is stale — because someone edited Drawing.Kind without \
+    regenerating — run `make sync-contract` from the repo root first.");
+ }
+
  #[test] fn every_tool_on_the_panel_can_be_stored() {
-  for kind in KINDS {assert!(field("drawings","kind",&json!(kind)),"{kind} should be a known tool")}
+  for &kind in KINDS {assert!(field("drawings","kind",&json!(kind)),"{kind} should be a known tool")}
   assert!(!field("drawings","kind",&json!("telekinesis")));
   assert!(field("drawingPreferences","favorites",&json!(KINDS.to_vec())));
  }
