@@ -438,13 +438,8 @@ iPad 上那条「画线 → 工作台」的路由由 `AICoinBaseUITests` 守着�
 
 ## 七、未做 / 边界
 
-- **`testFavoritesCategoryOverflow` 在 iPad Pro 11" 上红过一次，但复不出来。** 矩阵那一轮它挂在
-  第三次开「…」菜单之后——日志里有 8.7 秒空档，接着是 `Open com.mdd.kanpan` / `Activate com.mdd.kanpan`，
-  然后 `favorites.newGroup` 一直没出现。修完星的感应区之后在同一台上连跑四遍、在 iPhone 16 Pro 与
-  iPad mini 上各跑一遍，全绿，那个空档再没出现过。按项目口径「没复现出来就不许命名根因」，
-  这里不给它安一个假设的根因，只记在这：**它是这一轮唯一一条红了但没查实的**，
-  下次全量矩阵要盯着它；日志里那两行 `Restarting after unexpected exit...` 是
-  `continueAfterFailure = false` 之后 XCTest 的正常重启，不构成崩溃的证据。
+- ~~**`testFavoritesCategoryOverflow` 在 iPad Pro 11" 上红过一次，但复不出来。**~~
+  **2026-09-19 复现出来了，根因查实并修掉。** 详见下面第九节。
 
 - **没有下载 iOS 18 模拟器运行时**，按用户口径，18 这一侧只有静态核查；实测全在 26.5 上。
 - **没有做 iPad 宽屏分栏**，按「不破」的口径，这不在这一轮范围里。
@@ -467,3 +462,99 @@ iPad 上那条「画线 → 工作台」的路由由 `AICoinBaseUITests` 守着�
 矩阵里全绿。
 
 截图存于 `docs/acceptance/兼容-2026-09-18/`。
+
+## 九、iPad Pro 那条边界：2026-09-19 复现出来了，根因查实
+
+第七节原本把 `testFavoritesCategoryOverflow` 在 iPad Pro 11-inch (M5) 上那一次红记成
+「红了但没查实」。2026-09-19 复现成功，根因确定，用例已改，**不是 app 的缺陷**。
+
+### 现象是怎么发生的
+
+矩阵那一轮的日志（`docs/acceptance/M8/ui-test/iPad-Pro-11-inch-M5.log`，第 4395 行附近）：
+
+```
+t = 22.50s Tap "favorites.more" Button
+t = 22.55s     Check for interrupting elements affecting "favorites.more" Button
+t = 22.60s         Wait for com.apple.mobileslideshow to idle   ← 照片 App 抢了前台
+t = 31.23s     Open com.mdd.kanpan / Activate com.mdd.kanpan    ← XCUITest 自己拉回来
+t = 31.90s     Synthesize event                                 ← 这一下点击丢了
+t = 32.32s Waiting 4.0s for "favorites.newGroup" Button to exist ← 菜单没开，红
+```
+
+那 8.7 秒空档不是 app 卡住，是 XCUITest 的「Check for interrupting elements」在等
+**另一个 app**（照片，`com.apple.mobileslideshow`）进入 idle。被测 app 在这期间掉到后台，
+XCUITest 再用 `Open` / `Activate` 把它拉回来——那一下已经合成好的点击落在刚重新激活的 app 上，
+被丢掉。`com.apple.mobileslideshow` 在 13 台 × 49 条日志里**只出现过这一次**，就在挂掉的那一秒，
+这就是它复不出来的原因：它要的是别的进程恰好在那一秒抢前台。
+
+同一机制还有第二种死法：app 在后台时，XCUITest 把**我们自己的**「新建分类」弹窗当成
+「打断元素」，用默认处理器点掉了「取消」，之后的「保存」自然点不到
+（`Failed to compute hit point`）。
+
+**真实用户碰不到这个现象**——用户手动切走再切回来，点击是他自己重新点的。
+这是用例在「前台被抢走」这个边界上一点容错都没有。
+
+### 怎么复现的
+
+`xcodebuild test-without-building` 跑起来之后轮询日志，命中某一步的标记就立刻
+`xcrun simctl launch <udid> com.apple.mobileslideshow`，把照片推到前台。
+两个注入点各自复现出上面两种死法：
+
+- 注入在 `Tap "favorites.more" Button`：`Computed hit point {-1, -1}` / `Not hittable`。
+- 注入在 `Type '长期关注'`：`Default interruption handler attempting to dismiss alert by
+  tapping …cancel-button`，接着 3 次 `Retrying Tap "保存"`，最后
+  `no matches found for Descendants matching type Alert`。
+
+### 改了什么
+
+`Kanpan/KanpanUITests/ChartFoundationUITests.swift`：
+
+- `ensureForeground()`：app 不在前台就 `activate()` 再等 10s，拉不回来才判红。
+- `waitHittable(_:seconds:)`：先走一次 `exists && isHittable` 快路径，不成再轮询到 6s。
+  前台被抢的那几秒里元素会「存在但点不动」，直接 `tap()` 抛的
+  `Failed to compute hit point` 是 XCTest 自己记的失败，Swift 接不住，所以只能点之前先探。
+  快路径是必须的：`XCTNSPredicateExpectation` 首次求值前先睡约 1 秒，这条用例上有二十来个
+  这样的点，不走快路就是整整 +20 秒（65s → 81s）。
+- `openFavoritesMenu()` / `tapFavoritesMenuAction(_:)`：最多两遍，返回 `Bool` 不断言。
+  **菜单已开时绝不重点「…」**——`FavoritesView` 的「…」是自绘浮层，菜单一开就有一层
+  `Color.black.opacity(0.001)` 的吃点击遮罩盖在它上面，再点一下等于把菜单关掉。
+- `createGroup(_:)`：**整步**重试（清残留弹窗 → 开菜单 → 打字 → 保存 → 等胶囊出现），
+  最多两遍，判据只有一个——`favorites.group.<名字>` 出没出来。
+- `dismissStrayAlert()`：先摆回前台再点「取消」，模态弹窗不收掉后面的「…」永远点不动。
+- 重试路径上一概不用 `XCTAssert*`：`continueAfterFailure = false` 下第一次断言失败就地终止，
+  第二遍根本走不到。
+
+`Tools/ui-test.sh`：每台开跑前 `simctl terminate` 掉照片 / 设置 / 信息，把撞上的概率先按下去；
+自愈仍然靠用例侧的守卫。
+
+**容错没有把真缺陷吞掉**：重试都有明确上限（2 遍 / 3 遍），失败信息里写明「重试一次仍然…」；
+`ensureForeground()` 拉不回前台照样红；分类建不出来照样红。
+
+### 验证
+
+| 场次 | 机型 | 结果 |
+|---|---|---|
+| build-for-testing | generic/iOS Simulator | `** TEST BUILD SUCCEEDED **` |
+| 干净跑（先 `uninstall`） | iPad Pro 11-inch (M5) | 0 failures，62.29s |
+| 注入照片 @ `Type '长期关注'` | iPad Pro 11-inch (M5) | 0 failures，63.48s |
+| 注入照片 @ `Tap "favorites.more"` | iPad Pro 11-inch (M5) | 0 failures，67.22s |
+| 双注入（命中即启动，2.5s 后再来一次） | iPad Pro 11-inch (M5) | 0 failures，66.41s |
+| 同一条用例 | iPhone 16 Pro | 0 failures，61.83s |
+
+主窗口另跑了两轮独立复验（主工作树的构建产物，不是子代理那棵临时工作树）：
+注入 `Tap "favorites.more"` 那一轮日志里 `t = 15.54s Wait for com.apple.mobileslideshow to idle`
+→ `Open` / `Activate com.mdd.kanpan` → `Computed hit point {-1, -1}` / `Not hittable`
+**机制原样复现**，而用例整步自愈、61.19s 全绿。
+
+### 顺带澄清：另外两条红不是同一个机制，没有动它们
+
+`testChangeBasisUpdatesFavorites` 与 `testFavoritesCategoriesAndNavigation` 在同一台 iPad 上的
+`Failed to tap "search.cancel" Button: No matches found`，和前台被抢无关：
+
+1. 两处失败上下文里**没有** `mobileslideshow`、没有等别的 app idle、也没有任何
+   `Open` / `Activate com.mdd.kanpan`——app 全程没掉后台。
+2. 随失败打印的可访问性树是**行情页**（`top.search`、`interval.chart`、`bottom.chart` Selected），
+   说明全屏搜索层已经关掉、app 已经跳到品种页了——`search.cancel` 不是「点不中」，
+   是**它已经不该存在**。
+
+硬套前台守卫只会把一个真实的交互问题遮住，所以保持原样。

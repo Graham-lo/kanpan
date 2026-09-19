@@ -56,6 +56,14 @@ for name in "${DEVICES[@]}"; do
   fi
   echo "→ $name ($udid)"
   xcrun simctl bootstatus "$udid" -b > /dev/null 2>&1
+  # 开跑之前把会自己醒过来的系统 app 关掉。2026-09-18 矩阵里 iPad Pro 11" 那条红就是
+  # 照片（com.apple.mobileslideshow）在点「…」的那一秒抢到前台：XCUITest 的
+  # "Check for interrupting elements" 卡在等它 idle，被测 app 掉到后台，再被 Open/Activate
+  # 拉回来，那一下合成的点击就丢了（详见 ChartFoundationUITests.ensureForeground 的注释）。
+  # 用例这边已经加了前台守卫能自愈，这里只是把撞上的概率先按下去。
+  for sysapp in com.apple.mobileslideshow com.apple.Preferences com.apple.MobileSMS; do
+    xcrun simctl terminate "$udid" "$sysapp" > /dev/null 2>&1 || true
+  done
   xcrun simctl uninstall "$udid" "$BUNDLE_ID" > /dev/null 2>&1
 
   rm -rf "$RES/$slug.xcresult"

@@ -838,19 +838,99 @@ final class ChartFoundationUITests: XCTestCase {
                   "加完应停在品种落进去的那一组，看得见刚加的那一行")
   }
 
-  func favoritesAction(_ identifier: String) {
+  /// 被测 app 掉到后台就把它拉回前台，拉不回来才判红。
+  ///
+  /// 2026-09-18 全量 13 台矩阵里，iPad Pro 11-inch (M5) 上
+  /// `testFavoritesCategoryOverflow` 红过一次（`docs/acceptance/M8/ui-test/iPad-Pro-11-inch-M5.log`
+  /// 第 4395 行附近），当时只记进了「未做 / 边界」。2026-09-19 复现出来了，机制是这样的：
+  ///
+  ///     t = 22.50s Tap "favorites.more" Button
+  ///     t = 22.55s     Check for interrupting elements affecting "favorites.more" Button
+  ///     t = 22.60s         Wait for com.apple.mobileslideshow to idle   ← 照片 App 抢了前台
+  ///     t = 31.23s     Open com.mdd.kanpan / Activate com.mdd.kanpan    ← XCUITest 自己拉回来
+  ///     t = 31.90s     Synthesize event                                 ← 这一下点击丢了
+  ///     t = 32.32s Waiting 4.0s for "favorites.newGroup" Button to exist ← 菜单没开，红
+  ///
+  /// 也就是说：别的 app（那次是照片，`com.apple.mobileslideshow`，13 台 × 49 条日志里
+  /// 只出现过这一次，就在挂掉的那一秒）抢到前台 → XCUITest 的「Check for interrupting
+  /// elements」卡在等它 idle，被测 app 期间掉到后台 → XCUITest 再 `Open`/`Activate`
+  /// 把它拉回来 → 那一下已经合成好的点击落在刚重新激活的 app 上，被丢掉。同一机制还有
+  /// 第二种死法：app 在后台时，XCUITest 把**我们自己的**「新建分类」弹窗当成「打断元素」，
+  /// 用默认处理器点掉了「取消」，之后的「保存」自然点不到（`Failed to compute hit point`）。
+  ///
+  /// 真实用户碰不到这个现象——这不是 app 的缺陷，是用例在「前台被抢走」这个边界上
+  /// 一点容错都没有。守卫只负责把 app 摆回前台，恢复靠调用方自己重来一遍；
+  /// 功能真坏了照样红，因为重来那一遍还是要看到同样的结果才算过。
+  func ensureForeground(file: StaticString = #filePath, line: UInt = #line) {
+    guard app.state != .runningForeground else { return }
+    app.activate()
+    XCTAssertTrue(wait(seconds: 10) { self.app.state == .runningForeground },
+                  "app 掉到后台之后拉不回前台（state=\(app.state.rawValue)）", file: file, line: line)
+  }
+
+  /// 等一个元素重新变得可点，等不到返回 false（**不判红**，留给调用方决定）。
+  ///
+  /// 前台被抢走的那几秒里，屏幕上的东西会集体「存在但点不动」：`exists` 为真、
+  /// `isHittable` 为假。2026-09-19 注入照片 App 的那一轮里就是这样——「保存」还在，
+  /// 但那一刻算不出命中点，直接 `tap()` 会抛 `Failed to compute hit point`（XCTest
+  /// 自己记的失败，Swift 这边接不住）。所以凡是要点的东西都先等它可点，再点。
+  /// app 被 `Open`/`Activate` 拉回前台之后这个状态会自己好，等几秒就够了。
+  ///
+  /// 先问一次再进等待：`XCTNSPredicateExpectation` 第一次求值前会先歇一秒，本来就点得动的
+  /// 东西也要平白多花 1 秒。这条用例上这样的点有二十来个，不走快路就是整整 +20 秒
+  /// （实测干净跑 65s → 81s）。
+  func waitHittable(_ element: XCUIElement, seconds: Double = 6) -> Bool {
+    if element.exists, element.isHittable { return true }
+    return wait(seconds: seconds) { element.exists && element.isHittable }
+  }
+
+  /// 「…」菜单开着没有。「新建分类」是 `moreList` 里第一行，任何状态下都在，拿它当准星。
+  var favoritesMenuIsOpen: Bool { app.buttons["favorites.newGroup"].exists }
+
+  /// 开「…」菜单，没开就重来一次。返回是否真的开着；**不做断言**，好让调用方决定怎么收场。
+  ///
+  /// 只在「菜单确实没开」的前提下才重点：`FavoritesView` 的「…」是自绘浮层
+  /// （`overlayPreferenceValue` → `floatingMenu`），菜单一开，那层吃点击的透明遮罩
+  /// （`Color.black.opacity(0.001)`）就盖在「…」上面，再点一下等于点在遮罩上，
+  /// 反而把已经开着的菜单关掉。
+  @discardableResult func openFavoritesMenu() -> Bool {
+    for attempt in 0..<2 {
+      if favoritesMenuIsOpen { return true }
+      if attempt > 0 { ensureForeground() }
+      let more = app.buttons["favorites.more"]
+      guard more.waitForExistence(timeout: 4), waitHittable(more) else { continue }
+      more.tap()
+      if app.buttons["favorites.newGroup"].waitForExistence(timeout: 4) { return true }
+    }
+    return favoritesMenuIsOpen
+  }
+
+  /// 点「…」里的一项，成了返回 true。同样不做断言，重试路径上要靠返回值判断。
+  @discardableResult func tapFavoritesMenuAction(_ identifier: String) -> Bool {
+    guard openFavoritesMenu() else { return false }
+    let action = app.buttons[identifier]
+    guard action.waitForExistence(timeout: 4), waitHittable(action) else { return false }
+    action.tap()
+    return true
+  }
+
+  func favoritesAction(_ identifier: String, file: StaticString = #filePath, line: UInt = #line) {
     dismissNotificationBanner()
     // 「返回行情」既不在「…」里也不在分类栏左端了：2026-09-18 底栏改成常驻标签栏之后，
     // 页面之间的来回一律归标签栏管，自选页自己不再画返回按钮。
     if identifier == "favorites.close" {
       let chartTab = app.buttons["bottom.chart"]
-      XCTAssertTrue(chartTab.waitForExistence(timeout: 4)); chartTab.tap()
-      XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists && self.app.buttons["interval.chart"].isHittable })
+      XCTAssertTrue(chartTab.waitForExistence(timeout: 4), "标签栏上没有「图表」", file: file, line: line)
+      for attempt in 0..<2 {
+        if attempt > 0 { ensureForeground() }
+        if waitHittable(chartTab) { chartTab.tap() }
+        if wait(seconds: 5, { !self.app.buttons["favorites.more"].exists && self.app.buttons["interval.chart"].isHittable }) { return }
+      }
+      XCTFail("点「图表」离不开自选页：重试一次仍然没切过去", file: file, line: line)
       return
     }
-    app.buttons["favorites.more"].tap()
-    let action = app.buttons[identifier]
-    XCTAssertTrue(action.waitForExistence(timeout: 4)); action.tap()
+    XCTAssertTrue(tapFavoritesMenuAction(identifier),
+                  "「…」里点不到 \(identifier)：重试一次仍然没开", file: file, line: line)
   }
 
   /// Physical-device notifications can cover the top category bar. Dismiss only
@@ -866,6 +946,57 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertFalse(banner.exists, "系统通知仍遮挡顶部分类栏")
   }
 
+  /// 新建一个分类：「…」→「新建分类」→ 打字 →「保存」，整步最多走两遍。
+  ///
+  /// 为什么整步重来而不是只重试某一下——见 `ensureForeground()` 那段。app 被别的进程
+  /// 挤到后台的时候，这一串里的每一环都可能断在不同的地方：菜单没开、弹窗根本没上来、
+  /// 弹窗上来了又被 XCUITest 的默认打断处理器点掉「取消」、或者「保存」在 app 被重新
+  /// 激活之后算不出命中点。这些断法的共同收场都是「这个分类没建成」，所以判据只有一个：
+  /// `favorites.group.<名字>` 这颗胶囊出没出来。没出来就把现场清干净、整步重来一遍。
+  ///
+  /// 重试路径上一概不用 `XCTAssert*`：`continueAfterFailure = false` 下第一次断言失败
+  /// 就地终止用例，第二遍根本走不到。所以全走 `exists` / `waitForExistence` 的返回值。
+  /// 「保存」也不是拿到就点——`app.alerts.buttons["保存"].tap()` 这一下本身就可能抛
+  /// `Failed to compute hit point`，那是 XCTest 自己记的失败，Swift 这边接不住。
+  /// 所以点之前先确认 app 在前台、弹窗还在、按钮 `isHittable`，不满足就直接走重试分支。
+  ///
+  /// 重试不会把真缺陷放过去：分类真建不出来，两遍走完照样红。
+  func createGroup(_ name: String, file: StaticString = #filePath, line: UInt = #line) {
+    let group = app.buttons["favorites.group." + name]
+    for _ in 0..<2 {
+      // 上一遍可能已经建成了（比如只是「保存」之后那一下查询丢了），别重复建。
+      if group.exists { return }
+      ensureForeground()
+      // 弹窗要是还开着，先取消掉：残留的弹窗有一层遮罩，下一遍的「…」会点在它上面。
+      dismissStrayAlert()
+      guard tapFavoritesMenuAction("favorites.newGroup") else { continue }
+      let field = app.alerts.textFields.firstMatch
+      guard field.waitForExistence(timeout: 4), waitHittable(field) else { continue }
+      field.typeText(name)
+      let save = app.alerts.buttons["保存"]
+      guard waitHittable(save) else { continue }
+      save.tap()
+      if group.waitForExistence(timeout: 4) { return }
+    }
+    XCTFail("新建分类「\(name)」走了两遍都没建成", file: file, line: line)
+  }
+
+  /// 把还开着的弹窗按「取消」收掉，收不掉也不判红——判红交给调用方的那条判据。
+  ///
+  /// 这里必须先把 app 摆回前台再点「取消」：弹窗是模态的，它不收掉，后面的「…」
+  /// 就永远是「存在但点不动」。2026-09-19 第二轮注入就栽在这儿——那一遍在后台态下
+  /// 只看了一次 `isHittable`（假），就放着弹窗不管往下走，接着两次开菜单全被弹窗挡死。
+  func dismissStrayAlert() {
+    for _ in 0..<3 {
+      ensureForeground()
+      let alert = app.alerts.firstMatch
+      guard alert.exists else { return }
+      let cancel = alert.buttons["取消"]
+      if waitHittable(cancel) { cancel.tap() }
+      if alert.waitForNonExistence(timeout: 3) { return }
+    }
+  }
+
   func testFavoritesCategoryOverflow() throws {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SNDKUSDT,XAUUSDT"
@@ -873,13 +1004,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     XCTAssertFalse(app.textFields["favorites.query"].exists)
     XCTAssertGreaterThanOrEqual(app.buttons["favorites.group.加密"].frame.height, 44)
-    for name in ["观察中的品种", "长期关注", "短线"] {
-      favoritesAction("favorites.newGroup")
-      let field = app.alerts.textFields.firstMatch
-      XCTAssertTrue(field.waitForExistence(timeout: 4)); field.typeText(name)
-      app.alerts.buttons["保存"].tap()
-      XCTAssertTrue(app.buttons["favorites.group." + name].waitForExistence(timeout: 4))
-    }
+    for name in ["观察中的品种", "长期关注", "短线"] { createGroup(name) }
     shot("自选-顶部分类条")
     dismissNotificationBanner()
     // 排不下的分类不再折进设置菜单，分类条自己能横滑（用户 2026-09-18 定的，和
@@ -887,8 +1012,7 @@ final class ChartFoundationUITests: XCTestCase {
     let created = app.buttons["favorites.group.观察中的品种"]
     XCTAssertTrue(created.waitForExistence(timeout: 4))
     XCTAssertTrue(created.isHittable, "刚建好的分类要自己滚进看得见的地方")
-    app.buttons["favorites.more"].tap()
-    XCTAssertTrue(app.buttons["favorites.newGroup"].waitForExistence(timeout: 4))
+    XCTAssertTrue(openFavoritesMenu(), "点「…」开不出菜单：重试一次仍然没开")
     XCTAssertFalse(app.staticTexts["更多分类"].exists, "分类条能横滑了，菜单里不该再有「更多分类」")
     app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
     XCTAssertTrue(wait(seconds: 4) { !self.app.buttons["favorites.newGroup"].exists })
