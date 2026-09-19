@@ -288,7 +288,7 @@ public final class ChartView: UIView {
     guard let s = state else {
       animation = nil
       gesture.touches.removeAll(); gesture.reset()
-      onCrosshairChanged?(nil)
+      fireCrosshairChanged(nil)
       onStateChanged?(nil)
       renderer = nil
       setNeedsRedraw(.all)
@@ -297,7 +297,13 @@ public final class ChartView: UIView {
     if renderer == nil { renderer = ChartRenderer(state: s) } else { renderer?.state = s }
     setNeedsRedraw(Self.changed(from: old, to: s))
     onStateChanged?(s)
-    if old?.crosshair != s.crosshair { onCrosshairChanged?(s.crosshair) }
+    if old?.crosshair != s.crosshair { fireCrosshairChanged(s.crosshair) }
+  }
+
+  /// 十字线回调的唯一出口：计数挂在这儿，别绕过去直接叫 `onCrosshairChanged`。
+  func fireCrosshairChanged(_ crosshair: Crosshair?) {
+    ChartWorkCounter.bump(.crosshairCallback)
+    onCrosshairChanged?(crosshair)
   }
 
   /// 新旧两帧的差异落在哪几层。

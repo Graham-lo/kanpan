@@ -415,10 +415,11 @@ extension ChartView {
     } else if s.magnet { c.price = s.series.close[i] }
     let changed = s.crosshair?.index != i
     s.crosshair = c
+    // 回调由 `state` 的 setter 统一发（`adopt` 里那一句）。这儿不再补一发：同一份
+    // 十字线连送两次，外面每收一次就重算一遍读数——跟手时那是白白翻倍的一摊活。
     state = s
     if changed && s.magnet && gesture.lastMagnetIndex >= 0 { Haptics.magnetTick() }
     gesture.lastMagnetIndex = i
-    onCrosshairChanged?(c)
   }
 
   /// Android M.g/q12: close mode snaps only after release, not during selection movement.
@@ -434,9 +435,9 @@ extension ChartView {
   public func clearCrosshair() {
     guard var s = state, s.crosshair != nil else { return }
     s.crosshair = nil
+    // 同上：`state` 的 setter 会把这一下清空回调出去，这儿不必再发一遍。
     state = s
     gesture.lastMagnetIndex = -1
-    onCrosshairChanged?(nil)
   }
 
   // MARK: - 轻点与双击
@@ -495,7 +496,7 @@ extension ChartView {
     s.crosshair = nil
     state = s
     viewDidChange(s.view, source: .program)
-    onCrosshairChanged?(nil)
+    fireCrosshairChanged(nil)
   }
 
   /// 「回到最新」（G14）：滑回右边缘。

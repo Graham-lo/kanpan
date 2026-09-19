@@ -39,7 +39,20 @@ public struct ChartRenderer {
 
   private mutating func recalc(previous: ChartState? = nil) {
     // 换了 state 就换一只新盒子：旧的那只留给还拿着旧值的副本，谁也串不到谁。
+    //
+    // 唯一的例外是**几何输入一个没动**的那种变化（十字线跟手、倒计时走一格）：
+    // 那只盒子里存的每一项对新旧两份 state 都同样正确（见 `sameGeometryInputs`），
+    // 留着不清，手指跟手时才不会每帧把布局、价格区间、隐藏掩码原样重算一遍。
+    //
+    // 隔离仍然成立：一只盒子只会被「几何输入与它里面的结果一致」的 state 写入——
+    // 每次写都发生在当前 state 下，而只有与前一份几何等价时才继承这只盒子，
+    // 递推下去，同一只盒子的所有写入方几何输入全等，谁也串不到谁。
+    if let old = previous, old.sameGeometryInputs(as: state) {
+      // 几何照旧：指标、平均 K 线的那几步也一定不会走（下面的判据全是它的子集）。
+      return
+    }
     geometry = GeometryCache()
+    ChartWorkCounter.bump(.geometryCache)
     // 缓存键里塞上持仓量的身份。
     //
     // `IndicatorEngine.cacheKey` 只认「数据键|品种|周期|指标:参数|根数」，压根没有持仓量的
@@ -104,6 +117,7 @@ public struct ChartRenderer {
   /// 整帧共用的一条 NaN 线。数组是 COW，返回的是同一块内存，谁也不会去写它。
   private func blankLine(_ n: Int) -> [Double] {
     if let hit = geometry.blank, hit.count == n { return hit }
+    ChartWorkCounter.bump(.hiddenMask)
     let value = [Double](repeating: .nan, count: n)
     geometry.blank = value
     return value
@@ -178,6 +192,7 @@ public struct ChartRenderer {
   }
 
   private func computeLayout(size: CGSize) -> Layout {
+    ChartWorkCounter.bump(.layout)
     let mainWeight = ChartContentLayout.mainWeight(height: Double(size.height), control: state.options.portraitHeight, count: state.subs.count)
     let initial = Layout(width: Double(size.width), height: Double(size.height), subs: state.subs, subScale: state.subScale, mainWeight: mainWeight)
     // Height changes must not alter plot width/time mapping through padded-range label sizes.
@@ -210,6 +225,7 @@ public struct ChartRenderer {
     }
     // 从前这儿是 `paneHeight: layout(size:).main.h, topInset: ...layout(size:).plotW`，
     // 一次调用把 `layout` 算两遍。算一次，两处都用它。
+    ChartWorkCounter.bump(.priceRange)
     let L = layout(size: size)
     let value = KanpanCore.priceRange(
       view: view, series: state.series, overlayValues: overlayLines(),

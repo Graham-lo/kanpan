@@ -126,7 +126,11 @@ struct MainScreen: View {
   /// 图还停在最新那根上没有。周期条行尾那颗「最新」靠它决定露不露面。
   @State private var atLatest = true
   /// Historical OHLC belongs only to the crosshair container.
-  @State private var crosshair: Crosshair?
+  ///
+  /// 十字线跟手时一秒钟能动几十次，从前它写在主屏自己的 `@State` 上，于是主屏的 body
+  /// 一起跟着重求值几十次——而真正变的只有头部那几行开高低收。现在它住在
+  /// `CrosshairReadout` 里，只有读数那一小块观察它（见 `CrosshairReadout.swift`）。
+  @State private var crosshairReadout = CrosshairReadout()
   /// 倒计时的当前时刻（毫秒）。`nil` = 不画。
   ///
   /// 渲染器**不读系统时钟**（`ChartState` 得是纯值，A3.11 的基线靠这条），时间只能
@@ -271,7 +275,7 @@ struct MainScreen: View {
                  else {
                    if tab != .chart { chartOrigin = tab }
                    tab = .chart; didLeaveLaunch = true
-                   crosshair = nil
+                   crosshairReadout.clear()
                    // 目录还没载回来时点一行，以前只换图不记「最近」——同一个动作在
                    // 目录加载前后结果不一样，而且这张图下次冷启动也回不来。
                    picker.visit(symbol)
@@ -571,10 +575,8 @@ struct MainScreen: View {
           // 换品种和挑工具都贴在左边，同时开会叠在一起——开一个就把另一个收了。
           onTapSymbol: draw.active ? { draw.picker = false; showDrawSwitcher.toggle() } : nil)
           .padding(.horizontal, 8).padding(.vertical, 4)
-        if let text = topCandleData {
-          Text(text).font(.system(size: 10, design: .monospaced)).foregroundStyle(theme.ink)
-            .accessibilityIdentifier("chart.topOHLC")
-        }
+        CrosshairOHLCLabel(readout: crosshairReadout, context: crosshairContext,
+                           size: 10, color: theme.ink)
         }
         // 选中一条线之后的 样式 / 锁定 / 复制 / 删除 排在**图外**这一条属性栏上（§2E2）。
         // 竖屏它是浮在图下沿的一条，横屏不能照搬：横屏的图就是画布，浮在上面的东西
@@ -751,15 +753,12 @@ struct MainScreen: View {
           totalSupply: market.totalSupply,
           fundingRate: market.funding?.fundingRate,
           stale: market.tickerStale)
-          .opacity(topCandleData == nil ? 1 : 0)
+          .modifier(HiddenWhileCrosshairReads(readout: crosshairReadout, context: crosshairContext))
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
           .accessibilityValue(quoteDiagnostics)
-        if let text = topCandleData {
-          Text(text).font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(theme.ink).frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityIdentifier("chart.topOHLC")
-        }
+        CrosshairOHLCLabel(readout: crosshairReadout, context: crosshairContext,
+                           color: theme.ink, fillsWidth: true)
       }
     }
     .padding(.horizontal, 12)
@@ -789,14 +788,13 @@ struct MainScreen: View {
     return market.source == .okx ? (market.series?.close.last ?? displayedTicker?.last) : displayedTicker?.last
   }
 
-  private var topCandleData: String? {
-    guard prefs.dataDisplay == .top, let c = crosshair, let series = market.series, series.symbol == market.symbol, series.interval == market.interval,
-          series.close.indices.contains(c.index) else { return nil }
-    let i = c.index, p = market.info.pricePrecision
-    return fmtFull(ms: Double(series.time(at: i)), offsetMinutes: prefs.timeZone.offsetMinutes)
-      + "\n开 " + fmtNum(series.open[i], p) + "  高 " + fmtNum(series.high[i], p)
-      + "\n低 " + fmtNum(series.low[i], p) + "  收 " + fmtNum(series.close[i], p)
-      + "  量 " + fmtVol(series.volume[i])
+  /// 读数那一小块要的、**不跟着手指走**的那几样输入。十字线本身不在这儿——
+  /// 它住在 `crosshairReadout` 里，只有读数视图读得到（见 `CrosshairReadout.swift`）。
+  private var crosshairContext: CrosshairContext {
+    CrosshairContext(
+      series: market.series, symbol: market.symbol, interval: market.interval,
+      decimals: market.info.pricePrecision, offsetMinutes: prefs.timeZone.offsetMinutes,
+      enabled: prefs.dataDisplay == .top)
   }
 
   /// 「图表」那一页顶上的「记一笔」。复盘回放里没有「记」这回事，横屏归 `ToolRail` 管，
@@ -835,7 +833,7 @@ struct MainScreen: View {
         onInversion: { main, subs in if !reviewChart.active { store.noteInversion(main: main, subs: subs) } },
         onSubResize: { id, scale in store.update { $0.subHeightOverrides[id] = scale } },
         onSubReorder: { order in let next = merged(subs: order); store.update { $0.subs = next } },
-        onCrosshair: { crosshair = $0 },
+        onCrosshair: { [readout = crosshairReadout] in readout.set($0) },
         onNeedsHistory: { if reviewChart.mode == .replay { reviewChart.loadReplayPage(forward: false, feature: review) } else if !reviewChart.active { market.loadMore() } },
         // 面板打开时由原生遮罩消费首个触摸，只收起面板。
         onTapped: { dismissPanel() },
@@ -1221,7 +1219,7 @@ struct MainScreen: View {
       if tab != .chart { chartOrigin = tab }
       tab = .chart; didLeaveLaunch = true
       if info.symbol == market.symbol { proxy.scrollToLatest(animated: false) }
-      crosshair = nil
+      crosshairReadout.clear()
       market.switchTo(symbol: info.symbol)
     }
     picker.setLoader(market.catalogLoader)
@@ -1260,7 +1258,7 @@ struct MainScreen: View {
         // 正勾着的那次批量编辑跟着走：换了号，表就不是刚才那张表了，
         // 勾中的代号留着只会落到别人的自选上。
         if !awaitingAccount { favoritesEdit.end() }
-        dismissPanel(); crosshair = nil
+        dismissPanel(); crosshairReadout.clear()
       }
       // 档案真的装进来之后才谈「该开哪张图、该停在哪一格、该用哪个周期」。
       bridge.onProfileReady = { honorProfile() }
@@ -1313,13 +1311,13 @@ struct MainScreen: View {
       // 上次看的那张图。`boot()` 中途调到这儿时行情还没开张，那一次交给
       // `market.start(symbol:)` 直接开对，不在这儿切。
       if live, let last = profile.recents.first, last != market.symbol {
-        crosshair = nil; market.switchTo(symbol: last)
+        crosshairReadout.clear(); market.switchTo(symbol: last)
       }
     }
     // 周期跟着人走（已经从 `PersonalSyncCodec.keepDeviceFields` 里拿出来了）。
     // 复盘在跑的时候图是复盘自己的，别动。
     if live, !reviewChart.active, prefs.interval != market.interval {
-      crosshair = nil; market.switchTo(interval: prefs.interval)
+      crosshairReadout.clear(); market.switchTo(interval: prefs.interval)
     }
     // 报价簿要等 `boot()` 把线接好才认表；`boot()` 自己会交一次。
     if live { settleFavorites(profile.favorites) }
@@ -1338,7 +1336,7 @@ struct MainScreen: View {
     dismissPanel()
     guard iv != market.interval else { return }
     store.update { $0.interval = iv }
-    crosshair = nil
+    crosshairReadout.clear()
     market.switchTo(interval: iv)
     UISelectionFeedbackGenerator().selectionChanged()
   }

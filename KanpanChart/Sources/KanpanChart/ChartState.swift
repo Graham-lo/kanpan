@@ -110,6 +110,31 @@ public struct ChartState: Sendable {
   }
 }
 
+extension ChartState {
+  /// 两份 state 算出来的**几何**是不是同一套。
+  ///
+  /// 这里列的是 `ChartRenderer` 的 `GeometryCache` 真正依赖的那些输入：布局、价格区间、
+  /// 图例内缩、叠加线、隐藏输出掩码，没有一个读得到 `crosshair` 或 `nowMs`——
+  /// 十字线摆在哪根上、倒计时走到哪一秒，都不会让轴宽变一个像素。所以这两项单独摘出去，
+  /// 它们一变就作废整只缓存是纯亏：手指跟手时每一帧都得把布局和价格区间重算一遍。
+  ///
+  /// 反过来，凡是**会**改几何的东西一律留在下面逐项比——漏一项就会拿上一份 state 的
+  /// 几何去画新 state，那是画错，不是慢。所以这里不用「白名单式的近似」，
+  /// 而是把 `ChartState` 的字段一个不落地列全（新增字段时也必须加进来）。
+  func sameGeometryInputs(as other: ChartState) -> Bool {
+    series == other.series && oi == other.oi && symbol == other.symbol && view == other.view
+      && style == other.style && paletteSeed == other.paletteSeed && dark == other.dark
+      && redUp == other.redUp && price == other.price && overlays == other.overlays
+      && subs == other.subs && params == other.params && timezone == other.timezone
+      && indicatorColors == other.indicatorColors && drawingPreviewID == other.drawingPreviewID
+      && drawings == other.drawings && magnet == other.magnet && decimals == other.decimals
+      && options == other.options && axisScaleAnchor == other.axisScaleAnchor
+      && hiddenOutputs == other.hiddenOutputs && subInverted == other.subInverted
+      && rsiUpper == other.rsiUpper && rsiLower == other.rsiLower && subScale == other.subScale
+      && oiSupported == other.oiSupported
+  }
+}
+
 /// 十字线落在哪儿。
 ///
 /// 存的是**时间和价格**，不是像素：转屏、改副图高度、补历史都会换一套坐标，存像素的话
