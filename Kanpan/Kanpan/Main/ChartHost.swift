@@ -264,6 +264,24 @@ final class ChartProxy {
   weak var box: ChartBox?
   var savedState: ChartState?
   var savedPlotWidth: Double?
+  /// 上一次兑现过的「档案到货」序号（`ChartHost.adoptToken`）。
+  ///
+  /// **记在这儿而不是盒子上，因为盒子活不过一次换页。** 用户 2026-09-19 报的现象：
+  /// 登录状态冷启动 → 落在自选页 → 点 BTC → 图还是出厂宽度，之前捏出来的那份没了；
+  /// 而盘上、云端两处的 `barSpacing` 取证下来都是对的。病根就在这个序号的存放位置：
+  ///
+  /// 1. 冷启动 `MainScreen` 的 `tab` 出厂是 `.chart`，图先按 4pt 开张，`savedState`
+  ///    记下一份 4pt 的视野；
+  /// 2. `account.restore()` 把档案读回来，`ChartViewport.adopt` 把序号 +1，**同一轮**里
+  ///    `honorProfile` 又把 `tab` 翻到 `.favorites`——图被拆掉，这次到货没有任何一个
+  ///    盒子来兑现；
+  /// 3. 用户点进同一个品种，`makeUIView` 拿 `savedState` 把 4pt 的视野原样装回去，
+  ///    并把序号记成「已兑现」——那次到货就此蒸发。之后随便一次拖动，图把 4pt
+  ///    当成用户意图报回去，反手把盘上和云端那份真值也写掉。
+  ///
+  /// 序号跟着 `MainScreen` 的 `@State` 活着，重建盒子时就能看出「我不在的时候档案
+  /// 到过货」，改按 `resetSpacing` 重量一次（`.adopt`），位置照旧留着。
+  var lastAdoptToken = 0
   /// 还欠一下「回到最新」。
   ///
   /// 竖屏的三张整页是 `switch tab` 拆出来的：换到自选再换回行情，`chartPage` 整棵树
@@ -355,13 +373,23 @@ struct ChartHost: UIViewRepresentable {
       next.subInverted = saved.subInverted
       next.crosshair = next.options.dataDisplay == saved.options.dataDisplay && next.options.crossPrice == saved.options.crossPrice ? saved.crosshair : nil
       incoming = next
-      box.pending = .resize(spacing: saved.view.barSpacing(step: saved.series.step, plotW: width))
+      // 图不在的那段时间档案到过货（见 `ChartProxy.lastAdoptToken`）：存下来的那份
+      // 视野宽度是旧的，位置留着、宽度按档案重量。没到过货就原样装回去。
+      box.pending = adoptToken != consumedAdoptToken(box)
+        ? .adopt(spacing: resetSpacing)
+        : .resize(spacing: saved.view.barSpacing(step: saved.series.step, plotW: width))
     }
     box.chart.state = incoming
-    // 第一帧本来就按 `resetSpacing` 走 `.reset`，别再补一次多余的 `.adopt`。
-    box.lastAdoptToken = adoptToken
+    // 走到这儿要么按 `resetSpacing` 走 `.reset`，要么上面已经补了 `.adopt`——
+    // 这次到货算兑现过了。
+    consumeAdoptToken(box)
     return box
   }
+
+  /// 上一次兑现过的到货序号。有把手就以把手上那份为准（它活得过换页），
+  /// 没把手（横屏工作台之类只活一阵的图）就退回盒子自己记的那份。
+  private func consumedAdoptToken(_ box: ChartBox) -> Int { proxy?.lastAdoptToken ?? box.lastAdoptToken }
+  private func consumeAdoptToken(_ box: ChartBox) { proxy?.lastAdoptToken = adoptToken; box.lastAdoptToken = adoptToken }
 
   func updateUIView(_ box: ChartBox, context: Context) {
     proxy?.box = box
@@ -425,8 +453,8 @@ struct ChartHost: UIViewRepresentable {
     }
     // 档案到货：图得按新到货的根宽重新起点。放在所有 `pending` 赋值之后——
     // `.reset`（换品种 / 第一次拿到数据）本来就用 `resetSpacing` 开张，不用再重量一次。
-    if adoptToken != box.lastAdoptToken {
-      box.lastAdoptToken = adoptToken
+    if adoptToken != consumedAdoptToken(box) {
+      consumeAdoptToken(box)
       if box.pending != .reset { box.pending = .adopt(spacing: resetSpacing) }
     }
     let previousWidth = box.chart.chartLayout?.plotW

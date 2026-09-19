@@ -189,6 +189,91 @@ import XCTest
     XCTAssertTrue(wait(30) { !restarted.otherElements["account.view"].exists })
   }
 
+  /// 用户 2026-09-19 报的那条路，**跟上面那条差的只是落地页**：有自选的人冷启动
+  /// 落在自选页，图在他点进品种之前一直不存在；账号档案是在这段时间里到货的。
+  /// 从前这一到货没人接（图不在），点进去的图装回的是落地前存下的那份旧视野——
+  /// 盘上、云端都是捏完的宽度，屏幕上却是默认的密度，而且下一下拖动还会把旧宽度
+  /// 写回盘上、推上云端，把正确的那份彻底冲掉。
+  ///
+  /// 所以这条要连做两轮冷启动：第一轮证明「点进去还是捏完的样子」，第二轮证明
+  /// 中间那一下拖动没把旧宽度写回去。
+  func testZoomSurvivesColdStartLandingOnFavoritesWhileSignedIn() throws {
+    continueAfterFailure = false
+
+    func launchOnFavorites() -> XCUIApplication {
+      let app = makeApp(signedIn: true)
+      app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT"
+      app.launch()
+      XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].waitForExistence(timeout: 60), "有自选的人冷启动该落在自选页")
+      return app
+    }
+    func openChart(_ app: XCUIApplication) {
+      app.buttons["favorites.open.BTCUSDT"].tap()
+      waitForChart(app)
+      XCTAssertTrue(wait(20) { (self.info(app)["symbol"] as? String) == "BTCUSDT" })
+    }
+
+    let app = launchOnFavorites()
+    openChart(app)
+
+    // 自己造一个账号（现造的测试口令，不碰任何真账号）。
+    app.buttons["bottom.settings"].tap()
+    app.buttons["settings.account"].tap()
+    XCTAssertTrue(app.buttons["注册"].waitForExistence(timeout: 10))
+    app.buttons["注册"].tap()
+    app.textFields["account.email"].tap()
+    app.textFields["account.email"].typeText(String(account))
+    typeSecret(app, password)
+    app.buttons["account.submit"].tap()
+    XCTAssertTrue(wait(40) { !app.otherElements["account.view"].exists }, app.debugDescription)
+
+    app.buttons["bottom.chart"].tap()
+    waitForChart(app)
+    settle(10)                                        // 让第一轮同步把旧宽度推上去，存档里有基线
+
+    let before = spacing(app)
+    XCTAssertGreaterThan(before, 0, "读不到根间距：\(info(app))")
+    let pinched = pinchUntilLayoutChanges(app, from: before)
+    attach("手一松的三份", copies(app))
+    app.terminate()
+
+    // 第一轮：落在自选页，等账号档案在图不存在的时候到货，再点进去。
+    let second = launchOnFavorites()
+    settle(12)
+    openChart(second)
+    settle(3)
+    attach("落地自选之后点进去的三份", copies(second))
+    let reopened = spacing(second)
+    XCTAssertEqual(reopened, pinched, accuracy: max(0.05, pinched * 0.03),
+      "冷启动落在自选页、再点进品种，应当还是手一松时的样子：松手 \(pinched)，回来 \(reopened)")
+    let shot = XCTAttachment(screenshot: second.screenshot())
+    shot.name = "落地自选后点进去的布局（登录）"; shot.lifetime = .keepAlways; add(shot)
+
+    // 拖一下：从前正是这一下把旧宽度写回盘上。
+    second.otherElements["chart.canvas"].swipeRight()
+    settle(3)
+    XCTAssertEqual(spacing(second), pinched, accuracy: max(0.05, pinched * 0.03), "拖动不该改变根间距")
+    second.terminate()
+
+    // 第二轮：拖过之后再冷启动，还得是捏出来的那份。
+    let third = launchOnFavorites()
+    settle(12)
+    openChart(third)
+    settle(3)
+    attach("拖过一下再冷启动的三份", copies(third))
+    XCTAssertEqual(spacing(third), pinched, accuracy: max(0.05, pinched * 0.03),
+      "拖过一下再冷启动，旧宽度不许被写回去：松手 \(pinched)，回来 \(spacing(third))")
+
+    // 收尾：把测试账号删掉，不在后端留垃圾。
+    third.buttons["bottom.settings"].tap()
+    third.buttons["settings.account"].tap()
+    XCTAssertTrue(third.buttons["注销账号"].waitForExistence(timeout: 15))
+    third.buttons["注销账号"].tap()
+    typeSecret(third, password)
+    third.buttons["account.submit"].tap()
+    XCTAssertTrue(wait(30) { !third.otherElements["account.view"].exists })
+  }
+
   // ---------------------------------------------------------------- 没登录那条路
 
   /// 同一个功能的另一半。对 `ChartViewport` 来说登录与否只差「云端那条腿在不在」，

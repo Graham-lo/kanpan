@@ -105,6 +105,24 @@ struct SettingsStampTests {
     #expect(store.dirtyFields == ["barSpacing"])
   }
 
+  @Test("脏着却没东西可推的字段：桥判定和存档一致后就地清掉，别的脏字段不动")
+  func agreedFieldsClearWithoutAnAck() {
+    withClock { setNow in
+      let (store, _, _) = makeStore()
+      setNow(1_000)
+      store.update { $0.interval = .h1 }      // 4h → 1h → 4h：同步层看来没变化，永远不会有 ACK
+      store.update { $0.interval = .h4 }
+      store.update { $0.barSpacing = 2 }
+      #expect(store.dirtyFields == ["interval", "barSpacing"])
+
+      store.syncAgreed(["interval"])
+      #expect(store.dirtyFields == ["barSpacing"], "只清被判定一致的那一项，真有改动的那项必须留着")
+
+      store.syncAgreed(["skin"])                // 本来就不脏的字段：不报错，也不动别的
+      #expect(store.dirtyFields == ["barSpacing"])
+    }
+  }
+
   // ------------------------------------------------ 清：拍平之后的那些线上路径
 
   @Test("嵌套字段发上去的是拍平后的路径：params/MA 和 params/EMA 都认下了就清 params")

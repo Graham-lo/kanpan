@@ -356,7 +356,37 @@ import ReviewUI
       }
     } catch { account.syncStatus = error.localizedDescription }
   }
-  private func captureSettings() { do { capture([try PersonalSyncCodec.settings(prefs.prefs)], collections: ["settings"]) } catch { account.syncStatus = error.localizedDescription } }
+  private func captureSettings() {
+    do {
+      let object = try PersonalSyncCodec.settings(prefs.prefs)
+      capture([object], collections: ["settings"])
+      settleAgreedSettings(object)
+    } catch { account.syncStatus = error.localizedDescription }
+  }
+  /// 记完账再对一遍账：**脏着、却和存档一致、队列里也没它的**字段，清掉脏标识。
+  ///
+  /// `SyncStore.capture` 比出手上这份和存档 `local` 一样就不记操作，这本身没错——
+  /// 没变化不该占队列。但 `PrefsStore` 的脏标识是在**改动那一刻**打的，它不知道
+  /// 这一改在同步层看来是不是「没变化」（用户把周期从 4h 换到 1h 又换回 4h；
+  /// 或者改动发生时正在应用云端那批，`gate` 把记账挡了，事后云端那份已经等于本地）。
+  /// 于是脏标识永远等不到 `syncPushed` 来清它，这个字段就永远「本地更新、云端别碰」。
+  ///
+  /// 判「有东西可推」的三处：手上这份和存档 `local` 的差异、队列里对这个对象还没被
+  /// 认下的操作、被服务端顶回来等着补推的那条。三处都不沾的脏字段才清。
+  private func settleAgreedSettings(_ object: SyncObject) {
+    guard !gate.isApplying, owner != nil, let sync, prefs.stamp.isDirty,
+          let baseline = sync.archive.local[object.key], !baseline.deleted else { return }
+    var blocked = Set<String>()
+    for key in Set(object.body.keys).union(baseline.body.keys) where object.body[key] != baseline.body[key] {
+      blocked.formUnion(SettingsWire.fields(for: key))
+    }
+    let queued = sync.archive.operations.filter { $0.collection == object.collection && $0.objectId == object.id }.map(\.fields)
+      + sync.archive.rejected.filter { $0.intent.key == object.key }.map(\.operation.fields)
+    for fields in queued { for key in fields.keys { blocked.formUnion(SettingsWire.fields(for: key)) } }
+    let agreed = prefs.dirtyFields.subtracting(blocked)
+    guard !agreed.isEmpty else { return }
+    prefs.syncAgreed(agreed)
+  }
   private func captureSymbols() { capture(PersonalSyncCodec.symbols(symbols.prefs), collections: ["favorites", "groups"]) }
   private func captureDrawings() { do { capture(try PersonalSyncCodec.drawings(drawings.storedArchive), collections: ["drawings", "drawingPreferences"]) } catch { account.syncStatus = error.localizedDescription } }
   private func setAutoSync(_ enabled: Bool) {

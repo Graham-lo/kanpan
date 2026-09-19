@@ -327,6 +327,27 @@ final class PrefsStore {
     writeStamp(); writeSentinel()
   }
 
+  /// 存档里那份和手上这份**已经一致**、队列里也没有它的操作的脏字段——清掉。
+  ///
+  /// 清脏标识本来只有 `syncPushed` 一条路：推上去、服务端认下、按字段清。可有一种
+  /// 脏字段永远走不到那条路：它被记脏的那一刻**没产生操作**（`SyncStore.stage` 比出来
+  /// 手上这份和存档 `local` 一模一样，就不记；或者当时正在应用云端那份、记账被
+  /// `ApplyGate` 挡了，事后再比也已经一样）。没有操作就没有 ACK，没有 ACK 就永远脏——
+  /// 2026-09-19 在真机取证抓到的正是这个：`interval` 从 13:25:07 起一直脏着，
+  /// 盘上、存档、云端三处却都是同一个 `4h`，队列里一条操作都没有。
+  ///
+  /// 后果不是值错，是**这个字段从此不再跟着人走**：`applySynced` / `applyPending` 拿
+  /// 脏字段当「本地更新、别覆盖」的依据，另一台设备改了周期，这台永远不认。
+  ///
+  /// 判「一致」的活由桥那边做（它才看得见存档和队列），这儿只负责清：这些字段的
+  /// 时刻取当前快照，等于「就在此刻推成功了」。
+  func syncAgreed(_ fields: Set<String>) {
+    let marks = stamp.dirty.filter { fields.contains($0.key) }
+    guard !marks.isEmpty else { return }
+    stamp.clear(marks, at: SettingsClock.now())
+    writeStamp()
+  }
+
   private func writeStamp() { storage.setPrefsData(try? JSONEncoder().encode(stamp), forKey: SettingsStamp.storageKey) }
   private func writeSentinel() { sentinelStorage.setPrefsData(try? JSONEncoder().encode(sentinel), forKey: SettingsSentinel.storageKey) }
 
