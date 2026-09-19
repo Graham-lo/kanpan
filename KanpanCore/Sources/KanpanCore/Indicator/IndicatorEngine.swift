@@ -66,12 +66,18 @@ public struct IndicatorEngine: Sendable {
 
   /// 末根改了或者新追了一根：只重算尾巴，结果与全量逐位相同。
   public mutating func updateTail(series: BarSeries, oi: OISeries? = nil, dataKey: String = "") {
-    // 空序列没有末根可更（WS 事件可能比 REST 历史先到），直接放过——
-    // 下面的 `start` 会是 1，拿去扫零长数组就是越界。
+    // 空序列没有末根可更（WS 事件可能比 REST 历史先到），直接放过。
     guard !states.isEmpty, series.count > 0 else { return }
     for (id, var st) in states {
       let p = params[id] ?? id.defaultParams
-      let start = max(1, series.count - id.tailBars(params: p))
+      // 下限是 0 而不是 1：序列短到 `count <= tailBars` 时（新上市的品种只有一两根），
+      // 首根同时也是末根，它自己就是这次被改掉的那一根。夹到 1 的话重算区间退化成
+      // `1..<1` 空区间——改掉的收盘价不但当场没生效，还把 `sum[0]`、`tr[0]` 这些
+      // 递推种子永久留在旧值上，后面每追一根都接着错的种子往下算，一直错到
+      // 均线开始出值之后。起点是 0 时各条线的 `canTail` 一律返回假，自然退回全量重建：
+      // 这种极短状态本来就没有几根可算，全量不构成负担；长序列的起点仍是
+      // `count - tailBars`，增量路径一点没动。
+      let start = max(0, series.count - id.tailBars(params: p))
       st.update(series: series, from: start, oi: oi)
       states[id] = st
       values[id] = st.result

@@ -41,7 +41,13 @@ struct SMALine: Sendable, Equatable {
   }
 
   /// 尾部重算的最早起点：要能拿到上一根的累加和。
-  func canTail(from start: Int) -> Bool { start > offset && sum[start - 1].isFinite }
+  ///
+  /// `start - 1` 必须真的在已算好的那段里：起点是 0（首根就是被改的那根）时没有上一根，
+  /// 起点跑到 `sum` 之外时（序列一次长了好几根，状态还停在旧长度）那个种子也不存在。
+  /// 两种都返回假，调用方会整条重建。
+  func canTail(from start: Int) -> Bool {
+    start > offset && start >= 1 && start - 1 < sum.count && sum[start - 1].isFinite
+  }
 }
 
 /// EMA / RMA 这类一阶递推线。
@@ -93,7 +99,9 @@ struct RecursiveLine: Sendable, Equatable {
     }
   }
 
+  /// 同 `SMALine.canTail`。这里还多挡一层：`n <= 0` 这种脏参数会让 `start > offset + n - 1`
+  /// 对起点 0 成立，接着 `out[start - 1]` 就是 `out[-1]`。
   func canTail(from start: Int) -> Bool {
-    start > offset + n - 1 && start - 1 < out.count && out[start - 1].isFinite
+    start > offset + n - 1 && start >= 1 && start - 1 < out.count && out[start - 1].isFinite
   }
 }

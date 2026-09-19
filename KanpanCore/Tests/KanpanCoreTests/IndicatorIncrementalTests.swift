@@ -86,8 +86,12 @@ struct IndicatorIncrementalTests {
   }
 
   /// 根数少于指标周期时（前导全 NaN）增量也不能出岔子。
+  ///
+  /// 改完末根还要接着往下长：短序列上多数线此时还全是 NaN，只比那一刻等于什么都没比——
+  /// 错的累计和会顺着后面的追加一路带到均线开始出值之后才露头。
   @Test("短序列", arguments: [1, 2, 5, 13, 27])
   func shortSeries(_ n: Int) {
+    var r = Rng(UInt64(6000 + n))
     var s = synthSeries(count: n, seed: UInt64(n))
     var e = IndicatorEngine()
     e.ensure(series: s, wanted: Self.all, dataKey: "short")
@@ -97,6 +101,153 @@ struct IndicatorIncrementalTests {
                             low: last.low * 0.99, close: last.close * 1.005, volume: last.volume + 1))
     e.updateTail(series: s, dataKey: "short")
     Self.compare(e.values, Self.full(s), "n=\(n) 改末根")
+
+    // 一直追到所有线都出过值（SRSI 默认要 14 + 14 + 3 根才有第一个点）。
+    for step in 0..<(64 - n) {
+      let prev = s.bar(at: s.count - 1)
+      let o = prev.close
+      let c = max(1, o * (1 + r.d(-0.02, 0.02)))
+      s.append(Bar(openTime: prev.openTime + s.step, open: o,
+                   high: max(o, c) * (1 + r.d(0, 0.006)), low: min(o, c) * (1 - r.d(0, 0.006)),
+                   close: c, volume: r.d(10, 5000)))
+      e.updateTail(series: s, dataKey: "short")
+      Self.compare(e.values, Self.full(s), "n=\(n) 追到第 \(s.count) 根（第 \(step) 步）")
+    }
+  }
+
+  // ------------------------------------------------------------ A4：可变的第 0 根
+
+  /// 全 OHLC 都等于收盘的一根，便于手算。
+  static func flatBar(_ t: Int64, _ close: Double) -> Bar {
+    Bar(openTime: t, open: close, high: close, low: close, close: close, volume: 100)
+  }
+
+  /// A4：序列只剩一根时，那一根既是首根也是末根——它自己就是「可变的第 0 根」。
+  ///
+  /// 重算起点如果被夹到 1，`1..<1` 是空区间，改掉的收盘价压根没进累计和；
+  /// 更要命的是 `sum[0]` 从此是错的，后面每追一根都接着这个错的和往下算。
+  /// 所以这里一路追到 MA(5) 第一次出值，手算的 102 是对账凭据。
+  @Test("唯一一根改掉之后再长：MA(1) 立刻跟上，MA(5) 首次出值仍等于全量")
+  func singleBarEditThenGrow() {
+    var s = BarSeries(symbol: "A4", interval: .h1, bars: [Self.flatBar(0, 100)])
+    let params: [IndicatorID: [Int]] = [.ma: [1, 5]]
+    var e = IndicatorEngine()
+    e.ensure(series: s, wanted: [.ma], params: params, dataKey: "a4")
+
+    s.replaceLast(with: Self.flatBar(0, 110))
+    e.updateTail(series: s, dataKey: "a4")
+    #expect(e.values[.ma]!.lines[0][0] == 110,
+            "MA(1) 就是价格本身，改成 110 之后得到 \(e.values[.ma]!.lines[0][0])")
+
+    for i in 1...4 {
+      s.append(Self.flatBar(Int64(i) * s.step, 100))
+      e.updateTail(series: s, dataKey: "a4")
+    }
+    // (110 + 100 * 4) / 5
+    #expect(e.values[.ma]!.lines[1][4] == 102,
+            "MA(5) 首次出值应当是 102，得到 \(e.values[.ma]!.lines[1][4])")
+
+    var fresh = IndicatorEngine()
+    fresh.ensure(series: s, wanted: [.ma], params: params, dataKey: "a4-full")
+    for (i, line) in e.values[.ma]!.lines.enumerated() {
+      expectSame(line, fresh.values[.ma]!.lines[i], "MA 增量 vs 全量[\(i)]", tol: 0)
+    }
+  }
+
+  /// A4 的同族边界：ATR 的 `tr[0]` 是「首根特殊输入」（只有 high − low，没有前收）。
+  ///
+  /// 唯一一根的振幅改了之后，`tr[0]` 必须跟着改；夹到 1 的话它会一直停在旧值，
+  /// 等 RMA 开始出值时才看得出来——ATR(2) 的第一个点是 (tr[0] + tr[1]) / 2。
+  @Test("唯一一根的振幅改掉之后，ATR 首次出值仍等于全量")
+  func singleBarEditThenATR() {
+    var s = BarSeries(symbol: "A4ATR", interval: .h1,
+                      bars: [Bar(openTime: 0, open: 100, high: 110, low: 90, close: 100, volume: 1)])
+    let params: [IndicatorID: [Int]] = [.atr: [2]]
+    var e = IndicatorEngine()
+    e.ensure(series: s, wanted: [.atr], params: params, dataKey: "a4atr")
+
+    // tr[0] 由 20 变成 40。
+    s.replaceLast(with: Bar(openTime: 0, open: 100, high: 130, low: 90, close: 100, volume: 1))
+    e.updateTail(series: s, dataKey: "a4atr")
+
+    // tr[1] = max(105 − 95, |105 − 100|, |95 − 100|) = 10。
+    s.append(Bar(openTime: s.step, open: 100, high: 105, low: 95, close: 100, volume: 1))
+    e.updateTail(series: s, dataKey: "a4atr")
+    #expect(e.values[.atr]!.lines[0][1] == 25,
+            "ATR(2) 首次出值应当是 (40 + 10) / 2 = 25，得到 \(e.values[.atr]!.lines[0][1])")
+
+    var fresh = IndicatorEngine()
+    fresh.ensure(series: s, wanted: [.atr], params: params, dataKey: "a4atr-full")
+    expectSame(e.values[.atr]!.lines[0], fresh.values[.atr]!.lines[0], "ATR 增量 vs 全量", tol: 0)
+  }
+
+  /// A4 的同族边界：脏参数（0 / 负数）撞上起点 0。
+  ///
+  /// 起点现在能取到 0，而 `RecursiveLine` 的「能不能接着上一根算」判据里带着 `n`——
+  /// `n <= 0` 时那个判据会把起点 0 放进来，接着就去读上一根，也就是 `out[-1]`。
+  /// 所以判据里必须另外写死「起点至少是 1」。参数是用户能在设置里调的，0 不是假想。
+  @Test("参数是 0 / 负数时，起点 0 也不能越界")
+  func degenerateParamsAtIndexZero() {
+    var s = BarSeries(symbol: "A4BAD", interval: .h1, bars: [Self.flatBar(0, 100)])
+    let params: [IndicatorID: [Int]] = [
+      .ma: [0], .ema: [0], .vol: [-1], .rsi: [0], .atr: [0],
+      .boll: [0, 2], .macd: [0, 0, 0], .kdj: [0, 0, 0], .srsi: [0, 0, 0, 0],
+    ]
+    var e = IndicatorEngine()
+    e.ensure(series: s, wanted: Self.all, params: params, dataKey: "bad")
+    s.replaceLast(with: Self.flatBar(0, 110))
+    e.updateTail(series: s, dataKey: "bad")
+    for i in 1...3 {
+      s.append(Self.flatBar(Int64(i) * s.step, 100))
+      e.updateTail(series: s, dataKey: "bad")
+    }
+    var fresh = IndicatorEngine()
+    fresh.ensure(series: s, wanted: Self.all, params: params, dataKey: "bad-full")
+    for id in Self.all {
+      for (i, line) in e.values[id]!.lines.enumerated() {
+        expectSame(line, fresh.values[id]!.lines[i], "脏参数 \(id.rawValue)[\(i)]", tol: 0)
+      }
+    }
+  }
+
+  /// 随机对拍从 n = 1 起步：先改唯一那一根，再一根根长到所有线都出过值，每一步都对账。
+  ///
+  /// 原来的随机用例从 320 根开始，暖机边界根本走不到；这条补的就是那一段。
+  @Test("从一根长到一百多根，每一步都等于全量", arguments: [0, 1])
+  func growFromSingleBar(_ lane: Int) {
+    var r = Rng(UInt64(20260919 + lane))
+    var s = synthSeries(count: 1, seed: UInt64(301 + lane))
+    var e = IndicatorEngine()
+    e.ensure(series: s, wanted: Self.all, dataKey: "grow")
+
+    // A4 的起点：唯一一根被改掉。
+    let first = s.bar(at: 0)
+    s.replaceLast(with: Bar(openTime: first.openTime, open: first.open,
+                            high: first.high * 1.08, low: first.low * 0.92,
+                            close: first.close * 1.1, volume: first.volume + 7))
+    e.updateTail(series: s, dataKey: "grow")
+    Self.compare(e.values, Self.full(s), "lane\(lane) n=1 改末根")
+
+    for step in 0..<130 {
+      let last = s.bar(at: s.count - 1)
+      let o = last.close
+      let c = max(1, o * (1 + r.d(-0.02, 0.02)))
+      s.append(Bar(openTime: last.openTime + s.step, open: o,
+                   high: max(o, c) * (1 + r.d(0, 0.008)), low: min(o, c) * (1 - r.d(0, 0.008)),
+                   close: c, volume: r.d(10, 5000)))
+      e.updateTail(series: s, dataKey: "grow")
+      // 一半的步数再把刚追的这根改一次，模拟 WS 的同根多次更新。
+      if r.d() < 0.5 {
+        let cur = s.bar(at: s.count - 1)
+        let c2 = max(1, cur.close * (1 + r.d(-0.01, 0.01)))
+        s.replaceLast(with: Bar(
+          openTime: cur.openTime, open: cur.open,
+          high: max(max(cur.open, c2), cur.high), low: min(min(cur.open, c2), cur.low),
+          close: c2, volume: cur.volume + r.d(0, 30)))
+        e.updateTail(series: s, dataKey: "grow")
+      }
+      Self.compare(e.values, Self.full(s), "lane\(lane) 第 \(step) 步（\(s.count) 根）")
+    }
   }
 }
 
@@ -144,8 +295,8 @@ struct OIAlignedTailTests {
         s.append(Bar(openTime: last.openTime + s.step, open: o,
                      high: max(o, c), low: min(o, c), close: c, volume: r.d(10, 5000)))
       }
-      // 引擎给的起点就是这个：`max(1, count - tailBars)`。
-      let start = max(1, s.count - IndicatorID.oi.tailBars(params: IndicatorID.oi.defaultParams))
+      // 引擎给的起点就是这个：`max(0, count - tailBars)`（下限是 0，见 A4）。
+      let start = max(0, s.count - IndicatorID.oi.tailBars(params: IndicatorID.oi.defaultParams))
       prev = oi.aligned(to: s, from: start, previous: prev)
       if round % 10 == 0 || round == 299 {
         expectSame(prev, oi.aligned(to: s), "kind\(kind) 第 \(round) 轮", tol: 0)
