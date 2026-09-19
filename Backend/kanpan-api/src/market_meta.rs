@@ -11,9 +11,12 @@
 //! and the fields it cannot read instead of failing the whole table.
 use crate::{AppState,envelope,error::{ApiError,Result}};
 use axum::{Router,Json,extract::Query,routing::get,http::StatusCode};
-use serde::Deserialize;
+use serde::{Deserialize,Serialize};
 use serde_json::{Value,json};
 use std::collections::HashMap;
+use std::future::Future;
+use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::{Arc,OnceLock,atomic::{AtomicBool,Ordering}};
 use std::time::{Duration,Instant};
 
@@ -63,7 +66,10 @@ pub fn routes()->Router<AppState> {
  .route("/v1/market/open-interest",get(open_interest))
 }
 
-#[derive(Clone,Copy,Debug,Default,PartialEq)]
+// Serialize/Deserialize 是为了落盘快照（见 `Snapshot`），不是接口形状：
+// 送给手机的 JSON 由 `Meta::value()` 拼，字段名不一样。
+#[derive(Clone,Copy,Debug,Default,PartialEq,Serialize,Deserialize)]
+#[serde(default)]
 pub struct Meta {pub total_supply:Option<f64>,pub circulating_supply:Option<f64>,pub max_supply:Option<f64>,pub rank:Option<i64>}
 impl Meta {
  fn empty(&self)->bool {self.total_supply.is_none()&&self.circulating_supply.is_none()&&self.max_supply.is_none()&&self.rank.is_none()}
@@ -101,7 +107,7 @@ pub type SupplyTable=HashMap<String,Meta>;
 /// unrelated American company. Guessing is not merely useless: `stocks/ANTH`
 /// resolves to AN2 Therapeutics, nothing to do with Anthropic. The pre-IPO
 /// names sit on the named arm too, under `private/<slug>`.
-#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+#[derive(Clone,Copy,Debug,PartialEq,Eq,Serialize,Deserialize)]
 pub enum Kind {Crypto,TickerEquity,NamedEquity,Other}
 impl Kind {
  pub fn equity(self)->bool {matches!(self,Kind::TickerEquity|Kind::NamedEquity)}
@@ -502,9 +508,17 @@ impl<T> Cache<T> {
  fn read(&self)->Option<(Instant,Arc<T>)> {self.slot.read().unwrap_or_else(|e|e.into_inner()).clone()}
  fn fresh(&self,ttl:Duration)->Option<Arc<T>> {self.read().filter(|(at,_)|at.elapsed()<ttl).map(|(_,v)|v)}
  fn stale(&self)->Option<Arc<T>> {self.read().map(|(_,v)|v)}
- fn store(&self,value:T)->Arc<T> {
+ fn store(&self,value:T)->Arc<T> {self.store_at(value,Instant::now())}
+ /// 存一份「一进来就算旧」的值，快照走这条路：它立刻能用来答请求，但仍然算
+ /// 旧表，所以第一个请求照常把后台刷新踢起来，而不是拿着昨天的数字当新的用。
+ fn store_stale(&self,value:T,age:Duration)->Arc<T> {
+  // 机器刚开机不到 `age` 时减不出更早的时刻；那种情况下当成新表也无妨，
+  // 启动预热本来就会立刻刷一次。
+  self.store_at(value,Instant::now().checked_sub(age).unwrap_or_else(Instant::now))
+ }
+ fn store_at(&self,value:T,at:Instant)->Arc<T> {
   let value=Arc::new(value);
-  *self.slot.write().unwrap_or_else(|e|e.into_inner())=Some((Instant::now(),value.clone()));
+  *self.slot.write().unwrap_or_else(|e|e.into_inner())=Some((at,value.clone()));
   value
  }
 }
@@ -521,7 +535,6 @@ impl<T:Clone> Recent<T> {
   slots.insert(key.to_owned(),(Instant::now(),value));
  }
 }
-fn supply_cache()->&'static Cache<Market> {static C:OnceLock<Cache<Market>>=OnceLock::new();C.get_or_init(Cache::new)}
 fn price_cache()->&'static Cache<HashMap<String,f64>> {static C:OnceLock<Cache<HashMap<String,f64>>>=OnceLock::new();C.get_or_init(Cache::new)}
 fn okx_cache()->&'static Cache<HashMap<String,OpenInterest>> {static C:OnceLock<Cache<HashMap<String,OpenInterest>>>=OnceLock::new();C.get_or_init(Cache::new)}
 fn binance_oi_cache()->&'static Recent<OpenInterest> {static C:OnceLock<Recent<OpenInterest>>=OnceLock::new();C.get_or_init(Recent::new)}
@@ -550,16 +563,16 @@ async fn get_json(url:&str)->Result<Value> {
 /// read. `Err` means the page could not be fetched at all, which is the only
 /// case where the previous refresh's answer should be kept: a page that loads
 /// and carries no capitalisation (every ETF) is genuinely blank.
-async fn equity_multiplier(contract:&Contract,fx:&HashMap<String,f64>,prices:&HashMap<String,f64>)->Result<Option<f64>> {
+async fn equity_multiplier(source:&dyn Source,contract:&Contract,fx:&HashMap<String,f64>,prices:&HashMap<String,f64>)->Result<Option<f64>> {
  let Some(path)=listing(contract.kind,&contract.base) else {return Ok(None)};
  let Some(price)=prices.get(&contract.symbol).copied() else {return Ok(None)};
  let url=format!("{STOCKANALYSIS}{path}/__data.json");
  // The site occasionally answers a real listing with a challenge page instead
  // of JSON; one immediate retry is what separates "Visa is blank today" from
  // "Visa is blank for one refresh". Two failures in a row count as unreadable.
- let body=match get_json(&url).await {
+ let body=match source.json(&url).await {
   Ok(body)=>body,
-  Err(_)=>{tokio::time::sleep(LISTING_GAP).await;get_json(&url).await?}
+  Err(_)=>{tokio::time::sleep(source.gap()).await;source.json(&url).await?}
  };
  let Some(cap)=parse_stockanalysis_cap(&body) else {return Ok(None)};
  let rate=fx.get(listing_currency(&path)).copied().unwrap_or(0.0);
@@ -571,85 +584,236 @@ async fn equity_multiplier(contract:&Contract,fx:&HashMap<String,f64>,prices:&Ha
 /// a guess: a blank cell beats another company's market cap. If the rates or
 /// the price list are missing there is nothing to compute at all, so the whole
 /// previous table is kept.
-async fn refresh_equities(contracts:&[Contract],previous:Option<&HashMap<String,f64>>)->HashMap<String,f64> {
+async fn refresh_equities(source:&dyn Source,contracts:&[Contract],previous:Option<&HashMap<String,f64>>)->HashMap<String,f64> {
  let carried=||previous.cloned().unwrap_or_default();
  let wanted:Vec<&Contract>=contracts.iter().filter(|c|c.kind.equity()).collect();
  if wanted.is_empty() {return carried()}
- let fx=match get_json(FX).await {
+ let fx=match source.json(FX).await {
   Ok(body)=>parse_fx(&body),
   Err(_)=>{tracing::warn!("Supply: exchange rates unavailable");return carried()}
  };
- let prices=match get_json(BINANCE_PRICES).await {
+ let prices=match source.json(BINANCE_PRICES).await {
   Ok(body)=>parse_binance_prices(&body),
   Err(_)=>{tracing::warn!("Supply: contract prices unavailable");return carried()}
  };
  let mut out=HashMap::new();
  let mut kept=0usize;
  for contract in wanted {
-  match equity_multiplier(contract,&fx,&prices).await {
+  match equity_multiplier(source,contract,&fx,&prices).await {
    Ok(Some(k))=>{out.insert(contract.symbol.clone(),k);},
    Ok(None)=>{}
    Err(_)=>{
     if let Some(k)=previous.and_then(|p|p.get(&contract.symbol)) {out.insert(contract.symbol.clone(),*k);kept+=1;}
    }
   }
-  tokio::time::sleep(LISTING_GAP).await;
+  tokio::time::sleep(source.gap()).await;
  }
  if kept>0 {tracing::warn!("Supply: {kept} equity pages unreadable, kept the previous figures")}
  out
 }
-/// Rebuilds the whole table. Apex is the main coin source, the product list
-/// fills circulating supply, CoinGecko covers coins Binance never listed,
-/// `exchangeInfo` says which contract is which, and stockanalysis.com prices
-/// the companies behind the equity contracts. Any single upstream may fail
-/// without losing the others.
-pub async fn refresh_supply()->Result<Arc<Market>> {
- let previous=supply_cache().stale();
- let mut coins=SupplyTable::new();
- match get_json(APEX).await {Ok(body)=>parse_apex(&body,&mut coins),Err(_)=>tracing::warn!("Supply: apex list unavailable")}
- match get_json(PRODUCTS).await {Ok(body)=>parse_products(&body,&mut coins),Err(_)=>tracing::warn!("Supply: product list unavailable")}
- for page in 1..=COINGECKO_PAGES {
-  match get_json(&format!("{COINGECKO}{page}")).await {
-   Ok(body)=>parse_coingecko(&body,&mut coins),
-   // CoinGecko rate-limits anonymous callers; one refused page ends the sweep.
-   Err(_)=>{tracing::warn!("Supply: CoinGecko page {page} unavailable");break}
-  }
-  tokio::time::sleep(Duration::from_millis(1200)).await;
+// ------------------------------------------------------------ refresh 的调度
+
+/// 抓上游这一步抽成一个 trait，是为了让刷新的调度能在不连外网的情况下跑起来。
+/// 单飞、分两次发布、快照都是时序上的东西，原来只有真的打到币安才走得到，
+/// 于是「预热还在抓全表时第一个请求到达」这类问题没有任何测试拦得住。
+pub(crate) trait Source:Send+Sync {
+ fn json<'a>(&'a self,url:&'a str)->Pin<Box<dyn Future<Output=Result<Value>>+Send+'a>>;
+ /// 每抓完一个股票页面停多久。真上游要按 [`LISTING_GAP`] 限速，假上游不必。
+ fn gap(&self)->Duration {LISTING_GAP}
+}
+struct Upstream;
+impl Source for Upstream {
+ fn json<'a>(&'a self,url:&'a str)->Pin<Box<dyn Future<Output=Result<Value>>+Send+'a>> {Box::pin(get_json(url))}
+}
+
+/// 落盘快照的版本号。表的结构变了就换这个数，旧文件会被当成「没有快照」。
+const SNAPSHOT_VERSION:u32=1;
+#[derive(Serialize,Deserialize)]
+struct Snapshot {version:u32,coins:SupplyTable,equities:HashMap<String,f64>,kinds:HashMap<String,Kind>}
+
+/// 快照落在服务自己的缓存目录里，跟 open interest 的日切片同在一个
+/// `CacheDirectory=kanpan-api` 下（见 `ops/install.py`）。`KANPAN_MARKET_CACHE`
+/// 可以指到别处，跟 `KANPAN_OI_CACHE` 一个写法。
+fn snapshot_path()->Option<PathBuf> {
+ let dir=PathBuf::from(std::env::var("KANPAN_MARKET_CACHE").unwrap_or_else(|_|"/var/cache/kanpan-api/market".into()));
+ match std::fs::create_dir_all(&dir) {
+  Ok(())=>Some(dir.join("supply.json")),
+  // 没有快照只是每次重启多付一次冷抓，不是服务起不来的理由。
+  Err(_)=>{tracing::warn!("Supply snapshot directory is unavailable; a restart will refetch the table");None}
  }
- let contracts=match get_json(EXCHANGE_INFO).await {
-  Ok(body)=>parse_exchange_info(&body),
-  Err(_)=>{tracing::warn!("Supply: exchangeInfo unavailable");Vec::new()}
- };
- let (kinds,equities)=if contracts.is_empty() {
+}
+
+/// 全表刷新的调度，进程里只有这一份。
+///
+/// 启动预热、缓存过期后的后台刷新、以及缓存完全为空时的请求，走的都是同一条路：
+/// `refreshing` 是刷新权，抢到的人去抓，抢不到的人在 `ready` 上等那一个任务把表
+/// 发布出来。不这么做的话，进程刚起来时预热在抓全表、第一个请求也在抓全表，
+/// 两边各把几百个上游页面抓一遍，谁都不会更快。
+struct Supply {
+ cache:Cache<Market>,
+ source:Box<dyn Source>,
+ /// 快照文件；`None` 表示不落盘（目录建不出来，或这是测试自己造的实例）。
+ snapshot:Option<PathBuf>,
+ refreshing:AtomicBool,
+ ready:tokio::sync::Notify,
+}
+/// 刷新权的持有者。无论刷新是正常结束、出错、被取消还是 panic，它离开作用域时
+/// 都会把权交回去并叫醒等待的人——少了这一下，一次 panic 就能让之后所有冷请求
+/// 永远等在那儿。
+struct Refreshing(&'static Supply);
+impl Drop for Refreshing {
+ fn drop(&mut self) {
+  self.0.refreshing.store(false,Ordering::SeqCst);
+  self.0.ready.notify_waiters();
+ }
+}
+fn supply()->&'static Supply {
+ static S:OnceLock<Supply>=OnceLock::new();
+ S.get_or_init(||Supply::new(Box::new(Upstream),snapshot_path()))
+}
+
+impl Supply {
+ fn new(source:Box<dyn Source>,snapshot:Option<PathBuf>)->Self {
+  Supply{cache:Cache::new(),source,snapshot,refreshing:AtomicBool::new(false),ready:tokio::sync::Notify::new()}
+ }
+ /// 抢刷新权；抢不到就说明已经有一个刷新在跑。
+ fn claim(&'static self)->Option<Refreshing> {
+  // 不能写成 `then_some(Refreshing(self))`：那样守卫会先被造出来再丢掉，于是没抢到
+  // 权的人反而把正在刷新的那个人的权交了回去，还顺手把等待的请求全叫醒——它们醒来时
+  // 表还是空的，只能收到 503。
+  if self.refreshing.swap(true,Ordering::SeqCst) {return None}
+  Some(Refreshing(self))
+ }
+ /// 没人在刷就在后台起一个。请求不在这里等它跑完。
+ fn kick(&'static self) {
+  let Some(claim)=self.claim() else {return};
+  tokio::spawn(async move {let _claim=claim;let _=self.refresh().await;});
+ }
+ /// 请求要的那张表。
+ async fn table(&'static self)->Result<Arc<Market>> {
+  if let Some(table)=self.cache.fresh(SUPPLY_TTL) {return Ok(table)}
+  if let Some(table)=self.cache.stale() {
+   // A day-old table is still a correct answer; refresh behind the request
+   // rather than making someone wait several seconds on upstreams.
+   self.kick();
+   return Ok(table);
+  }
+  self.wait().await
+ }
+ /// 冷路径：进程里还没有任何表。
+ ///
+ /// 等的是「表可用了」，不是「整轮刷新跑完了」——股票页面还在一个一个抓的时候，
+ /// 币的那一半早已发布过一次，请求就该在那时返回。抓表的活儿一律交给后台任务，
+ /// 所以请求被取消也不会把刷新带走，一个卡住的股票页面也拖不住这里。
+ async fn wait(&'static self)->Result<Arc<Market>> {
+  // enable() 先把自己挂到通知上再看缓存：反过来的话，正好落在这两步之间的那次
+  // 发布会被漏掉，于是白等到下一次通知。
+  let waiting=self.ready.notified();
+  tokio::pin!(waiting);
+  waiting.as_mut().enable();
+  if let Some(table)=self.cache.stale() {return Ok(table)}
+  self.kick();
+  waiting.await;
+  self.cache.stale().ok_or_else(upstream)
+ }
+ /// 预热循环的一轮：自己刷，或者等已经在跑的那一个，绝不并排再抓一遍。
+ async fn cycle(&'static self)->Result<Arc<Market>> {
+  match self.claim() {
+   Some(claim)=>{let _claim=claim;self.refresh().await}
+   None=>self.wait().await,
+  }
+ }
+ /// Rebuilds the whole table. Apex is the main coin source, the product list
+ /// fills circulating supply, CoinGecko covers coins Binance never listed,
+ /// `exchangeInfo` says which contract is which, and stockanalysis.com prices
+ /// the companies behind the equity contracts. Any single upstream may fail
+ /// without losing the others.
+ async fn refresh(&'static self)->Result<Arc<Market>> {
+  let previous=self.cache.stale();
+  let mut coins=SupplyTable::new();
+  match self.source.json(APEX).await {Ok(body)=>parse_apex(&body,&mut coins),Err(_)=>tracing::warn!("Supply: apex list unavailable")}
+  match self.source.json(PRODUCTS).await {Ok(body)=>parse_products(&body,&mut coins),Err(_)=>tracing::warn!("Supply: product list unavailable")}
+  for page in 1..=COINGECKO_PAGES {
+   match self.source.json(&format!("{COINGECKO}{page}")).await {
+    Ok(body)=>parse_coingecko(&body,&mut coins),
+    // CoinGecko rate-limits anonymous callers; one refused page ends the sweep.
+    Err(_)=>{tracing::warn!("Supply: CoinGecko page {page} unavailable");break}
+   }
+   tokio::time::sleep(Duration::from_millis(1200)).await;
+  }
+  let contracts=match self.source.json(EXCHANGE_INFO).await {
+   Ok(body)=>parse_exchange_info(&body),
+   Err(_)=>{tracing::warn!("Supply: exchangeInfo unavailable");Vec::new()}
+  };
+  if coins.is_empty() {return Err(upstream())}
+  let old=previous.as_ref();
   // Without the contract list every stock would read as a coin, so the old
   // classification stands until Binance answers again.
-  let old=previous.as_ref();
-  (old.map(|m|m.kinds.clone()).unwrap_or_default(),old.map(|m|m.equities.clone()).unwrap_or_default())
- } else {
-  (kinds_of(&contracts),refresh_equities(&contracts,previous.as_ref().map(|m|&m.equities)).await)
- };
- if coins.is_empty() {return Err(upstream())}
- tracing::info!("Supply table refreshed: {} coins, {} equities priced, {} contracts classified",coins.len(),equities.len(),kinds.len());
- Ok(supply_cache().store(Market{coins,equities,kinds}))
-}
-async fn supply_table()->Result<Arc<Market>> {
- if let Some(table)=supply_cache().fresh(SUPPLY_TTL) {return Ok(table)}
- if let Some(table)=supply_cache().stale() {
-  // A day-old table is still a correct answer; refresh behind the request
-  // rather than making someone wait several seconds on upstreams.
-  if !refreshing().swap(true,Ordering::SeqCst) {
-   tokio::spawn(async {let _=refresh_supply().await;refreshing().store(false,Ordering::SeqCst);});
-  }
-  return Ok(table);
+  let kinds=if contracts.is_empty() {old.map(|m|m.kinds.clone()).unwrap_or_default()} else {kinds_of(&contracts)};
+  let carried=old.map(|m|m.equities.clone()).unwrap_or_default();
+  // 分两次发布：合约分类一到手，币的那一半就先交出去，不必等股票页面逐个抓完
+  // ——那是上百次请求，每次之间还隔着 LISTING_GAP。此刻分类已经在表里，所以
+  // 一只还没定价的股票答的是空，而不是同名币种的供应量；NVDAUSDT 报出某个
+  // 叫 NVDA 的山寨币的市值，正是这个拆分存在的理由。
+  // 分类还没拿到（kinds 为空）时不提前发布：那种表分不出股票和币。
+  if !kinds.is_empty() {self.publish(Market{coins:coins.clone(),equities:carried.clone(),kinds:kinds.clone()});}
+  let equities=if contracts.is_empty() {carried} else {refresh_equities(self.source.as_ref(),&contracts,old.map(|m|&m.equities)).await};
+  tracing::info!("Supply table refreshed: {} coins, {} equities priced, {} contracts classified",coins.len(),equities.len(),kinds.len());
+  let table=self.publish(Market{coins,equities,kinds});
+  // 只有这一轮真的问到了合约分类才留快照：存一份分不出股票和币的表，等于让
+  // 下次启动从一张会报错数的表开始。
+  if !contracts.is_empty() {self.save(table.clone()).await}
+  Ok(table)
  }
- refresh_supply().await
+ /// 把一张可用的表交出去，并叫醒所有在等冷启动的请求。
+ fn publish(&self,market:Market)->Arc<Market> {
+  let table=self.cache.store(market);
+  self.ready.notify_waiters();
+  table
+ }
+ /// 装入上一次完整刷新留下的表。
+ ///
+ /// 按「旧表」记进缓存：它立刻能答请求，同时第一个请求照常把后台刷新踢起来。
+ /// 文件不在、读坏了、版本对不上，都只算「没有快照」——快照是省掉一次冷等待的
+ /// 便利，不能变成服务起不来的理由。
+ fn restore(&self)->bool {
+  let Some(path)=self.snapshot.as_ref() else {return false};
+  let Ok(raw)=std::fs::read(path) else {return false};
+  let Ok(snapshot)=serde_json::from_slice::<Snapshot>(&raw) else {
+   tracing::warn!("Supply snapshot is unreadable; the table will be refetched");
+   return false;
+  };
+  // 分类为空的快照跟没有快照一样危险：那张表会把每只股票读成同名的币。
+  if snapshot.version!=SNAPSHOT_VERSION||snapshot.coins.is_empty()||snapshot.kinds.is_empty() {return false}
+  self.cache.store_stale(Market{coins:snapshot.coins,equities:snapshot.equities,kinds:snapshot.kinds},SUPPLY_TTL);
+  true
+ }
+ /// 写快照。先写临时文件再改名：断电或被杀时留下的要么是上一份完整快照、要么
+ /// 什么都没有，不会是半个文件——半个文件下次启动只会被当成读不出来，白存一场。
+ async fn save(&self,table:Arc<Market>) {
+  let Some(path)=self.snapshot.clone() else {return};
+  let _=tokio::task::spawn_blocking(move||{
+   let snapshot=Snapshot{version:SNAPSHOT_VERSION,coins:table.coins.clone(),equities:table.equities.clone(),kinds:table.kinds.clone()};
+   let Ok(payload)=serde_json::to_vec(&snapshot) else {return};
+   let temporary=path.with_extension(format!("tmp{}",std::process::id()));
+   if std::fs::write(&temporary,&payload).is_err()||std::fs::rename(&temporary,&path).is_err() {
+    let _=std::fs::remove_file(&temporary);
+    tracing::warn!("Supply snapshot could not be written");
+   }
+  }).await;
+ }
 }
-fn refreshing()->&'static AtomicBool {static R:AtomicBool=AtomicBool::new(false);&R}
+
 /// Keeps the table warm from boot so no request ever pays for the cold fetch.
 pub fn spawn_refresh() {
  tokio::spawn(async {
+  // 先把上一次的快照顶上：进程重启后的那几十秒里，请求答的是昨天那张表，
+  // 而不是排在几百个上游页面后面等。
+  if tokio::task::spawn_blocking(||supply().restore()).await.unwrap_or(false) {
+   tracing::info!("Supply table restored from the last snapshot");
+  }
   loop {
-   let wait=if refresh_supply().await.is_ok() {SUPPLY_TTL} else {Duration::from_secs(600)};
+   let wait=if supply().cycle().await.is_ok() {SUPPLY_TTL} else {Duration::from_secs(600)};
    tokio::time::sleep(wait).await;
   }
  });
@@ -690,7 +854,7 @@ async fn okx_open_interest(symbol:&str)->Result<OpenInterest> {
 #[derive(Deserialize,Default)] #[serde(deny_unknown_fields)] struct MetaQuery {symbols:Option<String>}
 async fn meta(Query(q):Query<MetaQuery>)->Result<Json<Value>> {
  if q.symbols.as_ref().is_some_and(|s|s.len()>16*1024) {return Err(ApiError::bad("invalid_symbols"))}
- let table=supply_table().await?;
+ let table=supply().table().await?;
  Ok(envelope(meta_payload(&table,q.symbols.as_deref())))
 }
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct OiQuery {symbol:String,source:Option<String>}
@@ -1033,5 +1197,117 @@ mod tests {
   assert!(recent.get("ETHUSDT",Duration::from_secs(60)).is_none());
   std::thread::sleep(Duration::from_millis(20));
   assert!(recent.get("BTCUSDT",Duration::from_millis(5)).is_none());
+ }
+
+ // ------------------------------------------------ 刷新调度（单飞、分两次发布、快照）
+
+ /// 一个假上游。记下每个 URL 被抓了几次，这样「到底抓了一遍还是两遍」可以断言，
+ /// 而不是靠读代码相信。
+ struct Fake {bodies:HashMap<String,Value>,hits:std::sync::Mutex<HashMap<String,usize>>,hang:Option<String>,delay:Duration}
+ impl Fake {
+  fn new(bodies:HashMap<String,Value>)->Self {
+   // 每次抓停一小会儿，好让「刷新还在跑」这个状态真的存在一段时间。
+   Fake{bodies,hits:std::sync::Mutex::new(HashMap::new()),hang:None,delay:Duration::from_millis(5)}
+  }
+  /// 让某个 URL 永远不答——上游卡死，不是报错。
+  fn hanging(mut self,url:&str)->Self {self.hang=Some(url.to_owned());self}
+  fn hits(&self,url:&str)->usize {self.hits.lock().unwrap_or_else(|e|e.into_inner()).get(url).copied().unwrap_or(0)}
+ }
+ impl Source for Arc<Fake> {
+  fn json<'a>(&'a self,url:&'a str)->Pin<Box<dyn Future<Output=Result<Value>>+Send+'a>> {
+   *self.hits.lock().unwrap_or_else(|e|e.into_inner()).entry(url.to_owned()).or_default()+=1;
+   let hanging=self.hang.as_deref()==Some(url);
+   let body=self.bodies.get(url).cloned();
+   let delay=self.delay;
+   Box::pin(async move {
+    if hanging {std::future::pending::<()>().await}
+    tokio::time::sleep(delay).await;
+    body.ok_or_else(upstream)
+   })
+  }
+  fn gap(&self)->Duration {Duration::ZERO}
+ }
+ fn stock_page()->String {format!("{STOCKANALYSIS}stocks/NVDA/__data.json")}
+ /// 一个够用的全市场：一个币、一只股票，外加一个跟那只股票同名的山寨币。
+ /// CoinGecko 的四页故意不给，页循环第一页就报错退出，省掉那 1200ms 的间隔。
+ fn fake_upstream()->Fake {
+  Fake::new(HashMap::from([
+   (APEX.to_owned(),json!({"data":[
+    {"symbol":"BTCUSDT","baseAsset":"BTC","quoteAsset":"USDT","circulatingSupply":19_800_000.0,"totalSupply":19_800_000.0,"maxSupply":21_000_000.0,"rank":1},
+    // 同名山寨币。NVDAUSDT 要是被当成币去查，查到的就是这一行。
+    {"symbol":"NVDAUSDT","baseAsset":"NVDA","quoteAsset":"USDT","circulatingSupply":1_000_000.0,"totalSupply":1_000_000.0,"rank":900}]})),
+   (PRODUCTS.to_owned(),json!({"data":[]})),
+   (EXCHANGE_INFO.to_owned(),json!({"symbols":[
+    {"symbol":"BTCUSDT","baseAsset":"BTC","underlyingType":"COIN"},
+    {"symbol":"NVDAUSDT","baseAsset":"NVDA","underlyingType":"EQUITY"}]})),
+   (FX.to_owned(),json!({"rates":{"USD":1.0,"HKD":7.8}})),
+   (BINANCE_PRICES.to_owned(),json!([{"symbol":"NVDAUSDT","price":"180.0"}])),
+   (stock_page(),json!({"nodes":[{"data":[{"marketCap":1},"4.39T"]}]})),
+  ]))
+ }
+ /// 每条用例一份自己的调度，互不干扰；泄漏是为了拿到方法要求的 `&'static`。
+ fn instance(source:Arc<Fake>,snapshot:Option<PathBuf>)->&'static Supply {
+  Box::leak(Box::new(Supply::new(Box::new(source),snapshot)))
+ }
+
+ #[tokio::test]
+ async fn a_request_arriving_during_warm_up_waits_for_it_instead_of_fetching_again() {
+  let fake=Arc::new(fake_upstream());
+  let supply=instance(fake.clone(),None);
+  let warm=tokio::spawn(async move {supply.cycle().await});
+  // 等预热真的开抓，这样下面这个请求落在「刷新进行中」里。
+  while fake.hits(APEX)==0 {tokio::task::yield_now().await}
+  let table=supply.table().await.expect("the in-flight refresh answers the cold request");
+  assert!(table.meta("BTCUSDT").is_some());
+  warm.await.expect("warm-up task").expect("warm-up finished");
+  assert_eq!(fake.hits(APEX),1,"整张表只被抓了一遍，请求没有自己再抓一次");
+  assert_eq!(fake.hits(EXCHANGE_INFO),1);
+  assert_eq!(fake.hits(&stock_page()),1,"股票页面也没有被抓两遍");
+ }
+
+ #[tokio::test]
+ async fn a_cold_request_is_answered_by_the_one_refresh_it_starts() {
+  let fake=Arc::new(fake_upstream());
+  let supply=instance(fake.clone(),None);
+  let table=supply.table().await.expect("a cold request still gets a table");
+  let payload=meta_payload(&table,Some("BTCUSDT"));
+  assert_eq!(payload.as_object().map(serde_json::Map::len),Some(1),"问一个品种就只答这一个");
+  assert_eq!(fake.hits(APEX),1);
+ }
+
+ #[tokio::test]
+ async fn a_stock_page_that_never_answers_does_not_hold_up_the_table() {
+  let fake=Arc::new(fake_upstream().hanging(&stock_page()));
+  let supply=instance(fake.clone(),None);
+  // 股票那一趟永远不回，请求拿到的是「币先发布」的那一版。
+  let table=supply.table().await.expect("the coin half is published before the equity sweep");
+  assert!(table.meta("BTCUSDT").is_some(),"币的那一半照常答");
+  assert_eq!(table.meta("NVDAUSDT"),None,"还没定价的股票答空，而不是同名山寨币的供应量");
+  assert_eq!(table.kind("NVDAUSDT"),Kind::TickerEquity,"提前发布的表已经分得清股票和币");
+ }
+
+ #[tokio::test]
+ async fn the_snapshot_serves_the_next_start_and_a_broken_file_only_means_no_snapshot() {
+  let dir=tempfile::tempdir().expect("temp dir");
+  let path=dir.path().join("supply.json");
+  let fake=Arc::new(fake_upstream());
+  instance(fake.clone(),Some(path.clone())).cycle().await.expect("first process fills the table");
+  assert!(path.exists(),"一轮完整刷新之后留下快照");
+
+  // 下一个进程：上游一个都不给，快照必须能独立把表顶起来。
+  let offline=Arc::new(Fake::new(HashMap::new()));
+  let next=instance(offline.clone(),Some(path.clone()));
+  assert!(next.restore(),"快照装得进来");
+  let table=next.cache.stale().expect("restored table");
+  assert!(table.meta("BTCUSDT").is_some());
+  assert!(table.meta("NVDAUSDT").is_some_and(|m|m.total_supply.is_some()),"股票的乘数也一起存了");
+  assert_eq!(offline.hits(APEX),0,"装快照不碰上游");
+  assert!(next.cache.fresh(SUPPLY_TTL).is_none(),"快照算旧表，第一个请求照样会踢一次后台刷新");
+
+  std::fs::write(&path,b"{not json").expect("write");
+  assert!(!instance(offline.clone(),Some(path.clone())).restore(),"读坏了只当没有快照");
+  let wrong=json!({"version":SNAPSHOT_VERSION+1,"coins":{"BTC":{}},"equities":{},"kinds":{"BTCUSDT":"Crypto"}});
+  std::fs::write(&path,serde_json::to_vec(&wrong).expect("encode")).expect("write");
+  assert!(!instance(offline,Some(path)).restore(),"版本对不上也只当没有快照");
  }
 }
