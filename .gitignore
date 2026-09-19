@@ -48,3 +48,5 @@ docs/acceptance/drawing-v2/*.xcresult/
 # 反编译出来的 AICoin 产物只当本地参照，不入库：它不是本项目的源码，
 # 16 MB 的 jadx 输出既撑大仓库，也不该随公开仓库分发。
 refs/aicoin/
+
+.claude/settings.local.json
