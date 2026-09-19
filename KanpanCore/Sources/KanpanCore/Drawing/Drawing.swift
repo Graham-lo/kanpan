@@ -214,6 +214,11 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
   /// 「文字标注」写的那句话。别的工具一律空串。
   ///
   /// 上限 60 个字符：它是图上的一行小字，不是备忘录；再长也只会糊在 K 线上。
+  ///
+  /// **60 是排版上限，不是线协议上限。** 数的是 Swift `Character`（字素簇），
+  /// 服务端只能按 UTF-8 字节数卡——两者换不出同一个数（11 个家庭组合 emoji 是
+  /// 11 个 `Character`、275 字节）。所以服务端那条线是「宽松的防滥用上限」，
+  /// 由这里说了算多长才好看；别拿字节数反过来把这个 60 改小。
   public var text: String = ""
   public static let textLimit = 60
   public var a: DrawPoint {
@@ -269,7 +274,19 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
     try c.encodeIfPresent(color, forKey: .color); try c.encode(lineWidth, forKey: .lineWidth)
     try c.encode(dash, forKey: .dash); try c.encode(filled, forKey: .filled)
     try c.encode(locked, forKey: .locked); try c.encode(hidden, forKey: .hidden); try c.encode(levels, forKey: .levels)
-    if !text.isEmpty { try c.encode(text, forKey: .text) }
+    // 带文字的工具（`kind.usesText`：文字标注 / 标注框 / 旗标）**总是**写 `text`，空就写 `""`。
+    //
+    // 从前是「空就整个省略这个键」，而同步那一层是拿前后两份 body 做差分的
+    // （`SyncStore.stage`）：一个先前有、现在没有的键会被翻译成 `text: null`，
+    // 意思是「删掉这个字段」。服务端的 null 白名单里没有 `drawings.text`，
+    // 于是「把标注文字清空」——一个再普通不过的动作——会让整条操作 400 被顶回来，
+    // 隔离之后云端那份旧文字还会被写回来，用户删掉的字又冒出来了。
+    // 空字符串本来就是个合法值，照原样发上去，差分那一层就不会再去发明一个 null。
+    //
+    // 不带文字的工具（线、通道、斐波那契……）`text` 恒为空、用户也改不到它，继续省略：
+    // 给每一条线都塞一个 `"text":""` 只会让存档和线上白白多一个字段和一份字段时间戳。
+    // `|| !text.isEmpty` 是给老存档兜底——真有非空文字就别在重新编码时弄丢。
+    if kind.usesText || !text.isEmpty { try c.encode(text, forKey: .text) }
   }
 }
 

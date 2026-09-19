@@ -57,9 +57,13 @@ enum PersonalSyncCodec {
   }
   /// 换档案（登录 / 退登 / 切账号）时，从内存里那份**留在本机**、不被新档案覆盖的字段。
   ///
-  /// 判据只有一条：**这是不是「这台机器自己的属性」**。行情域名与线路（`apiHost` /
-  /// `streamHost` / `smartMarketRoute`）是这台手机所处网络的属性，本机缓存
+  /// 判据只有一条：**这是不是「这台机器自己的属性」**。行情的**具体主机名与探测开关**
+  /// （`apiHost` / `streamHost` / `smartMarketRoute`）是这台手机所处网络的属性，本机缓存
   /// `launchSnapshot` 更是只对这台机器有意义，它们留在这里是对的。
+  ///
+  /// **`routePolicy` 不在这里**，是对的：直连 / 网关那两档是他在设置里用手点的选择，
+  /// 产品规则就是「选择随账号同步、未登录记在本机」（`AGENTS.md`）。别因为它名字里有
+  /// 「线路」就把它扫进本机那一堆——分界写在 `PrefsFieldPlan` 的注释里。
   ///
   /// `interval`（周期）和 `keepAwake`（屏幕常亮）**2026-09-19 从这张表里拿掉了**：
   /// 早先把它们当成本机设置，结果是「换台设备登同一个账号，周期回到出厂 1h」。
@@ -83,6 +87,13 @@ enum PersonalSyncCodec {
     var object = SyncObject(collection: "settings", id: "chart"); object.body = value.fields
     return try apply(object, to: base)
   }
+  /// 一条画线发上去长什么样。
+  ///
+  /// body 直接来自 `Drawing` 的 `encode(to:)`，所以**标注文字那一栏的线协议在那儿定**：
+  /// 带文字的工具永远写一个 `text`，清空了就写 `""`。这件事不能想当然——`SyncStore.stage`
+  /// 是拿前后两份 body 逐键做差分的，一个先前有、现在没有的键会被翻译成 `text: null`
+  /// （「删掉这个字段」），而服务端从前不收 `drawings.text` 的 null：用户把标注文字全删掉，
+  /// 整条操作 400 被顶回来、被隔离，云端那份旧文字又写了回来。
   static func drawings(_ archive: DrawArchive) throws -> [SyncObject] {
     var output: [SyncObject] = []
     var preferences = SyncObject(collection: "drawingPreferences", id: "tools")
@@ -98,6 +109,10 @@ enum PersonalSyncCodec {
     }
     return output
   }
+  /// 反过来：线上那份还原成一条画线。
+  ///
+  /// 老服务端／老客户端留下的 `text: null` 也收：`Drawing` 的 `decodeIfPresent` 把它解成
+  /// 空文字，和新写法的 `""` 同一个结果——「清空」是一个值，不是解码失败，更不能退回旧值。
   static func drawing(_ object: SyncObject) throws -> Drawing {
     var value = object.body; value["id"] = .string(String(object.id.split(separator: "/").last ?? "")); value["points"] = value.removeValue(forKey: "anchors")
     return try KanpanAccount.JSONValue.object(value).decode(Drawing.self)

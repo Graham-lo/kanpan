@@ -296,4 +296,75 @@ struct DrawingTests {
     let data = try JSONEncoder().encode(ds)
     #expect(try JSONDecoder().decode([Drawing].self, from: data) == ds)
   }
+
+  // MARK: - 标注文字的线协议
+
+  /// **清空标注文字之后，`text` 这个键必须还在，值是空串。**
+  ///
+  /// 这是整条同步链路的地基：云端那一层是拿前后两份 body 逐键做差分的
+  /// （`SyncStore.stage`），一个**先前有、现在没有**的键会被翻译成 `text: null`
+  /// ——「删掉这个字段」。服务端从前不收 `drawings.text` 的 null，于是「把标注文字
+  /// 全删掉」这一个动作会让整条操作 400 被顶回来、被隔离，隔离又把云端那份旧文字
+  /// 写回来：用户删掉的字自己冒出来了。
+  ///
+  /// 所以「空」要当成一个**值**发出去，而不是当成「这个字段不存在」。红了不要改这条
+  /// 测试，去看 `Drawing.encode(to:)`。
+  @Test("清空文字编码成空串，不是把键省掉")
+  func clearedCaptionStaysOnTheWire() throws {
+    var note = Drawing(id: "n", kind: .note, a: DrawPoint(t: 1_800_000_000_000, p: 100))
+    note.text = "顶背离"
+    let written = try keys(of: note)
+    #expect(written["text"] as? String == "顶背离")
+
+    note.text = ""                                     // 用户把字全删了。
+    let cleared = try keys(of: note)
+    #expect(cleared.keys.contains("text"), "空文字被省略了，差分那一层就会把它发成 text: null，服务端整条拒")
+    #expect(cleared["text"] as? String == "")
+    #expect(try JSONDecoder().decode(Drawing.self, from: JSONEncoder().encode(note)).text.isEmpty)
+
+    // 三把带文字的工具（`Kind.usesText`）一视同仁。
+    for kind in Drawing.Kind.allCases where kind.usesText {
+      var d = Drawing(id: "x", kind: kind, points: (0..<kind.pointCount).map { DrawPoint(t: 1e12 + Double($0), p: 100) })
+      d.text = ""
+      #expect(try keys(of: d).keys.contains("text"), "\(kind) 也带文字，空的时候一样要写出来")
+    }
+    // 不带文字的工具继续省略：给每一条线都塞一个 `"text":""` 只是白占存档和一份字段时间戳。
+    #expect(try !keys(of: Drawing(id: "t", kind: .trend, a: DrawPoint(t: 1, p: 2), b: DrawPoint(t: 3, p: 4))).keys.contains("text"))
+  }
+
+  /// 老客户端（空文字就整个省略这个键）发上来的是 `text: null`，服务端现在把它当「清空」
+  /// 收下并落成空串。这边要保证：万一真收到一个 null，解出来是空文字，**不是**解码失败、
+  /// 更不是退回旧值。
+  @Test("收到 text: null 也解成空文字")
+  func aNullCaptionDecodesAsEmpty() throws {
+    let json = """
+      {"id":"n","kind":"note","points":[{"t":1800000000000,"p":100}],"lineWidth":1.3,
+       "dash":"solid","filled":true,"locked":false,"hidden":false,"levels":[0],"text":null}
+      """
+    #expect(try JSONDecoder().decode(Drawing.self, from: Data(json.utf8)).text.isEmpty)
+  }
+
+  /// 上限数的是 `Character`（字素簇），不是字节。
+  ///
+  /// 服务端只能按 UTF-8 字节卡，两者换不出同一个数：11 个家庭组合 emoji 是 11 个
+  /// `Character`、275 字节。从前服务端那条线是 240 字节，于是这边判合法的输入
+  /// 那边整条 400——所以那条线已经放宽到 4096 字节，客户端这个 60 不许为了迁就它改小。
+  @Test("60 个字素簇都算一个字")
+  func theLimitCountsCharactersNotBytes() {
+    let family = "👨‍👩‍👧‍👦"
+    #expect(family.count == 1 && family.utf8.count == 25)
+    var note = Drawing(id: "n", kind: .note, a: DrawPoint(t: 1_800_000_000_000, p: 100))
+    note.text = String(repeating: family, count: 60)
+    #expect(note.text.count == 60 && note.isValid, "60 个组合字符是 60 个字，不能因为字节多就判非法")
+    note.text = String(repeating: family, count: 61)
+    #expect(!note.isValid)
+    note.text = String(repeating: "顶", count: 60)
+    #expect(note.isValid)
+  }
+
+  /// 编码出来的 JSON 顶层键值对，用来看「某个键在不在」。
+  private func keys(of drawing: Drawing) throws -> [String: Any] {
+    let data = try JSONEncoder().encode(drawing)
+    return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+  }
 }

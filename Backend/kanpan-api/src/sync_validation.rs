@@ -36,7 +36,14 @@ fn style(v:&Value)->bool {v.as_object().is_some_and(|o|o.iter().all(|(k,v)|field
 pub fn field(collection:&str,path:&str,v:&Value)->bool {
  let p:Vec<_>=path.split('/').collect();
  // A null is a field tombstone; required drawing fields are checked again after merging.
- if v.is_null(){return p.len()==1&&matches!(path,"color"|"groupId") || collection=="settings"&&p.len()>=2 || collection=="drawingPreferences"&&p.len()==2}
+ //
+ // `text` is here because a phone that is already in someone's pocket still sends it that
+ // way: the old encoder dropped an empty caption from the JSON altogether, and the client's
+ // diff turns a key that used to be there and is not any more into `text: null`. Refusing
+ // that null is what made "clear the caption on a note" a 400 for the whole operation.
+ // New clients send `""` instead (see `Drawing.encode`); `clear_tombstones` folds the null
+ // into the same `""` so nothing downstream has to remember that null also means empty.
+ if v.is_null(){return p.len()==1&&matches!(path,"color"|"groupId"|"text") || collection=="settings"&&p.len()>=2 || collection=="drawingPreferences"&&p.len()==2}
  if collection=="settings" {
   if p.len()>1 {
    if !INDICATORS.contains(&p[1]) {return false}
@@ -99,12 +106,35 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   ("drawings"|"favorites","venue")=>v=="binance",
   ("drawings"|"favorites","symbol")=>symbol(v),
   ("drawings","created")=>number(v,0.0,9e15),
-  // `Drawing.textLimit` is 60 characters; 240 bytes covers 60 of any of them.
-  ("drawings","text")=>string(v,240),
+  // An anti-abuse ceiling, deliberately not a copy of the client's UX rule. The client caps a
+  // caption at 60 Swift Characters (grapheme clusters) because that is what still reads as one
+  // line over the candles; this function can only count UTF-8 bytes, and the two do not convert
+  // into each other. The old comment here claimed "240 bytes covers 60 of any of them" and was
+  // simply wrong: eleven family emoji are eleven Characters and 275 bytes, so input the client
+  // considered legal came back as a 400. Sixty skin-toned family emoji reach ~2.5 KB, which is
+  // why 1 KB would not be enough either. 4 KB clears any realistic caption by a wide margin and
+  // still stops someone pasting a novel; the per-field 64 KB rule in `Operation::validate` is
+  // the real backstop. Whatever the client accepts, the server must be able to store.
+  ("drawings","text")=>string(v,4096),
   ("favorites","groupId")=>string(v,100),
   ("favorites"|"groups","order")=>number(v,0.0,1e9),
   ("groups","name")=>string(v,100),
   ("groups","members")=>v.as_array().is_some_and(|a|a.len()<=2000&&a.iter().all(|v|string(v,100))),_=>false
+ }
+}
+/// Folds the tombstones whose "no value" is actually a real value back into that value.
+///
+/// Today that is `drawings.text` alone. Clearing a note's caption is something the person did
+/// on purpose, not "this drawing has no caption field": an old client encodes it by leaving the
+/// key out, which the client's diff sends as `text: null`. Both spellings have to be accepted
+/// (see the tombstone rule in `field`), and both have to land in storage as the same thing, or
+/// every reader of this body — this server, the phone that syncs next, the one after it — has
+/// to remember on its own that null means empty. Miss it once and the old caption is back on
+/// screen. Runs after the field merge and before validation, so what is stored is already
+/// canonical.
+pub fn clear_tombstones(value:&mut Object) {
+ if value.collection=="drawings" && value.body.get("text").is_some_and(Value::is_null) {
+  value.body.insert("text".into(),Value::String(String::new()));
  }
 }
 pub fn object(value:&Object)->Result<()> {
@@ -150,7 +180,40 @@ mod tests {
  }
  #[test] fn a_caption_travels_with_its_note() {
   assert!(field("drawings","text",&json!("顶背离")));
-  assert!(!field("drawings","text",&json!("x".repeat(241))));
+  assert!(!field("drawings","text",&json!("x".repeat(4097))));
+ }
+ /// Erasing a caption is an ordinary edit, and it arrives in two spellings.
+ ///
+ /// A current client sends `""` (`Drawing.encode` always writes `text` for the tools that
+ /// carry one); a client already installed on a phone omits the key, which its diff turns into
+ /// `text: null`. Refusing either one 400s the whole operation, the client quarantines it, and
+ /// the caption the person deleted comes back from the cloud.
+ #[test] fn clearing_a_caption_is_accepted_in_both_spellings() {
+  assert!(field("drawings","text",&json!("")),"an empty caption is a real value");
+  assert!(field("drawings","text",&Value::Null),"an old client still clears it with a null");
+  // The null is not left lying in storage: it is folded into the same empty string, so nobody
+  // downstream has to remember that null also means empty.
+  let mut note=drawing("note",1);
+  note.body.insert("text".into(),Value::Null);
+  clear_tombstones(&mut note);
+  assert_eq!(note.body.get("text"),Some(&json!("")));
+  object(&note).expect("a note whose caption was cleared is still a valid drawing");
+  // Nothing else is touched by the fold.
+  let mut kept=drawing("note",1);
+  kept.body.insert("text".into(),json!("顶背离"));
+  clear_tombstones(&mut kept);
+  assert_eq!(kept.body.get("text"),Some(&json!("顶背离")));
+ }
+ /// The client's limit is 60 grapheme clusters; this one is bytes, and it must be loose enough
+ /// that everything the client calls legal fits. Eleven family emoji used to blow past the old
+ /// 240-byte line while being only eleven characters on screen.
+ #[test] fn sixty_characters_of_anything_still_fit() {
+  let family="\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}";      // 25 bytes
+  let toned="\u{1F468}\u{1F3FB}\u{200D}\u{1F469}\u{1F3FB}\u{200D}\u{1F467}\u{1F3FB}\u{200D}\u{1F466}\u{1F3FB}"; // 41 bytes
+  assert!(field("drawings","text",&json!(family.repeat(11))),"eleven family emoji are eleven characters");
+  for caption in [family.repeat(60),toned.repeat(60),"顶".repeat(60),"x".repeat(60)] {
+   assert!(field("drawings","text",&json!(caption)),"{} bytes of a 60-character caption must fit",caption.len());
+  }
  }
  #[test] fn the_new_settings_carry_their_own_limits() {
   assert!(field("settings","barSpacing",&json!(4.0))&&!field("settings","barSpacing",&json!(1.5))&&!field("settings","barSpacing",&json!(41.0)));
