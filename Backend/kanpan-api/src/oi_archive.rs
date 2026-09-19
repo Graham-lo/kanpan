@@ -19,9 +19,11 @@
 use axum::{Router,extract::{Path,Query},http::{StatusCode,header},response::{IntoResponse,Response},routing::get};
 use chrono::{DateTime,Datelike,NaiveDate,NaiveDateTime,Utc};
 use std::collections::{HashMap,HashSet,VecDeque};
+use std::future::Future;
 use std::io::Read;
 use std::path::PathBuf;
-use std::sync::{Arc,Mutex,OnceLock,atomic::{AtomicU64,Ordering}};
+use std::pin::Pin;
+use std::sync::{Arc,Mutex,OnceLock,atomic::{AtomicI64,AtomicU64,Ordering}};
 use std::time::{Duration,SystemTime};
 use tokio::sync::Semaphore;
 
@@ -49,6 +51,13 @@ const DEFAULT_LIMIT:u64=4*1024*1024*1024;
 /// A day that has just ended may not be published yet, so its absence is not
 /// yet evidence of anything and must not be remembered as a gap.
 const SETTLED:i64=2*DAY;
+/// 还没到结算期的那些天，一次 404 只记这么久。
+///
+/// 记一下是必须的：一张图要的是十几到几百天，要是每一天的 404 都当场再去问一次
+/// 上游，刚打开的那张图会被拖成同样多次网络往返。但它同样不能永久——归档比实际
+/// 晚发布几分钟到几小时是常事，一旦把这种 404 永久记进内存，这个进程就只有等它
+/// 被 FIFO 挤出去、或者等到重启，才会再看一眼，在那之前用户图上最近这一天一直缺着。
+const RECENT_ABSENT_TTL:i64=10*60_000;
 /// How far back the boot warm-up fills every listed contract. A first look at a
 /// symbol nobody has opened on this host costs 4.6 s for a year, measured, and
 /// that cost lands on the one person unlucky enough to open it first.
@@ -317,6 +326,42 @@ fn timestamp(text:&str)->Option<i64> {
   .map(|t|t.and_utc().timestamp_millis())
 }
 
+// ------------------------------------------------------------ 时钟与上游
+
+/// 时间从这里读，不直接问 `Utc::now()`：最近缺失的那一天要不要重问，取决于
+/// 「这一天结算了没有」和「负缓存过期了没有」两个时刻，测试得能把它们一起推过去，
+/// 否则这条修复要靠真的等十分钟才验得了。路由里的时间判断不走这里，它们跟缓存无关。
+enum Clock {System,#[cfg_attr(not(test),allow(dead_code))] Fixed(Arc<AtomicI64>)}
+impl Clock {
+ fn now(&self)->i64 {
+  match self {Clock::System=>Utc::now().timestamp_millis(),Clock::Fixed(at)=>at.load(Ordering::Relaxed)}
+ }
+}
+
+/// 一次抓取的结果。三种情况要分开：`Missing` 是归档明确说没有（404），
+/// `Failed` 是这一次没问到，两者对缓存的意义完全不同。
+enum Reply {Body(Vec<u8>),Missing,Failed}
+/// 抓归档这一步抽成 trait，好让测试造出「先 404、过一会儿变 200」这种时序——
+/// 真的 data.binance.vision 没法按需切换。
+trait Origin:Send+Sync {
+ fn fetch<'a>(&'a self,url:&'a str)->Pin<Box<dyn Future<Output=Reply>+Send+'a>>;
+}
+struct Vision(reqwest::Client);
+impl Origin for Vision {
+ fn fetch<'a>(&'a self,url:&'a str)->Pin<Box<dyn Future<Output=Reply>+Send+'a>> {
+  Box::pin(async move {
+   match self.0.get(url).send().await {
+    Ok(response) if response.status()==reqwest::StatusCode::NOT_FOUND=>Reply::Missing,
+    Ok(response) if response.status().is_success()=>match response.bytes().await {
+     Ok(bytes)=>Reply::Body(bytes.to_vec()),
+     Err(_)=>Reply::Failed,
+    },
+    _=>Reply::Failed,
+   }
+  })
+ }
+}
+
 // ---------------------------------------------------------------- the store
 
 static STORE:OnceLock<Arc<Store>>=OnceLock::new();
@@ -334,6 +379,8 @@ struct Store {
  dir:Option<PathBuf>,
  limit:u64,
  client:reqwest::Client,
+ origin:Box<dyn Origin>,
+ clock:Clock,
  memory:Mutex<Memory>,
  disk:Mutex<Disk>,
  /// One download per (symbol, day) even when several charts ask at once.
@@ -343,16 +390,41 @@ struct Store {
 }
 
 /// Days kept parsed, oldest arrival evicted first.
+///
+/// 每条记录带一个到期时刻：`None` 是永久的（真的抓到了，或者那一天已经结算、
+/// 确定不会再出现），`Some` 只有一种来路——还没结算就 404 的那几天。
 #[derive(Default)]
-struct Memory {map:HashMap<String,Day>,order:VecDeque<String>}
+struct Memory {map:HashMap<String,(Day,Option<i64>)>,order:VecDeque<String>}
+impl Memory {
+ /// 取一条还没过期的记录。过期的当场扔掉，好让调用方照常落到磁盘和网络上去；
+ /// 留着不清，下一次还是会读到同一个过期的「没有」。
+ fn get(&mut self,stem:&str,now:i64)->Option<Day> {
+  if matches!(self.map.get(stem),Some((_,Some(until))) if *until<=now) {
+   self.map.remove(stem);
+   self.order.retain(|key|key!=stem);
+   return None;
+  }
+  self.map.get(stem).map(|(day,_)|day.clone())
+ }
+}
 /// What the cache directory holds, so eviction never has to stat it again.
 #[derive(Default)]
 struct Disk {bytes:u64,files:HashMap<PathBuf,(u64,SystemTime)>}
 
 impl Store {
  fn detached()->Store {
-  Store{dir:None,limit:DEFAULT_LIMIT,client:client(),memory:Mutex::default(),disk:Mutex::default(),
+  // 归档和合约列表共用同一个 client，keep-alive 的连接池也就只有这一个。
+  let client=client();
+  Store{dir:None,limit:DEFAULT_LIMIT,origin:Box::new(Vision(client.clone())),client,clock:Clock::System,
+   memory:Mutex::default(),disk:Mutex::default(),
    inflight:Mutex::default(),gate:Semaphore::new(GATE),prefetching:Mutex::default()}
+ }
+ /// 测试用的实例：自己的目录、自己的时钟、自己的上游。
+ #[cfg(test)]
+ fn fake(dir:PathBuf,clock:Arc<AtomicI64>,origin:Box<dyn Origin>)->Arc<Store> {
+  Arc::new(Store{dir:Some(dir),limit:DEFAULT_LIMIT,origin,clock:Clock::Fixed(clock),client:client(),
+   memory:Mutex::default(),disk:Mutex::default(),
+   inflight:Mutex::default(),gate:Semaphore::new(GATE),prefetching:Mutex::default()})
  }
 
  fn new()->Store {
@@ -399,23 +471,24 @@ impl Store {
  /// Memory first, then the slices on disk — including the gateway's own, whose
  /// file names and contents this matches exactly.
  fn cached(&self,stem:&str)->Option<Day> {
-  if let Ok(memory)=self.memory.lock() {if let Some(day)=memory.map.get(stem) {return Some(day.clone())}}
+  if let Ok(mut memory)=self.memory.lock() {if let Some(day)=memory.get(stem,self.clock.now()) {return Some(day)}}
   let dir=self.dir.as_ref()?;
-  if dir.join(format!("{stem}.none")).exists() {self.remember(stem,Day::Absent);return Some(Day::Absent)}
+  // `.none` 只在那一天结算之后才写，所以磁盘上的缺口是永久的。
+  if dir.join(format!("{stem}.none")).exists() {self.remember(stem,Day::Absent,None);return Some(Day::Absent)}
   let path=dir.join(format!("{stem}.json"));
   let raw=std::fs::read(&path).ok()?;
   let rows:Vec<(i64,f64)>=serde_json::from_slice(&raw).ok()?;
   let day=Day::Points(Arc::new(rows));
   self.touch(&path);
-  self.remember(stem,day.clone());
+  self.remember(stem,day.clone(),None);
   Some(day)
  }
 
  /// What the caches already know about a day, without parsing or reading it:
  /// the answer prefetching needs to skip a day it has.
  fn known(&self,stem:&str)->Option<bool> {
-  if let Ok(memory)=self.memory.lock() {
-   if let Some(day)=memory.map.get(stem) {return Some(matches!(day,Day::Points(_)))}
+  if let Ok(mut memory)=self.memory.lock() {
+   if let Some(day)=memory.get(stem,self.clock.now()) {return Some(matches!(day,Day::Points(_)))}
   }
   let dir=self.dir.as_ref()?;
   if dir.join(format!("{stem}.none")).exists() {return Some(false)}
@@ -423,9 +496,10 @@ impl Store {
   None
  }
 
- fn remember(&self,stem:&str,day:Day) {
+ /// `expires` 是到期时刻；`None` 表示这条记录永久有效。
+ fn remember(&self,stem:&str,day:Day,expires:Option<i64>) {
   let Ok(mut memory)=self.memory.lock() else {return};
-  if memory.map.insert(stem.to_owned(),day).is_none() {memory.order.push_back(stem.to_owned());}
+  if memory.map.insert(stem.to_owned(),(day,expires)).is_none() {memory.order.push_back(stem.to_owned());}
   while memory.order.len()>MEM_DAYS {
    let Some(oldest)=memory.order.pop_front() else {break};
    memory.map.remove(&oldest);
@@ -441,24 +515,28 @@ impl Store {
   // second attempt is far cheaper than failing a year of chart over one day.
   for attempt in 0..2 {
    if attempt>0 {tokio::time::sleep(Duration::from_millis(300)).await;}
-   match self.client.get(&url).send().await {
-    Ok(response) if response.status()==reqwest::StatusCode::NOT_FOUND=>{
+   match self.origin.fetch(&url).await {
+    Reply::Missing=>{
      // Before its listing day a symbol has no archive and never will; after
      // the day has settled, remember that instead of asking again.
-     if Utc::now().timestamp_millis()-day*DAY>SETTLED {self.mark_absent(stem);}
-     self.remember(stem,Day::Absent);
+     let settled=self.clock.now()-day*DAY>SETTLED;
+     if settled {self.mark_absent(stem);}
+     // 还没结算的那一天，404 只说明「这会儿还没发布」，不是缺口，所以只记短短
+     // 一会儿：够挡住同一张图上那十几天的重复请求，又能在归档补发之后自己回来
+     // 再问一次。不带到期时刻的话，这一天要等到被 FIFO 挤出内存或者进程重启才
+     // 会被重新看一眼，用户那张图在此之前一直缺着最近这一段。
+     self.remember(stem,Day::Absent,(!settled).then(||self.clock.now()+RECENT_ABSENT_TTL));
      return Ok(Day::Absent);
     }
-    Ok(response) if response.status().is_success()=>{
-     let Ok(bytes)=response.bytes().await else {continue};
+    Reply::Body(bytes)=>{
      if bytes.len()>2*1024*1024 {return Err(())}
      let Ok(rows)=tokio::task::spawn_blocking(move ||parse(&bytes)).await.map_err(|_|())? else {continue};
      let day=Day::Points(Arc::new(rows));
      if let Day::Points(ref rows)=day {if !rows.is_empty() {self.store(stem,rows);}}
-     self.remember(stem,day.clone());
+     self.remember(stem,day.clone(),None);
      return Ok(day);
     }
-    _=>last=Err(()),
+    Reply::Failed=>last=Err(()),
    }
   }
   last
@@ -521,7 +599,7 @@ impl Store {
  /// absent days means this contract was not listed yet" test stays meaningful —
  /// it only reads as a run when the days arrive in order.
  async fn warm(self:&Arc<Self>,symbols:Vec<Arc<str>>,days:i64) {
-  let last=Utc::now().timestamp_millis().div_euclid(DAY)-1;
+  let last=self.clock.now().div_euclid(DAY)-1;
   let first=(last-days+1).max(EPOCH.div_euclid(DAY));
   let mut tasks=tokio::task::JoinSet::new();
   let mut queue=symbols.into_iter();
@@ -560,7 +638,7 @@ impl Store {
   }
   let store=self.clone();
   tokio::spawn(async move {
-   let last=Utc::now().timestamp_millis().div_euclid(DAY)-1;
+   let last=store.clock.now().div_euclid(DAY)-1;
    let first=EPOCH.div_euclid(DAY);
    let mut absent=0;
    let mut day=last;
@@ -666,5 +744,69 @@ mod tests {
  #[test]
  fn day_names_address_the_archive() {
   assert_eq!(day_name(EPOCH/DAY),"2020-09-01");
+ }
+
+ // ---------------------------------------- 最近缺失的那一天只记一小会儿
+
+ /// 一个能在 404 和 200 之间切换的假归档，外加它被问了几次。
+ #[derive(Default)]
+ struct Upstream {zip:Mutex<Option<Vec<u8>>>,asked:AtomicU64}
+ impl Upstream {
+  fn asked(&self)->u64 {self.asked.load(Ordering::Relaxed)}
+  fn publish(&self,bytes:Vec<u8>) {*self.zip.lock().unwrap()=Some(bytes);}
+ }
+ impl Origin for Arc<Upstream> {
+  fn fetch<'a>(&'a self,_url:&'a str)->Pin<Box<dyn Future<Output=Reply>+Send+'a>> {
+   self.asked.fetch_add(1,Ordering::Relaxed);
+   let body=self.zip.lock().unwrap().clone();
+   Box::pin(async move {body.map_or(Reply::Missing,Reply::Body)})
+  }
+ }
+ fn one_day()->Vec<u8> {zip_of("create_time,symbol,sum_open_interest\n2026-09-10 01:45:00,ETHUSDT,100\n")}
+ /// 一天的归档，和一个停在给定时刻的 store。
+ fn store_at(dir:&std::path::Path,now:i64)->(Arc<Store>,Arc<Upstream>,Arc<AtomicI64>) {
+  let clock=Arc::new(AtomicI64::new(now));
+  let upstream=Arc::new(Upstream::default());
+  (Store::fake(dir.to_path_buf(),clock.clone(),Box::new(upstream.clone())),upstream,clock)
+ }
+
+ #[tokio::test]
+ async fn a_recent_missing_day_is_asked_again_once_the_short_ttl_lapses() {
+  let dir=tempfile::tempdir().expect("temp dir");
+  let day=EPOCH.div_euclid(DAY)+400;
+  // 这一天刚结束一小时：归档可能只是还没发布，还不到结算期。
+  let (store,upstream,clock)=store_at(dir.path(),(day+1)*DAY+3_600_000);
+
+  assert!(matches!(store.day("ETHUSDT",day).await.0,Ok(Day::Absent)));
+  assert_eq!(upstream.asked(),1);
+  assert!(matches!(store.day("ETHUSDT",day).await.0,Ok(Day::Absent)));
+  assert_eq!(upstream.asked(),1,"这一小会儿里同一张图的其他天不用各问一次上游");
+  assert!(!dir.path().join(format!("ETHUSDT-{}.none",day_name(day))).exists(),"没结算的那天不落永久标记");
+
+  // 归档晚了十几分钟才发布出来。
+  clock.fetch_add(RECENT_ABSENT_TTL+1,Ordering::Relaxed);
+  upstream.publish(one_day());
+  assert!(matches!(store.day("ETHUSDT",day).await.0,Ok(Day::Points(_))),"不必重启，这一天自己补上了");
+  assert_eq!(upstream.asked(),2);
+  // 补上之后就是永久的了，不会因为时间继续走又去问一遍。
+  clock.fetch_add(10*RECENT_ABSENT_TTL,Ordering::Relaxed);
+  assert!(matches!(store.day("ETHUSDT",day).await.0,Ok(Day::Points(_))));
+  assert_eq!(upstream.asked(),2);
+ }
+
+ #[tokio::test]
+ async fn a_settled_missing_day_is_a_permanent_gap_and_is_never_asked_again() {
+  let dir=tempfile::tempdir().expect("temp dir");
+  let day=EPOCH.div_euclid(DAY)+400;
+  // 已经过了结算期：这一天确实不在归档里（上市日之前的那些天就是这样）。
+  let (store,upstream,clock)=store_at(dir.path(),day*DAY+SETTLED+1);
+
+  assert!(matches!(store.day("ETHUSDT",day).await.0,Ok(Day::Absent)));
+  assert!(dir.path().join(format!("ETHUSDT-{}.none",day_name(day))).exists(),"结算之后的缺口落一个永久标记");
+
+  clock.fetch_add(365*DAY,Ordering::Relaxed);
+  upstream.publish(one_day());
+  assert!(matches!(store.day("ETHUSDT",day).await.0,Ok(Day::Absent)),"永久缺口不受那条短 TTL 影响");
+  assert_eq!(upstream.asked(),1,"再也不问上游");
  }
 }
