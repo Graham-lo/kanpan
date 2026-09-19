@@ -1,0 +1,1 @@
+../../../Kanpan/Account/PersonalSyncCodec.swift

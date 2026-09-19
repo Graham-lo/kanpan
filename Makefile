@@ -27,7 +27,7 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test network-test data-test sync-contract diag-test diag-ios-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
+.PHONY: help core-test network-test data-test sync-contract diag-test diag-ios-test account-codec-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -131,6 +131,14 @@ DIAG := Kanpan/Diagnostics
 diag-test:
 	cd $(DIAG) && swift test $(CORE_TEST_FLAGS)
 
+# 「这个客户端替哪些字段说话」那张表（`PersonalSyncCodec.ownedKeys`）的跑道。
+# 它吃的 Prefs / SymbolPrefs 都是 internal 的，所以这个壳包把设置模型、SymbolPrefs
+# 和 codec 链进同一个模块编——就是 app 靶子里它们本来的样子。
+ACCOUNT_CODEC := Kanpan/AccountCodec
+
+account-codec-test:
+	cd $(ACCOUNT_CODEC) && swift test $(CORE_TEST_FLAGS)
+
 # 帧探针那几条只有真跑在 iOS 上才走得到（CADisplayLink / CFRunLoopObserver 在 mac
 # 上编得过但量不到东西），所以单独一个 target，要起模拟器，故意不挂进 `test`。
 # 真机取证前必须跑一遍。
@@ -138,7 +146,7 @@ diag-ios-test:
 	cd $(DIAG) && xcodebuild test -scheme KanpanDiagnostics \
 	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
 
-app-logic-test: symbols-test settings-test diag-test
+app-logic-test: symbols-test settings-test diag-test account-codec-test
 
 # ---------------------------------------------------------------- 跨语言契约
 # 「客户端会发哪些 settings 键 / 服务端认哪些」这件事，母表只有一张：

@@ -193,7 +193,7 @@ import ReviewUI
       if let nextSync {
         let imported = try [PersonalSyncCodec.settings(guestPrefs)] + PersonalSyncCodec.drawings(guestDrawings) + PersonalSyncCodec.symbols(guestSymbols)
         // 一次事务记完：逐条来的话这一档要被整份重写几十上百遍。
-        try nextSync.capture(imported, device: account.device.id, importing: claim.id)
+        try nextSync.capture(imported, device: account.device.id, importing: claim.id, owning: PersonalSyncCodec.ownedKeys)
       }
     }
     if let nextSync {
@@ -272,7 +272,7 @@ import ReviewUI
       let dirty = PrefsStore.storedStamp(in: nextStorage)?.isDirty ?? false
       let baseline = nextSync.archive.local[settings.key].flatMap { try? PersonalSyncCodec.apply($0, to: nextPrefs) }
       if dirty || ChartLayoutReconcile.decide(onDisk: nextPrefs, baseline: baseline) == .recapture {
-        try nextSync.capture([settings], device: account.device.id)
+        try nextSync.capture([settings], device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
       }
       nextSync.flushNow()
     }
@@ -340,7 +340,8 @@ import ReviewUI
       let deleted = sync.archive.local.values.filter { collections.contains($0.collection) && !keys.contains($0.key) && !$0.deleted }
       // 一次事务记完：自选每条都带 `order`，往头部插一个品种会让后面每一条都变，
       // 逐条 capture 等于整档重写 N 次。
-      try sync.capture(objects + deleted.map { var value = $0; value.deleted = true; return value }, device: account.device.id)
+      try sync.capture(objects + deleted.map { var value = $0; value.deleted = true; return value },
+                       device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
       // **立刻把这笔操作写到盘上。**
       //
       // `sync.capture` 只是把 transaction 排进写盘队列，队列在后台串行跑；app 这一刻
@@ -601,7 +602,7 @@ import ReviewUI
           // **只在全量这一档。** 每次推送后都重试就是个忙循环：服务端要是真的
           // 永远不认这个字段，那就是每 500 毫秒一次跨洋往返换一次 400。
           // 这儿刚把云端那份拉回来，正好拿它和当前本地值现做差分。
-          try sync.retryRejected(device: account.device.id)
+          try sync.retryRejected(device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
           if !sync.archive.operations.isEmpty { queuedPush = queuedPush ?? false }
         }
         // 只记「拉到哪儿了」。「装进本机没有」由 `applyPending()` 落盘成功后自己记（B4）。

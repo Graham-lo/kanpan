@@ -276,29 +276,74 @@ final class ArchiveWriter: @unchecked Sendable {
     return out.sorted { $0.key < $1.key }
   }
   /// Record only actual field changes. Uncertain requests are immutable; retry them with their original ID.
-  public func capture(_ value: SyncObject, device: UUID, importing batch: UUID? = nil) throws {
-    try capture([value], device: device, importing: batch)
+  public func capture(_ value: SyncObject, device: UUID, importing batch: UUID? = nil,
+                      owning ownedKeys: [String: Set<String>] = [:]) throws {
+    try capture([value], device: device, importing: batch, owning: ownedKeys)
   }
   /// 批量记账：N 个对象一次事务、一次写盘。
   ///
   /// 自选列表每条都带 `order`，往头部插一个品种会让后面每一条的 `order` 都变；
   /// 逐条 `capture` 等于整档重写 N 次。批量之后是 1 次。
-  public func capture(_ values: [SyncObject], device: UUID, importing batch: UUID? = nil) throws {
+  ///
+  /// `ownedKeys` 是**这个客户端替哪些键说话**：collection → 它自己会发出去的键。
+  /// 见 `stage` 里那一段。给空表就是从前的行为（每个键都当自己的），
+  /// 老调用点不传照旧编译、照旧跑。
+  public func capture(_ values: [SyncObject], device: UUID, importing batch: UUID? = nil,
+                      owning ownedKeys: [String: Set<String>] = [:]) throws {
     guard !values.isEmpty else { return }
     var staged = archive
     var changed = false
-    for value in values where stage(value, device: device, importing: batch, into: &staged) { changed = true }
+    for value in values where stage(value, device: device, importing: batch, owning: ownedKeys, into: &staged) { changed = true }
     guard changed else { return }
     try transaction { $0 = staged }
   }
   /// 把一个对象记进给定的存档副本，返回「有没有真的产生一条操作」。
-  private func stage(_ value: SyncObject, device: UUID, importing batch: UUID?, into a: inout SyncArchive) -> Bool {
+  ///
+  /// ## 「先前有、这次没有」的键，只有是自己的才翻译成删除
+  ///
+  /// 差分是拿 `previous`（`archive.local`）和这次这份逐键比出来的，其中「先前有、
+  /// 这次没有」历来被翻译成 `.null`（字段墓碑，「删掉这个字段」）。问题出在
+  /// `previous` **不一定是本机自己写进去的**：全量同步和增量拉取都会把**云端那份**
+  /// 写进 `local`（见 `receive`）。于是只要云端那个对象上带着一个**本机这个版本
+  /// 的模型根本不产出的字段**，用户下一次碰这个对象，客户端就会自作主张提议
+  /// 「把这个字段删掉」。
+  ///
+  /// 这件事两头都不对，2026-09-19 在模拟器上两条都真的见到了：
+  ///
+  /// - 服务端 `sync_validation.rs` 只在 `color` / `groupId` / `text` 和 settings、
+  ///   drawingPreferences 的嵌套路径上收 null，别的一律 `invalid_operation`，而且是
+  ///   **整条操作拒掉**。线上那两条标注的 body 里带着一个 `created`（`Drawing` 里
+  ///   根本没有这个属性，服务端却留着它的值规则——和 `PrefsFieldPlan.wireOnlyKeys`
+  ///   里的 `styleID` 是同一类只活在线上的遗留字段），于是改一次标注样式发出去的
+  ///   fields 是 `{"created": null, ...}`，400 → `quarantine` → `retryRejected`
+  ///   拿同样两份重新差分又差出同一个 null，每轮全量换一次跨洋 400，永远好不了。
+  /// - 反过来说，服务端**要是收了**这些 null，客户端就会静悄悄删掉一个它只是不认识的
+  ///   字段：老版本 app 改一条新版本写出来的画线，会把新版本的字段抹掉。今天没丢数据，
+  ///   只是因为服务端整条拒了——「拒绝」正在替「数据丢失」挡枪。
+  ///
+  /// 所以规矩是：**一个客户端只替它认识的字段说话。** 没听说过的字段既不改也不删，
+  /// 原样留在对象上（`value.body[key] = previous.body[key]`）。带回这一步不能省：
+  /// 记账里的 `local` 要是少了这个键，下一次差分会差出同一个 null，兜了一圈回到原地。
+  ///
+  /// 用户真的把一个**自己的**字段清掉了（画线的 `color`、自选的 `groupId`），那条路
+  /// 原样保留——它在 `ownedKeys` 里，照旧产出 `.null`。
+  ///
+  /// 表由调用方给（app 侧是 `PersonalSyncCodec.ownedKeys`，从编码器本身派生，不是手抄的
+  /// 清单）；不给表就是从前的行为，`KanpanAccount` 自己不认识任何一个业务字段。
+  private func stage(_ value: SyncObject, device: UUID, importing batch: UUID?,
+                     owning ownedKeys: [String: Set<String>], into a: inout SyncArchive) -> Bool {
+    var value = value
     let previous = a.local[value.key]
-    guard previous?.body != value.body || previous?.deleted != value.deleted else { return false }
     let base = a.objects[value.key] ?? SyncObject(collection: value.collection, id: value.id)
     if batch != nil && base.deleted { return false }
     var changed = value.body.filter { previous?.body[$0.key] != $0.value }
-    for key in previous?.body.keys ?? Dictionary<String, JSONValue>().keys where value.body[key] == nil { changed[key] = .null }
+    let owned = ownedKeys[value.collection]
+    for key in previous?.body.keys ?? Dictionary<String, JSONValue>().keys where value.body[key] == nil {
+      if let owned, !owned.contains(key) { value.body[key] = previous?.body[key] } else { changed[key] = .null }
+    }
+    // 带回外来键之后才判「到底有没有变」：只差一个外来键的两份 body 带回来就一模一样，
+    // 这时候再往队列里塞一条 fields 空空如也的操作，是白白跑一趟跨洋请求。
+    guard previous?.body != value.body || previous?.deleted != value.deleted else { return false }
     let action = value.deleted ? "delete" : (previous?.deleted == true || base.deleted) ? "restore" : "patch"
     let op = SyncOperation(collection: value.collection, objectId: value.id, deviceId: device,
       baseRevision: base.revision, generation: base.generation, timestamp: Int64(Date().timeIntervalSince1970 * 1000) + a.offset,
@@ -457,7 +502,13 @@ final class ArchiveWriter: @unchecked Sendable {
   ///
   /// 新操作是拿**当前本地值**和**当前云端对象**现做的差分，不是把老载荷重发一遍：
   /// 老载荷是当初那一刻的，服务端的对象早就往前走了。
-  public func retryRejected(device: UUID) throws {
+  ///
+  /// **`ownedKeys` 必须和 `capture` 传的是同一张表。** 这儿是差分的另一个入口，
+  /// 而且是**最容易踩到外来字段的那个**：它明摆着拿云端那份当 `previous`
+  /// （下面那句 `staged.local[record.key] = remote`），云端带着的遗留字段一个不少。
+  /// 少传这张表，被拒的那条操作就会原样再差出同一个 null、再被拒一次，
+  /// 每轮全量同步换一次跨洋 400。
+  public func retryRejected(device: UUID, owning ownedKeys: [String: Set<String>] = [:]) throws {
     guard !archive.rejected.isEmpty else { return }
     var staged = archive
     var changed = false
@@ -471,7 +522,7 @@ final class ArchiveWriter: @unchecked Sendable {
       // 退回云端那份，`stage` 才能重新差出「本地和云端不一样的那几项」。这一下只动
       // 存档里的记账，用户眼前的值（prefs / draws.json）一个字都没碰。
       staged.local[record.key] = remote
-      if stage(local, device: device, importing: nil, into: &staged) { changed = true }
+      if stage(local, device: device, importing: nil, owning: ownedKeys, into: &staged) { changed = true }
       keep.append(record)
     }
     guard changed || keep.count != staged.rejected.count else { return }

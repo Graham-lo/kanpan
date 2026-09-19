@@ -129,4 +129,110 @@ enum PersonalSyncCodec {
     }
     return objects
   }
+
+  // MARK: - 这个客户端替哪些字段说话
+
+  /// 一个集合里**这个版本的客户端认得、并且说了算**的那些键（拍平之后的路径，逐字相等）。
+  ///
+  /// 传给 `SyncStore.capture(_:device:owning:)`，那一层拿它回答一个问题：前一份 body 里有、
+  /// 这一份里没有的键，到底是「用户把它清掉了」，还是「这个版本根本没听说过它」。
+  ///
+  /// ## 为什么非要分清这两件事
+  ///
+  /// `SyncStore.stage` 是拿前后两份 body 逐键做差分的，而「前一份」不一定是这台设备写的——
+  /// 整份同步和增量同步都会把**云端那份**原样放进 `archive.local`。于是只要云端那个对象上
+  /// 带着一个这一版模型里根本不存在的字段，下一次碰它，差分就会把它读成「这个字段被删了」，
+  /// 发一个 `null` 上去。两头都是错的：
+  ///
+  /// - 服务端的 null 白名单很窄（只有 `color` / `groupId` / `text` 和 `settings` /
+  ///   `drawingPreferences` 的嵌套路径），别的键一律 `invalid_operation`——而它是**整条操作**
+  ///   拒绝，于是那条操作被隔离，`retryRejected` 重新差分又发一遍同一个 null，再被拒一次。
+  ///   一个账号从此每次整份同步都白跑一趟跨洋请求，后面对这个对象的每一次编辑也一起卡死。
+  ///   真实案例：云端两条文字标注上带着 `created`（`Drawing` 上压根没有这个属性，
+  ///   服务端却认得——和 `PrefsFieldPlan.wireOnlyKeys` 里的 `styleID` 是同一类只活在线上的
+  ///   老键），用户只是改了一下标注的样式，整条操作就 400 了。
+  /// - 反过来，如果服务端**收**了这些 null，那就更糟：一个老版本客户端会把它仅仅是不认识的
+  ///   字段悄悄抹掉，新版本那边的东西就这么没了。今天是服务端的拒绝挡住了这场数据丢失。
+  ///
+  /// 所以规矩是**一个客户端只替它认识的字段说话**：没听说过的字段既不改也不删，原样留在
+  /// 对象上（`stage` 会把它从前一份 body 里带回来）。用户清掉一个**自己的**字段
+  /// （比如一条线的 `color`）照旧发 null，那才是真的「删掉这个字段」。
+  ///
+  /// ## 这张表是算出来的，不是抄的
+  ///
+  /// 手抄的字段清单在这个仓库里已经咬过两次（见 `PrefsFieldPlan` 的注释、提交 `a161bb0`
+  /// 与 `0f09f7e`），所以这儿一个键都不手写：全部**拿这个 codec 自己的编码器跑一遍**得出来——
+  /// 给每一样东西做一份「把所有可选项都填满」的样板，编出来的键就是这一版会发的键。
+  /// 往 `Drawing` 上加一个存储属性、往 `Prefs` 里加一个同步字段、往 `symbols` 里多发一个键，
+  /// 这张表当场跟着变，`PersonalSyncCodecOwnedKeysTests` 那一组穷举守卫也当场对得上。
+  static let ownedKeys: [String: Set<String>] = {
+    do {
+      var table: [String: Set<String>] = ["settings": Set(try settings(maximalPrefs).body.keys)]
+      for object in try drawings(maximalDrawArchive) { table[object.collection, default: []].formUnion(object.body.keys) }
+      for object in symbols(maximalSymbolPrefs) { table[object.collection, default: []].formUnion(object.body.keys) }
+      return table
+    } catch {
+      // 编这几份纯值结构不该失败（全是标准类型，没有一条会抛的路）。真失败了就交一张空表：
+      // `stage` 拿不到某个集合的清单时退回老行为——照旧发 null，被服务端顶回来，
+      // 也就是 2026-09-19 之前的样子。宁可退回那个已知的死法，也不能反过来变成
+      // 「什么都不删」——那会让用户清掉的字段永远清不掉，而且一声不响。
+      // `ownedKeysCoverEveryCollection` 把这条空表钉死成红的。
+      return [:]
+    }
+  }()
+
+  /// 指标输出的序号上限。
+  ///
+  /// `PrefsCodec` 解码 `indicatorColors` / `hiddenOutputs` 时按 `0..<21` 夹，服务端
+  /// `sync_validation.rs` 的值规则也是 `n <= 20`。两边本来就是同一个数，这儿跟着它们走。
+  private static let maxOutputIndex = 20
+
+  /// 每一个同步字段都填满了的一份设置。
+  ///
+  /// 嵌套的那几摊（`params` / `indicatorColors` / `hiddenOutputs` / `subHeights` /
+  /// `subHeightOverrides`）拍平之后是 `<字段>/<指标>` 甚至 `<字段>/<指标>/<输出序号>`，
+  /// 一份出厂设置只拍得出其中几条，所以这儿按 `IndicatorID.allCases` × `0...maxOutputIndex`
+  /// 全部铺满——铺不满的话，用户把某个指标的自定义颜色清掉时，那一条就成了「外来键」
+  /// 被带回来，他清的东西永远同步不上去。
+  ///
+  /// 铺得比真实情况宽一点是安全的：多出来的那些路径（比如主图指标的 `subHeightOverrides/MA`）
+  /// 本来就是这一版自己的词汇表，而 `settings` 的嵌套 null 服务端是收的，不会堵队列。
+  private static var maximalPrefs: Prefs {
+    var prefs = Prefs.defaults
+    let colors = Dictionary(uniqueKeysWithValues: (0...maxOutputIndex).map { ($0, Hex("#ffffff")) })
+    for id in IndicatorID.allCases {
+      prefs.params[id] = prefs.params[id] ?? []
+      prefs.hiddenOutputs[id] = []
+      prefs.indicatorColors[id] = colors
+      prefs.subHeights[id] = .medium
+      prefs.subHeightOverrides[id] = 1
+    }
+    return prefs
+  }
+
+  /// 每一把工具、每一个可选字段都摆出来的一份画线存档。
+  ///
+  /// `Drawing.encode(to:)` 有两个条件分支：`color` 是 `encodeIfPresent`，`text` 只有带文字的
+  /// 工具（或者老存档里真有文字）才写。样板把这两样都给上值，取的是**并集**——这一版能发出去
+  /// 的键一个不少。**往 `Drawing` 上加一个 `encodeIfPresent` 的新属性时，这儿也要给它一个
+  /// 非空值**，否则它不会进这张表，用户清空它时那一下就同步不上去。
+  private static var maximalDrawArchive: DrawArchive {
+    var archive = DrawArchive()
+    var items: [Drawing] = []
+    for kind in Drawing.Kind.allCases {
+      var drawing = Drawing(id: "d", kind: kind, points: Array(repeating: DrawPoint(t: 0, p: 0), count: kind.pointCount))
+      drawing.color = Hex("#ffffff")
+      drawing.text = "x"
+      items.append(drawing)
+      archive.preferences.styles[kind.rawValue] = DrawingStyle(drawing)
+    }
+    archive.bySymbol["BTCUSDT"] = items
+    return archive
+  }
+
+  /// 分类、自选、置顶、归属都齐了的一份自选表：`symbols` 每一种对象都发得出来。
+  private static var maximalSymbolPrefs: SymbolPrefs {
+    SymbolPrefs(favorites: ["BTCUSDT"], groups: [FavoriteGroup(id: "g", name: "g")],
+                groupForSymbol: ["BTCUSDT": "g"], pinned: ["BTCUSDT"])
+  }
 }
