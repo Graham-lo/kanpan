@@ -113,10 +113,16 @@ final class ChartFoundationUITests: XCTestCase {
   ///
   /// 设置 2026-09-18 起不是半屏面板而是标签栏上的一整页：它既拖不走，也没有「完成」，
   /// 离开它的办法就是切到别的标签。行情页那一格叫「图表」。
+  /// 这一下**按坐标点**，不用 `XCUIElement.tap()`。底栏没有自己的底，设置页那张
+  /// `ScrollView` 是一直铺到屏幕底边的（页面的材料从标签栏背后穿过去，这是定下来的样子）；
+  /// 设置页的内容一旦比一屏长（2026-09-21 多了「提醒」那一行之后就是），XCTest 发现
+  /// 「图表」那一格底下压着一个能滚的祖先，就会先去「滚动到可见」，滚完算出来的命中点是
+  /// `{-1, -1}`——那一下合成事件谁也没点到，人在手机上却是实实在在点得着的。
+  /// 按坐标点绕开这套推断，点的仍旧是那一格的正中央。
   func leaveSettings() {
     let chartTab = app.buttons["bottom.chart"]
     XCTAssertTrue(chartTab.waitForExistence(timeout: 5), "标签栏上没有「图表」")
-    chartTab.tap()
+    chartTab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     XCTAssertTrue(wait(seconds: 8) { self.app.buttons["interval.chart"].exists },
                   "点了「图表」还没回到行情页")
   }
@@ -126,6 +132,20 @@ final class ChartFoundationUITests: XCTestCase {
   }
   func shot(_ name: String) {
     let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
+  }
+
+  /// 收掉「要不要在这条线上提醒你吗」那一行（方案 2.3）。
+  ///
+  /// 那一行长在**图外面**（周期条下面、标签栏上面），所以它一出来图区当场矮一截，
+  /// 刚画下的那条线跟着往上挪；六秒没人理它自己走。凡是「按 `mainH` 的比例去点画布」
+  /// 的用例，都得先把它清掉再量高度，不然量到的是它在场时那个数，手指按下去的位置
+  /// 就落在线现在**不在**的地方（这正是 `testDrawingAllToolsAndFingerTargets` 那一按
+  /// 抓不住端点的原因）。它不在场时这一下什么也不做。
+  func dismissAlertPrompt() {
+    let dismiss = app.buttons["alert.prompt.dismiss"]
+    guard dismiss.exists else { return }
+    dismiss.tap()
+    XCTAssertTrue(wait(seconds: 5) { !dismiss.exists }, "点了「只画线」，那一行还挂在图下面")
   }
 
   /// 点「绘图」面板上的分类标签。
@@ -319,23 +339,34 @@ final class ChartFoundationUITests: XCTestCase {
     }
   }
 
+  /// 分类这条路 2026-09-20 改过一次：**从某一类里点搜索加进来的品种，就留在那一类**
+  /// （`SymbolPickerModel.addFavorite`，用户点名要的）。以前无论站在哪儿加完都掉回
+  /// 「全部」，所以这条用例原来是「加完再移进半导体」；现在那一步是空跑——加完它已经
+  /// 在半导体里了。于是改成两组：站在「半导体」里加 SNDK（就地落位），再把它移去
+  /// 「光模块」，两边各看一眼，分类与移动这两件事仍旧各有一条断言管着。
   func testFavoritesCategoriesAndNavigation() throws {
     XCTAssertTrue(app.openFavorites())
     XCTAssertTrue(app.buttons["favorites.add"].waitForExistence(timeout: 5))
-    favoritesAction("favorites.newGroup")
-    let name = app.alerts.textFields["分类名称"]
-    XCTAssertTrue(name.waitForExistence(timeout: 5)); name.typeText("半导体")
-    app.alerts.buttons["保存"].tap()
+    for group in ["半导体", "光模块"] {
+      favoritesAction("favorites.newGroup")
+      let name = app.alerts.textFields["分类名称"]
+      XCTAssertTrue(name.waitForExistence(timeout: 5)); name.typeText(group)
+      app.alerts.buttons["保存"].tap()
+      XCTAssertTrue(app.buttons["favorites.group." + group].waitForExistence(timeout: 5))
+    }
+    let semiconductor = app.buttons["favorites.group.半导体"]
+    XCTAssertTrue(wait(seconds: 5) { semiconductor.isHittable }); semiconductor.tap()
     addFavoriteFromSearch("SNDKUSDT")
     let row = app.buttons["favorites.open.SNDKUSDT"]
+    XCTAssertTrue(row.waitForExistence(timeout: 5), "加进来的品种要留在当时站着的那一类里")
     let move = app.buttons["favorites.move.SNDKUSDT"]
     XCTAssertTrue(expandRow("SNDKUSDT"), "展开箭头点不开详情")
     move.tap()
-    let destination = app.buttons["半导体"]
+    let destination = app.buttons["光模块"]
     XCTAssertTrue(wait { destination.exists && destination.isHittable })
     destination.tap()
-    XCTAssertTrue(wait(seconds: 3) { !row.exists })
-    app.buttons["favorites.group.半导体"].tap()
+    XCTAssertTrue(wait(seconds: 5) { !row.exists }, "移走之后不该还留在「半导体」这一类里")
+    app.buttons["favorites.group.光模块"].tap()
     XCTAssertTrue(row.waitForExistence(timeout: 5)); shot("独立自选页-分类与品种")
     row.tap()
     XCTAssertTrue(wait(seconds: 45) { self.info()["symbol"] as? String == "SNDKUSDT" })
@@ -528,7 +559,11 @@ final class ChartFoundationUITests: XCTestCase {
     shot("自选-选择与删除")
   }
 
-  func testFavoritesDirectRowReorder() throws {
+  /// 长按整行这一下 2026-09-20 起归预览卡（方案 §4.1）：`contextMenu` 把那半秒先认走了，
+  /// `List` 自带的拖动排序（`onMove`）在普通状态下就起不来——同一个手势没法两件事都做。
+  /// 排序没有丢，它退到卡旁边那份菜单的第一屏上（「调整顺序」），点一下进批量编辑，
+  /// 那儿的长按仍旧是拖动。这条用例走的就是这条新路（原名 `testFavoritesDirectRowReorder`）。
+  func testFavoritesLongPressPreviewThenReorder() throws {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SOLUSDT"
     app.launch()
@@ -536,14 +571,24 @@ final class ChartFoundationUITests: XCTestCase {
     let sol = app.buttons["favorites.open.SOLUSDT"]
     XCTAssertTrue(btc.waitForExistence(timeout: 15))
     XCTAssertTrue(sol.waitForExistence(timeout: 5))
-    // Freeze screen coordinates before List rearranges its cells. Drop beyond the
-    // last row, allowing the native insertion animation to finish before release.
+    btc.press(forDuration: 1.1)
+    let reorder = app.buttons["调整顺序"]
+    XCTAssertTrue(reorder.waitForExistence(timeout: 5), "长按整行应弹出预览卡和它那份菜单")
+    XCTAssertTrue(app.buttons["打开"].exists, "菜单里该有「打开」")
+    shot("自选-长按预览卡")
+    reorder.tap()
+    XCTAssertTrue(app.buttons["favorites.editToggle"].waitForExistence(timeout: 5),
+                  "「调整顺序」应直接进批量编辑")
+    // 整行还是 `favorites.open.<symbol>` 那颗按钮，排序和它抢同一个落点：按满 1.2s
+    // 让排序会话先起来，拖完再按住 0.8s 才松手（同 `testFavoritesBatchEditing`）。
+    XCTAssertTrue(wait(seconds: 5) { btc.exists && sol.exists && btc.frame.minY < sol.frame.minY })
     let origin = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
     let start = origin.withOffset(CGVector(dx: btc.frame.midX, dy: btc.frame.midY))
-    let end = origin.withOffset(CGVector(dx: sol.frame.midX, dy: sol.frame.maxY + 20))
-    start.press(forDuration: 1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.5)
-    XCTAssertTrue(wait(seconds: 5) { btc.frame.minY > sol.frame.minY }, "普通状态长按整行应直接排序")
-    shot("自选-无需编辑长按整行排序")
+    let end = origin.withOffset(CGVector(dx: btc.frame.midX, dy: sol.frame.maxY + 20))
+    start.press(forDuration: 1.2, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.8)
+    XCTAssertTrue(wait(seconds: 5) { btc.frame.minY > sol.frame.minY }, "编辑态长按整行应拖动排序")
+    shot("自选-长按菜单进编辑后排序")
+    app.buttons["favorites.editToggle"].tap()
   }
 
   func testFavoritesRightSwipeRemove() throws {
@@ -1534,6 +1579,9 @@ extension ChartFoundationUITests {
       // 下面每一下都是点在画布上的。面板收了但图不在（被别的页盖住），
       // 再点下去就是往别人身上点——先把图还在这件事断言死，失败信息也才看得懂。
       XCTAssertTrue(canvas.waitForExistence(timeout: 5), "\(tool.0)：工具面板收起后图不见了")
+      // 上一把工具画完时问的那一句可能还挂在图下面（方案 2.3，六秒自己走）：它在与不在，
+      // 图区高度差着一整行，下面所有按比例算出来的落点都跟着偏。先收了再量。
+      dismissAlertPrompt()
       let h = try XCTUnwrap(info()["mainH"] as? Double)
       let origin = canvas.coordinate(withNormalizedOffset: .zero)
       let points = [CGVector(dx: 90, dy: h * 0.65), CGVector(dx: 245, dy: h * 0.3), CGVector(dx: 160, dy: h * 0.75)]
@@ -1541,6 +1589,11 @@ extension ChartFoundationUITests {
       XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == index + 1 }, tool.0)
       XCTAssertEqual((info()["drawingKinds"] as? [String])?.last, tool.0)
       if index == 0 {
+        // 这条线刚落下，那一句问话正好长出来，图区比刚才矮了一行、线也跟着往上挪。
+        // 这条用例量的是**手指容差**，不是那句问话：先收掉它，等图区长回量过的 `h`，
+        // 下面这一按才真的是「偏离可见把手 17pt」。
+        dismissAlertPrompt()
+        XCTAssertTrue(wait(seconds: 5) { (self.info()["mainH"] as? Double) == h }, "图区没回到刚量过的高度")
         let before = try XCTUnwrap(info()["drawingAnchors"] as? [[[String: Double]]])
         origin.withOffset(CGVector(dx: 90, dy: h * 0.65 + 17)).press(forDuration: 0.1,
           thenDragTo: origin.withOffset(CGVector(dx: 115, dy: h * 0.65 + 42)), withVelocity: .slow, thenHoldForDuration: 0.1)
