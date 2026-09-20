@@ -158,9 +158,10 @@ struct SectorSymbolList: View {
 
   // MARK: - 长按预览
 
-  /// 和自选页同一张卡、同一份菜单（`FavoritesView.previewable`）。差别只有一处：
+  /// 和自选页同一张卡、同一份菜单（`FavoritesView.previewable`）。差别有两处：
   /// 这儿的品种多半还不在自选里，所以那一项是「加入自选」而不是「取消自选」——
-  /// 看板块就是在挑东西，挑中了顺手收走，不用先切回自选页再搜一遍。
+  /// 看板块就是在挑东西，挑中了顺手收走，不用先切回自选页再搜一遍；另一处是
+  /// 没有「调整顺序」，这张表的顺序归排序口径管，本来就不是手排的。
   @ViewBuilder private func previewable(_ item: SectorSymbolRow, _ content: some View,
                                         open: @escaping (String) -> Void) -> some View {
     if let previews {

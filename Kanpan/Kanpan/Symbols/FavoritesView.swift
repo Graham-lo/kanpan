@@ -856,13 +856,19 @@ struct FavoritesView: View {
 
   /// 长按一行：先弹一张卡看看这东西现在什么样，再决定做什么（§4.1）。
   ///
-  /// 卡是只读的，动作全在旁边那份菜单里——「打开 / 移到分类 / 取消自选」，
-  /// 和这一行右滑、展开详情里能做的是同三件事，不多一件也不少一件。
+  /// 卡是只读的，动作全在旁边那份菜单里——「打开 / 调整顺序 / 移到分类 / 取消自选」，
+  /// 和这一行右滑、展开详情里能做的是同几件事，不多一件也不少一件。
   /// 批量编辑时整个不挂：那时候长按是拖动排序，两种长按不能抢同一个手势。
+  ///
+  /// 「调整顺序」是这张菜单欠自己的一笔：长按整行原来是 `List` 自带的拖动排序
+  /// （`onMove`），这张预览卡挂上去之后那半秒的长按被 `contextMenu` 先认走了，
+  /// 同一个手势没法两件事都做。所以排序没有丢，只是退到菜单里——**长按弹出来的
+  /// 第一屏上就有它**，点一下进批量编辑，那儿的长按仍旧是拖动排序。
   @ViewBuilder private func previewable(_ symbol: String, _ content: some View) -> some View {
     if let previews, !editing {
       content.contextMenu {
         Button("打开") { open(symbol) }
+        Button("调整顺序") { toggleEditing() }
         if !model.prefs.groups.isEmpty {
           Menu("移到分类") {
             ForEach(model.prefs.groups) { group in
