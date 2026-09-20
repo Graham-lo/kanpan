@@ -43,7 +43,7 @@ final class RangeOverlayView: UIView {
   private var dragPart = ""
   private var startIndex = 0
   private var before: ReviewDraft?
-  override init(frame: CGRect) { super.init(frame: frame); isOpaque = false; backgroundColor = .clear; isMultipleTouchEnabled = false; accessibilityIdentifier = "review.range" }
+  override init(frame: CGRect) { super.init(frame: frame); isOpaque = false; backgroundColor = .clear; isMultipleTouchEnabled = false }
   required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
   private var chart: ChartView? { proxy?.box?.chart }
   func flash(_ id: UUID?) {
@@ -93,10 +93,32 @@ final class RangeOverlayView: UIView {
   }()
   private func report(marks: Int, state: ChartState) {
     guard Self.diagnostics else { return }
-    if !isAccessibilityElement { isAccessibilityElement = true }
     let value = "\(marks)/\(records.count) \(state.series.symbol) \(state.series.interval.rawValue) \(bridge?.liveVenue ?? "-")"
-    if accessibilityValue != value { accessibilityValue = value }
+    if probe.accessibilityValue != value { probe.accessibilityValue = value }
   }
+
+  /// 诊断口挂在一块 1×1 的探针上，不把这一层自己变成无障碍元素。
+  ///
+  /// 上面那段说「平时这一层压根不是无障碍元素……不会挡住底下那张 `chart.canvas`」——
+  /// 原来的写法（`db97365`）却恰好把这句话作废了：`KANPAN_CHART_DIAGNOSTICS=1` 一开，
+  /// `report` 就把**铺满整个图区**的这一层翻成无障碍元素。无障碍命中测试和手指的
+  /// 命中测试是两回事，它不看 `isUserInteractionEnabled`（读屏本来就要能念到不可点的
+  /// 静态内容），所以这一层即使在非取景态（`allowsHitTesting(false)`）也照样把图上
+  /// 所有东西挡住：XCUITest 问 `chart.canvas`、问副图分隔线把手 `chart.resize.*`
+  /// 能不能点，命中测试先撞上它，一律答「点不着」——`testThreeSubpanelsFitWithoutPageScroll`
+  /// 就是这么红的。真人的手指从头到尾没被挡过，所以只有用例看得见这个病。
+  ///
+  /// 现在这一层自己永远不是无障碍元素，值挂在左上角一块 1×1 的子视图上（和
+  /// `market.source` 那个诊断口一个做法）。命中测试落在图上任何地方都穿得过去，
+  /// `ReviewFlowUITests` 要的那个记号数照样读得到。
+  private lazy var probe: UIView = {
+    let view = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+    view.isUserInteractionEnabled = false
+    view.isAccessibilityElement = true
+    view.accessibilityIdentifier = "review.range"
+    addSubview(view)
+    return view
+  }()
 
   // MARK: - 这一层自己盯着图有没有换内容
 

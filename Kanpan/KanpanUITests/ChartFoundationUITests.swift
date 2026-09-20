@@ -752,6 +752,16 @@ final class ChartFoundationUITests: XCTestCase {
       shot("配色-" + skin + mode + "-图表")
       XCTAssertTrue(app.openFavorites())
       let feed = app.descendants(matching: .any).matching(identifier: "favorites.feed").firstMatch
+      // 自选页停在「他上次看的那一类」——这一栏是 `Prefs.favoritesGroup`，2026-09-19
+      // 从 `SymbolPrefs.selectedGroupID` 搬进偏好里之后跟着人走、跨启动也记着。
+      // 而这个种子（BTC/ETH/SOL/SNDK/XAU）自动分出来的三类里，第一类是「贵金属」
+      // （XAU 靠 ISO 资产代码当场就能认，加密和美股要等合约目录到货才认得出来），
+      // 没有存过选择时落在它身上；这条用例自己在下面又把三类挨个点了一遍、
+      // 最后停在「贵金属」。所以「进自选页就该看见 BTC 那一行」是旧设计的写法，
+      // 现在既进不去也不该成立。要验 BTC 就先回到它所在的「加密」类。
+      let crypto = app.buttons["favorites.group.加密"]
+      XCTAssertTrue(crypto.waitForExistence(timeout: 15), "自选页要有「加密」这一类")
+      crypto.tap()
       XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].waitForExistence(timeout: 5))
       XCTAssertTrue(wait(seconds: 5) {
         (feed.value as? String)?.contains("background=" + background) == true
