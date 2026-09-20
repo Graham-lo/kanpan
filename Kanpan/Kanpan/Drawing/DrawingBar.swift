@@ -272,8 +272,9 @@ struct DrawingDock: View {
   private func iconButton(_ icon: String, _ label: String, _ id: String, enabled: Bool = true,
                           action: @escaping () -> Void) -> some View {
     Button(action: action) {
+      // 命中区不能低于 44×44。
       Image(systemName: icon).font(.system(size: 15))
-        .frame(width: 42, height: Self.height).contentShape(Rectangle())
+        .frame(width: 44, height: Self.height).contentShape(Rectangle())
     }
     .disabled(!enabled).opacity(enabled ? 1 : 0.35)
     .accessibilityLabel(label).accessibilityIdentifier(id)
@@ -358,7 +359,7 @@ private struct DrawingStyleEditor: View {
       Form {
         Section("样式") {
           DrawingColorControl(title: "颜色", color: Binding(get: { item.color ?? "#D6A64F" }, set: { item.color = $0 }))
-          Stepper("粗细：\(item.lineWidth, specifier: "%.1f")", value: $item.lineWidth, in: 0.5...6, step: 0.5)
+          LineWidthPicker(width: $item.lineWidth)
           Picker("线型", selection: $item.dash) { ForEach(Drawing.Dash.allCases, id: \.self) { Text($0.title).tag($0) } }
           if item.kind.usesFill { Toggle("背景填充", isOn: $item.filled) }
           Toggle("锁定位置", isOn: $item.locked)
@@ -411,6 +412,49 @@ private struct DrawingStyleEditor: View {
     let values = parts.compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
     guard !values.isEmpty, values.count == parts.count, values.count <= 24, values.allSatisfy({ $0.isFinite && abs($0) <= 10 }) else { return nil }
     return Array(Set(values)).sorted()
+  }
+}
+
+/// 粗细：四条不同粗细的短线，点哪条就是哪条。
+///
+/// 2026-09-20 用户的话是「非必要这种加减的一律不要出现，非常影响体验」——粗细原来是
+/// 0.5…6 步进 0.5 的加减器，十一档里真正用得上的只有几档，还得一下一下按着看。
+/// 现在只留四档，选中的那条自己就是样张，不用先读懂数字再想象它多粗。
+struct LineWidthPicker: View {
+  @Binding var width: Double
+  /// 四档：细、常用、重、最重。存档里别的值（老画线的 1.3）按最近的一档显示。
+  static let options: [Double] = [1, 1.5, 2, 3]
+
+  private var selected: Double {
+    Self.options.min { abs($0 - width) < abs($1 - width) } ?? Self.options[0]
+  }
+
+  var body: some View {
+    HStack(spacing: 0) {
+      Text("粗细")
+      Spacer(minLength: 8)
+      ForEach(Self.options, id: \.self) { w in
+        Button { width = w } label: {
+          RoundedRectangle(cornerRadius: w / 2, style: .continuous)
+            .fill(Color.primary)
+            .frame(width: 26, height: w)
+            .frame(width: 44, height: 34)
+            // 选中的记号用 `primary`，和上面那排色卡的选中圈同一支笔——这张表是系统
+            // `Form`，跟着皮肤的强调色走反而会在一片中性色里蹦出一块系统蓝。
+            .background(selected == w ? Color.primary.opacity(0.08) : .clear,
+                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay {
+              RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(selected == w ? Color.primary.opacity(0.55) : .clear, lineWidth: 1.5)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("粗细 \(w.formatted())")
+        .accessibilityAddTraits(selected == w ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("draw.width.\(w.formatted())")
+      }
+    }
   }
 }
 

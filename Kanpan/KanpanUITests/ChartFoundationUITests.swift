@@ -284,13 +284,9 @@ final class ChartFoundationUITests: XCTestCase {
   }
 
   func testHistoricalOIUsesChartPeriod() throws {
-    let day = app.buttons["interval.chip.1d"]
-    XCTAssertTrue(day.waitForExistence(timeout: 5))
-    let quick = app.scrollViews["interval.quick"]
-    for _ in 0..<4 {
-      if quick.frame.contains(day.frame) { break }
-      quick.swipeLeft()
-    }
+    // 1d 在 UI 测试沙盒里没钉住（那六档是 1m 5m 15m 30m 1h 4h），
+    // `tapIntervalChip` 会自己改从「更多」网格里选，结果一样。
+    XCTAssertTrue(app.buttons[Ids.intervalMore].waitForExistence(timeout: 5))
     app.tapIntervalChip("1d")
     XCTAssertTrue(wait(seconds: 90) {
       self.info()["interval"] as? String == "1d" && self.info()["oiPeriod"] as? String == "1d" &&
@@ -780,10 +776,6 @@ final class ChartFoundationUITests: XCTestCase {
       XCTAssertTrue(wait(seconds: 20) { quote()["symbol"] == symbol && (Int64(quote()["time"] ?? "0") ?? 0) > 0 })
       var stamp = Int64(quote()["time"] ?? "0") ?? 0
       for interval in ["1m", "1h", "4h", "1h"] {
-        let chip = app.buttons["interval.chip." + interval]
-        let strip = app.scrollViews["interval.quick"]
-        strip.swipeRight()
-        for _ in 0..<3 { if chip.exists && strip.frame.contains(chip.frame) { break }; strip.swipeLeft() }
         let previousSpacing = info()["spacing"] as? Double
         app.tapIntervalChip(interval)
         // Read during the actual transition, before the REST candle request finishes.
@@ -1230,9 +1222,11 @@ final class ChartFoundationUITests: XCTestCase {
     let original = try XCTUnwrap(info()["ma"] as? [Int])
     app.buttons["interval.chart"].tap()
     app.buttons["indicator.edit.MA"].tap()
-    let stepper = app.steppers["indicator.param.0"]
-    XCTAssertTrue(stepper.waitForExistence(timeout: 5))
-    stepper.buttons["indicator.param.0-Increment"].tap()
+    // 手指还停在输入框里就按「取消」：一个参数都不许动（2026-09-20 加减改输入框后的验收 c）。
+    let field = app.textFields["indicator.param.0.field"]
+    XCTAssertTrue(field.waitForExistence(timeout: 5))
+    field.tap()
+    field.typeText("77")
     app.buttons["取消"].tap(); closePanel()
     XCTAssertEqual(info()["ma"] as? [Int], original)
     app.buttons["interval.chart"].tap()
@@ -1249,8 +1243,9 @@ final class ChartFoundationUITests: XCTestCase {
   }
   /// 均线周期能直接打字，也能加一条、删一条。
   ///
-  /// 步进器按 ±1 走，从 5 调到 120 要按 115 下；这条用例就是守着「能打字」这件事，
-  /// 顺带把加减线时输出开关和颜色跟着挪位的那段逻辑走一遍。
+  /// 点进去原值就整段选上，直接打新的数就是换掉它（2026-09-20 起这一格没有加减了）；
+  /// 手指还停在框里直接按「保存」，那一格也要算数。顺带把加减线时输出开关和颜色
+  /// 跟着挪位的那段逻辑走一遍。
   func testMAPeriodsTypedAndAddRemove() throws {
     let original = try XCTUnwrap(info()["ma"] as? [Int])
     app.buttons["interval.chart"].tap()
@@ -1287,6 +1282,48 @@ final class ChartFoundationUITests: XCTestCase {
     shot("均线周期-删回原来的条数")
   }
 
+  /// 参数格是输入框，不是加减：2026-09-20 用户说「ma 参数一律改成手动输入框，
+  /// 不再搞那种加减，那个都没用，非必要这种加减的一律不要出现」。
+  ///
+  /// 这条守着改一个数的那四件事：点进去**原值全选**（所以打 169 得到的是 169，
+  /// 不是接在 10 后面的 101）、打字途中**图不按中间值重算**、手指还在框里直接按
+  /// 「保存」那一格也算数、按「取消」一个参数都不变；最后空着提交要回落到原值。
+  func testParamFieldsReplaceSteppers() throws {
+    let original = try XCTUnwrap(info()["ma"] as? [Int])
+    app.buttons["interval.chart"].tap()
+    app.buttons["indicator.edit.MA"].tap()
+    let field = app.textFields["indicator.param.0.field"]
+    XCTAssertTrue(field.waitForExistence(timeout: 5))
+    XCTAssertEqual(app.steppers.count, 0, "参数页上还有步进器")
+    field.tap()
+    field.typeText("1")
+    XCTAssertEqual(info()["ma"] as? [Int], original, "打到一半图就按中间值重算了")
+    field.typeText("69")
+    XCTAssertEqual(info()["ma"] as? [Int], original, "还没保存图就变了")
+    shot("均线参数-输入169还没保存")
+    // 手指还停在框里，直接按「保存」：不用先点别处失焦。
+    app.buttons["保存"].tap(); closePanel()
+    XCTAssertTrue(wait { (self.info()["ma"] as? [Int])?.first == 169 },
+                  "保存没把正在打的那格算进去：\(info()["ma"] ?? "?")")
+    shot("均线参数-保存后第一条是169")
+    let saved = try XCTUnwrap(info()["ma"] as? [Int])
+
+    app.buttons["interval.chart"].tap()
+    app.buttons["indicator.edit.MA"].tap()
+    XCTAssertTrue(field.waitForExistence(timeout: 5))
+    field.tap(); field.typeText("42")
+    app.buttons["取消"].tap(); closePanel()
+    XCTAssertEqual(info()["ma"] as? [Int], saved, "取消之后参数动了")
+
+    app.buttons["interval.chart"].tap()
+    app.buttons["indicator.edit.MA"].tap()
+    XCTAssertTrue(field.waitForExistence(timeout: 5))
+    field.tap()
+    field.typeText(XCUIKeyboardKey.delete.rawValue)
+    app.buttons["保存"].tap(); closePanel()
+    XCTAssertEqual(info()["ma"] as? [Int], saved, "空着提交没回落到原值")
+  }
+
   func testDeviceHistoricalPanPinchAndManualY() throws {
     let initial = info()
     let origin = canvas.coordinate(withNormalizedOffset: .zero)
@@ -1321,6 +1358,41 @@ final class ChartFoundationUITests: XCTestCase {
 }
 
 extension ChartFoundationUITests {
+  /// 粗细是四条样张，点哪条是哪条，没有加减也没有输入框（2026-09-20）。
+  func testDrawingWidthPresets() throws {
+    XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
+    openDrawTools()
+    XCTAssertTrue(app.buttons["draw.tool.ray"].waitForExistence(timeout: 5))
+    app.buttons["draw.tool.ray"].tap()
+    let origin = canvas.coordinate(withNormalizedOffset: .zero)
+    origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
+    origin.withOffset(CGVector(dx: 240, dy: 160)).tap()
+    XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 1 }, String(describing: info()))
+    origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
+    XCTAssertTrue(app.buttons["draw.style"].waitForExistence(timeout: 5))
+    app.buttons["draw.style"].tap()
+    XCTAssertTrue(app.buttons["draw.save"].waitForExistence(timeout: 8))
+    let thick = app.buttons["draw.width.3"]
+    // 样式面板起手是半屏，粗细那一行偶尔落在下沿以外：拖到整屏再点。
+    if !thick.waitForExistence(timeout: 3) || !thick.isHittable {
+      let bar = app.navigationBars.element(boundBy: 0)
+      bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        .press(forDuration: 0.1,
+               thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)))
+    }
+    XCTAssertTrue(thick.waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertEqual(app.steppers.count, 0, "画线样式面板上还有步进器")
+    XCTAssertTrue(app.buttons["draw.width.1.5"].exists, "四档里少了 1.5pt")
+    thick.tap()
+    app.buttons["draw.save"].tap()
+    origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
+    XCTAssertTrue(app.buttons["draw.style"].waitForExistence(timeout: 5))
+    app.buttons["draw.style"].tap()
+    XCTAssertTrue(app.buttons["draw.width.3"].waitForExistence(timeout: 8))
+    XCTAssertTrue(app.buttons["draw.width.3"].isSelected, "重开样式面板，3pt 那档没保持选中")
+    shot("画线粗细-四档样张")
+  }
+
   func testDrawingToolsAndPersistentStyles() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     openDrawTools()

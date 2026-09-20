@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import KanpanCore
 
 /// 指标那几栏。指标选择即时生效；参数与输出在独立草稿中保存或取消。
@@ -224,17 +225,18 @@ private struct IndicatorEditor: View {
   @Environment(\.colorScheme) private var colorScheme
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
-  /// 正在打字的是第几格。数字键盘没有回车键，收键盘全靠工具条那颗「完成」，
-  /// 而工具条只能挂在整张表上挂一次——所以焦点得由这儿统一管。
-  @FocusState private var editingParam: Int?
-  /// 每一格里**还没被确认过**的那串字符（审查 C-07）。
+  /// 正在打字的是哪一格。数字键盘没有回车键，收键盘只有「下滑」和右上角「保存」两条路，
+  /// 所以焦点得由这儿统一管——「保存」要先把手上这一格提交掉，再关面板。
+  @FocusState private var focus: ParamFocus?
+  /// 正在打字那几格的字面值（一般只有一格）。提交或离开就抹掉，那一格回去显示 draft 里的数。
+  /// 放在这张表身上而不是各格自己身上，是为了「保存」能在同一个调用栈里把它算进去，
+  /// 不用先点别处失焦。
   ///
-  /// 为什么要在这一层留一份：`ParamField` 只在「合法」的时候把字符串写进 `draft`，
-  /// 越界的那些要等失焦 `commit()` 才夹回区间。可「保存」是一颗按钮——手指落在它
-  /// 上面的那一刻，SwiftUI 先跑按钮动作还是先跑失焦回调，是没有保证的。
-  /// 2026-09-20 在 iPhone 15 上实测过：框里显示 999，存进去的是 **9**。
-  /// 所以保存那一下必须自己把这串字符规范化一遍，不能把收尾全交给失焦。
-  @State private var pendingText: [Int: String] = [:]
+  /// 这一份接手了审查 C-07 原来那个 `pendingText`：那条账是「手指落在保存上的那一刻，
+  /// SwiftUI 先跑按钮动作还是先跑失焦回调没有保证，框里显示 999 存进去的是 9」。
+  /// 现在「保存」走 `committed()`——在同一个调用栈里把手上这几格算进去再落盘，
+  /// 一样不依赖失焦时序，而且连 RSI 上下限那两格也一并管上了。
+  @State private var typing: [ParamFocus: String] = [:]
   init(store: PrefsStore, id: IndicatorID) {
     self.store = store; _draft = State(initialValue: IndicatorDraft(id: id, prefs: store.prefs))
   }
@@ -264,10 +266,8 @@ private struct IndicatorEditor: View {
             ForEach(Array(draft.params.indices), id: \.self) { paramRow($0) }
           }
           if draft.id == .rsi {
-            Stepper("上限：\(Int(draft.upper))", value: $draft.upper, in: (draft.lower + 1)...100)
-              .foregroundStyle(t.ink)
-            Stepper("下限：\(Int(draft.lower))", value: $draft.lower, in: 0...(draft.upper - 1))
-              .foregroundStyle(t.ink)
+            numberRow(.upper, label: "上限", value: Int(draft.upper), identifier: "indicator.rsi.upper.field")
+            numberRow(.lower, label: "下限", value: Int(draft.lower), identifier: "indicator.rsi.lower.field")
           }
         } header: {
           sectionTitle("参数")
@@ -310,8 +310,8 @@ private struct IndicatorEditor: View {
         }
       }
       // 这张表是系统 `Form`，但配色得跟着皮肤走：底换成 `app`、行换成 `raised`、
-      // 强调色（「添加周期」、开关、光标）走 `tint`。留着 `Form` 是因为步进器和
-      // 左滑删除都是它给的，自己搭一套只会把这两样做丢。
+      // 强调色（「添加周期」、开关、光标）走 `tint`。留着 `Form` 是因为分节、左滑删除
+      // 和键盘避让都是它给的，自己搭一套只会把这几样做丢。
       .scrollContentBackground(.hidden)
       .background(t.app)
       .navigationTitle(draft.id.name)
@@ -322,6 +322,11 @@ private struct IndicatorEditor: View {
       // （原来这儿写「输进去的数字是边打边生效的」，和这张表的 draft 模型对不上——
       //   它就是要按「保存」才生效的那一张，见上面 `IndicatorEditor` 的说明。）
       .scrollDismissesKeyboard(.interactively)
+      // 焦点一挪：上一格提交，新一格把原值整段选上（验收 a）。
+      .onChange(of: focus) { old, now in
+        if let old { commit(old) }
+        if now != nil { selectAllInFocusedField() }
+      }
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button("取消") { dismiss() }
@@ -329,7 +334,9 @@ private struct IndicatorEditor: View {
             .accessibilityIdentifier("indicator.cancel")
         }
         ToolbarItem(placement: .confirmationAction) {
-          Button("保存") { commitEditing(); store.update { draft.save(into: &$0) }; dismiss() }
+          // 手指还停在某一格里也能直接按：`committed()` 把那格的字算进去之后才落盘
+          // （验收 b，也是审查 C-07 那条账的现在这一版做法）。
+          Button("保存") { let final = committed(); store.update { final.save(into: &$0) }; dismiss() }
             .fontWeight(.semibold)
             .foregroundStyle(t.amber)
             .accessibilityIdentifier("indicator.save")
@@ -349,47 +356,94 @@ private struct IndicatorEditor: View {
     return draft.id.paramLabels[index]
   }
 
-  /// 一格参数：步进器管 ±1，数字本身可以直接打——均线周期常常是 5 → 120 这种跨度，
-  /// 按 115 下 + 不是人干的事。两边共用一个值，谁改都立刻生效。
+  /// 一格参数：只有输入框，没有加减。
+  ///
+  /// 2026-09-20 用户的话是「ma 参数一律改成手动输入框，不再搞那种加减，那个都没用」。
+  /// 均线周期常常是 5 → 120 这种跨度，±1 的键按 115 下不是人干的事；点进去原值全选，
+  /// 改一个数就只需要打那个数。
   private func paramRow(_ index: Int) -> some View {
-    Stepper(value: $draft.params[index], in: IndicatorParamRule.range) {
-      ParamField(label: parameterLabel(index),
-                 value: $draft.params[index],
-                 pending: Binding(get: { pendingText[index] },
-                                  set: { pendingText[index] = $0 }),
-                 index: index,
-                 focus: $editingParam,
-                 theme: t,
-                 identifier: "indicator.param.\(index).field")
-    }.accessibilityIdentifier("indicator.param.\(index)")
+    // 行上不能再挂一个 id：容器上的无障碍修饰会往下传给里面的输入框，把
+    // `indicator.param.N.field` 盖成 `indicator.param.N`，用例就再也找不着这一格了。
+    // 原来那个行 id 是给步进器用的，步进器没了，它也就没有主人。
+    numberRow(.param(index), label: parameterLabel(index), value: draft.params[index],
+              identifier: "indicator.param.\(index).field")
   }
 
-  /// 把还举在手里的那几串字符一次性夹回合法区间，写进 `draft`。
+  /// 一行「名字 + 数字框」。框里显示的是「正在打的字」，没在打就是 draft 里的数。
+  private func numberRow(_ field: ParamFocus, label: String, value: Int, identifier: String) -> some View {
+    ParamField(label: label,
+               text: Binding(get: { typing[field] ?? String(value) },
+                             set: { typing[field] = String($0.filter(\.isNumber).prefix(3)) }),
+               field: field,
+               focus: $focus,
+               theme: t,
+               identifier: identifier)
+  }
+
+  /// 把一格打完的字落进 draft。
   ///
-  /// 和 `ParamField.commit()` 是同一套规矩，所以两条路谁先跑都一样：失焦先跑，
-  /// 这儿的 `pendingText` 已经空了；按钮先跑，失焦那一下再夹一次也是同一个数。
-  /// 空串按「什么都没打」处理——原来那个值原样留着，不清零。
-  private func commitEditing() {
-    for (index, raw) in pendingText where draft.params.indices.contains(index) {
-      guard let typed = Int(raw) else { continue }
-      draft.params[index] = IndicatorParamRule.clamp(typed)
+  /// 空的、根本不是数字的**当没改过**——那一格回到原来的数，不清零（审查 C-07 第三段）。
+  /// 越界的**夹回最近的那个边界**，不是丢掉：框里明明显示着 999，存进去却还是 10，
+  /// 用户没有任何办法知道自己那一下没生效（C-07 的原话是「保存的必须是规范化之后的
+  /// 那个数」，`PresenterAndStateUITests` 盯着它）。
+  private func apply(_ field: ParamFocus, _ text: String, to draft: inout IndicatorDraft) {
+    guard let n = Int(text) else { return }
+    switch field {
+    case .param(let index):
+      guard draft.params.indices.contains(index) else { return }
+      draft.params[index] = IndicatorParamRule.clamp(n)
+    case .upper:
+      // 上限永远得比下限高一格，所以夹的下沿跟着下限走。
+      draft.upper = Double(min(100, max(Int(draft.lower) + 1, n)))
+    case .lower:
+      draft.lower = Double(max(0, min(Int(draft.upper) - 1, n)))
     }
-    pendingText.removeAll()
-    editingParam = nil
+  }
+
+  /// 把还在打字的那几格算进去之后的 draft。「保存」拿它落盘，
+  /// 不依赖「先改 @State 再读回来」这种时序。
+  private func committed() -> IndicatorDraft {
+    var out = draft
+    for (field, text) in typing { apply(field, text, to: &out) }
+    return out
+  }
+
+  private func commit(_ field: ParamFocus) {
+    guard let text = typing.removeValue(forKey: field) else { return }
+    var out = draft
+    apply(field, text, to: &out)
+    draft = out
+  }
+
+  private func commitAll() {
+    draft = committed()
+    typing.removeAll()
+  }
+
+  /// 点进一格先把原值整段选上：直接打就是替换，不用先删。
+  /// （原来是「点进来先清空」——清空之后那一格看着像空的，不知道自己刚才是几。）
+  private func selectAllInFocusedField() {
+    Task { @MainActor in
+      UIApplication.shared.sendAction(#selector(UIResponder.selectAll(_:)), to: nil, from: nil, for: nil)
+    }
   }
 
   /// 均线这类「几条线」由用户定；MACD、KDJ 那种参数个数是算法定死的，不能加也不能删。
   private var variablePeriods: Bool { [.ma, .ema, .vol].contains(draft.id) }
 
   private func addPeriod() {
+    commitAll(); focus = nil
     let next = IndicatorParamRule.clamp((draft.params.last ?? 5) * 2)
     draft.params.append(next)
   }
 
   /// 删一条线时，输出开关和线条颜色都按位置存着，得跟着往前挪一格，
   /// 否则关掉的是别人那条、颜色也串到隔壁去了。
+  /// 删一条之前先把手上那格提交掉、把「正在打的字」全抹掉：那几个字面值是按行号存的，
+  /// 行一挪就串到隔壁去了。
   private func removePeriods(_ offsets: IndexSet) {
     guard draft.params.count - offsets.count >= 1 else { return }
+    commitAll(); focus = nil
     for index in offsets.sorted(by: >) {
       draft.params.remove(at: index)
       draft.hidden = Set(draft.hidden.compactMap { $0 == index ? nil : ($0 > index ? $0 - 1 : $0) })
@@ -400,22 +454,25 @@ private struct IndicatorEditor: View {
   }
 }
 
-/// 一格能直接打字的周期。
+/// 这张表上要打字的那几格：参数逐格一个，RSI 的上下限各一个。
+enum ParamFocus: Hashable {
+  case param(Int)
+  case upper
+  case lower
+}
+
+/// 一格能直接打字的数。
 ///
-/// 只收数字、最多三位（上限 400），失焦时夹回合法区间——中途不夹，
-/// 不然删到剩一位数就被顶成 1，再想输 120 得跟它打架。什么都没打就走开，
-/// 原来那个值原样留着。
+/// 它只管显示和拿焦点：只收数字、最多三位（参数上限 400、RSI 上限 100），
+/// 打字途中不夹也不回写——图按中间值重算一次画面就乱跳，而且删到空的那一瞬是非法的。
+/// 值什么时候落进 draft、非法了怎么办，全在 `IndicatorEditor` 那边一处说了算。
 private struct ParamField: View {
   var label: String
-  @Binding var value: Int
-  /// 这一格里还没被确认的那串字符，镜像到编辑器那一层去（审查 C-07）。
-  @Binding var pending: String?
-  var index: Int
-  var focus: FocusState<Int?>.Binding
+  @Binding var text: String
+  var field: ParamFocus
+  var focus: FocusState<ParamFocus?>.Binding
   var theme: PanelTheme
   var identifier: String
-
-  @State private var text = ""
 
   var body: some View {
     HStack(spacing: 12) {
@@ -423,7 +480,7 @@ private struct ParamField: View {
       Spacer(minLength: 8)
       // 一格能打字的数字，底垫一层 `raised2`：不垫的话它和左边的名字长得一模一样，
       // 谁也不会想到那儿能点进去打字。
-      TextField(String(value), text: $text)
+      TextField("", text: $text)
         .keyboardType(.numberPad)
         .multilineTextAlignment(.trailing)
         .font(.body.monospacedDigit())
@@ -432,30 +489,9 @@ private struct ParamField: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(theme.raised2, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .focused(focus, equals: index)
+        .focused(focus, equals: field)
         .accessibilityIdentifier(identifier)
         .accessibilityLabel(label)
-        .onChange(of: text) { _, now in
-          let digits = String(now.filter(\.isNumber).prefix(3))
-          if digits != now { text = digits }
-          if let n = Int(digits), IndicatorParamRule.isValid(n) { value = n }
-          // 合法与否都往上报一份：越界的那些正是「保存」要替我们夹回去的。
-          pending = focus.wrappedValue == index ? digits : nil
-        }
-        // 点进来先清空，当前值退成灰底纹。不清的话光标停在数字中间，
-        // 想把 10 改成 7 会打出 710——三位以内的周期，重打一遍比删两下快。
-        .onChange(of: focus.wrappedValue) { _, now in
-          if now == index { text = "" } else { commit() }
-        }
-        .onChange(of: value) { _, now in if focus.wrappedValue != index { text = String(now) } }
-        .onAppear { text = String(value) }
     }
-  }
-
-  private func commit() {
-    let clamped = IndicatorParamRule.clamp(Int(text) ?? value)
-    value = clamped
-    text = String(clamped)
-    pending = nil
   }
 }

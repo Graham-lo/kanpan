@@ -267,49 +267,6 @@ struct PanelNote: View {
   }
 }
 
-// MARK: - 步进器
-
-/// 原型 `.step`：`− 名字 12 +`。夹在 `IndicatorParamRule.range` 里，按不出非法值（A6.5）。
-struct PanelStepper: View {
-  var label: String
-  var value: Int
-  var bump: (Int) -> Void
-
-  @Environment(\.panelTheme) private var t
-
-  var body: some View {
-    HStack(spacing: 0) {
-      key("−") { bump(-1) }
-        .disabled(value <= IndicatorParamRule.range.lowerBound)
-      Text(label.isEmpty ? "\(value)" : "\(label) \(value)")
-        .font(PanelFont.number)
-        .foregroundStyle(t.ink2)
-        .frame(minWidth: 34)
-        .padding(.horizontal, 2)
-        .padding(.vertical, 5)
-        .contentTransition(.numericText())
-      key("+") { bump(1) }
-        .disabled(value >= IndicatorParamRule.range.upperBound)
-    }
-    .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(t.line, lineWidth: 1))
-    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel(label.isEmpty ? "参数" : label)
-    .accessibilityValue("\(value)")
-  }
-
-  private func key(_ glyph: String, _ act: @escaping () -> Void) -> some View {
-    Button(action: act) {
-      Text(glyph)
-        .font(.system(size: 13, weight: .medium))
-        .foregroundStyle(t.ink2)
-        .frame(width: 24, height: 22)
-        .background(t.raised2)
-    }
-    .buttonStyle(.plain)
-  }
-}
-
 // MARK: - toast
 
 /// 原型 `toast()`：一句话说完就走（换下了哪个副图、参数越界、域名不对）。
