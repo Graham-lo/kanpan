@@ -22,7 +22,9 @@ handle @archive {
         header_up X-Kanpan-Client-IP {remote_host}
     }
 }
-@account path /v1/auth/* /v1/sync/* /v1/native-review/* /v1/market/* /v1/capabilities
+# /v1/devices/* 是提醒要用的推送 token 登记（POST /v1/devices/push-token）。没有它，
+# 客户端那一半在边缘就 404，手机上的提醒永远拿不到设备令牌。
+@account path /v1/auth/* /v1/sync/* /v1/native-review/* /v1/market/* /v1/devices/* /v1/capabilities
 handle @account {
     encode zstd gzip
     reverse_proxy 127.0.0.1:8794

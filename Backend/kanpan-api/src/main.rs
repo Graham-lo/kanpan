@@ -40,8 +40,12 @@ async fn main()->anyhow::Result<()> {
    if kanpan_api::maintenance::cleanup(&s).await.is_err(){tracing::warn!("Cleanup will retry");}
    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
   }};
+  // 提醒的评估器。APNs 密钥缺席时 `from_env` 只写一行 warn 并返回 None——评估照常跑、
+  // 触发状态照常写回同步日志，少的只是最后那一下推送。密钥是用户要去开发者后台下载的
+  // 东西，提醒的其余部分不该等它。
+  let alert_loop=kanpan_api::alerts::run(s.clone(),kanpan_api::apns::Apns::from_env());
   tokio::select! {
-   _=async {tokio::join!(review_loop,search_loop,cleanup_loop);} => {},
+   _=async {tokio::join!(review_loop,search_loop,cleanup_loop,alert_loop);} => {},
    _=tokio::signal::ctrl_c()=>{}
   }
   return Ok(());

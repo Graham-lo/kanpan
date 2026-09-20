@@ -29,9 +29,9 @@ import KanpanAccount
 
   /// 空表 = 退回 2026-09-19 之前的老行为（每个键都当自己的、照旧发 null）。
   /// `ownedKeys` 那个 `catch` 分支真要是走到了，这条第一个红。
-  @Test("五摊东西一摊都不能少")
+  @Test("六摊东西一摊都不能少")
   func ownedKeysCoverEveryCollection() {
-    for collection in ["settings", "drawings", "drawingPreferences", "favorites", "groups"] {
+    for collection in ["settings", "drawings", "drawingPreferences", "favorites", "groups", "alerts"] {
       let keys = PersonalSyncCodec.ownedKeys[collection]
       #expect(keys?.isEmpty == false, "`\(collection)` 这一摊没算出键来，客户端等于又不认识自己的字段了")
     }
@@ -202,5 +202,55 @@ import KanpanAccount
   private struct Contract: Decodable {
     var wireKeys: [String]
     var wireOnlyKeys: [String: String]
+  }
+
+  // MARK: 提醒
+
+  /// 提醒那一摊：身体正好是方案表 2.2 的十五个键，一个不多一个不少。
+  ///
+  /// 服务端 `sync_validation.rs` 的 `ALERT_FIELDS` 是同样十五个，多一个键整条操作
+  /// 被拒、队列跟着堵（见 `ownedKeys` 的注释）。所以这条是**跨端契约**，
+  /// 改字段名之前先去看服务端那张表。
+  @Test("提醒发出去的键就是表 2.2 那十五个")
+  func theAlertKeysAreExactlyTheContract() throws {
+    let alert = Alert(id: "a1", symbol: "BTCUSDT", drawingID: "d1",
+                      lines: [AlertLine(points: [DrawPoint(t: 1, p: 2)], extendRight: true)],
+                      armedAt: 3, title: "BTC 触到你画的趋势线", created: 4)
+    let objects = try PersonalSyncCodec.alerts([alert])
+    #expect(objects.count == 1)
+    let object = try #require(objects.first)
+    #expect(object.collection == "alerts")
+    #expect(object.id == "binance/usd_m/BTCUSDT/a1")
+    #expect(Set(object.body.keys) == ["kind", "symbol", "market", "drawingID", "lines", "condition",
+                                      "armedAt", "once", "status", "firedAt", "firedPrice",
+                                      "dueAt", "reviewID", "title", "created"])
+    #expect(PersonalSyncCodec.ownedKeys["alerts"] == Set(object.body.keys))
+    // 服务端对 `alerts.market` 卡的是整串，不是画线那种 venue + market 拆两半。
+    #expect(object.body["market"] == .string("binance/usd_m"))
+    #expect(object.body["venue"] == nil)
+  }
+
+  /// 空的那五个要写成 null，不许省略——省略会被 `SyncStore.stage` 读成「删掉这个字段」，
+  /// 而它们正好是服务端 null 白名单上的那五个。
+  @Test("没值的可空字段写 null，不省略")
+  func nullableAlertKeysAreExplicitNulls() throws {
+    let alert = Alert(id: "a1", symbol: "BTCUSDT", armedAt: 0, title: "x", created: 0)
+    let object = try #require(try PersonalSyncCodec.alerts([alert]).first)
+    for key in ["drawingID", "firedAt", "firedPrice", "dueAt", "reviewID"] {
+      #expect(object.body[key] == .null, "`\(key)` 没写成 null")
+    }
+  }
+
+  /// 上去再下来还是同一条：服务端判出触发之后写回来的 `status` / `firedAt` /
+  /// `firedPrice` 就走这条路进本机。
+  @Test("提醒上去再下来是同一条")
+  func alertRoundTrips() throws {
+    var alert = Alert(id: "a1", symbol: "ETHUSDT", drawingID: "d9",
+                      lines: [AlertLine(points: [DrawPoint(t: 1, p: 2), DrawPoint(t: 3, p: 4)],
+                                        extendLeft: true, extendRight: true)],
+                      condition: .close, armedAt: 5, title: "ETH 触到你画的通道", created: 6)
+    alert.status = .fired; alert.firedAt = 7; alert.firedPrice = 3_210.5
+    let object = try #require(try PersonalSyncCodec.alerts([alert]).first)
+    #expect(try PersonalSyncCodec.alert(object) == alert)
   }
 }

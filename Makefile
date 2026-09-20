@@ -27,7 +27,7 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test network-test data-test sync-contract symbols-test sector-test settings-test app-logic-test diag-test diag-ios-test main-ios-test account-codec-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
+.PHONY: help core-test network-test data-test sync-contract symbols-test sector-test alerts-test scan-test settings-test deeplink-test app-logic-test diag-test diag-ios-test main-ios-test account-codec-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -133,10 +133,34 @@ SECTOR := Kanpan/Sector
 sector-test:
 	cd $(SECTOR) && swift test $(CORE_TEST_FLAGS)
 
+# 连续扫图与「看细节」的纯算术（§10.1）：冻结下来的那张名单怎么走一只（`ScanList`）、
+# 「看细节」该进哪一档、视野铺多宽、切回大周期时回到哪儿（`DetailZoom`）。
+# 手势与按钮吃 SwiftUI，那部分的证据走模拟器。
+SCAN := Kanpan/Scan
+
+scan-test:
+	cd $(SCAN) && swift test $(CORE_TEST_FLAGS)
+
+# 提醒模块里不吃 SwiftUI / UIKit 的那两件：存档与对账（线被挪了按同一个 id 重算、
+# 线被删了提醒跟着删）、以及那份存档的管家。纯逻辑（几何摊平、触发判定）在
+# KanpanCore/Alerts，跑 core-test。
+ALERTS := Kanpan/Alerts
+
+alerts-test:
+	cd $(ALERTS) && swift test $(CORE_TEST_FLAGS)
+
 DIAG := Kanpan/Diagnostics
 
 diag-test:
 	cd $(DIAG) && swift test $(CORE_TEST_FLAGS)
+
+# 外面进来的那条链接长什么样（`DeepLink`）。通知、桌面快捷入口、共享链接三边
+# 照着同一份形态拼串，解析只有这一处，所以它的契约要有人钉着。零依赖、不吃
+# SwiftUI，mac 上直接跑。
+DEEPLINK := Kanpan/DeepLink
+
+deeplink-test:
+	cd $(DEEPLINK) && swift test $(CORE_TEST_FLAGS)
 
 # 「这个客户端替哪些字段说话」那张表（`PersonalSyncCodec.ownedKeys`）的跑道。
 # 它吃的 Prefs / SymbolPrefs 都是 internal 的，所以这个壳包把设置模型、SymbolPrefs
@@ -166,7 +190,7 @@ main-ios-test:
 	cd $(MAIN) && xcodebuild test -scheme KanpanMain \
 	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
 
-app-logic-test: symbols-test sector-test settings-test diag-test account-codec-test
+app-logic-test: symbols-test sector-test settings-test diag-test account-codec-test deeplink-test scan-test alerts-test
 
 # ---------------------------------------------------------------- 跨语言契约
 # 「客户端会发哪些 settings 键 / 服务端认哪些」这件事，母表只有一张：

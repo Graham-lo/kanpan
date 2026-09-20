@@ -30,7 +30,7 @@ pub struct Object {
  pub collection:String,pub id:String,pub body:BTreeMap<String,Value>,
  pub fields:BTreeMap<String,Value>,pub revision:i64,pub deleted:bool,pub generation:i64,
 }
-const COLLECTIONS:[&str;5]=["settings","drawingPreferences","drawings","favorites","groups"];
+const COLLECTIONS:[&str;6]=["settings","drawingPreferences","drawings","favorites","groups","alerts"];
 fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::bad("invalid_collection"))}else{Ok(())}}
 // One enumerable allowlist per collection, mirroring what iOS actually sends.
 //
@@ -66,8 +66,17 @@ pub const DRAWING_PREFERENCE_FIELDS:[&str;4]=["favorites","magnet","continuous",
 pub const DRAWING_FIELDS:[&str;14]=["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"];
 pub const FAVORITE_FIELDS:[&str;7]=["symbol","market","venue","groupId","order","pinned","alerts"];
 pub const GROUP_FIELDS:[&str;3]=["name","order","members"];
+// 提醒（方案文档 2.2 的整张表）。`price` 这一种本轮只进白名单与值规则，评估器不认它。
+//
+// 注意 `market` 在这个集合里是 `"binance/usd_m"` 整串，而 `drawings`/`favorites` 的
+// `market` 是 `"usd_m"`、场所另放在 `venue`。这不是笔误，是方案文档 2.2 写死的形状，
+// 所以值规则也按集合分开写——把两者混成一条规则会让客户端发上来的整条 op 400。
+pub const ALERT_FIELDS:[&str;15]=[
+ "kind","symbol","market","drawingID","lines","condition","armedAt","once",
+ "status","firedAt","firedPrice","dueAt","reviewID","title","created",
+];
 pub fn allowlist(c:&str)->&'static [&'static str] {
- match c {"settings"=>SETTINGS_FIELDS,"drawingPreferences"=>&DRAWING_PREFERENCE_FIELDS,"drawings"=>&DRAWING_FIELDS,"favorites"=>&FAVORITE_FIELDS,"groups"=>&GROUP_FIELDS,_=>&[]}
+ match c {"settings"=>SETTINGS_FIELDS,"drawingPreferences"=>&DRAWING_PREFERENCE_FIELDS,"drawings"=>&DRAWING_FIELDS,"favorites"=>&FAVORITE_FIELDS,"groups"=>&GROUP_FIELDS,"alerts"=>&ALERT_FIELDS,_=>&[]}
 }
 // Malformed paths are rejected; unknown-but-well-formed names are only dropped.
 fn valid_path(path:&str)->bool {!path.is_empty() && path.len()<=160 && !path.split('/').any(|p|p.is_empty()||p==".."||p.starts_with('_'))}
@@ -122,8 +131,36 @@ pub fn routes()->Router<AppState> {
 fn object(r:&sqlx::postgres::PgRow)->Result<Object> {
  Ok(Object{collection:r.get("collection"),id:r.get("id"),body:serde_json::from_value(r.get("body"))?,fields:serde_json::from_value(r.get("fields"))?,revision:r.get("revision"),deleted:r.get("deleted"),generation:r.get("generation")})
 }
-async fn lock(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<()> {
+/// 这个人的同步日志的串行闸。评估器触发时也要先拿它（`alerts::fire`），
+/// 而且要在拿行锁**之前**拿，和 `push` 同一个顺序——否则 worker 与 API 两条路
+/// 会以相反的顺序拿同两把锁，那就是教科书上的死锁。
+pub async fn lock(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<()> {
  sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))").bind(format!("sync:{owner}")).execute(&mut **tx).await?;Ok(())
+}
+/// 以服务端自己的身份改一条同步对象，走的是和客户端 op 完全一样的那条路。
+///
+/// 评估器判定触发之后要把 `status=fired` 告诉这个人的每一台设备，而设备只认同步日志：
+/// 不写 `sync_changes`，手机下次拉取时什么都收不到，界面上那条提醒会一直显示「活动」。
+/// 所以这里不是直接 UPDATE 一行，而是拼一条 op 交给 `merge` ——校验、LWW 戳、快照、
+/// 游标一样都不少，客户端读到的东西和别的改动没有区别。
+///
+/// `device_id` 是全零：那不是任何一台真设备，客户端的「这条是我自己刚发的」判断因此
+/// 不会把它当成回声丢掉。调用方必须**已经**拿了 `lock`（本文件 `push` 的同一把）。
+///
+/// 对象不存在就报错而不是新建：服务端只会去改一条客户端已经同步上来的提醒。
+pub async fn apply_server(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,collection:&str,object_id:&str,fields:BTreeMap<String,Value>)->Result<Object> {
+ let row=sqlx::query("SELECT * FROM sync_objects WHERE user_id=$1 AND collection=$2 AND id=$3 FOR UPDATE").bind(owner).bind(collection).bind(object_id).fetch_optional(&mut **tx).await?;
+ let Some(row)=row else {return Err(ApiError::bad("unknown_object"))};
+ let old=object(&row)?;
+ let now=Utc::now().timestamp_millis();
+ let op=Operation{id:Uuid::new_v4(),collection:collection.into(),object_id:object_id.into(),device_id:Uuid::nil(),
+  base_revision:old.revision,generation:old.generation,timestamp:now,logical:0,action:"patch".into(),fields,import_batch:None};
+ let next=merge(old.clone(),&op,now)?;
+ sqlx::query("INSERT INTO sync_snapshots(user_id,collection,object_id,snapshot) VALUES($1,$2,$3,$4)").bind(owner).bind(collection).bind(object_id).bind(json!(old)).execute(&mut **tx).await?;
+ sqlx::query("INSERT INTO sync_objects(user_id,collection,id,body,fields,revision,deleted,generation) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(user_id,collection,id) DO UPDATE SET body=excluded.body,fields=excluded.fields,revision=excluded.revision,deleted=excluded.deleted,generation=excluded.generation,changed_at=now()")
+  .bind(owner).bind(&next.collection).bind(&next.id).bind(json!(next.body)).bind(json!(next.fields)).bind(next.revision).bind(next.deleted).bind(next.generation).execute(&mut **tx).await?;
+ sqlx::query("INSERT INTO sync_changes(user_id,collection,object_id,revision,deleted) VALUES($1,$2,$3,$4,$5)").bind(owner).bind(&next.collection).bind(&next.id).bind(next.revision).bind(next.deleted).execute(&mut **tx).await?;
+ Ok(next)
 }
 async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Json<Value>> {
  if v.operations.is_empty()||v.operations.len()>100{return Err(ApiError::bad("invalid_batch"))}
@@ -150,6 +187,10 @@ async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Js
   }
   sqlx::query("INSERT INTO sync_objects(user_id,collection,id,body,fields,revision,deleted,generation) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(user_id,collection,id) DO UPDATE SET body=excluded.body,fields=excluded.fields,revision=excluded.revision,deleted=excluded.deleted,generation=excluded.generation,changed_at=now()")
    .bind(i.user).bind(&next.collection).bind(&next.id).bind(json!(next.body)).bind(json!(next.fields)).bind(next.revision).bind(next.deleted).bind(next.generation).execute(&mut *tx).await?;
+  // 提醒对象落库的同一口气里刷新物化表：评估器读的是 alert_watches，不是 sync_objects。
+  // 放在同一个事务里，所以「同步成功了但评估器还在用旧几何」这个中间态不存在——
+  // 用户把被提醒的线拖到别处、客户端用同一个 alert id 重传 lines，下一帧就是新形状。
+  if next.collection=="alerts" {crate::alerts::materialize(&mut tx,i.user,&next).await?;}
   let cursor:i64=sqlx::query_scalar("INSERT INTO sync_changes(user_id,collection,object_id,revision,deleted) VALUES($1,$2,$3,$4,$5) RETURNING sequence").bind(i.user).bind(&next.collection).bind(&next.id).bind(next.revision).bind(next.deleted).fetch_one(&mut *tx).await?;
   // `droppedFields` is always present, so a client can tell "this server does not
   // report drops" (field absent) from "nothing was dropped" (empty list). Older
@@ -268,6 +309,7 @@ mod tests {
    ("drawings",&["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"][..]),
    ("favorites",&["symbol","market","venue","groupId","order","pinned","alerts"][..]),
    ("groups",&["name","order","members"][..]),
+   ("alerts",&["kind","symbol","market","drawingID","lines","condition","armedAt","once","status","firedAt","firedPrice","dueAt","reviewID","title","created"][..]),
   ];
   for (collection,want) in expected {
    let (mut have,mut want)=(allowlist(collection).to_vec(),want.to_vec());

@@ -52,6 +52,9 @@ struct MainScreen: View {
   /// 板块页那一路的行情。它拉的是**全市场 24h ticker**（一趟就够），和 `QuoteBook`
   /// 那条按可见范围订阅的线完全不搭界，所以单独一份，只在板块页看得见时才跑。
   @State private var sectorFeed = SectorFeed()
+  /// 长按一行品种弹出来那张预览卡的数据（§4.1）。自选页和板块品种列表共用一份，
+  /// 所以它挂在这儿而不是各自页里——两张表长按同一个品种只取一趟。
+  @State private var previews = SymbolPreviewStore()
   @State private var didBoot = false
   /// 「这棵根真的没了」的信号。行情、报价簿、后台额度都挂在上面这些 `@State` 上，
   /// 而 SwiftUI 从不说「这个 View 销毁了」——见 `RootTeardown`。
@@ -79,6 +82,13 @@ struct MainScreen: View {
   @State private var chartOrigin: Tab?
   /// 板块页压着的那几层。页归页，路由归宿主——见 `SectorPage.route`。
   @State private var sectorRoute: [SectorRoute] = []
+  /// 连续扫图（§10.1）：走进这张图的那一刻，那张列表的顺序。
+  ///
+  /// nil = 这一趟没有名单（底栏直接点「图表」、顶栏搜索、深链进来的）——那时候横滑
+  /// 什么都不做。名单在离开标签页时作废（见 `switchTo(tab:)`），不跨越一次「出去再进来」。
+  @State private var scanList: ScanList?
+  /// 「看细节」钻下去之前的那些视野，按周期记（§10.1）。切回大周期时回到原处。
+  @State private var detailZoom = DetailZoomStack()
   /// 这次复盘是从哪儿开的。退出复盘时按它把人放回原处。
   @State private var replayOrigin: ReplayOrigin?
   /// 历史搜索词。放在宿主身上，来回进出搜索页不丢。
@@ -115,6 +125,13 @@ struct MainScreen: View {
   /// 这次横屏是「点画线」带进来的吗——是的话画完要自己转回竖屏。
   @State private var landscapeForDrawing = false
   @StateObject private var draw = DrawingController()
+  /// 提醒那一摊：存档、画完线问的那一句、以及「响了」怎么走到用户眼前。
+  /// 三个都挂在宿主这一层，换页不重建（和行情、复盘那几个模型同一个理由）。
+  @StateObject private var alerts = AlertStore()
+  @StateObject private var alertPrompt = AlertPromptModel()
+  @StateObject private var alertWatcher = AlertWatcher()
+  /// 提醒总表开着没有。设置里那一行和 `hkline://alerts` 都开它。
+  @State private var showAlerts = false
   @State private var toast: String?
   /// 这句话右边那颗按钮。和 `toast` 同一拍赋值。
   @State private var toastUndo: (() -> Void)?
@@ -125,6 +142,14 @@ struct MainScreen: View {
   @State private var intervalGrid = false
   /// 图还停在最新那根上没有。周期条行尾那颗「最新」靠它决定露不露面。
   @State private var atLatest = true
+  /// 刚被「最新」拽回来之前，人在看哪一屏（§P3-2）。
+  ///
+  /// 有值 = 周期条行尾那颗「最新」变成「返回刚才」，点它原样回去。它是一条**后路**，
+  /// 不是一段记忆：手一碰图、换品种、换周期、或者过了一分钟都作废——再点回去时
+  /// 那一屏多半已经不是他刚才看的那件事了。
+  @State private var returnView: ViewWindow?
+  /// 每记一笔后路自增。六十秒那条计时器用它作废上一笔（`task(id:)`）。
+  @State private var returnStamp = 0
   /// Historical OHLC belongs only to the crosshair container.
   ///
   /// 十字线跟手时一秒钟能动几十次，从前它写在主屏自己的 `@State` 上，于是主屏的 body
@@ -214,7 +239,8 @@ struct MainScreen: View {
     // 横屏的面板走自己那层侧栏，不挂系统 sheet：半屏 sheet 在 compact 高度下会被
     // 系统顶成全屏，图就整个没了。
     .prefsPanel(landscape ? .constant(nil) : $panel, store: store,
-                onPickInterval: pick(interval:), onRecord: chartRecordAction)
+                onPickInterval: pick(interval:), onRecord: chartRecordAction,
+                onShare: chartShareAction)
   }
 
   private var presentation: some View {
@@ -259,7 +285,12 @@ struct MainScreen: View {
     FavoritesView(model: picker, session: favoritesEdit, history: searchHistory, store: store, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
                   onVisible: { quotes.watch($0) },
                   onRowVisibility: { quotes.watchRow($0, visible: $1) },
-                  onHistoryVisibility: { quotes.watchHistory($0, visible: $1) })
+                  onHistoryVisibility: { quotes.watchHistory($0, visible: $1) },
+                  previews: previews,
+                  // 点一行进图的同一瞬间冻结这张表的顺序，顶栏横滑就照着它一只只看过去。
+                  onScanList: { scanList = ScanList($0) },
+                  // 加了提醒的线就是「关注线」：自选页多一档「离提醒线最近」（§10）。
+                  alerts: alerts.all)
   }
 
   /// 板块气泡页那一整页。计算全在 `KanpanCore`，画全在 `Kanpan/Sector/`，
@@ -282,6 +313,8 @@ struct MainScreen: View {
                    market.switchTo(symbol: symbol)
                  }
                },
+               onScanList: { scanList = ScanList($0) },
+               previews: previews, picker: picker,
                route: $sectorRoute)
   }
 
@@ -304,6 +337,9 @@ struct MainScreen: View {
     .task(id: beating) { await heartbeat() }
     // 前后台只走这一条路，落盘顺序由 `AppLifecycle` 排（产数据的先、排空存档的最后）。
     .onChange(of: phase) { _, now in AppLifecycle.shared.phaseChanged(to: now) }
+    // 外面进来的链接（通知、桌面快捷入口、共享链接）全在这儿落地。app 已经开着时
+    // 走这条；冷启动那一下界面还没搭好，由 `boot()` 末尾补取一次。
+    .onChange(of: DeepLinkRouter.shared.pending) { _, link in if link != nil { consumeDeepLink() } }
   }
 
   private var observedContent: some View {
@@ -334,11 +370,17 @@ struct MainScreen: View {
     .onChange(of: hosts) { _, next in
       market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis, source: market.source)
       sectorFeed.configure(hosts: next, source: market.source)
+      previews.configure(hosts: next, source: market.source)
     }
     .onChange(of: prefs.changeBasis) { _, next in quotes.configure(hosts: hosts, basis: next, source: market.source) }
     .onChange(of: market.source) { _, next in
       quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next)
       sectorFeed.configure(hosts: hosts, source: next)
+      previews.configure(hosts: hosts, source: next)
+    }
+    // 费率只有正在看的那张图才有（`markPrice` 流里捎的），顺手存一份给预览卡。
+    .onChange(of: market.displayedFundingRate) { _, rate in
+      previews.note(funding: rate, for: market.symbol)
     }
     // 品种表是板块页认 base 的依据（兜底桶按它的标签凑，点行去看图也靠它拼全名）。
     // 它是异步载进来的，所以不能只在 `boot()` 里交一次。
@@ -348,7 +390,25 @@ struct MainScreen: View {
     .onChange(of: market.tradeQuote) { _, trade in
       if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
     }
-    .onChange(of: market.symbol) { _, symbol in quotes.setChartSymbol(symbol); accountBridge?.focus(symbol) }
+    .onChange(of: market.symbol) { _, symbol in
+      quotes.setChartSymbol(symbol); accountBridge?.focus(symbol)
+      // 换了一只，「刚才那一屏」说的已经不是这张图上的事了（§P3-2）。
+      forgetReturn()
+    }
+    // 自选页删掉一只之后那句「已移除 · 撤销」（§P3-4）。全屏只有一层提示条，
+    // 所以话由自选页放进来、宿主念出去；盯的是计数不是那句话本身——连删两只
+    // 说的是同一句，`onChange(of: String)` 不会响第二次。
+    .onChange(of: favoritesEdit.undoStamp) { _, _ in
+      guard let undo = favoritesEdit.undoAction else { return }
+      say(favoritesEdit.undoText, undo: undo)
+    }
+    // 「返回刚才」只活一分钟：过了这阵，那一屏多半已经不是他还记着的那件事了。
+    .task(id: returnStamp) {
+      guard returnView != nil else { return }
+      try? await Task.sleep(for: .seconds(60))
+      guard !Task.isCancelled else { return }
+      returnView = nil
+    }
     // 「常看」记的是**在这张图上真待住了**，不是「点开过」：搜索里滑过一下、点错一次
     // 立刻退出去的，都不该算一分。`task(id:)` 换品种就取消重来，离屏也取消，
     // 所以停不满 3 秒的那些一分都拿不到。
@@ -392,7 +452,6 @@ struct MainScreen: View {
     .environment(\.panelTheme, theme)
     .environment(\.accountFeature, account)
     .sheet(isPresented: Binding(get: { account.presented && !review.bookOpen }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
-    .onChange(of: account.notice) { _, note in if let note { say(note); account.notice = nil } }
     .onChange(of: panel) { _, value in if value == nil { try? accountBridge?.applyPending() } }
     .onChange(of: draw.active) { _, active in
       if !active { try? accountBridge?.applyPending() }
@@ -410,8 +469,24 @@ struct MainScreen: View {
         .sheet(isPresented: $account.presented) { AccountView(feature: account).environment(\.panelTheme, theme) }
     }
     .onAppear { wireReview() }
+    // 提醒总表。半屏叫出来的一张面板：它是「管一管已经有的那些」，不是一张要长住的页。
+    .sheet(isPresented: $showAlerts) {
+      AlertListPage(store: alerts,
+                    onOpen: { alert in
+                      showAlerts = false
+                      guard let drawingID = alert.drawingID else { open(linkedSymbol: alert.symbol); return }
+                      open(linkedSymbol: alert.symbol)
+                      draw.highlight(drawingID: drawingID, symbol: SymbolPrefs.key(alert.symbol))
+                    },
+                    zone: prefs.timeZone.offsetMinutes)
+        .environment(\.panelTheme, theme)
+    }
+    .onChange(of: alerts.notice) { _, note in if let note { say(note); alerts.notice = nil } }
     .onChange(of: review.notice) { _, note in if let note { say(note); review.notice = nil } }
     .onChange(of: reviewChart.notice) { _, note in if let note { say(note); reviewChart.notice = nil } }
+    // 复盘的待办本来就有到期时间，这儿把它兑现成一条到点响的本地通知（方案 2.3 末条）。
+    // 整批重排，便宜且不会对不上账。
+    .onChange(of: review.records, initial: true) { _, list in ReviewDueNotifications.reschedule(list) }
   }
 
   // ---------------------------------------------------------------- 各段
@@ -437,7 +512,9 @@ struct MainScreen: View {
       case .chart, .draw: chartPage
       case .favorites: favoritesPage
       case .sectors: sectorPage
-      case .settings: SettingsPanel(store: store, asPage: true)
+      case .settings: SettingsPanel(store: store, asPage: true,
+                                    alertCount: alerts.activeCount,
+                                    onAlerts: { showAlerts = true })
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -494,6 +571,10 @@ struct MainScreen: View {
     // 底栏是常驻标签栏，自己点一格就是「回家」——上一次的来路作废，
     // 顶栏那颗返回跟着收起来。
     chartOrigin = nil
+    // 来路作废，那张冻结的名单也跟着作废：横滑是「接着刚才那张表往下看」，
+    // 人已经离开那张表了，再横滑就该什么都不发生（§10.1）。
+    scanList = nil
+    detailZoom.clear()
     // 再点一下已经站着的那一格 = 回到这一页的根。板块页下钻了两层时尤其需要：
     // 底栏那一格是它唯一的出口。
     if next == tab, next == .sectors { sectorRoute = [] }
@@ -525,7 +606,10 @@ struct MainScreen: View {
         atLatest: atLatest, gridOpen: $intervalGrid,
         onPick: pick(interval:),
         onPin: { iv in store.attempt { $0.toggleQuick(iv) } },
-        onLatest: { proxy.scrollToLatest() },
+        onLatest: { rememberBeforeLatest(); proxy.scrollToLatest() },
+        // 「返回刚才」：刚被「最新」拽回来，这颗把人原样送回去（§P3-2）。
+        // 没有后路时传 `nil`，那个槽位照旧空着——槽宽是钉死的，谁在里面都不影响周期药丸。
+        onReturn: returnView.map { view in { returnToRemembered(view) } },
         // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
         onChart: { panel = .chart }
       )
@@ -537,6 +621,10 @@ struct MainScreen: View {
       if draw.active {
         DrawingBar(controller: draw)
       }
+      // 画完线问的那一句：周期条下面、标签栏上面的一行。它**在图外面**，
+      // 不盖画布，也不是系统弹窗（方案 2.3）。六秒没人理就当「只画线」。
+      AlertPromptBar(model: alertPrompt)
+        .padding(.bottom, 6)
     }
   }
 
@@ -592,6 +680,7 @@ struct MainScreen: View {
         replayControls
         // 画线工作台的那根条排在图**下面**、图外面（§2E5）：横屏的高度金贵，但十四五个
         // 控件竖着摆放不下、横着摆绰绰有余，而且两个拇指本来就停在下沿。
+        AlertPromptBar(model: alertPrompt)
         if draw.active {
           DrawingDock(controller: draw)
         }
@@ -728,7 +817,7 @@ struct MainScreen: View {
       PanelSide(store: store, seed: seed, onClose: PanelDismiss { dismissPanel() }) {
         switch which {
         case .period: IntervalGridPanel(store: store, onPick: pick(interval:))
-        case .chart: ChartPanel(store: store)
+        case .chart: ChartPanel(store: store, onShare: chartShareAction)
         }
       }
     }
@@ -755,14 +844,38 @@ struct MainScreen: View {
           openInterestUnit: market.openInterestUnit,
           totalSupply: market.totalSupply,
           fundingRate: market.displayedFundingRate,
+          nextFundingTimeMs: market.displayedNextFundingTime,
           stale: !market.priceFresh)
           .modifier(HiddenWhileCrosshairReads(readout: crosshairReadout, context: crosshairContext))
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
           .accessibilityValue(quoteDiagnostics)
-        CrosshairOHLCLabel(readout: crosshairReadout, context: crosshairContext,
-                           color: theme.ink, fillsWidth: true)
+        // 读数 + 十字线的那几个动作（§P3-7）。两样都只在这只小视图里跟着手指重求值，
+        // 主屏的 body 照旧一次都不用动。
+        CrosshairReadoutRow(
+          readout: crosshairReadout, context: crosshairContext, theme: theme,
+          onStep: { proxy.moveCrosshair(by: $0) },
+          // 走的是画线自己那条落笔路（`ChartView.addHorizontalLine`）：一样进撤销栈、
+          // 一样落盘、一样在末尾问一句「要不要加个提醒」。画满了那一句也照旧由
+          // `draw.full` 那条统一说，不在这儿另说一遍。
+          onLine: { proxy.addHorizontalLine(at: $0) },
+          // 「看细节」（§10.1）：还有更细的一档可进才给。这个判断只看当前周期，
+          // 主屏的 body 本来就读它，不引入对十字线的观察。
+          canDetail: DetailZoom.finer(than: market.interval) != nil,
+          onDetail: zoomIntoDetail)
       }
+      // 连续扫图（§10.1）：横滑**只挂在价格这一块**上。
+      //
+      // 画布上不挂——那儿的横滑是平移 K 线，人一辈子都在那儿横滑；周期条上也不挂——
+      // 那一排药丸本来就要横向滚动。价格区是这一屏唯一一块「横着划没有别的意思」的地方，
+      // 而且它正是「现在看的是哪一只」那句话所在的位置，滑它换一只读起来是顺的。
+      .contentShape(Rectangle())
+      .gesture(DragGesture(minimumDistance: 20).onEnded { g in
+        let dx = g.translation.width, dy = g.translation.height
+        // 要横得明显：斜着划过去的多半是想划别的，宁可不动。
+        guard abs(dx) > 44, abs(dx) > abs(dy) * 1.5 else { return }
+        scan(dx < 0 ? .next : .previous)
+      })
     }
     .padding(.horizontal, 12)
     .padding(.top, 6)
@@ -813,6 +926,32 @@ struct MainScreen: View {
     return { startReviewCapture() }
   }
 
+  /// 「分享图片」：把眼前这张图（画线、指标、配色全带着）离屏画成一张 PNG，
+  /// 交给系统的分享面板（见 `ChartSnapshotRenderer`）。
+  ///
+  /// 和「记一笔」同一个前提：复盘回放里那张图不是「我的图」，横屏画线台归 `ToolRail` 管。
+  private var chartShareAction: (() -> Void)? {
+    guard !reviewChart.active else { return nil }
+    return { shareChartImage() }
+  }
+
+  private func shareChartImage() {
+    let size = proxy.box?.chart.bounds.size ?? .zero
+    guard let state = proxy.box?.chart.state,
+          ChartSnapshotRenderer.share(state: state, size: size, head: chartShotHead, theme: theme)
+    else { say("图还没画出来"); return }
+  }
+
+  /// 成片顶上那一条：徽章 品种 · 周期 · 最新价 涨跌药丸。取的和头部同两个数，
+  /// 免得图上写的价和屏幕上那口对不上。
+  private var chartShotHead: ChartShotHead {
+    let pct = displayedTicker?.changePercent
+    return ChartShotHead(
+      symbol: market.symbol, interval: market.interval,
+      price: readoutPrice, decimals: market.info.pricePrecision,
+      changePercent: (pct?.isFinite == true) ? pct : nil)
+  }
+
   private var chart: some View {
     ZStack(alignment: .bottomTrailing) {
       theme.chartBG
@@ -837,6 +976,8 @@ struct MainScreen: View {
         // **这一路只收用户手上的动作**（`ChartHost.onBarSpacing` ← `ChartView.onUserViewChanged`）。
         // 程序自己摆出来的视野绝不会走到这儿——那正是用户那个 bug 的「杀法甲」。
         onBarSpacing: { if !reviewChart.active { viewport.userIsZooming(to: $0) } },
+        // 他自己动手翻图了：「返回刚才」那条后路当场作废——再点它就是盖掉他刚做的事。
+        onUserView: { forgetReturn() },
         onInteractionEnded: { if !reviewChart.active { viewport.interactionEnded() } },
         adoptToken: viewport.adoptToken,
         onInversion: { main, subs in if !reviewChart.active { store.noteInversion(main: main, subs: subs) } },
@@ -847,7 +988,11 @@ struct MainScreen: View {
         // 面板打开时由原生遮罩消费首个触摸，只收起面板。
         onTapped: { dismissPanel() },
         onNotice: { say($0) },
-        drawing: reviewChart.active ? nil : draw
+        drawing: reviewChart.active ? nil : draw,
+        // 用户刚亲手画完一条线：只是**问一句**，加不加由那条问句说了算。
+        onDrawingCommitted: { item, symbol in alertPrompt.offer(item, symbol: symbol) },
+        // 图上哪几条线挂着提醒——右端一枚小铃铛。
+        alertedDrawingIDs: alerts.alertedDrawingIDs(symbol: market.symbol)
       )
       .id(reviewChart.mode.rawValue)
       // 横屏画线时复盘的区间框、目标线和「等答案」标签一律不画（§2E5）：横屏那一屏
@@ -903,6 +1048,12 @@ struct MainScreen: View {
 
   private func wireReview() {
     review.onCapture = startReviewCapture
+    // 记一笔的那一刻顺手截一张图附在这条记录上（§4.3），和「分享图片」同一支渲染器。
+    // 画不出来就没有图：记录照记，详情里那一格不出现。
+    review.captureShot = {
+      guard let state = proxy.box?.chart.state, let size = proxy.box?.chart.bounds.size, size.width > 0 else { return nil }
+      return ChartSnapshotRenderer.png(state: state, size: size, head: chartShotHead, theme: theme)
+    }
     // 回放倍速跟着人走：初值从偏好来，那颗按钮一改就写回去（R3-4）。
     reviewChart.preferredSpeed = { store.prefs.replaySpeed }
     reviewChart.onSpeedChange = { value in store.update { $0.replaySpeed = Prefs.clampSpeed(value) } }
@@ -1178,9 +1329,14 @@ struct MainScreen: View {
       // 短暂切走再回来就不必重连。
       grace.begin()
       market.enterBackground(); quotes.setForeground(false); sectorFeed.setForeground(false)
+      // 后台里响的那些不去动界面，只留一条本地通知（见 `AlertWatcher`）。
+      alertWatcher.setForeground(false)
     } enter: {
       grace.end()
       market.enterForeground(); quotes.setForeground(true); sectorFeed.setForeground(true)
+      alertWatcher.setForeground(true)
+      // 回到前台先拉一次同步：服务端判到价、写回 `status=fired`，这一趟就是
+      // 已触发的提醒走到用户眼前的那条路（没有 APNs 时它是唯一一条）。
       accountBridge?.synchronize(); review.synchronize()
     }
     // 根真的没了才停机（场景断开、根被顶掉）。判据是 `@State` 存储的寿命，
@@ -1203,10 +1359,42 @@ struct MainScreen: View {
     }
   }
 
+  /// 提醒这一摊的接线（方案第 2 节）。
+  ///
+  /// 四根线，都很短：画完线 → 问一句；答「加入提醒」→ 建；画线几何一动 → 对账；
+  /// 存档里冒出已触发 → 震一下 + 说一句。到价判定**不在这儿**，在服务端。
+  private func wireAlerts() {
+    alertPrompt.onAccept = { item, symbol in
+      guard alerts.add(drawing: item, symbol: symbol) != nil else {
+        say("这种线暂时不能设提醒"); return
+      }
+      // 这儿从前说一句「已加入提醒」。删掉（§P3-8）：他刚在那句问话上点了「加提醒」，
+      // 线右端当场多出一枚铃铛，成没成看得见——再弹一条只告诉成功的横幅，是在替
+      // 他自己的动作鼓掌。失败那一句（上面那条）留着，那是他看不出来的事。
+      // 权限只在第一次真的加提醒时问一次。**问不到也不挡**：提醒照建、照同步，
+      // 只是响的时候要等下一次打开 app 才看得见（现在没有 APNs，本来就是这样）。
+      Task {
+        await AlertNotifications.requestAuthorization()
+        await MainActor.run { PushRegistration.startIfAuthorized() }
+      }
+    }
+    // 线被挪了就按同一个提醒 id 重算几何、重新上膛；线被删了提醒跟着删。
+    draw.onGeometryChanged = { archive in alerts.reconcile(with: archive) }
+    alertWatcher.attach(alerts)
+    alertWatcher.onFired = { alert in
+      guard let drawingID = alert.drawingID else { return say(alert.title) }
+      say(alert.title, actionTitle: "查看") {
+        open(linkedSymbol: alert.symbol)
+        draw.highlight(drawingID: drawingID, symbol: SymbolPrefs.key(alert.symbol))
+      }
+    }
+  }
+
   private func boot() {
     guard !didBoot else { return }
     didBoot = true
     wireLifecycle()
+    wireAlerts()
     // 先把档案装进来，再开行情。
     //
     // 以前是反过来的（注释写着「让网络 I/O 和首帧渲染重叠」）：`market.start` 跑在
@@ -1241,6 +1429,7 @@ struct MainScreen: View {
     quotes.setChartSymbol(market.symbol)
     quotes.setForeground(phase != .background)
     sectorFeed.configure(hosts: hosts, source: market.source)
+    previews.configure(hosts: hosts, source: market.source)
     sectorFeed.setCatalog(picker.catalog)
     sectorFeed.setForeground(phase != .background)
     picker.onPick = { info in
@@ -1267,6 +1456,9 @@ struct MainScreen: View {
     // 不是「此刻正举着笔」——待画状态归图自己管，换品种照样清掉，冷启动也不会举着笔进来。
     draw.onPickTool = { tool in store.update { $0.lastDrawTool = tool.rawValue } }
     live = true
+    // 点通知 / 桌面快捷入口冷启动进来的那一条，这会儿才有人接得住
+    // （行情、品种表、报价簿都接好了）。
+    consumeDeepLink()
   }
 
   private func wireAccount() {
@@ -1282,7 +1474,7 @@ struct MainScreen: View {
     }
     #endif
     do {
-      let bridge = try AppAccountBridge(account: account, prefs: store, symbols: picker, drawings: draw, review: review, search: searchHistory)
+      let bridge = try AppAccountBridge(account: account, prefs: store, symbols: picker, drawings: draw, alerts: alerts, review: review, search: searchHistory)
       bridge.canApply = { syncGate }
       bridge.onSwitch = {
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
@@ -1363,6 +1555,64 @@ struct MainScreen: View {
     if live { settleFavorites(profile.favorites) }
   }
 
+  // ---------------------------------------------------------------- 深链
+
+  /// 把外面递进来的那一条链接走完（通知点击、桌面快捷入口、共享链接，见 `DeepLink`）。
+  ///
+  /// 所有外来入口只有这一个落点：换品种走的是自选行、板块行同一条路
+  /// （`picker.pick`），不另起一套跳转，免得同一个「打开 BTC」在通知里和在自选里
+  /// 行为不一样。界面还没接好线（`live == false`）时按兵不动——`boot()` 末尾会回来取。
+  private func consumeDeepLink() {
+    guard live, let link = DeepLinkRouter.shared.consume() else { return }
+    switch link {
+    case let .symbol(symbol, interval):
+      open(linkedSymbol: symbol)
+      if let raw = interval, let iv = Interval(rawValue: raw) { pick(interval: iv) }
+    case let .drawing(symbol, drawingID):
+      showAlerts = false
+      open(linkedSymbol: symbol)
+      // 只高亮，不进画线工作台：从通知 / 提醒列表点进来的人要看的是「那条线在哪儿」，
+      // 不是「开始画线」（后者在竖屏会当场把屏幕转过去）。品种的线还没装进图时
+      // `highlight` 会先记着，等 `ChartHost` 那边 `draw.focus(symbol)` 完成再兑现。
+      draw.highlight(drawingID: drawingID, symbol: SymbolPrefs.key(symbol))
+    case .alerts:
+      dismissPanel()
+      showAlerts = true
+    case let .review(id):
+      // 复盘那条「到点了」的通知点进来：直接站到那条记录上。
+      guard let uuid = UUID(uuidString: id), review.record(uuid) != nil else { return }
+      dismissPanel(); showAlerts = false
+      review.selectedRecord = uuid
+      review.bookOpen = true
+    case .search:
+      openLinkedSearch()
+    case .share:
+      // TODO(共享模块)：方案第 8 节，朋友间共享图表。
+      break
+    }
+  }
+
+  /// 链接点名的那个品种。目录里有就走 `picker.pick`（和点自选行一模一样）；
+  /// 目录还没载回来就自己换图，那一笔「他看过这张图」照样记下。
+  private func open(linkedSymbol symbol: String) {
+    dismissPanel()
+    if let info = picker.info(for: symbol) { picker.pick(info); return }
+    showSymbols = false; symbolsFromSearch = false
+    showSearch = false; searchAllPending = false
+    if tab != .chart { chartOrigin = tab }
+    tab = .chart; didLeaveLaunch = true
+    crosshairReadout.clear()
+    picker.visit(symbol)
+    market.switchTo(symbol: symbol)
+  }
+
+  private func openLinkedSearch() {
+    dismissPanel()
+    guard !showSearch else { return }
+    showSymbols = false; symbolsFromSearch = false
+    showSearch = true
+  }
+
   /// 收起面板。选完一项、或者手指落到图和别的控件上，都走这儿。
   private func dismissPanel() {
     // Chart taps also call this after setting the crosshair. Avoid publishing an
@@ -1377,8 +1627,91 @@ struct MainScreen: View {
     guard iv != market.interval else { return }
     store.update { $0.interval = iv }
     crosshairReadout.clear()
+    // 换了一档，「刚才那一屏」是上一档的坐标，回不去了（§P3-2）。
+    forgetReturn()
+    // 「看细节」钻下去之后切回大周期：回到钻之前那个视野，而不是这一档的最新一屏——
+    // 人是为了看清刚才那一根才下去的，回来当然还站在原地（§10.1）。
+    // 栈里没有这一档就是平常的换周期，顺手把可能还欠着的那笔「铺到某段时间」销掉。
+    if let back = detailZoom.pop(symbol: market.symbol, interval: iv) {
+      proxy.show(window: back, symbol: market.symbol, interval: iv)
+    } else {
+      proxy.cancelWindow()
+    }
     market.switchTo(interval: iv)
     UISelectionFeedbackGenerator().selectionChanged()
+  }
+
+  /// 顶栏价格区横滑一下：按冻结下来的名单换上一只 / 下一只（§10.1）。
+  ///
+  /// 换品种走的是**和点自选行一模一样的那条路**（`open(linkedSymbol:)` → `picker.pick`），
+  /// 不另起一套加载：周期、根宽、指标、画线该怎么跟过去就怎么跟过去。
+  private func scan(_ direction: ScanDirection) {
+    // 复盘和画线各有各的横向手势与语义，这时候不扫图。
+    guard !reviewChart.active, !draw.active, panel == nil else { return }
+    guard let list = scanList else { return }
+    switch list.step(from: market.symbol, direction) {
+    case .unavailable:
+      // 没名单可扫。一声不吭——给了触感人会以为自己滑错了方向。
+      return
+    case .edge:
+      // 到头了。不循环、不弹字，只轻轻顶一下手指（§10.1）。
+      UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    case .move(let symbol):
+      // 正在看历史：新的那只也停在同一段时间上，不要每换一只就被拽回最新——
+      // 横着扫一排品种，看的就是「同一段时间里它们各自在干什么」。
+      let keep = atLatest ? nil : proxy.currentView
+      detailZoom.clear()
+      open(linkedSymbol: symbol)
+      if let keep { proxy.show(window: keep, symbol: symbol, interval: market.interval) }
+      UISelectionFeedbackGenerator().selectionChanged()
+    }
+  }
+
+  // ---------------------------------------------------------------- 返回刚才（§P3-2）
+
+  /// 点「最新」之前先记一笔：人现在看的是哪一屏。
+  ///
+  /// 「最新」是一下不可逆的跳转——从三个月前的那一段被拽回此刻，想回去只能重新拖。
+  /// 记下来之后行尾那一格变成「返回刚才」，点一下原样回去。
+  private func rememberBeforeLatest() {
+    guard !atLatest, let view = proxy.currentView else { return }
+    returnView = view
+    returnStamp += 1
+  }
+
+  /// 「返回刚才」：把视野原样铺回去，这条后路随即作废（回来了就不用再回了）。
+  private func returnToRemembered(_ view: ViewWindow) {
+    proxy.show(window: view, symbol: market.symbol, interval: market.interval)
+    forgetReturn()
+  }
+
+  /// 后路作废。手一碰图、换品种、换周期、或者六十秒到了，都走这儿。
+  private func forgetReturn() {
+    guard returnView != nil else { return }
+    returnView = nil
+    returnStamp += 1
+  }
+
+  /// 「看细节」：把十字线选中的这一根，换到更细的一档铺满一屏（§10.1）。
+  private func zoomIntoDetail(_ crosshair: Crosshair) {
+    guard let series = market.series, series.symbol == market.symbol,
+          series.interval == market.interval,
+          crosshair.index >= 0, crosshair.index < series.count,
+          let finer = DetailZoom.finer(than: market.interval) else { return }
+    let open = Double(series.time(at: crosshair.index))
+    // 这一根管到哪儿：下一根的开盘时刻。没有下一根（选的就是末根）才按名义步长加一格——
+    // 1M / 1y 那两档每根长短不一，能问真值就别算（`DetailZoom.window` 那段注释）。
+    let end = crosshair.index + 1 < series.count
+      ? Double(series.time(at: crosshair.index + 1))
+      : open + Double(series.step)
+    // 先记下此刻的视野：切回这一档时回到这儿。
+    if let view = proxy.currentView {
+      detailZoom.push(symbol: market.symbol, interval: market.interval, view: view)
+    }
+    // 换档走的还是那唯一一条换档的路，铺视野的请求跟在它后面提（`pick` 会把旧请求销掉）。
+    pick(interval: finer)
+    proxy.show(window: DetailZoom.window(barOpen: open, barEnd: end, finer: finer),
+               symbol: market.symbol, interval: finer)
   }
 
   /// 说一句话。全屏只有这一层，新的一句直接顶掉旧的（`toastID` 就是用来作废旧计时器的）。

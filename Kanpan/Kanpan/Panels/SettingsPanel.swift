@@ -25,6 +25,10 @@ struct SettingsPanel: View {
   var store: PrefsStore
   /// 当作标签栏上的整页画：不要左上角的「‹」，底色用页面底色。
   var asPage = false
+  /// 还在等着响的提醒有几条。只为在「提醒」那一行右边摆个数，没有就不摆。
+  var alertCount = 0
+  /// 打开提醒总表。全 app 管提醒只有这一个入口（`kanpan-one-entry-per-action`）。
+  var onAlerts: (() -> Void)?
 
   @Environment(\.panelTheme) private var t
   @Environment(\.accountFeature) private var account
@@ -70,6 +74,17 @@ struct SettingsPanel: View {
       }
       switchRow("十字线磁吸", nil, prefs.magnet) { $0.magnet = $1 }
         .accessibilityIdentifier("settings.magnet")
+
+      // 提醒：建在图上（画完线那一下），管在这儿。
+      if let onAlerts {
+        PanelRow(name: "提醒", onTap: onAlerts) {
+          HStack(spacing: 3) {
+            if alertCount > 0 { Text("\(alertCount)").font(PanelFont.seg) }
+            VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(-90))
+          }.foregroundStyle(t.amber)
+        }
+        .accessibilityIdentifier("settings.alerts")
+      }
 
       // ---- 任务书 §10.6 里有、原型里没有的
       switchRow("盯盘时不锁屏", nil, prefs.keepAwake) { $0.keepAwake = $1 }
@@ -125,7 +140,8 @@ struct SettingsPanel: View {
   /// A6.11：清的是 `KanpanData.Paths` 指的那几处，不是另拼一套目录。
   ///
   /// 右边不再报「占了多少 MB」：那个数字是给我们排查用的，用户看到它只会开始
-  /// 琢磨「多少算多」。要清就清，清完 toast 说一句「已清缓存」。
+  /// 琢磨「多少算多」。要清就清，清完那个数字当场归零，不另说一句「已清缓存」——
+  /// 只报成功、没有下一步可做的提示对用户没有用（2026-09-21）。
   private var cacheRow: some View {
     PanelRow(name: "清缓存") {
       Button {

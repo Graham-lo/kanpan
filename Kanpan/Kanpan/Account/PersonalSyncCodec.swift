@@ -120,6 +120,35 @@ enum PersonalSyncCodec {
     var value = object.body; value["id"] = .string(String(object.id.split(separator: "/").last ?? "")); value["points"] = value.removeValue(forKey: "anchors")
     return try KanpanAccount.JSONValue.object(value).decode(Drawing.self)
   }
+  /// 一条提醒发上去长什么样。
+  ///
+  /// 和画线同一个形状：对象 id 是 `binance/usd_m/<代号>/<提醒 id>`，身体里不放 `id`
+  /// （它已经在对象 id 里了）。区别在于 `market` 这儿是**整串** `binance/usd_m`——
+  /// 服务端对 `alerts.market` 就是这么卡的（`sync_validation.rs`），不是画线那种
+  /// `venue` + `market` 拆两半。别照着画线想当然。
+  ///
+  /// 身体的 15 个键由 `Alert.encode(to:)` 一次写全，可空的那五个空就写 null——
+  /// 理由见那儿的注释（省略会被 `SyncStore.stage` 读成「删掉这个字段」）。
+  static func alerts(_ archive: [Alert]) throws -> [SyncObject] {
+    try archive.map { alert in
+      var object = SyncObject(collection: "alerts", id: "binance/usd_m/" + alert.symbol + "/" + alert.id)
+      var value = try KanpanAccount.JSONValue.encode(alert).decode([String: KanpanAccount.JSONValue].self)
+      value.removeValue(forKey: "id")
+      object.body = value
+      return object
+    }
+  }
+
+  /// 反过来：线上那份还原成一条提醒。
+  ///
+  /// 服务端判出触发之后写回来的就是这条路（它写的是一条 `patch`，`status` / `firedAt` /
+  /// `firedPrice` 三个键），所以这里不能挑字段，整条按身体重建。
+  static func alert(_ object: SyncObject) throws -> Alert {
+    var value = object.body
+    value["id"] = .string(String(object.id.split(separator: "/").last ?? ""))
+    return try KanpanAccount.JSONValue.object(value).decode(Alert.self)
+  }
+
   static func symbols(_ prefs: SymbolPrefs) -> [SyncObject] {
     var objects: [SyncObject] = []
     for (order, group) in prefs.groups.enumerated() {
@@ -173,6 +202,7 @@ enum PersonalSyncCodec {
       var table: [String: Set<String>] = ["settings": Set(try settings(maximalPrefs).body.keys)]
       for object in try drawings(maximalDrawArchive) { table[object.collection, default: []].formUnion(object.body.keys) }
       for object in symbols(maximalSymbolPrefs) { table[object.collection, default: []].formUnion(object.body.keys) }
+      for object in try alerts([maximalAlert]) { table[object.collection, default: []].formUnion(object.body.keys) }
       return table
     } catch {
       // 编这几份纯值结构不该失败（全是标准类型，没有一条会抛的路）。真失败了就交一张空表：
@@ -231,6 +261,19 @@ enum PersonalSyncCodec {
     }
     archive.bySymbol["BTCUSDT"] = items
     return archive
+  }
+
+  /// 每一个可空字段都填了值的一条提醒。
+  ///
+  /// 其实 `Alert.encode(to:)` 无论如何都会把 15 个键全写出来（空就写 null），
+  /// 所以这份样板填不填值都一样；**照旧把它们填满**，是为了下一个往 `Alert` 上加
+  /// `encodeIfPresent` 字段的人——那种字段不给值就进不了这张表，用户清空它时那一下
+  /// 就同步不上去（和画线那份样板是同一条规矩）。
+  private static var maximalAlert: Alert {
+    Alert(id: "a", kind: .drawing, symbol: "BTCUSDT", drawingID: "d",
+          lines: [AlertLine(points: [DrawPoint(t: 0, p: 0)], extendLeft: true, extendRight: true)],
+          condition: .touch, armedAt: 0, once: true, status: .active,
+          firedAt: 0, firedPrice: 0, dueAt: 0, reviewID: "r", title: "x", created: 0)
   }
 
   /// 分类、自选、置顶、归属都齐了的一份自选表：`symbols` 每一种对象都发得出来。

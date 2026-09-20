@@ -68,5 +68,26 @@
   -->
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
+  <!--
+    自定义 scheme `hkline://`。桌面快捷入口、通知点击、以后朋友之间的共享链接
+    都从这儿进来，解析在 `Kanpan/Kanpan/Main/DeepLink.swift`。
+
+    写在这份手写的 plist 里而不是 `INFOPLIST_KEY_*`：`CFBundleURLTypes` 不在
+    Xcode 那张已知键表上（那套设置只认 CFBundleDisplayName、UILaunchScreen 之类），
+    自定义键会被静默丢弃——理由和上面 `KanpanAccountAPIURL` 那条一样。
+  -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>CFBundleURLName</key>
+      <string>com.mdd.kanpan.deeplink</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>hkline</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>

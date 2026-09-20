@@ -47,6 +47,23 @@ fn anchor_count(kind:&str)->usize {
   "abcd"|"elliottCorrection"=>4,"xabcd"=>5,"elliottImpulse"=>6,"headShoulders"=>7,_=>2
  }
 }
+/// 一条提醒摊平出来的价格折线组：`[{points:[{t,p}],extendLeft,extendRight}]`。
+///
+/// 服务端不认识画线的种类——客户端负责把趋势线、通道、矩形、斐波那契各级都摊成若干条
+/// 「时间→价格」的折线，服务端只在时间上做线性插值 / 按 extend 标志外推。所以这里的
+/// 规则只管形状：每个元素恰好三个键，点按 `drawings.anchors` 的 {t,p} 同一形状，
+/// 数字必须有限（`number` 已经挡了 NaN / ±∞：一条 NaN 的线会让触发判断恒假或恒真，
+/// 而且它一路存到 jsonb 里之后谁也看不出哪儿不对）。
+///
+/// 一条线一个点是合法的：水平线摊平之后就是「一个价 + 两端都延伸」。
+fn lines(v:&Value)->bool {
+ v.as_array().is_some_and(|all|(1..=32).contains(&all.len())&&all.iter().all(|line|{
+  line.as_object().is_some_and(|o|o.len()==3&&o.contains_key("points")&&o.contains_key("extendLeft")&&o.contains_key("extendRight"))
+   && line["extendLeft"].is_boolean() && line["extendRight"].is_boolean()
+   && line["points"].as_array().is_some_and(|ps|(1..=64).contains(&ps.len())
+    && ps.iter().all(|p|p.as_object().is_some_and(|o|o.len()==2)&&number(&p["t"],0.0,9e15)&&number(&p["p"],-1e15,1e15)))
+ }))
+}
 fn style(v:&Value)->bool {v.as_object().is_some_and(|o|o.iter().all(|(k,v)|field("drawings",k,v))&&o.contains_key("lineWidth")&&o.contains_key("dash")&&o.contains_key("filled")&&o.contains_key("levels"))}
 pub fn field(collection:&str,path:&str,v:&Value)->bool {
  let p:Vec<_>=path.split('/').collect();
@@ -58,7 +75,12 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
  // that null is what made "clear the caption on a note" a 400 for the whole operation.
  // New clients send `""` instead (see `Drawing.encode`); `clear_tombstones` folds the null
  // into the same `""` so nothing downstream has to remember that null also means empty.
- if v.is_null(){return p.len()==1&&matches!(path,"color"|"groupId"|"text") || collection=="settings"&&p.len()>=2 || collection=="drawingPreferences"&&p.len()==2}
+ // 提醒里那几个可空字段同理：「再次提醒」把一条已触发的提醒重新武装，客户端把
+ // firedAt / firedPrice 清掉；`kind` 从 drawing 改成别的时 drawingID 也会被清。
+ // 客户端的 diff 把「这次不写这个 key」发成 null，拒收它就等于整条 op 400。
+ if v.is_null(){return p.len()==1&&matches!(path,"color"|"groupId"|"text")
+  || collection=="alerts"&&p.len()==1&&matches!(path,"drawingID"|"firedAt"|"firedPrice"|"dueAt"|"reviewID")
+  || collection=="settings"&&p.len()>=2 || collection=="drawingPreferences"&&p.len()==2}
  if collection=="settings" {
   if p.len()>1 {
    if !indicator(p[1]) {return false}
@@ -83,7 +105,9 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "replaySpeed"=>v.as_i64().is_some_and(|n|matches!(n,1|2|4)),
    "skin"=>one_of(v,&["sage","terra","classic"]),
    "routePolicy"=>one_of(v,&["direct","gateway"]),
-   "favoritesSort"=>one_of(v,&["custom","name","price","change","volume"]),
+   // `alert`（离提醒线最近）是 2026-09-20 随提醒功能加的。这一档和客户端
+   // `Prefs.favoriteSorts` 是同一张表，少一个值就会把整条 settings 操作顶回去。
+   "favoritesSort"=>one_of(v,&["custom","name","price","change","volume","alert"]),
    "sectorMarket"=>one_of(v,&["crypto","us"]),
    "sectorWindow"=>one_of(v,&["today","d5","d20"]),
    "sectorSort"=>one_of(v,&["change","volume"]),
@@ -134,7 +158,29 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   ("favorites","groupId")=>string(v,100),
   ("favorites"|"groups","order")=>number(v,0.0,1e9),
   ("groups","name")=>string(v,100),
-  ("groups","members")=>v.as_array().is_some_and(|a|a.len()<=2000&&a.iter().all(|v|string(v,100))),_=>false
+  ("groups","members")=>v.as_array().is_some_and(|a|a.len()<=2000&&a.iter().all(|v|string(v,100))),
+  // ——— 提醒（方案文档 2.2） ———
+  // `price` 只进白名单与值规则，评估器本轮不认它；`reviewDue` 全走客户端本地通知。
+  ("alerts","kind")=>one_of(v,&["drawing","price","reviewDue"]),
+  // 这个集合的 market 是整串 `binance/usd_m`（drawings / favorites 是 `usd_m` 加单独的
+  // venue）。形状是文档定的，照抄，不要「统一」。
+  ("alerts","market")=>v=="binance/usd_m",
+  ("alerts","symbol")=>symbol(v),
+  // 画线的同步对象 id 原样，和 `drawings` 的 id 同一套形态。
+  ("alerts","drawingID")=>string(v,180),
+  ("alerts","lines")=>lines(v),
+  // `close`（收盘确认）是第二种条件，见文档第 10 节。本轮评估器只实现 `touch`，
+  // 但值规则现在就认它：认不认是协议的事，实现到哪一步是评估器的事，拒收会让
+  // 客户端那条 op 永远推不上去。
+  ("alerts","condition")=>one_of(v,&["touch","close"]),
+  ("alerts","status")=>one_of(v,&["active","fired","paused"]),
+  ("alerts","once")=>v.is_boolean(),
+  ("alerts","armedAt"|"firedAt"|"dueAt"|"created")=>number(v,0.0,9e15),
+  ("alerts","firedPrice")=>number(v,-1e15,1e15),
+  ("alerts","reviewID")=>string(v,100),
+  // 通知标题是客户端生成的中文短句。和 `drawings.text` 同一档理由：这里数的是 UTF-8
+  // 字节，客户端数的是字素，两者换算不了，所以给一个宽到不可能误伤的上限。
+  ("alerts","title")=>string(v,1024),_=>false
  }
 }
 /// Folds the tombstones whose "no value" is actually a real value back into that value.
@@ -161,6 +207,17 @@ pub fn object(value:&Object)->Result<()> {
   if value.body.get("anchors").and_then(Value::as_array).is_none_or(|a|a.len()!=count){return Err(ApiError::bad("invalid_drawing"))}
   let symbol=value.body.get("symbol").and_then(Value::as_str).ok_or_else(||ApiError::bad("invalid_drawing"))?;
   if !value.id.starts_with(&format!("binance/usd_m/{symbol}/")) {return Err(ApiError::bad("invalid_drawing_identity"))}
+ }
+ if value.collection=="alerts" {
+  // 和 drawings 同一套 id 形态：binance/usd_m/<SYMBOL>/<alertID>。物化表按 symbol 订阅
+  // 行情、按 id 回写状态，两者对不上就会订阅一个品种、推另一个品种的价。
+  let kind=value.body.get("kind").and_then(Value::as_str).ok_or_else(||ApiError::bad("invalid_alert"))?;
+  let symbol=value.body.get("symbol").and_then(Value::as_str).ok_or_else(||ApiError::bad("invalid_alert"))?;
+  if !value.id.starts_with(&format!("binance/usd_m/{symbol}/")) {return Err(ApiError::bad("invalid_alert_identity"))}
+  // 画线提醒必须指得出是哪条线：物化表存它，通知的深链也靠它跳回那条线上。
+  if kind=="drawing" && value.body.get("drawingID").and_then(Value::as_str).is_none_or(str::is_empty) {
+   return Err(ApiError::bad("invalid_alert"))
+  }
  }
  Ok(())
 }
@@ -302,6 +359,7 @@ mod tests {
   assert!(field("settings","quickIntervals",&json!(["1m","3m","5m","15m","30m","1h","2h","4h","6h","12h"])));
   assert!(field("settings","skin",&json!("classic"))&&field("settings","routePolicy",&json!("gateway")));
   assert!(field("settings","favoritesSort",&json!("volume"))&&!field("settings","favoritesSort",&json!("marketCap")));
+  assert!(field("settings","favoritesSort",&json!("alert")),"客户端多了「离提醒线最近」这一档，白名单要跟着加");
   assert!(field("settings","sectorWindow",&json!("d20"))&&field("settings","sectorMarket",&json!("us"))&&field("settings","sectorSort",&json!("change")));
   assert!(field("settings","reviewSearchScope",&json!("private"))&&!field("settings","reviewSearchScope",&json!("world")));
   assert!(field("settings","lastDrawTool",&json!(""))&&field("settings","lastDrawTool",&json!("gannFan"))&&!field("settings","lastDrawTool",&json!("laser")));
@@ -312,5 +370,105 @@ mod tests {
   for flag in ["mainInverted","keepAwake","favoritesAscending","favoritesAmount","favoritesSparkline"] {
    assert!(field("settings",flag,&json!(true))&&!field("settings",flag,&json!(1)),"{flag} is a boolean");
   }
+ }
+
+ fn alert(extra:&[(&str,Value)])->crate::sync::Object {
+  let mut body:BTreeMap<String,Value>=[("kind",json!("drawing")),("symbol",json!("BTCUSDT")),("market",json!("binance/usd_m")),
+   ("drawingID",json!("binance/usd_m/BTCUSDT/trend-1")),("condition",json!("touch")),("status",json!("active")),
+   ("once",json!(true)),("armedAt",json!(1_800_000_000_000i64)),("created",json!(1_800_000_000_000i64)),
+   ("title",json!("BTC 触到你画的趋势线")),
+   ("lines",json!([{"points":[{"t":1_800_000_000_000i64,"p":63_000.0},{"t":1_800_003_600_000i64,"p":64_000.0}],"extendLeft":false,"extendRight":true}]))
+  ].into_iter().map(|(k,v)|(k.to_string(),v)).collect();
+  for (k,v) in extra {body.insert((*k).to_string(),v.clone());}
+  crate::sync::Object{collection:"alerts".into(),id:"binance/usd_m/BTCUSDT/9F1E".into(),body,fields:BTreeMap::new(),revision:0,deleted:false,generation:0}
+ }
+
+ /// **表 2.2 的每一个字段都有值规则，而且认的是文档写的那些值。**
+ ///
+ /// 白名单上有名字、这里没规则，等于给整个集合下毒：`_=>false` 会让带这个字段的**整条**
+ /// 操作 400，客户端把它隔离起来，后面所有提醒排在它后面（commit a161bb0 的原样重演）。
+ #[test] fn an_alert_carries_every_field_the_document_names() {
+  for kind in ["drawing","price","reviewDue"] {assert!(field("alerts","kind",&json!(kind)),"{kind} is a real alert kind")}
+  assert!(!field("alerts","kind",&json!("telepathy")));
+  // market 在这个集合里是整串，不是 drawings 的那个 `usd_m`。
+  assert!(field("alerts","market",&json!("binance/usd_m"))&&!field("alerts","market",&json!("usd_m")));
+  assert!(field("alerts","symbol",&json!("BTCUSDT"))&&!field("alerts","symbol",&json!("btcusdt")));
+  assert!(field("alerts","drawingID",&json!("binance/usd_m/BTCUSDT/trend-1")));
+  assert!(field("alerts","status",&json!("active"))&&field("alerts","status",&json!("fired"))&&field("alerts","status",&json!("paused")));
+  assert!(!field("alerts","status",&json!("armed")));
+  assert!(field("alerts","once",&json!(true))&&!field("alerts","once",&json!(1)));
+  for key in ["armedAt","firedAt","dueAt","created"] {
+   assert!(field("alerts",key,&json!(1_800_000_000_000i64)),"{key} is a millisecond stamp");
+   assert!(!field("alerts",key,&json!(-1)),"{key} cannot be before the epoch");
+  }
+  assert!(field("alerts","firedPrice",&json!(63_120.5))&&!field("alerts","firedPrice",&json!("63120.5")));
+  assert!(field("alerts","reviewID",&json!("9F1E"))&&field("alerts","title",&json!("BTC 触到你画的趋势线")));
+  assert!(!field("alerts","title",&json!("x".repeat(1025))));
+ }
+
+ /// **`close` 是协议里的合法值，哪怕评估器本轮还不实现它。**
+ ///
+ /// 文档第 10 节把「收盘确认」定成第二种 condition，提醒列表里可以切。服务端这一层的
+ /// 工作是认不认，不是实不实现：拒收会让客户端那条 op 永远推不上去，而少评估一种条件
+ /// 只是少一个功能。跳过在 `alerts::load` 里做（带 TODO）。
+ #[test] fn a_close_confirmation_alert_is_accepted_even_though_nothing_evaluates_it_yet() {
+  assert!(field("alerts","condition",&json!("touch")));
+  assert!(field("alerts","condition",&json!("close")));
+  assert!(!field("alerts","condition",&json!("wick")));
+  object(&alert(&[("condition",json!("close"))])).expect("a close-confirmation alert is storable");
+ }
+
+ /// 几何的形状：`[{points:[{t,p}],extendLeft,extendRight}]`，数字必须有限。
+ ///
+ /// 服务端不认识画线的种类，只认这一种形状——所以这条规则就是它对几何的全部理解，
+ /// 松一点点就会有一条 NaN 的线存进 jsonb，之后谁也看不出哪儿不对。
+ #[test] fn the_geometry_is_polylines_of_finite_numbers() {
+  let good=json!([{"points":[{"t":1.0,"p":2.0},{"t":3.0,"p":4.0}],"extendLeft":true,"extendRight":false}]);
+  assert!(field("alerts","lines",&good));
+  // 一个点也是一条线：水平线摊平之后就是「一个价 + 两端延伸」。
+  assert!(field("alerts","lines",&json!([{"points":[{"t":1.0,"p":2.0}],"extendLeft":true,"extendRight":true}])));
+  // 一条提醒可以带好几条线（矩形两条边、斐波那契每一级一条）。
+  assert!(field("alerts","lines",&json!([
+   {"points":[{"t":1.0,"p":2.0},{"t":3.0,"p":4.0}],"extendLeft":false,"extendRight":false},
+   {"points":[{"t":1.0,"p":9.0},{"t":3.0,"p":9.0}],"extendLeft":false,"extendRight":false}])));
+  for bad in [
+   json!([]),
+   json!([{"points":[],"extendLeft":false,"extendRight":false}]),
+   json!([{"points":[{"t":1.0,"p":2.0}],"extendLeft":false}]),
+   json!([{"points":[{"t":1.0,"p":2.0}],"extendLeft":"yes","extendRight":false}]),
+   json!([{"points":[{"t":1.0,"p":2.0,"x":3.0}],"extendLeft":false,"extendRight":false}]),
+   json!([{"points":[{"t":-1.0,"p":2.0}],"extendLeft":false,"extendRight":false}]),
+   json!([{"points":[{"t":1.0,"p":1e18}],"extendLeft":false,"extendRight":false}]),
+   json!("a line"),
+  ] {assert!(!field("alerts","lines",&bad),"{bad} is not a usable set of polylines")}
+ }
+
+ /// 对象身份：id 必须和它自己的 symbol 对得上，画线提醒必须指得出是哪条线。
+ ///
+ /// 订阅按 symbol、回写按 id，两者对不上就会订阅一个品种、推另一个品种的价。
+ #[test] fn an_alert_must_agree_with_its_own_identity() {
+  object(&alert(&[])).expect("a well-formed drawing alert");
+  let mut wrong=alert(&[]);
+  wrong.id="binance/usd_m/ETHUSDT/9F1E".into();
+  assert!(object(&wrong).is_err(),"the id names a different symbol than the body does");
+  let mut orphan=alert(&[]);
+  orphan.body.remove("drawingID");
+  assert!(object(&orphan).is_err(),"a drawing alert that names no drawing cannot deep-link anywhere");
+  // 复盘待办的提醒不指画线，它整条链路都在客户端本地通知里。
+  let due=alert(&[("kind",json!("reviewDue")),("dueAt",json!(1_800_000_000_000i64)),("reviewID",json!("9F1E"))]);
+  let mut due=due;due.body.remove("drawingID");
+  object(&due).expect("a review reminder needs no drawing");
+ }
+
+ /// 「再次提醒」把一条已触发的提醒重新武装：firedAt / firedPrice 被清掉。
+ ///
+ /// 客户端的 diff 把「这次不写这个 key」发成 null。拒收那个 null 就等于整条 op 400，
+ /// 于是「再次提醒」这个按钮永远按不动——`drawings.text` 当年就是这么坏的。
+ #[test] fn re_arming_an_alert_clears_the_fired_marks() {
+  for key in ["firedAt","firedPrice","drawingID","dueAt","reviewID"] {
+   assert!(field("alerts",key,&Value::Null),"{key} must be clearable");
+  }
+  assert!(!field("alerts","status",&Value::Null),"status always has a value");
+  assert!(!field("alerts","lines",&Value::Null),"geometry is never a tombstone");
  }
 }

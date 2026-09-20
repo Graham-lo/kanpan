@@ -13,6 +13,7 @@ import ReviewUI
   private let prefs: PrefsStore
   private let symbols: SymbolPickerModel
   private let drawings: DrawingController
+  private let alerts: AlertStore
   private let review: ReviewFeature
   private let search: SearchHistory
   private var personal: PersonalFileStorage?
@@ -57,8 +58,8 @@ import ReviewUI
   /// 上一次 `applyPending()` 被 `canApply()` 挡回去了，等条件到齐要补跑。
   private var pendingApply = false
 
-  init(account: AccountFeature, prefs: PrefsStore, symbols: SymbolPickerModel, drawings: DrawingController, review: ReviewFeature, search: SearchHistory) throws {
-    self.account = account; self.prefs = prefs; self.symbols = symbols; self.drawings = drawings; self.review = review; self.search = search
+  init(account: AccountFeature, prefs: PrefsStore, symbols: SymbolPickerModel, drawings: DrawingController, alerts: AlertStore, review: ReviewFeature, search: SearchHistory) throws {
+    self.account = account; self.prefs = prefs; self.symbols = symbols; self.drawings = drawings; self.alerts = alerts; self.review = review; self.search = search
     var root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("kanpan/accounts")
     // 测试档案另起一棵 `tests/<uuid>` 子树。**只在 DEBUG 构建里存在**（审查 C-02）：
     // 正式包里没有这条口子，Release 回归靠独立的测试安装沙盒隔离，不靠产品二进制
@@ -80,6 +81,10 @@ import ReviewUI
     // 删分类时「落单的成员进哪一类」要问它。
     symbols.selectedGroupSource = { [weak prefs] in prefs?.prefs.favoritesGroup }
     drawings.onArchiveChange = { [weak self] _ in self?.captureDrawings() }
+    alerts.onChange = { [weak self] _ in self?.captureAlerts() }
+    // APNs 的 token 来了就报给服务端。现在这条**永远不会响**（没开发者会员，
+    // 工程里没有推送 capability，注册必然失败），留着是为了开通那天不用改代码。
+    PushRegistration.onToken = { [weak self] token in self?.submitPushToken(token) }
     review.onLogin = { [weak account] in account?.open() }
     review.onSyncComplete = { [weak self] in
       guard let self else { return }
@@ -191,6 +196,11 @@ import ReviewUI
     let drawStore = DrawStore(url: directory.appendingPathComponent("draws.json"))
     var nextDrawings = try drawStore.read()
     let loadedDrawings = nextDrawings
+    // 提醒和画线同一个姿态：读不动就中断这次 prepare，绝不拿一份空档往下走
+    // （下面那一步会把它回写进 `alerts.json`，用户设的提醒就永久没了）。
+    let alertStore = AlertFileStore(url: directory.appendingPathComponent("alerts.json"))
+    var nextAlerts = try alertStore.read()
+    let loadedAlerts = nextAlerts
     let nextReview = try ReviewStore(directory: directory)
     let nextSync = user == nil ? nil : try SyncStore(directory: directory)
     let claim = try user.flatMap { try files.claimGuest(user: $0.id) }
@@ -201,11 +211,14 @@ import ReviewUI
       // 悄悄丢掉（下一行的画线一直是这个姿态）。
       let guestSymbols = try SymbolPrefsStore(storage: guestStorage).read()
       let guestDrawings = try DrawStore(url: claim.directory.appendingPathComponent("draws.json")).read()
+      let guestAlerts = try AlertFileStore(url: claim.directory.appendingPathComponent("alerts.json")).read()
       if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("prefs.json").path) { nextPrefs = guestPrefs }
       for (key, values) in guestDrawings.bySymbol {
         let existing = Set(nextDrawings[key].map(\.id)); nextDrawings[key] += values.filter { !existing.contains($0.id) }
       }
       if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("draws.json").path) { nextDrawings.preferences = guestDrawings.preferences }
+      let claimedAlerts = Set(nextAlerts.alerts.map(\.id))
+      nextAlerts.alerts += guestAlerts.alerts.filter { !claimedAlerts.contains($0.id) }
       let groupIDs = Set(nextSymbols.groups.map(\.id))
       nextSymbols.groups += guestSymbols.groups.filter { !groupIDs.contains($0.id) }
       for key in guestSymbols.favorites where !nextSymbols.favorites.contains(key) {
@@ -229,7 +242,7 @@ import ReviewUI
       // 进度则是压根没人并。规则与证据都在 `ReviewStore.adoptSideFiles(from:)`。
       try nextReview.adoptSideFiles(from: guestReview, sanitizingDraft: sanitize)
       if let nextSync {
-        let imported = try [PersonalSyncCodec.settings(guestPrefs)] + PersonalSyncCodec.drawings(guestDrawings) + PersonalSyncCodec.symbols(guestSymbols)
+        let imported = try [PersonalSyncCodec.settings(guestPrefs)] + PersonalSyncCodec.drawings(guestDrawings) + PersonalSyncCodec.symbols(guestSymbols) + PersonalSyncCodec.alerts(guestAlerts.alerts)
         // 一次事务记完：逐条来的话这一档要被整份重写几十上百遍。
         try nextSync.capture(imported, device: account.device.id, importing: claim.id, owning: PersonalSyncCodec.ownedKeys)
       }
@@ -251,6 +264,19 @@ import ReviewUI
       // **只向前**：只补那些存档里「本机说了算」（有待发操作或未了结的拒绝记录）
       // 的对象。云端下发的那些一个都不碰，否则这一步就成了拿存档去回滚用户
       // 已经落在盘上的画线。
+      // 提醒也照样：删掉的不许在启动时复活，本机说了算的那几条向前补进 `alerts.json`。
+      for tombstone in nextSync.archive.objects.values where tombstone.collection == "alerts" && tombstone.deleted {
+        let id = String(tombstone.id.split(separator: "/").last ?? "")
+        if !nextSync.archive.operations.contains(where: { $0.objectId == tombstone.id && $0.action == "restore" }) {
+          nextAlerts.alerts.removeAll { $0.id == id }
+        }
+      }
+      for object in nextSync.unpersistedLocalChanges(in: ["alerts"], onDisk: (try? PersonalSyncCodec.alerts(nextAlerts.alerts)) ?? []) {
+        let id = String(object.id.split(separator: "/").last ?? "")
+        if object.deleted { nextAlerts.alerts.removeAll { $0.id == id }; continue }
+        guard let alert = try? PersonalSyncCodec.alert(object) else { continue }
+        nextAlerts[id] = alert
+      }
       let onDisk = (try? PersonalSyncCodec.drawings(nextDrawings)) ?? []
       for object in nextSync.unpersistedLocalChanges(in: ["drawings", "drawingPreferences"], onDisk: onDisk) {
         if object.collection == "drawingPreferences" {
@@ -294,9 +320,10 @@ import ReviewUI
     if encodedSymbols != nextStorage.symbolPrefsData(forKey: SymbolPrefsStore.defaultsKey) { nextStorage.setSymbolPrefsData(encodedSymbols, forKey: SymbolPrefsStore.defaultsKey) }
     if nextStorage.error != nil { throw AccountError.storage }
     if nextDrawings != loadedDrawings { try drawStore.save(nextDrawings) }
+    if nextAlerts != loadedAlerts { try alertStore.save(nextAlerts) }
     if let nextSync {
       let settings = try PersonalSyncCodec.settings(nextPrefs)
-      let initial = try [settings] + PersonalSyncCodec.drawings(nextDrawings) + PersonalSyncCodec.symbols(nextSymbols)
+      let initial = try [settings] + PersonalSyncCodec.drawings(nextDrawings) + PersonalSyncCodec.symbols(nextSymbols) + PersonalSyncCodec.alerts(nextAlerts.alerts)
       // 没有的才填：存档里已经有的那份可能带着待发操作，别把它按盘上这份原样抹平。
       try nextSync.transaction { archive in for object in initial where archive.local[object.key] == nil { archive.local[object.key] = object } }
       // 但「已经有了就什么都不做」在设置这一档上是个洞：盘上那份是**上一次运行时
@@ -344,11 +371,19 @@ import ReviewUI
                        owner: user?.id.uuidString ?? ("guest:" + files.guestBatch.uuidString))
       symbols.useStorage(SymbolPrefsStore(storage: nextStorage), prefs: nextSymbols)
       drawings.useStorage(drawStore, archive: nextDrawings)
+      alerts.useStorage(alertStore, archive: nextAlerts)
       search.useStorage(nextStorage)
       review.activate(store: nextReview, client: client)
       gate.leave(); updateStatus()
       // 档案已经全部就位，宿主现在可以按它重新兑现首屏那几件事。
       onProfileReady()
+      // 第一次装这个 app 的人手上是空的：没账号、没自选。给他几条默认自选，
+      // 什么时候给、给过没有都在 `DefaultFavoritesSeeder` 里（方案第 3 节第四件）。
+      // 代次拿来防「取榜那几秒里账号档案回来了」——那时这一趟当场作废。
+      let seedEpoch = epoch
+      DefaultFavoritesSeeder.consider(symbols: symbols, isGuest: user == nil,
+                                      stillCurrent: { [weak self] in self?.epoch == seedEpoch },
+                                      done: { [weak self] in self?.onProfileReady() })
       // 上一次运行拉回来了、但没装进本机就没了的那一批，在这儿补装（B4）。
       // 判据在存档里，所以断电重开照样看得出来，不用等下一轮全量。
       if nextSync?.needsApply == true { pendingApply = true; resumeApply() }
@@ -432,6 +467,18 @@ import ReviewUI
   }
   private func captureSymbols() { capture(PersonalSyncCodec.symbols(symbols.prefs), collections: ["favorites", "groups"]) }
   private func captureDrawings() { do { capture(try PersonalSyncCodec.drawings(drawings.storedArchive), collections: ["drawings", "drawingPreferences"]) } catch { account.report(sync: error) } }
+  private func captureAlerts() { do { capture(try PersonalSyncCodec.alerts(alerts.all), collections: ["alerts"]) } catch { account.report(sync: error) } }
+  /// 把这台设备的推送 token 交给服务端。
+  ///
+  /// 失败**不报给用户**：没有推送只是「提醒要等下一次打开 app 才看得见」，
+  /// 不是故障（`kanpan-no-engineering-status-fields`）。没登录时连发都不发——
+  /// 这个接口按人存 token。
+  private func submitPushToken(_ token: String) {
+    guard let api = account.client, owner != nil else { return }
+    let body: [String: String] = ["token": token, "kind": "alerts", "environment": PushRegistration.environment]
+    guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
+    Task { _ = try? await api.data("v1/devices/push-token", method: "POST", body: data) }
+  }
   private func setAutoSync(_ enabled: Bool) {
     do {
       try sync?.transaction { $0.autoSync = enabled }; updateStatus()
@@ -686,7 +733,7 @@ import ReviewUI
         switch plan {
         case .push: scopes = []
         case .drawings: scopes = requestedSymbol.isEmpty ? [] : ["drawings"]
-        case .full: scopes = ["settings", "drawingPreferences", "favorites", "groups"] + (requestedSymbol.isEmpty ? [] : ["drawings"])
+        case .full: scopes = ["settings", "drawingPreferences", "favorites", "groups", "alerts"] + (requestedSymbol.isEmpty ? [] : ["drawings"])
         }
         for collection in scopes {
           var after: String?
@@ -776,6 +823,16 @@ import ReviewUI
         else { archive[name].append(drawing) }
       }
     }
+    // 提醒。服务端判出触发之后会自己写一条 `patch`（`status` / `firedAt` / `firedPrice`），
+    // 就是从这儿落进本机的——所以这一段既管「别的设备加的提醒」，也管「它响了」。
+    // 解不开的那条跳过而不是整批抛：一条坏数据不该让设置、自选、画线一起落不了地。
+    var alertArchive = alerts.archive
+    for object in objects.values where object.collection == "alerts" {
+      let id = String(object.id.split(separator: "/").last ?? "")
+      if object.deleted { alertArchive.alerts.removeAll { $0.id == id }; continue }
+      guard let alert = try? PersonalSyncCodec.alert(object) else { continue }
+      alertArchive[id] = alert
+    }
     func order(_ a: SyncObject, _ b: SyncObject) -> Bool {
       let x: Double = { if case .number(let n) = a.body["order"] { return n }; return 0 }()
       let y: Double = { if case .number(let n) = b.body["order"] { return n }; return 0 }()
@@ -811,6 +868,7 @@ import ReviewUI
     }
     if personal?.error != nil { throw AccountError.storage }
     try drawings.commitSynced(archive)
+    try alerts.commitSynced(alertArchive)
     // 「拉到哪儿了」和「装进本机没有」是两个时刻。这一句必须排在所有文件落盘之后：
     // 它一旦落下去，下一次启动就不会再重做这一批了。
     try sync.markApplied(at: Int64(Date().timeIntervalSince1970 * 1000))
@@ -833,6 +891,7 @@ import ReviewUI
       }
     }
     drawings.publishSynced(archive)
+    alerts.publishSynced(alertArchive)
     symbols.applySynced(nextSymbols)
     // 云端那份设置也是「档案换进来了」的一种：周期、落地页这些要跟着重新兑现一次。
     onProfileReady()

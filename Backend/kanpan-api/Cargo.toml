@@ -28,11 +28,14 @@ base64 = "0.22"
 chacha20poly1305 = "0.10"
 subtle = "2"
 zeroize = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2"] }
 tower-http = { version = "0.6", features = ["limit", "timeout"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+futures-util = { version = "0.3.34", default-features = false, features = ["std", "sink"] }
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["use_pem", "rust_crypto"] }
 
 [dev-dependencies]
 # `test-util` is what lets the ban-gate and cooldown tests run on paused time:
@@ -42,6 +45,7 @@ tokio = { version = "1", features = ["full", "test-util"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tempfile = "3"
+ring = "0.17.14"
 
 [profile.release]
 lto = "thin"

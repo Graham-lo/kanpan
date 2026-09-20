@@ -18,6 +18,22 @@ final class OrientationBridge: NSObject, UIApplicationDelegate {
   ) -> UIInterfaceOrientationMask {
     Self.mask
   }
+
+  /// APNs 发了 token 回来。交给 `PushRegistration`，上传的事它转手给账号桥。
+  ///
+  /// 这条现在**注册不成功**：工程里没有 Push Notifications capability，也没有
+  /// `aps-environment`（加了真机装不上）。留着它是为了会员开通那天一行不用改。
+  func application(_ application: UIApplication,
+                   didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    Task { @MainActor in PushRegistration.arrived(deviceToken) }
+  }
+
+  /// 注册失败：**静音**。没有推送只是「响的时候要等下一次打开 app 才看得见」，
+  /// 不是故障，不上屏（`kanpan-no-engineering-status-fields`）。
+  func application(_ application: UIApplication,
+                   didFailToRegisterForRemoteNotificationsWithError error: any Error) {
+    Task { @MainActor in PushRegistration.failed(error) }
+  }
 }
 
 @MainActor

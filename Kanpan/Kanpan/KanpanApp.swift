@@ -22,11 +22,20 @@ struct KanpanApp: App {
     StreamHostProbe.runIfRequested()
     // 开日志时每秒报一次主线程滞后：界面冻住和行情没到，日志里长得不一样。
     MainThreadHeartbeat.startIfRequested()
+    // 点通知冷启动时，系统在 app 启动完成的那一刻就把它交回来——代理得赶在
+    // 那之前挂上，晚一步那一下就没人接了。这儿不申请任何通知权限。
+    AlertNotifications.shared.install()
+    // 桌面长按图标那几格：这儿只是把「怎么摆」装上去，摆什么由「最近看过」
+    // 变化时自己算（见 `HomeShortcuts`）。
+    HomeShortcutsBridge.install()
   }
 
   var body: some Scene {
     WindowGroup {
       MainScreen()
+        // 外面进来的链接全走这一个口：桌面快捷入口、通知点击、共享链接。
+        // 这儿只负责交给路由，去哪儿由 `MainScreen` 一处消费（见 `DeepLink`）。
+        .onOpenURL { DeepLinkRouter.shared.open($0) }
     }
   }
 }
