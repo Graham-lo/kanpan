@@ -1625,3 +1625,46 @@ extension ChartFoundationUITests {
     closePanel()
   }
 }
+
+extension ChartFoundationUITests {
+  /// 「区间成交量分布」：点两下就该出柱子，而且立刻是选中态（2026-09-20）。
+  ///
+  /// 这三把计算型工具和别的画线最大的不同，是它们的形状要拿 K 线算出来——真机上
+  /// 一旦拿不到序列，图上只会留两个光秃秃的手柄。所以这条用例盯的不是像素，
+  /// 而是「工具在面板里找得到、两下落得成、落完就能改样式」这条完整的路。
+  func testDrawingFixedVolumeProfilePlacement() throws {
+    XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
+    openDrawTools()
+    tapDrawGroup("测量")
+    let target = app.buttons["draw.tool.fixedVolumeProfile"]
+    // 翻格子只翻面板自己那个 ScrollView（理由见 `testDrawingAllToolsAndFingerTargets`）。
+    let list = app.scrollViews.containing(.button, identifier: "draw.tool.measure").firstMatch
+    XCTAssertTrue(list.waitForExistence(timeout: 5), "没找到画线工具面板的格子区")
+    for _ in 0..<8 {
+      if target.exists && target.isHittable { break }
+      list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).press(forDuration: 0.05,
+        thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)),
+        withVelocity: .slow, thenHoldForDuration: 0.1)
+    }
+    XCTAssertTrue(target.isHittable, "「测量」这一类里找不到区间成交量分布")
+    shot("画线-测量类里的成交量分布")
+    target.tap()
+    XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["draw.sheet.done"].exists })
+    XCTAssertTrue(canvas.waitForExistence(timeout: 5), "工具面板收起后图不见了")
+
+    let h = try XCTUnwrap(info()["mainH"] as? Double)
+    let origin = canvas.coordinate(withNormalizedOffset: .zero)
+    origin.withOffset(CGVector(dx: 100, dy: h * 0.65)).tap()
+    XCTAssertEqual(info()["drawingCount"] as? Int, 0, "两点工具点一下不该成线")
+    origin.withOffset(CGVector(dx: 260, dy: h * 0.35)).tap()
+    XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 1 }, String(describing: info()))
+    XCTAssertEqual(info()["drawingKinds"] as? [String], ["fixedVolumeProfile"])
+    // 落完即选中：选中条真的出来了、上面写的是这把工具的名字、「样式」够得着，
+    // 这把工具才算真的接上了后面那套编辑（`draw.save` 是样式面板里的保存，不在这条条上）。
+    let bar = app.otherElements["draw.selection"]
+    XCTAssertTrue(bar.waitForExistence(timeout: 5), "画完没有出现选中条")
+    XCTAssertTrue(bar.staticTexts["区间成交量分布"].exists, "选中条上写的不是这把工具的名字")
+    XCTAssertTrue(app.buttons["draw.style"].isHittable, "选中条上的「样式」点不到")
+    shot("画线-区间成交量分布")
+  }
+}

@@ -767,7 +767,11 @@ import ReviewUI
       let id = String(object.id.split(separator: "/").last ?? "")
       if object.deleted { archive[name].removeAll { $0.id == id } }
       else {
-        let drawing = try PersonalSyncCodec.drawing(object)
+        // 解不开的那条跳过，别整批抛（和下面提醒那一段同一条规矩）。
+        // 新版本加一把画线工具，老版本的机器就会在这儿读到一个它不认识的 `kind`：
+        // 整批抛出去的话 `pendingApply` 一直挂着，每次重试都在同一条上翻车，
+        // 这台设备从此再也收不到任何设置、自选、画线——只因为别的设备画了一条新工具。
+        guard let drawing = try? PersonalSyncCodec.drawing(object) else { continue }
         if let index = archive[name].firstIndex(where: { $0.id == id }) { archive[name][index] = drawing }
         else { archive[name].append(drawing) }
       }

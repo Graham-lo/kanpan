@@ -22,6 +22,9 @@ const KINDS:&[&str]=&[
  "pitchfork","fibChannel","ellipse","triangle","curve","datePriceRange","fibTimeZone","fibFan",
  "gannBox","gannFan","xabcd","abcd","headShoulders","elliottImpulse","elliottCorrection",
  "callout","priceLabel","flag","markerUp","markerDown",
+ // The computed tools (2026-09-20): their shape is derived from the bars the anchors enclose,
+ // not from the anchors themselves. Same vocabulary rules apply — the server only stores them.
+ "anchoredVWAP","fixedVolumeProfile","anchoredVolumeProfile",
 ];
 // A superset of `Interval` (KanpanCore/Model/Interval.swift:4); 3d and 8h are not offered.
 const INTERVALS:[&str;16]=["1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d","3d","1w","1M","1y"];
@@ -38,7 +41,8 @@ fn symbol(v:&Value)->bool {v.as_str().is_some_and(|s|s.len()<=40&&QUOTES.iter().
 /// How many anchors a finished drawing of this kind carries: `Drawing.Kind.pointCount`.
 fn anchor_count(kind:&str)->usize {
  match kind {
-  "hline"|"vline"|"hray"|"note"|"crossLine"|"priceLabel"|"flag"|"markerUp"|"markerDown"=>1,
+  "hline"|"vline"|"hray"|"note"|"crossLine"|"priceLabel"|"flag"|"markerUp"|"markerDown"
+   |"anchoredVWAP"|"anchoredVolumeProfile"=>1,
   "channel"|"regression"|"position"|"fibExtension"|"pitchfork"|"fibChannel"|"triangle"|"curve"=>3,
   "abcd"|"elliottCorrection"=>4,"xabcd"=>5,"elliottImpulse"=>6,"headShoulders"=>7,_=>2
  }
@@ -243,7 +247,8 @@ mod tests {
  }
  /// A seven-point head and shoulders used to fail the 1..=3 anchor rule outright.
  #[test] fn a_many_pointed_pattern_keeps_all_its_anchors() {
-  for (kind,count) in [("hline",1),("trend",2),("channel",3),("abcd",4),("xabcd",5),("elliottImpulse",6),("headShoulders",7)] {
+  for (kind,count) in [("hline",1),("trend",2),("channel",3),("abcd",4),("xabcd",5),("elliottImpulse",6),("headShoulders",7),
+                       ("anchoredVWAP",1),("fixedVolumeProfile",2)] {
    assert_eq!(anchor_count(kind),count);
    object(&drawing(kind,count)).unwrap_or_else(|_|panic!("{kind} with {count} anchors should be valid"));
    assert!(object(&drawing(kind,count+1)).is_err(),"{kind} with {} anchors should be refused",count+1);

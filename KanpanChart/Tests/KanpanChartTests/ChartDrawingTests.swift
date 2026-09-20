@@ -103,6 +103,30 @@ private func at(_ axes: DrawAxes, _ p: DrawPoint) -> CGPoint {
   CGPoint(x: axes.x(p.t), y: axes.y(p.p))
 }
 
+/// 往一张透明的离屏画布上画一笔，数出留了多少墨（alpha > 0 的像素）。
+///
+/// 计算型工具（VWAP、成交量分布）的形状是算出来的，「算得对」在 Core 的单测里已经钉死了；
+/// 这一层要回答的是另一个问题：这些几何交给 CoreGraphics 到底画不画得出来、会不会崩。
+/// 所以只数墨，不比像素——比像素是 M3 那 176 张基线的事。
+@MainActor
+private func inkPixels(size: CGSize = CGSize(width: 390, height: 700),
+                       _ body: (CGContext) -> Void) -> Int {
+  let w = Int(size.width), h = Int(size.height)
+  var buffer = [UInt8](repeating: 0, count: w * h * 4)
+  buffer.withUnsafeMutableBytes { raw in
+    guard let ctx = CGContext(data: raw.baseAddress, width: w, height: h, bitsPerComponent: 8,
+                              bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    else { return }
+    // CG 的原点在左下，UIKit 在左上：翻过来，画线那套坐标才和屏幕上一致。
+    ctx.translateBy(x: 0, y: size.height); ctx.scaleBy(x: 1, y: -1)
+    UIGraphicsPushContext(ctx)
+    body(ctx)
+    UIGraphicsPopContext()
+  }
+  return stride(from: 3, to: buffer.count, by: 4).reduce(0) { buffer[$1] > 0 ? $0 + 1 : $0 }
+}
+
 // ---------------------------------------------------------------- 落笔
 
 @MainActor
@@ -564,5 +588,51 @@ extension ChartDrawingTests {
     let old = before?.lines.first?.filter(\.isFinite)
     let new = renderer.engine[.ma]?.lines.first?.filter(\.isFinite)
     #expect(new == old)
+  }
+
+  // ---------------------------------------------------------------- 计算型工具
+
+  @Test("VWAP 与两把成交量分布都画得出来，拿不到 K 线时一笔都不画")
+  func computedToolsPaintInkOnlyWithASeries() throws {
+    let (v, axes) = try makeView()
+    let s = try #require(v.state)
+    let from = Double(s.series.time(at: max(0, s.series.count - 60)))
+    let to = Double(s.series.lastTime)
+    for kind in Drawing.Kind.allCases where kind.isComputed {
+      let points = [DrawPoint(t: from, p: s.series.close[max(0, s.series.count - 60)]),
+                    DrawPoint(t: to, p: s.series.close[s.series.count - 1])]
+      let d = Drawing(kind: kind, points: Array(points.prefix(kind.pointCount)))
+      let ink = inkPixels { ctx in
+        paintDrawing(d, ctx: ctx, axes: axes, colors: s.colors, series: s.series)
+      }
+      #expect(ink > 200, "\(kind) 喂了 K 线还是什么都没画出来")
+      // 没有序列就一笔都不画：宁可空着，也别画一个用锚点硬凑的假形状。
+      let bare = inkPixels { ctx in paintDrawing(d, ctx: ctx, axes: axes, colors: s.colors) }
+      #expect(bare == 0, "\(kind) 在没有 K 线时画出了东西")
+    }
+  }
+
+  @Test("区间分布在点第二下之前就把柱子预览出来")
+  func fixedProfilePreviewsItsBars() throws {
+    let (v, axes) = try makeView()
+    let s = try #require(v.state)
+    let overlay = try #require(v.drawing.overlay)
+    let aim = DrawPoint(t: axes.t(atX: 330), p: axes.p(atY: 200))
+
+    v.drawTool = .fixedVolumeProfile
+    tap(v, at: CGPoint(x: 90, y: 300))
+    #expect(v.drawings.isEmpty, "两点工具点一下不该成线")
+    v.drawing.aim = aim
+    let profile = inkPixels { _ in overlay.draw(overlay.bounds) }
+
+    // 同一对锚点换成趋势线：只有一根线加两个手柄。柱子那一大片墨必须明显多出来。
+    v.drawTool = nil
+    v.drawTool = .trend
+    tap(v, at: CGPoint(x: 90, y: 300), ms: 20_000)
+    v.drawing.aim = aim
+    let trend = inkPixels { _ in overlay.draw(overlay.bounds) }
+
+    #expect(profile > trend * 2, "预览里没看见柱子（分布 \(profile) 墨点，趋势线 \(trend)）")
+    #expect(s.series.count > 0)
   }
 }

@@ -299,6 +299,28 @@ struct DrawingEditTests {
       from: Data(#"{"d":{"BTCUSDT":[{"id":"h","kind":"hline","a":{"t":1,"p":2}}]}}"#.utf8))
     #expect(noVersion["BTCUSDT"].count == 1)
   }
+
+  @Test("存档里有一条不认识的工具，只丢那一条")
+  func anUnknownToolDoesNotSinkTheWholeArchive() throws {
+    // 新版本加一把工具，老版本的 app 就会在存档里读到一个它不认识的 kind
+    // （云端同步下来的、或者用户降级安装回去的）。从前这一条能把整份存档拖垮：
+    // 解码整个抛出去，`load()` 退回空档，屏幕上所有品种的画线一条不剩。
+    let json = #"""
+    {"v":2,"d":{"BTCUSDT":[
+      {"id":"a","kind":"hline","a":{"t":1,"p":2}},
+      {"id":"b","kind":"telekinesis","a":{"t":3,"p":4}},
+      {"id":"c","kind":"trend","a":{"t":5,"p":6},"b":{"t":7,"p":8}}
+    ],"ETHUSDT":[{"id":"d","kind":"vline","a":{"t":9,"p":10}}]}}
+    """#
+    let archive = try JSONDecoder().decode(DrawArchive.self, from: Data(json.utf8))
+    #expect(archive["BTCUSDT"].map(\.id) == ["a", "c"], "不认识的那条该被跳过，前后两条要留着")
+    #expect(archive["ETHUSDT"].count == 1, "别的品种更不该受牵连")
+    // 整桶都不认识：那个品种当空的，不是整份存档报废。
+    let allUnknown = try JSONDecoder().decode(
+      DrawArchive.self,
+      from: Data(#"{"v":2,"d":{"BTCUSDT":[{"id":"x","kind":"telekinesis","a":{"t":1,"p":2}}]}}"#.utf8))
+    #expect(allUnknown.bySymbol.isEmpty)
+  }
 }
 
 @Suite("Drawing v2 persistence and geometry")

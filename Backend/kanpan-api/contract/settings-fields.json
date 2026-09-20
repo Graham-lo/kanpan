@@ -37,7 +37,10 @@
     "priceLabel",
     "flag",
     "markerUp",
-    "markerDown"
+    "markerDown",
+    "anchoredVWAP",
+    "fixedVolumeProfile",
+    "anchoredVolumeProfile"
   ],
   "drawingKindsNote" : "`Drawing.Kind` 的全部 rawValue。服务端 sync_validation 的 KINDS 必须和它一样——drawings.kind、drawingPreferences.favorites 与 styles/<kind>、settings.lastDrawTool 四条值规则都拿它当词表。少一个：用那把工具画出来的线被服务端整条拒绝，永远离不开这台手机。",
   "fieldClasses" : {

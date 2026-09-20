@@ -180,7 +180,26 @@ struct ReviewA5Tests {
     #expect(!after.bucketChanged(from: before, symbol: "SOLUSDT"))
   }
 
-  // ---------------------------------------------------------------- 14 38 种几何矩阵
+  // ---------------------------------------------------------------- 14 41 种几何矩阵
+
+  /// 这张场地对应的 K 线：t0…t1 之间每小时一根，价格在 pLow…pHigh 之间来回走。
+  ///
+  /// 锚定 VWAP 和两把成交量分布的形状是**从 K 线算出来的**，没有 `series` 就什么都画不出来
+  /// （这是有意的：宁可空着也不画一条骗人的线）。所以这条矩阵得把 K 线一起递进去，
+  /// 否则那三把工具会以「图上一片空白」的名义误报。其余 38 把对这个参数完全无感，
+  /// 「老工具零回归」那条在 `DrawVolumeTests` 里按位比过。
+  static let series: BarSeries = {
+    let step = Interval.h1.stepMs
+    let bars = (0...120).map { i -> Bar in
+      let phase = Double(i) / 120 * 2 * Double.pi
+      let mid = (pLow + pHigh) / 2 + sin(phase) * (pHigh - pLow) / 3
+      let open = mid - 40, close = mid + 40
+      return Bar(openTime: Int64(t0) + Int64(i) * step,
+                 open: open, high: max(open, close) + 60, low: min(open, close) - 60,
+                 close: close, volume: 100 + Double(i % 7) * 30)
+    }
+    return BarSeries(symbol: "BTCUSDT", interval: .h1, bars: bars)
+  }()
 
   /// 每种工具摆一份合法的最小点数。点位一律落在图区里面，彼此错开。
   static func sample(_ kind: Drawing.Kind, degenerate: Bool = false) -> Drawing {
@@ -195,15 +214,16 @@ struct ReviewA5Tests {
     return d
   }
 
-  @Test("用例 14：38 种工具，两种价格轴，几何全是有限数且看得见就点得中",
+  @Test("用例 14：41 种工具，两种价格轴，几何全是有限数且看得见就点得中",
         arguments: Drawing.Kind.allCases)
   func case14_geometryMatrix(_ kind: Drawing.Kind) {
-    #expect(Drawing.Kind.allCases.count == 38, "工具清单变了，这条矩阵要跟着更新")
+    #expect(Drawing.Kind.allCases.count == 41, "工具清单变了，这条矩阵要跟着更新")
     for logAxis in [false, true] {
       let yOf: (Double) -> Double = { logAxis ? Self.logY($0) : Self.y($0) }
       let item = Self.sample(kind)
       #expect(item.isValid, "\(kind.rawValue)：最小点数摆出来的这条线自己就不合法")
-      var g = drawingGeometry(item, bounds: Self.bounds, xOf: Self.x, yOf: yOf, decimals: 2)
+      var g = drawingGeometry(item, bounds: Self.bounds, xOf: Self.x, yOf: yOf, decimals: 2,
+                              series: Self.series)
       g.layoutLabels(plotW: Self.plotW, paneY: Self.paneY, paneH: Self.paneH, measure: Self.measure)
 
       let finite = g.segments.allSatisfy {

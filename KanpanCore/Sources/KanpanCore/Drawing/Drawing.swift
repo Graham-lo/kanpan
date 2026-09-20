@@ -37,6 +37,9 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
     case gannBox, gannFan
     case xabcd, abcd, headShoulders, elliottImpulse, elliottCorrection
     case callout, priceLabel, flag, markerUp, markerDown
+    // ---- 计算型工具（2026-09-20）：形状不由锚点几何决定，由锚点圈住的 K 线算出来。
+    // 同样加在末尾，老存档里没有它们，解码不受影响。
+    case anchoredVWAP, fixedVolumeProfile, anchoredVolumeProfile
     public var id: String { rawValue }
     public var title: String {
       switch self {
@@ -78,6 +81,11 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
       case .flag: "旗标"
       case .markerUp: "向上箭头"
       case .markerDown: "向下箭头"
+      // 名字就叫「VWAP」：TV 那把叫「锚定 VWAP」，可这里的 VWAP 本来就只有锚定这一种
+      // （没有「当日 VWAP」那种指标版），前面两个字对用户不传达任何信息。
+      case .anchoredVWAP: "VWAP"
+      case .fixedVolumeProfile: "区间成交量分布"
+      case .anchoredVolumeProfile: "锚定成交量分布"
       }
     }
     public var shortTitle: String {
@@ -107,13 +115,16 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
       case .priceLabel: "价签"
       case .markerUp: "上箭头"
       case .markerDown: "下箭头"
+      case .fixedVolumeProfile: "区间量分布"
+      case .anchoredVolumeProfile: "锚定量分布"
       default: title
       }
     }
     /// 存几个点。
     public var pointCount: Int {
       switch self {
-      case .hline, .vline, .hray, .note, .crossLine, .priceLabel, .flag, .markerUp, .markerDown: 1
+      case .hline, .vline, .hray, .note, .crossLine, .priceLabel, .flag, .markerUp, .markerDown,
+           .anchoredVWAP, .anchoredVolumeProfile: 1
       case .channel, .regression, .position, .fibExtension, .pitchfork, .fibChannel, .triangle, .curve: 3
       case .abcd, .elliottCorrection: 4
       case .xabcd: 5
@@ -162,6 +173,14 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
       default: false
       }
     }
+    /// 形状要拿 K 线算出来的那几把——几何函数必须拿到 `BarSeries` 才画得出东西。
+    ///
+    /// 别的工具画什么完全由锚点的 (t, p) 决定，缩放一下只是换个像素位置；这三把的锚点
+    /// 只说「从哪一根算到哪一根」，线在哪、柱子多长得先把那一段 K 线扫一遍。所以几何、
+    /// 绘制、命中三处都按它分流：拿不到序列时只出手柄，不画一条假的形状出来。
+    public var isComputed: Bool {
+      self == .anchoredVWAP || self == .fixedVolumeProfile || self == .anchoredVolumeProfile
+    }
     /// 带不带一段文字（`Drawing.text`）。目前只有「文字标注」。
     public var usesText: Bool { self == .note || self == .callout || self == .flag }
     public var group: String {
@@ -173,7 +192,7 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
       case .fibonacci, .fibExtension, .fibChannel, .fibTimeZone, .fibFan: "斐波那契"
       case .gannBox, .gannFan: "江恩"
       case .xabcd, .abcd, .headShoulders, .elliottImpulse, .elliottCorrection: "形态"
-      case .measure, .position: "测量"
+      case .measure, .position, .anchoredVWAP, .fixedVolumeProfile, .anchoredVolumeProfile: "测量"
       case .note, .callout, .priceLabel, .flag, .markerUp, .markerDown: "标注"
       }
     }

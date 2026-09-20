@@ -18,6 +18,12 @@ public struct DrawPixel: Sendable, Equatable {
 public struct DrawSegment: Sendable {
   public var a, b: DrawPixel
   public var tint: DrawTint = .line
+  /// 这一段单独画成虚线，不跟这条线自己的线型走。
+  ///
+  /// 只有成交量分布用得上：POC 是实的、价值区上下沿和区间边界是虚的，三种线在同一条
+  /// 画线里。用户在样式里挑的线型管的是 POC 那条主线，剩下两种是这把工具的固定画法，
+  /// 不是一个可选项——所以虚实写在几何里，不写进 `Drawing.dash`。
+  public var dashed = false
 }
 
 /// 这一笔用哪个颜色画。
@@ -31,7 +37,15 @@ public enum DrawTint: Sendable, Equatable { case line, up, down }
 public struct DrawFill: Sendable {
   public var points: [DrawPixel]
   public var tint: DrawTint = .line
-  public init(points: [DrawPixel], tint: DrawTint = .line) { self.points = points; self.tint = tint }
+  /// 这一块自己的透明度。`nil` 走老的 0.12。
+  ///
+  /// 老的那些填充都是「衬在形状底下的一层色」，越淡越好；成交量分布的柱子反过来，
+  /// 它**就是**这把工具画的东西，还要靠深浅一眼分出价值区内外（区内 0.45、区外 0.22），
+  /// 一律 0.12 就成了一团看不清的灰。
+  public var opacity: Double?
+  public init(points: [DrawPixel], tint: DrawTint = .line, opacity: Double? = nil) {
+    self.points = points; self.tint = tint; self.opacity = opacity
+  }
 }
 
 /// 字底下垫什么。
@@ -213,9 +227,13 @@ public struct DrawGeometry: Sendable {
 /// 价格，价格轴右边写着 `77017.10`，标签上却是 `%.8g` 跑出来的 `77017.099999999`，
 /// 同一个数在同一屏上两种写法，读起来像两回事（§2E6）。传 nil 就退回原来的 `%.8g`，
 /// 单测和命中测试不关心标签，不用为它编一个小数位。
+///
+/// `series` 只有计算型工具（`Kind.isComputed`：VWAP 与两把成交量分布）会看——它们的形状
+/// 得把锚点圈住的那一段 K 线扫一遍才算得出来。别的工具一个像素都不受它影响，所以它有默认值，
+/// 老调用点不用改；计算型工具拿不到序列时只出手柄，不画一个假的形状。
 public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
                             xOf: (Double) -> Double, yOf: (Double) -> Double,
-                            decimals: Int? = nil) -> DrawGeometry {
+                            decimals: Int? = nil, series: BarSeries? = nil) -> DrawGeometry {
   var g = DrawGeometry()
   /// 价格照坐标轴写。没给小数位就按老样子来。
   func price(_ v: Double) -> String {
@@ -627,6 +645,90 @@ public func drawingGeometry(_ d: Drawing, bounds r: DrawBounds,
     shape([DrawPixel(a.x, a.y), DrawPixel(a.x - 6, a.y + 12), DrawPixel(a.x + 6, a.y + 12)], tint: .up)
   case .markerDown:
     shape([DrawPixel(a.x, a.y), DrawPixel(a.x - 6, a.y - 12), DrawPixel(a.x + 6, a.y - 12)], tint: .down)
+
+  // ---------------------------------------------------------------- 计算型
+  //
+  // 下面三把的形状不在锚点里，在锚点圈住的那段 K 线里（算法见 `DrawVolume.swift`）。
+  // 没有 `series` 就只留手柄退出：宁可让用户看见一个光秃秃的锚点，也不画一条
+  // 用锚点硬凑出来的假线——那条线会跟着缩放变形，还会被当成真的读数去看。
+
+  case .anchoredVWAP:
+    guard let series, let trail = Drawing.vwapTrail(anchorT: d.a.t, series: series) else { break }
+    var prev: DrawPixel?
+    var tip: (point: DrawPixel, value: Double)?
+    for (k, v) in trail.values.enumerated() {
+      // 累计量还是 0 的那一段是 NaN：断开，别把线从锚点一路拉到第一根有成交的柱子上。
+      guard v.isFinite else { prev = nil; continue }
+      let p = DrawPixel(xOf(Double(series.time(at: trail.start + k))), yOf(v))
+      // 整段都在屏外的不收：屏幕外的线既看不见也不该参与命中，
+      // 一条锚在半年前的 VWAP 否则要背几千段没人看的线。
+      if let q = prev, max(q.x, p.x) >= r.left - 2, min(q.x, p.x) <= r.right + 2 {
+        g.segments.append(DrawSegment(a: q, b: p))
+      }
+      prev = p
+      tip = (p, v)
+    }
+    // 右端读数：这把工具唯一的数字结论，画法和价格轴上的现价标签一致。
+    if let tip {
+      g.labels = [DrawLabel(point: DrawPixel(tip.point.x, tip.point.y - 4), text: price(tip.value), plate: .chip)]
+    }
+
+  case .fixedVolumeProfile, .anchoredVolumeProfile:
+    guard let series, r.right > r.left else { break }
+    // 固定分布两个锚点，哪个先点的不算数，左边那个就是起点；锚定分布只有起点，一直算到末根。
+    let second = d.points.count > 1 ? d.points[1].t : d.a.t
+    let fixed = d.kind == .fixedVolumeProfile
+    let fromT = fixed ? min(d.a.t, second) : d.a.t
+    guard let vp = Drawing.volumeProfile(fromT: fromT, toT: fixed ? max(d.a.t, second) : nil, series: series),
+          vp.maxRow > 0 else { break }
+    // 边界取**真正参与计算的那两根** K 线，不取锚点本身的时间：锚点可能落在两根之间，
+    // 也可能早于已加载的历史（那时从第一根算起）。竖线画在算出来的边上，图上那两条
+    // 虚线就永远和柱子说的是同一件事。
+    func clampX(_ x: Double) -> Double { min(max(x, r.left), r.right) }
+    let xL = clampX(xOf(Double(series.time(at: vp.first))))
+    let xR = clampX(xOf(Double(series.time(at: vp.last))))
+    // 柱子一律从区间左沿往右长。左沿滚出屏外时钉在图区左沿——柱子是用来比长短的，
+    // 根都看不见就比不了了。
+    let root = xL
+    // 宽度跟着区间的像素宽走（区间越长、柱子越长），但不许长过半屏，也不许窄到读不出差别。
+    let width = min(max(0.30 * (xR - xL), 24), 0.5 * (r.right - r.left))
+    func bar(_ x0: Double, _ x1: Double, _ top: Double, _ bottom: Double, _ tint: DrawTint, _ opacity: Double) {
+      g.fills.append(DrawFill(points: [DrawPixel(x0, top), DrawPixel(x1, top),
+                                       DrawPixel(x1, bottom), DrawPixel(x0, bottom)],
+                              tint: tint, opacity: opacity))
+    }
+    for row in 0 ..< vp.rowCount where vp.rowTotal(row) > 0 {
+      var top = yOf(vp.rowHigh(row)), bottom = yOf(vp.rowLow(row))
+      if top > bottom { swap(&top, &bottom) }
+      if bottom - top < 1 {
+        // 整段一字线那一行本身没有高度（rowHeight == 0），给它一个固定的厚度才画得出来。
+        let mid = (top + bottom) / 2
+        top = mid - 3; bottom = mid + 3
+      } else {
+        // 行与行之间留一条缝，24 根柱子才不会糊成一片。行本来就薄的时候缝也跟着薄。
+        let inset = min(0.5, (bottom - top) / 4)
+        top += inset; bottom -= inset
+      }
+      let upW = width * vp.up[row] / vp.maxRow
+      let downW = width * vp.down[row] / vp.maxRow
+      // 价值区内外靠深浅分：那 70% 的量才是这段行情真正成交的地方。
+      let opacity = vp.inValueArea(row) ? 0.45 : 0.22
+      if upW > 0 { bar(root, root + upW, top, bottom, .up, opacity) }
+      if downW > 0 { bar(root + upW, root + upW + downW, top, bottom, .down, opacity) }
+    }
+    // POC 实线、价值区上下沿虚线，三条都横贯整个区间——它们是拿来和后面的 K 线比位置的。
+    let yPOC = yOf(vp.rowMid(vp.poc))
+    g.segments.append(DrawSegment(a: DrawPixel(xL, yPOC), b: DrawPixel(xR, yPOC)))
+    for y in [yOf(vp.rowHigh(vp.vaHigh)), yOf(vp.rowLow(vp.vaLow))] {
+      g.segments.append(DrawSegment(a: DrawPixel(xL, y), b: DrawPixel(xR, y), dashed: true))
+    }
+    // 区间边界：固定分布两头都有，锚定分布右边一直延到现在，没有「右沿」可画。
+    g.segments.append(DrawSegment(a: DrawPixel(xL, r.top), b: DrawPixel(xL, r.bottom), dashed: true))
+    if fixed {
+      g.segments.append(DrawSegment(a: DrawPixel(xR, r.top), b: DrawPixel(xR, r.bottom), dashed: true))
+    }
+    // 只给 POC 一枚胶囊。VAH / VAL 再各挂一个数，三枚胶囊叠在一处谁也读不清（§0）。
+    g.labels = [DrawLabel(point: DrawPixel(xR, yPOC - 4), text: price(vp.rowMid(vp.poc)), plate: .chip)]
   }
   return g
 }

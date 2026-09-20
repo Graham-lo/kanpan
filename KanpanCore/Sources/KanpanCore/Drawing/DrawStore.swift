@@ -119,9 +119,24 @@ public struct DrawArchive: Sendable, Equatable, Codable {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     version = try c.decodeIfPresent(Int.self, forKey: .version) ?? Self.currentVersion
     preferences = try c.decodeIfPresent(DrawingPreferences.self, forKey: .preferences) ?? DrawingPreferences()
-    let raw = try c.decodeIfPresent([String: [Drawing]].self, forKey: .bySymbol) ?? [:]
-    bySymbol = raw.compactMapValues { $0.isEmpty ? nil : Self.capped($0) }
+    // 逐条解，不是整桶解（2026-09-20）。
+    //
+    // 新版本每加一把工具，`Drawing.Kind` 就多一个 rawValue；老版本的 app 认不得它，
+    // `Drawing.init(from:)` 直接抛。整桶解的时候这一抛就是整份存档解不开——`read()` 抛出去，
+    // `load()` 退回一份空档，用户看到的是**这台手机上所有品种的画线全没了**，
+    // 而实际上只是云端同步下来一条它不认识的新工具。丢掉那一条，剩下的照常读。
+    let raw = try c.decodeIfPresent([String: [TolerantDrawing]].self, forKey: .bySymbol) ?? [:]
+    bySymbol = raw.compactMapValues { bucket in
+      let kept = bucket.compactMap(\.drawing)
+      return kept.isEmpty ? nil : Self.capped(kept)
+    }
   }
+}
+
+/// 解得开就留下，解不开就当没有这一条。
+private struct TolerantDrawing: Decodable {
+  let drawing: Drawing?
+  init(from decoder: Decoder) throws { drawing = try? Drawing(from: decoder) }
 }
 
 // MARK: - 磁盘

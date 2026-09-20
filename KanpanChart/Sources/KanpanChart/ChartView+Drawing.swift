@@ -442,7 +442,7 @@ extension ChartView {
   /// 同一支字体、同一份小数位，所以屏幕上看得见多大一块，手指就能点中多大一块（A-01）。
   func drawGeometry(_ item: Drawing, axes: DrawAxes) -> DrawGeometry {
     var g = drawingGeometry(item, bounds: axes.bounds, xOf: axes.x, yOf: axes.y,
-                            decimals: axes.decimals)
+                            decimals: axes.decimals, series: state?.series)
     g.layoutLabels(plotW: axes.layout.plotW, paneY: axes.pane.y, paneH: axes.pane.h,
                    measure: measureDrawLabel)
     return g
@@ -481,6 +481,8 @@ extension ChartView {
       }
     }
     if let handle { return handle.hit }
+    // 计算型工具（VWAP、两把成交量分布）的形状要把那段 K 线扫一遍才算得出来，
+    // 命中和画图必须喂同一份序列，不然点得到的和看得见的不是同一个形状。
 
     var ink: (hit: DrawHit, distance: Double)?
     for shape in shapes {
@@ -900,7 +902,7 @@ final class DrawingOverlayView: UIView {
       let live = s.drawingPreviewID == sel
       let shown = d.preview ?? item
       paintDrawing(shown, ctx: ctx, axes: axes, colors: t,
-                   selected: true, handles: !shown.locked, shape: live)
+                   selected: true, handles: !shown.locked, shape: live, series: s.series)
     }
     if let tool = d.tool, !d.anchors.isEmpty || d.aim != nil {
       var points = d.anchors
@@ -912,7 +914,10 @@ final class DrawingOverlayView: UIView {
       }
       if points.count == tool.pointCount {
         var preview = Drawing(kind: tool, points: points); preview.dash = .dashed
-        paintDrawing(preview, ctx: ctx, axes: axes, colors: t, selected: true, handles: true)
+        // 预览也喂序列：两点的区间分布在点第二下之前就该把整块柱子实时画出来，
+        // 用户是照着柱子的位置决定第二下点哪儿的。
+        paintDrawing(preview, ctx: ctx, axes: axes, colors: t, selected: true, handles: true,
+                     series: s.series)
       } else {
         for pt in points { handle(ctx: ctx, x: axes.x(pt.t), y: axes.y(pt.p), colors: t) }
         // 还没点够的时候把**已经落下的点全连起来**，不是只连前两个。
@@ -1019,8 +1024,10 @@ private func paintDrawingLabels(_ placed: [PlacedDrawLabel], ctx: CGContext,
 }
 
 func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartColors,
-                  selected: Bool = false, handles: Bool = false, shape: Bool = true) {
-  var g = drawingGeometry(d, bounds: axes.bounds, xOf: axes.x, yOf: axes.y, decimals: axes.decimals)
+                  selected: Bool = false, handles: Bool = false, shape: Bool = true,
+                  series: BarSeries? = nil) {
+  var g = drawingGeometry(d, bounds: axes.bounds, xOf: axes.x, yOf: axes.y, decimals: axes.decimals,
+                          series: series)
   let placedLabels = g.layoutLabels(plotW: axes.layout.plotW, paneY: axes.pane.y, paneH: axes.pane.h,
                                     measure: measureDrawLabel)
   guard !d.hidden else { return }
@@ -1036,10 +1043,12 @@ func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartC
   ctx.setLineDash(phase: 0, lengths: d.dash == .solid ? [] : (d.dash == .dashed ? [6, 4] : [1, 3]))
   // 填充不看选中态：从前「选中就不画底」，于是一拖动矩形／量尺／持仓框，
   // 整块颜色就没了，手一松又回来——闪一下的是这条线自己的身份。
-  if d.filled, shape {
+  // 计算型工具不看 `filled`：那些柱子**就是**这把工具画的东西，不是衬在形状底下的一层色，
+  // 而它们的样式表里根本没有「填充」这个开关（`usesFill == false`），关不掉也不该被关掉。
+  if shape, d.filled || d.kind.isComputed {
     for fill in g.fills {
       guard let first = fill.points.first else { continue }
-      ctx.saveGState(); ctx.setAlpha(0.12); ctx.setFillColor(Paint.cg(paint(fill.tint)))
+      ctx.saveGState(); ctx.setAlpha(fill.opacity ?? 0.12); ctx.setFillColor(Paint.cg(paint(fill.tint)))
       ctx.beginPath(); ctx.move(to: CGPoint(x: first.x, y: first.y))
       for p in fill.points.dropFirst() { ctx.addLine(to: CGPoint(x: p.x, y: p.y)) }
       ctx.closePath(); ctx.fillPath(); ctx.restoreGState()
@@ -1048,7 +1057,13 @@ func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartC
   if shape {
     for line in g.segments {
       ctx.setStrokeColor(Paint.cg(paint(line.tint)))
+      // 成交量分布的价值区上下沿和区间边界是固定画成虚线的，和用户挑的线型无关；
+      // 画完这一段就把线型还回去，别把后面那条实线也带虚了。
+      if line.dashed { ctx.setLineDash(phase: 0, lengths: [4, 3]) }
       ctx.beginPath(); ctx.move(to: CGPoint(x: line.a.x, y: line.a.y)); ctx.addLine(to: CGPoint(x: line.b.x, y: line.b.y)); ctx.strokePath()
+      if line.dashed {
+        ctx.setLineDash(phase: 0, lengths: d.dash == .solid ? [] : (d.dash == .dashed ? [6, 4] : [1, 3]))
+      }
     }
   }
   if shape { paintDrawingLabels(placedLabels, ctx: ctx, colors: t, ink: paint) }

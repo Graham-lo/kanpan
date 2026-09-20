@@ -391,7 +391,11 @@ extension ChartRenderer {
     // 不一样长的字（BTC 看不出来，PEPE 上就是「+0.00」压着「+0.0000147」）。
     let axes = DrawAxes(layout: L, pane: pane, range: r, mode: state.price.mode,
                         view: state.view, decimals: state.decimals)
-    for d in state.drawings where d.id != state.drawingPreviewID { paintDrawing(d, ctx: ctx, axes: axes, colors: state.colors) }
+    // `series` 也必须传：计算型工具（VWAP、成交量分布）的形状是从这段 K 线里算出来的，
+    // 漏了它们在底层就只剩一个手柄，选中覆盖层却画得出来——一选中就多出一整块柱子。
+    for d in state.drawings where d.id != state.drawingPreviewID {
+      paintDrawing(d, ctx: ctx, axes: axes, colors: state.colors, series: state.series)
+    }
   }
 }
 
