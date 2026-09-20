@@ -257,16 +257,48 @@ final class SymbolPickerModel {
     let key = SymbolPrefs.key(symbol)
     guard !key.isEmpty else { return }
     prefs.addFavorite(key, in: currentGroup)
+    // 已经落进一类了就到此为止——那一类就是**他此刻站着的那一类**
+    // （`currentGroup`；停在「全部」时是默认的第一类）。用户 2026-09-20 定的：
+    // 从某一类里点搜索加进来的品种要留在那一类，不再问他归哪儿，也不再按
+    // 资产类型把它挪走。以前这里无论如何都要 `createGroup(加密/美股…)` 再
+    // `assign` 一次，结果是在「短线」里加 BTC，一松手它自己跳去「加密」。
+    guard prefs.groupForSymbol[key] == nil else { commit(); return }
+    // 一个分类都还没有（新用户）才走到这儿：按资产类型开第一类。
     let facts = info ?? self.info(for: key)
     // 目录里还没有这一行、或者它没带 `underlyingType`：我们就是**不知道**它是什么
-    // （审查 B-04），那就不给它编一个分类名。它刚才已经落进用户此刻站着的那一类
-    // （`addFavorite(_:in:)`），一个分类都还没有时落在「没有分类」那格——而那一格
-    // 正是此时自选页显示的东西，所以两种情形下这一行都看得见。等目录到了他自己
+    // （审查 B-04），那就不给它编一个分类名。它此刻落在「没有分类」那格——而那一格
+    // 正是此时自选页显示的东西，所以这一行照样看得见。等目录到了他自己
     // 一拖就归好类，比现在按代号猜一个「加密」强。
     guard FavoriteCategory.knows(symbol: key, info: facts) else { commit(); return }
     let group = prefs.createGroup(FavoriteCategory.name(symbol: key, info: facts))
     prefs.assign(key, to: group)
     commit()
+  }
+
+  /// 第一次启动时一次落一整批默认自选（`DefaultFavorites`，方案第 3 节第四件）。
+  ///
+  /// 不复用 `addFavorite` 逐条加是因为那样是八次落盘、八条同步操作、八次重排，
+  /// 而这八条在用户眼里是**同一件事**（他打开 app 就看见一页自选）。
+  ///
+  /// 只在这台机器上一条自选都没有时算数——手上已经有东西了就什么都不做，
+  /// 谁的表都不许被默认值挤。返回真正加进去的那几条。
+  @discardableResult
+  func seedFavorites(_ list: [String]) -> [String] {
+    guard prefs.favorites.isEmpty, !list.isEmpty else { return [] }
+    for symbol in list { prefs.addFavorite(symbol, in: currentGroup) }
+    let added = prefs.favorites
+    guard !added.isEmpty else { return [] }
+    // 新机器上一个分类都没有：按第一条的资产类型开一类，剩下的跟着进去
+    // （默认那几条全是币，所以就是「加密」那一类）。
+    if prefs.groups.isEmpty {
+      let facts = info(for: added[0])
+      if FavoriteCategory.knows(symbol: added[0], info: facts),
+         let group = prefs.createGroup(FavoriteCategory.name(symbol: added[0], info: facts)) {
+        for symbol in added { prefs.assign(symbol, to: group) }
+      }
+    }
+    commit()
+    return added
   }
 
   /// 给还没分类的自选补一个分类。返回是否真改了东西——调用方据此决定要不要回写。
@@ -291,6 +323,19 @@ final class SymbolPickerModel {
 
   func removeFavorite(_ symbol: String) {
     prefs.removeFavorite(symbol)
+    commit()
+  }
+
+  /// 移除之前替调用方拍一张快照（撤销要用）。
+  func favoriteSnapshot(_ symbol: String) -> FavoriteSnapshot? { prefs.snapshot(of: symbol) }
+
+  /// 撤销「移除自选」：照快照放回原来的位置、分组、置顶位。
+  ///
+  /// 走的是和别处一模一样的 `commit()`——落盘、推同步、重挂行情订阅一样不少，
+  /// 不走 `applySynced` 那条「只存不推」的近路，否则这一下在别的设备上等于没发生。
+  func restoreFavorites(_ items: [FavoriteSnapshot]) {
+    guard !items.isEmpty else { return }
+    prefs.restore(items)
     commit()
   }
 
@@ -457,11 +502,17 @@ final class SymbolPickerModel {
   private func commit() {
     store.save(prefs)
     onPrefsChange?(prefs)
+    // 桌面长按图标那几格摆的是「最近看过」，它就在 `prefs` 里，所以每次存档
+    // 顺手让它跟上。没变就不会真去写系统那张表（`HomeShortcuts.refresh`）。
+    HomeShortcuts.refresh(recents: prefs.recents)
     rebuild()
   }
 
   func useStorage(_ store: SymbolPrefsStore, prefs: SymbolPrefs) {
-    self.store = store; self.prefs = prefs; query = ""; rebuild()
+    self.store = store; self.prefs = prefs; query = ""
+    // 换了档案（登录 / 退登）就是换了一份「最近看过」，桌面那几格要跟着换人。
+    HomeShortcuts.refresh(recents: prefs.recents)
+    rebuild()
   }
   func applySynced(_ value: SymbolPrefs) {
     guard value != prefs else { return }
@@ -493,7 +544,10 @@ final class SymbolPickerModel {
     guard let onMissingSymbol, let section = sections.first, section.kind == .search,
           section.rows.isEmpty else { return }
     let want = SymbolQuery.normalize(query).uppercased()
-    guard want.count >= 3, want.allSatisfy({ $0.isLetter || $0.isNumber }),
+    // 只有「看着就像个合约代号」的词才去问：中文（粘进来的「比特币」）和带
+    // 分隔符的写法都不是代号，问了也是白问一趟。`isLetter` 对汉字是 true，
+    // 所以这儿必须连 `isASCII` 一起要。
+    guard want.count >= 3, want.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }),
           !asked.contains(want), index[want] == nil else { return }
     asked.insert(want)
     Task { [weak self] in

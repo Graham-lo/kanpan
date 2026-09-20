@@ -31,12 +31,18 @@ struct SymbolMatch: Sendable, Equatable, Identifiable {
   var id: String { info.symbol }
 
   /// 名次档，小的排前。同档之间由调用方按 24h 成交额排（`SymbolSections.build`）。
+  ///
+  /// 中文/拼音那两档夹在「最匹配」和字面前缀之间，是用户 2026-09-20 定的顺序：
+  /// 打「bitebi」的人要的就是比特币，它该排在任何一个恰好以 BITEBI… 开头的
+  /// 冷门代号前面；只打首字母「btb」的说法更含糊，再退一档。
   enum Tier: Int, Sendable, Comparable, CaseIterable {
-    case exact = 0             // 搜 ETH → ETHUSDT；搜 ETHUSDT → ETHUSDT
-    case basePrefix = 1        // 搜 ET  → ETHUSDT
-    case symbolPrefix = 2      // 搜 ETHU → ETHUSDT（base 不前缀，但 symbol 前缀）
-    case baseContains = 3      // 搜 TH  → ETHUSDT
-    case symbolContains = 4    // 搜 USD → 任何 USDT 对
+    case exact = 0             // 搜 ETH → ETHUSDT；搜 ETHUSDT → ETHUSDT；搜「比特币」→ BTCUSDT
+    case pinyinFull = 1        // 搜 bitebi / 比特 → BTCUSDT
+    case pinyinInitials = 2    // 搜 btb / tsl → BTCUSDT / TSLAUSDT
+    case basePrefix = 3        // 搜 ET  → ETHUSDT
+    case symbolPrefix = 4      // 搜 ETHU → ETHUSDT（base 不前缀，但 symbol 前缀）
+    case baseContains = 5      // 搜 TH  → ETHUSDT
+    case symbolContains = 6    // 搜 USD → 任何 USDT 对
 
     static func < (a: Tier, b: Tier) -> Bool { a.rawValue < b.rawValue }
   }
@@ -49,10 +55,25 @@ struct SymbolMatch: Sendable, Equatable, Identifiable {
 }
 
 enum SymbolQuery {
-  /// 归一化用户输入：去空白、转大写。空串表示「不过滤」。
+  /// 归一化用户输入：去分隔符、转大写。空串表示「不过滤」。
+  ///
+  /// 同一个合约人有五种写法：`ETH/USDT`（交易所网页的写法）、`ethusdt`、
+  /// `eth usdt`、`$ETH`（推特的写法）、`ETH-USDT`（另一批交易所的写法）。
+  /// 它们指的是同一个东西，所以在比之前**把分隔符全去掉**，五种写法落到
+  /// 同一个 `ETHUSDT` 上（方案第 3 节「搜索流程打磨」第四条）。
+  ///
+  /// 去掉的只有分隔符，字母数字一个不动——「相似的名字不合并」：`ETHFI` 和
+  /// `ETH` 仍然是两个词，靠名次档分先后，不靠模糊匹配凑到一起。
   static func normalize(_ raw: String) -> String {
-    raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    raw.uppercased().filter { !separators.contains($0) }
   }
+
+  /// 写合约时人会顺手打的那些分隔符。中文没有这些字符，所以粘中文不受影响。
+  private static let separators: Set<Character> = [
+    " ", "\t", "\n", "\r", "/", "\\", "-", "_", "$", ".", "·", ":", ",", "\u{00A0}",
+    // 全角的那几个：粘进来的文字常常带着中文输入法打出来的符号。
+    "／", "－", "：", "，", "、", "　",
+  ]
 
   /// 过滤 + 排名。`list` 的相对顺序在同档内保持不变。
   static func match(_ list: [SymbolInfo], query raw: String) -> [SymbolMatch] {
@@ -81,17 +102,26 @@ enum SymbolQuery {
 
     let inBase = firstIndex(of: needle, in: base)
     let inSymbol = firstIndex(of: needle, in: symbol)
+    // 中文名 / 全拼 / 首字母那一侧（`SymbolAliases`）。字面没命中也可能是它命中。
+    let alias = SymbolAliases.tier(base: info.base, query: q)
     // 原型的口径：symbol 含 或 base 含。base ⊂ symbol，所以 inSymbol 为空即落选。
-    guard inBase != nil || inSymbol != nil else { return nil }
+    guard inBase != nil || inSymbol != nil else {
+      guard let alias else { return nil }
+      // 别名命中时高亮留空：命中的是「比特币」这三个字，不是 `BTCUSDT` 里的某一段，
+      // 在代号上划一条高亮只会指错地方。
+      return SymbolMatch(info: info, tier: alias, highlight: nil)
+    }
 
     // 打全了就该排第一：搜 ETH 出 ETHUSDT，不能被 ETHFIUSDT 挤到后面去；
     // 搜 ETHUSDT 也一样（用户 2026-09-18 定的「首先选最匹配的」）。
-    let tier: SymbolMatch.Tier
+    var tier: SymbolMatch.Tier
     if needle == base || needle == symbol { tier = .exact }
     else if inBase == 0 { tier = .basePrefix }
     else if inSymbol == 0 { tier = .symbolPrefix }
     else if inBase != nil { tier = .baseContains }
     else { tier = .symbolContains }
+    // 两侧都命中就取靠前的那一档。
+    if let alias, alias < tier { tier = alias }
 
     // 高亮永远落在 symbol 上：优先用 base 里的位置（和 symbol 下标一致），
     // 没有就用 symbol 里的位置。

@@ -47,6 +47,8 @@ struct SymbolSearchView: View {
   @Environment(\.panelTheme) private var theme
   @FocusState private var focused: Bool
   @State private var askClear = false
+  /// 剪贴板里像是有个能搜的东西（只在这一页出现的那一刻看一次，见 `ClipboardSymbol`）。
+  @State private var offerPaste = false
 
   private var seed: PaletteSeed { theme.seed }
   private var colors: ChartColors { Palette.chart(seed, redUp: redUp) }
@@ -80,6 +82,8 @@ struct SymbolSearchView: View {
       searchBar
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 0) {
+          // 剪贴板里像是有个品种时，最上面摆一个系统的粘贴按钮。
+          if !searching, offerPaste { clipboardRow }
           if searching { results } else { resting }
           Color.clear.frame(height: 26)
         }
@@ -100,7 +104,10 @@ struct SymbolSearchView: View {
     .task {
       model.setSectionsActive(true)
       await model.appear()
-      focused = true
+      // 键盘不自己起来（用户 2026-09-18 定的，记忆 kanpan-symbol-search-keyboard）：
+      // 这一页进来先给他看历史词和最近看过，要打字他自己点输入框。
+      // 以前这儿有一句 `focused = true`，一进页面键盘就糊上来半屏。
+      await lookAtClipboard()
     }
     .onDisappear {
       focused = false
@@ -295,6 +302,50 @@ struct SymbolSearchView: View {
         .onAppear { onVisible?(row.id); onRowVisibility?(row.id, true) }
         .onDisappear { onRowVisibility?(row.id, false) }
     }
+  }
+
+  // ---------------------------------------------------------------- 剪贴板那一行
+
+  /// 剪贴板那一行：系统自己的粘贴按钮，一按就走。
+  ///
+  /// 用系统按钮而不是我们自己画一行「打开 SOL」的原因写在 `ClipboardSymbol`
+  /// 文件头：想在按之前就知道剪贴板里是什么，就得先弹一次「允许粘贴？」。
+  /// 这颗按钮上的字（「粘贴」）和图标由系统画，我们只给它一个色。
+  /// 不写「检测到剪贴板内容」之类的说明——他自己刚复制的，不用我们告诉他。
+  private var clipboardRow: some View {
+    HStack(spacing: 0) {
+      PasteButton(payloadType: String.self) { items in
+        guard let text = items.first else { return }
+        takePasted(text)
+      }
+      .labelStyle(.titleAndIcon)
+      .buttonBorderShape(.capsule)
+      .tint(theme.amber)
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 16)
+    .frame(height: 44)
+    .accessibilityIdentifier("search.clipboard")
+  }
+
+  /// 他按了粘贴：认得出来就直接开那张图，认不出来就把这段文字填进搜索框
+  /// ——他刚亲手交过来的东西，总得有个去处，不能按完什么都没发生。
+  private func takePasted(_ text: String) {
+    offerPaste = false
+    if let info = ClipboardSymbol.resolve(text, catalog: model.catalog) {
+      pick(info)
+      return
+    }
+    let one = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !one.isEmpty, one.count <= 32, !one.contains("\n") else { return }
+    model.query = one
+  }
+
+  /// 进页面的那一刻看一眼剪贴板。里面没有能搜的文字就什么都不摆。
+  private func lookAtClipboard() async {
+    guard await ClipboardSymbol.hasText() else { return }
+    guard !searching else { return }
+    offerPaste = true
   }
 
   /// 选中一个品种：把这一次搜的词记下来（真搜到了才算数），再交给宿主换图。

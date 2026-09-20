@@ -1,0 +1,1 @@
+../../../Kanpan/Symbols/ClipboardSymbol.swift

@@ -47,6 +47,21 @@ struct FavoriteGroup: Codable, Sendable, Equatable, Identifiable {
   }
 }
 
+/// 一条刚被移除的自选，连同它原来站在哪儿。
+///
+/// 只为「已移除 · 撤销」那五秒活着：不落盘、不进同步白名单，撤销完或者提示条过期
+/// 就没人再引用它。`Codable` 只是为了和这个文件里别的值类型一样好测。
+struct FavoriteSnapshot: Codable, Sendable, Equatable {
+  /// 已经规范化过的代号（`SymbolPrefs.key`）。
+  var symbol: String
+  /// 在全局 `favorites` 数组里的下标——自定义顺序的真身就是这个数组。
+  var index: Int
+  /// 原来属于哪一类。`nil` = 未分类。
+  var group: String?
+  /// 原来在 `pinned` 里排第几。`nil` = 没置顶。
+  var pinIndex: Int?
+}
+
 struct SymbolPrefs: Codable, Sendable, Equatable {
   /// 自选，用户自己的顺序（拖排序改的就是它）。
   var favorites: [String] = []
@@ -167,6 +182,39 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     favorites.removeAll { $0 == Self.key(symbol) }
     groupForSymbol.removeValue(forKey: Self.key(symbol))
     pinned.removeAll { $0 == Self.key(symbol) }
+  }
+
+  /// 移除之前先拍一张快照：它站在第几位、属于哪一类、置顶排在第几。
+  ///
+  /// `removeFavorite` 一次抹掉三处（全局顺序、分组归属、置顶位），而 `addFavorite`
+  /// 只会把它 append 到最末、分组还按「当前停在哪一类」重写——原样放回去这三样都得
+  /// 事先记下来。没这个品种就返回 nil（没被移除的东西没有快照）。
+  func snapshot(of symbol: String) -> FavoriteSnapshot? {
+    let s = Self.key(symbol)
+    guard let index = favorites.firstIndex(of: s) else { return nil }
+    return FavoriteSnapshot(symbol: s, index: index,
+                            group: groupForSymbol[s], pinIndex: pinned.firstIndex(of: s))
+  }
+
+  /// 照快照把它们放回原来的位置、分组、置顶位（「已移除 · 撤销」走这条路）。
+  ///
+  /// 按下标从小到大插：快照里的下标是「移除之前」那一刻的，批量删掉三个再一起撤销时
+  /// 从小到大插回去，每一个都正好落回自己原来那一格。分类可能在这五秒里被删掉了，
+  /// 认不出来就让它回到「未分类」，而不是指向一个不存在的分类 id。
+  mutating func restore(_ items: [FavoriteSnapshot]) {
+    for item in items.sorted(by: { $0.index < $1.index }) {
+      let s = Self.key(item.symbol)
+      guard !s.isEmpty, !favorites.contains(s) else { continue }
+      favorites.insert(s, at: min(max(item.index, 0), favorites.count))
+      if let group = item.group, groups.contains(where: { $0.id == group }) {
+        groupForSymbol[s] = group
+      } else {
+        groupForSymbol.removeValue(forKey: s)
+      }
+      if let at = item.pinIndex, !pinned.contains(s) {
+        pinned.insert(s, at: min(max(at, 0), pinned.count))
+      }
+    }
   }
 
   /// `List.onMove` 的口径（IndexSet + 目标下标，目标是「插到原下标 destination 之前」）。

@@ -66,7 +66,10 @@ struct SymbolPickerView: View {
     .task {
       model.setSectionsActive(true)
       await model.appear()
-      searchFocused = true
+      // 进页不自己把键盘顶起来（记忆 kanpan-symbol-search-keyboard，
+      // 方案第 3 节第五件 a）：这一页第一眼是那张品种表，键盘糊上来就盖掉半屏，
+      // 而人多半是进来翻的，不是进来打字的。要打字他自己点那个框。
+      // 以前这儿有一句 `searchFocused = true`。
     }
     .onDisappear {
       filterTask?.cancel()
