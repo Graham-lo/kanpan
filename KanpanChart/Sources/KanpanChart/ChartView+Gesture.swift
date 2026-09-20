@@ -39,9 +39,16 @@ final class GestureState {
   var pinchD0: Double = 0
   var pinchMid0: Double = 0
   var pinchActive = false
+  /// 这一轮手势是从**捏合**降下来的（捏合中途抬掉一根，剩下那根接着拖）。
+  ///
+  /// 降下来之后 `reset()` 把 `moved` 清了零、模式换成 `.pan`，于是「原地抬起剩下那根」
+  /// 完全长得像一次轻点——图上凭空多出一条十字线，`onTapped` 也白响一次（A-03）。
+  /// 剩下那根手指照常能拖（语义不变），但这一轮**不许再被判成轻点**。
+  var cameFromPinch = false
   var directionChosen = false
   var axisStarted = false
-  var lastAxisTap: Double?
+  /// 上一次价格轴轻点：什么时候、点在哪儿。两样都要，见 `handleAxisTap`（A-09）。
+  var lastAxisTap: (ms: Double, y: Double)?
   /// 这次手势总共动了多远（取最大值，不是最后的位移）。判轻点、判长按取消都看它。
   var moved: Double = 0
   var velocity = VelocityTracker()
@@ -60,11 +67,19 @@ final class GestureState {
     longPressActivated = false
     moved = 0
     pinchActive = false
+    cameFromPinch = false
     directionChosen = false
     axisStarted = false
     velocity.reset()
     cancelLongPress()
   }
+
+  /// 价格轴双击的候选到此为止。
+  ///
+  /// `reset()` 有意不清 `lastAxisTap`——双击本来就横跨两次触摸序列，清了就永远凑不成对。
+  /// 但换品种、换周期、视图离屏、状态清空这些事一发生，上一次点的那下就跟现在这张图
+  /// 没关系了，必须在这儿断掉（A-09）。
+  func endAxisTapCandidate() { lastAxisTap = nil }
 
   func cancelLongPress() {
     longPress?.cancel()
@@ -101,6 +116,11 @@ extension ChartView {
 
     let q = gesture.touches[0].location(in: self)
     gesture.reset()
+    // 补历史的门是「一轮手势只喊一次」，不是「这辈子只喊一次」：上一轮喊出去的那次
+    // 要是失败了（断网、接口报错），序列没长、`needsMoreHistory` 还成立，门却一直关着——
+    // 用户在左缘再怎么拖都不会再请求一次，除非他先滑走再滑回来。手指重新落下就是
+    // 一次新的意图，门在这儿重新打开；一轮之内仍然只喊一次，不会每帧重复请求（A.5 用例 13）。
+    gesture.askedHistory = false
     gesture.startPoint = q
     gesture.startView = state?.view ?? gesture.startView
     gesture.startTransform = state?.price ?? PriceTransform()
@@ -193,6 +213,17 @@ extension ChartView {
     let now = Self.ms(event)
     let wasPinch = gesture.mode == .pinch
     let endPoint = touches.first?.location(in: self) ?? gesture.startPoint
+    // A-09：双击候选只在「连着来的两次轴上轻点」之间传递。先摘下来再清掉——
+    // 这一轮但凡不是轴上轻点（捏合、拖图、长按十字线、被系统打断……），它就作废了，
+    // 否则「点一下轴 → 拖半天图 → 再点一下轴」会被拼成双击，主图莫名其妙上下翻转。
+    let axisTapCandidate = gesture.lastAxisTap
+    gesture.lastAxisTap = nil
+    // A-04：不管下面走哪条 early return，最后一根手指离开画布时**几何上的收尾必须做完**。
+    // `touchesBegan` 一按下就把 `animation` 掐了；这一下要是正好落在回弹中途，视野就停在
+    // 硬夹之外的半途，而轻点 / 长按 / 轴双击 /「A」徽章这几条分支各自 return，没人管它——
+    // 那片弹性空白就永久留在图上了。业务可以不做，几何不能不收。
+    // `animation != nil` 说明这条分支自己已经起了动画（甩出去、回弹），别去打断它。
+    defer { if gesture.touches.isEmpty, animation == nil { settleGeometry() } }
     if cancelled {
       gesture.touches.removeAll(); gesture.reset(); animation = nil
       state?.axisScaleAnchor = nil
@@ -214,6 +245,8 @@ extension ChartView {
         let q = t.location(in: self)
         gesture.reset()
         gesture.mode = .pan
+        // 但这一轮的身世要留着：原地抬起剩下那根手指不是轻点（A-03）。
+        gesture.cameFromPinch = true
         gesture.startPoint = q
         gesture.startView = state?.view ?? gesture.startView
         gesture.startTransform = state?.price ?? PriceTransform()
@@ -232,6 +265,7 @@ extension ChartView {
     state?.axisScaleAnchor = nil
     let wasLongPress = gesture.longPressActivated
     let moved = gesture.moved
+    let cameFromPinch = gesture.cameFromPinch
     // 抬手位置要在 `gesture.reset()` 之前拿——「A」徽章判「手指有没有跑出去」要用。
     gesture.velocity.add(x: Double(endPoint.x), t: now)
     let v = gesture.velocity.velocity
@@ -243,7 +277,9 @@ extension ChartView {
     }
 
     if wasLongPress { finishCrosshairSelection(); return }
-    if (mode == .pan || mode == .crosshair), moved < Chart.panSlopPt * 2 {
+    // 捏合降下来的那一轮不判轻点：`reset()` 刚把 `moved` 清零，原地抬手看上去和轻点
+    // 一模一样，但用户的意思是「结束这次缩放」，不是「点一下图」（A-03）。
+    if (mode == .pan || mode == .crosshair), moved < Chart.panSlopPt * 2, !cameFromPinch {
       handleTap(at: now)
       return
     }
@@ -265,7 +301,7 @@ extension ChartView {
       return
     }
     if mode == .axisPrice, moved < Chart.panSlopPt * 2 {
-      handleAxisTap(at: now)
+      handleAxisTap(at: now, point: endPoint, previous: axisTapCandidate)
       return
     }
     if mode == .pan, state?.crosshair == nil {
@@ -341,8 +377,15 @@ extension ChartView {
       gesture.pinchD0 = d; gesture.pinchMid0 = m; gesture.pinchActive = false
       return
     }
+    // 缩放要越过死区才认：两指之间那点抖动不该被读成缩放。但**平移不看这个门槛**——
+    // 两指保持距离一起往旁边挪，那就是明明白白的平移，从前它被这条 `return` 整个吃掉，
+    // 于是「两指按住图挪」纹丝不动，非得先捏一下改了倍数才肯跟着走（A-06）。
+    // 死区期间 `pinchD0` 不跟着每一帧走：跟了就永远越不过门槛（慢慢撑开等于没撑）。
     if !gesture.pinchActive {
-      guard abs(d - gesture.pinchD0) > 2 * Chart.panSlopPt else { return }
+      guard abs(d - gesture.pinchD0) > 2 * Chart.panSlopPt else {
+        panPinch(mid: m, L: L)
+        return
+      }
       gesture.pinchActive = true
     }
     let spacing = s.view.barSpacing(step: s.series.step, plotW: L.plotW)
@@ -357,6 +400,21 @@ extension ChartView {
     state = s
     viewDidChange(s.view)
     reportZoomLimit(s.view, L: L)
+  }
+
+  /// 两指整体位移：中点挪了多少，图就跟着挪多少（A-06）。
+  ///
+  /// 和捏合里那段平移的差别只有一处：这里不做 `mode4`（视野右缘贴着末根时按住不动）。
+  /// 那条规矩是给**缩放**用的——在最新位置捏合时把末根钉住，中点的漂移不算数；
+  /// 可若把它套到纯平移上，就成了「停在最新时两指怎么拖都不动」，正是要修的那个毛病。
+  /// 纵向一点不碰：两指平移只改时间窗，价格轴归价格轴的手势管。
+  private func panPinch(mid m: Double, L: Layout) {
+    defer { gesture.pinchMid0 = m }
+    let dx = m - gesture.pinchMid0
+    guard var s = state, abs(dx) > 0 else { return }
+    s.view = clamp(s.view.dragged(byFingerPx: dx, plotW: L.plotW), plotW: L.plotW)
+    state = s
+    viewDidChange(s.view)
   }
 
   private func twoFinger() -> (d: Double, mid: Double) {
@@ -467,11 +525,15 @@ extension ChartView {
   /// 双击 = 主图上下翻转（前提是设置里开了「主轴允许翻转」，默认没开）。翻转会让整张图的
   /// 形态全反过来、副图还不跟着翻，实测一次误触就足以让人以为行情崩了；所以它必须是个
   /// 「我确实要这么干」的手势，而且翻完要说一句——不然用户只知道图不对，不知道怎么翻回去。
-  private func handleAxisTap(at now: Double) {
+  private func handleAxisTap(at now: Double, point: CGPoint, previous: (ms: Double, y: Double)?) {
     guard let L = chartLayout, gesture.startPoint.y < L.mainH else { return }
-    let isDouble = gesture.lastAxisTap.map { now - $0 < 300 } ?? false
+    // 「连着来的两下」要同时满足两件事：时间上 300ms 以内，位置上不超过一个手指的宽度
+    // （44pt，和系统的最小触控目标同一个尺度）。只看时间不行——轴很长，从轴顶点一下、
+    // 半秒后在轴底又点一下，那是两次「恢复自动纵向缩放」，不是一次翻转（A-09）。
+    // 中间插进任何别的手势时，候选在 `processTouchEnd` 里就已经作废了。
+    let isDouble = previous.map { now - $0.ms < 300 && abs(Double(point.y) - $0.y) < 44 } ?? false
     guard isDouble else {
-      gesture.lastAxisTap = now
+      gesture.lastAxisTap = (ms: now, y: Double(point.y))
       resetPriceScale()
       return
     }
@@ -546,6 +608,18 @@ extension ChartView {
       self.viewDidChange(cur.view)
       return done || hit
     }
+  }
+
+  /// 几何收尾：视野已经落在硬夹之内就什么都不做，在外面就把它送回去（A-04）。
+  ///
+  /// 和 `settleView()` 的分工：那个是「该回弹就回弹」的动作，这个是「手指都走了，
+  /// 保证图不停在半途」的兜底。没超界就一句不响，免得每次轻点都白发一轮视野变更通知。
+  private func settleGeometry() {
+    guard let s = state, let L = chartLayout, s.view.span > 0 else { return }
+    let target = clamp(s.view, plotW: L.plotW)
+    let offPx = abs(target.to - s.view.to) / s.view.span * L.plotW
+    guard offPx > 0.01 || abs(target.span - s.view.span) / s.view.span > 1e-9 else { return }
+    settleView()
   }
 
   /// 两端单指拉出的空白松手回对应边界，历史窗口不被拉回最新。

@@ -62,6 +62,13 @@ public enum ViewMath {
                      series: series, plotW: plotW, anchor: anchor)
   }
 
+  /// 换周期：根宽（一根占多少像素）照旧，看见的时间跨度跟着新周期走。
+  ///
+  /// `anchorRight` 是「切之前视野的右缘时刻」，只有在**看历史**的时候才该传：
+  /// 人正翻着三个月前的那一段，切个周期就被送回最新，等于把刚找到的位置弄丢了（A-05）。
+  /// 反过来，**跟着最新**的时候必须传 nil——那时右缘本来就该重新贴到新序列的末根上，
+  /// 拿旧右缘去夹会在右边留下一截空白（新周期的末根时间往往比旧的更靠后）。
+  /// 「在看历史还是跟着最新」由调用方判断（它才知道切之前那张图的状态）。
   public static func switchInterval(to series: BarSeries, plotW: Double, spacing: Double,
                                     anchorRight: Double?) -> ViewWindow {
     let latest = reset(series: series, plotW: plotW, spacing: spacing)

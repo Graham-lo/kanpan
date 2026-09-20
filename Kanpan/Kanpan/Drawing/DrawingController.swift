@@ -159,10 +159,22 @@ final class DrawingController: ObservableObject {
     try store.save(value)
   }
   /// 三段式里的「发布」那一段：内存与界面换成刚落下去的那一版。
+  ///
+  /// **只有当前这个品种那一桶真的变了，才去动图。** 存档是所有品种共用的一份，
+  /// 别的设备上给 ETH 画了一条线，推下来整份存档就不等了；从前这里无条件调
+  /// `chart.setDrawings`，而那一句会把撤销栈、选中项、半截交互态全清掉——
+  /// 人正在 BTC 上画，撤销突然就撤不回去了（A-07）。
+  ///
+  /// 桶没变时照样更新 `archive` 与偏好：那两样本来就该跟着云端走，
+  /// 它们不碰图上的编辑历史。
   func publishSynced(_ value: DrawArchive) {
     guard value != archive else { return }
+    // 判据搬去了 Core（`DrawArchive.bucketChanged`），这样它能被单测盖住——
+    // 这条控制器没有任何壳测试包够得着（A.5 用例 8）。
+    let changed = value.bucketChanged(from: archive, symbol: symbol)
     archive = value; preferences = value.preferences
-    chart?.setDrawings(value[symbol]); applyPreferences(); sync()
+    if changed { chart?.setDrawings(value[symbol]) }
+    applyPreferences(); sync()
   }
   private func sync() {
     guard let chart else { return }

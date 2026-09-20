@@ -57,6 +57,12 @@ public final class ChartView: UIView {
           next.crosshair = nil
           state = next
         }
+        // 换品种 / 换周期 = 换了一张图，上一张图上那次轴轻点跟现在没关系了（A-09）。
+        // 补历史的门同理：那次「已经喊过了」记的是上一张图的账（A.5 用例 13）。
+        if old.series.symbol != next.series.symbol || old.series.interval != next.series.interval {
+          gesture.endAxisTapCandidate()
+          gesture.askedHistory = false
+        }
       }
       adopt(old: oldValue)
     }
@@ -239,7 +245,7 @@ public final class ChartView: UIView {
     super.didMoveToWindow()
     if window == nil {
       animation = nil
-      gesture.touches.removeAll(); gesture.reset()
+      gesture.touches.removeAll(); gesture.reset(); gesture.endAxisTapCandidate()
       state?.axisScaleAnchor = nil
       // 不在窗口上就没有帧可跑；脏位留着，回来再刷。
       link?.invalidate()
@@ -287,7 +293,7 @@ public final class ChartView: UIView {
   private func adopt(old: ChartState?) {
     guard let s = state else {
       animation = nil
-      gesture.touches.removeAll(); gesture.reset()
+      gesture.touches.removeAll(); gesture.reset(); gesture.endAxisTapCandidate()
       fireCrosshairChanged(nil)
       onStateChanged?(nil)
       renderer = nil

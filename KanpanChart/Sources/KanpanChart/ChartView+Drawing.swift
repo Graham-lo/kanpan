@@ -25,7 +25,10 @@ final class DrawingSession {
     /// `startView` 一样：累加会把手指抖动的浮点误差一路攒进端点里。
     var from: Drawing
     var start: CGPoint
-    var axes: DrawAxes
+    // 这里从前还存过一份**按下那一刻的坐标换算**（`axes`），`applyDrag` 拿它遮蔽实时的
+    // `axes` 参数。于是拖动过程中行情推动自动纵轴、价格区间一变，落地的价格还是按旧轴算的，
+    // 手指在这儿、线落在那儿（A-08）。基准只需要 `from` + `start` 这两样就够了：
+    // 前者保证不逐帧累加，后者给出位移；换算一律用**当前这一帧**的。
   }
 
   var tool: DrawingStore.Tool?
@@ -67,8 +70,14 @@ final class DrawingSession {
 private nonisolated(unsafe) let drawingSessionKey =
   UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
 
-/// 「轻点」的时长上限（§10.8：按下到抬起 < 200ms 且位移 < 4pt 才算落笔）。
-/// 位移那一半复用 `Chart.panSlopPt`，两处是同一个 4pt。
+/// 「轻点」的时长上限：按下到抬起 < 500ms 且位移 < 4pt 才算落笔。
+///
+/// §10.8 的原文写的是 200ms，那是照着鼠标的 click 抄来的数。手指不是鼠标——落笔要先
+/// 瞄准，指腹压上去、看一眼落点再抬起，200ms 根本来不及，实测一大半「点」会被判成
+/// 没动够距离的拖动而整个丢掉。所以**这里以 500ms 为准，不改回 200ms**（第五轮审查
+/// A.4 的裁决）；真正把「点」和「拖」分开的是位移那一半，它复用 `Chart.panSlopPt`，
+/// 和图表手势是同一个 4pt。长按（`Chart.longPressMs` = 400ms）走的是另一条路，
+/// 手指一旦停住到 400ms 就被十字线接走，不会跟这 500ms 抢。
 private let drawTapMs: Double = 500
 
 extension ChartView {
@@ -165,6 +174,14 @@ extension ChartView {
   public var drawings: [Drawing] { state?.drawings ?? [] }
 
   /// 整批换线（切品种、从磁盘读回来）。撤销栈一并清掉：两个品种的线互不相干。
+  /// **整批外部替换**：换品种、换存储、云端推下来的那一桶真的变了，才走这儿。
+  ///
+  /// 它和「本地交互编辑」是两套撤销策略：本地每一笔编辑都进 `drawing.history`，撤销
+  /// 一步步往回走；而外部替换是「这张图上的线换了一整套」，上一套的撤销步骤全部失效
+  /// （撤回去会撤成别人那份数据的中间态），所以这里把撤销栈连同选中项、半截交互态一起清掉。
+  ///
+  /// 正因为代价是整条撤销历史，调用方有责任先确认**当前这一桶**真的变了——
+  /// 别的品种的云端变化不该清掉本图的撤销历史（A-07，见 `DrawingController.publishSynced`）。
   public func setDrawings(_ items: [Drawing]) {
     guard var s = state else { return }
     s.drawingPreviewID = nil
@@ -331,6 +348,56 @@ extension ChartView {
   }
 }
 
+/// 量一行画线标签有多宽多高。
+///
+/// 命中测试与渲染共用这一个入口：两边各量各的，排出来的位置就会差那么几个像素，
+/// 「看得见的字」和「点得中的字」也就对不上了（A-01）。
+func measureDrawLabel(_ text: String) -> DrawTextSize {
+  let size = ChartFont.measure(text, ChartFont.axis)
+  return DrawTextSize(width: Double(size.width), height: Double(size.height))
+}
+
+/// 拖锚点时浮在手指上的那只圆镜头摆在哪儿（A.5 用例 18）。
+///
+/// 单拎出来是因为这三件事必须能被单测，而画它的 `readout` 要 `CGContext` 才跑得起来：
+///
+/// - **同源**：镜子里放大的就是这一帧的图（`captureDrawingLoupe` 抓的那张），圆心对准
+///   锚点 `q`，所以「看见的」和「落下的」永远是同一处；`source` 就是被放大的那块原图区域。
+/// - **不挡落点**：默认浮在手指上方 95pt。锚点贴着主图顶边时上面摆不下——原来的写法
+///   是把镜头夹到 `pane.y + 42`，于是镜头自己压住了落点，放大镜就白装了；现在上面
+///   放不下就翻到手指**下方**，上下都放不下才横着让开一格。
+/// - **不越界**：整只镜头留在主图区里，不压到价格轴和副图上。
+struct DrawLoupeFrame {
+  /// 镜心（屏幕坐标）。
+  var center: CGPoint
+  /// 镜头的外接方框，圆就内切在里面。
+  var box: CGRect
+  /// 放大倍数。
+  var scale: Double
+  /// 镜子里那块被放大的原图区域（屏幕坐标）。圆心正是锚点。
+  var source: CGRect
+
+  init(at q: CGPoint, plotW: Double, pane: Pane, scale: Double = 1.8) {
+    let halfW = 43.0, halfH = 33.0, lift = 95.0
+    let top = pane.y, bottom = pane.y + pane.h
+    var cx = max(halfW + 5, min(plotW - halfW - 5, Double(q.x)))
+    var cy = Double(q.y) - lift
+    if cy - halfH < top {
+      cy = Double(q.y) + lift                      // 上面摆不下：翻到手指下方
+      if cy + halfH > bottom {                     // 上下都摆不下：贴住能放的位置，横着让开
+        cy = max(top + halfH, min(bottom - halfH, Double(q.y)))
+        let side = Double(q.x) > plotW / 2 ? -(halfW + 20) : (halfW + 20)
+        cx = max(halfW + 5, min(plotW - halfW - 5, Double(q.x) + side))
+      }
+    }
+    self.center = CGPoint(x: cx, y: cy)
+    self.box = CGRect(x: cx - halfW, y: cy - halfH, width: halfW * 2, height: halfH * 2)
+    self.scale = scale
+    self.source = CGRect(x: Double(q.x) - halfW / scale, y: Double(q.y) - halfH / scale,
+                         width: halfW * 2 / scale, height: halfH * 2 / scale)
+  }
+}
+
 // MARK: - 坐标
 
 /// 这一帧的四个换算：时间↔x、价格↔y。
@@ -369,17 +436,61 @@ extension ChartView {
       series: s.series, magnet: drawing.magnet, xOf: axes.x, yOf: axes.y)
   }
 
+  /// 一条线这一帧的几何，外加它那些字**排好版之后**真正盖住的矩形。
+  ///
+  /// 排版走的是和画图同一个入口（`layoutLabels` → `placeDrawingLabels`），量字用的也是
+  /// 同一支字体、同一份小数位，所以屏幕上看得见多大一块，手指就能点中多大一块（A-01）。
+  func drawGeometry(_ item: Drawing, axes: DrawAxes) -> DrawGeometry {
+    var g = drawingGeometry(item, bounds: axes.bounds, xOf: axes.x, yOf: axes.y,
+                            decimals: axes.decimals)
+    g.layoutLabels(plotW: axes.layout.plotW, paneY: axes.pane.y, paneH: axes.pane.h,
+                   measure: measureDrawLabel)
+    return g
+  }
+
+  /// 点在哪条线的哪个部位上。
+  ///
+  /// 三遍，一遍比一遍松，**整层比完才往下一层**：
+  ///
+  /// ① **手柄**。选中那条给 `Chart.selectedHandlePt`（22pt）的手指靶，别的按
+  ///    `Chart.hitHandlePt`（9.5pt）。同一遍里比的是真实距离，所以两条线的端点凑在一起时
+  ///    谁近点中谁；选中项在同样够得着的时候优先——那是用户正在编辑的那组端点。
+  /// ② **看得见的墨**：线体与文字。比的还是真实距离，一样近就让上面那条赢。
+  /// ③ **填充区**。整片都算，所以它必须垫底。
+  ///
+  /// 从前是「选中那条先整只判一遍，`handleRadius: 22`」——那个 22pt 顺手把线体和整块填充
+  /// 也放大了，而且一命中就提前返回：选中一个矩形之后，压在它里面的趋势线、它自己的
+  /// 手柄以外的一切，全被这块填充吞掉（A-02）。
   fileprivate func drawHitTest(_ q: CGPoint, axes: DrawAxes) -> DrawHit? {
     guard state?.options.drawings == true, axes.bounds.contains(DrawPixel(Double(q.x), Double(q.y))) else { return nil }
-    // The selected object's handles get a finger-sized target and priority over
-    // crossing lines. Unselected drawings keep their narrower selection hit area.
-    if let item = drawings.first(where: { $0.id == drawing.selected && !$0.hidden }) {
-      let g = drawingGeometry(item, bounds: axes.bounds, xOf: axes.x, yOf: axes.y)
-      if let part = g.hit(x: Double(q.x), y: Double(q.y), handleRadius: 22) { return DrawHit(id: item.id, part: part) }
+    let x = Double(q.x), y = Double(q.y)
+    // 后画的在上面，所以从后往前遍历：同样近的时候先到的那条就是上面那条。
+    let visible = drawings.reversed().filter { !$0.hidden }
+    let shapes = visible.map { (item: $0, geometry: drawGeometry($0, axes: axes)) }
+
+    var handle: (hit: DrawHit, distance: Double, selected: Bool)?
+    for shape in shapes {
+      let selected = shape.item.id == drawing.selected
+      let radius = selected ? Chart.selectedHandlePt : Chart.hitHandlePt
+      guard let near = shape.geometry.nearestHandle(x: x, y: y, radius: radius) else { continue }
+      let better = handle.map { old in
+        old.selected == selected ? near.distance < old.distance : selected
+      } ?? true
+      if better {
+        handle = (DrawHit(id: shape.item.id, part: .anchor(near.index)), near.distance, selected)
+      }
     }
-    for item in drawings.reversed() where !item.hidden {
-      let g = drawingGeometry(item, bounds: axes.bounds, xOf: axes.x, yOf: axes.y)
-      if let part = g.hit(x: Double(q.x), y: Double(q.y)) { return DrawHit(id: item.id, part: part) }
+    if let handle { return handle.hit }
+
+    var ink: (hit: DrawHit, distance: Double)?
+    for shape in shapes {
+      guard let d = shape.geometry.inkDistance(x: x, y: y) else { continue }
+      if ink == nil || d < ink!.distance { ink = (DrawHit(id: shape.item.id, part: .body), d) }
+    }
+    if let ink { return ink.hit }
+
+    for shape in shapes where shape.geometry.hitsFill(x: x, y: y) {
+      return DrawHit(id: shape.item.id, part: .body)
     }
     return nil
   }
@@ -409,6 +520,10 @@ extension ChartView {
       if let drag = d.drag, var s = state, let i = s.drawings.firstIndex(where: { $0.id == drag.id }) {
         s.drawings[i] = drag.from; s.drawingPreviewID = nil; state = s
       }
+      // 放大镜也要跟着这一程一起结束：它扣着一张整屏位图（`DrawLoupe.image`），
+      // 这一指既然转交给捏合了，镜子既没人看也没人再更新，留着就是一张压在内存里
+      // 的死图，还会跟着后面的缩放一起被画出来（A.5 用例 18「二指介入 → 释放无残留」）。
+      d.loupe = nil
       d.preview = nil; d.drag = nil; d.claimed = nil; d.aim = nil; d.navigating = true
       touchesBegan(Set([claimed]).union(touches), with: event)
       drawingChanged(); return
@@ -467,7 +582,7 @@ extension ChartView {
       captureDrawingLoupe()
       d.preview = from
       s.drawingPreviewID = from.id
-      d.drag = DrawingSession.Drag(id: hit.id, part: hit.part, from: from, start: q, axes: axes)
+      d.drag = DrawingSession.Drag(id: hit.id, part: hit.part, from: from, start: q)
       s.crosshair = nil          // 拖线的时候十字线碍事
       state = s
       drawingChanged()
@@ -501,6 +616,10 @@ extension ChartView {
       return
     }
     d.claimed = nil
+    // 放大镜的底图是一整张屏幕大的位图，只在这一程拖动里有用。原来只有
+    // `teardownDrawingLink`（离窗）才收，于是一次拖动之后它一直压在会话里，
+    // 下一次按下再抓一张新的——「释放无残留」这条得在抬手这一刻就成立（A.5 用例 18）。
+    d.loupe = nil
     let axes = drawAxes
 
     if let drag = d.drag, var s = state, let i = s.drawings.firstIndex(where: { $0.id == drag.id }) {
@@ -657,9 +776,14 @@ extension ChartView {
 
   // MARK: - 拖
 
+  /// 把这一帧的手指位置落成预览线。
+  ///
+  /// `axes` 是**当前这一帧**的换算，不是按下那一刻的：拖动期间行情照样在推，自动纵轴
+  /// 会随着新高新低重算，价格区间一变，同一个价格对应的 y 就换了地方。按旧轴算出来的
+  /// 价格落回新轴上就是偏的——手指在这儿，线在那儿（A-08）。不逐帧累加这件事由
+  /// `drag.from` + `drag.start` 保证，和坐标用哪一帧是两回事。
   private func applyDrag(to q: CGPoint, axes: DrawAxes) {
     guard let drag = drawing.drag else { return }
-    let axes = drag.axes
     let dx = Double(q.x - drag.start.x), dy = Double(q.y - drag.start.y)
     var item = movedDrawing(drag.from, part: drag.part, dt: dx / axes.layout.plotW * axes.view.span,
                             priceShift: { axes.p(atY: axes.y($0) + dy) })
@@ -827,10 +951,12 @@ final class DrawingOverlayView: UIView {
   ) {
     guard let s = host.state else { return }
     if let backdrop = host.drawing.loupe {
-      let center = CGPoint(x: max(48, min(axes.layout.plotW - 48, Double(q.x))), y: max(axes.pane.y + 42, Double(q.y) - 95))
-      let box = CGRect(x: center.x - 43, y: center.y - 33, width: 86, height: 66)
+      let lens = DrawLoupeFrame(at: q, plotW: axes.layout.plotW, pane: axes.pane)
+      let center = lens.center, box = lens.box
       ctx.saveGState(); ctx.addEllipse(in: box); ctx.clip()
-      ctx.translateBy(x: center.x, y: center.y); ctx.scaleBy(x: 1.8, y: 1.8)
+      ctx.translateBy(x: center.x, y: center.y); ctx.scaleBy(x: lens.scale, y: lens.scale)
+      // 底图整张平移到「锚点落在镜心」，所以镜子里放大的就是 `q` 周围那一块，
+      // 和手指真正会落下的地方同源——这是用例 18 的第一条断言。
       backdrop.draw(at: CGPoint(x: -q.x, y: -q.y)); ctx.restoreGState()
       ctx.setStrokeColor(Paint.cg(s.colors.amber)); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: box)
       ctx.beginPath(); ctx.move(to: CGPoint(x: center.x - 7, y: center.y)); ctx.addLine(to: CGPoint(x: center.x + 7, y: center.y))
@@ -867,27 +993,16 @@ final class DrawingOverlayView: UIView {
 /// **避让。** 斐波那契一口气铺七八档，缩放到某个倍数上相邻两档只差三四个像素，
 /// 几串数字糊在一起谁也认不出。先按纵向排一遍，横向真的有交叠就把后来的那条
 /// 往下让一行；让到图外就干脆不画——图上少一档刻度，好过多一团墨。
-private func paintDrawingLabels(_ labels: [DrawLabel], ctx: CGContext, axes: DrawAxes,
+///
+/// 排版本身（夹进图区、往下让行、让到图外就不画）已经搬去 Core 的 `placeDrawingLabels`，
+/// 因为命中测试要的就是这批矩形——画多大一块、点中多大一块，得是同一份算式（A-01）。
+/// 这里只剩「照着排好的位置把底板和字画出来」。
+private func paintDrawingLabels(_ placed: [PlacedDrawLabel], ctx: CGContext,
                                 colors t: ChartColors, ink: (DrawTint) -> Hex) {
-  guard !labels.isEmpty else { return }
-  let lineH = 13.0
-  var placed: [CGRect] = []
-  for label in labels.sorted(by: { $0.point.y < $1.point.y }) where !label.text.isEmpty {
-    let size = ChartFont.measure(label.text, ChartFont.axis)
-    let w = Double(size.width)
-    // 横向先夹进图区；胶囊左右各留 4pt 的内边，所以夹的是含内边的那个宽度。
-    let pad = label.plate == .none ? 0.0 : 4.0
-    let half = w / 2 + pad
-    let cx = max(half + 2, min(axes.layout.plotW - half - 2, label.centered ? label.point.x : label.point.x - w / 2))
-    var cy = label.centered ? label.point.y : label.point.y - Double(size.height) / 2
-    var rect = CGRect(x: cx - half, y: cy - lineH / 2, width: half * 2, height: lineH)
-    var tries = 0
-    while tries < 16, placed.contains(where: { $0.intersects(rect) }) {
-      cy += lineH; tries += 1
-      rect = CGRect(x: cx - half, y: cy - lineH / 2, width: half * 2, height: lineH)
-    }
-    guard cy - lineH / 2 >= axes.pane.y, cy + lineH / 2 <= axes.pane.y + axes.pane.h else { continue }
-    placed.append(rect)
+  for item in placed {
+    let label = item.label
+    let rect = CGRect(x: item.box.left, y: item.box.top,
+                      width: item.box.right - item.box.left, height: item.box.bottom - item.box.top)
     let tint = ink(label.tint)
     switch label.plate {
     case .none: break
@@ -898,14 +1013,16 @@ private func paintDrawingLabels(_ labels: [DrawLabel], ctx: CGContext, axes: Dra
     case .chip:
       ctx.setFillColor(Paint.cg(tint)); ctx.addRoundRect(rect, radius: 3); ctx.fillPath()
     }
-    label.text.drawCentered(at: CGPoint(x: cx, y: cy), font: ChartFont.axis,
+    label.text.drawCentered(at: CGPoint(x: item.center.x, y: item.center.y), font: ChartFont.axis,
                             color: label.plate == .chip ? t.bg : tint)
   }
 }
 
 func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartColors,
                   selected: Bool = false, handles: Bool = false, shape: Bool = true) {
-  let g = drawingGeometry(d, bounds: axes.bounds, xOf: axes.x, yOf: axes.y, decimals: axes.decimals)
+  var g = drawingGeometry(d, bounds: axes.bounds, xOf: axes.x, yOf: axes.y, decimals: axes.decimals)
+  let placedLabels = g.layoutLabels(plotW: axes.layout.plotW, paneY: axes.pane.y, paneH: axes.pane.h,
+                                    measure: measureDrawLabel)
   guard !d.hidden else { return }
   let color = d.color ?? t.band
   ctx.saveGState(); defer { ctx.restoreGState() }
@@ -934,7 +1051,7 @@ func paintDrawing(_ d: Drawing, ctx: CGContext, axes: DrawAxes, colors t: ChartC
       ctx.beginPath(); ctx.move(to: CGPoint(x: line.a.x, y: line.a.y)); ctx.addLine(to: CGPoint(x: line.b.x, y: line.b.y)); ctx.strokePath()
     }
   }
-  if shape { paintDrawingLabels(g.labels, ctx: ctx, axes: axes, colors: t, ink: paint) }
+  if shape { paintDrawingLabels(placedLabels, ctx: ctx, colors: t, ink: paint) }
   if selected, handles {
     ctx.setLineDash(phase: 0, lengths: [])
     let points = g.handles.isEmpty ? [DrawPixel(d.kind == .hline ? axes.layout.plotW / 2 : axes.x(d.a.t), d.kind == .vline ? axes.pane.y + axes.pane.h / 2 : axes.y(d.a.p))] : g.handles

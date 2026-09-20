@@ -60,6 +60,13 @@ public struct DrawArchive: Sendable, Equatable, Codable {
 
   public var preferences = DrawingPreferences()
   public var version: Int
+  /// 画线**只按品种分桶，不按周期分**（第五轮审查 A.4 的裁决，保持不变）。
+  ///
+  /// 端点存的是「时间 + 价格」（见 `DrawPoint`），不是「第几根」——同一条趋势线在
+  /// 1 分钟和日线上落在同一个时刻、同一个价位，本来就该是同一条。真按周期再分一层桶，
+  /// 用户在 15 分钟上画的那条线切到 1 小时就消失，得在每个周期上重画一遍；
+  /// 撤销栈也跟着按周期碎成好几份，「撤销」撤掉的是哪一条要先想想现在是什么周期。
+  /// 这两样都和产品基线相反。周期只改看见多长的时间，不改这张图上画了什么。
   public var bySymbol: [String: [Drawing]]
 
   public init(version: Int = DrawArchive.currentVersion, bySymbol: [String: [Drawing]] = [:]) {
@@ -82,6 +89,17 @@ public struct DrawArchive: Sendable, Equatable, Codable {
   /// 保留顺序和所有对象；旧调用点仍可使用此兼容方法。
   public static func capped(_ ds: [Drawing]) -> [Drawing] {
     ds
+  }
+
+  /// 眼下这个品种的那一桶，跟另一份存档比有没有变。
+  ///
+  /// 存档是**整份**在同步的：别人在另一台设备上给 ETH 加了一条线，推回来的是一份新的
+  /// `DrawArchive`，整份不相等。可 BTC 那一桶一个字都没动，图上那条线也就没有任何
+  /// 理由被「整批外部替换」一次——而整批替换要清空撤销栈和选中态（见
+  /// `ChartView.setDrawings`）。于是「别人改了别的品种」会把我这边画到一半的撤销栈
+  /// 抹掉，这是 A-07 报的那件事。发布同步结果之前先拿这个问一句。
+  public func bucketChanged(from old: DrawArchive, symbol: String) -> Bool {
+    self[symbol] != old[symbol]
   }
 
   /// 还能不能再画一条。满了由调用方提示，而不是默默把最早那条挤掉——

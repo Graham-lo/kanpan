@@ -20,7 +20,11 @@ enum ViewIntent: Equatable {
   /// 换品种、第一次拿到数据：回到最新，根宽按用户存下来的那一份（`ChartBox.resetSpacing`）。
   case reset
   /// 换周期：根宽不变，看见的时间跨度跟着周期走。带的是切之前量出来的实际根间距。
-  case switchInterval(spacing: Double)
+  ///
+  /// `anchorRight` 是切之前视野的右缘时刻，只在**正看着历史**时带上：人翻到三个月前那一段，
+  /// 切一下周期就被送回最新，刚找到的位置就没了（A-05）。跟着最新时它是 nil，
+  /// 右缘照常贴到新序列的末根上。
+  case switchInterval(spacing: Double, anchorRight: Double?)
   /// 布局改尺寸：保留实际根间距和历史右缘。
   case resize(spacing: Double)
   /// **档案到货，按新根宽重量一次。** 位置（历史右缘）保住，只换宽度。
@@ -234,8 +238,9 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
       case .reset:
         s.view = ViewMath.reset(series: s.series, plotW: plotW,
           spacing: resetSpacing, anchor: s.options.anchor)
-      case .switchInterval(let spacing):
-        s.view = ViewMath.switchInterval(to: s.series, plotW: plotW, spacing: spacing, anchorRight: nil)
+      case .switchInterval(let spacing, let anchorRight):
+        s.view = ViewMath.switchInterval(to: s.series, plotW: plotW, spacing: spacing,
+                                         anchorRight: anchorRight)
       case .resize(let spacing), .adopt(let spacing):
         s.view = ViewMath.resized(s.view, series: s.series, plotW: plotW, spacing: spacing, anchor: s.options.anchor)
       }
@@ -427,8 +432,14 @@ struct ChartHost: UIViewRepresentable {
       } else if old.series.interval != s.series.interval {
         s.crosshair = nil
         let plotW = box.chart.chartLayout?.plotW ?? proxy?.savedPlotWidth ?? Double(box.bounds.width)
+        // 「跟着最新」和「在看历史」是两件事，换周期时的右缘也就该落在两个地方（A-05）：
+        // 前者贴到新序列的末根上（传 nil），后者把切之前那个时刻原样带过去，由
+        // `ViewMath.switchInterval` 夹进新序列。判据和「回到最新」按钮的显隐同一条
+        // （`ChartView.isAtLatest`）：右缘越过末根就算跟着最新。
+        let followingLatest = old.series.count > 0 && old.view.to >= Double(old.series.lastTime)
         box.pending = .switchInterval(
-          spacing: old.view.barSpacing(step: old.series.step, plotW: plotW))
+          spacing: old.view.barSpacing(step: old.series.step, plotW: plotW),
+          anchorRight: followingLatest ? nil : old.view.to)
         // 换周期要把竖着拉出来的倍率留住。
         //
         // 这两行以前只写在下面那个 `else` 里，而那条分支的前提是「品种没换**且**周期

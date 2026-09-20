@@ -6,6 +6,10 @@ public struct DrawBounds: Sendable {
     self.left = left; self.top = top; self.right = right; self.bottom = bottom
   }
   public func contains(_ p: DrawPixel) -> Bool { p.x >= left && p.x <= right && p.y >= top && p.y <= bottom }
+  /// 两块地有没有真的叠上。边挨着边不算叠（和 `CGRect.intersects` 同一口径）。
+  public func intersects(_ other: DrawBounds) -> Bool {
+    left < other.right && other.left < right && top < other.bottom && other.top < bottom
+  }
 }
 public struct DrawPixel: Sendable, Equatable {
   public var x, y: Double
@@ -66,24 +70,113 @@ public struct DrawLabel: Sendable {
   }
 }
 
+/// 一行字在屏幕上量出来有多大。
+///
+/// 量字要 UIKit，Core 不认识 `UIFont`，所以尺寸由调用方量好了递进来（见 `placeDrawingLabels`）。
+public struct DrawTextSize: Sendable, Equatable {
+  public var width, height: Double
+  public init(width: Double, height: Double) { self.width = width; self.height = height }
+}
+
+/// 排好版的一条标签：`center` 是字的中心，`box` 是它在屏幕上**真正盖住**的那块地。
+public struct PlacedDrawLabel: Sendable {
+  public var label: DrawLabel
+  public var center: DrawPixel
+  public var box: DrawBounds
+  public init(label: DrawLabel, center: DrawPixel, box: DrawBounds) {
+    self.label = label; self.center = center; self.box = box
+  }
+}
+
+/// 一条画线上那些字的排版。
+///
+/// 这段算法从前长在 `ChartView+Drawing.paintDrawingLabels` 里，只有「画」用得上；
+/// 命中测试压根不看 `labels`，于是「文字标注」这把工具——它只产出一个标签，锚点在字外面——
+/// 点字上点不中，只有那个看不见的锚点周围 9.5pt 才有反应（A-01）。把它提到 Core 来，
+/// 画和点共用同一份输出：屏幕上看得见多大一块，手指就能点中多大一块。
+///
+/// 规则照旧（一个像素都没动）：先按纵向排一遍，横向真的有交叠就把后来的那条往下让一行；
+/// 让满 16 次还叠着、或者让到图外，就干脆不画——图上少一档刻度，好过多一团墨。
+public func placeDrawingLabels(_ labels: [DrawLabel], plotW: Double, paneY: Double, paneH: Double,
+                               lineHeight: Double = Chart.drawLabelLineH,
+                               measure: (String) -> DrawTextSize) -> [PlacedDrawLabel] {
+  var placed: [PlacedDrawLabel] = []
+  for label in labels.sorted(by: { $0.point.y < $1.point.y }) where !label.text.isEmpty {
+    let size = measure(label.text)
+    // 横向先夹进图区；胶囊左右各留 4pt 的内边，所以夹的是含内边的那个宽度。
+    let pad = label.plate == .none ? 0.0 : 4.0
+    let half = size.width / 2 + pad
+    let cx = max(half + 2, min(plotW - half - 2, label.centered ? label.point.x : label.point.x - size.width / 2))
+    var cy = label.centered ? label.point.y : label.point.y - size.height / 2
+    func boxAt(_ y: Double) -> DrawBounds {
+      DrawBounds(left: cx - half, top: y - lineHeight / 2, right: cx + half, bottom: y + lineHeight / 2)
+    }
+    var box = boxAt(cy)
+    var tries = 0
+    while tries < 16, placed.contains(where: { $0.box.intersects(box) }) {
+      cy += lineHeight; tries += 1
+      box = boxAt(cy)
+    }
+    guard box.top >= paneY, box.bottom <= paneY + paneH else { continue }
+    placed.append(PlacedDrawLabel(label: label, center: DrawPixel(cx, cy), box: box))
+  }
+  return placed
+}
+
 public struct DrawGeometry: Sendable {
   public var segments: [DrawSegment] = []
   public var fills: [DrawFill] = []
   public var handles: [DrawPixel] = []
   public var labels: [DrawLabel] = []
+  /// 那些字排好版之后各自盖住的矩形。
+  ///
+  /// 几何本身算不出来（量字要 UIKit），所以它默认是空的，由 `layoutLabels(...)` 填。
+  /// 渲染和命中都走那个入口，两边拿到的就是同一批矩形。
+  public var labelBoxes: [DrawBounds] = []
   /// 只有一块填充区时的老写法。多块的（持仓框）走 `fills`。
   public var polygon: [DrawPixel] {
     get { fills.first?.points ?? [] }
     set { fills = newValue.isEmpty ? [] : [DrawFill(points: newValue)] }
   }
-  public func hit(x: Double, y: Double, handleRadius: Double = Chart.hitHandlePt) -> Drawing.Part? {
-    if let nearest = handles.enumerated().min(by: {
-      hypot($0.element.x - x, $0.element.y - y) < hypot($1.element.x - x, $1.element.y - y)
-    }), hypot(nearest.element.x - x, nearest.element.y - y) < handleRadius {
-      return Drawing.Part.anchor(nearest.offset)
+
+  /// 把标签排好版：画出来的矩形顺手记进 `labelBoxes`，命中测试就能用同一批（A-01）。
+  @discardableResult
+  public mutating func layoutLabels(plotW: Double, paneY: Double, paneH: Double,
+                                    measure: (String) -> DrawTextSize) -> [PlacedDrawLabel] {
+    let placed = placeDrawingLabels(labels, plotW: plotW, paneY: paneY, paneH: paneH, measure: measure)
+    labelBoxes = placed.map(\.box)
+    return placed
+  }
+
+  /// 离 (x, y) 最近的那个手柄。超出 `radius` 的不算。
+  ///
+  /// 单独开出来是给 `drawHitTest` 做**跨图形**仲裁用的：几条线的手柄都够得着时，
+  /// 要比的是真实距离，而不是谁先被遍历到。
+  public func nearestHandle(x: Double, y: Double,
+                            radius: Double = Chart.hitHandlePt) -> (index: Int, distance: Double)? {
+    var best: (index: Int, distance: Double)?
+    for (i, p) in handles.enumerated() {
+      let d = hypot(p.x - x, p.y - y)
+      guard d < radius, best == nil || d < best!.distance else { continue }
+      best = (i, d)
     }
-    if segments.contains(where: { distSeg(x, y, $0.a.x, $0.a.y, $0.b.x, $0.b.y) < Chart.hitLinePt }) { return .body }
-    // Closed shapes can be selected inside their fill; ordinary swipes still pan until selected.
+    return best
+  }
+
+  /// 到这条线「看得见的墨」的距离：线体取到最近那段的距离，落在文字块里算 0。
+  /// 够不着（超过 `Chart.hitLinePt`）就是 nil。
+  public func inkDistance(x: Double, y: Double) -> Double? {
+    if labelBoxes.contains(where: { $0.contains(DrawPixel(x, y)) }) { return 0 }
+    var best = Double.infinity
+    for s in segments { best = min(best, distSeg(x, y, s.a.x, s.a.y, s.b.x, s.b.y)) }
+    return best < Chart.hitLinePt ? best : nil
+  }
+
+  /// 点在不在某块填充区里面。
+  ///
+  /// 整片都算，所以调用方必须把它排在**所有**线体与文字的后面：一块填充是这条线身上
+  /// 最松的那层靶，抢在别人的线体前面收，就成了「选中一个矩形之后里面什么都点不中」（A-02）。
+  public func hitsFill(x: Double, y: Double) -> Bool {
     for fill in fills where fill.points.count >= 3 {
       let poly = fill.points
       var inside = false
@@ -93,8 +186,22 @@ public struct DrawGeometry: Sendable {
         if (a.y > y) != (b.y > y), x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x { inside.toggle() }
         j = i
       }
-      if inside { return .body }
+      if inside { return true }
     }
+    return false
+  }
+
+  /// 单条线自己的命中：手柄 → 线体/文字 → 填充。
+  ///
+  /// 多条线一起比的时候不要用它（那是 `drawHitTest` 的三遍仲裁），它只回答
+  /// 「就这一条线，点到了它的哪个部位」。
+  public func hit(x: Double, y: Double, handleRadius: Double = Chart.hitHandlePt) -> Drawing.Part? {
+    if let nearest = nearestHandle(x: x, y: y, radius: handleRadius) {
+      return Drawing.Part.anchor(nearest.index)
+    }
+    if inkDistance(x: x, y: y) != nil { return .body }
+    // Closed shapes can be selected inside their fill; ordinary swipes still pan until selected.
+    if hitsFill(x: x, y: y) { return .body }
     return nil
   }
 }

@@ -26,6 +26,23 @@ private final class WorkEvent: UIEvent {
 // 不是调用次数（缓存命中不计数）。
 //
 // 口径：3 个副图 + 主副图都开着隐藏输出，一帧按 `ChartView` 的三层各画一次。
+//
+// # 为什么这里有 `#if DEBUG`（第五轮审查 C.5 / C.8）
+//
+// `ChartWorkCounter` 的存储**只在 DEBUG 下存在**，Release 里 `bump` 是空函数体、
+// `count` 恒返回 0（见 `ChartWorkCounter` 的注释：这条计数趴在渲染热路径上，
+// 出厂二进制里一个字节的开销都不该留）。于是这个套件在 Release 配置下有两种坏法：
+//
+// - **直接红**：`dataChangesStillRebuild` 与 `chartViewMovesFireOnceEach` 断言的是
+//   「== 1」「== 100」，读回来的却是恒定的 0；
+// - **更糟的是假绿**：`<= 1` / `== 0` 这类上界断言在 Release 下永远成立，
+//   它们什么都没证明，却会让人以为「Release 也验过了」。
+//
+// 两条路二选一：把计数器在测试构建里也备齐，或者把靠计数器的用例圈进 DEBUG。
+// **选后者**，理由和 `8733e3f` 修 KanpanAccount 时一样——那些钩子在 Release 里
+// 本来就不该存在，为了让测试能跑而把它们装回去，等于为测试改产品。计数是「先测量
+// 再改」留下的秤，不是产品行为；产品行为（一次移动一条回调、旧副本不串状态、
+// 单击不连送两遍）在下面照旧两种配置都编、都跑。
 @MainActor @Suite(.serialized) struct CrosshairWorkTests {
   let size = CGSize(width: 393, height: 780)
 
@@ -52,6 +69,7 @@ private final class WorkEvent: UIEvent {
     }
   }
 
+  #if DEBUG
   func counts() -> (geometry: Int, layout: Int, range: Int, mask: Int) {
     (ChartWorkCounter.count(.geometryCache), ChartWorkCounter.count(.layout),
      ChartWorkCounter.count(.priceRange), ChartWorkCounter.count(.hiddenMask))
@@ -171,6 +189,7 @@ private final class WorkEvent: UIEvent {
     print(ChartWorkCounter.line("hidden-outputs"))
     #expect(c.geometry == 1 && c.mask >= 1)
   }
+  #endif
 
   @Test("ChartView 上 100 次十字线移动：一次移动一条回调，几何不重建")
   func chartViewMovesFireOnceEach() {
@@ -186,9 +205,13 @@ private final class WorkEvent: UIEvent {
     }
     print(ChartWorkCounter.line("chartview-moves=100"))
 
+    // 「一次移动一条回调」是产品行为，两种配置都验。
     #expect(delivered.count == 100, "一次移动应当只回调一次：\(delivered.count)")
+    #if DEBUG
+    // 秤上的读数只有 DEBUG 才有；Release 下这两条读回来的是恒定的 0（见文件头）。
     #expect(ChartWorkCounter.count(.crosshairCallback) == 100)
     #expect(ChartWorkCounter.count(.geometryCache) == 0, "十字线移动不该新建几何缓存")
+    #endif
   }
 
   @Test("单击落十字线不把同一份读数连送两遍")
