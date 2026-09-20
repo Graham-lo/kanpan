@@ -518,9 +518,11 @@ import ReviewData
   public func loadStatistics() async {
     guard let client else { statisticsError = "登录后查看战绩"; return }
     let requestEpoch = epoch
-    // `resolvedGroups`：把 `proof` 里的判定状态贴回每一组。服务端一直在算
-    // 「够不够 20 笔」，客户端以前只接 `groups` 那两个裸数字，于是一笔一组被算成
-    // 0% 摆上去（审查 B.2 / B-07）。
+    // `resolvedGroups`：优先用服务端新给的**相对口径**分组（`comparableGroups`，
+    // 老服务端没有就退回 `groups`），再把对应那份证据里的判定状态贴回每一组。
+    // 屏幕上只摆这一份，不给用户两套口径去挑。服务端一直在算「够不够 20 笔」，
+    // 客户端以前只接 `groups` 那两个裸数字，于是一笔一组被算成 0% 摆上去
+    // （审查 B.2 / B-07）。
     do { let groups = try await client.stats().resolvedGroups; guard requestEpoch == epoch else { return }; statistics = groups; statisticsError = nil }
     catch { if requestEpoch == epoch { statisticsError = error.localizedDescription } }
   }

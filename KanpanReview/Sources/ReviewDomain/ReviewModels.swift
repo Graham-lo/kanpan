@@ -330,7 +330,14 @@ public struct ReviewStatsGroup: Codable, Sendable, Identifiable {
     correct = try c.decodeIfPresent(Int.self, forKey: .correct) ?? 0
     verdict = try c.decodeIfPresent(String.self, forKey: .verdict)
     recheck = try c.decodeIfPresent(Bool.self, forKey: .recheck)
+    // 相对口径那份分组（`comparableGroups`）把同一件事写成 `verdictStatus`，
+    // 老的 `groups` 写 `verdict`（其实只在 `proof` 里）。两个名字都认，省得同一个
+    // 结论因为键名不同被读成「没结论」，于是又回到拿 0% 冒充战绩。
+    if verdict == nil, let alternate = try? decoder.container(keyedBy: AlternateKeys.self) {
+      verdict = try alternate.decodeIfPresent(String.self, forKey: .verdictStatus)
+    }
   }
+  private enum AlternateKeys: String, CodingKey { case verdictStatus }
 }
 public enum ReviewClock {
   public static var now: Int64 { Int64(Date().timeIntervalSince1970 * 1000) }

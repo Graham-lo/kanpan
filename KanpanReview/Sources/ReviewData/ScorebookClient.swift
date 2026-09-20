@@ -118,6 +118,8 @@ public struct ReviewStatsProofGroup: Codable, Sendable {
   public var numerator: Int?
   public var denominator: Int?
   public var realizationRate: Double?
+  /// 相对口径那份证据里可能带着这一组该怎么称呼；老的 `proof` 不带，就留空。
+  public var title: String?
   /// `insufficient`（不足 20 笔）/ `verdict_due` / `observing`。
   public var verdictStatus: String?
   /// 最近十笔比整体差 20 个百分点以上，该回头看一眼。
@@ -126,7 +128,7 @@ public struct ReviewStatsProofGroup: Codable, Sendable {
     case numerator, denominator
     case realizationRate = "realization_rate"
     case verdictStatus = "verdict_status"
-    case recheck
+    case recheck, title
   }
 }
 public struct ReviewStatsProof: Codable, Sendable {
@@ -140,21 +142,48 @@ public struct NativeStatsResponse: Codable, Sendable {
   public var ruleVersion: String?
   public var grouping: String?
   public var asOf: Int64?
-  /// 贴上判定状态之后的分组。
+  /// **相对口径**的分组（服务端 B-07 新增的三个顶层键，驼峰）。
   ///
-  /// `groups` 里只有「总数 / 判对数」两个裸数字，一笔一组时就是 `0/1`，界面照着
-  /// 算出来是个 0%——那不是战绩，是噪声。服务端早就在 `proof` 里标了
-  /// `verdict_status`，以前客户端连解都没解（审查 B.2 / B-07）。
+  /// 老的 `groups` 是按绝对价、绝对到期时刻分的：目标 80286.3、到期 9 月 21 日
+  /// 14:00 —— 几乎一笔一组，永远凑不满服务端要的 20 笔，界面上只能一行行写
+  /// 「样本不足」。相对口径按「同方向 / 确认方式 / 品种 / 周期 + 目标与止损的相对
+  /// 幅度分档 + 时长分档」分，同一类判断才真的能攒到一起，这才是报告 B-07 要给
+  /// 用户看的那份战绩。
+  ///
+  /// 老服务端没有这三个键，所以全是可选的：**给了就用这份，没给才退回 `groups`**。
+  public var comparableGroups: [ReviewStatsGroup]?
+  /// 与 `proof` 同形状（内层仍是蛇形），键是相对口径的 signature。
+  public var comparableProof: ReviewStatsProof?
+  /// `"confirmed_anchored_episode_relative_rule"`。
+  public var comparableGrouping: String?
+  /// 贴上判定状态之后的分组——**界面上只展示这一份**。
+  ///
+  /// 不给用户摆两套口径去挑：哪一份算数是我们该替他决定的事（同
+  /// `kanpan-sector-page-no-basis-picker`）。有相对口径就是相对口径，没有才是老那份。
+  ///
+  /// 贴判定状态这件事本身是因为 `groups` 里只有「总数 / 判对数」两个裸数字，一笔一组
+  /// 时就是 `0/1`，界面照着算出来是个 0%——那不是战绩，是噪声。服务端一直在
+  /// `proof` 里标着 `verdict_status`，以前客户端连解都没解（审查 B.2 / B-07）。
   public var resolvedGroups: [ReviewStatsGroup] {
+    if let comparable = comparableGroups { return Self.resolve(comparable, with: comparableProof) }
+    return Self.resolve(groups, with: proof)
+  }
+  /// 屏幕上这份分组是按哪个口径分的（诊断与用例用，不摆到界面上）。
+  public var resolvedGrouping: String? {
+    comparableGroups == nil ? grouping : (comparableGrouping ?? grouping)
+  }
+  private static func resolve(_ groups: [ReviewStatsGroup], with proof: ReviewStatsProof?) -> [ReviewStatsGroup] {
     let table = proof?.compatibleGroups ?? [:]
     return groups.map { group in
       var value = group
-      if let hit = table[group.id] {
-        value.verdict = hit.verdictStatus
-        value.recheck = hit.recheck
-        if let denominator = hit.denominator { value.total = denominator }
-        if let numerator = hit.numerator { value.correct = numerator }
-      }
+      guard let hit = table[group.id] else { return value }
+      // 一律「有才盖」：相对口径那份分组自己就带着 `verdictStatus`，证据里没写的时候
+      // 不能反手把它抹成 nil——那等于把「样本不足」悄悄变回一个 0%。
+      if let verdict = hit.verdictStatus { value.verdict = verdict }
+      if let recheck = hit.recheck { value.recheck = recheck }
+      if let denominator = hit.denominator { value.total = denominator }
+      if let numerator = hit.numerator { value.correct = numerator }
+      if value.title.isEmpty, let title = hit.title { value.title = title }
       return value
     }
   }
