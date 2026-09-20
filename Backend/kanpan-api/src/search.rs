@@ -18,7 +18,7 @@ pub fn routes()->Router<AppState> {
 }
 async fn capabilities(State(s):State<AppState>)->Result<Json<Value>> {
  let count:i64=sqlx::query_scalar("SELECT count(*) FROM market_features WHERE published AND model_id='candle-geometry-v2' AND render_version='ohlc-geometry-resample64-v2'").fetch_one(&s.pool).await?;
- Ok(envelope(json!({"reviewMarkets":["binance/usd_m","okx/usd_m"],"reviewIntervals":Interval::ALL.iter().map(|v|v.as_str()).collect::<Vec<_>>(),"search":{"model":chart_match::MODEL,"threshold":0.60,"indexedWindows":count,"anonymous":false},"screenshots":false})))
+ Ok(envelope(json!({"reviewMarkets":["binance/usd_m","okx/usd_m"],"reviewIntervals":Interval::ALL.iter().map(|v|v.as_str()).collect::<Vec<_>>(),"search":{"model":chart_match::MODEL,"threshold":0.60,"indexedWindows":count,"anonymous":false},"screenshots":true})))
 }
 async fn start(State(s):State<AppState>,i:Identity,headers:HeaderMap,Payload(query):Payload<NativeSearch>)->Result<Json<Value>> {
  let id=key(&headers)?;core(domain::validate_range(&query.range,query.cutoff))?;
