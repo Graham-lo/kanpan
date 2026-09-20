@@ -1,6 +1,6 @@
 use crate::review_domain as domain;
-use crate::{AppState,auth::Identity,error::{ApiError,Result},envelope,review::{key,lock,cached,finish,parse,core},review_worker::range_bars};
-use axum::{Router,Json,extract::{State,Path,Query},routing::{get,post},http::HeaderMap};
+use crate::{AppState,auth::Identity,error::{ApiError,Params,Payload,Result,Route},envelope,review::{key,lock,cached,finish,parse,core},review_worker::range_bars};
+use axum::{Router,Json,extract::State,routing::{get,post},http::HeaderMap};
 use chrono::Utc;
 use scorebook_core::{api::native_review::{NativeSearch,ChartRange},domain::{chart_match,interval::Interval},market::MarketDataProvider};
 use serde::{Deserialize,Serialize};
@@ -20,7 +20,7 @@ async fn capabilities(State(s):State<AppState>)->Result<Json<Value>> {
  let count:i64=sqlx::query_scalar("SELECT count(*) FROM market_features WHERE published AND model_id='candle-geometry-v2' AND render_version='ohlc-geometry-resample64-v2'").fetch_one(&s.pool).await?;
  Ok(envelope(json!({"reviewMarkets":["binance/usd_m","okx/usd_m"],"reviewIntervals":Interval::ALL.iter().map(|v|v.as_str()).collect::<Vec<_>>(),"search":{"model":chart_match::MODEL,"threshold":0.60,"indexedWindows":count,"anonymous":false},"screenshots":false})))
 }
-async fn start(State(s):State<AppState>,i:Identity,headers:HeaderMap,Json(query):Json<NativeSearch>)->Result<Json<Value>> {
+async fn start(State(s):State<AppState>,i:Identity,headers:HeaderMap,Payload(query):Payload<NativeSearch>)->Result<Json<Value>> {
  let id=key(&headers)?;core(domain::validate_range(&query.range,query.cutoff))?;
  if query.range.bars<16{return Err(ApiError::bad("search_range_too_short"))}
  if query.cutoff>Utc::now().timestamp_millis()||!matches!(query.scope.as_str(),"history"|"private") {return Err(ApiError::bad("invalid_search"))}
@@ -35,12 +35,12 @@ async fn start(State(s):State<AppState>,i:Identity,headers:HeaderMap,Json(query)
  sqlx::query("INSERT INTO search_dispatch(user_id) VALUES($1) ON CONFLICT(user_id) DO UPDATE SET next_at=now()").bind(i.user).execute(&mut *tx).await?;
  let result=json!({"id":id,"status":"queued","cutoff":query.cutoff,"model":chart_match::MODEL});finish(&mut tx,i.user,id,&request,&result).await?;tx.commit().await?;Ok(envelope(result))
 }
-async fn status(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>)->Result<Json<Value>> {
+async fn status(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>)->Result<Json<Value>> {
  let mut tx=s.personal(i.user).await?;
  let row=sqlx::query("SELECT status,query,position,checked,jsonb_array_length(candidates) AS total,error FROM review_searches WHERE user_id=$1 AND id=$2 AND expires_at>now()").bind(i.user).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
  let q:Value=row.get("query");let result=json!({"id":id,"status":row.get::<String,_>("status"),"cutoff":q["cutoff"],"checked":row.get::<i32,_>("checked"),"processed":row.get::<i32,_>("position"),"total":row.get::<Option<i32>,_>("total"),"error":row.get::<Option<String>,_>("error")});tx.commit().await?;Ok(envelope(result))
 }
-async fn cancel(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>,headers:HeaderMap)->Result<Json<Value>> {
+async fn cancel(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,headers:HeaderMap)->Result<Json<Value>> {
  let k=key(&headers)?;let request=json!({"kind":"cancel_search","id":id});let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
  if let Some(v)=cached(&mut tx,i.user,k,&request).await?{return Ok(envelope(v))}
  let found=sqlx::query("UPDATE review_searches SET status=CASE WHEN status IN ('queued','running') THEN 'cancelled' ELSE status END,lease_id=NULL,lease_until=NULL WHERE user_id=$1 AND id=$2").bind(i.user).bind(id).execute(&mut *tx).await?.rows_affected();
@@ -48,7 +48,7 @@ async fn cancel(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>,headers:
  let result=json!({"ok":true});finish(&mut tx,i.user,k,&request,&result).await?;tx.commit().await?;Ok(envelope(result))
 }
 #[derive(Deserialize,Default)] #[serde(deny_unknown_fields)] struct Page {after:Option<usize>}
-async fn results(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>,Query(page):Query<Page>)->Result<Json<Value>> {
+async fn results(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,Params(page):Params<Page>)->Result<Json<Value>> {
  let offset=page.after.unwrap_or(0);let mut tx=s.personal(i.user).await?;
  let row=sqlx::query("SELECT items,query,status,checked,position FROM review_searches WHERE user_id=$1 AND id=$2 AND expires_at>now()").bind(i.user).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
  if row.get::<String,_>("status")!="completed"{return Err(ApiError::conflict("search_not_ready"))}
@@ -57,7 +57,7 @@ async fn results(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>,Query(p
  let q:Value=row.get("query");let result=json!({"items":items,"next":next,"cutoff":q["cutoff"],"model":chart_match::MODEL,"partial":row.get::<i32,_>("checked")<row.get::<i32,_>("position")});tx.commit().await?;Ok(envelope(result))
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase",deny_unknown_fields)] struct Save {search_id:Uuid,match_id:Uuid}
-async fn save(State(s):State<AppState>,i:Identity,headers:HeaderMap,Json(input):Json<Save>)->Result<Json<Value>> {
+async fn save(State(s):State<AppState>,i:Identity,headers:HeaderMap,Payload(input):Payload<Save>)->Result<Json<Value>> {
  let k=key(&headers)?;let req=json!({"kind":"save_match","searchId":input.search_id,"matchId":input.match_id});let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
  if let Some(v)=cached(&mut tx,i.user,k,&req).await?{return Ok(envelope(v))}
  let items:Value=sqlx::query_scalar("SELECT items FROM review_searches WHERE user_id=$1 AND id=$2 AND status='completed'").bind(i.user).bind(input.search_id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
@@ -66,14 +66,14 @@ async fn save(State(s):State<AppState>,i:Identity,headers:HeaderMap,Json(input):
  let result=json!({"item":item});finish(&mut tx,i.user,k,&req,&result).await?;tx.commit().await?;Ok(envelope(result))
 }
 #[derive(Deserialize,Default)] struct SavedPage {after:Option<Uuid>}
-async fn saved(State(s):State<AppState>,i:Identity,Query(p):Query<SavedPage>)->Result<Json<Value>> {
+async fn saved(State(s):State<AppState>,i:Identity,Params(p):Params<SavedPage>)->Result<Json<Value>> {
  let mut tx=s.personal(i.user).await?;
  let rows=sqlx::query("SELECT id,match,revision FROM review_saved_matches WHERE user_id=$1 AND NOT deleted AND ($2::uuid IS NULL OR id>$2) ORDER BY id LIMIT 51").bind(i.user).bind(p.after).fetch_all(&mut *tx).await?;
  let items:Vec<Value>=rows.iter().take(50).map(|r|json!({"item":r.get::<Value,_>("match"),"revision":r.get::<i64,_>("revision")})).collect();
  let next=if rows.len()>50 {Some(rows[49].get::<Uuid,_>("id"))}else{None};tx.commit().await?;Ok(envelope(json!({"items":items,"next":next})))
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase",deny_unknown_fields)] struct Remove {expected_revision:i64}
-async fn remove(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>,headers:HeaderMap,Json(input):Json<Remove>)->Result<Json<Value>> {
+async fn remove(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,headers:HeaderMap,Payload(input):Payload<Remove>)->Result<Json<Value>> {
  let k=key(&headers)?;let request=json!({"kind":"remove_match","id":id,"revision":input.expected_revision});let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
  if let Some(v)=cached(&mut tx,i.user,k,&request).await?{return Ok(envelope(v))}
  let row=sqlx::query("SELECT revision FROM review_saved_matches WHERE user_id=$1 AND id=$2 FOR UPDATE").bind(i.user).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;

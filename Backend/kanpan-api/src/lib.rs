@@ -80,3 +80,30 @@ pub fn router(s: AppState) -> Router {
 
 pub mod review_domain;
 pub mod review_market;
+
+#[cfg(test)]
+mod migrations {
+ /// 0001–0010 已经在线上跑过，sqlx 校验校验和，一个字都不能改；这条只管 0011 起的
+ /// 新迁移。规矩写在 `migrations/README.md`：建索引一律 CONCURRENTLY（因此整个文件不能
+ /// 在事务里，首行必须是 `-- no-transaction`），加列一律可空或者带常量默认值。
+ #[test] fn migrations_after_0010_are_lock_free() {
+  let dir=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+  let mut names:Vec<_>=std::fs::read_dir(&dir).expect("migrations directory").map(|e|e.expect("directory entry").file_name().to_string_lossy().into_owned()).collect();
+  names.sort();
+  for name in names {
+   let Some(number)=name.split('_').next().and_then(|v|v.parse::<u32>().ok()) else {continue};
+   if number<=10 || !name.ends_with(".sql") {continue}
+   let sql=std::fs::read_to_string(dir.join(&name)).expect("readable migration");
+   // 注释里写着「CREATE INDEX」不算语句。
+   let body=sql.lines().filter(|l|!l.trim_start().starts_with("--")).collect::<Vec<_>>().join("\n").to_lowercase();
+   if body.contains("create index") {
+    assert_eq!(body.matches("create index").count(),body.matches("create index concurrently").count(),"{name}：建索引要 CONCURRENTLY，否则升级时整张表的写都在排队");
+    assert_eq!(sql.lines().next().map(str::trim),Some("-- no-transaction"),"{name}：CONCURRENTLY 不能在事务里跑，首行必须是 -- no-transaction");
+   }
+   for clause in body.split("add column").skip(1) {
+    let clause=clause.split(';').next().unwrap_or_default();
+    assert!(!clause.contains("not null")||clause.contains("default"),"{name}：加 NOT NULL 列要带常量默认值，否则旧行会把迁移顶回来");
+   }
+  }
+ }
+}

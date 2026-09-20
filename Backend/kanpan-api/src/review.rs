@@ -1,7 +1,7 @@
 use crate::review_domain as domain;
 // Native records are authoritative here; charts remain in the existing app/market stack.
-use crate::{AppState,auth::Identity,crypto::digest,envelope,error::{ApiError,Result}};
-use axum::{Router,Json,extract::{State,Path,Query},routing::{get,post},http::HeaderMap};
+use crate::{AppState,auth::Identity,crypto::digest,envelope,error::{ApiError,Params,Payload,Result,Route}};
+use axum::{Router,Json,extract::State,routing::{get,post},http::HeaderMap};
 use base64::{Engine,engine::general_purpose::{STANDARD,URL_SAFE_NO_PAD}};
 use chrono::Utc;
 use scorebook_core::{api::native_review::*,domain::{statistics}};
@@ -21,7 +21,14 @@ pub fn routes()->Router<AppState> {
  .route("/v1/native-review/statistics",get(stats))
 }
 pub fn parse<T:serde::de::DeserializeOwned>(value:Value)->Result<T> {Ok(serde_json::from_value(value)?)}
-pub fn core<T>(value:scorebook_core::error::Result<T>)->Result<T> {value.map_err(|_|ApiError::bad("invalid_review_evidence"))}
+/// 领域层的校验码就是服务端的真话：原样透出来，客户端才知道是区间不对、规则不对
+/// 还是周期不支持，而不是永远一句 invalid_review_evidence。名单外的一律折成旧码：
+/// 错误码是契约的一部分，不能跟着领域库里一句 `Error::bad` 就长出新的一个。
+pub fn core<T>(value:scorebook_core::error::Result<T>)->Result<T> {value.map_err(|e|ApiError::bad(match e.code.as_str() {
+ "invalid_chart_range"=>"invalid_chart_range","unsupported_interval"=>"unsupported_interval",
+ "invalid_native_record"=>"invalid_native_record","invalid_native_rule"=>"invalid_native_rule",
+ "invalid_time"=>"invalid_time","invalid_market_price"=>"invalid_market_price",
+ _=>"invalid_review_evidence"}))}
 pub fn key(headers:&HeaderMap)->Result<Uuid> {headers.get("idempotency-key").and_then(|h|h.to_str().ok()).and_then(|s|Uuid::parse_str(s).ok()).ok_or_else(||ApiError::bad("idempotency_key_required"))}
 pub async fn lock(tx:&mut Transaction<'_,Postgres>,owner:Uuid)->Result<()> {
  sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))").bind(format!("review:{owner}")).execute(&mut **tx).await?;Ok(())
@@ -59,7 +66,7 @@ fn validate(d:&NativeDraft,now:i64)->Result<()> {
  }
  Ok(())
 }
-async fn create(State(s):State<AppState>,i:Identity,headers:HeaderMap,Json(input):Json<NativeDraft>)->Result<Json<Value>> {
+async fn create(State(s):State<AppState>,i:Identity,headers:HeaderMap,Payload(input):Payload<NativeDraft>)->Result<Json<Value>> {
  let key=key(&headers)?;let now=Utc::now().timestamp_millis();validate(&input,now)?;
  let request=json!({"kind":"create","draft":input});
  let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
@@ -85,7 +92,7 @@ async fn create(State(s):State<AppState>,i:Identity,headers:HeaderMap,Json(input
 }
 #[derive(Serialize,Deserialize)] struct Cursor {submitted:i64,id:Uuid}
 #[derive(Deserialize,Default)] #[serde(deny_unknown_fields)] struct Filter {after:Option<String>,symbol:Option<String>,state:Option<String>,q:Option<String>,todo:Option<bool>}
-async fn list(State(s):State<AppState>,i:Identity,Query(f):Query<Filter>)->Result<Json<Value>> {
+async fn list(State(s):State<AppState>,i:Identity,Params(f):Params<Filter>)->Result<Json<Value>> {
  let cursor=if let Some(v)=f.after {if v.len()>200{return Err(ApiError::bad("invalid_cursor"))}Some(serde_json::from_slice::<Cursor>(&URL_SAFE_NO_PAD.decode(v).map_err(|_|ApiError::bad("invalid_cursor"))?)?)}else{None};
  if f.q.as_ref().is_some_and(|q|q.len()>200)||f.symbol.as_ref().is_some_and(|s|s.len()>40)||f.state.as_ref().is_some_and(|s|!matches!(s.as_str(),"waiting"|"needs_verification"|"realized"|"unrealized"|"observation"|"voided")){return Err(ApiError::bad("invalid_filter"))}
  let mut tx=s.personal(i.user).await?;
@@ -96,15 +103,15 @@ async fn list(State(s):State<AppState>,i:Identity,Query(f):Query<Filter>)->Resul
  if rows.len()>50 {let r=&rows[49];next=Some(URL_SAFE_NO_PAD.encode(serde_json::to_vec(&Cursor{submitted:r.get("submitted"),id:r.get("id")})?));}
  tx.commit().await?;Ok(envelope(json!({"records":records,"next":next})))
 }
-async fn detail(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>)->Result<Json<Value>> {
+async fn detail(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>)->Result<Json<Value>> {
  let mut tx=s.personal(i.user).await?;
  let row=sqlx::query("SELECT record,group_pending,assessment_revision,reflection_assessment_revision FROM review_records WHERE user_id=$1 AND id=$2").bind(i.user).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
  let mut record:Value=row.get("record");record["groupPending"]=json!(row.get::<bool,_>("group_pending"));
  let result=json!({"record":record,"groupPending":row.get::<bool,_>("group_pending"),"assessmentRevision":row.get::<i64,_>("assessment_revision"),"reflectionAssessmentRevision":row.get::<Option<i64>,_>("reflection_assessment_revision")});tx.commit().await?;Ok(envelope(result))
 }
-async fn reflection(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>,headers:HeaderMap,Json(body):Json<Value>)->Result<Json<Value>> {change(&s,i.user,id,key(&headers)?,"reflection",body).await}
-async fn void_record(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>,headers:HeaderMap,Json(body):Json<Value>)->Result<Json<Value>> {change(&s,i.user,id,key(&headers)?,"void",body).await}
-async fn group(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>,headers:HeaderMap,Json(body):Json<Value>)->Result<Json<Value>> {change(&s,i.user,id,key(&headers)?,"group",body).await}
+async fn reflection(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,headers:HeaderMap,Payload(body):Payload<Value>)->Result<Json<Value>> {change(&s,i.user,id,key(&headers)?,"reflection",body).await}
+async fn void_record(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,headers:HeaderMap,Payload(body):Payload<Value>)->Result<Json<Value>> {change(&s,i.user,id,key(&headers)?,"void",body).await}
+async fn group(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,headers:HeaderMap,Payload(body):Payload<Value>)->Result<Json<Value>> {change(&s,i.user,id,key(&headers)?,"group",body).await}
 #[derive(Deserialize)] #[serde(rename_all="camelCase",deny_unknown_fields)] struct GroupChange {expected_revision:i64,same_episode:bool}
 async fn change(s:&AppState,owner:Uuid,id:Uuid,key:Uuid,kind:&str,body:Value)->Result<Json<Value>> {
  let request=json!({"id":id,"kind":kind,"body":body});let mut tx=s.personal(owner).await?;lock(&mut tx,owner).await?;
@@ -143,6 +150,32 @@ pub fn signature(d:&NativeDraft)->String {
  // Never combine different target/stop/horizon or price confirmation policies into one win rate.
  digest(serde_json::to_vec(&json!({"version":d.rule.version,"direction":d.rule.direction,"confirmation":d.rule.confirmation,"reference":d.rule.reference,"target":d.rule.target,"invalidation":d.rule.invalidation,"expires":d.rule.expires,"market":d.range.market,"symbol":d.range.symbol,"interval":d.range.interval,"origin":d.origin})).expect("finite validated rule"))
 }
+/// 可比统计的身份。冻结的单笔规则身份（上面的 `signature`）回答的是「这条记录
+/// 当时定的是什么」，它必须带绝对价格和绝对到期时刻；而「我这一路打法做得怎么样」
+/// 要的是同一类样本放在一起数。绝对 expires 让同一套做法每提交一次就碎成一组，于是
+/// 满屏 n=1 的 0%／100%。这里换成相对幅度与观察时长的档位：档位是固定的，不给用户选，
+/// 也不跨方向、跨确认方式、跨品种周期混。
+const MOVE_TIERS:[f64;8]=[0.005,0.01,0.02,0.03,0.05,0.08,0.13,0.21];
+const MOVE_LABELS:[&str;9]=["≤ 0.5%","≤ 1%","≤ 2%","≤ 3%","≤ 5%","≤ 8%","≤ 13%","≤ 21%","> 21%"];
+const SPAN_TIERS:[i64;7]=[3_600_000,14_400_000,43_200_000,86_400_000,259_200_000,604_800_000,2_592_000_000];
+const SPAN_LABELS:[&str;8]=["1小时内","4小时内","12小时内","1天内","3天内","1周内","1个月内","1个月以上"];
+fn move_tier(reference:f64,price:f64)->usize {
+ let distance=((price-reference)/reference).abs();
+ if !distance.is_finite() {return MOVE_TIERS.len()}
+ // 浮点：(102-100)/100 算出来比 0.02 大一点点，不能因此掉到下一档。
+ MOVE_TIERS.iter().position(|t|distance<=t*(1.0+1e-9)).unwrap_or(MOVE_TIERS.len())
+}
+fn span_tier(span:i64)->usize {SPAN_TIERS.iter().position(|t|span<=*t).unwrap_or(SPAN_TIERS.len())}
+pub fn comparable_signature(d:&NativeDraft)->String {
+ digest(serde_json::to_vec(&json!({"version":d.rule.version,"direction":d.rule.direction,"confirmation":d.rule.confirmation,"market":d.range.market,"symbol":d.range.symbol,"interval":d.range.interval,"targetTier":move_tier(d.rule.reference,d.rule.target),"invalidationTier":move_tier(d.rule.reference,d.rule.invalidation),"spanTier":span_tier(d.rule.expires-d.created)})).expect("finite validated rule"))
+}
+fn comparable_title(d:&NativeDraft)->String {
+ format!("{} · {} · {} · 目标{} · 止损{} · {}",d.range.symbol,
+  match d.rule.direction.as_str(){"long"=>"做多","short"=>"做空",_=>"只观察"},
+  if d.rule.confirmation=="bar_close"{"收盘"}else{"触价"},
+  MOVE_LABELS[move_tier(d.rule.reference,d.rule.target)],MOVE_LABELS[move_tier(d.rule.reference,d.rule.invalidation)],
+  SPAN_LABELS[span_tier(d.rule.expires-d.created)])
+}
 async fn stats(State(s):State<AppState>,i:Identity)->Result<Json<Value>> {
  let mut tx=s.personal(i.user).await?;
  // Statistics only needs the draft plus five scalars. Selecting the whole
@@ -150,12 +183,21 @@ async fn stats(State(s):State<AppState>,i:Identity)->Result<Json<Value>> {
  // and through serde on every call; the projection keeps the payload to what
  // the summary actually reads.
  let rows=sqlx::query("SELECT record->'draft' AS draft,(record->>'serverId')::uuid AS server_id,(record->>'submitted')::bigint AS submitted,COALESCE(record->'assessment'->>'outcome','pending') AS state,(record->>'eligible')::bool AS eligible,(record->>'voided')::bool AS voided,episode_id,group_pending FROM review_records WHERE user_id=$1 ORDER BY submitted,id").bind(i.user).fetch_all(&mut *tx).await?;
- let mut samples=vec![];let mut labels=BTreeMap::new();
- for row in rows {let d:NativeDraft=parse(row.get("draft"))?;let sig=signature(&d);
+ let mut samples=vec![];let mut comparable=vec![];let mut labels=BTreeMap::new();let mut comparable_labels=BTreeMap::new();
+ for row in rows {let d:NativeDraft=parse(row.get("draft"))?;let sig=signature(&d);let relative=comparable_signature(&d);
   labels.entry(sig.clone()).or_insert_with(||format!("{} · {} · {}",d.range.symbol,match d.origin.as_str(){"chart_first"=>"图在先","thought_first"=>"想法在先","interwoven"=>"两者交织",_=>"不确定"},if d.rule.confirmation=="bar_close"{"收盘"}else{"触价"}));
-  samples.push(statistics::Sample{call_id:row.get("server_id"),claim_no:0,submitted_at:core(domain::time(row.get("submitted")))?,episode_id:Some(row.get("episode_id")),group_pending:row.get("group_pending"),signature:sig,state:row.get("state"),eligible:row.get("eligible"),voided:row.get("voided")});
+  comparable_labels.entry(relative.clone()).or_insert_with(||comparable_title(&d));
+  let sample=statistics::Sample{call_id:row.get("server_id"),claim_no:0,submitted_at:core(domain::time(row.get("submitted")))?,episode_id:Some(row.get("episode_id")),group_pending:row.get("group_pending"),signature:sig,state:row.get("state"),eligible:row.get("eligible"),voided:row.get("voided")};
+  comparable.push(statistics::Sample{signature:relative,..sample.clone()});samples.push(sample);
  }
- let proof=statistics::summarize(&samples,0);
- let groups:Vec<Value>=proof["compatible_groups"].as_object().into_iter().flatten().map(|(id,v)|json!({"id":id,"title":labels[id],"total":v["denominator"],"correct":v["numerator"]})).collect();
- tx.commit().await?;Ok(envelope(json!({"groups":groups,"proof":proof,"ruleVersion":"criteria-v2","grouping":"confirmed_anchored_episode_exact_rule","asOf":Utc::now().timestamp_millis()})))
+ let proof=statistics::summarize(&samples,0);let comparable_proof=statistics::summarize(&comparable,0);
+ // 分组只有一份形状；可比的那一份多带一个领域层算好的「样本够不够」，
+ // 客户端才能在 n 太小的时候不把单样本的 100% 当结论展示。
+ let shape=|source:&Value,titles:&BTreeMap<String,String>,verdict:bool|->Vec<Value>{source["compatible_groups"].as_object().into_iter().flatten().map(|(id,v)|{
+  let mut group=json!({"id":id,"title":titles[id],"total":v["denominator"],"correct":v["numerator"]});
+  if verdict {group["verdictStatus"]=v["verdict_status"].clone();}group
+ }).collect()};
+ let groups=shape(&proof,&labels,false);let comparable_groups=shape(&comparable_proof,&comparable_labels,true);
+ tx.commit().await?;Ok(envelope(json!({"groups":groups,"proof":proof,"ruleVersion":"criteria-v2","grouping":"confirmed_anchored_episode_exact_rule","asOf":Utc::now().timestamp_millis(),
+  "comparableGroups":comparable_groups,"comparableProof":comparable_proof,"comparableGrouping":"confirmed_anchored_episode_relative_rule"})))
 }

@@ -1,4 +1,4 @@
-import os,pathlib,secrets,subprocess,time
+import os,pathlib,secrets,subprocess,sys,time
 from urllib.parse import urlsplit
 root=pathlib.Path('/etc/kanpan-api');root.mkdir(mode=0o700,exist_ok=True)
 # exist_ok 不会去改一个已经存在的目录的权限，而这个目录里放的是 pepper 和加密密钥：
@@ -67,6 +67,26 @@ def sql(query):
 # 时候也做得到，而下一步走 TCP 的 migrate 做不到。顺序不能反。
 if reset_admin:sql(f"ALTER ROLE kanpan_admin PASSWORD '{admin}';")
 sql(f"DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='kanpan_app') THEN CREATE ROLE kanpan_app LOGIN PASSWORD '{password}' NOSUPERUSER NOBYPASSRLS; END IF; END $$;")
+# 迁移前先看有没有老事务卡着。迁移里的 CREATE INDEX／ALTER TABLE 要拿表锁，
+# 而就算按 migrations/README.md 写成无锁的 CREATE INDEX CONCURRENTLY，它也要等自己开始
+# 之前就已经在跑的事务全部结束；一个忘了提交的 psql 窗口就能把升级挂在那里，
+# 而它挂着的时候后面的写请求照样排队。这里只做只读查询，把嫌疑打印出来就停下。
+LONG_TRANSACTION_SECONDS=60
+def long_transactions(seconds):
+ query=("SELECT pid||' | '||coalesce(usename,'?')||' | '||coalesce(state,'?')||' | '"
+  "||round(extract(epoch from now()-xact_start))||'s | '||left(regexp_replace(coalesce(query,''),'[\\s]+',' ','g'),120) "
+  "FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND xact_start IS NOT NULL "
+  "AND now()-xact_start>interval '%d seconds' ORDER BY xact_start"%seconds)
+ p=subprocess.run(['docker','exec','-i','kanpan-postgres','psql','-tAq','-U','kanpan_admin','-d','kanpan','-c',query],capture_output=True,text=True)
+ # 问不出来就不拦：这是一道提醒，不是新的失败点。
+ return [line for line in p.stdout.splitlines() if line.strip()] if not p.returncode else []
+stale=long_transactions(LONG_TRANSACTION_SECONDS)
+if stale:
+ print('以下事务已经开了超过 %d 秒，迁移（哪怕是 CONCURRENTLY）要等它们结束：'%LONG_TRANSACTION_SECONDS)
+ for line in stale:print('  '+line)
+ if '--force' not in sys.argv:
+  raise SystemExit('中止：先让这些事务结束（或者确认它们无害后加 --force 重跑）。本次没有执行任何迁移。')
+ print('--force：带着上面这些事务继续迁移。')
 env=dict(os.environ);env['KANPAN_DATABASE_URL']='postgres://kanpan_admin:'+admin+'@127.0.0.1:55434/kanpan'
 subprocess.run(['/opt/kanpan-api/target/release/kanpan-api','migrate'],env=env,check=True)
 sql('GRANT USAGE ON SCHEMA public TO kanpan_app; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO kanpan_app; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO kanpan_app;')

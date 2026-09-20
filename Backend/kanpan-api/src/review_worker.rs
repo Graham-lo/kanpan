@@ -60,35 +60,52 @@ pub fn trade_assessment(r:&NativeRecord,raw:&[Value],from:i64,until:i64,now:i64)
  if until>=rule.expires {Ok((result("unrealized","到期未达到目标",Some(rule.expires)),None))}
  else {Ok((result("waiting","等待行情",None),Some(until+1)))}
 }
-async fn assess(market:&dyn MarketDataProvider,r:&NativeRecord,checkpoint:Option<i64>,now:i64)->Result<(NativeAssessment,Option<i64>)> {
+/// 一次裁定的输出：结论、下一次从哪儿接着看（`None` 就是原地不挪）、以及这条任务还有没有下文。
+/// `settled` 是给那些「结论不是终态，但再等下去也不会有新证据」的分支留的：
+/// 待核实本身不是终态（行情补齐了就能接着算），所以不能靠 outcome 分辨。
+struct Verdict {assessment:NativeAssessment,checkpoint:Option<i64>,settled:bool}
+/// 还有下文：写下结论，过一阵再来一次。
+fn open(assessment:NativeAssessment)->Verdict {Verdict{assessment,checkpoint:None,settled:false}}
+/// 没有下文了：写下结论就把任务收掉，不再留一个永远重来、永远答不了的幽灵。
+fn closed(assessment:NativeAssessment)->Verdict {Verdict{assessment,checkpoint:None,settled:true}}
+async fn assess(market:&dyn MarketDataProvider,r:&NativeRecord,checkpoint:Option<i64>,now:i64)->Result<Verdict> {
  let answer=|state:&str,reason:&str,at:Option<i64>|NativeAssessment{outcome:state.into(),reason:reason.into(),event_at:at,assessed_at:now};
  let rule=&r.draft.rule;
- if r.voided||rule.direction=="observe"||r.submitted>=rule.expires {return Ok((core(domain::evaluate(r,&[],now))?,None))}
+ if r.voided||rule.direction=="observe"||r.submitted>=rule.expires {return Ok(open(core(domain::evaluate(r,&[],now))?))}
  let from=checkpoint.unwrap_or(r.submitted);
- if from>now {return Ok((answer("waiting","等待行情",None),None))}
+ if from>now {return Ok(open(answer("waiting","等待行情",None)))}
  if rule.confirmation=="trade_touch" {
-  if r.draft.range.venue=="okx" {return Ok((answer("needs_verification","成交顺序待核实",None),None))}
+  // OKX 的逐笔成交这一段本建没有接，再问一万遍也还是这句话。让它每几秒重来一次直到
+  // 到期，只是把一条永远答不了的任务挂在队列上；以后真接了 OKX 成交，要连带一条迁移
+  // 把这些任务重新打开，不能指望它们自己醒过来。
+  if r.draft.range.venue=="okx" {return Ok(closed(answer("needs_verification","成交顺序待核实",None)))}
   // Leave one second for the exchange to settle the covered endpoint.
   let until=(now-1_000).min(rule.expires).min(from+30_000);
-  if until<=from {return Ok((answer("waiting","等待行情",None),None))}
+  if until<=from {return Ok(open(answer("waiting","等待行情",None)))}
   let data=market.trades(&r.draft.range.market,&r.draft.range.symbol,core(domain::time(from))?,core(domain::time(until))?).await.map_err(|_|ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"market_unavailable"))?;
-  if data["coverage_complete"]!=true{return Ok((answer("needs_verification","成交数据尚不完整",None),None))}
+  if data["coverage_complete"]!=true{return Ok(open(answer("needs_verification","成交数据尚不完整",None)))}
   let raw=data["raw"].as_array().ok_or_else(||ApiError::bad("invalid_trade"))?;
-  return trade_assessment(r,raw,from,until,now)
+  let (assessment,checkpoint)=trade_assessment(r,raw,from,until,now)?;
+  return Ok(Verdict{assessment,checkpoint,settled:false})
  }
  let iv=core(Interval::exact(&r.draft.range.interval))?;
  let begin=iv.ceil(core(domain::time(from))?);let end=iv.floor(core(domain::time(now.min(rule.expires)))?);
  if end<=begin {
-  return Ok((if now>=rule.expires{answer("unrealized","观察期内没有达到目标的完整收盘",Some(rule.expires))}else{answer("waiting","等待下一根收盘",None)},None))
+  // 一根合规的观察收盘都排不出来（例：4h 图 09:15 提交、13:15 到期，08:00 那根在提交时
+  // 已经开了所以不算，12:00 那根到期时还没收）。没有证据不等于有证据证明没达标：
+  // 结论统一交给领域层（空证据 + 已到期 = 待核实），这里不再自己生一个判输。
+  // 窗口已经关了，再取多少次也排不出那根不存在的 K 线，所以一并把任务收掉。
+  if now>=rule.expires {return Ok(closed(core(domain::evaluate(r,&[],now))?))}
+  return Ok(open(answer("waiting","等待下一根收盘",None)))
  }
  let until=end.min(iv.add_bars(begin,1000));
  let data=crate::review_market::klines(market,&r.draft.range,begin,until).await?;
  let bars:Vec<Bar>=parse(data["bars"].clone())?;
- if data["coverage_complete"]!=true||bars.first().is_none_or(|b|b.start!=begin)||bars.last().is_none_or(|b|b.end!=until)||!valid_bars(&bars,iv) {return Ok((answer("needs_verification","判定行情尚不完整",None),None))}
+ if data["coverage_complete"]!=true||bars.first().is_none_or(|b|b.start!=begin)||bars.last().is_none_or(|b|b.end!=until)||!valid_bars(&bars,iv) {return Ok(open(answer("needs_verification","判定行情尚不完整",None)))}
  let mut segment=r.clone();segment.submitted=begin.timestamp_millis();
  let evaluation=core(domain::evaluate(&segment,&bars,now.min(until.timestamp_millis())))?;
- if evaluation.outcome=="waiting"&&now>=rule.expires&&until==end{return Ok((answer("unrealized","到期未达到目标",Some(rule.expires)),None))}
- let checkpoint=(evaluation.outcome=="waiting").then_some(until.timestamp_millis());Ok((evaluation,checkpoint))
+ if evaluation.outcome=="waiting"&&now>=rule.expires&&until==end{return Ok(open(answer("unrealized","到期未达到目标",Some(rule.expires))))}
+ let checkpoint=(evaluation.outcome=="waiting").then_some(until.timestamp_millis());Ok(Verdict{assessment:evaluation,checkpoint,settled:false})
 }
 pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
  let Some(j)=claim(s).await? else {return Ok(false)};
@@ -96,10 +113,10 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
  let row=sqlx::query("SELECT record,checkpoint FROM review_records WHERE user_id=$1 AND id=$2").bind(j.owner).bind(j.record).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
  let r:NativeRecord=parse(row.get("record"))?;let checkpoint:Option<i64>=row.get("checkpoint");tx.commit().await?;
  let now=Utc::now().timestamp_millis();
- enum Output {Index(Option<Vec<f32>>,String),Assessment(NativeAssessment,Option<i64>)}
+ enum Output {Index(Option<Vec<f32>>,String),Assessment(Verdict)}
  let computation=async {
   if j.kind=="index" {let bars=range_bars(market,&r.draft.range,now).await?;let vector=if bars.len()>=16 {Some(core(chart_match::descriptor(&core(chart_match::from_bars(&bars))?))?)}else{None};Ok(Output::Index(vector,digest(serde_json::to_vec(&bars)?)))}
-  else {let (a,c)=assess(market,&r,checkpoint,now).await?;Ok::<_,ApiError>(Output::Assessment(a,c))}
+  else {Ok::<_,ApiError>(Output::Assessment(assess(market,&r,checkpoint,now).await?))}
  }.await;
  let mut tx=s.personal(j.owner).await?;
  let active:Option<Uuid>=sqlx::query_scalar("SELECT id FROM review_jobs WHERE user_id=$1 AND id=$2 AND lease_id=$3 AND lease_until>now() AND NOT finished FOR UPDATE").bind(j.owner).bind(j.id).bind(j.lease).fetch_optional(&mut *tx).await?;
@@ -112,8 +129,8 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
    sqlx::query("UPDATE review_records SET source_verified=true,source_hash=$3,feature=$4::vector,feature_version=$5 WHERE user_id=$1 AND id=$2").bind(j.owner).bind(j.record).bind(&hash).bind(vector.as_ref().map(|v|format!("{v:?}"))).bind(vector.as_ref().map(|_|chart_match::MODEL)).execute(&mut *tx).await?;
    event(&mut tx,j.owner,j.record,"source_verified",json!({"sourceHash":hash,"eligible":fresh.eligible,"model":chart_match::MODEL})).await?;done=true;
   },
-  Ok(Output::Assessment(a,c))=>{
-   done=matches!(a.outcome.as_str(),"realized"|"unrealized"|"observation"|"voided")||fresh.submitted>=fresh.draft.rule.expires;
+  Ok(Output::Assessment(Verdict{assessment:a,checkpoint:c,settled}))=>{
+   done=settled||matches!(a.outcome.as_str(),"realized"|"unrealized"|"observation"|"voided")||fresh.submitted>=fresh.draft.rule.expires;
    let changed=fresh.assessment.as_ref().is_none_or(|old|old.outcome!=a.outcome||old.event_at!=a.event_at||old.reason!=a.reason);
    if changed {event(&mut tx,j.owner,j.record,"assessment",json!(a)).await?;
     sqlx::query("UPDATE review_records SET assessment_revision=assessment_revision+1 WHERE user_id=$1 AND id=$2").bind(j.owner).bind(j.record).execute(&mut *tx).await?;
