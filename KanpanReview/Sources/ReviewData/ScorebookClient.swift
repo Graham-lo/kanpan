@@ -98,6 +98,10 @@ public struct NativeRecordResponse: Codable, Sendable {
   public var groupPending: Bool?
   public var assessmentRevision: Int?
   public var reflectionAssessmentRevision: Int?
+  /// 服务端那边有没有这条记录的图（§4.3）。图本身不在详情里——它几百 KB，
+  /// 而详情是翻记录时一条一条要的；本地没有、这儿写着有，才去取那一条路径。
+  /// 老服务端不给这个键，当成「不知道」（nil），行为和以前一样。
+  public var hasShot: Bool?
   /// 把外层那三个字段贴回记录里，调用方只管用这一份。
   public var merged: ReviewRecord {
     var value = record
@@ -262,6 +266,20 @@ public struct ScorebookClient: Sendable {
     let _: NativeMatchResponse = try await request("v1/native-review/saved-matches", method: "POST", body: JSONEncoder().encode(Input(searchId: search, matchId: match.id)), key: UUID())
   }
   public func stats() async throws -> NativeStatsResponse { try await request("v1/native-review/statistics") }
+  /// 把「记一笔」那张图放上去。
+  ///
+  /// 它不走 `update` 那条路：那条会被队列改写成带 `expectedRevision` 的形状，
+  /// 而图不是对记录内容的一次修改，没有版本可锁。重复上传就是覆盖，天然幂等。
+  public func uploadShot(_ operation: ReviewOperation) async throws {
+    let _: OKResponse = try await request("v1/native-review/records/\(operation.recordId.uuidString)/shot",
+                                          method: "POST", body: operation.body, key: operation.id)
+  }
+  /// 取回这条记录的图。没有就是 404，交给调用方当「没有」处理。
+  public func shot(_ id: UUID) async throws -> Data? {
+    struct Shot: Decodable, Sendable { var image: String; var mime: String? }
+    let value: Shot = try await request("v1/native-review/records/\(id.uuidString)/shot")
+    return Data(base64Encoded: value.image)
+  }
   public func update(_ operation: ReviewOperation) async throws -> ReviewRecord {
     let response: NativeRecordResponse = try await request("v1/native-review/records/\(operation.recordId.uuidString)/\(operation.kind)", method: "POST", body: operation.body, key: operation.id)
     return response.merged

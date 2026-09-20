@@ -191,6 +191,23 @@ public actor BinanceREST {
       .sorted { $0.symbol < $1.symbol }
   }
 
+  // ------------------------------------------------------------------ 资金费率
+
+  /// 某一个品种此刻的资金费率（`/fapi/v1/premiumIndex`，公开、免鉴权、权重 1）。
+  ///
+  /// 正在看的那张图用不着它——`markPrice@1s` 流每秒都捎着费率过来。这条路是给
+  /// **别的品种**准备的：长按自选行弹出来的预览卡要在那一格里写出费率，它没有
+  /// 那条流。费率不是有限数就当没有（`nan` 顶上去和空着一样害人）。
+  public func funding(symbol: String) async throws -> FundingSnapshot {
+    let data = try await fetch(hosts.premiumIndex(symbol: symbol), weight: 1)
+    let dto = try decode(PremiumIndexDTO.self, data)
+    guard let rate = Double(dto.lastFundingRate), rate.isFinite else {
+      throw FeedError.badResponse("费率不是数字：\(dto.lastFundingRate)")
+    }
+    let next = dto.nextFundingTime.flatMap { $0 > 0 ? $0 : nil }
+    return FundingSnapshot(rate: rate, nextFundingTimeMs: next)
+  }
+
   // ------------------------------------------------------------------ K 线
 
   /// 一页 K 线。`interval` 走 `Interval.source`（1y 拉的是 1M）。

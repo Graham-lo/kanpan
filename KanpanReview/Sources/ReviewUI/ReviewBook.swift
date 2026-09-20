@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import ReviewDomain
 
 public struct ReviewBook: View {
@@ -170,6 +171,8 @@ public struct ReviewRecordView: View {
   @State private var note = ""
   @State private var nextTime = ""
   @State private var confirmVoid = false
+  /// 记这一笔的那一刻，图上是什么样（§4.3）。没有就整格不出现。
+  @State private var shot: UIImage?
   @Environment(\.reviewTheme) private var t
   public init(feature: ReviewFeature, id: UUID) { self.feature = feature; self.id = id }
   private var record: ReviewRecord? { feature.record(id) }
@@ -205,6 +208,13 @@ public struct ReviewRecordView: View {
               Text("与最近一笔是同一次判断吗？").font(.subheadline).foregroundStyle(t.ink2)
               Button("同一次判断") { feature.resolveGroup(id, sameEpisode: true) }
               Button("独立判断") { feature.resolveGroup(id, sameEpisode: false) }
+            }.listRowBackground(t.raised)
+          }
+          if let shot {
+            Section("当时那张图") {
+              Image(uiImage: shot).resizable().scaledToFit()
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
             }.listRowBackground(t.raised)
           }
           Section("当时") {
@@ -254,6 +264,13 @@ public struct ReviewRecordView: View {
         .onAppear { note = record.reflection.note; nextTime = record.reflection.nextTime }
         // 两个裁定版本只住在详情响应的外层，列表里没有；打开这一页顺手补一次。
         .task(id: id) { await feature.refreshDetail(id) }
+        // 本机有就直接显示；换了台设备才去服务端拉那一张。
+        .task(id: id) {
+          shot = feature.shot(id).flatMap(UIImage.init(data:))
+          guard shot == nil else { return }
+          await feature.loadShot(id)
+          shot = feature.shot(id).flatMap(UIImage.init(data:))
+        }
           .onDisappear { if note != record.reflection.note || nextTime != record.reflection.nextTime { feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) } }
           .sheet(isPresented: $feature.searchOpen) { ReviewSearchView(feature: feature, range: record.draft.range, cutoff: record.draft.created) }
       } else { ContentUnavailableView("记录暂不可用", systemImage: "book.closed") }

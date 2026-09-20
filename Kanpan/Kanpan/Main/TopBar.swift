@@ -64,7 +64,8 @@ struct TopBar: View {
           // 这儿原来还有一个 ▾。弹层没了，箭头就不能留——一个点不动的控件画着
           // 「点我展开」的记号，比没有记号更糟。
           Text("永续")
-            .font(.system(size: 9.5, weight: .medium))
+            // 10pt 是界面上文字的下限（9.5 那一档小到得凑近看）；纯符号不在此列。
+            .font(.system(size: 10, weight: .medium))
             .foregroundStyle(theme.ink3)
             .padding(.horizontal, 4)
             .padding(.vertical, 1.5)
@@ -79,24 +80,34 @@ struct TopBar: View {
 
       Spacer(minLength: 0)
 
-      if let onReview {
-        iconButton(VectorIcon.indicator, label: "复盘", action: onReview)
-          .accessibilityIdentifier("top.review")
-          .overlay(alignment: .topTrailing) {
-            if reviewCount > 0 {
-              Text("\(min(reviewCount, 99))")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(theme.badgeInk)
-                .padding(.horizontal, 4).padding(.vertical, 1.5)
-                .background(theme.amber, in: Capsule())
-                .offset(x: 5, y: -3)
-                .allowsHitTesting(false)
+      // 右上角这两颗单独成一组，间距 14 不是 9。
+      //
+      // 托底还是 30pt（用户定过的尺度，一点没动），命中区撑到 44×44（见 `iconButton`）。
+      // 两颗之间的**步距**必须 ≥44 才不会让两块命中区叠在一起——叠上了就会出现
+      // 「明明点的是搜索，开的是复盘」这种谁也说不清的一下。30 + 14 = 44，正好首尾相接：
+      // 缝里没有点不着的死区，也没有归属不清的重叠带。多出来的 5pt 从 `Spacer` 里出，
+      // 左边的品种名一个点都没挪。
+      HStack(spacing: 14) {
+        if let onReview {
+          iconButton(VectorIcon.indicator, label: "复盘", action: onReview)
+            .accessibilityIdentifier("top.review")
+            .overlay(alignment: .topTrailing) {
+              if reviewCount > 0 {
+                Text("\(min(reviewCount, 99))")
+                  // 角标里也是字，一样守 10pt 这个下限。
+                  .font(.system(size: 10, weight: .semibold))
+                  .foregroundStyle(theme.badgeInk)
+                  .padding(.horizontal, 4).padding(.vertical, 1.5)
+                  .background(theme.amber, in: Capsule())
+                  .offset(x: 5, y: -3)
+                  .allowsHitTesting(false)
+              }
             }
-          }
-      }
+        }
 
-      iconButton(VectorIcon.search(15), label: "搜索品种", action: onSearch)
-        .accessibilityIdentifier("top.search")
+        iconButton(VectorIcon.search(15), label: "搜索品种", action: onSearch)
+          .accessibilityIdentifier("top.search")
+      }
     }
   }
 
@@ -112,9 +123,11 @@ struct TopBar: View {
         .foregroundStyle(theme.ink2)
         .frame(width: 30, height: 30)
         .background(theme.raised, in: Circle())
-        .contentShape(Circle())
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .padding(-7)
     .accessibilityLabel("返回")
     .accessibilityIdentifier("top.back")
   }
@@ -133,9 +146,17 @@ struct TopBar: View {
         .foregroundStyle(theme.ink2)
         .frame(width: 30, height: 30)
         .background(theme.raised, in: Circle())
-        .contentShape(Circle())
+        // 画出来的还是 30pt，手指够得着的是 44×44。
+        //
+        // 放大只能写在 `label` 里面：`Button` 认的是标签自己的 `contentShape`，
+        // 套在按钮外面的 `frame` 它一点都不认。外面那句 `-7` 再把**版面**收回 30×30，
+        // 顶栏一个点都没变高——多出来的那一圈竖着落在顶栏与价格行之间那 9pt 的空隙里，
+        // 够不到价格行上那个横滑换品种的手势（`MainScreen.header`）。
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .padding(-7)
     .accessibilityLabel(label)
     // 点击计数只给 UI 用例读，**只在 DEBUG 构建里挂上去**（审查 C-02）：
     // 正式包的读屏不该因为一个环境变量多念一串数字。
@@ -152,7 +173,7 @@ struct TopBar: View {
 }
 
 
-/// 价格块：左边一列「大价 + 涨跌幅药丸」，右边 2×2 四格（§9.1，2026-09-18 改版）。
+/// 价格块：左边一列「大价 + 涨跌幅药丸」，右边两列三行六格（§9.1，2026-09-20 改版）。
 ///
 /// 涨跌幅用币安 `ticker24h` 的 `P` 字段，不自己算（§4.4）；最新价的颜色跟着它走，
 /// 和原型 `renderTop()` 一致——不是跟着「这一根的涨跌」走。
@@ -161,15 +182,17 @@ struct TopBar: View {
 /// 主角地位靠对比建立而不是靠字号——价停在 22pt 的等宽数字（跳数时行宽不动），
 /// 涨跌幅做成填色药丸带方向箭头，这两样一起就够抢眼了，别再往大里加。
 ///
-/// 右边四格是 AICoin 头部块（`ui_ticker_include_detail_price_block.xml`）的标签习惯：
-/// **仓 / 额 / 市值 / 费率**，标签在左、数值在右，两列基线对齐。AICoin 自己那格写的是
-/// 单字 `FR`，这儿按用户 2026-09-18 的定稿写「费率」——右列最宽的一格就是它。AICoin 实测是
+/// 右边六格是 AICoin 头部块（`ui_ticker_include_detail_price_block.xml`）的标签习惯：
+/// **仓 / 额 · 市值 / 费率 · 结算 / 振幅**，标签在左、数值在右，两列各自对齐。
+/// AICoin 自己那格写的是单字 `FR`，这儿按用户 2026-09-18 的定稿写「费率」。AICoin 实测是
 /// 数值 13sp、标签 11sp，落到这儿降到 11.5 / 10——它那块整体比我们大一档（主价 26sp），
 /// 照搬会把配角做得和主价一样响。持仓那一格按 AICoin 的样子重一档字重。
 ///
-/// 原来底下那行「成交额 · 振幅」的灰字取消了：成交额进了右侧四格，振幅不再显示
-/// （用户 2026-09-18 决定，右边就这四个，不要再多）。
-/// 拿不到的格子一律 `--`，不解释、不弹提示。
+/// 2026-09-20 从四格变六格：结算倒计时从费率格里搬出来单独成格（挤在一起时
+/// 两串数糊成一团），振幅补回右下角（口径见 `HeaderStats.amplitudeText`）。
+/// 头部为此高一行统计，图表让出这几十 pt——用户的原则是「上部不够可以压缩图表，
+/// 但头部的字不许靠缩、截、挤来凑」。
+/// 拿不到的格子一律 `--`（只有「结算」是留空），不解释、不弹提示。
 struct PriceRow: View {
   var theme: PanelTheme
   var ticker: Ticker?
@@ -186,11 +209,14 @@ struct PriceRow: View {
   /// 资金费率，已经是小数（`0.0001` = 0.01%）。超过展示寿命的帧由外面先判成 `nil`
   /// （`MarketModel.displayedFundingRate`），这儿看到的就是「现在还算数」的值。
   var fundingRate: Double?
+  /// 下一次资金费率结算的时刻（`MarkPriceTick.nextFundingTime`）。「结算」那一格
+  /// 读它；没有就留空（见 `HeaderStats.fundingCountdownText`）。
+  var nextFundingTimeMs: Int64?
   /// 这口价不能当「现在的价」看：上一条线路留下的，或者这个品种已经不在交易了。
   /// 灰显，不改字号也不加任何说明文字——「为什么是灰的」不需要解释，新数据到了
   /// 它自己就亮回来（§2B #54）。
   ///
-  /// 除了灰显，它还会把「额 / 市值 / 费率」三格压成 `--`（审查 B.8）：那三个数
+  /// 除了灰显，它还会把「额 / 市值 / 费率 / 振幅」几格压成 `--`（审查 B.8）：那几个数
   /// 和价来自同一帧，价已经判定为旧的，它们摆在那儿只会让人当成现在的数。
   var stale = false
 
@@ -203,23 +229,62 @@ struct PriceRow: View {
     return pct >= 0 ? theme.up : theme.down
   }
 
+  /// 头部：左边价 + 涨跌药丸，右边两列三行六格（仓/额 · 市值/费率 · 结算/振幅）。
+  ///
+  /// **一套版面走到底**：宽屏和 iPhone SE 是同一组格子、同一档字号，没有一个写死的
+  /// 宽度。六格里没有一个字会被缩（`minimumScaleFactor` 全撤了）或被截：每一列自己是
+  /// 一张两列 `Grid`，列宽按这一列里最宽的那一格算，数变长格子就变宽。
+  /// 屏宽不够时变的只有空当和摆法（见下面那三档候选），字一个点都不动。
+  ///
+  /// 比上一版高一行：倒计时从费率格里搬出来单独成格（用户看到那两串数挤在一起），
+  /// 顺手把 24h 振幅补回右下角。图表纵向余量足，让出这几十 pt 是用户 2026-09-20
+  /// 定的取舍——「上部空间不够时可以压缩图表区域，但头部的字不许靠缩、截、挤来凑」。
+  ///
+  /// 价与药丸那一块在这三行的高度里**垂直居中**（`alignment: .center`），
+  /// 不再顶着第一行的基线跑。
+  ///
+  /// 三档候选，`ViewThatFits` 从上往下挑第一个**整个装得下**的——挑的是间距和
+  /// 摆法，不是字号：
+  /// 1. 并排，间距照常（iPhone 16 Pro 这种宽屏）；
+  /// 2. 并排，格与格之间紧一点（iPhone SE 375pt：宽屏那一档差几个 pt，
+  ///    紧一点就整整齐齐，价还是 22pt 一个字不缩）；
+  /// 3. 上下两块：价与药丸一行，六格整块挪到它下面。价特别长的品种走这一档，
+  ///    头部再长高一截——长高好过把「80,848.00」截成「80,848....」。
   var body: some View {
-    HStack(alignment: .top, spacing: 12) {
-      // 价和药丸还是原来那一行、原来的顺序和间距，一个像素都不挪；
-      // 这一轮只是把右边空出来的地方交给四格（原来那行灰字撤掉之后空出来的）。
-      HStack(alignment: .firstTextBaseline, spacing: 9) {
-        Text(lastText)
-          .font(.system(size: 22, weight: .medium))
-          .monospacedDigit()
-          .foregroundStyle(lastPrice == nil ? theme.ink : (stale ? theme.ink3 : tint))
-          .lineLimit(1)
-          .minimumScaleFactor(0.6)
-          .accessibilityIdentifier("top.lastPrice")
-        pill
-      }
-      Spacer(minLength: 0)
-      stats
+    ViewThatFits(in: .horizontal) {
+      sideBySide(gap: 12, columnSpacing: 14)
+      sideBySide(gap: 8, columnSpacing: 10)
+      stacked
     }
+  }
+
+  private func sideBySide(gap: CGFloat, columnSpacing: CGFloat) -> some View {
+    HStack(alignment: .center, spacing: 0) {
+      priceBlock
+      Spacer(minLength: gap)
+      stats(columnSpacing: columnSpacing)
+    }
+  }
+
+  private var stacked: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      priceBlock
+      stats(columnSpacing: 14)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var priceBlock: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 9) {
+      Text(lastText)
+        .font(.system(size: 22, weight: .medium))
+        .monospacedDigit()
+        .foregroundStyle(lastPrice == nil ? theme.ink : (stale ? theme.ink3 : tint))
+        .lineLimit(1)
+        .accessibilityIdentifier("top.lastPrice")
+      pill
+    }
+    .fixedSize(horizontal: true, vertical: false)
   }
 
   /// 涨跌幅药丸：填色 + 白字 + 方向箭头。填的色和自选表里那一列是同一支
@@ -234,6 +299,10 @@ struct PriceRow: View {
         .font(.system(size: 11.5, weight: .semibold))
         .monospacedDigit()
     }
+    // 窄屏（iPhone SE 这一档）上右边六格把这一行挤紧时，药丸里的「-1.09%」会被折成
+    // 两行、头部当场再长高一截。它是一枚记号，不是一段话：钉死一行、按自己的字长占位。
+    .lineLimit(1)
+    .fixedSize(horizontal: true, vertical: false)
     .foregroundStyle(pct == nil || stale ? theme.ink3 : theme.badgeInk)
     .padding(.horizontal, 7)
     .padding(.vertical, 3.5)
@@ -249,8 +318,8 @@ struct PriceRow: View {
     return grouped(fmtPrice(p, decimals: decimals))
   }
 
-  // ---------------------------------------------------------------- 右侧四格
-  // 四格取什么值全在 `HeaderStats` 里（纯函数，用例守着）；这儿只管画。
+  // ---------------------------------------------------------------- 右侧六格
+  // 六格取什么值全在 `HeaderStats` 里（纯函数，用例守着）；这儿只管画。
   // 单位由外面按品种钉住（§2B #53），`HeaderStats` 只在还没钉上时按眼前这个数认一次。
 
   private var turnoverText: String? {
@@ -269,24 +338,72 @@ struct PriceRow: View {
     HeaderStats.fundingText(rate: fundingRate, fresh: !stale)
   }
 
-  /// 2×2：上排 仓 / 额，下排 市值 / 费率。宽度写死，否则数字一长一短两列会来回抖。
-  /// 184 是在真机上量出来的：两个汉字的标签 +「-0.1327%」这种最长的费率两列都塞得下，
-  /// 同时左边那行「76,585.10 ▲+1.15%」还留着余量——那一行是主角，不能因为四格而缩字。
-  private var stats: some View {
-    Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 3) {
-      GridRow {
-        cell("仓", openInterestText, heavy: true)
-        cell("额", turnoverText)
+  /// 「振幅」= 24h (高 − 低) / 低。高低价和价来自同一帧，价旧了它一起 `--`。
+  private var amplitudeText: String? {
+    HeaderStats.amplitudeText(high: ticker?.high, low: ticker?.low, fresh: !stale)
+  }
+
+  /// 六格，两列三行：左列 仓 / 市值 / 结算，右列 额 / 费率 / 振幅。
+  ///
+  /// 上一版是 2×2，倒计时挤在费率值后面同一格里——用户看到的就是两串数糊成一团。
+  /// 现在倒计时自己占「结算」那一格，右下角补上振幅，头部因此高一行统计。
+  ///
+  /// 宽度不再写死、也不再按屏宽分档：每一列自己是一张两列的 `Grid`（标签靠左、
+  /// 值靠右），列宽按这一列里最宽的那一格算，数变长格子跟着变宽。
+  /// `minimumScaleFactor` 全撤了——这六格的字一个都不缩、不截，装不下宁可
+  /// 让头部再长高一点，图表让出那几十 pt（用户 2026-09-20 定的取舍）。
+  ///
+  /// `fixedSize` 是这条规矩的保险：谁也别想把这六格挤窄。两列之间默认 14pt，
+  /// 一眼看出是两列而不是六个并排的词；窄屏上 `body` 会挑那档紧一点的（10pt），
+  /// 紧的是空当，字一个都没动。
+  private func stats(columnSpacing: CGFloat) -> some View {
+    HStack(alignment: .top, spacing: columnSpacing) {
+      statColumn {
+        statRow("仓", openInterestText, id: "top.openInterest", heavy: true)
+        statRow("市值", marketCapText, id: "top.marketCap")
+        settlementRow
       }
-      GridRow {
-        cell("市值", marketCapText)
-        cell("费率", fundingText, tint: frTint)
+      statColumn {
+        statRow("额", turnoverText, id: "top.turnover")
+        statRow("费率", fundingText, id: "top.funding", tint: frTint)
+        statRow("振幅", amplitudeText, id: "top.amplitude")
       }
     }
-    .frame(width: 184)
     .lineLimit(1)
+    .fixedSize(horizontal: true, vertical: false)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("top.stats")
+  }
+
+  private func statColumn<Rows: View>(@ViewBuilder _ rows: () -> Rows) -> some View {
+    Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 3) { rows() }
+  }
+
+  private func statRow(_ label: String, _ value: String?, id: String,
+                       heavy: Bool = false, tint: Color? = nil) -> some View {
+    GridRow {
+      statLabel(label)
+      statValue(value ?? "--", missing: value == nil, id: id, heavy: heavy, tint: tint)
+    }
+  }
+
+  /// 「结算」：离下一次资金费率结算还有多久（`HeaderStats.fundingCountdownText`）。
+  /// 时间自己会走，所以这一格带一根 30 秒的节拍（`TimelineView`）——只有它重画，
+  /// 价格和药丸不受影响。拿不到结算时刻就**留空**：不写「--」，也不解释
+  /// （留的是一个空格，为的是这一行的高度和另外两行一样）。
+  private var settlementRow: some View {
+    GridRow {
+      statLabel("结算")
+      TimelineView(.periodic(from: .now, by: 30)) { context in
+        statValue(countdownText(now: context.date) ?? " ", missing: false, id: "top.settlement")
+      }
+      .gridColumnAlignment(.trailing)
+    }
+  }
+
+  private func countdownText(now: Date) -> String? {
+    guard !stale, fundingRate != nil else { return nil }
+    return HeaderStats.fundingCountdownText(nextFundingTimeMs: nextFundingTimeMs, now: now)
   }
 
   /// 费率的正负是它唯一要读的信息，按涨跌色给——和药丸、自选表用的是同两支色。
@@ -295,21 +412,21 @@ struct PriceRow: View {
     return r > 0 ? theme.up : theme.down
   }
 
-  private func cell(_ label: String, _ value: String?, heavy: Bool = false,
-                    tint: Color? = nil) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 6) {
-      Text(label)
-        .font(.system(size: 10))
-        .foregroundStyle(theme.ink3)
-      Spacer(minLength: 0)
-      Text(value ?? "--")
-        .font(.system(size: 11.5, weight: heavy ? .semibold : .medium))
-        .monospacedDigit()
-        .foregroundStyle(value == nil || stale ? theme.ink3 : (tint ?? theme.ink2))
-        .minimumScaleFactor(0.85)
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .accessibilityElement(children: .combine)
+  private func statLabel(_ text: String) -> some View {
+    Text(text)
+      .font(.system(size: 10))
+      .foregroundStyle(theme.ink3)
+      .gridColumnAlignment(.leading)
+  }
+
+  private func statValue(_ text: String, missing: Bool, id: String,
+                         heavy: Bool = false, tint: Color? = nil) -> some View {
+    Text(text)
+      .font(.system(size: 11.5, weight: heavy ? .semibold : .medium))
+      .monospacedDigit()
+      .foregroundStyle(missing || stale ? theme.ink3 : (tint ?? theme.ink2))
+      .gridColumnAlignment(.trailing)
+      .accessibilityIdentifier(id)
   }
 }
 

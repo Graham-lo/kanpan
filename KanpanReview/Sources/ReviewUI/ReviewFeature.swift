@@ -73,6 +73,19 @@ import ReviewData
   public var onOpenChart: (ReviewRecord) -> Void = { _ in }
   public var onOpenMatch: (ReviewMatch, Int64) -> Void = { _, _ in }
   public var onCapture: () -> Void = {}
+  /// 「记一笔」的那一刻，把当前这张图离屏画成一张 PNG（§4.3）。
+  ///
+  /// 画图的本事在 app 里（`ChartSnapshotRenderer`），这个包看不见它，所以由宿主注进来。
+  /// 没接线就没有图：记录照记，详情里那一格整个不出现——不写「无截图」。
+  @ObservationIgnored public var captureShot: (@MainActor () -> Data?)?
+  /// 已经读进内存的那几张图。视图每帧都要问「这条有没有图」，不能每次都去读盘。
+  /// 只留最近看过的几张：一张 PNG 几百 KB，攒多了就是白占内存。
+  @ObservationIgnored private var shotCache: [UUID: Data] = [:]
+  @ObservationIgnored private var shotOrder: [UUID] = []
+  /// 问过服务端、确认那边也没有的。省得每打开一次详情就再去要一次。
+  @ObservationIgnored private var shotMissing: Set<UUID> = []
+  /// 这条记录有没有图，改一次这个数视图就重画一次（`shotCache` 本身不被观察）。
+  public private(set) var shotVersion = 0
   public var onLogin: () -> Void = {}
   public var onSyncComplete: () -> Void = {}
   public var pendingUploads: Int { store?.archive.queue.count ?? 0 }
@@ -207,9 +220,56 @@ import ReviewData
       }) else { return false }
       // toast 那句话交给 `MainScreen` 说（要带一颗「查看」，见 §2F2），这儿只负责
       // 把「刚记下的是哪条」留下来。`notice` 是纯提示通道，挂不了动作。
-      draft = nil; saveDraft(); captureOpen = false; lastSaved = value.id; synchronize(); return true
+      draft = nil; saveDraft(); captureOpen = false; lastSaved = value.id
+      attachShot(to: value.id)
+      synchronize(); return true
     } catch { notice = error.localizedDescription; return false }
   }
+  // MARK: - 那张图（§4.3）
+
+  /// 记完一笔，顺手把当时那张图存下来，并排进上传队列。
+  ///
+  /// 画不出来（没接线、图还没渲染）就什么都不做：一条没有图的记录仍然是完整的记录，
+  /// 不值得为此弹一句提示，更不该让保存失败。
+  private func attachShot(to id: UUID) {
+    guard let data = captureShot?(), !data.isEmpty, data.count <= Self.shotMaxBytes else { return }
+    do { try store?.saveShot(data, for: id) } catch { return }
+    remember(data, for: id)
+    guard client != nil, let body = try? JSONEncoder().encode(["image": data.base64EncodedString()]) else { return }
+    _ = change { archive in archive.queue.append(ReviewOperation(recordId: id, kind: "shot", body: body)) }
+  }
+  /// 服务端那边的上限也是这个数（`review.rs` 的 `SHOT_MAX_BYTES`）。本地先量一次，
+  /// 省得存下来再被拒一次。
+  static let shotMaxBytes = 2 * 1024 * 1024
+
+  /// 这条记录的图。内存里有就给内存那份，否则读一次盘。
+  public func shot(_ id: UUID) -> Data? {
+    if let hit = shotCache[id] { return hit }
+    guard let data = store?.shot(id) else { return nil }
+    remember(data, for: id)
+    return data
+  }
+  private func remember(_ data: Data, for id: UUID) {
+    shotCache[id] = data
+    shotOrder.removeAll { $0 == id }; shotOrder.append(id)
+    while shotOrder.count > 4, let victim = shotOrder.first {
+      shotOrder.removeFirst(); shotCache.removeValue(forKey: victim)
+    }
+    shotVersion &+= 1
+  }
+  /// 本机没有这张图（换了台设备、或者本地缓存被裁掉了），去服务端要一次。
+  /// 没有就记下来，这一程不再问第二遍。
+  public func loadShot(_ id: UUID) async {
+    guard shot(id) == nil, !shotMissing.contains(id), let client, record(id)?.serverId != nil else { return }
+    let requestEpoch = epoch
+    do {
+      guard let data = try await client.shot(id), !data.isEmpty else { shotMissing.insert(id); return }
+      guard epoch == requestEpoch else { return }
+      try? store?.saveShot(data, for: id)
+      remember(data, for: id)
+    } catch { shotMissing.insert(id) }
+  }
+
   public func saveReflection(_ id: UUID, note: String, nextTime: String, publish: Bool) {
     guard var record = record(id) else { return }
     if publish && note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { notice = "先写一句复盘"; return }
@@ -224,7 +284,10 @@ import ReviewData
         if let i = archive.records.firstIndex(where: { $0.id == id }) { archive.records[i] = record } else { archive.records.insert(record, at: 0) }
         // Unsent drafts may be coalesced; a request whose outcome is uncertain retains its key.
         archive.queue.append(operation)
-      }) { notice = publish ? "复盘已保存" : nil; synchronize() }
+      // 存成了不说话（§P3-8）：他刚按的就是「保存」，回到列表那条记录已经带着
+      // 他写的那句话——成没成看得见，再弹一条「复盘已保存」是替他自己的动作鼓掌。
+      // 失败那一句留着（下面那行 `catch`），那才是他看不出来的事。
+      }) { notice = nil; synchronize() }
     } catch { notice = error.localizedDescription }
   }
   public func voidRecord(_ id: UUID) {
@@ -290,7 +353,9 @@ import ReviewData
           try Task.checkCancellation()
           guard epoch == requestEpoch && syncID == runID else { return }
           if operation.attempted != true {
-            if operation.kind != "create", let current = records.first(where: { $0.id == operation.recordId }),
+            // 图不是对记录内容的一次修改，没有版本可锁（服务端那条路也不读它）。
+            if operation.kind != "create", operation.kind != "shot",
+              let current = records.first(where: { $0.id == operation.recordId }),
               var body = try JSONSerialization.jsonObject(with: operation.body) as? [String: Any] {
               body["expectedRevision"] = current.revision
               operation.body = try JSONSerialization.data(withJSONObject: body)
@@ -299,10 +364,14 @@ import ReviewData
             let pending = operation
             guard change({ archive in if let index = archive.queue.firstIndex(where: { $0.id == pending.id }) { archive.queue[index] = pending } }) else { return }
           }
-          let remote: ReviewRecord
+          // 图那条不换回一份记录：服务端只答「收下了」。
+          let remote: ReviewRecord?
           do {
-            if operation.kind == "create" { remote = try await client.create(operation) }
-            else { remote = try await client.update(operation) }
+            switch operation.kind {
+            case "create": remote = try await client.create(operation)
+            case "shot": try await client.uploadShot(operation); remote = nil
+            default: remote = try await client.update(operation)
+            }
           } catch {
             if error is CancellationError { return }
             guard epoch == requestEpoch && syncID == runID else { return }
@@ -329,7 +398,7 @@ import ReviewData
           guard epoch == requestEpoch && syncID == runID else { return }
           guard change({ archive in
             archive.queue.removeAll { $0.id == operation.id }
-            if let i = archive.records.firstIndex(where: { $0.id == remote.id }) {
+            if let remote, let i = archive.records.firstIndex(where: { $0.id == remote.id }) {
               var merged = Self.adopt(remote, over: archive.records[i])
               // 这一次成功的如果正是那条冲突的重发，冲突就算解了。
               if merged.conflict?.kind == operation.kind { merged.conflict = nil }
@@ -338,7 +407,7 @@ import ReviewData
               archive.records[i] = merged
             }
           }) else { return }
-          if let index = history.firstIndex(where: { $0.id == remote.id }) { history[index] = remote }
+          if let remote, let index = history.firstIndex(where: { $0.id == remote.id }) { history[index] = remote }
         }
         do {
           let page = try await client.list()
@@ -502,7 +571,7 @@ import ReviewData
   }
   public func saveMatch(_ match: ReviewMatch) async {
     guard let id = searchID, let client else { return }; let currentEpoch = epoch
-    do { try await client.saveMatch(match, search: id); guard epoch == currentEpoch else { return }; savedMatchIDs.insert(match.id); notice = "已保存" }
+    do { try await client.saveMatch(match, search: id); guard epoch == currentEpoch else { return }; savedMatchIDs.insert(match.id) }  // 存成了不说话（§P3-8）：那颗按钮当场变成「已保存」。
     catch { if epoch == currentEpoch { notice = error.localizedDescription } }
   }
   public func cancelSearch() {

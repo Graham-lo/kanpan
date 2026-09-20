@@ -59,6 +59,14 @@ public struct BinanceHosts: Sendable, Equatable {
     return url("/fapi/v1/klines", q)
   }
 
+  /// 单品种的资金费率快照（`lastFundingRate` / `nextFundingTime`）。
+  ///
+  /// 公开、免鉴权、权重 1。图上那一份费率是 `markPrice@1s` 流捎回来的，只有
+  /// 正在看的那张图有；长按预览卡要的是「任意一个品种现在的费率」，那就走这儿。
+  public func premiumIndex(symbol: String) -> URL {
+    url("/fapi/v1/premiumIndex", ["symbol": symbol])
+  }
+
   public func ticker24h(symbol: String) -> URL {
     url("/fapi/v1/ticker/24hr", ["symbol": symbol])
   }

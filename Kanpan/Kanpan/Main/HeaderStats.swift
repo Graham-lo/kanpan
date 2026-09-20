@@ -1,9 +1,9 @@
 import Foundation
 import KanpanCore
 
-/// 顶栏右侧四格（仓 / 额 / 市值 / 费率）的**取值规则**。
+/// 顶栏右侧六格（仓 / 额 · 市值 / 费率 · 结算 / 振幅）的**取值规则**。
 ///
-/// 单独拆一份是因为这四格的规则全是「什么时候该显示 `--`」，而它们出错的样子
+/// 单独拆一份是因为这六格的规则全是「什么时候该显示 `--`」，而它们出错的样子
 /// 用户一眼看不出来（一个上一条线路留下的成交额和一个真的成交额长得一模一样）。
 /// 规则留在 SwiftUI 的 `body` 里没法用例守，所以这儿只做纯函数，`PriceRow`
 /// 只负责把返回的字串画出来（`nil` → `--`，不解释、不弹提示）。
@@ -46,8 +46,54 @@ enum HeaderStats {
     return fmtFundingRate(rate)
   }
 
+  /// 跟在「费率」那个值后面的一小段：距离下一次结算还有多久
+  /// （`MarkPriceTick.nextFundingTime`）。
+  ///
+  /// 费率本身只说「现在这一档是多少」，而它每隔几小时才结算一次——同样一个
+  /// `+0.0100%`，还有 7 小时和还有 3 分钟是两件事。这一段就说这一件事，别的不说：
+  /// 拿不到时刻（没收到过 `markPrice` 帧、或者这个品种没有这回事）就一个字不写，
+  /// 不写「--」，也不解释。
+  ///
+  /// 它自己占一格（右侧六格里的「结算」）。曾经跟在费率值后面同一格里，两串数
+  /// 挤成一团、窄屏上还要缩字才塞得下；现在分开摆，头部为此高一行，图表让出这
+  /// 几十 pt——头部的字一个都不缩、不截，是用户 2026-09-20 定的取舍。
+  ///
+  /// 单位用中文「时 / 分」：界面文案一律中文，h / m 这类缩写不出现（K/M/B/T 是
+  /// 用户点名要的唯一例外）。结算那一刻过去之后，新的一帧几乎立刻就到；到之前
+  /// 按标准的 8 小时一期往后滚，不会停在一个已经过去的时刻上。不足一分钟写
+  /// 「即将结算」——那一分钟里写「0分」等于告诉人「还有零分钟」。
+  static func fundingCountdownText(nextFundingTimeMs: Int64?, now: Date = Date()) -> String? {
+    guard let target = nextFundingTimeMs, target > 0 else { return nil }
+    var remaining = Double(target) / 1000 - now.timeIntervalSince1970
+    // 已经过了结算时刻：往后滚到下一期。滚太多期说明这一帧早就不算数了，
+    // 那由费率本身的展示寿命（`fundingMaxAge`）去判，这儿不再多说一句。
+    while remaining <= 0 { remaining += fundingPeriod }
+    guard remaining.isFinite, remaining < fundingPeriod * 4 else { return nil }
+    if remaining < 60 { return "即将结算" }
+    let total = Int(remaining)
+    let hours = total / 3600, minutes = (total % 3600) / 60
+    return hours > 0 ? "\(hours)时\(minutes)分" : "\(minutes)分"
+  }
+
+  /// 一期资金费率多长。币安 USD-M 的标准档是 8 小时（少数品种 4 / 1 小时，
+  /// 它们的下一次结算时刻同样由流里那一帧给，这个常量只用在「刚结算完、
+  /// 下一帧还没到」的那几秒里）。
+  static let fundingPeriod: TimeInterval = 8 * 3600
+
   /// 费率帧的展示寿命。资金费率每小时结算一次，帧比一个结算周期还旧就等于没有。
   static let fundingMaxAge: TimeInterval = 3600
+
+  /// 「振幅」= 24h 最高与最低之间隔了多远，按最低价算：`(高 − 低) / 低`。
+  ///
+  /// 分母用最低价而不是开盘价：这一格回答的是「今天这根柱子有多长」，
+  /// 从谷底看涨到顶要多少，和开在哪儿无关（`Ticker.amplitude24h` 那支是
+  /// 以开盘价为分母的另一口径，给别处用，两边不混）。
+  /// 高低价和价来自同一帧，价旧了这一格也一起 `--`。
+  static func amplitudeText(high: Double?, low: Double?, fresh: Bool) -> String? {
+    guard fresh, let high, let low, high.isFinite, low.isFinite,
+          low > 0, high >= low else { return nil }
+    return toFixed((high - low) / low * 100, 2) + "%"
+  }
 
   /// 帧是不是已经过了展示寿命。`frameMs <= 0`（从没收到过帧）不算过期——
   /// 那时候本来就没有值可显示，另一条 `rate == nil` 的门会拦住它。

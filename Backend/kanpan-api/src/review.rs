@@ -1,7 +1,7 @@
 use crate::review_domain as domain;
 // Native records are authoritative here; charts remain in the existing app/market stack.
 use crate::{AppState,auth::Identity,crypto::digest,envelope,error::{ApiError,Params,Payload,Result,Route}};
-use axum::{Router,Json,extract::State,routing::{get,post},http::HeaderMap};
+use axum::{Router,Json,extract::{State,DefaultBodyLimit},routing::{get,post},http::HeaderMap};
 use base64::{Engine,engine::general_purpose::{STANDARD,URL_SAFE_NO_PAD}};
 use chrono::Utc;
 use scorebook_core::{api::native_review::*,domain::{statistics}};
@@ -18,6 +18,11 @@ pub fn routes()->Router<AppState> {
  .route("/v1/native-review/records/{id}/reflections",post(reflection))
  .route("/v1/native-review/records/{id}/void",post(void_record))
  .route("/v1/native-review/records/{id}/group",post(group))
+ // 这一条走自己的体积上限：整套 API 的默认是 512 KiB，而一张 2× 缩放的行情截图
+ // base64 之后三四百 KB 起步。限在 3 MiB——解码后必须 ≤ 2 MiB（见 `shot_put`），
+ // 3 MiB 正好兜住 base64 的 4/3 膨胀加 JSON 外壳，再多一个字节都不收。
+ .route("/v1/native-review/records/{id}/shot",post(shot_put).get(shot_get)
+  .layer(DefaultBodyLimit::max(3*1024*1024)))
  .route("/v1/native-review/statistics",get(stats))
 }
 pub fn parse<T:serde::de::DeserializeOwned>(value:Value)->Result<T> {Ok(serde_json::from_value(value)?)}
@@ -107,7 +112,10 @@ async fn detail(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>)->Resu
  let mut tx=s.personal(i.user).await?;
  let row=sqlx::query("SELECT record,group_pending,assessment_revision,reflection_assessment_revision FROM review_records WHERE user_id=$1 AND id=$2").bind(i.user).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
  let mut record:Value=row.get("record");record["groupPending"]=json!(row.get::<bool,_>("group_pending"));
- let result=json!({"record":record,"groupPending":row.get::<bool,_>("group_pending"),"assessmentRevision":row.get::<i64,_>("assessment_revision"),"reflectionAssessmentRevision":row.get::<Option<i64>,_>("reflection_assessment_revision")});tx.commit().await?;Ok(envelope(result))
+ // 有没有那张图（§4.3）。不把图本身塞进详情：它几百 KB，而详情是翻记录时
+ // 一条一条要的；客户端看见 `hasShot` 再去取那一条路径，本地有缓存就根本不去。
+ let has_shot:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM review_shots WHERE user_id=$1 AND record_id=$2)").bind(i.user).bind(id).fetch_one(&mut *tx).await?;
+ let result=json!({"record":record,"groupPending":row.get::<bool,_>("group_pending"),"assessmentRevision":row.get::<i64,_>("assessment_revision"),"reflectionAssessmentRevision":row.get::<Option<i64>,_>("reflection_assessment_revision"),"hasShot":has_shot});tx.commit().await?;Ok(envelope(result))
 }
 async fn reflection(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,headers:HeaderMap,Payload(body):Payload<Value>)->Result<Json<Value>> {change(&s,i.user,id,key(&headers)?,"reflection",body).await}
 async fn void_record(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,headers:HeaderMap,Payload(body):Payload<Value>)->Result<Json<Value>> {change(&s,i.user,id,key(&headers)?,"void",body).await}
@@ -145,6 +153,41 @@ async fn change(s:&AppState,owner:Uuid,id:Uuid,key:Uuid,kind:&str,body:Value)->R
  sqlx::query("UPDATE review_records SET record=$3,changed_at=now() WHERE user_id=$1 AND id=$2").bind(owner).bind(id).bind(json!(record)).execute(&mut *tx).await?;
  let mut visible=json!(record);visible["groupPending"]=json!(kind!="group"&&row.get::<bool,_>("group_pending"));
  let result=json!({"record":visible});finish(&mut tx,owner,key,&request,&result).await?;tx.commit().await?;Ok(envelope(result))
+}
+/// 「记一笔」自动存下来的那张图（§4.3）。
+///
+/// 只有两个动作：放上去、取回来。它不进 `review_operations` 那套幂等表，
+/// 也不碰 `record.revision`——图是记录的附属物，不是对记录内容的一次修改，
+/// 拿版本号去锁它只会让「补传一张图」被别的设备的一次复盘编辑挤掉。
+/// 同一条记录重复上传就是覆盖（`ON CONFLICT DO UPDATE`），天然幂等。
+#[derive(Deserialize)] #[serde(rename_all="camelCase",deny_unknown_fields)] struct ShotInput {image:String}
+/// 收下来之前认一眼魔数：只收 PNG 与 JPEG。
+///
+/// 不是为了「格式好看」，是因为这几个字节最后会原样发回给客户端去渲染——
+/// 让任意字节流冒充图片存进来，等于给自己开一条存任意二进制的通道。
+fn shot_mime(bytes:&[u8])->Option<&'static str> {
+ if bytes.starts_with(&[0x89,b'P',b'N',b'G',0x0d,0x0a,0x1a,0x0a]) {return Some("image/png")}
+ if bytes.starts_with(&[0xff,0xd8,0xff]) {return Some("image/jpeg")}
+ None
+}
+const SHOT_MAX_BYTES:usize=2*1024*1024;
+async fn shot_put(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,Payload(input):Payload<ShotInput>)->Result<Json<Value>> {
+ let bytes=STANDARD.decode(input.image.as_bytes()).map_err(|_|ApiError::bad("invalid_shot"))?;
+ if bytes.is_empty()||bytes.len()>SHOT_MAX_BYTES {return Err(ApiError::bad("shot_too_large"))}
+ let mime=shot_mime(&bytes).ok_or_else(||ApiError::bad("invalid_shot"))?;
+ let mut tx=s.personal(i.user).await?;
+ // 记录得先在：没有这一条就没有「这一条的图」，外键也是这么定的，但先查一次
+ // 才能回 404 而不是一个数据库约束错误。
+ if sqlx::query_scalar::<_,Uuid>("SELECT id FROM review_records WHERE user_id=$1 AND id=$2").bind(i.user).bind(id).fetch_optional(&mut *tx).await?.is_none() {return Err(ApiError::missing())}
+ sqlx::query("INSERT INTO review_shots(user_id,record_id,mime,bytes) VALUES($1,$2,$3,$4) ON CONFLICT(user_id,record_id) DO UPDATE SET mime=EXCLUDED.mime,bytes=EXCLUDED.bytes,created_at=now()")
+  .bind(i.user).bind(id).bind(mime).bind(&bytes).execute(&mut *tx).await?;
+ tx.commit().await?;Ok(envelope(json!({"ok":true})))
+}
+async fn shot_get(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>)->Result<Json<Value>> {
+ let mut tx=s.personal(i.user).await?;
+ let row=sqlx::query("SELECT mime,bytes FROM review_shots WHERE user_id=$1 AND record_id=$2").bind(i.user).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
+ let bytes:Vec<u8>=row.get("bytes");let mime:String=row.get("mime");
+ tx.commit().await?;Ok(envelope(json!({"image":STANDARD.encode(bytes),"mime":mime})))
 }
 pub fn signature(d:&NativeDraft)->String {
  // Never combine different target/stop/horizon or price confirmation policies into one win rate.

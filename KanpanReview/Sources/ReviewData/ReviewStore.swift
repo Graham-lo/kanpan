@@ -28,6 +28,10 @@ public enum ReviewStorageError: LocalizedError {
   private let url: URL
   private let replayURL: URL
   private let draftURL: URL
+  /// 「记一笔」自动存下来的那张图放哪儿（§4.3）。一条记录一张，文件名就是记录 id，
+  /// 所以不需要索引，也不进主档——几百 KB 的 PNG 塞进那份每次改动都整份重写的
+  /// JSON 里，等于每记一笔就把所有图重编码一遍。
+  private let shotsURL: URL
   private struct DraftFile: Codable { var draft: ReviewDraft? }
   private var positions: [String: ReviewReplayPosition]
   public var cloudCache = false
@@ -62,6 +66,7 @@ public enum ReviewStorageError: LocalizedError {
     url = directory.appendingPathComponent("review-v1.json")
     replayURL = directory.appendingPathComponent("replay-positions.json")
     draftURL = directory.appendingPathComponent("draft-v1.json")
+    shotsURL = directory.appendingPathComponent("shots", isDirectory: true)
     positions = Self.recover([String: ReviewReplayPosition].self, at: replayURL) ?? [:]
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     if FileManager.default.fileExists(atPath: url.path) {
@@ -102,7 +107,32 @@ public enum ReviewStorageError: LocalizedError {
   public func adoptSideFiles(from other: ReviewStore, sanitizingDraft: (ReviewDraft) -> ReviewDraft = { $0 }) throws {
     if archive.draft == nil, let draft = other.archive.draft { try saveDraft(sanitizingDraft(draft)) }
     try adoptReplay(from: other)
+    adoptShots(from: other)
   }
+
+  /// 访客那边记过的图跟着记录一起搬过来。规则同样只有一条：这边没有的才收。
+  /// 搬不动的那张就算了——图丢了记录还在，不值得为它中断整次登录。
+  public func adoptShots(from other: ReviewStore) {
+    let names = (try? FileManager.default.contentsOfDirectory(atPath: other.shotsURL.path)) ?? []
+    guard !names.isEmpty, (try? FileManager.default.createDirectory(at: shotsURL, withIntermediateDirectories: true)) != nil else { return }
+    for name in names {
+      let to = shotsURL.appendingPathComponent(name)
+      guard !FileManager.default.fileExists(atPath: to.path) else { continue }
+      try? FileManager.default.copyItem(at: other.shotsURL.appendingPathComponent(name), to: to)
+    }
+  }
+
+  // MARK: - 那张图
+
+  private func shotURL(_ id: UUID) -> URL { shotsURL.appendingPathComponent(id.uuidString + ".png") }
+  /// 这条记录的图。没有就是 nil，不抛——它只是一张图。
+  public func shot(_ id: UUID) -> Data? { try? Data(contentsOf: shotURL(id)) }
+  public func hasShot(_ id: UUID) -> Bool { FileManager.default.fileExists(atPath: shotURL(id).path) }
+  public func saveShot(_ data: Data, for id: UUID) throws {
+    try FileManager.default.createDirectory(at: shotsURL, withIntermediateDirectories: true)
+    try data.write(to: shotURL(id), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+  }
+  public func removeShot(_ id: UUID) { try? FileManager.default.removeItem(at: shotURL(id)) }
 
   /// 重温进度：这边没有的才收（这边有的那一条是这个人自己更晚看到的位置）。
   public func adoptReplay(from other: ReviewStore) throws {

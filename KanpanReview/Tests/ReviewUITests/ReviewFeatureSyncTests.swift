@@ -44,6 +44,8 @@ import ReviewData
   /// 最近一次复盘更新带上来的 `expectedRevision`。
   private(set) var reflectionExpected: Int?
   private(set) var paths: [String] = []
+  /// 收到的那几张图（记录 id → 字节）。
+  private(set) var shots: [UUID: Data] = [:]
 
   var transport: ScorebookClient.Transport {
     { [self] path, method, body, key in try await self.respond(path, method, body, key) }
@@ -83,6 +85,16 @@ import ReviewData
       record.revision += 1
       records[id] = record
       return try wrap(["record": try object(record), "assessmentRevision": 2, "reflectionAssessmentRevision": 2])
+    }
+    if path.hasSuffix("/shot") {
+      let id = try identifier(path)
+      if method == "POST" {
+        struct Shot: Decodable { var image: String }
+        shots[id] = Data(base64Encoded: try JSONDecoder().decode(Shot.self, from: body ?? Data()).image)
+        return try wrap(["ok": true])
+      }
+      guard let data = shots[id] else { throw ScorebookError.http(404, "not_found") }
+      return try wrap(["image": data.base64EncodedString(), "mime": "image/png"])
     }
     if method == "GET", path.hasPrefix("v1/native-review/records") {
       if let id = try? identifier(path) {
@@ -185,6 +197,56 @@ final class ReviewFeatureSyncTests: XCTestCase {
     await feature.loadHistory()
     XCTAssertEqual(feature.bookRecords.map(\.id), [draft.id], "服务端和本地是同一条，只能出现一次")
     XCTAssertEqual(feature.pendingUploads, 0)
+  }
+
+  // MARK: - §4.3：记一笔自带的那张图
+
+  /// 记录一保存就把图存到账号目录里，并且跟着队列传上去；换台设备（本地没有）能再拉回来。
+  @MainActor func testTheChartShotIsSavedLocallyAndUploaded() async throws {
+    let directory = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let server = FakeReviewServer()
+    let feature = ReviewFeature(directory: directory)
+    let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
+    feature.activate(store: store, client: client(server))
+    let bytes = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3])
+    feature.captureShot = { bytes }
+
+    let draft = validDraft()
+    feature.begin(draft)
+    XCTAssertTrue(feature.saveRecord())
+    XCTAssertEqual(store.shot(draft.id), bytes, "图得先落在这个账号自己的目录里")
+    XCTAssertEqual(feature.shot(draft.id), bytes)
+    await settle(feature)
+
+    XCTAssertEqual(server.shots[draft.id], bytes, "图得跟着队列传上去")
+    XCTAssertEqual(feature.pendingUploads, 0, "传完队列要空，图那条不许把后面的堵住")
+
+    // 换一台设备：本机没有这张图，详情页去服务端拉。
+    let second = ReviewFeature(directory: makeDirectory())
+    let secondStore = try ReviewStore(directory: directory.appendingPathComponent("other"))
+    second.activate(store: secondStore, client: client(server))
+    await second.loadHistory()
+    XCTAssertNil(second.shot(draft.id))
+    await second.loadShot(draft.id)
+    XCTAssertEqual(second.shot(draft.id), bytes)
+  }
+
+  /// 没接渲染器（没截成图）时照样记得下这一笔，也不会凭空多一条上传。
+  @MainActor func testARecordWithoutAShotStillSaves() async throws {
+    let directory = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let server = FakeReviewServer()
+    let feature = ReviewFeature(directory: directory)
+    let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
+    feature.activate(store: store, client: client(server))
+    feature.autoSync = false
+
+    let draft = validDraft()
+    feature.begin(draft)
+    XCTAssertTrue(feature.saveRecord())
+    XCTAssertNil(feature.shot(draft.id))
+    XCTAssertEqual(feature.pendingUploads, 1, "只有新建那一条")
   }
 
   /// 翻到第二页时不补本地那几条：那一页的口径在服务端，补进去就是串行。

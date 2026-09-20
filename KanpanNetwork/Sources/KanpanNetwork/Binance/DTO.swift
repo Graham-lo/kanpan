@@ -115,6 +115,29 @@ struct Ticker24hDTO: Decodable {
   }
 }
 
+// ---------------------------------------------------------------- 资金费率
+
+/// `/fapi/v1/premiumIndex` 的单品种响应里我们要的那两项。
+///
+/// `nextFundingTime` 在没有资金费率这回事的品种上是 0，那时候只当「没有下一次」，
+/// 费率本身照旧有效。
+struct PremiumIndexDTO: Decodable {
+  var symbol: String
+  var lastFundingRate: String
+  var nextFundingTime: Int64?
+}
+
+/// 一个品种此刻的资金费率。`nextFundingTimeMs` 只有大于 0 才算数。
+public struct FundingSnapshot: Sendable, Equatable {
+  public var rate: Double
+  public var nextFundingTimeMs: Int64?
+
+  public init(rate: Double, nextFundingTimeMs: Int64?) {
+    self.rate = rate
+    self.nextFundingTimeMs = nextFundingTimeMs
+  }
+}
+
 // ---------------------------------------------------------------- 持仓量
 
 struct OIHistDTO: Decodable {

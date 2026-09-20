@@ -29,6 +29,9 @@ struct ChartPanel: View {
   var store: PrefsStore
   /// 「记一笔」：把当前这张图存进复盘本。复盘回放里没有这回事，调用方传 nil。
   var onRecord: (() -> Void)?
+  /// 「分享图片」：把当前这张图离屏画成一张 PNG 交给系统分享面板
+  /// （见 `ChartSnapshotRenderer`）。同样地，没有图可分享时调用方传 nil。
+  var onShare: (() -> Void)?
 
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -44,11 +47,18 @@ struct ChartPanel: View {
 
   var body: some View {
     PanelSheet(title: "图表设置", subtitle: nil) {
-      if let onRecord {
+      if onRecord != nil || onShare != nil {
         PanelGroupTitle(text: "这张图")
-        PanelRow(name: "记一笔", meta: "存进复盘本",
-                 divider: false, onTap: { close(); onRecord() })
-          .accessibilityIdentifier("chart.record")
+        if let onRecord {
+          PanelRow(name: "记一笔", meta: "存进复盘本",
+                   divider: onShare != nil, onTap: { close(); onRecord() })
+            .accessibilityIdentifier("chart.record")
+        }
+        if let onShare {
+          PanelRow(name: "分享图片", meta: "存成图片发出去",
+                   divider: false, onTap: { close(); onShare() })
+            .accessibilityIdentifier("chart.share")
+        }
       }
 
       // 指标排在设置前面：一天里开关指标的次数远多于改坐标轴和网格，

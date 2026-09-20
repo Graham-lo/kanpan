@@ -115,12 +115,13 @@ extension View {
   func prefsPanel(_ panel: Binding<Panel?>,
                   store: PrefsStore,
                   onPickInterval: ((Interval) -> Void)? = nil,
-                  onRecord: (() -> Void)? = nil) -> some View {
+                  onRecord: (() -> Void)? = nil,
+                  onShare: (() -> Void)? = nil) -> some View {
     sheet(item: panel) { which in
       PanelHost(store: store) {
         switch which {
         case .period: IntervalGridPanel(store: store, onPick: onPickInterval)
-        case .chart: ChartPanel(store: store, onRecord: onRecord)
+        case .chart: ChartPanel(store: store, onRecord: onRecord, onShare: onShare)
         }
       }
     }

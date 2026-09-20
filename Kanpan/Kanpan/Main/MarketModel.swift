@@ -466,6 +466,13 @@ final class MarketModel {
   /// 顶栏费率那一格真正要显示的值。
   var displayedFundingRate: Double? { fundingExpired ? nil : funding?.fundingRate }
 
+  /// 费率那一格底下「距结算 …」读的时刻。和费率同一条寿命：那一帧过期了，
+  /// 它带来的结算时刻同样不再算数。
+  var displayedNextFundingTime: Int64? {
+    guard !fundingExpired, let value = funding?.nextFundingTimeMs, value > 0 else { return nil }
+    return value
+  }
+
   // ---------------------------------------------------------------- 切换
 
   func switchTo(symbol newSymbol: String? = nil, interval newInterval: Interval? = nil) {
