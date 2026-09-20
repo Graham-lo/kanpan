@@ -135,15 +135,29 @@ public struct DrawStore: Sendable {
   public init(url: URL) { self.url = url }
 
   /// 默认位置：`Application Support/kanpan/draws.json`。
+  ///
+  /// UI 用例要的是「这一轮跑的画线别落到用户自己那份档案里」，于是有一道
+  /// `KANPAN_TEST_PROFILE=1` + `KANPAN_PERSISTENCE_PROFILE=<UUID>` 的岔路。
+  /// 那道岔路**只在 DEBUG 构建里存在**（审查 C-02）：UI 测试跑的就是 Debug 包，
+  /// 行为一点没变；而 Release 包里连那个分支都编不出来，不存在「设对了环境变量
+  /// 就能把正式档案挪走」这回事。
   public static func applicationSupport() -> DrawStore {
     let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
       ?? URL(fileURLWithPath: NSTemporaryDirectory())
+    return DrawStore(url: folder(under: base).appendingPathComponent("draws.json"))
+  }
+
+  /// 画线档案所在的目录。Release 下只有 `kanpan/` 这一个答案，没有第二条岔路。
+  private static func folder(under base: URL) -> URL {
+    let normal = base.appendingPathComponent("kanpan", isDirectory: true)
+    #if DEBUG
+    guard ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" else { return normal }
     let profile = ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"].flatMap { UUID(uuidString: $0)?.uuidString } ?? "default"
-    var folder = base.appendingPathComponent("kanpan", isDirectory: true)
-    if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" {
-      folder = base.appendingPathComponent("kanpan-drawing-tests", isDirectory: true).appendingPathComponent(profile, isDirectory: true)
-    }
-    return DrawStore(url: folder.appendingPathComponent("draws.json"))
+    return base.appendingPathComponent("kanpan-drawing-tests", isDirectory: true)
+      .appendingPathComponent(profile, isDirectory: true)
+    #else
+    return normal
+    #endif
   }
 
   /// 读。读不出来一律当空档，**不抛**：画线丢了是可惜，因为它开不了图是不可接受的。

@@ -69,6 +69,10 @@ private final class WorkEvent: UIEvent {
     }
   }
 
+  // 下面这三条（以及它们共用的 `counts()`）全靠 `ChartWorkCounter` 读数，而那份存储
+  // 只在 DEBUG 下存在（见文件头「为什么这里有 `#if DEBUG`」）：Release 里读回来的是
+  // 恒定的 0，断言要么直接红，要么为了错的理由变绿。所以整段圈进 DEBUG，
+  // 并记在 `ReleaseTestRosterTests.debugOnly` 与 Makefile 的 Release 差集清单上。
   #if DEBUG
   func counts() -> (geometry: Int, layout: Int, range: Int, mask: Int) {
     (ChartWorkCounter.count(.geometryCache), ChartWorkCounter.count(.layout),

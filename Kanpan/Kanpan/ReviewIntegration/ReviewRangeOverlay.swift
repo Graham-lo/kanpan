@@ -81,7 +81,16 @@ final class RangeOverlayView: UIView {
   /// 报的不只是那个数：后面还跟着这一帧**是在哪张图上**画的（本机一共几条记录、
   /// 品种、周期、行情源）。用例红了的时候，「记号没出来」和「这一帧根本还是上一档
   /// 周期的图」是两件完全不同的事，只报一个数分不出来。
-  private static let diagnostics = ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1"
+  ///
+  /// 这道门**只在 DEBUG 构建里存在**（审查 C-02）：正式包里它恒为 `false`，
+  /// 这一层永远不是无障碍元素，不会因为启动环境里多了个变量就把记号数念出来。
+  private static let diagnostics: Bool = {
+    #if DEBUG
+    return ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1"
+    #else
+    return false
+    #endif
+  }()
   private func report(marks: Int, state: ChartState) {
     guard Self.diagnostics else { return }
     if !isAccessibilityElement { isAccessibilityElement = true }

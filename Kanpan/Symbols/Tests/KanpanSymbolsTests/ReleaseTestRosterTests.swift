@@ -15,7 +15,7 @@ import Testing
 // 各自点成一张名册，和这儿写死的白名单逐字对账。想再关掉一个套件可以，
 // 但必须同时来这儿加一行，把理由写下来——那正是报告要的「每个差异都有明确 DEBUG-only 原因」。
 //
-// 它落在品种包里，是因为：一、全仓唯一还留着条件编译的测试套件就在这个包
+// 它落在品种包里，是因为：一、还留着条件编译的测试套件里有一个就在这个包
 // （`SymbolPrefsSeedIsolationTests`）；二、这个包在 mac 上直接 `swift test` 跑，
 // 读得到工作树里的源文件，模拟器里的包做不到这件事。
 
@@ -32,6 +32,11 @@ struct ReleaseTestRosterTests {
     "SymbolPrefsSeedIsolationTests.swift":
       "钉的是 `SymbolPrefsStore.testSeed`，那段种子脚手架按 A-07 / C-02 只存在于 DEBUG；"
       + "Release 下这条分支根本不在，用例会为了错的理由变绿。",
+    "CrosshairWorkTests.swift":
+      "靠 `ChartWorkCounter` 读数的那三条（几何/布局/掩码的重算次数）圈在 DEBUG 里："
+      + "那份计数存储趴在渲染热路径上，Release 里 `bump` 是空的、`count` 恒返回 0，"
+      + "断言要么直接红，要么因为上界永远成立而假绿。同文件里「一次移动一条回调」"
+      + "这类产品行为没被圈进去，Release 照样跑。",
   ]
 
   /// 允许跳过用例的文件，以及跳过的那一下是什么门。

@@ -87,6 +87,10 @@ public final class ChartView: UIView {
   public override var accessibilityValue: String? {
     get {
       guard let s = state, let layout = chartLayout else { return "行情加载中" }
+      // 这一整块诊断 JSON **只在 DEBUG 构建里存在**（审查 C-02）：正式包的读屏不该
+      // 因为一个启动环境变量就把整张图的内部状态念出来。写成 `#if DEBUG` 包住整块，
+      // 让「所有读启动环境的地方都在 DEBUG 里」这句话能被机械扫描直接证明。
+      #if DEBUG
       if ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" {
         let metrics = candleMetrics(spacing: s.view.barSpacing(step: s.series.step, plotW: layout.plotW),
                                     style: s.style, scale: Double(renderScale))
@@ -132,6 +136,7 @@ public final class ChartView: UIView {
         else { return nil }
         return String(data: data, encoding: .utf8)
       }
+      #endif
       return "\(s.symbol.symbol)，\(s.series.interval.display)，\(s.series.count)根K线"
     }
     set { super.accessibilityValue = newValue }

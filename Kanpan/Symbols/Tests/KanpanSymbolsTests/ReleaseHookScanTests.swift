@@ -25,16 +25,11 @@ struct ReleaseHookScanTests {
 
   /// 会进 Release、却仍然读启动环境的地方。每一行都带责任人。
   ///
-  /// 这两处都在**本轮任务范围之外**的包里（同一轮审查里另有代理在改那两个包），
-  /// 所以这儿不动它们，只把事实钉住：它们确实还在，改掉之后这条用例会红。
-  static let handoffs: [String: String] = [
-    "ChartView.swift":
-      "KanpanChart：`accessibilityValue` 里的 `KANPAN_CHART_DIAGNOSTICS`。"
-      + "Release 包里那块画布仍然会吐整包诊断 JSON。归 KanpanChart 那一摊处理。",
-    "DrawStore.swift":
-      "KanpanCore/Drawing：`applicationSupport()` 读 `KANPAN_TEST_PROFILE` 与 "
-      + "`KANPAN_PERSISTENCE_PROFILE` 决定画线存到哪。归画线那一摊处理。",
-  ]
+  /// **现在是空的，这正是这条用例要钉住的结论。** 表上原先挂着三处
+  /// （`ChartView` 的诊断 JSON、`DrawStore` 的测试档案岔路、`ReviewRangeOverlay`
+  /// 的记号计数），都已经包进各自的 `#if DEBUG`。表空着不等于这条用例没用：
+  /// 下一次谁随手在产品代码里加一处读启动环境的地方，扫描立刻会红。
+  static let handoffs: [String: String] = [:]
 
   @Test("读启动环境的地方，要么在 DEBUG 里，要么在交接表上")
   func everyEnvironmentReadIsDebugOnly() throws {

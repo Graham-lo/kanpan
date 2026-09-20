@@ -215,10 +215,13 @@ test: core-test network-test data-test app-logic-test chart-test main-ios-test a
 # xcodebuild 的那几个包需要显式写。
 #
 # **Debug 有、Release 没有的用例，必须单独列出来、不许并进 Release 的通过数**（报告原话）。
-# 本轮清完之后，全仓只剩这一处：
+# 清完之后，全仓只剩这两处：
 #   Kanpan/Symbols/Tests/KanpanSymbolsTests/SymbolPrefsSeedIsolationTests.swift —— 4 条。
 #   它钉的是 `SymbolPrefsStore.testSeed`，而那段种子脚手架按 A-07 / C-02 只存在于 DEBUG，
 #   Release 包里连代码都不该有。这 4 条在 Release 下会「为了错的理由变绿」，所以留在 DEBUG。
+#   KanpanChart/Tests/KanpanChartTests/CrosshairWorkTests.swift —— 3 条（共 6 条）。
+#   那 3 条读 `ChartWorkCounter` 的重算次数，而那份计数趴在渲染热路径上、只在 DEBUG 下
+#   有存储，Release 里恒为 0。同文件另外 3 条验的是产品行为，两种配置都跑。
 # KanpanAccount 原来那 16 条（ClientHardening 8 / DeviceKind 5 / SessionLifecycle 全套）
 # 已经在本轮改成白名单主机 + 自带 URLProtocol，Debug / Release 两边都是 60 条，不再有差集。
 test-release: core-test-release network-test-release data-test-release app-logic-test-release \
