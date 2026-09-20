@@ -235,3 +235,82 @@ private func stroke(
     #expect(abs(replaced - tail - 20) < 1e-6)
   }
 }
+
+// ---------------------------------------------------------------- 图外挪一根
+
+/// 读数行右端那两颗「‹ 上一根 / 下一根 ›」按下去之后发生的事（§P3-7）。
+///
+/// 它们存在的理由是手指做不到这件事：一根 K 线只有几个点宽的时候，想精确地挪一根
+/// 只能靠按钮。所以这套用例盯的不是「有没有动」，而是「只动了该动的那一维」——
+/// 换的是根，价格那一维照十字线自己的规矩走。
+@MainActor @Suite("十字线按根挪") struct CrosshairStepTests {
+  /// 按一次挪一根；磁吸开着就贴上新那根的收盘。
+  @Test("一次一根，磁吸跟着新那根的收盘走")
+  func stepsOneBar() throws {
+    let (v, _) = try makeView(magnet: true)
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [])
+    let start = try #require(v.state?.crosshair?.index)
+    v.moveCrosshair(by: 1)
+    let after = try #require(v.state?.crosshair)
+    #expect(after.index == start + 1)
+    #expect(after.price == v.state?.series.close[start + 1])
+    // 竖线得站到新那根的中心上：`t` 留着旧时刻就等于线没挪。
+    #expect(after.t == nil)
+    v.moveCrosshair(by: -1)
+    #expect(v.state?.crosshair?.index == start)
+  }
+
+  /// 人手动摆的价位不因为挪根被改写——挪的是「哪一根」，不是「哪个价」。
+  @Test("手动摆的价位挪根时原地不动")
+  func keepsManualPrice() throws {
+    let (v, _) = try makeView(magnet: false)
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [])
+    var s = try #require(v.state)
+    let index = try #require(s.crosshair?.index)
+    let price = s.series.close[index] * 1.05  // 明显不等于收盘，就是人摆上去的
+    s.crosshair?.price = price
+    v.state = s
+    v.moveCrosshair(by: 1)
+    #expect(v.state?.crosshair?.index == index + 1)
+    #expect(v.state?.crosshair?.price == price)
+  }
+
+  /// 到头就停在头上，不循环；没有十字线时按了也不该凭空变出一条。
+  @Test("到头停住不循环，没十字线时什么也不做")
+  func clampsAndIgnores() throws {
+    let (v, _) = try makeView(magnet: true)
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [])
+    var s = try #require(v.state)
+    let last = s.series.count - 1
+    s.crosshair?.index = last
+    v.state = s
+    v.moveCrosshair(by: 1)
+    #expect(v.state?.crosshair?.index == last)
+    s = try #require(v.state)
+    s.crosshair?.index = 0
+    v.state = s
+    v.moveCrosshair(by: -1)
+    #expect(v.state?.crosshair?.index == 0)
+    v.clearCrosshair()
+    v.moveCrosshair(by: 1)
+    #expect(v.state?.crosshair == nil)
+  }
+
+  /// 一路挪到屏幕外面时视野跟着推一根，那根始终留在眼前。
+  @Test("挪出可视区时视野跟着推")
+  func pushesViewport() throws {
+    let (v, L) = try makeView(magnet: true)
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [])
+    let before = try #require(v.state).view
+    var moved = false
+    for _ in 0..<60 {
+      v.moveCrosshair(by: -1)
+      let s = try #require(v.state)
+      let c = try #require(s.crosshair)
+      let x = s.view.x(Double(s.series.time(at: c.index)), plotW: L.plotW)
+      #expect(x > -0.5 && x < L.plotW + 0.5, "挪到屏幕外面去了，视野没跟上")
+      if s.view.from < before.from { moved = true }
+    }
+    #expect(moved, "一直往左挪，视野一次都没动")
+  }
+}

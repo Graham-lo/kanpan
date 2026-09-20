@@ -55,8 +55,6 @@ final class GestureState {
   /// 最后一次 move 的时刻，用来算「手指停下来之后才松手」那种不该甩的情况。
   var longPressActivated = false
   var longPress: DispatchWorkItem?
-  /// 上一帧磁吸吸住的那根，换根才震一下。
-  var lastMagnetIndex: Int = -1
   /// 已经喊过补历史了；序列长出来之前不重复喊。
   var askedHistory = false
   /// 上一次缩放有没有顶到边界，用来只在「刚撞上」那一下震。
@@ -147,6 +145,8 @@ extension ChartView {
       return
     }
     gesture.mode = hitsCrosshairCenter(q) ? .crosshair : .pan
+    // 拎着已经在图上的十字线走，和长按新出一条十字线是同一件事，一样要钉住坐标。
+    if gesture.mode == .crosshair { beginAxisFreeze() }
     if state?.crosshair == nil { scheduleLongPress(at: q) }
   }
 
@@ -206,7 +206,12 @@ extension ChartView {
     // 手指全离开画布的那一刻 = 这次交互结束（见 `onInteractionEnded`）。
     // `gesture.reset()` 有意不清 `gesture.touches`，所以这一句是可靠的「还有指头按着吗」。
     // 放在正文之后：正文里那几条 early return（捏合中途抬掉一根、还剩指头）本来就不该响。
-    if gesture.touches.isEmpty { onInteractionEnded?() }
+    if gesture.touches.isEmpty {
+      // 解钉要排在「这次交互结束」之前：外面收到结束回调就会去落盘视野，
+      // 得让它拿到追平之后的那一份。
+      endAxisFreeze()
+      onInteractionEnded?()
+    }
   }
 
   private func processTouchEnd(_ touches: Set<UITouch>, event: UIEvent?, cancelled: Bool) {
@@ -354,6 +359,8 @@ extension ChartView {
 
   private func beginPinch(L: Layout) {
     guard gesture.touches.count >= 2, gesture.mode != .crosshair else { return }
+    // 捏合就是冲着视野来的，这时候还钉着等于把缩放整个吞掉。
+    cancelAxisFreeze()
     clearCrosshair()
     let (d, m) = twoFinger()
     gesture.cancelLongPress()
@@ -451,7 +458,9 @@ extension ChartView {
       guard self.gesture.moved <= Chart.longPressSlopPt else { return }
       self.gesture.longPressActivated = true
       self.gesture.mode = .crosshair
-      self.gesture.lastMagnetIndex = -1
+      // 十字线一出来就把坐标钉住：接下来这段跟手的移动里，新 K 线到货也好、
+      // 新高新低也好，都不许把手指底下那根 K 线挪走（见 `beginAxisFreeze`）。
+      self.beginAxisFreeze()
       self.moveCrosshair(to: q, L: L)
       Haptics.crosshair()
     }
@@ -471,13 +480,14 @@ extension ChartView {
       c.pane = pane.indicator
       c.price = renderer?.subCrosshairValue(y: Double(q.y), pane: pane)
     } else if s.magnet { c.price = s.series.close[i] }
-    let changed = s.crosshair?.index != i
     s.crosshair = c
     // 回调由 `state` 的 setter 统一发（`adopt` 里那一句）。这儿不再补一发：同一份
     // 十字线连送两次，外面每收一次就重算一遍读数——跟手时那是白白翻倍的一摊活。
     state = s
-    if changed && s.magnet && gesture.lastMagnetIndex >= 0 { Haptics.magnetTick() }
-    gesture.lastMagnetIndex = i
+    // 这儿从前每跨一根 K 线就 `Haptics.magnetTick()` 一次，没有任何节流：手指横着
+    // 一扫过去几十根，那串 selection 触感连成一片嗡嗡响，像电动牙刷。触感只留给
+    // **离散事件**——十字线出现（`scheduleLongPress`）、缩放顶到边界（`reportZoomLimit`）、
+    // 画线落点（`ChartView+Drawing`）。「跟着手指连续变化」的过程一律不震。
   }
 
   /// Android M.g/q12: close mode snaps only after release, not during selection movement.
@@ -489,13 +499,51 @@ extension ChartView {
     state = s
   }
 
+  /// 把十字线挪到隔壁那一根（`-1` = 上一根，`+1` = 下一根）。
+  ///
+  /// 给图**外面**那两颗「‹ 上一根 / 下一根 ›」用（§P3-7）。画布上不许浮控件，所以
+  /// 这两颗长在读数行右端；它们要做的事手指做不到——在一根 K 线只有几个点宽的时候
+  /// 精确地挪一根。
+  ///
+  /// 价格那一维照十字线自己的规矩走：贴着收盘价（磁吸开着、或者本来就贴着收盘）就
+  /// 继续贴着新的那一根，人手动摆在某个价位上的就保持那个价位不动——挪的是「哪一根」，
+  /// 不是「哪个价」。到头了就停在头上，不循环。副图上的十字线同理只换根。
+  ///
+  /// 视野不跟着走：真挪到屏幕外面去了才把视野推一根，让那根留在眼前。
+  public func moveCrosshair(by step: Int) {
+    guard step != 0, var s = state, s.series.count > 0, var c = s.crosshair else { return }
+    let next = c.index + step
+    guard s.series.close.indices.contains(next) else { return }
+    let wasOnClose = c.pane == nil && c.price != nil
+      && s.series.close.indices.contains(c.index)
+      && abs((c.price ?? 0) - s.series.close[c.index]) < .ulpOfOne
+    c.index = next
+    // 关掉磁吸时竖线本来停在某个时刻上（`t`），挪根之后那个时刻属于上一根，
+    // 留着它线就还站在原地。清掉 = 用新那根的中心，这正是「挪了一根」该有的样子。
+    c.t = nil
+    if c.pane == nil, s.magnet || wasOnClose { c.price = s.series.close[next] }
+    s.crosshair = c
+    // 挪出屏幕就把视野跟着推：人按的是「下一根」，结果那一根画在屏幕外面，
+    // 等于什么都没看到。推到那条边的里侧一点点，不重新居中——视野大幅跳动比不跳更晕。
+    if let L = chartLayout, L.plotW > 0 {
+      let x = s.view.x(Double(s.series.time(at: next)), plotW: L.plotW)
+      let inset = min(40, L.plotW * 0.1)
+      if x < inset || x > L.plotW - inset {
+        let dx = x < inset ? x - inset : x - (L.plotW - inset)
+        s.view = clampView(s.view.shifted(byPx: dx, plotW: L.plotW),
+                           series: s.series, plotW: L.plotW, anchor: s.options.anchor)
+      }
+    }
+    state = s
+    Haptics.magnetTick()
+  }
+
   /// 清掉十字线。品种 / 周期切换、面板弹出时外面也会叫。
   public func clearCrosshair() {
     guard var s = state, s.crosshair != nil else { return }
     s.crosshair = nil
     // 同上：`state` 的 setter 会把这一下清空回调出去，这儿不必再发一遍。
     state = s
-    gesture.lastMagnetIndex = -1
   }
 
   // MARK: - 轻点与双击
@@ -542,7 +590,10 @@ extension ChartView {
     s.price.inverted.toggle()
     s.price.reset()
     state = s
-    onNotice?(s.price.inverted ? "主图已上下翻转，再双击价格轴翻回来" : "主图已翻回正常方向")
+    // 翻过去要说一句：上下颠倒的 K 线太反直觉，不告诉他怎么翻回来他会以为图坏了。
+    // 翻回来什么都不说——那一句「主图已翻回正常方向」是纯报喜：他刚做完这个动作，
+    // 图当场就正过来了，再念一遍只是挡住一行 K 线（§P3-8）。
+    if s.price.inverted { onNotice?("主图已上下翻转，再双击价格轴翻回来") }
   }
 
   /// 把视野重置回出厂根宽。**程序动作，不算用户意图**——它硬写着
@@ -551,6 +602,7 @@ extension ChartView {
   /// 顺带一句：全仓（`Kanpan/Kanpan` 与 `KanpanChart/Sources`）目前**一个调用方都没有**。
   /// 留着是因为它是 `public` API，删不删是另一轮的事。
   public func resetView() {
+    cancelAxisFreeze()
     guard var s = state, let L = chartLayout, s.series.count > 0 else { return }
     s.view = ViewMath.reset(
       series: s.series, plotW: L.plotW, spacing: AICoinBehavior.initialSpacing, anchor: s.options.anchor)
@@ -563,6 +615,7 @@ extension ChartView {
 
   /// 「回到最新」（G14）：滑回右边缘。
   public func scrollToLatest(animated: Bool = true) {
+    cancelAxisFreeze()
     guard var s = state, let L = chartLayout, s.series.count > 0 else { return }
     let target = ViewMath.reset(
       series: s.series, plotW: L.plotW,
@@ -681,6 +734,61 @@ extension ChartView {
   func price(atY y: Double) -> Double {
     guard let s = state, let L = chartLayout, let r = chartPriceRange else { return 0 }
     return pOf(y, pane: L.main, range: r, mode: s.price.mode)
+  }
+
+  // MARK: - 拖动期间的坐标冻结
+
+  /// 手指按住一个**目标**的这段时间里，把两根轴都钉死。
+  ///
+  /// 「目标」指十字线和画线的锚点——它们都是「手指指着图上某一个点」。这类交互里
+  /// 用户的参照系是屏幕上那一处，而图底下的两根轴却在各自动：1 分钟图上一根新 K 线
+  /// 到货，`AICoinBehavior.reconcile` 把视野右移一格；行情走出新高新低，自动纵轴重算
+  /// 价格区间。两者都会让手指底下那根 K 线（那条线）自己挪走，看着就像线在跑。
+  ///
+  /// 钉住的只有**视野**和**主图价格区间**这两样：新 K 线照常进 `series`，指标照常算，
+  /// 实时价照常跳。抬手那一刻 `endAxisFreeze` 一次追平，不留台阶。
+  func beginAxisFreeze() {
+    guard frozenAxes == nil, let s = state, !s.series.isEmpty,
+          let L = chartLayout, L.plotW > 0, s.view.span > 0,
+          let range = chartPriceRange else { return }
+    let spacing = s.view.barSpacing(step: s.series.step, plotW: L.plotW)
+    let latest = ViewMath.reset(series: s.series, plotW: L.plotW, spacing: spacing,
+                                anchor: s.options.anchor)
+    // 判据和 `reconcile` 自己那条一模一样：贴着末根才叫「跟着最新」，抬手才要追。
+    // 在看历史的图本来就不会被新 K 线推着走，追平反而会把人踢回右边。
+    let following = abs(s.view.to - latest.to) / s.view.span * L.plotW < spacing
+    frozenAxes = FrozenAxes(view: s.view, range: range, followingLatest: following)
+    pinPriceRange(range)
+  }
+
+  /// 抬手：解钉，并把冻结期间欠下的那点位移一次补上。
+  ///
+  /// 必须显式追平，光解钉是回不去的：`reconcile` 只在视野「还贴着末根」时才右移，
+  /// 而钉了一整根 K 线之后视野已经差了一格，那条判据从此不成立——不追的话这张图
+  /// 就永远停在落后一根的位置上，直到用户自己滑一下。
+  func endAxisFreeze() {
+    guard let frozen = frozenAxes else { return }
+    cancelAxisFreeze()
+    guard frozen.followingLatest, var s = state, !s.series.isEmpty,
+          let L = chartLayout, L.plotW > 0, s.view.span > 0 else { return }
+    let spacing = s.view.barSpacing(step: s.series.step, plotW: L.plotW)
+    let latest = ViewMath.reset(series: s.series, plotW: L.plotW, spacing: spacing,
+                                anchor: s.options.anchor)
+    guard abs(latest.to - s.view.to) / s.view.span * L.plotW > 0.01 else { return }
+    s.view = latest
+    state = s
+    // 这一下不是用户在图上捏出来的，是程序替他补的——别污染「用户想要的根宽」那条道。
+    viewDidChange(latest, source: .program)
+  }
+
+  /// 不追平地解钉。换品种 / 换周期、视图离窗、二指转捏合这些「这张图已经不是刚才那张」
+  /// 的场合用它：追平一个早就作废的视野只会更乱。
+  func cancelAxisFreeze() {
+    guard frozenAxes != nil else { return }
+    frozenAxes = nil
+    pinPriceRange(nil)
+    // 钉子不在 `ChartState` 里，摘掉它不会触发任何脏位，得自己喊一声重画。
+    setNeedsRedraw(.all)
   }
 }
 

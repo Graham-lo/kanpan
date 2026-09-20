@@ -55,8 +55,6 @@ final class DrawingSession {
   var startPoint: CGPoint = .zero
   var beganMs: Double = 0
   var moved: Double = 0
-  /// 上一次吸住的那根，换根才震（和十字线磁吸同一个手法）。
-  var lastMagnetIndex: Int = -1
 
   weak var overlay: DrawingOverlayView?
   var link: CADisplayLink?
@@ -64,6 +62,11 @@ final class DrawingSession {
   var onChanged: (([Drawing]) -> Void)?
   var onState: (() -> Void)?
   var onFull: (() -> Void)?
+  var onCommitted: ((Drawing) -> Void)?
+  /// 诊断用：落成过几条线、外面有没有接「刚画完」那一条。只给 `KANPAN_CHART_DIAGNOSTICS` 看。
+  var commits = 0
+  /// 哪几条线上挂着提醒。图上只拿它画那枚小铃铛，别的一概不管。
+  var alerted: Set<String> = []
 }
 
 /// 关联对象的键。全局 `let` 只初始化一次，地址唯一，正好当键用。
@@ -113,6 +116,8 @@ extension ChartView {
     session.preview = nil
     session.aim = nil
     session.loupe = nil
+    // 钉住坐标的那只手是跟着视图一起离开的，抬手那一刻不会再来了，得在这儿解。
+    cancelAxisFreeze()
   }
 }
 
@@ -227,6 +232,15 @@ extension ChartView {
     }
   }
 
+  /// 哪几条线上挂着提醒（方案 2.3：线的右端一枚很小的铃铛）。
+  ///
+  /// 图这一侧**只认 id**：提醒是什么条件、响没响、什么时候上的膛，都不是图该知道的事。
+  /// 外面（`AlertStore`）算好一份 id 集合扔进来，图照着画一个记号。
+  public var alertedDrawingIDs: Set<String> {
+    get { drawing.alerted }
+    set { guard drawing.alerted != newValue else { return }; drawing.alerted = newValue; refreshDrawingOverlay() }
+  }
+
   public var drawingStyles: [String: DrawingStyle] {
     get { drawing.styles }
     set { drawing.styles = newValue }
@@ -279,6 +293,47 @@ extension ChartView {
     drawingChanged(items: s.drawings)
   }
 
+  /// 在给定价格上放一条水平线（§P3-7「按此价画线」）。
+  ///
+  /// 走的是和手指落笔**同一条路**：一样进撤销栈、一样受每品种上限约束、一样
+  /// 先 `onDrawingsChanged` 落盘再 `onDrawingCommitted` 通知外面——所以画完之后
+  /// 「要不要加个提醒」那个确认会照常弹出来，不用再单独接一遍线。
+  ///
+  /// 和落笔唯一不同的一点：**不选中它**。这条线是用户在读数行上顺手放的，他人还在
+  /// 竖屏看十字线；一选中，`DrawingController.sync()` 那边就会把画线台判成「在用」
+  /// 从而转横屏，等于点一下读数行手机就翻过去了。
+  ///
+  /// 返回是否真的放下了（满了 / 没有行情时返回 `false`，并且已经通知过外面）。
+  @discardableResult
+  public func addHorizontalLine(at price: Double, t: Double? = nil) -> Bool {
+    guard price.isFinite, var s = state, s.series.count > 0 else { return false }
+    let d = drawing
+    guard s.drawings.count < DrawArchive.perSymbolLimit else {
+      Haptics.boundary()
+      d.onFull?()
+      return false
+    }
+    // 水平线横穿整屏，`t` 只是存档里的一个锚；有十字线就用它那一根，免得存个
+    // 离屏幕十万八千里的时间戳。
+    let stamp = t ?? Double(s.series.time(at: s.crosshair.map {
+      min(max($0.index, 0), s.series.count - 1)
+    } ?? (s.series.count - 1)))
+    var item = Drawing(kind: .hline, points: [DrawPoint(t: stamp, p: price)])
+    if let style = d.styles[Drawing.Kind.hline.rawValue] {
+      item.color = style.color; item.lineWidth = style.lineWidth; item.dash = style.dash
+      item.filled = style.filled; item.levels = style.levels
+    }
+    guard item.isValid else { return false }
+    d.history.commit(before: s.drawings)
+    s.drawings.append(item)
+    state = s
+    Haptics.magnetTick()
+    drawingChanged(items: s.drawings)
+    d.commits += 1
+    d.onCommitted?(item)
+    return true
+  }
+
   /// 「完成」：退出画线态。线全部留着（A7.6），只是不再有工具、选中和半截的线。
   public func endDrawing() {
     let d = drawing
@@ -291,6 +346,22 @@ extension ChartView {
     d.preview = nil
     if var s = state { s.drawingPreviewID = nil; state = s }
     drawingChanged()
+  }
+
+  /// 这张图的撤销栈。**给宿主接力用**，别的地方不要动它。
+  ///
+  /// 撤销栈原来只活在 `ChartView` 这个实例上，而这张图是随时会被重建的：竖屏切一次
+  /// 自选页、进一次横屏画线工作台，`ChartBox.makeUIView` 就是一个全新的 `ChartView`，
+  /// 画了两笔之后回来「撤销」是灰的——用户的两笔还在图上，撤销却没了（任务 3）。
+  /// 宿主（`DrawingController`）按品种存着它，图一重建就接回去。
+  ///
+  /// setter 特意不为空栈建会话：一张从没开过画线的图不该凭空多挂一个关联对象。
+  public var drawingHistory: DrawHistory {
+    get { drawingSessionIfLoaded?.history ?? DrawHistory() }
+    set {
+      guard drawingSessionIfLoaded != nil || newValue.canUndo || newValue.canRedo else { return }
+      drawing.history = newValue
+    }
   }
 
   public var canUndoDrawing: Bool { !drawing.anchors.isEmpty || drawing.history.canUndo }
@@ -330,6 +401,18 @@ extension ChartView {
   public var onDrawingStateChanged: (() -> Void)? {
     get { drawing.onState }
     set { drawing.onState = newValue }
+  }
+
+  /// **刚画完一条新线**（不是改、不是拖、不是同步下来的那些）。
+  ///
+  /// 和 `onDrawingsChanged` 分得很清：那一条是「这个品种的线变成这样了」，增删改拖
+  /// 全都响，外面靠它落盘；这一条只在用户亲手落下最后一点、一条新线诞生的那一刻响一次。
+  /// 提醒模块要的正是这一刻——画完弹一张确认卡（方案 2.3），别的时候不该弹。
+  ///
+  /// 排在 `onDrawingsChanged` 后面响：外面接到这一条时，线已经落过盘了。
+  public var onDrawingCommitted: ((Drawing) -> Void)? {
+    get { drawing.onCommitted }
+    set { drawing.onCommitted = newValue }
   }
 
   /// 这个品种画满 50 条了（A7.7）。要不要提示由外面定，这里只负责不再往里塞。
@@ -441,6 +524,8 @@ extension ChartView {
   /// 排版走的是和画图同一个入口（`layoutLabels` → `placeDrawingLabels`），量字用的也是
   /// 同一支字体、同一份小数位，所以屏幕上看得见多大一块，手指就能点中多大一块（A-01）。
   func drawGeometry(_ item: Drawing, axes: DrawAxes) -> DrawGeometry {
+    // 计算型工具（VWAP、两把成交量分布）的形状要把那段 K 线扫一遍才算得出来，
+    // 命中和画图必须喂同一份序列，不然点得到的和看得见的不是同一个形状。
     var g = drawingGeometry(item, bounds: axes.bounds, xOf: axes.x, yOf: axes.y,
                             decimals: axes.decimals, series: state?.series)
     g.layoutLabels(plotW: axes.layout.plotW, paneY: axes.pane.y, paneH: axes.pane.h,
@@ -481,8 +566,6 @@ extension ChartView {
       }
     }
     if let handle { return handle.hit }
-    // 计算型工具（VWAP、两把成交量分布）的形状要把那段 K 线扫一遍才算得出来，
-    // 命中和画图必须喂同一份序列，不然点得到的和看得见的不是同一个形状。
 
     var ink: (hit: DrawHit, distance: Double)?
     for shape in shapes {
@@ -527,6 +610,8 @@ extension ChartView {
       // 的死图，还会跟着后面的缩放一起被画出来（A.5 用例 18「二指介入 → 释放无残留」）。
       d.loupe = nil
       d.preview = nil; d.drag = nil; d.claimed = nil; d.aim = nil; d.navigating = true
+      // 这一程转交给捏合了，捏合就是冲着视野来的——钉子在这儿作废，不追平。
+      cancelAxisFreeze()
       touchesBegan(Set([claimed]).union(touches), with: event)
       drawingChanged(); return
     }
@@ -553,9 +638,10 @@ extension ChartView {
     // 半截的趋势线：这根手指是用来瞄第二点的，预览线跟着走，抬手落点。
     if d.pending != nil {
       d.claimed = t
+      // 手指按住一个目标的这段时间里两根轴都钉死，不然新 K 线一到货线就从手指底下跑了。
+      beginAxisFreeze()
       captureDrawingLoupe()
-      d.lastMagnetIndex = -1
-      aimPending(at: q, axes: axes)
+      aimPending(at: q, axes: axes, began: true)
       return
     }
 
@@ -568,9 +654,9 @@ extension ChartView {
     // 一点没丢。
     if d.tool != nil, d.anchors.isEmpty {
       d.claimed = t
+      beginAxisFreeze()
       captureDrawingLoupe()
-      d.lastMagnetIndex = -1
-      aimPending(at: q, axes: axes)
+      aimPending(at: q, axes: axes, began: true)
       return
     }
 
@@ -581,6 +667,7 @@ extension ChartView {
     {
       d.claimed = t
       d.selected = hit.id
+      beginAxisFreeze()
       captureDrawingLoupe()
       d.preview = from
       s.drawingPreviewID = from.id
@@ -618,6 +705,9 @@ extension ChartView {
       return
     }
     d.claimed = nil
+    // 解钉排在正文之后：下面那几条分支都要把抬手位置换算成时间 / 价格，
+    // 得用**冻结期间那套**坐标——先追平再落点，落下去的就是偏的（任务 2）。
+    defer { endAxisFreeze() }
     // 放大镜的底图是一整张屏幕大的位图，只在这一程拖动里有用。原来只有
     // `teardownDrawingLink`（离窗）才收，于是一次拖动之后它一直压在会话里，
     // 下一次按下再抓一张新的——「释放无残留」这条得在抬手这一刻就成立（A.5 用例 18）。
@@ -708,14 +798,17 @@ extension ChartView {
 
   // MARK: - 落笔
 
-  private func aimPending(at q: CGPoint, axes: DrawAxes) {
+  /// 预览点跟到手指底下。
+  ///
+  /// `began` = 这是手指**刚落下**的那一下。触感只给它：从前这儿是「吸住的根换了就震」，
+  /// 于是拖着一个锚点横扫过去，几十根 K 线连成一串嗡嗡响（selection 触感本来就是为
+  /// 「离散的一下」设计的，连发起来像电动牙刷）。跟手的过程一律不震，落下与抬起
+  /// （`placeDrawPoint`）这两个**离散事件**才震。
+  private func aimPending(at q: CGPoint, axes: DrawAxes, began: Bool = false) {
     let d = drawing
     let snap = drawPoint(at: q, axes: axes)
     d.aim = snap.point
-    if snap.index >= 0, snap.index != d.lastMagnetIndex {
-      if d.lastMagnetIndex >= 0 { Haptics.magnetTick() }
-      d.lastMagnetIndex = snap.index
-    }
+    if began, snap.index >= 0 { Haptics.magnetTick() }
     refreshDrawingOverlay()
   }
 
@@ -747,6 +840,9 @@ extension ChartView {
       d.aim = nil
       if snap.index >= 0 { Haptics.magnetTick() }
       drawingChanged(items: s.drawings)
+      // 落盘那一条先响完再说「新画了一条」，这样外面拿到它的时候线已经在存档里了。
+      d.commits += 1
+      d.onCommitted?(item)
     }
 
     if let last = d.anchors.last, hypot(axes.x(last.t) - axes.x(pt.t), axes.y(last.p) - axes.y(pt.p)) < 3 { return }
@@ -770,7 +866,7 @@ extension ChartView {
       }
       commit(item)
     } else {
-      d.anchors.append(pt); d.aim = nil; d.lastMagnetIndex = snap.index
+      d.anchors.append(pt); d.aim = nil
       if snap.index >= 0 { Haptics.magnetTick() }
       drawingChanged()
     }
@@ -938,6 +1034,51 @@ final class DrawingOverlayView: UIView {
         readout(ctx, at: CGPoint(x: axes.x(pt.t), y: axes.y(pt.p)), point: pt, host: host, axes: axes)
       }
     }
+    bells(ctx, drawings: s.drawings, alerted: d.alerted, axes: axes, colors: t)
+  }
+
+  /// 挂着提醒的那几条线，右端一枚小铃铛。
+  ///
+  /// 「右端」按线自己的走法定：两端无限延的（水平线、直线、通道）就贴图区右边，
+  /// 有头有尾的（趋势线、矩形、回撤）就停在最后一个点上。位置由 `AlertGeometry`
+  /// 摊出来的那份几何算——**和会响的那条线是同一份**，不会出现「铃铛画在 A 线上、
+  /// 真正会响的是 B 线」。
+  ///
+  /// 尺寸克制：整枚 7pt 高，只有轮廓，用皮肤的 `ink`。它是一个记号，不是一个按钮。
+  private func bells(_ ctx: CGContext, drawings: [Drawing], alerted: Set<String>,
+                     axes: DrawAxes, colors t: ChartColors) {
+    guard !alerted.isEmpty else { return }
+    let right = axes.layout.plotW
+    for item in drawings where alerted.contains(item.id) && !item.hidden {
+      guard let lines = AlertGeometry.lines(for: item), let line = lines.first else { continue }
+      let last = line.points.map(\.t).max() ?? 0
+      let x = line.extendRight ? right - 10 : min(axes.x(last), right - 10)
+      guard x.isFinite, x > 2, let p = line.price(at: axes.t(atX: x)), p.isFinite else { continue }
+      let y = axes.y(p)
+      guard y.isFinite, y > axes.pane.y, y < axes.pane.y + axes.pane.h else { continue }
+      bell(ctx, at: CGPoint(x: x, y: y), color: item.color ?? t.ink)
+    }
+  }
+
+  /// 一枚 7pt 的铃铛：一个钟罩（上圆下方）加一颗锤子。
+  private func bell(_ ctx: CGContext, at q: CGPoint, color: Hex) {
+    ctx.saveGState()
+    defer { ctx.restoreGState() }
+    ctx.setStrokeColor(Paint.cg(color))
+    ctx.setFillColor(Paint.cg(color))
+    ctx.setLineWidth(1)
+    ctx.setLineJoin(.round)
+    let w = 5.0, h = 5.5
+    let x = q.x, y = q.y - 1.5
+    ctx.beginPath()
+    ctx.move(to: CGPoint(x: x - w / 2, y: y + h / 2))
+    ctx.addLine(to: CGPoint(x: x - w / 2 + 0.6, y: y - h / 6))
+    ctx.addArc(center: CGPoint(x: x, y: y - h / 6), radius: w / 2 - 0.6,
+               startAngle: .pi, endAngle: 0, clockwise: false)
+    ctx.addLine(to: CGPoint(x: x + w / 2, y: y + h / 2))
+    ctx.closePath()
+    ctx.strokePath()
+    ctx.fillEllipse(in: CGRect(x: x - 0.9, y: y + h / 2 + 0.2, width: 1.8, height: 1.8))
   }
 
   /// Visual handle stays compact; the selected handle accepts a 44pt touch target.

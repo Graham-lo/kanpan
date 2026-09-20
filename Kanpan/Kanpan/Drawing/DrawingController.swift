@@ -24,6 +24,17 @@ final class DrawingController: ObservableObject {
   private weak var chart: ChartView?
   private var store: DrawStore
   var onArchiveChange: ((DrawArchive) -> Void)?
+  /// 本机把画线的几何改动过了就喊一声——画、拖、改端点、删，都算。
+  ///
+  /// 提醒模块接着它对账（`AlertStore.reconcile`）：线被挪过就按**同一个提醒 id**
+  /// 重算 `lines` 并把 `armedAt` 拨到现在，线没了就把它的提醒一起删掉。
+  /// 和 `onArchiveChange` 分开是因为那个是账号桥的同步捕获，两件事互不该等对方。
+  ///
+  /// **只在本机改出来的那一下响**（`write()`）。换账号（`useStorage`）和云端推下来
+  /// （`publishSynced`）都不响：那两条路上画线与提醒是两摊分别换的货，谁先谁后不定，
+  /// 拿新的画线去对老的提醒会当场把人家的提醒误删；而云端那一份本来就已经是
+  /// 另一台设备对过账的结果，不需要这台再对一遍。
+  var onGeometryChanged: ((DrawArchive) -> Void)?
   /// 记下「上次用的是哪把工具」。宿主接到 `Prefs.lastDrawTool`（随账号同步）。
   ///
   /// 它**只**用来在工具面板上把那把工具预选高亮，不是「此刻正举着笔」——
@@ -32,9 +43,29 @@ final class DrawingController: ObservableObject {
   var storedArchive: DrawArchive { archive }
   private var archive: DrawArchive
   private var symbol = ""
+  /// 每个品种的撤销栈，按品种分开存。
+  ///
+  /// 撤销栈原本只活在 `ChartView` 那个实例上，而图是随时会被重建的：竖屏切一次自选页、
+  /// 进一次横屏画线工作台，`ChartBox.makeUIView` 就造一个全新的 `ChartView`——画完两笔
+  /// 回来，两笔还在图上，「撤销」却是灰的（任务 3）。控制器是 `MainScreen` 里唯一那个
+  /// `@StateObject`，它活得过这些重建，栈就存在它这儿，图一接上来就接回去。
+  ///
+  /// **空栈不占格子**：一轮下来用户会路过几百个品种，没在上面画过线的不该留下任何东西。
+  private var histories: [String: DrawHistory] = [:]
   /// 上一条「刚落下、还没写字」的文字标注。只为了别把样式表反复弹出来：
   /// 用户点了取消之后 `panel` 回到 nil，`sync()` 又会跑一遍，没有这个记号就成了死循环。
   private var promptedNote: String?
+  /// 「只是高亮，别把画线工作台打开」的那一条。
+  ///
+  /// `sync()` 有一条硬规矩：选中了东西就 `active = true`，因为正常情况下选中线只可能
+  /// 发生在用户正在画线的时候。深链（点一条提醒的通知进来）是唯一的例外——那一下要的是
+  /// 「把这条线指给他看」，不是「把他拽进画线工作台」，而 `active = true` 在竖屏会当场
+  /// 转横屏（见 `MainScreen` 对 `draw.active` 的 onChange）。所以这里记一个 id：
+  /// 选中的正好是它时不开工作台。用户接着自己点别的线、拿起工具、或者取消选中，
+  /// 这个豁免立刻作废。
+  private var highlightedID: String?
+  /// 品种还没换过去时先记着，等 `focus` 把那个品种的线装进图里再选。
+  private var pendingHighlight: (symbol: String, id: String)?
 
   init(store: DrawStore = .applicationSupport()) {
     self.store = store
@@ -46,6 +77,16 @@ final class DrawingController: ObservableObject {
   }
   func attach(_ view: ChartView) {
     guard chart !== view else { return }
+    // **第一件事就是把存着的那摞取出来**，一句代码都不能排在它前面。
+    //
+    // 接上一张新图之后，下面每一步都可能顺手喊一遍 `sync()`：`applyPreferences()` 里的
+    // `drawingMagnet` / `continuousDrawing` 两个 setter 各自会 `drawingChanged()`，
+    // `setDrawings` 也会。而 `sync()` 开头就 `rememberHistory()`——那时候 `chart` 已经是
+    // 这张**还空着**的新图，于是它把「这个品种的撤销栈」当场写成空，格子被撤掉。
+    // 等走到下面再去读 `histories[symbol]` 就只剩一摞空的：画两笔切到自选页再回来，
+    // 线还在、「撤销」却是灰的——正是任务 3 要修的那个现象，只不过病根从
+    // 「栈存在图身上」挪到了「栈刚存好就被新图抹了」。
+    let resumed = symbol.isEmpty ? DrawHistory() : (histories[symbol] ?? DrawHistory())
     chart?.onDrawingsChanged = nil; chart?.onDrawingStateChanged = nil
     chart?.endDrawing()
     chart = view; view.drawingInteractive = true
@@ -53,14 +94,45 @@ final class DrawingController: ObservableObject {
     view.onDrawingStateChanged = { [weak self] in self?.sync() }
     view.onDrawingLimitReached = { [weak self] in self?.full = true }
     applyPreferences()
-    if !symbol.isEmpty { view.setDrawings(archive[symbol]) }
+    if !symbol.isEmpty {
+      // 顺序要紧：`setDrawings` 会把撤销栈清掉（它是「整批外部替换」的语义），
+      // 所以灌完线再把上面取出来的那摞接回去。
+      view.setDrawings(archive[symbol])
+      view.drawingHistory = resumed
+    }
     sync()
   }
   func focus(_ symbol: String) {
-    guard symbol != self.symbol || chart?.drawings != archive[symbol] && chart?.drawings.isEmpty == true else { return }
+    guard symbol != self.symbol || chart?.drawings != archive[symbol] && chart?.drawings.isEmpty == true else {
+      applyPendingHighlight(); return
+    }
     // Every completed edit is already saved. Never write the incoming chart into the outgoing key.
+    // 走之前先把这张图上的栈收进**上一个**品种的格子（`sync()` 一路都在收，这儿是最后一手）。
+    rememberHistory()
     self.symbol = symbol
-    chart?.setDrawings(archive[symbol]); panel = nil; picker = false; sync()
+    let resumed = histories[symbol] ?? DrawHistory()
+    chart?.setDrawings(archive[symbol])
+    chart?.drawingHistory = resumed
+    panel = nil; picker = false; sync()
+    applyPendingHighlight()
+  }
+
+  /// 把某个品种上的某条线**指出来**：只高亮，不进画线工作台。
+  ///
+  /// 深链专用（点提醒的通知、从提醒列表点一行）。品种可能还在路上（`MainScreen`
+  /// 刚把它交给行情模块），所以先记下来，等 `focus` 到那个品种再兑现。
+  func highlight(drawingID: String, symbol: String) {
+    pendingHighlight = (symbol, drawingID)
+    applyPendingHighlight()
+  }
+
+  private func applyPendingHighlight() {
+    guard let wanted = pendingHighlight, wanted.symbol == symbol, let chart else { return }
+    guard chart.drawings.contains(where: { $0.id == wanted.id }) else { return }
+    pendingHighlight = nil
+    highlightedID = wanted.id
+    chart.selectedDrawingID = wanted.id
+    sync()
   }
   func toggle() { active.toggle(); if !active { chart?.endDrawing(); picker = false }; sync() }
   /// 开「绘图」面板。入口只有一个笔形图标，横竖屏都是它。
@@ -83,6 +155,7 @@ final class DrawingController: ObservableObject {
   /// 动它——画线栏的「连续」、工具表里的「连续画线」，以及长按工具这一下明确的「开」。
   func pick(_ t: DrawingStore.Tool, repeating: Bool = false) {
     active = true
+    highlightedID = nil
     chart?.selectedDrawingID = nil   // 手上拿着工具就不该还选中着上一条线
     if repeating, !preferences.continuous {
       preferences.continuous = true
@@ -93,7 +166,7 @@ final class DrawingController: ObservableObject {
     panel = nil; picker = false
     sync()
   }
-  func select(_ id: String) { active = true; chart?.selectedDrawingID = id; sync() }
+  func select(_ id: String) { highlightedID = nil; active = true; chart?.selectedDrawingID = id; sync() }
   func deleteSelected() { chart?.deleteSelectedDrawing(); sync() }
   func finish() { chart?.endDrawing(); active = false; panel = nil; picker = false; sync() }
   func undo() { chart?.undoDrawing(); sync() }
@@ -145,11 +218,14 @@ final class DrawingController: ObservableObject {
   /// 下一次拉取会拿云端那份旧的把用户刚存的几何盖回去（B2）。
   private func write() {
     onArchiveChange?(archive)
+    onGeometryChanged?(archive)
     do { try store.save(archive) }
     catch { notice = "画线未能保存，原存档已保留。请检查设备存储空间。" }
   }
   func useStorage(_ store: DrawStore, archive: DrawArchive) {
     finish(); self.store = store; self.archive = archive; preferences = archive.preferences
+    // 换的是整个账号的存档：上一个账号的撤销栈撤回去就是别人的数据，一并丢掉。
+    histories.removeAll()
     chart?.setDrawings(archive[symbol]); applyPreferences(); sync()
   }
   /// 三段式里的「落盘」那一段：只写文件，内存里可见的状态一个都不动。
@@ -176,11 +252,21 @@ final class DrawingController: ObservableObject {
     if changed { chart?.setDrawings(value[symbol]) }
     applyPreferences(); sync()
   }
+  /// 把图上那摞撤销栈收进当前品种的格子。空栈就把格子撤掉。
+  private func rememberHistory() {
+    guard !symbol.isEmpty, let chart else { return }
+    let stack = chart.drawingHistory
+    histories[symbol] = (stack.canUndo || stack.canRedo) ? stack : nil
+  }
+
   private func sync() {
     guard let chart else { return }
+    // 每一次编辑最后都会走到这儿（`onDrawingStateChanged`），在这儿收栈就不会漏。
+    rememberHistory()
     tool = chart.drawTool; hint = active ? chart.drawHint : nil
     items = chart.drawings; selected = items.first { $0.id == chart.selectedDrawingID }
-    if selected != nil { active = true }
+    if selected?.id != highlightedID { highlightedID = nil }
+    if selected != nil, highlightedID == nil { active = true }
     canDelete = selected != nil; canUndo = chart.canUndoDrawing; canRedo = chart.canRedoDrawing
     // 空的文字标注在图上只是一句「点这里写字」的占位。落点即开样式表，
     // 省掉「落点 → 发现没字 → 自己去找样式」这三步。

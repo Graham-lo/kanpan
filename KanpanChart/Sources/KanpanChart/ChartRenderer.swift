@@ -201,16 +201,65 @@ public struct ChartRenderer {
     for pane in initial.panes.dropFirst() {
       if let id = pane.indicator { labels += subAxisLabels(id) }
     }
-    let measured = labels.map { Double($0.width(ChartFont.axis)) + 8 }.max() ?? 0
-    let width = max(AICoinBehavior.axisWidth,
-                    AICoinBehavior.axisWidth + ceil(max(0, measured - AICoinBehavior.axisWidth) / 8) * 8)
+    // 轴宽 = 这一屏最宽的那条刻度 + 两侧各 `axisLabelPadding`。从前是「50pt 起跳、
+    // 不够再按 8pt 一档往上加」，于是三位数的价位两边各空一大截，用户看到的就是
+    // 「右边这条太宽了」。位数多的品种自然宽、少的自然窄，不给「以后可能更长」留地方。
+    var measured = labels.map { Double(axisWidthTemplate($0).width(ChartFont.axis)) }.max() ?? 0
+    // 倒计时也是这一格里的内容：它挂在最新价胶囊底下，`23:59:59` 比五位数的价还长。
+    // 开着就一并量进来（按周期能出现的最长写法，不读当前时刻——时刻一变轴就得重排，
+    // 那才是真的抖），关着（出厂默认）一个像素都不占。
+    if let stamp = countdownTemplate() {
+      measured = max(measured, Double(axisWidthTemplate(stamp).width(ChartFont.tiny))
+        + 2 * (AICoinBehavior.axisChipInset + AICoinBehavior.axisChipPadding)
+        - 2 * AICoinBehavior.axisLabelPadding)
+    }
+    let width = max(AICoinBehavior.axisMinWidth,
+                    measured.rounded(.up) + 2 * AICoinBehavior.axisLabelPadding)
     return Layout(width: Double(size.width), height: Double(size.height), subs: state.subs, subScale: state.subScale, mainWeight: mainWeight,
-                  axisWidth: min(max(50, Double(size.width) / 3), width))
+                  axisWidth: min(max(AICoinBehavior.axisMinWidth, Double(size.width) / 3), width))
   }
+
+  /// 量轴宽时先把数字一律换成 `0`。
+  ///
+  /// 右轴用的是**等宽数字**字体（`ChartFont.axis`），`1` 和 `8` 本来就一样宽，
+  /// 这一步是把「轴宽只跟字串的形状（几位数、有没有小数点 / 负号 / K M B）有关」
+  /// 这件事写死：最新价每跳一下都不会让整条轴挪一个像素，只有位数真的多一位
+  /// （9999 → 10000）才走一个字符的台阶。
+  ///
+  /// 为什么不用「同品种同周期内只增不减」那种记忆式防抖：`ChartRenderer` 是纯值类型，
+  /// 同一份 state 必须画出同一张图（A3.11 的逐像素基线全靠这条），跨帧的闩锁会把
+  /// 「这一帧画在哪个轴宽上」变成看不见的历史。台阶式量化没有这个副作用。
+  func axisWidthTemplate(_ s: String) -> String {
+    String(s.map { $0.isASCII && $0.isNumber ? "0" : $0 })
+  }
+
+  /// 右轴上那一格胶囊的横向几何（最新价、十字线读数、倒计时共用）。
+  ///
+  /// 左右各留 `axisChipInset`，文字两侧各留 `axisChipPadding`，最宽不超过轴宽减掉
+  /// 两边的留白——轴宽本身就是按最宽的刻度量出来的，所以最长的那条读数正好填满一格，
+  /// 既不会被裁掉，也不会探出右缘。
+  func axisChip(_ L: Layout, text: String, font: UIFont = ChartFont.axis,
+                minWidth: Double = 0) -> (x: Double, w: Double) {
+    let inset = AICoinBehavior.axisChipInset
+    let room = max(4, L.axisW - 2 * inset)
+    let wanted = Double(text.width(font)).rounded(.up) + 2 * AICoinBehavior.axisChipPadding
+    return (L.plotW + inset, min(room, max(minWidth, wanted)))
+  }
+
+  /// 拖动期间钉住的主图价格区间（`ChartView.beginAxisFreeze`）。
+  ///
+  /// 为什么不放进 `ChartState`：它是**交互中间量**，和选中态、预览线是一类东西——
+  /// `ChartState` 是渲染的纯输入，A3.11 的 176 张逐像素基线钉死了「同一份 state →
+  /// 同一张图」，把一个只在手指按着的那两秒里存在的值塞进去就等于改渲染路径。
+  /// 它只盖住「这一帧画在哪个价格区间上」这一件事，谁都不必知道它存在。
+  var pinnedPriceRange: PriceRange?
 
   /// 主图价格区间。手势层要用同一份，所以露出来。
   public func priceRange(size: CGSize) -> PriceRange {
-    priceRange(size: size, transform: state.price)
+    // 钉住的时候一律给钉住的那份：画线、十字线读数、蜡烛定标走的都是这一个入口，
+    // 少一处就会出现「图没动、线动了」。
+    if let pinnedPriceRange { return pinnedPriceRange }
+    return priceRange(size: size, transform: state.price)
   }
 
   /// Probe a normalized Y state without invalidating indicator caches.
@@ -328,11 +377,11 @@ public struct ChartRenderer {
       if let key = cross.pane { label = key == .vol || key == .oi ? fmtVol(p) : fmtNum(p, 2) }
       else if state.price.mode == .percent { label = toFixed((p / r.base - 1) * 100, 2) + "%" }
       else { label = fmtNum(p, state.decimals) }
-      let w = min(L.axisW - 2, Double(label.width(ChartFont.axis)) + 10)
+      let chip = axisChip(L, text: label)
       ctx.setFillColor(Paint.cg(t.crossBg))
-      ctx.addRoundRect(CGRect(x: L.plotW + 2, y: y - 7.5, width: w, height: 15), radius: 3)
+      ctx.addRoundRect(CGRect(x: chip.x, y: y - 7.5, width: chip.w, height: 15), radius: 3)
       ctx.fillPath()
-      label.drawCentered(at: CGPoint(x: L.plotW + 2 + w / 2, y: y), font: ChartFont.axis, color: t.crossInk)
+      label.drawCentered(at: CGPoint(x: chip.x + chip.w / 2, y: y), font: ChartFont.axis, color: t.crossInk)
     }
 
     drawCandleData(ctx, L: L, index: i, selectedX: xc)
@@ -669,13 +718,13 @@ public struct ChartRenderer {
     ctx.restoreGState()
 
     let label = axisLabel(p, range: r)
-    let w = min(L.axisW - 2, Double(label.width(ChartFont.axis)) + 10)
+    let chip = axisChip(L, text: label)
     let h = 15.0
     ctx.setFillColor(Paint.cg(col))
-    ctx.addRoundRect(CGRect(x: L.plotW + 2, y: y - h / 2, width: w, height: h), radius: 3)
+    ctx.addRoundRect(CGRect(x: chip.x, y: y - h / 2, width: chip.w, height: h), radius: 3)
     ctx.fillPath()
-    label.drawCentered(at: CGPoint(x: L.plotW + 2 + w / 2, y: y), font: ChartFont.axis, color: t.chip)
-    drawCountdown(ctx, L: L, belowY: y + h / 2, width: w)
+    label.drawCentered(at: CGPoint(x: chip.x + chip.w / 2, y: y), font: ChartFont.axis, color: t.chip)
+    drawCountdown(ctx, L: L, belowY: y + h / 2, width: chip.w)
   }
 
   /// 本根倒计时：紧贴价格胶囊底下，同一个左沿、同一个宽度，中间留 2pt。
@@ -683,9 +732,8 @@ public struct ChartRenderer {
   /// 底色借十字线读数那一对（`crossBg` / `crossInk`）而不是涨跌色：它报的是「还有多久」，
   /// 是个读数不是行情，跟着涨跌变色只会误导。也因此不需要新增任何颜色常数。
   ///
-  /// - Parameter width: 价格胶囊的宽度。窄轴风格（密 `axisW` 只有 40pt）放不下
-  ///   `12d 03:05` 这种长文案，所以允许往右长到轴宽为止——「同宽」是常态而不是死规矩，
-  ///   宁可略宽一点也别把字截掉。
+  /// - Parameter width: 价格胶囊的宽度。轴窄下来之后 `12d 03:05` 这种长文案未必放得下，
+  ///   所以允许往右长到轴宽为止——「同宽」是常态而不是死规矩，宁可略宽一点也别把字截掉。
   private func drawCountdown(_ ctx: CGContext, L: Layout, belowY: Double, width: Double) {
     guard state.options.countdown, let now = state.nowMs, let text = countdownText(now: now)
     else { return }
@@ -693,12 +741,12 @@ public struct ChartRenderer {
     let h = 13.0
     let y = belowY + 2 + h <= L.timeY ? belowY + 2 : max(0, belowY - 15 - 2 - h)
     guard y + h <= L.timeY else { return }   // 顶到时间轴上就不画了
-    let w = min(L.axisW - 2, max(width, Double(text.width(ChartFont.tiny)) + 8))
+    let chip = axisChip(L, text: text, font: ChartFont.tiny, minWidth: width)
     ctx.setFillColor(Paint.cg(t.crossBg))
-    ctx.addRoundRect(CGRect(x: L.plotW + 2, y: y, width: w, height: h), radius: 3)
+    ctx.addRoundRect(CGRect(x: chip.x, y: y, width: chip.w, height: h), radius: 3)
     ctx.fillPath()
     text.drawCentered(
-      at: CGPoint(x: L.plotW + 2 + w / 2, y: y + h / 2), font: ChartFont.tiny, color: t.crossInk)
+      at: CGPoint(x: chip.x + chip.w / 2, y: y + h / 2), font: ChartFont.tiny, color: t.crossInk)
   }
 
   /// 倒计时文案。最后一根的收盘时刻 = 它的 openTime + 周期，收盘已过给 `nil`。
@@ -710,6 +758,19 @@ public struct ChartRenderer {
     guard b.count > 0 else { return nil }
     let close = Double(b.time(at: b.count - 1)) + Double(b.step)
     return fmtCountdown(msRemaining: close - now)
+  }
+
+  /// 这一档周期里，倒计时能写出来的**最长**那个写法（量轴宽用）。
+  ///
+  /// 只看周期不看当前时刻：`nowMs` 不是几何输入（`sameGeometryInputs` 特意把它摘出去），
+  /// 拿它算宽度就等于每秒重排一次右轴。剩余时间落在 `(0, step]` 里，写法在 1 小时和
+  /// 1 天两个坎上各变一次，所以把坎两侧各探一下，取最宽的那个。
+  func countdownTemplate() -> String? {
+    guard state.options.countdown, state.series.count > 0 else { return nil }
+    let step = Double(state.series.step)
+    let probes = [step, 86_400_000, 86_399_000, 3_600_000, 3_599_000].filter { $0 > 0 && $0 <= step }
+    let texts = probes.compactMap { fmtCountdown(msRemaining: $0) }
+    return texts.max { Double($0.width(ChartFont.tiny)) < Double($1.width(ChartFont.tiny)) }
   }
 }
 

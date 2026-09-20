@@ -342,14 +342,32 @@ struct ChartReviewA5Tests {
     s.series.high[i] = top * 1.3                       // 必须高过全窗口的顶，自动量程才会跟着抬
     s.series.close[i] = top * 1.25
     v.state = s
-    let axes1 = try #require(v.drawAxes)
+    // 2026-09-20 起这一注推不歪纵轴了：手指按着端点的这段时间里价格区间是**钉住**的
+    // （`ChartView.beginAxisFreeze`）。原来的现象是「手指没动，线自己往上跑」——
+    // 轴在动，线钉在价格上，看上去就是线在动。所以这条用例先钉死冻结本身。
+    let frozen = try #require(v.drawAxes)
     let sample = axes0.p(atY: 380)
+    #expect(v.axesFrozen, "按住端点 = 坐标钉住")
+    #expect(abs(frozen.y(sample) - axes0.y(sample)) < 0.001, "冻结期间纵轴不许被新高推歪")
+
+    let q0 = CGPoint(x: 261, y: 379)                   // 手指只挪 1pt
+    t.point = q0
+    v.drawingTouchesMoved([t], with: FakeEvent(ms: 10_020))
+    let held = try #require(v.drawingSessionIfLoaded?.preview)
+    #expect(abs(frozen.x(held.points[1].t) - Double(q0.x)) < 0.5, "横着要贴手")
+    #expect(abs(frozen.y(held.points[1].p) - Double(q0.y)) < 0.5, "竖着也要贴手")
+
+    // A-08 本身（`applyDrag` 用**当前这一帧**的轴换算，不是按下那一刻的快照）仍然要守。
+    // 把钉子摘掉，刚才那根新高立刻把自动纵轴抬起来，于是新旧两套轴真的不一样了——
+    // 这时候手指再挪一下，落点还得贴着手指。
+    v.cancelAxisFreeze()
+    let axes1 = try #require(v.drawAxes)
     #expect(abs(axes1.y(sample) - axes0.y(sample)) > 5,
             "这一注要真的把纵轴推歪了，否则后面测不出新旧轴的差别")
 
-    let q = CGPoint(x: 261, y: 379)                    // 手指只挪 1pt
+    let q = CGPoint(x: 262, y: 378)
     t.point = q
-    v.drawingTouchesMoved([t], with: FakeEvent(ms: 10_020))
+    v.drawingTouchesMoved([t], with: FakeEvent(ms: 10_030))
     let preview = try #require(v.drawingSessionIfLoaded?.preview)
     #expect(abs(axes1.x(preview.points[1].t) - Double(q.x)) < 0.5, "横着要贴手")
     // 复现留档：把 `Drag` 里那份按下那一刻的 `axes` 快照临时恢复回去（`applyDrag`

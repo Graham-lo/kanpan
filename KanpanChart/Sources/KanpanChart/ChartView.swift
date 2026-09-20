@@ -51,22 +51,51 @@ public final class ChartView: UIView {
   public var state: ChartState? {
     didSet {
       if let old = oldValue, var next = state {
+        var fixed = false
         if old.options.dataDisplay != next.options.dataDisplay || old.options.crossPrice != next.options.crossPrice
           || old.series.symbol != next.series.symbol || old.series.interval != next.series.interval
           || next.crosshair?.pane.map({ !next.subs.contains($0) }) == true {
           next.crosshair = nil
-          state = next
+          fixed = true
         }
         // 换品种 / 换周期 = 换了一张图，上一张图上那次轴轻点跟现在没关系了（A-09）。
         // 补历史的门同理：那次「已经喊过了」记的是上一张图的账（A.5 用例 13）。
+        // 冻结也一样：手指底下那张图已经不在了，钉着上一张图的视野只会更乱。
         if old.series.symbol != next.series.symbol || old.series.interval != next.series.interval {
           gesture.endAxisTapCandidate()
           gesture.askedHistory = false
+          cancelAxisFreeze()
         }
+        // 手指按着一个目标的这段时间里视野钉死（见 `beginAxisFreeze`）：外面灌进来的
+        // 那份视野一律让位——新 K 线到货时 `AICoinBehavior.reconcile` 会把视野右移一格，
+        // 而用户手指没动，线不能跟着跑。
+        if let frozen = frozenAxes, next.view != frozen.view {
+          next.view = frozen.view
+          fixed = true
+        }
+        if fixed { state = next }
       }
       adopt(old: oldValue)
     }
   }
+
+  // ---------------------------------------------------------------- 拖动期间的坐标
+
+  /// 拖动期间钉住的那套坐标。整场只在 `beginAxisFreeze` / `endAxisFreeze` 里换，
+  /// 别处只读（写它就等于绕过抬手那一刻的追平）。
+  struct FrozenAxes {
+    /// 冻结那一刻的时间轴视野。
+    var view: ViewWindow
+    /// 冻结那一刻的主图价格区间。
+    var range: PriceRange
+    /// 冻结那一刻视野还贴着末根吗——抬手要不要追平看它。
+    var followingLatest: Bool
+  }
+
+  var frozenAxes: FrozenAxes?
+
+  /// 此刻手指正按着某个目标、坐标是钉住的吗。宿主据此跳过 `reconcile`（见 `ChartHost`）。
+  public var axesFrozen: Bool { frozenAxes != nil }
 
   /// 渲染器缓存着指标结果（`IndicatorEngine`），所以留着不重建——
   /// 换 `state` 走它的 setter，末根变了只重算末尾那几根。
@@ -76,6 +105,15 @@ public final class ChartView: UIView {
   public var chartLayout: Layout? {
     guard let renderer, bounds.width > 0, bounds.height > 0 else { return nil }
     return renderer.layout(size: bounds.size)
+  }
+
+  /// 钉住 / 松开主图价格区间（见 `beginAxisFreeze`）。
+  ///
+  /// `renderer` 是 `private(set)`，而它是个 struct——写它的字段就等于写 `renderer` 本身，
+  /// 所以这个口子只能开在本文件里。外面一律走 `beginAxisFreeze` / `cancelAxisFreeze`。
+  func pinPriceRange(_ range: PriceRange?) {
+    guard renderer != nil else { return }
+    renderer?.pinnedPriceRange = range
   }
 
   /// 当前主图价格区间。
@@ -112,8 +150,12 @@ public final class ChartView: UIView {
           "drawingColors": s.drawings.map { $0.color?.value ?? "default" },
           "drawingLocked": s.drawings.map { $0.locked },
           "drawingHidden": s.drawings.map { $0.hidden },
+          // 哪几条线右端挂着铃铛（提醒）。图自己只认 id，用例也只问这一件事。
+          "drawingAlerted": s.drawings.filter { drawing.alerted.contains($0.id) }.map { $0.id },
           "maColor0": renderer?.indicatorColor(.ma, 0).value ?? "",
           "emaColor0": renderer?.indicatorColor(.ema, 0).value ?? "",
+          "drawingCommits": drawing.commits,
+          "drawingCommitWired": drawing.onCommitted != nil,
           "drawingMagnet": drawing.magnet,
           "drawingContinuous": drawing.continuous,
           "hiddenMA": (s.hiddenOutputs[.ma] ?? []).sorted(),
@@ -251,6 +293,8 @@ public final class ChartView: UIView {
     if window == nil {
       animation = nil
       gesture.touches.removeAll(); gesture.reset(); gesture.endAxisTapCandidate()
+      // 手指是跟着视图一起离开的，钉住的坐标也就没人来解（抬手那一刻已经不会再来了）。
+      cancelAxisFreeze()
       state?.axisScaleAnchor = nil
       // 不在窗口上就没有帧可跑；脏位留着，回来再刷。
       link?.invalidate()
@@ -299,6 +343,7 @@ public final class ChartView: UIView {
     guard let s = state else {
       animation = nil
       gesture.touches.removeAll(); gesture.reset(); gesture.endAxisTapCandidate()
+      cancelAxisFreeze()
       fireCrosshairChanged(nil)
       onStateChanged?(nil)
       renderer = nil
