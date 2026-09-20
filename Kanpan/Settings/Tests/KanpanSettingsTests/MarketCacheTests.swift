@@ -248,7 +248,9 @@ struct MarketCacheTests {
     #expect(u.totalBytes == 0)
   }
 
-  @Test("store 清完会重新量，并给一句回执")
+  /// 清完**不**说话：数字当场归零就是回执，再补一句「已清缓存」是只报成功、
+  /// 没有下一步可做的提示，2026-09-21 一并删掉了。
+  @Test("store 清完会重新量，而且不多说一句")
   @MainActor
   func 走store() async throws {
     let (paths, root) = try seed()
@@ -260,8 +262,6 @@ struct MarketCacheTests {
     #expect((store.cacheUsage?.totalBytes ?? 0) > 0)
     await store.clearCache()
     #expect(store.cacheUsage?.totalBytes == 0)
-    #expect(store.notice != nil)
-    store.clearNotice()
     #expect(store.notice == nil)
   }
 

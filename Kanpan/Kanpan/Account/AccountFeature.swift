@@ -11,7 +11,6 @@ import KanpanAccount
   var newPassword = ""
   var code = ""
   var error: String?
-  var notice: String?
   var busy = false
   var resendAt = Date.distantPast
   var devices: [AccountSessionDevice] = []
@@ -91,11 +90,11 @@ import KanpanAccount
         case .changePassword:
           struct Input: Encodable { var currentPassword: String; var newPassword: String }
           let _: AccountOK = try await client.request("v1/auth/password/change", method: "POST", body: JSONEncoder().encode(Input(currentPassword: password, newPassword: newPassword)))
-          password = ""; newPassword = ""; page = .account; notice = "密码已修改"
+          password = ""; newPassword = ""; page = .account
         case .close:
           struct Input: Encodable { var password: String }
           let _: AccountOK = try await client.request("v1/auth/account", method: "DELETE", body: JSONEncoder().encode(Input(password: password)))
-          await logout(); notice = "账号已注销"
+          await logout()
         default: break
         }
       } catch AccountError.http(401, _) where current == .login { error = "用户名或密码不对" }
@@ -113,7 +112,7 @@ import KanpanAccount
     apply?()
     user = value.user; email = value.user.email; password = ""; newPassword = ""; code = ""
     needsReauthentication = false; replacedNotice = nil
-    page = .account; presented = false; notice = "已登录"; onSynchronize?()
+    page = .account; presented = false; onSynchronize?()
   }
   /// 退出登录。
   ///

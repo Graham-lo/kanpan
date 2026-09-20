@@ -29,11 +29,13 @@ enum Ids {
   // 周期条
   static func intervalChip(_ raw: String) -> String { "interval.chip.\(raw)" }
   static let intervalMore = "interval.more"
-  /// UI 测试沙盒里铺出来的那七档（`PrefsStore.uiTestQuick`）。
+  /// UI 测试沙盒里铺出来的那六档（`PrefsStore.uiTestQuick`）。
   ///
-  /// 出厂默认已经收成五档（`Interval.quick` = 5m 30m 1h 4h 1d），但测试沙盒照旧铺七档：
-  /// 禁改的 `ChartFoundationUITests` 里按 `interval.chip.1m` 直接点，收窄了就点不着。
-  static let quickIntervals = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+  /// 出厂默认是五档（`Interval.quick` = 5m 30m 1h 4h 1d），沙盒故意铺满六档
+  /// （`Prefs.maxQuick`）：一来别的用例按 `interval.chip.1m` 直接点得着，
+  /// 二来「钉满时这一行还排得下」正是要验的那件事。2026-09-21 从七档收到六档，
+  /// 上限一起从 10 收到 6。
+  static let quickIntervals = ["1m", "5m", "15m", "30m", "1h", "4h"]
   // 底栏
   /// 2026-09-18 起底栏是一条**常驻标签栏**：从左到右「画线 · 图表 · 自选 · 板块分类 · 设置」，
   /// 五格各是一整页，切到哪一页它都还在（用户：「大部分 app 把常用的大分页都固定在底部」）。
@@ -412,27 +414,37 @@ extension XCUIApplication {
     descendants(matching: .any).matching(identifier: Ids.symbolButton).firstMatch
   }
 
+  /// 周期条上钉住的那一排（`interval.quick`）。
+  ///
+  /// 2026-09-21 起这一排不再是横向 `ScrollView`——档数封在六个、一行全排得下，
+  /// 滚动和右边那道渐隐一起删了，容器换成了一个 `children: .contain` 的无障碍容器。
+  /// 所以这儿按 `otherElements` 找，不再是 `scrollViews`。
+  var intervalStrip: XCUIElement { otherElements["interval.quick"] }
+
   /// 点一档周期。**按坐标点，不走 `XCUIElement.tap()`。**
   ///
-  /// 药丸挂在 `interval.quick` 这个横向 `ScrollView` 里，而那条内容宽度正好等于它自己的
-  /// 宽度（钉几档就铺满几档，从来不溢出），也就是说它是一个**滚不动的滚动视图**。
-  /// `XCUIElement.tap()` 点滚动视图里的东西之前一定先做「滚到可见」，对滚不动的那种，
-  /// 这一步算回来的命中点偶尔就是 `{-1, -1}`，于是 XCUI 判它 not hittable 直接放弃——
-  /// 报错原文就是 `Computed hit point {-1, -1} after scrolling to visible`。
+  /// `XCUIElement.tap()` 点容器里的东西之前一定先做「滚到可见」，那一步算回来的命中点
+  /// 偶尔就是 `{-1, -1}`，于是 XCUI 判它 not hittable 直接放弃——报错原文是
+  /// `Computed hit point {-1, -1} after scrolling to visible`。
   ///
   /// 这是 XCUI 自己的判定抖动，不是 app 的毛病：2026-09-18 在卡住的那一刻从 app 里
   /// 对药丸中心做过跨窗口取证，`UIWindow.hitTest` 命中的正是药丸自己的容器，
   /// `accessibilityHitTest` 也落在它的无障碍节点上，键盘那层 `UITextEffectsWindow`
   /// 两种命中测试都返回 `nil`——真人的手指和 VoiceOver 的焦点从来没被挡过。
   ///
-  /// 坐标点绕开可点性判定（和条上那几下 `swipe` 一样），打在药丸中心。
-  /// 调用方仍然要先确认它画在条的可视范围里，那是版面的事，这儿不管。
+  /// 坐标点绕开可点性判定，打在药丸中心。条上没有这一档（没钉住、或者钉满六档时
+  /// 它排不上）就改从「更多」网格里选同一档——十四档全在那张网格上，切档的结果一模一样。
   func tapIntervalChip(_ raw: String) {
     let chip = buttons[Ids.intervalChip(raw)]
-    let frame = chip.frame
-    coordinate(withNormalizedOffset: .zero)
-      .withOffset(CGVector(dx: frame.midX, dy: frame.midY))
-      .tap()
+    if chip.exists, let one = try? chip.snapshot(), one.frame.width > 1 {
+      coordinate(withNormalizedOffset: .zero)
+        .withOffset(CGVector(dx: one.frame.midX, dy: one.frame.midY))
+        .tap()
+      return
+    }
+    buttons[Ids.intervalMore].tap()
+    let cell = buttons["period.row.\(raw)"]
+    if cell.waitForExistence(timeout: 8) { cell.tap() }
   }
 
   /// 顶栏放大镜 → 搜索页。这一页是「我知道要找什么」那条路：打字、历史词、

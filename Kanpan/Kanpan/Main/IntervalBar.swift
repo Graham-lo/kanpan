@@ -1,3 +1,4 @@
+import KanpanChart
 import KanpanCore
 import SwiftUI
 
@@ -7,9 +8,14 @@ import SwiftUI
 /// 会自己动的东西没法形成肌肉记忆。顺序固定按 `Interval.allCases` 走：从「更多」里
 /// 选了个不在常用里的周期，它插进自己那个位置，不会把后面整排顶偏一格。
 ///
-/// 钉得少的时候各档平分铺满整行，不在右边留一条空白；钉得多到排不下才退回横向滚动
-/// 加边缘渐隐（见 `chips`）。药丸有个 76pt 的封顶（`maxChipWidth`），手机上够不着，
-/// iPad 那种两三倍宽的行才会用上——否则同样几档会被摊成一排横向拉长的色块。
+/// **条上最多六档**（`Prefs.maxQuick`，2026-09-21 定）。这一行要同时放下六颗药丸、
+/// 行尾那个固定槽位、「更多」和「图表」，还得在 iPhone SE（375pt）上一个字都不截——
+/// 六档是实测排得下的上限，所以钉位本身就卡在六个，排版只对「≤6 档」这一种情况负责。
+/// 原来那条「排不下就横向滚动 + 右边渐隐」的退路一并删了：能滚就意味着有档位藏在屏幕外，
+/// 而钉住的那几档是用户自己挑的、每一档都得看得见。
+///
+/// 各档平分铺满整行，不在右边留一条空白。药丸有个 76pt 的封顶（`maxChipWidth`），
+/// 手机上够不着，iPad 那种两三倍宽的行才会用上——否则同样几档会被摊成一排横向拉长的色块。
 ///
 /// 右端原来还有「画线」「记一笔」，用户的话是「这个功能不是经常用到啊」「记和画线都
 /// 放到图表栏目里」，两个都收进「图表」那一页（见 `ChartPanel`）。
@@ -29,6 +35,11 @@ struct IntervalBar: View {
   var onPin: (Interval) -> Void
   /// 「最新」：把视野拽回末根。
   var onLatest: () -> Void
+  /// 「返回刚才」：刚从历史上被「最新」拽回来，再点它回到刚才看的那一屏（§P3-2）。
+  ///
+  /// 和「最新」共用行尾那个固定槽位——两颗永远不会同时在（一个的前提是不在最新，
+  /// 另一个的前提是在最新）。没地方可回去时是 nil，那一格就空着（但仍然占着位子）。
+  var onReturn: (() -> Void)? = nil
   /// 行尾「图表」：开 K 线那一页（`Panel.chart`）。画线、记一笔也在那一页上。
   var onChart: () -> Void
 
@@ -36,23 +47,35 @@ struct IntervalBar: View {
   ///
   /// 临时 chip 不占钉位，虚线描边，切回常用档就消失——否则从网格里点了个 2h，
   /// 条上会一个高亮都没有，看着像没切成。
+  ///
+  /// 总数**硬卡在 `Prefs.maxQuick`（六）**，这是排版唯一负责的那个数：
+  ///
+  /// - 存档里躺着更多档（上限从 10 收到 6 之前钉的、手改的存档）时，按从短到长取前六个，
+  ///   和 `PrefsCodec` 落盘那一侧是同一条规矩；
+  /// - 已经钉满六档、人又从网格里点了个没钉住的周期时，临时 chip 得有地方站，
+  ///   就把最长的那一档先让出来（当前这档永远留着——正看着的那一档消失是最难解释的）。
+  ///   切回任意一档常用周期，让出去的那一档立刻回来。
   private var list: [Interval] {
-    var set = quick
-    if !set.contains(current) { set.append(current) }
     let order = Interval.allCases
-    return set.sorted { (order.firstIndex(of: $0) ?? 0) < (order.firstIndex(of: $1) ?? 0) }
+    func rank(_ iv: Interval) -> Int { order.firstIndex(of: iv) ?? order.count }
+    var set = Array(quick.sorted { rank($0) < rank($1) }.prefix(Prefs.maxQuick))
+    guard !set.contains(current) else { return set }
+    set.append(current)
+    set.sort { rank($0) < rank($1) }
+    while set.count > Prefs.maxQuick, let drop = set.last(where: { $0 != current }) {
+      set.removeAll { $0 == drop }
+    }
+    return set
   }
 
   var body: some View {
     VStack(spacing: 0) {
-      HStack(spacing: 6) {
+      // 缝 4pt、两头 8pt：都是 2026-09-21 从 6 / 10 收下来的。收下来的这 10pt 全给了
+      // 常用行——SE（375pt）上六档满钉时，那一排离排不下只差几个点，每一点都算数。
+      // 药丸自己的高度、字号、命中区一点没动。
+      HStack(spacing: 4) {
         chips
-        if !atLatest {
-          tail("最新", icon: VectorIcon.chevronRight(11), action: onLatest)
-            .accessibilityIdentifier("chart.latest")
-            .accessibilityLabel("回到最新")
-            .transition(.opacity)
-        }
+        actionSlot
         tail("更多", chevron: true, on: gridOpen, flipped: gridOpen) {
           withAnimation(.easeOut(duration: 0.18)) { gridOpen.toggle() }
         }
@@ -60,11 +83,53 @@ struct IntervalBar: View {
         tail("图表", action: onChart)
           .accessibilityIdentifier("interval.chart")
       }
-      .padding(.horizontal, 10)
+      .padding(.horizontal, 8)
       .frame(height: 44)
 
       if gridOpen { grid }
     }
+  }
+
+  // ---------------------------------------------------------------- 行尾那个固定槽位
+
+  /// 行尾「最新 / 返回刚才」那一格，**三种状态下一样宽**（§P3-1）。
+  ///
+  /// 这一格原来不存在：药丸直接插在 `HStack` 里，来一颗、走一颗，常用行分到的宽度
+  /// 就跟着变一次。而常用行的规矩是「排得下就平分铺满整行」——宽度一变，钉住的那几档
+  /// 全体重新摊开，人正要点的那一档在手指落下去之前挪了位置。实测（`IntervalSlotUITests`）
+  /// 一颗药丸露面，1d 那颗就往左跳 19.3pt，正好是一根手指的宽度。
+  ///
+  /// 所以这一格按**最宽的那一种文案**钉死：底下垫一颗画不出来的影子药丸（「返回刚才」，
+  /// 四个字，比「最新」宽），真正要画的那颗贴着右边叠在它上面。空着的时候这一格仍然
+  /// 占着位子，于是常用行拿到的宽度从头到尾是同一个数，一个点都不动。
+  ///
+  /// 槽位里**只可能有一颗**：「最新」的前提是不在最新，「返回刚才」的前提是在最新。
+  /// 「看细节」从前也挤在这儿，2026-09-20 搬去了头部那一行十字线动作里——
+  /// 两颗并排要 143pt，16 Pro 上把钉住的周期挤得只剩三档半；而它本来就是十字线的动作，
+  /// 和「上一根 / 下一根 / 按此价画线」是一伙的（见 `CrosshairReadoutRow`）。
+  ///
+  /// 两颗上原来各有一个小箭头（`‹` / `›`），2026-09-21 去掉了：槽位是按最宽的那句话
+  /// 钉死的，箭头连着间距占 14pt，而这 14pt 是从六档周期嘴里抠出来的——SE 上恰好是
+  /// 「排得下」和「排不下」的分界。「最新」「返回刚才」四个字本身已经把话说完了。
+  private var actionSlot: some View {
+    ZStack(alignment: .trailing) {
+      tail("返回刚才") {}
+        .hidden()
+        .accessibilityHidden(true)
+
+      if !atLatest {
+        tail("最新", action: onLatest)
+          .accessibilityIdentifier("chart.latest")
+          .accessibilityLabel("回到最新")
+          .transition(.opacity)
+      } else if let onReturn {
+        tail("返回刚才", action: onReturn)
+          .accessibilityIdentifier("chart.returnBack")
+          .accessibilityLabel("回到刚才看的那一屏")
+          .transition(.opacity)
+      }
+    }
+    .fixedSize(horizontal: true, vertical: false)
   }
 
   // ---------------------------------------------------------------- 常用那一排
@@ -78,77 +143,59 @@ struct IntervalBar: View {
   /// 「更多／图表」之间的一段空白，读起来是自然的间距而不是被撑开的控件。
   private static let maxChipWidth: CGFloat = 76
 
-  /// 那一排按自然宽度排出来有多宽。
+  /// 钉住的那几档，平分铺满行里剩下的宽度。
   ///
-  /// 量的是下面那排影子 chip，不是真排——真排要铺满整行，早被撑开了，量回来的永远等于
-  /// 行宽，判不出排不排得下。只有「右边那道淡出画不画」用得上它，版面本身不靠它。
-  @State private var naturalWidth: CGFloat = 0
-
-  /// 排得下就平分铺满整行，排不下才横向滚动加边缘渐隐。
+  /// 这里没有滚动、没有渐隐、也没有「排不排得下」的判断：档数封在六个（见 `list`），
+  /// 行尾那三件（固定槽位 / 更多 / 图表）各自按自然宽度先占好位子，剩下的全归这一排。
+  /// 最窄的 iPhone SE（375pt）上六档照样一个字不截——`IntervalSlotUITests` 量的就是这个。
   ///
-  /// 行宽由外面这层 `GeometryReader` 当场给出，不走 `@State`：
-  /// 一来 `ScrollView` 在横排里只按内容宽要地方，钉三档时它自己就缩成三颗药丸那么窄，
-  /// 里头再怎么写行宽也铺不满；二来铺满必须给内容一个**确定的宽度**——滚动方向上
-  /// `ScrollView` 给内容的提案是「随你多宽」，chip 上那句 `maxWidth: .infinity` 在这种
-  /// 提案下只会退回自己的自然宽度，试过 `minWidth:` 和先量后铺，三颗 chip 都还是缩在左边。
-  ///
-  /// 外面这一层始终是同一个 `ScrollView`（`interval.quick`）：试过用 `ViewThatFits`
-  /// 在「平铺」和「滚动」两支之间挑，排得下的时候整个 `ScrollView` 就不存在了，
-  /// 一来 `ChartFoundationUITests` 里按 `scrollViews["interval.quick"]` 找条的用例
-  /// 当场落空，二来那个 identifier 落到容器上会把每颗 chip 自己的
-  /// `interval.chip.<iv>` 全盖成 `interval.quick`（实测七颗 chip 的 id 都变成了它）。
-  @ViewBuilder private var chips: some View {
-    GeometryReader { geo in
-      // 排不下才需要那道淡出。留半个点余量，免得两个数差在小数位上来回抖。
-      let overflows = naturalWidth > geo.size.width + 0.5
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 4) {
-          ForEach(list, id: \.self) { chip($0) }
-        }
-        .padding(.horizontal, 2)
-        .frame(width: max(geo.size.width, naturalWidth), alignment: .leading)
-      }
-      .accessibilityIdentifier("interval.quick")
-      // 影子行：跟真那排同样的药丸，只是 `fixedSize` 不跟着铺满、也不画出来，专门用来量
-      // 「这几档按自己的自然宽度排出来有多宽」。它挂在背景上，不占位、不影响横条尺寸。
-      .background(alignment: .leading) {
-        HStack(spacing: 4) {
-          ForEach(list, id: \.self) { chipLabel($0) }
-        }
-        .padding(.horizontal, 2)
-        .fixedSize()
-        .background(GeometryReader { g in
-          Color.clear.preference(key: IntervalRowWidth.self, value: g.size.width)
-        })
-        .hidden()
-        .accessibilityHidden(true)
-      }
-      .onPreferenceChange(IntervalRowWidth.self) { naturalWidth = $0 }
-      // 排不下时右边会切出半颗药丸，硬切看着像画错了。让它在最后那几个点里淡出去，
-      // 一眼就知道「右边还有，滑一下」。
-      //
-      // 排得下就一点都不淡：钉住的那几档铺满整行，右边并没有藏着东西，这时候还淡一道，
-      // 最后一颗「1d」看着像被啃掉一口，反而像画错了。
-      .mask(LinearGradient(
-        stops: overflows
-          ? [.init(color: .black, location: 0),
-             .init(color: .black, location: 0.93),
-             .init(color: .black.opacity(0), location: 1)]
-          : [.init(color: .black, location: 0), .init(color: .black, location: 1)],
-        startPoint: .leading, endPoint: .trailing))
+  /// 均分靠的是每颗药丸身上那句 `maxWidth`（见 `chipLabel`）：横排把「超出各自自然宽度
+  /// 的那部分」摊给能伸的孩子，字本身先 `fixedSize` 钉死，所以「15m」「30m」这种长一点的
+  /// 档不会被摊薄成省略号。这一排必须拿到一个**确定的宽度**才谈得上铺满——
+  /// 外面那层 `HStack` 宽度是确定的，行尾几颗又都 `fixedSize`，剩给这里的自然也是确定的。
+  private var chips: some View {
+    // 间距 0，那点缝挪进每颗药丸自己的命中区里（各让 2pt）：看上去还是 4pt 的缝，
+    // 但两颗的命中区正好首尾相接，缝里没有点不着的死区，也不会互相重叠到
+    // 「点这颗切了那一档」。
+    HStack(spacing: 0) {
+      ForEach(list, id: \.self) { chip($0) }
     }
-    // `GeometryReader` 竖着也贪心，会把 44pt 的条整个吃掉、chip 贴到顶上。
-    // 按药丸自己的高度钉死，行里照旧居中。
-    .frame(height: 28)
+    .padding(.horizontal, 2)
+    // 整条的 44pt：药丸自己仍是 28pt 高、在里头居中，上下多出来的那两圈是它的命中区
+    //（见 `chip`），不是把药丸画大了。
+    .frame(maxWidth: .infinity)
+    .frame(height: 44)
+    // 容器自己也要认领这个 id：以前它挂在横向 `ScrollView` 上，滚动没了之后
+    // 用 `children: .contain` 起一个容器元素，UI 测试还能按 `interval.quick` 量这一排的框，
+    // 每颗 chip 自己的 `interval.chip.<iv>` 也照旧各是各的。
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("interval.quick")
   }
 
   /// 一档周期：没选中是一颗浅底药丸，选中了填 10% 的强调色淡底、字用强调色本身。
   /// 没被钉住的当前档画成虚线描边——它是临时的，切走就没了。
+  ///
+  /// 命中区比画出来的那颗大一圈：横着各 2pt（把 `HStack` 让出来的那 4pt 缝吃掉一半），
+  /// 竖着撑满整条 44pt。外面再用一句负的竖向内边距把**版面**高度收回 28pt——
+  /// 条还是 44pt 高、药丸还是 28pt 高，变大的只有手指够得着的范围。
+  /// 放大必须写在 `label` 里面：`Button` 认的是标签自己的 `contentShape`，
+  /// 套在按钮外面的 `frame` 它一点都不认。
   private func chip(_ iv: Interval) -> some View {
-    Button { onPick(iv) } label: { chipLabel(iv) }
+    Button { onPick(iv) } label: {
+      chipLabel(iv)
+        .padding(.horizontal, 2)
+        .frame(height: 44)
+        .contentShape(Rectangle())
+    }
       .buttonStyle(.plain)
       // §10.6：长按 = 取消钉。临时 chip 上长按则是把它钉下来，同一个 `toggleQuick`。
-      .onLongPressGesture(minimumDuration: 0.45) { onPin(iv) }
+      // 挂在收版面高度之前：长按认的是这一层的框，收完再挂就只剩 28pt 那一条。
+      // 钉满六档时临时 chip 上的长按不做事（和网格里那些灰掉的图钉同一条规矩），
+      // 不再走一遍「按了 → 弹一句钉不上」。
+      .onLongPressGesture(minimumDuration: 0.45) {
+        if quick.contains(iv) || !pinFull { onPin(iv) }
+      }
+      .padding(.vertical, -8)
       .accessibilityIdentifier("interval.chip.\(iv.rawValue)")
       .accessibilityLabel(iv.display)
       .accessibilityAddTraits(iv == current ? [.isSelected] : [])
@@ -165,10 +212,13 @@ struct IntervalBar: View {
       // 当场被截成「1…」「3…」。钉死之后均分只分多出来的那部分，窄的宽的都写得全，
       // 排不下时那一排按自然宽度铺开，每颗也还是写得全。
       .fixedSize(horizontal: true, vertical: false)
-      // 两头各 6pt：钉到七、八档时在 6.3 吋屏上正好还排得下，多一个点就要退回滚动，
-      // 第一眼看到的就是「1d 被渐隐吃掉半颗」。字号和高度都没动，只收了内边距。
-      // （出厂只钉五档，这时候是各自摊宽，收内边距不影响它。）
-      .padding(.horizontal, 6)
+      // 两头各 2pt。这个数只决定「这一排按自然宽度最少要多宽」，也就是排得下排不下：
+      // 有富余的时候每颗都摊到均分的那一份（下面 `maxWidth`），画出来多宽跟它无关，
+      // 所以收紧它并不会让药丸变窄——只有挤到极限时才看得出来。
+      // 2026-09-20 从 6 收到 4，2026-09-21 又收到 2：六档满钉是新的上限工况，
+      // SE（375pt）上留给常用行的只有一百七十几个点，按 4 算出来的自然宽会顶出去。
+      // 字号和高度都没动。
+      .padding(.horizontal, 2)
       .frame(maxWidth: Self.maxChipWidth)
       .frame(height: 28)
       // 选中态填 10% 的强调色，不是整颗实心。
@@ -213,9 +263,14 @@ struct IntervalBar: View {
       // 和周期药丸同一条规矩：选中 / 展开态是 10% 淡底 + 强调色字，不是实心。
       .background(on ? AnyShapeStyle(theme.amberSoft) : AnyShapeStyle(theme.raised2),
                   in: Capsule())
-      .contentShape(Capsule())
+      // 命中区：竖着撑满整条 44pt，横着最窄也有 44pt（「图表」两个字算出来是 43pt，
+      // 差的那一点从这儿补上，其余几颗本来就更宽）。药丸自己还是 28pt 高。
+      .frame(minWidth: 44, minHeight: 44)
+      .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    // 版面高度收回 28pt：多出来的那两圈只是手指的范围，不许把条顶高。
+    .padding(.vertical, -8)
     // 行尾这几颗先按自己的自然宽度占好位置，剩下的才归常用行。
     // 常用行那头是个「有多少要多少」的 `GeometryReader`，不钉死的话它会跟这几颗抢，
     // 「最新」刚插进来那一帧能被挤成零宽——UI 测试里当场报
@@ -236,7 +291,9 @@ struct IntervalBar: View {
                 spacing: 8) {
         ForEach(Interval.allCases, id: \.self) { cell($0) }
       }
-      Text("至少留 1 档，最多 \(Prefs.maxQuick) 档")
+      // 钉满了就换成四个字，直说为什么那些图钉按不动；没满时还是原来那句范围。
+      // 两句都是网格底下的一行小字，不弹窗、不挡手——按不动的图钉本身已经灰在那儿了。
+      Text(pinFull ? "已满六档" : "至少留 1 档，最多 \(Prefs.maxQuick) 档")
         .font(.system(size: 11))
         .foregroundStyle(theme.ink3)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -251,9 +308,15 @@ struct IntervalBar: View {
     .clipped()
   }
 
+  /// 钉位满了没有。满了之后没钉住的那些图钉一律按不动（§2026-09-21「最多六档」）。
+  private var pinFull: Bool { quick.count >= Prefs.maxQuick }
+
   private func cell(_ iv: Interval) -> some View {
     let on = iv == current
     let pinned = quick.contains(iv)
+    // 钉满六档之后，其余那些图钉灰下去、按不动：条上只保证六档排得开，
+    // 让人钉第七个再弹一句「钉不上」，是先给希望再收回去。
+    let canPin = pinned || !pinFull
     return ZStack(alignment: .topTrailing) {
       Button {
         onPick(iv)
@@ -279,12 +342,16 @@ struct IntervalBar: View {
         Image(systemName: pinned ? "pin.fill" : "pin")
           .font(.system(size: 9.5, weight: .medium))
           .foregroundStyle(pinned ? theme.amber : theme.ink3)
+          .opacity(canPin ? 1 : 0.3)
           .frame(width: 24, height: 22)
           .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .disabled(!canPin)
       .accessibilityIdentifier("period.pin.\(iv.rawValue)")
-      .accessibilityLabel(pinned ? "从常用行移除 \(iv.display)" : "加进常用行 \(iv.display)")
+      .accessibilityLabel(
+        pinned ? "从常用行移除 \(iv.display)"
+          : canPin ? "加进常用行 \(iv.display)" : "已满六档，钉不下 \(iv.display)")
     }
   }
 }
@@ -321,14 +388,3 @@ struct IntervalGridPanel: View {
   }
 }
 
-/// 影子那一排按自然宽度排出来有多宽（含两头 2pt 内边距）。
-private struct IntervalRowWidth: PreferenceKey {
-  static let defaultValue: CGFloat = 0
-  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
-/// 横条自己能露出多宽。和上面那个一比就知道排不排得下。
-private struct IntervalViewportWidth: PreferenceKey {
-  static let defaultValue: CGFloat = 0
-  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}

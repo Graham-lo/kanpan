@@ -15,7 +15,7 @@ struct Prefs: Sendable, Equatable {
   // ---------------------------------------------------------------- 周期
   /// 当前周期。原型 `S.interval` 恒从 `'1h'` 起步。
   var interval: Interval = .h1
-  /// 周期条第一行的常用档（原型 `QUICK`）。§10.6：长按可增删，最多 10 个。
+  /// 周期条第一行的常用档（原型 `QUICK`）。§10.6：长按可增删，最多 `Prefs.maxQuick`（六）个。
   var quickIntervals: [Interval] = Interval.quick
 
   // ---------------------------------------------------------------- 外观
@@ -210,12 +210,20 @@ struct Prefs: Sendable, Equatable {
   /// 最多同时开三个副图。再多主图就被挤没了——「主图和副图要同时落在一屏里」是
   /// 这张图的底线，所以这里卡死在三个，第四个进来就把最早开的那个换下去。
   static let maxSubs = 3
-  /// 常用行最多几档（§10.6）。周期条右端从四颗药丸减到两颗之后腾出了位置，
-  /// 上限跟着从 8 抬到 10——排不下的那几档会在右边淡出去，滑一下就到。
-  static let maxQuick = 10
+  /// 常用行最多几档（§10.6）。2026-09-21 从 10 收到 **6**：那条「排不下就横向滚动、
+  /// 右边淡出去、滑一下就到」的退路已经删掉了（见 `IntervalBar`）——用户在 16 Pro 上
+  /// 看到的是周期条只剩「1m 5m 15m 30」、1h/4h/1d 全藏在屏幕外面，钉住的东西看不见
+  /// 等于没钉。现在这一行只保证「≤6 档 + 行尾固定槽位 + 更多 + 图表」在 iPhone SE
+  /// 到 Pro Max 上都一行放得下、一个字不截，六档就是实测排得下的上限。
+  static let maxQuick = 6
 
   /// 自选表认得的排序口径。存档里写着别的（降级回旧版本、手改存档）就退回 `custom`。
-  static let favoriteSorts: Set<String> = ["custom", "name", "price", "change", "volume"]
+  ///
+  /// **这张表和服务端 `sync_validation.rs` 的 `favoritesSort` 白名单是同一张。**
+  /// 这边多一档、那边没加，含这个值的 `settings` 操作会被整条拒掉、把同步队列堵住
+  /// （2026-09-19 那次十九个字段的教训）。`alert` 是 2026-09-20 随提醒功能加的
+  /// 「离提醒线最近」。
+  static let favoriteSorts: Set<String> = ["custom", "name", "price", "change", "volume", "alert"]
 
   /// 「找相似」认得的两档范围。
   static let searchScopes: Set<String> = ["history", "private"]
@@ -364,7 +372,10 @@ struct Prefs: Sendable, Equatable {
     subs.insert(id, at: clamped)
   }
 
-  /// 长按常用行 / 更多面板里的增删（§10.6），最多 10 个，至少留 1 个。
+  /// 长按常用行 / 更多面板里的增删（§10.6），最多 `Prefs.maxQuick`（六）个，至少留 1 个。
+  ///
+  /// 钉满之后「更多」网格里其余那些图钉是灰的、按不动（见 `IntervalBar.cell`），
+  /// 所以这儿返回的那句话正常走不到；它守的是别的入口（横屏侧栏、以后新加的路）。
   @discardableResult
   mutating func toggleQuick(_ iv: Interval) -> String? {
     if let at = quickIntervals.firstIndex(of: iv) {

@@ -177,7 +177,10 @@ final class PrefsStore {
   }
 
   /// 见上：UI 测试沙盒专用的常用行。
-  static let uiTestQuick: [Interval] = [.m1, .m5, .m15, .m30, .h1, .h4, .d1]
+  /// 六档——和 `Prefs.maxQuick` 一样满钉，用例要量的就是「钉满时这一行还排得下」。
+  /// 2026-09-21 从七档收到六档：上限改成 6 之后，七档的沙盒会让条上少画一档，
+  /// 量出来的不是产品行为。
+  static let uiTestQuick: [Interval] = [.m1, .m5, .m15, .m30, .h1, .h4]
 
   // ---------------------------------------------------------------- 读
 
@@ -433,7 +436,6 @@ final class PrefsStore {
   func clearCache() async {
     await cache.clear()
     cacheUsage = await cache.usage()
-    note("已清缓存")
   }
 }
 

@@ -19,7 +19,9 @@ struct PrefsPersistenceTests {
   static func mutated() -> Prefs {
     var p = Prefs.defaults
     p.interval = .m15
-    p.quickIntervals = [.m3, .m30, .h2, .h12, .w1, .mo1, .y1]
+    // 六档＝上限（`Prefs.maxQuick`）。多喂一档的话读回来会被截掉，往返自然不相等——
+    // 那是截断规则在起作用，不是持久化丢了东西。
+    p.quickIntervals = [.m3, .m30, .h2, .h12, .w1, .mo1]
     p.theme = .dark
     p.redUp = false
     p.priceMode = .log

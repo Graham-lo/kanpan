@@ -110,17 +110,19 @@ struct PrefsToleranceTests {
     #expect(p.height(for: .rsi) == .large)
   }
 
-  @Test("常用行：去重、认不出的丢掉、超过 10 档截断、空数组不生效")
+  @Test("常用行：去重、认不出的丢掉、超过 6 档按从短到长截断、空数组不生效")
   func 脏常用行() {
+    // 「8h」这一档不存在（任务书 §1.1 定死不加），当场丢掉；剩下的按周期从短到长排。
     let a = decode(#"{"quickIntervals":["1h","1h","8h","5m"]}"#)
-    #expect(a.quickIntervals == [.h1, .m5])
+    #expect(a.quickIntervals == [.m5, .h1])
     let b = decode(#"{"quickIntervals":[]}"#)
     #expect(b.quickIntervals == Prefs.defaults.quickIntervals)
-    // 十三档进去，只留得下十档——上限是 `Prefs.maxQuick`，原来这儿只喂了十档，
-    // 正好等于上限，截断那一步其实没被走到。
-    let c = decode(#"{"quickIntervals":["1m","3m","5m","15m","30m","1h","2h","4h","6h","12h","1d","1w","1M"]}"#)
+    // 十三档进去只留得下六档（`Prefs.maxQuick`，2026-09-21 从 10 收到 6）。
+    // 砍之前先按从短到长排一遍：存档里的顺序是历史包袱，照原样 `prefix` 有可能
+    // 只剩下 1d 1w 1M 这种全长周期，短周期反而一档不剩。
+    let c = decode(#"{"quickIntervals":["1d","1w","1M","1m","3m","5m","15m","30m","1h","2h","4h","6h","12h"]}"#)
     #expect(c.quickIntervals.count == Prefs.maxQuick)
-    #expect(c.quickIntervals.last == .h12)
+    #expect(c.quickIntervals == [.m1, .m3, .m5, .m15, .m30, .h1])
   }
 
   @Test("域名：修得好就修，修不好退回默认")

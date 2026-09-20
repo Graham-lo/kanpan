@@ -187,6 +187,11 @@ extension Prefs: Codable {
       // 存档里原样躺着上一版出厂的那串就当没动过，直接给新默认；只要有一处不一样
       // 就是用户自己钉过的，一个字都不改。
       if Self.factoryQuicks.contains(seen) { seen = Interval.quick }
+      // 上限 2026-09-21 从 10 收到 6，存档里躺着七八档的不在少数。砍之前先按周期从短到长
+      // 排一遍再取前六个：直接 `prefix` 砍的是「存档里写在前面的那几个」，那个顺序是
+      // 历史包袱（手改的档、更早版本的写法），砍出来的六档可能是 1d 1w 1M 这种全长周期。
+      let order = Interval.allCases
+      seen.sort { (order.firstIndex(of: $0) ?? 0) < (order.firstIndex(of: $1) ?? 0) }
       if !seen.isEmpty { quickIntervals = Array(seen.prefix(Prefs.maxQuick)) }
     }
 

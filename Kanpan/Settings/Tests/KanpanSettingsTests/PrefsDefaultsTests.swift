@@ -107,14 +107,15 @@ struct IntervalTableTests {
   @Test("常用行 5 档，与 Interval.quick 相同")
   func 常用行() {
     // 出厂钉五档：5m 30m 1h 4h 1d，用户按自己实际怎么看盘定的。
-    // 一行其实排得下七档，但天天点的就这五档；钉少了还能按铺满规则平分整行，
+    // 上限是六档（见下一条），出厂只钉五档：钉少了按铺满规则平分整行，
     // 每颗更宽、更难点错。没钉住的档都在「更多」网格里，一个没少。
     #expect(Prefs.defaults.quickIntervals == [.m5, .m30, .h1, .h4, .d1])
     #expect(Prefs.defaults.quickIntervals.count == 5)
     #expect(Prefs.defaults.quickIntervals == Interval.quick)
+    #expect(Prefs.defaults.quickIntervals.count < Prefs.maxQuick)
   }
 
-  @Test("常用行增删：最多 10 档、至少留 1 档，且按 14 档的顺序排")
+  @Test("常用行增删：最多 6 档、至少留 1 档，且按 14 档的顺序排")
   func 常用行增删() {
     var p = Prefs.defaults
     #expect(p.toggleQuick(.h2) == nil)
@@ -123,13 +124,14 @@ struct IntervalTableTests {
     #expect(p.toggleQuick(.h2) == nil)                                    // 再按一次移出
     #expect(p.quickIntervals == Interval.quick)
 
-    // 出厂五档，再钉五档正好顶到上限。
-    for iv in [Interval.m1, .m3, .m15, .h2, .h6] {
-      _ = p.toggleQuick(iv)
-    }
-    #expect(p.quickIntervals.count == 10)
-    #expect(p.toggleQuick(.y1) != nil)                                    // 第 11 档按不进去
-    #expect(p.quickIntervals.count == 10)
+    // 上限 2026-09-21 从 10 收到 6：周期条不再横向滚动，一行只排得下六档。
+    #expect(Prefs.maxQuick == 6)
+    // 出厂五档，再钉一档正好顶到上限。
+    _ = p.toggleQuick(.m1)
+    #expect(p.quickIntervals.count == 6)
+    #expect(p.toggleQuick(.y1) != nil)                                    // 第 7 档按不进去
+    #expect(p.quickIntervals.count == 6)
+    #expect(!p.quickIntervals.contains(.y1))
 
     var one = Prefs.defaults
     one.quickIntervals = [.h1]

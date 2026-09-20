@@ -30,6 +30,20 @@ struct FavoritesView: View {
   var onVisible: (String) -> Void
   var onRowVisibility: (String, Bool) -> Void
   var onHistoryVisibility: (String, Bool) -> Void
+  /// 长按一行时那张预览卡的数据（K 线、持仓量、供应量、费率）。没有就不做长按预览——
+  /// 预览里那段 K 线得有人去取，`nil` 说明这一层没人接线（预览、用例）。
+  var previews: SymbolPreviewStore?
+  /// 从这一页点进图表的那一刻，把**这张表当时的顺序**交出去，供顶栏横滑连续扫图
+  /// （§10.1）。顺序是这一页自己算的（分类 + 排序口径 + 升降序），外面复算一遍迟早走样，
+  /// 所以由这儿在开图的同一瞬间原样递出去。
+  var onScanList: ([String]) -> Void = { _ in }
+  /// 加了提醒的那些线（方案 §10「临近关键位置筛选」）。这一版不另立「关注线」概念：
+  /// **加了提醒的线就是关注线**，所以排序里的「离提醒线最近」和行的副文案都读它。
+  /// 空数组 = 这个人一条提醒都没设过，那一档排序根本不出现。
+  ///
+  /// 传的是值不是仓库：提醒本身很少动，而这一页每批报价都要重画，挂个 `@ObservedObject`
+  /// 只会让两边互相牵连。到价判定在服务端，这儿只算「离得多远」。
+  var alerts: [KanpanCore.Alert] = []
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.panelTheme) private var theme
   /// 「查看全部 N 个品种」落到品种整页时才用得上；平时加品种一律走搜索页。
@@ -134,14 +148,35 @@ struct FavoritesView: View {
   private var selected: String? { model.prefs.group(group) }
   private var groupID: String? { selected }
   private var skin: LiuliSkin { LiuliSkin(theme: theme) }
+  /// 画出来的那一份顺序。
+  ///
+  /// 手指按在表上（或者表还在滚）的时候用按下去那一刻冻住的那一份，抬手才换成最新的
+  /// （§P3-5）。冻的只是「谁排在谁前面」——价格、涨跌那几列照旧每批报价刷新，
+  /// 因为它们是每一行自己读的，不经过这儿。
+  ///
+  /// 冻结期间「有哪些」仍然认最新的：这五秒里被删掉的行不再画（不然点它会打到空），
+  /// 新加进来的按最新的顺序补在后面。
   private var symbols: [String] {
+    let fresh = sortedSymbols
+    guard let held = session.heldOrder, session.frozen else { return fresh }
+    let alive = Set(fresh)
+    var rows = held.filter { alive.contains($0) }
+    let known = Set(rows)
+    rows.append(contentsOf: fresh.filter { !known.contains($0) })
+    return rows
+  }
+
+  private var sortedSymbols: [String] {
     let source = model.prefs.favorites(in: groupID)
     var rows = source
     if !editing, sort != "custom" {
+      // 「离提醒线最近」要拿每一行的现价和它自己的提醒线比，一次比较算一遍太贵——
+      // 先把整张表算出来，比较器只查表。别的口径用不上它，那就是一张空表。
+      let distances = sort == alertSortKey ? alertDistances : [:]
       rows.sort { a, b in
         if sort == "name" { return ascending ? a < b : a > b }
-        let x = sortValue(a)
-        let y = sortValue(b)
+        let x = sortValue(a, distances)
+        let y = sortValue(b, distances)
         guard let x, x.isFinite else { return false }
         guard let y, y.isFinite else { return true }
         if x == y { return a < b }
@@ -553,6 +588,7 @@ struct FavoritesView: View {
     case "volume": "成交额"
     case "price": "价格"
     case "change": amount ? "涨跌额" : basisTitle
+    case alertSortKey: "离提醒线最近"
     default: "自选顺序"
     }
   }
@@ -565,6 +601,9 @@ struct FavoritesView: View {
       sortItem("价格", key: "price")
       sortItem(basisTitle, key: "change", useAmount: false)
       sortItem("涨跌额", key: "change", useAmount: true)
+      // 一条提醒都没有的时候这一档没有意义（整张表都是「—」），干脆不出现——
+      // 它是跟着「加入提醒」长出来的入口，不是一个要先看懂才知道选不选的选项。
+      if !alerts.isEmpty { sortItem("离提醒线最近", key: alertSortKey) }
     }.padding(.vertical, 6).font(.system(size: 14))
   }
 
@@ -591,8 +630,39 @@ struct FavoritesView: View {
   /// 第三次退回自选顺序。
   private func applySort(_ key: String) {
     guard key != "custom" else { sort = "custom"; return }
-    if sort != key { sort = key; ascending = key == "name" }
-    else if ascending == (key == "name") { ascending.toggle() } else { sort = "custom" }
+    if sort != key { sort = key; ascending = ascendingByDefault(key) }
+    else if ascending == ascendingByDefault(key) { ascending.toggle() } else { sort = "custom" }
+  }
+
+  /// 这个口径第一次点的时候是「小的在前」吗。品种按字母、离提醒线按距离，
+  /// 都是小的在前；价格、成交额、涨跌那几档照旧是大的在前。
+  private func ascendingByDefault(_ key: String) -> Bool { key == "name" || key == alertSortKey }
+
+  /// 「离提醒线最近」这一档的键。存进 `Prefs.favoritesSort` 的就是它。
+  private var alertSortKey: String { "alert" }
+
+  /// 每个品种离它自己最近的那条提醒线有多远（0.008 就是 0.8%）。
+  ///
+  /// 只算还醒着的提醒：已触发、已暂停的线不是「在等的位置」。取不到现价（停牌、
+  /// 已下架）或者线压根落在别的时间段上，这个品种就不在表里——它排最后，副文案也空着。
+  private var alertDistances: [String: Double] {
+    guard !alerts.isEmpty else { return [:] }
+    let now = Date().timeIntervalSince1970 * 1000
+    var out: [String: Double] = [:]
+    for (symbol, list) in Dictionary(grouping: alerts.filter(\.isActive), by: { SymbolPrefs.key($0.symbol) }) {
+      guard model.listing(of: symbol).hasLivePrice,
+            let price = displayQuote(symbol)?.last, price > 0, price.isFinite else { continue }
+      guard let d = AlertEvaluator.nearestDistance(from: price, among: list, at: now) else { continue }
+      out[symbol] = d
+    }
+    return out
+  }
+
+  /// 这一行要不要在副文案上写「距提醒线 x.x%」。只在按这一档排的时候写——
+  /// 平时那一行是「额 … · 幅 …」，两样东西不挤在一行里。
+  private func alertDistanceText(_ symbol: String) -> String? {
+    guard sort == alertSortKey, let d = alertDistances[SymbolPrefs.key(symbol)] else { return nil }
+    return "距提醒线 " + toFixed(d * 100, d * 100 < 10 ? 2 : 1) + "%"
   }
 
   /// 编辑行布局不随每批WS报价重建；退出编辑立刻读取最新行情。
@@ -600,7 +670,10 @@ struct FavoritesView: View {
     editing ? editQuotes[symbol] : model.ticker(for: symbol)
   }
 
-  private func sortValue(_ symbol: String) -> Double? {
+  private func sortValue(_ symbol: String, _ distances: [String: Double]) -> Double? {
+    // 「离提醒线最近」不走行情那几个字段：距离已经在 `alertDistances` 里算好了，
+    // 表里没有这个品种就是「它没有在等的线」，照旧沉到末尾。
+    if sort == alertSortKey { return distances[SymbolPrefs.key(symbol)] }
     // 已下架 / 还没开盘的行没有实时价可排：它的涨跌幅、成交额在界面上是「—」，
     // 拿一个界面上看不见的数去决定它排第几，用户只会觉得顺序是乱的（审查 B.5 / B-06）。
     // 这里返回 `nil`，上面那个比较器会把它沉到末尾，而且照旧留在表里。
@@ -623,10 +696,18 @@ struct FavoritesView: View {
   private var listSheet: some View {
     // 只加一层 `ScrollViewReader`——它不画任何东西，版面一个像素都不动（审查 C-08）。
     ScrollViewReader { reader in
+      list
+        // 回到这一页时落回原来那一行（审查 C-08 与 §P3-6 合成了同一条路，
+        // 见 `restoreScrollAnchor`）。
+        .onAppear { restoreScrollAnchor(reader) }
+    }
+  }
+
+  private var list: some View {
     List {
       ForEach(symbols, id: \.self) { symbol in
         VStack(spacing: 0) {
-          row(symbol, first: symbol == symbols.first)
+          previewable(symbol, row(symbol, first: symbol == symbols.first))
           if expanded.contains(symbol), !editing { details(symbol) }
         }
         .listRowInsets(EdgeInsets())
@@ -634,6 +715,7 @@ struct FavoritesView: View {
         .listRowSeparator(.hidden)
         .onAppear {
           onVisible(symbol); onRowVisibility(symbol, true)
+          session.rowVisible(symbol, true, group: groupID ?? "", order: symbols)
           if historyOn.insert(symbol).inserted { onHistoryVisibility(symbol, true) }
           // 有行露面就重算一次落脚点（审查 C-08）。往下滚是底下露新行，往上滚是
           // 顶上露新行，两头都走得到这儿。
@@ -642,17 +724,18 @@ struct FavoritesView: View {
         }
         .onDisappear {
           onRowVisibility(symbol, false)
+          session.rowVisible(symbol, false, group: groupID ?? "", order: symbols)
           if historyOn.remove(symbol) != nil { onHistoryVisibility(symbol, false) }
           // 只摘名字，**不重算落脚点**：整页被拆掉的那一刻每一行都会走一遍这儿，
           // 边摘边算会把「最上面那行」一路推到表尾，刚记下的落脚点当场作废。
           rows.rendered.remove(symbol)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
-          Button("删除自选", role: .destructive) { model.removeFavorite(symbol) }
+          Button("删除自选", role: .destructive) { removeFavorites([symbol]) }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
           Button("移到分类") { moving = MoveRequest(symbols: [symbol]) }.tint(theme.amber)
-          Button("删除", role: .destructive) { model.removeFavorite(symbol) }
+          Button("删除", role: .destructive) { removeFavorites([symbol]) }
         }
       }
       .onMove { source, target in
@@ -662,6 +745,20 @@ struct FavoritesView: View {
       }
     }
     .listStyle(.plain)
+    // 手指按在表上的这段时间不重排（§P3-5）。
+    //
+    // 两个信号各管一段：滚动阶段管「甩出去之后还在滑」那一段（手指早抬了，可行还在动，
+    // 这时候换顺序和手指还按着一样糟）；`TouchWatcher` 管「按着不动 / 正要左滑 /
+    // 长按等预览」那一段——那几种情况一个滚动阶段都不会发生。
+    .onScrollPhaseChange { _, phase in
+      session.scrolling = phase != .idle
+      // 那一下要是被 `List` 自己的滚动抢走了，抬手事件就到不了 `TouchWatcher`。
+      // 滚动停下来的时候顺手把冻结解开，免得一整页锁死。
+      if phase == .idle { session.release() }
+    }
+    .gesture(TouchWatcher { down in
+      if down { session.hold(sortedSymbols) } else { session.release() }
+    })
     // 关掉系统滚动条。iOS 13 起那根灰条自己是能抓住拖的，也就是说它会吃触摸——
     // 它占的那条竖带（右边 30pt）正好压在每行最右边那颗展开箭头上，列表一滚或一重建
     // 它就闪出来，那一两秒里点箭头会没反应。这一页本来也没打算露系统滚动条。
@@ -671,8 +768,6 @@ struct FavoritesView: View {
     // List 占满剩下的整屏：长按把一行拖到最后一行下面，落点还在列表里。
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .padding(.top, 6).padding(.bottom, 8)
-    .onAppear { restoreScrollAnchor(reader) }
-    }
   }
 
   /// 记下「他现在停在哪一行」：按表的顺序取第一个还画在屏幕上的品种。
@@ -703,10 +798,29 @@ struct FavoritesView: View {
   /// 那一行，写回去也是它），2026-09-20 实测在这张 `List` 上**根本不往里写**：
   /// 滚了十几下 `topRow` 始终是 `nil`，交出去的落脚点是空的，切回来自然停在表头。
   /// 它对 `ScrollView` + `LazyVStack` 才成立，`List` 这边只能自己攒。
+  ///
+  /// 落脚点有三个来源，按「人回来要找什么」排（审查 C-08 与 §P3-6 这一轮合流）：
+  ///
+  /// 1. 刚从这一页点进图的那一只，而且**走的时候它并不露着**（从别处点进去的，或者
+  ///    中途滚远了）——人回来找的就是它，直接摆到屏幕中间，不做下面那道校准。
+  /// 2. 这一类离开时顶上露着的那一行（按分类各记一条，A 类的锚点套到 B 类上就是乱滚）。
+  /// 3. 上一轮攒下的「铺着的第一行」。
   private func restoreScrollAnchor(_ reader: ScrollViewProxy) {
     guard !anchorRestored else { return }
     let list = symbols
-    guard let anchor = session.scrollAnchor, let wanted = list.firstIndex(of: anchor) else {
+    let opened = session.openedSymbol
+    session.openedSymbol = nil
+    if let opened, !session.visibleWhenOpened.contains(opened), list.contains(opened) {
+      anchorRestored = true
+      Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(60))
+        var transaction = Transaction(); transaction.disablesAnimations = true
+        withTransaction(transaction) { reader.scrollTo(opened, anchor: .center) }
+      }
+      return
+    }
+    guard let anchor = session.topRow[groupID ?? ""] ?? session.scrollAnchor,
+          let wanted = list.firstIndex(of: anchor) else {
       anchorRestored = true
       return
     }
@@ -740,6 +854,34 @@ struct FavoritesView: View {
     }
   }
 
+  /// 长按一行：先弹一张卡看看这东西现在什么样，再决定做什么（§4.1）。
+  ///
+  /// 卡是只读的，动作全在旁边那份菜单里——「打开 / 移到分类 / 取消自选」，
+  /// 和这一行右滑、展开详情里能做的是同三件事，不多一件也不少一件。
+  /// 批量编辑时整个不挂：那时候长按是拖动排序，两种长按不能抢同一个手势。
+  @ViewBuilder private func previewable(_ symbol: String, _ content: some View) -> some View {
+    if let previews, !editing {
+      content.contextMenu {
+        Button("打开") { open(symbol) }
+        if !model.prefs.groups.isEmpty {
+          Menu("移到分类") {
+            ForEach(model.prefs.groups) { group in
+              Button(group.name) { model.assign(symbol, to: group.id) }
+            }
+          }
+        }
+        Button("取消自选", role: .destructive) { removeFavorites([symbol]) }
+      } preview: {
+        SymbolPreviewCard(symbol: symbol, info: model.info(for: symbol),
+                          ticker: displayQuote(symbol), store: previews,
+                          stale: !model.listing(of: symbol).hasLivePrice)
+          .environment(\.panelTheme, theme)
+      }
+    } else {
+      content
+    }
+  }
+
   private func row(_ symbol: String, first: Bool) -> some View {
     let info = model.info(for: symbol)
     // 这一行还有没有实时价可言，判据只有「目录里查出来的那一档」（审查 B-06 / 复核项 4）。
@@ -754,6 +896,7 @@ struct FavoritesView: View {
     let amplitudeText = amplitude.map { toFixed($0, 2) + "%" } ?? "—"
     let value = ticker?.changePercent ?? .nan
     let trend = value.isFinite ? (value >= 0 ? theme.up : theme.down) : skin.ink4
+    let nearestAlertText = alertDistanceText(symbol)
     return HStack(spacing: 10) {
       if editing {
         Button { if !selection.insert(symbol).inserted { selection.remove(symbol) } } label: {
@@ -770,9 +913,18 @@ struct FavoritesView: View {
             Text(base).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(theme.ink)
             Text(quoteAsset(symbol)).font(.system(size: 9, weight: .regular)).foregroundStyle(skin.ink4)
           }.lineLimit(1).minimumScaleFactor(0.75)
-          Text("额 " + volumeText + "  ·  幅 " + amplitudeText)
-            .font(.system(size: 10)).monospacedDigit().foregroundStyle(theme.ink3)
-            .lineLimit(1).minimumScaleFactor(0.8)
+          // 按「离提醒线最近」排的时候，这一行让位给距离；这个品种没有在等的线就空着，
+          // 不写「—」也不解释——空白本身就说明它不在这张单子上（只答远近，不答方向）。
+          if sort == alertSortKey {
+            Text(nearestAlertText ?? " ")
+              .font(.system(size: 10)).monospacedDigit()
+              .foregroundStyle(nearestAlertText == nil ? .clear : theme.amber)
+              .lineLimit(1).minimumScaleFactor(0.8)
+          } else {
+            Text("额 " + volumeText + "  ·  幅 " + amplitudeText)
+              .font(.system(size: 10)).monospacedDigit().foregroundStyle(theme.ink3)
+              .lineLimit(1).minimumScaleFactor(0.8)
+          }
         }.frame(maxWidth: .infinity, alignment: .leading)
         if !editing, sparkline {
           Sparkline(values: sparkValues(symbol), color: trend)
@@ -1014,6 +1166,10 @@ struct FavoritesView: View {
       (["USDT", "USDC", "BUSD"].first { symbol.hasSuffix($0) } ?? "USDT")
   }
   private func open(_ symbol: String) {
+    // 先冻结名单再开图：这一刻的顺序就是人眼里那张表的顺序，之后行情再跳也不改它。
+    onScanList(symbols)
+    // 记下「从哪一行走的、走的时候屏幕上露着哪几行」，回来照它落位（§P3-6）。
+    session.rememberOpen(symbol)
     // 目录里没有这个代号（刚上市、或者目录还在路上）时才临时造一行：小数位按最后
     // 看到的价退回那把共用的梯子，不再写死 2 位 / 0.01（审查 B-07）。真正的位数由
     // 行情页进图时那趟目录补查覆盖（`MarketModel.refreshInfo`，审查 B-06）。
@@ -1027,6 +1183,24 @@ struct FavoritesView: View {
   }
   private func assign(_ symbols: [String], to group: String?) {
     symbols.forEach { model.assign($0, to: group) }; moving = nil; selection.removeAll()
+  }
+
+  /// 移除自选 —— 这一页上**唯一**的移除口子（左滑两处、长按菜单、编辑条批量，全走它）。
+  ///
+  /// 删自选没有二次确认（每加一道确认，正常的那一次就多一次打断），代价是删错了没得救。
+  /// 所以改成「先删，再给五秒反悔」：删之前把每一个的位置、分组、置顶位拍下来
+  /// （`SymbolPrefs.snapshot`），屏幕底下那条提示条上挂一颗「撤销」，点了就照快照原样
+  /// 放回去。还原走的是和删除同一条写入路径（`commit()`），落盘和同步都照常发生。
+  ///
+  /// 这是全 app 唯一允许出现提示条的地方：它不是「告诉你成功了」，而是「这一下还能反悔」。
+  private func removeFavorites(_ list: [String]) {
+    let model = self.model
+    let snapshots = list.compactMap { model.favoriteSnapshot($0) }
+    guard !snapshots.isEmpty else { return }
+    list.forEach { model.removeFavorite($0) }
+    session.offerUndo(snapshots.count > 1 ? "已移除 \(snapshots.count) 个" : "已移除") {
+      model.restoreFavorites(snapshots)
+    }
   }
 
   // MARK: - 空自选 / 编辑条
@@ -1066,7 +1240,7 @@ struct FavoritesView: View {
         .foregroundStyle(selection.isEmpty ? skin.ink4 : theme.amber)
       Spacer(minLength: 0)
       Button("删除", role: .destructive) {
-        selection.forEach { model.removeFavorite($0) }; selection.removeAll()
+        removeFavorites(Array(selection)); selection.removeAll()
       }.disabled(selection.isEmpty)
         .foregroundStyle(selection.isEmpty ? skin.ink4 : theme.down)
     }
@@ -1363,6 +1537,80 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
     quotes.removeAll()
   }
 
+  // ---------------------------------------------------------------- 已移除 · 撤销
+
+  /// 刚说出口的那句话，和「撤销」那一下要干什么。
+  ///
+  /// 屏幕底下那条提示条只有一条，住在宿主上（`MainScreen.say`）；撤销具体怎么撤
+  /// 是自选页的事（要还原到哪一位、哪一类、置不置顶）。所以这儿只当传声筒：
+  /// 自选页把话和动作放进来，宿主念出去。
+  private(set) var undoText = ""
+  private(set) var undoAction: (() -> Void)?
+  /// 每放一次自增。宿主盯的是这个计数而不是那句话本身——同一句「已移除」连着说两遍，
+  /// `onChange(of: String)` 是不会响的。
+  private(set) var undoStamp = 0
+
+  func offerUndo(_ text: String, _ action: @escaping () -> Void) {
+    undoText = text
+    undoAction = action
+    undoStamp += 1
+  }
+
+  // ---------------------------------------------------------------- 手指按着时不重排
+
+  /// 手指按在列表上的那一刻，顺序冻在这一份上（§P3-5）。
+  ///
+  /// 价格和涨跌照常刷新，只有「谁排在谁前面」不动——手指底下的那一行不许在按下去到
+  /// 抬起来之间换成别人。抬手之后 `symbols` 自己会用最新的那一份重排。
+  private(set) var heldOrder: [String]?
+  /// 按下去的时刻。收不到抬手时靠它兜底（见 `frozen`）。
+  private(set) var heldAt = Date.distantPast
+  /// 列表正在滚（含甩出去之后的惯性）。
+  var scrolling = false
+
+  /// 现在该不该冻着。
+  ///
+  /// 手指按着、或者列表还在滚，都算「正在摸这张表」。`heldAt` 是兜底：那一下被
+  /// `List` 自己的手势抢走时抬手事件可能到不了这儿，超过 30 秒就当它早就抬了，
+  /// 免得一整页永远冻住。
+  var frozen: Bool {
+    if heldOrder != nil, Date().timeIntervalSince(heldAt) < 30 { return true }
+    return scrolling
+  }
+
+  func hold(_ order: [String]) {
+    guard heldOrder == nil else { return }
+    heldOrder = order
+    heldAt = Date()
+  }
+
+  func release() {
+    heldOrder = nil
+    heldAt = .distantPast
+  }
+
+  // ---------------------------------------------------------------- 回到原来那一行
+
+  /// 离开这一页时，每一类各自顶上露着的是哪一行。
+  var topRow: [String: String] = [:]
+  /// 列表上这会儿露着哪几行。整页被拆掉时它会被逐行的 `onDisappear` 清空，
+  /// 所以 `topRow` 只在算得出结果时才更新——空了就保留最后一个好值。
+  var visibleRows = Set<String>()
+  /// 最近从这一页点进图的是哪一只，以及点进去那一刻屏幕上露着哪几行。
+  /// 回来时前者不在后者里，就说明那一行已经被滚出视野了，得专门滚到它。
+  var openedSymbol: String?
+  var visibleWhenOpened = Set<String>()
+
+  /// 某一行进出视野。`order` 是这一刻表上的顺序，用来算「顶上那一行是谁」。
+  func rowVisible(_ symbol: String, _ on: Bool, group: String, order: [String]) {
+    if on { visibleRows.insert(symbol) } else { visibleRows.remove(symbol) }
+    if let top = order.first(where: { visibleRows.contains($0) }) { topRow[group] = top }
+  }
+
+  func rememberOpen(_ symbol: String) {
+    openedSymbol = symbol
+    visibleWhenOpened = visibleRows
+  }
   /// 换分类、换账号时把落脚点一起丢掉。
   func forgetScrollAnchor() { scrollAnchor = nil }
 }
@@ -1377,6 +1625,57 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
   var rendered = Set<String>()
   /// 铺着的第一行，也就是要交出去的落脚点。
   var anchor: String?
+}
+
+/// 只报「有没有手指按在这张表上」，从不认领这一下。
+///
+/// 为什么不拿 `DragGesture(minimumDistance: 0)` 去报：它会跟 `List` 自己的滚动、左滑、
+/// 长按预览抢同一串触摸。抢输的那一次 SwiftUI 直接把它取消掉，`onEnded` 一次都不来，
+/// 于是「冻住」再也解不开——手指早抬了，表还锁着。
+///
+/// 这只识别器永远停在 `.possible`：不进 `.began`，所以既不会赢、也不会让别人输
+/// （`cancelsTouchesInView = false` 连触摸都不截），只是把 `touchesBegan / Ended`
+/// 原样转出来。iOS 18 起 SwiftUI 直接收 `UIGestureRecognizer`（`UIGestureRecognizerRepresentable`），
+/// 不用再包一层 `UIViewRepresentable`。
+final class TouchWatchRecognizer: UIGestureRecognizer {
+  var onChange: ((Bool) -> Void)?
+  /// 还按着几根手指。多指分别按下、分别抬起时按个数配平，最后一根抬了才算「松开」。
+  private var live = 0
+
+  override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+    live += touches.count
+    if live > 0 { onChange?(true) }
+  }
+  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) { drop(touches.count) }
+  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) { drop(touches.count) }
+  override func reset() {
+    live = 0
+    onChange?(false)
+  }
+
+  private func drop(_ count: Int) {
+    live = max(0, live - count)
+    if live == 0 { onChange?(false) }
+  }
+}
+
+struct TouchWatcher: UIGestureRecognizerRepresentable {
+  var onChange: (Bool) -> Void
+
+  func makeUIGestureRecognizer(context: Context) -> TouchWatchRecognizer {
+    let recognizer = TouchWatchRecognizer()
+    recognizer.cancelsTouchesInView = false
+    recognizer.delaysTouchesBegan = false
+    recognizer.delaysTouchesEnded = false
+    recognizer.onChange = onChange
+    return recognizer
+  }
+
+  func updateUIGestureRecognizer(_ recognizer: TouchWatchRecognizer, context: Context) {
+    recognizer.onChange = onChange
+  }
+
+  func handleUIGestureRecognizerAction(_ recognizer: TouchWatchRecognizer, context: Context) {}
 }
 
 /// 记下「设置」「排序」两颗按钮的位置，好让浮层菜单吊在它们下面。
