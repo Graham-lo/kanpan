@@ -207,6 +207,12 @@ import XCTest
     XCTAssertTrue(app.alerts.count == 0, "问话不许用系统弹窗")
     shot("01-画完问一句")
     XCTAssertTrue(prompt.waitForNonExistence(timeout: 12), "六秒过去那条问话还在")
+    // 它占的是**头部价格行**那一行的位置（2026-09-21）：价格行透明让位，行高不变。
+    // 所以它来一趟走一趟，画布的 frame 一个 pt 都不该动——从前它在图外自成一行，
+    // 画完线图当场矮一截、六秒后又长回来，用户看见的是两次跳动。
+    XCTAssertEqual(canvas.frame, canvasFrame,
+                   "那句问话来去一趟，画布跟着缩了又长：问话在时 \(canvasFrame)，收掉后 \(canvas.frame)")
+    shot("01b-问话收掉之后")
 
     // ② 再画一笔，这一次紧接着按「加入提醒」：线右端挂铃铛，问话收掉。
     let before = Set(ids())

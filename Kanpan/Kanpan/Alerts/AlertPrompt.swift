@@ -62,9 +62,21 @@ final class AlertPromptModel: ObservableObject {
   }
 }
 
-/// 那一条。整行高 36pt，字 13pt——它和周期条并排，比周期条还轻一档。
+/// 那一条。整行高 36pt，字 13pt——它比周期条还轻一档。
+///
+/// 两个落脚点，内容一字不差：
+/// - **竖屏在头部价格行那一行上**（`inHeader`，2026-09-21 改）。从前它是图**外面**
+///   额外插的一行，于是画完线的那一瞬整张图被压矮一行、六秒后又弹回来，肉眼两次跳动。
+///   现在它占的是「最新价 + 涨跌幅」那一行的位置：价格行照旧占着位（只是透明），
+///   行高一个 pt 不变，图表尺寸一动不动。让位的做法和十字线活着时那三颗动作
+///   （`HiddenWhileCrosshairReads` / `CrosshairReadoutRow`）是同一套。
+/// - **横屏仍旧是图下面那一条**：横屏的头部只有一行小字，塞不下这一句，
+///   而横屏画线台下沿本来就排着一条工具栏，它和那条并排（§2E5）。
 struct AlertPromptBar: View {
   @ObservedObject var model: AlertPromptModel
+  /// 摆在头部价格行的位置上（竖屏）。这一档不自己撑开一行，左右也不再外缩——
+  /// 它由外面用 `overlay` 挂上去，**不参与头部定尺寸**。
+  var inHeader = false
   @Environment(\.panelTheme) private var theme
 
   var body: some View {
@@ -94,6 +106,7 @@ struct AlertPromptBar: View {
           .background(Capsule().fill(theme.amber))
       }
       .padding(.horizontal, 12)
+      .frame(maxWidth: .infinity)
       .frame(height: 36)
       // `children: .contain` 是这儿的关键：只写 identifier 的话，它会顺着这一行
       // 盖到里面每个元素头上，两颗按钮自己的 identifier 就被顶掉了（用例里
@@ -108,8 +121,10 @@ struct AlertPromptBar: View {
           .fill(theme.amberSoft)
           .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(theme.amberLine, lineWidth: 0.5))
       )
-      .padding(.horizontal, 10)
-      .transition(.opacity.combined(with: .move(edge: .bottom)))
+      .padding(.horizontal, inHeader ? 0 : 10)
+      // 头部那一档只淡入淡出：它是挂在价格行上的 `overlay`，不受父视图裁剪，
+      // 从下往上滑那一下会有一帧扫过 K 线——「画布上不浮控件」这条不留例外。
+      .transition(inHeader ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
     }
   }
 }

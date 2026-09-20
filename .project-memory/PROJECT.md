@@ -67,9 +67,11 @@
 - **纯逻辑** `KanpanCore/Sources/KanpanCore/Alerts/`：`Alert` 模型、`AlertGeometry`
   （把一条画线摊平成若干条价格折线）、`AlertEvaluator`（触碰判定）。单测在 `core-test`。
 - **客户端模块** `Kanpan/Kanpan/Alerts/`：`AlertStore` / `AlertArchive`（存档与对账）、
-  `AlertWatcher`（前台用现有行情流本地评估）、`AlertPrompt`（画完一条线之后在**图外**那一行弹的
-  小确认卡，六秒不理等于「只画线」；它在场时图区就矮一整行，所以按 `mainH` 的比例点画布的
-  UI 用例要先 `dismissAlertPrompt()` 再量高度）、`AlertListPage`（设置面板里「提醒」那一行进）、
+  `AlertWatcher`（前台用现有行情流本地评估）、`AlertPrompt`（画完一条线之后弹的小确认卡，
+  六秒不理等于「只画线」；**2026-09-21 起它占头部价格行那一行的位置**——价格行照旧占位、
+  只是透明，十字线那三颗动作同理让位，行高与图表尺寸一个 pt 都不变，画布也一个点都没碰着；
+  从前它是图外额外插的一行，画完线图当场矮一行、六秒后又弹回来，肉眼两次跳动。横屏仍是图
+  下面那一条）、`AlertListPage`（设置面板里「提醒」那一行进）、
   `AlertNotifications`、`PushRegistration`、`ReviewDueNotifications`（复盘待办到点，纯本地通知）。
   测试壳 `Kanpan/Alerts/`（符号链接，`make alerts-test`）。
 - **图表只暴露两样**：`ChartHost.onDrawingCommitted(Drawing, symbol)` 和

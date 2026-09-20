@@ -621,10 +621,10 @@ struct MainScreen: View {
       if draw.active {
         DrawingBar(controller: draw)
       }
-      // 画完线问的那一句：周期条下面、标签栏上面的一行。它**在图外面**，
-      // 不盖画布，也不是系统弹窗（方案 2.3）。六秒没人理就当「只画线」。
-      AlertPromptBar(model: alertPrompt)
-        .padding(.bottom, 6)
+      // 画完线问的那一句**不在这儿**（2026-09-21）：它从前是周期条下面、标签栏上面
+      // 额外插的一行，于是线一落下整张图当场矮一行，六秒后又弹回来——用户看见的是
+      // 两次跳动。现在它占头部价格行那一行的位置（见 `header` 里挂它的那个 `overlay`），
+      // 图表尺寸一个 pt 都不动。
     }
   }
 
@@ -850,6 +850,9 @@ struct MainScreen: View {
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
           .accessibilityValue(quoteDiagnostics)
+          // 「要不要加提醒」在场的那六秒，价格行也照旧占着位置、只是透明——
+          // 和十字线那套让位一模一样，行高一个 pt 都不变。
+          .opacity(alertPrompt.pending == nil ? 1 : 0)
         // 读数 + 十字线的那几个动作（§P3-7）。两样都只在这只小视图里跟着手指重求值，
         // 主屏的 body 照旧一次都不用动。
         CrosshairReadoutRow(
@@ -863,7 +866,16 @@ struct MainScreen: View {
           // 主屏的 body 本来就读它，不引入对十字线的观察。
           canDetail: DetailZoom.finer(than: market.interval) != nil,
           onDetail: zoomIntoDetail)
+          // 两件事抢同一行时，刚画完的那一句优先：它只活六秒，而十字线还在手指底下，
+          // 六秒过去它自己就回来了。让位也是透明让位，这一行的高度不因此变。
+          .opacity(alertPrompt.pending == nil ? 1 : 0)
+          .allowsHitTesting(alertPrompt.pending == nil)
       }
+      // 画完一条线问的那一句，摆在**价格行的位置上**，而且是 `overlay`——
+      // overlay 不参与父视图定尺寸，所以它在与不在，头部和图表的高度一个 pt 都不会变
+      // （从前它在图外面自成一行，画完线图当场矮一截、六秒后又弹回来）。
+      // 它盖着的只有价格与那六格，画布一个点都没碰着（`kanpan-no-floating-controls-over-chart`）。
+      .overlay { AlertPromptBar(model: alertPrompt, inHeader: true) }
       // 连续扫图（§10.1）：横滑**只挂在价格这一块**上。
       //
       // 画布上不挂——那儿的横滑是平移 K 线，人一辈子都在那儿横滑；周期条上也不挂——
@@ -1661,6 +1673,10 @@ struct MainScreen: View {
       // 横着扫一排品种，看的就是「同一段时间里它们各自在干什么」。
       let keep = atLatest ? nil : proxy.currentView
       detailZoom.clear()
+      // 人已经翻到下一只去了，那句问话问的还是上一只身上那条线——跟着走没有意义，
+      // 当场收掉（等于「只画线」，线本身早就落盘了）。横滑本身照常翻：那一句是挂在
+      // 价格行上的一层 overlay，除了它自己那两颗按钮，整行的横滑仍旧走这条路。
+      alertPrompt.dismiss()
       open(linkedSymbol: symbol)
       if let keep { proxy.show(window: keep, symbol: symbol, interval: market.interval) }
       UISelectionFeedbackGenerator().selectionChanged()

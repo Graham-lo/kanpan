@@ -136,16 +136,16 @@ final class ChartFoundationUITests: XCTestCase {
 
   /// 收掉「要不要在这条线上提醒你吗」那一行（方案 2.3）。
   ///
-  /// 那一行长在**图外面**（周期条下面、标签栏上面），所以它一出来图区当场矮一截，
-  /// 刚画下的那条线跟着往上挪；六秒没人理它自己走。凡是「按 `mainH` 的比例去点画布」
-  /// 的用例，都得先把它清掉再量高度，不然量到的是它在场时那个数，手指按下去的位置
-  /// 就落在线现在**不在**的地方（这正是 `testDrawingAllToolsAndFingerTargets` 那一按
-  /// 抓不住端点的原因）。它不在场时这一下什么也不做。
+  /// 2026-09-21 起那一行**长在头部价格行的位置上**（价格行透明让位，`AlertPromptBar`
+  /// 的 `inHeader`），不再是图外额外插的一行——所以它在与不在，图区高度一个 pt 都不变，
+  /// 按 `mainH` 的比例点画布的用例不必再先收掉它。留着这一下是为了把「收掉之后高度
+  /// 照样是那个数」也验一遍（从前的毛病正好相反：不收它就矮一行）。
+  /// 它不在场时这一下什么也不做。
   func dismissAlertPrompt() {
     let dismiss = app.buttons["alert.prompt.dismiss"]
     guard dismiss.exists else { return }
     dismiss.tap()
-    XCTAssertTrue(wait(seconds: 5) { !dismiss.exists }, "点了「只画线」，那一行还挂在图下面")
+    XCTAssertTrue(wait(seconds: 5) { !dismiss.exists }, "点了「只画线」，那一句还挂在头部")
   }
 
   /// 点「绘图」面板上的分类标签。
@@ -1557,6 +1557,9 @@ extension ChartFoundationUITests {
     let tools: [(String, Int, String)] = [("trend", 2, "线条"), ("hline", 1, "线条"), ("ray", 2, "线条"),
       ("hray", 1, "线条"), ("extended", 2, "线条"), ("vline", 1, "线条"), ("rectangle", 2, "几何"),
       ("channel", 3, "通道"), ("fibonacci", 2, "斐波那契"), ("measure", 2, "测量")]
+    // 十趟下来图区高度必须是同一个数：「要不要加提醒」那一句现在占头部价格行的位置，
+    // 它在与不在都不该让图缩一下（2026-09-21）。第一趟量到的就是基准。
+    var baseH: Double?
     for (index, tool) in tools.enumerated() {
       openDrawTools()
       tapDrawGroup(tool.2)
@@ -1579,21 +1582,32 @@ extension ChartFoundationUITests {
       // 下面每一下都是点在画布上的。面板收了但图不在（被别的页盖住），
       // 再点下去就是往别人身上点——先把图还在这件事断言死，失败信息也才看得懂。
       XCTAssertTrue(canvas.waitForExistence(timeout: 5), "\(tool.0)：工具面板收起后图不见了")
-      // 上一把工具画完时问的那一句可能还挂在图下面（方案 2.3，六秒自己走）：它在与不在，
-      // 图区高度差着一整行，下面所有按比例算出来的落点都跟着偏。先收了再量。
-      dismissAlertPrompt()
+      // 上一把工具画完时问的那一句可能还挂在头部（方案 2.3，六秒自己走）。它在与不在
+      // 图区都是同一个高度——这正是这一趟要盯的事，所以**不先收掉它**，直接量，
+      // 量到的必须和第一趟一模一样。
       let h = try XCTUnwrap(info()["mainH"] as? Double)
+      if let baseH {
+        XCTAssertEqual(h, baseH, accuracy: 0.5,
+                       "\(tool.0)：图区高度变了（\(baseH) → \(h)），那句问话又在图外占行了")
+      } else { baseH = h }
       let origin = canvas.coordinate(withNormalizedOffset: .zero)
       let points = [CGVector(dx: 90, dy: h * 0.65), CGVector(dx: 245, dy: h * 0.3), CGVector(dx: 160, dy: h * 0.75)]
       for point in points.prefix(tool.1) { origin.withOffset(point).tap() }
       XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == index + 1 }, tool.0)
       XCTAssertEqual((info()["drawingKinds"] as? [String])?.last, tool.0)
       if index == 0 {
-        // 这条线刚落下，那一句问话正好长出来，图区比刚才矮了一行、线也跟着往上挪。
-        // 这条用例量的是**手指容差**，不是那句问话：先收掉它，等图区长回量过的 `h`，
-        // 下面这一按才真的是「偏离可见把手 17pt」。
+        // 这条线刚落下，那一句问话正好长出来——它现在占的是**头部价格行**那一行的位置
+        // （价格行透明让位），图区一个 pt 都不该动。所以这儿不再「先收掉它、等图长回来」，
+        // 反过来断言：它在场时是这个高度，压根没碰着画布，收掉之后还是这个高度。
+        let prompt = app.otherElements["alert.prompt"]
+        XCTAssertTrue(prompt.waitForExistence(timeout: 6), "画完第一条线没问「要不要提醒」")
+        XCTAssertEqual(try XCTUnwrap(info()["mainH"] as? Double), h, accuracy: 0.5,
+                       "那句问话在场时图区矮了——它又去图外占行了")
+        XCTAssertFalse(prompt.frame.intersects(canvas.frame),
+                       "那句问话压在画布上了：问话 \(prompt.frame)，画布 \(canvas.frame)")
         dismissAlertPrompt()
-        XCTAssertTrue(wait(seconds: 5) { (self.info()["mainH"] as? Double) == h }, "图区没回到刚量过的高度")
+        XCTAssertEqual(try XCTUnwrap(info()["mainH"] as? Double), h, accuracy: 0.5,
+                       "收掉那句问话之后图区高度变了")
         let before = try XCTUnwrap(info()["drawingAnchors"] as? [[[String: Double]]])
         origin.withOffset(CGVector(dx: 90, dy: h * 0.65 + 17)).press(forDuration: 0.1,
           thenDragTo: origin.withOffset(CGVector(dx: 115, dy: h * 0.65 + 42)), withVelocity: .slow, thenHoldForDuration: 0.1)
