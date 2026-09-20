@@ -34,6 +34,8 @@ import ReviewUI
   private var loadTask: Task<Void, Never>?
   private var loadID = UUID()
   private var replayLimit = Int64.max
+  /// 上一拍那根最新 K 线的开盘时刻。用来判断「人还跟着播放头吗」（审查 B-05）。
+  private var replayLastTime: Int64?
   private var replayHosts: BinanceHosts?
   private var pageTask: Task<Void, Never>?
   private var paging = false
@@ -73,16 +75,30 @@ import ReviewUI
     let date = Date(timeIntervalSince1970: Double(time) / 1000)
     return Int64((calendar.date(byAdding: interval == .y1 ? .year : .month, value: bars, to: date)?.timeIntervalSince1970 ?? date.timeIntervalSince1970) * 1000)
   }
+  /// 当前这张实时图是从哪家取的数。
+  ///
+  /// 记录一落地就带着 `range.venue`，而记号该不该画在这张图上要拿它和**现在这张图的
+  /// 行情源**比（审查 B.4）。宿主每次发起捕获时都把真实的 `market.source` 传进来，
+  /// 这儿顺手记住，落图那一层就不必再跟宿主要一次。
+  private(set) var liveVenue = MarketSource.binance.rawValue
   func beginCapture(feature: ReviewFeature, live: ChartState?, prefs: Prefs, source: MarketSource = .binance) {
+    liveVenue = source.rawValue
     guard var live, live.series.count >= 3 else { notice = "等待 K 线加载后再记录"; return }
-    guard live.series.interval != .y1 else { notice = "年线暂不支持复盘，请切换周期"; return }
+    // 服务端收不下的组合，圈之前就说（审查 B-06）。原来这儿只挡了年线，于是
+    // BTCUSDC、美股代号照样能圈完、写完、按保存，最后被服务端 400 顶回来，
+    // 还把那条永远成不了的操作留在了上传队列里。这一句和
+    // `native_review.rs` 的 `validate_range` 是同一份名单（`ReviewContract`）。
+    if let reason = ReviewContract.captureFailure(venue: source.rawValue, symbol: live.series.symbol,
+                                                  interval: live.series.interval.rawValue) {
+      notice = reason; return
+    }
     playing = false; playback?.cancel(); loadTask?.cancel()
     let s = live.series, now = ReviewClock.now
     let closed = (0..<s.count).filter { Self.closeTime(s.time(at: $0), interval: s.interval) <= now }
     guard let last = closed.last, closed.count >= 3 else { notice = "至少需要 3 根已收盘 K 线"; return }
     live.series = slice(s, count: last + 1); live.crosshair = nil; live.nowMs = nil
     var draft: ReviewDraft
-    if let saved = feature.draft, saved.range.venue == source.rawValue, saved.range.symbol == s.symbol, saved.range.interval == s.interval.rawValue {
+    if let saved = feature.draft, saved.reusable(venue: source.rawValue, symbol: s.symbol, interval: s.interval.rawValue) {
       draft = saved
     } else {
       let right = min(last, s.index(atTime: live.view.to)), left = max(0, right - 48)
@@ -142,11 +158,32 @@ import ReviewUI
         for i in 1..<ordered.count where Self.closeTime(ordered[i - 1].openTime, interval: interval) != ordered[i].openTime { throw ReviewBridgeError.historyGap }
         bars = ordered
         base.series = BarSeries(symbol: range.symbol, interval: interval, bars: ordered)
-        base.symbol = SymbolInfo(symbol: range.symbol, base: String(range.symbol.dropLast(4)), pricePrecision: base.decimals, tickSize: pow(10, -Double(base.decimals)))
+        // 精度得是**这个品种**的，不能沿用当前那张实时图（审查 B-04）。
+        //
+        // `base` 是从屏幕上那张图复制来的，`base.decimals` 还是 BTC 的 1 位；拿它去
+        // 画 0.00001234 的记录，轴、十字线、价格标签全写成 `0.0`——重温一条自己记过的
+        // 判断，看到的是一排一样的零。品种目录在这儿查不到（记录可能是任何品种、
+        // 甚至已经下架），但行情自己带着答案：交易所的报价一律落在 `tickSize` 的整数倍
+        // 上，「让每一口价都能原样写出来的最少位数」就是它。全是整数时（有这种品种）
+        // 才退回实时图那一档。
+        let decimals = ReviewPricePrecision.decimals(of: ordered.flatMap { [$0.open, $0.high, $0.low, $0.close] }) ?? base.decimals
+        base.symbol = SymbolInfo(symbol: range.symbol, base: range.shortSymbol, pricePrecision: decimals,
+                                 tickSize: ReviewPricePrecision.tickSize(decimals: decimals))
+        // `ChartState.decimals` 是自己的一份存储属性（初始化时取 `symbol.pricePrecision`，
+        // 之后各走各的），渲染器读的是它——只改 `symbol` 改不动屏幕上的数字。
+        base.decimals = decimals
         replayBase = base; replayRecord = record; speed = preferredSpeed()
         let saved = savedPosition
         cursor = max(2, ordered.lastIndex(where: { Self.closeTime($0.openTime, interval: interval) <= saved }) ?? 2)
-        proxy = ChartProxy(); mode = .replay; updateReplay(feature: feature); loading = false
+        // 只有从别的模式（实时、取景）进回放才换一张新画布：那时图表那棵树会按 `mode`
+        // 重建，旧 proxy 指着的是上一张图。已经在回放里再开一条（「跳到判断处」要重新取数、
+        // 从「找相似」直接换一条记录）必须留着同一张：树的 id 没变，`ChartView` 不会重建，
+        // 换了 proxy 下面那句「把算好的视野直接写进图里」就落空，`ChartHost.updateUIView`
+        // 接着拿屏幕上那份旧视野盖回来，人看到的就是「按了没反应」。
+        if mode != .replay { proxy = ChartProxy() }
+        mode = .replay; replayLastTime = nil
+        // 第一次进来才重设视野（80 根）：这是「打开这条记录」，不是「推进一根」。
+        updateReplay(feature: feature, reset: true); loading = false
       } catch is CancellationError {} catch { if loadID == request { loading = false; notice = error.localizedDescription } }
     }
   }
@@ -205,21 +242,52 @@ import ReviewUI
   func jumpToJudgment(feature: ReviewFeature) {
     guard let record = replayRecord, let base = replayBase else { return }
     let judgment = record.submitted ?? record.draft.created
-    if let first = bars.first, let last = bars.last,
-      judgment < first.openTime || judgment > Self.closeTime(last.openTime, interval: base.series.interval), let hosts = replayHosts {
+    // 判断那一刻落在已经取回来的这段之外，才值得重新取一次数。右边那一侧还要多问一句
+    // 「再取一次真能多出一根吗」：刚记下的那条，判断时刻就落在最后一根收盘之后、下一根
+    // 还没收，重取回来的还是同一批 K 线——白跑一趟网络，还会把这张画布连同人刚挑好的
+    // 视野一起换掉，于是「判断处」按下去一动不动（审查 B-05）。
+    let interval = base.series.interval
+    var outside = false
+    if let first = bars.first, let last = bars.last {
+      let lastClose = Self.closeTime(last.openTime, interval: interval)
+      outside = judgment < first.openTime
+        || (judgment > lastClose && Self.closeTime(lastClose, interval: interval) <= replayLimit)
+    }
+    if outside, let hosts = replayHosts {
       feature.rememberReplay(record.id, position: ReviewReplayPosition(cursor: judgment, speed: speed))
       open(record, feature: feature, live: base, hosts: hosts, cutoff: replayLimit)
       return
     }
-    cursor = max(2, bars.lastIndex(where: { Self.closeTime($0.openTime, interval: base.series.interval) <= judgment }) ?? 2)
-    updateReplay(feature: feature)
+    cursor = max(2, bars.lastIndex(where: { Self.closeTime($0.openTime, interval: interval) <= judgment }) ?? 2)
+    // 「跳到判断处」是人自己要求换地方，这一次重设视野是他点的。
+    updateReplay(feature: feature, reset: true)
   }
-  private func updateReplay(feature: ReviewFeature) {
+
+  /// 屏幕上这一刻的视野。
+  ///
+  /// 手势直接写 `ChartView.state.view`（`ChartView+Gesture.swift` 里捏合、拖动、
+  /// 惯性都往那儿写），所以人捏成什么样，答案在图那边，不在 `bridge.state` 这份
+  /// 快照里。图还没挂上去（第一次进来）就退回自己这份。
+  private var liveWindow: ReviewReplayWindow? {
+    guard let view = proxy.box?.chart.state?.view ?? state?.view else { return nil }
+    return ReviewReplayWindow(to: view.to, span: view.span)
+  }
+
+  /// 推进一根之后，把新的这一段喂给图。
+  ///
+  /// `reset` 只有两处给 `true`：刚打开一条记录、以及人点「跳到判断处」。其余每一拍
+  /// 都保留人的根宽（审查 B-05）——原来这儿每次都写死 `span = 80 根`、右缘贴最新一根，
+  /// 于是人在回放里放大看一根的细节，按一下「下一根」就被缩回 80 根，拖去看历史也
+  /// 会被拽回最右边。那颗按钮等于一次次把人的手拨开。
+  private func updateReplay(feature: ReviewFeature, reset: Bool = false) {
     guard var base = replayBase, let record = replayRecord, !bars.isEmpty else { return }
     base.series = BarSeries(symbol: record.draft.range.symbol, interval: base.series.interval, bars: Array(bars.prefix(cursor + 1)))
     let known = Self.closeTime(base.series.lastTime, interval: base.series.interval)
     if known >= record.draft.created, let data = record.draft.drawingSnapshot { base.drawings = (try? JSONDecoder().decode([Drawing].self, from: data)) ?? [] }
-    base.view = ViewWindow(to: Double(base.series.lastTime + base.series.step * 6), span: Double(base.series.step * 80))
+    let window = ReviewReplayViewport.next(current: liveWindow, previousLastTime: replayLastTime,
+                                           lastTime: base.series.lastTime, step: base.series.step, reset: reset)
+    base.view = ViewWindow(to: window.to, span: window.span)
+    replayLastTime = base.series.lastTime
     state = base
     if let chart = proxy.box?.chart { chart.state = base }
     feature.rememberReplay(record.id, position: ReviewReplayPosition(cursor: known, speed: speed))

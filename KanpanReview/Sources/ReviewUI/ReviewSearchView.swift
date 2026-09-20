@@ -45,7 +45,10 @@ public struct ReviewSearchView: View {
                   Text(feature.fullTime(match.range.start)).font(.caption).foregroundStyle(t.ink3)
                   Text("\(match.range.bars) 根").font(.caption).foregroundStyle(t.ink3)
                 }
-                Spacer(); Text(String(format: "相似度 %.0f%%", match.score * 100)).monospacedDigit().foregroundStyle(t.ink2)
+                // 「相似 0.87」，不是「87%」（审查 B.4）。这个数是两段行情的路径差经
+                // `exp(-6·cost)` 映射出来的分，没有概率含义；可它和战绩页上的胜率长得
+                // 一模一样，同一个 app 里两个百分号，人会把它当成「87% 会涨」。
+                Spacer(); Text("相似 " + match.scoreText).monospacedDigit().foregroundStyle(t.ink2)
                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(t.ink3)
               }.padding(.vertical, 5)
             }.foregroundStyle(t.ink)

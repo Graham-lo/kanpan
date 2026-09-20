@@ -22,7 +22,7 @@ struct ReviewRangeOverlay: UIViewRepresentable {
     view.suppressed = suppressed
     view.flash(suppressed ? nil : flash)
     view.isUserInteractionEnabled = bridge.mode == .capture
-    view.proxy?.box?.onOverlayUpdate = { [weak view] in view?.setNeedsDisplay() }
+    view.attach()
     view.setNeedsDisplay()
   }
 }
@@ -71,6 +71,99 @@ final class RangeOverlayView: UIView {
     }
     setNeedsDisplay()
   }
+  /// 只给 UI 用例看的一个数：这一帧到底把几条记号画到了当前这张图上。
+  ///
+  /// 记号是在 `draw(_:)` 里手绘的，XCUITest 看不见画布上的像素，于是「切了周期记号
+  /// 还在不在」这类事没法端到端验。和顶栏、主屏那两处诊断口径一样，用
+  /// `KANPAN_CHART_DIAGNOSTICS=1` 单独开一道门：平时这一层压根不是无障碍元素，
+  /// 不会多出一个读屏焦点，也不会挡住底下那张 `chart.canvas`。
+  ///
+  /// 报的不只是那个数：后面还跟着这一帧**是在哪张图上**画的（本机一共几条记录、
+  /// 品种、周期、行情源）。用例红了的时候，「记号没出来」和「这一帧根本还是上一档
+  /// 周期的图」是两件完全不同的事，只报一个数分不出来。
+  private static let diagnostics = ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1"
+  private func report(marks: Int, state: ChartState) {
+    guard Self.diagnostics else { return }
+    if !isAccessibilityElement { isAccessibilityElement = true }
+    let value = "\(marks)/\(records.count) \(state.series.symbol) \(state.series.interval.rawValue) \(bridge?.liveVenue ?? "-")"
+    if accessibilityValue != value { accessibilityValue = value }
+  }
+
+  // MARK: - 这一层自己盯着图有没有换内容
+
+  /// 记号画在图**上面**的一层独立 `UIView` 里，它自己并不知道图什么时候换了内容。
+  /// 原来只有两条路会叫它重画，而这两条路都会断：
+  ///
+  /// - **SwiftUI 那条**（`updateUIView`）：这一层的入参全是引用类型（feature / bridge /
+  ///   proxy）加两个小值，换周期、换品种时它们一个都没变，SwiftUI 比下来「没变化」就
+  ///   不再下发这一层；
+  /// - **盒子那条**（`ChartBox.onOverlayUpdate`）：`ChartProxy.box` 是弱引用，盒子活不过
+  ///   一次换页/重建，盒子一换，挂在旧盒子上的那个回调就跟着没了——而重新挂钩恰恰只发生在
+  ///   上面那条已经断掉的路里。
+  ///
+  /// 用例 A 抓到的就是这个：1h 上记一笔 → 切到 1m（记号正确地不画）→ 切回 1h，图已经是
+  /// 1h 了，这一层还停在 1m 那一帧上，用户的记号就这么没了。所以这一层自己盯着：在窗口里
+  /// 的时候每 0.25 秒看一眼「我贴着的还是那只盒子吗、图上那段行情还是刚才那段吗」，变了
+  /// 才重画。一次「看一眼」只是十来个字段的比较，不碰画布，静止时的开销可以忽略。
+  private struct Frame: Equatable {
+    var chart: ObjectIdentifier?
+    var symbol = ""
+    var interval = ""
+    var bars = 0
+    var lastTime: Int64 = 0
+    var to = 0.0
+    var span = 0.0
+    var mode = ""
+  }
+  private var lastFrame = Frame()
+  private weak var hooked: ChartBox?
+  private var watchdog: Timer?
+
+  /// 把「图重画了叫我一声」挂到**当前**这只盒子上；换了盒子就重挂一次。
+  func attach() {
+    guard let box = proxy?.box, box !== hooked else { return }
+    hooked = box
+    box.onOverlayUpdate = { [weak self] in self?.setNeedsDisplay() }
+    setNeedsDisplay()
+  }
+
+  private func currentFrame() -> Frame {
+    guard let chart, let state = chart.state else { return Frame(mode: bridge?.mode.rawValue ?? "") }
+    return Frame(chart: ObjectIdentifier(chart), symbol: state.series.symbol,
+                 interval: state.series.interval.rawValue, bars: state.series.count,
+                 lastTime: state.series.lastTime, to: state.view.to, span: state.view.span,
+                 mode: bridge?.mode.rawValue ?? "")
+  }
+
+  private func resync() {
+    attach()
+    let now = currentFrame()
+    guard now != lastFrame else { return }
+    lastFrame = now
+    setNeedsDisplay()
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    watchdog?.invalidate(); watchdog = nil
+    guard window != nil else { return }
+    // 同 `flash(_:)` 里那段：定时器挂在主 runloop 上，回调只会在主线程来，这里把这件
+    // 既成事实如实声明一次；视图没了就让定时器自己收摊——`deinit` 是非隔离的，碰不了
+    // 主 actor 上的这几个存储属性。
+    let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] timer in
+      let alive = MainActor.assumeIsolated { () -> Bool in
+        guard let self else { return false }
+        self.resync()
+        return true
+      }
+      if !alive { timer.invalidate() }
+    }
+    // `.common`：捏合、拖动、列表滚动时 runloop 在 tracking 模式，默认模式的定时器
+    // 会整段哑掉——那正是记号最该跟着动的时候。
+    RunLoop.main.add(timer, forMode: .common)
+    watchdog = timer
+    resync()
+  }
   override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
     guard let layout = chart?.chartLayout else { return false }
     return point.x >= 0 && point.x <= layout.plotW && point.y >= 0 && point.y < layout.mainH
@@ -78,17 +171,23 @@ final class RangeOverlayView: UIView {
   override func draw(_ rect: CGRect) {
     guard let chart, let state = chart.state, let layout = chart.chartLayout, let ctx = UIGraphicsGetCurrentContext() else { return }
     ctx.saveGState(); ctx.clip(to: CGRect(x: 0, y: 0, width: layout.plotW, height: layout.mainH))
+    report(marks: 0, state: state)   // 先归零：下面只有实时那一支会往上画记号。
     if let draft { paint(draft, state: state, layout: layout, ctx: ctx, editing: true, outcome: nil) }
     else if suppressed { ctx.restoreGState(); return }
     else if bridge?.mode == .live {
-      // 落图的条件统一在 `ReviewRecord.paints(symbol:interval:)` 里（§2F3），
-      // 那儿有单测盯着「BTC 的记号不许画到 ETH 上、1h 的不许画到 1m 上」。
-      for record in records.filter({
-        $0.paints(symbol: state.series.symbol, interval: state.series.interval.rawValue)
-      }).prefix(50) {
+      // 落图的条件统一在 `ReviewRecord.paints(venue:symbol:interval:)` 里（§2F3），
+      // 那儿有单测盯着「BTC 的记号不许画到 ETH 上、1h 的不许画到 1m 上、
+      // 另一家交易所记的不许画到这家的图上」。venue 这一条是这轮补的（审查 B.4）：
+      // 记录一直带着捕获时的行情源，落图时却没人看它。
+      let mine = records.filter {
+        $0.paints(venue: bridge?.liveVenue ?? "binance", symbol: state.series.symbol,
+                  interval: state.series.interval.rawValue)
+      }.prefix(50)
+      for record in mine {
         paint(record.draft, state: state, layout: layout, ctx: ctx, editing: false,
               outcome: record.outcome, emphasis: record.id == flashID && flashOn)
       }
+      report(marks: mine.count, state: state)
     } else if let record = bridge?.replayRecord, state.series.lastTime >= record.draft.range.start {
       // Outcomes and target annotations stay hidden until the judgment is known.
       if ReviewChartBridge.closeTime(state.series.lastTime, interval: state.series.interval) >= record.draft.created {

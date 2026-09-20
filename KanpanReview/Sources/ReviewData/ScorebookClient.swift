@@ -10,25 +10,155 @@ public struct ReviewConnection: Codable, Sendable, Equatable {
   public init(baseURL: URL, account: String) { self.baseURL = baseURL; self.account = account }
 }
 public enum ScorebookError: LocalizedError {
+  /// `http(状态码, 机器可读错误码)`。第二个参数**不是**给人看的文案，而是服务端
+  /// `{"error":{"code":"record_revision_changed"}}` 里那个码——文案由
+  /// `ReviewFailure.message` 按码翻译，服务端原文一个字都不往界面上放。
   case invalidConnection, http(Int, String), invalidResponse
   public var errorDescription: String? {
     switch self {
     case .invalidConnection: "请输入有效服务地址和账户"
-    case .http(401, _), .http(403, _): "连接凭证已失效，请重新连接"
-    case .http(409, _): "记录已在其他设备更新，本地内容已保留"
-    case .http(404, _): "服务端还未提供此功能"
-    case .http(_, let text): text.isEmpty ? "同步暂未成功，请稍后重试" : text
+    case .http(let status, let code): ReviewFailure.message(code, status: status)
     case .invalidResponse: "服务返回的数据无法读取"
     }
   }
 }
-public struct NativeRecordResponse: Codable, Sendable { public var record: ReviewRecord }
+
+/// 一次上传失败之后，这条操作该怎么办（审查 B-02）。
+public enum ReviewSyncVerdict: Sendable, Equatable {
+  /// 网络不好、凭证过期、服务端忙。**原样留在队首**，下次同步拿同一个幂等键重发。
+  case transient
+  /// 409。别的设备先改了，这条基于旧版本的操作永远不会成功，但内容还值钱：
+  /// 从队列里摘出来交给人裁决，队列继续跑。
+  case conflict
+  /// 400 / 404 / 422 这些。服务端**拒绝**这条操作的内容，重发多少次都一样：
+  /// 同样摘出来，但不给「再试一次」，只给「留在本机」。
+  case rejected
+}
+
+/// 任何一种错误都能被问出「HTTP 几」和「服务端的错误码」。
+///
+/// 复盘在 app 里跑的是注进来的 `ScorebookClient.Transport`（走账号那条带 token 的通道），
+/// 它抛的是 `AccountError` 而不是 `ScorebookError`；而队列要不要停、该不该把这条
+/// 摘出来，全看状态码。所以分类只认这个协议，不认具体是谁抛的。
+public protocol ReviewFailureStatus {
+  var reviewStatusCode: Int? { get }
+  var reviewErrorCode: String? { get }
+}
+extension ScorebookError: ReviewFailureStatus {
+  public var reviewStatusCode: Int? { if case .http(let status, _) = self { status } else { nil } }
+  public var reviewErrorCode: String? { if case .http(_, let code) = self { code } else { nil } }
+}
+
+public enum ReviewFailure {
+  /// 这条操作该怎么办。
+  public static func verdict(for error: any Error) -> ReviewSyncVerdict {
+    guard let status = (error as? any ReviewFailureStatus)?.reviewStatusCode else { return .transient }
+    switch status {
+    case 409: return .conflict
+    case 400, 404, 405, 410, 413, 415, 422: return .rejected
+    default: return .transient
+    }
+  }
+  /// 服务端的机器可读错误码。形状不对的一律丢掉——那一栏会被原样存进本地记录，
+  /// 不能让服务端往里塞任意文本。
+  public static func code(for error: any Error) -> String {
+    guard let raw = (error as? any ReviewFailureStatus)?.reviewErrorCode, !raw.isEmpty, raw.count <= 64,
+          raw.allSatisfy({ $0.isASCII && ($0.isLowercase || $0.isNumber || $0 == "_") }) else { return "" }
+    return raw
+  }
+  /// 给人看的一句话。认得的码说人话，不认得的码只说「没传上去」，绝不回显服务端原文。
+  public static func message(_ code: String, status: Int?) -> String {
+    switch code {
+    case "record_revision_changed", "record_identity_conflict", "idempotency_mismatch":
+      return "这条记录在别的设备上改过了"
+    case "record_voided": return "这条记录已经作废，改不动了"
+    case "group_already_resolved": return "这一组已经归并过了"
+    case "invalid_review_evidence", "invalid_chart_range": return "这段行情服务端不收，换一段再记"
+    case "invalid_chart_snapshot", "invalid_drawing_snapshot": return "这一屏的设置或画线太大，服务端收不下"
+    case "invalid_reflection", "invalid_change": return "这次改动服务端不收"
+    case "not_found": return "服务端找不到这条记录"
+    default: break
+    }
+    switch status {
+    case 401, 403: return "连接凭证已失效，请重新连接"
+    case 409: return "这条记录在别的设备上改过了"
+    case 404: return "服务端还未提供此功能"
+    case .some(let value) where value >= 500: return "服务端暂时不可用，稍后自动重试"
+    default: return "同步暂未成功，请稍后重试"
+    }
+  }
+}
+/// 详情响应：记录本身，外加三个**只住在外层**的字段。
+///
+/// `assessmentRevision`（服务端判到第几版）与 `reflectionAssessmentRevision`
+/// （这份复盘是照着第几版结论写的）不在 `record` 里，客户端原来只解 `record`，
+/// 于是「人写完复盘之后结论又变了」这件事在界面上完全看不出来（审查 B.2）。
+public struct NativeRecordResponse: Codable, Sendable {
+  public var record: ReviewRecord
+  public var groupPending: Bool?
+  public var assessmentRevision: Int?
+  public var reflectionAssessmentRevision: Int?
+  /// 把外层那三个字段贴回记录里，调用方只管用这一份。
+  public var merged: ReviewRecord {
+    var value = record
+    if let groupPending { value.groupPending = groupPending }
+    if let assessmentRevision { value.assessmentRevision = assessmentRevision }
+    if let reflectionAssessmentRevision { value.reflectionAssessmentRevision = reflectionAssessmentRevision }
+    return value
+  }
+}
 public struct NativeListResponse: Codable, Sendable { public var records: [ReviewRecord]; public var next: String? }
 public struct NativeSearchResponse: Codable, Sendable { public var items: [ReviewMatch]; public var cutoff: Int64; public var next: String?; public var partial: Bool? }
 public struct NativeSearchJob: Codable, Sendable { public var id: UUID; public var status: String; public var cutoff: Int64; public var checked: Int?; public var total: Int?; public var error: String? }
 public struct NativeMatchResponse: Codable, Sendable { public var item: ReviewMatch }
 private struct OKResponse: Codable, Sendable { var ok: Bool }
-public struct NativeStatsResponse: Codable, Sendable { public var groups: [ReviewStatsGroup] }
+/// 战绩里每一组的**证据**。外层那几个键是驼峰，`proof` 里面是蛇形（它是领域层
+/// `statistics::summarize` 直接吐出来的 JSON），所以这两层各写各的 `CodingKeys`。
+public struct ReviewStatsProofGroup: Codable, Sendable {
+  public var numerator: Int?
+  public var denominator: Int?
+  public var realizationRate: Double?
+  /// `insufficient`（不足 20 笔）/ `verdict_due` / `observing`。
+  public var verdictStatus: String?
+  /// 最近十笔比整体差 20 个百分点以上，该回头看一眼。
+  public var recheck: Bool?
+  enum CodingKeys: String, CodingKey {
+    case numerator, denominator
+    case realizationRate = "realization_rate"
+    case verdictStatus = "verdict_status"
+    case recheck
+  }
+}
+public struct ReviewStatsProof: Codable, Sendable {
+  /// 键就是 `groups[].id`（服务端两处用的是同一个 signature）。
+  public var compatibleGroups: [String: ReviewStatsProofGroup]?
+  enum CodingKeys: String, CodingKey { case compatibleGroups = "compatible_groups" }
+}
+public struct NativeStatsResponse: Codable, Sendable {
+  public var groups: [ReviewStatsGroup]
+  public var proof: ReviewStatsProof?
+  public var ruleVersion: String?
+  public var grouping: String?
+  public var asOf: Int64?
+  /// 贴上判定状态之后的分组。
+  ///
+  /// `groups` 里只有「总数 / 判对数」两个裸数字，一笔一组时就是 `0/1`，界面照着
+  /// 算出来是个 0%——那不是战绩，是噪声。服务端早就在 `proof` 里标了
+  /// `verdict_status`，以前客户端连解都没解（审查 B.2 / B-07）。
+  public var resolvedGroups: [ReviewStatsGroup] {
+    let table = proof?.compatibleGroups ?? [:]
+    return groups.map { group in
+      var value = group
+      if let hit = table[group.id] {
+        value.verdict = hit.verdictStatus
+        value.recheck = hit.recheck
+        if let denominator = hit.denominator { value.total = denominator }
+        if let numerator = hit.numerator { value.correct = numerator }
+      }
+      return value
+    }
+  }
+}
 private struct Envelope<T: Decodable>: Decodable { var data: T }
 
 public struct ScorebookClient: Sendable {
@@ -58,13 +188,26 @@ public struct ScorebookClient: Sendable {
     guard let http = response as? HTTPURLResponse else { throw ScorebookError.invalidResponse }
     guard (200..<300).contains(http.statusCode) else {
       // No server internals or echoed request/credential bodies in product errors.
-      throw ScorebookError.http(http.statusCode, "")
+      //
+      // 但**机器可读的那个码**要留下来：`record_revision_changed` 和
+      // `invalid_reflection` 都是 4xx，前者重新基准之后还能成，后者再发一万次也一样。
+      // 队列靠它决定「摘出来还是留着重试」（审查 B-02）。码只认 `[a-z0-9_]`，
+      // 别的形状当没有；文案一律由本地按码翻译。
+      throw ScorebookError.http(http.statusCode, Self.errorCode(data))
     }
     return try JSONDecoder().decode(Envelope<T>.self, from: data).data
   }
+  /// 从 `{"error":{"code":"…"}}` 里取那个码，形状不对就当没有。
+  static func errorCode(_ data: Data) -> String {
+    struct Body: Decodable { struct Error: Decodable { var code: String? }; var error: Error? }
+    guard let code = (try? JSONDecoder().decode(Body.self, from: data))?.error?.code, !code.isEmpty,
+          code.count <= 64, code.allSatisfy({ $0.isASCII && ($0.isLowercase || $0.isNumber || $0 == "_") })
+    else { return "" }
+    return code
+  }
   public func create(_ operation: ReviewOperation) async throws -> ReviewRecord {
     let response: NativeRecordResponse = try await request("v1/native-review/records", method: "POST", body: operation.body, key: operation.id)
-    return response.record
+    return response.merged
   }
   public func list(after: String? = nil, query: String = "", todo: Bool = false) async throws -> NativeListResponse {
     var parts = URLComponents(); var items: [URLQueryItem] = []
@@ -92,6 +235,6 @@ public struct ScorebookClient: Sendable {
   public func stats() async throws -> NativeStatsResponse { try await request("v1/native-review/statistics") }
   public func update(_ operation: ReviewOperation) async throws -> ReviewRecord {
     let response: NativeRecordResponse = try await request("v1/native-review/records/\(operation.recordId.uuidString)/\(operation.kind)", method: "POST", body: operation.body, key: operation.id)
-    return response.record
+    return response.merged
   }
 }

@@ -8,4 +8,11 @@ let package = Package(name: "KanpanReview", platforms: [.iOS(.v18), .macOS(.v14)
   targets: [.target(name: "ReviewDomain"), .target(name: "ReviewData", dependencies: ["ReviewDomain"]),
     .target(name: "ReviewUI", dependencies: ["ReviewDomain", "ReviewData",
                                              .product(name: "KanpanCore", package: "KanpanCore")]),
-    .testTarget(name: "ReviewDomainTests", dependencies: ["ReviewDomain", "ReviewData"])])
+    // 三个测试目标分三层，和报告 B.5 的客户端那张表一一对上：
+    // 领域（契约与回放算术）、存档（事务与淘汰）、模型（同步队列与列表口径）。
+    // `ReviewUITests` 要 iOS 运行时：ReviewUI 里有 `.keyboardType` 这类只在 UIKit 平台
+    // 存在的修饰符，macOS 上编不过，所以整包跑法是
+    // `xcodebuild test -scheme KanpanReview -destination 'platform=iOS Simulator,…'`。
+    .testTarget(name: "ReviewDomainTests", dependencies: ["ReviewDomain", "ReviewData"]),
+    .testTarget(name: "ReviewDataTests", dependencies: ["ReviewDomain", "ReviewData"]),
+    .testTarget(name: "ReviewUITests", dependencies: ["ReviewDomain", "ReviewData", "ReviewUI"])])

@@ -113,8 +113,13 @@ public struct ReviewBook: View {
             Text("\(group.total) 条有效记录").font(.caption).foregroundStyle(t.ink3)
           }
           Spacer()
-          Text(group.rate.map { String(format: "%.0f%%", $0 * 100) } ?? "—")
-            .font(.title2.monospacedDigit()).foregroundStyle(t.ink)
+          // 样本够了才写百分比，不够就写「样本不足」（审查 B-07 / B.2）。
+          // 一笔判错算出来的那个 0% 不是战绩，是噪声；把它排版成一个大号百分数，
+          // 人会真的照着它改自己的做法。够不够由服务端的 `verdict_status` 说了算，
+          // 那个数它一直在算，只是以前客户端没接。
+          Text(group.rateText)
+            .font(group.verdict == "insufficient" ? .subheadline : .title2.monospacedDigit())
+            .foregroundStyle(group.verdict == "insufficient" ? t.ink3 : t.ink)
         }
         .listRowBackground(t.app)
       }
@@ -173,6 +178,28 @@ public struct ReviewRecordView: View {
       if let record {
         List {
           Section { ReviewRecordRow(record: record, feature: feature) }.listRowBackground(t.raised)
+          // 这一条有一次上传永远成不了（审查 B-02）。内容一直在本机，人只需要拍一次板。
+          if let conflict = record.conflict {
+            Section("没能同步") {
+              Text(conflict.reason).font(.subheadline).foregroundStyle(t.ink2)
+              if conflict.retryable {
+                Button("用我这份") { Task { await feature.resolveConflict(id, keepLocal: true) } }
+                  .accessibilityIdentifier("review.conflict.keepLocal")
+                Button("用云端那份") { Task { await feature.resolveConflict(id, keepLocal: false) } }
+                  .accessibilityIdentifier("review.conflict.keepRemote")
+              } else {
+                // 服务端不收这份内容，重发多少次都一样：只剩「留在本机」一条路。
+                Button("留在本机") { Task { await feature.resolveConflict(id, keepLocal: true) } }
+                  .accessibilityIdentifier("review.conflict.keepLocal")
+              }
+            }.listRowBackground(t.raised)
+          }
+          // 结论在人写完复盘之后又变过，得让他自己再看一眼。
+          if record.assessmentMoved {
+            Section("结果有更新") {
+              Text("这条的结果在你写完复盘之后变过，再看一眼").font(.subheadline).foregroundStyle(t.ink2)
+            }.listRowBackground(t.raised)
+          }
           if record.groupPending == true {
             Section("这次判断") {
               Text("与最近一笔是同一次判断吗？").font(.subheadline).foregroundStyle(t.ink2)
@@ -225,6 +252,8 @@ public struct ReviewRecordView: View {
         .scrollContentBackground(.hidden)
         .background(t.app)
         .onAppear { note = record.reflection.note; nextTime = record.reflection.nextTime }
+        // 两个裁定版本只住在详情响应的外层，列表里没有；打开这一页顺手补一次。
+        .task(id: id) { await feature.refreshDetail(id) }
           .onDisappear { if note != record.reflection.note || nextTime != record.reflection.nextTime { feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) } }
           .sheet(isPresented: $feature.searchOpen) { ReviewSearchView(feature: feature, range: record.draft.range, cutoff: record.draft.created) }
       } else { ContentUnavailableView("记录暂不可用", systemImage: "book.closed") }

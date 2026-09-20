@@ -108,7 +108,7 @@ public enum ReviewStorageError: LocalizedError {
   public func adoptReplay(from other: ReviewStore) throws {
     var next = positions
     for (key, value) in other.allReplay where next[key] == nil { next[key] = value }
-    while next.count > 500, let key = next.keys.sorted().first { next.removeValue(forKey: key) }
+    Self.evict(&next, keeping: nil)
     guard next.keys != positions.keys else { return }
     positions = next
     replayDirty = true
@@ -181,8 +181,10 @@ public enum ReviewStorageError: LocalizedError {
   /// （`saveDraft` / `transaction`）都会顺手把攒着的那一笔结掉，所以「记到哪儿了」
   /// 不会丢。
   public func saveReplay(_ id: UUID, position: ReviewReplayPosition) throws {
-    var next = positions; next[id.uuidString] = position
-    if next.count > 500, let key = next.keys.sorted().first(where: { $0 != id.uuidString }) { next.removeValue(forKey: key) }
+    var stamped = position
+    if stamped.usedAt == nil { stamped.usedAt = ReviewClock.now }
+    var next = positions; next[id.uuidString] = stamped
+    Self.evict(&next, keeping: id.uuidString)
     positions = next
     replayDirty = true
     let wait = Self.replayThrottle - Date().timeIntervalSince(replayWrittenAt)
@@ -204,6 +206,37 @@ public enum ReviewStorageError: LocalizedError {
     replayWrittenAt = Date()
     try JSONEncoder().encode(positions).write(to: replayURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
   }
-  public func savedReplay(_ id: UUID) -> ReviewReplayPosition? { positions[id.uuidString] ?? archive.replay[id.uuidString] }
+  /// 读一条进度，顺手记一笔「刚看过」。
+  ///
+  /// 淘汰要按「最久没看的」来（见 `evict`），而「看」这个动作在这儿——打开一条旧记录
+  /// 重温、但一根都没往前推的时候，只会走到这里。不立刻写盘：`replayDirty` 挂上，
+  /// 下一次任何一笔落盘顺手带走它。
+  public func savedReplay(_ id: UUID) -> ReviewReplayPosition? {
+    let key = id.uuidString
+    guard var value = positions[key] ?? archive.replay[key] else { return nil }
+    value.usedAt = ReviewClock.now
+    positions[key] = value
+    replayDirty = true
+    return value
+  }
 
+  /// 超过 500 条时按 **LRU** 淘汰：丢最久没看的那几条，`keeping` 那一条永远留着。
+  ///
+  /// 原来写的是 `next.keys.sorted().first`——按 UUID 字符串排序取第一个。那是
+  /// 「谁的 id 以 0 开头」，和这个人最近在看哪条记录毫无关系：他天天重温的那条
+  /// 只要 id 恰好小，就每次都被第一个丢掉，而三个月没碰过的那条稳稳留着（审查 B-08）。
+  ///
+  /// 老存档里的条目没有 `usedAt`，当成「上古」先丢——它们本来也就是最久没动的那批。
+  private static func evict(_ table: inout [String: ReviewReplayPosition], keeping: String?) {
+    guard table.count > limit else { return }
+    let order = table
+      .filter { $0.key != keeping }
+      .sorted { ($0.value.usedAt ?? 0, $0.key) < ($1.value.usedAt ?? 0, $1.key) }
+    for entry in order {
+      guard table.count > limit else { break }
+      table.removeValue(forKey: entry.key)
+    }
+  }
+  /// 最多记多少条重温进度。
+  private static let limit = 500
 }
