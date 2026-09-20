@@ -160,6 +160,7 @@ extension Prefs: Codable {
   fileprivate static let factoryQuicks: [[Interval]] = [
     [.m1, .m5, .m15, .h1, .h4, .d1],        // 更早的六档
     [.m1, .m5, .m15, .m30, .h1, .h4, .d1],  // 收成五档之前的七档
+    [.m5, .m30, .h1, .h4, .d1],             // 2026-09-21 放满六格之前的五档
   ]
 
   init(from decoder: Decoder) throws {

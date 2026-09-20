@@ -244,7 +244,8 @@ struct AggregatorTests {
       "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w", "1M", "1y",
     ])
     #expect(Interval.allCases.count == 14)
-    #expect(Interval.quick.map(\.rawValue) == ["5m", "30m", "1h", "4h", "1d"])
+    // 出厂把周期条那六格放满（2026-09-21）：`Prefs.maxQuick` 是 6，出厂 = 满钉。
+    #expect(Interval.quick.map(\.rawValue) == ["5m", "30m", "1h", "4h", "1d", "1w"])
     #expect(Interval.y1.api == nil, "币安没有 1y，不能往 API 上传")
     #expect(Interval.y1.source == .mo1)
     for iv in Interval.allCases where iv != .y1 {

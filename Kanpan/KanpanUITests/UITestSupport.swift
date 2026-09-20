@@ -31,10 +31,10 @@ enum Ids {
   static let intervalMore = "interval.more"
   /// UI 测试沙盒里铺出来的那六档（`PrefsStore.uiTestQuick`）。
   ///
-  /// 出厂默认是五档（`Interval.quick` = 5m 30m 1h 4h 1d），沙盒故意铺满六档
-  /// （`Prefs.maxQuick`）：一来别的用例按 `interval.chip.1m` 直接点得着，
-  /// 二来「钉满时这一行还排得下」正是要验的那件事。2026-09-21 从七档收到六档，
-  /// 上限一起从 10 收到 6。
+  /// 出厂默认也是六档（`Interval.quick` = 5m 30m 1h 4h 1d 1w，2026-09-21 放满），
+  /// 沙盒挑的这六档和它不同：1m / 15m 在里头，别的用例按 `interval.chip.1m` 才点得着。
+  /// 档数一致（`Prefs.maxQuick` = 6）——「钉满时这一行还排得下」正是要验的那件事。
+  /// 2026-09-21 从七档收到六档，上限一起从 10 收到 6。
   static let quickIntervals = ["1m", "5m", "15m", "30m", "1h", "4h"]
   // 底栏
   /// 2026-09-18 起底栏是一条**常驻标签栏**：从左到右「画线 · 图表 · 自选 · 板块分类 · 设置」，

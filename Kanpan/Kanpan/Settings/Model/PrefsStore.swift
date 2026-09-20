@@ -135,12 +135,13 @@ final class PrefsStore {
       ?? SettingsSentinel(install: UUID().uuidString)
     self.stamp = PrefsStore.storedStamp(in: selectedStorage) ?? SettingsStamp()
     self.prefs = PrefsStore.load(from: selectedStorage, fallback: fallback)
-    // UI 测试沙盒里的常用行仍然按老的那七档铺。
+    // UI 测试沙盒里的常用行自己铺一套，不跟着出厂默认走。
     //
-    // 出厂默认收成五档（5m 30m 1h 4h 1d）之后，`ChartFoundationUITests` 里
-    // 直接按 `interval.chip.1m` 找 chip 的那几处就点不着了——那个文件是禁改的契约文件。
-    // 那几条用例要验的是「点哪一档图就换到哪一档」，不是「出厂钉了哪几档」，所以
-    // 沙盒里把 chip 铺全，真正的出厂默认交给 `PrefsDefaultsTests` 在单元层面守。
+    // 出厂默认是 `5m 30m 1h 4h 1d 1w`（2026-09-21 放满六格），里头没有 1m / 15m，
+    // 而 `ChartFoundationUITests` 里直接按 `interval.chip.1m` 找 chip 的那几处要点得着
+    // ——那个文件是禁改的契约文件。那几条用例要验的是「点哪一档图就换到哪一档」，
+    // 不是「出厂钉了哪几档」，所以沙盒里按它们要的那六档铺，
+    // 真正的出厂默认交给 `PrefsDefaultsTests` 在单元层面守。
     // 只在测试沙盒、且这轮还没有任何存档时生效，用例自己钉过的照样按存档走。
     // 种子只在 Debug 包里存在：Release 里这几行连编都不编（A.4）。
     #if DEBUG
@@ -177,9 +178,10 @@ final class PrefsStore {
   }
 
   /// 见上：UI 测试沙盒专用的常用行。
-  /// 六档——和 `Prefs.maxQuick` 一样满钉，用例要量的就是「钉满时这一行还排得下」。
+  /// 六档——和 `Prefs.maxQuick`、和出厂默认一样满钉，用例要量的就是「钉满时这一行还排得下」。
   /// 2026-09-21 从七档收到六档：上限改成 6 之后，七档的沙盒会让条上少画一档，
-  /// 量出来的不是产品行为。
+  /// 量出来的不是产品行为。档位本身和出厂那六档不同（这儿有 1m / 15m），
+  /// 为的是让契约用例按 `interval.chip.1m` 点得着。
   static let uiTestQuick: [Interval] = [.m1, .m5, .m15, .m30, .h1, .h4]
 
   // ---------------------------------------------------------------- 读

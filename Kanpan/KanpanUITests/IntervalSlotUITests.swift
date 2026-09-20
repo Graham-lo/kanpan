@@ -1,23 +1,25 @@
 import XCTest
 
-// ============================================================ 周期条行尾的固定槽位（P3-1 / P3-2）
+// ============================================================ 周期条的排版（P3-1 / P3-2）
 //
-// 这条用例只问一件事：**周期药丸会不会动**。
+// 这一组用例守的是**六档周期在各种状态下都完整地排在条上，且彼此分得开**。
 //
-// 行尾那颗（「最新 / 返回刚才」）是随状态进出的，进出的时候常用行能分到的宽度就变了
-// ——钉住的那几档本来是「排得下就铺满整行」，一变宽就全体重新摊一次，人正要点的那一档
-// 在手指落下去之前挪了位置。所以行尾给它留了一个**恒定宽度的槽位**：空着、放「最新」、
-// 放「返回刚才」三种状态下一样宽，常用行拿到的宽度一个点都不变。
+// 行尾那颗（「最新 / 返回刚才」）原来占着一个恒定宽度的槽位：空着、放「最新」、放
+// 「返回刚才」三种状态一样宽，为的是「药丸进出时周期不跳位」。2026-09-21 用户看了
+// 出厂第一屏的截图，第一句话说的就是那个槽位留下的空白（「周期条空间足够放，那可以
+// 搞点间距隔开啊」），于是槽位删了：**不在场时零宽度**，在场时淡入，周期区跟着
+// 0.18s 平滑地重新铺满。同一轮里出厂默认也从五档放满成六档（`Interval.quick`）。
 //
-// 槽位只按**一颗药丸里最宽的那句话**（「返回刚才」）钉宽度，不是按几颗之和：
-// 「看细节」2026-09-20 已经从这儿搬去头部那行十字线动作（`CrosshairReadoutRow`），
-// 两颗并排要 143pt，16 Pro 上会把钉住的周期挤得只剩三档半。
+// 所以「周期一个点都不许动」这条只剩一处还成立、也只有那一处该成立：**十字线开关**。
+// 十字线的那几个动作在头部的另一行上（`CrosshairReadoutRow`，2026-09-20 从这儿搬走的
+// 「看细节」也在那儿），它们进出跟周期条没关系，条上动一下就是布局串了。
+// 「最新 / 返回刚才」进出时周期区**本来就要重新铺满**，改成断言「六档还是全在、
+// 互不重叠、都在条里」，外加那颗动作自己点得着。
 //
-// 2026-09-21 又定了一条：**条上最多六档**（`Prefs.maxQuick`），横向滚动和右边那道渐隐
-// 一起删了。所以 `testPinnedChipsAllFit` 守的是两头——钉满六档时六颗全在条上，
-// 钉三档时那三颗把整行铺满；`testSixthPinIsTheLimit` 守的是「第七颗根本钉不下去」。
+// `testPinnedChipsAllFit` 守的是两头——钉满六档时六颗全在条上，钉三档时那三颗把整行
+// 铺满；`testSixthPinIsTheLimit` 守的是「第七颗根本钉不下去」。
 //
-// 量的是每一颗药丸的 `frame`，不是截图像素：截图能看出「动了」，量框才说得出「动了多少」。
+// 量的是每一颗 chip 的 `frame`，不是截图像素：截图能看出「动了」，量框才说得出「动了多少」。
 // 截图照旧落到 `/tmp/kanpan-p3/` 下给人看。
 
 @MainActor
@@ -43,6 +45,16 @@ final class IntervalSlotUITests: KanpanUICase {
       out[raw] = snap.frame
     }
     return out
+  }
+
+  /// 把这几档此刻的框打进日志：`x / 宽` 一档一行，验收时直接抄这个数。
+  private func dumpFrames(_ list: [String], _ what: String) {
+    let line = list.compactMap { raw -> String? in
+      guard let snap = try? app.buttons[Ids.intervalChip(raw)].snapshot() else { return nil }
+      let f = snap.frame
+      return String(format: "%@ x=%.1f w=%.1f", raw, f.minX, f.width)
+    }.joined(separator: " | ")
+    print("〔周期条框〕\(what)：\(line)")
   }
 
   private func assertSame(_ a: [String: CGRect], _ b: [String: CGRect],
@@ -124,20 +136,21 @@ final class IntervalSlotUITests: KanpanUICase {
 
   // ------------------------------------------------------------ 四种状态
 
-  func testActionSlotKeepsPeriodChipsStill() {
+  /// 十字线开关不许动周期条；「最新」进出时周期重新铺满，但六档照样全在、互不重叠。
+  func testCrosshairKeepsChipsStillAndLatestKeepsThemWhole() {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
     // 4h 才有更细的一档，「看细节」那颗才可能出现（它现在在头部那一行）。
     pickFromGrid("4h")
     XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.buttons[Ids.intervalChip("4h")].isSelected },
                   "没切到 4h")
-    // 量的就是满钉六档那一排（沙盒铺的正是 `Prefs.maxQuick` 六档）：最挤的情况下
-    // 槽位进出还不动，比钉三档时不动更能说明问题。
+    // 量的就是满钉六档那一排（沙盒铺的正是 `Prefs.maxQuick` 六档）：最挤的一种工况。
     XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["bars"] as? Int ?? 0) > 20 },
                   "4h 上没等到 K 线")
+    let full = Ids.quickIntervals
 
     // ① 什么都没有：停在最新、没有十字线。
     let empty = chipFrames()
-    shot("01-槽位-空")
+    shot("01-出厂态-停在最新")
 
     // ② 十字线开着（头部多出「上一根 / 下一根 / 按此价画线 / 看细节」）：
     //    那几颗在**图外的另一行**上，周期条一个点都不该动。
@@ -148,35 +161,41 @@ final class IntervalSlotUITests: KanpanUICase {
     XCTAssertTrue(app.buttons["chart.crosshair.next"].exists, "十字线开着却没有「下一根」")
     XCTAssertTrue(app.buttons["chart.crosshair.hline"].exists, "十字线开着却没有「按此价画线」")
     let crosshairOn = chipFrames()
-    shot("02-槽位-十字线开着")
+    shot("02-十字线开着")
+    assertSame(empty, crosshairOn, "空 → 十字线")
 
     // ③ 只有「最新」：收掉十字线，把图往回推。
+    //    这颗不再有预留槽位，它一露面周期区就少一块宽度、六档跟着重新铺满——
+    //    要验的不是「一个点都不动」，而是**重新铺完之后六档一颗不少、谁也没压着谁**。
     toggleCrosshair(); waitCrosshair(false, "再点一下没收掉十字线")
     dragChartRight()
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.onScreen(self.app.buttons[Ids.latestButton]) },
                   "往回拖了却没出现「最新」")
-    let latestOnly = chipFrames()
-    shot("03-槽位-只有最新")
+    assertAllVisible(full, "有「最新」")
+    assertNoOverlap(full, "有「最新」")
+    XCTAssertTrue(app.buttons[Ids.latestButton].isHittable, "「最新」在屏上却点不着")
+    shot("03-有最新")
 
-    // ④ 「最新」+ 十字线一起。
+    // ④ 「最新」+ 十字线一起：十字线那一行照旧不该再动周期条。
+    let latestOnly = chipFrames()
     toggleCrosshair(); waitCrosshair(true, "历史视野上点图没选中一根")
     XCTAssertTrue(app.buttons["chart.detailZoom"].waitForExistence(timeout: Self.short),
                   "历史视野上十字线开着却没有「看细节」")
-    let both = chipFrames()
-    shot("04-槽位-最新加十字线")
-
-    assertSame(empty, crosshairOn, "空 → 十字线")
-    assertSame(empty, latestOnly, "空 → 最新")
-    assertSame(empty, both, "空 → 最新加十字线")
+    assertAllVisible(full, "最新加十字线")
+    assertNoOverlap(full, "最新加十字线")
+    XCTAssertTrue(app.buttons[Ids.latestButton].isHittable, "最新加十字线时「最新」点不着")
+    shot("04-最新加十字线")
+    assertSame(latestOnly, chipFrames(), "最新 → 最新加十字线")
   }
 
   // ------------------------------------------------------------ 钉住的档一个都不许被挤出去
 
   /// 钉满六档（`Prefs.maxQuick`）时六颗全在条上，取到三档时那三颗把整行铺满。
   ///
-  /// 这是「最多展示六档」那条规矩的秤：槽位是给行尾留的，不能拿钉住的周期去垫，
-  /// 也不许再靠横向滚动把排不下的那几档藏到屏幕外面。三种槽位状态（空 / 最新 /
-  /// 返回刚才）各量一遍——槽位一变宽就把末档挤出去，正是用户在 16 Pro 上看到的那个样子。
+  /// 这是「最多展示六档」那条规矩的秤：行尾的动作再宽也不许把钉住的周期挤出去，
+  /// 也不许再靠横向滚动把排不下的那几档藏到屏幕外面。行尾三种状态（空 /「最新」/
+  /// 「返回刚才」）各量一遍——「返回刚才」是最宽的那一种，六档在它在场时还排得下，
+  /// 才谈得上排版对「≤6 档」这一种情况负责。
   func testPinnedChipsAllFit() {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
     // 沙盒铺的就是满钉六档。先切到 4h，免得后面取消钉住时动到当前这一档
@@ -200,6 +219,8 @@ final class IntervalSlotUITests: KanpanUICase {
                   "点了「最新」之后没有「返回刚才」")
     assertAllVisible(full, "六档满钉·有「返回刚才」")
     assertNoOverlap(full, "六档满钉·有「返回刚才」")
+    // 最挤的那一屏的实测数字，留在日志里给人看（SE 上尤其要看这一行）。
+    dumpFrames(full, "六档满钉·有「返回刚才」")
     shot("22-六档满钉-有返回刚才")
 
     // 取到三档：剩下的那三颗要把整行铺满（钉得少就平分，右边不留一条空白）。
@@ -207,8 +228,8 @@ final class IntervalSlotUITests: KanpanUICase {
     let three = ["30m", "1h", "4h"]
     assertAllVisible(three, "三档")
     assertFillsRow(three, "三档")
-    // 槽位这会儿还挂着「返回刚才」（上一步点过「最新」），正好一起看：
-    // 三档摊开铺满整行，行尾那一格照旧是同一个宽度。
+    // 行尾这会儿还挂着「返回刚才」（上一步点过「最新」），正好一起看：
+    // 三档摊开铺满剩下的整行，右边不留一条空白。
     shot("23-三档-铺满整行")
 
     dragChartRight()
@@ -308,7 +329,7 @@ final class IntervalSlotUITests: KanpanUICase {
 
   // ------------------------------------------------------------ 返回刚才
 
-  /// 翻到历史上 → 点「最新」→ 行尾同一个槽位变成「返回刚才」→ 点它回到刚才那一屏。
+  /// 翻到历史上 → 点「最新」→ 行尾同一处换成「返回刚才」→ 点它回到刚才那一屏。
   func testReturnToWhereIWasComesBack() {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
     dragChartRight(); dragChartRight()
@@ -319,14 +340,16 @@ final class IntervalSlotUITests: KanpanUICase {
     }
     shot("05-返回刚才-翻到历史上")
 
-    let latestOnly = chipFrames()
     app.buttons[Ids.latestButton].tap()
     let back = app.buttons["chart.returnBack"]
     XCTAssertTrue(back.waitForExistence(timeout: Self.short),
-                  "点了「最新」之后，同一个槽位上没有「返回刚才」")
+                  "点了「最新」之后，行尾没有换成「返回刚才」")
     shot("06-返回刚才-回到最新后出现")
-    // 同一个槽位换了一颗更宽的药丸，周期药丸照旧一个点都不动。
-    assertSame(latestOnly, chipFrames(), "最新 → 返回刚才")
+    // 「返回刚才」比「最新」宽，周期区跟着重新铺一次——要的是铺完之后
+    // 六档一颗不少、谁也没压着谁，而不是「一个点都不动」。
+    assertAllVisible(Ids.quickIntervals, "有「返回刚才」")
+    assertNoOverlap(Ids.quickIntervals, "有「返回刚才」")
+    XCTAssertTrue(back.isHittable, "「返回刚才」在屏上却点不着")
 
     back.tap()
     XCTAssertTrue(waitUntil(timeout: Self.long) {
