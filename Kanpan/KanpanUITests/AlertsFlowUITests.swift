@@ -18,10 +18,9 @@ import XCTest
   private var canvas: XCUIElement { app.otherElements["chart.canvas"] }
   /// 截图落到这儿，给人看的那一份。
   private let shots = URL(fileURLWithPath: "/tmp/kanpan-c", isDirectory: true)
-  /// 「已触发」那条用例专用的档案号：跑之前由外面（脚本）把一份存档写进
-  /// `…/Application Support/kanpan-alert-tests/<这个号>/alerts.json`，
-  /// 模拟服务端判到价之后同步换下来的那份。档案号必须是定值，外面才写得进去。
-  static let seededProfile = "C0FFEE00-A1E7-4000-8000-000000000001"
+  /// 「已触发」那条用例开局就要有一条响过的提醒。跑用例的是另一个进程，
+  /// 塞不进 app 的沙盒，所以走启动环境这条路（`AlertStore.testSeed`，只在 DEBUG 下编）：
+  /// 模拟的是服务端判到价之后、同步换下来的那一份。
   private var needsSeed: Bool { name.contains("Fired") }
 
   override func setUp() async throws {
@@ -30,7 +29,8 @@ import XCTest
     try? FileManager.default.createDirectory(at: shots, withIntermediateDirectories: true)
     app = XCUIApplication()
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
-    app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = needsSeed ? Self.seededProfile : UUID().uuidString
+    app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
+    if needsSeed { app.launchEnvironment["KANPAN_TEST_ALERT_FIRED"] = "BTCUSDT" }
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
     let chartTab = app.buttons["bottom.chart"]
@@ -269,8 +269,9 @@ import XCTest
   /// `alerts` 集合写一条 `status=fired` → app 回到前台拉一次同步 → 存档里那条变成
   /// 已触发 → 提醒总表上写明「已触发 · 时间」，右边给一颗「再次提醒」。
   ///
-  /// 用例把「同步换下来的那一份」直接摆成开局状态（存档由外面按 `seededProfile`
-  /// 写好），量的是这一段的**下半截**：用户打开提醒总表看得见、按得着。
+  /// 用例把「同步换下来的那一份」直接摆成开局状态（启动环境 `KANPAN_TEST_ALERT_FIRED`，
+  /// 由 `AlertStore.testSeed` 在 DEBUG 下种），量的是这一段的**下半截**：
+  /// 用户打开提醒总表看得见、按得着。
   func testAFiredAlertIsVisibleAndCanBeRearmed() throws {
     let settingsTab = app.buttons["bottom.settings"]
     XCTAssertTrue(settingsTab.waitForExistence(timeout: 10), "标签栏上没有「设置」")

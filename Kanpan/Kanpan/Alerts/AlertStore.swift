@@ -21,8 +21,40 @@ final class AlertStore: ObservableObject {
 
   init(store: AlertFileStore = .applicationSupport()) {
     self.store = store
+    #if DEBUG
+    self.archive = Self.testSeed(into: store.load()) ?? store.load()
+    #else
     self.archive = store.load()
+    #endif
   }
+
+  #if DEBUG
+  /// UI 测试要一条「服务端已经判到价、同步换下来」的提醒。
+  ///
+  /// 那一段的上半截（服务端判定 → 写同步日志）在服务端，客户端一个字都没有，
+  /// 所以用例只能量下半截：总表上看得见「已触发」、按得着「再次提醒」。开局那份存档
+  /// 没法从外面塞进 app 的沙盒（跑用例的是另一个进程），于是按 `SymbolPrefs.testSeed`
+  /// 同一套路，从启动环境里认一条：`KANPAN_TEST_ALERT_FIRED=<代号>`（要配
+  /// `KANPAN_TEST_PROFILE=1`，且存档是空的时候才种）。整段关在 `#if DEBUG` 里，
+  /// Release 包里不存在（审查 C.10-1）。
+  static func testSeed(into archive: AlertArchive,
+                       environment: [String: String] = ProcessInfo.processInfo.environment,
+                       now: Double = Date().timeIntervalSince1970 * 1000) -> AlertArchive? {
+    guard environment["KANPAN_TEST_PROFILE"] == "1",
+          let symbol = environment["KANPAN_TEST_ALERT_FIRED"], !symbol.isEmpty,
+          archive.alerts.isEmpty else { return nil }
+    let price = 50_000.0
+    let line = AlertLine(points: [DrawPoint(t: now - 3_600_000, p: price)],
+                         extendLeft: true, extendRight: true)
+    var seeded = archive
+    seeded.alerts.append(Alert(symbol: symbol, drawingID: "seeded-line", lines: [line],
+                               armedAt: now - 7_200_000, status: .fired,
+                               firedAt: now - 60_000, firedPrice: price,
+                               title: Alert.title(symbol: symbol, drawingKind: .hline),
+                               created: now - 7_200_000))
+    return seeded
+  }
+  #endif
 
   var all: [Alert] { archive.alerts }
   var sorted: [Alert] { archive.sorted }
