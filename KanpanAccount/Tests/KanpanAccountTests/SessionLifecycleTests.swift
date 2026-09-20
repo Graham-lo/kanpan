@@ -80,6 +80,11 @@ final class StubVault: CredentialVault, @unchecked Sendable {
   }
 }
 
+// 下面这一套整体只在 DEBUG 下编译：它要拿假主机（`accounts.invalid`）建客户端，
+// 而放行任意主机的钩子 `Options(allowAnyHostForTests:)` 按 A-07 只存在于 DEBUG
+// ——Release 二进制里不许有这条口子。所以 `swift test -c release` 时这一套不参与，
+// 同一个包里的性能基准照常编译、照常跑。
+#if DEBUG
 /// 退登、重新认证这条链。跑的是 `AccountClient` 那一层——界面那层（`AccountFeature`）
 /// 在 app 目标里没有测试宿主，所以凡是能下沉的判断都放在这儿由用例钉住。
 @Suite("会话生命周期", .serialized)
@@ -184,3 +189,4 @@ struct SessionLifecycleTests {
     #expect(await client.needsReauthentication == false)
   }
 }
+#endif

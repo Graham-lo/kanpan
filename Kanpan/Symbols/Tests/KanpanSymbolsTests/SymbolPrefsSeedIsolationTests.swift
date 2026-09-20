@@ -2,6 +2,11 @@ import Foundation
 import Testing
 @testable import KanpanSymbols
 
+// 这一套整体只在 DEBUG 下编译：它钉的是 `SymbolPrefsStore.testSeed`，而那段种子脚手架
+// 按 A-07 只存在于 DEBUG（`Kanpan/Symbols/SymbolPrefs.swift` 里的 `#if DEBUG`）——
+// Release 包里连这段代码都不该有。末尾那条走 `read()` 的端到端用例也一并圈进来：
+// Release 下种子那条分支根本不存在，它会为了错误的理由变绿，留着反而骗人。
+#if DEBUG
 /// A-07：UI 测试的自选种子只准落在**隔离仓**上。
 ///
 /// 报告里那条组合路径是这样的：`KANPAN_TEST_PROFILE=1` + `KANPAN_TEST_FAVORITES`
@@ -58,3 +63,4 @@ private final class RealProfileStorage: SymbolPrefsStorage {
   func symbolPrefsData(forKey key: String) -> Data? { box[key] }
   func setSymbolPrefsData(_ data: Data?, forKey key: String) { box[key] = data }
 }
+#endif

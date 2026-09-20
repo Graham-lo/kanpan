@@ -32,6 +32,10 @@ struct DeviceKindTests {
   private struct Probe: Decodable, Sendable { var ok: Bool? }
   private var server: StubServer { KindStubProtocol.server }
 
+  // 这里往下到 `设备列表带类别` 为止都要拿假主机建客户端，靠的是只在 DEBUG 里存在的
+  // `Options(allowAnyHostForTests:)`（A-07）。Release 配置下这几条不参与编译，
+  // 不需要客户端的 `旧存档迁移` 照常跑。
+#if DEBUG
   private func makeClient(_ vault: StubVault) throws -> AccountClient {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [KindStubProtocol.self]
@@ -169,6 +173,7 @@ struct DeviceKindTests {
     #expect(listed.map(\.kind) == [.phone, .tablet, .desktop, .phone, .phone])
     #expect(listed.map(\.kind.label) == ["手机", "平板", "电脑", "手机", "手机"])
   }
+#endif
 
   /// 旧版本写下的钥匙串存档里没有这个字段。它对应的那条服务端会话也是按「手机」记的
   /// （服务端 `DeviceKind` 的 `#[default]`），所以解出来必须是手机——解成别的类别，

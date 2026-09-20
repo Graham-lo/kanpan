@@ -47,6 +47,14 @@ struct ClientHardeningTests {
   private let person = AccountUser(id: UUID(uuidString: "6E4B4A2C-1111-4C0A-9E2D-0A1B2C3D4E5F")!, email: "someone")
   private struct Probe: Decodable, Sendable { var ok: Bool? }
 
+  private func reset(gateClosed: Bool = false) {
+    GateStubProtocol.server.reset()
+    if gateClosed { GateStubProtocol.gate.close() } else { GateStubProtocol.gate.open() }
+  }
+  // 这里是 `reset` 之外、需要拿假主机（`accounts.invalid`）建客户端的那一摊：
+  // 放行任意主机的钩子按 A-07 只存在于 DEBUG，Release 二进制里没有这条口子。
+  // 所以它们只在 DEBUG 下编译；不需要客户端的 `主机白名单` 两种配置都跑。
+#if DEBUG
   private func makeClient(_ vault: StubVault) throws -> AccountClient {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [GateStubProtocol.self]
@@ -72,10 +80,6 @@ struct ClientHardeningTests {
     "sessionId":"\(UUID().uuidString)","accessToken":"\(access)","refreshToken":"\(refresh)",
     "expiresAt":900000,"serverTime":0}}
     """
-  }
-  private func reset(gateClosed: Bool = false) {
-    GateStubProtocol.server.reset()
-    if gateClosed { GateStubProtocol.gate.close() } else { GateStubProtocol.gate.open() }
   }
   private func waitUntil(_ what: String, _ check: @Sendable () async -> Bool) async throws {
     let deadline = Date().addingTimeInterval(5)
@@ -110,6 +114,7 @@ struct ClientHardeningTests {
     #expect(GateStubProtocol.server.calls("/v1/auth/refresh").count == 1, "同一个凭据槽上只许有一趟刷新")
     #expect(vault.stored?.refreshToken == "refresh-2", "槽里留下的是同一把新令牌")
   }
+#endif
 
   /// 构造器过去接受任意 https 主机。令牌是拿钥匙串里那份换的，地址写错一个字母就是
   /// 把凭据递给别人。出厂只认自家那两台网关。
@@ -131,6 +136,7 @@ struct ClientHardeningTests {
     }
   }
 
+#if DEBUG
   /// 存档要记得自己是谁签发的。换了服务器地址（换了台网关、DEBUG 下指到别处）时，
   /// 这份令牌不能跟着出门——那等于把 A 家的钥匙往 B 家的锁上试。
   @Test("来源不符的存档当作没有会话")
@@ -178,4 +184,5 @@ struct ClientHardeningTests {
     GateStubProtocol.server.route("/v1/auth/devices/" + device, 200, #"{"data":{"devices":[]}}"#)
     _ = try await client.data("v1/auth/devices/" + device, authenticated: false)
   }
+#endif
 }
