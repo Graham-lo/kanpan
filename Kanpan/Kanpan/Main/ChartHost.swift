@@ -35,6 +35,12 @@ enum ViewIntent: Equatable {
   /// 没有任何一条会回头去读新到货的值。于是图会一直画在错的宽度上，直到某次视野变化
   /// 把它当成用户意图报回去、反过来把档案里对的那份覆盖掉（`ChartViewport` 的「杀法甲」）。
   case adopt(spacing: Double)
+  /// **把视野铺到一个指定的时间窗上。** 「看细节」（§10.1）专用：十字线选中一根大 K 线，
+  /// 换到更细的一档之后，视野要刚好是那一根覆盖的那一段，而不是新周期的最新一屏。
+  ///
+  /// 和 `.switchInterval` 的区别是位置由外面说了算：那一档保的是根宽，这一档保的是**时间**，
+  /// 根宽由窗宽和图区宽度反推（`clampView` 会把它夹在 1.6～40pt 之间）。
+  case window(ViewWindow)
 }
 
 /// 装着 `ChartView` 的盒子，外加一件事：等布局出来再兑现视野。
@@ -243,6 +249,8 @@ final class ChartBox: UIView, UIGestureRecognizerDelegate {
                                          anchorRight: anchorRight)
       case .resize(let spacing), .adopt(let spacing):
         s.view = ViewMath.resized(s.view, series: s.series, plotW: plotW, spacing: spacing, anchor: s.options.anchor)
+      case .window(let want):
+        s.view = clampView(want, series: s.series, plotW: plotW, anchor: s.options.anchor)
       }
       chart.state = s
       let resolved = chart.chartLayout?.plotW ?? plotW
@@ -296,6 +304,54 @@ final class ChartProxy {
   /// 表现出来就是：拖到历史区，去自选转一圈再点回来，图还停在历史那一段。
   /// 所以这里记一笔，等图建好、量出图区宽度（`chartLayout`）之后再兑现。
   fileprivate var wantsLatest = false
+  /// 还欠一下「把视野铺到这一段时间上」（「看细节」，§10.1）。
+  ///
+  /// 和 `wantsLatest` 同一个毛病、同一个治法：提这一下的时候（人刚点了「看细节」）新那档
+  /// 的数据还在路上，图上还是旧周期，当场铺等于铺在错的序列上。所以记一笔，等对得上的
+  /// 序列到了再兑现。`tries` 是这笔账的有效期——细档的历史可能一时补不到那么早
+  /// （`clampView` 会先把视野顶在现有数据的左边缘上，图自己会去要更多历史，
+  /// 下一批到了再铺一次），但不能无限期地等着，否则它会在很久以后冷不丁跳出来。
+  fileprivate var wantsWindow: (symbol: String, interval: Interval, view: ViewWindow, tries: Int)?
+
+  /// 一笔账最多跨多少轮渲染。约等于数据来回两三趟的量。
+  private static let windowAttempts = 30
+
+  /// 「看细节」：等这个品种的这一档数据到了，把视野铺成 `window`。
+  func show(window: ViewWindow, symbol: String, interval: Interval) {
+    wantsWindow = (symbol.uppercased(), interval, window, 0)
+    box?.setNeedsLayout()
+  }
+
+  /// 人自己动了手（换档、换品种、在图上拖），这笔账就作废——别在他后来做的事上面盖一层。
+  func cancelWindow() { wantsWindow = nil }
+
+  /// 这一轮该不该把视野铺过去。对不上的序列先记一笔次数，等下一轮。
+  fileprivate func window(for series: BarSeries) -> ViewWindow? {
+    guard let want = wantsWindow else { return nil }
+    guard want.tries < Self.windowAttempts else { wantsWindow = nil; return nil }
+    wantsWindow?.tries = want.tries + 1
+    guard series.count > 0, want.interval == series.interval,
+          want.symbol == series.symbol.uppercased() else { return nil }
+    // 历史已经补到那一段的左边了：这笔账兑现完就销。还没补到就先铺一次（视野会被夹在
+    // 现有数据的左缘，图当场去要历史），账留着，下一批数据到了再铺准。
+    if Double(series.firstTime) <= want.view.from { wantsWindow = nil }
+    // 铺完再补报一次视野。这一下是在 SwiftUI 的更新里发生的（`updateUIView` →
+    // `applyPending`），那一轮里 `onViewChanged` 报出去的位置到不了 `@State`：
+    // 实测「看细节」钻进历史之后，周期条行尾那颗「最新」不露面，人就没路回来了。
+    // 隔一个 runloop 用同一个口子再报一次（`onViewChanged` 本来就是「谁造成的都来」），
+    // 位置类的事就都对上了。
+    renotify()
+    return want.view
+  }
+
+  /// 下一个 runloop 把当前视野按原样再报一次。不改任何状态，只是让程序摆的这一下
+  /// 也能走到 `onViewChanged` 的订阅者那儿去。
+  private func renotify() {
+    DispatchQueue.main.async { [weak self] in
+      guard let box = self?.box, let view = box.chart.state?.view else { return }
+      box.chart.onViewChanged?(view)
+    }
+  }
 
   func scrollToLatest(animated: Bool = true) {
     // 没有图、还没量出布局、或者数据还没到——`ChartView.scrollToLatest` 这三种情况
@@ -316,7 +372,20 @@ final class ChartProxy {
     // 那样 `layoutSubviews` 不会自己来。这里点它一下，欠的账才有人兑现。
     box.setNeedsLayout()
   }
+  /// 十字线往左 / 往右挪一根（§P3-7）。图还没建出来就当没这回事——
+  /// 那三颗药丸只有十字线活着时才在屏幕上，图不在十字线也不在。
+  func moveCrosshair(by step: Int) { box?.chart.moveCrosshair(by: step) }
+
+  /// 按十字线此刻这口价画一条水平线（§P3-7）。走的是画线自己那条落笔路。
+  @discardableResult
+  func addHorizontalLine(at price: Double) -> Bool {
+    box?.chart.addHorizontalLine(at: price) ?? false
+  }
+
   var isAtLatest: Bool { box?.chart.isAtLatest ?? true }
+  /// 此刻图上真正在看的那段时间。视野归图自己管，外面要读就从这儿读
+  /// （换品种时想停在同一段时间上、「看细节」钻下去前要记一笔，都要它）。
+  var currentView: ViewWindow? { box?.chart.state?.view ?? savedState?.view }
 }
 
 /// 把 `ChartView`（UIKit + CoreGraphics 手绘）嵌进 SwiftUI。
@@ -344,6 +413,9 @@ struct ChartHost: UIViewRepresentable {
   /// `.resize` / `.adopt` / 「回到最新」）**一律不报**，否则图会把自己开张时那份
   /// 出厂宽度当成用户意图，反过来把档案里真正的那份覆盖掉。见 `ChartView.onUserViewChanged`。
   var onBarSpacing: (Double) -> Void = { _ in }
+  /// **用户自己**动了视野（拖、捏、甩）。和 `onBarSpacing` 同一个源头，
+  /// 但报的是「他动手了」这件事本身，不是宽度——「返回刚才」那条后路靠它作废（§P3-2）。
+  var onUserView: () -> Void = {}
   /// 手指全部离开画布了。落盘与同步的时机钉在这儿，见 `ChartView.onInteractionEnded`。
   var onInteractionEnded: () -> Void = {}
   /// 「档案到货」的序号。变一次，图就按 `resetSpacing` 重量一次（`ViewIntent.adopt`）。
@@ -361,6 +433,12 @@ struct ChartHost: UIViewRepresentable {
   /// 画线壳（M7）。线本身住在 `ChartState.drawings` 里、手势归图，这个只负责
   /// 亮哪一颗按钮和按品种落盘。
   var drawing: DrawingController?
+  /// **用户刚亲手画完一条线**（改、拖、同步下来的都不算）。带上当时那个品种，
+  /// 接的人不必再去猜图上是谁。提醒模块拿它弹确认卡（方案 2.3），
+  /// 这儿**只转交，不判断**——提醒的规矩一个字都别写进图表宿主里。
+  var onDrawingCommitted: (Drawing, String) -> Void = { _, _ in }
+  /// 哪几条线上挂着提醒。图照它在线的右端点一枚小铃铛。
+  var alertedDrawingIDs: Set<String> = []
 
   func makeUIView(context: Context) -> ChartBox {
     let box = ChartBox(frame: .zero)
@@ -452,7 +530,11 @@ struct ChartHost: UIViewRepresentable {
         if old.price.mode == s.price.mode { s.price = old.price }
         else { s.price.inverted = old.price.inverted }
       } else {
-        if let layout = box.chart.chartLayout {
+        // 手指正按着十字线或某个画线锚点时，坐标是钉死的（`ChartView.axesFrozen`）：
+        // 新 K 线照常进序列，但视野一格都不许挪——`reconcile` 把右缘往右推一格，
+        // 手指底下那根 K 线就跟着跑了，线看上去像自己在动。抬手那一刻
+        // `endAxisFreeze` 会一次追平，不留台阶。
+        if !box.chart.axesFrozen, let layout = box.chart.chartLayout {
           s.view = AICoinBehavior.reconcile(old.view, from: old.series, to: s.series, plotW: layout.plotW, anchor: s.options.anchor)
         }
         // Price transforms belong to the chart, not the SwiftUI settings snapshot.
@@ -468,6 +550,9 @@ struct ChartHost: UIViewRepresentable {
       consumeAdoptToken(box)
       if box.pending != .reset { box.pending = .adopt(spacing: resetSpacing) }
     }
+    // 「看细节」欠的那一下：放在所有 `pending` 赋值之后——这一下是人刚按下去的意图，
+    // 优先于换周期那条默认的「保根宽、贴最新」。数据还没到就什么都不做，账留着。
+    if let want = proxy?.window(for: s.series) { box.pending = .window(want) }
     let previousWidth = box.chart.chartLayout?.plotW
     let previousSpacing = box.chart.state.flatMap { old in previousWidth.map { old.view.barSpacing(step: old.series.step, plotW: $0) } }
     box.chart.state = s
@@ -495,7 +580,9 @@ struct ChartHost: UIViewRepresentable {
     //   会把程序刚摆好的宽度当成用户意图报出去。
     let onView = self.onView, onBarSpacing = self.onBarSpacing
     box.chart.onViewChanged = { view in onView(view) }
+    let onUserView = self.onUserView
     box.chart.onUserViewChanged = { [weak box] view in
+      onUserView()
       guard let box, let layout = box.chart.chartLayout,
             let series = box.chart.state?.series, series.count > 0 else { return }
       onBarSpacing(view.barSpacing(step: series.step, plotW: layout.plotW))
@@ -507,6 +594,12 @@ struct ChartHost: UIViewRepresentable {
     box.chart.onNeedsHistory = onNeedsHistory
     box.chart.onTapped = onTapped
     box.chart.onNotice = onNotice
+    box.chart.alertedDrawingIDs = alertedDrawingIDs
+    let onDrawingCommitted = self.onDrawingCommitted
+    box.chart.onDrawingCommitted = { [weak box] item in
+      guard let symbol = box?.chart.state?.series.symbol, !symbol.isEmpty else { return }
+      onDrawingCommitted(item, symbol)
+    }
     let onInversion = self.onInversion
     box.chart.onStateChanged = { [weak proxy, weak box] state in
       box?.updateControls()

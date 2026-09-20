@@ -34,6 +34,12 @@ struct SectorPage: View {
   var store: PrefsStore
   /// 点中一行品种：交出完整 symbol（如 `BTCUSDT`），由 `MainScreen` 切过去。
   var onPickSymbol: (String) -> Void
+  /// 下钻那层品种列表点进图表时，把那一刻列表的顺序交出去（连续扫图，§10.1）。
+  var onScanList: ([String]) -> Void = { _ in }
+  /// 下钻那层品种列表长按一行时，预览卡的 K 线与统计从这儿来（§4.1）。
+  var previews: SymbolPreviewStore?
+  /// 长按菜单里那几项自选动作要它。
+  var picker: SymbolPickerModel?
 
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -355,7 +361,8 @@ struct SectorPage: View {
                        window: snap.window, history: snap.history, medianD20: d20,
                        symbolForBase: symbolForBase,
                        decimalsForBase: { feed.priceDecimals(forBase: $0) }, store: store,
-                       onBack: pop, onPick: onPickSymbol)
+                       onBack: pop, onPick: onPickSymbol, onScanList: onScanList,
+                       previews: previews, picker: picker)
     case .pop:
       Color.clear.onAppear { pop() }
     }

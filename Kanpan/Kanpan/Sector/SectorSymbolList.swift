@@ -28,6 +28,13 @@ struct SectorSymbolList: View {
   var onBack: () -> Void
   /// 点中一行：交出完整 symbol。
   var onPick: (String) -> Void
+  /// 点进图表的那一刻把**这张表当时的顺序**交出去，供顶栏横滑连续扫图（§10.1）。
+  /// 顺序是 `SectorSymbolRow.build` 按当前排序口径现算的，外面拿不到，只能这儿递。
+  var onScanList: ([String]) -> Void = { _ in }
+  /// 长按一行时那张预览卡的 K 线与统计（§4.1）。没接线就不做长按预览。
+  var previews: SymbolPreviewStore?
+  /// 长按菜单里动自选的那几项要它。没接线时菜单里只剩「打开」。
+  var picker: SymbolPickerModel?
 
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -53,7 +60,10 @@ struct SectorSymbolList: View {
       ScrollView {
         LazyVStack(spacing: 0) {
           ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
-            row(item, first: index == 0)
+            // 冻结名单和开图是同一下：先递出这一刻的顺序，再照常交出 symbol。
+            previewable(item, row(item, first: index == 0) { symbol in
+              onScanList(rows.map(\.symbol)); onPick(symbol)
+            }) { onScanList(rows.map(\.symbol)); onPick($0) }
           }
         }
         .padding(.top, 6).padding(.bottom, 8)
@@ -146,9 +156,51 @@ struct SectorSymbolList: View {
       .accessibilityIdentifier("sector.sort." + value.rawValue)
   }
 
+  // MARK: - 长按预览
+
+  /// 和自选页同一张卡、同一份菜单（`FavoritesView.previewable`）。差别只有一处：
+  /// 这儿的品种多半还不在自选里，所以那一项是「加入自选」而不是「取消自选」——
+  /// 看板块就是在挑东西，挑中了顺手收走，不用先切回自选页再搜一遍。
+  @ViewBuilder private func previewable(_ item: SectorSymbolRow, _ content: some View,
+                                        open: @escaping (String) -> Void) -> some View {
+    if let previews {
+      content.contextMenu {
+        Button("打开") { open(item.symbol) }
+        if let picker {
+          if picker.isFavorite(item.symbol) {
+            if !picker.prefs.groups.isEmpty {
+              Menu("移到分类") {
+                ForEach(picker.prefs.groups) { group in
+                  Button(group.name) { picker.assign(item.symbol, to: group.id) }
+                }
+              }
+            }
+            Button("取消自选", role: .destructive) { picker.removeFavorite(item.symbol) }
+          } else {
+            Button("加入自选") { picker.addFavorite(item.symbol, info: picker.info(for: item.symbol)) }
+          }
+        }
+      } preview: {
+        SymbolPreviewCard(symbol: item.symbol, info: picker?.info(for: item.symbol),
+                          ticker: previewTicker(item), store: previews)
+          .environment(\.panelTheme, theme)
+      }
+    } else {
+      content
+    }
+  }
+
+  /// 卡上那几格要一份 `Ticker`。板块页手里是 `SectorQuote`，价和涨跌照这一行写的来
+  /// （看 5 日时这一行写的就是 5 日），成交额是 24h 的那份。高低价这趟没取回来，
+  /// 卡上也不摆，留 NaN。
+  private func previewTicker(_ item: SectorSymbolRow) -> Ticker {
+    Ticker(symbol: item.symbol, last: item.price, changePercent: item.pct,
+           high: .nan, low: .nan, quoteVolume: item.quoteVolume)
+  }
+
   // MARK: - 行（照抄自选页）
 
-  private func row(_ item: SectorSymbolRow, first: Bool) -> some View {
+  private func row(_ item: SectorSymbolRow, first: Bool, open: @escaping (String) -> Void) -> some View {
     HStack(spacing: 10) {
       badge(item.base)
       VStack(alignment: .leading, spacing: 4) {
@@ -177,14 +229,14 @@ struct SectorSymbolList: View {
     .padding(.leading, 19).padding(.trailing, 20)
     .frame(height: 66)
     .contentShape(Rectangle())
-    .onTapGesture { onPick(item.symbol) }
+    .onTapGesture { open(item.symbol) }
     .overlay(alignment: .top) {
       if !first { SectorHairline(skin: skin) }
     }
     .accessibilityElement(children: .contain)
     .accessibilityAddTraits(.isButton)
     .accessibilityIdentifier("sector.open." + item.symbol)
-    .accessibilityAction { onPick(item.symbol) }
+    .accessibilityAction { open(item.symbol) }
   }
 
   /// 徽章：品牌色晕 + `CoinBadge` + 一圈角向高光。和自选页同一支。
