@@ -44,7 +44,7 @@ pub fn trade_assessment(r:&NativeRecord,raw:&[Value],from:i64,until:i64,now:i64)
  for t in raw {
   let id=t["a"].as_i64().ok_or_else(||ApiError::bad("invalid_trade"))?;
   let at=t["T"].as_i64().ok_or_else(||ApiError::bad("invalid_trade"))?;
-  if let Some((p,time))=previous {if id!=p+1 || at<time {return Ok((result("needs_verification","成交顺序尚不完整",None),None))}}
+  if let Some((p,time))=previous&& (id!=p+1 || at<time) {return Ok((result("needs_verification","成交顺序尚不完整",None),None))}
   let price=t["p"].as_str().and_then(|s|s.parse::<f64>().ok());
   if at<from||at>until||price.is_none_or(|p|!p.is_finite()||p<=0.0) {return Err(ApiError::bad("invalid_trade"))}
   previous=Some((id,at));

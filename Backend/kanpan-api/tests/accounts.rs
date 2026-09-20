@@ -74,8 +74,9 @@ async fn real_postgres_accounts_isolation_and_retry() {
  let (_,other)=request(&app,"/v1/sync/changes?cursor=0&collection=drawings","GET",Some(bt),json!({})).await;
  let mine=other["data"]["objects"].as_array().unwrap();
  assert!(mine.len()==1&&mine[0]["id"]=="binance/usd_m/BTCUSDT/line"&&mine[0]["body"]["color"]["value"]=="#000000","the join must stay owner-scoped: {other}");
- review_contract(&app,&s,&admin,at,bt).await;
- search_contract(&app,&s,&admin,at,bt).await;
+ let alice=Uuid::parse_str(a["user"]["id"].as_str().unwrap()).unwrap();
+ review_contract(&app,&s,&admin,alice,at,bt).await;
+ search_contract(&app,&s,&admin,alice,at,bt).await;
  // 用户名归一化之后不能被重复注册。
  assert_eq!(request(&app,"/v1/auth/register","POST",None,json!({"username":"ALICE_TEST","password":"Passcode123","device":a_device})).await.0,409);
  assert_eq!(request(&app,"/v1/auth/register","POST",None,json!({"username":"x","password":"Passcode123","device":a_device})).await.0,400);
@@ -97,7 +98,7 @@ async fn real_postgres_accounts_isolation_and_retry() {
  s.pool.close().await;admin.close().await;
 }
 
-async fn review_contract(app:&Router,s:&AppState,admin:&sqlx::PgPool,at:&str,bt:&str) {
+async fn review_contract(app:&Router,s:&AppState,admin:&sqlx::PgPool,owner:Uuid,at:&str,bt:&str) {
  let now=chrono::Utc::now().timestamp_millis();let end=now/60_000*60_000;
  let make=||json!({"id":Uuid::new_v4(),"range":{"venue":"binance","market":"usd_m","symbol":"BTCUSDT","interval":"1m","start":end-180_000,"end":end,"bars":3},"rule":{"version":"criteria-v2","direction":"long","confirmation":"bar_close","reference":100.0,"target":110.0,"invalidation":90.0,"expires":now+3_600_000},"text":"","origin":"chart_first","created":now,"_testKey":Uuid::new_v4()});
  let draft=make();let id=draft["id"].as_str().unwrap();
@@ -129,7 +130,12 @@ async fn review_contract(app:&Router,s:&AppState,admin:&sqlx::PgPool,at:&str,bt:
  let ids:std::collections::HashSet<_>=page["data"]["records"].as_array().unwrap().iter().chain(tail["data"]["records"].as_array().unwrap()).map(|v|v["serverId"].as_str().unwrap()).collect();assert_eq!(ids.len(),52);
  let (_,empty)=request(app,"/v1/native-review/records","GET",Some(bt),json!({})).await;assert!(empty["data"]["records"].as_array().unwrap().is_empty());
  let (status,voided)=request(app,&format!("{path}/void"),"POST",Some(at),json!({"_testKey":Uuid::new_v4(),"expectedRevision":1})).await;assert_eq!(status,200,"{voided}");assert_eq!(voided["data"]["record"]["voided"],true);
- let unfinished:i64=sqlx::query_scalar("SELECT count(*) FROM review_jobs WHERE record_id=$1 AND NOT finished").bind(Uuid::parse_str(id).unwrap()).fetch_one(admin).await.unwrap();assert_eq!(unfinished,0);
+ // 同样先摆 RLS 上下文再读（见 search_contract 里那段注释）。顺带把「一共有几条」也数出来：
+ // 只断言「没有未完成的」在一行都看不见的时候会白白通过，那等于什么都没验。
+ let mut conn=admin.acquire().await.unwrap();
+ sqlx::query("SELECT set_config('kanpan.user_id',$1,false)").bind(owner.to_string()).execute(&mut *conn).await.unwrap();
+ let (total,unfinished):(i64,i64)=sqlx::query_as("SELECT count(*),count(*) FILTER (WHERE NOT finished) FROM review_jobs WHERE user_id=$1 AND record_id=$2").bind(owner).bind(Uuid::parse_str(id).unwrap()).fetch_one(&mut *conn).await.unwrap();
+ assert!(total>0&&unfinished==0,"作废之后这条记录的任务该一条不剩地收干净：{total} 条里还有 {unfinished} 条没完");
  let (_,stats)=request(app,"/v1/native-review/statistics","GET",Some(at),json!({})).await;assert!(stats["data"]["groups"].as_array().unwrap().is_empty(),"Unverified and pending episode records cannot enter statistics");
 }
 
@@ -146,7 +152,7 @@ impl scorebook_core::market::MarketDataProvider for FixtureMarket {
  fn exchange_info<'a>(&'a self,_:&'a str)->scorebook_core::market::ProviderFuture<'a>{Box::pin(async{Ok(json!({}))})}
  fn tickers_24h<'a>(&'a self,_:&'a str)->scorebook_core::market::ProviderFuture<'a>{Box::pin(async{Ok(json!({}))})}
 }
-async fn search_contract(app:&Router,s:&AppState,admin:&sqlx::PgPool,at:&str,bt:&str) {
+async fn search_contract(app:&Router,s:&AppState,admin:&sqlx::PgPool,owner:Uuid,at:&str,bt:&str) {
  use scorebook_core::domain::chart_match;
  let cutoff=chrono::Utc::now().timestamp_millis()/60_000*60_000;
  let sample=fixture_bars(chrono::DateTime::from_timestamp_millis(cutoff-1_200_000).unwrap(),chrono::DateTime::from_timestamp_millis(cutoff).unwrap());
@@ -171,10 +177,18 @@ async fn search_contract(app:&Router,s:&AppState,admin:&sqlx::PgPool,at:&str,bt:
  let payload=json!({"_testKey":cancel,"range":{"venue":"binance","market":"usd_m","symbol":"BTCUSDT","interval":"1m","start":cutoff-1_200_000,"end":cutoff,"bars":20},"cutoff":cutoff,"scope":"history"});
  let (_,cancelled)=request(app,"/v1/native-review/searches","POST",Some(at),payload).await;assert_eq!(cancelled["data"]["status"],"cancelled","Cancel arriving before create must still fence it");
  // A short record can be verified for scoring without pretending the search model accepts it.
- let rid:Uuid=sqlx::query_scalar("SELECT id FROM review_records WHERE record->>'voided'='false' LIMIT 1").fetch_one(admin).await.unwrap();
- sqlx::query("UPDATE review_jobs SET finished=true").execute(admin).await.unwrap();
- sqlx::query("UPDATE review_jobs SET finished=false,next_at=now() WHERE record_id=$1 AND kind='index'").bind(rid).execute(admin).await.unwrap();
- sqlx::query("UPDATE review_dispatch SET next_at=now()").execute(admin).await.unwrap();
+ //
+ // 复盘表是 FORCE ROW LEVEL SECURITY，连表的属主都要按策略来。下面这几条是拿 admin 连接
+ // 直接摆夹具，以前能读到只是因为那个角色恰好有 BYPASSRLS（ops/test.py 现在把这条前提
+ // 写成了显式断言）；只要哪天它降成普通属主，`SELECT id FROM review_records` 就会一行
+ // 都看不见、在 fetch_one 上 RowNotFound。所以这里改成走同一条连接、先把 RLS 上下文
+ // 摆上，再按 user_id 明确圈住范围——和服务端自己那条路一模一样，谁来跑都成立。
+ let mut conn=admin.acquire().await.unwrap();
+ sqlx::query("SELECT set_config('kanpan.user_id',$1,false)").bind(owner.to_string()).execute(&mut *conn).await.unwrap();
+ let rid:Uuid=sqlx::query_scalar("SELECT id FROM review_records WHERE user_id=$1 AND record->>'voided'='false' LIMIT 1").bind(owner).fetch_one(&mut *conn).await.unwrap();
+ sqlx::query("UPDATE review_jobs SET finished=true WHERE user_id=$1").bind(owner).execute(&mut *conn).await.unwrap();
+ sqlx::query("UPDATE review_jobs SET finished=false,next_at=now() WHERE user_id=$1 AND record_id=$2 AND kind='index'").bind(owner).bind(rid).execute(&mut *conn).await.unwrap();
+ sqlx::query("UPDATE review_dispatch SET next_at=now() WHERE user_id=$1").bind(owner).execute(&mut *conn).await.unwrap();
  assert!(kanpan_api::review_worker::run_one(s,&FixtureMarket).await.unwrap());
- let row:Value=sqlx::query_scalar("SELECT record FROM review_records WHERE id=$1").bind(rid).fetch_one(admin).await.unwrap();assert_eq!(row["eligible"],true,"3 bars may qualify although geometry needs 16");
+ let row:Value=sqlx::query_scalar("SELECT record FROM review_records WHERE user_id=$1 AND id=$2").bind(owner).bind(rid).fetch_one(&mut *conn).await.unwrap();assert_eq!(row["eligible"],true,"3 bars may qualify although geometry needs 16");
 }

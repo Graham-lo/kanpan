@@ -109,10 +109,9 @@ pub fn merge(mut object:Object,op:&Operation,now:i64)->Result<Object> {
   }
  }
  // Dependent settings are updated and validated atomically.
- if let Some(v)=object.body.get("rsiRange") {
-  if !v.as_array().is_some_and(|a|a.len()==2&&a[0].as_f64().is_some_and(|lo|lo>=0.0&&a[1].as_f64().is_some_and(|hi|hi>lo&&hi<=100.0))) {return Err(ApiError::bad("invalid_rsi_range"))}
- }
- if let Some(v)=object.body.get("lineWidth") {if !v.as_f64().is_some_and(|n|n>0.0&&n<=12.0){return Err(ApiError::bad("invalid_line_width"))}}
+ if let Some(v)=object.body.get("rsiRange")
+  && !v.as_array().is_some_and(|a|a.len()==2&&a[0].as_f64().is_some_and(|lo|lo>=0.0&&a[1].as_f64().is_some_and(|hi|hi>lo&&hi<=100.0))) {return Err(ApiError::bad("invalid_rsi_range"))}
+ if let Some(v)=object.body.get("lineWidth")&& !v.as_f64().is_some_and(|n|n>0.0&&n<=12.0){return Err(ApiError::bad("invalid_line_width"))}
  crate::sync_validation::clear_tombstones(&mut object);
  crate::sync_validation::object(&object)?;
  object.revision=next;Ok(object)
@@ -165,6 +164,13 @@ async fn bootstrap(State(s):State<AppState>,i:Identity,Query(v):Query<Scope>)->R
  // Default bootstrap contains only small personal settings. Histories require an explicit scope.
  let c=v.collection.unwrap_or_else(||"settings".into());
  let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
+ // 主键 (user_id,collection,id) 就够了，前缀这一条是过滤器、不指望走索引。
+ // 0007 曾经为它建过 sync_objects_prefix（…,id text_pattern_ops）：那种操作符族按字节
+ // 序比较，只有在字节序下 starts_with() 才降得成范围扫；可这个库是 en_US.utf8，下面这句
+ // `ORDER BY id` 走的是默认排序规则，和它对不上。于是规划器每次都选主键（边扫边出序、
+ // LIMIT 101 立刻停），把前缀降级成 Filter——实测 Rows Removed by Filter: 200，那条索引
+ // 从建出来到被删（0011）一次都没被用过。真要让前缀走索引，得连同 ORDER BY 一起改成
+ // `COLLATE "C"`，而分页游标的顺序是协议的一部分，不值得为一个过滤条件动它。
  let rows=sqlx::query("SELECT * FROM sync_objects WHERE user_id=$1 AND collection=$2 AND ($3::text IS NULL OR starts_with(id,$3)) AND ($4::text IS NULL OR id>$4) ORDER BY id LIMIT 101")
   .bind(i.user).bind(c).bind(v.prefix).bind(v.after).fetch_all(&mut *tx).await?;
  let more=rows.len()>100;let objects=rows.iter().take(100).map(object).collect::<Result<Vec<_>>>()?;

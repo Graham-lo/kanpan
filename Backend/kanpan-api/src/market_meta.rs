@@ -330,7 +330,7 @@ fn plain(symbol:&str)->String {
 /// by asking the table which reading it knows.
 pub fn strip_quote(symbol:&str)->String {
  let clean=plain(symbol);
- for quote in QUOTES {if let Some(rest)=clean.strip_suffix(quote) {if !rest.is_empty() {return rest.to_owned()}}}
+ for quote in QUOTES {if let Some(rest)=clean.strip_suffix(quote)&& !rest.is_empty() {return rest.to_owned()}}
  clean
 }
 /// Splits a bundle multiplier off a base asset: `1000PEPE` -> (`PEPE`, 1000).
@@ -343,16 +343,14 @@ pub fn strip_multiplier(base:&str)->(&str,f64) {
  // 两千倍——它只是一个以年份开头的名字。剩下的部分还得以字母开头且不止一个字符，
  // 所以 `1000X`、`1INCH`、`123ABC` 都是名字本身。
  let power_of_ten=digits>=4&&base.starts_with('1')&&base[1..digits].bytes().all(|b|b==b'0');
- if power_of_ten {
-  if let Ok(multiplier)=base[..digits].parse::<f64>() {
+ if power_of_ten
+  && let Ok(multiplier)=base[..digits].parse::<f64>() {
    let rest=&base[digits..];
    if rest.len()>=2&&rest.starts_with(|c:char|c.is_ascii_alphabetic()) {return (rest,multiplier)}
   }
- }
  for (prefix,multiplier) in [("1M",1e6),("1K",1e3)] {
-  if let Some(rest)=base.strip_prefix(prefix) {
-   if rest.len()>=3 && rest.starts_with(|c:char|c.is_ascii_alphabetic()) {return (rest,multiplier)}
-  }
+  if let Some(rest)=base.strip_prefix(prefix)
+   && rest.len()>=3 && rest.starts_with(|c:char|c.is_ascii_alphabetic()) {return (rest,multiplier)}
  }
  (base,1.0)
 }
@@ -377,7 +375,7 @@ pub fn base_readings(symbol:&str)->Vec<String> {
  let clean=plain(symbol);
  let mut names=vec![clean.clone()];
  for quote in QUOTES {
-  if let Some(rest)=clean.strip_suffix(quote) {if !rest.is_empty()&&!names.iter().any(|n|n==rest) {names.push(rest.to_owned())}}
+  if let Some(rest)=clean.strip_suffix(quote)&& !rest.is_empty()&&!names.iter().any(|n|n==rest) {names.push(rest.to_owned())}
  }
  names
 }
@@ -418,7 +416,7 @@ pub fn okx_instrument(symbol:&str)->String {
  if up.contains('-') {return if up.ends_with("-SWAP"){up}else{format!("{up}-SWAP")}}
  let clean:String=up.chars().filter(char::is_ascii_alphanumeric).collect();
  for quote in QUOTES {
-  if let Some(rest)=clean.strip_suffix(quote) {if !rest.is_empty() {return format!("{rest}-{quote}-SWAP")}}
+  if let Some(rest)=clean.strip_suffix(quote)&& !rest.is_empty() {return format!("{rest}-{quote}-SWAP")}
  }
  format!("{clean}-USDT-SWAP")
 }
@@ -436,7 +434,7 @@ fn rank_of(v:&Value)->Option<i64> {
 /// Finds the row array whichever envelope the upstream wraps it in this week.
 fn rows(body:&Value)->&[Value] {
  for candidate in [body,&body["data"],&body["data"]["list"],&body["data"]["rows"],&body["result"]] {
-  if let Some(array)=candidate.as_array() {if !array.is_empty() {return array}}
+  if let Some(array)=candidate.as_array()&& !array.is_empty() {return array}
  }
  &[]
 }
@@ -606,7 +604,7 @@ pub fn page_is(body:&Value,code:&str,keyword:Option<&str>)->bool {
  let found=page_identities(body);
  if found.is_empty() {return false}
  let code=normalise(code);
- if !code.is_empty()&&found.iter().any(|text|*text==code) {return true}
+ if !code.is_empty()&&found.contains(&code) {return true}
  match keyword {
   Some(word)=>{let word=normalise(word);!word.is_empty()&&found.iter().any(|text|text.starts_with(&word))}
   None=>false,
@@ -1130,7 +1128,7 @@ async fn binance_open_interest(symbol:&str)->Result<OpenInterest> {
   Some(oi)=>oi,
   None=>{
    let body=get_json(&format!("{BINANCE_OI}{symbol}")).await?;
-   let oi=parse_binance_oi(&body).ok_or_else(||ApiError(StatusCode::SERVICE_UNAVAILABLE,"invalid_market_response"))?;
+   let oi=parse_binance_oi(&body).ok_or(ApiError(StatusCode::SERVICE_UNAVAILABLE,"invalid_market_response"))?;
    binance_oi_cache().put(symbol,oi);oi
   }
  };
@@ -1828,6 +1826,8 @@ mod tests {
  /// `get_json` 同一个函数同时服务 CoinGecko、stockanalysis.com 和 open.er-api.com，
  /// 而 CoinGecko 对匿名调用者是按分钟限速的。写侧少一道 `covers` 守卫，它的一个 429
  /// 就会把币安的出口按停两分钟，还连坐 `sector_history` 与 `oi_archive`。
+ // 跨 await 持有是故意的：这把锁就是「同时只许一条测试碰那道进程级闸门」的实现。
+ #[allow(clippy::await_holding_lock)]
  #[tokio::test]
  async fn a_rate_limited_third_party_does_not_press_the_binance_gate() {
   let _guard=binance_gate::test_lock().lock().unwrap();

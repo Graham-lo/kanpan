@@ -85,11 +85,19 @@ async fn remove(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,header
 async fn candidates(s:&AppState,owner:Uuid,q:&NativeSearch,vector:&[f32])->Result<Vec<Candidate>> {
  if q.scope=="history" && !matches!(q.range.venue.as_str(),"binance"|"okx") {return Ok(vec![])}
  let feature=format!("{vector:?}");let mut tx=s.personal(owner).await?;
+ // 近邻查询的排序表达式必须是**光秃秃的一个** `列 <=> 常量`，向量索引才认得出来。
+ // 原来写的是 `ORDER BY embedding<=>$1::vector,id`——多出来的这个 `,id` 让整条 ORDER BY
+ // 不再是索引能供的那个形状，于是 market_features_embedding_ann 永远用不上（实测把
+ // seqscan/bitmapscan/sort/incremental_sort 全禁掉，规划器宁可报错也不走它），
+ // 每次检索都是全表算距离再排一遍。
+ // 所以内层只按距离排 + LIMIT（这一层交给索引），把距离取出来当一列，外层再按
+ // (距离, id) 定序：三百行的排序是白送的，而「同距离时谁在前」仍旧是确定的
+ // ——这一条对断点续跑很要紧，position 是按这个顺序数的。
  let rows=if q.scope=="history" {
-  sqlx::query("SELECT id,symbol,market,timeframe,start_at,end_at,bars_count FROM market_features WHERE published AND model_id='candle-geometry-v2' AND render_version='ohlc-geometry-resample64-v2' AND market=$2 AND timeframe=$3 AND source=$4 AND end_at<=$5 AND symbol LIKE '%USDT' AND NOT(symbol=$6 AND start_at<$7 AND end_at>$8) ORDER BY embedding<=>$1::vector,id LIMIT 300")
+  sqlx::query("SELECT * FROM (SELECT id,symbol,market,timeframe,start_at,end_at,bars_count,embedding<=>$1::vector AS distance FROM market_features WHERE published AND model_id='candle-geometry-v2' AND render_version='ohlc-geometry-resample64-v2' AND market=$2 AND timeframe=$3 AND source=$4 AND end_at<=$5 AND symbol LIKE '%USDT' AND NOT(symbol=$6 AND start_at<$7 AND end_at>$8) ORDER BY embedding<=>$1::vector LIMIT 300) nearest ORDER BY distance,id")
   .bind(&feature).bind(&q.range.market).bind(&q.range.interval).bind(&q.range.venue).bind(q.cutoff).bind(&q.range.symbol).bind(q.range.end).bind(q.range.start).fetch_all(&mut *tx).await?
  }else{
-  sqlx::query("SELECT id,symbol,'usd_m'::text AS market,timeframe,range_start AS start_at,range_end AS end_at,(record#>>'{draft,range,bars}')::int AS bars_count FROM review_records WHERE user_id=$2 AND feature IS NOT NULL AND feature_version='candle-geometry-v2' AND record->>'voided'='false' AND record#>>'{draft,range,venue}'=$8 AND timeframe=$3 AND range_end<=$4 AND submitted<=$4 AND NOT(symbol=$5 AND range_start<$7 AND range_end>$6) ORDER BY feature<=>$1::vector,id LIMIT 300")
+  sqlx::query("SELECT * FROM (SELECT id,symbol,'usd_m'::text AS market,timeframe,range_start AS start_at,range_end AS end_at,(record#>>'{draft,range,bars}')::int AS bars_count,feature<=>$1::vector AS distance FROM review_records WHERE user_id=$2 AND feature IS NOT NULL AND feature_version='candle-geometry-v2' AND record->>'voided'='false' AND record#>>'{draft,range,venue}'=$8 AND timeframe=$3 AND range_end<=$4 AND submitted<=$4 AND NOT(symbol=$5 AND range_start<$7 AND range_end>$6) ORDER BY feature<=>$1::vector LIMIT 300) nearest ORDER BY distance,id")
   .bind(&feature).bind(owner).bind(&q.range.interval).bind(q.cutoff).bind(&q.range.symbol).bind(q.range.start).bind(q.range.end).bind(&q.range.venue).fetch_all(&mut *tx).await?
  };
  let values=rows.into_iter().map(|r|Candidate{id:r.get("id"),range:ChartRange{venue:q.range.venue.clone(),market:r.get("market"),symbol:r.get("symbol"),interval:r.get("timeframe"),start:r.get("start_at"),end:r.get("end_at"),bars:r.get::<i32,_>("bars_count") as usize}}).collect();tx.commit().await?;Ok(values)

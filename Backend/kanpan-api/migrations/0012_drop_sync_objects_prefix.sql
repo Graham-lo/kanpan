@@ -1,0 +1,14 @@
+-- no-transaction
+-- 0007 的 sync_objects_prefix 是一条死索引，删掉。
+--
+-- 它建的是 (user_id,collection,id text_pattern_ops)：text_pattern_ops 按字节（C 序）
+-- 比较，只有在这个顺序下 starts_with() 才能降成范围扫。但线上库是 en_US.utf8，
+-- src/sync.rs 的 bootstrap 又要 `ORDER BY id LIMIT 101`——那个 ORDER BY 走的是默认排序
+-- 规则，和 text_pattern_ops 的顺序对不上，规划器于是宁可走主键边扫边出序，把前缀条件
+-- 降级成 Filter（实测 Rows Removed by Filter: 200）。
+-- 也就是说这条索引从建出来那天起一次都没被用过，只在每次写 sync_objects 时白维护。
+-- 主键 (user_id,collection,id) 本来就供得住这条查询的等值加排序，前缀当过滤器就够了。
+--
+-- CONCURRENTLY：普通的 DROP INDEX 要拿表上的 ACCESS EXCLUSIVE，它排在当前长查询后面的
+-- 同时，后面所有的读写都堵在它后面。
+DROP INDEX CONCURRENTLY IF EXISTS sync_objects_prefix;

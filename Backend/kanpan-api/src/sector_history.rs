@@ -650,6 +650,8 @@ mod tests {
  ///
  /// 旧代码每个品种各自从 2 秒起退避四次，于是「换个品种」就等于「把退避忘了」——
  /// 七百个品种就是七百次往同一道墙上撞，418 只会越滚越长。
+ // 跨 await 持有是故意的：这把锁就是「同时只许一条测试碰那道进程级闸门」的实现。
+ #[allow(clippy::await_holding_lock)]
  #[tokio::test(start_paused=true)]
  async fn a_second_contract_neither_resets_nor_slips_past_the_ban() {
   let _guard=binance_gate::test_lock().lock().unwrap();
@@ -693,6 +695,8 @@ mod tests {
  }
 
  /// 429 带 Retry-After 就按它说的等；别的状态码只是这一个品种今天没有。
+ // 跨 await 持有是故意的：这把锁就是「同时只许一条测试碰那道进程级闸门」的实现。
+ #[allow(clippy::await_holding_lock)]
  #[tokio::test(start_paused=true)]
  async fn a_told_wait_is_believed_and_other_failures_are_just_one_contract() {
   let _guard=binance_gate::test_lock().lock().unwrap();

@@ -48,7 +48,7 @@ pub fn evaluate(record: &NativeRecord, bars: &[Bar], now: i64) -> Result<NativeA
     for bar in bars {
         let from = bar.start.timestamp_millis(); let to = bar.end.timestamp_millis();
         if to <= start || from >= now.min(r.expires) { continue; }
-        if let Some(end) = previous { if from != end { return Ok(answer("needs_verification", "观察行情有缺口", Some(from))); } }
+        if let Some(end) = previous && from != end { return Ok(answer("needs_verification", "观察行情有缺口", Some(from))); }
         previous = Some(to);
         if r.confirmation == "bar_close" {
             // An already-open bar at submission is excluded, including its eventual close.

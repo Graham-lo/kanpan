@@ -125,11 +125,9 @@ async fn lock_email(tx:&mut Transaction<'_,Postgres>,email:&str)->Result<()> {
 /// 宁可退回对端也不要去信前面那几段。`X-Real-IP` 只在没有 `X-Forwarded-For` 时兜底。
 fn client_ip(peer:&SocketAddr,headers:&HeaderMap)->IpAddr {
  if !peer.ip().is_loopback() {return peer.ip()}
- if let Some(list)=headers.get("x-forwarded-for").and_then(|h|h.to_str().ok()) {
-  if let Some(last)=list.rsplit(',').next() {
-   if let Some(ip)=parse_ip(last) {return ip}
-  }
- }
+ if let Some(list)=headers.get("x-forwarded-for").and_then(|h|h.to_str().ok())
+  && let Some(last)=list.rsplit(',').next()
+   && let Some(ip)=parse_ip(last) {return ip}
  if let Some(ip)=headers.get("x-real-ip").and_then(|h|h.to_str().ok()).and_then(parse_ip) {return ip}
  peer.ip()
 }
@@ -206,9 +204,8 @@ async fn refresh(State(s):State<AppState>,Json(v):Json<RefreshInput>)->AuthResul
  // 正常客户端一条会话一分钟内绝到不了三十次；到了就是有人在拿它磨服务器。
  // 键取会话而不是令牌：轮换之后令牌每次都是新的，只有会话是同一条。
  let paced:Option<Uuid>=sqlx::query_scalar("SELECT session_id FROM account_tokens WHERE token_hash=$1 AND kind='refresh'").bind(digest(&v.refresh_token)).fetch_optional(&s.pool).await?;
- if let Some(sid)=paced {
-  if !hit_limit(&s,&format!("refresh-sid:{sid}"),30,60).await? {return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"try_later").into())}
- }
+ if let Some(sid)=paced
+  && !hit_limit(&s,&format!("refresh-sid:{sid}"),30,60).await? {return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"try_later").into())}
  let mut tx=s.pool.begin().await?;
  let row=sqlx::query("SELECT t.*,s.user_id,s.device_id,s.device_kind,s.binding_hash,s.revoked_at,s.revoked_reason,s.expires_at AS session_expires,u.disabled_at FROM account_tokens t JOIN account_sessions s ON s.id=t.session_id JOIN account_users u ON u.id=s.user_id WHERE t.token_hash=$1 AND t.kind='refresh' FOR UPDATE OF t,s,u")
   .bind(digest(&v.refresh_token)).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::unauthorized)?;

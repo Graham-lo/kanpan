@@ -80,6 +80,30 @@ def long_transactions(seconds):
  p=subprocess.run(['docker','exec','-i','kanpan-postgres','psql','-tAq','-U','kanpan_admin','-d','kanpan','-c',query],capture_output=True,text=True)
  # 问不出来就不拦：这是一道提醒，不是新的失败点。
  return [line for line in p.stdout.splitlines() if line.strip()] if not p.returncode else []
+def readonly(query):
+ """只读地问一句。问不出来返回 None——这些都是提醒，不该变成新的失败点。"""
+ p=subprocess.run(['docker','exec','-i','kanpan-postgres','psql','-tAq','-U','kanpan_admin','-d','kanpan','-c',query],capture_output=True,text=True)
+ return None if p.returncode else [line for line in p.stdout.splitlines() if line.strip()]
+# 迁移链的第一句是 0001 的 `CREATE EXTENSION IF NOT EXISTS vector`。pgvector 0.8.2 不是
+# trusted 扩展，建它要超级用户；换句话说「用一个非特权角色跑迁移」在这条链上根本走不到
+# 第二步。这台机器上 migrate 用的是 kanpan_admin（容器的 POSTGRES_USER，本身是超级用户），
+# 所以全新安装没问题；但只要有人把这条 URL 换成普通角色，失败会发生在最前面、信息也不好懂。
+# 这里提前说清楚。
+extension=readonly("SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='vector')::text||' '||COALESCE((SELECT rolsuper FROM pg_roles WHERE rolname='kanpan_admin')::text,'false')")
+if extension and extension[0].split()==['false','false']:
+ raise SystemExit('中止：库里还没有 vector 扩展，而 kanpan_admin 不是超级用户。\n'
+  'migrations/0001_accounts.sql 第一句就是 CREATE EXTENSION vector，pgvector 不是 trusted 扩展，\n'
+  '必须先由超级用户执行一次 `CREATE EXTENSION vector;`，之后这个脚本才跑得下去。')
+# 0006 给 market_features 建的是唯一索引。它失败时 sqlx 只把 Postgres 的第一行错误往上抛，
+# DETAIL 里那句「Key (…)=(…) is duplicated」会被吞掉，于是升级停在那里而看不出是哪几行。
+# 所以升级前先只读地把重复自己数一遍，有就原样打出来。
+if readonly("SELECT to_regclass('public.market_features') IS NOT NULL")==['t']:
+ duplicates=readonly("SELECT market||' '||symbol||' '||timeframe||' '||start_at||' '||end_at||' '||model_id||' '||render_version||' '||source||' | '||count(*)||' 行 | '||array_agg(id)::text "
+  "FROM market_features GROUP BY market,symbol,timeframe,start_at,end_at,model_id,render_version,source HAVING count(*)>1 ORDER BY 1")
+ if duplicates:
+  print('market_features 里有重复，0006 的唯一索引建不起来（sqlx 会把 Postgres 的 DETAIL 吞掉，所以先在这里列出来）：')
+  for line in duplicates:print('  '+line)
+  raise SystemExit('中止：先处理掉上面这些重复行（同一段行情被导入了两次，留一条即可）。本次没有执行任何迁移。')
 stale=long_transactions(LONG_TRANSACTION_SECONDS)
 if stale:
  print('以下事务已经开了超过 %d 秒，迁移（哪怕是 CONCURRENTLY）要等它们结束：'%LONG_TRANSACTION_SECONDS)

@@ -58,6 +58,17 @@ pub fn pool_options(deadlines: bool) -> sqlx::postgres::PgPoolOptions {
     sqlx::query(sql).execute(&mut *conn).await?;
    }
   }
+  // 这两条对 serve 和 worker 都要挂：找相似图形的近邻查询跑在 worker 里。
+  //
+  // pgvector 0.8 的 hnsw.iterative_scan 默认是 off：HNSW 只按 ef_search 取回固定的一批
+  // 候选，**然后**才拿 WHERE 里的 market/timeframe/source 去过滤。过滤掉的不会补，于是
+  // 要一百行只回六行——不是"没有更像的了"，是被截断了。strict_order 让它在不够的时候
+  // 继续往下迭代，而且仍旧严格按距离递增吐行（relaxed_order 快一点，但吐出来的顺序不是
+  // 严格递增的，我们外层还要按 distance 定序，不能要）。
+  // max_scan_tuples 是配套的刹车：过滤条件筛得太狠时，迭代会一直往下走，这里封顶。
+  for sql in ["SET hnsw.iterative_scan='strict_order'","SET hnsw.max_scan_tuples='20000'"] {
+   sqlx::query(sql).execute(&mut *conn).await?;
+  }
   Ok(())
  }))
 }
@@ -96,9 +107,18 @@ mod migrations {
    let sql=std::fs::read_to_string(dir.join(&name)).expect("readable migration");
    // 注释里写着「CREATE INDEX」不算语句。
    let body=sql.lines().filter(|l|!l.trim_start().starts_with("--")).collect::<Vec<_>>().join("\n").to_lowercase();
-   if body.contains("create index") {
-    assert_eq!(body.matches("create index").count(),body.matches("create index concurrently").count(),"{name}：建索引要 CONCURRENTLY，否则升级时整张表的写都在排队");
+   assert_eq!(body.matches("create index").count(),body.matches("create index concurrently").count(),"{name}：建索引要 CONCURRENTLY，否则升级时整张表的写都在排队");
+   // 删索引同样要 CONCURRENTLY：普通 DROP INDEX 拿的是表上的 ACCESS EXCLUSIVE，
+   // 一边排在长查询后面，一边把后面所有的读写都堵在自己后面。
+   assert_eq!(body.matches("drop index").count(),body.matches("drop index concurrently").count(),"{name}：删索引也要 CONCURRENTLY，普通 DROP INDEX 要拿表上的 ACCESS EXCLUSIVE");
+   if body.contains("create index")||body.contains("drop index") {
     assert_eq!(sql.lines().next().map(str::trim),Some("-- no-transaction"),"{name}：CONCURRENTLY 不能在事务里跑，首行必须是 -- no-transaction");
+   }
+   // 不在事务里的那种迁移，一个文件只许放一条语句。sqlx 仍旧是把整份文件当**一条**
+   // 简单查询发过去，而 Postgres 对「一条简单查询里有多个命令」会自己包一个隐式事务
+   // ——于是 CONCURRENTLY 照样会报 cannot run inside a transaction block。
+   if sql.starts_with("-- no-transaction") {
+    assert_eq!(body.matches(';').count(),1,"{name}：不在事务里的迁移一个文件只能放一条语句（多条会被 Postgres 包进隐式事务）");
    }
    for clause in body.split("add column").skip(1) {
     let clause=clause.split(';').next().unwrap_or_default();

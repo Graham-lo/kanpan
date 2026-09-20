@@ -509,15 +509,14 @@ impl Store {
  }
 
  fn release(&self,stem:&str) {
-  if let Ok(mut table)=self.inflight.lock() {
-   if table.get(stem).is_some_and(|lock|Arc::strong_count(lock)<=1) {table.remove(stem);}
-  }
+  if let Ok(mut table)=self.inflight.lock()
+   && table.get(stem).is_some_and(|lock|Arc::strong_count(lock)<=1) {table.remove(stem);}
  }
 
  /// Memory first, then the slices on disk — including the gateway's own, whose
  /// file names and contents this matches exactly.
  fn cached(&self,stem:&str)->Option<Day> {
-  if let Ok(mut memory)=self.memory.lock() {if let Some(day)=memory.get(stem,self.clock.now()) {return Some(day)}}
+  if let Ok(mut memory)=self.memory.lock()&& let Some(day)=memory.get(stem,self.clock.now()) {return Some(day)}
   let dir=self.dir.as_ref()?;
   // `.none` 只在那一天结算之后才写，所以磁盘上的缺口是永久的。
   if dir.join(format!("{stem}.none")).exists() {self.remember(stem,Day::Absent,None);return Some(Day::Absent)}
@@ -533,9 +532,8 @@ impl Store {
  /// What the caches already know about a day, without parsing or reading it:
  /// the answer prefetching needs to skip a day it has.
  fn known(&self,stem:&str)->Option<bool> {
-  if let Ok(mut memory)=self.memory.lock() {
-   if let Some(day)=memory.get(stem,self.clock.now()) {return Some(matches!(day,Day::Points(_)))}
-  }
+  if let Ok(mut memory)=self.memory.lock()
+   && let Some(day)=memory.get(stem,self.clock.now()) {return Some(matches!(day,Day::Points(_)))}
   let dir=self.dir.as_ref()?;
   if dir.join(format!("{stem}.none")).exists() {return Some(false)}
   if dir.join(format!("{stem}.json")).exists() {return Some(true)}
@@ -584,7 +582,7 @@ impl Store {
      let Ok(rows)=tokio::task::spawn_blocking(move ||parse(&bytes)).await.map_err(|_|())? else {continue};
      self.answered();
      let day=Day::Points(Arc::new(rows));
-     if let Day::Points(ref rows)=day {if !rows.is_empty() {self.store(stem,rows);}}
+     if let Day::Points(ref rows)=day&& !rows.is_empty() {self.store(stem,rows);}
      self.remember(stem,day.clone(),None);
      return Ok(day);
     }
@@ -657,9 +655,8 @@ impl Store {
  }
 
  fn touch(&self,path:&std::path::Path) {
-  if let Ok(mut disk)=self.disk.lock() {
-   if let Some(entry)=disk.files.get_mut(path) {entry.1=SystemTime::now();}
-  }
+  if let Ok(mut disk)=self.disk.lock()
+   && let Some(entry)=disk.files.get_mut(path) {entry.1=SystemTime::now();}
  }
 
  /// A zero-byte marker: this day is not in the archive and will not appear.

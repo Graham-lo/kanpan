@@ -36,7 +36,7 @@ fn csv(name: &str, fallback: &str) -> Vec<String> {
 }
 
 fn parse_usize(name: &str, fallback: usize) -> Result<usize> {
-    Ok(env(name, &fallback.to_string()).parse().with_context(|| format!("invalid {name}"))?)
+    env(name, &fallback.to_string()).parse().with_context(|| format!("invalid {name}"))
 }
 
 fn config() -> Result<Config> {
@@ -108,6 +108,9 @@ fn parse_bar(row: &Value, interval: Interval) -> Result<Bar> {
     })
 }
 
+// One page of a public kline endpoint: every argument is part of that URL, and
+// wrapping them in a struct would only move the same eight values one line up.
+#[allow(clippy::too_many_arguments)]
 async fn fetch_page(client: &Client, source: &str, gateway: &str, symbol: &str, interval: &str, start: i64, end: i64, limit: usize) -> Result<Vec<Bar>> {
     let url = if source == "binance" {
         // `www.binance.com`, not `fapi.binance.com`: both market VPS sit in
@@ -166,7 +169,7 @@ async fn fetch_range(client: &Client, cfg: &Config, symbol: &str, interval_name:
     let mut cursor = start;
     let mut all = Vec::new();
     while cursor < end {
-        let page = fetch_page(&client, &cfg.source, &cfg.gateway, symbol, interval_name, ms(cursor), ms(end), if cfg.source == "binance" {1000} else {1500}).await?;
+        let page = fetch_page(client, &cfg.source, &cfg.gateway, symbol, interval_name, ms(cursor), ms(end), if cfg.source == "binance" {1000} else {1500}).await?;
         if page.is_empty() {
             break;
         }

@@ -90,6 +90,9 @@ pub fn test_lock()->&'static Mutex<()> {
 mod tests {
  use super::*;
 
+ // 这把锁就是用来把「同时只许一条测试碰这道进程级闸门」这件事做实的，跨 await 持有正是
+ // 它的用途：换成异步锁反而会让别的测试在 await 处插进来把闸门清掉。
+ #[allow(clippy::await_holding_lock)]
  #[tokio::test(start_paused=true)]
  async fn a_ban_is_one_deadline_for_the_whole_process_and_only_ever_grows() {
   let _serial=test_lock().lock().unwrap_or_else(|e|e.into_inner());

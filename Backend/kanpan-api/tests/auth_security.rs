@@ -251,3 +251,32 @@ async fn a_refresh_may_not_rename_its_device_kind() {
  assert!(status.is_client_error(),"没有这一类设备：{v}");
  s.pool.close().await;admin.close().await;
 }
+
+/// 0010 给 `device_kind` 加列时用的是 `DEFAULT 'phone'`，于是升级那一刻还在线的 iPad 和
+/// 电脑全被记成了手机。这本来只是「我的设备」里显示不准，但顶人是按这个字段来的
+/// （上面那几条用例验的就是「每类只许一台」），所以这个人下一次用手机登录，会把自己
+/// 那台被误记成手机的 iPad 踢下线。0013 按会话自己报的设备名把它们认回来。
+///
+/// 这条用例跑的是**迁移文件本身**的那两句 SQL，不是照抄一遍——照抄只能证明抄对了。
+#[tokio::test]
+async fn the_upgrade_must_not_call_every_old_session_a_phone() {
+ let (s,app,admin)=boot().await;
+ let tag=Uuid::new_v4().simple().to_string();
+ let cases=[("Graham 的 iPad","tablet"),("MacBook Pro","desktop"),("Windows PC","desktop"),("iPhone 15 Pro","phone")];
+ for (device_name,_) in cases {signup(&app,&name("kind"),&device(&format!("{device_name} {tag}"))).await;}
+ // 先把它们全摆回升级那一刻的样子：0010 的默认值让每一条都是 'phone'。
+ sqlx::query("UPDATE account_sessions SET device_kind='phone' WHERE device_name LIKE '%'||$1").bind(&tag).execute(&admin).await.unwrap();
+ let sql=std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"),"/migrations/0013_device_kind_backfill.sql")).unwrap();
+ sqlx::raw_sql(&sql).execute(&admin).await.unwrap();
+ for (device_name,expected) in cases {
+  let kind:String=sqlx::query_scalar("SELECT device_kind FROM account_sessions WHERE device_name=$1").bind(format!("{device_name} {tag}")).fetch_one(&admin).await.unwrap();
+  assert_eq!(kind,expected,"「{device_name}」回填成了 {kind}");
+ }
+ // 客户端自己报过的类别不许被名字猜测盖掉：只动仍然记着 'phone' 的行，所以重复执行
+ // 这条迁移不会有第二次效果。
+ sqlx::query("UPDATE account_sessions SET device_kind='desktop' WHERE device_name=$1").bind(format!("Graham 的 iPad {tag}")).execute(&admin).await.unwrap();
+ sqlx::raw_sql(&sql).execute(&admin).await.unwrap();
+ let kind:String=sqlx::query_scalar("SELECT device_kind FROM account_sessions WHERE device_name=$1").bind(format!("Graham 的 iPad {tag}")).fetch_one(&admin).await.unwrap();
+ assert_eq!(kind,"desktop","已经有明确类别的会话不该被设备名改写");
+ s.pool.close().await;admin.close().await;
+}
