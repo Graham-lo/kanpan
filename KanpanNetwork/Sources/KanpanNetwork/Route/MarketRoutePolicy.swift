@@ -34,12 +34,18 @@ public enum MarketRoutePolicyStore {
   /// 测试沙盒（`KANPAN_TEST_PROFILE=1` + `KANPAN_PERSISTENCE_PROFILE`）用自己的
   /// 一份 defaults，和 `PrefsStore` 的选法一致——UI 用例里切到「网关」不会
   /// 把这台真机真正的线路改掉。
+  ///
+  /// **只在 DEBUG 构建里有这条岔路**（审查 C-02）：从前它不受编译边界保护，于是同一个
+  /// Release 包注入环境变量后就成了「一半测试档、一半正式档」的混合态——`PrefsStore`
+  /// 和账号那两处早已 `#if DEBUG`，只有这儿还跟着环境走，那样的绿谁也说不清测的是谁。
   static var defaults: UserDefaults {
+    #if DEBUG
     let env = ProcessInfo.processInfo.environment
     if env["KANPAN_TEST_PROFILE"] == "1", let profile = env["KANPAN_PERSISTENCE_PROFILE"],
        UUID(uuidString: profile) != nil, let suite = UserDefaults(suiteName: "kanpan.tests." + profile) {
       return suite
     }
+    #endif
     return .standard
   }
 

@@ -153,16 +153,29 @@ final class QuoteBook {
   private static let maxRememberedOpens = 512
   /// 跨档之后还能拿现价顶开盘价的时间窗。超出这一段就只能老老实实去取。
   private static let provisionalWindowMs: Int64 = 120_000
+  /// 给 UI 用例读的诊断串。**只在 DEBUG 构建里存在**（审查 C-02）。
   var diagnostics: String? {
+    #if DEBUG
     guard ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" else { return nil }
     return "session=\(session.generation);firstQuoteMs=\(firstQuoteMs ?? -1);rows=\(raw.count);status=\(status.rawValue)"
+    #else
+    return nil
+    #endif
   }
   private(set) var status: FeedStatus = .reconnecting
 
   /// 排查「列表连上了但不跳」：`KANPAN_LOG=1` 时把这条流的连接和收帧量打出来。
   /// 图那条流一直有日志，列表这条一直是哑的——两边都不跳的时候根本分不清是谁的问题。
-  private static let log: FeedLog =
-    ProcessInfo.processInfo.environment["KANPAN_LOG"] == "1" ? .stdout : .silent
+  ///
+  /// **只在 DEBUG 构建里认这个开关**（审查 C-02）：正式包一律静音，省得同一个
+  /// 二进制在有／无环境变量两种启动下表现不一样。
+  private static let log: FeedLog = {
+    #if DEBUG
+    return ProcessInfo.processInfo.environment["KANPAN_LOG"] == "1" ? .stdout : .silent
+    #else
+    return .silent
+    #endif
+  }()
   private var ingestCount = 0
   private var ingestDropped = 0
   private var ingestReport = Date()

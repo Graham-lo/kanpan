@@ -194,8 +194,11 @@ final class MainScreenUITests: KanpanUICase {
   /// 交互规矩②：手指落到面板以外（这里点的是 K 线图）面板就收起。
   ///
   /// 要先等图真的有数据——没数据时 `ChartView` 整层让开，点下去不会往外报。
-  func testTappingChartDismissesPanel() throws {
-    try XCTSkipUnless(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据，跳过（这条要真数据）")
+  func testTappingChartDismissesPanel() {
+    // 审查 C.9：这儿原来是 `XCTSkipUnless(waitForLiveChart())`——等不到 K 线就跳过，
+    // 而跳过在汇总里既不是失败也不是通过，「点一下收面板」这件事实际一次都没被验到。
+    // 拿不到行情不是「这条用例不适用」，是环境或产品断了，该红就红。
+    XCTAssertTrue(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据——这条要真数据，拿不到就是断了")
     app.buttons[Ids.intervalChart].tap()
     let macd = app.buttons[Ids.indicatorSwitch("MACD")]
     expectExists(macd, Self.short, "图表设置面板没开出来")
@@ -231,8 +234,9 @@ final class MainScreenUITests: KanpanUICase {
   /// 上下界把均线一起算进去——MA256 一挂上量程就被拉宽，K 线当场压扁、位置也挪，
   /// 画在上面的线和真正的价格结构对不上。退出画线回到竖屏，两样都要原样回来：
   /// 这一路只影响画出来的那一帧，用户开着的指标偏好一个字没动。
-  func testLandscapeDrawingHidesEveryIndicator() throws {
-    try XCTSkipUnless(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据，跳过（这条要真数据）")
+  func testLandscapeDrawingHidesEveryIndicator() {
+    // 审查 C.9：同上，跳过改硬断言。
+    XCTAssertTrue(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据——这条要真数据，拿不到就是断了")
     let subsBefore = chartInfo()["subs"] as? [String] ?? []
     let overlaysBefore = chartInfo()["overlays"] as? [String] ?? []
     XCTAssertFalse(subsBefore.isEmpty, "竖屏默认就该有副图，否则这条用例验不到东西")
@@ -261,8 +265,9 @@ final class MainScreenUITests: KanpanUICase {
   // ---------------------------------------------------------------- 回到最新
 
   /// 「回到最新」：视野在最新一根上时它不在，往回拖一段就出现，点一下又消失。
-  func testLatestButtonAppearsAfterLeavingLatest() throws {
-    try XCTSkipUnless(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据，跳过（这条要真数据）")
+  func testLatestButtonAppearsAfterLeavingLatest() {
+    // 审查 C.9：同上，跳过改硬断言。
+    XCTAssertTrue(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据——这条要真数据，拿不到就是断了")
     let latest = app.buttons[Ids.latestButton]
     // `waitForLiveChart()` 末尾按过一次「回到最新」，但视野归位是一帧一帧滑过去的
     // （iPad 上图宽、滑得久），所以这里轮询等它收回去，不瞬时断言。

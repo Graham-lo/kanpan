@@ -65,7 +65,10 @@ enum StreamHostProbe {
     }
   }
 
+  /// **只在 DEBUG 构建里认这个开关**（审查 C-02）：正式包不该被一个环境变量支使着
+  /// 去挨个拨候选域名。它不会替换图表行情，但正式二进制里不留这条口子。
   static func runIfRequested() {
+    #if DEBUG
     guard ProcessInfo.processInfo.environment["KANPAN_WS_SWEEP"] == "1" else { return }
     Task.detached(priority: .utility) {
       print("== 推送域名体检开始 ==")
@@ -75,5 +78,6 @@ enum StreamHostProbe {
       }
       print("== 推送域名体检结束 ==")
     }
+    #endif
   }
 }

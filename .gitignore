@@ -14,6 +14,8 @@ Packages/
 docs/acceptance/**/*.trace
 .xcbuild/
 .xcbuild-strict/
+# Release 档跑测的派生数据（make test-release，审查 C-05）
+.xcbuild-release/
 
 # M3 取证（§12.1 的证据类型 ②）：
 # 203 张 png + 6 份表都入库——A3.11 的回归基线就是 docs/acceptance/M3/A3.1-baselines.json

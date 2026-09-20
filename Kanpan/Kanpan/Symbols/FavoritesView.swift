@@ -63,6 +63,12 @@ struct FavoritesView: View {
   /// 已经替它开了历史订阅的品种。页面整体消失时要逐个关掉——
   /// 行自己的 `onDisappear` 在整页被拆掉时不保证会走到。
   @State private var historyOn = Set<String>()
+  /// 现在铺着哪几行，以及由它算出来的落脚点（审查 C-08）。盒子是**不被观察**的，
+  /// 理由见 `FavoritesRenderedRows`。
+  @State private var rows = FavoritesRenderedRows()
+  /// 落脚点已经还原过了吗。还原之前不记新的——列表刚铺开时最上面那几行会先
+  /// `onAppear`，那时候记下来的是「第一行」，正好把要还原的那个盖掉。
+  @State private var anchorRestored = false
   // 这张表「他摆成了什么样」：排序口径、升降序、涨跌额还是涨跌幅、画不画迷你走势线、
   // 哪几行展开着详情。
   //
@@ -115,6 +121,13 @@ struct FavoritesView: View {
   /// 切到某一类。分类可能刚被别处删掉，认不出来就什么都不做。
   private func select(_ id: String) {
     guard model.prefs.groups.contains(where: { $0.id == id }) else { return }
+    // 换了一类，上一类停在哪一行没有意义（审查 C-08）。
+    if group != id {
+      session.forgetScrollAnchor()
+      rows.rendered.removeAll()
+      rows.anchor = nil
+      anchorRestored = true
+    }
     group = id
   }
   /// 真正画出来的那一类：存的那个可能已经被删了，`SymbolPrefs.group(_:)` 退回第一类。
@@ -177,6 +190,9 @@ struct FavoritesView: View {
       if editing, !model.tickers.isEmpty { editQuotes = model.tickers }
     }
     .onDisappear {
+      // 走之前把落脚点交给宿主（审查 C-08）。切回来时这一页整个重建，
+      // `session` 是这一页之外唯一还活着的东西。
+      if let anchor = rows.anchor { session.scrollAnchor = anchor }
       moreTask?.cancel()
       model.disappear()
       for symbol in historyOn { onHistoryVisibility(symbol, false) }
@@ -345,6 +361,9 @@ struct FavoritesView: View {
     guard let feedDiagnostics else { return "" }
     return feedDiagnostics + ";background=" + theme.chart.bg.value
       + ";feed=" + String(describing: feedStatus)
+      // 落脚点（审查 C-08）。只进辅助功能树，界面上看不见；`feedDiagnostics`
+      // 自己就只在 DEBUG + `KANPAN_CHART_DIAGNOSTICS=1` 时才非空。
+      + ";anchor=" + (session.scrollAnchor ?? "-")
   }
 
   // MARK: - 分类分段器
@@ -602,6 +621,8 @@ struct FavoritesView: View {
   /// 头部、分类段、列表读成同一块材料。玻璃原本干的活是替文字挡光斑，现在交给
   /// `AuroraBackdrop` 底部那层同色渐变。行与行之间只剩一根两头淡出的发丝线。
   private var listSheet: some View {
+    // 只加一层 `ScrollViewReader`——它不画任何东西，版面一个像素都不动（审查 C-08）。
+    ScrollViewReader { reader in
     List {
       ForEach(symbols, id: \.self) { symbol in
         VStack(spacing: 0) {
@@ -614,10 +635,17 @@ struct FavoritesView: View {
         .onAppear {
           onVisible(symbol); onRowVisibility(symbol, true)
           if historyOn.insert(symbol).inserted { onHistoryVisibility(symbol, true) }
+          // 有行露面就重算一次落脚点（审查 C-08）。往下滚是底下露新行，往上滚是
+          // 顶上露新行，两头都走得到这儿。
+          rows.rendered.insert(symbol)
+          noteScrollAnchor()
         }
         .onDisappear {
           onRowVisibility(symbol, false)
           if historyOn.remove(symbol) != nil { onHistoryVisibility(symbol, false) }
+          // 只摘名字，**不重算落脚点**：整页被拆掉的那一刻每一行都会走一遍这儿，
+          // 边摘边算会把「最上面那行」一路推到表尾，刚记下的落脚点当场作废。
+          rows.rendered.remove(symbol)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
           Button("删除自选", role: .destructive) { model.removeFavorite(symbol) }
@@ -643,6 +671,73 @@ struct FavoritesView: View {
     // List 占满剩下的整屏：长按把一行拖到最后一行下面，落点还在列表里。
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .padding(.top, 6).padding(.bottom, 8)
+    .onAppear { restoreScrollAnchor(reader) }
+    }
+  }
+
+  /// 记下「他现在停在哪一行」：按表的顺序取第一个还画在屏幕上的品种。
+  ///
+  /// 存代号不存偏移量，理由见 `FavoritesEditSession.scrollAnchor`。
+  private func noteScrollAnchor() {
+    guard anchorRestored else { return }
+    // 按表的顺序取现在铺着的第一行。它比「看得见的第一行」要高几格（`List` 在
+    // 可视区上下各多铺几行），这笔固定的差额由还原那头校准掉，见下面。
+    guard let top = symbols.first(where: { rows.rendered.contains($0) }) else { return }
+    // 只记在那个不被观察的盒子里。`session` 是 `@Observable`，滚动时每露一行写一次
+    // 就等于把整张表重画一遍——这一页上跑着实时报价，赔不起。真正交出去是在整页
+    // `onDisappear` 那一刻（见上面），那时候读一次就够了。
+    rows.anchor = top
+  }
+
+  /// 切回这一页时滚回原来那一行（审查 C-08）。
+  ///
+  /// 自选页每切走一次就整个重建（`MainScreen.portraitBody` 的 `switch tab`），
+  /// 列表跟着从第一行重新铺——人滚到 APTUSDT 去了一趟设置页，回来又在 BTC 上。
+  /// 落脚点活在宿主手里的 `session` 上，所以这儿只负责把它用出来。
+  ///
+  /// 先让一帧过去再滚：`onAppear` 这一刻 List 还没量完自己的高度，当场 `scrollTo`
+  /// 会落空。滚完再等一小会儿才开始记新的落脚点——顶上那几行的 `onAppear`
+  /// 会在滚动落地前先跑一遍，那时候记下来的是「第一行」。
+  ///
+  /// **为什么不用 `scrollPosition(id:)`。** 那一手看着正合适（框架自己报可视区顶上
+  /// 那一行，写回去也是它），2026-09-20 实测在这张 `List` 上**根本不往里写**：
+  /// 滚了十几下 `topRow` 始终是 `nil`，交出去的落脚点是空的，切回来自然停在表头。
+  /// 它对 `ScrollView` + `LazyVStack` 才成立，`List` 这边只能自己攒。
+  private func restoreScrollAnchor(_ reader: ScrollViewProxy) {
+    guard !anchorRestored else { return }
+    let list = symbols
+    guard let anchor = session.scrollAnchor, let wanted = list.firstIndex(of: anchor) else {
+      anchorRestored = true
+      return
+    }
+    Task { @MainActor in
+      var target = wanted
+      // 滚一次、看看现在铺出来的第一行是谁，差几格就往回补几格。
+      //
+      // 为什么要这么一道校准：记的和还原的是同一个口径（「铺着的第一行」），但
+      // `scrollTo(_:anchor:.top)` 把那一行摆到的是**可视区**的顶上，而记的时候它在
+      // 可视区顶上**再往上几格**。这笔差额就是列表的缓冲区厚度，所以量一次补一次
+      // 就对上了。不写死格数是因为它随行高、字号、展开的详情变。
+      //
+      // 圈数留够、每圈等到 `List` 真把新一批行铺完：`rendered` 是靠行自己的
+      // `onAppear` / `onDisappear` 攒起来的，机器忙的时候它比滚动慢半拍，量早了
+      // 就会拿到上一帧的答案，于是这一圈白补、下一圈又从头补。
+      //
+      // 到底了就停：表尾那几行再怎么滚也到不了可视区顶上，`now` 不动就是撞了底，
+      // 此时的位置已经和走之前一样（走之前他也在底上），再补只是空转。
+      var previous = -1
+      for _ in 0..<6 {
+        try? await Task.sleep(for: .milliseconds(80))
+        reader.scrollTo(list[target], anchor: .top)
+        try? await Task.sleep(for: .milliseconds(220))
+        guard let now = list.firstIndex(where: { rows.rendered.contains($0) }) else { break }
+        let delta = wanted - now
+        if delta == 0 || now == previous { break }
+        previous = now
+        target = min(max(target + delta, 0), list.count - 1)
+      }
+      anchorRestored = true
+    }
   }
 
   private func row(_ symbol: String, first: Bool) -> some View {
@@ -1247,6 +1342,14 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
   /// 进编辑那一刻冻住的报价。编辑时整页读它而不是读实时报价，行布局才不会
   /// 随每批 WS 报价重排（见 `FavoritesView.displayQuote`）。
   var quotes: [String: Ticker] = [:]
+  /// 他停在表的哪一行（审查 C-08）。
+  ///
+  /// 存的是**品种代号**，不是滚动偏移量：一屏能放几行随字号、随展开的详情、随
+  /// 机型变，像素位置换个环境就对不上，而「他正盯着 APTUSDT 那一行」换到哪儿都成立。
+  /// 和编辑会话同住一处、同一个理由——这是「一次使用里的落脚点」，不是跟着账号走的
+  /// 习惯：冷启动理应从第一行看起，所以它不进 `Prefs`、不落盘。
+  /// 分类切换会把它清掉：换了一类，上一类停在哪儿没有意义。
+  var scrollAnchor: String?
 
   func begin(quotes: [String: Ticker]) {
     self.quotes = quotes
@@ -1259,6 +1362,21 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
     selection.removeAll()
     quotes.removeAll()
   }
+
+  /// 换分类、换账号时把落脚点一起丢掉。
+  func forgetScrollAnchor() { scrollAnchor = nil }
+}
+
+/// 列表现在铺着哪几行，以及由它算出来的落脚点（审查 C-08）。
+///
+/// 做成一个**普通的引用盒子、不被任何人观察**是故意的：滚动时每露一行就要写一次，
+/// 写进 `@State` 或 `@Observable` 等于把整张表重画一遍，而这一页上跑着实时报价。
+/// 它只在整页 `onDisappear` 那一刻被读一次，把落脚点交给 `FavoritesEditSession`。
+@MainActor final class FavoritesRenderedRows {
+  /// 现在铺着的那几行。注意是「铺着」不是「看得见」：`List` 在可视区上下各多铺几行。
+  var rendered = Set<String>()
+  /// 铺着的第一行，也就是要交出去的落脚点。
+  var anchor: String?
 }
 
 /// 记下「设置」「排序」两颗按钮的位置，好让浮层菜单吊在它们下面。

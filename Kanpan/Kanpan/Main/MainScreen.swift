@@ -781,9 +781,15 @@ struct MainScreen: View {
     return market.ticker.map { quotes.presented($0) }
   }
 
+  /// 给 UI 用例读的那串诊断值。**只在 DEBUG 构建里存在**（审查 C-02）：
+  /// 正式包不该因为一个环境变量就把根数、视野、报价时刻挂到可访问树上。
   private var quoteDiagnostics: String {
+    #if DEBUG
     guard ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" else { return "" }
     return "symbol=\(market.symbol);last=\(displayedTicker?.last ?? .nan);time=\(displayedTicker?.timeMs ?? 0)"
+    #else
+    return ""
+    #endif
   }
 
   /// Latest trade quote only; changing candle interval must never change its source.
@@ -1264,13 +1270,17 @@ struct MainScreen: View {
   }
 
   private func wireAccount() {
-    // Existing drawing fixtures keep their own isolated profile; account tests explicitly configure an endpoint.
+    // 画线那几套 fixture 自己带隔离档案，账号用例会明确指一个 endpoint，所以这条
+    // 岔路让它们跳过真账号桥。**只在 DEBUG 构建里存在**（审查 C-02）：正式包必须
+    // 走真正的产品初始化，否则「Release 回归」跑的是一条没有账号桥的启动路径。
+    #if DEBUG
     if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
        ProcessInfo.processInfo.environment["KANPAN_ACCOUNT_API_URL"] == nil {
       // 没有账号桥，就没有「档案到货」那个事件；但档案本身在建 store 的那一刻就已经
       // 读进来了，落地页照样得按它兑现一次，否则有自选的人也停在行情页。
       honorProfile(); return
     }
+    #endif
     do {
       let bridge = try AppAccountBridge(account: account, prefs: store, symbols: picker, drawings: draw, review: review, search: searchHistory)
       bridge.canApply = { syncGate }
@@ -1285,7 +1295,9 @@ struct MainScreen: View {
         if !awaitingAccount { tab = .chart; didLeaveLaunch = true }
         // 正勾着的那次批量编辑跟着走：换了号，表就不是刚才那张表了，
         // 勾中的代号留着只会落到别人的自选上。
-        if !awaitingAccount { favoritesEdit.end() }
+        // 落脚点也一起丢（审查 C-08）：换了号，「他停在 APTUSDT 那一行」说的是
+        // 上一个人的表，留着只会把新账号的表滚到一个莫名其妙的位置。
+        if !awaitingAccount { favoritesEdit.end(); favoritesEdit.forgetScrollAnchor() }
         dismissPanel(); crosshairReadout.clear()
       }
       // 档案真的装进来之后才谈「该开哪张图、该停在哪一格、该用哪个周期」。

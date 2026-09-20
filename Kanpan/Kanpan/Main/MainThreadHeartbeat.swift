@@ -10,7 +10,10 @@ import Foundation
 enum MainThreadHeartbeat {
   private static var task: Task<Void, Never>?
 
+  /// **只在 DEBUG 构建里起得来**（审查 C-02）：正式包不该被一个环境变量拉起一条
+  /// 每秒醒一次的后台任务。
   static func startIfRequested() {
+    #if DEBUG
     guard ProcessInfo.processInfo.environment["KANPAN_LOG"] == "1", task == nil else { return }
     task = Task { @MainActor in
       var worst = 0
@@ -27,5 +30,6 @@ enum MainThreadHeartbeat {
         }
       }
     }
+    #endif
   }
 }

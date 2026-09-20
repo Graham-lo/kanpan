@@ -137,8 +137,17 @@ struct TopBar: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel(label)
-    .accessibilityValue(ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1"
-      ? String(iconTapCount) : "")
+    // 点击计数只给 UI 用例读，**只在 DEBUG 构建里挂上去**（审查 C-02）：
+    // 正式包的读屏不该因为一个环境变量多念一串数字。
+    .accessibilityValue(diagnosticsValue)
+  }
+
+  private var diagnosticsValue: String {
+    #if DEBUG
+    return ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" ? String(iconTapCount) : ""
+    #else
+    return ""
+    #endif
   }
 }
 

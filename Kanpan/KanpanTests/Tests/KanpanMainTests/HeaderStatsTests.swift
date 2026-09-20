@@ -97,8 +97,10 @@ struct HeaderStatsTests {
   func untradableSymbolIsNeverFresh() {
     let model = MarketModel(symbol: "BTCUSDT")
     #expect(model.priceFresh)
-    model.overrideInfoForTesting(SymbolInfo(symbol: "SOMEUSDT", base: "SOME", pricePrecision: 2,
-                                            tickSize: 0.01, status: .delisted))
+    // 走产品自己那条路：交易所答不出这个代号时 `QuoteBook` 就是这么通知的
+    // （审查 C-05——原来这儿用的是一个 `#if DEBUG` 的注入钩子，Release 下不存在，
+    // 整个测试包因此在 Release 配置下编不过）。
+    model.noteSymbolRejected("BTCUSDT")
     #expect(!model.priceFresh)
   }
 }

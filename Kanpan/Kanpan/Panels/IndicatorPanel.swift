@@ -227,6 +227,14 @@ private struct IndicatorEditor: View {
   /// 正在打字的是第几格。数字键盘没有回车键，收键盘全靠工具条那颗「完成」，
   /// 而工具条只能挂在整张表上挂一次——所以焦点得由这儿统一管。
   @FocusState private var editingParam: Int?
+  /// 每一格里**还没被确认过**的那串字符（审查 C-07）。
+  ///
+  /// 为什么要在这一层留一份：`ParamField` 只在「合法」的时候把字符串写进 `draft`，
+  /// 越界的那些要等失焦 `commit()` 才夹回区间。可「保存」是一颗按钮——手指落在它
+  /// 上面的那一刻，SwiftUI 先跑按钮动作还是先跑失焦回调，是没有保证的。
+  /// 2026-09-20 在 iPhone 15 上实测过：框里显示 999，存进去的是 **9**。
+  /// 所以保存那一下必须自己把这串字符规范化一遍，不能把收尾全交给失焦。
+  @State private var pendingText: [Int: String] = [:]
   init(store: PrefsStore, id: IndicatorID) {
     self.store = store; _draft = State(initialValue: IndicatorDraft(id: id, prefs: store.prefs))
   }
@@ -316,12 +324,15 @@ private struct IndicatorEditor: View {
       .scrollDismissesKeyboard(.interactively)
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
-          Button("取消") { dismiss() }.foregroundStyle(t.ink2)
+          Button("取消") { dismiss() }
+            .foregroundStyle(t.ink2)
+            .accessibilityIdentifier("indicator.cancel")
         }
         ToolbarItem(placement: .confirmationAction) {
-          Button("保存") { store.update { draft.save(into: &$0) }; dismiss() }
+          Button("保存") { commitEditing(); store.update { draft.save(into: &$0) }; dismiss() }
             .fontWeight(.semibold)
             .foregroundStyle(t.amber)
+            .accessibilityIdentifier("indicator.save")
         }
       }
     }
@@ -344,11 +355,27 @@ private struct IndicatorEditor: View {
     Stepper(value: $draft.params[index], in: IndicatorParamRule.range) {
       ParamField(label: parameterLabel(index),
                  value: $draft.params[index],
+                 pending: Binding(get: { pendingText[index] },
+                                  set: { pendingText[index] = $0 }),
                  index: index,
                  focus: $editingParam,
                  theme: t,
                  identifier: "indicator.param.\(index).field")
     }.accessibilityIdentifier("indicator.param.\(index)")
+  }
+
+  /// 把还举在手里的那几串字符一次性夹回合法区间，写进 `draft`。
+  ///
+  /// 和 `ParamField.commit()` 是同一套规矩，所以两条路谁先跑都一样：失焦先跑，
+  /// 这儿的 `pendingText` 已经空了；按钮先跑，失焦那一下再夹一次也是同一个数。
+  /// 空串按「什么都没打」处理——原来那个值原样留着，不清零。
+  private func commitEditing() {
+    for (index, raw) in pendingText where draft.params.indices.contains(index) {
+      guard let typed = Int(raw) else { continue }
+      draft.params[index] = IndicatorParamRule.clamp(typed)
+    }
+    pendingText.removeAll()
+    editingParam = nil
   }
 
   /// 均线这类「几条线」由用户定；MACD、KDJ 那种参数个数是算法定死的，不能加也不能删。
@@ -381,6 +408,8 @@ private struct IndicatorEditor: View {
 private struct ParamField: View {
   var label: String
   @Binding var value: Int
+  /// 这一格里还没被确认的那串字符，镜像到编辑器那一层去（审查 C-07）。
+  @Binding var pending: String?
   var index: Int
   var focus: FocusState<Int?>.Binding
   var theme: PanelTheme
@@ -410,6 +439,8 @@ private struct ParamField: View {
           let digits = String(now.filter(\.isNumber).prefix(3))
           if digits != now { text = digits }
           if let n = Int(digits), IndicatorParamRule.isValid(n) { value = n }
+          // 合法与否都往上报一份：越界的那些正是「保存」要替我们夹回去的。
+          pending = focus.wrappedValue == index ? digits : nil
         }
         // 点进来先清空，当前值退成灰底纹。不清的话光标停在数字中间，
         // 想把 10 改成 7 会打出 710——三位以内的周期，重打一遍比删两下快。
@@ -425,5 +456,6 @@ private struct ParamField: View {
     let clamped = IndicatorParamRule.clamp(Int(text) ?? value)
     value = clamped
     text = String(clamped)
+    pending = nil
   }
 }

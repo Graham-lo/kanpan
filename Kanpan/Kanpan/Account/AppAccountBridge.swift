@@ -60,7 +60,12 @@ import ReviewUI
   init(account: AccountFeature, prefs: PrefsStore, symbols: SymbolPickerModel, drawings: DrawingController, review: ReviewFeature, search: SearchHistory) throws {
     self.account = account; self.prefs = prefs; self.symbols = symbols; self.drawings = drawings; self.review = review; self.search = search
     var root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("kanpan/accounts")
+    // 测试档案另起一棵 `tests/<uuid>` 子树。**只在 DEBUG 构建里存在**（审查 C-02）：
+    // 正式包里没有这条口子，Release 回归靠独立的测试安装沙盒隔离，不靠产品二进制
+    // 自己认一个环境变量改档案目录。
+    #if DEBUG
     if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1", let profile = ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"], UUID(uuidString: profile) != nil { root = root.appendingPathComponent("tests/" + profile) }
+    #endif
     files = try AccountFiles(root: root)
     try migrateLegacy()
     dropSharedSearchHistory()

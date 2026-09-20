@@ -185,7 +185,10 @@ extension DeviceKind {
   ///
   /// 「iPad 上跑的 iPhone 版」（兼容模式）报的 idiom 就是 `.phone`，那也正是它该占的
   /// 名额——服务端按报上来的类别算，界面上也确实是一部手机的样子。
-  static var current: DeviceKind {
+  /// `UIDevice.current` 是主线程隔离的，这儿不标 `@MainActor` 就是两条并发警告
+  /// （审查 C：零警告）。唯一的调用方是 `AccountFeature.device` 的初值，那个类本来
+  /// 就整个挂在主线程上，标上去不影响任何人。
+  @MainActor static var current: DeviceKind {
     if ProcessInfo.processInfo.isiOSAppOnMac { return .desktop }
     switch UIDevice.current.userInterfaceIdiom {
     case .pad: return .tablet

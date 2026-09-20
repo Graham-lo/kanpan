@@ -80,22 +80,24 @@ final class StubVault: CredentialVault, @unchecked Sendable {
   }
 }
 
-// 下面这一套整体只在 DEBUG 下编译：它要拿假主机（`accounts.invalid`）建客户端，
-// 而放行任意主机的钩子 `Options(allowAnyHostForTests:)` 按 A-07 只存在于 DEBUG
-// ——Release 二进制里不许有这条口子。所以 `swift test -c release` 时这一套不参与，
-// 同一个包里的性能基准照常编译、照常跑。
-#if DEBUG
 /// 退登、重新认证这条链。跑的是 `AccountClient` 那一层——界面那层（`AccountFeature`）
 /// 在 app 目标里没有测试宿主，所以凡是能下沉的判断都放在这儿由用例钉住。
+///
+/// 这一套从前整个裹在 `#if DEBUG` 里（审查 C-05）：它拿假主机 `accounts.invalid` 建
+/// 客户端，靠的是只存在于 DEBUG 的 `Options(allowAnyHostForTests:)`。后果是
+/// `swift test -c release` 下「退登清不清干净」「被顶下去走哪条路」这些行为一条都不存在，
+/// 而汇总看起来照样全绿。现在改成白名单里那台网关——请求全被 `StubProtocol` 就地截下，
+/// 一个字节都不出门，地址只是个名字——于是 Debug / Release 两边跑的是同一套。
 @Suite("会话生命周期", .serialized)
 struct SessionLifecycleTests {
+  private static let host = "kanpan.107-174-172-10.sslip.io"
+
   private func makeClient(_ vault: StubVault) throws -> AccountClient {
     StubProtocol.server.reset()
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [StubProtocol.self]
-    return try AccountClient(baseURL: URL(string: "https://accounts.invalid")!, vault: vault,
-                             session: URLSession(configuration: configuration),
-                             options: AccountClient.Options(allowAnyHostForTests: true))
+    return try AccountClient(baseURL: URL(string: "https://" + Self.host)!, vault: vault,
+                             session: URLSession(configuration: configuration))
   }
   private func saved() -> SavedAccount {
     SavedAccount(user: AccountUser(id: UUID(), email: "someone"), sessionId: UUID(),
@@ -189,4 +191,3 @@ struct SessionLifecycleTests {
     #expect(await client.needsReauthentication == false)
   }
 }
-#endif

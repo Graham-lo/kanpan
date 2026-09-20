@@ -165,6 +165,16 @@ final class SymbolPickerModel {
     catalog = list
     reindex()
     rebuildFilter()
+    // 目录到了才知道一个代号到底是什么东西（`underlyingType`）——而分类名正是从这儿来的。
+    //
+    // 建这个模型的时候手里没有目录（`MainScreen` 那一处 `catalog` 是空的），初始化里
+    // 那一趟 `classifyUnassigned()` 因此一个都认不出来，只能原样放着；账号同步拉回来的
+    // 那份自选也一样，字段里根本不带分类。两种情形下「知道是什么却没分类」的自选会一直
+    // 挂在没有分类那一格上，一旦有了别的分类就从分类页上消失（`favorites(in:)` 按
+    // 分类过滤）。目录一到就补一趟，它们才归得了队。
+    //
+    // 真改了东西才 `commit()`：绝大多数进页这儿一条都不动，不该为此重编一遍整份自选。
+    if classifyUnassigned() { commit() }
   }
 
   /// 行情按 symbol 覆盖写；`!ticker@arr` 每 1s 推一批，只推变动的。

@@ -272,6 +272,36 @@ struct SymbolPickerModelTests {
     #expect(SymbolPrefsStore(storage: storage, key: "t").load().groupForSymbol["BTCUSDT"] != nil)
   }
 
+  @Test("目录晚一步才到，那时候才补分类")
+  func classifyingWaitsForTheCatalogToArrive() throws {
+    // 宿主建这个模型的时候手里没有品种表（`MainScreen` 那一处 `catalog` 是空的），
+    // 品种表要么等 `setLoader`、要么等进页 `appear()` 才到。那一趟 init 里
+    // 一个代号都认不出是什么（分类名来自 `underlyingType`），所以只能原样放着——
+    // 账号同步拉回来的那份自选同理，字段里根本不带分类。
+    let storage = CountingStorage()
+    let store = SymbolPrefsStore(storage: storage, key: "t")
+    store.save(SymbolPrefs(favorites: ["BTCUSDT", "ETHUSDT"]))
+    let writesBeforeOpening = storage.writes
+
+    let m = SymbolPickerModel(store: store)   // 目录还没到
+    #expect(storage.writes == writesBeforeOpening)
+    #expect(m.prefs.groupForSymbol["BTCUSDT"] == nil)
+    #expect(m.prefs.groups.isEmpty)
+
+    // 目录到了：这时候才知道它们是什么，补一趟分类并落盘。
+    // 不补的话，「知道是什么却没分类」的自选会一直挂在没有分类那一格上，
+    // 一旦有了别的分类就从分类页上消失（`SymbolPrefs.favorites(in:)` 按分类过滤）。
+    m.setCatalog(SymbolFixtures.catalog)
+    #expect(m.prefs.groupForSymbol["BTCUSDT"] != nil)
+    #expect(m.prefs.groupForSymbol["ETHUSDT"] != nil)
+    #expect(SymbolPrefsStore(storage: storage, key: "t").load().groupForSymbol["BTCUSDT"] != nil)
+
+    // 已经齐整了就别再写：自选页每进一次都会灌一趟目录。
+    let writesAfter = storage.writes
+    m.setCatalog(SymbolFixtures.catalog)
+    #expect(storage.writes == writesAfter)
+  }
+
   @Test("这一批行情一行都没落在表里，就不碰 sections")
   func quotesOutsideTheTableLeaveSectionsAlone() throws {
     final class Flag: @unchecked Sendable { var hit = false }

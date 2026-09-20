@@ -51,16 +51,21 @@ struct ClientHardeningTests {
     GateStubProtocol.server.reset()
     if gateClosed { GateStubProtocol.gate.close() } else { GateStubProtocol.gate.open() }
   }
-  // 这里是 `reset` 之外、需要拿假主机（`accounts.invalid`）建客户端的那一摊：
-  // 放行任意主机的钩子按 A-07 只存在于 DEBUG，Release 二进制里没有这条口子。
-  // 所以它们只在 DEBUG 下编译；不需要客户端的 `主机白名单` 两种配置都跑。
-#if DEBUG
+  /// 出厂白名单里那台网关。**这一套用例一个字节都不出门**：`GateStubProtocol` 把
+  /// 这个 session 上的所有请求原地截下来，地址只是个名字。
+  ///
+  /// 从前这儿写的是 `accounts.invalid` + `allowAnyHostForTests: true`，而那个开关
+  /// 按 A-07 只存在于 DEBUG，于是底下一半用例整块被 `#if DEBUG` 包走——Release 配置下
+  /// 「两个客户端只刷一次」「来源不符不认存档」「URL 编码跳不出父目录」这些行为
+  /// 一条都不存在（审查 C-05：不是改成 Release 可运行的同等测试，是让它们消失）。
+  /// 换成白名单内的主机之后，这些用例在 Debug / Release 两边都真的跑。
+  static let host = "kanpan.107-174-172-10.sslip.io"
+
   private func makeClient(_ vault: StubVault) throws -> AccountClient {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [GateStubProtocol.self]
-    return try AccountClient(baseURL: URL(string: "https://accounts.invalid")!, vault: vault,
-                             session: URLSession(configuration: configuration),
-                             options: AccountClient.Options(allowAnyHostForTests: true))
+    return try AccountClient(baseURL: URL(string: "https://" + Self.host)!, vault: vault,
+                             session: URLSession(configuration: configuration))
   }
   /// 钥匙串里那份存档。`origin` 传 nil 就是**旧版本写下的那一份**（还没有这个字段）。
   /// 故意走 JSON：老存档在真机上就是这样躺着的，少一个键也得解得开。
@@ -114,7 +119,6 @@ struct ClientHardeningTests {
     #expect(GateStubProtocol.server.calls("/v1/auth/refresh").count == 1, "同一个凭据槽上只许有一趟刷新")
     #expect(vault.stored?.refreshToken == "refresh-2", "槽里留下的是同一把新令牌")
   }
-#endif
 
   /// 构造器过去接受任意 https 主机。令牌是拿钥匙串里那份换的，地址写错一个字母就是
   /// 把凭据递给别人。出厂只认自家那两台网关。
@@ -136,12 +140,12 @@ struct ClientHardeningTests {
     }
   }
 
-#if DEBUG
   /// 存档要记得自己是谁签发的。换了服务器地址（换了台网关、DEBUG 下指到别处）时，
   /// 这份令牌不能跟着出门——那等于把 A 家的钥匙往 B 家的锁上试。
   @Test("来源不符的存档当作没有会话")
   func 来源不符() async throws {
     reset()
+    // 另一台网关签的：同样在白名单里，但不是这个客户端连的那台。
     let vault = StubVault(try archive(origin: "kanpan.96-44-162-222.sslip.io"))
     let client = try makeClient(vault)
     #expect(await client.savedUser() == nil, "不是这台服务器签的，就不算有会话")
@@ -163,7 +167,7 @@ struct ClientHardeningTests {
     try await client.accept(fresh, device: AccountDevice(name: "phone"))
     let stored = try #require(vault.stored)
     let raw = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(stored)) as? [String: Any])
-    #expect(raw["origin"] as? String == "accounts.invalid", "新凭据要记下是谁签的")
+    #expect(raw["origin"] as? String == Self.host, "新凭据要记下是谁签的")
   }
 
   /// 路径守卫过去只拦字面量 `..`：URL 编码过的 `%2e%2e` 照样过得去，
@@ -184,5 +188,4 @@ struct ClientHardeningTests {
     GateStubProtocol.server.route("/v1/auth/devices/" + device, 200, #"{"data":{"devices":[]}}"#)
     _ = try await client.data("v1/auth/devices/" + device, authenticated: false)
   }
-#endif
 }

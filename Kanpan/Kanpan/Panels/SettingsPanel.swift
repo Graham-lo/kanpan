@@ -98,9 +98,17 @@ struct SettingsPanel: View {
       .accessibilityIdentifier("settings.reset")
 
     }
-    .sheet(isPresented: Binding(get: { account?.presented == true }, set: { account?.presented = $0 })) {
-      if let account { AccountView(feature: account) }
-    }
+    // 账号页由**一个** presenter 持有（审查 C-06）。
+    //
+    // 这一页当标签栏整页画的时候，它是长在根视图树里的一节，而根那一层
+    // （`MainScreen`）已经拿同一个 `account.presented` 挂了一张 `.sheet`。
+    // 两个 presenter 抢同一个布尔：SwiftUI 只认一个，另一个的呈现状态没人收，
+    // 「关掉之后要点两下才再开」这类症状就是从那儿来的。所以整页时这儿不挂，
+    // 点账号入口只是把布尔置位，开页的事交给根。
+    //
+    // `asPage == false` 的那条路留着：那时这一页自己是一张 sheet，账号页得叠在
+    // 它上面，根的 sheet 够不着——那才是「真正作为上层 sheet 的设置上下文」。
+    .modifier(AccountPresenter(account: asPage ? nil : account))
     .panelToast(store)
     .sensoryFeedback(.selection, trigger: prefs)
   }
@@ -166,4 +174,20 @@ struct SettingsPanel: View {
 
 #Preview("设置") {
   PanelPreviewHost { store in SettingsPanel(store: store) }
+}
+
+/// 把账号页挂在调用方自己这一层。`account` 为 nil 时整段不挂——
+/// 那说明账号呈现权在别人手里（见 `SettingsPanel` 里那段说明）。
+private struct AccountPresenter: ViewModifier {
+  var account: AccountFeature?
+  func body(content: Content) -> some View {
+    if let account {
+      content.sheet(isPresented: Binding(get: { account.presented },
+                                         set: { account.presented = $0 })) {
+        AccountView(feature: account)
+      }
+    } else {
+      content
+    }
+  }
 }

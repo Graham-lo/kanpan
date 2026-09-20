@@ -331,11 +331,20 @@ struct SectorPage: View {
 
   // MARK: - 第三层：某个板块的品种列表
 
-  /// 成员名单从分类表（或兜底桶）取，行情从 `feed` 取。板块本身要是整个没了行情
-  /// （`stats` 里找不到它），就没有可看的东西，直接退回上一层——与其画一张空壳，
-  /// 不如把人放回去。
+  /// 成员名单从分类表（或兜底桶）取，行情从 `feed` 取。
+  ///
+  /// 这一帧的 `stats` 里找不到这个板块时**不退栈**（审查 C-01）。「找不到」多数时候
+  /// 只是行情还没到——冷启动第一帧、刚换窗口、网络抖一下都会这样；把它当成「人按了
+  /// 返回」，用户就会在数据回来之前被悄悄送回球场，而且再也回不去（路由已经被弹掉，
+  /// 没人会替他压回来）。退不退由 `SectorDrillDecision` 判：只有分类表确认它不在、
+  /// 兜底桶里也没有、而且这一帧确实算出了别的板块（说明行情在跑，只是没有它），
+  /// 才算「板块没了」。其余情况留在原地等，摆一张只有名字的空壳——返回键还在，
+  /// 人随时能自己走。
   @ViewBuilder private func listLayer(_ id: String, _ snap: Snapshot) -> some View {
-    if let stat = snap.stats.first(where: { $0.id == id }) {
+    switch SectorDrillDecision.decide(id: id, stats: snap.stats, buckets: snap.buckets) {
+    case .show, .wait:
+      let stat = snap.stats.first { $0.id == id }
+        ?? SectorDrillDecision.placeholder(id: id, market: market, buckets: snap.buckets)
       let members = members(of: id, snap)
       // 20 日不是一个模式，只是 5 日那一档里头部补的一句。没有 20 日数据就不补。
       let d20 = snap.window == .d5
@@ -347,7 +356,7 @@ struct SectorPage: View {
                        symbolForBase: symbolForBase,
                        decimalsForBase: { feed.priceDecimals(forBase: $0) }, store: store,
                        onBack: pop, onPick: onPickSymbol)
-    } else {
+    case .pop:
       Color.clear.onAppear { pop() }
     }
   }

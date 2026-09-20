@@ -32,16 +32,18 @@ struct DeviceKindTests {
   private struct Probe: Decodable, Sendable { var ok: Bool? }
   private var server: StubServer { KindStubProtocol.server }
 
-  // 这里往下到 `设备列表带类别` 为止都要拿假主机建客户端，靠的是只在 DEBUG 里存在的
-  // `Options(allowAnyHostForTests:)`（A-07）。Release 配置下这几条不参与编译，
-  // 不需要客户端的 `旧存档迁移` 照常跑。
-#if DEBUG
+  /// 出厂白名单里那台网关。请求全被 `KindStubProtocol` 就地截下，一个字节都不出门。
+  ///
+  /// 从前这儿是 `accounts.invalid` + `allowAnyHostForTests: true`，而那个开关只存在于
+  /// DEBUG（A-07），于是「设备报类别」「被顶下去」「设备列表带类别」这一整摊在
+  /// Release 配置下整块消失（审查 C-05）。换成白名单内的主机，两个配置都真的跑。
+  private static let host = "kanpan.107-174-172-10.sslip.io"
+
   private func makeClient(_ vault: StubVault) throws -> AccountClient {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [KindStubProtocol.self]
-    return try AccountClient(baseURL: URL(string: "https://accounts.invalid")!, vault: vault,
-                             session: URLSession(configuration: configuration),
-                             options: AccountClient.Options(allowAnyHostForTests: true))
+    return try AccountClient(baseURL: URL(string: "https://" + Self.host)!, vault: vault,
+                             session: URLSession(configuration: configuration))
   }
   private func saved(_ kind: DeviceKind) -> SavedAccount {
     SavedAccount(user: person, sessionId: UUID(),
@@ -173,7 +175,6 @@ struct DeviceKindTests {
     #expect(listed.map(\.kind) == [.phone, .tablet, .desktop, .phone, .phone])
     #expect(listed.map(\.kind.label) == ["手机", "平板", "电脑", "手机", "手机"])
   }
-#endif
 
   /// 旧版本写下的钥匙串存档里没有这个字段。它对应的那条服务端会话也是按「手机」记的
   /// （服务端 `DeviceKind` 的 `#[default]`），所以解出来必须是手机——解成别的类别，

@@ -143,20 +143,12 @@ final class AICoinBaseUITests: XCTestCase {
     shot("04-真机双指缩放")
     point.press(forDuration: 0.6)
     XCTAssertTrue(wait { info()["crosshair"] as? Bool == true }, "长按抬手应保留十字线")
+    // 持仓量那一段搬去了 `testOpenInterestPaneCarriesRealDataAndTakesTheCrosshair`（审查 C.9）：
+    // 它原来就长在这儿，前面还挂着一句「线路是 OKX 就跳过」。中途 skip 吞的不是那三行，
+    // 是**整条用例的后半段**——底下横屏共用底座、iPad 横向窗口、退横屏不退画线，
+    // 全都跟持仓量无关，却一条都跑不到，而汇总上只显示「已跳过」。
     point.tap()
-    // 跑着跑着被切到兜底线路也是可能的（币安那边抖一下就够了）。那种情况下持仓量
-    // 本来就不会来，接着断言只是在验网络，不是验 app——说清楚再跳过。
-    try XCTSkipIf(app.staticTexts["market.source"].label == "okx",
-                  "当前跑在 OKX 兜底线路上，这条线路不提供持仓量，跳过")
-    XCTAssertTrue(wait({ info()["oiReady"] as? Bool == true }, seconds: 45),
-                  "OI真实数据未到达（线路：\(app.staticTexts["market.source"].label)）")
-    shot("05-持仓量与三副图")
-    let oiPane = try XCTUnwrap((info()["panes"] as? [[String: Any]])?.first { $0["id"] as? String == "OI" })
-    let oiY = try XCTUnwrap(oiPane["y"] as? Double) + (try XCTUnwrap(oiPane["h"] as? Double)) / 2
-    canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: plotW * 0.4, dy: oiY)).tap()
-    XCTAssertTrue(wait { info()["crosshair"] as? Bool == true && info()["crossPane"] as? String == "OI" })
-    shot("06-副图十字线")
-    point.tap()
+    XCTAssertTrue(wait { info()["crosshair"] as? Bool == false }, "再点一下十字线该收走")
     let portraitWidth = try XCTUnwrap(info()["plotW"] as? Double)
     let portraitSpacing = try XCTUnwrap(info()["spacing"] as? Double)
     let portraitHeight = try XCTUnwrap(info()["height"] as? Double)
@@ -170,17 +162,63 @@ final class AICoinBaseUITests: XCTestCase {
       XCTAssertTrue(wait { (info()["plotW"] as? Double ?? 0) > portraitWidth + 80 })
     }
     XCTAssertEqual(try XCTUnwrap(info()["spacing"] as? Double), portraitSpacing, accuracy: 0.001)
-    shot("07-横屏共用底座")
+    shot("05-横屏共用底座")
     if UIDevice.current.userInterfaceIdiom == .pad {
       XCUIDevice.shared.orientation = .landscapeLeft
       XCTAssertTrue(wait { app.buttons["land.exit"].isHittable && canvas.frame.height > 100 &&
         app.windows.firstMatch.frame.width > app.windows.firstMatch.frame.height })
-      shot("08-iPad横向窗口")
+      shot("06-iPad横向窗口")
     }
     app.buttons["land.exit"].tap()
     // 「竖屏」只退横屏、不退画线——用户横屏画一半转回来还得接着画。
     XCTAssertTrue(app.buttons["draw.finish"].waitForExistence(timeout: 10), "退回竖屏后画线栏没了")
     app.buttons["draw.finish"].tap()
     XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 10))
+  }
+
+  /// 持仓量副图：真数据到得了，点它出十字线且落在 OI 那一格。
+  ///
+  /// 审查 C.9：这一段原来嵌在 `testColdLaunchStylesAndChartInteractions` 中间，
+  /// 拆出来单过，中途跳过就再也遮不住别的断言。
+  ///
+  /// 顺带把那句 `XCTSkipIf(market.source == "okx")` 也去掉了。行情线路只认设置里的
+  /// 那一档、出厂是直连币安、全程没有任何自动切换（见设置里的「行情线路」），
+  /// 而这条用例每次都给一个全新档案，所以线路必然是币安。不是币安就不是「这条用例
+  /// 不适用」，是路由那一层出事了，该红。
+  func testOpenInterestPaneCarriesRealDataAndTakesTheCrosshair() throws {
+    let app = XCUIApplication()
+    app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
+    app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
+    app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
+    app.launch()
+    let canvas = app.otherElements["chart.canvas"]
+    XCTAssertTrue(canvas.waitForExistence(timeout: 30))
+    func info() -> [String: Any] {
+      guard let value = canvas.value as? String, let data = value.data(using: .utf8),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+      return object
+    }
+    func wait(_ condition: @escaping () -> Bool, seconds: Double = 20) -> Bool {
+      let predicate = NSPredicate { _, _ in condition() }
+      return XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: nil)],
+                           timeout: seconds) == .completed
+    }
+    func shot(_ name: String) {
+      let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); a.name = name
+      a.lifetime = .keepAlways; add(a)
+    }
+    XCTAssertTrue(wait({ (info()["bars"] as? Int ?? 0) >= 256 }, seconds: 60), "BTC历史尚未加载")
+    XCTAssertEqual(app.staticTexts["market.source"].label, "binance",
+                   "全新档案起步就不在直连币安上，持仓量本来就取不到——先修路由")
+    XCTAssertEqual(info()["subs"] as? [String], ["VOL", "OI", "MACD"], "出厂三副图里没有持仓量")
+    XCTAssertTrue(wait({ info()["oiReady"] as? Bool == true }, seconds: 45), "OI真实数据未到达")
+    shot("01-持仓量与三副图")
+    let plotW = try XCTUnwrap(info()["plotW"] as? Double)
+    let oiPane = try XCTUnwrap((info()["panes"] as? [[String: Any]])?.first { $0["id"] as? String == "OI" })
+    let oiY = try XCTUnwrap(oiPane["y"] as? Double) + (try XCTUnwrap(oiPane["h"] as? Double)) / 2
+    canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: plotW * 0.4, dy: oiY)).tap()
+    XCTAssertTrue(wait { info()["crosshair"] as? Bool == true && info()["crossPane"] as? String == "OI" },
+                  "点在持仓量那一格上没出十字线：\(info())")
+    shot("02-副图十字线")
   }
 }

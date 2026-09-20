@@ -131,7 +131,7 @@
     只存在本机的（搜索历史 SearchHistory、K 线缓存、帧率诊断、未登录时的访客档案）
     不算，所以不在下面。
 
-    三条的共同点：都跟账号绑着（Linked = true），都只为 App 功能，
+    四条的共同点：都跟账号绑着（Linked = true），都只为 App 功能，
     都不用于追踪、不用于广告（Tracking = false）。
   -->
   <key>NSPrivacyCollectedDataTypes</key>
@@ -145,10 +145,40 @@
         没有邮箱：邮箱注册 2026 年已经停掉，`AccountUser.email` 只是没改完的旧字段名，
         装的是用户名。
         随账号一起上去的设备名是 `UIDevice.current.model`（AccountFeature.swift:19），
-        只会是 "iPhone" / "iPad" 这种机型词，不是设备标识符，所以不申报 Device ID。
+        只会是 "iPhone" / "iPad" 这种机型词——但**同一个 `AccountDevice` 里还有一个
+        本机生成、长期不变的 `id`（UUID）**，它跟着注册 / 登录一起发出去，服务端存进
+        `sessions.device_id`（`Backend/kanpan-api/migrations/0001_accounts.sql`）。
+        那是一个设备级标识，见下面单列的 Device ID 一条。机型词不是标识符，
+        但不能因为它不是，就把同一条请求里真的那个 UUID 一起漏掉。
       -->
       <key>NSPrivacyCollectedDataType</key>
       <string>NSPrivacyCollectedDataTypeUserID</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+    <dict>
+      <!--
+        设备级标识。注册 / 登录 / 刷新发出去的 `device` 里带着 `AccountDevice.id`
+        （`KanpanAccount/Sources/KanpanAccount/Models.swift:28-37`，本机首次生成的 UUID，
+        随钥匙串存档长期不变），服务端把它记在 `sessions.device_id` 上，用来认「这台机器
+        的这条会话」——「每类设备只许一台在线」就是按它判的。同一份结构里的 `secret`
+        是这台机器的凭据，不是另一种标识，一并算在这条里。
+
+        它**不是**广告标识：本 app 没有 IDFA、没有广告 / 分析 SDK，也从不把它跨 app、
+        跨网站与别家的数据拼起来，所以 Tracking = false。它跟着账号走（Linked = true），
+        用途只有一个：让账号功能认得出设备、管得住同类设备互踢。
+
+        未登录时这个 UUID 只躺在本机访客档案里，一个字节都不出门——按本文件的口径
+        （只有真的进了我们数据库的才算「收集」），是登录 / 注册那一刻起它才成为收集项。
+      -->
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeDeviceID</string>
       <key>NSPrivacyCollectedDataTypeLinked</key>
       <true/>
       <key>NSPrivacyCollectedDataTypeTracking</key>

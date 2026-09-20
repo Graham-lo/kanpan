@@ -150,20 +150,25 @@ final class MarketModel {
   /// 而 UI 测试只开 `KANPAN_CHART_DIAGNOSTICS`，于是那一格永远是空的。
   /// 「首屏取不到行情」这类用例挂在 CI 上时，恰恰只有这一格能回答「哪条路、哪个主机、
   /// 第几步断的」，空着等于把唯一的现场证据丢了。
+  ///
+  /// 两个开关**都只在 DEBUG 构建里读**（审查 C-02）：正式包一律静音，
+  /// 同一个二进制不该因为启动环境不同而多出一条日志通路。
   private static let log: FeedLog = {
+    #if DEBUG
     let env = ProcessInfo.processInfo.environment
     let stdout = env["KANPAN_LOG"] == "1"
-    var collect = false
-    #if DEBUG
-    collect = env["KANPAN_CHART_DIAGNOSTICS"] == "1"
-    #endif
+    let collect = env["KANPAN_CHART_DIAGNOSTICS"] == "1"
     guard stdout || collect else { return .silent }
     return FeedLog { line in
       if stdout { print(line) }
-      #if DEBUG
       Task { @MainActor in MarketNetworkDiagnostics.shared.lines = String((MarketNetworkDiagnostics.shared.lines + "\n" + line).suffix(8000)) }
-      #endif
     }
+    #else
+    // 正式包一律静音。写成 `#if DEBUG … #else` 而不是 `#if !DEBUG … #else`，
+    // 是为了让「所有读启动环境的地方都在 `#if DEBUG` 里」这句话能被一条机械扫描
+    // 直接证明（审查 C-02 的收口证据），不必人工再读一遍取反分支。
+    return .silent
+    #endif
   }()
 
   /// `exchangeInfo` 回来之前先顶上。冷启动第一帧不该等网络。
@@ -700,11 +705,12 @@ final class MarketModel {
     return after
   }
 
-#if DEBUG
-  /// 用例用：直接摆一份品种事实进来。真身那条路要品种表（网络 / 磁盘），
-  /// 而要守的规则（`priceFresh` 之类）只关心 `info` 里的字段。
-  func overrideInfoForTesting(_ value: SymbolInfo) { info = value }
-#endif
+  // 这儿原来有个 `#if DEBUG func overrideInfoForTesting(_:)`，用例拿它直接往
+  // `info` 里塞一份品种事实（审查 C-05）。两个毛病：Release 下这个方法根本不存在，
+  // 于是 `KanpanTests` 在 Release 配置下连编都编不过，「Release 回归」永远只能是空话；
+  // 而且它绕开了产品里真正把品种翻成下架的那条路。用例改走
+  // `noteSymbolRejected(_:)`——那是交易所答不出代号时产品自己会走的入口，
+  // 测它才算测到东西。钩子就此删掉，Debug / Release 两边的 `MarketModel` 一模一样。
 
   /// 交易所拿这个代号答不出来（`QuoteBook.onSymbolRejected`）。
   ///

@@ -92,7 +92,6 @@ import CoreGraphics
     logout(step: "第 6 步（退出 B）")
     openAccount(step: "第 6 步（打开登录页）")
     fill(username: userA, step: "第 6 步（填 A 的用户名口令）")
-    let switchStart = Date()
     app.buttons["account.submit"].tap()
     // 「当场变回来」先用整屏亮度量，因为它和人停在哪一页无关：登录一成功，
     // `onProfileReady()` 会重新决定落地页，设置页会被顶掉（自选不空就去自选、

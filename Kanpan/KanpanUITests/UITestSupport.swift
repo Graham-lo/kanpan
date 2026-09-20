@@ -105,12 +105,21 @@ class KanpanUICase: XCTestCase {
   /// 默认什么都不加，Prefs 只留在内存里。
   var extraLaunchEnvironment: [String: String] { [:] }
 
+  /// 子类要给 app 额外的启动参数就覆写这个。
+  ///
+  /// 目前只有一处用它：把动态字号顶到最大
+  /// （`-UIPreferredContentSizeCategoryName UICTContentSizeCategoryAccessibilityXXXL`，
+  /// 见 `SkinScaleAccessibilityUITests`）。这是 UIKit 自己认的启动参数，不是我们的
+  /// 测试开关——它在 Release 包里同样生效，所以不归 C-02 那张后门表管。
+  var extraLaunchArguments: [String] { [] }
+
   override func setUp() async throws {
     continueAfterFailure = false
     app = XCUIApplication()
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     for (key, value) in extraLaunchEnvironment { app.launchEnvironment[key] = value }
+    app.launchArguments += extraLaunchArguments
     app.launch()
     // 冷启动可能先停在自选页（有自选就落在「自选」那一格）——那一页没有顶栏，
     // 先按标签栏上的「图表」回行情页。标签栏是常驻的，自选页上也点得到。
@@ -354,6 +363,46 @@ class KanpanUICase: XCTestCase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.buttons[Ids.intervalChart].exists },
                   "点了「图表」还没回到行情页", file: file, line: line)
   }
+
+  // ------------------------------------------------------------ 常走的两条路
+
+  /// 标签栏 →「设置」整页。
+  func openSettingsPage(file: StaticString = #filePath, line: UInt = #line) {
+    let tab = app.buttons[Ids.bottomSettings]
+    XCTAssertTrue(tab.waitForExistence(timeout: Self.short), "标签栏上没有「设置」",
+                  file: file, line: line)
+    tab.tap()
+    XCTAssertTrue(app.buttons[Ids.settingsMagnet].waitForExistence(timeout: Self.short),
+                  "点了「设置」没进设置整页", file: file, line: line)
+  }
+
+  /// 图表设置面板 → 均线的「参数与颜色」。指标那一段排在面板最上面，开出来就看得见。
+  ///
+  /// C-07（保存的不是显示的那个数）和 C.10 第 8 条（数字键盘挡不挡主动作）都要从这儿进去，
+  /// 所以摆在底座上，别两个文件各抄一份。
+  func openIndicatorEditor(file: StaticString = #filePath, line: UInt = #line) {
+    let edit = app.buttons["indicator.edit.MA"]
+    // 面板可能还开着（上一步刚从编辑器 dismiss 回来），开着就直接用。
+    if !edit.exists {
+      if !app.buttons[Ids.intervalChart].exists { leaveSettings(file: file, line: line) }
+      let entry = app.buttons[Ids.intervalChart]
+      expectExists(entry, Self.short, "周期行右端没有「图表」", file: file, line: line)
+      entry.tap()
+      expectExists(app.staticTexts[Ids.panelHeader], Self.short, "图表设置面板没开出来",
+                   file: file, line: line)
+      let toggle = app.buttons[Ids.indicatorSwitch("MA")]
+      expectExists(toggle, Self.short, "图表设置面板里没有均线开关", file: file, line: line)
+      if !edit.exists {
+        toggle.tap()
+        expectExists(edit, Self.short, "打开均线之后没露出「参数与颜色」", file: file, line: line)
+      }
+    }
+    XCTAssertTrue(waitUntil(timeout: Self.short) { edit.isHittable }, "「参数与颜色」点不到",
+                  file: file, line: line)
+    edit.tap()
+    expectExists(app.textFields["indicator.param.0.field"], Self.short, "没进到指标参数编辑器",
+                 file: file, line: line)
+  }
 }
 
 extension XCUIApplication {
@@ -484,5 +533,28 @@ extension XCUIApplication {
       if buttons["favorites.more"].waitForExistence(timeout: 15) { return true }
     }
     return false
+  }
+}
+
+// ============================================================ 手动工具（审查 C.9）
+//
+// 有几条用例不是回归项，是**手动工具**：它们故意不隔离档案，直接往用户正式的自选存档
+// 里写（`KANPAN_INSTALL_USER_FAVORITES=1` 才开），跑完手机上那份自选就被改了。
+// 所以它们既不能进常规回归、也不能自动打开。
+//
+// 但「不跑」和「跑过了」在 xcresult 里长得太像：一条 `XCTSkipUnless` 出来的灰钩，
+// 和真的通过只差一行小字。这个口子统一收在这儿——跳过时挂一张写明「未执行」的附件，
+// 谁翻结果都一眼看得出这一格根本没跑，别把它算进分母。
+enum ManualTool {
+  /// 当前这条是不是被显式点名要跑的手动工具；不是就带着证据跳过。
+  static func skipUnlessRequested(_ test: XCTestCase, what: String) throws {
+    guard ProcessInfo.processInfo.environment["KANPAN_INSTALL_USER_FAVORITES"] != "1" else { return }
+    let note = XCTAttachment(string:
+      "未执行：\(what) 是手动工具，会写进这台设备上用户正式的自选存档。" +
+      "要跑就显式给 KANPAN_INSTALL_USER_FAVORITES=1，别把它算进回归分母。")
+    note.name = "手动工具-未执行"
+    note.lifetime = .keepAlways
+    test.add(note)
+    throw XCTSkip("\(what)：手动工具，没给 KANPAN_INSTALL_USER_FAVORITES=1（未执行，不等于通过）")
   }
 }

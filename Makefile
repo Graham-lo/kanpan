@@ -185,7 +185,77 @@ sync-contract:
 	  --filter theContractFileIsTheOneListBothSidesRead
 	@echo "→ $(SYNC_CONTRACT) 已按 PrefsFieldPlan.table 重新生成；跑 make app-logic-test 与 (cd Backend/kanpan-api && cargo test --lib) 对账"
 
-test: core-test network-test data-test app-logic-test chart-test main-ios-test
+# ---------------------------------------------------------------- 账号与复盘
+# 审查 C-05：这两个包过去一个都不在 `test` 里。也就是说「make test 全绿」跟
+# 账号登录、退登、被顶下线、复盘评定这些东西改没改坏毫无关系——那正是报告里
+# 「全测目标没有选中账号与复盘」的原话。现在都挂进去。
+ACCOUNT := KanpanAccount
+
+account-test:
+	cd $(ACCOUNT) && swift test $(CORE_TEST_FLAGS)
+
+# 复盘包在 mac 上 `swift test` 编不过：`ReviewUI` 吃 SwiftUI + UIKit，裸 swift build
+# 会拿 macOS sysroot 去编。所以照 `main-ios-test` / `chart-test` 的老规矩起模拟器，
+# 用 xcodebuild 指一个 iOS Simulator destination。
+REVIEW := KanpanReview
+
+review-test:
+	cd $(REVIEW) && xcodebuild test -scheme KanpanReview \
+	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild
+
+test: core-test network-test data-test app-logic-test chart-test main-ios-test account-test review-test
+
+# ---------------------------------------------------------------- Release 回归
+# 审查 C-05 的另一半：`Kanpan.xcscheme` 的 TestAction 是 Debug，上面那条 `test` 也全是
+# Debug。于是「测试全绿」证明的只是 Debug 那个二进制，而用户手上装的是 Release。
+#
+# **`ENABLE_TESTABILITY=YES` 不能省。** xcodebuild 在 Release 配置下把它默认设成 NO，
+# 没有它，测试目标里的 `@testable import` 一律编不过（`module was not compiled for
+# testing`）。SwiftPM 的 `swift test -c release` 自己会带上这个设置，所以只有走
+# xcodebuild 的那几个包需要显式写。
+#
+# **Debug 有、Release 没有的用例，必须单独列出来、不许并进 Release 的通过数**（报告原话）。
+# 本轮清完之后，全仓只剩这一处：
+#   Kanpan/Symbols/Tests/KanpanSymbolsTests/SymbolPrefsSeedIsolationTests.swift —— 4 条。
+#   它钉的是 `SymbolPrefsStore.testSeed`，而那段种子脚手架按 A-07 / C-02 只存在于 DEBUG，
+#   Release 包里连代码都不该有。这 4 条在 Release 下会「为了错的理由变绿」，所以留在 DEBUG。
+# KanpanAccount 原来那 16 条（ClientHardening 8 / DeviceKind 5 / SessionLifecycle 全套）
+# 已经在本轮改成白名单主机 + 自带 URLProtocol，Debug / Release 两边都是 60 条，不再有差集。
+test-release: core-test-release network-test-release data-test-release app-logic-test-release \
+              account-test-release chart-test-release main-ios-test-release review-test-release
+
+core-test-release:
+	cd $(CORE) && swift test -c release $(CORE_TEST_FLAGS)
+network-test-release:
+	cd $(NETWORK) && swift test -c release $(CORE_TEST_FLAGS)
+data-test-release:
+	cd $(DATA) && swift test -c release $(CORE_TEST_FLAGS)
+account-test-release:
+	cd $(ACCOUNT) && swift test -c release $(CORE_TEST_FLAGS)
+app-logic-test-release:
+	cd $(SYMBOLS) && swift test -c release $(CORE_TEST_FLAGS)
+	cd $(SETTINGS) && swift test -c release $(CORE_TEST_FLAGS)
+	cd $(SECTOR) && swift test -c release $(CORE_TEST_FLAGS)
+	cd $(DIAG) && swift test -c release $(CORE_TEST_FLAGS)
+	cd $(ACCOUNT_CODEC) && swift test -c release $(CORE_TEST_FLAGS)
+chart-test-release:
+	cd $(CHART) && xcodebuild test -scheme KanpanChart \
+	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
+	  -configuration Release ENABLE_TESTABILITY=YES
+main-ios-test-release:
+	cd $(MAIN) && xcodebuild test -scheme KanpanMain \
+	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
+	  -configuration Release ENABLE_TESTABILITY=YES
+review-test-release:
+	cd $(REVIEW) && xcodebuild test -scheme KanpanReview \
+	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
+	  -configuration Release ENABLE_TESTABILITY=YES
+
+# 帧探针那一套同样只在模拟器上成立，Release 下也得能跑（同样要 ENABLE_TESTABILITY=YES）。
+diag-ios-test-release:
+	cd $(DIAG) && xcodebuild test -scheme KanpanDiagnostics \
+	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
+	  -configuration Release ENABLE_TESTABILITY=YES
 
 # A2.13：零警告零错误。警告即错误，谁也别想蒙混过去。
 strict:
@@ -263,6 +333,7 @@ device-release:
 		-destination 'generic/platform=iOS' \
 		-derivedDataPath $(DEVICE_RELEASE_DD) \
 		-allowProvisioningUpdates \
+		DEVELOPMENT_TEAM=$(TEAM_ID) \
 		build
 	@echo "Release 真机包：$(DEVICE_RELEASE_APP)"
 
@@ -301,10 +372,14 @@ print(xs[0]['hardwareProperties']['udid'] if xs else '')" "$(TMPDIR)devicectl.js
 # development——那样导出的 ipa 传上去照样被拒。入会之后在 Xcode 里登录一次
 # 付费账号，这两条报错就都没了。
 #
-# 入会拿到分发证书之后要改的地方只有 Team ID（如果换了账号）：
-#   1. 下面的 `TEAM_ID ?=`（或者临时 `make ipa TEAM_ID=XXXXXXXXXX`）
-#   2. Kanpan/Kanpan.xcodeproj/project.pbxproj 里四处 `DEVELOPMENT_TEAM = 27Y32PT2HZ`
-# `Kanpan/Config/ExportOptions.plist` 不用动，`ipa` 会 sed 出一份带新 Team ID 的副本。
+# 换团队时只改 `TEAM_ID` 一处（或者临时 `make archive TEAM_ID=XXXXXXXXXX`）。
+#
+# 审查 C.7：这以前是**不成立**的。`archive` / `device-release` 都不往 xcodebuild 传
+# `DEVELOPMENT_TEAM`，于是归档用的是 pbxproj 里写死的那个团队，而 `ipa` 那一步又 sed
+# 出一份带新 Team ID 的 ExportOptions——归档和导出分属两个团队，导出当场失败，
+# 而命令行上看起来 `TEAM_ID=新值` 明明传进去了。现在两条构建命令都显式覆盖，
+# pbxproj 里那四处 `DEVELOPMENT_TEAM = 27Y32PT2HZ` 只剩下「在 Xcode 里点开也能编」的作用。
+# `Kanpan/Config/ExportOptions.plist` 照旧不用动，`ipa` 会 sed 出一份带新 Team ID 的副本。
 TEAM_ID ?= 27Y32PT2HZ
 # 构建号。App Store Connect 不收重复的 (MARKETING_VERSION, CURRENT_PROJECT_VERSION)
 # 组合，所以每传一版都得递增。工程里现在写死 CURRENT_PROJECT_VERSION = 1，
@@ -344,6 +419,7 @@ archive:
 		-archivePath $(ARCHIVE_PATH) \
 		-derivedDataPath $(ARCHIVE_DD) \
 		-allowProvisioningUpdates \
+		DEVELOPMENT_TEAM=$(TEAM_ID) \
 		$(BUILD_SETTING)
 	@echo "归档：$(ARCHIVE_PATH)（dSYM 在它的 dSYMs/ 里，崩溃日志要靠它，别删）"
 

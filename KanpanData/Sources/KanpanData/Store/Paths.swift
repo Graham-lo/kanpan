@@ -35,13 +35,19 @@ public struct Paths: Sendable {
     let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
       ?? URL(fileURLWithPath: NSTemporaryDirectory())
     var root = base.appendingPathComponent("kanpan", isDirectory: true)
-    // 不加 `#if DEBUG`：包目标的编译条件由外层配置决定，隔离要是在测试那一档
-    // 没生效，后果正是它要防的那件事。跟 `SymbolPrefsStore` 一样只认环境变量。
+    // 这条岔路**只在 DEBUG 构建里存在**（审查 C-02）。原来这儿写着「不加 `#if DEBUG`，
+    // 因为包目标的编译条件由外层配置决定」——真正的后果是：同一个 Release 包被注入
+    // `KANPAN_TEST_PROFILE=1` 之后缓存根就变了，于是「Release 回归」量的是另一棵目录，
+    // 而正式启动那条路一次都没被测到。测试档要隔离，靠的是**独立的测试安装沙盒**
+    // （测试包自己的容器），不是让正式二进制自己认一个环境变量。
+    // `SymbolPrefsStore.deviceStorage()` 同一轮一起收进了 DEBUG，两边仍然一致。
+    #if DEBUG
     if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" {
       let bucket = ProcessInfo.processInfo.environment["KANPAN_PERSISTENCE_PROFILE"] ?? "normal"
       root = root.appendingPathComponent("tests", isDirectory: true)
                  .appendingPathComponent(bucket, isDirectory: true)
     }
+    #endif
     return Paths(root: root, profile: profile)
   }
 

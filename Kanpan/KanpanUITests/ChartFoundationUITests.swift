@@ -568,7 +568,7 @@ final class ChartFoundationUITests: XCTestCase {
 
   /// 仅用户明确要求写入正式自选时单独运行；常规回归保持跳过。
   func testInstallRequestedFavoritesInUserStore() throws {
-    try XCTSkipUnless(ProcessInfo.processInfo.environment["KANPAN_INSTALL_USER_FAVORITES"] == "1")
+    try ManualTool.skipUnlessRequested(self, what: "把用户点名的品种写进正式自选")
     app.terminate()
     app.launchEnvironment.removeValue(forKey: "KANPAN_TEST_PROFILE")
     app.launchEnvironment.removeValue(forKey: "KANPAN_TEST_FAVORITES")
@@ -636,7 +636,7 @@ final class ChartFoundationUITests: XCTestCase {
 
   /// 正式存档验收：保留用户收藏，避免隔离测试页在手机上显示空列表。
   func testUserSessionLatestEdgeAndReentry() throws {
-    try XCTSkipUnless(ProcessInfo.processInfo.environment["KANPAN_INSTALL_USER_FAVORITES"] == "1")
+    try ManualTool.skipUnlessRequested(self, what: "正式存档下的「最新」边界与重进")
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
     try verifyLatestEdgeAndReentry()
@@ -1033,7 +1033,7 @@ final class ChartFoundationUITests: XCTestCase {
   }
 
   func testUserSessionFreshQuotesAndReorder() throws {
-    try XCTSkipUnless(ProcessInfo.processInfo.environment["KANPAN_INSTALL_USER_FAVORITES"] == "1")
+    try ManualTool.skipUnlessRequested(self, what: "正式存档下的前台恢复报价")
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
@@ -1074,7 +1074,7 @@ final class ChartFoundationUITests: XCTestCase {
   }
 
   func testUserSessionRowReorderAndMove() throws {
-    try XCTSkipUnless(ProcessInfo.processInfo.environment["KANPAN_INSTALL_USER_FAVORITES"] == "1")
+    try ManualTool.skipUnlessRequested(self, what: "正式存档下的拖动排序与移动分类")
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
@@ -1114,7 +1114,7 @@ final class ChartFoundationUITests: XCTestCase {
   }
 
   func testUserSessionChartInteractions() throws {
-    try XCTSkipUnless(ProcessInfo.processInfo.environment["KANPAN_INSTALL_USER_FAVORITES"] == "1")
+    try ManualTool.skipUnlessRequested(self, what: "正式存档下的图表交互")
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))

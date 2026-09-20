@@ -410,9 +410,16 @@ final class SymbolPrefsStore {
   /// `symbols.json`，写在文件里、读在 UserDefaults 里，两条道（R3-1：新装机每次冷启动
   /// 都开 BTCUSDT，老用户永远停在升级那一刻的品种上）。这种「不写参数就静默换存储」
   /// 的缺省值是那个 bug 能长期不被发现的原因，所以整类去掉。
+  ///
+  /// 测试档那条岔路**只存在于 DEBUG**（审查 C-02）。从前它不受编译边界保护，
+  /// 于是同一个 Release 包被注入 `KANPAN_TEST_PROFILE=1` 就会静默换成内存存储——
+  /// 那样跑出来的绿证明的是另一套存储的行为，不是用户手上那个包的行为。
+  /// 隔离真档案靠的是独立的测试安装沙盒，不是正式二进制里留一条口子。
   static func deviceStorage() -> SymbolPrefsStorage {
-    ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1"
-      ? MemoryPrefsStorage() : UserDefaults.standard
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1" { return MemoryPrefsStorage() }
+    #endif
+    return UserDefaults.standard
   }
 
   init(storage: SymbolPrefsStorage, key: String = SymbolPrefsStore.defaultsKey) {
