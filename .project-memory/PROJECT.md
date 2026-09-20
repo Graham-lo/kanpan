@@ -68,7 +68,8 @@
   （把一条画线摊平成若干条价格折线）、`AlertEvaluator`（触碰判定）。单测在 `core-test`。
 - **客户端模块** `Kanpan/Kanpan/Alerts/`：`AlertStore` / `AlertArchive`（存档与对账）、
   `AlertWatcher`（前台用现有行情流本地评估）、`AlertPrompt`（画完一条线之后在**图外**那一行弹的
-  小确认卡，六秒不理等于「只画线」）、`AlertListPage`（设置面板里「提醒」那一行进）、
+  小确认卡，六秒不理等于「只画线」；它在场时图区就矮一整行，所以按 `mainH` 的比例点画布的
+  UI 用例要先 `dismissAlertPrompt()` 再量高度）、`AlertListPage`（设置面板里「提醒」那一行进）、
   `AlertNotifications`、`PushRegistration`、`ReviewDueNotifications`（复盘待办到点，纯本地通知）。
   测试壳 `Kanpan/Alerts/`（符号链接，`make alerts-test`）。
 - **图表只暴露两样**：`ChartHost.onDrawingCommitted(Drawing, symbol)` 和
@@ -96,7 +97,9 @@
   `https://kanpan.107-174-172-10.sslip.io/s/<id>`。桌面快捷入口、通知点击、共享链接全从这一个口进来，
   由 `MainScreen` 一处消费。测试壳 `Kanpan/DeepLink/`（`make deeplink-test`）。
   **UI 用例进不去系统通知中心**，所以测试档案下多认一条启动环境 `KANPAN_TEST_DEEPLINK`
-  （配合 `KANPAN_TEST_PROFILE=1`，`#if DEBUG`）把一条链接直接喂给路由。
+  （配合 `KANPAN_TEST_PROFILE=1`，`#if DEBUG`）把一条链接直接喂给路由。同一套路还有一条
+  `KANPAN_TEST_ALERT_FIRED=<代号>`（`AlertStore.testSeed`，`#if DEBUG`）：跑用例的是另一个进程，
+  塞不进 app 的沙盒，所以「服务端判到价、同步换下来的那一条已触发提醒」由它在开局种进空存档。
 
 ### 界面这一轮定下来的几件
 
@@ -136,7 +139,11 @@
   服务端 `POST/GET /v1/native-review/records/{id}/shot`（迁移 `0015_review_shots.sql`），
   `/v1/capabilities` 的 `screenshots` 2026-09-21 起为 `true`。
 - **长按预览卡** `Symbols/SymbolPreviewCard.swift`：自选页与板块品种列表共用，卡只读、动作在旁边的菜单里
-  （打开 / 移到分类 / 取消自选）。
+  （打开 / **调整顺序** / 移到分类 / 取消自选）。自选页那份多一项「调整顺序」是因为长按只有一个：
+  这张卡挂上 `contextMenu` 之后，`List` 自带的「普通状态长按整行直接拖动排序」起不来了
+  （同一个手势两件事），排序没有丢——它退到长按弹出来的第一屏上，点一下进批量编辑，
+  那儿的长按仍旧是拖动。用例 `ChartFoundationUITests.testFavoritesLongPressPreviewThenReorder`
+  （原 `testFavoritesDirectRowReorder`）走的就是这条新路。
 - 其余体验打磨：自选删除给「撤销」、手指按在表上时冻结排序（只冻顺序，价格照刷）、回到自选页滚回原来那一行、
   行尾按钮 44pt 命中区、「返回刚才」只活一分钟、**四处纯成功提示删掉**（「密码已修改」「账号已注销」
   「已登录」「已清缓存」——只报成功、没有下一步可做的提示对用户没有用；带「撤销」的保留）。
