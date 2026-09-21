@@ -113,12 +113,14 @@ impl Apns {
   });
   self.send(device_token,environment,"alert",None,&payload).await
  }
- /// 灵动岛 / 锁屏实时活动的推送。**本轮没有调用方**——第二波（方案文档第 5 节）才接。
+ /// 灵动岛 / 锁屏实时活动的推送。调用方是 `src/live_activity.rs`（心跳与结束两条路）。
  ///
- /// 留着签名是因为它和上面那条只差三处，而这三处正是容易搞错的地方：push type 是
- /// `liveactivity`、topic 要在 bundle id 后面缀 `.push-type.liveactivity`、
- /// payload 里是 `content-state` 而不是 `alert`。
- #[allow(dead_code)]
+ /// 它和上面那条只差三处，而这三处正是容易搞错的地方：push type 是 `liveactivity`、
+ /// topic 要在 bundle id 后面缀 `.push-type.liveactivity`、payload 里是 `content-state`
+ /// 而不是 `alert`。
+ ///
+ /// `stale_after` 是一个**绝对**的 UNIX 秒（和 `timestamp` 同一把尺），不是「多少秒之后」。
+ /// 客户端过了这个点就把那一块标成停更——调用方一律给「此刻 + 150 秒」。
  pub async fn push_live_activity(&self,device_token:&str,environment:&str,content_state:&serde_json::Value,event:&str,stale_after:i64)->Result<Outcome> {
   let payload=json!({
    "aps":{"timestamp":chrono::Utc::now().timestamp(),"event":event,"content-state":content_state,"stale-date":stale_after},

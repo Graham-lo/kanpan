@@ -89,6 +89,61 @@ async fn real_postgres_alerts_materialize_fire_once_and_register_tokens() {
  }
  assert_eq!(request(&app,"/v1/devices/push-token","POST",None,json!({"token":"a".repeat(64),"kind":"alerts","environment":"production"})).await.0,401);
 
+ // ——————————— 实时活动：登记、心跳、八小时、结束 ———————————
+ //
+ // 这一段测的全是只有真库能验的东西：0017 加的那两列叫什么、那条 LEFT JOIN 拼得对不对、
+ // 该删的行是不是真的删了。单测验的是内容与取舍，列名写错在那边是全绿的。
+ let live="c".repeat(64);
+ // liveActivity 这一种必须同时带 activityId 与 alertId：缺哪一个，这一行都会变成一个
+ // 推不出去也结束不掉的孤儿，所以在门口就拒掉。
+ for bad in [json!({"token":live,"kind":"liveActivity","environment":"production"}),
+             json!({"token":live,"kind":"liveActivity","environment":"production","activityId":"ACT-1"}),
+             json!({"token":live,"kind":"liveActivity","environment":"production","alertId":id})] {
+  assert_eq!(request(&app,"/v1/devices/push-token","POST",Some(&token),bad.clone()).await.0,400,"{bad}");
+ }
+ let (status,v)=request(&app,"/v1/devices/push-token","POST",Some(&token),json!({"token":live,"kind":"liveActivity","environment":"production","activityId":"ACT-1","alertId":id})).await;
+ assert_eq!(status,200,"{v}");
+ let (activity,bound,timed):(Option<String>,Option<String>,bool)=sqlx::query_as("SELECT activity_id,alert_id,started_at IS NOT NULL FROM device_push_tokens WHERE user_id=$1 AND kind='liveActivity'").bind(owner).fetch_one(&admin).await.unwrap();
+ assert_eq!(activity.as_deref(),Some("ACT-1"));
+ assert_eq!(bound.as_deref(),Some(id),"活动盯着哪条提醒要存下来，否则响了不知道该结束谁");
+ assert!(timed,"八小时是从 started_at 算的");
+ let count:i64=sqlx::query_scalar("SELECT count(*) FROM device_push_tokens WHERE user_id=$1").bind(owner).fetch_one(&admin).await.unwrap();
+ assert_eq!(count,2,"alerts 与 liveActivity 是同一台设备上的两行，不互相覆盖");
+
+ // 一拍心跳。**没有密钥也要走完**：发信那一句跳过，其余照常——活动还活着，这一行不动。
+ let quotes=std::collections::BTreeMap::new();
+ kanpan_api::live_activity::beat(&s,None,&quotes).await.unwrap();
+ let left:i64=sqlx::query_scalar("SELECT count(*) FROM device_push_tokens WHERE user_id=$1 AND kind='liveActivity'").bind(owner).fetch_one(&admin).await.unwrap();
+ assert_eq!(left,1,"活动还在八小时以内、提醒也还活着，心跳不该把它清掉");
+
+ // 满八小时：心跳推一条 end 再把那一行清掉，提醒本身一动不动。
+ sqlx::query("UPDATE device_push_tokens SET started_at=now()-interval '9 hours' WHERE user_id=$1 AND kind='liveActivity'").bind(owner).execute(&admin).await.unwrap();
+ kanpan_api::live_activity::beat(&s,None,&quotes).await.unwrap();
+ let left:i64=sqlx::query_scalar("SELECT count(*) FROM device_push_tokens WHERE user_id=$1 AND kind='liveActivity'").bind(owner).fetch_one(&admin).await.unwrap();
+ assert_eq!(left,0,"八小时到了就 end + 清行");
+ let alive:i64=sqlx::query_scalar("SELECT count(*) FROM alert_watches WHERE user_id=$1 AND status='active'").bind(owner).fetch_one(&admin).await.unwrap();
+ assert_eq!(alive,1,"结束的是那个活动，不是那条提醒");
+
+ // 提醒响了：只结束 alert_id 对得上的那一个活动。
+ assert_eq!(request(&app,"/v1/devices/push-token","POST",Some(&token),json!({"token":live,"kind":"liveActivity","environment":"production","activityId":"ACT-2","alertId":id})).await.0,200);
+ let quote=kanpan_api::live_activity::Quote{price:Some(64_500.0),change:Some(-0.0123)};
+ kanpan_api::live_activity::end_fired(&s,None,owner,"binance/usd_m/BTCUSDT/0000",quote,None,moved).await.unwrap();
+ let left:i64=sqlx::query_scalar("SELECT count(*) FROM device_push_tokens WHERE user_id=$1 AND kind='liveActivity'").bind(owner).fetch_one(&admin).await.unwrap();
+ assert_eq!(left,1,"别的提醒响了不许动这个活动");
+ kanpan_api::live_activity::end_fired(&s,None,owner,id,quote,Some(64_000.0),moved).await.unwrap();
+ let left:i64=sqlx::query_scalar("SELECT count(*) FROM device_push_tokens WHERE user_id=$1 AND kind='liveActivity'").bind(owner).fetch_one(&admin).await.unwrap();
+ assert_eq!(left,0,"自己这条提醒响了就 end + 清行");
+
+ // 用户自己把锁屏上那一块划掉：只清行，不推。
+ assert_eq!(request(&app,"/v1/devices/push-token","POST",Some(&token),json!({"token":live,"kind":"liveActivity","environment":"production","activityId":"ACT-3","alertId":id})).await.0,200);
+ assert_eq!(request(&app,"/v1/devices/live-activity/end","POST",Some(&token),json!({"activityId":"ACT-9"})).await.0,200,"不认识的活动 id 不是错误，只是什么都没删");
+ let left:i64=sqlx::query_scalar("SELECT count(*) FROM device_push_tokens WHERE user_id=$1 AND kind='liveActivity'").bind(owner).fetch_one(&admin).await.unwrap();
+ assert_eq!(left,1);
+ assert_eq!(request(&app,"/v1/devices/live-activity/end","POST",Some(&token),json!({"activityId":"ACT-3"})).await.0,200);
+ let left:i64=sqlx::query_scalar("SELECT count(*) FROM device_push_tokens WHERE user_id=$1 AND kind='liveActivity'").bind(owner).fetch_one(&admin).await.unwrap();
+ assert_eq!(left,0);
+ assert_eq!(request(&app,"/v1/devices/live-activity/end","POST",None,json!({"activityId":"ACT-3"})).await.0,401);
+
  // 服务端触发：物化表置 fired + 往同步日志写一条 op，同一个事务。
  let at=moved+60_000;
  assert!(kanpan_api::alerts::record_fired(&s,owner,id,64_500.0,at).await.unwrap(),"the server fires it");

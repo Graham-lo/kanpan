@@ -141,3 +141,28 @@ After `ops/install.py`, explicitly restart `kanpan-api kanpan-worker` and verify
 `ExecMainStartTimestamp`. Its `enable --now` does not restart running services.
 The main Caddyfile must forward both the bare and nested shares/friends paths;
 no market gateway routing changes are needed.
+
+## Alert live activities
+
+`POST /v1/devices/push-token` accepts `kind:"liveActivity"` and then *requires*
+both `activityId` (the APNs push-to-start/update token's activity) and `alertId`
+(the drawing alert it watches); either one missing is a 400. Migration 0017 adds
+those two nullable columns — `alert_id` and `started_at` — to
+`device_push_tokens`; the existing `(user_id,device_id,kind)` key means one live
+activity per device, and re-registering a different `activityId` restarts
+`started_at`.
+
+The worker piggybacks on the alert evaluator's existing combined stream: symbols
+that have a registered activity also subscribe `@ticker` there, purely to fill the
+24h `change`. Every 60 s `live_activity::beat` pushes `event:"update"` with
+`{price,change,line,distance,state,firedAt,updatedAt}` — any value it does not
+have is a real `null`, never `0` or a stale number — and a `stale-date` of now +
+150 s (2.5 heartbeats). When the alert fires, `alerts::fire` pushes `event:"end"`
+with `state:"fired"` to the activity whose `alert_id` matches, and drops the row;
+a `410 Gone` token is dropped the same way. Activities end after 8 hours, and
+`POST /v1/devices/live-activity/end` `{activityId}` lets the client drop its row
+after ending the activity locally. `maintenance.rs` sweeps rows older than eight
+hours as a backstop for a worker that was down.
+
+Without an APNs key (the current state: no developer account) every step above
+still runs — only the send itself is skipped, logged at info.

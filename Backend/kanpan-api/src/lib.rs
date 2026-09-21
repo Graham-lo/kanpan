@@ -13,6 +13,7 @@ pub mod oi_archive;
 pub mod maintenance;
 pub mod alerts;
 pub mod apns;
+pub mod live_activity;
 pub mod share;
 use axum::{Router,Json,routing::get,extract::DefaultBodyLimit};
 use std::time::Duration;
@@ -84,7 +85,7 @@ pub fn metrics_router() -> Router {
 }
 pub fn router(s: AppState) -> Router {
  Router::new().route("/health",get(||async{envelope(json!({"ok":true}))}))
-  .merge(auth::routes()).merge(sync::routes()).merge(alerts::routes()).merge(share::routes()).merge(review::routes()).merge(search::routes()).merge(market_meta::routes()).merge(sector_history::routes()).merge(oi_archive::routes())
+  .merge(auth::routes()).merge(sync::routes()).merge(alerts::routes()).merge(live_activity::routes()).merge(share::routes()).merge(review::routes()).merge(search::routes()).merge(market_meta::routes()).merge(sector_history::routes()).merge(oi_archive::routes())
   .layer(DefaultBodyLimit::max(512*1024))
   // 一个请求最多占住一条连接三十秒。池子只有八条连接，一个卡死的查询就能把
   // 剩下的人一起挡在门外；超时之后连接回池，客户端本来也早就重试了。

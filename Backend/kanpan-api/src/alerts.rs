@@ -16,7 +16,7 @@
 //!   价比，两者分在线的两侧（正好收在线上也算穿过）才算。盘中来回穿一概不算。
 //!
 //! 触发后**在同一个事务里**把物化表置 fired 并往这个人的同步日志写一条 op，然后才推送。
-use crate::{AppState,apns::{Apns,Outcome},auth::Identity,envelope,error::{ApiError,Result},sync::Object};
+use crate::{AppState,apns::{Apns,Outcome},auth::Identity,envelope,error::{ApiError,Result},live_activity::Quote,sync::Object};
 use axum::{Router,Json,extract::State,routing::post};
 use futures_util::StreamExt;
 use serde::Deserialize;
@@ -164,7 +164,7 @@ pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid
 
 #[derive(Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
-struct TokenBody {token:String,kind:String,environment:String,#[serde(default)] activity_id:Option<String>}
+struct TokenBody {token:String,kind:String,environment:String,#[serde(default)] activity_id:Option<String>,#[serde(default)] alert_id:Option<String>}
 
 pub fn routes()->Router<AppState> {
  Router::new().route("/v1/devices/push-token",post(push_token))
@@ -174,19 +174,34 @@ pub fn routes()->Router<AppState> {
 /// 设备身份不由客户端自称：从会话反查 `account_sessions.device_id`，和 `sync::push`
 /// 认设备用的是同一条语句。一台设备同一个 kind 只留一行，重复注册就是覆盖
 /// （token 会在重装、还原、系统更新之后变）。
+///
+/// `kind="liveActivity"` 这一种**必须同时带 `activityId` 与 `alertId`**：实时活动的
+/// 推送 token 是一个活动一枚（ActivityKit 给的），而它存在的全部意义就是盯着某一条提醒。
+/// 缺哪一个都让这一行变成推不出去、也结束不掉的孤儿，所以在门口就拒掉——一个静悄悄
+/// 不更新的锁屏活动是查不出来的那种 bug。
 async fn push_token(State(s):State<AppState>,i:Identity,Json(v):Json<TokenBody>)->Result<Json<Value>> {
  if !matches!(v.kind.as_str(),"alerts"|"liveActivity"|"widget") {return Err(ApiError::bad("invalid_token_kind"))}
  if !matches!(v.environment.as_str(),"production"|"sandbox") {return Err(ApiError::bad("invalid_token_environment"))}
  // APNs 的设备 token 是 32 字节的十六进制（64 个字符），但历史上长过、苹果也说过还会变，
  // 所以卡的是「十六进制、长度在一个合理的区间里」而不是等于 64。
  if v.token.len()<32||v.token.len()>200||!v.token.bytes().all(|c|c.is_ascii_hexdigit()) {return Err(ApiError::bad("invalid_token"))}
- if v.activity_id.as_ref().is_some_and(|a|a.len()>200) {return Err(ApiError::bad("invalid_activity"))}
+ let activity=v.activity_id.as_deref().map(str::trim).filter(|a|!a.is_empty());
+ let alert=v.alert_id.as_deref().map(str::trim).filter(|a|!a.is_empty());
+ if activity.is_some_and(|a|a.len()>200) {return Err(ApiError::bad("invalid_activity"))}
+ if alert.is_some_and(|a|a.len()>200) {return Err(ApiError::bad("invalid_alert"))}
+ if v.kind=="liveActivity" {
+  if activity.is_none() {return Err(ApiError::bad("invalid_activity"))}
+  if alert.is_none() {return Err(ApiError::bad("invalid_alert"))}
+ }
  let mut tx=s.personal(i.user).await?;
  let device:Uuid=sqlx::query_scalar("SELECT device_id FROM account_sessions WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL")
   .bind(i.session).bind(i.user).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::unauthorized)?;
- sqlx::query("INSERT INTO device_push_tokens(user_id,device_id,kind,environment,token,activity_id,updated_at) VALUES($1,$2,$3,$4,$5,$6,now()) \
-  ON CONFLICT(user_id,device_id,kind) DO UPDATE SET environment=excluded.environment,token=excluded.token,activity_id=excluded.activity_id,updated_at=now()")
-  .bind(i.user).bind(device).bind(&v.kind).bind(&v.environment).bind(&v.token).bind(v.activity_id.as_deref())
+ // `started_at` 只在活动**换了一个**的时候重新计时：token 会在活动进行中轮换
+ // （ActivityKit 的 pushTokenUpdates），那一下不该把八小时的钟拨回零。
+ sqlx::query("INSERT INTO device_push_tokens(user_id,device_id,kind,environment,token,activity_id,alert_id,started_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,now(),now()) \
+  ON CONFLICT(user_id,device_id,kind) DO UPDATE SET environment=excluded.environment,token=excluded.token,activity_id=excluded.activity_id,alert_id=excluded.alert_id,\
+  started_at=CASE WHEN device_push_tokens.activity_id IS DISTINCT FROM excluded.activity_id THEN now() ELSE COALESCE(device_push_tokens.started_at,now()) END,updated_at=now()")
+  .bind(i.user).bind(device).bind(&v.kind).bind(&v.environment).bind(&v.token).bind(activity).bind(alert)
   .execute(&mut *tx).await?;
  tx.commit().await?;
  Ok(envelope(json!({"ok":true})))
@@ -220,13 +235,17 @@ struct Watch {
  title:String,lines:Vec<Line>,armed_at:i64,condition:Condition,
 }
 
+/// 一轮刷新读回来的东西：所有人的活动提醒，以及其中哪些品种正被实时活动盯着。
+struct Loaded {watches:Vec<Watch>,live:Vec<String>}
+
 /// 把所有用户的活动画线提醒读成一张内存表。
 ///
 /// 为什么逐个用户开事务：这两张表和同步表一样挂着 FORCE ROW LEVEL SECURITY，运行期角色
 /// 既不是属主也没有 BYPASSRLS，所以**没有**一条能一次看见所有人的通道——这是故意的。
 /// 代价是一次刷新 N 个短事务，而 N 是个位数（`maintenance::cleanup` 用的同一套分页）。
-async fn load(s:&AppState)->Result<Vec<Watch>> {
+async fn load(s:&AppState)->Result<Loaded> {
  let mut out=vec![];
+ let mut live=vec![];
  let mut after:Option<Uuid>=None;
  loop {
   let owners:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM account_users WHERE disabled_at IS NULL AND ($1::uuid IS NULL OR id>$1) ORDER BY id LIMIT 100").bind(after).fetch_all(&s.pool).await?;
@@ -235,6 +254,10 @@ async fn load(s:&AppState)->Result<Vec<Watch>> {
    let mut tx=match s.personal(*owner).await {Ok(tx)=>tx,Err(_)=>continue};
    let rows=sqlx::query("SELECT alert_id,symbol,drawing_id,title,lines,armed_at,condition FROM alert_watches WHERE user_id=$1 AND status='active' AND kind='drawing'")
     .bind(owner).fetch_all(&mut *tx).await?;
+   // 同一个事务里顺手问一句「这个人有实时活动盯着哪些品种」：那些品种要多订一条
+   // `@ticker`（24h 涨跌幅只有那条流里有）。没有活动的时候这一句什么都不返回，
+   // 订阅串和从前一模一样。
+   live.extend(crate::live_activity::active_symbols(&mut tx,*owner).await.unwrap_or_default());
    tx.commit().await?;
    for r in rows {
     let lines:Vec<Line>=match serde_json::from_value(r.get::<Value,_>("lines")) {
@@ -250,7 +273,8 @@ async fn load(s:&AppState)->Result<Vec<Watch>> {
   }
   after=owners.last().copied();
  }
- Ok(out)
+ live.sort();live.dedup();
+ Ok(Loaded{watches:out,live})
 }
 
 /// 触发：物化表置 fired + 往同步日志写一条 op，**同一个事务**。返回「这一下真的是我触发的」。
@@ -289,8 +313,16 @@ pub async fn record_fired(s:&AppState,owner:Uuid,alert_id:&str,price:f64,at:i64)
 ///
 /// 推送**在事务之外**做：HTTP/2 一个往返几百毫秒，握着这个人的同步闸等苹果回话，
 /// 等于把他所有设备的同步一起挂在那儿。
-async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,price:f64,at:i64)->Result<()> {
+async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,quote:Quote,price:f64,at:i64)->Result<()> {
  if !record_fired(s,w.owner,&w.alert_id,price,at).await? {return Ok(())}
+ // 锁屏上那一块要当场收掉：event=end、state=fired。这一句排在下面「没有密钥就 return」
+ // 的**前面**是故意的——没有密钥时它照样把活动登记那一行清干净，少的只是发信那一下。
+ // 推不出去不算触发失败：提醒已经落库、已经进同步日志了。
+ let line=crate::live_activity::line_price(&w.lines,Some(price),at);
+ let quote=Quote{price:Some(price),change:quote.change};
+ if let Err(e)=crate::live_activity::end_fired(s,apns,w.owner,&w.alert_id,quote,line,at).await {
+  tracing::warn!("An alert fired but its live activity could not be ended ({e:?})");
+ }
  let Some(apns)=apns else {
   // 没有 APNs 密钥时这就是终点，而且是一个完整的终点：状态已经落库、op 已经写进
   // alerts 集合，客户端下次拉同步（开 app 就会拉）照样看得到这条已触发的提醒。
@@ -363,6 +395,18 @@ fn parse(text:&str)->Option<Candle> {
   closed:k.get("x").and_then(Value::as_bool).unwrap_or(false),
  })
 }
+/// 一帧 `@ticker`（24 小时滚动统计）。只在有实时活动盯着这个品种时才订得到它。
+///
+/// 要的只有两样：`c` 最新价、`P` 24h 涨跌**百分数**。契约里的 `change` 是小数，所以这里
+/// 除以 100——发上去的 `-0.0123` 意思是跌 1.23%，不是跌 123%。
+/// 读不出来的字段返回 `None`，让锁屏上那一格空着，不拿 0 冒充。
+fn parse_ticker(text:&str)->Option<(String,Option<f64>,Option<f64>)> {
+ let v:Value=serde_json::from_str(text).ok()?;
+ let data=v.get("data").unwrap_or(&v);
+ if data.get("e").and_then(Value::as_str)!=Some("24hrTicker") {return None}
+ let number=|key:&str|data.get(key).and_then(Value::as_str).and_then(|s|s.parse::<f64>().ok()).filter(|v:&f64|v.is_finite());
+ Some((data.get("s").and_then(Value::as_str)?.to_string(),number("c"),number("P").map(|p|p/100.0)))
+}
 
 /// worker 的评估器入口。永不返回：连不上就退几秒再连，品种集合变了就重订阅。
 pub async fn run(s:AppState,apns:Option<Apns>) {
@@ -375,16 +419,31 @@ pub async fn run(s:AppState,apns:Option<Apns>) {
  // 丢掉。中间断了几分钟的话，这一比就是「跨过那段缺口有没有穿过线」——价格确实从
  // 一侧走到了另一侧，该响；清空它换来的只是白白漏掉一次。
  let mut closes:BTreeMap<String,f64>=BTreeMap::new();
+ // 每个品种此刻的价与 24h 涨跌幅。K 线帧一直在刷价，涨跌幅只有 `@ticker` 那条流里有，
+ // 而那条流只在有实时活动盯着这个品种时才订——没有活动的时候这张表里就只有价。
+ // 实时活动的心跳（`live_activity::beat`）读的就是它。
+ let mut quotes:BTreeMap<String,Quote>=BTreeMap::new();
+ // 上一拍心跳。它活在重连之外：断线重连不该让锁屏上的活动多等一整拍。
+ // 减一拍是为了「起来就先走一拍」；刚开机的机器上 Instant 减不动，那就当这一拍刚走过。
+ let mut beat=std::time::Instant::now().checked_sub(crate::live_activity::HEARTBEAT).unwrap_or_else(std::time::Instant::now);
  loop {
-  match load(&s).await {
-   Ok(v)=>watches=v,
+  let fresh=match load(&s).await {
+   Ok(v)=>v,
    Err(_)=>{tracing::warn!("Alerts could not be loaded; will retry");tokio::time::sleep(Duration::from_secs(10)).await;continue}
+  };
+  let symbols=symbols_of(&fresh.watches);
+  let streams=streams_of(&symbols,&fresh.live);
+  watches=fresh.watches;
+  if symbols.is_empty() {
+   // 一条提醒都没有的时候也要走心跳：提醒刚被删掉、而它的活动还挂在别人锁屏上的
+   // 那一下，正是最该推 end 的时候。
+   heartbeat(&s,apns.as_ref(),&quotes,&mut beat).await;
+   tokio::time::sleep(Duration::from_secs(10)).await;continue
   }
-  let symbols=symbols_of(&watches);
-  if symbols.is_empty() {tokio::time::sleep(Duration::from_secs(10)).await;continue}
-  // 不再盯的品种没必要一直留着它的收盘价。
+  // 不再盯的品种没必要一直留着它的收盘价与行情。
   closes.retain(|symbol,_|symbols.iter().any(|s|s==symbol));
-  if let Err(e)=session(&s,apns.as_ref(),&symbols,&mut watches,&mut closes).await {
+  quotes.retain(|symbol,_|symbols.iter().any(|s|s==symbol));
+  if let Err(e)=session(&s,apns.as_ref(),&streams,&mut watches,&mut closes,&mut quotes,&mut beat).await {
    tracing::warn!("Alert stream ended ({e}); reconnecting");
    tokio::time::sleep(Duration::from_secs(5)).await;
   }
@@ -399,12 +458,35 @@ fn symbols_of(watches:&[Watch])->Vec<String> {
  }
  all
 }
+/// 这一轮要订的流。
+///
+/// K 线是每个有提醒的品种都要的；`@ticker` 只给**正被实时活动盯着**的那几个品种加——
+/// 24h 涨跌幅只有那条流里有，而锁屏上要显示它。没有活动时这个函数吐出来的东西和从前
+/// 一字不差，所以「没人用实时活动」这个常态下评估器的上游负载一点没变。
+/// 两种流共用一条连接（币安的组合流上限 200 条），不新开连接、也不碰 REST 那道限流闸。
+fn streams_of(symbols:&[String],live:&[String])->Vec<String> {
+ let mut out:Vec<String>=symbols.iter().map(|s|format!("{}@kline_1m",s.to_lowercase())).collect();
+ for symbol in live {
+  if out.len()>=MAX_STREAMS {break}
+  if symbols.iter().any(|s|s==symbol) {out.push(format!("{}@ticker",symbol.to_lowercase()))}
+ }
+ out
+}
+/// 到点了就走一拍实时活动的心跳。**六十秒一拍**，不是每来一帧推一次：前台由客户端自己
+/// 更新，这一拍只为被挂起的 app 而存在。
+async fn heartbeat(s:&AppState,apns:Option<&Apns>,quotes:&BTreeMap<String,Quote>,beat:&mut std::time::Instant) {
+ if beat.elapsed()<crate::live_activity::HEARTBEAT {return}
+ *beat=std::time::Instant::now();
+ if let Err(e)=crate::live_activity::beat(s,apns,quotes).await {
+  tracing::warn!("A live activity heartbeat could not be delivered ({e:?}); the next beat will try again");
+ }
+}
 
-/// 一次连接的生命周期。品种集合变了就返回，让外层重连。
-async fn session(s:&AppState,apns:Option<&Apns>,symbols:&[String],watches:&mut Vec<Watch>,closes:&mut BTreeMap<String,f64>)->anyhow::Result<()> {
- let url=format!("{STREAM}?streams={}",symbols.iter().map(|s|format!("{}@kline_1m",s.to_lowercase())).collect::<Vec<_>>().join("/"));
+/// 一次连接的生命周期。要订的流变了就返回，让外层重连。
+async fn session(s:&AppState,apns:Option<&Apns>,streams:&[String],watches:&mut Vec<Watch>,closes:&mut BTreeMap<String,f64>,quotes:&mut BTreeMap<String,Quote>,beat:&mut std::time::Instant)->anyhow::Result<()> {
+ let url=format!("{STREAM}?streams={}",streams.join("/"));
  let (mut stream,_)=tokio_tungstenite::connect_async(&url).await?;
- tracing::info!("Alert evaluator watching {} symbol(s)",symbols.len());
+ tracing::info!("Alert evaluator watching {} stream(s)",streams.len());
  let mut refresh=tokio::time::interval(Duration::from_secs(10));
  refresh.tick().await;
  loop {
@@ -415,18 +497,29 @@ async fn session(s:&AppState,apns:Option<&Apns>,symbols:&[String],watches:&mut V
     let Some(frame)=frame? else {anyhow::bail!("the stream closed")};
     let message=frame?;
     let Some(text)=message.into_text().ok() else {continue};
-    let Some(candle)=parse(&text) else {continue};
-    evaluate(s,apns,watches,closes,&candle).await;
+    if let Some(candle)=parse(&text) {
+     // 最新价就是这一根还没收的收盘价。涨跌幅不动：它只从 ticker 帧来，这里覆盖成
+     // None 等于每来一根 K 线就把锁屏上的涨跌幅抹掉一次。
+     quotes.entry(candle.symbol.clone()).or_default().price=candle.close.is_finite().then_some(candle.close);
+     evaluate(s,apns,watches,closes,quotes,&candle).await;
+     continue
+    }
+    if let Some((symbol,price,change))=parse_ticker(&text) {
+     let quote=quotes.entry(symbol).or_default();
+     if price.is_some() {quote.price=price}
+     if change.is_some() {quote.change=change}
+    }
    }
    _=refresh.tick()=>{
     match load(s).await {
      Ok(fresh)=>{
-      let changed=symbols_of(&fresh)!=symbols;
-      *watches=fresh;
+      let changed=streams_of(&symbols_of(&fresh.watches),&fresh.live)!=streams;
+      *watches=fresh.watches;
       if changed {return Ok(())}
      }
      Err(_)=>tracing::warn!("Alerts could not be refreshed; keeping the current set"),
     }
+    heartbeat(s,apns,quotes,beat).await;
    }
   }
  }
@@ -439,7 +532,7 @@ async fn session(s:&AppState,apns:Option<&Apns>,symbols:&[String],watches:&mut V
 ///
 /// `closes` 里那一条**先读后写**：这一帧要拿的是上一根的收盘价，写进去的是这一根的。
 /// 顺序反了的话每一根都在和自己比，`close` 这一档永远不会响。
-async fn evaluate(s:&AppState,apns:Option<&Apns>,watches:&mut Vec<Watch>,closes:&mut BTreeMap<String,f64>,candle:&Candle) {
+async fn evaluate(s:&AppState,apns:Option<&Apns>,watches:&mut Vec<Watch>,closes:&mut BTreeMap<String,f64>,quotes:&BTreeMap<String,Quote>,candle:&Candle) {
  let at=chrono::Utc::now().timestamp_millis();
  let previous=closes.get(&candle.symbol).copied();
  let mut fired=vec![];
@@ -454,9 +547,10 @@ async fn evaluate(s:&AppState,apns:Option<&Apns>,watches:&mut Vec<Watch>,closes:
   if hit.is_some() {fired.push(index)}
  }
  if candle.closed&&candle.close.is_finite() {closes.insert(candle.symbol.clone(),candle.close);}
+ let quote=quotes.get(&candle.symbol).copied().unwrap_or_default();
  for index in fired.iter().rev() {
   let w=watches.remove(*index);
-  if let Err(e)=fire(s,apns,&w,candle.close,at).await {
+  if let Err(e)=fire(s,apns,&w,quote,candle.close,at).await {
    tracing::warn!("An alert could not be recorded as fired ({:?}); it will be retried",e);
    watches.push(w);
   }
@@ -651,7 +745,22 @@ mod tests {
   assert_eq!(money(0.1234),"0.1234");
   assert_eq!(money(0.00001234),"0.00001234");
  }
- /// 订阅串就是网关一直在用的那条路径的形状。
+ /// 一帧 `@ticker`：实时活动要的 24h 涨跌幅只有这条流里有，而契约里它是小数不是百分数。
+ #[test] fn a_ticker_frame_carries_the_twenty_four_hour_change() {
+  let text=r#"{"stream":"btcusdt@ticker","data":{"e":"24hrTicker","E":1800000000123,"s":"BTCUSDT","p":"-780.0","P":"-1.230","w":"63000.0","c":"63120.5","Q":"1.0","o":"63900.5","h":"64000.0","l":"62000.0","v":"100.0","q":"1.0","O":1799913600000,"C":1800000000123,"F":1,"L":2,"n":3}}"#;
+  let (symbol,price,change)=parse_ticker(text).expect("a ticker frame");
+  assert_eq!(symbol,"BTCUSDT");
+  assert_eq!(price,Some(63_120.5));
+  assert_eq!(change,Some(-0.0123),"P 是百分数，契约里的 change 是小数");
+  // K 线帧不是 ticker，ticker 帧也不是 K 线：两条解析各认各的。
+  assert!(parse_ticker(r#"{"data":{"e":"kline","s":"BTCUSDT","k":{}}}"#).is_none());
+  assert!(parse(text).is_none());
+  // 缺字段就是取不到，不拿 0 冒充。
+  let without=text.replace(r#","P":"-1.230""#,"");
+  let (_,_,change)=parse_ticker(&without).expect("still a ticker frame");
+  assert_eq!(change,None);
+ }
+ /// 订阅串就是网关一直在用的那条路径的形状，外加实时活动要的那几条 `@ticker`。
  #[test] fn the_stream_url_is_the_one_measured_on_the_vps() {
   assert_eq!(STREAM,"wss://fstream.binance.com/market/stream");
   let watches=vec![
@@ -661,7 +770,14 @@ mod tests {
   ];
   let symbols=symbols_of(&watches);
   assert_eq!(symbols,vec!["BTCUSDT".to_string(),"ETHUSDT".to_string()],"同一品种只订一次，顺序稳定");
-  let streams=symbols.iter().map(|s|format!("{}@kline_1m",s.to_lowercase())).collect::<Vec<_>>().join("/");
-  assert_eq!(streams,"btcusdt@kline_1m/ethusdt@kline_1m");
+  // 没有实时活动时和从前一字不差：常态下上游负载一点没变。
+  assert_eq!(streams_of(&symbols,&[]).join("/"),"btcusdt@kline_1m/ethusdt@kline_1m");
+  // 有活动盯着 BTC 时才多一条 @ticker，而且只多那一个品种的。
+  assert_eq!(streams_of(&symbols,&["BTCUSDT".to_string()]).join("/"),"btcusdt@kline_1m/ethusdt@kline_1m/btcusdt@ticker");
+  // 没有提醒的品种就算登记过活动也不订：那条活动下一拍就会被结束掉。
+  assert_eq!(streams_of(&symbols,&["SOLUSDT".to_string()]).join("/"),"btcusdt@kline_1m/ethusdt@kline_1m");
+  // 一条连接 200 条流封顶，加 ticker 也不许越过它。
+  let many:Vec<String>=(0..MAX_STREAMS).map(|i|format!("S{i}USDT")).collect();
+  assert_eq!(streams_of(&many,&many).len(),MAX_STREAMS);
  }
 }
