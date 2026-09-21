@@ -77,7 +77,7 @@ struct FavoritesView: View {
   /// 已经替它开了历史订阅的品种。页面整体消失时要逐个关掉——
   /// 行自己的 `onDisappear` 在整页被拆掉时不保证会走到。
   @State private var historyOn = Set<String>()
-  /// 现在铺着哪几行，以及由它算出来的落脚点（审查 C-08）。盒子是**不被观察**的，
+  /// 现在每一行停在哪儿，以及由它算出来的落脚点（审查 C-08）。盒子是**不被观察**的，
   /// 理由见 `FavoritesRenderedRows`。
   @State private var rows = FavoritesRenderedRows()
   /// 落脚点已经还原过了吗。还原之前不记新的——列表刚铺开时最上面那几行会先
@@ -137,8 +137,10 @@ struct FavoritesView: View {
     guard model.prefs.groups.contains(where: { $0.id == id }) else { return }
     // 换了一类，上一类停在哪一行没有意义（审查 C-08）。
     if group != id {
+      // 不过要先把上一类停在哪儿记下来——人切回那一类时还得落回去。
+      if let anchor = rows.anchor { session.topRow[groupID ?? ""] = anchor }
       session.forgetScrollAnchor()
-      rows.rendered.removeAll()
+      rows.minY.removeAll()
       rows.anchor = nil
       anchorRestored = true
     }
@@ -223,11 +225,18 @@ struct FavoritesView: View {
       // 切走的那一刻：离开期间新加进来的品种在它里面没有条目，行里的价格就空着。
       // 这儿按手上最新的报价重铺一次——刚重建完，没有「布局跟着 WS 抖」的顾虑。
       if editing, !model.tickers.isEmpty { editQuotes = model.tickers }
+      rows.teardown = false
     }
     .onDisappear {
       // 走之前把落脚点交给宿主（审查 C-08）。切回来时这一页整个重建，
       // `session` 是这一页之外唯一还活着的东西。
-      if let anchor = rows.anchor { session.scrollAnchor = anchor }
+      //
+      // 先封笔再交：拆页的过程里每一行还会再报一次位置，那些是过程量。
+      rows.teardown = true
+      if let anchor = rows.anchor {
+        session.scrollAnchor = anchor
+        session.topRow[groupID ?? ""] = anchor
+      }
       moreTask?.cancel()
       model.disappear()
       for symbol in historyOn { onHistoryVisibility(symbol, false) }
@@ -399,6 +408,10 @@ struct FavoritesView: View {
       // 落脚点（审查 C-08）。只进辅助功能树，界面上看不见；`feedDiagnostics`
       // 自己就只在 DEBUG + `KANPAN_CHART_DIAGNOSTICS=1` 时才非空。
       + ";anchor=" + (session.scrollAnchor ?? "-")
+      // 这一类现在（或离开时）顶上露着的那一行，以及上一次还原真正瞄的是哪一行。
+      // 两者对不上就说明还原没落到位（见 `noteScrollAnchor` / `restoreScrollAnchor`）。
+      + ";top=" + (session.topRow[groupID ?? ""] ?? "-")
+      + ";used=" + (session.restoreAnchorUsed ?? "-")
   }
 
   // MARK: - 分类分段器
@@ -713,22 +726,29 @@ struct FavoritesView: View {
         .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
+        // 这一行的上沿在屏幕上的位置。落脚点就是从这儿算出来的（审查 C-08）：
+        // 问「铺出来没有」答不了「看得见没有」，只有真位置能（见 `FavoritesRenderedRows`）。
+        .onGeometryChange(for: CGFloat.self) { proxy in
+          proxy.frame(in: .global).minY
+        } action: { y in
+          // 这儿只记位置，**不算落脚点**：算一次要把整张表重新排一遍
+          // （`symbols` 是算出来的），而这一句是每行每帧都走的。算的那一下
+          // 放在滚动停下来的时候（见 `list` 上的 `onScrollPhaseChange`）。
+          guard !rows.teardown else { return }
+          rows.minY[symbol] = y
+        }
         .onAppear {
           onVisible(symbol); onRowVisibility(symbol, true)
           session.rowVisible(symbol, true, group: groupID ?? "", order: symbols)
           if historyOn.insert(symbol).inserted { onHistoryVisibility(symbol, true) }
-          // 有行露面就重算一次落脚点（审查 C-08）。往下滚是底下露新行，往上滚是
-          // 顶上露新行，两头都走得到这儿。
-          rows.rendered.insert(symbol)
-          noteScrollAnchor()
         }
         .onDisappear {
           onRowVisibility(symbol, false)
           session.rowVisible(symbol, false, group: groupID ?? "", order: symbols)
           if historyOn.remove(symbol) != nil { onHistoryVisibility(symbol, false) }
-          // 只摘名字，**不重算落脚点**：整页被拆掉的那一刻每一行都会走一遍这儿，
+          // 只摘位置，**不重算落脚点**：整页被拆掉的那一刻每一行都会走一遍这儿，
           // 边摘边算会把「最上面那行」一路推到表尾，刚记下的落脚点当场作废。
-          rows.rendered.remove(symbol)
+          rows.minY[symbol] = nil
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
           Button("删除自选", role: .destructive) { removeFavorites([symbol]) }
@@ -745,6 +765,21 @@ struct FavoritesView: View {
       }
     }
     .listStyle(.plain)
+    // 列表自己的上沿在哪儿。行的位置是按屏幕坐标量的（见每一行的 `onGeometryChange`），
+    // 拿这一条当尺子就知道哪一行被顶上切掉了。
+    //
+    // 量在背后垫的那张透明纸上，**不要直接挂到 `List` 身上**：2026-09-21 在
+    // iPhone 15（iOS 26）上试过，让 `List` 自己去求位置（`.onGeometryChange` 挂在它身上、
+    // 或者给它一个具名坐标系）这张表就滚不动了——12 下 `swipeUp` 连 13 行都没滚过去。
+    // 垫一张纸量它的框，框和 `List` 一样大，结果一样，滚动不受影响。
+    // 行也一律按屏幕坐标（`.global`）记：一页之内两头用的是同一把尺，差值才有意义。
+    .background {
+      Color.clear.onGeometryChange(for: CGFloat.self) { proxy in
+        proxy.frame(in: .global).minY
+      } action: { top in
+        rows.listTop = top
+      }
+    }
     // 手指按在表上的这段时间不重排（§P3-5）。
     //
     // 两个信号各管一段：滚动阶段管「甩出去之后还在滑」那一段（手指早抬了，可行还在动，
@@ -754,7 +789,12 @@ struct FavoritesView: View {
       session.scrolling = phase != .idle
       // 那一下要是被 `List` 自己的滚动抢走了，抬手事件就到不了 `TouchWatcher`。
       // 滚动停下来的时候顺手把冻结解开，免得一整页锁死。
-      if phase == .idle { session.release() }
+      if phase == .idle {
+        session.release()
+        // 停稳了才记落脚点（审查 C-08）。这正是「人停在哪一行」的那一刻，
+        // 而且一次滚动只算一遍——滚的过程里每帧算一遍的那版把列表卡到滚不动。
+        noteScrollAnchor()
+      }
     }
     .gesture(TouchWatcher { down in
       if down { session.hold(sortedSymbols) } else { session.release() }
@@ -774,14 +814,22 @@ struct FavoritesView: View {
   ///
   /// 存代号不存偏移量，理由见 `FavoritesEditSession.scrollAnchor`。
   private func noteScrollAnchor() {
-    guard anchorRestored else { return }
-    // 按表的顺序取现在铺着的第一行。它比「看得见的第一行」要高几格（`List` 在
-    // 可视区上下各多铺几行），这笔固定的差额由还原那头校准掉，见下面。
-    guard let top = symbols.first(where: { rows.rendered.contains($0) }) else { return }
+    guard anchorRestored, !rows.teardown else { return }
+    // 顶上第一个**完整露着**的品种。这儿曾经取的是「铺着的第一行」，2026-09-21 在
+    // iPhone 15（iOS 26）上量出来那是两回事：手指滚停下来时顶上一行都不多铺，
+    // 两者恰好重合；`scrollTo` 落地之后却多铺三四行。记的时候按前者、还原之后按后者，
+    // 于是每来回一趟就往下窜一个缓冲的厚度（用例读到从 DOTUSDT 跳到 BCHUSDT，差 3 行）。
+    // 现在两头问的都是 `topVisible`，同一把尺。
+    guard let top = rows.topVisible(symbols) else { return }
     // 只记在那个不被观察的盒子里。`session` 是 `@Observable`，滚动时每露一行写一次
     // 就等于把整张表重画一遍——这一页上跑着实时报价，赔不起。真正交出去是在整页
     // `onDisappear` 那一刻（见上面），那时候读一次就够了。
     rows.anchor = top
+    // **不要**顺手写 `session.topRow`。它看着人畜无害（界面上没有控件读它），
+    // 可诊断串读，而诊断串在 UI 测试里是开着的：滚一帧写一次 `@Observable`，
+    // 整页跟着重画，列表当场滚不动（2026-09-21 实测：12 下 `swipeUp` 连
+    // 13 行都没滚过去）。交出去的那一下放在整页 `onDisappear` 和换分类那儿，
+    // 一次就够。
   }
 
   /// 切回这一页时滚回原来那一行（审查 C-08）。
@@ -824,33 +872,37 @@ struct FavoritesView: View {
       anchorRestored = true
       return
     }
+    session.restoreAnchorUsed = anchor
     Task { @MainActor in
+      // 滚到位，量一眼，差几行补几行。
+      //
+      // 为什么补这一道：`scrollTo(_:anchor:.top)` 对齐的是**滚动容器**的上沿，
+      // 而人看见的上沿在它下面（这一页的头部压着一截）。2026-09-21 在 iPhone 15
+      // （iOS 26）上量到的偏差是固定的一截 261pt ≈ 4 行：请求 DOTUSDT 落地后，
+      // 顶上完整露着的成了它后面第 3 个 BCHUSDT。既然量得出来，就按量到的补：
+      // 请求「锚点往前 k 行」那一行，k 由上一轮的实测差值来。
+      //
+      // 补偿走的是整行的粒度——`scrollTo` 只认行，给不了半行。所以收敛判据是
+      // 「差 0 行」，一轮不到位就再来一轮，最多四轮（固定偏差两轮就够）。
+      //
+      // 量的那把尺和记的时候是同一把（`FavoritesRenderedRows.topVisible`），
+      // 这是整件事成立的前提：两头都问「顶上完整露着的是哪一行」。
       var target = wanted
-      // 滚一次、看看现在铺出来的第一行是谁，差几格就往回补几格。
-      //
-      // 为什么要这么一道校准：记的和还原的是同一个口径（「铺着的第一行」），但
-      // `scrollTo(_:anchor:.top)` 把那一行摆到的是**可视区**的顶上，而记的时候它在
-      // 可视区顶上**再往上几格**。这笔差额就是列表的缓冲区厚度，所以量一次补一次
-      // 就对上了。不写死格数是因为它随行高、字号、展开的详情变。
-      //
-      // 圈数留够、每圈等到 `List` 真把新一批行铺完：`rendered` 是靠行自己的
-      // `onAppear` / `onDisappear` 攒起来的，机器忙的时候它比滚动慢半拍，量早了
-      // 就会拿到上一帧的答案，于是这一圈白补、下一圈又从头补。
-      //
-      // 到底了就停：表尾那几行再怎么滚也到不了可视区顶上，`now` 不动就是撞了底，
-      // 此时的位置已经和走之前一样（走之前他也在底上），再补只是空转。
-      var previous = -1
-      for _ in 0..<6 {
-        try? await Task.sleep(for: .milliseconds(80))
-        reader.scrollTo(list[target], anchor: .top)
+      for round in 0..<4 {
+        try? await Task.sleep(for: .milliseconds(round == 0 ? 80 : 40))
+        var transaction = Transaction(); transaction.disablesAnimations = true
+        withTransaction(transaction) { reader.scrollTo(list[target], anchor: .top) }
+        // 等这一下真的落地：`scrollTo` 之后 `List` 要重新铺行、重新量位置，
+        // 太早读到的是上一帧的位置。
         try? await Task.sleep(for: .milliseconds(220))
-        guard let now = list.firstIndex(where: { rows.rendered.contains($0) }) else { break }
-        let delta = wanted - now
-        if delta == 0 || now == previous { break }
-        previous = now
-        target = min(max(target + delta, 0), list.count - 1)
+        guard let now = rows.topVisible(list), let at = list.firstIndex(of: now) else { break }
+        let off = at - wanted
+        if off == 0 { break }
+        target = max(0, min(list.count - 1, target - off))
       }
       anchorRestored = true
+      // 还原期间攒下的位置是过程量，落地之后重记一次才是人真正停在的那一行。
+      noteScrollAnchor()
     }
   }
 
@@ -1606,11 +1658,17 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
   /// 回来时前者不在后者里，就说明那一行已经被滚出视野了，得专门滚到它。
   var openedSymbol: String?
   var visibleWhenOpened = Set<String>()
+  /// 上一次还原滚动位置时真正瞄的那一行。只给诊断串看，产品逻辑不读它。
+  var restoreAnchorUsed: String?
 
-  /// 某一行进出视野。`order` 是这一刻表上的顺序，用来算「顶上那一行是谁」。
+  /// 某一行进出视野。只攒「露过面的有哪些」，给「点进图的那只当时在不在屏幕上」用。
+  ///
+  /// 这儿原来还顺手算一遍 `topRow`，2026-09-21 撤掉了：`onAppear` 说的是「铺出来了」，
+  /// 不是「看得见」，而且整页拆的时候每一行都会走一遍 `onDisappear`，
+  /// 算出来的「顶上那一行」会被一路推到表尾。现在 `topRow` 由
+  /// `FavoritesView.noteScrollAnchor` 按行的真实位置写，口径和还原那头一致。
   func rowVisible(_ symbol: String, _ on: Bool, group: String, order: [String]) {
     if on { visibleRows.insert(symbol) } else { visibleRows.remove(symbol) }
-    if let top = order.first(where: { visibleRows.contains($0) }) { topRow[group] = top }
   }
 
   func rememberOpen(_ symbol: String) {
@@ -1627,10 +1685,29 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
 /// 写进 `@State` 或 `@Observable` 等于把整张表重画一遍，而这一页上跑着实时报价。
 /// 它只在整页 `onDisappear` 那一刻被读一次，把落脚点交给 `FavoritesEditSession`。
 @MainActor final class FavoritesRenderedRows {
-  /// 现在铺着的那几行。注意是「铺着」不是「看得见」：`List` 在可视区上下各多铺几行。
-  var rendered = Set<String>()
-  /// 铺着的第一行，也就是要交出去的落脚点。
+  /// 每一行的上沿在屏幕坐标里的位置。比 `listTop` 还小就是被顶上切掉了。
+  ///
+  /// 「铺着」和「看得见」差着一截，而落脚点要的是后者：2026-09-21 在 iPhone 15 上
+  /// 量到，手指滚停下来时这两者恰好重合（上面一行都没多铺），`scrollTo` 落地之后
+  /// 却多铺了三四行，只数「铺着的第一行」就会把位置整整推下去几格。
+  /// 有了这份位置表，两头问的就都是同一件事：**现在顶上完整露着的是哪一行**。
+  var minY: [String: CGFloat] = [:]
+  /// 顶上露着的那一行，也就是要交出去的落脚点。
   var anchor: String?
+  /// 整页开始拆了。拆的过程里每一行都会再报一次位置，那些位置不作数——
+  /// 边拆边算会把落脚点一路推到表尾，刚记下的那个当场作废。
+  var teardown = false
+
+  /// 列表自己的上沿在屏幕上的位置。比它还高的行就是被顶上切掉的那些。
+  var listTop: CGFloat = 0
+
+  /// 按表的顺序取顶上第一个**完整露着**的品种。
+  ///
+  /// 被上沿切掉半格的那行不算：人眼里顶上那一行就是第一整行，
+  /// 用例读的也是「整个框都在屏幕里」的第一行，两边口径要一致。
+  func topVisible(_ order: [String]) -> String? {
+    order.first { (minY[$0] ?? -.greatestFiniteMagnitude) >= listTop - 0.5 }
+  }
 }
 
 /// 只报「有没有手指按在这张表上」，从不认领这一下。

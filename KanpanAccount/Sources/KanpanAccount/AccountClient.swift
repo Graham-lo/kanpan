@@ -144,8 +144,29 @@ public actor AccountClient {
     }
     return true
   }
+  /// 查询串那一半的守卫。
+  ///
+  /// 它不是路径：`/` 在这儿只是个普通字符（画线的前缀 `binance/usd_m/BTCUSDT/` 正靠它），
+  /// 所以「不许空段 / `.` / `..`」那套规则一句都不适用。这儿只挡真正有害的东西——
+  /// 控制字符（能把请求行拆开）、反斜杠、协议头，以及片段：`#` 后面那一截压根到不了
+  /// 服务端，出现在自家接口的地址里只可能是拼错了。
+  static func isSafe(query: String) -> Bool {
+    guard !query.isEmpty else { return true }
+    guard query.hasPrefix("?"), !query.contains("#"), !query.contains("\\"), !query.contains("://") else { return false }
+    return !query.unicodeScalars.contains { $0.value <= 0x20 || $0.value == 0x7F }
+  }
   private func send(_ path: String, method: String, body: Data?, key: UUID?, token: String?) async throws -> Data {
-    guard AccountClient.isSafe(path: path),
+    // 调用方递进来的字符串后面可能还挂着查询串（拉画线那一段拼的是
+    // `v1/sync/bootstrap?collection=drawings&prefix=binance/usd_m/BTCUSDT/`）。
+    // **先把这两半分开再各按各的规矩查**：查询串里的斜杠不是路径段，拿路径那套
+    // 「按 / 切段」去切它，前缀末尾那一道斜杠就成了「空段」，一条完全正当的地址
+    // 被当成路径遍历拒掉，整档全量同步停在拉画线这一步（M8 兼容性矩阵里
+    // `FavoritesGroupSyncUITests` 等不到「已同步」、账号页挂着「账号服务地址无效」）。
+    // 切只切**字面量**的 `?` / `#`：编码过的 `%3f` 留在路径那一半里，
+    // 照旧要过解码到底的那道检查，父目录还是跳不出去。
+    let head = path.prefix { $0 != "?" && $0 != "#" }
+    guard AccountClient.isSafe(path: String(head)),
+      AccountClient.isSafe(query: String(path.dropFirst(head.count))),
       let url = URL(string: path, relativeTo: baseURL.appendingPathComponent("/"))?.absoluteURL,
       url.scheme == baseURL.scheme, url.host == baseURL.host, url.port == baseURL.port,
       // 拼完再看一遍：解析过的那条路径也得是干净的（`url.path` 是解过码的）。

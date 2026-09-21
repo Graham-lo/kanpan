@@ -30,10 +30,20 @@ import XCTest
   private let profileA = UUID().uuidString
   private let profileB = UUID().uuidString
   private let account = "test_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12).lowercased()
-  /// 分类不用手建：加自选时 `SymbolPickerModel.addFavorite` 自己会按品种类型
-  /// （`FavoriteCategory`）建一类并把它放进去，这也正是用户真实的用法。
-  /// 先加一个币再加一支美股，分类条上就依次是「加密」「美股」——
-  /// 用户说的「第一个分类」就是前者，「上次看的那一类」是后者。
+  /// 两个分类怎么来的：**第一个自动，第二个手建**。
+  ///
+  /// 一条自选都还没有的时候加一个币，`SymbolPickerModel.addFavorite` 按品种类型
+  /// （`FavoriteCategory`）建出「加密」并选中它。此后再加的品种就**留在当下这一类**里，
+  /// 不再按类型另起一类——这是用户 2026-09-20 定的规矩（`addFavorite` 里那句
+  /// `guard prefs.groupForSymbol[key] == nil`：「从某一类里点搜索加进来的品种要留在那一类」）。
+  /// 这条用例 2026-09-19 写的时候还没有那条规矩，于是原来那句「再加一支美股，分类条上
+  /// 就自己多一格『美股』」从此不成立：AAPLUSDT 会乖乖落进「加密」，分类条上只有一格。
+  ///
+  /// 所以第二类改成照用户自己的路建：「…」→「新建分类」→ 打「美股」→「保存」，
+  /// 建完这一格自己就选中了，站在它里面加 AAPLUSDT，那支股就落在它里面。
+  /// 这条用例要验的东西没变——它验的是「停在哪一类」跟不跟着账号走，
+  /// 不是「分类是怎么冒出来的」。
+  /// 用户说的「第一个分类」就是「加密」，「上次看的那一类」是「美股」。
   private let first = "加密"
   private let second = "美股"
   /// 后端上还没确认删掉的账号。断言中途失败时兜底用。
@@ -61,6 +71,9 @@ import XCTest
 
     openFavorites(a, step: "A 设备进自选页")
     addFavoriteFromSearch(a, symbol: "BTCUSDT", step: "A 设备加一个币")
+    // 第二类手建（理由见上面 `second` 那儿）。建完它自己就是选中的那一格，
+    // 接着加的美股就落在它里面。
+    createGroup(a, name: second, step: "A 设备新建第二个分类")
     addFavoriteFromSearch(a, symbol: "AAPLUSDT", step: "A 设备加一支美股")
     XCTAssertTrue(waitUntil(20) { self.chip(a, self.first).exists && self.chip(a, self.second).exists },
                   "A 设备加完两个品种，分类条上应当有「\(first)」和「\(second)」两格：\(groupReport(a))\n\(a.debugDescription)")
@@ -259,6 +272,36 @@ import XCTest
   /// 分类胶囊。标识按**名字**拼（`FavoritesView.chip`），不是按 id。
   private func chip(_ app: XCUIApplication, _ name: String) -> XCUIElement {
     app.buttons["favorites.group." + name]
+  }
+
+  /// 新建一个分类：「…」→「新建分类」→ 打字 →「保存」。建完那一格自己就选中了
+  /// （`FavoritesView` 的新建弹窗里 `createGroup` 之后紧跟着 `select(id)`）。
+  ///
+  /// 整步最多走两遍，理由和 `KanpanUICase.createGroup` 那儿记的一样：菜单是自绘浮层，
+  /// 弹窗是模态的，任何一环被上一张浮层的收起动画吃掉，收场都是「这一格没建成」。
+  /// 重试路径上不做断言，只看 `favorites.group.<名字>` 这颗胶囊出没出来。
+  private func createGroup(_ app: XCUIApplication, name: String, step: String) {
+    let group = chip(app, name)
+    for _ in 0..<2 {
+      if group.exists { return }
+      // 上一遍留下的弹窗是模态的，不收掉下一遍的「…」就永远点不动。
+      let stray = app.alerts.firstMatch
+      if stray.exists, stray.buttons["取消"].isHittable { stray.buttons["取消"].tap() }
+      let more = app.buttons["favorites.more"]
+      guard more.waitForExistence(timeout: 15), more.isHittable else { continue }
+      more.tap()
+      let action = app.buttons["favorites.newGroup"]
+      guard action.waitForExistence(timeout: 10), action.isHittable else { continue }
+      action.tap()
+      let field = app.alerts.textFields.firstMatch
+      guard field.waitForExistence(timeout: 10), field.isHittable else { continue }
+      field.typeText(name)
+      let save = app.alerts.buttons["保存"]
+      guard save.exists, save.isHittable else { continue }
+      save.tap()
+      if group.waitForExistence(timeout: 10) { return }
+    }
+    XCTAssertTrue(group.exists, "\(step)：走了两遍也没建出「\(name)」\n\(app.debugDescription)")
   }
 
   /// 从自选页加一个品种：头部那条长搜索框 → 打字 → 点那一行的星 → 取消退回。

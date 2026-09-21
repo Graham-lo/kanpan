@@ -144,9 +144,10 @@ final class FavoritesScrollAnchorUITests: KanpanUICase {
   /// 此刻可视区顶上那一行：屏幕上画着的行里最靠上、且整行都在窗口里的那个。
   ///
   /// 「他停在哪儿」这件事，对人来说就是这一行；比拿某一行的绝对 y 去比稳。
-  /// 注意它和产品那头记的口径差一点：产品记的是 `List` **铺着**的第一行
-  /// （比看得见的第一行高一两格，见 `FavoritesView.noteScrollAnchor`），
-  /// 这笔固定差额就是下面容差放到两行的由来。
+  /// 2026-09-21 起产品那头记的是同一个口径：顶上第一个**完整露着**的行
+  /// （`FavoritesView.noteScrollAnchor` 按行的真实位置算）。在这之前它记的是
+  /// `List` **铺着**的第一行，两者只在手指滚完的那一刻碰巧重合，
+  /// `scrollTo` 落地之后要差三四行——下面那条容差就是冲着这笔差额留的。
   private func firstVisibleRow() -> (symbol: String, y: CGFloat)? {
     let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "favorites.open."))
     var best: (String, CGFloat)?
@@ -183,8 +184,24 @@ final class FavoritesScrollAnchorUITests: KanpanUICase {
     // 往下滚到它露出来。
     let list = app.collectionViews.firstMatch.exists ? app.collectionViews.firstMatch
                                                      : app.tables.firstMatch
+    // 一下滚三成屏幕，不用 `swipeUp()`。
+    //
+    // `swipeUp()` 一下差不多滚一整屏，而锚点是第 14 行（总共 20 行）——滚过头它就
+    // 直接落到表尾外面去了：表滚到底时可视区里是最后五六行，第 14 行卡在上沿之上
+    // 不再铺出来，再滚多少下都找不着它（2026-09-21 实测：12 下全滚空）。
+    // 慢慢挪就不会跳过它。
+    //
+    // 这条前置条件以前是「碰巧成立」的：产品那头还原滚动位置时会往下窜三四行
+    // （就是这条用例后半段抓的那个 bug），页面一进来就停在表中间，锚点本来就在
+    // 屏幕上，这个循环一次都没跑过。产品修好之后列表老老实实停在表头，
+    // 循环才第一次真的干活，也才露出「一下滚太多」这个毛病。
     var scrolled = 0
-    while !onScreen(anchor), scrolled < 12 { list.swipeUp(); scrolled += 1 }
+    while !onScreen(anchor), scrolled < 12 {
+      list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+        .press(forDuration: 0.05,
+               thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.42)))
+      scrolled += 1
+    }
     XCTAssertTrue(onScreen(anchor), "滚了 \(scrolled) 下还没把 \(anchorSymbol) 滚出来")
     // 再往上带一点，保证它不贴着屏幕边——贴边的话「有没有恢复」看不出差别。
     let beforeY = anchor.frame.minY
@@ -213,9 +230,10 @@ final class FavoritesScrollAnchorUITests: KanpanUICase {
     //
     // 二、锚点行的位置差不到两行高。
     //
-    // 为什么是两行而不是一行：`List` 在可视区上下各多铺几行，两头的缓冲厚度还
-    // 不一样，而恢复时能拿到的最细的粒度就是「滚到某一行的顶上」，补偿只能按整行补。
-    // 2026-09-20 在 iPhone 15 上实测，来回一趟稳定差 93pt（约一行半），不飘。
+    // 为什么是两行而不是一行：恢复时能拿到的最细的粒度就是「滚到某一行的顶上」
+    // （`ScrollViewProxy.scrollTo`），补偿只能按整行补。2026-09-21 把两头的口径统一到
+    // 「顶上第一个完整露着的行」之后，在 iPhone 15（iOS 26）上实测来回一趟差 0 行；
+    // 留两行是给别的机型、别的字号下行高与可视区凑不整的情况。
     // 更细的一档试过 `scrollPosition(id:)`——`List` 上它根本不往里写，落脚点是空的，
     // 切回来直接停在表头，比现在这版差得多（那次实测记在 `FavoritesView` 的注释里）。
     let topAfter = firstVisibleRow()

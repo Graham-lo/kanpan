@@ -58,6 +58,18 @@ struct PanelHost<Content: View>: View {
       .presentationCornerRadius(18)
       // 背后继续更新；外部触摸由ChartBox遮罩消费，只关闭面板。
       .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+      // 面板里那张长列表**自己滚**，不许它把面板一路顶到满屏。
+      //
+      // 不写这一句时 `.automatic` 生效：手指在内容上往上一划，系统先把 sheet 从
+      // `.medium` 撑到 `.large`，划完才轮到内容滚。于是「往下找一个指标」这么一下
+      // 就把图整个盖住了——而这一叠修饰符的用意恰恰相反：`.enabled(upThrough: .medium)`
+      // 就是为了让人一边开关指标一边看着图上的变化。撑满之后图看不见，背后也不再收触摸，
+      // 点图区收面板这条路（§10.6）跟着一起断（M8 兼容性矩阵 iPhone 15 上的
+      // `testOnlyTheThingsTheRulesSayToClearGetCleared`：指标开关被滚到 y=361，
+      // 那已经在 `.medium` 的上沿之上了，随后点 (40,346) 落在面板上，面板当然不收）。
+      //
+      // 要满屏仍旧走得通：拖那根把手 / 面板顶部空白处，那还是改尺寸。
+      .presentationContentInteraction(.scrolls)
   }
 }
 

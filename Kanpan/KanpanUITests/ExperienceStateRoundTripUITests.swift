@@ -409,6 +409,7 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     expectExists(header, Self.short, "图表设置面板没开出来")
     let toggle = app.buttons[Ids.indicatorSwitch(dropped)]
     expectExists(toggle, Self.short, "图表设置面板里没有 \(dropped) 的开关")
+    scrollPanelContent(to: toggle)
     toggle.tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) {
       (self.chartInfo()["subs"] as? [String])?.contains(dropped) == false
@@ -448,6 +449,35 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
   }
 
   // ------------------------------------------------------------ 手势与取证
+
+  /// 把面板里的某个控件用**真手势**滚进可视区，别让 XCUITest 自己去够。
+  ///
+  /// 为什么非得自己滚：`element.tap()` 够不着的时候，XCUITest 会先走一步
+  /// 「Scroll element to visible」——那是**辅助功能的滚动请求**，不是手指划过屏幕。
+  /// UIKit 把它交给 sheet 的呈现控制器，后者的反应是把面板从 `.medium` 撑到 `.large`
+  /// （2026-09-21 实测：面板刚开时 `panel.content` 在 y=456，`tap()` 走完之后是 y=114，
+  /// 也就是顶到了 y=59）。撑满之后这条用例下一步要点的图区整个被盖住，
+  /// `.presentationBackgroundInteraction(.enabled(upThrough: .medium))` 也不再放行，
+  /// 于是「点图区收面板」永远收不掉——一条和产品无关的假红。
+  ///
+  /// 换成手指划：同一轮实测里连划四下，`panel.content` 一直钉在 y=456 没动过，
+  /// 列表自己在滚（`PanelHost` 那句 `.presentationContentInteraction(.scrolls)`）。
+  /// 也就是说人手里的面板不会因为找一个指标就涨满屏，只有 XCUITest 那条路会。
+  ///
+  /// 滚不动就算了：判红交给调用方那句断言，这儿不掺和。
+  private func scrollPanelContent(to element: XCUIElement) {
+    let content = app.scrollViews["panel.content"]
+    guard content.waitForExistence(timeout: Self.short) else { return }
+    for _ in 0..<12 {
+      if element.isHittable { return }
+      // 目标在下半场就往上滚，在上半场（划过头了）就往回滚——自己纠偏，不会一路滚飞。
+      let up = element.frame.midY > content.frame.midY
+      let from = CGVector(dx: 0.5, dy: up ? 0.66 : 0.34)
+      let to = CGVector(dx: 0.5, dy: up ? 0.34 : 0.66)
+      content.coordinate(withNormalizedOffset: from)
+        .press(forDuration: 0.1, thenDragTo: content.coordinate(withNormalizedOffset: to))
+    }
+  }
 
   /// 自选页上现在有哪几类，按它们在胶囊条上的次序。失败信息里要有它。
   private func groupTitles() -> [String] {

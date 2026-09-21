@@ -188,4 +188,34 @@ struct ClientHardeningTests {
     GateStubProtocol.server.route("/v1/auth/devices/" + device, 200, #"{"data":{"devices":[]}}"#)
     _ = try await client.data("v1/auth/devices/" + device, authenticated: false)
   }
+
+  /// 守卫守的是**路径**，可它拿到的字符串后面还挂着查询串。
+  ///
+  /// `AppAccountBridge` 拉画线那一段拼出来的是
+  /// `v1/sync/bootstrap?collection=drawings&prefix=binance/usd_m/BTCUSDT/`：
+  /// 前缀是画线 id 的头几段（`venue/market/symbol/`），带着斜杠、还以斜杠收尾。
+  /// 这些斜杠本不属于路径，却一路参与了「按 / 切段」那道检查，末尾那一道切出一个空段，
+  /// 于是一条完全正当的地址被当成路径遍历拒掉——整档全量同步停在拉画线这一步，
+  /// 账号页上从此挂着「账号服务地址无效」，同步页永远等不到「已同步」
+  /// （M8 兼容性矩阵 iPhone 15 上 `FavoritesGroupSyncUITests` 那条红的根因）。
+  @Test("查询串里的斜杠不算路径段")
+  func 查询串不被误伤() async throws {
+    reset()
+    let client = try makeClient(StubVault(nil))
+    GateStubProtocol.server.route("/v1/sync/bootstrap", 200, #"{"data":{"ok":true}}"#)
+    for path in ["v1/sync/bootstrap?collection=drawings&prefix=binance/usd_m/BTCUSDT/",
+                 "v1/sync/bootstrap?collection=settings",
+                 "v1/sync/bootstrap?collection=drawings&prefix=binance/usd_m/BTCUSDT/&after=a/b"] {
+      _ = try await client.data(path, authenticated: false)
+    }
+    #expect(GateStubProtocol.server.calls("/v1/sync/bootstrap").count == 3, "带查询串的正当地址一条都不该被拦")
+    // 放行的只有查询串那一半：路径那一半照旧一个都不许过。
+    for path in ["v1/%2e%2e/sync?collection=x", "v1//sync?collection=x", "/v1/sync?collection=x",
+                 "https://evil.example/x?collection=y", "v1/sync\u{7F}?collection=x"] {
+      await #expect(throws: AccountError.invalidURL, "\(path) 必须被拒") {
+        _ = try await client.data(path, authenticated: false)
+      }
+    }
+    #expect(GateStubProtocol.server.calls("/v1/sync/bootstrap").count == 3, "被拒的路径一个字节都不该出门")
+  }
 }

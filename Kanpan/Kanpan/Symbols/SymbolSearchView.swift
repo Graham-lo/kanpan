@@ -102,11 +102,20 @@ struct SymbolSearchView: View {
       Button("取消", role: .cancel) {}
     }
     .task {
+      // 这一页是**整页搜索页**，用户是自己点「搜索」进来的，进来就是为了打字：
+      // 键盘自己上来、焦点就落在框里（用户 2026-09-18 的原话是「那儿自动聚焦是对的」）。
+      //
+      // 记忆 `kanpan-symbol-search-keyboard` 里「进来不自动抢焦点」那一条说的是
+      // **画线工作台里点品种名弹的那层换品种浮层**（`DrawingSymbolSwitcher`，
+      // 由 `ChartFoundationUITests.testDrawingSymbolSwitcherKeepsKeyboardDown` 守着）：
+      // 那层的主体是底下那格「常看」，键盘一上来就把它盖了。两处是两回事，
+      // 2026-09-21 曾把那条规矩误套到这一页上，键盘从此不来了。
+      //
+      // 先聚焦再 `await`：目录还没到的时候 `model.appear()` 要等一个网络往返，
+      // 排在它后面的话人已经对着一页不动的界面点了两下了。
+      focused = true
       model.setSectionsActive(true)
       await model.appear()
-      // 键盘不自己起来（用户 2026-09-18 定的，记忆 kanpan-symbol-search-keyboard）：
-      // 这一页进来先给他看历史词和最近看过，要打字他自己点输入框。
-      // 以前这儿有一句 `focused = true`，一进页面键盘就糊上来半屏。
       await lookAtClipboard()
     }
     .onDisappear {
