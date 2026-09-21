@@ -723,11 +723,19 @@ struct FavoritesView: View {
           previewable(symbol, row(symbol, first: symbol == symbols.first))
           if expanded.contains(symbol), !editing { details(symbol) }
         }
-        .listRowInsets(EdgeInsets())
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
         // 这一行的上沿在屏幕上的位置。落脚点就是从这儿算出来的（审查 C-08）：
         // 问「铺出来没有」答不了「看得见没有」，只有真位置能（见 `FavoritesRenderedRows`）。
+        //
+        // **这一句必须排在下面三条 `listRow*` 前面，不要挪到后面去。** 0dee684 加它的时候
+        // 排在三条后面，结果是「融合」当场丢了：`.listRowBackground(Color.clear)` 和
+        // `.listRowSeparator(.hidden)` 都是**行特征**，要一路往上传到 `List` 才作数，
+        // 而 `.onGeometryChange` 包在外面会把它们挡住——两条同时失效，屏幕上就是每行一块
+        // 不透明的白底、白底下沿再挂一根系统那根半截分隔线，和暖底拼出一条硬边
+        // （违反 kanpan-no-seams-one-continuous-surface）。2026-09-22 在 iPhone 15 / iOS 26
+        // 上复现并逐步验证：只把这一句挪到三条之前，白底与半截分隔线当场都没了，
+        // 版面和 `docs/acceptance/兼容-2026-09-21/iPhone15-自选分类页.png` 对得上。
+        // 量到的还是同一个数（行内容与行框之间 `listRowInsets` 是零），
+        // `FavoritesScrollAnchorUITests.testFavoritesKeepsTheScrollPositionAcrossTabs` 照旧绿。
         .onGeometryChange(for: CGFloat.self) { proxy in
           proxy.frame(in: .global).minY
         } action: { y in
@@ -737,6 +745,9 @@ struct FavoritesView: View {
           guard !rows.teardown else { return }
           rows.minY[symbol] = y
         }
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
         .onAppear {
           onVisible(symbol); onRowVisibility(symbol, true)
           session.rowVisible(symbol, true, group: groupID ?? "", order: symbols)
