@@ -33,7 +33,18 @@ import ReviewUI
   private var playback: Task<Void, Never>?
   private var loadTask: Task<Void, Never>?
   private var loadID = UUID()
-  private var replayLimit = Int64.max
+  /// 「不许看到未来」的那条线，只有蒙眼找相似（`openMatch`）才给得出来：那条记录当时
+  /// 就只该看到那一刻为止，所以它是冻住的。平常复盘自己记的一条笔记时这里是 `nil`，
+  /// 上限跟着真实时间走。
+  ///
+  /// 冻住的代价 2026-09-21 在兼容性矩阵上现了形（三台机器一起红）：刚记下的笔记，
+  /// 打开时最后一根正是当时的最新收盘，上限也就冻在了那一秒。之后再点「后一根」，
+  /// `loadReplayPage(forward:)` 算出来的 `start >= end`，后来收的那些 K 线永远取不回来，
+  /// 光标顶在末根上——按了没反应。复盘要挡的是「记录当时看不见的未来」，
+  /// 不是「打开这条记录之后又过去的时间」。
+  private var replayCutoff: Int64?
+  /// 此刻的上限：蒙眼那条冻着，其余跟着钟走。
+  private var replayLimit: Int64 { replayCutoff ?? ReviewClock.now }
   /// 上一拍那根最新 K 线的开盘时刻。用来判断「人还跟着播放头吗」（审查 B-05）。
   private var replayLastTime: Int64?
   private var replayHosts: BinanceHosts?
@@ -120,12 +131,14 @@ import ReviewUI
     playback?.cancel(); playing = false; loadTask?.cancel(); pageTask?.cancel(); paging = false; loading = true
     replayHosts = hosts
     let request = UUID(); loadID = request
-    replayLimit = cutoff ?? ReviewClock.now
+    replayCutoff = cutoff
+    // 这一次取数的三个边界得用同一个上限，中途别让钟走掉一根。
+    let limit = replayLimit
     let range = record.draft.range
     let savedPosition = feature.savedReplay(record.id)?.cursor ?? range.end
-    let initialAnchor = min(replayLimit, max(range.end, savedPosition))
+    let initialAnchor = min(limit, max(range.end, savedPosition))
     let windowStart = Self.shifted(initialAnchor == range.end ? range.start : initialAnchor, interval: interval, bars: -300)
-    let end = min(replayLimit, Self.shifted(initialAnchor, interval: interval, bars: 300))
+    let end = min(limit, Self.shifted(initialAnchor, interval: interval, bars: 300))
     if let data = record.draft.chartSettings, let prefs = try? PersonalSyncCodec.snapshotPrefs(data) {
       base.style = prefs.style; base.options = prefs.chartOptions; base.params = prefs.params
       base.overlays = prefs.overlays; base.subs = prefs.subs.filter { $0 != .oi }
@@ -236,6 +249,11 @@ import ReviewUI
         for i in 1..<combined.count where Self.closeTime(combined[i - 1].openTime, interval: interval) != combined[i].openTime { throw ReviewBridgeError.historyGap }
         if combined.count > 6000 { combined = forward ? Array(combined.suffix(6000)) : Array(combined.prefix(6000)) }
         bars = combined; cursor = max(2, bars.firstIndex(where: { $0.openTime == position }) ?? 2)
+        // 取回来了就得画上去。`bars` 只是这边的一个数组，屏幕上那张图是 `updateReplay`
+        // 按 `cursor` 现切的；不补这一句，往前翻到头拿回来的五百根要等到人再动一下
+        // （再点一次「后一根」、或者播放走到下一拍）才显形——看起来就是「翻到头了没反应，
+        // 隔一会儿又突然多出来一截」。不 `reset`：人自己挑的视野不能被这趟补数顶掉。
+        updateReplay(feature: feature)
       } catch is CancellationError {} catch { if request == loadID { notice = error.localizedDescription; playing = false; playback?.cancel() } }
     }
   }
@@ -255,7 +273,9 @@ import ReviewUI
     }
     if outside, let hosts = replayHosts {
       feature.rememberReplay(record.id, position: ReviewReplayPosition(cursor: judgment, speed: speed))
-      open(record, feature: feature, live: base, hosts: hosts, cutoff: replayLimit)
+      // 传 `replayCutoff` 而不是 `replayLimit`：蒙眼那条要把冻住的时刻原样带过去，
+      // 平常那条要保持「没有上限，跟着钟走」，别在这儿被钉成当前时刻。
+      open(record, feature: feature, live: base, hosts: hosts, cutoff: replayCutoff)
       return
     }
     cursor = max(2, bars.lastIndex(where: { Self.closeTime($0.openTime, interval: interval) <= judgment }) ?? 2)
