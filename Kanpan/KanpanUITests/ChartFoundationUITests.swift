@@ -1721,8 +1721,19 @@ extension ChartFoundationUITests {
     // 用户看着一列结果却只点得到最上面一行（用户：「弹出来的键盘是不是占比太大了」）。
     XCTAssertTrue(wait { list.frame.height < tall - 40 },
                   "键盘起来了列表却没缩：\(tall) → \(list.frame.height)")
-    XCTAssertLessThanOrEqual(list.frame.maxY, keyboard.frame.minY + 1,
-                             "列表底边压在键盘底下了：列表 \(list.frame.maxY)，键盘顶边 \(keyboard.frame.minY)")
+    let window = app.windows.firstMatch.frame
+    let reported = keyboard.frame
+    let top = try XCTUnwrap(keyboardTopEdge(reported: reported, window: window),
+                            "键盘报回来的框既不是正着的也不是转过 90° 的：键盘 \(reported)，窗口 \(window)")
+    // 绿的时候断言里的数看不见，所以把这组几何单独落一行进日志：
+    // 要证明的是「16 Pro 上确实走了转过 90° 那一支、算出来 240」，不能只看它绿。
+    let branch = reported.width > reported.height ? "正着报" : "转过 90°"
+    let measured = "KB-GEOMETRY 分支=\(branch) 键盘=\(reported) 窗口=\(window) 键盘上沿=\(top) 列表底边=\(list.frame.maxY)"
+    print(measured)
+    XCTContext.runActivity(named: measured) { _ in }
+    XCTAssertLessThanOrEqual(list.frame.maxY, top + 1,
+                             "列表底边压在键盘底下了：列表 \(list.frame.maxY)，键盘上沿 \(top)"
+                             + "（键盘报的框 \(reported)，窗口 \(window)）")
     shot("画线-换品种-键盘")
   }
 }
@@ -1818,5 +1829,77 @@ extension ChartFoundationUITests {
     XCTAssertTrue(bar.staticTexts["区间成交量分布"].exists, "选中条上写的不是这把工具的名字")
     XCTAssertTrue(app.buttons["draw.style"].isHittable, "选中条上的「样式」点不到")
     shot("画线-区间成交量分布")
+  }
+}
+
+/// 把 XCUITest 报回来的键盘框，换算成「这块屏幕上键盘的上沿」。
+///
+/// 为什么不能直接用 `keyboard.frame.minY`：iOS 把键盘放在另一个窗口里
+/// （`UIRemoteKeyboardWindow`），而那个窗口跟的是**设备原生的竖屏坐标系**。
+/// 画线工作台的横屏是点「画线」时用 `requestGeometryUpdate` 强行转出来的（见
+/// `OrientationBridge`），模拟器/手机本身还竖着；键盘窗口赶不上这次旋转时，
+/// 无障碍那边读到的整块键盘子树就是转过 90°、连位置一起落到屏幕外的。
+/// 2026-09-21 的兼容性矩阵在 iPhone 16 Pro / iOS 26.5 上就撞到一次（只那一台红，
+/// iPhone 15 / Air / 17e 同一版本全绿）：xcresult 里的无障碍树写着窗口
+/// `Window (Main) {{0,0},{874,402}}`（横屏，对的）、列表 `draw.symbol.list {{122,96.7},{236,92}}`
+/// （已经按设计缩到 92pt，底边 188.67），键盘却报 `Keyboard {{-162,0},{162,874}}`
+/// ——长宽对调、整块落在屏幕外。拿这种框的 `minY`(=0) 当键盘上沿，
+/// 量到的是屏幕最顶上，屏上任何东西都会被判成「压在键盘底下」。
+/// 换算回来：真正的键盘上沿是 402-162=240，列表底边 188.67 实际在它上方 51pt，
+/// 产品行为本来就是对的——错的是这条用例量键盘的方式。
+///
+/// **别拿「宽是不是等于窗宽」当锚**：横屏 iPhone 上键盘左右会各让开一段，铺不满整幅宽。
+/// iPhone 15 实测是窗口 (0,0,852,393)、键盘 (75,229,702,162)，两边各空 75pt。
+/// 站得住的不变量是另一条：**键盘永远是一条长轴水平的带**。于是
+///
+/// - 宽 > 高 → 报的是正着的，上沿就是它的 `minY`（iPhone 15 横屏 229；竖屏 393×291 同理）；
+/// - 高 > 宽 → 报的是转过 90° 的，带的厚度是它的**宽**，上沿 = 窗口下沿 − 宽
+///   （iPhone 16 Pro：402−162=240）。这一支再留一道保险：长边应当正好是窗宽，
+///   对不上就返回 nil，宁可让用例报「量不出来」，也不瞎给一个数。
+///
+/// 转过 90° 那一支还原的是「键盘正贴着窗口下沿」的理想位置（402−162=240），
+/// 比同一台机器正常报出来的 238 宽 2pt——那条回退路只在框已经报坏时才走，2pt 的余量
+/// 不影响任何结论。注意这整件事不是把断言放松：列表要是真的探到了键盘下面，照样红。
+func keyboardTopEdge(reported: CGRect, window: CGRect) -> CGFloat? {
+  if reported.width > reported.height { return reported.minY }
+  if abs(reported.height - window.width) <= 2 { return window.maxY - reported.width }
+  return nil
+}
+
+/// 上面那套换算的算术本身。转过 90° 的键盘框可遇不可求，
+/// 所以拿 2026-09-21 iPhone 16 Pro 实测到的原始数字把它钉在这儿。
+final class KeyboardFrameGeometryTests: XCTestCase {
+  func testKeyboardTopEdgeUnrotatesAQuarterTurnedKeyboardFrame() throws {
+    // 转过 90° 的（2026-09-21 iPhone 16 Pro 矩阵实测）：窗口 874×402，键盘报 {{-162,0},{162,874}}。
+    // 厚 162，上沿该是 402-162=240，而不是它的 minY(=0)。
+    let turned = CGRect(x: 0, y: 0, width: 874, height: 402)
+    XCTAssertEqual(keyboardTopEdge(reported: CGRect(x: -162, y: 0, width: 162, height: 874),
+                                   window: turned), 240)
+    // 正着报的（2026-09-22 iPhone 15 实测）：横屏键盘左右各让开 75pt、铺不满窗宽，上沿仍是 minY。
+    let landscape = CGRect(x: 0, y: 0, width: 852, height: 393)
+    XCTAssertEqual(keyboardTopEdge(reported: CGRect(x: 75, y: 229, width: 702, height: 162),
+                                   window: landscape), 229)
+    // 竖屏那种铺满窗宽的，也走同一支。
+    let portrait = CGRect(x: 0, y: 0, width: 393, height: 852)
+    XCTAssertEqual(keyboardTopEdge(reported: CGRect(x: 0, y: 561, width: 393, height: 291),
+                                   window: portrait), 561)
+    // 竖着报、长边又对不上窗宽：还原不出来，宁可判不出来。
+    XCTAssertNil(keyboardTopEdge(reported: CGRect(x: 0, y: 0, width: 100, height: 1000),
+                                 window: landscape))
+
+    // 把 09-21 那条红原样摆一遍：同一组数字，旧写法判红、新写法判绿。
+    //
+    // 转过 90° 的键盘框是可遇不可求的（2026-09-22 在新建的 iPhone 16 Pro / iOS 26.5 上
+    // 连跑三轮都只报正着的 (75,238,724,162)，走的是 minY 那一支），所以这条红没法靠再跑一遍
+    // 坐实，只能拿当时 xcresult 里记下来的原始数字回放：窗口与列表都和今天一模一样
+    // （874×402、列表底边 188.666…），唯一的变量就是键盘那一格的报法。
+    let listBottom: CGFloat = 188.66666666666666
+    let asReported = CGRect(x: -162, y: 0, width: 162, height: 874)
+    // 旧写法直接拿 minY 当上沿 → 0，列表被判成「压在键盘底下」，这就是当时那条红。
+    XCTAssertGreaterThan(listBottom, asReported.minY + 1)
+    // 新写法还原出 240，列表在它上方 51pt，判绿——产品行为本来就是对的。
+    XCTAssertEqual(keyboardTopEdge(reported: asReported, window: turned), 240)
+    XCTAssertLessThanOrEqual(listBottom, try XCTUnwrap(keyboardTopEdge(reported: asReported,
+                                                                      window: turned)) + 1)
   }
 }

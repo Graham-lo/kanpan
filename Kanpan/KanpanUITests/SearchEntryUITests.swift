@@ -3,7 +3,7 @@ import UIKit
 
 /// 搜索与入口（方案 `docs/提醒与体验细节-实施方案-2026-09-20.md` 第 3 节）。
 ///
-/// 这一条把「搜品种」这件事从人的角度走一遍：进页面键盘不许自己顶上来、
+/// 这一条把「搜品种」这件事从人的角度走一遍：进页面键盘就位（这一页是来打字的）、
 /// 打拼音和首字母要找得到币、点星之后人留在原地。
 /// 中文与拼音的**名次**由 `Kanpan/Symbols` 的单测钉死（`SymbolAliasesTests`），
 /// 这儿只验真界面上确实是那个结果。
@@ -12,14 +12,34 @@ final class SearchEntryUITests: KanpanUICase {
     ["KANPAN_TEST_FAVORITES": "BTCUSDT,ETHUSDT"]
   }
 
-  /// 进搜索页不弹键盘；点那个框它才起来（记忆 kanpan-symbol-search-keyboard）。
-  func testSearchPageDoesNotRaiseKeyboardOnAppear() throws {
+  /// 进搜索页键盘自己上来，焦点就落在框里，打的是 ASCII。
+  ///
+  /// **这一页自动聚焦是对的**，别把它跟画线那层浮层搞混。记忆
+  /// `kanpan-symbol-search-keyboard` 里「进来不自动抢焦点」那一条，用户当时说的是
+  /// **横屏画线工作台里点品种名弹的那层换品种浮层**（`DrawingSymbolSwitcher`，由
+  /// `ChartFoundationUITests.testDrawingSymbolSwitcherKeepsKeyboardDown` 守着）：
+  /// 那层的主体是底下那格「常看」，键盘一上来就把它盖了。同一条记忆紧接着写明
+  /// 「整页级的搜索页（用户是从「搜索」入口点进去的）不在此列，那儿自动聚焦是对的」，
+  /// `docs/实施任务书.md` 第 545 行也是同一句：「页面进入时搜索框**自动聚焦弹键盘**
+  /// （这是来搜的）」。自选页这颗「搜索品种」框开的就是同一张整页搜索页
+  /// （`SymbolSearchView`），人点它就是为了打字。
+  ///
+  /// 这条用例原来断言的是反面（`testSearchPageDoesNotRaiseKeyboardOnAppear`）：
+  /// 9638adf 把浮层那条规矩误套到了整页上，用例跟着一起写歪了；0dee684 已经把产品
+  /// 改回自动聚焦（`SymbolSearchView` 的 `.task` 里那句 `focused = true`），却漏改了
+  /// 这一条，于是 09-21 的兼容性矩阵上五台机器全红。2026-09-22 在 iPhone 15 上
+  /// 实测确认：进这一页键盘自己上来、框上有焦点环——那是对的行为，改的是用例。
+  func testSearchPageRaisesKeyboardOnAppear() throws {
     openSearch()
-    // 给它两秒——键盘要是会自己起来，这两秒足够了。
-    XCTAssertFalse(waitUntil(timeout: 2) { self.app.keyboards.count > 0 }, "搜索页一进来就把键盘顶上来了")
-    shot("搜索页-进来不弹键盘")
-    app.textFields[Ids.searchQuery].tap()
-    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "点了输入框键盘还不起来")
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
+                  "从自选页进搜索页，键盘没有自己上来（这一页该自动聚焦）")
+    shot("搜索页-进来就能打字")
+    // 焦点真的在那个框上：**不点它**，直接打字，三个字母要原样落进去。
+    let field = app.textFields[Ids.searchQuery]
+    XCTAssertTrue(field.exists, "搜索页上没有输入框")
+    field.typeText("BTC")
+    XCTAssertTrue(waitUntil(timeout: 5) { (field.value as? String) == "BTC" },
+                  "没点框直接打字，框里是「\(field.value as? String ?? "?")」——焦点没落在搜索框上")
   }
 
   /// 拼音全拼、首字母、以及「ETH/USDT」这类写法都要找得到。
