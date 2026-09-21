@@ -68,10 +68,20 @@ for name in "${DEVICES[@]}"; do
 
   rm -rf "$RES/$slug.xcresult"
   start=$SECONDS
+  # 单条用例的墙钟上限。2026-09-21 那一轮的教训：`AccountSessionReplacedUITests`
+  # 在三台机器上挂住不返回（async 用例里 `continueAfterFailure = false` 靠 ObjC
+  # 异常终止，异常穿不过 async 帧，之后第一个 await 再也没回来），一条用例分别吃掉
+  # 7.1 / 4.5 / 5.4 小时，后面八十多条用例一条都没跑上，等于整条矩阵作废。
+  # 用例那边的根因已经修掉，这里再上一道闸：**任何**一条用例卡住，XCTest 到点就判它
+  # 超时、记一条红，然后接着跑下一条。全套最长的一条正常是 150s 上下
+  # （`AccountPreferenceSyncUITests`），三条流水线并行时会慢一截，所以给到 480s。
   xcodebuild test-without-building \
     -workspace "$WORKSPACE" -scheme "$SCHEME" \
     -destination "platform=iOS Simulator,id=$udid" \
     -derivedDataPath "$DD" \
+    -test-timeouts-enabled YES \
+    -default-test-execution-time-allowance 480 \
+    -maximum-test-execution-time-allowance 900 \
     -resultBundlePath "$RES/$slug.xcresult" > "$OUT/$slug.log" 2>&1
   rc=$?
   dur=$((SECONDS-start))

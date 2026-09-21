@@ -174,8 +174,12 @@ struct AccountView: View {
         }
         .listRowBackground(theme.raised)
       }
+      // 这一条也挂 `account.error`：设备列表是「被顶下去」唯一必然带令牌出门的入口，
+      // 它报的错不打标识的话，用例红了只会说「页面上没有报错」，查不出到底是撞了
+      // 401 还是这一趟请求超时了（09-21 矩阵上就吃过这个哑巴亏）。
       if let error = feature.error {
         Text(error).foregroundStyle(theme.danger).listRowBackground(theme.raised)
+          .accessibilityIdentifier("account.error")
       }
     }
     .listed(theme)
