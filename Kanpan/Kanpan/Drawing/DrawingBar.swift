@@ -367,6 +367,8 @@ struct DrawingSheet: View {
   @Environment(\.dismiss) private var dismiss
   @Environment(\.panelTheme) private var theme
   @State private var confirmClear = false
+  /// 当前左划开着的是哪一行。一张表同一时刻只许开一行（见 `SwipeToDelete`）。
+  @State private var openSwipe: String?
   var body: some View {
     if panel == .style, let item = controller.selected {
       // 样式面板只占下面一截：调颜色粗细的时候得能看见改的是哪条线（第二批 10）。
@@ -379,41 +381,53 @@ struct DrawingSheet: View {
         List {
           Section {
               if controller.items.isEmpty { Text("还没有画线").foregroundStyle(theme.ink2) }
+              // 左划删除走 `SwipeToDelete`，和提醒总表同一个零件。
+              //
+              // 这儿原来用的是系统的 `.swipeActions`，砖底靠 `.tint(theme.danger)` 盖，
+              // 砖上的字写着 `Text("删除").foregroundStyle(theme.badgeInk)`。
+              // 2026-09-22 在 iPhone 15 / 青苔深上量了一遍：**字色那一半根本没生效**。
+              // 砖底确实是 `#F08A80`（`.tint` 管用），但字的像素里 `#FFFFFF` 218 个、
+              // `#060A08` 一个都没有，对比度 2.43:1；同一屏上提醒总表那块砖是
+              // 8.20:1。原因不是「被别的样式盖过去」，而是 SwiftUI 只把 label 里的
+              // **字符串**取走塞进 `UIContextualAction.title`，整棵 SwiftUI 子树连同
+              // `foregroundStyle` 一起丢掉，字是 UIKit 画的，一律白色——无障碍树里
+              // 那颗按钮是叶子、里头一个 StaticText 都没有，就是这件事的旁证。
+              //
+              // 所以这一处的字色在 `.swipeActions` 上没有干净的解法。原生带的两样
+              // 东西（滑到底直接触发、VoiceOver 的破坏性语义与收拢动画）没有丢，
+              // 都在 `SwipeToDelete` 里补齐了，那儿有逐条说明。
               ForEach(Array(controller.items.reversed())) { item in
-                HStack {
-                  Button { controller.select(item.id); dismiss() } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                      Text(item.kind.title + (item.locked ? " · 已锁定" : ""))
-                      // 价格的写法全 app 一个口径：品种自己的小数位 + 极小正价自动多给
-                      // 几位（审查 B-07）。原来这儿按「有效数字 2–10 位」写，同一条线
-                      // 在图上和在这张清单里能差出好几位。
-                      Text(fmtPrice(item.a.p, decimals: decimals))
-                        .font(.caption).foregroundStyle(theme.ink3)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                  }.accessibilityIdentifier("draw.object.\(item.id)")
-                  Button { controller.toggleHidden(item) } label: {
-                    Image(systemName: item.hidden ? "eye.slash" : "eye").frame(width: 44, height: 44)
-                  }.accessibilityLabel(item.hidden ? "显示画线" : "隐藏画线")
-                }.buttonStyle(.borderless)
-                .swipeActions {
-                  // 警示色跟皮肤走（`theme.danger`，见 `PaletteSeed.danger`），不用系统红。
-                  //
-                  // `role: .destructive` **留着**：滑到底直接触发认的是「这条边第一颗按钮」，
-                  // 而 role 还带着 VoiceOver 的破坏性语义和删除行的收拢动画；去掉 role 只为
-                  // 换个颜色，等于拿语义换调色。颜色改由 `.tint` 盖——swipeAction 的 `.tint`
-                  // 定的就是按钮底，优先级在 role 的系统红之上（同一写法见 `FavoritesView`
-                  // 的「移到分类」`.tint(theme.amber)`）。
-                  //
-                  // 字给 `badgeInk`：白字压在深色皮肤那支亮红（青苔夜 `#F08A80`）上只有
-                  // 2.4:1，`badgeInk`（夜里是近黑的 `ground`）六套皮肤都在 5.6:1 以上，
-                  // 和 `AlertListPage` 的左划删除同一支笔。
-                  Button(role: .destructive) {
-                    controller.select(item.id); controller.deleteSelected()
-                  } label: {
-                    Text("删除").foregroundStyle(theme.badgeInk)
-                  }
-                  .tint(theme.danger)
+                SwipeToDelete(id: item.id, open: $openSwipe, brick: .pill,
+                              onDelete: { controller.select(item.id); controller.deleteSelected() }) { swipe in
+                  HStack {
+                    Button {
+                      // 划开着的时候点行不是「选中这条线」，是「先把砖收回去」。
+                      if swipe.isOpen { swipe.close() } else { controller.select(item.id); dismiss() }
+                    } label: {
+                      VStack(alignment: .leading, spacing: 3) {
+                        Text(item.kind.title + (item.locked ? " · 已锁定" : ""))
+                        // 价格的写法全 app 一个口径：品种自己的小数位 + 极小正价自动多给
+                        // 几位（审查 B-07）。原来这儿按「有效数字 2–10 位」写，同一条线
+                        // 在图上和在这张清单里能差出好几位。
+                        Text(fmtPrice(item.a.p, decimals: decimals))
+                          .font(.caption).foregroundStyle(theme.ink3)
+                      }.frame(maxWidth: .infinity, alignment: .leading)
+                    }.accessibilityIdentifier("draw.object.\(item.id)")
+                    Button {
+                      if swipe.isOpen { swipe.close() } else { controller.toggleHidden(item) }
+                    } label: {
+                      Image(systemName: item.hidden ? "eye.slash" : "eye").frame(width: 44, height: 44)
+                    }.accessibilityLabel(item.hidden ? "显示画线" : "隐藏画线")
+                  }.buttonStyle(.borderless)
+                  // 行内的留白原来由 `List` 自己的 `listRowInsets` 给。砖块要够得着
+                  // 行的右沿，那份内缩必须清掉，改由行内容自己补回同样的量。
+                  .padding(.leading, 16)
+                  .padding(.trailing, 4)
+                  .padding(.vertical, 12)
                 }
+                .listRowInsets(EdgeInsets())
+                // 内缩清掉之后分隔线会顶到最左边，按原来的量把它推回去。
+                .alignmentGuide(.listRowSeparatorLeading) { _ in 16 }
               }
             }
             .listRowBackground(theme.raised)

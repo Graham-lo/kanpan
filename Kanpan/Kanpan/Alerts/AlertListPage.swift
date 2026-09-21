@@ -24,6 +24,8 @@ struct AlertListPage: View {
   /// 走 `AppLifecycle` 是**规定**：全 app 只有那一处读前后台，谁要听就去报到，
   /// 不许自己挂 `UIApplication` 的通知（见 `AppLifecycle` 开头第 1 条）。
   @State private var lifecycle: AppLifecycle.ResourceToken?
+  /// 当前左划开着的是哪一行。一张表同一时刻只许开一行（见 `SwipeToDelete`）。
+  @State private var openSwipe: String?
 
   var body: some View {
     PanelSheet(title: "提醒", subtitle: nil, asPage: false) {
@@ -33,6 +35,7 @@ struct AlertListPage: View {
       } else {
         ForEach(store.sorted) { alert in
           AlertRow(alert: alert,
+                   open: $openSwipe,
                    onOpen: { onOpen(alert) },
                    onRearm: { store.rearm(id: alert.id) },
                    onCondition: { store.setCondition($0, id: alert.id) },
@@ -122,8 +125,14 @@ struct AlertListPage: View {
 }
 
 /// 一行：徽章 + 品种 + 线种 + 状态。左划删除。
+///
+/// 左划那一套**不在这儿实现**：它是 `SwipeToDelete`，全 app 一份，画线管理
+/// （`DrawingSheet`）用的是同一个零件。这一行原来自己 ZStack + DragGesture 画了
+/// 一遍，画线管理那边又用系统的 `.swipeActions` 画了一遍——同一个动作两套实现，
+/// 两块砖的字色还不一样（`kanpan-one-feature-one-module`）。
 private struct AlertRow: View {
   var alert: KanpanCore.Alert
+  @Binding var open: String?
   var onOpen: () -> Void
   var onRearm: () -> Void
   var onCondition: (KanpanCore.Alert.Condition) -> Void
@@ -131,53 +140,17 @@ private struct AlertRow: View {
   var zone: TZOffset
 
   @Environment(\.panelTheme) private var t
-  /// 左划出来的那一段。只认一根手指的水平位移，纵向滚动不受影响。
-  @State private var offset: CGFloat = 0
-  private static let revealed: CGFloat = -76
 
   var body: some View {
-    ZStack(alignment: .trailing) {
-      Button(role: .destructive) { withAnimation(.easeOut(duration: 0.16)) { offset = 0 }; onDelete() } label: {
-        // 警示色不是跌色。出厂是红涨绿跌（`Prefs.redUp` 默认 `true`），`t.down`
-        // 是绿的——「删除」读起来像「确认」，还跟着一个和删除毫无关系的开关翻来翻去。
-        // `t.danger` 就是为这件事建的那一支（见 `PaletteSeed.danger`）。
-        // 字走 `badgeInk`：白字压在深色皮肤那支亮红 `#F08A80` 上只有 2.4:1，
-        // 换成它之后六套皮肤都在 5.6:1 以上。
-        Text("删除")
-          .font(PanelFont.seg)
-          .foregroundStyle(t.badgeInk)
-          .frame(width: -Self.revealed, height: 52)
-          .background(t.danger)
-      }
-      .buttonStyle(.plain)
-      .opacity(offset < -4 ? 1 : 0)
-
-      row
-        // 这层底是给左划用的（划开时下面不能透出「删除」那块红）。颜色必须和面板
-        // 自己的底一样（`PanelSheet` 用的是 `raised`），拿 `t.app` 会在行与行以下
-        // 的空白之间切出一道硬边——整屏要读成一块连续的材料。
-        .background(t.raised)
-        .offset(x: offset)
-        .gesture(
-          DragGesture(minimumDistance: 12)
-            .onChanged { g in
-              guard abs(g.translation.width) > abs(g.translation.height) else { return }
-              offset = max(Self.revealed, min(0, g.translation.width + (offset < -4 ? Self.revealed : 0)))
-            }
-            .onEnded { g in
-              withAnimation(.easeOut(duration: 0.16)) {
-                offset = g.translation.width < -36 ? Self.revealed : 0
-              }
-            }
-        )
+    SwipeToDelete(id: alert.id, open: $open, brick: .flush, onDelete: onDelete) { swipe in
+      row(swipe)
     }
-    .clipped()
   }
 
-  private var row: some View {
-    PanelRow(name: title, meta: meta, onTap: { offset == 0 ? onOpen() : close() }) {
+  private func row(_ swipe: SwipeDeleteProxy) -> some View {
+    PanelRow(name: title, meta: meta, onTap: { swipe.isOpen ? swipe.close() : onOpen() }) {
       if alert.status == .fired {
-        Button(action: { close(); onRearm() }) {
+        Button(action: { swipe.close(); onRearm() }) {
           Text("再次提醒")
             .font(PanelFont.seg)
             .foregroundStyle(t.badgeInk)
@@ -208,8 +181,6 @@ private struct AlertRow: View {
     }
     .padding(.leading, 30)
   }
-
-  private func close() { withAnimation(.easeOut(duration: 0.16)) { offset = 0 } }
 
   private var title: String {
     let base = KanpanCore.Alert.base(of: alert.symbol)
