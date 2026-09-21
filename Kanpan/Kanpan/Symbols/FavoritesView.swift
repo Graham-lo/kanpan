@@ -542,7 +542,7 @@ struct FavoritesView: View {
     Button { runMore(action) } label: {
       Label(title, systemImage: icon).frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
         .padding(.horizontal, 16).contentShape(Rectangle())
-    }.buttonStyle(.plain).foregroundStyle(destructive ? Color(hex: Palette.chart(theme.seed, redUp: false).down) : theme.ink)
+    }.buttonStyle(.plain).foregroundStyle(destructive ? theme.danger : theme.ink)
       .accessibilityIdentifier(id)
   }
 
@@ -1300,7 +1300,7 @@ struct FavoritesView: View {
       Button("删除", role: .destructive) {
         removeFavorites(Array(selection)); selection.removeAll()
       }.disabled(selection.isEmpty)
-        .foregroundStyle(selection.isEmpty ? skin.ink4 : theme.down)
+        .foregroundStyle(selection.isEmpty ? skin.ink4 : theme.danger)
     }
     .buttonStyle(.plain)
     .font(.system(size: 13, weight: .semibold))

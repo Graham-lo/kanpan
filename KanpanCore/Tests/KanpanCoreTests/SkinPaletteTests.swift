@@ -78,6 +78,41 @@ struct SkinPaletteTests {
     #expect(reversed.bg == colors.bg && reversed.palette == colors.palette)
   }
 
+  /// 警示色（删除 / 注销 / 报错）是独立一支，**不许拿涨跌色顶替**。
+  ///
+  /// 这条测试是为一个真 bug 立的桩：画线栏的「删除」原来取跌色，而出厂是红涨绿跌
+  /// （`Prefs.redUp` 默认 `true`），于是那个删除按钮在真机上是绿的。所以这里要钉住三件事：
+  /// 六套各有一支、它读起来是红的、并且和会被 `redUp` 翻来翻去的涨跌两色都不是同一支。
+  @Test("警示色是自己的一支红，不跟涨跌色混", arguments: seeds)
+  func dangerIsItsOwnRed(_ seed: PaletteSeed) {
+    let danger = seed.danger.bytes
+    #expect(danger.r > danger.g && danger.r > danger.b, "\(seed.danger) 读不出「危险」")
+    // 和涨跌两色都得离得开：无论用户怎么设 `redUp`，删除都不该和行情读数撞成一支。
+    for quote in [seed.up, seed.down] {
+      let q = quote.bytes
+      let apart = abs(danger.r - q.r) + abs(danger.g - q.g) + abs(danger.b - q.b)
+      #expect(apart >= 40, "\(seed.danger) 和涨跌色 \(quote) 太像（色差 \(apart)）")
+    }
+    // 它是动作字，按文字的 4.5:1 收；`danger` 是我们自己配的，不吃「照抄 AICoin」那条豁免。
+    for surface in [seed.app, seed.raised, seed.raised2] {
+      #expect(Palette.contrast(seed.danger, surface) >= 4.4, "\(seed.danger) 落在 \(surface) 上看不清")
+    }
+  }
+
+  @Test("六套皮肤的警示色各配一档")
+  func dangerPerSkin() {
+    #expect(Palette.sageSeed.danger == Palette.sageDanger)
+    #expect(Palette.sageNightSeed.danger == Palette.sageNightDanger)
+    #expect(Palette.terraSeed.danger == Palette.terraDanger)
+    #expect(Palette.terraNightSeed.danger == Palette.terraNightDanger)
+    #expect(Palette.classicSeed.danger == Palette.classicDanger)
+    #expect(Palette.classicNightSeed.danger == Palette.classicNightDanger)
+    // 浅色三套的 K 线色是同一套 AICoin 的，但警示色跟着皮肤各偏各的——
+    // 警示属于图外，图外要融进皮肤。
+    #expect(Palette.sageSeed.danger != Palette.terraSeed.danger)
+    #expect(Palette.sageSeed.danger != Palette.classicSeed.danger)
+  }
+
   @Test("三套配色确实不是同一套")
   func skinsDiffer() {
     #expect(Palette.isWarm(Palette.terraSeed) && Palette.isWarm(Palette.terraNightSeed))

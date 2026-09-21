@@ -49,6 +49,19 @@ public struct PaletteSeed: Sendable, Equatable {
   public var up, down, amber: Hex
   /// 界面强调色。
   public var accent: Hex
+  /// **警示色：删除、注销、报错这类「不可逆 / 出事了」的动作字。**
+  ///
+  /// 单开一支是被一个真 bug 逼出来的：画线栏上那个「删除」原来取 `down`（跌色），
+  /// 想的是「跌 = 红 = 危险」。可看盘的涨跌色是照 AICoin 手机端来的，出厂就是
+  /// **红涨绿跌**（`Prefs.redUp` 默认 `true`），于是跌色是**绿的**——选中一条线之后，
+  /// 那个「删除」读起来像「确认 / 通过」。而且它还跟着用户的涨跌开关翻：同一个按钮
+  /// 今天红明天绿，取决于一个跟删除毫无关系的设置。
+  ///
+  /// 所以警示是警示、涨跌是涨跌，两件事各有各的令牌。这一支**不参与 `redUp` 对调**，
+  /// 也不出现在图上（`ChartColors` 里没有它）——图上的颜色是 AICoin 那一套，不动。
+  /// 六套各配一档：浅色是压深的砖红（青苔偏冷、陶土偏暖、经典取中性正红），
+  /// 深色各自提亮，都过 4.5:1。
+  public var danger: Hex
   public var palette: [Hex]
   /// 副图线（MAVOL / DIF、DEA / RSI）依次取色。不给就跟主图 `palette` 同一组。
   /// AICoin 的副图线走的是它自己那张「槽位色板」（青绿、黄、紫、蓝…），和主图均线
@@ -57,7 +70,7 @@ public struct PaletteSeed: Sendable, Equatable {
 
   public init(dark: Bool, ground: Hex, app: Hex, chart: Hex, raised: Hex, raised2: Hex,
               line: Hex, grid: Hex, hair: Hex, ink: Hex, ink2: Hex, ink3: Hex,
-              up: Hex, down: Hex, amber: Hex, accent: Hex? = nil, palette: [Hex],
+              up: Hex, down: Hex, amber: Hex, accent: Hex? = nil, danger: Hex, palette: [Hex],
               sub: [Hex]? = nil) {
     self.dark = dark
     self.ground = ground; self.app = app; self.chart = chart
@@ -66,6 +79,7 @@ public struct PaletteSeed: Sendable, Equatable {
     self.ink = ink; self.ink2 = ink2; self.ink3 = ink3
     self.up = up; self.down = down; self.amber = amber
     self.accent = accent ?? amber
+    self.danger = danger
     self.palette = palette
     self.sub = sub ?? palette
   }
@@ -119,7 +133,7 @@ public enum Palette: Sendable {
     ground: "#C3D6CA", app: "#F3F7F4", chart: "#F3F7F4", raised: "#FFFFFF", raised2: "#E7EFE9",
     line: "#D6E3DA", grid: "#E2EBE5", hair: "#14211B0F",
     ink: "#14211B", ink2: "#4E6158", ink3: "#606F67",
-    up: aicoinDayUp, down: aicoinDayDown, amber: "#B57C28", accent: "#2E7D6B",
+    up: aicoinDayUp, down: aicoinDayDown, amber: "#B57C28", accent: "#2E7D6B", danger: sageDanger,
     palette: aicoinDayMA, sub: aicoinSlots)
 
   /// 青苔 · 深。
@@ -128,7 +142,7 @@ public enum Palette: Sendable {
     ground: "#060A08", app: "#0B120F", chart: "#0B120F", raised: "#131C18", raised2: "#1A241F",
     line: "#25332C", grid: "#1A241F", hair: "#FFFFFF0A",
     ink: "#E9F2EC", ink2: "#A5B8AE", ink3: "#7B8D85",
-    up: "#4FB69C", down: "#E36159", amber: "#E0A544", accent: "#4FB69C",
+    up: "#4FB69C", down: "#E36159", amber: "#E0A544", accent: "#4FB69C", danger: sageNightDanger,
     palette: ["#E0A544", "#7D9AE8", "#4FB69C", "#E894B4", "#BDAEDC", "#7FD0FF"])
 
   // ---------------------------------------------------------------- 陶土（暖）
@@ -139,7 +153,7 @@ public enum Palette: Sendable {
     ground: "#D9C7B4", app: "#FBF6F0", chart: "#FBF6F0", raised: "#FFFFFF", raised2: "#F2E8DE",
     line: "#E7DACB", grid: "#F0E6DA", hair: "#241A130F",
     ink: "#241A13", ink2: "#6E5C4D", ink3: "#756659",
-    up: aicoinDayUp, down: aicoinDayDown, amber: "#B37B25", accent: "#B25735",
+    up: aicoinDayUp, down: aicoinDayDown, amber: "#B37B25", accent: "#B25735", danger: terraDanger,
     palette: aicoinDayMA, sub: aicoinSlots)
 
   /// 陶土 · 深。
@@ -148,7 +162,7 @@ public enum Palette: Sendable {
     ground: "#0C0805", app: "#16100C", chart: "#16100C", raised: "#211812", raised2: "#2A1F17",
     line: "#37281D", grid: "#2A1F17", hair: "#FFFFFF0A",
     ink: "#F7EFE6", ink2: "#C2AC98", ink3: "#958576",
-    up: "#3FA783", down: "#E0584A", amber: "#E0A544", accent: "#E2874F",
+    up: "#3FA783", down: "#E0584A", amber: "#E0A544", accent: "#E2874F", danger: terraNightDanger,
     palette: ["#E0A544", "#9B8AE0", "#3FA783", "#E894B4", "#C0AEE0", "#85B8D6"])
 
   // ---------------------------------------------------------------- 经典（白）
@@ -172,7 +186,7 @@ public enum Palette: Sendable {
     ground: "#F7F8FA", app: "#FFFFFF", chart: "#FFFFFF", raised: "#FFFFFF", raised2: "#F3F5F7",
     line: "#EAEAEA", grid: "#EAEAEA", hair: "#14211B0F",
     ink: "#14211B", ink2: "#4E6158", ink3: "#606F67",
-    up: aicoinDayUp, down: aicoinDayDown, amber: "#B57C28", accent: "#2E7D6B",
+    up: aicoinDayUp, down: aicoinDayDown, amber: "#B57C28", accent: "#2E7D6B", danger: classicDanger,
     palette: aicoinDayMA, sub: aicoinSlots)
 
   /// 经典 · 深。底是 AICoin 夜间的 `#0D111C`（`sh_base_view_bg_night`）/ `#090C14`
@@ -185,9 +199,28 @@ public enum Palette: Sendable {
     ground: "#090C14", app: "#0D111C", chart: "#0D111C", raised: "#202126", raised2: "#303442",
     line: "#20232E", grid: "#20232E", hair: "#FFFFFF0A",
     ink: "#E9F2EC", ink2: "#A5B8AE", ink3: "#7B8D85",
-    up: "#2F9347", down: "#CC3333", amber: "#E0A544", accent: "#4FB69C",
+    up: "#2F9347", down: "#CC3333", amber: "#E0A544", accent: "#4FB69C", danger: classicNightDanger,
     palette: ["#FFB400", "#E849B9", "#B2DF8A", "#FB9A99", "#1478C8", "#2FD2B2"],
     sub: aicoinNightSlots)
+
+  // ---------------------------------------------------------------- 警示色
+
+  /// 三套皮肤各自的警示色（见 `PaletteSeed.danger`）。
+  ///
+  /// 都是红的——「危险」这一档的红是全世界通用的读法，改不得；能调的只有它**是哪一支红**。
+  /// 所以三套各按自己的调子偏一点：青苔往冷里偏（带一点蓝的砖红），陶土往暖里偏
+  /// （偏赭的陶红，和它的赤陶强调色是一家人），经典取不偏不倚的正红（那一套本来就是
+  /// 照 AICoin 复刻的中性皮肤）。
+  ///
+  /// 六支都刻意**压暗 / 提亮到离蜡烛那支红（浅色 `#E64552`）足够远**：删除按钮不该和
+  /// 图上的涨跌读成同一支颜色，否则换个皮肤就又分不清「这是危险还是行情」。
+  /// 落在各自的 `app` / `raised` / `raised2` 上都在 4.4:1 以上（见 `SkinPaletteTests`）。
+  public static let sageDanger: Hex = "#B93A2E"
+  public static let sageNightDanger: Hex = "#F08A80"
+  public static let terraDanger: Hex = "#AE3F2A"
+  public static let terraNightDanger: Hex = "#F0947C"
+  public static let classicDanger: Hex = "#C62828"
+  public static let classicNightDanger: Hex = "#EF7A72"
 
   // ---------------------------------------------------------------- AICoin 的 K 线色
 

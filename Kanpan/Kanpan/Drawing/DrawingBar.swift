@@ -145,7 +145,11 @@ struct DrawingBar: View {
 /// 最早它们是**顶掉**画线栏上排那三个开关的，位置一一对应：「管理」原地变成「样式」，
 /// 而「删除」正好落在手指刚刚点过的那一格上。选中通常是误触的结果，紧接着下一下就把
 /// 线删了。所以这几个动作现在的排法是：线名在最左（提示而已，窄了就省略号收掉），
-/// 「删除」推到最右端、和另外三个之间隔一条分隔线、红色，离误触点最远。
+/// 「删除」推到最右端、和另外三个之间隔一条分隔线、警示色（`theme.danger`），离误触点最远。
+///
+/// **警示色不是跌色。** 这儿原来写的是 `theme.down`，想的是「跌 = 红 = 危险」——可看盘
+/// 出厂就是红涨绿跌，跌色是**绿的**，于是这个「删除」在真机上是个绿按钮，读起来像
+/// 「确认 / 通过」。涨跌色是行情的读数，不是语义色；警示走 `theme.danger`（见 `PaletteSeed.danger`）。
 ///
 /// **2026-09-21 它不再浮在图上。** 中间那一版把它做成压在画线栏上面的一条浮条，
 /// 理由是「多一行少一行会把整张图一跳一跳地改高」——可竖屏它正好盖掉半行 MACD 图例，
@@ -180,7 +184,7 @@ struct DrawingSelectionBar: View {
         act(item.locked ? "解锁" : "锁定", item.locked ? "lock.open" : "lock", "draw.lock") { controller.toggleLock() }
         act("复制", "plus.square.on.square", "draw.copy") { controller.duplicate() }
         theme.line.frame(width: 0.5, height: 26).padding(.horizontal, 4)
-        act("删除", "trash", "draw.delete", tint: theme.down) { controller.deleteSelected() }
+        act("删除", "trash", "draw.delete", tint: theme.danger) { controller.deleteSelected() }
           .padding(.trailing, landscape ? 8 : 2)
       }
       .frame(maxWidth: .infinity)

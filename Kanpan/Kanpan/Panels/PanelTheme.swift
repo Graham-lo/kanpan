@@ -54,6 +54,14 @@ struct PanelTheme: Sendable, Equatable {
   var up: Color { Color(hex: chart.up) }
   var down: Color { Color(hex: chart.down) }
 
+  /// 警示：删除、注销、报错这类「不可逆 / 出事了」的动作字（见 `PaletteSeed.danger`）。
+  ///
+  /// **别拿 `down` 当它使。** 出厂是红涨绿跌（`Prefs.redUp` 默认 `true`），跌色是绿的，
+  /// 于是「删除」会变成一个绿按钮，读起来像「确认」；而且它还跟着一个跟删除毫无关系的
+  /// 设置翻来翻去。`up` 同理——它碰巧是红的，但语义仍然是「涨」。
+  /// 这一支是从种子直接取的，不经过 `Palette.chart` 的 `redUp` 对调。
+  var danger: Color { Color(hex: seed.danger) }
+
   /// 分段控件选中那一格的底（原型 `--seg-on`）。
   var badgeInk: Color { Color(hex: pillInk) }
   private var pillInk: Hex { dark ? seed.ground : "#FFFFFF" }

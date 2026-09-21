@@ -76,11 +76,11 @@ struct AccountView: View {
         // 登录页上那一行字：这一趟出的错优先，没出错时摆「被顶下去」那一句
         // ——人是被顶回登录页来的，得让他看见为什么。
         if let message = feature.error ?? (feature.page == .login ? feature.replacedNotice : nil) {
-          Text(message).font(.footnote).foregroundStyle(theme.down).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("account.error")
+          Text(message).font(.footnote).foregroundStyle(theme.danger).frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("account.error")
         }
         Button { focused = nil; feature.submit() } label: {
           Group { if feature.busy { ProgressView().tint(theme.badgeInk) } else { Text(primary) } }.frame(maxWidth: .infinity, minHeight: 48)
-        }.buttonStyle(.borderedProminent).tint(feature.page == .close ? theme.down : theme.amber)
+        }.buttonStyle(.borderedProminent).tint(feature.page == .close ? theme.danger : theme.amber)
           .disabled(feature.busy).accessibilityIdentifier("account.submit")
         if feature.page == .login {
           HStack {
@@ -116,7 +116,7 @@ struct AccountView: View {
         VStack(alignment: .leading, spacing: 8) {
           // 被同类设备顶下去时说得出是什么顶的（「这个账号在另一台手机上登录了」）；
           // 其余的失效仍旧是笼统那一句。
-          Text(feature.replacedNotice ?? "登录已失效").foregroundStyle(theme.down)
+          Text(feature.replacedNotice ?? "登录已失效").foregroundStyle(theme.danger)
           Text("同步暂停了，本机的自选、画线、复盘都还在。重新登录就接着同步。")
             .font(.footnote).foregroundStyle(theme.ink3)
           Button("重新登录") { feature.reauthenticate() }
@@ -137,9 +137,9 @@ struct AccountView: View {
         row("修改密码") { feature.move(.changePassword) }
       }
       .listRowBackground(theme.raised)
-      Section { Button("退出登录") { Task { await feature.logout() } }.foregroundStyle(theme.down) }
+      Section { Button("退出登录") { Task { await feature.logout() } }.foregroundStyle(theme.danger) }
         .listRowBackground(theme.raised)
-      Section { Button("注销账号") { feature.move(.close) }.foregroundStyle(theme.down) }
+      Section { Button("注销账号") { feature.move(.close) }.foregroundStyle(theme.danger) }
         .listRowBackground(theme.raised)
     }
     .listed(theme)
@@ -170,12 +170,12 @@ struct AccountView: View {
             Text([item.kind.label, item.current ? "本机" : Date(timeIntervalSince1970: Double(item.lastSeen) / 1000).formatted(date: .abbreviated, time: .shortened)].joined(separator: " · "))
               .font(.caption).foregroundStyle(theme.ink3)
           }
-          Spacer(); Button("退出") { feature.revoke(item) }.foregroundStyle(theme.down).frame(minHeight: 44)
+          Spacer(); Button("退出") { feature.revoke(item) }.foregroundStyle(theme.danger).frame(minHeight: 44)
         }
         .listRowBackground(theme.raised)
       }
       if let error = feature.error {
-        Text(error).foregroundStyle(theme.down).listRowBackground(theme.raised)
+        Text(error).foregroundStyle(theme.danger).listRowBackground(theme.raised)
       }
     }
     .listed(theme)
