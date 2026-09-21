@@ -334,17 +334,21 @@ struct SymbolRowView: View {
   private var name: Text {
     let base = row.info.base
     let quote = row.info.quote
+    // `Text + Text` iOS 26 起废弃了，改用 `Text` 插值拼，逐段的字体/颜色照样保留。
     var out = Text("")
     for seg in SymbolQuery.split(base, highlight: row.match.highlight, offset: 0) {
-      out = out + Text(seg.text)
+      let piece = Text(seg.text)
         .font(.system(size: nameSize, weight: .medium))
         .foregroundStyle(Color(hex: seg.hit ? seed.accent : seed.ink))
+      out = Text("\(out)\(piece)")
     }
-    out = out + Text(" / ").font(.system(size: nameSize)).foregroundStyle(Color(hex: seed.ink3))
+    let slash = Text(" / ").font(.system(size: nameSize)).foregroundStyle(Color(hex: seed.ink3))
+    out = Text("\(out)\(slash)")
     for seg in SymbolQuery.split(quote, highlight: row.match.highlight, offset: base.count) {
-      out = out + Text(seg.text)
+      let piece = Text(seg.text)
         .font(.system(size: nameSize))
         .foregroundStyle(Color(hex: seg.hit ? seed.accent : seed.ink3))
+      out = Text("\(out)\(piece)")
     }
     return out
   }

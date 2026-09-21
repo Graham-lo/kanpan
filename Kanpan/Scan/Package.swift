@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 // 连续扫图与「看细节」的**测试壳**。
@@ -15,7 +15,7 @@ import PackageDescription
 
 let package = Package(
   name: "KanpanScan",
-  platforms: [.iOS(.v18), .macOS(.v14)],
+  platforms: [.iOS(.v26), .macOS(.v14)],
   products: [
     .library(name: "KanpanScan", targets: ["KanpanScan"]),
   ],

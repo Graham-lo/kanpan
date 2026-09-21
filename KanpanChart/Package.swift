@@ -16,7 +16,7 @@ let common: [SwiftSetting] =
 
 let package = Package(
   name: "KanpanChart",
-  platforms: [.iOS(.v18), .macOS(.v14)],
+  platforms: [.iOS(.v26), .macOS(.v14)],
   products: [.library(name: "KanpanChart", targets: ["KanpanChart"])],
   dependencies: [.package(path: "../KanpanCore")],
   targets: [

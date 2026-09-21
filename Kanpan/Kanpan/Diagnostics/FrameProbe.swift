@@ -204,7 +204,9 @@
         .compactMap { $0 as? UIWindowScene }
         .first { $0.activationState == .foregroundActive } ?? UIApplication.shared.connectedScenes
         .compactMap { $0 as? UIWindowScene }.first)?.screen
-      let hz = screen?.maximumFramesPerSecond ?? UIScreen.main.maximumFramesPerSecond
+      // 一个前台 scene 都没有的时候（后台探针）拿不到屏，按普通 60Hz 记；
+      // `UIScreen.main` iOS 26 起废弃了，不再拿它兜底。
+      let hz = screen?.maximumFramesPerSecond ?? 60
       return "\(machine) · iOS \(UIDevice.current.systemVersion) · \(hz)Hz"
     }
 

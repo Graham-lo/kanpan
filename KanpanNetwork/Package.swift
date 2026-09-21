@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 // 行情网络层：怎么连到交易所。
@@ -12,7 +12,7 @@ import PackageDescription
 // `KanpanData` 的测试也用同一份，所以做成产品而不是藏在测试目录里。
 let package = Package(
   name: "KanpanNetwork",
-  platforms: [.iOS(.v18), .macOS(.v14)],
+  platforms: [.iOS(.v26), .macOS(.v14)],
   products: [
     .library(name: "KanpanNetwork", targets: ["KanpanNetwork"]),
     .library(name: "KanpanNetworkTestSupport", targets: ["KanpanNetworkTestSupport"]),

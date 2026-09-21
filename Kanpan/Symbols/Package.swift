@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 // 品种页的**测试壳**。
@@ -18,7 +18,7 @@ import PackageDescription
 
 let package = Package(
   name: "KanpanSymbols",
-  platforms: [.iOS(.v18), .macOS(.v14)],
+  platforms: [.iOS(.v26), .macOS(.v14)],
   products: [
     .library(name: "KanpanSymbols", targets: ["KanpanSymbols"]),
   ],

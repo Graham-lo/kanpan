@@ -45,7 +45,7 @@ enum Orientation {
       ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
   }
 
-  static var isLandscape: Bool { scene?.interfaceOrientation.isLandscape ?? false }
+  static var isLandscape: Bool { scene?.effectiveGeometry.interfaceOrientation.isLandscape ?? false }
 
   /// 转到横屏 / 竖屏。
   ///

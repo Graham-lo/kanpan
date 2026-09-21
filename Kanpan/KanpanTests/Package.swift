@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 // 主界面（`Kanpan/Kanpan/Main/`）那几个生命周期件的**测试壳**。
@@ -15,7 +15,7 @@ import PackageDescription
 
 let package = Package(
   name: "KanpanMain",
-  platforms: [.iOS(.v18), .macOS(.v14)],
+  platforms: [.iOS(.v26), .macOS(.v14)],
   products: [
     .library(name: "KanpanMain", targets: ["KanpanMain"]),
   ],
