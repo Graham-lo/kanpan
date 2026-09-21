@@ -90,7 +90,12 @@ struct IndicatorSections: View {
     .overlay(alignment: .bottom) { Rectangle().fill(t.hair).frame(height: 1) }
   }
 
-  /// 保留指标中文名称与必要的数据范围。
+  /// 指标的中文名，此外一个字都不说。
+  ///
+  /// 持仓量这一条从前写的是「持仓量 · 近 30 天，最细 5 分钟」。「近 30 天」是错的——
+  /// 归档站从 2020-09-01 起是全的（`OISource.archiveEpoch`），那句话只会让人以为
+  /// 长周期上看不到持仓量而不再去看。剩下的「最细 5 分钟」是源的粒度，不是限制，
+  /// 图上一看便知，不必在设置里讲。
   static func hint(_ id: IndicatorID) -> String {
     switch id {
     case .ma: "均线"
@@ -102,7 +107,7 @@ struct IndicatorSections: View {
     case .kdj: "随机指标"
     case .srsi: "随机 RSI"
     case .atr: "平均真实波幅"
-    case .oi: "持仓量 · 近 30 天，最细 5 分钟"
+    case .oi: "持仓量"
     }
   }
 }
@@ -270,7 +275,7 @@ private struct IndicatorEditor: View {
             numberRow(.lower, label: "下限", value: Int(draft.lower), identifier: "indicator.rsi.lower.field")
           }
         } header: {
-          sectionTitle("参数")
+          PanelFormSectionTitle(text: "参数")
         }
         .listRowBackground(t.raised)
 
@@ -283,7 +288,7 @@ private struct IndicatorEditor: View {
             .accessibilityIdentifier("indicator.output.\(index)")
           }
         } header: {
-          sectionTitle("输出")
+          PanelFormSectionTitle(text: "输出")
         }
         .listRowBackground(t.raised)
 
@@ -304,7 +309,7 @@ private struct IndicatorEditor: View {
               .accessibilityIdentifier("indicator.colors.reset")
               .accessibilityAddTraits(.isButton)
           } header: {
-            sectionTitle("线条颜色")
+            PanelFormSectionTitle(text: "线条颜色")
           }
           .listRowBackground(t.raised)
         }
@@ -312,11 +317,16 @@ private struct IndicatorEditor: View {
       // 这张表是系统 `Form`，但配色得跟着皮肤走：底换成 `app`、行换成 `raised`、
       // 强调色（「添加周期」、开关、光标）走 `tint`。留着 `Form` 是因为分节、左滑删除
       // 和键盘避让都是它给的，自己搭一套只会把这几样做丢。
+      //
+      // 导航栏和表底同取 `app`。原来这儿给的是 `raised`：青苔浅色下 `raised` 是
+      // `#FFFFFF`、表底 `app` 是 `#F3F7F4`，亮度比 1.08，导航栏下沿会横出一道
+      // 看得见的台阶；六套皮肤里五套都有这道边（经典浅色两支同为 `#FFFFFF` 才碰巧无缝）。
+      // 整屏要读成一块连续的材料，所以栏与表同色，`raised` 只留给**行**。
       .scrollContentBackground(.hidden)
       .background(t.app)
       .navigationTitle(draft.id.name)
       .navigationBarTitleDisplayMode(.inline)
-      .toolbarBackground(t.raised, for: .navigationBar)
+      .toolbarBackground(t.app, for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)
       // 数字键盘没有回车键：下滑把它划走，或者直接按右上角「保存」，不用再多一颗「完成」。
       // （原来这儿写「输进去的数字是边打边生效的」，和这张表的 draft 模型对不上——
@@ -345,10 +355,6 @@ private struct IndicatorEditor: View {
     }
     .tint(t.amber)
     .presentationBackground(t.app)
-  }
-
-  private func sectionTitle(_ text: String) -> some View {
-    Text(text).font(PanelFont.group).tracking(1).foregroundStyle(t.ink3)
   }
 
   private func parameterLabel(_ index: Int) -> String {

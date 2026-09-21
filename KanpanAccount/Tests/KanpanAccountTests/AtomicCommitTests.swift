@@ -406,3 +406,85 @@ import Testing
     #expect(!apply.store.needsApply)
   }
 }
+
+// MARK: - 「存档先落、正式文件后落」是队列顺序保证的，不是靠主线程去等
+
+/// 写盘队列上看到的那一串「正式文件写」，以及每一次真跑起来的时候，盘上的存档
+/// 已经走到第几版。跨线程收集，所以自己带锁。
+private final class OrderLog: @unchecked Sendable {
+  private let lock = NSLock()
+  private var entries: [(want: Int, onDisk: Int)] = []
+  func record(want: Int, onDisk: Int) { lock.lock(); entries.append((want, onDisk)); lock.unlock() }
+  var count: Int { lock.lock(); defer { lock.unlock() }; return entries.count }
+  /// 盘上的存档比这次正式文件写还旧的那些——**一条都不许有**，
+  /// 有就是「新正式文件 + 旧存档」那个补不回来的方向又回来了。
+  var stale: [(want: Int, onDisk: Int)] { lock.lock(); defer { lock.unlock() }; return entries.filter { $0.onDisk < $0.want } }
+  /// 回调本身有没有乱序。串行队列 FIFO，第 k 次一定排在第 k+1 次前面。
+  var outOfOrder: Bool { lock.lock(); defer { lock.unlock() }; return entries.map(\.want) != entries.map(\.want).sorted() }
+}
+
+/// 盘上那份存档此刻记到第几版（读的是真文件，不是内存里那份）。
+/// 不挂在测试套件上：它要在**写盘队列**上被调用，不能是 MainActor 的。
+private func tickOnDisk(_ root: URL) -> Int {
+  let url = root.appendingPathComponent("sync-v1.json")
+  guard let data = try? Data(contentsOf: url),
+        let archive = try? JSONDecoder().decode(SyncArchive.self, from: data),
+        case .number(let tick)? = archive.local["settings:chart"]?.body["tick"] else { return 0 }
+  return Int(tick)
+}
+
+/// 2026-09-22：记账那一侧（`AppAccountBridge.capture`）不再在主线程上等整份存档写完，
+/// 于是「先落同步存档、再落 draws.json / alerts.json / symbols.json」这个顺序
+/// 从「靠阻塞换来的」变成了两次写之间的竞态。这一组钉住新的兑现方式：
+/// 正式文件那次写**也排到同一条写盘队列上**（`SyncStore.afterArchiveWritten`），
+/// 顺序由串行 FIFO 保证，调用方一步都不等。
+@MainActor @Suite("正式文件排在存档后面落盘，而主线程一步都不等") struct ArchiveOrderingTests {
+  private func temp() throws -> URL {
+    let p = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: p, withIntermediateDirectories: true)
+    return p
+  }
+
+  @Test func theCallerIsNotBlockedAndTheFormalWriteStillRunsAfterTheArchive() throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let store = try SyncStore(directory: root); let device = UUID()
+    let log = OrderLog()
+    // 把写盘队列堵死，模拟「这一版还没轮到写」。
+    let gate = DispatchSemaphore(value: 0)
+    ArchiveWriter.queue.async { gate.wait() }
+    var value = SyncObject(collection: "settings", id: "chart")
+    value.body["tick"] = .number(1)
+    try store.capture(value, device: device)
+    store.afterArchiveWritten { log.record(want: 1, onDisk: tickOnDisk(root)) }
+    // 记账那一句和排队那一句都已经返回了——主线程没有被挂住。盘上还什么都没有，
+    // 正式文件那一笔也**没有**抢在存档前面跑掉。
+    #expect(tickOnDisk(root) == 0)
+    #expect(log.count == 0)
+    gate.signal()
+    store.flushNow()
+    #expect(log.count == 1)
+    #expect(log.stale.isEmpty)
+    #expect(tickOnDisk(root) == 1)
+  }
+
+  @Test func rapidEditsNeverLeaveAnOlderArchiveBehindANewerFormalFile() throws {
+    let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+    let store = try SyncStore(directory: root); let device = UUID()
+    let log = OrderLog()
+    // 连着三十次「抬手」。每一次都照 `DrawingController.write()` 的新形状来：
+    // 先记账（把存档排进队列），紧接着把正式文件那次写排在它后面。
+    for tick in 1...30 {
+      var value = SyncObject(collection: "settings", id: "chart")
+      value.body["tick"] = .number(Double(tick))
+      try store.capture(value, device: device)
+      store.afterArchiveWritten { log.record(want: tick, onDisk: tickOnDisk(root)) }
+    }
+    store.flushNow()
+    #expect(log.count == 30)
+    #expect(!log.outOfOrder)
+    // 合并写只会让盘上那份**更新**（第 k 版整个被第 k+1 版包住），所以每一次正式
+    // 文件落地的时候，盘上的存档只会 ≥ 这一版，绝不会比它旧。
+    #expect(log.stale.isEmpty)
+    #expect(tickOnDisk(root) == 30)
+  }
+}

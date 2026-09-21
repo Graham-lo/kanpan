@@ -255,7 +255,8 @@ public struct ReviewRecordView: View {
               .listRowBackground(t.raised)
           }
           if !record.voided {
-            Section { Button("作废记录") { confirmVoid = true }.foregroundStyle(t.down) }
+            // 警示走 `danger`，不是跌色——出厂红涨绿跌时 `t.down` 是绿的（见 `ReviewTheme.danger`）。
+            Section { Button("作废记录") { confirmVoid = true }.foregroundStyle(t.danger) }
               .listRowBackground(t.raised)
           }
         }

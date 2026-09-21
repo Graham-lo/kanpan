@@ -214,24 +214,22 @@ extension ChartRenderer {
     poly(ctx, box, e, L, v.lines[1], lo, hi, pal[1], width: 2 / s)
   }
 
-  /// 持仓量：无填充折线。币安只给最近 30 天、最细 5 分钟，缺了就写清楚。
+  /// 持仓量：无填充折线。
+  ///
+  /// 空着的时候说什么一律问 `OINotice`，这儿不自己编：从 2020-09-01 起的历史在归档站上
+  /// 是全的，**没有哪个周期是「交易所不提供」**——1w / 1M / 1y 照画，1m / 3m 是一条
+  /// 按五分钟走的阶梯（源的粒度就这么细）。画不出来只可能是线路不报、还没到、真没有。
   private func subOi(_ ctx: CGContext, _ box: Pane, _ L: Layout, _ lo: Int, _ hi: Int, _ s: Double) {
     let t = state.colors
-    let note = { (text: String) in
-      text.drawLeft(
-        at: CGPoint(x: 8, y: box.y + box.h / 2),
-        font: UIFont.systemFont(ofSize: 11), color: t.dim)
-    }
     guard outputVisible(.oi, 0) else { return }
-    guard let v = displayed(.oi), let a = v.lines.first else {
-      note("这个周期币安不提供持仓量历史（最细 5 分钟）")
-      return
-    }
+    let a = displayed(.oi)?.lines.first ?? []
     var has = false
     for i in lo...hi where i < a.count && a[i].isFinite { has = true; break }
     if !has {
-      note(!state.oiSupported ? "当前行情线路不提供持仓量"
-             : (state.oi == nil ? "持仓量加载中" : "这一段暂无持仓量数据"))
+      OINotice.forEmptyPane(routeSupportsOI: state.oiSupported, loaded: state.oi != nil).text
+        .drawLeft(
+          at: CGPoint(x: 8, y: box.y + box.h / 2),
+          font: UIFont.systemFont(ofSize: 11), color: t.dim)
       return
     }
     let b = state.series

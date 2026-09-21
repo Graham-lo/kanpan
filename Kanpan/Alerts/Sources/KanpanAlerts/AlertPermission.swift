@@ -1,0 +1,1 @@
+../../../Kanpan/Alerts/AlertPermission.swift

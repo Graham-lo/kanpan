@@ -13,7 +13,7 @@ Swift 原生 iOS 行情、自选与复盘应用。SwiftUI 页面 + UIKit/CoreGra
 - **品种徽章**：一个品种一个记号（`CoinBadge` / `CoinBadgeBrands`），配色跟皮肤走。
 - **板块分类**（`Kanpan/Kanpan/Sector/`，口径在 `KanpanCore/Sources/KanpanCore/Sector/`）：底栏第四格，2026-09-18 落地。只有一层气泡（板块），点进去是该板块的品种列表（照抄自选页的列表），加密 / 美股是这一页顶上的硬切换；气泡本体是定稿的「釉珠」，见 `prototype/板块气泡-釉珠-2026-09-18.html`。
 - **图表**：AICoin 手感复刻（`docs/AICoin-K线复刻规格.md`，该文开头「保留所有风格 / 统一靛色」那几句已被后续决定覆盖）。主图 MA(10,30,120,256) / EMA / BOLL，副图出厂 VOL + OI + MACD（同时最多三个），可选 RSI、KDJ、StochRSI、ATR；固定框双指缩放、历史焦点缩放、手动 Y、末根贴右缘、越界阻尼。41 把画线工具（九组，按 TradingView 手机版对齐），画线与图表共用坐标。
-- **提醒**（`KanpanCore/Alerts` + `Kanpan/Kanpan/Alerts`，2026-09-20/21）：独立模块，不是画线的属性。画完一条线之后头部价格行就地变成一张小确认卡（六秒不理等于只画线），判定两种「等它碰到」/「等它收盘穿过」，可开「再次提醒」；「设置 → 提醒」是列表。前台本地评估，后台由 `kanpan-worker` 服务端评估并把 `fired` 写回同步。**没有 APNs 密钥时一切照跑，只是不弹横幅**。
+- **提醒**（`KanpanCore/Alerts` + `Kanpan/Kanpan/Alerts`，2026-09-20/21）：独立模块，不是画线的属性。画完一条线之后头部价格行就地变成一张小确认卡（六秒不理等于只画线），判定两种「等它碰到」/「等它收盘穿过」，可开「再次提醒」；「设置 → 提醒」是列表。前台本地评估（`AlertEngine`：把行情流的成交价折成 1 分钟桶喂 `AlertEvaluator`，和服务端同一套规则；挂着提醒的品种会被钉进 `QuoteBook` 的订阅范围，跨品种也算），后台由 `kanpan-worker` 服务端评估并把 `fired` 写回同步；两边靠 `status == .active` 这道闸去重。**没有 APNs 密钥时一切照跑，只是不弹锁屏横幅——app 开着时靠浮条 + 震动 + 通知中心那一条**。
 - **复盘**（`KanpanReview` + `Kanpan/Kanpan/ReviewIntegration`）：记一笔、列表 / 待办 / 统计、详情、逐根重温、私有 OHLC 找相似；记录固定所属行情源。
 - **账号**（`KanpanAccount`）：用户名 + 密码注册登录，Keychain 会话，设备管理、改密、注销；个人数据按账号目录隔离，云端同步以待发队列为准。没有邮箱注册。
 - **行情线路**：设置里两档，出厂默认「直连」（只走币安自己的域名，探不通就提示重试、不切 OKX），「网关」只走两台 VPS 网关取 OKX 行情；选了哪条就走哪条，没有自动切换。选择存在 `Prefs.routePolicy`，只记在本机这台设备上，不随账号同步（2026-09-19 按审查 B7 改）。多品种启动快照与预热让冷启动和切换不等网络。
@@ -40,7 +40,7 @@ Swift 原生 iOS 行情、自选与复盘应用。SwiftUI 页面 + UIKit/CoreGra
 
 ## 构建与验证
 
-Swift 6、部署目标 iOS 18.0（app 与各 SPM 包同步，2026-09-18 从 17.0 抬上来），真机验证目标是 iOS 26。打开 `Kanpan/Kanpan.xcodeproj`（或根目录 `Kanpan.xcworkspace`）选 `Kanpan` scheme。
+Swift 6、部署目标 iOS 26.0（app 与各 SPM 包同步，2026-09-21 从 18.0 抬上来；iOS 27 也在支持范围内，26 以下不再维护），真机验证目标是 iOS 26。打开 `Kanpan/Kanpan.xcodeproj`（或根目录 `Kanpan.xcworkspace`）选 `Kanpan` scheme。
 
 ```sh
 swift test --package-path KanpanCore

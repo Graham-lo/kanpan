@@ -124,8 +124,11 @@ struct DiskMarketCache: MarketCacheStore {
 #endif
 
 /// 按当前工程接没接上数据层挑一个实现。
-/// app target 现在只链了 `KanpanCore`，所以走占位；等 `KanpanData` 链进来，
-/// 这一行自己就换成真的，不用改调用方。
+/// app target 已经链上 `KanpanData`（`Kanpan.xcodeproj` 里既在
+/// `packageProductDependencies`，也在 `PBXFrameworksBuildPhase` 的
+/// 「KanpanData in Frameworks」），所以 `#if canImport(KanpanData)` 成立、
+/// 跑的是真的 `DiskMarketCache`——设置页的「清缓存」是能用的。
+/// `#else` 那支只留给没链数据层的跑道（见 `Kanpan/Settings/Package.swift`）。
 enum MarketCacheFactory {
   static func make() -> any MarketCacheStore {
     #if canImport(KanpanData)

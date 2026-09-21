@@ -27,6 +27,16 @@ final class DrawingController: ObservableObject {
   private weak var chart: ChartView?
   private var store: DrawStore
   var onArchiveChange: ((DrawArchive) -> Void)?
+  /// 正式文件（`draws.json`）那次写**什么时候真的发生**。
+  ///
+  /// 默认「就地、同步写」——没登录、没账号桥、单测里都是这个样子，行为和从前逐字一样。
+  /// 登录之后账号桥把它换成「排在同步存档这一版落盘之后，在写盘队列上写」
+  /// （`SyncStore.afterArchiveWritten`），那条队列是串行 FIFO，所以
+  /// 「存档先落、正式文件后落」这个不变量由**队列顺序**保证，不再靠主线程去等。
+  /// 为什么必须是这个顺序、反过来会丢什么，见 `write()`。
+  ///
+  /// 交给它的那段活儿跑在写盘队列上，不在 MainActor 上。
+  var persistence: @MainActor (@escaping @Sendable () -> Void) -> Void = { $0() }
   /// 本机把画线的几何改动过了就喊一声——画、拖、改端点、删，都算。
   ///
   /// 提醒模块接着它对账（`AlertStore.reconcile`）：线被挪过就按**同一个提醒 id**
@@ -252,11 +262,28 @@ final class DrawingController: ObservableObject {
   /// 的话，「新存档 + 旧 draws.json」下次启动能前向补回来；反过来的
   /// 「新 draws.json + 旧存档」补不回来——存档里既没有新值也没有待发操作，
   /// 下一次拉取会拿云端那份旧的把用户刚存的几何盖回去（B2）。
+  ///
+  /// **这个顺序从前是靠阻塞换来的**：`onArchiveChange` 那一句里跟着一次主线程
+  /// `flushNow()`，等整份存档写完才轮到下面这行。2026-09-22 把那次等待去掉之后，
+  /// 两次写变成「一次排到后台队列、一次就地同步写」——顺序当场就反了，而且是
+  /// 补不回来的那一侧。所以这儿不再自己写文件，而是把这次写**交给 `persistence`
+  /// 排到同一条写盘队列上**：串行 FIFO，它一定跑在自己前面那次存档写之后，
+  /// 主线程一步都不等（`SyncStore.afterArchiveWritten`）。
+  ///
+  /// 手一抬就立刻发起（`kanpan-persist-on-gesture-end`）：这儿没有任何节流或定时器，
+  /// 两次写都在这一句里当场排进队列，差别只是「谁在等它写完」。
   private func write() {
     onArchiveChange?(archive)
     onGeometryChanged?(archive)
-    do { try store.save(archive) }
-    catch { notice = "画线未能保存，原存档已保留。请检查设备存储空间。" }
+    // 值和存档句柄都在这儿取好：队列上跑到它的时候，这条控制器可能已经换了档案
+    // （`useStorage`），那一版还是得落回它当时那份文件里。
+    let store = self.store, value = archive
+    persistence { [weak self] in
+      do { try store.save(value) }
+      // 出错提示是唯一准跳回主 actor 的东西：它不参与「谁先落盘」这件事，
+      // 晚一点、乱一点序都无所谓。
+      catch { Task { @MainActor in self?.notice = "画线未能保存，原存档已保留。请检查设备存储空间。" } }
+    }
   }
   func useStorage(_ store: DrawStore, archive: DrawArchive) {
     endPreview(); finish(); self.store = store; self.archive = archive; preferences = archive.preferences

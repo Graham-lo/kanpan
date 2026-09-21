@@ -24,15 +24,22 @@ public struct ReviewTheme: Sendable, Equatable {
   public var onAccent: Color
   public var up: Color
   public var down: Color
+  /// 警示：作废、删除这类「不可逆」的动作字。
+  ///
+  /// **别拿 `down` 当它使。** 出厂是红涨绿跌，跌色是绿的，于是「作废记录」会变成
+  /// 一个绿按钮，读起来像「确认」，而且还跟着一个和作废毫无关系的设置翻来翻去。
+  /// app 那边对应的是 `PanelTheme.danger`（`PaletteSeed.danger`），
+  /// 由 `ReviewThemeBridge` 灌进来——复盘这边一支色都不自己定。
+  public var danger: Color
 
   public init(app: Color, raised: Color, raised2: Color, line: Color,
               ink: Color, ink2: Color, ink3: Color,
               accent: Color, accentSoft: Color, onAccent: Color,
-              up: Color, down: Color) {
+              up: Color, down: Color, danger: Color) {
     self.app = app; self.raised = raised; self.raised2 = raised2; self.line = line
     self.ink = ink; self.ink2 = ink2; self.ink3 = ink3
     self.accent = accent; self.accentSoft = accentSoft; self.onAccent = onAccent
-    self.up = up; self.down = down
+    self.up = up; self.down = down; self.danger = danger
   }
 
   public static let neutral = ReviewTheme(
@@ -47,7 +54,8 @@ public struct ReviewTheme: Sendable, Equatable {
     accentSoft: Color(red: 0.18, green: 0.49, blue: 0.42).opacity(0.12),
     onAccent: .white,
     up: Color(red: 0.13, green: 0.60, blue: 0.42),
-    down: Color(red: 0.80, green: 0.27, blue: 0.27))
+    down: Color(red: 0.80, green: 0.27, blue: 0.27),
+    danger: Color(red: 0.725, green: 0.227, blue: 0.180))
 }
 
 private struct ReviewThemeKey: EnvironmentKey {

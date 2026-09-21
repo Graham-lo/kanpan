@@ -130,6 +130,8 @@ struct MainScreen: View {
   @StateObject private var alerts = AlertStore()
   @StateObject private var alertPrompt = AlertPromptModel()
   @StateObject private var alertWatcher = AlertWatcher()
+  /// 前台的到价判定。没有 APNs 密钥，它是提醒在这台手机上唯一会响的那条路。
+  @StateObject private var alertEngine = AlertEngine()
   /// 提醒总表开着没有。设置里那一行和 `hkline://alerts` 都开它。
   @State private var showAlerts = false
   @State private var shareInterval: SharePreviewInterval?
@@ -446,7 +448,10 @@ struct MainScreen: View {
   var body: some View {
     marketContent
     .sheet(item: $draw.panel) { panel in
+      // 主题显式灌进去：这张表里的「画线管理」和「样式」都要跟着皮肤走
+      // （和 `IndicatorPanel` 里那张编辑表一个做法）。
       DrawingSheet(controller: draw, panel: panel, decimals: market.info.pricePrecision)
+        .environment(\.panelTheme, theme)
     }
     // 竖屏的「绘图」面板是一张半屏表单；横屏走 `drawToolsLayer` 那块贴边卡片，
     // 所以这儿要把横屏挡掉，不然两份会同时在场。
@@ -1405,6 +1410,9 @@ struct MainScreen: View {
   /// 所以「订阅自选、预热 K 线」这两件事不能只在 `boot()` 里做一次，得跟着表本身走。
   private func settleFavorites(_ symbols: [String]) {
     quotes.setFavorites(symbols)
+    // 换号那一拍报价簿会把「挂着提醒的品种」清空（那是上一个人的）。这儿顺手把
+    // 这个人的那份再交一次，否则他的提醒品种要等下一次存档变动才回得到订阅里。
+    alertEngine.republishWatchlist()
     primeFavorites(symbols)
   }
 
@@ -1456,10 +1464,13 @@ struct MainScreen: View {
       market.enterBackground(); quotes.setForeground(false); sectorFeed.setForeground(false)
       // 后台里响的那些不去动界面，只留一条本地通知（见 `AlertWatcher`）。
       alertWatcher.setForeground(false)
+      // 判定也一起停：桶断了就不算连着，回来那一下不拿断口两侧的价去算穿越。
+      alertEngine.setForeground(false)
     } enter: {
       grace.end()
       market.enterForeground(); quotes.setForeground(true); sectorFeed.setForeground(true)
       alertWatcher.setForeground(true)
+      alertEngine.setForeground(true)
       // 回到前台先拉一次同步：服务端判到价、写回 `status=fired`，这一趟就是
       // 已触发的提醒走到用户眼前的那条路（没有 APNs 时它是唯一一条）。
       accountBridge?.synchronize(); review.synchronize()
@@ -1486,8 +1497,14 @@ struct MainScreen: View {
 
   /// 提醒这一摊的接线（方案第 2 节）。
   ///
-  /// 四根线，都很短：画完线 → 问一句；答「加入提醒」→ 建；画线几何一动 → 对账；
-  /// 存档里冒出已触发 → 震一下 + 说一句。到价判定**不在这儿**，在服务端。
+  /// 画完线 → 问一句；答「加入提醒」→ 建；画线几何一动 → 对账；到价判定
+  /// （`AlertEngine`）→ 标 `fired`；存档里冒出已触发 → 震一下 + 说一句。
+  ///
+  /// **到价判定这一段 2026-09-22 才接上线。** 在那之前客户端一侧
+  /// （`AlertEvaluator.hit` / `AlertStore.markFired`）是一份写对了但零调用方的实现，
+  /// 判定全靠服务端 + APNs；而这个项目没有 APNs 密钥，于是「提醒」在用户手上
+  /// 其实一次都没响过。现在前台自己判，服务端那一份照旧当后台的兜底，
+  /// 两边靠 `status == .active` 这道闸去重（细节写在 `AlertEngine` 的头注释里）。
   private func wireAlerts() {
     alertPrompt.onAcceptBatch = { items, symbol in
       for item in items {
@@ -1515,6 +1532,16 @@ struct MainScreen: View {
     }
     // 线被挪了就按同一个提醒 id 重算几何、重新上膛；线被删了提醒跟着删。
     draw.onGeometryChanged = { archive in alerts.reconcile(with: archive) }
+    // 到价判定：两条流各喂各的。图上那只走 `MarketModel`（逐笔，最细），别的品种走
+    // 报价簿那条列表流。捕获列表不能省——不写的话闭包捕获的是整个 `MainScreen`
+    // 结构体，而它的 `@State` 盒子正握着 `market` / `quotes` 本身，成环之后就不放了
+    // （和 `teardown.onTeardown` 那儿同一个理由）。
+    alertEngine.attach(alerts)
+    alertEngine.onWatchlist = { [weak quotes] symbols in quotes?.setAlertedSymbols(symbols) }
+    market.onPrice = { [weak engine = alertEngine] symbol, price, timeMs in
+      engine?.observe(symbol: symbol, price: price, timeMs: timeMs)
+    }
+    quotes.onPrice = { [weak engine = alertEngine] tickers in engine?.observe(tickers) }
     alertWatcher.attach(alerts)
     alertWatcher.onFired = { alert in
       guard let drawingID = alert.drawingID else { return say(alert.title) }

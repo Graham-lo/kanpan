@@ -13,8 +13,11 @@ import PackageDescription
 //     cd Kanpan/Settings && swift test
 //
 // 链上 KanpanData 是故意的：这样 `#if canImport(KanpanData)` 那支
-// （`DiskMarketCache`，A6.11 的清缓存）在测试里是真编真跑的。app target 现在
-// 只链 KanpanCore，走的是 `#else` 的占位实现，由 `make build` 覆盖。
+// （`DiskMarketCache`，A6.11 的清缓存）在**这条 swift test 跑道里**也是真编真跑的。
+// 说明：这里写的只是本包自己的构建口径。app target 那边同样链着 KanpanData
+// （`Kanpan.xcodeproj` 的 packageProductDependencies + Frameworks 构建阶段都有），
+// 走的也是 `DiskMarketCache`，**不是** `#else` 的占位实现——别照这段推断 app 的行为，
+// app 那边由 `make build` 覆盖。
 let package = Package(
   name: "KanpanSettings",
   platforms: [.iOS(.v26), .macOS(.v14)],

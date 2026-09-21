@@ -176,11 +176,128 @@ struct AlertTests {
     #expect(!AlertEvaluator.fires(alert([line], status: .paused), bar: bar))
   }
 
-  @Test("收盘穿过本轮前台不判")
-  func closeNotEvaluatedYet() {
-    let line = AlertLine(points: [DrawPoint(t: Self.t0, p: 100)], extendLeft: true, extendRight: true)
-    #expect(!AlertEvaluator.fires(alert([line], condition: .close),
-                                 bar: .init(openTime: Self.t0, high: 105, low: 95)))
+  // -------------------------------------------------------------- 收盘穿过
+
+  /// 一条两端都延的横线，价在 100。
+  private var flat100: AlertLine {
+    AlertLine(points: [DrawPoint(t: Self.t0, p: 100)], extendLeft: true, extendRight: true)
+  }
+
+  /// 一根 `.close` 用的 K 线：收没收、收在哪、上一根收在哪。
+  private func closedBar(_ openTime: Double, previous: Double?, close: Double,
+                         isClosed: Bool = true) -> AlertEvaluator.Bar {
+    // 最高最低故意画得很宽（盘中确实穿过了线），好证明 `.close` 看的不是它们。
+    .init(openTime: openTime, high: max(close, previous ?? close) + 50,
+          low: min(close, previous ?? close) - 50,
+          close: close, isClosed: isClosed, previousClose: previous)
+  }
+
+  @Test("盘中穿过但这根还没收，不响")
+  func closeIgnoresUnclosedBars() {
+    let a = alert([flat100], condition: .close)
+    // 上一根收在 95、此刻的价已经是 105，盘中确实穿到线上面去了——但这一根没收。
+    #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 95,
+                                                    close: 105, isClosed: false)))
+    // 同一根收了就响，证明拦住它的只有「没收」这一条。
+    #expect(AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 95, close: 105)))
+  }
+
+  @Test("收盘价从一侧穿到另一侧才响，上下两个方向都算")
+  func closeCrossesInBothDirections() throws {
+    let a = alert([flat100], condition: .close)
+    let up = try #require(AlertEvaluator.hit(a, bar: closedBar(Self.t0 + Self.hour, previous: 95, close: 105)))
+    #expect(up.line == 0)
+    #expect(up.price == 100)
+    #expect(AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 105, close: 95)))
+  }
+
+  @Test("一直在同一侧，每一根都不响")
+  func closeDoesNotRepeatOnTheSameSide() {
+    let a = alert([flat100], condition: .close)
+    // 全程在线上方：涨、跌、贴着线但没到，一根都不该响。
+    for (previous, close) in [(105.0, 110.0), (110.0, 101.0), (101.0, 100.5)] {
+      #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: previous, close: close)))
+    }
+    // 全程在线下方同理。
+    for (previous, close) in [(95.0, 90.0), (90.0, 99.5)] {
+      #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: previous, close: close)))
+    }
+  }
+
+  @Test("收盘价正好落在线上算穿过")
+  func closeLandingExactlyOnTheLineCounts() {
+    let a = alert([flat100], condition: .close)
+    #expect(AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 95, close: 100)))
+    #expect(AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 105, close: 100)))
+    // 但**从**线上走开不算：那一下在上一根就已经判过了，再响一次是重复。
+    #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 100, close: 105)))
+    #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 100, close: 95)))
+    #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 100, close: 100)))
+  }
+
+  @Test("没有上一根收盘价就不判，不拿单边当穿越")
+  func closeNeedsAPreviousClose() {
+    let a = alert([flat100], condition: .close)
+    // 刚开始盯（或者中间断过线）：只知道这一根收在 105，不知道之前在哪一侧。
+    #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: nil, close: 105)))
+    #expect(!AlertEvaluator.fires(a, bar: .init(openTime: Self.t0 + Self.hour, high: 110, low: 90,
+                                                close: nil, isClosed: true, previousClose: 95)))
+  }
+
+  @Test("收盘穿过也认 armedAt，挪线之前的历史 K 线不算")
+  func closeRespectsArmedAt() {
+    let a = alert([flat100], condition: .close, armedAt: Self.t0 + 5 * Self.hour)
+    #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0, previous: 95, close: 105)))
+    #expect(AlertEvaluator.fires(a, bar: closedBar(Self.t0 + 5 * Self.hour, previous: 95, close: 105)))
+  }
+
+  @Test("收盘穿过的阈值跟着线走：趋势线在这一根上的价才是那条线")
+  func closeUsesTheLinePriceAtThisBar() {
+    // 一条从 100 涨到 200 的趋势线，两端都不延。
+    let trendLine = AlertLine(points: [DrawPoint(t: Self.t0, p: 100),
+                                       DrawPoint(t: Self.t0 + 2 * Self.hour, p: 200)])
+    let a = alert([trendLine], condition: .close)
+    // 中点线价 150：145 → 155 穿过。
+    #expect(AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 145, close: 155)))
+    // 同样两根收盘价，换到起点那一根（线价 100）就没穿——两根都在线上方。
+    #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0, previous: 145, close: 155)))
+    // 线在这一刻没有价（线段之外、不延）就不判。
+    #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0 + 5 * Self.hour, previous: 145, close: 155)))
+  }
+
+  @Test("已触发 / 已暂停的收盘穿过也不响")
+  func closeIgnoresInactive() {
+    for status in [Alert.Status.fired, .paused] {
+      #expect(!AlertEvaluator.fires(alert([flat100], condition: .close, status: status),
+                                    bar: closedBar(Self.t0 + Self.hour, previous: 95, close: 105)))
+    }
+  }
+
+  @Test("多条线里哪一条被收盘穿过就报哪一条")
+  func closeReportsWhichLine() throws {
+    let a = alert([
+      AlertLine(points: [DrawPoint(t: Self.t0, p: 500)], extendLeft: true, extendRight: true),
+      flat100,
+    ], condition: .close)
+    let hit = try #require(AlertEvaluator.hit(a, bar: closedBar(Self.t0 + Self.hour, previous: 95, close: 105)))
+    #expect(hit.line == 1)
+    #expect(hit.price == 100)
+  }
+
+  // --------------------------------------------------- 入口没开的那两种 kind
+
+  /// `price`（裸价格到价提醒）客户端没有入口能产生，评估器**显式**不认它。
+  /// 这条测试就是那道闸的看守：谁哪天开了入口，得先来这儿把它改掉。
+  @Test("price / reviewDue 提醒一律不判，直到有人来实现它")
+  func kindsWithoutAnEntryAreRejected() {
+    for kind in [Alert.Kind.price, .reviewDue] {
+      var a = alert([flat100])
+      a.kind = kind
+      // 就算几何、时间、条件全都对得上，也不响。
+      #expect(!AlertEvaluator.fires(a, bar: .init(openTime: Self.t0, high: 105, low: 95)))
+      a.condition = .close
+      #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 95, close: 105)))
+    }
   }
 
   @Test("线在这一刻没有价就不判")

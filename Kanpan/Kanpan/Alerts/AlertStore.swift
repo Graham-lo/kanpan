@@ -14,6 +14,11 @@ final class AlertStore: ObservableObject {
   @Published private(set) var archive: AlertArchive
   /// 存档变了就响一次；账号桥挂在这儿记账 + 同步。
   var onChange: ((AlertArchive) -> Void)?
+  /// 正式文件（`alerts.json`）那次写什么时候真的发生。和画线那儿
+  /// （`DrawingController.persistence`）逐字同义：默认就地同步写，登录之后由账号桥
+  /// 换成「排在同步存档这一版落盘之后，在写盘队列上写」，让「存档先落」重新变成
+  /// 队列顺序保证的事，而不是两次写之间的竞态。交给它的活儿不在 MainActor 上跑。
+  var persistence: @MainActor (@escaping @Sendable () -> Void) -> Void = { $0() }
   /// 落盘出事时说一句。宿主接到主 toast 上。
   @Published var notice: String?
 
@@ -133,9 +138,16 @@ final class AlertStore: ObservableObject {
     guard next != archive else { return }
     archive = next
     // 顺序和画线那儿一样：先把「用户要什么」交给同步存档，再落自己的正式文件。
+    // **这个顺序现在由队列保证**（`persistence` → `SyncStore.afterArchiveWritten`），
+    // 不再靠记账那一侧在主线程上阻塞等存档写完。反过来的「新 alerts.json + 旧存档」
+    // 是启动前向对账补不回来的那一侧：存档里既没有新值也没有待发操作，
+    // 下一次拉取会拿云端那份旧的把用户刚设的提醒盖回去。
     onChange?(next)
-    do { try store.save(next) }
-    catch { notice = "提醒未能保存。请检查设备存储空间。" }
+    let store = self.store, value = next
+    persistence { [weak self] in
+      do { try store.save(value) }
+      catch { Task { @MainActor in self?.notice = "提醒未能保存。请检查设备存储空间。" } }
+    }
   }
 
   // ---------------------------------------------------------------- 账号

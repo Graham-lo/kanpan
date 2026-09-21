@@ -84,6 +84,35 @@ import ReviewUI
     symbols.selectedGroupSource = { [weak prefs] in prefs?.prefs.favoritesGroup }
     drawings.onArchiveChange = { [weak self] _ in self?.captureDrawings() }
     alerts.onChange = { [weak self] _ in self?.captureAlerts() }
+    // 「存档先落、正式文件后落」这个不变量（B2）的兑现处。
+    //
+    // 三份正式文件（`draws.json` / `alerts.json` / `symbols.json`）都是在记账
+    // （`capture`）的前后脚写的。记账那一侧从前跟着一次主线程 `flushNow()`，顺序
+    // 就是那么来的；那次阻塞去掉之后，两次写变成一次排队、一次就地，顺序当场反了。
+    // 这三个钩子把正式文件那次写**也排到同一条写盘队列上**：串行 FIFO 保证它跑在
+    // 自己前面那次存档写之后，而队列上的合并写只会让存档更新，所以盘上任何一刻
+    // 都满足「存档不比正式文件旧」——主线程一步都不等。
+    //
+    // 没登录（`sync == nil`）时就地写，和从前逐字一样：那时压根没有存档这回事。
+    let sequence: @MainActor (@escaping @Sendable () -> Void) -> Void = { [weak self] write in
+      guard let self, let sync else { write(); return }
+      sync.afterArchiveWritten(write)
+    }
+    drawings.persistence = sequence
+    alerts.persistence = sequence
+    // 自选这一档换个形状：`SymbolPrefsStore` 是 `@MainActor` 的，不能在写盘队列上使唤。
+    // 编码在这儿（主 actor）做完，排队的只剩「把这串字节写进 symbols.json」，
+    // 而 `PersonalFileStorage` 本来就是带锁的 `@unchecked Sendable`，那正是
+    // `applyPending` 落盘走的同一个口。拿不到档案柜（还没 prepare）就答 false，
+    // 由模型自己就地写。
+    // `defaultsKey` 是 `SymbolPrefsStore` 的 `@MainActor` 静态量，不能在写盘队列上读，
+    // 所以在这儿（主 actor）先取出来，排队的闭包只带一个普通字符串过去。
+    let symbolsKey = SymbolPrefsStore.defaultsKey
+    symbols.persistence = { [weak self] value in
+      guard let self, let sync, let personal, let data = try? JSONEncoder().encode(value) else { return false }
+      sync.afterArchiveWritten { personal.setSymbolPrefsData(data, forKey: symbolsKey) }
+      return true
+    }
     // APNs 的 token 来了就报给服务端。现在这条**永远不会响**（没开发者会员，
     // 工程里没有推送 capability，注册必然失败），留着是为了开通那天不用改代码。
     PushRegistration.onToken = { [weak self] token in self?.submitPushToken(token) }
@@ -184,6 +213,12 @@ import ReviewUI
     // 账号状态又原样换回去。冷启动的 `prepare(nil)` 和退登的 `prepare(nil)` 属主不同，
     // 不会被这里挡掉（一次都没 prepare 过时 `preparedOwner` 是 `.none`）。
     if let prepared = preparedOwner, prepared == user?.id, personal != nil { return {} }
+    // 换档案是「必须现在就保证在盘上」的那种路口，所以这儿准阻塞（判据见
+    // `ArchiveWriter.drain()`）。非排空不可的理由：正式文件的写现在排在写盘队列上
+    // （见 `init` 里那三个 `persistence` 钩子），而下面这一整段是在主线程上**读**
+    // 那几份文件、再按合并结果**写**回去。不排空的话，上一份档案里还没落完的那笔
+    // 会落在这一段之后，把刚写回去的结果盖成旧的。
+    sync?.flushNow()
     let directory = try files.directory(user: user?.id)
     let nextStorage = try PersonalFileStorage(directory: directory)
     let nextInbox = try ShareInbox.read(directory: directory)
@@ -299,6 +334,34 @@ import ReviewUI
         guard let drawing = try? PersonalSyncCodec.drawing(object) else { continue }
         if let index = nextDrawings[name].firstIndex(where: { $0.id == id }) { nextDrawings[name][index] = drawing }
         else { nextDrawings[name].append(drawing) }
+      }
+      // 自选 / 分组的启动前向对账。判据和上面画线、提醒那两段逐字同义，只是
+      // 这一档从前**根本没有**这一步——因为它的两次写本来就是反着的
+      // （`symbols.json` 先落、存档后落），落在补得回来的那一侧的情况压根不会出现。
+      // 2026-09-22 把顺序掉过来之后，「新存档 + 旧 symbols.json」成了崩溃后的常态，
+      // 这一段就是把它补回来的人；没有它，用户重开会看见被自己删掉的那条自选还在，
+      // 要等下一次云端应用才恢复。
+      //
+      // **只向前**：只补那些「本机说了算」（有待发操作或未了结的拒绝记录）的对象，
+      // 云端下发的那些一个都不碰。位置按存档里记的 `order` 插回去，插不进就落到末尾——
+      // 真身顺序仍以那条待发操作为准，下一次 `applyPending` 会把它摆正。
+      for object in nextSync.unpersistedLocalChanges(in: ["favorites", "groups"], onDisk: PersonalSyncCodec.symbols(nextSymbols)) {
+        var slot = Int.max
+        if case .number(let order) = object.body["order"] { slot = Int(order) }
+        if object.collection == "groups" {
+          nextSymbols.groups.removeAll { $0.id == object.id }
+          guard !object.deleted, case .string(let name) = object.body["name"] else { continue }
+          nextSymbols.groups.insert(FavoriteGroup(id: object.id, name: name), at: min(max(slot, 0), nextSymbols.groups.count))
+          continue
+        }
+        guard case .string(let symbol) = object.body["symbol"] else { continue }
+        nextSymbols.favorites.removeAll { $0 == symbol }
+        nextSymbols.pinned.removeAll { $0 == symbol }
+        nextSymbols.groupForSymbol[symbol] = nil
+        guard !object.deleted else { continue }
+        nextSymbols.favorites.insert(symbol, at: min(max(slot, 0), nextSymbols.favorites.count))
+        if case .string(let group) = object.body["groupId"] { nextSymbols.groupForSymbol[symbol] = group }
+        if object.body["pinned"] == .bool(true) { nextSymbols.pinned.append(symbol) }
       }
     }
     PersonalSyncCodec.keepDeviceFields(prefs.prefs, in: &nextPrefs)
@@ -424,14 +487,35 @@ import ReviewUI
       // 逐条 capture 等于整档重写 N 次。
       try sync.capture(objects + deleted.map { var value = $0; value.deleted = true; return value },
                        device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
-      // **立刻把这笔操作写到盘上。**
+      // **落盘立刻发起，但不在主线程上等它写完。**
       //
-      // `sync.capture` 只是把 transaction 排进写盘队列，队列在后台串行跑；app 这一刻
-      // 被杀（用户捏完一下顺手划掉），这条操作就跟着进程一起没了，而下次冷启动
-      // `applyPending()` 会拿存档里那份旧的把偏好盖回去——用户看到的就是「改动没生效」。
-      // 排空队列是 `queue.sync {}`，几百字节的小 JSON，不值得为它省。
+      // `sync.capture` 里那一句 `ArchiveWriter.schedule` 就是「现在开始写」：字节已经
+      // 交给写盘队列，队列是 `.userInitiated`，手一抬到落盘通常几毫秒。手势结束那一刻
+      // 要的「立刻落盘」到这里就兑现了。
+      //
+      // 这儿原来还跟着一句 `sync.flushNow()`（`queue.sync {}`），理由写的是「app 这一刻
+      // 被杀，下次冷启动 `applyPending()` 会拿存档里那份旧的把偏好盖回去」，代价估成
+      // 「几百字节的小 JSON」。两头都不成立，去掉了：
+      //
+      // - **代价不是几百字节。** 每条画线的完整几何在存档的 `objects` 和 `local` 里
+      //   各存一份，`settings:chart` 一项就有 10.6 KB × 2；实测一份只有四条线的真实
+      //   存档是 46 KB，画线多起来就是几百 KB。等的是这一整份的 JSON 编码 + 原子写，
+      //   而这条路每次抬手、每次改设置都要走一遍。
+      // - **它防的那个窗口已经被别人关死了。** 其一，「app 被杀」这件事在本仓里有
+      //   唯一入口 `AppLifecycle`：`init` 里那个 `.sync` 档的钩子（`:107`）在离开前台 /
+      //   进后台 / `willTerminate` 时调 `flushNow()`，而且**排在所有产数据的钩子后面**，
+      //   用户划掉 app 走的正是这条路。其二，被举例的那个「偏好被盖回去」在设置这一档
+      //   根本轮不到存档来兜：`PrefsStore.persist()` 是**同步**写 prefs.json + 脏标识，
+      //   而且发生在 `onChange`（也就是这条 capture）**之前**；冷启动时 `prepare()`
+      //   看见脏标识就会重新 `capture` 一条操作（`:340`），`applyPending()` 也按
+      //   `Prefs.keeping(dirtyFields:)` 护着脏字段不被云端覆盖。存档丢掉那一版，
+      //   用户的值一个字都不少。
+      //
+      // 剩下的窗口写在这儿，别再让下一个人去猜：**没有任何通知的猝死**（jetsam / 崩溃）
+      // 恰好落在这几毫秒里时，画线与自选那两档会丢掉「这一改还没推上去」的记账——
+      // 盘上的 draws.json / symbols.json 仍然是新的，用户看得见自己的东西，
+      // 但下一次拉取会拿云端那份旧的把它盖回去。这是**几毫秒**换掉每次抬手的卡顿。
       // 至于网络推送，仍旧留给下面那 500ms 去抖：那是省流量，不是省命。
-      sync.flushNow()
       updateStatus(); debounce?.cancel()
       debounce = Task { [weak self] in
         try? await Task.sleep(for: .milliseconds(500)); guard !Task.isCancelled else { return }; self?.run(.push, manual: false)
@@ -871,6 +955,13 @@ import ReviewUI
     let encodedSymbols = try JSONEncoder().encode(nextSymbols)
 
     // —— 二、落盘。整套候选态一次性提交；成功之后才准清 `pendingApply`。
+    //
+    // 动手之前先把写盘队列排空。这一段是在主线程上直接写 `prefs.json` /
+    // `symbols.json` / `draws.json` / `alerts.json`，而用户刚才那几笔编辑的正式文件
+    // 写正排在队列上（`init` 里的 `persistence` 钩子）；不排空的话，那几笔会落在
+    // 这一批之后，把刚装进来的云端那一代盖回旧的。这条路不是手指上的路
+    // （它本来后面就跟着一次 `flushNow()`），准阻塞。
+    sync.flushNow()
     if let nextPrefs, nextPrefs != prefs.prefs {
       personal?.setPrefsData(PrefsCodec.encode(nextPrefs), forKey: PrefsCodec.key)
     }
@@ -911,14 +1002,17 @@ import ReviewUI
 
 /// 视野模块的「云端那条腿」。
 ///
-/// `ChartViewport` 只认这三个动作，不认识账号、存档、网络；没登录时它手上这个引用
+/// `ChartViewport` 只认这两个动作，不认识账号、存档、网络；没登录时它手上这个引用
 /// 是 `nil`，模块照常工作。登录与否对外**没有第二种行为**——同一个保存时刻、
 /// 同一套语义，差别只在这条腿在不在。
 extension AppAccountBridge: ChartViewport.Sync {
-  /// 把当前这份设置记成一条待发操作（内存 + 排进写盘队列）。
+  /// 把当前这份设置记成一条待发操作：内存改完，整份存档的落盘**当场发起**
+  /// （`ArchiveWriter.schedule`，后台串行队列，`.userInitiated`），不在这儿等它写完。
+  ///
+  /// 「杀了 app 也还在」靠的是另外两件事，不是在手指上等这一下：根宽本身由
+  /// `PrefsStore.persist()` 同步写进 prefs.json（发生在这句之前），而「app 要走了」
+  /// 那一刀在 `AppLifecycle` 的 `.sync` 档钩子上（见 `init` 里的 `sync.archive`）。
   func recordLayout() { captureSettings() }
-  /// 把写盘队列排空。**这一句才是「杀了 app 也还在」的那一刀。**
-  func flushLayoutArchive() { sync?.flushNow() }
   /// 顺手推一次。推不上去无所谓（离线、没登录、正在跑别的），操作已经在盘上了，
   /// 下次同步会带走它；这里只是想让另一台设备早点看到。
   func pushLayout() { run(.push, manual: false) }

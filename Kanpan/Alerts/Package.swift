@@ -8,8 +8,13 @@ import PackageDescription
 // target；但那个工程里没有 test target，所以这里开一个只管跑测试的 SwiftPM 包，
 // `Sources/KanpanAlerts/` 下全是**指向真身的符号链接**，一份代码两处编。
 //
-// 只链不吃 SwiftUI / UIKit 的那两件：存档与对账（`AlertArchive`）和那份存档的
-// 管家（`AlertStore`）。问句（`AlertPrompt`）、总表（`AlertListPage`）吃 SwiftUI，
+// 只链在 mac 上也编得动、也量得到东西的那四件：存档与对账（`AlertArchive`）、
+// 那份存档的管家（`AlertStore`）、前台的到价判定（`AlertEngine`——只吃 Combine 与
+// `KanpanCore`，把一口一口的价折成 1 分钟桶交给 `AlertEvaluator`）、以及
+// 「通知关着那一行出不出」的判据（`AlertPermission`——`UNAuthorizationStatus`
+// 在 mac 上也有，它那半句 `UIApplication.openSettingsURLString` 自己用
+// `#if canImport(UIKit)` 圈着）。
+// 问句（`AlertPrompt`）、总表（`AlertListPage`）吃 SwiftUI，
 // 「响了怎么走到人眼前」（`AlertWatcher` / `AlertNotifications`）吃 UIKit 与
 // UserNotifications，那几件的证据走模拟器。
 //

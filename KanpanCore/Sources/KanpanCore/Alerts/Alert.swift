@@ -12,8 +12,11 @@ import Foundation
 public struct Alert: Sendable, Equatable, Codable, Identifiable {
   /// 这条提醒是怎么来的。
   ///
-  /// - `drawing`：图上那条线（本轮唯一会自己长出来的一种）。
-  /// - `price`：一个裸价格（留给以后的「到价提醒」，本轮不产生）。
+  /// - `drawing`：图上那条线。目前**唯一**会自己长出来、也是唯一被评估器认的一种。
+  /// - `price`：一个裸价格（留给以后的「到价提醒」）。客户端没有入口能产生它，表 2.2
+  ///   也没给它放目标价的字段，所以两侧评估器都**显式**把它挡在外面
+  ///   （`AlertEvaluator.hit` / 服务端 `alerts::load`），而不是让它悄悄不响。
+  ///   要开这个入口，先把那两处的判定实现掉。
   /// - `reviewDue`：复盘待办到点（本轮走本地排程，不占云端名额，留着是为了以后能跨设备）。
   public enum Kind: String, Sendable, Codable, CaseIterable {
     case drawing, price, reviewDue
@@ -21,9 +24,10 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
 
   /// 怎么算「穿过」。
   ///
-  /// - `touch`：这一根的最高最低夹住了线（出厂值）。
-  /// - `close`：收盘价穿过之后才算。本轮**前台不评估**它（见 `AlertEvaluator`），
-  ///   只进模型与白名单，切换的口子在提醒列表那一行上。
+  /// - `touch`：这一根的最高最低夹住了线（出厂值）。盘中就算。
+  /// - `close`：这一根**真的收了**（币安 kline 帧的 `k.x`），而且上一根的收盘价与
+  ///   这一根的收盘价分在线的两侧（正好收在线上也算穿过）才响。盘中来回穿不算。
+  ///   两侧都判：前台 `AlertEvaluator`、服务端 `alerts.rs`。切换的口子在提醒列表那一行上。
   public enum Condition: String, Sendable, Codable, CaseIterable {
     case touch, close
     public var title: String { self == .touch ? "触碰时" : "收盘穿过后" }

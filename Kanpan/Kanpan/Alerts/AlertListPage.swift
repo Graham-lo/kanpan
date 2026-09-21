@@ -17,9 +17,17 @@ struct AlertListPage: View {
   var zone: TZOffset = .system
 
   @Environment(\.panelTheme) private var t
+  /// 通知权限那一行的开关（见 `AlertPermission`）。总表自己养一个，别处不看它。
+  @StateObject private var permission = AlertPermission()
+  /// 「回前台再查一遍」那份登记。用户点了这一行就走了，回来时这张表还开着、
+  /// `task` 不会再跑一次；而他很可能刚把开关拨上来，这一行就得自己消失。
+  /// 走 `AppLifecycle` 是**规定**：全 app 只有那一处读前后台，谁要听就去报到，
+  /// 不许自己挂 `UIApplication` 的通知（见 `AppLifecycle` 开头第 1 条）。
+  @State private var lifecycle: AppLifecycle.ResourceToken?
 
   var body: some View {
     PanelSheet(title: "提醒", subtitle: nil, asPage: false) {
+      if permission.needsSystemSettings { permissionRow }
       if store.all.isEmpty {
         empty
       } else {
@@ -33,6 +41,19 @@ struct AlertListPage: View {
         }
       }
     }
+    .task { await permission.refresh() }
+    .onAppear {
+      guard lifecycle == nil else { return }
+      lifecycle = AppLifecycle.shared.registerResources(
+        id: "alerts.permission",
+        leave: {},
+        enter: { Task { await permission.refresh() } })
+    }
+    .onDisappear {
+      guard let token = lifecycle else { return }
+      AppLifecycle.shared.unregisterResources(token: token)
+      lifecycle = nil
+    }
     // 「这张表在不在」的记号。**`children: .contain` 那一句不能省**：光写
     // `accessibilityIdentifier` 会把这个名字往下盖到每个子元素上，表头那颗「‹」的
     // `panel.done` 在无障碍树里就成了 `alerts.page`（和 `DisplaySettingsSection`
@@ -41,6 +62,52 @@ struct AlertListPage: View {
     // 一个容器，子元素各留各的名字。`AlertPromptBar` 那一条也是这么写的。
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("alerts.page")
+  }
+
+  /// 通知被拒之后顶上那一行。**提示，不是拦路**：它不挡列表，下面该有几条还是几条。
+  ///
+  /// 三件事上和「要不要提醒」那条问句（`AlertPromptBar`）长一个样，不是巧合——
+  /// 它俩是同一个功能的两句话，应该读成同一个东西：
+  /// - 色走 `amberSoft` + `amberLine`，也就是**皮肤自己的强调色**兑得极淡的一层
+  ///   （青苔是墨绿、陶土是赤陶）。**不用 `t.danger`**：那一支是给「删除 / 注销」
+  ///   这种不可逆动作留的，这儿只是「有件事你可能不知道」，摆一条红的等于吓人；
+  ///   也不能是系统那块黄警告条——那是外面贴上来的一块颜色，这张表要读成一整块材料。
+  /// - 底是半透明的一层兑色，不是一块实底，身下那张 `raised` 照常透过去，不切硬边。
+  /// - 行高 36、字 13，比一条提醒还轻一档——它不跟真正的内容抢眼睛。
+  private var permissionRow: some View {
+    Button(action: { permission.openSystemSettings() }) {
+      HStack(spacing: 8) {
+        Image(systemName: "bell.slash")
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(t.amber)
+        Text("通知关着，提醒到了不会响")
+          .font(.system(size: 13))
+          .foregroundStyle(t.ink)
+          .lineLimit(1)
+          .minimumScaleFactor(0.85)
+        Spacer(minLength: 6)
+        HStack(spacing: 2) {
+          Text("去打开").font(.system(size: 13, weight: .semibold))
+          VectorIcon.chevronRight(11)
+        }
+        .foregroundStyle(t.amber)
+      }
+      .padding(.horizontal, 12)
+      .frame(maxWidth: .infinity)
+      .frame(height: 36)
+      .contentShape(Rectangle())
+      .background(
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+          .fill(t.amberSoft)
+          .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(t.amberLine, lineWidth: 0.5))
+      )
+    }
+    .buttonStyle(.plain)
+    .padding(.horizontal, 10)
+    .padding(.top, 4)
+    .padding(.bottom, 6)
+    .accessibilityIdentifier("alerts.permission")
   }
 
   private var empty: some View {
@@ -71,11 +138,16 @@ private struct AlertRow: View {
   var body: some View {
     ZStack(alignment: .trailing) {
       Button(role: .destructive) { withAnimation(.easeOut(duration: 0.16)) { offset = 0 }; onDelete() } label: {
+        // 警示色不是跌色。出厂是红涨绿跌（`Prefs.redUp` 默认 `true`），`t.down`
+        // 是绿的——「删除」读起来像「确认」，还跟着一个和删除毫无关系的开关翻来翻去。
+        // `t.danger` 就是为这件事建的那一支（见 `PaletteSeed.danger`）。
+        // 字走 `badgeInk`：白字压在深色皮肤那支亮红 `#F08A80` 上只有 2.4:1，
+        // 换成它之后六套皮肤都在 5.6:1 以上。
         Text("删除")
           .font(PanelFont.seg)
-          .foregroundStyle(.white)
+          .foregroundStyle(t.badgeInk)
           .frame(width: -Self.revealed, height: 52)
-          .background(t.down)
+          .background(t.danger)
       }
       .buttonStyle(.plain)
       .opacity(offset < -4 ? 1 : 0)

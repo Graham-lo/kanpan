@@ -365,6 +365,7 @@ struct DrawingSheet: View {
   /// 端点会写成 `77017.099999999`，那串尾巴既不是用户填的也不是图上画的。
   var decimals: Int = 2
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.panelTheme) private var theme
   @State private var confirmClear = false
   var body: some View {
     if panel == .style, let item = controller.selected {
@@ -372,11 +373,12 @@ struct DrawingSheet: View {
       DrawingStyleEditor(controller: controller, item: item, decimals: decimals)
         .presentationDetents([.fraction(0.4), .large])
         .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.4)))
+        .presentationBackground(theme.app)
     } else {
       NavigationStack {
         List {
           Section {
-              if controller.items.isEmpty { Text("还没有画线") }
+              if controller.items.isEmpty { Text("还没有画线").foregroundStyle(theme.ink2) }
               ForEach(Array(controller.items.reversed())) { item in
                 HStack {
                   Button { controller.select(item.id); dismiss() } label: {
@@ -386,7 +388,7 @@ struct DrawingSheet: View {
                       // 几位（审查 B-07）。原来这儿按「有效数字 2–10 位」写，同一条线
                       // 在图上和在这张清单里能差出好几位。
                       Text(fmtPrice(item.a.p, decimals: decimals))
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(theme.ink3)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                   }.accessibilityIdentifier("draw.object.\(item.id)")
                   Button { controller.toggleHidden(item) } label: {
@@ -394,17 +396,57 @@ struct DrawingSheet: View {
                   }.accessibilityLabel(item.hidden ? "显示画线" : "隐藏画线")
                 }.buttonStyle(.borderless)
                 .swipeActions {
-                  Button("删除", role: .destructive) { controller.select(item.id); controller.deleteSelected() }
+                  // 警示色跟皮肤走（`theme.danger`，见 `PaletteSeed.danger`），不用系统红。
+                  //
+                  // `role: .destructive` **留着**：滑到底直接触发认的是「这条边第一颗按钮」，
+                  // 而 role 还带着 VoiceOver 的破坏性语义和删除行的收拢动画；去掉 role 只为
+                  // 换个颜色，等于拿语义换调色。颜色改由 `.tint` 盖——swipeAction 的 `.tint`
+                  // 定的就是按钮底，优先级在 role 的系统红之上（同一写法见 `FavoritesView`
+                  // 的「移到分类」`.tint(theme.amber)`）。
+                  //
+                  // 字给 `badgeInk`：白字压在深色皮肤那支亮红（青苔夜 `#F08A80`）上只有
+                  // 2.4:1，`badgeInk`（夜里是近黑的 `ground`）六套皮肤都在 5.6:1 以上，
+                  // 和 `AlertListPage` 的左划删除同一支笔。
+                  Button(role: .destructive) {
+                    controller.select(item.id); controller.deleteSelected()
+                  } label: {
+                    Text("删除").foregroundStyle(theme.badgeInk)
+                  }
+                  .tint(theme.danger)
                 }
               }
             }
+            .listRowBackground(theme.raised)
           if !controller.items.isEmpty {
-            Button(controller.items.allSatisfy(\.hidden) ? "全部显示" : "全部隐藏") { controller.hideAll() }
-            Button("清空当前品种画线", role: .destructive) { confirmClear = true }.accessibilityIdentifier("draw.clear")
+            Section {
+              Button(controller.items.allSatisfy(\.hidden) ? "全部显示" : "全部隐藏") { controller.hideAll() }
+              // 这一行不留 `role: .destructive`：表里的破坏性按钮，role 的作用只有
+              // 「把字染成系统红」，而系统红是这一屏上唯一不跟皮肤走的颜色。改用
+              // `theme.danger`（同 `ReviewBook` 的「作废记录」、`AlertListPage` 的删除）。
+              // 破坏性语义没丢——真正不可逆的那一下在紧接着的确认弹窗里，
+              // 那颗「清空画线」仍是 destructive（系统弹窗自己画，染不了也不该染）。
+              Button("清空当前品种画线") { confirmClear = true }
+                .foregroundStyle(theme.danger)
+                .accessibilityIdentifier("draw.clear")
+            }
+            .listRowBackground(theme.raised)
           }
         }
+        // 这张 `List` 原来一个主题令牌都没接：三套皮肤下它长得一模一样，一张系统灰白
+        // 的表压在身后那张跟着皮肤走的页面上，读成两张纸。接法照 `IndicatorPanel`
+        // 那张编辑表：表底 `app`、行底 `raised`（行底是**行**的属性，挂在 `List`
+        // 上不生效）、导航栏也取 `app`、半屏自己的底也给 `app`。
+        //
+        // 导航栏和表底必须是**同一支色**。给 `raised` 的那一版在青苔浅色下是
+        // `#FFFFFF` 压着 `#F3F7F4`（亮度比 1.08），导航栏下沿横出一道看得见的
+        // 明度台阶；六套皮肤里只有经典浅色（两支都是 `#FFFFFF`）碰巧看不出来。
+        // 整屏要读成一块连续的材料，所以这儿不留台阶。
+        .scrollContentBackground(.hidden)
+        .background(theme.app)
         .navigationTitle("画线管理")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(theme.app, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         // 出口摆左上角的「‹ 返回」，和面板、自选页、品种页同一个位置（2026-09-15）。
         // 这张表单没有「保存」语义——它改的每一项都即时生效——所以右上角不留按钮。
         .toolbar {
@@ -416,8 +458,10 @@ struct DrawingSheet: View {
         .confirmationDialog("清空当前品种的全部画线？", isPresented: $confirmClear, titleVisibility: .visible) {
           Button("清空画线", role: .destructive) { controller.clear() }
         } message: { Text("清空后可在画线栏撤销。") }
-      }.presentationDetents([.medium, .large])
+      }.tint(theme.amber)
+        .presentationDetents([.medium, .large])
         .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+        .presentationBackground(theme.app)
     }
   }
 
@@ -428,20 +472,27 @@ private struct DrawingStyleEditor: View {
   @State var item: Drawing
   var decimals: Int = 2
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.panelTheme) private var theme
   @State private var levelText = ""
   /// 进来那一刻这条线的样式。保存时拿它比一比，只有真的动过才把新样式提成该类默认。
   @State private var original: DrawingStyle?
   var body: some View {
     NavigationStack {
       Form {
-        Section("样式") {
+        // 分节标题走 `PanelFormSectionTitle`（和 `IndicatorEditor` 同一个定义）：
+        // 内建的 `Section("字面量")` 那一行是系统 secondary label 灰，换皮肤不动，
+        // 在一张已经全部换过肤的表上，它是唯一一处三套皮肤长得一样的字。
+        Section {
           DrawingColorControl(title: "颜色", color: Binding(get: { item.color ?? "#D6A64F" }, set: { item.color = $0 }))
           LineWidthPicker(width: $item.lineWidth)
           Picker("线型", selection: $item.dash) { ForEach(Drawing.Dash.allCases, id: \.self) { Text($0.title).tag($0) } }
           if item.kind.usesFill { Toggle("背景填充", isOn: $item.filled) }
           Toggle("锁定位置", isOn: $item.locked)
+        } header: {
+          PanelFormSectionTitle(text: "样式")
         }
-        Section("坐标") {
+        .listRowBackground(theme.raised)
+        Section {
           ForEach(item.points.indices, id: \.self) { index in
             DatePicker("点 \(index + 1) 时间", selection: Binding(get: { Date(timeIntervalSince1970: item.points[index].t / 1000) }, set: { item.points[index].t = $0.timeIntervalSince1970 * 1000 }))
             HStack {
@@ -450,23 +501,42 @@ private struct DrawingStyleEditor: View {
                 .keyboardType(.decimalPad).multilineTextAlignment(.trailing).accessibilityIdentifier("draw.price.\(index)")
             }
           }
-        }.disabled(item.locked)
+        } header: {
+          PanelFormSectionTitle(text: "坐标")
+        }
+        .disabled(item.locked)
+        .listRowBackground(theme.raised)
         if item.kind.usesText {
-          Section("文字") {
+          Section {
             TextField("写点什么", text: $item.text, axis: .vertical).lineLimit(1...4)
               .accessibilityIdentifier("draw.note.text")
-            Text("最多 \(Drawing.textLimit) 个字。").font(.caption).foregroundStyle(.secondary)
+            Text("最多 \(Drawing.textLimit) 个字。").font(.caption).foregroundStyle(theme.ink3)
+          } header: {
+            PanelFormSectionTitle(text: "文字")
           }
+          .listRowBackground(theme.raised)
         }
         if item.kind.usesLevels {
-          Section(item.kind == .fibExtension ? "扩展比例" : "回撤比例") {
+          Section {
             TextField("0, 0.382, 0.5, 0.618, 1", text: $levelText).keyboardType(.numbersAndPunctuation)
             Text(item.kind == .fibExtension ? "用逗号分隔；从起算点 C 往外按 A→B 的幅度乘出来。"
-                 : "用逗号分隔；0 为终点，1 为起点。").font(.caption).foregroundStyle(.secondary)
+                 : "用逗号分隔；0 为终点，1 为起点。").font(.caption).foregroundStyle(theme.ink3)
+          } header: {
+            PanelFormSectionTitle(text: item.kind == .fibExtension ? "扩展比例" : "回撤比例")
           }
+          .listRowBackground(theme.raised)
         }
       }
+      // 这张 `Form` 原来整张都是系统灰白——底、分节卡片、导航栏一个令牌都没接。
+      // 从前那句「这张表是系统 `Form`」的就地豁免不成立：`IndicatorPanel` 那张同样是
+      // 系统 `Form`，照样接了主题（表底 `app` / 行底 `raised` / 导航栏 `app`），
+      // 留着 `Form` 只是为了它给的分节、左滑和键盘避让，不是为了留一张白纸。
+      .scrollContentBackground(.hidden)
+      .background(theme.app)
       .navigationTitle(item.kind.title).navigationBarTitleDisplayMode(.inline)
+      // 导航栏和表底同取 `app`，中间不留明度台阶（同「画线管理」那张，理由见那儿）。
+      .toolbarBackground(theme.app, for: .navigationBar)
+      .toolbarBackground(.visible, for: .navigationBar)
       .onAppear {
         levelText = item.levels.map { String($0) }.joined(separator: ", ")
         if original == nil { original = DrawingStyle(item) }
@@ -483,6 +553,7 @@ private struct DrawingStyleEditor: View {
         }
       }
     }
+    .tint(theme.amber)
   }
   private var parsedLevels: [Double]? {
     let parts = levelText.replacingOccurrences(of: "，", with: ",").split(separator: ",")
@@ -499,6 +570,7 @@ private struct DrawingStyleEditor: View {
 /// 现在只留四档，选中的那条自己就是样张，不用先读懂数字再想象它多粗。
 struct LineWidthPicker: View {
   @Binding var width: Double
+  @Environment(\.panelTheme) private var theme
   /// 四档：细、常用、重、最重。存档里别的值（老画线的 1.3）按最近的一档显示。
   static let options: [Double] = [1, 1.5, 2, 3]
 
@@ -513,16 +585,18 @@ struct LineWidthPicker: View {
       ForEach(Self.options, id: \.self) { w in
         Button { width = w } label: {
           RoundedRectangle(cornerRadius: w / 2, style: .continuous)
-            .fill(Color.primary)
+            .fill(theme.ink)
             .frame(width: 26, height: w)
             .frame(width: 44, height: 34)
-            // 选中的记号用 `primary`，和上面那排色卡的选中圈同一支笔——这张表是系统
-            // `Form`，跟着皮肤的强调色走反而会在一片中性色里蹦出一块系统蓝。
-            .background(selected == w ? Color.primary.opacity(0.08) : .clear,
+            // 选中的记号用皮肤自己的墨色 `ink`，和上面那排色卡的选中圈同一支笔。
+            // （原来写的是 `Color.primary`，理由是「这张表是系统 `Form`」——现在这张表
+            //   已经接了主题，系统的黑白反而是这一屏上唯一不跟皮肤走的那支。
+            //   仍然不用强调色：这四档是样张不是开关，用强调色会和「保存」抢眼。）
+            .background(selected == w ? theme.ink.opacity(0.08) : .clear,
                         in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .overlay {
               RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .stroke(selected == w ? Color.primary.opacity(0.55) : .clear, lineWidth: 1.5)
+                .stroke(selected == w ? theme.ink.opacity(0.55) : .clear, lineWidth: 1.5)
             }
             .contentShape(Rectangle())
         }
@@ -540,6 +614,7 @@ struct DrawingColorControl: View {
   var title: String
   var identifierPrefix = "color"
   @Binding var color: Hex
+  @Environment(\.panelTheme) private var theme
   private let swatches: [Hex] = ["#E2B34F", "#4A90E2", "#A078D0", "#37A78F", "#E46A76", "#D88040", "#B8C4D8"]
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -549,7 +624,8 @@ struct DrawingColorControl: View {
         ForEach(swatches, id: \.self) { hex in
           Button { color = hex } label: {
             Circle().fill(Color(hex: hex)).frame(width: 22, height: 22)
-              .overlay(Circle().stroke(color == hex ? Color.primary : .clear, lineWidth: 2).padding(-3))
+              // 选中圈走皮肤的墨色，不用系统的黑白（同 `LineWidthPicker`）。
+              .overlay(Circle().stroke(color == hex ? theme.ink : .clear, lineWidth: 2).padding(-3))
               .frame(width: 44, height: 44).contentShape(Rectangle())
           }.buttonStyle(.borderless).accessibilityLabel(hex.value).accessibilityIdentifier("\(identifierPrefix).\(hex.value)")
         }

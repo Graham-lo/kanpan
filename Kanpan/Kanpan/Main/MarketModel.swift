@@ -90,6 +90,13 @@ final class MarketModel {
   // 同上：`deinit` 要 cancel 它。
   @ObservationIgnored nonisolated(unsafe) private var pump: Task<Void, Never>?
   private let network = MarketNetworkMonitor()
+  /// 图上这只每动一口价就说一声：品种、价、交易所时刻（毫秒，取不到给 0）。
+  ///
+  /// 提醒模块挂在这儿（`AlertEngine`）。它**不去读 `series`**：那份 K 线是用户选的
+  /// 周期，日线那一根的高低横跨一整天，拿它判「触碰」会把十小时前碰过的线当场判成
+  /// 刚碰到；服务端评估器用的是 1 分钟 K 线，客户端要和它一字对一字，就只能自己
+  /// 拿一口一口的价去折 1 分钟桶。界面从不读这个属性，别让 `@Observable` 跟踪它。
+  @ObservationIgnored var onPrice: ((String, Double, Int64) -> Void)?
   private var foreground = true
   /// 补历史一次只放一发在路上，别一路拖着就连喊十几次。
   private var loading = false
@@ -343,6 +350,7 @@ final class MarketModel {
     case .tradeQuote(let quote):
       guard quote.symbol == symbol else { return }
       tradeQuote = quote
+      onPrice?(quote.symbol, quote.price, quote.timeMs)
     case .ticker(let t):
       guard t.symbol.uppercased() == symbol.uppercased() else { return }
       guard tickerStale || LatestQuote.accepts(t, after: ticker) else { return }
@@ -351,6 +359,9 @@ final class MarketModel {
       tickerStale = false
       if volumeUnit == nil, next.quoteVolume.isFinite { volumeUnit = volUnit(next.quoteVolume) }
       lastPushAt = Date()
+      // 逐笔那条流不是每条线路都有（网关走 OKX 时只有 ticker），到价判定不能只挂在
+      // `.tradeQuote` 上。同一口价两边都喂进去是无害的：折桶取的是 min/max/最后一口。
+      onPrice?(next.symbol, next.last, next.timeMs ?? 0)
     case .markPrice(let sym, let price, let tick):
       guard sym.uppercased() == symbol, tick.timeMs >= markTime else { return }
       markTime = tick.timeMs

@@ -169,9 +169,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   // 画线的同步对象 id 原样，和 `drawings` 的 id 同一套形态。
   ("alerts","drawingID")=>string(v,180),
   ("alerts","lines")=>lines(v),
-  // `close`（收盘确认）是第二种条件，见文档第 10 节。本轮评估器只实现 `touch`，
-  // 但值规则现在就认它：认不认是协议的事，实现到哪一步是评估器的事，拒收会让
-  // 客户端那条 op 永远推不上去。
+  // `close`（收盘穿过）是第二种条件，见文档第 10 节。两侧评估器都判它
+  // （`alerts::crossed_on_close` / 客户端 `AlertEvaluator.closeHit`）。
   ("alerts","condition")=>one_of(v,&["touch","close"]),
   ("alerts","status")=>one_of(v,&["active","fired","paused"]),
   ("alerts","once")=>v.is_boolean(),
@@ -406,16 +405,23 @@ mod tests {
   assert!(!field("alerts","title",&json!("x".repeat(1025))));
  }
 
- /// **`close` 是协议里的合法值，哪怕评估器本轮还不实现它。**
+ /// **`close` 是协议里的合法值，而且现在真的有人评估它。**
  ///
- /// 文档第 10 节把「收盘确认」定成第二种 condition，提醒列表里可以切。服务端这一层的
- /// 工作是认不认，不是实不实现：拒收会让客户端那条 op 永远推不上去，而少评估一种条件
- /// 只是少一个功能。跳过在 `alerts::load` 里做（带 TODO）。
- #[test] fn a_close_confirmation_alert_is_accepted_even_though_nothing_evaluates_it_yet() {
+ /// 文档第 10 节把「收盘确认」定成第二种 condition，提醒列表里可以切。这一层的工作是
+ /// 认不认：拒收会让客户端那条 op 永远推不上去。曾经有一段时间它只到这儿为止——白名单
+ /// 放行、界面能选、`alerts::load` 却带着一条 TODO 静默跳过，于是「收盘穿过后」是一条
+ /// 用户走得进去、永远走不出来的死路。现在两侧都判它：服务端 `alerts::crossed_on_close`、
+ /// 客户端 `AlertEvaluator.closeHit`。**改这条测试之前先确认那两处还在。**
+ #[test] fn a_close_confirmation_alert_is_accepted_and_evaluated() {
   assert!(field("alerts","condition",&json!("touch")));
   assert!(field("alerts","condition",&json!("close")));
   assert!(!field("alerts","condition",&json!("wick")));
   object(&alert(&[("condition",json!("close"))])).expect("a close-confirmation alert is storable");
+  // 存得下只是一半。另一半是评估器认不认这个字符串——白名单放行的 `"close"` 必须
+  // 正好是评估器路由到收盘穿过的那个 `"close"`。它要是退回 `Touch`，「收盘穿过后」
+  // 就悄悄变回「触碰时」，而且没有任何迹象。
+  assert_eq!(crate::alerts::Condition::of("close"),crate::alerts::Condition::Close,
+   "白名单认的 close 必须就是评估器判收盘穿过的那个 close");
  }
 
  /// 几何的形状：`[{points:[{t,p}],extendLeft,extendRight}]`，数字必须有限。

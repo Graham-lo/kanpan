@@ -166,7 +166,14 @@ public struct SyncArchive: Codable, Sendable {
 /// 串起来也不会堵。
 final class ArchiveWriter: @unchecked Sendable {
   /// 进程共用的那条串行队列。测试要能把它堵住，才量得出「堆在队列里的旧快照有没有被合并掉」。
-  static let queue = DispatchQueue(label: "kanpan.account.archive", qos: .utility)
+  ///
+  /// **QoS 是 `.userInitiated`，不是 `.utility`。** 记账那一侧（`AppAccountBridge.capture`）
+  /// 不再在主线程上等这条队列把整份存档写完，于是「这一版多久落到盘上」不再是一个
+  /// 后台指标，而是**进程被杀时会丢多少东西**的那个窗口本身。Darwin 上 `.utility`
+  /// 是**受 I/O 节流**的一档（Energy Efficiency Guide：Utility = Throttled I/O），
+  /// 系统一忙就可能把这次写拖到几十上百毫秒之后；`.userInitiated` 不吃那道节流，
+  /// 手一抬到字节落盘通常是几毫秒。这次写本来就小又不频繁，占不了别人的地方。
+  static let queue = DispatchQueue(label: "kanpan.account.archive", qos: .userInitiated)
   private let url: URL
   private let lock = NSLock()
   private var failure: Error?
@@ -181,7 +188,11 @@ final class ArchiveWriter: @unchecked Sendable {
   /// 第 k 版整个被第 k+1 版包住，所以把还没开写的旧版丢掉，盘上的内容一个字节
   /// 都不会少。从前每次 `schedule` 都独立编码 + 写一遍，离线攒 n 条操作时
   /// 第 k 次编辑要编码一份装着 k 条操作的档，总功耗 1+2+…+n；而每一次
-  /// `capture()` 后面都跟着一次主线程 `flushNow()`，这些活儿全压在手指上。
+  /// `capture()` 后面还跟着一次主线程 `flushNow()`，这些活儿全压在手指上。
+  ///
+  /// **`schedule` 本身就是「立刻开始写」**，不是「等会儿再说」：这一句返回时写已经
+  /// 排在队列上、马上就会跑（队列是 `.userInitiated`）。手势结束那一刻要的「立刻落盘」
+  /// 到这里就已经兑现了，缺的只是「等它写完」——那一步不该由手指来付，见 `drain()`。
   func schedule(_ value: SyncArchive) {
     lock.lock()
     pending = value
@@ -202,9 +213,22 @@ final class ArchiveWriter: @unchecked Sendable {
     if failure == nil { failure = caught }
     lock.unlock()
   }
-  /// 等队列排空（阻塞当前线程）。退到后台、以及「写完必须立刻能被重新打开」的场合用。
+  /// 等队列排空（**阻塞当前线程**）。
+  ///
+  /// 只有两种场合准用它，而且两种都不在用户的手指上：
+  /// - 「app 要走了」——`AppLifecycle` 那个 `.sync` 档的钩子（离开前台 / 进后台 /
+  ///   `willTerminate`），它排在所有产数据的钩子后面，是最后一次落盘机会；
+  /// - 「写完必须立刻能被重新打开」——换档案、装档案这种一次性的路口。
+  ///
+  /// **每一次编辑之后都调它是不行的。** 这个档不是「几百字节的小 JSON」：每条画线的
+  /// 完整几何在 `objects` 和 `local` 里各存一份，实测一份只有四条线的档就 46 KB
+  /// （其中 `settings:chart` 一项占 10.6 KB × 2），线多了就是几百 KB。在主线程上
+  /// 等这一整份编码 + 原子写完成，等于每次抬手都交一次卡顿的税。
+  /// 编辑路径改用「`schedule` 立刻发起写、不等它完成」，见 `AppAccountBridge.capture`。
   func drain() { Self.queue.sync {} }
-  /// 不阻塞的排空。
+  /// 不阻塞的排空：`done` 在**写盘队列上**跑，跑到它的时候，在它之前排进来的每一次
+  /// `schedule` 都已经写完了（串行队列 FIFO）。顺序保证和 `drain()` 一模一样，
+  /// 差别只有「谁在等」——调用方不再被挂住，所以它不能假设自己返回时字节已经在盘上。
   func drain(_ done: @escaping @Sendable () -> Void) { Self.queue.async { done() } }
   /// 取走并清掉攒下的写盘错误。落盘是异步的，错误只能由下一次 transaction 抛出来。
   func takeFailure() -> Error? {
@@ -621,8 +645,31 @@ final class ArchiveWriter: @unchecked Sendable {
       writer.drain { continuation.resume() }
     }
   }
-  /// 阻塞版排空：退到后台这种「必须现在就保证在盘上」的路径用。
+  /// 阻塞版排空：退到后台、换档案这种「必须现在就保证在盘上」的路口用。
+  /// **不许挂在每一次编辑后面**，理由与判据都在 `ArchiveWriter.drain()`。
   public func flushNow() { writer.drain() }
+  /// 把一件事排到「**在它之前记下的每一版存档都已经落在盘上**」之后再做。
+  /// 调用方一步都不等：`work` 在写盘队列上跑，不在调用方的线程上。
+  ///
+  /// 这是「存档先落、伴随文件后落」那条不变量（B2）的兑现处。画线、提醒、自选
+  /// 各有一份**正式文件**（`draws.json` / `alerts.json` / `symbols.json`），它们和
+  /// 这份存档是两次独立的写：
+  ///
+  /// - 「新存档 + 旧正式文件」下次启动补得回来——存档里同时装着新的本地值和那条
+  ///   待发操作，`unpersistedLocalChanges` 只向前把差额补进正式文件；
+  /// - 「新正式文件 + 旧存档」补不回来——存档里既没有新值也没有待发操作，谁也不知道
+  ///   用户改过，下一次拉取会拿云端那份旧的把它盖掉。
+  ///
+  /// 所以正式文件必须**排在存档后面**写。从前这个顺序是靠记账那一侧
+  /// `capture()` 后面跟一句阻塞的 `flushNow()` 换来的——代价是每次抬手都在主线程上
+  /// 等整份存档编码 + 原子写。现在改成把正式文件那次写**也排到同一条串行队列上**：
+  /// FIFO 保证它跑在自己前面那次 `schedule` 之后，而队列上合并写只会让存档更新，
+  /// 所以盘上任何一刻都满足「存档不比正式文件旧」，主线程一步都不等。
+  ///
+  /// `work` 跑在写盘队列上，**不是 MainActor**。别在里面碰界面状态；要碰就自己跳回去
+  /// （只有出错提示这类不讲顺序的事才准这么做——`Task { @MainActor in }` 之间是不排队的，
+  /// 把正式文件的写放进去等于把刚恢复的顺序又打乱）。
+  public func afterArchiveWritten(_ work: @escaping @Sendable () -> Void) { writer.drain(work) }
   /// 真正落盘的次数。观测与测试用。
   public var writeCount: Int { writer.writeCount }
 }

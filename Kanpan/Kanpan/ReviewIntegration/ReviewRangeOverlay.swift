@@ -13,8 +13,17 @@ struct ReviewRangeOverlay: UIViewRepresentable {
   var suppressed = false
   /// 刚记下的那一条（§2F2）：进来一个新 id 就闪一下，告诉用户「记号落在这儿了」。
   var flash: UUID?
+  /// 这一层是 UIKit 手绘的，取不到 SwiftUI 那套 `foregroundStyle`，所以配色得自己端进去。
+  ///
+  /// 原来它把橙色（`UIColor.systemOrange`）钉死在自己那边：SwiftUI 那几页早就跟着
+  /// 皮肤走了，只有画在图上的这一层没跟上——青苔是墨绿强调、陶土是赤陶强调，
+  /// 满屏就这块橙谁都不像。和 `ReviewThemeBridge` 是同一件事的 UIKit 版。
+  @Environment(\.panelTheme) private var theme
   func makeUIView(context: Context) -> RangeOverlayView { RangeOverlayView() }
   func updateUIView(_ view: RangeOverlayView, context: Context) {
+    view.accent = UIColor(theme.amber)
+    view.canvas = UIColor(theme.chartBG)
+    view.subdued = UIColor(theme.ink3)
     view.feature = feature; view.bridge = bridge
     view.proxy = bridge.active ? bridge.proxy : liveProxy
     view.draft = (bridge.mode == .capture && !suppressed) ? feature.draft : nil
@@ -34,6 +43,28 @@ final class RangeOverlayView: UIView {
   var records: [ReviewRecord] = []
   /// 见 `ReviewRangeOverlay.suppressed`。回放态那一支不吃 `records`，所以得单独挡一道。
   var suppressed = false
+  /// 选区带、目标 / 失效横线、手柄、落图记号统一用的强调色（见 `ReviewRangeOverlay.theme`）。
+  ///
+  /// 这三支的默认值都从出厂那套种子（青苔浅）直接取，**不取系统色**：`updateUIView`
+  /// 在第一次 `draw(_:)` 之前一定跑过一遍，默认值原则上看不见；但只要它是
+  /// `.systemOrange` / `.systemBackground` 这类系统色，下一个人读这段就会以为
+  /// 「这一层还允许系统色」。这一层一支系统色都不留。
+  var accent: UIColor = UIColor(Color(hex: Palette.lightSeed.accent))
+  /// 画布自己的底（`PanelTheme.chartBG`）。手柄的描边走它，才能在任何皮肤下都把
+  /// 那颗圆点从背后的蜡烛里剜出来；原来写死 `UIColor.white`，落在
+  /// `#F3F7F4` / `#FBF6F0` / `#FFFFFF` 这几张浅画布上等于没画。
+  var canvas: UIColor = UIColor(Color(hex: Palette.lightSeed.chart))
+  /// 次一级的记号色（`PanelTheme.ink3`）：有效期那条虚线用它。
+  ///
+  /// 那条线原来是 `UIColor.secondaryLabel`——它只跟系统的浅 / 深走，不跟皮肤走，
+  /// 于是青苔、陶土、经典三套皮肤的图上都横着同一支蓝灰。而且它在浅色画布上
+  /// 只有 3.3:1（`#3C3C43` 60% 压在 `#F3F7F4` 上算出来是 `#85878A`），`ink3` 是
+  /// 4.9:1（青苔浅）到 5.4:1（青苔深），六套皮肤全部过 4.5:1。
+  ///
+  /// 取 `ink3` 而不是 `ink2`：有效期是这张图上**最次**的一条线——目标价、失效价
+  /// 走强调色，选区边框走强调色 0.8，它只是「到这天为止」。`ink2` 在深色皮肤上
+  /// 有 8.7–9.1:1，比旁边那两条 0.3 透明度的强调线还抢眼，读起来像主角。
+  var subdued: UIColor = UIColor(Color(hex: Palette.lightSeed.ink3))
   /// 闪一下的实现（§2F2）：只记「闪的是哪一条」和「这一帧是亮还是暗」，
   /// 剩下的交给一个短定时器。不用 CoreAnimation 是因为这一层是手绘的 `draw(_:)`，
   /// 没有可以动画的 layer 属性；三次明暗切换共 0.9 秒，够看见，不至于闪得人眼晕。
@@ -230,7 +261,7 @@ final class RangeOverlayView: UIView {
   private func paint(_ draft: ReviewDraft, state: ChartState, layout: KanpanCore.Layout, ctx: CGContext, editing: Bool, outcome: ReviewOutcome?, emphasis: Bool = false) {
     let a = state.view.x(Double(draft.range.start), plotW: layout.plotW)
     let b = state.view.x(Double(draft.range.end), plotW: layout.plotW)
-    let color = UIColor.systemOrange
+    let color = accent
     ctx.setFillColor(color.withAlphaComponent(editing ? 0.1 : (emphasis ? 0.14 : 0.035)).cgColor)
     ctx.fill(CGRect(x: a, y: 0, width: b - a, height: layout.mainH))
     ctx.setStrokeColor(color.withAlphaComponent(editing ? 0.8 : (emphasis ? 0.9 : 0.35)).cgColor)
@@ -263,7 +294,8 @@ final class RangeOverlayView: UIView {
         }
       }
       let expiry = min(layout.plotW - 18, max(18, state.view.x(Double(draft.rule.expires), plotW: layout.plotW)))
-      ctx.setLineDash(phase: 0, lengths: [3, 4]); ctx.setStrokeColor(UIColor.secondaryLabel.cgColor)
+      // 有效期那条竖虚线走皮肤的 `ink3`（见 `subdued`），不是系统的 secondaryLabel。
+      ctx.setLineDash(phase: 0, lengths: [3, 4]); ctx.setStrokeColor(subdued.cgColor)
       ctx.move(to: CGPoint(x: expiry, y: 0)); ctx.addLine(to: CGPoint(x: expiry, y: layout.mainH)); ctx.strokePath(); ctx.setLineDash(phase: 0, lengths: [])
       if editing { handle(CGPoint(x: expiry, y: 34), ctx: ctx) }
     }
@@ -274,8 +306,8 @@ final class RangeOverlayView: UIView {
     }
   }
   private func handle(_ point: CGPoint, ctx: CGContext) {
-    ctx.setFillColor(UIColor.systemOrange.cgColor); ctx.fillEllipse(in: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))
-    ctx.setStrokeColor(UIColor.white.cgColor); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))
+    ctx.setFillColor(accent.cgColor); ctx.fillEllipse(in: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))
+    ctx.setStrokeColor(canvas.cgColor); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))
   }
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
     guard let q = touches.first?.location(in: self), let draft, let state = chart?.state, let layout = chart?.chartLayout else { return }

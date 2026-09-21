@@ -294,10 +294,17 @@ struct FavoritesView: View {
       NavigationStack {
         List {
           ForEach(model.prefs.groups) { group in Button(group.name) { assign(request.symbols, to: group.id) } }
+            // 行的底得**行自己**写：`scrollContentBackground` 只管表底，管不到行。
+            // 只换表底的话，底已经是 `app` 了，行还是系统那张纯白圆角卡（深色是
+            // `#1C1C1E` 灰卡压在墨绿黑上），卡的四条边就是一道硬边。
+            // 同一条规矩另见 `AccountView.listed` 和本页列表行的注释。
+            .listRowBackground(theme.raised)
         }.scrollContentBackground(.hidden).background(theme.app)
           .navigationTitle("移到分类").navigationBarTitleDisplayMode(.inline)
           .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { moving = nil } } }
       }.presentationDetents([.medium, .large]).tint(theme.amber)
+        // 半屏自己那张底也得跟着皮肤：不给的话表格以外那圈仍是系统分组灰。
+        .presentationBackground(theme.app)
     }
   }
 
@@ -473,7 +480,11 @@ struct FavoritesView: View {
       // 那行「N 个品种」已经写着了，格子里只留名字更干净。数量仍留在朗读标签里。
       Text(title).font(.system(size: 15, weight: .medium))
         .lineLimit(1).truncationMode(.middle)
-        .foregroundStyle(on ? Color.white : theme.ink2)
+        // 压在强调色上的字一律走 `badgeInk`：浅色下它就是 `#FFFFFF`（和原来的
+        // `Color.white` 一个值，这一页的定稿基准图一个像素不变），深色下换成近黑的
+        // `seed.ground`——深色强调色是 `#4FB69C` / `#E2874F` 那种亮色，白字压上去
+        // 只有 2.5:1，读不清。
+        .foregroundStyle(on ? theme.badgeInk : theme.ink2)
         .frame(maxWidth: .infinity).frame(height: 40)
         .background {
           if on {
@@ -1064,7 +1075,8 @@ struct FavoritesView: View {
       if on {
         Circle().fill(skin.accentGradient)
           .overlay(alignment: .top) { skin.topHighlight(inset: 5) }
-        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+        // 勾也是压在强调色上的记号，和分类药丸同一支字色（浅色仍是纯白）。
+        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(theme.badgeInk)
       } else {
         Circle().strokeBorder(skin.ink4, lineWidth: 1.4)
       }
@@ -1287,7 +1299,7 @@ struct FavoritesView: View {
       Text("加几个常看的品种，它们会在这里排好")
         .font(.system(size: 12)).foregroundStyle(theme.ink3)
       Button { searching = true } label: {
-        Text("添加品种").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+        Text("添加品种").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.badgeInk)
           .frame(height: 36).padding(.horizontal, 20)
           .background(skin.accentGradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
           .overlay(alignment: .top) { skin.topHighlight(inset: 8) }

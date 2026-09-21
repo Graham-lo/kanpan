@@ -70,7 +70,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .kdj: ["K", "D", "J"]
     case .srsi: ["K", "D"]
     case .atr: ["ATR"]
-    case .oi: ["OI"]
+    case .oi: ["持仓量"]
     }
   }
 

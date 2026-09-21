@@ -6,9 +6,16 @@
 //! 工具不需要动服务端，这正是把几何放在客户端算的理由。
 //!
 //! 评估器跑在 `kanpan-worker` 里（`main.rs` 的 worker 分支）。它订阅币安 1m K 线，
-//! 每一帧对该品种的活动提醒算一次：K 线开盘时间 `t ≥ armedAt` 的那根，若某条折线在
-//! `t` 处的价落在 `[low, high]` 里就算触碰。触发后**在同一个事务里**把物化表置 fired
-//! 并往这个人的同步日志写一条 op，然后才推送。
+//! 每一帧对该品种的活动提醒算一次，`condition` 决定怎么算——两种判法和客户端
+//! `KanpanCore/Sources/KanpanCore/Alerts/AlertEvaluator.swift` 里那份规则一字对一字：
+//!
+//! - `touch`：K 线开盘时间 `t ≥ armedAt` 的那根，若某条折线在 `t` 处的价落在
+//!   `[low, high]` 里就算触碰。盘中帧也算。
+//! - `close`（收盘穿过）：只在**这一根真的收了**的那一帧上判（币安 kline 帧里的
+//!   `k.x == true`），拿「上一根已收盘的收盘价」和「这一根的收盘价」跟线在 `t` 处的
+//!   价比，两者分在线的两侧（正好收在线上也算穿过）才算。盘中来回穿一概不算。
+//!
+//! 触发后**在同一个事务里**把物化表置 fired 并往这个人的同步日志写一条 op，然后才推送。
 use crate::{AppState,apns::{Apns,Outcome},auth::Identity,envelope,error::{ApiError,Result},sync::Object};
 use axum::{Router,Json,extract::State,routing::post};
 use futures_util::StreamExt;
@@ -83,13 +90,44 @@ pub fn touched(lines:&[Line],open_time:i64,armed_at:i64,low:f64,high:f64)->Optio
  lines.iter().filter_map(|l|price_at(l,open_time)).find(|p|p.is_finite()&&*p>=low&&*p<=high)
 }
 
+/// `condition='close'`（收盘穿过）：这一根收了之后，两根收盘价分在线的两侧了吗。
+///
+/// **阈值和 `touched` 取的是同一个值**——线在这一根 K 线开盘时刻上的价（趋势线的价随
+/// 时间变，所以每一根都要重算）。换掉的只是拿去比的东西：`[low,high]` 换成「上一根已
+/// 收盘的收盘价」和「这一根的收盘价」两个点。
+///
+/// 为什么非要两个点：只看当前收盘价在线的哪一侧，第一次评估就会把「一直在线上方」判成
+/// 「刚刚穿上去」——那是一条在用户什么都没做的时候自己响的提醒。穿越要有前后两个状态
+/// 才成立。
+///
+/// **正好收在线上算穿过**（`close == p`），但 `previous_close == p` 不算：上一根就已经
+/// 收在线上了，那一下该由上一根去响；提醒是 `once` 的，在这儿再响一次就是重复。
+///
+/// 盘中帧不进这里（调用方按 `k.x` 挡掉）：穿过去又收回来正是用户选这一档想避开的。
+pub fn crossed_on_close(lines:&[Line],open_time:i64,armed_at:i64,previous_close:f64,close:f64)->Option<f64> {
+ if open_time<armed_at {return None}
+ if !previous_close.is_finite()||!close.is_finite() {return None}
+ lines.iter().filter_map(|l|price_at(l,open_time)).find(|p|p.is_finite()&&crosses(previous_close,close,*p))
+}
+fn crosses(previous:f64,close:f64,line:f64)->bool {
+ (previous<line&&close>=line)||(previous>line&&close<=line)
+}
+
 // ——————————————————————— 物化（同步写入时顺手刷新） ———————————————————————
 
 /// 把一条 `alerts` 同步对象刷进 `alert_watches`。由 `sync::push` 在同一个事务里调用。
 ///
-/// 只物化 `kind == "drawing"` 的提醒：`reviewDue` 整条链路都在客户端本地通知里，
-/// `price` 本轮只进模型与白名单。其余情况（包括删除、改成别的 kind、暂停）一律把行删掉
-/// ——评估器读的就是这张表，删掉就等于停评估，不需要第二处开关。
+/// 只物化 `kind == "drawing"` 的提醒。其余情况（包括删除、改成别的 kind、暂停）一律
+/// 把行删掉——评估器读的就是这张表，删掉就等于停评估，不需要第二处开关。
+///
+/// 另外两种 kind 为什么不在这儿：
+///
+/// - `reviewDue`：整条链路都在客户端本地通知里，服务端没有它的事。
+/// - `price`（裸价格「到价提醒」）：**客户端没有任何入口能产生它**，表 2.2 也没给它
+///   放目标价的字段，所以它只进白名单与值规则。这一行 `kind == "drawing"` 就是那道
+///   **显式**的闸——它不是「顺便漏掉了」，是「还没实现」。谁要开这个入口：先把这里
+///   和客户端 `AlertEvaluator.hit` 的同一道闸一起实现掉，再去开界面，否则用户又会
+///   拿到一条界面答应了、评估器不认的死提醒（`condition='close'` 就这么坑过一次）。
 ///
 /// 每次都整行覆盖，所以用户把被提醒的那条线拖到别处、客户端用同一个 alert id 重传
 /// `lines` 时，`lines` 与 `armedAt` 是一起换掉的，评估器下一帧就用新几何。
@@ -166,11 +204,20 @@ const STREAM:&str="wss://fstream.binance.com/market/stream";
 /// 币安对组合流的上限是 200 条/连接。十来个用户远够不着，够不着也要有个说法。
 const MAX_STREAMS:usize=200;
 
+/// 怎么算「穿过」。和客户端 `Alert.Condition` 一一对应的两档。
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+pub enum Condition {Touch,Close}
+impl Condition {
+ /// 库里存的是字符串。**认不得的值退回 `touch`**（出厂值），和客户端解码器的兜底
+ /// 一样——一条来自更新版本客户端的提醒，宁可按最宽的那一档判，也不要变成哑的。
+ pub fn of(text:&str)->Self {if text=="close" {Self::Close} else {Self::Touch}}
+}
+
 /// 评估器在内存里保有的一条活动提醒。
 #[derive(Clone,Debug)]
 struct Watch {
  owner:Uuid,alert_id:String,symbol:String,drawing_id:Option<String>,
- title:String,lines:Vec<Line>,armed_at:i64,
+ title:String,lines:Vec<Line>,armed_at:i64,condition:Condition,
 }
 
 /// 把所有用户的活动画线提醒读成一张内存表。
@@ -181,7 +228,6 @@ struct Watch {
 async fn load(s:&AppState)->Result<Vec<Watch>> {
  let mut out=vec![];
  let mut after:Option<Uuid>=None;
- let mut skipped_close=0usize;
  loop {
   let owners:Vec<Uuid>=sqlx::query_scalar("SELECT id FROM account_users WHERE disabled_at IS NULL AND ($1::uuid IS NULL OR id>$1) ORDER BY id LIMIT 100").bind(after).fetch_all(&s.pool).await?;
   if owners.is_empty(){break}
@@ -191,10 +237,6 @@ async fn load(s:&AppState)->Result<Vec<Watch>> {
     .bind(owner).fetch_all(&mut *tx).await?;
    tx.commit().await?;
    for r in rows {
-    // TODO(第二波)：`condition='close'`（收盘确认）要等 K 线收了（帧里的 `k.x==true`）
-    // 再判，而且判的是收盘价而不是 [low,high]。本轮只实现 `touch`，遇到 close 的活动
-    // 提醒跳过不评估——**不报错、不拒收**，它在同步协议里是合法值，客户端已经能存能改。
-    if r.get::<String,_>("condition")!="touch" {skipped_close+=1;continue}
     let lines:Vec<Line>=match serde_json::from_value(r.get::<Value,_>("lines")) {
      Ok(v)=>v,
      // 形状对不上就当这条提醒不存在，而不是让整轮刷新失败——一条坏数据不该让所有人
@@ -202,12 +244,12 @@ async fn load(s:&AppState)->Result<Vec<Watch>> {
      Err(e)=>{tracing::warn!("An alert has unusable geometry and will not be evaluated: {e}");continue}
     };
     out.push(Watch{owner:*owner,alert_id:r.get("alert_id"),symbol:r.get("symbol"),
-     drawing_id:r.get("drawing_id"),title:r.get("title"),lines,armed_at:r.get("armed_at")});
+     drawing_id:r.get("drawing_id"),title:r.get("title"),lines,armed_at:r.get("armed_at"),
+     condition:Condition::of(&r.get::<String,_>("condition"))});
    }
   }
   after=owners.last().copied();
  }
- if skipped_close>0 {tracing::debug!("{skipped_close} close-confirmation alerts are not evaluated yet");}
  Ok(out)
 }
 
@@ -253,7 +295,7 @@ async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,price:f64,at:i64)->Result<
   // 没有 APNs 密钥时这就是终点，而且是一个完整的终点：状态已经落库、op 已经写进
   // alerts 集合，客户端下次拉同步（开 app 就会拉）照样看得到这条已触发的提醒。
   // 这里只留一行 info 当证据，不排队、不重试——没有密钥不是一个会自己好起来的错误。
-  tracing::info!("{} touched {} at {}; recorded and synced, not pushed (no APNs key)",w.symbol,w.alert_id,money(price));
+  tracing::info!("{} triggered {} at {}; recorded and synced, not pushed (no APNs key)",w.symbol,w.alert_id,money(price));
   return Ok(())
  };
  let tokens={
@@ -300,7 +342,11 @@ fn money(v:f64)->String {
 }
 
 /// 一帧组合流消息里我们要的东西。
-struct Candle {symbol:String,open_time:i64,low:f64,high:f64,close:f64}
+///
+/// `closed` 就是币安 kline 帧里的 `k.x`：这一根收了没有。同一根 K 线一分钟里会发来
+/// 几十帧，只有最后那一帧是 `true`，`close` 到那一帧才是真正的收盘价——`condition='close'`
+/// 的提醒只认那一帧。
+struct Candle {symbol:String,open_time:i64,low:f64,high:f64,close:f64,closed:bool}
 fn parse(text:&str)->Option<Candle> {
  let v:Value=serde_json::from_str(text).ok()?;
  let data=v.get("data").unwrap_or(&v);
@@ -312,6 +358,9 @@ fn parse(text:&str)->Option<Candle> {
   symbol:data.get("s").and_then(Value::as_str)?.to_string(),
   open_time:k.get("t").and_then(Value::as_i64)?,
   low:number("l")?,high:number("h")?,close:number("c")?,
+  // `x` 是个真布尔（不像价格那样被发成字符串）。缺了就当没收：漏一根收盘穿过，
+  // 好过把一根没收的当成收了、在盘中就响。
+  closed:k.get("x").and_then(Value::as_bool).unwrap_or(false),
  })
 }
 
@@ -319,6 +368,13 @@ fn parse(text:&str)->Option<Candle> {
 pub async fn run(s:AppState,apns:Option<Apns>) {
  tracing::info!("Alert evaluator started");
  let mut watches:Vec<Watch>=vec![];
+ // 每个品种最近一根**已收盘**的收盘价。`condition='close'` 要两个点才判得出穿越，
+ // 这就是那第一个点。
+ //
+ // 它活在重连之外（不放在 `session` 里）是故意的：断线重连、品种集合变化都不该把它
+ // 丢掉。中间断了几分钟的话，这一比就是「跨过那段缺口有没有穿过线」——价格确实从
+ // 一侧走到了另一侧，该响；清空它换来的只是白白漏掉一次。
+ let mut closes:BTreeMap<String,f64>=BTreeMap::new();
  loop {
   match load(&s).await {
    Ok(v)=>watches=v,
@@ -326,7 +382,9 @@ pub async fn run(s:AppState,apns:Option<Apns>) {
   }
   let symbols=symbols_of(&watches);
   if symbols.is_empty() {tokio::time::sleep(Duration::from_secs(10)).await;continue}
-  if let Err(e)=session(&s,apns.as_ref(),&symbols,&mut watches).await {
+  // 不再盯的品种没必要一直留着它的收盘价。
+  closes.retain(|symbol,_|symbols.iter().any(|s|s==symbol));
+  if let Err(e)=session(&s,apns.as_ref(),&symbols,&mut watches,&mut closes).await {
    tracing::warn!("Alert stream ended ({e}); reconnecting");
    tokio::time::sleep(Duration::from_secs(5)).await;
   }
@@ -343,7 +401,7 @@ fn symbols_of(watches:&[Watch])->Vec<String> {
 }
 
 /// 一次连接的生命周期。品种集合变了就返回，让外层重连。
-async fn session(s:&AppState,apns:Option<&Apns>,symbols:&[String],watches:&mut Vec<Watch>)->anyhow::Result<()> {
+async fn session(s:&AppState,apns:Option<&Apns>,symbols:&[String],watches:&mut Vec<Watch>,closes:&mut BTreeMap<String,f64>)->anyhow::Result<()> {
  let url=format!("{STREAM}?streams={}",symbols.iter().map(|s|format!("{}@kline_1m",s.to_lowercase())).collect::<Vec<_>>().join("/"));
  let (mut stream,_)=tokio_tungstenite::connect_async(&url).await?;
  tracing::info!("Alert evaluator watching {} symbol(s)",symbols.len());
@@ -358,7 +416,7 @@ async fn session(s:&AppState,apns:Option<&Apns>,symbols:&[String],watches:&mut V
     let message=frame?;
     let Some(text)=message.into_text().ok() else {continue};
     let Some(candle)=parse(&text) else {continue};
-    evaluate(s,apns,watches,&candle).await;
+    evaluate(s,apns,watches,closes,&candle).await;
    }
    _=refresh.tick()=>{
     match load(s).await {
@@ -378,13 +436,24 @@ async fn session(s:&AppState,apns:Option<&Apns>,symbols:&[String],watches:&mut V
 ///
 /// 触发过的从内存里摘掉：下一次刷新（十秒内）才会重新读库，中间这段时间不摘就会
 /// 每来一帧推一次。库里那条 `WHERE status='active'` 是最终的那道闸，这里只是不做无用功。
-async fn evaluate(s:&AppState,apns:Option<&Apns>,watches:&mut Vec<Watch>,candle:&Candle) {
+///
+/// `closes` 里那一条**先读后写**：这一帧要拿的是上一根的收盘价，写进去的是这一根的。
+/// 顺序反了的话每一根都在和自己比，`close` 这一档永远不会响。
+async fn evaluate(s:&AppState,apns:Option<&Apns>,watches:&mut Vec<Watch>,closes:&mut BTreeMap<String,f64>,candle:&Candle) {
  let at=chrono::Utc::now().timestamp_millis();
+ let previous=closes.get(&candle.symbol).copied();
  let mut fired=vec![];
  for (index,w) in watches.iter().enumerate() {
   if w.symbol!=candle.symbol {continue}
-  if touched(&w.lines,candle.open_time,w.armed_at,candle.low,candle.high).is_some() {fired.push(index)}
+  let hit=match w.condition {
+   Condition::Touch=>touched(&w.lines,candle.open_time,w.armed_at,candle.low,candle.high),
+   // 这一根没收就一个字都不判；没有上一根的收盘价（刚起来、或者这个品种第一次收）
+   // 也不判——宁可漏一根，也不拿一个不知道是哪一根的价去算穿越。
+   Condition::Close=>if candle.closed {previous.and_then(|p|crossed_on_close(&w.lines,candle.open_time,w.armed_at,p,candle.close))} else {None},
+  };
+  if hit.is_some() {fired.push(index)}
  }
+ if candle.closed&&candle.close.is_finite() {closes.insert(candle.symbol.clone(),candle.close);}
  for index in fired.iter().rev() {
   let w=watches.remove(*index);
   if let Err(e)=fire(s,apns,&w,candle.close,at).await {
@@ -486,10 +555,94 @@ mod tests {
   assert_eq!(c.close,63_120.5);
   assert_eq!(c.high,63_200.0);
   assert_eq!(c.low,62_900.0);
+  // `x:false` —— 这一根还没收。`condition='close'` 的提醒在这一帧上什么都不做。
+  assert!(!c.closed);
+  // 同一根收了的那一帧只有 `x` 不一样，`c` 到这时才是真正的收盘价。
+  let settled=text.replace(r#""x":false"#,r#""x":true"#);
+  assert!(parse(&settled).expect("the closing frame").closed);
+  // `x` 缺了就当没收：漏一根，好过在盘中把它当成收盘价。
+  let without=text.replace(r#","x":false"#,"");
+  assert!(!parse(&without).expect("a frame without x").closed);
   // 别的事件（订阅回执、aggTrade）不是 K 线，跳过而不是崩。
   assert!(parse(r#"{"result":null,"id":1}"#).is_none());
   assert!(parse("not json").is_none());
  }
+ // ————————————————— 收盘穿过（condition='close'） —————————————————
+
+ /// **盘中穿过不算，收了才算。** 这就是用户选这一档想要的东西：一根 K 线在线上下扎了
+ /// 十几次，只有它收在哪一侧算数。
+ ///
+ /// 这里只验判定本身（`crossed_on_close`）；「没收的帧根本不进来」由 `evaluate` 里的
+ /// `if candle.closed` 保证，下面 `a_frame_that_has_not_closed_cannot_confirm_anything`
+ /// 验那一层。
+ #[test] fn a_close_that_crosses_the_line_confirms_it() {
+  let l=vec![line(&[(0.0,100.0)],true,true)];
+  // 上一根收在线下、这一根收在线上：穿过。
+  assert_eq!(crossed_on_close(&l,50,0,95.0,105.0),Some(100.0));
+  // 反过来也是穿过。
+  assert_eq!(crossed_on_close(&l,50,0,105.0,95.0),Some(100.0));
+ }
+ /// 一直在同一侧，每一根都不算——不然提醒会在第一次评估时就自己响。
+ #[test] fn closes_on_the_same_side_never_confirm() {
+  let l=vec![line(&[(0.0,100.0)],true,true)];
+  for (previous,close) in [(105.0,110.0),(110.0,101.0),(101.0,100.5),(95.0,90.0),(90.0,99.5)] {
+   assert_eq!(crossed_on_close(&l,50,0,previous,close),None,"{previous} → {close} 没换过边");
+  }
+ }
+ /// **正好收在线上算穿过**；但从线上走开不算，那一下上一根已经算过了。
+ #[test] fn landing_exactly_on_the_line_counts_but_leaving_it_does_not() {
+  let l=vec![line(&[(0.0,100.0)],true,true)];
+  assert_eq!(crossed_on_close(&l,50,0,95.0,100.0),Some(100.0));
+  assert_eq!(crossed_on_close(&l,50,0,105.0,100.0),Some(100.0));
+  assert_eq!(crossed_on_close(&l,50,0,100.0,105.0),None,"上一根就收在线上，这一下是重复");
+  assert_eq!(crossed_on_close(&l,50,0,100.0,95.0),None);
+  assert_eq!(crossed_on_close(&l,50,0,100.0,100.0),None);
+ }
+ /// 阈值是**线在这一根上的价**，和 `touch` 取的是同一个值——趋势线随时间变。
+ #[test] fn the_threshold_is_the_line_price_at_this_bar() {
+  let l=vec![line(&[(0.0,100.0),(100.0,200.0)],false,false)];
+  // 中点线价 150：145 → 155 穿过。
+  assert_eq!(crossed_on_close(&l,50,0,145.0,155.0),Some(150.0));
+  // 同样两根收盘价，挪到起点（线价 100）就没穿——两根都在线上方。
+  assert_eq!(crossed_on_close(&l,0,0,145.0,155.0),None);
+  // 线段之外、那一头又不延：没有价可比。
+  assert_eq!(crossed_on_close(&l,200,0,145.0,155.0),None);
+ }
+ /// `armedAt` 和坏数字这两道闸，`close` 和 `touch` 是同一套。
+ #[test] fn a_close_confirmation_respects_arming_and_bad_numbers() {
+  let l=vec![line(&[(0.0,100.0)],true,true)];
+  assert_eq!(crossed_on_close(&l,100,500,95.0,105.0),None,"armedAt 之前开盘的不算");
+  assert_eq!(crossed_on_close(&l,500,500,95.0,105.0),Some(100.0));
+  assert_eq!(crossed_on_close(&l,50,0,f64::NAN,105.0),None);
+  assert_eq!(crossed_on_close(&l,50,0,95.0,f64::NAN),None);
+ }
+ /// 一组折线里任意一条被收盘穿过就算。
+ #[test] fn any_line_in_the_set_can_be_crossed_on_close() {
+  let l=vec![line(&[(0.0,100.0)],true,true),line(&[(0.0,200.0)],true,true)];
+  assert_eq!(crossed_on_close(&l,50,0,195.0,205.0),Some(200.0));
+ }
+ /// 没收的帧确认不了任何事——判定的入口是 `evaluate` 里那个 `candle.closed`。
+ ///
+ /// 这条测试盯的是那一行 `if`：`crossed_on_close` 本身不认识「收没收」，一旦有人把
+ /// 那道闸删了，盘中每一帧都会拿「此刻的价」当收盘价，`close` 就退化成一个更差的
+ /// `touch`。所以这里直接模拟 `evaluate` 的取舍。
+ #[test] fn a_frame_that_has_not_closed_cannot_confirm_anything() {
+  let l=vec![line(&[(0.0,100.0)],true,true)];
+  let previous=95.0;
+  let confirm=|c:&Candle|if c.closed {crossed_on_close(&l,c.open_time,0,previous,c.close)} else {None};
+  let intraday=Candle{symbol:"BTCUSDT".into(),open_time:50,low:90.0,high:110.0,close:105.0,closed:false};
+  assert_eq!(confirm(&intraday),None,"盘中已经穿到线上面去了，但这一根没收");
+  let settled=Candle{closed:true,..intraday};
+  assert_eq!(confirm(&settled),Some(100.0),"同一根收了就算");
+ }
+ /// **`condition` 认不得的值退回 `touch`。** 一条哑掉的提醒是查不出来的那种 bug。
+ #[test] fn an_unknown_condition_falls_back_to_touch() {
+  assert_eq!(Condition::of("touch"),Condition::Touch);
+  assert_eq!(Condition::of("close"),Condition::Close);
+  assert_eq!(Condition::of("wick"),Condition::Touch);
+  assert_eq!(Condition::of(""),Condition::Touch);
+ }
+
  /// 通知正文里的价要看得清每一位，小币种也是。
  #[test] fn the_notification_shows_a_readable_price() {
   assert_eq!(money(63_120.0),"63,120");
@@ -502,9 +655,9 @@ mod tests {
  #[test] fn the_stream_url_is_the_one_measured_on_the_vps() {
   assert_eq!(STREAM,"wss://fstream.binance.com/market/stream");
   let watches=vec![
-   Watch{owner:Uuid::nil(),alert_id:"a".into(),symbol:"ETHUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0},
-   Watch{owner:Uuid::nil(),alert_id:"b".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0},
-   Watch{owner:Uuid::nil(),alert_id:"c".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0},
+   Watch{owner:Uuid::nil(),alert_id:"a".into(),symbol:"ETHUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch},
+   Watch{owner:Uuid::nil(),alert_id:"b".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch},
+   Watch{owner:Uuid::nil(),alert_id:"c".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Close},
   ];
   let symbols=symbols_of(&watches);
   assert_eq!(symbols,vec!["BTCUSDT".to_string(),"ETHUSDT".to_string()],"同一品种只订一次，顺序稳定");

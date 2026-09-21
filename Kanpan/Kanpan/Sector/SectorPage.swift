@@ -424,7 +424,9 @@ struct SectorMarketSwitch: View {
       onPick(value)
     } label: {
       Text(title).font(.system(size: 12)).tracking(0.48)
-        .foregroundStyle(on ? Color.white : theme.ink3)
+        // 选中那格的字压在强调色上，走 `badgeInk`（浅色 `#FFFFFF`，观感不变；
+        // 深色换成近黑，白字在 `#4FB69C` / `#E2874F` 上只有 2.5:1）。
+        .foregroundStyle(on ? theme.badgeInk : theme.ink3)
         .padding(.horizontal, 11).frame(height: 26)
         .background {
           if on {

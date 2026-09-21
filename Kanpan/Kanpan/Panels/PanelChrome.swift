@@ -250,6 +250,22 @@ struct PanelGroupTitle: View {
   }
 }
 
+/// 系统 `Form` / `List` 里那一行分节标题。
+///
+/// 和上面那个 `PanelGroupTitle` 是同一支笔（`PanelFont.group` + `tracking(1)` + `ink3`），
+/// 只是不自带内边距——`Section` 的 header 由表自己缩进，再加一层就会比行文更往里一格。
+/// 内建的 `Section("字面量")` 不能用：那一行是系统的 secondary label 灰，三套皮肤下
+/// 一模一样，压在已经跟着皮肤走的表上是这一屏唯一不换肤的字。
+/// 定义只此一份，`IndicatorEditor` 与 `DrawingStyleEditor` 都用它。
+struct PanelFormSectionTitle: View {
+  var text: String
+  @Environment(\.panelTheme) private var t
+
+  var body: some View {
+    Text(text).font(PanelFont.group).tracking(1).foregroundStyle(t.ink3)
+  }
+}
+
 /// 原型 `.note`：面板末尾那段解释。`**粗**` 会加深一档（对应原型的 `<b>`）。
 struct PanelNote: View {
   var markdown: String

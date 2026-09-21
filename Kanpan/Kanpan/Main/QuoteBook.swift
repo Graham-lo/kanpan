@@ -36,6 +36,11 @@ final class QuoteBook {
   private var visible = false
   private var foreground = true
   private var favorites: [String] = []
+  /// 挂着活动提醒的品种（大写）。**只加不减**：一条提醒响过之后把它的品种从订阅里
+  /// 摘掉，会让列表那条 socket 走一轮 `replaceStreams`——几十行价格在那一瞬间全停
+  /// （`listSymbols()` 的注释里写过这一幕）。多订一条 ticker 的代价比那个小得多，
+  /// 而且这一程里用户很可能马上又在同一只上重新上膛。这一程结束就没了。
+  private var alerted: Set<String> = []
   private var chartSymbol: String?
   private var online = true
   private let network = MarketNetworkMonitor()
@@ -187,6 +192,12 @@ final class QuoteBook {
   private var historyRequested: [String: Date] = [:]
   var onHistory: ((String, [Bar]) -> Void)?
   var onUpdate: (([Ticker]) -> Void)?
+  /// 盘上每一口新价，**不合批**。提醒模块（`AlertEngine`）挂在这儿判到价。
+  ///
+  /// 为什么不搭 `onUpdate` 的顺风车：那一条是画表用的，稳态下 0.3 秒（列表不可见时
+  /// 2 秒）才发一帧，缓冲还按品种覆盖——中间那些价就此消失。到价判定要的恰恰是
+  /// 「有没有哪一口碰到过线」，少看一口就可能整条提醒不响。这儿一条也不省。
+  var onPrice: (([Ticker]) -> Void)?
   /// 交易所拿这个代号答不出来（400 `-1121 Invalid symbol` / 404）。
   ///
   /// 「下架」这件事只有一个判据，就是品种表里的 `SymbolInfo.status`（审查 B-06）；
@@ -215,6 +226,8 @@ final class QuoteBook {
     guard switching else { return }
     // 攒着的两批是上一个人的行，跟着 `raw` 一起丢——留着就会在新表上闪一下。
     discardBatches()
+    // 钉进来的提醒品种是**上一个人**的提醒。新的那份由 `AlertEngine` 换档案之后重新交。
+    alerted.removeAll()
     raw.removeAll(keepingCapacity: true); receivedAt.removeAll(keepingCapacity: true)
     everPublished.removeAll(keepingCapacity: true)
     opens.removeAll(); provisionalOpens.removeAll()
@@ -326,7 +339,21 @@ final class QuoteBook {
   private var needsConnection: Bool {
     // The chart has its own MarketModel feed. QuoteBook only needs a socket
     // when it is serving the cross-page favorites/symbol list.
-    foreground && QuoteSubscriptionPlan.needsConnection(foreground: foreground, favorites: favorites, visible: visible)
+    foreground && QuoteSubscriptionPlan.needsConnection(foreground: foreground, favorites: favorites,
+                                                        visible: visible, alerted: alerted)
+  }
+
+  /// 哪些品种挂着活动提醒。`AlertEngine` 每次存档变了就交一次。
+  ///
+  /// 它们要被钉进订阅范围：前台的到价判定只能判盘上有价的品种，而提醒是跨品种的——
+  /// 用户给 ETHUSDT 画了线设了提醒，然后一直在看 BTCUSDT，没有这一条那条提醒
+  /// 在这台手机上永远不会响（没有 APNs 密钥，前台这条路是唯一的）。
+  func setAlertedSymbols(_ symbols: Set<String>) {
+    let next = alerted.union(symbols.map { $0.uppercased() }.filter { !$0.isEmpty })
+    guard next != alerted else { return }
+    alerted = next
+    reconcileConnection()
+    updateStreams()
   }
 
   func setFavorites(_ symbols: [String]) {
@@ -416,7 +443,7 @@ final class QuoteBook {
   /// 它照样留在 `wanted` 里（见 `updateStreams()`），所以 `raw` 里那一行
   /// 不会被裁掉，跨页回来仍然有值。
   private func listSymbols() -> [String] {
-    QuoteSubscriptionPlan.symbols(favorites: favorites, visible: visible ? visibleRows : [])
+    QuoteSubscriptionPlan.symbols(favorites: favorites, visible: visible ? visibleRows : [], alerted: alerted)
   }
 
   private func streamNames() -> [String] {
@@ -474,7 +501,7 @@ final class QuoteBook {
       valid.append(ticker)
     }
     if needsConnection, !valid.isEmpty, firstQuoteMs == nil { firstQuoteMs = Int(-startedAt.timeIntervalSinceNow * 1000) }
-    if !valid.isEmpty { publish(valid) }
+    if !valid.isEmpty { onPrice?(valid); publish(valid) }
     if visible { loadHistories() }
   }
 
@@ -489,6 +516,7 @@ final class QuoteBook {
     if let old = raw[trade.symbol], LatestQuote.sameDisplay(ticker, old) { return }
     raw[trade.symbol] = ticker
     if firstQuoteMs == nil { firstQuoteMs = Int(-startedAt.timeIntervalSinceNow * 1000) }
+    onPrice?([ticker])
     publish([ticker])
   }
 
@@ -963,9 +991,11 @@ final class QuoteBook {
     foreground = false
     visible = false
     favorites = []
+    alerted.removeAll()
     teardown()   // 它自己会落一次盘
     discardBatches()
     onUpdate = nil; onReset = nil; onScopeChange = nil; onHistory = nil
+    onPrice = nil
     onSymbolRejected = nil
   }
 }

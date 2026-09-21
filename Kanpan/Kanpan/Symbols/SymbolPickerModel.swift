@@ -64,6 +64,13 @@ final class SymbolPickerModel {
 
   private var store: SymbolPrefsStore
   @ObservationIgnored var onPrefsChange: ((SymbolPrefs) -> Void)?
+  /// `symbols.json` 那次写什么时候真的发生。答 `true` = 这次落盘被接管了，
+  /// 这儿就别自己写；答 `false` / 没接线 = 就地同步写（没登录、单测、访客都是这条）。
+  ///
+  /// 接管它的是账号桥：它把这次写排到「同步存档这一版已经落盘」之后
+  /// （`SyncStore.afterArchiveWritten`）。理由见 `commit()`——自选这一档从前是
+  /// **正式文件先写、存档后写**，正好是启动前向对账补不回来的那一侧。
+  @ObservationIgnored var persistence: ((SymbolPrefs) -> Bool)?
   /// 自选页此刻停在哪个分类。
   ///
   /// 真身在 `Prefs.favoritesGroup`（设置包里，跟着账号走），这个包看不见那边，
@@ -420,7 +427,9 @@ final class SymbolPickerModel {
     let before = prefs.viewScores
     prefs.noteDwell(symbol)
     guard prefs.viewScores != before else { return }
-    store.save(prefs)
+    // 走同一条落盘路（见 `save(_:)`）：这份分数表和自选住在同一个文件里，
+    // 一条就地写、一条排队写的话，队列上那笔会把它盖回去。
+    save(prefs)
   }
 
   /// 常看的品种，分数从高到低。画线工作台里换品种那一层，没输入时列的就是它。
@@ -499,13 +508,40 @@ final class SymbolPickerModel {
 
   // ---------------------------------------------------------------- 内务
 
+  /// 自选改完之后的那一下：**先记账，再落盘**。
+  ///
+  /// 顺序 2026-09-22 掉了个个儿，和画线 / 提醒对齐（`DrawingController.write()`）。
+  /// 从前是 `store.save(prefs)` 在前、`onPrefsChange` 在后，也就是
+  /// 「正式文件先落、同步存档后落」——那正是启动前向对账**补不回来**的那一侧：
+  /// 两次写之间进程没了，盘上是「新 symbols.json + 旧存档」，存档里既没有新值
+  /// 也没有待发操作。举个真会发生的例子：用户删掉一条自选，崩在这个窗口里，
+  /// 重开之后 `applyPending()` 拿 `archive.local` 重建自选（那儿还留着这条），
+  /// **删掉的自选自己回来了**，而且全程没有任何痕迹。
+  ///
+  /// 现在两件事都在这一句里当场发起，谁先谁后由写盘队列（串行 FIFO）定：
+  /// `onPrefsChange` 把存档排进去，`save` 把 `symbols.json` 排在它后面。
+  /// 崩在中间只会剩「新存档 + 旧 symbols.json」，那一侧存档里有值有操作，
+  /// 冷启动 `AppAccountBridge.prepare` 会把它向前补进 `symbols.json`。
   private func commit() {
-    store.save(prefs)
     onPrefsChange?(prefs)
+    save(prefs)
     // 桌面长按图标那几格摆的是「最近看过」，它就在 `prefs` 里，所以每次存档
     // 顺手让它跟上。没变就不会真去写系统那张表（`HomeShortcuts.refresh`）。
     HomeShortcuts.refresh(recents: prefs.recents)
     rebuild()
+  }
+  /// 落 `symbols.json`。接了线就交给 `persistence` 去排队，没接线就地写。
+  ///
+  /// **用户改出来的每一次写都要走这儿**（`commit()` 与 `noteDwell(_:)`），否则两条路
+  /// 一条排队、一条就地，队列上那笔落在后面就会把刚写下去的盖回旧的。
+  ///
+  /// 另外两处直接 `store.save` 不走这儿，都是故意的：`init` 里那次补分类发生在
+  /// 账号桥接线（`persistence`）之前，那会儿还没有存档可排；`applySynced(_:)` 在
+  /// `applyPending` 的发布段里，那一段动手前刚 `flushNow()` 过、期间又有 `gate`
+  /// 挡着不产生新的记账，队列是空的。
+  private func save(_ value: SymbolPrefs) {
+    guard persistence?(value) != true else { return }
+    store.save(value)
   }
 
   func useStorage(_ store: SymbolPrefsStore, prefs: SymbolPrefs) {

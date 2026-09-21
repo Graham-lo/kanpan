@@ -16,8 +16,10 @@ import Foundation
 //      唯一能验的是「注入假 payload 后落盘、摘要、导出都对」——正是单测干的事，
 //      也正是 `simulateReceive(_:kind:)` 存在的理由。
 //
-// 起点在哪：app 入口（`KanpanApp.swift`）得调一次 `DiagnosticsCenter.shared.start()`。
-// 这轮不许改入口文件，所以这一行还没接上，见 docs/acceptance/M9.md「待接线」。
+// 起点在哪：app 入口 `KanpanApp.swift` 的 `init()` 里已经调了
+// `DiagnosticsCenter.shared.start()`（订阅赶在界面起来之前，晚一次就少一天数据）。
+// `start()` 幂等，重复叫没事；首次调用还会把 `MXMetricManager.shared.pastPayloads`
+// 补收一遍。接线已完成，见 docs/acceptance/M9.md §6。
 
 #if canImport(MetricKit) && os(iOS)
   import MetricKit

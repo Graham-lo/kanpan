@@ -11,6 +11,6 @@ extension PanelTheme {
     ReviewTheme(app: app, raised: raised, raised2: raised2, line: line,
                 ink: ink, ink2: ink2, ink3: ink3,
                 accent: amber, accentSoft: amberSoft, onAccent: badgeInk,
-                up: up, down: down)
+                up: up, down: down, danger: danger)
   }
 }

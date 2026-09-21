@@ -66,7 +66,10 @@ pub const DRAWING_PREFERENCE_FIELDS:[&str;4]=["favorites","magnet","continuous",
 pub const DRAWING_FIELDS:[&str;14]=["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"];
 pub const FAVORITE_FIELDS:[&str;7]=["symbol","market","venue","groupId","order","pinned","alerts"];
 pub const GROUP_FIELDS:[&str;3]=["name","order","members"];
-// 提醒（方案文档 2.2 的整张表）。`price` 这一种本轮只进白名单与值规则，评估器不认它。
+// 提醒（方案文档 2.2 的整张表）。`condition` 的两档（`touch` / `close`）两侧评估器都判。
+// `kind` 里的 `price` 只进白名单与值规则：客户端没有入口能产生它，这张表也没给它放
+// 目标价的字段，所以两侧评估器都**显式**挡住它（`alerts::materialize` 的注释、客户端
+// `AlertEvaluator.hit`）——要开这个入口，先去把那两处的判定实现掉。
 //
 // 注意 `market` 在这个集合里是 `"binance/usd_m"` 整串，而 `drawings`/`favorites` 的
 // `market` 是 `"usd_m"`、场所另放在 `venue`。这不是笔误，是方案文档 2.2 写死的形状，
