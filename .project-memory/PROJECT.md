@@ -239,3 +239,58 @@ INFO 照旧（`alerts still fire, still record firedAt/firedPrice and still sync
 ——多个源里带尾斜杠的目录会把**内容**摊到目标目录顶层，于是 `ops/` 和 `contract/` 里的
 11 个文件在 `/opt/kanpan-api/` 下多出一份重复。没加 `--delete` 所以没毁东西，逐个
 `cmp` 确认是重复后删掉了。以后同步目录要么不带尾斜杠，要么一个目录一条 rsync。
+
+## 签名账号断了（2026-09-22，挡住小组件与实时活动上机）
+
+为了确认小组件能不能做，给 app target 加了 `com.apple.security.application-groups`
+（`group.com.mdd.kanpan`）在**独立 git worktree** 里试签，结论比预期严重：
+
+- `xcodebuild -allowProvisioningUpdates` 报 `error: No Accounts: Add a new account in
+  Accounts settings.`——**这台机器的 Xcode 里没有登录任何 Apple ID**。
+  `defaults read com.apple.dt.Xcode IDEProvisioningTeams` 不存在、
+  `~/Library/Developer/Xcode/UserData/IDEAccountStore.plist` 不存在、钥匙串里没有
+  Xcode token。只有一个 9-15 缓存下来的描述文件
+  `7b7309b6-0bbb-48b4-8580-6c1b53f6391a.mobileprovision`。
+- 那个文件 `ExpirationDate = 2026-09-22T08:48:26Z`（**16:48 CST**），
+  `TimeToLive = 7` —— 免费个人团队的签名。
+  `DerivedData-device-release/…/Kanpan.app/embedded.mobileprovision` 是同一个，
+  **所以手机上装着的那个包过了这个点就起不来**，而且没有账号就签不出新的。
+
+能带到以后的：
+
+- **「App Group 能不能签」这个问题至今没有答案**，它卡在缺账号，不是卡在免费团队的
+  能力清单上——探测只走到「现有描述文件不含 App Groups」就断了。别把它当成已经证否。
+- **小组件、以及实时活动的客户端那一半，都要一个新的 app extension target**，
+  新 target 要新 bundle id 和新描述文件，同样卡在这儿。
+- **但模拟器不需要真签名。** 所以这两半照常做、照常在模拟器上验，账号补上就能直接上手机。
+  不要因为签不了就把功能停在纸面上。
+- 登账号这一步需要用户的密码与双重验证，我做不了，只能报给他。
+
+## 锁屏实时活动 · 服务端这一半（`64638cd`，已部署）
+
+`src/live_activity.rs`（457 行，一个功能一个模块）+ `migrations/0017_live_activity.sql`。
+
+**每一推都带 `stale_date = now + 150s`**（心跳 60s 的 2.5 倍）。这是本功能的核心取舍：
+对行情 app 来说**冻住的价格比没有价格更危险**，连丢两拍就让锁屏显示「价格已停更」，
+而不是留一个看起来还活着的旧数字。八小时自动收场。
+
+`0017` 只给 `device_push_tokens` 加两列（`alert_id text` / `started_at timestamptz`，
+都可空、都 `IF NOT EXISTS`），**不新开表**：一枚 liveActivity token 本来就等价于
+「这台设备上正在跑的那个活动」，`(user_id,device_id,kind)` 已经是它的身份。
+**故意不给 `alert_id` 加外键指向 `alert_watches`**——那张物化表的行会随用户删提醒而消失，
+而「提醒没了」正是心跳判断该收场的信号，加了外键就变成级联删除、活动会在锁屏上静悄悄冻住。
+代价是一台设备同时只有一个实时活动，3–10 人的规模下这是对的取舍。
+
+24h 涨跌幅不在 kline 流里：**没有新开连接、没走 REST**，在评估器同一条组合流上只为
+「有活动在盯且提醒还 active」的品种多订一条 `@ticker`；没人开活动时订阅串和从前一字不差。
+同步字段白名单一个字没动。
+
+**部署记录**：备份 `/opt/kanpan-api/backup-20260922-054943`；一个目录一条 rsync（吸取上一轮
+的教训）→ `cargo build --release`（2m16s）→ `ops/install.py`（应用 0017）→
+`systemctl restart`，两个服务均 `2026-09-22 05:54:11 CST` active。只读验证：
+`information_schema` 里 `alert_id`/`started_at` 两列都在且可空；内网 `/health` 200；
+公网 `https://kanpan.107-174-172-10.sslip.io/v1/market/meta` 与 `/v1/capabilities` 均 200；
+`/v1/devices/live-activity/end` 公网 GET 405 / 无鉴权 POST 401（**不是 404，说明 Caddy
+确实转发 `/v1/devices/*`**——README 的路由清单漏了这一条，已在 `d23b04d` 补上）；
+worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变了，
+可用来确认跑的是新二进制）。`cargo test --lib` 153 passed（基线 139）。
