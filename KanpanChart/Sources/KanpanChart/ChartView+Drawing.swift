@@ -985,6 +985,12 @@ final class DrawingOverlayView: UIView {
       let axes = host.drawAxes
     else { return }
     let d = host.drawing
+    ctx.saveGState()
+    if host.ownDimmed { ctx.setAlpha(0.35); ctx.beginTransparencyLayer(auxiliaryInfo: nil) }
+    defer {
+      if host.ownDimmed { ctx.endTransparencyLayer() }
+      ctx.restoreGState()
+    }
     let t = s.colors
     guard s.options.drawings else { return }
     ctx.saveGState()

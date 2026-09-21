@@ -29,6 +29,7 @@ struct SettingsPanel: View {
   var alertCount = 0
   /// 打开提醒总表。全 app 管提醒只有这一个入口（`kanpan-one-entry-per-action`）。
   var onAlerts: (() -> Void)?
+  var onFriends: (() -> Void)?
 
   @Environment(\.panelTheme) private var t
   @Environment(\.accountFeature) private var account
@@ -84,6 +85,13 @@ struct SettingsPanel: View {
           }.foregroundStyle(t.amber)
         }
         .accessibilityIdentifier("settings.alerts")
+      }
+
+      if let onFriends {
+        PanelGroupTitle(text: "朋友")
+        PanelRow(name: "朋友", onTap: onFriends) {
+          VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.amber)
+        }.accessibilityIdentifier("settings.friends")
       }
 
       // ---- 任务书 §10.6 里有、原型里没有的

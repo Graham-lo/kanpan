@@ -32,6 +32,8 @@ struct ChartPanel: View {
   /// 「分享图片」：把当前这张图离屏画成一张 PNG 交给系统分享面板
   /// （见 `ChartSnapshotRenderer`）。同样地，没有图可分享时调用方传 nil。
   var onShare: (() -> Void)?
+  var onSend: (() -> Void)?
+  var sendMeta = "把图上的线发过去"
 
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -47,17 +49,22 @@ struct ChartPanel: View {
 
   var body: some View {
     PanelSheet(title: "图表设置", subtitle: nil) {
-      if onRecord != nil || onShare != nil {
+      if onRecord != nil || onShare != nil || onSend != nil {
         PanelGroupTitle(text: "这张图")
         if let onRecord {
           PanelRow(name: "记一笔", meta: "存进复盘本",
-                   divider: onShare != nil, onTap: { close(); onRecord() })
+                   divider: onShare != nil || onSend != nil, onTap: { close(); onRecord() })
             .accessibilityIdentifier("chart.record")
         }
         if let onShare {
           PanelRow(name: "分享图片", meta: "存成图片发出去",
-                   divider: false, onTap: { close(); onShare() })
+                   divider: onSend != nil, onTap: { close(); onShare() })
             .accessibilityIdentifier("chart.share")
+        }
+        if let onSend {
+          PanelRow(name: "发给朋友", meta: sendMeta, divider: false,
+                   onTap: { close(); onSend() })
+            .accessibilityIdentifier("chart.send")
         }
       }
 

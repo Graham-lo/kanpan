@@ -384,7 +384,7 @@ extension ChartRenderer {
 
   func drawDrawings(_ ctx: CGContext, pane: Pane, r: PriceRange, L: Layout, scale s: Double) {
     // 关掉只是不画，`state.drawings` 一根不删——用户再打开还得在。
-    guard state.options.drawings else { return }
+    guard state.options.drawings || !guestDrawings.isEmpty else { return }
     ctx.saveGState(); defer { ctx.restoreGState() }
     ctx.clip(to: CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
     // `decimals` 必须传：漏了就退回默认的 2 位，同一条线被底层和覆盖层画出两串
@@ -393,7 +393,16 @@ extension ChartRenderer {
                         view: state.view, decimals: state.decimals)
     // `series` 也必须传：计算型工具（VWAP、成交量分布）的形状是从这段 K 线里算出来的，
     // 漏了它们在底层就只剩一个手柄，选中覆盖层却画得出来——一选中就多出一整块柱子。
-    for d in state.drawings where d.id != state.drawingPreviewID {
+    ctx.saveGState()
+    if ownDimmed { ctx.setAlpha(0.35); ctx.beginTransparencyLayer(auxiliaryInfo: nil) }
+    if state.options.drawings {
+      for d in state.drawings where d.id != state.drawingPreviewID {
+        paintDrawing(d, ctx: ctx, axes: axes, colors: state.colors, series: state.series)
+      }
+    }
+    if ownDimmed { ctx.endTransparencyLayer() }
+    ctx.restoreGState()
+    for d in guestDrawings {
       paintDrawing(d, ctx: ctx, axes: axes, colors: state.colors, series: state.series)
     }
   }

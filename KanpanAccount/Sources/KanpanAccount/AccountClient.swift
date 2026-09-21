@@ -90,10 +90,10 @@ public actor AccountClient {
     let data = try await data(path, method: method, body: body, key: key, authenticated: authenticated)
     return try JSONDecoder().decode(Envelope<T>.self, from: data).data
   }
-  public func data(_ path: String, method: String = "GET", body: Data? = nil, key: UUID? = nil, authenticated: Bool = true) async throws -> Data {
+  public func data(_ path: String, method: String = "GET", body: Data? = nil, key: UUID? = nil, authenticated: Bool = true, contentType: String = "application/json") async throws -> Data {
     // 「被顶下去」从这一处进。它可能发生在两个地方：拿着 access 令牌访问任何接口，
     // 或者刷新那一趟。两条路都收在这儿，省得各写一遍、各漏一处。
-    do { return try await perform(path, method: method, body: body, key: key, authenticated: authenticated) }
+    do { return try await perform(path, method: method, body: body, key: key, authenticated: authenticated, contentType: contentType) }
     catch AccountError.sessionReplaced(let kind) { replaced(by: kind); throw AccountError.sessionReplaced(kind) }
   }
   /// 服务端说这条会话被同一类设备顶掉了。
@@ -110,18 +110,18 @@ public actor AccountClient {
     stored.refreshToken = ""; stored.refreshRequestId = nil; stored.replacedBy = kind
     try? vault.write(stored); saved = stored
   }
-  private func perform(_ path: String, method: String, body: Data?, key: UUID?, authenticated: Bool) async throws -> Data {
+  private func perform(_ path: String, method: String, body: Data?, key: UUID?, authenticated: Bool, contentType: String) async throws -> Data {
     let epoch = await coordinator.generation
     let token = authenticated ? try await accessToken() : nil
     do {
-      let result = try await send(path, method: method, body: body, key: key, token: token)
+      let result = try await send(path, method: method, body: body, key: key, token: token, contentType: contentType)
       guard await coordinator.generation == epoch else { throw CancellationError() }; return result
     } catch AccountError.http(401, _) where authenticated {
       guard await coordinator.generation == epoch else { throw CancellationError() }
       // Several requests can return 401 for the same old access token; don't rotate again.
       if access?.accessToken == token { access = nil }
       let refreshed = try await accessToken()
-      let result = try await send(path, method: method, body: body, key: key, token: refreshed)
+      let result = try await send(path, method: method, body: body, key: key, token: refreshed, contentType: contentType)
       guard await coordinator.generation == epoch else { throw CancellationError() }; return result
     }
   }
@@ -155,7 +155,7 @@ public actor AccountClient {
     guard query.hasPrefix("?"), !query.contains("#"), !query.contains("\\"), !query.contains("://") else { return false }
     return !query.unicodeScalars.contains { $0.value <= 0x20 || $0.value == 0x7F }
   }
-  private func send(_ path: String, method: String, body: Data?, key: UUID?, token: String?) async throws -> Data {
+  private func send(_ path: String, method: String, body: Data?, key: UUID?, token: String?, contentType: String = "application/json") async throws -> Data {
     // 调用方递进来的字符串后面可能还挂着查询串（拉画线那一段拼的是
     // `v1/sync/bootstrap?collection=drawings&prefix=binance/usd_m/BTCUSDT/`）。
     // **先把这两半分开再各按各的规矩查**：查询串里的斜杠不是路径段，拿路径那套
@@ -172,7 +172,7 @@ public actor AccountClient {
       // 拼完再看一遍：解析过的那条路径也得是干净的（`url.path` 是解过码的）。
       AccountClient.isSafe(path: String(url.path.drop(while: { $0 == "/" }))) else { throw AccountError.invalidURL }
     var request = URLRequest(url: url); request.httpMethod = method; request.httpBody = body
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue(contentType, forHTTPHeaderField: "Content-Type")
     if let token { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
     if let key { request.setValue(key.uuidString, forHTTPHeaderField: "Idempotency-Key") }
     let (data, response) = try await session.data(for: request)

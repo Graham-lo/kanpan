@@ -139,7 +139,7 @@ fn parse_ip(raw:&str)->Option<IpAddr> {
  if let Ok(address)=v.parse::<SocketAddr>() {return Some(address.ip())}
  v.strip_prefix('[').and_then(|r|r.split(']').next()).and_then(|r|r.parse::<IpAddr>().ok())
 }
-async fn hit_limit(s:&AppState,key:&str,limit:i32,seconds:i64)->Result<bool> {
+pub(crate) async fn hit_limit(s:&AppState,key:&str,limit:i32,seconds:i64)->Result<bool> {
  let count:i32=sqlx::query_scalar("INSERT INTO account_limits(key,failures) VALUES($1,1) ON CONFLICT(key) DO UPDATE SET failures=CASE WHEN account_limits.window_start<now()-make_interval(secs=>$2::double precision) THEN 1 ELSE account_limits.failures+1 END,window_start=CASE WHEN account_limits.window_start<now()-make_interval(secs=>$2::double precision) THEN now() ELSE account_limits.window_start END RETURNING failures")
   .bind(s.secrets.keyed(key)).bind(seconds as f64).fetch_one(&s.pool).await?; Ok(count<=limit)
 }

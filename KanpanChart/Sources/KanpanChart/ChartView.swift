@@ -43,6 +43,14 @@ public final class ChartView: UIView {
   private let crossLayer = CanvasLayer(part: .cross)
   private var canvases: [CanvasLayer] { [plotLayer, liveLayer, crossLayer] }
 
+  /// 客线是临时覆盖，不属于 ChartState / 存档，也不参与画线命中。
+  public var guestDrawings: [Drawing] = [] {
+    didSet { renderer?.guestDrawings = guestDrawings; setNeedsRedraw(.plot); refreshDrawingOverlay() }
+  }
+  public var ownDimmed = false {
+    didSet { renderer?.ownDimmed = ownDimmed; setNeedsRedraw(.plot); refreshDrawingOverlay() }
+  }
+
   // ---------------------------------------------------------------- 输入
 
   /// 画一帧要的全部东西。换一份就按需重画。
@@ -144,6 +152,8 @@ public final class ChartView: UIView {
           "axisW": layout.axisW, "height": layout.H,
           "dataDisplay": s.options.dataDisplay.rawValue, "portraitHeight": s.options.portraitHeight,
           "drawingCount": s.drawings.count,
+          "guestIDs": guestDrawings.map(\.id),
+          "ownDimmed": ownDimmed,
           "drawingKinds": s.drawings.map { $0.kind.rawValue },
           "drawingIDs": s.drawings.map { $0.id },
           "drawingAnchors": s.drawings.map { $0.points.map { ["t": $0.t, "p": $0.p] } },
@@ -351,6 +361,7 @@ public final class ChartView: UIView {
       return
     }
     if renderer == nil { renderer = ChartRenderer(state: s) } else { renderer?.state = s }
+    renderer?.guestDrawings = guestDrawings; renderer?.ownDimmed = ownDimmed
     setNeedsRedraw(Self.changed(from: old, to: s))
     onStateChanged?(s)
     if old?.crosshair != s.crosshair { fireCrosshairChanged(s.crosshair) }

@@ -42,7 +42,7 @@ enum ChartSnapshotRenderer {
   static let scale: CGFloat = 2
 
   /// 只画图本身。
-  static func chartImage(state: ChartState, size: CGSize) -> UIImage? {
+  static func chartImage(state: ChartState, size: CGSize, scale: CGFloat = scale) -> UIImage? {
     guard size.width > 1, size.height > 1, !state.series.isEmpty else { return nil }
     var shot = state
     // 十字线是「我的手正按在这儿」，不是这张图的内容。
@@ -54,6 +54,17 @@ enum ChartSnapshotRenderer {
     return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
       renderer.draw(in: ctx.cgContext, size: size, scale: scale)
     }
+  }
+
+  static func thumbnail(state: ChartState, size: CGSize) -> Data? {
+    guard let image = chartImage(state: state, size: size, scale: 1) else { return nil }
+    let target = CGSize(width: 600, height: 600 * size.height / size.width)
+    let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
+    let scaled = UIGraphicsImageRenderer(size: target, format: format).image { _ in
+      image.draw(in: CGRect(origin: .zero, size: target))
+    }
+    guard let data = scaled.jpegData(compressionQuality: 0.8), data.count <= 300 * 1024 else { return nil }
+    return data
   }
 
   /// 成片：身份条 + 图 + 右下角一个很小的字样。

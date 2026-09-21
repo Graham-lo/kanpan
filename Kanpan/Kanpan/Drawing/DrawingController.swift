@@ -21,6 +21,9 @@ final class DrawingController: ObservableObject {
   @Published var notice: String?
   @Published var panel: Panel?
   @Published var picker = false
+  @Published private(set) var previewing: ShareItem?
+  private var guest: [Drawing] = []
+  private var guestSymbol: String?
   private weak var chart: ChartView?
   private var store: DrawStore
   var onArchiveChange: ((DrawArchive) -> Void)?
@@ -100,11 +103,12 @@ final class DrawingController: ObservableObject {
       view.setDrawings(archive[symbol])
       view.drawingHistory = resumed
     }
+    applyPreview()
     sync()
   }
   func focus(_ symbol: String) {
     guard symbol != self.symbol || chart?.drawings != archive[symbol] && chart?.drawings.isEmpty == true else {
-      applyPendingHighlight(); return
+      applyPreview(); applyPendingHighlight(); return
     }
     // Every completed edit is already saved. Never write the incoming chart into the outgoing key.
     // 走之前先把这张图上的栈收进**上一个**品种的格子（`sync()` 一路都在收，这儿是最后一手）。
@@ -114,7 +118,48 @@ final class DrawingController: ObservableObject {
     chart?.setDrawings(archive[symbol])
     chart?.drawingHistory = resumed
     panel = nil; picker = false; sync()
-    applyPendingHighlight()
+    applyPreview(); applyPendingHighlight()
+  }
+
+  func preview(_ item: ShareItem) {
+    previewing = item
+    preview(item.drawings, symbol: item.symbol)
+  }
+  func preview(_ guest: [Drawing], symbol: String) {
+    finish()
+    self.guest = guest; guestSymbol = symbol
+    chart?.selectedDrawingID = nil
+    applyPreview()
+  }
+  func endPreview() {
+    previewing = nil; guest = []; guestSymbol = nil
+    chart?.guestDrawings = []; chart?.ownDimmed = false
+  }
+  private func applyPreview() {
+    let matching = guestSymbol == symbol
+    chart?.guestDrawings = matching ? guest : []
+    chart?.ownDimmed = matching
+  }
+  /// 一次留下整批线，一步撤销。容量不够时整批不写，已有存档不丢。
+  @discardableResult
+  func append(_ incoming: [Drawing], symbol: String) -> Bool {
+    let before = archive[symbol]
+    let known = Set(before.map(\.id))
+    let added = incoming.filter { !known.contains($0.id) }
+    guard added.allSatisfy(\.isValid), before.count + added.count <= DrawArchive.perSymbolLimit else {
+      full = true; return false
+    }
+    guard !added.isEmpty else { return true }
+    var history = (self.symbol == symbol ? chart?.drawingHistory : nil) ?? histories[symbol] ?? DrawHistory()
+    history.commit(before: before)
+    archive[symbol] = before + added
+    write()
+    if self.symbol == symbol {
+      chart?.setDrawings(archive[symbol]); chart?.drawingHistory = history
+      applyPreview(); sync()
+    }
+    histories[symbol] = history
+    return true
   }
 
   /// 把某个品种上的某条线**指出来**：只高亮，不进画线工作台。
@@ -223,7 +268,7 @@ final class DrawingController: ObservableObject {
     catch { notice = "画线未能保存，原存档已保留。请检查设备存储空间。" }
   }
   func useStorage(_ store: DrawStore, archive: DrawArchive) {
-    finish(); self.store = store; self.archive = archive; preferences = archive.preferences
+    endPreview(); finish(); self.store = store; self.archive = archive; preferences = archive.preferences
     // 换的是整个账号的存档：上一个账号的撤销栈撤回去就是别人的数据，一并丢掉。
     histories.removeAll()
     chart?.setDrawings(archive[symbol]); applyPreferences(); sync()

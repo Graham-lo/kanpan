@@ -132,6 +132,12 @@ struct MainScreen: View {
   @StateObject private var alertWatcher = AlertWatcher()
   /// 提醒总表开着没有。设置里那一行和 `hkline://alerts` 都开它。
   @State private var showAlerts = false
+  @State private var shareInterval: SharePreviewInterval?
+  @State private var inbox = ShareInbox()
+  @State private var showFriends = false
+  @State private var showFriendPicker = false
+  @State private var shareDraft: ShareOutbound?
+  @State private var shareShot: Data?
   @State private var toast: String?
   /// 这句话右边那颗按钮。和 `toast` 同一拍赋值。
   @State private var toastUndo: (() -> Void)?
@@ -240,7 +246,7 @@ struct MainScreen: View {
     // 系统顶成全屏，图就整个没了。
     .prefsPanel(landscape ? .constant(nil) : $panel, store: store,
                 onPickInterval: pick(interval:), onRecord: chartRecordAction,
-                onShare: chartShareAction)
+                onShare: chartShareAction, onSend: chartSendAction, sendMeta: shareSendMeta)
   }
 
   private var presentation: some View {
@@ -391,6 +397,7 @@ struct MainScreen: View {
       if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
     }
     .onChange(of: market.symbol) { _, symbol in
+      if let preview = draw.previewing, preview.symbol != symbol { endSharePreview() }
       quotes.setChartSymbol(symbol); accountBridge?.focus(symbol)
       // 换了一只，「刚才那一屏」说的已经不是这张图上的事了（§P3-2）。
       forgetReturn()
@@ -448,6 +455,13 @@ struct MainScreen: View {
         .presentationDetents([.large])
         .environment(\.panelTheme, theme)
     }
+    .sheet(isPresented: Binding(get: { showFriendPicker && !landscape }, set: { showFriendPicker = $0 })) {
+      friendPicker.presentationDetents([.medium, .large])
+    }
+    .sheet(isPresented: $showFriends) {
+      FriendsPage(inbox: inbox, onOpen: openShare).environment(\.panelTheme, theme)
+        .presentationDetents([.large])
+    }
     .onChange(of: draw.notice, initial: true) { _, note in if let note { say(note); draw.notice = nil } }
     .environment(\.panelTheme, theme)
     .environment(\.accountFeature, account)
@@ -457,6 +471,7 @@ struct MainScreen: View {
       if !active { try? accountBridge?.applyPending() }
       // 画线直接横过来，画完自己转回去（§10.7 的入口就此收在「画线」上）。
       if active {
+        endSharePreview()
         if !landscape { landscapeForDrawing = true; enterLandscape() }
       } else if landscapeForDrawing {
         landscapeForDrawing = false
@@ -486,6 +501,7 @@ struct MainScreen: View {
     .onChange(of: reviewChart.notice) { _, note in if let note { say(note); reviewChart.notice = nil } }
     // 复盘的待办本来就有到期时间，这儿把它兑现成一条到点响的本地通知（方案 2.3 末条）。
     // 整批重排，便宜且不会对不上账。
+    .onChange(of: review.bookOpen) { _, open in if open { endSharePreview() } }
     .onChange(of: review.records, initial: true) { _, list in ReviewDueNotifications.reschedule(list) }
   }
 
@@ -514,7 +530,8 @@ struct MainScreen: View {
       case .sectors: sectorPage
       case .settings: SettingsPanel(store: store, asPage: true,
                                     alertCount: alerts.activeCount,
-                                    onAlerts: { showAlerts = true })
+                                    onAlerts: { showAlerts = true },
+                                    onFriends: { showFriends = true })
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -560,6 +577,7 @@ struct MainScreen: View {
     dismissPanel()
     didLeaveLaunch = true
     guard next != .draw else {
+      endSharePreview()
       if reviewChart.active { endReview() }
       // 从别的一格点「画线」等于被带到了图上：这一格就是来路，画完退得回去。
       // 本来就在图上的话来路不变（可能是板块或自选带进来的，别把它抹了）。
@@ -619,7 +637,7 @@ struct MainScreen: View {
       replayControls
       hairline
       if draw.active {
-        DrawingBar(controller: draw)
+        DrawingBar(controller: draw, onSend: beginShareSend, sendEnabled: canSendShare)
       }
       // 画完线问的那一句**不在这儿**（2026-09-21）：它从前是周期条下面、标签栏上面
       // 额外插的一行，于是线一落下整张图当场矮一行，六秒后又弹回来——用户看见的是
@@ -637,7 +655,15 @@ struct MainScreen: View {
   /// 一块）。图还露着右边大半——挑工具的时候看得见自己要往哪儿画，这是它比表单强的地方。
   /// 靠左是因为右边那两条竖栏（画线动作、周期）都在右手底下，卡片压过去就挡住了。
   @ViewBuilder private var drawToolsLayer: some View {
-    if draw.active, draw.picker {
+    if showFriendPicker {
+      friendPicker
+        .frame(width: 340)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.line, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.24), radius: 14, x: 2, y: 2)
+        .padding(.vertical, 6).padding(.leading, 6)
+        .transition(.move(edge: .leading).combined(with: .opacity))
+    } else if draw.active, draw.picker {
       DrawingToolPicker(controller: draw, store: store, onClose: { draw.picker = false })
         .frame(width: 340)
         .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -680,14 +706,14 @@ struct MainScreen: View {
         replayControls
         // 画线工作台的那根条排在图**下面**、图外面（§2E5）：横屏的高度金贵，但十四五个
         // 控件竖着摆放不下、横着摆绰绰有余，而且两个拇指本来就停在下沿。
-        AlertPromptBar(model: alertPrompt)
+        shareAndAlertCard(inHeader: false)
         if draw.active {
-          DrawingDock(controller: draw)
+          DrawingDock(controller: draw, onSend: beginShareSend, sendEnabled: canSendShare)
         }
       }
       ToolRail(
         theme: theme, drawing: draw.active,
-        onDraw: { dismissPanel(); if reviewChart.active { endReview() }; draw.toggle() },
+        onDraw: { endSharePreview(); dismissPanel(); if reviewChart.active { endReview() }; draw.toggle() },
         onPortrait: {
           dismissPanel()
           landscapeForDrawing = false
@@ -704,7 +730,7 @@ struct MainScreen: View {
     //
     // 只在这一层开着时关掉：画线的样式面板里还有价格 / 文字 / 斐波那契那几个输入框，
     // 它们仍然要被键盘顶起来。
-    .ignoresSafeArea(.keyboard, edges: showDrawSwitcher ? .bottom : [])
+    .ignoresSafeArea(.keyboard, edges: showDrawSwitcher || showFriendPicker ? .bottom : [])
     // 动画只裹住这一块。挂到整个 `body` 上会把图一起带进过渡，开合面板时 K 线跟着晃。
     .overlay(alignment: .leading) { drawToolsLayer.animation(.easeOut(duration: 0.18), value: draw.picker) }
     .overlay(alignment: .trailing) {
@@ -817,7 +843,7 @@ struct MainScreen: View {
       PanelSide(store: store, seed: seed, onClose: PanelDismiss { dismissPanel() }) {
         switch which {
         case .period: IntervalGridPanel(store: store, onPick: pick(interval:))
-        case .chart: ChartPanel(store: store, onShare: chartShareAction)
+        case .chart: ChartPanel(store: store, onShare: chartShareAction, onSend: chartSendAction, sendMeta: shareSendMeta)
         }
       }
     }
@@ -852,7 +878,7 @@ struct MainScreen: View {
           .accessibilityValue(quoteDiagnostics)
           // 「要不要加提醒」在场的那六秒，价格行也照旧占着位置、只是透明——
           // 和十字线那套让位一模一样，行高一个 pt 都不变。
-          .opacity(alertPrompt.pending == nil ? 1 : 0)
+          .opacity(headerCardVisible ? 0 : 1)
         // 读数 + 十字线的那几个动作（§P3-7）。两样都只在这只小视图里跟着手指重求值，
         // 主屏的 body 照旧一次都不用动。
         CrosshairReadoutRow(
@@ -861,21 +887,21 @@ struct MainScreen: View {
           // 走的是画线自己那条落笔路（`ChartView.addHorizontalLine`）：一样进撤销栈、
           // 一样落盘、一样在末尾问一句「要不要加个提醒」。画满了那一句也照旧由
           // `draw.full` 那条统一说，不在这儿另说一遍。
-          onLine: { proxy.addHorizontalLine(at: $0) },
+          onLine: { endSharePreview(); proxy.addHorizontalLine(at: $0) },
           // 「看细节」（§10.1）：还有更细的一档可进才给。这个判断只看当前周期，
           // 主屏的 body 本来就读它，不引入对十字线的观察。
           canDetail: DetailZoom.finer(than: market.interval) != nil,
           onDetail: zoomIntoDetail)
           // 两件事抢同一行时，刚画完的那一句优先：它只活六秒，而十字线还在手指底下，
           // 六秒过去它自己就回来了。让位也是透明让位，这一行的高度不因此变。
-          .opacity(alertPrompt.pending == nil ? 1 : 0)
-          .allowsHitTesting(alertPrompt.pending == nil)
+          .opacity(headerCardVisible ? 0 : 1)
+          .allowsHitTesting(!headerCardVisible)
       }
       // 画完一条线问的那一句，摆在**价格行的位置上**，而且是 `overlay`——
       // overlay 不参与父视图定尺寸，所以它在与不在，头部和图表的高度一个 pt 都不会变
       // （从前它在图外面自成一行，画完线图当场矮一截、六秒后又弹回来）。
       // 它盖着的只有价格与那六格，画布一个点都没碰着（`kanpan-no-floating-controls-over-chart`）。
-      .overlay { AlertPromptBar(model: alertPrompt, inHeader: true) }
+      .overlay { shareAndAlertCard(inHeader: true) }
       // 连续扫图（§10.1）：横滑**只挂在价格这一块**上。
       //
       // 画布上不挂——那儿的横滑是平移 K 线，人一辈子都在那儿横滑；周期条上也不挂——
@@ -885,7 +911,7 @@ struct MainScreen: View {
       .gesture(DragGesture(minimumDistance: 20).onEnded { g in
         let dx = g.translation.width, dy = g.translation.height
         // 要横得明显：斜着划过去的多半是想划别的，宁可不动。
-        guard abs(dx) > 44, abs(dx) > abs(dy) * 1.5 else { return }
+        guard !headerCardVisible, abs(dx) > 44, abs(dx) > abs(dy) * 1.5 else { return }
         scan(dx < 0 ? .next : .previous)
       })
     }
@@ -934,7 +960,7 @@ struct MainScreen: View {
   /// 「图表」那一页顶上的「记一笔」。复盘回放里没有「记」这回事，横屏归 `ToolRail` 管，
   /// 这两种情形返回 nil，那一条直接不排。
   private var chartRecordAction: (() -> Void)? {
-    guard !reviewChart.active, !landscape else { return nil }
+    guard !reviewChart.active, draw.previewing == nil, !landscape else { return nil }
     return { startReviewCapture() }
   }
 
@@ -945,6 +971,96 @@ struct MainScreen: View {
   private var chartShareAction: (() -> Void)? {
     guard !reviewChart.active else { return nil }
     return { shareChartImage() }
+  }
+
+  private var visibleShareDrawings: [Drawing] {
+    guard let state = proxy.box?.chart.state, state.options.drawings else { return [] }
+    return state.drawings.filter { !$0.hidden }
+  }
+  private var canSendShare: Bool { account.user != nil && !visibleShareDrawings.isEmpty }
+  private var shareSendMeta: String {
+    account.user == nil ? "登录后可用" : visibleShareDrawings.isEmpty ? "先在图上画点什么" : "把图上的线发过去"
+  }
+  private var chartSendAction: (() -> Void)? {
+    guard !reviewChart.active, draw.previewing == nil else { return nil }
+    return beginShareSend
+  }
+  private var friendPicker: some View {
+    FriendPickerSheet(inbox: inbox, onSend: sendShare)
+      .environment(\.panelTheme, theme)
+      .environment(\.panelDismiss, PanelDismiss { showFriendPicker = false })
+  }
+  private func beginShareSend() {
+    guard account.user != nil else { say("登录后才能发给朋友"); return }
+    let lines = visibleShareDrawings
+    guard !lines.isEmpty else { say("先在图上画点什么"); return }
+    guard let chart = proxy.box?.chart, let state = chart.state else { say("图还没画出来"); return }
+    shareDraft = ShareOutbound(to: "", symbol: market.symbol, interval: market.interval,
+                              view: ShareWindow(from: state.view.from.rounded(), to: state.view.to.rounded()),
+                              drawings: lines, alerted: lines.filter { line in alerts.alerts(symbol: market.symbol).contains { $0.isActive && $0.drawingID == line.id } }.map(\.id))
+    shareShot = ChartSnapshotRenderer.thumbnail(state: state, size: chart.bounds.size)
+    let wasPanel = panel != nil
+    dismissPanel(); draw.picker = false; showDrawSwitcher = false
+    if wasPanel {
+      Task { try? await Task.sleep(for: .milliseconds(350)); if shareDraft != nil { showFriendPicker = true } }
+    } else { showFriendPicker = true }
+  }
+  private func sendShare(to username: String) async throws {
+    guard let api = account.client, let owner = account.user?.id, var draft = shareDraft else { return }
+    let shot = shareShot
+    draft.to = username
+    let client = ShareClient(api: api)
+    let id = try await client.send(draft)
+    guard account.user?.id == owner else { throw CancellationError() }
+    showFriendPicker = false; shareDraft = nil; shareShot = nil
+    say("已发给 \(username)")
+    inbox.pull()
+    if let shot { try? await client.upload(shot, id: id) }
+  }
+  private var headerCardVisible: Bool { alertPrompt.pending != nil || draw.previewing != nil || !inbox.unseen.isEmpty }
+  @ViewBuilder private func shareAndAlertCard(inHeader: Bool) -> some View {
+    if alertPrompt.pending != nil {
+      AlertPromptBar(model: alertPrompt, inHeader: inHeader)
+    } else if let item = draw.previewing ?? inbox.unseen.first {
+      ShareCard(item: item, inbox: inbox, previewing: draw.previewing != nil,
+                extra: max(0, inbox.unseen.count - 1), onOpen: { openShare(item) },
+                onKeep: { keepShare(item) }, onExit: endSharePreview)
+        .padding(.horizontal, inHeader ? 0 : 10)
+    }
+  }
+
+  private func openShare(_ item: ShareItem) {
+    endSharePreview()
+    dismissPanel(); showFriends = false; showAlerts = false
+    if reviewChart.active { endReview() }
+    draw.finish(); alertPrompt.dismiss()
+    let before = market.interval
+    open(linkedSymbol: item.symbol)
+    shareInterval = SharePreviewInterval(before: before, shared: item.interval)
+    // 分享切换只活在本次预览，不写 Prefs，也不进入个人同步。
+    market.switchTo(interval: item.interval)
+    draw.focus(item.symbol)
+    draw.preview(item)
+    proxy.show(window: item.view.window, symbol: item.symbol, interval: item.interval)
+    inbox.opened(item)
+  }
+
+  private func endSharePreview() {
+    guard draw.previewing != nil else { return }
+    let restore = shareInterval?.restore(current: market.interval)
+    draw.endPreview(); shareInterval = nil
+    proxy.cancelWindow()
+    if let restore { market.switchTo(interval: restore) }
+  }
+
+  private func keepShare(_ item: ShareItem) {
+    do {
+      let kept = try inbox.prepareKeep(item)
+      guard draw.append(kept, symbol: item.symbol) else { return }
+      draw.endPreview(); shareInterval = nil
+      inbox.kept(item)
+      alertPrompt.offerBatch(kept, symbol: item.symbol, preferred: item.preferred(in: kept), from: item.from)
+    } catch { say("暂时无法留下，请重试") }
   }
 
   private func shareChartImage() {
@@ -1081,19 +1197,19 @@ struct MainScreen: View {
       return p
     }
     review.onOpenChart = { record in
-      dismissPanel(); draw.finish()
+      endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = .record(record.id)
       reviewChart.open(record, feature: review, live: proxy.box?.chart.state ?? chartState, hosts: hosts)
     }
     review.onOpenMatch = { match, cutoff in
-      dismissPanel(); draw.finish()
+      endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = review.searchRecord.map { .search($0) }
       reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: proxy.box?.chart.state ?? chartState, hosts: hosts)
     }
     review.synchronize()
   }
   private func startReviewCapture() {
-    dismissPanel(); draw.finish()
+    endSharePreview(); dismissPanel(); draw.finish()
     reviewChart.beginCapture(feature: review, live: proxy.box?.chart.state ?? chartState, prefs: prefs, source: market.source)
   }
   /// 退出复盘。
@@ -1373,6 +1489,16 @@ struct MainScreen: View {
   /// 四根线，都很短：画完线 → 问一句；答「加入提醒」→ 建；画线几何一动 → 对账；
   /// 存档里冒出已触发 → 震一下 + 说一句。到价判定**不在这儿**，在服务端。
   private func wireAlerts() {
+    alertPrompt.onAcceptBatch = { items, symbol in
+      for item in items {
+        guard alerts.all.count < AlertArchive.limit else { say("提醒最多 \(AlertArchive.limit) 条"); break }
+        _ = alerts.add(drawing: item, symbol: symbol)
+      }
+      Task {
+        await AlertNotifications.requestAuthorization()
+        PushRegistration.startIfAuthorized()
+      }
+    }
     alertPrompt.onAccept = { item, symbol in
       guard alerts.add(drawing: item, symbol: symbol) != nil else {
         say("这种线暂时不能设提醒"); return
@@ -1442,6 +1568,7 @@ struct MainScreen: View {
     sectorFeed.setCatalog(picker.catalog)
     sectorFeed.setForeground(phase != .background)
     picker.onPick = { info in
+      endSharePreview()
       showSymbols = false; symbolsFromSearch = false
       showSearch = false; searchAllPending = false
       // 挑完品种落到行情页：自选、搜索、品种整页三条路都是「去看哪张图」。
@@ -1483,9 +1610,10 @@ struct MainScreen: View {
     }
     #endif
     do {
-      let bridge = try AppAccountBridge(account: account, prefs: store, symbols: picker, drawings: draw, alerts: alerts, review: review, search: searchHistory)
+      let bridge = try AppAccountBridge(account: account, prefs: store, symbols: picker, drawings: draw, alerts: alerts, review: review, search: searchHistory, inbox: inbox)
       bridge.canApply = { syncGate }
       bridge.onSwitch = {
+        endSharePreview(); showFriends = false; showFriendPicker = false; shareDraft = nil; shareShot = nil
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
         else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
         showSymbols = false; symbolsFromSearch = false
@@ -1529,7 +1657,7 @@ struct MainScreen: View {
   }
 
   /// 面板 / 画线 / 复盘都不开着——云端设置可以往下落了。
-  private var syncGate: Bool { !draw.active && panel == nil && !reviewChart.active }
+  private var syncGate: Bool { !draw.active && panel == nil && !reviewChart.active && draw.previewing == nil }
 
   /// 档案（prefs / symbols）真的换进来之后，把「该开哪张图、该停在哪一格、
   /// 该用哪个周期」按新档案重新兑现一次。
@@ -1595,15 +1723,16 @@ struct MainScreen: View {
       review.bookOpen = true
     case .search:
       openLinkedSearch()
-    case .share:
-      // TODO(共享模块)：方案第 8 节，朋友间共享图表。
-      break
+    case let .share(id):
+      if let item = inbox.items.first(where: { $0.id == id }) { openShare(item) }
+      else { showFriends = true; inbox.pull() }
     }
   }
 
   /// 链接点名的那个品种。目录里有就走 `picker.pick`（和点自选行一模一样）；
   /// 目录还没载回来就自己换图，那一笔「他看过这张图」照样记下。
   private func open(linkedSymbol symbol: String) {
+    endSharePreview()
     dismissPanel()
     if let info = picker.info(for: symbol) { picker.pick(info); return }
     showSymbols = false; symbolsFromSearch = false
@@ -1632,6 +1761,7 @@ struct MainScreen: View {
   }
 
   private func pick(interval iv: Interval) {
+    shareInterval?.userPicked()
     dismissPanel()
     guard iv != market.interval else { return }
     store.update { $0.interval = iv }

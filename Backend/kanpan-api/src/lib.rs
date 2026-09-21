@@ -13,6 +13,7 @@ pub mod oi_archive;
 pub mod maintenance;
 pub mod alerts;
 pub mod apns;
+pub mod share;
 use axum::{Router,Json,routing::get,extract::DefaultBodyLimit};
 use std::time::Duration;
 use serde_json::{Value,json};
@@ -83,7 +84,7 @@ pub fn metrics_router() -> Router {
 }
 pub fn router(s: AppState) -> Router {
  Router::new().route("/health",get(||async{envelope(json!({"ok":true}))}))
-  .merge(auth::routes()).merge(sync::routes()).merge(alerts::routes()).merge(review::routes()).merge(search::routes()).merge(market_meta::routes()).merge(sector_history::routes()).merge(oi_archive::routes())
+  .merge(auth::routes()).merge(sync::routes()).merge(alerts::routes()).merge(share::routes()).merge(review::routes()).merge(search::routes()).merge(market_meta::routes()).merge(sector_history::routes()).merge(oi_archive::routes())
   .layer(DefaultBodyLimit::max(512*1024))
   // 一个请求最多占住一条连接三十秒。池子只有八条连接，一个卡死的查询就能把
   // 剩下的人一起挡在门外；超时之后连接回池，客户端本来也早就重试了。
@@ -109,6 +110,13 @@ mod migrations {
    let sql=std::fs::read_to_string(dir.join(&name)).expect("readable migration");
    // 注释里写着「CREATE INDEX」不算语句。
    let body=sql.lines().filter(|l|!l.trim_start().starts_with("--")).collect::<Vec<_>>().join("\n").to_lowercase();
+   // 同一事务刚创建的表上建索引不会锁旧表；已有表仍必须 CONCURRENTLY。
+   let fresh_tables:Vec<_>=body.split("create table ").skip(1).filter_map(|v|v.split_whitespace().next()).collect();
+   let body=body.split(';').filter(|statement| {
+    let statement=statement.trim();
+    !(statement.starts_with("create index ") && !statement.starts_with("create index concurrently ")
+      && fresh_tables.iter().any(|table|statement.contains(&format!(" on {table}("))))
+   }).collect::<Vec<_>>().join(";");
    assert_eq!(body.matches("create index").count(),body.matches("create index concurrently").count(),"{name}：建索引要 CONCURRENTLY，否则升级时整张表的写都在排队");
    // 删索引同样要 CONCURRENTLY：普通 DROP INDEX 拿的是表上的 ACCESS EXCLUSIVE，
    // 一边排在长查询后面，一边把后面所有的读写都堵在自己后面。

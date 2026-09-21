@@ -6,7 +6,7 @@ Username/password registration, sessions, personal preferences, drawings, favori
 
 Build with `cargo build --release`. Copy source and binary under `/opt/kanpan-api`; run `python3 ops/install.py` as root on a host with Docker and systemd. It creates a dedicated pgvector PostgreSQL container (`kanpan-postgres`, loopback port 55434), migrates with the admin role, and grants the separate runtime role table access. Root-only secrets live in `/etc/kanpan-api/`; repeated installation reuses them. No SMTP is needed.
 
-The API binds to `127.0.0.1:8794`; Caddy forwards `/v1/auth/*`, `/v1/sync/*`, `/v1/native-review/*`, `/v1/capabilities`, `/v1/market/*` and `/oi/v1/metrics/*`. The last of these is the historical open-interest archive, which was moved here from the Python gateway because that service read the daily zips four at a time on connections it opened per day, so a cold year of chart took 54 s. It keeps its day slices under `CacheDirectory=kanpan-api` (`KANPAN_OI_CACHE`, `KANPAN_OI_CACHE_BYTES`, 4 GiB by default, and `KANPAN_OI_CACHE_FILES`, 200 000 entries — the byte budget alone cannot bound a directory whose zero-byte "this day is not in the archive" markers are free, and those markers are what eviction drops first) in the same format the gateway wrote, so an existing `/var/cache/private/kanpan-gateway` can simply be copied in. Without a writable cache the routes still answer; they just pay the network every time. The gateway keeps the streams and `/market/v1/*`. Do not reuse ports 8790/8791: the existing image service uses them. Services `kanpan-api` and `kanpan-worker` run as dynamic, restricted users. `kanpan-backup.timer` writes daily PostgreSQL custom-format dumps with 30-day retention; it applies that retention and sweeps stale `.part` files at the top of the run, before the space check, so a filesystem already full of old dumps cannot lock the job out of ever clearing them; it then refuses up front, writing nothing, if the filesystem does not hold twice the last dump's size, and it removes its own half-written `.part` on any failure. These are local server backups, not offsite disaster recovery — that is `ops/OFFSITE.md`, including the restore drill, whose one rule is `pg_restore` first and `migrate` after.
+The API binds to `127.0.0.1:8794`; Caddy forwards `/v1/auth/*`, `/v1/sync/*`, `/v1/shares`, `/v1/shares/*`, `/v1/friends`, `/v1/friends/*`, `/v1/native-review/*`, `/v1/capabilities`, `/v1/market/*` and `/oi/v1/metrics/*`. The last of these is the historical open-interest archive, which was moved here from the Python gateway because that service read the daily zips four at a time on connections it opened per day, so a cold year of chart took 54 s. It keeps its day slices under `CacheDirectory=kanpan-api` (`KANPAN_OI_CACHE`, `KANPAN_OI_CACHE_BYTES`, 4 GiB by default, and `KANPAN_OI_CACHE_FILES`, 200 000 entries — the byte budget alone cannot bound a directory whose zero-byte "this day is not in the archive" markers are free, and those markers are what eviction drops first) in the same format the gateway wrote, so an existing `/var/cache/private/kanpan-gateway` can simply be copied in. Without a writable cache the routes still answer; they just pay the network every time. The gateway keeps the streams and `/market/v1/*`. Do not reuse ports 8790/8791: the existing image service uses them. Services `kanpan-api` and `kanpan-worker` run as dynamic, restricted users. `kanpan-backup.timer` writes daily PostgreSQL custom-format dumps with 30-day retention; it applies that retention and sweeps stale `.part` files at the top of the run, before the space check, so a filesystem already full of old dumps cannot lock the job out of ever clearing them; it then refuses up front, writing nothing, if the filesystem does not hold twice the last dump's size, and it removes its own half-written `.part` on any failure. These are local server backups, not offsite disaster recovery — that is `ops/OFFSITE.md`, including the restore drill, whose one rule is `pg_restore` first and `migrate` after.
 
 The existing Scorebook services are separate. Frozen `vendor/scorebook-core` and market adapter sources are reused without modifying those services. OKX review OHLC uses the local market gateway at port 8792 with explicit source identity. No Binance candles are substituted into OKX records. Unsupported exact trade-touch evidence remains `needs_verification`.
 
@@ -119,3 +119,25 @@ target/release/import_public_history
 ```
 
 The importer reads the official Binance REST endpoint when `KANPAN_INDEX_SOURCE=binance`, or the local OKX market gateway when `KANPAN_INDEX_SOURCE=okx`; it validates candle continuity and the frozen `candle-geometry-v2` descriptor, and is idempotent on the public-window identity.
+
+## Drawing shares
+
+`POST /v1/shares` sends only native `Drawing` values (`points` are adapted to the
+existing sync validator's `anchors`), symbol, interval, view and alerted drawing
+IDs. It atomically makes both accounts friends. `GET /v1/shares/inbox` returns
+`{items,cursor}` inside the normal data envelope. Pass that RFC3339 cursor as
+`after` on the next pull; opened/kept changes also participate in incremental
+pulls. A per-recipient transaction lock and server timestamp prevent concurrent
+sends from falling behind a cursor. `GET/POST /v1/friends` and
+`DELETE /v1/friends/{username}` manage the caller's list.
+
+JPEG thumbnails use `PUT/GET /v1/shares/{id}/shot` (300 KiB); only the sender can
+upload, either participant can read. Opened/kept marks can only be written by the
+recipient. Forced RLS applies to both tables, with no bypass role at runtime.
+The worker removes unkept shares after 90 days; kept history is retained.
+Migration 0016 creates new empty tables and their index in one transaction.
+
+After `ops/install.py`, explicitly restart `kanpan-api kanpan-worker` and verify
+`ExecMainStartTimestamp`. Its `enable --now` does not restart running services.
+The main Caddyfile must forward both the bare and nested shares/friends paths;
+no market gateway routing changes are needed.

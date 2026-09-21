@@ -14,6 +14,7 @@ import ReviewUI
   private let symbols: SymbolPickerModel
   private let drawings: DrawingController
   private let alerts: AlertStore
+  private let inbox: ShareInbox
   private let review: ReviewFeature
   private let search: SearchHistory
   private var personal: PersonalFileStorage?
@@ -58,7 +59,8 @@ import ReviewUI
   /// 上一次 `applyPending()` 被 `canApply()` 挡回去了，等条件到齐要补跑。
   private var pendingApply = false
 
-  init(account: AccountFeature, prefs: PrefsStore, symbols: SymbolPickerModel, drawings: DrawingController, alerts: AlertStore, review: ReviewFeature, search: SearchHistory) throws {
+  init(account: AccountFeature, prefs: PrefsStore, symbols: SymbolPickerModel, drawings: DrawingController, alerts: AlertStore, review: ReviewFeature, search: SearchHistory, inbox: ShareInbox) throws {
+    self.inbox = inbox
     self.account = account; self.prefs = prefs; self.symbols = symbols; self.drawings = drawings; self.alerts = alerts; self.review = review; self.search = search
     var root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("kanpan/accounts")
     // 测试档案另起一棵 `tests/<uuid>` 子树。**只在 DEBUG 构建里存在**（审查 C-02）：
@@ -184,6 +186,7 @@ import ReviewUI
     if let prepared = preparedOwner, prepared == user?.id, personal != nil { return {} }
     let directory = try files.directory(user: user?.id)
     let nextStorage = try PersonalFileStorage(directory: directory)
+    let nextInbox = try ShareInbox.read(directory: directory)
     var nextPrefs = PrefsStore.load(from: nextStorage)
     // 自选要和画线同一个姿态：**读不动就把整段 `prepare` 中断**，绝不拿一份凭空造出来的
     // 空档往下走（下面 `:255` 那一步会把它回写进 `symbols.json`，用户的自选就永久没了）。
@@ -372,6 +375,7 @@ import ReviewUI
       symbols.useStorage(SymbolPrefsStore(storage: nextStorage), prefs: nextSymbols)
       drawings.useStorage(drawStore, archive: nextDrawings)
       alerts.useStorage(alertStore, archive: nextAlerts)
+      inbox.activate(directory: directory, owner: user?.id, cache: nextInbox, api: account.client)
       search.useStorage(nextStorage)
       review.activate(store: nextReview, client: client)
       gate.leave(); updateStatus()
@@ -513,6 +517,13 @@ import ReviewUI
   func synchronize(manual: Bool = false) {
     let due = needsBootstrap || Date().timeIntervalSince(lastBootstrap) >= Self.bootstrapInterval
     run(manual || due ? .full : .push, manual: manual)
+    // 分享不是个人同步：暂停自动同步也照样收信。只在登录 / 前台拉取入口挂一次。
+    let current = epoch; let running = task
+    Task { [weak self] in
+      await running?.value
+      guard let self, epoch == current else { return }
+      inbox.pull()
+    }
   }
   /// 上一轮还在跑时被挡下来的那次推送（值是它的 `manual`）。跑完补上。
   ///

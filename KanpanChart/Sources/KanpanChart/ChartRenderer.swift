@@ -24,6 +24,9 @@ extension ChartColors {
 /// 算法一律走 `KanpanCore`（`priceRange` / `priceTicks` / `timeTicks` / `candleWidths`
 /// / `IndicatorEngine`），这里只负责把数落到像素上。
 public struct ChartRenderer {
+  /// 临时客线不属于存档与个人布局。
+  public var guestDrawings: [Drawing] = []
+  public var ownDimmed = false
   public var state: ChartState { didSet { recalc(previous: oldValue) } }
   public private(set) var engine = IndicatorEngine()
   /// 平均 K 线的可见段。`kind == .candle` 时恒为 `nil`——默认路径一个数都不多算。

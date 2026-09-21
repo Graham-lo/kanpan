@@ -25,6 +25,8 @@ import UIKit
 /// 不必再浮在画布上（`kanpan-no-floating-controls-over-chart`）。
 struct DrawingBar: View {
   @ObservedObject var controller: DrawingController
+  var onSend: (() -> Void)?
+  var sendEnabled = true
   @Environment(\.panelTheme) private var theme
   var body: some View {
     VStack(spacing: 0) {
@@ -45,6 +47,10 @@ struct DrawingBar: View {
         divider
         icon("arrow.uturn.backward", "撤销", "draw.undo", enabled: controller.canUndo) { controller.undo() }
         icon("arrow.uturn.forward", "重做", "draw.redo", enabled: controller.canRedo) { controller.redo() }
+        if let onSend {
+          icon("paperplane", "发给朋友", "draw.send", enabled: true, action: onSend)
+            .opacity(sendEnabled ? 1 : 0.35)
+        }
       }
       // 选中 / 取消选中是很频繁的事：这一换不带动画，免得开关和选中栏互相甩进甩出。
       .animation(nil, value: controller.selected?.id)
@@ -248,6 +254,8 @@ struct DrawingHintStrip: View {
 /// 紧挨着一个每天要点很多次的「隐藏」太险——它留在「管理」里，那儿有确认。
 struct DrawingDock: View {
   @ObservedObject var controller: DrawingController
+  var onSend: (() -> Void)?
+  var sendEnabled = true
   @Environment(\.panelTheme) private var theme
   @Environment(\.displayScale) private var displayScale
   private static let height: Double = 46
@@ -277,6 +285,9 @@ struct DrawingDock: View {
       iconButton(allHidden ? "eye.slash" : "eye", allHidden ? "全部显示" : "全部隐藏", "draw.hideAll",
                  enabled: !controller.items.isEmpty) { controller.hideAll() }
       iconButton("square.stack", "管理画线", "draw.objects.quick") { controller.panel = .objects }
+      if let onSend {
+        iconButton("paperplane", "发给朋友", "draw.send", action: onSend).opacity(sendEnabled ? 1 : 0.35)
+      }
       divider
       Button("完成") { controller.finish() }
         .frame(width: 56, height: Self.height).contentShape(Rectangle())

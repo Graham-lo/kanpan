@@ -18,6 +18,7 @@ pub async fn cleanup(s:&AppState)->Result<()> {
    let mut tx=match s.personal(*owner).await {Ok(tx)=>tx,Err(_)=>continue};
    sqlx::query("DELETE FROM sync_snapshots WHERE user_id=$1 AND created_at<now()-interval '30 days'").bind(owner).execute(&mut *tx).await?;
    sqlx::query("DELETE FROM review_searches WHERE user_id=$1 AND expires_at<now()").bind(owner).execute(&mut *tx).await?;
+   sqlx::query("DELETE FROM shares WHERE to_user=$1 AND kept_at IS NULL AND created_at<now()-interval '90 days'").bind(owner).execute(&mut *tx).await?;
    tx.commit().await?;
   }
   after=owners.last().copied();

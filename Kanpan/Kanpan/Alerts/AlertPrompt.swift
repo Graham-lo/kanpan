@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// 方案 2.3 第一条：**不许挡住画布，也不许用系统弹窗**。用户刚落下这条线，
 /// 眼睛还在线上；一张居中的系统 alert 会把他刚画的东西盖住，还得先答完才能看。
-/// 所以它是图**外面**那一条——竖屏在周期条下面、标签栏上面，横屏在横屏工具栏那一行。
+/// 所以它是图**外面**那一条——竖屏就地占头部价格行，横屏在画线工具栏上方。
 ///
 /// 六秒没动就等于「只画线」。默认不是「加提醒」：用户画线大多数时候只是画线，
 /// 沉默要落在代价小的那一边。
@@ -15,11 +15,13 @@ final class AlertPromptModel: ObservableObject {
     var drawing: Drawing
     var symbol: String
     var sentence: String
+    var batch: [Drawing]? = nil
   }
 
   @Published private(set) var pending: Pending?
   /// 用户按了「加入提醒」。
   var onAccept: ((Drawing, String) -> Void)?
+  var onAcceptBatch: (([Drawing], String) -> Void)?
 
   /// 六秒。方案里写死的那个数。
   static let patience: Duration = .seconds(6)
@@ -49,10 +51,30 @@ final class AlertPromptModel: ObservableObject {
     }
   }
 
+  func offerBatch(_ drawings: [Drawing], symbol: String, preferred: Set<String>, from sender: String) {
+    let supported = drawings.filter { AlertGeometry.lines(for: $0) != nil }
+    guard let first = supported.first, !symbol.isEmpty else { return }
+    let defaults = supported.filter { preferred.contains($0.id) }
+    let sentence = defaults.isEmpty
+      ? "要在这 \(supported.count) 条线上提醒你吗？"
+      : "\(sender) 在其中 \(defaults.count) 条上设了提醒，也给你设上？"
+    let next = Pending(drawing: first, symbol: symbol, sentence: sentence,
+                       batch: defaults.isEmpty ? supported : defaults)
+    countdown?.cancel()
+    countdown = Task { [weak self] in
+      guard let self, !Task.isCancelled else { return }
+      withAnimation(.easeOut(duration: 0.18)) { pending = next }
+      try? await Task.sleep(for: Self.patience)
+      guard !Task.isCancelled else { return }
+      dismiss()
+    }
+  }
+
   func accept() {
     guard let pending else { return }
     dismiss()
-    onAccept?(pending.drawing, pending.symbol)
+    if let batch = pending.batch { onAcceptBatch?(batch, pending.symbol) }
+    else { onAccept?(pending.drawing, pending.symbol) }
   }
 
   func dismiss() {
@@ -88,10 +110,10 @@ struct AlertPromptBar: View {
         Text(pending.sentence)
           .font(.system(size: 13))
           .foregroundStyle(theme.ink)
-          .lineLimit(1)
+          .lineLimit(pending.batch == nil ? 1 : 2)
           .minimumScaleFactor(0.85)
         Spacer(minLength: 6)
-        Button("只画线") { model.dismiss() }
+        Button(pending.batch == nil ? "只画线" : "只留线") { model.dismiss() }
           .buttonStyle(.plain)
           .font(.system(size: 13))
           .foregroundStyle(theme.ink3)

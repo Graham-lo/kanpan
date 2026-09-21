@@ -21,6 +21,7 @@ let package = Package(
   ],
   dependencies: [
     .package(path: "../../KanpanCore"),
+    .package(path: "../../KanpanChart"),
     .package(path: "../../KanpanNetwork"),
     .package(path: "../../KanpanData"),
     .package(path: "../../KanpanAccount"),
@@ -30,6 +31,7 @@ let package = Package(
       name: "KanpanMain",
       dependencies: [
         .product(name: "KanpanCore", package: "KanpanCore"),
+        .product(name: "KanpanChart", package: "KanpanChart"),
         .product(name: "KanpanNetwork", package: "KanpanNetwork"),
         .product(name: "KanpanData", package: "KanpanData"),
         .product(name: "KanpanAccount", package: "KanpanAccount"),
@@ -41,6 +43,7 @@ let package = Package(
       dependencies: [
         "KanpanMain",
         .product(name: "KanpanCore", package: "KanpanCore"),
+        .product(name: "KanpanChart", package: "KanpanChart"),
         .product(name: "KanpanNetwork", package: "KanpanNetwork"),
         .product(name: "KanpanAccount", package: "KanpanAccount"),
       ],

@@ -128,12 +128,13 @@ extension View {
                   store: PrefsStore,
                   onPickInterval: ((Interval) -> Void)? = nil,
                   onRecord: (() -> Void)? = nil,
-                  onShare: (() -> Void)? = nil) -> some View {
+                  onShare: (() -> Void)? = nil,
+                  onSend: (() -> Void)? = nil, sendMeta: String = "把图上的线发过去") -> some View {
     sheet(item: panel) { which in
       PanelHost(store: store) {
         switch which {
         case .period: IntervalGridPanel(store: store, onPick: onPickInterval)
-        case .chart: ChartPanel(store: store, onRecord: onRecord, onShare: onShare)
+        case .chart: ChartPanel(store: store, onRecord: onRecord, onShare: onShare, onSend: onSend, sendMeta: sendMeta)
         }
       }
     }
