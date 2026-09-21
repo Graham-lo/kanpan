@@ -33,8 +33,30 @@ final class ReleaseBackdoorUITests: XCTestCase {
      "KANPAN_ACCOUNT_API_URL": "https://kanpan.107-174-172-10.sslip.io"]
   }
 
-  /// 灌进去的自选。故意挑两个**不是出厂默认**的品种：屏上出现它俩，只可能是种子干的。
-  private static let seed = ["SOLUSDT", "LINKUSDT"]
+  /// 灌进去的自选。挑的是两支**美股合约**，屏上出现它俩只可能是种子干的。
+  ///
+  /// **为什么不能用 SOLUSDT。** 2026-09-21 上线的默认自选（`DefaultFavorites` /
+  /// `DefaultFavoritesSeeder`）会在「第一次装 + 没账号 + 一条自选都没有」时自己种
+  /// **BTC / ETH / SOL 三个锚，加当天成交额前五的币**。而这条用例的第一趟是
+  /// **什么开关都不给**的裸启动——那正是默认自选该发生的场合。于是 SOLUSDT 必然
+  /// 出现在自选里，用例红在「SOLUSDT 却出现在自选里」（2026-09-21 兼容性矩阵五台机
+  /// 全红）。红的不是后门：`SymbolPrefsStore.testSeed` 要 `#if DEBUG` +
+  /// `KANPAN_TEST_PROFILE=1` + 隔离仓三样齐备才给种子，裸启动一样都没有，
+  /// 落到盘上的那八条是 `DefaultFavoritesSeeder` 写的（2026-09-22 在 iPhone 16 Pro
+  /// 上翻出裸档案核对过：`BTCUSDT ETHUSDT SOLUSDT ZECUSDT XRPUSDT NEARUSDT SUIUSDT
+  /// DOGEUSDT`，同时 `UserDefaults` 里 `kanpan.defaultFavorites.seeded.v1` 为真）。
+  /// 破的是用例挑的代号刚好被默认自选占了。
+  ///
+  /// **也不能拿别的币碰运气。** 原来那个 `LINKUSDT` 眼下没被种进去，可「今天成交额
+  /// 前五是谁」是行情说了算的，哪天它上了榜这条用例又会莫名其妙地红。
+  ///
+  /// **美股合约不是碰运气，是结构上进不去。** `DefaultFavorites.pick` 第一句就把目录
+  /// 筛成 `SymbolClassifier.classify(_:).asset == .crypto`（也就是 `underlyingType`
+  /// 为 `COIN`），非币的合约（美股 / ETF / 贵金属 / 指数）一条都不许进默认自选——
+  /// 那是产品定死的规矩（记忆 `kanpan-not-every-contract-is-a-coin`：新人的第一页
+  /// 自选不该是 TSLA、XAU）。所以只要这条规矩还在，这两个代号就不可能自己冒出来。
+  /// 同样两支在 `ExperienceStateRoundTripUITests.usSeed` 里也在用，都是真实目录里的合约。
+  private static let seed = ["SNDKUSDT", "MUUSDT"]
 
   /// 只在 DEBUG 下才该存在的那几个诊断元素（`MainScreen.basePresentation` 的 overlay）。
   private static let diagnosticIDs = ["market.source", "market.network", "layout.diagnostics"]
@@ -58,7 +80,8 @@ final class ReleaseBackdoorUITests: XCTestCase {
     goToFavorites(bare)
     for symbol in Self.seed {
       XCTAssertFalse(bare.buttons["favorites.open." + symbol].waitForExistence(timeout: 3),
-                     "没给 KANPAN_TEST_FAVORITES，\(symbol) 却出现在自选里")
+                     "没给 KANPAN_TEST_FAVORITES，\(symbol) 却出现在自选里"
+                     + "（这一页现在摆着：\(rowSymbols(bare))）")
     }
     let bareRows = rowCount(bare)
     bare.terminate()
@@ -111,6 +134,19 @@ final class ReleaseBackdoorUITests: XCTestCase {
   /// 自选页上有几行。行按 `favorites.open.<代号>` 认。
   private func rowCount(_ app: XCUIApplication) -> Int {
     app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'favorites.open.'")).count
+  }
+
+  /// 自选页上摆着哪几个代号。只给失败信息用：这条用例一红，下一个人第一件想知道的
+  /// 就是「那这一页上到底是什么」——是种子漏进来了，还是别的东西自己摆上去的。
+  private func rowSymbols(_ app: XCUIApplication) -> [String] {
+    let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'favorites.open.'"))
+    var out: [String] = []
+    for index in 0..<rows.count {
+      let id = rows.element(boundBy: index).identifier
+      guard id.hasPrefix("favorites.open.") else { continue }
+      out.append(String(id.dropFirst("favorites.open.".count)))
+    }
+    return out
   }
 
   private func chartInfo(_ app: XCUIApplication) -> [String: Any] {

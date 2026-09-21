@@ -286,16 +286,52 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { usGroup.isSelected },
                   "刚进来该停在第一类（美股），实际停在 \(selectedGroupTitle() ?? "没有哪一类")"
                   + "——那「加密」就不是非首分类了（分类次序：\(groupTitles())）")
+    // 等它真的能点再点。胶囊一出现就点，赶上头部那一条还在铺/还在动的那一瞬间，
+    // XCUI 会判它不可点直接抛（2026-09-21 矩阵在 iPhone Air 上就红在这一句：
+    // `Failed to not hittable: Button ... identifier: 'favorites.group.加密'`）。
+    // 这不是把断言放松——点不动本来就该等，等不到照样红。
+    XCTAssertTrue(waitUntil(timeout: Self.long) { cryptoGroup.isHittable },
+                  "「加密」这颗胶囊一直点不动")
     cryptoGroup.tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { cryptoGroup.isSelected }, "点了「加密」没切过去")
 
     let anchor = app.buttons["favorites.open." + Self.anchorSymbol]
     let list = app.collectionViews.firstMatch.exists ? app.collectionViews.firstMatch
                                                      : app.tables.firstMatch
+    // 一下滚三成屏幕，**不要用 `swipeUp()`**。
+    //
+    // `swipeUp()` 一甩差不多一整屏，而锚点是二十行里的第 14 行（`APTUSDT`，下标 13）。
+    // 这张表滚到底时可视区里就剩最后六行，第 14 行卡在上沿之外——滚过头就再也回不来。
+    // 2026-09-22 在 iPhone 16 Pro（iOS 26.5）上量到的就是这个：12 下 `swipeUp` 之后
+    // 铺着的是 `FILUSDT@224 ATOMUSDT@320 ARBUSDT@416 OPUSDT@512 SUIUSDT@608 INJUSDT@704`
+    // ——下标 14…19，一行 96pt，整张表顶到了尾巴上，`APTUSDT` 一次都没铺出来。
+    //
+    // 这条用例先前那次红（「切回自选，APTUSDT 不在屏幕上了」）是同一件事的另一面：
+    // 同样滚到了表尾，只是那一回 `List` 还替 `APTUSDT` 留着一行缓冲，它的框正好压在
+    // 头部底下，而 `onScreen` 只问「中心点在不在窗口里」（`UITestSupport.swift:204`），
+    // 于是循环当场收工。**那时人停的那一行本来就是 `FILUSDT`**：诊断串量到走之前
+    // 记的是 `anchor=FILUSDT`，切一圈回来顶上完整露着的还是 `FILUSDT@250`，
+    // 一行不差——产品这头把落脚点还原得准准的，是用例自己滚过了头、又拿一行藏在
+    // 头部底下的缓冲行当成了「在屏幕上」。
+    //
+    // 慢慢挪就不会跳过它。同一张种子表、同一个锚点的
+    // `FavoritesScrollAnchorUITests`（`PresenterAndStateUITests.swift`）2026-09-21
+    // 已经因为同样的原因换成了这一手，在 iPhone 16 Pro 上一直是绿的；两条用例
+    // 量同一件事，就该用同一把尺。
     var scrolled = 0
-    while !onScreen(anchor), scrolled < 12 { list.swipeUp(); scrolled += 1 }
-    XCTAssertTrue(onScreen(anchor), "滚了 \(scrolled) 下还没把 \(Self.anchorSymbol) 滚出来")
+    while !onScreen(anchor), scrolled < 12 {
+      list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+        .press(forDuration: 0.05,
+               thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.42)))
+      scrolled += 1
+    }
+    XCTAssertTrue(onScreen(anchor), "滚了 \(scrolled) 下还没把 \(Self.anchorSymbol) 滚出来"
+                  + "（这会儿铺着：\(renderedFavorites())）")
     let anchorY = anchor.frame.minY
+    let beforeRows = renderedFavorites()
+    // 走之前的落脚点。回来对不上时，光看「APTUSDT 不在屏幕上」说不清是**没记住**
+    // 还是**记住了没还原到位**，这一串（`anchor=` / `top=` / `used=`）分得开。
+    let favoritesDiagnosticsBefore = favoritesDiagnostics()
 
     // 板块：下钻两层（全部板块 → 某个板块的品种列表）。
     // 注意全程不许在已经站在板块页时再点一次「板块分类」——那一下按规则要把下钻
@@ -345,9 +381,15 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.short) { cryptoGroup.isSelected },
                   "切回自选，分类跳回第一类了")
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.onScreen(anchor) },
-                  "切回自选，\(Self.anchorSymbol) 不在屏幕上了——滚动位置没被持有")
+                  "切回自选，\(Self.anchorSymbol) 不在屏幕上了——滚动位置没被持有"
+                  + "\n走之前 \(Self.anchorSymbol)@\(Int(anchorY))，铺着：\(beforeRows)"
+                  + "\n走之前：\(favoritesDiagnosticsBefore)"
+                  + "\n回来后：\(favoritesDiagnostics())"
+                  + "\n回来后铺着：\(renderedFavorites())")
     XCTAssertLessThan(abs(anchor.frame.minY - anchorY), 120,
-                      "切回来 \(Self.anchorSymbol) 从 \(anchorY) 跑到了 \(anchor.frame.minY)")
+                      "切回来 \(Self.anchorSymbol) 从 \(anchorY) 跑到了 \(anchor.frame.minY)"
+                      + "\n走之前：\(favoritesDiagnosticsBefore)"
+                      + "\n回来后：\(favoritesDiagnostics())")
 
     // 回设置：刚改的那一项还在。
     openSettingsPage()
@@ -496,6 +538,27 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
       return String(chips.element(boundBy: index).identifier.dropFirst("favorites.group.".count))
     }
     return nil
+  }
+
+  /// 自选页那串只活在辅助功能树里的诊断（`FavoritesView.paletteDiagnostics`）。
+  /// 里头的 `anchor=` / `top=` / `used=` 三项就是落脚点这条腿的全部账本。
+  private func favoritesDiagnostics() -> String {
+    String(describing: app.otherElements["favorites.feed"].value)
+  }
+
+  /// 自选页这会儿真的铺出来了哪几行，按屏幕上从上到下。
+  ///
+  /// `List` 是懒的：滚远了的行会被卸掉，于是「XCUI 找不到这一行」既可能是它滚出了
+  /// 视野、也可能是它压根没铺。把铺着的这一串打出来，两种情况当场分得开。
+  private func renderedFavorites() -> [String] {
+    let rows = app.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "favorites.open."))
+    var out: [(String, CGFloat)] = []
+    for index in 0..<rows.count {
+      guard let snap = try? rows.element(boundBy: index).snapshot() else { continue }
+      out.append((String(snap.identifier.dropFirst("favorites.open.".count)), snap.frame.minY))
+    }
+    return out.sorted { $0.1 < $1.1 }.map { "\($0.0)@\(Int($0.1))" }
   }
 
   /// 把第 `from` 个副图整块长按拖到第 `to` 个的位置上。
