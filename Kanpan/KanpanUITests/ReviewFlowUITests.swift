@@ -198,6 +198,21 @@ final class ReviewFlowUITests: KanpanUICase {
     let opened = chartInfo()
     let span = try XCTUnwrap(opened["span"] as? Double)
 
+    // ---- 先退一根：给「后一根」腾出往前走的余地
+    //
+    // 这一笔是刚记下的，记在**最新那根已收盘 K 线**上，回放的游标一进来就落在这段历史的
+    // 最后一根上——此刻它前面本来就没有下一根（下一根还没收盘，交易所也给不出来）。
+    // 原来这条用例进来就按「后一根」，能不能走得动全看记录与开回放之间有没有正好收了
+    // 一根新的：收了就绿、没收就红，96 台次的矩阵里 16 Pro / 17e / Air 红、15 /
+    // 17 Pro Max 绿，红的就是这个。用例要验的是「按「后一根」不会把人的视野拽回最右边」，
+    // 不是「未来那根 K 线存不存在」，所以先退一根，让往前那一下一定有地方可去。
+    let back = app.buttons["前一根"]
+    XCTAssertTrue(back.exists, "回放条上没有「前一根」")
+    let openedBars = try XCTUnwrap(opened["bars"] as? Int)
+    back.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { (self.chartInfo()["bars"] as? Int ?? 0) < openedBars },
+                  "按了「前一根」但回放没往回退：\(chartInfo())")
+
     // ---- 手动往回拖，离开最新那一根
     dragChartRight()
     XCTAssertTrue(waitUntil(timeout: Self.short) {

@@ -36,25 +36,70 @@ final class IntervalSlotUITests: KanpanUICase {
     try? screenshot.pngRepresentation.write(to: dir.appendingPathComponent(name + ".png"))
   }
 
-  /// 条上每一颗周期药丸现在画在哪儿。
-  private func chipFrames() -> [String: CGRect] {
-    var out: [String: CGRect] = [:]
-    for raw in Ids.quickIntervals {
-      let chip = app.buttons[Ids.intervalChip(raw)]
-      guard let snap = try? chip.snapshot() else { continue }
-      out[raw] = snap.frame
+  // ---------------------------------------------------------- 怎么量这一条
+
+  /// 量一次周期条：条框与各档药丸取自**同一张**快照，而且要等版面停稳才作数。
+  ///
+  /// 行尾的「最新 / 返回刚才」进出时，周期区本来就要用 0.18s 的 easeOut 重新铺满
+  ///（`IntervalBar.body` 上那两句 `animation`）。而 `XCUIElement.snapshot()` **每调一次
+  /// 都是一次独立的抓取**：一件一件分别量的时候，「条」可能抓在动画中途（还窄着），
+  /// 「药丸」抓在动画停稳之后（已经铺满），两个不同时刻的数字一比，就报出根本不存在的
+  /// 越界——iPhone Air 上那次 `药丸右沿 294.0 > 条右沿 293.794` 正是这么来的：停稳之后
+  /// 条宽 282.0 = 6 × 47.0、右沿正好 294.0，一点没越。
+  ///
+  /// 所以量法只能是：① 一张快照里同时取条和六颗药丸（`interval.quick` 是
+  /// `children: .contain` 起的容器，药丸就在它的子树里）；② 连着两次读到的框一样，
+  /// 说明版面已经停稳，这一次的数才算数。
+  private func stripLayout(_ list: [String]) -> (row: CGRect, chips: [String: CGRect])? {
+    var last: (row: CGRect, chips: [String: CGRect])?
+    for _ in 0..<24 {
+      guard let strip = try? app.intervalStrip.snapshot() else { return last }
+      var chips: [String: CGRect] = [:]
+      for raw in list {
+        guard let hit = Self.findSnapshot(Ids.intervalChip(raw), under: strip) else { continue }
+        chips[raw] = hit.frame
+      }
+      let now = (row: strip.frame, chips: chips)
+      if let prev = last, Self.sameLayout(prev, now) { return now }
+      last = now
     }
-    return out
+    return last
+  }
+
+  /// 在一张快照的子树里按 identifier 找元素。
+  private static func findSnapshot(_ id: String,
+                                   under snap: XCUIElementSnapshot) -> XCUIElementSnapshot? {
+    if snap.identifier == id { return snap }
+    for child in snap.children {
+      if let hit = Self.findSnapshot(id, under: child) { return hit }
+    }
+    return nil
+  }
+
+  private static func sameLayout(_ a: (row: CGRect, chips: [String: CGRect]),
+                                 _ b: (row: CGRect, chips: [String: CGRect])) -> Bool {
+    guard abs(a.row.minX - b.row.minX) < 0.5, abs(a.row.width - b.row.width) < 0.5,
+          a.chips.count == b.chips.count else { return false }
+    for (raw, left) in a.chips {
+      guard let right = b.chips[raw],
+            abs(left.minX - right.minX) < 0.5, abs(left.width - right.width) < 0.5 else { return false }
+    }
+    return true
+  }
+
+  /// 条上每一颗周期药丸现在画在哪儿（停稳之后的那一份）。
+  private func chipFrames() -> [String: CGRect] {
+    stripLayout(Ids.quickIntervals)?.chips ?? [:]
   }
 
   /// 把这几档此刻的框打进日志：`x / 宽` 一档一行，验收时直接抄这个数。
   private func dumpFrames(_ list: [String], _ what: String) {
+    guard let m = stripLayout(list) else { return print("〔周期条框〕\(what)：量不到条") }
     let line = list.compactMap { raw -> String? in
-      guard let snap = try? app.buttons[Ids.intervalChip(raw)].snapshot() else { return nil }
-      let f = snap.frame
+      guard let f = m.chips[raw] else { return nil }
       return String(format: "%@ x=%.1f w=%.1f", raw, f.minX, f.width)
     }.joined(separator: " | ")
-    print("〔周期条框〕\(what)：\(line)")
+    print(String(format: "〔周期条框〕%@：条 x=%.1f w=%.1f ｜ %@", what, m.row.minX, m.row.width, line))
   }
 
   private func assertSame(_ a: [String: CGRect], _ b: [String: CGRect],
@@ -286,17 +331,17 @@ final class IntervalSlotUITests: KanpanUICase {
   /// 这几档此刻是不是整颗都落在周期条里（没被右边那道渐隐吃掉、没滚出可视区）。
   private func assertAllVisible(_ list: [String], _ what: String,
                                 file: StaticString = #filePath, line: UInt = #line) {
-    guard let row = try? app.intervalStrip.snapshot() else {
+    guard let m = stripLayout(list) else {
       return XCTFail("找不到周期条", file: file, line: line)
     }
     for raw in list {
-      guard let snap = try? app.buttons[Ids.intervalChip(raw)].snapshot() else {
+      guard let f = m.chips[raw] else {
         XCTFail("\(what)：\(raw) 这一档不在条上", file: file, line: line); continue
       }
-      XCTAssertGreaterThanOrEqual(snap.frame.minX, row.frame.minX - 0.5,
+      XCTAssertGreaterThanOrEqual(f.minX, m.row.minX - 0.5,
         "\(what)：\(raw) 被推出了条的左沿", file: file, line: line)
-      XCTAssertLessThanOrEqual(snap.frame.maxX, row.frame.maxX + 0.5,
-        "\(what)：\(raw) 被挤出了条的右沿（药丸右沿 \(snap.frame.maxX)，条右沿 \(row.frame.maxX)）",
+      XCTAssertLessThanOrEqual(f.maxX, m.row.maxX + 0.5,
+        "\(what)：\(raw) 被挤出了条的右沿（药丸右沿 \(f.maxX)，条右沿 \(m.row.maxX)）",
         file: file, line: line)
     }
   }
@@ -304,9 +349,12 @@ final class IntervalSlotUITests: KanpanUICase {
   /// 两颗药丸不许叠在一起——排不下时 `HStack` 不会自己换行，只会让内容互相压过去。
   private func assertNoOverlap(_ list: [String], _ what: String,
                                file: StaticString = #filePath, line: UInt = #line) {
+    guard let m = stripLayout(list) else {
+      return XCTFail("找不到周期条", file: file, line: line)
+    }
     let frames = list.compactMap { raw -> (String, CGRect)? in
-      guard let snap = try? app.buttons[Ids.intervalChip(raw)].snapshot() else { return nil }
-      return (raw, snap.frame)
+      guard let f = m.chips[raw] else { return nil }
+      return (raw, f)
     }.sorted { $0.1.minX < $1.1.minX }
     XCTAssertEqual(frames.count, list.count, "\(what)：有档位没量到", file: file, line: line)
     for (a, b) in zip(frames, frames.dropFirst()) {
@@ -318,12 +366,11 @@ final class IntervalSlotUITests: KanpanUICase {
   /// 钉得少时这几颗要把整行铺满：末档的右沿贴着条的右沿，右边不留一条空白。
   private func assertFillsRow(_ list: [String], _ what: String,
                               file: StaticString = #filePath, line: UInt = #line) {
-    guard let row = try? app.intervalStrip.snapshot(),
-          let last = list.last, let tail = try? app.buttons[Ids.intervalChip(last)].snapshot() else {
+    guard let m = stripLayout(list), let last = list.last, let tail = m.chips[last] else {
       return XCTFail("\(what)：量不到条或末档", file: file, line: line)
     }
-    XCTAssertGreaterThan(tail.frame.maxX, row.frame.maxX - 6,
-      "\(what)：\(last) 右边还空着 \(row.frame.maxX - tail.frame.maxX)pt，没铺满",
+    XCTAssertGreaterThan(tail.maxX, m.row.maxX - 6,
+      "\(what)：\(last) 右边还空着 \(m.row.maxX - tail.maxX)pt，没铺满",
       file: file, line: line)
   }
 
