@@ -1,12 +1,12 @@
 # Hkline（看盘 / Kanpan）跨窗口项目记忆
 
-更新：2026-09-21（第 6 节是最新一轮；1–5 节是 09-18/19/20 的快照）。给任何新开的模型窗口恢复上下文用。用户当前指示优先；下面是整理时的快照，接手前用 `git log`、`git status` 和源码核对。
+更新：2026-09-22（第 7 节是最新的画线分享交付；第 6 节及之前保留历史状态）。给任何新开的模型窗口恢复上下文用。用户当前指示优先；下面是整理时的快照，接手前用 `git log`、`git status` 和源码核对。
 
 ## 1. 身份与分工
 
 - 产品 Hkline（桌面显示名即 Hkline，2026-09-18 定；旧名已停用，活文档里不要再写），工程名 Kanpan。仓库 `/Users/mdd/zhk/kanpan`，远程 `https://github.com/Graham-lo/kanpan`，分支 `main`，2026-09-18 HEAD `3b9fb44`。
 - Swift 6、最低系统 iOS 18.0（2026-09-18 从 17.0 抬上来，app 与各 SPM 包同步）、真机验证 iOS 26；SwiftUI + UIKit/CoreGraphics 自绘图表；零第三方依赖；不做交易。
-- 代码由 Claude 窗口实现，视觉 / 交互原型定稿后可派 Opus 5（high）子代理写、主窗口验收、装真机、push。Codex 已不参与；`HISTORY-2026-09-15-codex.md` 与根目录 `KANPAN-HANDOFF-2026-09-14.md` 是历史。
+- 代码由 Claude 窗口实现，视觉 / 交互原型定稿后可派 Opus 5（high）子代理写、主窗口验收、装真机、push。2026-09-22 起唯一例外：「发给朋友·画线分享」由 Codex 实现，见第 7 节；`HISTORY-2026-09-15-codex.md` 与根目录 `KANPAN-HANDOFF-2026-09-14.md` 是历史。
 - 常常有第二个窗口在同一工作树改交互逻辑。只动自己范围内的文件，不提交别人的改动。
 
 ## 2. 当前界面（2026-09-18）
@@ -162,3 +162,18 @@
 
 各子代理这一轮的模拟器截图分别在 `/tmp/kanpan-p1`、`p2`、`p3`、`p4`、`s`、`b`、`a`、`c`，
 只是过程材料，重启 Mac 就没了，不要当作长期证据引用。
+
+
+## 7. 2026-09-22 发给朋友·画线分享
+
+依据 `docs/发给朋友-画线分享-实施方案-2026-09-22.md`，Codex 按 S1 → S2 → S3 完成。
+**本地已改、功能代码已推送 `e058715`；服务端已部署并验证；模拟器两条受影响 UI 用例通过。
+真机未安装、未验收：iPhone 16 Pro 已配对但锁屏，`passcodeRequired: true`；遵照本轮用户指示跳过，不轮询等待。
+签名 Release 包已重编成功，不能把它算成真机结果。**
+
+- 服务端：迁移 `0016_shares.sql`，`share.rs` 的朋友、发送、增量收件箱、图片与回执；复用同步画线校验，20 次/分钟、512 KiB 正文、300 KiB JPEG、未留下 90 天清理。两表 FORCE RLS，运行角色仍是非属主、无 BYPASSRLS。
+- 主 VPS 二进制备份 `/opt/kanpan-api/backup-20260922-013348/kanpan-api.bin`；源代码重新构建、`ops/install.py` 迁移后显式重启 API/worker，启动时间均为 `2026-09-22 01:36:43 CST`。仅在 Caddy 的看盘站点增加 `/v1/shares`、`/v1/friends` 及子路径白名单，备份 `/etc/caddy/Caddyfile.backup-share-20260922-013646`，Caddy 重启 `01:36:47 CST`。未改 Python 网关。
+- 客户端：新增 `Share/` 六文件；图表面板和横竖画线台共用朋友名单；头部收件卡、设置朋友页、账号目录缓存、前台拉取。客线不进入个人状态，自己的线按整层 35% 绘制；退出恢复未手动改过的周期。留下换新 ID，批量一步撤销，接既有画线同步和提醒。
+- 真实账号 `qa_share_0922013610_a` / `qa_share_0922013610_b` 已注册并互发；留下后的提醒在 `alert_watches` 中为 `aA68AB94A-0F59-4B78-95F3-4DC00747B5C2`（完整 ID、关联新画线、相同锚点证据见报告）。报告不保存密码或令牌。
+- 验证：Rust 全套 202；Alerts 17；DeepLink 11；Account 61 个 Swift Testing + 1 个 XCTest；Chart 119 个 Swift Testing + 4 个 XCTest；main-ios 27；`ShareFlowUITests` 两条最终 0 失败（116.733 秒），有每例 300/360 秒超时。没有跑整套 UI。
+- 验收报告与长期证据：`docs/acceptance/share/验收报告-2026-09-22.md`，含部署/RLS/提醒物化证据、测试输出摘录、模拟器截图与读回的线上缩略图。本轮未新增 settings 同步字段。

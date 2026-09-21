@@ -1,0 +1,131 @@
+anonymous GET /v1/shares/inbox => 401
+anonymous GET /v1/friends => 401
+qa_share_0922013610_a GET /v1/friends => 200
+friends=qa_share_0922013610_b
+qa_share_0922013610_a GET /v1/shares/inbox => 200
+inbox=4, kept=0
+share=UH7g87BObUm9nM5EldGBSw GET shot => 200, image/jpeg, 77895 bytes
+/private/tmp/kanpan-share-evidence/live-thumbnail.jpg
+  pixelWidth: 600
+  pixelHeight: 856
+qa_share_0922013610_b GET /v1/friends => 200
+friends=qa_share_0922013610_a
+qa_share_0922013610_b GET /v1/shares/inbox => 200
+inbox=4, kept=2
+
+
+BEGIN
+ version | description | success
+---------+-------------+---------
+      16 | shares      | t
+(1 row)
+
+   relname   | relrowsecurity | relforcerowsecurity |    owner
+-------------+----------------+---------------------+--------------
+ shares      | t              | t                   | kanpan_admin
+ friendships | t              | t                   | kanpan_admin
+(2 rows)
+
+  rolname   | rolsuper | rolbypassrls
+------------+----------+--------------
+ kanpan_app | f        | f
+(1 row)
+
+       username        |                          alert_id                           |              drawing_id               | symbol  | status | lines |          updated_at
+-----------------------+-------------------------------------------------------------+---------------------------------------+---------+--------+-------+-------------------------------
+ qa_share_0922013610_b | binance/usd_m/BTCUSDT/aA68AB94A-0F59-4B78-95F3-4DC00747B5C2 | dBAFD8B16-032D-46BF-99B0-9B6AE115E0AF | BTCUSDT | active |     1 | 2026-09-21 18:04:08.943275+00
+(1 row)
+
+       kept_share       |            sender_drawing            |             kept_drawing              | same_anchors | new_id
+------------------------+--------------------------------------+---------------------------------------+--------------+--------
+ GOML8akcADp4YIcawGIpiO | 93C64617-1A46-4911-9A47-ED23F0E8843F | dBAFD8B16-032D-46BF-99B0-9B6AE115E0AF | t            | t
+(1 row)
+
+                 qa_a
+--------------------------------------
+ 3a83b143-9f78-474b-a2b3-d360a72b56e0
+(1 row)
+
+SET
+ a_friend_rows
+---------------
+             1
+(1 row)
+
+ foreign_friend_rows
+---------------------
+                   0
+(1 row)
+
+ shares_visible_to_a
+---------------------
+                   8
+(1 row)
+
+          unrelated_identity
+--------------------------------------
+ 00000000-0000-0000-0000-000000000000
+(1 row)
+
+ shares_visible_to_unrelated
+-----------------------------
+                           0
+(1 row)
+
+ friendships_visible_to_unrelated
+----------------------------------
+                                0
+(1 row)
+
+ROLLBACK
+
+
+ExecMainStartTimestamp=Tue 2026-09-22 01:36:43 CST
+ActiveState=active
+
+ExecMainStartTimestamp=Tue 2026-09-22 01:36:43 CST
+ActiveState=active
+
+ExecMainStartTimestamp=Tue 2026-09-22 01:36:47 CST
+ActiveState=active
+Sep 22 01:36:43 racknerd-3924c62 systemd[1]: Stopping kanpan-api.service - Kanpan accounts and personal sync...
+Sep 22 01:36:43 racknerd-3924c62 systemd[1]: kanpan-api.service: Deactivated successfully.
+Sep 22 01:36:43 racknerd-3924c62 systemd[1]: Stopped kanpan-api.service - Kanpan accounts and personal sync.
+Sep 22 01:36:43 racknerd-3924c62 systemd[1]: kanpan-api.service: Consumed 36.570s CPU time.
+Sep 22 01:36:43 racknerd-3924c62 systemd[1]: Started kanpan-api.service - Kanpan accounts and personal sync.
+Sep 22 01:36:53 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:36:53.959469Z  WARN kanpan_api::market_meta: Supply: stocks/EWY answered with another company's page; publishing nothing
+Sep 22 01:36:54 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:36:54.267146Z  WARN kanpan_api::market_meta: Supply: stocks/EWJ answered with another company's page; publishing nothing
+Sep 22 01:36:55 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:36:55.992053Z  WARN kanpan_api::market_meta: Supply: stocks/QQQ answered with another company's page; publishing nothing
+Sep 22 01:36:56 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:36:56.301196Z  WARN kanpan_api::market_meta: Supply: stocks/SPY answered with another company's page; publishing nothing
+Sep 22 01:37:02 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:02.512349Z  WARN kanpan_api::market_meta: Supply: stocks/SOXL answered with another company's page; publishing nothing
+Sep 22 01:37:05 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:05.723626Z  WARN kanpan_api::market_meta: Supply: stocks/DRAM answered with another company's page; publishing nothing
+Sep 22 01:37:10 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:10.080520Z  WARN kanpan_api::market_meta: Supply: stocks/BBX answered with another company's page; publishing nothing
+Sep 22 01:37:10 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:10.880252Z  WARN kanpan_api::market_meta: Supply: stocks/EWT answered with another company's page; publishing nothing
+Sep 22 01:37:25 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:25.490261Z  WARN kanpan_api::market_meta: Supply: stocks/IWM answered with another company's page; publishing nothing
+Sep 22 01:37:26 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:26.943157Z  WARN kanpan_api::market_meta: Supply: stocks/URNM answered with another company's page; publishing nothing
+Sep 22 01:37:29 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:29.385260Z  WARN kanpan_api::market_meta: Supply: stocks/XLE answered with another company's page; publishing nothing
+Sep 22 01:37:29 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:29.691511Z  WARN kanpan_api::market_meta: Supply: stocks/EWZ answered with another company's page; publishing nothing
+Sep 22 01:37:30 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:30.510644Z  WARN kanpan_api::market_meta: Supply: stocks/UVXY answered with another company's page; publishing nothing
+Sep 22 01:37:31 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:31.499665Z  WARN kanpan_api::market_meta: Supply: stocks/STXX answered with another company's page; publishing nothing
+Sep 22 01:37:33 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:33.962597Z  WARN kanpan_api::market_meta: Supply: stocks/KORU answered with another company's page; publishing nothing
+Sep 22 01:37:34 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:34.636489Z  WARN kanpan_api::market_meta: Supply: stocks/MVLL answered with another company's page; publishing nothing
+Sep 22 01:37:34 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:34.944764Z  WARN kanpan_api::market_meta: Supply: stocks/TQQQ answered with another company's page; publishing nothing
+Sep 22 01:37:35 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:35.263488Z  WARN kanpan_api::market_meta: Supply: stocks/SQQQ answered with another company's page; publishing nothing
+Sep 22 01:37:37 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:37.884118Z  WARN kanpan_api::market_meta: Supply: stocks/KSTR answered with another company's page; publishing nothing
+Sep 22 01:37:39 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:39.324177Z  WARN kanpan_api::market_meta: Supply: stocks/INTW answered with another company's page; publishing nothing
+Sep 22 01:37:39 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:39.619868Z  WARN kanpan_api::market_meta: Supply: stocks/SNXX answered with another company's page; publishing nothing
+Sep 22 01:37:39 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:39.931737Z  WARN kanpan_api::market_meta: Supply: stocks/XBI answered with another company's page; publishing nothing
+Sep 22 01:37:42 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:42.712698Z  WARN kanpan_api::market_meta: Supply: stocks/MUU answered with another company's page; publishing nothing
+Sep 22 01:37:43 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:43.020281Z  WARN kanpan_api::market_meta: Supply: stocks/SOXS answered with another company's page; publishing nothing
+Sep 22 01:37:43 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:43.346329Z  WARN kanpan_api::market_meta: Supply: stocks/TZA answered with another company's page; publishing nothing
+Sep 22 01:37:47 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:47.390005Z  WARN kanpan_api::market_meta: Supply: stocks/TMF answered with another company's page; publishing nothing
+Sep 22 01:37:47 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:47.815188Z  WARN kanpan_api::market_meta: Supply: stocks/TBT answered with another company's page; publishing nothing
+Sep 22 01:37:48 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:48.126718Z  WARN kanpan_api::market_meta: Supply: stocks/BITO answered with another company's page; publishing nothing
+Sep 22 01:37:49 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:49.236566Z  WARN kanpan_api::market_meta: Supply: stocks/SMH answered with another company's page; publishing nothing
+Sep 22 01:37:53 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:53.693506Z  WARN kanpan_api::market_meta: Supply: stocks/GDX answered with another company's page; publishing nothing
+Sep 22 01:37:55 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:55.208825Z  WARN kanpan_api::market_meta: Supply: stocks/LYTE answered with another company's page; publishing nothing
+Sep 22 01:37:56 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:56.133398Z  WARN kanpan_api::market_meta: Supply: stocks/SKUU answered with another company's page; publishing nothing
+Sep 22 01:37:56 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:56.450442Z  WARN kanpan_api::market_meta: Supply: stocks/SKDD answered with another company's page; publishing nothing
+Sep 22 01:37:56 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:56.752654Z  WARN kanpan_api::market_meta: Supply: stocks/RAM answered with another company's page; publishing nothing
+Sep 22 01:37:59 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:37:59.879104Z  WARN kanpan_api::market_meta: Supply: stocks/NVDL answered with another company's page; publishing nothing
+Sep 22 01:38:00 racknerd-3924c62 kanpan-api[2132912]: 2026-09-21T17:38:00.179047Z  WARN kanpan_api::market_meta: Supply: stocks/TSLL answered with another company's page; publishing nothing
