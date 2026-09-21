@@ -513,16 +513,30 @@ public struct ChartRenderer {
     }
     guard let high = visible.max(by: { b.high[$0] < b.high[$1] }),
           let low = visible.min(by: { b.low[$0] < b.low[$1] }) else { return }
+    // 主图顶上那几行是图例的地盘（`mainLegendInset`，副图的图例也照这个数收边）。
+    // 上界原来写死 8，于是最高价那颗标注直接压在「MA256 78125.45」那行字上——
+    // 两层小字叠在一起谁也读不出来。标注以 `ty` 为纵向**中心**，所以下界是
+    // 「图例占掉的高度 + 半行字」，图例行本身一个像素都不挪。
+    let legendBand = mainLegendInset(plotW: L.plotW)
+    let floor = legendBand + Double(ChartFont.measure("0", ChartFont.axis).height) / 2 + 2
     for (index, price, isHigh) in [(high, b.high[high], true), (low, b.low[low], false)] {
       let px = x(b.time(at: index), L), py = yOf(price, L.main, r)
       let label = fmtNum(price, state.decimals), width = Double(label.width(ChartFont.axis))
       let left = px + 16 + width > L.plotW - 4
       let tx = max(4, min(L.plotW - width - 4, left ? px - width - 12 : px + 12))
       let above = isHigh != r.inverted
-      let ty = max(8, min(L.mainH - 8, py + (above ? -10 : 10)))
+      let ty = max(floor, min(L.mainH - 8, py + (above ? -10 : 10)))
+      // 引线同理：起点落在图例那几行里时只画跨出图例之后的那一截，
+      // 不让一根斜线横穿读数。
+      let ax = left ? tx + width + 3 : tx - 3
+      var from = CGPoint(x: px, y: py)
+      if py < legendBand, ty > py {
+        let k = (legendBand - py) / (ty - py)
+        from = CGPoint(x: px + (ax - px) * k, y: legendBand)
+      }
       ctx.setStrokeColor(Paint.cg(state.colors.text)); ctx.setLineWidth(1 / scale)
-      ctx.beginPath(); ctx.move(to: CGPoint(x: px, y: py))
-      ctx.addLine(to: CGPoint(x: left ? tx + width + 3 : tx - 3, y: ty)); ctx.strokePath()
+      ctx.beginPath(); ctx.move(to: from)
+      ctx.addLine(to: CGPoint(x: ax, y: ty)); ctx.strokePath()
       label.drawLeft(at: CGPoint(x: tx, y: ty), font: ChartFont.axis, color: state.colors.text)
     }
   }

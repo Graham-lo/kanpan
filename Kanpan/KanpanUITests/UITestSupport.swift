@@ -484,9 +484,9 @@ extension XCUIApplication {
   /// （用户：「用户当前看的这张图作为画线的目标」），所以这儿就是干干净净一下。
   ///
   /// 点完先横过去（`kanpan-landscape-is-for-drawing`：横屏就是画线的工作台）。
-  /// 「管理 / 吸附 / 连续」这几个快捷键只有竖屏那条画线栏上有，用例里按坐标点的
-  /// 位置也都是按竖屏量的，所以要竖屏画线态的用例走 `enterDrawingInPortrait()`：
-  /// 横过去再按「竖屏」转回来——这也正是用户「横屏画完转回竖屏接着看」走的那条路。
+  /// 用例里按坐标点的位置都是按竖屏量的，所以要竖屏画线态的用例走
+  /// `enterDrawingInPortrait()`：横过去再按「竖屏」转回来——这也正是用户
+  /// 「横屏画完转回竖屏接着看」走的那条路。
   @discardableResult func tapDrawEntry() -> Bool {
     let entry = buttons[Ids.bottomDraw]
     guard entry.waitForExistence(timeout: 10) else { return false }
@@ -498,7 +498,11 @@ extension XCUIApplication {
     _ = tapDrawEntry()
     let exit = buttons[Ids.landscapeExit]
     if exit.waitForExistence(timeout: 15) { exit.tap() }
-    return buttons["draw.objects.quick"].waitForExistence(timeout: 15)
+    // 到没到竖屏画线栏：认「完成」在场 + 横屏那条独有的「全部隐藏」不在场。
+    // 不能再拿「管理」当路标——选中一条线之后上排让位给选中栏，那三个开关会
+    // 暂时不在树里（2026-09-21），已经在画线态也会被误判成没进去。
+    guard buttons["draw.finish"].waitForExistence(timeout: 15) else { return false }
+    return !buttons["draw.hideAll"].exists
   }
 
   /// 打开选中画线的样式面板并挑一个颜色。

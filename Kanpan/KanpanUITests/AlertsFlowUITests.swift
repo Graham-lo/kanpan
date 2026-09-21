@@ -84,14 +84,20 @@ import XCTest
   /// 已经在画线态里就直接认。
   private func enterDrawing() -> Bool {
     for round in 0..<3 {
-      if app.buttons["draw.objects.quick"].exists { return true }
+      if inPortraitDrawing { return true }
       if app.enterDrawingInPortrait() { return true }
       shot("_进画线态第\(round + 1)轮没成")
       let exit = app.buttons["land.exit"]
       if exit.exists, exit.isHittable { exit.tap() }
       XCUIDevice.shared.orientation = .portrait
     }
-    return app.buttons["draw.objects.quick"].waitForExistence(timeout: 10)
+    return app.buttons["draw.finish"].waitForExistence(timeout: 10) && inPortraitDrawing
+  }
+
+  /// 在不在**竖屏**画线栏上。「完成」两个方向都有，横屏那条上还多一个「全部隐藏」，
+  /// 拿这两个一起判。原来用的是「管理」，但它现在会被选中栏顶掉（2026-09-21）。
+  private var inPortraitDrawing: Bool {
+    app.buttons["draw.finish"].exists && !app.buttons["draw.hideAll"].exists
   }
 
   /// 落一笔水平线（一下就成，`pointCount == 1`）。

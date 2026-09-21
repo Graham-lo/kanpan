@@ -670,11 +670,11 @@ struct MainScreen: View {
                            size: 10, color: theme.ink)
         }
         // 选中一条线之后的 样式 / 锁定 / 复制 / 删除 排在**图外**这一条属性栏上（§2E2）。
-        // 竖屏它是浮在图下沿的一条，横屏不能照搬：横屏的图就是画布，浮在上面的东西
-        // 正好压着刚画的那一笔，也和「画布上不浮任何控件」相冲。挂在图上方、和标题
-        // 同一根 `VStack` 里，选中 / 取消选中只在图外增减一行，K 线不会跟着跳。
+        // 横屏的图就是画布，浮在上面的东西正好压着刚画的那一笔，也和「画布上不浮任何
+        // 控件」相冲。挂在图上方、和标题同一根 `VStack` 里，选中 / 取消选中只在图外
+        // 增减一行，K 线不会跟着跳。竖屏那份在画线栏上排里（见 `DrawingBar`）。
         if draw.active, draw.selected != nil {
-          DrawingSelectionBar(controller: draw, flat: true)
+          DrawingSelectionBar(controller: draw, placement: .landscape)
         }
         chart.overlay(alignment: .bottom) { captureCard }
         replayControls
@@ -1037,12 +1037,9 @@ struct MainScreen: View {
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
           .padding(.top, 8)
       }
-      // 选中态的动作条同样浮在图上（贴下沿），理由见 `DrawingSelectionBar`。
-      if draw.active, !landscape {
-        DrawingSelectionBar(controller: draw)
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-          .padding(.bottom, 6)
-      }
+      // 选中态的那几个动作**不在图上**（2026-09-21）：竖屏它们顶掉画线栏上排的三个
+      // 开关（见 `DrawingBar`），横屏排在标题下面那一行。从前它浮在图区下沿，
+      // 正好盖掉半行 MACD 图例。
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .clipped()

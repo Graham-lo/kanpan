@@ -146,7 +146,7 @@ import XCTest
     XCTAssertTrue(wait(seconds: 8) { self.info()["drawingCount"] as? Int == 1 },
                   "趋势线没画上：\(info())")
     app.buttons["draw.finish"].tap()
-    XCTAssertTrue(wait(seconds: 8) { !self.app.buttons["draw.objects.quick"].exists }, "没退出画线态")
+    XCTAssertTrue(wait(seconds: 8) { !self.app.buttons["draw.finish"].exists }, "没退出画线态")
 
     let before = info()
     let ratiosBefore = try ratios(before)
@@ -180,7 +180,7 @@ import XCTest
     exit.tap()
     XCTAssertTrue(wait(seconds: 10) { !self.isLandscape() }, "按「竖屏」没回来")
     if app.buttons["draw.finish"].waitForExistence(timeout: 5) { app.buttons["draw.finish"].tap() }
-    XCTAssertTrue(wait(seconds: 8) { !self.app.buttons["draw.objects.quick"].exists })
+    XCTAssertTrue(wait(seconds: 8) { !self.app.buttons["draw.finish"].exists })
 
     // ---------------------------------------------------------------- 回来之后
 

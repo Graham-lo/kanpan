@@ -1522,6 +1522,9 @@ extension ChartFoundationUITests {
     app.buttons["draw.redo"].tap()
     XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })
     shot("画线-只删除选中对象并可撤销")
+    // 上排那三个开关和选中栏共用同一格（2026-09-21）：这会儿删掉的那条已经没了选中，
+    // 它们该回到位。先确认回来了再点，免得点在残留的选中栏上。
+    XCTAssertTrue(app.buttons["draw.magnet.quick"].waitForExistence(timeout: 5), "取消选中之后开关那排没回来")
     app.buttons["draw.magnet.quick"].tap()
     app.buttons["draw.continuous.quick"].tap()
     app.terminate(); app.launch()
