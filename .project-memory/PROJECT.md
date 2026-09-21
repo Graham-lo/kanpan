@@ -177,3 +177,65 @@
 - 真实账号 `qa_share_0922013610_a` / `qa_share_0922013610_b` 已注册并互发；留下后的提醒在 `alert_watches` 中为 `aA68AB94A-0F59-4B78-95F3-4DC00747B5C2`（完整 ID、关联新画线、相同锚点证据见报告）。报告不保存密码或令牌。
 - 验证：Rust 全套 202；Alerts 17；DeepLink 11；Account 61 个 Swift Testing + 1 个 XCTest；Chart 119 个 Swift Testing + 4 个 XCTest；main-ios 27；`ShareFlowUITests` 两条最终 0 失败（116.733 秒），有每例 300/360 秒超时。没有跑整套 UI。
 - 验收报告与长期证据：`docs/acceptance/share/验收报告-2026-09-22.md`，含部署/RLS/提醒物化证据、测试输出摘录、模拟器截图与读回的线上缩略图。本轮未新增 settings 同步字段。
+
+## 审查整改第六轮 —— 提醒前台判定接上线（2026-09-22，提交 `cd4ae44`）
+
+盘点前几轮审查遗留时查出的第一件事最要命：客户端 `AlertEvaluator` **一个调用方都没有**，
+而 README 与使用手册都写着「app 在前台时本地判定、立刻响」。加上没有 APNs 密钥
+（`kanpan-no-apns-key-build-push-anyway`），**提醒在用户手上一次都没有响过**。
+
+- **前台判定**：新 `Kanpan/Kanpan/Alerts/AlertEngine.swift`（211 行，符号链接进
+  `Kanpan/Alerts/` 测试壳）。把逐笔价折成与服务端 1m K 线对齐的自有分钟桶，跨桶时先判上一根
+  收好的（`isClosed: true`）再开新桶，盘中帧按未收盘判；断超过 5 个空桶或进过后台就丢掉
+  `previousClose`。挂着提醒的品种进 `QuoteSubscriptionPlan.alerted`，不必停在提醒页上。
+  接线在 `MainScreen.swift:133/1413/1467/1473/1535`、`MarketModel.swift:93/353/362`、
+  `QuoteBook.swift:39/195/229/342`。
+- **`.close`（收盘穿过后）两侧都是摆设**：客户端 `AlertEvaluator.hit` 与服务端 `alerts.rs`
+  原本都把这一档挡掉，界面上选得中、永远不响。两侧补齐；服务端按订阅维护上一根收盘表
+  （`BTreeMap<String,f64>`，随订阅裁剪），`TODO(第二波)` 与 `skipped_close` 删除。
+- **通知被拒的出口**：新 `AlertPermission.swift`，提醒总表顶上出现「通知关着，提醒到了不会响
+  · 去打开 ›」，回前台自动重查。
+- **持仓量的说明在骗人**：`ChartRenderer+Sub.swift` 里「这个周期币安不提供持仓量历史
+  （最细 5 分钟）」整支分支删除——1m/3m 走 5m 源画成阶梯（`Bar.swift:102-106` 的
+  `OISeries.aligned`），1w/1M/1y 一路回溯到 2020-09-01，14 个周期一个不缺。换成
+  `KanpanCore/Indicator/OINotice.swift` 三态（线路不报 / 还没到 / 真没有）。
+  `IndicatorID.lineNames(.oi)` `["OI"]`→`["持仓量"]`，面板标题去掉「近 30 天，最细 5 分钟」。
+  `docs/实施任务书.md:459` 同步改过。
+- **手势结束时主线程在等写盘**（违反 `kanpan-persist-on-gesture-end` 的初衷）：
+  `SyncStore.swift:176` 写盘队列 QoS `.utility`→`.userInitiated`，新
+  `afterArchiveWritten(_:)`；`AppAccountBridge.capture()` 去掉 `flushNow()`，
+  `ChartViewport.Sync` 去掉 `flushLayoutArchive()`。
+- **顺带发现自选同步方向本来就错**：`applyPending()` 按 `archive.local` 重建自选，而
+  `unpersistedLocalChanges` 只向前补，于是删掉的自选会自己回来、新加的推不上去。
+  落盘顺序翻过来（`SymbolPickerModel.commit()` 改为 `onPrefsChange` → `save`），
+  并在 `AppAccountBridge.swift:333-365` 加启动前向对账。
+- **九处视觉与语义色**：画线管理 / 样式两张表接上主题（`scrollContentBackground(.hidden)`
+  + `background(theme.app)` + `listRowBackground(theme.raised)` + `toolbarBackground`）；
+  左滑「删除」与复盘「作废记录」从 `t.down` 换 `danger`——出厂 `redUp` 默认真，跌色是绿，
+  读起来像「确认」；`ReviewRangeOverlay` 的系统橙改成从面板主题注入；几处压在渐变上的
+  `Color.white` 换 `badgeInk`（深色下从 ~2.4:1 到 7–8:1）。`ReviewTheme` 加 `danger`。
+  **自选页 `FavoritesView.swift:1330-1352` 的融合层一行没动**
+  （`kanpan-favorites-page-is-users-own-design`）。
+- 文档对账：README、使用手册里「前台本地判定」那句改动前是假的，现在是真的，边界写清楚。
+  新增 `Kanpan/KanpanUITests/KeyboardFrameGeometryTests.swift`。
+
+**状态**：本地已改、已推送 `cd4ae44`；Release 真机包已装到 iPhone 16 Pro
+（`com.mdd.kanpan`，2026-09-22 04:47）；服务端已部署到主 VPS 并只读验证。
+测试：KanpanCore 359、KanpanData 183、Kanpan/Symbols 158、Kanpan/Settings 124、
+KanpanAccount 63、Kanpan/Alerts 40、kanpan-api 139，全绿。
+iPhone 15 兼容矩阵 109 执行 / 8 跳过 / 0 失败（**但那一跑用的是 04:02 的包，
+晚于它的 5 个生产文件没进去，不算 `cd4ae44` 的证据，要重跑**）。
+
+**部署记录**：二进制备份 `/opt/kanpan-api/backup-20260922-050825/kanpan-api.bin`；
+`rsync src/ migrations/` → `touch src/*.rs` → `cargo build --release`（2m16s）→
+`ops/install.py`（本轮无新迁移）→ `systemctl restart kanpan-api kanpan-worker`，
+启动时间均 `2026-09-22 05:13:35 CST`。只读验证：内网 `/health` 200、公网
+`/v1/market/meta` 200、`/v1/auth/session/revoke` 405（GET 打 POST 路由，正确）；
+worker 日志 `Alert evaluator started` + `watching 1 symbol(s)`，APNs 未配置那条
+INFO 照旧（`alerts still fire, still record firedAt/firedPrice and still sync`）。
+未改 Caddy，未改 Python 网关。
+
+**这次踩的坑**：`rsync -az Cargo.toml Cargo.lock contract/ ops/ host:/opt/kanpan-api/`
+——多个源里带尾斜杠的目录会把**内容**摊到目标目录顶层，于是 `ops/` 和 `contract/` 里的
+11 个文件在 `/opt/kanpan-api/` 下多出一份重复。没加 `--delete` 所以没毁东西，逐个
+`cmp` 确认是重复后删掉了。以后同步目录要么不带尾斜杠，要么一个目录一条 rsync。
