@@ -52,6 +52,13 @@ final class DrawingSession {
 
   /// 这一次触摸归画线管，不转给图表手势。
   var claimed: UITouch?
+  /// 这张图此刻收不收画线的手：落笔、选中、拖端点。
+  ///
+  /// 和「覆盖层在不在」（`ChartView.drawingInteractive`）是两件事。覆盖层还要画选中态、
+  /// 预览线和挂了提醒的那枚铃铛，所以它一直在场；这一个只管**触摸算不算画线的动作**。
+  /// 关着的时候点图就只是平移 / 十字光标，点中一条已有的线不会把它选中。
+  /// 包里默认开着（单测和只用图表的宿主照旧），由宿主在不画线的时候自己关掉。
+  var editable = true
   var startPoint: CGPoint = .zero
   var beganMs: Double = 0
   var moved: Double = 0
@@ -146,6 +153,20 @@ extension ChartView {
         drawing.overlay = nil
       }
     }
+  }
+
+  /// 画线**手势**收不收这张图上的触摸。
+  ///
+  /// `drawingInteractive` 管的是覆盖层在不在（它要画选中态、预览线、提醒铃铛，
+  /// 所以一旦接上宿主就一直在场）；这一个管的是**手**。两者分开是因为
+  /// 「选中一条线」在宿主那边等于「人正在画线」——`DrawingController` 据此把画线台
+  /// 打开，竖屏还会当场转横屏。于是不在画线态时随手点中一条旧线，屏幕就自己翻过去了。
+  ///
+  /// 关着的时候：点图是平移 / 十字光标，点中已有的线**不选中**；但已经高亮着的那条
+  /// （深链从提醒指过来的）点一下照样能取消，不然用户没法把它收掉。
+  public var drawingEditable: Bool {
+    get { drawing.editable }
+    set { drawing.editable = newValue }
   }
 
   /// 当前工具。设成非 `nil` 会顺手把交互打开——底栏点「趋势线」就能画，不用外面
@@ -598,6 +619,13 @@ extension ChartView {
   func drawingTouchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
     startDrawingLink()
     let d = drawing
+    // 每一根落下的手指都要刷新这个时刻，**包括转给图表手势的那些**。
+    //
+    // 它原来只在下面「单指、落在图区内」那一条路上更新，于是交给图表的那几路
+    // （两指同时落下、图表手势已经在场）用的是**上一根手指**的时间戳。抬手时
+    // `finishUnclaimed` 拿它判「这是不是一次轻点」，一个 500ms 前刚落下过手指的
+    // 画面里，捏合抬手会被当成轻点——单锚点工具于是凭空多落一条线（探针 P11）。
+    d.beganMs = Self.drawMs(event)
     // 已经在拖线 / 在瞄第二点：多落下来的手指一概不理，别把正在画的东西打断。
     if let claimed = d.claimed {
       guard !touches.contains(claimed) else { return }
@@ -614,6 +642,12 @@ extension ChartView {
       cancelAxisFreeze()
       touchesBegan(Set([claimed]).union(touches), with: event)
       drawingChanged(); return
+    }
+    // 不在画线态：这一层只负责**画**（选中态、预览线、铃铛），手一概让给图表。
+    // 平移、捏合、长按十字线照旧，点中一条旧线不会把它选中——见 `drawingEditable`。
+    guard d.editable else {
+      touchesBegan(touches, with: event)
+      return
     }
     // 已经交给图表的手势：第二根手指要给它做捏合，继续转。
     if !gesture.touches.isEmpty {
@@ -632,7 +666,6 @@ extension ChartView {
       return
     }
     d.startPoint = q
-    d.beganMs = Self.drawMs(event)
     d.moved = 0
 
     // 半截的趋势线：这根手指是用来瞄第二点的，预览线跟着走，抬手落点。
@@ -753,26 +786,35 @@ extension ChartView {
   }
 
   /// 这次触摸是图表手势在管的。抬手之前先看看该不该把这一下「轻点」收走。
+  ///
+  /// **这条路只改选中，不落笔。** 手里拿着工具的那一下在 `drawingTouchesBegan` 里就被
+  /// 画线整场收走了（`claimed`），落笔一律走 `drawingTouchesEnded` 的正文。剩下能走到
+  /// 这儿的「拿着工具的触摸」全是不该落笔的：两指同时落下（要捏合）、图表手势已经在场、
+  /// 捏合中途抬掉一根降成单指、以及手指按下之后才被拿起来的工具。这儿原来还留着一条
+  /// 「是轻点就 `placeDrawPoint`」的分支——那是「按下即第一点」之前的老规矩，现在只会
+  /// 在上面那几种情形里凭空多画一条：
+  ///
+  /// - 连续画着单锚点工具时点一条、紧接着两指捏合，抬手落成第二条（探针 P11）；
+  /// - 手指已经按在图上，这时才点工具，抬手就地落一条（探针 P16）。
+  ///
+  /// 所以那条分支整条删掉，不是收紧判据——判据再紧也改不了「这根手指不归画线管」。
   private func finishUnclaimed(_ touches: Set<UITouch>, with event: UIEvent?, cancelled: Bool) {
     let d = drawing
     let now = Self.drawMs(event)
     let isTap =
       !d.navigating && !cancelled && gesture.mode == .pan && gesture.moved < Chart.panSlopPt
+      // 捏合降下来的那一轮不算轻点，和图表手势自己那条 A-03 是同一个道理：
+      // `reset()` 刚把 `moved` 清零，原地抬起剩下那根看上去和轻点一模一样。
+      && !gesture.cameFromPinch
       && now - d.beganMs < drawTapMs
     // 十字线在的时候这一下是用来收十字线的，不落笔也不改选中。
     let busy = state?.crosshair != nil
 
     if isTap, !busy, let axes = drawAxes, axes.bounds.contains(DrawPixel(Double(gesture.startPoint.x), Double(gesture.startPoint.y))) {
       let q = gesture.startPoint
-      if d.tool != nil {
-        // 原型 `pointerup` 里画线分支排在平移分支**前面**：画线态下这一下不会被
-        // 当成双击复位。
-        consumeTap()
-        touchesEnded(touches, with: event)
-        placeDrawPoint(at: q, axes: axes)
-        return
-      }
-      let hit = drawHitTest(q, axes: axes)
+      // 不在画线态时点一下**只能取消**已有的高亮（深链从提醒指过来的那条得有办法收掉），
+      // 命中一律不认——认了就等于替用户按下「进画线台」。
+      let hit = d.editable ? drawHitTest(q, axes: axes) : nil
       // 取消选中要给双击复位让路——原型里双击那一支也排在选中之前。
       if hit != nil || d.selected != nil {
         consumeTap()

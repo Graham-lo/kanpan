@@ -8,7 +8,7 @@ final class DrawingController: ObservableObject {
   /// 「绘图」工具面板开着没有。它没跟 `panel` 合在一起：横竖屏呈现方式不一样——
   /// 竖屏是半屏表单，横屏是贴边的一块卡片（见 `DrawingToolPicker`），而 `panel`
   /// 那两张（管理 / 样式）两种朝向下都是表单。
-  @Published private(set) var active = false
+  @Published private(set) var active = false { didSet { chart?.drawingEditable = active } }
   @Published private(set) var tool: DrawingStore.Tool?
   @Published private(set) var hint: String?
   @Published private(set) var canDelete = false
@@ -58,15 +58,6 @@ final class DrawingController: ObservableObject {
   /// 上一条「刚落下、还没写字」的文字标注。只为了别把样式表反复弹出来：
   /// 用户点了取消之后 `panel` 回到 nil，`sync()` 又会跑一遍，没有这个记号就成了死循环。
   private var promptedNote: String?
-  /// 「只是高亮，别把画线工作台打开」的那一条。
-  ///
-  /// `sync()` 有一条硬规矩：选中了东西就 `active = true`，因为正常情况下选中线只可能
-  /// 发生在用户正在画线的时候。深链（点一条提醒的通知进来）是唯一的例外——那一下要的是
-  /// 「把这条线指给他看」，不是「把他拽进画线工作台」，而 `active = true` 在竖屏会当场
-  /// 转横屏（见 `MainScreen` 对 `draw.active` 的 onChange）。所以这里记一个 id：
-  /// 选中的正好是它时不开工作台。用户接着自己点别的线、拿起工具、或者取消选中，
-  /// 这个豁免立刻作废。
-  private var highlightedID: String?
   /// 品种还没换过去时先记着，等 `focus` 把那个品种的线装进图里再选。
   private var pendingHighlight: (symbol: String, id: String)?
 
@@ -92,7 +83,9 @@ final class DrawingController: ObservableObject {
     let resumed = symbol.isEmpty ? DrawHistory() : (histories[symbol] ?? DrawHistory())
     chart?.onDrawingsChanged = nil; chart?.onDrawingStateChanged = nil
     chart?.endDrawing()
-    chart = view; view.drawingInteractive = true
+    // 覆盖层一直在场（它还要画选中态、预览线和提醒铃铛），**收不收手**另算：
+    // 不在画线态时点图就只是平移 / 十字光标，点中一条旧线不会把它选中。
+    chart = view; view.drawingInteractive = true; view.drawingEditable = active
     view.onDrawingsChanged = { [weak self] items in self?.persist(items) }
     view.onDrawingStateChanged = { [weak self] in self?.sync() }
     view.onDrawingLimitReached = { [weak self] in self?.full = true }
@@ -175,7 +168,6 @@ final class DrawingController: ObservableObject {
     guard let wanted = pendingHighlight, wanted.symbol == symbol, let chart else { return }
     guard chart.drawings.contains(where: { $0.id == wanted.id }) else { return }
     pendingHighlight = nil
-    highlightedID = wanted.id
     chart.selectedDrawingID = wanted.id
     sync()
   }
@@ -200,7 +192,6 @@ final class DrawingController: ObservableObject {
   /// 动它——画线栏的「连续」、工具表里的「连续画线」，以及长按工具这一下明确的「开」。
   func pick(_ t: DrawingStore.Tool, repeating: Bool = false) {
     active = true
-    highlightedID = nil
     chart?.selectedDrawingID = nil   // 手上拿着工具就不该还选中着上一条线
     if repeating, !preferences.continuous {
       preferences.continuous = true
@@ -211,7 +202,7 @@ final class DrawingController: ObservableObject {
     panel = nil; picker = false
     sync()
   }
-  func select(_ id: String) { highlightedID = nil; active = true; chart?.selectedDrawingID = id; sync() }
+  func select(_ id: String) { active = true; chart?.selectedDrawingID = id; sync() }
   func deleteSelected() { chart?.deleteSelectedDrawing(); sync() }
   func finish() { chart?.endDrawing(); active = false; panel = nil; picker = false; sync() }
   func undo() { chart?.undoDrawing(); sync() }
@@ -310,8 +301,15 @@ final class DrawingController: ObservableObject {
     rememberHistory()
     tool = chart.drawTool; hint = active ? chart.drawHint : nil
     items = chart.drawings; selected = items.first { $0.id == chart.selectedDrawingID }
-    if selected?.id != highlightedID { highlightedID = nil }
-    if selected != nil, highlightedID == nil { active = true }
+    // **「选中」从来不开画线工作台。** 这儿原来有一句「选中了就 `active = true`」，
+    // 理由写的是「正常情况下选中线只可能发生在用户正在画线的时候」——那个前提是错的：
+    // 图上的画线手势从前一接上就开着，竖屏随手点中一条旧线也会选中它，于是
+    // `MainScreen` 对 `active` 的 onChange 当场把屏幕转成横屏。深链高亮那条豁免
+    // （`highlightedID`）只是给这条错规矩打的补丁，一并删掉了。
+    //
+    // 真正该开工作台的入口——`toggle()` / `openTools()` / `pick(_:)` / `select(_:)`——
+    // 每一条都自己写着 `active = true`；图自己画完一笔之后的自动选中
+    // （`placeDrawPoint` 的 `commit`）也只发生在已经 `active` 的时候。所以这一句是纯多余的。
     canDelete = selected != nil; canUndo = chart.canUndoDrawing; canRedo = chart.canRedoDrawing
     // 空的文字标注在图上只是一句「点这里写字」的占位。落点即开样式表，
     // 省掉「落点 → 发现没字 → 自己去找样式」这三步。
