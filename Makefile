@@ -373,11 +373,12 @@ device-release:
 # 没有改动时只要十几秒，不值得为省这点时间冒装错包的风险。
 install-release: device-release
 	@[ -d "$(DEVICE_RELEASE_APP)" ] || { echo "没找到 $(DEVICE_RELEASE_APP)，先跑 make device-release"; exit 1; }
-	@udid=$$(xcrun devicectl list devices --json-output "$(TMPDIR)devicectl.json" >/dev/null 2>&1; python3 -c "\
-import json,sys;\
-d=json.load(open(sys.argv[1]));\
-xs=[x for x in d.get('result',{}).get('devices',[]) if x.get('connectionProperties',{}).get('tunnelState')!='unavailable' and x.get('connectionProperties',{}).get('pairingState')=='paired'];\
-print(xs[0]['hardwareProperties']['udid'] if xs else '')" "$(TMPDIR)devicectl.json"); \
+	@# 挑真机的这段 python **必须写在一行里**。原来它是按 `;\` 断成五行的，make 把续行
+	@# 接起来时在每个接缝处塞了一个空格，`import` 前面于是多出空白，python3 当场
+	@# `IndentationError: unexpected indent`——而外层 `$$(...)` 把它的 stderr 咽了，
+	@# 只剩下一句「没有已配对且在线的真机」，看着像手机没插好。2026-09-22 手机明明
+	@# 是 `available (paired)` 却装不上去，就是栽在这儿。
+	@udid=$$(xcrun devicectl list devices --json-output "$(TMPDIR)devicectl.json" >/dev/null 2>&1; python3 -c "import json,sys; d=json.load(open(sys.argv[1])); xs=[x for x in d.get('result',{}).get('devices',[]) if x.get('connectionProperties',{}).get('tunnelState')!='unavailable' and x.get('connectionProperties',{}).get('pairingState')=='paired']; print(xs[0]['hardwareProperties']['udid'] if xs else '')" "$(TMPDIR)devicectl.json"); \
 	[ -n "$$udid" ] || { echo "没有已配对且在线的真机（xcrun devicectl list devices 看一眼）"; exit 1; }; \
 	echo "→ 装到 $$udid"; \
 	xcrun devicectl device install app --device "$$udid" "$(DEVICE_RELEASE_APP)"
