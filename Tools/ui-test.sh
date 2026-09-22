@@ -21,6 +21,17 @@ OUT="${OUT:-docs/acceptance/M8/ui-test}"   # 文本日志与汇总（入库）
 #   给它一个自己的路径；默认仍是 DerivedData，单窗口的日常用法不受影响。
 DD="${DD:-DerivedData}"
 RES="${RES:-$DD/ui-test}"                  # .xcresult 结果包（体积大，随 DerivedData 一起被 gitignore）
+# 为什么模拟器名字要能加后缀：
+#   错开 derived data 之后还剩最后一处共用——**设备本身**。两个窗口各跑一轮矩阵时，
+#   两轮会 boot / uninstall / 测同一批模拟器，谁的 uninstall 落在对方正在跑的那台上，
+#   对方那条用例当场就废了。给每个窗口一套自己的模拟器（名字 = 机型名 + 后缀，
+#   例如「iPhone 15 · m22」，用 Tools 里的 simctl create 照着现有同名设备建），
+#   两轮就互不相干。
+#   只做后缀、不让 DEVICES 被整份替换：那份 13 机型的列表本身就是兼容性承诺，
+#   必须留在脚本里当唯一事实来源，否则两个窗口可能在测不同的机型集，矩阵就没有意义了。
+#   后缀只用于查设备；日志、summary.txt、.xcresult 一律仍按**不带后缀**的机型名命名，
+#   两个窗口产出的报告因此格式一致，可以直接比对。
+SUFFIX="${SUFFIX:-}"
 BUNDLE_ID=com.mdd.kanpan
 WORKSPACE=Kanpan.xcworkspace
 SCHEME=Kanpan
@@ -54,12 +65,13 @@ fail=0
 : > "$OUT/summary.txt"
 for name in "${DEVICES[@]}"; do
   slug="$(echo "$name" | tr ' ()' '---' | tr -s '-' | sed 's/-$//')"
+  device="$name$SUFFIX"                    # 查设备用带后缀的名字；slug（文件名）永远不带
   udid="$(xcrun simctl list devices available -j \
-    | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next((x['udid'] for v in d.values() for x in v if x['name']=='$name'),''))")"
+    | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next((x['udid'] for v in d.values() for x in v if x['name']=='$device'),''))")"
   if [ -z "$udid" ]; then
-    echo "✗ $name：模拟器不存在"; echo "$name	MISSING	0	0" >> "$OUT/summary.txt"; fail=1; continue
+    echo "✗ $device：模拟器不存在"; echo "$name	MISSING	0	0" >> "$OUT/summary.txt"; fail=1; continue
   fi
-  echo "→ $name ($udid)"
+  echo "→ $device ($udid)"
   xcrun simctl bootstatus "$udid" -b > /dev/null 2>&1
   # 开跑之前把会自己醒过来的系统 app 关掉。2026-09-18 矩阵里 iPad Pro 11" 那条红就是
   # 照片（com.apple.mobileslideshow）在点「…」的那一秒抢到前台：XCUITest 的
