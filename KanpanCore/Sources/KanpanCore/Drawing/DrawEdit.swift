@@ -64,19 +64,67 @@ public func movedDrawing(
   return d
 }
 
-/// Weak magnet compares screen distances, including on inverted/log axes.
+/// 吸住之后要**离开**多远才松开（屏幕 pt）。吸上去那一步用的是 `radius`（10pt）。
+///
+/// 两个半径不一样大，才有「粘住」这回事：进 10pt 吸上，出 16pt 才放。
+/// 一样大就是门槛线上的抖动——手指在边界上晃一个像素，吸／不吸每帧翻一次面。
+public let drawSnapReleasePt: Double = 16
+
+/// 换吸另一个 OHLC 的让步（屏幕 pt）：新的那个要比现在吸着的近过这么多才值得跳。
+///
+/// 没有这一让，两个点几乎等距的时候又会逐帧互抢，只是从「吸／不吸」的抖动换成
+/// 「吸这个／吸那个」的抖动。
+private let drawSnapHopPt: Double = 1
+
+/// 弱磁吸：比的是**屏幕距离**，所以反转轴、对数轴下都成立。
+///
+/// `current` 是**上一帧吸到的那个点**，手势层每帧把上一次的结果喂回来，这一层才有迟滞
+/// （真机逐帧录像里的那个抖动：斐波那契拖第二点时，锚点一帧吸在 OHLC 上、下一帧弹回手指
+/// 原位，来回约 10pt，七条水平线和它们的字跟着一起抖）。
+/// 从前这支函数是无状态的：每一帧独立判「离最近的 OHLC 不到 10pt 就吸，否则原样」，
+/// 而手指横扫过一根根 K 线时这个距离正好绕着 10pt 上下摆，于是每帧翻一次面。
+///
+/// 现在分三步：
+///
+/// ① 先按老规矩算出这一帧的候选（手指底下那根的 OHLC，横纵都在 `radius` 之内）；
+/// ② 已经吸住一个点、而且手指还没走出 `release`：只在候选明显更近（近过
+///    `drawSnapHopPt`）时跳过去，否则**原封不动**把上一帧那个点还回去——
+///    时间、价格、根号都不动，所以线一帧都不会抖；
+/// ③ 没吸住过，或者手指已经走远：照老规矩，有候选吸候选，没有就原样落点。
+///
+/// 手感就是 TradingView 那种弱磁吸：贴上去就跟着那个点走，要么换到更近的一个点上，
+/// 要么手指明确甩开它，中间没有第三种状态。
 public func snapDrawPoint(t: Double, p: Double, series: BarSeries, magnet: Bool,
-                          xOf: (Double) -> Double, yOf: (Double) -> Double, radius: Double = 10) -> DrawSnap {
-  guard magnet, series.count > 0 else { return DrawSnap(point: DrawPoint(t: t, p: p), index: -1) }
+                          xOf: (Double) -> Double, yOf: (Double) -> Double, radius: Double = 10,
+                          current: DrawSnap? = nil,
+                          release: Double = drawSnapReleasePt) -> DrawSnap {
+  let raw = DrawSnap(point: DrawPoint(t: t, p: p), index: -1)
+  guard magnet, series.count > 0 else { return raw }
+  let fx = xOf(t), fy = yOf(p)
+  /// 某个吸附点此刻离手指多远（屏幕距离，用**当前这一帧**的换算）。
+  func reach(_ snap: DrawSnap) -> Double {
+    hypot(xOf(snap.point.t) - fx, yOf(snap.point.p) - fy)
+  }
+
+  var candidate: DrawSnap?
   let i = series.index(atTime: t)
   let time = Double(series.time(at: i))
-  guard abs(xOf(time) - xOf(t)) <= radius else { return DrawSnap(point: DrawPoint(t: t, p: p), index: -1) }
-  let prices = [series.open[i], series.high[i], series.low[i], series.close[i]]
-  guard let near = prices.min(by: { abs(yOf($0) - yOf(p)) < abs(yOf($1) - yOf(p)) }),
-        abs(yOf(near) - yOf(p)) <= radius else {
-    return DrawSnap(point: DrawPoint(t: t, p: p), index: -1)
+  if abs(xOf(time) - fx) <= radius {
+    let prices = [series.open[i], series.high[i], series.low[i], series.close[i]]
+    if let near = prices.min(by: { abs(yOf($0) - fy) < abs(yOf($1) - fy) }),
+       abs(yOf(near) - fy) <= radius {
+      candidate = DrawSnap(point: DrawPoint(t: time, p: near), index: i)
+    }
   }
-  return DrawSnap(point: DrawPoint(t: time, p: near), index: i)
+
+  if let current, current.index >= 0 {
+    let held = reach(current)
+    if held <= release {
+      if let candidate, reach(candidate) < held - drawSnapHopPt { return candidate }
+      return current
+    }
+  }
+  return candidate ?? raw
 }
 
 // MARK: - 撤销重做

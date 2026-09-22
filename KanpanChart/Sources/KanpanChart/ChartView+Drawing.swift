@@ -53,6 +53,14 @@ final class DrawingSession {
   /// 画到手指；抬手落地用的**也是这一份**，所以拖动时看到的线和松手后落下的线一模一样。
   /// 位移不够仍旧退回「轻点落第一点、再点第二下」的老路，这时它不参与预览。
   var origin: DrawSnap?
+  /// **上一帧**吸到的那个点。只在这一程按下—抬手之间有效，手指一离开就清掉。
+  ///
+  /// 弱磁吸是有迟滞的（`snapDrawPoint` 的 `current`）：吸住之后要手指真的甩开才松。
+  /// 迟滞要有个地方记「现在吸着谁」，那就是这儿——会话里存一份，`drawPoint` 每帧
+  /// 取出来喂回去、再把新结果存回来。不存的话每帧各判各的，手指横扫过 K 线时
+  /// 锚点会在「吸住」和「手指原位」之间逐帧翻面。
+  /// 按下那一刻必须是空的：新的一笔不该继承上一笔吸在哪儿。
+  var lastSnap: DrawSnap?
   var preview: Drawing?
   var loupe: UIImage?
   var drag: Drag?
@@ -139,6 +147,7 @@ extension ChartView {
     session.preview = nil
     session.aim = nil
     session.origin = nil
+    session.lastSnap = nil
     session.loupe = nil
     // 钉住坐标的那只手是跟着视图一起离开的，抬手那一刻不会再来了，得在这儿解。
     cancelAxisFreeze()
@@ -560,9 +569,15 @@ extension ChartView {
   fileprivate func drawPoint(at q: CGPoint, axes: DrawAxes) -> DrawSnap {
     guard let s = state else { return DrawSnap(point: DrawPoint(t: 0, p: 0), index: -1) }
     let px = max(0, min(axes.layout.plotW, Double(q.x)))
-    return snapDrawPoint(
+    // 上一帧吸到哪儿要喂回去：弱磁吸有迟滞，吸住之后手指得真的甩开才松，
+    // 不然横扫过一根根 K 线时锚点会在「吸住」与「手指原位」之间逐帧翻面（肉眼可见的抖）。
+    let snap = snapDrawPoint(
       t: axes.t(atX: px), p: axes.p(atY: max(axes.pane.y, min(axes.pane.y + axes.pane.h, Double(q.y)))),
-      series: s.series, magnet: drawing.magnet, xOf: axes.x, yOf: axes.y)
+      series: s.series, magnet: drawing.magnet, xOf: axes.x, yOf: axes.y,
+      current: drawing.lastSnap)
+    // 没吸上就把记忆清掉：这一帧本来就是自由落点，下一帧该从头判一次「吸不吸得上」。
+    drawing.lastSnap = snap.index >= 0 ? snap : nil
+    return snap
   }
 
   /// 一条线这一帧的几何，外加它那些字**排好版之后**真正盖住的矩形。
@@ -663,6 +678,7 @@ extension ChartView {
       // 的死图，还会跟着后面的缩放一起被画出来（A.5 用例 18「二指介入 → 释放无残留」）。
       d.loupe = nil
       d.preview = nil; d.drag = nil; d.claimed = nil; d.aim = nil; d.origin = nil
+      d.lastSnap = nil
       d.navigating = true
       // 这一程转交给捏合了，捏合就是冲着视野来的——钉子在这儿作废，不追平。
       cancelAxisFreeze()
@@ -693,6 +709,8 @@ extension ChartView {
     }
     d.startPoint = q
     d.moved = 0
+    // 这一笔从「谁都没吸住」开始：上一程吸在哪儿跟这一下没关系。
+    d.lastSnap = nil
 
     // 半截的趋势线：这根手指是用来瞄第二点的，预览线跟着走，抬手落点。
     if d.pending != nil {
@@ -767,6 +785,10 @@ extension ChartView {
       return
     }
     d.claimed = nil
+    // 吸附的记忆跟着这根手指一起结束，但要排在正文**之后**收：底下落点那几条分支
+    // 还要再吸一次（`placeDrawPoint(at:)`），提前清掉，落下去的点就可能和手指
+    // 一路看着的那条预览不是同一个（吸住的松了、跳回手指原位）。
+    defer { d.lastSnap = nil }
     // 解钉排在正文之后：下面那几条分支都要把抬手位置换算成时间 / 价格，
     // 得用**冻结期间那套**坐标——先追平再落点，落下去的就是偏的（任务 2）。
     defer { endAxisFreeze() }

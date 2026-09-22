@@ -375,6 +375,81 @@ struct DrawingV2Tests {
     var locked = d; locked.locked = true
     #expect(movedDrawing(locked, part: .c, dt: 10, priceShift: { $0 + 10 }) == locked)
   }
+  /// 吸住之后不许再弹回手指原位：横扫锚点的那一路只能换根，不能每帧翻面。
+  ///
+  /// 真机逐帧录像里这个 bug 长这样：拖斐波那契的第二点横扫过去，锚点一帧吸在 OHLC 上、
+  /// 下一帧弹回手指，价位在 77403 / 76938 之间来回跳（纵向约 10pt），七条水平线连同它们的
+  /// 字每帧重排一次，看着就是在抖。根子在无状态的吸附——每帧独立判「离最近的 OHLC 不到
+  /// 10pt 就吸」，而手指横扫时这个距离正好绕着门槛摆。
+  ///
+  /// 这里造一条「一根近 9pt、一根远 12pt」的序列把那个摆动坐实，再证明把上一帧喂回去
+  /// （`current`）之后它不见了。
+  @Test("吸住就别松：横扫锚点不在吸附点与手指之间逐帧翻面")
+  func weakMagnetSticksWhileSweeping() {
+    let bars = 22
+    let step = Interval.h1.stepMs
+    // 近的那一根：`close` 落在扫描线上方 9pt，进得了 10pt 的吸附圈；
+    // 远的那一根：`close` 在 12pt 外，吸不上。另外三个价位一律远在圈外，免得抢戏。
+    let close = (0..<bars).map { $0 % 2 == 0 ? 91.0 : 112.0 }
+    let s = BarSeries(
+      symbol: "X", interval: .h1, t0: 0,
+      open: Array(repeating: 150, count: bars), high: Array(repeating: 160, count: bars),
+      low: Array(repeating: 50, count: bars), close: close,
+      volume: Array(repeating: 1, count: bars))
+    // 一根 8pt 宽；价格直接当 y 用（1 价 = 1pt）。手指沿 y = 100 这条线一次挪 1pt。
+    let barW = 8.0
+    let x: (Double) -> Double = { $0 / Double(step) * barW }
+    let y: (Double) -> Double = { $0 }
+    let fingerP = 100.0
+    func fingerT(_ px: Double) -> Double { px / barW * Double(step) }
+    let sweep = stride(from: 0.0, through: barW * Double(bars - 2), by: 1.0)
+
+    // (a) 老路子（不喂上一帧）：每扫过一根，吸 / 不吸就翻一次面——这就是屏幕上那个抖。
+    var flips = 0
+    var was: Bool?
+    for px in sweep {
+      let on = snapDrawPoint(t: fingerT(px), p: fingerP, series: s, magnet: true,
+                             xOf: x, yOf: y).index >= 0
+      if let was, was != on { flips += 1 }
+      was = on
+    }
+    #expect(flips > 5, "无状态吸附本来就该来回翻，只翻了 \(flips) 次说明这条序列没造对")
+
+    // (b) 把上一帧喂回去：吸上之后一路吸着，再没有一帧回到手指原位。
+    var current: DrawSnap?
+    var attached = false
+    var lastT = -Double.infinity
+    var indexes: [Int] = []
+    for px in sweep {
+      let snap = snapDrawPoint(t: fingerT(px), p: fingerP, series: s, magnet: true,
+                               xOf: x, yOf: y, current: current)
+      current = snap
+      if snap.index >= 0 { attached = true }
+      guard attached else { continue }
+      #expect(snap.index >= 0, "x=\(px) 处松了手")
+      #expect(snap.point.p != fingerP, "x=\(px) 处弹回了手指原位")
+      #expect(snap.point.t >= lastT, "吸附点只能顺着手指往前挪")
+      lastT = snap.point.t
+      indexes.append(snap.index)
+    }
+
+    // (d) 更近的 OHLC 还是抢得过去：整程从第 0 根一路换到最后那几根。
+    #expect(indexes.first == 0)
+    #expect((indexes.last ?? -1) >= bars - 4, "没跟着手指换根，停在第 \(indexes.last ?? -1) 根")
+    let holding = DrawSnap(point: DrawPoint(t: 0, p: 91), index: 0)
+    let hop = snapDrawPoint(t: fingerT(16), p: 91, series: s, magnet: true, xOf: x, yOf: y,
+                            current: holding)
+    #expect(hop.index == 2 && hop.point.t == Double(step) * 2, "旁边有更近的点也不换根")
+
+    // (c) 手指明确甩开：出了 16pt 的松手圈就还给自由落点，圈里则一直吸着。
+    let inside = snapDrawPoint(t: 0, p: 105, series: s, magnet: true, xOf: x, yOf: y,
+                               current: holding)
+    #expect(inside == holding, "才离 14pt，还在圈里，该继续吸着")
+    let outside = snapDrawPoint(t: 0, p: 111, series: s, magnet: true, xOf: x, yOf: y,
+                                current: holding)
+    #expect(outside.index == -1 && outside.point == DrawPoint(t: 0, p: 111), "离 20pt 了还不松手")
+  }
+
   @Test func weakMagnetUsesPixels() {
     let s = synthSeries(count: 30, seed: 3)
     let i = 12, t = Double(s.time(at: 12)), p = s.high[12]
