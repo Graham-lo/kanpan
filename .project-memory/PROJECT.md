@@ -6,7 +6,7 @@
 
 - 产品 Hkline（桌面显示名即 Hkline，2026-09-18 定；旧名已停用，活文档里不要再写），工程名 Kanpan。仓库 `/Users/mdd/zhk/kanpan`，远程 `https://github.com/Graham-lo/kanpan`，分支 `main`，2026-09-18 HEAD `3b9fb44`。
 - Swift 6、最低系统 iOS 26.0（2026-09-21 从 18.0 抬上来，app 与各 SPM 包同步；iOS 27 也在支持范围内，26 以下不再维护）、真机验证 iOS 26；SwiftUI + UIKit/CoreGraphics 自绘图表；零第三方依赖；不做交易。
-- 代码由 Claude 窗口实现，视觉 / 交互原型定稿后可派 Opus 5（high）子代理写、主窗口验收、装真机、push。2026-09-22 起唯一例外：「发给朋友·画线分享」由 Codex 实现，见第 7 节；`HISTORY-2026-09-15-codex.md` 与根目录 `KANPAN-HANDOFF-2026-09-14.md` 是历史。
+- **2026-09-22 起所有未完成事项由 Codex 实现**（`gpt-6-astra` / `xhigh`），清单与禁做项在 `docs/待办交接-Codex-2026-09-22.md`；Claude 窗口只设计与验收、不写代码。此前「发给朋友·画线分享」已由 Codex 交付，见第 7 节；`HISTORY-2026-09-15-codex.md` 与根目录 `KANPAN-HANDOFF-2026-09-14.md` 是历史。
 - 常常有第二个窗口在同一工作树改交互逻辑。只动自己范围内的文件，不提交别人的改动。
 
 ## 2. 当前界面（2026-09-18）
