@@ -6,7 +6,7 @@
 #   COMPARE=1 Tools/a3.12-cpu.sh # 同一夹具加三条对比线；DD 可指定独立构建目录
 #
 # 被测的是 Evidence/KanpanEvidenceHost——一个只有一个 ChartView、别的什么都不做的
-# 最小宿主。仓库里现有的 Kanpan app target 还是 M0 占位壳，里面没有图表，测不了这条。
+# 最小宿主，隔开行情订阅与业务计时器，只量图表静止时的绘制开销。
 #
 # 为什么是 `--all-processes` 而不是 `--attach`：
 #   xctrace 对模拟器进程 attach 会永久卡住（`--device <udid> --attach <pid>` 打完

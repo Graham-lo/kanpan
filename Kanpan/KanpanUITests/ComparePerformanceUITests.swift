@@ -7,7 +7,7 @@ import XCTest
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
-    app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = "compare-cold-" + UUID().uuidString
+    app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
     app.launchEnvironment["KANPAN_TEST_DEEPLINK"] = "hkline://symbol/BTCUSDT?interval=1m"
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launchEnvironment["KANPAN_TEST_COMPARE_SYMBOLS"] = "binance/usd_m/ETHUSDT,binance/usd_m/SOLUSDT,binance/usd_m/DOGEUSDT"
