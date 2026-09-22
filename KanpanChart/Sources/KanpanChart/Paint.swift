@@ -92,6 +92,11 @@ extension CGContext {
 enum ChartFont {
   static let axis = UIFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
   static let legend = UIFont.systemFont(ofSize: 10, weight: .medium)
+  /// 副图空着时那一行提示（「暂无数据」「当前行情线路不提供…」）。
+  /// 必须是常驻的同一只实例：`attrs` / `measure` 两张缓存按字体的对象身份做键，
+  /// 每帧现建一只 `UIFont` 会让键跟着变——属性表无上限地长，尺寸表还可能撞上
+  /// 已释放字体留下的旧地址。
+  static let notice = UIFont.systemFont(ofSize: 11)
   /// 比价格胶囊小一号，给挂在它底下的倒计时用：两格叠在右轴上，字号一样会显得头重。
   /// 等宽数字是必须的——倒计时每秒都在变，比例数字会让整格左右抖。
   static let tiny = UIFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)

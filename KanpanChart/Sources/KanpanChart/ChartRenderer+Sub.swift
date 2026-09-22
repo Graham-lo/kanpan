@@ -47,7 +47,7 @@ extension ChartRenderer {
       let text = !state.oiSupported ? "当前行情线路不提供" + id.name
         : state.external[id] == nil ? id.name + "暂无数据" : "该时段暂无" + id.name
       text.drawLeft(at: CGPoint(x: 8, y: box.y + box.h / 2),
-                    font: UIFont.systemFont(ofSize: 11), color: state.colors.dim)
+                    font: ChartFont.notice, color: state.colors.dim)
       return
     }
     subLines(ctx, box, L, lo, hi, id, scale)
@@ -243,7 +243,7 @@ extension ChartRenderer {
       OINotice.forEmptyPane(routeSupportsOI: state.oiSupported, loaded: state.oi != nil).text
         .drawLeft(
           at: CGPoint(x: 8, y: box.y + box.h / 2),
-          font: UIFont.systemFont(ofSize: 11), color: t.dim)
+          font: ChartFont.notice, color: t.dim)
       return
     }
     let b = state.series

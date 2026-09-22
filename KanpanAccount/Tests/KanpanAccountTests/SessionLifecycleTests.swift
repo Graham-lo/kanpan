@@ -25,7 +25,7 @@ final class StubServer: @unchecked Sendable {
   }
 }
 final class StubProtocol: URLProtocol {
-  nonisolated(unsafe) static let server = StubServer()
+  static let server = StubServer()
   override class func canInit(with request: URLRequest) -> Bool { true }
   override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
   override func startLoading() {

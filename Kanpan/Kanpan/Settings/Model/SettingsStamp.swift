@@ -306,6 +306,10 @@ extension Prefs {
 }
 
 /// 毫秒墙上钟。单测里把它换掉，免得靠 `sleep` 制造时间差。
+///
+/// 读它的只有 `@MainActor` 的 `PrefsStore`，换它的只有 `@MainActor` 的单测，
+/// 所以直接钉在主 actor 上，让编译器替我们查，而不是 `nonisolated(unsafe)` 口头担保。
+@MainActor
 enum SettingsClock {
-  nonisolated(unsafe) static var now: () -> Double = { Date().timeIntervalSince1970 * 1000 }
+  static var now: () -> Double = { Date().timeIntervalSince1970 * 1000 }
 }

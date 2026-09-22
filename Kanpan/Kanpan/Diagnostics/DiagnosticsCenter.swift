@@ -47,12 +47,18 @@ final class DiagnosticsCenter: @unchecked Sendable {
     lock.lock()
     let first = !started
     started = true
+    #if canImport(MetricKit) && os(iOS)
+      // 订阅本身必须同步挂上（见上面第 1 条），这一步几乎不花时间。
+      // 挂 / 摘都放在锁里：`subscriber` 是 lazy var，锁外首次取值会和并发的
+      // start/stop 抢着初始化，而且「started 已经是 false 但订阅还挂着」这种
+      // 半截状态也只有和开关同一把锁才排得掉。回调只进 `store.ingest`（它有自己
+      // 的锁），不回头拿这把，所以不会自锁。
+      if first { MXMetricManager.shared.add(subscriber) }
+    #endif
     lock.unlock()
     guard first else { return }
 
     #if canImport(MetricKit) && os(iOS)
-      // 订阅本身必须同步挂上（见上面第 1 条），这一步几乎不花时间。
-      MXMetricManager.shared.add(subscriber)
       // `pastPayloads` / `pastDiagnosticPayloads` 是**已经交付过**的历史副本，
       // 系统留最近 24 份。首次装上订阅（或用户升级到带诊断的版本）时补收一次，
       // 否则「装了新版之前的崩溃」全看不到。重复的那些会被 id 去重吗？不会——
@@ -79,10 +85,9 @@ final class DiagnosticsCenter: @unchecked Sendable {
   /// 取消订阅。app 里用不到（进程活多久订阅多久），留给单测和预览。
   func stop() {
     lock.lock()
-    let was = started
+    defer { lock.unlock() }
+    guard started else { return }
     started = false
-    lock.unlock()
-    guard was else { return }
     #if canImport(MetricKit) && os(iOS)
       MXMetricManager.shared.remove(subscriber)
     #endif
