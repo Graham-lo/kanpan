@@ -20,7 +20,7 @@ BUNDLE="com.mdd.kanpan"
 OUT="$ROOT/docs/acceptance/M9"
 ARG="${1:-booted}"
 
-# ---- 找到 Application Support/Kanpan/Diagnostics ---------------------------
+# ---- 找到 Application Support/kanpan/Diagnostics ---------------------------
 if [ -d "$ARG" ] && [ "$ARG" != "booted" ]; then
   # 下载下来的 .xcappdata 是个目录，真容器在 AppData/ 下面。
   CONTAINER="$ARG"
@@ -34,7 +34,11 @@ else
   fi
 fi
 
-DIAG="$CONTAINER/Library/Application Support/Kanpan/Diagnostics"
+DIAG="$CONTAINER/Library/Application Support/kanpan/Diagnostics"
+# 老版本存在大写的 Kanpan/ 下（真机分大小写，下载下来的容器里可能两棵都有）。
+# 新目录没有、老目录有，就读老的。
+LEGACY="$CONTAINER/Library/Application Support/Kanpan/Diagnostics"
+[ ! -d "$DIAG" ] && [ -d "$LEGACY" ] && DIAG="$LEGACY"
 echo "→ 容器：$CONTAINER"
 if [ ! -d "$DIAG" ]; then
   echo

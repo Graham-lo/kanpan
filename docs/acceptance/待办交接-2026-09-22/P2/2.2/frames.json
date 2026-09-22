@@ -1,0 +1,50 @@
+{
+  "allPassed": false,
+  "generatedAt": "2026-09-22T23:36:27Z",
+  "reports": [
+    {
+      "device": "arm64 · iOS 26.5 · 60Hz",
+      "droppedFrames": 11,
+      "durationMs": 4799.9999999883585,
+      "expectedIntervalMs": 16.666666662786156,
+      "frameCount": 273,
+      "hitchMs": 272.8998332459014,
+      "hitchRatio": 0.056854131926367346,
+      "interval": {
+        "count": 272,
+        "max": 57.533000013791025,
+        "mean": 17.647058823486613,
+        "p50": 16.666666662786156,
+        "p90": 16.666666691889986,
+        "p99": 49.98618457670091
+      },
+      "label": "图表手势",
+      "latency": {
+        "count": 273,
+        "max": 57.51845834311098,
+        "mean": 15.159523351123939,
+        "p50": 17.135166650405154,
+        "p90": 17.209566646488383,
+        "p99": 27.690493325935368
+      },
+      "measuredHz": 60.00000001396984,
+      "schema": 1,
+      "verdict": {
+        "allPassed": false,
+        "frameMedianUnder3ms": true,
+        "frameP99Under3ms": false,
+        "hitchRatioUnder1Percent": false
+      },
+      "work": {
+        "count": 273,
+        "max": 33.25179166859016,
+        "mean": 3.7193189862511726,
+        "p50": 0.20612499793060124,
+        "p90": 9.643425018293785,
+        "p99": 22.569931664038094
+      },
+      "worstHitchMs": 40.86633335100487
+    }
+  ],
+  "schema": 1
+}

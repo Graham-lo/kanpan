@@ -587,7 +587,18 @@ struct ChartHost: UIViewRepresentable {
             let series = box.chart.state?.series, series.count > 0 else { return }
       onBarSpacing(view.barSpacing(step: series.step, plotW: layout.plotW))
     }
-    box.chart.onInteractionEnded = onInteractionEnded
+    #if DEBUG
+      // P2.2：DEBUG 包里每一次画布手势都让帧探针采一段，Release 一行都不进。
+      // 抬手后再多采一小会儿，甩出去的惯性滑行也算在这一段里。
+      box.chart.onInteractionBegan = { ChartGestureFrames.began() }
+      let onInteractionEnded = self.onInteractionEnded
+      box.chart.onInteractionEnded = {
+        ChartGestureFrames.ended()
+        onInteractionEnded()
+      }
+    #else
+      box.chart.onInteractionEnded = onInteractionEnded
+    #endif
     box.onSubResize = onSubResize
     box.onSubReorder = onSubReorder
     box.chart.onCrosshairChanged = onCrosshair
@@ -629,3 +640,32 @@ private final class ChartPageScrollView: UIScrollView {
       manualY: state.price.isManual, selecting: chart.hitsCrosshairCenter(point))
   }
 }
+
+#if DEBUG
+  /// 画布手势 → `FrameProbe` 的那一截打点（P2.2）。
+  ///
+  /// 落手开始采，抬手后再等 1.2 秒才停——甩出去的滑行还在画，停早了量不到最重的那几帧。
+  /// 这 1.2 秒里手指又落下来就接着采，同一串连续操作记成一份报告。
+  /// 报告落在 `Application Support/kanpan/Diagnostics/frames/`，`Tools/pull-diagnostics.sh` 捞。
+  @MainActor
+  enum ChartGestureFrames {
+    static let label = "图表手势"
+    private static var pendingStop: Task<Void, Never>?
+
+    static func began() {
+      pendingStop?.cancel()
+      pendingStop = nil
+      FrameProbe.shared.start(label: label)
+    }
+
+    static func ended() {
+      pendingStop?.cancel()
+      pendingStop = Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(1200))
+        guard !Task.isCancelled else { return }
+        pendingStop = nil
+        FrameProbe.shared.stop()
+      }
+    }
+  }
+#endif

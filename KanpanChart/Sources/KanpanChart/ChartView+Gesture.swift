@@ -109,7 +109,9 @@ extension ChartView {
     }
     // 手指一落下动画就停：正在滑行的图被按住应该立刻钉住，不能继续飘。
     animation = nil
+    let firstFinger = gesture.touches.isEmpty
     for t in touches where !gesture.touches.contains(t) { gesture.touches.append(t) }
+    if firstFinger { onInteractionBegan?() }
     let now = Self.ms(event)
 
     if gesture.touches.count >= 2 {

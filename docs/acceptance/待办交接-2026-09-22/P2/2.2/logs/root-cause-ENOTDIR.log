@@ -1,0 +1,8 @@
+Filtering the log data using "composedMe
+2026-09-23 06:44:32.255352+0800 0x59e0b7anpan: (Foundation) P22DBG began running=0
+2026-09-23 06:44:33.992252+0800 0x59e0b7anpan: (Foundation) P22DBG stop report=ok dir=/Users/mdd/Library/Developer/CoreSimulator/Devices/AAC522D2-98D8-452F-802A-491C8556CA54/data/Containers/Data/Application/23E7716B-25B9-4ACD-B7B4-E01F928AD60F/Library/Application Support/Kanpan/Diagnostics/frames
+2026-09-23 06:44:33.999747+0800 0x59e0b7anpan: (Foundation) P22DBG encode ok
+2026-09-23 06:44:34.007153+0800 0x59e0b7anpan: (Foundation) P22DBG mkdir err Error Domain=NSCocoaErrorDomain Code=512 "未能将文件“Application Support”保存到文件夹“Library”中。" UserInfo={NSFilePath=/Users/mdd/Library/Developer/CoreSimulator/Devices/AAC522D2-98D8-452F-802A-491C8556CA54/data/Containers/Data/Application/23E7716B-25B9-4ACD-B7B4-E01F928AD60F/Library/Application Support, NSURL=file:///Users/mdd/Library/Developer/CoreSimulator/Devices/AAC522D2-98D8-452F-802A-491C8556CA54/data/Containers/Data/Application/23E7716B-25B9-4ACD-B7B4-E01F928AD60F/Library/Application%20Support, NSUnderlyingError=0x1261ab630 {Error Domain=NSPOSIXErrorDomain Code=20 "Not a directory"}}
+2026-09-23 06:44:34.007314+0800 0x59e0b7anpan: (Foundation) P22DBG count=0
+2026-09-23 06:44:35.004667+0800 0x59e0b7anpan: (Foundation) P22DBG began running=0
+2026-09-23 06:44:36.779491+0800 0x59e0b7anpan: (Foundation) P22DBG stop report=ok dir=/Users/mdd/Library/Developer/CoreSimulator/Devices/AAC522D2-98D8-452F-802A-491C8556CA54/data/Containers/Data/Application/23E7716B-25B9-4ACD-B7B4-E01F928AD60F/Library/Application Support/Kanpan/Diagnostics/frames

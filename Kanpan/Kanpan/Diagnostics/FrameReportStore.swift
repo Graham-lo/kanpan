@@ -3,7 +3,7 @@ import Foundation
 // ============================================================ 帧报告落盘
 //
 // `FrameProbe` 采完一段就往这儿扔一份 `FrameReport`。落盘位置和 MetricKit 的
-// 诊断放一块（`Application Support/Kanpan/Diagnostics/frames/`），取法也一样：
+// 诊断放一块（`Application Support/kanpan/Diagnostics/frames/`），取法也一样：
 //
 //   模拟器：xcrun simctl get_app_container booted com.mdd.kanpan data
 //   真机：  Xcode ▸ Window ▸ Devices and Simulators ▸ Download Container

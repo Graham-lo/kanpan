@@ -8,7 +8,7 @@ import Foundation
 //
 // 所以这一层的唯一职责是「收到就立刻写进沙盒，一个字节都别丢」，判定逻辑都在别处。
 //
-// 存哪儿：`Library/Application Support/Kanpan/Diagnostics/`。
+// 存哪儿：`Library/Application Support/kanpan/Diagnostics/`（小写 kanpan，和别的存档同一棵树，见 `defaultDirectory`）。
 //   - 不放 `Caches/`：系统随时会清，崩溃报告被清掉 = P9.7 没法验。
 //   - 不放 `Documents/`：那要 Info.plist 开 `UIFileSharingEnabled` 才有意义，
 //     而 Info.plist 这轮不许动。导出走 `exportBundle()` 生成一份合并 JSON，
@@ -82,10 +82,25 @@ final class DiagnosticsStore: @unchecked Sendable {
     self.clock = clock
   }
 
+  /// 诊断目录：`Application Support/kanpan/Diagnostics`。
+  ///
+  /// 以前是大写的 `Kanpan/Diagnostics`，而账号、行情缓存、提醒存档都住在小写的 `kanpan/` 下。
+  /// 真机的 APFS 分大小写，两棵树并排相安无事；模拟器却不行——宿主盘不分大小写，
+  /// 小写 `kanpan` 一旦先建出来，模拟器里 `mkdir Kanpan` 被宿主判「已存在」、按分大小写
+  /// 去找又找不到，报 ENOTDIR，于是帧报告和 MetricKit payload **一份都存不下来**（P2.2 实测）。
+  /// 所以统一到小写这棵树。老目录里若还有东西（真机上攒下的 payload），第一次用时整个搬过来。
   static func defaultDirectory() -> URL {
     let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
       .first ?? URL(fileURLWithPath: NSTemporaryDirectory())
-    return base.appendingPathComponent("Kanpan/Diagnostics", isDirectory: true)
+    let current = base.appendingPathComponent("kanpan/Diagnostics", isDirectory: true)
+    let legacy = base.appendingPathComponent("Kanpan/Diagnostics", isDirectory: true)
+    let fm = FileManager.default
+    // 在不分大小写的盘上这两条路径是同一个目录，`fileExists` 两边都真，什么也不搬。
+    if fm.fileExists(atPath: legacy.path), !fm.fileExists(atPath: current.path) {
+      try? fm.createDirectory(at: current.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try? fm.moveItem(at: legacy, to: current)
+    }
+    return current
   }
 
   var directoryURL: URL { directory }

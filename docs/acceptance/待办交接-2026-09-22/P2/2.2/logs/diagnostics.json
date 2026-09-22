@@ -1,0 +1,11 @@
+{
+  "crashCount": 0,
+  "crashFree": null,
+  "generatedAt": "2026-09-22T23:36:27Z",
+  "hangCount": 0,
+  "latestLogicalWritesKB": null,
+  "recordCount": 0,
+  "records": [],
+  "schema": 1,
+  "worstLaunchP50Ms": null
+}

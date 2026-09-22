@@ -240,6 +240,9 @@ public final class ChartView: UIView {
   /// 存在的理由只有一个：用户的原话是「用户手离开的瞬间就应该做同步做持久保存啊」。
   /// 落盘与同步的时机钉在这儿，不是钉在定时器上，也不是钉在切后台上。
   public var onInteractionEnded: (() -> Void)?
+  /// **这次交互开始了：第一根手指落到画布上。** 和 `onInteractionEnded` 成对：
+  /// 捏合时第二根手指落下不再响。宿主在 DEBUG 包里拿它给帧探针打点（P2.2）。
+  public var onInteractionBegan: (() -> Void)?
 
   // ---------------------------------------------------------------- 生命周期
 
