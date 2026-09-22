@@ -98,6 +98,30 @@ private func drag(
   if lift { v.drawingTouchesEnded([t], with: FakeEvent(ms: now + 16), cancelled: false) }
 }
 
+/// 一次**还没抬手**的拖：按下、分四步挪到 `b`，手指停在那儿。
+@MainActor
+private func press(_ v: ChartView, from a: CGPoint, to b: CGPoint, ms: Double = 10_000) -> FakeTouch {
+  let t = FakeTouch(a)
+  var now = ms
+  v.drawingTouchesBegan([t], with: FakeEvent(ms: now))
+  for k in 1...4 {
+    now += 16
+    let f = CGFloat(k) / 4
+    t.point = CGPoint(x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f)
+    v.drawingTouchesMoved([t], with: FakeEvent(ms: now))
+  }
+  return t
+}
+
+/// 覆盖层此刻要画的那条预览。和 `DrawingOverlayView.draw` 问的是同一支纯函数，
+/// 所以这儿断言「屏幕上是几个点」不是在测一份平行的算式。
+@MainActor
+private func previewNow(_ v: ChartView) -> DrawingPreview? {
+  let d = v.drawing
+  return DrawingPreview.plan(tool: d.tool, anchors: d.anchors, origin: d.origin?.point,
+                             moved: d.moved, aim: d.aim)
+}
+
 @MainActor
 private func at(_ axes: DrawAxes, _ p: DrawPoint) -> CGPoint {
   CGPoint(x: axes.x(p.t), y: axes.y(p.p))
@@ -634,5 +658,122 @@ extension ChartDrawingTests {
 
     #expect(profile > trend * 2, "预览里没看见柱子（分布 \(profile) 墨点，趋势线 \(trend)）")
     #expect(s.series.count > 0)
+  }
+
+  // ---------------------------------------------------------------- 拖动中的实时预览
+
+  /// 用户反馈：选了「斐波那契回撤」这类两点工具，按下一个点往下拖，一路上图上什么
+  /// 都没有，要抬手那一刻整条线才出现——用户以为没画出来，于是重按、误操作。
+  ///
+  /// 现在按下那一点就是临时起点：位移一过门槛，预览每帧从它画到手指。落地用的
+  /// 还是同一份点，所以松手前后那条线不会跳。
+  @Test("按下拖动的一路上就有线：回撤抬手前已成两点，落地与预览是同一份点")
+  func dragPreviewIsLiveForTwoPointTools() throws {
+    let (v, axes) = try makeView()
+    v.drawTool = .fibonacci
+    let a = CGPoint(x: 120, y: 420), b = CGPoint(x: 300, y: 200)
+
+    let t = FakeTouch(a)
+    v.drawingTouchesBegan([t], with: FakeEvent(ms: 10_000))
+    // 刚按下还没动：只有瞄准的那一个点（手柄 + 读数），不画线。
+    #expect(previewNow(v)?.points.count == 1)
+
+    t.point = b
+    v.drawingTouchesMoved([t], with: FakeEvent(ms: 10_016))
+    let plan = try #require(previewNow(v), "拖动中一条预览都没有")
+    #expect(plan.points.count == 2, "抬手前还是看不到线")
+    #expect(plan.whole, "两点够了却没走整条线那一支，回撤的档位不会实时铺出来")
+    #expect(abs(axes.x(plan.points[0].t) - Double(a.x)) < 1
+            && abs(axes.y(plan.points[0].p) - Double(a.y)) < 1, "预览的起点不在按下处")
+    #expect(abs(axes.x(plan.points[1].t) - Double(b.x)) < 1
+            && abs(axes.y(plan.points[1].p) - Double(b.y)) < 1, "预览的终点没跟上手指")
+
+    let seen = plan.points
+    v.drawingTouchesEnded([t], with: FakeEvent(ms: 10_032), cancelled: false)
+    let d = try #require(v.drawings.first, "抬手没落成线")
+    #expect(d.kind == .fibonacci)
+    #expect(d.points == seen, "落下的线和松手前看到的那条不是同一份点")
+    #expect(v.drawing.origin == nil, "临时起点没清干净")
+  }
+
+  @Test("位移不够就还是轻点：抬手前不顶临时起点")
+  func shortMoveKeepsTheTapPath() throws {
+    let (v, _) = try makeView()
+    v.drawTool = .fibonacci
+    let a = CGPoint(x: 120, y: 420)
+    let t = FakeTouch(a)
+    v.drawingTouchesBegan([t], with: FakeEvent(ms: 10_000))
+    t.point = CGPoint(x: a.x + 2, y: a.y + 1)   // 约 2.2pt，门槛是 8pt
+    v.drawingTouchesMoved([t], with: FakeEvent(ms: 10_016))
+    #expect(v.drawing.moved < drawDragSlopPt)
+    #expect(previewNow(v)?.points.count == 1, "还没拖够就先画了一条并不存在的线")
+    v.drawingTouchesEnded([t], with: FakeEvent(ms: 10_032), cancelled: false)
+    #expect(v.drawings.isEmpty, "一下轻点不该直接成线")
+    #expect(v.drawing.pending != nil, "轻点该落下第一个锚，接着点第二下")
+  }
+
+  @Test("三点工具拖第一笔：抬手前是两个点，走手柄加连线那一支")
+  func threePointToolPreviewsItsFirstLeg() throws {
+    let (v, _) = try makeView()
+    v.drawTool = .channel
+    let overlay = try #require(v.drawing.overlay)
+    _ = press(v, from: CGPoint(x: 120, y: 420), to: CGPoint(x: 300, y: 220))
+    let plan = try #require(previewNow(v))
+    #expect(plan.points.count == 2)
+    #expect(!plan.whole, "通道要三个点，两个点不该当成整条线画")
+    #expect(inkPixels { _ in overlay.draw(overlay.bounds) } > 0, "第一段虚线没画出来")
+  }
+
+  @Test("拖到一半取消：锚点、瞄准点和临时起点一个都不留")
+  func cancelledDragLeavesNothing() throws {
+    let (v, _) = try makeView()
+    v.drawTool = .fibonacci
+    let t = press(v, from: CGPoint(x: 120, y: 420), to: CGPoint(x: 300, y: 220))
+    #expect(previewNow(v)?.points.count == 2)
+    v.drawingTouchesEnded([t], with: FakeEvent(ms: 10_100), cancelled: true)
+    #expect(v.drawings.isEmpty)
+    #expect(v.drawing.anchors.isEmpty && v.drawing.aim == nil && v.drawing.origin == nil)
+    #expect(previewNow(v) == nil)
+  }
+
+  @Test("拖到一半第二根手指落下：转捏合，半截预览全清")
+  func secondFingerClearsTheHalfDrawnPreview() throws {
+    let (v, _) = try makeView()
+    v.drawTool = .fibonacci
+    _ = press(v, from: CGPoint(x: 120, y: 420), to: CGPoint(x: 220, y: 300))
+    #expect(previewNow(v)?.points.count == 2)
+    let second = FakeTouch(CGPoint(x: 320, y: 300))
+    v.drawingTouchesBegan([second], with: FakeEvent(ms: 10_120))
+    #expect(v.drawing.origin == nil && v.drawing.aim == nil, "转捏合之后还留着半截预览")
+    #expect(previewNow(v) == nil)
+    #expect(v.drawings.isEmpty, "二指介入不该落下一条线")
+  }
+
+  /// 取证：把「按下拖到一半」的那一帧真的渲染成位图存进仓库，验收看的就是这两张。
+  @Test("取证：拖到一半那一帧图上确实画着线")
+  func midDragEvidence() throws {
+    let dir = Evidence.repoRoot.appendingPathComponent("docs/acceptance/drawing-live-preview",
+                                                       isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let shots: [(Drawing.Kind, String)] = [(.fibonacci, "fib-mid-drag.png"),
+                                           (.trend, "trend-mid-drag.png")]
+    for (tool, name) in shots {
+      let (v, _) = try makeView()
+      v.drawTool = tool
+      let overlay = try #require(v.drawing.overlay)
+      let pressed = inkPixels { _ in overlay.draw(overlay.bounds) }
+      _ = press(v, from: CGPoint(x: 110, y: 470), to: CGPoint(x: 310, y: 210))
+      let dragging = inkPixels { _ in overlay.draw(overlay.bounds) }
+      #expect(dragging > pressed, "\(tool) 拖到一半的墨不比按下那一刻多，等于没画")
+
+      let size = v.bounds.size
+      let img = UIGraphicsImageRenderer(size: size).image { c in
+        v.renderer?.drawPlot(in: c.cgContext, size: size, scale: 2)
+        overlay.draw(overlay.bounds)
+      }
+      let png = try #require(img.pngData())
+      try png.write(to: dir.appendingPathComponent(name))
+      #expect(png.count > 1_000)
+    }
   }
 }

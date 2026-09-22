@@ -45,6 +45,14 @@ final class DrawingSession {
   var navigating = false
   /// 第二点此刻指到哪儿：`pending` 在的时候手指移动，预览线实时跟到这里（§10.8）。
   var aim: DrawPoint?
+  /// 「按下即第一点」那一笔的**临时起点**：手指按下那一刻就吸附好的那个点。
+  ///
+  /// 从前按下只记一个屏幕坐标（`startPoint`），线要等抬手才成型——手指拖出去的一路上
+  /// 图上什么都没有，用户以为没画出来，于是重按一次（用户反馈）。现在按下就把起点
+  /// 吸好存在这儿：位移一过 `drawDragSlopPt`，覆盖层就拿它当第一点，预览线每帧从它
+  /// 画到手指；抬手落地用的**也是这一份**，所以拖动时看到的线和松手后落下的线一模一样。
+  /// 位移不够仍旧退回「轻点落第一点、再点第二下」的老路，这时它不参与预览。
+  var origin: DrawSnap?
   var preview: Drawing?
   var loupe: UIImage?
   var drag: Drag?
@@ -90,6 +98,14 @@ private nonisolated(unsafe) let drawingSessionKey =
 /// 手指一旦停住到 400ms 就被十字线接走，不会跟这 500ms 抢。
 private let drawTapMs: Double = 500
 
+/// 「按下即第一点」判「拖过了」的位移门槛：`Chart.panSlopPt`（4pt）的两倍。
+///
+/// 预览和落地共用这一个数——覆盖层拿它决定什么时候把临时起点顶上来、开始画线，
+/// 抬手拿它决定这一笔是「一整条线」还是「轻点落第一点」。两边各写各的就会出现
+/// 「拖动时看见了线、抬手却只落下一个点」。`DrawingSession.moved` 是这一程位移的
+/// **历史最大值**，所以越过一次之后手指收回原点附近也不会把预览抽走。
+let drawDragSlopPt = Chart.panSlopPt * 2
+
 extension ChartView {
   /// 这张图的画线会话。第一次问的时候建。
   var drawing: DrawingSession {
@@ -122,6 +138,7 @@ extension ChartView {
     session.drag = nil
     session.preview = nil
     session.aim = nil
+    session.origin = nil
     session.loupe = nil
     // 钉住坐标的那只手是跟着视图一起离开的，抬手那一刻不会再来了，得在这儿解。
     cancelAxisFreeze()
@@ -179,6 +196,7 @@ extension ChartView {
       d.tool = newValue
       d.pending = nil
       d.aim = nil
+      d.origin = nil
       d.selected = nil
       if var s = state { s.crosshair = nil; state = s }
       if newValue != nil { drawingInteractive = true }
@@ -218,6 +236,7 @@ extension ChartView {
     d.selected = nil
     d.pending = nil
     d.aim = nil
+    d.origin = nil
     d.drag = nil
     d.history.clear()
     d.tool = nil
@@ -292,7 +311,8 @@ extension ChartView {
   public func clearDrawings() {
     guard var s = state, !s.drawings.isEmpty else { return }
     drawing.history.commit(before: s.drawings); s.drawings = []; state = s
-    drawing.selected = nil; drawing.pending = nil; drawing.aim = nil; drawingChanged(items: [])
+    drawing.selected = nil; drawing.pending = nil; drawing.aim = nil; drawing.origin = nil
+    drawingChanged(items: [])
   }
   public func setAllDrawingsHidden(_ hidden: Bool) {
     guard var s = state, s.drawings.contains(where: { $0.hidden != hidden }) else { return }
@@ -361,6 +381,7 @@ extension ChartView {
     d.tool = nil
     d.pending = nil
     d.aim = nil
+    d.origin = nil
     d.selected = nil
     d.drag = nil
     d.claimed = nil
@@ -389,7 +410,10 @@ extension ChartView {
   public var canRedoDrawing: Bool { drawing.history.canRedo }
 
   public func undoDrawing() {
-    if !drawing.anchors.isEmpty { drawing.anchors.removeLast(); drawing.aim = nil; drawingChanged(); return }
+    if !drawing.anchors.isEmpty {
+      drawing.anchors.removeLast(); drawing.aim = nil; drawing.origin = nil
+      drawingChanged(); return
+    }
     guard var s = state, let prev = drawing.history.undo(current: s.drawings) else { return }
     s.drawings = prev
     state = s
@@ -407,6 +431,7 @@ extension ChartView {
     let d = drawing
     d.pending = nil
     d.aim = nil
+    d.origin = nil
     d.drag = nil
     if let sel = d.selected, !items.contains(where: { $0.id == sel }) { d.selected = nil }
     drawingChanged(items: items)
@@ -637,7 +662,8 @@ extension ChartView {
       // 这一指既然转交给捏合了，镜子既没人看也没人再更新，留着就是一张压在内存里
       // 的死图，还会跟着后面的缩放一起被画出来（A.5 用例 18「二指介入 → 释放无残留」）。
       d.loupe = nil
-      d.preview = nil; d.drag = nil; d.claimed = nil; d.aim = nil; d.navigating = true
+      d.preview = nil; d.drag = nil; d.claimed = nil; d.aim = nil; d.origin = nil
+      d.navigating = true
       // 这一程转交给捏合了，捏合就是冲着视野来的——钉子在这儿作废，不追平。
       cancelAxisFreeze()
       touchesBegan(Set([claimed]).union(touches), with: event)
@@ -689,6 +715,9 @@ extension ChartView {
       d.claimed = t
       beginAxisFreeze()
       captureDrawingLoupe()
+      // 起点在这儿吸一次就存着（轴刚被 `beginAxisFreeze` 钉住，整程不会再变），
+      // 拖动的每一帧和抬手落地都用这一份，不再各算各的。
+      d.origin = drawPoint(at: q, axes: axes)
       aimPending(at: q, axes: axes, began: true)
       return
     }
@@ -759,7 +788,10 @@ extension ChartView {
       } else { drawingChanged() }
       return
     }
-    // 瞄着落点的那根手指抬起来了。
+    // 瞄着落点的那根手指抬起来了。这一程的临时起点到此为止，取走再清——
+    // 底下每一条分支（取消、工具没了、落点）都不该把它留到下一次按下。
+    let origin = d.origin
+    d.origin = nil
     guard let axes, let tool = d.tool else { return }
     if cancelled {
       d.aim = nil
@@ -780,9 +812,17 @@ extension ChartView {
     }
     // 拖过了：这一笔是完整的一条线，起点在按下处，终点在抬手处。
     // 没拖动：只是轻点，落第一点，接着按老规矩点第二下。
-    let dragged = d.moved >= Chart.panSlopPt * 2
-    placeDrawPoint(at: d.startPoint, axes: axes)
-    if dragged { placeDrawPoint(at: q, axes: axes) }
+    //
+    // 起点落的是**按下那一刻存下来的那一份**（`origin`），不在这儿拿 `startPoint`
+    // 重新吸一遍：重吸要看抬手这一刻的行情，新到一根 K 线就可能吸到别处去——
+    // 用户拖了一路看着的那条线，松手会跳一下。预览和落地必须是同一份点。
+    let dragged = d.moved >= drawDragSlopPt
+    if dragged, let origin {
+      placeDrawPoint(origin, axes: axes)
+      placeDrawPoint(at: q, axes: axes)
+    } else {
+      placeDrawPoint(at: d.startPoint, axes: axes)
+    }
   }
 
   /// 这次触摸是图表手势在管的。抬手之前先看看该不该把这一下「轻点」收走。
@@ -855,9 +895,14 @@ extension ChartView {
   }
 
   private func placeDrawPoint(at q: CGPoint, axes: DrawAxes) {
+    placeDrawPoint(drawPoint(at: q, axes: axes), axes: axes)
+  }
+
+  /// 落一点。收一份**已经吸附好**的结果，而不是屏幕坐标——「按下即第一点」那一笔要
+  /// 落的是按下那一刻存下来的那份吸附值（见 `drawingTouchesEnded`），不能在这儿重吸。
+  private func placeDrawPoint(_ snap: DrawSnap, axes: DrawAxes) {
     guard var s = state, let tool = drawing.tool else { return }
     let d = drawing
-    let snap = drawPoint(at: q, axes: axes)
     let pt = snap.point
 
     func commit(_ item: Drawing) {
@@ -984,6 +1029,41 @@ private final class DrawingLinkProxy: NSObject {
   }
 }
 
+// MARK: - 此刻要预览什么
+
+/// 覆盖层这一帧要画的那条预览：哪一把工具、按顺序的哪几个点。
+///
+/// 抽成一支不碰视图、不碰上下文的纯函数，是为了让单测能在**抬手之前**断言
+/// 「屏幕上此刻是几个点、第一个点在哪儿」。覆盖层和测试用的是同一份算式，
+/// 不会出现「测试过了但图上其实没画」。
+struct DrawingPreview: Equatable {
+  var tool: DrawingStore.Tool
+  var points: [DrawPoint]
+
+  /// 点数够描述这条线了：整条按虚线预览出来（回撤实时铺出全部档位、矩形实时出框）。
+  /// 不够就只画手柄和已落点之间的连线。
+  var whole: Bool { points.count == tool.pointCount }
+
+  /// - Parameters:
+  ///   - anchors: 已经点实了的那几个锚。
+  ///   - origin: 「按下即第一点」的临时起点（`DrawingSession.origin`）。
+  ///   - moved: 这一程手指走过的最大位移，用来判它算不算数。
+  ///   - aim: 手指此刻指着的那个点。
+  static func plan(tool: DrawingStore.Tool?, anchors: [DrawPoint], origin: DrawPoint?,
+                   moved: Double, aim: DrawPoint?) -> DrawingPreview? {
+    guard let tool else { return nil }
+    var points = anchors
+    // 临时起点只有「拖过了」才顶上来：位移不够的那一下仍可能是轻点，而轻点落的是
+    // 第一个锚，不该先给用户看一条并不存在的线。单点工具（水平线、竖线）本来就是
+    // `[aim]` 一个点成图，也不需要它。
+    if anchors.isEmpty, tool.pointCount >= 2, moved >= drawDragSlopPt, let origin {
+      points.append(origin)
+    }
+    if let aim { points.append(aim) }
+    return points.isEmpty ? nil : DrawingPreview(tool: tool, points: points)
+  }
+}
+
 // MARK: - 覆盖层
 
 /// 盖在三层 `CALayer` 之上的一层：选中态、手柄、待落点、预览线，外加画线手势的入口。
@@ -1048,15 +1128,16 @@ final class DrawingOverlayView: UIView {
       paintDrawing(shown, ctx: ctx, axes: axes, colors: t,
                    selected: true, handles: !shown.locked, shape: live, series: s.series)
     }
-    if let tool = d.tool, !d.anchors.isEmpty || d.aim != nil {
-      var points = d.anchors
-      if let aim = d.aim { points.append(aim) }
+    if var plan = DrawingPreview.plan(tool: d.tool, anchors: d.anchors, origin: d.origin?.point,
+                                      moved: d.moved, aim: d.aim) {
+      let tool = plan.tool
       // 回归通道的预览也得先拟合，不然两个点喂给 `.regression` 的几何是画不出东西的。
       // 拟合失败（圈住的 K 线太少）就退到下面那条「只画手柄和一条连线」的路上。
-      if points.count == tool.placeCount, tool == .regression {
-        points = Drawing.fittedRegression(from: points, series: s.series) ?? points
+      if plan.points.count == tool.placeCount, tool == .regression {
+        plan.points = Drawing.fittedRegression(from: plan.points, series: s.series) ?? plan.points
       }
-      if points.count == tool.pointCount {
+      let points = plan.points
+      if plan.whole {
         var preview = Drawing(kind: tool, points: points); preview.dash = .dashed
         // 预览也喂序列：两点的区间分布在点第二下之前就该把整块柱子实时画出来，
         // 用户是照着柱子的位置决定第二下点哪儿的。
