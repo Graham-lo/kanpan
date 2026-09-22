@@ -188,10 +188,6 @@ struct Prefs: Sendable, Equatable {
   /// 存字符串不存枚举：那个枚举住在 app target 里，这一层（`KanpanSettings`）看不见它。
   var sectorSort: String = "change"
 
-  /// 「绘图」面板上次停在哪个分类。空串 = 还没挑过，按出厂第一个分类开。
-  /// 存回来的分类可能已经不在了（收藏清空「收藏」那一格就没了），
-  /// 由 `DrawingToolPicker` 里既有的那条兜底接住。
-  var drawToolGroup: String = ""
   /// 最近用过的那把画线工具（`Drawing.Kind` 的 rawValue），用来在工具面板上预选高亮。
   ///
   /// 它**不是**「此刻正举着笔」：换品种要把待画状态清掉（`ChartView+Drawing.setDrawings`

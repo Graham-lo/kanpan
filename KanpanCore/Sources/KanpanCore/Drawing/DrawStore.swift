@@ -27,7 +27,15 @@ public struct DrawingStyle: Sendable, Equatable, Codable {
 }
 
 public struct DrawingPreferences: Sendable, Equatable, Codable {
-  public var favorites: [Drawing.Kind] = [.trend, .hline, .rectangle, .fibonacci, .measure]
+  /// 收藏的那几把工具。**2026-09-22 起界面上没有入口了**，这个字段只剩下兼容的用处。
+  ///
+  /// 收藏是 41 把工具时代的解法：面板一屏摆不下，翻不到就先把常用的几把收起来。
+  /// 工具砍到 12 把之后（`Drawing.Kind.palette`）面板一屏就是全部，那排 chip 也直接摆全量，
+  /// 收藏没有了要解决的问题，那颗星就跟着分类标签和搜索框一起去掉了。
+  ///
+  /// 字段本身不删：口袋里还有在发它的老版本，云端也存着老的值；删掉等于让那些
+  /// 存档和同步操作里多出一个谁都不认的键。它照常编解码、照常同步，只是没人读。
+  public var favorites: [Drawing.Kind] = [.trend, .hline, .fibonacci, .measure]
   public var magnet = true
   public var continuous = false
   public var styles: [String: DrawingStyle] = [:]

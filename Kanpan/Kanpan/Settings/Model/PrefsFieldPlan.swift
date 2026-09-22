@@ -99,7 +99,7 @@ enum PrefsFieldPlan {
     "favoritesSort": .synced, "favoritesAscending": .synced, "favoritesAmount": .synced,
     "favoritesSparkline": .synced, "favoritesExpanded": .synced, "favoritesGroup": .synced,
     "sectorMarket": .synced, "sectorWindow": .synced, "sectorSort": .synced,
-    "drawToolGroup": .synced, "lastDrawTool": .synced,
+    "lastDrawTool": .synced,
     "replaySpeed": .synced, "reviewSearchScope": .synced,
     "alertSound": .synced,
 
@@ -138,6 +138,10 @@ enum PrefsFieldPlan {
       + "那两个字段自己的名字从不上线，所以服务端只认合成后的 rsiRange。",
     "styleID": "十二款蜡烛造型那一阵子的选择，客户端早就不发了。服务端留着是为了不把老客户端"
       + "的操作整条拒掉——服务端对含未知字段的操作是整条拒绝，删掉它等于把老版本的同步队列堵死。",
+    "drawToolGroup": "「绘图」面板上次停在哪个分类。2026-09-22 工具砍到十二把、"
+      + "分类标签整条去掉之后，客户端既不发也不收了（见 Drawing.Kind.palette）。"
+      + "服务端仍然认这个键，是为了口袋里那些还在发它的老版本客户端——"
+      + "服务端对含未知字段的操作是整条拒绝，删掉它等于把那台手机的同步队列堵死。",
     "routePolicy": "直连 / 网关那两档。2026-09-19 起是本机字段（PrefsFieldClass.deviceOnly）："
       + "它说的是这台手机这张网连得通哪一头，不跟着人走，新客户端既不发也不收。"
       + "服务端仍然认这个键，是为了口袋里那些还在发它的老版本客户端——"

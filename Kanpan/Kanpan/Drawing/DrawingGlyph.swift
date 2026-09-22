@@ -183,9 +183,3 @@ struct DrawKindGlyph: View {
   }
 }
 
-extension Drawing.Kind {
-  /// 某一分类下的全部工具，顺序就是 `Kind` 的声明顺序。
-  static func all(in group: String) -> [Drawing.Kind] {
-    allCases.filter { $0.group == group }
-  }
-}

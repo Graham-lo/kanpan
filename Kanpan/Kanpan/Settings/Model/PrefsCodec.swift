@@ -83,7 +83,7 @@ extension Prefs: Codable {
     case favoritesSort, favoritesAscending, favoritesAmount, favoritesSparkline, favoritesExpanded
     case favoritesGroup
     case sectorMarket, sectorWindow, sectorSort
-    case drawToolGroup, lastDrawTool
+    case lastDrawTool
     case replaySpeed, reviewSearchScope
     case alertSound
   }
@@ -148,7 +148,6 @@ extension Prefs: Codable {
     try c.encode(sectorMarket.rawValue, forKey: .sectorMarket)
     try c.encode(sectorWindow.rawValue, forKey: .sectorWindow)
     try c.encode(sectorSort, forKey: .sectorSort)
-    try c.encode(drawToolGroup, forKey: .drawToolGroup)
     try c.encode(lastDrawTool, forKey: .lastDrawTool)
     try c.encode(replaySpeed, forKey: .replaySpeed)
     try c.encode(reviewSearchScope, forKey: .reviewSearchScope)
@@ -313,7 +312,6 @@ extension Prefs: Codable {
     // 排序口径那个枚举在 app target 里，这一层认不出来，只做长度这一道；
     // 认不认得出交给读的那一边（`SectorSymbolSort(rawValue:) ?? .change`）。
     if let raw = str(.sectorSort), !raw.isEmpty, raw.count <= 32 { sectorSort = raw }
-    if let raw = str(.drawToolGroup), raw.count <= 32 { drawToolGroup = raw }
     if let raw = str(.lastDrawTool), raw.count <= 32 { lastDrawTool = raw }
     if let v = (try? c.decodeIfPresent(Int.self, forKey: .replaySpeed)) ?? nil { replaySpeed = Prefs.clampSpeed(v) }
     if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }

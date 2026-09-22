@@ -120,10 +120,12 @@ import KanpanAccount
     // - `styleID`：十二款蜡烛造型那一阵子的遗留，客户端早就不发了。
     // - `routePolicy`：2026-09-19 起是本机字段（直连 / 网关那两档不再跟着人走），
     //   服务端留着它只为不把还在发它的老客户端整条操作拒掉。
+    // - `drawToolGroup`：「绘图」面板上次停在哪个分类。2026-09-22 工具砍到十二把、
+    //   分类标签整条去掉之后这个键就没东西可存了，客户端既不发也不收；服务端同理留着。
     //
     // 注意 `wireOnlyKeys` 不能整组减掉：`rsiRange` 也在那一组里，但它是客户端把
     // `rsiUpper` / `rsiLower` **合成出来发上去**的键，客户端确实替它说话。
-    let serverKnownButUnsent: Set<String> = ["styleID", "routePolicy"]
+    let serverKnownButUnsent: Set<String> = ["styleID", "routePolicy", "drawToolGroup"]
     for key in serverKnownButUnsent {
       #expect(contract.wireOnlyKeys[key] != nil, "`\(key)` 客户端不发，契约里就得写清楚它为什么只在线上存在")
     }
@@ -145,6 +147,7 @@ import KanpanAccount
     #expect(top.contains("rsiRange"), "`rsiRange` 是客户端合成出来发的，它是自己的字段")
     #expect(!top.contains("styleID"), "`styleID` 客户端早就不发了，替它说话等于提议把它删掉")
     #expect(!top.contains("routePolicy"), "线路那两档 2026-09-19 起是本机字段，新客户端不发它")
+    #expect(!top.contains("drawToolGroup"), "「绘图」面板没有分类标签了，新客户端不发它")
     for key in Prefs.deviceOnlyFieldNames { #expect(!top.contains(key), "`\(key)` 压根不上线") }
   }
 

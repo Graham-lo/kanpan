@@ -72,7 +72,11 @@ struct DrawingBar: View {
     .overlay(alignment: .top) { theme.line.frame(height: 0.5) }
   }
 
-  /// 收藏的那几把工具。三套候选排法从宽松到紧凑，都放不下才滚动。
+  /// 面板上那十二把工具，按同一个顺序摆。三套候选排法从宽松到紧凑，都放不下才滚动。
+  ///
+  /// 原来这排 chip 摆的是用户收藏的那几把。收藏是 41 把工具时代的解法——翻不到就先收起来；
+  /// 砍到十二把之后面板一屏就是全部，收藏没有了要解决的问题，这排也就直接摆全量
+  /// （`Drawing.Kind.palette`），省掉「先去收藏、这排才有」这一道。
   ///
   /// 三套铺满的差别只在留白（chip 之间的最小间距与各自的内边距），chip 自己的字号和
   /// 记号大小三套一个数：挤不下时让出来的是空隙，不是内容。
@@ -93,8 +97,8 @@ struct DrawingBar: View {
   /// 那正是这次要修的毛病换了个样子。
   private func filledTools(spacing: Double, pad: Double) -> some View {
     HStack(spacing: 0) {
-      ForEach(controller.preferences.favorites) { kind in
-        if kind != controller.preferences.favorites.first { Spacer(minLength: spacing) }
+      ForEach(Drawing.Kind.palette) { kind in
+        if kind != Drawing.Kind.palette.first { Spacer(minLength: spacing) }
         toolChip(kind, pad: pad)
       }
     }.padding(.horizontal, 4)
@@ -103,7 +107,7 @@ struct DrawingBar: View {
   private var scrollingTools: some View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: 6) {
-        ForEach(controller.preferences.favorites) { kind in toolChip(kind, pad: 10) }
+        ForEach(Drawing.Kind.palette) { kind in toolChip(kind, pad: 10) }
       }.padding(.trailing, 4)
     }
     .frame(maxWidth: .infinity)
@@ -264,11 +268,11 @@ struct DrawingDock: View {
     HStack(spacing: 0) {
       toolsButton
       divider
-      // 收藏放在滚动区里：它的数量由用户定，多了也不能把右边那几个固定动作挤没
-      // （竖屏那根条踩过这个坑，见 `DrawingBar` 顶上那段）。
+      // 工具放在滚动区里：十二把在横屏这根条上也摆不下，但右边那几个固定动作
+      // 一个都不能被挤没（竖屏那根条踩过这个坑，见 `DrawingBar` 顶上那段）。
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: 2) {
-          ForEach(controller.preferences.favorites) { kind in toolButton(kind) }
+          ForEach(Drawing.Kind.palette) { kind in toolButton(kind) }
         }.padding(.horizontal, 4)
       }
       .frame(maxWidth: .infinity)
@@ -304,10 +308,11 @@ struct DrawingDock: View {
 
   private var divider: some View { theme.line.frame(width: 1 / displayScale, height: 26) }
 
-  /// 笔形入口。手里拿着的工具不在收藏里时它也亮着，并且写上那把工具的名字——
-  /// 不然换了一把冷门的线，条上没有任何一格是亮的，看不出手里正拿着东西。
+  /// 笔形入口。手里拿着的工具不在这根条上时它也亮着，并且写上那把工具的名字——
+  /// 不然换了一把这条上没摆的线（长按重复画留下的，或者老版本存的），
+  /// 条上没有任何一格是亮的，看不出手里正拿着东西。
   private var toolsButton: some View {
-    let held = controller.tool.flatMap { controller.preferences.favorites.contains($0) ? nil : $0.shortTitle }
+    let held = controller.tool.flatMap { Drawing.Kind.palette.contains($0) ? nil : $0.shortTitle }
     return Button { controller.openTools() } label: {
       VStack(spacing: 1) {
         Image(systemName: "pencil.line").font(.system(size: 17))
@@ -504,6 +509,15 @@ private struct DrawingStyleEditor: View {
           Picker("线型", selection: $item.dash) { ForEach(Drawing.Dash.allCases, id: \.self) { Text($0.title).tag($0) } }
           if item.kind.usesFill { Toggle("背景填充", isOn: $item.filled) }
           Toggle("锁定位置", isOn: $item.locked)
+          // 「换一种画法」：同一族里形状一样，只差延伸到哪儿、端点画不画箭头。
+          // 面板上只摆十二把，射线 / 直线 / 水平射线 / 箭头 / 十字线就活在这几行里——
+          // 用户是看着图上那条线换的，不用先认识五个名字。
+          ForEach(item.kind.swaps) { swap in
+            Picker(swap.title, selection: swapBinding(swap)) {
+              ForEach(swap.options) { option in Text(option.label).tag(option.kind) }
+            }
+            .accessibilityIdentifier("draw.swap")
+          }
         } header: {
           PanelFormSectionTitle(text: "样式")
         }
@@ -570,6 +584,17 @@ private struct DrawingStyleEditor: View {
       }
     }
     .tint(theme.amber)
+  }
+  /// 换画法那一排绑的是 `item.kind` 本身。
+  ///
+  /// 同一族里点数一样（`Drawing.Kind.swaps` 那段注释说的就是这条），所以这里只换 kind、
+  /// 不动 `points`；点数要是对不上，`DrawingController.update` 会把整次修改**悄悄丢掉**。
+  /// 当前这条线的 kind 不在这一排里时（比如已经换成了箭头，再看「延伸」那一排），
+  /// 读回第一项，等于「先回到不延伸再说」，而不是让选择器空着。
+  private func swapBinding(_ swap: Drawing.KindSwap) -> Binding<Drawing.Kind> {
+    Binding(
+      get: { swap.options.contains { $0.kind == item.kind } ? item.kind : swap.options[0].kind },
+      set: { item.kind = $0 })
   }
   private var parsedLevels: [Double]? {
     let parts = levelText.replacingOccurrences(of: "，", with: ",").split(separator: ",")

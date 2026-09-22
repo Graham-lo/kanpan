@@ -362,6 +362,46 @@ struct DrawingTests {
     #expect(note.isValid)
   }
 
+  /// 「换一种画法」的每一个选项，点数都必须和这一族的主工具一样。
+  ///
+  /// `Drawing.isValid` 要求点数和 kind 对得上。换完点数不对，`DrawingController.update`
+  /// 那句 `guard item.isValid` 会把这次修改整条丢掉，而且一声不吭——用户看到的是
+  /// 「我换了画法，图上没反应」。所以这条守在类型这一层，不留给界面去发现。
+  @Test("换画法不改点数")
+  func swapsKeepTheirPointCount() {
+    for kind in Drawing.Kind.allCases {
+      for swap in kind.swaps {
+        #expect(!swap.options.isEmpty, "\(kind.rawValue) 的「\(swap.title)」一个选项都没有")
+        // 主工具自己必须在选项里，否则样式表开出来那一行是空的（`swapBinding` 会
+        // 退回第一个选项，等于一进样式表就把这条线换了个画法）。
+        #expect(swap.options.contains { $0.kind == kind },
+                "\(kind.rawValue) 不在自己那一族的选项里")
+        for option in swap.options {
+          #expect(option.kind.pointCount == kind.pointCount,
+                  "\(kind.rawValue) → \(option.kind.rawValue) 点数从 \(kind.pointCount) 变成 \(option.kind.pointCount)")
+          // 一族里的画法互相可达：从哪一个进样式表，看到的都是同一排。
+          #expect(option.kind.swaps.first?.options.map(\.kind) == swap.options.map(\.kind),
+                  "\(option.kind.rawValue) 那一排和 \(kind.rawValue) 的对不上")
+        }
+      }
+    }
+  }
+
+  /// 面板上摆的十二把，每一把都得是能画的（`palette` 是手写的，防打错）。
+  @Test("面板上的十二把都画得出来")
+  func paletteIsTwelveDrawableKinds() {
+    #expect(Drawing.Kind.palette.count == 12)
+    #expect(Set(Drawing.Kind.palette).count == 12, "面板上有重复的格子")
+    for kind in Drawing.Kind.palette {
+      #expect(kind.placeCount >= 1 && kind.placeCount <= 3,
+              "\(kind.rawValue) 要在图上点 \(kind.placeCount) 下，手机上没人这么画")
+    }
+    // 2026-09-22 用户点名去掉的那几把，不许再摆回面板。
+    for gone in [Drawing.Kind.rectangle, .ray, .hray, .extended, .crossLine, .priceRange] {
+      #expect(!Drawing.Kind.palette.contains(gone), "\(gone.rawValue) 又回到面板上了")
+    }
+  }
+
   /// 编码出来的 JSON 顶层键值对，用来看「某个键在不在」。
   private func keys(of drawing: Drawing) throws -> [String: Any] {
     let data = try JSONEncoder().encode(drawing)

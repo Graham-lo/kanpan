@@ -238,11 +238,6 @@ final class DrawingController: ObservableObject {
   }
   func toggleLock() { if var item = selected { item.locked.toggle(); update(item) } }
   func toggleHidden(_ item: Drawing) { var next = item; next.hidden.toggle(); chart?.updateDrawing(next); sync() }
-  func toggleFavorite(_ kind: Drawing.Kind) {
-    if preferences.favorites.contains(kind) { preferences.favorites.removeAll { $0 == kind } }
-    else { preferences.favorites.append(kind) }
-    savePreferences()
-  }
   func toggleMagnet() { preferences.magnet.toggle(); savePreferences() }
   func toggleContinuous() { preferences.continuous.toggle(); savePreferences() }
   private func applyPreferences() {

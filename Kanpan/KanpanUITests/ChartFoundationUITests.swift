@@ -156,37 +156,35 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(wait(seconds: 5) { !dismiss.exists }, "点了「只画线」，那一句还挂在头部")
   }
 
-  /// 点「绘图」面板上的分类标签。
+  /// 在样式表的「换一种画法」那一行上换一种画法。
   ///
-  /// 那条标签是横向滚动的：九个分类（线条 / 通道 / 几何 / 区间 / 斐波那契 / 江恩 / 形态 /
-  /// 测量 / 标注）在 393pt 宽的竖屏上一次只露得出四五格，后面几格的 frame 干脆落在屏幕
-  /// 右边以外。用户遇到这种情况就是拿手指往左拨，这里照做：先把要点的那格划进可视区，再点。
+  /// 面板上只摆十二把（`Drawing.Kind.palette`）；射线 / 直线 / 箭头 / 水平射线 / 十字线
+  /// 这些和主工具形状一样、只差一处画法的，退到这一行里换（`Drawing.Kind.swaps`）。
+  /// 这一行是 `Form` 里的 `Picker`，iOS 把它画成一颗弹菜单的按钮，选项是菜单里的按钮。
   ///
-  /// 判断「露出来了没有」只能看 frame，不能问 `isHittable`：标签整个在屏幕外时 XCTest
-  /// 连 activation point 都算不出来，**查询** `isHittable` 这一下自己就抛
-  /// 「Activation point invalid」——它不是返回 false，是直接让用例挂掉。
-  func tapDrawGroup(_ name: String) {
-    let tab = app.buttons["draw.group.\(name)"]
-    XCTAssertTrue(tab.waitForExistence(timeout: 5), "没找到分类标签 \(name)")
-    // 用「含有『线条』这颗胶囊的那个滚动视图」把标签条钉死：格子区那个 ScrollView 里
-    // 只有 draw.tool.*，不会被误取（同一个道理见下面工具格子那段注释）。
-    let strip = app.scrollViews.containing(.button, identifier: "draw.group.线条").firstMatch
-    XCTAssertTrue(strip.waitForExistence(timeout: 5), "没找到分类标签条")
-    func showing() -> Bool {
-      let f = tab.frame, box = strip.frame
-      return f.minX >= box.minX - 0.5 && f.maxX <= box.maxX + 0.5
+  /// 它排在「颜色 / 粗细 / 线型 / 锁定位置」后面，而样式表起手停在 `.medium`——
+  /// 半屏下这一行落在下沿以外，`Form` 是懒加载的，**压根不在无障碍树里**（查 `exists`
+  /// 返回 false，不是「在但点不着」）。所以先把半屏拖成整屏，再找这一行；
+  /// 粗细那一档早就吃过同一个亏（见 `testDrawingWidthPresets` 里那段）。
+  func switchDrawKind(to label: String) {
+    let swap = app.descendants(matching: .any).matching(identifier: "draw.swap").firstMatch
+    if !swap.waitForExistence(timeout: 3) {
+      let bar = app.navigationBars.element(boundBy: 0)
+      bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        .press(forDuration: 0.1,
+               thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)))
     }
-    for _ in 0..<10 {
-      if showing() { break }
-      let toTheRight = tab.frame.midX > strip.frame.midX
-      let from = CGVector(dx: toTheRight ? 0.85 : 0.15, dy: 0.5)
-      let to = CGVector(dx: toTheRight ? 0.2 : 0.8, dy: 0.5)
-      strip.coordinate(withNormalizedOffset: from).press(forDuration: 0.05,
-        thenDragTo: strip.coordinate(withNormalizedOffset: to),
-        withVelocity: .slow, thenHoldForDuration: 0.1)
-    }
-    XCTAssertTrue(showing(), "分类标签 \(name) 划不进可视区")
-    tab.tap()
+    if !swap.waitForExistence(timeout: 3) { app.swipeUp() }
+    // SwiftUI 的 `Picker` 在 `Form` 里被画成一颗弹菜单的按钮，标识符有时落在外层那个
+    // cell 上、有时干脆没落下来，所以标识符找不着时退一步按标题找那颗按钮。
+    let row = swap.waitForExistence(timeout: 5)
+      ? swap
+      : app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "画法")).firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: 5), "样式表里没有「换一种画法」那一行")
+    row.tap()
+    let option = app.buttons[label]
+    XCTAssertTrue(option.waitForExistence(timeout: 5), "「换一种画法」里点不到「\(label)」")
+    option.tap()
   }
 
   /// 「记一笔」收在「图表设置」那一屏里，开出的取景卡只压图的下半截，一根 K 线都不动。
@@ -1526,8 +1524,8 @@ extension ChartFoundationUITests {
   func testDrawingWidthPresets() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     openDrawTools()
-    XCTAssertTrue(app.buttons["draw.tool.ray"].waitForExistence(timeout: 5))
-    app.buttons["draw.tool.ray"].tap()
+    XCTAssertTrue(app.buttons["draw.tool.trend"].waitForExistence(timeout: 5))
+    app.buttons["draw.tool.trend"].tap()
     let origin = canvas.coordinate(withNormalizedOffset: .zero)
     origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
     origin.withOffset(CGVector(dx: 240, dy: 160)).tap()
@@ -1560,28 +1558,32 @@ extension ChartFoundationUITests {
   func testDrawingToolsAndPersistentStyles() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     openDrawTools()
-    XCTAssertTrue(app.buttons["draw.tool.ray"].waitForExistence(timeout: 5))
-    shot("画线-工具分类")
-    app.buttons["draw.tool.ray"].tap()
+    XCTAssertTrue(app.buttons["draw.tool.trend"].waitForExistence(timeout: 5))
+    shot("画线-工具格子")
+    app.buttons["draw.tool.trend"].tap()
     var origin = canvas.coordinate(withNormalizedOffset: .zero)
     origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
     origin.withOffset(CGVector(dx: 240, dy: 160)).tap()
     XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 1 }, String(describing: info()))
-    XCTAssertEqual(info()["drawingKinds"] as? [String], ["ray"])
+    XCTAssertEqual(info()["drawingKinds"] as? [String], ["trend"])
     XCTAssertTrue(app.buttons["draw.undo"].isEnabled)
     app.buttons["draw.undo"].tap(); XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 0 })
     app.buttons["draw.redo"].tap(); XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 1 })
-    // Undo removes selection; tap the actual ray after redo.
+    // Undo removes selection; tap the actual line after redo.
     origin = canvas.coordinate(withNormalizedOffset: .zero)
     origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
     XCTAssertTrue(app.buttons["draw.style"].waitForExistence(timeout: 3))
     XCTAssertTrue(app.openDrawingStyleSheet(pick: "#4A90E2"), "样式面板里点不到蓝色")
+    // 「换一种画法」：面板上只摆十二把，射线活在线段这一族的这一行里
+    // （`Drawing.Kind.swaps`）。换完点数不变，所以这条线原地变成射线、id 也不换。
+    switchDrawKind(to: "向右延伸")
     app.buttons["draw.save"].tap()
     XCTAssertTrue(wait { self.info()["drawingColors"] as? [String] == ["#4A90E2"] })
+    XCTAssertEqual(info()["drawingKinds"] as? [String], ["ray"], "换画法没生效，或者被 isValid 挡掉了")
     app.buttons["draw.lock"].tap()
     XCTAssertTrue(wait { self.info()["drawingLocked"] as? [Bool] == [true] })
     let ids = try XCTUnwrap(info()["drawingIDs"] as? [String])
-    shot("画线-射线颜色与锁定")
+    shot("画线-换成射线并锁定")
     app.buttons["draw.finish"].tap()
     app.terminate(); app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
@@ -1600,16 +1602,19 @@ extension ChartFoundationUITests {
     XCUIDevice.shared.orientation = .landscapeLeft
     XCTAssertTrue(wait(seconds: 5) { self.canvas.frame.width > self.canvas.frame.height && self.app.buttons["draw.tools"].isHittable })
     // 横屏的「绘图」面板不是半屏表单，是贴着左边推出来的一块卡片（`drawToolsLayer`），
-    // 但里头的搜索框、分类标签、格子和关闭按钮跟竖屏是同一个视图，标识符也一样。
+    // 但里头的格子和关闭按钮跟竖屏是同一个视图，标识符也一样。
+    // 2026-09-22 之后这张面板只剩标题、十二格和关闭——搜索框与分类标签都去掉了。
     openDrawTools()
+    XCTAssertEqual(app.textFields["draw.tools.search"].exists, false, "「绘图」面板上还留着搜索框")
+    // 末格是「持仓」，横屏那块卡片一屏放不下十二格，拿它验「翻得下去、翻到底点得着」。
     for _ in 0..<8 {
-      if app.buttons["draw.tool.ray"].exists && app.buttons["draw.tool.ray"].isHittable { break }
+      if app.buttons["draw.tool.position"].exists && app.buttons["draw.tool.position"].isHittable { break }
       let list = app.scrollViews.containing(.button, identifier: "draw.tool.trend").firstMatch
       list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).press(forDuration: 0.05,
         thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)),
         withVelocity: .slow, thenHoldForDuration: 0.1)
     }
-    XCTAssertTrue(app.buttons["draw.tool.ray"].isHittable)
+    XCTAssertTrue(app.buttons["draw.tool.position"].isHittable)
     app.buttons["draw.sheet.done"].tap()
     XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["draw.sheet.done"].exists && self.app.buttons["draw.tools"].isHittable })
     let landscapeShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
@@ -1674,17 +1679,21 @@ extension ChartFoundationUITests {
   func testDrawingAllToolsAndFingerTargets() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     app.buttons["draw.magnet.quick"].tap()
-    // 第三项是这把工具所在的分类：「绘图」面板一次只列一类，先点标签再找工具
-    // （面板长什么样见 `DrawingToolPicker`）。
-    let tools: [(String, Int, String)] = [("trend", 2, "线条"), ("hline", 1, "线条"), ("ray", 2, "线条"),
-      ("hray", 1, "线条"), ("extended", 2, "线条"), ("vline", 1, "线条"), ("rectangle", 2, "几何"),
-      ("channel", 3, "通道"), ("fibonacci", 2, "斐波那契"), ("measure", 2, "测量")]
-    // 十趟下来图区高度必须是同一个数：「要不要加提醒」那一句现在占头部价格行的位置，
+    // 「绘图」面板上摆出来的就是这十二把（`Drawing.Kind.palette`）。2026-09-22 砍掉
+    // 分类标签之后，面板是一张铺平的格子，进去就能看见，不用先点标签。
+    // 第二项是这把工具要在图上点几下（`Drawing.Kind.placeCount`）。
+    //
+    // 打头的必须是两点的线段：下面 `index == 0` 那一段要拖第一条线的端点，验「手指偏离
+    // 可见把手 17pt 仍然只拖最近的那一端」。单点工具（水平线、标注）没有第二个端点可比，
+    // 所以这里的顺序不照面板从左到右，把 `trend` 提到最前面。
+    let tools: [(String, Int)] = [("trend", 2), ("hline", 1), ("vline", 1), ("channel", 3),
+      ("fibonacci", 2), ("fibExtension", 3), ("measure", 2), ("note", 1),
+      ("anchoredVWAP", 1), ("fixedVolumeProfile", 2), ("anchoredVolumeProfile", 1), ("position", 3)]
+    // 十二趟下来图区高度必须是同一个数：「要不要加提醒」那一句现在占头部价格行的位置，
     // 它在与不在都不该让图缩一下（2026-09-21）。第一趟量到的就是基准。
     var baseH: Double?
     for (index, tool) in tools.enumerated() {
       openDrawTools()
-      tapDrawGroup(tool.2)
       let target = app.buttons["draw.tool.\(tool.0)"]
       // 滚动必须**限定在工具面板自己的格子区里**。早先用的是 `app.collectionViews.firstMatch`：
       // 它取的是整棵树里第一个集合视图，不保证是这张面板——一旦落到主界面上，这十四次
@@ -1717,6 +1726,15 @@ extension ChartFoundationUITests {
       for point in points.prefix(tool.1) { origin.withOffset(point).tap() }
       XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == index + 1 }, tool.0)
       XCTAssertEqual((info()["drawingKinds"] as? [String])?.last, tool.0)
+      // 空的「文字标注」一落点就自己把样式表开出来（`DrawingController` 那句
+      // `panel = .style`），省掉「发现没字再去找样式」。下一趟要点面板，先把它收掉。
+      if tool.0 == "note" {
+        // 样式表的出口是导航栏上的「取消 / 保存」，不是工具面板那颗 `draw.sheet.done`。
+        let save = app.buttons["draw.save"]
+        XCTAssertTrue(save.waitForExistence(timeout: 5), "落下一条空文字标注，样式表没自己开出来")
+        app.buttons["取消"].tap()
+        XCTAssertTrue(wait(seconds: 5) { !save.exists }, "样式表收不掉")
+      }
       if index == 0 {
         // 这条线刚落下，那一句问话正好长出来——它现在占的是**头部价格行**那一行的位置
         // （价格行透明让位），图区一个 pt 都不该动。所以这儿不再「先收掉它、等图长回来」，
@@ -1761,19 +1779,20 @@ extension ChartFoundationUITests {
     app.terminate(); app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })
-    shot("画线-十种工具与手指端点拖动")
+    shot("画线-十二把工具与手指端点拖动")
   }
 
-  func testDrawingRectangleChannelAndFibonacci() throws {
+  /// 三把多点工具画完之后跨周期、重启都还在。
+  ///
+  /// 原来打头的是矩形，2026-09-22 用户点名把它从面板上去掉了（「去掉矩形吧」），
+  /// 这里换成斐波那契扩展——同样是三点，而且是那一轮新摆上面板的。
+  func testDrawingChannelFibonacciAndExtension() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
-    // 第三项是这把工具所在的分类。「绘图」面板（`DrawingToolPicker`）一次只列一类，
-    // 所以先点标签、再在那一类的格子里找工具。这里原来是 `app.swipeUp()` 划八下——
-    // 那是 `007adc1` 之前 AICoin 那套「一整条清单」的找法；改成 TV 那套分类面板之后，
-    // 不切到对应标签，这三把工具根本不会出现在树里，划多少下都是白划。
-    for (index, entry) in [("rectangle", 2, "几何"), ("channel", 3, "通道"),
-                           ("fibonacci", 2, "斐波那契")].enumerated() {
+    // 「绘图」面板（`DrawingToolPicker`）2026-09-22 起是一张铺平的十二格，没有分类标签，
+    // 每把工具进去就在树里，只可能需要往下翻一屏。
+    for (index, entry) in [("channel", 3), ("fibonacci", 2),
+                           ("fibExtension", 3)].enumerated() {
       openDrawTools()
-      tapDrawGroup(entry.2)
       let target = app.buttons["draw.tool.\(entry.0)"]
       // 翻格子只能翻面板自己那个 ScrollView，不能翻整个 app——理由同
       // `testDrawingAllToolsAndFingerTargets` 里那段注释：划到行情页上会把整条用例带飞。
@@ -1907,7 +1926,6 @@ extension ChartFoundationUITests {
   func testDrawingFixedVolumeProfilePlacement() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
     openDrawTools()
-    tapDrawGroup("测量")
     let target = app.buttons["draw.tool.fixedVolumeProfile"]
     // 翻格子只翻面板自己那个 ScrollView（理由见 `testDrawingAllToolsAndFingerTargets`）。
     let list = app.scrollViews.containing(.button, identifier: "draw.tool.measure").firstMatch

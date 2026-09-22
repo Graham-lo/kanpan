@@ -183,21 +183,75 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
     }
     /// 带不带一段文字（`Drawing.text`）。目前只有「文字标注」。
     public var usesText: Bool { self == .note || self == .callout || self == .flag }
-    public var group: String {
+
+    /// 「绘图」面板上摆出来的那 12 把。
+    ///
+    /// 枚举里的 41 种一个都没删：老存档、云端已有的线、下面那张「换一种画法」的表
+    /// 都还要认它们，删一个 case 等于把用户画过的那些线在解码时悄悄丢掉
+    /// （`DrawArchive.init(from:)` 遇到不认识的 kind 就是丢）。面板上摆什么是另一回事。
+    ///
+    /// 2026-09-22 用户定的：「有些华而不实的用的少的其实没必要实现」。41 把是照
+    /// TradingView 全量接进来的，其中江恩、艾略特、XABCD、头肩、分叉、斐波那契扇形/时区、
+    /// 椭圆、三角形、曲线这些，在手机上画得出来也没人画；矩形被他点名去掉。剩下的
+    /// 射线 / 水平射线 / 直线 / 箭头 / 十字线 / 价格区间 / 日期区间 / 气泡 / 旗标 / 价格标签
+    /// 不是没用，而是和主工具形状一样、只差一处画法——它们退到样式表里去换（见 `swaps`），
+    /// 不再在面板上各占一格。
+    ///
+    /// 顺序就是面板上从左到右、从上到下的顺序：先四把日常画的线，再两把斐波那契，
+    /// 然后测量与标注，最后三把要拿 K 线算的和一把持仓框。
+    public static let palette: [Kind] = [
+      .hline, .trend, .vline, .channel,
+      .fibonacci, .fibExtension, .measure, .note,
+      .anchoredVWAP, .fixedVolumeProfile, .anchoredVolumeProfile, .position,
+    ]
+
+    /// 样式表里的「换一种画法」。
+    ///
+    /// 同一族里形状一模一样，差的只是往哪边延伸、端点画不画箭头。做成面板上的独立格子，
+    /// 用户得先认识「射线」「直线」「水平射线」三个名字才知道点哪个；做成画完之后在样式表里
+    /// 换一下，他是看着图上那条线做决定的，不用先学名字。
+    ///
+    /// 一族只给一排，不拆成「延伸」和「端点」两排：拆开之后选了箭头就没有延伸可言，
+    /// 两排会互相把对方的选中项顶掉，而且换一下就有一排凭空消失。
+    ///
+    /// **同一族里 `pointCount` 必须相同**：`Drawing.isValid` 要求点数和 kind 对得上，
+    /// 换完点数不对，`DrawingController.update` 会把这次修改整条丢掉，而且不报错
+    /// （见 `ChartView+Drawing.updateDrawing` 那句 `guard item.isValid`）。
+    /// `swapsKeepTheirPointCount` 守这条。
+    public var swaps: [KindSwap] {
       switch self {
-      case .hline, .trend, .ray, .hray, .extended, .vline, .crossLine, .arrowLine: "线条"
-      case .channel, .regression, .pitchfork: "通道"
-      case .rectangle, .ellipse, .triangle, .curve: "几何"
-      case .priceRange, .dateRange, .datePriceRange: "区间"
-      case .fibonacci, .fibExtension, .fibChannel, .fibTimeZone, .fibFan: "斐波那契"
-      case .gannBox, .gannFan: "江恩"
-      case .xabcd, .abcd, .headShoulders, .elliottImpulse, .elliottCorrection: "形态"
-      case .measure, .position, .anchoredVWAP, .fixedVolumeProfile, .anchoredVolumeProfile: "测量"
-      case .note, .callout, .priceLabel, .flag, .markerUp, .markerDown: "标注"
+      case .hline, .hray:
+        [KindSwap(title: "画法", options: [.init("整条", .hline), .init("向右", .hray)])]
+      case .trend, .ray, .extended, .arrowLine:
+        [KindSwap(title: "画法", options: [
+          .init("线段", .trend), .init("向右延伸", .ray),
+          .init("两端延伸", .extended), .init("箭头", .arrowLine),
+        ])]
+      case .vline, .crossLine:
+        [KindSwap(title: "画法", options: [.init("垂直线", .vline), .init("十字线", .crossLine)])]
+      default: []
       }
     }
-    /// 分类在「绘图」面板那条标签上的排列顺序：由粗到细、由线到标注。
-    public static let groups = ["线条", "通道", "几何", "区间", "斐波那契", "江恩", "形态", "测量", "标注"]
+  }
+
+  /// 样式表里一排「换一种画法」的按钮。
+  public struct KindSwap: Sendable, Equatable, Identifiable {
+    public struct Option: Sendable, Equatable, Identifiable {
+      public let label: String
+      public let kind: Kind
+      public var id: String { kind.rawValue }
+      public init(_ label: String, _ kind: Kind) {
+        self.label = label
+        self.kind = kind
+      }
+    }
+    public let title: String
+    public let options: [Option]
+    public var id: String { title }
+    public init(title: String, options: [Option]) {
+      self.title = title
+      self.options = options
+    }
   }
 
   /// 拖的是哪一个端点；`body` 是整条一起走。
