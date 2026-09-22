@@ -5,13 +5,12 @@ import KanpanCore
 
 @testable import KanpanSymbols
 
-/// 整页的行为：搜索联动、星星、最近、订阅 / 退订、落盘。全程无网络。
+/// 整页的行为：搜索联动、星星、最近、报价灌入、落盘。全程无网络。
 @Suite("品种页")
 @MainActor
 struct SymbolPickerModelTests {
 
   private func make(prefs: SymbolPrefs = SymbolPrefs(),
-                    feed: StaticTickerFeed? = nil,
                     tickers: [Ticker] = SymbolFixtures.tickers)
     -> (SymbolPickerModel, MemoryPrefsStorage) {
     let storage = MemoryPrefsStorage()
@@ -19,8 +18,7 @@ struct SymbolPickerModelTests {
     store.save(prefs)
     let m = SymbolPickerModel(catalog: SymbolFixtures.catalog,
                               tickers: tickers,
-                              store: store,
-                              feed: feed)
+                              store: store)
     return (m, storage)
   }
 
@@ -168,47 +166,16 @@ struct SymbolPickerModelTests {
 
   // ---------------------------------------------------------------- 行情流
 
-  @Test("进页订阅、出页退订，并且都打了日志（A5.7）")
-  func subscribeAndUnsubscribe() async {
-    let feed = StaticTickerFeed(SymbolFixtures.tickers)
-    let (m, _) = make(feed: feed)
-    var lines: [String] = []
-    m.log = { lines.append($0) }
-
-    await m.appear()
-    #expect(feed.startCount == 1)
-    #expect(feed.isRunning)
-    #expect(lines == ["品种页订阅 !ticker@arr"])
-
-    m.disappear()
-    #expect(feed.stopCount == 1)
-    #expect(!feed.isRunning)
-    #expect(lines == ["品种页订阅 !ticker@arr", "品种页退订 !ticker@arr"])
-
-    // 重复 disappear 不会再退一次
-    m.disappear()
-    #expect(feed.stopCount == 1)
-  }
-
-  @Test("推一批新价，行上的数跟着跳")
-  func tickerUpdatesRows() async {
-    let feed = StaticTickerFeed([])
-    let (m, _) = make(feed: feed, tickers: [])     // 开局没有任何行情
-    await m.appear()
+  @Test("宿主灌入新价，行上的数跟着跳")
+  func tickerUpdatesRows() {
+    let (m, _) = make(tickers: [])
     #expect(m.sections[0].rows.first { $0.id == "BTCUSDT" }?.priceText == "—")
-
-    feed.push([Ticker(symbol: "BTCUSDT", last: 77_123.4, changePercent: -2.5,
-                      high: 78_000, low: 76_000, quoteVolume: 1e9)])
+    m.updateQuotes([Ticker(symbol: "BTCUSDT", last: 77_123.4, changePercent: -2.5,
+                          high: 78_000, low: 76_000, quoteVolume: 1e9)])
     let btc = m.sections[0].rows.first { $0.id == "BTCUSDT" }
     #expect(btc?.priceText == "77123.4")
     #expect(btc?.changeText == "-2.50%")
     #expect(btc?.isUp == false)
-
-    // 退订之后再推，进不来了
-    m.disappear()
-    feed.push([Ticker(symbol: "BTCUSDT", last: 1, changePercent: 0,
-                      high: 1, low: 1, quoteVolume: 1)])
-    #expect(m.sections[0].rows.first { $0.id == "BTCUSDT" }?.priceText == "77123.4")
   }
 
   @Test("品种表可以后到（异步拉回来再灌）")

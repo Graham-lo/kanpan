@@ -121,7 +121,6 @@ struct SymbolSearchView: View {
     .onDisappear {
       focused = false
       model.setSectionsActive(false)
-      model.disappear()
     }
   }
 
@@ -423,9 +422,8 @@ private struct ChipFlow: SwiftUI.Layout {
 private struct SearchHost: View {
   @State private var model = SymbolPickerModel(
     catalog: SymbolFixtures.catalog,
-    tickers: SymbolFixtures.tickers,
-    store: SymbolPrefsStore(storage: MemoryPrefsStorage(), key: "preview"),
-    feed: StaticTickerFeed(SymbolFixtures.tickers))
+    tickers: Array(QuoteBook.preview(SymbolFixtures.tickers).raw.values),
+    store: SymbolPrefsStore(storage: MemoryPrefsStorage(), key: "preview"))
   @State private var history = SearchHistory(storage: MemorySearchHistoryStorage(), key: "preview")
   private let seeded: [String]
   private let query: String

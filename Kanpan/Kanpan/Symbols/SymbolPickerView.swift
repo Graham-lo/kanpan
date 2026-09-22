@@ -77,7 +77,6 @@ struct SymbolPickerView: View {
       filterTask?.cancel()
       searchFocused = false
       model.setSectionsActive(false)
-      model.disappear()
     }
   }
 
@@ -482,8 +481,8 @@ struct SymbolPickerHost: View {
     let storage = MemoryPrefsStorage()
     let store = SymbolPrefsStore(storage: storage, key: "preview")
     store.save(prefs)
-    let m = SymbolPickerModel(catalog: catalog, tickers: tickers, store: store,
-                              feed: StaticTickerFeed(tickers))
+    let quotes = QuoteBook.preview(tickers)
+    let m = SymbolPickerModel(catalog: catalog, tickers: Array(quotes.raw.values), store: store)
     _model = State(initialValue: m)
     self.redUp = redUp
   }

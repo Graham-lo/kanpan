@@ -8,6 +8,13 @@ import KanpanNetwork
 /// 前台跨页面共享自选/可见品种WS；后台释放。日开盘只按需取一次。
 @MainActor @Observable
 final class QuoteBook {
+  /// 预览只给静态报价，不启动网络、不写缓存。
+  static func preview(_ values: [Ticker]) -> QuoteBook {
+    let book = QuoteBook()
+    book.raw = Dictionary(values.map { ($0.symbol, $0) }, uniquingKeysWith: { _, last in last })
+    return book
+  }
+
   private(set) var raw: [String: Ticker] = [:]
   private(set) var lastListUpdate: Date?
   private(set) var basis: ChangeBasis = .rolling24h

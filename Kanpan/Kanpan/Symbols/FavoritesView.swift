@@ -240,7 +240,6 @@ struct FavoritesView: View {
         session.topRow[groupID ?? ""] = anchor
       }
       moreTask?.cancel()
-      model.disappear()
       for symbol in historyOn { onHistoryVisibility(symbol, false) }
       historyOn.removeAll()
     }

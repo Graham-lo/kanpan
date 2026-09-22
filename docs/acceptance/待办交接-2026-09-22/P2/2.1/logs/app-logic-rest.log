@@ -1,0 +1,809 @@
+cd Kanpan/Sector && swift test 
+Building for debugging...
+[0/9] /Users/mdd/zhk/kanpan-p2/Kanpan/Sector/.build/arm64-apple-macosx/debug/KanpanSectorPackageTests.derived/runner.swift
+[1/9] Write sources
+[6/9] Write swift-version--58304C5D6DBC2206.txt
+[8/52] Emitting module KanpanCore
+[9/52] Compiling KanpanCore Alert.swift
+[10/52] Compiling KanpanCore AlertEvaluator.swift
+[11/52] Compiling KanpanCore AlertGeometry.swift
+[12/52] Compiling KanpanCore AICoinBehavior.swift
+[13/52] Compiling KanpanCore ChartOptions.swift
+[14/56] Compiling KanpanCore Interval.swift
+[15/56] Compiling KanpanCore LatestQuote.swift
+[16/56] Compiling KanpanCore MarkPriceTick.swift
+[17/56] Compiling KanpanCore MarketMicrostructure.swift
+[18/56] Compiling KanpanCore Constants.swift
+[19/56] Compiling KanpanCore Fling.swift
+[20/56] Compiling KanpanCore Layout.swift
+[21/56] Compiling KanpanCore PriceScale.swift
+[22/56] Compiling KanpanCore Ticks.swift
+[23/56] Compiling KanpanCore BarSeries.swift
+[24/56] Compiling KanpanCore ChangeBasis.swift
+[25/56] Compiling KanpanCore ExternalSeries.swift
+[26/56] Compiling KanpanCore HeikinAshi.swift
+[27/56] Compiling KanpanCore Drawing.swift
+[28/56] Compiling KanpanCore Format.swift
+[29/56] Compiling KanpanCore ReviewLabels.swift
+[30/56] Compiling KanpanCore CandleWidths.swift
+[31/56] Compiling KanpanCore Clamp.swift
+[32/56] Compiling KanpanCore MarketSector.swift
+[33/56] Compiling KanpanCore SymbolClassification.swift
+[34/56] Compiling KanpanCore SymbolInfo.swift
+[35/56] Compiling KanpanCore SectorAggregate.swift
+[36/56] Compiling KanpanCore Indicators.swift
+[37/56] Compiling KanpanCore Math.swift
+[38/56] Compiling KanpanCore OINotice.swift
+[39/56] Compiling KanpanCore Aggregator.swift
+[40/56] Compiling KanpanCore Bar.swift
+[41/56] Compiling KanpanCore ViewTransition.swift
+[42/56] Compiling KanpanCore ViewWindow.swift
+[43/56] Compiling KanpanCore IncrementalLines.swift
+[44/56] Compiling KanpanCore IndicatorEngine.swift
+[45/56] Compiling KanpanCore IndicatorID.swift
+[46/56] Compiling KanpanCore DrawEdit.swift
+[47/56] Compiling KanpanCore DrawGeometry.swift
+[48/56] Compiling KanpanCore DrawRegression.swift
+[49/56] Compiling KanpanCore DrawStore.swift
+[50/56] Compiling KanpanCore DrawVolume.swift
+[51/56] Compiling KanpanCore SectorCatalog.swift
+[52/56] Compiling KanpanCore SectorSelection.swift
+[53/56] Compiling KanpanCore CandleStyle.swift
+[54/56] Compiling KanpanCore Palette.swift
+[55/70] Compiling KanpanNetwork Pacer.swift
+[56/71] Compiling KanpanNetwork WSSocket.swift
+[57/71] Compiling KanpanNetwork HTTPTransport.swift
+[58/71] Compiling KanpanNetwork MarketSocketRouter.swift
+[59/71] Compiling KanpanNetwork Backoff.swift
+[60/71] Compiling KanpanNetwork RateLimiter.swift
+[61/71] Compiling KanpanNetwork WSClient.swift
+[62/71] Compiling KanpanNetwork GatewayEnvelope.swift
+[63/71] Compiling KanpanNetwork MarketRoutePolicy.swift
+[64/71] Compiling KanpanNetwork MarketSource.swift
+[65/71] Emitting module KanpanNetwork
+[66/71] Compiling KanpanNetwork DTO.swift
+[67/71] Compiling KanpanNetwork Endpoints.swift
+[68/71] Compiling KanpanNetwork Errors.swift
+[69/71] Compiling KanpanNetwork RESTClient.swift
+[70/76] Compiling KanpanSector SectorRows.swift
+[71/76] Compiling KanpanSector SectorWindowChoice.swift
+[72/76] Emitting module KanpanSector
+[73/76] Compiling KanpanSector SectorDrillDecision.swift
+[74/76] Compiling KanpanSector SectorFeed.swift
+[75/81] Compiling KanpanSectorTests SectorRowTests.swift
+[76/81] Compiling KanpanSectorTests SectorWindowChoiceTests.swift
+[77/81] Emitting module KanpanSectorTests
+[78/81] Compiling KanpanSectorTests SectorFeedTests.swift
+[79/81] Compiling KanpanSectorTests SectorDrillDecisionTests.swift
+[80/83] Compiling KanpanSectorPackageTests runner.swift
+[81/83] Emitting module KanpanSectorPackageTests
+[81/83] Write Objects.LinkFileList
+[82/83] Linking KanpanSectorPackageTests
+Build complete! (473.26s)
+Test Suite 'All tests' started at 2026-09-23 02:48:27.234.
+Test Suite 'All tests' passed at 2026-09-23 02:48:27.334.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.100) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "B-T21 板块窗口这一档" started.
+◇ Suite "C-01 板块下钻的去留" started.
+◇ Suite "A-T12 / B-T21 板块行情不许过期还摆在屏上" started.
+◇ Test "取到一趟就把失败记账清零" started.
+◇ Test "连着失败清掉屏上那份之后，空态要立起来" started.
+◇ Test "换线路把手里那份行情清空" started.
+◇ Test "连着取不到、手里那份也过了寿命，就清空给空态" started.
+◇ Test "四种组合里名字和窗口永远同源" started.
+◇ Test "5 日算得出就照用户停的那一档" started.
+◇ Test "5 日算不出东西时就地退回今日，名字跟着退" started.
+◇ Test "整帧都是空的时候谁也别信，不退栈" started.
+◇ Test "同一个 base 两张合约，有成交额的那张一定顶掉没有的" started.
+◇ Test "d20 不是一个模式，写的还是今日那个名字" started.
+◇ Test "停在今日的人不会被日线推去 5 日" started.
+◇ Test "别的板块算出来了、唯独这一帧没它，只要分类表还认就留在原地" started.
+◇ Test "空态这条规则本身" started.
+◇ Test "分类表和兜底桶都不认、而这一帧确实有别的板块，才算它真的没了" started.
+◇ Test "一趟都没取到过就直接是空的" started.
+◇ Test "丢弃规则本身" started.
+◇ Test "成交额拿不到就是没有，不编成 0" started.
+◇ Test "连着失败但屏上那份还新鲜，就先留着" started.
+◇ Test "空态上点一下就再取一趟" started.
+◇ Test "重试先清线路冷却，再发第一趟请求" started.
+◇ Test "问过了却什么都没有，才是空态" started.
+◇ Test "这一帧有它就照常画" started.
+◇ Test "兜底桶只作正面证据：它说有就留下" started.
+◇ Test "第一趟还没回来时不算空态" started.
+◇ Test "品种表给的小数位按 base 查得到" started.
+◇ Test "等的时候那张空壳带着板块名和成员数，人不会看见一块空白" started.
+◇ Test "线路没变就不白清一次" started.
+◇ Suite "B-07 / B.5 板块品种列表" started.
+✔ Test "四种组合里名字和窗口永远同源" passed after 0.002 seconds.
+✔ Test "5 日算不出东西时就地退回今日，名字跟着退" passed after 0.001 seconds.
+✔ Test "d20 不是一个模式，写的还是今日那个名字" passed after 0.001 seconds.
+✔ Test "停在今日的人不会被日线推去 5 日" passed after 0.001 seconds.
+✔ Test "分类表和兜底桶都不认、而这一帧确实有别的板块，才算它真的没了" passed after 0.001 seconds.
+✔ Test "这一帧有它就照常画" passed after 0.001 seconds.
+✔ Test "等的时候那张空壳带着板块名和成员数，人不会看见一块空白" passed after 0.001 seconds.
+✔ Test "5 日算得出就照用户停的那一档" passed after 0.002 seconds.
+✔ Test "别的板块算出来了、唯独这一帧没它，只要分类表还认就留在原地" passed after 0.001 seconds.
+✔ Test "兜底桶只作正面证据：它说有就留下" passed after 0.001 seconds.
+✔ Test "整帧都是空的时候谁也别信，不退栈" passed after 0.001 seconds.
+✔ Suite "B-T21 板块窗口这一档" passed after 0.003 seconds.
+✔ Suite "C-01 板块下钻的去留" passed after 0.003 seconds.
+◇ Test "build 把品种表的小数位带进每一行" started.
+◇ Test "涨跌幅缺数的行也沉到最后并按代号定序" started.
+◇ Test "副文案里缺成交额就整段不写，不排一列「成交额 —」" started.
+◇ Test "品种表还没到才退回按大小猜" started.
+◇ Test "成交额缺数的行排在最后，而且两次排出来一样" started.
+◇ Test "价格小数位听品种表的，不按数值大小现猜" started.
+◇ Test "值格里缺成交额一律写「—」，和同页的价格 / 涨跌幅一个样" started.
+✔ Test "成交额缺数的行排在最后，而且两次排出来一样" passed after 0.001 seconds.
+✔ Test "涨跌幅缺数的行也沉到最后并按代号定序" passed after 0.001 seconds.
+◇ Test "极小的正价绝不写成 0.00" started.
+✔ Test "值格里缺成交额一律写「—」，和同页的价格 / 涨跌幅一个样" passed after 0.001 seconds.
+✔ Test "价格小数位听品种表的，不按数值大小现猜" passed after 0.001 seconds.
+✔ Test "副文案里缺成交额就整段不写，不排一列「成交额 —」" passed after 0.001 seconds.
+✔ Test "极小的正价绝不写成 0.00" passed after 0.001 seconds.
+✔ Test "品种表还没到才退回按大小猜" passed after 0.001 seconds.
+✔ Test "build 把品种表的小数位带进每一行" passed after 0.001 seconds.
+✔ Suite "B-07 / B.5 板块品种列表" passed after 0.006 seconds.
+✔ Test "取到一趟就把失败记账清零" passed after 0.153 seconds.
+✔ Test "换线路把手里那份行情清空" passed after 0.153 seconds.
+✔ Test "连着取不到、手里那份也过了寿命，就清空给空态" passed after 0.152 seconds.
+✔ Test "同一个 base 两张合约，有成交额的那张一定顶掉没有的" passed after 0.152 seconds.
+✔ Test "连着失败但屏上那份还新鲜，就先留着" passed after 0.156 seconds.
+✔ Test "成交额拿不到就是没有，不编成 0" passed after 0.156 seconds.
+✔ Test "连着失败清掉屏上那份之后，空态要立起来" passed after 0.176 seconds.
+✔ Test "线路没变就不白清一次" passed after 0.173 seconds.
+✔ Test "空态这条规则本身" passed after 0.175 seconds.
+✔ Test "一趟都没取到过就直接是空的" passed after 0.175 seconds.
+✔ Test "丢弃规则本身" passed after 0.175 seconds.
+✔ Test "问过了却什么都没有，才是空态" passed after 0.175 seconds.
+✔ Test "第一趟还没回来时不算空态" passed after 0.175 seconds.
+✔ Test "品种表给的小数位按 base 查得到" passed after 0.175 seconds.
+✔ Test "重试先清线路冷却，再发第一趟请求" passed after 0.175 seconds.
+✔ Test "空态上点一下就再取一趟" passed after 0.258 seconds.
+✔ Suite "A-T12 / B-T21 板块行情不许过期还摆在屏上" passed after 0.261 seconds.
+✔ Test run with 35 tests in 4 suites passed after 0.262 seconds.
+cd Kanpan/Settings && swift test 
+Building for debugging...
+[0/10] /Users/mdd/zhk/kanpan-p2/Kanpan/Settings/.build/arm64-apple-macosx/debug/KanpanSettingsPackageTests.derived/runner.swift
+[0/10] Write sources
+[7/10] Write swift-version--58304C5D6DBC2206.txt
+[9/53] Emitting module KanpanCore
+[10/57] Compiling KanpanCore Constants.swift
+[11/57] Compiling KanpanCore Fling.swift
+[12/57] Compiling KanpanCore Layout.swift
+[13/57] Compiling KanpanCore PriceScale.swift
+[14/57] Compiling KanpanCore Ticks.swift
+[15/57] Compiling KanpanCore Alert.swift
+[16/57] Compiling KanpanCore AlertEvaluator.swift
+[17/57] Compiling KanpanCore AlertGeometry.swift
+[18/57] Compiling KanpanCore AICoinBehavior.swift
+[19/57] Compiling KanpanCore ChartOptions.swift
+[20/57] Compiling KanpanCore Interval.swift
+[21/57] Compiling KanpanCore LatestQuote.swift
+[22/57] Compiling KanpanCore MarkPriceTick.swift
+[23/57] Compiling KanpanCore MarketMicrostructure.swift
+[24/57] Compiling KanpanCore MarketSector.swift
+[25/57] Compiling KanpanCore SymbolClassification.swift
+[26/57] Compiling KanpanCore SymbolInfo.swift
+[27/57] Compiling KanpanCore SectorAggregate.swift
+[28/57] Compiling KanpanCore Drawing.swift
+[29/57] Compiling KanpanCore Format.swift
+[30/57] Compiling KanpanCore ReviewLabels.swift
+[31/57] Compiling KanpanCore CandleWidths.swift
+[32/57] Compiling KanpanCore Clamp.swift
+[33/57] Compiling KanpanCore ViewTransition.swift
+[34/57] Compiling KanpanCore ViewWindow.swift
+[35/57] Compiling KanpanCore IncrementalLines.swift
+[36/57] Compiling KanpanCore IndicatorEngine.swift
+[37/57] Compiling KanpanCore IndicatorID.swift
+[38/57] Compiling KanpanCore BarSeries.swift
+[39/57] Compiling KanpanCore ChangeBasis.swift
+[40/57] Compiling KanpanCore ExternalSeries.swift
+[41/57] Compiling KanpanCore HeikinAshi.swift
+[42/57] Compiling KanpanCore Indicators.swift
+[43/57] Compiling KanpanCore Math.swift
+[44/57] Compiling KanpanCore OINotice.swift
+[45/57] Compiling KanpanCore Aggregator.swift
+[46/57] Compiling KanpanCore Bar.swift
+[47/57] Compiling KanpanCore DrawEdit.swift
+[48/57] Compiling KanpanCore DrawGeometry.swift
+[49/57] Compiling KanpanCore DrawRegression.swift
+[50/57] Compiling KanpanCore DrawStore.swift
+[51/57] Compiling KanpanCore DrawVolume.swift
+[52/57] Compiling KanpanCore SectorCatalog.swift
+[53/57] Compiling KanpanCore SectorSelection.swift
+[54/57] Compiling KanpanCore CandleStyle.swift
+[55/57] Compiling KanpanCore Palette.swift
+[56/71] Compiling KanpanNetwork Pacer.swift
+[57/72] Compiling KanpanNetwork Backoff.swift
+[58/72] Compiling KanpanNetwork HTTPTransport.swift
+[59/72] Compiling KanpanNetwork MarketSocketRouter.swift
+[60/72] Compiling KanpanNetwork WSSocket.swift
+[61/72] Compiling KanpanNetwork MarketSource.swift
+[62/72] Compiling KanpanNetwork RateLimiter.swift
+[63/72] Compiling KanpanNetwork WSClient.swift
+[64/72] Compiling KanpanNetwork GatewayEnvelope.swift
+[65/72] Compiling KanpanNetwork MarketRoutePolicy.swift
+[66/72] Compiling KanpanNetwork Errors.swift
+[67/72] Compiling KanpanNetwork RESTClient.swift
+[68/72] Emitting module KanpanNetwork
+[69/72] Compiling KanpanNetwork DTO.swift
+[70/72] Compiling KanpanNetwork Endpoints.swift
+[71/87] Compiling KanpanData SymbolCatalog.swift
+[72/88] Compiling KanpanData Snapshot.swift
+[73/88] Compiling KanpanData QuoteSnapshot.swift
+[74/88] Compiling KanpanData SeriesStore.swift
+[75/88] Compiling KanpanData Zip.swift
+[76/88] Compiling KanpanData BaselineSnapshot.swift
+[77/88] Compiling KanpanData OIArchive.swift
+[78/88] Compiling KanpanData OIStore.swift
+[79/88] Compiling KanpanData Paths.swift
+[80/88] Emitting module KanpanData
+[81/88] Compiling KanpanData Network.swift
+[82/88] Compiling KanpanData BarCache.swift
+[83/88] Compiling KanpanData OISource.swift
+[84/88] Compiling KanpanData RoutedMarketFeed.swift
+[85/88] Compiling KanpanData FeedComposer.swift
+[86/88] Compiling KanpanData MarketFeed.swift
+[87/102] Compiling KanpanSettings SettingsStamp.swift
+[88/103] Compiling KanpanSettings IndicatorDraft.swift
+[89/103] Compiling KanpanSettings IndicatorParamRule.swift
+[90/103] Compiling KanpanSettings ChartViewport.swift
+[91/103] Compiling KanpanSettings DisplayComfortPolicy.swift
+[92/103] Compiling KanpanSettings APIHost.swift
+[93/103] Compiling KanpanSettings AlertSound.swift
+[94/103] Compiling KanpanSettings LaunchThemeMirror.swift
+[95/103] Compiling KanpanSettings MarketCache.swift
+[96/103] Emitting module KanpanSettings
+[97/103] Compiling KanpanSettings Prefs.swift
+[98/103] Compiling KanpanSettings PrefsFieldPlan.swift
+[99/103] Compiling KanpanSettings PrefsStore.swift
+[100/103] Compiling KanpanSettings PrefsCodec.swift
+[101/103] Compiling KanpanSettings ThemeChoice.swift
+[102/116] Compiling KanpanSettingsTests PrefsDefaultsTests.swift
+[103/117] Compiling KanpanSettingsTests SettingsStampTests.swift
+[104/117] Compiling KanpanSettingsTests PrefsFieldPlanTests.swift
+[105/117] Compiling KanpanSettingsTests PrefsToleranceTests.swift
+[106/117] Compiling KanpanSettingsTests PrefsPersistenceTests.swift
+[107/117] Emitting module KanpanSettingsTests
+[108/117] Compiling KanpanSettingsTests ChartViewportA5Tests.swift
+[109/117] Compiling KanpanSettingsTests DisplayComfortTests.swift
+[110/117] Compiling KanpanSettingsTests AlertSoundTests.swift
+[111/117] Compiling KanpanSettingsTests ChartFoundationPrefsTests.swift
+[112/117] Compiling KanpanSettingsTests LaunchThemeMirrorTests.swift
+[113/117] Compiling KanpanSettingsTests MarketCacheTests.swift
+[114/117] Compiling KanpanSettingsTests PrefsColorTests.swift
+[115/117] Compiling KanpanSettingsTests StorageLayeringTests.swift
+[116/119] Compiling KanpanSettingsPackageTests runner.swift
+[117/119] Emitting module KanpanSettingsPackageTests
+[117/119] Write Objects.LinkFileList
+[118/119] Linking KanpanSettingsPackageTests
+Build complete! (494.67s)
+Test Suite 'All tests' started at 2026-09-23 02:56:58.646.
+Test Suite 'All tests' passed at 2026-09-23 02:56:58.669.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.022) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "容错" started.
+◇ Suite "A.5 · 视野的落盘时机" started.
+◇ Suite "首帧底色镜像" started.
+◇ Suite "涨跌对调" started.
+◇ Suite "体验类状态的归类表" started.
+◇ Suite "护眼选择与屏幕亮度防抖" started.
+◇ Suite "默认值" started.
+◇ Suite "参数规则" started.
+◇ Suite "周期表" started.
+◇ Suite "MA EMA color persistence" started.
+◇ Suite "指标草稿与图表设置" started.
+◇ Suite "版本与合并" started.
+◇ Suite "指标" started.
+◇ Suite "API 域名" started.
+◇ Suite "提醒铃声" started.
+◇ Suite "存放分层" started.
+◇ Test invalidBrightnessDoesNotChangeChoice() started.
+◇ Suite "体验类状态标识" started.
+◇ Test cancelSaveRestartAndReset() started.
+◇ Test "7 缩放没落盘时收到同一份档案的旧值：本地这一捏赢，且只提交一次" started.
+◇ Test "7 没捏过就抬手：不写盘、不提交；真捏过才提交，且一次手势只提交一轮" started.
+◇ Suite "持久化" started.
+◇ Test seedResolutionIsIndependentOfSystemForManualChoice() started.
+◇ Test allThemesRoundTripWithoutNewArchiveVersion() started.
+◇ Test "旧存档里超额的副图读回时被裁到三个" started.
+◇ Test "常用指标取消不改原值、保存连同输出和阈值生效" started.
+◇ Test "域名：修得好就修，修不好退回默认" started.
+◇ Test "坏档进 store：能起来，而且不会把坏档留在盘上" started.
+◇ Test "7 退后台是兜底不是时机：正常抬过手之后它一次都不提交" started.
+◇ Test "参数越界 / 个数不对 → 夹回区间并补齐" started.
+◇ Test "步进器按不出非法值" started.
+◇ Suite "清缓存" started.
+◇ Test "0、负数、超上限都要有拒绝理由" started.
+◇ Test "没有存档 → 全新安装的默认" started.
+◇ Test "字段类型全错 → 逐项退回默认，不是整档作废" started.
+◇ Test hysteresisAndDwell() started.
+◇ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" started.
+◇ Test "「图表」的三个开关：类型不对退回默认" started.
+◇ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" started.
+◇ Test "不读取旧原型存档" started.
+◇ Test "认不出来的枚举值 → 那一项取默认" started.
+◇ Test "不是 JSON / 是别的 JSON → 默认，不抛" started.
+◇ Test "全部新增设置落盘并容错读取" started.
+◇ Test "常用行：去重、认不出的丢掉、超过 6 档按从短到长截断、空数组不生效" started.
+◇ Test "7 手势中途换了属主：欠着的那一捏作废，之后的抬手一次都不许提交" started.
+◇ Test "旧存档里多出来的副图按顺序截到三个" started.
+◇ Test "副图高度：认不出的档丢掉" started.
+◇ Test "默认就是 fapi.binance.com" started.
+◇ Test "合法域名写得进去，往返后还在" started.
+◇ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" started.
+◇ Test "副图高度默认「中」" started.
+◇ Test "缺省、未知与坏类型只回退铃声，不重置别的设置" started.
+◇ Test "抄来的地址能normalize" started.
+◇ Test "形状不对的都要拒绝，并且不写进设置" started.
+◇ Test "每个指标的默认参数直接取 Core，不另抄一份" started.
+◇ Test "会删文件的地方，删的必须都是能再取回来的东西" started.
+◇ Test "重新创建设置存储仍保留选择" started.
+◇ Test "账号目录里一个键一个文件，脏标识不许压在偏好上" started.
+◇ Test "全新安装的一份（A6.4「首次安装即如此」）" started.
+◇ Test "四档映射与往返持久化" started.
+◇ Test "哨兵那一格不许被整片抹掉" started.
+◇ Test "改参数只影响那一个指标" started.
+◇ Test "拖动排序" started.
+◇ Test "副图最多三个，第四个挤掉最早打开的那个" started.
+◇ Test "副图高度三档" started.
+◇ Test "主图叠加随便开几个，按打开先后排" started.
+◇ Test "任何清理路径都不许删到账号目录" started.
+◇ Test "Caches 那棵树上只放能再取回来的行情数据" started.
+◇ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" started.
+◇ Test "体验类的键一个都不许出现在行情缓存那一层" started.
+◇ Test "常用行 6 档放满，与 Interval.quick 相同" started.
+◇ Test "常用行增删：最多 6 档、至少留 1 档，且按 14 档的顺序排" started.
+◇ Test "越界赋值被夹住；越界下标被忽略" started.
+◇ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" started.
+◇ Test "只动涨跌两色，其余令牌一个不变" started.
+◇ Test "默认红涨绿跌" started.
+◇ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" started.
+◇ Test "自选页停在哪一类跟着账号走" started.
+◇ Test "开关能存下来" started.
+◇ Test "客户端会发的字段和契约文件一个不差" started.
+◇ Test "每个存储字段都归了类" started.
+◇ Test "表里的键就是存档里的键" started.
+◇ Test "直连 / 网关留在这台设备上，域名和探测开关也是" started.
+◇ Test "关掉之后绿涨红跌，浅深都对调" started.
+◇ Test "老存档里选的是网关，升级之后这台机器还是网关" started.
+◇ Test "副图高度、副图顺序、指标颜色，一样都算一次改动" started.
+◇ Test "按字段记，不按整份档案：改皮肤不会把根宽也标成脏的" started.
+◇ Test "一个字段拍成好几条路径：只要有一条被 droppedFields 丢了，这个字段就还得脏着" started.
+◇ Test "档案解不开：算「损坏」，回落云端，但脏标识不许顺手抹掉" started.
+◇ Test "线上键名对得上，RSI 那一对来回都不丢" started.
+◇ Test "subHeightOverrides/MACD 被认下就清 subHeightOverrides" started.
+◇ Test "推成功之后，云端那份就说了算了" started.
+◇ Test "嵌套字段发上去的是拍平后的路径：params/MA 和 params/EMA 都认下了就清 params" started.
+◇ Test "rsiRange 被认下，仍然清掉 rsiLower 和 rsiUpper 两个本地字段" started.
+◇ Test "哨兵和真身不在同一层：真身那层整个没了，哨兵照样认得出这是「被清空」" started.
+◇ Test "字段比对认的是编码键名，和同步清单是同一张表" started.
+◇ Test "档案里记的属主不是现在这个人：当它不存在，绝不能用" started.
+◇ Test "推成功才清脏字段" started.
+◇ Test "改一项就记一个脏字段，落盘和记脏是同一步" started.
+◇ Test "云端回拉：本地脏的字段一律跳过，干净的跟着云端走" started.
+◇ Test "脏着却没东西可推的字段：桥判定和存档一致后就地清掉，别的脏字段不动" started.
+◇ Test "换了个人：上一个人的脏标识算不到我头上" started.
+◇ Test "三段的那条也一样：indicatorColors/MACD/0 映得回 indicatorColors" started.
+◇ Test "按字段挑回来：只有点名的那几项用本地的，别的原样用对方那份" started.
+◇ Test "第一次装：哨兵也没有，正常从云端拉" started.
+◇ Test "发出去了不算数，服务端认了才算：没回执的那几项脏标识留着" started.
+◇ Test "推的中途用户又改了同一项：那一改不许跟着被清掉" started.
+◇ Test "派生出来的几张表对得上母表" started.
+◇ Test case passing 1 argument sound → .default to "四档映射与往返持久化" started.
+◇ Test case passing 1 argument sound → .crisp to "四档映射与往返持久化" started.
+◇ Test case passing 1 argument sound → .electronic to "四档映射与往返持久化" started.
+◇ Test "档案没了、哨兵还在：这是「被清空」，而且看得出本地有没有没推上去的改动" started.
+◇ Test "没记过就按出厂值走：青苔 · 跟随系统" started.
+◇ Test case passing 1 argument sound → .glass to "四档映射与往返持久化" started.
+◇ Test "JSON 里存的是 rawValue，人能读，不是交错数组" started.
+◇ Test "每到一次货，adoptToken 都要跳一格" started.
+◇ Test "同一个人的档案晚到：手上没落盘的那一捏要保住" started.
+◇ Test "捏完立刻换周期换品种：内存里那份根宽当场就是新的，不用等落盘" started.
+◇ Test "改完全部 → 杀 app → 重开逐项相等" started.
+◇ Test "重开一个 store 读回同一份" started.
+◇ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" started.
+◇ Test "本机与云端对账：没基线只播种、不一样以本机为准、一样就什么都不做" started.
+◇ Test "恢复默认把键抹掉" started.
+◇ Test "真的换了个人：手上没落盘的那一捏必须作废，不许写到新属主头上" started.
+◇ Test "捏的过程中不写盘，手一松立刻落盘" started.
+◇ Test "没存过根宽的老存档退回出厂 4pt，不是 0" started.
+◇ Test "翻转不节流：一次双击就落一次盘，重复报不重复写" started.
+◇ Test "离谱的根宽存不进去：读回来一定夹在上下限之间" started.
+◇ Test "根宽和上下翻转跨 app 重启都在" started.
+◇ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" started.
+◇ Test "没真改动就不落盘" started.
+◇ Test "目录本来就不存在 → 量出 0，清也不报错" started.
+◇ Test "清缓存不碰 UserDefaults 里那几格" started.
+◇ Test "数据层没接上就如实说没接上，不报假的 0" started.
+◇ Test "量出来的是那三处，分三笔报" started.
+◇ Test "分身份的报价和板块历史都算进「行情缓存」那个数" started.
+◇ Test "store 清完会重新量，而且不多说一句" started.
+◇ Test "清完三处都没了，数字归零；沙盒里别的东西不动" started.
+◇ Test "清完之后，板块历史和分身份的报价都没了" started.
+◇ Test "体积文案" started.
+◇ Test "清完之后，按行情源分的那份品种表也没了" started.
+✔ Test "字段类型全错 → 逐项退回默认，不是整档作废" passed after 0.039 seconds.
+✔ Test "域名：修得好就修，修不好退回默认" passed after 0.039 seconds.
+✔ Test hysteresisAndDwell() passed after 0.040 seconds.
+✔ Test seedResolutionIsIndependentOfSystemForManualChoice() passed after 0.039 seconds.
+✔ Test "「图表」的三个开关：类型不对退回默认" passed after 0.039 seconds.
+✔ Test "0、负数、超上限都要有拒绝理由" passed after 0.039 seconds.
+✔ Test "没有存档 → 全新安装的默认" passed after 0.039 seconds.
+✔ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" passed after 0.039 seconds.
+✔ Test "常用指标取消不改原值、保存连同输出和阈值生效" passed after 0.040 seconds.
+✔ Test "旧存档里多出来的副图按顺序截到三个" passed after 0.040 seconds.
+✔ Test "副图高度：认不出的档丢掉" passed after 0.040 seconds.
+✔ Test "默认就是 fapi.binance.com" passed after 0.040 seconds.
+✔ Test invalidBrightnessDoesNotChangeChoice() passed after 0.041 seconds.
+◇ Test "按行情源分的那份品种表算进「行情缓存」那个数" started.
+✔ Test "副图高度默认「中」" passed after 0.041 seconds.
+✔ Test "常用行：去重、认不出的丢掉、超过 6 档按从短到长截断、空数组不生效" passed after 0.041 seconds.
+✔ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" passed after 0.040 seconds.
+✔ Test "抄来的地址能normalize" passed after 0.041 seconds.
+✔ Test "合法域名写得进去，往返后还在" passed after 0.042 seconds.
+✔ Test "认不出来的枚举值 → 那一项取默认" passed after 0.040 seconds.
+✔ Test "全部新增设置落盘并容错读取" passed after 0.043 seconds.
+◇ Test "行情缓存那棵树和账号那棵树互不包含" started.
+✔ Test "每个指标的默认参数直接取 Core，不另抄一份" passed after 0.043 seconds.
+✔ Test "旧存档里超额的副图读回时被裁到三个" passed after 0.044 seconds.
+✔ Test "步进器按不出非法值" passed after 0.044 seconds.
+✔ Test "缺省、未知与坏类型只回退铃声，不重置别的设置" passed after 0.044 seconds.
+✔ Test "参数越界 / 个数不对 → 夹回区间并补齐" passed after 0.044 seconds.
+✔ Test "全新安装的一份（A6.4「首次安装即如此」）" passed after 0.044 seconds.
+✔ Test "改参数只影响那一个指标" passed after 0.044 seconds.
+✔ Test "形状不对的都要拒绝，并且不写进设置" passed after 0.044 seconds.
+✔ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" passed after 0.045 seconds.
+✔ Test "副图最多三个，第四个挤掉最早打开的那个" passed after 0.044 seconds.
+✔ Test "不是 JSON / 是别的 JSON → 默认，不抛" passed after 0.045 seconds.
+✔ Test "副图高度三档" passed after 0.044 seconds.
+✔ Test "四档映射与往返持久化" with 4 test cases passed after 0.044 seconds.
+✔ Test "拖动排序" passed after 0.045 seconds.
+✔ Test "常用行 6 档放满，与 Interval.quick 相同" passed after 0.047 seconds.
+✔ Test "常用行增删：最多 6 档、至少留 1 档，且按 14 档的顺序排" passed after 0.047 seconds.
+✔ Test "越界赋值被夹住；越界下标被忽略" passed after 0.047 seconds.
+✔ Test "主图叠加随便开几个，按打开先后排" passed after 0.047 seconds.
+✔ Test "账号目录里一个键一个文件，脏标识不许压在偏好上" passed after 0.048 seconds.
+✔ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" passed after 0.047 seconds.
+✔ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" passed after 0.047 seconds.
+✔ Test "只动涨跌两色，其余令牌一个不变" passed after 0.030 seconds.
+✔ Test "默认红涨绿跌" passed after 0.032 seconds.
+✔ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" passed after 0.032 seconds.
+✔ Test allThemesRoundTripWithoutNewArchiveVersion() passed after 0.060 seconds.
+✔ Test "开关能存下来" passed after 0.032 seconds.
+✔ Test "每个存储字段都归了类" passed after 0.035 seconds.
+✔ Test "关掉之后绿涨红跌，浅深都对调" passed after 0.035 seconds.
+✔ Test "表里的键就是存档里的键" passed after 0.035 seconds.
+✔ Test "自选页停在哪一类跟着账号走" passed after 0.035 seconds.
+✔ Test "派生出来的几张表对得上母表" passed after 0.035 seconds.
+✔ Test "JSON 里存的是 rawValue，人能读，不是交错数组" passed after 0.025 seconds.
+✔ Test "改完全部 → 杀 app → 重开逐项相等" passed after 0.025 seconds.
+✔ Test "本机与云端对账：没基线只播种、不一样以本机为准、一样就什么都不做" passed after 0.025 seconds.
+✔ Test "客户端会发的字段和契约文件一个不差" passed after 0.035 seconds.
+✔ Test "没存过根宽的老存档退回出厂 4pt，不是 0" passed after 0.025 seconds.
+✔ Test "离谱的根宽存不进去：读回来一定夹在上下限之间" passed after 0.025 seconds.
+✔ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" passed after 0.026 seconds.
+✔ Test "根宽和上下翻转跨 app 重启都在" passed after 0.025 seconds.
+✔ Test "Caches 那棵树上只放能再取回来的行情数据" passed after 0.063 seconds.
+✔ Test "直连 / 网关留在这台设备上，域名和探测开关也是" passed after 0.036 seconds.
+✔ Test "数据层没接上就如实说没接上，不报假的 0" passed after 0.025 seconds.
+✔ Test "体积文案" passed after 0.024 seconds.
+✔ Suite "指标草稿与图表设置" passed after 0.065 seconds.
+✔ Suite "参数规则" passed after 0.065 seconds.
+✔ Suite "API 域名" passed after 0.065 seconds.
+✔ Suite "默认值" passed after 0.066 seconds.
+✔ Test "行情缓存那棵树和账号那棵树互不包含" passed after 0.021 seconds.
+✔ Suite "指标" passed after 0.065 seconds.
+✔ Suite "周期表" passed after 0.066 seconds.
+✔ Suite "涨跌对调" passed after 0.066 seconds.
+✔ Suite "护眼选择与屏幕亮度防抖" passed after 0.066 seconds.
+✔ Test "清完之后，板块历史和分身份的报价都没了" passed after 0.035 seconds.
+✔ Test "目录本来就不存在 → 量出 0，清也不报错" passed after 0.036 seconds.
+✔ Test "分身份的报价和板块历史都算进「行情缓存」那个数" passed after 0.051 seconds.
+✔ Test "按行情源分的那份品种表算进「行情缓存」那个数" passed after 0.049 seconds.
+✔ Test "没记过就按出厂值走：青苔 · 跟随系统" passed after 0.053 seconds.
+◇ Test "记下什么读回什么" started.
+✔ Test "记下什么读回什么" passed after 0.008 seconds.
+◇ Test "镜像里写了别的东西不算数，退回出厂而不是崩" started.
+✔ Test "清完之后，按行情源分的那份品种表也没了" passed after 0.062 seconds.
+✔ Test "镜像里写了别的东西不算数，退回出厂而不是崩" passed after 0.004 seconds.
+◇ Test "只兑现皮肤与深浅，别的偏好一个字不猜" started.
+✔ Test "体验类的键一个都不许出现在行情缓存那一层" passed after 0.122 seconds.
+✔ Test "只兑现皮肤与深浅，别的偏好一个字不猜" passed after 0.021 seconds.
+◇ Test "落一次盘就把皮肤与深浅镜像出来" started.
+✔ Test "量出来的是那三处，分三笔报" passed after 0.124 seconds.
+✔ Test "清完三处都没了，数字归零；沙盒里别的东西不动" passed after 0.135 seconds.
+✔ Test "7 缩放没落盘时收到同一份档案的旧值：本地这一捏赢，且只提交一次" passed after 0.175 seconds.
+✔ Test "7 没捏过就抬手：不写盘、不提交；真捏过才提交，且一次手势只提交一轮" passed after 0.174 seconds.
+✔ Test cancelSaveRestartAndReset() passed after 0.374 seconds.
+✔ Test "坏档进 store：能起来，而且不会把坏档留在盘上" passed after 0.374 seconds.
+✔ Test "7 退后台是兜底不是时机：正常抬过手之后它一次都不提交" passed after 0.374 seconds.
+✔ Test "不读取旧原型存档" passed after 0.374 seconds.
+✔ Test "7 手势中途换了属主：欠着的那一捏作废，之后的抬手一次都不许提交" passed after 0.374 seconds.
+✔ Suite "MA EMA color persistence" passed after 0.375 seconds.
+✔ Suite "容错" passed after 0.375 seconds.
+✔ Suite "A.5 · 视野的落盘时机" passed after 0.376 seconds.
+✔ Suite "版本与合并" passed after 0.375 seconds.
+✔ Test "重新创建设置存储仍保留选择" passed after 0.411 seconds.
+✔ Suite "提醒铃声" passed after 0.412 seconds.
+✔ Test "老存档里选的是网关，升级之后这台机器还是网关" passed after 0.488 seconds.
+✔ Suite "体验类状态的归类表" passed after 0.516 seconds.
+✔ Test "每到一次货，adoptToken 都要跳一格" passed after 0.479 seconds.
+✔ Test "同一个人的档案晚到：手上没落盘的那一捏要保住" passed after 0.481 seconds.
+✔ Test "捏完立刻换周期换品种：内存里那份根宽当场就是新的，不用等落盘" passed after 0.522 seconds.
+✔ Test "恢复默认把键抹掉" passed after 0.599 seconds.
+✔ Test "真的换了个人：手上没落盘的那一捏必须作废，不许写到新属主头上" passed after 0.599 seconds.
+✔ Test "捏的过程中不写盘，手一松立刻落盘" passed after 0.601 seconds.
+✔ Test "翻转不节流：一次双击就落一次盘，重复报不重复写" passed after 0.630 seconds.
+✔ Test "重开一个 store 读回同一份" passed after 0.698 seconds.
+✔ Test "没真改动就不落盘" passed after 0.706 seconds.
+✔ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" passed after 0.708 seconds.
+✔ Suite "持久化" passed after 0.747 seconds.
+✔ Test "落一次盘就把皮肤与深浅镜像出来" passed after 0.638 seconds.
+◇ Test "换档案（登录 / 退登）也把镜像改过来" started.
+✔ Test "任何清理路径都不许删到账号目录" passed after 1.060 seconds.
+✔ Test "副图高度、副图顺序、指标颜色，一样都算一次改动" passed after 1.052 seconds.
+✔ Test "会删文件的地方，删的必须都是能再取回来的东西" passed after 1.080 seconds.
+✔ Test "一个字段拍成好几条路径：只要有一条被 droppedFields 丢了，这个字段就还得脏着" passed after 1.051 seconds.
+✔ Test "换档案（登录 / 退登）也把镜像改过来" passed after 0.315 seconds.
+✔ Test "档案解不开：算「损坏」，回落云端，但脏标识不许顺手抹掉" passed after 1.051 seconds.
+✔ Test "按字段记，不按整份档案：改皮肤不会把根宽也标成脏的" passed after 1.052 seconds.
+✔ Test "线上键名对得上，RSI 那一对来回都不丢" passed after 1.051 seconds.
+✔ Test "推成功之后，云端那份就说了算了" passed after 1.051 seconds.
+✔ Test "rsiRange 被认下，仍然清掉 rsiLower 和 rsiUpper 两个本地字段" passed after 1.051 seconds.
+✔ Test "哨兵和真身不在同一层：真身那层整个没了，哨兵照样认得出这是「被清空」" passed after 1.048 seconds.
+✔ Test "subHeightOverrides/MACD 被认下就清 subHeightOverrides" passed after 1.051 seconds.
+✔ Test "字段比对认的是编码键名，和同步清单是同一张表" passed after 1.048 seconds.
+✔ Test "推成功才清脏字段" passed after 1.048 seconds.
+✔ Test "云端回拉：本地脏的字段一律跳过，干净的跟着云端走" passed after 1.048 seconds.
+✔ Test "档案里记的属主不是现在这个人：当它不存在，绝不能用" passed after 1.048 seconds.
+✔ Test "换了个人：上一个人的脏标识算不到我头上" passed after 1.048 seconds.
+✔ Test "脏着却没东西可推的字段：桥判定和存档一致后就地清掉，别的脏字段不动" passed after 1.048 seconds.
+✔ Test "第一次装：哨兵也没有，正常从云端拉" passed after 1.047 seconds.
+✔ Test "改一项就记一个脏字段，落盘和记脏是同一步" passed after 1.048 seconds.
+✔ Test "嵌套字段发上去的是拍平后的路径：params/MA 和 params/EMA 都认下了就清 params" passed after 1.051 seconds.
+✔ Test "清缓存不碰 UserDefaults 里那几格" passed after 1.042 seconds.
+✔ Test "档案没了、哨兵还在：这是「被清空」，而且看得出本地有没有没推上去的改动" passed after 1.048 seconds.
+✔ Test "发出去了不算数，服务端认了才算：没回执的那几项脏标识留着" passed after 1.047 seconds.
+◇ Test "柜子空着时从镜像起步，有存档时一个字不掺" started.
+✔ Test "三段的那条也一样：indicatorColors/MACD/0 映得回 indicatorColors" passed after 1.048 seconds.
+✔ Test "推的中途用户又改了同一项：那一改不许跟着被清掉" passed after 1.048 seconds.
+✔ Test "store 清完会重新量，而且不多说一句" passed after 1.047 seconds.
+✔ Test "柜子空着时从镜像起步，有存档时一个字不掺" passed after 0.005 seconds.
+✔ Test "哨兵那一格不许被整片抹掉" passed after 1.086 seconds.
+◇ Test "同机换号：第一帧还是上一个人的，档案一到货就自愈，下次冷启动不再闪" started.
+✔ Suite "存放分层" passed after 1.088 seconds.
+✔ Suite "清缓存" passed after 1.087 seconds.
+✔ Test "按字段挑回来：只有点名的那几项用本地的，别的原样用对方那份" passed after 1.060 seconds.
+✔ Suite "体验类状态标识" passed after 1.094 seconds.
+✔ Test "同机换号：第一帧还是上一个人的，档案一到货就自愈，下次冷启动不再闪" passed after 0.101 seconds.
+✔ Suite "首帧底色镜像" passed after 1.191 seconds.
+✔ Test run with 127 tests in 19 suites passed after 1.192 seconds.
+cd Kanpan/Diagnostics && swift test 
+Building for debugging...
+[0/7] /Users/mdd/zhk/kanpan-p2/Kanpan/Diagnostics/.build/arm64-apple-macosx/debug/KanpanDiagnosticsPackageTests.derived/runner.swift
+[1/7] Write sources
+[4/7] Write swift-version--58304C5D6DBC2206.txt
+[6/15] Compiling KanpanDiagnostics FrameStats.swift
+[7/15] Compiling KanpanDiagnostics FrameProbe.swift
+[8/15] Compiling KanpanDiagnostics DiagnosticsCenter.swift
+[9/15] Compiling KanpanDiagnostics FrameReportStore.swift
+[10/15] Compiling KanpanDiagnostics MeasurementText.swift
+[11/15] Compiling KanpanDiagnostics PayloadDigest.swift
+[12/15] Compiling KanpanDiagnostics DiagnosticsStore.swift
+[13/15] Emitting module KanpanDiagnostics
+[14/22] Compiling KanpanDiagnosticsTests PayloadFixtures.swift
+[15/22] Compiling KanpanDiagnosticsTests MeasurementTextTests.swift
+[16/22] Compiling KanpanDiagnosticsTests FrameProbeSmokeTests.swift
+[17/22] Compiling KanpanDiagnosticsTests PayloadDigestTests.swift
+[18/22] Compiling KanpanDiagnosticsTests DiagnosticsStoreTests.swift
+[19/22] Emitting module KanpanDiagnosticsTests
+[20/22] Compiling KanpanDiagnosticsTests FrameStatsTests.swift
+[21/24] Compiling KanpanDiagnosticsPackageTests runner.swift
+[22/24] Emitting module KanpanDiagnosticsPackageTests
+[22/24] Write Objects.LinkFileList
+[23/24] Linking KanpanDiagnosticsPackageTests
+Build complete! (420.72s)
+Test Suite 'All tests' started at 2026-09-23 03:04:40.512.
+Test Suite 'All tests' passed at 2026-09-23 03:04:40.520.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.008) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "MetricKit 摘要" started.
+◇ Suite "诊断落盘" started.
+◇ Suite "帧报告落盘" started.
+◇ Suite "分位数" started.
+◇ Suite "帧统计" started.
+◇ Suite "带单位字符串解析" started.
+◇ Suite "直方图" started.
+◇ Suite "诊断中枢" started.
+◇ Test "旧键名 histogrammedTimeToFirstDraw 也认" started.
+◇ Test "JSON 坏掉返回 nil，不是返回一个空摘要" started.
+◇ Test "摘要能 Codable 往返" started.
+◇ Test "没有 terminationReason 时退回信号号码，不留空" started.
+◇ Test "挂起 / 磁盘 / CPU / 启动四类各归各位" started.
+◇ Test "每日指标 payload 抽出启动、挂起、磁盘三项" started.
+◇ Test "四个数组全空 = 干净的一天" started.
+◇ Test "崩溃 payload 数得出条数和终止原因" started.
+◇ Test "字节超上限也删最旧的，但最新那条永远留着" started.
+◇ Test "一条记录都没有时 crashFree 是 nil，不是 true" started.
+◇ Test "原文里我们不看的字段也一个不少地留着" started.
+◇ Test "收一份 metric payload：原文和摘要都在盘上" started.
+◇ Test "导出汇总：崩溃数、最坏启动 p50、最近磁盘写入" started.
+◇ Test "文件名按毫秒时间戳排，ls 出来就是时间序" started.
+◇ Test "条数超上限，从最旧的开始删" started.
+◇ Test "JSON 坏掉照样存字节，退到 base64" started.
+◇ Test "写导出文件 + 占用字节 + 清空" started.
+◇ Test "超上限删最旧的" started.
+◇ Test "整批导出：有一段没判定，整批就是 nil" started.
+◇ Test "标签里的空格和斜杠不会变成路径" started.
+◇ Test "存进去读出来是同一份" started.
+◇ Test "只有一个样本时所有分位数都是它" started.
+◇ Test "线性插值口径，和 numpy 默认一致" started.
+◇ Test "卡一次 3 帧：hitch 时长、丢帧数、占比都对得上" started.
+◇ Test "满帧 120Hz、每帧 1ms：hitch 为 0，三条预算全过" started.
+◇ Test "排队延迟和绘制耗时分开记" started.
+◇ Test "占比达标但有一次长卡顿，worstHitch 要把它顶出来" started.
+◇ Test "报告能 Codable 往返，allPassed 进得了 JSON" started.
+◇ Test "没采到帧 / 只采到一帧：不崩，也不谎报通过" started.
+◇ Test "±20% 的帧间隔抖动不算 hitch" started.
+◇ Test "每帧 4ms：P9.3 的 P99 < 3ms 判不过" started.
+◇ Test "中位数过但长尾超：P99 判不过，中位数判过" started.
+◇ Test "`2 ms` 不能被 `s` 抢先命中" started.
+◇ Test "存储单位是 1000 进制，和 MXUnitStorage 一致" started.
+◇ Test "解析不了返回 nil，绝不返回 0" started.
+◇ Test "JSON 里已经是数字时直接收下" started.
+◇ Test "没单位按默认单位算，负数和小数都收" started.
+◇ Test "桶乱序进来也要按 start 排好" started.
+◇ Test "存储单位的直方图走 KB 口径" started.
+◇ Test "桶边界解析不了就整桶丢掉，不是当 0" started.
+◇ Test "时间单位逐个换算到毫秒" started.
+◇ Test "空直方图不产出任何数" started.
+◇ Test "注入的假 payload 走的是和真回调同一条路" started.
+◇ Test "分位数取命中桶的中点" started.
+◇ Test "采集中途从 120Hz 降到 60Hz，不能把降频后每一帧都算成掉帧" started.
+◇ Test "重复 start 是幂等的" started.
+◇ Test "空数组返回 nil" started.
+✔ Test "JSON 坏掉返回 nil，不是返回一个空摘要" passed after 0.043 seconds.
+✔ Test "没有 terminationReason 时退回信号号码，不留空" passed after 0.043 seconds.
+✔ Test "旧键名 histogrammedTimeToFirstDraw 也认" passed after 0.043 seconds.
+✔ Test "崩溃 payload 数得出条数和终止原因" passed after 0.043 seconds.
+✔ Test "挂起 / 磁盘 / CPU / 启动四类各归各位" passed after 0.043 seconds.
+✔ Test "每日指标 payload 抽出启动、挂起、磁盘三项" passed after 0.043 seconds.
+✔ Test "文件名按毫秒时间戳排，ls 出来就是时间序" passed after 0.043 seconds.
+✔ Test "四个数组全空 = 干净的一天" passed after 0.043 seconds.
+✔ Test "摘要能 Codable 往返" passed after 0.043 seconds.
+✔ Test "一条记录都没有时 crashFree 是 nil，不是 true" passed after 0.043 seconds.
+✔ Test "收一份 metric payload：原文和摘要都在盘上" passed after 0.043 seconds.
+✔ Test "原文里我们不看的字段也一个不少地留着" passed after 0.043 seconds.
+✔ Test "标签里的空格和斜杠不会变成路径" passed after 0.041 seconds.
+✔ Test "只有一个样本时所有分位数都是它" passed after 0.041 seconds.
+✔ Test "线性插值口径，和 numpy 默认一致" passed after 0.041 seconds.
+✔ Test "JSON 坏掉照样存字节，退到 base64" passed after 0.043 seconds.
+✔ Test "卡一次 3 帧：hitch 时长、丢帧数、占比都对得上" passed after 0.041 seconds.
+✔ Test "排队延迟和绘制耗时分开记" passed after 0.041 seconds.
+✔ Test "满帧 120Hz、每帧 1ms：hitch 为 0，三条预算全过" passed after 0.041 seconds.
+✔ Test "没采到帧 / 只采到一帧：不崩，也不谎报通过" passed after 0.041 seconds.
+✔ Test "写导出文件 + 占用字节 + 清空" passed after 0.043 seconds.
+✔ Test "超上限删最旧的" passed after 0.043 seconds.
+✔ Test "中位数过但长尾超：P99 判不过，中位数判过" passed after 0.041 seconds.
+✔ Test "`2 ms` 不能被 `s` 抢先命中" passed after 0.041 seconds.
+✔ Test "存储单位是 1000 进制，和 MXUnitStorage 一致" passed after 0.041 seconds.
+✔ Test "解析不了返回 nil，绝不返回 0" passed after 0.041 seconds.
+✔ Test "JSON 里已经是数字时直接收下" passed after 0.041 seconds.
+✔ Test "没单位按默认单位算，负数和小数都收" passed after 0.041 seconds.
+✔ Test "桶乱序进来也要按 start 排好" passed after 0.041 seconds.
+✔ Test "存储单位的直方图走 KB 口径" passed after 0.041 seconds.
+✔ Test "存进去读出来是同一份" passed after 0.042 seconds.
+✔ Test "每帧 4ms：P9.3 的 P99 < 3ms 判不过" passed after 0.041 seconds.
+✔ Test "时间单位逐个换算到毫秒" passed after 0.041 seconds.
+✔ Test "空直方图不产出任何数" passed after 0.041 seconds.
+✔ Test "分位数取命中桶的中点" passed after 0.041 seconds.
+✔ Test "±20% 的帧间隔抖动不算 hitch" passed after 0.041 seconds.
+✔ Test "整批导出：有一段没判定，整批就是 nil" passed after 0.042 seconds.
+✔ Test "重复 start 是幂等的" passed after 0.041 seconds.
+✔ Test "采集中途从 120Hz 降到 60Hz，不能把降频后每一帧都算成掉帧" passed after 0.042 seconds.
+✔ Suite "帧报告落盘" passed after 0.045 seconds.
+✔ Suite "MetricKit 摘要" passed after 0.045 seconds.
+✔ Suite "带单位字符串解析" passed after 0.045 seconds.
+✔ Test "报告能 Codable 往返，allPassed 进得了 JSON" passed after 0.042 seconds.
+✔ Test "注入的假 payload 走的是和真回调同一条路" passed after 0.044 seconds.
+✔ Suite "诊断中枢" passed after 0.048 seconds.
+✔ Test "桶边界解析不了就整桶丢掉，不是当 0" passed after 0.045 seconds.
+✔ Test "字节超上限也删最旧的，但最新那条永远留着" passed after 0.048 seconds.
+✔ Test "导出汇总：崩溃数、最坏启动 p50、最近磁盘写入" passed after 0.050 seconds.
+✔ Suite "直方图" passed after 0.052 seconds.
+✔ Test "条数超上限，从最旧的开始删" passed after 0.052 seconds.
+✔ Suite "诊断落盘" passed after 0.054 seconds.
+✔ Test "空数组返回 nil" passed after 0.024 seconds.
+✔ Suite "分位数" passed after 0.058 seconds.
+✔ Test "占比达标但有一次长卡顿，worstHitch 要把它顶出来" passed after 0.065 seconds.
+✔ Suite "帧统计" passed after 0.069 seconds.
+✔ Test run with 47 tests in 8 suites passed after 0.069 seconds.
+cd Kanpan/AccountCodec && swift test 
+Building for debugging...
+[0/11] /Users/mdd/zhk/kanpan-p2/Kanpan/AccountCodec/.build/arm64-apple-macosx/debug/KanpanAccountCodecPackageTests.derived/runner.swift
+[1/11] Write sources
+[8/11] Write swift-version--58304C5D6DBC2206.txt
+[10/62] Compiling KanpanCore BarSeries.swift
+[11/62] Compiling KanpanCore ChangeBasis.swift
+[12/62] Compiling KanpanCore ExternalSeries.swift
+[13/62] Compiling KanpanCore HeikinAshi.swift
+[14/62] Compiling KanpanCore Interval.swift
+[15/62] Compiling KanpanCore LatestQuote.swift
+[16/62] Compiling KanpanCore MarkPriceTick.swift
+[17/62] Compiling KanpanCore MarketMicrostructure.swift
+[18/66] Emitting module KanpanCore
+[19/66] Compiling KanpanCore MarketSector.swift
+[20/66] Compiling KanpanCore SymbolClassification.swift
+[21/66] Compiling KanpanCore SymbolInfo.swift
+[22/66] Compiling KanpanCore SectorAggregate.swift
+[23/66] Compiling KanpanCore ViewTransition.swift
+[24/66] Compiling KanpanCore ViewWindow.swift
+[25/66] Compiling KanpanCore IncrementalLines.swift
+[26/66] Compiling KanpanCore IndicatorEngine.swift
+[27/66] Compiling KanpanCore IndicatorID.swift
+[28/66] Compiling KanpanCore Alert.swift
+[29/66] Compiling KanpanCore AlertEvaluator.swift
+[30/66] Compiling KanpanCore AlertGeometry.swift
+[31/66] Compiling KanpanCore AICoinBehavior.swift
+[32/66] Compiling KanpanCore ChartOptions.swift
+[33/66] Compiling KanpanCore Drawing.swift
+[34/66] Compiling KanpanCore Format.swift
+[35/66] Compiling KanpanCore ReviewLabels.swift
+[36/66] Compiling KanpanCore CandleWidths.swift
+[37/66] Compiling KanpanCore Clamp.swift
+[38/66] Compiling KanpanCore Indicators.swift
+[39/66] Compiling KanpanCore Math.swift
+[40/66] Compiling KanpanCore OINotice.swift
+[41/66] Compiling KanpanCore Aggregator.swift
+[42/66] Compiling KanpanCore Bar.swift
+[43/66] Emitting module KanpanAccount
+[44/66] Compiling KanpanAccount AccountClient.swift
+[45/66] Compiling KanpanAccount CredentialVault.swift
+[46/66] Compiling KanpanAccount RefreshCoordinator.swift
+[47/66] Compiling KanpanAccount Models.swift
+[48/66] Compiling KanpanAccount AccountFiles.swift
+[49/66] Compiling KanpanAccount SyncStore.swift
+[50/66] Compiling KanpanAccount ApplyGate.swift
+[51/66] Compiling KanpanCore DrawEdit.swift
+[52/66] Compiling KanpanCore DrawGeometry.swift
+[53/66] Compiling KanpanCore DrawRegression.swift
+[54/66] Compiling KanpanCore DrawStore.swift
+[55/66] Compiling KanpanCore DrawVolume.swift
+[56/66] Compiling KanpanCore Constants.swift
+[57/66] Compiling KanpanCore Fling.swift
+[58/66] Compiling KanpanCore Layout.swift
+[59/66] Compiling KanpanCore PriceScale.swift
+[60/66] Compiling KanpanCore Ticks.swift
+[61/66] Compiling KanpanCore SectorCatalog.swift
+[62/66] Compiling KanpanCore SectorSelection.swift
+[63/66] Compiling KanpanCore CandleStyle.swift
+[64/66] Compiling KanpanCore Palette.swift
+[65/80] Compiling KanpanNetwork Pacer.swift
+[66/81] Compiling KanpanNetwork WSSocket.swift
+[67/81] Compiling KanpanNetwork Backoff.swift
+[68/81] Compiling KanpanNetwork HTTPTransport.swift
+[69/81] Compiling KanpanNetwork MarketSocketRouter.swift
+[70/81] Compiling KanpanNetwork GatewayEnvelope.swift
+[71/81] Compiling KanpanNetwork MarketRoutePolicy.swift
+[72/81] Compiling KanpanNetwork MarketSource.swift
+[73/81] Compiling KanpanNetwork RateLimiter.swift
+[74/81] Compiling KanpanNetwork WSClient.swift
+[75/81] Compiling KanpanNetwork Errors.swift
+[76/81] Compiling KanpanNetwork RESTClient.swift
+[77/81] Emitting module KanpanNetwork
+[78/81] Compiling KanpanNetwork DTO.swift
+[79/81] Compiling KanpanNetwork Endpoints.swift
+[80/96] Compiling KanpanData SymbolCatalog.swift
+[81/97] Compiling KanpanData Snapshot.swift
+[82/97] Compiling KanpanData SeriesStore.swift
+[83/97] Compiling KanpanData QuoteSnapshot.swift
+make: *** [account-codec-test] Terminated: 15

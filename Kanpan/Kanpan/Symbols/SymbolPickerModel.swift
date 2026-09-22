@@ -6,7 +6,7 @@ import KanpanCore
 //
 // 一个自包含的 ViewModel：品种表 + 行情 + 自选/最近 + 搜索词 → 分区列表。
 // 不认识网络，也不认识 KanpanData——品种表和行情都是灌进来的，
-// 所以离线可测，宿主想怎么接都行（A5.7 的 `!ticker@arr` 见 SymbolTickerFeed）。
+// 宿主通过 QuoteBook 灌入行情，模型只维护展示与个人选品状态。
 
 @MainActor
 @Observable
@@ -59,8 +59,6 @@ final class SymbolPickerModel {
 
   /// 选中一个品种后通知宿主（宿主负责切图、关页）。
   var onPick: ((SymbolInfo) -> Void)?
-  /// 订阅 / 退订的日志钩子，A5.7 要求「出页面后退订（日志确认）」。
-  var log: ((String) -> Void)?
 
   private var store: SymbolPrefsStore
   @ObservationIgnored var onPrefsChange: ((SymbolPrefs) -> Void)?
@@ -80,7 +78,6 @@ final class SymbolPickerModel {
   @ObservationIgnored var selectedGroupSource: (() -> String?)?
   /// 加自选 / 新建分类 / 删分类时，落单的成员该进哪一类。
   private var currentGroup: String? { prefs.group(selectedGroupSource?()) }
-  private let feed: SymbolTickerFeed?
   /// 品种表的来源，宿主用 `KanpanData.SymbolCatalog` 填。
   private var catalogLoader: (@Sendable () async -> [SymbolInfo])?
   /// 用户在搜索框里点名了一个**这份表里没有**的代号时问一次目录（审查 B-06）。
@@ -92,7 +89,6 @@ final class SymbolPickerModel {
   @ObservationIgnored var onMissingSymbol: ((String) async -> [SymbolInfo]?)?
   /// 已经为哪些词问过了。同一个词只问一次，免得每敲一个字母都发一趟。
   @ObservationIgnored private var asked: Set<String> = []
-  private var subscribed = false
   private var sectionsActive = true
 
   /// 自选直接读取报价字典，隐藏的全市场搜索表不必随每笔价格重建。
@@ -104,12 +100,10 @@ final class SymbolPickerModel {
   init(catalog: [SymbolInfo] = [],
        tickers: [Ticker] = [],
        store: SymbolPrefsStore,
-       feed: SymbolTickerFeed? = nil,
        catalogLoader: (@Sendable () async -> [SymbolInfo])? = nil) {
     self.catalog = catalog
     self.filteredCatalog = catalog
     self.store = store
-    self.feed = feed
     self.catalogLoader = catalogLoader
     reindex()
     self.prefs = store.load()
@@ -139,30 +133,11 @@ final class SymbolPickerModel {
 
   // ---------------------------------------------------------------- 生命周期
 
-  /// 进页：补品种表、订阅行情。
+  /// 进页补品种表；报价订阅由宿主的 QuoteBook 管理。
   func appear() async {
-    subscribe()
     if let catalogLoader {
       let list = await catalogLoader()
       setCatalog(list)
-    }
-  }
-
-  /// 出页：退订。图不受影响，自选 / 最近已经落过盘了。
-  func disappear() {
-    guard subscribed else { return }
-    subscribed = false
-    feed?.stop()
-    log?("品种页退订 !ticker@arr")
-  }
-
-  private func subscribe() {
-    guard !subscribed, let feed else { return }
-    subscribed = true
-    log?("品种页订阅 !ticker@arr")
-    feed.start { [weak self] batch in
-      self?.apply(batch)
-      self?.rebuild()
     }
   }
 
