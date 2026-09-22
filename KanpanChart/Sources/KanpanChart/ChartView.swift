@@ -40,6 +40,9 @@ public final class ChartView: UIView {
 
   private let plotLayer = CanvasLayer(part: .plot)
   private let liveLayer = CanvasLayer(part: .live)
+  #if DEBUG
+  private var renderedDepthRows = 0
+  #endif
   private let crossLayer = CanvasLayer(part: .cross)
   private var canvases: [CanvasLayer] { [plotLayer, liveLayer, crossLayer] }
 
@@ -184,6 +187,7 @@ public final class ChartView: UIView {
           "ma": s.params[.ma] ?? [], "macd": s.params[.macd] ?? [],
           "externalReady": s.external.keys.map(\.rawValue).sorted(),
           "externalSupported": s.oiSupported, "depthSymbol": s.depth?.symbol ?? "", "depthLevels": (s.depth?.bids.count ?? 0) + (s.depth?.asks.count ?? 0),
+          "renderedDepthRows": renderedDepthRows,
           "oiReady": s.oi != nil, "interval": s.series.interval.rawValue,
           "oiPeriod": s.oi?.bucketInterval?.rawValue ?? "",
           "oiTimes": s.oi?.timestamps ?? []]
@@ -511,11 +515,18 @@ public final class ChartView: UIView {
   {
     guard let renderer, size.width > 0, size.height > 0 else {
       ctx.clear(CGRect(origin: .zero, size: size))
+      #if DEBUG
+      if part == .live { renderedDepthRows = 0 }
+      #endif
       return
     }
     switch part {
     case .plot: renderer.drawPlot(in: ctx, size: size, scale: scale)
-    case .live: renderer.drawLive(in: ctx, size: size, scale: scale)
+    case .live:
+      let count = renderer.drawLive(in: ctx, size: size, scale: scale)
+      #if DEBUG
+      renderedDepthRows = count
+      #endif
     case .cross: renderer.drawCross(in: ctx, size: size, scale: scale)
     }
   }

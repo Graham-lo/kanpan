@@ -1,0 +1,80 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "C2F4461B-B8F9-45BD-BF67-8E4B0AA35EAA",
+        "deviceName" : "iPhone 16 Pro · p1-ui",
+        "exportedFileName" : "98ABDF60-8675-4B02-A231-A0DC36C08007.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Screenshot of Target Application 'com.mdd.kanpan'_0_E9A2FE4C-1707-46F3-8806-706B2CAACC07.png",
+        "timestamp" : 1790063493.332
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "C2F4461B-B8F9-45BD-BF67-8E4B0AA35EAA",
+        "deviceName" : "iPhone 16 Pro · p1-ui",
+        "exportedFileName" : "80E33465-D3B0-426F-81D1-9662BA8F3489.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "三指标与盘口-订阅日志_0_6D871180-616D-4483-8815-C75101D16FB9.txt",
+        "timestamp" : 1790063493.196
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "C2F4461B-B8F9-45BD-BF67-8E4B0AA35EAA",
+        "deviceName" : "iPhone 16 Pro · p1-ui",
+        "exportedFileName" : "5CA62711-89FE-4FC6-9130-B0465E381631.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "盘口关闭-回到普通图表_0_6DC59C5F-282C-47CA-948E-EDE00BD00932.png",
+        "timestamp" : 1790063492.673
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "C2F4461B-B8F9-45BD-BF67-8E4B0AA35EAA",
+        "deviceName" : "iPhone 16 Pro · p1-ui",
+        "exportedFileName" : "04409E47-E553-4902-8F96-9728389DFF1D.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "网关-三副图空态_0_8B1E7B48-8D1C-472E-A424-77D774D416A1.png",
+        "timestamp" : 1790063438.15
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "C2F4461B-B8F9-45BD-BF67-8E4B0AA35EAA",
+        "deviceName" : "iPhone 16 Pro · p1-ui",
+        "exportedFileName" : "2BF36556-4BF4-48A1-A9E9-FFAADEBEFF2C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "连续切换20次-订阅与盘口品种一致_0_2B107BF3-AA82-4ECE-9CD5-2AE5C68CF82E.txt",
+        "timestamp" : 1790063426.685
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "C2F4461B-B8F9-45BD-BF67-8E4B0AA35EAA",
+        "deviceName" : "iPhone 16 Pro · p1-ui",
+        "exportedFileName" : "255AD074-E8B4-40E3-A73A-A4155978C488.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "盘口梯-BTC-1m_0_B74A27DE-79EC-4330-BD40-C12A4B5B9E4A.png",
+        "timestamp" : 1790063206.925
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "C2F4461B-B8F9-45BD-BF67-8E4B0AA35EAA",
+        "deviceName" : "iPhone 16 Pro · p1-ui",
+        "exportedFileName" : "1843AD36-2118-4C08-B78A-DF6D084CD52B.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "盘口梯-BTC-1h_0_722975DA-A3F0-4635-9BFE-A992443D3FC8.png",
+        "timestamp" : 1790063204.762
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "C2F4461B-B8F9-45BD-BF67-8E4B0AA35EAA",
+        "deviceName" : "iPhone 16 Pro · p1-ui",
+        "exportedFileName" : "F8AB01E7-02B9-4FDA-A324-0D9623E32142.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "三副图-多空比-主动买卖比-基差_0_10A6D964-E636-4BD0-A8A7-2FEC9FFF4119.png",
+        "timestamp" : 1790063137.357
+      }
+    ],
+    "testIdentifier" : "ChartFoundationUITests/testExternalIndicatorsAndDepthRoundTrip()",
+    "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/ChartFoundationUITests/testExternalIndicatorsAndDepthRoundTrip"
+  }
+]

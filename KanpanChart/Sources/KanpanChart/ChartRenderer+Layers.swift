@@ -21,17 +21,18 @@ extension ChartRenderer {
     draw(in: ctx, size: size, scale: scale, live: false, legend: false)
   }
 
-  /// `liveLayer`：最新价线 + 右轴胶囊。
-  public func drawLive(in ctx: CGContext, size: CGSize, scale: CGFloat) {
+  /// `liveLayer`：盘口梯、最新价线和右轴胶囊；返回实际绘制的盘口行数。
+  @discardableResult
+  public func drawLive(in ctx: CGContext, size: CGSize, scale: CGFloat) -> Int {
     ctx.clear(CGRect(origin: .zero, size: size))
-    // 关掉实时价格线时这一层永远是空的：清完就走，连价格区间都不用算。
-    guard !state.series.isEmpty else { return }
+    guard !state.series.isEmpty else { return 0 }
     let L = layout(size: size)
     let r = priceRange(size: size)
     UIGraphicsPushContext(ctx)
     defer { UIGraphicsPopContext() }
-    drawDepth(ctx, pane: L.main, range: r, L: L)
+    let depthRows = drawDepth(ctx, pane: L.main, range: r, L: L)
     if state.options.lastLine { drawLastPrice(ctx, pane: L.main, r: r, L: L, scale: Double(scale)) }
+    return depthRows
   }
 
   /// `crossLayer`：图例 + 十字线 + 三处读数。`state.crosshair == nil` 时只画图例。

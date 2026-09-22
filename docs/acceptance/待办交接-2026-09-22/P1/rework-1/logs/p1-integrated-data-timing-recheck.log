@@ -1,0 +1,18 @@
+Building for debugging...
+[0/1] Planning build
+[0/4] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (1.05s)
+Test Suite 'Selected tests' started at 2026-09-22 15:22:03.813.
+Test Suite 'KanpanDataPackageTests.xctest' started at 2026-09-22 15:22:03.818.
+Test Suite 'KanpanDataPackageTests.xctest' passed at 2026-09-22 15:22:03.818.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-22 15:22:03.818.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.005) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "启动快照与内存缓存" started.
+◇ Test "读快照 + 建 BarSeries < 20ms" started.
+✔ Test "读快照 + 建 BarSeries < 20ms" passed after 0.013 seconds.
+✔ Suite "启动快照与内存缓存" passed after 0.013 seconds.
+✔ Test run with 1 test in 1 suite passed after 0.014 seconds.

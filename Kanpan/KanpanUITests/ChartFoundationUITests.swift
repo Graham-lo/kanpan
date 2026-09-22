@@ -349,7 +349,16 @@ final class ChartFoundationUITests: XCTestCase {
     let depth = app.buttons["chart.depth"]
     reveal(depth); depth.tap(); closePanel()
     XCTAssertTrue(wait(seconds: 30) { self.info()["depthLevels"] as? Int == 10 }, feedEvidence())
-    shot("盘口-买五卖五")
+    for interval in ["1h", "1m"] {
+      app.tapIntervalChip(interval)
+      XCTAssertTrue(wait(seconds: 40) {
+        self.info()["interval"] as? String == interval && self.info()["symbol"] as? String == "BTCUSDT"
+          && self.info()["renderedDepthRows"] as? Int == 10
+      }, "必须已实际绘制十行盘口梯；" + feedEvidence())
+      shot("盘口梯-BTC-" + interval)
+    }
+    app.tapIntervalChip("1h")
+    XCTAssertTrue(wait(seconds: 40) { self.info()["interval"] as? String == "1h" && self.info()["renderedDepthRows"] as? Int == 10 })
     var switches: [String] = []
     for index in 0..<20 {
       let symbol = index.isMultiple(of: 2) ? "ETHUSDT" : "BTCUSDT"
@@ -367,6 +376,7 @@ final class ChartFoundationUITests: XCTestCase {
     gateway.tap(); leaveSettings()
     XCTAssertTrue(wait { self.info()["externalSupported"] as? Bool == false }, feedEvidence())
     XCTAssertEqual(info()["depthLevels"] as? Int, 0)
+    XCTAssertTrue(wait { self.info()["renderedDepthRows"] as? Int == 0 })
     XCTAssertEqual((info()["subs"] as? [String])?.count, 3)
     shot("网关-三副图空态")
     app.buttons["bottom.settings"].tap()
@@ -376,7 +386,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(wait(seconds: 40) { self.info()["depthLevels"] as? Int == 10 }, feedEvidence())
     app.buttons["interval.chart"].tap()
     reveal(depth); depth.tap(); closePanel()
-    XCTAssertTrue(wait { self.info()["depthLevels"] as? Int == 0 })
+    XCTAssertTrue(wait { self.info()["depthLevels"] as? Int == 0 && self.info()["renderedDepthRows"] as? Int == 0 })
     shot("盘口关闭-回到普通图表")
     let log = XCTAttachment(string: feedEvidence()); log.name = "三指标与盘口-订阅日志"; log.lifetime = .keepAlways; add(log)
   }
