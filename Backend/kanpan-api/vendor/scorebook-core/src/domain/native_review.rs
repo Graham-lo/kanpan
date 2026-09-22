@@ -4,8 +4,11 @@ use chrono::{DateTime, Utc};
 pub fn time(ms: i64) -> Result<DateTime<Utc>> { DateTime::from_timestamp_millis(ms).ok_or_else(|| Error::bad("invalid_time")) }
 pub fn validate_range(range: &ChartRange, cutoff: i64) -> Result<Interval> {
     let interval = Interval::exact(&range.interval)?;
-    if range.venue != "binance" || range.market != "usd_m" || !range.symbol.ends_with("USDT")
-        || range.symbol.len() > 40 || !range.symbol.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    if !matches!((range.venue.as_str(),range.market.as_str()), ("binance","usd_m") | ("coinbase","spot"))
+        || range.symbol.len() > 40 || range.symbol.is_empty()
+        || !range.symbol.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-')
+        || (range.venue == "binance" && (!range.symbol.ends_with("USDT") || range.symbol.contains('-')))
+        || (range.venue == "coinbase" && !range.symbol.ends_with("-USD"))
         || range.start >= range.end || range.end > cutoff || !(3..=1500).contains(&range.bars)
         || interval.bars_between(time(range.start)?, time(range.end)?) != range.bars as i64 {
         return Err(Error::bad("invalid_chart_range"));

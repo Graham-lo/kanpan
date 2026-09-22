@@ -323,7 +323,7 @@ public actor OISource {
     guard from <= to else { return nil }
     for proxy in hosts.oiProxies {
       guard !Task.isCancelled else { return nil }
-      guard var url = URLComponents(string: "https://\(proxy)/oi/v1/metrics/\(symbol)/range") else { continue }
+      guard var url = URLComponents(string: "https://\(proxy)/oi/v1/metrics/\(InstrumentID(symbol).symbol)/range") else { continue }
       url.queryItems = [URLQueryItem(name: "metrics", value: "1"), URLQueryItem(name: "interval", value: interval.rawValue),
                        URLQueryItem(name: "from", value: String(from)), URLQueryItem(name: "to", value: String(to))]
       guard let target = url.url else { continue }
@@ -370,7 +370,7 @@ public actor OISource {
           do {
             for proxy in hosts.oiProxies {
               guard !Task.isCancelled else { return (day, [], false) }
-              if let proxyURL = URL(string: "https://\(proxy)/oi/v1/metrics/\(symbol)/\(OIArchive.dayString(day)).json?metrics=1"),
+              if let proxyURL = URL(string: "https://\(proxy)/oi/v1/metrics/\(InstrumentID(symbol).symbol)/\(OIArchive.dayString(day)).json?metrics=1"),
                  let reply = try? await transport.get(proxyURL, timeout: 6), reply.status == 200,
                  let points = try? Self.decodeGateway(reply.body, requireMetrics: true) {
                 return (day, points, true)

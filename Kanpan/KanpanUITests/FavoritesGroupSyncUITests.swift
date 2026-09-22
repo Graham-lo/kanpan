@@ -81,10 +81,10 @@ import XCTest
     // 加完自选那一下，页面自己就跟着品种切到了它落进的那一类。先退回第一个再点回去，
     // 让「停在第二类」确确实实是用手点出来的那一下，而不是加自选的副作用。
     tapGroup(a, name: first, step: "A 设备先退回第一个分类")
-    XCTAssertTrue(waitUntil(10) { a.buttons["favorites.open.BTCUSDT"].exists },
+    XCTAssertTrue(waitUntil(10) { a.buttons["favorites.open.binance/usd_m/BTCUSDT"].exists },
                   "A 设备点了 \(first) 但列表没换成它的成员：\(groupReport(a))\n\(a.debugDescription)")
     tapGroup(a, name: second, step: "A 设备停到第二个分类")
-    XCTAssertTrue(waitUntil(10) { self.chip(a, second).isSelected && a.buttons["favorites.open.AAPLUSDT"].exists },
+    XCTAssertTrue(waitUntil(10) { self.chip(a, second).isSelected && a.buttons["favorites.open.binance/usd_m/AAPLUSDT"].exists },
                   "A 设备点了 \(second) 但它没选中：\(groupReport(a))\n\(a.debugDescription)")
     shot(a, "A设备-停在第二个分类")
 
@@ -123,9 +123,9 @@ import XCTest
     XCTAssertFalse(chip(b, first).isSelected,
                    "B 设备停回了第一个分类（\(first)）——正是用户报的那个现象：\(groupReport(b))")
     // 胶囊的选中态之外再看一眼列表：真正摆在他眼前的是不是第二类的成员。
-    XCTAssertTrue(b.buttons["favorites.open.AAPLUSDT"].waitForExistence(timeout: 20),
+    XCTAssertTrue(b.buttons["favorites.open.binance/usd_m/AAPLUSDT"].waitForExistence(timeout: 20),
                   "B 设备停在 \(second) 上却没列出它的成员 AAPLUSDT\n\(b.debugDescription)")
-    XCTAssertFalse(b.buttons["favorites.open.BTCUSDT"].exists,
+    XCTAssertFalse(b.buttons["favorites.open.binance/usd_m/BTCUSDT"].exists,
                    "B 设备列出的是第一个分类的成员 BTCUSDT，说明停错了类：\(groupReport(b))")
 
     // ---- 收尾：把测试账号删掉，不在后端留垃圾
@@ -312,11 +312,11 @@ import XCTest
     XCTAssertTrue(query.waitForExistence(timeout: 20), "\(step)：搜索页没打开\n\(app.debugDescription)")
     query.tap()
     query.typeText(symbol)
-    let star = app.buttons["symbols.star." + symbol]
+    let star = app.buttons["symbols.star." + testInstrumentKey(symbol)]
     XCTAssertTrue(star.waitForExistence(timeout: 60), "\(step)：搜索页没搜到 \(symbol)\n\(app.debugDescription)")
     if star.label == "加入自选" { star.tap() }
     app.buttons["search.cancel"].tap()
-    XCTAssertTrue(app.buttons["favorites.open." + symbol].waitForExistence(timeout: 20),
+    XCTAssertTrue(app.buttons["favorites.open." + testInstrumentKey(symbol)].waitForExistence(timeout: 20),
                   "\(step)：加完应当停在品种落进去的那一组、看得见刚加的那一行\n\(app.debugDescription)")
   }
 
@@ -336,7 +336,7 @@ import XCTest
       guard element.exists else { return "\(name)=缺失" }
       return "\(name)=\(element.isSelected ? "选中" : "未选")"
     }
-    let rows = ["BTCUSDT", "AAPLUSDT"].filter { app.buttons["favorites.open." + $0].exists }
+    let rows = ["BTCUSDT", "AAPLUSDT"].filter { app.buttons["favorites.open." + testInstrumentKey($0)].exists }
     return groups.joined(separator: " ") + "；列表里露着 " + (rows.isEmpty ? "（一行都没有）" : rows.joined(separator: "、"))
   }
 

@@ -37,7 +37,9 @@ fn integers(v:&Value,count:usize,lo:i64,hi:i64)->bool {v.as_array().is_some_and(
 fn names(v:&Value,count:usize,names:&[&str])->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_str().is_some_and(|s|names.contains(&s))))}
 fn string(v:&Value,limit:usize)->bool {v.as_str().is_some_and(|s|s.len()<=limit)}
 fn one_of(v:&Value,all:&[&str])->bool {v.as_str().is_some_and(|s|all.contains(&s))}
-fn symbol(v:&Value)->bool {v.as_str().is_some_and(|s|s.len()<=40&&QUOTES.iter().any(|q|s.ends_with(q))&&s.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))}
+fn symbol(v:&Value)->bool {
+ if v.as_str().is_some_and(|s|s.len()<=40 && s.strip_suffix("-USD").is_some_and(|base| !base.is_empty() && base.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))) {return true}
+v.as_str().is_some_and(|s|s.len()<=40&&QUOTES.iter().any(|q|s.ends_with(q))&&s.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))}
 /// How many anchors a finished drawing of this kind carries: `Drawing.Kind.pointCount`.
 fn anchor_count(kind:&str)->usize {
  match kind {
@@ -127,7 +129,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // `_=>false` fallthrough rejects the whole operation with a 400.
    "favoritesGroup"=>string(v,128),
    // Capped at `Prefs.maxExpanded`.
-   "favoritesExpanded"=>v.as_array().is_some_and(|a|a.len()<=500&&a.iter().all(symbol)),
+   "favoritesExpanded"=>v.as_array().is_some_and(|a|a.len()<=500&&a.iter().all(|v|symbol(v)||v.as_str().is_some_and(|s|{let p:Vec<_>=s.split('/').collect();p.len()==3&&identity(p[0],p[1],p[2])}))),
    "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"lastLine"|"sinceChange"|"showDrawings"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
     |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
@@ -145,8 +147,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   ("drawings","dash")=>v.as_str().is_some_and(|s|["solid","dashed","dotted"].contains(&s)),
   ("drawings","filled"|"locked"|"hidden")|("favorites","pinned"|"alerts")=>v.is_boolean(),
   ("drawings","levels")=>v.as_array().is_some_and(|a|a.len()<=24&&a.iter().all(|v|number(v,-10.0,10.0))),
-  ("drawings"|"favorites","market")=>v=="usd_m",
-  ("drawings"|"favorites","venue")=>v=="binance",
+  ("drawings"|"favorites","market")=>v=="usd_m"||v=="spot",
+  ("drawings"|"favorites","venue")=>v=="binance"||v=="coinbase",
   ("drawings"|"favorites","symbol")=>symbol(v),
   ("drawings","created")=>number(v,0.0,9e15),
   // An anti-abuse ceiling, deliberately not a copy of the client's UX rule. The client caps a
@@ -168,7 +170,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   ("alerts","kind")=>one_of(v,&["drawing","price","reviewDue"]),
   // 这个集合的 market 是整串 `binance/usd_m`（drawings / favorites 是 `usd_m` 加单独的
   // venue）。形状是文档定的，照抄，不要「统一」。
-  ("alerts","market")=>v=="binance/usd_m",
+  ("alerts","market")=>v=="binance/usd_m"||v=="coinbase/spot",
   ("alerts","symbol")=>symbol(v),
   // 画线的同步对象 id 原样，和 `drawings` 的 id 同一套形态。
   ("alerts","drawingID")=>string(v,180),
@@ -201,22 +203,38 @@ pub fn clear_tombstones(value:&mut Object) {
   value.body.insert("text".into(),Value::String(String::new()));
  }
 }
+pub fn identity(venue:&str,market:&str,symbol:&str)->bool {
+ match (venue,market) {
+  ("binance","usd_m") => symbol.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()) && QUOTES.iter().any(|q|symbol.ends_with(q)),
+  ("coinbase","spot") => symbol.strip_suffix("-USD").is_some_and(|b|!b.is_empty() && b.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit())),
+  _ => false,
+ }
+}
 pub fn object(value:&Object)->Result<()> {
  if value.deleted{return Ok(())}
  if value.body.iter().any(|(k,v)|!field(&value.collection,k,v)){return Err(ApiError::bad("invalid_sync_value"))}
+ if value.collection=="favorites" {
+  let part=|k:&str|value.body.get(k).and_then(Value::as_str).unwrap_or("");
+  let (venue,market,symbol)=(part("venue"),part("market"),part("symbol"));
+  if !identity(venue,market,symbol) || value.id!=format!("{venue}/{market}/{symbol}") {return Err(ApiError::bad("invalid_favorite_identity"))}
+ }
  if value.collection=="drawings" {
   let kind=value.body.get("kind").and_then(Value::as_str).ok_or_else(||ApiError::bad("invalid_drawing"))?;
   let count=anchor_count(kind);
   if value.body.get("anchors").and_then(Value::as_array).is_none_or(|a|a.len()!=count){return Err(ApiError::bad("invalid_drawing"))}
   let symbol=value.body.get("symbol").and_then(Value::as_str).ok_or_else(||ApiError::bad("invalid_drawing"))?;
-  if !value.id.starts_with(&format!("binance/usd_m/{symbol}/")) {return Err(ApiError::bad("invalid_drawing_identity"))}
+  let venue=value.body.get("venue").and_then(Value::as_str).unwrap_or("binance");
+  let market=value.body.get("market").and_then(Value::as_str).unwrap_or("usd_m");
+  if !identity(venue,market,symbol) || !value.id.starts_with(&format!("{venue}/{market}/{symbol}/")) {return Err(ApiError::bad("invalid_drawing_identity"))}
  }
  if value.collection=="alerts" {
   // 和 drawings 同一套 id 形态：binance/usd_m/<SYMBOL>/<alertID>。物化表按 symbol 订阅
   // 行情、按 id 回写状态，两者对不上就会订阅一个品种、推另一个品种的价。
   let kind=value.body.get("kind").and_then(Value::as_str).ok_or_else(||ApiError::bad("invalid_alert"))?;
   let symbol=value.body.get("symbol").and_then(Value::as_str).ok_or_else(||ApiError::bad("invalid_alert"))?;
-  if !value.id.starts_with(&format!("binance/usd_m/{symbol}/")) {return Err(ApiError::bad("invalid_alert_identity"))}
+  let market=value.body.get("market").and_then(Value::as_str).unwrap_or("");
+  let pair=market.split_once('/').unwrap_or(("",""));
+  if !identity(pair.0,pair.1,symbol) || !value.id.starts_with(&format!("{market}/{symbol}/")) {return Err(ApiError::bad("invalid_alert_identity"))}
   // 画线提醒必须指得出是哪条线：物化表存它，通知的深链也靠它跳回那条线上。
   if kind=="drawing" && value.body.get("drawingID").and_then(Value::as_str).is_none_or(str::is_empty) {
    return Err(ApiError::bad("invalid_alert"))
@@ -240,6 +258,23 @@ mod tests {
  use super::*;
  use serde_json::json;
  use std::collections::BTreeMap;
+ #[test] fn venue_identity_is_not_a_route() {
+  assert!(identity("binance","usd_m","BTCUSDT"));
+  assert!(identity("coinbase","spot","BTC-USD"));
+  for (v,m,s) in [("okx","usd_m","BTCUSDT"),("coinbase","usd_m","BTC-USD"),("binance","spot","BTCUSDT"),("coinbase","spot","BTC-USDC")] {assert!(!identity(v,m,s))}
+ }
+ #[test] fn spot_drawing_and_alert_roundtrip_without_prefix_collision() {
+  let mut d=drawing("hline",1);
+  d.id="coinbase/spot/BTC-USD/line-1".into();
+  d.body.insert("venue".into(),json!("coinbase")); d.body.insert("market".into(),json!("spot")); d.body.insert("symbol".into(),json!("BTC-USD"));
+  assert!(object(&d).is_ok());
+  d.id="binance/usd_m/BTCUSDT/line-1".into(); assert!(object(&d).is_err());
+  let mut a=alert(&[("market",json!("coinbase/spot")),("symbol",json!("BTC-USD"))]);
+  a.id="coinbase/spot/BTC-USD/9F1E".into(); assert!(object(&a).is_ok());
+  a.id="binance/usd_m/BTCUSDT/9F1E".into(); assert!(object(&a).is_err());
+  let mut f=Object{collection:"favorites".into(),id:"coinbase/spot/BTC-USD".into(),body:BTreeMap::from([("venue".into(),json!("coinbase")),("market".into(),json!("spot")),("symbol".into(),json!("BTC-USD"))]),fields:BTreeMap::new(),revision:0,deleted:false,generation:0};
+  assert!(object(&f).is_ok()); f.id="binance/usd_m/BTCUSDT".into(); assert!(object(&f).is_err());
+ }
  fn drawing(kind:&str,anchors:usize)->crate::sync::Object {
   let points:Vec<_>=(0..anchors).map(|i|json!({"t":1_800_000_000_000i64+i as i64,"p":100.0+i as f64})).collect();
   let body:BTreeMap<String,Value>=[("kind",json!(kind)),("symbol",json!("BTCUSDT")),("market",json!("usd_m")),

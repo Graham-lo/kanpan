@@ -1,4 +1,5 @@
 import Foundation
+import KanpanCore
 
 /// 上次算涨跌幅用的那批「当日开盘价」。
 ///
@@ -20,7 +21,7 @@ public enum BaselineSnapshot {
   }
 
   public static func write(boundary: Int64, opens: [String: Double], to url: URL) {
-    let kept = opens.filter { !$0.key.isEmpty && $0.value.isFinite && $0.value > 0 }
+    let kept = InstrumentID.migrate(opens).filter { !$0.key.isEmpty && $0.value.isFinite && $0.value > 0 }
     let rows = Dictionary(uniqueKeysWithValues: kept.sorted { $0.key < $1.key }.prefix(maxEntries).map { ($0.key, $0.value) })
     guard !rows.isEmpty else { remove(url); return }
     do {
@@ -38,7 +39,7 @@ public enum BaselineSnapshot {
     guard let data = try? Data(contentsOf: url),
           let file = try? JSONDecoder().decode(File.self, from: data),
           file.boundary == boundary else { return [:] }
-    return file.opens.filter { !$0.key.isEmpty && $0.value.isFinite && $0.value > 0 }
+    return InstrumentID.migrate(file.opens).filter { !$0.key.isEmpty && $0.value.isFinite && $0.value > 0 }
   }
 
   public static func remove(_ url: URL) { try? FileManager.default.removeItem(at: url) }

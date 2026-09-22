@@ -113,7 +113,7 @@ final class MarketModel {
 
   init(symbol: String = "BTCUSDT", interval: Interval = .h1,
        hosts: BinanceHosts = .default) {
-    self.symbol = symbol
+    self.symbol = InstrumentID.canonical(symbol)
     self.interval = interval
     self.hosts = hosts
     self.info = MarketModel.placeholder(symbol)
@@ -190,10 +190,10 @@ final class MarketModel {
 
   /// `exchangeInfo` 回来之前先顶上。冷启动第一帧不该等网络。
   private static func placeholder(_ symbol: String) -> SymbolInfo {
-    let quote = ["USDT", "USDC", "BUSD"].first { symbol.hasSuffix($0) } ?? "USDT"
-    return SymbolInfo(
-      symbol: symbol, base: String(symbol.dropLast(quote.count)), quote: quote,
-      pricePrecision: 2, tickSize: 0.01)
+    var info = SymbolInfo.placeholder(symbol: symbol)
+    info.pricePrecision = 2
+    info.tickSize = 0.01
+    return info
   }
 
   // ---------------------------------------------------------------- 生命周期
@@ -208,7 +208,7 @@ final class MarketModel {
   /// 才刚装进来，「上次看的那张图、上次用的那个周期」只有到这一步才知道；先开再
   /// `switchTo` 等于白打一趟请求，还会让人先看一眼不是他上次那张图。
   func start(snapshot: Bool, symbol requestedSymbol: String? = nil, interval requestedInterval: Interval? = nil) {
-    if let requestedSymbol, !requestedSymbol.isEmpty { symbol = requestedSymbol.uppercased() }
+    if let requestedSymbol, !requestedSymbol.isEmpty { symbol = InstrumentID.canonical(requestedSymbol) }
     if let requestedInterval { interval = requestedInterval }
     self.snapshot = snapshot
     // 第一帧就把盘上的快照摆出来。`feed` 是 actor，它那份快照要等一次跨执行器的
@@ -365,7 +365,7 @@ final class MarketModel {
       tradeQuote = quote
       onPrice?(quote.symbol, quote.price, quote.timeMs)
     case .ticker(let t):
-      guard t.symbol.uppercased() == symbol.uppercased() else { return }
+      guard InstrumentID.canonical(t.symbol) == InstrumentID.canonical(symbol) else { return }
       guard tickerStale || LatestQuote.accepts(t, after: ticker) else { return }
       var next = t; next.markPrice = markPrice
       ticker = next
@@ -376,7 +376,7 @@ final class MarketModel {
       // `.tradeQuote` 上。同一口价两边都喂进去是无害的：折桶取的是 min/max/最后一口。
       onPrice?(next.symbol, next.last, next.timeMs ?? 0)
     case .markPrice(let sym, let price, let tick):
-      guard sym.uppercased() == symbol, tick.timeMs >= markTime else { return }
+      guard InstrumentID.canonical(sym) == symbol, tick.timeMs >= markTime else { return }
       markTime = tick.timeMs
       // 费率那一格只认有值的帧：镜像偶尔发不带 `r` 的帧，别把已经显示的费率抹成 `--`。
       if tick.fundingRate != nil || funding == nil { funding = tick }
@@ -507,7 +507,7 @@ final class MarketModel {
   // ---------------------------------------------------------------- 切换
 
   func switchTo(symbol newSymbol: String? = nil, interval newInterval: Interval? = nil) {
-    let sym = (newSymbol ?? symbol).uppercased()
+    let sym = InstrumentID.canonical(newSymbol ?? symbol)
     let iv = newInterval ?? interval
     guard sym != symbol || iv != interval else { return }
     let cold = sym != symbol
@@ -841,7 +841,7 @@ final class MarketModel {
   /// 图上恰好就是它时顺手把手里这份 `info` 也翻过来，不然要等下一次目录刷新
   /// 头部才会跟着灰掉。自选表一个字都不动。
   func noteSymbolRejected(_ symbol: String) {
-    let key = symbol.uppercased()
+    let key = InstrumentID.canonical(symbol)
     Task { [catalog] in await catalog.markDelisted(key) }
     guard key == self.symbol, info.status != .delisted else { return }
     var value = info

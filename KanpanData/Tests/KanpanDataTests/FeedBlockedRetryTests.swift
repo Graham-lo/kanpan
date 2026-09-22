@@ -297,7 +297,7 @@ struct FeedBlockedRetryTests {
       }
     })
     let got = await feed.currentSeries
-    #expect(got.symbol == "BTCUSDT")
+    #expect(got.symbol == "binance/usd_m/BTCUSDT")
     #expect(got.interval == .m1)
     for i in 0..<got.count {
       if let w = byTime[got.time(at: i)] {

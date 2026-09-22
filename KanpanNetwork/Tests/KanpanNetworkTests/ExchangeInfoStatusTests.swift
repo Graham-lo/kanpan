@@ -42,7 +42,7 @@ struct ExchangeInfoStatusTests {
     ])
     let list = try BinanceREST.parseExchangeInfo(data)
     func status(_ symbol: String) throws -> SymbolStatus {
-      try #require(list.first { $0.symbol == symbol }).status
+      try #require(list.first { $0.id.symbol == symbol }).status
     }
     #expect(list.count == 12, "非 TRADING 的行不能被扔掉")
     #expect(try status("AUSDT") == .tradable)
@@ -80,7 +80,7 @@ struct ExchangeInfoStatusTests {
        "pricePrecision": 2, "quantityPrecision": 3, "filters": [], "status": "TRADING"],
     ])
     let list = try BinanceREST.parseExchangeInfo(data)
-    #expect(list.map(\.symbol) == ["BTCUSDT", "SNDKUSDT"])
+    #expect(list.map(\.symbol) == ["binance/usd_m/BTCUSDT", "binance/usd_m/SNDKUSDT"])
   }
 
   @Test("解不开就抛，不给空表")

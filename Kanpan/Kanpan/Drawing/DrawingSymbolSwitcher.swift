@@ -1,3 +1,4 @@
+import KanpanCore
 import SwiftUI
 
 // ============================================================ 画线工作台里换品种
@@ -87,7 +88,7 @@ struct DrawingSymbolSwitcher: View {
           LazyVGrid(columns: columns, spacing: 4) {
             ForEach(rows, id: \.self) { symbol in
               Button { pick(symbol) } label: {
-                Text(symbol)
+                Text(InstrumentID(symbol).symbol)
                   .font(.system(size: 12, weight: symbol == current ? .semibold : .regular))
                   .lineLimit(1).minimumScaleFactor(0.8)
                   .frame(maxWidth: .infinity, minHeight: 32)

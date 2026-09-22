@@ -17,7 +17,7 @@ enum FavoriteCategory {
   static func knows(symbol: String, info: SymbolInfo?) -> Bool {
     if let info, info.underlyingType != nil { return true }
     let key = SymbolPrefs.key(symbol)
-    let base = info?.base ?? (key.hasSuffix("USDT") ? String(key.dropLast(4)) : key)
+    let base = info?.base ?? SymbolInfo.placeholder(symbol: key).base
     return preciousMetals.contains(base.uppercased())
   }
 
@@ -25,7 +25,7 @@ enum FavoriteCategory {
   /// 调用方应当先问 `knows` 再决定要不要用这个名字（见 `SymbolPickerModel.addFavorite`）。
   static func name(symbol: String, info: SymbolInfo?) -> String {
     let key = SymbolPrefs.key(symbol)
-    let base = key.hasSuffix("USDT") ? String(key.dropLast(4)) : key
+    let base = SymbolInfo.placeholder(symbol: key).base
     let info = info ?? SymbolInfo(symbol: key, base: base, pricePrecision: 2, tickSize: 0.01)
     let category = SymbolClassifier.classify(info)
     switch category.asset {

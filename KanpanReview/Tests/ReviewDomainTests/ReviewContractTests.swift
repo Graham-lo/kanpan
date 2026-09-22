@@ -44,6 +44,9 @@ final class ReviewContractTests: XCTestCase {
   }
 
   func testOtherVenuesAreRefused() {
+    XCTAssertNil(ReviewContract.captureFailure(venue: "coinbase", market: "spot", symbol: "BTC-USD", interval: "1h"))
+    XCTAssertNotNil(ReviewContract.captureFailure(venue: "coinbase", market: "spot", symbol: "BTC-USDC", interval: "1h"))
+    XCTAssertNotNil(ReviewContract.captureFailure(venue: "coinbase", market: "usd_m", symbol: "BTC-USD", interval: "1h"))
     XCTAssertNotNil(ReviewContract.captureFailure(venue: "okx", symbol: "BTCUSDT", interval: "1h"))
     XCTAssertNotNil(ReviewContract.failure(draft(venue: "okx"), now: now))
   }

@@ -90,7 +90,7 @@ public enum QuoteSnapshot {
       if let maxAgeMs, let stamp = row.t ?? fileMs, now - stamp > maxAgeMs { return nil }
       // `null` 还原成 NaN：「没有这一项」在内存里的写法就是它，上层按缺数处理
       // （该留空的留空，不会把 0 当成真的 0）。
-      return Ticker(symbol: row.s.uppercased(), last: row.l, changePercent: row.c ?? .nan,
+      return Ticker(symbol: InstrumentID.canonical(row.s), last: row.l, changePercent: row.c ?? .nan,
                     high: row.h ?? .nan, low: row.lo ?? .nan, quoteVolume: row.v ?? .nan,
                     markPrice: row.m, open24h: row.o, timeMs: row.t, lastTradeID: row.i, priceChange: row.p)
     }

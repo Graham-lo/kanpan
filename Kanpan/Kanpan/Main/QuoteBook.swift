@@ -371,7 +371,7 @@ final class QuoteBook {
   /// 用户给 ETHUSDT 画了线设了提醒，然后一直在看 BTCUSDT，没有这一条那条提醒
   /// 在这台手机上永远不会响（没有 APNs 密钥，前台这条路是唯一的）。
   func setAlertedSymbols(_ symbols: Set<String>) {
-    let next = alerted.union(symbols.map { $0.uppercased() }.filter { !$0.isEmpty })
+    let next = alerted.union(symbols.map { InstrumentID.canonical($0) }.filter { !$0.isEmpty })
     guard next != alerted else { return }
     alerted = next
     reconcileConnection()
@@ -379,6 +379,7 @@ final class QuoteBook {
   }
 
   func setFavorites(_ symbols: [String]) {
+    let symbols = symbols.map(InstrumentID.canonical)
     // 换号之后宿主就是从这儿把新的自选表交下来的，所以这一步之前先认一次主：
     // 晚一拍的话，新表配的还是上一个人那份缓存。
     retargetProfile()
@@ -552,6 +553,7 @@ final class QuoteBook {
   }
 
   func watchChart(_ symbol: String) {
+    let symbol = InstrumentID.canonical(symbol)
     setChartSymbol(symbol)
     if needsConnection { watch(symbol) }
   }
@@ -560,7 +562,7 @@ final class QuoteBook {
   /// opening a second socket for the chart page. If the list is already
   /// visible, preserve the old behavior and add the symbol to its stream.
   func setChartSymbol(_ symbol: String) {
-    let next = symbol.uppercased()
+    let next = InstrumentID.canonical(symbol)
     guard chartSymbol != next else { return }
     chartSymbol = next
     guard needsConnection else { return }
@@ -570,6 +572,7 @@ final class QuoteBook {
   }
 
   func watch(_ symbol: String) {
+    let symbol = InstrumentID.canonical(symbol)
     wanted.insert(symbol)
     requestQuote(symbol)
     watchBaseline(symbol)
@@ -641,6 +644,7 @@ final class QuoteBook {
   }
 
   func watchRow(_ symbol: String, visible: Bool) {
+    let symbol = InstrumentID.canonical(symbol)
     if visible { visibleRows.insert(symbol); requestQuote(symbol) }
     else {
       visibleRows.remove(symbol)
@@ -652,6 +656,7 @@ final class QuoteBook {
   }
 
   func watchHistory(_ symbol: String, visible: Bool) {
+    let symbol = InstrumentID.canonical(symbol)
     if visible { historyWanted.insert(symbol); requestQuote(symbol); loadHistories() }
     else {
       historyWanted.remove(symbol)

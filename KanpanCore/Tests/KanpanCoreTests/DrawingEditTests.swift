@@ -216,7 +216,7 @@ struct DrawingEditTests {
     #expect(a["BTCUSDT"].count == 3 && a["ETHUSDT"].count == 1)
     // 清空的品种不占位
     a["ETHUSDT"] = []
-    #expect(a.bySymbol["ETHUSDT"] == nil)
+    #expect(a.bySymbol["binance/usd_m/ETHUSDT"] == nil)
   }
 
   @Test("每品种上限 50")

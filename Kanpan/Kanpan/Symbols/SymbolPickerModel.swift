@@ -21,7 +21,7 @@ final class SymbolPickerModel {
   /// 全落在主线程上——列表正在填数字的时候恰好最忙。查表把它压成常数。
   @ObservationIgnored private var index: [String: SymbolInfo] = [:]
   /// 按 symbol 取品种信息。取不到返回 `nil`，调用方自己兜底。
-  func info(for symbol: String) -> SymbolInfo? { index[symbol.uppercased()] }
+  func info(for symbol: String) -> SymbolInfo? { index[InstrumentID.canonical(symbol)] }
 
   /// 这个代号在目录里是什么情况（审查复核项 4）。
   ///
@@ -34,7 +34,7 @@ final class SymbolPickerModel {
   /// `catalog` 只在 `setCatalog` 和初始化时换，索引跟着换。不用 `didSet`：
   /// `@Observable` 会把存储属性改写成计算属性，属性观察器放在这儿只会让人猜。
   private func reindex() {
-    index = Dictionary(catalog.map { ($0.symbol.uppercased(), $0) }, uniquingKeysWith: { a, _ in a })
+    index = Dictionary(catalog.map { (InstrumentID.canonical($0.symbol), $0) }, uniquingKeysWith: { a, _ in a })
   }
   /// symbol（大写）→ 24h 行情。
   private(set) var tickers: [String: Ticker] = [:]
@@ -163,7 +163,7 @@ final class SymbolPickerModel {
   func apply(_ batch: [Ticker]) {
     guard !batch.isEmpty else { return }
     for t in batch {
-      let symbol = t.symbol.uppercased()
+      let symbol = InstrumentID.canonical(t.symbol)
       tickers[symbol] = t
 
     }
@@ -206,7 +206,7 @@ final class SymbolPickerModel {
     // 先把命中的下标找出来，一个没有就直接回——不然每来一批行情都要把整份
     // `sections`（分区 + 行的值类型数组）复制一遍再整体赋回去，`@Observable`
     // 那边跟着判定「变了」，一整张表重新求值。
-    let keys = Set(changed.map { $0.symbol.uppercased() })
+    let keys = Set(changed.map { InstrumentID.canonical($0.symbol) })
     let current = sections  // 只取一次；下面找下标的过程不碰 `@Observable` 的存取。
     var hits: [(section: Int, row: Int)] = []
     for section in current.indices {
@@ -420,7 +420,7 @@ final class SymbolPickerModel {
       out.append(symbol); if out.count == limit { return out }
     }
     let hot = catalog
-      .map { ($0.symbol.uppercased(), tickers[$0.symbol.uppercased()]?.quoteVolume ?? 0) }
+      .map { (InstrumentID.canonical($0.symbol), tickers[InstrumentID.canonical($0.symbol)]?.quoteVolume ?? 0) }
       .filter { $0.1.isFinite }
       .sorted { $0.1 > $1.1 }
     for (symbol, _) in hot where seen.insert(symbol).inserted {
@@ -439,7 +439,7 @@ final class SymbolPickerModel {
     // `nil` 和 0 被压成同一件事、NaN 参与比较还会毁掉排序的传递性——同一个词
     // 敲两遍能得到两个顺序。这儿不做「假的排序」，只做「没有就排后面」。
     func volume(_ info: SymbolInfo) -> Double? {
-      guard let value = tickers[info.symbol.uppercased()]?.quoteVolume,
+      guard let value = tickers[InstrumentID.canonical(info.symbol)]?.quoteVolume,
             value.isFinite, value >= 0 else { return nil }
       return value
     }
@@ -458,7 +458,7 @@ final class SymbolPickerModel {
         }
       }
       .prefix(limit)
-      .map { $0.element.info.symbol.uppercased() }
+      .map { InstrumentID.canonical($0.element.info.symbol) }
   }
 
   /// 交易所不认这个代号了：在本地这份品种表里把它标成下架，**不删**，
@@ -469,7 +469,7 @@ final class SymbolPickerModel {
   func markDelisted(_ symbol: String) {
     let key = SymbolPrefs.key(symbol)
     var next = catalog
-    if let i = next.firstIndex(where: { $0.symbol.uppercased() == key }) {
+    if let i = next.firstIndex(where: { InstrumentID.canonical($0.symbol) == key }) {
       guard next[i].status != .delisted else { return }
       next[i].status = .delisted
     } else {
@@ -559,7 +559,7 @@ final class SymbolPickerModel {
     // 分隔符的写法都不是代号，问了也是白问一趟。`isLetter` 对汉字是 true，
     // 所以这儿必须连 `isASCII` 一起要。
     guard want.count >= 3, want.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }),
-          !asked.contains(want), index[want] == nil else { return }
+          !asked.contains(want), index[InstrumentID.canonical(want)] == nil else { return }
     asked.insert(want)
     Task { [weak self] in
       guard let list = await onMissingSymbol(want), !list.isEmpty else { return }

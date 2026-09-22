@@ -154,7 +154,7 @@ struct DataIntegrityTests {
     await transport.release(1, price: 200)
     await feed.stop()
     await reader.value
-    #expect(await feed.currentSeries.symbol == "BTCUSDT")
+    #expect(await feed.currentSeries.symbol == "binance/usd_m/BTCUSDT")
     #expect(await feed.currentSeries.interval == .m1)
     #expect(await feed.currentSeries.close.last == 300)
     let series = await recorded.values.compactMap { update -> (UUID, BarSeries)? in

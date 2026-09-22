@@ -119,7 +119,7 @@ public struct DrawingPreferences: Sendable, Equatable, Codable {
 
 public struct DrawArchive: Sendable, Equatable, Codable {
   /// 存档版本。字段有增删时 +1，老档按「缺的取默认」合并，不整体丢弃（A6.13 的规矩）。
-  public static let currentVersion = 2
+  public static let currentVersion = 3
   /// 每个品种的条数上限（A7.7）。
   public static let perSymbolLimit = 50
 
@@ -136,17 +136,30 @@ public struct DrawArchive: Sendable, Equatable, Codable {
 
   public init(version: Int = DrawArchive.currentVersion, bySymbol: [String: [Drawing]] = [:]) {
     self.version = version
-    self.bySymbol = bySymbol
+    self.bySymbol = Self.migrate(bySymbol)
+  }
+
+  private static func migrate(_ values: [String: [Drawing]]) -> [String: [Drawing]] {
+    var output: [String: [Drawing]] = [:]
+    for key in values.keys.sorted() {
+      let canonical = InstrumentID.canonical(key)
+      for drawing in values[key] ?? [] {
+        if let i = output[canonical, default: []].firstIndex(where: { $0.id == drawing.id }) {
+          if key == canonical { output[canonical]?[i] = drawing }
+        } else { output[canonical, default: []].append(drawing) }
+      }
+    }
+    return output
   }
 
   /// 存档保留全部对象；交互创建限制不能裁掉同步合并的数据。
   public subscript(symbol: String) -> [Drawing] {
-    get { bySymbol[symbol] ?? [] }
+    get { bySymbol[InstrumentID.canonical(symbol)] ?? [] }
     set {
       if newValue.isEmpty {
-        bySymbol.removeValue(forKey: symbol)   // 空的不占位，省得存档里一堆空数组
+        bySymbol.removeValue(forKey: InstrumentID.canonical(symbol))   // 空的不占位，省得存档里一堆空数组
       } else {
-        bySymbol[symbol] = Self.capped(newValue)
+        bySymbol[InstrumentID.canonical(symbol)] = Self.capped(newValue)
       }
     }
   }
@@ -191,10 +204,10 @@ public struct DrawArchive: Sendable, Equatable, Codable {
     // `load()` 退回一份空档，用户看到的是**这台手机上所有品种的画线全没了**，
     // 而实际上只是云端同步下来一条它不认识的新工具。丢掉那一条，剩下的照常读。
     let raw = try c.decodeIfPresent([String: [TolerantDrawing]].self, forKey: .bySymbol) ?? [:]
-    bySymbol = raw.compactMapValues { bucket in
+    bySymbol = Self.migrate(raw.compactMapValues { bucket in
       let kept = bucket.compactMap(\.drawing)
       return kept.isEmpty ? nil : Self.capped(kept)
-    }
+    })
   }
 }
 

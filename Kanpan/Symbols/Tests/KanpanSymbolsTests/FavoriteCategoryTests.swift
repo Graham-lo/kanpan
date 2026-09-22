@@ -12,15 +12,15 @@ struct FavoriteCategoryTests {
     // 交易所没说 `underlyingType` 就是**不知道**（审查 B-04）：不再按代号白名单
     // 把 BTC 猜成「加密」——猜错的代价不对称，一个新上的股票代号只要没进白名单
     // 就会被塞进加密分类里。`knows` 说不知道时，调用方不拿这个名字（见下一条用例）。
-    #expect(FavoriteCategory.knows(symbol: "BTCUSDT", info: nil) == false)
+    #expect(FavoriteCategory.knows(symbol: "binance/usd_m/BTCUSDT", info: nil) == false)
     #expect(name("BTC", nil) == "其他")
     #expect(name("NEWCOIN", "COIN") == "加密")
-    #expect(FavoriteCategory.knows(symbol: "BTCUSDT",
-                                   info: SymbolInfo(symbol: "BTCUSDT", base: "BTC",
+    #expect(FavoriteCategory.knows(symbol: "binance/usd_m/BTCUSDT",
+                                   info: SymbolInfo(symbol: "binance/usd_m/BTCUSDT", base: "BTC",
                                                     pricePrecision: 2, tickSize: 0.01,
                                                     underlyingType: "COIN")))
     // 例外只有 ISO 资产代码认出来的贵金属，那不是猜代号。
-    #expect(FavoriteCategory.knows(symbol: "XAUUSDT", info: nil))
+    #expect(FavoriteCategory.knows(symbol: "binance/usd_m/XAUUSDT", info: nil))
     #expect(name("XAU", nil) == "贵金属")
     #expect(name("MRVL", "EQUITY") == "美股")
     #expect(name("SKHYNIX", "KR_EQUITY") == "美股")
@@ -41,20 +41,20 @@ struct FavoriteCategoryTests {
       SymbolInfo(symbol: symbol, base: String(symbol.dropLast(4)),
                  pricePrecision: 2, tickSize: 0.01, underlyingType: "COIN")
     }
-    model.addFavorite("BTCUSDT", info: coin("BTCUSDT"))
-    model.addFavorite("ETHUSDT", info: coin("ETHUSDT"))
+    model.addFavorite("binance/usd_m/BTCUSDT", info: coin("binance/usd_m/BTCUSDT"))
+    model.addFavorite("binance/usd_m/ETHUSDT", info: coin("binance/usd_m/ETHUSDT"))
     #expect(model.prefs.groups.map(\.name) == ["加密"])
     let customID = model.createGroup("长期")
     let custom = try #require(customID)
-    model.assign("BTCUSDT", to: custom); selected = custom
-    model.addFavorite("BTCUSDT", info: coin("BTCUSDT")) // 重复收藏不覆盖用户选择、不复制品种。
+    model.assign("binance/usd_m/BTCUSDT", to: custom); selected = custom
+    model.addFavorite("binance/usd_m/BTCUSDT", info: coin("binance/usd_m/BTCUSDT")) // 重复收藏不覆盖用户选择、不复制品种。
     // 目录里没有这一行、也没人告诉我们它是什么：不编分类（审查 B-04），
     // 就留在他此刻看的那一类里——不新建「其他」，也不让它落进看不见的那一格。
-    model.addFavorite("MYSTERYUSDT")
+    model.addFavorite("binance/usd_m/MYSTERYUSDT")
     #expect(model.prefs.groups.map(\.name) == ["加密", "长期"])
-    #expect(model.prefs.groupForSymbol["MYSTERYUSDT"] == custom)
+    #expect(model.prefs.groupForSymbol["binance/usd_m/MYSTERYUSDT"] == custom)
     let reloaded = SymbolPickerModel(store: store)
-    #expect(reloaded.prefs.groupForSymbol["BTCUSDT"] == custom)
-    #expect(reloaded.prefs.favorites == ["BTCUSDT", "ETHUSDT", "MYSTERYUSDT"])
+    #expect(reloaded.prefs.groupForSymbol["binance/usd_m/BTCUSDT"] == custom)
+    #expect(reloaded.prefs.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT", "binance/usd_m/MYSTERYUSDT"])
   }
 }

@@ -177,6 +177,7 @@ import ReviewUI
   /// 写入早已改道到文件，这个键不会再被写第二次，所以每次启动跑一遍是幂等的。
   private func dropLegacySymbols() {
     UserDefaults.standard.removeObject(forKey: SymbolPrefsStore.defaultsKey)
+    UserDefaults.standard.removeObject(forKey: SymbolPrefsStore.legacyDefaultsKey)
   }
   private func migrateLegacy() throws {
     let marker = files.root.appendingPathComponent("legacy-imported.json")
@@ -287,7 +288,7 @@ import ReviewUI
     }
     if let nextSync {
       for tombstone in nextSync.archive.objects.values where tombstone.collection == "drawings" && tombstone.deleted {
-        guard case .string(let name) = tombstone.body["symbol"] else { continue }
+        let name = PersonalSyncCodec.instrument(tombstone); guard !name.isEmpty else { continue }
         let id = String(tombstone.id.split(separator: "/").last ?? "")
         if !nextSync.archive.operations.contains(where: { $0.objectId == tombstone.id && $0.action == "restore" }) {
           nextDrawings[name].removeAll { $0.id == id }
@@ -323,7 +324,7 @@ import ReviewUI
           }
           continue
         }
-        guard case .string(let name) = object.body["symbol"] else { continue }
+        let name = PersonalSyncCodec.instrument(object); guard !name.isEmpty else { continue }
         let id = String(object.id.split(separator: "/").last ?? "")
         if object.deleted {
           nextDrawings[name].removeAll { $0.id == id }
@@ -354,7 +355,7 @@ import ReviewUI
           nextSymbols.groups.insert(FavoriteGroup(id: object.id, name: name), at: min(max(slot, 0), nextSymbols.groups.count))
           continue
         }
-        guard case .string(let symbol) = object.body["symbol"] else { continue }
+        let symbol = PersonalSyncCodec.instrument(object); guard !symbol.isEmpty else { continue }
         nextSymbols.favorites.removeAll { $0 == symbol }
         nextSymbols.pinned.removeAll { $0 == symbol }
         nextSymbols.groupForSymbol[symbol] = nil
@@ -848,7 +849,7 @@ import ReviewUI
           var after: String?
           repeat {
             var query = [URLQueryItem(name: "collection", value: collection)]
-            if collection == "drawings" { query.append(URLQueryItem(name: "prefix", value: "binance/usd_m/" + requestedSymbol + "/")) }
+            if collection == "drawings" { query.append(URLQueryItem(name: "prefix", value: InstrumentID.canonical(requestedSymbol) + "/")) }
             if let after { query.append(URLQueryItem(name: "after", value: after)) }
             var components = URLComponents(); components.queryItems = query
             let page: SyncPage = try await api.request("v1/sync/bootstrap" + (components.string ?? ""))
@@ -919,7 +920,7 @@ import ReviewUI
       archive.preferences = try KanpanAccount.JSONValue.object(PersonalSyncCodec.expand(tools.body)).decode(DrawingPreferences.self)
     }
     for object in objects.values where object.collection == "drawings" {
-      guard case .string(let name) = object.body["symbol"] else { continue }
+      let name = PersonalSyncCodec.instrument(object); guard !name.isEmpty else { continue }
       let id = String(object.id.split(separator: "/").last ?? "")
       if object.deleted { archive[name].removeAll { $0.id == id } }
       else {
@@ -953,7 +954,7 @@ import ReviewUI
     let favorites = objects.values.filter { $0.collection == "favorites" && !$0.deleted }.sorted(by: order)
     var names: [String] = [], membership: [String: String] = [:], pinned: [String] = []
     for value in favorites {
-      guard case .string(let name) = value.body["symbol"] else { continue }; names.append(name)
+      let name = PersonalSyncCodec.instrument(value); guard !name.isEmpty else { continue }; names.append(name)
       if case .string(let group) = value.body["groupId"] { membership[name] = group }
       if value.body["pinned"] == .bool(true) { pinned.append(name) }
     }

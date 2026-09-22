@@ -4,7 +4,7 @@ import KanpanCore
 public struct SeriesKey: Hashable, Sendable, CustomStringConvertible {
   public var symbol: String
   public var interval: Interval
-  public init(_ symbol: String, _ interval: Interval) { self.symbol = symbol; self.interval = interval }
+  public init(_ symbol: String, _ interval: Interval) { self.symbol = InstrumentID.canonical(symbol); self.interval = interval }
   public var description: String { "\(symbol)|\(interval.rawValue)" }
 }
 

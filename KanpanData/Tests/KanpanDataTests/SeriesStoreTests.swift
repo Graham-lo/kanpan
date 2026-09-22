@@ -23,7 +23,7 @@ struct SeriesStoreTests {
     let s = makeSeries("BTCUSDT", .h1, count: 300)
     #expect(try SeriesStore.write(s, in: dir) > 0)
     let back = try #require(SeriesStore.read(symbol: "BTCUSDT", interval: .h1, in: dir))
-    #expect(back.symbol == "BTCUSDT")
+    #expect(back.symbol == "binance/usd_m/BTCUSDT")
     #expect(back.interval == .h1)
     #expect(back.count == 300)
     #expect(back.lastTime == s.lastTime)
@@ -75,7 +75,7 @@ struct SeriesStoreTests {
     }
     // 正常路径上淘汰是按分钟节流的（`pruneEverySeconds`），这里直接催一次。
     SeriesStore.prune(in: dir, force: true)
-    let kbars = (try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))
+    let kbars = SeriesStore.files(in: dir, keys: [])
       .filter { $0.pathExtension == "kbar" }
     #expect(kbars.count <= SeriesStore.maxEntries)
     // 最后写进去的那一份一定还在。
@@ -91,7 +91,7 @@ struct SeriesStoreTests {
     for i in 0..<6 {
       _ = try SeriesStore.write(makeSeries("S\(i)USDT", .h1, count: 600), in: dir)
     }
-    let before = (try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))
+    let before = SeriesStore.files(in: dir, keys: [])
       .filter { $0.pathExtension == "kbar" }
     #expect(before.count == 6)
     let bytes = before.reduce(0) { $0 + ((try? Data(contentsOf: $1).count) ?? 0) }

@@ -144,12 +144,9 @@ final class ReviewContractReconciliationTests: XCTestCase {
     let source = try rustSource(Self.nativeReviewPath)
     let range = try body(ofFunction: "pub fn validate_range", in: source)
 
-    let venue = try firstMatch("range\\.venue != \"([^\"]*)\"", range, "交易所白名单")[1]
-    XCTAssertEqual(ReviewContract.venue, venue,
-                   "服务端只认交易所 `\(venue)`，`ReviewContract.venue` 写的是 `\(ReviewContract.venue)`")
-
-    let market = try firstMatch("range\\.market != \"([^\"]*)\"", range, "市场白名单")[1]
-    XCTAssertEqual(ReviewContract.market, market, "服务端只认市场 `\(market)`")
+    let pairs = captures(#"\("([^"]+)",\s*"([^"]+)"\)"#, range)
+      .map { $0[1] + "/" + $0[2] }
+    XCTAssertEqual(Set(ReviewContract.supportedMarkets), Set(pairs), "复盘市场白名单必须与服务器一致")
 
     let suffix = try firstMatch("range\\.symbol\\.ends_with\\(\"([^\"]*)\"\\)", range, "计价币后缀")[1]
     XCTAssertEqual(ReviewContract.quoteSuffix, suffix,

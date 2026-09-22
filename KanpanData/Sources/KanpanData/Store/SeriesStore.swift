@@ -56,8 +56,11 @@ public enum SeriesStore {
   }
 
   public static func url(symbol: String, interval: Interval, in dir: URL) -> URL? {
-    guard let name = safe(symbol) else { return nil }
-    return dir.appendingPathComponent("\(name)@\(slug(interval)).kbar")
+    let id = InstrumentID(symbol)
+    guard id.isValid else { return nil }
+    return dir.appendingPathComponent(id.venue, isDirectory: true)
+      .appendingPathComponent(id.market, isDirectory: true)
+      .appendingPathComponent("\(id.symbol)@\(slug(interval)).kbar")
   }
 
   // ------------------------------------------------------------------ 读写
@@ -78,11 +81,14 @@ public enum SeriesStore {
   /// 即使 `touch: true`，现在也不在调用线程上写 mtime 了——落到后台任务里做，
   /// 顺手更新进程内索引（见 `SeriesIndex`）。
   public static func read(symbol: String, interval: Interval, in dir: URL, touch: Bool) -> BarSeries? {
-    guard let url = url(symbol: symbol, interval: interval, in: dir),
-          let series = Snapshot.read(url),
-          series.symbol.uppercased() == symbol.uppercased(), series.interval == interval,
-          series.count > 0 else { return nil }
-    if touch { self.touch(url, in: dir) }
+    guard let url = url(symbol: symbol, interval: interval, in: dir) else { return nil }
+    let id = InstrumentID(symbol)
+    let legacy = dir.appendingPathComponent("\(id.symbol)@\(slug(interval)).kbar")
+    // Read the old file in place. Atomic writes use the new path; never delete the migration source.
+    let current = Snapshot.read(url)
+    guard let series = current ?? (id.venue == "binance" && id.market == "usd_m" ? Snapshot.read(legacy) : nil),
+          InstrumentID(series.symbol) == id, series.interval == interval, series.count > 0 else { return nil }
+    if touch { self.touch(current == nil ? legacy : url, in: dir) }
     return series
   }
 
@@ -101,6 +107,10 @@ public enum SeriesStore {
   public static func remove(symbol: String, interval: Interval, in dir: URL) {
     guard let url = url(symbol: symbol, interval: interval, in: dir) else { return }
     try? FileManager.default.removeItem(at: url)
+    let id = InstrumentID(symbol)
+    if id.venue == "binance", id.market == "usd_m" {
+      try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(id.symbol)@\(slug(interval)).kbar"))
+    }
     let index = SeriesIndex.shared
     Task.detached(priority: .utility) { await index.dropped(url, in: dir) }
   }
@@ -136,8 +146,7 @@ public enum SeriesStore {
     guard force || pruneClock.due(every: pruneEverySeconds) else { return }
     let fm = FileManager.default
     let keys: [URLResourceKey] = [.contentModificationDateKey, .totalFileAllocatedSizeKey, .fileSizeKey]
-    guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: keys,
-                                                  options: [.skipsHiddenFiles]) else { return }
+    let files = Self.files(in: dir, keys: keys)
     let entries = files
       .filter { $0.pathExtension == "kbar" }
       .map { url -> (url: URL, at: Date, bytes: Int) in
@@ -159,6 +168,10 @@ public enum SeriesStore {
     // 磁盘刚被动过，进程内那份索引作废，下次用到时重扫。
     let index = SeriesIndex.shared
     Task.detached(priority: .utility) { await index.forget(dir) }
+  }
+
+  static func files(in dir: URL, keys: [URLResourceKey]) -> [URL] {
+    (FileManager.default.enumerator(at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])?.allObjects as? [URL]) ?? []
   }
 
   private static func touch(_ url: URL, in dir: URL) {
@@ -209,13 +222,12 @@ actor SeriesIndex {
     var table: [String: Entry] = [:]
     var total = 0
     let keys: [URLResourceKey] = [.contentModificationDateKey, .totalFileAllocatedSizeKey, .fileSizeKey]
-    let files = (try? FileManager.default.contentsOfDirectory(
-      at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+    let files = SeriesStore.files(in: dir, keys: keys)
     for url in files where url.pathExtension == "kbar" {
       let v = try? url.resourceValues(forKeys: Set(keys))
       let entry = Entry(at: v?.contentModificationDate ?? .distantPast,
                         bytes: v?.fileSize ?? v?.totalFileAllocatedSize ?? 0)
-      table[url.lastPathComponent] = entry
+      table[url.resolvingSymlinksInPath().standardizedFileURL.path.replacingOccurrences(of: key(dir).path + "/", with: "")] = entry
       total += entry.bytes
     }
     dirs[dir] = table
@@ -226,7 +238,7 @@ actor SeriesIndex {
   func wrote(_ url: URL, in dir: URL, bytes: Int, at when: Date) {
     let d = key(dir)
     ensureScanned(d)
-    let name = url.lastPathComponent
+    let name = url.resolvingSymlinksInPath().standardizedFileURL.path.replacingOccurrences(of: key(dir).path + "/", with: "")
     var table = dirs[d] ?? [:]
     var total = totals[d] ?? 0
     if let old = table[name] { total -= old.bytes }
@@ -241,7 +253,7 @@ actor SeriesIndex {
   func touched(_ url: URL, in dir: URL, at when: Date) {
     let d = key(dir)
     ensureScanned(d)
-    let name = url.lastPathComponent
+    let name = url.resolvingSymlinksInPath().standardizedFileURL.path.replacingOccurrences(of: key(dir).path + "/", with: "")
     guard var table = dirs[d], var entry = table[name] else { return }
     entry.at = when
     table[name] = entry
@@ -252,7 +264,7 @@ actor SeriesIndex {
     let d = key(dir)
     ensureScanned(d)
     guard var table = dirs[d] else { return }
-    if let old = table.removeValue(forKey: url.lastPathComponent) {
+    if let old = table.removeValue(forKey: url.resolvingSymlinksInPath().standardizedFileURL.path.replacingOccurrences(of: key(dir).path + "/", with: "")) {
       totals[d] = (totals[d] ?? 0) - old.bytes
       dirs[d] = table
     }
@@ -276,7 +288,7 @@ actor SeriesIndex {
   func mark(_ url: URL, in dir: URL) -> Date? {
     let d = key(dir)
     ensureScanned(d)
-    return dirs[d]?[url.lastPathComponent]?.at
+    return dirs[d]?[url.resolvingSymlinksInPath().standardizedFileURL.path.replacingOccurrences(of: key(dir).path + "/", with: "")]?.at
   }
 
   /// 只有真的超限才排序、才删文件。没超就是几次字典操作。

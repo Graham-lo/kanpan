@@ -21,11 +21,9 @@ struct ShareItem: Codable, Equatable, Identifiable, Sendable {
   var keptAt: String?
   /// 这封是回信：指向我先前发给他的那一封（P3.5）。卡上写「XX 回了你」。
   var replyTo: String?
+  var key: String { InstrumentID.canonical(symbol.contains("/") ? symbol : market + "/" + symbol) }
   var shortSymbol: String {
-    for quote in ["FDUSD", "USDT", "USDC", "BUSD", "TUSD", "USD1"] where symbol.hasSuffix(quote) {
-      return String(symbol.dropLast(quote.count))
-    }
-    return symbol
+    SymbolInfo.placeholder(symbol: symbol).base
   }
   var createdDate: Date? { Self.date(createdAt) }
   static func date(_ raw: String) -> Date? {

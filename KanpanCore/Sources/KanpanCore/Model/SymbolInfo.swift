@@ -58,7 +58,8 @@ public enum SymbolStatus: String, Sendable, Equatable, Codable, CaseIterable {
 
 /// 品种。字段取自 `exchangeInfo`（§4.1）。
 public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
-  public var symbol: String            // BTCUSDT
+  /// Stable key. The exchange-local symbol is `id.symbol`; display uses `base` / `quote`.
+  public var symbol: String
   public var base: String              // BTC
   public var quote: String             // USDT
   public var pricePrecision: Int
@@ -72,7 +73,8 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
   /// 上线时间（`exchangeInfo.symbols[].onboardDate`，毫秒）。缺字段 / 旧缓存为 `nil`。
   public var onboardDate: Int64?
 
-  public var id: String { symbol }
+  public var id: InstrumentID { InstrumentID(symbol) }
+  public var key: String { id.key }
   /// 顶栏和品种页里显示的名字：BTC/USDT。
   public var display: String { base + "/" + quote }
 
@@ -80,7 +82,7 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
               pricePrecision: Int, quantityPrecision: Int = 3, tickSize: Double, underlyingType: String? = nil,
               underlyingSubTypes: [String]? = nil, contractType: String? = nil,
               status: SymbolStatus = .tradable, onboardDate: Int64? = nil) {
-    self.symbol = symbol
+    self.symbol = InstrumentID.canonical(symbol)
     self.base = base
     self.quote = quote
     self.pricePrecision = pricePrecision
@@ -97,7 +99,7 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
   /// 否则一次升级就会让整张磁盘目录解不开、冷启动必须等网络。
   public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
-    symbol = try c.decode(String.self, forKey: .symbol)
+    symbol = InstrumentID.canonical(try c.decode(String.self, forKey: .symbol))
     base = try c.decode(String.self, forKey: .base)
     quote = try c.decodeIfPresent(String.self, forKey: .quote) ?? "USDT"
     pricePrecision = try c.decode(Int.self, forKey: .pricePrecision)
@@ -143,10 +145,12 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
   /// 摆之前总得有个 `SymbolInfo`。只有 `symbol` 是真的；`base`/`quote` 按后缀拆，
   /// 精度留 0 表示「不知道」，由 `displayDecimals(for:)` 按价格猜。
   public static func placeholder(symbol: String, status: SymbolStatus = .tradable) -> SymbolInfo {
-    let s = symbol.uppercased()
-    let quote = ["USDT", "USDC", "USD1", "BUSD"].first { s.hasSuffix($0) } ?? "USDT"
-    let base = s.hasSuffix(quote) ? String(s.dropLast(quote.count)) : s
-    return SymbolInfo(symbol: s, base: base.isEmpty ? s : base, quote: quote,
+    let identity = InstrumentID(symbol)
+    let s = identity.symbol
+    let parts = s.split(separator: "-")
+    let quote = parts.count == 2 ? String(parts[1]) : (["FDUSD", "USDT", "USDC", "USD1", "BUSD", "TUSD", "USD"].first { s.hasSuffix($0) } ?? "USDT")
+    let base = parts.count == 2 ? String(parts[0]) : (s.hasSuffix(quote) ? String(s.dropLast(quote.count)) : s)
+    return SymbolInfo(symbol: identity.key, base: base.isEmpty ? s : base, quote: quote,
                       pricePrecision: 0, tickSize: 0, status: status)
   }
 }
@@ -194,6 +198,7 @@ public enum SymbolListing: Sendable, Equatable {
 /// 24h 统计与当前成交。实时成交先到时按 open24h 重算滚动涨跌幅；
 /// 日切口径由共享报价层处理，缺失统计保持缺失。
 public struct Ticker: Sendable, Equatable {
+  /// Stable InstrumentID key, shared with the chart and personal archives.
   public var symbol: String
   public var last: Double
   /// 交易所 24 小时涨跌额；缺失时保留空值。
@@ -217,7 +222,7 @@ public struct Ticker: Sendable, Equatable {
   public init(symbol: String, last: Double, changePercent: Double,
               high: Double, low: Double, quoteVolume: Double, markPrice: Double? = nil, open24h: Double? = nil,
               timeMs: Int64? = nil, lastTradeID: Int64? = nil, priceChange: Double? = nil) {
-    self.symbol = symbol
+    self.symbol = InstrumentID.canonical(symbol)
     self.last = last
     self.priceChange = priceChange.flatMap { $0.isFinite ? $0 : nil }
     self.changePercent = changePercent

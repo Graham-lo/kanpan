@@ -65,15 +65,15 @@ final class SymbolPreviewStore {
   /// 正在看的那张图捎回来的费率（`markPrice@1s`）。它比 REST 那口还新，
   /// 直接覆盖缓存，省掉这个品种的一次往返。
   func note(funding rate: Double?, for symbol: String) {
-    let key = symbol.uppercased()
+    let key = InstrumentID.canonical(symbol)
     guard let rate, rate.isFinite else { return }
     funding[key] = Funding(rate: rate, at: Date())
   }
 
-  func bars(for symbol: String) -> [Bar] { bars[symbol.uppercased()] ?? [] }
-  func stats(for symbol: String) -> Stats? { stats[symbol.uppercased()] }
+  func bars(for symbol: String) -> [Bar] { bars[InstrumentID.canonical(symbol)] ?? [] }
+  func stats(for symbol: String) -> Stats? { stats[InstrumentID.canonical(symbol)] }
   func funding(for symbol: String) -> Double? {
-    guard let row = funding[symbol.uppercased()], !expired(row) else { return nil }
+    guard let row = funding[InstrumentID.canonical(symbol)], !expired(row) else { return nil }
     return row.rate
   }
 
@@ -84,7 +84,7 @@ final class SymbolPreviewStore {
   /// 手指按住那一刻才去取。已经有的那几样不再取：K 线取一次就一直留着，
   /// 那两个统计也是，费率过了保鲜期才重新取。三样都齐就什么都不做。
   func warm(symbol: String, base: String) {
-    let key = symbol.uppercased()
+    let key = InstrumentID.canonical(symbol)
     touch(key)
     let needsBars = bars[key] == nil
     let needsStats = stats[key] == nil
@@ -157,7 +157,7 @@ struct SymbolPreviewCard: View {
 
   @Environment(\.panelTheme) private var t
 
-  private var base: String { info?.base ?? String(symbol.dropLast(4)) }
+  private var base: String { info?.base ?? SymbolInfo.placeholder(symbol: symbol).base }
   private var quote: String { info?.quote ?? "USDT" }
   private var live: Ticker? { stale ? nil : ticker }
   private var pct: Double? {

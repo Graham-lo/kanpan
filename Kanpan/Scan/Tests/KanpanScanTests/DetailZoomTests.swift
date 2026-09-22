@@ -63,46 +63,46 @@ struct DetailZoomStackTests {
   @Test("切回哪一档就还哪一档的视野，还完就销账")
   func restoresTheViewportOfThatInterval() {
     var stack = DetailZoomStack()
-    stack.push(symbol: "BTCUSDT", interval: .h4, view: window(10))
-    #expect(stack.pop(symbol: "BTCUSDT", interval: .h4) == window(10))
+    stack.push(symbol: "binance/usd_m/BTCUSDT", interval: .h4, view: window(10))
+    #expect(stack.pop(symbol: "binance/usd_m/BTCUSDT", interval: .h4) == window(10))
     // 只还一次：再切回来就是平常的换周期，贴最新。
-    #expect(stack.pop(symbol: "BTCUSDT", interval: .h4) == nil)
+    #expect(stack.pop(symbol: "binance/usd_m/BTCUSDT", interval: .h4) == nil)
   }
 
   @Test("一层层钻下去，往回切时把压在上面的几层一起弹掉")
   func popsTheFramesAboveIt() {
     var stack = DetailZoomStack()
-    stack.push(symbol: "BTCUSDT", interval: .h4, view: window(10))
-    stack.push(symbol: "BTCUSDT", interval: .m15, view: window(20))
+    stack.push(symbol: "binance/usd_m/BTCUSDT", interval: .h4, view: window(10))
+    stack.push(symbol: "binance/usd_m/BTCUSDT", interval: .m15, view: window(20))
     // 直接跳回 4h：15m 那一层没人要了。
-    #expect(stack.pop(symbol: "BTCUSDT", interval: .h4) == window(10))
+    #expect(stack.pop(symbol: "binance/usd_m/BTCUSDT", interval: .h4) == window(10))
     #expect(stack.isEmpty)
   }
 
   @Test("换品种整栈作废——同一段时间在别的品种上什么都不是")
   func forgetsEverythingOnAnotherSymbol() {
     var stack = DetailZoomStack()
-    stack.push(symbol: "BTCUSDT", interval: .h4, view: window(10))
-    #expect(stack.pop(symbol: "ETHUSDT", interval: .h4) == nil)
-    stack.push(symbol: "ETHUSDT", interval: .h4, view: window(30))
+    stack.push(symbol: "binance/usd_m/BTCUSDT", interval: .h4, view: window(10))
+    #expect(stack.pop(symbol: "binance/usd_m/ETHUSDT", interval: .h4) == nil)
+    stack.push(symbol: "binance/usd_m/ETHUSDT", interval: .h4, view: window(30))
     #expect(stack.frames.count == 1)
-    #expect(stack.pop(symbol: "BTCUSDT", interval: .h4) == nil)
-    #expect(stack.pop(symbol: "ETHUSDT", interval: .h4) == window(30))
+    #expect(stack.pop(symbol: "binance/usd_m/BTCUSDT", interval: .h4) == nil)
+    #expect(stack.pop(symbol: "binance/usd_m/ETHUSDT", interval: .h4) == window(30))
   }
 
   @Test("同一档只记最近那一次，钻太深的老账自己掉出去")
   func keepsOneFramePerIntervalAndAShallowStack() {
     var stack = DetailZoomStack()
-    stack.push(symbol: "BTCUSDT", interval: .h4, view: window(10))
-    stack.push(symbol: "BTCUSDT", interval: .h4, view: window(11))
+    stack.push(symbol: "binance/usd_m/BTCUSDT", interval: .h4, view: window(10))
+    stack.push(symbol: "binance/usd_m/BTCUSDT", interval: .h4, view: window(11))
     #expect(stack.frames.count == 1)
-    #expect(stack.pop(symbol: "BTCUSDT", interval: .h4) == window(11))
+    #expect(stack.pop(symbol: "binance/usd_m/BTCUSDT", interval: .h4) == window(11))
 
     for (i, iv) in [Interval.mo1, .w1, .d1, .h4, .m15].enumerated() {
-      stack.push(symbol: "BTCUSDT", interval: iv, view: window(Double(i)))
+      stack.push(symbol: "binance/usd_m/BTCUSDT", interval: iv, view: window(Double(i)))
     }
     #expect(stack.frames.count == DetailZoomStack.maximumDepth)
-    #expect(stack.pop(symbol: "BTCUSDT", interval: .mo1) == nil)
-    #expect(stack.pop(symbol: "BTCUSDT", interval: .w1) == window(1))
+    #expect(stack.pop(symbol: "binance/usd_m/BTCUSDT", interval: .mo1) == nil)
+    #expect(stack.pop(symbol: "binance/usd_m/BTCUSDT", interval: .w1) == window(1))
   }
 }

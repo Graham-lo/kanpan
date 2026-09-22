@@ -159,7 +159,7 @@ import KanpanNetwork
   /// 比的是 symbol 集合的内容，不是条数：一张合约下架、另一张同时上架时条数一模一样，
   /// 只比数量会让整页一直拿着旧表算兜底桶。
   func setCatalog(_ catalog: [SymbolInfo]) {
-    let ids = Set(catalog.map { $0.symbol.uppercased() })
+    let ids = Set(catalog.map { InstrumentID.canonical($0.symbol) })
     guard ids != catalogIDs else { return }
     catalogIDs = ids
     self.catalog = catalog
@@ -261,18 +261,15 @@ import KanpanNetwork
   /// `BTCUSDT` → `BTC`。品种表里有就照表，没有就削掉计价币的后缀
   /// （交易所偶尔会在品种表回来之前先给出行情）。
   private func base(of symbol: String) -> String {
-    let upper = symbol.uppercased()
+    let upper = InstrumentID.canonical(symbol)
     if let info = catalogIndex[upper] { return info.base.uppercased() }
-    for quote in Self.quoteAssets where upper.hasSuffix(quote) && upper.count > quote.count {
-      return String(upper.dropLast(quote.count))
-    }
-    return upper
+    return SymbolInfo.placeholder(symbol: symbol).base
   }
 
   /// 计价币的档次，越小越优先：`USDT > USDC > FDUSD > 其它`。品种表里有就照表，
   /// 没有就按后缀猜（交易所偶尔会在品种表回来之前先给出行情）。
   private func quoteRank(of symbol: String) -> Int {
-    let upper = symbol.uppercased()
+    let upper = InstrumentID.canonical(symbol)
     if let info = catalogIndex[upper] { return SectorQuotePreference.rank(info.quote) }
     for (index, quote) in Self.quoteAssets.enumerated()
     where upper.hasSuffix(quote) && upper.count > quote.count {
@@ -293,7 +290,7 @@ import KanpanNetwork
     if cachedIndexCount == catalogGeneration { return cachedIndex }
     var index: [String: SymbolInfo] = [:]
     index.reserveCapacity(catalog.count)
-    for info in catalog { index[info.symbol.uppercased()] = info }
+    for info in catalog { index[InstrumentID.canonical(info.symbol)] = info }
     cachedIndex = index
     cachedIndexCount = catalogGeneration
     return index
@@ -324,7 +321,7 @@ import KanpanNetwork
       let score = SectorQuotePreference.rank(quote)
       if let old = rank[base], old <= score { continue }
       rank[base] = score
-      index[base] = info.symbol.uppercased()
+      index[base] = InstrumentID.canonical(info.symbol)
     }
     cachedBase = index
     cachedBaseCount = catalogGeneration

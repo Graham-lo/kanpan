@@ -12,10 +12,10 @@ import KanpanCore
 struct HomeShortcutsTests {
   @Test("最近看过的三个 + 搜索，搜索在最后")
   func threeRecentsThenSearch() {
-    let items = HomeShortcuts.build(recents: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"])
+    let items = HomeShortcuts.build(recents: ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT", "binance/usd_m/SOLUSDT", "binance/usd_m/BNBUSDT"])
     #expect(items.count == 4)
     #expect(items.map(\.title) == ["BTC", "ETH", "SOL", "搜索"])
-    #expect(items.map(\.symbol) == ["BTCUSDT", "ETHUSDT", "SOLUSDT", nil])
+    #expect(items.map(\.symbol) == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT", "binance/usd_m/SOLUSDT", nil])
     #expect(items.last?.type == HomeShortcuts.searchType)
     #expect(items.dropLast().allSatisfy { $0.type == HomeShortcuts.symbolType })
   }
@@ -28,13 +28,13 @@ struct HomeShortcutsTests {
 
   @Test("重复的品种只占一格，大小写不算两个")
   func dedupes() {
-    let items = HomeShortcuts.build(recents: ["btcusdt", "BTCUSDT", "ethusdt", " ", "SOLUSDT"])
+    let items = HomeShortcuts.build(recents: ["btcusdt", "binance/usd_m/BTCUSDT", "ethusdt", " ", "binance/usd_m/SOLUSDT"])
     #expect(items.map(\.title) == ["BTC", "ETH", "SOL", "搜索"])
   }
 
   @Test("每一格都有 SF Symbol，没有副标题那一档")
   func iconsOnly() {
-    let items = HomeShortcuts.build(recents: ["BTCUSDT"])
+    let items = HomeShortcuts.build(recents: ["binance/usd_m/BTCUSDT"])
     #expect(items.allSatisfy { !$0.icon.isEmpty })
   }
 
@@ -45,10 +45,10 @@ struct HomeShortcutsTests {
     HomeShortcuts.apply = { rounds.append($0) }
     defer { HomeShortcuts.apply = nil; HomeShortcuts.reset() }
 
-    HomeShortcuts.refresh(recents: ["BTCUSDT"])
-    HomeShortcuts.refresh(recents: ["BTCUSDT"])          // 一模一样，不该再写
+    HomeShortcuts.refresh(recents: ["binance/usd_m/BTCUSDT"])
+    HomeShortcuts.refresh(recents: ["binance/usd_m/BTCUSDT"])          // 一模一样，不该再写
     #expect(rounds.count == 1)
-    HomeShortcuts.refresh(recents: ["ETHUSDT", "BTCUSDT"])
+    HomeShortcuts.refresh(recents: ["binance/usd_m/ETHUSDT", "binance/usd_m/BTCUSDT"])
     #expect(rounds.count == 2)
     #expect(rounds.last?.map(\.title) == ["ETH", "BTC", "搜索"])
   }
@@ -62,7 +62,7 @@ struct HomeShortcutsTests {
 
     let model = SymbolPickerModel(catalog: SymbolFixtures.catalog,
                                   store: SymbolPrefsStore(storage: MemoryPrefsStorage(), key: "t"))
-    model.visit("ETHUSDT")
-    #expect(rounds.last?.map(\.symbol) == ["ETHUSDT", nil])
+    model.visit("binance/usd_m/ETHUSDT")
+    #expect(rounds.last?.map(\.symbol) == ["binance/usd_m/ETHUSDT", nil])
   }
 }

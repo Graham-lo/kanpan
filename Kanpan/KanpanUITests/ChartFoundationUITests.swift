@@ -363,9 +363,9 @@ final class ChartFoundationUITests: XCTestCase {
     for index in 0..<20 {
       let symbol = index.isMultiple(of: 2) ? "ETHUSDT" : "BTCUSDT"
       XCTAssertTrue(app.openFavorites())
-      let row = app.buttons["favorites.open." + symbol]
+      let row = app.buttons["favorites.open." + testInstrumentKey(symbol)]
       XCTAssertTrue(row.waitForExistence(timeout: 10)); row.tap()
-      XCTAssertTrue(wait(seconds: 30) { self.info()["symbol"] as? String == symbol && self.info()["depthSymbol"] as? String == symbol }, feedEvidence())
+      XCTAssertTrue(wait(seconds: 30) { self.info()["symbol"] as? String == testInstrumentKey(symbol) && self.info()["depthSymbol"] as? String == testInstrumentKey(symbol) }, feedEvidence())
       switches.append("第\(index + 1)次：\(symbol)；" + feedEvidence())
     }
     let switchingLog = XCTAttachment(string: switches.joined(separator: "\n"))
@@ -416,11 +416,11 @@ final class ChartFoundationUITests: XCTestCase {
         query.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
       }
       query.typeText(symbol)
-      let row = app.descendants(matching: .any).matching(identifier: "symbols.row." + symbol).firstMatch
+      let row = app.descendants(matching: .any).matching(identifier: "symbols.row." + testInstrumentKey(symbol)).firstMatch
       XCTAssertTrue(row.waitForExistence(timeout: 30), "未找到\(symbol)")
       row.tap()
       XCTAssertTrue(wait(seconds: 45) {
-        self.info()["symbol"] as? String == symbol && (self.info()["bars"] as? Int ?? 0) > 20 &&
+        self.info()["symbol"] as? String == testInstrumentKey(symbol) && (self.info()["bars"] as? Int ?? 0) > 20 &&
         (self.info()["lastClose"] as? Double ?? 0) > 0
       }, String(describing: info()))
       shot("TradFi-" + symbol)
@@ -445,9 +445,9 @@ final class ChartFoundationUITests: XCTestCase {
     let semiconductor = app.buttons["favorites.group.半导体"]
     XCTAssertTrue(wait(seconds: 5) { semiconductor.isHittable }); semiconductor.tap()
     addFavoriteFromSearch("SNDKUSDT")
-    let row = app.buttons["favorites.open.SNDKUSDT"]
+    let row = app.buttons["favorites.open.binance/usd_m/SNDKUSDT"]
     XCTAssertTrue(row.waitForExistence(timeout: 5), "加进来的品种要留在当时站着的那一类里")
-    let move = app.buttons["favorites.move.SNDKUSDT"]
+    let move = app.buttons["favorites.move.binance/usd_m/SNDKUSDT"]
     XCTAssertTrue(expandRow("SNDKUSDT"), "展开箭头点不开详情")
     move.tap()
     let destination = app.buttons["光模块"]
@@ -457,7 +457,7 @@ final class ChartFoundationUITests: XCTestCase {
     app.buttons["favorites.group.光模块"].tap()
     XCTAssertTrue(row.waitForExistence(timeout: 5)); shot("独立自选页-分类与品种")
     row.tap()
-    XCTAssertTrue(wait(seconds: 45) { self.info()["symbol"] as? String == "SNDKUSDT" })
+    XCTAssertTrue(wait(seconds: 45) { self.info()["symbol"] as? String == "binance/usd_m/SNDKUSDT" })
     XCTAssertTrue(app.buttons["interval.chart"].exists)
     // 「画线」2026-09-18 起是标签栏最左那一格，常驻——从自选页点进来也该在。
     XCTAssertTrue(app.buttons["bottom.draw"].exists)
@@ -468,8 +468,8 @@ final class ChartFoundationUITests: XCTestCase {
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SNDKUSDT"
     app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
-    let price = app.staticTexts["favorites.price.BTCUSDT"]
-    let change = app.staticTexts["favorites.change.BTCUSDT"]
+    let price = app.staticTexts["favorites.price.binance/usd_m/BTCUSDT"]
+    let change = app.staticTexts["favorites.change.binance/usd_m/BTCUSDT"]
     XCTAssertTrue(wait(seconds: 30) { price.exists && price.label != "—" && change.exists && change.label.contains("%") })
     var values = Set<String>()
     XCTAssertTrue(wait(seconds: 15) {
@@ -477,7 +477,7 @@ final class ChartFoundationUITests: XCTestCase {
       return values.count >= 2
     }, "自选价格未连续刷新")
     shot("冷启动自选-实时价格与涨跌幅")
-    app.buttons["favorites.open.BTCUSDT"].tap()
+    app.buttons["favorites.open.binance/usd_m/BTCUSDT"].tap()
     // 标签栏常驻，`bottom.settings` 在哪一页都在，拿它判不出落到哪儿了；
     // 「图表设置」那颗按钮只有行情页有，用它当准星。
     XCTAssertTrue(app.buttons["interval.chart"].waitForExistence(timeout: 8))
@@ -503,7 +503,7 @@ final class ChartFoundationUITests: XCTestCase {
     // 这条会真画一根线，给它一份只属于自己的档案，别把画线留给后面的用例。
     app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
     app.launch()
-    let price = app.staticTexts["favorites.price.BTCUSDT"]
+    let price = app.staticTexts["favorites.price.binance/usd_m/BTCUSDT"]
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15), "有自选时冷启动该停在自选页")
     XCTAssertTrue(wait(seconds: 30) { price.exists && price.label != "—" }, "自选页第一轮报价没来")
 
@@ -559,7 +559,7 @@ final class ChartFoundationUITests: XCTestCase {
     let basis8 = app.buttons["8点涨跌幅"].firstMatch
     XCTAssertTrue(basis8.waitForExistence(timeout: 5))
     basis8.tap()
-    let change = app.staticTexts["favorites.change.BTCUSDT"]
+    let change = app.staticTexts["favorites.change.binance/usd_m/BTCUSDT"]
     XCTAssertTrue(wait(seconds: 40) { change.exists && change.label.contains("%") })
     shot("自选-上海8点统一涨跌幅")
   }
@@ -570,9 +570,9 @@ final class ChartFoundationUITests: XCTestCase {
     app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     favoritesAction("favorites.edit")
-    let btc = app.buttons["favorites.open.BTCUSDT"]
-    let sndk = app.buttons["favorites.open.SOLUSDT"]
-    let quote = app.staticTexts["favorites.price.BTCUSDT"]
+    let btc = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
+    let sndk = app.buttons["favorites.open.binance/usd_m/SOLUSDT"]
+    let quote = app.staticTexts["favorites.price.binance/usd_m/BTCUSDT"]
     var previousFrame = quote.frame
     var stableFrames = 0
     XCTAssertTrue(wait(seconds: 5) {
@@ -599,12 +599,12 @@ final class ChartFoundationUITests: XCTestCase {
                  withVelocity: .slow,
                  thenHoldForDuration: 0.8)
     XCTAssertTrue(wait(seconds: 5) { btc.frame.minY > before + 30 }, "编辑拖动应移动完整品种行")
-    app.buttons["favorites.open.BTCUSDT"].tap()
+    app.buttons["favorites.open.binance/usd_m/BTCUSDT"].tap()
     // ETH 这一下故意打在勾选框上而不是整行。没选中的勾选框是一圈 `Circle().strokeBorder`，
     // 20×20 的 frame 不会自己变成命中区，圆圈正中是空的——手指点在正中没反应，只能退回去
     // 点整行才选得中（`2c5ce80` 给它补了 20×44 的实心命中区）。`tap()` 打的正是元素中心，
     // 所以这一下修之前落空、修之后才选得中。
-    let ethCheck = app.buttons["favorites.select.ETHUSDT"]
+    let ethCheck = app.buttons["favorites.select.binance/usd_m/ETHUSDT"]
     XCTAssertTrue(ethCheck.waitForExistence(timeout: 5))
     XCTAssertGreaterThanOrEqual(ethCheck.frame.height, 44,
                                 "勾选框的命中区至少要有一行高：\(ethCheck.frame)")
@@ -620,15 +620,15 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["favorites.more"].exists }, "没切到设置页")
     app.buttons["bottom.favorites"].tap()
     XCTAssertTrue(app.buttons["全选"].waitForExistence(timeout: 8), "切一格再回来，编辑模式自己退了")
-    let ethBack = app.buttons["favorites.select.ETHUSDT"]
+    let ethBack = app.buttons["favorites.select.binance/usd_m/ETHUSDT"]
     XCTAssertTrue(ethBack.waitForExistence(timeout: 5))
     XCTAssertEqual(ethBack.label, "取消选择", "切一格再回来，勾中的品种没了")
     // 编辑态下整页读的是冻住的那份报价。页面重建之后它要重新填上，别让行里空着。
     if frozenPrice != "—" {
-      XCTAssertTrue(wait(seconds: 5) { self.app.staticTexts["favorites.price.ETHUSDT"].label != "—" },
+      XCTAssertTrue(wait(seconds: 5) { self.app.staticTexts["favorites.price.binance/usd_m/ETHUSDT"].label != "—" },
                     "回到编辑态之后行里的报价空着")
     }
-    app.buttons["favorites.open.BTCUSDT"].tap()
+    app.buttons["favorites.open.binance/usd_m/BTCUSDT"].tap()
     let remove = app.buttons["删除"]
     XCTAssertTrue(remove.isEnabled)
     // 编辑条必须整条落在标签栏上面。`cb0c4c3` 把标签栏改成 `safeAreaInset` 之后，
@@ -640,9 +640,9 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertFalse(remove.frame.intersects(tabBar.frame),
                    "编辑条压在标签栏上：删除 \(remove.frame)，设置格 \(tabBar.frame)")
     remove.tap()
-    XCTAssertFalse(app.buttons["favorites.open.ETHUSDT"].exists)
-    XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].exists)
-    XCTAssertTrue(app.buttons["favorites.open.SOLUSDT"].exists)
+    XCTAssertFalse(app.buttons["favorites.open.binance/usd_m/ETHUSDT"].exists)
+    XCTAssertTrue(app.buttons["favorites.open.binance/usd_m/BTCUSDT"].exists)
+    XCTAssertTrue(app.buttons["favorites.open.binance/usd_m/SOLUSDT"].exists)
     favoritesAction("favorites.edit")
     shot("自选-选择与删除")
   }
@@ -655,8 +655,8 @@ final class ChartFoundationUITests: XCTestCase {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SOLUSDT"
     app.launch()
-    let btc = app.buttons["favorites.open.BTCUSDT"]
-    let sol = app.buttons["favorites.open.SOLUSDT"]
+    let btc = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
+    let sol = app.buttons["favorites.open.binance/usd_m/SOLUSDT"]
     XCTAssertTrue(btc.waitForExistence(timeout: 15))
     XCTAssertTrue(sol.waitForExistence(timeout: 5))
     btc.press(forDuration: 1.1)
@@ -683,7 +683,7 @@ final class ChartFoundationUITests: XCTestCase {
     app.terminate()
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
     app.launch()
-    let btc = app.buttons["favorites.open.BTCUSDT"]
+    let btc = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
     XCTAssertTrue(btc.waitForExistence(timeout: 15))
     btc.swipeRight()
     let remove = app.buttons["删除自选"]
@@ -691,7 +691,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(btc.exists, "右滑仅显示操作，不能自动删除")
     remove.tap()
     XCTAssertTrue(wait(seconds: 5) { !btc.exists })
-    XCTAssertTrue(app.buttons["favorites.open.ETHUSDT"].exists)
+    XCTAssertTrue(app.buttons["favorites.open.binance/usd_m/ETHUSDT"].exists)
     shot("自选-右滑选择删除")
   }
 
@@ -717,7 +717,7 @@ final class ChartFoundationUITests: XCTestCase {
       XCTAssertTrue(name.waitForExistence(timeout: 5)); name.typeText(group)
       app.alerts.buttons["保存"].tap()
       for symbol in symbols {
-        if app.buttons["favorites.open." + symbol].exists { continue }
+        if app.buttons["favorites.open." + testInstrumentKey(symbol)].exists { continue }
         addFavoriteFromSearch(symbol)
       }
     }
@@ -730,21 +730,21 @@ final class ChartFoundationUITests: XCTestCase {
       XCTAssertTrue(chip.isHittable); chip.tap()
     }
     group("加密")
-    let btc = app.buttons["favorites.open.BTCUSDT"]
-    let sol = app.buttons["favorites.open.SOLUSDT"]
+    let btc = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
+    let sol = app.buttons["favorites.open.binance/usd_m/SOLUSDT"]
     let startY = btc.frame.minY
     let center = btc.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
     center.press(forDuration: 0.8, thenDragTo: center.withOffset(CGVector(dx: 0, dy: sol.frame.maxY - btc.frame.midY + 20)))
     XCTAssertTrue(wait(seconds: 5) { btc.frame.minY > startY + 30 }, "直接拖动品种行应改变排序")
     let crypto = groups[0].1
-    let movedOrder = crypto.sorted { app.buttons["favorites.open." + $0].frame.minY < app.buttons["favorites.open." + $1].frame.minY }
+    let movedOrder = crypto.sorted { app.buttons["favorites.open." + testInstrumentKey($0)].frame.minY < app.buttons["favorites.open." + testInstrumentKey($1)].frame.minY }
     app.terminate(); app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 20), "结束后台进程后应直接恢复自选")
     group("加密")
-    let restoredOrder = crypto.sorted { app.buttons["favorites.open." + $0].frame.minY < app.buttons["favorites.open." + $1].frame.minY }
+    let restoredOrder = crypto.sorted { app.buttons["favorites.open." + testInstrumentKey($0)].frame.minY < app.buttons["favorites.open." + testInstrumentKey($1)].frame.minY }
     XCTAssertEqual(restoredOrder, movedOrder, "自定义顺序应在冷启动后完整保留")
     // 验收后恢复BTC排首位，保留用户请求的品种组织。
-    let eth = app.buttons["favorites.open.ETHUSDT"]
+    let eth = app.buttons["favorites.open.binance/usd_m/ETHUSDT"]
     let restore = btc.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
     restore.press(forDuration: 0.8, thenDragTo: eth.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
     XCTAssertTrue(wait(seconds: 5) { btc.frame.minY < eth.frame.minY })
@@ -753,7 +753,7 @@ final class ChartFoundationUITests: XCTestCase {
     for (name, symbols) in groups {
       group(name)
       for symbol in symbols {
-        let row = app.buttons["favorites.open." + symbol]
+        let row = app.buttons["favorites.open." + testInstrumentKey(symbol)]
         for _ in 0..<4 { if row.exists { break }; app.collectionViews.firstMatch.swipeUp() }
         XCTAssertTrue(row.exists, "冷启动丢失分类成员：" + name + "/" + symbol)
       }
@@ -781,7 +781,7 @@ final class ChartFoundationUITests: XCTestCase {
   private func verifyLatestEdgeAndReentry() throws {
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     app.buttons["favorites.group.加密"].tap()
-    app.buttons["favorites.open.BTCUSDT"].tap()
+    app.buttons["favorites.open.binance/usd_m/BTCUSDT"].tap()
     XCTAssertTrue(canvas.waitForExistence(timeout: 15))
     XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
     func gap() -> Double { self.info()["latestRightGap"] as? Double ?? 99999 }
@@ -797,8 +797,8 @@ final class ChartFoundationUITests: XCTestCase {
     right.press(forDuration: 0.05, thenDragTo: right.withOffset(CGVector(dx: -30, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.3)
     XCTAssertLessThan(gap(), -20, "历史区左滑不能强制吸回最新")
     XCTAssertTrue(app.openFavorites())
-    XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].waitForExistence(timeout: 5))
-    app.buttons["favorites.open.BTCUSDT"].tap()
+    XCTAssertTrue(app.buttons["favorites.open.binance/usd_m/BTCUSDT"].waitForExistence(timeout: 5))
+    app.buttons["favorites.open.binance/usd_m/BTCUSDT"].tap()
     XCTAssertTrue(canvas.waitForExistence(timeout: 5))
     XCTAssertTrue(wait(seconds: 4) { abs(gap()) < 0.5 }, "同品种重进也回到最新右缘")
     shot("默认末根贴右-最新端回弹-历史自由拖动-重进复位")
@@ -850,7 +850,7 @@ final class ChartFoundationUITests: XCTestCase {
       let crypto = app.buttons["favorites.group.加密"]
       XCTAssertTrue(crypto.waitForExistence(timeout: 15), "自选页要有「加密」这一类")
       crypto.tap()
-      XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].waitForExistence(timeout: 5))
+      XCTAssertTrue(app.buttons["favorites.open.binance/usd_m/BTCUSDT"].waitForExistence(timeout: 5))
       XCTAssertTrue(wait(seconds: 5) {
         (feed.value as? String)?.contains("background=" + background) == true
       })
@@ -891,10 +891,10 @@ final class ChartFoundationUITests: XCTestCase {
     app.buttons["symbols.market"].tap()
     let equities = app.buttons["美股"]
     XCTAssertTrue(equities.waitForExistence(timeout: 5)); equities.tap()
-    XCTAssertTrue(app.buttons["symbols.row.SNDKUSDT"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["symbols.row.binance/usd_m/SNDKUSDT"].waitForExistence(timeout: 10))
     shot("交易所-美股板块筛选")
-    app.buttons["symbols.row.SNDKUSDT"].tap()
-    XCTAssertTrue(wait(seconds: 20) { self.info()["symbol"] as? String == "SNDKUSDT" })
+    app.buttons["symbols.row.binance/usd_m/SNDKUSDT"].tap()
+    XCTAssertTrue(wait(seconds: 20) { self.info()["symbol"] as? String == "binance/usd_m/SNDKUSDT" })
   }
 
   func testLatestQuoteDoesNotRegressAcrossIntervals() throws {
@@ -907,16 +907,16 @@ final class ChartFoundationUITests: XCTestCase {
       }, uniquingKeysWith: { _, b in b })
     }
     for symbol in ["BTCUSDT", "SNDKUSDT", "ETHUSDT", "BTCUSDT"] {
-      if symbol != "BTCUSDT" || info()["symbol"] as? String != "BTCUSDT" {
+      if symbol != "BTCUSDT" || info()["symbol"] as? String != "binance/usd_m/BTCUSDT" {
         XCTAssertTrue(app.openSymbolSearch())
         let query = app.textFields["search.query"]
         XCTAssertTrue(query.waitForExistence(timeout: 5)); query.tap()
         if let old = query.value as? String, !old.isEmpty { query.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count)) }
         query.typeText(symbol)
-        let row = app.buttons["symbols.row." + symbol]
+        let row = app.buttons["symbols.row." + testInstrumentKey(symbol)]
         XCTAssertTrue(row.waitForExistence(timeout: 15)); row.tap()
       }
-      XCTAssertTrue(wait(seconds: 20) { quote()["symbol"] == symbol && (Int64(quote()["time"] ?? "0") ?? 0) > 0 })
+      XCTAssertTrue(wait(seconds: 20) { quote()["symbol"] == testInstrumentKey(symbol) && (Int64(quote()["time"] ?? "0") ?? 0) > 0 })
       var stamp = Int64(quote()["time"] ?? "0") ?? 0
       for interval in ["1m", "1h", "4h", "1h"] {
         let previousSpacing = info()["spacing"] as? Double
@@ -924,13 +924,13 @@ final class ChartFoundationUITests: XCTestCase {
         // Read during the actual transition, before the REST candle request finishes.
         for _ in 0..<3 {
           let value = quote()
-          XCTAssertEqual(value["symbol"], symbol)
+          XCTAssertEqual(value["symbol"], testInstrumentKey(symbol))
           let next = Int64(value["time"] ?? "0") ?? 0
           XCTAssertGreaterThanOrEqual(next, stamp)
           XCTAssertGreaterThan(Double(value["last"] ?? "0") ?? 0, 0)
           stamp = next
         }
-        XCTAssertTrue(wait(seconds: 20) { self.info()["symbol"] as? String == symbol && self.info()["interval"] as? String == interval })
+        XCTAssertTrue(wait(seconds: 20) { self.info()["symbol"] as? String == testInstrumentKey(symbol) && self.info()["interval"] as? String == interval })
         if let previousSpacing { XCTAssertEqual(self.info()["spacing"] as? Double ?? 0, previousSpacing, accuracy: 0.02) }
       }
     }
@@ -942,10 +942,10 @@ final class ChartFoundationUITests: XCTestCase {
   /// 箭头只有 14pt 宽，贴在屏幕最右边；合成点击偶尔会落空（手指点是好的，模拟器和
   /// 真机上都逐步走过）。落空了就再点一次，别让一次抖动把整条用例判死。
   @discardableResult func expandRow(_ symbol: String) -> Bool {
-    let chevron = app.buttons["favorites.expand." + symbol]
+    let chevron = app.buttons["favorites.expand." + testInstrumentKey(symbol)]
     XCTAssertTrue(chevron.waitForExistence(timeout: 5), "没找到 " + symbol + " 那行的展开箭头")
     chevron.tap()
-    return app.otherElements["favorites.details." + symbol].waitForExistence(timeout: 5)
+    return app.otherElements["favorites.details." + testInstrumentKey(symbol)].waitForExistence(timeout: 5)
   }
 
   /// 从自选页加一个品种。
@@ -963,13 +963,13 @@ final class ChartFoundationUITests: XCTestCase {
       query.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
     }
     query.typeText(symbol)
-    let star = app.buttons["symbols.star." + symbol]
+    let star = app.buttons["symbols.star." + testInstrumentKey(symbol)]
     XCTAssertTrue(star.waitForExistence(timeout: 30), "搜索页没搜到 " + symbol)
     if star.label == "加入自选" { star.tap() }
     app.buttons["search.cancel"].tap()
     XCTAssertTrue(wait(seconds: 5) { !query.exists }, "取消后应收起搜索页")
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 5))
-    XCTAssertTrue(app.buttons["favorites.open." + symbol].waitForExistence(timeout: 5),
+    XCTAssertTrue(app.buttons["favorites.open." + testInstrumentKey(symbol)].waitForExistence(timeout: 5),
                   "加完应停在品种落进去的那一组，看得见刚加的那一行")
   }
 
@@ -1176,7 +1176,7 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertFalse(app.buttons["favorites.group.全部"].exists)
     XCTAssertFalse(app.buttons["favorites.group.默认"].exists)
     let feed = app.descendants(matching: .any).matching(identifier: "favorites.feed").firstMatch
-    let price = app.staticTexts["favorites.price.BTCUSDT"]
+    let price = app.staticTexts["favorites.price.binance/usd_m/BTCUSDT"]
     XCTAssertTrue(wait(seconds: 20) { price.exists && price.label != "—" })
     let cold = feed.value as? String ?? ""
     let coldSession = cold.components(separatedBy: ";").first ?? ""
@@ -1193,10 +1193,10 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertEqual((feed.value as? String ?? "").components(separatedBy: ";").first, coldSession,
       "前台切页不能重建报价会话")
     print("FreshQuotes return: " + (feed.value as? String ?? ""))
-    app.buttons["favorites.open.BTCUSDT"].swipeLeft()
+    app.buttons["favorites.open.binance/usd_m/BTCUSDT"].swipeLeft()
     XCTAssertTrue(app.buttons["删除"].waitForExistence(timeout: 3))
     XCTAssertFalse(app.buttons["置顶"].exists)
-    app.buttons["favorites.open.BTCUSDT"].swipeRight()
+    app.buttons["favorites.open.binance/usd_m/BTCUSDT"].swipeRight()
     XCUIDevice.shared.press(.home)
     // 留在后台超过旧连接宽限时间，验证新会话而非旧画面还在。
     let until = Date().addingTimeInterval(7)
@@ -1215,20 +1215,20 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     let group = app.buttons["favorites.group.加密"]
     group.tap()
-    let btc = app.buttons["favorites.open.BTCUSDT"], doge = app.buttons["favorites.open.DOGEUSDT"]
+    let btc = app.buttons["favorites.open.binance/usd_m/BTCUSDT"], doge = app.buttons["favorites.open.binance/usd_m/DOGEUSDT"]
     let originalY = btc.frame.minY
     let origin = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
     origin.withOffset(CGVector(dx: btc.frame.midX, dy: btc.frame.midY)).press(forDuration: 1,
       thenDragTo: origin.withOffset(CGVector(dx: doge.frame.midX, dy: doge.frame.midY)), withVelocity: .slow, thenHoldForDuration: 0.5)
     XCTAssertTrue(wait(seconds: 5) { btc.frame.minY > originalY + 80 }, "长按普通行拖动应更改顺序")
     let crypto = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT"]
-    let moved = crypto.sorted { app.buttons["favorites.open." + $0].frame.minY < app.buttons["favorites.open." + $1].frame.minY }
+    let moved = crypto.sorted { app.buttons["favorites.open." + testInstrumentKey($0)].frame.minY < app.buttons["favorites.open." + testInstrumentKey($1)].frame.minY }
     app.terminate(); app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     group.tap()
-    let restored = crypto.sorted { app.buttons["favorites.open." + $0].frame.minY < app.buttons["favorites.open." + $1].frame.minY }
+    let restored = crypto.sorted { app.buttons["favorites.open." + testInstrumentKey($0)].frame.minY < app.buttons["favorites.open." + testInstrumentKey($1)].frame.minY }
     XCTAssertEqual(restored, moved)
-    let eth = app.buttons["favorites.open.ETHUSDT"]
+    let eth = app.buttons["favorites.open.binance/usd_m/ETHUSDT"]
     origin.withOffset(CGVector(dx: btc.frame.midX, dy: btc.frame.midY)).press(forDuration: 1,
       thenDragTo: origin.withOffset(CGVector(dx: eth.frame.midX, dy: eth.frame.minY)), withVelocity: .slow, thenHoldForDuration: 0.5)
     XCTAssertTrue(wait(seconds: 5) { btc.frame.minY < eth.frame.minY })
@@ -1254,7 +1254,7 @@ final class ChartFoundationUITests: XCTestCase {
     app.launch()
     XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 15))
     app.buttons["favorites.group.加密"].tap()
-    app.buttons["favorites.open.BTCUSDT"].tap()
+    app.buttons["favorites.open.binance/usd_m/BTCUSDT"].tap()
     XCTAssertTrue(canvas.waitForExistence(timeout: 15))
     XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, String(describing: info()))
     // 顶栏品种名那块也只负责收起，不应穿透打开任何东西。

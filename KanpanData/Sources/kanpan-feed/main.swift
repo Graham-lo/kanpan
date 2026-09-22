@@ -73,7 +73,7 @@ func cmdInfo() async throws {
   say("USDT 本位永续 \(list.count) 个，用时 \(Int(-t0.timeIntervalSinceNow * 1000))ms")
   // arg(1) 可能是 -v 这样的开关，别把它当品种名。
   let want = arg(1).flatMap { $0.hasPrefix("-") ? nil : $0 }?.uppercased() ?? "BTCUSDT"
-  if let s = list.first(where: { $0.symbol == want }) {
+  if let s = list.first(where: { $0.symbol == InstrumentID.canonical(want) }) {
     say("\(s.symbol)  base=\(s.base)  pricePrecision=\(s.pricePrecision)  qtyPrecision=\(s.quantityPrecision)  tickSize=\(s.tickSize)  小数位=\(s.priceDecimals)")
   }
   for s in list.prefix(5) { say("  \(s.symbol) tick=\(s.tickSize)") }

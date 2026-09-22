@@ -1,3 +1,4 @@
+import KanpanCore
 import Foundation
 
 // 下面这几个枚举都自己写了 `init(from:)`。原因是同一句话：**解不动一个字段，
@@ -47,7 +48,8 @@ public struct ReviewRange: Codable, Sendable, Equatable {
   public var end: Int64
   public var bars: Int
   public init(venue: String = "binance", symbol: String, interval: String, start: Int64, end: Int64, bars: Int) {
-    self.venue = venue; self.symbol = symbol; self.interval = interval; self.start = start; self.end = end; self.bars = bars
+    let id = symbol.contains("/") ? InstrumentID(symbol) : InstrumentID(venue: venue, market: venue == "binance" ? "usd_m" : "spot", symbol: symbol)
+    self.venue = id.venue; self.market = id.market; self.symbol = symbol.contains("/") ? id.symbol : symbol; self.interval = interval; self.start = start; self.end = end; self.bars = bars
   }
   /// 属性写了初值**不等于**这个键可以缺：合成出来的 `Decodable` 照样要求它在。
   /// 老存档、老响应里没有 `venue` / `market` 的那几条，现在按默认值读回来。
@@ -70,12 +72,10 @@ public struct ReviewRange: Codable, Sendable, Equatable {
   ///
   /// 后缀**按长度从长到短**试。原来 `USD` 排在 `BUSD` / `FDUSD` 前面，`BTCBUSD` 会被
   /// 切成 `BTCB`——那是另一个真实存在的币（审查 B.4）。
+  public var key: String { InstrumentID(venue: venue, market: market, symbol: symbol).key }
+
   public var shortSymbol: String {
-    for quote in ["FDUSD", "BUSD", "USDT", "USDC", "USD"]
-    where symbol.hasSuffix(quote) && symbol.count > quote.count {
-      return String(symbol.dropLast(quote.count))
-    }
-    return symbol
+    SymbolInfo.placeholder(symbol: key).base
   }
 }
 public struct ReviewRule: Codable, Sendable, Equatable {
@@ -139,7 +139,7 @@ public struct ReviewDraft: Codable, Sendable, Equatable, Identifiable {
   /// 三样全同才算同一个上下文：交易所、品种、周期。少比一样就会串——先在 BTC 上
   /// 圈了一段写了两句，切到 ETH 再点「记录」，接着写的还是 BTC 那条（审查 B.4 复核项）。
   public func reusable(venue: String, symbol: String, interval: String) -> Bool {
-    range.venue == venue && range.symbol == symbol && range.interval == interval
+    range.venue == venue && range.key == (symbol.contains("/") ? InstrumentID(symbol) : InstrumentID(venue: venue, market: range.market, symbol: symbol)).key && range.interval == interval
   }
 
   /// 这一条能不能记。规则整份搬去了 `ReviewContract`——它是服务端
@@ -265,7 +265,7 @@ public struct ReviewRecord: Codable, Sendable, Equatable, Identifiable {
   /// 交易所是这次补的：同名品种在两家交易所是两段不同的行情，`ReviewRange.venue`
   /// 本来就跟着捕获时的行情源走，落图时却没人看它（审查 B.4）。
   public func paints(venue: String, symbol: String, interval: String) -> Bool {
-    !voided && draft.range.venue == venue && draft.range.symbol == symbol && draft.range.interval == interval
+    !voided && draft.range.venue == venue && draft.range.key == (symbol.contains("/") ? InstrumentID(symbol) : InstrumentID(venue: venue, market: draft.range.market, symbol: symbol)).key && draft.range.interval == interval
   }
 }
 public struct ReviewReplayPosition: Codable, Sendable, Equatable {

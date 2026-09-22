@@ -135,7 +135,7 @@ final class SkinScaleAccessibilityUITests: KanpanUICase {
     expectExists(field, Self.short, "搜索页上没有输入框")
     field.tap()
     field.typeText("BTC")
-    let star = app.buttons["symbols.star.BTCUSDT"]
+    let star = app.buttons["symbols.star.binance/usd_m/BTCUSDT"]
     expectExists(star, Self.long, "搜 BTC 没出 BTCUSDT 那一行的星")
     XCTAssertEqual(star.label, "加入自选", "还没加自选，星念出来却是「\(star.label)」")
     XCTAssertTrue(windowFrame.insetBy(dx: -0.5, dy: -0.5).contains(star.frame),
@@ -148,20 +148,20 @@ final class SkinScaleAccessibilityUITests: KanpanUICase {
 
     // 三、去自选页把它打开。
     XCTAssertTrue(app.openFavorites(), "没进到自选页")
-    let row = app.buttons["favorites.open.BTCUSDT"]
+    let row = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
     expectExists(row, Self.long, "刚加的 BTCUSDT 没出现在自选页上")
     let group = app.buttons["favorites.group.加密"]
     expectExists(group, Self.short, "自选页上没有「加密」这条分类")
     XCTAssertTrue(group.label.contains("个品种"),
                   "分类胶囊念出来是「\(group.label)」，听不出里面有几个品种")
-    let expand = app.buttons["favorites.expand.BTCUSDT"]
+    let expand = app.buttons["favorites.expand.binance/usd_m/BTCUSDT"]
     expectExists(expand, Self.short, "自选行上没有展开详情的那一下")
     XCTAssertEqual(expand.label, "展开详情", "展开那一下念出来是「\(expand.label)」")
     XCTAssertEqual(expand.value as? String, "已收起", "展开状态念不出来")
     shot("最大字号-自选页")
 
     row.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.long) { self.chartInfo()["symbol"] as? String == "BTCUSDT" },
+    XCTAssertTrue(waitUntil(timeout: Self.long) { self.chartInfo()["symbol"] as? String == "binance/usd_m/BTCUSDT" },
                   "从自选点进去，图上还不是 BTCUSDT：\(chartInfo())")
     XCTAssertEqual(app.symbolLabel.label, "当前品种 BTCUSDT",
                    "到了行情页，顶栏念出来是「\(app.symbolLabel.label)」")

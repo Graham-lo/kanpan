@@ -77,7 +77,7 @@ struct AlertEngineTests {
     let alert = arm(store, symbol: "ethusdt", price: 100)
     let engine = AlertEngine()
     engine.attach(store)
-    #expect(engine.watched == ["ETHUSDT"])
+    #expect(engine.watched == ["binance/usd_m/ETHUSDT"])
     engine.observe(symbol: "EthUsdt", price: 100, timeMs: minute(0) + 1_000)
     #expect(store.alert(id: alert.id)?.status == .fired)
   }
@@ -293,12 +293,12 @@ struct AlertEngineTests {
     var reported: [Set<String>] = []
     engine.onWatchlist = { reported.append($0) }
     engine.attach(store)
-    #expect(engine.watched == ["BTCUSDT", "ETHUSDT"])
-    #expect(reported == [["BTCUSDT", "ETHUSDT"]])
+    #expect(engine.watched == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
+    #expect(reported == [["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"]])
 
     // 换号那一拍报价簿会把钉进去的那批清空，所以要能无条件再交一次。
     engine.republishWatchlist()
-    #expect(reported == [["BTCUSDT", "ETHUSDT"], ["BTCUSDT", "ETHUSDT"]])
+    #expect(reported == [["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"], ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"]])
   }
 
   @Test("已触发、已暂停、没线的那些不占订阅名额")
@@ -316,7 +316,7 @@ struct AlertEngineTests {
 
     let engine = AlertEngine()
     engine.attach(store)
-    #expect(engine.watched == ["BTCUSDT"])
+    #expect(engine.watched == ["binance/usd_m/BTCUSDT"])
 
     // 暂停的那条即使价撞上来也不响（`AlertEvaluator.hit` 第一道闸）。
     engine.observe(symbol: "SOLUSDT", price: 100, timeMs: minute(0) + 1_000)

@@ -285,7 +285,7 @@ struct FeedLifecycleTests {
       }
     }
     await routed.start(symbol: "AAAUSDT", interval: .m1)
-    #expect(await waitUntil(5) { await seen.has("AAAUSDT") })
+    #expect(await waitUntil(5) { await seen.has("binance/usd_m/AAAUSDT") })
     // 等这条连接真的连上：连上了 `stop()` 才会停在「关 socket」那一步，
     // 下面那个窗口才真的存在。不等的话 WS 还没连，停起来一瞬间就完事了。
     #expect(await waitUntil(5) { await seen.live })
@@ -310,7 +310,7 @@ struct FeedLifecycleTests {
     await switched.value
     await switching.value
 
-    #expect(await waitUntil(5) { await seen.has("BBBUSDT") })
+    #expect(await waitUntil(5) { await seen.has("binance/usd_m/BBBUSDT") })
     collector.cancel()
     await routed.stop()
   }

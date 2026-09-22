@@ -68,7 +68,7 @@ struct DetailZoomStack: Equatable {
   var isEmpty: Bool { frames.isEmpty }
 
   mutating func push(symbol: String, interval: Interval, view: ViewWindow) {
-    let key = symbol.uppercased()
+    let key = InstrumentID.canonical(symbol)
     if key != self.symbol { frames = []; self.symbol = key }
     frames.removeAll { $0.interval == interval }
     frames.append(Frame(interval: interval, view: view))
@@ -78,7 +78,7 @@ struct DetailZoomStack: Equatable {
   /// 切回某一档：把那一帧连同压在它上面的几帧一起弹掉，交出那份视野。
   /// 栈里没有这一档（或者换了品种）就返回 nil，按平时换周期办。
   mutating func pop(symbol: String, interval: Interval) -> ViewWindow? {
-    guard symbol.uppercased() == self.symbol,
+    guard InstrumentID.canonical(symbol) == self.symbol,
           let at = frames.lastIndex(where: { $0.interval == interval }) else { return nil }
     let view = frames[at].view
     frames.removeSubrange(at...)

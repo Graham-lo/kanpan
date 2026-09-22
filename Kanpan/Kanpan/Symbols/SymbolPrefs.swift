@@ -1,4 +1,5 @@
 import Foundation
+import KanpanCore
 
 // ============================================================ 自选 / 最近
 //
@@ -106,7 +107,7 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     var seen = Set<String>()
     self.groups = groups.filter { !$0.id.isEmpty && !$0.name.isEmpty && seen.insert($0.id).inserted }
     self.pinned = Self.clean(pinned).filter { self.favorites.contains($0) }
-    self.groupForSymbol = groupForSymbol.filter { self.favorites.contains($0.key) && seen.contains($0.value) }
+    self.groupForSymbol = InstrumentID.migrate(groupForSymbol).filter { self.favorites.contains($0.key) && seen.contains($0.value) }
     // 老存档里那个分类可能早就被删了，读进来就洗掉——免得迁移把一个指向空气的
     // id 搬进 `Prefs.favoritesGroup`。
     self.legacySelectedGroup = legacySelectedGroup.flatMap { seen.contains($0) ? $0 : nil }
@@ -313,7 +314,7 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
 
   /// 可见行可能按行情排序或属于某一分类，不能直接把显示索引写入全量收藏。
   mutating func moveVisible(_ visible: [String], from source: IndexSet, to destination: Int) {
-    var ordered = SymbolPrefs(favorites: visible.filter { favorites.contains($0) })
+    var ordered = SymbolPrefs(favorites: visible.map(Self.key).filter { favorites.contains($0) })
     ordered.moveFavorites(from: source, to: destination)
     let members = Set(ordered.favorites)
     var iterator = ordered.favorites.makeIterator()
@@ -398,7 +399,7 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   // ---------------------------------------------------------------- 归一
 
   static func key(_ symbol: String) -> String {
-    symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    InstrumentID.canonical(symbol)
   }
 
   /// 大写 + 去空 + 去重（保序）。老存档里可能有脏数据，读进来就洗一遍。
@@ -436,7 +437,7 @@ extension UserDefaults: SymbolPrefsStorage {
 
 /// 自选 / 最近的持久化。
 ///
-/// **落盘位置**：`UserDefaults.standard`，键 **`kanpan.symbols.v1`**，
+/// **旧版落盘位置**：`UserDefaults.standard`，现行键 **`kanpan.symbols.v2`**，
 /// 值是 `SymbolPrefs` 的 JSON（`{"favorites":[...],"recents":[...]}`）。
 /// 分类字段增量解码，保留旧自选与最近；未分类的品种进入默认分类。
 ///
@@ -446,7 +447,8 @@ extension UserDefaults: SymbolPrefsStorage {
 /// 真要换成独立文件，只需给 `SymbolPrefsStorage` 换个实现。
 @MainActor
 final class SymbolPrefsStore {
-  static let defaultsKey = "kanpan.symbols.v1"
+  static let defaultsKey = "kanpan.symbols.v2"
+  static let legacyDefaultsKey = "kanpan.symbols.v1"
 
   private let storage: SymbolPrefsStorage
   private let key: String
@@ -496,7 +498,7 @@ final class SymbolPrefsStore {
     #if DEBUG
     if let seeded = Self.testSeed(isolated: storage.isIsolatedForTests) { return seeded }
     #endif
-    guard let data = storage.symbolPrefsData(forKey: key) else { return SymbolPrefs() }
+    guard let data = storage.symbolPrefsData(forKey: key) ?? (key == Self.defaultsKey ? storage.symbolPrefsData(forKey: Self.legacyDefaultsKey) : nil) else { return SymbolPrefs() }
     // 零字节不是「没有档案」：文件在，只是写到一半断电了。当解不动处理，
     // 免得拿空档把它盖掉之后连挽回的机会都没有。
     guard !data.isEmpty, let prefs = try? JSONDecoder().decode(SymbolPrefs.self, from: data) else {
@@ -544,7 +546,10 @@ final class SymbolPrefsStore {
     storage.setSymbolPrefsData(data, forKey: key)
   }
 
-  func clear() { storage.setSymbolPrefsData(nil, forKey: key) }
+  func clear() {
+    storage.setSymbolPrefsData(nil, forKey: key)
+    if key == Self.defaultsKey { storage.setSymbolPrefsData(nil, forKey: Self.legacyDefaultsKey) }
+  }
 }
 
 /// 内存版存档，预览与单测用（不落真 UserDefaults）。

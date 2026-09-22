@@ -16,19 +16,19 @@ struct ClipboardSymbolTests {
   @Test("群里、网页上、推特上那几种写法都认")
   func shapes() {
     for text in ["SOLUSDT", "SOL/USDT", "SOL-USDT", "sol usdt", "$SOL", "sol", " SOL\t"] {
-      #expect(ClipboardSymbol.resolve(text, catalog: catalog)?.symbol == "SOLUSDT", "\(text) 没认出来")
+      #expect(ClipboardSymbol.resolve(text, catalog: catalog)?.symbol == "binance/usd_m/SOLUSDT", "\(text) 没认出来")
     }
   }
 
   @Test("中文名和全拼也认")
   func chinese() {
-    #expect(ClipboardSymbol.resolve("比特币", catalog: catalog)?.symbol == "BTCUSDT")
-    #expect(ClipboardSymbol.resolve("bitebi", catalog: catalog)?.symbol == "BTCUSDT")
+    #expect(ClipboardSymbol.resolve("比特币", catalog: catalog)?.symbol == "binance/usd_m/BTCUSDT")
+    #expect(ClipboardSymbol.resolve("bitebi", catalog: catalog)?.symbol == "binance/usd_m/BTCUSDT")
   }
 
   @Test("首字母缩写不认：搜索页列出来可以，直接替他开图太自作主张")
   func initialsAreNotEnough() {
-    #expect(SymbolQuery.match(catalog, query: "btb").first?.id == "BTCUSDT")
+    #expect(SymbolQuery.match(catalog, query: "btb").first?.id == "binance/usd_m/BTCUSDT")
     #expect(ClipboardSymbol.resolve("btb", catalog: catalog) == nil)
   }
 
@@ -43,8 +43,8 @@ struct ClipboardSymbolTests {
 
   @Test("一个词同档撞上两个就不猜")
   func ambiguous() {
-    let a = SymbolInfo(symbol: "AAAUSDT", base: "AAA", pricePrecision: 2, tickSize: 0.01, underlyingType: "COIN")
-    let b = SymbolInfo(symbol: "AAAUSDC", base: "AAA", pricePrecision: 2, tickSize: 0.01, underlyingType: "COIN")
+    let a = SymbolInfo(symbol: "binance/usd_m/AAAUSDT", base: "AAA", pricePrecision: 2, tickSize: 0.01, underlyingType: "COIN")
+    let b = SymbolInfo(symbol: "binance/usd_m/AAAUSDC", base: "AAA", pricePrecision: 2, tickSize: 0.01, underlyingType: "COIN")
     #expect(ClipboardSymbol.resolve("AAA", catalog: [a, b]) == nil)
   }
 }

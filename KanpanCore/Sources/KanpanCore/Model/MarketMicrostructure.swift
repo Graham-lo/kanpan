@@ -12,7 +12,7 @@ public struct OrderBook: Sendable, Equatable {
   public var bids: [Level]
   public var asks: [Level]
   public init(symbol: String, time: Int64, bids: [Level], asks: [Level]) {
-    self.symbol = symbol; self.time = time
+    self.symbol = InstrumentID.canonical(symbol); self.time = time
     let valid: (Level) -> Bool = { $0.price.isFinite && $0.price > 0 && $0.quantity.isFinite && $0.quantity > 0 }
     self.bids = Array(bids.filter(valid).sorted { $0.price > $1.price }.prefix(5))
     self.asks = Array(asks.filter(valid).sorted { $0.price < $1.price }.prefix(5))

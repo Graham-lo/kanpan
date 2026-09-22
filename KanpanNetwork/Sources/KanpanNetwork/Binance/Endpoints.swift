@@ -1,4 +1,5 @@
 import Foundation
+import KanpanCore
 
 /// 端点配置（§4.1）。域名可改：设置页留了「自定义 API 域名」，国内网络换镜像域时用。
 public struct BinanceHosts: Sendable, Equatable {
@@ -53,7 +54,7 @@ public struct BinanceHosts: Sendable, Equatable {
   /// 历史 K 线。向前翻页时传 `endTime = 已有第一根 openTime - 1`。
   public func klines(symbol: String, interval: String, limit: Int,
                      startTime: Int64? = nil, endTime: Int64? = nil) -> URL {
-    var q = ["symbol": symbol, "interval": interval, "limit": String(limit)]
+    var q = ["symbol": InstrumentID(symbol).symbol, "interval": interval, "limit": String(limit)]
     if let startTime { q["startTime"] = String(startTime) }
     if let endTime { q["endTime"] = String(endTime) }
     return url("/fapi/v1/klines", q)
@@ -64,11 +65,11 @@ public struct BinanceHosts: Sendable, Equatable {
   /// 公开、免鉴权、权重 1。图上那一份费率是 `markPrice@1s` 流捎回来的，只有
   /// 正在看的那张图有；长按预览卡要的是「任意一个品种现在的费率」，那就走这儿。
   public func premiumIndex(symbol: String) -> URL {
-    url("/fapi/v1/premiumIndex", ["symbol": symbol])
+    url("/fapi/v1/premiumIndex", ["symbol": InstrumentID(symbol).symbol])
   }
 
   public func ticker24h(symbol: String) -> URL {
-    url("/fapi/v1/ticker/24hr", ["symbol": symbol])
+    url("/fapi/v1/ticker/24hr", ["symbol": InstrumentID(symbol).symbol])
   }
 
   /// 全市场 24h 统计。一次往返换回所有品种，权重 40；从后台回来时
@@ -78,7 +79,7 @@ public struct BinanceHosts: Sendable, Equatable {
   /// 持仓量近 30 天。`period` 只能是 5m/15m/30m/1h/2h/4h/6h/12h/1d。
   public func openInterestHist(symbol: String, period: String, limit: Int,
                                startTime: Int64? = nil, endTime: Int64? = nil) -> URL {
-    var q = ["symbol": symbol, "period": period, "limit": String(limit)]
+    var q = ["symbol": InstrumentID(symbol).symbol, "period": period, "limit": String(limit)]
     if let startTime { q["startTime"] = String(startTime) }
     if let endTime { q["endTime"] = String(endTime) }
     return url("/futures/data/openInterestHist", q)
@@ -90,7 +91,7 @@ public struct BinanceHosts: Sendable, Equatable {
   /// （`kanpan-sector-page-no-basis-picker`），所以这儿只有这一条路径。
   public func globalLongShortAccountRatio(symbol: String, period: String, limit: Int,
                                           startTime: Int64? = nil, endTime: Int64? = nil) -> URL {
-    var q = ["symbol": symbol, "period": period, "limit": String(limit)]
+    var q = ["symbol": InstrumentID(symbol).symbol, "period": period, "limit": String(limit)]
     if let startTime { q["startTime"] = String(startTime) }
     if let endTime { q["endTime"] = String(endTime) }
     return url("/futures/data/globalLongShortAccountRatio", q)
@@ -103,7 +104,7 @@ public struct BinanceHosts: Sendable, Equatable {
   /// 会 404。别「顺手改正」它。
   public func takerLongShortRatio(symbol: String, period: String, limit: Int,
                                   startTime: Int64? = nil, endTime: Int64? = nil) -> URL {
-    var q = ["symbol": symbol, "period": period, "limit": String(limit)]
+    var q = ["symbol": InstrumentID(symbol).symbol, "period": period, "limit": String(limit)]
     if let startTime { q["startTime"] = String(startTime) }
     if let endTime { q["endTime"] = String(endTime) }
     return url("/futures/data/takerlongshortRatio", q)
@@ -116,7 +117,7 @@ public struct BinanceHosts: Sendable, Equatable {
   /// 所以 `contractType` 默认 `PERPETUAL`。传 `symbol=BTCUSDT` 会被判成缺参。
   public func basis(pair: String, contractType: String = "PERPETUAL", period: String, limit: Int,
                     startTime: Int64? = nil, endTime: Int64? = nil) -> URL {
-    var q = ["pair": pair, "contractType": contractType, "period": period, "limit": String(limit)]
+    var q = ["pair": InstrumentID(pair).symbol, "contractType": contractType, "period": period, "limit": String(limit)]
     if let startTime { q["startTime"] = String(startTime) }
     if let endTime { q["endTime"] = String(endTime) }
     return url("/futures/data/basis", q)
@@ -127,7 +128,7 @@ public struct BinanceHosts: Sendable, Equatable {
   /// 每日 metrics zip：一天一个，≈ 12 KB，解开是 288 行 5 分钟粒度的 CSV。
   /// metrics **只有 daily 一档**，请求 monthly 是 404。
   public func metricsZip(symbol: String, day: String) -> URL {
-    URL(string: "https://\(vision)/data/futures/um/daily/metrics/\(symbol)/\(symbol)-metrics-\(day).zip")!
+    URL(string: "https://\(vision)/data/futures/um/daily/metrics/\(InstrumentID(symbol).symbol)/\(InstrumentID(symbol).symbol)-metrics-\(day).zip")!
   }
 
   // ------------------------------------------------------------------ WS
@@ -149,18 +150,18 @@ public struct BinanceHosts: Sendable, Equatable {
 
   /// 某品种某周期的 K 线流名。1y 没有原生流，订 1M（§4.2）。
   public static func klineStream(symbol: String, interval: String) -> String {
-    "\(symbol.lowercased())@kline_\(interval)"
+    "\(InstrumentID(symbol).symbol.lowercased())@kline_\(interval)"
   }
-  public static func tickerStream(symbol: String) -> String { "\(symbol.lowercased())@ticker" }
-  public static func markPriceStream(symbol: String) -> String { "\(symbol.lowercased())@markPrice@1s" }
+  public static func tickerStream(symbol: String) -> String { "\(InstrumentID(symbol).symbol.lowercased())@ticker" }
+  public static func markPriceStream(symbol: String) -> String { "\(InstrumentID(symbol).symbol.lowercased())@markPrice@1s" }
 
   /// Legacy trade decoder support for recordings. Production subscribes to the documented
   /// /market kline/ticker/markPrice streams; /public bookTicker is a separate endpoint.
-  public static func tradeStream(symbol: String) -> String { "\(symbol.lowercased())@trade" }
+  public static func tradeStream(symbol: String) -> String { "\(InstrumentID(symbol).symbol.lowercased())@trade" }
 
   /// 最优买卖挂单。成交稀疏的品种（半夜的小币）可能几十秒没有一笔成交，
   /// 靠它给最新价一个心跳——只改价，不记量，也不凭它开新的一根。
-  public static func bookTickerStream(symbol: String) -> String { "\(symbol.lowercased())@bookTicker" }
+  public static func bookTickerStream(symbol: String) -> String { "\(InstrumentID(symbol).symbol.lowercased())@bookTicker" }
 
   /// 保留未消费的流名；强平功能不做，见 docs/不做清单.md，不添加订阅或展示。
   public static func forceOrderStream(symbol: String) -> String { "\(symbol.lowercased())@forceOrder" }
@@ -168,11 +169,11 @@ public struct BinanceHosts: Sendable, Equatable {
   /// 逐笔聚合成交。它的用处不是做一张逐笔明细表，而是给主动买卖比补上
   /// 「当前这根还没成型的桶」——`/futures/data/takerlongshortRatio` 是 5 分钟粒度
   /// 且滞后一档，只有这条流是实时的。
-  public static func aggTradeStream(symbol: String) -> String { "\(symbol.lowercased())@aggTrade" }
+  public static func aggTradeStream(symbol: String) -> String { "\(InstrumentID(symbol).symbol.lowercased())@aggTrade" }
 
   /// 买卖各五档的**全量快照**（partial book depth），100ms 一帧。
   ///
   /// 不是增量流：每一帧就是完整的五档，不用维护本地订单簿、也不用先拉一份 REST 快照
   /// 对 `U`/`u` 序号。事件名照样是 `depthUpdate`，别被它骗去写增量合并的逻辑。
-  public static func depth5Stream(symbol: String) -> String { "\(symbol.lowercased())@depth5@100ms" }
+  public static func depth5Stream(symbol: String) -> String { "\(InstrumentID(symbol).symbol.lowercased())@depth5@100ms" }
 }

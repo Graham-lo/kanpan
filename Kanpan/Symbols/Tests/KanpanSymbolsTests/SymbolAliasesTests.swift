@@ -9,7 +9,7 @@ import KanpanCore
 struct SymbolAliasesTests {
   private let catalog = SymbolFixtures.catalog
   /// 美股那一侧的中文名来自 `SectorCatalog`，fixtures 里没有，现搭一行。
-  private let tesla = SymbolInfo(symbol: "TSLAUSDT", base: "TSLA", pricePrecision: 2,
+  private let tesla = SymbolInfo(symbol: "binance/usd_m/TSLAUSDT", base: "TSLA", pricePrecision: 2,
                                  tickSize: 0.01, underlyingType: "EQUITY")
 
   @Test("全拼与首字母是从中文名算出来的，不是抄的")
@@ -29,12 +29,12 @@ struct SymbolAliasesTests {
 
   @Test("bitebi / btb / 比特币 都能搜到 BTC")
   func bitcoin() {
-    #expect(SymbolQuery.match(catalog, query: "bitebi").first?.id == "BTCUSDT")
-    #expect(SymbolQuery.match(catalog, query: "btb").first?.id == "BTCUSDT")
-    #expect(SymbolQuery.match(catalog, query: "比特币").first?.id == "BTCUSDT")
+    #expect(SymbolQuery.match(catalog, query: "bitebi").first?.id == "binance/usd_m/BTCUSDT")
+    #expect(SymbolQuery.match(catalog, query: "btb").first?.id == "binance/usd_m/BTCUSDT")
+    #expect(SymbolQuery.match(catalog, query: "比特币").first?.id == "binance/usd_m/BTCUSDT")
     // 粘进来的中文带空格、带斜杠也照样认。
-    #expect(SymbolQuery.match(catalog, query: " 比特币 ").first?.id == "BTCUSDT")
-    #expect(SymbolQuery.match(catalog, query: "大饼").first?.id == "BTCUSDT")
+    #expect(SymbolQuery.match(catalog, query: " 比特币 ").first?.id == "binance/usd_m/BTCUSDT")
+    #expect(SymbolQuery.match(catalog, query: "大饼").first?.id == "binance/usd_m/BTCUSDT")
   }
 
   @Test("tesila / tsl / 特斯拉 都能搜到特斯拉")
@@ -50,7 +50,7 @@ struct SymbolAliasesTests {
     #expect(SymbolMatch.Tier.exact < .pinyinFull)
     #expect(SymbolMatch.Tier.pinyinFull < .pinyinInitials)
     #expect(SymbolMatch.Tier.pinyinInitials < .basePrefix)
-    let btc = SymbolFixtures.info("BTCUSDT")
+    let btc = SymbolFixtures.info("binance/usd_m/BTCUSDT")
     #expect(SymbolQuery.match(btc, query: "比特币")?.tier == .exact)
     #expect(SymbolQuery.match(btc, query: "BITEBI")?.tier == .pinyinFull)
     #expect(SymbolQuery.match(btc, query: "BTB")?.tier == .pinyinInitials)
@@ -62,8 +62,8 @@ struct SymbolAliasesTests {
 
   @Test("倍数合约按去掉倍数的名字查：1000PEPE 就是佩佩")
   func multiplierContracts() {
-    #expect(SymbolQuery.match(catalog, query: "佩佩").map(\.id) == ["1000PEPEUSDT"])
-    #expect(SymbolQuery.match(catalog, query: "peipei").map(\.id) == ["1000PEPEUSDT"])
+    #expect(SymbolQuery.match(catalog, query: "佩佩").map(\.id) == ["binance/usd_m/1000PEPEUSDT"])
+    #expect(SymbolQuery.match(catalog, query: "peipei").map(\.id) == ["binance/usd_m/1000PEPEUSDT"])
   }
 
   @Test("一个字母不走拼音，免得把整张表顶上来")
@@ -90,7 +90,7 @@ struct SymbolQueryFormatTests {
   @Test("ETH/USDT、ethusdt、eth usdt、$ETH、ETH-USDT 都落到 ETHUSDT")
   func separators() {
     for raw in ["ETH/USDT", "ethusdt", "eth usdt", "$ETH", "ETH-USDT", "eth_usdt", "ETH：USDT"] {
-      #expect(SymbolQuery.match(catalog, query: raw).first?.id == "ETHUSDT", "\(raw)")
+      #expect(SymbolQuery.match(catalog, query: raw).first?.id == "binance/usd_m/ETHUSDT", "\(raw)")
     }
     #expect(SymbolQuery.normalize("ETH/USDT") == "ETHUSDT")
     #expect(SymbolQuery.normalize(" $eth ") == "ETH")
@@ -98,11 +98,11 @@ struct SymbolQueryFormatTests {
 
   @Test("相似的名字不合并：ETHFI 还是 ETHFI")
   func doesNotMergeSimilarNames() {
-    #expect(SymbolQuery.match(catalog, query: "ETH/USDT").map(\.id) == ["ETHUSDT"])
-    #expect(SymbolQuery.match(catalog, query: "ETHFI").map(\.id) == ["ETHFIUSDT"])
+    #expect(SymbolQuery.match(catalog, query: "ETH/USDT").map(\.id) == ["binance/usd_m/ETHUSDT"])
+    #expect(SymbolQuery.match(catalog, query: "ETHFI").map(\.id) == ["binance/usd_m/ETHFIUSDT"])
     // 搜 ETH 时两个都在，但名次分得开。
     let eth = SymbolQuery.match(catalog, query: "eth")
-    #expect(eth.first?.id == "ETHUSDT")
-    #expect(eth.map(\.id).contains("ETHFIUSDT"))
+    #expect(eth.first?.id == "binance/usd_m/ETHUSDT")
+    #expect(eth.map(\.id).contains("binance/usd_m/ETHFIUSDT"))
   }
 }

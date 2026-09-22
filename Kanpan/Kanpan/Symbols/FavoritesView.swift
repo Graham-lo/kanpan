@@ -1026,7 +1026,7 @@ struct FavoritesView: View {
     // 不显示、也不解释。目录还没到的时候不算，那会把整页自选一起打灰。
     let stale = !model.listing(of: symbol).hasLivePrice
     let ticker = stale ? nil : displayQuote(symbol)
-    let base = info?.base ?? String(symbol.dropLast(4))
+    let base = info?.base ?? SymbolInfo.placeholder(symbol: symbol).base
     let amplitude = ticker?.amplitude24h
     let volumeText = ticker.map { $0.quoteVolume.isFinite ? fmtVol($0.quoteVolume) : "—" } ?? "—"
     let amplitudeText = amplitude.map { toFixed($0, 2) + "%" } ?? "—"
@@ -1306,7 +1306,7 @@ struct FavoritesView: View {
   }
   private func quoteAsset(_ symbol: String) -> String {
     model.info(for: symbol)?.quote ??
-      (["USDT", "USDC", "BUSD"].first { symbol.hasSuffix($0) } ?? "USDT")
+      SymbolInfo.placeholder(symbol: symbol).quote
   }
   private func open(_ symbol: String) {
     // 先冻结名单再开图：这一刻的顺序就是人眼里那张表的顺序，之后行情再跳也不改它。
@@ -1318,7 +1318,7 @@ struct FavoritesView: View {
     // 行情页进图时那趟目录补查覆盖（`MarketModel.refreshInfo`，审查 B-06）。
     let quote = quoteAsset(symbol)
     let fallback = SymbolInfo(symbol: symbol,
-                              base: symbol.hasSuffix(quote) ? String(symbol.dropLast(quote.count)) : symbol,
+                              base: SymbolInfo.placeholder(symbol: symbol).base,
                               quote: quote,
                               pricePrecision: priceDecimalsFallback(displayQuote(symbol)?.last ?? .nan),
                               tickSize: 0)

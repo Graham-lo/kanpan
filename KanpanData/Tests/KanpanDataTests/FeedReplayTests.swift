@@ -453,7 +453,7 @@ struct FeedReplayTests {
     #expect(live.allSatisfy { $0.hasPrefix(syms[19 % syms.count].lowercased()) })
     // 旧品种的报文不会进当前序列。
     let s = await feed.currentSeries
-    #expect(s.symbol == syms[19 % syms.count])
+    #expect(s.symbol == InstrumentID.canonical(syms[19 % syms.count]))
     await feed.stop()
   }
 

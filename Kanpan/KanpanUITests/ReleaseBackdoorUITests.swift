@@ -79,7 +79,7 @@ final class ReleaseBackdoorUITests: XCTestCase {
     XCTAssertTrue(bare.otherElements["chart.canvas"].exists, "不给开关，图区就不见了")
     goToFavorites(bare)
     for symbol in Self.seed {
-      XCTAssertFalse(bare.buttons["favorites.open." + symbol].waitForExistence(timeout: 3),
+      XCTAssertFalse(bare.buttons["favorites.open." + testInstrumentKey(symbol)].waitForExistence(timeout: 3),
                      "没给 KANPAN_TEST_FAVORITES，\(symbol) 却出现在自选里"
                      + "（这一页现在摆着：\(rowSymbols(bare))）")
     }
@@ -98,7 +98,7 @@ final class ReleaseBackdoorUITests: XCTestCase {
                   "开了 KANPAN_CHART_DIAGNOSTICS，画布却没吐诊断 JSON")
     goToFavorites(hooked)
     for symbol in Self.seed {
-      XCTAssertTrue(hooked.buttons["favorites.open." + symbol].waitForExistence(timeout: 10),
+      XCTAssertTrue(hooked.buttons["favorites.open." + testInstrumentKey(symbol)].waitForExistence(timeout: 10),
                     "隔离档案上灌了 \(symbol)，自选里却没有")
     }
     // 两次启动之间自选整个换了一份：种子档案是独立的，不是往用户那份上添几行。

@@ -203,7 +203,7 @@ struct MarketCacheTests {
     // 在 app 那一层，这个测试包看不见它们的符号，键名照抄并注明出处：
     // `Kanpan/Kanpan/Symbols/SymbolPrefs.swift:311`、`.../SearchHistory.swift:40`。
     let keys = [PrefsCodec.key, SettingsStamp.storageKey, SettingsSentinel.storageKey,
-                "kanpan.symbols.v1", "kanpan.searchHistory.v1"]
+                "kanpan.symbols.v1", "kanpan.symbols.v2", "kanpan.searchHistory.v1"]
     let defaults = UserDefaults.standard
     let 原样 = keys.map { defaults.object(forKey: $0) }
     defer {

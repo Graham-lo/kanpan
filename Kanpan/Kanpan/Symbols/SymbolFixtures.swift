@@ -42,6 +42,6 @@ enum SymbolFixtures {
   }
 
   static func info(_ symbol: String) -> SymbolInfo {
-    catalog.first { $0.symbol == symbol } ?? catalog[0]
+    catalog.first { $0.symbol == InstrumentID.canonical(symbol) } ?? catalog[0]
   }
 }

@@ -24,8 +24,8 @@ struct BaselineSnapshotTests {
 
     let back = BaselineSnapshot.read(p.opens, boundary: boundary)
     #expect(back.count == 2)
-    #expect(back["BTCUSDT"] == 78_000)
-    #expect(back["ETHUSDT"] == 4_100)
+    #expect(back["binance/usd_m/BTCUSDT"] == 78_000)
+    #expect(back["binance/usd_m/ETHUSDT"] == 4_100)
   }
 
   @Test("跨到下一天就整份作废，不拿昨天的开盘价算今天")
@@ -47,7 +47,7 @@ struct BaselineSnapshotTests {
     BaselineSnapshot.write(boundary: boundary, opens: ["BTCUSDT": 78_000, "BADUSDT": 0, "NANUSDT": .nan], to: p.opens)
     let back = BaselineSnapshot.read(p.opens, boundary: boundary)
     #expect(back.count == 1)
-    #expect(back["BTCUSDT"] == 78_000)
+    #expect(back["binance/usd_m/BTCUSDT"] == 78_000)
 
     BaselineSnapshot.write(boundary: boundary, opens: ["BADUSDT": -1], to: p.opens)
     #expect(BaselineSnapshot.read(p.opens, boundary: boundary).isEmpty)

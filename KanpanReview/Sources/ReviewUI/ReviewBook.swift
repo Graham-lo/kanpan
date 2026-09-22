@@ -288,6 +288,6 @@ public struct ReviewRecordView: View {
   /// `feature.priceDecimals`），和顶栏、K 线价格轴、图上的目标线一致（审查 B-07）。
   /// 原来是「最多 8 位、能省就省」：同一张记录里目标写 `76800`、失效写 `76812.5`。
   private func price(_ value: Double, _ record: ReviewRecord) -> String {
-    feature.price(value, symbol: record.draft.range.symbol)
+    feature.price(value, symbol: record.draft.range.key)
   }
 }

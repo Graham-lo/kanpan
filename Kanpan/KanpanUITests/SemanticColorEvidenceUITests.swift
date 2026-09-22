@@ -489,9 +489,9 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
 
       // 自选段真的在场：段头那两个字 + 段里那几行。
       expectExists(app.staticTexts["自选"], Self.long, "\(tag)：品种整页上没有「自选」这一段")
-      let row = app.buttons["symbols.row.BTCUSDT"]
+      let row = app.buttons["symbols.row.binance/usd_m/BTCUSDT"]
       expectExists(row, Self.long, "\(tag)：自选段里没有 BTCUSDT 那一行")
-      let second = app.buttons["symbols.row.ETHUSDT"]
+      let second = app.buttons["symbols.row.binance/usd_m/ETHUSDT"]
       expectExists(second, Self.long, "\(tag)：自选段里没有 ETHUSDT 那一行")
       // 搜索框确实是空的——不空的话拍到的还是 `enabled == false` 那条分支。
       let query = app.textFields[Ids.symbolsQuery]
@@ -696,7 +696,7 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
   private func gotoFavorites(_ what: String,
                              file: StaticString = #filePath, line: UInt = #line) {
     XCTAssertTrue(app.openFavorites(), "\(what)：进不去自选分类页", file: file, line: line)
-    expectExists(app.buttons["favorites.open.BTCUSDT"], Self.long,
+    expectExists(app.buttons["favorites.open.binance/usd_m/BTCUSDT"], Self.long,
                  "\(what)：自选页上没有 BTCUSDT 那一行", file: file, line: line)
   }
 
@@ -714,8 +714,8 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
       applySkin(skin.skin, skin.mode, "自选左右划-" + skin.tag)
       gotoFavorites("自选左右划-" + skin.tag)
 
-      let row = app.buttons["favorites.open.BTCUSDT"]
-      let eth = app.buttons["favorites.open.ETHUSDT"]
+      let row = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
+      let eth = app.buttons["favorites.open.binance/usd_m/ETHUSDT"]
       expectExists(eth, Self.long, "\(skin.tag)：自选页上没有 ETHUSDT 那一行")
       let band = row.frame
       let width = app.windows.firstMatch.frame.width
@@ -757,7 +757,7 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
       XCTAssertTrue(waitUntil(timeout: 3) { !remove.exists }, "\(skin.tag)：点行没把砖收回去")
 
       // 这一趟一行都不许少。
-      XCTAssertTrue(row.exists && eth.exists && app.buttons["favorites.open.SOLUSDT"].exists,
+      XCTAssertTrue(row.exists && eth.exists && app.buttons["favorites.open.binance/usd_m/SOLUSDT"].exists,
                     "\(skin.tag)：滑了几下自选就少了：" + app.debugDescription)
 
       let chartTab = app.buttons[Ids.bottomChart]
@@ -776,7 +776,7 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
     for skin in Self.twoSkins {
       applySkin(skin.skin, skin.mode, "自选段左划-" + skin.tag)
       XCTAssertTrue(openFullSymbolPageWithEmptyQuery(), "\(skin.tag)：没能把品种整页开成空搜索")
-      let row = app.buttons["symbols.row.BTCUSDT"]
+      let row = app.buttons["symbols.row.binance/usd_m/BTCUSDT"]
       expectExists(row, Self.long, "\(skin.tag)：自选段里没有 BTCUSDT 那一行")
       let band = row.frame
       geometry("自选段左划-\(skin.tag)-BTCUSDT 行", band)
@@ -801,7 +801,7 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
       // 点这一行收回去，不触发。
       row.tap()
       XCTAssertTrue(waitUntil(timeout: 3) { !unstar.exists }, "\(skin.tag)：点行没把砖收回去")
-      XCTAssertTrue(app.buttons["symbols.star.BTCUSDT"].exists && row.exists,
+      XCTAssertTrue(app.buttons["symbols.star.binance/usd_m/BTCUSDT"].exists && row.exists,
                     "\(skin.tag)：只是划开看一眼，这一行却没了")
 
       let back = app.buttons[Ids.symbolsBack]
@@ -825,7 +825,7 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
     // 不钉死这一档拍出来就是青苔深，和基准根本不是同一张。
     applySkin("sage", "浅色", "自选页基准比对")
     gotoFavorites("自选页基准比对")
-    let row = app.buttons["favorites.open.BTCUSDT"]
+    let row = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
     geometry("自选页-窗口", app.windows.firstMatch.frame)
     geometry("自选页-BTCUSDT 行", row.frame)
     if let search = snapshotFrame(app.buttons["favorites.add"]) { geometry("自选页-搜索框", search) }

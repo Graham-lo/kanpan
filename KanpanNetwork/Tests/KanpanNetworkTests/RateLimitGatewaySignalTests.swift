@@ -290,7 +290,7 @@ struct RateLimitGatewaySignalTests {
     let rest = BinanceREST(transport: transport, limiter: RateLimiter(minGapMs: 0))
     let tickers = try await rest.tickers24h()
     #expect(tickers.count == 1)
-    #expect(tickers.first?.symbol == "BTCUSDT")
+    #expect(tickers.first?.symbol == "binance/usd_m/BTCUSDT")
     let asked = try #require(await server.urls().first)
     #expect(asked.path == "/market/v1/tickers")
     #expect(asked.query?.contains("source=binance") == true)

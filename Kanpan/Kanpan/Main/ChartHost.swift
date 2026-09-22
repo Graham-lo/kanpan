@@ -318,7 +318,7 @@ final class ChartProxy {
 
   /// 「看细节」：等这个品种的这一档数据到了，把视野铺成 `window`。
   func show(window: ViewWindow, symbol: String, interval: Interval) {
-    wantsWindow = (symbol.uppercased(), interval, window, 0)
+    wantsWindow = (InstrumentID.canonical(symbol), interval, window, 0)
     box?.setNeedsLayout()
   }
 
@@ -331,7 +331,7 @@ final class ChartProxy {
     guard want.tries < Self.windowAttempts else { wantsWindow = nil; return nil }
     wantsWindow?.tries = want.tries + 1
     guard series.count > 0, want.interval == series.interval,
-          want.symbol == series.symbol.uppercased() else { return nil }
+          want.symbol == InstrumentID.canonical(series.symbol) else { return nil }
     // 历史已经补到那一段的左边了：这笔账兑现完就销。还没补到就先铺一次（视野会被夹在
     // 现有数据的左缘，图当场去要历史），账留着，下一批数据到了再铺准。
     if Double(series.firstTime) <= want.view.from { wantsWindow = nil }

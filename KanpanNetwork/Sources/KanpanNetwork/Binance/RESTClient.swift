@@ -293,7 +293,7 @@ public actor BinanceREST {
   public func ticker24h(symbol: String, timeout: TimeInterval = 15) async throws -> Ticker {
     let data = try await fetch(hosts.ticker24h(symbol: symbol), weight: 1, timeout: timeout)
     let ticker = try decode(Ticker24hDTO.self, data).ticker
-    guard ticker.symbol.uppercased() == symbol.uppercased(), ticker.last.isFinite, ticker.last > 0 else {
+    guard ticker.symbol == InstrumentID.canonical(symbol), ticker.last.isFinite, ticker.last > 0 else {
       throw FeedError.badResponse("报价品种或价格无效")
     }
     return ticker
@@ -320,7 +320,7 @@ public actor BinanceREST {
     // 1000 次 / 5 分钟的共享限制，只按权重算等于不受限，翻长历史时会一路撞到 429（A.2）。
     let data = try await fetch(url, weight: 1, quota: .futuresData)
     let rows = try decode([OIHistDTO].self, data)
-    guard rows.allSatisfy({ $0.symbol.uppercased() == symbol.uppercased()
+    guard rows.allSatisfy({ $0.symbol.uppercased() == InstrumentID(symbol).symbol
       && $0.point.value.isFinite && $0.point.value >= 0 && $0.timestamp > 0 }) else {
       throw FeedError.badResponse("持仓量品种或数值无效")
     }
@@ -349,7 +349,7 @@ public actor BinanceREST {
     let rows = try decode([LongShortRatioDTO].self, data)
     // 响应带 `symbol`，对不上的行直接不要：宁可少几个点，也不能把别人的数画到这张图上。
     return rows
-      .filter { $0.symbol.map { $0.uppercased() == symbol.uppercased() } ?? true }
+      .filter { $0.symbol.map { $0.uppercased() == InstrumentID(symbol).symbol } ?? true }
       .compactMap(\.point)
       .sorted { $0.timeMs < $1.timeMs }
   }
@@ -375,7 +375,7 @@ public actor BinanceREST {
     let data = try await fetch(url, weight: 0, quota: .futuresData)
     let rows = try decode([BasisDTO].self, data)
     return rows
-      .filter { $0.pair.map { $0.uppercased() == pair.uppercased() } ?? true }
+      .filter { $0.pair.map { $0.uppercased() == InstrumentID(pair).symbol } ?? true }
       .compactMap(\.point)
       .sorted { $0.timeMs < $1.timeMs }
   }

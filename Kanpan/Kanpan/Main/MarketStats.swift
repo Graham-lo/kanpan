@@ -60,7 +60,7 @@ actor MarketStatsClient {
   /// 返回的是一行空的 `SymbolMeta`：那是权威的「没有」，调用方要据此把市值清掉
   /// （审查 B.8：`meta` 为空就清 `totalSupply`，不能留着上一个品种或半天前那个数）。
   func meta(symbol: String, base: String, hosts: [String]) async -> SymbolMeta? {
-    let sym = symbol.uppercased()
+    let sym = InstrumentID.canonical(symbol)
     if let hit = metaCache[sym], Date().timeIntervalSince(hit.at) < Self.metaTTL { return hit.row }
     if let running = metaTasks[sym] { return await running.value }
     let task = Task<SymbolMeta?, Never> { [session] in
@@ -68,13 +68,13 @@ actor MarketStatsClient {
         guard var parts = URLComponents(string: "https://\(host)/v1/market/meta") else { continue }
         // 一次只问这一个品种，不要整表：整表那条路不会把 `1000PEPE` 这种
         // 乘数合约换算回币本身，也认不出 USDC 计价的对，那两类会白白空着。
-        parts.queryItems = [URLQueryItem(name: "symbols", value: sym)]
+        parts.queryItems = [URLQueryItem(name: "symbols", value: InstrumentID(sym).symbol)]
         guard let url = parts.url else { continue }
         guard let body = try? await Self.get(url, session: session) else { continue }
         guard let table = Self.decodeMeta(body) else { continue }
         // 后端答了就以它为准：它说不认识这个币（股指、贵金属都没有市值），
         // 那就是没有，不必再问备用那台——空行也是答案，照样记进缓存。
-        return table[sym] ?? table[base.uppercased()] ?? SymbolMeta()
+        return table[InstrumentID(sym).symbol] ?? table[base.uppercased()] ?? SymbolMeta()
       }
       return nil
     }
@@ -93,7 +93,7 @@ actor MarketStatsClient {
   /// 缓存过期了（或者上一轮失败且冷却也过了）才真去问一次；还新鲜就返回 `nil`，
   /// 调用方什么都不用做。持仓轮询每 45 秒叫一次这条，命中缓存时只是一次字典查找。
   func metaIfStale(symbol: String, base: String, hosts: [String]) async -> SymbolMeta? {
-    let sym = symbol.uppercased()
+    let sym = InstrumentID.canonical(symbol)
     let now = Date()
     if let hit = metaCache[sym], now.timeIntervalSince(hit.at) < Self.metaTTL { return nil }
     if let failed = metaFailedAt[sym], now.timeIntervalSince(failed) < Self.metaRetryDelay { return nil }
@@ -121,13 +121,13 @@ actor MarketStatsClient {
   func openInterest(symbol: String, source: MarketSource, hosts: [String]) async -> OpenInterestStat? {
     for host in hosts {
       guard var parts = URLComponents(string: "https://\(host)/v1/market/open-interest") else { continue }
-      parts.queryItems = [URLQueryItem(name: "symbol", value: symbol.uppercased()),
+      parts.queryItems = [URLQueryItem(name: "symbol", value: InstrumentID(symbol).symbol),
                           URLQueryItem(name: "source", value: source.rawValue)]
       guard let url = parts.url else { continue }
       guard let body = try? await Self.get(url, session: session) else { continue }
       guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
             let row = root["data"] as? [String: Any] else { continue }
-      return OpenInterestStat(symbol: (row["symbol"] as? String) ?? symbol.uppercased(),
+      return OpenInterestStat(symbol: InstrumentID.canonical((row["symbol"] as? String) ?? symbol),
                               openInterest: Self.num(row["openInterest"]),
                               openInterestValue: Self.num(row["openInterestValue"]),
                               timeMs: (row["time"] as? NSNumber)?.int64Value)

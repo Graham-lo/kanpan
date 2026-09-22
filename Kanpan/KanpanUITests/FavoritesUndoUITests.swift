@@ -32,7 +32,7 @@ final class FavoritesUndoUITests: KanpanUICase {
 
   func testRemovingAFavoriteOffersUndoAndPutsTheRowBack() {
     XCTAssertTrue(app.openFavorites(), "没进到自选页")
-    let eth = app.buttons["favorites.open.ETHUSDT"]
+    let eth = app.buttons["favorites.open.binance/usd_m/ETHUSDT"]
     XCTAssertTrue(eth.waitForExistence(timeout: Self.long), "自选页上没有 ETHUSDT")
     let before = rowOrder()
     XCTAssertEqual(before.count, 3, "三只自选没都摆出来：\(before)")
@@ -95,7 +95,7 @@ final class FavoritesUndoUITests: KanpanUICase {
   /// 三行此刻从上到下的顺序。
   private func rowOrder() -> [String] {
     ["BTCUSDT", "ETHUSDT", "SOLUSDT"].compactMap { symbol -> (String, CGFloat)? in
-      guard let snap = try? app.buttons["favorites.open.\(symbol)"].snapshot() else { return nil }
+      guard let snap = try? app.buttons["favorites.open.binance/usd_m/\(symbol)"].snapshot() else { return nil }
       return (symbol, snap.frame.minY)
     }
     .sorted { $0.1 < $1.1 }

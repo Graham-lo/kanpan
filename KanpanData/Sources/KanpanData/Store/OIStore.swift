@@ -28,7 +28,7 @@ public actor OIStore {
 
   public func load(symbol: String, dayStart: Int64) -> [OIPoint]? {
     guard enabled else { return nil }
-    let url = paths.oiDay(symbol: symbol, day: OIArchive.dayString(dayStart))
+    let url = readable(paths.oiDay(symbol: symbol, day: OIArchive.dayString(dayStart)), symbol: symbol)
     guard let d = try? Data(contentsOf: url) else { return nil }
     // LRU 靠 mtime，读到就摸一下。
     try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
@@ -48,7 +48,7 @@ public actor OIStore {
   /// 有它，重新打开同一张图就不必再等一个往返：先把旧的画上，再只补缺的那一头。
   public func loadSeries(symbol: String, interval: Interval) -> (points: [OIPoint], from: Int64, to: Int64)? {
     guard enabled else { return nil }
-    let url = paths.oiSeries(symbol: symbol, interval: interval.rawValue)
+    let url = readable(paths.oiSeries(symbol: symbol, interval: interval.rawValue), symbol: symbol)
     guard let d = try? Data(contentsOf: url) else { return nil }
     try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
     return OIArchive.decodeRange(d)
@@ -75,12 +75,18 @@ public actor OIStore {
 
   private struct Slice { var url: URL; var size: Int; var mtime: Date }
 
+  private func readable(_ current: URL, symbol: String) -> URL {
+    let id = InstrumentID(symbol)
+    guard id.marketKey == "binance/usd_m", !FileManager.default.fileExists(atPath: current.path) else { return current }
+    return paths.oi.appendingPathComponent(id.symbol).appendingPathComponent(current.lastPathComponent)
+  }
+
   private func files() -> [Slice] {
     let fm = FileManager.default
-    guard let e = fm.enumerator(at: paths.oi, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]) else { return [] }
+    guard let e = fm.enumerator(at: paths.oi, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]) else { return [] }
     var out: [Slice] = []
     for case let u as URL in e {
-      guard let v = try? u.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+      guard let v = try? u.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]), v.isRegularFile == true,
             let size = v.fileSize else { continue }
       out.append(Slice(url: u, size: size, mtime: v.contentModificationDate ?? .distantPast))
     }

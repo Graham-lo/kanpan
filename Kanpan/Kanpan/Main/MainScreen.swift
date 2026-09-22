@@ -448,9 +448,9 @@ struct MainScreen: View {
         if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
       },
       onSymbol: { symbol in
-        if let preview = draw.previewing, preview.symbol != symbol { endSharePreview() }
+        if let preview = draw.previewing, preview.key != symbol { endSharePreview() }
         // 回信只回那一只上的线：换走了就算不回了。
-        if let reply = replying, reply.symbol != symbol { replying = nil }
+        if let reply = replying, reply.key != symbol { replying = nil }
         quotes.setChartSymbol(symbol); accountBridge?.focus(symbol)
         // 换了一只，「刚才那一屏」说的已经不是这张图上的事了（§P3-2）。
         forgetReturn()
@@ -1056,7 +1056,7 @@ struct MainScreen: View {
     do {
       let kept = try inbox.prepareKeep(item)
       if inbox.items.first(where: { $0.id == item.id })?.keptAt == nil {
-        guard draw.append(kept, symbol: item.symbol) else { return }
+        guard draw.append(kept, symbol: item.key) else { return }
         inbox.kept(item)
       }
       draw.endPreview(); shareInterval = nil
@@ -1099,13 +1099,13 @@ struct MainScreen: View {
     if reviewChart.active { endReview() }
     draw.finish(); alertPrompt.dismiss()
     let before = market.interval
-    open(linkedSymbol: item.symbol)
+    open(linkedSymbol: item.key)
     shareInterval = SharePreviewInterval(before: before, shared: item.interval)
     // 分享切换只活在本次预览，不写 Prefs，也不进入个人同步。
     market.switchTo(interval: item.interval)
-    draw.focus(item.symbol)
+    draw.focus(item.key)
     draw.preview(item)
-    proxy.show(window: item.view.window, symbol: item.symbol, interval: item.interval)
+    proxy.show(window: item.view.window, symbol: item.key, interval: item.interval)
     inbox.opened(item)
   }
 
@@ -1120,10 +1120,10 @@ struct MainScreen: View {
   private func keepShare(_ item: ShareItem) {
     do {
       let kept = try inbox.prepareKeep(item)
-      guard draw.append(kept, symbol: item.symbol) else { return }
+      guard draw.append(kept, symbol: item.key) else { return }
       draw.endPreview(); shareInterval = nil
       inbox.kept(item)
-      alertPrompt.offerBatch(kept, symbol: item.symbol, preferred: item.preferred(in: kept), from: item.from)
+      alertPrompt.offerBatch(kept, symbol: item.key, preferred: item.preferred(in: kept), from: item.from)
     } catch { say("暂时无法留下，请重试") }
   }
 

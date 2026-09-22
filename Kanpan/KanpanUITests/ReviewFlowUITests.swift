@@ -161,11 +161,11 @@ final class ReviewFlowUITests: KanpanUICase {
       query.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
     }
     query.typeText(symbol)
-    let row = app.descendants(matching: .any).matching(identifier: "symbols.row." + symbol).firstMatch
+    let row = app.descendants(matching: .any).matching(identifier: "symbols.row." + testInstrumentKey(symbol)).firstMatch
     guard expectExists(row, Self.long, "搜不到 \(symbol)", file: file, line: line) else { return }
     row.tap()
     XCTAssertTrue(waitUntil(timeout: Self.long) {
-      self.chartInfo()["symbol"] as? String == symbol && (self.chartInfo()["bars"] as? Int ?? 0) > 20
+      self.chartInfo()["symbol"] as? String == testInstrumentKey(symbol) && (self.chartInfo()["bars"] as? Int ?? 0) > 20
     }, "没换到 \(symbol)：\(chartInfo())", file: file, line: line)
   }
 

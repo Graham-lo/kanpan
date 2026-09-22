@@ -31,7 +31,7 @@ public struct ReviewCaptureCard: View {
             HStack {
               // 参考价按品种自己的小数位写（审查 B-07）：原来「最多 8 位、能省就省」，
               // 同一张卡上参考价 `76800`、目标价框里 `76800.5`，看着像两个量级。
-              Text("参考价 " + feature.price(draft.rule.reference, symbol: draft.range.symbol))
+              Text("参考价 " + feature.price(draft.rule.reference, symbol: draft.range.key))
                 .font(.caption).foregroundStyle(t.ink3)
               Spacer()
               Button("按方向重置") {
@@ -104,6 +104,6 @@ public struct ReviewCaptureCard: View {
   /// 一个能填到 `76800.00000001` 的框，也会让摆出来的口价和 K 线价格轴不是一个写法。
   private var decimals: Int {
     guard let draft = feature.draft else { return 2 }
-    return feature.priceDecimals(draft.range.symbol) ?? priceDecimalsFallback(draft.rule.reference)
+    return feature.priceDecimals(draft.range.key) ?? priceDecimalsFallback(draft.rule.reference)
   }
 }

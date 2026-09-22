@@ -67,7 +67,7 @@ final class MainScreenUITests: KanpanUICase {
       if let intervalY { XCTAssertEqual(y, intervalY, accuracy: 0.5, "\(symbol) 头部挤高了周期条") }
       statsHeight = s.height; intervalY = y
       let chartMatches = {
-        self.chartInfo()["symbol"] as? String == symbol && self.chartInfo()["priceDecimals"] as? Int == digits
+        self.chartInfo()["symbol"] as? String == testInstrumentKey(symbol) && self.chartInfo()["priceDecimals"] as? Int == digits
       }
       var chartReady = waitUntil(timeout: Self.long, chartMatches)
       if !chartReady {
@@ -110,12 +110,12 @@ final class MainScreenUITests: KanpanUICase {
     let stocks = app.buttons["favorites.group.美股"]
     guard expectExists(stocks, Self.long) else { return }
     stocks.tap()
-    check("favorites.price.SNDKUSDT", digits: 2)
-    check("favorites.price.MUUSDT", digits: 2)
+    check("favorites.price.binance/usd_m/SNDKUSDT", digits: 2)
+    check("favorites.price.binance/usd_m/MUUSDT", digits: 2)
     shot("precision-favorites-stocks")
     app.buttons["favorites.group.加密"].tap()
-    check("favorites.price.1000SATSUSDT", digits: 8)
-    check("favorites.price.BTCUSDT", digits: 1)
+    check("favorites.price.binance/usd_m/1000SATSUSDT", digits: 8)
+    check("favorites.price.binance/usd_m/BTCUSDT", digits: 1)
     shot("precision-favorites-crypto")
     app.buttons[Ids.bottomSectors].tap()
     let more = app.buttons["sector.more"]
@@ -219,7 +219,7 @@ final class MainScreenUITests: KanpanUICase {
     app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
     app.launch()
     expectExists(app.buttons["favorites.more"], Self.long, "有自选时冷启动该停在自选页")
-    let row = app.buttons["favorites.open.BTCUSDT"]
+    let row = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
     expectExists(row, Self.long, "自选页上没有 BTCUSDT 这一行")
     row.tap()
 

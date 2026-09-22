@@ -295,7 +295,7 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     cryptoGroup.tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { cryptoGroup.isSelected }, "点了「加密」没切过去")
 
-    let anchor = app.buttons["favorites.open." + Self.anchorSymbol]
+    let anchor = app.buttons["favorites.open." + testInstrumentKey(Self.anchorSymbol)]
     let list = app.collectionViews.firstMatch.exists ? app.collectionViews.firstMatch
                                                      : app.tables.firstMatch
     // 一下滚三成屏幕，**不要用 `swipeUp()`**。

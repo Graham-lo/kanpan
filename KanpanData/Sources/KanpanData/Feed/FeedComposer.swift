@@ -43,7 +43,7 @@ public struct FeedComposer: Sendable {
   /// 吃一条 kline 事件。返回序列有没有变。
   @discardableResult
   public mutating func apply(_ ev: KlineEvent) -> Bool {
-    guard ev.symbol.uppercased() == series.symbol.uppercased(),
+    guard InstrumentID.canonical(ev.symbol) == InstrumentID.canonical(series.symbol),
           ev.bar.isValidMarketBar, ev.interval == series.interval.rawValue else { return false }
     if let old = lastEvent {
       guard ev.openTime >= old.openTime else { droppedStale += 1; return false }

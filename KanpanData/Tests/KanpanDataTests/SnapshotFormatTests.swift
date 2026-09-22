@@ -61,12 +61,12 @@ struct SnapshotFormatTests {
 
   @Test("等距周期：编码逐字节钉死")
   func equidistantEncodeMatches() {
-    #expect(Snapshot.encode(equidistant()) == bytes(equiHex))
+    #expect(legacySnapshotFixture(equidistant()) == bytes(equiHex))
   }
 
   @Test("不等距周期（1M，带 openTime 表）：编码逐字节钉死")
   func monthlyEncodeMatches() {
-    #expect(Snapshot.encode(monthly()) == bytes(monthlyHex))
+    #expect(legacySnapshotFixture(monthly()) == bytes(monthlyHex))
   }
 
   @Test("版本 1 写下的字节照样解得出来，主动买量整列当缺失")
@@ -122,7 +122,7 @@ struct SnapshotFormatTests {
     let empty = BarSeries(symbol: "BTCUSDT", interval: .h1, bars: [])
     let decoded = try #require(Snapshot.decode(Snapshot.encode(empty)))
     #expect(decoded.count == 0)
-    #expect(decoded.symbol == "BTCUSDT")
+    #expect(decoded.symbol == "binance/usd_m/BTCUSDT")
     #expect(decoded.interval == .h1)
   }
 

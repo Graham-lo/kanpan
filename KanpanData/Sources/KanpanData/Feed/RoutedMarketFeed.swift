@@ -136,7 +136,7 @@ public actor RoutedMarketFeed {
     guard !Task.isCancelled else { return }
     freshHistory = false; pendingStatus = .offline
     pendingHistoryError = nil; historyBoundary = nil; seriesStart = nil; historyRetry = .distantPast
-    self.symbol = symbol; self.interval = interval; self.selection = selection
+    self.symbol = InstrumentID.canonical(symbol); self.interval = interval; self.selection = selection
     monitor?.cancel()
     if let feed { await feed.switchTo(symbol: symbol, interval: interval, coldStart: coldStart, selection: selection) }
     else { await activate(source, coldStart: coldStart) }
@@ -383,9 +383,9 @@ public actor RoutedMarketFeed {
     prefetchTask?.cancel()
     guard snapshots, interval.source == interval else { return }
     if !intervals.isEmpty { warmIntervals = intervals }
-    let current = symbol.uppercased()
+    let current = InstrumentID.canonical(symbol)
     var seen = Set<String>([current])
-    var jobs = symbols.map { $0.uppercased() }.filter { seen.insert($0).inserted }
+    var jobs = symbols.map { InstrumentID.canonical($0) }.filter { seen.insert($0).inserted }
       .prefix(Self.prefetchLimit).map { (symbol: $0, interval: interval) }
     // 当前品种换周期：本地已经有当前这档了，补其余几档。
     jobs += intervals.filter { $0 != interval && $0.source == $0 }.map { (symbol: current, interval: $0) }
@@ -403,7 +403,7 @@ public actor RoutedMarketFeed {
   private func warmOtherIntervals(of symbol: String, current: Interval) {
     warmTask?.cancel()
     guard snapshots, !warmIntervals.isEmpty, current.source == current else { return }
-    let name = symbol.uppercased()
+    let name = InstrumentID.canonical(symbol)
     let jobs = warmIntervals.filter { $0 != current && $0.source == $0 }.map { (symbol: name, interval: $0) }
     warmTask = run(jobs: jobs, delayMs: 2500)
   }

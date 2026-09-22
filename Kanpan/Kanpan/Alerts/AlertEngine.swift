@@ -126,7 +126,7 @@ final class AlertEngine: ObservableObject {
     let next = Set(
       archive.alerts
         .filter { $0.isActive && ($0.kind == .drawing || $0.kind == .price) && !$0.lines.isEmpty }
-        .map { $0.symbol.uppercased() }
+        .map { InstrumentID.canonical($0.symbol) }
         .filter { !$0.isEmpty })
     if next != watched {
       #if DEBUG
@@ -163,7 +163,7 @@ final class AlertEngine: ObservableObject {
   /// 交易所偏一点的时候，用本机时刻会把桶切在错的地方。
   func observe(symbol: String, price: Double, timeMs: Int64) {
     guard foreground, price.isFinite, price > 0 else { return }
-    let key = symbol.uppercased()
+    let key = InstrumentID.canonical(symbol)
     guard watched.contains(key) else { return }
     let stamp = timeMs > 0 ? timeMs : Int64(Date().timeIntervalSince1970 * 1000)
     guard stamp > 0 else { return }
@@ -223,7 +223,7 @@ final class AlertEngine: ObservableObject {
   private func evaluate(_ symbol: String, bar: AlertEvaluator.Bar, price: Double) {
     guard let store, !store.all.isEmpty else { return }
     // 先取一份快照：`markFired` 会当场换掉 `archive`。
-    let candidates = store.all.filter { $0.isActive && $0.symbol.uppercased() == symbol }
+    let candidates = store.all.filter { $0.isActive && InstrumentID.canonical($0.symbol) == symbol }
     guard !candidates.isEmpty else { return }
     let now = Date().timeIntervalSince1970 * 1000
     for alert in candidates where AlertEvaluator.hit(alert, bar: bar) != nil {
@@ -243,10 +243,10 @@ final class AlertEngine: ObservableObject {
   private func feedTestTouch(_ symbols: Set<String>,
                              environment: [String: String] = ProcessInfo.processInfo.environment) {
     guard environment["KANPAN_TEST_PROFILE"] == "1",
-          let symbol = environment["KANPAN_TEST_ALERT_TOUCH"]?.uppercased(), symbols.contains(symbol),
+          let symbol = environment["KANPAN_TEST_ALERT_TOUCH"].map(InstrumentID.canonical), symbols.contains(symbol),
           let store else { return }
     let future = Int64(Date().timeIntervalSince1970 * 1000) + 86_400_000
-    for alert in store.all where alert.kind == .price && alert.isActive && alert.symbol.uppercased() == symbol {
+    for alert in store.all where alert.kind == .price && alert.isActive && InstrumentID.canonical(alert.symbol) == symbol {
       guard let target = alert.targetPrice else { continue }
       observe(symbol: symbol, price: target * 1.001, timeMs: future)
       observe(symbol: symbol, price: target * 0.999, timeMs: future + 1)
@@ -255,7 +255,7 @@ final class AlertEngine: ObservableObject {
 
   /// 用例拿它看桶折得对不对（品种 → 开盘时刻/高/低/收/上一根收盘）。
   func bucketState(_ symbol: String) -> (openTime: Int64, high: Double, low: Double, close: Double, previousClose: Double?)? {
-    guard let b = buckets[symbol.uppercased()] else { return nil }
+    guard let b = buckets[InstrumentID.canonical(symbol)] else { return nil }
     return (b.openTime, b.high, b.low, b.close, b.previousClose)
   }
   #endif

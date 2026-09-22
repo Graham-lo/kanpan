@@ -49,23 +49,23 @@ final class SearchEntryUITests: KanpanUICase {
     field.tap()
 
     type("btb")
-    XCTAssertTrue(app.buttons["symbols.row.BTCUSDT"].waitForExistence(timeout: 8), "btb 搜不到比特币")
+    XCTAssertTrue(app.buttons["symbols.row.binance/usd_m/BTCUSDT"].waitForExistence(timeout: 8), "btb 搜不到比特币")
     shot("搜索-btb")
 
     retype("bitebi")
-    XCTAssertTrue(app.buttons["symbols.row.BTCUSDT"].waitForExistence(timeout: 8), "bitebi 搜不到比特币")
+    XCTAssertTrue(app.buttons["symbols.row.binance/usd_m/BTCUSDT"].waitForExistence(timeout: 8), "bitebi 搜不到比特币")
     shot("搜索-bitebi")
 
     retype("tsl")
-    XCTAssertTrue(app.buttons["symbols.row.TSLAUSDT"].waitForExistence(timeout: 8), "tsl 搜不到特斯拉")
+    XCTAssertTrue(app.buttons["symbols.row.binance/usd_m/TSLAUSDT"].waitForExistence(timeout: 8), "tsl 搜不到特斯拉")
     shot("搜索-tsl")
 
     retype("eth usdt")
-    XCTAssertTrue(app.buttons["symbols.row.ETHUSDT"].waitForExistence(timeout: 8), "「eth usdt」搜不到 ETHUSDT")
+    XCTAssertTrue(app.buttons["symbols.row.binance/usd_m/ETHUSDT"].waitForExistence(timeout: 8), "「eth usdt」搜不到 ETHUSDT")
     retype("ETH/USDT")
-    XCTAssertTrue(app.buttons["symbols.row.ETHUSDT"].waitForExistence(timeout: 8), "「ETH/USDT」搜不到 ETHUSDT")
+    XCTAssertTrue(app.buttons["symbols.row.binance/usd_m/ETHUSDT"].waitForExistence(timeout: 8), "「ETH/USDT」搜不到 ETHUSDT")
     retype("$ETH")
-    XCTAssertTrue(app.buttons["symbols.row.ETHUSDT"].waitForExistence(timeout: 8), "「$ETH」搜不到 ETHUSDT")
+    XCTAssertTrue(app.buttons["symbols.row.binance/usd_m/ETHUSDT"].waitForExistence(timeout: 8), "「$ETH」搜不到 ETHUSDT")
     shot("搜索-分隔符容忍")
   }
 
@@ -75,10 +75,10 @@ final class SearchEntryUITests: KanpanUICase {
     let field = app.textFields[Ids.searchQuery]
     field.tap()
     type("sol")
-    let row = app.buttons["symbols.row.SOLUSDT"]
+    let row = app.buttons["symbols.row.binance/usd_m/SOLUSDT"]
     XCTAssertTrue(row.waitForExistence(timeout: 8))
     let before = row.frame
-    app.buttons["symbols.star.SOLUSDT"].tap()
+    app.buttons["symbols.star.binance/usd_m/SOLUSDT"].tap()
     XCTAssertTrue(app.textFields[Ids.searchQuery].exists, "点个星把搜索页关掉了")
     XCTAssertEqual(app.textFields[Ids.searchQuery].value as? String, "sol", "点个星把搜索词清了")
     XCTAssertTrue(row.exists, "点个星那一行就不见了")

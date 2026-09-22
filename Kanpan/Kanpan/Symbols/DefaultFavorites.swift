@@ -41,14 +41,14 @@ enum DefaultFavorites {
 
     // base → 该币用哪一条合约。同一个币有多条时选成交额最大的那条
     // （`BTCUSDT` 一定比 `BTCUSDC` 大），没有行情就按代号短的那条。
-    let volume = Dictionary(tickers.map { ($0.symbol.uppercased(), $0.quoteVolume) },
+    let volume = Dictionary(tickers.map { (InstrumentID.canonical($0.symbol), $0.quoteVolume) },
                             uniquingKeysWith: { a, _ in a })
     var pickOf: [String: SymbolInfo] = [:]
     for info in coins {
       let base = self.base(info)
       guard let old = pickOf[base] else { pickOf[base] = info; continue }
-      let new = volume[info.symbol.uppercased()] ?? 0
-      let had = volume[old.symbol.uppercased()] ?? 0
+      let new = volume[InstrumentID.canonical(info.symbol)] ?? 0
+      let had = volume[InstrumentID.canonical(old.symbol)] ?? 0
       if new > had || (new == had && info.symbol.count < old.symbol.count) { pickOf[base] = info }
     }
 
@@ -56,7 +56,7 @@ enum DefaultFavorites {
     var taken = Set<String>()
     func take(_ base: String) {
       guard let info = pickOf[base], taken.insert(base).inserted else { return }
-      out.append(info.symbol.uppercased())
+      out.append(InstrumentID.canonical(info.symbol))
     }
 
     for base in anchors { take(base) }
@@ -65,7 +65,7 @@ enum DefaultFavorites {
     var hot: [(base: String, volume: Double)] = []
     hot.reserveCapacity(pickOf.count)
     for (base, info) in pickOf {
-      let v: Double = volume[info.symbol.uppercased()] ?? 0
+      let v: Double = volume[InstrumentID.canonical(info.symbol)] ?? 0
       guard v > 0 else { continue }
       hot.append((base: base, volume: v))
     }

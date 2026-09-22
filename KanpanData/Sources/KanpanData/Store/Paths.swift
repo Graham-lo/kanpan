@@ -1,4 +1,5 @@
 import Foundation
+import KanpanCore
 
 /// 沙盒里 app 用到的目录（§4.3）。根目录可注入，测试就不碰真沙盒。
 ///
@@ -116,12 +117,12 @@ public struct Paths: Sendable {
   /// OI 归档切片，按天存，总上限 20 MB。
   public var oi: URL { root.appendingPathComponent("oi", isDirectory: true) }
   public func oiDay(symbol: String, day: String) -> URL {
-    oi.appendingPathComponent(symbol, isDirectory: true).appendingPathComponent("\(day).oi")
+    oi.appendingPathComponent(InstrumentID.canonical(symbol), isDirectory: true).appendingPathComponent("\(day).oi")
   }
   /// 已经按图表周期聚好的那一段，一个「品种 + 周期」一份；和日切片同一个目录，
   /// 一起受 20 MB 上限和 LRU 管。
   public func oiSeries(symbol: String, interval: String) -> URL {
-    oi.appendingPathComponent(symbol, isDirectory: true).appendingPathComponent("series-\(interval).oi")
+    oi.appendingPathComponent(InstrumentID.canonical(symbol), isDirectory: true).appendingPathComponent("series-\(interval).oi")
   }
 
   public func ensure(_ dir: URL) throws {

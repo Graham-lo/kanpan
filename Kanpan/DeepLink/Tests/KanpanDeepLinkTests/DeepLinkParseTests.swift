@@ -18,28 +18,30 @@ struct DeepLinkParseTests {
 
   @Test("品种：带周期与不带周期")
   func symbol() {
-    #expect(parse("hkline://symbol/BTCUSDT?interval=1h") == .symbol("BTCUSDT", interval: "1h"))
-    #expect(parse("hkline://symbol/BTCUSDT") == .symbol("BTCUSDT", interval: nil))
+    #expect(parse("hkline://symbol/coinbase/spot/BTC-USD?interval=1h") == .symbol("coinbase/spot/BTC-USD", interval: "1h"))
+    #expect(parse("hkline://drawing/coinbase/spot/BTC-USD/d-42") == .drawing(symbol: "coinbase/spot/BTC-USD", drawingID: "d-42"))
+    #expect(parse("hkline://symbol/BTCUSDT?interval=1h") == .symbol("binance/usd_m/BTCUSDT", interval: "1h"))
+    #expect(parse("hkline://symbol/BTCUSDT") == .symbol("binance/usd_m/BTCUSDT", interval: nil))
     // 代号一律大写；数字开头的（1000PEPEUSDT）是正常品种。
-    #expect(parse("hkline://symbol/ethusdt") == .symbol("ETHUSDT", interval: nil))
-    #expect(parse("hkline://symbol/1000PEPEUSDT") == .symbol("1000PEPEUSDT", interval: nil))
+    #expect(parse("hkline://symbol/ethusdt") == .symbol("binance/usd_m/ETHUSDT", interval: nil))
+    #expect(parse("hkline://symbol/1000PEPEUSDT") == .symbol("binance/usd_m/1000PEPEUSDT", interval: nil))
   }
 
   @Test("周期原样保留：1M 是月线，1m 是分钟线")
   func intervalKeepsItsCase() {
-    #expect(parse("hkline://symbol/BTCUSDT?interval=1M") == .symbol("BTCUSDT", interval: "1M"))
-    #expect(parse("hkline://symbol/BTCUSDT?interval=1m") == .symbol("BTCUSDT", interval: "1m"))
+    #expect(parse("hkline://symbol/BTCUSDT?interval=1M") == .symbol("binance/usd_m/BTCUSDT", interval: "1M"))
+    #expect(parse("hkline://symbol/BTCUSDT?interval=1m") == .symbol("binance/usd_m/BTCUSDT", interval: "1m"))
     // 空的 interval 等于没给。
-    #expect(parse("hkline://symbol/BTCUSDT?interval=") == .symbol("BTCUSDT", interval: nil))
+    #expect(parse("hkline://symbol/BTCUSDT?interval=") == .symbol("binance/usd_m/BTCUSDT", interval: nil))
     // 别的查询参数不算数。
-    #expect(parse("hkline://symbol/BTCUSDT?from=push") == .symbol("BTCUSDT", interval: nil))
+    #expect(parse("hkline://symbol/BTCUSDT?from=push") == .symbol("binance/usd_m/BTCUSDT", interval: nil))
   }
 
   @Test("画线：品种 + 那条线的 id")
   func drawing() {
-    #expect(parse("hkline://drawing/BTCUSDT/d-42") == .drawing(symbol: "BTCUSDT", drawingID: "d-42"))
+    #expect(parse("hkline://drawing/BTCUSDT/d-42") == .drawing(symbol: "binance/usd_m/BTCUSDT", drawingID: "d-42"))
     let uuid = "9F1C0A6E-4B2D-4E0A-9E3B-7C5F2A8D1B44"
-    #expect(parse("hkline://drawing/ethusdt/\(uuid)") == .drawing(symbol: "ETHUSDT", drawingID: uuid))
+    #expect(parse("hkline://drawing/ethusdt/\(uuid)") == .drawing(symbol: "binance/usd_m/ETHUSDT", drawingID: uuid))
   }
 
   @Test("提醒列表与搜索页：只有去处，没有参数")
@@ -126,6 +128,6 @@ struct DeepLinkParseTests {
     #expect(router.open(URL(string: "hkline://nowhere")!) == false)
     #expect(router.pending == nil)
     #expect(router.open(URL(string: "hkline://symbol/BTCUSDT?interval=4h")!) == true)
-    #expect(router.consume() == .symbol("BTCUSDT", interval: "4h"))
+    #expect(router.consume() == .symbol("binance/usd_m/BTCUSDT", interval: "4h"))
   }
 }

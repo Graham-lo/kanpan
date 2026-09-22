@@ -33,7 +33,7 @@ struct SymbolRow: Sendable, Equatable, Identifiable {
   var quoteSuffix: String { " / " + info.quote }
   /// 第二行小字。原型这行放的是「内嵌了哪些周期」，属于原型特有；
   /// 真 app 里放合约全称，和顶栏「BTCUSDT 永续 ▾」对上。
-  var meta: String { info.symbol + " 永续" }
+  var meta: String { info.id.symbol + " 永续" }
 
   /// 最新价。没有行情时原型给一个破折号 `—`。
   ///
@@ -126,8 +126,8 @@ enum SymbolSections {
                     prefs: SymbolPrefs,
                     query: String,
                     catalogKeys: Set<String>? = nil) -> [SymbolSection] {
-    let bySymbol = Dictionary(catalog.map { ($0.symbol.uppercased(), $0) }, uniquingKeysWith: { a, _ in a })
-    func row(_ m: SymbolMatch) -> SymbolRow { SymbolRow(match: m, ticker: tickers[m.info.symbol.uppercased()]) }
+    let bySymbol = Dictionary(catalog.map { (InstrumentID.canonical($0.symbol), $0) }, uniquingKeysWith: { a, _ in a })
+    func row(_ m: SymbolMatch) -> SymbolRow { SymbolRow(match: m, ticker: tickers[InstrumentID.canonical(m.info.symbol)]) }
 
     // ---- 搜索态：只有一组，不分自选 / 最近 / 全部（同原型）
     let q = SymbolQuery.normalize(query)
@@ -166,7 +166,7 @@ enum SymbolSections {
     let loaded = !known.isEmpty
     /// `nil` = 这一行不该出现在这一页（被药丸筛掉了）。
     func rowForKey(_ key: String) -> SymbolRow? {
-      let id = key.uppercased()
+      let id = InstrumentID.canonical(key)
       if let info = bySymbol[id] { return row(SymbolMatch(info: info)) }
       // 目录里有它、只是不属于当前这颗药丸：照旧不列，药丸就是这么用的。
       if known.contains(id) { return nil }
@@ -175,18 +175,18 @@ enum SymbolSections {
                        listing: loaded ? .unknown : .unloaded)
     }
 
-    let favorites = prefs.favorites.map { $0.uppercased() }.compactMap(rowForKey)
+    let favorites = prefs.favorites.map { InstrumentID.canonical($0) }.compactMap(rowForKey)
     if !favorites.isEmpty {
-      shownAlready.formUnion(favorites.map { $0.info.symbol.uppercased() })
+      shownAlready.formUnion(favorites.map { InstrumentID.canonical($0.info.symbol) })
       out.append(SymbolSection(kind: .favorites, title: favoritesTitle, rows: favorites))
     }
 
     // 原型：中间那组剔掉已经在自选里的（`filter(s => !S.watch.includes(s))`）。
-    let recents = prefs.recents.map { $0.uppercased() }
+    let recents = prefs.recents.map { InstrumentID.canonical($0) }
       .filter { !shownAlready.contains($0) }
       .compactMap(rowForKey)
     if !recents.isEmpty {
-      shownAlready.formUnion(recents.map { $0.info.symbol.uppercased() })
+      shownAlready.formUnion(recents.map { InstrumentID.canonical($0.info.symbol) })
       out.append(SymbolSection(kind: .recents, title: recentsTitle, rows: recents))
     }
 
@@ -195,7 +195,7 @@ enum SymbolSections {
     // 「全部合约」列的是**还能交易的**合约：停牌、已交割、还没开盘的行留在品种表里
     // 是为了自选和搜索认得它（审查 B-06），但它不属于这张「有哪些合约可以看」的清单。
     let pool = catalog
-      .filter { !shownAlready.contains($0.symbol.uppercased()) && $0.status.hasLivePrice }
+      .filter { !shownAlready.contains(InstrumentID.canonical($0.symbol)) && $0.status.hasLivePrice }
       .map { row(SymbolMatch(info: $0)) }
       .enumerated()
       .sorted { a, b in

@@ -29,7 +29,7 @@ struct StoreTests {
 
     let back = try #require(Snapshot.read(p.snapshot))
     #expect(back.count == Snapshot.maxBars)             // 只留末 maxBars 根
-    #expect(back.symbol == "BTCUSDT")
+    #expect(back.symbol == "binance/usd_m/BTCUSDT")
     #expect(back.interval == .h1)
     #expect(back.lastTime == s.lastTime)
     for i in 0..<back.count {
@@ -103,8 +103,8 @@ struct StoreTests {
     _ = await cache.get(SeriesKey("AAAUSDT", .h1))          // A 刚用过
     await cache.put(makeSeries("CCCUSDT", .h1, count: 1000))
     let keys = await cache.keys.map(\.symbol)
-    #expect(!keys.contains("BBBUSDT"))                       // 最久没用的先走
-    #expect(keys.contains("CCCUSDT"))
+    #expect(!keys.contains("binance/usd_m/BBBUSDT"))                       // 最久没用的先走
+    #expect(keys.contains("binance/usd_m/CCCUSDT"))
     #expect(await cache.totalBytes <= 100 * 1024)
   }
 

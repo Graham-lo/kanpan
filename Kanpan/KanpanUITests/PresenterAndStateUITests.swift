@@ -198,7 +198,7 @@ final class FavoritesScrollAnchorUITests: KanpanUICase {
     XCTAssertTrue(app.openFavorites(), "没进到自选页")
     // 默认按自选顺序排，种子是什么顺序列表就是什么顺序。
     let anchorSymbol = Self.seed[13]   // APTUSDT，两屏开外
-    let anchor = app.buttons["favorites.open." + anchorSymbol]
+    let anchor = app.buttons["favorites.open." + testInstrumentKey(anchorSymbol)]
 
     // 往下滚到它露出来。
     let list = app.collectionViews.firstMatch.exists ? app.collectionViews.firstMatch

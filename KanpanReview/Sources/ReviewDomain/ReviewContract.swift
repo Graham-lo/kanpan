@@ -1,3 +1,4 @@
+import KanpanCore
 import Foundation
 
 // ============================================================ 服务器支持集合的镜像
@@ -66,6 +67,7 @@ public enum ReviewInterval: String, Sendable, Codable, CaseIterable {
 
 /// 服务端 `native_review.rs` 里那些常量，逐条搬过来。
 public enum ReviewContract {
+  public static let supportedMarkets = ["binance/usd_m", "coinbase/spot"]
   public static let venue = "binance"
   public static let market = "usd_m"
   public static let quoteSuffix = "USDT"
@@ -98,9 +100,11 @@ public enum ReviewContract {
   /// 捕获入口先问这一句，不支持就当场说，连捕获模式都不进（审查 B-06）。
   public static func captureFailure(venue: String, market: String = market, symbol: String, interval: String) -> String? {
     guard ReviewInterval(rawValue: interval) != nil else { return "这个周期暂不支持复盘，请切换周期" }
-    guard venue == Self.venue, market == Self.market else { return "这个市场暂不支持复盘" }
-    guard symbol.count <= symbolMaxLength, symbol.allSatisfy({ $0.isASCII && ($0.isUppercase || $0.isNumber) }),
-          symbol.hasSuffix(quoteSuffix) else { return "复盘目前只支持币安 USDT 永续合约" }
+    let id = symbol.contains("/") ? InstrumentID(symbol) : InstrumentID(venue: venue, market: market, symbol: symbol)
+    guard supportedMarkets.contains(id.marketKey), id.isValid else { return "这个市场暂不支持复盘" }
+    let info = SymbolInfo.placeholder(symbol: id.key)
+    guard (symbol.contains("/") || symbol == id.symbol), id.symbol.count <= symbolMaxLength,
+          (id.market == "usd_m" && info.quote == quoteSuffix && !id.symbol.contains("-")) || (id.market == "spot" && info.quote == "USD" && id.symbol.contains("-")) else { return "这个品种暂不支持复盘" }
     return nil
   }
 

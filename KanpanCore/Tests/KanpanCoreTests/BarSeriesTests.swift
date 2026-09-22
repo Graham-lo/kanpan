@@ -287,7 +287,7 @@ struct BarSeriesTests {
   func symbolInfo() {
     let s = SymbolInfo(symbol: "SOLUSDT", base: "SOL", pricePrecision: 4, quantityPrecision: 0, tickSize: 0.001)
     #expect(s.display == "SOL/USDT")
-    #expect(s.id == "SOLUSDT")
+    #expect(s.id == InstrumentID("SOLUSDT"))
     #expect(s.priceDecimals == 3)
     // tickSize 脏了就退回 pricePrecision
     let bad = SymbolInfo(symbol: "X", base: "X", pricePrecision: 5, quantityPrecision: 0, tickSize: 0)

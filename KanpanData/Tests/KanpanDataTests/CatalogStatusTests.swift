@@ -89,8 +89,8 @@ struct CatalogStatusTests {
     await gate.open()
     let (first, second) = await (a, b)
 
-    #expect(first.map(\.symbol) == ["BTCUSDT", "ETHUSDT"])
-    #expect(second.map(\.symbol) == first.map(\.symbol))   // 等待者不许拿到 []
+    #expect(first.map(\.id.symbol) == ["BTCUSDT", "ETHUSDT"])
+    #expect(second.map(\.id.symbol) == first.map(\.id.symbol))   // 等待者不许拿到 []
     #expect(await server.urls().count == 1)
   }
 
@@ -104,8 +104,8 @@ struct CatalogStatusTests {
     let catalog = SymbolCatalog(rest: rest, paths: p)
 
     let out = await catalog.all(now: 1_000 + SymbolCatalog.ttlMs + 1)
-    #expect(out.map(\.symbol) == ["BTCUSDT"])              // 退回旧表
-    #expect(try readDisk(p).list.map(\.symbol) == ["BTCUSDT"])  // 没被顶掉
+    #expect(out.map(\.id.symbol) == ["BTCUSDT"])              // 退回旧表
+    #expect(try readDisk(p).list.map(\.id.symbol) == ["BTCUSDT"])  // 没被顶掉
 
     // 空表同样不算好表。
     #expect(throws: (any Error).self) { try SymbolCatalog.validate([]) }
@@ -150,11 +150,11 @@ struct CatalogStatusTests {
 
     let list = await catalog.all(now: 1_100)                // TTL 还没到，但 schema 老了
     #expect(await server.urls().count == 1)
-    #expect(list.map(\.symbol) == ["BTCUSDT", "NEWUSDT", "OLDUSDT"])
-    #expect(list.first { $0.symbol == "OLDUSDT" }?.status == .delisted)
-    #expect(list.first { $0.symbol == "NEWUSDT" }?.status == .pending)
-    #expect(list.first { $0.symbol == "OLDUSDT" }?.status.hasLivePrice == false)
-    #expect(list.first { $0.symbol == "BTCUSDT" }?.status.hasLivePrice == true)
+    #expect(list.map(\.id.symbol) == ["BTCUSDT", "NEWUSDT", "OLDUSDT"])
+    #expect(list.first { $0.symbol == "binance/usd_m/OLDUSDT" }?.status == .delisted)
+    #expect(list.first { $0.symbol == "binance/usd_m/NEWUSDT" }?.status == .pending)
+    #expect(list.first { $0.symbol == "binance/usd_m/OLDUSDT" }?.status.hasLivePrice == false)
+    #expect(list.first { $0.symbol == "binance/usd_m/BTCUSDT" }?.status.hasLivePrice == true)
     // 落盘的那份带上了新代次，下次冷启动直接可用。
     #expect(try readDisk(p).schema == 7)
     #expect(try readDisk(p).list.count == 3)
@@ -172,17 +172,17 @@ struct CatalogStatusTests {
     await catalog.markDelisted("goneusdt")                  // 大小写不敏感
     let after = await catalog.all(now: 10_000)
     #expect(after.count == 2)                               // 一行都没少
-    #expect(after.first { $0.symbol == "GONEUSDT" }?.status == .delisted)
-    #expect(after.first { $0.symbol == "BTCUSDT" }?.status == .tradable)
+    #expect(after.first { $0.symbol == "binance/usd_m/GONEUSDT" }?.status == .delisted)
+    #expect(after.first { $0.symbol == "binance/usd_m/BTCUSDT" }?.status == .tradable)
 
     // 盘上也改了：换一个 catalog 实例（等于冷启动）读回来还是下架。
     let disk = try readDisk(p)
-    #expect(disk.list.first { $0.symbol == "GONEUSDT" }?.status == .delisted)
+    #expect(disk.list.first { $0.symbol == "binance/usd_m/GONEUSDT" }?.status == .delisted)
     let (rest2, server2) = makeREST({ _ in HTTPReply(status: 500, body: Data()) })
     let cold = SymbolCatalog(rest: rest2, paths: p)
     let back = await cold.all(now: 10_000)
     #expect(await server2.urls().isEmpty)                   // 缓存还没过期，不用出站
-    #expect(back.first { $0.symbol == "GONEUSDT" }?.status == .delisted)
+    #expect(back.first { $0.symbol == "binance/usd_m/GONEUSDT" }?.status == .delisted)
   }
 
   @Test("复核项 4 目录里没有这个代号也能标下架：补一行占位，不再默默丢掉")
@@ -192,7 +192,7 @@ struct CatalogStatusTests {
     let body = try infoBody([("BTCUSDT", "TRADING")])
     let (rest, _) = makeREST({ _ in HTTPReply(status: 200, body: body) })
     let catalog = SymbolCatalog(rest: rest, paths: p)
-    #expect(await catalog.all(now: 10_000).map(\.symbol) == ["BTCUSDT"])
+    #expect(await catalog.all(now: 10_000).map(\.id.symbol) == ["BTCUSDT"])
 
     // 一个已经从 exchangeInfo 上消失的老自选：交易所回「不认这个代号」，
     // 它却本来就不在表里。从前这儿直接 return，于是「明确下架」这件事记不下来，
@@ -200,14 +200,14 @@ struct CatalogStatusTests {
     await catalog.markDelisted("oldcoinusdt")
     let after = await catalog.all(now: 10_000)
     #expect(after.count == 2)
-    let gone = after.first { $0.symbol == "OLDCOINUSDT" }
+    let gone = after.first { $0.symbol == "binance/usd_m/OLDCOINUSDT" }
     #expect(gone?.status == .delisted)
     #expect(gone?.base == "OLDCOIN")                 // 按后缀拆出来的占位行
     #expect(gone?.pricePrecision == 0)               // 精度未知：摆价时按那口价猜
     #expect(gone?.status.hasLivePrice == false)
-    #expect(after.first { $0.symbol == "BTCUSDT" }?.status == .tradable)
+    #expect(after.first { $0.symbol == "binance/usd_m/BTCUSDT" }?.status == .tradable)
     // 落盘了：冷启动之后这一行还是下架，不会退回「未知」。
-    #expect(try readDisk(p).list.first { $0.symbol == "OLDCOINUSDT" }?.status == .delisted)
+    #expect(try readDisk(p).list.first { $0.symbol == "binance/usd_m/OLDCOINUSDT" }?.status == .delisted)
 
     // 标第二次不重复写，也不叠行。
     await catalog.markDelisted("OLDCOINUSDT")
@@ -227,14 +227,14 @@ struct CatalogStatusTests {
     // 盘上那两行一个没动：要是这会儿写一行占位下去，下一次冷启动整张品种表
     // 就只剩这一行（而且 TTL 没到，不会去重拉）。
     let disk = try readDisk(p)
-    #expect(disk.list.map(\.symbol).sorted() == ["BTCUSDT", "ETHUSDT"])
+    #expect(disk.list.map(\.id.symbol).sorted() == ["BTCUSDT", "ETHUSDT"])
     #expect(disk.list.allSatisfy { $0.status == .tradable })
     #expect(disk.at == 9_000)
     #expect(await server.urls().isEmpty)
     // 表读进来之后再标，照常生效。
     #expect(await catalog.all(now: 9_100).count == 2)
     await catalog.markDelisted("BTCUSDT")
-    #expect(await catalog.all(now: 9_100).first { $0.symbol == "BTCUSDT" }?.status == .delisted)
+    #expect(await catalog.all(now: 9_100).first { $0.symbol == "binance/usd_m/BTCUSDT" }?.status == .delisted)
   }
 
   @Test("B-T14 只有「交易所不认这个代号」才配标下架，限流地域超时都不算")
@@ -266,7 +266,7 @@ struct CatalogStatusTests {
     let catalog = SymbolCatalog(rest: rest, paths: p)
 
     let t0: Int64 = 10_000_000
-    #expect(await catalog.lookup("BTCUSDT", now: t0)?.symbol == "BTCUSDT")
+    #expect(await catalog.lookup("BTCUSDT", now: t0)?.symbol == "binance/usd_m/BTCUSDT")
     #expect(await server.urls().count == 1)                 // 头一趟是普通的 all()
 
     // 表里没有 FRESHUSDT：为用户立刻重拉一次（上游此时还是旧表，仍然没有）。
@@ -280,10 +280,10 @@ struct CatalogStatusTests {
 
     // 去抖过了，这一趟拿到它。
     let t1 = t0 + SymbolCatalog.onDemandDebounceMs + 1
-    #expect(await catalog.lookup("FRESHUSDT", now: t1)?.symbol == "FRESHUSDT")
+    #expect(await catalog.lookup("FRESHUSDT", now: t1)?.symbol == "binance/usd_m/FRESHUSDT")
     #expect(await server.urls().count == 3)
     // 已经在表里的，之后不再为它出站。
-    #expect(await catalog.lookup("FRESHUSDT", now: t1 + 1)?.symbol == "FRESHUSDT")
+    #expect(await catalog.lookup("FRESHUSDT", now: t1 + 1)?.symbol == "binance/usd_m/FRESHUSDT")
     #expect(await server.urls().count == 3)
   }
 

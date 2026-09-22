@@ -21,56 +21,56 @@ struct SymbolPrefsDurabilityTests {
 
   @Test("顶层缺 key 照常解（老存档只有 favorites / recents）")
   func missingTopLevelKeys() throws {
-    let raw = data(#"{"favorites":["BTCUSDT","ETHUSDT"],"recents":["SOLUSDT"]}"#)
+    let raw = data(#"{"favorites":["binance/usd_m/BTCUSDT","binance/usd_m/ETHUSDT"],"recents":["binance/usd_m/SOLUSDT"]}"#)
     let prefs = try JSONDecoder().decode(SymbolPrefs.self, from: raw)
-    #expect(prefs.favorites == ["BTCUSDT", "ETHUSDT"])
-    #expect(prefs.recents == ["SOLUSDT"])
+    #expect(prefs.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
+    #expect(prefs.recents == ["binance/usd_m/SOLUSDT"])
     #expect(prefs.groups.isEmpty)
   }
 
   @Test("分组里一项缺 name：只丢那一项的名字，自选一条都不能少")
   func groupMissingNameKeepsFavorites() throws {
     let raw = data(#"""
-    {"favorites":["BTCUSDT","ETHUSDT"],
+    {"favorites":["binance/usd_m/BTCUSDT","binance/usd_m/ETHUSDT"],
      "groups":[{"id":"g1","name":"加密"},{"id":"g2"}],
-     "groupForSymbol":{"BTCUSDT":"g1","ETHUSDT":"g2"}}
+     "groupForSymbol":{"binance/usd_m/BTCUSDT":"g1","binance/usd_m/ETHUSDT":"g2"}}
     """#)
     let prefs = try JSONDecoder().decode(SymbolPrefs.self, from: raw)
-    #expect(prefs.favorites == ["BTCUSDT", "ETHUSDT"])
+    #expect(prefs.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
     #expect(prefs.groups.map(\.id) == ["g1", "g2"])
-    #expect(prefs.groupForSymbol["ETHUSDT"] == "g2")
+    #expect(prefs.groupForSymbol["binance/usd_m/ETHUSDT"] == "g2")
   }
 
   @Test("分组数组里混进一个不是对象的元素：跳过它，别的分组照常在")
   func groupGarbageElementIsSkipped() throws {
     let raw = data(#"""
-    {"favorites":["BTCUSDT"],"groups":["这不是分组",{"id":"g1","name":"加密"}]}
+    {"favorites":["binance/usd_m/BTCUSDT"],"groups":["这不是分组",{"id":"g1","name":"加密"}]}
     """#)
     let prefs = try JSONDecoder().decode(SymbolPrefs.self, from: raw)
-    #expect(prefs.favorites == ["BTCUSDT"])
+    #expect(prefs.favorites == ["binance/usd_m/BTCUSDT"])
     #expect(prefs.groups.map(\.id) == ["g1"])
   }
 
   @Test("scoredAt 写成字符串：只有它回默认，自选 / 分组 / 置顶全留着")
   func typeMismatchFallsBackToDefaultOnly() throws {
     let raw = data(#"""
-    {"favorites":["BTCUSDT","ETHUSDT"],"pinned":["BTCUSDT"],
-     "groups":[{"id":"g1","name":"加密"}],"groupForSymbol":{"BTCUSDT":"g1"},
-     "viewScores":{"BTCUSDT":3.5},"scoredAt":"2026-09-19"}
+    {"favorites":["binance/usd_m/BTCUSDT","binance/usd_m/ETHUSDT"],"pinned":["binance/usd_m/BTCUSDT"],
+     "groups":[{"id":"g1","name":"加密"}],"groupForSymbol":{"binance/usd_m/BTCUSDT":"g1"},
+     "viewScores":{"binance/usd_m/BTCUSDT":3.5},"scoredAt":"2026-09-19"}
     """#)
     let prefs = try JSONDecoder().decode(SymbolPrefs.self, from: raw)
-    #expect(prefs.favorites == ["BTCUSDT", "ETHUSDT"])
-    #expect(prefs.pinned == ["BTCUSDT"])
+    #expect(prefs.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
+    #expect(prefs.pinned == ["binance/usd_m/BTCUSDT"])
     #expect(prefs.groups.map(\.id) == ["g1"])
-    #expect(prefs.viewScores["BTCUSDT"] == 3.5)
+    #expect(prefs.viewScores["binance/usd_m/BTCUSDT"] == 3.5)
     #expect(prefs.scoredAt == 0)
   }
 
   @Test("自选数组里混进一个数字：跳过它，剩下的代号全在")
   func garbageFavoriteElementIsSkipped() throws {
-    let raw = data(#"{"favorites":["BTCUSDT",7,"ETHUSDT"]}"#)
+    let raw = data(#"{"favorites":["binance/usd_m/BTCUSDT",7,"binance/usd_m/ETHUSDT"]}"#)
     let prefs = try JSONDecoder().decode(SymbolPrefs.self, from: raw)
-    #expect(prefs.favorites == ["BTCUSDT", "ETHUSDT"])
+    #expect(prefs.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
   }
 
   // ---------------------------------------------------------------- 读盘的两种「读不出来」
@@ -125,14 +125,14 @@ struct SymbolPrefsDurabilityTests {
   @MainActor
   func prepareKeepsFavoritesWhenOneGroupIsBroken() throws {
     let raw = data(#"""
-    {"favorites":["BTCUSDT","ETHUSDT"],"groups":[{"id":"g1","name":"加密"},{"id":"g2"}],
+    {"favorites":["binance/usd_m/BTCUSDT","binance/usd_m/ETHUSDT"],"groups":[{"id":"g1","name":"加密"},{"id":"g2"}],
      "scoredAt":"坏了"}
     """#)
     let storage = MemoryPrefsStorage(["kanpan.symbols.v1": raw])
     let store = SymbolPrefsStore(storage: storage)
     try prepareLikeBridge(store, storage: storage, key: SymbolPrefsStore.defaultsKey)
     let after = SymbolPrefsStore(storage: storage)
-    #expect(try after.read().favorites == ["BTCUSDT", "ETHUSDT"])
+    #expect(try after.read().favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
     #expect(try after.read().groups.map(\.id) == ["g1", "g2"])
   }
 }

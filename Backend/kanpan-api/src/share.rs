@@ -53,8 +53,13 @@ async fn remove_friend(State(s):State<AppState>,who:Identity,Route(name):Route<S
  sqlx::query("DELETE FROM friendships WHERE user_id=$1 AND friend_id IN (SELECT id FROM account_users WHERE email=$2)").bind(who.user).bind(name).execute(&mut *tx).await?;
  tx.commit().await?;Ok(envelope(json!({"ok":true})))
 }
+fn share_identity(symbol:&str)->(&str,&str,&str) {
+ let parts:Vec<_>=symbol.split('/').collect();
+ if parts.len()==3 {(parts[0],parts[1],parts[2])} else {("binance","usd_m",symbol)}
+}
 fn validate(v:&Send)->Result<()> {
- if !sync_validation::field("drawings","symbol",&json!(v.symbol)) || !INTERVALS.contains(&v.interval.as_str()) || v.view.from<0 || v.view.to>9_000_000_000_000_000 || v.view.from>=v.view.to || !(1..=200).contains(&v.drawings.len()) {return Err(ApiError::bad("invalid_share"))}
+ let (venue,market,symbol)=share_identity(&v.symbol);
+ if !sync_validation::field("drawings","symbol",&json!(symbol)) || !sync_validation::identity(venue,market,symbol) || !INTERVALS.contains(&v.interval.as_str()) || v.view.from<0 || v.view.to>9_000_000_000_000_000 || v.view.from>=v.view.to || !(1..=200).contains(&v.drawings.len()) {return Err(ApiError::bad("invalid_share"))}
  let mut ids=HashSet::new();
  for drawing in &v.drawings {
   let map=drawing.as_object().ok_or(ApiError::bad("invalid_drawing"))?;
@@ -68,8 +73,9 @@ fn validate(v:&Send)->Result<()> {
    body.insert(if key=="points" {"anchors".into()} else {key.clone()},value.clone());
   }
   for key in ["kind","anchors","lineWidth","dash","filled","locked","hidden","levels"] {if !body.contains_key(key) {return Err(ApiError::bad("invalid_drawing"))}}
-  body.insert("symbol".into(),json!(v.symbol));
-  sync_validation::object(&sync::Object{collection:"drawings".into(),id:format!("binance/usd_m/{}/{id}",v.symbol),body,fields:BTreeMap::new(),revision:0,deleted:false,generation:0})?;
+  body.insert("symbol".into(),json!(symbol));
+  body.insert("venue".into(),json!(venue)); body.insert("market".into(),json!(market));
+  sync_validation::object(&sync::Object{collection:"drawings".into(),id:format!("{venue}/{market}/{symbol}/{id}"),body,fields:BTreeMap::new(),revision:0,deleted:false,generation:0})?;
  }
  if v.reply_to.as_deref().is_some_and(|r|r.len()!=22||!r.bytes().all(|b|b.is_ascii_alphanumeric())) {return Err(ApiError::bad("invalid_reply_to"))}
  if v.alerted.len()>ids.len() || v.alerted.iter().any(|id|!ids.contains(id.as_str())) || v.alerted.iter().collect::<HashSet<_>>().len()!=v.alerted.len() {return Err(ApiError::bad("invalid_alerted"))} Ok(())
@@ -90,7 +96,8 @@ async fn send(State(s):State<AppState>,who:Identity,Payload(v):Payload<Send>)->R
   if !ok {return Err(ApiError::bad("invalid_reply_to"))}
  }
  let id=Alphanumeric.sample_string(&mut rand::rng(),22);
- sqlx::query("INSERT INTO shares(id,from_user,to_user,symbol,interval,view_from,view_to,drawings,alerted,reply_to) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)").bind(&id).bind(who.user).bind(other).bind(v.symbol).bind(v.interval).bind(v.view.from).bind(v.view.to).bind(json!(v.drawings)).bind(json!(v.alerted)).bind(&v.reply_to).execute(&mut *tx).await?;
+  let (venue,market,_)=share_identity(&v.symbol); let market_key=format!("{venue}/{market}");
+  sqlx::query("INSERT INTO shares(id,from_user,to_user,symbol,interval,view_from,view_to,drawings,alerted,market,reply_to) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)").bind(&id).bind(who.user).bind(other).bind(v.symbol).bind(v.interval).bind(v.view.from).bind(v.view.to).bind(json!(v.drawings)).bind(json!(v.alerted)).bind(market_key).bind(&v.reply_to).execute(&mut *tx).await?;
  tx.commit().await?;Ok(envelope(json!({"id":id})))
 }
 async fn inbox(State(s):State<AppState>,who:Identity,Params(v):Params<Cursor>)->Result<Json<Value>> {

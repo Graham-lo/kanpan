@@ -1,3 +1,4 @@
+import KanpanCore
 import Foundation
 
 /// 连续扫图（§10.1）：从自选某个分类、或某个板块的品种列表走进图表时，把**那一刻**
@@ -18,7 +19,7 @@ struct ScanList: Equatable, Sendable {
     var seen = Set<String>()
     var out: [String] = []
     for raw in symbols {
-      let key = raw.uppercased()
+      let key = InstrumentID.canonical(raw)
       guard !key.isEmpty, seen.insert(key).inserted else { continue }
       out.append(key)
     }
@@ -29,7 +30,7 @@ struct ScanList: Equatable, Sendable {
   var isScannable: Bool { symbols.count > 1 }
 
   func index(of symbol: String) -> Int? {
-    symbols.firstIndex(of: symbol.uppercased())
+    symbols.firstIndex(of: InstrumentID.canonical(symbol))
   }
 
   /// 从 `symbol` 往某个方向走一只。到头不循环。

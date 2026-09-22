@@ -37,7 +37,7 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
 
   /// 代号后面那截计价币。`BTCUSDT` → `USDT`。
   var quoteText: String {
-    symbol.hasPrefix(base) ? String(symbol.dropFirst(base.count)) : ""
+    SymbolInfo.placeholder(symbol: symbol).quote
   }
 
   /// 价格小数位由**品种自己**说（`SymbolInfo.priceDecimals`），和顶栏、图表、

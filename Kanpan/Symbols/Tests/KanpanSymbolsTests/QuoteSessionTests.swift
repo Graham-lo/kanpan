@@ -7,31 +7,31 @@ struct QuoteSessionTests {
   @Test func lateRESTCannotOverwriteWS() {
     var session = QuoteSession()
     let now = Date(timeIntervalSince1970: 100)
-    let request = session.request("BTCUSDT", now: now)
-    #expect(session.accepts(request, symbol: "BTCUSDT", now: now.addingTimeInterval(1)))
-    session.receive("ETHUSDT")
-    #expect(session.accepts(request, symbol: "BTCUSDT", now: now.addingTimeInterval(1)))
-    session.receive("BTCUSDT")
-    #expect(!session.accepts(request, symbol: "BTCUSDT", now: now.addingTimeInterval(1)))
+    let request = session.request("binance/usd_m/BTCUSDT", now: now)
+    #expect(session.accepts(request, symbol: "binance/usd_m/BTCUSDT", now: now.addingTimeInterval(1)))
+    session.receive("binance/usd_m/ETHUSDT")
+    #expect(session.accepts(request, symbol: "binance/usd_m/BTCUSDT", now: now.addingTimeInterval(1)))
+    session.receive("binance/usd_m/BTCUSDT")
+    #expect(!session.accepts(request, symbol: "binance/usd_m/BTCUSDT", now: now.addingTimeInterval(1)))
   }
   @Test func previousForegroundRequestIsRejected() {
     var session = QuoteSession()
     let now = Date(timeIntervalSince1970: 100)
-    let request = session.request("BTCUSDT", now: now)
+    let request = session.request("binance/usd_m/BTCUSDT", now: now)
     session.reset()
-    #expect(!session.accepts(request, symbol: "BTCUSDT", now: now.addingTimeInterval(1)))
-    #expect(session.accepts(session.request("BTCUSDT", now: now), symbol: "BTCUSDT", now: now))
+    #expect(!session.accepts(request, symbol: "binance/usd_m/BTCUSDT", now: now.addingTimeInterval(1)))
+    #expect(session.accepts(session.request("binance/usd_m/BTCUSDT", now: now), symbol: "binance/usd_m/BTCUSDT", now: now))
   }
   @Test func slowResponseDoesNotBecomeLivePrice() {
     let session = QuoteSession(), now = Date(timeIntervalSince1970: 100)
-    let request = session.request("BTCUSDT", now: now)
-    #expect(session.accepts(request, symbol: "BTCUSDT", now: now.addingTimeInterval(8)))
-    #expect(!session.accepts(request, symbol: "BTCUSDT", now: now.addingTimeInterval(8.1)))
-    #expect(!session.accepts(request, symbol: "BTCUSDT", now: now.addingTimeInterval(-1)))
+    let request = session.request("binance/usd_m/BTCUSDT", now: now)
+    #expect(session.accepts(request, symbol: "binance/usd_m/BTCUSDT", now: now.addingTimeInterval(8)))
+    #expect(!session.accepts(request, symbol: "binance/usd_m/BTCUSDT", now: now.addingTimeInterval(8.1)))
+    #expect(!session.accepts(request, symbol: "binance/usd_m/BTCUSDT", now: now.addingTimeInterval(-1)))
   }
   @Test func foregroundFavoritesStaySubscribedAcrossPages() {
-    #expect(QuoteSubscriptionPlan.needsConnection(foreground: true, favorites: ["BTCUSDT"], visible: false))
-    #expect(!QuoteSubscriptionPlan.needsConnection(foreground: false, favorites: ["BTCUSDT"], visible: true))
+    #expect(QuoteSubscriptionPlan.needsConnection(foreground: true, favorites: ["binance/usd_m/BTCUSDT"], visible: false))
+    #expect(!QuoteSubscriptionPlan.needsConnection(foreground: false, favorites: ["binance/usd_m/BTCUSDT"], visible: true))
     #expect(!QuoteSubscriptionPlan.needsConnection(foreground: true, favorites: [], visible: false))
     let favorites = (0..<100).map { "S\($0)" }
     let wanted = QuoteSubscriptionPlan.symbols(favorites: favorites, visible: ["VISIBLE", "S0"])
@@ -48,16 +48,16 @@ struct QuoteSessionTests {
   @Test func alertedSymbolsAreAlwaysSubscribed() {
     let favorites = (0..<100).map { "S\($0)" }
     let wanted = QuoteSubscriptionPlan.symbols(favorites: favorites, visible: ["S0"],
-                                               alerted: ["ETHUSDT", "S3"])
-    #expect(wanted.contains("ETHUSDT"))
+                                               alerted: ["binance/usd_m/ETHUSDT", "S3"])
+    #expect(wanted.contains("binance/usd_m/ETHUSDT"))
     // 已经在名额里的不重复排一遍。
     #expect(wanted.filter { $0 == "S3" }.count == 1)
     #expect(Set(wanted).count == wanted.count)
     #expect(wanted.count == 65)
     // 光有提醒、没有自选也没有可见行，也得把连接拉起来。
     #expect(QuoteSubscriptionPlan.needsConnection(foreground: true, favorites: [], visible: false,
-                                                  alerted: ["ETHUSDT"]))
+                                                  alerted: ["binance/usd_m/ETHUSDT"]))
     #expect(!QuoteSubscriptionPlan.needsConnection(foreground: false, favorites: [], visible: false,
-                                                   alerted: ["ETHUSDT"]))
+                                                   alerted: ["binance/usd_m/ETHUSDT"]))
   }
 }

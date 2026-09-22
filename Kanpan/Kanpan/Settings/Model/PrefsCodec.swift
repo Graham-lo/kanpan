@@ -306,7 +306,7 @@ extension Prefs: Codable {
     if let v = bool(.favoritesAmount) { favoritesAmount = v }
     if let v = bool(.favoritesSparkline) { favoritesSparkline = v }
     // 展开的行数按自选条数走，理论上不会多，但存档里躺着一份没有上限的名单不是好事。
-    if let raw = strs(.favoritesExpanded) { favoritesExpanded = Set(raw.filter { !$0.isEmpty }.prefix(Prefs.maxExpanded)) }
+    if let raw = strs(.favoritesExpanded) { favoritesExpanded = Set(raw.filter { !$0.isEmpty }.prefix(Prefs.maxExpanded).map(InstrumentID.canonical)) }
     // 分类 id 是本机生成的 UUID 串，认不认得出交给 `SymbolPrefs.group(_:)`；
     // 这儿只拦长度，128 这个数和服务端 `sync_validation.rs` 给它的上限逐字相同。
     if let raw = str(.favoritesGroup), raw.count <= 128 { favoritesGroup = raw }

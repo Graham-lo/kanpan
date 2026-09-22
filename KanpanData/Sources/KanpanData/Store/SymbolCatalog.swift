@@ -125,7 +125,7 @@ public actor SymbolCatalog {
   }
 
   public func find(_ symbol: String) async -> SymbolInfo? {
-    let s = symbol.uppercased()
+    let s = InstrumentID.canonical(symbol)
     return await all().first { $0.symbol == s }
   }
 
@@ -137,7 +137,7 @@ public actor SymbolCatalog {
   /// 不去打第二趟。
   public func lookup(_ symbol: String,
                      now: Int64 = Int64(Date().timeIntervalSince1970 * 1000)) async -> SymbolInfo? {
-    let s = symbol.uppercased()
+    let s = InstrumentID.canonical(symbol)
     if let hit = await all(now: now).first(where: { $0.symbol == s }) { return hit }
     guard now - lastOnDemandMs >= Self.onDemandDebounceMs else { return nil }
     lastOnDemandMs = now
@@ -156,7 +156,7 @@ public actor SymbolCatalog {
   /// 这条唯一的写入口就是两者的分界线。占位行只有代号是真的，
   /// 精度留 0，界面按最后看到的价自己猜小数位。
   public func markDelisted(_ symbol: String) {
-    let s = symbol.uppercased()
+    let s = InstrumentID.canonical(symbol)
     // 手里根本还没有品种表（冷启动第一帧就开了一张图）：什么都不写。
     // 那会拿一张只有这一行的表顶掉盘上那份好表，下次冷启动连品种页都打不开。
     guard !symbols.isEmpty else { return }

@@ -53,7 +53,7 @@ final class KeyboardUsabilityUITests: KanpanUICase {
     // 四、键盘不压输入框，也不压第一条结果。
     let top = keyboardTop()
     XCTAssertLessThan(field.frame.maxY, top, "搜索框被键盘盖住了（框底 \(field.frame.maxY)，键盘顶 \(top)）")
-    let row = app.buttons["symbols.row.BTCUSDT"]
+    let row = app.buttons["symbols.row.binance/usd_m/BTCUSDT"]
     expectExists(row, Self.long, "搜 BTC 没出 BTCUSDT 这一行")
     XCTAssertLessThan(row.frame.maxY, top,
                       "第一条结果压在键盘底下（行底 \(row.frame.maxY)，键盘顶 \(top)）")

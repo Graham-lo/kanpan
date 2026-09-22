@@ -44,7 +44,7 @@ final class ScanAndDetailZoomUITests: KanpanUICase {
   /// 从自选页点一行进图。顺带把「这一趟的名单」冻结下来。
   private func openFromFavorites(_ symbol: String) {
     XCTAssertTrue(app.openFavorites(), "进不了自选页")
-    let row = app.buttons["favorites.open." + symbol]
+    let row = app.buttons["favorites.open." + testInstrumentKey(symbol)]
     expectExists(row, Self.long, "自选页上没有 \(symbol) 这一行")
     row.tap()
     XCTAssertTrue(waitUntil(timeout: Self.long) { self.symbolOnChart() == symbol },

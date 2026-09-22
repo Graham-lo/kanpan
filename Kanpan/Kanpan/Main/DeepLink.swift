@@ -1,3 +1,4 @@
+import KanpanCore
 import Foundation
 import Observation
 
@@ -60,6 +61,12 @@ enum DeepLink: Equatable {
     guard let route = parts.first?.lowercased() else { return nil }
     let rest = Array(parts.dropFirst())
     switch (route, rest.count) {
+    case ("symbol", 3):
+      guard let symbol = normalized(symbol: rest.joined(separator: "/")) else { return nil }
+      return .symbol(symbol, interval: query(url, "interval"))
+    case ("drawing", 4):
+      guard let symbol = normalized(symbol: rest.prefix(3).joined(separator: "/")), !rest[3].isEmpty else { return nil }
+      return .drawing(symbol: symbol, drawingID: rest[3])
     case ("symbol", 1):
       guard let symbol = normalized(symbol: rest[0]) else { return nil }
       return .symbol(symbol, interval: query(url, "interval"))
@@ -113,10 +120,9 @@ enum DeepLink: Equatable {
   /// 品种代号：一律大写，只收字母数字（`1000PEPEUSDT` 这种带数字的是正常的）。
   /// 收不住的形状（空、带斜杠或点、超长）一律当认不出来。
   private static func normalized(symbol: String) -> String? {
-    let upper = symbol.uppercased()
-    guard (1...32).contains(upper.count) else { return nil }
-    guard upper.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) else { return nil }
-    return upper
+    let id = InstrumentID(symbol)
+    guard id.isValid, id.symbol.count <= 32, !id.symbol.contains("_") else { return nil }
+    return id.key
   }
 }
 

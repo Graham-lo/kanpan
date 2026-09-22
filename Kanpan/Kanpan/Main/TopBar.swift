@@ -38,12 +38,9 @@ struct TopBar: View {
   /// 「BTCUSDT」拆成「BTC」+「/USDT」：基础币用正文色、计价币降一级，
   /// 一眼扫过去认的是前半截。
   private var base: String {
-    for quote in ["USDT", "USDC", "USD", "BUSD", "FDUSD"] where symbol.hasSuffix(quote) && symbol.count > quote.count {
-      return String(symbol.dropLast(quote.count))
-    }
-    return symbol
+    SymbolInfo.placeholder(symbol: symbol).base
   }
-  private var quote: String { String(symbol.dropFirst(base.count)) }
+  private var quote: String { SymbolInfo.placeholder(symbol: symbol).quote }
 
   var body: some View {
     HStack(spacing: 9) {
@@ -75,7 +72,7 @@ struct TopBar: View {
         .lineLimit(1)
       }
       .accessibilityElement(children: .combine)
-      .accessibilityLabel("当前品种 \(symbol)")
+      .accessibilityLabel("当前品种 \(InstrumentID(symbol).symbol)")
       .accessibilityIdentifier("top.symbol")
 
       Spacer(minLength: 0)

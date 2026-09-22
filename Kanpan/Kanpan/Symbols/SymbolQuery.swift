@@ -96,7 +96,7 @@ enum SymbolQuery {
   /// 单个品种的命中判定。`q` 必须已经归一化。
   static func match(_ info: SymbolInfo, query q: String) -> SymbolMatch? {
     guard !q.isEmpty else { return SymbolMatch(info: info) }
-    let symbol = Array(info.symbol.uppercased())
+    let symbol = Array(info.id.symbol.uppercased())
     let base = Array(info.base.uppercased())
     let needle = Array(q)
 

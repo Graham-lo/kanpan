@@ -6,7 +6,7 @@ public enum LatestQuote {
   public static func accepts(_ next: Ticker, after current: Ticker?) -> Bool {
     guard next.last.isFinite, next.last > 0 else { return false }
     guard let current else { return true }
-    guard next.symbol.uppercased() == current.symbol.uppercased() else { return false }
+    guard InstrumentID.canonical(next.symbol) == InstrumentID.canonical(current.symbol) else { return false }
     if let a = next.lastTradeID, let b = current.lastTradeID, a < b { return false }
     switch (next.timeMs, current.timeMs) {
     case let (a?, b?):
@@ -27,8 +27,8 @@ public enum LatestQuote {
   }
 
   public static func newest(_ a: Ticker?, _ b: Ticker?, symbol: String) -> Ticker? {
-    let a = a.flatMap { $0.symbol.uppercased() == symbol.uppercased() ? $0 : nil }
-    let b = b.flatMap { $0.symbol.uppercased() == symbol.uppercased() ? $0 : nil }
+    let a = a.flatMap { InstrumentID.canonical($0.symbol) == InstrumentID.canonical(symbol) ? $0 : nil }
+    let b = b.flatMap { InstrumentID.canonical($0.symbol) == InstrumentID.canonical(symbol) ? $0 : nil }
     guard let b else { return a }
     return accepts(b, after: a) ? b : a
   }
@@ -41,7 +41,7 @@ public struct TradeQuote: Sendable, Equatable {
   public var timeMs: Int64
   public var tradeID: Int64
   public init(symbol: String, price: Double, timeMs: Int64, tradeID: Int64) {
-    self.symbol = symbol; self.price = price; self.timeMs = timeMs; self.tradeID = tradeID
+    self.symbol = InstrumentID.canonical(symbol); self.price = price; self.timeMs = timeMs; self.tradeID = tradeID
   }
 }
 

@@ -18,11 +18,11 @@ struct FuturesDataRESTTests {
     return (BinanceREST(transport: FakeTransport(server), limiter: limiter, pacer: pacer), server, limiter)
   }
 
-  @Test("多空比：账户数比和两边占比都解得出，请求打在 globalLongShortAccountRatio 上")
-  func longShortRatio() async throws {
+  @Test("多空比：账户数比和两边占比都解得出，请求打在 globalLongShortAccountRatio 上", arguments: ["BTCUSDT", "binance/usd_m/BTCUSDT"])
+  func longShortRatio(identity: String) async throws {
     let payload = #"[{"symbol":"BTCUSDT","longAccount":"0.4632","longShortRatio":"0.8629","shortAccount":"0.5368","timestamp":1790046000000}]"#
     let (client, server, _) = rest { _ in json(payload) }
-    let points = try await client.globalLongShortAccountRatio(symbol: "BTCUSDT", period: "5m", limit: 500)
+    let points = try await client.globalLongShortAccountRatio(symbol: identity, period: "5m", limit: 500)
     #expect(points.count == 1)
     #expect(points[0].timeMs == 1_790_046_000_000)
     #expect(points[0].ratio == 0.8629)
@@ -34,11 +34,11 @@ struct FuturesDataRESTTests {
   }
 
   /// 路径写成驼峰的 `takerLongShortRatio` 会 404。这条用例钉的就是那串小写。
-  @Test("主动买卖比：路径是全小写的 takerlongshortRatio，响应里没有 symbol 也照解")
-  func takerRatio() async throws {
+  @Test("主动买卖比：路径是全小写的 takerlongshortRatio，响应里没有 symbol 也照解", arguments: ["BTCUSDT", "binance/usd_m/BTCUSDT"])
+  func takerRatio(identity: String) async throws {
     let payload = #"[{"buySellRatio":"1.3692","sellVol":"186.4380","buyVol":"255.2790","timestamp":1790045700000}]"#
     let (client, server, _) = rest { _ in json(payload) }
-    let points = try await client.takerLongShortRatio(symbol: "BTCUSDT", period: "5m", limit: 500)
+    let points = try await client.takerLongShortRatio(symbol: identity, period: "5m", limit: 500)
     #expect(points.count == 1)
     #expect(points[0].buySellRatio == 1.3692)
     #expect(points[0].buyVolume == 255.2790)
@@ -48,11 +48,11 @@ struct FuturesDataRESTTests {
 
   /// 这条最容易写错两处：合约价的字段名是 `futuresPrice`（不是 `contractPrice`），
   /// 以及 `annualizedBasisRate` 实测就是空串——空串不能把整条记录判废。
-  @Test("基差：pair + contractType 两个参数，futuresPrice 解得出，年化空串不判废")
-  func basis() async throws {
+  @Test("基差：pair + contractType 两个参数，futuresPrice 解得出，年化空串不判废", arguments: ["BTCUSDT", "binance/usd_m/BTCUSDT"])
+  func basis(identity: String) async throws {
     let payload = #"[{"indexPrice":"85696.35239130","contractType":"PERPETUAL","basisRate":"-0.0003","futuresPrice":"85668.80","annualizedBasisRate":"","basis":"-27.55239130","pair":"BTCUSDT","timestamp":1790045700000}]"#
     let (client, server, _) = rest { _ in json(payload) }
-    let points = try await client.basis(pair: "BTCUSDT", period: "5m", limit: 500)
+    let points = try await client.basis(pair: identity, period: "5m", limit: 500)
     #expect(points.count == 1)                       // 空串没有把这条扔掉
     #expect(points[0].annualizedBasisRate == nil)    // 但它本身当「没有」
     #expect(points[0].basis == -27.55239130)

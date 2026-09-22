@@ -9,8 +9,8 @@ import PackageDescription
 // SwiftPM 包，`Sources/KanpanDeepLink/` 下是**指向真身的符号链接**，一份代码
 // 两处编，不会各自走样。
 //
-// 零依赖是故意的：`DeepLink` 只认 URL，不认品种表、不认周期枚举（`interval`
-// 原样是个字符串，翻译成 `Interval` 是 `MainScreen` 的事）。这样这条跑道在 mac 上
+// `DeepLink` 只依赖 Core 的品种身份，不依赖品种目录；周期翻译仍由界面负责。
+// 这条跑道在 mac 上
 // `swift test` 全速跑，不用起模拟器，也就能挂进 `make app-logic-test`。
 //
 // 跑：cd Kanpan/DeepLink && swift test（或 make deeplink-test）
@@ -21,9 +21,11 @@ let package = Package(
   products: [
     .library(name: "KanpanDeepLink", targets: ["KanpanDeepLink"]),
   ],
+  dependencies: [.package(path: "../../KanpanCore")],
   targets: [
     .target(
       name: "KanpanDeepLink",
+      dependencies: [.product(name: "KanpanCore", package: "KanpanCore")],
       path: "Sources/KanpanDeepLink"
     ),
     .testTarget(

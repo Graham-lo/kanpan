@@ -1,3 +1,4 @@
+import KanpanCore
 import UIKit
 
 // ============================================================ 快捷入口的接线
@@ -52,7 +53,7 @@ enum HomeShortcutsBridge {
       return .search
     case HomeShortcuts.symbolType:
       guard let symbol = item.userInfo?[HomeShortcuts.symbolKey] as? String, !symbol.isEmpty else { return nil }
-      return .symbol(symbol.uppercased(), interval: nil)
+      return .symbol(InstrumentID.canonical(symbol), interval: nil)
     default:
       return nil
     }

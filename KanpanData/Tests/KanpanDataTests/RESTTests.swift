@@ -14,7 +14,7 @@ struct RESTTests {
     guard case .tickerBatch(let batch) = envelope.payload else { Issue.record("没有解出全市场报价"); return }
     #expect(batch.count == 2)
     #expect(batch[0].open24h == 102.5)
-    #expect(batch[0].symbol == "SNDKUSDT" && batch[0].last == 100.25 && batch[0].changePercent == -2.3)
+    #expect(batch[0].symbol == "binance/usd_m/SNDKUSDT" && batch[0].last == 100.25 && batch[0].changePercent == -2.3)
   }
 
   @Test("USDT TradFi全保留，USD1、普通USDC、交割排除；停牌的行留在表里带下架标记；旧目录即时刷新")
@@ -30,10 +30,10 @@ struct RESTTests {
     // 停牌那一行（STOPUSDT）现在**留在表里**，带 `.delisted`（审查 B-06）：
     // 扔掉它等于把「已下架」和「根本不存在」压成同一件事。
     let parsed = try BinanceREST.parseExchangeInfo(body)
-    #expect(parsed.map(\.symbol) == (Array(names.prefix(4)) + ["STOPUSDT"]).sorted())
-    #expect(parsed.filter { $0.status.hasLivePrice }.map(\.symbol) == Array(names.prefix(4)).sorted())
-    #expect(parsed.first { $0.symbol == "STOPUSDT" }?.status == .delisted)
-    #expect(parsed.first { $0.symbol == "SPCXUSD1" } == nil)
+    #expect(parsed.map(\.id.symbol) == (Array(names.prefix(4)) + ["STOPUSDT"]).sorted())
+    #expect(parsed.filter { $0.status.hasLivePrice }.map(\.id.symbol) == Array(names.prefix(4)).sorted())
+    #expect(parsed.first { $0.symbol == "binance/usd_m/STOPUSDT" }?.status == .delisted)
+    #expect(parsed.first { $0.symbol == "binance/usd_m/SPCXUSD1" } == nil)
     let server = FakeServer { _ in HTTPReply(status: 200, body: body) }
     let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("catalog-\(UUID())")
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -73,17 +73,17 @@ struct RESTTests {
   func exchangeInfo() throws {
     let list = try BinanceREST.parseExchangeInfo(Fixture.data("exchangeInfo-sample.json"))
     // 样本里塞了 USDC 永续（滤掉）和 SETTLING 的负样本（留着，带 `.delisted`）。
-    #expect(list.filter { $0.status.hasLivePrice }.map(\.symbol)
+    #expect(list.filter { $0.status.hasLivePrice }.map(\.id.symbol)
               == ["1000BONKUSDT", "BTCUSDT", "ETHUSDT", "SOLUSDT"])
-    #expect(list.filter { $0.status == .delisted }.map(\.symbol)
+    #expect(list.filter { $0.status == .delisted }.map(\.id.symbol)
               == ["DEFIUSDT", "MKRUSDT", "OMGUSDT", "WAVESUSDT"])
-    let btc = try #require(list.first { $0.symbol == "BTCUSDT" })
+    let btc = try #require(list.first { $0.symbol == "binance/usd_m/BTCUSDT" })
     #expect(btc.base == "BTC")
     #expect(btc.quote == "USDT")
     #expect(btc.tickSize == 0.1)
     #expect(btc.pricePrecision == 2)
     #expect(btc.priceDecimals == 1)          // tickSize 0.1 → 小数 1 位
-    let bonk = try #require(list.first { $0.symbol == "1000BONKUSDT" })
+    let bonk = try #require(list.first { $0.symbol == "binance/usd_m/1000BONKUSDT" })
     #expect(bonk.tickSize == 0.000001)
     #expect(bonk.priceDecimals == 6)
   }

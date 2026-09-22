@@ -212,7 +212,7 @@ public actor MarketFeed {
     gapFrom = 0
     takerBucket = TakerBucket(startedAt: Int64(clock().timeIntervalSince1970 * 1000)); lastTakerEmitMs = -Double.infinity
     emit(.takerTail(nil)); emit(.depth(nil))
-    symbol = newSymbol.uppercased()
+    symbol = InstrumentID.canonical(newSymbol)
     interval = newInterval
     let key = SeriesKey(symbol, interval)
 
@@ -511,7 +511,7 @@ public actor MarketFeed {
     case .payload(let p):
       switch p {
       case .kline(let k):
-        guard k.symbol.uppercased() == symbol, k.interval == interval.source.rawValue else { return }
+        guard InstrumentID.canonical(k.symbol) == symbol, k.interval == interval.source.rawValue else { return }
         guard k.bar.isValidMarketBar else { return }
         lastKlineReceivedMs = received
         if k.eventTime > 0, let id = k.lastTradeID {
@@ -519,7 +519,7 @@ public actor MarketFeed {
         }
         applyKline(k, now: received)
       case .aggTrade(let trade):
-        guard takerEnabled, trade.symbol.uppercased() == symbol else { return }
+        guard takerEnabled, InstrumentID.canonical(trade.symbol) == symbol else { return }
         takerBucket.add(time: trade.timeMs, quantity: trade.qty, buyer: trade.takerIsBuyer,
                         id: trade.aggID, interval: interval)
         if received - lastTakerEmitMs >= 100 {
@@ -527,24 +527,24 @@ public actor MarketFeed {
           emit(.takerTail(takerBucket.point))
         }
       case .depth(let snapshot):
-        guard depthEnabled, snapshot.symbol.uppercased() == symbol else { return }
+        guard depthEnabled, InstrumentID.canonical(snapshot.symbol) == symbol else { return }
         emit(.depth(OrderBook(symbol: symbol, time: snapshot.timeMs,
           bids: snapshot.bids.map { .init(price: $0.price, quantity: $0.qty) },
           asks: snapshot.asks.map { .init(price: $0.price, quantity: $0.qty) })))
       case .ticker(let t):
-        if t.symbol.uppercased() == symbol {
+        if InstrumentID.canonical(t.symbol) == symbol {
           lastTickerReceivedMs = received
           emit(.ticker(t))
         }
       case .markPrice(let s, let px, let tick):
-        if s.uppercased() == symbol { emit(.markPrice(symbol: s, price: px, tick: tick)) }
+        if InstrumentID.canonical(s) == symbol { emit(.markPrice(symbol: InstrumentID.canonical(s), price: px, tick: tick)) }
       case .trade(let t):
-        guard t.symbol.uppercased() == symbol else { return }
+        guard InstrumentID.canonical(t.symbol) == symbol else { return }
         lastTradeMs = max(lastTradeMs, t.timeMs)
         foldTick(price: t.price, qty: t.qty, timeMs: t.timeMs, allowAppend: true,
                  tradeID: t.tradeID, now: received)
       case .bookTicker(let s, let bid, let ask, let ms):
-        guard s.uppercased() == symbol, bid.isFinite, ask.isFinite, bid > 0, ask > 0, bid <= ask
+        guard InstrumentID.canonical(s) == symbol, bid.isFinite, ask.isFinite, bid > 0, ask > 0, bid <= ask
         else { return }
         // 成交还在推就别插手：真成交价才是最新价。
         guard ms - lastTradeMs > quoteTakeoverMs else { return }

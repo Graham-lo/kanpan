@@ -24,7 +24,7 @@ struct SymbolPrefsSeedIsolationTests {
   @Test("隔离仓上照常灌种子")
   func seedsIsolatedStore() {
     let seeded = SymbolPrefsStore.testSeed(environment: Self.environment, isolated: true)
-    #expect(seeded?.favorites == ["BTCUSDT", "ETHUSDT"])
+    #expect(seeded?.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
   }
 
   /// 真账号档案上一个字都不许灌。
@@ -36,7 +36,7 @@ struct SymbolPrefsSeedIsolationTests {
   /// 不在测试模式里，连隔离仓也不给。
   @Test("没开测试模式就没有种子这回事")
   func refusesOutsideTestMode() {
-    #expect(SymbolPrefsStore.testSeed(environment: ["KANPAN_TEST_FAVORITES": "BTCUSDT"], isolated: true) == nil)
+    #expect(SymbolPrefsStore.testSeed(environment: ["KANPAN_TEST_FAVORITES": "binance/usd_m/BTCUSDT"], isolated: true) == nil)
   }
 
   /// 端到端那一半：真账号档案上 `read()` 读回来的必须是**盘上那份**。
@@ -51,8 +51,8 @@ struct SymbolPrefsSeedIsolationTests {
     defer { unsetenv("KANPAN_TEST_PROFILE"); unsetenv("KANPAN_TEST_FAVORITES") }
     let storage = RealProfileStorage()
     let store = SymbolPrefsStore(storage: storage)
-    store.save(SymbolPrefs(favorites: ["SOLUSDT"]))
-    #expect(try store.read().favorites == ["SOLUSDT"])
+    store.save(SymbolPrefs(favorites: ["binance/usd_m/SOLUSDT"]))
+    #expect(try store.read().favorites == ["binance/usd_m/SOLUSDT"])
   }
 }
 

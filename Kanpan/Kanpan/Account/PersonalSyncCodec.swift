@@ -103,10 +103,10 @@ enum PersonalSyncCodec {
     preferences.body = flatten(try KanpanAccount.JSONValue.encode(archive.preferences).decode([String: KanpanAccount.JSONValue].self)); output.append(preferences)
     for (symbol, drawings) in archive.bySymbol {
       for drawing in drawings {
-        var object = SyncObject(collection: "drawings", id: "binance/usd_m/" + symbol + "/" + drawing.id)
+        var object = SyncObject(collection: "drawings", id: InstrumentID.canonical(symbol) + "/" + drawing.id)
         var value = try KanpanAccount.JSONValue.encode(drawing).decode([String: KanpanAccount.JSONValue].self)
         value.removeValue(forKey: "id"); value["anchors"] = value.removeValue(forKey: "points")
-        value["symbol"] = .string(symbol); value["market"] = .string("usd_m"); value["venue"] = .string("binance")
+        value["symbol"] = .string(InstrumentID(symbol).symbol); value["market"] = .string(InstrumentID(symbol).market); value["venue"] = .string(InstrumentID(symbol).venue)
         object.body = value; output.append(object)
       }
     }
@@ -131,7 +131,7 @@ enum PersonalSyncCodec {
   /// 理由见那儿的注释（省略会被 `SyncStore.stage` 读成「删掉这个字段」）。
   static func alerts(_ archive: [Alert]) throws -> [SyncObject] {
     try archive.map { alert in
-      var object = SyncObject(collection: "alerts", id: "binance/usd_m/" + alert.symbol + "/" + alert.id)
+      var object = SyncObject(collection: "alerts", id: InstrumentID.canonical(alert.symbol) + "/" + alert.id)
       var value = try KanpanAccount.JSONValue.encode(alert).decode([String: KanpanAccount.JSONValue].self)
       value.removeValue(forKey: "id")
       object.body = value
@@ -149,14 +149,19 @@ enum PersonalSyncCodec {
     return try KanpanAccount.JSONValue.object(value).decode(Alert.self)
   }
 
+  static func instrument(_ object: SyncObject) -> String {
+    let parts = object.id.split(separator: "/")
+    return parts.count >= 3 ? InstrumentID.canonical(parts.prefix(3).joined(separator: "/")) : ""
+  }
+
   static func symbols(_ prefs: SymbolPrefs) -> [SyncObject] {
     var objects: [SyncObject] = []
     for (order, group) in prefs.groups.enumerated() {
       var value = SyncObject(collection: "groups", id: group.id); value.body = ["name": .string(group.name), "order": .number(Double(order))]; objects.append(value)
     }
     for (order, symbol) in prefs.favorites.enumerated() {
-      var value = SyncObject(collection: "favorites", id: "binance/usd_m/" + symbol)
-      value.body = ["symbol": .string(symbol), "market": .string("usd_m"), "venue": .string("binance"), "groupId": prefs.groupForSymbol[symbol].map(KanpanAccount.JSONValue.string) ?? .null, "order": .number(Double(order)), "pinned": .bool(prefs.pinned.contains(symbol))]
+      var value = SyncObject(collection: "favorites", id: InstrumentID.canonical(symbol))
+      value.body = ["symbol": .string(InstrumentID(symbol).symbol), "market": .string(InstrumentID(symbol).market), "venue": .string(InstrumentID(symbol).venue), "groupId": prefs.groupForSymbol[symbol].map(KanpanAccount.JSONValue.string) ?? .null, "order": .number(Double(order)), "pinned": .bool(prefs.pinned.contains(symbol))]
       objects.append(value)
     }
     return objects

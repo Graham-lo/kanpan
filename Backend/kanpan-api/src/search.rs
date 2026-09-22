@@ -18,7 +18,7 @@ pub fn routes()->Router<AppState> {
 }
 async fn capabilities(State(s):State<AppState>)->Result<Json<Value>> {
  let count:i64=sqlx::query_scalar("SELECT count(*) FROM market_features WHERE published AND model_id='candle-geometry-v2' AND render_version='ohlc-geometry-resample64-v2'").fetch_one(&s.pool).await?;
- Ok(envelope(json!({"reviewMarkets":["binance/usd_m","okx/usd_m"],"reviewIntervals":Interval::ALL.iter().map(|v|v.as_str()).collect::<Vec<_>>(),"search":{"model":chart_match::MODEL,"threshold":0.60,"indexedWindows":count,"anonymous":false},"screenshots":true})))
+ Ok(envelope(json!({"reviewMarkets":["binance/usd_m","coinbase/spot"],"reviewIntervals":Interval::ALL.iter().map(|v|v.as_str()).collect::<Vec<_>>(),"search":{"model":chart_match::MODEL,"threshold":0.60,"indexedWindows":count,"anonymous":false},"screenshots":true})))
 }
 async fn start(State(s):State<AppState>,i:Identity,headers:HeaderMap,Payload(query):Payload<NativeSearch>)->Result<Json<Value>> {
  let id=key(&headers)?;core(domain::validate_range(&query.range,query.cutoff))?;
@@ -83,7 +83,7 @@ async fn remove(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>,header
 }
 #[derive(Serialize,Deserialize,Clone)] struct Candidate {id:Uuid,range:ChartRange}
 async fn candidates(s:&AppState,owner:Uuid,q:&NativeSearch,vector:&[f32])->Result<Vec<Candidate>> {
- if q.scope=="history" && !matches!(q.range.venue.as_str(),"binance"|"okx") {return Ok(vec![])}
+ if q.scope=="history" && !matches!(q.range.venue.as_str(),"binance"|"coinbase") {return Ok(vec![])}
  let feature=format!("{vector:?}");let mut tx=s.personal(owner).await?;
  // 近邻查询的排序表达式必须是**光秃秃的一个** `列 <=> 常量`，向量索引才认得出来。
  // 原来写的是 `ORDER BY embedding<=>$1::vector,id`——多出来的这个 `,id` 让整条 ORDER BY

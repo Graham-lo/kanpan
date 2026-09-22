@@ -5,7 +5,7 @@ let package = Package(name: "KanpanReview", platforms: [.iOS(.v26), .macOS(.v14)
   // ReviewUI 借 KanpanCore 的价格 / 时间格式化（审查 B-07 / B-08）：复盘本里的价和
   // 时刻必须和顶栏、K 线轴、选区标签同一口径，各自现造 formatter 就会写成三种样子。
   dependencies: [.package(path: "../KanpanCore")],
-  targets: [.target(name: "ReviewDomain"), .target(name: "ReviewData", dependencies: ["ReviewDomain"]),
+  targets: [.target(name: "ReviewDomain", dependencies: [.product(name: "KanpanCore", package: "KanpanCore")]), .target(name: "ReviewData", dependencies: ["ReviewDomain"]),
     .target(name: "ReviewUI", dependencies: ["ReviewDomain", "ReviewData",
                                              .product(name: "KanpanCore", package: "KanpanCore")]),
     // 三个测试目标分三层，和报告 B.5 的客户端那张表一一对上：

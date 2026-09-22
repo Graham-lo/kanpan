@@ -37,11 +37,11 @@ struct AlertArchive: Sendable, Equatable, Codable {
     }
   }
 
-  func alerts(symbol: String) -> [Alert] { alerts.filter { $0.symbol == symbol } }
+  func alerts(symbol: String) -> [Alert] { alerts.filter { $0.symbol == InstrumentID.canonical(symbol) } }
 
   /// 这个品种上「已经有提醒」的那些线。图上那枚小铃铛照它画。
   func alertedDrawingIDs(symbol: String) -> Set<String> {
-    Set(alerts.filter { $0.symbol == symbol && $0.status != .fired }.compactMap(\.drawingID))
+    Set(alerts.filter { $0.symbol == InstrumentID.canonical(symbol) && $0.status != .fired }.compactMap(\.drawingID))
   }
 
   var hasRoom: Bool { alerts.count < Self.limit }

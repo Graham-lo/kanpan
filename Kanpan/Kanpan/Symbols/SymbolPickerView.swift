@@ -404,7 +404,7 @@ private struct FavoriteDragModifier: ViewModifier {
       content
         .opacity(dragging == symbol ? 0.4 : 1)
         .draggable(symbol) {
-          Text(symbol).font(.scaled(13, .medium)).padding(6)
+          Text(InstrumentID(symbol).symbol).font(.scaled(13, .medium)).padding(6)
         }
         .dropDestination(for: String.self) { items, _ in
           guard let from = items.first, from != symbol else { return false }

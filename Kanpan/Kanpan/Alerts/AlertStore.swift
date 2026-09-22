@@ -68,7 +68,7 @@ final class AlertStore: ObservableObject {
   func alertedDrawingIDs(symbol: String) -> Set<String> { archive.alertedDrawingIDs(symbol: symbol) }
   func alert(id: String) -> Alert? { archive[id] }
   func alert(symbol: String, drawingID: String) -> Alert? {
-    archive.alerts.first { $0.symbol == symbol && $0.drawingID == drawingID }
+    archive.alerts.first { $0.symbol == InstrumentID.canonical(symbol) && $0.drawingID == drawingID }
   }
 
   // ---------------------------------------------------------------- 增删改
@@ -123,7 +123,7 @@ final class AlertStore: ObservableObject {
   func remove(id: String) { write { $0[id] = nil } }
 
   func remove(symbol: String, drawingID: String) {
-    write { $0.alerts.removeAll { $0.symbol == symbol && $0.drawingID == drawingID } }
+    write { $0.alerts.removeAll { $0.symbol == InstrumentID.canonical(symbol) && $0.drawingID == drawingID } }
   }
 
   func setCondition(_ condition: Alert.Condition, id: String) {

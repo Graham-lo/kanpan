@@ -73,7 +73,7 @@ public struct BarSeries: Sendable, Equatable {
     open: [Double], high: [Double], low: [Double], close: [Double], volume: [Double],
     takerBuy: [Double] = [], openTime: [Int64] = []
   ) {
-    self.symbol = symbol
+    self.symbol = InstrumentID.canonical(symbol)
     self.interval = interval
     self.t0 = t0
     self.step = step ?? interval.stepMs

@@ -135,11 +135,11 @@ import XCTest
     XCTAssertTrue(app.textFields["search.query"].waitForExistence(timeout: 15))
     app.textFields["search.query"].tap()
     app.textFields["search.query"].typeText("ETHUSDT")
-    let row = app.buttons["symbols.row.ETHUSDT"]
+    let row = app.buttons["symbols.row.binance/usd_m/ETHUSDT"]
     XCTAssertTrue(row.waitForExistence(timeout: 20), app.debugDescription)
     row.tap()
     waitForChart(app)
-    XCTAssertTrue(wait(20) { (self.info(app)["symbol"] as? String) == "ETHUSDT" })
+    XCTAssertTrue(wait(20) { (self.info(app)["symbol"] as? String) == "binance/usd_m/ETHUSDT" })
     XCTAssertEqual(spacing(app), expected, accuracy: 0.3, "换品种不该改变根间距")
   }
 
@@ -204,13 +204,13 @@ import XCTest
       let app = makeApp(signedIn: true)
       app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT"
       app.launch()
-      XCTAssertTrue(app.buttons["favorites.open.BTCUSDT"].waitForExistence(timeout: 60), "有自选的人冷启动该落在自选页")
+      XCTAssertTrue(app.buttons["favorites.open.binance/usd_m/BTCUSDT"].waitForExistence(timeout: 60), "有自选的人冷启动该落在自选页")
       return app
     }
     func openChart(_ app: XCUIApplication) {
-      app.buttons["favorites.open.BTCUSDT"].tap()
+      app.buttons["favorites.open.binance/usd_m/BTCUSDT"].tap()
       waitForChart(app)
-      XCTAssertTrue(wait(20) { (self.info(app)["symbol"] as? String) == "BTCUSDT" })
+      XCTAssertTrue(wait(20) { (self.info(app)["symbol"] as? String) == "binance/usd_m/BTCUSDT" })
     }
 
     let app = launchOnFavorites()

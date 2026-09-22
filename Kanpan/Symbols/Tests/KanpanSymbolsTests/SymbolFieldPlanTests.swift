@@ -39,10 +39,10 @@ struct SymbolFieldPlanTests {
   @Test("表里的键就是存档里的键")
   func tableKeysMatchTheArchiveKeys() throws {
     // 每个字段都给一个非默认值，逼着可选字段也被写出来。
-    var prefs = SymbolPrefs(favorites: ["BTCUSDT"], recents: ["BTCUSDT"],
+    var prefs = SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT"], recents: ["binance/usd_m/BTCUSDT"],
                             groups: [.init(id: "g", name: "加密")],
-                            groupForSymbol: ["BTCUSDT": "g"], pinned: ["BTCUSDT"],
-                            legacySelectedGroup: "g", viewScores: ["BTCUSDT": 1], scoredAt: 1)
+                            groupForSymbol: ["binance/usd_m/BTCUSDT": "g"], pinned: ["binance/usd_m/BTCUSDT"],
+                            legacySelectedGroup: "g", viewScores: ["binance/usd_m/BTCUSDT": 1], scoredAt: 1)
     prefs.scoredAt = 1
     let data = try JSONEncoder().encode(prefs)
     let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -58,19 +58,19 @@ struct SymbolFieldPlanTests {
   /// 这一条钉的是 `AppAccountBridge.applyPending()` 的那次改写。
   @Test("同步重建不会把本机那几样冲掉")
   func rebuildKeepsLocalOnlyFields() {
-    let local = SymbolPrefs(favorites: ["BTCUSDT", "ETHUSDT"], recents: ["ETHUSDT", "BTCUSDT"],
+    let local = SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"], recents: ["binance/usd_m/ETHUSDT", "binance/usd_m/BTCUSDT"],
                             groups: [.init(id: "g", name: "加密")],
-                            groupForSymbol: ["BTCUSDT": "g", "ETHUSDT": "g"], pinned: ["BTCUSDT"],
+                            groupForSymbol: ["binance/usd_m/BTCUSDT": "g", "binance/usd_m/ETHUSDT": "g"], pinned: ["binance/usd_m/BTCUSDT"],
                             legacySelectedGroup: "g",
-                            viewScores: ["BTCUSDT": 7], scoredAt: 1_700_000_000)
+                            viewScores: ["binance/usd_m/BTCUSDT": 7], scoredAt: 1_700_000_000)
     // 云端那几张表重建出来的：只有自选、分类、归属、钉住。
-    let cloud = SymbolPrefs(favorites: ["ETHUSDT"], groups: [.init(id: "g", name: "加密")],
-                            groupForSymbol: ["ETHUSDT": "g"], pinned: [])
+    let cloud = SymbolPrefs(favorites: ["binance/usd_m/ETHUSDT"], groups: [.init(id: "g", name: "加密")],
+                            groupForSymbol: ["binance/usd_m/ETHUSDT": "g"], pinned: [])
     let merged = SymbolPrefs.keeping(SymbolPrefs.localOnlyFieldNames, of: local, over: cloud)
-    #expect(merged.favorites == ["ETHUSDT"])          // 云端那半跟云端。
+    #expect(merged.favorites == ["binance/usd_m/ETHUSDT"])          // 云端那半跟云端。
     #expect(merged.pinned.isEmpty)
-    #expect(merged.recents == ["ETHUSDT", "BTCUSDT"]) // 本机那半原样留着。
-    #expect(merged.viewScores == ["BTCUSDT": 7])
+    #expect(merged.recents == ["binance/usd_m/ETHUSDT", "binance/usd_m/BTCUSDT"]) // 本机那半原样留着。
+    #expect(merged.viewScores == ["binance/usd_m/BTCUSDT": 7])
     #expect(merged.scoredAt == 1_700_000_000)
     #expect(merged.legacySelectedGroup == "g")
     #expect(SymbolFieldPlan.names(.localOnly) == ["recents", "viewScores", "scoredAt", "selectedGroupID"])
@@ -81,13 +81,13 @@ struct SymbolFieldPlanTests {
   @Test("老存档里的选中分类还读得出来")
   func theOldKeyStillDecodes() throws {
     let json = Data("""
-      {"favorites":["BTCUSDT"],"groups":[{"id":"g","name":"加密"}],"selectedGroupID":"g"}
+      {"favorites":["binance/usd_m/BTCUSDT"],"groups":[{"id":"g","name":"加密"}],"selectedGroupID":"g"}
       """.utf8)
     let prefs = try JSONDecoder().decode(SymbolPrefs.self, from: json)
     #expect(prefs.legacySelectedGroup == "g")
     // 指向一个早就删掉的分类时不要搬——搬过去就是一个指向空气的 id。
     let stale = try JSONDecoder().decode(SymbolPrefs.self, from: Data("""
-      {"favorites":["BTCUSDT"],"groups":[{"id":"g","name":"加密"}],"selectedGroupID":"没了"}
+      {"favorites":["binance/usd_m/BTCUSDT"],"groups":[{"id":"g","name":"加密"}],"selectedGroupID":"没了"}
       """.utf8))
     #expect(stale.legacySelectedGroup == nil)
   }
@@ -99,20 +99,20 @@ struct SymbolFieldPlanTests {
   /// （`SymbolPrefs.group(_:)`）。这条测试钉的就是「换了个地方兜，行为一个字没变」。
   @Test("选中的分类没了就退回第一类")
   func deletedGroupFallsBack() throws {
-    var prefs = SymbolPrefs(favorites: ["BTCUSDT", "MUUSDT"])
+    var prefs = SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT", "binance/usd_m/MUUSDT"])
     let cryptoID = prefs.createGroup("加密"), stocksID = prefs.createGroup("美股")
     let crypto = try #require(cryptoID), stocks = try #require(stocksID)
     prefs.classifyUnassigned(into: crypto)
-    prefs.assign("MUUSDT", to: stocks)
+    prefs.assign("binance/usd_m/MUUSDT", to: stocks)
     #expect(prefs.group(stocks) == stocks)
     prefs.deleteGroup(stocks, selected: stocks)
     #expect(prefs.group(stocks) == crypto)            // 停在那一类没了 → 第一类。
     #expect(prefs.favorites(in: crypto).count == 2)   // 落单的成员也进第一类。
     #expect(prefs.group(nil) == crypto)               // 还没挑过 → 第一类。
     #expect(prefs.group("") == crypto)                // 空串就是「还没挑过」。
-    var empty = SymbolPrefs(favorites: ["BTCUSDT"])
+    var empty = SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT"])
     #expect(empty.group(nil) == nil)                  // 一个分类都没有 → 没有。
-    empty.addFavorite("ETHUSDT", in: "没了")           // 认不出的那一类不该凭空冒出来。
+    empty.addFavorite("binance/usd_m/ETHUSDT", in: "没了")           // 认不出的那一类不该凭空冒出来。
     #expect(empty.groupForSymbol.isEmpty)
   }
 }

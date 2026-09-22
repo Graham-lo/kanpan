@@ -16,13 +16,9 @@ struct ChartShotHead: Equatable {
 
   /// 「BTCUSDT」拆成「BTC」+「/USDT」，和顶栏一个拆法。
   var base: String {
-    for quote in ["USDT", "USDC", "USD", "BUSD", "FDUSD"]
-    where symbol.hasSuffix(quote) && symbol.count > quote.count {
-      return String(symbol.dropLast(quote.count))
-    }
-    return symbol
+    SymbolInfo.placeholder(symbol: symbol).base
   }
-  var quote: String { String(symbol.dropFirst(base.count)) }
+  var quote: String { SymbolInfo.placeholder(symbol: symbol).quote }
   var priceText: String { price.map { grouped(fmtPrice($0, decimals: decimals)) } ?? "—" }
 }
 
@@ -92,7 +88,7 @@ enum ChartSnapshotRenderer {
   static func share(state: ChartState, size: CGSize, head: ChartShotHead,
                     theme: PanelTheme) -> Bool {
     guard let data = png(state: state, size: size, head: head, theme: theme) else { return false }
-    let name = "\(head.symbol)-\(head.interval.rawValue).png"
+    let name = "\(InstrumentID(head.symbol).symbol)-\(head.interval.rawValue).png"
     let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
     do { try data.write(to: url, options: .atomic) } catch { return false }
     present(url)

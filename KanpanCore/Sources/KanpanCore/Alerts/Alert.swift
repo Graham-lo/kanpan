@@ -77,7 +77,7 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
               firedAt: Double? = nil, firedPrice: Double? = nil,
               dueAt: Double? = nil, reviewID: String? = nil,
               title: String, created: Double) {
-    self.id = id; self.kind = kind; self.symbol = symbol; self.market = market
+    self.id = id; self.kind = kind; self.symbol = InstrumentID.canonical(symbol.contains("/") ? symbol : market + "/" + symbol); self.market = InstrumentID(self.symbol).marketKey
     self.drawingID = drawingID; self.lines = lines; self.condition = condition
     self.armedAt = armedAt; self.once = once; self.status = status
     self.firedAt = firedAt; self.firedPrice = firedPrice
@@ -102,7 +102,7 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
     var c = encoder.container(keyedBy: CodingKeys.self)
     try c.encode(id, forKey: .id)
     try c.encode(kind, forKey: .kind)
-    try c.encode(symbol, forKey: .symbol)
+    try c.encode(InstrumentID(symbol).symbol, forKey: .symbol)
     try c.encode(market, forKey: .market)
     try c.encode(drawingID, forKey: .drawingID)
     try c.encode(lines, forKey: .lines)
@@ -126,6 +126,7 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
     kind = (try? c.decodeIfPresent(Kind.self, forKey: .kind)) .flatMap { $0 } ?? .drawing
     symbol = try c.decodeIfPresent(String.self, forKey: .symbol) ?? ""
     market = try c.decodeIfPresent(String.self, forKey: .market) ?? Alert.market
+    symbol = InstrumentID.canonical(symbol.contains("/") ? symbol : market + "/" + symbol)
     drawingID = try c.decodeIfPresent(String.self, forKey: .drawingID)
     lines = try c.decodeIfPresent([AlertLine].self, forKey: .lines) ?? []
     condition = (try? c.decodeIfPresent(Condition.self, forKey: .condition)).flatMap { $0 } ?? .touch

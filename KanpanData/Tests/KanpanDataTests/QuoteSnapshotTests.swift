@@ -55,10 +55,10 @@ struct QuoteSnapshotTests {
     let back = QuoteSnapshot.read(p.quotes, now: 1_700_000_001_000)
       .sorted { $0.symbol < $1.symbol }
     #expect(back.count == 2)
-    #expect(back[0].symbol == "BTCUSDT" && back[0].last == 78_000)
+    #expect(back[0].symbol == "binance/usd_m/BTCUSDT" && back[0].last == 78_000)
     // 交易所时钟要一起留下：显示层靠它判断这条还算不算「实时」。
     #expect(back[0].timeMs == 1_700_000_000_000)
-    #expect(back[1].symbol == "ETHUSDT" && back[1].last == 4_100)
+    #expect(back[1].symbol == "binance/usd_m/ETHUSDT" && back[1].last == 4_100)
   }
 
   @Test("只留最近的一批，文件不会越滚越大")
@@ -88,10 +88,10 @@ struct QuoteSnapshotTests {
                         to: p.quotes)
 
     let back = QuoteSnapshot.read(p.quotes, now: now).map(\.symbol).sorted()
-    #expect(back == ["BTCUSDT", "ETHUSDT"])
+    #expect(back == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
     // 正好 24 小时算还在；多一毫秒就不算。
     #expect(QuoteSnapshot.read(p.quotes, now: now - 3_600_000 + QuoteSnapshot.maxAgeMs)
-              .map(\.symbol) == ["BTCUSDT"])
+              .map(\.symbol) == ["binance/usd_m/BTCUSDT"])
     #expect(QuoteSnapshot.read(p.quotes, now: now - 3_600_000 + QuoteSnapshot.maxAgeMs + 1).isEmpty)
     // 落盘的行一条都没少——筛的是「摆不摆出来」，不是删数据。
     #expect(QuoteSnapshot.read(p.quotes, now: now, maxAgeMs: nil).count == 4)
@@ -111,7 +111,7 @@ struct QuoteSnapshotTests {
       .attributesOfItem(atPath: p.quotes.path)[.modificationDate] as? Date))
       .timeIntervalSince1970 * 1000)
 
-    #expect(QuoteSnapshot.read(p.quotes, now: fileMs + 1_000).map(\.symbol) == ["BTCUSDT"])
+    #expect(QuoteSnapshot.read(p.quotes, now: fileMs + 1_000).map(\.symbol) == ["binance/usd_m/BTCUSDT"])
     #expect(QuoteSnapshot.read(p.quotes, now: fileMs + QuoteSnapshot.maxAgeMs + 60_000).isEmpty)
   }
 
@@ -145,20 +145,20 @@ struct QuoteSnapshotTests {
       QuoteSnapshot.read(p.quotes, now: now).map { ($0.symbol, $0) })
     #expect(back.count == 3)
     // 好行一个字没变。
-    #expect(back["ETHUSDT"]?.quoteVolume == 1_000)
-    #expect(back["BTCUSDT"]?.last == 78_000)
-    #expect(back["BTCUSDT"]?.changePercent == 1.5)
-    #expect(back["BTCUSDT"]?.timeMs == now)
+    #expect(back["binance/usd_m/ETHUSDT"]?.quoteVolume == 1_000)
+    #expect(back["binance/usd_m/BTCUSDT"]?.last == 78_000)
+    #expect(back["binance/usd_m/BTCUSDT"]?.changePercent == 1.5)
+    #expect(back["binance/usd_m/BTCUSDT"]?.timeMs == now)
     // 缺的那一格读回来还是「缺」：不是 0。0 会在自选表上写成 `0.00`，
     // 在板块页上被当成真的零成交额去参与排序和聚合。
-    #expect(back["BTCUSDT"]?.quoteVolume.isNaN == true)
-    #expect(back["PEPEUSDT"]?.last == 0.0000004)
-    #expect(back["PEPEUSDT"]?.quoteVolume.isNaN == true)
-    #expect(back["PEPEUSDT"]?.high.isNaN == true)
-    #expect(back["PEPEUSDT"]?.low.isNaN == true)
-    #expect(back["PEPEUSDT"]?.changePercent.isNaN == true)
-    #expect(back["PEPEUSDT"]?.open24h == nil)
-    #expect(back["PEPEUSDT"]?.markPrice == nil)
+    #expect(back["binance/usd_m/BTCUSDT"]?.quoteVolume.isNaN == true)
+    #expect(back["binance/usd_m/PEPEUSDT"]?.last == 0.0000004)
+    #expect(back["binance/usd_m/PEPEUSDT"]?.quoteVolume.isNaN == true)
+    #expect(back["binance/usd_m/PEPEUSDT"]?.high.isNaN == true)
+    #expect(back["binance/usd_m/PEPEUSDT"]?.low.isNaN == true)
+    #expect(back["binance/usd_m/PEPEUSDT"]?.changePercent.isNaN == true)
+    #expect(back["binance/usd_m/PEPEUSDT"]?.open24h == nil)
+    #expect(back["binance/usd_m/PEPEUSDT"]?.markPrice == nil)
   }
 
   @Test("落盘失败要留一行日志，不许悄悄吞掉")
@@ -209,7 +209,7 @@ struct QuoteSnapshotTests {
     let server = FakeServer { _ in HTTPReply(status: 200, body: body) }
     let rest = BinanceREST(transport: FakeTransport(server), pacer: StepPacer())
     let all = try await rest.tickers24h()
-    #expect(all.map(\.symbol).sorted() == ["BTCUSDT", "ETHUSDT"])
+    #expect(all.map(\.symbol).sorted() == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
     // 一次请求，不是一行一个。
     #expect(await server.urls().count == 1)
     #expect(await server.urls().first?.query == nil)

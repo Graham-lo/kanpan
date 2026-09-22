@@ -93,13 +93,13 @@ import ReviewUI
   /// 这儿顺手记住，落图那一层就不必再跟宿主要一次。
   private(set) var liveVenue = MarketSource.binance.rawValue
   func beginCapture(feature: ReviewFeature, live: ChartState?, prefs: Prefs, source: MarketSource = .binance) {
-    liveVenue = source.rawValue
+    liveVenue = live.map { InstrumentID($0.series.symbol).venue } ?? "binance"
     guard var live, live.series.count >= 3 else { notice = "等待 K 线加载后再记录"; return }
     // 服务端收不下的组合，圈之前就说（审查 B-06）。原来这儿只挡了年线，于是
     // BTCUSDC、美股代号照样能圈完、写完、按保存，最后被服务端 400 顶回来，
     // 还把那条永远成不了的操作留在了上传队列里。这一句和
     // `native_review.rs` 的 `validate_range` 是同一份名单（`ReviewContract`）。
-    if let reason = ReviewContract.captureFailure(venue: source.rawValue, symbol: live.series.symbol,
+    if let reason = ReviewContract.captureFailure(venue: liveVenue, symbol: live.series.symbol,
                                                   interval: live.series.interval.rawValue) {
       notice = reason; return
     }
@@ -109,11 +109,11 @@ import ReviewUI
     guard let last = closed.last, closed.count >= 3 else { notice = "至少需要 3 根已收盘 K 线"; return }
     live.series = slice(s, count: last + 1); live.crosshair = nil; live.nowMs = nil
     var draft: ReviewDraft
-    if let saved = feature.draft, saved.reusable(venue: source.rawValue, symbol: s.symbol, interval: s.interval.rawValue) {
+    if let saved = feature.draft, saved.reusable(venue: liveVenue, symbol: s.symbol, interval: s.interval.rawValue) {
       draft = saved
     } else {
       let right = min(last, s.index(atTime: live.view.to)), left = max(0, right - 48)
-      draft = ReviewDraft(range: ReviewRange(venue: source.rawValue, symbol: s.symbol, interval: s.interval.rawValue,
+      draft = ReviewDraft(range: ReviewRange(venue: liveVenue, symbol: s.symbol, interval: s.interval.rawValue,
         start: s.time(at: left), end: Self.closeTime(s.time(at: right), interval: s.interval), bars: right - left + 1),
         reference: s.close.last ?? s.close[last], high: s.high[left...right].max() ?? 0,
         low: s.low[left...right].min() ?? 0, now: now)
@@ -155,7 +155,7 @@ import ReviewUI
         var fetched: [Bar] = []
         while start < end {
           try Task.checkCancellation()
-          let page = try await rest.klines(symbol: range.symbol, interval: interval, limit: 1500, startTime: start, endTime: end - 1)
+          let page = try await rest.klines(symbol: range.key, interval: interval, limit: 1500, startTime: start, endTime: end - 1)
           guard let last = page.last else { break }
           fetched.append(contentsOf: page)
           let next = Self.closeTime(last.openTime, interval: interval.source)
@@ -163,20 +163,20 @@ import ReviewUI
           guard fetched.count <= 6000 else { throw ReviewBridgeError.rangeTooLarge }
         }
         try Task.checkCancellation(); guard loadID == request else { return }
-        let series = BinanceREST.series(symbol: range.symbol, interval: interval, bars: fetched)
+        let series = BinanceREST.series(symbol: range.key, interval: interval, bars: fetched)
         let ordered = (0..<series.count).filter { Self.closeTime(series.time(at: $0), interval: interval) <= end }.map {
           Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0], takerBuy: series.takerBuy[$0])
         }
         guard ordered.count >= 3 else { throw ReviewBridgeError.noHistory }
         for i in 1..<ordered.count where Self.closeTime(ordered[i - 1].openTime, interval: interval) != ordered[i].openTime { throw ReviewBridgeError.historyGap }
         bars = ordered
-        base.series = BarSeries(symbol: range.symbol, interval: interval, bars: ordered)
+        base.series = BarSeries(symbol: range.key, interval: interval, bars: ordered)
         // 先用记录所属品种的目录精度。目录缺失才从历史报价推，不能继承另一张图的精度。
-        let decimals = feature.priceDecimals(range.symbol)
-          ?? (base.symbol.symbol == range.symbol ? base.symbol.priceDecimals : nil)
+        let decimals = feature.priceDecimals(range.key)
+          ?? (base.symbol.symbol == range.key ? base.symbol.priceDecimals : nil)
           ?? ReviewPricePrecision.decimals(of: ordered.flatMap { [$0.open, $0.high, $0.low, $0.close] })
           ?? priceDecimalsFallback(ordered.last!.close)
-        base.symbol = SymbolInfo(symbol: range.symbol, base: range.shortSymbol, pricePrecision: decimals,
+        base.symbol = SymbolInfo(symbol: range.key, base: range.shortSymbol, pricePrecision: decimals,
                                  tickSize: pow(10, -Double(decimals)))
         // 存储的显示位数与这次替换的品种一起更新。
         base.decimals = base.symbol.priceDecimals
@@ -231,9 +231,9 @@ import ReviewUI
     pageTask = Task {
       defer { if request == loadID { paging = false } }
       do {
-        let fetched = try await BinanceREST.upstream(MarketSource(rawValue: record.draft.range.venue)!, hosts: hosts).klines(symbol: record.draft.range.symbol, interval: interval, limit: 1000, startTime: start, endTime: end - 1)
+        let fetched = try await BinanceREST.upstream(MarketSource(rawValue: record.draft.range.venue)!, hosts: hosts).klines(symbol: record.draft.range.key, interval: interval, limit: 1000, startTime: start, endTime: end - 1)
         try Task.checkCancellation(); guard request == loadID else { return }
-        let series = BinanceREST.series(symbol: record.draft.range.symbol, interval: interval, bars: fetched)
+        let series = BinanceREST.series(symbol: record.draft.range.key, interval: interval, bars: fetched)
         let page = (0..<series.count).filter { Self.closeTime(series.time(at: $0), interval: interval) <= end }.map {
           Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0], takerBuy: series.takerBuy[$0])
         }
@@ -296,7 +296,7 @@ import ReviewUI
   /// 会被拽回最右边。那颗按钮等于一次次把人的手拨开。
   private func updateReplay(feature: ReviewFeature, reset: Bool = false) {
     guard var base = replayBase, let record = replayRecord, !bars.isEmpty else { return }
-    base.series = BarSeries(symbol: record.draft.range.symbol, interval: base.series.interval, bars: Array(bars.prefix(cursor + 1)))
+    base.series = BarSeries(symbol: record.draft.range.key, interval: base.series.interval, bars: Array(bars.prefix(cursor + 1)))
     let known = Self.closeTime(base.series.lastTime, interval: base.series.interval)
     if known >= record.draft.created, let data = record.draft.drawingSnapshot { base.drawings = (try? JSONDecoder().decode([Drawing].self, from: data)) ?? [] }
     let window = ReviewReplayViewport.next(current: liveWindow, previousLastTime: replayLastTime,

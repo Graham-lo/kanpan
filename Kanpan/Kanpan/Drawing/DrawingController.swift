@@ -118,6 +118,7 @@ final class DrawingController: ObservableObject {
     sync()
   }
   func focus(_ symbol: String) {
+    let symbol = InstrumentID.canonical(symbol)
     guard symbol != self.symbol || chart?.drawings != archive[symbol] && chart?.drawings.isEmpty == true else {
       applyPreview(); applyPendingHighlight(); return
     }
@@ -134,9 +135,10 @@ final class DrawingController: ObservableObject {
 
   func preview(_ item: ShareItem) {
     previewing = item
-    preview(item.drawings, symbol: item.symbol)
+    preview(item.drawings, symbol: item.key)
   }
   func preview(_ guest: [Drawing], symbol: String) {
+    let symbol = InstrumentID.canonical(symbol)
     finish()
     self.guest = guest; guestSymbol = symbol
     chart?.selectedDrawingID = nil
@@ -154,6 +156,7 @@ final class DrawingController: ObservableObject {
   /// 一次留下整批线，一步撤销。容量不够时整批不写，已有存档不丢。
   @discardableResult
   func append(_ incoming: [Drawing], symbol: String) -> Bool {
+    let symbol = InstrumentID.canonical(symbol)
     let before = archive[symbol]
     let known = Set(before.map(\.id))
     let added = incoming.filter { !known.contains($0.id) }
@@ -178,6 +181,7 @@ final class DrawingController: ObservableObject {
   /// 深链专用（点提醒的通知、从提醒列表点一行）。品种可能还在路上（`MainScreen`
   /// 刚把它交给行情模块），所以先记下来，等 `focus` 到那个品种再兑现。
   func highlight(drawingID: String, symbol: String) {
+    let symbol = InstrumentID.canonical(symbol)
     pendingHighlight = (symbol, drawingID)
     applyPendingHighlight()
   }

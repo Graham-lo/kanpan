@@ -172,7 +172,7 @@ struct RateLimitBanTests {
     // 在途那一笔照旧收到它的 200——没有人去撤它，也没有把它判成失败。
     await quote.open()
     let late = try #require(await inFlight.value)
-    #expect(late.symbol == "ETHUSDT")
+    #expect(late.symbol == "binance/usd_m/ETHUSDT")
     // 而这个晚到的 200 不解封（和 A-T04 同一条判据）。
     #expect(await limiter.banRemainingMs() > 119_000)
 

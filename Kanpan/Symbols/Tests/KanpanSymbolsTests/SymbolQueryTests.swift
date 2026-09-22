@@ -12,7 +12,7 @@ struct SymbolQueryTests {
   @Test("小写照样搜得到，命中集合与原型一致")
   func caseInsensitive() {
     let hit = SymbolQuery.match(catalog, query: "btc")
-    #expect(hit.map(\.id) == ["BTCUSDT"])
+    #expect(hit.map(\.id) == ["binance/usd_m/BTCUSDT"])
     #expect(SymbolQuery.match(catalog, query: "BTC").map(\.id) == hit.map(\.id))
     #expect(SymbolQuery.match(catalog, query: "  btc  ").map(\.id) == hit.map(\.id))
   }
@@ -27,19 +27,19 @@ struct SymbolQueryTests {
   @Test("base 前缀排在含子串的前面")
   func basePrefixWins() {
     let ids = SymbolQuery.match(catalog, query: "eth").map(\.id)
-    #expect(ids.prefix(3) == ["ETHUSDT", "ETHFIUSDT", "ETHWUSDT"])
+    #expect(ids.prefix(3) == ["binance/usd_m/ETHUSDT", "binance/usd_m/ETHFIUSDT", "binance/usd_m/ETHWUSDT"])
     // ETH 三个是 base 前缀，排在只是 symbol 里含 ETH 的后面那些之前
-    #expect(ids.firstIndex(of: "ETHUSDT")! < ids.firstIndex(of: "ETHFIUSDT")!)
+    #expect(ids.firstIndex(of: "binance/usd_m/ETHUSDT")! < ids.firstIndex(of: "binance/usd_m/ETHFIUSDT")!)
   }
 
   /// 用户 2026-09-18：「首先选最匹配的」。打全了的那个要压过同前缀的兄弟，
   /// 哪怕兄弟在品种表里排得更靠前。
   @Test("打全了的排第一档")
   func exactWins() {
-    #expect(SymbolQuery.match(SymbolFixtures.info("ETHUSDT"), query: "ETH")?.tier == .exact)
-    #expect(SymbolQuery.match(SymbolFixtures.info("ETHUSDT"), query: "ETHUSDT")?.tier == .exact)
-    #expect(SymbolQuery.match(SymbolFixtures.info("ETHFIUSDT"), query: "ETH")?.tier == .basePrefix)
-    #expect(SymbolQuery.match(catalog, query: "eth").first?.id == "ETHUSDT")
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/ETHUSDT"), query: "ETH")?.tier == .exact)
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/ETHUSDT"), query: "ETHUSDT")?.tier == .exact)
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/ETHFIUSDT"), query: "ETH")?.tier == .basePrefix)
+    #expect(SymbolQuery.match(catalog, query: "eth").first?.id == "binance/usd_m/ETHUSDT")
   }
 
   @Test("同档保持品种表原序（稳定排序）")
@@ -51,27 +51,27 @@ struct SymbolQueryTests {
 
   @Test("五档名次各就各位")
   func tiers() {
-    #expect(SymbolQuery.match(SymbolFixtures.info("ETHUSDT"), query: "ETH")?.tier == .exact)
-    #expect(SymbolQuery.match(SymbolFixtures.info("ETHFIUSDT"), query: "ETH")?.tier == .basePrefix)
-    #expect(SymbolQuery.match(SymbolFixtures.info("ETHUSDT"), query: "ETHU")?.tier == .symbolPrefix)
-    #expect(SymbolQuery.match(SymbolFixtures.info("ETHFIUSDT"), query: "THF")?.tier == .baseContains)
-    #expect(SymbolQuery.match(SymbolFixtures.info("BTCUSDT"), query: "SDT")?.tier == .symbolContains)
-    #expect(SymbolQuery.match(SymbolFixtures.info("BTCUSDT"), query: "ZZZ") == nil)
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/ETHUSDT"), query: "ETH")?.tier == .exact)
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/ETHFIUSDT"), query: "ETH")?.tier == .basePrefix)
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/ETHUSDT"), query: "ETHU")?.tier == .symbolPrefix)
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/ETHFIUSDT"), query: "THF")?.tier == .baseContains)
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/BTCUSDT"), query: "SDT")?.tier == .symbolContains)
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/BTCUSDT"), query: "ZZZ") == nil)
   }
 
   @Test("数字前缀的品种也能搜")
   func numericBase() {
-    #expect(SymbolQuery.match(catalog, query: "1000").map(\.id) == ["1000PEPEUSDT"])
-    #expect(SymbolQuery.match(catalog, query: "pepe").map(\.id) == ["1000PEPEUSDT"])
-    #expect(SymbolQuery.match(SymbolFixtures.info("1000PEPEUSDT"), query: "PEPE")?.tier == .baseContains)
+    #expect(SymbolQuery.match(catalog, query: "1000").map(\.id) == ["binance/usd_m/1000PEPEUSDT"])
+    #expect(SymbolQuery.match(catalog, query: "pepe").map(\.id) == ["binance/usd_m/1000PEPEUSDT"])
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/1000PEPEUSDT"), query: "PEPE")?.tier == .baseContains)
   }
 
   @Test("高亮片段落在 symbol 的正确位置")
   func highlightRange() {
-    #expect(SymbolQuery.match(SymbolFixtures.info("ETHFIUSDT"), query: "ETH")?.highlight == 0 ..< 3)
-    #expect(SymbolQuery.match(SymbolFixtures.info("ETHFIUSDT"), query: "FI")?.highlight == 3 ..< 5)
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/ETHFIUSDT"), query: "ETH")?.highlight == 0 ..< 3)
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/ETHFIUSDT"), query: "FI")?.highlight == 3 ..< 5)
     // 落在 quote 段：ETHFI 5 个字符，USDT 从 5 起
-    #expect(SymbolQuery.match(SymbolFixtures.info("ETHFIUSDT"), query: "USD")?.highlight == 5 ..< 8)
+    #expect(SymbolQuery.match(SymbolFixtures.info("binance/usd_m/ETHFIUSDT"), query: "USD")?.highlight == 5 ..< 8)
     #expect(SymbolQuery.match(catalog, query: "").first?.highlight == nil)
   }
 
