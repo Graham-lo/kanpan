@@ -1,0 +1,9 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.45s
+     Running unittests src/lib.rs (target/debug/deps/kanpan_api-18d2711f9a25052f)
+
+running 1 test
+RINGTONE_PAYLOAD={"aps":{"alert":{"body":"现价 64500","title":"铃声验收 · 玻璃"},"sound":"alert-glass.caf","thread-id":"alerts"},"link":"hkline://symbol/BTCUSDT"}
+test apns::tests::alert_payload_uses_the_selected_sound_and_keeps_the_deep_link ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 155 filtered out; finished in 0.01s
+

@@ -1,0 +1,35 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "81FA32F3-53E9-4574-B1D7-A3AA8E1ADE05.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "推送验收-玻璃_0_5EA9C071-CA2C-4274-A658-E0EB4E324D80.png",
+        "timestamp" : 1790062022.334
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "2ACB7631-71AE-44EF-AD95-AF9F539E4B4E.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "通知授权后-默认试听_0_40B0F169-2113-468A-AEE6-856E38DE77F2.png",
+        "timestamp" : 1790062021.858
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "587F2BBF-DDFF-482C-87E3-4910B4BE688C.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "系统通知授权_0_EB8DD74A-ED4E-4C09-80FB-4B75CBD4F730.png",
+        "timestamp" : 1790062014.88
+      }
+    ],
+    "testIdentifier" : "AlertSoundUITests/testNotificationPermissionAndDefaultPreview()",
+    "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/AlertSoundUITests/testNotificationPermissionAndDefaultPreview"
+  }
+]

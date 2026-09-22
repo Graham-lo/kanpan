@@ -1,0 +1,11 @@
+{
+  "aps": {
+    "alert": {
+      "body": "现价 64500",
+      "title": "铃声验收 · 玻璃"
+    },
+    "sound": "alert-glass.caf",
+    "thread-id": "alerts"
+  },
+  "link": "hkline://symbol/BTCUSDT"
+}

@@ -1,0 +1,187 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=42498667-73A3-4E02-83C2-7B73E957C514" -derivedDataPath DerivedData-ringtone "-only-testing:KanpanUITests/AlertSoundUITests/testNotificationPermissionAndDefaultPreview" -test-timeouts-enabled YES -default-test-execution-time-allowance 480 -maximum-test-execution-time-allowance 900 -resultBundlePath DerivedData-ringtone/ui-test/iPhone-16-Pro.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanCore: /Users/mdd/zhk/kanpan-ringtone/KanpanCore @ local
+  KanpanAccount: /Users/mdd/zhk/kanpan-ringtone/KanpanAccount @ local
+  KanpanChart: /Users/mdd/zhk/kanpan-ringtone/KanpanChart @ local
+  KanpanReview: /Users/mdd/zhk/kanpan-ringtone/KanpanReview @ local
+  KanpanNetwork: /Users/mdd/zhk/kanpan-ringtone/KanpanNetwork @ local
+  KanpanData: /Users/mdd/zhk/kanpan-ringtone/KanpanData @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/ui-test/iPhone-16-Pro.xcresult
+
+2026-09-22 15:26:27.425032+0800 KanpanUITests-Runner[88021:4225108] [Default] Running tests...
+objc[88021]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x1057bc310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x105734398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-22 15:26:30.635.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 15:26:30.636.
+Test Suite 'AlertSoundUITests' started at 2026-09-22 15:26:30.636.
+2026-09-22 15:26:32.514 xcodebuild[87396:4218421] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 15:26:32.514 xcodebuild[87396:4218421] [MT] IDELaunchParametersSnapshot: no debugger version
+Test Case '-[KanpanUITests.AlertSoundUITests testNotificationPermissionAndDefaultPreview]' started.
+    t =     0.00s Start Test at 2026-09-22 15:26:30.637
+    t =     0.32s Set Up
+    t =     0.33s     Setting device orientation to Portrait
+    t =     0.34s         Device orientation changed to Portrait
+    t =     0.38s         Wait for com.apple.springboard to idle
+    t =     0.41s     Open com.mdd.kanpan
+    t =     0.41s         Launch com.mdd.kanpan
+    t =     7.23s             Setting up automation session
+    t =     8.06s             Wait for com.mdd.kanpan to idle
+    t =     9.66s     Waiting 30.0s for "bottom.settings" Button to exist
+    t =    10.74s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =    10.74s             Checking existence of `"bottom.settings" Button`
+    t =    10.81s     Tap "bottom.settings" Button
+    t =    10.81s         Wait for com.mdd.kanpan to idle
+    t =    10.81s         Find the "bottom.settings" Button
+    t =    10.83s         Check for interrupting elements affecting "bottom.settings" Button
+    t =    10.85s         Synthesize event
+    t =    11.25s         Wait for com.mdd.kanpan to idle
+    t =    11.32s Tap "bottom.chart" Button
+    t =    11.32s     Wait for com.mdd.kanpan to idle
+    t =    11.33s     Find the "bottom.chart" Button
+    t =    11.47s     Check for interrupting elements affecting "bottom.chart" Button
+    t =    11.56s     Synthesize event
+    t =    11.86s     Wait for com.mdd.kanpan to idle
+    t =    11.86s Waiting 30.0s for "chart.canvas" Other to exist
+    t =    12.93s     Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =    12.93s         Checking existence of `"chart.canvas" Other`
+    t =    14.05s Find the "chart.canvas" Other
+    t =    14.13s Waiting 10.0s for "bottom.draw" Button to exist
+    t =    15.20s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.draw" Button`
+    t =    15.20s         Checking existence of `"bottom.draw" Button`
+    t =    15.30s Tap "bottom.draw" Button
+    t =    15.30s     Wait for com.mdd.kanpan to idle
+    t =    15.31s     Find the "bottom.draw" Button
+    t =    15.36s     Check for interrupting elements affecting "bottom.draw" Button
+    t =    15.42s     Synthesize event
+    t =    15.71s         Interface orientation changed to Landscape Right
+    t =    15.72s     Wait for com.mdd.kanpan to idle
+    t =    16.24s Waiting 15.0s for "land.exit" Button to exist
+    t =    17.30s     Checking `Expect predicate `existsNoRetry == 1` for object "land.exit" Button`
+    t =    17.30s         Checking existence of `"land.exit" Button`
+    t =    17.35s Tap "land.exit" Button
+    t =    17.35s     Wait for com.mdd.kanpan to idle
+    t =    17.35s     Find the "land.exit" Button
+    t =    17.37s     Check for interrupting elements affecting "land.exit" Button
+    t =    17.41s     Synthesize event
+    t =    17.64s         Interface orientation changed to Portrait
+    t =    17.71s     Wait for com.mdd.kanpan to idle
+    t =    17.97s Waiting 15.0s for "draw.finish" Button to exist
+    t =    19.04s     Checking `Expect predicate `existsNoRetry == 1` for object "draw.finish" Button`
+    t =    19.04s         Checking existence of `"draw.finish" Button`
+    t =    19.09s Checking existence of `"draw.hideAll" Button`
+    t =    19.13s Waiting 10.0s for "draw.hline" Button to exist
+    t =    20.22s     Checking `Expect predicate `existsNoRetry == 1` for object "draw.hline" Button`
+    t =    20.22s         Checking existence of `"draw.hline" Button`
+    t =    20.31s Tap "draw.hline" Button[0.50, 0.50]
+    t =    20.31s     Wait for com.mdd.kanpan to idle
+    t =    20.32s     Find the "draw.hline" Button
+    t =    20.36s     Check for interrupting elements affecting "draw.hline" Button
+    t =    20.44s     Synthesize event
+    t =    20.44s         Find the "draw.hline" Button
+    t =    20.47s         Find the "draw.hline" Button
+    t =    20.65s         Find the "draw.hline" Button
+    t =    20.98s     Wait for com.mdd.kanpan to idle
+    t =    21.03s Tap "chart.canvas" Other[0.50, 0.20]
+    t =    21.03s     Wait for com.mdd.kanpan to idle
+    t =    21.03s     Find the "chart.canvas" Other
+    t =    21.08s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    21.15s     Synthesize event
+    t =    21.15s         Find the "chart.canvas" Other
+    t =    21.19s         Find the "chart.canvas" Other
+    t =    21.25s         Find the "chart.canvas" Other
+    t =    21.60s     Wait for com.mdd.kanpan to idle
+    t =    21.60s Waiting 5.0s for "alert.prompt.accept" Button to exist
+    t =    22.67s     Checking `Expect predicate `existsNoRetry == 1` for object "alert.prompt.accept" Button`
+    t =    22.67s         Checking existence of `"alert.prompt.accept" Button`
+    t =    22.71s Tap "alert.prompt.accept" Button
+    t =    22.71s     Wait for com.mdd.kanpan to idle
+    t =    22.72s     Find the "alert.prompt.accept" Button
+    t =    22.74s     Check for interrupting elements affecting "alert.prompt.accept" Button
+    t =    22.76s     Synthesize event
+    t =    23.05s     Wait for com.mdd.kanpan to idle
+    t =    23.05s Waiting 10.0s for Button (First Match) to exist
+    t =    24.12s     Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =    24.12s         Checking existence of `Button (First Match)`
+    t =    24.24s Added attachment named '系统通知授权'
+    t =    24.24s Tap Button (First Match)
+    t =    24.24s     Wait for com.apple.springboard to idle
+    t =    24.25s     Find the Button (First Match)
+    t =    24.26s     Check for interrupting elements affecting "允许" Button
+    t =    24.30s     Synthesize event
+    t =    24.59s     Wait for com.apple.springboard to idle
+    t =    24.82s Checking existence of `"draw.finish" Button`
+    t =    24.90s Tap "draw.finish" Button
+    t =    24.90s     Wait for com.mdd.kanpan to idle
+    t =    24.90s     Find the "draw.finish" Button
+    t =    24.94s     Check for interrupting elements affecting "draw.finish" Button
+    t =    24.97s     Synthesize event
+    t =    25.25s     Wait for com.mdd.kanpan to idle
+    t =    25.26s Tap "bottom.settings" Button
+    t =    25.26s     Wait for com.mdd.kanpan to idle
+    t =    25.26s     Find the "bottom.settings" Button
+    t =    25.27s     Check for interrupting elements affecting "bottom.settings" Button
+    t =    25.29s     Synthesize event
+    t =    25.58s     Wait for com.mdd.kanpan to idle
+    t =    25.59s Waiting 10.0s for "settings.alerts" Button to exist
+    t =    26.66s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.alerts" Button`
+    t =    26.66s         Checking existence of `"settings.alerts" Button`
+    t =    26.70s Find the "settings.alerts" Button
+    t =    26.74s Tap "settings.alerts" Button
+    t =    26.74s     Wait for com.mdd.kanpan to idle
+    t =    26.74s     Find the "settings.alerts" Button
+    t =    26.77s     Check for interrupting elements affecting "settings.alerts" Button
+    t =    26.90s     Synthesize event
+    t =    27.20s     Wait for com.mdd.kanpan to idle
+    t =    27.69s Waiting 10.0s for "alerts.sound.open" Button to exist
+    t =    28.77s     Checking `Expect predicate `existsNoRetry == 1` for object "alerts.sound.open" Button`
+    t =    28.77s         Checking existence of `"alerts.sound.open" Button`
+    t =    28.82s Tap "alerts.sound.open" Button
+    t =    28.82s     Wait for com.mdd.kanpan to idle
+    t =    28.82s     Find the "alerts.sound.open" Button
+    t =    28.85s     Check for interrupting elements affecting "alerts.sound.open" Button
+    t =    28.87s     Synthesize event
+    t =    29.16s     Wait for com.mdd.kanpan to idle
+    t =    29.51s Waiting 10.0s for "alerts.sound.default" Button to exist
+    t =    30.58s     Checking `Expect predicate `existsNoRetry == 1` for object "alerts.sound.default" Button`
+    t =    30.58s         Checking existence of `"alerts.sound.default" Button`
+    t =    30.66s Tap "alerts.sound.default" Button
+    t =    30.66s     Wait for com.mdd.kanpan to idle
+    t =    30.67s     Find the "alerts.sound.default" Button
+    t =    30.71s     Check for interrupting elements affecting "alerts.sound.default" Button
+    t =    30.76s     Synthesize event
+    t =    31.06s     Wait for com.mdd.kanpan to idle
+    t =    31.07s Find the "alerts.sound.default" Button
+    t =    31.22s Added attachment named '通知授权后-默认试听'
+    t =    31.22s Tap "alerts.sound.glass" Button
+    t =    31.22s     Wait for com.mdd.kanpan to idle
+    t =    31.23s     Find the "alerts.sound.glass" Button
+    t =    31.25s     Check for interrupting elements affecting "alerts.sound.glass" Button
+    t =    31.30s     Synthesize event
+    t =    31.60s     Wait for com.mdd.kanpan to idle
+    t =    31.70s Added attachment named '推送验收-玻璃'
+    t =    31.70s Tear Down
+    t =    31.70s     Terminate com.mdd.kanpan:88062
+Test Case '-[KanpanUITests.AlertSoundUITests testNotificationPermissionAndDefaultPreview]' passed (32.765 seconds).
+Test Suite 'AlertSoundUITests' passed at 2026-09-22 15:27:03.403.
+	 Executed 1 test, with 0 failures (0 unexpected) in 32.765 (32.767) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-22 15:27:03.404.
+	 Executed 1 test, with 0 failures (0 unexpected) in 32.765 (32.768) seconds
+Test Suite 'Selected tests' passed at 2026-09-22 15:27:03.404.
+	 Executed 1 test, with 0 failures (0 unexpected) in 32.765 (32.769) seconds
+2026-09-22 15:27:57.428 xcodebuild[87396:4218421] [MT] IDETestOperationsObserverDebug: 152.232 elapsed -- Testing started completed.
+2026-09-22 15:27:57.428 xcodebuild[87396:4218421] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-22 15:27:57.428 xcodebuild[87396:4218421] [MT] IDETestOperationsObserverDebug: 152.232 sec, +152.232 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/ui-test/iPhone-16-Pro.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

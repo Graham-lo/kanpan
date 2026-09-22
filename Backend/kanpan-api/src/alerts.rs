@@ -330,11 +330,15 @@ async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,quote:Quote,price:f64,at:i
   tracing::info!("{} triggered {} at {}; recorded and synced, not pushed (no APNs key)",w.symbol,w.alert_id,money(price));
   return Ok(())
  };
- let tokens={
+ let (tokens,sound)={
   let mut tx=s.personal(w.owner).await?;
   let rows=sqlx::query("SELECT device_id,token,environment FROM device_push_tokens WHERE user_id=$1 AND kind='alerts'")
    .bind(w.owner).fetch_all(&mut *tx).await?;
-  tx.commit().await?;rows
+  // 与 token 在同一个个人事务里读取；不缓存，用户改声后下一条提醒立即采用新值。
+  let settings:Option<Value>=sqlx::query_scalar("SELECT body FROM sync_objects WHERE user_id=$1 AND collection='settings' AND id='chart' AND NOT deleted")
+   .bind(w.owner).fetch_optional(&mut *tx).await?;
+  let sound=crate::apns::alert_sound(settings.as_ref());
+  tx.commit().await?;(rows,sound)
  };
  let link=format!("hkline://drawing/{}/{}",w.symbol,w.drawing_id.clone().unwrap_or_default());
  let title=if w.title.is_empty() {format!("{} 触到你画的线",w.symbol)} else {w.title.clone()};
@@ -342,7 +346,7 @@ async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,quote:Quote,price:f64,at:i
  for row in tokens {
   let token:String=row.get("token");
   let environment:String=row.get("environment");
-  match apns.push_alert(&token,&environment,&title,&body,&link).await {
+  match apns.push_alert(&token,&environment,&title,&body,&link,sound).await {
    Ok(Outcome::Delivered)=>{}
    Ok(Outcome::Gone)=>{
     let device:Uuid=row.get("device_id");

@@ -61,6 +61,24 @@ fn sign(key:&EncodingKey,key_id:&str,team_id:&str,issued_at:i64)->Result<String>
  })
 }
 
+/// 只允许随账号同步的四档；旧账号、损坏字段与新版本未知值都使用系统声。
+pub fn alert_sound(settings:Option<&serde_json::Value>)->&'static str {
+ match settings.and_then(|v|v.get("alertSound")).and_then(serde_json::Value::as_str) {
+  Some("crisp")=>"alert-crisp.caf",
+  Some("electronic")=>"alert-electronic.caf",
+  Some("glass")=>"alert-glass.caf",
+  _=>"default",
+ }
+}
+
+/// 生产推送与回归验收共用同一个 payload 构造口。
+fn alert_payload(title:&str,body:&str,link:&str,sound:&str)->serde_json::Value {
+ json!({
+  "aps":{"alert":{"title":title,"body":body},"sound":sound,"thread-id":"alerts"},
+  "link":link,
+ })
+}
+
 impl Apns {
  /// 从 `/etc/kanpan-api/service.env` 那五个变量把推送装起来；缺一样就不装。
  ///
@@ -106,11 +124,8 @@ impl Apns {
  /// 一条提醒的推送。payload 的形状写死在方案文档 2.4 里。
  ///
  /// `link` 是深链（`hkline://drawing/<SYMBOL>/<drawingID>`），点通知就跳回那条线上。
- pub async fn push_alert(&self,device_token:&str,environment:&str,title:&str,body:&str,link:&str)->Result<Outcome> {
-  let payload=json!({
-   "aps":{"alert":{"title":title,"body":body},"sound":"default","thread-id":"alerts"},
-   "link":link,
-  });
+ pub async fn push_alert(&self,device_token:&str,environment:&str,title:&str,body:&str,link:&str,sound:&str)->Result<Outcome> {
+  let payload=alert_payload(title,body,link,sound);
   self.send(device_token,environment,"alert",None,&payload).await
  }
  /// 灵动岛 / 锁屏实时活动的推送。调用方是 `src/live_activity.rs`（心跳与结束两条路）。
@@ -167,6 +182,26 @@ mod tests {
  use base64::Engine;
  use jsonwebtoken::{DecodingKey,Validation};
  use ring::signature::KeyPair;
+
+ #[test] fn alert_sound_falls_back_for_old_or_invalid_settings() {
+  assert_eq!(alert_sound(None),"default");
+  for settings in [json!({}),json!(null),json!({"alertSound":null}),json!({"alertSound":1}),json!({"alertSound":true}),json!({"alertSound":"unknown"}),json!({"alertSound":"../custom.caf"})] {
+   assert_eq!(alert_sound(Some(&settings)),"default");
+  }
+ }
+
+ #[test] fn alert_payload_uses_the_selected_sound_and_keeps_the_deep_link() {
+  for (setting,sound) in [("default","default"),("crisp","alert-crisp.caf"),("electronic","alert-electronic.caf"),("glass","alert-glass.caf")] {
+   let settings=json!({"alertSound":setting});
+   let payload=alert_payload("铃声验收 · 玻璃","现价 64500","hkline://symbol/BTCUSDT",alert_sound(Some(&settings)));
+   assert_eq!(payload["aps"]["sound"],sound);
+   assert_eq!(payload["aps"]["alert"]["title"],"铃声验收 · 玻璃");
+   assert_eq!(payload["aps"]["alert"]["body"],"现价 64500");
+   assert_eq!(payload["aps"]["thread-id"],"alerts");
+   assert_eq!(payload["link"],"hkline://symbol/BTCUSDT");
+   if setting=="glass" {println!("RINGTONE_PAYLOAD={payload}");}
+  }
+ }
 
  /// 现造一把 P-256 私钥，PEM 包成 `.p8` 的样子。
  ///

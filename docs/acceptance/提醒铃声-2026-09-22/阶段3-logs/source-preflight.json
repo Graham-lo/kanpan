@@ -1,0 +1,46 @@
+{
+  "checked": 96,
+  "differences": [
+    {
+      "path": "contract/settings-fields.json",
+      "main": "ede59f411ddd777cbed9c99db348e5a8b8327fd17ea6f2f9f3978fd66035ddf2",
+      "online": "34f944b309e00a83ed5170d18910ff5db332e0b33603d9ed896dd3338e8e0c47"
+    },
+    {
+      "path": "src/oi_archive.rs",
+      "main": "0e956b20f2c6a77f919e13f25e36bf327505c1c892fcd6d65158aafc592d9a26",
+      "online": "3d3563ba3dc20ba2f3642fa310f566b72699e4ed6c8d85e096f217b813f146e2"
+    },
+    {
+      "path": "src/review_domain.rs",
+      "main": "b9ff34cee91bcf371db167e13ed141c9a922dd2b1b5acd0e7af2d97dcf965f09",
+      "online": "caccba2d8e2d5e57ade1cb86ea2101bfb80425fc9e87590d1e460f256b5a7b72"
+    },
+    {
+      "path": "src/search.rs",
+      "main": "c2f52a39e4d58df891271ab6c27ecb0c284b755b7517138787d7c409b072e58e",
+      "online": "85bad32c449d867f4080b4f2e5c0579c3057b969fe90d60a634ff39386ee8564"
+    },
+    {
+      "path": "src/share.rs",
+      "main": "9cf0a6cd3c1e6540f9e0c35dfd5bb4603801d97a93387fe3794a76baad965e70",
+      "online": "2c3a6aaadbdba5bfa9716e6b5dc85d6675847965070405ce760f1274b41fedd1"
+    },
+    {
+      "path": "src/sync.rs",
+      "main": "d94a80522245ceef56e81fc925e3a4d65d4cd81316d09b4a5a683e5806a35fad",
+      "online": "3ff2e9313bc5566b3fe94df67cba9aa7f9b05540967c38056e18f5c2bf55d709"
+    },
+    {
+      "path": "src/sync_validation.rs",
+      "main": "bce36eafadb93778c2d393ef014d6330a9ae90cf0340e329eff06a3d39bf6839",
+      "online": "f8132c1e9dd50f9dd422337b0a80392c66d03d76f1bd9b86fb0290a40068ca32"
+    },
+    {
+      "path": "vendor/scorebook-core/src/domain/native_review.rs",
+      "main": "3aab2a49cfbb95db5e603e73bc13ec3208aa579226a3c8a1aa762c6ffb4d6745",
+      "online": "88336d2818c58c3712dbba4270c8e4a93ed73cf2e93b6e2cf81b0206b86af562"
+    }
+  ]
+}
+

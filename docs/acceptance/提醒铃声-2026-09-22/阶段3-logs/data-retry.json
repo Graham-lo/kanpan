@@ -1,0 +1,5 @@
+{
+  "check": "KanpanData retry",
+  "exit": 0,
+  "seconds": 15
+}
