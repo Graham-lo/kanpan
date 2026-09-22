@@ -7,6 +7,32 @@ import ReviewDomain
 import ReviewUI
 import KanpanAccount
 
+// ⚠️ 这个文件有一条**嵌套层数上限**，加修饰符之前先读完这段。
+//
+// 2026-09-22：iPhone 16 Pro / iOS 27.0 上这个 app 点开就闪退，九次崩溃报告一个签名：
+// `EXC_BAD_ACCESS (SIGSEGV)` + `Thread stack size exceeded`，主线程栈顶是
+// `swift_getTypeByMangledNameInContext2` → `decodeMangledType` → `buildDescriptorPath`
+// 的无尽递归，往下依次是 `MainScreen.header.getter` → `chartPage` → `portraitBody`
+// → `basePresentation` → `presentation` → `MainScreen.body.getter`。
+//
+// 根因不是逻辑，是**类型**：SwiftUI 里每加一个修饰符就把整棵具体类型再套一层
+// `ModifiedContent<...>`，而 `some View` 的计算属性和泛型包装都**不会**断开这个累加。
+// 当时 `body` 那条主链一共一百四十一层，运行时按 mangled name 实例化这个类型的元数据
+// 时递归太深，主线程 1MB 的栈直接撞穿。iOS 26 模拟器不崩，只有真机 iOS 27 崩，
+// 所以「编译过了 / 模拟器能跑」在这件事上一点都不算数。
+//
+// 修法是把层数摘出去，现在主链在四十层以内。能断开累加的只有两样：
+//   * **非泛型的 `View` struct**——它的 `body` 是一个全新的类型根；
+//   * **自定义 `ViewModifier`**——`body(content:)` 的 `Content` 是
+//     `_ViewModifier_Content<Self>`，不带宿主的类型。
+// 所以 `header` / `chart` / `reviewHeader` / `captureCard` 和那三十一个观察者
+// （`onChange` / `onReceive` / `task(id:)`）都搬去了 `MainScreenParts.swift`。
+//
+// **要加观察者就往 `MainScreenObservers` 里加，不要重新挂回 `body` 这条链上**；
+// 要加界面就新开一个 `View` struct，别在 `chartPage` / `portraitBody` 上接修饰符。
+// 加之前数一数：`body` → `lifecycleContent` → `presentation` → `basePresentation`
+// → `portraitBody` → `chartPage` 这一路的顶层修饰符总数得留在四十以内。
+
 /// 主界面（§9.1）。
 ///
 /// 从上到下：顶栏 → 价格行 → 周期条 → 图（占满剩下的）→ 常驻标签栏。
@@ -343,120 +369,138 @@ struct MainScreen: View {
     .task { boot() }
     // 开关一变、或前后台一切，这个 task 就整个重来（旧的先被取消），心跳跟着起停。
     .task(id: beating) { await heartbeat() }
-    // 前后台只走这一条路，落盘顺序由 `AppLifecycle` 排（产数据的先、排空存档的最后）。
-    .onChange(of: phase) { _, now in AppLifecycle.shared.phaseChanged(to: now) }
-    // 外面进来的链接（通知、桌面快捷入口、共享链接）全在这儿落地。app 已经开着时
-    // 走这条；冷启动那一下界面还没搭好，由 `boot()` 末尾补取一次。
-    .onChange(of: DeepLinkRouter.shared.pending) { _, link in if link != nil { consumeDeepLink() } }
+    // 其余三十一个观察者收在这一层里（`MainScreenParts.swift` 的 `MainScreenObservers`）。
+    // 它们从前是直接挂在这条链上的三十一个修饰符，每一个都往 `body` 的具体类型上再
+    // 套一层 `ModifiedContent<...>`——那正是 iOS 27 真机启动栈溢出的大头。
+    // **不要把 `.onChange` / `.onReceive` 重新挂回这条链上，往那只修饰符里加。**
+    .modifier(observers)
   }
 
   private var microstructureVisible: Bool {
     tab == .chart && !showSearch && !showSymbols && !review.bookOpen && !reviewChart.active && !drawingCanvasOnly
   }
 
-  private var indicatorObservedContent: some View {
-    lifecycleContent
-      .onChange(of: microstructureVisible, initial: true) { _, visible in market.setChartVisible(visible) }
-      .onChange(of: prefs.subs) { _, subs in market.setExternalIndicators(subs, depth: prefs.depth) }
-      .onChange(of: prefs.depth) { _, on in market.setExternalIndicators(prefs.subs, depth: on) }
-      .onChange(of: prefs.launchSnapshot) { _, on in market.setSnapshotEnabled(on) }
-  }
-
-  private var observedContent: some View {
-    indicatorObservedContent
-    .onReceive(NotificationCenter.default.publisher(for: UIScreen.brightnessDidChangeNotification)) { _ in refreshComfort() }
-    .onChange(of: prefs.ambientTheme) { _, _ in refreshComfort() }
-    .onChange(of: prefs.theme) { _, _ in refreshComfort() }
-    .onChange(of: prefs.keepAwake, initial: true) { _, on in
-      UIApplication.shared.isIdleTimerDisabled = on
-    }
-    // 面板 / 画线 / 复盘开着的时候云端设置是被挡下来的（会把人正在做的事掀掉）。
-    // 关掉的这一刻补跑一次，别让人等下一轮全量（300 秒）。
-    .onChange(of: syncGate) { _, open in if open { accountBridge?.resumeApply() } }
-    // 「找相似」的范围两头对接（R3-5）：面板上改了就落进偏好，云端换下来一份
-    // （或者换了账号）也照样灌回面板。两条都靠 `PrefsStore.update` 自带的
-    // 「没真改动就不写」挡住回环，不会你来我往。
-    .onChange(of: review.searchScope) { _, value in store.update { $0.reviewSearchScope = value } }
-    .onChange(of: prefs.reviewSearchScope) { _, value in review.searchScope = value }
-    // 时区那一档也要跟着改：设置里从「本地」切到「交易所」，复盘本、找相似列表、
-    // 到期轮盘要和 K 线时间轴一起换口径（审查 B-08）。
-    .onChange(of: prefs.timeZone) { _, value in review.timezone = value }
-  }
-
-  private var marketContent: some View {
-    observedContent
-    .onChange(of: hosts) { _, next in
-      market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis, source: market.source)
-      sectorFeed.configure(hosts: next, source: market.source)
-      previews.configure(hosts: next, source: market.source)
-    }
-    .onChange(of: prefs.changeBasis) { _, next in quotes.configure(hosts: hosts, basis: next, source: market.source) }
-    .onChange(of: market.source) { _, next in
-      quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next)
-      sectorFeed.configure(hosts: hosts, source: next)
-      previews.configure(hosts: hosts, source: next)
-    }
-    // 费率只有正在看的那张图才有（`markPrice` 流里捎的），顺手存一份给预览卡。
-    .onChange(of: market.displayedFundingRate) { _, rate in
-      previews.note(funding: rate, for: market.symbol)
-    }
-    // 品种表是板块页认 base 的依据（兜底桶按它的标签凑，点行去看图也靠它拼全名）。
-    // 它是异步载进来的，所以不能只在 `boot()` 里交一次。
-    .onChange(of: picker.catalog.count) { _, _ in sectorFeed.setCatalog(picker.catalog) }
-    .onChange(of: listVisible) { _, on in quotes.setVisible(on) }
-    .onChange(of: picker.prefs.favorites) { _, symbols in settleFavorites(symbols) }
-    .onChange(of: market.tradeQuote) { _, trade in
-      if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
-    }
-    .onChange(of: market.symbol) { _, symbol in
-      if let preview = draw.previewing, preview.symbol != symbol { endSharePreview() }
-      quotes.setChartSymbol(symbol); accountBridge?.focus(symbol)
-      // 换了一只，「刚才那一屏」说的已经不是这张图上的事了（§P3-2）。
-      forgetReturn()
-    }
-    // 自选页删掉一只之后那句「已移除 · 撤销」（§P3-4）。全屏只有一层提示条，
-    // 所以话由自选页放进来、宿主念出去；盯的是计数不是那句话本身——连删两只
-    // 说的是同一句，`onChange(of: String)` 不会响第二次。
-    .onChange(of: favoritesEdit.undoStamp) { _, _ in
-      guard let undo = favoritesEdit.undoAction else { return }
-      say(favoritesEdit.undoText, undo: undo)
-    }
-    // 「返回刚才」只活一分钟：过了这阵，那一屏多半已经不是他还记着的那件事了。
-    .task(id: returnStamp) {
-      guard returnView != nil else { return }
-      try? await Task.sleep(for: .seconds(60))
-      guard !Task.isCancelled else { return }
-      returnView = nil
-    }
-    // 「常看」记的是**在这张图上真待住了**，不是「点开过」：搜索里滑过一下、点错一次
-    // 立刻退出去的，都不该算一分。`task(id:)` 换品种就取消重来，离屏也取消，
-    // 所以停不满 3 秒的那些一分都拿不到。
-    .task(id: market.symbol) {
-      let symbol = market.symbol
-      guard !symbol.isEmpty else { return }
-      try? await Task.sleep(for: .seconds(3))
-      guard !Task.isCancelled else { return }
-      picker.noteDwell(symbol)
-    }
-    .onChange(of: store.notice) { _, note in
-      // 设置那一侧说的话（换下了哪个副图、常用行满了、已恢复默认）分两处落：
-      // 面板开着的时候它归面板自己的 `panelToast` 说——主 toast 压在面板底下
-      // 根本看不见；面板没开（比如周期网格里点图钉）才接到主 toast 上。
-      // 两处加起来永远只有一层。
-      if let note, panel == nil {
-        let undo = store.noticeUndo
-        store.clearNotice()
-        say(note, undo: undo)
-      }
-    }
-    .onChange(of: draw.full) { _, full in
+  /// 主屏那一串观察者的接线。
+  ///
+  /// **被观察的值全在这儿求值**——`onChange(of:)` 的依赖记在求值它的那个 body 上，
+  /// 所以这些读取必须留在 `MainScreen` 里，搬进修饰符会让宿主不再订阅它们
+  /// （最要命的是 `listVisible`：它是拿 `picker.prefs.favorites` 算的）。
+  /// 动作照旧是这只 `MainScreen` 上的方法，收的是 `onChange` 给的新值。
+  private var observers: MainScreenObservers {
+    MainScreenObservers(
+      prefs: prefs,
+      phase: phase,
+      deepLink: DeepLinkRouter.shared.pending,
+      microstructureVisible: microstructureVisible,
+      syncGate: syncGate,
+      reviewScope: review.searchScope,
+      hosts: hosts,
+      source: market.source,
+      fundingRate: market.displayedFundingRate,
+      catalogCount: picker.catalog.count,
+      listVisible: listVisible,
+      favorites: picker.prefs.favorites,
+      tradeQuote: market.tradeQuote,
+      symbol: market.symbol,
+      undoStamp: favoritesEdit.undoStamp,
+      returnStamp: returnStamp,
+      storeNotice: store.notice,
+      drawFull: draw.full,
+      drawNotice: draw.notice,
+      panel: panel,
+      drawActive: draw.active,
+      alertsNotice: alerts.notice,
+      reviewNotice: review.notice,
+      reviewChartNotice: reviewChart.notice,
+      reviewBookOpen: review.bookOpen,
+      reviewRecords: review.records,
+      onPhase: { now in AppLifecycle.shared.phaseChanged(to: now) },
+      onDeepLink: { consumeDeepLink() },
+      onMicrostructure: { visible in market.setChartVisible(visible) },
+      onSubs: { subs in market.setExternalIndicators(subs, depth: prefs.depth) },
+      onDepth: { on in market.setExternalIndicators(prefs.subs, depth: on) },
+      onLaunchSnapshot: { on in market.setSnapshotEnabled(on) },
+      onComfort: { refreshComfort() },
+      onSyncGate: { accountBridge?.resumeApply() },
+      onReviewScope: { value in store.update { $0.reviewSearchScope = value } },
+      onPrefsReviewScope: { value in review.searchScope = value },
+      onTimeZone: { value in review.timezone = value },
+      onHosts: { next in
+        market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis, source: market.source)
+        sectorFeed.configure(hosts: next, source: market.source)
+        previews.configure(hosts: next, source: market.source)
+      },
+      onChangeBasis: { next in quotes.configure(hosts: hosts, basis: next, source: market.source) },
+      onSource: { next in
+        quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next)
+        sectorFeed.configure(hosts: hosts, source: next)
+        previews.configure(hosts: hosts, source: next)
+      },
+      onFundingRate: { rate in previews.note(funding: rate, for: market.symbol) },
+      onCatalog: { sectorFeed.setCatalog(picker.catalog) },
+      onListVisible: { on in quotes.setVisible(on) },
+      onFavorites: { symbols in settleFavorites(symbols) },
+      onTradeQuote: { trade in
+        if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
+      },
+      onSymbol: { symbol in
+        if let preview = draw.previewing, preview.symbol != symbol { endSharePreview() }
+        quotes.setChartSymbol(symbol); accountBridge?.focus(symbol)
+        // 换了一只，「刚才那一屏」说的已经不是这张图上的事了（§P3-2）。
+        forgetReturn()
+      },
+      onUndoStamp: {
+        guard let undo = favoritesEdit.undoAction else { return }
+        say(favoritesEdit.undoText, undo: undo)
+      },
+      expireReturn: {
+        guard returnView != nil else { return }
+        try? await Task.sleep(for: .seconds(60))
+        guard !Task.isCancelled else { return }
+        returnView = nil
+      },
+      noteDwell: {
+        let symbol = market.symbol
+        guard !symbol.isEmpty else { return }
+        try? await Task.sleep(for: .seconds(3))
+        guard !Task.isCancelled else { return }
+        picker.noteDwell(symbol)
+      },
+      onStoreNotice: { note in
+        // 设置那一侧说的话（换下了哪个副图、常用行满了、已恢复默认）分两处落：
+        // 面板开着的时候它归面板自己的 `panelToast` 说——主 toast 压在面板底下
+        // 根本看不见；面板没开（比如周期网格里点图钉）才接到主 toast 上。
+        // 两处加起来永远只有一层。
+        if let note, panel == nil {
+          let undo = store.noticeUndo
+          store.clearNotice()
+          say(note, undo: undo)
+        }
+      },
       // A7.7：一个品种最多 50 条，满了只提示、不悄悄丢。
-      if full { say("这个品种的线画满了（50 条）"); draw.full = false }
-    }
+      onDrawFull: { say("这个品种的线画满了（50 条）"); draw.full = false },
+      onDrawNotice: { note in if let note { say(note); draw.notice = nil } },
+      onPanel: { value in if value == nil { try? accountBridge?.applyPending() } },
+      onDrawActive: { active in
+        if !active { try? accountBridge?.applyPending() }
+        // 画线直接横过来，画完自己转回去（§10.7 的入口就此收在「画线」上）。
+        if active {
+          endSharePreview()
+          if !landscape { landscapeForDrawing = true; enterLandscape() }
+        } else if landscapeForDrawing {
+          landscapeForDrawing = false
+          leaveLandscape()
+        }
+      },
+      onAlertsNotice: { note in if let note { say(note); alerts.notice = nil } },
+      onReviewNotice: { note in if let note { say(note); review.notice = nil } },
+      onReviewChartNotice: { note in if let note { say(note); reviewChart.notice = nil } },
+      onReviewBookOpen: { endSharePreview() },
+      onReviewRecords: { list in ReviewDueNotifications.reschedule(list) })
   }
 
   var body: some View {
-    marketContent
+    lifecycleContent
     .sheet(item: $draw.panel) { panel in
       // 主题显式灌进去：这张表里的「画线管理」和「样式」都要跟着皮肤走
       // （和 `IndicatorPanel` 里那张编辑表一个做法）。
@@ -477,22 +521,9 @@ struct MainScreen: View {
       FriendsPage(inbox: inbox, onOpen: openShare).environment(\.panelTheme, theme)
         .presentationDetents([.large])
     }
-    .onChange(of: draw.notice, initial: true) { _, note in if let note { say(note); draw.notice = nil } }
     .environment(\.panelTheme, theme)
     .environment(\.accountFeature, account)
     .sheet(isPresented: Binding(get: { account.presented && !review.bookOpen }, set: { account.presented = $0 })) { AccountView(feature: account).environment(\.panelTheme, theme) }
-    .onChange(of: panel) { _, value in if value == nil { try? accountBridge?.applyPending() } }
-    .onChange(of: draw.active) { _, active in
-      if !active { try? accountBridge?.applyPending() }
-      // 画线直接横过来，画完自己转回去（§10.7 的入口就此收在「画线」上）。
-      if active {
-        endSharePreview()
-        if !landscape { landscapeForDrawing = true; enterLandscape() }
-      } else if landscapeForDrawing {
-        landscapeForDrawing = false
-        leaveLandscape()
-      }
-    }
     .fullScreenCover(isPresented: $review.bookOpen) {
       ReviewBook(feature: review)
         .environment(\.reviewTheme, theme.review)
@@ -511,13 +542,6 @@ struct MainScreen: View {
                     zone: prefs.timeZone.offsetMinutes)
         .environment(\.panelTheme, theme)
     }
-    .onChange(of: alerts.notice) { _, note in if let note { say(note); alerts.notice = nil } }
-    .onChange(of: review.notice) { _, note in if let note { say(note); review.notice = nil } }
-    .onChange(of: reviewChart.notice) { _, note in if let note { say(note); reviewChart.notice = nil } }
-    // 复盘的待办本来就有到期时间，这儿把它兑现成一条到点响的本地通知（方案 2.3 末条）。
-    // 整批重排，便宜且不会对不上账。
-    .onChange(of: review.bookOpen) { _, open in if open { endSharePreview() } }
-    .onChange(of: review.records, initial: true) { _, list in ReviewDueNotifications.reschedule(list) }
   }
 
   // ---------------------------------------------------------------- 各段
@@ -848,78 +872,27 @@ struct MainScreen: View {
     }
   }
 
+  /// 行情页头部。画的东西全在 `MainHeaderView`（`MainScreenParts.swift`）——
+  /// 它那四十来层嵌套摘出去之后才不会算进 `body` 的类型深度里，这一层只接线。
   private var header: some View {
-    VStack(spacing: 9) {
-      // 顶栏没有自选星了（用户 2026-09-18 定的）：加自选统一在搜索页和自选页的
-      // 品种行上做，那儿看得见一整列，挑着加；顶栏这一颗紧贴品种名，只会误触。
-      // 复盘从底栏挪到了这儿：底栏换成常驻标签栏之后那四格是分页，复盘按用户的话
-      // 「放到图表里」——它是看着某张图时才想起来的事。角标是还欠着答案的条数。
-      TopBar(
-        theme: theme, symbol: market.symbol,
-        reviewCount: review.pendingCount,
-        // 有来路才有返回。复盘态走的是另一副页头（`reviewHeader`），不经过这儿。
-        onBack: chartOrigin.map { origin in { switchTo(tab: origin) } },
-        onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() },
-        onSearch: { dismissPanel(); showSearch = true })
-      ZStack {
-        PriceRow(theme: theme, ticker: rollingTicker, lastPrice: readoutPrice,
-          decimals: market.info.priceDecimals,
-          volumeUnit: market.volumeUnit,
-          openInterest: market.openInterestDisplay,
-          openInterestUnit: market.openInterestUnit,
-          totalSupply: market.totalSupply,
-          fundingRate: market.displayedFundingRate,
-          nextFundingTimeMs: market.displayedNextFundingTime,
-          stale: !market.priceFresh)
-          // 390pt 上 .xLarge 的长小数涨跌行会挤掉左右各 8pt，密集数据行封顶默认档。
-          .dynamicTypeSize(...DynamicTypeSize.large)
-          .modifier(HiddenWhileCrosshairReads(readout: crosshairReadout, context: crosshairContext))
-          .accessibilityElement(children: .contain)
-          .accessibilityIdentifier("market.quote")
-          .accessibilityValue(quoteDiagnostics)
-          // 「要不要加提醒」在场的那六秒，价格行也照旧占着位置、只是透明——
-          // 和十字线那套让位一模一样，行高一个 pt 都不变。
-          .opacity(headerCardVisible ? 0 : 1)
-        // 读数 + 十字线的那几个动作（§P3-7）。两样都只在这只小视图里跟着手指重求值，
-        // 主屏的 body 照旧一次都不用动。
-        CrosshairReadoutRow(
-          readout: crosshairReadout, context: crosshairContext, theme: theme,
-          onStep: { proxy.moveCrosshair(by: $0) },
-          // 走的是画线自己那条落笔路（`ChartView.addHorizontalLine`）：一样进撤销栈、
-          // 一样落盘、一样在末尾问一句「要不要加个提醒」。画满了那一句也照旧由
-          // `draw.full` 那条统一说，不在这儿另说一遍。
-          onLine: { endSharePreview(); proxy.addHorizontalLine(at: $0) },
-          // 「看细节」（§10.1）：还有更细的一档可进才给。这个判断只看当前周期，
-          // 主屏的 body 本来就读它，不引入对十字线的观察。
-          canDetail: DetailZoom.finer(than: market.interval) != nil,
-          onDetail: zoomIntoDetail)
-          // 两件事抢同一行时，刚画完的那一句优先：它只活六秒，而十字线还在手指底下，
-          // 六秒过去它自己就回来了。让位也是透明让位，这一行的高度不因此变。
-          .opacity(headerCardVisible ? 0 : 1)
-          .allowsHitTesting(!headerCardVisible)
-      }
-      // 画完一条线问的那一句，摆在**价格行的位置上**，而且是 `overlay`——
-      // overlay 不参与父视图定尺寸，所以它在与不在，头部和图表的高度一个 pt 都不会变
-      // （从前它在图外面自成一行，画完线图当场矮一截、六秒后又弹回来）。
-      // 它盖着的只有价格与那六格，画布一个点都没碰着（`kanpan-no-floating-controls-over-chart`）。
-      .overlay { shareAndAlertCard(inHeader: true) }
-      // 连续扫图（§10.1）：横滑**只挂在价格这一块**上。
-      //
-      // 画布上不挂——那儿的横滑是平移 K 线，人一辈子都在那儿横滑；周期条上也不挂——
-      // 那一排药丸本来就要横向滚动。价格区是这一屏唯一一块「横着划没有别的意思」的地方，
-      // 而且它正是「现在看的是哪一只」那句话所在的位置，滑它换一只读起来是顺的。
-      .contentShape(Rectangle())
-      .gesture(DragGesture(minimumDistance: 20).onEnded { g in
-        let dx = g.translation.width, dy = g.translation.height
-        // 要横得明显：斜着划过去的多半是想划别的，宁可不动。
-        guard !headerCardVisible, abs(dx) > 44, abs(dx) > abs(dy) * 1.5 else { return }
-        scan(dx < 0 ? .next : .previous)
-      })
-    }
-    .padding(.horizontal, 12)
-    .padding(.top, 6)
-    .padding(.bottom, 9)
-    .background(theme.app)
+    MainHeaderView(
+      theme: theme, market: market, review: review,
+      readout: crosshairReadout, context: crosshairContext,
+      ticker: rollingTicker, lastPrice: readoutPrice,
+      diagnostics: quoteDiagnostics,
+      cardVisible: headerCardVisible,
+      // 「看细节」（§10.1）：还有更细的一档可进才给。这个判断只看当前周期，
+      // 主屏的 body 本来就读它，不引入对十字线的观察。
+      canDetail: DetailZoom.finer(than: market.interval) != nil,
+      // 有来路才有返回。复盘态走的是另一副页头（`reviewHeader`），不经过这儿。
+      onBack: chartOrigin.map { origin in { switchTo(tab: origin) } },
+      onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() },
+      onSearch: { dismissPanel(); showSearch = true },
+      onStep: { proxy.moveCrosshair(by: $0) },
+      onLine: { endSharePreview(); proxy.addHorizontalLine(at: $0) },
+      onDetail: zoomIntoDetail,
+      onScan: { scan($0) },
+      card: shareAndAlertCard(inHeader: true))
   }
 
   private var displayedTicker: Ticker? {
@@ -1086,85 +1059,24 @@ struct MainScreen: View {
       changePercent: (pct?.isFinite == true) ? pct : nil)
   }
 
+  /// K 线画布。同样为了断开类型嵌套整块搬进了 `MainChartView`（`MainScreenParts.swift`）。
   private var chart: some View {
-    ZStack(alignment: .bottomTrailing) {
-      theme.chartBG
-      ChartHost(
-        portrait: !landscape,
-        renderingActive: tab == .chart && !showSymbols && !showSearch,
-        panelOpen: panel != nil || draw.panel != nil,
-        state: reviewChart.active ? reviewChart.state : chartState,
-        proxy: reviewChart.active ? reviewChart.proxy : proxy,
-        onView: { view in
-          if !reviewChart.active { market.loadOI(view: view) }
-          // 视野一动就重算一次：周期条行尾那颗「最新」靠它露面 / 收起。
-          let now = (reviewChart.active ? reviewChart.proxy : proxy).isAtLatest
-          if now != atLatest { atLatest = now }
-        },
-        // 读的是 `ChartViewport` 内存里那一份，不是 `prefs.barSpacing`：落盘虽然钉在
-        // 手指抬起那一刻，但用户捏完可能下一帧就换品种，那一下必须按刚捏出来的宽度开图。
-        resetSpacing: viewport.barSpacing,
-        // 复盘只读这份根宽、不写回去：一进复盘 K 线不该突然变宽变窄，但复盘是在重放
-        // 一段历史，它那边怎么拉怎么捏都不该改写用户平时看盘的习惯。
-        //
-        // **这一路只收用户手上的动作**（`ChartHost.onBarSpacing` ← `ChartView.onUserViewChanged`）。
-        // 程序自己摆出来的视野绝不会走到这儿——那正是用户那个 bug 的「杀法甲」。
-        onBarSpacing: { if !reviewChart.active { viewport.userIsZooming(to: $0) } },
-        // 他自己动手翻图了：「返回刚才」那条后路当场作废——再点它就是盖掉他刚做的事。
-        onUserView: { forgetReturn() },
-        onInteractionEnded: { if !reviewChart.active { viewport.interactionEnded() } },
-        adoptToken: viewport.adoptToken,
-        onInversion: { main, subs in if !reviewChart.active { store.noteInversion(main: main, subs: subs) } },
-        onSubResize: { id, scale in store.update { $0.subHeightOverrides[id] = scale } },
-        onSubReorder: { order in let next = merged(subs: order); store.update { $0.subs = next } },
-        onCrosshair: { [readout = crosshairReadout] in readout.set($0) },
-        onNeedsHistory: { if reviewChart.mode == .replay { reviewChart.loadReplayPage(forward: false, feature: review) } else if !reviewChart.active { market.loadMore() } },
-        // 面板打开时由原生遮罩消费首个触摸，只收起面板。
-        onTapped: { dismissPanel() },
-        onNotice: { say($0) },
-        drawing: reviewChart.active ? nil : draw,
-        // 用户刚亲手画完一条线：只是**问一句**，加不加由那条问句说了算。
-        onDrawingCommitted: { item, symbol in alertPrompt.offer(item, symbol: symbol) },
-        // 图上哪几条线挂着提醒——右端一枚小铃铛。
-        alertedDrawingIDs: alerts.alertedDrawingIDs(symbol: market.symbol)
-      )
-      .id(reviewChart.mode.rawValue)
-      // 横屏画线时复盘的区间框、目标线和「等答案」标签一律不画（§2E5）：横屏那一屏
-      // 要的是干净的原始 K 线，和「指标一律不画」是同一条理由——画布上多一根线，
-      // 画的时候就多一次「这是我画的还是本来就有的」。记录本身没动，转回竖屏原样都在。
-      ReviewRangeOverlay(feature: review, bridge: reviewChart, liveProxy: proxy,
-                         suppressed: drawingCanvasOnly, flash: review.lastSaved)
-        .allowsHitTesting(reviewChart.mode == .capture)
-      // 切线路一律静默：用户要看的是 K 线，不是我们从哪台机器取的数。
-      // 历史数据真拉不下来才出这一条——那是「图不全」，得让人知道并且能重试。
-      if let error = market.historyError, !reviewChart.active {
-        Button(error) { market.retryHistory() }.font(.caption).foregroundStyle(theme.ink2)
-          .padding(.horizontal, 12).padding(.vertical, 8)
-          .background(theme.raised, in: Capsule())
-          .overlay(Capsule().strokeBorder(theme.line, lineWidth: 1))
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-          .padding(.top, 8)
-      }
-      if reviewChart.loading {
-        ProgressView("加载重温行情")
-          .tint(theme.amber)
-          .foregroundStyle(theme.ink2)
-          .padding(16)
-          .background(theme.raised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-          .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(theme.line, lineWidth: 1))
-      }
-      // 提示条压在图区上沿（§10.8），不占版面高度，所以走 overlay 不进 VStack。
-      if draw.hint != nil {
-        DrawingHintStrip(controller: draw)
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-          .padding(.top, 8)
-      }
-      // 选中态的那几个动作**不在图上**（2026-09-21）：竖屏它们顶掉画线栏上排的三个
-      // 开关（见 `DrawingBar`），横屏排在标题下面那一行。从前它浮在图区下沿，
-      // 正好盖掉半行 MACD 图例。
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .clipped()
+    MainChartView(
+      theme: theme, market: market, proxy: proxy, viewport: viewport, store: store,
+      review: review, reviewChart: reviewChart, draw: draw, alerts: alerts,
+      alertPrompt: alertPrompt, readout: crosshairReadout,
+      liveState: chartState,
+      portrait: !landscape,
+      renderingActive: tab == .chart && !showSymbols && !showSearch,
+      panelOpen: panel != nil || draw.panel != nil,
+      drawingCanvasOnly: drawingCanvasOnly,
+      alertedDrawingIDs: alerts.alertedDrawingIDs(symbol: market.symbol),
+      atLatest: $atLatest,
+      merged: { merged(subs: $0) },
+      say: { say($0) },
+      onTapped: { dismissPanel() },
+      // 他自己动手翻图了：「返回刚才」那条后路当场作废——再点它就是盖掉他刚做的事。
+      onUserView: { forgetReturn() })
   }
 
   /// 这次重温是从哪儿开的。复盘本会在开图之前把自己关掉，退出时照这个把它开回来——
@@ -1242,58 +1154,23 @@ struct MainScreen: View {
     review.synchronize()
   }
   private var reviewHeader: some View {
-    VStack(alignment: .leading, spacing: 5) {
-      Text("重温 · " + (reviewChart.state?.series.symbol ?? "")).font(.headline)
-      // 时间跟着**这张图自己的时区档**走，和时间轴、十字线、选区标签同一口径（审查 B-08）。
-      // `Text(Date, style:)` 认的是设备时区：图表切到「交易所」之后，这一行和轴上
-      // 写着两个时刻。
-      HStack {
-        Text(fmtFull(ms: Double(reviewChart.replayTime),
-                     offsetMinutes: (reviewChart.state?.timezone ?? prefs.timeZone).offsetMinutes))
-        Spacer()
-      }.font(.caption.monospacedDigit())
-      if let series = reviewChart.state?.series, let open = series.open.last, let high = series.high.last, let low = series.low.last, let close = series.close.last {
-        // 小数位由品种自己说（审查 B-07）：原来按「有效数字 1–7 位」写，
-        // 回放头部的开高低收和顶栏的最新价能是两种写法。
-        let p = reviewChart.state?.decimals ?? market.info.priceDecimals
-        HStack(spacing: 10) {
-          Text("开 " + fmtPrice(open, decimals: p))
-          Text("高 " + fmtPrice(high, decimals: p))
-          Text("低 " + fmtPrice(low, decimals: p))
-          Text("收 " + fmtPrice(close, decimals: p))
-        }.font(.caption.monospacedDigit()).lineLimit(1).minimumScaleFactor(0.65)
-      }
-    }.padding(.horizontal).padding(.vertical, 8)
+    ReplayHeaderView(bridge: reviewChart, fallbackZone: prefs.timeZone,
+                     fallbackDecimals: market.info.priceDecimals)
   }
-  /// 记一笔卡片（§2F1）。**盖在图上**，不再排在图下面。
-  ///
-  /// 原来它和图是同一根 `VStack` 里的两格，卡片一出来图就被压到剩下三分之一——
-  /// 而记一笔恰恰是「看着这段行情写点什么」，图被压扁了正好把要看的东西挤没了。
-  /// 现在它压在图的下沿，图一根 K 线都不动；用户想看被盖住的那截，点「收起」就是。
-  ///
-  /// 卡片自带 `t.raised` 的不透明底（见 `ReviewCaptureCard`），所以盖上去不会
-  /// 透出 K 线；上沿补一条 `hairline`，让它读起来是「叠上来的一层」而不是图的一部分。
-  @ViewBuilder private var captureCard: some View {
-    if reviewChart.mode == .capture {
-      VStack(spacing: 0) {
-        hairline
-        ReviewCaptureCard(feature: review, onSave: {
-          if review.saveRecord() {
-            reviewChart.endCapture(feature: review)
-            // 「已记下 · 查看」：右边那颗直接翻到刚记的那条（§2F2）。
-            // 图上那个新记号同时闪一下，两边指的是同一件事。
-            say("已记下", actionTitle: "查看") {
-              review.selectedRecord = review.lastSaved
-              dismissPanel(); review.bookOpen = true; review.synchronize()
-            }
-          }
-        }, onClose: { reviewChart.endCapture(feature: review) })
-        // 横屏图本来就矮，卡片不能占掉一半；竖屏给 280pt，正好是交接说明里的数。
-        .frame(maxHeight: landscape ? 150 : 280)
-      }
-      .environment(\.reviewTheme, theme.review)
-      .transition(.move(edge: .bottom))
-    }
+
+  /// 记一笔卡片（§2F1）。**盖在图上**，不再排在图下面。画的东西在 `ReviewCaptureLayer`。
+  private var captureCard: some View {
+    ReviewCaptureLayer(feature: review, bridge: reviewChart, theme: theme,
+                       // 横屏图本来就矮，卡片不能占掉一半；竖屏给 280pt。
+                       maxHeight: landscape ? 150 : 280,
+                       onSaved: {
+                         // 「已记下 · 查看」：右边那颗直接翻到刚记的那条（§2F2）。
+                         // 图上那个新记号同时闪一下，两边指的是同一件事。
+                         say("已记下", actionTitle: "查看") {
+                           review.selectedRecord = review.lastSaved
+                           dismissPanel(); review.bookOpen = true; review.synchronize()
+                         }
+                       })
   }
 
   /// 回放条。它是一条细的走带控制，压着图没意义（要看的就是图在往前走），

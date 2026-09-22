@@ -1,0 +1,29 @@
+命令：xcodebuild test -workspace Kanpan.xcworkspace -scheme Kanpan \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath DerivedData \
+  -only-testing:KanpanUITests/MainScreenUITests -only-testing:KanpanUITests/ScanAndDetailZoomUITests
+
+Test Case '-[KanpanUITests.MainScreenUITests testChartPanelTogglesCandleBody]' passed (12.674 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testDrawingModeEntersAndExits]' passed (20.099 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testFavoritesRowRoundTripsThroughChart]' passed (14.273 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsAtLargestDynamicType]' passed (32.889 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice]' passed (32.562 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testIndicatorPanelOpensAndCloses]' passed (9.573 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testIntervalChipsSelectOneAtATime]' passed (15.406 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testLandscapeDrawingHidesEveryIndicator]' passed (15.459 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testLatestButtonAppearsAfterLeavingLatest]' passed (17.866 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testMoreOpensPeriodPanel]' passed (9.699 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testPricePrecisionInFavoritesAndSectorRows]' passed (21.123 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testSearchEntryOpensSymbolPage]' passed (9.428 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testSectorDrillDownRoundTripsThroughChart]' passed (18.357 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testSettingsPanelOpensAndCloses]' passed (8.657 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testSymbolNameIsNotATrigger]' passed (8.258 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testTappingChartDismissesPanel]' passed (13.901 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testTopBarHasOnlySearch]' passed (6.730 seconds).
+	 Executed 17 tests, with 0 failures (0 unexpected) in 266.956 (266.967) seconds
+Test Case '-[KanpanUITests.ScanAndDetailZoomUITests testDetailButtonLooksAtHomeInEverySkin]' passed (24.638 seconds).
+Test Case '-[KanpanUITests.ScanAndDetailZoomUITests testDetailZoomSpreadsOneCandleAndComesBack]' passed (14.785 seconds).
+Test Case '-[KanpanUITests.ScanAndDetailZoomUITests testScanSwipesThroughTheFrozenFavoritesOrder]' passed (25.791 seconds).
+	 Executed 3 tests, with 0 failures (0 unexpected) in 65.215 (65.217) seconds
+	 Executed 20 tests, with 0 failures (0 unexpected) in 332.170 (332.185) seconds
+	 Executed 20 tests, with 0 failures (0 unexpected) in 332.170 (332.186) seconds
+** TEST SUCCEEDED **

@@ -1,0 +1,46 @@
+真机启动存活记录（截图服务在 iOS 27 + 无线连接下不可用，按交代改为文字记录）
+设备：iPhone 16 Pro / iOS 27.0 (24A437) / UDID 00008140-00010C902690801C
+包：Release（make install-release，DerivedData-device-release/Build/Products/Release-iphoneos/Kanpan.app）
+commit：7157341（工作树含本次改动）
+
+$ xcrun devicectl device process launch --device 00008140-00010C902690801C --terminate-existing com.mdd.kanpan
+17:57:20  Acquired tunnel connection to device.
+17:57:20  Enabling developer disk image services.
+17:57:21  Acquired usage assertion.
+Launched application with com.mdd.kanpan bundle identifier.
+
+[17:57:29] $ xcrun devicectl device info processes --device ... | grep -i kanpan
+3225   /private/var/containers/Bundle/Application/11B418D7-8C7E-4381-B49B-A0D2AD9011BF/Kanpan.app/Kanpan                                                                                        
+[17:57:40] $ xcrun devicectl device info processes --device ... | grep -i kanpan
+3225   /private/var/containers/Bundle/Application/11B418D7-8C7E-4381-B49B-A0D2AD9011BF/Kanpan.app/Kanpan                                                                                        
+[17:57:51] $ xcrun devicectl device info processes --device ... | grep -i kanpan
+3225   /private/var/containers/Bundle/Application/11B418D7-8C7E-4381-B49B-A0D2AD9011BF/Kanpan.app/Kanpan                                                                                        
+[17:58:01] $ xcrun devicectl device info processes --device ... | grep -i kanpan
+3225   /private/var/containers/Bundle/Application/11B418D7-8C7E-4381-B49B-A0D2AD9011BF/Kanpan.app/Kanpan                                                                                        
+[17:58:12] $ xcrun devicectl device info processes --device ... | grep -i kanpan
+3225   /private/var/containers/Bundle/Application/11B418D7-8C7E-4381-B49B-A0D2AD9011BF/Kanpan.app/Kanpan                                                                                        
+
+—— 崩溃报告侧证：修复后没有再产生新的 ips ——
+
+$ xcrun devicectl device copy from --device 00008140-00010C902690801C \
+    --domain-type systemCrashLogs --source . --destination /tmp/kcrash3
+（17:59 拉取，设备上全部 Kanpan 崩溃报告如下）
+Sep 22 17:22  Kanpan-2026-09-22-172226.ips
+Sep 22 17:22  Kanpan-2026-09-22-172227.000.ips
+Sep 22 17:22  Kanpan-2026-09-22-172227.ips
+Sep 22 17:22  Kanpan-2026-09-22-172241.ips
+Sep 22 17:22  Kanpan-2026-09-22-172242.ips
+Sep 22 17:22  Kanpan-2026-09-22-172253.ips
+Sep 22 17:22  Kanpan-2026-09-22-172254.ips
+Sep 22 17:23  Kanpan-2026-09-22-172321.ips
+Sep 22 17:36  Kanpan-2026-09-22-173643.ips   ← 修复前最后一次（仍是 Thread stack size exceeded）
+
+17:36 之后设备上再没有 Kanpan 崩溃报告；17:55 与 17:57 两次启动都没留下新 ips。
+
+—— 为什么没有 after.png ——
+这台机器只通过 CoreDevice 无线连接（`idevice_id -l` 为空、`system_profiler SPUSBDataType`
+看不到 iPhone、`idevicepair validate` 报 No device found），而本机 devicectl 的
+`device` 子命令里没有 `screenshot`（只有 copy/info/install/notification/orientation/
+process/reboot/sysdiagnose/uninstall），libimobiledevice 又够不到 iOS 17+ 的 RSD 服务
+（`Could not start screenshotr service: Invalid service`）。因此按交代改用这份
+30 秒以上进程存活的文字记录代替截图。
