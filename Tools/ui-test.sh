@@ -67,6 +67,59 @@ if [ -n "$ONLY_DEVICE" ]; then
   [ "$found" -eq 1 ] || { echo "未知机型：$ONLY_DEVICE"; exit 2; }
 fi
 
+# 真机目标（P2.14）：DEVICE_UDID=<真机 UDID> 时不跑模拟器矩阵，改跑那一台真机。
+#
+# 开跑之前先用 `xcrun devicectl list devices` 看它的 `transportType`，只认 `wired`（数据线）。
+# 无线调试 / 断开的真机上 XCUITest 常常卡在装包、附加调试器那一步，墙钟上限到了才判红，
+# 整轮白等还看不出原因——所以不是数据线就当场退出，把原因说清楚。
+# PREFLIGHT_ONLY=1 只做这道连接检查（退出码 0 = 能跑，3 = 不能跑），不编译不跑用例。
+DEVICE_UDID="${DEVICE_UDID:-}"
+PREFLIGHT_ONLY="${PREFLIGHT_ONLY:-}"
+if [ -n "$DEVICE_UDID" ]; then
+  devjson="$(mktemp -t kanpan-devicectl)"
+  # JSON 落到临时文件：让它写 /dev/stdout 会混进人类可读那份，json.load 会报 Extra data。
+  xcrun devicectl list devices --json-output "$devjson" > /dev/null 2>&1
+  transport="$(python3 -c "import json,sys
+d=json.load(open(sys.argv[1])).get('result',{}).get('devices',[])
+x=next((x for x in d if x.get('hardwareProperties',{}).get('udid')==sys.argv[2]),None)
+print('MISSING' if x is None else (x.get('connectionProperties',{}).get('transportType') or 'none'))" "$devjson" "$DEVICE_UDID" 2>/dev/null)"
+  rm -f "$devjson"
+  case "$transport" in
+    wired)
+      echo "真机 $DEVICE_UDID：数据线连接（transportType: wired），可以跑" ;;
+    MISSING|"")
+      echo "✗ 真机 $DEVICE_UDID 不在 xcrun devicectl list devices 的列表里（没配对或 UDID 写错了），不跑"
+      exit 3 ;;
+    *)
+      echo "✗ 真机 $DEVICE_UDID 现在的连接方式是 transportType: $transport，不是数据线（wired）。"
+      echo "  无线 / 断开的真机上 UI 用例会卡在装包或附加调试器那一步，跑了也是白等，所以不跑。"
+      echo "  用数据线把手机插到这台 Mac、解锁并点「信任」之后再来。"
+      exit 3 ;;
+  esac
+  [ -z "$PREFLIGHT_ONLY" ] || exit 0
+
+  slug="device-$DEVICE_UDID"
+  echo "== build-for-testing（真机）=="
+  xcodebuild build-for-testing \
+    -workspace "$WORKSPACE" -scheme "$SCHEME" \
+    -destination 'generic/platform=iOS' \
+    -derivedDataPath "$DD" > "$OUT/build-device.log" 2>&1 || {
+      echo "真机构建失败，见 $OUT/build-device.log"; tail -30 "$OUT/build-device.log"; exit 1; }
+  rm -rf "$RES/$slug.xcresult"
+  xcodebuild test-without-building \
+    -workspace "$WORKSPACE" -scheme "$SCHEME" \
+    -destination "platform=iOS,id=$DEVICE_UDID" \
+    -derivedDataPath "$DD" \
+    "${TEST_ARGS[@]}" \
+    -test-timeouts-enabled YES \
+    -default-test-execution-time-allowance 480 \
+    -maximum-test-execution-time-allowance 900 \
+    -resultBundlePath "$RES/$slug.xcresult" > "$OUT/$slug.log" 2>&1
+  rc=$?
+  echo "真机 $DEVICE_UDID：退出码 $rc，通过 $(grep -c "' passed (" "$OUT/$slug.log") 条，失败 $(grep -c "' failed (" "$OUT/$slug.log") 条，见 $OUT/$slug.log"
+  exit $rc
+fi
+
 echo "== build-for-testing =="
 xcodebuild build-for-testing \
   -workspace "$WORKSPACE" -scheme "$SCHEME" \
