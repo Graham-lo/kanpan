@@ -348,3 +348,105 @@ public func waitUntil(_ timeout: Double = 5,
   }
   return await cond()
 }
+
+// ---------------------------------------------------------------- 聋 socket
+
+/// 「聋」socket：`receive()` 挂在一个**不理会任务取消**的 continuation 上，
+/// 只有两件事能让它回来——测试 `push` 一帧，或者有人真的调了 `cancel()`。
+///
+/// 这正是真 `URLSessionWebSocketTask.receive()` 的脾气。旧的假 socket 用
+/// `Task.sleep` 模拟等待，任务一取消它自己就醒了，于是「看门狗超时 / 上层取消
+/// 到底有没有真的去掐 socket」这件事在那种假件上根本测不出来：漏掉 `cancel()`
+/// 用例照样绿。换成它，漏掉 `cancel()` 的那一路就会一直挂着（§B.10 BT-10）。
+///
+/// `cancel()` 可以被一道 `Gate` 拦住，用来摆出「关一条连接要等一次真往返」的时序：
+/// 拦住期间 `cancelCalls` 已经 +1（有人要关它了），但 `closed` 还是 false。
+public actor GateSocket: WSSocket {
+  public nonisolated let id: Int
+  public nonisolated let url: URL
+  private let cancelGate: Gate?
+  private let answersKeepalive: Bool
+  private var frames: [WSFrame] = []
+  private var waiters: [CheckedContinuation<WSFrame, Error>] = []
+  /// `cancel()` 被调过几次（进门就算，不管有没有被闸拦住）。
+  public private(set) var cancelCalls = 0
+  /// `cancel()` 真的做完了：挂着的 `receive()` 已经带着错误返回。
+  public private(set) var closed = false
+  public private(set) var receiveCalls = 0
+  public private(set) var sent: [String] = []
+
+  public init(id: Int, url: URL, cancelGate: Gate? = nil, answersKeepalive: Bool = false) {
+    self.id = id; self.url = url; self.cancelGate = cancelGate; self.answersKeepalive = answersKeepalive
+  }
+
+  /// 此刻有几个 `receive()` 正挂着。
+  public var receiving: Int { waiters.count }
+
+  public func receive() async throws -> WSFrame {
+    receiveCalls += 1
+    if closed { throw FeedError.badResponse("socket #\(id) 已关闭") }
+    if !frames.isEmpty { return frames.removeFirst() }
+    return try await withCheckedThrowingContinuation { waiters.append($0) }
+  }
+
+  /// 服务器推一帧。有人挂着就直接交给他，没有就排队。
+  public func push(_ frame: WSFrame) {
+    guard !closed else { return }
+    if !waiters.isEmpty { waiters.removeFirst().resume(returning: frame) }
+    else { frames.append(frame) }
+  }
+
+  public func send(_ text: String) async throws {
+    if closed { throw FeedError.badResponse("socket #\(id) 已关闭") }
+    sent.append(text)
+  }
+  public func pong() async throws {}
+  public func keepalive(timeoutMs: Double) async -> Bool { answersKeepalive && !closed }
+
+  public func cancel() async {
+    cancelCalls += 1
+    if let cancelGate { await cancelGate.wait() }
+    guard !closed else { return }
+    closed = true
+    let w = waiters
+    waiters = []
+    for c in w { c.resume(throwing: FeedError.badResponse("socket #\(id) 被掐断")) }
+  }
+}
+
+/// 发 `GateSocket` 的工厂。第 n 次 `connect` 发第 n 号 socket（从 1 数）。
+public actor GateSocketBench: WSSocketFactory {
+  private var made: [GateSocket] = []
+  private var cancelGates: [Int: Gate] = [:]
+  private let answersKeepalive: Bool
+
+  public init(answersKeepalive: Bool = false) { self.answersKeepalive = answersKeepalive }
+
+  /// 让第 `id` 号 socket 的 `cancel()` 挂在返回的闸上，直到测试放行。
+  /// 必须在那一号被连出来之前叫。
+  public func holdCancel(on id: Int) -> Gate {
+    let g = Gate()
+    cancelGates[id] = g
+    return g
+  }
+
+  public func connect(to url: URL) async throws -> any WSSocket {
+    let id = made.count + 1
+    let s = GateSocket(id: id, url: url, cancelGate: cancelGates[id], answersKeepalive: answersKeepalive)
+    made.append(s)
+    return s
+  }
+
+  public var connects: Int { made.count }
+  public var sockets: [GateSocket] { made }
+  /// 第 `id` 号（从 1 数）；还没连出来就是 nil。
+  public func socket(_ id: Int) -> GateSocket? { id >= 1 && id <= made.count ? made[id - 1] : nil }
+
+  /// 还「活着」的连接：从来没有人叫过 `cancel()` 的那些——也就是没有任何 owner
+  /// 打算关它、会一直占着一条服务器连接的那些。
+  public func live() async -> Int {
+    var n = 0
+    for s in made where await s.cancelCalls == 0 { n += 1 }
+    return n
+  }
+}

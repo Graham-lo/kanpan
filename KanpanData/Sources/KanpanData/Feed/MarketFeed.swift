@@ -53,6 +53,9 @@ public actor MarketFeed {
   private var continuation: AsyncStream<FeedUpdate>.Continuation?
   private var wsTask: Task<Void, Never>?
   private var networkGeneration = 0
+  /// owner 已经 `stop()` 过。之后迟到的网络切换一律不许再拨号（BT-06）；
+  /// 同一份 feed 重新 `start` / `switchTo` 时放开。
+  private var stopped = false
   private var loadTask: Task<Void, Never>?
   /// ③ 那一发还在路上。它自己就会从快照末根补到现在，WS 连上时别再补一遍。
   private var filling = false
@@ -194,6 +197,7 @@ public actor MarketFeed {
 
   public func switchTo(symbol newSymbol: String, interval newInterval: Interval, coldStart: Bool = false, selection requested: UUID = UUID()) async {
     guard !Task.isCancelled else { return }
+    stopped = false
     selection = requested
     writeSnapshotNow()
     loadTask?.cancel()
@@ -277,12 +281,20 @@ public actor MarketFeed {
   }
 
   /// Keep the series and viewport intact; restart only after a real network transition.
+  ///
+  /// 关旧连接那一步（`ws.stop()`）要等一次真往返，这中间世界可能已经变了，所以重连前
+  /// 三样都得还对得上（审查 B.10 BT-06，从前只看了第一样）：
+  /// - 没有更新的一次网络切换接手（`networkGeneration`）；
+  /// - owner 没 `stop()`、也没进出过后台（`lifecycleEpoch`）——回前台那一下自己就会
+  ///   把连接拉起来，这里再起一条就是两条；stop 之后再起一条就是没人管的孤儿；
+  /// - 人在前台。后台里网络恢复不拨号，连接留给回前台那一下起。
   public func networkChanged(online: Bool) async {
-    guard !symbol.isEmpty else { return }
+    guard !symbol.isEmpty, !stopped else { return }
     networkGeneration += 1
     let generation = networkGeneration
+    let epoch = lifecycleEpoch
     await suspendWS()
-    guard online, generation == networkGeneration else { return }
+    guard online, generation == networkGeneration, epoch == lifecycleEpoch, wantsForeground, !stopped else { return }
     await startWS()
   }
 
@@ -365,6 +377,7 @@ public actor MarketFeed {
   }
 
   public func stop() async {
+    stopped = true
     selection = UUID()
     wsGeneration = UUID()
     lifecycleEpoch &+= 1
@@ -427,7 +440,8 @@ public actor MarketFeed {
       log("后台挂起闹钟醒来时已回前台，保留当前连接")
       return
     }
-    wsGeneration = UUID()
+    let suspension = UUID()
+    wsGeneration = suspension
     stopReconcile()
     tickFlush?.cancel(); tickFlush = nil; tickDirty = false
     backfillTask?.cancel(); backfillTask = nil
@@ -436,6 +450,9 @@ public actor MarketFeed {
     noteGap(at: composer.series.count > 0 ? composer.series.lastTime : 0)
     // `ws.stop()` 要等一次真的收尾，这中间回了前台的话，`enterForeground` 已经排在
     // 它后面把连接重新拉起来了。这时候再报一次「离线」，图上会平白闪一下断连。
+    // 不带号的挂起（网络切换）也一样：等关门的这段里别人已经起了新连接
+    // （`wsGeneration` 换了），迟到的「离线」会盖掉新连接刚报的「在线」（BT-06f）。
+    guard wsGeneration == suspension else { log("挂起收尾时已有新连接，不报离线"); return }
     if epoch == nil || (epoch == lifecycleEpoch && !wantsForeground) { emit(.status(.offline)) }
     log("暂停WS，保留当前图表与待补缺口")
   }
