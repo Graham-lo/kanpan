@@ -345,8 +345,8 @@ extension ChartView {
     var auto = gesture.startTransform; auto.reset()
     let automatic = renderer.priceRange(size: bounds.size, transform: auto)
     let start = Double(gesture.startPoint.y)
-    let delta = pOf(start, pane: L.main, range: range, mode: s.price.mode)
-      - pOf(start + dy, pane: L.main, range: range, mode: s.price.mode)
+    let delta = pOf(start, pane: L.main, range: range, mode: s.effectivePriceMode)
+      - pOf(start + dy, pane: L.main, range: range, mode: s.effectivePriceMode)
     let center = gesture.startTransform.centerFraction + delta / max(1e-12, automatic.hi - automatic.lo)
     s.price.centerFraction = PriceTransform.clampedCenter(center, zoom: s.price.zoom)
     state = s
@@ -762,7 +762,7 @@ extension ChartView {
   /// 屏幕 y 对应的主图价格。手势和测试都要用（`internal` 是为了后者）。
   func price(atY y: Double) -> Double {
     guard let s = state, let L = chartLayout, let r = chartPriceRange else { return 0 }
-    return pOf(y, pane: L.main, range: r, mode: s.price.mode)
+    return pOf(y, pane: L.main, range: r, mode: s.effectivePriceMode)
   }
 
   // MARK: - 拖动期间的坐标冻结

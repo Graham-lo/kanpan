@@ -274,6 +274,7 @@ extension ChartRenderer {
   private func params(_ id: IndicatorID) -> [Int] { state.params[id] ?? id.defaultParams }
 
   func drawLegend(_ ctx: CGContext, pane: Pane, L: Layout) {
+    if state.percentAxis { drawCompareLegend(ctx, pane: pane, L: L); return }
     let t = state.colors
     let i = legendIndex
     let p = state.decimals

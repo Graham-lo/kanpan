@@ -71,15 +71,27 @@ final class HostViewController: UIViewController {
     let dark = traitCollection.userInterfaceStyle == .dark
     let size = view.bounds.size
     let layout = Layout(
-      width: Double(size.width), height: Double(size.height), style: style, subs: subs)
+      width: Double(size.width), height: Double(size.height), subs: subs)
     let window = ViewMath.reset(
-      series: s.series, plotW: layout.plotW, spacing: style.spacing)
+      series: s.series, plotW: layout.plotW, spacing: AICoinBehavior.initialSpacing)
 
     view.backgroundColor = dark ? .black : .white
     chart.state = ChartState(
       series: s.series, symbol: s.symbolInfo, view: window,
       style: style, dark: dark, redUp: false,
       overlays: [.ma], subs: subs, timezone: .utc, oi: s.oiSeries)
+
+    if ProcessInfo.processInfo.arguments.contains("--compare"), var state = chart.state {
+      state.percentAxis = true
+      state.compare = ["ETH", "SOL", "DOGE"].enumerated().map { index, name in
+        let factor = Double(index + 2)
+        return CompareSeries(key: "binance/usd_m/" + name + "USDT", name: name, color: state.colors.palette[index],
+          open: s.open.map { $0 / factor }, close: s.close.enumerated().map { bar, value in
+            value / factor * (1 + Double(index + 1) * sin(Double(bar) / 11) * 0.002)
+          })
+      }
+      chart.state = state
+    }
 
     note(
       "已喂快照：\(s.symbol) \(s.interval)，\(s.close.count) 根；"

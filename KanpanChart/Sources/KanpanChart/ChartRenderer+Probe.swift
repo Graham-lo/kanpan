@@ -113,8 +113,8 @@ extension ChartRenderer {
         if p < loP { loP = p }
       }
     }
-    let yHi = KanpanCore.yOf(hiP, pane: pane, range: r, mode: state.price.mode)
-    let yLo = KanpanCore.yOf(loP, pane: pane, range: r, mode: state.price.mode)
+    let yHi = KanpanCore.yOf(hiP, pane: pane, range: r, mode: state.effectivePriceMode)
+    let yLo = KanpanCore.yOf(loP, pane: pane, range: r, mode: state.effectivePriceMode)
 
     return ChartProbe(
       axisW: L.axisW,
@@ -156,7 +156,7 @@ extension ChartRenderer {
     let minBodyH = max(m.wickW, snap(m.minBody, scale: s))
     let (lo, hi) = visibleRange(view: state.view, series: b)
     func y(_ p: Double) -> Double {
-      KanpanCore.yOf(p, pane: pane, range: r, mode: state.price.mode)
+      KanpanCore.yOf(p, pane: pane, range: r, mode: state.effectivePriceMode)
     }
     var out: [CandleXProbe] = []
     out.reserveCapacity(hi - lo + 1)
@@ -194,7 +194,7 @@ extension ChartRenderer {
     let r = priceRange(size: size)
     let pane = L.main
     let i = b.count - 1
-    let y = KanpanCore.yOf(b.close[i], pane: pane, range: r, mode: state.price.mode)
+    let y = KanpanCore.yOf(b.close[i], pane: pane, range: r, mode: state.effectivePriceMode)
     if y < pane.y || y > pane.y + pane.h { return nil }
     return (y, b.close[i] >= b.open[i])
   }
@@ -204,7 +204,7 @@ extension ChartRenderer {
     let L = layout(size: size)
     let r = priceRange(size: size)
     let pane = L.main
-    let mode = state.price.mode
+    let mode = state.effectivePriceMode
     let a = mode.forward(r.lo, base: r.base), z = mode.forward(r.hi, base: r.base)
     var out: [Double] = []
     for f in priceTicks(range: r, mode: mode, paneH: pane.h) {
@@ -234,6 +234,7 @@ extension ChartRenderer {
   /// 和 `ChartRenderer.overlayLines()` 同一口径：单线那几把全要，BOLL 只要上下轨。
   /// 两处必须一起改——这边喂的是十字线取数与自适应探针，那边喂的是真正的绘制。
   private func probeOverlayLines() -> [[Double]] {
+    guard !state.percentAxis else { return [] }
     var out: [[Double]] = []
     for id in state.overlays {
       guard let v = engine[id] else { continue }

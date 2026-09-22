@@ -30,7 +30,7 @@ extension ChartRenderer {
     let r = priceRange(size: size)
     UIGraphicsPushContext(ctx)
     defer { UIGraphicsPopContext() }
-    let depthRows = drawDepth(ctx, pane: L.main, range: r, L: L)
+    let depthRows = state.percentAxis ? 0 : drawDepth(ctx, pane: L.main, range: r, L: L)
     if state.options.lastLine { drawLastPrice(ctx, pane: L.main, r: r, L: L, scale: Double(scale)) }
     return depthRows
   }

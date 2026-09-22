@@ -146,6 +146,7 @@ public struct ChartRenderer {
   }
 
   private func computeMainLegendInset(plotW: Double) -> Double {
+    if state.percentAxis { return compareLegendInset(plotW: plotW) }
     guard state.options.adaptiveIndicators else { return AICoinBehavior.mainTopInset }
     var x = 8.0, rows = 1.0
     for id in state.overlays {
@@ -196,7 +197,9 @@ public struct ChartRenderer {
     let mainWeight = ChartContentLayout.mainWeight(height: Double(size.height), control: state.options.portraitHeight, count: state.subs.count)
     let initial = Layout(width: Double(size.width), height: Double(size.height), subs: state.subs, subScale: state.subScale, mainWeight: mainWeight)
     // Height changes must not alter plot width/time mapping through padded-range label sizes.
-    let range = KanpanCore.priceRange(view: state.view, series: state.series, overlayValues: overlayLines(), transform: state.price, paneHeight: 300)
+    let range = state.percentAxis
+      ? compareRange(view: state.view, transform: state.price, paneHeight: 300, topInset: AICoinBehavior.mainTopInset)
+      : KanpanCore.priceRange(view: state.view, series: state.series, overlayValues: overlayLines(), transform: state.price, paneHeight: 300)
     var labels = [range.lo, range.hi].map { axisLabel($0, range: range) }
     for pane in initial.panes.dropFirst() {
       if let id = pane.indicator { labels += subAxisLabels(id) }
@@ -276,7 +279,9 @@ public struct ChartRenderer {
     // 一次调用把 `layout` 算两遍。算一次，两处都用它。
     ChartWorkCounter.bump(.priceRange)
     let L = layout(size: size)
-    let value = KanpanCore.priceRange(
+    let value = state.percentAxis
+      ? compareRange(view: view, transform: transform, paneHeight: L.main.h, topInset: mainLegendInset(plotW: L.plotW))
+      : KanpanCore.priceRange(
       view: view, series: state.series, overlayValues: overlayLines(),
       // 画线关掉了就别再让它撑价格区间：一条看不见的线把蜡烛压扁，用户只会觉得图坏了。
       drawingPrices: [],
@@ -316,9 +321,12 @@ public struct ChartRenderer {
     drawTimeGrid(ctx, L: L, scale: s)
     drawCandles(ctx, pane: main, r: r, L: L, scale: s)
     drawExtrema(ctx, r: r, L: L, scale: s)
-    drawOverlays(ctx, pane: main, r: r, L: L, scale: s)
-    drawDrawings(ctx, pane: main, r: r, L: L, scale: s)
-    if live { drawDepth(ctx, pane: main, range: r, L: L) }
+    if state.percentAxis { drawCompare(ctx, pane: main, r: r, L: L) }
+    else {
+      drawOverlays(ctx, pane: main, r: r, L: L, scale: s)
+      drawDrawings(ctx, pane: main, r: r, L: L, scale: s)
+      if live { drawDepth(ctx, pane: main, range: r, L: L) }
+    }
     if live { drawLastPrice(ctx, pane: main, r: r, L: L, scale: s) }
     for k in 1..<L.panes.count {
       drawSub(ctx, pane: L.panes[k], L: L, scale: s, legend: legend)
@@ -377,7 +385,8 @@ public struct ChartRenderer {
       let p = cross.pane == nil ? pOf(y, pane, r) : cross.price ?? 0
       let label: String
       if let key = cross.pane { label = subValueText(p, indicator: key) }
-      else if state.price.mode == .percent { label = toFixed((p / r.base - 1) * 100, 2) + "%" }
+      else if state.percentAxis { label = ChartState.comparePercentLabel((p / r.base - 1) * 100) }
+      else if state.effectivePriceMode == .percent { label = toFixed((p / r.base - 1) * 100, 2) + "%" }
       else { label = fmtNum(p, state.decimals) }
       let chip = axisChip(L, text: label)
       ctx.setFillColor(Paint.cg(t.crossBg))
@@ -406,10 +415,10 @@ public struct ChartRenderer {
   private func x(_ t: Int64, plotW: Double) -> Double { state.view.x(Double(t), plotW: plotW) }
   private func x(_ t: Int64, _ L: Layout) -> Double { x(t, plotW: L.plotW) }
   private func yOf(_ p: Double, _ pane: Pane, _ r: PriceRange) -> Double {
-    KanpanCore.yOf(p, pane: pane, range: r, mode: state.price.mode)
+    KanpanCore.yOf(p, pane: pane, range: r, mode: state.effectivePriceMode)
   }
   private func pOf(_ y: Double, _ pane: Pane, _ r: PriceRange) -> Double {
-    KanpanCore.pOf(y, pane: pane, range: r, mode: state.price.mode)
+    KanpanCore.pOf(y, pane: pane, range: r, mode: state.effectivePriceMode)
   }
   private var visible: (lo: Int, hi: Int) { visibleRange(view: state.view, series: state.series) }
 
@@ -425,6 +434,7 @@ public struct ChartRenderer {
   }
 
   private func computeOverlayLines() -> [[Double]] {
+    guard !state.percentAxis else { return [] }
     var out: [[Double]] = []
     for id in state.overlays {
       guard let v = displayed(id) else { continue }
@@ -443,11 +453,11 @@ public struct ChartRenderer {
 
   private func drawPriceGrid(_ ctx: CGContext, pane: Pane, r: PriceRange, L: Layout, scale s: Double) {
     let t = state.colors
-    let mode = state.price.mode
+    let mode = state.effectivePriceMode
     let a = mode.forward(r.lo, base: r.base), z = mode.forward(r.hi, base: r.base)
     ctx.setLineWidth(1 / s)
     let gm = state.effectiveGrid
-    for f in priceTicks(range: r, mode: mode, paneH: pane.h) {
+    for f in mainPriceTicks(range: r, paneHeight: pane.h) {
       let fraction = (f - a) / (z - a)
       let y = pane.y + (r.inverted ? fraction : 1 - fraction) * pane.h
       if y < pane.y + 6 || y > pane.y + pane.h - 2 { continue }
@@ -457,7 +467,7 @@ public struct ChartRenderer {
       }
       let label: String
       switch mode {
-      case .percent: label = (f >= 0 ? "+" : "") + toFixed(f, 1) + "%"
+      case .percent: label = state.percentAxis ? ChartState.comparePercentLabel(f) : (f >= 0 ? "+" : "") + toFixed(f, 1) + "%"
       case .log: label = fmtNum(exp(f), state.decimals)
       case .linear: label = fmtNum(f, state.decimals)
       }
@@ -528,7 +538,7 @@ public struct ChartRenderer {
     let floor = legendBand + Double(ChartFont.measure("0", ChartFont.axis).height) / 2 + 2
     for (index, price, isHigh) in [(high, highs[high], true), (low, lows[low], false)] {
       let px = x(b.time(at: index), L), py = yOf(price, L.main, r)
-      let label = fmtNum(price, state.decimals), width = Double(label.width(ChartFont.axis))
+      let label = state.percentAxis ? axisLabel(price, range: r) : fmtNum(price, state.decimals), width = Double(label.width(ChartFont.axis))
       let left = px + 16 + width > L.plotW - 4
       let tx = max(4, min(L.plotW - width - 4, left ? px - width - 12 : px + 12))
       let above = isHigh != r.inverted
@@ -592,7 +602,7 @@ public struct ChartRenderer {
     // 从前 `Paint.mix` 和 `Paint.cg` 都写在逐根循环里——一屏两百根就是两百次
     // `String(format:)` 拼十六进制加两百次加锁查表，算出来的还都是同两个值。
     // 这里提到循环外算一次，混色公式、入参、位数一个没动，像素完全一致。
-    let map = PriceMapping(range: r, mode: state.price.mode)
+    let map = PriceMapping(range: r, mode: state.effectivePriceMode)
     let cgBg = Paint.cg(t.bg)
     let cgUp = Paint.cg(t.up), cgDown = Paint.cg(t.down)
     let cgWickUp = tint < 1 ? Paint.cg(Paint.mix(t.bg, t.up, tint)) : cgUp
@@ -681,7 +691,7 @@ public struct ChartRenderer {
     ctx.setLineJoin(.round)
     ctx.beginPath()
     // 区间固定，`a`/`z` 只算一次；逐点还是原来那套算式（见 `PriceMapping`）。
-    let map = PriceMapping(range: r, mode: state.price.mode)
+    let map = PriceMapping(range: r, mode: state.effectivePriceMode)
     var on = false
     for i in lo...hi where i < arr.count {
       let v = arr[i]
@@ -915,7 +925,8 @@ public struct HeikinSlice: Sendable, Equatable {
 
 extension ChartRenderer {
   func axisLabel(_ price: Double, range: PriceRange) -> String {
-    state.price.mode == .percent ? toFixed((price / range.base - 1) * 100, 2) + "%" : fmtNum(price, state.decimals)
+    if state.percentAxis { return ChartState.comparePercentLabel((price / range.base - 1) * 100) }
+    return state.effectivePriceMode == .percent ? toFixed((price / range.base - 1) * 100, 2) + "%" : fmtNum(price, state.decimals)
   }
 
   /// One derived container; top mode is rendered by the host, never cached here.

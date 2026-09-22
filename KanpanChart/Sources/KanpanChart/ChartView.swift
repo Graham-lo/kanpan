@@ -72,7 +72,8 @@ public final class ChartView: UIView {
         // 换品种 / 换周期 = 换了一张图，上一张图上那次轴轻点跟现在没关系了（A-09）。
         // 补历史的门同理：那次「已经喊过了」记的是上一张图的账（A.5 用例 13）。
         // 冻结也一样：手指底下那张图已经不在了，钉着上一张图的视野只会更乱。
-        if old.series.symbol != next.series.symbol || old.series.interval != next.series.interval {
+        if old.series.symbol != next.series.symbol || old.series.interval != next.series.interval
+          || old.percentAxis != next.percentAxis {
           gesture.endAxisTapCandidate()
           gesture.askedHistory = false
           cancelAxisFreeze()
@@ -445,6 +446,7 @@ public final class ChartView: UIView {
       && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
       && a.drawingPreviewID == b.drawingPreviewID && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi && a.external == b.external && a.oiSupported == b.oiSupported
       && a.magnet == b.magnet && a.options == b.options && a.subScale == b.subScale
+      && a.compare == b.compare && a.percentAxis == b.percentAxis
       && a.indicatorColors == b.indicatorColors && a.hiddenOutputs == b.hiddenOutputs && a.subInverted == b.subInverted
       && a.rsiUpper == b.rsiUpper && a.rsiLower == b.rsiLower && a.axisScaleAnchor == b.axisScaleAnchor
       && sameSeriesExceptLast(a.series, b.series)

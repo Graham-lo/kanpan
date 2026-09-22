@@ -3,6 +3,7 @@
 #
 #   Tools/a3.12-cpu.sh            # CPU 那一轮：画一屏，静止 30 秒，Time Profiler 采样
 #   Tools/a3.12-cpu.sh --probe    # DisplayLink 那一轮：1 Hz 读 ChartView 里那个 link
+#   COMPARE=1 Tools/a3.12-cpu.sh # 同一夹具加三条对比线；DD 可指定独立构建目录
 #
 # 被测的是 Evidence/KanpanEvidenceHost——一个只有一个 ChartView、别的什么都不做的
 # 最小宿主。仓库里现有的 Kanpan app target 还是 M0 占位壳，里面没有图表，测不了这条。
@@ -23,6 +24,9 @@ BUNDLE="com.mdd.kanpan.evidence"
 DEVICE="${DEVICE:-iPhone 16 Pro}"
 MODE="${1:-}"
 OUT="${OUT:-$ROOT/docs/acceptance/M3}"
+DD="${DD:-$ROOT/Evidence/KanpanEvidenceHost/.xcbuild}"
+COMPARE_ARG=""
+if [ "${COMPARE:-0}" = "1" ]; then COMPARE_ARG=1; fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -44,22 +48,22 @@ xcrun simctl bootstatus "$UDID" -b >/dev/null
 echo "→ 构建取证宿主"
 $GUARD xcodebuild -project "$PROJ" -scheme KanpanEvidenceHost \
   -destination "platform=iOS Simulator,id=$UDID" \
-  -derivedDataPath "$ROOT/Evidence/KanpanEvidenceHost/.xcbuild" \
+  -derivedDataPath "$DD" \
   build | tail -3
-APP="$ROOT/Evidence/KanpanEvidenceHost/.xcbuild/Build/Products/Debug-iphonesimulator/KanpanEvidenceHost.app"
+APP="$DD/Build/Products/Debug-iphonesimulator/KanpanEvidenceHost.app"
 
 xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
 xcrun simctl install "$UDID" "$APP"
 
 if [ "$MODE" = "--probe" ]; then
   echo "→ 探针轮：1 Hz 读 ChartView.link，约 40 秒"
-  xcrun simctl launch --console-pty "$UDID" "$BUNDLE" --probe 2>&1 \
+  xcrun simctl launch --console-pty "$UDID" "$BUNDLE" --probe ${COMPARE_ARG:+--compare} 2>&1 \
     | grep --line-buffered '^A3.12|' | tee "$OUT/A3.12-displaylink.log"
   exit 0
 fi
 
 echo "→ CPU 轮：画一屏，静止 30 秒"
-PID="$(xcrun simctl launch "$UDID" "$BUNDLE" | awk -F': ' '{print $2}')"
+PID="$(xcrun simctl launch "$UDID" "$BUNDLE" ${COMPARE_ARG:+--compare} | awk -F': ' '{print $2}')"
 echo "  pid=$PID"
 perl -e 'select(undef,undef,undef,8)'          # 等它画完一屏并自行停掉 link
 xcrun simctl io "$UDID" screenshot "$OUT/A3.12-screen.png"

@@ -7,6 +7,8 @@ import KanpanCore
 /// 靠的就是这条。滚动、缩放这些只改 `view`，不碰别的。
 public struct ChartState: Sendable {
   public var series: BarSeries
+  public var compare: [CompareSeries] = []
+  public var percentAxis = false
   public var oi: OISeries?
   public var external: [IndicatorID: ExternalSeries] = [:]
   public var depth: OrderBook?
@@ -137,7 +139,7 @@ extension ChartState {
       && options == other.options && axisScaleAnchor == other.axisScaleAnchor
       && hiddenOutputs == other.hiddenOutputs && subInverted == other.subInverted
       && rsiUpper == other.rsiUpper && rsiLower == other.rsiLower && subScale == other.subScale
-      && oiSupported == other.oiSupported
+      && oiSupported == other.oiSupported && compare == other.compare && percentAxis == other.percentAxis
   }
 }
 
