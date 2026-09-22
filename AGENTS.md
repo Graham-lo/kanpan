@@ -11,6 +11,7 @@
 - **第四条 Codex 线程**：工作树 `/Users/mdd/zhk/kanpan-ringtone`、分支 `alert-sound`，做提醒铃声，交接书 `docs/提醒铃声-交接-Codex-2026-09-22.md`。
 - **一台线上服务器四条线程共用**：部署 `Backend/kanpan-api` 之前先把改动合进 `main` 并 push，只从 `origin/main` 的源码部署，不部署未提交的工作树；部署前核对线上源码散列与 `origin/main` 一致，不一致就停下来先 rebase 再部署（2026-09-22 提醒铃声阶段 1 撞上第一线程部署了未提交的 `depth` 改动，只能三方合并上线）。
 - 多条线程并行的规矩：能彼此独立的功能各开一条线程、各自 worktree；每阶段 rebase 到 `origin/main` 后 ff 合回；共用清单（`PrefsFieldPlan`、`sync.rs SETTINGS_FIELDS`、`docs/README.md`）只加自己那一行；永不 force-push main。
+- **能用就推**（2026-09-22 用户定的）：一个阶段、甚至阶段里的一段，只要构建与受影响的测试全绿、app 不坏，就立刻 rebase 并 ff 推到 `main`，不等整个功能做完；报告、截图、性能证据、部署记录后补一个提交即可，不能拿它们当压着代码不推的理由。攒着不推会让并行的其它线程反复 rebase。
 - 之前另一个 Claude 窗口做「盘点第一节」留下的未提交改动（`KanpanNetwork/`、`KanpanCore/` 里的多空比 / 主动买卖比 / 基差开头）已随交接归 Codex 接管。
 - 同一工作树经常有另一个窗口在改代码。开工前先看 `git status` 与 `git log`，只动自己任务范围内的文件，不清理、不覆盖别人的未提交改动，不顺手提交别人的文件。
 - 当前流水线：现行规格 → 实现 → 模拟器验收 → commit + push；服务端改动按交接书部署并只读验证。真机事项按交接书第3节，不做、不等。改动要建立在 `origin/main` 最新提交之上。
