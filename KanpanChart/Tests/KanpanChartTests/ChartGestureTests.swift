@@ -129,6 +129,28 @@ private func stroke(
     stroke(v, from: CGPoint(x: 260, y: 120), through: [], startMs: 30_100)
     #expect(v.state?.crosshair == nil, "相距 160pt 是两次单击")
   }
+  @Test("读屏值：没十字线念最新一根，上下轻扫挪十字线、念的跟着变")
+  func voiceOverValue() throws {
+    let (v, _) = try makeView(magnet: true)
+    let latest = try #require(v.voiceOverValue)
+    #expect(latest.hasPrefix("BTCUSDT，"))
+    #expect(latest.contains("开 ") && latest.contains("高 ") && latest.contains("低 ") && latest.contains("收 "))
+    #expect(latest.contains("涨 ") || latest.contains("跌 ") || latest.contains("持平"))
+    #expect(v.accessibilityTraits.contains(.adjustable))
+    v.accessibilityDecrement()
+    let last = v.state!.series.count - 1
+    #expect(v.state?.crosshair?.index == last, "第一次轻扫落在最新那根")
+    let onLast = try #require(v.voiceOverValue)
+    v.accessibilityDecrement()
+    #expect(v.state?.crosshair?.index == last - 1)
+    let onPrev = try #require(v.voiceOverValue)
+    #expect(onPrev != onLast)
+    let s = v.state!
+    let expectedClose = "收 " + fmtNum(s.series.close[last - 1], s.decimals)
+    #expect(onPrev.contains(expectedClose))
+    v.accessibilityIncrement()
+    #expect(v.voiceOverValue == onLast)
+  }
   @Test("长按抬手保留选择")
   func longPress() async throws {
     let (v, _) = try makeView(magnet: false)

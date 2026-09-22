@@ -190,13 +190,15 @@ public final class ChartView: UIView {
           "renderedDepthRows": renderedDepthRows,
           "oiReady": s.oi != nil, "interval": s.series.interval.rawValue,
           "oiPeriod": s.oi?.bucketInterval?.rawValue ?? "",
-          "oiTimes": s.oi?.timestamps ?? []]
+          "oiTimes": s.oi?.timestamps ?? [],
+          // 正式包读屏念的那一句（P2.12），用例断言它非空、跟着十字线变。
+          "voiceValue": voiceOverValue ?? ""]
         guard let data = try? JSONSerialization.data(withJSONObject: info, options: .sortedKeys)
         else { return nil }
         return String(data: data, encoding: .utf8)
       }
       #endif
-      return "\(s.symbol.symbol)，\(s.series.interval.display)，\(s.series.count)根K线"
+      return voiceOverValue ?? "\(s.symbol.symbol)，\(s.series.interval.display)，暂无K线"
     }
     set { super.accessibilityValue = newValue }
   }
@@ -262,6 +264,8 @@ public final class ChartView: UIView {
     isAccessibilityElement = true
     accessibilityIdentifier = "chart.canvas"
     accessibilityLabel = "行情图表"
+    // 上下轻扫挪十字线，念出那一根的开高低收（P2.12）。
+    accessibilityTraits = .adjustable
     backgroundColor = .clear
     isOpaque = false
     contentMode = .redraw

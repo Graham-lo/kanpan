@@ -166,6 +166,22 @@ final class SkinScaleAccessibilityUITests: KanpanUICase {
     XCTAssertEqual(app.symbolLabel.label, "当前品种 BTCUSDT",
                    "到了行情页，顶栏念出来是「\(app.symbolLabel.label)」")
     shot("最大字号-自选打开-行情页")
+
+    // 四、图本身念得出东西（P2.12）：没有十字线时念最新一根，点一下出十字线后念那一根，
+    // 都得是「时间，开高低收，涨跌」这一句中文，而不是空白或内部 id。
+    let latestValue = chartInfo()["voiceValue"] as? String ?? ""
+    XCTAssertFalse(latestValue.isEmpty, "图表的读屏值是空的")
+    XCTAssertTrue(latestValue.contains("开 ") && latestValue.contains("收 "),
+                  "没有十字线时图表念的是「\(latestValue)」，听不出开高低收")
+    let canvas = app.otherElements["chart.canvas"]
+    canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.3)).tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == true },
+                  "点图没出十字线")
+    let crossValue = chartInfo()["voiceValue"] as? String ?? ""
+    XCTAssertFalse(crossValue.isEmpty, "十字线打开后图表的读屏值是空的")
+    XCTAssertTrue(crossValue.contains("高 ") && crossValue.contains("低 "),
+                  "十字线那一根念的是「\(crossValue)」")
+    XCTAssertNotEqual(crossValue, latestValue, "十字线挪到别的根上，读屏值却没跟着变")
     // 不用收尾：这一轮跑在 `KANPAN_TEST_PROFILE=1` 的隔离档案上，
     // 刚加的那条自选不会落到这台设备上用户自己那份里。
   }
