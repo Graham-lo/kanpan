@@ -1,0 +1,27 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7m 24s
+     Running tests/deadlock.rs (/tmp/p2conc-target/debug/deps/deadlock-1ca53f6ddb357324)
+
+running 2 tests
+test mutual_shares_race_fifty_rounds_without_deadlock ... 
+thread 'mutual_shares_race_fifty_rounds_without_deadlock' (5664741) panicked at tests/deadlock.rs:267:5:
+assertion `left == right` failed: 第 10 轮 A→B 失败（死锁或锁等待超时都会变成 503）：{"error":{"code":"temporarily_unavailable"}}
+  left: 503
+ right: 200
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test push_and_record_fired_race_fifty_rounds_without_deadlock ... 
+thread 'push_and_record_fired_race_fifty_rounds_without_deadlock' (5667256) panicked at tests/deadlock.rs:196:13:
+第 0 轮 record_fired 失败：ApiError(503, "temporarily_unavailable")
+FAILED
+
+failures:
+
+failures:
+    mutual_shares_race_fifty_rounds_without_deadlock
+    push_and_record_fired_race_fifty_rounds_without_deadlock
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 2 filtered out; finished in 143.36s
+
+error: test failed, to rerun pass `--test deadlock`
+Isolated test database and role removed.
+EXIT 101

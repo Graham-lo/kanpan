@@ -1,0 +1,142 @@
+Building for debugging...
+[0/7] /private/tmp/p2conc/Kanpan/Diagnostics/.build/arm64-apple-macosx/debug/KanpanDiagnosticsPackageTests.derived/runner.swift
+[1/7] Write sources
+[4/7] Write swift-version--58304C5D6DBC2206.txt
+[6/15] Compiling KanpanDiagnostics FrameStats.swift
+[7/15] Emitting module KanpanDiagnostics
+[8/15] Compiling KanpanDiagnostics PayloadDigest.swift
+[9/15] Compiling KanpanDiagnostics MeasurementText.swift
+[10/15] Compiling KanpanDiagnostics DiagnosticsCenter.swift
+[11/15] Compiling KanpanDiagnostics FrameReportStore.swift
+[12/15] Compiling KanpanDiagnostics FrameProbe.swift
+[13/15] Compiling KanpanDiagnostics DiagnosticsStore.swift
+[14/22] Compiling KanpanDiagnosticsTests PayloadFixtures.swift
+[15/22] Compiling KanpanDiagnosticsTests PayloadDigestTests.swift
+[16/22] Compiling KanpanDiagnosticsTests FrameStatsTests.swift
+[17/22] Compiling KanpanDiagnosticsTests MeasurementTextTests.swift
+[18/22] Compiling KanpanDiagnosticsTests DiagnosticsStoreTests.swift
+[19/22] Emitting module KanpanDiagnosticsTests
+[20/22] Compiling KanpanDiagnosticsTests FrameProbeSmokeTests.swift
+[21/24] Compiling KanpanDiagnosticsPackageTests runner.swift
+[22/24] Emitting module KanpanDiagnosticsPackageTests
+[22/24] Write Objects.LinkFileList
+[23/24] Linking KanpanDiagnosticsPackageTests
+Build complete! (406.12s)
+Test Suite 'All tests' started at 2026-09-23 05:01:41.042.
+Test Suite 'All tests' passed at 2026-09-23 05:01:41.534.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.493) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "帧报告落盘" started.
+◇ Suite "分位数" started.
+◇ Suite "诊断落盘" started.
+◇ Test "条数超上限，从最旧的开始删" started.
+◇ Suite "MetricKit 摘要" started.
+◇ Test "一条记录都没有时 crashFree 是 nil，不是 true" started.
+◇ Test "写导出文件 + 占用字节 + 清空" started.
+◇ Test "导出汇总：崩溃数、最坏启动 p50、最近磁盘写入" started.
+◇ Test "原文里我们不看的字段也一个不少地留着" started.
+◇ Test "字节超上限也删最旧的，但最新那条永远留着" started.
+◇ Test "收一份 metric payload：原文和摘要都在盘上" started.
+◇ Test "文件名按毫秒时间戳排，ls 出来就是时间序" started.
+◇ Test "JSON 坏掉照样存字节，退到 base64" started.
+◇ Suite "诊断中枢" started.
+◇ Suite "帧统计" started.
+◇ Suite "带单位字符串解析" started.
+◇ Suite "直方图" started.
+◇ Test "每日指标 payload 抽出启动、挂起、磁盘三项" started.
+◇ Test "摘要能 Codable 往返" started.
+◇ Test "四个数组全空 = 干净的一天" started.
+◇ Test "没有 terminationReason 时退回信号号码，不留空" started.
+◇ Test "挂起 / 磁盘 / CPU / 启动四类各归各位" started.
+◇ Test "崩溃 payload 数得出条数和终止原因" started.
+◇ Test "旧键名 histogrammedTimeToFirstDraw 也认" started.
+✔ Test "原文里我们不看的字段也一个不少地留着" passed after 0.047 seconds.
+✔ Test "JSON 坏掉照样存字节，退到 base64" passed after 0.047 seconds.
+✔ Test "收一份 metric payload：原文和摘要都在盘上" passed after 0.047 seconds.
+✔ Test "文件名按毫秒时间戳排，ls 出来就是时间序" passed after 0.047 seconds.
+◇ Test "重复 start 是幂等的" started.
+◇ Test "注入的假 payload 走的是和真回调同一条路" started.
+◇ Test "中位数过但长尾超：P99 判不过，中位数判过" started.
+◇ Test "报告能 Codable 往返，allPassed 进得了 JSON" started.
+◇ Test "卡一次 3 帧：hitch 时长、丢帧数、占比都对得上" started.
+◇ Test "±20% 的帧间隔抖动不算 hitch" started.
+◇ Test "排队延迟和绘制耗时分开记" started.
+◇ Test "占比达标但有一次长卡顿，worstHitch 要把它顶出来" started.
+◇ Test "没采到帧 / 只采到一帧：不崩，也不谎报通过" started.
+◇ Test "满帧 120Hz、每帧 1ms：hitch 为 0，三条预算全过" started.
+◇ Test "采集中途从 120Hz 降到 60Hz，不能把降频后每一帧都算成掉帧" started.
+◇ Test "JSON 里已经是数字时直接收下" started.
+◇ Test "没单位按默认单位算，负数和小数都收" started.
+◇ Test "解析不了返回 nil，绝不返回 0" started.
+◇ Test "存储单位是 1000 进制，和 MXUnitStorage 一致" started.
+◇ Test "`2 ms` 不能被 `s` 抢先命中" started.
+◇ Test "时间单位逐个换算到毫秒" started.
+◇ Test "每帧 4ms：P9.3 的 P99 < 3ms 判不过" started.
+◇ Test "只有一个样本时所有分位数都是它" started.
+◇ Test "线性插值口径，和 numpy 默认一致" started.
+◇ Test "超上限删最旧的" started.
+◇ Test "空数组返回 nil" started.
+◇ Test "整批导出：有一段没判定，整批就是 nil" started.
+◇ Test "标签里的空格和斜杠不会变成路径" started.
+◇ Test "桶乱序进来也要按 start 排好" started.
+◇ Test "存进去读出来是同一份" started.
+◇ Test "存储单位的直方图走 KB 口径" started.
+◇ Test "桶边界解析不了就整桶丢掉，不是当 0" started.
+◇ Test "空直方图不产出任何数" started.
+✔ Test "没有 terminationReason 时退回信号号码，不留空" passed after 0.003 seconds.
+◇ Test "分位数取命中桶的中点" started.
+✔ Test "四个数组全空 = 干净的一天" passed after 0.003 seconds.
+✔ Test "挂起 / 磁盘 / CPU / 启动四类各归各位" passed after 0.007 seconds.
+✔ Test "摘要能 Codable 往返" passed after 0.008 seconds.
+✔ Test "崩溃 payload 数得出条数和终止原因" passed after 0.009 seconds.
+◇ Test "JSON 坏掉返回 nil，不是返回一个空摘要" started.
+✔ Test "旧键名 histogrammedTimeToFirstDraw 也认" passed after 0.009 seconds.
+✔ Test "中位数过但长尾超：P99 判不过，中位数判过" passed after 0.021 seconds.
+✔ Test "重复 start 是幂等的" passed after 0.021 seconds.
+✔ Test "报告能 Codable 往返，allPassed 进得了 JSON" passed after 0.021 seconds.
+✔ Test "卡一次 3 帧：hitch 时长、丢帧数、占比都对得上" passed after 0.021 seconds.
+✔ Test "±20% 的帧间隔抖动不算 hitch" passed after 0.021 seconds.
+✔ Test "排队延迟和绘制耗时分开记" passed after 0.021 seconds.
+✔ Test "没采到帧 / 只采到一帧：不崩，也不谎报通过" passed after 0.021 seconds.
+✔ Test "一条记录都没有时 crashFree 是 nil，不是 true" passed after 0.070 seconds.
+✔ Test "JSON 里已经是数字时直接收下" passed after 0.021 seconds.
+✔ Test "没单位按默认单位算，负数和小数都收" passed after 0.021 seconds.
+✔ Test "解析不了返回 nil，绝不返回 0" passed after 0.021 seconds.
+✔ Test "存储单位是 1000 进制，和 MXUnitStorage 一致" passed after 0.021 seconds.
+✔ Test "`2 ms` 不能被 `s` 抢先命中" passed after 0.021 seconds.
+✔ Test "采集中途从 120Hz 降到 60Hz，不能把降频后每一帧都算成掉帧" passed after 0.021 seconds.
+✔ Test "只有一个样本时所有分位数都是它" passed after 0.021 seconds.
+✔ Test "线性插值口径，和 numpy 默认一致" passed after 0.021 seconds.
+✔ Test "注入的假 payload 走的是和真回调同一条路" passed after 0.022 seconds.
+✔ Test "空数组返回 nil" passed after 0.020 seconds.
+✔ Test "占比达标但有一次长卡顿，worstHitch 要把它顶出来" passed after 0.022 seconds.
+✔ Test "每帧 4ms：P9.3 的 P99 < 3ms 判不过" passed after 0.022 seconds.
+✔ Test "存进去读出来是同一份" passed after 0.020 seconds.
+✔ Test "标签里的空格和斜杠不会变成路径" passed after 0.021 seconds.
+✔ Test "存储单位的直方图走 KB 口径" passed after 0.021 seconds.
+✔ Test "桶边界解析不了就整桶丢掉，不是当 0" passed after 0.021 seconds.
+✔ Test "桶乱序进来也要按 start 排好" passed after 0.021 seconds.
+✔ Test "空直方图不产出任何数" passed after 0.021 seconds.
+✔ Test "分位数取命中桶的中点" passed after 0.021 seconds.
+✔ Test "每日指标 payload 抽出启动、挂起、磁盘三项" passed after 0.065 seconds.
+✔ Test "JSON 坏掉返回 nil，不是返回一个空摘要" passed after 0.015 seconds.
+✔ Suite "诊断中枢" passed after 0.071 seconds.
+✔ Suite "分位数" passed after 0.072 seconds.
+✔ Suite "直方图" passed after 0.065 seconds.
+✔ Suite "MetricKit 摘要" passed after 0.072 seconds.
+✔ Test "超上限删最旧的" passed after 0.022 seconds.
+✔ Test "整批导出：有一段没判定，整批就是 nil" passed after 0.023 seconds.
+✔ Suite "帧报告落盘" passed after 0.077 seconds.
+✔ Test "满帧 120Hz、每帧 1ms：hitch 为 0，三条预算全过" passed after 0.024 seconds.
+✔ Suite "帧统计" passed after 0.073 seconds.
+✔ Test "写导出文件 + 占用字节 + 清空" passed after 0.074 seconds.
+✔ Test "时间单位逐个换算到毫秒" passed after 0.024 seconds.
+✔ Suite "带单位字符串解析" passed after 0.074 seconds.
+✔ Test "导出汇总：崩溃数、最坏启动 p50、最近磁盘写入" passed after 0.086 seconds.
+✔ Test "字节超上限也删最旧的，但最新那条永远留着" passed after 0.086 seconds.
+✔ Test "条数超上限，从最旧的开始删" passed after 0.089 seconds.
+✔ Suite "诊断落盘" passed after 0.090 seconds.
+✔ Test run with 47 tests in 8 suites passed after 0.093 seconds.
+EXIT 0

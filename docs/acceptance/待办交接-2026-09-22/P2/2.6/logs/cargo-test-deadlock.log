@@ -1,0 +1,15 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.52s
+     Running tests/deadlock.rs (/tmp/p2conc-target/debug/deps/deadlock-1ca53f6ddb357324)
+
+running 4 tests
+test friendship_inserts_deadlock_unless_share_locks_are_sorted ... ok
+test mutual_shares_race_fifty_rounds_without_deadlock ... A→B × B→A：50 轮全部成功，用时 5.875560834s，无 40P01
+ok
+test push_and_record_fired_race_fifty_rounds_without_deadlock ... push × record_fired：50 轮全部成功，用时 3.388203958s，无 40P01
+ok
+test sync_row_locks_deadlock_without_the_gate_and_queue_behind_it ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 208.47s
+
+Isolated test database and role removed.
+EXIT 0

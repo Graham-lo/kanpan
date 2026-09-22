@@ -1,0 +1,9 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build -workspace Kanpan.xcworkspace -scheme Kanpan -destination "generic/platform=iOS Simulator" -derivedDataPath /tmp/p2conc-dd
+
+…（中间 SwiftCompile 过程省略；在本 worktree 用 -derivedDataPath /tmp/p2conc-dd 全量编译）…
+本轮改动文件相关的 warning 条数：0
+
+** BUILD SUCCEEDED **
+
+EXIT 0

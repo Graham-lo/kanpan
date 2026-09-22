@@ -1,0 +1,204 @@
+Building for debugging...
+[0/7] Write sources
+[2/7] /private/tmp/p2conc/KanpanAccount/.build/arm64-apple-macosx/debug/KanpanAccountPackageTests.derived/runner.swift
+[3/7] Write sources
+[4/7] Write swift-version--58304C5D6DBC2206.txt
+[6/15] Compiling KanpanAccount AccountFiles.swift
+[7/15] Compiling KanpanAccount CredentialVault.swift
+[8/15] Compiling KanpanAccount Models.swift
+[9/15] Compiling KanpanAccount ApplyGate.swift
+[10/15] Compiling KanpanAccount SyncStore.swift
+[11/15] Compiling KanpanAccount RefreshCoordinator.swift
+[12/15] Compiling KanpanAccount AccountClient.swift
+[13/15] Emitting module KanpanAccount
+[14/25] Compiling KanpanAccountTests ProfileIdentityTests.swift
+[15/25] Compiling KanpanAccountTests PushBatchSizeTests.swift
+[16/26] Compiling KanpanAccountTests PerfBenchmarkTests.swift
+[17/26] Compiling KanpanAccountTests ForeignFieldTests.swift
+[18/26] Compiling KanpanAccountTests DeviceKindTests.swift
+[19/26] Compiling KanpanAccountTests SessionLifecycleTests.swift
+[20/26] Compiling KanpanAccountTests StorageTests.swift
+[21/26] Emitting module KanpanAccountTests
+[22/26] Compiling KanpanAccountTests ClientHardeningTests.swift
+[23/26] Compiling KanpanAccountTests AtomicCommitTests.swift
+[24/26] Compiling KanpanAccountTests SyncConflictTests.swift
+[25/28] Emitting module KanpanAccountPackageTests
+[26/28] Compiling KanpanAccountPackageTests runner.swift
+[26/28] Write Objects.LinkFileList
+[27/28] Linking KanpanAccountPackageTests
+Build complete! (913.56s)
+Test Suite 'All tests' started at 2026-09-23 05:17:56.662.
+Test Suite 'KanpanAccountPackageTests.xctest' started at 2026-09-23 05:17:56.667.
+Test Suite 'PerfBenchmarkTests' started at 2026-09-23 05:17:56.667.
+Test Case '-[KanpanAccountTests.PerfBenchmarkTests testSyncStoreCapture30]' started.
+Test Case '-[KanpanAccountTests.PerfBenchmarkTests testSyncStoreCapture30]' passed (0.338 seconds).
+Test Suite 'PerfBenchmarkTests' passed at 2026-09-23 05:17:57.010.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.338 (0.343) seconds
+Test Suite 'KanpanAccountPackageTests.xctest' passed at 2026-09-23 05:17:57.010.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.338 (0.343) seconds
+Test Suite 'All tests' passed at 2026-09-23 05:17:57.010.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.338 (0.348) seconds
+BENCH account.syncstore.capture_30ops median_ms=1.0982 p90_ms=1.6627 n=30
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "装到一半出错，这一批要么全算要么全不算" started.
+◇ Suite "推送分批的字节闸" started.
+◇ Suite "外来字段不当成删除" started.
+◇ Suite "本地与云端的冲突编排" started.
+◇ Suite "设备类别与会话被顶" started.
+◇ Suite "档案身份" started.
+◇ Suite "Account durability and isolation" started.
+◇ Suite "拉下来的那批，什么时候才算真的装进本机" started.
+◇ Suite "正式文件排在存档后面落盘，而主线程一步都不等" started.
+◇ Suite "会话生命周期" started.
+◇ Suite "保护区里登记的回推，出来之后才做" started.
+◇ Suite "客户端加固" started.
+◇ Suite "一次编辑要么整份落盘，要么整份不算" started.
+◇ Suite "两次写之间崩掉，用户刚画的那根线还在" started.
+◇ Test theThreePhaseApplyIsAllOrNothing() started.
+◇ Test theOldOneStageApplyLeavesHalfOfItApplied() started.
+◇ Test "单独一条就超预算时，把那一条单独交出来" started.
+◇ Test "一批发出去的字节数不许越过服务端的门槛" started.
+◇ Test "清掉自己的字段照旧是一个 null" started.
+◇ Test "云端带着的陌生字段既不发 null，也不从记账里掉出去" started.
+◇ Test "整轮全量同步跑完，没有一条被隔离，云端的老字段还在" started.
+◇ Test "补推被拒操作时重新差出来的那条也不带外来 null" started.
+◇ Test deleteRestoreThenEditAllLand() started.
+◇ Test theOldBatchingCannotGetPastTheSameConflict() started.
+◇ Test offlineDeleteThenUndoRecoversInOneRun() started.
+◇ Test aRejectedOperationKeepsTheUsersValueAndRepushesItself() started.
+◇ Test aStillBrokenServerJustGetsOneMoreTryPerFullSync() started.
+◇ Test aReconnectsAcrossDeviceBsGenerationBump() started.
+◇ Test theDependencyLinkSurvivesARestart() started.
+◇ Test anArchiveWrittenBeforeTheseFieldsStillOpens() started.
+◇ Test theBatchBoundaryDoesNotPickTheWinner(_:) started.
+◇ Test theLocalDependencyLinkNeverReachesTheServer() started.
+◇ Test "每一趟带设备的请求都报同一个类别" started.
+◇ Test "id 和账号目录的路径逐字相同" started.
+◇ Test guestClaimSurvivesRestartAndCannotMoveToB() started.
+◇ Test lastWriteBeforeATeardownIsReadable() started.
+◇ Test batchedCaptureWritesOnce() started.
+◇ Test unreadableRegistryIsNotOverwritten() started.
+◇ Test uncertainOperationsKeepIdentityAndPayload() started.
+◇ Test capturesWithoutChangesDoNotWrite() started.
+◇ Test orderedWritesLandInOrderAndLastOneIsReadable() started.
+◇ Test offlineDeleteThenUndoRetainsExplicitRestoreAfterRestart() started.
+◇ Test anArchiveWrittenBeforeLastAppliedExistsStillOpens() started.
+◇ Test aBatchFetchedButNotAppliedIsRedoneAfterARestart() started.
+◇ Test aNewerFetchAfterAnApplyIsPendingAgain() started.
+◇ Test rapidEditsNeverLeaveAnOlderArchiveBehindANewerFormalFile() started.
+◇ Test theCallerIsNotBlockedAndTheFormalWriteStillRunsAfterTheArchive() started.
+◇ Test "冷启动之后退登也要吊销服务端那条会话" started.
+◇ Test aStaleSnapshotFromAnEarlierRoundIsDropped() started.
+◇ Test aCaptureInsideTheGuardProducesNothing() started.
+◇ Test outsideTheGuardItJustRunsNow() started.
+◇ Test workDeferredInsideTheGuardRunsAfterItCloses() started.
+◇ Test "两个客户端共用一份凭据时只发出一次刷新" started.
+◇ Test flushNowStillMeansThisVersionIsAlreadyOnDisk() started.
+◇ Test aFailedWriteIsStillReportedByTheNextTransaction() started.
+◇ Test aBlockedQueueCollapsesIntoOneWriteAndTheDiskHoldsTheNewest() started.
+◇ Test forwardFillNeverRollsAPersistedValueBackwards() started.
+◇ Test theOldOrderLetsTheCloudOverwriteWhatTheUserJustSaved() started.
+◇ Test case passing 1 argument count → 99 to theBatchBoundaryDoesNotPickTheWinner(_:) started.
+◇ Test case passing 1 argument count → 1 to theBatchBoundaryDoesNotPickTheWinner(_:) started.
+◇ Test case passing 1 argument count → 101 to theBatchBoundaryDoesNotPickTheWinner(_:) started.
+◇ Test case passing 1 argument count → 100 to theBatchBoundaryDoesNotPickTheWinner(_:) started.
+◇ Test archiveFirstPlusForwardFillKeepsIt() started.
+✔ Test lastWriteBeforeATeardownIsReadable() passed after 0.302 seconds.
+✔ Test "冷启动之后退登也要吊销服务端那条会话" passed after 0.343 seconds.
+◇ Test "钥匙串写失败也不会把人留在登录态" started.
+✔ Test "两个客户端共用一份凭据时只发出一次刷新" passed after 0.344 seconds.
+◇ Test "白名单之外的主机构造不出客户端" started.
+✔ Test "每一趟带设备的请求都报同一个类别" passed after 0.346 seconds.
+◇ Test "刷新被顶下去：清掉令牌，说得出是哪一类设备" started.
+✔ Test "白名单之外的主机构造不出客户端" passed after 0.001 seconds.
+◇ Test "来源不符的存档当作没有会话" started.
+✔ Test "钥匙串写失败也不会把人留在登录态" passed after 0.004 seconds.
+◇ Test "离线也能退登" started.
+✔ Test "离线也能退登" passed after 0.001 seconds.
+✔ Test "刷新被顶下去：清掉令牌，说得出是哪一类设备" passed after 0.004 seconds.
+◇ Test "刷新被拒之后停下来等重新登录" started.
+◇ Test "带 access 令牌的普通请求被顶下去也走同一条路" started.
+✔ Test "来源不符的存档当作没有会话" passed after 0.006 seconds.
+◇ Test "旧存档没有来源照样认，新凭据当场记上来源" started.
+✔ Test "旧存档没有来源照样认，新凭据当场记上来源" passed after 0.001 seconds.
+◇ Test "URL 编码的父目录跳不出去" started.
+✔ Test "刷新被拒之后停下来等重新登录" passed after 0.004 seconds.
+◇ Test "断网不是认证失效" started.
+✔ Test "带 access 令牌的普通请求被顶下去也走同一条路" passed after 0.006 seconds.
+◇ Test "重开 app 还记得自己是被顶下去的，档案照常是这个人的" started.
+✔ Test "URL 编码的父目录跳不出去" passed after 0.002 seconds.
+◇ Test "查询串里的斜杠不算路径段" started.
+✔ Test "重开 app 还记得自己是被顶下去的，档案照常是这个人的" passed after 0.003 seconds.
+◇ Test "普通的认证失效还是原来那条路" started.
+✔ Test "断网不是认证失效" passed after 0.009 seconds.
+◇ Test "重新登录会清掉失效状态" started.
+✔ Test "普通的认证失效还是原来那条路" passed after 0.003 seconds.
+◇ Test "设备列表解得出类别，不认识的按手机算" started.
+✔ Test "查询串里的斜杠不算路径段" passed after 0.013 seconds.
+✔ Suite "客户端加固" passed after 0.376 seconds.
+✔ Test "重新登录会清掉失效状态" passed after 0.009 seconds.
+✔ Suite "会话生命周期" passed after 0.379 seconds.
+✔ Test "设备列表解得出类别，不认识的按手机算" passed after 0.011 seconds.
+◇ Test "旧存档没有类别时算手机" started.
+✔ Test "旧存档没有类别时算手机" passed after 0.001 seconds.
+✔ Suite "设备类别与会话被顶" passed after 0.384 seconds.
+✔ Test theDependencyLinkSurvivesARestart() passed after 2.328 seconds.
+✔ Test uncertainOperationsKeepIdentityAndPayload() passed after 3.514 seconds.
+✔ Test theOldOneStageApplyLeavesHalfOfItApplied() passed after 4.555 seconds.
+✔ Test offlineDeleteThenUndoRetainsExplicitRestoreAfterRestart() passed after 4.553 seconds.
+✔ Test aRejectedOperationKeepsTheUsersValueAndRepushesItself() passed after 4.548 seconds.
+✔ Test "单独一条就超预算时，把那一条单独交出来" passed after 4.556 seconds.
+✔ Test orderedWritesLandInOrderAndLastOneIsReadable() passed after 4.541 seconds.
+✔ Test theOldBatchingCannotGetPastTheSameConflict() passed after 4.953 seconds.
+✔ Test deleteRestoreThenEditAllLand() passed after 4.953 seconds.
+✔ Test aStillBrokenServerJustGetsOneMoreTryPerFullSync() passed after 4.953 seconds.
+✔ Test offlineDeleteThenUndoRecoversInOneRun() passed after 5.390 seconds.
+✔ Test anArchiveWrittenBeforeTheseFieldsStillOpens() passed after 5.389 seconds.
+✔ Test aReconnectsAcrossDeviceBsGenerationBump() passed after 5.701 seconds.
+✔ Test "清掉自己的字段照旧是一个 null" passed after 5.776 seconds.
+✔ Test "云端带着的陌生字段既不发 null，也不从记账里掉出去" passed after 5.776 seconds.
+✔ Test "整轮全量同步跑完，没有一条被隔离，云端的老字段还在" passed after 5.776 seconds.
+✔ Test theLocalDependencyLinkNeverReachesTheServer() passed after 5.775 seconds.
+✔ Test "一批发出去的字节数不许越过服务端的门槛" passed after 5.776 seconds.
+✔ Test "id 和账号目录的路径逐字相同" passed after 5.775 seconds.
+✔ Test guestClaimSurvivesRestartAndCannotMoveToB() passed after 5.775 seconds.
+✔ Test "补推被拒操作时重新差出来的那条也不带外来 null" passed after 5.777 seconds.
+✔ Test unreadableRegistryIsNotOverwritten() passed after 5.776 seconds.
+✔ Test anArchiveWrittenBeforeLastAppliedExistsStillOpens() passed after 5.775 seconds.
+◇ Test "身份跟着提交走，不跟着取目录走" started.
+✔ Suite "外来字段不当成删除" passed after 5.783 seconds.
+✔ Suite "推送分批的字节闸" passed after 5.784 seconds.
+✔ Test aNewerFetchAfterAnApplyIsPendingAgain() passed after 5.777 seconds.
+✔ Test aStaleSnapshotFromAnEarlierRoundIsDropped() passed after 5.777 seconds.
+✔ Test rapidEditsNeverLeaveAnOlderArchiveBehindANewerFormalFile() passed after 5.781 seconds.
+✔ Test outsideTheGuardItJustRunsNow() passed after 5.782 seconds.
+✔ Test aBatchFetchedButNotAppliedIsRedoneAfterARestart() passed after 5.782 seconds.
+✔ Suite "拉下来的那批，什么时候才算真的装进本机" passed after 5.787 seconds.
+✔ Test theCallerIsNotBlockedAndTheFormalWriteStillRunsAfterTheArchive() passed after 5.783 seconds.
+✔ Test workDeferredInsideTheGuardRunsAfterItCloses() passed after 5.782 seconds.
+✔ Test aFailedWriteIsStillReportedByTheNextTransaction() passed after 5.782 seconds.
+✔ Test aCaptureInsideTheGuardProducesNothing() passed after 5.783 seconds.
+✔ Suite "正式文件排在存档后面落盘，而主线程一步都不等" passed after 5.788 seconds.
+✔ Suite "保护区里登记的回推，出来之后才做" passed after 5.788 seconds.
+✔ Test theBatchBoundaryDoesNotPickTheWinner(_:) with 4 test cases passed after 5.775 seconds.
+✔ Suite "本地与云端的冲突编排" passed after 5.795 seconds.
+✔ Test batchedCaptureWritesOnce() passed after 5.804 seconds.
+✔ Test capturesWithoutChangesDoNotWrite() passed after 5.843 seconds.
+✔ Test theOldOrderLetsTheCloudOverwriteWhatTheUserJustSaved() passed after 5.842 seconds.
+✔ Test theThreePhaseApplyIsAllOrNothing() passed after 5.846 seconds.
+✔ Test flushNowStillMeansThisVersionIsAlreadyOnDisk() passed after 5.843 seconds.
+✔ Test forwardFillNeverRollsAPersistedValueBackwards() passed after 5.843 seconds.
+✔ Test aBlockedQueueCollapsesIntoOneWriteAndTheDiskHoldsTheNewest() passed after 5.843 seconds.
+✔ Test archiveFirstPlusForwardFillKeepsIt() passed after 5.843 seconds.
+✔ Suite "Account durability and isolation" passed after 5.849 seconds.
+✔ Suite "两次写之间崩掉，用户刚画的那根线还在" passed after 5.848 seconds.
+✔ Suite "装到一半出错，这一批要么全算要么全不算" passed after 5.854 seconds.
+✔ Suite "一次编辑要么整份落盘，要么整份不算" passed after 5.848 seconds.
+✔ Test "身份跟着提交走，不跟着取目录走" passed after 0.082 seconds.
+◇ Test "搬家取来源目录不会把身份倒回访客" started.
+✔ Test "搬家取来源目录不会把身份倒回访客" passed after 0.022 seconds.
+✔ Suite "档案身份" passed after 5.889 seconds.
+✔ Test run with 63 tests in 14 suites passed after 5.895 seconds.
+EXIT 0
