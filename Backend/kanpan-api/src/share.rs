@@ -148,7 +148,8 @@ async fn kept(State(s):State<AppState>,who:Identity,Route(id):Route<String>)->Re
  }
  #[test] fn intervals_match_native() {
   let source=include_str!("../../../KanpanCore/Sources/KanpanCore/Model/Interval.swift");
-  let cases=source.split("  /// 币安").next().unwrap();
+  // 只认 `case m1 = "1m", …` 这几行的原始值（显示名那几行是 `case .m1: "1 分钟"`）。
+  let cases:String=source.lines().filter(|l|l.trim_start().starts_with("case ")&&l.contains(" = \"")).collect::<Vec<_>>().join("\n");
   let values:Vec<_>=cases.split('"').enumerate().filter_map(|(i,s)|(i%2==1).then_some(s)).collect();assert_eq!(values,INTERVALS);
  }
 }

@@ -18,7 +18,8 @@ enum LiveQuotes {
     guard age > freshSeconds, !snapshot.fapiHost.isEmpty else { return snapshot }
     var next = snapshot
     await withTaskGroup(of: (String, Ticker24h?, [Double]?).self) { group in
-      for symbol in symbols where snapshot.quotes[symbol] != nil {
+      for symbol in symbols where snapshot.quotes[symbol] != nil
+        && snapshot.hostMarket.map({ InstrumentID(symbol).marketKey == $0 }) ?? true {
         group.addTask {
           async let ticker = fetchTicker(host: snapshot.fapiHost, symbol: symbol)
           async let closes: [Double]? = symbol == sparkline ? fetchCloses(host: snapshot.fapiHost, symbol: symbol) : nil

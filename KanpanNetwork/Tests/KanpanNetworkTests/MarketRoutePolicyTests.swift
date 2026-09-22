@@ -57,8 +57,8 @@ struct MarketRoutePolicyTests {
       #expect(MarketRoutePolicyStore.current == policy)
     }
     #expect(MarketRoutePolicy.allCases.map(\.title) == ["直连", "网关"])
-    #expect(MarketRoutePolicy.direct.source == .binance)
-    #expect(MarketRoutePolicy.gateway.source == .okx)
+    #expect(BinanceProvider.upstream(for: .direct) == .binance)
+    #expect(BinanceProvider.upstream(for: .gateway) == .okx)
   }
 
   @Test("换线路会广播；没变就不广播")

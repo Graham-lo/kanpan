@@ -23,7 +23,7 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help core-test network-test data-test sync-contract symbols-test sector-test alerts-test scan-test settings-test deeplink-test app-logic-test diag-test diag-ios-test main-ios-test account-codec-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
+.PHONY: help venue-isolation core-test network-test data-test sync-contract symbols-test sector-test alerts-test scan-test settings-test deeplink-test app-logic-test diag-test diag-ios-test main-ios-test account-codec-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -186,7 +186,11 @@ main-ios-test:
 	cd $(MAIN) && $(XCODEBUILD) test -scheme KanpanMain \
 	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
 
-app-logic-test: symbols-test sector-test settings-test diag-test account-codec-test deeplink-test scan-test alerts-test
+app-logic-test: venue-isolation symbols-test sector-test settings-test diag-test account-codec-test deeplink-test scan-test alerts-test
+
+# 交易所隔离守卫：某家交易所的名字只许出现在它自己的提供者目录与 VenueRegistry 里。
+venue-isolation:
+	@Tools/check-venue-isolation.sh
 
 # ---------------------------------------------------------------- 跨语言契约
 # 「客户端会发哪些 settings 键 / 服务端认哪些」这件事，母表只有一张：

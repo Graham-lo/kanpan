@@ -3,13 +3,16 @@ import Foundation
 /// 行情线路：这台手机怎么去拿行情。用户在设置里选，选了哪条就走哪条。
 ///
 /// 没有「自动」档。原来那套「直连优先、失败退网关、探不通整套切 OKX」的智能切换
-/// 在网络本来就通的机器上会误判——一次探测超时就整套换到 OKX，还要等好几分钟
-/// 才肯回头。现在线路是用户定的：直连就只走币安直连，网关就只走 VPS 网关，
+/// 在网络本来就通的机器上会误判——一次探测超时就整套换了上游，还要等好几分钟
+/// 才肯回头。现在线路是用户定的：直连就只走交易所直连，网关就只走 VPS 网关，
 /// 代码不再替他做判断。
+///
+/// 某家交易所在网关上实际由谁供数（比如币安在网关上被封、由替身顶上），是那一家
+/// 提供者自己的事，见 `RouteResolver`，这里不管。
 public enum MarketRoutePolicy: String, Codable, Sendable, CaseIterable {
-  /// 出厂默认。只走自己的网络直连币安：不算网关、不记冷却、也不会被切到 OKX。
+  /// 出厂默认。只走自己的网络直连交易所：不算网关、不记冷却、也不会被换上游。
   case direct
-  /// 只走 VPS 网关。两台网关上币安是被封的（451），实际供的是 OKX 的行情。
+  /// 只走 VPS 网关。
   case gateway
 
   public var title: String {
@@ -18,9 +21,6 @@ public enum MarketRoutePolicy: String, Codable, Sendable, CaseIterable {
     case .gateway: return "网关"
     }
   }
-
-  /// 这条线路对应哪家交易所的行情。
-  public var source: MarketSource { self == .gateway ? .okx : .binance }
 }
 
 /// 线路的进程级镜像，给 `KanpanData` 这边直接读。

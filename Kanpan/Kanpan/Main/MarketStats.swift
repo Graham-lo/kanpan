@@ -118,11 +118,14 @@ actor MarketStatsClient {
 
   // ---------------------------------------------------------------- 持仓量
 
-  func openInterest(symbol: String, source: MarketSource, hosts: [String]) async -> OpenInterestStat? {
+  /// - Parameter source: 服务端按哪家的口径取（`ProviderCapabilities.openInterestSource`）。
+  ///   nil = 这家没有持仓量，直接不问。
+  func openInterest(symbol: String, source: String?, hosts: [String]) async -> OpenInterestStat? {
+    guard let source else { return nil }
     for host in hosts {
       guard var parts = URLComponents(string: "https://\(host)/v1/market/open-interest") else { continue }
       parts.queryItems = [URLQueryItem(name: "symbol", value: InstrumentID(symbol).symbol),
-                          URLQueryItem(name: "source", value: source.rawValue)]
+                          URLQueryItem(name: "source", value: source)]
       guard let url = parts.url else { continue }
       guard let body = try? await Self.get(url, session: session) else { continue }
       guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],

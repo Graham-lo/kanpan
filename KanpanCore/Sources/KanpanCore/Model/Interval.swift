@@ -6,12 +6,8 @@ public enum Interval: String, CaseIterable, Sendable, Codable {
   case h1 = "1h", h2 = "2h", h4 = "4h", h6 = "6h", h12 = "12h"
   case d1 = "1d", w1 = "1w", mo1 = "1M", y1 = "1y"
 
-  /// 币安 `fapi/v1/klines` 的 interval。`1y` 币安没有（传过去是 `-1120 Invalid
-  /// interval`），所以返回 nil，改按 `source` 拉 1M 再自己聚（§4.2）。
-  public var api: String? { self == .y1 ? nil : rawValue }
-
-  /// 真正去网上拉哪一档。只有 1y 是聚出来的。
-  public var source: Interval { self == .y1 ? .mo1 : self }
+  // 真正去网上拉哪一档、哪些周期要自己聚，是各家交易所的事，不在周期本身上：
+  // 见 KanpanNetwork 的 `ProviderCapabilities.source(for:)`（§4.2）。
 
   /// 周期毫秒。1M / 1y 用名义步长（30 天 / 365 天）——真实 openTime 不等距，映射一律走
   /// `BarSeries.index(atTime:)` 的二分，不用 `t0 + i*step`（§4.2）。

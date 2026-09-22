@@ -8,10 +8,9 @@ import KanpanNetwork
 /// 五百多个品种，少一个板块的中位数就偏一点。逐个 `ticker/24hr` 取五百次不现实，
 /// 所以走 `/fapi/v1/ticker/24hr` 的全量那一版——一趟 285 KB 左右，权重 40。
 ///
-/// 全量 ticker **只有直连这条路**：网关只代理带 symbol 的单品种请求
-/// （`MarketSource.gatewayPlan` 里那句「全市场 ticker 没有 symbol，网关只代理单品种」），
-/// 所以 `BinanceREST.upstream` 拿到这条请求时会自动回退成直连。走网关那档的用户
-/// 在这一页上仍旧是直连取数，这是现状，不在这一轮的范围里。
+/// 只取 `VenueRegistry.sectorVenue` 那一家：板块分类表是按它的品种表做的，
+/// 别家的品种不进板块。全量 ticker 在网关上怎么走由那一家的提供者自己决定
+/// （网关只代理带 symbol 的单品种请求，全量那条提供者会自己回退成直连）。
 ///
 /// 节奏：进页立刻取一趟，之后**页面可见且 app 在前台**时每 10 秒一趟。板块的聚合值
 /// 是几十个成员的中位数，不需要秒级刷新；页面一离开就停，不在后台烧流量。
@@ -39,9 +38,9 @@ import KanpanNetwork
   /// 换线路会把它清回 false——换了一家交易所，之前问过什么都不作数。
   private(set) var attempted = false
 
-  private var rest = BinanceREST.upstream(.binance, hosts: .default)
-  private var hosts: BinanceHosts = .default
-  private var source: MarketSource = .binance
+  private var resolver = RouteResolver(policy: .direct, endpoints: .default)
+  private var rest: any MarketProvider = RouteResolver(policy: .direct, endpoints: .default)
+    .provider(venue: VenueRegistry.sectorVenue.id)
   private var catalog: [SymbolInfo] = []
 
   private var visible = false
@@ -63,11 +62,10 @@ import KanpanNetwork
   // MARK: 外部接线
 
   /// 换线路/换镜像。口径和 `QuoteBook.configure` 一致，由 `MainScreen` 一起调。
-  func configure(hosts: BinanceHosts, source: MarketSource) {
-    guard hosts != self.hosts || source != self.source else { return }
-    self.hosts = hosts
-    self.source = source
-    rest = BinanceREST.upstream(source, hosts: hosts)
+  func configure(endpoints: MarketEndpoints, policy: MarketRoutePolicy) {
+    guard endpoints != resolver.endpoints || policy != resolver.policy else { return }
+    resolver = RouteResolver(policy: policy, endpoints: endpoints)
+    rest = resolver.provider(venue: VenueRegistry.sectorVenue.id)
     // 手里这份是上一条线路报的，换了就一条都不留（审查 A-04）。两家的 24h 口径
     // 和品种集合都不一样，混着算出来的中位数不属于任何一个市场。
     drop()
@@ -91,9 +89,9 @@ import KanpanNetwork
     restart(preflight: { await reset(rest) })
   }
 
-  /// 清线路冷却走哪条路。默认就是当前线路的 `BinanceREST`；用例把它换掉，
+  /// 清线路冷却走哪条路。默认就是当前线路的提供者；用例把它换掉，
   /// 好证明它确实排在第一趟取数前面（和 `fetchTickers` 同一种接法）。
-  @ObservationIgnored var resetCooldowns: @Sendable (BinanceREST) async -> Void
+  @ObservationIgnored var resetCooldowns: @Sendable (any MarketProvider) async -> Void
     = { await $0.resetRouteCooldowns() }
 
   /// 把手里那份行情丢掉。清完页面就是空的，`SectorPage` 会显示空态。
@@ -152,7 +150,7 @@ import KanpanNetwork
   ///
   /// 「5 日」那一档的日线收盘（`SectorHistoryFeed`）问的是同样这几台。板块页手里
   /// 已经有这个 feed，不必为一条只读接口再从 `MainScreen` 另牵一根线下来。
-  var backendHosts: [String] { hosts.oiProxies }
+  var backendHosts: [String] { resolver.endpoints.gateways }
 
   /// 品种表。用来把 `BTCUSDT` 还原成 `BTC`，以及给没被任何板块收录的币凑兜底桶。
   ///
@@ -218,9 +216,9 @@ import KanpanNetwork
     }
   }
 
-  /// 全市场 24h 行情从哪儿来。默认走当前线路的 `BinanceREST`；用例把它换成离线的
+  /// 全市场 24h 行情从哪儿来。默认走当前线路的提供者；用例把它换成离线的
   /// 假数据——这一路要守的规则全是「取不到时屏上留什么」，不换掉就只能靠真网络。
-  @ObservationIgnored var fetchTickers: @Sendable (BinanceREST) async throws -> [Ticker]
+  @ObservationIgnored var fetchTickers: @Sendable (any MarketProvider) async throws -> [Ticker]
     = { try await $0.tickers24h(timeout: 8) }
 
   private func pull() async -> Bool {

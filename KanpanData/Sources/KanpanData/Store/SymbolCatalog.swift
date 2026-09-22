@@ -1,8 +1,11 @@
 import Foundation
 import KanpanCore
 
-/// 品种表（§4.1）。`exchangeInfo` 几十 KB，放 `Caches/` 24 小时；
+/// 一家交易所（一个提供者）的品种表（§4.1）。几十 KB，放 `Caches/` 24 小时；
 /// 过期就重拉，拉不到就先用旧的（离线也能开品种页）。
+///
+/// **一家一个缓存文件**（`file(for:in:)`）：默认交易所的真身在根上（老用户盘上那份
+/// 照旧能读），替身上游和别的交易所各在 `sources/<分区>/` 下一份，互不覆盖。
 ///
 /// 三条规矩，都是审查里换来的：
 /// * **非 `TRADING` 的行留在表里**，带着 `SymbolInfo.status`（B-06）。只留 `TRADING`
@@ -22,7 +25,7 @@ public actor SymbolCatalog {
   /// 离线时 `all()` 会被每一次进页调用，没有这道闸就是一连串注定失败的请求。
   public static let retryAfterFailureMs: Int64 = 60_000
 
-  private let rest: BinanceREST
+  private let provider: any MarketProvider
   private let paths: Paths
   private let log: FeedLog
   private var symbols: [SymbolInfo] = []
@@ -37,11 +40,28 @@ public actor SymbolCatalog {
   private var failedAtMs: Int64 = 0
   private var lastOnDemandMs: Int64 = 0
 
-  public init(rest: BinanceREST, paths: Paths = .caches(), log: FeedLog = .silent) {
-    self.rest = rest
-    self.paths = paths
+  /// - Parameter paths: 缓存树的根。这一家的文件落在哪个分区由 `partition(for:in:)` 定。
+  public init(provider: any MarketProvider, paths: Paths = .caches(), log: FeedLog = .silent) {
+    self.provider = provider
+    self.paths = Self.partition(for: provider.capabilities, in: paths)
     self.log = log
   }
+
+  /// 这一家的品种表放哪棵树：默认交易所的真身放根上；替身上游按 `snapshotNamespace`、
+  /// 别的交易所按 venue 各一棵（`Paths.source`，「清缓存」点得到名）。
+  public static func partition(for caps: ProviderCapabilities, in root: Paths) -> Paths {
+    if let ns = caps.snapshotNamespace { return root.source(ns) }
+    if caps.venue == VenueRegistry.default.id { return root }
+    return root.source(caps.venue)
+  }
+
+  /// 这一家的品种表缓存文件。
+  public static func file(for caps: ProviderCapabilities, in root: Paths) -> URL {
+    partition(for: caps, in: root).exchangeInfo
+  }
+
+  /// 这份表是哪家的。
+  public nonisolated var capabilities: ProviderCapabilities { provider.capabilities }
 
   private var refreshTask: Task<[SymbolInfo], Never>?
 
@@ -76,7 +96,7 @@ public actor SymbolCatalog {
     if let refreshTask { return await refreshTask.value }
     let task = Task<[SymbolInfo], Never> { () -> [SymbolInfo] in
       do {
-        let fresh = try await self.rest.exchangeInfo()
+        let fresh = try await self.provider.instruments()
         try Self.validate(fresh)
         self.adopt(fresh, at: now, schema: Self.schema)
         self.failedAtMs = 0
@@ -179,7 +199,7 @@ public actor SymbolCatalog {
   /// 字样的、以及 404。限流（418/429）、地域拒绝（451）、超时（408）一个都不算：
   /// 它们拒的是整条线路，照那个判会把整张自选表一次标成下架。
   public static func rejectsSymbol(_ error: any Error) -> Bool {
-    guard let e = error as? BinanceError else { return false }
+    guard let e = error as? UpstreamError else { return false }
     guard !e.isRateLimited, !e.isGeoBlocked, e.status != 408 else { return false }
     if e.status == 404 { return true }
     guard e.status == 400 else { return false }

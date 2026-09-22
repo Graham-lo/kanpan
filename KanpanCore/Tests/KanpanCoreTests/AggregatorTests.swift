@@ -246,11 +246,8 @@ struct AggregatorTests {
     #expect(Interval.allCases.count == 14)
     // 出厂把周期条那六格放满（2026-09-21）：`Prefs.maxQuick` 是 6，出厂 = 满钉。
     #expect(Interval.quick.map(\.rawValue) == ["5m", "30m", "1h", "4h", "1d", "1w"])
-    #expect(Interval.y1.api == nil, "币安没有 1y，不能往 API 上传")
-    #expect(Interval.y1.source == .mo1)
-    for iv in Interval.allCases where iv != .y1 {
-      #expect(iv.api == iv.rawValue && iv.source == iv)
-    }
+    // 哪一档要自己聚是各家交易所的能力（`ProviderCapabilities.aggregatedFrom`），
+    // 那张表在 KanpanNetwork 的 ProviderCapabilitiesTests 里核。
     #expect(Interval.y1.isIrregular && Interval.mo1.isIrregular)
     #expect(!Interval.w1.isIrregular, "周线是等距的（周一 00:00 UTC）")
     // 名义步长单调递增

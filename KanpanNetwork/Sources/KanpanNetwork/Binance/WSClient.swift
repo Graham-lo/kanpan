@@ -1,17 +1,6 @@
 import Foundation
 import KanpanCore
 
-public enum FeedStatus: String, Sendable, Equatable {
-  case live, reconnecting, offline
-}
-
-public enum WSEvent: Sendable {
-  case payload(StreamPayload)
-  /// 每次真的建立了一条新连接。`id` 不变就说明没重连（A2.9）。
-  case connected(id: Int)
-  case status(FeedStatus)
-}
-
 /// 一条组合流连接（§4.1 / §4.4）。
 ///
 /// 只有一条连接：切品种、切周期都是 `SUBSCRIBE` / `UNSUBSCRIBE`，不重连。

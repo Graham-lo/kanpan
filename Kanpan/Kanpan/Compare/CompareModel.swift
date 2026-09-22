@@ -15,18 +15,33 @@ import KanpanChart
   @ObservationIgnored private var generation = UUID()
   @ObservationIgnored private var foreground = true
   @ObservationIgnored private var alignment: (times: [Int64], revision: [BarSeries], values: [String: (open: [Double?], close: [Double?])])?
+  /// 「这条线路上，主图这只该由哪条上游供数」的缓存（换线路 / 换域名 / 换交易所才重算），
+  /// 免得主屏每次求值都去新建一个提供者。
+  @ObservationIgnored private var expected: (venue: String, policy: MarketRoutePolicy, endpoints: MarketEndpoints, upstream: String)?
 
   private struct Request: Equatable {
     var keys: [String]
     var symbol: String
     var interval: Interval
-    var hosts: BinanceHosts
+    var endpoints: MarketEndpoints
     var policy: MarketRoutePolicy
   }
 
+  /// 主图这一刻是不是已经落在用户选的线路上了：它的上游得和「这条线路上这只该由谁供数」一致，
+  /// 而且不在换品种 / 换线路的半路上。没落稳之前不开对比，免得对比线和主图出自两条上游。
+  func mainSettled(symbol: String, upstream: String, policy: MarketRoutePolicy, endpoints: MarketEndpoints) -> Bool {
+    let venue = VenueRegistry.descriptor(forSymbol: symbol).id
+    if let expected, expected.venue == venue, expected.policy == policy, expected.endpoints == endpoints {
+      return expected.upstream == upstream
+    }
+    let resolved = RouteResolver(policy: policy, endpoints: endpoints).provider(venue: venue).capabilities.upstream
+    expected = (venue, policy, endpoints, resolved)
+    return resolved == upstream
+  }
+
   func configure(keys: [String], main: BarSeries?, symbol: String, interval: Interval,
-                 hosts: BinanceHosts, policy: MarketRoutePolicy) {
-    let next = Request(keys: keys.filter { $0 != InstrumentID.canonical(symbol) }, symbol: symbol, interval: interval, hosts: hosts, policy: policy)
+                 endpoints: MarketEndpoints, policy: MarketRoutePolicy) {
+    let next = Request(keys: keys.filter { $0 != InstrumentID.canonical(symbol) }, symbol: symbol, interval: interval, endpoints: endpoints, policy: policy)
     self.main = main?.symbol == symbol && main?.interval == interval ? main : nil
     if next != request {
       stopFeed(); snapshots = []; alignment = nil; request = next
@@ -36,7 +51,7 @@ import KanpanChart
       return
     }
     if let feed { Task { await feed.updateMain(main) }; return }
-    let created = CompareFeed(hosts: hosts, policy: policy)
+    let created = CompareFeed(resolver: RouteResolver(policy: policy, endpoints: endpoints))
     feed = created
     let token = generation
     pump = Task { [weak self] in
@@ -70,7 +85,7 @@ import KanpanChart
     if !value { stopFeed() }
     else if let request {
       configure(keys: request.keys, main: main, symbol: request.symbol, interval: request.interval,
-        hosts: request.hosts, policy: request.policy)
+        endpoints: request.endpoints, policy: request.policy)
     }
   }
 
@@ -95,7 +110,7 @@ struct CompareDrive: Equatable {
   var keys: [String]
   var symbol: String
   var interval: Interval
-  var hosts: BinanceHosts
+  var endpoints: MarketEndpoints
   var policy: MarketRoutePolicy
   var ready: Bool
   var first: Int64

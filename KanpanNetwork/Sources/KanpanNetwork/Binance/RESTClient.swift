@@ -1,18 +1,9 @@
 import Foundation
 import KanpanCore
 
-/// 日志出口。命令行工具打到 stdout，app 里丢给 os_log，测试里收进数组。
-public struct FeedLog: Sendable {
-  public var write: @Sendable (String) -> Void
-  public init(_ write: @escaping @Sendable (String) -> Void = { _ in }) { self.write = write }
-  public static let silent = FeedLog()
-  public static let stdout = FeedLog { print($0) }
-  public func callAsFunction(_ s: String) { write(s) }
-}
-
 /// 币安 REST（§4.1）。限流、重试、翻页都在这儿，上面只管要数据。
 public actor BinanceREST {
-  public let hosts: BinanceHosts
+  public nonisolated let hosts: BinanceHosts
   private let transport: HTTPTransport
   private let limiter: RateLimiter
   private let pacer: Pacer
@@ -214,10 +205,15 @@ public actor BinanceREST {
 
   // ------------------------------------------------------------------ K 线
 
-  /// 一页 K 线。`interval` 走 `Interval.source`（1y 拉的是 1M）。
+  /// 币安原生没有的周期拿哪一档去聚：只有 1y，拉 1M 自己聚（§4.2）。
+  /// 传 `1y` 过去是 `-1120 Invalid interval`。
+  public static let aggregatedFrom: [Interval: Interval] = [.y1: .mo1]
+  static func source(_ interval: Interval) -> Interval { aggregatedFrom[interval] ?? interval }
+
+  /// 一页 K 线。`interval` 按 `aggregatedFrom` 换成源周期（1y 拉的是 1M）。
   public func klines(symbol: String, interval: Interval, limit: Int = maxKlines,
                      startTime: Int64? = nil, endTime: Int64? = nil) async throws -> [Bar] {
-    let api = interval.source.rawValue
+    let api = Self.source(interval).rawValue
     let url = hosts.klines(symbol: symbol, interval: api, limit: min(limit, Self.maxKlines),
                            startTime: startTime, endTime: endTime)
     let data = try await fetch(url, weight: RateLimiter.klinesWeight(for: min(limit, Self.maxKlines)))
@@ -384,20 +380,9 @@ public actor BinanceREST {
 
   /// 一串 Bar → BarSeries。1y 在这儿从 1M 聚出来（§4.2）。
   public static func series(symbol: String, interval: Interval, bars: [Bar]) -> BarSeries {
-    let clean = dedup(bars)
-    let src = BarSeries(symbol: symbol, interval: interval.source, bars: clean)
-    if interval.source != interval {
-      return Aggregator.bucket(series: src, into: interval)
-    }
-    return src
+    MarketSeries.series(symbol: symbol, interval: interval, source: source(interval), bars: bars)
   }
 
   /// 按 openTime 升序去重，同一 openTime 留最后出现的那根（网络上后到的更新）。
-  public static func dedup(_ bars: [Bar]) -> [Bar] {
-    guard bars.count > 1 else { return bars }
-    var byTime: [Int64: Bar] = [:]
-    byTime.reserveCapacity(bars.count)
-    for b in bars { byTime[b.openTime] = b }
-    return byTime.keys.sorted().map { byTime[$0]! }
-  }
+  public static func dedup(_ bars: [Bar]) -> [Bar] { MarketSeries.dedup(bars) }
 }

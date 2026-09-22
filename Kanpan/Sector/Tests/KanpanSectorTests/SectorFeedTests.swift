@@ -42,7 +42,7 @@ struct SectorFeedTests {
     #expect(feed.quotes["BTC"]?.pct == 1.5)
 
     // 换一家交易所。两家的 24h 口径和品种集合都不一样，上一家报的一条都不能留。
-    feed.configure(hosts: .default, source: .okx)
+    feed.configure(endpoints: .default, policy: .gateway)
     #expect(feed.quotes.isEmpty)
     #expect(feed.lastUpdate == nil)
   }
@@ -52,7 +52,7 @@ struct SectorFeedTests {
     let feed = feed([ticker("BTCUSDT", pct: 1.5)])
     feed.setVisible(true)
     await settle(feed)
-    feed.configure(hosts: .default, source: .binance)
+    feed.configure(endpoints: .default, policy: .direct)
     #expect(feed.quotes["BTC"]?.pct == 1.5)
   }
 
@@ -144,7 +144,7 @@ struct SectorFeedTests {
     #expect(feed.showsEmptyState)
 
     // 换线路等于换了一家交易所：之前问过什么都不作数，回到「还没问过」。
-    feed.configure(hosts: .default, source: .okx)
+    feed.configure(endpoints: .default, policy: .gateway)
     #expect(feed.quotes.isEmpty)
     #expect(!feed.showsEmptyState)
   }

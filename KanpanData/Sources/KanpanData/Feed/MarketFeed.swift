@@ -4,7 +4,8 @@ import KanpanCore
 /// 图表侧收到的东西（§3.1）。`BarSeries` 是值类型快照，每次事件换一份，
 /// 绘制线程只读一份不可变数据，没有锁。
 public enum FeedEvent: Sendable {
-  case source(MarketSource)
+  /// 这份行情由哪家、哪条上游供（界面按能力位决定哪几格写「—」、副图给不给看）。
+  case provider(ProviderCapabilities)
   case routing(MarketRoutingState)
   case historyError(String?)
   case series(BarSeries)          // 整段替换
@@ -37,8 +38,9 @@ public actor MarketFeed {
   private var lastTakerEmitMs = -Double.infinity
   private let includeTicker: Bool
   private let initialLimit: Int
-  private let rest: BinanceREST
-  private let ws: BinanceWS
+  private let provider: any MarketProvider
+  private let ws: any MarketStream
+  private var caps: ProviderCapabilities { provider.capabilities }
   private let cache: BarCache
   private let paths: Paths
   private let pacer: Pacer
@@ -114,7 +116,8 @@ public actor MarketFeed {
   /// 快照旧到这个程度就不拿来打底了。中间缺的那段靠 `contiguousTail` 补，
   /// 它最多翻 4 页；超过这个跨度补不回来，图上会留个洞，宁可空着等网络。
   static let maxSeedGapBars: Int64 = 3000
-  /// 只有 1y 用得上：WS 推的是月线，年线要拿月线重聚（§4.2）。
+  /// 只有聚出来的周期用得上（`ProviderCapabilities.aggregatedFrom`，比如 1y ← 1M）：
+  /// WS / REST 给的是源周期，目标周期拿源周期重聚（§4.2）。
   private var sourceComposer: FeedComposer?
   /// 逐笔折线的合帧闸门。BTCUSDT 忙的时候一秒上百笔，每笔都往上抛一次
   /// `.lastBar` 会把主线程按在事件处理上；80ms 一拍（12 帧/秒）对肉眼已经是连续的，
@@ -153,15 +156,20 @@ public actor MarketFeed {
 
   /// - Parameter reconcileMs: REST 对表的节拍，0 = 不对表。回放测试要的是「WS 报文
   ///   按规矩合出来是什么」，多一路 REST 在旁边改序列就测不出那件事，所以那边传 0。
-  public init(rest: BinanceREST, ws: BinanceWS, cache: BarCache = BarCache(),
+  /// - Parameters:
+  ///   - stream: 这份 feed 独占的一条推送连接（`provider.makeStream`）。
+  ///   - includeTicker: 订不订 24h 行情与标记价。不传按能力位。
+  ///   - initialLimit: 首屏第一发要多深（源周期根数）。不传按能力位，夹在单次上限以内。
+  public init(provider: any MarketProvider, stream: any MarketStream, cache: BarCache = BarCache(),
               paths: Paths = .caches(), pacer: Pacer = SystemPacer(),
               clock: @escaping @Sendable () -> Date = { Date() },
-              reconcileMs: Double = 5000, includeTicker: Bool = true, initialLimit: Int = BinanceREST.maxKlines, log: FeedLog = .silent) {
-    self.includeTicker = includeTicker
-    self.initialLimit = min(BinanceREST.maxKlines, max(3, initialLimit))
+              reconcileMs: Double = 5000, includeTicker: Bool? = nil, initialLimit: Int? = nil, log: FeedLog = .silent) {
+    let caps = provider.capabilities
+    self.includeTicker = includeTicker ?? caps.hasTickerStream
+    self.initialLimit = min(caps.maxKlines, max(3, initialLimit ?? caps.initialKlines))
     self.reconcileStepMs = reconcileMs
-    self.rest = rest
-    self.ws = ws
+    self.provider = provider
+    self.ws = stream
     self.cache = cache
     self.paths = paths
     self.pacer = pacer
@@ -226,7 +234,7 @@ public actor MarketFeed {
       seeded = true
       log("内存命中 \(key) \(hit.count) 根")
     } else if snapshotEnabled, let snap = SeriesStore.read(symbol: symbol, interval: interval, in: paths.series),
-              Self.seedUsable(snap, nowMs: await pacer.nowMs()) {
+              Self.seedUsable(snap, sourceStepMs: caps.source(for: interval).stepMs, nowMs: await pacer.nowMs()) {
       guard current(requested) else { return }
       composer.replace(snap)
       emit(.series(snap))
@@ -240,7 +248,7 @@ public actor MarketFeed {
     sourceComposer = nil
     lastPushed = nil
     // ② 换订阅。同一条连接，连接 id 不变。
-    await ws.replaceStreams(streamNames())
+    await ws.replace(topics: topics())
     guard current(requested) else { return }
     if wsTask == nil { await startWS() }
 
@@ -260,11 +268,24 @@ public actor MarketFeed {
     let request = selection
     let sym = symbol, iv = interval
     guard composer.series.count > 0 else { return }
-    let first = composer.series.firstTime
+    // 聚出来的周期往前翻的是源周期：翻页的起点是源序列的第一根，翻回来的也先补进源序列
+    // 再整段重聚——直接把源周期的 K 线塞进目标序列，左边就会多出一截「月线冒充年线」。
+    let aggregated = caps.isAggregated(iv)
+    guard !aggregated || (sourceComposer?.series.count ?? 0) > 0 else { return }
+    let first = aggregated ? sourceComposer!.series.firstTime : composer.series.firstTime
     do {
-      let bars = try await rest.history(symbol: sym, interval: iv, pages: pages, before: first)
+      let bars = try await provider.history(symbol: sym, interval: iv, pages: pages, before: first)
       guard current(request), sym == symbol, iv == interval else { return }
-      let n = composer.prepend(bars)
+      let n: Int
+      if aggregated, var src = sourceComposer {
+        let before = composer.series.count
+        _ = src.prepend(bars)
+        sourceComposer = src
+        composer.replace(Aggregator.bucket(series: src.series, into: iv))
+        n = max(0, composer.series.count - before)
+      } else {
+        n = composer.prepend(bars)
+      }
       emit(.historyError(nil))
       if n > 0 {
         await cache.put(composer.series)
@@ -328,7 +349,7 @@ public actor MarketFeed {
     // 下面的补齐是网络往返，不该由它决定用户什么时候看见行情。
     if composer.series.count > 0 { emit(.series(composer.series)) }
     if wsTask == nil { await startWS() } else { startReconcile() }
-    await ws.replaceStreams(streamNames())
+    await ws.replace(topics: topics())
     let sym = symbol, iv = interval, request = selection
     // 首屏还没到手就切出去过：这一发 `loadTask` 要么还在路上，要么刚才在后台被
     // 掐了。下面那句 `cancel()` 会把它彻底送走，而「缺口不足一根」又会让这个方法
@@ -361,10 +382,10 @@ public actor MarketFeed {
     }
   }
 
-  /// 回前台时还欠多少根。序列空着、另外记着缺口、或者是聚出来的周期（1y），
+  /// 回前台时还欠多少根。序列空着、另外记着缺口、或者是聚出来的周期（1y 这类），
   /// 一律返回一个大数交给 `backfill` 走完整路径，这儿只负责认出「几乎没缺」。
   private func pendingBars() -> Int {
-    guard composer.series.count > 0, gapFrom == 0, interval.source == interval else { return .max }
+    guard composer.series.count > 0, gapFrom == 0, !caps.isAggregated(interval) else { return .max }
     let from = composer.series.lastTime
     guard from > 0 else { return .max }
     let now = Int64(clock().timeIntervalSince1970 * 1000)
@@ -401,28 +422,31 @@ public actor MarketFeed {
     takerEnabled = taker; depthEnabled = depth
     takerBucket = TakerBucket(startedAt: Int64(clock().timeIntervalSince1970 * 1000))
     emit(.takerTail(nil)); emit(.depth(nil))
-    if !symbol.isEmpty { await ws.replaceStreams(streamNames()) }
+    if !symbol.isEmpty { await ws.replace(topics: topics()) }
   }
 
-  private func streamNames() -> [String] {
-    // 1y 没有原生流，订 1M（§4.2）。
-    let api = interval.source.rawValue
-    // Binance's 2026 endpoint split: all three belong to /market, no /public quote mixed in.
-    var streams = [BinanceHosts.klineStream(symbol: symbol, interval: api)]
-    if includeTicker {
-      streams += [BinanceHosts.tickerStream(symbol: symbol), BinanceHosts.markPriceStream(symbol: symbol)]
-    }
-    if takerEnabled { streams.append(BinanceHosts.aggTradeStream(symbol: symbol)) }
-    if depthEnabled { streams.append(BinanceHosts.depth5Stream(symbol: symbol)) }
-    log("图表订阅：" + streams.joined(separator: "/"))
-    return streams
+  /// 当前这张图要订哪些推送。按能力位说「要什么」，线上的频道名由各家推送客户端翻。
+  private func topics() -> [StreamTopic] {
+    // 聚出来的周期订它的源周期（1y 订 1M，§4.2）。
+    let source = caps.source(for: interval)
+    // 有原生 K 线推送就订 K 线；没有（某些交易所只给一两档）就订逐笔，在本地拼末根，
+    // 另有 REST 对表兜底（`reconcileOnce`）。
+    var topics: [StreamTopic] = caps.liveKlineIntervals.contains(source)
+      ? [.kline(symbol: symbol, interval: source)]
+      : [.trade(symbol: symbol)]
+    if includeTicker, caps.hasTickerStream { topics.append(.ticker(symbol: symbol)) }
+    if includeTicker, caps.hasMarkPrice { topics.append(.markPrice(symbol: symbol)) }
+    if takerEnabled, caps.hasMicrostructure { topics.append(.aggTrade(symbol: symbol)) }
+    if depthEnabled, caps.hasMicrostructure { topics.append(.depth(symbol: symbol)) }
+    log("图表订阅：" + topics.map(\.description).joined(separator: "、"))
+    return topics
   }
 
   private func startWS() async {
     startReconcile()
     let generation = UUID()
     wsGeneration = generation
-    let stream = await ws.start(streams: streamNames())
+    let stream = await ws.start(topics: topics())
     guard wsGeneration == generation, !Task.isCancelled else { return }
     wsTask = Task { [weak self] in
       for await ev in stream {
@@ -511,7 +535,7 @@ public actor MarketFeed {
     case .payload(let p):
       switch p {
       case .kline(let k):
-        guard InstrumentID.canonical(k.symbol) == symbol, k.interval == interval.source.rawValue else { return }
+        guard InstrumentID.canonical(k.symbol) == symbol, k.interval == caps.source(for: interval).rawValue else { return }
         guard k.bar.isValidMarketBar else { return }
         lastKlineReceivedMs = received
         if k.eventTime > 0, let id = k.lastTradeID {
@@ -580,12 +604,12 @@ public actor MarketFeed {
   }
 
   private func applyKline(_ k: KlineEvent, now: Double) {
-    // 年线是聚出来的：WS 推的是月线，收一条就把当年那根重算（§4.2）。
-    if interval == .y1 {
-      guard var monthly = sourceComposer, monthly.series.count > 0 else { return }
-      guard monthly.apply(k) else { return }
-      sourceComposer = monthly
-      composer.replace(Aggregator.bucket(series: monthly.series, into: .y1))
+    // 聚出来的周期：WS 推的是源周期（年线收的是月线），收一条就把当前那根重算（§4.2）。
+    if caps.isAggregated(interval) {
+      guard var src = sourceComposer, src.series.count > 0 else { return }
+      guard src.apply(k) else { return }
+      sourceComposer = src
+      composer.replace(Aggregator.bucket(series: src.series, into: interval))
       emit(.historyError(nil))
       emit(.series(composer.series))
       scheduleSnapshot()
@@ -612,13 +636,13 @@ public actor MarketFeed {
   /// 一次报价折进当前那根（细节见 `FeedComposer.applyTick`）。
   private func foldTick(price: Double, qty: Double, timeMs: Int64, allowAppend: Bool,
                         tradeID: Int64? = nil, now: Double) {
-    // 1y 是聚出来的：折进月线源，再把当年那根重算（和 applyKline 一个路数，§4.2）。
-    if interval == .y1 {
+    // 聚出来的周期：折进源周期，再把当前那根重算（和 applyKline 一个路数，§4.2）。
+    if caps.isAggregated(interval) {
       guard var src = sourceComposer, src.series.count > 0 else { return }
       guard src.applyTick(price: price, qty: qty, timeMs: timeMs, allowAppend: allowAppend, tradeID: tradeID) != .ignored
       else { return }
       sourceComposer = src
-      composer.replace(Aggregator.bucket(series: src.series, into: .y1))
+      composer.replace(Aggregator.bucket(series: src.series, into: interval))
       emit(.historyError(nil))
       emit(.series(composer.series))
       scheduleSnapshot()
@@ -720,19 +744,19 @@ public actor MarketFeed {
     let now = await nowMs()
     let tickerStamp = lastTickerReceivedMs
     if includeTicker, now - tickerStamp >= 5000,
-       let t = try? await rest.ticker24h(symbol: sym), current(request), sym == symbol, iv == interval,
+       let t = try? await provider.ticker24h(symbol: sym), current(request), sym == symbol, iv == interval,
        lastTickerReceivedMs == tickerStamp {
       emit(.ticker(t))
     }
 
-    // K 线两拍取一次，而且只有等距周期走这条——1y 得整段重聚，交给 fill。
-    guard reconcileTicks % 2 == 0, iv.source == iv, sym == symbol, iv == interval else { return }
+    // K 线两拍取一次，而且只有原生周期走这条——聚出来的周期得整段重聚，交给 fill。
+    guard reconcileTicks % 2 == 0, !caps.isAggregated(iv), sym == symbol, iv == interval else { return }
     let klineStamp = lastKlineReceivedMs
     guard now - klineStamp >= 10000 else { return }
     let from = composer.series.lastTime
     guard from > 0 else { return }
     do {
-      let bars = try await rest.klines(symbol: sym, interval: iv, limit: 2, startTime: from)
+      let bars = try await provider.klines(symbol: sym, interval: iv, limit: 2, startTime: from)
       guard current(request), sym == symbol, iv == interval, !composer.isBackfilling,
             lastKlineReceivedMs == klineStamp else { return }
       if composer.reconcile(bars) {
@@ -766,8 +790,8 @@ public actor MarketFeed {
                                 selection request: UUID) {
     guard current(request), sym == symbol, iv == interval else { return }
     guard composer.series.count == 0, !bars.isEmpty else { return }
-    if iv.source != iv {
-      sourceComposer = FeedComposer(series: BarSeries(symbol: sym, interval: iv.source, bars: BinanceREST.dedup(bars)))
+    if caps.isAggregated(iv) {
+      sourceComposer = FeedComposer(series: BarSeries(symbol: sym, interval: caps.source(for: iv), bars: MarketSeries.dedup(bars)))
       composer.replace(Aggregator.bucket(series: sourceComposer!.series, into: iv))
     } else {
       composer.merge(bars)
@@ -778,9 +802,10 @@ public actor MarketFeed {
   }
 
   /// 快照还能不能拿来打底：中间欠的那段要在 `contiguousTail` 的翻页能力之内。
-  static func seedUsable(_ snap: BarSeries, nowMs: Double) -> Bool {
+  /// `sourceStepMs` 是这一档真正去网上拉的那一档（源周期）的步长：缺口按源周期根数算，
+  /// 因为补缺翻的是源周期的页。
+  static func seedUsable(_ snap: BarSeries, sourceStepMs step: Int64, nowMs: Double) -> Bool {
     guard snap.count > 0 else { return false }
-    let step = snap.interval.source.stepMs
     guard step > 0 else { return false }
     let gap = Int64(nowMs) - snap.lastTime
     guard gap > 0 else { return true }
@@ -795,7 +820,7 @@ public actor MarketFeed {
     // 首屏小页：和完整那发并行发出去，谁先回谁先画。它只在图还空着时落地，
     // 完整那发要是先回来，这一发回来什么都不做。
     let quickTask: Task<[Bar], Error>? = (quickFirst && initialLimit > Self.firstScreenLimit)
-      ? Task { [rest] in try await rest.klines(symbol: sym, interval: iv, limit: Self.firstScreenLimit) }
+      ? Task { [provider] in try await provider.klines(symbol: sym, interval: iv, limit: Self.firstScreenLimit) }
       : nil
     defer { quickTask?.cancel() }
     if let quickTask {
@@ -804,15 +829,15 @@ public actor MarketFeed {
         await self?.applyFirstScreen(bars, symbol: sym, interval: iv, selection: request)
       }
     }
-    // 启动快照缺口请求，但不要等待它挡住最新窗口。BinanceREST / transport
+    // 启动快照缺口请求，但不要等待它挡住最新窗口。REST 客户端 / transport
     // 都是 actor，可重入地让两个请求同时在路上；首屏先用最新窗口，缺口回来后再合并。
     // 一个请求一个基线，而且基线必须取在请求发出**之前**：请求在路上的时候到的
     // WS 更新要算进「这一发回包已经过期了」那一边。取晚了（比如等回包时才取）那段
     // 窗口里的实时末根会被算进基线，`preservingLiveTail` 判成 false，陈旧的 REST
     // 回包就把活着的末根盖回去。
     let gapRevision = composer.wsRevision
-    let gapTask: Task<[Bar], Error>? = (since > 0 && iv.source == iv)
-      ? Task { [rest] in try await rest.contiguousTail(symbol: sym, interval: iv, from: since) }
+    let gapTask: Task<[Bar], Error>? = (since > 0 && !caps.isAggregated(iv))
+      ? Task { [provider] in try await provider.contiguousTail(symbol: sym, interval: iv, from: since) }
       : nil
     if gapTask != nil { await Task.yield() }
     do {
@@ -830,16 +855,16 @@ public actor MarketFeed {
       var attempt = 0
       while true {
         attempt += 1
-        do { bars = try await rest.klines(symbol: sym, interval: iv, limit: initialLimit); break }
+        do { bars = try await provider.klines(symbol: sym, interval: iv, limit: initialLimit); break }
         catch is CancellationError { throw CancellationError() }
         catch {
           guard current(request), sym == symbol, iv == interval, !Task.isCancelled else { throw CancellationError() }
           // 「短时间内不可能成功」的那几种（418 IP 封禁、429 超频、本机限流器在封禁期内
-          // 挡下的那一笔）不在这儿重试：`BinanceREST.fetch` 已经按上游给的截止时间
+          // 挡下的那一笔）不在这儿重试：REST 客户端已经按上游给的截止时间
           // 处理过一轮了，外面再叠 3 发只是把同一个封禁撞成 3×4＝12 次，反而把封禁
           // 续得更长（A.3.4）。立刻结束本轮，落到下面那条既有的「点此重试」入口，
           // 本地图表（快照打的底、WS 推的末根）原样留着。
-          if let limited = error as? BinanceError, limited.stopsRetrying {
+          if let limited = error as? UpstreamError, limited.stopsRetrying {
             log("首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：\(limited)")
             throw limited
           }
@@ -849,8 +874,8 @@ public actor MarketFeed {
         }
       }
       guard current(request), sym == symbol, iv == interval else { return }
-      if iv.source != iv {
-        let src = BarSeries(symbol: sym, interval: iv.source, bars: BinanceREST.dedup(bars))
+      if caps.isAggregated(iv) {
+        let src = BarSeries(symbol: sym, interval: caps.source(for: iv), bars: MarketSeries.dedup(bars))
         if var source = sourceComposer {
           source.merge(bars, preservingLiveTail: source.wsRevision != sourceRevision)
           sourceComposer = source
@@ -890,14 +915,14 @@ public actor MarketFeed {
       return
     }
 
-    // 聚出来的周期（1y）没有可直接对齐的历史缺口；其它周期在最新窗口
+    // 聚出来的周期（1y 这类）没有可直接对齐的历史缺口；其它周期在最新窗口
     // 已显示后再补快照缺口。缺口失败时保留最新序列和实时 WS，不把整条
     // 可用行情降级为离线。
-    if since > 0, iv.source == iv {
+    if since > 0, !caps.isAggregated(iv) {
       do {
         let gap: [Bar]
         if let gapTask { gap = try await gapTask.value }
-        else { gap = try await rest.contiguousTail(symbol: sym, interval: iv, from: since) }
+        else { gap = try await provider.contiguousTail(symbol: sym, interval: iv, from: since) }
         guard current(request), sym == symbol, iv == interval else { return }
         composer.merge(gap, preservingLiveTail: composer.wsRevision != gapRevision)
         await cache.put(composer.series)
@@ -921,7 +946,7 @@ public actor MarketFeed {
     guard includeTicker else { return }
     do {
       let tickerStamp = lastTickerReceivedMs
-      let t = try await rest.ticker24h(symbol: sym)
+      let t = try await provider.ticker24h(symbol: sym)
       if current(request), sym == symbol, lastTickerReceivedMs == tickerStamp { emit(.ticker(t)) }
     } catch is CancellationError {
       return
@@ -942,7 +967,7 @@ public actor MarketFeed {
     // 首发本身已经按单请求上限要过一整页了，再翻一页只是多花一个权重 10 的请求
     // 换第 13 屏往后——边际很小。只有首发拉得浅（两段式的 300 根档、OKX 那条路）
     // 才值得在后台补这一页。这条保证「首屏改深」不会把请求数和权重顶上去。
-    guard initialLimit < BinanceREST.maxKlines else { return }
+    guard initialLimit < caps.maxKlines else { return }
     deepenTask = Task { [weak self, pacer] in
       // 让实时报文和 ticker 先走，别和首屏抢带宽。
       try? await pacer.sleep(ms: 1200)
@@ -964,13 +989,13 @@ public actor MarketFeed {
     guard current(request) else { return }
     // 先取走缺口：下面几条路都不能把它留着，不然会和 `fill` 末尾那次补缺叫下去。
     let from = takeGap(orElse: composer.series.count > 0 ? composer.series.lastTime : 0)
-    guard iv.source == iv, composer.series.count > 0, from > 0 else {
+    guard !caps.isAggregated(iv), composer.series.count > 0, from > 0 else {
       composer.endBackfill(with: [])
       await fillOnce(symbol: sym, interval: iv, since: 0, selection: request)
       return
     }
     do {
-      let bars = try await rest.contiguousTail(symbol: sym, interval: iv, from: from)
+      let bars = try await provider.contiguousTail(symbol: sym, interval: iv, from: from)
       guard current(request), sym == symbol, iv == interval else { return }
       let added = composer.endBackfill(with: bars)
       await cache.put(composer.series)

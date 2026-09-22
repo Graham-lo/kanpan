@@ -11,6 +11,9 @@ import KanpanData
 //   kanpan-feed oi BTCUSDT 1h [--days N]   两个源合成一条 OI 序列
 //   kanpan-feed switch BTCUSDT             连续切 20 次，看连接 id 变不变
 //   kanpan-feed churn [--symbols N]        随机 N 个品种 × 14 周期，看内存与沙盒
+//
+// 通用开关：--venue <交易所>（默认是默认交易所）、--route direct|gateway（默认直连）、
+// --cache-root <目录>（独立冷缓存）。品种可以写裸代号，也可以写 `venue/market/SYMBOL`。
 
 func nowStamp() -> String {
   // 本地时区的 时:分:秒.毫秒 —— 验收要按日志上的时间戳数间隔（A2.3）。
@@ -52,9 +55,19 @@ func flag(_ name: String) -> String? {
 func has(_ name: String) -> Bool { CommandLine.arguments.contains(name) }
 
 let env = ProcessInfo.processInfo.environment
-let hosts = BinanceHosts(fapi: env["KANPAN_FAPI"] ?? "fapi.binance.com",
-                         stream: env["KANPAN_STREAM"] ?? "dstream.binance.me")
-let rest = BinanceREST(hosts: hosts, log: has("-v") ? log : .silent)
+/// 看盘自己的网关（`--route gateway` 与持仓量归档用），逗号分隔，主在前。
+let gateways = (env["KANPAN_GATEWAYS"] ?? "").split(separator: ",").map(String.init)
+let endpoints = MarketEndpoints(restHost: env["KANPAN_FAPI"], streamHost: env["KANPAN_STREAM"],
+                                gateways: gateways)
+let route = MarketRoutePolicy(rawValue: flag("--route") ?? "direct") ?? .direct
+let venue = VenueRegistry.descriptor(flag("--venue") ?? "") ?? VenueRegistry.default
+let provider = RouteResolver(policy: route, endpoints: endpoints, log: has("-v") ? log : .silent)
+  .provider(venue: venue.id)
+/// 命令行里的品种 → 品种键。裸代号归 `--venue` 那一家。
+func key(_ raw: String) -> String {
+  raw.contains("/") ? InstrumentID.canonical(raw)
+    : InstrumentID(venue: venue.id, market: venue.market, symbol: raw).key
+}
 // 独立冷缓存可重复测量，避免与其它窗口共用系统临时目录。
 let paths = Paths(root: flag("--cache-root").map { URL(fileURLWithPath: $0) }
   ?? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("kanpan-feed"))
@@ -68,14 +81,14 @@ func parseInterval(_ s: String?) -> Interval {
 
 func cmdInfo() async throws {
   // 走 SymbolCatalog 而不是裸 REST：顺带验掉 Caches 里那份 24 小时的 exchangeInfo（§4.1）。
-  let catalog = SymbolCatalog(rest: rest, paths: paths, log: has("-v") ? log : .silent)
+  let catalog = SymbolCatalog(provider: provider, paths: paths, log: has("-v") ? log : .silent)
   let t0 = Date()
   var list = await catalog.all()
-  if list.isEmpty { list = try await rest.exchangeInfo() }
-  say("USDT 本位永续 \(list.count) 个，用时 \(Int(-t0.timeIntervalSinceNow * 1000))ms")
+  if list.isEmpty { list = try await provider.instruments() }
+  say("\(venue.displayName) 品种 \(list.count) 个，用时 \(Int(-t0.timeIntervalSinceNow * 1000))ms")
   // arg(1) 可能是 -v 这样的开关，别把它当品种名。
-  let want = arg(1).flatMap { $0.hasPrefix("-") ? nil : $0 }?.uppercased() ?? "BTCUSDT"
-  if let s = list.first(where: { $0.symbol == InstrumentID.canonical(want) }) {
+  let want = arg(1).flatMap { $0.hasPrefix("-") ? nil : $0 }?.uppercased() ?? venue.defaultSymbol
+  if let s = list.first(where: { $0.symbol == key(want) }) {
     say("\(s.symbol)  base=\(s.base)  pricePrecision=\(s.pricePrecision)  qtyPrecision=\(s.quantityPrecision)  tickSize=\(s.tickSize)  小数位=\(s.priceDecimals)")
   }
   for s in list.prefix(5) { say("  \(s.symbol) tick=\(s.tickSize)") }
@@ -83,23 +96,22 @@ func cmdInfo() async throws {
 
 func cmdHistory(_ symbol: String, _ iv: Interval, pages: Int) async throws {
   let t0 = Date()
-  let head = try await rest.klines(symbol: symbol, interval: iv, limit: 1500)
+  let head = try await provider.klines(symbol: symbol, interval: iv, limit: provider.capabilities.maxKlines)
   say("最新一页 \(head.count) 根：\(head.first!.openTime) … \(head.last!.openTime)")
-  let bars = try await rest.history(symbol: symbol, interval: iv, pages: pages, before: head.first!.openTime)
-  let all = BinanceREST.dedup(bars + head)
+  let bars = try await provider.history(symbol: symbol, interval: iv, pages: pages, before: head.first!.openTime)
+  let all = MarketSeries.dedup(bars + head)
   let secs = -t0.timeIntervalSinceNow
   say("翻 \(pages) 页共 \(bars.count) 根，合并后 \(all.count) 根，总用时 \(String(format: "%.2f", secs))s")
   var dup = 0, gap = 0
   for i in 1..<all.count {
     if all[i].openTime == all[i - 1].openTime { dup += 1 }
-    if all[i].openTime - all[i - 1].openTime != iv.stepMs { gap += 1 }
+    if all[i].openTime - all[i - 1].openTime != provider.capabilities.source(for: iv).stepMs { gap += 1 }
   }
   say("重复 \(dup) 处，步长异常 \(gap) 处；区间 \(all.first!.openTime) … \(all.last!.openTime)")
 }
 
 func cmdSnapshot(_ symbol: String, _ iv: Interval) async throws {
-  let bars = try await rest.klines(symbol: symbol, interval: iv, limit: 1500)
-  let s = BinanceREST.series(symbol: symbol, interval: iv, bars: bars)
+  let s = try await provider.latestSeries(symbol: symbol, interval: iv, limit: provider.capabilities.maxKlines)
   let url = paths.snapshot
   let n = try Snapshot.write(s, to: url)
   say("写 \(url.path) \(n) 字节（上限 \(Snapshot.maxBytes)）")
@@ -115,7 +127,8 @@ func cmdSnapshot(_ symbol: String, _ iv: Interval) async throws {
 
 func cmdOI(_ symbol: String, _ iv: Interval, days: Int) async throws {
   let store = OIStore(paths: paths)
-  let src = OISource(hosts: hosts, rest: rest, store: store, log: log)
+  guard provider.capabilities.hasDerivativeMetrics else { say("\(venue.displayName) 没有持仓量"); return }
+  let src = OISource(provider: provider, gateways: gateways, store: store, log: log)
   let now = Int64(Date().timeIntervalSince1970 * 1000)
   let from = now - Int64(days) * 86_400_000
   let t0 = Date()
@@ -130,8 +143,8 @@ func cmdOI(_ symbol: String, _ iv: Interval, days: Int) async throws {
 }
 
 func cmdSwitch(_ symbol: String) async throws {
-  let ws = BinanceWS(hosts: hosts, log: log)
-  let stream = await ws.start(streams: [BinanceHosts.klineStream(symbol: symbol, interval: "1m")])
+  let ws = provider.makeStream(silenceMs: nil, log: log)
+  let stream = await ws.start(topics: [.kline(symbol: symbol, interval: .m1)])
   let tally = Tally()
   let watch = Task {
     for await ev in stream {
@@ -140,10 +153,11 @@ func cmdSwitch(_ symbol: String) async throws {
   }
   try await Task.sleep(nanoseconds: 2_000_000_000)
   for i in 0..<20 {
-    let iv = Interval.allCases[i % Interval.allCases.count].source.rawValue
-    await ws.replaceStreams([BinanceHosts.klineStream(symbol: symbol, interval: iv),
-                             BinanceHosts.tickerStream(symbol: symbol)])
-    say("第 \(i + 1) 次切到 \(iv)")
+    let caps = provider.capabilities
+    let iv = caps.source(for: Interval.allCases[i % Interval.allCases.count])
+    let first: StreamTopic = caps.liveKlineIntervals.contains(iv) ? .kline(symbol: symbol, interval: iv) : .trade(symbol: symbol)
+    await ws.replace(topics: [first] + (caps.hasTickerStream ? [.ticker(symbol: symbol)] : []))
+    say("第 \(i + 1) 次切到 \(iv.rawValue)")
     try await Task.sleep(nanoseconds: 200_000_000)
   }
   try await Task.sleep(nanoseconds: 1_000_000_000)
@@ -156,9 +170,9 @@ func cmdSwitch(_ symbol: String) async throws {
 func cmdChurn(symbols n: Int) async throws {
   // A2.12：随机切 n 个品种 × 14 周期，然后看内存缓存和沙盒。
   // 种子固定，换台机器跑出来的品种顺序一样，好对账。
-  let catalog = SymbolCatalog(rest: rest, paths: paths, log: .silent)
+  let catalog = SymbolCatalog(provider: provider, paths: paths, log: .silent)
   var list = await catalog.all()
-  if list.isEmpty { list = try await rest.exchangeInfo() }
+  if list.isEmpty { list = try await provider.instruments() }
   var seed: UInt64 = 20260914
   func rnd(_ m: Int) -> Int {
     seed = seed &* 6364136223846793005 &+ 1442695040888963407
@@ -175,9 +189,7 @@ func cmdChurn(symbols n: Int) async throws {
   for sym in picks {
     for iv in Interval.allCases {
       do {
-        let bars = try await rest.klines(symbol: sym, interval: iv.source, limit: 1500)
-        var s = BinanceREST.series(symbol: sym, interval: iv.source, bars: bars)
-        if iv == .y1 { s = Aggregator.bucket(series: s, into: .y1) }
+        let s = try await provider.latestSeries(symbol: sym, interval: iv, limit: provider.capabilities.maxKlines)
         await cache.put(s)
         last = SeriesKey(sym, s.interval)
         loaded += 1
@@ -214,8 +226,10 @@ func cmdChurn(symbols n: Int) async throws {
 }
 
 func cmdLive(_ symbol: String, _ iv: Interval, minutes: Double) async throws {
-  let ws = BinanceWS(hosts: hosts, log: log)
-  let feed = MarketFeed(rest: rest, ws: ws, cache: BarCache(), paths: paths, log: log)
+  let ws = provider.makeStream(silenceMs: nil, log: log)
+  let feed = MarketFeed(provider: provider, stream: ws, cache: BarCache(), paths: paths,
+                        // 命令行一次就要单页满深度（和改造前的取证口径一致）。
+                        initialLimit: provider.capabilities.maxKlines, log: log)
   let events = await feed.events()
   let t0 = Date()
   let tally = Tally()
@@ -224,7 +238,7 @@ func cmdLive(_ symbol: String, _ iv: Interval, minutes: Double) async throws {
     for await ev in events {
       switch ev.event {
       case .routing(let state): say("行情线路：\(state)")
-      case .source(let source): say("行情源 → \(source.rawValue)")
+      case .provider(let caps): say("行情源 → \(caps.venue)（上游 \(caps.upstream)）")
       case .historyError(let error): if let error { say(error) }
       case .series(let s):
         await tally.paint(-t0.timeIntervalSinceNow * 1000)
@@ -255,11 +269,13 @@ func cmdLive(_ symbol: String, _ iv: Interval, minutes: Double) async throws {
   pump.cancel()
 }
 
-func cmdRecord(_ symbol: String, _ interval: String, _ count: Int, _ out: String) async throws {
+func cmdRecord(_ symbol: String, _ interval: Interval, _ count: Int, _ out: String) async throws {
   // 录一段真实报文当回放 fixture（A2.6）。一行一条原始 JSON，外加一行 meta。
   let f = URLSessionSocketFactory()
-  let url = hosts.combinedStream([BinanceHosts.klineStream(symbol: symbol, interval: interval),
-                                  BinanceHosts.tickerStream(symbol: symbol)])
+  guard let url = provider.rawStreamURL(topics: [.kline(symbol: symbol, interval: interval),
+                                                 .ticker(symbol: symbol)]) else {
+    say("\(venue.displayName) 不支持录原始报文"); return
+  }
   say("录制 \(url.absoluteString) → \(out)")
   let s = try await f.connect(to: url)
   var lines: [String] = []
@@ -271,7 +287,7 @@ func cmdRecord(_ symbol: String, _ interval: String, _ count: Int, _ out: String
     case .closed(let w): say("连接关闭：\(w)"); throw FeedError.notConnected
     case .text(let t):
       guard t.contains("\"stream\"") else { continue }
-      if t.contains("@kline") { kl += 1 } else { tk += 1 }
+      if t.contains("kline") { kl += 1 } else { tk += 1 }
       lines.append(t)
       if lines.count % 500 == 0 { say("已录 \(lines.count) 条") }
     }
@@ -303,21 +319,21 @@ do {
   case "info":
     try await cmdInfo()
   case "history":
-    try await cmdHistory(arg(1)!.uppercased(), parseInterval(arg(2)), pages: Int(arg(3) ?? "10") ?? 10)
+    try await cmdHistory(key(arg(1)!.uppercased()), parseInterval(arg(2)), pages: Int(arg(3) ?? "10") ?? 10)
   case "snapshot":
-    try await cmdSnapshot(arg(1)!.uppercased(), parseInterval(arg(2)))
+    try await cmdSnapshot(key(arg(1)!.uppercased()), parseInterval(arg(2)))
   case "oi":
-    try await cmdOI(arg(1)!.uppercased(), parseInterval(arg(2)), days: Int(flag("--days") ?? "45") ?? 45)
+    try await cmdOI(key(arg(1)!.uppercased()), parseInterval(arg(2)), days: Int(flag("--days") ?? "45") ?? 45)
   case "record":
-    try await cmdRecord(arg(1)!.uppercased(), arg(2) ?? "1m",
+    try await cmdRecord(key(arg(1)!.uppercased()), Interval(rawValue: arg(2) ?? "1m") ?? .m1,
                         Int(flag("--count") ?? "3000") ?? 3000,
                         flag("--out") ?? "ws.jsonl")
   case "switch":
-    try await cmdSwitch(arg(1)!.uppercased())
+    try await cmdSwitch(key(arg(1)!.uppercased()))
   case "churn":
     try await cmdChurn(symbols: Int(flag("--symbols") ?? "30") ?? 30)
   default:
-    try await cmdLive(a[1].uppercased(), parseInterval(arg(1)), minutes: Double(flag("--minutes") ?? "1") ?? 1)
+    try await cmdLive(key(a[1].uppercased()), parseInterval(arg(1)), minutes: Double(flag("--minutes") ?? "1") ?? 1)
   }
 } catch {
   say("出错：\(error)")

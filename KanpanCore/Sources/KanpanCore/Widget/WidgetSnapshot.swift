@@ -84,13 +84,17 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
   public var appearance: Appearance
   /// 小组件自己补价走的 REST 主机（和 app 当前直连那台一致）。
   public var fapiHost: String
+  /// `fapiHost` 供的是哪个市场（`InstrumentID.marketKey`）。别的市场的品种小组件不自己补价，
+  /// 只用 app 写进来的快照。旧快照没有这一栏（nil），那时自选里只有这一个市场。
+  public var hostMarket: String?
   /// 涨跌幅口径是不是滚动 24 小时。
   public var rolling: Bool
 
   public init(updatedAt: Int64, favorites: [String], groups: [Group], quotes: [String: Quote],
-              light: Colors, dark: Colors, appearance: Appearance, fapiHost: String, rolling: Bool) {
+              light: Colors, dark: Colors, appearance: Appearance, fapiHost: String, hostMarket: String? = nil, rolling: Bool) {
     self.updatedAt = updatedAt; self.favorites = favorites; self.groups = groups; self.quotes = quotes
     self.light = light; self.dark = dark; self.appearance = appearance; self.fapiHost = fapiHost
+    self.hostMarket = hostMarket
     self.rolling = rolling
   }
 

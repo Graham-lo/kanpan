@@ -32,10 +32,10 @@ struct LiveQuoteWithoutHistoryTests {
   private actor Seen {
     var live = false
     var price: Double?
-    var source: MarketSource?
+    var source: String?
     func noteLive() { live = true }
     func note(price: Double) { self.price = price }
-    func note(source: MarketSource) { self.source = source }
+    func note(source: String) { self.source = source }
     /// 两个条件得在同一次跨隔离的跳转里读完：`waitUntil` 的闭包是自动闭包，
     /// 里面不能连着 `await` 两个 actor 属性。
     var ready: Bool { live && price != nil }
@@ -70,7 +70,7 @@ struct LiveQuoteWithoutHistoryTests {
         switch update.event {
         case .status(.live): await seen.noteLive()
         case .ticker(let ticker): await seen.note(price: ticker.last)
-        case .source(let source): await seen.note(source: source)
+        case .provider(let caps): await seen.note(source: caps.upstream)
         default: break
         }
       }
@@ -78,7 +78,7 @@ struct LiveQuoteWithoutHistoryTests {
     _ = await waitUntil(8) { await seen.ready }
     collector.cancel()
 
-    #expect(await seen.source == .binance, "线路得交接出去，否则界面根本不知道自己连的是哪家")
+    #expect(await seen.source == "binance", "线路得交接出去，否则界面根本不知道自己连的是哪家")
     #expect(await seen.live, "WS 连着就不能报「离线」——那是假的，用户会去白折腾网络")
     #expect(await seen.price != nil, "历史没到不等于没有实时价，顶栏不该一直挂着「—」")
   }

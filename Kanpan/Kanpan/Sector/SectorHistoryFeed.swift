@@ -10,7 +10,7 @@ import KanpanNetwork
 /// GET https://<网关>/v1/market/sector-history
 /// → {"data":{"asof":"2026-09-18","symbols":{"BTCUSDT":{"c5":…,"c20":…}}}}
 /// ```
-/// 主备两台按 `BinanceHosts.oiProxies` 的顺序试（和 `MarketStatsClient.meta` 同一份
+/// 主备两台按网关清单（`MarketEndpoints.gateways`）的顺序试（和 `MarketStatsClient.meta` 同一份
 /// 名单、同一个顺序）：非 200 或解不开就换下一台，全都不成就**什么也不做**——
 /// 界面上不出现取数状态、不出现更新时间、不出现数据来源
 /// （`kanpan-no-engineering-status-fields`）。没历史时页面自己会退回只有「今日」的样子。

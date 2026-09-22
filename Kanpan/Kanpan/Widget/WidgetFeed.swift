@@ -126,7 +126,8 @@ final class WidgetFeed {
   /// 把 app 手上的东西折成一份快照。纯函数，单独拎出来好测。
   static func snapshot(symbols: SymbolPrefs, quotes: [String: Ticker], decimals: (String) -> Int?,
                        closes: [String: [Double]], skin: ThemeSkin, appearance: ThemeChoice, redUp: Bool,
-                       fapiHost: String, basis: ChangeBasis, now: Date = Date()) -> WidgetSnapshot {
+                       fapiHost: String, hostMarket: String? = nil, basis: ChangeBasis,
+                       now: Date = Date()) -> WidgetSnapshot {
     let pinned = symbols.pinned.filter { symbols.favorites.contains($0) }
     let order = pinned + symbols.favorites.filter { !pinned.contains($0) }
     let groups = symbols.groups.map { group in
@@ -147,6 +148,6 @@ final class WidgetFeed {
                           light: WidgetSnapshot.Colors(seed: skin.seed(dark: false), redUp: redUp),
                           dark: WidgetSnapshot.Colors(seed: skin.seed(dark: true), redUp: redUp),
                           appearance: WidgetSnapshot.Appearance(rawValue: appearance.rawValue) ?? .auto,
-                          fapiHost: fapiHost, rolling: basis == .rolling24h)
+                          fapiHost: fapiHost, hostMarket: hostMarket, rolling: basis == .rolling24h)
   }
 }

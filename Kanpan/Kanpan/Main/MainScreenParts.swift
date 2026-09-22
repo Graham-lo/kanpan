@@ -40,8 +40,8 @@ struct MainScreenObservers: ViewModifier {
   let microstructureVisible: Bool
   let syncGate: Bool
   let reviewScope: String
-  let hosts: BinanceHosts
-  let source: MarketSource
+  let endpoints: MarketEndpoints
+  let routePolicy: MarketRoutePolicy
   let fundingRate: Double?
   let catalogCount: Int
   let listVisible: Bool
@@ -73,9 +73,9 @@ struct MainScreenObservers: ViewModifier {
   let onReviewScope: (String) -> Void
   let onPrefsReviewScope: (String) -> Void
   let onTimeZone: (TZChoice) -> Void
-  let onHosts: (BinanceHosts) -> Void
+  let onEndpoints: (MarketEndpoints) -> Void
   let onChangeBasis: (ChangeBasis) -> Void
-  let onSource: (MarketSource) -> Void
+  let onRoutePolicy: (MarketRoutePolicy) -> Void
   let onFundingRate: (Double?) -> Void
   let onCatalog: () -> Void
   let onListVisible: (Bool) -> Void
@@ -140,9 +140,9 @@ struct MainScreenObservers: ViewModifier {
   // 原 `marketContent`：线路、口径、行情源、品种表、自选、报价、停留。
   private func marketSection<V: View>(_ view: V) -> some View {
     view
-    .onChange(of: hosts) { _, next in onHosts(next) }
+    .onChange(of: endpoints) { _, next in onEndpoints(next) }
     .onChange(of: prefs.changeBasis) { _, next in onChangeBasis(next) }
-    .onChange(of: source) { _, next in onSource(next) }
+    .onChange(of: routePolicy) { _, next in onRoutePolicy(next) }
     // 费率只有正在看的那张图才有（`markPrice` 流里捎的），顺手存一份给预览卡。
     .onChange(of: fundingRate) { _, rate in onFundingRate(rate) }
     // 品种表是板块页认 base 的依据（兜底桶按它的标签凑，点行去看图也靠它拼全名）。

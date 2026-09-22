@@ -58,7 +58,7 @@ struct RoutedFeedPolicyTests {
     var sawUnavailable = false
     var sawOKX = false
     for await update in events {
-      if case .source(let source) = update.event, source == .okx { sawOKX = true }
+      if case .provider(let caps) = update.event, caps.upstream == "okx" { sawOKX = true }
       if case .historyError(let message) = update.event, message == "暂时无法连接，点此重试" {
         sawUnavailable = true
         break

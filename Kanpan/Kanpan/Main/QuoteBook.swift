@@ -19,11 +19,12 @@ final class QuoteBook {
   private(set) var lastListUpdate: Date?
   private(set) var basis: ChangeBasis = .rolling24h
   private var latestReceived: [String: QuoteState] = [:]
-  private var hosts = BinanceHosts.default
-  private var rest = BinanceREST.upstream(.binance, hosts: .default)
-  private var source: MarketSource = .binance
-  private var socket: BinanceWS?
-  private var subscribedStreams: [String] = []
+  /// 线路 × 主机。每个品种找它那一家的提供者要数据（`provider(for:)`）。
+  private var resolver = RouteResolver(policy: .direct, endpoints: .default, log: QuoteBook.log)
+  /// 提供者按交易所缓存；线路或主机一变整份换。
+  private var providers: [String: any MarketProvider] = [:]
+  private var socket: MergedMarketStream?
+  private var subscribedStreams: [StreamTopic] = []
   private var pump: Task<Void, Never>?
   private var wanted = Set<String>()
   private var opens: [String: (time: Int64, price: Double)] = [:]
@@ -326,14 +327,27 @@ final class QuoteBook {
     return Date().timeIntervalSince(at) < Self.freshSeconds
   }
 
-  func configure(hosts: BinanceHosts, basis: ChangeBasis, source: MarketSource = .binance) {
-    let changedHost = hosts != self.hosts
-    let changedSource = source != self.source
+  /// 某个品种该找谁要行情（按品种键里的交易所）。
+  private func provider(for symbol: String) -> any MarketProvider {
+    let venue = VenueRegistry.descriptor(forSymbol: symbol).id
+    if let cached = providers[venue] { return cached }
+    let made = resolver.provider(venue: venue)
+    providers[venue] = made
+    return made
+  }
+
+  /// 各家在这条线路上实际由谁供数。线路变了但没有一家换上游，就只算换主机。
+  private static func upstreams(_ resolver: RouteResolver) -> [String] {
+    VenueRegistry.all.map { resolver.provider(venue: $0.id).capabilities.upstream }
+  }
+
+  func configure(endpoints: MarketEndpoints, basis: ChangeBasis, policy: MarketRoutePolicy = .direct) {
+    let next = RouteResolver(policy: policy, endpoints: endpoints, log: Self.log)
+    let changedHost = endpoints != resolver.endpoints
+    let changedSource = Self.upstreams(next) != Self.upstreams(resolver)
     let changedBasis = basis != self.basis
+    if changedHost || policy != resolver.policy { resolver = next; providers.removeAll() }
     if changedHost || changedSource {
-      self.hosts = hosts
-      self.source = source
-      rest = BinanceREST.upstream(source, hosts: hosts)
       // 换镜像不动开盘价：那是交易所的数据，跟走哪台机器取回来没关系。
       // 以前这儿连着 `opens.removeAll()`，改一下行情源地址、或者
       // 「智能线路」开关一动，整屏涨跌幅就得重新排队取一遍。换上游才要重取。
@@ -469,9 +483,9 @@ final class QuoteBook {
     QuoteSubscriptionPlan.symbols(favorites: favorites, visible: visible ? visibleRows : [], alerted: alerted)
   }
 
-  private func streamNames() -> [String] {
+  private func streamNames() -> [StreamTopic] {
     let symbols = listSymbols()
-    return (symbols.isEmpty ? ["BTCUSDT"] : symbols).map { BinanceHosts.tickerStream(symbol: $0) }
+    return (symbols.isEmpty ? [VenueRegistry.default.defaultSymbol] : symbols).map { StreamTopic.ticker(symbol: $0) }
   }
 
   private func updateStreams() {
@@ -497,7 +511,7 @@ final class QuoteBook {
     let names = streamNames()
     guard names != subscribedStreams else { return }
     subscribedStreams = names
-    Task { await socket.replaceStreams(names) }
+    Task { await socket.replace(topics: names) }
   }
 
   /// 每 5 秒报一次列表这条流收了多少行情、其中多少不在订阅集里被丢掉。
@@ -637,8 +651,10 @@ final class QuoteBook {
   }
 
   /// 桌面小组件中号那条折线：最近 24 根 1 小时收盘价（P3.2），和 24 小时涨跌幅看的是同一段。
+  /// 按品种所在那一家要（1h 是各家都有的原生周期）。
   func closes(symbol: String) async -> [Double]? {
-    let bars = try? await rest.klines(symbol: symbol, interval: .h1, limit: WidgetSnapshot.sparkBars)
+    let symbol = InstrumentID.canonical(symbol)
+    let bars = try? await provider(for: symbol).klines(symbol: symbol, interval: .h1, limit: WidgetSnapshot.sparkBars)
     let closes = (bars ?? []).map(\.close).filter(\.isFinite)
     return closes.count >= 2 ? closes : nil
   }
@@ -669,7 +685,7 @@ final class QuoteBook {
     for symbol in historyWanted where historyJobs.count < Self.historyConcurrency && historyJobs[symbol] == nil && raw[symbol] != nil {
       guard Date().timeIntervalSince(historyRequested[symbol] ?? .distantPast) >= 60 else { continue }
       historyRequested[symbol] = Date()
-      let rest = self.rest
+      let rest = provider(for: symbol)
       historyJobs[symbol] = Task { [weak self] in
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let bars = try? await rest.klines(symbol: symbol, interval: .m1, limit: 245,
@@ -726,7 +742,7 @@ final class QuoteBook {
   /// 周末休市：边界那个小时根本没有成交，也就没有那根 K 线，于是这一行的涨跌幅
   /// 永远是空的——用户截图里 XAG 空着就是这么来的。休市的时候基准本来就该取
   /// 「停盘前最后成交价」，所以退一步去拿边界之前的最后一根，用它的收盘价。
-  private static func dayOpen(symbol: String, boundary: Int64, rest: BinanceREST) async -> Double? {
+  private static func dayOpen(symbol: String, boundary: Int64, rest: any MarketProvider) async -> Double? {
     let bars = try? await rest.klines(symbol: symbol, interval: .h1, limit: 1,
       startTime: boundary, endTime: boundary + 3_600_000 - 1)
     if let bar = bars?.first, bar.openTime == boundary, bar.open.isFinite, bar.open > 0 { return bar.open }
@@ -748,7 +764,7 @@ final class QuoteBook {
     guard foreground, online, let boundary else { return }
     while jobs.count < Self.baselineConcurrency, let symbol = queue.first {
       queue.remove(symbol)
-      let generation = self.generation, rest = self.rest
+      let generation = self.generation, rest = provider(for: symbol)
       jobs[symbol] = Task { [weak self] in
         let price = await Self.dayOpen(symbol: symbol, boundary: boundary, rest: rest)
         guard let self, !Task.isCancelled, generation == self.generation else { return }
@@ -869,23 +885,20 @@ final class QuoteBook {
 
   private func startStream() {
     guard pump == nil else { return }
-    // SourceSocketFactory owns the Binance/OKX fallback decision. Clear the
-    // generic stream fallback list here so BinanceWS does not wrap it twice.
-    var socketHosts = hosts
-    socketHosts.streamFallbacks = []
-    let socket = BinanceWS(hosts: socketHosts,
-                           factory: SourceSocketFactory(source: source, hosts: hosts, log: Self.log),
-                           // 首帧前的窗口：报告要求直连 60 秒、只有真的有备用流域名可换时
-                           // 才收到 15 秒。这里 `streamFallbacks` 已经被清空（换路由由
-                           // `SourceSocketFactory` 管），所以传 60 秒——冷门永续 15 秒内
-                           // 真可能一帧都没有，收窄就变成「订阅没生效」的重连循环（A-07）。
-                           silenceMs: 60_000, log: Self.log)
+    // 每家一条连接，由各家提供者自己建（线路与退路也归它管）。首帧前的窗口用提供者
+    // 的默认值：线路是用户定死的，冷门品种 15 秒内真可能一帧都没有，收窄就变成
+    // 「订阅没生效」的重连循环（A-07）。
+    var byVenue: [String: any MarketProvider] = [:]
+    for venue in VenueRegistry.all { byVenue[venue.id] = provider(for: venue.defaultSymbol) }
+    let makers = byVenue
+    let log = QuoteBook.log
+    let socket = MergedMarketStream { venue in makers[venue]?.makeStream(silenceMs: nil, log: log) }
     let generation = session.generation
     self.socket = socket
     let names = streamNames()
     subscribedStreams = names
     pump = Task { [weak self] in
-      let events = await socket.start(streams: names)
+      let events = await socket.start(topics: names)
       for await event in events {
         guard let self, !Task.isCancelled, generation == self.session.generation else { break }
         switch event {
@@ -963,14 +976,21 @@ final class QuoteBook {
   /// 攒够一屏要补的行时，用一次全市场请求换掉几十个逐行往返。
   /// 网关只代理单品种，这条只有直连可用；失败就退回下面的逐个请求。
   private func drainBatch() -> Bool {
-    guard source == .binance, batchJob == nil, online, Date() >= batchRetry,
+    guard batchJob == nil, online, Date() >= batchRetry,
           quoteQueue.count >= Self.batchThreshold else { return false }
-    let pending = quoteQueue
-    quoteQueue.removeAll()
+    // 按交易所分：只有能一次拿全市场的那家（`hasBulkTickers`）才值得走这条，
+    // 而且那一家自己攒的行也得够门槛。其余的留在队列里逐个请求。
+    let venues = Dictionary(grouping: quoteQueue) { VenueRegistry.descriptor(forSymbol: $0).id }
+    guard let (venue, pending) = VenueRegistry.all.lazy.compactMap({ d -> (String, [String])? in
+      guard let rows = venues[d.id], rows.count >= Self.batchThreshold,
+            self.provider(for: d.defaultSymbol).capabilities.hasBulkTickers else { return nil }
+      return (d.id, rows)
+    }).first else { return false }
+    quoteQueue.removeAll { VenueRegistry.descriptor(forSymbol: $0).id == venue }
     let now = Date()
     var requests: [String: QuoteSession.Request] = [:]
     for symbol in pending { quoteAttempt[symbol] = now; requests[symbol] = session.request(symbol) }
-    let rest = self.rest
+    let rest = provider(for: pending[0])
     batchJob = Task { [weak self] in
       let all = try? await rest.tickers24h(timeout: 6)
       guard let self, !Task.isCancelled else { return }
@@ -1000,7 +1020,7 @@ final class QuoteBook {
       let symbol = quoteQueue.removeFirst()
       guard !isFresh(symbol) else { continue }
       quoteAttempt[symbol] = Date()
-      let request = session.request(symbol), rest = self.rest
+      let request = session.request(symbol), rest = provider(for: symbol)
       quoteJobs[symbol] = Task { [weak self] in
         // 原来这儿是 `try?`：交易所回「我不认识这个代号」和「网络不通」被压成同一个
         // `nil`，于是一个已经下架的自选就永远停在最后看到的那口价上（审查 B-06）。

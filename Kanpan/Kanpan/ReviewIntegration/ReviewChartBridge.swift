@@ -47,7 +47,7 @@ import ReviewUI
   private var replayLimit: Int64 { replayCutoff ?? ReviewClock.now }
   /// 上一拍那根最新 K 线的开盘时刻。用来判断「人还跟着播放头吗」（审查 B-05）。
   private var replayLastTime: Int64?
-  private var replayHosts: BinanceHosts?
+  private var replayProvider: (any MarketProvider)?
   private var pageTask: Task<Void, Never>?
   private var paging = false
   var active: Bool { mode != .live }
@@ -89,11 +89,11 @@ import ReviewUI
   /// 当前这张实时图是从哪家取的数。
   ///
   /// 记录一落地就带着 `range.venue`，而记号该不该画在这张图上要拿它和**现在这张图的
-  /// 行情源**比（审查 B.4）。宿主每次发起捕获时都把真实的 `market.source` 传进来，
+  /// 行情源**比（审查 B.4）。每次发起捕获时从这张图的品种键里取出交易所，
   /// 这儿顺手记住，落图那一层就不必再跟宿主要一次。
-  private(set) var liveVenue = MarketSource.binance.rawValue
-  func beginCapture(feature: ReviewFeature, live: ChartState?, prefs: Prefs, source: MarketSource = .binance) {
-    liveVenue = live.map { InstrumentID($0.series.symbol).venue } ?? "binance"
+  private(set) var liveVenue = VenueRegistry.default.id
+  func beginCapture(feature: ReviewFeature, live: ChartState?, prefs: Prefs) {
+    liveVenue = live.map { InstrumentID($0.series.symbol).venue } ?? VenueRegistry.default.id
     guard var live, live.series.count >= 3 else { notice = "等待 K 线加载后再记录"; return }
     // 服务端收不下的组合，圈之前就说（审查 B-06）。原来这儿只挡了年线，于是
     // BTCUSDC、美股代号照样能圈完、写完、按保存，最后被服务端 400 顶回来，
@@ -125,11 +125,20 @@ import ReviewUI
   func endCapture(feature: ReviewFeature) {
     feature.saveDraft(); feature.captureOpen = false; mode = .live; state = nil; proxy = ChartProxy()
   }
-  func open(_ record: ReviewRecord, feature: ReviewFeature, live: ChartState?, hosts: BinanceHosts, cutoff: Int64? = nil) {
-    guard let interval = Interval(rawValue: record.draft.range.interval), MarketSource(rawValue: record.draft.range.venue) != nil, record.draft.range.market == "usd_m" else { notice = "这个市场暂未接入原生行情"; return }
+  func open(_ record: ReviewRecord, feature: ReviewFeature, live: ChartState?, endpoints: MarketEndpoints,
+            policy: MarketRoutePolicy, cutoff: Int64? = nil) {
+    let provider = VenueRegistry.descriptor(record.draft.range.venue)?.market == record.draft.range.market
+      ? RouteResolver(policy: policy, endpoints: endpoints).ownDataProvider(venue: record.draft.range.venue) : nil
+    open(record, feature: feature, live: live, provider: provider, cutoff: cutoff)
+  }
+  /// 回放取数认的是记录所属那一家的本家数据（`RouteResolver.ownDataProvider`）。
+  private func open(_ record: ReviewRecord, feature: ReviewFeature, live: ChartState?,
+                    provider: (any MarketProvider)?, cutoff: Int64?) {
+    guard let interval = Interval(rawValue: record.draft.range.interval), let provider
+    else { notice = "这个市场暂未接入原生行情"; return }
     guard var base = live else { notice = "等待行情加载"; return }
     playback?.cancel(); playing = false; loadTask?.cancel(); pageTask?.cancel(); paging = false; loading = true
-    replayHosts = hosts
+    replayProvider = provider
     let request = UUID(); loadID = request
     replayCutoff = cutoff
     // 这一次取数的三个边界得用同一个上限，中途别让钟走掉一根。
@@ -150,20 +159,20 @@ import ReviewUI
     base.crosshair = nil; base.nowMs = nil
     loadTask = Task {
       do {
-        let rest = BinanceREST.upstream(MarketSource(rawValue: range.venue)!, hosts: hosts)
+        let caps = provider.capabilities
         var start = windowStart
         var fetched: [Bar] = []
         while start < end {
           try Task.checkCancellation()
-          let page = try await rest.klines(symbol: range.key, interval: interval, limit: 1500, startTime: start, endTime: end - 1)
+          let page = try await provider.klines(symbol: range.key, interval: interval, limit: caps.maxKlines, startTime: start, endTime: end - 1)
           guard let last = page.last else { break }
           fetched.append(contentsOf: page)
-          let next = Self.closeTime(last.openTime, interval: interval.source)
+          let next = Self.closeTime(last.openTime, interval: caps.source(for: interval))
           guard next > start else { break }; start = next
           guard fetched.count <= 6000 else { throw ReviewBridgeError.rangeTooLarge }
         }
         try Task.checkCancellation(); guard loadID == request else { return }
-        let series = BinanceREST.series(symbol: range.key, interval: interval, bars: fetched)
+        let series = MarketSeries.series(symbol: range.key, interval: interval, bars: fetched, capabilities: caps)
         let ordered = (0..<series.count).filter { Self.closeTime(series.time(at: $0), interval: interval) <= end }.map {
           Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0], takerBuy: series.takerBuy[$0])
         }
@@ -195,10 +204,11 @@ import ReviewUI
       } catch is CancellationError {} catch { if loadID == request { loading = false; notice = error.localizedDescription } }
     }
   }
-  func openMatch(_ match: ReviewMatch, cutoff: Int64, feature: ReviewFeature, live: ChartState?, hosts: BinanceHosts) {
+  func openMatch(_ match: ReviewMatch, cutoff: Int64, feature: ReviewFeature, live: ChartState?,
+                 endpoints: MarketEndpoints, policy: MarketRoutePolicy) {
     var draft = ReviewDraft(range: match.range, reference: 1, high: 1, low: 1, now: cutoff)
     draft.rule.expires = cutoff
-    open(ReviewRecord(draft: draft), feature: feature, live: live, hosts: hosts, cutoff: cutoff)
+    open(ReviewRecord(draft: draft), feature: feature, live: live, endpoints: endpoints, policy: policy, cutoff: cutoff)
   }
   /// 回放条上那颗倍速按钮：1× → 2× → 4× → 1×。写回偏好，跟着人走。
   func cycleSpeed() {
@@ -222,7 +232,7 @@ import ReviewUI
     }
   }
   func loadReplayPage(forward: Bool, feature: ReviewFeature) {
-    guard !paging, let hosts = replayHosts, let record = replayRecord, let base = replayBase, let first = bars.first, let last = bars.last else { return }
+    guard !paging, let provider = replayProvider, let record = replayRecord, let base = replayBase, let first = bars.first, let last = bars.last else { return }
     let interval = base.series.interval
     let start = forward ? Self.closeTime(last.openTime, interval: interval) : Self.shifted(first.openTime, interval: interval, bars: -500)
     let end = forward ? min(replayLimit, Self.shifted(start, interval: interval, bars: 500)) : first.openTime
@@ -231,9 +241,9 @@ import ReviewUI
     pageTask = Task {
       defer { if request == loadID { paging = false } }
       do {
-        let fetched = try await BinanceREST.upstream(MarketSource(rawValue: record.draft.range.venue)!, hosts: hosts).klines(symbol: record.draft.range.key, interval: interval, limit: 1000, startTime: start, endTime: end - 1)
+        let fetched = try await provider.klines(symbol: record.draft.range.key, interval: interval, limit: min(1000, provider.capabilities.maxKlines), startTime: start, endTime: end - 1)
         try Task.checkCancellation(); guard request == loadID else { return }
-        let series = BinanceREST.series(symbol: record.draft.range.key, interval: interval, bars: fetched)
+        let series = MarketSeries.series(symbol: record.draft.range.key, interval: interval, bars: fetched, capabilities: provider.capabilities)
         let page = (0..<series.count).filter { Self.closeTime(series.time(at: $0), interval: interval) <= end }.map {
           Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0], takerBuy: series.takerBuy[$0])
         }
@@ -266,11 +276,11 @@ import ReviewUI
       outside = judgment < first.openTime
         || (judgment > lastClose && Self.closeTime(lastClose, interval: interval) <= replayLimit)
     }
-    if outside, let hosts = replayHosts {
+    if outside, let provider = replayProvider {
       feature.rememberReplay(record.id, position: ReviewReplayPosition(cursor: judgment, speed: speed))
       // 传 `replayCutoff` 而不是 `replayLimit`：蒙眼那条要把冻住的时刻原样带过去，
       // 平常那条要保持「没有上限，跟着钟走」，别在这儿被钉成当前时刻。
-      open(record, feature: feature, live: base, hosts: hosts, cutoff: replayCutoff)
+      open(record, feature: feature, live: base, provider: provider, cutoff: replayCutoff)
       return
     }
     cursor = max(2, bars.lastIndex(where: { Self.closeTime($0.openTime, interval: interval) <= judgment }) ?? 2)
@@ -308,7 +318,7 @@ import ReviewUI
     feature.rememberReplay(record.id, position: ReviewReplayPosition(cursor: known, speed: speed))
   }
   func exitReplay(feature: ReviewFeature) {
-    playing = false; playback?.cancel(); loadTask?.cancel(); pageTask?.cancel(); paging = false; replayHosts = nil; loadID = UUID(); loading = false
+    playing = false; playback?.cancel(); loadTask?.cancel(); pageTask?.cancel(); paging = false; replayProvider = nil; loadID = UUID(); loading = false
     state = nil; replayBase = nil; bars = []; replayRecord = nil; mode = .live; proxy = ChartProxy()
   }
   private func slice(_ s: BarSeries, count: Int) -> BarSeries {

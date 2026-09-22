@@ -35,21 +35,25 @@ public actor OISource {
   /// BTCUSDT 的归档从这天起；更早是 404。别的品种从各自上市日起。
   public static let archiveEpoch: Int64 = 1_598_918_400_000   // 2020-09-01 UTC
 
-  private let hosts: BinanceHosts
-  private let rest: BinanceREST
+  private let provider: any MarketProvider
+  /// 看盘自己的网关（主在前），历史统计先问它（它自己存盘、自己聚合）。
+  private let gateways: [String]
   private let transport: HTTPTransport
   private let store: OIStore
   private let log: FeedLog
 
-  public init(hosts: BinanceHosts = .default, rest: BinanceREST,
+  public init(provider: any MarketProvider, gateways: [String],
               transport: HTTPTransport = URLSessionTransport(),
               store: OIStore, log: FeedLog = .silent) {
-    self.hosts = hosts
-    self.rest = rest
+    self.provider = provider
+    self.gateways = gateways
     self.transport = transport
     self.store = store
     self.log = log
   }
+
+  /// 统计是向哪家、哪条上游要的。调用方据 `hasDerivativeMetrics` 决定问不问。
+  public nonisolated var capabilities: ProviderCapabilities { provider.capabilities }
 
   // ------------------------------------------------------------------ 取数
 
@@ -298,7 +302,8 @@ public actor OISource {
       try Task.checkCancellation()
       let page: [OIPoint]
       do {
-        page = try await rest.openInterestHist(symbol: symbol, period: period, limit: 500, endTime: end)
+        page = try await provider.openInterestHist(symbol: symbol, period: period, limit: 500,
+                                                   startTime: nil, endTime: end)
       } catch {
         // 翻到第几页断了就用到第几页：已经到手的几页是好数据，为了更早的一页
         // 把它们一起丢掉，屏幕上就从「少一截」变成「整条没有」。少的那一截仍然算
@@ -321,7 +326,7 @@ public actor OISource {
   /// 正常路径：服务器解析ZIP并按请求周期聚合，手机不搬运多年原始5m数组。
   private func gatewayHistory(symbol: String, interval: Interval, from: Int64, to: Int64) async -> [OIPoint]? {
     guard from <= to else { return nil }
-    for proxy in hosts.oiProxies {
+    for proxy in gateways {
       guard !Task.isCancelled else { return nil }
       guard var url = URLComponents(string: "https://\(proxy)/oi/v1/metrics/\(InstrumentID(symbol).symbol)/range") else { continue }
       url.queryItems = [URLQueryItem(name: "metrics", value: "1"), URLQueryItem(name: "interval", value: interval.rawValue),
@@ -354,7 +359,8 @@ public actor OISource {
     log("OI 归档缺 \(missing.count) 天，并发 \(Self.maxParallelDays) 下载")
 
     let order = OIArchive.centerOut(missing)
-    let hosts = self.hosts
+    let gateways = self.gateways
+    let provider = self.provider
     let transport = self.transport
     let log = self.log
     var results: [[OIPoint]] = []
@@ -366,9 +372,8 @@ public actor OISource {
         let day = order[next]
         next += 1
         group.addTask {
-          let url = hosts.metricsZip(symbol: symbol, day: OIArchive.dayString(day))
           do {
-            for proxy in hosts.oiProxies {
+            for proxy in gateways {
               guard !Task.isCancelled else { return (day, [], false) }
               if let proxyURL = URL(string: "https://\(proxy)/oi/v1/metrics/\(InstrumentID(symbol).symbol)/\(OIArchive.dayString(day)).json?metrics=1"),
                  let reply = try? await transport.get(proxyURL, timeout: 6), reply.status == 200,
@@ -376,6 +381,9 @@ public actor OISource {
                 return (day, points, true)
               }
             }
+            // 公开归档站：这一家没有就算问过了（没有这份数据，不是失败）。
+            guard let url = provider.metricsArchiveURL(symbol: symbol,
+                                                       day: OIArchive.dayString(day)) else { return (day, [], true) }
             let reply = try await transport.get(url, timeout: 20)
             if reply.status == 404 { return (day, [], true) }   // 上市前 / 还没归档，不是错误
             guard reply.status == 200 else { return (day, [], false) }
@@ -448,13 +456,16 @@ public actor OISource {
           let page: [OIPoint]
           switch id {
           case .lsr:
-            page = try await rest.globalLongShortAccountRatio(symbol: symbol, period: period, limit: 500, endTime: end)
+            page = try await provider.globalLongShortAccountRatio(symbol: symbol, period: period, limit: 500,
+                                                                  startTime: nil, endTime: end)
               .map { OIPoint(time: $0.timeMs, value: $0.ratio) }
           case .taker:
-            page = try await rest.takerLongShortRatio(symbol: symbol, period: period, limit: 500, endTime: end)
+            page = try await provider.takerLongShortRatio(symbol: symbol, period: period, limit: 500,
+                                                          startTime: nil, endTime: end)
               .map { OIPoint(time: $0.timeMs, value: $0.buySellRatio) }
           default:
-            page = try await rest.basis(pair: symbol, period: period, limit: 500, endTime: end)
+            page = try await provider.basis(symbol: symbol, period: period, limit: 500,
+                                            startTime: nil, endTime: end)
               .map { OIPoint(time: $0.timeMs, value: $0.basisRate * 100) }
           }
           guard !Task.isCancelled else { break }

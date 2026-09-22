@@ -29,7 +29,7 @@ enum LaunchPrewarm {
     // 出厂域名，改过域名的人热的是一台他不会连的机器。现在读本机镜像（`LaunchHostMirror`），
     // 不解码、不读账号目录，热身该在哪一刻跑还在哪一刻跑。
     let hosts = LaunchHostMirror.hosts
-    warm(host: hosts.api, path: "/fapi/v1/ping", method: "GET")
+    warm(host: hosts.api, path: VenueRegistry.defaultWarmPath, method: "GET")
     // 推送域名只要把 DNS 和 TLS 走通，回什么状态码都无所谓，所以用 HEAD。
     warm(host: hosts.stream, path: "/", method: "HEAD")
   }

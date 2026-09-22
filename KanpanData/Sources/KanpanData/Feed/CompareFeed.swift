@@ -1,10 +1,9 @@
 import Foundation
 import KanpanCore
+import KanpanNetwork
 
 /// 对比行情仅驻留内存；一条组合流，沿主序列时间范围补历史，不阻塞主行情。
 public actor CompareFeed {
-  private static func symbol(_ key: String) -> String { InstrumentID(key).symbol }
-
   public struct Snapshot: Sendable, Equatable {
     public var key: String
     public var series: BarSeries
@@ -27,11 +26,18 @@ public actor CompareFeed {
     }
   }
 
-  private let rest: BinanceREST
-  private let ws: BinanceWS
+  /// 交易所 → 这一家的提供者（认不出的交易所给 nil，那只就不取）。
+  public typealias Providers = @Sendable (_ venue: String) -> (any MarketProvider)?
+
+  private let provide: Providers
+  private let ws: any MarketStream
   private let pacer: any Pacer
+  /// 每家一个提供者，这一轮对比里复用（REST 的限流器按家共享）。
+  private var providers: [String: any MarketProvider] = [:]
   private var keys: [String] = []
   private var interval: Interval = .h1
+  /// 每只对比品种取数用的源周期（各家原生周期不一样：1y 在币安聚自 1M，在别家可能聚自 1d）。
+  private var sources: [String: Interval] = [:]
   private var generation = UUID()
   private var data: [String: FeedComposer] = [:]
   private var target: ClosedRange<Int64>?
@@ -46,16 +52,25 @@ public actor CompareFeed {
   private var sink: AsyncStream<[Snapshot]>.Continuation?
   private var connected = false
 
-  public init(rest: BinanceREST, ws: BinanceWS, pacer: any Pacer = SystemPacer()) {
-    self.rest = rest; self.ws = ws; self.pacer = pacer
+  public init(provider: @escaping Providers, stream: any MarketStream, pacer: any Pacer = SystemPacer()) {
+    provide = provider; ws = stream; self.pacer = pacer
   }
 
-  public init(hosts: BinanceHosts, policy: MarketRoutePolicy, log: FeedLog = .silent) {
-    rest = .upstream(policy.source, hosts: hosts, log: log, policy: policy)
-    var routed = hosts; routed.streamFallbacks = []
-    ws = BinanceWS(hosts: routed, factory: SourceSocketFactory(source: policy.source,
-      hosts: hosts, factory: URLSessionSocketFactory(), policy: policy, log: log), log: log)
+  /// 按用户选的线路取数：每只对比品种找它自己那一家，推送按家合流（一家一条连接）。
+  public init(resolver: RouteResolver, log: FeedLog = .silent) {
+    provide = { venue in VenueRegistry.descriptor(venue).map { resolver.provider(venue: $0.id) } }
+    ws = MergedMarketStream { venue in
+      VenueRegistry.descriptor(venue).map { resolver.provider(venue: $0.id).makeStream(silenceMs: nil, log: log) }
+    }
     pacer = SystemPacer()
+  }
+
+  private func provider(for key: String) -> (any MarketProvider)? {
+    let venue = InstrumentID(key).venue
+    if let cached = providers[venue] { return cached }
+    guard let made = provide(venue) else { return nil }
+    providers[venue] = made
+    return made
   }
 
   public func events() -> AsyncStream<[Snapshot]> {
@@ -71,18 +86,24 @@ public actor CompareFeed {
     generation = UUID()
     let token = generation
     var unique: [String] = []
-    // 当前上游只有币安 U 本位这一家；别的交易所的 key（新版本同步下来的）留在偏好里，
-    // 但绝不能拿它的 symbol 去当前上游冒领行情。
-    for key in keys where key.hasPrefix("binance/usd_m/") && key != InstrumentID.canonical(main.symbol) && !unique.contains(key) {
-      unique.append(key)
+    var topics: [StreamTopic] = []
+    var sources: [String: Interval] = [:]
+    // 每只找它自己那一家要行情；认不出的交易所（新版本同步下来的）留在偏好里，
+    // 但绝不能拿它的代号去别家冒领行情。
+    for key in keys.map(InstrumentID.canonical) where key != InstrumentID.canonical(main.symbol) && !unique.contains(key) {
+      guard let provider = provider(for: key) else { continue }
+      let caps = provider.capabilities, source = caps.source(for: main.interval)
+      unique.append(key); sources[key] = source
+      // 有原生 K 线推送就订 K 线；没有的周期订逐笔在本地拼末根（和主图 `MarketFeed` 同一个办法）。
+      topics.append(caps.liveKlineIntervals.contains(source) ? .kline(symbol: key, interval: source) : .trade(symbol: key))
       if unique.count == 3 { break }
     }
-    self.keys = unique; interval = main.interval
+    self.keys = unique; self.sources = sources; interval = main.interval
     data = [:]; covered = [:]; failures = [:]; blocked = []; pendingTail = []; target = nil; connected = false
     publish()
     guard !unique.isEmpty, !main.isEmpty else { await ws.stop(); return }
     updateMain(main)
-    let stream = await ws.start(streams: unique.map { BinanceHosts.klineStream(symbol: Self.symbol($0), interval: main.interval.source.rawValue) })
+    let stream = await ws.start(topics: topics)
     guard generation == token, !Task.isCancelled else { return }
     pump = Task { [weak self] in
       for await event in stream {
@@ -118,14 +139,15 @@ public actor CompareFeed {
         range = max(target.lowerBound, min(old.upperBound, data[key]?.series.lastTime ?? target.lowerBound))...target.upperBound
       } else { return }
     } else { range = target }
-    let token = generation, iv = interval, revision = data[key]?.wsRevision ?? 0
-    loads[key] = Task { [weak self, rest] in
+    guard let rest = provider(for: key), let source = sources[key] else { return }
+    let token = generation, revision = data[key]?.wsRevision ?? 0
+    loads[key] = Task { [weak self] in
       do {
         // 先拉右侧最近一页，够首屏即发布；再向左补到主序列起点。
         var end = range.upperBound
         while end >= range.lowerBound {
           try Task.checkCancellation()
-          let bars = try await rest.klines(symbol: Self.symbol(key), interval: iv.source, limit: 300,
+          let bars = try await rest.klines(symbol: key, interval: source, limit: 300,
             startTime: nil, endTime: end)
           guard let self else { return }
           let accepted = await self.mergeHistory(bars.filter { $0.openTime >= range.lowerBound && $0.openTime <= range.upperBound },
@@ -136,14 +158,14 @@ public actor CompareFeed {
         }
         await self?.loaded(key, range: range, token: token, success: true)
       } catch {
-        await self?.loaded(key, range: range, token: token, success: false, blocked: (error as? BinanceError)?.stopsRetrying == true)
+        await self?.loaded(key, range: range, token: token, success: false, blocked: (error as? UpstreamError)?.stopsRetrying == true)
       }
     }
   }
 
   private func mergeHistory(_ bars: [Bar], key: String, token: UUID, revision: UInt64) -> Bool {
     guard token == generation, keys.contains(key), !Task.isCancelled else { return false }
-    var composer = data[key] ?? FeedComposer(series: BarSeries(symbol: Self.symbol(key), interval: interval.source, bars: []))
+    var composer = data[key] ?? composer(for: key)
     composer.merge(bars.filter(\.isValidMarketBar), preservingLiveTail: composer.wsRevision != revision)
     data[key] = composer
     publish()
@@ -179,20 +201,35 @@ public actor CompareFeed {
     switch event {
     case .payload(.kline(let tick)):
       let key = InstrumentID.canonical(tick.symbol)
-      guard keys.contains(key), tick.interval == interval.source.rawValue, tick.bar.isValidMarketBar else { return }
-      var composer = data[key] ?? FeedComposer(series: BarSeries(symbol: tick.symbol, interval: interval.source, bars: []))
+      guard keys.contains(key), tick.interval == sources[key]?.rawValue, tick.bar.isValidMarketBar else { return }
+      var composer = data[key] ?? composer(for: key)
       guard composer.apply(tick) else { return }
       data[key] = composer
-      if flush == nil {
-        flush = Task { [weak self, pacer] in
-          do { try await pacer.sleep(ms: 100) } catch { return }
-          await self?.flushNow(token)
-        }
-      }
+      scheduleFlush(token)
+    case .payload(.trade(let trade)):
+      // 逐笔只折进已经有历史的末根（`applyTick` 在空序列上不动），断线补缺照旧靠 REST。
+      let key = InstrumentID.canonical(trade.symbol)
+      guard keys.contains(key), var composer = data[key] else { return }
+      guard composer.applyTick(price: trade.price, qty: trade.qty, timeMs: trade.timeMs, tradeID: trade.tradeID) != .ignored
+      else { return }
+      data[key] = composer
+      scheduleFlush(token)
     case .connected:
       if connected { for key in keys { schedule(key, forceTail: true) } }
       connected = true
     default: break
+    }
+  }
+
+  private func composer(for key: String) -> FeedComposer {
+    FeedComposer(series: BarSeries(symbol: key, interval: sources[key] ?? interval, bars: []))
+  }
+
+  private func scheduleFlush(_ token: UUID) {
+    guard flush == nil else { return }
+    flush = Task { [weak self, pacer] in
+      do { try await pacer.sleep(ms: 100) } catch { return }
+      await self?.flushNow(token)
     }
   }
 
@@ -216,7 +253,7 @@ public actor CompareFeed {
   }
 
   public func stop() async {
-    retire(); keys = []; data = [:]; covered = [:]; target = nil
+    retire(); keys = []; sources = [:]; data = [:]; covered = [:]; target = nil
     let previous = sink; sink = nil; previous?.finish()
     await ws.stop()
   }

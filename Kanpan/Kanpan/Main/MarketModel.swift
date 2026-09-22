@@ -71,7 +71,9 @@ final class MarketModel {
   /// 当前这份 `ticker` 是不是「上一条线路留下的」。真 = 顶栏灰显（§2B #54）。
   private(set) var tickerStale = false
   private(set) var status: FeedStatus = .offline
-  private(set) var source: MarketSource
+  /// 当前这份行情的提供者能做什么（哪家、哪条上游、有没有费率 / 持仓量 / 衍生统计）。
+  /// 顶栏哪几格写「—」、副图给不给看，全按它办；从不问「这是哪家交易所」。
+  private(set) var capabilities: ProviderCapabilities
   private(set) var historyError: String?
   private(set) var routing: MarketRoutingState = .idle
   /// 最近一次 WS 推进来的时刻。顶栏圆点长按时报「多久没动了」——
@@ -94,7 +96,7 @@ final class MarketModel {
   /// 品种表。域名可以改（A6.10），而品种页握着的是一条早就交出去的 `@Sendable`
   /// 闭包——中间夹这个盒子，换域名时换掉里面那份，闭包不用重发。
   nonisolated private let catalog: CatalogBox
-  private var hosts: BinanceHosts
+  private var endpoints: MarketEndpoints
   /// 启动快照开关的当前值。换域名要把整条流重建一遍，得记着用哪个值重启。
   private var snapshot = true
   // 同上：`deinit` 要 cancel 它。
@@ -111,21 +113,21 @@ final class MarketModel {
   /// 补历史一次只放一发在路上，别一路拖着就连喊十几次。
   private var loading = false
 
-  init(symbol: String = "BTCUSDT", interval: Interval = .h1,
-       hosts: BinanceHosts = .default) {
-    self.symbol = InstrumentID.canonical(symbol)
+  init(symbol: String = VenueRegistry.default.defaultSymbol, interval: Interval = .h1,
+       endpoints: MarketEndpoints = .default) {
+    let canonical = InstrumentID.canonical(symbol)
+    self.symbol = canonical
     self.interval = interval
-    self.hosts = hosts
+    self.endpoints = endpoints
     self.info = MarketModel.placeholder(symbol)
     // 线路是用户定的（`Prefs.routePolicy` 镜像到 `MarketRoutePolicyStore`），
-    // 交易所跟着线路走：直连=币安、网关=OKX。品种页也从同一家起步，不用等一次失败再换。
-    let initialSource = MarketRoutePolicyStore.current.source
-    self.source = initialSource
-    let binanceRest = BinanceREST.upstream(.binance, hosts: hosts, log: MarketModel.log)
-    let rest = BinanceREST.upstream(initialSource, hosts: hosts, log: MarketModel.log)
-    self.oiSource = OISource(hosts: hosts, rest: binanceRest, store: oiStore)
-    self.feed = RoutedMarketFeed(hosts: hosts, log: MarketModel.log)
-    self.catalog = CatalogBox(SymbolCatalog(rest: rest, paths: Self.catalogPaths(for: initialSource)))
+    // 每家交易所在这条线路上由谁供数由 `RouteResolver` 定。起步就按它，不用等一次失败再换。
+    let resolver = RouteResolver(policy: MarketRoutePolicyStore.current, endpoints: endpoints, log: MarketModel.log)
+    let provider = resolver.provider(forSymbol: canonical)
+    self.capabilities = provider.capabilities
+    self.oiSource = OISource(provider: provider, gateways: endpoints.gateways, store: oiStore)
+    self.feed = RoutedMarketFeed(endpoints: endpoints, log: MarketModel.log)
+    self.catalog = CatalogBox(Self.catalogs(resolver))
     // 换线路时 `RoutedMarketFeed` 自己会切；历史 OI 的客户端是这里建的，也得跟着换，
     // 不然设置改成「网关」之后 OI 还在直连币安。
     policyObserver = NotificationCenter.default.addObserver(
@@ -144,17 +146,38 @@ final class MarketModel {
   }
 
   private func routePolicyDidChange() {
-    oiSource = OISource(hosts: hosts, rest: .upstream(.binance, hosts: hosts, log: MarketModel.log),
-                        store: oiStore)
+    rebuildOISource()
+    // 品种表跟着线路换：替身上游的品种表另存一棵（`SymbolCatalog.partition`）。
+    let catalogs = Self.catalogs(resolver)
+    Task { [catalog] in await catalog.replace(catalogs) }
     resetOI()
     if let lastView { loadOI(view: lastView, refresh: true) }
   }
 
-  /// 非默认行情源的品种表另存一棵：okx 的 BTCUSDT 不是币安那根，共用一份表会串。
-  /// 目录一律问 `Paths` 要、不在这儿手拼字符串——手拼出来的那棵树「清缓存」逐个点名时
-  /// 点不到，会永远躺在盘上，用量也算不进去。
-  private static func catalogPaths(for source: MarketSource) -> Paths {
-    source == .binance ? .caches() : Paths.caches().source(source.rawValue)
+  private var resolver: RouteResolver {
+    RouteResolver(policy: MarketRoutePolicyStore.current, endpoints: endpoints, log: MarketModel.log)
+  }
+
+  /// 历史持仓量 / 衍生统计的客户端：按当前品种所在的那一家、当前线路建。
+  private func rebuildOISource() {
+    oiSource = OISource(provider: resolver.provider(forSymbol: symbol), gateways: endpoints.gateways, store: oiStore)
+  }
+
+  /// 持仓量副图与外部指标问不问：图上这份行情和手里的统计客户端都得有这项能力
+  /// （换线路那一拍，行情事件还没到，统计客户端已经先换了）。
+  private var metricsAvailable: Bool {
+    capabilities.hasDerivativeMetrics && oiSource.capabilities.hasDerivativeMetrics
+  }
+
+  /// 每家交易所一份品种表，按注册顺序。各自落在哪棵树由 `SymbolCatalog.partition` 定
+  /// （目录一律问 `Paths` 要，「清缓存」逐个点名时点得到）。
+  private static func catalogs(_ resolver: RouteResolver) -> [SymbolCatalog] {
+    VenueRegistry.all.map { SymbolCatalog(provider: resolver.provider(venue: $0.id), paths: .caches(), log: MarketModel.log) }
+  }
+
+  /// K 线快照在哪棵树：和 `RoutedMarketFeed` 写的同一处。
+  private var snapshotSeries: URL {
+    RoutedMarketFeed.snapshotPaths(for: resolver.provider(forSymbol: symbol).capabilities, in: .caches()).series
   }
 
   /// 排查「图有数据但一动不动」的时候需要看得见连了没有、推没推进来。
@@ -216,12 +239,12 @@ final class MarketModel {
     // 连续内存，读完直接是可画的值），图和价格一起出现。
     if snapshot, series == nil,
        let saved = SeriesStore.read(symbol: symbol, interval: interval,
-                                    in: Self.catalogPaths(for: source).series, touch: false) {
+                                    in: snapshotSeries, touch: false) {
       series = saved
     }
     // 顺手让快照目录的索引在后台扫一遍：之后换品种、淘汰旧文件都不用再碰 `contentsOfDirectory`。
     // 扫过一次就记住了，重复调用是空操作。
-    if snapshot { SeriesStore.warm(Self.catalogPaths(for: source).series) }
+    if snapshot { SeriesStore.warm(snapshotSeries) }
     guard pump == nil else { return }
     network.start { [weak self] online in
       Task { @MainActor [weak self] in
@@ -284,20 +307,17 @@ final class MarketModel {
   }
 
   /// 换域名（A6.10）。REST 和推送是两台，改哪一边都得把整条流重建——
-  /// `BinanceREST` / `BinanceWS` 的域名是 `let`，本来就不打算中途改。
-  func setHosts(_ next: BinanceHosts) {
-    guard next != hosts else { return }
-    hosts = next
+  /// 提供者对一组主机是不可变的，本来就不打算中途改。
+  func setEndpoints(_ next: MarketEndpoints) {
+    guard next != endpoints else { return }
+    endpoints = next
     let running = pump != nil
     stop()
-    let source = source
-    let binanceRest = BinanceREST.upstream(.binance, hosts: next, log: MarketModel.log)
-    let rest = BinanceREST.upstream(source, hosts: next, log: MarketModel.log)
-    oiSource = OISource(hosts: next, rest: binanceRest, store: oiStore)
+    rebuildOISource()
     resetOI()
-    feed = RoutedMarketFeed(hosts: next, log: MarketModel.log)
-    let box = catalog
-    Task { await box.replace(SymbolCatalog(rest: rest, paths: Self.catalogPaths(for: source))) }
+    feed = RoutedMarketFeed(endpoints: next, log: MarketModel.log)
+    let box = catalog, catalogs = Self.catalogs(resolver)
+    Task { await box.replace(catalogs) }
     status = .offline
     lastPushAt = nil
     guard running else { return }
@@ -325,22 +345,21 @@ final class MarketModel {
     case .routing(let state):
       routing = state
       if state == .switching { historyError = nil }
-    case .source(let next):
+    case .provider(let next):
       // 这儿**不**清 `ticker`：清掉顶栏立刻退回「—」，用户看到的是一屏骨架，
       // 而他什么都没做，只是我们换了台机器取数。备用线路本来就未必有这个品种，
       // 那样会一直空着。留着上一条线路的最后一口价，灰显标明「这是旧的」（§2B #54），
       // 新线路第一帧到了就自己转正。
-      source = next; tickerStale = ticker != nil; tradeQuote = nil; markPrice = nil; markTime = 0
+      capabilities = next; tickerStale = ticker != nil; tradeQuote = nil; markPrice = nil; markTime = 0
       funding = nil; fundingExpired = false
       // 持仓量是按交易所报的，换了线路就得按新交易所重取；供应量与交易所无关，留着。
       openInterestValue = nil; openInterestUnit = nil
       startStats()
+      rebuildOISource()
       resetOI(); historyError = nil
-      // 和启动时同一条规则（含「切回币安就用根上那份」）：这儿以前单独手拼，
-      // 于是切回币安后品种表会落到 `sources/binance/` 下、和启动时读的那份对不上。
-      let paths = Self.catalogPaths(for: next)
-      let catalog = SymbolCatalog(rest: .upstream(next, hosts: hosts), paths: paths)
-      Task { await self.catalog.replace(catalog); await self.refreshInfo() }
+      // 品种表在换线路 / 换域名时已经整份换过（`routePolicyDidChange` / `setEndpoints`），
+      // 这里只按新的那份把品种事实再对一遍。
+      Task { await self.refreshInfo() }
     case .historyError(let error):
       historyError = error
     case .series(let s):
@@ -353,11 +372,11 @@ final class MarketModel {
       lastPushAt = Date()
     case .prepend:
       // `.prepend` 不带新序列，得自己去取。视野是绝对时间窗，补在左边天然不跳。
-      let request = selection, expectedSource = source
+      let request = selection, expectedSource = capabilities
       Task { [feed] in
         let s = await feed.currentSeries
         await MainActor.run {
-          if request == self.selection, expectedSource == self.source, s.symbol == self.symbol, s.interval == self.interval { self.series = s }
+          if request == self.selection, expectedSource == self.capabilities, s.symbol == self.symbol, s.interval == self.interval { self.series = s }
         }
       }
     case .tradeQuote(let quote):
@@ -407,7 +426,7 @@ final class MarketModel {
   /// 两条都失败就让那两格一直是 `--`，不报错、不弹窗。
   private func startStats() {
     statsTask?.cancel()
-    let sym = symbol, src = source, base = info.base, proxies = hosts.oiProxies
+    let sym = symbol, src = capabilities.openInterestSource, base = info.base, proxies = endpoints.gateways
     guard !proxies.isEmpty else {
       openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
       return
@@ -428,6 +447,7 @@ final class MarketModel {
         }
         group.addTask { [weak self] in
           while !Task.isCancelled {
+            // 没有持仓量的那家（`openInterestSource == nil`）那一格就一直是「—」。
             let stat = await MarketStatsClient.shared.openInterest(symbol: sym, source: src, hosts: proxies)
             if Task.isCancelled { return }
             await MainActor.run { self?.applyOpenInterest(stat, for: sym) }
@@ -517,11 +537,13 @@ final class MarketModel {
     symbol = sym
     interval = iv
     switching = true
+    // 换到另一家交易所的品种时，统计客户端也得换成那一家的（能力位随之变）。
+    if oiSource.capabilities.venue != VenueRegistry.descriptor(forSymbol: sym).id { rebuildOISource() }
     // 切换不留空白帧：盘上有新品种这个周期的快照就同步摆出来（和 `start` 一样，
     // 几十 KB 连续内存，读完即可画），feed 那份随后到了再覆盖。老图不能留——
     // 那是上一个品种的 K 线，顶着新品种的名字多一帧都是错的；没有快照才留空。
     series = snapshot
-      ? SeriesStore.read(symbol: sym, interval: iv, in: Self.catalogPaths(for: source).series, touch: false)
+      ? SeriesStore.read(symbol: sym, interval: iv, in: snapshotSeries, touch: false)
       : nil
     loading = false
     resetOI(); lastView = nil
@@ -628,8 +650,7 @@ final class MarketModel {
   }
 
   private func loadMetrics(view: ViewWindow, refresh: Bool = false) {
-    guard chartVisible, foreground, source == .binance, MarketRoutePolicyStore.current.source == .binance,
-          let series, !series.isEmpty else { return }
+    guard chartVisible, foreground, metricsAvailable, let series, !series.isEmpty else { return }
     let from = max(series.firstTime, Int64(view.from) - series.step)
     let to = min(series.lastTime + series.step, Int64(view.to))
     guard from <= to else { return }
@@ -647,7 +668,7 @@ final class MarketModel {
         for segment in segments {
           let fetched = await source.fetchMetric(id, symbol: sym, interval: iv, from: segment.from, to: segment.to)
           guard !Task.isCancelled, request == self.selection, self.metricRequests[id] == token,
-                self.source == .binance, self.symbol == sym, self.interval == iv else { return }
+                self.metricsAvailable, self.symbol == sym, self.interval == iv else { return }
           self.metricPoints[id] = OISource.dedup((self.metricPoints[id] ?? []) + fetched.points)
           if fetched.complete {
             let span = OISource.coveredRegion(want: fetched.want, points: fetched.points, step: max(300_000, series.step))
@@ -679,7 +700,7 @@ final class MarketModel {
   func loadOI(view: ViewWindow, refresh: Bool = false) {
     lastView = view
     loadMetrics(view: view, refresh: refresh)
-    guard chartVisible, foreground, source == .binance, MarketRoutePolicyStore.current.source == .binance else { return }
+    guard chartVisible, foreground, metricsAvailable else { return }
     guard oiEnabled, let series, !series.isEmpty else { return }
     let from = max(series.firstTime, Int64(view.from) - series.step)
     let to = min(series.lastTime + series.step, Int64(view.to))
@@ -870,18 +891,35 @@ final class MarketModel {
 }
 
 
-/// 换域名时要把 `SymbolCatalog` 整个换掉，但品种页握着的是早就交出去的闭包。
-/// 夹这一层，闭包握盒子、盒子握当前那份。
+/// 换域名、换线路时要把各家的 `SymbolCatalog` 整份换掉，但品种页握着的是早就交出去的闭包。
+/// 夹这一层，闭包握盒子、盒子握当前那几份（每家交易所一份，按注册顺序）。
 actor CatalogBox {
-  private var catalog: SymbolCatalog
-  init(_ catalog: SymbolCatalog) { self.catalog = catalog }
-  func replace(_ next: SymbolCatalog) { catalog = next }
-  func all() async -> [SymbolInfo] { await catalog.all() }
-  func find(_ symbol: String) async -> SymbolInfo? { await catalog.find(symbol) }
+  private var catalogs: [SymbolCatalog]
+  init(_ catalogs: [SymbolCatalog]) { self.catalogs = catalogs }
+  func replace(_ next: [SymbolCatalog]) { catalogs = next }
+
+  /// 品种键所在那一家的表；认不出的交易所归默认那一家（第一份）。
+  private func catalog(for symbol: String) -> SymbolCatalog? {
+    let venue = VenueRegistry.descriptor(forSymbol: symbol).id
+    return catalogs.first { $0.capabilities.venue == venue } ?? catalogs.first
+  }
+
+  /// 各家的表拼起来，按注册顺序。各家并行取，谁慢不拖别家（取不到的那家就是空）。
+  func all() async -> [SymbolInfo] {
+    let list = catalogs
+    if list.count == 1 { return await list[0].all() }
+    return await withTaskGroup(of: (Int, [SymbolInfo]).self) { group in
+      for (i, c) in list.enumerated() { group.addTask { (i, await c.all()) } }
+      var parts = [[SymbolInfo]](repeating: [], count: list.count)
+      for await (i, rows) in group { parts[i] = rows }
+      return parts.flatMap { $0 }
+    }
+  }
+  func find(_ symbol: String) async -> SymbolInfo? { await catalog(for: symbol)?.find(symbol) }
   /// 用户明确点名的那次查询：表里没有就为他立刻重拉一次（带去抖，见 `SymbolCatalog.lookup`）。
-  func lookup(_ symbol: String) async -> SymbolInfo? { await catalog.lookup(symbol) }
+  func lookup(_ symbol: String) async -> SymbolInfo? { await catalog(for: symbol)?.lookup(symbol) }
   /// 交易所不认这个代号：在表里把它标成下架，**不删**。
-  func markDelisted(_ symbol: String) async { await catalog.markDelisted(symbol) }
+  func markDelisted(_ symbol: String) async { await catalog(for: symbol)?.markDelisted(symbol) }
 }
 
 #if DEBUG

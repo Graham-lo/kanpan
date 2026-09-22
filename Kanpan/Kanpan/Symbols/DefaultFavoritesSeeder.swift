@@ -37,7 +37,8 @@ import KanpanNetwork
 
   /// 取全市场 24h 成交额。测试里换成假的。
   static var loadTickers: @Sendable () async -> [Ticker] = {
-    let rest = BinanceREST.upstream(.binance, hosts: .default)
+    // 按出厂域名、直连取默认交易所的全市场榜（冷启动那一刻用户的线路设置还没装进来）。
+    let rest = RouteResolver(policy: .direct, endpoints: .default).provider(venue: VenueRegistry.default.id)
     // 两趟：第一次开机时网络常常刚刚才通。两趟都不成就按没有榜处理。
     for attempt in 0..<2 {
       if let tickers = try? await rest.tickers24h(timeout: 8), !tickers.isEmpty { return tickers }

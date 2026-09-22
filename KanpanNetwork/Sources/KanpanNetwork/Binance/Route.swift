@@ -1,7 +1,9 @@
 import Foundation
 import KanpanCore
 
-public enum MarketSource: String, Codable, Sendable { case binance, okx }
+/// 币安这一家在两条线路上实际由谁供数：直连是币安本家，网关上币安被封（451），
+/// 服务端换成 OKX 的同名永续顶上。只在币安这一支内部使用，上层看不见。
+public enum BinanceUpstream: String, Codable, Sendable { case binance, okx }
 
 /// REST adaptation is confined to the upstream boundary. A request never changes exchange.
 public actor MarketRESTTransport: HTTPTransport {
@@ -12,7 +14,7 @@ public actor MarketRESTTransport: HTTPTransport {
   /// 60 秒，客户端跟着走，别用 10 秒的短冷却去反复撞同一堵墙。有 `Retry-After`
   /// 或 body 的 `retry_after` 就听上游的。
   private static let gatewayGeoCooldownSeconds: TimeInterval = 60
-  private let source: MarketSource
+  private let source: BinanceUpstream
   private let log: FeedLog
   private let gateways: [String]
   private let transport: any HTTPTransport
@@ -67,7 +69,7 @@ public actor MarketRESTTransport: HTTPTransport {
     var upstreamStatus: Int?
   }
 
-  public init(source: MarketSource, gateways: [String], transport: any HTTPTransport = URLSessionTransport(),
+  public init(source: BinanceUpstream, gateways: [String], transport: any HTTPTransport = URLSessionTransport(),
               log: FeedLog = .silent, policy: MarketRoutePolicy = .direct) {
     self.source = source; self.gateways = gateways; self.transport = transport; self.log = log
     self.policy = policy
@@ -448,14 +450,14 @@ public actor MarketRESTTransport: HTTPTransport {
 
 /// Both gateways expose the existing candle wire format, with a source-specific URL.
 public struct SourceSocketFactory: WSSocketFactory {
-  let source: MarketSource
+  let source: BinanceUpstream
   let hosts: BinanceHosts
   let factory: any WSSocketFactory
   /// 币安的 WS 也有直连（`hosts.stream`，默认 `dstream.binance.me`）与网关（`streamFallbacks`，
   /// 就是那两台 VPS）两条路，用户选了哪条就只拨哪条；OKX 只有网关这一条路，不受影响。
   let policy: MarketRoutePolicy
   let log: FeedLog
-  public init(source: MarketSource, hosts: BinanceHosts, factory: any WSSocketFactory = URLSessionSocketFactory(),
+  public init(source: BinanceUpstream, hosts: BinanceHosts, factory: any WSSocketFactory = URLSessionSocketFactory(),
               policy: MarketRoutePolicy = .direct, log: FeedLog = .silent) {
     self.source = source; self.hosts = hosts; self.factory = factory; self.policy = policy; self.log = log
   }
@@ -500,7 +502,7 @@ public extension BinanceREST {
   /// 某条线路上的 REST 客户端。`policy` 不传就用用户当前选的线路（`MarketRoutePolicyStore`），
   /// 这样 app 里顺手建的目录 / 历史 OI / 报价簿客户端都跟设置走，不会「行情走网关、
   /// OI 却还在直连」。测试要钉死线路时显式传。
-  static func upstream(_ source: MarketSource, hosts: BinanceHosts, log: FeedLog = .silent,
+  static func upstream(_ source: BinanceUpstream, hosts: BinanceHosts, log: FeedLog = .silent,
                        policy: MarketRoutePolicy = MarketRoutePolicyStore.current) -> BinanceREST {
     BinanceREST(hosts: hosts,
                 transport: MarketRESTTransport(source: source, gateways: hosts.oiProxies, log: log, policy: policy),

@@ -168,7 +168,7 @@ public struct FeedComposer: Sendable {
   public mutating func merge(_ bars: [Bar], preservingLiveTail: Bool = false) {
     guard !bars.isEmpty else { return }
     if series.count == 0 {
-      series = BarSeries(symbol: series.symbol, interval: series.interval, bars: BinanceREST.dedup(bars))
+      series = BarSeries(symbol: series.symbol, interval: series.interval, bars: MarketSeries.dedup(bars))
       return
     }
     var m: [Int64: Bar] = [:]

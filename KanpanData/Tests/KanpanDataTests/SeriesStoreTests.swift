@@ -113,10 +113,10 @@ struct SeriesStoreTests {
     let s = makeSeries("BTCUSDT", .m1, count: 600)
     let now = Double(s.lastTime)
     // 刚存的：能用。
-    #expect(MarketFeed.seedUsable(s, nowMs: now))
+    #expect(MarketFeed.seedUsable(s, sourceStepMs: 60_000, nowMs: now))
     // 欠的根数还在 `contiguousTail` 的翻页能力之内：能用。
-    #expect(MarketFeed.seedUsable(s, nowMs: now + Double(MarketFeed.maxSeedGapBars - 1) * 60_000))
+    #expect(MarketFeed.seedUsable(s, sourceStepMs: 60_000, nowMs: now + Double(MarketFeed.maxSeedGapBars - 1) * 60_000))
     // 超出去了：中间那段补不回来，宁可空着等网络。
-    #expect(!MarketFeed.seedUsable(s, nowMs: now + Double(MarketFeed.maxSeedGapBars + 10) * 60_000))
+    #expect(!MarketFeed.seedUsable(s, sourceStepMs: 60_000, nowMs: now + Double(MarketFeed.maxSeedGapBars + 10) * 60_000))
   }
 }

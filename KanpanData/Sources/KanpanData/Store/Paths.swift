@@ -59,10 +59,12 @@ public struct Paths: Sendable {
   public var series: URL { root.appendingPathComponent("series", isDirectory: true) }
   /// 品种表缓存，24 小时。
   public var exchangeInfo: URL { root.appendingPathComponent("exchangeInfo.json") }
-  /// 换过行情源的人盘上会多的那一层：`sources/<行情源>/…`。**清缓存整棵删它**。
+  /// 非默认行情源盘上会多的那一层：`sources/<分区>/…`。**清缓存整棵删它**。
   ///
-  /// 为什么会有这一层：okx 的 BTCUSDT 不是币安那根，品种表和启动快照跟币安共用一份就串了，
-  /// 于是每个非默认行情源自己长一棵和根同构的小树。
+  /// 为什么会有这一层：替身上游（网关线路上顶替某家的另一家）的同名合约不是真身那根，
+  /// 品种表和启动快照跟真身共用一份就串了；别的交易所的品种表也各放一份。于是每个
+  /// 分区（`ProviderCapabilities.snapshotNamespace`，或者非默认交易所的 venue）
+  /// 自己长一棵和根同构的小树。
   ///
   /// 它装的还是品种表和 K 线快照——**没了重新取一遍就有**，按判据就该归清缓存管。
   /// 之所以要在这儿有个名字，是因为 `MarketCache` 是逐个点名清的（删根会把不该清的
@@ -72,8 +74,8 @@ public struct Paths: Sendable {
 
   /// 某个行情源自己那棵子树，结构和根一模一样（`exchangeInfo.json`、`series/`…）。
   ///
-  /// 只收一个名字（调用方传 `MarketSource.rawValue`）而不是收那个枚举：这一层是数据层，
-  /// 拼个目录名不值得让它反过来认识上面的路由类型。身份照旧跟着带下去。
+  /// 只收一个名字（分区名）：这一层是数据层，拼个目录名不值得让它反过来认识上面的
+  /// 路由类型。身份照旧跟着带下去。
   public func source(_ name: String) -> Paths {
     Paths(root: sources.appendingPathComponent(name, isDirectory: true), profile: profile)
   }

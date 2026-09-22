@@ -9,7 +9,7 @@ import KanpanNetwork
 /// 已经有的事实，不做任何交互（要动手的都在旁边那份菜单里）。
 ///
 /// 数据一律走现成的路：价和涨跌来自列表本来就订着的报价，持仓量和供应量走
-/// 顶栏那四格同一个 `MarketStatsClient`（它自己带缓存），K 线走同一个 `BinanceREST`
+/// 顶栏那四格同一个 `MarketStatsClient`（它自己带缓存），K 线走这个品种那一家的提供者
 /// 拉一次 1 小时 × 60 根、按品种记着。费率走同一个客户端的
 /// `premiumIndex`（公开、免鉴权、权重 1），和 K 线并发发出、按品种缓存 5 分钟；
 /// 正在看的那张图上有 `markPrice` 流，那一帧会直接喂进来（`note(funding:for:)`），
@@ -43,17 +43,15 @@ final class SymbolPreviewStore {
   private(set) var stats: [String: Stats] = [:]
   private(set) var funding: [String: Funding] = [:]
 
-  @ObservationIgnored private var hosts = BinanceHosts.default
-  @ObservationIgnored private var source: MarketSource = .binance
+  @ObservationIgnored private var resolver = RouteResolver(policy: .direct, endpoints: .default)
   @ObservationIgnored private var jobs: [String: Task<Void, Never>] = [:]
   /// 最近用过的在后面。满了从前面扔。
   @ObservationIgnored private var recent: [String] = []
 
   /// 换线路 / 换域名：手上这批数是上一条路取的，整批作废。
-  func configure(hosts next: BinanceHosts, source nextSource: MarketSource) {
-    guard next != hosts || nextSource != source else { return }
-    hosts = next
-    source = nextSource
+  func configure(endpoints next: MarketEndpoints, policy: MarketRoutePolicy) {
+    guard next != resolver.endpoints || policy != resolver.policy else { return }
+    resolver = RouteResolver(policy: policy, endpoints: next)
     for job in jobs.values { job.cancel() }
     jobs.removeAll()
     bars.removeAll()
@@ -90,9 +88,9 @@ final class SymbolPreviewStore {
     let needsStats = stats[key] == nil
     let needsFunding = funding[key].map(expired) ?? true
     guard jobs[key] == nil, needsBars || needsStats || needsFunding else { return }
-    let rest = BinanceREST.upstream(source, hosts: hosts)
-    let proxies = hosts.oiProxies
-    let src = source
+    let rest = resolver.provider(forSymbol: key)
+    let proxies = resolver.endpoints.gateways
+    let src = rest.capabilities.openInterestSource
     jobs[key] = Task { [weak self] in
       // 费率和 K 线同时出发：两笔都是这张卡等着画的，串起来等于让人多等一趟。
       async let rate: FundingSnapshot? = needsFunding

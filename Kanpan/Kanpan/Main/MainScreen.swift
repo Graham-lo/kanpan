@@ -239,10 +239,10 @@ struct MainScreen: View {
   private var theme: PanelTheme { PanelTheme(seed: seed, redUp: prefs.redUp) }
 
   /// 设置里那两行域名（A6.10）。REST 和推送分开填，理由见 `APIHost.defaultStream`。
-  private var hosts: BinanceHosts {
-    BinanceHosts(fapi: prefs.apiHost, stream: prefs.streamHost,
+  private var endpoints: MarketEndpoints {
+    MarketEndpoints(restHost: prefs.apiHost, streamHost: prefs.streamHost,
       streamFallbacks: prefs.smartMarketRoute ? [APIHost.defaultStream, APIHost.gateway, APIHost.gatewayBackup] : [],
-      oiProxy: APIHost.gateway, oiProxyFallbacks: [APIHost.gatewayBackup])
+      gateways: [APIHost.gateway, APIHost.gatewayBackup])
   }
 
   /// 横屏判据用高度的 size class，不用宽高比。
@@ -260,7 +260,7 @@ struct MainScreen: View {
       #if DEBUG
       if ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" {
         VStack {
-        Text(market.source.rawValue).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.source").accessibilityValue(market.status.rawValue)
+        Text(market.capabilities.upstream).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.source").accessibilityValue(market.status.rawValue)
         Text(MarketNetworkDiagnostics.shared.lines).font(.system(size: 1)).opacity(0.01).accessibilityIdentifier("market.network")
         // 根宽的三份拷贝，排查「捏完杀 app」那个 bug 用：
         // `stored` = `PrefsStore` 手上这份（`update` 是同步落盘的，它等于盘上那份）；
@@ -418,8 +418,8 @@ struct MainScreen: View {
       microstructureVisible: microstructureVisible,
       syncGate: syncGate,
       reviewScope: review.searchScope,
-      hosts: hosts,
-      source: market.source,
+      endpoints: endpoints,
+      routePolicy: prefs.routePolicy,
       fundingRate: market.displayedFundingRate,
       catalogCount: picker.catalog.count,
       listVisible: listVisible,
@@ -449,23 +449,23 @@ struct MainScreen: View {
       onReviewScope: { value in store.update { $0.reviewSearchScope = value } },
       onPrefsReviewScope: { value in review.searchScope = value },
       onTimeZone: { value in review.timezone = value },
-      onHosts: { next in
-        market.setHosts(next); quotes.configure(hosts: next, basis: prefs.changeBasis, source: market.source)
-        sectorFeed.configure(hosts: next, source: market.source)
-        previews.configure(hosts: next, source: market.source)
+      onEndpoints: { next in
+        market.setEndpoints(next); quotes.configure(endpoints: next, basis: prefs.changeBasis, policy: prefs.routePolicy)
+        sectorFeed.configure(endpoints: next, policy: prefs.routePolicy)
+        previews.configure(endpoints: next, policy: prefs.routePolicy)
       },
-      onChangeBasis: { next in quotes.configure(hosts: hosts, basis: next, source: market.source) },
-      onSource: { next in
-        quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: next)
-        sectorFeed.configure(hosts: hosts, source: next)
-        previews.configure(hosts: hosts, source: next)
+      onChangeBasis: { next in quotes.configure(endpoints: endpoints, basis: next, policy: prefs.routePolicy) },
+      onRoutePolicy: { next in
+        quotes.configure(endpoints: endpoints, basis: prefs.changeBasis, policy: next)
+        sectorFeed.configure(endpoints: endpoints, policy: next)
+        previews.configure(endpoints: endpoints, policy: next)
       },
       onFundingRate: { rate in previews.note(funding: rate, for: market.symbol) },
       onCatalog: { sectorFeed.setCatalog(picker.catalog) },
       onListVisible: { on in quotes.setVisible(on) },
       onFavorites: { symbols in settleFavorites(symbols) },
       onTradeQuote: { trade in
-        if market.source == .binance, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
+        if !market.capabilities.isSubstitute, let trade, trade.symbol == market.symbol { quotes.ingestTrade(trade) }
       },
       onSymbol: { symbol in
         if let preview = draw.previewing, preview.key != symbol { endSharePreview() }
@@ -966,9 +966,9 @@ struct MainScreen: View {
   private var rollingTicker: Ticker? {
     // 备用线路上先用它自己的一帧；它还没到（或这个品种它根本没有）就退回
     // 共享报价层里那口最后的价，顶栏灰显而不是退成骨架（§2B #54）。
-    if market.source == .okx { return market.ticker ?? quotes.raw[market.symbol] }
+    if market.capabilities.isSubstitute { return market.ticker ?? quotes.raw[market.symbol] }
     if let quote = quotes.raw[market.symbol] { return quote }
-    // MarketModel already receives Binance ticker frames as part of the
+    // MarketModel already receives the venue ticker frames as part of the
     // chart feed. Use that value immediately instead of waiting for the
     // separate list QuoteBook to open another socket.
     return market.ticker
@@ -987,7 +987,7 @@ struct MainScreen: View {
 
   /// Latest trade quote only; changing candle interval must never change its source.
   private var readoutPrice: Double? {
-    return market.source == .okx ? (market.series?.close.last ?? displayedTicker?.last) : displayedTicker?.last
+    return market.capabilities.isSubstitute ? (market.series?.close.last ?? displayedTicker?.last) : displayedTicker?.last
   }
 
   /// 读数那一小块要的、**不跟着手指走**的那几样输入。十字线本身不在这儿——
@@ -1239,18 +1239,18 @@ struct MainScreen: View {
     review.onOpenChart = { record in
       endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = .record(record.id)
-      reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), hosts: hosts)
+      reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), endpoints: endpoints, policy: prefs.routePolicy)
     }
     review.onOpenMatch = { match, cutoff in
       endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = review.searchRecord.map { .search($0) }
-      reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), hosts: hosts)
+      reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), endpoints: endpoints, policy: prefs.routePolicy)
     }
     review.synchronize()
   }
   private func startReviewCapture() {
     endSharePreview(); dismissPanel(); draw.finish()
-    reviewChart.beginCapture(feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), prefs: prefs, source: market.source)
+    reviewChart.beginCapture(feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), prefs: prefs)
   }
   /// 退出复盘。
   ///
@@ -1348,7 +1348,7 @@ struct MainScreen: View {
     // 别一直挂「加载中」。
     result.external = market.external
     result.depth = drawingCanvasOnly || !prefs.depth ? nil : market.depth
-    result.oiSupported = market.source == .binance
+    result.oiSupported = market.capabilities.hasDerivativeMetrics
     result.subInverted = prefs.allowSubInversion ? prefs.subInverted : []
     result.paletteSeed = seed
     result.hiddenOutputs = prefs.hiddenOutputs
@@ -1381,17 +1381,19 @@ struct MainScreen: View {
     })
   }
   private var compareReady: Bool {
-    market.source == prefs.routePolicy.source && !market.switching && market.routing != .switching
+    !market.switching && market.routing != .switching
+      && comparison.mainSettled(symbol: market.symbol, upstream: market.capabilities.upstream,
+                                policy: prefs.routePolicy, endpoints: endpoints)
   }
   private var compareDrive: CompareDrive {
     let s = market.series
     return CompareDrive(keys: comparing ? compareKeys : [], symbol: market.symbol, interval: market.interval,
-      hosts: hosts, policy: prefs.routePolicy, ready: compareReady,
+      endpoints: endpoints, policy: prefs.routePolicy, ready: compareReady,
       first: s?.firstTime ?? 0, last: s?.lastTime ?? 0)
   }
   private func updateCompare() {
     comparison.configure(keys: comparing ? compareKeys : [], main: compareReady ? market.series : nil,
-      symbol: market.symbol, interval: market.interval, hosts: hosts, policy: prefs.routePolicy)
+      symbol: market.symbol, interval: market.interval, endpoints: endpoints, policy: prefs.routePolicy)
   }
 
   /// 副图高度（A6.4）：`Prefs.subHeights` 是档位，图要的是倍率。
@@ -1654,7 +1656,8 @@ struct MainScreen: View {
             picker.info(for: symbol).flatMap { $0.tickSize > 0 || $0.pricePrecision > 0 ? $0.priceDecimals : nil }
           },
           closes: closes, skin: prefs.skin, appearance: prefs.theme, redUp: prefs.redUp,
-          fapiHost: hosts.fapi, basis: prefs.changeBasis)
+          fapiHost: prefs.apiHost,
+          hostMarket: VenueRegistry.default.marketKey, basis: prefs.changeBasis)
       },
       shape: {
         let symbols = picker.prefs, prefs = store.prefs
@@ -1710,7 +1713,7 @@ struct MainScreen: View {
     // 看一眼不是他上次那张图，比晚开这十几毫秒（几个小 JSON 的同步读盘）贵得多。
     // 连接预热本来就在 `LaunchPrewarm` 里更早跑着，这里挪后不影响握手。
     wireAccount()
-    market.setHosts(hosts)
+    market.setEndpoints(endpoints)
     market.start(snapshot: prefs.launchSnapshot, symbol: picker.prefs.recents.first, interval: prefs.interval)
     picker.setSectionsActive(false)
     quotes.onReset = { picker.clearQuotes() }
@@ -1726,7 +1729,7 @@ struct MainScreen: View {
       picker.markDelisted(symbol)
       market.noteSymbolRejected(symbol)
     }
-    quotes.configure(hosts: hosts, basis: prefs.changeBasis, source: market.source)
+    quotes.configure(endpoints: endpoints, basis: prefs.changeBasis, policy: prefs.routePolicy)
     // 自选表要赶在 `setChartSymbol` 前面：后者会重算订阅范围，那时候如果自选还是空的，
     // `configure` 刚恢复出来的那批报价就会被裁到只剩图上这一个品种。
     //
@@ -1742,8 +1745,8 @@ struct MainScreen: View {
     }
     quotes.setChartSymbol(market.symbol)
     quotes.setForeground(phase != .background)
-    sectorFeed.configure(hosts: hosts, source: market.source)
-    previews.configure(hosts: hosts, source: market.source)
+    sectorFeed.configure(endpoints: endpoints, policy: prefs.routePolicy)
+    previews.configure(endpoints: endpoints, policy: prefs.routePolicy)
     sectorFeed.setCatalog(picker.catalog)
     sectorFeed.setForeground(phase != .background)
     picker.onPick = { info in
@@ -1764,7 +1767,7 @@ struct MainScreen: View {
     market.setExternalIndicators(prefs.subs, depth: prefs.depth)
     // Configure the catalog and its source before presenting the favorites list.
     // Otherwise FavoritesView can start its first catalog request against the
-    // default Binance route while the host/source setup is still in flight.
+    // default route while the host/source setup is still in flight.
     // 停在哪一格由 `honorProfile()` 按刚装进来的那份档案定，这儿只补预热。
     if !picker.prefs.favorites.isEmpty { primeFavorites(picker.prefs.favorites) }
     // 上次用的是哪把画线工具。只用来在工具面板上把那一格预选高亮（见 `Prefs.lastDrawTool`），
