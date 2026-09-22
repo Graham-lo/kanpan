@@ -1,0 +1,314 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=ACAF005F-5561-4C64-836B-45E4FB3C5C72" -derivedDataPath /tmp/kanpan-p0-dd "-only-testing:KanpanUITests/MainScreenUITests/testHeaderStatsStayRightOfPrice" "-only-testing:KanpanUITests/MainScreenUITests/testHeaderStatsAtLargestDynamicType" -test-timeouts-enabled YES -default-test-execution-time-allowance 480 -maximum-test-execution-time-allowance 900 -resultBundlePath /tmp/kanpan-handoff-checks/p0-after-17e-results/iPhone-17e.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanNetwork: /tmp/kanpan-p0-check/KanpanNetwork @ local
+  KanpanData: /tmp/kanpan-p0-check/KanpanData @ local
+  KanpanReview: /tmp/kanpan-p0-check/KanpanReview @ local
+  KanpanAccount: /tmp/kanpan-p0-check/KanpanAccount @ local
+  KanpanChart: /tmp/kanpan-p0-check/KanpanChart @ local
+  KanpanCore: /tmp/kanpan-p0-check/KanpanCore @ local
+
+Writing result bundle at path:
+	/tmp/kanpan-handoff-checks/p0-after-17e-results/iPhone-17e.xcresult
+
+2026-09-22 12:17:19.196240+0800 KanpanUITests-Runner[24392:3407942] [Default] Running tests...
+2026-09-22 12:17:19.234252+0800 KanpanUITests-Runner[24392:3408254] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+2026-09-22 12:17:19.274179+0800 KanpanUITests-Runner[24392:3408254] [General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+objc[24392]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x1057bc310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x105c48398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-22 12:17:22.982.
+2026-09-22 12:17:26.221 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:17:26.221 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: no debugger version
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 12:17:22.983.
+Test Suite 'MainScreenUITests' started at 2026-09-22 12:17:22.983.
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsAtLargestDynamicType]' started.
+    t =     0.00s Start Test at 2026-09-22 12:17:22.983
+    t =     0.21s Set Up
+    t =     0.22s     Open com.mdd.kanpan
+    t =     0.22s         Launch com.mdd.kanpan
+    t =    11.05s             Setting up automation session
+    t =    12.01s             Wait for com.mdd.kanpan to idle
+    t =    13.81s     Waiting 3.0s for "bottom.chart" Button to exist
+    t =    14.84s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.chart" Button`
+    t =    14.84s             Checking existence of `"bottom.chart" Button`
+    t =    14.89s     Checking existence of `"top.symbol" Any`
+    t =    14.90s     Waiting 30.0s for "top.symbol" Any to exist
+    t =    15.93s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Any`
+    t =    15.93s             Checking existence of `"top.symbol" Any`
+    t =    15.99s     Find the Window (First Match)
+    t =    16.14s     Find the "interval.more" Button
+    t =    16.19s     Find the "bottom.favorites" Button
+    t =    16.36s Terminate com.mdd.kanpan:24477
+    t =    17.39s Open com.mdd.kanpan
+    t =    17.39s     Launch com.mdd.kanpan
+2026-09-22 12:17:40.377 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:17:40.378 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    17.81s         Setting up automation session
+    t =    18.48s         Wait for com.mdd.kanpan to idle
+    t =    19.92s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    20.96s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    20.96s         Checking existence of `"top.lastPrice" StaticText`
+    t =    21.05s Waiting 30.0s for "top.stats" Other to exist
+    t =    22.08s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    22.08s         Checking existence of `"top.stats" Other`
+    t =    22.13s Find the "top.lastPrice" StaticText
+    t =    22.19s Find the "top.marketCap" StaticText
+    t =    22.25s Find the "top.turnover" StaticText
+    t =    22.32s Find the "top.funding" StaticText
+    t =    22.35s Find the "top.symbol" Any
+    t =    22.38s Find the "top.lastPrice" StaticText
+    t =    22.40s Find the "top.stats" Other
+    t =    22.46s Find the "interval.more" Button
+    t =    22.63s Added attachment named 'header-SNDKUSDT'
+HEADER SNDKUSDT price=(12.0, 96.50000000000006, 141.66666666666666, 28.666666666666643) stats=(171.3333282470703, 92.0, 206.6666717529297, 58.0) intervalY=159.33333333333331
+    t =    22.64s Find the "top.changePercent" Any
+    t =    22.89s Find the "top.changePercent" StaticText
+    t =    22.96s Find the "top.changePercent" StaticText
+    t =    23.22s Find the "top.changePercent" StaticText
+    t =    23.54s Find the Window (First Match)
+    t =    23.58s Terminate com.mdd.kanpan:24518
+    t =    24.65s Open com.mdd.kanpan
+    t =    24.65s     Launch com.mdd.kanpan
+2026-09-22 12:17:47.643 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:17:47.644 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    25.29s         Setting up automation session
+    t =    26.22s         Wait for com.mdd.kanpan to idle
+    t =    27.91s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    28.93s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    28.93s         Checking existence of `"top.lastPrice" StaticText`
+    t =    28.97s Waiting 30.0s for "top.stats" Other to exist
+    t =    30.00s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    30.00s         Checking existence of `"top.stats" Other`
+    t =    30.05s Find the "top.lastPrice" StaticText
+    t =    30.07s Find the "top.marketCap" StaticText
+    t =    30.09s Find the "top.turnover" StaticText
+    t =    30.12s Find the "top.funding" StaticText
+    t =    30.16s Find the "top.symbol" Any
+    t =    30.18s Find the "top.lastPrice" StaticText
+    t =    30.20s Find the "top.stats" Other
+    t =    30.23s Find the "interval.more" Button
+    t =    30.35s Added attachment named 'header-MUUSDT'
+HEADER MUUSDT price=(12.0, 96.50000000000006, 141.66666666666666, 28.666666666666643) stats=(171.3333282470703, 92.0, 206.6666717529297, 58.0) intervalY=159.33333333333331
+    t =    30.35s Find the "top.changePercent" Any
+    t =    30.66s Find the "top.changePercent" StaticText
+    t =    30.92s Find the "top.changePercent" StaticText
+    t =    31.41s Find the "top.changePercent" StaticText
+    t =    31.56s Find the Window (First Match)
+    t =    31.59s Terminate com.mdd.kanpan:24558
+    t =    32.66s Open com.mdd.kanpan
+    t =    32.66s     Launch com.mdd.kanpan
+2026-09-22 12:17:55.649 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:17:55.649 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    32.88s         Setting up automation session
+    t =    33.74s         Wait for com.mdd.kanpan to idle
+    t =    35.50s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    36.52s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    36.53s         Checking existence of `"top.lastPrice" StaticText`
+    t =    37.06s Waiting 30.0s for "top.stats" Other to exist
+    t =    38.09s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    38.09s         Checking existence of `"top.stats" Other`
+    t =    38.11s Find the "top.lastPrice" StaticText
+    t =    38.14s Find the "top.marketCap" StaticText
+    t =    38.15s Find the "top.turnover" StaticText
+    t =    38.34s Find the "top.funding" StaticText
+    t =    38.39s Find the "top.symbol" Any
+    t =    38.44s Find the "top.lastPrice" StaticText
+    t =    38.48s Find the "top.stats" Other
+    t =    38.51s Find the "interval.more" Button
+    t =    38.62s Added attachment named 'header-1000SATSUSDT'
+HEADER 1000SATSUSDT price=(4.0, 96.50000000000006, 141.66666666666666, 28.666666666666643) stats=(172.0, 92.0, 214.0, 58.0) intervalY=159.33333333333331
+    t =    38.62s Find the "top.changePercent" Any
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:49: error: -[KanpanUITests.MainScreenUITests testHeaderStatsAtLargestDynamicType] : XCTAssertGreaterThanOrEqual failed: ("4.0") is less than ("11.5") - 1000SATSUSDT 价格超出左侧留白
+    t =    39.06s Find the "top.changePercent" StaticText
+    t =    39.12s Find the "top.changePercent" StaticText
+    t =    39.18s Find the "top.changePercent" StaticText
+    t =    39.24s Find the Window (First Match)
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:53: error: -[KanpanUITests.MainScreenUITests testHeaderStatsAtLargestDynamicType] : XCTAssertLessThanOrEqual failed: ("386.0") is greater than ("378.5") - 1000SATSUSDT 六格超出屏幕右缘
+    t =    39.25s Terminate com.mdd.kanpan:24579
+    t =    40.30s Open com.mdd.kanpan
+    t =    40.30s     Launch com.mdd.kanpan
+2026-09-22 12:18:03.290 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:18:03.290 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    40.53s         Setting up automation session
+    t =    41.37s         Wait for com.mdd.kanpan to idle
+    t =    43.12s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    44.14s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    44.14s         Checking existence of `"top.lastPrice" StaticText`
+    t =    44.18s Waiting 30.0s for "top.stats" Other to exist
+    t =    45.20s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    45.20s         Checking existence of `"top.stats" Other`
+    t =    45.27s Find the "top.lastPrice" StaticText
+    t =    45.33s Find the "top.marketCap" StaticText
+    t =    45.35s Find the "top.turnover" StaticText
+    t =    45.38s Find the "top.funding" StaticText
+    t =    45.39s Find the "top.symbol" Any
+    t =    45.41s Find the "top.lastPrice" StaticText
+    t =    45.43s Find the "top.stats" Other
+    t =    45.45s Find the "interval.more" Button
+    t =    45.55s Added attachment named 'header-BTCUSDT'
+HEADER BTCUSDT price=(12.0, 96.50000000000006, 117.33333333333331, 28.666666666666643) stats=(164.0, 92.0, 214.0, 58.0) intervalY=159.33333333333331
+    t =    45.55s Find the "top.changePercent" Any
+    t =    45.74s Find the "top.changePercent" StaticText
+    t =    45.77s Find the "top.changePercent" StaticText
+    t =    45.81s Find the "top.changePercent" StaticText
+    t =    45.89s Find the Window (First Match)
+    t =    45.89s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsAtLargestDynamicType]' failed (46.201 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice]' started.
+    t =     0.00s Start Test at 2026-09-22 12:18:09.187
+    t =     0.04s Set Up
+    t =     0.05s     Open com.mdd.kanpan
+    t =     0.05s         Launch com.mdd.kanpan
+    t =     0.05s             Terminate com.mdd.kanpan:24627
+2026-09-22 12:18:10.284 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:18:10.284 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.52s             Setting up automation session
+    t =     2.15s             Wait for com.mdd.kanpan to idle
+    t =     3.52s     Waiting 3.0s for "bottom.chart" Button to exist
+    t =     4.55s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.chart" Button`
+    t =     4.55s             Checking existence of `"bottom.chart" Button`
+    t =     4.64s     Checking existence of `"top.symbol" Any`
+    t =     4.72s     Waiting 30.0s for "top.symbol" Any to exist
+    t =     5.74s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Any`
+    t =     5.74s             Checking existence of `"top.symbol" Any`
+    t =     5.77s     Find the Window (First Match)
+    t =     5.78s     Find the "interval.more" Button
+    t =     5.81s     Find the "bottom.favorites" Button
+    t =     5.83s Terminate com.mdd.kanpan:24651
+    t =     6.90s Open com.mdd.kanpan
+    t =     6.90s     Launch com.mdd.kanpan
+2026-09-22 12:18:39.463 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:18:39.465 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    33.06s         Setting up automation session
+    t =    34.08s         Wait for com.mdd.kanpan to idle
+    t =    36.21s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    37.24s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    37.24s         Checking existence of `"top.lastPrice" StaticText`
+    t =    37.32s Waiting 30.0s for "top.stats" Other to exist
+    t =    38.34s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    38.34s         Checking existence of `"top.stats" Other`
+    t =    38.52s Find the "top.lastPrice" StaticText
+    t =    38.56s Find the "top.marketCap" StaticText
+    t =    38.59s Find the "top.turnover" StaticText
+    t =    38.64s Find the "top.funding" StaticText
+    t =    38.68s Find the "top.symbol" Any
+    t =    38.77s Find the "top.lastPrice" StaticText
+    t =    38.84s Find the "top.stats" Other
+    t =    38.91s Find the "interval.more" Button
+    t =    39.10s Added attachment named 'header-SNDKUSDT'
+HEADER SNDKUSDT price=(12.0, 96.00000000000006, 128.66666666666666, 26.33333333333333) stats=(186.3333282470703, 92.0, 191.6666717529297, 53.0) intervalY=154.33333333333331
+    t =    39.10s Find the "top.changePercent" Any
+    t =    39.79s Find the "top.changePercent" StaticText
+    t =    40.09s Find the "top.changePercent" StaticText
+    t =    40.37s Find the "top.changePercent" StaticText
+    t =    40.60s Find the Window (First Match)
+    t =    40.62s Terminate com.mdd.kanpan:24897
+    t =    41.68s Open com.mdd.kanpan
+    t =    41.68s     Launch com.mdd.kanpan
+2026-09-22 12:18:50.928 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:18:50.928 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    42.72s         Setting up automation session
+    t =    43.81s         Wait for com.mdd.kanpan to idle
+    t =    45.53s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    46.55s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    46.55s         Checking existence of `"top.lastPrice" StaticText`
+    t =    47.50s Waiting 30.0s for "top.stats" Other to exist
+    t =    48.52s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    48.52s         Checking existence of `"top.stats" Other`
+    t =    48.68s Find the "top.lastPrice" StaticText
+    t =    48.80s Find the "top.marketCap" StaticText
+    t =    49.03s Find the "top.turnover" StaticText
+    t =    49.20s Find the "top.funding" StaticText
+    t =    49.28s Find the "top.symbol" Any
+    t =    49.40s Find the "top.lastPrice" StaticText
+    t =    49.41s Find the "top.stats" Other
+    t =    49.43s Find the "interval.more" Button
+    t =    49.56s Added attachment named 'header-MUUSDT'
+HEADER MUUSDT price=(12.0, 96.00000000000006, 128.66666666666666, 26.33333333333333) stats=(186.3333282470703, 92.0, 191.6666717529297, 53.0) intervalY=154.33333333333331
+    t =    49.57s Find the "top.changePercent" Any
+    t =    49.76s Find the "top.changePercent" StaticText
+    t =    50.18s Find the "top.changePercent" StaticText
+    t =    50.39s Find the "top.changePercent" StaticText
+    t =    50.53s Find the Window (First Match)
+    t =    50.65s Terminate com.mdd.kanpan:24933
+    t =    51.71s Open com.mdd.kanpan
+    t =    51.71s     Launch com.mdd.kanpan
+2026-09-22 12:19:00.947 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:19:00.947 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    53.01s         Setting up automation session
+    t =    54.34s         Wait for com.mdd.kanpan to idle
+    t =    56.07s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    57.10s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    57.10s         Checking existence of `"top.lastPrice" StaticText`
+    t =    57.25s Waiting 30.0s for "top.stats" Other to exist
+    t =    58.28s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    58.28s         Checking existence of `"top.stats" Other`
+    t =    58.36s Find the "top.lastPrice" StaticText
+    t =    58.39s Find the "top.marketCap" StaticText
+    t =    58.52s Find the "top.turnover" StaticText
+    t =    58.71s Find the "top.funding" StaticText
+    t =    58.83s Find the "top.symbol" Any
+    t =    58.91s Find the "top.lastPrice" StaticText
+    t =    58.97s Find the "top.stats" Other
+    t =    59.95s Find the "interval.more" Button
+    t =    60.60s Added attachment named 'header-1000SATSUSDT'
+HEADER 1000SATSUSDT price=(12.0, 96.00000000000006, 128.66666666666666, 26.33333333333333) stats=(179.6666717529297, 92.0, 198.3333282470703, 53.0) intervalY=154.33333333333331
+    t =    60.60s Find the "top.changePercent" Any
+    t =    65.54s Find the "top.changePercent" StaticText
+    t =    66.05s Find the "top.changePercent" StaticText
+    t =    66.26s Find the "top.changePercent" StaticText
+    t =    67.06s Find the Window (First Match)
+    t =    67.31s Terminate com.mdd.kanpan:24977
+    t =    68.33s Open com.mdd.kanpan
+    t =    68.33s     Launch com.mdd.kanpan
+2026-09-22 12:19:17.853 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:19:17.856 xcodebuild[24110:3404464] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    71.70s         Setting up automation session
+    t =    72.76s         Wait for com.mdd.kanpan to idle
+    t =    75.17s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    76.19s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    76.19s         Checking existence of `"top.lastPrice" StaticText`
+    t =    76.39s Waiting 30.0s for "top.stats" Other to exist
+    t =    77.43s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    77.43s         Checking existence of `"top.stats" Other`
+    t =    77.52s Find the "top.lastPrice" StaticText
+    t =    77.57s Find the "top.marketCap" StaticText
+    t =    77.60s Find the "top.turnover" StaticText
+    t =    77.64s Find the "top.funding" StaticText
+    t =    77.67s Find the "top.symbol" Any
+    t =    77.71s Find the "top.lastPrice" StaticText
+    t =    77.78s Find the "top.stats" Other
+    t =    77.81s Find the "interval.more" Button
+    t =    78.06s Added attachment named 'header-BTCUSDT'
+HEADER BTCUSDT price=(12.0, 96.00000000000006, 107.0, 26.33333333333333) stats=(179.6666717529297, 92.0, 198.3333282470703, 53.0) intervalY=154.33333333333331
+    t =    78.06s Find the "top.changePercent" Any
+    t =    78.29s Find the "top.changePercent" StaticText
+    t =    78.82s Find the "top.changePercent" StaticText
+    t =    79.19s Find the "top.changePercent" StaticText
+    t =    79.78s Find the Window (First Match)
+    t =    79.83s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice]' passed (80.158 seconds).
+Test Suite 'MainScreenUITests' failed at 2026-09-22 12:19:29.345.
+	 Executed 2 tests, with 2 failures (0 unexpected) in 126.359 (126.362) seconds
+Test Suite 'KanpanUITests.xctest' failed at 2026-09-22 12:19:29.345.
+	 Executed 2 tests, with 2 failures (0 unexpected) in 126.359 (126.362) seconds
+Test Suite 'Selected tests' failed at 2026-09-22 12:19:29.345.
+	 Executed 2 tests, with 2 failures (0 unexpected) in 126.359 (126.363) seconds
+2026-09-22 12:20:07.103 xcodebuild[24110:3404464] [MT] IDETestOperationsObserverDebug: 203.896 elapsed -- Testing started completed.
+2026-09-22 12:20:07.104 xcodebuild[24110:3404464] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-22 12:20:07.104 xcodebuild[24110:3404464] [MT] IDETestOperationsObserverDebug: 203.896 sec, +203.896 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/kanpan-handoff-checks/p0-after-17e-results/iPhone-17e.xcresult
+
+Failing tests:
+	MainScreenUITests.testHeaderStatsAtLargestDynamicType()
+	MainScreenUITests.testHeaderStatsAtLargestDynamicType()
+
+** TEST EXECUTE FAILED **
+
+Testing started

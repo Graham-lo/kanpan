@@ -1,0 +1,15 @@
+Monitoring boot status for iPhone 17e (ACAF005F-5561-4C64-836B-45E4FB3C5C72).
+Booting device...
+[2026-09-22 04:23:41 +0000] Status=0, isTerminal=NO, Elapsed=00:00.
+	Booting
+
+[2026-09-22 04:23:44 +0000] Status=1, isTerminal=NO, Elapsed=00:02.
+	Waiting on BackBoard
+
+[2026-09-22 04:23:53 +0000] Status=4, isTerminal=NO, Elapsed=00:10.
+	Waiting on System App
+
+[2026-09-22 04:23:55 +0000] Status=4294967295, isTerminal=YES, Elapsed=00:13.
+	Finished
+
+1

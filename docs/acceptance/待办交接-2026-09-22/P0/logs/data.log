@@ -1,0 +1,716 @@
+Building for debugging...
+[0/16] /private/tmp/kanpan-p0-check/KanpanData/.build/arm64-apple-macosx/debug/KanpanDataPackageTests.derived/runner.swift
+[1/16] Write sources
+[2/16] Write kanpan-feed-entitlement.plist
+[2/16] Write sources
+[9/16] Copying Fixtures
+[10/16] Write swift-version--58304C5D6DBC2206.txt
+[12/39] Compiling KanpanCore Alert.swift
+[13/39] Compiling KanpanCore AlertEvaluator.swift
+[14/39] Compiling KanpanCore AlertGeometry.swift
+[15/39] Compiling KanpanCore AICoinBehavior.swift
+[16/39] Compiling KanpanCore ChartOptions.swift
+[17/39] Compiling KanpanCore DrawEdit.swift
+[18/39] Compiling KanpanCore DrawGeometry.swift
+[19/39] Compiling KanpanCore DrawRegression.swift
+[20/39] Compiling KanpanCore DrawStore.swift
+[21/39] Compiling KanpanCore DrawVolume.swift
+[22/39] Compiling KanpanCore Drawing.swift
+[23/39] Compiling KanpanCore Format.swift
+[24/39] Compiling KanpanCore ReviewLabels.swift
+[25/39] Compiling KanpanCore CandleWidths.swift
+[26/39] Compiling KanpanCore Clamp.swift
+[27/39] Compiling KanpanCore Constants.swift
+[28/39] Compiling KanpanCore Fling.swift
+[29/39] Compiling KanpanCore Layout.swift
+[30/39] Compiling KanpanCore PriceScale.swift
+[31/39] Compiling KanpanCore Ticks.swift
+[32/39] Compiling KanpanCore ViewTransition.swift
+[33/39] Compiling KanpanCore ViewWindow.swift
+[34/39] Emitting module KanpanCore
+[35/61] Compiling KanpanCore IncrementalLines.swift
+[36/61] Compiling KanpanCore IndicatorEngine.swift
+[37/61] Compiling KanpanCore IndicatorID.swift
+[38/61] Compiling KanpanCore Indicators.swift
+[39/61] Compiling KanpanCore Math.swift
+[40/61] Compiling KanpanCore OINotice.swift
+[41/61] Compiling KanpanCore Aggregator.swift
+[42/61] Compiling KanpanCore Bar.swift
+[43/61] Compiling KanpanCore BarSeries.swift
+[44/61] Compiling KanpanCore ChangeBasis.swift
+[45/61] Compiling KanpanCore HeikinAshi.swift
+[46/61] Compiling KanpanCore Interval.swift
+[47/61] Compiling KanpanCore LatestQuote.swift
+[48/61] Compiling KanpanCore MarkPriceTick.swift
+[49/61] Compiling KanpanCore MarketSector.swift
+[50/61] Compiling KanpanCore SymbolClassification.swift
+[51/61] Compiling KanpanCore SymbolInfo.swift
+[52/61] Compiling KanpanCore SectorAggregate.swift
+[53/61] Compiling KanpanCore SectorCatalog.swift
+[54/61] Compiling KanpanCore SectorSelection.swift
+[55/61] Compiling KanpanCore CandleStyle.swift
+[56/61] Compiling KanpanCore Palette.swift
+[57/69] Emitting module KanpanNetwork
+[58/76] Compiling KanpanNetwork MarketRoutePolicy.swift
+[59/76] Compiling KanpanNetwork MarketSource.swift
+[60/76] Compiling KanpanNetwork Backoff.swift
+[61/76] Compiling KanpanNetwork HTTPTransport.swift
+[62/76] Compiling KanpanNetwork MarketSocketRouter.swift
+[63/76] Compiling KanpanNetwork Pacer.swift
+[64/76] Compiling KanpanNetwork WSSocket.swift
+[65/76] Compiling KanpanNetwork DTO.swift
+[66/76] Compiling KanpanNetwork Endpoints.swift
+[67/76] Compiling KanpanNetwork Errors.swift
+[68/76] Compiling KanpanNetwork RESTClient.swift
+[69/76] Compiling KanpanNetwork RateLimiter.swift
+[70/76] Compiling KanpanNetwork WSClient.swift
+[71/76] Compiling KanpanNetwork GatewayEnvelope.swift
+[72/87] Compiling KanpanNetworkTestSupport NetworkFakes.swift
+[73/87] Emitting module KanpanNetworkTestSupport
+[74/87] Compiling KanpanData FeedComposer.swift
+[75/87] Compiling KanpanData MarketFeed.swift
+[76/87] Compiling KanpanData OISource.swift
+[77/87] Compiling KanpanData RoutedMarketFeed.swift
+[78/87] Compiling KanpanData Network.swift
+[79/87] Compiling KanpanData BarCache.swift
+[80/87] Compiling KanpanData BaselineSnapshot.swift
+[81/87] Compiling KanpanData OIArchive.swift
+[82/87] Emitting module KanpanData
+[83/94] Compiling KanpanData OIStore.swift
+[84/94] Compiling KanpanData Paths.swift
+[85/94] Compiling KanpanData QuoteSnapshot.swift
+[86/94] Compiling KanpanData SeriesStore.swift
+[87/94] Compiling KanpanData Snapshot.swift
+[88/94] Compiling KanpanData SymbolCatalog.swift
+[89/94] Compiling KanpanData Zip.swift
+[90/112] Compiling kanpan_feed main.swift
+[91/112] Emitting module kanpan_feed
+[91/112] Write Objects.LinkFileList
+[92/112] Linking kanpan-feed
+[93/112] Applying kanpan-feed
+[95/112] Emitting module KanpanDataTests
+[96/112] Compiling KanpanDataTests BaselineSnapshotTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[97/112] Compiling KanpanDataTests BlankChartTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[98/112] Compiling KanpanDataTests CacheBoundaryTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[99/112] Compiling KanpanDataTests CacheLayerTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[100/112] Compiling KanpanDataTests CatalogStatusTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[101/112] Compiling KanpanDataTests DataIntegrityTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[102/112] Compiling KanpanDataTests FeedBlockedRetryTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[103/112] Compiling KanpanDataTests FeedLifecycleTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[104/112] Compiling KanpanDataTests FeedReplayTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[105/112] Compiling KanpanDataTests FeedSilenceWindowTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[106/112] Compiling KanpanDataTests FeedTailIntegrityTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[107/112] Compiling KanpanDataTests FirstFillRetryTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[108/112] Compiling KanpanDataTests LiveQuoteWithoutHistoryTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[109/112] Compiling KanpanDataTests LiveRoutingTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[110/112] Compiling KanpanDataTests MarketRoutePolicyTests.swift
+/private/tmp/kanpan-p0-check/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[111/127] Compiling KanpanDataTests MarketSocketRouterTests.swift
+[112/127] Compiling KanpanDataTests OIIntervalCoverageTests.swift
+[113/127] Compiling KanpanDataTests OITests.swift
+[114/127] Compiling KanpanDataTests PerfBenchmarkTests.swift
+[115/127] Compiling KanpanDataTests QuoteSnapshotTests.swift
+[116/127] Compiling KanpanDataTests RESTTests.swift
+[117/127] Compiling KanpanDataTests SeriesGapMergeTests.swift
+[118/127] Compiling KanpanDataTests SeriesStoreTests.swift
+[119/127] Compiling KanpanDataTests SnapshotFormatTests.swift
+[120/127] Compiling KanpanDataTests StoreTests.swift
+[121/127] Compiling KanpanDataTests Fakes.swift
+[122/127] Compiling KanpanDataTests TickCoalesceTests.swift
+[123/127] Compiling KanpanDataTests TickFoldTests.swift
+[124/127] Compiling KanpanDataTests TwoStageFetchTests.swift
+[125/127] Compiling KanpanDataTests resource_bundle_accessor.swift
+[126/129] Compiling KanpanDataPackageTests runner.swift
+[127/129] Emitting module KanpanDataPackageTests
+[127/129] Write Objects.LinkFileList
+[128/129] Linking KanpanDataPackageTests
+Build complete! (383.99s)
+Test Suite 'All tests' started at 2026-09-22 12:27:07.968.
+Test Suite 'KanpanDataPackageTests.xctest' started at 2026-09-22 12:27:07.975.
+Test Suite 'PerfBenchmarkTests' started at 2026-09-22 12:27:07.975.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testFeedComposerMerge]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testFeedComposerMerge]' passed (2.241 seconds).
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSeriesStoreWriteRead]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSeriesStoreWriteRead]' passed (0.453 seconds).
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSnapshotEncodeDecode]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSnapshotEncodeDecode]' passed (0.255 seconds).
+Test Suite 'PerfBenchmarkTests' passed at 2026-09-22 12:27:10.926.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 2.949 (2.950) seconds
+Test Suite 'KanpanDataPackageTests.xctest' passed at 2026-09-22 12:27:10.926.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 2.949 (2.950) seconds
+Test Suite 'All tests' passed at 2026-09-22 12:27:10.926.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 2.949 (2.958) seconds
+BENCH data.feedcomposer.merge_1500_into_15000 median_ms=92.2400 p90_ms=139.0398 n=15000
+BENCH data.seriesstore.write median_ms=5.3378 p90_ms=10.0786 n=3000
+BENCH data.seriesstore.read median_ms=7.9784 p90_ms=17.1738 n=3000
+BENCH data.snapshot.encode median_ms=3.4432 p90_ms=3.9531 n=3000
+BENCH data.snapshot.decode median_ms=5.2207 p90_ms=6.8985 n=3000
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "快照字节格式：新旧实现逐字节相同" started.
+◇ Suite "A-07 第②层：首帧窗口" started.
+◇ Suite "行情流水线：生命周期与并发" started.
+◇ Suite "启动快照与内存缓存" started.
+◇ Suite "WS 回放：合成规矩、断线补缺、静默重连" started.
+◇ Suite "OI 增量：只补缺的那一段" started.
+◇ Suite "空洞序列的合并与落盘" started.
+◇ Suite "OI 对齐：两源合一条" started.
+◇ Suite "缓存边界" started.
+◇ Suite "逐笔折线" started.
+◇ Suite "当日开盘价快照" started.
+◇ Suite "历史没到但 WS 活着" started.
+◇ Suite "多品种启动快照" started.
+➜ Suite LiveRoutingTests skipped.
+◇ Suite "OI 覆盖记账：只有真问到的那一段才算覆盖" started.
+◇ Suite "缓存层：预热分级与目录索引" started.
+◇ Suite "封禁后的首屏与分钟边界补洞" started.
+◇ Suite "OI 切块：细周期看长区间也要走网关那条快路" started.
+◇ Suite "OI 归档：自写 ZIP + CSV" started.
+◇ Suite "OI 分段上屏：先到的那一段不必陪着慢的一起等" started.
+◇ Suite "报价快照与整屏补价" started.
+◇ Suite "Data identity, snapshots and duplicate delivery" started.
+◇ Suite "品种表状态与单飞刷新" started.
+◇ Suite "两段式首屏" started.
+◇ Suite "持仓量覆盖边界：2020-09 起，最细五分钟" started.
+◇ Suite "首屏拉不到历史时的表现" started.
+◇ Suite "首屏历史重试" started.
+◇ Suite "行情线路：整条路由" started.
+◇ Test "不等距周期（1M，带 openTime 表）：新编码逐字节等于旧编码" started.
+◇ Test "直连档的窗口也是 60 秒（两档一视同仁）" started.
+◇ Suite "合帧闸门：kline 也限速，开新根不等" started.
+◇ Test "超过 maxBars 的序列只留最后 3000 根，首尾对得上" started.
+◇ Test "等距周期：新编码逐字节等于旧编码" started.
+◇ Test "BT-01 上一份 feed 还在收摊时切品种：新品种的行情必须真的流出来" started.
+◇ Test "旧实现写下的字节，新实现解得出来，而且解出来的东西完全一致" started.
+◇ Test "空序列也编得出、解得回" started.
+◇ Test "网关档（OKX）等第一帧的窗口实际就是 60 秒，不被 15 秒钳子咬住" started.
+◇ Test "BT-05 后台那记 25 秒的闹钟醒来时人已回前台：不许掐当前连接" started.
+◇ Test "截断、魔数不对、版本不对都要稳稳返回 nil" started.
+◇ Test "BT-09 报文猛灌时消费者被闸门按住：放行后结构性事件一条都不能少" started.
+◇ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" started.
+◇ Test "快照文件：≤3000 根、≤300KB，读回逐字节一致" started.
+◇ Test "读快照 + 建 BarSeries < 20ms" started.
+◇ Test "BT-11 后台 24.9 秒回来复用现有连接；25.1 秒回来才重连并补缺" started.
+◇ Suite "REST 与 DTO" started.
+◇ Test "BT-12 回前台补不补缺看真实时钟：同一根不补，隔了一根才补" started.
+◇ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" started.
+◇ Test "单个 key 超长会裁掉最老的" started.
+◇ Test "服务器 ping 立刻回 pong" started.
+◇ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" started.
+◇ Test "内存警告后只剩当前 (品种, 周期)" started.
+◇ Test "3000 条录制报文回放：最终序列与期望全等" started.
+◇ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" started.
+◇ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" started.
+◇ Test "30 品种 × 14 周期切一遍：沙盒里只有 series/ 下封顶的快照和品种表" started.
+◇ Test "点不够 / 窗口退化：不扫出任何段" started.
+◇ Test "坏文件不崩，返回 nil" started.
+◇ Test "往左拖：只取左边多出来的一截" started.
+◇ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" started.
+◇ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" started.
+◇ Test "聚合段存取：换一张图回来先有旧的可画" started.
+◇ Test "60 秒一帧没有就主动重连" started.
+◇ Test "60 秒定时刷新：全都在手里也要把尾巴几根重取一次" started.
+◇ Test "两个挨着的洞并成一段；洞太碎就退化成一整段，不发一串小请求" started.
+◇ Test "和已有区间完全不挨着：整段重取" started.
+◇ Test "刷新时左边也缺：尾巴并进右边那段，不会多发一个请求" started.
+◇ Test "已聚好的一段存盘：编解码一致，区间跟着回来" started.
+◇ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" started.
+◇ Test "空窗口 / 倒着的窗口：不发请求" started.
+◇ Test "手里没有：整段都要" started.
+◇ Test "1m 图上 OI 本来就是 5 分钟一条：正常间隔不许当成洞" started.
+◇ Test "关掉「启动快照」：文件被删，之后不再写" started.
+◇ Test "洞段和端点段一起并：同一截数据不发两次请求" started.
+◇ Test "旧盘里的洞：端点法看不见，扫点序列才扫得出来" started.
+◇ Test "不规则周期（1M）带 openTime 表，也能原样读回" started.
+◇ Test "窗口整个落在已有区间里：一个请求都不发" started.
+◇ Test "缓存树下没有一条路径通向随人走的档案" started.
+◇ Test "连断三次：退避 1s / 2s / 4s（各再抖 ±20%），日志可见" started.
+◇ Test "左端不收：上市前那一截照样算问过，不会每次平移重下一遍" started.
+◇ Suite "末根的定盘与基线" started.
+◇ Test "没认主时落在 unknown，不落在共用目录" started.
+◇ Suite "历史OI网关解析" started.
+◇ Test "BT-02 首屏还在路上就切后台再回前台：必须补发首屏，不能只剩打底那几根" started.
+◇ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" started.
+◇ Test "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test "按行情源分的那棵子树在缓存树里，而且有名字可点" started.
+◇ Test "1M / 1y 月长年长不等：连着的两根不许当成洞" started.
+◇ Test "旧快照接最新窗口，中间的两根空洞不能把后段整体平移" started.
+◇ Test "空洞序列进内存缓存被截头之后，剩下那段的时间还是真时间" started.
+◇ Test "坏盘面：不是 KOI2 / 被截断 / 区间倒着，一律当没有" started.
+◇ Test "会话接缝不留洞：下一轮从空洞那根接着补，不是从虚高的右端" started.
+◇ Test "30 天以外的洞：不扫，别为归档站本来就没有的那几天每次开图白发请求" started.
+◇ Test "注入的身份不会把测试档隔离绕开" started.
+◇ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "空点列 / 空序列不崩" started.
+◇ Test "点列有缺口也对得上：缺口里续用缺口前那条" started.
+◇ Test "REST 翻到一半断了：已经到手的几页要留住，不是整条空" started.
+◇ Test "空洞被 REST 补上之后，整段一根不多一根不少" started.
+◇ Test "请求区间收敛成实际覆盖：伸到未来那两根不许记成已有" started.
+◇ Test "对齐取「之前最近」一条，没有就是 NaN" started.
+◇ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" started.
+◇ Test "近 30 天走 REST、更早走归档：两个源都被问到" started.
+◇ Test "带洞的序列写进快照再读回来，每一根的时间都不变" started.
+◇ Test "落在末根上：收盘跟着走，高低取极值，量累加" started.
+◇ Test "桶按撮合时间算，同一根内的时间不会开新根" started.
+◇ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" started.
+◇ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" started.
+◇ Test "1w / 1M / 1y：按桶取最后一条" started.
+◇ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" started.
+◇ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" started.
+◇ Test "板块历史在 kanpan 这棵子树里" started.
+◇ Test "两个身份的报价与开盘价不共用一个文件" started.
+◇ Test "挂单心跳只改价不记量，也不凭它开新的一根" started.
+◇ Test "对表：这根还没被折过就认 REST 的收盘" started.
+◇ Test "组合行情端点用币安自己的 /stream，替换品种仍可复用连接" started.
+◇ Test "过期、补缺中、价格不合法、序列空着都不折" started.
+◇ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" started.
+◇ Test "跨到下一天就整份作废，不拿昨天的开盘价算今天" started.
+◇ Test "非法值不落盘；一个都不剩时文件删掉" started.
+◇ Test "换一段序列，折线状态跟着清掉" started.
+◇ Test "抽掉中间一根喂进 merge，末根的时间不能早一根" started.
+◇ Test "1m 和 1M 不能撞成同一个文件" started.
+◇ Test "按 (品种, 周期) 存取：写进去的能原样读回来" started.
+◇ Test "超出条数上限就按最近用过的淘汰" started.
+➜ Test completeOKXFeed() skipped.
+◇ Test "品种上市前：归档站 404 → 返回空而不是报错" started.
+◇ Test "首屏历史全 429 时，WS 的实时价照样交给界面，状态也不谎报离线" started.
+◇ Test "超出字节上限也会淘汰" started.
+◇ Test "REST 翻到一半断了：到手的几页留住，但这一段仍然不算问全" started.
+◇ Test "左边那截整段失败：记账一步都不推进，下一轮还会再问它" started.
+◇ Test "问到了却是空的：照样算覆盖，不会每平移一次重下一遍" started.
+◇ Test "REST 整段报错：点是空的，而且说清楚「没问到」" started.
+◇ Test "冷启动那一读可以不写 mtime" started.
+◇ Test "默认那条读仍然会把 mtime 顶上去，只是不在调用线程上做" started.
+◇ Test "目录索引：写盘增量记账，不用每次扫目录" started.
+◇ Test "几段合起来：失败的那段不算，右端只认真到手的点" started.
+◇ Test "预热：品种级的 4xx 跳过接着跑，线路级的错误才停" started.
+◇ Test "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test "太旧的快照不拿来打底" started.
+◇ Test "目录索引：读一次只挪 LRU 位置，不改条数也不改字节" started.
+◇ Test "脏品种名不落盘" started.
+◇ Test "A-T15 分钟边界上掉线、新连接晚到：补洞请求发出去，补回来的与交易所一致" started.
+◇ Test "trade / bookTicker 报文解得出来" started.
+◇ Test "同一档边界读得回来，涨跌幅第一帧就能算" started.
+◇ Test "只有一段：不回调，免得同一批点被画两遍" started.
+◇ Test "A.3.4 451 地域拒绝也只打一发：落到既有的「点此重试」，不叠加退避" started.
+◇ Test "清掉整个目录" started.
+◇ Test "目录索引：第一次碰到目录扫一遍，之后删掉的、忘掉的都对得上" started.
+◇ Test "两头都缺：拆成左右两段，不重不漏" started.
+◇ Test "真实 metrics zip：解出 288 行 5 分钟粒度" started.
+◇ Test "日期工具：dayString / dayStart / days / 中间优先" started.
+◇ Test "空窗口 / 倒着的窗口：不切出任何块" started.
+◇ Test "只留最近的一批，文件不会越滚越大" started.
+◇ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" started.
+◇ Test "B-T15 老版本写下的行没有交易所时钟，按文件自己的修改时间算年龄" started.
+◇ Test ".oi 日切片：编解码一致，一天 ≈ 3.4KB" started.
+◇ Test "B-T15 隔了一天以上的那口价不再摆出来，昨天的还摆" started.
+◇ Test "归档站 404 是答复（上市前），别的状态码不是" started.
+◇ Test "一行成交额是 NaN，整份快照照样落得下去" started.
+◇ Test "没有文件、或文件是坏的，就是空，不抛" started.
+◇ Test "涨跌额往返落盘，旧快照缺字段仍可读" started.
+◇ Test "冷启动读回上次看到的报价，值与交易所时间都不走样" started.
+◇ Test tradeDuplicatesDoNotDoubleVolume() started.
+◇ Test returningToSameSelectionCannotReviveOldRequest() started.
+◇ Test "全市场报价一次往返换回整屏，坏行被剔掉" started.
+◇ Test sameMillisecondDistinctTradesAreNotDropped() started.
+◇ Test "两段都在：先到的先回调，不等另一段" started.
+◇ Test "ticker 校准失败不降级已加载的历史" started.
+◇ Test "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test lateFramesAndWrongIntervalCannotRewriteTail() started.
+◇ Test "落盘失败要留一行日志，不许悄悄吞掉" started.
+◇ Test concurrentCatalogReadersShareOneRequest() started.
+◇ Test "完整那发还没回来，小页先把图画上" started.
+◇ Test "B-T13 一张全是停牌的表不算好表：不采纳、不落盘，盘上那份可用的还在" started.
+◇ Test "B-T13 一份畸形响应：发起者和等在门口的人拿到同一张旧表，谁都不会拿到空表" started.
+◇ Test "近 30 天这一段用的是原生 period，不是唯一的一段" started.
+◇ Test "边界是 2020-09-01：更早的那几根是真的没有，不是周期的问题" started.
+◇ Test "全市场报价走网关自己的 tickers 端点，载荷仍要同源校验" started.
+◇ Test "1d 以下也一样，一路到 5 分钟" started.
+◇ Test restCannotReplaceLiveTailReceivedDuringRequest() started.
+◇ Test "复核项 4 手里还没有表的时候标下架：什么都不写，不许拿一行顶掉盘上那份" started.
+◇ Test "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+◇ Test "B-T15 用户点名一个表里没有的新合约：立刻重拉一次，但 5 分钟内只拉一次" started.
+◇ Test "B-T14 只有「交易所不认这个代号」才配标下架，限流地域超时都不算" started.
+◇ Test "完整那发先回来，小页落地时什么都不做" started.
+◇ Test "历史报错不冒充换线路，「点此重试」不会被自己抹掉" started.
+◇ Test "日线看一年：还是一个请求，不为切块而切块" started.
+◇ Test "复核项 4 目录里没有这个代号也能标下架：补一行占位，不再默默丢掉" started.
+◇ Test "历史全 429、只有 WS 推来一根时，不把这一根落成快照" started.
+◇ Test "首屏那一发彻底失败，也会自己再来一发" started.
+◇ Test "上游连回两个 429，首屏自己重试到拿下" started.
+◇ Test "B-T14 交易所不认这个代号：标成下架、不删，冷启动之后还记得" started.
+◇ Test "B-T13 刚失败过就先用手里那份，60 秒内不再往枪口上撞" started.
+◇ Test "归档站有的文件本身是乱序的：解析器必须自己排" started.
+◇ Test "A-T05 封禁期内首屏立刻收手：图表留着、横幅亮着、重试不再撞上游" started.
+◇ Test "B-T14 非 TRADING 的行留在表里带状态；老 schema 的缓存一律重拉" started.
+◇ Test "存取日切片：关掉开关就不落盘" started.
+◇ Test case passing 1 argument firstStatus → 200 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument firstStatus → 429 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument firstStatus → 503 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument interval → .m1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m3 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m5 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m15 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m30 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h2 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h6 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h4 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h12 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .d1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .w1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .mo1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .y1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m1 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m3 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m5 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m15 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .w1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test case passing 1 argument interval → .mo1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test case passing 1 argument interval → .y1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test case passing 1 argument interval → .d1 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .h4 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .h1 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .m5 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .m1 to "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+◇ Test "网关：开机就走 OKX 那条线路，币安一笔都不碰" started.
+◇ Test case passing 1 argument interval → .m3 to "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+◇ Test "直连：币安探测失败也不切 OKX，照实说「点此重试」" started.
+◇ Test "运行中换档：直连 → 网关，线路立刻换到 OKX" started.
+◇ Test "同一根上连着来 10 帧，只合成 ≤2 次末根事件" started.
+◇ Test "开新根的那一帧不等拍子，立刻发" started.
+✔ Test "空序列也编得出、解得回" passed after 0.459 seconds.
+◇ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" started.
+✔ Test "等距周期：新编码逐字节等于旧编码" passed after 0.462 seconds.
+◇ Test "404 / 451 / 429 分类" started.
+◇ Test "1y 由 1M 聚出来" started.
+◇ Test "全市场WS数组包含普通与TradFi报价，保持真实24h涨跌幅" started.
+◇ Test "dedup 去重并排序" started.
+✔ Test "截断、魔数不对、版本不对都要稳稳返回 nil" passed after 0.462 seconds.
+◇ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" started.
+◇ Test "USDT TradFi全保留，USD1、普通USDC、交割排除；停牌的行留在表里带下架标记；旧目录即时刷新" started.
+◇ Test "1500 根 klines：严格递增、等距、无重复" started.
+◇ Test "exchangeInfo 走一遍 transport，请求路径正确" started.
+◇ Test "当前全部717个产品品种进入独立分类模块，保留细分元数据；停牌与待开盘的行带状态留着" started.
+✔ Test "旧实现写下的字节，新实现解得出来，而且解出来的东西完全一致" passed after 0.464 seconds.
+✔ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" passed after 0.485 seconds.
+✔ Test "不等距周期（1M，带 openTime 表）：新编码逐字节等于旧编码" passed after 0.486 seconds.
+✔ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" passed after 0.488 seconds.
+✔ Test "内存警告后只剩当前 (品种, 周期)" passed after 0.488 seconds.
+✔ Test "点不够 / 窗口退化：不扫出任何段" passed after 0.488 seconds.
+✔ Test "往左拖：只取左边多出来的一截" passed after 0.488 seconds.
+✔ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" passed after 0.489 seconds.
+✔ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" passed after 0.488 seconds.
+✔ Test "单个 key 超长会裁掉最老的" passed after 0.488 seconds.
+✔ Test "坏文件不崩，返回 nil" passed after 0.488 seconds.
+✔ Test "60 秒定时刷新：全都在手里也要把尾巴几根重取一次" passed after 0.488 seconds.
+✔ Test "两个挨着的洞并成一段；洞太碎就退化成一整段，不发一串小请求" passed after 0.489 seconds.
+✔ Test "和已有区间完全不挨着：整段重取" passed after 0.489 seconds.
+✔ Test "刷新时左边也缺：尾巴并进右边那段，不会多发一个请求" passed after 0.489 seconds.
+✔ Test "读快照 + 建 BarSeries < 20ms" passed after 0.489 seconds.
+✔ Test "已聚好的一段存盘：编解码一致，区间跟着回来" passed after 0.488 seconds.
+✔ Test "空窗口 / 倒着的窗口：不发请求" passed after 0.489 seconds.
+✔ Test "手里没有：整段都要" passed after 0.488 seconds.
+✔ Test "1m 图上 OI 本来就是 5 分钟一条：正常间隔不许当成洞" passed after 0.488 seconds.
+✔ Test "超过 maxBars 的序列只留最后 3000 根，首尾对得上" passed after 0.490 seconds.
+✔ Test "洞段和端点段一起并：同一截数据不发两次请求" passed after 0.488 seconds.
+✔ Test "旧盘里的洞：端点法看不见，扫点序列才扫得出来" passed after 0.488 seconds.
+✔ Test "聚合段存取：换一张图回来先有旧的可画" passed after 0.489 seconds.
+✔ Test "窗口整个落在已有区间里：一个请求都不发" passed after 0.493 seconds.
+✔ Test "缓存树下没有一条路径通向随人走的档案" passed after 0.494 seconds.
+✔ Test "左端不收：上市前那一截照样算问过，不会每次平移重下一遍" passed after 0.496 seconds.
+◇ Test "交易所宣布收线的那一帧被闸门攒着，紧接着开新根就永远丢了" started.
+◇ Test "换桶那一刻，上一根压在合帧闸门里的最终值必须补发给消费端" started.
+◇ Test "补洞请求在路上时到的实时末根，不能被它的陈旧回包盖回去" started.
+✔ Test "不规则周期（1M）带 openTime 表，也能原样读回" passed after 0.497 seconds.
+◇ Test "历史OI网关时间戳、数值和坏响应检查" started.
+✔ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" passed after 0.497 seconds.
+✔ Test "没认主时落在 unknown，不落在共用目录" passed after 0.497 seconds.
+✔ Test "1M / 1y 月长年长不等：连着的两根不许当成洞" passed after 0.497 seconds.
+✔ Test "旧快照接最新窗口，中间的两根空洞不能把后段整体平移" passed after 0.497 seconds.
+✔ Test "按行情源分的那棵子树在缓存树里，而且有名字可点" passed after 0.497 seconds.
+✔ Test "坏盘面：不是 KOI2 / 被截断 / 区间倒着，一律当没有" passed after 0.497 seconds.
+✔ Test "会话接缝不留洞：下一轮从空洞那根接着补，不是从虚高的右端" passed after 0.497 seconds.
+✔ Test "空洞序列进内存缓存被截头之后，剩下那段的时间还是真时间" passed after 0.497 seconds.
+✔ Test "注入的身份不会把测试档隔离绕开" passed after 0.497 seconds.
+✔ Test "30 天以外的洞：不扫，别为归档站本来就没有的那几天每次开图白发请求" passed after 0.497 seconds.
+✔ Test "空点列 / 空序列不崩" passed after 0.497 seconds.
+✔ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" with 14 test cases passed after 0.497 seconds.
+✔ Test "点列有缺口也对得上：缺口里续用缺口前那条" passed after 0.498 seconds.
+✔ Test "空洞被 REST 补上之后，整段一根不多一根不少" passed after 0.499 seconds.
+✔ Test "请求区间收敛成实际覆盖：伸到未来那两根不许记成已有" passed after 0.499 seconds.
+✔ Test "对齐取「之前最近」一条，没有就是 NaN" passed after 0.499 seconds.
+✔ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" passed after 0.499 seconds.
+✔ Test "落在末根上：收盘跟着走，高低取极值，量累加" passed after 0.501 seconds.
+✔ Test "带洞的序列写进快照再读回来，每一根的时间都不变" passed after 0.501 seconds.
+✔ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" passed after 0.501 seconds.
+✔ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" passed after 0.501 seconds.
+✔ Test "1w / 1M / 1y：按桶取最后一条" passed after 0.501 seconds.
+✔ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" passed after 0.501 seconds.
+✔ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" passed after 0.501 seconds.
+✔ Test "板块历史在 kanpan 这棵子树里" passed after 0.501 seconds.
+✔ Test "桶按撮合时间算，同一根内的时间不会开新根" passed after 0.501 seconds.
+✔ Test "挂单心跳只改价不记量，也不凭它开新的一根" passed after 0.501 seconds.
+✔ Test "对表：这根还没被折过就认 REST 的收盘" passed after 0.501 seconds.
+✔ Test "组合行情端点用币安自己的 /stream，替换品种仍可复用连接" passed after 0.501 seconds.
+✔ Test "两个身份的报价与开盘价不共用一个文件" passed after 0.501 seconds.
+✔ Test "过期、补缺中、价格不合法、序列空着都不折" passed after 0.501 seconds.
+✔ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" passed after 0.501 seconds.
+✔ Test "跨到下一天就整份作废，不拿昨天的开盘价算今天" passed after 0.501 seconds.
+✔ Test "换一段序列，折线状态跟着清掉" passed after 0.502 seconds.
+✔ Test "抽掉中间一根喂进 merge，末根的时间不能早一根" passed after 0.502 seconds.
+✔ Test "非法值不落盘；一个都不剩时文件删掉" passed after 0.501 seconds.
+✔ Test "1m 和 1M 不能撞成同一个文件" passed after 0.501 seconds.
+✔ Test "按 (品种, 周期) 存取：写进去的能原样读回来" passed after 0.502 seconds.
+✔ Test "超出字节上限也会淘汰" passed after 0.502 seconds.
+✔ Test "问到了却是空的：照样算覆盖，不会每平移一次重下一遍" passed after 0.511 seconds.
+✔ Test "左边那截整段失败：记账一步都不推进，下一轮还会再问它" passed after 0.511 seconds.
+✔ Test "快照文件：≤3000 根、≤300KB，读回逐字节一致" passed after 0.514 seconds.
+✔ Test "冷启动那一读可以不写 mtime" passed after 0.511 seconds.
+✔ Test "几段合起来：失败的那段不算，右端只认真到手的点" passed after 0.512 seconds.
+✔ Test "预热：品种级的 4xx 跳过接着跑，线路级的错误才停" passed after 0.512 seconds.
+✔ Test "太旧的快照不拿来打底" passed after 0.512 seconds.
+✔ Test "目录索引：写盘增量记账，不用每次扫目录" passed after 0.512 seconds.
+✔ Test "目录索引：读一次只挪 LRU 位置，不改条数也不改字节" passed after 0.512 seconds.
+✔ Test "脏品种名不落盘" passed after 0.513 seconds.
+✔ Test "5 分钟看一年：切成几块，每块都在服务端的上限之内" with 4 test cases passed after 0.512 seconds.
+✔ Test "trade / bookTicker 报文解得出来" passed after 0.513 seconds.
+✔ Test "同一档边界读得回来，涨跌幅第一帧就能算" passed after 0.517 seconds.
+✔ Test "清掉整个目录" passed after 0.516 seconds.
+✔ Test "目录索引：第一次碰到目录扫一遍，之后删掉的、忘掉的都对得上" passed after 0.516 seconds.
+✔ Test "两头都缺：拆成左右两段，不重不漏" passed after 0.516 seconds.
+✔ Test "真实 metrics zip：解出 288 行 5 分钟粒度" passed after 0.516 seconds.
+✔ Test "日期工具：dayString / dayStart / days / 中间优先" passed after 0.516 seconds.
+✔ Test "空窗口 / 倒着的窗口：不切出任何块" passed after 0.516 seconds.
+✔ Test "只留最近的一批，文件不会越滚越大" passed after 0.516 seconds.
+✔ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" passed after 0.516 seconds.
+✔ Test ".oi 日切片：编解码一致，一天 ≈ 3.4KB" passed after 0.528 seconds.
+✔ Test "B-T15 老版本写下的行没有交易所时钟，按文件自己的修改时间算年龄" passed after 0.528 seconds.
+✔ Test "B-T15 隔了一天以上的那口价不再摆出来，昨天的还摆" passed after 0.529 seconds.
+✔ Test "没有文件、或文件是坏的，就是空，不抛" passed after 0.532 seconds.
+✔ Test "涨跌额往返落盘，旧快照缺字段仍可读" passed after 0.532 seconds.
+✔ Test "冷启动读回上次看到的报价，值与交易所时间都不走样" passed after 0.532 seconds.
+✔ Test tradeDuplicatesDoNotDoubleVolume() passed after 0.532 seconds.
+✔ Test "全市场报价一次往返换回整屏，坏行被剔掉" passed after 0.532 seconds.
+✔ Test sameMillisecondDistinctTradesAreNotDropped() passed after 0.533 seconds.
+✔ Test lateFramesAndWrongIntervalCannotRewriteTail() passed after 0.533 seconds.
+✔ Test "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" with 3 test cases passed after 0.533 seconds.
+✔ Test "落盘失败要留一行日志，不许悄悄吞掉" passed after 0.533 seconds.
+✔ Test "一行成交额是 NaN，整份快照照样落得下去" passed after 0.551 seconds.
+✔ Test "近 30 天这一段用的是原生 period，不是唯一的一段" passed after 0.551 seconds.
+✔ Test "边界是 2020-09-01：更早的那几根是真的没有，不是周期的问题" passed after 0.551 seconds.
+✔ Test "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" with 2 test cases passed after 0.556 seconds.
+✔ Test "B-T14 只有「交易所不认这个代号」才配标下架，限流地域超时都不算" passed after 0.559 seconds.
+✔ Test "日线看一年：还是一个请求，不为切块而切块" passed after 0.561 seconds.
+✔ Test restCannotReplaceLiveTailReceivedDuringRequest() passed after 0.552 seconds.
+✔ Test "复核项 4 手里还没有表的时候标下架：什么都不写，不许拿一行顶掉盘上那份" passed after 0.554 seconds.
+✔ Test "30 品种 × 14 周期切一遍：沙盒里只有 series/ 下封顶的快照和品种表" passed after 0.612 seconds.
+✔ Test "存取日切片：关掉开关就不落盘" passed after 0.647 seconds.
+✔ Test "归档站有的文件本身是乱序的：解析器必须自己排" passed after 0.682 seconds.
+✔ Suite "快照字节格式：新旧实现逐字节相同" passed after 0.731 seconds.
+✔ Test "1y 由 1M 聚出来" passed after 0.266 seconds.
+✔ Test "全市场WS数组包含普通与TradFi报价，保持真实24h涨跌幅" passed after 0.266 seconds.
+✔ Test "dedup 去重并排序" passed after 0.266 seconds.
+✔ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" passed after 0.266 seconds.
+✔ Test "exchangeInfo 走一遍 transport，请求路径正确" passed after 0.266 seconds.
+✔ Suite "缓存边界" passed after 0.732 seconds.
+✔ Test "历史OI网关时间戳、数值和坏响应检查" passed after 0.232 seconds.
+✔ Suite "空洞序列的合并与落盘" passed after 0.733 seconds.
+✔ Test "历史网关失败换备用，保留周期且不重复下载ZIP" with 3 test cases passed after 0.729 seconds.
+✔ Test "1500 根 klines：严格递增、等距、无重复" passed after 0.268 seconds.
+✔ Test "1d 以下也一样，一路到 5 分钟" with 4 test cases passed after 0.727 seconds.
+✔ Suite "逐笔折线" passed after 0.734 seconds.
+✔ Suite "当日开盘价快照" passed after 0.734 seconds.
+✔ Suite "OI 切块：细周期看长区间也要走网关那条快路" passed after 0.734 seconds.
+✔ Test "REST 整段报错：点是空的，而且说清楚「没问到」" passed after 0.728 seconds.
+✔ Test "默认那条读仍然会把 mtime 顶上去，只是不在调用线程上做" passed after 0.728 seconds.
+✔ Test "404 / 451 / 429 分类" passed after 0.269 seconds.
+✔ Test "关掉「启动快照」：文件被删，之后不再写" passed after 0.731 seconds.
+✔ Test "B-T13 一张全是停牌的表不算好表：不采纳、不落盘，盘上那份可用的还在" passed after 0.738 seconds.
+✔ Test "复核项 4 目录里没有这个代号也能标下架：补一行占位，不再默默丢掉" passed after 0.740 seconds.
+✔ Test "B-T14 交易所不认这个代号：标成下架、不删，冷启动之后还记得" passed after 0.763 seconds.
+✔ Test "B-T14 非 TRADING 的行留在表里带状态；老 schema 的缓存一律重拉" passed after 0.763 seconds.
+✔ Suite "OI 归档：自写 ZIP + CSV" passed after 0.803 seconds.
+✔ Test "直连档的窗口也是 60 秒（两档一视同仁）" passed after 0.864 seconds.
+✔ Test "网关档（OKX）等第一帧的窗口实际就是 60 秒，不被 15 秒钳子咬住" passed after 0.864 seconds.
+✔ Test "USDT TradFi全保留，USD1、普通USDC、交割排除；停牌的行留在表里带下架标记；旧目录即时刷新" passed after 0.407 seconds.
+✔ Suite "历史OI网关解析" passed after 0.871 seconds.
+✔ Suite "缓存层：预热分级与目录索引" passed after 0.875 seconds.
+✔ Suite "持仓量覆盖边界：2020-09 起，最细五分钟" passed after 0.876 seconds.
+✔ Test "REST 翻到一半断了：到手的几页留住，但这一段仍然不算问全" passed after 0.871 seconds.
+✔ Test "REST 翻到一半断了：已经到手的几页要留住，不是整条空" passed after 0.872 seconds.
+✔ Test "首屏那一发彻底失败，也会自己再来一发" passed after 0.874 seconds.
+✔ Test "上游连回两个 429，首屏自己重试到拿下" passed after 0.874 seconds.
+✔ Test "B-T13 一份畸形响应：发起者和等在门口的人拿到同一张旧表，谁都不会拿到空表" passed after 0.877 seconds.
+✔ Suite "A-07 第②层：首帧窗口" passed after 0.884 seconds.
+✔ Test "BT-05 后台那记 25 秒的闹钟醒来时人已回前台：不许掐当前连接" passed after 0.881 seconds.
+✔ Test "全市场报价走网关自己的 tickers 端点，载荷仍要同源校验" passed after 0.882 seconds.
+✔ Suite "OI 增量：只补缺的那一段" passed after 0.888 seconds.
+✔ Test "B-T13 刚失败过就先用手里那份，60 秒内不再往枪口上撞" passed after 0.882 seconds.
+✔ Suite "首屏历史重试" passed after 0.897 seconds.
+✔ Test "网关：开机就走 OKX 那条线路，币安一笔都不碰" passed after 0.473 seconds.
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 0.900 seconds.
+✔ Suite "报价快照与整屏补价" passed after 0.910 seconds.
+✔ Test concurrentCatalogReadersShareOneRequest() passed after 0.908 seconds.
+✔ Test "A-T05 封禁期内首屏立刻收手：图表留着、横幅亮着、重试不再撞上游" passed after 0.915 seconds.
+✔ Test "运行中换档：直连 → 网关，线路立刻换到 OKX" passed after 0.495 seconds.
+✔ Test "ticker 校准失败不降级已加载的历史" passed after 0.920 seconds.
+✔ Test "近 30 天走 REST、更早走归档：两个源都被问到" passed after 0.926 seconds.
+✔ Test returningToSameSelectionCannotReviveOldRequest() passed after 0.924 seconds.
+✔ Test "60 秒一帧没有就主动重连" passed after 0.928 seconds.
+✔ Suite "Data identity, snapshots and duplicate delivery" passed after 0.933 seconds.
+✔ Test "历史报错不冒充换线路，「点此重试」不会被自己抹掉" passed after 0.926 seconds.
+✔ Test "B-T15 用户点名一个表里没有的新合约：立刻重拉一次，但 5 分钟内只拉一次" passed after 0.927 seconds.
+✔ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" passed after 0.930 seconds.
+✔ Test "完整那发先回来，小页落地时什么都不做" passed after 0.927 seconds.
+✔ Suite "品种表状态与单飞刷新" passed after 0.937 seconds.
+✔ Test "完整那发还没回来，小页先把图画上" passed after 0.931 seconds.
+✔ Test "服务器 ping 立刻回 pong" passed after 0.935 seconds.
+✔ Suite "两段式首屏" passed after 0.939 seconds.
+✔ Test "交易所宣布收线的那一帧被闸门攒着，紧接着开新根就永远丢了" passed after 0.447 seconds.
+✔ Test "换桶那一刻，上一根压在合帧闸门里的最终值必须补发给消费端" passed after 0.447 seconds.
+✔ Test "开新根的那一帧不等拍子，立刻发" passed after 0.519 seconds.
+✔ Test "同一根上连着来 10 帧，只合成 ≤2 次末根事件" passed after 0.526 seconds.
+✔ Suite "合帧闸门：kline 也限速，开新根不等" passed after 0.959 seconds.
+✔ Test "连断三次：退避 1s / 2s / 4s（各再抖 ±20%），日志可见" passed after 0.956 seconds.
+✔ Test "BT-01 上一份 feed 还在收摊时切品种：新品种的行情必须真的流出来" passed after 0.959 seconds.
+✔ Test "归档站 404 是答复（上市前），别的状态码不是" passed after 0.969 seconds.
+✔ Suite "OI 覆盖记账：只有真问到的那一段才算覆盖" passed after 0.975 seconds.
+✔ Test "BT-09 报文猛灌时消费者被闸门按住：放行后结构性事件一条都不能少" passed after 0.974 seconds.
+BT-09 观测：灌入 30 条报文，放行那一刻流里积压 61 条事件，其中末根事件 29 条
+✔ Test "品种上市前：归档站 404 → 返回空而不是报错" passed after 0.972 seconds.
+✔ Suite "OI 对齐：两源合一条" passed after 0.978 seconds.
+✔ Test "当前全部717个产品品种进入独立分类模块，保留细分元数据；停牌与待开盘的行带状态留着" passed after 0.518 seconds.
+✔ Test "BT-02 首屏还在路上就切后台再回前台：必须补发首屏，不能只剩打底那几根" passed after 1.019 seconds.
+✔ Test "补洞请求在路上时到的实时末根，不能被它的陈旧回包盖回去" passed after 0.523 seconds.
+✔ Suite "末根的定盘与基线" passed after 1.024 seconds.
+✔ Test "两段都在：先到的先回调，不等另一段" passed after 1.070 seconds.
+✔ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" passed after 0.843 seconds.
+✔ Suite "REST 与 DTO" passed after 1.305 seconds.
+✔ Test "只有一段：不回调，免得同一批点被画两遍" passed after 1.342 seconds.
+✔ Suite "OI 分段上屏：先到的那一段不必陪着慢的一起等" passed after 1.348 seconds.
+✔ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" passed after 1.466 seconds.
+✔ Test "3000 条录制报文回放：最终序列与期望全等" passed after 1.489 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 1.493 seconds.
+✔ Test "A-T15 分钟边界上掉线、新连接晚到：补洞请求发出去，补回来的与交易所一致" passed after 1.495 seconds.
+✔ Test "A.3.4 451 地域拒绝也只打一发：落到既有的「点此重试」，不叠加退避" passed after 1.804 seconds.
+✔ Suite "封禁后的首屏与分钟边界补洞" passed after 1.810 seconds.
+✔ Test "BT-12 回前台补不补缺看真实时钟：同一根不补，隔了一根才补" passed after 1.914 seconds.
+✔ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" passed after 2.003 seconds.
+✔ Suite "启动快照与内存缓存" passed after 2.007 seconds.
+✔ Test "BT-11 后台 24.9 秒回来复用现有连接；25.1 秒回来才重连并补缺" passed after 2.194 seconds.
+✔ Suite "行情流水线：生命周期与并发" passed after 2.197 seconds.
+✔ Test "超出条数上限就按最近用过的淘汰" passed after 2.400 seconds.
+✔ Suite "多品种启动快照" passed after 2.405 seconds.
+✔ Test "历史全 429、只有 WS 推来一根时，不把这一根落成快照" passed after 2.892 seconds.
+✔ Suite "首屏拉不到历史时的表现" passed after 2.899 seconds.
+✔ Test "直连：币安探测失败也不切 OKX，照实说「点此重试」" passed after 3.380 seconds.
+✔ Suite "行情线路：整条路由" passed after 3.808 seconds.
+✔ Test "首屏历史全 429 时，WS 的实时价照样交给界面，状态也不谎报离线" passed after 5.658 seconds.
+✔ Suite "历史没到但 WS 活着" passed after 5.662 seconds.
+✔ Test run with 184 tests in 32 suites passed after 5.664 seconds.

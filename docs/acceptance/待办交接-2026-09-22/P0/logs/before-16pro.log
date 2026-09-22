@@ -1,0 +1,218 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=D6C41248-C78E-46B8-B391-311F373D24A8" -derivedDataPath /tmp/kanpan-p0-dd "-only-testing:KanpanUITests/MainScreenUITests/testHeaderStatsStayRightOfPrice" -test-timeouts-enabled YES -default-test-execution-time-allowance 480 -maximum-test-execution-time-allowance 900 -resultBundlePath /tmp/kanpan-handoff-checks/p0-before-results/iPhone-16-Pro.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanReview: /tmp/kanpan-p0-check/KanpanReview @ local
+  KanpanData: /tmp/kanpan-p0-check/KanpanData @ local
+  KanpanNetwork: /tmp/kanpan-p0-check/KanpanNetwork @ local
+  KanpanAccount: /tmp/kanpan-p0-check/KanpanAccount @ local
+  KanpanChart: /tmp/kanpan-p0-check/KanpanChart @ local
+  KanpanCore: /tmp/kanpan-p0-check/KanpanCore @ local
+
+Writing result bundle at path:
+	/tmp/kanpan-handoff-checks/p0-before-results/iPhone-16-Pro.xcresult
+
+2026-09-22 12:03:13.107077+0800 KanpanUITests-Runner[19745:3351428] [Default] Running tests...
+objc[19745]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x1081f8310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x1075f8398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-22 12:03:16.734.
+2026-09-22 12:03:20.095 xcodebuild[19635:3349577] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:03:20.096 xcodebuild[19635:3349577] [MT] IDELaunchParametersSnapshot: no debugger version
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 12:03:16.734.
+Test Suite 'MainScreenUITests' started at 2026-09-22 12:03:16.734.
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice]' started.
+    t =     0.00s Start Test at 2026-09-22 12:03:16.736
+    t =     0.28s Set Up
+    t =     0.29s     Open com.mdd.kanpan
+    t =     0.29s         Launch com.mdd.kanpan
+    t =     7.59s             Setting up automation session
+    t =     8.52s             Wait for com.mdd.kanpan to idle
+    t =    10.19s     Waiting 3.0s for "bottom.chart" Button to exist
+    t =    11.21s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.chart" Button`
+    t =    11.21s             Checking existence of `"bottom.chart" Button`
+    t =    11.27s     Checking existence of `"top.symbol" Any`
+    t =    11.28s     Waiting 30.0s for "top.symbol" Any to exist
+    t =    12.31s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Any`
+    t =    12.31s             Checking existence of `"top.symbol" Any`
+    t =    12.34s     Find the Window (First Match)
+    t =    12.35s     Find the "interval.more" Button
+    t =    12.37s     Find the "bottom.favorites" Button
+    t =    12.45s Terminate com.mdd.kanpan:19780
+    t =    13.45s Open com.mdd.kanpan
+    t =    13.45s     Launch com.mdd.kanpan
+2026-09-22 12:03:30.216 xcodebuild[19635:3349577] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:03:30.216 xcodebuild[19635:3349577] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    13.93s         Setting up automation session
+    t =    14.69s         Wait for com.mdd.kanpan to idle
+    t =    16.47s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    17.50s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    17.50s         Checking existence of `"top.lastPrice" StaticText`
+    t =    17.59s Waiting 30.0s for "top.stats" Other to exist
+    t =    18.62s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    18.62s         Checking existence of `"top.stats" Other`
+    t =    18.69s Find the "top.lastPrice" StaticText
+    t =    18.72s Find the "top.lastPrice" StaticText
+    t =    18.75s Find the "top.marketCap" StaticText
+    t =    18.80s Find the "top.turnover" StaticText
+    t =    18.82s Find the "top.funding" StaticText
+    t =    18.86s Find the "top.lastPrice" StaticText
+    t =    18.90s Find the "top.stats" Other
+    t =    18.96s Find the "interval.more" Button
+    t =    19.13s Added attachment named 'header-SNDKUSDT'
+HEADER SNDKUSDT price=(12.0, 107.0, 128.66666666666666, 26.333333333333314) stats=(12.0, 142.8333282470703, 170.6666717529297, 48.0) intervalY=200.33333333333334
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:41: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertGreaterThanOrEqual failed: ("12.0") is less than ("140.66666666666666") - SNDKUSDT 六格掉到价格下面
+    t =    19.36s Find the "top.changePercent" Any
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:42: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertGreaterThanOrEqual failed: ("122.33333333333331") is less than ("133.33333333333331") - SNDKUSDT 涨跌行没在价格下面
+    t =    19.42s Find the "top.changePercent" Image
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:43: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertEqualWithAccuracy failed: ("157.33333333333331") is not equal to ("12.0") +/- ("0.5") - SNDKUSDT 涨跌行没有左对齐
+    t =    19.46s Find the Window (First Match)
+    t =    19.47s Terminate com.mdd.kanpan:19793
+    t =    20.54s Open com.mdd.kanpan
+    t =    20.54s     Launch com.mdd.kanpan
+2026-09-22 12:03:37.277 xcodebuild[19635:3349577] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:03:37.277 xcodebuild[19635:3349577] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    20.76s         Setting up automation session
+    t =    21.57s         Wait for com.mdd.kanpan to idle
+    t =    22.96s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    23.99s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    23.99s         Checking existence of `"top.lastPrice" StaticText`
+    t =    24.11s Waiting 30.0s for "top.stats" Other to exist
+    t =    25.14s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    25.14s         Checking existence of `"top.stats" Other`
+    t =    25.18s Find the "top.lastPrice" StaticText
+    t =    25.20s Find the "top.lastPrice" StaticText
+    t =    25.23s Find the "top.marketCap" StaticText
+    t =    25.25s Find the "top.turnover" StaticText
+    t =    25.30s Find the "top.funding" StaticText
+    t =    25.34s Find the "top.lastPrice" StaticText
+    t =    25.41s Find the "top.stats" Other
+    t =    25.70s Find the "interval.more" Button
+    t =    26.00s Added attachment named 'header-MUUSDT'
+HEADER MUUSDT price=(12.0, 107.0, 128.66666666666666, 26.333333333333314) stats=(12.0, 142.8333282470703, 178.0, 48.0) intervalY=200.33333333333334
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:41: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertGreaterThanOrEqual failed: ("12.0") is less than ("140.66666666666666") - MUUSDT 六格掉到价格下面
+    t =    26.00s Find the "top.changePercent" Any
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:42: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertGreaterThanOrEqual failed: ("122.33333333333331") is less than ("133.33333333333331") - MUUSDT 涨跌行没在价格下面
+    t =    26.28s Find the "top.changePercent" Image
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:43: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertEqualWithAccuracy failed: ("157.33333333333331") is not equal to ("12.0") +/- ("0.5") - MUUSDT 涨跌行没有左对齐
+    t =    26.35s Find the Window (First Match)
+    t =    26.36s Terminate com.mdd.kanpan:19858
+    t =    27.40s Open com.mdd.kanpan
+    t =    27.40s     Launch com.mdd.kanpan
+2026-09-22 12:03:44.138 xcodebuild[19635:3349577] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:03:44.138 xcodebuild[19635:3349577] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    27.62s         Setting up automation session
+    t =    28.41s         Wait for com.mdd.kanpan to idle
+    t =    29.86s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    30.88s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    30.89s         Checking existence of `"top.lastPrice" StaticText`
+    t =    31.09s Waiting 30.0s for "top.stats" Other to exist
+    t =    32.11s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    32.12s         Checking existence of `"top.stats" Other`
+    t =    32.15s Find the "top.lastPrice" StaticText
+    t =    32.44s Find the "top.lastPrice" StaticText
+    t =    32.76s Find the "top.lastPrice" StaticText
+    t =    33.07s Find the "top.lastPrice" StaticText
+    t =    33.36s Find the "top.lastPrice" StaticText
+    t =    33.64s Find the "top.lastPrice" StaticText
+    t =    33.95s Find the "top.lastPrice" StaticText
+    t =    34.27s Find the "top.lastPrice" StaticText
+    t =    34.58s Find the "top.lastPrice" StaticText
+    t =    34.87s Find the "top.lastPrice" StaticText
+    t =    35.16s Find the "top.lastPrice" StaticText
+    t =    35.46s Find the "top.lastPrice" StaticText
+    t =    35.77s Find the "top.lastPrice" StaticText
+    t =    36.06s Find the "top.lastPrice" StaticText
+    t =    36.37s Find the "top.lastPrice" StaticText
+    t =    36.67s Find the "top.lastPrice" StaticText
+    t =    37.08s Find the "top.lastPrice" StaticText
+    t =    37.40s Find the "top.lastPrice" StaticText
+    t =    37.74s Find the "top.lastPrice" StaticText
+    t =    38.06s Find the "top.lastPrice" StaticText
+    t =    38.35s Find the "top.lastPrice" StaticText
+    t =    38.62s Find the "top.lastPrice" StaticText
+    t =    38.92s Find the "top.lastPrice" StaticText
+    t =    39.20s Find the "top.lastPrice" StaticText
+    t =    39.52s Find the "top.lastPrice" StaticText
+    t =    39.88s Find the "top.lastPrice" StaticText
+    t =    40.25s Find the "top.lastPrice" StaticText
+    t =    40.86s Find the "top.lastPrice" StaticText
+    t =    41.24s Find the "top.lastPrice" StaticText
+    t =    41.30s Find the "top.lastPrice" StaticText
+    t =    41.46s Find the "top.marketCap" StaticText
+    t =    41.52s Find the "top.turnover" StaticText
+    t =    41.55s Find the "top.funding" StaticText
+    t =    41.61s Find the "top.lastPrice" StaticText
+    t =    41.65s Find the "top.stats" Other
+    t =    41.69s Find the "interval.more" Button
+    t =    41.80s Added attachment named 'header-1000SATSUSDT'
+HEADER 1000SATSUSDT price=(12.0, 107.0, 128.66666666666666, 26.333333333333314) stats=(12.0, 142.8333282470703, 175.33334350585938, 48.0) intervalY=200.33333333333334
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:41: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertGreaterThanOrEqual failed: ("12.0") is less than ("140.66666666666666") - 1000SATSUSDT 六格掉到价格下面
+    t =    41.80s Find the "top.changePercent" Any
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:42: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertGreaterThanOrEqual failed: ("122.33333333333331") is less than ("133.33333333333331") - 1000SATSUSDT 涨跌行没在价格下面
+    t =    42.05s Find the "top.changePercent" Image
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:43: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertEqualWithAccuracy failed: ("157.33333333333331") is not equal to ("12.0") +/- ("0.5") - 1000SATSUSDT 涨跌行没有左对齐
+    t =    42.61s Find the Window (First Match)
+    t =    42.63s Terminate com.mdd.kanpan:19951
+    t =    43.70s Open com.mdd.kanpan
+    t =    43.70s     Launch com.mdd.kanpan
+2026-09-22 12:04:00.442 xcodebuild[19635:3349577] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:04:00.442 xcodebuild[19635:3349577] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    44.13s         Setting up automation session
+    t =    45.25s         Wait for com.mdd.kanpan to idle
+    t =    47.12s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    48.14s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    48.14s         Checking existence of `"top.lastPrice" StaticText`
+    t =    48.19s Waiting 30.0s for "top.stats" Other to exist
+    t =    49.20s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    49.20s         Checking existence of `"top.stats" Other`
+    t =    49.23s Find the "top.lastPrice" StaticText
+    t =    49.26s Find the "top.lastPrice" StaticText
+    t =    49.27s Find the "top.marketCap" StaticText
+    t =    49.29s Find the "top.turnover" StaticText
+    t =    49.32s Find the "top.funding" StaticText
+    t =    49.37s Find the "top.lastPrice" StaticText
+    t =    49.42s Find the "top.stats" Other
+    t =    49.50s Find the "interval.more" Button
+    t =    49.65s Added attachment named 'header-BTCUSDT'
+HEADER BTCUSDT price=(12.0, 116.58333333333339, 107.0, 26.33333333333333) stats=(214.6666717529297, 107.0, 175.3333282470703, 48.0) intervalY=164.33333333333331
+    t =    49.65s Find the "top.changePercent" Any
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:42: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertGreaterThanOrEqual failed: ("132.0") is less than ("142.9166666666667") - BTCUSDT 涨跌行没在价格下面
+    t =    49.98s Find the "top.changePercent" Image
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:43: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertEqualWithAccuracy failed: ("135.66666666666666") is not equal to ("12.0") +/- ("0.5") - BTCUSDT 涨跌行没有左对齐
+    t =    50.55s Find the Window (First Match)
+/tmp/kanpan-p0-check/Kanpan/KanpanUITests/MainScreenUITests.swift:47: error: -[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice] : XCTAssertEqualWithAccuracy failed: ("164.33333333333331") is not equal to ("200.33333333333334") +/- ("0.5") - BTCUSDT 头部挤高了周期条
+    t =    50.64s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice]' failed (50.924 seconds).
+Test Suite 'MainScreenUITests' failed at 2026-09-22 12:04:07.661.
+	 Executed 1 test, with 12 failures (0 unexpected) in 50.924 (50.926) seconds
+Test Suite 'KanpanUITests.xctest' failed at 2026-09-22 12:04:07.661.
+	 Executed 1 test, with 12 failures (0 unexpected) in 50.924 (50.927) seconds
+Test Suite 'Selected tests' failed at 2026-09-22 12:04:07.662.
+	 Executed 1 test, with 12 failures (0 unexpected) in 50.924 (50.928) seconds
+2026-09-22 12:05:17.500 xcodebuild[19635:3349577] [MT] IDETestOperationsObserverDebug: 137.402 elapsed -- Testing started completed.
+2026-09-22 12:05:17.501 xcodebuild[19635:3349577] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-22 12:05:17.501 xcodebuild[19635:3349577] [MT] IDETestOperationsObserverDebug: 137.402 sec, +137.402 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/kanpan-handoff-checks/p0-before-results/iPhone-16-Pro.xcresult
+
+Failing tests:
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+	MainScreenUITests.testHeaderStatsStayRightOfPrice()
+
+** TEST EXECUTE FAILED **
+
+Testing started

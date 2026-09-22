@@ -1,0 +1,141 @@
+Building for debugging...
+[0/9] /private/tmp/kanpan-p0-check/KanpanChart/.build/arm64-apple-macosx/debug/KanpanChartPackageTests.derived/runner.swift
+[1/9] Write sources
+[2/9] Copying Fixtures
+[3/9] Write sources
+[6/9] Write swift-version--58304C5D6DBC2206.txt
+[8/32] Compiling KanpanCore Alert.swift
+[9/32] Compiling KanpanCore AlertEvaluator.swift
+[10/32] Compiling KanpanCore AlertGeometry.swift
+[11/32] Compiling KanpanCore AICoinBehavior.swift
+[12/32] Compiling KanpanCore ChartOptions.swift
+[13/32] Compiling KanpanCore DrawEdit.swift
+[14/32] Compiling KanpanCore DrawGeometry.swift
+[15/32] Compiling KanpanCore DrawRegression.swift
+[16/32] Compiling KanpanCore DrawStore.swift
+[17/32] Compiling KanpanCore DrawVolume.swift
+[18/32] Compiling KanpanCore Drawing.swift
+[19/32] Compiling KanpanCore Format.swift
+[20/32] Compiling KanpanCore ReviewLabels.swift
+[21/32] Compiling KanpanCore CandleWidths.swift
+[22/32] Compiling KanpanCore Clamp.swift
+[23/32] Compiling KanpanCore Constants.swift
+[24/32] Compiling KanpanCore Fling.swift
+[25/32] Compiling KanpanCore Layout.swift
+[26/32] Compiling KanpanCore PriceScale.swift
+[27/32] Compiling KanpanCore Ticks.swift
+[28/32] Compiling KanpanCore ViewTransition.swift
+[29/32] Compiling KanpanCore ViewWindow.swift
+[30/32] Emitting module KanpanCore
+[31/54] Compiling KanpanCore IncrementalLines.swift
+[32/54] Compiling KanpanCore IndicatorEngine.swift
+[33/54] Compiling KanpanCore IndicatorID.swift
+[34/54] Compiling KanpanCore Indicators.swift
+[35/54] Compiling KanpanCore Math.swift
+[36/54] Compiling KanpanCore OINotice.swift
+[37/54] Compiling KanpanCore Aggregator.swift
+[38/54] Compiling KanpanCore Bar.swift
+[39/54] Compiling KanpanCore BarSeries.swift
+[40/54] Compiling KanpanCore ChangeBasis.swift
+[41/54] Compiling KanpanCore HeikinAshi.swift
+[42/54] Compiling KanpanCore Interval.swift
+[43/54] Compiling KanpanCore LatestQuote.swift
+[44/54] Compiling KanpanCore MarkPriceTick.swift
+[45/54] Compiling KanpanCore MarketSector.swift
+[46/54] Compiling KanpanCore SymbolClassification.swift
+[47/54] Compiling KanpanCore SymbolInfo.swift
+[48/54] Compiling KanpanCore SectorAggregate.swift
+[49/54] Compiling KanpanCore SectorCatalog.swift
+[50/54] Compiling KanpanCore SectorSelection.swift
+[51/54] Compiling KanpanCore CandleStyle.swift
+[52/54] Compiling KanpanCore Palette.swift
+error: emit-module command failed with exit code 1 (use -v to see invocation)
+[53/60] Emitting module KanpanChart
+/private/tmp/kanpan-p0-check/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift:4:8: error: no such module 'UIKit'
+ 2 | import Foundation
+ 3 | import KanpanCore
+ 4 | import UIKit
+   |        `- error: no such module 'UIKit'
+ 5 | 
+ 6 | /// 三层绘制的三个入口（§5.7）。
+[54/60] Compiling KanpanChart ChartRenderer+Layers.swift
+/private/tmp/kanpan-p0-check/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift:4:8: error: no such module 'UIKit'
+ 2 | import Foundation
+ 3 | import KanpanCore
+ 4 | import UIKit
+   |        `- error: no such module 'UIKit'
+ 5 | 
+ 6 | /// 三层绘制的三个入口（§5.7）。
+[55/60] Compiling KanpanChart ChartRenderer+Probe.swift
+/private/tmp/kanpan-p0-check/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift:4:8: error: no such module 'UIKit'
+ 2 | import Foundation
+ 3 | import KanpanCore
+ 4 | import UIKit
+   |        `- error: no such module 'UIKit'
+ 5 | 
+ 6 | /// 三层绘制的三个入口（§5.7）。
+[56/60] Compiling KanpanChart ChartRenderer+Sub.swift
+/private/tmp/kanpan-p0-check/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift:4:8: error: no such module 'UIKit'
+ 2 | import Foundation
+ 3 | import KanpanCore
+ 4 | import UIKit
+   |        `- error: no such module 'UIKit'
+ 5 | 
+ 6 | /// 三层绘制的三个入口（§5.7）。
+[57/60] Compiling KanpanChart ChartRenderer.swift
+/private/tmp/kanpan-p0-check/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift:4:8: error: no such module 'UIKit'
+ 2 | import Foundation
+ 3 | import KanpanCore
+ 4 | import UIKit
+   |        `- error: no such module 'UIKit'
+ 5 | 
+ 6 | /// 三层绘制的三个入口（§5.7）。
+[58/60] Compiling KanpanChart ChartState.swift
+/private/tmp/kanpan-p0-check/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift:4:8: error: no such module 'UIKit'
+ 2 | import Foundation
+ 3 | import KanpanCore
+ 4 | import UIKit
+   |        `- error: no such module 'UIKit'
+ 5 | 
+ 6 | /// 三层绘制的三个入口（§5.7）。
+[59/65] Compiling KanpanChart ChartView+Drawing.swift
+/private/tmp/kanpan-p0-check/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift:4:8: error: no such module 'UIKit'
+ 2 | import Foundation
+ 3 | import KanpanCore
+ 4 | import UIKit
+   |        `- error: no such module 'UIKit'
+ 5 | 
+ 6 | /// 三层绘制的三个入口（§5.7）。
+[60/65] Compiling KanpanChart ChartView+Gesture.swift
+/private/tmp/kanpan-p0-check/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift:4:8: error: no such module 'UIKit'
+ 2 | import Foundation
+ 3 | import KanpanCore
+ 4 | import UIKit
+   |        `- error: no such module 'UIKit'
+ 5 | 
+ 6 | /// 三层绘制的三个入口（§5.7）。
+[61/65] Compiling KanpanChart ChartView.swift
+/private/tmp/kanpan-p0-check/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift:4:8: error: no such module 'UIKit'
+ 2 | import Foundation
+ 3 | import KanpanCore
+ 4 | import UIKit
+   |        `- error: no such module 'UIKit'
+ 5 | 
+ 6 | /// 三层绘制的三个入口（§5.7）。
+[62/65] Compiling KanpanChart ChartWorkCounter.swift
+/private/tmp/kanpan-p0-check/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift:4:8: error: no such module 'UIKit'
+ 2 | import Foundation
+ 3 | import KanpanCore
+ 4 | import UIKit
+   |        `- error: no such module 'UIKit'
+ 5 | 
+ 6 | /// 三层绘制的三个入口（§5.7）。
+[63/65] Compiling KanpanChart Paint.swift
+/private/tmp/kanpan-p0-check/KanpanChart/Sources/KanpanChart/ChartRenderer+Layers.swift:4:8: error: no such module 'UIKit'
+ 2 | import Foundation
+ 3 | import KanpanCore
+ 4 | import UIKit
+   |        `- error: no such module 'UIKit'
+ 5 | 
+ 6 | /// 三层绘制的三个入口（§5.7）。
+error: fatalError
