@@ -6,7 +6,8 @@
 :root{
   --fs:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
   --num:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
-  --zoom:.78; --ui:1; --rail:52px; --wl:232px; --db:40px;
+  --zoom:.78; --ui:1; --rail:52px; --wl:232px; --db:40px; --sideW:324px;
+  --line:var(--lineRaw);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{background:#1b1e1d}
@@ -37,7 +38,7 @@ h2 i{font:600 11px/1 var(--num);color:#6f7b76;font-style:normal;border:1px solid
 .bar .v{font:500 11px/1 var(--num);color:#8f9a95;min-width:34px;text-align:right}
 
 /* ───────── macOS 窗口壳 ───────── */
-.win{width:1440px;border-radius:12px;overflow:hidden;box-shadow:0 26px 70px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06);
+.win{position:relative;width:1440px;border-radius:12px;overflow:hidden;box-shadow:0 26px 70px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06);
   background:var(--app);color:var(--ink);font-size:calc(13px*var(--ui))}
 .win.sm{width:1180px}
 .tbar{height:44px;display:flex;align-items:center;gap:12px;padding:0 14px;background:var(--raised2);
@@ -83,7 +84,7 @@ h2 i{font:600 11px/1 var(--num);color:#6f7b76;font-style:normal;border:1px solid
 /* ───────── 画线工具竖条 ───────── */
 .dbar{width:var(--db);flex:0 0 var(--db);border-right:1px solid var(--line);background:var(--app);
   display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:2px}
-.dbar .t{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--ink2)}
+.dbar .t{position:relative;width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--ink2)}
 .dbar .t.on{background:var(--acc);color:#fff}
 .dbar .sep{width:18px;height:1px;background:var(--line);margin:5px 0}
 
@@ -156,7 +157,120 @@ kbd{font:500 11px/1 var(--num);background:#262b29;border:1px solid #3a403d;borde
   border-radius:5px;padding:4px 6px;color:#dbe4e0}
 .cap{font:400 12px/1.7 var(--fs);color:#8b9591;margin-top:12px;max-width:1000px}
 .cap b{color:#c9d2ce}
-</style></head><body>
+.note b.dg{color:#e8b98a}
+</style>
+<style id="rfs">
+/* ══════════════════════════════════════════════════════════════
+   精致版：桌面材质
+   原则 —— 分层靠光不靠线；侧栏与内容是同一块材料，只是沉下去；
+   选中态刷在记号本身上，不出现选中方块；图表底座不动（那是 AICoin 的成果）。
+   ══════════════════════════════════════════════════════════════ */
+html.rf{
+  --hair:55; --rad:14px; --shw:1; --glz:1; --grain:.035;
+  --line:color-mix(in srgb, var(--lineRaw) calc(var(--hair)*1%), transparent);
+  font-variant-numeric:tabular-nums;
+}
+html.rf .win{ --num:var(--fs); font-variant-numeric:tabular-nums; letter-spacing:-.05px; }
+
+/* ── 原型自身的台面：窗口得站在一张桌面上，透明度才读得出来 ── */
+html.rf body{background:#121413}
+html.rf .stage{background:var(--desk);border:0;border-radius:18px;padding:40px 40px 44px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+html.rf h2{border-top-color:#272b29}
+
+/* ── 窗口：一块釉板 ── */
+html.rf .win{border-radius:var(--rad);
+  box-shadow:0 0 0 .5px var(--rim),
+    0 2px 4px rgba(0,0,0,calc(.10*var(--shw))),
+    0 14px 28px -10px rgba(0,0,0,calc(.30*var(--shw))),
+    0 48px 86px -26px rgba(0,0,0,calc(.52*var(--shw)));}
+html.rf .win::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:9;
+  box-shadow:inset 0 1px 0 var(--hi)}
+html.rf .win::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:8;
+  opacity:var(--grain);mix-blend-mode:overlay;background-size:170px 170px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='170' height='170'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='170' height='170' filter='url(%23n)'/></svg>")}
+
+/* ── 统一侧栏：标题栏左半段也是侧栏的材料，不在这里切一刀 ── */
+html.rf .tbar{border-bottom:0;background:var(--app);
+  background-image:linear-gradient(90deg,var(--sideTint) 0 var(--sideW),transparent var(--sideW))}
+html.rf .tbar::after{content:"";position:absolute;left:var(--sideW);right:0;bottom:0;height:1px;background:var(--line)}
+html.rf .lights i{box-shadow:inset 0 0 0 .5px rgba(0,0,0,.20),inset 0 1px .5px rgba(255,255,255,.45)}
+html.rf .tsearch{height:28px;border-radius:8px;background:var(--well);border-color:transparent;
+  box-shadow:inset 0 0 0 .5px var(--rim2),inset 0 1px 2px rgba(0,0,0,.05)}
+html.rf .tsearch .k{border-color:var(--rim2);background:var(--well)}
+html.rf .tright span{border-radius:7px}
+
+/* ── 三条侧栏合成一块沉下去的材料，中间不再有竖线 ── */
+html.rf .rail,html.rf .wl,html.rf .dbar{background:var(--sideTint);border-right:0}
+html.rf .body{background:var(--app)}
+html.rf .pane{box-shadow:inset 1px 0 0 var(--line)}
+
+/* ── 记号即选中态：没有选中方块，釉光刷在图标上 ── */
+html.rf .rail{padding:12px 0;gap:6px}
+html.rf .rail .it{width:38px;height:38px;color:var(--ink3)}
+html.rf .rail .it.on{color:var(--acc)}
+html.rf .rail .it.on::before{border-radius:50%;box-shadow:none;opacity:calc(.95*var(--glz));
+  background:radial-gradient(closest-side,var(--accGlow),transparent 74%)}
+html.rf .dbar .t{color:var(--ink2);opacity:.82}
+html.rf .dbar .t.on{background:none;color:var(--acc);opacity:1}
+html.rf .dbar .t.on::before{content:"";position:absolute;inset:-1px;border-radius:50%;
+  background:radial-gradient(closest-side,var(--accGlow),transparent 72%);opacity:calc(.95*var(--glz))}
+html.rf .dbar .sep{width:16px;background:var(--line)}
+
+/* ── 自选列 ── */
+html.rf .wl .cats{padding:10px 10px 8px}
+html.rf .wl .cats span.on{background:linear-gradient(148deg,var(--accL),var(--acc));color:#fff;
+  box-shadow:0 2px 7px var(--accGlow),inset 0 1px 0 rgba(255,255,255,.28)}
+html.rf .wl .hd{opacity:.85;letter-spacing:.5px}
+html.rf .row{height:calc(42px*var(--ui));position:relative;padding:0 11px}
+html.rf .row.on{background:linear-gradient(90deg,var(--accSoft),transparent 94%)}
+html.rf .row.on::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:2.5px;border-radius:0 3px 3px 0;
+  background:linear-gradient(180deg,var(--accL),var(--acc));opacity:var(--glz)}
+html.rf .row .nm b{letter-spacing:-.15px}
+html.rf .mk{border-radius:8px;box-shadow:inset 0 1px 0 var(--hi),inset 0 0 0 .5px var(--rim2)}
+
+/* ── 头部：六格坐进一块沉下去的托板，格与格之间不画竖线 ── */
+html.rf .phd{padding:12px 16px 11px}
+html.rf .phd .id b{font-size:calc(15.5px*var(--ui))}
+html.rf .phd .id .tag{border-color:var(--rim2);background:var(--well);color:var(--ink3)}
+html.rf .prc b{font-size:calc(27px*var(--ui));letter-spacing:-.9px}
+html.rf .cells{background:var(--well);border-radius:10px;padding:7px 3px;
+  box-shadow:inset 0 0 0 .5px var(--rim2)}
+html.rf .cell{border-left:0;min-width:84px;gap:4px;padding:0 12px}
+html.rf .cell i{letter-spacing:.35px;opacity:.92}
+html.rf .cell b{font-size:calc(12.5px*var(--ui));font-weight:600}
+
+/* ── 周期条 ── */
+html.rf .pbar{height:calc(31px*var(--ui))}
+html.rf .pbar .p.on::after{width:26px;height:2.5px;border-radius:3px;
+  background:linear-gradient(90deg,var(--accL),var(--acc));box-shadow:0 0 9px var(--accGlow)}
+html.rf .pbar .more{border-left:0}
+
+/* ── 悬停读数：浮在图上的一小片玻璃，不再是一条通栏 ── */
+html.rf .readout{left:9px;right:auto;top:9px;border:0;border-radius:9px;padding:7px 12px;gap:13px;
+  background:var(--glass);-webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);
+  box-shadow:0 0 0 .5px var(--rim2),0 10px 24px -10px rgba(0,0,0,.4),inset 0 1px 0 var(--hi)}
+
+/* ── ⌘K 浮层 ── */
+html.rf .scrim{background:rgba(0,0,0,.30);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+html.rf .pal{width:640px;top:96px;border:0;border-radius:16px;background:var(--glass);
+  -webkit-backdrop-filter:blur(34px) saturate(1.7);backdrop-filter:blur(34px) saturate(1.7);
+  box-shadow:0 0 0 .5px var(--rim),0 34px 84px -14px rgba(0,0,0,.55),inset 0 1px 0 var(--hi)}
+html.rf .pal .inp{font-size:calc(15px*var(--ui));padding:15px 17px}
+html.rf .pal .sec{letter-spacing:.5px;opacity:.9}
+
+/* ── 设置 ── */
+html.rf .setnav{background:var(--sideTint);border-right:0;box-shadow:inset -1px 0 0 var(--line)}
+html.rf .setnav div.on{background:linear-gradient(90deg,var(--accSoft),transparent);color:var(--acc)}
+html.rf .setwrap{background:var(--ground)}
+html.rf .card{border:0;border-radius:13px;
+  box-shadow:0 0 0 .5px var(--rim2),0 1px 2px rgba(0,0,0,.05),0 10px 24px -18px rgba(0,0,0,.35)}
+html.rf .card h6{letter-spacing:.5px;padding:13px 15px 0}
+html.rf .li{padding:11px 15px}
+html.rf .sw.on{background:linear-gradient(148deg,var(--accL),var(--acc));box-shadow:0 1px 6px var(--accGlow)}
+html.rf .sw::after{box-shadow:0 1px 2.5px rgba(0,0,0,.28),0 0 0 .5px rgba(0,0,0,.06)}
+</style>
+</head><body>
 
 <div class="bar">
   <div class="g"><label>皮肤</label><div class="seg" id="skin">
@@ -172,14 +286,52 @@ kbd{font:500 11px/1 var(--num);background:#262b29;border:1px solid #3a403d;borde
   <div class="g"><label>主图占比</label><input type="range" id="mainp" min="42" max="76" value="56"><span class="v" id="mainpv">56%</span></div>
   <div class="g"><label>副图</label><input type="range" id="subs" min="0" max="3" value="3"><span class="v" id="subsv">3</span></div>
   <div class="g"><label>自选列宽</label><input type="range" id="wl" min="0" max="320" value="232"><span class="v" id="wlv">232</span></div>
+  <div class="g" style="flex-basis:100%;height:0;margin:0"></div>
+  <div class="g"><label>版本</label><div class="seg" id="rf">
+    <button data-v="1" class="on">精致</button><button data-v="0">上一版</button></div></div>
+  <div class="g"><label>圆角</label><input type="range" id="rad" min="6" max="22" value="14"><span class="v" id="radv">14</span></div>
+  <div class="g"><label>投影</label><input type="range" id="shw" min="0" max="170" value="100"><span class="v" id="shwv">1.00</span></div>
+  <div class="g"><label>侧栏沉度</label><input type="range" id="sidea" min="0" max="100" value="55"><span class="v" id="sideav">.55</span></div>
+  <div class="g"><label>分隔线</label><input type="range" id="hair" min="0" max="100" value="55"><span class="v" id="hairv">55%</span></div>
+  <div class="g"><label>釉光</label><input type="range" id="glz" min="0" max="160" value="100"><span class="v" id="glzv">1.00</span></div>
+  <div class="g"><label>颗粒</label><input type="range" id="grain" min="0" max="120" value="35"><span class="v" id="grainv">.035</span></div>
 </div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="glaze" x1="0" y1="0" x2=".85" y2="1">
+    <stop id="gz0" offset="0" stop-color="#4FB69C"/><stop id="gz1" offset="1" stop-color="#2E7D6B"/>
+  </linearGradient></defs></svg>
 
 <div class="page">
 <h1>看盘 · 桌面端（Mac）原型
   <small>讨论用。核心主张：<b>桌面不是把手机放大，是把信息放密</b>——界面 chrome 的点数往小走（macOS 正文 13pt，iOS 是 17pt），
   省下来的像素全部让给内容。蜡烛的物理宽度不变，一屏从 110 根变成 320 根；三个副图不再靠挤，各自舒展。
   配色取自工作树里的真实色板（<code>KanpanCore/Style/Palette.swift</code> 六套种子 + AICoin K 线色），涨跌默认红涨绿跌（<code>Prefs.redUp = true</code>）。
-  上面每根滑杆都可以自己调，觉得哪个数不对就拉到对的地方告诉我。</small></h1>
+  上面每根滑杆都可以自己调，觉得哪个数不对就拉到对的地方告诉我。<br>
+  <b style="color:#b7e4d4">2026-09-22 二稿：整套材质重做了一遍</b>，桌面该有桌面的做工。第二行那排旋钮是这一版的，
+  「版本」那一格切到<b>上一版</b>就能直接对比。</small></h1>
+
+<h2><i>0</i>这一版把哪些地方做精致了</h2>
+<div class="note">
+ <b>一、分层靠光，不靠线。</b>上一版每两块之间都画一条 1px 深线，那是后台界面的做法。现在改成：窗口一圈半像素亮边 +
+ 顶缘一道内高光 + 三层投影（贴地 / 中景 / 远景），侧栏靠<b>压暗</b>与内容分开，而不是靠一条线切开。
+ 拉「分隔线」滑杆到 0 可以看纯靠光分层的极端，默认留 55%。<br>
+ <b>二、侧栏和内容是同一块材料，只是沉下去。</b>照 macOS 的统一侧栏做：图标栏 + 自选列 + 画线条合成一块，
+ <b>标题栏左半段也归它</b>，所以窗口顶上不再横着一条通栏的分界。三条侧栏之间的竖线全部去掉。<br>
+ <b>三、选中态刷在记号本身上，不再有选中方块。</b>左侧图标栏原来是「选中项底下垫一个圆角方块」，
+ 现在方块没了，换成记号自身刷釉光渐变 + 身后一团同色的散光——和底栏、板块釉珠是同一套语言。<br>
+ <b>四、图标全部改实心。</b>行情 / 板块 / 提醒 / 设置、星标、搜索、加号都重画成实心圆润的双色记号，
+ 不再是细线线框。<b>只有画线工具条还是线形符号</b>，因为那些工具画出来的本来就是线——这一条我列进第 9 节问你。<br>
+ <b>五、数字全部等宽（tabular-nums）。</b>价格跳动时列不会左右抖。同时把界面数字从等宽字体换回
+ SF Pro 的表格数字，比 SF Mono 秀气，也更像 Mac 原生。<br>
+ <b>六、头部六格坐进一块沉下去的托板</b>，格与格之间的竖线取消；价格 25pt → 27pt，字距收紧。<br>
+ <b>七、悬停读数从通栏条变成浮在图上的一小片毛玻璃</b>，不再挤掉图表高度。⌘K 浮层同理，加了背景模糊与大投影。<br>
+ <b>八、窗口站在一张桌面上。</b>原型底衬换成随皮肤走的渐变台面，不然玻璃与投影根本看不出来。<br>
+ <b class="dg">没有动的：K 线图区本身。</b>蜡烛、均线、网格、右轴、成交量 / 持仓量 / MACD 一律没碰——
+ 那是「还原 AICoin」的成果，不是设计对象。这一版的功夫全花在图表以外。
+</div>
+<div class="cap">旋钮：<b>圆角 / 投影 / 侧栏沉度 / 分隔线 / 釉光 / 颗粒</b>。颗粒是叠在整个窗口上的极细噪点（overlay 混合），
+ 默认 0.035，拉到 0 就是纯净面；我自己倾向 0.03～0.05，材料感是从这里来的。</div>
 
 <h2><i>1</i>行情页 · 默认态</h2>
 <div class="note">
@@ -264,12 +416,33 @@ const SEEDS = {
    ink:'#E9F2EC',ink2:'#A5B8AE',ink3:'#7B8D85',up:'#2F9347',down:'#CC3333',acc:'#4FB69C',accL:'#7FD0FF',
    ma:['#FFB400','#E849B9','#B2DF8A','#FB9A99','#1478C8','#2FD2B2'],sub:AI_SLOTN}}
 };
-const ST = {skin:'sage', mode:'light', redUp:true, bars:320, mainp:56, subs:3, wl:232};
+const ST = {skin:'sage', mode:'light', redUp:true, bars:320, mainp:56, subs:3, wl:232, rf:true, sideA:.55};
 function T(){ return SEEDS[ST.skin][ST.mode]; }
 function cUp(){ return ST.redUp ? T().down : T().up; }   /* 红涨绿跌：涨取红那一支 */
 function cDn(){ return ST.redUp ? T().up   : T().down; }
 
 /* ══════════════ 小工具 ══════════════ */
+/* 材质小工具 */
+function rgb(h){ h=h.replace('#',''); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
+function rgba(h,a){ const c=rgb(h); return `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`; }
+function mix(h,to,k){ const a=rgb(h),b=rgb(to);
+  return '#'+a.map((v,i)=>Math.round(v+(b[i]-v)*k).toString(16).padStart(2,'0')).join(''); }
+function lum(h){ const c=rgb(h); return (.2126*c[0]+.7152*c[1]+.0722*c[2])/255; }
+// 浅色下桌面必须比窗口本体暗一档，否则「经典」这种近白底色会让窗口整个化在桌面里。
+// 自动往下压到与窗口正文有 .13 的亮度差为止；青苔与陶土本来就够暗，压不动（k=0）。
+function deskBase(t,dark){
+  if(dark) return mix(t.ground,'#ffffff',.07);
+  const need=lum(t.app)-.13; let k=0, b=t.ground;
+  while(lum(b)>need && k<.45){ k+=.02; b=mix(t.ground,'#000000',k); }
+  return b;
+}
+function desk(t,dark){
+  const a=deskBase(t,dark), b=dark?'#050706':mix(a,'#000000',.22);
+  return `radial-gradient(1000px 560px at 16% -8%, ${t.acc}${dark?'2e':'26'}, transparent 62%),`
+       + `radial-gradient(860px 540px at 96% 108%, ${t.accL}${dark?'22':'1c'}, transparent 60%),`
+       + `linear-gradient(158deg, ${a}, ${b})`;
+}
+
 function rng(seed){ let s=seed*9301%233280; return ()=> (s=(s*9301+49297)%233280)/233280; }
 function fmt(v,d=2){ return v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}); }
 const IP={
@@ -289,7 +462,38 @@ const IP={
  plus:'M12 5v14M5 12h14', dots:'M6 12h.01M12 12h.01M18 12h.01',
  side:'M4 5h16v14H4z M10 5v14', undo:'M4 8h9a5 5 0 0 1 0 10H8 M4 8l4-4 M4 8l4 4'
 };
-function ic(n,sz=18,w=1.7){ return `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"><path d="${IP[n]}"/></svg>`; }
+
+/* 实心圆润的记号（精致版用）：图标不是单色细线线框
+   每项 [路径, 是不是主体]；主体在选中时改刷釉光渐变 */
+const IPF={
+ chart:[['M7.05 3.9h1.7v2.5h.55a1.3 1.3 0 0 1 1.3 1.3v6.9a1.3 1.3 0 0 1-1.3 1.3h-.55v2.5h-1.7v-2.5H6.5a1.3 1.3 0 0 1-1.3-1.3V7.7A1.3 1.3 0 0 1 6.5 6.4h.55z',0],
+        ['M15.25 5.7h1.7v3.1h.55a1.3 1.3 0 0 1 1.3 1.3v6.9a1.3 1.3 0 0 1-1.3 1.3h-.55v2.1h-1.7v-2.1h-.55a1.3 1.3 0 0 1-1.3-1.3v-6.9a1.3 1.3 0 0 1 1.3-1.3h.55z',1]],
+ sector:[['M9.4 14.6a5.6 5.6 0 1 0 0-11.2 5.6 5.6 0 0 0 0 11.2z',1],
+        ['M17.3 20.9a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',0],
+        ['M5.5 20.8a2.4 2.4 0 1 0 0-4.8 2.4 2.4 0 0 0 0 4.8z',0]],
+ bell:[['M12 2.6a5.9 5.9 0 0 0-5.9 5.9c0 3.2-.6 4.9-1.63 6.2-.55.7-.07 1.7.81 1.7h13.44c.88 0 1.36-1 .81-1.7-1.03-1.3-1.63-3-1.63-6.2A5.9 5.9 0 0 0 12 2.6z',1],
+       ['M9.5 18.1a2.5 2.5 0 0 0 5 0z',0]],
+ gear:[['M4.4 6.05h15.2a1.05 1.05 0 0 1 0 2.1H4.4a1.05 1.05 0 0 1 0-2.1z',0],
+       ['M9.1 10.05a2.95 2.95 0 1 0 0-5.9 2.95 2.95 0 0 0 0 5.9z',1],
+       ['M4.4 15.85h15.2a1.05 1.05 0 0 1 0 2.1H4.4a1.05 1.05 0 0 1 0-2.1z',0],
+       ['M15.3 19.85a2.95 2.95 0 1 0 0-5.9 2.95 2.95 0 0 0 0 5.9z',1]],
+ star:[['M12 3.15l2.56 5.19 5.73.83-4.15 4.04.98 5.71L12 16.23l-5.12 2.69.98-5.71L3.71 9.17l5.73-.83z',1]],
+ search:[['M10.9 3.3a7.65 7.65 0 1 0 0 15.3 7.65 7.65 0 0 0 0-15.3zm0 2.45a5.2 5.2 0 1 1 0 10.4 5.2 5.2 0 0 1 0-10.4z',1],
+        ['M16.45 15.15l4.5 4.5a1.32 1.32 0 0 1-1.87 1.87l-4.5-4.5z',1]],
+ plus:[['M10.85 4.55a1.15 1.15 0 0 1 2.3 0v6.3h6.3a1.15 1.15 0 0 1 0 2.3h-6.3v6.3a1.15 1.15 0 0 1-2.3 0v-6.3h-6.3a1.15 1.15 0 0 1 0-2.3h6.3z',1]],
+ side:[['M4.7 4.6h14.6A1.5 1.5 0 0 1 20.8 6.1v11.8a1.5 1.5 0 0 1-1.5 1.5H4.7a1.5 1.5 0 0 1-1.5-1.5V6.1a1.5 1.5 0 0 1 1.5-1.5z',0],
+       ['M4.7 4.6h4.5v14.8H4.7a1.5 1.5 0 0 1-1.5-1.5V6.1a1.5 1.5 0 0 1 1.5-1.5z',1]],
+ dots:[['M6 13.35a1.35 1.35 0 1 0 0-2.7 1.35 1.35 0 0 0 0 2.7z',1],
+       ['M12 13.35a1.35 1.35 0 1 0 0-2.7 1.35 1.35 0 0 0 0 2.7z',1],
+       ['M18 13.35a1.35 1.35 0 1 0 0-2.7 1.35 1.35 0 0 0 0 2.7z',1]]
+};
+function ic(n,sz=18,w=1.7,on=false){
+  if(ST.rf && IPF[n]){
+    const parts=IPF[n].map(([d,main])=>
+      `<path d="${d}" fill="${on&&main?'url(#glaze)':'currentColor'}" opacity="${main?1:(on?.5:.42)}"/>`).join('');
+    return `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none">${parts}</svg>`;
+  }
+  const _w=w; return `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${_w}" stroke-linecap="round" stroke-linejoin="round"><path d="${IP[n]}"/></svg>`; }
 
 /* 品种徽章：一个品种一个记号（不拿代号缩写兜底） */
 const MK={
@@ -341,7 +545,7 @@ function chartSVG(o){
   const hi=Math.max(...S.map(x=>x.h)), lo=Math.min(...S.map(x=>x.l)), pad=(hi-lo)*0.06;
   const Y=v=> 16+(hi+pad-v)/(hi-lo+pad*2)*(mainH-22);
   const UP=cUp(), DN=cDn();
-  let s=`<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="background:${t.chart};font-family:${'var(--num)'}">`;
+  let s=`<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="background:${t.chart};font-family:var(--num);font-variant-numeric:tabular-nums">`;
   const gl=6;
   for(let i=0;i<=gl;i++){ const yy=(16+i*(mainH-22)/gl);
     s+=`<line x1="0" x2="${cw}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="${t.grid}"/>`;
@@ -446,7 +650,7 @@ const PERIODS=['1分','5分','15分','1时','4时','1日','1周'];
 
 /* ══════════════ 机身零件 ══════════════ */
 function railEl(active='chart'){
-  const it=(k,n,lab)=>`<div class="it ${active===k?'on':''}" title="${lab}">${ic(n,19,1.75)}</div>`;
+  const it=(k,n,lab)=>`<div class="it ${active===k?'on':''}" title="${lab}">${ic(n,ST.rf?20:19,1.75,active===k)}</div>`;
   return `<div class="rail">${it('chart','chart','行情')}${it('sector','sector','板块')}${it('bell','bell','提醒')}
     <div class="sp"></div>${it('set','gear','设置')}</div>`;
 }
@@ -471,7 +675,7 @@ function headEl(){
   const cell=(l,v)=>`<div class="cell"><i>${l}</i><b>${v}</b></div>`;
   return `<div class="phd">
     <div class="id">${mark('BTC',28)}<b>BTC</b><s>/USDT</s><span class="tag">永续</span>
-      <span style="color:${T().acc}">${ic('star',16,1.9)}</span></div>
+      <span style="color:${T().acc}">${ic('star',16,1.9,true)}</span></div>
     <div class="prc"><b style="color:${c}">116,842.5</b><s style="color:${c}">+2,113.4　+1.84%</s></div>
     <div class="cells">${cell('持仓','12.84B')}${cell('成交额','48.21B')}${cell('市值','2.33T')}
       ${cell('费率','+0.0100%')}${cell('结算','03:12:44')}${cell('振幅','2.61%')}</div></div>`;
@@ -496,7 +700,7 @@ function paneEl(o={}){
       <span><i>量</i>1,284.6</span><span><i>持仓</i>12.84B</span><span><i>DIF</i>184.2</span><span><i>DEA</i>151.7</span>
       <span style="margin-left:auto;color:var(--ink3)">09-21 14:00</span></div>`:'';
   return `<div class="pane">${headEl()}${pbarEl()}
-    <div class="canvas">${ro}${chartSVG({w,h:h-(o.readout?Math.round(22*(o.ui||1)):0),
+    <div class="canvas">${ro}${chartSVG({w,h:h-((o.readout&&!ST.rf)?Math.round(22*(o.ui||1)):0),
       cross:o.cross,draw:o.draw,fs:Math.round(10*(o.ui||1))})}</div></div>`;
 }
 function win(inner,cls=''){ return `<div class="win ${cls}">${tbarEl()}<div class="body">${inner}</div></div>`; }
@@ -634,6 +838,7 @@ const OPEN=[
  ['自选不再是一个「页面」','它变成常驻列。好处是切品种一步到位，代价是底栏五格在桌面只剩三格（行情 / 板块 / 提醒 / 设置）。要不要保留一个「自选」全页？我的意见是不要。'],
  ['多窗口开不开','⌘ 点自选行在新窗口开同一品种，用来左右对照两只。这是桌面独有的能力，但也是第一个「手机上没有对应物」的功能。做，还是先不做？'],
  ['指标 / 图层面板放哪','桌面有地方放一个右侧常驻面板（指标列表、画线对象管理）。现在原型里没画，先问你要不要。'],
+ ['画线工具条要不要也改成实心记号','这一版我把导航图标全改成实心双色了，只有画线工具条那 14 个还是线形符号——趋势线、水平线、斐波那契，工具本身画出来就是线，做成实心反而认不出来。我倾向<b>保持线形</b>，但这是全窗口唯一一处线框，你看着别扭就说。'],
  ['键盘快捷键要不要给用户改','按既有原则（不把选项摆给用户）我倾向于<b>不给</b>，一套定死。']];
 function renderOpen(){
   document.getElementById('open').innerHTML='<ol style="padding-left:20px;line-height:1.9">'+
@@ -643,12 +848,24 @@ function paint(){
   const t=T();
   const r=document.documentElement.style;
   r.setProperty('--app',t.app); r.setProperty('--ground',t.ground); r.setProperty('--chart',t.chart);
-  r.setProperty('--raised',t.raised); r.setProperty('--raised2',t.raised2); r.setProperty('--line',t.line);
+  r.setProperty('--raised',t.raised); r.setProperty('--raised2',t.raised2); r.setProperty('--lineRaw',t.line);
   r.setProperty('--ink',t.ink); r.setProperty('--ink2',t.ink2); r.setProperty('--ink3',t.ink3);
   r.setProperty('--acc',t.acc); r.setProperty('--accL',t.accL);
   r.setProperty('--accSoft',t.acc+'1F'); r.setProperty('--accGlow',t.acc+'55');
   r.setProperty('--cUp',cUp()); r.setProperty('--cDn',cDn());
   r.setProperty('--wl',ST.wl+'px');
+  /* ── 精致版的材质变量 ── */
+  const dark=ST.mode==='dark';
+  r.setProperty('--sideW',(52+(ST.wl<120?0:ST.wl)+40)+'px');
+  r.setProperty('--sideTint',rgba(dark?t.ground:deskBase(t,false),ST.sideA*(dark?1:.9)));
+  r.setProperty('--rim',  dark?'rgba(255,255,255,.11)':'rgba(0,0,0,.15)');
+  r.setProperty('--rim2', dark?'rgba(255,255,255,.075)':'rgba(0,0,0,.075)');
+  r.setProperty('--hi',   dark?'rgba(255,255,255,.08)':'rgba(255,255,255,.9)');
+  r.setProperty('--well', dark?'rgba(255,255,255,.045)':'rgba(0,0,0,.035)');
+  r.setProperty('--glass',rgba(t.raised, dark?.74:.80));
+  r.setProperty('--desk', desk(t,dark));
+  document.getElementById('gz0').setAttribute('stop-color',t.accL);
+  document.getElementById('gz1').setAttribute('stop-color',t.acc);
   const ui=ST.ui||1;
   document.getElementById('s1').innerHTML = win(railEl()+wlEl()+dbarEl('cursor')+paneEl({ui}));
   document.getElementById('s2').innerHTML = win(railEl()+wlEl()+dbarEl('cursor')+paneEl({ui,cross:true,readout:true}));
@@ -675,6 +892,16 @@ rng2('bars','barsv',v=>ST.bars=v,v=>v);
 rng2('mainp','mainpv',v=>ST.mainp=v,v=>v+'%');
 rng2('subs','subsv',v=>ST.subs=v,v=>v);
 rng2('wl','wlv',v=>ST.wl=v,v=> v<120?'隐藏':v);
+seg('rf',v=>{ ST.rf=v==='1'; document.documentElement.classList.toggle('rf',ST.rf); paint(); });
+const rv=(id,vid,fn,fmtv)=>{ const el=document.getElementById(id), lab=document.getElementById(vid);
+  el.addEventListener('input',()=>{ fn(+el.value); lab.textContent=fmtv(+el.value); }); };
+rv('rad','radv',   v=>document.documentElement.style.setProperty('--rad',v+'px'), v=>v);
+rv('shw','shwv',   v=>document.documentElement.style.setProperty('--shw',v/100),  v=>(v/100).toFixed(2));
+rv('hair','hairv', v=>document.documentElement.style.setProperty('--hair',v),     v=>v+'%');
+rv('glz','glzv',   v=>document.documentElement.style.setProperty('--glz',v/100),  v=>(v/100).toFixed(2));
+rv('grain','grainv',v=>document.documentElement.style.setProperty('--grain',v/1000), v=>(v/1000).toFixed(3));
+rv('sidea','sideav',v=>{ST.sideA=v/100;paint();}, v=>(v/100).toFixed(2));
+document.documentElement.classList.add('rf');
 ST.ui=1; renderKeys(); renderOpen(); paint();
 </script>
 </body></html>
