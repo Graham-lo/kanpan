@@ -1,0 +1,9 @@
+# 变异检验（临时改坏生产代码 → 跑对应用例 → 必须红；跑完 git checkout 复原）
+
+## BT-10
+M1 MarketSocketRouter.probe 的 onCancel 改成空操作（不再 socket.cancel）
+  → ✘ routerParentCancelCancelsEverySocket：Expectation failed: settled（5 秒内两条候选都没关）
+M2 MarketSocketRouter.probe 超时分支删掉 `await socket.cancel()`
+  → ✘ routerProbeTimeoutCancelsEverySocket：Expectation failed: settled
+M3 BinanceWS.receiveFrame 首帧静默分支删掉 `await s.cancel()`
+  → ✘ firstFrameSilenceCancelsDeafSocket：closedForReal / 退避闹钟 / 重连 三处断言全红

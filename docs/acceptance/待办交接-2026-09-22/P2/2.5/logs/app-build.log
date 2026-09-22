@@ -1,0 +1,6 @@
+...
+    builtin-validationUtility /tmp/p2bt-dd/Build/Products/Debug-iphonesimulator/Kanpan.app -shallow-bundle -infoplist-subpath Info.plist
+
+** BUILD SUCCEEDED **
+
+EXIT 0

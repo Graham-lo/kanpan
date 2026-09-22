@@ -81,7 +81,6 @@ struct MainScreen: View {
   /// 长按一行品种弹出来那张预览卡的数据（§4.1）。自选页和板块品种列表共用一份，
   /// 所以它挂在这儿而不是各自页里——两张表长按同一个品种只取一趟。
   @State private var previews = SymbolPreviewStore()
-  @State private var didBoot = false
   /// 「这棵根真的没了」的信号。行情、报价簿、后台额度都挂在上面这些 `@State` 上，
   /// 而 SwiftUI 从不说「这个 View 销毁了」——见 `RootTeardown`。
   @State private var teardown = RootTeardown()
@@ -364,9 +363,9 @@ struct MainScreen: View {
   private var lifecycleContent: some View {
     presentation
     // 接线要排在盖层前面：`QuoteBook` 得先知道自选是哪些，才不会拿「图上那一个品种」
-    // 去裁刚从盘上恢复出来的报价。`boot()` 自己有 `didBoot` 挡着，重复调用是空转。
-    .onAppear { boot() }
-    .task { boot() }
+    // 去裁刚从盘上恢复出来的报价。`.onAppear` 和 `.task` 两个入口都接在 `BootOnce`
+    // 里的同一道闸上，先到的那个真跑，后到的空转（BT-20 在 KanpanMain 里量这件事）。
+    .modifier(BootOnce(boot: boot))
     // 开关一变、或前后台一切，这个 task 就整个重来（旧的先被取消），心跳跟着起停。
     .task(id: beating) { await heartbeat() }
     // 其余三十一个观察者收在这一层里（`MainScreenParts.swift` 的 `MainScreenObservers`）。
@@ -1437,9 +1436,8 @@ struct MainScreen: View {
     }
   }
 
+  /// 只由 `BootOnce` 调（它保证一辈子只进来一次）。别在别处直接调它。
   private func boot() {
-    guard !didBoot else { return }
-    didBoot = true
     wireLifecycle()
     wireAlerts()
     // 先把档案装进来，再开行情。

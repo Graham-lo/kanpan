@@ -19,6 +19,14 @@ import KanpanAccount
   private(set) var client: AccountClient?
   private var challenge: AccountChallenge?
   private var attempt = UUID()
+  /// 「这台机器上现在是谁」的版本号。主动登录、退出登录各抬一次。
+  ///
+  /// 冷启动那一下的 `restore()` 要跨两次 actor 往返（读凭据里的用户、设备）。这中间
+  /// 用户要是已经点了退出、或者登上了另一个号，restore 回来时拿着的还是旧的那个人，
+  /// 从前它照样 `onPrepareAccount(旧人)` 把旧档案装回去——刚退出的人又被登回来，
+  /// 刚登上的 B 被 A 的档案盖掉（审查 B.10 BT-22）。号对不上就说明这次 restore 已经
+  /// 过时，什么都不装。
+  @ObservationIgnored private var generation = 0
   @ObservationIgnored var onPrepareAccount: ((AccountUser?) throws -> (@MainActor () -> Void))?
   @ObservationIgnored var onSynchronize: (() -> Void)?
   @ObservationIgnored var onAutoSync: ((Bool) -> Void)?
@@ -40,6 +48,8 @@ import KanpanAccount
   /// 就知道发生了什么，不会以为 app 坏了。本机档案一个字都不动。
   private(set) var replacedNotice: String?
 
+  /// 测试用：直接给一个客户端（假服务器、假钥匙串）。产品走下面那个无参的。
+  init(client: AccountClient?) { self.client = client }
   init() {
     // Shipping endpoint is supplied by the app build, never typed into the product UI.
     let configured = Bundle.main.object(forInfoDictionaryKey: "KanpanAccountAPIURL") as? String
@@ -62,14 +72,17 @@ import KanpanAccount
   }
   func restore() async {
     guard let client else { return }
-    if let saved = await client.savedUser() {
-      do {
-        if let d = await client.savedDevice() { device = d }
-        let apply = try onPrepareAccount?(saved); apply?()
-        user = saved; email = saved.email
-        onSynchronize?()
-      } catch { self.error = error.localizedDescription }
-    }
+    let started = generation
+    guard let saved = await client.savedUser(), generation == started else { return }
+    let savedDevice = await client.savedDevice()
+    // 两次 `await` 之间用户可能已经退出或换了号：这次 restore 作废，一样都不装。
+    guard generation == started else { return }
+    do {
+      if let d = savedDevice { device = d }
+      let apply = try onPrepareAccount?(saved); apply?()
+      user = saved; email = saved.email
+      onSynchronize?()
+    } catch { self.error = error.localizedDescription }
   }
   func open() { error = nil; password = ""; newPassword = ""; code = ""; page = user == nil ? .login : .account; presented = true }
   func move(_ page: Page) { self.page = page; error = nil; password = ""; newPassword = ""; code = "" }
@@ -105,8 +118,11 @@ import KanpanAccount
       catch { note(error) }
     }
   }
-  private func accept(_ value: AccountTokens) async throws {
+  /// 登录 / 注册拿到令牌之后的那一步。不是 `private`：BT-22 的用例要从这儿摆
+  /// 「restore 还挂着、登录先完成」的时序（`submit` 只是在它前面多一趟 HTTP）。
+  func accept(_ value: AccountTokens) async throws {
     guard let client else { throw AccountError.unavailable }
+    generation &+= 1
     let apply = try onPrepareAccount?(value.user)
     try await client.accept(value, device: device)
     apply?()
@@ -123,6 +139,7 @@ import KanpanAccount
   /// 钥匙串、服务端会话）一定要走掉，装档案失败最多在账号页上留一句提示。
   func logout() async {
     guard !busy || page == .close else { return }
+    generation &+= 1
     var failure: (any Error)?
     // 钥匙串写失败也不把人留在登录态：`signOut` 里内存那一半已经先清了（A-02）。
     do { try await client?.signOut() } catch { failure = error }

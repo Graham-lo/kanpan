@@ -1,0 +1,87 @@
+[0/1] Planning build
+Building for debugging...
+[0/5] Write sources
+[1/5] Write swift-version--58304C5D6DBC2206.txt
+[3/7] Compiling KanpanData MarketFeed.swift
+[4/7] Emitting module KanpanData
+[5/8] Compiling KanpanData RoutedMarketFeed.swift
+[6/25] Compiling KanpanDataTests Fakes.swift
+[7/26] Compiling KanpanDataTests TickCoalesceTests.swift
+[8/26] Compiling KanpanDataTests FirstFillRetryTests.swift
+[9/26] Compiling kanpan_feed main.swift
+[10/26] Emitting module kanpan_feed
+[10/26] Write Objects.LinkFileList
+[12/26] Compiling KanpanDataTests TwoStageFetchTests.swift
+[12/26] Linking kanpan-feed
+[13/26] Applying kanpan-feed
+[15/26] Compiling KanpanDataTests SeriesStoreTests.swift
+[16/26] Compiling KanpanDataTests FeedBlockedRetryTests.swift
+[17/26] Compiling KanpanDataTests FeedConvergenceTests.swift
+[18/26] Emitting module KanpanDataTests
+[19/26] Compiling KanpanDataTests FeedLifecycleTests.swift
+/private/tmp/p2bt/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[20/26] Compiling KanpanDataTests FeedReplayTests.swift
+/private/tmp/p2bt/KanpanData/Tests/KanpanDataTests/FeedLifecycleTests.swift:59:30: warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 57 |       // 抛错，缺口就永远欠着——启动期那一发补缺（`.connected` 排在首屏之后被处理时
+ 58 |       // 派的）一失手，后面所有「稳态」判据都等不到。
+ 59 |       if let start = q.first { $0.name == "startTime" }?.value.flatMap(Int64.init) {
+    |                              `- warning: trailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning
+ 60 |         let span = FeedLifecycleTests.lastOpen - start
+ 61 |         guard span >= 0 else { return json("[]") }
+[21/26] Compiling KanpanDataTests FeedTailIntegrityTests.swift
+[22/26] Compiling KanpanDataTests MicrostructureSubscriptionTests.swift
+[23/26] Compiling KanpanDataTests BlankChartTests.swift
+[24/26] Compiling KanpanDataTests DataIntegrityTests.swift
+[24/26] Write Objects.LinkFileList
+[25/26] Linking KanpanDataPackageTests
+Build complete! (597.93s)
+Test Suite 'Selected tests' started at 2026-09-23 05:29:50.977.
+Test Suite 'KanpanDataPackageTests.xctest' started at 2026-09-23 05:29:51.102.
+Test Suite 'KanpanDataPackageTests.xctest' passed at 2026-09-23 05:29:51.103.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+Test Suite 'Selected tests' passed at 2026-09-23 05:29:51.105.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.128) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "BT-06 网络切换与后台/stop 交错：连接数最终收敛到 1 或 0" started.
+◇ Suite "行情流水线：生命周期与并发" started.
+◇ Suite "BT-08 取消唯一消费者（MarketFeed）：iterator 退出，连接只听 owner 的" started.
+◇ Test "BT-06a online#1 卡在关旧连接 → owner stop() → 放行：迟到的那次切换不许重新连上（收敛到 0）" started.
+◇ Test "BT-12 回前台补不补缺看真实时钟：同一根不补，隔了一根才补" started.
+◇ Test "BT-09 报文猛灌时消费者被闸门按住：放行后结构性事件一条都不能少" started.
+◇ Test "BT-11 后台 24.9 秒回来复用现有连接；25.1 秒回来才重连并补缺" started.
+◇ Test "BT-02 首屏还在路上就切后台再回前台：必须补发首屏，不能只剩打底那几根" started.
+◇ Test "BT-05 后台那记 25 秒的闹钟醒来时人已回前台：不许掐当前连接" started.
+◇ Test "BT-01 上一份 feed 还在收摊时切品种：新品种的行情必须真的流出来" started.
+◇ Test "BT-08 取消 feed.events() 的唯一消费者 → 循环退出；WS 照旧连着不抖；owner stop() 才掐 socket" started.
+✔ Test "BT-05 后台那记 25 秒的闹钟醒来时人已回前台：不许掐当前连接" passed after 0.105 seconds.
+✔ Test "BT-06a online#1 卡在关旧连接 → owner stop() → 放行：迟到的那次切换不许重新连上（收敛到 0）" passed after 0.475 seconds.
+◇ Test "BT-06b online#1 卡住 → online#2 完成 → stop() → 放行 online#1：收敛到 0" started.
+✔ Test "BT-08 取消 feed.events() 的唯一消费者 → 循环退出；WS 照旧连着不抖；owner stop() 才掐 socket" passed after 0.874 seconds.
+✔ Suite "BT-08 取消唯一消费者（MarketFeed）：iterator 退出，连接只听 owner 的" passed after 0.877 seconds.
+✔ Test "BT-02 首屏还在路上就切后台再回前台：必须补发首屏，不能只剩打底那几根" passed after 1.142 seconds.
+✔ Test "BT-06b online#1 卡住 → online#2 完成 → stop() → 放行 online#1：收敛到 0" passed after 0.797 seconds.
+BT-09 观测：灌入 30 条报文，放行那一刻流里积压 51 条事件，其中末根事件 19 条
+✔ Test "BT-01 上一份 feed 还在收摊时切品种：新品种的行情必须真的流出来" passed after 1.272 seconds.
+✔ Test "BT-09 报文猛灌时消费者被闸门按住：放行后结构性事件一条都不能少" passed after 1.274 seconds.
+◇ Test "BT-06c online#1 卡住 → online#2 完成 → 放行 online#1：迟到的旧切换不许再重连一次（收敛到 1）" started.
+✔ Test "BT-06c online#1 卡住 → online#2 完成 → 放行 online#1：迟到的旧切换不许再重连一次（收敛到 1）" passed after 0.616 seconds.
+◇ Test "BT-06d online#1 卡住 → 进后台、25 秒闹钟响 → 放行：后台里不许被迟到的切换重新连上（收敛到 0）" started.
+✔ Test "BT-06d online#1 卡住 → 进后台、25 秒闹钟响 → 放行：后台里不许被迟到的切换重新连上（收敛到 0）" passed after 0.487 seconds.
+◇ Test "BT-06e 后台闹钟已挂起 WS 之后再来一次 online：后台不许起连接，回前台恰好一条" started.
+✔ Test "BT-11 后台 24.9 秒回来复用现有连接；25.1 秒回来才重连并补缺" passed after 2.544 seconds.
+✔ Test "BT-12 回前台补不补缺看真实时钟：同一根不补，隔了一根才补" passed after 2.986 seconds.
+✔ Suite "行情流水线：生命周期与并发" passed after 3.024 seconds.
+✔ Test "BT-06e 后台闹钟已挂起 WS 之后再来一次 online：后台不许起连接，回前台恰好一条" passed after 0.810 seconds.
+◇ Test "BT-06f online#1 卡住 → 后台 → 回前台（重连 2 号）→ 放行：恰好一条活连接，不多拨、不报离线" started.
+✔ Test "BT-06f online#1 卡住 → 后台 → 回前台（重连 2 号）→ 放行：恰好一条活连接，不多拨、不报离线" passed after 0.478 seconds.
+✔ Suite "BT-06 网络切换与后台/stop 交错：连接数最终收敛到 1 或 0" passed after 3.790 seconds.
+✔ Test run with 13 tests in 3 suites passed after 3.801 seconds.
+EXIT 0

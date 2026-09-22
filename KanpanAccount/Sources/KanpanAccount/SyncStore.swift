@@ -601,10 +601,20 @@ final class ArchiveWriter: @unchecked Sendable {
   ///   那是我自己把 generation 推上去的。generation 要是被别人推的（设备 B 删了
   ///   又恢复），就让它按 409 走 `rollback` + 重拉 + `realign` 那条恢复路径，
   ///   不在这儿偷偷抬——偷偷抬等于假装本机见过 B 的那一轮删除恢复。
+  ///
+  /// **只认这份存档自己发出去的操作。** 回执里 `operationId` 不在本存档
+  /// `operations` 里的那几条一律跳过；一条都不是自己的，就整份回执不动存档
+  /// （连 `offset` 都不抬）。场景是 B.10 BT-21：账号 A 的推送挂在网络上，
+  /// 用户切到账号 B，A 的回执这时才到——它要是被交给了 B 的存档，A 的对象会
+  /// 被写进 B 的 `objects` / `local`，下次同步就把 A 的画线当成 B 的推上去。
+  /// 桥上有 epoch 守卫挡这条路，但存档自己也得守住这道门，不能只靠调用方。
   public func acknowledge(_ response: SyncPushResponse) throws {
+    let pending = Set(archive.operations.map(\.id))
+    let mine = response.results.filter { pending.contains($0.operationId) }
+    guard !mine.isEmpty else { return }
     try transaction { a in
       a.offset = response.serverTime - Int64(Date().timeIntervalSince1970 * 1000)
-      for result in response.results {
+      for result in mine {
         let acked = a.operations.first { $0.id == result.operationId }
         a.objects[result.object.key] = result.object
         a.operations.removeAll { $0.id == result.operationId }; a.sent.remove(result.operationId)

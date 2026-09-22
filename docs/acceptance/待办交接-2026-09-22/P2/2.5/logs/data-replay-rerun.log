@@ -1,0 +1,40 @@
+Building for debugging...
+[0/4] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (3.03s)
+Test Suite 'Selected tests' started at 2026-09-23 06:29:59.877.
+Test Suite 'KanpanDataPackageTests.xctest' started at 2026-09-23 06:30:00.174.
+Test Suite 'KanpanDataPackageTests.xctest' passed at 2026-09-23 06:30:00.175.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+Test Suite 'Selected tests' passed at 2026-09-23 06:30:00.175.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.298) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "WS 回放：合成规矩、断线补缺、静默重连" started.
+◇ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" started.
+◇ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" started.
+◇ Test "关掉「启动快照」：文件被删，之后不再写" started.
+◇ Test "连断三次：退避 1s / 2s / 4s（各再抖 ±20%），日志可见" started.
+◇ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" started.
+◇ Test "3000 条录制报文回放：最终序列与期望全等" started.
+◇ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" started.
+◇ Test "60 秒一帧没有就主动重连" started.
+◇ Test "30 品种 × 14 周期切一遍：沙盒里只有 series/ 下封顶的快照和品种表" started.
+◇ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" started.
+◇ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" started.
+◇ Test "服务器 ping 立刻回 pong" started.
+✔ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" passed after 0.024 seconds.
+✔ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" passed after 0.022 seconds.
+✔ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" passed after 0.023 seconds.
+✔ Test "服务器 ping 立刻回 pong" passed after 0.029 seconds.
+✔ Test "60 秒一帧没有就主动重连" passed after 0.266 seconds.
+✔ Test "连断三次：退避 1s / 2s / 4s（各再抖 ±20%），日志可见" passed after 0.364 seconds.
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 1.738 seconds.
+✔ Test "30 品种 × 14 周期切一遍：沙盒里只有 series/ 下封顶的快照和品种表" passed after 2.256 seconds.
+✔ Test "关掉「启动快照」：文件被删，之后不再写" passed after 2.306 seconds.
+✔ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" passed after 2.439 seconds.
+✔ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" passed after 2.758 seconds.
+✔ Test "3000 条录制报文回放：最终序列与期望全等" passed after 3.083 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 3.094 seconds.
+✔ Test run with 12 tests in 1 suite passed after 3.094 seconds.
+EXIT 0

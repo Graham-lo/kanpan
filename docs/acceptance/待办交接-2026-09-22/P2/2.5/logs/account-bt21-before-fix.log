@@ -1,0 +1,45 @@
+[0/1] Planning build
+Building for debugging...
+[0/3] Write sources
+[1/3] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Emitting module KanpanAccount
+[4/5] Compiling KanpanAccount SyncStore.swift
+[4/6] Write Objects.LinkFileList
+[5/6] Linking KanpanAccountPackageTests
+Build complete! (37.81s)
+Test Suite 'Selected tests' started at 2026-09-23 06:31:07.879.
+Test Suite 'KanpanAccountPackageTests.xctest' started at 2026-09-23 06:31:07.892.
+Test Suite 'KanpanAccountPackageTests.xctest' passed at 2026-09-23 06:31:07.892.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-23 06:31:07.893.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.014) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "B.10 BT-21 迟到的回执不串户" started.
+◇ Test "A 推送挂住时切到 B，A 迟到的回执既到不了调用方，也进不了 B 的存档" started.
+✘ Test "A 推送挂住时切到 B，A 迟到的回执既到不了调用方，也进不了 B 的存档" recorded an issue at StaleAckTests.swift:119:5: Expectation failed: try fingerprint(storeB.archive) == before
+↳ B 的存档不许因为 A 的回执变一个字节
+✘ Test "A 推送挂住时切到 B，A 迟到的回执既到不了调用方，也进不了 B 的存档" recorded an issue at StaleAckTests.swift:120:5: Expectation failed: (storeB.archive.objects[lineA.key] → SyncObject(collection: "drawings", id: "BTCUSDT/alice-line", body: ["color": KanpanAccount.JSONValue.string("red")], fields: [:], revision: 7, deleted: false, generation: 0)) == nil
+✘ Test "A 推送挂住时切到 B，A 迟到的回执既到不了调用方，也进不了 B 的存档" recorded an issue at StaleAckTests.swift:121:5: Expectation failed: (storeB.archive.local[lineA.key] → SyncObject(collection: "drawings", id: "BTCUSDT/alice-line", body: ["color": KanpanAccount.JSONValue.string("red")], fields: [:], revision: 7, deleted: false, generation: 0)) == nil
+✘ Test "A 推送挂住时切到 B，A 迟到的回执既到不了调用方，也进不了 B 的存档" recorded an issue at StaleAckTests.swift:125:5: Expectation failed: (storeB.writeCount → 2) == (writesBefore → 1)
+↳ 一条都不是自己的回执不该触发写盘
+✘ Test "A 推送挂住时切到 B，A 迟到的回执既到不了调用方，也进不了 B 的存档" recorded an issue at StaleAckTests.swift:127:5: Expectation failed: try fingerprint(reopenedB.archive) == before
+↳ 盘上的 B 存档也没被 A 的回执碰过
+✘ Test "A 推送挂住时切到 B，A 迟到的回执既到不了调用方，也进不了 B 的存档" failed after 0.408 seconds with 5 issues.
+◇ Test "一份回执里混着自己的和别人的操作：只认自己那几条" started.
+✘ Test "一份回执里混着自己的和别人的操作：只认自己那几条" recorded an issue at StaleAckTests.swift:150:5: Expectation failed: (store.archive.objects[foreign.key] → SyncObject(collection: "favorites", id: "foreign", body: ["symbol": KanpanAccount.JSONValue.string("ETHUSDT")], fields: [:], revision: 9, deleted: false, generation: 0)) == nil
+↳ 别人的那条不许混进来
+✘ Test "一份回执里混着自己的和别人的操作：只认自己那几条" recorded an issue at StaleAckTests.swift:151:5: Expectation failed: (store.archive.local[foreign.key] → SyncObject(collection: "favorites", id: "foreign", body: ["symbol": KanpanAccount.JSONValue.string("ETHUSDT")], fields: [:], revision: 9, deleted: false, generation: 0)) == nil
+✘ Test "一份回执里混着自己的和别人的操作：只认自己那几条" failed after 0.095 seconds with 2 issues.
+✘ Suite "B.10 BT-21 迟到的回执不串户" failed after 0.504 seconds with 7 issues.
+↳ /// B.10 BT-21：A 的推送挂住 → 切到 B → A 的回执这时才到。B 的存档不许收到 A 的 ACK。
+↳ ///
+↳ /// 两道门各测一遍：
+↳ /// 1. 客户端那道——换人时 `accept` 让刷新协调者换代，挂在网络上的那趟回来时代数对不上，
+↳ ///    直接抛 `CancellationError`，调用方拿不到 A 的回执；
+↳ /// 2. 存档那道——就算有人把 A 的回执原样递给 B 的 `SyncStore.acknowledge`，B 的存档
+↳ ///    （内存里和盘上）一个字节都不动。这道门是这一轮补上的：从前 `acknowledge` 不看
+↳ ///    `operationId` 是不是自己发的，A 的对象会被写进 B 的 `objects` / `local`。
+✘ Test run with 2 tests in 1 suite failed after 0.505 seconds with 7 issues.
+EXIT 1
