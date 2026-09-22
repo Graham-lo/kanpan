@@ -329,3 +329,9 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 2026-09-22 用户拍板：多交易所抽象 + Coinbase 现货**要做**（此前不做清单里判不做），由第二条 Codex 线程在工作树 `kanpan-coinbase` / 分支 `multi-exchange` 按阶段实现并 ff 合进 main，交接书 `docs/多交易所-Coinbase-交接-Codex-2026-09-22.md`。OKX 持仓量副图仍不做。
 
 2026-09-22 用户又拍板两项此前不做的功能：对比 K 线（第三条 Codex 线程，`kanpan-compare` / `compare-kline`）、提醒铃声（第四条，`kanpan-ringtone` / `alert-sound`），交接书见 docs/。能独立并行的功能一律各开一条 Codex 线程。
+
+## 提醒铃声 · 第四线程（2026-09-22）
+
+- 阶段 1 本地实现与全部规定检查已完成：三段可重建 IMA4 CAF（清脆 / 电子 / 玻璃）与系统默认四档，`Prefs.alertSound` synced、容错解码、服务端白名单与值规则已对齐。报告：[阶段1](../docs/acceptance/提醒铃声-2026-09-22/阶段1.md)。此阶段提交后按 ff 推送 main，最终推送记录见总结。
+- 后端已部署：保留第一线程已上线的 depth 与 LSR/TAKER/BASIS，备份 `/opt/kanpan-api/backup-ringtone-1-20260922-141014`；API/worker 于 14:26:55 CST 重启并 active，内网 health、公网元数据与 capabilities 200。未改网关、Caddy、代理或凭证，未写生产用户测试数据。
+- Core 361+4、Network 96、Data 184、app-logic 445、Chart 126+4、本地 Rust 154 全通过；线上同源合并副本 155 通过。新工作树首次构建超时与测试目录夹具补齐的过程如实保留。仅模拟器，尚无铃声界面验收、真机或 APNs 实推结果。

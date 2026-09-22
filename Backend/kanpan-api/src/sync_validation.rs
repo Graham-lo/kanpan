@@ -112,6 +112,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "sectorWindow"=>one_of(v,&["today","d5","d20"]),
    "sectorSort"=>one_of(v,&["change","volume"]),
    "reviewSearchScope"=>one_of(v,&["history","private"]),
+   "alertSound"=>one_of(v,&["default","crisp","electronic","glass"]),
    // Empty means "has not picked one yet" for both.
    "lastDrawTool"=>v.as_str().is_some_and(|s|s.is_empty()||KINDS.contains(&s)),
    // A tab label on the drawing panel, not an enum with any server meaning; the client

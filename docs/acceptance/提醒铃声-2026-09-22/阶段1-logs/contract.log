@@ -1,0 +1,133 @@
+cd Kanpan/Settings && KANPAN_WRITE_SYNC_CONTRACT=1 swift test  \
+	  --filter theContractFileIsTheOneListBothSidesRead
+Building for debugging...
+[0/10] Write sources
+[5/10] /Users/mdd/zhk/kanpan-ringtone/Kanpan/Settings/.build/arm64-apple-macosx/debug/KanpanSettingsPackageTests.derived/runner.swift
+[6/10] Write sources
+[7/10] Write swift-version--58304C5D6DBC2206.txt
+[9/51] Compiling KanpanCore MarketSector.swift
+[10/51] Compiling KanpanCore SymbolClassification.swift
+[11/51] Compiling KanpanCore SymbolInfo.swift
+[12/51] Compiling KanpanCore SectorAggregate.swift
+[13/51] Compiling KanpanCore Aggregator.swift
+[14/51] Compiling KanpanCore Bar.swift
+[15/51] Compiling KanpanCore BarSeries.swift
+[16/51] Compiling KanpanCore ChangeBasis.swift
+[17/51] Emitting module KanpanCore
+[18/55] Compiling KanpanCore Constants.swift
+[19/55] Compiling KanpanCore Fling.swift
+[20/55] Compiling KanpanCore Layout.swift
+[21/55] Compiling KanpanCore PriceScale.swift
+[22/55] Compiling KanpanCore Ticks.swift
+[23/55] Compiling KanpanCore HeikinAshi.swift
+[24/55] Compiling KanpanCore Interval.swift
+[25/55] Compiling KanpanCore LatestQuote.swift
+[26/55] Compiling KanpanCore MarkPriceTick.swift
+[27/55] Compiling KanpanCore ViewTransition.swift
+[28/55] Compiling KanpanCore ViewWindow.swift
+[29/55] Compiling KanpanCore IncrementalLines.swift
+[30/55] Compiling KanpanCore IndicatorEngine.swift
+[31/55] Compiling KanpanCore Drawing.swift
+[32/55] Compiling KanpanCore Format.swift
+[33/55] Compiling KanpanCore ReviewLabels.swift
+[34/55] Compiling KanpanCore CandleWidths.swift
+[35/55] Compiling KanpanCore Clamp.swift
+[36/55] Compiling KanpanCore Alert.swift
+[37/55] Compiling KanpanCore AlertEvaluator.swift
+[38/55] Compiling KanpanCore AlertGeometry.swift
+[39/55] Compiling KanpanCore AICoinBehavior.swift
+[40/55] Compiling KanpanCore ChartOptions.swift
+[41/55] Compiling KanpanCore IndicatorID.swift
+[42/55] Compiling KanpanCore Indicators.swift
+[43/55] Compiling KanpanCore Math.swift
+[44/55] Compiling KanpanCore OINotice.swift
+[45/55] Compiling KanpanCore DrawEdit.swift
+[46/55] Compiling KanpanCore DrawGeometry.swift
+[47/55] Compiling KanpanCore DrawRegression.swift
+[48/55] Compiling KanpanCore DrawStore.swift
+[49/55] Compiling KanpanCore DrawVolume.swift
+[50/55] Compiling KanpanCore SectorCatalog.swift
+[51/55] Compiling KanpanCore SectorSelection.swift
+[52/55] Compiling KanpanCore CandleStyle.swift
+[53/55] Compiling KanpanCore Palette.swift
+[54/69] Compiling KanpanNetwork MarketSocketRouter.swift
+[55/69] Compiling KanpanNetwork Pacer.swift
+[56/69] Compiling KanpanNetwork HTTPTransport.swift
+[57/70] Compiling KanpanNetwork WSSocket.swift
+[58/70] Compiling KanpanNetwork Errors.swift
+[59/70] Compiling KanpanNetwork RESTClient.swift
+[60/70] Compiling KanpanNetwork MarketSource.swift
+[61/70] Compiling KanpanNetwork Backoff.swift
+[62/70] Compiling KanpanNetwork RateLimiter.swift
+[63/70] Compiling KanpanNetwork WSClient.swift
+[64/70] Compiling KanpanNetwork DTO.swift
+[65/70] Compiling KanpanNetwork Endpoints.swift
+[66/70] Compiling KanpanNetwork GatewayEnvelope.swift
+[67/70] Compiling KanpanNetwork MarketRoutePolicy.swift
+[68/70] Emitting module KanpanNetwork
+[69/85] Compiling KanpanData OIStore.swift
+[70/85] Compiling KanpanData Paths.swift
+[71/86] Compiling KanpanData Snapshot.swift
+[72/86] Compiling KanpanData SymbolCatalog.swift
+[73/86] Compiling KanpanData QuoteSnapshot.swift
+[74/86] Compiling KanpanData SeriesStore.swift
+[75/86] Compiling KanpanData Network.swift
+[76/86] Compiling KanpanData BarCache.swift
+[77/86] Compiling KanpanData BaselineSnapshot.swift
+[78/86] Compiling KanpanData OIArchive.swift
+[79/86] Compiling KanpanData Zip.swift
+[80/86] Compiling KanpanData OISource.swift
+[81/86] Compiling KanpanData RoutedMarketFeed.swift
+[82/86] Emitting module KanpanData
+[83/86] Compiling KanpanData FeedComposer.swift
+[84/86] Compiling KanpanData MarketFeed.swift
+[85/100] Compiling KanpanSettings SettingsStamp.swift
+[86/101] Compiling KanpanSettings LaunchThemeMirror.swift
+[87/101] Compiling KanpanSettings MarketCache.swift
+[88/101] Compiling KanpanSettings IndicatorDraft.swift
+[89/101] Compiling KanpanSettings IndicatorParamRule.swift
+[90/101] Compiling KanpanSettings ChartViewport.swift
+[91/101] Compiling KanpanSettings DisplayComfortPolicy.swift
+[92/101] Emitting module KanpanSettings
+[93/101] Compiling KanpanSettings APIHost.swift
+[94/101] Compiling KanpanSettings AlertSound.swift
+[95/101] Compiling KanpanSettings Prefs.swift
+[96/101] Compiling KanpanSettings PrefsFieldPlan.swift
+[97/101] Compiling KanpanSettings PrefsStore.swift
+[98/101] Compiling KanpanSettings PrefsCodec.swift
+[99/101] Compiling KanpanSettings ThemeChoice.swift
+[100/114] Compiling KanpanSettingsTests PrefsDefaultsTests.swift
+[101/114] Compiling KanpanSettingsTests PrefsColorTests.swift
+[102/115] Compiling KanpanSettingsTests SettingsStampTests.swift
+[103/115] Compiling KanpanSettingsTests PrefsPersistenceTests.swift
+[104/115] Compiling KanpanSettingsTests PrefsFieldPlanTests.swift
+[105/115] Compiling KanpanSettingsTests PrefsToleranceTests.swift
+[106/115] Compiling KanpanSettingsTests LaunchThemeMirrorTests.swift
+[107/115] Compiling KanpanSettingsTests MarketCacheTests.swift
+[108/115] Compiling KanpanSettingsTests ChartViewportA5Tests.swift
+[109/115] Compiling KanpanSettingsTests DisplayComfortTests.swift
+[110/115] Compiling KanpanSettingsTests AlertSoundTests.swift
+[111/115] Compiling KanpanSettingsTests ChartFoundationPrefsTests.swift
+[112/115] Emitting module KanpanSettingsTests
+[113/115] Compiling KanpanSettingsTests StorageLayeringTests.swift
+[114/117] Compiling KanpanSettingsPackageTests runner.swift
+[115/117] Emitting module KanpanSettingsPackageTests
+[115/117] Write Objects.LinkFileList
+[116/117] Linking KanpanSettingsPackageTests
+Build complete! (484.81s)
+Test Suite 'Selected tests' started at 2026-09-22 14:07:26.598.
+Test Suite 'KanpanSettingsPackageTests.xctest' started at 2026-09-22 14:07:26.615.
+Test Suite 'KanpanSettingsPackageTests.xctest' passed at 2026-09-22 14:07:26.615.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-22 14:07:26.615.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.017) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "体验类状态的归类表" started.
+◇ Test "客户端会发的字段和契约文件一个不差" started.
+sync-contract: 已从 PrefsFieldPlan.table 重新生成 Backend/kanpan-api/contract/settings-fields.json
+✔ Test "客户端会发的字段和契约文件一个不差" passed after 0.006 seconds.
+✔ Suite "体验类状态的归类表" passed after 0.007 seconds.
+✔ Test run with 1 test in 1 suite passed after 0.007 seconds.
+→ Backend/kanpan-api/contract/settings-fields.json 已按 PrefsFieldPlan.table 重新生成；跑 make app-logic-test 与 (cd Backend/kanpan-api && cargo test --lib) 对账

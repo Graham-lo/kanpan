@@ -101,6 +101,7 @@ enum PrefsFieldPlan {
     "sectorMarket": .synced, "sectorWindow": .synced, "sectorSort": .synced,
     "drawToolGroup": .synced, "lastDrawTool": .synced,
     "replaySpeed": .synced, "reviewSearchScope": .synced,
+    "alertSound": .synced,
 
     // ------------------------------------------------- 跟着人走，但线上并成一个键
     "rsiUpper": .syncedMerged, "rsiLower": .syncedMerged,

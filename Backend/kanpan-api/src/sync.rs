@@ -60,6 +60,7 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  // archive (`SymbolPrefs.selectedGroupID`), so it never followed the person to a second device.
  "favoritesGroup",
  "sectorMarket","sectorWindow","sectorSort","drawToolGroup","lastDrawTool","replaySpeed","reviewSearchScope",
+ "alertSound",
 ];
 pub const DRAWING_PREFERENCE_FIELDS:[&str;4]=["favorites","magnet","continuous","styles"];
 // `text` is the note/callout/flag caption; `created` only old archives carry.
@@ -341,7 +342,7 @@ mod tests {
    json!(true),json!(""),json!(0.5),json!(1),json!(4.0),json!([5]),
    json!(["MA"]),json!(["VOL"]),json!(["1m"]),json!(["BTCUSDT"]),json!([30,70]),
    json!("1m"),json!("sage"),json!("direct"),json!("custom"),json!("crypto"),json!("today"),
-   json!("change"),json!("history"),json!("medium"),json!({"value":"#112233"}),
+   json!("change"),json!("history"),json!("medium"),json!({"value":"#112233"}),json!("default"),
   ];
   let accepts=|key:&str|{
    [key.to_string(),format!("{key}/MA"),format!("{key}/MA/0")].iter()
@@ -355,6 +356,18 @@ mod tests {
      any probe value for it. Either the rule is missing — and the field is a poison pill that \
      400s every operation carrying it (see commit a161bb0) — or its rule is real and none of \
      the probes in this test fit its shape, in which case add one.");
+  }
+ }
+ /// 铃声同时通过字段白名单、值校验与实际合并。
+ #[test] fn alert_sound_is_accepted_and_invalid_values_are_refused() {
+  for sound in ["default","crisp","electronic","glass"] {
+   let operation=op("settings",&[("alertSound",json!(sound))]);
+   assert!(operation.validate().is_ok());
+   assert!(operation.unknown_fields().is_empty());
+   assert_eq!(applied("settings",&[("alertSound",json!(sound))]).body["alertSound"],json!(sound));
+  }
+  for bad in [json!("future"),json!("alert-glass.caf"),json!(null),json!(1),json!(false)] {
+   assert!(op("settings",&[("alertSound",bad)]).validate().is_err());
   }
  }
  /// The bug this whole allowlist pass is about: one pinch on the chart used to come back

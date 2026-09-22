@@ -108,6 +108,8 @@ struct Prefs: Sendable, Equatable {
   /// 时区（A6.9）。Core 的 `TZChoice` 已经是原型的口径：本地 / UTC / 交易所。
   var timeZone: TZChoice = .local
   var changeBasis: ChangeBasis = .rolling24h
+  /// 所有价格提醒共用，随账号同步；复盘到期通知不使用此项。
+  var alertSound: AlertSound = .default
 
   // ---------------------------------------------------------------- 指标
   /// 主图叠加，按打开先后排。默认 `[.ma]`。

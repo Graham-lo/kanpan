@@ -85,6 +85,7 @@ extension Prefs: Codable {
     case sectorMarket, sectorWindow, sectorSort
     case drawToolGroup, lastDrawTool
     case replaySpeed, reviewSearchScope
+    case alertSound
   }
 
   func encode(to encoder: Encoder) throws {
@@ -150,6 +151,7 @@ extension Prefs: Codable {
     try c.encode(lastDrawTool, forKey: .lastDrawTool)
     try c.encode(replaySpeed, forKey: .replaySpeed)
     try c.encode(reviewSearchScope, forKey: .reviewSearchScope)
+    try c.encode(alertSound.rawValue, forKey: .alertSound)
   }
 
   /// 历次出厂的常用行。存档里一字不差地躺着其中一串，就说明用户从没动过常用行。
@@ -313,6 +315,7 @@ extension Prefs: Codable {
     if let raw = str(.lastDrawTool), raw.count <= 32 { lastDrawTool = raw }
     if let v = (try? c.decodeIfPresent(Int.self, forKey: .replaySpeed)) ?? nil { replaySpeed = Prefs.clampSpeed(v) }
     if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }
+    if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }
 
     PrefsCodec.migrate(&self, from: archived)
   }

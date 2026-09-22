@@ -1,0 +1,55 @@
+alert-crisp.caf: 0.85s, RMS -20.00 dBFS, peak 0.412
+alert-electronic.caf: 1.05s, RMS -20.00 dBFS, peak 0.247
+alert-glass.caf: 1.40s, RMS -20.00 dBFS, peak 0.561
+Rebuild SHA256 identical: {'alert-electronic.caf': 'e2075149dd200a7b24910928ff9b32e323a0f7221758fab1b23ce7d1751f026c', 'alert-crisp.caf': 'b536b63db52adabc05d7aa2b9cd05420aede9620792eff45bd5cd939b3219cd9', 'alert-glass.caf': '9bea48f22df6fb97a8f85197677001e43cfff9879a331a8b932780a8d0f37448'}
+File:           Kanpan/Kanpan/Resources/alert-electronic.caf
+File type ID:   caff
+Num Tracks:     1
+----
+Data format:     1 ch,  44100 Hz, ima4 (0x00000000) 0 bits/channel, 34 bytes/packet, 64 frames/packet, 0 bytes/frame
+Channel layout: Mono
+estimated duration: 1.050000 sec
+audio bytes: 24616
+audio packets: 724
+bit rate: 187425 bits per second
+packet size upper bound: 34
+maximum packet size: 34
+audio data file offset: 4096
+optimized
+audio 46305 valid frames + 0 priming + 31 remainder = 46336
+source bit depth: I16
+----
+File:           Kanpan/Kanpan/Resources/alert-crisp.caf
+File type ID:   caff
+Num Tracks:     1
+----
+Data format:     1 ch,  44100 Hz, ima4 (0x00000000) 0 bits/channel, 34 bytes/packet, 64 frames/packet, 0 bytes/frame
+Channel layout: Mono
+estimated duration: 0.850000 sec
+audio bytes: 19924
+audio packets: 586
+bit rate: 187425 bits per second
+packet size upper bound: 34
+maximum packet size: 34
+audio data file offset: 4096
+optimized
+audio 37485 valid frames + 0 priming + 19 remainder = 37504
+source bit depth: I16
+----
+File:           Kanpan/Kanpan/Resources/alert-glass.caf
+File type ID:   caff
+Num Tracks:     1
+----
+Data format:     1 ch,  44100 Hz, ima4 (0x00000000) 0 bits/channel, 34 bytes/packet, 64 frames/packet, 0 bytes/frame
+Channel layout: Mono
+estimated duration: 1.400000 sec
+audio bytes: 32810
+audio packets: 965
+bit rate: 187425 bits per second
+packet size upper bound: 34
+maximum packet size: 34
+audio data file offset: 4096
+optimized
+audio 61740 valid frames + 0 priming + 20 remainder = 61760
+source bit depth: I16
+----

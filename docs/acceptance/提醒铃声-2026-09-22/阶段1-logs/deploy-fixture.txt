@@ -1,0 +1,23 @@
+   Compiling kanpan-api v0.1.0 (/opt/kanpan-api/ringtone-verify/Backend/kanpan-api)
+error: error canonicalizing migration directory /opt/kanpan-api/ringtone-verify/Backend/kanpan-api/./migrations: No such file or directory (os error 2)
+   --> src/sector_history.rs:563:3
+    |
+563 |   sqlx::migrate!().run(&admin).await.unwrap();
+    |   ^^^^^^^^^^^^^^^^
+    |
+    = note: this error originates in the macro `$crate::sqlx_macros::migrate` which comes from the expansion of the macro `sqlx::migrate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: could not compile `kanpan-api` (lib test) due to 1 previous error
+Traceback (most recent call last):
+  File "<stdin>", line 10, in <module>
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['cargo', 'test', '--lib', '-j', '2', '--target-dir', '/opt/kanpan-api/target']' returned non-zero exit status 101.
+Traceback (most recent call last):
+  File "/Users/mdd/zhk/kanpan-ringtone/.build/ringtone/resume-deploy.py", line 23, in <module>
+    subprocess.run(['ssh','-o','BatchMode=yes','orderflow-vps','python3 -'],input=script,text=True,check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['ssh', '-o', 'BatchMode=yes', 'orderflow-vps', 'python3 -']' returned non-zero exit status 1.

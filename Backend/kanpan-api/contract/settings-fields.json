@@ -45,6 +45,7 @@
   "drawingKindsNote" : "`Drawing.Kind` 的全部 rawValue。服务端 sync_validation 的 KINDS 必须和它一样——drawings.kind、drawingPreferences.favorites 与 styles/<kind>、settings.lastDrawTool 四条值规则都拿它当词表。少一个：用那把工具画出来的线被服务端整条拒绝，永远离不开这台手机。",
   "fieldClasses" : {
     "adaptiveIndicators" : "synced",
+    "alertSound" : "synced",
     "allowMainInversion" : "synced",
     "allowSubInversion" : "synced",
     "ambientTheme" : "synced",
@@ -139,6 +140,7 @@
   "whatThisIs" : "iOS 与 Rust 后端之间那份 settings 字段白名单的唯一权威副本，外加两份服务端做值校验时要照抄的词表（indicatorIDs 与 drawingKinds）。客户端按 fieldClasses 决定一个字段跟不跟人走；服务端 sync::SETTINGS_FIELDS 必须逐字等于 wireKeys，sync_validation 的指标与画线词表必须逐项等于这里的两份。",
   "wireKeys" : [
     "adaptiveIndicators",
+    "alertSound",
     "allowMainInversion",
     "allowSubInversion",
     "ambientTheme",

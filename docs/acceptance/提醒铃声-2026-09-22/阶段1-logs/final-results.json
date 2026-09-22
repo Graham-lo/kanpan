@@ -1,0 +1,41 @@
+[
+  {
+    "check": "build",
+    "exit": 0,
+    "seconds": 1800,
+    "initialExit": 124,
+    "retrySeconds": 1272
+  },
+  {
+    "check": "KanpanCore",
+    "exit": 0,
+    "seconds": 1601
+  },
+  {
+    "check": "KanpanNetwork",
+    "exit": 0,
+    "seconds": 398
+  },
+  {
+    "check": "KanpanData",
+    "exit": 0,
+    "seconds": 942
+  },
+  {
+    "check": "app-logic",
+    "exit": 0,
+    "seconds": 83,
+    "initialExit": -15,
+    "retrySeconds": 1080
+  },
+  {
+    "check": "Chart",
+    "exit": 0,
+    "seconds": 569
+  },
+  {
+    "check": "Rust",
+    "exit": 0,
+    "seconds": 1040
+  }
+]
