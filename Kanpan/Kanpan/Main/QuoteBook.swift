@@ -64,6 +64,7 @@ final class QuoteBook {
   /// 所以它是 `var`：换个人，这两份缓存立刻换一个目录。
   private var paths = Paths.caches()
   private var persistTask: Task<Void, Never>?
+  private var baselineTask: Task<Void, Never>?
   /// 下一次定时落盘。`nil` 表示当前没有排队的写。
   private var persistPending: Task<Void, Never>?
   private var lastPersist = Date.distantPast
@@ -269,9 +270,23 @@ final class QuoteBook {
     guard !values.isEmpty else { return }
     persistedSymbols = Set(values.map(\.symbol))
     let url = paths.quotes
-    persistTask?.cancel()
     let log = Self.log
-    persistTask = Task.detached(priority: .utility) { QuoteSnapshot.write(values, to: url, log: log) }
+    // 写盘排成一条链（P2.3）：分离任务之间不保证先后，上一笔慢了就可能被这一笔抢先，
+    // 旧报价落在新报价上面。cancel 只拦还没开写的那一笔；已经在写的写完即止，
+    // 下一笔等它写完再接着写更新的值。
+    let previous = persistTask
+    previous?.cancel()
+    persistTask = Task.detached(priority: .utility) {
+      _ = await previous?.value
+      Self.writeSnapshot(values, to: url, log: log)
+    }
+  }
+
+  /// 后台写盘的那一笔。开写之前先看自己被撤了没有，和同文件其余后台任务一个口径：
+  /// 被 `persistQuotes` 撤掉的那一笔拿着的是旧报价，照写就会把旧数据盖在新数据之后（P2.3）。
+  nonisolated static func writeSnapshot(_ values: [Ticker], to url: URL, log: FeedLog) {
+    guard !Task.isCancelled else { return }
+    QuoteSnapshot.write(values, to: url, log: log)
   }
 
   /// 有新报价就记一笔「该存了」，真正写盘按 `persistEverySeconds` 节流。
@@ -677,7 +692,14 @@ final class QuoteBook {
     guard persistedBoundary != boundary || Set(rows.keys) != persistedOpens else { return }
     persistedOpens = Set(rows.keys); persistedBoundary = boundary
     let url = paths.opens
-    Task.detached(priority: .utility) { BaselineSnapshot.write(boundary: boundary, opens: rows, to: url) }
+    // 和 `persistQuotes` 同一条理由：链起来，后一笔一定落在前一笔之后；被撤的那一笔不写。
+    let previous = baselineTask
+    previous?.cancel()
+    baselineTask = Task.detached(priority: .utility) {
+      _ = await previous?.value
+      guard !Task.isCancelled else { return }
+      BaselineSnapshot.write(boundary: boundary, opens: rows, to: url)
+    }
   }
 
   private func resetBaselineRequests() {

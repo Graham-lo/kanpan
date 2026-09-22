@@ -1,0 +1,6 @@
+◇ Test run started.
+✔ Test "被撤掉的写盘任务一个字节都不落" passed after 0.001 seconds.
+✔ Test "没被撤的照常写，读得回来" passed after 0.002 seconds.
+✔ Suite "P2.3 报价快照写盘认取消" passed after 0.015 seconds.
+✔ Test run with 2 tests in 1 suite passed after 0.015 seconds.
+TEST EXIT 0
