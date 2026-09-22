@@ -338,7 +338,7 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 
 - 阶段 2 铃声入口、四档选择/试听、本地通知所选声音已实现；独立模拟器两条 UI 用例通过（四档唯一勾选、总表当前值、重启保留、三套皮肤），规定全套检查全绿。报告：[阶段2](../docs/acceptance/提醒铃声-2026-09-22/阶段2.md)。默认档使用已授权通知系统试听，自备音使用 AVAudioPlayer `.ambient`；无真机听感结论。随此阶段提交推送，最终提交号见总结。
 
-- 阶段 2 已推送 main `39523a8`，独立验收 `6fd70e8` 通过。阶段 3 的按用户 settings 选声与 APNs payload 接线、规定检查和真实 simctl 注入已完成；[阶段3](../docs/acceptance/提醒铃声-2026-09-22/阶段3.md)记录源码预检差异。按新增发布规矩先推代码，15:21 预检时线上 P1 共享字段未合入 main；随后已 rebase 到 P1 `d4f5e2f`。再次发现 Coinbase 线上源码尚未合入 main，部署不得覆盖；尚未写作已部署。
+- 阶段 2 已推送 main `39523a8`，独立验收 `6fd70e8` 通过。阶段 3 已推送 `5f30e3c` / `cef66b6`：按用户 settings 选声、APNs payload 接线、完整整合检查与三条铃声 UI 用例全绿；真实 simctl 注入的系统日志确认加载玻璃 CAF 并 playedToEnd。按用户最新「能用就推」指令，记录五份线上 Coinbase 先行差异后继续仅从 origin/main `cef66b6` 部署；备份 `/opt/kanpan-api/backup-ringtone-3-20260922-160818`，API/worker 于 16:16:28 CST 重启并 active，157 条服务端测试通过、106 份源码与两个运行二进制散列一致，健康及两个公网只读端点成功。早先停部署判断已被用户新指令取代。[阶段3](../docs/acceptance/提醒铃声-2026-09-22/阶段3.md)保留全部时间线与发布证据；无真机或真实 Apple APNs 结论。
 
 ## 10. 2026-09-22 待办交接 · P1
 

@@ -1,0 +1,26 @@
+{
+  "checkedAt": "2026-09-22T16:16:48.241681+08:00",
+  "originMain": "cef66b64a27f480a4200c807cf329ab288b60cac",
+  "sourceFiles": 106,
+  "sourceMismatches": [],
+  "binarySHA256": "92e16c63f18645c904012cb3662d5d9ec61b1184be1cfc18599c2b21d539e8db",
+  "services": {
+    "kanpan-api": {
+      "MainPID": "2368297",
+      "ExecMainStartTimestamp": "Tue 2026-09-22 16:16:28 CST",
+      "ActiveState": "active",
+      "runningBinarySHA256": "92e16c63f18645c904012cb3662d5d9ec61b1184be1cfc18599c2b21d539e8db"
+    },
+    "kanpan-worker": {
+      "MainPID": "2368293",
+      "ExecMainStartTimestamp": "Tue 2026-09-22 16:16:28 CST",
+      "ActiveState": "active",
+      "runningBinarySHA256": "92e16c63f18645c904012cb3662d5d9ec61b1184be1cfc18599c2b21d539e8db"
+    }
+  },
+  "health": "{\"data\":{\"ok\":true}}",
+  "publicGET": {
+    "market/meta": "200",
+    "capabilities": "200"
+  }
+}
