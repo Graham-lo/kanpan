@@ -245,6 +245,9 @@ func synthSeries(
 ) -> BarSeries {
   var r = Rng(seed)
   var o = [Double](), h = [Double](), l = [Double](), c = [Double](), v = [Double]()
+  // 主动买成交量：大部分根有，每隔十几根故意缺一根。缺失是实盘常态
+  // （撮合价合成的根、OKX、被截断的镜像行），CVD 必须在有洞的序列上也算得对。
+  var tb = [Double]()
   var px = 100.0
   for _ in 0..<count {
     let op = px
@@ -252,7 +255,10 @@ func synthSeries(
     o.append(op); c.append(px)
     h.append(max(op, px) * (1 + r.d(0, 0.01)))
     l.append(min(op, px) * (1 - r.d(0, 0.01)))
-    v.append(r.d(10, 5000))
+    let vol = r.d(10, 5000)
+    v.append(vol)
+    tb.append(tb.count % 17 == 5 ? .nan : vol * r.d(0.2, 0.8))
   }
-  return BarSeries(symbol: "SYN", interval: interval, t0: t0, open: o, high: h, low: l, close: c, volume: v)
+  return BarSeries(symbol: "SYN", interval: interval, t0: t0, open: o, high: h, low: l, close: c,
+                   volume: v, takerBuy: tb)
 }

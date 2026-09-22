@@ -13,6 +13,8 @@ struct KlineRow: Decodable {
   var close: Double
   var volume: Double
   var closeTime: Int64
+  /// 第 9 格：主动买成交量（base）。CVD 的原料，见 `Bar.takerBuy`。
+  var takerBuy: Double
 
   init(from decoder: Decoder) throws {
     var c = try decoder.unkeyedContainer()
@@ -23,8 +25,20 @@ struct KlineRow: Decodable {
     close = try KlineRow.num(&c)
     volume = try KlineRow.num(&c)
     closeTime = try c.decode(Int64.self)
+    // 成交额、笔数跳过，接着的第 9 格是主动买成交量。镜像站偶尔把这一行截短，
+    // 解不出来就当缺失（NaN），不能当 0——0 会被读成「整根都是主动卖」。
+    if (try? KlineRow.skip(&c, 2)) != nil, let tb = try? KlineRow.num(&c) { takerBuy = tb }
+    else { takerBuy = .nan }
     guard bar.isValidMarketBar else { throw FeedError.badResponse("无效的 OHLCV") }
-    // 后面几列（成交额、笔数、主动买量）1.0 用不上，不解。
+  }
+
+  /// 往后跳 `k` 格，跳不动（行被截短）就抛。
+  private static func skip(_ c: inout UnkeyedDecodingContainer, _ k: Int) throws {
+    for _ in 0..<k {
+      if (try? c.decode(String.self)) != nil { continue }
+      if (try? c.decode(Double.self)) != nil { continue }
+      _ = try c.decode(Int64.self)
+    }
   }
 
   /// 币安价格量都是字符串，但归档和某些镜像会给数字，两种都收。
@@ -38,7 +52,10 @@ struct KlineRow: Decodable {
     return try c.decode(Double.self)
   }
 
-  var bar: Bar { Bar(openTime: openTime, open: open, high: high, low: low, close: close, volume: volume) }
+  var bar: Bar {
+    Bar(openTime: openTime, open: open, high: high, low: low, close: close, volume: volume,
+        takerBuy: takerBuy)
+  }
 }
 
 // ---------------------------------------------------------------- 品种表
@@ -396,12 +413,15 @@ public struct KlineEvent: Sendable, Equatable, Decodable {
       }
       return try k.decode(Double.self, forKey: key)
     }
+    // `V` 是这根到目前为止的主动买成交量。币安的 kline 推流一直带着它，
+    // 但网关、镜像、回放都可能不给：拿不到就留 NaN，绝不填 0。
     bar = Bar(openTime: openTime, open: try d(.o), high: try d(.h),
-              low: try d(.l), close: try d(.c), volume: try d(.v))
+              low: try d(.l), close: try d(.c), volume: try d(.v),
+              takerBuy: (try? d(.V)) ?? .nan)
   }
 
   enum Outer: String, CodingKey { case e, E, s, k }
-  enum Inner: String, CodingKey { case t, T, s, i, o, h, l, c, v, x, L }
+  enum Inner: String, CodingKey { case t, T, s, i, o, h, l, c, v, x, L, V }
 }
 
 /// `trade` 事件：一笔成交。

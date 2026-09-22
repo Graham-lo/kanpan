@@ -49,7 +49,7 @@ struct GeometryTableTests {
 struct PixelBoundaryTests {
   private func isIntegral(_ v: Double) -> Bool { abs(v - v.rounded()) < 1e-9 }
 
-  @Test("11 款风格 × 8 机型：实体与影线左缘 x·scale 为整数", arguments: CandleStyle.all)
+  @Test("每款风格 × 8 机型：实体与影线左缘 x·scale 为整数", arguments: CandleStyle.all)
   func candleEdges(style: CandleStyle) {
     var count = 0
     for dev in Evidence.devices {

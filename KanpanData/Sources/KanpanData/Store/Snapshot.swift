@@ -8,14 +8,20 @@ import KanpanCore
 public enum Snapshot {
   /// `'K','B','A','R'`
   static let magic: UInt32 = 0x4B42_4152
-  static let version: UInt16 = 1
+  /// 2 起多一列主动买成交量（CVD 的原料）。
+  ///
+  /// 旧版（1）照常能读，那一列整列当缺失（NaN）——不能当 0，见 `Bar.takerBuy`。
+  /// 反过来旧版的 app 读到 2 会认不出版本号而放弃这份快照，回去走网络，
+  /// 这正是想要的降级：宁可多拉一次，也不要按 5 列的老规矩去解 6 列的字节。
+  static let version: UInt16 = 2
+  static let legacyVersion: UInt16 = 1
   /// 存多少根。
   ///
   /// 必须**装得下 `MarketFeed.deepenTarget`（1800 根）**，否则后台辛苦加深出来的
   /// 那一段，一写盘就被截掉，下次冷启动还得重拉。3000 根留了足够余量，
   /// 一份也才 ~144 KB——磁盘是这台机器上最不值钱的东西。原来是 600 根。
   public static let maxBars = 3000
-  /// 单个文件的字节上限（A2.4）。3000 根 × 48 B ≈ 144 KB，留一倍余量。
+  /// 单个文件的字节上限（A2.4）。3000 根 × 56 B ≈ 168 KB，留足余量。
   public static let maxBytes = 300 * 1024
 
   // ------------------------------------------------------------------ 编码
@@ -27,7 +33,7 @@ public enum Snapshot {
     let n = min(series.count, maxBars)
     let from = series.count - n
     var d = Data()
-    d.reserveCapacity(64 + n * 48)
+    d.reserveCapacity(64 + n * 56)
     put(&d, magic)
     put(&d, version)
     putStr(&d, series.symbol)
@@ -41,7 +47,7 @@ public enum Snapshot {
     guard n > 0 else { return d }
     // 一块暂存反复用：换成小端排好，再整块拷进去。
     var scratch = [UInt64](repeating: 0, count: n)
-    for col in [series.open, series.high, series.low, series.close, series.volume] {
+    for col in [series.open, series.high, series.low, series.close, series.volume, series.takerBuy] {
       for i in 0..<n { scratch[i] = col[from + i].bitPattern.littleEndian }
       append(&d, scratch)
     }
@@ -96,15 +102,18 @@ public enum Snapshot {
         }
       }
 
-      guard let m = u32(), m == magic, let v = u16(), v == version else { return nil }
+      guard let m = u32(), m == magic, let v = u16(), v == version || v == legacyVersion
+      else { return nil }
       guard let symbol = str(), let ivRaw = str(), let iv = Interval(rawValue: ivRaw) else { return nil }
       guard let t0 = u64(), let step = u64(), let cnt = u32(), let flag = u8() else { return nil }
       let n = Int(cnt)
       guard n >= 0, n <= maxBars else { return nil }
 
+      // 版本 1 只有五列；版本 2 末尾多一列主动买成交量。
+      let columnCount = v == legacyVersion ? 5 : 6
       var cols: [[Double]] = []
-      cols.reserveCapacity(5)
-      for _ in 0..<5 {
+      cols.reserveCapacity(columnCount)
+      for _ in 0..<columnCount {
         guard let words = column(n) else { return nil }
         cols.append(words.map(Double.init(bitPattern:)))
       }
@@ -115,6 +124,8 @@ public enum Snapshot {
       }
       return BarSeries(symbol: symbol, interval: iv, t0: Int64(bitPattern: t0), step: Int64(bitPattern: step),
                        open: cols[0], high: cols[1], low: cols[2], close: cols[3], volume: cols[4],
+                       // 老快照没有这一列，给空数组，`BarSeries` 会整列补 NaN。
+                       takerBuy: cols.count > 5 ? cols[5] : [],
                        openTime: times)
     }
   }

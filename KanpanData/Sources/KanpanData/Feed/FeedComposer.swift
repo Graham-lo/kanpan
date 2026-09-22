@@ -109,6 +109,11 @@ public struct FeedComposer: Sendable {
       b.low = min(b.low, price)
       b.close = price
       b.volume += vol
+      // 逐笔里没有主动买卖方向这一列，所以只要真折进了成交量，这一根的主动买量
+      // 就不再和成交量对得上了：留着旧值等于把这笔成交整个算成主动卖。作废掉，
+      // CVD 那一层会把它当缺口，而不是当成一根凭空砸下来的柱子。
+      // 量没动（挂单心跳只改价）时不动它——那一根的主动买量还是有效的。
+      if vol > 0 { b.takerBuy = .nan }
       lastTickMs = timeMs; lastTradeID = tradeID
       // 挂单心跳一秒能来几十条，价没动的那些别往上抛——上面是按这个返回值决定
       // 要不要重画的，一根没变的末根重画多少次都是同一张图。
@@ -220,7 +225,10 @@ public struct FeedComposer: Sendable {
       var m = b
       m.high = max(b.high, mine.high)
       m.low = min(b.low, mine.low)
-      m.volume = max(b.volume, mine.volume)
+      // 主动买量跟着成交量走：哪一份的量被采纳，就用哪一份的主动买量，
+      // 否则会出现「REST 的主动买量配上本地折出来的更大成交量」这种对不上的组合。
+      if mine.volume > b.volume { m.volume = mine.volume; m.takerBuy = mine.takerBuy }
+      if !m.takerBuy.isFinite, m.volume == mine.volume { m.takerBuy = mine.takerBuy }
       if liveClose { m.close = mine.close }
       return m
     }

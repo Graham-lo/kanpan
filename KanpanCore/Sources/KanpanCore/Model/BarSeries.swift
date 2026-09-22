@@ -35,6 +35,11 @@ public struct BarSeries: Sendable, Equatable {
   public var low: [Double] { didSet { stampAll() } }
   public var close: [Double] { didSet { stampAll() } }
   public var volume: [Double] { didSet { stampAll() } }
+  /// 逐根的主动买成交量，缺失是 NaN（见 `Bar.takerBuy`）。
+  ///
+  /// 第六列，专为「累计成交量差」加的。它和前五列一样长——构造时给空数组就整列
+  /// 补 NaN，这样所有老调用方一个字都不用改，而 `takerBuy[i]` 永远能取。
+  public var takerBuy: [Double] { didSet { stampAll() } }
   /// 每根的真实 openTime。
   ///
   /// **不变量：这一列为空 ⟺ 整段已经被验过严格等距**（`openTime[i] == t0 + i*step`
@@ -66,7 +71,7 @@ public struct BarSeries: Sendable, Equatable {
   public init(
     symbol: String, interval: Interval, t0: Int64, step: Int64? = nil,
     open: [Double], high: [Double], low: [Double], close: [Double], volume: [Double],
-    openTime: [Int64] = []
+    takerBuy: [Double] = [], openTime: [Int64] = []
   ) {
     self.symbol = symbol
     self.interval = interval
@@ -77,6 +82,10 @@ public struct BarSeries: Sendable, Equatable {
     self.low = low
     self.close = close
     self.volume = volume
+    // 长度对不上（多半是压根没给）就整列补 NaN：这一列允许缺，但不允许比别的列短，
+    // 否则每个读它的地方都要先判一次下标。
+    self.takerBuy = takerBuy.count == close.count
+      ? takerBuy : [Double](repeating: .nan, count: close.count)
     // 这里不替调用方做主：给什么列就存什么列。省列（走 `t0 + i*step` 快路）
     // 是调用方自己验过严格等距之后的决定，见下面 `init(symbol:interval:bars:)`。
     self.openTime = openTime
@@ -89,7 +98,7 @@ public struct BarSeries: Sendable, Equatable {
       symbol: symbol, interval: interval,
       t0: bars.first?.openTime ?? 0, step: interval.stepMs,
       open: bars.map(\.open), high: bars.map(\.high), low: bars.map(\.low),
-      close: bars.map(\.close), volume: bars.map(\.volume),
+      close: bars.map(\.close), volume: bars.map(\.volume), takerBuy: bars.map(\.takerBuy),
       // 丢列走快路的唯一许可：等距周期 + 逐根验过严格等距。哪怕中间只缺一根，
       // 列也必须原样留着，否则洞后面每一根的时间都要整体前移一格。
       openTime: Self.canDropTimes(bars, interval: interval) ? [] : bars.map(\.openTime)
@@ -155,7 +164,9 @@ public struct BarSeries: Sendable, Equatable {
   }
 
   public func bar(at i: Int) -> Bar {
-    Bar(openTime: time(at: i), open: open[i], high: high[i], low: low[i], close: close[i], volume: volume[i])
+    Bar(
+      openTime: time(at: i), open: open[i], high: high[i], low: low[i], close: close[i],
+      volume: volume[i], takerBuy: i < takerBuy.count ? takerBuy[i] : .nan)
   }
 
   // ------------------------------------------------------------ 实时合成（§4.4）
@@ -169,6 +180,7 @@ public struct BarSeries: Sendable, Equatable {
     if openTime.isEmpty, bar.openTime != t0 + Int64(i) * step { materializeTimes() }
     open[i] = bar.open; high[i] = bar.high; low[i] = bar.low
     close[i] = bar.close; volume[i] = bar.volume
+    if i < takerBuy.count { takerBuy[i] = bar.takerBuy }
     if !openTime.isEmpty { openTime[i] = bar.openTime }
     revision = SeriesStamp.next()
     prefixRevision = prefix
@@ -186,7 +198,7 @@ public struct BarSeries: Sendable, Equatable {
       || bar.openTime != t0 + Int64(count) * step
     if keepTimes { materializeTimes() }
     open.append(bar.open); high.append(bar.high); low.append(bar.low)
-    close.append(bar.close); volume.append(bar.volume)
+    close.append(bar.close); volume.append(bar.volume); takerBuy.append(bar.takerBuy)
     if keepTimes { openTime.append(bar.openTime) }
     revision = SeriesStamp.next()
     prefixRevision = prefix
@@ -217,6 +229,7 @@ public struct BarSeries: Sendable, Equatable {
     low.insert(contentsOf: cut.map(\.low), at: 0)
     close.insert(contentsOf: cut.map(\.close), at: 0)
     volume.insert(contentsOf: cut.map(\.volume), at: 0)
+    takerBuy.insert(contentsOf: cut.map(\.takerBuy), at: 0)
     t0 = cut[0].openTime
     if !interval.isIrregular, Self.isStrictlyRegular(openTime, t0: t0, step: step) { openTime = [] }
     // 补历史把每一根的下标都挪了，两个戳都作废（`didSet` 已经作废过一次，这里不必再写）。
@@ -234,6 +247,7 @@ public struct BarSeries: Sendable, Equatable {
     return a.symbol == b.symbol && a.interval == b.interval && a.t0 == b.t0 && a.step == b.step
       && a.close == b.close && a.open == b.open && a.high == b.high
       && a.low == b.low && a.volume == b.volume && a.openTime == b.openTime
+      && sameColumn(a.takerBuy, b.takerBuy)
   }
 
   /// 除末根以外的一切是否一样。
@@ -251,6 +265,16 @@ public struct BarSeries: Sendable, Equatable {
       && low.dropLast().elementsEqual(other.low.dropLast())
       && close.dropLast().elementsEqual(other.close.dropLast())
       && volume.dropLast().elementsEqual(other.volume.dropLast())
+      && Self.sameColumn(takerBuy.dropLast(), other.takerBuy.dropLast())
+  }
+
+  /// 逐位比一列「可以缺失」的数，两边都是 NaN 算相等。
+  ///
+  /// 主动买量整列常年是 NaN（撮合价合成的根、旧快照、OKX），用 `==` 比的话
+  /// 两条内容完全一样的序列会被判成不等，每个 tick 都要白重画一次。
+  static func sameColumn<A: Collection, B: Collection>(_ a: A, _ b: B) -> Bool
+  where A.Element == Double, B.Element == Double {
+    a.count == b.count && zip(a, b).allSatisfy { Bar.sameOptional($0, $1) }
   }
 
   /// 我是不是「`other` 后面又长了一根」——即我的前 `count - 1` 根就是 `other` 的全部。

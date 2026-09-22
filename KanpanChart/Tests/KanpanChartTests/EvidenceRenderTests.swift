@@ -46,7 +46,7 @@ struct EvidenceRenderTests {
 
   // ---------------------------------------------------------------- A3.1
 
-  @Test("A3.1：8 机型 × 浅深 × 风格表 = 每款一张基线")
+  @Test("A3.1：8 机型 × 浅深 = 每台两张基线")
   func baselines() {
     guard Evidence.outputDir != nil else { return }
     var list: [[String: Any]] = []
@@ -67,7 +67,7 @@ struct EvidenceRenderTests {
         }
       }
     }
-    #expect(list.count == 192, "基线应为 8 × 2 × 12 = 192 张，实际 \(list.count) 张")
+    #expect(list.count == 16, "基线应为 8 机型 × 浅深 = 16 张，实际 \(list.count) 张")
     Evidence.writeJSON(["item": "A3.1", "count": list.count, "images": list], "A3.1-baselines.json")
   }
 
@@ -83,22 +83,15 @@ struct EvidenceRenderTests {
     func next() -> Int { no += 1; return no }
 
     // ---- A3.4：3× 下放大 8 倍看边缘 ----
-    // 每条各挑一款能代表它的风格，裁一小块出来做最近邻放大——放大的是设备像素本身，
-    // 不插值，毛边有没有一眼就看得见。裁哪儿取决于要看的是什么：网格线、实体边、
-    // 还是影线的圆头。
+    // 只剩 AICoin 一款画法（见 kanpan-single-aicoin-candle-style），所以这里不再按风格挑，
+    // 而是按「要看哪条边」挑：网格线、实体边、影线端头各裁一小块做最近邻放大。
+    // 放大的是设备像素本身，不插值，毛边有没有一眼就看得见。
     enum Anchor { case grid, body, wickTop }
-    let zooms: [(topic: String, style: String, anchor: Anchor, hollowOnly: Bool)] = [
-      ("grid-both", "indigo", .grid, false),
-      ("grid-h", "stout", .grid, false),
-      ("grid-tick", "outline", .grid, false),
-      ("grid-none", "glow", .grid, false),
-      ("shape-hollowUp", "paper", .body, true),
-      ("shape-outline", "outline", .body, true),
-      ("radius", "pill", .body, false),
-      ("wickcap-round", "needle", .wickTop, false),  // 影线 2.0 设备像素，全 11 款里最粗
+    let zooms: [(topic: String, anchor: Anchor)] = [
+      ("grid", .grid), ("body", .body), ("wicktop", .wickTop),
     ]
     for z in zooms {
-      let style = CandleStyle.style(id: z.style)
+      let style = CandleStyle.default
       let st = Evidence.state(style: style, dark: false, size: dev.size)
       let r = ChartRenderer(state: st)
       let p = r.probe(size: dev.size, scale: dev.scale)
@@ -118,10 +111,8 @@ struct EvidenceRenderTests {
         let xs = r.candleXs(size: dev.size, scale: dev.scale)
         let cands = xs.filter {
           $0.center > 60 && $0.center < p.plotW - 60 && $0.bodyHeight * s >= 12
-            && (!z.hollowOnly || $0.hollow)
         }
         let c = cands.max(by: { $0.bodyHeight < $1.bodyHeight }) ?? xs[xs.count / 2]
-        #expect(!z.hollowOnly || c.hollow, "\(z.topic) 没挑到一根走空心分支的蜡烛")
         crop = CGRect(
           x: ((c.center - 11) * s).rounded(), y: ((c.bodyTop - 4) * s).rounded(),
           width: (22 * s).rounded(), height: (26 * s).rounded())
@@ -170,14 +161,14 @@ struct EvidenceRenderTests {
     }
 
     // ---- A3.6：各种副图各一张 ----
-    for id in [IndicatorID.macd, .rsi, .kdj, .srsi, .atr, .vol, .oi, .dmi] {
+    for id in [IndicatorID.macd, .rsi, .kdj, .srsi, .atr, .vol, .oi, .dmi, .cvd] {
       let st = Evidence.state(
         style: .default, dark: false, size: dev.size, overlays: [], subs: [id])
       let img = Evidence.render(st, size: dev.size, scale: dev.scale)
       emit(
         img, "M3-\(dev.id)-light-sub-\(id.rawValue.lowercased())-\(String(format: "%02d", next())).png",
         ["item": "A3.6", "sub": id.rawValue, "subName": id.name,
-         "params": id.defaultParams, "style": "stout"], into: &list)
+         "params": id.defaultParams, "style": CandleStyle.default.id], into: &list)
     }
 
     // ---- A3.7：主图叠加 + 图例 ----
@@ -218,14 +209,14 @@ struct EvidenceRenderTests {
         ["item": "A3.9", "priceMode": mode.rawValue, "display": mode.display], into: &list)
     }
 
-    #expect(list.count == 31, "附加证据应为 8 + 3 + 8 + 7 + 2 + 3 = 31 张，实际 \(list.count) 张")
+    #expect(list.count == 27, "附加证据应为 3 + 3 + 9 + 7 + 2 + 3 = 27 张，实际 \(list.count) 张")
     Evidence.writeJSON(["count": list.count, "images": list], "A3.4-A3.9-extras.json")
   }
 
   // Old prototype pixel manifests are historical artifacts. Shared-base geometry and
   // current-device screenshots replace those obsolete behavioral requirements.
 
-  /// 同一份 state 画两次必须逐字节相同。做不到这条，176 张基线就没法进 CI。
+  /// 同一份 state 画两次必须逐字节相同。做不到这条，那 16 张基线就没法进 CI。
   @Test("同一 state 画两次逐字节一致")
   func deterministic() {
     let dev = Evidence.devices.first { $0.id == "std" }!

@@ -19,11 +19,11 @@ public struct SeriesKey: Hashable, Sendable, CustomStringConvertible {
 /// 加载」的根因。也就是说这一档之上买不到速度，只会买到重启。
 /// 真正拿来换体验的是磁盘（见 `SeriesStore`，512 MB）：磁盘没有这个惩罚。
 ///
-/// 160 MB 本身也已经够用：1800 根 × 48 B ≈ 86 KB 一对，装得下 ~1900 对。
+/// 160 MB 本身也已经够用：1800 根 × 56 B ≈ 100 KB 一对，装得下 ~1600 对。
 public actor BarCache {
-  /// 一根的估算字节数：5 列 Double。带 openTime 表的另算。
-  public static let bytesPerBar = 40
-  public static let bytesPerBarWithTime = 48
+  /// 一根的估算字节数：6 列 Double（含主动买成交量）。带 openTime 表的另算。
+  public static let bytesPerBar = 48
+  public static let bytesPerBarWithTime = 56
   public static let defaultLimitBytes = 160 * 1024 * 1024
   public static let maxBarsPerKey = 200_000
 
@@ -91,11 +91,11 @@ public actor BarCache {
     var t = s
     let newT0 = s.time(at: drop)
     t.open.removeFirst(drop); t.high.removeFirst(drop); t.low.removeFirst(drop)
-    t.close.removeFirst(drop); t.volume.removeFirst(drop)
+    t.close.removeFirst(drop); t.volume.removeFirst(drop); t.takerBuy.removeFirst(drop)
     if !t.openTime.isEmpty { t.openTime.removeFirst(drop) }
     return BarSeries(symbol: t.symbol, interval: t.interval, t0: newT0, step: t.step,
                      open: t.open, high: t.high, low: t.low, close: t.close, volume: t.volume,
-                     openTime: t.openTime)
+                     takerBuy: t.takerBuy, openTime: t.openTime)
   }
 
   private func evict() {

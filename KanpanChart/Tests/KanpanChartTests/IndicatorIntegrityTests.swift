@@ -19,7 +19,7 @@ struct IndicatorIntegrityTests {
   @Test func switchesHistoryCorrectionsParametersAndOI() {
     var state = ChartOptionsRenderTests.state()
     state.overlays = [.ma, .ema, .vwap, .supertrend, .sar]
-    state.subs = [.vol, .oi, .macd, .kdj, .rsi, .dmi]
+    state.subs = [.vol, .oi, .macd, .kdj, .rsi, .dmi, .cvd]
     var renderer = ChartRenderer(state: state)
     let i = state.series.count - 1
     state.series.close[i] += 3
@@ -51,7 +51,7 @@ struct IndicatorIntegrityTests {
   @Test func presentationChangesRetainExactCalculations() {
     var state = ChartOptionsRenderTests.state()
     state.overlays = [.ma, .ema, .vwap, .supertrend, .sar]
-    state.subs = [.macd, .kdj, .rsi, .vol, .dmi]
+    state.subs = [.macd, .kdj, .rsi, .vol, .dmi, .cvd]
     var renderer = ChartRenderer(state: state)
     for i in 0..<300 {
       state.crosshair = Crosshair(index: i % state.series.count)

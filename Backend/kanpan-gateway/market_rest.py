@@ -287,8 +287,13 @@ def normalize_okx(rows, interval):
             raise Unavailable('invalid OKX candle')
         at = int(r[0])
         # vol is contracts. volCcy is base currency for USDT swaps, matching the chart's volume unit.
+        # Index 9 and 10 are the taker-buy volumes, and OKX simply does not
+        # publish them per candle. They go out as null, never '0': the chart
+        # reads index 9 to build cumulative volume delta, and a zero there
+        # reads as "this whole bar was sold into", which is a fabricated
+        # cliff in the indicator. Null decodes to "unknown" on the client.
         row = [at, r[1], r[2], r[3], r[4], r[6], close_time(at, source) - 1,
-               r[7], 0, '0', '0', '0']
+               r[7], 0, None, None, '0']
         valid_row(row, source)
         if at in ordered and ordered[at] != row:
             raise Unavailable('contradictory candles')
@@ -312,7 +317,7 @@ def normalize_okx(rows, interval):
         out.append([at, parts[0][1], str(max(float(r[2]) for r in parts)),
                     str(min(float(r[3]) for r in parts)), parts[-1][4],
                     str(sum(float(r[5]) for r in parts)), end - 1,
-                    str(sum(float(r[7]) for r in parts)), 0, '0', '0', '0'])
+                    str(sum(float(r[7]) for r in parts)), 0, None, None, '0'])
     return out
 
 
@@ -474,7 +479,13 @@ class BarCache:
             self.series[key] = run
             self.bars += len(run) - before
             self.trim()
-            due = time.monotonic() - self.written.get(key, 0) > self.write_interval
+            # A key this process has never written is due at once. Reading the
+            # absent clock as 0 only looked overdue because `time.monotonic()`
+            # counts from boot on Linux; on macOS it counts from process start,
+            # so the first run of every series sat unmirrored for 30s -- exactly
+            # the window a deploy restart falls into.
+            last = self.written.get(key)
+            due = last is None or time.monotonic() - last > self.write_interval
             if due and key in self.series:
                 self.written[key] = time.monotonic()
                 snapshot = run

@@ -77,7 +77,10 @@ struct FakeExchange: Sendable {
       if let et = v("endTime").flatMap(Int64.init) { all = all.filter { $0.openTime <= et } }
       let limit = v("limit").flatMap(Int.init) ?? 500
       let rows = all.suffix(limit).map { b in
-        "[\(b.openTime),\"\(b.open)\",\"\(b.high)\",\"\(b.low)\",\"\(b.close)\",\"\(b.volume)\",\(b.openTime + 59_999),\"1\",1,\"1\",\"1\",\"0\"]"
+        // 第 9 格是主动买成交量，照这一根自己的值发；这一根不知道就发 null，
+        // 不能发 "1" ——REST 补回来的那一段会和 WS 报文里的 `V` 对不上。
+        let taker = b.takerBuy.isFinite ? "\"\(b.takerBuy)\"" : "null"
+        return "[\(b.openTime),\"\(b.open)\",\"\(b.high)\",\"\(b.low)\",\"\(b.close)\",\"\(b.volume)\",\(b.openTime + 59_999),\"1\",1,\(taker),\"1\",\"0\"]"
       }
       return json("[" + rows.joined(separator: ",") + "]")
     case "/fapi/v1/ticker/24hr":

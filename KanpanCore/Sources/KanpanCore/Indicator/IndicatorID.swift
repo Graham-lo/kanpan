@@ -15,6 +15,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   case vol = "VOL", macd = "MACD", rsi = "RSI", kdj = "KDJ", srsi = "SRSI", atr = "ATR", oi = "OI"
   case lsr = "LSR", taker = "TAKER", basis = "BASIS"
   case dmi = "DMI"
+  case cvd = "CVD"
 
   public enum Where: Sendable { case main, sub }
 
@@ -44,6 +45,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .supertrend: "超级趋势"
     case .sar: "抛物线转向"
     case .dmi: "动向指标"
+    case .cvd: "累计成交量差"
     }
   }
 
@@ -63,8 +65,11 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   /// 主图可选指标，面板顺序。
   public static let mainPalette: [IndicatorID] = [.ma, .ema, .boll, .vwap, .supertrend, .sar]
   /// 副图可选指标，面板顺序。
+  ///
+  /// 累计成交量差紧跟成交量：两把读的是同一件事的两面（成交了多少 / 是谁在成交），
+  /// 摆在一起才好挨着看。
   public static let subPalette: [IndicatorID] = [
-    .vol, .macd, .rsi, .kdj, .dmi, .oi, .lsr, .taker, .basis,
+    .vol, .cvd, .macd, .rsi, .kdj, .dmi, .oi, .lsr, .taker, .basis,
   ]
   /// 面板上还摆着的全部。
   public static let palette: [IndicatorID] = mainPalette + subPalette
@@ -107,7 +112,9 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     // 当日VWAP 的起点是当日零点，抛物线转向的加速步长是定死的 0.02/0.20：
     // 两把都没有该让用户去拨的参数
     // （`kanpan-sector-page-no-basis-picker`：口径这种东西我来定，不摆出来给他选）。
-    case .vwap, .sar, .oi, .lsr, .taker, .basis: []
+    // 累计成交量差是逐根净额的累加，没有窗口长度这回事；归零的锚和当日VWAP 一样
+    // 是定死的（日内按 UTC 零点），同样不摆给用户拨。
+    case .vwap, .sar, .cvd, .oi, .lsr, .taker, .basis: []
     }
   }
 
@@ -124,7 +131,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .atr: ["周期"]
     case .supertrend: ["周期", "倍数"]
     case .dmi: ["周期"]
-    case .vwap, .sar, .oi, .lsr, .taker, .basis: []
+    case .vwap, .sar, .cvd, .oi, .lsr, .taker, .basis: []
     }
   }
 
@@ -149,6 +156,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .supertrend: ["超级趋势"]
     case .sar: ["转向点"]
     case .dmi: ["多头动向", "空头动向", "趋势强度"]
+    case .cvd: ["累计成交量差"]
     }
   }
 
@@ -196,7 +204,8 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .kdj, .srsi: [20, 80]
     // 多空比 / 主动买卖比的分水岭是 1（多空一样多、主动买卖一样多），基差是 0。
     case .lsr, .taker: [1.0]
-    case .basis: [0]
+    // 累计成交量差的分水岭是 0：这一段是被买上去的还是被卖下去的，就看线在 0 的哪一边。
+    case .basis, .cvd: [0]
     // 趋势强度 25 以上才算真有趋势，是 Wilder 自己给的那条线。
     case .dmi: [25]
     default: []

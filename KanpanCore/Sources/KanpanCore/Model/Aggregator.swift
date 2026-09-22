@@ -53,13 +53,17 @@ public enum Aggregator {
         curStart = s
         bars.append(Bar(
           openTime: s, open: series.open[i], high: series.high[i],
-          low: series.low[i], close: series.close[i], volume: series.volume[i]))
+          low: series.low[i], close: series.close[i], volume: series.volume[i],
+          takerBuy: series.takerBuy[i]))
       } else {
         let j = bars.count - 1
         bars[j].high = max(bars[j].high, series.high[i])
         bars[j].low = min(bars[j].low, series.low[i])
         bars[j].close = series.close[i]
         bars[j].volume += series.volume[i]
+        // NaN 自己会传染：这个桶里只要有一根不知道主动买量，整桶就读作不知道。
+        // 这是对的——把缺的那根当 0 加进去，聚出来的是一个偏小的假值。
+        bars[j].takerBuy += series.takerBuy[i]
       }
     }
 
@@ -67,7 +71,7 @@ public enum Aggregator {
       symbol: series.symbol, interval: interval,
       t0: bars[0].openTime, step: interval.stepMs,
       open: bars.map(\.open), high: bars.map(\.high), low: bars.map(\.low),
-      close: bars.map(\.close), volume: bars.map(\.volume),
+      close: bars.map(\.close), volume: bars.map(\.volume), takerBuy: bars.map(\.takerBuy),
       // 不等距周期必须带表；等距周期也带上，因为聚出来中间可能缺桶（停牌、数据洞）。
       openTime: bars.map(\.openTime))
     return out

@@ -182,6 +182,7 @@ public struct IndicatorEngine: Sendable {
     case .supertrend: .supertrend(SuperTrendState(b, n: p[0], mult: Double(p[1])))
     case .sar: .sar(SARState(b))
     case .dmi: .dmi(DMIState(b, n: p[0]))
+    case .cvd: .cvd(CVDState(b))
     case .oi, .lsr, .taker, .basis:
       .external(external?.aligned(to: b) ?? ExternalSeries.blank(id.externalColumns ?? 1, b.count),
                 external?.revision ?? 0)
@@ -201,6 +202,7 @@ public struct IndicatorEngine: Sendable {
     case supertrend(SuperTrendState)
     case sar(SARState)
     case dmi(DMIState)
+    case cvd(CVDState)
     /// 对齐好的那几列，外加它是从哪一份外部序列来的（`ExternalSeries.revision`，
     /// 没喂到数据时 0）。记着来源才敢在 `update` 里只对齐尾巴。
     case external([[Double]], UInt64)
@@ -223,6 +225,7 @@ public struct IndicatorEngine: Sendable {
       case .supertrend(let s): IndicatorResult(lines: [s.line], dir: s.dir)
       case .sar(let s): IndicatorResult(lines: [s.out], dir: s.dir)
       case .dmi(let s): IndicatorResult(lines: [s.pdi, s.mdi, s.adx.out])
+      case .cvd(let s): IndicatorResult(lines: [s.out])
       case .external(let cols, _): IndicatorResult(lines: cols)
       case .moved: IndicatorResult(lines: [])
       }
@@ -265,6 +268,7 @@ public struct IndicatorEngine: Sendable {
       case .supertrend(var s): self = .moved; s.update(b, from: start); self = .supertrend(s)
       case .sar(var s): self = .moved; s.update(b, from: start); self = .sar(s)
       case .dmi(var s): self = .moved; s.update(b, from: start); self = .dmi(s)
+      case .cvd(var s): self = .moved; s.update(b, from: start); self = .cvd(s)
       case .moved: break
       case .external(var prev, let rev):
         self = .moved
@@ -662,6 +666,56 @@ struct VWAPState: Sendable, Equatable {
     } else {
       out = nanArray(b.count); pv = nanArray(b.count); vv = nanArray(b.count)
       run(b, from: 0, seedPV: 0, seedVV: 0)
+    }
+  }
+}
+
+/// 累计成交量差（CVD）：逐根的「主动买 − 主动卖」累加起来。
+///
+/// 一根里主动卖 = 成交量 − 主动买，所以这一根的净额就是 `2×主动买 − 成交量`。
+/// 它回答的是「这段行情是被买上去的还是被卖下去的」：价格创了新高而这条线没跟上，
+/// 说明推价的是撤掉的卖单而不是真的买盘。
+///
+/// **和当日VWAP 用同一个锚**（日内按 UTC 零点、日线及以上按自然月）归零。不归零的话
+/// 这条线的绝对值取决于「这台手机当前加载了多少历史」——往前补一段历史，整条线就整体
+/// 平移一次，同一个品种在两台设备上读出来的数还不一样。锚定之后它在任何设备上都可复现。
+///
+/// **主动买量缺失的那一根留白，累计值原样往下传。** 缺失来自撮合价合成的根、OKX、
+/// 被截断的镜像行（见 `Bar.takerBuy`）。把缺失当 0 会凭空画出一段砸下去的台阶，
+/// 而把累计值污染成 NaN 会让这一根之后的整条线全都消失。留白只损失那一根。
+struct CVDState: Sendable, Equatable {
+  var out: [Double]
+  /// 到第 i 根为止的累计值；这一根不知道主动买量时沿用上一根，好让尾部重算接得上。
+  var sum: [Double]
+
+  init(_ b: BarSeries) {
+    out = nanArray(b.count); sum = nanArray(b.count)
+    run(b, from: 0, seed: 0)
+  }
+
+  private mutating func run(_ b: BarSeries, from start: Int, seed: Double) {
+    grow(to: b.count, &out, &sum)
+    guard b.count > 0, start < b.count else { return }
+    var s = seed
+    for i in start..<b.count {
+      if startsAnchorPeriod(b, i) { s = 0 }
+      let buy = b.takerBuy[i], vol = b.volume[i]
+      if buy.isFinite, vol.isFinite {
+        s += 2 * buy - vol
+        out[i] = s
+      } else {
+        out[i] = .nan
+      }
+      sum[i] = s
+    }
+  }
+
+  mutating func update(_ b: BarSeries, from start: Int) {
+    if start > 0, start - 1 < sum.count, sum[start - 1].isFinite {
+      run(b, from: start, seed: sum[start - 1])
+    } else {
+      out = nanArray(b.count); sum = nanArray(b.count)
+      run(b, from: 0, seed: 0)
     }
   }
 }

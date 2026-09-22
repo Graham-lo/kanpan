@@ -32,7 +32,7 @@ extension ChartRenderer {
     case .macd: subMacd(ctx, box, L, lo, hi, s)
     case .lsr, .taker, .basis: subExternal(ctx, box, L, lo, hi, key, s)
     case .oi: subOi(ctx, box, L, lo, hi, s)
-    case .rsi, .srsi, .kdj, .atr, .dmi: subLines(ctx, box, L, lo, hi, key, s)
+    case .rsi, .srsi, .kdj, .atr, .dmi, .cvd: subLines(ctx, box, L, lo, hi, key, s)
     default: break
     }
     ctx.restoreGState()
@@ -403,6 +403,12 @@ extension ChartRenderer {
       put("多头动向 " + indicatorNumber(at(v.lines[0]), decimals: 1), pal[0])
       put("空头动向 " + indicatorNumber(at(v.lines[1]), decimals: 1), pal[1])
       put("趋势强度 " + indicatorNumber(at(v.lines[2]), decimals: 1), pal[2])
+    case .cvd:
+      put("累计成交量差", t.dim)
+      // 读数按涨跌色：为正是这一段被主动买上去的，为负是被主动卖下去的。
+      if let x = (v?.lines.first).map({ at($0) }), x.isFinite {
+        put(fmtVol(x), x >= 0 ? t.up : t.down)
+      }
     case .oi:
       let x0 = (v?.lines.first).map { at($0) }.flatMap { $0.isFinite ? indicatorNumber($0) : nil } ?? "--"
       put("持仓量 " + x0, t.oi)
@@ -447,7 +453,8 @@ extension ChartRenderer {
   }
   func subValueText(_ value: Double, indicator: IndicatorID) -> String {
     if indicator == .basis { return fmtNum(value, 3) + "%" }
-    if indicator == .vol || indicator == .oi { return fmtVol(value) }
+    // 累计成交量差和成交量、持仓量一样是「量」，按 K/M/B 印，不按小数位印。
+    if indicator == .vol || indicator == .oi || indicator == .cvd { return fmtVol(value) }
     return fmtNum(value, indicator == .macd || indicator == .atr ? state.decimals : 2)
   }
   func subAxisLabels(_ id: IndicatorID) -> [String] {

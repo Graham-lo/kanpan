@@ -28,7 +28,28 @@ struct DTODecodeTests {
     let ra = try JSONDecoder().decode([KlineRow].self, from: a)
     let rb = try JSONDecoder().decode([KlineRow].self, from: b)
     #expect(ra[0].bar == rb[0].bar)
-    #expect(ra[0].bar == Bar(openTime: 1700000000000, open: 1.5, high: 2.5, low: 0.5, close: 2.0, volume: 10.0))
+    #expect(ra[0].bar == Bar(openTime: 1700000000000, open: 1.5, high: 2.5, low: 0.5, close: 2.0,
+                             volume: 10.0, takerBuy: 1.0))
+    // 第 9 格就是主动买成交量，字符串和数字两种写法都要读到同一个值。
+    #expect(ra[0].bar.takerBuy == 1.0)
+    #expect(rb[0].bar.takerBuy == 1.0)
+  }
+
+  @Test("行被截断到只剩收盘时间：主动买量算缺失，不算 0")
+  func klineRowWithoutTakerColumn() throws {
+    let short = Data(#"[[1700000000000,"1.5","2.5","0.5","2.0","10.0",1700003599999]]"#.utf8)
+    let rows = try JSONDecoder().decode([KlineRow].self, from: short)
+    #expect(rows[0].bar.volume == 10.0)
+    // 0 会被 CVD 读成「整根都是主动卖」，那是凭空造出来的一段下跌。
+    #expect(rows[0].bar.takerBuy.isNaN)
+  }
+
+  @Test("网关给 OKX 的行在主动买量那一格是 null")
+  func klineRowWithNullTakerColumn() throws {
+    let nulled = Data(#"[[1700000000000,"1.5","2.5","0.5","2.0","10.0",1700003599999,"1",0,null,null,"0"]]"#.utf8)
+    let rows = try JSONDecoder().decode([KlineRow].self, from: nulled)
+    #expect(rows[0].bar.close == 2.0)
+    #expect(rows[0].bar.takerBuy.isNaN)
   }
 
   @Test func invalidOHLCVIsRejectedBeforeIndicators() throws {

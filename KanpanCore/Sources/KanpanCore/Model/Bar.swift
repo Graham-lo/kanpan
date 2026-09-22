@@ -8,20 +8,47 @@ public struct Bar: Sendable, Equatable {
   public var low: Double
   public var close: Double
   public var volume: Double
+  /// 这一根里主动买的成交量（币安 kline 的 takerBuyBaseVolume）。
+  ///
+  /// **拿不到就是 NaN，不是 0。** 主动买量是「累计成交量差」（CVD）唯一的原料：
+  /// 主动卖 = 成交量 − 主动买，两者之差就是这一根的净主动买入。填 0 会让这一根
+  /// 读成「全是主动卖」，在 CVD 上是一段凭空砸下去的台阶，比留白更糟。所以凡是
+  /// 源头不给这一列的地方（撮合价推流合成的根、OKX、旧快照）都必须留 NaN，
+  /// 由指标那一层决定怎么处理缺口。
+  public var takerBuy: Double
 
   /// Validate exchange OHLCV before it can contaminate every derived indicator.
+  ///
+  /// 主动买量不在校验之列：它允许缺失（NaN），缺了也不影响这根 K 线本身成立。
   public var isValidMarketBar: Bool {
     [open, high, low, close, volume].allSatisfy(\.isFinite)
       && low >= 0 && high >= max(open, close) && low <= min(open, close) && volume >= 0
   }
 
-  public init(openTime: Int64, open: Double, high: Double, low: Double, close: Double, volume: Double) {
+  public init(
+    openTime: Int64, open: Double, high: Double, low: Double, close: Double, volume: Double,
+    takerBuy: Double = .nan
+  ) {
     self.openTime = openTime
     self.open = open
     self.high = high
     self.low = low
     self.close = close
     self.volume = volume
+    self.takerBuy = takerBuy
+  }
+
+  /// 手写而不是让编译器合成：主动买量允许是 NaN，而 `NaN == NaN` 是 false，
+  /// 合成的 `==` 会把两根本来一模一样的「没有主动买量」的 K 线判成不相等。
+  /// 缺失和缺失就是同一件事，这里让它们相等。
+  public static func == (a: Bar, b: Bar) -> Bool {
+    a.openTime == b.openTime && a.open == b.open && a.high == b.high && a.low == b.low
+      && a.close == b.close && a.volume == b.volume && sameOptional(a.takerBuy, b.takerBuy)
+  }
+
+  /// 两个「可以缺失」的数是不是同一个值；两边都缺也算同一个。
+  @inlinable public static func sameOptional(_ a: Double, _ b: Double) -> Bool {
+    a == b || (a.isNaN && b.isNaN)
   }
 }
 

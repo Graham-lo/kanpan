@@ -11,8 +11,16 @@ struct IndicatorIncrementalTests {
   /// 超级趋势与抛物线转向更是**逐根带状态**的，续算写错了差值极小、肉眼看不出来，
   /// 只有逐位对照才拦得住。
   static let all: [IndicatorID] = [
-    .ma, .ema, .boll, .vwap, .supertrend, .sar, .vol, .macd, .rsi, .kdj, .srsi, .atr, .dmi,
+    .ma, .ema, .boll, .vwap, .supertrend, .sar, .vol, .macd, .rsi, .kdj, .srsi, .atr, .dmi, .cvd,
   ]
+
+  /// 这一根的主动买成交量；`skip` 为真时当作源头没给。
+  ///
+  /// 随机序列里必须掺缺失：累计成交量差在缺失那一根留白、把累计值原样往下传，
+  /// 这条路写错了全量和增量会分岔，而且只在缺失那一根之后才看得出来。
+  static func taker(_ volume: Double, _ r: inout Rng, skip: Bool) -> Double {
+    skip ? .nan : volume * r.d(0.2, 0.8)
+  }
 
   /// 全量：新引擎从零算。
   static func full(_ s: BarSeries) -> [IndicatorID: IndicatorResult] {
@@ -60,7 +68,8 @@ struct IndicatorIncrementalTests {
           openTime: last.openTime, open: last.open,
           high: max(max(last.open, c), last.high * (1 + r.d(0, 0.004))),
           low: min(min(last.open, c), last.low * (1 - r.d(0, 0.004))),
-          close: c, volume: last.volume + r.d(0, 40)))
+          close: c, volume: last.volume + r.d(0, 40),
+          takerBuy: Self.taker(last.volume, &r, skip: step % 7 == 3)))
       } else {
         // 收一根、开一根。
         let o = last.close
@@ -68,7 +77,8 @@ struct IndicatorIncrementalTests {
         s.append(Bar(
           openTime: last.openTime + s.step, open: o,
           high: max(o, c) * (1 + r.d(0, 0.008)), low: min(o, c) * (1 - r.d(0, 0.008)),
-          close: c, volume: r.d(10, 5000)))
+          close: c, volume: r.d(10, 5000),
+          takerBuy: Self.taker(last.volume, &r, skip: step % 7 == 5)))
       }
       e.updateTail(series: s, dataKey: "inc")
       if step % 25 == 0 || step == 249 {
@@ -90,7 +100,8 @@ struct IndicatorIncrementalTests {
       let o = last.close
       let c = max(1, o * (1 + r.d(-0.03, 0.03)))
       s.append(Bar(openTime: last.openTime + s.step, open: o,
-                   high: max(o, c) * 1.001, low: min(o, c) * 0.999, close: c, volume: r.d(1, 999)))
+                   high: max(o, c) * 1.001, low: min(o, c) * 0.999, close: c, volume: r.d(1, 999),
+                   takerBuy: r.d(0, 1) < 0.1 ? .nan : r.d(0, 999)))
       e.updateTail(series: s, dataKey: "drift")
     }
     Self.compare(e.values, Self.full(s), "追 500 根")

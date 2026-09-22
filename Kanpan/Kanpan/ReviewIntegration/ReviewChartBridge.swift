@@ -165,7 +165,7 @@ import ReviewUI
         try Task.checkCancellation(); guard loadID == request else { return }
         let series = BinanceREST.series(symbol: range.symbol, interval: interval, bars: fetched)
         let ordered = (0..<series.count).filter { Self.closeTime(series.time(at: $0), interval: interval) <= end }.map {
-          Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0])
+          Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0], takerBuy: series.takerBuy[$0])
         }
         guard ordered.count >= 3 else { throw ReviewBridgeError.noHistory }
         for i in 1..<ordered.count where Self.closeTime(ordered[i - 1].openTime, interval: interval) != ordered[i].openTime { throw ReviewBridgeError.historyGap }
@@ -235,7 +235,7 @@ import ReviewUI
         try Task.checkCancellation(); guard request == loadID else { return }
         let series = BinanceREST.series(symbol: record.draft.range.symbol, interval: interval, bars: fetched)
         let page = (0..<series.count).filter { Self.closeTime(series.time(at: $0), interval: interval) <= end }.map {
-          Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0])
+          Bar(openTime: series.time(at: $0), open: series.open[$0], high: series.high[$0], low: series.low[$0], close: series.close[$0], volume: series.volume[$0], takerBuy: series.takerBuy[$0])
         }
         guard !page.isEmpty else { playing = false; playback?.cancel(); return }
         let position = bars[cursor].openTime
@@ -312,7 +312,7 @@ import ReviewUI
     state = nil; replayBase = nil; bars = []; replayRecord = nil; mode = .live; proxy = ChartProxy()
   }
   private func slice(_ s: BarSeries, count: Int) -> BarSeries {
-    BarSeries(symbol: s.symbol, interval: s.interval, t0: s.t0, open: Array(s.open.prefix(count)), high: Array(s.high.prefix(count)), low: Array(s.low.prefix(count)), close: Array(s.close.prefix(count)), volume: Array(s.volume.prefix(count)), openTime: Array(s.openTime.prefix(count)))
+    BarSeries(symbol: s.symbol, interval: s.interval, t0: s.t0, open: Array(s.open.prefix(count)), high: Array(s.high.prefix(count)), low: Array(s.low.prefix(count)), close: Array(s.close.prefix(count)), volume: Array(s.volume.prefix(count)), takerBuy: Array(s.takerBuy.prefix(count)), openTime: Array(s.openTime.prefix(count)))
   }
 }
 private enum ReviewBridgeError: LocalizedError {
