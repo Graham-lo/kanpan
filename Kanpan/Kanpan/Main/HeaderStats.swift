@@ -3,16 +3,23 @@ import KanpanCore
 
 /// 顶栏右侧六格（仓 / 额 · 市值 / 费率 · 结算 / 振幅）的**取值规则**。
 ///
-/// 单独拆一份是因为这六格的规则全是「什么时候该显示 `--`」，而它们出错的样子
+/// 单独拆一份是因为这六格的规则全是「什么时候该显示 `—`」，而它们出错的样子
 /// 用户一眼看不出来（一个上一条线路留下的成交额和一个真的成交额长得一模一样）。
 /// 规则留在 SwiftUI 的 `body` 里没法用例守，所以这儿只做纯函数，`PriceRow`
-/// 只负责把返回的字串画出来（`nil` → `--`，不解释、不弹提示）。
+/// 只负责把返回的字串画出来（`nil` → `—`，不解释、不弹提示）。
 ///
 /// 三条共同的约定：
-/// * 拿不到可靠数据就 `nil`（界面上是 `--`），绝不拿另一个口径或估算值顶上；
+/// * 拿不到可靠数据就 `nil`（界面上是 `—`），绝不拿另一个口径或估算值顶上；
 /// * 数值必须是有限数，成交额 / 市值 / 持仓还必须是正数——0 在这几格里只可能是缺数；
-/// * 「不新鲜」和「没有」在界面上是同一种结果：都显示 `--`。
+/// * 「不新鲜」和「没有」在界面上是同一种结果：都显示 `—`。
 enum HeaderStats {
+  static func priceChangeText(change: Double?, percent: Double?, decimals: Int) -> String {
+    guard let change, change.isFinite, let percent, percent.isFinite else { return "—" }
+    // 符号单独格式化；涨跌额与价格采用同一小数位。
+    return (change >= 0 ? "+" : "−") + toFixed(abs(change), decimals)
+      + "  " + (percent >= 0 ? "+" : "−") + toFixed(abs(percent), 2) + "%"
+  }
+
   /// 「仓」= **美元名义**持仓量（`openInterestValue`）。
   ///
   /// 审查 A-02：以前后端给不出名义时会退回币本位数量（`openInterest`）顶上，
@@ -23,7 +30,7 @@ enum HeaderStats {
     return fmtVol(v, unit: unit ?? volUnit(v))
   }
 
-  /// 「额」= 24h 成交额。价不新鲜时一起 `--`：成交额和价来自同一帧，
+  /// 「额」= 24h 成交额。价不新鲜时一起 `—`：成交额和价来自同一帧，
   /// 价已经被判定为旧的，那个额同样是旧的（审查 B.8）。
   static func turnoverText(quoteVolume: Double?, unit: VolUnit?, fresh: Bool) -> String? {
     guard fresh, let v = quoteVolume, v.isFinite, v > 0 else { return nil }
@@ -31,7 +38,7 @@ enum HeaderStats {
   }
 
   /// 「市值」= 总供应量 × 正在显示的那口价（用户点名要总市值，不是流通市值）。
-  /// 供应量为空就空着，绝不用流通量或者「排名估算」顶上；价不新鲜时也 `--`——
+  /// 供应量为空就空着，绝不用流通量或者「排名估算」顶上；价不新鲜时也 `—`——
   /// 它是拿那口价乘出来的，价旧则市值旧。
   static func marketCapText(totalSupply: Double?, price: Double?, fresh: Bool) -> String? {
     guard fresh, let supply = totalSupply, supply.isFinite, supply > 0,
@@ -46,22 +53,8 @@ enum HeaderStats {
     return fmtFundingRate(rate)
   }
 
-  /// 跟在「费率」那个值后面的一小段：距离下一次结算还有多久
-  /// （`MarkPriceTick.nextFundingTime`）。
-  ///
-  /// 费率本身只说「现在这一档是多少」，而它每隔几小时才结算一次——同样一个
-  /// `+0.0100%`，还有 7 小时和还有 3 分钟是两件事。这一段就说这一件事，别的不说：
-  /// 拿不到时刻（没收到过 `markPrice` 帧、或者这个品种没有这回事）就一个字不写，
-  /// 不写「--」，也不解释。
-  ///
-  /// 它自己占一格（右侧六格里的「结算」）。曾经跟在费率值后面同一格里，两串数
-  /// 挤成一团、窄屏上还要缩字才塞得下；现在分开摆，头部为此高一行，图表让出这
-  /// 几十 pt——头部的字一个都不缩、不截，是用户 2026-09-20 定的取舍。
-  ///
-  /// 单位用中文「时 / 分」：界面文案一律中文，h / m 这类缩写不出现（K/M/B/T 是
-  /// 用户点名要的唯一例外）。结算那一刻过去之后，新的一帧几乎立刻就到；到之前
-  /// 按标准的 8 小时一期往后滚，不会停在一个已经过去的时刻上。不足一分钟写
-  /// 「即将结算」——那一分钟里写「0分」等于告诉人「还有零分钟」。
+  /// 距离下一次资金费率结算的中文倒计时，缺时刻返回 nil。
+  /// 结算刚过且下一帧未到时沿用原有八小时滚动规则，不改变取数口径。
   static func fundingCountdownText(nextFundingTimeMs: Int64?, now: Date = Date()) -> String? {
     guard let target = nextFundingTimeMs, target > 0 else { return nil }
     var remaining = Double(target) / 1000 - now.timeIntervalSince1970
@@ -69,7 +62,7 @@ enum HeaderStats {
     // 那由费率本身的展示寿命（`fundingMaxAge`）去判，这儿不再多说一句。
     while remaining <= 0 { remaining += fundingPeriod }
     guard remaining.isFinite, remaining < fundingPeriod * 4 else { return nil }
-    if remaining < 60 { return "即将结算" }
+    if remaining < 60 { return "<1分" }
     let total = Int(remaining)
     let hours = total / 3600, minutes = (total % 3600) / 60
     return hours > 0 ? "\(hours)时\(minutes)分" : "\(minutes)分"
@@ -88,7 +81,7 @@ enum HeaderStats {
   /// 分母用最低价而不是开盘价：这一格回答的是「今天这根柱子有多长」，
   /// 从谷底看涨到顶要多少，和开在哪儿无关（`Ticker.amplitude24h` 那支是
   /// 以开盘价为分母的另一口径，给别处用，两边不混）。
-  /// 高低价和价来自同一帧，价旧了这一格也一起 `--`。
+  /// 高低价和价来自同一帧，价旧了这一格也一起 `—`。
   static func amplitudeText(high: Double?, low: Double?, fresh: Bool) -> String? {
     guard fresh, let high, let low, high.isFinite, low.isFinite,
           low > 0, high >= low else { return nil }

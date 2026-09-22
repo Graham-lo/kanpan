@@ -868,7 +868,7 @@ struct MainScreen: View {
         onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() },
         onSearch: { dismissPanel(); showSearch = true })
       ZStack {
-        PriceRow(theme: theme, ticker: displayedTicker, lastPrice: readoutPrice,
+        PriceRow(theme: theme, ticker: rollingTicker, lastPrice: readoutPrice,
           decimals: market.info.pricePrecision,
           volumeUnit: market.volumeUnit,
           openInterest: market.openInterestDisplay,
@@ -877,6 +877,8 @@ struct MainScreen: View {
           fundingRate: market.displayedFundingRate,
           nextFundingTimeMs: market.displayedNextFundingTime,
           stale: !market.priceFresh)
+          // 390pt 上 .xLarge 的长小数涨跌行会挤掉左右各 8pt，密集数据行封顶默认档。
+          .dynamicTypeSize(...DynamicTypeSize.large)
           .modifier(HiddenWhileCrosshairReads(readout: crosshairReadout, context: crosshairContext))
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
@@ -927,14 +929,19 @@ struct MainScreen: View {
   }
 
   private var displayedTicker: Ticker? {
+    rollingTicker.map { quotes.presented($0) }
+  }
+
+  /// 头部涨跌额与涨跌幅成对使用交易所 24 小时统计；自选口径仍走 presented。
+  private var rollingTicker: Ticker? {
     // 备用线路上先用它自己的一帧；它还没到（或这个品种它根本没有）就退回
     // 共享报价层里那口最后的价，顶栏灰显而不是退成骨架（§2B #54）。
-    if market.source == .okx { return market.ticker ?? quotes.raw[market.symbol].map { quotes.presented($0) } }
-    if let quote = quotes.raw[market.symbol] { return quotes.presented(quote) }
+    if market.source == .okx { return market.ticker ?? quotes.raw[market.symbol] }
+    if let quote = quotes.raw[market.symbol] { return quote }
     // MarketModel already receives Binance ticker frames as part of the
     // chart feed. Use that value immediately instead of waiting for the
     // separate list QuoteBook to open another socket.
-    return market.ticker.map { quotes.presented($0) }
+    return market.ticker
   }
 
   /// 给 UI 用例读的那串诊断值。**只在 DEBUG 构建里存在**（审查 C-02）：

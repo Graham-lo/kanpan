@@ -8,6 +8,13 @@ import KanpanCore
 
 @Suite("B-T10 / A-T20 顶栏六格只显示能负责的数")
 struct HeaderStatsTests {
+  @Test("头部涨跌额按品种精度、涨跌幅两位，缺数不编造")
+  func changeLinePrecision() {
+    #expect(HeaderStats.priceChangeText(change: 6.72, percent: 0.64, decimals: 2) == "+6.72  +0.64%")
+    #expect(HeaderStats.priceChangeText(change: -0.00000001, percent: -0.08, decimals: 8) == "−0.00000001  −0.08%")
+    #expect(HeaderStats.priceChangeText(change: nil, percent: 1, decimals: 2) == "—")
+    #expect(HeaderStats.priceChangeText(change: .nan, percent: 1, decimals: 2) == "—")
+  }
 
   private func stat(value: Double?, qty: Double?) -> OpenInterestStat {
     OpenInterestStat(symbol: "BTCUSDT", openInterest: qty, openInterestValue: value,
@@ -100,7 +107,7 @@ struct HeaderStatsTests {
     #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: at(4_320), now: now) == "1时12分")
     #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: at(720), now: now) == "12分")
     // 不足一分钟写「即将结算」，不写「还有零分钟」。
-    #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: at(30), now: now) == "即将结算")
+    #expect(HeaderStats.fundingCountdownText(nextFundingTimeMs: at(30), now: now) == "<1分")
   }
 
   @Test("没有结算时刻就一个字不写")

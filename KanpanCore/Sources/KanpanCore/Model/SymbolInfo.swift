@@ -182,6 +182,8 @@ public enum SymbolListing: Sendable, Equatable {
 public struct Ticker: Sendable, Equatable {
   public var symbol: String
   public var last: Double
+  /// 交易所 24 小时涨跌额；缺失时保留空值。
+  public var priceChange: Double?
   public var changePercent: Double
   public var high: Double
   public var low: Double
@@ -200,9 +202,10 @@ public struct Ticker: Sendable, Equatable {
 
   public init(symbol: String, last: Double, changePercent: Double,
               high: Double, low: Double, quoteVolume: Double, markPrice: Double? = nil, open24h: Double? = nil,
-              timeMs: Int64? = nil, lastTradeID: Int64? = nil) {
+              timeMs: Int64? = nil, lastTradeID: Int64? = nil, priceChange: Double? = nil) {
     self.symbol = symbol
     self.last = last
+    self.priceChange = priceChange.flatMap { $0.isFinite ? $0 : nil }
     self.changePercent = changePercent
     self.high = high
     self.low = low

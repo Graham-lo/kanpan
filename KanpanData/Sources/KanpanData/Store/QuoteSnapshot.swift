@@ -38,6 +38,7 @@ public enum QuoteSnapshot {
     var s: String        // symbol
     var l: Double        // last
     var c: Double?       // changePercent
+    var p: Double?       // priceChange
     var h: Double?
     var lo: Double?
     var v: Double?       // quoteVolume
@@ -57,7 +58,7 @@ public enum QuoteSnapshot {
     let rows = tickers
       .filter { !$0.symbol.isEmpty && $0.last.isFinite && $0.last > 0 }
       .prefix(maxEntries)
-      .map { Entry(s: $0.symbol, l: $0.last, c: finite($0.changePercent), h: finite($0.high),
+      .map { Entry(s: $0.symbol, l: $0.last, c: finite($0.changePercent), p: finite($0.priceChange), h: finite($0.high),
                    lo: finite($0.low), v: finite($0.quoteVolume), m: finite($0.markPrice),
                    o: finite($0.open24h), t: $0.timeMs, i: $0.lastTradeID) }
     guard !rows.isEmpty else { remove(url); return }
@@ -91,7 +92,7 @@ public enum QuoteSnapshot {
       // （该留空的留空，不会把 0 当成真的 0）。
       return Ticker(symbol: row.s.uppercased(), last: row.l, changePercent: row.c ?? .nan,
                     high: row.h ?? .nan, low: row.lo ?? .nan, quoteVolume: row.v ?? .nan,
-                    markPrice: row.m, open24h: row.o, timeMs: row.t, lastTradeID: row.i)
+                    markPrice: row.m, open24h: row.o, timeMs: row.t, lastTradeID: row.i, priceChange: row.p)
     }
   }
 

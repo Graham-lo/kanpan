@@ -7,6 +7,18 @@ import KanpanNetwork
 
 @Suite("报价快照与整屏补价")
 struct QuoteSnapshotTests {
+  @Test("涨跌额往返落盘，旧快照缺字段仍可读")
+  func priceChangeRoundTrip() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let value = Ticker(symbol: "MUUSDT", last: 1052.18, changePercent: 0.64,
+      high: 1053.6, low: 1044.11, quoteVolume: 36_730_000, priceChange: 6.72)
+    QuoteSnapshot.write([value], to: url)
+    #expect(QuoteSnapshot.read(url).first?.priceChange == 6.72)
+    try Data(#"[{"s":"MUUSDT","l":1052.18,"c":0.64}]"#.utf8).write(to: url)
+    #expect(QuoteSnapshot.read(url).first?.priceChange == nil)
+    #expect(QuoteSnapshot.read(url).first?.last == 1052.18)
+  }
 
   private func tempPaths() -> Paths {
     let dir = URL(fileURLWithPath: NSTemporaryDirectory())

@@ -173,27 +173,13 @@ struct TopBar: View {
 }
 
 
-/// 价格块：左边一列「大价 + 涨跌幅药丸」，右边两列三行六格（§9.1，2026-09-20 改版）。
-///
-/// 涨跌幅用币安 `ticker24h` 的 `P` 字段，不自己算（§4.4）；最新价的颜色跟着它走，
-/// 和原型 `renderTop()` 一致——不是跟着「这一根的涨跌」走。
-///
-/// 价和涨跌幅永远是头部的主角：一屏看下来先看到的就该是「现在多少钱、今天涨没涨」。
-/// 主角地位靠对比建立而不是靠字号——价停在 22pt 的等宽数字（跳数时行宽不动），
-/// 涨跌幅做成填色药丸带方向箭头，这两样一起就够抢眼了，别再往大里加。
-///
-/// 右边六格是 AICoin 头部块（`ui_ticker_include_detail_price_block.xml`）的标签习惯：
-/// **仓 / 额 · 市值 / 费率 · 结算 / 振幅**，标签在左、数值在右，两列各自对齐。
-/// AICoin 自己那格写的是单字 `FR`，这儿按用户 2026-09-18 的定稿写「费率」。AICoin 实测是
-/// 数值 13sp、标签 11sp，落到这儿降到 11.5 / 10——它那块整体比我们大一档（主价 26sp），
-/// 照搬会把配角做得和主价一样响。持仓那一格按 AICoin 的样子重一档字重。
-///
-/// 2026-09-20 从四格变六格：结算倒计时从费率格里搬出来单独成格（挤在一起时
-/// 两串数糊成一团），振幅补回右下角（口径见 `HeaderStats.amplitudeText`）。
-/// 头部为此高一行统计，图表让出这几十 pt——用户的原则是「上部不够可以压缩图表，
-/// 但头部的字不许靠缩、截、挤来凑」。
-/// 拿不到的格子一律 `--`（只有「结算」是留空），不解释、不弹提示。
+/// 行情页价格行：左侧价格与涨跌小字，右侧两列三行数据。
+/// 六格始终在价格右侧；字号跟随系统，但密集数据行有独立封顶。
 struct PriceRow: View {
+  @ScaledMetric(relativeTo: .body) private var priceSize: CGFloat = 22
+  @ScaledMetric(relativeTo: .body) private var changeSize: CGFloat = 13
+  @ScaledMetric(relativeTo: .body) private var labelSize: CGFloat = 12
+  @ScaledMetric(relativeTo: .body) private var valueSize: CGFloat = 13
   var theme: PanelTheme
   var ticker: Ticker?
   var lastPrice: Double?
@@ -210,13 +196,13 @@ struct PriceRow: View {
   /// （`MarketModel.displayedFundingRate`），这儿看到的就是「现在还算数」的值。
   var fundingRate: Double?
   /// 下一次资金费率结算的时刻（`MarkPriceTick.nextFundingTime`）。「结算」那一格
-  /// 读它；没有就留空（见 `HeaderStats.fundingCountdownText`）。
+  /// 读它；没有就显示破折号（见 `HeaderStats.fundingCountdownText`）。
   var nextFundingTimeMs: Int64?
   /// 这口价不能当「现在的价」看：上一条线路留下的，或者这个品种已经不在交易了。
   /// 灰显，不改字号也不加任何说明文字——「为什么是灰的」不需要解释，新数据到了
   /// 它自己就亮回来（§2B #54）。
   ///
-  /// 除了灰显，它还会把「额 / 市值 / 费率 / 振幅」几格压成 `--`（审查 B.8）：那几个数
+  /// 除了灰显，它还会把「额 / 市值 / 费率 / 振幅」几格压成 `—`（审查 B.8）：那几个数
   /// 和价来自同一帧，价已经判定为旧的，它们摆在那儿只会让人当成现在的数。
   var stale = false
 
@@ -229,86 +215,25 @@ struct PriceRow: View {
     return pct >= 0 ? theme.up : theme.down
   }
 
-  /// 头部：左边价 + 涨跌药丸，右边两列三行六格（仓/额 · 市值/费率 · 结算/振幅）。
-  ///
-  /// **一套版面走到底**：宽屏和 iPhone SE 是同一组格子、同一档字号，没有一个写死的
-  /// 宽度。六格里没有一个字会被缩（`minimumScaleFactor` 全撤了）或被截：每一列自己是
-  /// 一张两列 `Grid`，列宽按这一列里最宽的那一格算，数变长格子就变宽。
-  /// 屏宽不够时变的只有空当和摆法（见下面那三档候选），字一个点都不动。
-  ///
-  /// 比上一版高一行：倒计时从费率格里搬出来单独成格（用户看到那两串数挤在一起），
-  /// 顺手把 24h 振幅补回右下角。图表纵向余量足，让出这几十 pt 是用户 2026-09-20
-  /// 定的取舍——「上部空间不够时可以压缩图表区域，但头部的字不许靠缩、截、挤来凑」。
-  ///
-  /// 价与药丸那一块在这三行的高度里**垂直居中**（`alignment: .center`），
-  /// 不再顶着第一行的基线跑。
-  ///
-  /// 三档候选，`ViewThatFits` 从上往下挑第一个**整个装得下**的——挑的是间距和
-  /// 摆法，不是字号：
-  /// 1. 并排，间距照常（iPhone 16 Pro 这种宽屏）；
-  /// 2. 并排，格与格之间紧一点（iPhone SE 375pt：宽屏那一档差几个 pt，
-  ///    紧一点就整整齐齐，价还是 22pt 一个字不缩）；
-  /// 3. 上下两块：价与药丸一行，六格整块挪到它下面。价特别长的品种走这一档，
-  ///    头部再长高一截——长高好过把「80,848.00」截成「80,848....」。
   var body: some View {
-    ViewThatFits(in: .horizontal) {
-      sideBySide(gap: 12, columnSpacing: 14)
-      sideBySide(gap: 8, columnSpacing: 10)
-      stacked
-    }
-  }
-
-  private func sideBySide(gap: CGFloat, columnSpacing: CGFloat) -> some View {
     HStack(alignment: .center, spacing: 0) {
-      priceBlock
-      Spacer(minLength: gap)
-      stats(columnSpacing: columnSpacing)
-    }
-  }
-
-  private var stacked: some View {
-    VStack(alignment: .leading, spacing: 7) {
-      priceBlock
-      stats(columnSpacing: 14)
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-
-  private var priceBlock: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 9) {
-      Text(lastText)
-        .font(.system(size: 22, weight: .medium))
-        .monospacedDigit()
-        .foregroundStyle(lastPrice == nil ? theme.ink : (stale ? theme.ink3 : tint))
-        .lineLimit(1)
-        .accessibilityIdentifier("top.lastPrice")
-      pill
-    }
-    .fixedSize(horizontal: true, vertical: false)
-  }
-
-  /// 涨跌幅药丸：填色 + 白字 + 方向箭头。填的色和自选表里那一列是同一支
-  /// （`badgeFill`），两处对不上会让人以为是两个口径。
-  private var pill: some View {
-    HStack(spacing: 3) {
-      if let pct {
-        Image(systemName: pct >= 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-          .font(.system(size: 7.5))
+      VStack(alignment: .leading, spacing: 3) {
+        Text(lastText)
+          .font(.system(size: priceSize, weight: .medium))
+          .monospacedDigit()
+          .foregroundStyle(lastPrice == nil || stale ? theme.ink3 : tint)
+          .accessibilityIdentifier("top.lastPrice")
+        Text(HeaderStats.priceChangeText(change: ticker?.priceChange, percent: pct, decimals: decimals))
+          .font(.system(size: changeSize, weight: .semibold))
+          .monospacedDigit()
+          .foregroundStyle(stale || ticker?.priceChange == nil || pct == nil ? theme.ink3 : tint)
+          .accessibilityIdentifier("top.changePercent")
       }
-      Text(pct.map { ($0 >= 0 ? "+" : "") + toFixed($0, 2) + "%" } ?? "—")
-        .font(.system(size: 11.5, weight: .semibold))
-        .monospacedDigit()
+      .lineLimit(1)
+      .fixedSize(horizontal: true, vertical: false)
+      Spacer(minLength: 8)
+      stats
     }
-    // 窄屏（iPhone SE 这一档）上右边六格把这一行挤紧时，药丸里的「-1.09%」会被折成
-    // 两行、头部当场再长高一截。它是一枚记号，不是一段话：钉死一行、按自己的字长占位。
-    .lineLimit(1)
-    .fixedSize(horizontal: true, vertical: false)
-    .foregroundStyle(pct == nil || stale ? theme.ink3 : theme.badgeInk)
-    .padding(.horizontal, 7)
-    .padding(.vertical, 3.5)
-    .background(pct == nil || stale ? theme.raised2 : theme.badgeFill(up: pct! >= 0),
-                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-    .accessibilityIdentifier("top.changePercent")
   }
 
   /// 价格的小数位由品种自己说（`pricePrecision`），极小的正价会自动多给几位，
@@ -338,28 +263,16 @@ struct PriceRow: View {
     HeaderStats.fundingText(rate: fundingRate, fresh: !stale)
   }
 
-  /// 「振幅」= 24h (高 − 低) / 低。高低价和价来自同一帧，价旧了它一起 `--`。
+  /// 「振幅」= 24h (高 − 低) / 低。高低价和价来自同一帧，价旧了它一起 `—`。
   private var amplitudeText: String? {
     HeaderStats.amplitudeText(high: ticker?.high, low: ticker?.low, fresh: !stale)
   }
 
-  /// 六格，两列三行：左列 仓 / 市值 / 结算，右列 额 / 费率 / 振幅。
-  ///
-  /// 上一版是 2×2，倒计时挤在费率值后面同一格里——用户看到的就是两串数糊成一团。
-  /// 现在倒计时自己占「结算」那一格，右下角补上振幅，头部因此高一行统计。
-  ///
-  /// 宽度不再写死、也不再按屏宽分档：每一列自己是一张两列的 `Grid`（标签靠左、
-  /// 值靠右），列宽按这一列里最宽的那一格算，数变长格子跟着变宽。
-  /// `minimumScaleFactor` 全撤了——这六格的字一个都不缩、不截，装不下宁可
-  /// 让头部再长高一点，图表让出那几十 pt（用户 2026-09-20 定的取舍）。
-  ///
-  /// `fixedSize` 是这条规矩的保险：谁也别想把这六格挤窄。两列之间默认 14pt，
-  /// 一眼看出是两列而不是六个并排的词；窄屏上 `body` 会挑那档紧一点的（10pt），
-  /// 紧的是空当，字一个都没动。
-  private func stats(columnSpacing: CGFloat) -> some View {
-    HStack(alignment: .top, spacing: columnSpacing) {
+  /// 每列按最宽的实值分配；间距固定，不缩字、不截字、不换行。
+  private var stats: some View {
+    HStack(alignment: .top, spacing: 14) {
       statColumn {
-        statRow("仓", openInterestText, id: "top.openInterest", heavy: true)
+        statRow("仓", openInterestText, id: "top.openInterest")
         statRow("市值", marketCapText, id: "top.marketCap")
         settlementRow
       }
@@ -380,22 +293,20 @@ struct PriceRow: View {
   }
 
   private func statRow(_ label: String, _ value: String?, id: String,
-                       heavy: Bool = false, tint: Color? = nil) -> some View {
+                       tint: Color? = nil) -> some View {
     GridRow {
       statLabel(label)
-      statValue(value ?? "--", missing: value == nil, id: id, heavy: heavy, tint: tint)
+      statValue(value ?? "—", missing: value == nil, id: id, tint: tint)
     }
   }
 
-  /// 「结算」：离下一次资金费率结算还有多久（`HeaderStats.fundingCountdownText`）。
-  /// 时间自己会走，所以这一格带一根 30 秒的节拍（`TimelineView`）——只有它重画，
-  /// 价格和药丸不受影响。拿不到结算时刻就**留空**：不写「--」，也不解释
-  /// （留的是一个空格，为的是这一行的高度和另外两行一样）。
+  /// 倒计时独立刷新，缺数与其它格一样显示破折号。
   private var settlementRow: some View {
     GridRow {
       statLabel("结算")
       TimelineView(.periodic(from: .now, by: 30)) { context in
-        statValue(countdownText(now: context.date) ?? " ", missing: false, id: "top.settlement")
+        statValue(countdownText(now: context.date) ?? "—",
+                  missing: countdownText(now: context.date) == nil, id: "top.settlement")
       }
       .gridColumnAlignment(.trailing)
     }
@@ -406,7 +317,7 @@ struct PriceRow: View {
     return HeaderStats.fundingCountdownText(nextFundingTimeMs: nextFundingTimeMs, now: now)
   }
 
-  /// 费率的正负是它唯一要读的信息，按涨跌色给——和药丸、自选表用的是同两支色。
+  /// 费率的正负是它唯一要读的信息，按涨跌色给，与价格和涨跌小字使用同两支色。
   private var frTint: Color? {
     guard !stale, let r = fundingRate, r.isFinite, r != 0 else { return nil }
     return r > 0 ? theme.up : theme.down
@@ -414,17 +325,17 @@ struct PriceRow: View {
 
   private func statLabel(_ text: String) -> some View {
     Text(text)
-      .font(.system(size: 10))
+      .font(.system(size: labelSize))
       .foregroundStyle(theme.ink3)
       .gridColumnAlignment(.leading)
   }
 
   private func statValue(_ text: String, missing: Bool, id: String,
-                         heavy: Bool = false, tint: Color? = nil) -> some View {
+                         tint: Color? = nil) -> some View {
     Text(text)
-      .font(.system(size: 11.5, weight: heavy ? .semibold : .medium))
+      .font(.system(size: valueSize, weight: .semibold))
       .monospacedDigit()
-      .foregroundStyle(missing || stale ? theme.ink3 : (tint ?? theme.ink2))
+      .foregroundStyle(missing || stale ? theme.ink3 : (tint ?? theme.ink))
       .gridColumnAlignment(.trailing)
       .accessibilityIdentifier(id)
   }
@@ -446,6 +357,5 @@ func grouped(_ text: String) -> String {
   let intPart = (neg ? "-" : "") + String(out)
   return parts.count > 1 ? intPart + "." + parts[1] : intPart
 }
-
 
 

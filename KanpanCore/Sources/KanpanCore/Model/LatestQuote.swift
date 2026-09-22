@@ -23,7 +23,7 @@ public enum LatestQuote {
     func equal(_ a: Double, _ b: Double) -> Bool { a == b || (a.isNaN && b.isNaN) }
     return a.symbol == b.symbol && equal(a.last, b.last) && equal(a.changePercent, b.changePercent)
       && equal(a.high, b.high) && equal(a.low, b.low) && equal(a.quoteVolume, b.quoteVolume)
-      && a.markPrice == b.markPrice && a.open24h == b.open24h
+      && a.priceChange == b.priceChange && a.markPrice == b.markPrice && a.open24h == b.open24h
   }
 
   public static func newest(_ a: Ticker?, _ b: Ticker?, symbol: String) -> Ticker? {
@@ -82,6 +82,10 @@ public struct QuoteState: Sendable {
     var next = statistics ?? Ticker(symbol: symbol, last: .nan, changePercent: .nan,
       high: .nan, low: .nan, quoteVolume: .nan)
     if let trade {
+      // 保留 ticker 的涨跌额；成交先到时只补这份统计之后的价差。
+      if let change = statistics?.priceChange, let last = statistics?.last {
+        next.priceChange = change + (trade.price - last)
+      }
       next.last = trade.price
       next.timeMs = max(value?.timeMs ?? 0, max(trade.timeMs, statistics?.timeMs ?? 0))
       next.lastTradeID = trade.tradeID

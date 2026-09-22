@@ -14,6 +14,54 @@ final class MainScreenUITests: KanpanUICase {
 
   // ---------------------------------------------------------------- 顶栏
 
+  func testHeaderStatsAtLargestDynamicType() {
+    let priceHeight = app.staticTexts["top.lastPrice"].frame.height
+    let statsHeight = app.otherElements["top.stats"].frame.height
+    app.launchArguments += ["-UIPreferredContentSizeCategoryName",
+                            "UICTContentSizeCategoryAccessibilityXXXL"]
+    testHeaderStatsStayRightOfPrice()
+    XCTAssertEqual(app.staticTexts["top.lastPrice"].frame.height, priceHeight, accuracy: 0.5)
+    XCTAssertEqual(app.otherElements["top.stats"].frame.height, statsHeight, accuracy: 0.5)
+  }
+
+  /// 六格按实际数值占宽；美股市值、费率和倒计时同样会挤满头部。
+  func testHeaderStatsStayRightOfPrice() {
+    continueAfterFailure = true
+    var statsHeight: CGFloat?
+    var intervalY: CGFloat?
+    for symbol in ["SNDKUSDT", "MUUSDT", "1000SATSUSDT", "BTCUSDT"] {
+      app.terminate()
+      app.launchEnvironment["KANPAN_TEST_DEEPLINK"] = "hkline://symbol/\(symbol)"
+      app.launch()
+      let price = app.staticTexts["top.lastPrice"]
+      let change = app.descendants(matching: .any)["top.changePercent"].firstMatch
+      let stats = app.otherElements["top.stats"]
+      guard expectExists(price, Self.long), expectExists(stats, Self.long) else { continue }
+      XCTAssertTrue(waitUntil(timeout: Self.long) {
+        [price.label, app.staticTexts["top.marketCap"].label,
+         app.staticTexts["top.turnover"].label, app.staticTexts["top.funding"].label]
+          .allSatisfy { !["", "—", "--"].contains($0) }
+      }, "\(symbol) 的价格与六格实值没有到齐")
+      XCTAssertTrue(app.symbolLabel.label.contains(symbol), "深链没有打开 \(symbol)")
+      let p = price.frame, s = stats.frame
+      let y = app.buttons[Ids.intervalMore].frame.minY
+      let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+      shot.name = "header-\(symbol)"; shot.lifetime = .keepAlways; add(shot)
+      print("HEADER \(symbol) price=\(p) stats=\(s) intervalY=\(y)")
+      XCTAssertGreaterThanOrEqual(s.minX, p.maxX, "\(symbol) 六格掉到价格下面")
+      XCTAssertGreaterThanOrEqual(s.minX, change.frame.maxX + 7.5, "\(symbol) 涨跌行挤进六格")
+      XCTAssertGreaterThanOrEqual(p.minX, 11.5, "\(symbol) 价格超出左侧留白")
+      XCTAssertTrue(change.label.contains("  "), "\(symbol) 涨跌额或涨跌幅缺失")
+      XCTAssertGreaterThanOrEqual(change.frame.minY, p.maxY, "\(symbol) 涨跌行没在价格下面")
+      XCTAssertEqual(change.frame.minX, p.minX, accuracy: 0.5, "\(symbol) 涨跌行没有左对齐")
+      XCTAssertLessThanOrEqual(s.maxX, app.windows.firstMatch.frame.maxX - 12 + 0.5,
+                               "\(symbol) 六格超出屏幕右缘")
+      if let statsHeight { XCTAssertEqual(s.height, statsHeight, accuracy: 0.5) }
+      if let intervalY { XCTAssertEqual(y, intervalY, accuracy: 0.5, "\(symbol) 头部挤高了周期条") }
+      statsHeight = s.height; intervalY = y
+    }
+  }
+
   /// 左上角的品种名只报「我正在看哪个」，点它不该弹出任何东西。
   ///
   /// 它以前开一张半屏弹层（头两行是搜索和完整自选，下面列自选）。搜索页做出来

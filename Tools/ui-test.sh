@@ -32,6 +32,13 @@ RES="${RES:-$DD/ui-test}"                  # .xcresult 结果包（体积大，�
 #   后缀只用于查设备；日志、summary.txt、.xcresult 一律仍按**不带后缀**的机型名命名，
 #   两个窗口产出的报告因此格式一致，可以直接比对。
 SUFFIX="${SUFFIX:-}"
+ONLY_DEVICE="${ONLY_DEVICE:-}"            # 受影响用例可只跑一台，空值仍跑完整矩阵
+ONLY_TESTING="${ONLY_TESTING:-}"
+TEST_ARGS=()
+if [ -n "$ONLY_TESTING" ]; then
+  IFS=',' read -r -a TEST_IDS <<< "$ONLY_TESTING"
+  for test_id in "${TEST_IDS[@]}"; do TEST_ARGS+=("-only-testing:$test_id"); done
+fi
 BUNDLE_ID=com.mdd.kanpan
 WORKSPACE=Kanpan.xcworkspace
 SCHEME=Kanpan
@@ -54,6 +61,12 @@ DEVICES=(
 
 mkdir -p "$OUT" "$RES"
 
+if [ -n "$ONLY_DEVICE" ]; then
+  found=0
+  for name in "${DEVICES[@]}"; do [ "$name" = "$ONLY_DEVICE" ] && found=1; done
+  [ "$found" -eq 1 ] || { echo "未知机型：$ONLY_DEVICE"; exit 2; }
+fi
+
 echo "== build-for-testing =="
 xcodebuild build-for-testing \
   -workspace "$WORKSPACE" -scheme "$SCHEME" \
@@ -64,6 +77,7 @@ xcodebuild build-for-testing \
 fail=0
 : > "$OUT/summary.txt"
 for name in "${DEVICES[@]}"; do
+  [ -z "$ONLY_DEVICE" ] || [ "$name" = "$ONLY_DEVICE" ] || continue
   slug="$(echo "$name" | tr ' ()' '---' | tr -s '-' | sed 's/-$//')"
   device="$name$SUFFIX"                    # 查设备用带后缀的名字；slug（文件名）永远不带
   udid="$(xcrun simctl list devices available -j \
@@ -96,6 +110,7 @@ for name in "${DEVICES[@]}"; do
     -workspace "$WORKSPACE" -scheme "$SCHEME" \
     -destination "platform=iOS Simulator,id=$udid" \
     -derivedDataPath "$DD" \
+    "${TEST_ARGS[@]}" \
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 480 \
     -maximum-test-execution-time-allowance 900 \
@@ -108,10 +123,10 @@ for name in "${DEVICES[@]}"; do
   passed=$(grep -c "' passed (" "$OUT/$slug.log")
   failed=$(grep -c "' failed (" "$OUT/$slug.log")
   if [ $rc -eq 0 ]; then
-    echo "  ✓ $passed 条通过，${dur}s"
+    echo "  ✓ ${passed} 条通过，${dur}s"
     echo "$name	PASS	$passed	$dur" >> "$OUT/summary.txt"
   else
-    echo "  ✗ 失败 $failed 条（通过 $passed），见 $OUT/$slug.log"
+    echo "  ✗ 失败 ${failed} 条（通过 ${passed}），见 $OUT/$slug.log"
     grep -E "error:|XCTAssert" "$OUT/$slug.log" | head -10
     echo "$name	FAIL	$passed/$failed	$dur" >> "$OUT/summary.txt"
     fail=1

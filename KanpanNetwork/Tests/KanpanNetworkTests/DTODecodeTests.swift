@@ -8,6 +8,19 @@ import KanpanCore
 // REST 与 WS 两边的交易所时钟对得上。
 @Suite("币安报文解码")
 struct DTODecodeTests {
+  @Test("涨跌额在 REST、单品种流与全市场流中保留同一数值")
+  func priceChangeSurvivesBothTransports() throws {
+    let rest = try JSONDecoder().decode(Ticker24hDTO.self, from: Data(#"{"symbol":"MUUSDT","lastPrice":"1052.18","priceChange":"6.72","priceChangePercent":"0.64","highPrice":"1053.60","lowPrice":"1044.11","quoteVolume":"36730000"}"#.utf8)).ticker
+    let frame = #"{"e":"24hrTicker","s":"MUUSDT","c":"1052.18","p":"6.72","P":"0.64","h":"1053.60","l":"1044.11","q":"36730000"}"#
+    let single = try JSONDecoder().decode(StreamPayload.self, from: Data(frame.utf8))
+    let batch = try JSONDecoder().decode(StreamPayload.self, from: Data("[\(frame)]".utf8))
+    guard case .ticker(let ticker) = single, case .tickerBatch(let tickers) = batch else {
+      Issue.record("行情形状不匹配"); return
+    }
+    #expect(rest.priceChange == 6.72)
+    #expect(ticker.priceChange == rest.priceChange)
+    #expect(tickers.first?.priceChange == rest.priceChange)
+  }
   @Test("kline 行数字可以是字符串也可以是数字")
   func klineRowDecode() throws {
     let a = Data(#"[[1700000000000,"1.5","2.5","0.5","2.0","10.0",1700003599999,"1",1,"1","1","0"]]"#.utf8)

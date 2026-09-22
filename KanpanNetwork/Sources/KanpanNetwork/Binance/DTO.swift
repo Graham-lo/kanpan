@@ -96,6 +96,7 @@ enum JSONValue: Decodable {
 struct Ticker24hDTO: Decodable {
   var symbol: String
   var lastPrice: String
+  var priceChange: String?
   var priceChangePercent: String
   var openPrice: String?
   var highPrice: String
@@ -111,7 +112,7 @@ struct Ticker24hDTO: Decodable {
            high: Double(highPrice) ?? .nan,
            low: Double(lowPrice) ?? .nan,
            quoteVolume: Double(quoteVolume) ?? .nan, open24h: openPrice.flatMap(Double.init),
-           timeMs: closeTime, lastTradeID: lastId)
+           timeMs: closeTime, lastTradeID: lastId, priceChange: priceChange.flatMap(Double.init))
   }
 }
 
@@ -206,7 +207,7 @@ extension StreamPayload: Decodable {
       func d(_ k: K) -> Double { (try? c.decode(String.self, forKey: k)).flatMap(Double.init) ?? .nan }
       self = .ticker(Ticker(symbol: sym, last: d(.c), changePercent: d(.P),
                             high: d(.h), low: d(.l), quoteVolume: d(.q), open24h: d(.o), timeMs: try c.decodeIfPresent(Int64.self, forKey: .C),
-                            lastTradeID: try c.decodeIfPresent(Int64.self, forKey: .L)))
+                            lastTradeID: try c.decodeIfPresent(Int64.self, forKey: .L), priceChange: d(.p)))
     case "markPriceUpdate":
       let sym = try c.decode(String.self, forKey: .s)
       // 数值字段币安一律发字符串，但回放文件 / 镜像偶尔发数字，两种都收。

@@ -37,6 +37,18 @@ struct LatestQuoteTests {
 
 @Suite("Independent live price and rolling statistics")
 struct QuoteStateTests {
+  @Test("较晚统计保留交易所涨跌额，较新成交只补价格差")
+  func priceChangeFollowsLatestTrade() {
+    var state = QuoteState()
+    var first = ticker(105, time: 1900, id: 19)
+    first.priceChange = 4.75
+    state.receive(first)
+    #expect(state.value?.priceChange == 4.75)
+    state.receive(trade(106))
+    #expect(state.value?.priceChange == 5.75)
+    var different = first; different.priceChange = 4.5
+    #expect(!LatestQuote.sameDisplay(first, different))
+  }
   func ticker(_ price: Double, time: Int64, id: Int64, open: Double = 100) -> Ticker {
     Ticker(symbol: "BTCUSDT", last: price, changePercent: 0, high: 110, low: 90,
       quoteVolume: 1000, open24h: open, timeMs: time, lastTradeID: id)
