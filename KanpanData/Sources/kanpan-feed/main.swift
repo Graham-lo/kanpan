@@ -55,7 +55,9 @@ let env = ProcessInfo.processInfo.environment
 let hosts = BinanceHosts(fapi: env["KANPAN_FAPI"] ?? "fapi.binance.com",
                          stream: env["KANPAN_STREAM"] ?? "dstream.binance.me")
 let rest = BinanceREST(hosts: hosts, log: has("-v") ? log : .silent)
-let paths = Paths(root: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("kanpan-feed"))
+// 独立冷缓存可重复测量，避免与其它窗口共用系统临时目录。
+let paths = Paths(root: flag("--cache-root").map { URL(fileURLWithPath: $0) }
+  ?? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("kanpan-feed"))
 
 func parseInterval(_ s: String?) -> Interval {
   guard let s, let iv = Interval(rawValue: s) else { return .h1 }
