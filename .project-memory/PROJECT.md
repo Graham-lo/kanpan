@@ -325,3 +325,5 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - 独立模拟器构建成功；Core361 + 4、Network96、Data184、app-logic441、Chart126 + 4、Rust153通过。正文Markdown链接0失效，线上元数据只读GET200。无新界面截图、无新后端部署、无真机操作；现行视觉证据沿用P0返工。
 - P0返工已推送`5d28abb`，另一窗口在`89c134c`记录独立验收通过，并带入一部分本阶段规格迁移；该事实与提交保留。其涨跌额千分位小尾巴放入下一个功能提交P1，保持P0.5只改文档/注释。
 - 本阶段报告：[P0.5](../docs/acceptance/待办交接-2026-09-22/P0.5.md)。报告与实现位于本节关联提交，推送后进入P1；遗留P1源码及旧M8日志仍单独保留。
+
+2026-09-22 用户拍板：多交易所抽象 + Coinbase 现货**要做**（此前不做清单里判不做），由第二条 Codex 线程在工作树 `kanpan-coinbase` / 分支 `multi-exchange` 按阶段实现并 ff 合进 main，交接书 `docs/多交易所-Coinbase-交接-Codex-2026-09-22.md`。OKX 持仓量副图仍不做。
