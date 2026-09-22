@@ -50,7 +50,14 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
     // `AlertStore.testSeed` 只在 DEBUG 下编，摆的是「服务端判到价之后同步换下来的那一份」。
     if name.contains("AlertList") { env["KANPAN_TEST_ALERT_FIRED"] = "BTCUSDT" }
     // 自选段要在场，得先有自选。
-    if name.contains("FavoriteSection") { env["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SOLUSDT" }
+    if name.contains("FavoriteSection") || name.contains("SwipeActions") || name.contains("Unstar") {
+      env["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SOLUSDT"
+    }
+    // 和用户手里那张基准图（`docs/acceptance/兼容-2026-09-21/iPhone15-自选分类页.png`）
+    // 同一批自选、同一个顺序，不然两张图连行数都对不上，没法逐区域比。
+    if name.contains("FavoritesPageStillLooksLikeTheBaseline") {
+      env["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT,SOLUSDT,ZECUSDT,NEARUSDT,XRPUSDT,AKEUSDT,SUIUSDT"
+    }
     return env
   }
 
@@ -226,6 +233,19 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
   ///    连近白（三通道都 ≥ 200）都算，`#F08A80` 自己是 (240,138,128)，不会误伤。
   private func assertDeleteInk(_ counts: [UInt32: Int], ink: UInt32, what: String,
                                file: StaticString = #filePath, line: UInt = #line) {
+    assertBrickInk(counts, ink: ink, dark: true, what: what, file: file, line: line)
+  }
+
+  /// 同一套判词，深浅两头都管。
+  ///
+  /// `badgeInk` 深皮肤下是近黑的 `ground`、浅皮肤下是白，所以「必须出现哪一极、
+  /// 不许出现哪一极」要跟着深浅对调：
+  /// - 深皮肤：必须有近黑笔画，**一个近白都不许有**（旧那版纯白字就是这么逮住的）；
+  /// - 浅皮肤：必须有近白笔画，一个近黑都不许有。
+  ///   浅皮肤下旧那版的白字碰巧就是对的，这一条逮不住字色——那儿真正的证据是砖底
+  ///   （`assertBrickFill`）：系统红 `#FF3B30` 换成了皮肤自己的 `danger`。
+  private func assertBrickInk(_ counts: [UInt32: Int], ink: UInt32, dark: Bool, what: String,
+                              file: StaticString = #filePath, line: UInt = #line) {
     let total = counts.values.reduce(0, +)
     note(String(format: "采色|%@|共 %d 像素|%@", what, total, top(counts)))
     XCTAssertGreaterThan(total, 50, "\(what)：字框里才 \(total) 个像素，没量到字", file: file, line: line)
@@ -233,17 +253,19 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
                          String(format: "%@：笔画里一个 #%06X 都没有，字色没落到 badgeInk。%@",
                                 what, ink, top(counts)),
                          file: file, line: line)
-    let dark = counts.filter { rgb, _ in
+    let blackish = counts.filter { rgb, _ in
       (rgb >> 16) & 0xFF <= 40 && (rgb >> 8) & 0xFF <= 40 && rgb & 0xFF <= 40
     }.values.reduce(0, +)
-    XCTAssertGreaterThanOrEqual(dark, 20,
-                                "\(what)：近黑笔画只有 \(dark) 个像素，太少，字多半不是 badgeInk。\(top(counts))",
-                                file: file, line: line)
     let whitish = counts.filter { rgb, _ in
       (rgb >> 16) & 0xFF >= 200 && (rgb >> 8) & 0xFF >= 200 && rgb & 0xFF >= 200
     }.values.reduce(0, +)
-    XCTAssertEqual(whitish, 0,
-                   "\(what)：字框里有 \(whitish) 个近白像素，系统又把「删除」画成白字了。\(top(counts))",
+    let want = dark ? blackish : whitish
+    let forbid = dark ? whitish : blackish
+    XCTAssertGreaterThanOrEqual(want, 20,
+                                "\(what)：该有的那一极只有 \(want) 个像素，太少，字多半不是 badgeInk。\(top(counts))",
+                                file: file, line: line)
+    XCTAssertEqual(forbid, 0,
+                   "\(what)：字框里有 \(forbid) 个反向像素，字色被系统抢回去了。\(top(counts))",
                    file: file, line: line)
   }
 
@@ -264,18 +286,43 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
   /// （`SwipeToDelete` 里是行宽的 60%，iPhone 15 上 210pt 上下），砖还没截图人就被删了。
   /// 按住慢拖 120pt——够越过 36pt 的吸附线，又离全滑门槛差得远。
   private func revealDelete(_ ys: CGFloat, _ xs: [CGFloat]) -> XCUIElement {
-    let delete = app.buttons[Self.deleteBrick]
+    revealBrick(Self.deleteBrick, ys, xs)
+  }
+
+  /// 同上，任意一块砖、任意一个方向。`dx` 为负是左划（露 trailing 那几颗），
+  /// 为正是右划（露 leading 那几颗）。
+  private func revealBrick(_ id: String, _ ys: CGFloat, _ xs: [CGFloat],
+                           dx: CGFloat = -120) -> XCUIElement {
+    let brick = app.buttons[id]
     let window = app.windows.firstMatch
     for x in xs {
-      if brickIsOpen(delete) { break }
+      if brickIsOpen(brick) { break }
       let from = window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: ys))
-      let to = window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x - 120, dy: ys))
+      let to = window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x + dx, dy: ys))
       from.press(forDuration: 0.1, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.3)
-      _ = waitUntil(timeout: 2) { self.brickIsOpen(delete) }
-      note("左划起手点 (\(Int(x)), \(Int(ys)))：砖"
-           + (brickIsOpen(delete) ? "出来了（宽 \(Int(delete.frame.width))）" : "没出来"))
+      _ = waitUntil(timeout: 2) { self.brickIsOpen(brick) }
+      note("\(dx < 0 ? "左" : "右")划起手点 (\(Int(x)), \(Int(ys)))：\(id) 慢划 "
+           + (brickIsOpen(brick) ? "出来了（宽 \(Int(brick.frame.width))）" : "没出来"))
+      if brickIsOpen(brick) { break }
+      // 慢划不出来再快甩一下。真人划一行是甩出去的，不是匀速推 120pt；
+      // 行上要是还压着别的 UIKit 交互（品种页自选段那一层 `.draggable`），
+      // 慢推最容易被它先认走。
+      from.press(forDuration: 0.01, thenDragTo: to, withVelocity: XCUIGestureVelocity(900),
+                 thenHoldForDuration: 0.2)
+      _ = waitUntil(timeout: 2) { self.brickIsOpen(brick) }
+      note("\(dx < 0 ? "左" : "右")划起手点 (\(Int(x)), \(Int(ys)))：\(id) 快甩 "
+           + (brickIsOpen(brick) ? "出来了（宽 \(Int(brick.frame.width))）" : "没出来"))
     }
-    return delete
+    return brick
+  }
+
+  /// 长按一行拖到另一行上（`.draggable` + `.dropDestination` 那条路）。
+  /// 起手要压住 0.8 秒——`UIDragInteraction` 的抬起手势比左划那道横拖慢得多，
+  /// 压得不够长就只是一次左右晃。
+  private func dragRow(_ from: XCUIElement, to: XCUIElement) {
+    let a = from.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+    let b = to.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+    a.press(forDuration: 0.8, thenDragTo: b, withVelocity: .slow, thenHoldForDuration: 0.8)
   }
 
   /// 砖真的划开了没有。门槛卡 60pt，**不是「宽度 > 1」**：吸附住的砖是 76（贴边）
@@ -474,6 +521,26 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
       geometry("自选段-\(tag)-搜索框", query.frame)
       shot("iPhone15-品种整页-自选段可拖拽-" + tag)
 
+      // 长按拖动排序这一路**自动化驱动不了**，这儿只留现场数。
+      //
+      // `FavoriteDragModifier` 走的是 `.draggable` + `.dropDestination`，底下是
+      // UIKit 的 `UIDragInteraction`。XCUITest 的 `press(forDuration:thenDragTo:)`
+      // 合成不出那一趟「抬起—悬停—落下」，行一动不动：
+      // 2026-09-22 在 iPhone 15 上把**改动整份 stash 掉、按 HEAD 原样**跑同一段，
+      // 拿到的是同一组数（BTC y=280.17、ETH y=337.17，拖完一点没动），
+      // 和带改动跑出来的一模一样——也就是说这是用例驱动不动，不是这一轮改坏的。
+      // 所以这儿只断言这条分支真的挂着（自选段在场 = `enabled == true`），
+      // 拖动本身记在 `docs/acceptance/兼容-2026-09-22/` 那两张图和人工回归里。
+      if tag == "青苔深" {
+        let btcY = row.frame.midY
+        let ethY = second.frame.midY
+        dragRow(row, to: second)
+        note("自选段-\(tag)-长按拖动：BTC \(Int(btcY))→\(Int(row.frame.midY))、"
+             + "ETH \(Int(ethY))→\(Int(second.frame.midY))"
+             + "（XCUITest 驱不动 UIDragInteraction，HEAD 上同样不动）")
+        XCTAssertTrue(row.exists && second.exists, "\(tag)：拖过一趟之后这两行没了")
+      }
+
       // 回行情页，换下一套皮肤。
       let back = app.buttons[Ids.symbolsBack]
       if back.exists { back.tap() }
@@ -598,5 +665,190 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
     let done = app.buttons[Ids.panelDone]
     if done.exists, done.isHittable { done.tap() }
     _ = waitUntil(timeout: Self.short) { !grid.exists }
+  }
+
+  // ============================================================ 五、自选那三处的砖
+
+  /// 一套皮肤上这三处会用到的色。
+  private struct SkinInk {
+    var ink: UInt32       // `theme.badgeInk`
+    var danger: UInt32    // `theme.danger`
+    var amber: UInt32     // `theme.amber`（= 种子的 `accent`）
+    var dark: Bool
+    var skin: String
+    var mode: String
+    var tag: String
+  }
+  /// 深浅各一套，验 `badgeInk` 两头都对。
+  private static let sageNight = SkinInk(ink: 0x06_0A_08, danger: 0xF0_8A_80, amber: 0x4F_B6_9C,
+                                         dark: true, skin: "sage", mode: "深色", tag: "青苔深")
+  private static let classicDay = SkinInk(ink: 0xFF_FF_FF, danger: 0xC6_28_28, amber: 0x2E_7D_6B,
+                                          dark: false, skin: "classic", mode: "浅色", tag: "经典浅")
+  private static let twoSkins = [sageNight, classicDay]
+
+  /// 自选分类页那三颗砖的记号（见 `SwipeDeleteIDs`）。
+  private static let favMoveBrick = "swipe.favorites.move"
+  private static let favRemoveBrick = "swipe.favorites.remove"
+  private static let favUnstarBrick = "swipe.favorites.unstar"
+
+  /// 一块砖：量它的底、量它的字、两样都断言。
+  private func measure(_ brick: XCUIElement, _ textID: String, fill: UInt32, ink: UInt32,
+                       dark: Bool, what: String,
+                       file: StaticString = #filePath, line: UInt = #line) {
+    geometry(what + "-砖", brick.frame)
+    let label = app.staticTexts[textID]
+    XCTAssertTrue(label.waitForExistence(timeout: Self.short) && label.frame.width > 1,
+                  "\(what)：砖上那几个字在无障碍树里没有 frame：\(app.debugDescription)",
+                  file: file, line: line)
+    geometry(what + "-字", label.frame)
+    assertBrickFill(histogram(brick.frame.insetBy(dx: 8, dy: 8)), fill: fill,
+                    what: what + "-砖底", file: file, line: line)
+    assertBrickInk(histogram(label.frame), ink: ink, dark: dark,
+                   what: what + "-笔画", file: file, line: line)
+  }
+
+  /// 标签栏 →「自选」整页，并确认真的到了。
+  private func gotoFavorites(_ what: String,
+                             file: StaticString = #filePath, line: UInt = #line) {
+    XCTAssertTrue(app.openFavorites(), "\(what)：进不去自选分类页", file: file, line: line)
+    expectExists(app.buttons["favorites.open.BTCUSDT"], Self.long,
+                 "\(what)：自选页上没有 BTCUSDT 那一行", file: file, line: line)
+  }
+
+  /// 自选分类页：左划露「移到分类」+「删除」，右划露「删除自选」。
+  ///
+  /// 2026-09-22 之前这三颗是系统 `.swipeActions`：两颗 destructive 连 `.tint` 都没给，
+  /// 底是系统红 `#FF3B30`（这几屏上唯一一处不跟皮肤走的颜色）、白字 3.55:1；
+  /// 「移到分类」有 `.tint(theme.amber)`，白字压青苔深的 `#4FB69C` 只有 2.47:1。
+  /// 现在三颗都走 `SwipeToDelete`，底跟皮肤、字走 `badgeInk`。
+  ///
+  /// 顺带验一件更要紧的事：**这三颗不许真的动到自选**。这一趟只滑出来看一眼，
+  /// 走完那三行一行都不许少。
+  func testSwipeActionsOnFavoritesPage() throws {
+    for skin in Self.twoSkins {
+      applySkin(skin.skin, skin.mode, "自选左右划-" + skin.tag)
+      gotoFavorites("自选左右划-" + skin.tag)
+
+      let row = app.buttons["favorites.open.BTCUSDT"]
+      let eth = app.buttons["favorites.open.ETHUSDT"]
+      expectExists(eth, Self.long, "\(skin.tag)：自选页上没有 ETHUSDT 那一行")
+      let band = row.frame
+      let width = app.windows.firstMatch.frame.width
+      geometry("自选左右划-\(skin.tag)-BTCUSDT 行", band)
+      shot("iPhone15-自选左划-滑之前-" + skin.tag)
+
+      // ---- 左划：两颗砖，「移到分类」贴着右沿、「删除」在它左边（和原来 `.swipeActions`
+      //      写的顺序一致：先写的那颗贴边）。
+      let move = revealBrick(Self.favMoveBrick, band.midY, [width - 30, width * 0.5, 80])
+      XCTAssertTrue(brickIsOpen(move),
+                    "\(skin.tag)：左划没把「移到分类」划出来（宽 \(move.exists ? Int(move.frame.width) : -1)）："
+                      + app.debugDescription)
+      let del = app.buttons[Self.deleteBrick]
+      XCTAssertTrue(brickIsOpen(del), "\(skin.tag)：左划只出来一颗砖，「删除」不在：" + app.debugDescription)
+      XCTAssertLessThan(del.frame.midX, move.frame.midX,
+                        "\(skin.tag)：两颗砖的左右顺序反了——「移到分类」该贴着右沿")
+      shot("iPhone15-自选左划-" + skin.tag)
+      measure(move, "swipe.favorites.move.text", fill: skin.amber, ink: skin.ink,
+              dark: skin.dark, what: "自选左划-移到分类-" + skin.tag)
+      measure(del, Self.deleteText, fill: skin.danger, ink: skin.ink,
+              dark: skin.dark, what: "自选左划-删除-" + skin.tag)
+
+      // 点这一行把砖收回去，**不触发任何一颗**。
+      row.tap()
+      XCTAssertTrue(waitUntil(timeout: 3) { !del.exists && !move.exists },
+                    "\(skin.tag)：点行没把砖收回去")
+      XCTAssertTrue(row.exists, "\(skin.tag)：只是划开看一眼，BTCUSDT 却没了")
+
+      // ---- 右划：一颗「删除自选」。
+      let remove = revealBrick(Self.favRemoveBrick, band.midY, [80, width * 0.5, width - 40],
+                               dx: 120)
+      XCTAssertTrue(brickIsOpen(remove),
+                    "\(skin.tag)：右划没把「删除自选」划出来（宽 \(remove.exists ? Int(remove.frame.width) : -1)）："
+                      + app.debugDescription)
+      shot("iPhone15-自选右划-" + skin.tag)
+      measure(remove, "swipe.favorites.remove.text", fill: skin.danger, ink: skin.ink,
+              dark: skin.dark, what: "自选右划-删除自选-" + skin.tag)
+      row.tap()
+      XCTAssertTrue(waitUntil(timeout: 3) { !remove.exists }, "\(skin.tag)：点行没把砖收回去")
+
+      // 这一趟一行都不许少。
+      XCTAssertTrue(row.exists && eth.exists && app.buttons["favorites.open.SOLUSDT"].exists,
+                    "\(skin.tag)：滑了几下自选就少了：" + app.debugDescription)
+
+      let chartTab = app.buttons[Ids.bottomChart]
+      if chartTab.exists { chartTab.tap() }
+      XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.buttons[Ids.intervalChart].exists },
+                    "\(skin.tag)：退不回行情页")
+    }
+  }
+
+  /// 品种整页自选段那一颗「移出自选」。
+  ///
+  /// 原来同样是没给 `.tint` 的系统 destructive（红底白字 3.55:1）。它旁边还挂着
+  /// `FavoriteDragModifier`（`.draggable` / `.dropDestination`），所以这条用例
+  /// 顺手验一件事：**砖和拖拽没打架**——划得出来，划完那一行照旧在。
+  func testSwipeUnstarInSymbolPickerFavorites() throws {
+    for skin in Self.twoSkins {
+      applySkin(skin.skin, skin.mode, "自选段左划-" + skin.tag)
+      XCTAssertTrue(openFullSymbolPageWithEmptyQuery(), "\(skin.tag)：没能把品种整页开成空搜索")
+      let row = app.buttons["symbols.row.BTCUSDT"]
+      expectExists(row, Self.long, "\(skin.tag)：自选段里没有 BTCUSDT 那一行")
+      let band = row.frame
+      geometry("自选段左划-\(skin.tag)-BTCUSDT 行", band)
+      shot("iPhone15-品种整页自选段左划-滑之前-" + skin.tag)
+
+      // 起手点**必须落在行本身那颗按钮里**（`band` 就是它的 frame），不能按自选页那样
+      // 取 `width - 30`：品种页每一行的最右边是那颗星，`width - 30` 正好压在星上。
+      // 2026-09-22 三次全灭就是这么来的——第一下起手在星上，横拖被当成点星，
+      // BTCUSDT 当场被取消自选、整行从自选段里消失（`trailing` 也就空了），
+      // 后面两下于是落到别的行上，被当成点行、把整页关掉换了品种。
+      let unstar = revealBrick(Self.favUnstarBrick, band.midY,
+                               [band.maxX - 30, band.midX, band.minX + 40])
+      // 划不出来的时候留一张现场图：上一轮就是靠它看出整页被当成点行关掉了。
+      if !brickIsOpen(unstar) { shot("iPhone15-品种整页自选段左划-没划出来-" + skin.tag) }
+      XCTAssertTrue(brickIsOpen(unstar),
+                    "\(skin.tag)：左划没把「移出自选」划出来（宽 \(unstar.exists ? Int(unstar.frame.width) : -1)）："
+                      + app.debugDescription)
+      shot("iPhone15-品种整页自选段左划-" + skin.tag)
+      measure(unstar, "swipe.favorites.unstar.text", fill: skin.danger, ink: skin.ink,
+              dark: skin.dark, what: "自选段左划-移出自选-" + skin.tag)
+
+      // 点这一行收回去，不触发。
+      row.tap()
+      XCTAssertTrue(waitUntil(timeout: 3) { !unstar.exists }, "\(skin.tag)：点行没把砖收回去")
+      XCTAssertTrue(app.buttons["symbols.star.BTCUSDT"].exists && row.exists,
+                    "\(skin.tag)：只是划开看一眼，这一行却没了")
+
+      let back = app.buttons[Ids.symbolsBack]
+      if back.exists { back.tap() }
+      let cancel = app.buttons["search.cancel"]
+      if cancel.waitForExistence(timeout: Self.short) { cancel.tap() }
+      XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.buttons[Ids.intervalChart].exists },
+                    "\(skin.tag)：退不回行情页")
+    }
+  }
+
+  /// 自选分类页整页一张图，和用户手里那张基准并排比
+  /// （`docs/acceptance/兼容-2026-09-21/iPhone15-自选分类页.png`，青苔浅、八个品种）。
+  ///
+  /// 这一页是**用户自己定稿的**，不是设计对象：`b804408` 那次和视觉毫无关系的改动
+  /// （给每行加 `.onGeometryChange`）就把「融合」弄丢过一次。所以只要改动落在
+  /// `FavoritesView.swift` 里——哪怕改的是手势——都得拿这张图逐区域对一遍。
+  /// 判读留给人：除了行情数字和时钟，不许有别的差。
+  func testFavoritesPageStillLooksLikeTheBaseline() throws {
+    // 基准图是青苔**浅**。出厂的「外观」是跟随系统，而模拟器现在跑在深色下，
+    // 不钉死这一档拍出来就是青苔深，和基准根本不是同一张。
+    applySkin("sage", "浅色", "自选页基准比对")
+    gotoFavorites("自选页基准比对")
+    let row = app.buttons["favorites.open.BTCUSDT"]
+    geometry("自选页-窗口", app.windows.firstMatch.frame)
+    geometry("自选页-BTCUSDT 行", row.frame)
+    if let search = snapshotFrame(app.buttons["favorites.add"]) { geometry("自选页-搜索框", search) }
+    let more = app.buttons["favorites.more"]
+    if more.exists { geometry("自选页-…菜单", more.frame) }
+    let chip = app.buttons["favorites.group.加密"]
+    if chip.exists { geometry("自选页-加密胶囊", chip.frame) }
+    geometry("自选页-底栏自选格", app.buttons[Ids.bottomFavorites].frame)
+    shot("iPhone15-自选分类页-青苔浅")
   }
 }

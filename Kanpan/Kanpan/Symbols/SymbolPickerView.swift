@@ -29,6 +29,8 @@ struct SymbolPickerView: View {
   @Environment(\.panelTheme) private var theme
   @FocusState private var searchFocused: Bool
   @State private var dragging: String?
+  /// 自选段里现在划开着的是哪一行。同一时刻只许一行（见 `SwipeToDelete`）。
+  @State private var openSwipe: String?
   @State private var filterSelection: FilterSelection?
   @State private var filterTask: Task<Void, Never>?
   private enum FilterSelection { case market, sector }
@@ -222,36 +224,59 @@ struct SymbolPickerView: View {
   @ViewBuilder
   private func rowView(_ row: SymbolRow, in section: SymbolSection) -> some View {
     let favorite = section.kind == .favorites
-    SymbolRowView(row: row,
-                  isFavorite: model.isFavorite(row.id),
-                  seed: seed,
-                  colors: colors,
-                  nameSize: nameSize, metaSize: metaSize,
-                  priceSize: priceSize, pctSize: pctSize,
-                  onStar: { haptic(.light); model.toggleFavorite(row.id) },
-                  onPick: {
-                    searchFocused = false
-                    haptic(.medium)
-                    if let onSelect { onSelect(row.info) } else { model.pick(row.info) }
-                  })
+    // 自选：左滑「移出自选」+ 长按拖动排序（§10.5）。
+    //
+    // 这一颗原来是系统 `.swipeActions` 里的 destructive 按钮，没给 `.tint`：
+    // 底是系统红 `#FF3B30`（整页上唯一不跟皮肤走的颜色）、字被 UIKit 强行画成白，
+    // 3.55:1。换成自己画的那一份（`SwipeToDelete`），底走 `theme.danger`、
+    // 字走 `theme.badgeInk`。不是自选段的行照旧划不出任何东西——那时候
+    // `trailing` 是空数组，手势什么都不做，砖也不建出来。
+    //
+    // 行的内缩从 `listRowInsets` 挪进内容里：砖画在行的 `.background` 上，
+    // 行要是被 `listRowInsets` 往里收 16pt，砖就够不着屏幕右沿了
+    // （`DrawingSheet` 那一处同样的处理）。挪完分隔线的两头会跟着跑，
+    // 所以按挪之前量到的位置钉死：左 59pt（16 内缩 + 33 徽章 + 10 间距）、
+    // 右 16pt，也就是 iPhone 15 上那条 x 177…1131 像素的发丝线。
+    SwipeToDelete(
+      id: row.id, open: $openSwipe, brick: .flush,
+      trailing: favorite
+        ? [.delete(theme, title: "移出自选", id: SwipeDeleteIDs.favoritesUnstar) {
+            haptic(.medium)
+            model.removeFavorite(row.id)
+          }]
+        : []
+    ) { swipe in
+      SymbolRowView(row: row,
+                    isFavorite: model.isFavorite(row.id),
+                    seed: seed,
+                    colors: colors,
+                    nameSize: nameSize, metaSize: metaSize,
+                    priceSize: priceSize, pctSize: pctSize,
+                    onStar: { haptic(.light); model.toggleFavorite(row.id) },
+                    onPick: {
+                      if swipe.isOpen { swipe.close(); return }
+                      searchFocused = false
+                      haptic(.medium)
+                      if let onSelect { onSelect(row.info) } else { model.pick(row.info) }
+                    })
+      .padding(EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 16))
+      // 拖动排序挂在**砖的里面**，不在外面。`.draggable` 装的是一个 UIKit 的
+      // `UIDragInteraction`：它在表里起手很快，压在左划手势的外层时会把那一趟横拖
+      // 整个认走，砖一次都划不出来（2026-09-22 在 iPhone 15 上拍到过，三个起手点全灭，
+      // 最后那一下还被当成点行、把整页关掉了）。挪到里层之后，横拖先归 `SwipeToDelete`
+      // 那道横纵锁，长按不动那一路照旧交给拖拽，两件事各走各的。
+      .modifier(FavoriteDragModifier(enabled: favorite, symbol: row.id, dragging: $dragging) { from, onto in
+        haptic(.medium)
+        model.moveFavorite(from, onto: onto)
+      })
+    }
     .onAppear { onVisible?(row.id); onRowVisibility?(row.id, true) }
     .onDisappear { onRowVisibility?(row.id, false) }
-    .listRowInsets(EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 16))
+    .listRowInsets(EdgeInsets())
     .listRowBackground(Color(hex: seed.app))
     .listRowSeparatorTint(Color(hex: colors.hair))
-    // 自选：左滑删除 + 长按拖动排序（§10.5）
-    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-      if favorite {
-        Button(role: .destructive) {
-          haptic(.medium)
-          model.removeFavorite(row.id)
-        } label: { Text("移出自选") }
-      }
-    }
-    .modifier(FavoriteDragModifier(enabled: favorite, symbol: row.id, dragging: $dragging) { from, onto in
-      haptic(.medium)
-      model.moveFavorite(from, onto: onto)
-    })
+    .alignmentGuide(.listRowSeparatorLeading) { _ in 59 }
+    .alignmentGuide(.listRowSeparatorTrailing) { d in d.width - 16 }
   }
 
   private func haptic(_ style: HapticStyle) {
@@ -282,51 +307,66 @@ struct SymbolRowView: View {
   let onStar: () -> Void
   let onPick: () -> Void
 
+  // 行和星都**不是 `Button`**，是两块 `contentShape` 加 `onTapGesture`，
+  // 无障碍身份靠 `.isButton` 补回去（自选分类页那一行就是这么写的，见
+  // `FavoritesView.row(_:first:)`）。
+  //
+  // 这不是风格问题：`.buttonStyle(.plain)` 的 `Button` 在 `List` 的行里
+  // 认的是「按下—抬手」，横着拖过去一百二十点它照样当成点了一下，而且它把
+  // 这一趟触摸整个占住，外层 `SwipeToDelete` 那道 `simultaneousGesture`
+  // 一次 `onChanged` 都收不到。2026-09-22 在 iPhone 15 上六次起手全灭：
+  // 起手压在星上的那一下把 BTCUSDT 取消了自选，压在行上的那几下把整页关掉
+  // 换了品种，砖一次都没露头。`TapGesture` 则在手指挪过点击容差时自己作废，
+  // 横拖就干净地落给左划。
   var body: some View {
     HStack(spacing: 10) {
-      Button(action: onPick) {
-        HStack(spacing: 10) {
-      // 这一页原先一个徽章都没有——搜索结果十几行全靠代号分辨，和自选页对不上。
-      // 事实分类直接从 `row.info` 算，比让徽章自己去猜准。
-      CoinBadge(base: row.info.base, asset: SymbolClassifier.classify(row.info).asset, size: 33)
-      VStack(alignment: .leading, spacing: 2) {
-        name
-        Text(row.meta)
-          .font(.system(size: metaSize))
-          .foregroundStyle(Color(hex: seed.ink3))
+      HStack(spacing: 10) {
+        // 这一页原先一个徽章都没有——搜索结果十几行全靠代号分辨，和自选页对不上。
+        // 事实分类直接从 `row.info` 算，比让徽章自己去猜准。
+        CoinBadge(base: row.info.base, asset: SymbolClassifier.classify(row.info).asset, size: 33)
+        VStack(alignment: .leading, spacing: 2) {
+          name
+          Text(row.meta)
+            .font(.system(size: metaSize))
+            .foregroundStyle(Color(hex: seed.ink3))
+        }
+        Spacer(minLength: 0)
+        VStack(alignment: .trailing, spacing: 0) {
+          Text(row.priceText)
+            .font(.system(size: priceSize, weight: .medium, design: .monospaced))
+            .monospacedDigit()
+            .foregroundStyle(Color(hex: seed.ink))
+          Text(row.changeText)
+            .font(.system(size: pctSize, weight: .medium, design: .monospaced))
+            .monospacedDigit()
+            .foregroundStyle(Color(hex: row.ticker?.changePercent.isFinite == true ? (row.isUp ? colors.up : colors.down) : seed.ink3))
+        }
       }
-      Spacer(minLength: 0)
-      VStack(alignment: .trailing, spacing: 0) {
-        Text(row.priceText)
-          .font(.system(size: priceSize, weight: .medium, design: .monospaced))
-          .monospacedDigit()
-          .foregroundStyle(Color(hex: seed.ink))
-        Text(row.changeText)
-          .font(.system(size: pctSize, weight: .medium, design: .monospaced))
-          .monospacedDigit()
-          .foregroundStyle(Color(hex: row.ticker?.changePercent.isFinite == true ? (row.isUp ? colors.up : colors.down) : seed.ink3))
-      }
-        }.contentShape(Rectangle())
-      }.buttonStyle(.plain).accessibilityIdentifier("symbols.row.\(row.id)")
-      Button(action: onStar) {
-        StarShape()
-          .fill(isFavorite ? Color(hex: seed.accent) : .clear)
-          .overlay(StarShape().stroke(
-            Color(hex: isFavorite ? seed.accent : seed.ink3),
-            style: StrokeStyle(lineWidth: 1.5, lineJoin: .round)))
-          .frame(width: 15, height: 15)
-          // 星画得小是视觉上的克制，但感应区不能跟着小：`.plain` 的 Button 拿 label
-          // 的**路径**当感应区，`StarShape` 那个带凹口的 12×12 星本来就没多少面积，
-          // 旁边那个铺满整行的「行」按钮感应区又会往外溢出二十来点，两边一挤，
-          // 点在星的正中都会被行接走（iPad Pro 11" 上必现：点星变成开图表）。
-          // 所以补一块矩形感应区，并把它撑到 35pt——手指按得着，星本身还是 15pt。
-          .padding(10)
-          .contentShape(Rectangle())
-          .animation(.easeOut(duration: 0.2), value: isFavorite)
-      }
-      .buttonStyle(.plain)
-      .accessibilityLabel(isFavorite ? "移出自选" : "加入自选")
-      .accessibilityIdentifier("symbols.star.\(row.id)")
+      .contentShape(Rectangle())
+      .onTapGesture(perform: onPick)
+      .accessibilityElement(children: .contain)
+      .accessibilityAddTraits(.isButton)
+      .accessibilityIdentifier("symbols.row.\(row.id)")
+      .accessibilityAction(.default, onPick)
+      StarShape()
+        .fill(isFavorite ? Color(hex: seed.accent) : .clear)
+        .overlay(StarShape().stroke(
+          Color(hex: isFavorite ? seed.accent : seed.ink3),
+          style: StrokeStyle(lineWidth: 1.5, lineJoin: .round)))
+        .frame(width: 15, height: 15)
+        // 星画得小是视觉上的克制，但感应区不能跟着小：`StarShape` 那个带凹口的
+        // 12×12 星本来就没多少面积，旁边那块铺满整行的感应区又贴着它，
+        // 点在星的正中都会被行接走（iPad Pro 11" 上必现：点星变成开图表）。
+        // 所以补一块矩形感应区，并把它撑到 35pt——手指按得着，星本身还是 15pt。
+        .padding(10)
+        .contentShape(Rectangle())
+        .animation(.easeOut(duration: 0.2), value: isFavorite)
+        .onTapGesture(perform: onStar)
+        .accessibilityElement()
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(isFavorite ? "移出自选" : "加入自选")
+        .accessibilityIdentifier("symbols.star.\(row.id)")
+        .accessibilityAction(.default, onStar)
     }
   }
 

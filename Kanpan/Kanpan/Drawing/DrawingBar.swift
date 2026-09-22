@@ -398,7 +398,9 @@ struct DrawingSheet: View {
               // 都在 `SwipeToDelete` 里补齐了，那儿有逐条说明。
               ForEach(Array(controller.items.reversed())) { item in
                 SwipeToDelete(id: item.id, open: $openSwipe, brick: .pill,
-                              onDelete: { controller.select(item.id); controller.deleteSelected() }) { swipe in
+                              trailing: [.delete(theme) {
+                                controller.select(item.id); controller.deleteSelected()
+                              }]) { swipe in
                   HStack {
                     Button {
                       // 划开着的时候点行不是「选中这条线」，是「先把砖收回去」。

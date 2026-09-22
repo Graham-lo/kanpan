@@ -77,6 +77,8 @@ struct FavoritesView: View {
   /// 已经替它开了历史订阅的品种。页面整体消失时要逐个关掉——
   /// 行自己的 `onDisappear` 在整页被拆掉时不保证会走到。
   @State private var historyOn = Set<String>()
+  /// 现在划开着的是哪一行。同一时刻只许一行（见 `SwipeToDelete`）。
+  @State private var openSwipe: String?
   /// 现在每一行停在哪儿，以及由它算出来的落脚点（审查 C-08）。盒子是**不被观察**的，
   /// 理由见 `FavoritesRenderedRows`。
   @State private var rows = FavoritesRenderedRows()
@@ -730,9 +732,32 @@ struct FavoritesView: View {
   private var list: some View {
     List {
       ForEach(symbols, id: \.self) { symbol in
-        VStack(spacing: 0) {
-          previewable(symbol, row(symbol, first: symbol == symbols.first))
-          if expanded.contains(symbol), !editing { details(symbol) }
+        // 划开露的那三颗砖。原来这儿挂的是两条 `.swipeActions`，砖底一半是系统红
+        // （`#FF3B30`，这几屏上唯一一处不跟皮肤走的颜色），砖上的字一律被 UIKit
+        // 画成白的——白压系统红 3.55:1、白压 `theme.amber` 只有 2.47:1（青苔深）。
+        // 而且它**没法只修一半**：光补 `.tint(theme.danger)` 会掉到 2.43:1，比不补还差。
+        // 所以整个换成自己画的那一份，底走 `theme.danger` / `theme.amber`、
+        // 字走 `theme.badgeInk`，机制见 `SwipeToDelete`。
+        //
+        // 三颗的文案、边、顺序、以及「不许滑到底直接触发」（原来的
+        // `allowsFullSwipe: false`）一个字、一个位置都没动。
+        SwipeToDelete(
+          id: symbol, open: $openSwipe, brick: .flush,
+          leading: [.delete(theme, title: "删除自选", id: SwipeDeleteIDs.favoritesRemove) {
+            removeFavorites([symbol])
+          }],
+          trailing: [
+            SwipeAction(id: SwipeDeleteIDs.favoritesMove, title: "移到分类", fill: theme.amber) {
+              moving = MoveRequest(symbols: [symbol])
+            },
+            .delete(theme) { removeFavorites([symbol]) },
+          ],
+          fullSwipe: false
+        ) { _ in
+          VStack(spacing: 0) {
+            previewable(symbol, row(symbol, first: symbol == symbols.first))
+            if expanded.contains(symbol), !editing { details(symbol) }
+          }
         }
         // 这一行的上沿在屏幕上的位置。落脚点就是从这儿算出来的（审查 C-08）：
         // 问「铺出来没有」答不了「看得见没有」，只有真位置能（见 `FavoritesRenderedRows`）。
@@ -771,13 +796,6 @@ struct FavoritesView: View {
           // 只摘位置，**不重算落脚点**：整页被拆掉的那一刻每一行都会走一遍这儿，
           // 边摘边算会把「最上面那行」一路推到表尾，刚记下的落脚点当场作废。
           rows.minY[symbol] = nil
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-          Button("删除自选", role: .destructive) { removeFavorites([symbol]) }
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-          Button("移到分类") { moving = MoveRequest(symbols: [symbol]) }.tint(theme.amber)
-          Button("删除", role: .destructive) { removeFavorites([symbol]) }
         }
       }
       .onMove { source, target in
@@ -1239,6 +1257,9 @@ struct FavoritesView: View {
 
   private func toggleDetails(_ symbol: String) { if !expanded.insert(symbol).inserted { expanded.remove(symbol) } }
   private func selectOrOpen(_ symbol: String) {
+    // 有砖划开着的时候，点行任何一处都是「先把砖收回去」，不是一次正常的点击——
+    // 不接这一下，人划开之后想反悔只能再划一次（`SwipeDeleteProxy` 那只手的用意）。
+    if openSwipe != nil { openSwipe = nil; return }
     if editing { if !selection.insert(symbol).inserted { selection.remove(symbol) } }
     else { open(symbol) }
   }

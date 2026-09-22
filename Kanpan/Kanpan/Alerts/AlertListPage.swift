@@ -142,7 +142,8 @@ private struct AlertRow: View {
   @Environment(\.panelTheme) private var t
 
   var body: some View {
-    SwipeToDelete(id: alert.id, open: $open, brick: .flush, onDelete: onDelete) { swipe in
+    SwipeToDelete(id: alert.id, open: $open, brick: .flush,
+                  trailing: [.delete(t, run: onDelete)]) { swipe in
       row(swipe)
     }
   }
