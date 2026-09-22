@@ -14,11 +14,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 OUT="${OUT:-docs/acceptance/M8/ui-test}"   # 文本日志与汇总（入库）
-RES="${RES:-DerivedData/ui-test}"          # .xcresult 结果包（体积大，随 DerivedData 一起被 gitignore）
+# 为什么 derived data 目录要能被环境变量覆盖：
+#   同一个工作树上常常还有第二个窗口在跑 xcodebuild，而它用的正是默认的 DerivedData。
+#   两条流水线同时往一个 derived data 里写，模块缓存、.app、.xctestrun 会互相覆盖，
+#   轻则整轮重编，重则 test-without-building 跑的是对方刚换掉的包。所以要错开的时候
+#   给它一个自己的路径；默认仍是 DerivedData，单窗口的日常用法不受影响。
+DD="${DD:-DerivedData}"
+RES="${RES:-$DD/ui-test}"                  # .xcresult 结果包（体积大，随 DerivedData 一起被 gitignore）
 BUNDLE_ID=com.mdd.kanpan
 WORKSPACE=Kanpan.xcworkspace
 SCHEME=Kanpan
-DD=DerivedData
 
 DEVICES=(
   "iPhone 15"
