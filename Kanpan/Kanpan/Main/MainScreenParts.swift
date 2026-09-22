@@ -122,9 +122,8 @@ struct MainScreenObservers: ViewModifier {
     .onReceive(NotificationCenter.default.publisher(for: UIScreen.brightnessDidChangeNotification)) { _ in onComfort() }
     .onChange(of: prefs.ambientTheme) { _, _ in onComfort() }
     .onChange(of: prefs.theme) { _, _ in onComfort() }
-    .onChange(of: prefs.keepAwake, initial: true) { _, on in
-      UIApplication.shared.isIdleTimerDisabled = on
-    }
+    // 常亮：退后台 / 低电量模式且电量 ≤20% 时放手，回前台再按设置设回（P2.10）。
+    .modifier(KeepAwakeGate(enabled: prefs.keepAwake, phase: phase))
     // 面板 / 画线 / 复盘开着的时候云端设置是被挡下来的（会把人正在做的事掀掉）。
     // 关掉的这一刻补跑一次，别让人等下一轮全量（300 秒）。
     .onChange(of: syncGate) { _, open in if open { onSyncGate() } }

@@ -470,9 +470,16 @@ public final class ChartView: UIView {
     link?.isPaused = false
   }
 
+  /// 低电量模式下一律不进 120 Hz 档：跟手照样每帧刷，只是封顶 60（P2.10）。
+  /// 每次换脏位都会重新读一次系统开关，所以用户中途开关低电量，下一帧就跟上。
+  static func usesHighFrameRate(wantsHigh: Bool, lowPower: Bool) -> Bool {
+    wantsHigh && !lowPower
+  }
+
   private func applyFrameRateRange() {
     guard let link else { return }
-    let high = wantsHighFrameRate
+    let high = Self.usesHighFrameRate(
+      wantsHigh: wantsHighFrameRate, lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled)
     guard linkWantsHighRate != high else { return }
     linkWantsHighRate = high
     link.preferredFrameRateRange = high

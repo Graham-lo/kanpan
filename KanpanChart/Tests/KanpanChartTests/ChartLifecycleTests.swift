@@ -161,4 +161,13 @@ struct ChartLifecycleTests {
     spinFrames()
     #expect(l.timestamp == t1, "宿主已经释放，画线那条 link 还在每帧醒来")
   }
+
+  // P2.10：低电量模式下跟手也只给 60 Hz，不进 120 档。
+  @Test("低电量模式不进高刷档")
+  func lowPowerCapsFrameRate() {
+    #expect(ChartView.usesHighFrameRate(wantsHigh: true, lowPower: false))
+    #expect(!ChartView.usesHighFrameRate(wantsHigh: true, lowPower: true))
+    #expect(!ChartView.usesHighFrameRate(wantsHigh: false, lowPower: false))
+    #expect(!ChartView.usesHighFrameRate(wantsHigh: false, lowPower: true))
+  }
 }
