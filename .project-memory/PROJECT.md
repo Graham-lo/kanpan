@@ -327,3 +327,5 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - 本阶段报告：[P0.5](../docs/acceptance/待办交接-2026-09-22/P0.5.md)。报告与实现位于本节关联提交，推送后进入P1；遗留P1源码及旧M8日志仍单独保留。
 
 2026-09-22 用户拍板：多交易所抽象 + Coinbase 现货**要做**（此前不做清单里判不做），由第二条 Codex 线程在工作树 `kanpan-coinbase` / 分支 `multi-exchange` 按阶段实现并 ff 合进 main，交接书 `docs/多交易所-Coinbase-交接-Codex-2026-09-22.md`。OKX 持仓量副图仍不做。
+
+2026-09-22 用户又拍板两项此前不做的功能：对比 K 线（第三条 Codex 线程，`kanpan-compare` / `compare-kline`）、提醒铃声（第四条，`kanpan-ringtone` / `alert-sound`），交接书见 docs/。能独立并行的功能一律各开一条 Codex 线程。
