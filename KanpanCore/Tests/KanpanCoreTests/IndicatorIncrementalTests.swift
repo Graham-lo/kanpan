@@ -6,7 +6,13 @@ import Testing
 /// 随机做 1000 次「改末根 / 追加新根」，每次都拿一台全新的引擎当裁判。
 @Suite("指标增量重算")
 struct IndicatorIncrementalTests {
-  static let all: [IndicatorID] = [.ma, .ema, .boll, .vol, .macd, .rsi, .kdj, .srsi, .atr]
+  /// 只吃 K 线的那几把全在这儿——外部数据那四把（持仓量等）另有专门的用例。
+  /// 2026-09-22 新加的四把也在：当日VWAP 与动向指标的增量靠存下来的累计量/递归量续算，
+  /// 超级趋势与抛物线转向更是**逐根带状态**的，续算写错了差值极小、肉眼看不出来，
+  /// 只有逐位对照才拦得住。
+  static let all: [IndicatorID] = [
+    .ma, .ema, .boll, .vwap, .supertrend, .sar, .vol, .macd, .rsi, .kdj, .srsi, .atr, .dmi,
+  ]
 
   /// 全量：新引擎从零算。
   static func full(_ s: BarSeries) -> [IndicatorID: IndicatorResult] {
@@ -27,6 +33,11 @@ struct IndicatorIncrementalTests {
       }
       if let h = w.histogram {
         expectSame(g.histogram ?? [], h, "\(label) \(id.rawValue) hist", tol: 0, sourceLocation: sourceLocation)
+      }
+      // 方向那一列也要逐位对上：它是超级趋势/抛物线转向在图上的颜色与点位，
+      // 值对了方向错了，画出来就是一条颜色乱跳的线。
+      if let d = w.dir {
+        expectSame(g.dir ?? [], d, "\(label) \(id.rawValue) dir", tol: 0, sourceLocation: sourceLocation)
       }
     }
   }

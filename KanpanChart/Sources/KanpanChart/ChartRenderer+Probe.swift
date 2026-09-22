@@ -227,13 +227,14 @@ extension ChartRenderer {
     return out
   }
 
-  /// 和 `ChartRenderer.overlayLines()` 同一口径：MA / EMA 全要，BOLL 只要上下轨。
+  /// 和 `ChartRenderer.overlayLines()` 同一口径：单线那几把全要，BOLL 只要上下轨。
+  /// 两处必须一起改——这边喂的是十字线取数与自适应探针，那边喂的是真正的绘制。
   private func probeOverlayLines() -> [[Double]] {
     var out: [[Double]] = []
     for id in state.overlays {
       guard let v = engine[id] else { continue }
       switch id {
-      case .ma, .ema: out += v.lines
+      case .ma, .ema, .vwap, .supertrend, .sar: out += v.lines
       case .boll: if v.lines.count >= 3 { out += [v.lines[1], v.lines[2]] }
       default: break
       }

@@ -9,7 +9,8 @@ struct IndicatorIntegrityTests {
     let reference = ChartRenderer(state: state)
     for id in state.overlays + state.subs {
       let a = renderer.engine[id]!, b = reference.engine[id]!
-      for (x, y) in zip(a.lines + [a.histogram ?? []], b.lines + [b.histogram ?? []]) {
+      for (x, y) in zip(a.lines + [a.histogram ?? [], a.dir ?? []],
+                        b.lines + [b.histogram ?? [], b.dir ?? []]) {
         #expect(x.count == y.count)
         #expect(zip(x,y).allSatisfy { ($0.isNaN && $1.isNaN) || abs($0 - $1) < 1e-8 })
       }
@@ -17,8 +18,8 @@ struct IndicatorIntegrityTests {
   }
   @Test func switchesHistoryCorrectionsParametersAndOI() {
     var state = ChartOptionsRenderTests.state()
-    state.overlays = [.ma, .ema]
-    state.subs = [.vol, .oi, .macd, .kdj, .rsi]
+    state.overlays = [.ma, .ema, .vwap, .supertrend, .sar]
+    state.subs = [.vol, .oi, .macd, .kdj, .rsi, .dmi]
     var renderer = ChartRenderer(state: state)
     let i = state.series.count - 1
     state.series.close[i] += 3
@@ -49,7 +50,8 @@ struct IndicatorIntegrityTests {
   }
   @Test func presentationChangesRetainExactCalculations() {
     var state = ChartOptionsRenderTests.state()
-    state.overlays = [.ma, .ema]; state.subs = [.macd, .kdj, .rsi, .vol]
+    state.overlays = [.ma, .ema, .vwap, .supertrend, .sar]
+    state.subs = [.macd, .kdj, .rsi, .vol, .dmi]
     var renderer = ChartRenderer(state: state)
     for i in 0..<300 {
       state.crosshair = Crosshair(index: i % state.series.count)

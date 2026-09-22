@@ -84,12 +84,14 @@ struct PanelTheme: Sendable, Equatable {
   /// 和周期药丸、底栏选中格是同一件事，所以一律用配色自己的强调色。
   var switchOn: Color { amber }
 
-  /// 指标色标：OI 与 BOLL 自己一色，其余取调色板第一支（原型 `swatch`）。
+  /// 指标色标：持仓量与布林带自己一色，超级趋势/抛物线转向按多空换色所以取涨那一支，
+  /// 其余取自己在调色板上的起始那一支（`IndicatorID.paletteOffset`，和图上第一条线同色）。
   func swatch(_ id: IndicatorID) -> Color {
     switch id {
     case .oi: Color(hex: chart.oi)
     case .boll: Color(hex: chart.band)
-    default: Color(hex: chart.palette[0])
+    case .supertrend, .sar: Color(hex: chart.up)
+    default: Color(hex: chart.palette[id.paletteOffset % chart.palette.count])
     }
   }
 }

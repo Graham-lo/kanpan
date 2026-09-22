@@ -5,15 +5,22 @@ import Foundation
 /// rawValue 是存档用的（写进偏好、缓存键），所以是英文、定死不许改；界面上露脸的
 /// 是 `name` 和 `lineNames`，那两处一律中文（`kanpan-ui-labels-are-chinese`）。
 public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
+  // ---- 声明顺序是有约束的：**主图的 case 必须全部排在副图 case 前面**。
+  // 契约里 `overlayIndicatorIDs ++ subIndicatorIDs == indicatorIDs` 是按顺序比的
+  // （Swift 侧 `PrefsFieldPlanTests`、Rust 侧 `sync_validation` 各断言一次），
+  // 而那三张表都是照 `allCases` 生成的。所以 2026-09-22 新增的三把主图指标插在
+  // 布林带后面，两把副图指标接在基差后面，不能图省事一律追加到末尾。
   case ma = "MA", ema = "EMA", boll = "BOLL"
+  case vwap = "VWAP", supertrend = "ST", sar = "SAR"
   case vol = "VOL", macd = "MACD", rsi = "RSI", kdj = "KDJ", srsi = "SRSI", atr = "ATR", oi = "OI"
   case lsr = "LSR", taker = "TAKER", basis = "BASIS"
+  case dmi = "DMI"
 
   public enum Where: Sendable { case main, sub }
 
   public var placement: Where {
     switch self {
-    case .ma, .ema, .boll: .main
+    case .ma, .ema, .boll, .vwap, .supertrend, .sar: .main
     default: .sub
     }
   }
@@ -33,8 +40,41 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .lsr: "多空比"
     case .taker: "主动买卖比"
     case .basis: "基差"
+    case .vwap: "当日VWAP"
+    case .supertrend: "超级趋势"
+    case .sar: "抛物线转向"
+    case .dmi: "动向指标"
     }
   }
+
+  // ---------------------------------------------------------------- 面板清单
+  //
+  // 面板上摆哪几把、按什么顺序摆，由下面这两张表说了算，**不是** `allCases`。
+  //
+  // 两者分开是为了「退役但不删」：`.srsi`（随机强弱）与 `.atr`（真实波幅）2026-09-22
+  // 撤出面板，但枚举里必须留着——它们的 rawValue 可能已经存在某台设备的偏好里，
+  // 删掉 case 会让那份偏好整个解不出来。留着 case、退出清单，再由
+  // `retired` 在读偏好时把它们滤掉，老用户升级后看不见，新用户选不到，
+  // 存档与同步契约一个字都不用动。
+  //
+  // 真实波幅撤了但算法留着：超级趋势的通道宽度就是 ATR(周期)×倍数，`SuperTrendState`
+  // 内部照用 `RecursiveLine(.rma)` 算，只是不再单独占一张副图。
+
+  /// 主图可选指标，面板顺序。
+  public static let mainPalette: [IndicatorID] = [.ma, .ema, .boll, .vwap, .supertrend, .sar]
+  /// 副图可选指标，面板顺序。
+  public static let subPalette: [IndicatorID] = [
+    .vol, .macd, .rsi, .kdj, .dmi, .oi, .lsr, .taker, .basis,
+  ]
+  /// 面板上还摆着的全部。
+  public static let palette: [IndicatorID] = mainPalette + subPalette
+  /// 退役的：还能解码、还能算，但不再出现在面板上，读偏好时要滤掉。
+  public static let retired: [IndicatorID] = [.srsi, .atr]
+  /// 这把还在面板上吗。
+  public var isRetired: Bool { Self.retired.contains(self) }
+
+  /// 把一串存档里的指标滤成「现在还摆着的」，顺序不动、不去重。
+  public static func alive(_ ids: [IndicatorID]) -> [IndicatorID] { ids.filter { !$0.isRetired } }
 
   /// 这个指标要几列外部数据；nil 表示它只吃 K 线，自己算得出来。
   ///
@@ -62,7 +102,12 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .kdj: [9, 3, 3]
     case .srsi: [14, 14, 3, 3]
     case .atr: [14]
-    case .oi, .lsr, .taker, .basis: []
+    case .supertrend: [10, 3]
+    case .dmi: [14]
+    // 当日VWAP 的起点是当日零点，抛物线转向的加速步长是定死的 0.02/0.20：
+    // 两把都没有该让用户去拨的参数
+    // （`kanpan-sector-page-no-basis-picker`：口径这种东西我来定，不摆出来给他选）。
+    case .vwap, .sar, .oi, .lsr, .taker, .basis: []
     }
   }
 
@@ -77,7 +122,9 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .kdj: ["周期", "快线", "慢线"]
     case .srsi: ["相对强弱", "随机周期", "快线", "慢线"]
     case .atr: ["周期"]
-    case .oi, .lsr, .taker, .basis: []
+    case .supertrend: ["周期", "倍数"]
+    case .dmi: ["周期"]
+    case .vwap, .sar, .oi, .lsr, .taker, .basis: []
     }
   }
 
@@ -96,14 +143,45 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .lsr: ["多空比"]
     case .taker: ["主动买卖比"]
     case .basis: ["基差率"]
+    // 超级趋势与抛物线转向都只有一条线，多空靠 `IndicatorResult.dir` 换色，
+    // 不拆成「多头 / 空头」两条——拆了图例上永远有一条是「--」。
+    case .vwap: ["当日均价"]
+    case .supertrend: ["超级趋势"]
+    case .sar: ["转向点"]
+    case .dmi: ["多头动向", "空头动向", "趋势强度"]
     }
   }
+
+  /// 这把主图指标从调色板的第几格开始取色。
+  ///
+  /// 调色板只有六格，主图上同时可能挂着均线（三条）、指数均线（两条）和当日VWAP
+  /// （一条），刚好六条。各自从不同的格子起取，两条线才不会撞成同一个颜色：
+  /// 均线 0/1/2、指数均线 3/4、当日VWAP 5。超级趋势与抛物线转向不在此列——
+  /// 它们按多空用皮肤自己的涨跌色，不占调色板的格子。
+  ///
+  /// 放在这里而不是绘制层，是因为设置面板里那个颜色选择器要显示同一个默认值；
+  /// 从前那道 `+3` 的偏移在绘制层和面板各写了一遍，改一处另一处就不认了。
+  public var paletteOffset: Int {
+    switch self {
+    case .ema: 3
+    case .vwap: 5
+    default: 0
+    }
+  }
+
+  /// 画成什么。默认是折线；抛物线转向是一根一个点，连起来就错了——
+  /// 它的相邻两点之间没有「中间值」这回事，翻向那一根更是直接从价格下面跳到上面。
+  public enum Plot: Sendable { case line, dots }
+  public var plot: Plot { self == .sar ? .dots : .line }
 
   /// 锁死的纵轴区间（§8）。原型 `drawSub`：RSI 与 StochRSI 锁 0–100；
   /// **KDJ 不锁**——J 线常年冲出 0–100，锁了就看不见了，它走自适应。
   /// 多空比 / 主动买卖比 / 基差也一律不锁：前两个是比值，平时贴着 1 上下几个百分点晃，
   /// 锁进一个固定区间就成一条直线；基差率更是常年在 ±0.1% 内。它们靠 `guides` 上的
   /// 那条基准线读方向，不靠固定刻度。
+  ///
+  /// 动向指标同样不锁：三条线理论上在 0–100 之间，可实盘里趋势强度常年趴在 10–40，
+  /// 锁到 0–100 就把它压成贴着底的一条平线。
   public var fixedScale: (lo: Double, hi: Double)? {
     switch self {
     case .rsi, .srsi: (0, 100)
@@ -119,6 +197,8 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     // 多空比 / 主动买卖比的分水岭是 1（多空一样多、主动买卖一样多），基差是 0。
     case .lsr, .taker: [1.0]
     case .basis: [0]
+    // 趋势强度 25 以上才算真有趋势，是 Wilder 自己给的那条线。
+    case .dmi: [25]
     default: []
     }
   }
@@ -144,10 +224,17 @@ public struct IndicatorResult: Sendable, Equatable {
   public var lines: [[Double]]
   /// MACD 的柱；别的指标是 nil。
   public var histogram: [Double]?
+  /// 逐根的多空方向（> 0 多、< 0 空、NaN 不着色），只有超级趋势与抛物线转向给。
+  ///
+  /// 为什么不拆成两条线：拆了图例上永远有一条读作「--」，而且两条线各自被调色板
+  /// 分到一个跟涨跌毫无关系的颜色。方向单独一列，绘制那一层就能拿它把**同一条线**
+  /// 按根分段上色，用的是这套皮肤自己的涨跌色（`kanpan-kline-colors-are-aicoin-only`）。
+  public var dir: [Double]?
 
-  public init(lines: [[Double]], histogram: [Double]? = nil) {
+  public init(lines: [[Double]], histogram: [Double]? = nil, dir: [Double]? = nil) {
     self.lines = lines
     self.histogram = histogram
+    self.dir = dir
   }
 
   /// 第 i 根上每条线的值，图例用。

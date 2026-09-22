@@ -178,6 +178,10 @@ public struct IndicatorEngine: Sendable {
     case .kdj: .kdj(KDJState(b, n: p[0], kn: p[1], dn: p[2]))
     case .srsi: .srsi(SRSIState(b.close, rlen: p[0], slen: p[1], kn: p[2], dn: p[3]))
     case .atr: .atr(ATRState(b, n: p[0]))
+    case .vwap: .vwap(VWAPState(b))
+    case .supertrend: .supertrend(SuperTrendState(b, n: p[0], mult: Double(p[1])))
+    case .sar: .sar(SARState(b))
+    case .dmi: .dmi(DMIState(b, n: p[0]))
     case .oi, .lsr, .taker, .basis:
       .external(external?.aligned(to: b) ?? ExternalSeries.blank(id.externalColumns ?? 1, b.count),
                 external?.revision ?? 0)
@@ -193,6 +197,10 @@ public struct IndicatorEngine: Sendable {
     case kdj(KDJState)
     case srsi(SRSIState)
     case atr(ATRState)
+    case vwap(VWAPState)
+    case supertrend(SuperTrendState)
+    case sar(SARState)
+    case dmi(DMIState)
     /// 对齐好的那几列，外加它是从哪一份外部序列来的（`ExternalSeries.revision`，
     /// 没喂到数据时 0）。记着来源才敢在 `update` 里只对齐尾巴。
     case external([[Double]], UInt64)
@@ -210,6 +218,11 @@ public struct IndicatorEngine: Sendable {
       case .kdj(let s): IndicatorResult(lines: [s.k, s.d, s.j])
       case .srsi(let s): IndicatorResult(lines: [s.k.out, s.d.out])
       case .atr(let s): IndicatorResult(lines: [s.line.out])
+      case .vwap(let s): IndicatorResult(lines: [s.out])
+      // 超级趋势与抛物线转向都只出一条线，多空靠 `dir` 那一列分段着色。
+      case .supertrend(let s): IndicatorResult(lines: [s.line], dir: s.dir)
+      case .sar(let s): IndicatorResult(lines: [s.out], dir: s.dir)
+      case .dmi(let s): IndicatorResult(lines: [s.pdi, s.mdi, s.adx.out])
       case .external(let cols, _): IndicatorResult(lines: cols)
       case .moved: IndicatorResult(lines: [])
       }
@@ -248,6 +261,10 @@ public struct IndicatorEngine: Sendable {
       case .kdj(var s): self = .moved; s.update(b, from: start); self = .kdj(s)
       case .srsi(var s): self = .moved; s.update(b.close, from: start); self = .srsi(s)
       case .atr(var s): self = .moved; s.update(b, from: start); self = .atr(s)
+      case .vwap(var s): self = .moved; s.update(b, from: start); self = .vwap(s)
+      case .supertrend(var s): self = .moved; s.update(b, from: start); self = .supertrend(s)
+      case .sar(var s): self = .moved; s.update(b, from: start); self = .sar(s)
+      case .dmi(var s): self = .moved; s.update(b, from: start); self = .dmi(s)
       case .moved: break
       case .external(var prev, let rev):
         self = .moved
@@ -572,6 +589,313 @@ struct ATRState: Sendable, Equatable {
     tailTrueRange(b, from: start)
     if line.canTail(from: start) { line.recompute(tr, from: start) }
     else { line = RecursiveLine(tr, n, kind: .rma) }
+  }
+}
+
+// ---------------------------------------------------------------- 累计周期
+
+/// 毫秒时间戳 → UTC 的月序号（年×12+月）。
+///
+/// 不走 `Calendar`：那东西带时区和本地化，同一根 K 线在不同设备上可能落进不同的月。
+/// 这里要的只是币安那套 UTC 口径，整数算术（civil-from-days）算得又准又快。
+func utcMonthIndex(_ ms: Int64) -> Int {
+  let dayMs: Int64 = 86_400_000
+  var z = Int(ms / dayMs)
+  if ms < 0, ms % dayMs != 0 { z -= 1 }
+  z += 719_468
+  let era = (z >= 0 ? z : z - 146_096) / 146_097
+  let doe = z - era * 146_097
+  let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365
+  let y = yoe + era * 400
+  let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+  let mp = (5 * doy + 2) / 153
+  let m = mp < 10 ? mp + 3 : mp - 9
+  return (m <= 2 ? y + 1 : y) * 12 + m
+}
+
+/// 第 i 根是不是一个新累计周期的头一根。
+///
+/// 累计型指标（当日VWAP、累计成交量差）必须有一个固定的归零点，否则线的高低只取决于
+/// **这次加载了多少历史**：往回翻一页，整条线换一个样，读不出任何东西。所以日内周期
+/// 按 UTC 零点归零（币安的日线就是这么切的），日线及以上按自然月归零——日线上再按天
+/// 归零的话每根自己就是一个周期，累计就不存在了。这是 TradingView 的口径。
+func startsAnchorPeriod(_ b: BarSeries, _ i: Int) -> Bool {
+  guard i > 0 else { return true }
+  let dayMs: Int64 = 86_400_000
+  let now = b.time(at: i), prev = b.time(at: i - 1)
+  if b.step < dayMs { return now / dayMs != prev / dayMs }
+  return utcMonthIndex(now) != utcMonthIndex(prev)
+}
+
+/// 当日VWAP：成交量加权均价，每天零点归零。
+///
+/// 逐根的累加和存下来，尾部重算才接得上——和 `SMALine` 存 `sum` 是同一个道理。
+struct VWAPState: Sendable, Equatable {
+  var out: [Double]
+  var pv: [Double]
+  var vv: [Double]
+
+  init(_ b: BarSeries) {
+    out = nanArray(b.count); pv = nanArray(b.count); vv = nanArray(b.count)
+    run(b, from: 0, seedPV: 0, seedVV: 0)
+  }
+
+  private mutating func run(_ b: BarSeries, from start: Int, seedPV: Double, seedVV: Double) {
+    grow(to: b.count, &out, &pv, &vv)
+    guard b.count > 0, start < b.count else { return }
+    var sp = seedPV, sv = seedVV
+    for i in start..<b.count {
+      if startsAnchorPeriod(b, i) { sp = 0; sv = 0 }
+      // 典型价（高+低+收）/3，和交易所自己算 VWAP 的口径一致。
+      let tp = (b.high[i] + b.low[i] + b.close[i]) / 3
+      sp += tp * b.volume[i]
+      sv += b.volume[i]
+      pv[i] = sp; vv[i] = sv
+      // 一整天零成交（新上市、极冷门）时退回典型价，不出 NaN 也不除零。
+      out[i] = sv > 0 ? sp / sv : tp
+    }
+  }
+
+  mutating func update(_ b: BarSeries, from start: Int) {
+    if start > 0, start - 1 < pv.count, pv[start - 1].isFinite, vv[start - 1].isFinite {
+      run(b, from: start, seedPV: pv[start - 1], seedVV: vv[start - 1])
+    } else {
+      out = nanArray(b.count); pv = nanArray(b.count); vv = nanArray(b.count)
+      run(b, from: 0, seedPV: 0, seedVV: 0)
+    }
+  }
+}
+
+/// 超级趋势：ATR 通道加一条只会往趋势方向收紧的轨，翻向那一根直接跳到价格另一侧。
+///
+/// 两条「最终轨」逐根存着，不只是为了增量——翻向判定要拿**上一根的轨**比，
+/// 没存下来就没法从中间接着算。
+struct SuperTrendState: Sendable, Equatable {
+  var n: Int
+  var mult: Double
+  var a: ATRState
+  var up: [Double]
+  var dn: [Double]
+  var line: [Double]
+  var dir: [Double]
+
+  init(_ b: BarSeries, n: Int, mult: Double) {
+    self.n = n
+    self.mult = mult
+    a = ATRState(b, n: n)
+    up = nanArray(b.count); dn = nanArray(b.count)
+    line = nanArray(b.count); dir = nanArray(b.count)
+    run(b, from: 0, seedUp: .nan, seedDn: .nan, long: true)
+  }
+
+  private mutating func run(_ b: BarSeries, from start: Int,
+                            seedUp: Double, seedDn: Double, long seedLong: Bool) {
+    grow(to: b.count, &up, &dn); grow(to: b.count, &line, &dir)
+    guard b.count > 0, start < b.count else { return }
+    var fUp = seedUp, fDn = seedDn, long = seedLong
+    for i in start..<b.count {
+      let width = a.line.out[i]
+      guard width.isFinite else {
+        up[i] = .nan; dn[i] = .nan; line[i] = .nan; dir[i] = .nan
+        continue
+      }
+      let mid = (b.high[i] + b.low[i]) / 2
+      let basicUp = mid + mult * width
+      let basicDn = mid - mult * width
+      let prevClose = i > 0 ? b.close[i - 1] : b.close[i]
+      // 轨只往「夹紧」的方向走；价格穿出去了才允许松开重来。
+      fUp = (!fUp.isFinite || basicUp < fUp || prevClose > fUp) ? basicUp : fUp
+      fDn = (!fDn.isFinite || basicDn > fDn || prevClose < fDn) ? basicDn : fDn
+      if long {
+        if b.close[i] < fDn { long = false }
+      } else if b.close[i] > fUp {
+        long = true
+      }
+      up[i] = fUp; dn[i] = fDn
+      line[i] = long ? fDn : fUp
+      dir[i] = long ? 1 : -1
+    }
+  }
+
+  mutating func update(_ b: BarSeries, from start: Int) {
+    a.update(b, from: start)
+    if start > 0, start - 1 < dir.count,
+       up[start - 1].isFinite, dn[start - 1].isFinite, dir[start - 1].isFinite {
+      run(b, from: start, seedUp: up[start - 1], seedDn: dn[start - 1], long: dir[start - 1] > 0)
+    } else {
+      up = nanArray(b.count); dn = nanArray(b.count)
+      line = nanArray(b.count); dir = nanArray(b.count)
+      run(b, from: 0, seedUp: .nan, seedDn: .nan, long: true)
+    }
+  }
+}
+
+/// 抛物线转向（Wilder）。加速因子从 0.02 起、每创一次新高加 0.02、封顶 0.20。
+///
+/// 这三个数不做成参数：它们是 Wilder 定的出厂值，也是所有平台的默认，
+/// 摆出来只会变成一个用户看不懂该填什么的输入框（`kanpan-sector-page-no-basis-picker`）。
+///
+/// 每根的极值点与加速因子都存着，理由同超级趋势：递推状态不存下来就接不上尾巴。
+struct SARState: Sendable, Equatable {
+  /// 加速步长与上限。
+  static let step = 0.02
+  static let maxAF = 0.20
+
+  var out: [Double]
+  var dir: [Double]
+  var ep: [Double]
+  var af: [Double]
+
+  init(_ b: BarSeries) {
+    out = nanArray(b.count); dir = nanArray(b.count)
+    ep = nanArray(b.count); af = nanArray(b.count)
+    full(b)
+  }
+
+  private mutating func full(_ b: BarSeries) {
+    out = nanArray(b.count); dir = nanArray(b.count)
+    ep = nanArray(b.count); af = nanArray(b.count)
+    guard b.count >= 2 else { return }
+    // 头一根没有上一根可比，拿第二根的方向当种子；走错了也就错头几根，
+    // 价格一穿轨就自己翻回来了。
+    let long = b.close[1] >= b.close[0]
+    out[0] = long ? b.low[0] : b.high[0]
+    ep[0] = long ? b.high[0] : b.low[0]
+    af[0] = Self.step
+    dir[0] = long ? 1 : -1
+    run(b, from: 1)
+  }
+
+  private mutating func run(_ b: BarSeries, from start: Int) {
+    grow(to: b.count, &out, &dir); grow(to: b.count, &ep, &af)
+    guard start >= 1, start < b.count else { return }
+    var sar = out[start - 1], e = ep[start - 1], a = af[start - 1]
+    var long = dir[start - 1] > 0
+    for i in start..<b.count {
+      sar += a * (e - sar)
+      if long {
+        // 轨不许进到前两根的最低价里面去，否则会在一根实体里被自己扫出去。
+        sar = min(sar, b.low[i - 1], b.low[max(0, i - 2)])
+        if b.low[i] < sar {
+          long = false; sar = e; e = b.low[i]; a = Self.step
+        } else if b.high[i] > e {
+          e = b.high[i]; a = min(a + Self.step, Self.maxAF)
+        }
+      } else {
+        sar = max(sar, b.high[i - 1], b.high[max(0, i - 2)])
+        if b.high[i] > sar {
+          long = true; sar = e; e = b.high[i]; a = Self.step
+        } else if b.low[i] < e {
+          e = b.low[i]; a = min(a + Self.step, Self.maxAF)
+        }
+      }
+      out[i] = sar; ep[i] = e; af[i] = a; dir[i] = long ? 1 : -1
+    }
+  }
+
+  mutating func update(_ b: BarSeries, from start: Int) {
+    if start >= 1, start - 1 < out.count,
+       out[start - 1].isFinite, ep[start - 1].isFinite,
+       af[start - 1].isFinite, dir[start - 1].isFinite {
+      run(b, from: start)
+    } else {
+      full(b)
+    }
+  }
+}
+
+/// 动向指标：+DI / -DI 两条方向线，加一条趋势强度 ADX。
+///
+/// 三列原始动向（+DM、-DM、真实波幅）只看第 i 根与第 i-1 根，前缀没动就一个字不变，
+/// 所以尾部只补这一段——和 `RSIState.tailDeltas`、`ATRState.tailTrueRange` 一个写法。
+struct DMIState: Sendable, Equatable {
+  var n: Int
+  var pdm: [Double], mdm: [Double], tr: [Double]
+  var spdm: RecursiveLine, smdm: RecursiveLine, str: RecursiveLine
+  var pdi: [Double], mdi: [Double], dx: [Double]
+  var adx: RecursiveLine
+
+  init(_ b: BarSeries, n: Int) {
+    self.n = n
+    (pdm, mdm, tr) = Self.raw(b)
+    spdm = RecursiveLine(pdm, n, kind: .rma)
+    smdm = RecursiveLine(mdm, n, kind: .rma)
+    str = RecursiveLine(tr, n, kind: .rma)
+    pdi = nanArray(b.count); mdi = nanArray(b.count); dx = nanArray(b.count)
+    adx = RecursiveLine([], n, kind: .rma)
+    full()
+  }
+
+  private static func raw(_ b: BarSeries) -> ([Double], [Double], [Double]) {
+    var pdm = nanArray(b.count), mdm = nanArray(b.count), tr = nanArray(b.count)
+    guard b.count > 0 else { return (pdm, mdm, tr) }
+    pdm[0] = 0; mdm[0] = 0
+    tr[0] = b.high[0] - b.low[0]
+    for i in 1..<b.count { fill(b, i, &pdm, &mdm, &tr) }
+    return (pdm, mdm, tr)
+  }
+
+  private static func fill(_ b: BarSeries, _ i: Int,
+                          _ pdm: inout [Double], _ mdm: inout [Double], _ tr: inout [Double]) {
+    let up = b.high[i] - b.high[i - 1]
+    let down = b.low[i - 1] - b.low[i]
+    // 只有「明显更大的那一边」才算一次动向；两边一样大或者都在收缩，两边都记 0。
+    pdm[i] = (up > down && up > 0) ? up : 0
+    mdm[i] = (down > up && down > 0) ? down : 0
+    tr[i] = max(b.high[i] - b.low[i],
+                max(abs(b.high[i] - b.close[i - 1]), abs(b.low[i] - b.close[i - 1])))
+  }
+
+  private mutating func full() {
+    pdi = nanArray(tr.count); mdi = nanArray(tr.count); dx = nanArray(tr.count)
+    fillDI(from: 0)
+    adx = RecursiveLine(dx, n, kind: .rma, offset: dx.firstIndex(where: { $0.isFinite }) ?? dx.count)
+  }
+
+  private mutating func fillDI(from start: Int) {
+    grow(to: tr.count, &pdi, &mdi, &dx)
+    for i in max(0, start)..<tr.count {
+      guard str.out[i].isFinite, str.out[i] != 0,
+            spdm.out[i].isFinite, smdm.out[i].isFinite else {
+        pdi[i] = .nan; mdi[i] = .nan; dx[i] = .nan
+        continue
+      }
+      let p = 100 * spdm.out[i] / str.out[i]
+      let m = 100 * smdm.out[i] / str.out[i]
+      pdi[i] = p; mdi[i] = m
+      let sum = p + m
+      // 两条方向线都是 0（一整段完全没有动向）时强度记 0，不是 NaN——线断一截更难读。
+      dx[i] = sum == 0 ? 0 : 100 * abs(p - m) / sum
+    }
+  }
+
+  private mutating func tailRaw(_ b: BarSeries, from start: Int) {
+    guard pdm.count <= b.count, mdm.count <= b.count, tr.count <= b.count else {
+      (pdm, mdm, tr) = Self.raw(b)
+      return
+    }
+    grow(to: b.count, &pdm, &mdm, &tr)
+    guard b.count > 0 else { return }
+    let s = max(0, min(start, b.count))
+    if s == 0 { pdm[0] = 0; mdm[0] = 0; tr[0] = b.high[0] - b.low[0] }
+    for i in max(1, s)..<b.count { Self.fill(b, i, &pdm, &mdm, &tr) }
+  }
+
+  mutating func update(_ b: BarSeries, from start: Int) {
+    tailRaw(b, from: start)
+    guard spdm.canTail(from: start), smdm.canTail(from: start), str.canTail(from: start),
+          adx.canTail(from: start) else {
+      spdm = RecursiveLine(pdm, n, kind: .rma)
+      smdm = RecursiveLine(mdm, n, kind: .rma)
+      str = RecursiveLine(tr, n, kind: .rma)
+      full()
+      return
+    }
+    spdm.recompute(pdm, from: start)
+    smdm.recompute(mdm, from: start)
+    str.recompute(tr, from: start)
+    fillDI(from: start)
+    adx.recompute(dx, from: start)
   }
 }
 

@@ -169,8 +169,8 @@ struct EvidenceRenderTests {
         ], into: &list)
     }
 
-    // ---- A3.6：7 种副图各一张 ----
-    for id in [IndicatorID.macd, .rsi, .kdj, .srsi, .atr, .vol, .oi] {
+    // ---- A3.6：各种副图各一张 ----
+    for id in [IndicatorID.macd, .rsi, .kdj, .srsi, .atr, .vol, .oi, .dmi] {
       let st = Evidence.state(
         style: .default, dark: false, size: dev.size, overlays: [], subs: [id])
       let img = Evidence.render(st, size: dev.size, scale: dev.scale)
@@ -183,6 +183,7 @@ struct EvidenceRenderTests {
     // ---- A3.7：主图叠加 + 图例 ----
     for (tag, ov) in [
       ("ma", [IndicatorID.ma]), ("ema", [.ema]), ("boll", [.boll]), ("all", [.ma, .ema, .boll]),
+      ("vwap", [IndicatorID.vwap]), ("supertrend", [.supertrend]), ("sar", [.sar]),
     ] {
       let st = Evidence.state(
         style: .default, dark: false, size: dev.size, overlays: ov, subs: [])
@@ -217,7 +218,7 @@ struct EvidenceRenderTests {
         ["item": "A3.9", "priceMode": mode.rawValue, "display": mode.display], into: &list)
     }
 
-    #expect(list.count == 27, "附加证据应为 8 + 3 + 7 + 4 + 2 + 3 = 27 张，实际 \(list.count) 张")
+    #expect(list.count == 31, "附加证据应为 8 + 3 + 8 + 7 + 2 + 3 = 31 张，实际 \(list.count) 张")
     Evidence.writeJSON(["count": list.count, "images": list], "A3.4-A3.9-extras.json")
   }
 

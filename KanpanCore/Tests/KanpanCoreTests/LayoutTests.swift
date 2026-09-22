@@ -43,11 +43,28 @@ struct LayoutTests {
 
 @Suite("指标元信息")
 struct IndicatorMetaTests {
-  @Test("10 个指标，主图三种", arguments: IndicatorID.allCases)
+  /// 主副之分与面板清单必须一致。
+  ///
+  /// 从前这里钉的是一张写死的 `[.ma, .ema, .boll]`，加一把主图指标就得来改它。现在钉的是
+  /// `mainPalette`——面板照着它摆，服务端的 `OVERLAY_INDICATORS` 也照着同一个 `placement`
+  /// 切，两边错位那一条设置就永远同步不上去。副图那边只单向要求（清单里的必须是副图），
+  /// 因为退役的 `.srsi` / `.atr` 还留在枚举里，只是不在清单上。
+  @Test("主图副图之分和面板清单对得上", arguments: IndicatorID.allCases)
   func placement(_ id: IndicatorID) {
-    let main: Set<IndicatorID> = [.ma, .ema, .boll]
-    #expect((id.placement == .main) == main.contains(id), "\(id.rawValue) 放错地方")
+    #expect((id.placement == .main) == IndicatorID.mainPalette.contains(id), "\(id.rawValue) 放错地方")
+    if IndicatorID.subPalette.contains(id) { #expect(id.placement == .sub, "\(id.rawValue) 放错地方") }
     #expect(!id.name.isEmpty)
+  }
+
+  @Test("面板清单不重不漏，退役的不在上面")
+  func palette() {
+    #expect(Set(IndicatorID.palette).count == IndicatorID.palette.count)
+    for id in IndicatorID.retired {
+      #expect(!IndicatorID.palette.contains(id), "\(id.rawValue) 退役了还摆在面板上")
+      #expect(id.isRetired)
+    }
+    // 摆着的 + 退役的 = 枚举里的全部：加了 case 却两张表都没进，就是谁也点不到的死指标。
+    #expect(Set(IndicatorID.palette).union(IndicatorID.retired) == Set(IndicatorID.allCases))
   }
 
   @Test("默认参数与线名对得上", arguments: IndicatorID.allCases)

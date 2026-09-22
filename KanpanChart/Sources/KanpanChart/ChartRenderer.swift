@@ -122,7 +122,7 @@ public struct ChartRenderer {
 
   func indicatorColor(_ id: IndicatorID, _ index: Int) -> Hex {
     let palette = state.colors.palette
-    return state.indicatorColors[id]?[index] ?? palette[(index + (id == .ema ? 3 : 0)) % palette.count]
+    return state.indicatorColors[id]?[index] ?? palette[(index + id.paletteOffset) % palette.count]
   }
 
   func outputVisible(_ id: IndicatorID, _ index: Int) -> Bool {
@@ -425,7 +425,9 @@ public struct ChartRenderer {
     for id in state.overlays {
       guard let v = displayed(id) else { continue }
       switch id {
-      case .ma, .ema: out += v.lines
+      // 超级趋势与抛物线转向都贴着价格走，偶尔会甩到可见蜡烛之外；它们要进自适应，
+      // 不然翻向那一段直接画到画布外面去了。
+      case .ma, .ema, .vwap, .supertrend, .sar: out += v.lines
       case .boll: if v.lines.count >= 3 { out += [v.lines[1], v.lines[2]] }
       default: break
       }
@@ -681,6 +683,74 @@ public struct ChartRenderer {
     ctx.strokePath()
   }
 
+  /// 按多空分段上色的一条线（超级趋势）。
+  ///
+  /// 不能一笔 `strokePath` 拉完：翻向那一根的前后两点分属两种颜色，连起来会在图上
+  /// 拖出一条横跨蜡烛的斜线，而超级趋势在翻向处本来就是**跳**过去的，中间没有值。
+  /// 所以逐段走，方向一变就收笔，留下的那道缺口正是翻向点。
+  private func directedLine(
+    _ ctx: CGContext, pane: Pane, r: PriceRange, plotW: Double, arr: [Double], dir: [Double],
+    lo: Int, hi: Int, width: Double = 1.5
+  ) {
+    let b = state.series, t = state.colors
+    let map = PriceMapping(range: r, mode: state.price.mode)
+    ctx.setLineWidth(width)
+    ctx.setLineJoin(.round)
+    var i = lo
+    while i <= hi {
+      guard i < arr.count, i < dir.count, arr[i].isFinite, dir[i].isFinite, dir[i] != 0 else {
+        i += 1
+        continue
+      }
+      let rising = dir[i] > 0
+      ctx.setStrokeColor(Paint.cg(rising ? t.up : t.down))
+      ctx.beginPath()
+      var on = false
+      while i <= hi, i < arr.count {
+        let v = arr[i]
+        let d = i < dir.count ? dir[i] : .nan
+        if !v.isFinite || !d.isFinite || d == 0 || (d > 0) != rising { break }
+        let px = x(b.time(at: i), plotW: plotW)
+        let py = map.y(v, pane: pane)
+        if on {
+          ctx.addLine(to: CGPoint(x: px, y: py))
+        } else {
+          ctx.move(to: CGPoint(x: px, y: py))
+          on = true
+        }
+        i += 1
+      }
+      ctx.strokePath()
+    }
+  }
+
+  /// 一根一个点（抛物线转向）。相邻两点之间没有「中间值」，连成线是错的。
+  private func dots(
+    _ ctx: CGContext, pane: Pane, r: PriceRange, L: Layout, arr: [Double], dir: [Double],
+    lo: Int, hi: Int, scale s: Double
+  ) {
+    let b = state.series, t = state.colors
+    let map = PriceMapping(range: r, mode: state.price.mode)
+    let spacing = state.view.barSpacing(step: b.step, plotW: L.plotW)
+    // 点子跟着蜡烛疏密走，但不许小到看不见，也不许大到连成一条带。
+    let size = max(1.5, min(3.5, spacing * 0.3))
+    var rising: [CGRect] = [], falling: [CGRect] = []
+    for i in lo...hi where i < arr.count {
+      guard arr[i].isFinite, i < dir.count, dir[i].isFinite, dir[i] != 0 else { continue }
+      let rect = CGRect(
+        x: x(b.time(at: i), plotW: L.plotW) - size / 2,
+        y: map.y(arr[i], pane: pane) - size / 2, width: size, height: size)
+      if dir[i] > 0 { rising.append(rect) } else { falling.append(rect) }
+    }
+    // 两批一次性填完，而不是每根点一次 `setFillColor`：一屏几百根就是几百次状态切换。
+    for (rects, color) in [(rising, t.up), (falling, t.down)] where !rects.isEmpty {
+      ctx.setFillColor(Paint.cg(color))
+      ctx.beginPath()
+      for rect in rects { ctx.addEllipse(in: rect) }
+      ctx.fillPath()
+    }
+  }
+
   private func drawOverlays(_ ctx: CGContext, pane: Pane, r: PriceRange, L: Layout, scale s: Double) {
     let t = state.colors
     let (lo, hi) = visible
@@ -704,6 +774,16 @@ public struct ChartRenderer {
         line(ctx, pane: pane, r: r, plotW: L.plotW, arr: v.lines[1], color: t.band, lo: lo, hi: hi)
         line(ctx, pane: pane, r: r, plotW: L.plotW, arr: v.lines[0], color: t.amber, lo: lo, hi: hi)
         line(ctx, pane: pane, r: r, plotW: L.plotW, arr: v.lines[2], color: t.band, lo: lo, hi: hi)
+      case .vwap:
+        guard let a = v.lines.first else { break }
+        line(ctx, pane: pane, r: r, plotW: L.plotW, arr: a, color: indicatorColor(id, 0), lo: lo, hi: hi)
+      case .supertrend:
+        guard let a = v.lines.first else { break }
+        directedLine(
+          ctx, pane: pane, r: r, plotW: L.plotW, arr: a, dir: v.dir ?? [], lo: lo, hi: hi)
+      case .sar:
+        guard let a = v.lines.first else { break }
+        dots(ctx, pane: pane, r: r, L: L, arr: a, dir: v.dir ?? [], lo: lo, hi: hi, scale: s)
       default: break
       }
     }

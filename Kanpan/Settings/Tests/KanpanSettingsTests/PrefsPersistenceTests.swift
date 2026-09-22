@@ -31,9 +31,11 @@ struct PrefsPersistenceTests {
     p.launchSnapshot = false
     p.timeZone = .exchange
     p.overlays = [.boll, .ema]
-    p.subs = [.atr, .vol, .kdj]
-    p.params = [.ma: [10, 30, 120], .macd: [8, 21, 5], .atr: [7]]
-    p.subHeights = [.atr: .large, .vol: .small]
+    // 这里从前摆的是 `.atr`，2026-09-22 它退役了（面板上没有，读存档时会被滤掉），
+    // 拿它当「改过的样子」就永远读不回来。换成同样在副图的动向指标。
+    p.subs = [.dmi, .vol, .kdj]
+    p.params = [.ma: [10, 30, 120], .macd: [8, 21, 5], .dmi: [7]]
+    p.subHeights = [.dmi: .large, .vol: .small]
     p.apiHost = "fapi.example.com"
     p.routePolicy = .gateway
     p.candleKind = .heikin
@@ -272,6 +274,31 @@ struct PrefsPersistenceTests {
     #expect(obj["viewAnchor"] as? String == "right")
     #expect(obj["priceBias"] as? String == "center")
     #expect(obj["lastLine"] as? Bool == true)
+  }
+}
+
+/// 退役指标（`IndicatorID.retired`）在存档里还在，但读回来不该再挂到图上。
+@Suite("退役的指标读回来就不挂了")
+struct RetiredIndicatorTests {
+
+  @Test("老存档里的随机强弱与真实波幅不再进副图")
+  func retiredSubsAreDropped() {
+    var p = Prefs.defaults
+    p.subs = [.vol, .kdj]
+    var obj = try! JSONSerialization.jsonObject(with: PrefsCodec.encode(p)) as! [String: Any]
+    // 直接改存档里的那串，模拟一台 2026-09-22 之前就选好了这两把的设备。
+    obj["subs"] = ["SRSI", "VOL", "ATR"]
+    let back = PrefsCodec.decode(try! JSONSerialization.data(withJSONObject: obj))
+    #expect(back.subs == [.vol], "退役的两把还挂着：\(back.subs.map(\.rawValue))")
+    // 枚举里 case 没删，所以它们的 rawValue 照样解得出来——这是「不删只退役」的前提。
+    #expect(IndicatorID(rawValue: "SRSI") == .srsi)
+    #expect(IndicatorID(rawValue: "ATR") == .atr)
+  }
+
+  @Test("退役的不在面板清单上")
+  func retiredAreOffThePanel() {
+    #expect(!IndicatorID.palette.contains(.srsi))
+    #expect(!IndicatorID.palette.contains(.atr))
   }
 }
 

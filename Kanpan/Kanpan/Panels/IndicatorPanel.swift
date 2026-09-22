@@ -20,13 +20,13 @@ struct IndicatorSections: View {
     // 不能自己再套一层带内边距的容器，否则这一段会比上面几段窄一圈。
     Group {
       PanelGroupTitle(text: "主图叠加")
-      ForEach([IndicatorID.ma, .ema, .boll], id: \.self) { id in
+      ForEach(IndicatorID.mainPalette, id: \.self) { id in
         row(id)
       }
 
       // 上限写在标题里：满了再点第四个是「换一个」而不是「点不动」，先把规矩摆出来。
       PanelGroupTitle(text: "副图 · 同时最多三个")
-      ForEach(IndicatorID.allCases.filter { $0.placement == .sub }, id: \.self) { id in
+      ForEach(IndicatorID.subPalette, id: \.self) { id in
         row(id)
       }
 
@@ -96,19 +96,13 @@ struct IndicatorSections: View {
   /// 归档站从 2020-09-01 起是全的（`OISource.archiveEpoch`），那句话只会让人以为
   /// 长周期上看不到持仓量而不再去看。剩下的「最细 5 分钟」是源的粒度，不是限制，
   /// 图上一看便知，不必在设置里讲。
+  /// 从前这里是一张把每个 id 的中文名又抄了一遍的表，和 `IndicatorID.name` 几乎逐条重合，
+  /// 加一把指标就得两处各改一遍，漏一处就编译不过。现在只留下真正说得更全的那两条。
   static func hint(_ id: IndicatorID) -> String {
     switch id {
-    case .ma: "均线"
-    case .ema: "指数均线"
-    case .boll: "布林带"
-    case .vol: "成交量"
     case .macd: "平滑异同均线"
-    case .rsi: "相对强弱"
-    case .kdj: "随机指标"
-    case .srsi: "随机强弱"
     case .atr: "平均真实波幅"
-    case .oi: "持仓量"
-    case .lsr, .taker, .basis: id.name
+    default: id.name
     }
   }
 }
@@ -293,12 +287,12 @@ private struct IndicatorEditor: View {
         }
         .listRowBackground(t.raised)
 
-        if draft.id == .ma || draft.id == .ema {
+        if draft.id == .ma || draft.id == .ema || draft.id == .vwap {
           Section {
             ForEach(Array(draft.outputs.enumerated()), id: \.offset) { index, name in
               DrawingColorControl(title: name, identifierPrefix: "indicator.color.\(index)", color: Binding(get: {
                 let palette = store.prefs.chartColors(dark: colorScheme == .dark).palette
-                return draft.colors[index] ?? palette[(index + (draft.id == .ema ? 3 : 0)) % palette.count]
+                return draft.colors[index] ?? palette[(index + draft.id.paletteOffset) % palette.count]
               }, set: { draft.colors[index] = $0 }))
             }
             // 同上：表单纸会在键盘起落时整张跳一下，按钮的按压跟踪扛不住，点击手势能。

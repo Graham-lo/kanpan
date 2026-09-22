@@ -323,10 +323,15 @@ extension Prefs: Codable {
   }
 
   /// 一串 rawValue → 去重、去掉认不出的、去掉放错位置的指标。
+  /// 退役的那几把（`IndicatorID.retired`）在这里滤掉：枚举里还留着它们的 case，
+  /// 所以老存档照样解得出来，只是解出来之后不再挂到图上——面板上已经没有这一行了，
+  /// 留着它用户就只能看着它却关不掉。
   private static func ids(_ raw: [String], placement: IndicatorID.Where) -> [IndicatorID] {
     var out: [IndicatorID] = []
     for r in raw {
-      guard let id = IndicatorID(rawValue: r), id.placement == placement, !out.contains(id) else { continue }
+      guard let id = IndicatorID(rawValue: r), id.placement == placement, !id.isRetired,
+        !out.contains(id)
+      else { continue }
       out.append(id)
     }
     return out

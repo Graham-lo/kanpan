@@ -32,7 +32,7 @@ extension ChartRenderer {
     case .macd: subMacd(ctx, box, L, lo, hi, s)
     case .lsr, .taker, .basis: subExternal(ctx, box, L, lo, hi, key, s)
     case .oi: subOi(ctx, box, L, lo, hi, s)
-    case .rsi, .srsi, .kdj, .atr: subLines(ctx, box, L, lo, hi, key, s)
+    case .rsi, .srsi, .kdj, .atr, .dmi: subLines(ctx, box, L, lo, hi, key, s)
     default: break
     }
     ctx.restoreGState()
@@ -128,7 +128,7 @@ extension ChartRenderer {
     ctx.strokePath()
   }
 
-  /// RSI / StochRSI / KDJ / ATR：几条线加参考线。
+  /// RSI / StochRSI / KDJ / ATR / 动向指标：几条线加参考线。
   private func subLines(
     _ ctx: CGContext, _ box: Pane, _ L: Layout, _ lo: Int, _ hi: Int, _ key: IndicatorID, _ s: Double
   ) {
@@ -298,6 +298,14 @@ extension ChartRenderer {
         put("上轨 " + fmtNum(v.lines[1][i], p), t.band)
         put("中轨 " + fmtNum(v.lines[0][i], p), t.amber)
         put("下轨 " + fmtNum(v.lines[2][i], p), t.band)
+      case .vwap:
+        guard let a = v.lines.first, outputVisible(id, 0) else { break }
+        put("当日均价 " + indicatorNumber(reading(a), decimals: p), indicatorColor(id, 0))
+      case .supertrend, .sar:
+        // 这两把的图例跟着它当前的多空走同一套涨跌色，和线上/点上看到的颜色对得上。
+        guard let a = v.lines.first, outputVisible(id, 0) else { break }
+        let d = v.dir.map { reading($0) } ?? .nan
+        put(id.name + " " + indicatorNumber(reading(a), decimals: p), d > 0 ? t.up : t.down)
       default: break
       }
     }
@@ -389,6 +397,12 @@ extension ChartRenderer {
       if let values = v?.lines.first, reading(values).isFinite {
         put(subValueText(reading(values), indicator: key), indicatorColor(key, 0))
       }
+    case .dmi:
+      put("动向(" + params(.dmi).map(String.init).joined(separator: ",") + ")", t.dim)
+      guard let v, v.lines.count >= 3 else { break }
+      put("多头动向 " + indicatorNumber(at(v.lines[0]), decimals: 1), pal[0])
+      put("空头动向 " + indicatorNumber(at(v.lines[1]), decimals: 1), pal[1])
+      put("趋势强度 " + indicatorNumber(at(v.lines[2]), decimals: 1), pal[2])
     case .oi:
       let x0 = (v?.lines.first).map { at($0) }.flatMap { $0.isFinite ? indicatorNumber($0) : nil } ?? "--"
       put("持仓量 " + x0, t.oi)

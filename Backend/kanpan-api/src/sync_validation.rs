@@ -9,8 +9,8 @@ use serde_json::Value;
 // `overlayIndicatorIDs` / `subIndicatorIDs`; `the_indicator_vocabulary_is_the_contract_one`
 // holds these to it. Slices, not fixed arrays: adding one is a single string, no length to
 // keep in step (same reason `sync::SETTINGS_FIELDS` is a slice).
-const OVERLAY_INDICATORS:&[&str]=&["MA","EMA","BOLL"];
-const SUB_INDICATORS:&[&str]=&["VOL","MACD","RSI","KDJ","SRSI","ATR","OI","LSR","TAKER","BASIS"];
+const OVERLAY_INDICATORS:&[&str]=&["MA","EMA","BOLL","VWAP","ST","SAR"];
+const SUB_INDICATORS:&[&str]=&["VOL","MACD","RSI","KDJ","SRSI","ATR","OI","LSR","TAKER","BASIS","DMI"];
 fn indicator(name:&str)->bool {OVERLAY_INDICATORS.contains(&name)||SUB_INDICATORS.contains(&name)}
 // `Drawing.Kind` in full (KanpanCore/Drawing/Drawing.swift:22). The first ten are the
 // original tools; the rest arrived with the TradingView-aligned panel and must be listed
