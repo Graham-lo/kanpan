@@ -106,6 +106,29 @@ private func stroke(
     stroke(v, from: CGPoint(x: 180, y: 120), through: [], startMs: 11000)
     #expect(v.state?.crosshair == nil)
   }
+  @Test("画布双击：回到最新并恢复自动纵向；单击仍立刻开十字线")
+  func doubleTapPlotGoesLatest() throws {
+    let (v, L) = try makeView(magnet: false)
+    var s = v.state!
+    s.view = s.view.dragged(byFingerPx: 900, plotW: L.plotW)
+    s.price.zoom = 1.6
+    s.price.centerFraction = 0.3
+    v.state = s
+    #expect(!v.isAtLatest, "先得真的翻到历史里")
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [], startMs: 10_000)
+    #expect(v.state?.crosshair != nil, "第一下不等双击判定，当场出十字线")
+    stroke(v, from: CGPoint(x: 190, y: 130), through: [], startMs: 10_200)
+    #expect(v.state?.crosshair == nil)
+    #expect(v.isAtLatest)
+    #expect(!v.state!.price.isManual && v.state!.price.centerFraction == 0.5)
+    // 隔太久或挪太远的两下各算各的单击。
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [], startMs: 20_000)
+    stroke(v, from: CGPoint(x: 180, y: 120), through: [], startMs: 20_400)
+    #expect(v.state?.crosshair == nil, "400ms 后那下是单击：关掉十字线")
+    stroke(v, from: CGPoint(x: 100, y: 120), through: [], startMs: 30_000)
+    stroke(v, from: CGPoint(x: 260, y: 120), through: [], startMs: 30_100)
+    #expect(v.state?.crosshair == nil, "相距 160pt 是两次单击")
+  }
   @Test("长按抬手保留选择")
   func longPress() async throws {
     let (v, _) = try makeView(magnet: false)

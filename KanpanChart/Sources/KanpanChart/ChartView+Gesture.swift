@@ -49,6 +49,8 @@ final class GestureState {
   var axisStarted = false
   /// 上一次价格轴轻点：什么时候、点在哪儿。两样都要，见 `handleAxisTap`（A-09）。
   var lastAxisTap: (ms: Double, y: Double)?
+  /// 上一次画布（非轴）轻点：什么时候、点在哪儿。凑成双击就回到最新并自动贴合（P2.11）。
+  var lastPlotTap: (ms: Double, x: Double, y: Double)?
   /// 这次手势总共动了多远（取最大值，不是最后的位移）。判轻点、判长按取消都看它。
   var moved: Double = 0
   var velocity = VelocityTracker()
@@ -77,7 +79,10 @@ final class GestureState {
   /// `reset()` 有意不清 `lastAxisTap`——双击本来就横跨两次触摸序列，清了就永远凑不成对。
   /// 但换品种、换周期、视图离屏、状态清空这些事一发生，上一次点的那下就跟现在这张图
   /// 没关系了，必须在这儿断掉（A-09）。
-  func endAxisTapCandidate() { lastAxisTap = nil }
+  func endAxisTapCandidate() {
+    lastAxisTap = nil
+    lastPlotTap = nil
+  }
 
   func cancelLongPress() {
     longPress?.cancel()
@@ -223,6 +228,9 @@ extension ChartView {
     // 否则「点一下轴 → 拖半天图 → 再点一下轴」会被拼成双击，主图莫名其妙上下翻转。
     let axisTapCandidate = gesture.lastAxisTap
     gesture.lastAxisTap = nil
+    // 画布双击同理（P2.11）：候选只在连着的两次画布轻点之间传递。
+    let plotTapCandidate = gesture.lastPlotTap
+    gesture.lastPlotTap = nil
     // A-04：不管下面走哪条 early return，最后一根手指离开画布时**几何上的收尾必须做完**。
     // `touchesBegan` 一按下就把 `animation` 掐了；这一下要是正好落在回弹中途，视野就停在
     // 硬夹之外的半途，而轻点 / 长按 / 轴双击 /「A」徽章这几条分支各自 return，没人管它——
@@ -285,7 +293,7 @@ extension ChartView {
     // 捏合降下来的那一轮不判轻点：`reset()` 刚把 `moved` 清零，原地抬手看上去和轻点
     // 一模一样，但用户的意思是「结束这次缩放」，不是「点一下图」（A-03）。
     if (mode == .pan || mode == .crosshair), moved < Chart.panSlopPt * 2, !cameFromPinch {
-      handleTap(at: now)
+      handleTap(at: now, previous: plotTapCandidate)
       return
     }
     if mode == .autoFit {
@@ -548,7 +556,24 @@ extension ChartView {
 
   // MARK: - 轻点与双击
 
-  private func handleTap(at now: Double) {
+  /// 画布轻点 / 双击（P2.11）。
+  ///
+  /// 单击照旧**立刻**开关十字线——不等「看看是不是双击」，所以单击手感一点不慢。
+  /// 双击 = 回到最新并恢复自动纵向贴合：第一下已经开了十字线也没关系，第二下一并收掉。
+  /// 「连着的两下」和价格轴双击同一个尺度：300ms 以内、相距不超过 44pt。
+  private func handleTap(at now: Double, previous: (ms: Double, x: Double, y: Double)?) {
+    let p = gesture.startPoint
+    let isDouble = previous.map {
+      now - $0.ms < 300 && hypot(Double(p.x) - $0.x, Double(p.y) - $0.y) < 44
+    } ?? false
+    guard !isDouble else {
+      gesture.lastPlotTap = nil
+      if state?.crosshair != nil { clearCrosshair() }
+      resetPriceScale()
+      scrollToLatest()
+      return
+    }
+    gesture.lastPlotTap = (ms: now, x: Double(p.x), y: Double(p.y))
     if state?.crosshair != nil {
       clearCrosshair()
     } else if let L = chartLayout {
@@ -621,7 +646,8 @@ extension ChartView {
       series: s.series, plotW: L.plotW,
       spacing: s.view.barSpacing(step: s.series.step, plotW: L.plotW),
       anchor: s.options.anchor)
-    guard animated, !Haptics.reduceMotion else {
+    // 不在窗口上挂动画会被 `animation` 的 didSet 直接丢掉，那就一步到位。
+    guard animated, window != nil, !Haptics.reduceMotion else {
       s.view = target
       state = s
       // 「回到最新」只动位置、不动根宽，而且是按钮点出来的程序动作，不是用户在图上捏。
