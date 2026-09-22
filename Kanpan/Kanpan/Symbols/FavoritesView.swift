@@ -328,7 +328,7 @@ struct FavoritesView: View {
         // 编辑中把搜索框换成「完成」：模式总得有个看得见的出口，藏进菜单要点两下才出得来。
         if editing {
           Button { toggleEditing() } label: {
-            Text("完成").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.amber)
+            Text("完成").font(.scaled(15, .semibold)).foregroundStyle(theme.amber)
               .frame(maxWidth: .infinity).frame(height: 42)
               .background(skin.glassThin, in: Capsule())
               .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
@@ -363,7 +363,7 @@ struct FavoritesView: View {
     Button { searching = true } label: {
       HStack(spacing: 7) {
         VectorIcon.search(16).foregroundStyle(theme.ink3)
-        Text("搜索品种").font(.system(size: 15)).foregroundStyle(theme.ink3)
+        Text("搜索品种").font(.scaled(15)).foregroundStyle(theme.ink3)
         Spacer(minLength: 0)
       }
       .padding(.horizontal, 15)
@@ -479,7 +479,7 @@ struct FavoritesView: View {
     return Button { select(id); selection.removeAll(); expanded.removeAll() } label: {
       // 名字后面原来还挂着一个上标的数量，用户 2026-09-18 让去掉——数量在列表上面
       // 那行「N 个品种」已经写着了，格子里只留名字更干净。数量仍留在朗读标签里。
-      Text(title).font(.system(size: 15, weight: .medium))
+      Text(title).font(.scaled(15, .medium))
         .lineLimit(1).truncationMode(.middle)
         // 压在强调色上的字一律走 `badgeInk`：浅色下它就是 `#FFFFFF`（和原来的
         // `Color.white` 一个值，这一页的定稿基准图一个像素不变），深色下换成近黑的
@@ -576,7 +576,7 @@ struct FavoritesView: View {
           moreRow("删除当前分类", icon: "trash", id: "favorites.deleteGroup", destructive: true) { model.deleteGroup(group.id) }
         }
       }.padding(.vertical, 6)
-    }.font(.system(size: 14))
+    }.font(.scaled(14))
       .frame(height: min(430, CGFloat(3 + (currentGroup == nil ? 0 : 2)) * 46 + 12))
   }
 
@@ -592,11 +592,11 @@ struct FavoritesView: View {
 
   private var sortBar: some View {
     HStack(spacing: 0) {
-      Text("\(symbols.count) 个品种").font(.system(size: 10.5)).foregroundStyle(skin.ink4)
+      Text("\(symbols.count) 个品种").font(.scaled(10.5)).foregroundStyle(skin.ink4)
       Spacer(minLength: 0)
       Button { sorting = true } label: {
         HStack(spacing: 4) {
-          Text(sortTitle).font(.system(size: 11)).foregroundStyle(theme.ink3)
+          Text(sortTitle).font(.scaled(11)).foregroundStyle(theme.ink3)
           Image(systemName: sort == "custom" ? "arrow.up.arrow.down"
                 : (ascending ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill"))
             .font(.system(size: 7)).foregroundStyle(theme.amber)
@@ -629,7 +629,7 @@ struct FavoritesView: View {
       // 一条提醒都没有的时候这一档没有意义（整张表都是「—」），干脆不出现——
       // 它是跟着「加入提醒」长出来的入口，不是一个要先看懂才知道选不选的选项。
       if !alerts.isEmpty { sortItem("离提醒线最近", key: alertSortKey) }
-    }.padding(.vertical, 6).font(.system(size: 14))
+    }.padding(.vertical, 6).font(.scaled(14))
   }
 
   private func sortItem(_ title: String, key: String, useAmount: Bool? = nil) -> some View {
@@ -1007,19 +1007,19 @@ struct FavoritesView: View {
         badge(base)
         VStack(alignment: .leading, spacing: 4) {
           HStack(alignment: .firstTextBaseline, spacing: 3) {
-            Text(base).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(theme.ink)
-            Text(quoteAsset(symbol)).font(.system(size: 9, weight: .regular)).foregroundStyle(skin.ink4)
+            Text(base).font(.scaled(13.5, .semibold)).foregroundStyle(theme.ink)
+            Text(quoteAsset(symbol)).font(.scaled(9)).foregroundStyle(skin.ink4)
           }.lineLimit(1).minimumScaleFactor(0.75)
           // 按「离提醒线最近」排的时候，这一行让位给距离；这个品种没有在等的线就空着，
           // 不写「—」也不解释——空白本身就说明它不在这张单子上（只答远近，不答方向）。
           if sort == alertSortKey {
             Text(nearestAlertText ?? " ")
-              .font(.system(size: 10)).monospacedDigit()
+              .font(.scaled(10)).monospacedDigit()
               .foregroundStyle(nearestAlertText == nil ? .clear : theme.amber)
               .lineLimit(1).minimumScaleFactor(0.8)
           } else {
             Text("额 " + volumeText + "  ·  幅 " + amplitudeText)
-              .font(.system(size: 10)).monospacedDigit().foregroundStyle(theme.ink3)
+              .font(.scaled(10)).monospacedDigit().foregroundStyle(theme.ink3)
               .lineLimit(1).minimumScaleFactor(0.8)
           }
         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -1133,7 +1133,7 @@ struct FavoritesView: View {
     let signed = change.isFinite ? (change >= 0 ? "+" : "-") + changeText : "—"
     return VStack(alignment: .trailing, spacing: 5) {
       Text(priceText)
-        .font(.system(size: 15.5, weight: .medium)).monospacedDigit()
+        .font(.scaled(15.5, .medium)).monospacedDigit()
         .lineLimit(1).minimumScaleFactor(0.7)
         .foregroundStyle(priceInk)
         .overlay(alignment: .trailing) {
@@ -1150,12 +1150,12 @@ struct FavoritesView: View {
             .accessibilityHidden(true)
         }
         Text(changeText)
-          .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+          .font(.scaled(11, .semibold)).monospacedDigit()
           .foregroundStyle(change.isFinite ? tint : (stale ? skin.ink4 : .clear))
           .accessibilityLabel(signed)
           .accessibilityIdentifier("favorites.change." + symbol)
       }
-      .padding(.horizontal, 7).frame(height: 19).frame(minWidth: 54)
+      .padding(.horizontal, 7).frame(minHeight: 19).frame(minWidth: 54)
       .background {
         RoundedRectangle(cornerRadius: 7, style: .continuous)
           .fill(change.isFinite ? tint.opacity(0.14) : skin.rule)
@@ -1229,7 +1229,7 @@ struct FavoritesView: View {
 
   private func detailAction(_ title: String, id: String, action: @escaping () -> Void) -> some View {
     Button(action: action) {
-      Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(theme.amber)
+      Text(title).font(.scaled(12, .medium)).foregroundStyle(theme.amber)
         .frame(height: 30).padding(.horizontal, 14)
         .background(skin.glassThin, in: Capsule())
         .overlay(Capsule().strokeBorder(skin.edgeSoft, lineWidth: 0.5))
@@ -1249,8 +1249,8 @@ struct FavoritesView: View {
   private func number(_ value: Double?, _ decimals: Int) -> String { guard let value, value.isFinite else { return "—" }; return grouped(fmtPrice(value, decimals: decimals)) }
   private func cell(_ title: String, _ value: String) -> some View {
     VStack(alignment: .leading, spacing: 5) {
-      Text(title).font(.system(size: 9, weight: .medium)).tracking(1.2).foregroundStyle(skin.ink4)
-      Text(value).font(.system(size: 12, weight: .medium)).monospacedDigit().foregroundStyle(theme.ink)
+      Text(title).font(.scaled(9, .medium)).tracking(1.2).foregroundStyle(skin.ink4)
+      Text(value).font(.scaled(12, .medium)).monospacedDigit().foregroundStyle(theme.ink)
     }
   }
 
@@ -1317,9 +1317,9 @@ struct FavoritesView: View {
           .strokeBorder(skin.accent.opacity(0.35), lineWidth: 1))
       Text("这一栏还空着").font(skin.serif(15.5)).foregroundStyle(theme.ink).padding(.top, 2)
       Text("加几个常看的品种，它们会在这里排好")
-        .font(.system(size: 12)).foregroundStyle(theme.ink3)
+        .font(.scaled(12)).foregroundStyle(theme.ink3)
       Button { searching = true } label: {
-        Text("添加品种").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.badgeInk)
+        Text("添加品种").font(.scaled(13, .semibold)).foregroundStyle(theme.badgeInk)
           .frame(height: 36).padding(.horizontal, 20)
           .background(skin.accentGradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
           .overlay(alignment: .top) { skin.topHighlight(inset: 8) }
@@ -1346,7 +1346,7 @@ struct FavoritesView: View {
         .foregroundStyle(selection.isEmpty ? skin.ink4 : theme.danger)
     }
     .buttonStyle(.plain)
-    .font(.system(size: 13, weight: .semibold))
+    .font(.scaled(13, .semibold))
     .padding(.horizontal, 20).frame(height: 52)
     .background(skin.glass, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(skin.edgeSoft, lineWidth: 0.5))
@@ -1420,7 +1420,7 @@ private struct LiuliSkin {
   /// 唯一在机的明朝体 Hiragino Mincho ProN 缺「选」「这」「栏」这些简体字，混排会崩。
   /// 既然说好了不打包字体文件，这里就老实用 `.serif`：拉丁走 New York，中文走系统字，
   /// 靠字号与字距把标题撑起来。
-  func serif(_ size: CGFloat) -> Font { .system(size: size, weight: .medium, design: .serif) }
+  func serif(_ size: CGFloat) -> ScaledFont { ScaledFont(size, .medium, design: .serif) }
 
   func lift(_ hex: Hex, _ amount: Double) -> Color { Self.lift(hex, amount) }
 

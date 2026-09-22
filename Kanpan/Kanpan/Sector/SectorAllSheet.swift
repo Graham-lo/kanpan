@@ -23,6 +23,8 @@ struct SectorAllSheet: View {
 
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// 系统字号超过默认档时副文案放开到两行、行高跟着长；默认档仍是原来的一行 52pt。
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
 
@@ -87,19 +89,20 @@ struct SectorAllSheet: View {
         Color.clear.frame(width: 26, height: 26)
       }
       VStack(alignment: .leading, spacing: 2) {
-        Text(stat.name).font(.system(size: 14, weight: .medium)).foregroundStyle(theme.ink)
+        Text(stat.name).font(.scaled(14, .medium)).foregroundStyle(theme.ink)
           .lineLimit(1).minimumScaleFactor(0.75)
         Text(subtitle(stat))
-          .font(.system(size: 10.5)).monospacedDigit().tracking(0.32)
+          .font(.scaled(10.5)).monospacedDigit().tracking(0.32)
           .foregroundStyle(skin.ink4)
-          .lineLimit(1).minimumScaleFactor(0.8)
+          .lineLimit(dynamicTypeSize > .large ? 2 : 1).minimumScaleFactor(0.8)
       }.frame(maxWidth: .infinity, alignment: .leading)
       Text(sectorPctText(stat.pct))
-        .font(.system(size: 13.5, weight: .medium)).monospacedDigit()
+        .font(.scaled(13.5, .medium)).monospacedDigit()
         .foregroundStyle(stat.pct >= 0 ? theme.up : theme.down)
     }
     .padding(.horizontal, 20)
-    .frame(height: 52)
+    .padding(.vertical, dynamicTypeSize > .large ? 7 : 0)
+    .frame(minHeight: 52)
     .contentShape(Rectangle())
     .onTapGesture { onPick(stat) }
     .overlay(alignment: .top) {

@@ -43,6 +43,7 @@ struct SectorPage: View {
 
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   /// 压在气泡页上面的那几层。空 = 只有球场。最多两层（全部板块 → 某板块的品种列表）。
   ///
   /// 它由宿主（`MainScreen`）持有：底栏是常驻标签栏，这一页每切走一次就整个重建，
@@ -230,7 +231,7 @@ struct SectorPage: View {
           .font(skin.serif(17)).tracking(0.85)
           .foregroundStyle(theme.ink2)
         Text("点此重试")
-          .font(.system(size: 11.5)).tracking(0.23)
+          .font(.scaled(11.5)).tracking(0.23)
           .foregroundStyle(theme.ink3)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -250,20 +251,51 @@ struct SectorPage: View {
   /// 聚合口径那行药丸 2026-09-18 整行撤了：板块只有中位数一个口径，
   /// 不再让用户挑（也不退进「…」菜单）。那一行现在站着「板块明星 / 潜力明星」两颗——
   /// 换的是看多长一段，不是换算法。
-  private func header(_ snap: Snapshot) -> some View {
+  ///
+  /// 系统字调大、一行放不下时，统计行整句落到标题下面一行，不截成「13 / 28…」（P2.13）。
+  /// 默认档及更小照旧一行（统计行靠 `minimumScaleFactor` 在窄屏上收一点）。
+  @ViewBuilder private func header(_ snap: Snapshot) -> some View {
+    if dynamicTypeSize <= .large {
+      oneRowHeader(snap)
+        .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 2)
+    } else {
+      ViewThatFits(in: .horizontal) {
+        oneRowHeader(snap)
+        VStack(alignment: .leading, spacing: 2) {
+          HStack(spacing: 10) {
+            headerTitle
+            Spacer(minLength: 0)
+            marketSwitch
+            moreButton
+          }
+          headerStats(snap)
+        }
+      }
+      .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 2)
+    }
+  }
+
+  private func oneRowHeader(_ snap: Snapshot) -> some View {
     HStack(spacing: 10) {
       HStack(alignment: .firstTextBaseline, spacing: 9) {
-        Text("板块").font(skin.serif(21)).tracking(1.26).foregroundStyle(theme.ink)
-        Text("\(snap.selection.picks.count) / \(snap.stats.count) 板块 · \(snap.covered) 品种")
-          .font(.system(size: 10.5, design: .monospaced)).tracking(0.63)
-          .foregroundStyle(skin.ink4)
-          .lineLimit(1).minimumScaleFactor(0.8)
+        headerTitle
+        headerStats(snap)
       }
       Spacer(minLength: 0)
       marketSwitch
       moreButton
     }
-    .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 2)
+  }
+
+  private var headerTitle: some View {
+    Text("板块").font(skin.serif(21)).tracking(1.26).foregroundStyle(theme.ink)
+  }
+
+  private func headerStats(_ snap: Snapshot) -> some View {
+    Text("\(snap.selection.picks.count) / \(snap.stats.count) 板块 · \(snap.covered) 品种")
+      .font(.scaled(10.5, design: .monospaced)).tracking(0.63)
+      .foregroundStyle(skin.ink4)
+      .lineLimit(1).minimumScaleFactor(0.8)
   }
 
   /// 「板块明星 / 潜力明星」。就这两颗，没有第三颗，也没有任何解释文字。
@@ -291,7 +323,7 @@ struct SectorPage: View {
   /// 药丸上的名字只有 `SectorWindowChoice.title` 一个来源——页面这边一个字面量都不留。
   private func windowChip(_ value: SectorWindow, on: Bool) -> some View {
     Button { store.update { $0.sectorWindow = value } } label: {
-      Text(SectorWindowChoice.title(value)).font(.system(size: 11.5)).tracking(0.23)
+      Text(SectorWindowChoice.title(value)).font(.scaled(11.5)).tracking(0.23)
         .foregroundStyle(on ? theme.ink : theme.ink3)
         .padding(.horizontal, 10).frame(height: 25)
         .background {
@@ -423,7 +455,7 @@ struct SectorMarketSwitch: View {
       guard !on else { return }
       onPick(value)
     } label: {
-      Text(title).font(.system(size: 12)).tracking(0.48)
+      Text(title).font(.scaled(12)).tracking(0.48)
         // 选中那格的字压在强调色上，走 `badgeInk`（浅色 `#FFFFFF`，观感不变；
         // 深色换成近黑，白字在 `#4FB69C` / `#E2874F` 上只有 2.5:1）。
         .foregroundStyle(on ? theme.badgeInk : theme.ink3)
@@ -508,7 +540,7 @@ struct SectorSkin {
 
   /// 标题字体。和自选页同一支：iOS 装机里没有可用的简体中文衬线体，
   /// `.serif` 让拉丁走 New York、中文走系统字，靠字号与字距把标题撑起来。
-  func serif(_ size: CGFloat) -> Font { .system(size: size, weight: .medium, design: .serif) }
+  func serif(_ size: CGFloat) -> ScaledFont { ScaledFont(size, .medium, design: .serif) }
 
   /// 往亮里提一档：色相不动，饱和收一点、明度往上走。
   private static func lift(_ hex: Hex, _ amount: Double) -> Color {

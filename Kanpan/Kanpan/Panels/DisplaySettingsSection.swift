@@ -59,15 +59,25 @@ struct DisplaySettingsSection: View {
           Spacer(minLength: 0)
           Circle().fill(color.amber).frame(width: 10, height: 10)
         }.frame(height: 40).accessibilityHidden(true)
-        HStack(spacing: 6) {
-          Text(skin.display).font(PanelFont.name).foregroundStyle(color.ink)
-          Text(skin.note).font(PanelFont.meta).foregroundStyle(color.ink3)
-        }.fixedSize(horizontal: false, vertical: true)
+        // 名字和注脚默认并排；系统字调大、三张卡并排放不下时，注脚整行落到名字下面，
+        // 不把「冷 · 墨绿」拆成两半（P2.13）。
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 6) { skinName(skin, color); skinNote(skin, color) }
+          VStack(alignment: .leading, spacing: 2) { skinName(skin, color); skinNote(skin, color) }
+        }
       }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(color.app, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12)
           .stroke(picked ? theme.amber : theme.line, lineWidth: picked ? 2 : 1))
     }.buttonStyle(.plain).accessibilityIdentifier("display.theme." + skin.rawValue)
       .accessibilityValue(picked ? "已选" : "未选")
+  }
+
+  private func skinName(_ skin: ThemeSkin, _ color: PanelTheme) -> some View {
+    Text(skin.display).font(PanelFont.name).foregroundStyle(color.ink).lineLimit(1)
+  }
+
+  private func skinNote(_ skin: ThemeSkin, _ color: PanelTheme) -> some View {
+    Text(skin.note).font(PanelFont.meta).foregroundStyle(color.ink3).lineLimit(1)
   }
 }

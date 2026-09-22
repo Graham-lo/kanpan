@@ -98,20 +98,92 @@ struct PanelTheme: Sendable, Equatable {
 
 // MARK: - 字
 
+/// 跟随系统「文字大小」的设计字号（P2.13）。
+///
+/// 界面上的字号都是照原型 CSS 一个 pt 一个 pt 抄的（14、11.5、10.5…），系统的语义档
+/// （`.subheadline` = 15、`.caption` = 12…）对不上，换过去默认档下整页都会变样。所以
+/// 设计字号照旧写死，只是不再是死数：交给 `@ScaledMetric` 按最接近的那一档语义字号的
+/// 曲线放大缩小——默认档（`.large`）下一个 pt 都不变，调大调小时和系统自家的字一起走。
+///
+/// `Font.system(size:)` 没有 `relativeTo:`（只有 `Font.custom` 有），`@ScaledMetric`
+/// 又只能待在视图里，所以这儿是一份「字号说明」，由 `View.font(_:)` 的重载在视图里兑现。
+/// 调用处写 `.font(.scaled(13, .semibold))`、`.font(PanelFont.name)`，和原来一样读。
+///
+/// 放大到哪一档为止不在这儿管：整个 app 在根上封顶 `.xxxLarge`（`KanpanApp`），
+/// 行情页头部那一行更低、封顶 `.large`（`MainHeaderView`）。
+struct ScaledFont: Equatable {
+  var size: CGFloat
+  var weight: Font.Weight = .regular
+  var design: Font.Design = .default
+  /// 跟着哪一档语义字号的曲线走。不给就按字号挑最接近的那一档。
+  var style: Font.TextStyle
+
+  init(_ size: CGFloat, _ weight: Font.Weight = .regular, design: Font.Design = .default,
+       relativeTo style: Font.TextStyle? = nil) {
+    self.size = size
+    self.weight = weight
+    self.design = design
+    self.style = style ?? Self.nearestStyle(size)
+  }
+
+  static func scaled(_ size: CGFloat, _ weight: Font.Weight = .regular, design: Font.Design = .default,
+                     relativeTo style: Font.TextStyle? = nil) -> ScaledFont {
+    ScaledFont(size, weight, design: design, relativeTo: style)
+  }
+
+  /// 各语义档在默认档下的字号：caption2 11 · caption 12 · footnote 13 · subheadline 15 ·
+  /// callout 16 · body 17 · title3 20 · title2 22 · title 28。
+  static func nearestStyle(_ size: CGFloat) -> Font.TextStyle {
+    switch size {
+    case ..<11.5: .caption2
+    case ..<12.5: .caption
+    case ..<14: .footnote
+    case ..<15.5: .subheadline
+    case ..<16.5: .callout
+    case ..<18.5: .body
+    case ..<21: .title3
+    case ..<25: .title2
+    default: .title
+    }
+  }
+}
+
+private struct ScaledFontModifier: ViewModifier {
+  @ScaledMetric private var size: CGFloat
+  private let spec: ScaledFont
+
+  init(_ spec: ScaledFont) {
+    self.spec = spec
+    _size = ScaledMetric(wrappedValue: spec.size, relativeTo: spec.style)
+  }
+
+  func body(content: Content) -> some View {
+    content.font(.system(size: size, weight: spec.weight, design: spec.design))
+  }
+}
+
+extension View {
+  /// 设计字号 + 跟随系统文字大小。见 `ScaledFont`。
+  func font(_ spec: ScaledFont) -> some View {
+    modifier(ScaledFontModifier(spec))
+  }
+}
+
 /// 面板的字号字重，照原型 CSS 抄的（`.row .name` 是 500 14px，`.meta` 是 400 11px…）。
+/// 跟随系统文字大小，见 `ScaledFont`。
 enum PanelFont {
-  static let name = Font.system(size: 14, weight: .medium)
-  static let meta = Font.system(size: 11)
-  static let title = Font.system(size: 15, weight: .semibold)
-  static let sub = Font.system(size: 11)
-  static let group = Font.system(size: 11, weight: .medium)
-  static let seg = Font.system(size: 12, weight: .medium)
-  static let note = Font.system(size: 11.5)
-  static let cardName = Font.system(size: 14, weight: .semibold)
-  static let cardOne = Font.system(size: 10.5)
-  static let cardBet = Font.system(size: 11)
+  static let name = ScaledFont(14, .medium)
+  static let meta = ScaledFont(11)
+  static let title = ScaledFont(15, .semibold)
+  static let sub = ScaledFont(11)
+  static let group = ScaledFont(11, .medium)
+  static let seg = ScaledFont(12, .medium)
+  static let note = ScaledFont(11.5)
+  static let cardName = ScaledFont(14, .semibold)
+  static let cardOne = ScaledFont(10.5)
+  static let cardBet = ScaledFont(11)
   /// 数字一律等宽，免得步进时左右跳。
-  static let number = Font.system(size: 11, weight: .medium, design: .monospaced)
+  static let number = ScaledFont(11, .medium, design: .monospaced)
 }
 
 

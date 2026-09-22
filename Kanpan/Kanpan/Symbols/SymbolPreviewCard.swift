@@ -190,16 +190,16 @@ struct SymbolPreviewCard: View {
       CoinBadge(base: base, size: 28)
       VStack(alignment: .leading, spacing: 2) {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
-          Text(base).font(.system(size: 14, weight: .semibold)).foregroundStyle(t.ink)
-          Text(quote).font(.system(size: 9)).foregroundStyle(t.ink3)
+          Text(base).font(.scaled(14, .semibold)).foregroundStyle(t.ink)
+          Text(quote).font(.scaled(9)).foregroundStyle(t.ink3)
         }.lineLimit(1)
         Text(SymbolPreviewStore.interval.display + " · 近 \(SymbolPreviewStore.barCount) 根")
-          .font(.system(size: 9.5)).foregroundStyle(t.ink3)
+          .font(.scaled(9.5)).foregroundStyle(t.ink3)
       }
       Spacer(minLength: 6)
       VStack(alignment: .trailing, spacing: 3) {
         Text(price.map { grouped(fmtPrice($0, decimals: decimals)) } ?? "—")
-          .font(.system(size: 15, weight: .medium)).monospacedDigit()
+          .font(.scaled(15, .medium)).monospacedDigit()
           .foregroundStyle(stale ? t.ink3 : (pct.map { $0 >= 0 ? t.up : t.down } ?? t.ink))
           .lineLimit(1).minimumScaleFactor(0.7)
         pill
@@ -214,7 +214,7 @@ struct SymbolPreviewCard: View {
           .font(.system(size: 6.5))
       }
       Text(pct.map { ($0 >= 0 ? "+" : "") + toFixed($0, 2) + "%" } ?? "—")
-        .font(.system(size: 10.5, weight: .semibold)).monospacedDigit()
+        .font(.scaled(10.5, .semibold)).monospacedDigit()
     }
     .foregroundStyle(pct == nil ? t.ink3 : t.badgeInk)
     .padding(.horizontal, 6).padding(.vertical, 2.5)
@@ -251,10 +251,10 @@ struct SymbolPreviewCard: View {
 
   private func cell(_ label: String, _ value: String?) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 6) {
-      Text(label).font(.system(size: 10)).foregroundStyle(t.ink3)
+      Text(label).font(.scaled(10)).foregroundStyle(t.ink3)
       Spacer(minLength: 0)
       Text(value ?? "--")
-        .font(.system(size: 11, weight: .medium)).monospacedDigit()
+        .font(.scaled(11, .medium)).monospacedDigit()
         .foregroundStyle(value == nil ? t.ink3 : t.ink2)
         .lineLimit(1).minimumScaleFactor(0.8)
     }

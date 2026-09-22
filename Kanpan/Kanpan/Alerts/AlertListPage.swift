@@ -102,13 +102,13 @@ struct AlertListPage: View {
           .font(.system(size: 12, weight: .semibold))
           .foregroundStyle(t.amber)
         Text("通知关着，提醒到了不会响")
-          .font(.system(size: 13))
+          .font(.scaled(13))
           .foregroundStyle(t.ink)
           .lineLimit(1)
           .minimumScaleFactor(0.85)
         Spacer(minLength: 6)
         HStack(spacing: 2) {
-          Text("去打开").font(.system(size: 13, weight: .semibold))
+          Text("去打开").font(.scaled(13, .semibold))
           VectorIcon.chevronRight(11)
         }
         .foregroundStyle(t.amber)

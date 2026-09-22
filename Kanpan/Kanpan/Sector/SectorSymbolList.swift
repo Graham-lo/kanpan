@@ -38,6 +38,8 @@ struct SectorSymbolList: View {
 
   @Environment(\.panelTheme) private var theme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// 系统字号超过默认档时头部副文案放开到两行；默认档仍是原来的一行。
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
   private var skin: SectorSkin { SectorSkin(theme: theme) }
   /// 这张列表按什么排。原来是裸 `@AppStorage("sector.sort")`，跟着这台机器走；
@@ -114,15 +116,15 @@ struct SectorSymbolList: View {
         Text(stat.name).font(skin.serif(19)).tracking(0.76).foregroundStyle(theme.ink)
           .lineLimit(1).minimumScaleFactor(0.7)
         Text(subtitle)
-          .font(.system(size: 11)).monospacedDigit().tracking(0.2)
+          .font(.scaled(11)).monospacedDigit().tracking(0.2)
           .foregroundStyle(skin.ink4)
-          .lineLimit(1).minimumScaleFactor(0.6)
+          .lineLimit(dynamicTypeSize > .large ? 2 : 1).minimumScaleFactor(0.6)
           .accessibilityIdentifier("sector.list.breadth")
       }
       .padding(.leading, 5)
       Spacer(minLength: 8)
       Text(sectorPctText(stat.pct))
-        .font(.system(size: 19, weight: .medium)).monospacedDigit()
+        .font(.scaled(19, .medium)).monospacedDigit()
         .foregroundStyle(stat.pct >= 0 ? theme.up : theme.down)
     }
     .padding(.leading, 15).padding(.trailing, 20).padding(.top, 6)
@@ -133,7 +135,7 @@ struct SectorSymbolList: View {
       ForEach(SectorSymbolSort.allCases, id: \.rawValue) { sortChip($0) }
       Spacer(minLength: 0)
       Text("\(count) 个")
-        .font(.system(size: 10.5, design: .monospaced)).tracking(0.63)
+        .font(.scaled(10.5, design: .monospaced)).tracking(0.63)
         .foregroundStyle(skin.ink4)
     }
     .padding(.horizontal, 20).padding(.top, 10)
@@ -142,7 +144,7 @@ struct SectorSymbolList: View {
   private func sortChip(_ value: SectorSymbolSort) -> some View {
     let on = sort == value
     return Button { sort = value } label: {
-      Text(value.title).font(.system(size: 11.5)).tracking(0.23)
+      Text(value.title).font(.scaled(11.5)).tracking(0.23)
         .foregroundStyle(on ? theme.ink : theme.ink3)
         .padding(.horizontal, 10).frame(height: 25)
         .background {
@@ -206,8 +208,8 @@ struct SectorSymbolList: View {
       badge(item.base)
       VStack(alignment: .leading, spacing: 4) {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
-          Text(item.base).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(theme.ink)
-          Text(item.quoteText).font(.system(size: 9, weight: .regular)).foregroundStyle(skin.ink4)
+          Text(item.base).font(.scaled(13.5, .semibold)).foregroundStyle(theme.ink)
+          Text(item.quoteText).font(.scaled(9)).foregroundStyle(skin.ink4)
         }.lineLimit(1).minimumScaleFactor(0.75)
         // 自选页那行是「额 … · 幅 …」，振幅要 24h 高低价，全市场 ticker 的那一趟
         // 里没带回来，所以这儿只留成交额，排版和字号一模一样。
@@ -216,10 +218,10 @@ struct SectorSymbolList: View {
         // `额 3.05M · 领涨`。悬在名字和价格中间的空档里它像掉在那儿的。
         HStack(spacing: 0) {
           Text("额 " + item.volumeText)
-            .font(.system(size: 10)).monospacedDigit().foregroundStyle(theme.ink3)
+            .font(.scaled(10)).monospacedDigit().foregroundStyle(theme.ink3)
           if item.isFrontier {
             Text(" · 领涨")
-              .font(.system(size: 10)).tracking(0.3)
+              .font(.scaled(10)).tracking(0.3)
               .foregroundStyle(theme.up)
               .accessibilityIdentifier("sector.frontier." + item.symbol)
           }
@@ -270,7 +272,7 @@ struct SectorSymbolList: View {
     let tint = item.pct.isFinite ? (item.isUp ? theme.up : theme.down) : skin.ink4
     return VStack(alignment: .trailing, spacing: 5) {
       Text(item.priceText)
-        .font(.system(size: 15.5, weight: .medium)).monospacedDigit()
+        .font(.scaled(15.5, .medium)).monospacedDigit()
         .lineLimit(1).minimumScaleFactor(0.7)
         .foregroundStyle(theme.ink)
         .accessibilityIdentifier("sector.price." + item.symbol)
@@ -280,12 +282,12 @@ struct SectorSymbolList: View {
             .accessibilityHidden(true)
         }
         Text(item.changeText)
-          .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+          .font(.scaled(11, .semibold)).monospacedDigit()
           .foregroundStyle(tint)
           .accessibilityLabel(item.signedText)
           .accessibilityIdentifier("sector.change." + item.symbol)
       }
-      .padding(.horizontal, 7).frame(height: 19).frame(minWidth: 54)
+      .padding(.horizontal, 7).frame(minHeight: 19).frame(minWidth: 54)
       .background {
         RoundedRectangle(cornerRadius: 7, style: .continuous)
           .fill(tint.opacity(0.14))

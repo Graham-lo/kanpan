@@ -54,18 +54,18 @@ struct TopBar: View {
         CoinBadge(base: base, size: 29)
         HStack(alignment: .firstTextBaseline, spacing: 3) {
           Text(base)
-            .font(.system(size: 15.5, weight: .bold))
+            .font(.scaled(15.5, .bold))
             .foregroundStyle(theme.ink)
           if !quote.isEmpty {
             Text("/" + quote)
-              .font(.system(size: 12, weight: .medium))
+              .font(.scaled(12, .medium))
               .foregroundStyle(theme.ink3)
           }
           // 这儿原来还有一个 ▾。弹层没了，箭头就不能留——一个点不动的控件画着
           // 「点我展开」的记号，比没有记号更糟。
           Text("永续")
             // 10pt 是界面上文字的下限（9.5 那一档小到得凑近看）；纯符号不在此列。
-            .font(.system(size: 10, weight: .medium))
+            .font(.scaled(10, .medium))
             .foregroundStyle(theme.ink3)
             .padding(.horizontal, 4)
             .padding(.vertical, 1.5)
@@ -95,7 +95,7 @@ struct TopBar: View {
               if reviewCount > 0 {
                 Text("\(min(reviewCount, 99))")
                   // 角标里也是字，一样守 10pt 这个下限。
-                  .font(.system(size: 10, weight: .semibold))
+                  .font(.scaled(10, .semibold))
                   .foregroundStyle(theme.badgeInk)
                   .padding(.horizontal, 4).padding(.vertical, 1.5)
                   .background(theme.amber, in: Capsule())

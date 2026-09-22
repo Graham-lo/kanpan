@@ -231,8 +231,6 @@ struct MainHeaderView<Card: View>: View {
           fundingRate: market.displayedFundingRate,
           nextFundingTimeMs: market.displayedNextFundingTime,
           stale: !market.priceFresh)
-          // 390pt 上 .xLarge 的长小数涨跌行会挤掉左右各 8pt，密集数据行封顶默认档。
-          .dynamicTypeSize(...DynamicTypeSize.large)
           .modifier(HiddenWhileCrosshairReads(readout: readout, context: context))
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("market.quote")
@@ -279,6 +277,11 @@ struct MainHeaderView<Card: View>: View {
     .padding(.top, 6)
     .padding(.bottom, 9)
     .background(theme.app)
+    // 头部整块（顶栏品种名、价格 + 六格、十字线读数、「要不要加提醒」那一句）只跟到
+    // 默认档 .large 为止，比全局的 .xxxLarge 低得多（P2.13，也满足 P0 D.13 的 .xLarge）：
+    // 390pt 上 10 位价格 + 六格要并排装下，而且头部多高、图表就少多高——
+    // 辅助大字下六格照旧在价格右边、头部一个 pt 都不长；调小字号时照常跟着变小。
+    .dynamicTypeSize(...DynamicTypeSize.large)
   }
 }
 

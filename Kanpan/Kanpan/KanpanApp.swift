@@ -33,6 +33,11 @@ struct KanpanApp: App {
   var body: some Scene {
     WindowGroup {
       MainScreen()
+        // 系统「文字大小」整个 app 跟到 .xxxLarge 为止（P2.13）。再往上的辅助功能大字
+        // （AX1–AX5）会把自选行、板块表这种一行一只的密集列表撑成一屏两三行，
+        // 这儿一处封顶，面板、弹层、整页都从环境里继承。行情页头部那一行封得更低，
+        // 见 `MainHeaderView`。K 线画布里的字不走动态字体，不受这一条影响。
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         // 外面进来的链接全走这一个口：桌面快捷入口、通知点击、共享链接。
         // 这儿只负责交给路由，去哪儿由 `MainScreen` 一处消费（见 `DeepLink`）。
         .onOpenURL { DeepLinkRouter.shared.open($0) }

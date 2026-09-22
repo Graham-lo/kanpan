@@ -101,8 +101,8 @@ struct SymbolPickerView: View {
       .accessibilityLabel("返回")
       .accessibilityIdentifier("symbols.back")
 
-      Text("品种").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(hex: seed.ink))
-      Text(model.countText).font(.system(size: 11)).foregroundStyle(Color(hex: seed.ink3))
+      Text("品种").font(.scaled(15, .semibold)).foregroundStyle(Color(hex: seed.ink))
+      Text(model.countText).font(.scaled(11)).foregroundStyle(Color(hex: seed.ink3))
       Spacer(minLength: 0)
     }
     .padding(.leading, 16 - 7)   // iconbtn 自带 7pt 视觉留白，对齐到 16
@@ -137,7 +137,7 @@ struct SymbolPickerView: View {
       Button("清空") {
         model.query = ""
       }
-      .font(.system(size: 14, weight: .medium))
+      .font(.scaled(14, .medium))
       .foregroundStyle(Color(hex: seed.accent))
       .buttonStyle(.plain)
       .padding(6)
@@ -166,7 +166,7 @@ struct SymbolPickerView: View {
         Label(model.sectorFilter.map(MarketSector.title) ?? "全部板块", systemImage: "chevron.down")
       }.disabled(model.sectors.isEmpty).accessibilityIdentifier("symbols.sector")
       Spacer(minLength: 0)
-    }.font(.system(size: 12, weight: .medium)).foregroundStyle(theme.amber)
+    }.font(.scaled(12, .medium)).foregroundStyle(theme.amber)
       .padding(.horizontal, 16).padding(.bottom, 10)
   }
 
@@ -178,7 +178,7 @@ struct SymbolPickerView: View {
       // §10.5：空结果一行小字，不放插画。
       VStack {
         Text(model.emptyText)
-          .font(.system(size: 12.5))
+          .font(.scaled(12.5))
           .foregroundStyle(Color(hex: seed.ink3))
           .padding(.horizontal, 16)
           .padding(.vertical, 22)
@@ -194,7 +194,7 @@ struct SymbolPickerView: View {
             }
             if let note = section.moreNote {
               Text(note)
-                .font(.system(size: 11.5))
+                .font(.scaled(11.5))
                 .foregroundStyle(Color(hex: seed.ink3))
                 .lineSpacing(4)
                 .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 2, trailing: 16))
@@ -203,7 +203,7 @@ struct SymbolPickerView: View {
             }
           } header: {
             Text(section.title)
-              .font(.system(size: 11, weight: .medium))
+              .font(.scaled(11, .medium))
               .kerning(1)
               .textCase(nil)
               .foregroundStyle(Color(hex: seed.ink3))
@@ -410,7 +410,7 @@ private struct FavoriteDragModifier: ViewModifier {
       content
         .opacity(dragging == symbol ? 0.4 : 1)
         .draggable(symbol) {
-          Text(symbol).font(.system(size: 13, weight: .medium)).padding(6)
+          Text(symbol).font(.scaled(13, .medium)).padding(6)
         }
         .dropDestination(for: String.self) { items, _ in
           guard let from = items.first, from != symbol else { return false }
@@ -493,7 +493,7 @@ struct SymbolPickerHost: View {
       .overlay(alignment: .bottom) {
         if let picked {
           Text("选了 \(picked)")
-            .font(.system(size: 12))
+            .font(.scaled(12))
             .padding(.horizontal, 12).padding(.vertical, 7)
             .background(Capsule().fill(Color(hex: Palette.lightSeed.ink).opacity(0.8)))
             .foregroundStyle(.white)

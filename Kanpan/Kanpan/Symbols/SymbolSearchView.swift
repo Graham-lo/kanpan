@@ -132,7 +132,7 @@ struct SymbolSearchView: View {
         VectorIcon.search(13).foregroundStyle(theme.ink3)
         TextField("", text: $model.query, prompt:
           Text("搜 BTC、ETH、SOL…").foregroundStyle(theme.ink3))
-          .font(.system(size: 13.5))
+          .font(.scaled(13.5))
           .foregroundStyle(theme.ink)
           .keyboardType(.asciiCapable)
           .textInputAutocapitalization(.characters)
@@ -167,7 +167,7 @@ struct SymbolSearchView: View {
         focused = false
         close()
       }
-      .font(.system(size: 14, weight: .medium))
+      .font(.scaled(14, .medium))
       .foregroundStyle(theme.amber)
       .buttonStyle(.plain)
       .padding(.horizontal, 10)
@@ -206,7 +206,7 @@ struct SymbolSearchView: View {
             focused = true
           } label: {
             Text(term)
-              .font(.system(size: 12.5))
+              .font(.scaled(12.5))
               .foregroundStyle(theme.ink2)
               .lineLimit(1)
               .padding(.horizontal, 13)
@@ -236,7 +236,7 @@ struct SymbolSearchView: View {
     let rows = hits?.rows ?? []
     if rows.isEmpty {
       Text(model.emptyText)
-        .font(.system(size: 12.5))
+        .font(.scaled(12.5))
         .foregroundStyle(theme.ink3)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.horizontal, 16)
@@ -245,7 +245,7 @@ struct SymbolSearchView: View {
     } else {
       groupHead("品种") {
         Text("\(hitCount)")
-          .font(.system(size: 11))
+          .font(.scaled(11))
           .monospacedDigit()
           .foregroundStyle(theme.ink3)
       }
@@ -256,7 +256,7 @@ struct SymbolSearchView: View {
           onAll()
         } label: {
           HStack(spacing: 4) {
-            Text("查看全部 \(hitCount) 个品种").font(.system(size: 13))
+            Text("查看全部 \(hitCount) 个品种").font(.scaled(13))
             VectorIcon.chevronRight(12)
           }
           .foregroundStyle(theme.amber)
@@ -278,7 +278,7 @@ struct SymbolSearchView: View {
   ) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 7) {
       Text(title)
-        .font(.system(size: 11, weight: .medium))
+        .font(.scaled(11, .medium))
         .kerning(1)
         .foregroundStyle(theme.ink3)
       trailing()

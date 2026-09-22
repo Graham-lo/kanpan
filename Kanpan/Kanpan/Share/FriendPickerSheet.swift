@@ -24,16 +24,16 @@ struct FriendPickerSheet: View {
             .keyboardType(.asciiCapable).textInputAutocapitalization(.never)
             .autocorrectionDisabled().submitLabel(.send)
             .onSubmit { send(username) }
-            .font(.system(size: 14)).foregroundStyle(theme.ink)
+            .font(.scaled(14)).foregroundStyle(theme.ink)
             .accessibilityIdentifier("share.username")
           Button("发送") { send(username) }
-            .font(.system(size: 13)).foregroundStyle(theme.amber)
+            .font(.scaled(13)).foregroundStyle(theme.amber)
             .disabled(username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityIdentifier("share.send")
         }.padding(.horizontal, 18).frame(minHeight: 54)
       }
       if let error {
-        Text(error).font(.system(size: 12)).foregroundStyle(theme.danger)
+        Text(error).font(.scaled(12)).foregroundStyle(theme.danger)
           .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 8)
           .accessibilityIdentifier("share.error")
       }

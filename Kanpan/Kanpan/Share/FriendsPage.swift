@@ -10,7 +10,7 @@ struct FriendsPage: View {
         FriendRow(friend: friend) { Task { await inbox.removeFriend(friend.username) } }
       }
       if inbox.friends.isEmpty {
-        Text("还没有朋友").font(.system(size: 13)).foregroundStyle(theme.ink3).padding(22)
+        Text("还没有朋友").font(.scaled(13)).foregroundStyle(theme.ink3).padding(22)
       }
       PanelGroupTitle(text: "收到的线")
       ForEach(inbox.items) { item in
@@ -19,22 +19,22 @@ struct FriendsPage: View {
             ShareThumbnail(item: item, inbox: inbox)
             VStack(alignment: .leading, spacing: 4) {
               Text("\(item.from) · \(item.shortSymbol) · \(item.drawings.count) 条线")
-                .font(.system(size: 13)).foregroundStyle(theme.ink).lineLimit(1)
+                .font(.scaled(13)).foregroundStyle(theme.ink).lineLimit(1)
               HStack(spacing: 6) {
                 if let date = item.createdDate { Text(date, format: .dateTime.month().day().hour().minute()) }
                 if item.keptAt != nil { Text("已留下") }
-              }.font(.system(size: 11)).foregroundStyle(theme.ink3)
+              }.font(.scaled(11)).foregroundStyle(theme.ink3)
             }
             Spacer(minLength: 0)
           }.padding(.horizontal, 18).padding(.vertical, 10).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityIdentifier("share.item.\(item.id)")
       }
       if inbox.items.isEmpty {
-        Text("还没有收到画线").font(.system(size: 13)).foregroundStyle(theme.ink3).padding(22)
+        Text("还没有收到画线").font(.scaled(13)).foregroundStyle(theme.ink3).padding(22)
       }
       if let notice = inbox.notice {
         Button("\(notice) · 重试") { inbox.pull() }
-          .font(.system(size: 12)).foregroundStyle(theme.ink3).padding(16)
+          .font(.scaled(12)).foregroundStyle(theme.ink3).padding(16)
       }
     }
     .accessibilityElement(children: .contain).accessibilityIdentifier("friends.page")
@@ -48,10 +48,10 @@ private struct FriendRow: View {
   @Environment(\.panelTheme) private var theme
   var body: some View {
     ZStack(alignment: .trailing) {
-      Button("删除") { onDelete() }.font(.system(size: 13)).foregroundStyle(theme.danger)
+      Button("删除") { onDelete() }.font(.scaled(13)).foregroundStyle(theme.danger)
         .frame(width: 64, height: 48).opacity(revealed ? 1 : 0)
         .accessibilityIdentifier("friends.delete.\(friend.username)")
-      Text(friend.username).font(.system(size: 14)).foregroundStyle(theme.ink)
+      Text(friend.username).font(.scaled(14)).foregroundStyle(theme.ink)
         .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
         .padding(.horizontal, 18).background(theme.raised).offset(x: revealed ? -64 : 0)
         .gesture(DragGesture(minimumDistance: 18).onEnded { value in
