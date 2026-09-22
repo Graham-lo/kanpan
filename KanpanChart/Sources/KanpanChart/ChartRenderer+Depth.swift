@@ -23,7 +23,7 @@ extension ChartRenderer {
     let asks = book.asks.enumerated().map { (4 - $0.offset, $0.element, state.colors.down) }
     let bids = book.bids.enumerated().map { (5 + $0.offset, $0.element, state.colors.up) }
     return (asks + bids).sorted { $0.0 < $1.0 }.map { slot, level, color in
-      let width = maxWidth * level.quantity / largest
+      let width = min(maxWidth, max(2, maxWidth * sqrt(level.quantity / largest)))
       return DepthRow(frame: CGRect(x: L.plotW - width, y: top + Double(slot) * (rowHeight + gap),
                                     width: width, height: rowHeight), color: color)
     }

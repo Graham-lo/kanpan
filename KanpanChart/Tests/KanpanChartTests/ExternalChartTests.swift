@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import KanpanCore
 import Testing
 import UIKit
@@ -39,12 +40,12 @@ struct ExternalChartTests {
     #expect(image.cgImage != nil)
   }
 
-  @Test("密集价位仍画出六点高的十行盘口梯，数量决定宽度")
+  @Test("密集十档开方缩放，极小挂单至少两点宽")
   func fixedDepthLadder() throws {
     var renderer = AxisWidthTests.renderer()
     let price = renderer.state.series.close.last!
     renderer.state.depth = OrderBook(symbol: renderer.state.symbol.symbol, time: renderer.state.series.lastTime,
-      bids: (1...5).map { .init(price: price - Double($0) * 0.1, quantity: Double($0)) },
+      bids: (1...5).map { .init(price: price - Double($0) * 0.1, quantity: $0 == 1 ? 0.000001 : Double($0)) },
       asks: (1...5).map { .init(price: price + Double($0) * 0.1, quantity: Double($0 + 5)) })
     let layout = renderer.layout(size: AxisWidthTests.size)
     let range = PriceRange(lo: price - 1_000, hi: price + 1_000, base: price)
@@ -54,7 +55,10 @@ struct ExternalChartTests {
     #expect(rows.suffix(5).allSatisfy { $0.color == renderer.state.colors.up })
     #expect(rows.allSatisfy { $0.frame.height == 6 && $0.frame.maxX == layout.plotW })
     #expect(rows.map(\.frame.width).max() == 64)
-    #expect(abs(rows[5].frame.width - 6.4) < 0.001)
+    #expect(rows[5].frame.width == 2)
+    #expect(rows.allSatisfy { $0.frame.width >= 2 })
+    #expect(abs(rows[6].frame.width - 64 * sqrt(2.0 / 10)) < 0.001)
+    #expect(abs(rows[4].frame.width - 64 * sqrt(6.0 / 10)) < 0.001)
     for index in 1..<rows.count {
       #expect(rows[index].frame.minY - rows[index - 1].frame.maxY == 1)
     }
@@ -76,6 +80,10 @@ struct ExternalChartTests {
       #expect(clamped.count == 10)
       #expect(clamped.allSatisfy { $0.frame.minY >= layout.main.y && $0.frame.maxY <= layout.main.y + layout.main.h })
     }
+    renderer.state.depth = OrderBook(symbol: renderer.state.symbol.symbol, time: renderer.state.series.lastTime,
+      bids: [.init(price: price - 0.1, quantity: 0)], asks: [.init(price: price + 0.1, quantity: 1)])
+    #expect(renderer.depthRows(pane: layout.main, range: range, L: layout).count == 1,
+            "零数量和缺档不能被两点下限画成挂单")
     renderer.state.depth = nil
     #expect(renderer.depthRows(pane: layout.main, range: range, L: layout).isEmpty)
   }

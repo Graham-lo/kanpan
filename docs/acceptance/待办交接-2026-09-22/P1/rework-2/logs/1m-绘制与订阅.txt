@@ -1,0 +1,199 @@
+图 ["renderedDepthRows": 10, "drawingAnchors": <__NSArray0 0x1e723b918>(
+
+)
+, "timeY": 314.8571428571429, "drawingContinuous": 0, "subs": <__NSArrayI 0x1165b20a0>(
+VOL,
+OI,
+MACD
+)
+, "oiPeriod": 1m, "macd": <__NSArrayI 0x1165b1f50>(
+10,
+30,
+9
+)
+, "lastClose": 86434, "centerY": 0.5, "mode": log, "to": 1790103630000, "priceDecimals": 1, "axisW": 47, "crossY": -1, "emaColor0": #F55B58, "ma": <__NSArrayI 0x1165b26a0>(
+10,
+30,
+120,
+256
+)
+, "externalSupported": 1, "span": 5325000, "drawingCount": 0, "oiReady": 1, "drawingIDs": <__NSArray0 0x1e723b918>(
+
+)
+, "drawingLocked": <__NSArray0 0x1e723b918>(
+
+)
+, "drawingMagnet": 1, "bodyW": 2.666666666666667, "height": 568, "bars": 1500, "ownDimmed": 0, "crossPane": MAIN, "panes": <__NSArrayI 0x1165b2b20>(
+{
+    h = "78.71428571428571";
+    id = VOL;
+    y = "331.8571428571429";
+},
+{
+    h = "78.71428571428571";
+    id = OI;
+    y = "410.5714285714286";
+},
+{
+    h = "78.71428571428571";
+    id = MACD;
+    y = "489.2857142857143";
+}
+)
+, "externalReady": <__NSArray0 0x1e723b918>(
+
+)
+, "overlays": <__NSSingleObjectArrayI 0x1052e57e0>(
+MA
+)
+, "maColor0": #FFB400, "drawingHidden": <__NSArray0 0x1e723b918>(
+
+)
+, "zoomY": 1, "drawingCommits": 0, "dataDisplay": inside, "inverted": 0, "portraitHeight": 0.5, "depthSymbol": BTCUSDT, "drawingAlerted": <__NSArray0 0x1e723b918>(
+
+)
+, "background": #F3F7F4, "scrollY": 0, "mainH": 314.8571428571429, "spacing": 4, "oiTimes": <__NSArrayI 0x105240a00>(
+1790095500000,
+1790095800000,
+1790096100000,
+1790096400000,
+1790096700000,
+1790097000000,
+1790097300000,
+1790097600000,
+1790097900000,
+1790098200000,
+1790098500000,
+1790098800000,
+1790099100000,
+1790099400000,
+1790099700000,
+1790100000000,
+1790100300000,
+1790100600000,
+1790100900000,
+1790101200000,
+1790101500000,
+1790101800000,
+1790102100000,
+1790102400000,
+1790102700000,
+1790103000000,
+1790103300000,
+1790103600000
+)
+, "drawingKinds": <__NSArray0 0x1e723b918>(
+
+)
+, "hiddenMA": <__NSArray0 0x1e723b918>(
+
+)
+, "symbol": BTCUSDT, "crossX": -1, "from": 1790098305000, "lastVolume": 67.31, "guestIDs": <__NSArray0 0x1e723b918>(
+
+)
+, "crossIndex": -1, "interval": 1m, "plotW": 355, "crosshair": 0, "depthLevels": 10, "drawingColors": <__NSArray0 0x1e723b918>(
+
+)
+, "latestRightGap": 0, "viewportH": 568, "gestureTrace": , "style": aicoin, "drawingCommitWired": 1]；线路 binance/Optional(live)；链路日志：
+
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+回前台补发首屏（上一发没落地）
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 310ms
+GET /fapi/v1/klines?interval=1h&limit=1500&symbol=BTCUSDT → 200 212989B 310ms
+快照 60040B → BTCUSDT|1h
+直连 fapi.binance.com /fapi/v1/exchangeInfo HTTP 200 454ms
+GET /fapi/v1/exchangeInfo → 200 1124272B 454ms
+直连 fapi.binance.com /fapi/v1/exchangeInfo HTTP 200 728ms
+GET /fapi/v1/exchangeInfo → 200 1124272B 728ms
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 428ms
+GET /fapi/v1/klines?interval=1h&limit=300&symbol=BTCUSDT → 200 42708B 429ms
+直连 fapi.binance.com /fapi/v1/ticker/24hr HTTP 200 222ms
+GET /fapi/v1/ticker/24hr?symbol=BTCUSDT → 200 372B 222ms
+WS有效首帧 dstream.binance.me 1294ms
+WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1h/btcusdt@markPrice@1s/btcusdt@ticker
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 206ms
+GET /fapi/v1/klines?interval=1h&limit=300&symbol=ETHUSDT → 200 42412B 206ms
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 198ms
+GET /fapi/v1/klines?interval=1h&limit=5&startTime=1790100000000&symbol=BTCUSDT → 200 144B 198ms
+补缺 startTime=1790100000000 → 1 根，净增 0，队列已合并
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 199ms
+GET /fapi/v1/klines?interval=1m&limit=300&symbol=BTCUSDT → 200 40268B 199ms
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 202ms
+GET /fapi/v1/klines?interval=5m&limit=300&symbol=BTCUSDT → 200 41354B 202ms
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 281ms
+GET /fapi/v1/klines?interval=15m&limit=300&symbol=BTCUSDT → 200 41882B 281ms
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 206ms
+GET /fapi/v1/klines?interval=30m&limit=300&symbol=BTCUSDT → 200 42284B 206ms
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 201ms
+GET /fapi/v1/klines?interval=4h&limit=300&symbol=BTCUSDT → 200 43573B 201ms
+预热 6/6 份快照
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 203ms
+GET /fapi/v1/klines?interval=4h&limit=300&symbol=BTCUSDT → 200 43573B 203ms
+预热 1/5 份快照
+直连 fapi.binance.com /futures/data/openInterestHist HTTP 200 206ms
+GET /futures/data/openInterestHist?endTime=1790105400000&limit=500&period=1h&symbol=BTCUSDT → 200 85501B 206ms
+图表事件 收23 丢0/5264ms
+WS 收帧 14 条/5745ms
+图表事件 收18 丢0/5196ms
+WS 收帧 15 条/5210ms
+图表事件 收21 丢0/5395ms
+快照 60040B → BTCUSDT|1h
+WS 收帧 14 条/5032ms
+图表事件 收20 丢0/5066ms
+WS 收帧 12 条/5002ms
+图表事件 收19 丢0/5006ms
+WS 收帧 17 条/5163ms
+图表事件 收26 丢0/5173ms
+快照 60040B → BTCUSDT|1h
+WS 收帧 17 条/5200ms
+图表事件 收32 丢0/5058ms
+WS 收帧 23 条/5290ms
+图表事件 收36 丢0/5756ms
+WS 收帧 17 条/5338ms
+快照 60040B → BTCUSDT|1h
+图表事件 收32 丢0/5018ms
+WS 收帧 22 条/5007ms
+图表事件 收32 丢0/5006ms
+WS 收帧 22 条/5045ms
+图表事件 收34 丢0/5027ms
+WS 收帧 18 条/5511ms
+快照 60080B → BTCUSDT|1h
+快照 60080B → BTCUSDT|1h
+图表事件 收27 丢0/5291ms
+WS 收帧 19 条/5436ms
+图表事件 收24 丢0/5397ms
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s/btcusdt@depth5@100ms
+WS → {"params":["btcusdt@depth5@100ms"],"id":1,"method":"SUBSCRIBE"}
+WS 收帧 15 条/5019ms
+图表事件 收53 丢0/5024ms
+WS 收帧 67 条/5106ms
+快照 60080B → BTCUSDT|1h
+图表事件 收76 丢0/5039ms
+WS 收帧 65 条/5070ms
+图表事件 收78 丢0/5302ms
+WS 收帧 68 条/5081ms
+图表事件 收90 丢0/5010ms
+WS 收帧 70 条/5081ms
+快照 60080B → BTCUSDT|1h
+图表事件 收70 丢0/5000ms
+内存命中 BTCUSDT|1m 300 根
+图表订阅：btcusdt@kline_1m/btcusdt@ticker/btcusdt@markPrice@1s/btcusdt@depth5@100ms
+WS → {"params":["btcusdt@kline_1h"],"id":2,"method":"UNSUBSCRIBE"}
+快照 60080B → BTCUSDT|1h
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 200ms
+GET /fapi/v1/klines?interval=1m&limit=5&startTime=1790103540000&symbol=BTCUSDT → 200 269B 200ms
+WS → {"params":["btcusdt@kline_1m"],"id":3,"method":"SUBSCRIBE"}
+直连 fapi.binance.com /futures/data/openInterestHist HTTP 200 208ms
+GET /futures/data/openInterestHist?endTime=1790103630000&limit=500&period=5m&symbol=BTCUSDT → 200 85501B 208ms
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 298ms
+GET /fapi/v1/klines?interval=1m&limit=1500&symbol=BTCUSDT → 200 200818B 298ms
+补缺 startTime=1790103540000 → 2 根
+直连 fapi.binance.com /fapi/v1/ticker/24hr HTTP 200 198ms
+GET /fapi/v1/ticker/24hr?symbol=BTCUSDT → 200 372B 198ms
+WS 收帧 61 条/5040ms
+直连 fapi.binance.com /fapi/v1/ticker/24hr HTTP 200 203ms
+GET /fapi/v1/ticker/24hr?symbol=BTCUSDT → 200 372B 203ms
+图表事件 收85 丢1/5056ms
+WS 收帧 70 条/5056ms

@@ -13,12 +13,12 @@ final class ChartFoundationUITests: XCTestCase {
     if name.contains("Drawing") || name.contains("IndicatorColor") || name.contains("CompactChart") || name.contains("Record") { app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString }
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     if name.contains("Record") { app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io" }
-    if name.contains("testExternalIndicatorsAndDepthRoundTrip") {
+    if name.contains("testExternalIndicatorsAndDepthRoundTrip") || name.contains("testDepthLadderVisibleAtBothIntervals") {
       app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
       app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
     }
     app.launch()
-    if name.contains("testExternalIndicatorsAndDepthRoundTrip") {
+    if name.contains("testExternalIndicatorsAndDepthRoundTrip") || name.contains("testDepthLadderVisibleAtBothIntervals") {
       XCTAssertTrue(app.buttons["bottom.chart"].waitForExistence(timeout: 15))
       app.buttons["bottom.chart"].tap()
     }
@@ -311,26 +311,47 @@ final class ChartFoundationUITests: XCTestCase {
     shot("实时行情-持续更新")
   }
 
+  private func revealChartControl(_ element: XCUIElement) {
+    let scroll = app.scrollViews["panel.content"]
+    XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+    for _ in 0..<24 {
+      let bounds = scroll.frame
+      if element.exists, element.isHittable, bounds.contains(element.frame) { return }
+      // 半屏面板里整屏快扫会越过目标；按当前坐标决定方向，半屏一段地拖。
+      let down = element.exists && element.frame.midY < bounds.midY
+      let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.3 : 0.8))
+      let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.8 : 0.3))
+      start.press(forDuration: 0.1, thenDragTo: end)
+    }
+    XCTFail("图表面板找不到控件：" + element.identifier)
+  }
+
+  func testDepthLadderVisibleAtBothIntervals() throws {
+    executionTimeAllowance = 420 // 图表面板里要滚动找「盘口」开关，机器重载时 180 秒曾被压线杀掉。
+    app.buttons["interval.chart"].tap()
+    let depth = app.buttons["chart.depth"]
+    revealChartControl(depth); depth.tap(); closePanel()
+    for interval in ["1h", "1m"] {
+      app.tapIntervalChip(interval)
+      XCTAssertTrue(wait(seconds: 40) {
+        self.info()["symbol"] as? String == "BTCUSDT" && self.info()["interval"] as? String == interval
+          && self.info()["renderedDepthRows"] as? Int == 10
+      }, feedEvidence())
+      shot("盘口梯-BTC-" + interval)
+      let evidence = XCTAttachment(string: feedEvidence())
+      evidence.name = "盘口梯-" + interval + "-绘制与订阅"; evidence.lifetime = .keepAlways; add(evidence)
+    }
+    app.buttons["interval.chart"].tap()
+    revealChartControl(depth); depth.tap(); closePanel()
+    XCTAssertTrue(wait { self.info()["renderedDepthRows"] as? Int == 0 })
+  }
+
   func testExternalIndicatorsAndDepthRoundTrip() throws {
     executionTimeAllowance = 900 // 三次开图、线路往返与二十次品种切换都在同一条用例里。
-    func reveal(_ element: XCUIElement) {
-      let scroll = app.scrollViews["panel.content"]
-      XCTAssertTrue(scroll.waitForExistence(timeout: 5))
-      for _ in 0..<24 {
-        let bounds = scroll.frame
-        if element.exists, element.isHittable, bounds.contains(element.frame) { return }
-        // 半屏面板里整屏快扫会越过目标；按当前坐标决定方向，半屏一段地拖。
-        let down = element.exists && element.frame.midY < bounds.midY
-        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.3 : 0.8))
-        let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.8 : 0.3))
-        start.press(forDuration: 0.1, thenDragTo: end)
-      }
-      XCTFail("图表面板找不到控件：" + element.identifier)
-    }
     func toggleIndicator(_ id: String) {
       app.buttons["interval.chart"].tap()
       let toggle = app.buttons["indicator.switch." + id]
-      reveal(toggle); toggle.tap(); closePanel()
+      revealChartControl(toggle); toggle.tap(); closePanel()
     }
     for id in (info()["subs"] as? [String] ?? []) { toggleIndicator(id) }
     for id in ["LSR", "TAKER", "BASIS"] { toggleIndicator(id) }
@@ -347,7 +368,7 @@ final class ChartFoundationUITests: XCTestCase {
     }
     app.buttons["interval.chart"].tap()
     let depth = app.buttons["chart.depth"]
-    reveal(depth); depth.tap(); closePanel()
+    revealChartControl(depth); depth.tap(); closePanel()
     XCTAssertTrue(wait(seconds: 30) { self.info()["depthLevels"] as? Int == 10 }, feedEvidence())
     for interval in ["1h", "1m"] {
       app.tapIntervalChip(interval)
@@ -385,7 +406,7 @@ final class ChartFoundationUITests: XCTestCase {
     direct.tap(); leaveSettings()
     XCTAssertTrue(wait(seconds: 40) { self.info()["depthLevels"] as? Int == 10 }, feedEvidence())
     app.buttons["interval.chart"].tap()
-    reveal(depth); depth.tap(); closePanel()
+    revealChartControl(depth); depth.tap(); closePanel()
     XCTAssertTrue(wait { self.info()["depthLevels"] as? Int == 0 && self.info()["renderedDepthRows"] as? Int == 0 })
     shot("盘口关闭-回到普通图表")
     let log = XCTAttachment(string: feedEvidence()); log.name = "三指标与盘口-订阅日志"; log.lifetime = .keepAlways; add(log)
