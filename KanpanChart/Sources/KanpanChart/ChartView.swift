@@ -219,7 +219,7 @@ public final class ChartView: UIView {
         return String(data: data, encoding: .utf8)
       }
       #endif
-      return voiceOverValue ?? "\(s.symbol.symbol)，\(s.series.interval.display)，暂无K线"
+      return voiceOverValue ?? "\(InstrumentID(s.symbol.symbol).symbol)，\(s.series.interval.display)，暂无K线"
     }
     set { super.accessibilityValue = newValue }
   }
