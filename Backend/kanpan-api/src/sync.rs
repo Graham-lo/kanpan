@@ -48,6 +48,7 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 //
 // A slice rather than `[&str;N]`: adding a field should not also mean editing a length.
 pub const SETTINGS_FIELDS:&[&str]=&[
+ "compareSymbols",
  "overlays","subs","subHeights","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange",
  "portraitHeight","quickIntervals","theme","skin","ambientTheme","styleID","redUp","priceMode","timeZone",
  "magnet","countdown","depth","lastLine","sinceChange","showDrawings","candleKind","gridChoice","bodyChoice",
@@ -344,7 +345,7 @@ mod tests {
  #[test] fn every_wire_key_has_a_value_rule() {
   let probes=[
    json!(true),json!(""),json!(0.5),json!(1),json!(4.0),json!([5]),
-   json!(["MA"]),json!(["VOL"]),json!(["1m"]),json!(["BTCUSDT"]),json!([30,70]),
+   json!(["MA"]),json!(["VOL"]),json!(["1m"]),json!(["BTCUSDT"]),json!(["binance/usd_m/BTCUSDT"]),json!([30,70]),
    json!("1m"),json!("sage"),json!("direct"),json!("custom"),json!("crypto"),json!("today"),
    json!("change"),json!("history"),json!("medium"),json!({"value":"#112233"}),json!("default"),
   ];

@@ -115,8 +115,8 @@ struct CrosshairActionBar: View {
   var canDetail: Bool
   /// 往左 / 往右挪一根。
   var onStep: (Int) -> Void
-  /// 按十字线此刻这口价画一条水平线。
-  var onLine: (Double) -> Void
+  /// 按十字线此刻这口价画一条水平线。nil 时不给这颗（对比态的图上不画线）。
+  var onLine: ((Double) -> Void)?
   /// 「看细节」：把选中的这一根换到更细的一档铺满一屏（§10.1）。
   var onDetail: (Crosshair) -> Void
 
@@ -126,7 +126,7 @@ struct CrosshairActionBar: View {
         chip("上一根", icon: VectorIcon.chevronLeft(10), id: "chart.crosshair.prev") { onStep(-1) }
         chip("下一根", trailingIcon: VectorIcon.chevronRight(10), id: "chart.crosshair.next") { onStep(1) }
         // 副图上的十字线读的是指标值，不是价——那条线画到主图上毫无意义，所以不给。
-        if c.pane == nil, let price = c.price ?? priceOfBar(c.index), price.isFinite {
+        if c.pane == nil, let onLine, let price = c.price ?? priceOfBar(c.index), price.isFinite {
           chip("按此价画线", id: "chart.crosshair.hline") { onLine(price) }
         }
         if canDetail {

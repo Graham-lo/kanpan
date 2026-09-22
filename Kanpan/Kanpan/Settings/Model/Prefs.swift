@@ -30,6 +30,9 @@ struct Prefs: Sendable, Equatable {
   var redUp: Bool = true
 
   // ---------------------------------------------------------------- 图
+  /// 对比 K 线的品种集合（完整品种 key，最多三只，见 `Kanpan/Kanpan/Compare/`）。
+  /// 有值时主图换成百分比坐标；集合跟着人走，换主品种不清。
+  var compareSymbols: [String] = []
   /// 价格轴 常规 / 对数 / 百分比（A6.8）。
   var priceMode: PriceMode = .log
   /// 十字线磁吸（§7 长按那一行）：长按出来的十字线吸不吸到最近那根 K 线的价位上。

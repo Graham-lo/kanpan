@@ -62,6 +62,7 @@ enum PrefsCodec {
 extension Prefs: Codable {
   enum CodingKeys: String, CodingKey {
     case v
+    case compareSymbols
     case interval, quickIntervals
     case theme, skin, redUp
     // 这儿原来还有 `styleID`：十二款蜡烛造型里挑一款的那阵子存的选择。现在只剩 AICoin
@@ -92,6 +93,7 @@ extension Prefs: Codable {
   func encode(to encoder: Encoder) throws {
     var c = encoder.container(keyedBy: CodingKeys.self)
     try c.encode(PrefsCodec.version, forKey: .v)
+    try c.encode(compareSymbols, forKey: .compareSymbols)
     try c.encode(interval.rawValue, forKey: .interval)
     try c.encode(quickIntervals.map(\.rawValue), forKey: .quickIntervals)
     try c.encode(theme.rawValue, forKey: .theme)
@@ -324,6 +326,7 @@ extension Prefs: Codable {
       watchMoveThreshold = WatchMove.clampThreshold(v)
     }
 
+    if let raw = strs(.compareSymbols) { compareSymbols = Prefs.cleanCompareSymbols(raw) }
     PrefsCodec.migrate(&self, from: archived)
   }
 

@@ -406,7 +406,8 @@ struct IntervalRow: View {
   let context: CrosshairContext
   var canDetail: Bool
   var onStep: (Int) -> Void
-  var onLine: (Double) -> Void
+  /// nil = 这一刻不许按价画线（对比态）。
+  var onLine: ((Double) -> Void)?
   var onDetail: (Crosshair) -> Void
 
   var body: some View {

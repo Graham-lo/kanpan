@@ -68,6 +68,7 @@ struct TabBar: View {
   var current: Tab
   /// 正在画线。这时候亮的是最左边那格，而不是身下那张行情页。
   var drawing: Bool
+  var drawingEnabled = true
   var onPick: (Tab) -> Void
 
   /// 记号的边长。18 → 20 → 32 → 36 → 26 → 27。往 36 推那几档是为了治「太素」，可推上去之后
@@ -108,6 +109,8 @@ struct TabBar: View {
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .disabled(tab == .draw && !drawingEnabled)
+    .opacity(tab == .draw && !drawingEnabled ? 0.35 : 1)
     .accessibilityLabel(tab.title)
     .accessibilityAddTraits(on ? [.isSelected] : [])
   }

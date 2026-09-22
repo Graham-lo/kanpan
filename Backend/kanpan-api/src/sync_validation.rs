@@ -67,6 +67,13 @@ fn lines(v:&Value)->bool {
  }))
 }
 fn style(v:&Value)->bool {v.as_object().is_some_and(|o|o.iter().all(|(k,v)|field("drawings",k,v))&&o.contains_key("lineWidth")&&o.contains_key("dash")&&o.contains_key("filled")&&o.contains_key("levels"))}
+fn compare_key(v:&Value)->bool {
+ let Some(s)=v.as_str() else {return false};
+ let p:Vec<_>=s.split('/').collect();
+ s.len()<=128 && p.len()==3 && p.iter().all(|v|!v.is_empty())
+ && p[..2].iter().all(|v|v.bytes().all(|c|c.is_ascii_lowercase()||c.is_ascii_digit()||c==b'_'))
+ && p[2].bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()||c==b'-'||c==b'_')
+}
 pub fn field(collection:&str,path:&str,v:&Value)->bool {
  let p:Vec<_>=path.split('/').collect();
  // A null is a field tombstone; required drawing fields are checked again after merging.
@@ -104,6 +111,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // `Prefs.clampSpacing` never stores anything outside AICoinBehavior's 1.6…40pt.
    "barSpacing"=>number(v,1.6,40.0),
    // Only 1 / 2 / 4, per `Prefs.clampSpeed`.
+   "compareSymbols"=>v.as_array().is_some_and(|a|a.len()<=3 && a.iter().all(compare_key) && a.iter().enumerate().all(|(i,v)| !a[..i].contains(v))),
    "replaySpeed"=>v.as_i64().is_some_and(|n|matches!(n,1|2|4)),
    "skin"=>one_of(v,&["sage","terra","classic"]),
    "routePolicy"=>one_of(v,&["direct","gateway"]),
@@ -578,5 +586,18 @@ mod tests {
   }
   assert!(!field("alerts","status",&Value::Null),"status always has a value");
   assert!(!field("alerts","lines",&Value::Null),"geometry is never a tombstone");
+ }
+ #[test] fn compare_symbols_are_bounded_distinct_full_instrument_keys() {
+  assert!(crate::sync::SETTINGS_FIELDS.contains(&"compareSymbols"));
+  for good in [json!([]), json!(["binance/usd_m/ETHUSDT", "coinbase/spot/BTC-USD", "future/spot/ABC"])] {
+   assert!(field("settings","compareSymbols",&good));
+  }
+  for bad in [
+   json!(null), json!("binance/usd_m/ETHUSDT"), json!([1]), json!(["ETHUSDT"]),
+   json!(["binance/usd_m/ethusdt"]), json!(["binance//ETHUSDT"]),
+   json!(["binance/usd_m/ETHUSDT/x"]), json!([" binance/usd_m/ETHUSDT"]),
+   json!(["binance/usd_m/ETHUSDT", "binance/usd_m/ETHUSDT"]),
+   json!(["binance/usd_m/ETHUSDT", "binance/usd_m/SOLUSDT", "binance/usd_m/DOGEUSDT", "binance/usd_m/XRPUSDT"])
+  ] { assert!(!field("settings","compareSymbols",&bad), "{bad}"); }
  }
 }

@@ -82,6 +82,7 @@ enum PrefsFieldPlan {
   /// 所以拿它去 JSON 上按键比对是成立的（`Prefs.keeping` / `PersonalSyncCodec.settings` 都这么用）。
   static let table: [String: PrefsFieldClass] = [
     // ---------------------------------------------------------------- 跟着人走
+    "compareSymbols": .synced,
     "interval": .synced, "quickIntervals": .synced,
     "theme": .synced, "skin": .synced, "ambientTheme": .synced, "redUp": .synced,
     "priceMode": .synced, "magnet": .synced, "countdown": .synced, "depth": .synced, "candleKind": .synced,

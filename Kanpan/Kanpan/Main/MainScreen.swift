@@ -78,6 +78,9 @@ struct MainScreen: View {
   /// 板块页那一路的行情。它拉的是**全市场 24h ticker**（一趟就够），和 `QuoteBook`
   /// 那条按可见范围订阅的线完全不搭界，所以单独一份，只在板块页看得见时才跑。
   @State private var sectorFeed = SectorFeed()
+  /// 对比 K 线的行情（`Kanpan/Kanpan/Compare/`）：集合在 `prefs.compareSymbols`，这里只管拉数与对齐。
+  @State private var comparison = CompareModel()
+  @State private var showComparePicker = false
   /// 长按一行品种弹出来那张预览卡的数据（§4.1）。自选页和板块品种列表共用一份，
   /// 所以它挂在这儿而不是各自页里——两张表长按同一个品种只取一趟。
   @State private var previews = SymbolPreviewStore()
@@ -278,7 +281,7 @@ struct MainScreen: View {
     // 系统顶成全屏，图就整个没了。
     .prefsPanel(landscape ? .constant(nil) : $panel, store: store,
                 onPickInterval: pick(interval:), onRecord: chartRecordAction,
-                onShare: chartShareAction, onSend: chartSendAction, sendBlocked: shareSendBlocked)
+                onShare: chartShareAction, onAddCompare: { showComparePicker = true }, compareNames: compareNames, onSend: chartSendAction, sendBlocked: shareSendBlocked)
   }
 
   private var presentation: some View {
@@ -291,6 +294,21 @@ struct MainScreen: View {
                        onAll: { searchAllPending = true; showSearch = false },
                        onVisible: { quotes.watch($0) },
                        onRowVisibility: { quotes.watchRow($0, visible: $1) })
+        .preferredColorScheme(effectiveTheme.forced)
+    }
+    .fullScreenCover(isPresented: $showComparePicker) {
+      SymbolPickerView(model: picker, redUp: prefs.redUp,
+        onClose: { showComparePicker = false; picker.query = "" },
+        onSelect: { info in
+          let key = InstrumentID.canonical(info.symbol)
+          if key != InstrumentID.canonical(market.symbol), !prefs.compareSymbols.contains(key), prefs.compareSymbols.count < 3 {
+            store.update { $0.compareSymbols.append(key) }
+          }
+          showComparePicker = false; picker.query = ""
+        },
+        onVisible: { quotes.watch($0) },
+        onRowVisibility: { quotes.watchRow($0, visible: $1) })
+        .environment(\.panelTheme, theme)
         .preferredColorScheme(effectiveTheme.forced)
     }
     .fullScreenCover(isPresented: $showSymbols) {
@@ -378,6 +396,8 @@ struct MainScreen: View {
     // 套一层 `ModifiedContent<...>`——那正是 iOS 27 真机启动栈溢出的大头。
     // **不要把 `.onChange` / `.onReceive` 重新挂回这条链上，往那只修饰符里加。**
     .modifier(observers)
+    // 对比 K 线只有这一个观察者，自带一层修饰符，不往上面那只里塞。
+    .modifier(CompareObservers(drive: compareDrive, onChange: { updateCompare() }))
   }
 
   private var microstructureVisible: Bool {
@@ -607,7 +627,7 @@ struct MainScreen: View {
     // 要跑题。两种状态各自都有明确的回头路（卡片的「收起」、回放条的「退出」）。
     .safeAreaInset(edge: .bottom, spacing: 0) {
       if !reviewChart.active {
-        TabBar(theme: theme, current: tab, drawing: draw.active, onPick: switchTo(tab:))
+        TabBar(theme: theme, current: tab, drawing: draw.active, drawingEnabled: !comparing, onPick: switchTo(tab:))
       }
     }
     // 键盘不许顶这三张常驻页，也不许顶标签栏。
@@ -644,6 +664,7 @@ struct MainScreen: View {
     dismissPanel()
     didLeaveLaunch = true
     guard next != .draw else {
+      guard !comparing else { return }
       endSharePreview()
       if reviewChart.active { endReview() }
       // 从别的一格点「画线」等于被带到了图上：这一格就是来路，画完退得回去。
@@ -702,7 +723,8 @@ struct MainScreen: View {
         // 「看细节」（§10.1）：还有更细的一档可进才给。只看当前周期，不引入对十字线的观察。
         canDetail: DetailZoom.finer(than: market.interval) != nil,
         onStep: { proxy.moveCrosshair(by: $0) },
-        onLine: { endSharePreview(); proxy.addHorizontalLine(at: $0) },
+        // 对比态下图上不画线，「按此价画线」这颗也不给。
+        onLine: comparing ? nil : { endSharePreview(); proxy.addHorizontalLine(at: $0) },
         onDetail: zoomIntoDetail
       ) }
       hairline
@@ -892,7 +914,7 @@ struct MainScreen: View {
   private var drawingCanvasOnly: Bool { draw.active && landscape }
   /// 外部指标在不支持的线路上保留对应空态，选择不随线路变化。
   private var visibleSubs: [IndicatorID] { drawingCanvasOnly ? [] : prefs.subs }
-  private var visibleOverlays: [IndicatorID] { drawingCanvasOnly ? [] : prefs.overlays }
+  private var visibleOverlays: [IndicatorID] { drawingCanvasOnly || comparing ? [] : prefs.overlays }
   /// 图上只调整当前可见副图的顺序，保留没有参与排序的设置。
   /// 横屏画线台不展示副图；网关则保留已选指标并显示空态。
   private func merged(subs order: [IndicatorID]) -> [IndicatorID] {
@@ -1152,7 +1174,7 @@ struct MainScreen: View {
       readout: crosshairReadout,
       liveState: chartState,
       portrait: !landscape,
-      renderingActive: tab == .chart && !showSymbols && !showSearch,
+      renderingActive: tab == .chart && !showSymbols && !showSearch && !showComparePicker,
       panelOpen: panel != nil || draw.panel != nil,
       drawingCanvasOnly: drawingCanvasOnly,
       alertedDrawingIDs: alerts.alertedDrawingIDs(symbol: market.symbol),
@@ -1174,12 +1196,20 @@ struct MainScreen: View {
     case search(UUID)
   }
 
+  private func reviewState(_ state: ChartState?) -> ChartState? {
+    guard var state else { return nil }
+    state.percentAxis = false; state.compare = []
+    state.price.mode = prefs.priceMode
+    state.overlays = prefs.overlays; state.options = prefs.chartOptions
+    return state
+  }
+
   private func wireReview() {
     review.onCapture = startReviewCapture
     // 记一笔的那一刻顺手截一张图附在这条记录上（§4.3），和「分享图片」同一支渲染器。
     // 画不出来就没有图：记录照记，详情里那一格不出现。
     review.captureShot = {
-      guard let state = proxy.box?.chart.state, let size = proxy.box?.chart.bounds.size, size.width > 0 else { return nil }
+      guard let state = reviewState(proxy.box?.chart.state), let size = proxy.box?.chart.bounds.size, size.width > 0 else { return nil }
       return ChartSnapshotRenderer.png(state: state, size: size, head: chartShotHead, theme: theme)
     }
     // 回放倍速跟着人走：初值从偏好来，那颗按钮一改就写回去（R3-4）。
@@ -1205,18 +1235,18 @@ struct MainScreen: View {
     review.onOpenChart = { record in
       endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = .record(record.id)
-      reviewChart.open(record, feature: review, live: proxy.box?.chart.state ?? chartState, hosts: hosts)
+      reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), hosts: hosts)
     }
     review.onOpenMatch = { match, cutoff in
       endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = review.searchRecord.map { .search($0) }
-      reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: proxy.box?.chart.state ?? chartState, hosts: hosts)
+      reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), hosts: hosts)
     }
     review.synchronize()
   }
   private func startReviewCapture() {
     endSharePreview(); dismissPanel(); draw.finish()
-    reviewChart.beginCapture(feature: review, live: proxy.box?.chart.state ?? chartState, prefs: prefs, source: market.source)
+    reviewChart.beginCapture(feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), prefs: prefs, source: market.source)
   }
   /// 退出复盘。
   ///
@@ -1319,8 +1349,45 @@ struct MainScreen: View {
     result.paletteSeed = seed
     result.hiddenOutputs = prefs.hiddenOutputs
     result.indicatorColors = prefs.indicatorColors
+    result.percentAxis = comparing
+    if comparing { result.options.drawings = false }
+    let shown = comparing ? compareKeys : []
+    result.compare = comparison.series(main: s, keys: shown,
+      colors: shown.map { key in
+        let slot = prefs.compareSymbols.firstIndex(of: key) ?? 0
+        let palette = result.colors.palette
+        return palette[slot % palette.count]
+      },
+      names: { compareNames[$0] ?? String($0.split(separator: "/").last ?? "") })
     result.rsiUpper = prefs.rsiUpper; result.rsiLower = prefs.rsiLower
     return result
+  }
+
+  /// 此刻图上是不是对比态。横屏画线、复盘、看朋友分享的线时暂退，集合本身不动，回来就恢复。
+  private var comparing: Bool {
+    !compareKeys.isEmpty && !landscape && !draw.active && !reviewChart.active && draw.previewing == nil
+  }
+
+  private var compareKeys: [String] {
+    prefs.compareSymbols.filter { $0 != InstrumentID.canonical(market.symbol) }
+  }
+  private var compareNames: [String: String] {
+    Dictionary(uniqueKeysWithValues: prefs.compareSymbols.map { key in
+      (key, picker.info(for: key)?.base ?? SymbolInfo.placeholder(symbol: key).base)
+    })
+  }
+  private var compareReady: Bool {
+    market.source == prefs.routePolicy.source && !market.switching && market.routing != .switching
+  }
+  private var compareDrive: CompareDrive {
+    let s = market.series
+    return CompareDrive(keys: comparing ? compareKeys : [], symbol: market.symbol, interval: market.interval,
+      hosts: hosts, policy: prefs.routePolicy, ready: compareReady,
+      first: s?.firstTime ?? 0, last: s?.lastTime ?? 0)
+  }
+  private func updateCompare() {
+    comparison.configure(keys: comparing ? compareKeys : [], main: compareReady ? market.series : nil,
+      symbol: market.symbol, interval: market.interval, hosts: hosts, policy: prefs.routePolicy)
   }
 
   /// 副图高度（A6.4）：`Prefs.subHeights` 是档位，图要的是倍率。
@@ -1420,6 +1487,7 @@ struct MainScreen: View {
       // 先把后台运行额度要下来，再进后台状态：两处宽限窗口靠它才有 CPU 可跑，
       // 短暂切走再回来就不必重连。
       grace.begin()
+      comparison.setForeground(false)
       market.enterBackground(); quotes.setForeground(false); sectorFeed.setForeground(false)
       // 后台里响的那些不去动界面，只留一条本地通知（见 `AlertWatcher`）。
       alertWatcher.setForeground(false)
@@ -1430,6 +1498,7 @@ struct MainScreen: View {
       widgetFeed.setForeground(false)
     } enter: {
       grace.end()
+      comparison.setForeground(true)
       market.enterForeground(); quotes.setForeground(true); sectorFeed.setForeground(true)
       alertWatcher.setForeground(true)
       alertEngine.setForeground(true)
@@ -1446,13 +1515,14 @@ struct MainScreen: View {
     // 捕获列表是必须的：不写的话闭包捕获的是 `MainScreen` 这个结构体，而它的
     // `@State` 包装器正握着 `teardown` 的存储，成环之后 `deinit` 永远不来。
     // 登记全部按 token 撤，撤不到别人的那一份（同一时刻可能已经有新的根接上了）。
-    teardown.onTeardown { [market, quotes, sectorFeed, grace] in
+    teardown.onTeardown { [market, quotes, sectorFeed, grace, comparison] in
       AppLifecycle.shared.unregisterResources(token: feedsToken)
       AppLifecycle.shared.unregister(hook: viewportHook)
       AppLifecycle.shared.unregister(hook: reviewHook)
       // `MemoryWarningRelay` 那条不撤：它登记的是 `[weak market]`，模型一释放就成了
       // 空操作；按 id 撤反而可能把新根刚登记的那份摘掉。
       grace.end()          // 系统那份后台额度必须还回去
+      comparison.stop()
       market.stop()        // 事件流、重连、OI 轮询
       quotes.shutdown()    // 列表那条 socket，不走 25 秒宽限：没有「回来」了
       sectorFeed.setForeground(false)

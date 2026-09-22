@@ -144,7 +144,18 @@ public final class ChartView: UIView {
       if ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" {
         let metrics = candleMetrics(spacing: s.view.barSpacing(step: s.series.step, plotW: layout.plotW),
                                     style: s.style, scale: Double(renderScale))
-        let info: [String: Any] = ["style": s.style.id, "background": s.colors.bg.value, "bars": s.series.count, "symbol": s.series.symbol,
+        let compareIndex = min(max(s.crosshair?.index ?? (s.series.count - 1), 0), max(s.series.count - 1, 0))
+        let compareRange = renderer?.priceRange(size: bounds.size)
+        let crossPoint = renderer?.crosshairCenter(size: bounds.size)
+        let crossLabel: String
+        if let compareRange, let crossPoint, let renderer {
+          crossLabel = renderer.axisLabel(pOf(crossPoint.y, pane: layout.main, range: compareRange, mode: s.effectivePriceMode), range: compareRange)
+        } else { crossLabel = "" }
+        let info: [String: Any] = [
+          "compareMainClose": s.series.close.indices.contains(compareIndex) ? s.series.close[compareIndex] : 0,
+          "crossAxisLabel": crossLabel,
+          "compareTicks": compareRange.map { renderer?.mainPriceTicks(range: $0, paneHeight: layout.main.h) ?? [] } ?? [],
+          "style": s.style.id, "background": s.colors.bg.value, "bars": s.series.count, "symbol": s.series.symbol,
           "latestRightGap": layout.plotW - s.view.x(Double(s.series.lastTime), plotW: layout.plotW)
             - s.view.barSpacing(step: s.series.step, plotW: layout.plotW) / 2,
           "priceDecimals": s.decimals,
@@ -152,7 +163,15 @@ public final class ChartView: UIView {
           "from": s.view.from, "to": s.view.to, "span": s.view.span,
           "plotW": layout.plotW, "mainH": layout.mainH, "timeY": layout.timeY,
           "bodyW": metrics.bodyW, "spacing": s.view.barSpacing(step: s.series.step, plotW: layout.plotW),
-          "mode": s.price.mode.rawValue, "inverted": s.price.inverted,
+          "percentAxis": s.percentAxis,
+          "compareKeys": s.compare.map(\.key),
+          "compareColors": s.compare.map { $0.color.value },
+          "compareReady": s.compare.filter { $0.percent(at: s.series.count - 1, baseIndex: s.compareBaseIndex()) != nil }.count,
+          "compareBaseIndex": s.compareBaseIndex(), "compareBaseOpen": s.compareBase(),
+          "compareBaseTime": s.series.time(at: s.compareBaseIndex()),
+          "compareLegend": renderer?.compareLegend.map { ["name": $0.name, "label": ChartState.comparePercentLabel($0.value)] } ?? [],
+          "drawingsVisible": s.options.drawings,
+          "mode": s.effectivePriceMode.rawValue, "inverted": s.price.inverted,
           "zoomY": s.price.zoom, "centerY": s.price.centerFraction,
           "axisW": layout.axisW, "height": layout.H,
           "dataDisplay": s.options.dataDisplay.rawValue, "portraitHeight": s.options.portraitHeight,

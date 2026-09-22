@@ -148,6 +148,9 @@ final class PrefsStore {
     if ProcessInfo.processInfo.environment["KANPAN_TEST_PROFILE"] == "1",
        selectedStorage.prefsData(forKey: PrefsCodec.key) == nil {
       self.prefs.quickIntervals = PrefsStore.uiTestQuick
+      if let raw = ProcessInfo.processInfo.environment["KANPAN_TEST_COMPARE_SYMBOLS"] {
+        self.prefs.compareSymbols = Prefs.cleanCompareSymbols(raw.split(separator: ",").map(String.init))
+      }
       // UI 用例要验网关那条线路（OKX 历史）时从这儿起步，不用在用例里去点设置。
       if let raw = ProcessInfo.processInfo.environment["KANPAN_TEST_ROUTE_POLICY"],
          let policy = MarketRoutePolicy(rawValue: raw) {

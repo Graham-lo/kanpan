@@ -81,14 +81,19 @@ enum PersonalSyncCodec {
   }
   static func snapshot(_ prefs: Prefs) throws -> Data {
     // Format marker distinguishes the allowlisted snapshot from legacy full-Prefs drafts.
-    try JSONEncoder().encode(ChartSnapshot(version: 1, fields: settings(prefs).body))
+    var fields = try settings(prefs).body
+    fields.removeValue(forKey: "compareSymbols")
+    return try JSONEncoder().encode(ChartSnapshot(version: 1, fields: fields))
   }
   struct ChartSnapshot: Codable { var version: Int; var fields: [String: KanpanAccount.JSONValue] }
   static func snapshotPrefs(_ data: Data, base: Prefs = .defaults) throws -> Prefs {
     let value = try JSONDecoder().decode(ChartSnapshot.self, from: data)
     guard value.version == 1 else { throw AccountError.invalidResponse }
     var object = SyncObject(collection: "settings", id: "chart"); object.body = value.fields
-    return try apply(object, to: base)
+    object.body.removeValue(forKey: "compareSymbols")
+    var restored = try apply(object, to: base)
+    restored.compareSymbols = []
+    return restored
   }
   /// 一条画线发上去长什么样。
   ///

@@ -46,6 +46,8 @@ struct ChartPanel: View {
   var onSend: (() -> Void)?
   /// 发线此刻为什么发不了（没登录 / 图上没线）；nil 表示能发。
   var sendBlocked: String? = nil
+  var onAddCompare: (() -> Void)? = nil
+  var compareNames: [String: String] = [:]
 
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
@@ -98,6 +100,25 @@ struct ChartPanel: View {
           PanelRow(name: "分享", meta: "发图片，或把线发给朋友", divider: false,
                    onTap: share) { chevron }
             .accessibilityIdentifier("chart.share")
+        }
+      }
+
+      // 对比 K 线（`Kanpan/Kanpan/Compare/`）：最多三只，颜色跟皮肤色板走，不给选。
+      if let onAddCompare {
+        PanelGroupTitle(text: "对比")
+        PanelRow(name: "添加对比品种", onTap: { close(); onAddCompare() })
+          .disabled(prefs.compareSymbols.count >= 3)
+          .accessibilityIdentifier("compare.add")
+        ForEach(prefs.compareSymbols, id: \.self) { key in
+          PanelRow(name: compareNames[key] ?? String(key.split(separator: "/").last ?? "")) {
+            Button("移除") { store.update { $0.compareSymbols.removeAll { $0 == key } }; close() }
+              .font(PanelFont.meta).foregroundStyle(t.ink2)
+              .accessibilityIdentifier("compare.remove." + key)
+          }
+        }
+        if !prefs.compareSymbols.isEmpty {
+          PanelRow(name: "清除对比", divider: false, onTap: { store.update { $0.compareSymbols = [] }; close() })
+            .accessibilityIdentifier("compare.clear")
         }
       }
 

@@ -129,12 +129,13 @@ extension View {
                   onPickInterval: ((Interval) -> Void)? = nil,
                   onRecord: (() -> Void)? = nil,
                   onShare: (() -> Void)? = nil,
+                  onAddCompare: (() -> Void)? = nil, compareNames: [String: String] = [:],
                   onSend: (() -> Void)? = nil, sendBlocked: String? = nil) -> some View {
     sheet(item: panel) { which in
       PanelHost(store: store) {
         switch which {
         case .period: IntervalGridPanel(store: store, onPick: onPickInterval)
-        case .chart: ChartPanel(store: store, onRecord: onRecord, onShare: onShare, onSend: onSend, sendBlocked: sendBlocked)
+        case .chart: ChartPanel(store: store, onRecord: onRecord, onShare: onShare, onSend: onSend, sendBlocked: sendBlocked, onAddCompare: onAddCompare, compareNames: compareNames)
         }
       }
     }
