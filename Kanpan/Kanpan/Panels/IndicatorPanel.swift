@@ -26,7 +26,7 @@ struct IndicatorSections: View {
 
       // 上限写在标题里：满了再点第四个是「换一个」而不是「点不动」，先把规矩摆出来。
       PanelGroupTitle(text: "副图 · 同时最多三个")
-      ForEach([IndicatorID.vol, .macd, .rsi, .kdj, .srsi, .atr, .oi], id: \.self) { id in
+      ForEach(IndicatorID.allCases.filter { $0.placement == .sub }, id: \.self) { id in
         row(id)
       }
 
@@ -41,7 +41,7 @@ struct IndicatorSections: View {
   @ViewBuilder
   private func row(_ id: IndicatorID) -> some View {
     let on = prefs.isOn(id)
-    PanelRow(name: id.name, meta: IndicatorSections.hint(id), swatch: t.swatch(id)) {
+    PanelRow(name: id.name, swatch: t.swatch(id)) {
       PanelSwitch(isOn: on) {
         store.toggleIndicator(id)
       }
@@ -52,7 +52,7 @@ struct IndicatorSections: View {
     }
   }
 
-  /// 开着的指标底下这一块：参数步进器 +（手调过高度的副图才有的）一键还原。
+  /// 开着的指标底下这一块：参数输入框 +（手调过高度的副图才有的）一键还原。
   ///
   /// 原来这儿挂着「高度」三档。它和图上副图上沿那条把手是同一件事的两个入口，
   /// 两边还各说各话——拖过之后三档仍停在旧档位上，看着像没生效（第三批 16）。
@@ -105,9 +105,10 @@ struct IndicatorSections: View {
     case .macd: "平滑异同均线"
     case .rsi: "相对强弱"
     case .kdj: "随机指标"
-    case .srsi: "随机 RSI"
+    case .srsi: "随机强弱"
     case .atr: "平均真实波幅"
     case .oi: "持仓量"
+    case .lsr, .taker, .basis: id.name
     }
   }
 }

@@ -312,15 +312,68 @@ public actor BinanceREST {
                                startTime: Int64? = nil, endTime: Int64? = nil) async throws -> [OIPoint] {
     let url = hosts.openInterestHist(symbol: symbol, period: period, limit: min(limit, 500),
                                      startTime: startTime, endTime: endTime)
-    // 这个端点权重算 1（上游标的是 0），但它另有一条 1000 次 / 5 分钟的独立限制，
-    // 只按权重算等于不受限，翻长历史时会一路撞到 429（A.2）。
-    let data = try await fetch(url, weight: 1, quota: .openInterestHist)
+    // 这个端点权重算 1（上游标的是 0），但 `/futures/data/` 整族另有一条
+    // 1000 次 / 5 分钟的共享限制，只按权重算等于不受限，翻长历史时会一路撞到 429（A.2）。
+    let data = try await fetch(url, weight: 1, quota: .futuresData)
     let rows = try decode([OIHistDTO].self, data)
     guard rows.allSatisfy({ $0.symbol.uppercased() == symbol.uppercased()
       && $0.point.value.isFinite && $0.point.value >= 0 && $0.timestamp > 0 }) else {
       throw FeedError.badResponse("持仓量品种或数值无效")
     }
     return rows.map(\.point).sorted { $0.time < $1.time }
+  }
+
+  // ------------------------------------------------------------------ 多空比 / 主动买卖比 / 基差
+
+  // 这三条和持仓量是**同一族**（`/futures/data/*`）：权重 0、共用一条
+  // 1000 次 / 5 分钟的 IP 限制（`EndpointQuota.futuresData`），`period` 也是同一套
+  // 5m/15m/30m/1h/2h/4h/6h/12h/1d，`limit` 上限 500，历史只有近 30 天。
+  //
+  // 解析一律「字符串转不动就跳过这一条」，不整批判废：这一族的附带字段随时可能是
+  // 空串（`basis` 的 `annualizedBasisRate` 实测就一直是 `""`），为一个附带字段扔掉
+  // 整页数据，图上缺的是一整段曲线。
+  //
+  // 另外：网关不代理 `/futures/data/*`，所以这三条在网关线路下取不到，和持仓量今天
+  // 的处境一样——调用方要走空态，不要因此自动切线路。
+
+  /// 近 30 天的全市场多空账户数比。
+  public func globalLongShortAccountRatio(symbol: String, period: String, limit: Int = 500,
+                                          startTime: Int64? = nil, endTime: Int64? = nil) async throws -> [LongShortRatioPoint] {
+    let url = hosts.globalLongShortAccountRatio(symbol: symbol, period: period, limit: min(limit, 500),
+                                                startTime: startTime, endTime: endTime)
+    let data = try await fetch(url, weight: 0, quota: .futuresData)
+    let rows = try decode([LongShortRatioDTO].self, data)
+    // 响应带 `symbol`，对不上的行直接不要：宁可少几个点，也不能把别人的数画到这张图上。
+    return rows
+      .filter { $0.symbol.map { $0.uppercased() == symbol.uppercased() } ?? true }
+      .compactMap(\.point)
+      .sorted { $0.timeMs < $1.timeMs }
+  }
+
+  /// 近 30 天的主动买卖量比。响应里**没有品种字段**，认的是我们自己请求的那个。
+  public func takerLongShortRatio(symbol: String, period: String, limit: Int = 500,
+                                  startTime: Int64? = nil, endTime: Int64? = nil) async throws -> [TakerRatioPoint] {
+    let url = hosts.takerLongShortRatio(symbol: symbol, period: period, limit: min(limit, 500),
+                                        startTime: startTime, endTime: endTime)
+    let data = try await fetch(url, weight: 0, quota: .futuresData)
+    let rows = try decode([TakerRatioDTO].self, data)
+    return rows.compactMap(\.point).sorted { $0.timeMs < $1.timeMs }
+  }
+
+  /// 近 30 天的永续基差。参数是 `pair` + `contractType`，不是 `symbol`。
+  ///
+  /// USDT 本位永续这边 `pair` 和 `symbol` 长得一样（`BTCUSDT`），所以调用方照旧
+  /// 传品种名即可；真正不同的是交割合约，那时同一个 pair 下有好几条曲线。
+  public func basis(pair: String, contractType: String = "PERPETUAL", period: String, limit: Int = 500,
+                    startTime: Int64? = nil, endTime: Int64? = nil) async throws -> [BasisPoint] {
+    let url = hosts.basis(pair: pair, contractType: contractType, period: period, limit: min(limit, 500),
+                          startTime: startTime, endTime: endTime)
+    let data = try await fetch(url, weight: 0, quota: .futuresData)
+    let rows = try decode([BasisDTO].self, data)
+    return rows
+      .filter { $0.pair.map { $0.uppercased() == pair.uppercased() } ?? true }
+      .compactMap(\.point)
+      .sorted { $0.timeMs < $1.timeMs }
   }
 
   // ------------------------------------------------------------------ 纯函数

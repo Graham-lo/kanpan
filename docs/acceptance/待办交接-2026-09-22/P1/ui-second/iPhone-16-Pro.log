@@ -1,0 +1,779 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=C2F4461B-B8F9-45BD-BF67-8E4B0AA35EAA" -derivedDataPath /tmp/kanpan-p1-dd "-only-testing:KanpanUITests/ChartFoundationUITests/testExternalIndicatorsAndDepthRoundTrip" -test-timeouts-enabled YES -default-test-execution-time-allowance 480 -maximum-test-execution-time-allowance 900 -resultBundlePath /tmp/kanpan-p1-ui-results-2/iPhone-16-Pro.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanAccount: /Users/mdd/zhk/kanpan/KanpanAccount @ local
+  KanpanReview: /Users/mdd/zhk/kanpan/KanpanReview @ local
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+  KanpanNetwork: /Users/mdd/zhk/kanpan/KanpanNetwork @ local
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+
+Writing result bundle at path:
+	/tmp/kanpan-p1-ui-results-2/iPhone-16-Pro.xcresult
+
+2026-09-22 14:52:36.738430+0800 KanpanUITests-Runner[72379:4038734] [Default] Running tests...
+objc[72379]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x107f9c310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10688c398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-22 14:52:40.052.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 14:52:40.053.
+Test Suite 'ChartFoundationUITests' started at 2026-09-22 14:52:40.053.
+Test Case '-[KanpanUITests.ChartFoundationUITests testExternalIndicatorsAndDepthRoundTrip]' started.
+    t =     0.00s Start Test at 2026-09-22 14:52:40.053
+    t =     0.23s Set Up
+    t =     0.23s     Setting device orientation to Portrait
+    t =     0.23s         Device orientation changed to Portrait
+    t =     0.25s         Wait for com.apple.springboard to idle
+    t =     0.34s     Open com.mdd.kanpan
+    t =     0.34s         Launch com.mdd.kanpan
+2026-09-22 14:52:43.116 xcodebuild[71799:4025743] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 14:52:43.116 xcodebuild[71799:4025743] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    10.12s             Setting up automation session
+    t =    10.94s             Wait for com.mdd.kanpan to idle
+    t =    12.45s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =    13.52s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =    13.52s             Checking existence of `"chart.canvas" Other`
+    t =    14.75s     Checking existence of `"chart.canvas" Other`
+    t =    14.89s     Find the "chart.canvas" Other
+    t =    15.07s Checking existence of `"chart.canvas" Other`
+    t =    15.19s Find the "chart.canvas" Other
+    t =    15.21s Tap "interval.chart" Button
+    t =    15.21s     Wait for com.mdd.kanpan to idle
+    t =    15.21s     Find the "interval.chart" Button
+    t =    15.27s     Check for interrupting elements affecting "interval.chart" Button
+    t =    15.32s     Synthesize event
+    t =    15.73s     Wait for com.mdd.kanpan to idle
+    t =    15.88s Waiting 5.0s for "panel.content" ScrollView to exist
+    t =    16.95s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.content" ScrollView`
+    t =    16.95s         Checking existence of `"panel.content" ScrollView`
+    t =    17.09s Find the "panel.content" ScrollView
+    t =    17.27s Checking existence of `"indicator.switch.VOL" Button`
+    t =    17.40s Find the "indicator.switch.VOL" Button
+    t =    17.58s Checking existence of `"indicator.switch.VOL" Button`
+    t =    17.94s Find the "indicator.switch.VOL" Button
+    t =    18.10s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    18.10s     Wait for com.mdd.kanpan to idle
+    t =    18.10s     Find the "panel.content" ScrollView
+    t =    18.17s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    18.21s     Synthesize event
+    t =    18.21s         Find the "panel.content" ScrollView
+    t =    18.38s         Find the "panel.content" ScrollView
+    t =    18.49s         Find the "panel.content" ScrollView
+    t =    18.70s         Find the "panel.content" ScrollView
+    t =    18.84s         Find the "panel.content" ScrollView
+    t =    19.87s     Wait for com.mdd.kanpan to idle
+    t =    21.52s Find the "panel.content" ScrollView
+    t =    21.58s Checking existence of `"indicator.switch.VOL" Button`
+    t =    21.66s Find the "indicator.switch.VOL" Button
+    t =    21.76s Find the "indicator.switch.VOL" Button
+    t =    21.90s Tap "indicator.switch.VOL" Button
+    t =    21.90s     Wait for com.mdd.kanpan to idle
+    t =    21.90s     Find the "indicator.switch.VOL" Button
+    t =    21.96s     Check for interrupting elements affecting "indicator.switch.VOL" Button
+    t =    22.01s     Synthesize event
+    t =    22.31s     Wait for com.mdd.kanpan to idle
+    t =    23.05s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    24.12s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    24.12s         Checking existence of `"panel.header" StaticText`
+    t =    24.36s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    24.36s     Wait for com.mdd.kanpan to idle
+    t =    24.36s     Find the "panel.header" StaticText
+    t =    24.52s     Check for interrupting elements affecting "panel.header" StaticText
+    t =    24.65s     Synthesize event
+    t =    24.66s         Find the "panel.header" StaticText
+    t =    24.83s         Find the "panel.header" StaticText
+    t =    25.00s         Find the Window (First Match)
+    t =    25.08s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    25.10s         Find the "panel.header" StaticText
+    t =    26.45s     Wait for com.mdd.kanpan to idle
+    t =    28.21s Checking existence of `"panel.header" StaticText`
+    t =    28.33s Tap "interval.chart" Button
+    t =    28.33s     Wait for com.mdd.kanpan to idle
+    t =    28.33s     Find the "interval.chart" Button
+    t =    28.40s     Check for interrupting elements affecting "interval.chart" Button
+    t =    28.41s     Synthesize event
+    t =    28.69s     Wait for com.mdd.kanpan to idle
+    t =    29.07s Waiting 5.0s for "panel.content" ScrollView to exist
+    t =    30.14s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.content" ScrollView`
+    t =    30.14s         Checking existence of `"panel.content" ScrollView`
+    t =    30.37s Find the "panel.content" ScrollView
+    t =    30.45s Checking existence of `"indicator.switch.OI" Button`
+    t =    30.50s Find the "indicator.switch.OI" Button
+    t =    30.57s Checking existence of `"indicator.switch.OI" Button`
+    t =    30.71s Find the "indicator.switch.OI" Button
+    t =    30.98s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    30.98s     Wait for com.mdd.kanpan to idle
+    t =    31.00s     Find the "panel.content" ScrollView
+    t =    31.08s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    31.20s     Synthesize event
+    t =    31.20s         Find the "panel.content" ScrollView
+    t =    31.51s         Find the "panel.content" ScrollView
+    t =    31.78s         Find the "panel.content" ScrollView
+    t =    32.21s         Find the "panel.content" ScrollView
+    t =    32.47s         Find the "panel.content" ScrollView
+    t =    33.34s     Wait for com.mdd.kanpan to idle
+    t =    34.99s Find the "panel.content" ScrollView
+    t =    35.07s Checking existence of `"indicator.switch.OI" Button`
+    t =    35.27s Find the "indicator.switch.OI" Button
+    t =    35.39s Find the "indicator.switch.OI" Button
+    t =    35.46s Checking existence of `"indicator.switch.OI" Button`
+    t =    35.58s Find the "indicator.switch.OI" Button
+    t =    35.77s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    35.77s     Wait for com.mdd.kanpan to idle
+    t =    35.77s     Find the "panel.content" ScrollView
+    t =    35.85s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    35.99s     Synthesize event
+    t =    35.99s         Find the "panel.content" ScrollView
+    t =    36.10s         Find the "panel.content" ScrollView
+    t =    36.30s         Find the "panel.content" ScrollView
+    t =    36.44s         Find the "panel.content" ScrollView
+    t =    36.57s         Find the "panel.content" ScrollView
+    t =    37.45s     Wait for com.mdd.kanpan to idle
+    t =    39.11s Find the "panel.content" ScrollView
+    t =    39.18s Checking existence of `"indicator.switch.OI" Button`
+    t =    39.23s Find the "indicator.switch.OI" Button
+    t =    39.34s Find the "indicator.switch.OI" Button
+    t =    39.40s Tap "indicator.switch.OI" Button
+    t =    39.40s     Wait for com.mdd.kanpan to idle
+    t =    39.41s     Find the "indicator.switch.OI" Button
+    t =    39.45s     Check for interrupting elements affecting "indicator.switch.OI" Button
+    t =    39.52s     Synthesize event
+    t =    39.82s     Wait for com.mdd.kanpan to idle
+    t =    40.54s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    41.62s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    41.62s         Checking existence of `"panel.header" StaticText`
+    t =    41.69s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    41.69s     Wait for com.mdd.kanpan to idle
+    t =    41.69s     Find the "panel.header" StaticText
+    t =    41.74s     Check for interrupting elements affecting "panel.header" StaticText
+    t =    41.81s     Synthesize event
+    t =    41.81s         Find the "panel.header" StaticText
+    t =    41.92s         Find the "panel.header" StaticText
+    t =    41.98s         Find the Window (First Match)
+    t =    41.98s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    41.99s         Find the "panel.header" StaticText
+    t =    43.23s     Wait for com.mdd.kanpan to idle
+    t =    45.01s Checking existence of `"panel.header" StaticText`
+    t =    45.11s Tap "interval.chart" Button
+    t =    45.11s     Wait for com.mdd.kanpan to idle
+    t =    45.11s     Find the "interval.chart" Button
+    t =    45.25s     Check for interrupting elements affecting "interval.chart" Button
+    t =    45.30s     Synthesize event
+    t =    45.59s     Wait for com.mdd.kanpan to idle
+    t =    45.96s Waiting 5.0s for "panel.content" ScrollView to exist
+    t =    47.03s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.content" ScrollView`
+    t =    47.03s         Checking existence of `"panel.content" ScrollView`
+    t =    47.18s Find the "panel.content" ScrollView
+    t =    47.30s Checking existence of `"indicator.switch.MACD" Button`
+    t =    47.41s Find the "indicator.switch.MACD" Button
+    t =    47.51s Checking existence of `"indicator.switch.MACD" Button`
+    t =    47.66s Find the "indicator.switch.MACD" Button
+    t =    47.78s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    47.78s     Wait for com.mdd.kanpan to idle
+    t =    47.78s     Find the "panel.content" ScrollView
+    t =    48.00s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    48.08s     Synthesize event
+    t =    48.08s         Find the "panel.content" ScrollView
+    t =    48.29s         Find the "panel.content" ScrollView
+    t =    48.44s         Find the "panel.content" ScrollView
+    t =    48.58s         Find the "panel.content" ScrollView
+    t =    48.80s         Find the "panel.content" ScrollView
+    t =    49.74s     Wait for com.mdd.kanpan to idle
+    t =    51.45s Find the "panel.content" ScrollView
+    t =    51.62s Checking existence of `"indicator.switch.MACD" Button`
+    t =    51.81s Find the "indicator.switch.MACD" Button
+    t =    52.02s Find the "indicator.switch.MACD" Button
+    t =    52.19s Tap "indicator.switch.MACD" Button
+    t =    52.19s     Wait for com.mdd.kanpan to idle
+    t =    52.19s     Find the "indicator.switch.MACD" Button
+    t =    52.29s     Check for interrupting elements affecting "indicator.switch.MACD" Button
+    t =    52.35s     Synthesize event
+    t =    52.66s     Wait for com.mdd.kanpan to idle
+    t =    53.38s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    54.45s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    54.45s         Checking existence of `"panel.header" StaticText`
+    t =    54.76s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    54.76s     Wait for com.mdd.kanpan to idle
+    t =    54.77s     Find the "panel.header" StaticText
+    t =    54.92s     Check for interrupting elements affecting "panel.header" StaticText
+    t =    55.07s     Synthesize event
+    t =    55.07s         Find the "panel.header" StaticText
+    t =    55.16s         Find the "panel.header" StaticText
+    t =    55.21s         Find the Window (First Match)
+    t =    55.22s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    55.23s         Find the "panel.header" StaticText
+    t =    56.50s     Wait for com.mdd.kanpan to idle
+    t =    58.28s Checking existence of `"panel.header" StaticText`
+    t =    58.37s Tap "interval.chart" Button
+    t =    58.37s     Wait for com.mdd.kanpan to idle
+    t =    58.37s     Find the "interval.chart" Button
+    t =    58.49s     Check for interrupting elements affecting "interval.chart" Button
+    t =    58.57s     Synthesize event
+    t =    58.87s     Wait for com.mdd.kanpan to idle
+    t =    59.23s Waiting 5.0s for "panel.content" ScrollView to exist
+    t =    60.30s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.content" ScrollView`
+    t =    60.30s         Checking existence of `"panel.content" ScrollView`
+    t =    60.43s Find the "panel.content" ScrollView
+    t =    60.60s Checking existence of `"indicator.switch.LSR" Button`
+    t =    60.73s Find the "indicator.switch.LSR" Button
+    t =    60.90s Checking existence of `"indicator.switch.LSR" Button`
+    t =    61.06s Find the "indicator.switch.LSR" Button
+    t =    61.19s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    61.19s     Wait for com.mdd.kanpan to idle
+    t =    61.19s     Find the "panel.content" ScrollView
+    t =    61.24s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    61.34s     Synthesize event
+    t =    61.35s         Find the "panel.content" ScrollView
+    t =    61.59s         Find the "panel.content" ScrollView
+    t =    61.81s         Find the "panel.content" ScrollView
+    t =    61.97s         Find the "panel.content" ScrollView
+    t =    62.10s         Find the "panel.content" ScrollView
+    t =    63.00s     Wait for com.mdd.kanpan to idle
+    t =    64.67s Find the "panel.content" ScrollView
+    t =    64.75s Checking existence of `"indicator.switch.LSR" Button`
+    t =    64.93s Find the "indicator.switch.LSR" Button
+    t =    65.17s Find the "indicator.switch.LSR" Button
+    t =    65.23s Checking existence of `"indicator.switch.LSR" Button`
+    t =    65.42s Find the "indicator.switch.LSR" Button
+    t =    65.59s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    65.59s     Wait for com.mdd.kanpan to idle
+    t =    65.60s     Find the "panel.content" ScrollView
+    t =    65.72s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    65.79s     Synthesize event
+    t =    65.79s         Find the "panel.content" ScrollView
+    t =    65.85s         Find the "panel.content" ScrollView
+    t =    65.98s         Find the "panel.content" ScrollView
+    t =    66.10s         Find the "panel.content" ScrollView
+    t =    66.29s         Find the "panel.content" ScrollView
+    t =    67.09s     Wait for com.mdd.kanpan to idle
+    t =    68.75s Find the "panel.content" ScrollView
+    t =    68.94s Checking existence of `"indicator.switch.LSR" Button`
+    t =    69.07s Find the "indicator.switch.LSR" Button
+    t =    69.29s Find the "indicator.switch.LSR" Button
+    t =    69.47s Tap "indicator.switch.LSR" Button
+    t =    69.47s     Wait for com.mdd.kanpan to idle
+    t =    69.47s     Find the "indicator.switch.LSR" Button
+    t =    69.63s     Check for interrupting elements affecting "indicator.switch.LSR" Button
+    t =    69.79s     Synthesize event
+    t =    70.11s     Wait for com.mdd.kanpan to idle
+    t =    70.86s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    71.92s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    71.92s         Checking existence of `"panel.header" StaticText`
+    t =    72.21s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    72.21s     Wait for com.mdd.kanpan to idle
+    t =    72.21s     Find the "panel.header" StaticText
+    t =    72.44s     Check for interrupting elements affecting "panel.header" StaticText
+    t =    72.49s     Synthesize event
+    t =    72.49s         Find the "panel.header" StaticText
+    t =    72.80s         Find the "panel.header" StaticText
+    t =    72.96s         Find the Window (First Match)
+    t =    73.02s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    73.04s         Find the "panel.header" StaticText
+    t =    74.45s     Wait for com.mdd.kanpan to idle
+    t =    76.15s Checking existence of `"panel.header" StaticText`
+    t =    76.20s Tap "interval.chart" Button
+    t =    76.20s     Wait for com.mdd.kanpan to idle
+    t =    76.20s     Find the "interval.chart" Button
+    t =    76.23s     Check for interrupting elements affecting "interval.chart" Button
+    t =    76.24s     Synthesize event
+    t =    76.53s     Wait for com.mdd.kanpan to idle
+    t =    76.90s Waiting 5.0s for "panel.content" ScrollView to exist
+    t =    77.94s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.content" ScrollView`
+    t =    77.94s         Checking existence of `"panel.content" ScrollView`
+    t =    78.05s Find the "panel.content" ScrollView
+    t =    78.17s Checking existence of `"indicator.switch.TAKER" Button`
+    t =    78.27s Find the "indicator.switch.TAKER" Button
+    t =    78.38s Checking existence of `"indicator.switch.TAKER" Button`
+    t =    78.49s Find the "indicator.switch.TAKER" Button
+    t =    78.61s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    78.61s     Wait for com.mdd.kanpan to idle
+    t =    78.61s     Find the "panel.content" ScrollView
+    t =    78.76s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    78.84s     Synthesize event
+    t =    78.84s         Find the "panel.content" ScrollView
+    t =    79.01s         Find the "panel.content" ScrollView
+    t =    79.11s         Find the "panel.content" ScrollView
+    t =    79.21s         Find the "panel.content" ScrollView
+    t =    79.28s         Find the "panel.content" ScrollView
+    t =    80.08s     Wait for com.mdd.kanpan to idle
+    t =    81.74s Find the "panel.content" ScrollView
+    t =    81.80s Checking existence of `"indicator.switch.TAKER" Button`
+    t =    81.85s Find the "indicator.switch.TAKER" Button
+    t =    82.01s Checking existence of `"indicator.switch.TAKER" Button`
+    t =    82.13s Find the "indicator.switch.TAKER" Button
+    t =    82.19s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    82.19s     Wait for com.mdd.kanpan to idle
+    t =    82.19s     Find the "panel.content" ScrollView
+    t =    82.24s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    82.30s     Synthesize event
+    t =    82.30s         Find the "panel.content" ScrollView
+    t =    82.35s         Find the "panel.content" ScrollView
+    t =    82.52s         Find the "panel.content" ScrollView
+    t =    82.66s         Find the "panel.content" ScrollView
+    t =    82.80s         Find the "panel.content" ScrollView
+    t =    83.64s     Wait for com.mdd.kanpan to idle
+    t =    85.30s Find the "panel.content" ScrollView
+    t =    85.46s Checking existence of `"indicator.switch.TAKER" Button`
+    t =    85.55s Find the "indicator.switch.TAKER" Button
+    t =    85.84s Find the "indicator.switch.TAKER" Button
+    t =    86.03s Tap "indicator.switch.TAKER" Button
+    t =    86.03s     Wait for com.mdd.kanpan to idle
+    t =    86.03s     Find the "indicator.switch.TAKER" Button
+    t =    86.20s     Check for interrupting elements affecting "indicator.switch.TAKER" Button
+    t =    86.27s     Synthesize event
+    t =    86.57s     Wait for com.mdd.kanpan to idle
+    t =    87.29s Waiting 5.0s for "panel.header" StaticText to exist
+    t =    88.37s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =    88.37s         Checking existence of `"panel.header" StaticText`
+    t =    88.51s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    88.51s     Wait for com.mdd.kanpan to idle
+    t =    88.51s     Find the "panel.header" StaticText
+    t =    88.66s     Check for interrupting elements affecting "panel.header" StaticText
+    t =    88.80s     Synthesize event
+    t =    88.80s         Find the "panel.header" StaticText
+    t =    88.91s         Find the "panel.header" StaticText
+    t =    88.97s         Find the Window (First Match)
+    t =    88.99s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    89.10s         Find the "panel.header" StaticText
+    t =    90.39s     Wait for com.mdd.kanpan to idle
+    t =    92.10s Checking existence of `"panel.header" StaticText`
+    t =    92.21s Tap "interval.chart" Button
+    t =    92.21s     Wait for com.mdd.kanpan to idle
+    t =    92.22s     Find the "interval.chart" Button
+    t =    92.30s     Check for interrupting elements affecting "interval.chart" Button
+    t =    92.39s     Synthesize event
+    t =    92.69s     Wait for com.mdd.kanpan to idle
+    t =    93.04s Waiting 5.0s for "panel.content" ScrollView to exist
+    t =    94.10s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.content" ScrollView`
+    t =    94.10s         Checking existence of `"panel.content" ScrollView`
+    t =    94.28s Find the "panel.content" ScrollView
+    t =    94.42s Checking existence of `"indicator.switch.BASIS" Button`
+    t =    94.52s Find the "indicator.switch.BASIS" Button
+    t =    94.63s Checking existence of `"indicator.switch.BASIS" Button`
+    t =    94.68s Find the "indicator.switch.BASIS" Button
+    t =    94.73s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    94.73s     Wait for com.mdd.kanpan to idle
+    t =    94.74s     Find the "panel.content" ScrollView
+    t =    94.80s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    94.94s     Synthesize event
+    t =    94.94s         Find the "panel.content" ScrollView
+    t =    95.10s         Find the "panel.content" ScrollView
+    t =    95.23s         Find the "panel.content" ScrollView
+    t =    95.32s         Find the "panel.content" ScrollView
+    t =    95.46s         Find the "panel.content" ScrollView
+    t =    96.28s     Wait for com.mdd.kanpan to idle
+    t =    97.94s Find the "panel.content" ScrollView
+    t =    98.02s Checking existence of `"indicator.switch.BASIS" Button`
+    t =    98.10s Find the "indicator.switch.BASIS" Button
+    t =    98.18s Checking existence of `"indicator.switch.BASIS" Button`
+    t =    98.26s Find the "indicator.switch.BASIS" Button
+    t =    98.38s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =    98.38s     Wait for com.mdd.kanpan to idle
+    t =    98.38s     Find the "panel.content" ScrollView
+    t =    98.44s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    98.52s     Synthesize event
+    t =    98.52s         Find the "panel.content" ScrollView
+    t =    98.60s         Find the "panel.content" ScrollView
+    t =    98.67s         Find the "panel.content" ScrollView
+    t =    98.74s         Find the "panel.content" ScrollView
+    t =    98.80s         Find the "panel.content" ScrollView
+    t =    99.59s     Wait for com.mdd.kanpan to idle
+    t =   101.24s Find the "panel.content" ScrollView
+    t =   101.36s Checking existence of `"indicator.switch.BASIS" Button`
+    t =   101.49s Find the "indicator.switch.BASIS" Button
+    t =   101.60s Find the "indicator.switch.BASIS" Button
+    t =   101.75s Tap "indicator.switch.BASIS" Button
+    t =   101.75s     Wait for com.mdd.kanpan to idle
+    t =   101.77s     Find the "indicator.switch.BASIS" Button
+    t =   101.88s     Check for interrupting elements affecting "indicator.switch.BASIS" Button
+    t =   101.95s     Synthesize event
+    t =   102.28s     Wait for com.mdd.kanpan to idle
+    t =   103.01s Waiting 5.0s for "panel.header" StaticText to exist
+    t =   104.04s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =   104.04s         Checking existence of `"panel.header" StaticText`
+    t =   104.22s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   104.22s     Wait for com.mdd.kanpan to idle
+    t =   104.22s     Find the "panel.header" StaticText
+    t =   104.33s     Check for interrupting elements affecting "panel.header" StaticText
+    t =   104.42s     Synthesize event
+    t =   104.42s         Find the "panel.header" StaticText
+    t =   104.54s         Find the "panel.header" StaticText
+    t =   104.64s         Find the Window (First Match)
+    t =   104.66s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =   104.68s         Find the "panel.header" StaticText
+    t =   106.08s     Wait for com.mdd.kanpan to idle
+    t =   107.81s Checking existence of `"panel.header" StaticText`
+    t =   107.92s Checking existence of `"chart.canvas" Other`
+    t =   107.96s Find the "chart.canvas" Other
+    t =   109.02s Checking existence of `"chart.canvas" Other`
+    t =   109.06s Find the "chart.canvas" Other
+    t =   109.12s Find the Target Application 'com.mdd.kanpan'
+    t =   109.24s Added attachment named '三副图-多空比-主动买卖比-基差'
+    t =   109.24s Tap "interval.chart" Button
+    t =   109.24s     Wait for com.mdd.kanpan to idle
+    t =   109.24s     Find the "interval.chart" Button
+    t =   109.27s     Check for interrupting elements affecting "interval.chart" Button
+    t =   109.30s     Synthesize event
+    t =   109.59s     Wait for com.mdd.kanpan to idle
+    t =   109.97s Waiting 5.0s for "panel.content" ScrollView to exist
+    t =   111.01s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.content" ScrollView`
+    t =   111.01s         Checking existence of `"panel.content" ScrollView`
+    t =   111.13s Find the "panel.content" ScrollView
+    t =   111.21s Checking existence of `"indicator.switch.OI" Button`
+    t =   111.34s Find the "indicator.switch.OI" Button
+    t =   111.45s Checking existence of `"indicator.switch.OI" Button`
+    t =   111.54s Find the "indicator.switch.OI" Button
+    t =   111.66s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   111.66s     Wait for com.mdd.kanpan to idle
+    t =   111.66s     Find the "panel.content" ScrollView
+    t =   111.73s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =   111.80s     Synthesize event
+    t =   111.80s         Find the "panel.content" ScrollView
+    t =   111.93s         Find the "panel.content" ScrollView
+    t =   112.07s         Find the "panel.content" ScrollView
+    t =   112.23s         Find the "panel.content" ScrollView
+    t =   112.33s         Find the "panel.content" ScrollView
+    t =   113.18s     Wait for com.mdd.kanpan to idle
+    t =   114.84s Find the "panel.content" ScrollView
+    t =   114.99s Checking existence of `"indicator.switch.OI" Button`
+    t =   115.11s Find the "indicator.switch.OI" Button
+    t =   115.31s Find the "indicator.switch.OI" Button
+    t =   115.43s Tap "indicator.switch.OI" Button
+    t =   115.43s     Wait for com.mdd.kanpan to idle
+    t =   115.43s     Find the "indicator.switch.OI" Button
+    t =   115.50s     Check for interrupting elements affecting "indicator.switch.OI" Button
+    t =   115.57s     Synthesize event
+    t =   115.89s     Wait for com.mdd.kanpan to idle
+    t =   116.65s Waiting 5.0s for "panel.header" StaticText to exist
+    t =   117.68s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =   117.68s         Checking existence of `"panel.header" StaticText`
+    t =   117.88s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   117.88s     Wait for com.mdd.kanpan to idle
+    t =   117.88s     Find the "panel.header" StaticText
+    t =   117.97s     Check for interrupting elements affecting "panel.header" StaticText
+    t =   118.03s     Synthesize event
+    t =   118.03s         Find the "panel.header" StaticText
+    t =   118.27s         Find the "panel.header" StaticText
+    t =   118.44s         Find the Window (First Match)
+    t =   118.45s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =   118.45s         Find the "panel.header" StaticText
+    t =   119.76s     Wait for com.mdd.kanpan to idle
+    t =   121.49s Checking existence of `"panel.header" StaticText`
+    t =   121.55s Checking existence of `"chart.canvas" Other`
+    t =   121.57s Find the "chart.canvas" Other
+    t =   121.59s Checking existence of `"chart.canvas" Other`
+    t =   121.60s Find the "chart.canvas" Other
+    t =   121.62s Tap "interval.chart" Button
+    t =   121.62s     Wait for com.mdd.kanpan to idle
+    t =   121.62s     Find the "interval.chart" Button
+    t =   121.67s     Check for interrupting elements affecting "interval.chart" Button
+    t =   121.69s     Synthesize event
+    t =   121.99s     Wait for com.mdd.kanpan to idle
+    t =   122.35s Waiting 5.0s for "panel.content" ScrollView to exist
+    t =   123.39s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.content" ScrollView`
+    t =   123.39s         Checking existence of `"panel.content" ScrollView`
+    t =   123.49s Find the "panel.content" ScrollView
+    t =   123.62s Checking existence of `"indicator.switch.OI" Button`
+    t =   123.71s Find the "indicator.switch.OI" Button
+    t =   123.92s Checking existence of `"indicator.switch.OI" Button`
+    t =   124.02s Find the "indicator.switch.OI" Button
+    t =   124.11s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   124.11s     Wait for com.mdd.kanpan to idle
+    t =   124.11s     Find the "panel.content" ScrollView
+    t =   124.21s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =   124.27s     Synthesize event
+    t =   124.28s         Find the "panel.content" ScrollView
+    t =   124.42s         Find the "panel.content" ScrollView
+    t =   124.53s         Find the "panel.content" ScrollView
+    t =   124.63s         Find the "panel.content" ScrollView
+    t =   124.74s         Find the "panel.content" ScrollView
+    t =   125.63s     Wait for com.mdd.kanpan to idle
+    t =   127.28s Find the "panel.content" ScrollView
+    t =   127.40s Checking existence of `"indicator.switch.OI" Button`
+    t =   127.63s Find the "indicator.switch.OI" Button
+    t =   127.73s Find the "indicator.switch.OI" Button
+    t =   127.93s Tap "indicator.switch.OI" Button
+    t =   127.93s     Wait for com.mdd.kanpan to idle
+    t =   127.93s     Find the "indicator.switch.OI" Button
+    t =   128.00s     Check for interrupting elements affecting "indicator.switch.OI" Button
+    t =   128.08s     Synthesize event
+    t =   128.39s     Wait for com.mdd.kanpan to idle
+    t =   129.11s Waiting 5.0s for "panel.header" StaticText to exist
+    t =   130.14s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =   130.14s         Checking existence of `"panel.header" StaticText`
+    t =   130.31s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   130.31s     Wait for com.mdd.kanpan to idle
+    t =   130.32s     Find the "panel.header" StaticText
+    t =   130.42s     Check for interrupting elements affecting "panel.header" StaticText
+    t =   130.49s     Synthesize event
+    t =   130.49s         Find the "panel.header" StaticText
+    t =   130.69s         Find the "panel.header" StaticText
+    t =   130.79s         Find the Window (First Match)
+    t =   130.81s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =   130.82s         Find the "panel.header" StaticText
+    t =   132.08s     Wait for com.mdd.kanpan to idle
+    t =   133.88s Checking existence of `"panel.header" StaticText`
+    t =   134.02s Tap "interval.chart" Button
+    t =   134.02s     Wait for com.mdd.kanpan to idle
+    t =   134.02s     Find the "interval.chart" Button
+    t =   134.05s     Check for interrupting elements affecting "interval.chart" Button
+    t =   134.07s     Synthesize event
+    t =   134.36s     Wait for com.mdd.kanpan to idle
+    t =   134.71s Waiting 5.0s for "panel.content" ScrollView to exist
+    t =   135.74s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.content" ScrollView`
+    t =   135.74s         Checking existence of `"panel.content" ScrollView`
+    t =   135.92s Find the "panel.content" ScrollView
+    t =   136.12s Checking existence of `"indicator.switch.LSR" Button`
+    t =   136.21s Find the "indicator.switch.LSR" Button
+    t =   136.45s Checking existence of `"indicator.switch.LSR" Button`
+    t =   136.51s Find the "indicator.switch.LSR" Button
+    t =   136.75s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   136.75s     Wait for com.mdd.kanpan to idle
+    t =   136.75s     Find the "panel.content" ScrollView
+    t =   136.89s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =   137.11s     Synthesize event
+    t =   137.11s         Find the "panel.content" ScrollView
+    t =   137.20s         Find the "panel.content" ScrollView
+    t =   137.28s         Find the "panel.content" ScrollView
+    t =   137.35s         Find the "panel.content" ScrollView
+    t =   137.42s         Find the "panel.content" ScrollView
+    t =   138.23s     Wait for com.mdd.kanpan to idle
+    t =   139.89s Find the "panel.content" ScrollView
+    t =   140.01s Checking existence of `"indicator.switch.LSR" Button`
+    t =   140.08s Find the "indicator.switch.LSR" Button
+    t =   140.19s Find the "indicator.switch.LSR" Button
+    t =   140.27s Checking existence of `"indicator.switch.LSR" Button`
+    t =   140.35s Find the "indicator.switch.LSR" Button
+    t =   140.48s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   140.48s     Wait for com.mdd.kanpan to idle
+    t =   140.48s     Find the "panel.content" ScrollView
+    t =   140.60s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =   140.68s     Synthesize event
+    t =   140.70s         Find the "panel.content" ScrollView
+    t =   140.82s         Find the "panel.content" ScrollView
+    t =   140.92s         Find the "panel.content" ScrollView
+    t =   141.07s         Find the "panel.content" ScrollView
+    t =   141.14s         Find the "panel.content" ScrollView
+    t =   141.95s     Wait for com.mdd.kanpan to idle
+    t =   143.60s Find the "panel.content" ScrollView
+    t =   143.66s Checking existence of `"indicator.switch.LSR" Button`
+    t =   143.72s Find the "indicator.switch.LSR" Button
+    t =   143.82s Find the "indicator.switch.LSR" Button
+    t =   143.91s Tap "indicator.switch.LSR" Button
+    t =   143.91s     Wait for com.mdd.kanpan to idle
+    t =   143.91s     Find the "indicator.switch.LSR" Button
+    t =   143.99s     Check for interrupting elements affecting "indicator.switch.LSR" Button
+    t =   144.08s     Synthesize event
+    t =   144.39s     Wait for com.mdd.kanpan to idle
+    t =   145.11s Waiting 5.0s for "panel.header" StaticText to exist
+    t =   146.14s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =   146.14s         Checking existence of `"panel.header" StaticText`
+    t =   146.29s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   146.29s     Wait for com.mdd.kanpan to idle
+    t =   146.29s     Find the "panel.header" StaticText
+    t =   146.36s     Check for interrupting elements affecting "panel.header" StaticText
+    t =   146.43s     Synthesize event
+    t =   146.43s         Find the "panel.header" StaticText
+    t =   146.58s         Find the "panel.header" StaticText
+    t =   146.76s         Find the Window (First Match)
+    t =   146.78s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =   146.79s         Find the "panel.header" StaticText
+    t =   148.01s     Wait for com.mdd.kanpan to idle
+    t =   149.75s Checking existence of `"panel.header" StaticText`
+    t =   149.80s Tap "interval.chart" Button
+    t =   149.80s     Wait for com.mdd.kanpan to idle
+    t =   149.80s     Find the "interval.chart" Button
+    t =   150.05s     Check for interrupting elements affecting "interval.chart" Button
+    t =   150.10s     Synthesize event
+    t =   150.39s     Wait for com.mdd.kanpan to idle
+    t =   150.76s Waiting 5.0s for "panel.content" ScrollView to exist
+    t =   151.81s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.content" ScrollView`
+    t =   151.81s         Checking existence of `"panel.content" ScrollView`
+    t =   152.05s Find the "panel.content" ScrollView
+    t =   152.18s Checking existence of `"chart.depth" Button`
+    t =   152.24s Find the "chart.depth" Button
+    t =   152.48s Checking existence of `"chart.depth" Button`
+    t =   152.61s Find the "chart.depth" Button
+    t =   152.70s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   152.70s     Wait for com.mdd.kanpan to idle
+    t =   152.70s     Find the "panel.content" ScrollView
+    t =   152.80s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =   152.91s     Synthesize event
+    t =   152.91s         Find the "panel.content" ScrollView
+    t =   153.01s         Find the "panel.content" ScrollView
+    t =   153.11s         Find the "panel.content" ScrollView
+    t =   153.21s         Find the "panel.content" ScrollView
+    t =   153.28s         Find the "panel.content" ScrollView
+    t =   154.11s     Wait for com.mdd.kanpan to idle
+    t =   155.78s Find the "panel.content" ScrollView
+    t =   155.94s Checking existence of `"chart.depth" Button`
+    t =   156.07s Find the "chart.depth" Button
+    t =   156.17s Checking existence of `"chart.depth" Button`
+    t =   156.29s Find the "chart.depth" Button
+    t =   156.38s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   156.38s     Wait for com.mdd.kanpan to idle
+    t =   156.38s     Find the "panel.content" ScrollView
+    t =   156.52s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =   156.60s     Synthesize event
+    t =   156.60s         Find the "panel.content" ScrollView
+    t =   156.67s         Find the "panel.content" ScrollView
+    t =   156.83s         Find the "panel.content" ScrollView
+    t =   156.99s         Find the "panel.content" ScrollView
+    t =   157.06s         Find the "panel.content" ScrollView
+    t =   157.89s     Wait for com.mdd.kanpan to idle
+    t =   159.54s Find the "panel.content" ScrollView
+    t =   159.63s Checking existence of `"chart.depth" Button`
+    t =   159.76s Find the "chart.depth" Button
+    t =   159.90s Checking existence of `"chart.depth" Button`
+    t =   159.98s Find the "chart.depth" Button
+    t =   160.21s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   160.21s     Wait for com.mdd.kanpan to idle
+    t =   160.24s     Find the "panel.content" ScrollView
+    t =   160.37s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =   160.50s     Synthesize event
+    t =   160.50s         Find the "panel.content" ScrollView
+    t =   160.62s         Find the "panel.content" ScrollView
+    t =   160.73s         Find the "panel.content" ScrollView
+    t =   160.88s         Find the "panel.content" ScrollView
+    t =   160.96s         Find the "panel.content" ScrollView
+    t =   161.75s     Wait for com.mdd.kanpan to idle
+    t =   163.42s Find the "panel.content" ScrollView
+    t =   163.62s Checking existence of `"chart.depth" Button`
+    t =   163.75s Find the "chart.depth" Button
+    t =   163.93s Checking existence of `"chart.depth" Button`
+    t =   163.98s Find the "chart.depth" Button
+    t =   164.07s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   164.07s     Wait for com.mdd.kanpan to idle
+    t =   164.07s     Find the "panel.content" ScrollView
+    t =   164.20s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =   164.41s     Synthesize event
+    t =   164.41s         Find the "panel.content" ScrollView
+    t =   164.67s         Find the "panel.content" ScrollView
+    t =   164.81s         Find the "panel.content" ScrollView
+    t =   165.07s         Find the "panel.content" ScrollView
+    t =   165.21s         Find the "panel.content" ScrollView
+    t =   166.14s     Wait for com.mdd.kanpan to idle
+    t =   167.82s Find the "panel.content" ScrollView
+    t =   168.03s Checking existence of `"chart.depth" Button`
+    t =   168.17s Find the "chart.depth" Button
+    t =   168.45s Checking existence of `"chart.depth" Button`
+    t =   168.67s Find the "chart.depth" Button
+    t =   168.92s Press "panel.content" ScrollView[0.50, 0.80] for 0.1 seconds, then drag to "panel.content" ScrollView[0.50, 0.30] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   168.92s     Wait for com.mdd.kanpan to idle
+    t =   169.09s     Find the "panel.content" ScrollView
+    t =   169.21s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =   169.33s     Synthesize event
+    t =   169.33s         Find the "panel.content" ScrollView
+    t =   169.39s         Find the "panel.content" ScrollView
+    t =   169.61s         Find the "panel.content" ScrollView
+    t =   169.85s         Find the "panel.content" ScrollView
+    t =   170.11s         Find the "panel.content" ScrollView
+    t =   171.09s     Wait for com.mdd.kanpan to idle
+    t =   171.77s Find the "panel.content" ScrollView
+    t =   171.92s Checking existence of `"chart.depth" Button`
+    t =   172.09s Find the "chart.depth" Button
+    t =   172.29s Find the "chart.depth" Button
+    t =   172.50s Tap "chart.depth" Button
+    t =   172.50s     Wait for com.mdd.kanpan to idle
+    t =   172.51s     Find the "chart.depth" Button
+    t =   172.65s     Check for interrupting elements affecting "chart.depth" Button
+    t =   172.79s     Synthesize event
+    t =   173.14s     Wait for com.mdd.kanpan to idle
+    t =   173.88s Waiting 5.0s for "panel.header" StaticText to exist
+    t =   174.89s     Checking `Expect predicate `existsNoRetry == 1` for object "panel.header" StaticText`
+    t =   174.89s         Checking existence of `"panel.header" StaticText`
+    t =   175.21s Press "panel.header" StaticText[0.50, 0.50] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.98] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   175.21s     Wait for com.mdd.kanpan to idle
+    t =   175.23s     Find the "panel.header" StaticText
+    t =   175.40s     Check for interrupting elements affecting "panel.header" StaticText
+    t =   175.56s     Synthesize event
+    t =   175.56s         Find the "panel.header" StaticText
+    t =   175.71s         Find the "panel.header" StaticText
+    t =   175.98s         Find the Window (First Match)
+    t =   176.03s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =   176.05s         Find the "panel.header" StaticText
+    t =   177.43s     Wait for com.mdd.kanpan to idle
+    t =   179.16s Checking existence of `"panel.header" StaticText`
+    t =   180.24s Checking existence of `"chart.canvas" Other`
+    t =   180.29s Find the "chart.canvas" Other
+    t =   180.36s Find the Target Application 'com.mdd.kanpan'
+    t =   180.46s Added attachment named '盘口-买五卖五'
+    t =   180.46s Tap "bottom.favorites" Button
+    t =   180.46s     Wait for com.mdd.kanpan to idle
+    t =   180.46s     Find the "bottom.favorites" Button
+    t =   180.50s     Check for interrupting elements affecting "bottom.favorites" Button
+    t =   180.54s     Synthesize event
+    t =   180.83s     Wait for com.mdd.kanpan to idle
+    t =   180.83s Waiting 10.0s for "favorites.open.ETHUSDT" Button to exist
+    t =   181.89s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.ETHUSDT" Button`
+    t =   181.89s         Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =   181.95s         Capturing element debug description
+    t =   182.88s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.ETHUSDT" Button`
+    t =   182.88s         Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =   182.93s         Capturing element debug description
+    t =   183.84s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.ETHUSDT" Button`
+    t =   183.84s         Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =   183.95s         Capturing element debug description
+    t =   184.90s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.ETHUSDT" Button`
+    t =   184.90s         Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =   184.98s         Capturing element debug description
+    t =   185.84s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.ETHUSDT" Button`
+    t =   185.84s         Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =   185.93s         Capturing element debug description
+    t =   186.85s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.ETHUSDT" Button`
+    t =   186.85s         Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =   186.93s         Capturing element debug description
+    t =   187.86s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.ETHUSDT" Button`
+    t =   187.86s         Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =   187.90s         Capturing element debug description
+    t =   188.84s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.ETHUSDT" Button`
+    t =   188.84s         Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =   188.95s         Capturing element debug description
+    t =   189.89s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.ETHUSDT" Button`
+    t =   189.89s         Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =   189.93s         Capturing element debug description
+    t =   190.84s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.ETHUSDT" Button`
+    t =   190.84s         Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =   190.92s         Capturing element debug description
+    t =   190.93s     Checking existence of `"favorites.open.ETHUSDT" Button`
+    t =   191.00s Collecting debug information to assist test failure triage
+    t =   191.00s     Requesting snapshot of accessibility hierarchy for app with pid 72462
+/Users/mdd/zhk/kanpan/Kanpan/KanpanUITests/ChartFoundationUITests.swift:350: error: -[KanpanUITests.ChartFoundationUITests testExternalIndicatorsAndDepthRoundTrip] : XCTAssertTrue failed
+    t =   191.26s Tear Down
+    t =   191.26s     Find the Target Application 'com.mdd.kanpan'
+    t =   191.41s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =   191.41s     Checking existence of `"chart.canvas" Other`
+    t =   191.44s     Requesting snapshot of accessibility hierarchy for app with pid 72462
+    t =   191.47s     Requesting snapshot of accessibility hierarchy for app with pid 72462
+    t =   191.48s     Added attachment of type 'public.plain-text'
+    t =   191.48s     Terminate com.mdd.kanpan:72462
+Test Case '-[KanpanUITests.ChartFoundationUITests testExternalIndicatorsAndDepthRoundTrip]' failed (192.864 seconds).
+2026-09-22 14:55:52.918173+0800 KanpanUITests-Runner[72379:4038734] [Default] Flushing outgoing messages to the IDE with timeout 600.00s
+2026-09-22 14:55:52.918416+0800 KanpanUITests-Runner[72379:4039095] [Default] Received confirmation that IDE processed remaining outgoing messages
+2026-09-22 14:55:54.035476+0800 KanpanUITests-Runner[73425:4059649] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-22 14:55:54.566.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 14:55:54.566.
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-22 14:55:54.566.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-22 14:55:54.566.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+2026-09-22 14:56:38.103 xcodebuild[71799:4025743] [MT] IDETestOperationsObserverDebug: 281.236 elapsed -- Testing started completed.
+2026-09-22 14:56:38.104 xcodebuild[71799:4025743] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-22 14:56:38.104 xcodebuild[71799:4025743] [MT] IDETestOperationsObserverDebug: 281.236 sec, +281.236 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/kanpan-p1-ui-results-2/iPhone-16-Pro.xcresult
+
+Failing tests:
+	ChartFoundationUITests.testExternalIndicatorsAndDepthRoundTrip()
+
+** TEST EXECUTE FAILED **
+
+Testing started

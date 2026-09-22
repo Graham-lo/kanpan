@@ -1,0 +1,19 @@
+2026-09-22T06:09:37.233273+00:00
+GET /v1/market/meta status 200 bytes 44001
+GET /v1/capabilities status 200 bytes 269
+GET /oi/v1/metrics/BTCUSDT/range?interval=5m&from=1788998400000&to=1788998700000&metrics=1 status 200 bytes 135
+[[1788998400000, 105043.987, 1.33195904, 2.193602, 1.27565999, 2.457464], [1788998700000, 104981.441, 1.33095647, 2.199485, 1.27487863, 2.197108]]
+widths [6]
+GET /oi/v1/metrics/BTCUSDT/range?interval=5m&from=1788998400000&to=1788998700000 status 200 bytes 55
+[[1788998400000, 105043.987], [1788998700000, 104981.441]]
+widths [2]
+{"data":{"ok":true}}ExecMainStartTimestamp=Tue 2026-09-22 14:08:25 CST
+ActiveState=active
+
+ExecMainStartTimestamp=Tue 2026-09-22 14:08:24 CST
+ActiveState=active
+Sep 22 14:09:31 racknerd-3924c62 kanpan-api[2322651]: 2026-09-22T06:09:31.743092Z  WARN kanpan_api::market_meta: Supply: stocks/SKUU answered with another company's page; publishing nothing
+Sep 22 14:09:32 racknerd-3924c62 kanpan-api[2322651]: 2026-09-22T06:09:32.055830Z  WARN kanpan_api::market_meta: Supply: stocks/SKDD answered with another company's page; publishing nothing
+Sep 22 14:09:32 racknerd-3924c62 kanpan-api[2322651]: 2026-09-22T06:09:32.373968Z  WARN kanpan_api::market_meta: Supply: stocks/RAM answered with another company's page; publishing nothing
+Sep 22 14:09:35 racknerd-3924c62 kanpan-api[2322651]: 2026-09-22T06:09:35.671254Z  WARN kanpan_api::market_meta: Supply: stocks/NVDL answered with another company's page; publishing nothing
+Sep 22 14:09:36 racknerd-3924c62 kanpan-api[2322651]: 2026-09-22T06:09:36.056938Z  WARN kanpan_api::market_meta: Supply: stocks/TSLL answered with another company's page; publishing nothing

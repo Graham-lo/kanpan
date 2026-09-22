@@ -69,12 +69,13 @@ struct OIArchiveTests {
     #expect(throws: (any Error).self) { _ = try Zip.unzipFirst(trunc) }
   }
 
-  @Test(".oi 日切片：编解码一致，一天 ≈ 3.4KB")
+  @Test(".oi 日切片：编解码一致，保留四个比率列")
   func sliceCodec() throws {
     let pts = try OIArchive.parseZip(Fixture.data("metrics-btcusdt-2025-01-15.zip"))
     let day = Aggregator.utcMs(year: 2025, month: 1, day: 15)
     let blob = OIArchive.encodeSlice(pts, dayStartMs: day)
-    #expect(blob.count < 4096)
+    #expect(blob.count == 16 + pts.count * 44)
+    #expect(OIArchive.decodeSlice(blob) == pts)
     let back = try #require(OIArchive.decodeSlice(blob))
     #expect(back.count == pts.count)
     #expect(back.map(\.time) == pts.map(\.time))
@@ -124,7 +125,7 @@ struct OIAlignTests {
     let server = FakeServer(pacer: pacer) { url in
       if url.host == "gateway.example", firstStatus != 200 { return HTTPReply(status: firstStatus) }
       if ["gateway.example", "backup.example"].contains(url.host ?? ""), url.path.hasSuffix("/range") {
-        return json("[[\(day),120]]")
+        return json("[[\(day),120,null,null,null,null]]")
       }
       return HTTPReply(status: 500)
     }
@@ -565,7 +566,7 @@ struct OIIncrementalTests {
     #expect(back.points.map(\.value) == pts.map(\.value))
   }
 
-  @Test("坏盘面：不是 KOI2 / 被截断 / 区间倒着，一律当没有")
+  @Test("坏盘面：不是 KOI4 / 被截断 / 区间倒着，一律当没有")
   func rangeCodecRejects() {
     let day = Aggregator.utcMs(year: 2025, month: 1, day: 15)
     let pts = [OIPoint(time: day, value: 1), OIPoint(time: day + 3_600_000, value: 2)]

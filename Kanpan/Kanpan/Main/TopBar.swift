@@ -340,22 +340,3 @@ struct PriceRow: View {
       .accessibilityIdentifier(id)
   }
 }
-
-/// 给整数部分插千分位。只给头部这一个「大字价格」用：
-/// 价格轴、十字线读数那些是密排的数据，加了分隔反而更挤。
-func grouped(_ text: String) -> String {
-  let parts = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-  guard let head = parts.first else { return text }
-  let neg = head.hasPrefix("-")
-  let digits = Array(neg ? head.dropFirst() : head)
-  guard digits.count > 4, digits.allSatisfy(\.isNumber) else { return text }
-  var out: [Character] = []
-  for (i, d) in digits.enumerated() {
-    if i > 0, (digits.count - i) % 3 == 0 { out.append(",") }
-    out.append(d)
-  }
-  let intPart = (neg ? "-" : "") + String(out)
-  return parts.count > 1 ? intPart + "." + parts[1] : intPart
-}
-
-

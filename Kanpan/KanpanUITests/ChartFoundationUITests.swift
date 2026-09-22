@@ -13,7 +13,15 @@ final class ChartFoundationUITests: XCTestCase {
     if name.contains("Drawing") || name.contains("IndicatorColor") || name.contains("CompactChart") || name.contains("Record") { app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString }
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     if name.contains("Record") { app.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = "https://kanpan.107-174-172-10.sslip.io" }
+    if name.contains("testExternalIndicatorsAndDepthRoundTrip") {
+      app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
+      app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
+    }
     app.launch()
+    if name.contains("testExternalIndicatorsAndDepthRoundTrip") {
+      XCTAssertTrue(app.buttons["bottom.chart"].waitForExistence(timeout: 15))
+      app.buttons["bottom.chart"].tap()
+    }
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     XCTAssertTrue(wait(seconds: 60) { (self.info()["bars"] as? Int ?? 0) >= 256 }, feedEvidence())
   }
@@ -301,6 +309,76 @@ final class ChartFoundationUITests: XCTestCase {
     }, "12 秒内应至少观测到 5 份不同 OHLCV，不能只靠 5–10 秒 REST 轮询")
     let a = XCTAttachment(string: String(describing: samples)); a.name = "实时行情变化采样"; a.lifetime = .keepAlways; add(a)
     shot("实时行情-持续更新")
+  }
+
+  func testExternalIndicatorsAndDepthRoundTrip() throws {
+    executionTimeAllowance = 900 // 三次开图、线路往返与二十次品种切换都在同一条用例里。
+    func reveal(_ element: XCUIElement) {
+      let scroll = app.scrollViews["panel.content"]
+      XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+      for _ in 0..<24 {
+        let bounds = scroll.frame
+        if element.exists, element.isHittable, bounds.contains(element.frame) { return }
+        // 半屏面板里整屏快扫会越过目标；按当前坐标决定方向，半屏一段地拖。
+        let down = element.exists && element.frame.midY < bounds.midY
+        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.3 : 0.8))
+        let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.8 : 0.3))
+        start.press(forDuration: 0.1, thenDragTo: end)
+      }
+      XCTFail("图表面板找不到控件：" + element.identifier)
+    }
+    func toggleIndicator(_ id: String) {
+      app.buttons["interval.chart"].tap()
+      let toggle = app.buttons["indicator.switch." + id]
+      reveal(toggle); toggle.tap(); closePanel()
+    }
+    for id in (info()["subs"] as? [String] ?? []) { toggleIndicator(id) }
+    for id in ["LSR", "TAKER", "BASIS"] { toggleIndicator(id) }
+    XCTAssertEqual(info()["subs"] as? [String], ["LSR", "TAKER", "BASIS"])
+    XCTAssertTrue(wait(seconds: 90) { Set(self.info()["externalReady"] as? [String] ?? []) == Set(["LSR", "TAKER", "BASIS"]) }, feedEvidence())
+    shot("三副图-多空比-主动买卖比-基差")
+    toggleIndicator("OI")
+    XCTAssertEqual((info()["subs"] as? [String])?.count, 3, "不能出现第四格副图")
+    // 满额时会替换最早那格；恢复三只本次指标。
+    if !(info()["subs"] as? [String] ?? []).contains("LSR") {
+      toggleIndicator("OI"); toggleIndicator("LSR")
+    } else if (info()["subs"] as? [String] ?? []).contains("OI") {
+      toggleIndicator("OI")
+    }
+    app.buttons["interval.chart"].tap()
+    let depth = app.buttons["chart.depth"]
+    reveal(depth); depth.tap(); closePanel()
+    XCTAssertTrue(wait(seconds: 30) { self.info()["depthLevels"] as? Int == 10 }, feedEvidence())
+    shot("盘口-买五卖五")
+    var switches: [String] = []
+    for index in 0..<20 {
+      let symbol = index.isMultiple(of: 2) ? "ETHUSDT" : "BTCUSDT"
+      XCTAssertTrue(app.openFavorites())
+      let row = app.buttons["favorites.open." + symbol]
+      XCTAssertTrue(row.waitForExistence(timeout: 10)); row.tap()
+      XCTAssertTrue(wait(seconds: 30) { self.info()["symbol"] as? String == symbol && self.info()["depthSymbol"] as? String == symbol }, feedEvidence())
+      switches.append("第\(index + 1)次：\(symbol)；" + feedEvidence())
+    }
+    let switchingLog = XCTAttachment(string: switches.joined(separator: "\n"))
+    switchingLog.name = "连续切换20次-订阅与盘口品种一致"; switchingLog.lifetime = .keepAlways; add(switchingLog)
+    app.buttons["bottom.settings"].tap()
+    let gateway = app.buttons["settings.routePolicy.网关"]
+    for _ in 0..<8 { if gateway.isHittable { break }; app.swipeUp() }
+    gateway.tap(); leaveSettings()
+    XCTAssertTrue(wait { self.info()["externalSupported"] as? Bool == false }, feedEvidence())
+    XCTAssertEqual(info()["depthLevels"] as? Int, 0)
+    XCTAssertEqual((info()["subs"] as? [String])?.count, 3)
+    shot("网关-三副图空态")
+    app.buttons["bottom.settings"].tap()
+    let direct = app.buttons["settings.routePolicy.直连"]
+    for _ in 0..<8 { if direct.isHittable { break }; app.swipeUp() }
+    direct.tap(); leaveSettings()
+    XCTAssertTrue(wait(seconds: 40) { self.info()["depthLevels"] as? Int == 10 }, feedEvidence())
+    app.buttons["interval.chart"].tap()
+    reveal(depth); depth.tap(); closePanel()
+    XCTAssertTrue(wait { self.info()["depthLevels"] as? Int == 0 })
+    shot("盘口关闭-回到普通图表")
+    let log = XCTAttachment(string: feedEvidence()); log.name = "三指标与盘口-订阅日志"; log.lifetime = .keepAlways; add(log)
   }
 
   func testHistoricalOIUsesChartPeriod() throws {

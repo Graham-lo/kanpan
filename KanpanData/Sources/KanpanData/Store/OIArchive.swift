@@ -55,19 +55,22 @@ public enum OIArchive {
 
   // ------------------------------------------------------------------ 日切片
 
-  /// `.oi` 精简二进制：只留 create_time + sum_open_interest，一天 ≈ 3.4 KB。
+  /// `.oi` 日切片保留持仓量与四个归档比率；缺失比率以 NaN 编码。
   /// 时间存「距当天 00:00 的秒数」，四字节够（一天 86400 秒）。
-  static let sliceMagic: UInt32 = 0x494F_4B31   // 'KOI1' 小端读出来
+  static let sliceMagic: UInt32 = 0x494F_4B33   // 'KOI3' 小端读出来
 
   public static func encodeSlice(_ points: [OIPoint], dayStartMs: Int64) -> Data {
     var d = Data()
-    d.reserveCapacity(16 + points.count * 12)
+    d.reserveCapacity(16 + points.count * 44)
     append(&d, sliceMagic)
     append(&d, UInt64(bitPattern: dayStartMs))
     append(&d, UInt32(points.count))
     for p in points {
       append(&d, UInt32(max(0, min(Int64(UInt32.max), (p.time - dayStartMs) / 1000))))
-      append(&d, p.value.bitPattern)
+      for value in [p.value, p.topTraderAccountRatio ?? .nan, p.topTraderPositionRatio ?? .nan,
+                    p.accountRatio ?? .nan, p.takerVolumeRatio ?? .nan] {
+        append(&d, value.bitPattern)
+      }
     }
     return d
   }
@@ -78,15 +81,14 @@ public enum OIArchive {
     var day: Int64 = 0
     for i in 0..<8 { day |= Int64(b[4 + i]) << (8 * Int64(i)) }
     let n = Int(Zip.u32(b, 12))
-    guard b.count >= 16 + n * 12 else { return nil }
+    guard b.count >= 16 + n * 44 else { return nil }
     var out: [OIPoint] = []
     out.reserveCapacity(n)
     for i in 0..<n {
-      let o = 16 + i * 12
+      let o = 16 + i * 44
       let secs = Int64(Zip.u32(b, o))
-      var bits: UInt64 = 0
-      for k in 0..<8 { bits |= UInt64(b[o + 4 + k]) << (8 * UInt64(k)) }
-      out.append(OIPoint(time: day + secs * 1000, value: Double(bitPattern: bits)))
+      guard let point = decodePoint(b, offset: o, time: day + secs * 1000) else { return nil }
+      out.append(point)
     }
     return out
   }
@@ -99,18 +101,21 @@ public enum OIArchive {
   /// 重新打开同一个品种时能直接上屏。多存两样东西：这段覆盖到哪里（`to`，光看
   /// 最后一个点看不出来——末尾可能本来就没数据），以及它聚的是哪个周期（放在
   /// 文件名里，换周期就是另一份，不会混用）。
-  static let rangeMagic: UInt32 = 0x494F_4B32   // 'KOI2' 小端读出来
+  static let rangeMagic: UInt32 = 0x494F_4B34   // 'KOI4' 小端读出来
 
   public static func encodeRange(_ points: [OIPoint], from: Int64, to: Int64) -> Data {
     var d = Data()
-    d.reserveCapacity(24 + points.count * 12)
+    d.reserveCapacity(24 + points.count * 44)
     append(&d, rangeMagic)
     append(&d, UInt64(bitPattern: from))
     append(&d, UInt64(bitPattern: to))
     append(&d, UInt32(points.count))
     for p in points {
       append(&d, UInt32(max(0, min(Int64(UInt32.max), (p.time - from) / 1000))))
-      append(&d, p.value.bitPattern)
+      for value in [p.value, p.topTraderAccountRatio ?? .nan, p.topTraderPositionRatio ?? .nan,
+                    p.accountRatio ?? .nan, p.takerVolumeRatio ?? .nan] {
+        append(&d, value.bitPattern)
+      }
     }
     return d
   }
@@ -125,18 +130,27 @@ public enum OIArchive {
     }
     let from = i64(4), to = i64(12)
     let n = Int(Zip.u32(b, 20))
-    guard to >= from, b.count >= 24 + n * 12 else { return nil }
+    guard to >= from, b.count >= 24 + n * 44 else { return nil }
     var out: [OIPoint] = []
     out.reserveCapacity(n)
     for i in 0..<n {
-      let o = 24 + i * 12
-      var bits: UInt64 = 0
-      for k in 0..<8 { bits |= UInt64(b[o + 4 + k]) << (8 * UInt64(k)) }
-      let value = Double(bitPattern: bits)
-      guard value.isFinite else { return nil }
-      out.append(OIPoint(time: from + Int64(Zip.u32(b, o)) * 1000, value: value))
+      let o = 24 + i * 44
+      guard let point = decodePoint(b, offset: o, time: from + Int64(Zip.u32(b, o)) * 1000) else { return nil }
+      out.append(point)
     }
     return (out, from, to)
+  }
+
+  private static func decodePoint(_ b: [UInt8], offset: Int, time: Int64) -> OIPoint? {
+    func value(_ column: Int) -> Double {
+      var bits: UInt64 = 0
+      for k in 0..<8 { bits |= UInt64(b[offset + 4 + column * 8 + k]) << (8 * UInt64(k)) }
+      return Double(bitPattern: bits)
+    }
+    func optional(_ column: Int) -> Double? { let v = value(column); return v.isFinite ? v : nil }
+    guard value(0).isFinite, value(0) >= 0 else { return nil }
+    return OIPoint(time: time, value: value(0), topTraderAccountRatio: optional(1),
+                   topTraderPositionRatio: optional(2), accountRatio: optional(3), takerVolumeRatio: optional(4))
   }
 
   private static func append(_ d: inout Data, _ v: UInt32) {

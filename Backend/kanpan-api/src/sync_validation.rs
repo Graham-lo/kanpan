@@ -10,7 +10,7 @@ use serde_json::Value;
 // holds these to it. Slices, not fixed arrays: adding one is a single string, no length to
 // keep in step (same reason `sync::SETTINGS_FIELDS` is a slice).
 const OVERLAY_INDICATORS:&[&str]=&["MA","EMA","BOLL"];
-const SUB_INDICATORS:&[&str]=&["VOL","MACD","RSI","KDJ","SRSI","ATR","OI"];
+const SUB_INDICATORS:&[&str]=&["VOL","MACD","RSI","KDJ","SRSI","ATR","OI","LSR","TAKER","BASIS"];
 fn indicator(name:&str)->bool {OVERLAY_INDICATORS.contains(&name)||SUB_INDICATORS.contains(&name)}
 // `Drawing.Kind` in full (KanpanCore/Drawing/Drawing.swift:22). The first ten are the
 // original tools; the rest arrived with the TradingView-aligned panel and must be listed
@@ -126,7 +126,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "favoritesGroup"=>string(v,128),
    // Capped at `Prefs.maxExpanded`.
    "favoritesExpanded"=>v.as_array().is_some_and(|a|a.len()<=500&&a.iter().all(symbol)),
-   "ambientTheme"|"redUp"|"magnet"|"countdown"|"lastLine"|"sinceChange"|"showDrawings"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
+   "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"lastLine"|"sinceChange"|"showDrawings"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
     |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
   }

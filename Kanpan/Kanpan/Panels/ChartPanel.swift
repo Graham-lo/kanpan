@@ -129,6 +129,7 @@ struct ChartPanel: View {
       switchRow("实时价格线", nil, prefs.lastLine) { $0.lastLine = $1 }
         .accessibilityIdentifier("chart.lastLine")
       // 「设置」里原来也有一行同名开关，已经去掉了：那是画在图上的东西，归这儿。
+      switchRow("盘口", nil, prefs.depth, id: "chart.depth") { $0.depth = $1 }
       switchRow("本根倒计时", nil, prefs.countdown) { $0.countdown = $1 }
         .accessibilityIdentifier("chart.countdown")
       switchRow("至今涨幅", "选中 K 线至今的涨跌幅", prefs.sinceChange) {

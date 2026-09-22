@@ -84,7 +84,7 @@ enum PrefsFieldPlan {
     // ---------------------------------------------------------------- 跟着人走
     "interval": .synced, "quickIntervals": .synced,
     "theme": .synced, "skin": .synced, "ambientTheme": .synced, "redUp": .synced,
-    "priceMode": .synced, "magnet": .synced, "countdown": .synced, "candleKind": .synced,
+    "priceMode": .synced, "magnet": .synced, "countdown": .synced, "depth": .synced, "candleKind": .synced,
     "gridChoice": .synced, "bodyChoice": .synced, "lastLine": .synced, "showDrawings": .synced,
     "sinceChange": .synced, "viewAnchor": .synced, "priceBias": .synced,
     "dataDisplay": .synced, "crossPrice": .synced,

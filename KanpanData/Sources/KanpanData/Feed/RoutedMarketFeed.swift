@@ -34,6 +34,8 @@ public actor RoutedMarketFeed {
   private var route = UUID()
   private var symbol = ""
   private var interval: Interval = .h1
+  private var takerEnabled = false
+  private var depthEnabled = false
   private var snapshots = true
   private var foreground = true
   private var announcingSwitch = false
@@ -110,6 +112,10 @@ public actor RoutedMarketFeed {
   public var currentSeries: BarSeries {
     get async { if let feed { return await feed.currentSeries }; return BarSeries(symbol: symbol, interval: interval, bars: []) }
   }
+  public func setMicrostructure(taker: Bool, depth: Bool) async {
+    takerEnabled = taker; depthEnabled = depth
+    await feed?.setMicrostructure(taker: source == .binance && taker, depth: source == .binance && depth)
+  }
   public func setSnapshotEnabled(_ enabled: Bool) async {
     snapshots = enabled
     await feed?.setSnapshotEnabled(enabled)
@@ -185,6 +191,7 @@ public actor RoutedMarketFeed {
     // 旧的 `request` 把它 start 一遍——`forward` 只认当前 selection，从此这份 feed
     // 吐的每一条都被丢掉，用户面前就是一张不再更新的空图。
     await created.setSnapshotEnabled(snapshots)
+    await created.setMicrostructure(taker: next == .binance && takerEnabled, depth: next == .binance && depthEnabled)
     let stream = await created.events()
     // 装配的这两拍里世界可能已经变了（又切了品种、又换了线路），这份 feed 已经
     // 没人要了：就地扔掉，别让它挂上去顶掉真正在跑的那份。

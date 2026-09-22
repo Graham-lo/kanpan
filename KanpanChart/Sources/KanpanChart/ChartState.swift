@@ -8,6 +8,13 @@ import KanpanCore
 public struct ChartState: Sendable {
   public var series: BarSeries
   public var oi: OISeries?
+  public var external: [IndicatorID: ExternalSeries] = [:]
+  public var depth: OrderBook?
+  public var indicatorInputs: [IndicatorID: ExternalSeries] {
+    var inputs = external
+    if let oi { inputs[.oi] = ExternalSeries(oi: oi) }
+    return inputs
+  }
   public var symbol: SymbolInfo
   public var view: ViewWindow
   public var style: CandleStyle
@@ -121,7 +128,7 @@ extension ChartState {
   /// 几何去画新 state，那是画错，不是慢。所以这里不用「白名单式的近似」，
   /// 而是把 `ChartState` 的字段一个不落地列全（新增字段时也必须加进来）。
   func sameGeometryInputs(as other: ChartState) -> Bool {
-    series == other.series && oi == other.oi && symbol == other.symbol && view == other.view
+    series == other.series && oi == other.oi && external == other.external && symbol == other.symbol && view == other.view
       && style == other.style && paletteSeed == other.paletteSeed && dark == other.dark
       && redUp == other.redUp && price == other.price && overlays == other.overlays
       && subs == other.subs && params == other.params && timezone == other.timezone

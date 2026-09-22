@@ -109,11 +109,11 @@ struct IndicatorMetaTests {
 
   @Test("线名跟着参数走")
   func lineNamesFollowParams() {
-    #expect(IndicatorID.ma.lineNames(params: [5, 10]) == ["MA5", "MA10"])
-    #expect(IndicatorID.ema.lineNames(params: [8]) == ["EMA8"])
-    #expect(IndicatorID.vol.lineNames(params: [5, 10]) == ["MA5", "MA10"])
-    #expect(IndicatorID.boll.lineNames(params: [20, 2]) == ["MID", "UP", "DN"])
-    #expect(IndicatorID.kdj.lineNames(params: [9, 3, 3]) == ["K", "D", "J"])
+    #expect(IndicatorID.ma.lineNames(params: [5, 10]) == ["均线5", "均线10"])
+    #expect(IndicatorID.ema.lineNames(params: [8]) == ["指数均线8"])
+    #expect(IndicatorID.vol.lineNames(params: [5, 10]) == ["均量5", "均量10"])
+    #expect(IndicatorID.boll.lineNames(params: [20, 2]) == ["中轨", "上轨", "下轨"])
+    #expect(IndicatorID.kdj.lineNames(params: [9, 3, 3]) == ["快线", "慢线", "敏感线"])
   }
 
   @Test("结果取值越界给 NaN")

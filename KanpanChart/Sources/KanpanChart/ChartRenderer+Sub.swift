@@ -30,6 +30,7 @@ extension ChartRenderer {
     switch key {
     case .vol: subVol(ctx, box, L, lo, hi, s)
     case .macd: subMacd(ctx, box, L, lo, hi, s)
+    case .lsr, .taker, .basis: subExternal(ctx, box, L, lo, hi, key, s)
     case .oi: subOi(ctx, box, L, lo, hi, s)
     case .rsi, .srsi, .kdj, .atr: subLines(ctx, box, L, lo, hi, key, s)
     default: break
@@ -37,6 +38,19 @@ extension ChartRenderer {
     ctx.restoreGState()
     drawSubAxis(ctx, key: key, box: box, L: L, lo: lo, hi: hi)
     if legend { subLegend(ctx, pane: pane, key: key, plotW: L.plotW) }
+  }
+
+  private func subExternal(_ ctx: CGContext, _ box: Pane, _ L: Layout,
+                           _ lo: Int, _ hi: Int, _ id: IndicatorID, _ scale: Double) {
+    let values = displayed(id)?.lines.first ?? []
+    if !state.oiSupported || !(lo...hi).contains(where: { values.indices.contains($0) && values[$0].isFinite }) {
+      let text = !state.oiSupported ? "当前行情线路不提供" + id.name
+        : state.external[id] == nil ? id.name + "暂无数据" : "该时段暂无" + id.name
+      text.drawLeft(at: CGPoint(x: 8, y: box.y + box.h / 2),
+                    font: UIFont.systemFont(ofSize: 11), color: state.colors.dim)
+      return
+    }
+    subLines(ctx, box, L, lo, hi, id, scale)
   }
 
   /// All subpanes share extent calculation, NaN handling, and right-axis formatting.
@@ -277,13 +291,13 @@ extension ChartRenderer {
       switch id {
       case .ma, .ema:
         for (k, n) in params(id).enumerated() where k < v.lines.count && outputVisible(id, k) {
-          put("\(id.rawValue)\(n) " + indicatorNumber(reading(v.lines[k]), decimals: p), indicatorColor(id, k))
+          put("\(id.name)\(n) " + indicatorNumber(reading(v.lines[k]), decimals: p), indicatorColor(id, k))
         }
       case .boll:
         guard v.lines.count >= 3 else { break }
-        put("UP " + fmtNum(v.lines[1][i], p), t.band)
-        put("MB " + fmtNum(v.lines[0][i], p), t.amber)
-        put("DN " + fmtNum(v.lines[2][i], p), t.band)
+        put("上轨 " + fmtNum(v.lines[1][i], p), t.band)
+        put("中轨 " + fmtNum(v.lines[0][i], p), t.amber)
+        put("下轨 " + fmtNum(v.lines[2][i], p), t.band)
       default: break
       }
     }
@@ -335,41 +349,46 @@ extension ChartRenderer {
     let at = { (a: [Double]) -> Double in reading(a) }
     switch key {
     case .vol:
-      if outputVisible(.vol, v?.lines.count ?? 0) { put("VOL " + indicatorNumber(state.series.volume[i]), t.text) }
+      if outputVisible(.vol, v?.lines.count ?? 0) { put("成交量 " + indicatorNumber(state.series.volume[i]), t.text) }
       if let v {
         for (k, n) in params(.vol).enumerated() where k < v.lines.count {
-          put("MA\(n) " + indicatorNumber(at(v.lines[k])), pal[k % pal.count])
+          put("均量\(n) " + indicatorNumber(at(v.lines[k])), pal[k % pal.count])
         }
       }
     case .macd:
-      put("MACD(" + params(.macd).map(String.init).joined(separator: ",") + ")", t.dim)
+      put("平滑异同(" + params(.macd).map(String.init).joined(separator: ",") + ")", t.dim)
       guard let v, let hist = v.histogram, v.lines.count >= 2 else { break }
       // MACD 三个值都是价差，量级跟着价格走：0.0033 的币种上它们在 1e-5 附近，
       // 按固定 2 位小数印出来全是 0.00。跟着品种的价格精度走才读得出东西。
-      put("DIF " + indicatorNumber(at(v.lines[0]), decimals: state.decimals), pal[0])
-      put("DEA " + indicatorNumber(at(v.lines[1]), decimals: state.decimals), pal[1])
+      put("差值 " + indicatorNumber(at(v.lines[0]), decimals: state.decimals), pal[0])
+      put("信号 " + indicatorNumber(at(v.lines[1]), decimals: state.decimals), pal[1])
       let h = at(hist)
-      put("M " + indicatorNumber(h, decimals: state.decimals), h >= 0 ? t.up : t.down)
+      put("柱值 " + indicatorNumber(h, decimals: state.decimals), h >= 0 ? t.up : t.down)
     case .rsi:
-      put("RSI(\(Int(state.rsiUpper))/\(Int(state.rsiLower)))", t.dim)
+      put("强弱(\(Int(state.rsiUpper))/\(Int(state.rsiLower)))", t.dim)
       guard let v else { break }
       for (k, n) in params(.rsi).enumerated() where k < v.lines.count {
         put("\(n) " + indicatorNumber(at(v.lines[k]), decimals: 1), pal[k % pal.count])
       }
     case .kdj:
-      put("KDJ(" + params(.kdj).map(String.init).joined(separator: ",") + ")", t.dim)
+      put("随机(" + params(.kdj).map(String.init).joined(separator: ",") + ")", t.dim)
       guard let v, v.lines.count >= 3 else { break }
-      put("K " + indicatorNumber(at(v.lines[0]), decimals: 1), pal[0])
-      put("D " + indicatorNumber(at(v.lines[1]), decimals: 1), pal[1])
-      put("J " + indicatorNumber(at(v.lines[2]), decimals: 1), pal[2])
+      put("快线 " + indicatorNumber(at(v.lines[0]), decimals: 1), pal[0])
+      put("慢线 " + indicatorNumber(at(v.lines[1]), decimals: 1), pal[1])
+      put("敏感线 " + indicatorNumber(at(v.lines[2]), decimals: 1), pal[2])
     case .srsi:
-      put("StochRSI", t.dim)
+      put("随机强弱", t.dim)
       guard let v, v.lines.count >= 2 else { break }
-      put("K " + indicatorNumber(at(v.lines[0]), decimals: 1), pal[0])
-      put("D " + indicatorNumber(at(v.lines[1]), decimals: 1), pal[1])
+      put("快线 " + indicatorNumber(at(v.lines[0]), decimals: 1), pal[0])
+      put("慢线 " + indicatorNumber(at(v.lines[1]), decimals: 1), pal[1])
     case .atr:
       guard let v, let a = v.lines.first else { break }
-      put("ATR\(params(.atr)[0]) " + fmtNum(at(a), state.decimals), pal[0])
+      put("真实波幅\(params(.atr)[0]) " + fmtNum(at(a), state.decimals), pal[0])
+    case .lsr, .taker, .basis:
+      put(key.name, t.dim)
+      if let values = v?.lines.first, reading(values).isFinite {
+        put(subValueText(reading(values), indicator: key), indicatorColor(key, 0))
+      }
     case .oi:
       let x0 = (v?.lines.first).map { at($0) }.flatMap { $0.isFinite ? indicatorNumber($0) : nil } ?? "--"
       put("持仓量 " + x0, t.oi)
@@ -413,6 +432,7 @@ extension ChartRenderer {
     return values.last(where: { $0.isFinite }) ?? .nan
   }
   func subValueText(_ value: Double, indicator: IndicatorID) -> String {
+    if indicator == .basis { return fmtNum(value, 3) + "%" }
     if indicator == .vol || indicator == .oi { return fmtVol(value) }
     return fmtNum(value, indicator == .macd || indicator == .atr ? state.decimals : 2)
   }

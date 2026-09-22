@@ -10,8 +10,7 @@
 //! and why the phone showed “持仓量加载中” for most of a minute: it read the days
 //! four at a time, on a connection it opened and closed for each one. Here they
 //! go out sixteen at a time over one keep-alive client, every parsed day is kept
-//! on disk — in exactly the `[[ms,value],…]` slices the gateway wrote, so its
-//! warm cache carries over unchanged — and the days a chart just touched stay
+//! on disk — with all four ratio columns in versioned metrics slices — and the days a chart just touched stay
 //! parsed in memory. A symbol the user looked at is then filled in the
 //! background, all the way back to 2020, so the second look costs nothing.
 //!
@@ -179,7 +178,7 @@ async fn metrics(Path((symbol,tail)):Path<(String,String)>,Query(query):Query<Ha
  if !(1..=30).contains(&symbol.len())||!symbol.bytes().all(|b|b.is_ascii_uppercase()||b.is_ascii_digit()||b==b'_') {
   return fail(StatusCode::BAD_REQUEST,"invalid symbol");
  }
- if tail=="range" {range(&symbol,&query).await} else {single(&symbol,&tail).await}
+ if tail=="range" {range(&symbol,&query).await} else {single(&symbol,&tail,query.get("metrics").is_some_and(|v|v=="1")).await}
 }
 
 /// `GET /oi/v1/metrics/{symbol}/range?interval=&from=&to=` — the archive days
@@ -194,14 +193,15 @@ async fn range(symbol:&str,query:&HashMap<String,String>)->Response {
  // under twenty thousand buckets of its own interval.
  if to-from>(3660*DAY).min(20_000*step.max(300_000)) {return fail(StatusCode::BAD_REQUEST,"invalid historical range")}
  let (first,last)=(from.div_euclid(DAY),to.div_euclid(DAY).min(now.div_euclid(DAY)-1));
- if last<first {return series(Vec::new())}
+ let metrics=query.get("metrics").is_some_and(|v|v=="1");
+ if last<first {return series(Vec::new(),metrics)}
 
  let store=store().await;
  let symbol:Arc<str>=Arc::from(symbol);
  // Bucket -> the latest observation inside it. Open interest is a level, not a
  // flow: a bucket takes its last value and never a sum. The archive's rows are
  // not in time order, so the time is kept alongside to decide "latest".
- let mut buckets:HashMap<i64,(i64,f64)>=HashMap::new();
+ let mut buckets:HashMap<i64,MetricRow>=HashMap::new();
  let mut tasks=tokio::task::JoinSet::new();
  let (mut next,mut live,mut lost)=(first,0usize,0usize);
  loop {
@@ -213,10 +213,11 @@ async fn range(symbol:&str,query:&HashMap<String,String>)->Response {
   let Some(done)=tasks.join_next().await else {break};
   live-=1;
   match done {
-   Ok(Ok(Day::Points(points)))=>for &(time,value) in points.iter() {
+   Ok(Ok(Day::Points(points)))=>for &row in points.iter() {
+    let time=row.0;
     if from<=time&&time<=to {
-     let slot=buckets.entry(bucket(time,interval)).or_insert((i64::MIN,0.0));
-     if time>=slot.0 {*slot=(time,value);}
+     let slot=buckets.entry(bucket(time,interval)).or_insert(row);
+     if time>=slot.0 {*slot=row;}
     }
    },
    Ok(Ok(Day::Absent))=>{}                       // a gap stays a gap; never invent a value
@@ -228,17 +229,17 @@ async fn range(symbol:&str,query:&HashMap<String,String>)->Response {
  // must not be handed out with an hour of cache lifetime on it.
  if lost>2 {return fail(StatusCode::BAD_GATEWAY,"archive unavailable")}
 
- let mut rows:Vec<(i64,f64)>=buckets.into_iter().map(|(bucket,(_,value))|(bucket,value)).collect();
+ let mut rows:Vec<MetricRow>=buckets.into_iter().map(|(bucket,mut row)|{row.0=bucket;row}).collect();
  rows.sort_unstable_by_key(|row|row.0);
  // The user has shown interest in this symbol; fill the rest of its archive
  // while nobody is waiting, so the next zoom out is already on disk.
  store.spawn_prefetch(symbol);
- series(rows)
+ series(rows,metrics)
 }
 
 /// `GET /oi/v1/metrics/{symbol}/{YYYY-MM-DD}.json` — one raw day, the fallback
 /// the phone uses when it has to aggregate locally.
-async fn single(symbol:&str,tail:&str)->Response {
+async fn single(symbol:&str,tail:&str,metrics:bool)->Response {
  let Some(date)=tail.strip_suffix(".json").and_then(|d|NaiveDate::parse_from_str(d,"%Y-%m-%d").ok())
   else {return fail(StatusCode::NOT_FOUND,"not found")};
  let day=date.and_hms_opt(0,0,0).map(|t|t.and_utc().timestamp_millis()).unwrap_or(0).div_euclid(DAY);
@@ -246,7 +247,7 @@ async fn single(symbol:&str,tail:&str)->Response {
  if day*DAY<EPOCH||day>=now.div_euclid(DAY) {return fail(StatusCode::NOT_FOUND,"no archive for date")}
  match store().await.day(symbol,day).await {
   (Ok(Day::Points(points)),hit)=>{
-   let mut response=body(StatusCode::OK,serde_json::to_vec(&*points).unwrap_or_else(|_|b"[]".to_vec()),"public, max-age=86400");
+   let mut response=body(StatusCode::OK,encode_rows(&points,metrics),"public, max-age=86400");
    response.headers_mut().insert("X-OI-Cache",header::HeaderValue::from_static(if hit {"HIT"} else {"MISS"}));
    response
   }
@@ -259,8 +260,12 @@ async fn single(symbol:&str,tail:&str)->Response {
 
 /// The phone decodes a bare `[[ms,value],…]`; these routes predate the
 /// `{"data":…}` envelope the account API uses and keep their own shape.
-fn series(rows:Vec<(i64,f64)>)->Response {
- body(StatusCode::OK,serde_json::to_vec(&rows).unwrap_or_else(|_|b"[]".to_vec()),"public, max-age=3600")
+fn encode_rows(rows:&[MetricRow],metrics:bool)->Vec<u8> {
+ if metrics {serde_json::to_vec(rows)} else {serde_json::to_vec(&rows.iter().map(|r|(r.0,r.1)).collect::<Vec<_>>())}
+  .unwrap_or_else(|_|b"[]".to_vec())
+}
+fn series(rows:Vec<MetricRow>,metrics:bool)->Response {
+ body(StatusCode::OK,encode_rows(&rows,metrics),"public, max-age=3600")
 }
 fn fail(status:StatusCode,message:&str)->Response {
  body(status,serde_json::to_vec(&serde_json::json!({"error":message})).unwrap_or_default(),"no-store")
@@ -308,9 +313,12 @@ fn day_name(day:i64)->String {
 
 // ------------------------------------------------------------------ the zip
 
+/// Timestamp, open interest, top-account ratio, top-position ratio, account ratio, taker ratio.
+type MetricRow=(i64,f64,Option<f64>,Option<f64>,Option<f64>,Option<f64>);
+
 /// One day of observations, or the knowledge that the archive has none.
 #[derive(Clone)]
-enum Day {Points(Arc<Vec<(i64,f64)>>),Absent}
+enum Day {Points(Arc<Vec<MetricRow>>),Absent}
 
 /// Read `sum_open_interest` out of a metrics zip.
 ///
@@ -318,9 +326,9 @@ enum Day {Points(Arc<Vec<(i64,f64)>>),Absent}
 /// this is an undocumented dump whose columns have changed before, and a day
 /// short a few rows is still a usable day. Duplicated timestamps keep the last
 /// row, as the gateway did.
-fn parse(data:&[u8])->Result<Vec<(i64,f64)>,()> {
+fn parse(data:&[u8])->Result<Vec<MetricRow>,()> {
  let mut archive=zip::ZipArchive::new(std::io::Cursor::new(data)).map_err(|_|())?;
- let mut points:HashMap<i64,f64>=HashMap::new();
+ let mut points:HashMap<i64,MetricRow>=HashMap::new();
  for index in 0..archive.len() {
   let mut entry=archive.by_index(index).map_err(|_|())?;
   if !entry.name().ends_with(".csv") {continue}
@@ -332,14 +340,19 @@ fn parse(data:&[u8])->Result<Vec<(i64,f64)>,()> {
   let header=header.trim_start_matches('\u{feff}');
   let column=|name:&str|header.split(',').position(|c|c.trim()==name);
   let (Some(at),Some(value))=(column("create_time"),column("sum_open_interest")) else {continue};
+  let ratios=[column("count_toptrader_long_short_ratio"),column("sum_toptrader_long_short_ratio"),
+              column("count_long_short_ratio"),column("sum_taker_long_short_vol_ratio")];
   for line in lines {
    let fields:Vec<&str>=line.split(',').collect();
    let (Some(time),Some(raw))=(fields.get(at),fields.get(value)) else {continue};
    let (Some(time),Ok(raw))=(timestamp(time),raw.trim().parse::<f64>()) else {continue};
-   if raw.is_finite()&&raw>=0.0 {points.insert(time,raw);}
+   if raw.is_finite()&&raw>=0.0 {
+    let ratio=|i:usize|ratios[i].and_then(|c|fields.get(c)).and_then(|v|v.trim().parse::<f64>().ok()).filter(|v|v.is_finite()&&*v>=0.0);
+    points.insert(time,(time,raw,ratio(0),ratio(1),ratio(2),ratio(3)));
+   }
   }
  }
- let mut rows:Vec<(i64,f64)>=points.into_iter().collect();
+ let mut rows:Vec<MetricRow>=points.into_values().collect();
  rows.sort_unstable_by_key(|row|row.0);
  Ok(rows)
 }
@@ -513,16 +526,16 @@ impl Store {
    && table.get(stem).is_some_and(|lock|Arc::strong_count(lock)<=1) {table.remove(stem);}
  }
 
- /// Memory first, then the slices on disk — including the gateway's own, whose
- /// file names and contents this matches exactly.
+ /// Memory first, then six-column slices. Old two-column files remain available
+ /// to older binaries but are never mistaken for complete metrics.
  fn cached(&self,stem:&str)->Option<Day> {
   if let Ok(mut memory)=self.memory.lock()&& let Some(day)=memory.get(stem,self.clock.now()) {return Some(day)}
   let dir=self.dir.as_ref()?;
   // `.none` 只在那一天结算之后才写，所以磁盘上的缺口是永久的。
   if dir.join(format!("{stem}.none")).exists() {self.remember(stem,Day::Absent,None);return Some(Day::Absent)}
-  let path=dir.join(format!("{stem}.json"));
+  let path=dir.join(format!("{stem}.metrics.json"));
   let raw=std::fs::read(&path).ok()?;
-  let rows:Vec<(i64,f64)>=serde_json::from_slice(&raw).ok()?;
+  let rows:Vec<MetricRow>=serde_json::from_slice(&raw).ok()?;
   let day=Day::Points(Arc::new(rows));
   self.touch(&path);
   self.remember(stem,day.clone(),None);
@@ -536,7 +549,7 @@ impl Store {
    && let Some(day)=memory.get(stem,self.clock.now()) {return Some(matches!(day,Day::Points(_)))}
   let dir=self.dir.as_ref()?;
   if dir.join(format!("{stem}.none")).exists() {return Some(false)}
-  if dir.join(format!("{stem}.json")).exists() {return Some(true)}
+  if dir.join(format!("{stem}.metrics.json")).exists()||dir.join(format!("{stem}.json")).exists() {return Some(true)}
   None
  }
 
@@ -609,10 +622,10 @@ impl Store {
  fn answered(&self) {self.refusals.store(0,Ordering::Relaxed);}
 
  /// Write the slice, then bring the directory back under its ceiling.
- fn store(&self,stem:&str,rows:&[(i64,f64)]) {
+ fn store(&self,stem:&str,rows:&[MetricRow]) {
   let (Some(dir),Ok(payload))=(self.dir.as_ref(),serde_json::to_vec(rows)) else {return};
   let temporary=dir.join(format!(".tmp-{}-{}",std::process::id(),TEMP.fetch_add(1,Ordering::Relaxed)));
-  let path=dir.join(format!("{stem}.json"));
+  let path=dir.join(format!("{stem}.metrics.json"));
   if std::fs::write(&temporary,&payload).is_err()||std::fs::rename(&temporary,&path).is_err() {
    let _=std::fs::remove_file(&temporary);
    return;
@@ -785,6 +798,18 @@ mod tests {
  }
 
  #[test]
+ fn metric_columns_survive_parse_storage_and_versioned_response() {
+  let csv="create_time,symbol,sum_open_interest,count_toptrader_long_short_ratio,sum_toptrader_long_short_ratio,count_long_short_ratio,sum_taker_long_short_vol_ratio\n2026-09-10 01:45:00,ETHUSDT,100,1.1,1.2,0.8,1.3\n";
+  let rows=parse(&zip_of(csv)).unwrap();
+  assert_eq!(rows[0],(1_789_004_700_000,100.0,Some(1.1),Some(1.2),Some(0.8),Some(1.3)));
+  let restored:Vec<MetricRow>=serde_json::from_slice(&encode_rows(&rows,true)).unwrap();
+  assert_eq!(restored,rows);
+  let legacy:Vec<(i64,f64)>=serde_json::from_slice(&encode_rows(&rows,false)).unwrap();
+  assert_eq!(legacy,vec![(rows[0].0,100.0)]);
+  assert!(serde_json::from_slice::<Vec<MetricRow>>(b"[[1789004700000,100]]").is_err(),"two-column caches must miss");
+ }
+
+ #[test]
  fn archive_rows_parse_in_time_order_however_the_dump_is_ordered() {
   let csv="create_time,symbol,sum_open_interest,sum_open_interest_value\n\
            2026-09-10 03:35:00,ETHUSDT,2267091.793,5608152911.19\n\
@@ -954,7 +979,7 @@ mod tests {
   // 上限压到两条，好在测试里真的越界；线上是 `MAX_FILES`。
   let store=Store::fake_capped(dir.path().to_path_buf(),clock.clone(),Box::new(upstream.clone()),2);
   let marker=|d:i64|dir.path().join(format!("ETHUSDT-{}.none",day_name(d)));
-  let slice=dir.path().join(format!("ETHUSDT-{}.json",day_name(day-2)));
+  let slice=dir.path().join(format!("ETHUSDT-{}.metrics.json",day_name(day-2)));
 
   // 两个缺口标记：0 字节，字节预算一动不动，占的却是两个目录项。
   for back in [0,1] {assert!(matches!(store.day("ETHUSDT",day-back).await.0,Ok(Day::Absent)));}

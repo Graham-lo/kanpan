@@ -16,7 +16,7 @@ enum HeaderStats {
   static func priceChangeText(change: Double?, percent: Double?, decimals: Int) -> String {
     guard let change, change.isFinite, let percent, percent.isFinite else { return "—" }
     // 符号单独格式化；涨跌额与价格采用同一小数位。
-    return (change >= 0 ? "+" : "−") + toFixed(abs(change), decimals)
+    return (change >= 0 ? "+" : "−") + grouped(toFixed(abs(change), decimals))
       + "  " + (percent >= 0 ? "+" : "−") + toFixed(abs(percent), 2) + "%"
   }
 
@@ -94,4 +94,21 @@ enum HeaderStats {
     guard frameMs > 0 else { return false }
     return now.timeIntervalSince1970 - Double(frameMs) / 1000 > maxAge
   }
+}
+
+/// 给整数部分插千分位。用于头部的价格与涨跌额：
+/// 价格轴、十字线读数那些是密排的数据，加了分隔反而更挤。
+func grouped(_ text: String) -> String {
+  let parts = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+  guard let head = parts.first else { return text }
+  let neg = head.hasPrefix("-")
+  let digits = Array(neg ? head.dropFirst() : head)
+  guard digits.count > 3, digits.allSatisfy(\.isNumber) else { return text }
+  var out: [Character] = []
+  for (i, d) in digits.enumerated() {
+    if i > 0, (digits.count - i) % 3 == 0 { out.append(",") }
+    out.append(d)
+  }
+  let intPart = (neg ? "-" : "") + String(out)
+  return parts.count > 1 ? intPart + "." + parts[1] : intPart
 }

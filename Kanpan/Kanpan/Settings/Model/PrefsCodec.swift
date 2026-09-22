@@ -71,7 +71,7 @@ extension Prefs: Codable {
     // 直接忽略（这份编解码是一个键一个键 `try?` 取的，多出来的键不会让整份存档解不开）。
     case indicatorColors
     case ambientTheme
-    case priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone, changeBasis
+    case depth, priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone, changeBasis
     case candleKind, gridChoice, bodyChoice, lastLine, showDrawings, sinceChange
     case viewAnchor, priceBias
     case dataDisplay, crossPrice, allowMainInversion, allowSubInversion
@@ -99,6 +99,7 @@ extension Prefs: Codable {
     try c.encode(redUp, forKey: .redUp)
     try c.encode(priceMode.rawValue, forKey: .priceMode)
     try c.encode(magnet, forKey: .magnet)
+    try c.encode(depth, forKey: .depth)
     try c.encode(countdown, forKey: .countdown)
     try c.encode(keepAwake, forKey: .keepAwake)
     try c.encode(launchSnapshot, forKey: .launchSnapshot)
@@ -207,6 +208,7 @@ extension Prefs: Codable {
 
     if let raw = str(.priceMode), let v = PriceMode(rawValue: raw) { priceMode = v }
     if let v = bool(.magnet) { magnet = v }
+    if let v = bool(.depth) { depth = v }
     if let v = bool(.countdown) { countdown = v }
     if let v = bool(.keepAwake) { keepAwake = v }
     if let v = bool(.launchSnapshot) { launchSnapshot = v }

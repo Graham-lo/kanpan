@@ -13,6 +13,16 @@ import Observation
 final class MarketModel {
   private(set) var series: BarSeries?
   private(set) var oi: OISeries?
+  private(set) var external: [IndicatorID: ExternalSeries] = [:]
+  private(set) var depth: OrderBook?
+  private var metricTasks: [IndicatorID: Task<Void, Never>] = [:]
+  private var metricPoints: [IndicatorID: [OIPoint]] = [:]
+  private var metricRegions: [IndicatorID: (from: Int64, to: Int64)] = [:]
+  private var metricRequests: [IndicatorID: UUID] = [:]
+  private var externalEnabled: Set<IndicatorID> = []
+  private var takerTail: OIPoint?
+  private var depthEnabled = false
+  private var chartVisible = true
   private var oiTask: Task<Void, Never>?
   private var oiSource: OISource
   /// 归档缓存；`OISource` 和这里共用一份，聚好的整段也存在它里面。
@@ -40,7 +50,7 @@ final class MarketModel {
   /// 步长与兜底精度一起锁住，展示位数始终从 `info.priceDecimals` 取；换线路沿用。
   private var lockedPrecision: [String: (precision: Int, tick: Double)] = [:]
   private(set) var volumeUnit: VolUnit?
-  /// 顶栏右侧四格里 FR 那一格：`markPrice@1s` 那条流顺带捎回来的资金费率整帧。
+  /// 顶栏右侧六格中的费率：`markPrice@1s` 那条流顺带捎回来的资金费率整帧。
   private(set) var funding: MarkPriceTick?
   /// 持仓量（**美元名义**）与总供应量，都由 VPS 后端给，客户端不自己算。
   /// 取不到就是 `nil`，那一格显示 `--`。
@@ -246,6 +256,7 @@ final class MarketModel {
     selection = UUID()
     switchTask?.cancel(); switchTask = nil
     network.stop()
+    resetMetrics()
     oiTask?.cancel(); oiTask = nil
     statsTask?.cancel(); statsTask = nil
     pump?.cancel()
@@ -255,12 +266,14 @@ final class MarketModel {
 
   func enterBackground() {
     foreground = false
+    updateMicrostructure()
     statsTask?.cancel(); statsTask = nil     // 后台不轮询持仓量
     Task { [feed] in await feed.enterBackground() }
   }
 
   func enterForeground() {
     foreground = true
+    updateMicrostructure()
     if pump != nil { startStats() }
     Task { [feed] in await feed.enterForeground() }
   }
@@ -371,6 +384,13 @@ final class MarketModel {
       guard price.isFinite, price > 0 else { return }
       markPrice = price
       ticker?.markPrice = price
+    case .takerTail(let point):
+      takerTail = point
+      publishMetric(.taker)
+    case .depth(let snapshot):
+      if snapshot == nil || (snapshot?.symbol == symbol && (snapshot?.time ?? 0) >= (depth?.time ?? 0)) {
+        depth = snapshot
+      }
     case .oi:
       break                                   // 副图 OI 由指标层自己取
     case .status(let s):
@@ -378,7 +398,7 @@ final class MarketModel {
     }
   }
 
-  // ---------------------------------------------------------------- 顶栏右侧四格
+  // ---------------------------------------------------------------- 顶栏右侧六格
 
   /// 持仓量轮询间隔。OI 本来就是分钟级统计，再密只是白跑请求。
   private static let oiPollSeconds: UInt64 = 45
@@ -561,6 +581,88 @@ final class MarketModel {
     }
   }
 
+  func setExternalIndicators(_ ids: [IndicatorID], depth: Bool) {
+    let wanted = Set(ids.filter { $0.isExternal && $0 != .oi })
+    for id in externalEnabled.subtracting(wanted) {
+      metricTasks.removeValue(forKey: id)?.cancel(); metricRequests[id] = nil
+      external[id] = nil; metricRegions[id] = nil; metricPoints[id] = nil
+    }
+    externalEnabled = wanted; depthEnabled = depth
+    if !wanted.contains(.taker) { takerTail = nil }
+    if !depth { self.depth = nil }
+    updateMicrostructure()
+    setOIEnabled(ids.contains(.oi))
+    if let lastView { loadMetrics(view: lastView) }
+  }
+
+  func setChartVisible(_ visible: Bool) {
+    guard chartVisible != visible else { return }
+    chartVisible = visible
+    updateMicrostructure()
+    if visible {
+      if let lastView { loadOI(view: lastView, refresh: true) }
+    } else {
+      metricTasks.values.forEach { $0.cancel() }; metricTasks = [:]; metricRequests = [:]
+      oiTask?.cancel(); oiTask = nil
+    }
+  }
+
+  private func updateMicrostructure() {
+    let active = chartVisible && foreground
+    if !active { depth = nil; takerTail = nil; publishMetric(.taker) }
+    let taker = active && externalEnabled.contains(.taker), depth = active && depthEnabled
+    Task { [feed] in await feed.setMicrostructure(taker: taker, depth: depth) }
+  }
+
+  private func resetMetrics() {
+    metricTasks.values.forEach { $0.cancel() }; metricTasks = [:]; metricRequests = [:]
+    metricPoints = [:]; metricRegions = [:]; external = [:]; takerTail = nil; depth = nil
+  }
+
+  private func publishMetric(_ id: IndicatorID) {
+    guard externalEnabled.contains(id) else { return }
+    var points = metricPoints[id] ?? []
+    if id == .taker, let takerTail { points = OISource.dedup(points + [takerTail]) }
+    guard !points.isEmpty else { external[id] = nil; return }
+    external[id] = ExternalSeries(oi: OISource.chartSeries(points, interval: interval))
+  }
+
+  private func loadMetrics(view: ViewWindow, refresh: Bool = false) {
+    guard chartVisible, foreground, source == .binance, MarketRoutePolicyStore.current.source == .binance,
+          let series, !series.isEmpty else { return }
+    let from = max(series.firstTime, Int64(view.from) - series.step)
+    let to = min(series.lastTime + series.step, Int64(view.to))
+    guard from <= to else { return }
+    for id in externalEnabled {
+      if !refresh, let region = metricRegions[id], from >= region.from, to <= region.to { continue }
+      metricTasks[id]?.cancel()
+      let token = UUID(), request = selection, sym = symbol, iv = interval, source = oiSource
+      let margin = max(series.step * 20, (to - from) / 2)
+      let want = (from: max(series.firstTime, from - margin), to: to + series.step)
+      metricRequests[id] = token
+      metricTasks[id] = Task { [weak self] in
+        do { try await Task.sleep(for: .milliseconds(refresh ? 250 : 60)) } catch { return }
+        guard let self, self.metricRequests[id] == token else { return }
+        let segments = OISource.missingSegments(have: self.metricRegions[id], want: want, step: series.step, refresh: refresh)
+        for segment in segments {
+          let fetched = await source.fetchMetric(id, symbol: sym, interval: iv, from: segment.from, to: segment.to)
+          guard !Task.isCancelled, request == self.selection, self.metricRequests[id] == token,
+                self.source == .binance, self.symbol == sym, self.interval == iv else { return }
+          self.metricPoints[id] = OISource.dedup((self.metricPoints[id] ?? []) + fetched.points)
+          if fetched.complete {
+            let span = OISource.coveredRegion(want: fetched.want, points: fetched.points, step: max(300_000, series.step))
+            if span.to > span.from {
+              let old = self.metricRegions[id]
+              self.metricRegions[id] = (min(old?.from ?? span.from, span.from), max(old?.to ?? span.to, span.to))
+            }
+          }
+          self.publishMetric(id)
+        }
+      }
+    }
+    if !externalEnabled.isEmpty { oiRequestedAt = Date() }
+  }
+
   func setOIEnabled(_ enabled: Bool) {
     oiEnabled = enabled
     if !enabled { oiTask?.cancel(); oiTask = nil; return }
@@ -569,14 +671,15 @@ final class MarketModel {
 
   /// 历史OI是统计采样，不伪造成逐笔WS；前台每分钟更新可见尾桶。
   func refreshOIIfNeeded() {
-    guard foreground, oiEnabled, Date().timeIntervalSince(oiRequestedAt) >= 60,
+    guard foreground, oiEnabled || !externalEnabled.isEmpty, Date().timeIntervalSince(oiRequestedAt) >= 60,
           let view = lastView, let series, view.to >= Double(series.lastTime) else { return }
     loadOI(view: view, refresh: true)
   }
 
   func loadOI(view: ViewWindow, refresh: Bool = false) {
     lastView = view
-    guard source == .binance else { return }
+    loadMetrics(view: view, refresh: refresh)
+    guard chartVisible, foreground, source == .binance, MarketRoutePolicyStore.current.source == .binance else { return }
     guard oiEnabled, let series, !series.isEmpty else { return }
     let from = max(series.firstTime, Int64(view.from) - series.step)
     let to = min(series.lastTime + series.step, Int64(view.to))
@@ -699,6 +802,7 @@ final class MarketModel {
 
   /// 换品种、换周期、换线路都得从头来：手里的点要么周期对不上，要么是另一家交易所报的。
   private func resetOI() {
+    resetMetrics()
     oiTask?.cancel(); oiTask = nil
     oi = nil; oiPoints = []; oiRegion = nil; oiDiskKey = nil; oiPatched = []
   }

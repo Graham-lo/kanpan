@@ -2,8 +2,8 @@ import Foundation
 
 /// 某个端点自己那一份、和分钟权重无关的请求数配额（§4.1 / A.2）。
 ///
-/// 币安的 `openInterestHist` 权重是 0，但它另有一条「1000 次 / 5 分钟」的独立限制。
-/// 只按权重算的话这个端点等于不受限，翻历史持仓量时能一路撞到 429 才知道。
+/// 币安 `/futures/data/` 这一族的权重是 0，但它另有一条「1000 次 / 5 分钟」的独立限制。
+/// 只按权重算的话这一族等于不受限，翻历史时能一路撞到 429 才知道。
 public struct EndpointQuota: Sendable, Equatable {
   public let name: String
   public let limit: Int
@@ -13,9 +13,17 @@ public struct EndpointQuota: Sendable, Equatable {
     self.name = name; self.limit = limit; self.windowMs = windowMs
   }
 
-  /// 合约持仓量历史：1000 次 / 5 分钟，权重单独算。
-  public static let openInterestHist = EndpointQuota(name: "openInterestHist",
-                                                    limit: 1000, windowMs: 300_000)
+  /// `/futures/data/` **整族共用**的 1000 次 / 5 分钟，权重单独算。
+  ///
+  /// 这 1000 次是币安按 IP 记在**路径族**上的，不是每个端点各有 1000。持仓量
+  /// （`openInterestHist`）、多空比（`globalLongShortAccountRatio`）、主动买卖比
+  /// （`takerlongshortRatio`）、基差（`basis`）四个端点从同一个计数器里扣。
+  ///
+  /// 所以这里只有一个桶，`name` 也故意写成路径族而不是端点名：拆成四个各自 1000 的桶，
+  /// 名义容量就是 4000，真按那个额度发，撞的还是同一条上游限制——429 一来，连带把
+  /// 今天工作正常的持仓量一起打挂。以后再加 `/futures/data/*` 的端点，继续共用这一个。
+  public static let futuresData = EndpointQuota(name: "futures/data",
+                                                limit: 1000, windowMs: 300_000)
 }
 
 /// REST 限流（§4.1）。

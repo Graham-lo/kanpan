@@ -25,12 +25,13 @@ extension ChartRenderer {
   public func drawLive(in ctx: CGContext, size: CGSize, scale: CGFloat) {
     ctx.clear(CGRect(origin: .zero, size: size))
     // 关掉实时价格线时这一层永远是空的：清完就走，连价格区间都不用算。
-    guard state.options.lastLine, !state.series.isEmpty else { return }
+    guard !state.series.isEmpty else { return }
     let L = layout(size: size)
     let r = priceRange(size: size)
     UIGraphicsPushContext(ctx)
     defer { UIGraphicsPopContext() }
-    drawLastPrice(ctx, pane: L.main, r: r, L: L, scale: Double(scale))
+    drawDepth(ctx, pane: L.main, range: r, L: L)
+    if state.options.lastLine { drawLastPrice(ctx, pane: L.main, r: r, L: L, scale: Double(scale)) }
   }
 
   /// `crossLayer`：图例 + 十字线 + 三处读数。`state.crosshair == nil` 时只画图例。

@@ -1,0 +1,251 @@
+Optional(Attributes: Application, 0x10aa8c140, pid: 66938, label: 'Hkline'
+Element subtree:
+ →Application, 0x10aa8c140, pid: 66938, label: 'Hkline'
+    Window (Main), 0x10aa8c280, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x10aa8c3c0, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x10aa8c500, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x10aa8c640, {{-402.0, -874.0}, {1206.0, 2622.0}}
+          Other, 0x10aa8c780, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x10aa8c8c0, {{0.0, 0.0}, {402.0, 874.0}}
+              StaticText, 0x10aa8ca00, {{12.0, 68.7}, {143.3, 29.0}}, identifier: 'top.symbol', label: '当前品种 BTCUSDT'
+                StaticText, 0x10aa8cb40, {{12.0, 68.7}, {29.0, 29.0}}, label: '₿'
+                StaticText, 0x10aa8dcc0, {{50.0, 73.7}, {31.3, 18.7}}, label: 'BTC'
+                StaticText, 0x10aa8e800, {{84.3, 77.0}, {37.0, 14.3}}, label: '/USDT'
+                StaticText, 0x10aa8e940, {{131.3, 78.7}, {20.0, 12.0}}, label: '永续'
+              Button, 0x10aa8ea80, {{309.0, 61.0}, {44.0, 44.0}}, identifier: 'top.review', label: '复盘', value: 0
+              Button, 0x10aa8ebc0, {{353.0, 61.0}, {44.0, 44.0}}, identifier: 'top.search', label: '搜索品种', value: 0
+              Other, 0x10aa8ed00, {{12.0, 107.0}, {378.0, 53.0}}, identifier: 'market.quote', value: symbol=BTCUSDT;las...
+                StaticText, 0x10aa8ee40, {{12.0, 111.0}, {93.3, 26.3}}, identifier: 'top.lastPrice', label: '85,520.2'
+                StaticText, 0x10aa8ef80, {{12.0, 140.3}, {117.0, 15.7}}, identifier: 'top.changePercent', label: '+3,964.5  +4.86%'
+                Other, 0x10aa8f0c0, {{191.7, 107.0}, {198.3, 53.0}}, identifier: 'top.stats'
+                  StaticText, 0x10aa8f200, {{191.7, 107.7}, {12.0, 14.3}}, label: '仓'
+                  StaticText, 0x10aa8f340, {{239.7, 107.0}, {38.3, 15.7}}, identifier: 'top.openInterest', label: '9.44B'
+                  StaticText, 0x10aa8f480, {{191.7, 126.3}, {24.0, 14.3}}, label: '市值'
+                  StaticText, 0x10aa8f5c0, {{240.0, 125.7}, {38.0, 15.7}}, identifier: 'top.marketCap', label: '1.72T'
+                  StaticText, 0x10aa8f700, {{191.7, 145.0}, {24.0, 14.3}}, label: '结算'
+                  StaticText, 0x10aa8f840, {{221.7, 144.3}, {56.3, 15.7}}, identifier: 'top.settlement', label: '1时17分'
+                  StaticText, 0x10aa8f980, {{292.0, 107.7}, {12.0, 14.3}}, label: '额'
+                  StaticText, 0x10aa8fac0, {{343.0, 107.0}, {47.0, 15.7}}, identifier: 'top.turnover', label: '24.98B'
+                  StaticText, 0x10aa8fc00, {{292.0, 126.3}, {24.0, 14.3}}, label: '费率'
+                  StaticText, 0x10aa8fd40, {{322.0, 125.7}, {68.0, 15.7}}, identifier: 'top.funding', label: '+0.0098%'
+                  StaticText, 0x10aa8fe80, {{292.0, 145.0}, {24.0, 14.3}}, label: '振幅'
+                  StaticText, 0x1071f7200, {{347.3, 144.3}, {42.7, 15.7}}, identifier: 'top.amplitude', label: '7.41%'
+              Other, 0x1071f7340, {{12.0, 169.3}, {264.0, 44.0}}, identifier: 'interval.quick'
+                Button, 0x1071f7480, {{12.0, 169.3}, {44.0, 44.0}}, identifier: 'interval.chip.1m', label: '1 分钟'
+                Button, 0x1071f75c0, {{56.0, 169.3}, {44.0, 44.0}}, identifier: 'interval.chip.5m', label: '5 分钟'
+                Button, 0x1071f7700, {{100.0, 169.3}, {44.0, 44.0}}, identifier: 'interval.chip.15m', label: '15 分钟'
+                Button, 0x1071f7840, {{144.0, 169.3}, {44.0, 44.0}}, identifier: 'interval.chip.30m', label: '30 分钟'
+                Button, 0x1071f7980, {{188.0, 169.3}, {44.0, 44.0}}, identifier: 'interval.chip.1h', label: '1 小时', Selected
+                Button, 0x1071f7ac0, {{232.0, 169.3}, {44.0, 44.0}}, identifier: 'interval.chip.4h', label: '4 小时'
+              Other, 0x1071f7c00, {{284.0, 184.3}, {1.0, 14.0}}
+              Button, 0x1071f7d40, {{293.0, 169.3}, {53.0, 44.0}}, identifier: 'interval.more', label: '更多'
+              Button, 0x1071f7e80, {{346.0, 169.3}, {44.0, 44.0}}, identifier: 'interval.chart', label: '图表'
+              Other, 0x117b28000, {{0.0, 213.7}, {402.0, 568.0}}
+                ScrollView, 0x117b28140, {{0.0, 213.7}, {402.0, 568.0}}
+                  Other, 0x117b28280, {{0.0, 213.7}, {402.0, 568.0}}, identifier: 'chart.canvas', label: '行情图表', value: {"axisW":47,"backg...
+                  Other, 0x117b283c0, {{0.0, 616.2}, {402.0, 16.0}}, identifier: 'chart.resize.VOL', label: '调整成交量区域高度', value: 79
+                  Other, 0x117b28500, {{0.0, 695.0}, {402.0, 16.0}}, identifier: 'chart.resize.OI', label: '调整持仓量区域高度', value: 79
+                  Other, 0x117b28640, {{0.0, 765.7}, {402.0, 16.0}}, identifier: 'chart.resize.MACD', label: '调整平滑异同区域高度', value: 79
+                  Other, 0x117b28780, {{369.0, 213.7}, {30.0, 568.0}}, label: '垂直滚动条, 1页', value: 0%
+                    Other, 0x117b288c0, {{396.0, 174.7}, {3.0, 36.0}}
+                  Other, 0x117b28a00, {{0.0, 748.7}, {402.0, 30.0}}, label: '水平滚动条, 1页', value: 0%
+                    Other, 0x117b28b40, {{-39.0, 775.7}, {36.0, 3.0}}
+                  Other, 0x117b28c80, {{369.0, 213.7}, {30.0, 568.0}}, label: '垂直滚动条, 1页', value: 0%
+                    Other, 0x117b28dc0, {{396.0, 174.7}, {3.0, 36.0}}
+                  Other, 0x117b28f00, {{0.0, 748.7}, {402.0, 30.0}}, label: '水平滚动条, 1页', value: 0%
+                    Other, 0x117b29040, {{-39.0, 775.7}, {36.0, 3.0}}
+                Other, 0x117b29180, {{0.0, 213.7}, {402.0, 568.0}}, identifier: 'chart.dismissPanel', label: '收起面板'
+              Other, 0x117b292c0, {{0.0, 213.7}, {402.0, 568.0}}
+                Other, 0x117b29400, {{0.0, 213.7}, {1.0, 1.0}}, identifier: 'review.range', value: 0/0 BTCUSDT 1h bin...
+              Button, 0x117b29540, {{0.0, 790.0}, {80.3, 50.0}}, identifier: 'bottom.draw', label: '画线'
+              Button, 0x117b29680, {{80.3, 790.0}, {80.3, 50.0}}, identifier: 'bottom.chart', label: '图表', Selected
+              Button, 0x117b297c0, {{160.7, 790.0}, {80.7, 50.0}}, identifier: 'bottom.favorites', label: '自选'
+              Button, 0x117b29900, {{241.3, 790.0}, {80.3, 50.0}}, identifier: 'bottom.sectors', label: '板块分类'
+              Button, 0x117b29a40, {{321.7, 790.0}, {80.3, 50.0}}, identifier: 'bottom.settings', label: '设置'
+              StaticText, 0x117b29b80, {{174.2, 62.0}, {4.0, 1.3}}, identifier: 'market.source', label: 'binance', value: live
+              StaticText, 0x117b29cc0, {{0.0, 63.3}, {352.3, 54.0}}, identifier: 'market.network', label: '
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+回前台补发首屏（上一发没落地）
+直连失败 fapi.binance.com（行情线路=直连，不退网关）：Error Domain=NSURLErrorDomain Code=-1200 "TLS错误导致安全连接失败。" UserInfo={_kCFStreamErrorCodeKey=-9816, NSUnderlyingError=0x119df1440 {Error Domain=kCFErrorDomainCFNetwork Code=-1200 "(null)" UserInfo={_kCFStreamPropertySSLClientCertificateState=0, _kCFNetworkCFStreamSSLErrorOriginalValue=-9816, _kCFStreamErrorDomainKey=3, _kCFStreamErrorCodeKey=-9816, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface: lo0, proxy}}, _NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <EB739BA0-5C66-465A-B566-7552BB244ED5>.<1>, _NSURLErrorRelatedURLSessionTaskErrorKey=(
+    "LocalDataTask <EB739BA0-5C66-465A-B566-7552BB244ED5>.<1>"
+), NSLocalizedDescription=TLS错误导致安全连接失败。, NSErrorFailingURLStringKey=https://fapi.binance.com/fapi/v1/exchangeInfo, NSErrorFailingURLKey=https://fapi.binance.com/fapi/v1/exchangeInfo, _kCFStreamErrorDomainKey=3}
+WS有效首帧 dstream.binance.me 781ms
+WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1h/btcusdt@markPrice@1s/btcusdt@ticker
+直连 fapi.binance.com /fapi/v1/exchangeInfo HTTP 200 1642ms
+GET /fapi/v1/exchangeInfo → 200 1123065B 1642ms
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 2391ms
+GET /fapi/v1/klines?interval=1h&limit=300&symbol=BTCUSDT → 200 42694B 2392ms
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 2365ms
+GET /fapi/v1/klines?interval=1h&limit=1500&symbol=BTCUSDT → 200 212966B 2366ms
+快照 60040B → BTCUSDT|1h
+直连 fapi.binance.com /futures/data/openInterestHist HTTP 200 232ms
+GET /futures/data/openInterestHist?endTime=1790062200000&limit=500&period=1h&symbol=BTCUSDT → 200 85501B 232ms
+直连 fapi.binance.com /fapi/v1/ticker/24hr HTTP 200 580ms
+GET /fapi/v1/ticker/24hr?symbol=BTCUSDT → 200 373B 580ms
+图表事件 收30 丢0/5147ms
+WS 收帧 22 条/5286ms
+图表事件 收31 丢0/5145ms
+WS 收帧 20 条/5273ms
+图表事件 收32 丢0/5041ms
+WS 收帧 19 条/5029ms
+快照 60040B → BTCUSDT|1h
+图表事件 收33 丢0/5031ms
+WS 收帧 22 条/5283ms
+图表事件 收36 丢0/5385ms
+WS 收帧 20 条/5016ms
+图表事件 收33 丢0/5289ms
+WS 收帧 20 条/5003ms
+快照 60040B → BTCUSDT|1h
+图表事件 收32 丢0/5093ms
+WS 收帧 20 条/5063ms
+图表事件 收40 丢0/5155ms
+WS 收帧 24 条/5304ms
+图表事件 收34 丢0/5340ms
+WS 收帧 20 条/5295ms
+快照 60040B → BTCUSDT|1h
+快照 60040B → BTCUSDT|1h
+图表事件 收28 丢0/5274ms
+WS 收帧 17 条/5084ms'
+              StaticText, 0x117b29e00, {{174.5, 117.3}, {3.3, 1.3}}, identifier: 'layout.diagnostics', label: 'layout', value: stored=4.000000;li...
+              Button, 0x117b29f40, {{0.0, 62.0}, {402.0, 778.0}}, identifier: 'panel.outside', label: '收起面板'
+      Other, 0x117b2a080, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x117b2a1c0, {{-402.0, -874.0}, {1206.0, 2622.0}}
+        Other, 0x117b2a300, {{8.0, 415.0}, {386.0, 451.0}}
+          Button, 0x117b2a440, {{164.5, 410.2}, {73.0, 24.0}}, label: '表单控制柄', value: 半屏
+          Other, 0x117b2a580, {{8.0, 415.0}, {386.0, 451.0}}
+            Other, 0x117b2a6c0, {{8.0, 415.0}, {386.0, 451.0}}
+              Other, 0x117b2a800, {{8.0, 415.0}, {386.0, 451.0}}
+                Other, 0x117b2a940, {{8.0, 415.0}, {386.0, 451.0}}
+                  Button, 0x117b2aa80, {{16.6, 427.5}, {30.7, 30.7}}, identifier: 'panel.done', label: '图表设置'
+                  StaticText, 0x117b2abc0, {{53.1, 434.2}, {57.3, 17.3}}, identifier: 'panel.header', label: '图表设置'
+                  ScrollView, 0x117b2ad00, {{8.0, 467.8}, {386.0, 398.2}}, identifier: 'panel.content', label: '图表设置'
+                    Other, 0x117b2ae40, {{8.0, -1286.4}, {386.0, 2119.8}}
+                      StaticText, 0x117b2af80, {{23.4, -1269.2}, {34.6, 12.8}}, label: '这张图'
+                      Button, 0x117b2b0c0, {{8.0, -1250.6}, {386.0, 52.2}}, identifier: 'chart.record', label: '记一笔、存进复盘本'
+                        StaticText, 0x117b2b200, {{23.4, -1240.0}, {40.3, 16.3}}, label: '记一笔'
+                        StaticText, 0x117b2b340, {{23.4, -1221.8}, {52.8, 12.8}}, label: '存进复盘本'
+                      Button, 0x117b2b480, {{8.0, -1198.4}, {386.0, 52.2}}, identifier: 'chart.share', label: '分享图片、存成图片发出去'
+                        StaticText, 0x117b2b5c0, {{23.4, -1187.9}, {53.5, 16.3}}, label: '分享图片'
+                        StaticText, 0x117b2b700, {{23.4, -1169.6}, {73.6, 12.8}}, label: '存成图片发出去'
+                      Button, 0x117b2b840, {{8.0, -1146.3}, {386.0, 52.2}}, identifier: 'chart.send', label: '发给朋友、登录后可用'
+                        StaticText, 0x117b2b980, {{23.4, -1135.7}, {53.5, 16.3}}, label: '发给朋友'
+                        StaticText, 0x117b2bac0, {{23.4, -1117.5}, {52.8, 12.8}}, label: '登录后可用'
+                      StaticText, 0x117b2bc00, {{23.4, -1080.6}, {46.1, 12.8}}, label: '主图叠加'
+                      StaticText, 0x117b2bd40, {{35.8, -1047.2}, {26.9, 16.3}}, label: '均线'
+                      Button, 0x117b2be80, {{336.4, -1051.5}, {42.2, 25.0}}, identifier: 'indicator.switch.MA', value: 开
+                      Button, 0x117b30000, {{23.4, -1016.0}, {89.0, 25.0}}, identifier: 'indicator.edit.MA', label: '参数与颜色'
+                      StaticText, 0x117b30140, {{35.8, -965.6}, {53.5, 16.3}}, label: '指数均线'
+                      Button, 0x117b30280, {{336.4, -969.9}, {42.2, 25.0}}, identifier: 'indicator.switch.EMA', value: 关
+                      StaticText, 0x117b303c0, {{35.8, -919.5}, {40.3, 16.3}}, label: '布林带'
+                      Button, 0x117b30500, {{336.4, -923.8}, {42.2, 25.0}}, identifier: 'indicator.switch.BOLL', value: 关
+                      StaticText, 0x117b30640, {{23.4, -874.8}, {105.6, 12.8}}, label: '副图 · 同时最多三个'
+                      StaticText, 0x117b30780, {{35.8, -841.4}, {40.3, 16.3}}, label: '成交量'
+                      Button, 0x117b308c0, {{336.4, -845.7}, {42.2, 25.0}}, identifier: 'indicator.switch.VOL', value: 开
+                      Button, 0x117b30a00, {{23.4, -810.2}, {89.0, 25.0}}, identifier: 'indicator.edit.VOL', label: '参数与输出'
+                      StaticText, 0x117b30b40, {{35.8, -759.8}, {53.5, 16.3}}, label: '平滑异同'
+                      Button, 0x117b30c80, {{336.4, -764.1}, {42.2, 25.0}}, identifier: 'indicator.switch.MACD', value: 开
+                      Button, 0x117b30dc0, {{23.4, -728.6}, {89.0, 25.0}}, identifier: 'indicator.edit.MACD', label: '参数与输出'
+                      StaticText, 0x117b30f00, {{35.8, -678.2}, {53.5, 16.3}}, label: '相对强弱'
+                      Button, 0x117b31040, {{336.4, -682.5}, {42.2, 25.0}}, identifier: 'indicator.switch.RSI', value: 关
+                      StaticText, 0x117b31180, {{35.8, -632.1}, {53.5, 16.3}}, label: '随机指标'
+                      Button, 0x117b312c0, {{336.4, -636.4}, {42.2, 25.0}}, identifier: 'indicator.switch.KDJ', value: 关
+                      StaticText, 0x117b31400, {{35.8, -586.0}, {53.5, 16.3}}, label: '随机强弱'
+                      Button, 0x117b31540, {{336.4, -590.3}, {42.2, 25.0}}, identifier: 'indicator.switch.SRSI', value: 关
+                      StaticText, 0x117b31680, {{35.8, -539.9}, {53.5, 16.3}}, label: '真实波幅'
+                      Button, 0x117b317c0, {{336.4, -544.2}, {42.2, 25.0}}, identifier: 'indicator.switch.ATR', value: 关
+                      StaticText, 0x117b31900, {{35.8, -493.8}, {40.3, 16.3}}, label: '持仓量'
+                      Button, 0x117b31a40, {{336.4, -498.1}, {42.2, 25.0}}, identifier: 'indicator.switch.OI', value: 开
+                      Button, 0x117b31b80, {{23.4, -462.6}, {89.0, 25.0}}, identifier: 'indicator.edit.OI', label: '参数与输出'
+                      StaticText, 0x117b31cc0, {{35.8, -412.2}, {40.3, 16.3}}, label: '多空比'
+                      Button, 0x117b31e00, {{336.4, -416.5}, {42.2, 25.0}}, identifier: 'indicator.switch.LSR', value: 关
+                      StaticText, 0x117b31f40, {{35.8, -366.1}, {66.9, 16.3}}, label: '主动买卖比'
+                      Button, 0x117b32080, {{336.4, -370.4}, {42.2, 25.0}}, identifier: 'indicator.switch.TAKER', value: 关
+                      StaticText, 0x117b321c0, {{35.8, -320.0}, {26.9, 16.3}}, label: '基差'
+                      Button, 0x117b32300, {{336.4, -324.3}, {42.2, 25.0}}, identifier: 'indicator.switch.BASIS', value: 关
+                      StaticText, 0x117b32440, {{23.4, -275.4}, {46.1, 12.8}}, label: '副图顺序'
+                      StaticText, 0x117b32580, {{23.4, -256.8}, {366.8, 42.2}}, label: '成交量，第 1 个副图'
+                        StaticText, 0x117b326c0, {{41.6, -243.8}, {40.3, 16.3}}, label: '成交量'
+                        Image, 0x117b32800, {{347.9, -256.8}, {42.2, 42.2}}, identifier: 'line.3.horizontal', label: '拖移'
+                      StaticText, 0x117b32940, {{23.4, -214.5}, {366.8, 42.2}}, label: '持仓量，第 2 个副图'
+                        StaticText, 0x117b32a80, {{41.6, -201.6}, {40.3, 16.3}}, label: '持仓量'
+                        Image, 0x117b32bc0, {{347.9, -214.5}, {42.2, 42.2}}, identifier: 'line.3.horizontal', label: '拖移'
+                      StaticText, 0x117b32d00, {{23.4, -172.3}, {366.8, 42.2}}, label: '平滑异同，第 3 个副图'
+                        StaticText, 0x117b32e40, {{41.6, -159.3}, {53.5, 16.3}}, label: '平滑异同'
+                        Image, 0x117b32f80, {{347.9, -172.3}, {42.2, 42.2}}, identifier: 'line.3.horizontal', label: '拖移'
+                      StaticText, 0x117b330c0, {{23.4, -116.6}, {57.6, 12.8}}, label: '布局与读数'
+                      StaticText, 0x117b33200, {{23.4, -82.0}, {52.8, 16.3}}, label: 'K 线数据'
+                      Button, 0x117b33340, {{214.8, -85.6}, {51.5, 23.4}}, identifier: 'chart.dataDisplay.K线内', label: 'K线内', Selected
+                      Button, 0x117b33480, {{277.8, -80.8}, {23.0, 13.8}}, identifier: 'chart.dataDisplay.顶部', label: '顶部'
+                      Button, 0x117b335c0, {{322.0, -80.8}, {45.1, 13.8}}, identifier: 'chart.dataDisplay.跟随K线', label: '跟随K线'
+                      StaticText, 0x117b33700, {{23.4, -33.7}, {40.3, 16.3}}, label: '十字线'
+                      Button, 0x117b33840, {{267.3, -37.2}, {53.8, 23.4}}, label: '选中价', Selected
+                      Button, 0x117b33980, {{332.5, -32.4}, {34.6, 13.8}}, label: '收盘价'
+                      StaticText, 0x117b33ac0, {{23.4, 14.6}, {40.3, 16.3}}, label: '价格轴'
+                      Button, 0x117b33c00, {{244.2, 15.9}, {23.0, 13.8}}, label: '线性'
+                      Button, 0x117b33d40, {{278.8, 11.1}, {42.2, 23.4}}, label: '对数', Selected
+                      Button, 0x117b33e80, {{332.5, 15.9}, {34.6, 13.8}}, label: '百分比'
+                      StaticText, 0x117b40000, {{23.4, 57.5}, {80.3, 16.3}}, label: '主轴允许翻转'
+                      StaticText, 0x117b40140, {{23.4, 75.8}, {94.7, 12.8}}, label: '双击价格轴上下颠倒'
+                      Button, 0x117b40280, {{336.4, 60.7}, {42.2, 25.0}}, identifier: 'chart.allowMainInversion', value: 关
+                      StaticText, 0x117b403c0, {{23.4, 109.7}, {80.3, 16.3}}, label: '副轴允许翻转'
+                      StaticText, 0x117b40500, {{23.4, 127.9}, {94.7, 12.8}}, label: '双击副图坐标轴翻转'
+                      Button, 0x117b40640, {{336.4, 112.6}, {42.2, 25.0}}, identifier: 'chart.allowSubInversion', value: 关
+                      StaticText, 0x117b40780, {{23.4, 166.2}, {93.5, 16.3}}, label: '指标区域自适应'
+                      Button, 0x117b408c0, {{336.4, 161.9}, {42.2, 25.0}}, value: 关
+                      StaticText, 0x117b40a00, {{23.4, 207.9}, {80.3, 16.3}}, label: '简化指标数值'
+                      StaticText, 0x117b40b40, {{23.4, 226.2}, {84.2, 12.8}}, label: '使用万、亿等单位'
+                      Button, 0x117b40c80, {{336.4, 210.8}, {42.2, 25.0}}, value: 关
+                      StaticText, 0x117b40dc0, {{23.4, 263.0}, {23.0, 12.8}}, label: '类型'
+                      StaticText, 0x117b40f00, {{23.4, 297.6}, {26.9, 16.3}}, label: '画法'
+                      Button, 0x117b41040, {{268.2, 294.0}, {42.2, 23.4}}, identifier: 'chart.candleKind.蜡烛', label: '蜡烛', Selected
+                      Button, 0x117b41180, {{322.0, 298.8}, {45.1, 13.8}}, identifier: 'chart.candleKind.平均K线', label: '平均K线'
+                      StaticText, 0x117b412c0, {{23.4, 343.3}, {23.7, 12.8}}, label: 'K 线'
+                      StaticText, 0x117b41400, {{23.4, 377.9}, {26.9, 16.3}}, label: '网格'
+                      Button, 0x117b41540, {{299.9, 379.2}, {23.0, 13.8}}, identifier: 'chart.gridChoice.显示', label: '显示'
+                      Button, 0x117b41680, {{334.5, 374.4}, {42.2, 23.4}}, identifier: 'chart.gridChoice.隐藏', label: '隐藏', Selected
+                      StaticText, 0x117b417c0, {{23.4, 426.2}, {26.9, 16.3}}, label: '阳线'
+                      Button, 0x117b41900, {{290.3, 422.7}, {42.2, 23.4}}, identifier: 'chart.bodyChoice.实心', label: '实心', Selected
+                      Button, 0x117b41a40, {{344.1, 427.5}, {23.0, 13.8}}, identifier: 'chart.bodyChoice.空心', label: '空心'
+                      StaticText, 0x117b41b80, {{23.4, 474.6}, {53.5, 16.3}}, label: '横向位置'
+                      Button, 0x117b41cc0, {{255.7, 475.8}, {23.0, 13.8}}, identifier: 'chart.viewAnchor.偏左', label: '偏左'
+                      Button, 0x117b41e00, {{299.9, 475.8}, {23.0, 13.8}}, identifier: 'chart.viewAnchor.居中', label: '居中'
+                      Button, 0x117b41f40, {{334.5, 471.0}, {42.2, 23.4}}, identifier: 'chart.viewAnchor.靠右', label: '靠右', Selected
+                      StaticText, 0x117b42080, {{23.4, 522.9}, {53.5, 16.3}}, label: '纵向位置'
+                      Button, 0x117b421c0, {{255.7, 524.2}, {23.0, 13.8}}, identifier: 'chart.priceBias.偏上', label: '偏上'
+                      Button, 0x117b42300, {{290.3, 519.4}, {42.2, 23.4}}, identifier: 'chart.priceBias.居中', label: '居中', Selected
+                      Button, 0x117b42440, {{344.1, 524.2}, {23.0, 13.8}}, identifier: 'chart.priceBias.偏下', label: '偏下'
+                      StaticText, 0x117b42580, {{23.4, 568.7}, {23.0, 12.8}}, label: '显示'
+                      StaticText, 0x117b426c0, {{23.4, 602.1}, {66.9, 16.3}}, identifier: 'chart.lastLine', label: '实时价格线'
+                      Button, 0x117b42800, {{336.4, 597.8}, {42.2, 25.0}}, identifier: 'chart.lastLine', value: 开
+                      StaticText, 0x117b42940, {{23.4, 648.2}, {26.9, 16.3}}, label: '盘口'
+                      Button, 0x117b42a80, {{336.4, 643.9}, {42.2, 25.0}}, identifier: 'chart.depth', value: 关
+                      StaticText, 0x117b42bc0, {{23.4, 694.3}, {66.9, 16.3}}, identifier: 'chart.countdown', label: '本根倒计时'
+                      Button, 0x117b42d00, {{336.4, 690.0}, {42.2, 25.0}}, identifier: 'chart.countdown', value: 关
+                      StaticText, 0x117b42e40, {{23.4, 736.1}, {53.5, 16.3}}, identifier: 'chart.sinceChange', label: '至今涨幅'
+                      StaticText, 0x117b42f80, {{23.4, 754.3}, {107.9, 12.8}}, identifier: 'chart.sinceChange', label: '选中 K 线至今的涨跌幅'
+                      Button, 0x117b430c0, {{336.4, 738.9}, {42.2, 25.0}}, identifier: 'chart.sinceChange', value: 关
+                      StaticText, 0x117b43200, {{23.4, 792.5}, {53.5, 16.3}}, identifier: 'chart.showDrawings', label: '显示画线'
+                      Button, 0x117b43340, {{336.4, 788.2}, {42.2, 25.0}}, identifier: 'chart.showDrawings', value: 开
+                    Other, 0x117b43480, {{362.3, 467.8}, {28.8, 365.5}}, label: '垂直滚动条, 6页', value: 100%
+                      Other, 0x117b435c0, {{388.2, 763.9}, {2.9, 66.6}}
+                    Other, 0x117b43700, {{362.3, 467.8}, {28.8, 365.5}}, label: '垂直滚动条, 6页', value: 100%
+                      Other, 0x117b43840, {{388.2, 763.9}, {2.9, 66.6}}
+          Other, 0x117b43980, {{8.0, 415.0}, {386.0, 451.0}}
+            Other, 0x117b43ac0, {{8.0, 415.0}, {386.0, 451.0}}
+              Other, 0x117b43c00, {{8.0, 415.0}, {386.0, 451.0}}
+                Other, 0x117b43d40, {{8.0, 415.0}, {386.0, 451.0}}
+                  Other, 0x117b43e80, {{8.0, 415.0}, {386.0, 451.0}}
+                    Other, 0x117b48000, {{8.0, 415.0}, {386.0, 451.0}}
+                Other, 0x117b48140, {{8.0, 415.0}, {386.0, 451.0}}
+                  Other, 0x117b48280, {{8.0, 415.0}, {386.0, 451.0}}
+Path to element:
+ →Application, 0x10aa8c140, pid: 66938, label: 'Hkline'
+Query chain:
+ →Find: Target Application 'com.mdd.kanpan'
+  Output: {
+    Application, 0x117b483c0, pid: 66938, label: 'Hkline'
+  }
+)
+Chart state: Optional({"axisW":47,"background":"#F3F7F4","bars":1500,"bodyW":2.6666666666666665,"centerY":0.5,"crosshair":false,"crossIndex":-1,"crossPane":"MAIN","crossX":-1,"crossY":-1,"dataDisplay":"inside","depthLevels":0,"depthSymbol":"","drawingAlerted":[],"drawingAnchors":[],"drawingColors":[],"drawingCommits":0,"drawingCommitWired":true,"drawingContinuous":false,"drawingCount":0,"drawingHidden":[],"drawingIDs":[],"drawingKinds":[],"drawingLocked":[],"drawingMagnet":true,"emaColor0":"#F55B58","externalReady":[],"externalSupported":true,"from":1789739100000,"gestureTrace":"","guestIDs":[],"height":568,"hiddenMA":[],"interval":"1h","inverted":false,"lastClose":85520.100000000006,"lastVolume":2937.5619999999999,"latestRightGap":0,"ma":[10,30,120,256],"macd":[10,30,9],"maColor0":"#FFB400","mainH":314.85714285714289,"mode":"log","oiPeriod":"1h","oiReady":true,"oiTimes":[1789574400000,1789578000000,1789581600000,1789585200000,1789588800000,1789592400000,1789596000000,1789599600000,1789603200000,1789606800000,1789610400000,1789614000000,1789617600000,1789621200000,1789624800000,1789628400000,1789632000000,1789635600000,1789639200000,1789642800000,1789646400000,1789650000000,1789653600000,1789657200000,1789660800000,1789664400000,1789668000000,1789671600000,1789675200000,1789678800000,1789682400000,1789686000000,1789689600000,1789693200000,1789696800000,1789700400000,1789704000000,1789707600000,1789711200000,1789714800000,1789718400000,1789722000000,1789725600000,1789729200000,1789732800000,1789736400000,1789740000000,1789743600000,1789747200000,1789750800000,1789754400000,1789758000000,1789761600000,1789765200000,1789768800000,1789772400000,1789776000000,1789779600000,1789783200000,1789786800000,1789790400000,1789794000000,1789797600000,1789801200000,1789804800000,1789808400000,1789812000000,1789815600000,1789819200000,1789822800000,1789826400000,1789830000000,1789833600000,1789837200000,1789840800000,1789844400000,1789848000000,1789851600000,1789855200000,1789858800000,1789862400000,1789866000000,1789869600000,1789873200000,1789876800000,1789880400000,1789884000000,1789887600000,1789891200000,1789894800000,1789898400000,1789902000000,1789905600000,1789909200000,1789912800000,1789916400000,1789920000000,1789923600000,1789927200000,1789930800000,1789934400000,1789938000000,1789941600000,1789945200000,1789948800000,1789952400000,1789956000000,1789959600000,1789963200000,1789966800000,1789970400000,1789974000000,1789977600000,1789981200000,1789984800000,1789988400000,1789992000000,1789995600000,1789999200000,1790002800000,1790006400000,1790010000000,1790013600000,1790017200000,1790020800000,1790024400000,1790028000000,1790031600000,1790035200000,1790038800000,1790042400000,1790046000000,1790049600000,1790053200000,1790056800000],"overlays":["MA"],"ownDimmed":false,"panes":[{"h":78.714285714285708,"id":"VOL","y":331.85714285714289},{"h":78.714285714285708,"id":"OI","y":410.57142857142861},{"h":78.714285714285708,"id":"MACD","y":489.28571428571433}],"plotW":355,"portraitHeight":0.5,"priceDecimals":1,"scrollY":0,"spacing":4,"span":319500000,"style":"aicoin","subs":["VOL","OI","MACD"],"symbol":"BTCUSDT","timeY":314.85714285714289,"to":1790058600000,"viewportH":568,"zoomY":1})

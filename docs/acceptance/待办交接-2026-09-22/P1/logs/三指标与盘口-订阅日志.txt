@@ -1,0 +1,227 @@
+图 ["guestIDs": <__NSArray0 0x1e723b918>(
+
+)
+, "plotW": 354, "crossIndex": -1, "drawingCount": 0, "drawingCommitWired": 1, "drawingCommits": 0, "oiPeriod": , "emaColor0": #F55B58, "to": 1790062200000, "from": 1789743600000, "drawingAnchors": <__NSArray0 0x1e723b918>(
+
+)
+, "centerY": 0.5, "crosshair": 0, "scrollY": 0, "ownDimmed": 0, "drawingIDs": <__NSArray0 0x1e723b918>(
+
+)
+, "span": 318600000, "zoomY": 1, "maColor0": #FFB400, "oiTimes": <__NSArray0 0x1e723b918>(
+
+)
+, "panes": <__NSArrayI 0x1181a2b80>(
+{
+    h = "78.71428571428571";
+    id = TAKER;
+    y = "331.8571428571429";
+},
+{
+    h = "78.71428571428571";
+    id = BASIS;
+    y = "410.5714285714286";
+},
+{
+    h = "78.71428571428571";
+    id = LSR;
+    y = "489.2857142857143";
+}
+)
+, "drawingContinuous": 0, "gestureTrace": , "bars": 3000, "portraitHeight": 0.5, "hiddenMA": <__NSArray0 0x1e723b918>(
+
+)
+, "height": 568, "drawingHidden": <__NSArray0 0x1e723b918>(
+
+)
+, "crossPane": MAIN, "priceDecimals": 1, "externalSupported": 1, "mode": log, "drawingLocked": <__NSArray0 0x1e723b918>(
+
+)
+, "drawingColors": <__NSArray0 0x1e723b918>(
+
+)
+, "lastClose": 85333.39999999999, "externalReady": <__NSArrayI 0x1181a2b20>(
+BASIS,
+LSR,
+TAKER
+)
+, "subs": <__NSArrayI 0x1181a21c0>(
+TAKER,
+BASIS,
+LSR
+)
+, "timeY": 314.8571428571429, "depthSymbol": , "crossX": -1, "macd": <__NSArrayI 0x1181a2460>(
+10,
+30,
+9
+)
+, "depthLevels": 0, "background": #F3F7F4, "mainH": 314.8571428571429, "crossY": -1, "overlays": <__NSSingleObjectArrayI 0x117e606c0>(
+MA
+)
+, "interval": 1h, "inverted": 0, "dataDisplay": inside, "oiReady": 0, "drawingMagnet": 1, "lastVolume": 1445.15, "ma": <__NSArrayI 0x1181a35d0>(
+10,
+30,
+120,
+256
+)
+, "bodyW": 2.666666666666667, "latestRightGap": 0, "style": aicoin, "axisW": 48, "drawingKinds": <__NSArray0 0x1e723b918>(
+
+)
+, "drawingAlerted": <__NSArray0 0x1e723b918>(
+
+)
+, "symbol": BTCUSDT, "spacing": 4, "viewportH": 568]；线路 binance/Optional(live)；链路日志：
+97ms
+GET /fapi/v1/klines?interval=1m&limit=300&symbol=BTCUSDT → 200 40107B 198ms
+预热 1/5 份快照
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+WS → {"method":"UNSUBSCRIBE","params":["btcusdt@aggTrade","btcusdt@depth5@100ms"],"id":57}
+图表事件 收104 丢0/5065ms
+WS 收帧 50 条/5161ms
+图表订阅：ethusdt@kline_1h/ethusdt@ticker/ethusdt@markPrice@1s/ethusdt@aggTrade/ethusdt@depth5@100ms
+内存命中 ETHUSDT|1h 1500 根
+图表订阅：ethusdt@kline_1h/ethusdt@ticker/ethusdt@markPrice@1s/ethusdt@aggTrade/ethusdt@depth5@100ms
+WS → {"params":["btcusdt@kline_1h","btcusdt@markPrice@1s","btcusdt@ticker"],"id":58,"method":"UNSUBSCRIBE"}
+快照 60040B → BTCUSDT|1h
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 205ms
+GET /fapi/v1/klines?interval=1h&limit=5&startTime=1790060400000&symbol=ETHUSDT → 200 137B 205ms
+WS → {"method":"SUBSCRIBE","id":59,"params":["ethusdt@aggTrade","ethusdt@depth5@100ms","ethusdt@kline_1h","ethusdt@markPrice@1s","ethusdt@ticker"]}
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 571ms
+GET /fapi/v1/klines?interval=1h&limit=1500&symbol=ETHUSDT → 200 211192B 571ms
+补缺 startTime=1790060400000 → 1 根
+直连 fapi.binance.com /futures/data/basis HTTP 200 199ms
+GET /futures/data/basis?contractType=PERPETUAL&endTime=1790060717883&limit=500&pair=ETHUSDT&period=1h → 200 97494B 199ms
+直连 fapi.binance.com /fapi/v1/ticker/24hr HTTP 200 226ms
+GET /fapi/v1/ticker/24hr?symbol=ETHUSDT → 200 367B 226ms
+直连 fapi.binance.com /futures/data/takerlongshortRatio HTTP 200 279ms
+GET /futures/data/takerlongshortRatio?endTime=1790060717883&limit=500&period=1h&symbol=ETHUSDT → 200 48707B 279ms
+直连 fapi.binance.com /futures/data/globalLongShortAccountRatio HTTP 200 362ms
+GET /futures/data/globalLongShortAccountRatio?endTime=1790060717883&limit=500&period=1h&symbol=ETHUSDT → 200 60001B 362ms
+图表事件 收66 丢0/5004ms
+预热 0/5 份快照
+WS 收帧 110 条/5011ms
+图表订阅：ethusdt@kline_1h/ethusdt@ticker/ethusdt@markPrice@1s
+WS → {"method":"UNSUBSCRIBE","id":60,"params":["ethusdt@aggTrade","ethusdt@depth5@100ms"]}
+图表事件 收66 丢0/5031ms
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s/btcusdt@aggTrade/btcusdt@depth5@100ms
+内存命中 BTCUSDT|1h 1500 根
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s/btcusdt@aggTrade/btcusdt@depth5@100ms
+WS → {"id":61,"method":"UNSUBSCRIBE","params":["ethusdt@kline_1h","ethusdt@markPrice@1s","ethusdt@ticker"]}
+快照 60040B → ETHUSDT|1h
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 239ms
+GET /fapi/v1/klines?interval=1h&limit=5&startTime=1790060400000&symbol=BTCUSDT → 200 141B 239ms
+WS → {"method":"SUBSCRIBE","params":["btcusdt@aggTrade","btcusdt@depth5@100ms","btcusdt@kline_1h","btcusdt@markPrice@1s","btcusdt@ticker"],"id":62}
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 658ms
+GET /fapi/v1/klines?interval=1h&limit=1500&symbol=BTCUSDT → 200 212965B 658ms
+补缺 startTime=1790060400000 → 1 根
+直连 fapi.binance.com /futures/data/basis HTTP 200 442ms
+GET /futures/data/basis?contractType=PERPETUAL&endTime=1790060726159&limit=500&pair=BTCUSDT&period=1h → 200 98993B 442ms
+直连 fapi.binance.com /futures/data/takerlongshortRatio HTTP 200 422ms
+GET /futures/data/takerlongshortRatio?endTime=1790060726159&limit=500&period=1h&symbol=BTCUSDT → 200 47364B 422ms
+直连 fapi.binance.com /futures/data/globalLongShortAccountRatio HTTP 200 395ms
+GET /futures/data/globalLongShortAccountRatio?endTime=1790060726159&limit=500&period=1h&symbol=BTCUSDT → 200 60001B 396ms
+WS 收帧 37 条/5034ms
+直连 fapi.binance.com /fapi/v1/ticker/24hr HTTP 200 523ms
+GET /fapi/v1/ticker/24hr?symbol=BTCUSDT → 200 373B 523ms
+直连 fapi.binance.com /fapi/v1/ticker/24hr HTTP 200 181ms
+GET /fapi/v1/ticker/24hr?symbol=BTCUSDT → 200 373B 181ms
+预热 0/5 份快照
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+WS → {"params":["btcusdt@aggTrade","btcusdt@depth5@100ms"],"id":63,"method":"UNSUBSCRIBE"}
+图表事件 收84 丢0/5001ms
+内存命中 BTCUSDT|1h 1500 根
+图表订阅：btcusdt@kline_1h
+图表订阅：btcusdt@kline_1h
+快照 60040B → BTCUSDT|1h
+WS有效首帧 kanpan.107-174-172-10.sslip.io 1424ms
+WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1h
+GET /fapi/v1/klines?interval=1h&limit=300&symbol=BTCUSDT → 200 33517B 1433ms
+快照 60040B → BTCUSDT|1h
+GET /fapi/v1/klines?interval=1h&limit=5&startTime=1790060400000&symbol=BTCUSDT → 200 111B 1700ms
+补缺 startTime=1790060400000 → 1 根
+图表事件 收21 丢0/5025ms
+GET /fapi/v1/klines?endTime=1784663999999&interval=1h&limit=1500&symbol=BTCUSDT → 200 167555B 2000ms
+第 1 页 1500 根，1779264000000 … 1784660400000
+补历史 1500 根，现在 3000 根
+WS 收帧 8 条/5033ms
+图表事件 收10 丢0/5009ms
+WS 收帧 8 条/5144ms
+内存命中 BTCUSDT|1h 3000 根
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+快照 120040B → BTCUSDT|1h
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 211ms
+GET /fapi/v1/klines?interval=1h&limit=5&startTime=1790060400000&symbol=BTCUSDT → 200 141B 211ms
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 475ms
+GET /fapi/v1/klines?interval=1h&limit=1500&symbol=BTCUSDT → 200 212965B 475ms
+快照 120040B → BTCUSDT|1h
+补缺 startTime=1790060400000 → 1 根
+WS有效首帧 dstream.binance.me 890ms
+WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1h/btcusdt@markPrice@1s/btcusdt@ticker
+直连 fapi.binance.com /fapi/v1/ticker/24hr HTTP 200 431ms
+GET /fapi/v1/ticker/24hr?symbol=BTCUSDT → 200 373B 431ms
+直连 fapi.binance.com /fapi/v1/klines HTTP 200 181ms
+GET /fapi/v1/klines?interval=1h&limit=5&startTime=1790060400000&symbol=BTCUSDT → 200 141B 181ms
+补缺 startTime=1790060400000 → 1 根，净增 0，队列已合并
+图表事件 收8 丢0/5068ms
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s/btcusdt@aggTrade/btcusdt@depth5@100ms
+WS → {"id":1,"method":"SUBSCRIBE","params":["btcusdt@aggTrade","btcusdt@depth5@100ms"]}
+直连 fapi.binance.com /futures/data/basis HTTP 200 191ms
+GET /futures/data/basis?contractType=PERPETUAL&endTime=1790060747513&limit=500&pair=BTCUSDT&period=1h → 200 98993B 191ms
+直连 fapi.binance.com /futures/data/takerlongshortRatio HTTP 200 203ms
+GET /futures/data/takerlongshortRatio?endTime=1790060747514&limit=500&period=1h&symbol=BTCUSDT → 200 47364B 203ms
+直连 fapi.binance.com /futures/data/globalLongShortAccountRatio HTTP 200 191ms
+GET /futures/data/globalLongShortAccountRatio?endTime=1790060747514&limit=500&period=1h&symbol=BTCUSDT → 200 60001B 191ms
+WS 收帧 29 条/5148ms
+图表事件 收71 丢0/5101ms
+WS 收帧 73 条/5013ms
+图表事件 收68 丢0/5169ms
+快照 120040B → BTCUSDT|1h
+WS 收帧 69 条/5029ms
+图表事件 收56 丢0/5060ms
+WS 收帧 205 条/5021ms
+图表事件 收117 丢0/5013ms
+WS 收帧 89 条/5076ms
+图表事件 收80 丢0/5038ms
+快照 120040B → BTCUSDT|1h
+WS 收帧 70 条/5077ms
+图表事件 收34 丢0/5200ms
+WS 收帧 161 条/5049ms
+图表事件 收137 丢0/5009ms
+WS 收帧 163 条/5080ms
+图表事件 收95 丢0/5023ms
+快照 120040B → BTCUSDT|1h
+WS 收帧 87 条/5020ms
+图表事件 收99 丢0/5010ms
+WS 收帧 199 条/5028ms
+图表事件 收58 丢0/5310ms
+WS 收帧 115 条/5031ms
+图表事件 收42 丢0/5009ms
+快照 120040B → BTCUSDT|1h
+WS 收帧 71 条/5051ms
+图表事件 收124 丢0/5002ms
+直连 fapi.binance.com /futures/data/globalLongShortAccountRatio HTTP 200 322ms
+直连 fapi.binance.com /futures/data/takerlongshortRatio HTTP 200 349ms
+GET /futures/data/globalLongShortAccountRatio?endTime=1790060807612&limit=500&period=1h&symbol=BTCUSDT → 200 60001B 322ms
+GET /futures/data/takerlongshortRatio?endTime=1790060807612&limit=500&period=1h&symbol=BTCUSDT → 200 47364B 350ms
+直连 fapi.binance.com /futures/data/basis HTTP 200 461ms
+GET /futures/data/basis?contractType=PERPETUAL&endTime=1790060807612&limit=500&pair=BTCUSDT&period=1h → 200 98993B 461ms
+WS 收帧 84 条/5011ms
+图表事件 收53 丢0/5031ms
+WS 收帧 332 条/5032ms
+图表事件 收158 丢0/5033ms
+快照 120040B → BTCUSDT|1h
+WS 收帧 72 条/5088ms
+图表事件 收83 丢0/5002ms
+WS 收帧 161 条/5056ms
+图表事件 收99 丢0/5032ms
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s/btcusdt@aggTrade
+WS → {"params":["btcusdt@depth5@100ms"],"method":"UNSUBSCRIBE","id":2}
+直连 fapi.binance.com /futures/data/basis HTTP 200 362ms
+直连 fapi.binance.com /futures/data/takerlongshortRatio HTTP 200 335ms
+GET /futures/data/basis?contractType=PERPETUAL&endTime=1790060828178&limit=500&pair=BTCUSDT&period=1h → 200 98993B 362ms
+GET /futures/data/takerlongshortRatio?endTime=1790060828178&limit=500&period=1h&symbol=BTCUSDT → 200 47364B 335ms
+WS 收帧 66 条/5120ms
+图表事件 收44 丢0/5341ms
+快照 120040B → BTCUSDT|1h
+WS 收帧 149 条/5095ms
+图表事件 收40 丢0/5104ms

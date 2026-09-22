@@ -350,16 +350,26 @@ struct MainScreen: View {
     .onChange(of: DeepLinkRouter.shared.pending) { _, link in if link != nil { consumeDeepLink() } }
   }
 
-  private var observedContent: some View {
+  private var microstructureVisible: Bool {
+    tab == .chart && !showSearch && !showSymbols && !review.bookOpen && !reviewChart.active && !drawingCanvasOnly
+  }
+
+  private var indicatorObservedContent: some View {
     lifecycleContent
+      .onChange(of: microstructureVisible, initial: true) { _, visible in market.setChartVisible(visible) }
+      .onChange(of: prefs.subs) { _, subs in market.setExternalIndicators(subs, depth: prefs.depth) }
+      .onChange(of: prefs.depth) { _, on in market.setExternalIndicators(prefs.subs, depth: on) }
+      .onChange(of: prefs.launchSnapshot) { _, on in market.setSnapshotEnabled(on) }
+  }
+
+  private var observedContent: some View {
+    indicatorObservedContent
     .onReceive(NotificationCenter.default.publisher(for: UIScreen.brightnessDidChangeNotification)) { _ in refreshComfort() }
     .onChange(of: prefs.ambientTheme) { _, _ in refreshComfort() }
     .onChange(of: prefs.theme) { _, _ in refreshComfort() }
     .onChange(of: prefs.keepAwake, initial: true) { _, on in
       UIApplication.shared.isIdleTimerDisabled = on
     }
-    .onChange(of: prefs.subs) { _, subs in market.setOIEnabled(subs.contains(.oi)) }
-    .onChange(of: prefs.launchSnapshot) { _, on in market.setSnapshotEnabled(on) }
     // 面板 / 画线 / 复盘开着的时候云端设置是被挡下来的（会把人正在做的事掀掉）。
     // 关掉的这一刻补跑一次，别让人等下一轮全量（300 秒）。
     .onChange(of: syncGate) { _, open in if open { accountBridge?.resumeApply() } }
@@ -813,27 +823,11 @@ struct MainScreen: View {
   /// 两个都只影响画出来的这一帧，`prefs.subs` 和 `prefs.overlays` 一个字没动——画完
   /// 退出画线，副图和均线原样回来，用户开着的那几个指标不需要重新打开。
   private var drawingCanvasOnly: Bool { draw.active && landscape }
-  /// 备用线路上持仓量整格不画（§2B）。
-  ///
-  /// `OISource` 只连币安，走兜底线路时这一格永远是空的。以前它照样占一格高度、
-  /// 中间写一句「当前行情线路不提供持仓量」——那正是用户不想在界面上看到的
-  /// 「线路」两个字，而且还白占了主图的地方。现在直接不排这一格，主图拿回高度；
-  /// `prefs.subs` 一个字没动，线路回到币安它自己就回来了。
-  private var visibleSubs: [IndicatorID] {
-    if drawingCanvasOnly { return [] }
-    guard market.source != .binance else { return prefs.subs }
-    return prefs.subs.filter { $0 != .oi }
-  }
+  /// 外部指标在不支持的线路上保留对应空态，选择不随线路变化。
+  private var visibleSubs: [IndicatorID] { drawingCanvasOnly ? [] : prefs.subs }
   private var visibleOverlays: [IndicatorID] { drawingCanvasOnly ? [] : prefs.overlays }
-  /// 长按拖完副图顺序之后，把这份新顺序合回 `prefs.subs`。
-  ///
-  /// 图上拖的是 `visibleSubs`——**只有看得见的那几格**。备用线路上持仓量整格不排，
-  /// 横屏画线台干脆一格都不排。以前这里直接 `$0.subs = order`，等于把没排进来的
-  /// 那几格当成用户删掉了：在非币安线路上拖一次副图顺序，持仓量就**永久消失**，
-  /// 换回币安线路也回不来。
-  ///
-  /// 现在按「看得见的格子按新顺序重排，看不见的留在原来的坑里」合并：`prefs.subs`
-  /// 从头走一遍，遇到这次参与拖动的位置就依次填 `order`，其余原样不动。
+  /// 图上只调整当前可见副图的顺序，保留没有参与排序的设置。
+  /// 横屏画线台不展示副图；网关则保留已选指标并显示空态。
   private func merged(subs order: [IndicatorID]) -> [IndicatorID] {
     var queue = order[...]
     let moving = Set(order)
@@ -1363,6 +1357,8 @@ struct MainScreen: View {
       subScale: subScale)
     // 走 OKX 兜底线路时持仓量根本取不到（`OISource` 只连币安）——让副图说实话，
     // 别一直挂「加载中」。
+    result.external = market.external
+    result.depth = drawingCanvasOnly || !prefs.depth ? nil : market.depth
     result.oiSupported = market.source == .binance
     result.subInverted = prefs.allowSubInversion ? prefs.subInverted : []
     result.paletteSeed = seed
@@ -1621,7 +1617,7 @@ struct MainScreen: View {
     picker.setLoader(market.catalogLoader)
     // 搜了一个表里没有的代号：那是「用户点名」，允许立刻问一次目录（审查 B-06）。
     picker.onMissingSymbol = { [market] symbol in await market.lookupMissingSymbol(symbol) }
-    market.setOIEnabled(prefs.subs.contains(.oi))
+    market.setExternalIndicators(prefs.subs, depth: prefs.depth)
     // Configure the catalog and its source before presenting the favorites list.
     // Otherwise FavoritesView can start its first catalog request against the
     // default Binance route while the host/source setup is still in flight.

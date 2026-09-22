@@ -90,7 +90,7 @@ struct IndicatorToggleTests {
     for id in ids { #expect(p.toggle(id) == nil) }
     #expect(p.subs == ids)
     // 第四个不再被拒绝：队首（最早打开的 VOL）让位，并把「换下了谁」说回来。
-    #expect(p.toggle(.kdj) == "副图最多三个 · 已换下 VOL")
+    #expect(p.toggle(.kdj) == "副图最多三个 · 已换下 成交量")
     #expect(p.subs == [.oi, .macd, .kdj])
     // 关掉一个照旧只是关掉，不带提示，其余顺序不动。
     #expect(p.toggle(.macd) == nil)

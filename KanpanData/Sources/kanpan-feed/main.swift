@@ -239,6 +239,7 @@ func cmdLive(_ symbol: String, _ iv: Interval, minutes: Double) async throws {
       case .markPrice(_, let price, _):
         _ = await tally.bumpPrice()
         say("标记价 \(price)")
+      case .takerTail, .depth: break
       case .oi(let p): say("OI \(p.count) 条")
       case .status(let s): say("状态 → \(s.rawValue)")
       }

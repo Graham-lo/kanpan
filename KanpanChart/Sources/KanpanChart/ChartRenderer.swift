@@ -56,15 +56,9 @@ public struct ChartRenderer {
     }
     geometry = GeometryCache()
     ChartWorkCounter.bump(.geometryCache)
-    // 缓存键里塞上持仓量的身份。
-    //
-    // `IndicatorEngine.cacheKey` 只认「数据键|品种|周期|指标:参数|根数」，压根没有持仓量的
-    // 影子——只有持仓量变了（K 线、参数、根数都没动）的时候，`ensure` 会算出一模一样的键
-    // 然后直接返回，OI 那条副图就一直挂着旧值。把 `revision`（全局唯一）拼进数据键，
-    // 这种情况就能被认出来；而它本身不变的时候键也不变，不会平白多重建。
-    let dataKey = state.oi.map { "\(state.symbol.symbol)#oi\($0.revision)" } ?? state.symbol.symbol
+    let dataKey = state.symbol.symbol
     let seriesChanged = previous == nil || previous!.series != state.series
-    let oiChanged = previous?.oi != state.oi
+    let oiChanged = previous?.oi != state.oi || previous?.external != state.external
     let inputsChanged = seriesChanged || oiChanged || previous?.params != state.params
       || previous?.overlays != state.overlays || previous?.subs != state.subs
     // Same count does not imply same candles: REST can replace a stale snapshot,
@@ -79,15 +73,15 @@ public struct ChartRenderer {
       // 「根数相同」，所以每根新 K 线一落地就把十几条指标从头算一遍——而引擎的
       // `updateTail` 本来就会处理追加（既有的 1000 轮随机逐位一致测试正是这么测的）。
       if old.series.samePrefix(as: state.series) || state.series.isOneBarAfter(old.series),
-        old.oi == state.oi {
-        engine.updateTail(series: state.series, oi: state.oi, dataKey: dataKey)
+        old.oi == state.oi && old.external == state.external {
+        engine.updateTail(series: state.series, external: state.indicatorInputs, dataKey: dataKey)
       } else {
         engine = IndicatorEngine()
       }
     }
     if inputsChanged { engine.ensure(
       series: state.series, wanted: state.overlays + state.subs,
-      params: state.params, oi: state.oi, dataKey: dataKey) }
+      params: state.params, external: state.indicatorInputs, dataKey: dataKey) }
     if seriesChanged || previous?.view != state.view || previous?.options.kind != state.options.kind {
       heikin = HeikinSlice.make(state: state)
     }
@@ -320,6 +314,7 @@ public struct ChartRenderer {
     drawExtrema(ctx, r: r, L: L, scale: s)
     drawOverlays(ctx, pane: main, r: r, L: L, scale: s)
     drawDrawings(ctx, pane: main, r: r, L: L, scale: s)
+    if live { drawDepth(ctx, pane: main, range: r, L: L) }
     if live { drawLastPrice(ctx, pane: main, r: r, L: L, scale: s) }
     for k in 1..<L.panes.count {
       drawSub(ctx, pane: L.panes[k], L: L, scale: s, legend: legend)

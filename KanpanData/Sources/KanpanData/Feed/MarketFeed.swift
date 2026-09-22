@@ -17,6 +17,8 @@ public enum FeedEvent: Sendable {
   /// 事件时间在 `tick.timeMs`。顶栏的 FR 那一格吃的就是它，不额外发请求。
   case markPrice(symbol: String, price: Double, tick: MarkPriceTick)
   case oi([OIPoint])
+  case takerTail(OIPoint?)
+  case depth(OrderBook?)
   case status(FeedStatus)
 }
 
@@ -29,6 +31,10 @@ public struct FeedUpdate: Sendable {
 
 /// 把 REST + WS + 内存缓存合成「当前 (品种, 周期)」一条流（§3.1 / §4.4）。
 public actor MarketFeed {
+  private var takerEnabled = false
+  private var depthEnabled = false
+  private var takerBucket = TakerBucket()
+  private var lastTakerEmitMs = -Double.infinity
   private let includeTicker: Bool
   private let initialLimit: Int
   private let rest: BinanceREST
@@ -200,6 +206,8 @@ public actor MarketFeed {
     lastTradeMs = 0
     lastKlineReceivedMs = -.infinity; lastTickerReceivedMs = -.infinity
     gapFrom = 0
+    takerBucket = TakerBucket(startedAt: Int64(clock().timeIntervalSince1970 * 1000)); lastTakerEmitMs = -Double.infinity
+    emit(.takerTail(nil)); emit(.depth(nil))
     symbol = newSymbol.uppercased()
     interval = newInterval
     let key = SeriesKey(symbol, interval)
@@ -375,6 +383,14 @@ public actor MarketFeed {
 
   // ------------------------------------------------------------------ 内部
 
+  public func setMicrostructure(taker: Bool, depth: Bool) async {
+    guard takerEnabled != taker || depthEnabled != depth else { return }
+    takerEnabled = taker; depthEnabled = depth
+    takerBucket = TakerBucket(startedAt: Int64(clock().timeIntervalSince1970 * 1000))
+    emit(.takerTail(nil)); emit(.depth(nil))
+    if !symbol.isEmpty { await ws.replaceStreams(streamNames()) }
+  }
+
   private func streamNames() -> [String] {
     // 1y 没有原生流，订 1M（§4.2）。
     let api = interval.source.rawValue
@@ -383,6 +399,9 @@ public actor MarketFeed {
     if includeTicker {
       streams += [BinanceHosts.tickerStream(symbol: symbol), BinanceHosts.markPriceStream(symbol: symbol)]
     }
+    if takerEnabled { streams.append(BinanceHosts.aggTradeStream(symbol: symbol)) }
+    if depthEnabled { streams.append(BinanceHosts.depth5Stream(symbol: symbol)) }
+    log("图表订阅：" + streams.joined(separator: "/"))
     return streams
   }
 
@@ -449,6 +468,9 @@ public actor MarketFeed {
     guard current(request), generation == wsGeneration else { return }
     switch ev {
     case .connected:
+      takerBucket = TakerBucket(startedAt: Int64(clock().timeIntervalSince1970 * 1000))
+      lastTakerEmitMs = -Double.infinity
+      emit(.takerTail(nil)); emit(.depth(nil))
       // 首连时 switchTo 已经派了一次 fill，别再补一遍（会重复拉 1500 根，而且两次
       // fill 并发谁后到谁说了算）。序列空着是冷启动，序列不空但 fill 还在路上是
       // 「快照打了底」的热启动——两种都归首连，只有重连才需要补缺。
@@ -465,6 +487,7 @@ public actor MarketFeed {
         await self?.backfill(symbol: sym, interval: iv, selection: request)
       }
     case .status(let s):
+      if s != .live { takerBucket = TakerBucket(startedAt: Int64(clock().timeIntervalSince1970 * 1000)); emit(.takerTail(nil)); emit(.depth(nil)) }
       // 断了：从当时的末根起就不可信了——那根是半截的，它之后的整段没收到。
       if s != .live, composer.series.count > 0 { noteGap(at: composer.series.lastTime) }
       emit(.status(s))
@@ -478,6 +501,19 @@ public actor MarketFeed {
           emit(.tradeQuote(TradeQuote(symbol: symbol, price: k.bar.close, timeMs: k.eventTime, tradeID: id)))
         }
         applyKline(k, now: received)
+      case .aggTrade(let trade):
+        guard takerEnabled, trade.symbol.uppercased() == symbol else { return }
+        takerBucket.add(time: trade.timeMs, quantity: trade.qty, buyer: trade.takerIsBuyer,
+                        id: trade.aggID, interval: interval)
+        if received - lastTakerEmitMs >= 100 {
+          lastTakerEmitMs = received
+          emit(.takerTail(takerBucket.point))
+        }
+      case .depth(let snapshot):
+        guard depthEnabled, snapshot.symbol.uppercased() == symbol else { return }
+        emit(.depth(OrderBook(symbol: symbol, time: snapshot.timeMs,
+          bids: snapshot.bids.map { .init(price: $0.price, quantity: $0.qty) },
+          asks: snapshot.asks.map { .init(price: $0.price, quantity: $0.qty) })))
       case .ticker(let t):
         if t.symbol.uppercased() == symbol {
           lastTickerReceivedMs = received
@@ -506,7 +542,7 @@ public actor MarketFeed {
         foldTick(price: px, qty: 0, timeMs: ms, allowAppend: false, now: received)
       case .tickerBatch:
         break
-      case .other:
+      default:
         break
       }
     }

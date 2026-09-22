@@ -21,14 +21,19 @@ public struct IndicatorEngine: Sendable {
   // ---------------------------------------------------------------- 对外
 
   /// 保证 `wanted` 里的指标都是算好的。键没变就直接返回，什么都不做。
+  ///
+  /// `external` 是那些不从 K 线算的输入（持仓量、多空比、主动买卖比、基差），按指标索引。
+  /// 一个指标要不要外部输入看 `IndicatorID.externalColumns`；没喂到的那个指标画一列 NaN，
+  /// 不是报错——数据是按需拉的，副图刚打开时本来就还没到。
   @discardableResult
   public mutating func ensure(
     series: BarSeries, wanted: [IndicatorID], params: [IndicatorID: [Int]] = [:],
-    oi: OISeries? = nil, dataKey: String = ""
+    external: [IndicatorID: ExternalSeries] = [:], dataKey: String = ""
   ) -> Bool {
     let ids = Array(Set(wanted))
     let resolved = Dictionary(uniqueKeysWithValues: ids.map { ($0, params[$0] ?? $0.defaultParams) })
-    let k = Self.cacheKey(series: series, wanted: ids, params: resolved, dataKey: dataKey)
+    let k = Self.cacheKey(series: series, wanted: ids, params: resolved,
+                          external: external, dataKey: dataKey)
     if k == key { return false }
     key = k
 
@@ -46,13 +51,16 @@ public struct IndicatorEngine: Sendable {
     var keptValues: [IndicatorID: IndicatorResult] = [:]
     for id in ids {
       let p = resolved[id]!
-      // `.oi` 例外：它的输入除了 K 线还有那份持仓量，而缓存键里根本没有持仓量的影子
-      // （见 `cacheKey`），`revision` 也管不着它。宁可每次重建。
-      if sameData, id != .oi, oldParams[id] == p, let st = states[id], let v = values[id] {
+      // 吃外部数据的指标一律不留用：它的输入除了 K 线还有那一路外部序列，
+      // `series.revision` 管不着它。宁可重建。
+      //
+      // 从前这儿硬写着 `id != .oi`，因为外部输入只有持仓量一路；现在有四路了，
+      // 再按名字开后门必然漏掉新的，所以改成问 `isExternal`。
+      if sameData, !id.isExternal, oldParams[id] == p, let st = states[id], let v = values[id] {
         keptStates[id] = st
         keptValues[id] = v
       } else {
-        let st = Self.build(id, p: p, series: series, oi: oi)
+        let st = Self.build(id, p: p, series: series, external: external[id])
         keptStates[id] = st
         keptValues[id] = st.result
       }
@@ -62,6 +70,17 @@ public struct IndicatorEngine: Sendable {
     values = keptValues
     dataRevision = series.revision
     return true
+  }
+
+  /// 只有持仓量的调用点用这个：`OISeries` 保持原样不动，进引擎之前转成单列的
+  /// `ExternalSeries`（戳原样带过去，见 `ExternalSeries.init(oi:)`）。
+  @discardableResult
+  public mutating func ensure(
+    series: BarSeries, wanted: [IndicatorID], params: [IndicatorID: [Int]] = [:],
+    oi: OISeries?, dataKey: String = ""
+  ) -> Bool {
+    ensure(series: series, wanted: wanted, params: params,
+           external: Self.externalMap(oi: oi), dataKey: dataKey)
   }
 
   /// 末根改了或者新追了一根：只重算尾巴，结果与全量逐位相同。
@@ -83,7 +102,9 @@ public struct IndicatorEngine: Sendable {
   ///
   /// 量过：N=10000、MA×3+BOLL+MACD+KDJ+RSI 共 15 条线，改前每次末根更新要重新分配
   /// 并复制 15 条整列（1.2 MB），改后 0 条。
-  public mutating func updateTail(series: BarSeries, oi: OISeries? = nil, dataKey: String = "") {
+  public mutating func updateTail(series: BarSeries,
+                                  external: [IndicatorID: ExternalSeries] = [:],
+                                  dataKey: String = "") {
     // 空序列没有末根可更（WS 事件可能比 REST 历史先到），直接放过。
     guard !states.isEmpty, series.count > 0 else { return }
     values.removeAll(keepingCapacity: true)
@@ -97,24 +118,44 @@ public struct IndicatorEngine: Sendable {
       // 这种极短状态本来就没有几根可算，全量不构成负担；长序列的起点仍是
       // `count - tailBars`，增量路径一点没动。
       let start = max(0, series.count - id.tailBars(params: p))
-      states[id]?.update(series: series, from: start, oi: oi)
+      states[id]?.update(series: series, from: start, external: external[id])
       values[id] = states[id]?.result
     }
-    key = Self.cacheKey(series: series, wanted: Array(states.keys), params: params, dataKey: dataKey)
+    key = Self.cacheKey(series: series, wanted: Array(states.keys), params: params,
+                        external: external, dataKey: dataKey)
     dataRevision = series.revision
+  }
+
+  /// 持仓量专用的便捷入口，理由同上面那个 `ensure`。
+  public mutating func updateTail(series: BarSeries, oi: OISeries?, dataKey: String = "") {
+    updateTail(series: series, external: Self.externalMap(oi: oi), dataKey: dataKey)
+  }
+
+  /// 单列持仓量 → 外部序列表。`nil` 给空表，`.oi` 那一列就画成 NaN。
+  static func externalMap(oi: OISeries?) -> [IndicatorID: ExternalSeries] {
+    guard let oi else { return [:] }
+    return [.oi: ExternalSeries(oi: oi)]
   }
 
   /// 参数或指标集合没变、只是想拿值。
   public subscript(id: IndicatorID) -> IndicatorResult? { values[id] }
 
+  /// 缓存键。外部输入按 `revision` 记进来：那些序列不是从 K 线算出来的，
+  /// K 线一个字没动它们也会变（持仓量补上了新的一段、多空比翻了一页历史），
+  /// 键里没有它们的影子就意味着「数据更新了但键没变」，`ensure` 直接短路返回、
+  /// 画面停在旧值上。戳是全局唯一的，比一遍数组便宜。
   public static func cacheKey(
-    series: BarSeries, wanted: [IndicatorID], params: [IndicatorID: [Int]], dataKey: String
+    series: BarSeries, wanted: [IndicatorID], params: [IndicatorID: [Int]],
+    external: [IndicatorID: ExternalSeries] = [:], dataKey: String = ""
   ) -> String {
     let parts = wanted.map(\.rawValue).sorted().map { id -> String in
       let p = (params[IndicatorID(rawValue: id)!] ?? []).map(String.init).joined(separator: "-")
       return "\(id):\(p)"
     }
-    return "\(dataKey)|\(series.symbol)|\(series.interval.rawValue)|\(parts.joined(separator: ","))|\(series.count)"
+    let ext = external.keys.map(\.rawValue).sorted().map { id -> String in
+      "\(id)@\(external[IndicatorID(rawValue: id)!]!.revision)"
+    }
+    return "\(dataKey)|\(series.symbol)|\(series.interval.rawValue)|\(parts.joined(separator: ","))|\(ext.joined(separator: ","))|\(series.count)"
   }
 
   // ---------------------------------------------------------------- 状态
@@ -125,7 +166,8 @@ public struct IndicatorEngine: Sendable {
     func column(_ b: BarSeries) -> [Double] { self == .close ? b.close : b.volume }
   }
 
-  private static func build(_ id: IndicatorID, p: [Int], series b: BarSeries, oi: OISeries?) -> State {
+  private static func build(_ id: IndicatorID, p: [Int], series b: BarSeries,
+                            external: ExternalSeries?) -> State {
     switch id {
     case .ma: .sma(p.map { SMALine(b.close, $0) }, .close)
     case .vol: .sma(p.map { SMALine(b.volume, $0) }, .volume)
@@ -136,7 +178,9 @@ public struct IndicatorEngine: Sendable {
     case .kdj: .kdj(KDJState(b, n: p[0], kn: p[1], dn: p[2]))
     case .srsi: .srsi(SRSIState(b.close, rlen: p[0], slen: p[1], kn: p[2], dn: p[3]))
     case .atr: .atr(ATRState(b, n: p[0]))
-    case .oi: .oi(oi?.aligned(to: b) ?? nanArray(b.count), oi?.revision ?? 0)
+    case .oi, .lsr, .taker, .basis:
+      .external(external?.aligned(to: b) ?? ExternalSeries.blank(id.externalColumns ?? 1, b.count),
+                external?.revision ?? 0)
     }
   }
 
@@ -149,9 +193,9 @@ public struct IndicatorEngine: Sendable {
     case kdj(KDJState)
     case srsi(SRSIState)
     case atr(ATRState)
-    /// 对齐好的那一列，外加它是从哪份持仓量来的（`OISeries.revision`，没有持仓量时 0）。
-    /// 记着来源才敢在 `update` 里只对齐尾巴。
-    case oi([Double], UInt64)
+    /// 对齐好的那几列，外加它是从哪一份外部序列来的（`ExternalSeries.revision`，
+    /// 没喂到数据时 0）。记着来源才敢在 `update` 里只对齐尾巴。
+    case external([[Double]], UInt64)
     /// 负载刚被掏出去的那一瞬间（见 `update`）。`update` 的每条路径都会在返回前填回来，
     /// 外面永远碰不到这个值。
     case moved
@@ -166,7 +210,7 @@ public struct IndicatorEngine: Sendable {
       case .kdj(let s): IndicatorResult(lines: [s.k, s.d, s.j])
       case .srsi(let s): IndicatorResult(lines: [s.k.out, s.d.out])
       case .atr(let s): IndicatorResult(lines: [s.line.out])
-      case .oi(let v, _): IndicatorResult(lines: [v])
+      case .external(let cols, _): IndicatorResult(lines: cols)
       case .moved: IndicatorResult(lines: [])
       }
     }
@@ -181,7 +225,7 @@ public struct IndicatorEngine: Sendable {
     ///
     /// Release 下优化器有时能自己看出这是一次搬移，Debug 下不会（量过：`-Onone` 里
     /// 不写这一句，15 条线每次更新整列复制 15 次）。写明白，模拟器上跑的也是同一条快路。
-    mutating func update(series b: BarSeries, from start: Int, oi: OISeries?) {
+    mutating func update(series b: BarSeries, from start: Int, external: ExternalSeries?) {
       switch self {
       case .sma(var l, let src):
         self = .moved
@@ -205,25 +249,26 @@ public struct IndicatorEngine: Sendable {
       case .srsi(var s): self = .moved; s.update(b.close, from: start); self = .srsi(s)
       case .atr(var s): self = .moved; s.update(b, from: start); self = .atr(s)
       case .moved: break
-      case .oi(var prev, let rev):
+      case .external(var prev, let rev):
         self = .moved
-        guard let oi, oi.revision != 0 else {
-          // 没有持仓量：上次也没有的话，那一列已经全是 NaN，追长就行，
-          // 不必每个 tick 现开一条几千长的 NaN 数组。
-          if rev == 0, prev.count <= b.count {
-            grow(to: b.count, &prev)
-            self = .oi(prev, 0)
+        guard let ext = external, ext.revision != 0 else {
+          // 没喂到数据：上次也没有的话，那几列已经全是 NaN，追长就行，
+          // 不必每个 tick 现开几条几千长的 NaN 数组。
+          if rev == 0, prev.allSatisfy({ $0.count <= b.count }) {
+            for c in prev.indices { grow(to: b.count, &prev[c]) }
+            self = .external(prev, 0)
           } else {
-            self = .oi(nanArray(b.count), 0)
+            self = .external(ExternalSeries.blank(max(prev.count, 1), b.count), 0)
           }
           return
         }
-        // 还是同一份持仓量、前缀也没动：只对齐尾巴，结果逐位相同。
+        // 还是同一份、列数没变、前缀也没动：只对齐尾巴，结果逐位相同。
         // 换了一份就老老实实整列重来。
-        if oi.revision == rev, prev.count <= b.count, start <= prev.count {
-          self = .oi(oi.aligned(to: b, from: start, previous: prev), oi.revision)
+        if ext.revision == rev, prev.count == ext.columnCount,
+           prev.allSatisfy({ $0.count <= b.count && start <= $0.count }) {
+          self = .external(ext.aligned(to: b, from: start, previous: prev), ext.revision)
         } else {
-          self = .oi(oi.aligned(to: b), oi.revision)
+          self = .external(ext.aligned(to: b), ext.revision)
         }
       }
     }

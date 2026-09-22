@@ -42,6 +42,7 @@ struct Prefs: Sendable, Equatable {
   /// 两者**不合并**：一个管看盘时读价，一个管画线时端点对齐，出厂档位本来就该不一样。
   var magnet: Bool = false
   /// 本根倒计时，默认关；前台时钟独立更新。
+  var depth: Bool = false
   var countdown: Bool = false
   /// 蜡烛 / 平均K线（Heikin-Ashi）。默认蜡烛。
   var candleKind: CandleKind = .candle
@@ -346,7 +347,7 @@ struct Prefs: Sendable, Equatable {
       while subs.count >= Prefs.maxSubs, !subs.isEmpty { evicted = subs.removeFirst() }
       subs.append(id)
       guard let evicted else { return nil }
-      return "副图最多三个 · 已换下 \(evicted.rawValue)"
+      return "副图最多三个 · 已换下 \(evicted.name)"
     }
   }
 

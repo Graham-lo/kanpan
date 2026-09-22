@@ -182,6 +182,8 @@ public final class ChartView: UIView {
           // 画线横屏要的是一张没有任何指标参与定标的原始 K 线，用例得能看见主图叠加层。
           "overlays": s.overlays.map(\.rawValue),
           "ma": s.params[.ma] ?? [], "macd": s.params[.macd] ?? [],
+          "externalReady": s.external.keys.map(\.rawValue).sorted(),
+          "externalSupported": s.oiSupported, "depthSymbol": s.depth?.symbol ?? "", "depthLevels": (s.depth?.bids.count ?? 0) + (s.depth?.asks.count ?? 0),
           "oiReady": s.oi != nil, "interval": s.series.interval.rawValue,
           "oiPeriod": s.oi?.bucketInterval?.rawValue ?? "",
           "oiTimes": s.oi?.timestamps ?? []]
@@ -389,6 +391,7 @@ public final class ChartView: UIView {
       p.insert([.plot, .live])
       if o.crosshair == nil || new.crosshair == nil { p.insert(.cross) }
     }
+    if o.depth != new.depth { p.insert(.live) }
     if o.crosshair != new.crosshair { p.insert(.cross) }
     // 倒计时每秒走一格，但它只画在 `liveLayer` 上——只脏 live，别把整张图拖下水
     // （A3.12 要求静止时 CPU < 1%，重画 plot 层就破功了）。倒计时没开就当没变过。
@@ -401,7 +404,7 @@ public final class ChartView: UIView {
     a.symbol == b.symbol && a.view == b.view && a.style == b.style && a.dark == b.dark && a.paletteSeed == b.paletteSeed
       && a.redUp == b.redUp && a.price == b.price && a.overlays == b.overlays
       && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
-      && a.drawingPreviewID == b.drawingPreviewID && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi && a.oiSupported == b.oiSupported
+      && a.drawingPreviewID == b.drawingPreviewID && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi && a.external == b.external && a.oiSupported == b.oiSupported
       && a.magnet == b.magnet && a.options == b.options && a.subScale == b.subScale
       && a.indicatorColors == b.indicatorColors && a.hiddenOutputs == b.hiddenOutputs && a.subInverted == b.subInverted
       && a.rsiUpper == b.rsiUpper && a.rsiLower == b.rsiLower && a.axisScaleAnchor == b.axisScaleAnchor

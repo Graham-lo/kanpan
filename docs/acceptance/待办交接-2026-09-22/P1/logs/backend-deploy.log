@@ -1,0 +1,11 @@
+   Compiling kanpan-api v0.1.0 (/opt/kanpan-api)
+    Finished `release` profile [optimized] target(s) in 2m 30s
+Dedicated account database and nonprivileged API enabled; no mail service.
+ExecMainStartTimestamp=Tue 2026-09-22 14:08:25 CST
+ActiveState=active
+
+ExecMainStartTimestamp=Tue 2026-09-22 14:08:24 CST
+ActiveState=active
+1f0329db7313693b602e1970d515eba10b8413f67af5757b1d43746c12089dc6  target/release/kanpan-api
+3d3563ba3dc20ba2f3642fa310f566b72699e4ed6c8d85e096f217b813f146e2  src/oi_archive.rs
+98f58055c172b8fad44bcd3a162c7a258cf43a36f555aed6fd0d71ba6ca5932e  contract/settings-fields.json

@@ -84,6 +84,44 @@ public struct BinanceHosts: Sendable, Equatable {
     return url("/futures/data/openInterestHist", q)
   }
 
+  /// 全市场多空账户数比近 30 天。`period` 和持仓量同一套：5m/15m/30m/1h/2h/4h/6h/12h/1d。
+  ///
+  /// 口径已经拍板成「全市场账户数」这一种，不做大户持仓 / 大户账户的切换
+  /// （`kanpan-sector-page-no-basis-picker`），所以这儿只有这一条路径。
+  public func globalLongShortAccountRatio(symbol: String, period: String, limit: Int,
+                                          startTime: Int64? = nil, endTime: Int64? = nil) -> URL {
+    var q = ["symbol": symbol, "period": period, "limit": String(limit)]
+    if let startTime { q["startTime"] = String(startTime) }
+    if let endTime { q["endTime"] = String(endTime) }
+    return url("/futures/data/globalLongShortAccountRatio", q)
+  }
+
+  /// 主动买卖量比近 30 天。
+  ///
+  /// 路径里的 `takerlongshortRatio` 就是**全小写的 taker/long/short**，只有最后的
+  /// `Ratio` 大写——币安这一族里唯一一个不按驼峰写的端点，写成 `takerLongShortRatio`
+  /// 会 404。别「顺手改正」它。
+  public func takerLongShortRatio(symbol: String, period: String, limit: Int,
+                                  startTime: Int64? = nil, endTime: Int64? = nil) -> URL {
+    var q = ["symbol": symbol, "period": period, "limit": String(limit)]
+    if let startTime { q["startTime"] = String(startTime) }
+    if let endTime { q["endTime"] = String(endTime) }
+    return url("/futures/data/takerlongshortRatio", q)
+  }
+
+  /// 基差近 30 天。
+  ///
+  /// 参数是 `pair` + `contractType`，**不是 `symbol`**：基差是「某个标的的某类合约
+  /// 相对指数的偏离」，同一个 pair 下永续和各期交割合约各有一条曲线。我们只看永续，
+  /// 所以 `contractType` 默认 `PERPETUAL`。传 `symbol=BTCUSDT` 会被判成缺参。
+  public func basis(pair: String, contractType: String = "PERPETUAL", period: String, limit: Int,
+                    startTime: Int64? = nil, endTime: Int64? = nil) -> URL {
+    var q = ["pair": pair, "contractType": contractType, "period": period, "limit": String(limit)]
+    if let startTime { q["startTime"] = String(startTime) }
+    if let endTime { q["endTime"] = String(endTime) }
+    return url("/futures/data/basis", q)
+  }
+
   // ------------------------------------------------------------------ 归档
 
   /// 每日 metrics zip：一天一个，≈ 12 KB，解开是 288 行 5 分钟粒度的 CSV。
@@ -123,4 +161,18 @@ public struct BinanceHosts: Sendable, Equatable {
   /// 最优买卖挂单。成交稀疏的品种（半夜的小币）可能几十秒没有一笔成交，
   /// 靠它给最新价一个心跳——只改价，不记量，也不凭它开新的一根。
   public static func bookTickerStream(symbol: String) -> String { "\(symbol.lowercased())@bookTicker" }
+
+  /// 保留未消费的流名；强平功能不做，见 docs/不做清单.md，不添加订阅或展示。
+  public static func forceOrderStream(symbol: String) -> String { "\(symbol.lowercased())@forceOrder" }
+
+  /// 逐笔聚合成交。它的用处不是做一张逐笔明细表，而是给主动买卖比补上
+  /// 「当前这根还没成型的桶」——`/futures/data/takerlongshortRatio` 是 5 分钟粒度
+  /// 且滞后一档，只有这条流是实时的。
+  public static func aggTradeStream(symbol: String) -> String { "\(symbol.lowercased())@aggTrade" }
+
+  /// 买卖各五档的**全量快照**（partial book depth），100ms 一帧。
+  ///
+  /// 不是增量流：每一帧就是完整的五档，不用维护本地订单簿、也不用先拉一份 REST 快照
+  /// 对 `U`/`u` 序号。事件名照样是 `depthUpdate`，别被它骗去写增量合并的逻辑。
+  public static func depth5Stream(symbol: String) -> String { "\(symbol.lowercased())@depth5@100ms" }
 }

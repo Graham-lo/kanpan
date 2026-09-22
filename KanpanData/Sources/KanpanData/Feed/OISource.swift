@@ -324,12 +324,12 @@ public actor OISource {
     for proxy in hosts.oiProxies {
       guard !Task.isCancelled else { return nil }
       guard var url = URLComponents(string: "https://\(proxy)/oi/v1/metrics/\(symbol)/range") else { continue }
-      url.queryItems = [URLQueryItem(name: "interval", value: interval.rawValue),
+      url.queryItems = [URLQueryItem(name: "metrics", value: "1"), URLQueryItem(name: "interval", value: interval.rawValue),
                        URLQueryItem(name: "from", value: String(from)), URLQueryItem(name: "to", value: String(to))]
       guard let target = url.url else { continue }
       do {
         let response = try await transport.get(target, timeout: 45)
-        if response.status == 200 { return try Self.decodeGateway(response.body) }
+        if response.status == 200 { return try Self.decodeGateway(response.body, requireMetrics: true) }
       } catch { if Task.isCancelled { return nil } }
     }
     return nil
@@ -370,9 +370,9 @@ public actor OISource {
           do {
             for proxy in hosts.oiProxies {
               guard !Task.isCancelled else { return (day, [], false) }
-              if let proxyURL = URL(string: "https://\(proxy)/oi/v1/metrics/\(symbol)/\(OIArchive.dayString(day)).json"),
+              if let proxyURL = URL(string: "https://\(proxy)/oi/v1/metrics/\(symbol)/\(OIArchive.dayString(day)).json?metrics=1"),
                  let reply = try? await transport.get(proxyURL, timeout: 6), reply.status == 200,
-                 let points = try? Self.decodeGateway(reply.body) {
+                 let points = try? Self.decodeGateway(reply.body, requireMetrics: true) {
                 return (day, points, true)
               }
             }
@@ -400,13 +400,75 @@ public actor OISource {
   }
 
   /// Gateway returns real timestamps, including archives older than the REST window.
-  public static func decodeGateway(_ data: Data) throws -> [OIPoint] {
-    let rows = try JSONDecoder().decode([[Double]].self, from: data)
-    guard rows.allSatisfy({ $0.count == 2 && $0[0].isFinite && $0[0] > 0
-      && $0[0] < Double(Int64.max) && $0[1].isFinite && $0[1] >= 0 }) else {
-      throw FeedError.badResponse("历史OI响应不完整")
+  public static func decodeGateway(_ data: Data, requireMetrics: Bool = false) throws -> [OIPoint] {
+    let rows = try JSONDecoder().decode([[Double?]].self, from: data)
+    return try dedup(rows.map { row in
+      guard (requireMetrics ? row.count == 6 : [2, 6].contains(row.count)), let time = row[0], time.isFinite,
+            time > 0, time < Double(Int64.max), let value = row[1], value.isFinite, value >= 0,
+            row.dropFirst(2).allSatisfy({ $0 == nil || ($0!.isFinite && $0! >= 0) }) else {
+        throw FeedError.badResponse("历史指标响应不完整")
+      }
+      return OIPoint(time: Int64(time), value: value,
+        topTraderAccountRatio: row.count == 6 ? row[2] : nil,
+        topTraderPositionRatio: row.count == 6 ? row[3] : nil,
+        accountRatio: row.count == 6 ? row[4] : nil, takerVolumeRatio: row.count == 6 ? row[5] : nil)
+    })
+  }
+
+  /// 三种外部指标共用持仓量的历史归档与缓存；近期按同一个限额桶分页。
+  /// 返回 value 是指标单值，基差存百分数。这里只请求已启用的那一个指标。
+  public func fetchMetric(_ id: IndicatorID, symbol: String, interval: Interval,
+                          from: Int64, to: Int64,
+                          now: Int64 = Int64(Date().timeIntervalSince1970 * 1000)) async -> OIFetch {
+    guard [.lsr, .taker, .basis].contains(id), from <= to else {
+      return OIFetch(want: (from, to), points: [], complete: true)
     }
-    return dedup(rows.map { OIPoint(time: Int64($0[0]), value: $0[1]) })
+    let cutoff = now - Self.restWindowMs
+    var points: [OIPoint] = []
+    var complete = true
+    if from < cutoff, id != .basis {
+      let history = await historySegment(symbol: symbol, interval: interval,
+        from: max(from, Self.archiveEpoch), to: min(to, cutoff - 1), onDay: nil)
+      points += history.points.compactMap { point in
+        let value = id == .lsr ? point.accountRatio : point.takerVolumeRatio
+        return value.map { OIPoint(time: point.time, value: $0) }
+      }
+      complete = history.complete
+    }
+    if to >= cutoff {
+      let period = interval.oiPeriod ?? (interval.stepMs >= 86_400_000 ? "1d" : "5m")
+      let lower = max(from, cutoff)
+      let sampleInterval: Interval = interval.stepMs < 300_000 ? .m5 : interval.stepMs > 86_400_000 ? .d1 : interval
+      let currentBucket = Aggregator.bucketStart(ms: now, interval: sampleInterval)
+      var end = min(to, now)
+      var answered = false
+      for _ in 0..<20 {
+        if Task.isCancelled { break }
+        do {
+          let page: [OIPoint]
+          switch id {
+          case .lsr:
+            page = try await rest.globalLongShortAccountRatio(symbol: symbol, period: period, limit: 500, endTime: end)
+              .map { OIPoint(time: $0.timeMs, value: $0.ratio) }
+          case .taker:
+            page = try await rest.takerLongShortRatio(symbol: symbol, period: period, limit: 500, endTime: end)
+              .map { OIPoint(time: $0.timeMs, value: $0.buySellRatio) }
+          default:
+            page = try await rest.basis(pair: symbol, period: period, limit: 500, endTime: end)
+              .map { OIPoint(time: $0.timeMs, value: $0.basisRate * 100) }
+          }
+          guard !Task.isCancelled else { break }
+          points += page.filter { $0.time >= lower && $0.time <= to &&
+            (id != .taker || $0.time < currentBucket) }
+          guard let first = page.first else { answered = true; break }
+          if page.count < 500 || first.time <= lower { answered = true; break }
+          end = first.time - 1
+        } catch { break }
+      }
+      complete = complete && answered
+    }
+    return OIFetch(want: (from, to), points: Self.downsample(Self.dedup(points), to: interval),
+                   complete: complete && !Task.isCancelled)
   }
 
   // ------------------------------------------------------------------ 纯函数

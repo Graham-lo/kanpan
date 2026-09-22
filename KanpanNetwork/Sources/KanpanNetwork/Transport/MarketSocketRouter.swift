@@ -61,7 +61,10 @@ public struct MarketSocketRouter: WSSocketFactory {
               case .text(let text):
                 guard let payload = try? JSONDecoder().decode(StreamEnvelope.self, from: Data(text.utf8)).payload else { continue }
                 switch payload {
-                case .kline, .ticker, .tickerBatch, .markPrice, .trade, .bookTicker: return frame
+                // 强平 / 逐笔 / 盘口也算「这条线路真的在推数据」的证据：选路只问
+                // 有没有收到一帧认得出来的行情，不挑是哪一种。
+                case .kline, .ticker, .tickerBatch, .markPrice, .trade, .bookTicker,
+                     .forceOrder, .aggTrade, .depth: return frame
                 case .other: continue
                 }
               }

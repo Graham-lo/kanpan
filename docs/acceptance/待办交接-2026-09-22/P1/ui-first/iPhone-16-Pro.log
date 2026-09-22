@@ -1,0 +1,233 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=C2F4461B-B8F9-45BD-BF67-8E4B0AA35EAA" -derivedDataPath /tmp/kanpan-p1-dd "-only-testing:KanpanUITests/ChartFoundationUITests/testExternalIndicatorsAndDepthRoundTrip" -test-timeouts-enabled YES -default-test-execution-time-allowance 480 -maximum-test-execution-time-allowance 900 -resultBundlePath /tmp/kanpan-p1-ui-results/iPhone-16-Pro.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanReview: /Users/mdd/zhk/kanpan/KanpanReview @ local
+  KanpanData: /Users/mdd/zhk/kanpan/KanpanData @ local
+  KanpanAccount: /Users/mdd/zhk/kanpan/KanpanAccount @ local
+  KanpanCore: /Users/mdd/zhk/kanpan/KanpanCore @ local
+  KanpanChart: /Users/mdd/zhk/kanpan/KanpanChart @ local
+  KanpanNetwork: /Users/mdd/zhk/kanpan/KanpanNetwork @ local
+
+Writing result bundle at path:
+	/tmp/kanpan-p1-ui-results/iPhone-16-Pro.xcresult
+
+2026-09-22 14:41:02.734369+0800 KanpanUITests-Runner[66887:3946692] [Default] Running tests...
+2026-09-22 14:41:02.777705+0800 KanpanUITests-Runner[66887:3946957] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+2026-09-22 14:41:02.819817+0800 KanpanUITests-Runner[66887:3946963] [General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+objc[66887]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10b5f0310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10a308398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-22 14:41:05.813.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 14:41:05.814.
+Test Suite 'ChartFoundationUITests' started at 2026-09-22 14:41:05.814.
+Test Case '-[KanpanUITests.ChartFoundationUITests testExternalIndicatorsAndDepthRoundTrip]' started.
+    t =     0.00s Start Test at 2026-09-22 14:41:05.815
+    t =     0.29s Set Up
+2026-09-22 14:41:08.564 xcodebuild[66389:3939687] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 14:41:08.566 xcodebuild[66389:3939687] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     0.29s     Setting device orientation to Portrait
+    t =     0.29s         Device orientation changed to Portrait
+    t =     0.34s         Wait for com.apple.springboard to idle
+    t =     0.39s     Open com.mdd.kanpan
+    t =     0.39s         Launch com.mdd.kanpan
+    t =    10.87s             Setting up automation session
+    t =    11.78s             Wait for com.mdd.kanpan to idle
+    t =    13.60s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =    14.68s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =    14.68s             Checking existence of `"chart.canvas" Other`
+    t =    15.91s     Checking existence of `"chart.canvas" Other`
+    t =    15.97s     Find the "chart.canvas" Other
+    t =    16.14s Checking existence of `"chart.canvas" Other`
+    t =    16.23s Find the "chart.canvas" Other
+    t =    16.25s Tap "interval.chart" Button
+    t =    16.25s     Wait for com.mdd.kanpan to idle
+    t =    16.26s     Find the "interval.chart" Button
+    t =    16.35s     Check for interrupting elements affecting "interval.chart" Button
+    t =    16.39s     Synthesize event
+    t =    16.83s     Wait for com.mdd.kanpan to idle
+    t =    17.04s Checking existence of `"indicator.switch.VOL" Button`
+    t =    17.18s Find the "indicator.switch.VOL" Button
+    t =    17.36s Swipe up "panel.content" ScrollView
+    t =    17.36s     Wait for com.mdd.kanpan to idle
+    t =    17.54s     Find the "panel.content" ScrollView
+    t =    17.61s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    17.72s     Synthesize event
+    t =    18.16s     Wait for com.mdd.kanpan to idle
+    t =    20.30s Checking existence of `"indicator.switch.VOL" Button`
+    t =    20.45s Find the "indicator.switch.VOL" Button
+    t =    20.53s Swipe up "panel.content" ScrollView
+    t =    20.53s     Wait for com.mdd.kanpan to idle
+    t =    20.54s     Find the "panel.content" ScrollView
+    t =    20.64s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    20.70s     Synthesize event
+    t =    21.13s     Wait for com.mdd.kanpan to idle
+    t =    23.26s Checking existence of `"indicator.switch.VOL" Button`
+    t =    23.36s Find the "indicator.switch.VOL" Button
+    t =    23.44s Swipe up "panel.content" ScrollView
+    t =    23.44s     Wait for com.mdd.kanpan to idle
+    t =    23.44s     Find the "panel.content" ScrollView
+    t =    23.51s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    23.58s     Synthesize event
+    t =    24.03s     Wait for com.mdd.kanpan to idle
+    t =    24.75s Checking existence of `"indicator.switch.VOL" Button`
+    t =    24.90s Find the "indicator.switch.VOL" Button
+    t =    24.98s Swipe up "panel.content" ScrollView
+    t =    24.98s     Wait for com.mdd.kanpan to idle
+    t =    24.99s     Find the "panel.content" ScrollView
+    t =    25.07s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    25.19s     Synthesize event
+    t =    25.68s     Wait for com.mdd.kanpan to idle
+    t =    26.39s Checking existence of `"indicator.switch.VOL" Button`
+    t =    26.76s Find the "indicator.switch.VOL" Button
+    t =    26.85s Swipe up "panel.content" ScrollView
+    t =    26.85s     Wait for com.mdd.kanpan to idle
+    t =    26.86s     Find the "panel.content" ScrollView
+    t =    26.93s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    27.04s     Synthesize event
+    t =    27.49s     Wait for com.mdd.kanpan to idle
+    t =    28.19s Checking existence of `"indicator.switch.VOL" Button`
+    t =    28.27s Find the "indicator.switch.VOL" Button
+    t =    28.42s Swipe up "panel.content" ScrollView
+    t =    28.42s     Wait for com.mdd.kanpan to idle
+    t =    28.43s     Find the "panel.content" ScrollView
+    t =    28.61s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    28.66s     Synthesize event
+    t =    29.09s     Wait for com.mdd.kanpan to idle
+    t =    29.78s Checking existence of `"indicator.switch.VOL" Button`
+    t =    29.86s Find the "indicator.switch.VOL" Button
+    t =    30.01s Swipe up "panel.content" ScrollView
+    t =    30.02s     Wait for com.mdd.kanpan to idle
+    t =    30.05s     Find the "panel.content" ScrollView
+    t =    30.19s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    30.29s     Synthesize event
+    t =    30.76s     Wait for com.mdd.kanpan to idle
+    t =    31.45s Checking existence of `"indicator.switch.VOL" Button`
+    t =    31.65s Find the "indicator.switch.VOL" Button
+    t =    31.74s Swipe up "panel.content" ScrollView
+    t =    31.74s     Wait for com.mdd.kanpan to idle
+    t =    31.74s     Find the "panel.content" ScrollView
+    t =    31.86s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    32.01s     Synthesize event
+    t =    32.45s     Wait for com.mdd.kanpan to idle
+    t =    33.14s Checking existence of `"indicator.switch.VOL" Button`
+    t =    33.26s Find the "indicator.switch.VOL" Button
+    t =    33.36s Swipe up "panel.content" ScrollView
+    t =    33.36s     Wait for com.mdd.kanpan to idle
+    t =    33.36s     Find the "panel.content" ScrollView
+    t =    33.54s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    33.60s     Synthesize event
+    t =    34.03s     Wait for com.mdd.kanpan to idle
+    t =    34.75s Checking existence of `"indicator.switch.VOL" Button`
+    t =    34.83s Find the "indicator.switch.VOL" Button
+    t =    34.89s Swipe up "panel.content" ScrollView
+    t =    34.89s     Wait for com.mdd.kanpan to idle
+    t =    34.89s     Find the "panel.content" ScrollView
+    t =    34.94s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    35.02s     Synthesize event
+    t =    35.47s     Wait for com.mdd.kanpan to idle
+    t =    36.18s Checking existence of `"indicator.switch.VOL" Button`
+    t =    36.35s Find the "indicator.switch.VOL" Button
+    t =    36.56s Swipe up "panel.content" ScrollView
+    t =    36.56s     Wait for com.mdd.kanpan to idle
+    t =    36.56s     Find the "panel.content" ScrollView
+    t =    36.84s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    36.94s     Synthesize event
+    t =    37.38s     Wait for com.mdd.kanpan to idle
+    t =    38.09s Checking existence of `"indicator.switch.VOL" Button`
+    t =    38.23s Find the "indicator.switch.VOL" Button
+    t =    38.79s Swipe up "panel.content" ScrollView
+    t =    38.79s     Wait for com.mdd.kanpan to idle
+    t =    38.80s     Find the "panel.content" ScrollView
+    t =    39.06s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    39.28s     Synthesize event
+    t =    39.85s     Wait for com.mdd.kanpan to idle
+    t =    40.54s Checking existence of `"indicator.switch.VOL" Button`
+    t =    40.69s Find the "indicator.switch.VOL" Button
+    t =    40.80s Swipe up "panel.content" ScrollView
+    t =    40.80s     Wait for com.mdd.kanpan to idle
+    t =    40.80s     Find the "panel.content" ScrollView
+    t =    40.94s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    41.13s     Synthesize event
+    t =    41.59s     Wait for com.mdd.kanpan to idle
+    t =    42.29s Checking existence of `"indicator.switch.VOL" Button`
+    t =    42.46s Find the "indicator.switch.VOL" Button
+    t =    42.52s Swipe up "panel.content" ScrollView
+    t =    42.52s     Wait for com.mdd.kanpan to idle
+    t =    42.52s     Find the "panel.content" ScrollView
+    t =    42.58s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    42.63s     Synthesize event
+    t =    43.09s     Wait for com.mdd.kanpan to idle
+    t =    43.79s Checking existence of `"indicator.switch.VOL" Button`
+    t =    44.10s Find the "indicator.switch.VOL" Button
+    t =    44.29s Swipe up "panel.content" ScrollView
+    t =    44.29s     Wait for com.mdd.kanpan to idle
+    t =    44.29s     Find the "panel.content" ScrollView
+    t =    44.36s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    44.53s     Synthesize event
+    t =    44.98s     Wait for com.mdd.kanpan to idle
+    t =    45.67s Checking existence of `"indicator.switch.VOL" Button`
+    t =    45.92s Find the "indicator.switch.VOL" Button
+    t =    46.16s Swipe up "panel.content" ScrollView
+    t =    46.16s     Wait for com.mdd.kanpan to idle
+    t =    46.16s     Find the "panel.content" ScrollView
+    t =    46.49s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    46.71s     Synthesize event
+    t =    47.15s     Wait for com.mdd.kanpan to idle
+    t =    47.86s Checking existence of `"indicator.switch.VOL" Button`
+    t =    47.98s Find the "indicator.switch.VOL" Button
+    t =    48.07s Swipe up "panel.content" ScrollView
+    t =    48.07s     Wait for com.mdd.kanpan to idle
+    t =    48.08s     Find the "panel.content" ScrollView
+    t =    48.22s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    48.29s     Synthesize event
+    t =    48.80s     Wait for com.mdd.kanpan to idle
+    t =    49.52s Checking existence of `"indicator.switch.VOL" Button`
+    t =    62.31s Find the "indicator.switch.VOL" Button
+    t =    62.46s Swipe up "panel.content" ScrollView
+    t =    62.46s     Wait for com.mdd.kanpan to idle
+    t =    62.46s     Find the "panel.content" ScrollView
+    t =    62.54s     Check for interrupting elements affecting "panel.content" ScrollView
+    t =    62.66s     Synthesize event
+    t =    63.14s     Wait for com.mdd.kanpan to idle
+    t =    63.97s Find the "indicator.switch.VOL" Button
+/Users/mdd/zhk/kanpan/Kanpan/KanpanUITests/ChartFoundationUITests.swift:313: error: -[KanpanUITests.ChartFoundationUITests testExternalIndicatorsAndDepthRoundTrip] : failed - 图表面板找不到控件：indicator.switch.VOL
+    t =    64.52s Tear Down
+    t =    64.52s     Find the Target Application 'com.mdd.kanpan'
+    t =    64.81s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    64.81s     Checking existence of `"chart.canvas" Other`
+    t =    65.71s     Find the "chart.canvas" Other
+    t =    66.80s     Requesting snapshot of accessibility hierarchy for app with pid 66938
+    t =    67.00s     Requesting snapshot of accessibility hierarchy for app with pid 66938
+    t =    67.18s     Added attachment of type 'public.plain-text'
+    t =    67.18s     Terminate com.mdd.kanpan:66938
+Test Case '-[KanpanUITests.ChartFoundationUITests testExternalIndicatorsAndDepthRoundTrip]' failed (71.640 seconds).
+2026-09-22 14:42:17.456174+0800 KanpanUITests-Runner[66887:3946692] [Default] Flushing outgoing messages to the IDE with timeout 600.00s
+2026-09-22 14:42:17.456853+0800 KanpanUITests-Runner[66887:3946959] [Default] Received confirmation that IDE processed remaining outgoing messages
+2026-09-22 14:43:06.119724+0800 KanpanUITests-Runner[67692:3966311] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-22 14:43:08.073.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 14:43:08.073.
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-22 14:43:08.074.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-22 14:43:08.074.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+objc[67692]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10b92c310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10a60c398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+2026-09-22 14:45:50.194 xcodebuild[66389:3939687] [MT] IDETestOperationsObserverDebug: 326.035 elapsed -- Testing started completed.
+2026-09-22 14:45:50.196 xcodebuild[66389:3939687] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-22 14:45:50.196 xcodebuild[66389:3939687] [MT] IDETestOperationsObserverDebug: 326.035 sec, +326.035 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/kanpan-p1-ui-results/iPhone-16-Pro.xcresult
+
+Failing tests:
+	ChartFoundationUITests.testExternalIndicatorsAndDepthRoundTrip()
+
+** TEST EXECUTE FAILED **
+
+Testing started

@@ -58,6 +58,7 @@
     "countdown" : "synced",
     "crossPrice" : "synced",
     "dataDisplay" : "synced",
+    "depth" : "synced",
     "drawToolGroup" : "synced",
     "favoritesAmount" : "synced",
     "favoritesAscending" : "synced",
@@ -117,7 +118,10 @@
     "KDJ",
     "SRSI",
     "ATR",
-    "OI"
+    "OI",
+    "LSR",
+    "TAKER",
+    "BASIS"
   ],
   "indicatorIDsNote" : "`IndicatorID` 的全部 rawValue，顺序就是枚举的顺序：主图那几种在前、副图那几种在后。服务端 sync_validation 的 OVERLAY_INDICATORS ++ SUB_INDICATORS 必须逐项等于它——`params` / `hiddenOutputs` / `indicatorColors` / `subHeights` 这些带指标名的路径，第二段只认这份词表，不在表里的整条操作 400。",
   "overlayIndicatorIDs" : [
@@ -133,7 +137,10 @@
     "KDJ",
     "SRSI",
     "ATR",
-    "OI"
+    "OI",
+    "LSR",
+    "TAKER",
+    "BASIS"
   ],
   "subIndicatorIDsNote" : "画在副图上的那几种（`placement == .sub`）。settings.subs 与 settings.subInverted 只认这一档。主副分界也是契约的一部分：服务端是按「前 N 个是主图、其余是副图」切的，新指标落错一边 = 那条设置永远同步不上去。",
   "version" : 1,
@@ -152,6 +159,7 @@
     "countdown",
     "crossPrice",
     "dataDisplay",
+    "depth",
     "drawToolGroup",
     "favoritesAmount",
     "favoritesAscending",

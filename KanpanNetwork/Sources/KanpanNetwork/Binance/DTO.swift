@@ -150,6 +150,119 @@ struct OIHistDTO: Decodable {
   var point: OIPoint { OIPoint(time: timestamp, value: Double(sumOpenInterest) ?? .nan) }
 }
 
+// -------------------------------------------- 多空比 / 主动买卖比 / 基差
+
+/// `/futures/data/*` 这一族的数值**全是字符串**，而且可能是空串——实测 `basis` 的
+/// `annualizedBasisRate` 一直发 `""`。空串和解不动的串一律当「这一项没有」，不当错误：
+/// 为了一个附带字段把整条记录判废，图上就会平白缺一截。
+private func futuresDataNumber(_ text: String?) -> Double? {
+  guard let text, !text.isEmpty, let v = Double(text), v.isFinite else { return nil }
+  return v
+}
+
+/// 全市场多空账户数比的一个点。
+///
+/// 口径是**账户数**之比（多头账户数 ÷ 空头账户数），不是持仓量之比，也不是大户口径。
+public struct LongShortRatioPoint: Sendable, Equatable {
+  public var timeMs: Int64
+  public var ratio: Double
+  /// 多头 / 空头账户各占全市场的比例（0…1，两项相加为 1）。缺了不影响 `ratio`。
+  public var longAccount: Double?
+  public var shortAccount: Double?
+
+  public init(timeMs: Int64, ratio: Double, longAccount: Double? = nil, shortAccount: Double? = nil) {
+    self.timeMs = timeMs; self.ratio = ratio
+    self.longAccount = longAccount; self.shortAccount = shortAccount
+  }
+}
+
+/// 主动买卖量比的一个点：主动买入量 ÷ 主动卖出量。
+///
+/// 这一族的响应里**没有 symbol**，调用方只能靠自己发的请求知道这是谁的数。
+public struct TakerRatioPoint: Sendable, Equatable {
+  public var timeMs: Int64
+  public var buySellRatio: Double
+  public var buyVolume: Double?
+  public var sellVolume: Double?
+
+  public init(timeMs: Int64, buySellRatio: Double, buyVolume: Double? = nil, sellVolume: Double? = nil) {
+    self.timeMs = timeMs; self.buySellRatio = buySellRatio
+    self.buyVolume = buyVolume; self.sellVolume = sellVolume
+  }
+}
+
+/// 基差的一个点：永续合约价相对指数价的偏离。
+public struct BasisPoint: Sendable, Equatable {
+  public var timeMs: Int64
+  /// 合约价 − 指数价，报价货币计。
+  public var basis: Double
+  /// 基差率（小数，不是百分数）。
+  public var basisRate: Double
+  public var indexPrice: Double?
+  /// 合约价。币安这儿的字段名是 `futuresPrice`，不是 `contractPrice`。
+  public var futuresPrice: Double?
+  /// 年化基差率。实测币安在永续上一直发空串，所以它基本永远是 nil——
+  /// 有它当锦上添花，没它不能判废整条记录。
+  public var annualizedBasisRate: Double?
+
+  public init(timeMs: Int64, basis: Double, basisRate: Double, indexPrice: Double? = nil,
+              futuresPrice: Double? = nil, annualizedBasisRate: Double? = nil) {
+    self.timeMs = timeMs; self.basis = basis; self.basisRate = basisRate
+    self.indexPrice = indexPrice; self.futuresPrice = futuresPrice
+    self.annualizedBasisRate = annualizedBasisRate
+  }
+}
+
+struct LongShortRatioDTO: Decodable {
+  var symbol: String?
+  var longShortRatio: String?
+  var longAccount: String?
+  var shortAccount: String?
+  var timestamp: Int64?
+
+  /// 主字段（比值、时刻）缺一不可，附带字段缺了照收。
+  var point: LongShortRatioPoint? {
+    guard let timestamp, timestamp > 0, let ratio = futuresDataNumber(longShortRatio), ratio >= 0 else { return nil }
+    return LongShortRatioPoint(timeMs: timestamp, ratio: ratio,
+                               longAccount: futuresDataNumber(longAccount),
+                               shortAccount: futuresDataNumber(shortAccount))
+  }
+}
+
+struct TakerRatioDTO: Decodable {
+  var buySellRatio: String?
+  var buyVol: String?
+  var sellVol: String?
+  var timestamp: Int64?
+
+  var point: TakerRatioPoint? {
+    guard let timestamp, timestamp > 0, let ratio = futuresDataNumber(buySellRatio), ratio >= 0 else { return nil }
+    return TakerRatioPoint(timeMs: timestamp, buySellRatio: ratio,
+                           buyVolume: futuresDataNumber(buyVol),
+                           sellVolume: futuresDataNumber(sellVol))
+  }
+}
+
+struct BasisDTO: Decodable {
+  var pair: String?
+  var contractType: String?
+  var basis: String?
+  var basisRate: String?
+  var indexPrice: String?
+  var futuresPrice: String?
+  var annualizedBasisRate: String?
+  var timestamp: Int64?
+
+  var point: BasisPoint? {
+    guard let timestamp, timestamp > 0,
+          let basis = futuresDataNumber(basis), let rate = futuresDataNumber(basisRate) else { return nil }
+    return BasisPoint(timeMs: timestamp, basis: basis, basisRate: rate,
+                      indexPrice: futuresDataNumber(indexPrice),
+                      futuresPrice: futuresDataNumber(futuresPrice),
+                      annualizedBasisRate: futuresDataNumber(annualizedBasisRate))
+  }
+}
+
 // ---------------------------------------------------------------- WS 报文
 
 /// 组合流外层：`{"stream":"btcusdt@kline_1m","data":{…}}`。
@@ -184,6 +297,12 @@ public enum StreamPayload: Sendable {
   case trade(TradeEvent)
   /// 最优挂单：只给价格线一个心跳，不进成交量。
   case bookTicker(symbol: String, bid: Double, ask: Double, timeMs: Int64)
+  /// 保留帧解析，无消费方；强平功能不做，见 docs/不做清单.md。
+  case forceOrder(LiquidationEvent)
+  /// 逐笔聚合成交（`@aggTrade`）：给主动买卖比补当前这根的实时尾巴。
+  case aggTrade(AggTradeEvent)
+  /// 五档全量快照（`@depth5@100ms`）。
+  case depth(DepthSnapshot)
   case other(String)
 }
 
@@ -225,6 +344,13 @@ extension StreamPayload: Decodable {
       self = .markPrice(symbol: sym, price: p, tick: tick)
     case "trade":
       self = .trade(try TradeEvent(from: decoder))
+    case "forceOrder":
+      self = .forceOrder(try LiquidationEvent(from: decoder))
+    case "aggTrade":
+      self = .aggTrade(try AggTradeEvent(from: decoder))
+    case "depthUpdate":
+      // `@depth5@100ms` 的事件名也是 `depthUpdate`（见 `DepthSnapshot`）。
+      self = .depth(try DepthSnapshot(from: decoder))
     case "bookTicker":
       let sym = try c.decode(String.self, forKey: .s)
       func px(_ k: K) -> Double { (try? c.decode(String.self, forKey: k)).flatMap(Double.init) ?? .nan }
@@ -310,6 +436,162 @@ public struct TradeEvent: Sendable, Equatable, Decodable {
   }
 
   enum K: String, CodingKey { case e, s, p, q, T, E, t, m }
+}
+
+// ---------------------------------------------------------------- 强平 / 逐笔 / 盘口
+
+/// 一笔强平里**被平掉的是哪一边**。
+///
+/// 币安发的 `S` 是**系统这张平仓单的方向**，不是被平仓位的方向，两者正好相反：
+/// `S == "SELL"` 是系统卖出去平掉一个**多头**（多头爆仓），`S == "BUY"` 是买回来
+/// 平掉一个**空头**。这条流最常被搞错的就是这一点，所以这儿存的是「谁被平了」，
+/// 不是原样的 `S`——调用方拿到 `.long` 就是多头爆仓，不用再反一次。
+public enum LiquidationSide: Sendable, Equatable {
+  case long, short
+}
+
+/// 保留的强平事件模型（`forceOrder`），功能不做，见 docs/不做清单.md。
+///
+/// 只留这张图上要用的四项：品种、被平的方向、成交均价 `ap`、累计成交量 `z`、
+/// 撮合时间 `T`。委托价 `p` 和委托量 `q` 不留——爆仓柱看的是**真的成交了多少**，
+/// 强平单是 IOC，委托量里有没吃掉的部分。
+///
+/// 时间用 `T` 不用 `E`，理由和 `TradeEvent` 一样：`E` 是推送时刻，跨周期边界时
+/// 会把这一笔折错到下一根上。
+public struct LiquidationEvent: Sendable, Equatable, Decodable {
+  public var symbol: String
+  public var side: LiquidationSide
+  /// 成交均价 `ap`。
+  public var price: Double
+  /// 累计成交量 `z`，按合约标的计。乘以 `price` 才是名义额。
+  public var qty: Double
+  public var timeMs: Int64
+
+  /// 名义额（报价货币）。双色柱要画的就是它。
+  public var notional: Double { price * qty }
+
+  public init(symbol: String, side: LiquidationSide, price: Double, qty: Double, timeMs: Int64) {
+    self.symbol = symbol; self.side = side; self.price = price; self.qty = qty; self.timeMs = timeMs
+  }
+
+  public init(from decoder: Decoder) throws {
+    let outer = try decoder.container(keyedBy: Outer.self)
+    let o = try outer.nestedContainer(keyedBy: Inner.self, forKey: .o)
+    symbol = try o.decode(String.self, forKey: .s)
+    let raw = (try? o.decode(String.self, forKey: .S))?.uppercased() ?? ""
+    switch raw {
+    case "SELL": side = .long
+    case "BUY": side = .short
+    default: throw FeedError.badResponse("强平方向不认识：\(raw)")
+    }
+    func num(_ key: Inner) throws -> Double {
+      if let s = try? o.decode(String.self, forKey: key) {
+        guard let v = Double(s) else { throw FeedError.badResponse("不是数字：\(s)") }
+        return v
+      }
+      return try o.decode(Double.self, forKey: key)
+    }
+    price = try num(.ap)
+    qty = try num(.z)
+    timeMs = (try? o.decode(Int64.self, forKey: .T))
+      ?? (try? outer.decode(Int64.self, forKey: .E)) ?? 0
+  }
+
+  enum Outer: String, CodingKey { case e, E, o }
+  enum Inner: String, CodingKey { case s, S, o, f, q, p, ap, X, l, z, T }
+}
+
+/// 聚合成交事件（`aggTrade`）：同一时刻、同一价位、同一方向的若干笔并成一条。
+public struct AggTradeEvent: Sendable, Equatable, Decodable {
+  public var symbol: String
+  public var price: Double
+  public var qty: Double
+  public var timeMs: Int64
+  public var aggID: Int64?
+  /// 币安的 `m`：**买方是不是挂单方**。
+  ///
+  /// 语义是反直觉的：`m == true` 说明买单挂在盘口等着、是**卖方主动**吃过来的，
+  /// 这笔算**主动卖出**；`m == false` 才是主动买入。算主动买卖比时按 `takerIsBuyer`
+  /// 分桶，别直接拿 `m` 当「买」。
+  public var isBuyerMaker: Bool
+
+  /// 这一笔是不是主动买入（吃单方是买方）。
+  public var takerIsBuyer: Bool { !isBuyerMaker }
+
+  public init(symbol: String, price: Double, qty: Double, timeMs: Int64,
+              aggID: Int64? = nil, isBuyerMaker: Bool) {
+    self.symbol = symbol; self.price = price; self.qty = qty
+    self.timeMs = timeMs; self.aggID = aggID; self.isBuyerMaker = isBuyerMaker
+  }
+
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: K.self)
+    symbol = try c.decode(String.self, forKey: .s)
+    func num(_ key: K) throws -> Double {
+      if let s = try? c.decode(String.self, forKey: key) {
+        guard let v = Double(s) else { throw FeedError.badResponse("不是数字：\(s)") }
+        return v
+      }
+      return try c.decode(Double.self, forKey: key)
+    }
+    price = try num(.p)
+    qty = try num(.q)
+    aggID = try c.decodeIfPresent(Int64.self, forKey: .a)
+    isBuyerMaker = (try? c.decode(Bool.self, forKey: .m)) ?? false
+    timeMs = (try? c.decode(Int64.self, forKey: .T)) ?? (try? c.decode(Int64.self, forKey: .E)) ?? 0
+  }
+
+  enum K: String, CodingKey { case e, E, s, a, p, q, f, l, T, m }
+}
+
+/// 盘口的一档：价 + 量。
+public struct DepthLevel: Sendable, Equatable {
+  public var price: Double
+  public var qty: Double
+  public init(price: Double, qty: Double) { self.price = price; self.qty = qty }
+}
+
+/// 五档全量快照（`@depth5@100ms`）。
+///
+/// 事件名是 `depthUpdate`，**但它不是增量流**：partial book depth 每一帧就是完整的
+/// 前五档，`U`/`u`/`pu` 那套序号在这儿用不上，也不需要先拉一份 REST 快照来对齐。
+/// 照增量流的写法去合并本地订单簿，只会把同一份快照叠加成越来越厚的假盘口。
+///
+/// 实测一帧（2026-09-22，`dstream.binance.me`）：
+/// `{"e":"depthUpdate","E":..,"T":..,"s":"BTCUSDT","ps":"BTCUSDT","U":..,"u":..,"pu":..,
+///   "b":[["85606.30","16.972"],…5 条],"a":[["85606.40","0.094"],…5 条],"st":1}`
+public struct DepthSnapshot: Sendable, Equatable, Decodable {
+  public var symbol: String
+  /// 买盘，价格由高到低（币安自己就是这个顺序，原样保留）。
+  public var bids: [DepthLevel]
+  /// 卖盘，价格由低到高。
+  public var asks: [DepthLevel]
+  public var timeMs: Int64
+
+  public init(symbol: String, bids: [DepthLevel], asks: [DepthLevel], timeMs: Int64) {
+    self.symbol = symbol; self.bids = bids; self.asks = asks; self.timeMs = timeMs
+  }
+
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: K.self)
+    symbol = (try? c.decode(String.self, forKey: .s)) ?? ""
+    bids = try Self.levels(c.decodeIfPresent([[JSONValue]].self, forKey: .b))
+    asks = try Self.levels(c.decodeIfPresent([[JSONValue]].self, forKey: .a))
+    // 撮合时间 `T` 优先，`E` 是推送时刻。
+    timeMs = (try? c.decode(Int64.self, forKey: .T)) ?? (try? c.decode(Int64.self, forKey: .E)) ?? 0
+  }
+
+  /// 每一档是 `["价","量"]`。价量照旧收字符串和数字两种写法（回放文件和镜像会发数字）。
+  private static func levels(_ rows: [[JSONValue]]?) throws -> [DepthLevel] {
+    try (rows ?? []).map { row in
+      guard row.count >= 2, let price = row[0].doubleValue, let qty = row[1].doubleValue else {
+        throw FeedError.badResponse("盘口档位不是数字")
+      }
+      return DepthLevel(price: price, qty: qty)
+    }
+  }
+
+  enum K: String, CodingKey { case e, E, T, s, b, a }
 }
 
 // ---------------------------------------------------------------- 运行时限额

@@ -308,7 +308,7 @@ struct RateLimitBanTests {
 
   // ---------------------------------------------------------------- A.2 端点配额
 
-  @Test("openInterestHist 走自己的 1000 次 / 5 分钟配额，权重仍然算 1")
+  @Test("持仓量走 /futures/data 那条 1000 次 / 5 分钟的配额，权重仍然算 1")
   func openInterestHistHasItsOwnQuota() async throws {
     let pacer = StepPacer()
     let limiter = RateLimiter(pacer: pacer, minGapMs: 0)
@@ -316,14 +316,14 @@ struct RateLimitBanTests {
     let server = FakeServer(pacer: pacer) { _ in json(rows) }
     let rest = BinanceREST(transport: FakeTransport(server), limiter: limiter, pacer: pacer)
     _ = try await rest.openInterestHist(symbol: "BTCUSDT", period: "5m", limit: 500)
-    #expect(await limiter.usedRequests(.openInterestHist) == 1)
+    #expect(await limiter.usedRequests(.futuresData) == 1)
     #expect(await limiter.usedWeight() == 1)     // 权重照旧算 1，不占 K 线那一档
 
     // 配额本身：打满 1000 次之后，第 1001 次要等 5 分钟的窗口滚出去。
-    for _ in 1..<1000 { try await limiter.acquire(weight: 0, quota: .openInterestHist) }
-    #expect(await limiter.usedRequests(.openInterestHist) == 1000)
+    for _ in 1..<1000 { try await limiter.acquire(weight: 0, quota: .futuresData) }
+    #expect(await limiter.usedRequests(.futuresData) == 1000)
     let t0 = await pacer.nowMs()
-    try await limiter.acquire(weight: 0, quota: .openInterestHist)
+    try await limiter.acquire(weight: 0, quota: .futuresData)
     #expect(await pacer.nowMs() - t0 >= 300_000)
     // 分钟权重窗口没有被这 1000 次顶满——它们各算各的。
     #expect(await limiter.usedWeight() <= 1)

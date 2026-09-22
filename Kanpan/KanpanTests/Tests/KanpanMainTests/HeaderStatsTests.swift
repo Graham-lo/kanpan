@@ -8,6 +8,12 @@ import KanpanCore
 
 @Suite("B-T10 / A-T20 顶栏六格只显示能负责的数")
 struct HeaderStatsTests {
+  @Test("涨跌额和价格采用相同的千位分隔")
+  func groupedChange() {
+    #expect(HeaderStats.priceChangeText(change: 3849.7, percent: 4.5, decimals: 1) == "+3,849.7  +4.50%")
+    #expect(HeaderStats.priceChangeText(change: -12345.67, percent: -2, decimals: 2) == "−12,345.67  −2.00%")
+  }
+
   @Test("头部涨跌额按品种精度、涨跌幅两位，缺数不编造")
   func changeLinePrecision() {
     let sndk = SymbolInfo(symbol: "SNDKUSDT", base: "SNDK", pricePrecision: 5, tickSize: 0.01)
