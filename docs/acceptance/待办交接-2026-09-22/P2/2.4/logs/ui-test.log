@@ -1,0 +1,5 @@
+Test Case '-[KanpanUITests.FavoritesScrollAnchorUITests testFavoritesKeepsTheScrollPositionAcrossTabs]' started.
+Test Case '-[KanpanUITests.FavoritesScrollAnchorUITests testFavoritesKeepsTheScrollPositionAcrossTabs]' passed (45.932 seconds).
+Test Case '-[KanpanUITests.FavoritesScrollAnchorUITests testFavoritesRowKeepsItsPixelAcrossTheChartTab]' started.
+Test Case '-[KanpanUITests.FavoritesScrollAnchorUITests testFavoritesRowKeepsItsPixelAcrossTheChartTab]' passed (41.139 seconds).
+UI EXIT 65

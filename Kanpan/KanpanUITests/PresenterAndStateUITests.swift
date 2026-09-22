@@ -176,6 +176,25 @@ final class FavoritesScrollAnchorUITests: KanpanUICase {
   }
 
   func testFavoritesKeepsTheScrollPositionAcrossTabs() {
+    roundTrip(away: "设置") {
+      let settings = app.buttons[Ids.bottomSettings]
+      expectExists(settings, Self.short)
+      settings.tap()
+      expectExists(app.buttons[Ids.settingsMagnet], Self.short, "没进设置整页")
+    }
+  }
+
+  /// P2.4 的验收原话：「切到图表再回自选，行的 y 与离开时相同」。
+  func testFavoritesRowKeepsItsPixelAcrossTheChartTab() {
+    roundTrip(away: "图表") {
+      XCTAssertTrue(tapButton(app.buttons[Ids.bottomChart], Self.long) {
+        self.app.buttons["interval.chart"].exists
+      }, "没进图表整页")
+    }
+  }
+
+  /// 滚到表中间，去别的整页转一圈再回来，锚点行的 y 要和走之前一样（1pt 以内）。
+  private func roundTrip(away: String, leave: () -> Void) {
     XCTAssertTrue(app.openFavorites(), "没进到自选页")
     // 默认按自选顺序排，种子是什么顺序列表就是什么顺序。
     let anchorSymbol = Self.seed[13]   // APTUSDT，两屏开外
@@ -189,12 +208,7 @@ final class FavoritesScrollAnchorUITests: KanpanUICase {
     // `swipeUp()` 一下差不多滚一整屏，而锚点是第 14 行（总共 20 行）——滚过头它就
     // 直接落到表尾外面去了：表滚到底时可视区里是最后五六行，第 14 行卡在上沿之上
     // 不再铺出来，再滚多少下都找不着它（2026-09-21 实测：12 下全滚空）。
-    // 慢慢挪就不会跳过它。
-    //
-    // 这条前置条件以前是「碰巧成立」的：产品那头还原滚动位置时会往下窜三四行
-    // （就是这条用例后半段抓的那个 bug），页面一进来就停在表中间，锚点本来就在
-    // 屏幕上，这个循环一次都没跑过。产品修好之后列表老老实实停在表头，
-    // 循环才第一次真的干活，也才露出「一下滚太多」这个毛病。
+    // 慢慢挪就不会跳过它。每一下停在哪儿都不是整行，正好造出「半截零头」。
     var scrolled = 0
     while !onScreen(anchor), scrolled < 12 {
       list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
@@ -203,52 +217,36 @@ final class FavoritesScrollAnchorUITests: KanpanUICase {
       scrolled += 1
     }
     XCTAssertTrue(onScreen(anchor), "滚了 \(scrolled) 下还没把 \(anchorSymbol) 滚出来")
-    // 再往上带一点，保证它不贴着屏幕边——贴边的话「有没有恢复」看不出差别。
     let beforeY = anchor.frame.minY
     XCTAssertGreaterThan(beforeY, 0, "锚点行的位置读不出来")
-
     let topBefore = firstVisibleRow()
     XCTAssertNotNil(topBefore, "滚完了读不到可视区顶上那一行")
     let step = rowHeight()
     let diagBefore = String(describing: app.otherElements["favorites.feed"].value)
 
-    // 去设置转一圈。自选页这一格每切走一次就整个重建（`MainScreen.portraitBody`）。
-    let settings = app.buttons[Ids.bottomSettings]
-    expectExists(settings, Self.short)
-    settings.tap()
-    expectExists(app.buttons[Ids.settingsMagnet], Self.short, "没进设置整页")
-    XCTAssertTrue(app.openFavorites(), "从设置回不到自选页")
+    // 自选页这一格每切走一次就整个重建（`MainScreen.portraitBody`）。
+    leave()
+    XCTAssertTrue(app.openFavorites(), "从\(away)回不到自选页")
 
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.onScreen(anchor) },
                   "切回自选，\(anchorSymbol) 不在屏幕上了——滚动位置没被持有\n走之前：\(diagBefore)\n回来后：" +
                   String(describing: app.otherElements["favorites.feed"].value))
-    // 判据两条，都以「人看得出来吗」为准，容差都是**两行**：
-    //
-    // 一、可视区顶上那一行，和走之前差不到两行。产品那头记的是品种代号
-    //     （`FavoritesEditSession.scrollAnchor`），拿代号在表里的序号比，
-    //     不拿像素比——换台设备、换个字号，绝对坐标本来就对不上。
-    //
-    // 二、锚点行的位置差不到两行高。
-    //
-    // 为什么是两行而不是一行：恢复时能拿到的最细的粒度就是「滚到某一行的顶上」
-    // （`ScrollViewProxy.scrollTo`），补偿只能按整行补。2026-09-21 把两头的口径统一到
-    // 「顶上第一个完整露着的行」之后，在 iPhone 15（iOS 26）上实测来回一趟差 0 行；
-    // 留两行是给别的机型、别的字号下行高与可视区凑不整的情况。
-    // 更细的一档试过 `scrollPosition(id:)`——`List` 上它根本不往里写，落脚点是空的，
-    // 切回来直接停在表头，比现在这版差得多（那次实测记在 `FavoritesView` 的注释里）。
+    // 还原分两步：先整行对上（`scrollTo`），再补像素零头。等零头补完再量。
+    var afterY = anchor.frame.minY
+    _ = waitUntil(timeout: Self.short) {
+      afterY = anchor.frame.minY
+      return abs(afterY - beforeY) <= 1
+    }
     let topAfter = firstVisibleRow()
     let diagAfter = String(describing: app.otherElements["favorites.feed"].value)
-    let before = Self.seed.firstIndex(of: topBefore?.symbol ?? "")
-    let after = Self.seed.firstIndex(of: topAfter?.symbol ?? "")
-    XCTAssertNotNil(after, "切回来读不到可视区顶上那一行")
-    if let before, let after {
-      XCTAssertLessThanOrEqual(abs(after - before), 2,
-                               "切回来顶上那一行从 \(topBefore?.symbol ?? "?") 跳到了 \(topAfter?.symbol ?? "?")，差了 \(abs(after - before)) 行"
-                               + "\n走之前：\(diagBefore)\n回来后：\(diagAfter)")
-    }
-    let afterY = anchor.frame.minY
-    XCTAssertLessThan(abs(afterY - beforeY), step * 2,
-                      "切回来 \(anchorSymbol) 从 \(beforeY) 跑到了 \(afterY)，一行才 \(step)pt"
-                      + "\n走之前：\(diagBefore)\n回来后：\(diagAfter)")
+    // 判据一：顶上那一行是同一只。
+    XCTAssertEqual(topAfter?.symbol, topBefore?.symbol,
+                   "从\(away)切回来顶上那一行从 \(topBefore?.symbol ?? "?") 变成了 \(topAfter?.symbol ?? "?")"
+                   + "\n走之前：\(diagBefore)\n回来后：\(diagAfter)")
+    // 判据二（P2.4）：锚点行的 y 和走之前一样。容差 1pt 只留给取整——
+    // 以前按整行还原，这里要留两行（\(step)pt 一行）的余量。
+    XCTAssertLessThanOrEqual(abs(afterY - beforeY), 1,
+                             "从\(away)切回来 \(anchorSymbol) 从 \(beforeY) 跑到了 \(afterY)，一行 \(step)pt"
+                             + "\n走之前：\(diagBefore)\n回来后：\(diagAfter)")
   }
 }

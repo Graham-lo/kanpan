@@ -140,7 +140,10 @@ struct FavoritesView: View {
     // 换了一类，上一类停在哪一行没有意义（审查 C-08）。
     if group != id {
       // 不过要先把上一类停在哪儿记下来——人切回那一类时还得落回去。
-      if let anchor = rows.anchor { session.topRow[groupID ?? ""] = anchor }
+      if let anchor = rows.anchor {
+        session.topRow[groupID ?? ""] = anchor
+        session.topOffset[groupID ?? ""] = rows.anchorOffset
+      }
       session.forgetScrollAnchor()
       rows.minY.removeAll()
       rows.anchor = nil
@@ -238,6 +241,7 @@ struct FavoritesView: View {
       if let anchor = rows.anchor {
         session.scrollAnchor = anchor
         session.topRow[groupID ?? ""] = anchor
+        session.topOffset[groupID ?? ""] = rows.anchorOffset
       }
       moreTask?.cancel()
       for symbol in historyOn { onHistoryVisibility(symbol, false) }
@@ -757,6 +761,9 @@ struct FavoritesView: View {
             previewable(symbol, row(symbol, first: symbol == symbols.first))
             if expanded.contains(symbol), !editing { details(symbol) }
           }
+          // 替还原那一步找到 `List` 背后的 UIKit 滚动容器（P2.4，见 `alignAnchorPixels`）。
+          // 挂在行的**内容**上，不是挂在下面那几条 `listRow*` 外头——理由见下一段注释。
+          .background(FavoritesScrollerProbe(rows: rows))
         }
         // 这一行的上沿在屏幕上的位置。落脚点就是从这儿算出来的（审查 C-08）：
         // 问「铺出来没有」答不了「看得见没有」，只有真位置能（见 `FavoritesRenderedRows`）。
@@ -864,6 +871,8 @@ struct FavoritesView: View {
     // 就等于把整张表重画一遍——这一页上跑着实时报价，赔不起。真正交出去是在整页
     // `onDisappear` 那一刻（见上面），那时候读一次就够了。
     rows.anchor = top
+    // 连同它离列表上沿差多少一起记：只按整行还原，回来会差出不到一行的零头（P2.4）。
+    rows.anchorOffset = (rows.minY[top] ?? rows.listTop) - rows.listTop
     // **不要**顺手写 `session.topRow`。它看着人畜无害（界面上没有控件读它），
     // 可诊断串读，而诊断串在 UI 测试里是开着的：滚一帧写一次 `@Observable`，
     // 整页跟着重画，列表当场滚不动（2026-09-21 实测：12 下 `swipeUp` 连
@@ -939,10 +948,39 @@ struct FavoritesView: View {
         if off == 0 { break }
         target = max(0, min(list.count - 1, target - off))
       }
+      // 整行对上之后再补零头（P2.4）：离开时这一行的上沿离列表上沿差多少，回来就差多少。
+      // `scrollTo` 只认整行，这一截只能直接去推 UIKit 那张表的 `contentOffset`。
+      if session.topRow[groupID ?? ""] == anchor, let offset = session.topOffset[groupID ?? ""] {
+        for _ in 0..<2 {
+          guard alignAnchorPixels(anchor, offset: offset) else { break }
+          try? await Task.sleep(for: .milliseconds(120))
+        }
+      }
       anchorRestored = true
       // 还原期间攒下的位置是过程量，落地之后重记一次才是人真正停在的那一行。
       noteScrollAnchor()
     }
+  }
+
+  /// 把锚点行推到离列表上沿正好 `offset` 的位置。推了返回 true，已经对齐或推不动返回 false。
+  ///
+  /// C-08 原来只还原到「顶上是哪一行」，那一行被滚到半截的零头丢了——人切回来看到的
+  /// 表整体差了小半行到一行半（P2.4）。零头按像素补：量锚点行现在的上沿，和离开时
+  /// 记下的差多少就把 `contentOffset` 推多少，推的范围夹在表能滚到的两头之内。
+  @discardableResult
+  private func alignAnchorPixels(_ anchor: String, offset: CGFloat) -> Bool {
+    guard let scroller = rows.scroller, let y = rows.minY[anchor] else { return false }
+    let delta = y - (rows.listTop + offset)
+    guard abs(delta) >= 0.5 else { return false }
+    let inset = scroller.adjustedContentInset
+    let lowest = -inset.top
+    let highest = max(lowest, scroller.contentSize.height + inset.bottom - scroller.bounds.height)
+    var point = scroller.contentOffset
+    let wanted = min(highest, max(lowest, point.y + delta))
+    guard abs(wanted - point.y) >= 0.5 else { return false }
+    point.y = wanted
+    scroller.setContentOffset(point, animated: false)
+    return true
   }
 
   /// 长按一行：先弹一张卡看看这东西现在什么样，再决定做什么（§4.1）。
@@ -1694,6 +1732,10 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
 
   /// 离开这一页时，每一类各自顶上露着的是哪一行。
   var topRow: [String: String] = [:]
+  /// 和 `topRow` 同一时刻记下的：那一行的上沿离列表上沿多少 pt（P2.4）。
+  /// 只在这一次使用里、同一台设备同一个字号下拿来补零头，所以存像素不违背上面
+  /// 「存代号不存偏移量」的理由——代号决定落到哪一行，这个数只管那一行里的零头。
+  var topOffset: [String: CGFloat] = [:]
   /// 列表上这会儿露着哪几行。整页被拆掉时它会被逐行的 `onDisappear` 清空，
   /// 所以 `topRow` 只在算得出结果时才更新——空了就保留最后一个好值。
   var visibleRows = Set<String>()
@@ -1737,6 +1779,11 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
   var minY: [String: CGFloat] = [:]
   /// 顶上露着的那一行，也就是要交出去的落脚点。
   var anchor: String?
+  /// 落脚点那一行的上沿离列表上沿多少 pt（P2.4）。
+  var anchorOffset: CGFloat = 0
+  /// `List` 背后那张 UIKit 表。行里的 `FavoritesScrollerProbe` 上窗时报上来，
+  /// 只给还原时补像素零头用。
+  weak var scroller: UIScrollView?
   /// 整页开始拆了。拆的过程里每一行都会再报一次位置，那些位置不作数——
   /// 边拆边算会把落脚点一路推到表尾，刚记下的那个当场作废。
   var teardown = false
@@ -1750,6 +1797,36 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
   /// 用例读的也是「整个框都在屏幕里」的第一行，两边口径要一致。
   func topVisible(_ order: [String]) -> String? {
     order.first { (minY[$0] ?? -.greatestFiniteMagnitude) >= listTop - 0.5 }
+  }
+}
+
+/// 从行里往上找 `List` 背后那张 `UICollectionView`，报给 `FavoritesRenderedRows`（P2.4）。
+///
+/// 不画东西、不接触摸，只在上窗那一刻顺着父视图找一次。
+private struct FavoritesScrollerProbe: UIViewRepresentable {
+  let rows: FavoritesRenderedRows
+
+  func makeUIView(context: Context) -> ProbeView {
+    let view = ProbeView()
+    view.isUserInteractionEnabled = false
+    view.rows = rows
+    return view
+  }
+
+  func updateUIView(_ view: ProbeView, context: Context) { view.rows = rows }
+
+  final class ProbeView: UIView {
+    weak var rows: FavoritesRenderedRows?
+
+    override func didMoveToWindow() {
+      super.didMoveToWindow()
+      guard window != nil, let rows, rows.scroller == nil else { return }
+      var view = superview
+      while let current = view {
+        if let table = current as? UICollectionView { rows.scroller = table; return }
+        view = current.superview
+      }
+    }
   }
 }
 
