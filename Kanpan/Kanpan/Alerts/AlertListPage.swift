@@ -11,6 +11,8 @@ import SwiftUI
 /// 按品种切成几堆反而要翻。
 struct AlertListPage: View {
   @ObservedObject var store: AlertStore
+  var preferences: PrefsStore
+  @State private var showSound = false
   /// 点一行：去那条线上。宿主接成深链（`DeepLink.drawing`）。
   var onOpen: (KanpanCore.Alert) -> Void
   /// 时间按用户在设置里选的那档时区写。
@@ -28,7 +30,23 @@ struct AlertListPage: View {
   @State private var openSwipe: String?
 
   var body: some View {
+    NavigationStack {
+      list
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(isPresented: $showSound) { AlertSoundPage(store: preferences) }
+    }
+  }
+
+  private var list: some View {
     PanelSheet(title: "提醒", subtitle: nil, asPage: false) {
+      PanelRow(name: "提醒铃声", onTap: { showSound = true }) {
+        HStack(spacing: 5) {
+          Text(preferences.prefs.alertSound.title).font(PanelFont.seg)
+          VectorIcon.chevronRight(11)
+        }.foregroundStyle(t.amber)
+      }
+      .accessibilityIdentifier("alerts.sound.open")
+      .accessibilityValue(preferences.prefs.alertSound.title)
       if permission.needsSystemSettings { permissionRow }
       if store.all.isEmpty {
         empty

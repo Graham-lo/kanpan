@@ -491,7 +491,7 @@ struct MainScreen: View {
     .onAppear { wireReview() }
     // 提醒总表。半屏叫出来的一张面板：它是「管一管已经有的那些」，不是一张要长住的页。
     .sheet(isPresented: $showAlerts) {
-      AlertListPage(store: alerts,
+      AlertListPage(store: alerts, preferences: store,
                     onOpen: { alert in
                       showAlerts = false
                       guard let drawingID = alert.drawingID else { open(linkedSymbol: alert.symbol); return }
@@ -1553,6 +1553,7 @@ struct MainScreen: View {
       guard let info = picker.info(for: symbol), info.tickSize > 0 || info.pricePrecision > 0 else { return nil }
       return info.priceDecimals
     }
+    alertWatcher.sound = { [weak store] in store?.prefs.alertSound ?? .default }
     alertWatcher.attach(alerts)
     alertWatcher.onFired = { alert in
       guard let drawingID = alert.drawingID else { return say(alert.title) }

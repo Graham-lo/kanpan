@@ -332,6 +332,8 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 
 ## 提醒铃声 · 第四线程（2026-09-22）
 
-- 阶段 1 本地实现与全部规定检查已完成：三段可重建 IMA4 CAF（清脆 / 电子 / 玻璃）与系统默认四档，`Prefs.alertSound` synced、容错解码、服务端白名单与值规则已对齐。报告：[阶段1](../docs/acceptance/提醒铃声-2026-09-22/阶段1.md)。此阶段提交后按 ff 推送 main，最终推送记录见总结。
+- 阶段 1 已提交并推送 main（`20d057d`），全部规定检查已完成：三段可重建 IMA4 CAF（清脆 / 电子 / 玻璃）与系统默认四档，`Prefs.alertSound` synced、容错解码、服务端白名单与值规则已对齐。报告：[阶段1](../docs/acceptance/提醒铃声-2026-09-22/阶段1.md)。此阶段提交后按 ff 推送 main，最终推送记录见总结。
 - 后端已部署：保留第一线程已上线的 depth 与 LSR/TAKER/BASIS，备份 `/opt/kanpan-api/backup-ringtone-1-20260922-141014`；API/worker 于 14:26:55 CST 重启并 active，内网 health、公网元数据与 capabilities 200。未改网关、Caddy、代理或凭证，未写生产用户测试数据。
 - Core 361+4、Network 96、Data 184、app-logic 445、Chart 126+4、本地 Rust 154 全通过；线上同源合并副本 155 通过。新工作树首次构建超时与测试目录夹具补齐的过程如实保留。仅模拟器，尚无铃声界面验收、真机或 APNs 实推结果。
+
+- 阶段 2 铃声入口、四档选择/试听、本地通知所选声音已实现；独立模拟器两条 UI 用例通过（四档唯一勾选、总表当前值、重启保留、三套皮肤），规定全套检查全绿。报告：[阶段2](../docs/acceptance/提醒铃声-2026-09-22/阶段2.md)。默认档使用已授权通知系统试听，自备音使用 AVAudioPlayer `.ambient`；无真机听感结论。随此阶段提交推送，最终提交号见总结。

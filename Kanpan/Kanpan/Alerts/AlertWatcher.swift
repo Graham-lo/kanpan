@@ -27,6 +27,8 @@ final class AlertWatcher: ObservableObject {
 
   /// 宿主按提醒所属品种查目录，目录缺失才按价格兜底。
   var priceDecimals: (String) -> Int? = { _ in nil }
+  /// 触发时读当前账号的选择，不捕获启动时的偏好快照。
+  var sound: () -> AlertSound = { .default }
 
   private weak var store: AlertStore?
   private var bag: Set<AnyCancellable> = []
@@ -64,7 +66,7 @@ final class AlertWatcher: ObservableObject {
   private func report(_ alert: Alert) {
     // 通知中心里留一条：前台时 `willPresent` 会把横幅压掉（界面上已经有浮条了），
     // 后台回来那一下则是它把人叫住。
-    AlertNotifications.present(alert, decimals: priceDecimals(alert.symbol))
+    AlertNotifications.present(alert, decimals: priceDecimals(alert.symbol), sound: sound())
     guard foreground else { return }
     UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
     onFired?(alert)

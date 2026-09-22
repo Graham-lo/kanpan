@@ -1,0 +1,95 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "14DC79CA-4815-4144-8A37-64DDDAAC24AD.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "重启-玻璃_0_B1432666-9914-458B-8A7C-F03B027CF72E.png",
+        "timestamp" : 1790061308.084
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "4CF4A46D-C255-499D-8C72-71F3691AC59C.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "提醒总表-玻璃_0_380664CE-F86F-4AB2-84EA-CB5D3CA4CCB3.png",
+        "timestamp" : 1790061297.373
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "593E1DD3-BE59-42FB-9361-038C86EAC889.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "铃声-glass_0_2305D867-5FA4-41F2-B769-7D6E9D0C81FF.png",
+        "timestamp" : 1790061296.569
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "79518A71-1621-4B16-A3EC-8272EF1BAAC6.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "铃声-electronic_0_77A4BBF9-CD78-4E48-AB45-A5629C854A6A.png",
+        "timestamp" : 1790061295.812
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "38516CBC-C6A7-465C-8531-72FC887CEF77.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "铃声-crisp_0_B2ABAA35-F40E-45F9-B1D0-CD9CAC8A65EA.png",
+        "timestamp" : 1790061295.101
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "227BAFCC-F0D5-4CB4-9747-AC0CE72B59EC.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "铃声-default_0_AF34ADE6-1B78-482A-A41D-98EAEB85F676.png",
+        "timestamp" : 1790061294.255
+      }
+    ],
+    "testIdentifier" : "AlertSoundUITests/testFourSoundsAndRestart()",
+    "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/AlertSoundUITests/testFourSoundsAndRestart"
+  },
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "9AD0F669-5023-48D9-90CD-0353853B893D.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "铃声皮肤-classic_0_EB90E9DD-AEB0-44C1-A718-A19AE09F22AF.png",
+        "timestamp" : 1790061340.065
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "C7675D08-276D-4327-8D3F-B97C6BEF79C0.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "铃声皮肤-terra_0_DAC6ECCF-1AB6-47E9-9ED3-D8D719F3CE9A.png",
+        "timestamp" : 1790061330.43
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "42498667-73A3-4E02-83C2-7B73E957C514",
+        "deviceName" : "iPhone 16 Pro · ringtone",
+        "exportedFileName" : "D681A353-59B1-496B-9A7A-A7987B8DD080.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "铃声皮肤-sage_0_660C8B22-41B9-414D-95EA-2A38565C2D4A.png",
+        "timestamp" : 1790061320.376
+      }
+    ],
+    "testIdentifier" : "AlertSoundUITests/testThreeSkins()",
+    "testIdentifierURL" : "test://com.apple.xcode/Kanpan/KanpanUITests/AlertSoundUITests/testThreeSkins"
+  }
+]

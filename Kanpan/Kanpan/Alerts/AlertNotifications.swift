@@ -45,9 +45,11 @@ final class AlertNotifications: NSObject, UNUserNotificationCenterDelegate, @unc
   /// 别人的通知照旧按系统默认展示。
   func userNotificationCenter(_ center: UNUserNotificationCenter,
                               willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-    guard notification.request.content.categoryIdentifier == Self.category else { return [.banner, .list, .sound] }
-    // 列表里还是留一条，用户从别处回来时能在通知中心看见。
-    return [.list]
+    let request = notification.request
+    if request.content.categoryIdentifier == AlertSoundPreview.category { return [.sound] }
+    guard request.content.categoryIdentifier == Self.category else { return [.banner, .list, .sound] }
+    // 价格提醒保留所选声音与通知中心条目；复盘到期的前台呈现保持原样。
+    return request.identifier.hasPrefix("alert.") ? [.list, .sound] : [.list]
   }
 
   // ---------------------------------------------------------------- 翻译
@@ -100,11 +102,11 @@ extension AlertNotifications {
   /// 服务端判的到价，客户端只负责让它被看见。app 在前台时 `willPresent` 会把横幅压掉，
   /// 留在通知中心里；在后台回来的那一下（`AppLifecycle` 进前台 → 拉一次同步）发出来的，
   /// 用户点开就直接到那条线上。
-  static func present(_ alert: Alert, decimals: Int? = nil) {
+  static func present(_ alert: Alert, decimals: Int? = nil, sound: AlertSound) {
     let content = UNMutableNotificationContent()
     content.title = alert.title.isEmpty ? "提醒" : alert.title
     if let price = alert.firedPrice { content.body = "现价 " + ReviewLabels.price(price, decimals: decimals) }
-    content.sound = .default
+    content.sound = sound.fileName.map { UNNotificationSound(named: UNNotificationSoundName(rawValue: $0)) } ?? .default
     content.categoryIdentifier = category
     if let link = link(for: alert) { content.userInfo = [linkKey: link] }
     let request = UNNotificationRequest(identifier: "alert." + alert.id, content: content, trigger: nil)
