@@ -1,0 +1,1321 @@
+cd Kanpan/Symbols && swift test -j 2 --scratch-path /Users/mdd/zhk/kanpan-ringtone/Kanpan/Settings/.build
+[0/1] Planning build
+Building for debugging...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/7] Compiling KanpanCore IndicatorEngine.swift
+[4/7] Compiling KanpanCore IndicatorID.swift
+[5/7] Emitting module KanpanCore
+[6/11] Compiling KanpanCore AICoinBehavior.swift
+[7/11] Compiling KanpanCore Layout.swift
+[8/12] Compiling KanpanCore ExternalSeries.swift
+[9/12] Compiling KanpanCore MarketMicrostructure.swift
+[10/27] Compiling KanpanCore PriceScale.swift
+[11/42] Compiling KanpanCore Indicators.swift
+[12/42] Compiling KanpanCore OINotice.swift
+[13/42] Compiling KanpanCore Bar.swift
+[14/42] Compiling KanpanCore BarSeries.swift
+[15/42] Compiling KanpanCore ChangeBasis.swift
+[16/42] Compiling KanpanCore Interval.swift
+[17/42] Compiling KanpanCore LatestQuote.swift
+[18/42] Compiling KanpanCore MarkPriceTick.swift
+[19/42] Compiling KanpanCore SymbolClassification.swift
+[20/42] Compiling KanpanCore SymbolInfo.swift
+[21/42] Compiling KanpanCore SectorAggregate.swift
+[22/42] Compiling KanpanCore SectorCatalog.swift
+[23/42] Compiling KanpanCore SectorSelection.swift
+[24/42] Compiling KanpanCore CandleStyle.swift
+[25/42] Compiling KanpanCore Palette.swift
+[26/42] Compiling KanpanCore Alert.swift
+[27/42] Compiling KanpanCore AlertEvaluator.swift
+[28/42] Compiling KanpanCore AlertGeometry.swift
+[29/42] Compiling KanpanCore ChartOptions.swift
+[30/42] Compiling KanpanCore DrawEdit.swift
+[31/42] Compiling KanpanCore DrawGeometry.swift
+[32/42] Compiling KanpanCore DrawRegression.swift
+[33/42] Compiling KanpanCore DrawStore.swift
+[34/42] Compiling KanpanCore DrawVolume.swift
+[35/42] Compiling KanpanCore Drawing.swift
+[36/42] Compiling KanpanCore Format.swift
+[37/42] Compiling KanpanCore CandleWidths.swift
+[38/42] Compiling KanpanCore Fling.swift
+[39/42] Compiling KanpanCore ViewWindow.swift
+[40/42] Compiling KanpanCore IncrementalLines.swift
+[41/50] Emitting module KanpanSymbols
+[42/50] Compiling KanpanSymbols ClipboardSymbol.swift
+[43/50] Compiling KanpanSymbols DefaultFavorites.swift
+[44/50] Compiling KanpanSymbols FavoriteCategory.swift
+[45/50] Compiling KanpanSymbols HomeShortcuts.swift
+[46/50] Compiling KanpanSymbols QuoteSession.swift
+[47/50] Compiling KanpanSymbols SearchHistory.swift
+[48/50] Compiling KanpanSymbols SymbolAliases.swift
+[49/57] Compiling KanpanSymbols SymbolFieldPlan.swift
+[50/57] Compiling KanpanSymbols SymbolFixtures.swift
+[51/57] Compiling KanpanSymbols SymbolPickerModel.swift
+[52/57] Compiling KanpanSymbols SymbolPrefs.swift
+[53/57] Compiling KanpanSymbols SymbolQuery.swift
+[54/57] Compiling KanpanSymbols SymbolSections.swift
+[55/57] Compiling KanpanSymbols SymbolTickerFeed.swift
+[56/69] Emitting module KanpanSymbolsTests
+[57/69] Compiling KanpanSymbolsTests ClipboardSymbolTests.swift
+[58/69] Compiling KanpanSymbolsTests DefaultFavoritesTests.swift
+[59/69] Compiling KanpanSymbolsTests FavoriteCategoryTests.swift
+[60/69] Compiling KanpanSymbolsTests FavoriteGroupTests.swift
+[61/69] Compiling KanpanSymbolsTests FavoriteLandingTests.swift
+[62/69] Compiling KanpanSymbolsTests FavoriteUndoSnapshotTests.swift
+[63/69] Compiling KanpanSymbolsTests HomeShortcutsTests.swift
+[64/69] Compiling KanpanSymbolsTests MarketSectorTests.swift
+[65/69] Compiling KanpanSymbolsTests QuoteSessionTests.swift
+[66/69] Compiling KanpanSymbolsTests ReleaseHookScanTests.swift
+[67/69] Compiling KanpanSymbolsTests ReleaseTestRosterTests.swift
+[68/79] Compiling KanpanSymbolsTests SearchHistoryTests.swift
+[69/79] Compiling KanpanSymbolsTests SymbolAliasesTests.swift
+[70/79] Compiling KanpanSymbolsTests SymbolFieldPlanTests.swift
+[71/79] Compiling KanpanSymbolsTests SymbolPickerModelTests.swift
+[72/79] Compiling KanpanSymbolsTests SymbolPrefsDurabilityTests.swift
+[73/79] Compiling KanpanSymbolsTests SymbolPrefsSeedIsolationTests.swift
+[74/79] Compiling KanpanSymbolsTests SymbolPrefsTests.swift
+[75/79] Compiling KanpanSymbolsTests SymbolQueryTests.swift
+[76/79] Compiling KanpanSymbolsTests SymbolSectionsTests.swift
+[77/79] Compiling KanpanSymbolsTests SymbolStatusTests.swift
+[77/79] Write Objects.LinkFileList
+[78/79] Linking KanpanSymbolsPackageTests
+Build complete! (302.90s)
+Test Suite 'All tests' started at 2026-09-22 15:51:43.569.
+Test Suite 'All tests' passed at 2026-09-22 15:51:43.585.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.015) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "历史搜索" started.
+◇ Suite "桌面快捷入口" started.
+◇ Suite "C.10-1 Release 里一个测试后门都没有" started.
+◇ Suite "默认自选" started.
+◇ Suite "常看" started.
+◇ Suite "品种搜索" started.
+◇ Suite "自选种子的隔离闸" started.
+◇ Suite "收藏自动分类" started.
+◇ Suite "自选删除可撤销" started.
+◇ Suite "中文与拼音搜品种" started.
+◇ Suite "加自选的落点" started.
+◇ Suite "实时报价会话" started.
+◇ Suite "自选档案的归类表" started.
+◇ Suite "C.10-9 Release 的测试名册" started.
+◇ Suite "品种页分区" started.
+◇ Suite "Exchange sectors are independent of favorites" started.
+◇ Suite "品种页" started.
+◇ Suite "自选与最近" started.
+◇ Suite "自选存档：局部损坏只丢局部，读不动就抛" started.
+◇ Suite "剪贴板认品种" started.
+◇ Suite "B-06 挂牌状态 · 三处一致" started.
+◇ Suite "自选分类" started.
+◇ Suite "搜索输入格式容忍" started.
+◇ Test "每一格都有 SF Symbol，没有副标题那一档" started.
+◇ Test "看过一个品种就把桌面那几格重排了" started.
+◇ Test "最近看过变了才重摆，没变不再写一遍" started.
+◇ Test "没看过任何品种时只有搜索那一格" started.
+◇ Test "重复的品种只占一格，大小写不算两个" started.
+◇ Test "最近看过的三个 + 搜索，搜索在最后" started.
+◇ Test "app 自己那一摊里，一处 Release 可达的后门都没有" started.
+◇ Test "扫描器认得出条件编译，不是靠数关键字蒙的" started.
+◇ Test "读启动环境的地方，要么在 DEBUG 里，要么在交接表上" started.
+◇ Test "三个锚在前，后面跟成交额前五" started.
+◇ Test "目录还没加载出来时什么都不给" started.
+◇ Test "美股、黄金、以及没标品种类型的合约都不算币" started.
+◇ Test "行情取不到时至少还有三个锚" started.
+◇ Test "已下架的合约不进默认自选" started.
+◇ Test "同一个币的多条合约只占一行，倍数前缀也算同一个币" started.
+◇ Test roundTrip() started.
+◇ Test clockGoingBackwardsDoesNotInflate() started.
+◇ Test countsBeatRecency() started.
+◇ Test staleScoresDecay() started.
+◇ Test capacityAndJunk() started.
+◇ Test "高亮片段落在 symbol 的正确位置" started.
+◇ Test "同档保持品种表原序（稳定排序）" started.
+◇ Test "数字前缀的品种也能搜" started.
+◇ Test "打全了的排第一档" started.
+◇ Test "空查询不过滤，原序全出" started.
+◇ Test "高亮切段：命中段单独拆出来" started.
+◇ Test "五档名次各就各位" started.
+◇ Test "小写照样搜得到，命中集合与原型一致" started.
+◇ Test "盘上那份脏了也读得回来：空串、重复、超量一并收拾" started.
+◇ Test "空白词不记，前后空格剃掉" started.
+◇ Test "超长的词截到 24 个字符" started.
+◇ Test "新的在前、重复只留一条（不分大小写）" started.
+◇ Test "最多 10 条，挤掉最旧的" started.
+◇ Test metadataAndFallback() started.
+◇ Test "这五秒里分类被删了，就回到未分类，而不是指向一个不存在的分类" started.
+◇ Test autoCreateReuseManualMoveAndReload() started.
+◇ Test "没在自选里的品种拍不出快照" started.
+◇ Test "撤销晚了一步（它已经被重新加回来）不会插出第二条" started.
+◇ Test "一次删好几个，一起撤销，各回各的下标" started.
+◇ Test "倍数合约按去掉倍数的名字查：1000PEPE 就是佩佩" started.
+◇ Test "tesila / tsl / 特斯拉 都能搜到特斯拉" started.
+◇ Test "名次：最匹配 → 全拼 → 首字母 → 字面前缀" started.
+◇ Test "一个字母不走拼音，免得把整张表顶上来" started.
+◇ Test "撤销把它放回原来那一行、原来那一类、原来那个置顶位" started.
+◇ Test "bitebi / btb / 比特币 都能搜到 BTC" started.
+◇ Test "全拼与首字母是从中文名算出来的，不是抄的" started.
+◇ Test "中文没命中的词照旧一条都不出" started.
+◇ Test "一个分类都还没有的新用户：按资产类型开第一类" started.
+◇ Test "停在「全部」（没挑过分类）时落在默认的第一类" started.
+◇ Test "站在「短线」里加 BTC，它就留在「短线」，不会自己跳去「加密」" started.
+◇ Test "点星星之后搜索词还在，页面上的东西一个不动" started.
+◇ Test lateRESTCannotOverwriteWS() started.
+◇ Test foregroundFavoritesStaySubscribedAcrossPages() started.
+◇ Test slowResponseDoesNotBecomeLivePrice() started.
+◇ Test previousForegroundRequestIsRejected() started.
+◇ Test "每个存储字段都归了类" started.
+◇ Test "同步重建不会把本机那几样冲掉" started.
+◇ Test "老存档里的选中分类还读得出来" started.
+◇ Test "选中的分类没了就退回第一类" started.
+◇ Test "名册上每一项，理由都写在它自己文件的开头" started.
+◇ Test "Release 下必须真的跑的那几摊，一个都没被包回条件编译里" started.
+◇ Test "整体不进 Release 的测试套件，只剩白名单上那些" started.
+◇ Test "Makefile 的 Release 回归口子和这份名册对得上" started.
+◇ Test "跳过只许是环境门，不许是「数据没来就算了」" started.
+◇ Test "搜索结果同档内按 24h 成交额降序" started.
+◇ Test "价格小数位跟 tickSize 走" started.
+◇ Test "搜不到给空分区，页面自己去显示「没有这个品种」" started.
+◇ Test "封顶与「还有 N 个」小字，常数照原型：全部 120、搜索 160" started.
+◇ Test "自选按用户自己的顺序出，不按成交额" started.
+◇ Test "行的展示字段照原型：名 · 最新价 · 涨跌幅" started.
+◇ Test "空分区不出现" started.
+◇ Test "页头小字：N 个永续合约" started.
+◇ Test "平盘按涨算，没有行情时价显示破折号" started.
+◇ Test "没有行情的品种成交额算 0，落到末尾且保持原序" started.
+◇ Test "base 前缀排在含子串的前面" started.
+◇ Test "全部按 24h 成交额降序（A5.7）" started.
+◇ Test "打全了的压过成交额：搜 eth，ETHUSDT 在最前" started.
+◇ Test "无查询：自选 → 最近 → 全部，顺序固定" started.
+◇ Test "删一条 / 清空都落盘，重开还是那样" started.
+◇ Test "一条行情都没有时，搜索结果回落到品种表原序" started.
+◇ Test combinedFiltersNeverMoveFolders() started.
+◇ Test "开页就把存档读回来" started.
+◇ Test alertedSymbolsAreAlwaysSubscribed() started.
+◇ Test "重新连接清除报价而不改自选存档" started.
+◇ Test "点一行：记进最近、落盘、回调宿主（A5.9）" started.
+◇ Test "报价变化只刷新数字，不在手指下自动重排" started.
+◇ Test "搜索态只剩一组，标题带命中数" started.
+◇ Test "品种表可以后到（异步拉回来再灌）" started.
+◇ Test "点星星：加 → 落盘 → 分区里冒出自选组；再点一次全撤回" started.
+◇ Test "最近最多 10 个，第 11 次打开挤掉最旧的" started.
+◇ Test "目录晚一步才到，那时候才补分类" started.
+◇ Test "离开订阅范围只移除旧报价，收藏与仍订阅报价保持" started.
+◇ Test "这一批行情一行都没落在表里，就不碰 sections" started.
+◇ Test "左滑删除按分区内下标删对人" started.
+◇ Test "进页订阅、出页退订，并且都打了日志（A5.7）" started.
+◇ Test "推一批新价，行上的数跟着跳" started.
+◇ Test "隐藏搜索表不随报价重建，打开时追上最新" started.
+◇ Test "加自选追加到末尾，再点一次移除" started.
+◇ Test "写进去再读出来，一模一样（杀 app 重开保留）" started.
+◇ Test "实时报价先到但统计缺失时仍保持有效排序，不伪造统计值" started.
+◇ Test "清空存档" started.
+◇ Test "重复加不会多出一条，大小写不敏感" started.
+◇ Test "拖排序：onMove 口径" started.
+◇ Test "存档键就是 kanpan.symbols.v1，落的是 JSON" started.
+◇ Test "拖排序后落盘，顺序就是自选分区的顺序" started.
+◇ Test "存档坏了：load() 当空处理不崩，read() 照实抛" started.
+◇ Test "容量 10，第 11 个把最旧的挤掉" started.
+◇ Test "最近按时间倒序，最新的在最前" started.
+◇ Test "再打开一次已在列表里的，提到队首而不是多一条" started.
+◇ Test "拖排序：落在某一行上" started.
+◇ Test "分组里一项缺 name：只丢那一项的名字，自选一条都不能少" started.
+◇ Test "老存档里塞了 20 条，读进来只留 10 条" started.
+◇ Test "档案在、但解不动：抛，不许静默当空档" started.
+◇ Test "自选数组里混进一个数字：跳过它，剩下的代号全在" started.
+◇ Test "prepare 的姿态：一个坏分组不能让盘上的自选被空档盖掉" started.
+◇ Test "scoredAt 写成字符串：只有它回默认，自选 / 分组 / 置顶全留着" started.
+◇ Test "表里的键就是存档里的键" started.
+◇ Test "分组数组里混进一个不是对象的元素：跳过它，别的分组照常在" started.
+◇ Test "零字节的档案也算解不动（写到一半断电），不当空档" started.
+◇ Test "prepare 的姿态：档案解不动就中断，磁盘上那份原封不动" started.
+◇ Test "柜子里没有这份档案 = 合法空档，不抛" started.
+◇ Test "首字母缩写不认：搜索页列出来可以，直接替他开图太自作主张" started.
+◇ Test "整段文章、空的、换行的都不认" started.
+◇ Test "存档已经齐整时，开页一次盘都不写" started.
+◇ Test "群里、网页上、推特上那几种写法都认" started.
+◇ Test "一个词同档撞上两个就不猜" started.
+◇ Test "中文名和全拼也认" started.
+◇ Test "已下架的排在同档最后，但照旧列在搜索结果里" started.
+◇ Test "已在自选里的不再出现在最近，两处都露过的不再进全部" started.
+◇ Test "选择器给出的挂牌口径：三处都问它，同一个代号不会有两种说法" started.
+◇ Test "还没分类的自选照样补齐并落盘" started.
+◇ Test "改搜索词，分区立刻跟着变" started.
+◇ Test "同一个词搜三遍：成交额一批批到，档位不乱、没有额的不伪排" started.
+◇ Test "搜得到那个已下架的自选，只是排在同档的后面" started.
+◇ Test "打到一半的前缀不算「点名」，不问目录" started.
+◇ Test "目录里没有这个自选 = 未知：留着、按没有实时价、不划掉、不删" started.
+◇ Test "被市场药丸筛掉的自选照旧不列，不许当成未知" started.
+◇ Test "认不出来的交易所状态按「还能交易」办，不把用户的自选打成灰的" started.
+◇ Test "「全部合约」只列还能交易的，页头那句小字也只数这些" started.
+◇ Test "自选里那个已下架的照旧在表上：留着身份、留着最后一口价、涨跌幅留空" started.
+◇ Test "四种精度的价：小数位听品种表的，极小的正价不写成 0" started.
+◇ Test "停牌是临时的：四档状态里只有它仍按正常行办" started.
+◇ Test "旧收藏迁入默认分类，分类和成员落盘后恢复" started.
+◇ Test "行情排序后拖动使用可见顺序，未显示的其他分类仍保留" started.
+◇ Test "取消收藏清分类关系，删除分类保留品种，重名空名不增加分类" started.
+◇ Test "实际分类选择与成员移动持久化，不重复收藏" started.
+◇ Test "构造时就把老存档洗干净：大写、去空、去重、保序" started.
+◇ Test "顶层缺 key 照常解（老存档只有 favorites / recents）" started.
+◇ Test "目录还没到的时候不算未知：整页自选不许一起变灰" started.
+◇ Test "分类内部排序不改变其他分类的顺序" started.
+◇ Test "选择器和品种页读的是同一档状态，标下架不删自选" started.
+◇ Test "搜一个表里没有的代号：问一次目录，同一个词只问一次" started.
+◇ Test "ETH/USDT、ethusdt、eth usdt、$ETH、ETH-USDT 都落到 ETHUSDT" started.
+◇ Test "相似的名字不合并：ETHFI 还是 ETHFI" started.
+✔ Test "目录还没加载出来时什么都不给" passed after 0.419 seconds.
+✔ Test "行情取不到时至少还有三个锚" passed after 0.419 seconds.
+✔ Test "扫描器认得出条件编译，不是靠数关键字蒙的" passed after 0.420 seconds.
+✔ Test "美股、黄金、以及没标品种类型的合约都不算币" passed after 0.419 seconds.
+✔ Test clockGoingBackwardsDoesNotInflate() passed after 0.419 seconds.
+✔ Test "已下架的合约不进默认自选" passed after 0.419 seconds.
+✔ Test "同一个币的多条合约只占一行，倍数前缀也算同一个币" passed after 0.419 seconds.
+✔ Test "三个锚在前，后面跟成交额前五" passed after 0.420 seconds.
+✔ Test staleScoresDecay() passed after 0.419 seconds.
+✔ Test countsBeatRecency() passed after 0.419 seconds.
+✔ Test "空查询不过滤，原序全出" passed after 0.419 seconds.
+✔ Test "高亮切段：命中段单独拆出来" passed after 0.419 seconds.
+✔ Test roundTrip() passed after 0.419 seconds.
+✔ Test metadataAndFallback() passed after 0.419 seconds.
+✔ Test "这五秒里分类被删了，就回到未分类，而不是指向一个不存在的分类" passed after 0.419 seconds.
+✔ Test "没在自选里的品种拍不出快照" passed after 0.419 seconds.
+✔ Test "撤销晚了一步（它已经被重新加回来）不会插出第二条" passed after 0.419 seconds.
+✔ Test "一次删好几个，一起撤销，各回各的下标" passed after 0.419 seconds.
+✔ Test capacityAndJunk() passed after 0.420 seconds.
+✔ Test "高亮片段落在 symbol 的正确位置" passed after 0.420 seconds.
+✔ Test "一个字母不走拼音，免得把整张表顶上来" passed after 0.419 seconds.
+✔ Test "撤销把它放回原来那一行、原来那一类、原来那个置顶位" passed after 0.419 seconds.
+✔ Test "tesila / tsl / 特斯拉 都能搜到特斯拉" passed after 0.419 seconds.
+✔ Test "数字前缀的品种也能搜" passed after 0.420 seconds.
+✔ Test "名次：最匹配 → 全拼 → 首字母 → 字面前缀" passed after 0.419 seconds.
+✔ Test "同档保持品种表原序（稳定排序）" passed after 0.420 seconds.
+✔ Test "中文没命中的词照旧一条都不出" passed after 0.419 seconds.
+✔ Test lateRESTCannotOverwriteWS() passed after 0.419 seconds.
+✔ Test slowResponseDoesNotBecomeLivePrice() passed after 0.419 seconds.
+✔ Test previousForegroundRequestIsRejected() passed after 0.418 seconds.
+✔ Test "每个存储字段都归了类" passed after 0.418 seconds.
+✔ Test "倍数合约按去掉倍数的名字查：1000PEPE 就是佩佩" passed after 0.419 seconds.
+✔ Test "小写照样搜得到，命中集合与原型一致" passed after 0.420 seconds.
+◇ Test "隔离仓上照常灌种子" started.
+✔ Test "五档名次各就各位" passed after 0.420 seconds.
+✔ Test "选中的分类没了就退回第一类" passed after 0.418 seconds.
+✔ Test "老存档里的选中分类还读得出来" passed after 0.418 seconds.
+✔ Test "打全了的排第一档" passed after 0.421 seconds.
+✔ Test "bitebi / btb / 比特币 都能搜到 BTC" passed after 0.420 seconds.
+✔ Test "全拼与首字母是从中文名算出来的，不是抄的" passed after 0.420 seconds.
+✔ Test foregroundFavoritesStaySubscribedAcrossPages() passed after 0.420 seconds.
+✔ Test "同步重建不会把本机那几样冲掉" passed after 0.420 seconds.
+✔ Test "搜不到给空分区，页面自己去显示「没有这个品种」" passed after 0.419 seconds.
+✔ Test "搜索结果同档内按 24h 成交额降序" passed after 0.419 seconds.
+✔ Test "自选按用户自己的顺序出，不按成交额" passed after 0.419 seconds.
+✔ Test "价格小数位跟 tickSize 走" passed after 0.419 seconds.
+✔ Test "行的展示字段照原型：名 · 最新价 · 涨跌幅" passed after 0.419 seconds.
+✔ Test "页头小字：N 个永续合约" passed after 0.419 seconds.
+✔ Test "空分区不出现" passed after 0.419 seconds.
+✔ Test "没有行情的品种成交额算 0，落到末尾且保持原序" passed after 0.419 seconds.
+✔ Test "平盘按涨算，没有行情时价显示破折号" passed after 0.419 seconds.
+✔ Test "base 前缀排在含子串的前面" passed after 0.422 seconds.
+✔ Test "Makefile 的 Release 回归口子和这份名册对得上" passed after 0.420 seconds.
+✔ Test "无查询：自选 → 最近 → 全部，顺序固定" passed after 0.418 seconds.
+✔ Test "打全了的压过成交额：搜 eth，ETHUSDT 在最前" passed after 0.418 seconds.
+✔ Test "一条行情都没有时，搜索结果回落到品种表原序" passed after 0.418 seconds.
+✔ Test "搜索态只剩一组，标题带命中数" passed after 0.420 seconds.
+✔ Test "加自选追加到末尾，再点一次移除" passed after 0.417 seconds.
+✔ Test "实时报价先到但统计缺失时仍保持有效排序，不伪造统计值" passed after 0.418 seconds.
+✔ Test "重复加不会多出一条，大小写不敏感" passed after 0.417 seconds.
+✔ Test alertedSymbolsAreAlwaysSubscribed() passed after 0.418 seconds.
+✔ Test "最近按时间倒序，最新的在最前" passed after 0.413 seconds.
+✔ Test "再打开一次已在列表里的，提到队首而不是多一条" passed after 0.414 seconds.
+✔ Test "封顶与「还有 N 个」小字，常数照原型：全部 120、搜索 160" passed after 0.420 seconds.
+✔ Test "拖排序：落在某一行上" passed after 0.414 seconds.
+✔ Test "分组里一项缺 name：只丢那一项的名字，自选一条都不能少" passed after 0.414 seconds.
+✔ Test "自选数组里混进一个数字：跳过它，剩下的代号全在" passed after 0.414 seconds.
+✔ Test "scoredAt 写成字符串：只有它回默认，自选 / 分组 / 置顶全留着" passed after 0.414 seconds.
+✔ Test "表里的键就是存档里的键" passed after 0.422 seconds.
+✔ Test "容量 10，第 11 个把最旧的挤掉" passed after 0.415 seconds.
+✔ Test "整段文章、空的、换行的都不认" passed after 0.413 seconds.
+✔ Test "老存档里塞了 20 条，读进来只留 10 条" passed after 0.415 seconds.
+✔ Test "群里、网页上、推特上那几种写法都认" passed after 0.413 seconds.
+✔ Test "一个词同档撞上两个就不猜" passed after 0.414 seconds.
+✔ Test "首字母缩写不认：搜索页列出来可以，直接替他开图太自作主张" passed after 0.414 seconds.
+✔ Test "已在自选里的不再出现在最近，两处都露过的不再进全部" passed after 0.414 seconds.
+✔ Test "行情排序后拖动使用可见顺序，未显示的其他分类仍保留" passed after 0.413 seconds.
+✔ Test "取消收藏清分类关系，删除分类保留品种，重名空名不增加分类" passed after 0.413 seconds.
+✔ Test "拖排序：onMove 口径" passed after 0.419 seconds.
+✔ Test "构造时就把老存档洗干净：大写、去空、去重、保序" passed after 0.413 seconds.
+✔ Test "分组数组里混进一个不是对象的元素：跳过它，别的分组照常在" passed after 0.414 seconds.
+✔ Test "顶层缺 key 照常解（老存档只有 favorites / recents）" passed after 0.414 seconds.
+✔ Test "分类内部排序不改变其他分类的顺序" passed after 0.411 seconds.
+✔ Test "中文名和全拼也认" passed after 0.414 seconds.
+✔ Test autoCreateReuseManualMoveAndReload() passed after 0.424 seconds.
+✔ Test "相似的名字不合并：ETHFI 还是 ETHFI" passed after 0.026 seconds.
+✔ Test "推一批新价，行上的数跟着跳" passed after 0.420 seconds.
+✔ Test "进页订阅、出页退订，并且都打了日志（A5.7）" passed after 0.420 seconds.
+✔ Test "写进去再读出来，一模一样（杀 app 重开保留）" passed after 0.420 seconds.
+✔ Test "清空存档" passed after 0.420 seconds.
+✔ Test "ETH/USDT、ethusdt、eth usdt、$ETH、ETH-USDT 都落到 ETHUSDT" passed after 0.026 seconds.
+✔ Suite "常看" passed after 0.432 seconds.
+✔ Suite "默认自选" passed after 0.432 seconds.
+✔ Test "全部按 24h 成交额降序（A5.7）" passed after 0.418 seconds.
+✔ Suite "自选删除可撤销" passed after 0.431 seconds.
+✔ Suite "品种搜索" passed after 0.432 seconds.
+✔ Suite "实时报价会话" passed after 0.431 seconds.
+✔ Suite "中文与拼音搜品种" passed after 0.431 seconds.
+✔ Suite "自选档案的归类表" passed after 0.431 seconds.
+✔ Test "档案在、但解不动：抛，不许静默当空档" passed after 0.416 seconds.
+✔ Test "存档坏了：load() 当空处理不崩，read() 照实抛" passed after 0.417 seconds.
+✔ Test "prepare 的姿态：一个坏分组不能让盘上的自选被空档盖掉" passed after 0.417 seconds.
+✔ Suite "剪贴板认品种" passed after 0.431 seconds.
+✔ Test "零字节的档案也算解不动（写到一半断电），不当空档" passed after 0.416 seconds.
+✔ Suite "收藏自动分类" passed after 0.432 seconds.
+✔ Suite "搜索输入格式容忍" passed after 0.432 seconds.
+✔ Suite "品种页分区" passed after 0.431 seconds.
+✔ Test "prepare 的姿态：档案解不动就中断，磁盘上那份原封不动" passed after 0.418 seconds.
+✔ Test "存档键就是 kanpan.symbols.v1，落的是 JSON" passed after 0.424 seconds.
+✔ Suite "自选与最近" passed after 0.434 seconds.
+✔ Test "柜子里没有这份档案 = 合法空档，不抛" passed after 0.419 seconds.
+✔ Suite "自选存档：局部损坏只丢局部，读不动就抛" passed after 0.434 seconds.
+✔ Test "旧收藏迁入默认分类，分类和成员落盘后恢复" passed after 0.421 seconds.
+✔ Test "实际分类选择与成员移动持久化，不重复收藏" passed after 0.422 seconds.
+✔ Suite "自选分类" passed after 0.438 seconds.
+✔ Test "品种表可以后到（异步拉回来再灌）" passed after 0.450 seconds.
+✔ Test "每一格都有 SF Symbol，没有副标题那一档" passed after 0.512 seconds.
+✔ Test "看过一个品种就把桌面那几格重排了" passed after 0.511 seconds.
+✔ Test "最近看过变了才重摆，没变不再写一遍" passed after 0.511 seconds.
+✔ Test "重复的品种只占一格，大小写不算两个" passed after 0.511 seconds.
+✔ Test "最近看过的三个 + 搜索，搜索在最后" passed after 0.511 seconds.
+✔ Test "没看过任何品种时只有搜索那一格" passed after 0.515 seconds.
+✔ Test "空白词不记，前后空格剃掉" passed after 0.513 seconds.
+✔ Test "超长的词截到 24 个字符" passed after 0.513 seconds.
+✔ Test "新的在前、重复只留一条（不分大小写）" passed after 0.513 seconds.
+✔ Test "最多 10 条，挤掉最旧的" passed after 0.513 seconds.
+✔ Suite "桌面快捷入口" passed after 0.522 seconds.
+✔ Test "一个分类都还没有的新用户：按资产类型开第一类" passed after 0.513 seconds.
+✔ Test "停在「全部」（没挑过分类）时落在默认的第一类" passed after 0.513 seconds.
+✔ Test "站在「短线」里加 BTC，它就留在「短线」，不会自己跳去「加密」" passed after 0.513 seconds.
+✔ Test "点星星之后搜索词还在，页面上的东西一个不动" passed after 0.513 seconds.
+✔ Test "删一条 / 清空都落盘，重开还是那样" passed after 0.511 seconds.
+✔ Test combinedFiltersNeverMoveFolders() passed after 0.511 seconds.
+✔ Test "盘上那份脏了也读得回来：空串、重复、超量一并收拾" passed after 0.513 seconds.
+✔ Test "开页就把存档读回来" passed after 0.511 seconds.
+✔ Test "重新连接清除报价而不改自选存档" passed after 0.511 seconds.
+✔ Test "点一行：记进最近、落盘、回调宿主（A5.9）" passed after 0.511 seconds.
+✔ Test "报价变化只刷新数字，不在手指下自动重排" passed after 0.511 seconds.
+✔ Test "点星星：加 → 落盘 → 分区里冒出自选组；再点一次全撤回" passed after 0.510 seconds.
+✔ Test "目录晚一步才到，那时候才补分类" passed after 0.510 seconds.
+✔ Test "离开订阅范围只移除旧报价，收藏与仍订阅报价保持" passed after 0.510 seconds.
+✔ Test "这一批行情一行都没落在表里，就不碰 sections" passed after 0.510 seconds.
+✔ Test "隐藏搜索表不随报价重建，打开时追上最新" passed after 0.510 seconds.
+✔ Test "左滑删除按分区内下标删对人" passed after 0.510 seconds.
+✔ Test "拖排序后落盘，顺序就是自选分区的顺序" passed after 0.507 seconds.
+✔ Test "已下架的排在同档最后，但照旧列在搜索结果里" passed after 0.505 seconds.
+✔ Test "存档已经齐整时，开页一次盘都不写" passed after 0.505 seconds.
+✔ Test "选择器给出的挂牌口径：三处都问它，同一个代号不会有两种说法" passed after 0.505 seconds.
+✔ Test "还没分类的自选照样补齐并落盘" passed after 0.510 seconds.
+✔ Test "改搜索词，分区立刻跟着变" passed after 0.510 seconds.
+✔ Test "同一个词搜三遍：成交额一批批到，档位不乱、没有额的不伪排" passed after 0.505 seconds.
+✔ Test "搜得到那个已下架的自选，只是排在同档的后面" passed after 0.505 seconds.
+✔ Test "认不出来的交易所状态按「还能交易」办，不把用户的自选打成灰的" passed after 0.505 seconds.
+✔ Test "「全部合约」只列还能交易的，页头那句小字也只数这些" passed after 0.505 seconds.
+✔ Test "被市场药丸筛掉的自选照旧不列，不许当成未知" passed after 0.505 seconds.
+✔ Test "自选里那个已下架的照旧在表上：留着身份、留着最后一口价、涨跌幅留空" passed after 0.505 seconds.
+✔ Test "四种精度的价：小数位听品种表的，极小的正价不写成 0" passed after 0.505 seconds.
+✔ Test "停牌是临时的：四档状态里只有它仍按正常行办" passed after 0.505 seconds.
+✔ Test "选择器和品种页读的是同一档状态，标下架不删自选" passed after 0.496 seconds.
+✔ Test "目录还没到的时候不算未知：整页自选不许一起变灰" passed after 0.503 seconds.
+✔ Suite "加自选的落点" passed after 0.521 seconds.
+✔ Test "目录里没有这个自选 = 未知：留着、按没有实时价、不划掉、不删" passed after 0.505 seconds.
+✔ Suite "历史搜索" passed after 0.525 seconds.
+✔ Suite "Exchange sectors are independent of favorites" passed after 0.521 seconds.
+✔ Test "隔离仓上照常灌种子" passed after 0.095 seconds.
+✔ Test "最近最多 10 个，第 11 次打开挤掉最旧的" passed after 0.510 seconds.
+✔ Suite "品种页" passed after 0.521 seconds.
+◇ Test "不是隔离仓就不给种子" started.
+✔ Test "不是隔离仓就不给种子" passed after 0.001 seconds.
+◇ Test "没开测试模式就没有种子这回事" started.
+✔ Test "没开测试模式就没有种子这回事" passed after 0.002 seconds.
+◇ Test "真账号档案上读回来的是他自己的自选，不是种子" started.
+✔ Test "真账号档案上读回来的是他自己的自选，不是种子" passed after 0.002 seconds.
+✔ Suite "自选种子的隔离闸" passed after 0.528 seconds.
+✔ Test "搜一个表里没有的代号：问一次目录，同一个词只问一次" passed after 0.508 seconds.
+✔ Test "打到一半的前缀不算「点名」，不问目录" passed after 0.604 seconds.
+✔ Suite "B-06 挂牌状态 · 三处一致" passed after 0.620 seconds.
+✔ Test "名册上每一项，理由都写在它自己文件的开头" passed after 1.361 seconds.
+✔ Test "Release 下必须真的跑的那几摊，一个都没被包回条件编译里" passed after 1.374 seconds.
+✔ Test "整体不进 Release 的测试套件，只剩白名单上那些" passed after 1.831 seconds.
+✔ Test "跳过只许是环境门，不许是「数据没来就算了」" passed after 2.001 seconds.
+✔ Suite "C.10-9 Release 的测试名册" passed after 2.009 seconds.
+✔ Test "app 自己那一摊里，一处 Release 可达的后门都没有" passed after 2.014 seconds.
+✔ Test "读启动环境的地方，要么在 DEBUG 里，要么在交接表上" passed after 2.304 seconds.
+✔ Suite "C.10-1 Release 里一个测试后门都没有" passed after 2.311 seconds.
+✔ Test run with 158 tests in 23 suites passed after 2.314 seconds.
+cd Kanpan/Sector && swift test -j 2 --scratch-path /Users/mdd/zhk/kanpan-ringtone/Kanpan/Settings/.build
+[0/1] Planning build
+Building for debugging...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/12] Compiling KanpanNetwork DTO.swift
+[4/12] Compiling KanpanNetwork Endpoints.swift
+[5/12] Compiling KanpanNetwork Errors.swift
+[6/12] Compiling KanpanNetwork RESTClient.swift
+[7/12] Compiling KanpanNetwork RateLimiter.swift
+[8/12] Compiling KanpanNetwork WSClient.swift
+[9/12] Compiling KanpanNetwork GatewayEnvelope.swift
+[10/12] Emitting module KanpanNetwork
+[11/19] Compiling KanpanNetwork MarketRoutePolicy.swift
+[12/19] Compiling KanpanNetwork MarketSource.swift
+[13/19] Compiling KanpanNetwork Backoff.swift
+[14/19] Compiling KanpanNetwork HTTPTransport.swift
+[15/19] Compiling KanpanNetwork MarketSocketRouter.swift
+[16/19] Compiling KanpanNetwork Pacer.swift
+[17/19] Compiling KanpanNetwork WSSocket.swift
+[18/22] Emitting module KanpanSector
+[19/22] Compiling KanpanSector SectorDrillDecision.swift
+[20/22] Compiling KanpanSector SectorFeed.swift
+[21/24] Compiling KanpanSector SectorRows.swift
+[22/24] Compiling KanpanSector SectorWindowChoice.swift
+[23/27] Emitting module KanpanSectorTests
+[24/27] Compiling KanpanSectorTests SectorDrillDecisionTests.swift
+[25/27] Compiling KanpanSectorTests SectorFeedTests.swift
+[26/29] Compiling KanpanSectorTests SectorRowTests.swift
+[27/29] Compiling KanpanSectorTests SectorWindowChoiceTests.swift
+[27/29] Write Objects.LinkFileList
+[28/29] Linking KanpanSectorPackageTests
+Build complete! (96.39s)
+Test Suite 'All tests' started at 2026-09-22 15:53:28.654.
+Test Suite 'All tests' passed at 2026-09-22 15:53:28.686.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.032) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "B-07 / B.5 板块品种列表" started.
+◇ Suite "B-T21 板块窗口这一档" started.
+◇ Suite "A-T12 / B-T21 板块行情不许过期还摆在屏上" started.
+◇ Suite "C-01 板块下钻的去留" started.
+◇ Test "成交额缺数的行排在最后，而且两次排出来一样" started.
+◇ Test "极小的正价绝不写成 0.00" started.
+◇ Test "涨跌幅缺数的行也沉到最后并按代号定序" started.
+◇ Test "值格里缺成交额一律写「—」，和同页的价格 / 涨跌幅一个样" started.
+◇ Test "品种表还没到才退回按大小猜" started.
+◇ Test "价格小数位听品种表的，不按数值大小现猜" started.
+◇ Test "副文案里缺成交额就整段不写，不排一列「成交额 —」" started.
+◇ Test "build 把品种表的小数位带进每一行" started.
+◇ Test "5 日算不出东西时就地退回今日，名字跟着退" started.
+◇ Test "四种组合里名字和窗口永远同源" started.
+◇ Test "5 日算得出就照用户停的那一档" started.
+◇ Test "d20 不是一个模式，写的还是今日那个名字" started.
+◇ Test "停在今日的人不会被日线推去 5 日" started.
+◇ Test "空态上点一下就再取一趟" started.
+◇ Test "品种表给的小数位按 base 查得到" started.
+◇ Test "同一个 base 两张合约，有成交额的那张一定顶掉没有的" started.
+◇ Test "问过了却什么都没有，才是空态" started.
+◇ Test "连着取不到、手里那份也过了寿命，就清空给空态" started.
+◇ Test "重试先清线路冷却，再发第一趟请求" started.
+◇ Test "线路没变就不白清一次" started.
+◇ Test "取到一趟就把失败记账清零" started.
+◇ Test "连着失败但屏上那份还新鲜，就先留着" started.
+◇ Test "换线路把手里那份行情清空" started.
+◇ Test "空态这条规则本身" started.
+◇ Test "一趟都没取到过就直接是空的" started.
+◇ Test "成交额拿不到就是没有，不编成 0" started.
+◇ Test "连着失败清掉屏上那份之后，空态要立起来" started.
+◇ Test "第一趟还没回来时不算空态" started.
+◇ Test "等的时候那张空壳带着板块名和成员数，人不会看见一块空白" started.
+◇ Test "别的板块算出来了、唯独这一帧没它，只要分类表还认就留在原地" started.
+◇ Test "兜底桶只作正面证据：它说有就留下" started.
+◇ Test "整帧都是空的时候谁也别信，不退栈" started.
+◇ Test "分类表和兜底桶都不认、而这一帧确实有别的板块，才算它真的没了" started.
+◇ Test "这一帧有它就照常画" started.
+◇ Test "丢弃规则本身" started.
+✔ Test "值格里缺成交额一律写「—」，和同页的价格 / 涨跌幅一个样" passed after 0.012 seconds.
+✔ Test "极小的正价绝不写成 0.00" passed after 0.012 seconds.
+✔ Test "价格小数位听品种表的，不按数值大小现猜" passed after 0.012 seconds.
+✔ Test "涨跌幅缺数的行也沉到最后并按代号定序" passed after 0.012 seconds.
+✔ Test "成交额缺数的行排在最后，而且两次排出来一样" passed after 0.012 seconds.
+✔ Test "5 日算不出东西时就地退回今日，名字跟着退" passed after 0.012 seconds.
+✔ Test "四种组合里名字和窗口永远同源" passed after 0.012 seconds.
+✔ Test "5 日算得出就照用户停的那一档" passed after 0.012 seconds.
+✔ Test "d20 不是一个模式，写的还是今日那个名字" passed after 0.012 seconds.
+✔ Test "停在今日的人不会被日线推去 5 日" passed after 0.012 seconds.
+✔ Test "等的时候那张空壳带着板块名和成员数，人不会看见一块空白" passed after 0.010 seconds.
+✔ Test "别的板块算出来了、唯独这一帧没它，只要分类表还认就留在原地" passed after 0.010 seconds.
+✔ Test "兜底桶只作正面证据：它说有就留下" passed after 0.010 seconds.
+✔ Test "整帧都是空的时候谁也别信，不退栈" passed after 0.010 seconds.
+✔ Test "分类表和兜底桶都不认、而这一帧确实有别的板块，才算它真的没了" passed after 0.010 seconds.
+✔ Test "这一帧有它就照常画" passed after 0.010 seconds.
+✔ Suite "B-T21 板块窗口这一档" passed after 0.016 seconds.
+✔ Suite "C-01 板块下钻的去留" passed after 0.015 seconds.
+✔ Test "品种表还没到才退回按大小猜" passed after 0.014 seconds.
+✔ Test "build 把品种表的小数位带进每一行" passed after 0.019 seconds.
+✔ Test "副文案里缺成交额就整段不写，不排一列「成交额 —」" passed after 0.024 seconds.
+✔ Suite "B-07 / B.5 板块品种列表" passed after 0.027 seconds.
+✔ Test "同一个 base 两张合约，有成交额的那张一定顶掉没有的" passed after 0.079 seconds.
+✔ Test "连着取不到、手里那份也过了寿命，就清空给空态" passed after 0.081 seconds.
+✔ Test "线路没变就不白清一次" passed after 0.081 seconds.
+✔ Test "取到一趟就把失败记账清零" passed after 0.080 seconds.
+✔ Test "连着失败但屏上那份还新鲜，就先留着" passed after 0.080 seconds.
+✔ Test "换线路把手里那份行情清空" passed after 0.080 seconds.
+✔ Test "成交额拿不到就是没有，不编成 0" passed after 0.080 seconds.
+✔ Test "连着失败清掉屏上那份之后，空态要立起来" passed after 0.079 seconds.
+✔ Test "品种表给的小数位按 base 查得到" passed after 0.082 seconds.
+✔ Test "空态这条规则本身" passed after 0.080 seconds.
+✔ Test "问过了却什么都没有，才是空态" passed after 0.081 seconds.
+✔ Test "一趟都没取到过就直接是空的" passed after 0.080 seconds.
+✔ Test "丢弃规则本身" passed after 0.076 seconds.
+✔ Test "第一趟还没回来时不算空态" passed after 0.080 seconds.
+✔ Test "重试先清线路冷却，再发第一趟请求" passed after 0.082 seconds.
+✔ Test "空态上点一下就再取一趟" passed after 0.089 seconds.
+✔ Suite "A-T12 / B-T21 板块行情不许过期还摆在屏上" passed after 0.092 seconds.
+✔ Test run with 35 tests in 4 suites passed after 0.097 seconds.
+cd Kanpan/Settings && swift test -j 2 --scratch-path /Users/mdd/zhk/kanpan-ringtone/Kanpan/Settings/.build
+[0/1] Planning build
+Building for debugging...
+[0/6] Write sources
+[3/6] Write swift-version--58304C5D6DBC2206.txt
+[5/14] Emitting module KanpanData
+[6/14] Compiling KanpanData FeedComposer.swift
+[7/14] Compiling KanpanData MarketFeed.swift
+[8/14] Compiling KanpanData OISource.swift
+[9/14] Compiling KanpanData RoutedMarketFeed.swift
+[10/14] Compiling KanpanData BarCache.swift
+[11/14] Compiling KanpanData BaselineSnapshot.swift
+[12/14] Compiling KanpanData OIArchive.swift
+[13/21] Compiling KanpanData OIStore.swift
+[14/21] Compiling KanpanData Paths.swift
+[15/21] Compiling KanpanData QuoteSnapshot.swift
+[16/21] Compiling KanpanData SeriesStore.swift
+[17/21] Compiling KanpanData Snapshot.swift
+[18/21] Compiling KanpanData SymbolCatalog.swift
+[19/21] Compiling KanpanData Zip.swift
+[20/29] Compiling KanpanSettings APIHost.swift
+[21/29] Compiling KanpanSettings AlertSound.swift
+[22/29] Compiling KanpanSettings ChartViewport.swift
+[23/29] Compiling KanpanSettings DisplayComfortPolicy.swift
+[24/29] Compiling KanpanSettings IndicatorDraft.swift
+[25/29] Compiling KanpanSettings IndicatorParamRule.swift
+[26/29] Compiling KanpanSettings LaunchThemeMirror.swift
+[27/29] Emitting module KanpanSettings
+[28/36] Compiling KanpanSettings MarketCache.swift
+[29/36] Compiling KanpanSettings Prefs.swift
+[30/36] Compiling KanpanSettings PrefsCodec.swift
+[31/36] Compiling KanpanSettings PrefsFieldPlan.swift
+[32/36] Compiling KanpanSettings PrefsStore.swift
+[33/36] Compiling KanpanSettings SettingsStamp.swift
+[34/36] Compiling KanpanSettings ThemeChoice.swift
+[35/44] Compiling KanpanSettingsTests AlertSoundTests.swift
+[36/44] Compiling KanpanSettingsTests ChartFoundationPrefsTests.swift
+[37/44] Compiling KanpanSettingsTests ChartViewportA5Tests.swift
+[38/44] Compiling KanpanSettingsTests DisplayComfortTests.swift
+[39/44] Compiling KanpanSettingsTests LaunchThemeMirrorTests.swift
+[40/44] Compiling KanpanSettingsTests MarketCacheTests.swift
+[41/44] Compiling KanpanSettingsTests PrefsColorTests.swift
+[42/44] Emitting module KanpanSettingsTests
+[43/50] Compiling KanpanSettingsTests PrefsDefaultsTests.swift
+[44/50] Compiling KanpanSettingsTests PrefsFieldPlanTests.swift
+[45/50] Compiling KanpanSettingsTests PrefsPersistenceTests.swift
+[46/50] Compiling KanpanSettingsTests PrefsToleranceTests.swift
+[47/50] Compiling KanpanSettingsTests SettingsStampTests.swift
+[48/50] Compiling KanpanSettingsTests StorageLayeringTests.swift
+[48/50] Write Objects.LinkFileList
+[49/50] Linking KanpanSettingsPackageTests
+Build complete! (76.76s)
+Test Suite 'All tests' started at 2026-09-22 15:54:51.898.
+Test Suite 'All tests' passed at 2026-09-22 15:54:51.902.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.004) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "首帧底色镜像" started.
+◇ Suite "参数规则" started.
+◇ Suite "默认值" started.
+◇ Suite "周期表" started.
+◇ Suite "容错" started.
+◇ Suite "护眼选择与屏幕亮度防抖" started.
+◇ Suite "MA EMA color persistence" started.
+◇ Suite "A.5 · 视野的落盘时机" started.
+◇ Suite "持久化" started.
+◇ Suite "清缓存" started.
+◇ Suite "指标草稿与图表设置" started.
+◇ Suite "API 域名" started.
+◇ Suite "体验类状态的归类表" started.
+◇ Suite "版本与合并" started.
+◇ Suite "体验类状态标识" started.
+◇ Suite "提醒铃声" started.
+◇ Suite "涨跌对调" started.
+◇ Test "没记过就按出厂值走：青苔 · 跟随系统" started.
+◇ Test "越界赋值被夹住；越界下标被忽略" started.
+◇ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" started.
+◇ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" started.
+◇ Test "每个指标的默认参数直接取 Core，不另抄一份" started.
+◇ Test "副图高度默认「中」" started.
+◇ Test "常用行增删：最多 6 档、至少留 1 档，且按 14 档的顺序排" started.
+◇ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" started.
+◇ Test "常用行 6 档放满，与 Interval.quick 相同" started.
+◇ Test "认不出来的枚举值 → 那一项取默认" started.
+◇ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" started.
+◇ Test "没有存档 → 全新安装的默认" started.
+◇ Test "参数越界 / 个数不对 → 夹回区间并补齐" started.
+◇ Suite "指标" started.
+◇ Test "旧存档里多出来的副图按顺序截到三个" started.
+◇ Test "域名：修得好就修，修不好退回默认" started.
+◇ Test "不是 JSON / 是别的 JSON → 默认，不抛" started.
+◇ Test "坏档进 store：能起来，而且不会把坏档留在盘上" started.
+◇ Test "常用行：去重、认不出的丢掉、超过 6 档按从短到长截断、空数组不生效" started.
+◇ Test "副图高度：认不出的档丢掉" started.
+◇ Test "字段类型全错 → 逐项退回默认，不是整档作废" started.
+◇ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" started.
+◇ Test seedResolutionIsIndependentOfSystemForManualChoice() started.
+◇ Test invalidBrightnessDoesNotChangeChoice() started.
+◇ Test allThemesRoundTripWithoutNewArchiveVersion() started.
+◇ Test hysteresisAndDwell() started.
+◇ Test "7 没捏过就抬手：不写盘、不提交；真捏过才提交，且一次手势只提交一轮" started.
+◇ Test "7 退后台是兜底不是时机：正常抬过手之后它一次都不提交" started.
+◇ Test cancelSaveRestartAndReset() started.
+◇ Test "7 缩放没落盘时收到同一份档案的旧值：本地这一捏赢，且只提交一次" started.
+◇ Test "7 手势中途换了属主：欠着的那一捏作废，之后的抬手一次都不许提交" started.
+◇ Test "离谱的根宽存不进去：读回来一定夹在上下限之间" started.
+◇ Test "本机与云端对账：没基线只播种、不一样以本机为准、一样就什么都不做" started.
+◇ Test "步进器按不出非法值" started.
+◇ Test "没真改动就不落盘" started.
+◇ Test "「图表」的三个开关：类型不对退回默认" started.
+◇ Test "真的换了个人：手上没落盘的那一捏必须作废，不许写到新属主头上" started.
+◇ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" started.
+◇ Test "翻转不节流：一次双击就落一次盘，重复报不重复写" started.
+◇ Test "改完全部 → 杀 app → 重开逐项相等" started.
+◇ Test "同一个人的档案晚到：手上没落盘的那一捏要保住" started.
+◇ Test "没存过根宽的老存档退回出厂 4pt，不是 0" started.
+◇ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" started.
+◇ Test "清完之后，板块历史和分身份的报价都没了" started.
+◇ Test "恢复默认把键抹掉" started.
+◇ Test "量出来的是那三处，分三笔报" started.
+◇ Test "每到一次货，adoptToken 都要跳一格" started.
+◇ Test "按行情源分的那份品种表算进「行情缓存」那个数" started.
+◇ Test "store 清完会重新量，而且不多说一句" started.
+◇ Test "体积文案" started.
+◇ Test "根宽和上下翻转跨 app 重启都在" started.
+◇ Suite "存放分层" started.
+◇ Test "清完三处都没了，数字归零；沙盒里别的东西不动" started.
+◇ Test "数据层没接上就如实说没接上，不报假的 0" started.
+◇ Test "目录本来就不存在 → 量出 0，清也不报错" started.
+◇ Test "清完之后，按行情源分的那份品种表也没了" started.
+◇ Test "旧存档里超额的副图读回时被裁到三个" started.
+◇ Test "全部新增设置落盘并容错读取" started.
+◇ Test "默认就是 fapi.binance.com" started.
+◇ Test "合法域名写得进去，往返后还在" started.
+◇ Test "形状不对的都要拒绝，并且不写进设置" started.
+◇ Test "常用指标取消不改原值、保存连同输出和阈值生效" started.
+◇ Test "抄来的地址能normalize" started.
+◇ Test "派生出来的几张表对得上母表" started.
+◇ Test "老存档里选的是网关，升级之后这台机器还是网关" started.
+◇ Test "JSON 里存的是 rawValue，人能读，不是交错数组" started.
+◇ Test "客户端会发的字段和契约文件一个不差" started.
+◇ Test "表里的键就是存档里的键" started.
+◇ Test "直连 / 网关留在这台设备上，域名和探测开关也是" started.
+◇ Test "每个存储字段都归了类" started.
+◇ Test "档案没了、哨兵还在：这是「被清空」，而且看得出本地有没有没推上去的改动" started.
+◇ Test "推成功才清脏字段" started.
+◇ Test "自选页停在哪一类跟着账号走" started.
+◇ Test "分身份的报价和板块历史都算进「行情缓存」那个数" started.
+◇ Test "推成功之后，云端那份就说了算了" started.
+◇ Test "不读取旧原型存档" started.
+◇ Test "subHeightOverrides/MACD 被认下就清 subHeightOverrides" started.
+◇ Test "字段比对认的是编码键名，和同步清单是同一张表" started.
+◇ Test "重开一个 store 读回同一份" started.
+◇ Test "副图高度、副图顺序、指标颜色，一样都算一次改动" started.
+◇ Test "一个字段拍成好几条路径：只要有一条被 droppedFields 丢了，这个字段就还得脏着" started.
+◇ Test "rsiRange 被认下，仍然清掉 rsiLower 和 rsiUpper 两个本地字段" started.
+◇ Test "哨兵和真身不在同一层：真身那层整个没了，哨兵照样认得出这是「被清空」" started.
+◇ Test "发出去了不算数，服务端认了才算：没回执的那几项脏标识留着" started.
+◇ Test "按字段挑回来：只有点名的那几项用本地的，别的原样用对方那份" started.
+◇ Test "档案里记的属主不是现在这个人：当它不存在，绝不能用" started.
+◇ Test "云端回拉：本地脏的字段一律跳过，干净的跟着云端走" started.
+◇ Test "按字段记，不按整份档案：改皮肤不会把根宽也标成脏的" started.
+◇ Test "换了个人：上一个人的脏标识算不到我头上" started.
+◇ Test "改一项就记一个脏字段，落盘和记脏是同一步" started.
+◇ Test "第一次装：哨兵也没有，正常从云端拉" started.
+◇ Test "清缓存不碰 UserDefaults 里那几格" started.
+◇ Test "推的中途用户又改了同一项：那一改不许跟着被清掉" started.
+◇ Test "脏着却没东西可推的字段：桥判定和存档一致后就地清掉，别的脏字段不动" started.
+◇ Test "线上键名对得上，RSI 那一对来回都不丢" started.
+◇ Test "全新安装的一份（A6.4「首次安装即如此」）" started.
+◇ Test "0、负数、超上限都要有拒绝理由" started.
+◇ Test "捏的过程中不写盘，手一松立刻落盘" started.
+◇ Test "捏完立刻换周期换品种：内存里那份根宽当场就是新的，不用等落盘" started.
+◇ Test "重新创建设置存储仍保留选择" started.
+◇ Test "四档映射与往返持久化" started.
+◇ Test "缺省、未知与坏类型只回退铃声，不重置别的设置" started.
+◇ Test "只动涨跌两色，其余令牌一个不变" started.
+◇ Test "嵌套字段发上去的是拍平后的路径：params/MA 和 params/EMA 都认下了就清 params" started.
+◇ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" started.
+◇ Test "默认红涨绿跌" started.
+◇ Test "开关能存下来" started.
+◇ Test "关掉之后绿涨红跌，浅深都对调" started.
+◇ Test "行情缓存那棵树和账号那棵树互不包含" started.
+◇ Test "档案解不开：算「损坏」，回落云端，但脏标识不许顺手抹掉" started.
+◇ Test "三段的那条也一样：indicatorColors/MACD/0 映得回 indicatorColors" started.
+✔ Test "越界赋值被夹住；越界下标被忽略" passed after 0.022 seconds.
+✔ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" passed after 0.022 seconds.
+✔ Test "副图高度默认「中」" passed after 0.022 seconds.
+◇ Test case passing 1 argument sound → .default to "四档映射与往返持久化" started.
+✔ Test "常用行增删：最多 6 档、至少留 1 档，且按 14 档的顺序排" passed after 0.027 seconds.
+✔ Test "常用行 6 档放满，与 Interval.quick 相同" passed after 0.027 seconds.
+✔ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" passed after 0.027 seconds.
+✔ Test "没有存档 → 全新安装的默认" passed after 0.027 seconds.
+◇ Test "改参数只影响那一个指标" started.
+◇ Test "主图叠加随便开几个，按打开先后排" started.
+◇ Test "副图最多三个，第四个挤掉最早打开的那个" started.
+◇ Test "副图高度三档" started.
+✔ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" passed after 0.028 seconds.
+◇ Test "拖动排序" started.
+✔ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" passed after 0.028 seconds.
+✔ Test "不是 JSON / 是别的 JSON → 默认，不抛" passed after 0.027 seconds.
+◇ Test case passing 1 argument sound → .crisp to "四档映射与往返持久化" started.
+✔ Test "旧存档里多出来的副图按顺序截到三个" passed after 0.029 seconds.
+✔ Test "副图高度：认不出的档丢掉" passed after 0.028 seconds.
+✔ Test "常用行：去重、认不出的丢掉、超过 6 档按从短到长截断、空数组不生效" passed after 0.028 seconds.
+✔ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" passed after 0.028 seconds.
+✔ Test invalidBrightnessDoesNotChangeChoice() passed after 0.028 seconds.
+✔ Test "域名：修得好就修，修不好退回默认" passed after 0.029 seconds.
+✔ Test hysteresisAndDwell() passed after 0.028 seconds.
+✔ Test "参数越界 / 个数不对 → 夹回区间并补齐" passed after 0.029 seconds.
+✔ Test "本机与云端对账：没基线只播种、不一样以本机为准、一样就什么都不做" passed after 0.028 seconds.
+✔ Test "字段类型全错 → 逐项退回默认，不是整档作废" passed after 0.029 seconds.
+✔ Test "「图表」的三个开关：类型不对退回默认" passed after 0.029 seconds.
+✔ Test "步进器按不出非法值" passed after 0.030 seconds.
+✔ Test "改完全部 → 杀 app → 重开逐项相等" passed after 0.028 seconds.
+✔ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" passed after 0.028 seconds.
+✔ Test seedResolutionIsIndependentOfSystemForManualChoice() passed after 0.029 seconds.
+✔ Test "认不出来的枚举值 → 那一项取默认" passed after 0.029 seconds.
+✔ Test "每个指标的默认参数直接取 Core，不另抄一份" passed after 0.029 seconds.
+✔ Test "体积文案" passed after 0.027 seconds.
+◇ Test "哨兵那一格不许被整片抹掉" started.
+◇ Test "账号目录里一个键一个文件，脏标识不许压在偏好上" started.
+◇ Test "Caches 那棵树上只放能再取回来的行情数据" started.
+◇ Test "会删文件的地方，删的必须都是能再取回来的东西" started.
+◇ Test "任何清理路径都不许删到账号目录" started.
+◇ Test "体验类的键一个都不许出现在行情缓存那一层" started.
+✔ Test "没存过根宽的老存档退回出厂 4pt，不是 0" passed after 0.028 seconds.
+✔ Test "根宽和上下翻转跨 app 重启都在" passed after 0.028 seconds.
+✔ Test "数据层没接上就如实说没接上，不报假的 0" passed after 0.027 seconds.
+✔ Test "离谱的根宽存不进去：读回来一定夹在上下限之间" passed after 0.029 seconds.
+✔ Test "默认就是 fapi.binance.com" passed after 0.027 seconds.
+✔ Test "合法域名写得进去，往返后还在" passed after 0.027 seconds.
+✔ Test "形状不对的都要拒绝，并且不写进设置" passed after 0.027 seconds.
+✔ Test "常用指标取消不改原值、保存连同输出和阈值生效" passed after 0.027 seconds.
+✔ Test "抄来的地址能normalize" passed after 0.027 seconds.
+✔ Test "派生出来的几张表对得上母表" passed after 0.027 seconds.
+✔ Test "全部新增设置落盘并容错读取" passed after 0.027 seconds.
+✔ Test allThemesRoundTripWithoutNewArchiveVersion() passed after 0.029 seconds.
+✔ Test "表里的键就是存档里的键" passed after 0.027 seconds.
+✔ Test "每个存储字段都归了类" passed after 0.027 seconds.
+✔ Test "JSON 里存的是 rawValue，人能读，不是交错数组" passed after 0.029 seconds.
+✔ Test "自选页停在哪一类跟着账号走" passed after 0.027 seconds.
+✔ Test "全新安装的一份（A6.4「首次安装即如此」）" passed after 0.026 seconds.
+✔ Test "0、负数、超上限都要有拒绝理由" passed after 0.030 seconds.
+✔ Test "客户端会发的字段和契约文件一个不差" passed after 0.027 seconds.
+✔ Test "直连 / 网关留在这台设备上，域名和探测开关也是" passed after 0.027 seconds.
+✔ Test "只动涨跌两色，其余令牌一个不变" passed after 0.025 seconds.
+✔ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" passed after 0.025 seconds.
+✔ Test "默认红涨绿跌" passed after 0.025 seconds.
+✔ Test "关掉之后绿涨红跌，浅深都对调" passed after 0.025 seconds.
+◇ Test case passing 1 argument sound → .glass to "四档映射与往返持久化" started.
+✔ Test "缺省、未知与坏类型只回退铃声，不重置别的设置" passed after 0.026 seconds.
+✔ Test "旧存档里超额的副图读回时被裁到三个" passed after 0.027 seconds.
+◇ Test case passing 1 argument sound → .electronic to "四档映射与往返持久化" started.
+✔ Suite "参数规则" passed after 0.036 seconds.
+✔ Suite "默认值" passed after 0.036 seconds.
+✔ Test "开关能存下来" passed after 0.028 seconds.
+✔ Suite "周期表" passed after 0.036 seconds.
+✔ Test "改参数只影响那一个指标" passed after 0.006 seconds.
+✔ Test "副图最多三个，第四个挤掉最早打开的那个" passed after 0.006 seconds.
+✔ Test "副图高度三档" passed after 0.006 seconds.
+✔ Test "四档映射与往返持久化" with 4 test cases passed after 0.029 seconds.
+✔ Suite "护眼选择与屏幕亮度防抖" passed after 0.036 seconds.
+✔ Test "行情缓存那棵树和账号那棵树互不包含" passed after 0.027 seconds.
+✔ Test "主图叠加随便开几个，按打开先后排" passed after 0.006 seconds.
+✔ Test "拖动排序" passed after 0.006 seconds.
+✔ Suite "API 域名" passed after 0.036 seconds.
+✔ Suite "指标草稿与图表设置" passed after 0.036 seconds.
+✔ Suite "涨跌对调" passed after 0.037 seconds.
+✔ Suite "指标" passed after 0.035 seconds.
+✔ Test "账号目录里一个键一个文件，脏标识不许压在偏好上" passed after 0.006 seconds.
+✔ Test "量出来的是那三处，分三笔报" passed after 0.037 seconds.
+✔ Test "目录本来就不存在 → 量出 0，清也不报错" passed after 0.038 seconds.
+✔ Test "清完之后，板块历史和分身份的报价都没了" passed after 0.039 seconds.
+✔ Test "Caches 那棵树上只放能再取回来的行情数据" passed after 0.011 seconds.
+✔ Test "没记过就按出厂值走：青苔 · 跟随系统" passed after 0.042 seconds.
+◇ Test "记下什么读回什么" started.
+✔ Test "按行情源分的那份品种表算进「行情缓存」那个数" passed after 0.047 seconds.
+✔ Test "分身份的报价和板块历史都算进「行情缓存」那个数" passed after 0.049 seconds.
+✔ Test "坏档进 store：能起来，而且不会把坏档留在盘上" passed after 0.053 seconds.
+✔ Test "7 没捏过就抬手：不写盘、不提交；真捏过才提交，且一次手势只提交一轮" passed after 0.053 seconds.
+✔ Suite "容错" passed after 0.056 seconds.
+✔ Test "7 退后台是兜底不是时机：正常抬过手之后它一次都不提交" passed after 0.053 seconds.
+✔ Test "清完之后，按行情源分的那份品种表也没了" passed after 0.053 seconds.
+✔ Test "清完三处都没了，数字归零；沙盒里别的东西不动" passed after 0.051 seconds.
+✔ Test "记下什么读回什么" passed after 0.024 seconds.
+◇ Test "镜像里写了别的东西不算数，退回出厂而不是崩" started.
+✔ Test cancelSaveRestartAndReset() passed after 0.076 seconds.
+✔ Suite "MA EMA color persistence" passed after 0.079 seconds.
+✔ Test "7 缩放没落盘时收到同一份档案的旧值：本地这一捏赢，且只提交一次" passed after 0.079 seconds.
+✔ Test "7 手势中途换了属主：欠着的那一捏作废，之后的抬手一次都不许提交" passed after 0.079 seconds.
+✔ Suite "A.5 · 视野的落盘时机" passed after 0.082 seconds.
+✔ Test "没真改动就不落盘" passed after 0.084 seconds.
+✔ Test "镜像里写了别的东西不算数，退回出厂而不是崩" passed after 0.019 seconds.
+✔ Test "真的换了个人：手上没落盘的那一捏必须作废，不许写到新属主头上" passed after 0.085 seconds.
+◇ Test "只兑现皮肤与深浅，别的偏好一个字不猜" started.
+✔ Test "翻转不节流：一次双击就落一次盘，重复报不重复写" passed after 0.087 seconds.
+✔ Test "同一个人的档案晚到：手上没落盘的那一捏要保住" passed after 0.090 seconds.
+✔ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" passed after 0.092 seconds.
+✔ Test "只兑现皮肤与深浅，别的偏好一个字不猜" passed after 0.011 seconds.
+◇ Test "落一次盘就把皮肤与深浅镜像出来" started.
+✔ Test "恢复默认把键抹掉" passed after 0.102 seconds.
+✔ Test "每到一次货，adoptToken 都要跳一格" passed after 0.102 seconds.
+✔ Test "体验类的键一个都不许出现在行情缓存那一层" passed after 0.094 seconds.
+✔ Test "老存档里选的是网关，升级之后这台机器还是网关" passed after 0.123 seconds.
+✔ Suite "体验类状态的归类表" passed after 0.127 seconds.
+✔ Test "不读取旧原型存档" passed after 0.124 seconds.
+✔ Suite "版本与合并" passed after 0.129 seconds.
+✔ Test "重开一个 store 读回同一份" passed after 0.133 seconds.
+✔ Test "捏的过程中不写盘，手一松立刻落盘" passed after 0.141 seconds.
+✔ Test "捏完立刻换周期换品种：内存里那份根宽当场就是新的，不用等落盘" passed after 0.142 seconds.
+✔ Suite "持久化" passed after 0.148 seconds.
+✔ Test "重新创建设置存储仍保留选择" passed after 0.149 seconds.
+✔ Suite "提醒铃声" passed after 0.155 seconds.
+✔ Test "落一次盘就把皮肤与深浅镜像出来" passed after 0.064 seconds.
+◇ Test "换档案（登录 / 退登）也把镜像改过来" started.
+✔ Test "档案没了、哨兵还在：这是「被清空」，而且看得出本地有没有没推上去的改动" passed after 0.282 seconds.
+✔ Test "换档案（登录 / 退登）也把镜像改过来" passed after 0.137 seconds.
+✔ Test "推成功才清脏字段" passed after 0.298 seconds.
+✔ Test "subHeightOverrides/MACD 被认下就清 subHeightOverrides" passed after 0.298 seconds.
+✔ Test "推成功之后，云端那份就说了算了" passed after 0.298 seconds.
+✔ Test "字段比对认的是编码键名，和同步清单是同一张表" passed after 0.298 seconds.
+✔ Test "副图高度、副图顺序、指标颜色，一样都算一次改动" passed after 0.298 seconds.
+✔ Test "rsiRange 被认下，仍然清掉 rsiLower 和 rsiUpper 两个本地字段" passed after 0.298 seconds.
+✔ Test "发出去了不算数，服务端认了才算：没回执的那几项脏标识留着" passed after 0.298 seconds.
+✔ Test "一个字段拍成好几条路径：只要有一条被 droppedFields 丢了，这个字段就还得脏着" passed after 0.298 seconds.
+✔ Test "哨兵和真身不在同一层：真身那层整个没了，哨兵照样认得出这是「被清空」" passed after 0.298 seconds.
+✔ Test "按字段挑回来：只有点名的那几项用本地的，别的原样用对方那份" passed after 0.298 seconds.
+✔ Test "云端回拉：本地脏的字段一律跳过，干净的跟着云端走" passed after 0.298 seconds.
+✔ Test "按字段记，不按整份档案：改皮肤不会把根宽也标成脏的" passed after 0.298 seconds.
+✔ Test "换了个人：上一个人的脏标识算不到我头上" passed after 0.298 seconds.
+✔ Test "改一项就记一个脏字段，落盘和记脏是同一步" passed after 0.298 seconds.
+✔ Test "第一次装：哨兵也没有，正常从云端拉" passed after 0.298 seconds.
+✔ Test "档案里记的属主不是现在这个人：当它不存在，绝不能用" passed after 0.298 seconds.
+✔ Test "推的中途用户又改了同一项：那一改不许跟着被清掉" passed after 0.298 seconds.
+✔ Test "脏着却没东西可推的字段：桥判定和存档一致后就地清掉，别的脏字段不动" passed after 0.298 seconds.
+◇ Test "柜子空着时从镜像起步，有存档时一个字不掺" started.
+✔ Test "清缓存不碰 UserDefaults 里那几格" passed after 0.332 seconds.
+✔ Test "线上键名对得上，RSI 那一对来回都不丢" passed after 0.332 seconds.
+✔ Test "嵌套字段发上去的是拍平后的路径：params/MA 和 params/EMA 都认下了就清 params" passed after 0.331 seconds.
+✔ Test "档案解不开：算「损坏」，回落云端，但脏标识不许顺手抹掉" passed after 0.332 seconds.
+✔ Test "三段的那条也一样：indicatorColors/MACD/0 映得回 indicatorColors" passed after 0.324 seconds.
+✔ Suite "体验类状态标识" passed after 0.338 seconds.
+✔ Test "柜子空着时从镜像起步，有存档时一个字不掺" passed after 0.066 seconds.
+✔ Test "store 清完会重新量，而且不多说一句" passed after 0.366 seconds.
+✔ Suite "清缓存" passed after 0.370 seconds.
+◇ Test "同机换号：第一帧还是上一个人的，档案一到货就自愈，下次冷启动不再闪" started.
+✔ Test "同机换号：第一帧还是上一个人的，档案一到货就自愈，下次冷启动不再闪" passed after 0.023 seconds.
+✔ Suite "首帧底色镜像" passed after 0.395 seconds.
+✔ Test "任何清理路径都不许删到账号目录" passed after 0.394 seconds.
+✔ Test "会删文件的地方，删的必须都是能再取回来的东西" passed after 0.394 seconds.
+✔ Test "哨兵那一格不许被整片抹掉" passed after 0.395 seconds.
+✔ Suite "存放分层" passed after 0.422 seconds.
+✔ Test run with 127 tests in 19 suites passed after 0.428 seconds.
+cd Kanpan/Diagnostics && swift test -j 2 --scratch-path /Users/mdd/zhk/kanpan-ringtone/Kanpan/Settings/.build
+[0/1] Planning build
+Building for debugging...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (19.15s)
+Test Suite 'All tests' started at 2026-09-22 15:55:22.186.
+Test Suite 'All tests' passed at 2026-09-22 15:55:22.221.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.035) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "直方图" started.
+◇ Suite "帧报告落盘" started.
+◇ Suite "分位数" started.
+◇ Suite "诊断落盘" started.
+◇ Suite "MetricKit 摘要" started.
+◇ Suite "带单位字符串解析" started.
+◇ Suite "帧统计" started.
+◇ Test "桶边界解析不了就整桶丢掉，不是当 0" started.
+◇ Test "超上限删最旧的" started.
+◇ Test "存进去读出来是同一份" started.
+◇ Suite "诊断中枢" started.
+◇ Test "桶乱序进来也要按 start 排好" started.
+◇ Test "标签里的空格和斜杠不会变成路径" started.
+◇ Test "整批导出：有一段没判定，整批就是 nil" started.
+◇ Test "分位数取命中桶的中点" started.
+◇ Test "线性插值口径，和 numpy 默认一致" started.
+◇ Test "只有一个样本时所有分位数都是它" started.
+◇ Test "空直方图不产出任何数" started.
+◇ Test "空数组返回 nil" started.
+◇ Test "文件名按毫秒时间戳排，ls 出来就是时间序" started.
+◇ Test "字节超上限也删最旧的，但最新那条永远留着" started.
+◇ Test "导出汇总：崩溃数、最坏启动 p50、最近磁盘写入" started.
+◇ Test "存储单位的直方图走 KB 口径" started.
+◇ Test "原文里我们不看的字段也一个不少地留着" started.
+◇ Test "条数超上限，从最旧的开始删" started.
+◇ Test "写导出文件 + 占用字节 + 清空" started.
+◇ Test "JSON 坏掉照样存字节，退到 base64" started.
+◇ Test "每日指标 payload 抽出启动、挂起、磁盘三项" started.
+◇ Test "四个数组全空 = 干净的一天" started.
+◇ Test "旧键名 histogrammedTimeToFirstDraw 也认" started.
+◇ Test "崩溃 payload 数得出条数和终止原因" started.
+◇ Test "摘要能 Codable 往返" started.
+◇ Test "没有 terminationReason 时退回信号号码，不留空" started.
+◇ Test "JSON 坏掉返回 nil，不是返回一个空摘要" started.
+◇ Test "一条记录都没有时 crashFree 是 nil，不是 true" started.
+◇ Test "存储单位是 1000 进制，和 MXUnitStorage 一致" started.
+◇ Test "没单位按默认单位算，负数和小数都收" started.
+◇ Test "JSON 里已经是数字时直接收下" started.
+◇ Test "解析不了返回 nil，绝不返回 0" started.
+◇ Test "`2 ms` 不能被 `s` 抢先命中" started.
+◇ Test "±20% 的帧间隔抖动不算 hitch" started.
+◇ Test "挂起 / 磁盘 / CPU / 启动四类各归各位" started.
+◇ Test "收一份 metric payload：原文和摘要都在盘上" started.
+◇ Test "时间单位逐个换算到毫秒" started.
+◇ Test "没采到帧 / 只采到一帧：不崩，也不谎报通过" started.
+◇ Test "占比达标但有一次长卡顿，worstHitch 要把它顶出来" started.
+◇ Test "排队延迟和绘制耗时分开记" started.
+◇ Test "满帧 120Hz、每帧 1ms：hitch 为 0，三条预算全过" started.
+◇ Test "卡一次 3 帧：hitch 时长、丢帧数、占比都对得上" started.
+◇ Test "中位数过但长尾超：P99 判不过，中位数判过" started.
+◇ Test "采集中途从 120Hz 降到 60Hz，不能把降频后每一帧都算成掉帧" started.
+◇ Test "报告能 Codable 往返，allPassed 进得了 JSON" started.
+◇ Test "每帧 4ms：P9.3 的 P99 < 3ms 判不过" started.
+◇ Test "注入的假 payload 走的是和真回调同一条路" started.
+◇ Test "重复 start 是幂等的" started.
+✔ Test "只有一个样本时所有分位数都是它" passed after 0.068 seconds.
+✔ Test "空数组返回 nil" passed after 0.068 seconds.
+✔ Test "文件名按毫秒时间戳排，ls 出来就是时间序" passed after 0.069 seconds.
+✔ Test "线性插值口径，和 numpy 默认一致" passed after 0.069 seconds.
+✔ Test "桶乱序进来也要按 start 排好" passed after 0.069 seconds.
+✔ Test "空直方图不产出任何数" passed after 0.069 seconds.
+✔ Test "存储单位的直方图走 KB 口径" passed after 0.069 seconds.
+✔ Test "桶边界解析不了就整桶丢掉，不是当 0" passed after 0.070 seconds.
+✔ Test "分位数取命中桶的中点" passed after 0.069 seconds.
+✔ Test "每日指标 payload 抽出启动、挂起、磁盘三项" passed after 0.069 seconds.
+✔ Test "JSON 坏掉照样存字节，退到 base64" passed after 0.069 seconds.
+✔ Test "四个数组全空 = 干净的一天" passed after 0.069 seconds.
+✔ Test "旧键名 histogrammedTimeToFirstDraw 也认" passed after 0.069 seconds.
+✔ Test "崩溃 payload 数得出条数和终止原因" passed after 0.069 seconds.
+✔ Test "标签里的空格和斜杠不会变成路径" passed after 0.070 seconds.
+✔ Test "存进去读出来是同一份" passed after 0.070 seconds.
+✔ Test "JSON 坏掉返回 nil，不是返回一个空摘要" passed after 0.069 seconds.
+✔ Test "摘要能 Codable 往返" passed after 0.069 seconds.
+✔ Test "没单位按默认单位算，负数和小数都收" passed after 0.069 seconds.
+✔ Test "存储单位是 1000 进制，和 MXUnitStorage 一致" passed after 0.069 seconds.
+✔ Test "解析不了返回 nil，绝不返回 0" passed after 0.069 seconds.
+✔ Test "`2 ms` 不能被 `s` 抢先命中" passed after 0.069 seconds.
+✔ Test "挂起 / 磁盘 / CPU / 启动四类各归各位" passed after 0.069 seconds.
+✔ Test "原文里我们不看的字段也一个不少地留着" passed after 0.070 seconds.
+✔ Test "没有 terminationReason 时退回信号号码，不留空" passed after 0.069 seconds.
+✔ Test "一条记录都没有时 crashFree 是 nil，不是 true" passed after 0.069 seconds.
+✔ Test "没采到帧 / 只采到一帧：不崩，也不谎报通过" passed after 0.069 seconds.
+✔ Test "时间单位逐个换算到毫秒" passed after 0.069 seconds.
+✔ Test "±20% 的帧间隔抖动不算 hitch" passed after 0.071 seconds.
+✔ Test "排队延迟和绘制耗时分开记" passed after 0.071 seconds.
+✔ Test "卡一次 3 帧：hitch 时长、丢帧数、占比都对得上" passed after 0.071 seconds.
+✔ Test "满帧 120Hz、每帧 1ms：hitch 为 0，三条预算全过" passed after 0.071 seconds.
+✔ Test "中位数过但长尾超：P99 判不过，中位数判过" passed after 0.071 seconds.
+✔ Test "采集中途从 120Hz 降到 60Hz，不能把降频后每一帧都算成掉帧" passed after 0.071 seconds.
+✔ Test "每帧 4ms：P9.3 的 P99 < 3ms 判不过" passed after 0.070 seconds.
+✔ Test "报告能 Codable 往返，allPassed 进得了 JSON" passed after 0.071 seconds.
+✔ Test "整批导出：有一段没判定，整批就是 nil" passed after 0.073 seconds.
+✔ Test "写导出文件 + 占用字节 + 清空" passed after 0.072 seconds.
+✔ Test "收一份 metric payload：原文和摘要都在盘上" passed after 0.072 seconds.
+✔ Suite "分位数" passed after 0.074 seconds.
+✔ Suite "直方图" passed after 0.074 seconds.
+✔ Suite "MetricKit 摘要" passed after 0.074 seconds.
+✔ Test "重复 start 是幂等的" passed after 0.012 seconds.
+✔ Test "JSON 里已经是数字时直接收下" passed after 0.073 seconds.
+✔ Suite "带单位字符串解析" passed after 0.075 seconds.
+✔ Test "字节超上限也删最旧的，但最新那条永远留着" passed after 0.077 seconds.
+✔ Test "超上限删最旧的" passed after 0.085 seconds.
+✔ Suite "帧报告落盘" passed after 0.086 seconds.
+✔ Test "占比达标但有一次长卡顿，worstHitch 要把它顶出来" passed after 0.096 seconds.
+✔ Suite "帧统计" passed after 0.098 seconds.
+✔ Test "注入的假 payload 走的是和真回调同一条路" passed after 0.037 seconds.
+✔ Suite "诊断中枢" passed after 0.098 seconds.
+✔ Test "导出汇总：崩溃数、最坏启动 p50、最近磁盘写入" passed after 0.103 seconds.
+✔ Test "条数超上限，从最旧的开始删" passed after 0.114 seconds.
+✔ Suite "诊断落盘" passed after 0.116 seconds.
+✔ Test run with 47 tests in 8 suites passed after 0.117 seconds.
+cd Kanpan/AccountCodec && swift test -j 2 --scratch-path /Users/mdd/zhk/kanpan-ringtone/Kanpan/Settings/.build
+[0/1] Planning build
+Building for debugging...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/13] Compiling KanpanAccountCodec PersonalSyncCodec.swift
+[4/13] Compiling KanpanAccountCodec APIHost.swift
+[5/13] Compiling KanpanAccountCodec AlertSound.swift
+[6/13] Compiling KanpanAccountCodec ChartViewport.swift
+[7/13] Compiling KanpanAccountCodec DisplayComfortPolicy.swift
+[8/13] Compiling KanpanAccountCodec IndicatorDraft.swift
+[9/13] Compiling KanpanAccountCodec IndicatorParamRule.swift
+[10/13] Compiling KanpanAccountCodec LaunchThemeMirror.swift
+[11/13] Emitting module KanpanAccountCodec
+[12/21] Compiling KanpanAccountCodec MarketCache.swift
+[13/21] Compiling KanpanAccountCodec Prefs.swift
+[14/21] Compiling KanpanAccountCodec PrefsCodec.swift
+[15/21] Compiling KanpanAccountCodec PrefsFieldPlan.swift
+[16/21] Compiling KanpanAccountCodec PrefsStore.swift
+[17/21] Compiling KanpanAccountCodec SettingsStamp.swift
+[18/21] Compiling KanpanAccountCodec ThemeChoice.swift
+[19/21] Compiling KanpanAccountCodec SymbolPrefs.swift
+[20/24] Emitting module KanpanAccountCodecTests
+[21/24] Compiling KanpanAccountCodecTests AlertSoundSyncTests.swift
+[22/24] Compiling KanpanAccountCodecTests PersonalSyncCodecOwnedKeysTests.swift
+[23/25] Compiling KanpanAccountCodecTests RoutePolicyStaysHomeTests.swift
+[23/25] Write Objects.LinkFileList
+[24/25] Linking KanpanAccountCodecPackageTests
+Build complete! (46.19s)
+Test Suite 'All tests' started at 2026-09-22 15:56:26.100.
+Test Suite 'All tests' passed at 2026-09-22 15:56:26.117.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.017) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "线路那两档留在这台设备上" started.
+◇ Suite "提醒铃声随人走" started.
+◇ Suite "客户端替哪些字段说话" started.
+◇ Test "四档上传、下行合并与旧客户端缺字段" started.
+◇ Test "云端那份带着老客户端发上来的 routePolicy，也改不动这台设备" started.
+◇ Test "两台设备各走各的线路，同步一轮之后还是各走各的" started.
+◇ Test "登录、退登、切账号都不动这台设备已经选好的线路" started.
+◇ Test "settings 替哪些字段说话，和生成的契约对得上" started.
+◇ Test case passing 1 argument sound → .default to "四档上传、下行合并与旧客户端缺字段" started.
+◇ Test case passing 1 argument sound → .crisp to "四档上传、下行合并与旧客户端缺字段" started.
+◇ Test "提醒发出去的键就是表 2.2 那十五个" started.
+◇ Test case passing 1 argument sound → .electronic to "四档上传、下行合并与旧客户端缺字段" started.
+◇ Test "提醒上去再下来是同一条" started.
+◇ Test "每一把工具发出去的键都在表里，并集正好是表本身" started.
+◇ Test case passing 1 argument sound → .glass to "四档上传、下行合并与旧客户端缺字段" started.
+◇ Test "每一把工具的默认样式都在表里" started.
+◇ Test "六摊东西一摊都不能少" started.
+◇ Test "每个指标的嵌套路径都在表里" started.
+◇ Test "线上那个 created 不在表里" started.
+◇ Test "自选与分类发出去的键就是表本身" started.
+◇ Test "没值的可空字段写 null，不省略" started.
+✔ Test "登录、退登、切账号都不动这台设备已经选好的线路" passed after 0.040 seconds.
+✔ Test "提醒上去再下来是同一条" passed after 0.040 seconds.
+✔ Test "四档上传、下行合并与旧客户端缺字段" with 4 test cases passed after 0.040 seconds.
+✔ Test "两台设备各走各的线路，同步一轮之后还是各走各的" passed after 0.040 seconds.
+✔ Test "没值的可空字段写 null，不省略" passed after 0.036 seconds.
+✔ Suite "提醒铃声随人走" passed after 0.042 seconds.
+✔ Test "提醒发出去的键就是表 2.2 那十五个" passed after 0.117 seconds.
+✔ Test "六摊东西一摊都不能少" passed after 0.113 seconds.
+✔ Test "每一把工具的默认样式都在表里" passed after 0.114 seconds.
+✔ Test "自选与分类发出去的键就是表本身" passed after 0.113 seconds.
+✔ Test "云端那份带着老客户端发上来的 routePolicy，也改不动这台设备" passed after 0.118 seconds.
+✔ Test "线上那个 created 不在表里" passed after 0.113 seconds.
+✔ Suite "线路那两档留在这台设备上" passed after 0.119 seconds.
+✔ Test "settings 替哪些字段说话，和生成的契约对得上" passed after 0.121 seconds.
+✔ Test "每个指标的嵌套路径都在表里" passed after 0.120 seconds.
+✔ Test "每一把工具发出去的键都在表里，并集正好是表本身" passed after 0.224 seconds.
+✔ Suite "客户端替哪些字段说话" passed after 0.227 seconds.
+✔ Test run with 14 tests in 3 suites passed after 0.228 seconds.
+cd Kanpan/DeepLink && swift test -j 2 --scratch-path /Users/mdd/zhk/kanpan-ringtone/Kanpan/Settings/.build
+[0/1] Planning build
+Building for debugging...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.78s)
+Test Suite 'All tests' started at 2026-09-22 15:56:30.416.
+Test Suite 'All tests' passed at 2026-09-22 15:56:30.418.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.002) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "深链解析" started.
+◇ Test "周期原样保留：1M 是月线，1m 是分钟线" started.
+◇ Test "提醒列表与搜索页：只有去处，没有参数" started.
+◇ Test "段数不对、去处不认识：nil，不猜" started.
+◇ Test "共享的通用链接只认自己的域名和 /s/ 那条路" started.
+◇ Test "路由：认不出来的 URL 不留待办" started.
+◇ Test "代号收不住的形状不当品种" started.
+◇ Test "画线：品种 + 那条线的 id" started.
+◇ Test "不认识的 scheme 一律 nil" started.
+◇ Test "共享：两种 host 形态解析到同一条" started.
+◇ Test "品种：带周期与不带周期" started.
+◇ Test "路由：后来的顶掉先来的，取走就清空" started.
+✔ Test "画线：品种 + 那条线的 id" passed after 0.005 seconds.
+✔ Test "共享的通用链接只认自己的域名和 /s/ 那条路" passed after 0.005 seconds.
+✔ Test "提醒列表与搜索页：只有去处，没有参数" passed after 0.005 seconds.
+✔ Test "段数不对、去处不认识：nil，不猜" passed after 0.005 seconds.
+✔ Test "不认识的 scheme 一律 nil" passed after 0.005 seconds.
+✔ Test "代号收不住的形状不当品种" passed after 0.005 seconds.
+✔ Test "共享：两种 host 形态解析到同一条" passed after 0.005 seconds.
+✔ Test "品种：带周期与不带周期" passed after 0.005 seconds.
+✔ Test "周期原样保留：1M 是月线，1m 是分钟线" passed after 0.005 seconds.
+✔ Test "路由：认不出来的 URL 不留待办" passed after 0.006 seconds.
+✔ Test "路由：后来的顶掉先来的，取走就清空" passed after 0.005 seconds.
+✔ Suite "深链解析" passed after 0.006 seconds.
+✔ Test run with 11 tests in 1 suite passed after 0.007 seconds.
+cd Kanpan/Scan && swift test -j 2 --scratch-path /Users/mdd/zhk/kanpan-ringtone/Kanpan/Settings/.build
+[0/1] Planning build
+Building for debugging...
+[0/3] Write swift-version--58304C5D6DBC2206.txt
+[2/5] Emitting module KanpanScan
+[3/5] Compiling KanpanScan DetailZoom.swift
+[4/6] Compiling KanpanScan ScanList.swift
+[5/8] Compiling KanpanScanTests DetailZoomTests.swift
+[6/8] Emitting module KanpanScanTests
+[7/9] Compiling KanpanScanTests ScanListTests.swift
+[7/9] Write Objects.LinkFileList
+[8/9] Linking KanpanScanPackageTests
+Build complete! (16.61s)
+Test Suite 'All tests' started at 2026-09-22 15:56:51.427.
+Test Suite 'All tests' passed at 2026-09-22 15:56:51.438.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.012) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "看细节：进哪一档、铺多宽" started.
+◇ Suite "看细节：切回大周期的那个视野栈" started.
+◇ Suite "连续扫图的名单" started.
+◇ Test "1M / 1y 这种长度不等的档按真的下一根开盘时刻算，不按名义步长" started.
+◇ Test "视野刚好覆盖那一根，左右各留半根细 K 线的空隙" started.
+◇ Test "进的是还能把这根切成十几根的那一档，不是紧挨着的那一档" started.
+◇ Test "本来就很细的那几档退到 1m，1m 上这颗按钮不该存在" started.
+◇ Test "一层层钻下去，往回切时把压在上面的几层一起弹掉" started.
+◇ Test "同一档只记最近那一次，钻太深的老账自己掉出去" started.
+◇ Test "切回哪一档就还哪一档的视野，还完就销账" started.
+◇ Test "按冻结时的顺序走，向后是下一只、向前是上一只" started.
+◇ Test "只有一只的名单等于没冻结" started.
+◇ Test "到头不循环，只报一声「到边了」" started.
+◇ Test "大小写与重复行都先收拾干净" started.
+◇ Test "换品种整栈作废——同一段时间在别的品种上什么都不是" started.
+✔ Test "进的是还能把这根切成十几根的那一档，不是紧挨着的那一档" passed after 0.003 seconds.
+✔ Test "一层层钻下去，往回切时把压在上面的几层一起弹掉" passed after 0.003 seconds.
+✔ Test "切回哪一档就还哪一档的视野，还完就销账" passed after 0.004 seconds.
+✔ Test "按冻结时的顺序走，向后是下一只、向前是上一只" passed after 0.004 seconds.
+✔ Test "只有一只的名单等于没冻结" passed after 0.004 seconds.
+✔ Test "到头不循环，只报一声「到边了」" passed after 0.004 seconds.
+✔ Test "视野刚好覆盖那一根，左右各留半根细 K 线的空隙" passed after 0.005 seconds.
+✔ Test "大小写与重复行都先收拾干净" passed after 0.004 seconds.
+✔ Test "换品种整栈作废——同一段时间在别的品种上什么都不是" passed after 0.004 seconds.
+✔ Test "1M / 1y 这种长度不等的档按真的下一根开盘时刻算，不按名义步长" passed after 0.005 seconds.
+✔ Test "同一档只记最近那一次，钻太深的老账自己掉出去" passed after 0.003 seconds.
+✔ Suite "看细节：切回大周期的那个视野栈" passed after 0.006 seconds.
+◇ Test "手里这只不在名单里就什么都不做——连触感都不给" started.
+✔ Test "本来就很细的那几档退到 1m，1m 上这颗按钮不该存在" passed after 0.003 seconds.
+✔ Test "手里这只不在名单里就什么都不做——连触感都不给" passed after 0.003 seconds.
+✔ Suite "看细节：进哪一档、铺多宽" passed after 0.007 seconds.
+✔ Suite "连续扫图的名单" passed after 0.006 seconds.
+✔ Test run with 13 tests in 3 suites passed after 0.007 seconds.
+cd Kanpan/Alerts && swift test -j 2 --scratch-path /Users/mdd/zhk/kanpan-ringtone/Kanpan/Settings/.build
+[0/1] Planning build
+Building for debugging...
+[0/3] Write swift-version--58304C5D6DBC2206.txt
+[2/6] Compiling KanpanAlerts AlertArchive.swift
+[3/6] Compiling KanpanAlerts AlertEngine.swift
+[4/6] Emitting module KanpanAlerts
+[5/8] Compiling KanpanAlerts AlertPermission.swift
+[6/8] Compiling KanpanAlerts AlertStore.swift
+[7/11] Compiling KanpanAlertsTests AlertArchiveTests.swift
+[8/11] Compiling KanpanAlertsTests AlertEngineTests.swift
+[9/11] Emitting module KanpanAlertsTests
+[10/13] Compiling KanpanAlertsTests AlertPermissionTests.swift
+[11/13] Compiling KanpanAlertsTests AlertStoreTests.swift
+[11/13] Write Objects.LinkFileList
+[12/13] Linking KanpanAlertsPackageTests
+Build complete! (54.02s)
+Test Suite 'All tests' started at 2026-09-22 15:57:55.959.
+Test Suite 'All tests' passed at 2026-09-22 15:57:55.977.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.018) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "提醒前台判定" started.
+◇ Suite "提醒权限横幅" started.
+◇ Suite "提醒仓库" started.
+◇ Suite "提醒存档" started.
+◇ Test "拒过了：系统不会再问第二次，只能去设置里开——出" started.
+◇ Test "还没问过：下次点「加入提醒」系统自己会弹，这时候提设置是无中生有——不出" started.
+◇ Test "安静授权也是授权——不出" started.
+◇ Test "代号大小写不影响对上号" started.
+◇ Test "报价簿那一批也能喂进来" started.
+◇ Test "没查之前不闪一行出来" started.
+◇ Test "不是数的价、零价、负价都挡在外面" started.
+◇ Test "收盘没穿过就不响：影线扫到了也不算" started.
+◇ Test "已触发、已暂停、没线的那些不占订阅名额" started.
+◇ Test "没盯的品种一口价都不看" started.
+◇ Test "收盘穿过：盘中不判，第一根也不判，第二根收了才响" started.
+◇ Test "比手上这桶还早的一口价一概不要" started.
+◇ Test "盘中碰到就响，记的是现价不是线价" started.
+◇ Test "装上那一刻就把要盯的品种报给报价簿" started.
+◇ Test "给了权限：响得了——不出" started.
+◇ Test "中间断得太久就不敢拿那口价当上一根收盘" started.
+◇ Test "刚挪好的线不会被它开盘那一分钟当场判成已触发" started.
+◇ Test "一个品种上两条，只响撞上的那条" started.
+◇ Test "切后台把桶丢掉：回来那一下不拿断了的链子算穿越" started.
+◇ Test "同一条只记一次触发" started.
+◇ Test "响一条就走一次落盘 + 记账那一个出口" started.
+◇ Test "等着的排前面" started.
+◇ Test "响完再来价不会响第二次，触发记录也不会被改写" started.
+◇ Test "摊不出线的种类不建" started.
+◇ Test "读不动就当空档，不抛" started.
+◇ Test "云端推下来的那一版：先落盘，再上屏" started.
+◇ Test "再次提醒之后照样能响" started.
+◇ Test "响过的再上膛，历史不留在身上" started.
+◇ Test "挂着提醒的线才画铃铛，已触发的不画" started.
+◇ Test "同一条线再点一次是「还要」，不是「再来一条」" started.
+◇ Test "同一桶里高低会长开" started.
+◇ Test "只改颜色不动提醒" started.
+◇ Test "加一条，图上那条线就该挂铃铛了" started.
+◇ Test "条件只有这一处能改" started.
+◇ Test "线被删了，提醒跟着删" started.
+◇ Test "改动都会喊账号桥一声" started.
+◇ Test "存满了就说一声，不悄悄丢" started.
+◇ Test "画线一动，提醒跟着对账" started.
+◇ Test "线被挪了，按同一个 id 重算并重新上膛" started.
+◇ Test "存档读回来还是那一份" started.
+✔ Test "还没问过：下次点「加入提醒」系统自己会弹，这时候提设置是无中生有——不出" passed after 0.001 seconds.
+✔ Test "给了权限：响得了——不出" passed after 0.001 seconds.
+✔ Test "拒过了：系统不会再问第二次，只能去设置里开——出" passed after 0.001 seconds.
+✔ Test "安静授权也是授权——不出" passed after 0.001 seconds.
+✔ Test "只改颜色不动提醒" passed after 0.001 seconds.
+✔ Test "线被挪了，按同一个 id 重算并重新上膛" passed after 0.001 seconds.
+✔ Test "线被删了，提醒跟着删" passed after 0.001 seconds.
+✔ Test "挂着提醒的线才画铃铛，已触发的不画" passed after 0.003 seconds.
+✔ Test "没查之前不闪一行出来" passed after 0.003 seconds.
+✔ Suite "提醒权限横幅" passed after 0.004 seconds.
+✔ Test "等着的排前面" passed after 0.003 seconds.
+✔ Test "读不动就当空档，不抛" passed after 0.008 seconds.
+✔ Test "存档读回来还是那一份" passed after 0.014 seconds.
+✔ Suite "提醒存档" passed after 0.015 seconds.
+✔ Test "报价簿那一批也能喂进来" passed after 0.143 seconds.
+✔ Test "代号大小写不影响对上号" passed after 0.143 seconds.
+✔ Test "不是数的价、零价、负价都挡在外面" passed after 1.749 seconds.
+✔ Test "已触发、已暂停、没线的那些不占订阅名额" passed after 1.750 seconds.
+✔ Test "收盘穿过：盘中不判，第一根也不判，第二根收了才响" passed after 1.759 seconds.
+✔ Test "装上那一刻就把要盯的品种报给报价簿" passed after 1.759 seconds.
+✔ Test "没盯的品种一口价都不看" passed after 1.759 seconds.
+✔ Test "中间断得太久就不敢拿那口价当上一根收盘" passed after 1.763 seconds.
+✔ Test "一个品种上两条，只响撞上的那条" passed after 1.763 seconds.
+✔ Test "刚挪好的线不会被它开盘那一分钟当场判成已触发" passed after 1.763 seconds.
+✔ Test "切后台把桶丢掉：回来那一下不拿断了的链子算穿越" passed after 1.763 seconds.
+✔ Test "收盘没穿过就不响：影线扫到了也不算" passed after 1.763 seconds.
+✔ Test "响一条就走一次落盘 + 记账那一个出口" passed after 1.763 seconds.
+✔ Test "盘中碰到就响，记的是现价不是线价" passed after 1.763 seconds.
+✔ Test "同一条只记一次触发" passed after 1.763 seconds.
+✔ Test "再次提醒之后照样能响" passed after 1.763 seconds.
+✔ Test "响过的再上膛，历史不留在身上" passed after 1.763 seconds.
+✔ Test "同一条线再点一次是「还要」，不是「再来一条」" passed after 1.763 seconds.
+✔ Test "同一桶里高低会长开" passed after 1.763 seconds.
+✔ Test "响完再来价不会响第二次，触发记录也不会被改写" passed after 1.763 seconds.
+✔ Test "云端推下来的那一版：先落盘，再上屏" passed after 1.763 seconds.
+✔ Test "条件只有这一处能改" passed after 1.763 seconds.
+✔ Test "改动都会喊账号桥一声" passed after 1.763 seconds.
+✔ Test "存满了就说一声，不悄悄丢" passed after 1.763 seconds.
+✔ Test "摊不出线的种类不建" passed after 1.763 seconds.
+✔ Test "画线一动，提醒跟着对账" passed after 1.763 seconds.
+✔ Test "加一条，图上那条线就该挂铃铛了" passed after 1.763 seconds.
+✔ Suite "提醒仓库" passed after 1.764 seconds.
+✔ Test "比手上这桶还早的一口价一概不要" passed after 1.764 seconds.
+✔ Suite "提醒前台判定" passed after 1.764 seconds.
+✔ Test run with 40 tests in 4 suites passed after 1.765 seconds.

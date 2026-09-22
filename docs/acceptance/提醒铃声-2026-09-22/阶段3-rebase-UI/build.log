@@ -1,0 +1,109 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build-for-testing -workspace Kanpan.xcworkspace -scheme Kanpan -destination "generic/platform=iOS Simulator" -derivedDataPath DerivedData-ringtone
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanData: /Users/mdd/zhk/kanpan-ringtone/KanpanData @ local
+  KanpanReview: /Users/mdd/zhk/kanpan-ringtone/KanpanReview @ local
+  KanpanChart: /Users/mdd/zhk/kanpan-ringtone/KanpanChart @ local
+  KanpanNetwork: /Users/mdd/zhk/kanpan-ringtone/KanpanNetwork @ local
+  KanpanAccount: /Users/mdd/zhk/kanpan-ringtone/KanpanAccount @ local
+  KanpanCore: /Users/mdd/zhk/kanpan-ringtone/KanpanCore @ local
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (16 targets)
+    Target 'KanpanUITests' in project 'Kanpan'
+        ➜ Explicit dependency on target 'Kanpan' in project 'Kanpan'
+    Target 'Kanpan' in project 'Kanpan'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanReview' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'KanpanAccount' in project 'KanpanAccount'
+    Target 'KanpanAccount' in project 'KanpanAccount'
+        ➜ Explicit dependency on target 'KanpanAccount' in project 'KanpanAccount'
+    Target 'KanpanAccount' in project 'KanpanAccount' (no dependencies)
+    Target 'KanpanReview' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewDomain' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewData' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewUI' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'ReviewUI' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewDomain' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewData' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'ReviewData' in project 'KanpanReview'
+        ➜ Explicit dependency on target 'ReviewDomain' in project 'KanpanReview'
+    Target 'ReviewDomain' in project 'KanpanReview' (no dependencies)
+    Target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanNetwork' in project 'KanpanNetwork'
+    Target 'KanpanData' in project 'KanpanData'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanNetwork' in project 'KanpanNetwork'
+    Target 'KanpanNetwork' in project 'KanpanNetwork'
+        ➜ Explicit dependency on target 'KanpanNetwork' in project 'KanpanNetwork'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanNetwork' in project 'KanpanNetwork'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanChart' in project 'KanpanChart'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore'
+        ➜ Explicit dependency on target 'KanpanCore' in project 'KanpanCore'
+    Target 'KanpanCore' in project 'KanpanCore' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/mdd/zhk/kanpan-ringtone/Kanpan/Kanpan/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+Build description signature: 91d1c07338cef1b185ba28c6e96e4904
+Build description path: /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Intermediates.noindex/XCBuildData/91d1c07338cef1b185ba28c6e96e4904.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+    cd /Users/mdd/zhk/kanpan-ringtone
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -o /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+
+ProcessInfoPlistFile /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/Kanpan.app/Info.plist /Users/mdd/zhk/kanpan-ringtone/Kanpan/Config/Info.plist (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan-ringtone/Kanpan
+    builtin-infoPlistUtility /Users/mdd/zhk/kanpan-ringtone/Kanpan/Config/Info.plist -producttype com.apple.product-type.application -genpkginfo /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/Kanpan.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/assetcatalog_generated_info.plist -o /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/Kanpan.app/Info.plist
+
+CopySwiftLibs /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/Kanpan.app (in target 'Kanpan' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan-ringtone/Kanpan
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/Kanpan.app/Kanpan.debug.dylib --scan-folder /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/Kanpan.app/Frameworks --scan-folder /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/Kanpan.app/PlugIns --scan-folder /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/Kanpan.app/SystemExtensions --scan-folder /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/Kanpan.app/Extensions --platform iphonesimulator --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/Kanpan.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/Kanpan.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+ProcessInfoPlistFile /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Info.plist /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/empty-KanpanUITests.plist (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan-ringtone/Kanpan
+    builtin-infoPlistUtility /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/empty-KanpanUITests.plist -producttype com.apple.product-type.bundle.ui-testing -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/ProductTypeInfoPlistAdditions.plist -o /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Info.plist
+
+CopySwiftLibs /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest (in target 'KanpanUITests' from project 'Kanpan')
+    cd /Users/mdd/zhk/kanpan-ringtone/Kanpan
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/KanpanUITests --scan-folder /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Frameworks --scan-folder /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/PlugIns --scan-folder /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/SystemExtensions --scan-folder /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Extensions --platform iphonesimulator --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Products/Debug-iphonesimulator/KanpanUITests-Runner.app/PlugIns/KanpanUITests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/mdd/zhk/kanpan-ringtone/DerivedData-ringtone/Build/Intermediates.noindex/Kanpan.build/Debug-iphonesimulator/KanpanUITests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+** TEST BUILD SUCCEEDED **
+

@@ -1,0 +1,37 @@
+[
+  {
+    "check": "build",
+    "exit": 0,
+    "seconds": 840
+  },
+  {
+    "check": "KanpanCore",
+    "exit": 0,
+    "seconds": 393
+  },
+  {
+    "check": "KanpanNetwork",
+    "exit": 0,
+    "seconds": 124
+  },
+  {
+    "check": "KanpanData",
+    "exit": 0,
+    "seconds": 360
+  },
+  {
+    "check": "app-logic",
+    "exit": 0,
+    "seconds": 684
+  },
+  {
+    "check": "Chart",
+    "exit": 0,
+    "seconds": 387
+  },
+  {
+    "check": "Rust",
+    "exit": 0,
+    "seconds": 56
+  }
+]
