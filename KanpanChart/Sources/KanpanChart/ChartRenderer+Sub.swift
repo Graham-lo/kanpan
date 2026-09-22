@@ -151,7 +151,7 @@ extension ChartRenderer {
     // 和主图蜡烛同宽：走 `candlePixels`（渲染口径），不是 `candleWidths`（原型对账口径）。
     // 后者没有「相邻两根至少留 1 个设备像素缝」的上限，捏小之后量柱会连成一堵实心墙——
     // 主图蜡烛在 37b8825 已经修掉这条，副图量柱漏了。AICoin 安卓包里量柱同样恒留缝
-    // （实体 = 节距 × 2/3，两边各 节距/6），见 docs/AICoin-安卓包-UI规格提取.md §3。
+    // （实体 = 节距 × 2/3，两边各 节距/6），见 71bd340:docs/AICoin-安卓包-UI规格提取.md §3。
     let bodyW = Double(candlePixels(spacing: spacing, scale: s).body) / s
     for i in lo...hi where outputVisible(.vol, (displayed(.vol)?.lines.count ?? 0)) {
       let xc = state.view.x(Double(b.time(at: i)), plotW: L.plotW)

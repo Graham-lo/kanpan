@@ -1,6 +1,6 @@
 import Foundation
 
-/// 品种事实分类，与用户文件夹独立。细分标签、地区和规则来源供后续筛选扩展。
+/// 品种事实分类，与用户文件夹独立。细分标签、地区和规则来源用于现行分类与筛选。
 public struct SymbolClassification: Codable, Sendable, Equatable {
   public enum Asset: String, Codable, Sendable { case crypto, equity, preciousMetal, commodity, index, preMarket, other }
   public enum Region: String, Codable, Sendable { case us, hk, kr, cn, unspecified }

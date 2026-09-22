@@ -317,7 +317,7 @@ public enum Palette: Sendable {
 
   /// 画布那几样固定色。日 / 夜各一套，和皮肤无关。
   ///
-  /// 取自 `docs/AICoin-安卓包-UI规格提取.md`（页面底、分割线、三 / 四级文字、`line_grid`）
+  /// 取自 `71bd340:docs/AICoin-安卓包-UI规格提取.md`（页面底、分割线、三 / 四级文字、`line_grid`）
   /// 与 `docs/acceptance/M8/aicoin-对比.md` §4 的实测值。
   public struct ChartCanvas: Sendable, Equatable {
     public var bg, grid, axis, text, dim, ink, cross: Hex

@@ -1,0 +1,261 @@
+[
+  {
+    "path": "docs/AICoin-K线复刻规格.md",
+    "action": "保留并核对现行规格",
+    "sha256": "0cb2e732e043b3aceadba9ffd0d982e542add2a4ec0debdc378a55c41d63311c",
+    "lines": 120
+  },
+  {
+    "path": "docs/AICoin-前端全量盘点-2026-09-17.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "2aa1dc69d7ce6d9ac8215a3dd8c0e47046c8e68d4c36f4bbfde825af98e05fe5",
+    "lines": 420,
+    "disposition": "P1行情增量、P2.15～18、P3平台/提醒；未采纳的竞品页面不转成新增任务，排除项归唯一不做清单。"
+  },
+  {
+    "path": "docs/AICoin-安卓包-UI规格提取.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "163de21c8cfe6d01718c8acf02132a6875afc0ca18e5c7e004f56ec2b6fc625e",
+    "lines": 813,
+    "disposition": "量测依据保留于refs/aicoin，现行图表规格只保留已采用的行为；外部校准归第3节。"
+  },
+  {
+    "path": "docs/AICoin-安卓包-资源全量报告.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "2bcf74d4f82685370530366fce069ae3aed764435807aaa80ba2f20abfe5b06c",
+    "lines": 926,
+    "disposition": "同上；资源目录不是功能实施清单。"
+  },
+  {
+    "path": "docs/AICoin-盘点原始清单-2026-09-17/01-品种详情页.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "d8b8f540c07e29dd5319ee2bc8fbee6183509dab9268408b0b68cc8d70cc3c37",
+    "lines": 506,
+    "disposition": "竞品原始盘点，选定增量已归P1、P2.15～18及P3；其它竞品能力并非本项目已采纳的行动项，明确排除项见唯一不做清单。"
+  },
+  {
+    "path": "docs/AICoin-盘点原始清单-2026-09-17/02-行情数据与合约数据.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "665c1c31211ca606e5402f710504c86f9b2c795e6d9fff20ea9efe53bda08f4e",
+    "lines": 342,
+    "disposition": "竞品原始盘点，选定增量已归P1、P2.15～18及P3；其它竞品能力并非本项目已采纳的行动项，明确排除项见唯一不做清单。"
+  },
+  {
+    "path": "docs/AICoin-盘点原始清单-2026-09-17/03-设置账号与K线非绘图区.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "5a3da1d17079c723cc723388f5dfb51b2ecb86f3cb1f484132753d9d6d96b8fd",
+    "lines": 337,
+    "disposition": "竞品原始盘点，选定增量已归P1、P2.15～18及P3；其它竞品能力并非本项目已采纳的行动项，明确排除项见唯一不做清单。"
+  },
+  {
+    "path": "docs/AICoin-盘点原始清单-2026-09-17/04-预警浮窗通知小组件.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "62c91e877e62b1cd3f58bf4dc41295aec67f34abfb107a8e31c7cee8d20a9b4f",
+    "lines": 394,
+    "disposition": "竞品原始盘点，选定增量已归P1、P2.15～18及P3；其它竞品能力并非本项目已采纳的行动项，明确排除项见唯一不做清单。"
+  },
+  {
+    "path": "docs/AICoin-盘点原始清单-2026-09-17/05-首页行情列表搜索自选.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "0b59046cecac6c2ba734bed9475e09f8581bc11a56ff653402afdbc2c6a6f8fa",
+    "lines": 557,
+    "disposition": "竞品原始盘点，选定增量已归P1、P2.15～18及P3；其它竞品能力并非本项目已采纳的行动项，明确排除项见唯一不做清单。"
+  },
+  {
+    "path": "docs/Kanpan-中国用户行为习惯研究与交互重设计-Prompt-2026-09-16.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "b3a3113265abb3cb768f632afad3907511b0969a1dd473344cb0833a965d7285",
+    "lines": 1317,
+    "disposition": "研究提示词已被定稿界面取代；复盘交互P3.7、字号P2.13、触感P2.9及平台能力P3。"
+  },
+  {
+    "path": "docs/testflight-uploads.md",
+    "action": "保留并核对现行规格",
+    "sha256": "80ffbbbdf9be0c5bcc7b74a284c3317797e356ba9809ff7680fdb3bb769521bb",
+    "lines": 35
+  },
+  {
+    "path": "docs/不做清单.md",
+    "action": "保留并核对现行规格",
+    "sha256": "e298a39a940b936f7599ec5cc7f89962bf93cbbb58475826f1116c639e7e3428",
+    "lines": 30
+  },
+  {
+    "path": "docs/交互审计与新原型方案-2026-09-17.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "a46b52fd47f6ab1baee8efbb95cb6be182541b048eddc918e4fb229ecad66261",
+    "lines": 200,
+    "disposition": "已定稿五格/皮肤/入口不重做；剩余滚动锚点P2.4、撤销P2.7、触感P2.9、复盘P3.7。"
+  },
+  {
+    "path": "docs/产品体验设计-2026-09-16.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "0d6fbe7e9d7d7c30ab8006555fe9d764aff524a2c79068092044662d77d5d668",
+    "lines": 610,
+    "disposition": "已做入口/皮肤不重做；平台P3.2～4、复盘P3.7；漏掉的涨跌幅/被动波动提醒合并迁入P3.1。第二套自选布局与现行定稿冲突，明确不做。"
+  },
+  {
+    "path": "docs/使用手册-2026-09-21.md",
+    "action": "保留并核对现行规格",
+    "sha256": "e61caefd2bb3dc963a7e2d5265eb4e4302bc0c0a88a20c92cf9d98d2824a7304",
+    "lines": 263
+  },
+  {
+    "path": "docs/发给朋友-画线分享-实施方案-2026-09-22.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "f3250d55fbbd02263868c44a88c2bcb3820e0eb1cf4f7c467455b32f802512ba",
+    "lines": 272,
+    "disposition": "已交付e058715；回复UI归P3.5，真机验收归第3节。"
+  },
+  {
+    "path": "docs/复盘实现暂停交接.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "8f43497656cb5578fb6596c24742a0914f5de3633f9bdc98ee20ee2161f2ed91",
+    "lines": 34,
+    "disposition": "暂停状态已被原生复盘实现取代；未完交互归P3.7，同步与完整UI回归归P4.5/6。"
+  },
+  {
+    "path": "docs/复盘接入最终方案.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "d60ed3834a8a889010002e554cd28fc0d51bc6ee5004df815e8028d513e3435b",
+    "lines": 210,
+    "disposition": "原生模块及后端已落地；交互增量P3.7、相似种子P3.8、回归P4.5/6。"
+  },
+  {
+    "path": "docs/多交易所行情接入方案-Coinbase现货-2026-09-17.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "c116f96e4f545cc0cb4272a6b337ca9845eb95334b6c65626494899b84bc9660",
+    "lines": 166,
+    "disposition": "不做清单的多交易所项；删除方案，不增加线路。"
+  },
+  {
+    "path": "docs/实施任务书.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "5866290d7cee1744bb6d8ea0903119287bd76bc85e0a7c77ac69e34385acca77",
+    "lines": 964,
+    "disposition": "旧产品默认值已被现行规格取代；X7归P2.8，M5逐项验收迁入P4.2，M8/长稳/冷启动归P4。"
+  },
+  {
+    "path": "docs/市值口径与数据来源-2026-09-18.md",
+    "action": "保留并核对现行规格",
+    "sha256": "45e522c668c79ed6f0f840c07c8a87df88752aa3266754555457ca3e887e20c3",
+    "lines": 303
+  },
+  {
+    "path": "docs/开工提示词.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "69cb3364e6cd1469192bfb63fa4d75676e3ffa0725114b8ba92c7dc227c64e2d",
+    "lines": 27,
+    "disposition": "旧启动入口失效；AGENTS与唯一交接书替代，不启动旧任务。"
+  },
+  {
+    "path": "docs/待办交接-Codex-2026-09-22.md",
+    "action": "保留并核对现行规格",
+    "sha256": "7ce43e3af5ea49203058b1da4713ab95ff2aba3b41ba2b3499775fd102da7b01",
+    "lines": 315
+  },
+  {
+    "path": "docs/待办盘点-2026-09-22.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "7dcef499a29889eaed8774e5732bafe04b02b2fe8007f05532e9339f0bf62a74",
+    "lines": 117,
+    "disposition": "P1～P4覆盖；误判/已完成归第2节，外部条件归第3节，禁做项归唯一清单。"
+  },
+  {
+    "path": "docs/护眼与动态字体-实施提示词.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "0d3f326b1ba71b5321452de35c4572a6710b685e9bd4de51bde2d609fa1a106d",
+    "lines": 192,
+    "disposition": "旧五种主题被三套皮肤取代；剩余动态字体归P2.13，P0头部独立封顶。"
+  },
+  {
+    "path": "docs/提醒与体验细节-实施方案-2026-09-20.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "4d84657e40eb099c92552dd8380ae7ea5b3230c93a09835a6d235dc8acdc1eb6",
+    "lines": 234,
+    "disposition": "已做画线提醒/搜索/扫图不重做；P3.1～3补齐提醒/平台，固定起点比较明确不做。"
+  },
+  {
+    "path": "docs/板块强弱-实施方案-2026-09-18.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "e3a0487ef4c671813d86b68f16df6213ae53f4073fcf8322d6f167c24bf8fde4",
+    "lines": 213,
+    "disposition": "甲乙版均已部署（PROJECT对应提交）；更高阶比较不做，现行口径保留于README/市值文档。"
+  },
+  {
+    "path": "docs/板块强弱与二阶变化-算法研究-2026-09-18.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "0415ad4317ead6c1ba415c057f4f41f18a11a1190b62ca553866a7a7d789955d",
+    "lines": 860,
+    "disposition": "第二/三期已砍，唯一不做清单已明确；现行中位数与5日窗口不改。"
+  },
+  {
+    "path": "docs/看盘-交易所协议与品种目录-GPT-Pro-报告-2026-09-19.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "1c9334e4ea003db3249207553a0cd165a64f91843f5257389168d9c6c406bfaf",
+    "lines": 825,
+    "disposition": "A/B修复已交付（PROJECT第四轮）；未闭合的三动态/三静态普查完整迁入P4.8；旧pricePrecision建议被P0返工覆盖。"
+  },
+  {
+    "path": "docs/看盘-性能与本地云端冲突-GPT-Pro-报告-2026-09-19.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "7c13dca744bdcba0b4bc52eb57f899f3818928bddc0d42c54628fc1fac571a64",
+    "lines": 371,
+    "disposition": "14项源码修复已交付（PROJECT第二轮）；跨设备冲突证据归P4.5，性能证据归P4.2/3/4。"
+  },
+  {
+    "path": "docs/看盘-收尾轮-图表交互画线-复盘-界面与合规-GPT-Pro-报告-2026-09-20.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "cae9d195390a74a5ecc6f7866b36b676fe6d9b08dc357c813ef05b9e6e236237",
+    "lines": 1069,
+    "disposition": "源码修复已交付（PROJECT第五轮）；C-08归P2.4、D.7两项完整展开在P4.9，整体UI归P4.1/6。"
+  },
+  {
+    "path": "docs/看盘-账号安全与并发生命周期-GPT-Pro-报告-2026-09-19.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "ba55171c3070851341d276ae11cb1c692fa75d0dddff79c6852fe4e86ef3729b",
+    "lines": 438,
+    "disposition": "源码修复已交付（PROJECT第三轮）；八条缺失BT断言迁入P2.5，并发台账/死锁P2.6、恢复P4.7、RLS P4.10。"
+  },
+  {
+    "path": "docs/设计-盘点第一节-2026-09-22.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "46607adae88593dded73188bb20953759e02af4dfae1424c638020fef88e230f",
+    "lines": 125,
+    "disposition": "有效接口、配额、slice、单线指标与盘口约束已迁入P1；11候选笔误改10，禁做项不订阅。"
+  },
+  {
+    "path": "docs/账号同步与复盘-最终落地方案.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "914af0cb89497350babcc8956ce93e791995cb98df87438476aa06ca4da46a33",
+    "lines": 263,
+    "disposition": "账号/同步已实现（当前账号规格替代）；新增交互P3.7、端到端回归P4。旧资料导入不做。"
+  },
+  {
+    "path": "docs/账号复盘-实施进度.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "0ca15758e33359429d066914781a6ef312f61a2478afba7b562caac77ff41188",
+    "lines": 52,
+    "disposition": "尚未完成范围归P3.7/8、P4.5/6；完整修订查看漏项补入P3.7；线路旧章删除。"
+  },
+  {
+    "path": "docs/账号系统-实施提示词.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "52eaedd1adae9319a86f6c3db0d95a38b43d18330cf13cb55c75e2d2dfc439c6",
+    "lines": 404,
+    "disposition": "邮箱方案被用户名账号取代；数据导出与运维改密P3.6；旧资料、冷静期撤销等明确不做。"
+  },
+  {
+    "path": "docs/账号系统方案.md",
+    "action": "保留并核对现行规格",
+    "sha256": "27a78b938754ad8ce7d24ea04e0b6e2a341d7b82fdb750dba6881d569ab9e362",
+    "lines": 270
+  },
+  {
+    "path": "docs/锚定VWAP与成交量分布-实施方案-2026-09-20.md",
+    "action": "删除；有效行动项已归入交接书",
+    "sha256": "8ed6fb1fe7d72c726ba92d6b614778d6d11cc0912dd683c9c17f381f077afefe",
+    "lines": 240,
+    "disposition": "画线工具与几何已实现，原始验收保留；不从旧实施步骤重复改动。"
+  }
+]

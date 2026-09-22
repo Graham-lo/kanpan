@@ -75,9 +75,8 @@ async fn assess(market:&dyn MarketDataProvider,r:&NativeRecord,checkpoint:Option
  let from=checkpoint.unwrap_or(r.submitted);
  if from>now {return Ok(open(answer("waiting","等待行情",None)))}
  if rule.confirmation=="trade_touch" {
-  // OKX 的逐笔成交这一段本建没有接，再问一万遍也还是这句话。让它每几秒重来一次直到
-  // 到期，只是把一条永远答不了的任务挂在队列上；以后真接了 OKX 成交，要连带一条迁移
-  // 把这些任务重新打开，不能指望它们自己醒过来。
+  // 当前网关不提供逐笔顺序证据，直接保留“待核实”并结束任务，避免反复空转。
+  // 不扩展多交易所能力，见 docs/不做清单.md；不以另一来源或普通K线冒充成交顺序。
   if r.draft.range.venue=="okx" {return Ok(closed(answer("needs_verification","成交顺序待核实",None)))}
   // Leave one second for the exchange to settle the covered endpoint.
   let until=(now-1_000).min(rule.expires).min(from+30_000);

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import KanpanDeepLink
 
-// 深链的形态是一份契约（`docs/提醒与体验细节-实施方案-2026-09-20.md` 第 1 节）：
+// 深链的形态是一份契约（`71bd340:docs/提醒与体验细节-实施方案-2026-09-20.md` 第 1 节）：
 // 通知、桌面快捷入口、共享链接三边都照着它拼串，客户端照着它解。这儿把两种壳子
 // （`hkline://` 与 `https://<webHost>/s/<id>`）和「认不出来就 nil」一并钉住。
 

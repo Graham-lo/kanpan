@@ -1,0 +1,73 @@
+{
+  "files": [
+    {
+      "path": "Backend/kanpan-api/src/review_worker.rs",
+      "blocks": 1,
+      "newCommentLines": 2
+    },
+    {
+      "path": "Kanpan/DeepLink/Tests/KanpanDeepLinkTests/DeepLinkParseTests.swift",
+      "blocks": 1,
+      "newCommentLines": 1
+    },
+    {
+      "path": "Kanpan/Kanpan/Alerts/AlertNotifications.swift",
+      "blocks": 1,
+      "newCommentLines": 1
+    },
+    {
+      "path": "Kanpan/Kanpan/Main/DeepLink.swift",
+      "blocks": 1,
+      "newCommentLines": 1
+    },
+    {
+      "path": "Kanpan/Kanpan/Symbols/ClipboardSymbol.swift",
+      "blocks": 1,
+      "newCommentLines": 1
+    },
+    {
+      "path": "Kanpan/Kanpan/Symbols/SymbolAliases.swift",
+      "blocks": 1,
+      "newCommentLines": 1
+    },
+    {
+      "path": "Kanpan/KanpanUITests/SearchEntryUITests.swift",
+      "blocks": 2,
+      "newCommentLines": 2
+    },
+    {
+      "path": "KanpanChart/Sources/KanpanChart/ChartRenderer+Sub.swift",
+      "blocks": 1,
+      "newCommentLines": 1
+    },
+    {
+      "path": "KanpanCore/Sources/KanpanCore/Alerts/Alert.swift",
+      "blocks": 3,
+      "newCommentLines": 6
+    },
+    {
+      "path": "KanpanCore/Sources/KanpanCore/Indicator/IndicatorID.swift",
+      "blocks": 1,
+      "newCommentLines": 1
+    },
+    {
+      "path": "KanpanCore/Sources/KanpanCore/Model/SymbolClassification.swift",
+      "blocks": 1,
+      "newCommentLines": 1
+    },
+    {
+      "path": "KanpanCore/Sources/KanpanCore/Style/Palette.swift",
+      "blocks": 1,
+      "newCommentLines": 1
+    },
+    {
+      "path": "KanpanCore/Tests/KanpanCoreTests/AlertTests.swift",
+      "blocks": 1,
+      "newCommentLines": 1
+    }
+  ],
+  "pendingP1Only": [
+    "KanpanNetwork/Sources/KanpanNetwork/Binance/DTO.swift",
+    "KanpanNetwork/Sources/KanpanNetwork/Binance/Endpoints.swift"
+  ]
+}

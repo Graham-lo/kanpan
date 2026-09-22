@@ -3,7 +3,7 @@ import Foundation
 /// 一条提醒。
 ///
 /// 这是**线上那份对象的身体**：字段名、取值范围、可空与否，都按
-/// `docs/提醒与体验细节-实施方案-2026-09-20.md` 表 2.2 一字不差地来，服务端
+/// `71bd340:docs/提醒与体验细节-实施方案-2026-09-20.md` 表 2.2 一字不差地来，服务端
 /// （`Backend/kanpan-api/src/sync_validation.rs`）按同一张表逐字段卡，改这里的任何
 /// 一个名字都要两边一起改，否则整条操作会被拒、队列跟着堵。
 ///
@@ -12,12 +12,10 @@ import Foundation
 public struct Alert: Sendable, Equatable, Codable, Identifiable {
   /// 这条提醒是怎么来的。
   ///
-  /// - `drawing`：图上那条线。目前**唯一**会自己长出来、也是唯一被评估器认的一种。
-  /// - `price`：一个裸价格（留给以后的「到价提醒」）。客户端没有入口能产生它，表 2.2
-  ///   也没给它放目标价的字段，所以两侧评估器都**显式**把它挡在外面
-  ///   （`AlertEvaluator.hit` / 服务端 `alerts::load`），而不是让它悄悄不响。
-  ///   要开这个入口，先把那两处的判定实现掉。
-  /// - `reviewDue`：复盘待办到点（本轮走本地排程，不占云端名额，留着是为了以后能跨设备）。
+  /// - `drawing`：当前由画线入口创建、由两侧评估器判定。
+  /// - `price`：当前无创建入口，且两侧评估器拒绝此类型。
+  /// - `reviewDue`：当前由独立本地排程处理，没有创建云端提醒对象。
+  /// 两项增量的唯一规格见 docs/待办交接-Codex-2026-09-22.md P3.1。
   public enum Kind: String, Sendable, Codable, CaseIterable {
     case drawing, price, reviewDue
   }
@@ -55,7 +53,7 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   /// 从这个时刻起才算数（毫秒）。线被挪动之后要重置成「现在」，否则挪过去的那一刻
   /// 就被历史 K 线判成触发了。
   public var armedAt: Double
-  /// 本轮固定 `true`：一条提醒只响一次，响完变 `fired`。
+  /// `true` 时只响一次；关闭后按现有再次提醒规则重新布防。
   public var once: Bool
   public var status: Status
   public var firedAt: Double?

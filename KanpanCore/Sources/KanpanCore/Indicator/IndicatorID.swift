@@ -1,6 +1,6 @@
 import Foundation
 
-/// 指标（原型 `DEFS`）。主图三种、副图七种，别的 1.0 不做。
+/// 指标标识与展示信息；已支持集合由下方枚举定义，增量仅见 docs/待办交接-Codex-2026-09-22.md。
 public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   case ma = "MA", ema = "EMA", boll = "BOLL"
   case vol = "VOL", macd = "MACD", rsi = "RSI", kdj = "KDJ", srsi = "SRSI", atr = "ATR", oi = "OI"
