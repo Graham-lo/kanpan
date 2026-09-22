@@ -223,6 +223,88 @@ struct ChartOptionsRenderTests {
     }
   }
 
+  // ---------------------------------------------------------------- 收盘价
+
+  /// P2.17「收盘价」画法：主图没有一根蜡烛，只有一条 `up` 色的收盘价折线；
+  /// 指标、图例读数、最新价胶囊照旧；价格区间按收盘价收窄。
+  @Test("收盘价画法：只画收盘折线，指标与最新价照旧")
+  func lineDrawsClosesOnly() {
+    let real = Evidence.state(style: .default, dark: false, size: Self.size)
+    var ln = real
+    ln.options.kind = .line
+    let rr = ChartRenderer(state: real), rl = ChartRenderer(state: ln)
+    #expect(rl.heikin == nil, "收盘价画法不该算平均 K 线")
+    #expect(!rr.candleXs(size: Self.size, scale: Self.scale).isEmpty)
+    #expect(rl.candleXs(size: Self.size, scale: Self.scale).isEmpty, "收盘价画法不该有蜡烛")
+
+    // 价格区间只按收盘撑：可见收盘全在区间里，而且比蜡烛档窄。
+    let pr = rr.probe(size: Self.size, scale: Self.scale)
+    let pl = rl.probe(size: Self.size, scale: Self.scale)
+    #expect(pl.rangeHi - pl.rangeLo < pr.rangeHi - pr.rangeLo, "收盘价档没按收盘收窄区间")
+    let b = ln.series
+    for i in pl.visibleLo...pl.visibleHi {
+      #expect(b.close[i] >= pl.rangeLo && b.close[i] <= pl.rangeHi, "第 \(i) 根收盘掉出区间")
+    }
+    // 横向坐标一根不动。
+    #expect(pl.spacing == pr.spacing && pl.viewFrom == pr.viewFrom && pl.viewTo == pr.viewTo)
+
+    // 最新价胶囊照常：还在主图里，涨跌方向读真实开收。
+    #expect(rl.lastPriceY(size: Self.size) != nil, "收盘价画法把最新价胶囊弄丢了")
+    #expect(rr.lastPriceY(size: Self.size)?.up == rl.lastPriceY(size: Self.size)?.up)
+    // 图例读真实价，和蜡烛档是同一根。
+    #expect(rr.legendIndex == rl.legendIndex)
+  }
+
+  /// 像素断言（替代基线）：关掉叠加指标、副图与最新价，主图里跌色一个满覆盖像素都不许有
+  /// （蜡烛档有一大片），收盘价那几个点上必须落着 `up` 色的折线。
+  @Test("收盘价画法的像素：没有蜡烛，折线过每根收盘")
+  func linePixels() {
+    let dev = Self.dev
+    func st(_ kind: CandleKind) -> ChartState {
+      var s = Evidence.state(style: .default, dark: false, size: dev.size, overlays: [], subs: [])
+      s.options.kind = kind
+      s.options.lastLine = false
+      return s
+    }
+    let s = Double(dev.scale)
+    let down = st(.line).colors.down.rgb8, up = st(.line).colors.up.rgb8
+    func downCount(_ kind: CandleKind) -> Int {
+      let state = st(kind)
+      let r = ChartRenderer(state: state)
+      let L = r.layout(size: dev.size)
+      let px = Pixels(Evidence.render(state, size: dev.size, scale: dev.scale))
+      var n = 0
+      for y in Int(L.main.y * s)..<Int((L.main.y + L.main.h) * s) {
+        for x in 0..<Int(L.plotW * s) where chanDelta(px.rgb(x, y), down) <= 2 { n += 1 }
+      }
+      return n
+    }
+    #expect(downCount(.candle) > 500, "对照组：蜡烛档该有一片跌色")
+    #expect(downCount(.line) == 0, "收盘价画法主图里还有跌色像素（蜡烛没撤干净）")
+
+    // 折线过收盘：每根收盘点周围 2 个设备像素里能找到接近 up 色的像素。
+    let state = st(.line)
+    let r = ChartRenderer(state: state)
+    let L = r.layout(size: dev.size)
+    let range = r.priceRange(size: dev.size)
+    let px = Pixels(Evidence.render(state, size: dev.size, scale: dev.scale))
+    let b = state.series
+    let (lo, hi) = visibleRange(view: state.view, series: b)
+    var hits = 0, tried = 0
+    for i in lo...hi {
+      let xc = state.view.x(Double(b.time(at: i)), plotW: L.plotW)
+      guard xc > 4, xc < L.plotW - 4 else { continue }
+      let yc = KanpanCore.yOf(b.close[i], pane: L.main, range: range, mode: state.price.mode)
+      tried += 1
+      let cx = Int(xc * s), cy = Int(yc * s)
+      var found = false
+      for dy in -2...2 { for dx in -2...2 where chanDelta(px.rgb(cx + dx, cy + dy), up) <= 60 { found = true } }
+      if found { hits += 1 }
+    }
+    #expect(tried > 20)
+    #expect(hits == tried, "只有 \(hits)/\(tried) 根收盘点上落着折线")
+  }
+
   // ---------------------------------------------------------------- 留白偏置
 
   @Test("偏置只挪位置不改大小")

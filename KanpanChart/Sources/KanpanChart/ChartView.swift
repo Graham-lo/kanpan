@@ -155,6 +155,7 @@ public final class ChartView: UIView {
           "zoomY": s.price.zoom, "centerY": s.price.centerFraction,
           "axisW": layout.axisW, "height": layout.H,
           "dataDisplay": s.options.dataDisplay.rawValue, "portraitHeight": s.options.portraitHeight,
+          "candleKind": s.options.kind.rawValue,
           "drawingCount": s.drawings.count,
           "guestIDs": guestDrawings.map(\.id),
           "ownDimmed": ownDimmed,

@@ -2,7 +2,7 @@ import Foundation
 
 /// Shared chart options; defaults follow the current phone profile.
 public struct ChartOptions: Sendable, Equatable {
-  /// 蜡烛画成什么：真实 OHLC，还是平均 K 线。
+  /// 主图画成什么：真实 OHLC 蜡烛、平均 K 线，还是只画收盘价折线。
   public var kind: CandleKind = .candle
   /// 网格：跟随风格 / 强制显示 / 强制隐藏。
   public var grid: GridChoice = .off
@@ -33,14 +33,19 @@ public struct ChartOptions: Sendable, Equatable {
   public init() {}
 }
 
-/// 蜡烛画法。
+/// 主图画法。
+///
+/// `line` 是「收盘价」：主图只画一条收盘价折线（外加照常的最新价线与右轴胶囊），
+/// 价格区间也只按收盘价撑——影线不画，就不该让看不见的高低点把折线压扁。
+/// 存盘与同步走 rawValue，三个名字都不能改。
 public enum CandleKind: String, Sendable, Codable, CaseIterable {
-  case candle, heikin
+  case candle, heikin, line
 
   public var display: String {
     switch self {
     case .candle: "蜡烛"
     case .heikin: "平均K线"
+    case .line: "收盘价"
     }
   }
 }

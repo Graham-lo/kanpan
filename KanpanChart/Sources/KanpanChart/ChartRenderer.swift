@@ -279,7 +279,8 @@ public struct ChartRenderer {
       drawingPrices: [],
       transform: transform,
       extraPrices: heikin?.extremes ?? [], bias: state.options.bias,
-      paneHeight: L.main.h, topInset: mainLegendInset(plotW: L.plotW), anchorPrice: transform.isManual ? state.axisScaleAnchor : nil)
+      paneHeight: L.main.h, topInset: mainLegendInset(plotW: L.plotW), anchorPrice: transform.isManual ? state.axisScaleAnchor : nil,
+      closeOnly: state.options.kind == .line)
     if geometry.ranges.count >= 8 { geometry.ranges.removeFirst() }
     geometry.ranges.append((size, view, transform, value))
     return value
@@ -511,15 +512,18 @@ public struct ChartRenderer {
     let visible = (bounds.lo...bounds.hi).filter {
       let px = x(b.time(at: $0), L); return px >= 0 && px <= L.plotW
     }
-    guard let high = visible.max(by: { b.high[$0] < b.high[$1] }),
-          let low = visible.min(by: { b.low[$0] < b.low[$1] }) else { return }
+    // 收盘价画法没画影线：标注落在折线的最高 / 最低收盘上，引线才指得到图上真有的那一点。
+    let closeOnly = state.options.kind == .line
+    let highs = closeOnly ? b.close : b.high, lows = closeOnly ? b.close : b.low
+    guard let high = visible.max(by: { highs[$0] < highs[$1] }),
+          let low = visible.min(by: { lows[$0] < lows[$1] }) else { return }
     // 主图顶上那几行是图例的地盘（`mainLegendInset`，副图的图例也照这个数收边）。
     // 上界原来写死 8，于是最高价那颗标注直接压在「MA256 78125.45」那行字上——
     // 两层小字叠在一起谁也读不出来。标注以 `ty` 为纵向**中心**，所以下界是
     // 「图例占掉的高度 + 半行字」，图例行本身一个像素都不挪。
     let legendBand = mainLegendInset(plotW: L.plotW)
     let floor = legendBand + Double(ChartFont.measure("0", ChartFont.axis).height) / 2 + 2
-    for (index, price, isHigh) in [(high, b.high[high], true), (low, b.low[low], false)] {
+    for (index, price, isHigh) in [(high, highs[high], true), (low, lows[low], false)] {
       let px = x(b.time(at: index), L), py = yOf(price, L.main, r)
       let label = fmtNum(price, state.decimals), width = Double(label.width(ChartFont.axis))
       let left = px + 16 + width > L.plotW - 4
@@ -591,7 +595,10 @@ public struct ChartRenderer {
     let cgWickUp = tint < 1 ? Paint.cg(Paint.mix(t.bg, t.up, tint)) : cgUp
     let cgWickDown = tint < 1 ? Paint.cg(Paint.mix(t.bg, t.down, tint)) : cgDown
     let rendering = AICoinBehavior.rendering(spacing: spacing, scale: s)
-    if rendering == .closeLine {
+    // 「收盘价」画法和 AICoin 捏到极窄时退成的收盘折线是同一笔：同色（`up`）、同宽
+    // （2 个物理像素，AICoin `bk/a` 的 `setStrokeWidth(2.0f)`），不另起配色。
+    // 于是收盘价档无论怎么缩放都是同一条线，蜡烛档捏到最窄时也正好接上它。
+    if state.options.kind == .line || rendering == .closeLine {
       line(ctx, pane: pane, r: r, plotW: L.plotW, arr: b.close,
            color: t.up, lo: lo, hi: hi, width: 2 / s)
       ctx.restoreGState()

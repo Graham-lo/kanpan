@@ -23,13 +23,14 @@ struct ChartOptionsTests {
   /// 设置页直接读 `display`，改名等于改用户看到的字，得钉住。
   @Test("中文档名")
   func displayNames() {
-    #expect(CandleKind.allCases.map(\.display) == ["蜡烛", "平均K线"])
+    #expect(CandleKind.allCases.map(\.display) == ["蜡烛", "平均K线", "收盘价"])
     #expect(GridChoice.allCases.map(\.display) == ["跟随风格", "显示", "隐藏"])
     #expect(BodyChoice.allCases.map(\.display) == ["实心", "阳线空心"])
     #expect(PriceBias.allCases.map(\.display) == ["偏上", "居中", "偏下"])
     #expect(ViewAnchor.allCases.map(\.display) == ["偏左", "居中", "靠右"])
     // 存盘走 rawValue，不能跟着中文改。
     #expect(CandleKind.heikin.rawValue == "heikin" && ViewAnchor.left.rawValue == "left")
+    #expect(CandleKind.line.rawValue == "line", "收盘价画法走同步，服务端认的就是这个名字")
   }
 
   // MARK: - 留白偏置
@@ -63,6 +64,27 @@ struct ChartOptionsTests {
     let px = s.close[s.count - 1]
     #expect(yOf(px, pane: pane, range: up, mode: .linear)
       < yOf(px, pane: pane, range: mid, mode: .linear))
+  }
+
+  // MARK: - 收盘价画法
+
+  /// 收盘价画法只按收盘价撑区间：区间比蜡烛档窄，所有可见收盘仍在区间内，
+  /// 而且真实的最高 / 最低不再被塞进来（它们没画出来）。
+  @Test("收盘价画法只按收盘撑区间")
+  func closeOnlyRange() {
+    let s = synthSeries(count: 400, seed: 13)
+    let v = ViewMath.reset(series: s, plotW: 353, spacing: 8)
+    let candle = priceRange(view: v, series: s, paneHeight: 400)
+    let line = priceRange(view: v, series: s, paneHeight: 400, closeOnly: true)
+    #expect(line.hi - line.lo < candle.hi - candle.lo, "收盘价档没收窄区间")
+    let (lo, hi) = visibleRange(view: v, series: s)
+    let closes = (lo...hi).map { s.close[$0] }
+    #expect(closes.allSatisfy { $0 >= line.lo && $0 <= line.hi }, "有收盘价掉出区间")
+    let maxHigh = (lo...hi).map { s.high[$0] }.max()!
+    let maxClose = closes.max()!
+    if maxHigh > maxClose { #expect(line.hi < candle.hi) }
+    // 默认档一个数都不变。
+    #expect(priceRange(view: v, series: s, paneHeight: 400, closeOnly: false) == candle)
   }
 
   // MARK: - 本根倒计时

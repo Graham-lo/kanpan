@@ -372,6 +372,16 @@ mod tests {
   }
  }
 
+ /// P2.17 加了第三种画法「收盘价」（`CandleKind.line`，rawValue `line`）。`candleKind` 在这里
+ /// 只按长度收（`string(v,64)`），三个值都得过——少认一个，带它的整条 settings 操作就是 400，
+ /// 那台手机的同步队列会被堵死。
+ #[test] fn every_candle_kind_the_panel_offers_is_accepted() {
+  for kind in ["candle","heikin","line"] {
+   assert!(field("settings","candleKind",&json!(kind)),"candleKind {kind} must be accepted");
+  }
+  assert!(!field("settings","candleKind",&json!(1)),"candleKind is a string");
+ }
+
  fn alert(extra:&[(&str,Value)])->crate::sync::Object {
   let mut body:BTreeMap<String,Value>=[("kind",json!("drawing")),("symbol",json!("BTCUSDT")),("market",json!("binance/usd_m")),
    ("drawingID",json!("binance/usd_m/BTCUSDT/trend-1")),("condition",json!("touch")),("status",json!("active")),

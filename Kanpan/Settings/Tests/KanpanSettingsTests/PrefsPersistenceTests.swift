@@ -60,6 +60,20 @@ struct PrefsPersistenceTests {
     #expect(back == want)
   }
 
+  /// P2.17：三种画法都要存得下、读得回；「收盘价」的 rawValue `line` 就是同步里发给服务端的值。
+  @Test("三种画法逐个往返")
+  func 画法往返() {
+    for kind in CandleKind.allCases {
+      var p = Prefs.defaults
+      p.candleKind = kind
+      let data = PrefsCodec.encode(p)
+      #expect(PrefsCodec.decode(data).candleKind == kind)
+      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+      #expect(obj?["candleKind"] as? String == kind.rawValue)
+    }
+    #expect(CandleKind.allCases.map(\.rawValue) == ["candle", "heikin", "line"])
+  }
+
   @Test("「图表」那几项逐个往返，不是靠整体相等蒙过去")
   func 图表往返() {
     let back = PrefsCodec.decode(PrefsCodec.encode(Self.mutated()))

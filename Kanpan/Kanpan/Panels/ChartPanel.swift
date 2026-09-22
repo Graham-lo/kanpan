@@ -164,7 +164,7 @@ struct ChartPanel: View {
 
   /// 字面写在这儿而不是取枚举的 `display`：面板上要的是短词（「空心」），
   /// 枚举那边给的是完整名字（「阳线空心」），两处用途不同，和 `SettingsPanel` 一个办法。
-  static let kinds: [(String, CandleKind)] = [("蜡烛", .candle), ("平均K线", .heikin)]
+  static let kinds: [(String, CandleKind)] = [("蜡烛", .candle), ("平均K线", .heikin), ("收盘价", .line)]
   static let grids: [(String, GridChoice)] = [("显示", .on), ("隐藏", .off)]
   static let bodies: [(String, BodyChoice)] = [("实心", .solid), ("空心", .hollowUp)]
   static let anchors: [(String, ViewAnchor)] = [("偏左", .left), ("居中", .center), ("靠右", .right)]

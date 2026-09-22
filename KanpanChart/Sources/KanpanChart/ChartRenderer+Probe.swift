@@ -94,9 +94,12 @@ extension ChartRenderer {
     // 进价格区间的那几条线，和 `priceRange(size:)` 用的是同一份（见 overlayLines）。
     var hiP = -Double.infinity, loP = Double.infinity
     if !b.isEmpty {
+      // 收盘价画法只按收盘撑区间（`priceRange(closeOnly:)`），留白也按收盘量。
+      let closeOnly = state.options.kind == .line
       for i in lo...hi {
-        if b.high[i] > hiP { hiP = b.high[i] }
-        if b.low[i] < loP { loP = b.low[i] }
+        let h = closeOnly ? b.close[i] : b.high[i], l = closeOnly ? b.close[i] : b.low[i]
+        if h > hiP { hiP = h }
+        if l < loP { loP = l }
       }
       for arr in probeOverlayLines() where arr.count > lo {
         for i in lo...min(hi, arr.count - 1) where arr[i].isFinite {
@@ -139,7 +142,8 @@ extension ChartRenderer {
   public func candleXs(size: CGSize, scale: CGFloat) -> [CandleXProbe] {
     let L = layout(size: size)
     let b = state.series
-    guard !b.isEmpty else { return [] }
+    // 收盘价画法一根蜡烛都不画，照实报空。
+    guard !b.isEmpty, state.options.kind != .line else { return [] }
     let s = Double(scale)
     let r = priceRange(size: size)
     let pane = L.main

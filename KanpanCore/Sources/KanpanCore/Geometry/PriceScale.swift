@@ -83,10 +83,15 @@ public func visibleRange(view: ViewWindow, series: BarSeries) -> (lo: Int, hi: I
 /// - Parameter extraPrices: 还要并进来的散价。平均 K 线的 `hh` / `hl` 走这条——
 ///   它们必然跑到真实 high / low 之外（`ho` 是上一根的均值），不并进去会被裁掉一截。
 /// - Parameter bias: 蜡烛在主图区的上下位置。只改留白的上下分配，总量不变。
+/// - Parameter closeOnly: 主图只画收盘价折线（`CandleKind.line`）时为真：K 线本身只按收盘价
+///   撑区间，不画出来的高低点不占地方（AICoin 的收盘折线路径同样不用 high/low 撑范围，
+///   见 `refs/aicoin/reports/REPORT-candle-axis.md`「AbstractC2759w0.java:323」）。
+///   叠加指标、画线、散价照常并入。
 public func priceRange(
   view: ViewWindow, series: BarSeries, overlayValues: [[Double]] = [], drawingPrices: [Double] = [],
   transform: PriceTransform = PriceTransform(),
-  extraPrices: [Double] = [], bias: PriceBias = .center, paneHeight: Double = 300, topInset: Double = AICoinBehavior.mainTopInset, anchorPrice: Double? = nil
+  extraPrices: [Double] = [], bias: PriceBias = .center, paneHeight: Double = 300, topInset: Double = AICoinBehavior.mainTopInset, anchorPrice: Double? = nil,
+  closeOnly: Bool = false
 ) -> PriceRange {
   let (lo, hi) = visibleRange(view: view, series: series)
   // Android y1.r/s: first intersecting column, not the extra render guard candle.
@@ -95,9 +100,16 @@ public func priceRange(
   let base = candidateBase.isFinite && candidateBase != 0 ? candidateBase : 1
   var minV = Double.infinity, maxV = -Double.infinity
   if series.count > 0 {
-    for i in lo...hi {
-      if series.high[i] > maxV { maxV = series.high[i] }
-      if series.low[i] < minV { minV = series.low[i] }
+    if closeOnly {
+      for i in lo...hi where series.close[i].isFinite {
+        if series.close[i] > maxV { maxV = series.close[i] }
+        if series.close[i] < minV { minV = series.close[i] }
+      }
+    } else {
+      for i in lo...hi {
+        if series.high[i] > maxV { maxV = series.high[i] }
+        if series.low[i] < minV { minV = series.low[i] }
+      }
     }
     for arr in overlayValues where arr.count > lo {
       for i in lo...min(hi, arr.count - 1) where arr[i].isFinite {
