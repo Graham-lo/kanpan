@@ -1,0 +1,1474 @@
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+    "XC_kAXXCAttributeLabel" = "\134n\134U56de\134U524d\134U53f0\134U8865\134U53d1\134U9996\134U5c4f\134Uff08\134U4e0a\134U4e00\134U53d1\134U6ca1\134U843d\134U5730\134Uff09\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 782ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 767ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U9996\134U5c4f\134U5386\134U53f2\134U649e\134U4e0a\134U4e0a\134U6e38\134U5c01\134U7981/\134U9650\134U6d41\134Uff0c\134U672c\134U8f6e\134U5230\134U6b64\134U4e3a\134U6b62\134Uff0c\134U4e0d\134U53e0\134U52a0\134U91cd\134U8bd5\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134n\134U62c9 MUUSDT|1h \134U5931\134U8d25\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134nWS\134U6709\134U6548\134U9996\134U5e27 dstream.binance.me 1376ms\134nWS \134U8fde\134U4e0a #1 wss://dstream.binance.me/stream?streams=muusdt@kline_1h/muusdt@markPrice@1s/muusdt@ticker";
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+    "XC_kAXXCAttributeLabel" = "\134n\134U56de\134U524d\134U53f0\134U8865\134U53d1\134U9996\134U5c4f\134Uff08\134U4e0a\134U4e00\134U53d1\134U6ca1\134U843d\134U5730\134Uff09\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 782ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 767ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U9996\134U5c4f\134U5386\134U53f2\134U649e\134U4e0a\134U4e0a\134U6e38\134U5c01\134U7981/\134U9650\134U6d41\134Uff0c\134U672c\134U8f6e\134U5230\134U6b64\134U4e3a\134U6b62\134Uff0c\134U4e0d\134U53e0\134U52a0\134U91cd\134U8bd5\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134n\134U62c9 MUUSDT|1h \134U5931\134U8d25\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134nWS\134U6709\134U6548\134U9996\134U5e27 dstream.binance.me 1376ms\134nWS \134U8fde\134U4e0a #1 wss://dstream.binance.me/stream?streams=muusdt@kline_1h/muusdt@markPrice@1s/muusdt@ticker";
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+    "XC_kAXXCAttributeLabel" = "\134n\134U56de\134U524d\134U53f0\134U8865\134U53d1\134U9996\134U5c4f\134Uff08\134U4e0a\134U4e00\134U53d1\134U6ca1\134U843d\134U5730\134Uff09\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 782ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 767ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U9996\134U5c4f\134U5386\134U53f2\134U649e\134U4e0a\134U4e0a\134U6e38\134U5c01\134U7981/\134U9650\134U6d41\134Uff0c\134U672c\134U8f6e\134U5230\134U6b64\134U4e3a\134U6b62\134Uff0c\134U4e0d\134U53e0\134U52a0\134U91cd\134U8bd5\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134n\134U62c9 MUUSDT|1h \134U5931\134U8d25\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134nWS\134U6709\134U6548\134U9996\134U5e27 dstream.binance.me 1376ms\134nWS \134U8fde\134U4e0a #1 wss://dstream.binance.me/stream?streams=muusdt@kline_1h/muusdt@markPrice@1s/muusdt@ticker";
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+    "XC_kAXXCAttributeLabel" = "\134n\134U56de\134U524d\134U53f0\134U8865\134U53d1\134U9996\134U5c4f\134Uff08\134U4e0a\134U4e00\134U53d1\134U6ca1\134U843d\134U5730\134Uff09\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 782ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 767ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U9996\134U5c4f\134U5386\134U53f2\134U649e\134U4e0a\134U4e0a\134U6e38\134U5c01\134U7981/\134U9650\134U6d41\134Uff0c\134U672c\134U8f6e\134U5230\134U6b64\134U4e3a\134U6b62\134Uff0c\134U4e0d\134U53e0\134U52a0\134U91cd\134U8bd5\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134n\134U62c9 MUUSDT|1h \134U5931\134U8d25\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134nWS\134U6709\134U6548\134U9996\134U5e27 dstream.binance.me 1376ms\134nWS \134U8fde\134U4e0a #1 wss://dstream.binance.me/stream?streams=muusdt@kline_1h/muusdt@markPrice@1s/muusdt@ticker";
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+    "XC_kAXXCAttributeLabel" = "\134n\134U56de\134U524d\134U53f0\134U8865\134U53d1\134U9996\134U5c4f\134Uff08\134U4e0a\134U4e00\134U53d1\134U6ca1\134U843d\134U5730\134Uff09\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 782ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 767ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U9996\134U5c4f\134U5386\134U53f2\134U649e\134U4e0a\134U4e0a\134U6e38\134U5c01\134U7981/\134U9650\134U6d41\134Uff0c\134U672c\134U8f6e\134U5230\134U6b64\134U4e3a\134U6b62\134Uff0c\134U4e0d\134U53e0\134U52a0\134U91cd\134U8bd5\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134n\134U62c9 MUUSDT|1h \134U5931\134U8d25\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134nWS\134U6709\134U6548\134U9996\134U5e27 dstream.binance.me 1376ms\134nWS \134U8fde\134U4e0a #1 wss://dstream.binance.me/stream?streams=muusdt@kline_1h/muusdt@markPrice@1s/muusdt@ticker";
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+    "XC_kAXXCAttributeLabel" = "\134n\134U56de\134U524d\134U53f0\134U8865\134U53d1\134U9996\134U5c4f\134Uff08\134U4e0a\134U4e00\134U53d1\134U6ca1\134U843d\134U5730\134Uff09\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 782ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U76f4\134U8fde fapi.binance.com /fapi/v1/klines HTTP 429 767ms\134n\134U9650\134U6d41 429\134Uff08\134U4e0a\134U6e38\134Uff09\134Uff0cRetry-After=43s\134Uff0c\134U8bb0\134U5f55\134U7f5a\134U505c\134n\134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08\134U8fd8\134U5269 43 \134U79d2\134Uff09\134Uff0c\134U8fd9\134U4e00\134U7b14\134U4e0d\134U53d1\134Uff1a/fapi/v1/klines\134n\134U9996\134U5c4f\134U5386\134U53f2\134U649e\134U4e0a\134U4e0a\134U6e38\134U5c01\134U7981/\134U9650\134U6d41\134Uff0c\134U672c\134U8f6e\134U5230\134U6b64\134U4e3a\134U6b62\134Uff0c\134U4e0d\134U53e0\134U52a0\134U91cd\134U8bd5\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134n\134U62c9 MUUSDT|1h \134U5931\134U8d25\134Uff1aHTTP 429 blocked retryAfter=43s \134U4e0a\134U6e38\134U5c01\134U7981\134U672a\134U89e3\134U9664\134Uff08429\134Uff09\134Uff0c\134U8fd8\134U8981\134U7b49 43 \134U79d2 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT\134nWS\134U6709\134U6548\134U9996\134U5e27 dstream.binance.me 1376ms\134nWS \134U8fde\134U4e0a #1 wss://dstream.binance.me/stream?streams=muusdt@kline_1h/muusdt@markPrice@1s/muusdt@ticker";
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+限流 429（上游），Retry-After=43s，记录罚停
+限流 429（上游），Retry-After=43s，记录罚停
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT
+拉 MUUSDT|1h 失败：HTTP 429 blocked retryAfter=43s 上游封禁未解除（429），还要等 43 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=MUUSDT

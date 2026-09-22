@@ -287,7 +287,7 @@ final class RangeOverlayView: UIView {
         if editing {
           handle(CGPoint(x: layout.plotW - 18, y: max(18, min(layout.mainH - 42, y))), ctx: ctx)
           // 目标价 / 失效价的小数位由品种自己说（`ChartState.decimals`，也就是
-          // `SymbolInfo.pricePrecision`），和顶栏、K 线价格轴一致（审查 B-07）。
+          // `SymbolInfo.priceDecimals`），和顶栏、K 线价格轴一致（审查 B-07）。
           // 原来是「最多 6 位、能省就省」，于是 76800 写成 `76800`、0.0000004 写成
           // `0.0000004`，同一张图上两条线的写法能差出四位。
           ReviewLabels.price(title, value: value, decimals: state.decimals).draw(at: CGPoint(x: max(8, layout.plotW - 125), y: max(2, min(layout.mainH - 52, y - 17))), withAttributes: [.font: UIFont.systemFont(ofSize: 11), .foregroundColor: color])

@@ -377,7 +377,7 @@ public struct ChartRenderer {
     if y <= pane.y + pane.h {
       let p = cross.pane == nil ? pOf(y, pane, r) : cross.price ?? 0
       let label: String
-      if let key = cross.pane { label = key == .vol || key == .oi ? fmtVol(p) : fmtNum(p, 2) }
+      if let key = cross.pane { label = subValueText(p, indicator: key) }
       else if state.price.mode == .percent { label = toFixed((p / r.base - 1) * 100, 2) + "%" }
       else { label = fmtNum(p, state.decimals) }
       let chip = axisChip(L, text: label)

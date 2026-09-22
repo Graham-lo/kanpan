@@ -1,0 +1,721 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=D6C41248-C78E-46B8-B391-311F373D24A8" -derivedDataPath /tmp/kanpan-p0-rework-dd "-only-testing:KanpanUITests/MainScreenUITests/testHeaderStatsStayRightOfPrice" "-only-testing:KanpanUITests/MainScreenUITests/testHeaderStatsAtLargestDynamicType" "-only-testing:KanpanUITests/MainScreenUITests/testPricePrecisionInFavoritesAndSectorRows" -test-timeouts-enabled YES -default-test-execution-time-allowance 480 -maximum-test-execution-time-allowance 900 -resultBundlePath /tmp/kanpan-handoff-checks/p0-rework/final-results-16pro/iPhone-16-Pro.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanCore: /tmp/kanpan-p0-rework/KanpanCore @ local
+  KanpanAccount: /tmp/kanpan-p0-rework/KanpanAccount @ local
+  KanpanReview: /tmp/kanpan-p0-rework/KanpanReview @ local
+  KanpanData: /tmp/kanpan-p0-rework/KanpanData @ local
+  KanpanNetwork: /tmp/kanpan-p0-rework/KanpanNetwork @ local
+  KanpanChart: /tmp/kanpan-p0-rework/KanpanChart @ local
+
+Writing result bundle at path:
+	/tmp/kanpan-handoff-checks/p0-rework/final-results-16pro/iPhone-16-Pro.xcresult
+
+2026-09-22 12:59:49.595871+0800 KanpanUITests-Runner[36179:3593333] [Default] Running tests...
+objc[36179]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x107028310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x1060f4398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-22 12:59:52.267.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 12:59:52.267.
+Test Suite 'MainScreenUITests' started at 2026-09-22 12:59:52.267.
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsAtLargestDynamicType]' started.
+    t =     0.00s Start Test at 2026-09-22 12:59:52.268
+    t =     0.19s Set Up
+    t =     0.20s     Open com.mdd.kanpan
+    t =     0.20s         Launch com.mdd.kanpan
+2026-09-22 12:59:53.533 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 12:59:53.533 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     3.43s             Setting up automation session
+    t =     4.26s             Wait for com.mdd.kanpan to idle
+    t =     5.64s     Waiting 3.0s for "bottom.chart" Button to exist
+    t =     6.71s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.chart" Button`
+    t =     6.71s             Checking existence of `"bottom.chart" Button`
+    t =     6.76s     Checking existence of `"top.symbol" Any`
+    t =     6.77s     Waiting 30.0s for "top.symbol" Any to exist
+    t =     7.84s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Any`
+    t =     7.85s             Checking existence of `"top.symbol" Any`
+    t =     7.86s     Find the Window (First Match)
+    t =     7.86s     Find the "interval.more" Button
+    t =     7.88s     Find the "bottom.favorites" Button
+    t =     7.93s Find the "top.lastPrice" StaticText
+    t =     7.95s Find the "top.stats" Other
+    t =     7.97s Terminate com.mdd.kanpan:36210
+    t =     9.05s Open com.mdd.kanpan
+    t =     9.05s     Launch com.mdd.kanpan
+2026-09-22 13:00:01.318 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:00:01.318 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     9.27s         Setting up automation session
+    t =     9.98s         Wait for com.mdd.kanpan to idle
+    t =    11.37s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    12.45s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    12.45s         Checking existence of `"top.lastPrice" StaticText`
+    t =    12.49s Waiting 30.0s for "top.stats" Other to exist
+    t =    13.56s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    13.56s         Checking existence of `"top.stats" Other`
+    t =    13.59s Find the "top.lastPrice" StaticText
+    t =    13.61s Find the "top.marketCap" StaticText
+    t =    13.62s Find the "top.turnover" StaticText
+    t =    13.63s Find the "top.funding" StaticText
+    t =    13.64s Find the "top.symbol" Any
+    t =    13.65s Find the "top.lastPrice" StaticText
+    t =    13.66s Find the "top.changePercent" Any
+    t =    13.69s Find the "top.lastPrice" StaticText
+    t =    13.70s Find the "top.changePercent" StaticText
+PRECISION SNDKUSDT price=1763.28 change=−30.38  −1.69% digits=2
+    t =    13.72s Find the "top.lastPrice" StaticText
+    t =    13.73s Find the "top.stats" Other
+    t =    13.75s Find the "interval.more" Button
+    t =    13.85s Added attachment named 'header-SNDKUSDT'
+HEADER SNDKUSDT price=(12.0, 111.00000000000006, 87.66666666666667, 26.333333333333314) stats=(198.3333282470703, 107.0, 191.6666717529297, 53.0) intervalY=169.33333333333331
+    t =    13.86s Find the "top.changePercent" StaticText
+    t =    13.88s Find the "top.changePercent" StaticText
+    t =    13.90s Find the "top.changePercent" StaticText
+    t =    13.92s Find the "top.changePercent" StaticText
+    t =    13.94s Find the Window (First Match)
+    t =    13.95s Checking existence of `"chart.canvas" Other`
+    t =    13.96s Find the "chart.canvas" Other
+    t =    13.97s Checking existence of `"chart.canvas" Other`
+    t =    13.99s Find the "chart.canvas" Other
+    t =    14.00s Checking existence of `"chart.canvas" Other`
+    t =    14.01s Find the "chart.canvas" Other
+    t =    14.03s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    14.03s     Wait for com.mdd.kanpan to idle
+    t =    14.03s     Find the "chart.canvas" Other
+    t =    14.05s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    14.07s     Synthesize event
+    t =    14.07s         Find the "chart.canvas" Other
+    t =    14.08s         Find the "chart.canvas" Other
+    t =    14.10s         Find the "chart.canvas" Other
+    t =    14.50s     Wait for com.mdd.kanpan to idle
+    t =    14.51s Checking existence of `"chart.canvas" Other`
+    t =    14.52s Find the "chart.canvas" Other
+    t =    14.61s Added attachment named 'crosshair-SNDKUSDT'
+    t =    14.61s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    14.61s     Wait for com.mdd.kanpan to idle
+    t =    14.61s     Find the "chart.canvas" Other
+    t =    14.63s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    14.64s     Synthesize event
+    t =    14.64s         Find the "chart.canvas" Other
+    t =    14.66s         Find the "chart.canvas" Other
+    t =    14.68s         Find the "chart.canvas" Other
+    t =    14.99s     Wait for com.mdd.kanpan to idle
+    t =    14.99s Checking existence of `"chart.canvas" Other`
+    t =    15.01s Find the "chart.canvas" Other
+    t =    15.02s Terminate com.mdd.kanpan:36224
+    t =    16.11s Open com.mdd.kanpan
+    t =    16.11s     Launch com.mdd.kanpan
+2026-09-22 13:00:08.386 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:00:08.386 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    16.34s         Setting up automation session
+    t =    17.08s         Wait for com.mdd.kanpan to idle
+    t =    18.43s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    19.50s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    19.50s         Checking existence of `"top.lastPrice" StaticText`
+    t =    19.56s Waiting 30.0s for "top.stats" Other to exist
+    t =    20.62s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    20.62s         Checking existence of `"top.stats" Other`
+    t =    20.65s Find the "top.lastPrice" StaticText
+    t =    20.67s Find the "top.marketCap" StaticText
+    t =    20.69s Find the "top.turnover" StaticText
+    t =    20.70s Find the "top.funding" StaticText
+    t =    20.72s Find the "top.symbol" Any
+    t =    20.73s Find the "top.lastPrice" StaticText
+    t =    20.74s Find the "top.changePercent" Any
+    t =    20.78s Find the "top.lastPrice" StaticText
+    t =    20.80s Find the "top.changePercent" StaticText
+PRECISION MUUSDT price=1040.40 change=+11.21  +1.09% digits=2
+    t =    20.83s Find the "top.lastPrice" StaticText
+    t =    20.85s Find the "top.stats" Other
+    t =    20.86s Find the "interval.more" Button
+    t =    20.96s Added attachment named 'header-MUUSDT'
+HEADER MUUSDT price=(12.0, 111.00000000000006, 87.66666666666667, 26.333333333333314) stats=(198.3333282470703, 107.0, 191.6666717529297, 53.0) intervalY=169.33333333333331
+    t =    20.96s Find the "top.changePercent" StaticText
+    t =    20.98s Find the "top.changePercent" StaticText
+    t =    21.00s Find the "top.changePercent" StaticText
+    t =    21.02s Find the "top.changePercent" StaticText
+    t =    21.04s Find the Window (First Match)
+    t =    21.04s Checking existence of `"chart.canvas" Other`
+    t =    21.06s Find the "chart.canvas" Other
+    t =    21.07s Checking existence of `"chart.canvas" Other`
+    t =    21.08s Find the "chart.canvas" Other
+    t =    21.10s Checking existence of `"chart.canvas" Other`
+    t =    21.11s Find the "chart.canvas" Other
+    t =    21.12s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    21.12s     Wait for com.mdd.kanpan to idle
+    t =    21.12s     Find the "chart.canvas" Other
+    t =    21.14s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    21.15s     Synthesize event
+    t =    21.15s         Find the "chart.canvas" Other
+    t =    21.18s         Find the "chart.canvas" Other
+    t =    21.20s         Find the "chart.canvas" Other
+    t =    21.50s     Wait for com.mdd.kanpan to idle
+    t =    21.50s Checking existence of `"chart.canvas" Other`
+    t =    21.52s Find the "chart.canvas" Other
+    t =    21.63s Added attachment named 'crosshair-MUUSDT'
+    t =    21.63s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    21.63s     Wait for com.mdd.kanpan to idle
+    t =    21.63s     Find the "chart.canvas" Other
+    t =    21.65s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    21.66s     Synthesize event
+    t =    21.66s         Find the "chart.canvas" Other
+    t =    21.68s         Find the "chart.canvas" Other
+    t =    21.70s         Find the "chart.canvas" Other
+    t =    22.00s     Wait for com.mdd.kanpan to idle
+    t =    22.00s Checking existence of `"chart.canvas" Other`
+    t =    22.02s Find the "chart.canvas" Other
+    t =    22.04s Terminate com.mdd.kanpan:36243
+    t =    23.13s Open com.mdd.kanpan
+    t =    23.13s     Launch com.mdd.kanpan
+2026-09-22 13:00:15.402 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:00:15.403 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    23.35s         Setting up automation session
+    t =    24.03s         Wait for com.mdd.kanpan to idle
+    t =    25.41s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    26.48s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    26.48s         Checking existence of `"top.lastPrice" StaticText`
+    t =    26.52s Waiting 30.0s for "top.stats" Other to exist
+    t =    27.59s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    27.60s         Checking existence of `"top.stats" Other`
+    t =    27.61s Find the "top.lastPrice" StaticText
+    t =    27.63s Find the "top.marketCap" StaticText
+    t =    27.64s Find the "top.turnover" StaticText
+    t =    27.65s Find the "top.funding" StaticText
+    t =    27.67s Find the "top.symbol" Any
+    t =    27.70s Find the "top.lastPrice" StaticText
+    t =    27.72s Find the "top.changePercent" Any
+    t =    27.75s Find the "top.lastPrice" StaticText
+    t =    27.76s Find the "top.changePercent" StaticText
+PRECISION 1000SATSUSDT price=0.00001236 change=+0.00000101  +8.90% digits=8
+    t =    27.79s Find the "top.lastPrice" StaticText
+    t =    27.88s Find the "top.stats" Other
+    t =    27.94s Find the "interval.more" Button
+    t =    28.09s Added attachment named 'header-1000SATSUSDT'
+HEADER 1000SATSUSDT price=(12.0, 111.00000000000006, 128.66666666666666, 26.333333333333314) stats=(191.6666717529297, 107.0, 198.3333282470703, 53.0) intervalY=169.33333333333331
+    t =    28.09s Find the "top.changePercent" StaticText
+    t =    31.02s Find the "top.changePercent" StaticText
+    t =    31.67s Find the "top.changePercent" StaticText
+    t =    32.54s Find the "top.changePercent" StaticText
+    t =    33.24s Find the Window (First Match)
+    t =    33.25s Checking existence of `"chart.canvas" Other`
+    t =    33.35s Find the "chart.canvas" Other
+    t =    33.54s Checking existence of `"chart.canvas" Other`
+    t =    33.86s Find the "chart.canvas" Other
+    t =    33.95s Checking existence of `"chart.canvas" Other`
+    t =    33.97s Find the "chart.canvas" Other
+    t =    34.13s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    34.13s     Wait for com.mdd.kanpan to idle
+    t =    34.14s     Find the "chart.canvas" Other
+    t =    34.29s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    34.47s     Synthesize event
+    t =    34.47s         Find the "chart.canvas" Other
+    t =    34.72s         Find the "chart.canvas" Other
+    t =    35.04s         Find the "chart.canvas" Other
+    t =    35.51s     Wait for com.mdd.kanpan to idle
+    t =    35.51s Checking existence of `"chart.canvas" Other`
+    t =    35.54s Find the "chart.canvas" Other
+    t =    35.76s Added attachment named 'crosshair-1000SATSUSDT'
+    t =    35.79s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    35.79s     Wait for com.mdd.kanpan to idle
+    t =    35.82s     Find the "chart.canvas" Other
+    t =    35.95s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    36.04s     Synthesize event
+    t =    36.04s         Find the "chart.canvas" Other
+    t =    36.16s         Find the "chart.canvas" Other
+    t =    36.25s         Find the "chart.canvas" Other
+    t =    36.59s     Wait for com.mdd.kanpan to idle
+    t =    36.59s Checking existence of `"chart.canvas" Other`
+    t =    36.81s Find the "chart.canvas" Other
+    t =    37.15s Terminate com.mdd.kanpan:36345
+    t =    39.16s Open com.mdd.kanpan
+    t =    39.16s     Launch com.mdd.kanpan
+2026-09-22 13:00:32.933 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:00:32.934 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    44.00s         Setting up automation session
+    t =    45.22s         Wait for com.mdd.kanpan to idle
+    t =    47.08s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    48.15s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    48.15s         Checking existence of `"top.lastPrice" StaticText`
+    t =    48.47s Waiting 30.0s for "top.stats" Other to exist
+    t =    49.55s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    49.55s         Checking existence of `"top.stats" Other`
+    t =    49.59s Find the "top.lastPrice" StaticText
+    t =    49.64s Find the "top.marketCap" StaticText
+    t =    49.71s Find the "top.turnover" StaticText
+    t =    49.77s Find the "top.funding" StaticText
+    t =    49.83s Find the "top.symbol" Any
+    t =    49.86s Find the "top.lastPrice" StaticText
+    t =    49.90s Find the "top.changePercent" Any
+    t =    50.03s Find the "top.lastPrice" StaticText
+    t =    50.08s Find the "top.changePercent" StaticText
+PRECISION BTCUSDT price=85,400.0 change=+4034.5  +4.96% digits=1
+    t =    50.18s Find the "top.lastPrice" StaticText
+    t =    50.20s Find the "top.stats" Other
+    t =    50.24s Find the "interval.more" Button
+    t =    50.42s Added attachment named 'header-BTCUSDT'
+HEADER BTCUSDT price=(12.0, 111.00000000000006, 93.33333333333333, 26.333333333333314) stats=(191.6666717529297, 107.0, 198.3333282470703, 53.0) intervalY=169.33333333333331
+    t =    50.42s Find the "top.changePercent" StaticText
+    t =    50.59s Find the "top.changePercent" StaticText
+    t =    50.72s Find the "top.changePercent" StaticText
+    t =    50.98s Find the "top.changePercent" StaticText
+    t =    51.11s Find the Window (First Match)
+    t =    51.12s Checking existence of `"chart.canvas" Other`
+    t =    51.17s Find the "chart.canvas" Other
+    t =    51.19s Checking existence of `"chart.canvas" Other`
+    t =    51.20s Find the "chart.canvas" Other
+    t =    51.23s Checking existence of `"chart.canvas" Other`
+    t =    51.25s Find the "chart.canvas" Other
+    t =    51.27s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    51.27s     Wait for com.mdd.kanpan to idle
+    t =    51.27s     Find the "chart.canvas" Other
+    t =    51.29s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    51.31s     Synthesize event
+    t =    51.31s         Find the "chart.canvas" Other
+    t =    51.39s         Find the "chart.canvas" Other
+    t =    51.49s         Find the "chart.canvas" Other
+    t =    51.86s     Wait for com.mdd.kanpan to idle
+    t =    51.88s Checking existence of `"chart.canvas" Other`
+    t =    51.94s Find the "chart.canvas" Other
+    t =    52.07s Added attachment named 'crosshair-BTCUSDT'
+    t =    52.08s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    52.08s     Wait for com.mdd.kanpan to idle
+    t =    52.08s     Find the "chart.canvas" Other
+    t =    52.12s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    52.15s     Synthesize event
+    t =    52.15s         Find the "chart.canvas" Other
+    t =    52.17s         Find the "chart.canvas" Other
+    t =    52.21s         Find the "chart.canvas" Other
+    t =    52.52s     Wait for com.mdd.kanpan to idle
+    t =    52.53s Checking existence of `"chart.canvas" Other`
+    t =    52.56s Find the "chart.canvas" Other
+    t =    52.59s Find the "top.lastPrice" StaticText
+    t =    52.61s Find the "top.stats" Other
+    t =    52.62s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsAtLargestDynamicType]' passed (53.122 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice]' started.
+    t =     0.00s Start Test at 2026-09-22 13:00:45.393
+    t =     0.03s Set Up
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.04s         Launch com.mdd.kanpan
+    t =     0.04s             Terminate com.mdd.kanpan:36597
+2026-09-22 13:00:46.451 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:00:46.452 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.50s             Setting up automation session
+    t =     2.39s             Wait for com.mdd.kanpan to idle
+    t =     3.93s     Waiting 3.0s for "bottom.chart" Button to exist
+    t =     4.98s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.chart" Button`
+    t =     4.98s             Checking existence of `"bottom.chart" Button`
+    t =     5.01s     Checking existence of `"top.symbol" Any`
+    t =     5.02s     Waiting 30.0s for "top.symbol" Any to exist
+    t =     6.08s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Any`
+    t =     6.08s             Checking existence of `"top.symbol" Any`
+    t =     6.10s     Find the Window (First Match)
+    t =     6.10s     Find the "interval.more" Button
+    t =     6.12s     Find the "bottom.favorites" Button
+    t =     6.17s Terminate com.mdd.kanpan:36664
+    t =     7.23s Open com.mdd.kanpan
+    t =     7.23s     Launch com.mdd.kanpan
+2026-09-22 13:00:52.939 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:00:52.939 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     8.00s         Setting up automation session
+    t =     8.72s         Wait for com.mdd.kanpan to idle
+    t =    10.19s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    11.20s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    11.20s         Checking existence of `"top.lastPrice" StaticText`
+    t =    11.28s Waiting 30.0s for "top.stats" Other to exist
+    t =    12.30s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    12.30s         Checking existence of `"top.stats" Other`
+    t =    12.33s Find the "top.lastPrice" StaticText
+    t =    12.35s Find the "top.marketCap" StaticText
+    t =    12.36s Find the "top.turnover" StaticText
+    t =    12.37s Find the "top.funding" StaticText
+    t =    12.40s Find the "top.symbol" Any
+    t =    12.42s Find the "top.lastPrice" StaticText
+    t =    12.48s Find the "top.changePercent" Any
+    t =    12.56s Find the "top.lastPrice" StaticText
+    t =    12.57s Find the "top.changePercent" StaticText
+PRECISION SNDKUSDT price=1764.42 change=−29.24  −1.63% digits=2
+    t =    12.97s Find the "top.lastPrice" StaticText
+    t =    13.02s Find the "top.stats" Other
+    t =    13.06s Find the "interval.more" Button
+    t =    13.31s Added attachment named 'header-SNDKUSDT'
+HEADER SNDKUSDT price=(12.0, 111.00000000000006, 87.66666666666667, 26.333333333333314) stats=(198.3333282470703, 107.0, 191.6666717529297, 53.0) intervalY=169.33333333333331
+    t =    13.31s Find the "top.changePercent" StaticText
+    t =    13.47s Find the "top.changePercent" StaticText
+    t =    13.80s Find the "top.changePercent" StaticText
+    t =    13.95s Find the "top.changePercent" StaticText
+    t =    14.28s Find the Window (First Match)
+    t =    14.29s Checking existence of `"chart.canvas" Other`
+    t =    14.31s Find the "chart.canvas" Other
+    t =    14.33s Checking existence of `"chart.canvas" Other`
+    t =    14.36s Find the "chart.canvas" Other
+    t =    14.39s Checking existence of `"chart.canvas" Other`
+    t =    14.47s Find the "chart.canvas" Other
+    t =    14.58s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    14.58s     Wait for com.mdd.kanpan to idle
+    t =    14.58s     Find the "chart.canvas" Other
+    t =    14.65s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    14.67s     Synthesize event
+    t =    14.67s         Find the "chart.canvas" Other
+    t =    14.69s         Find the "chart.canvas" Other
+    t =    14.72s         Find the "chart.canvas" Other
+    t =    15.02s     Wait for com.mdd.kanpan to idle
+    t =    15.02s Checking existence of `"chart.canvas" Other`
+    t =    15.08s Find the "chart.canvas" Other
+    t =    15.18s Added attachment named 'crosshair-SNDKUSDT'
+    t =    15.19s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    15.19s     Wait for com.mdd.kanpan to idle
+    t =    15.19s     Find the "chart.canvas" Other
+    t =    15.33s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    15.41s     Synthesize event
+    t =    15.41s         Find the "chart.canvas" Other
+    t =    15.44s         Find the "chart.canvas" Other
+    t =    15.47s         Find the "chart.canvas" Other
+    t =    15.77s     Wait for com.mdd.kanpan to idle
+    t =    15.77s Checking existence of `"chart.canvas" Other`
+    t =    15.80s Find the "chart.canvas" Other
+    t =    15.82s Terminate com.mdd.kanpan:36703
+    t =    16.83s Open com.mdd.kanpan
+    t =    16.83s     Launch com.mdd.kanpan
+2026-09-22 13:01:03.486 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:01:03.486 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    19.23s         Setting up automation session
+    t =    19.95s         Wait for com.mdd.kanpan to idle
+    t =    21.39s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    22.43s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    22.44s         Checking existence of `"top.lastPrice" StaticText`
+    t =    22.50s Waiting 30.0s for "top.stats" Other to exist
+    t =    23.55s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    23.55s         Checking existence of `"top.stats" Other`
+    t =    23.59s Find the "top.lastPrice" StaticText
+    t =    23.61s Find the "top.marketCap" StaticText
+    t =    23.62s Find the "top.turnover" StaticText
+    t =    23.63s Find the "top.funding" StaticText
+    t =    23.65s Find the "top.symbol" Any
+    t =    23.66s Find the "top.lastPrice" StaticText
+    t =    23.67s Find the "top.changePercent" Any
+    t =    23.75s Find the "top.lastPrice" StaticText
+    t =    23.79s Find the "top.changePercent" StaticText
+PRECISION MUUSDT price=1041.08 change=+12.96  +1.26% digits=2
+    t =    23.83s Find the "top.lastPrice" StaticText
+    t =    24.05s Find the "top.stats" Other
+    t =    24.10s Find the "interval.more" Button
+    t =    24.28s Added attachment named 'header-MUUSDT'
+HEADER MUUSDT price=(12.0, 111.00000000000006, 87.66666666666667, 26.333333333333314) stats=(198.3333282470703, 107.0, 191.6666717529297, 53.0) intervalY=169.33333333333331
+    t =    24.29s Find the "top.changePercent" StaticText
+    t =    24.47s Find the "top.changePercent" StaticText
+    t =    24.51s Find the "top.changePercent" StaticText
+    t =    24.91s Find the "top.changePercent" StaticText
+    t =    25.12s Find the Window (First Match)
+    t =    25.14s Checking existence of `"chart.canvas" Other`
+    t =    25.23s Find the "chart.canvas" Other
+    t =    25.29s Checking existence of `"chart.canvas" Other`
+    t =    25.32s Find the "chart.canvas" Other
+    t =    25.36s Checking existence of `"chart.canvas" Other`
+    t =    25.41s Find the "chart.canvas" Other
+    t =    25.46s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    25.46s     Wait for com.mdd.kanpan to idle
+    t =    25.46s     Find the "chart.canvas" Other
+    t =    25.47s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    25.49s     Synthesize event
+    t =    25.49s         Find the "chart.canvas" Other
+    t =    25.51s         Find the "chart.canvas" Other
+    t =    25.53s         Find the "chart.canvas" Other
+    t =    25.84s     Wait for com.mdd.kanpan to idle
+    t =    25.85s Checking existence of `"chart.canvas" Other`
+    t =    25.93s Find the "chart.canvas" Other
+    t =    26.16s Added attachment named 'crosshair-MUUSDT'
+    t =    26.17s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    26.17s     Wait for com.mdd.kanpan to idle
+    t =    26.18s     Find the "chart.canvas" Other
+    t =    26.21s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    26.23s     Synthesize event
+    t =    26.23s         Find the "chart.canvas" Other
+    t =    26.33s         Find the "chart.canvas" Other
+    t =    26.47s         Find the "chart.canvas" Other
+    t =    26.83s     Wait for com.mdd.kanpan to idle
+    t =    26.83s Checking existence of `"chart.canvas" Other`
+    t =    26.85s Find the "chart.canvas" Other
+    t =    26.86s Terminate com.mdd.kanpan:36753
+    t =    27.95s Open com.mdd.kanpan
+    t =    27.95s     Launch com.mdd.kanpan
+2026-09-22 13:01:13.346 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:01:13.346 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    28.18s         Setting up automation session
+    t =    28.95s         Wait for com.mdd.kanpan to idle
+    t =    30.40s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    31.45s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    31.46s         Checking existence of `"top.lastPrice" StaticText`
+    t =    31.50s Waiting 30.0s for "top.stats" Other to exist
+    t =    32.57s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    32.57s         Checking existence of `"top.stats" Other`
+    t =    32.61s Find the "top.lastPrice" StaticText
+    t =    32.66s Find the "top.marketCap" StaticText
+    t =    32.70s Find the "top.turnover" StaticText
+    t =    32.72s Find the "top.funding" StaticText
+    t =    32.74s Find the "top.symbol" Any
+    t =    32.75s Find the "top.lastPrice" StaticText
+    t =    32.76s Find the "top.changePercent" Any
+    t =    32.79s Find the "top.lastPrice" StaticText
+    t =    32.82s Find the "top.changePercent" StaticText
+PRECISION 1000SATSUSDT price=0.00001235 change=+0.00000099  +8.71% digits=8
+    t =    32.85s Find the "top.lastPrice" StaticText
+    t =    32.88s Find the "top.stats" Other
+    t =    32.91s Find the "interval.more" Button
+    t =    33.02s Added attachment named 'header-1000SATSUSDT'
+HEADER 1000SATSUSDT price=(12.0, 111.00000000000006, 128.66666666666666, 26.333333333333314) stats=(191.6666717529297, 107.0, 198.3333282470703, 53.0) intervalY=169.33333333333331
+    t =    33.02s Find the "top.changePercent" StaticText
+    t =    33.05s Find the "top.changePercent" StaticText
+    t =    33.08s Find the "top.changePercent" StaticText
+    t =    33.11s Find the "top.changePercent" StaticText
+    t =    33.14s Find the Window (First Match)
+    t =    33.15s Checking existence of `"chart.canvas" Other`
+    t =    33.16s Find the "chart.canvas" Other
+    t =    33.18s Checking existence of `"chart.canvas" Other`
+    t =    33.20s Find the "chart.canvas" Other
+    t =    33.21s Checking existence of `"chart.canvas" Other`
+    t =    33.23s Find the "chart.canvas" Other
+    t =    33.24s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    33.24s     Wait for com.mdd.kanpan to idle
+    t =    33.24s     Find the "chart.canvas" Other
+    t =    33.26s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    33.27s     Synthesize event
+    t =    33.27s         Find the "chart.canvas" Other
+    t =    33.30s         Find the "chart.canvas" Other
+    t =    33.33s         Find the "chart.canvas" Other
+    t =    33.63s     Wait for com.mdd.kanpan to idle
+    t =    33.64s Checking existence of `"chart.canvas" Other`
+    t =    33.73s Find the "chart.canvas" Other
+    t =    33.83s Added attachment named 'crosshair-1000SATSUSDT'
+    t =    33.83s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    33.83s     Wait for com.mdd.kanpan to idle
+    t =    33.83s     Find the "chart.canvas" Other
+    t =    33.87s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    33.90s     Synthesize event
+    t =    33.90s         Find the "chart.canvas" Other
+    t =    33.92s         Find the "chart.canvas" Other
+    t =    33.94s         Find the "chart.canvas" Other
+    t =    34.24s     Wait for com.mdd.kanpan to idle
+    t =    34.25s Checking existence of `"chart.canvas" Other`
+    t =    34.32s Find the "chart.canvas" Other
+    t =    34.37s Terminate com.mdd.kanpan:36781
+    t =    35.37s Open com.mdd.kanpan
+    t =    35.37s     Launch com.mdd.kanpan
+2026-09-22 13:01:20.799 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:01:20.799 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    35.84s         Setting up automation session
+    t =    36.48s         Wait for com.mdd.kanpan to idle
+    t =    38.06s Waiting 30.0s for "top.lastPrice" StaticText to exist
+    t =    39.12s     Checking `Expect predicate `existsNoRetry == 1` for object "top.lastPrice" StaticText`
+    t =    39.12s         Checking existence of `"top.lastPrice" StaticText`
+    t =    39.16s Waiting 30.0s for "top.stats" Other to exist
+    t =    40.22s     Checking `Expect predicate `existsNoRetry == 1` for object "top.stats" Other`
+    t =    40.22s         Checking existence of `"top.stats" Other`
+    t =    40.25s Find the "top.lastPrice" StaticText
+    t =    40.26s Find the "top.marketCap" StaticText
+    t =    40.27s Find the "top.turnover" StaticText
+    t =    40.28s Find the "top.funding" StaticText
+    t =    40.30s Find the "top.symbol" Any
+    t =    40.30s Find the "top.lastPrice" StaticText
+    t =    40.32s Find the "top.changePercent" Any
+    t =    40.34s Find the "top.lastPrice" StaticText
+    t =    40.35s Find the "top.changePercent" StaticText
+PRECISION BTCUSDT price=85,400.1 change=+4054.8  +4.99% digits=1
+    t =    40.37s Find the "top.lastPrice" StaticText
+    t =    40.38s Find the "top.stats" Other
+    t =    40.39s Find the "interval.more" Button
+    t =    40.49s Added attachment named 'header-BTCUSDT'
+HEADER BTCUSDT price=(12.0, 111.00000000000006, 93.33333333333333, 26.333333333333314) stats=(191.6666717529297, 107.0, 198.3333282470703, 53.0) intervalY=169.33333333333331
+    t =    40.49s Find the "top.changePercent" StaticText
+    t =    40.51s Find the "top.changePercent" StaticText
+    t =    40.53s Find the "top.changePercent" StaticText
+    t =    40.55s Find the "top.changePercent" StaticText
+    t =    40.57s Find the Window (First Match)
+    t =    40.58s Checking existence of `"chart.canvas" Other`
+    t =    40.59s Find the "chart.canvas" Other
+    t =    40.61s Checking existence of `"chart.canvas" Other`
+    t =    40.62s Find the "chart.canvas" Other
+    t =    40.64s Checking existence of `"chart.canvas" Other`
+    t =    40.65s Find the "chart.canvas" Other
+    t =    40.66s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    40.66s     Wait for com.mdd.kanpan to idle
+    t =    40.66s     Find the "chart.canvas" Other
+    t =    40.68s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    40.69s     Synthesize event
+    t =    40.69s         Find the "chart.canvas" Other
+    t =    40.71s         Find the "chart.canvas" Other
+    t =    40.73s         Find the "chart.canvas" Other
+    t =    41.03s     Wait for com.mdd.kanpan to idle
+    t =    41.03s Checking existence of `"chart.canvas" Other`
+    t =    41.05s Find the "chart.canvas" Other
+    t =    41.20s Added attachment named 'crosshair-BTCUSDT'
+    t =    41.20s Tap "chart.canvas" Other[0.00, 0.00] -> (150.0, 130.0)
+    t =    41.20s     Wait for com.mdd.kanpan to idle
+    t =    41.20s     Find the "chart.canvas" Other
+    t =    41.31s     Check for interrupting elements affecting "chart.canvas" Other
+    t =    41.34s     Synthesize event
+    t =    41.34s         Find the "chart.canvas" Other
+    t =    41.36s         Find the "chart.canvas" Other
+    t =    41.37s         Find the "chart.canvas" Other
+    t =    41.67s     Wait for com.mdd.kanpan to idle
+    t =    41.67s Checking existence of `"chart.canvas" Other`
+    t =    41.72s Find the "chart.canvas" Other
+    t =    41.73s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testHeaderStatsStayRightOfPrice]' passed (42.014 seconds).
+Test Case '-[KanpanUITests.MainScreenUITests testPricePrecisionInFavoritesAndSectorRows]' started.
+    t =     0.00s Start Test at 2026-09-22 13:01:27.408
+    t =     0.03s Set Up
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+    t =     0.03s             Terminate com.mdd.kanpan:36803
+2026-09-22 13:01:28.484 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:01:28.485 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.28s             Setting up automation session
+    t =     1.92s             Wait for com.mdd.kanpan to idle
+    t =     3.25s     Waiting 3.0s for "bottom.chart" Button to exist
+    t =     4.27s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.chart" Button`
+    t =     4.27s             Checking existence of `"bottom.chart" Button`
+    t =     4.31s     Checking existence of `"top.symbol" Any`
+    t =     4.32s     Waiting 30.0s for "top.symbol" Any to exist
+    t =     5.36s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Any`
+    t =     5.36s             Checking existence of `"top.symbol" Any`
+    t =     5.38s     Find the Window (First Match)
+    t =     5.38s     Find the "interval.more" Button
+    t =     5.39s     Find the "bottom.favorites" Button
+    t =     5.42s Terminate com.mdd.kanpan:36843
+    t =     6.48s Open com.mdd.kanpan
+    t =     6.48s     Launch com.mdd.kanpan
+2026-09-22 13:01:33.893 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:01:33.893 xcodebuild[35730:3586843] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     6.71s         Setting up automation session
+    t =     7.36s         Wait for com.mdd.kanpan to idle
+    t =     8.89s Waiting 30.0s for "favorites.group.美股" Button to exist
+    t =     9.95s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.美股" Button`
+    t =     9.95s         Checking existence of `"favorites.group.美股" Button`
+    t =    10.01s Tap "favorites.group.美股" Button
+    t =    10.01s     Wait for com.mdd.kanpan to idle
+    t =    10.01s     Find the "favorites.group.美股" Button
+    t =    10.02s     Check for interrupting elements affecting "favorites.group.美股" Button
+    t =    10.04s     Synthesize event
+    t =    10.33s     Wait for com.mdd.kanpan to idle
+    t =    10.33s Checking existence of `"favorites.price.SNDKUSDT" Any`
+    t =    10.38s Find the "favorites.price.SNDKUSDT" Any
+    t =    10.41s Find the "favorites.price.SNDKUSDT" StaticText
+LIST PRECISION favorites.price.SNDKUSDT=1,765.32
+    t =    10.47s Checking existence of `"favorites.price.MUUSDT" Any`
+    t =    10.53s Find the "favorites.price.MUUSDT" Any
+    t =    10.60s Find the "favorites.price.MUUSDT" StaticText
+LIST PRECISION favorites.price.MUUSDT=1,040.93
+    t =    10.64s Find the Target Application 'com.mdd.kanpan'
+    t =    10.79s Added attachment named 'precision-favorites-stocks'
+    t =    10.79s Tap "favorites.group.加密" Button
+    t =    10.80s     Wait for com.mdd.kanpan to idle
+    t =    10.80s     Find the "favorites.group.加密" Button
+    t =    10.88s     Check for interrupting elements affecting "favorites.group.加密" Button
+    t =    10.93s     Synthesize event
+    t =    11.23s     Wait for com.mdd.kanpan to idle
+    t =    11.23s Checking existence of `"favorites.price.1000SATSUSDT" Any`
+    t =    11.27s Find the "favorites.price.1000SATSUSDT" Any
+    t =    11.56s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    11.69s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    11.98s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    12.03s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    12.33s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    12.38s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    12.67s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    12.70s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    13.00s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    13.04s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    13.33s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    13.39s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    13.68s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    13.71s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    14.00s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    14.04s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    14.34s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    14.39s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    14.68s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    14.72s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    15.01s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    15.06s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    15.36s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    15.42s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    15.71s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    15.75s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    16.05s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    16.12s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    16.43s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    16.47s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    16.77s Checking existence of `"favorites.price.1000SATSUSDT" StaticText`
+    t =    16.82s Find the "favorites.price.1000SATSUSDT" StaticText
+    t =    16.85s Find the "favorites.price.1000SATSUSDT" StaticText
+LIST PRECISION favorites.price.1000SATSUSDT=0.00001235
+    t =    16.89s Checking existence of `"favorites.price.BTCUSDT" Any`
+    t =    16.93s Find the "favorites.price.BTCUSDT" Any
+    t =    16.97s Find the "favorites.price.BTCUSDT" StaticText
+LIST PRECISION favorites.price.BTCUSDT=85,346.1
+    t =    17.01s Find the Target Application 'com.mdd.kanpan'
+    t =    17.14s Added attachment named 'precision-favorites-crypto'
+    t =    17.14s Tap "bottom.sectors" Button
+    t =    17.14s     Wait for com.mdd.kanpan to idle
+    t =    17.14s     Find the "bottom.sectors" Button
+    t =    17.16s     Check for interrupting elements affecting "bottom.sectors" Button
+    t =    17.17s     Synthesize event
+    t =    17.46s     Wait for com.mdd.kanpan to idle
+    t =    17.47s Waiting 30.0s for "sector.more" Button to exist
+    t =    18.53s     Checking `Expect predicate `existsNoRetry == 1` for object "sector.more" Button`
+    t =    18.53s         Checking existence of `"sector.more" Button`
+    t =    18.54s Tap "sector.more" Button
+    t =    18.54s     Wait for com.mdd.kanpan to idle
+    t =    18.55s     Find the "sector.more" Button
+    t =    18.55s     Check for interrupting elements affecting "sector.more" Button
+    t =    18.56s     Synthesize event
+    t =    18.85s     Wait for com.mdd.kanpan to idle
+    t =    18.85s Tap "sector.market.us" Button
+    t =    18.85s     Wait for com.mdd.kanpan to idle
+    t =    18.85s     Find the "sector.market.us" Button
+    t =    18.86s Requesting snapshot of accessibility hierarchy for app with pid 36871
+/tmp/kanpan-p0-rework/Kanpan/KanpanUITests/MainScreenUITests.swift:111: error: -[KanpanUITests.MainScreenUITests testPricePrecisionInFavoritesAndSectorRows] : Failed to tap "sector.market.us" Button: Find single matching element. Multiple matching elements found for <XCUIElementQuery: 0x106618140>.
+Sparse tree of matches:
+→Application, pid: 36871, label: 'Hkline'
+  ↳Window (Main)
+    ↳Other
+      ↳Other
+        ↳Other
+          ↳Other
+            ↳Other, identifier: 'sector.page'
+              ↳Other, identifier: 'sector.market'
+              ⋅ ↳Button, identifier: 'sector.market.us', label: '美股'
+              ↳Other, identifier: 'sector.all'
+                ↳Other, identifier: 'sector.market'
+                  ↳Button, identifier: 'sector.market.us', label: '美股'
+    t =    19.10s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testPricePrecisionInFavoritesAndSectorRows]' failed (19.156 seconds).
+2026-09-22 13:01:46.564266+0800 KanpanUITests-Runner[36179:3593333] [Default] Flushing outgoing messages to the IDE with timeout 600.00s
+2026-09-22 13:01:46.564577+0800 KanpanUITests-Runner[36179:3593449] [Default] Received confirmation that IDE processed remaining outgoing messages
+2026-09-22 13:01:47.706119+0800 KanpanUITests-Runner[36930:3602763] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-22 13:01:48.243.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 13:01:48.243.
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-22 13:01:48.243.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-22 13:01:48.243.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+2026-09-22 13:02:14.555 xcodebuild[35730:3586843] [MT] IDETestOperationsObserverDebug: 193.222 elapsed -- Testing started completed.
+2026-09-22 13:02:14.555 xcodebuild[35730:3586843] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-22 13:02:14.555 xcodebuild[35730:3586843] [MT] IDETestOperationsObserverDebug: 193.222 sec, +193.222 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/kanpan-handoff-checks/p0-rework/final-results-16pro/iPhone-16-Pro.xcresult
+
+Failing tests:
+	MainScreenUITests.testPricePrecisionInFavoritesAndSectorRows()
+
+** TEST EXECUTE FAILED **
+
+Testing started

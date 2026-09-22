@@ -43,6 +43,13 @@ final class MainScreenUITests: KanpanUICase {
           .allSatisfy { !["", "—", "--"].contains($0) }
       }, "\(symbol) 的价格与六格实值没有到齐")
       XCTAssertTrue(app.symbolLabel.label.contains(symbol), "深链没有打开 \(symbol)")
+      let digits = ["SNDKUSDT": 2, "MUUSDT": 2, "1000SATSUSDT": 8, "BTCUSDT": 1][symbol]!
+      let pattern = "^[0-9,]+\\.[0-9]{\(digits)}$"
+      XCTAssertNotNil(price.label.range(of: pattern, options: .regularExpression), "\(symbol) 价格未按报价步长展示：\(price.label)")
+      let amount = change.label.components(separatedBy: "  ").first ?? ""
+      XCTAssertNotNil(amount.range(of: "^[+−-]?[0-9,]+\\.[0-9]{\(digits)}$", options: .regularExpression),
+                      "\(symbol) 涨跌额未按报价步长展示：\(change.label)")
+      print("PRECISION \(symbol) price=\(price.label) change=\(change.label) digits=\(digits)")
       let p = price.frame, s = stats.frame
       let y = app.buttons[Ids.intervalMore].frame.minY
       let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
@@ -59,7 +66,81 @@ final class MainScreenUITests: KanpanUICase {
       if let statsHeight { XCTAssertEqual(s.height, statsHeight, accuracy: 0.5) }
       if let intervalY { XCTAssertEqual(y, intervalY, accuracy: 0.5, "\(symbol) 头部挤高了周期条") }
       statsHeight = s.height; intervalY = y
+      let chartMatches = {
+        self.chartInfo()["symbol"] as? String == symbol && self.chartInfo()["priceDecimals"] as? Int == digits
+      }
+      var chartReady = waitUntil(timeout: Self.long, chartMatches)
+      if !chartReady {
+        // 真行情的历史请求可能遇到上游限流。等罚停窗口过去，再走界面的重试入口一次；
+        // 最后的品种、精度与十字线断言不放宽，也不切线路或改成假行情。
+        let retry = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "重试")).firstMatch
+        if retry.exists {
+          RunLoop.current.run(until: Date(timeIntervalSinceNow: 60))
+          retry.tap()
+          chartReady = waitUntil(timeout: Self.long, chartMatches)
+        }
+      }
+      XCTAssertTrue(chartReady, "\(symbol) 图表未就绪或精度不一致：\(chartInfo())")
+      guard chartReady else { continue }
+      let canvas = app.otherElements["chart.canvas"]
+      let mainH = chartInfo()["mainH"] as? Double ?? 300
+      canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 150, dy: min(130, mainH / 2))).tap()
+      XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == true })
+      let crossShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+      crossShot.name = "crosshair-\(symbol)"; crossShot.lifetime = .keepAlways; add(crossShot)
+      canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 150, dy: min(130, mainH / 2))).tap()
+      XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == false })
     }
+  }
+
+  func testPricePrecisionInFavoritesAndSectorRows() {
+    app.terminate()
+    app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "SNDKUSDT,MUUSDT,1000SATSUSDT,BTCUSDT"
+    app.launch()
+    func check(_ id: String, digits: Int) {
+      let value = app.descendants(matching: .any)[id].firstMatch
+      XCTAssertTrue(waitUntil(timeout: Self.long) {
+        value.exists && value.label.range(of: "^[0-9,]+\\.[0-9]{\(digits)}$", options: .regularExpression) != nil
+      }, "\(id) 未按报价步长展示：\(value.exists ? value.label : "不存在")")
+      print("LIST PRECISION \(id)=\(value.label)")
+    }
+    func shot(_ name: String) {
+      let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
+    }
+    let stocks = app.buttons["favorites.group.美股"]
+    guard expectExists(stocks, Self.long) else { return }
+    stocks.tap()
+    check("favorites.price.SNDKUSDT", digits: 2)
+    check("favorites.price.MUUSDT", digits: 2)
+    shot("precision-favorites-stocks")
+    app.buttons["favorites.group.加密"].tap()
+    check("favorites.price.1000SATSUSDT", digits: 8)
+    check("favorites.price.BTCUSDT", digits: 1)
+    shot("precision-favorites-crypto")
+    app.buttons[Ids.bottomSectors].tap()
+    let more = app.buttons["sector.more"]
+    guard expectExists(more, Self.long) else { return }
+    more.tap()
+    app.otherElements["sector.all"].buttons["sector.market.us"].tap()
+    let storage = app.buttons["sector.all.row.mem"]
+    guard expectExists(storage, Self.long) else { return }
+    storage.tap()
+    check("sector.price.SNDKUSDT", digits: 2)
+    check("sector.price.MUUSDT", digits: 2)
+    shot("precision-sector-stocks")
+    app.buttons["sector.list.back"].tap()
+    app.otherElements["sector.all"].buttons["sector.market.crypto"].tap()
+    let bitcoin = app.buttons["sector.all.row.btc-eco"]
+    for _ in 0..<8 where !bitcoin.isHittable { app.swipeUp() }
+    guard expectExists(bitcoin, Self.long) else { return }
+    bitcoin.tap()
+    check("sector.price.BTCUSDT", digits: 1)
+    let sats = app.descendants(matching: .any)["sector.price.1000SATSUSDT"].firstMatch
+    for _ in 0..<5 where !sats.isHittable {
+      app.swipeUp()
+    }
+    check("sector.price.1000SATSUSDT", digits: 8)
+    shot("precision-sector-crypto")
   }
 
   /// 左上角的品种名只报「我正在看哪个」，点它不该弹出任何东西。

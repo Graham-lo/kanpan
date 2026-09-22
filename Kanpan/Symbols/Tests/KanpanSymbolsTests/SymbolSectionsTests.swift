@@ -173,19 +173,19 @@ struct SymbolSectionsTests {
     #expect(btc.name == "BTC")
     #expect(btc.quoteSuffix == " / USDT")
     #expect(btc.meta == "BTCUSDT 永续")
-    #expect(btc.priceText == "76800.00")     // pricePrecision 2（tickSize 0.10 只推得出 1 位）
+    #expect(btc.priceText == "76800.0")     // tickSize 0.1 → 1 位
     #expect(btc.changeText == "+1.24%")
     #expect(btc.isUp)
 
     let xrp = rows.first { $0.id == "XRPUSDT" }!
-    #expect(xrp.priceText == "2.1843")       // pricePrecision 4
+    #expect(xrp.priceText == "2.1843")       // tickSize 0.0001 → 4 位
     #expect(xrp.changeText == "-2.15%")
     #expect(!xrp.isUp)
   }
 
-  /// 原型 symRow 用的是 catalog 里的 `p`（= pricePrecision），不是 tickSize 推的位数。
-  @Test("价格小数位跟 pricePrecision 走")
-  func priceDecimalsFollowPricePrecision() {
+  /// 展示位数按最小报价步长，不能把下单字段的位数带到界面。
+  @Test("价格小数位跟 tickSize 走")
+  func priceDecimalsFollowTickSize() {
     let rows = build().first { $0.kind == .all }?.rows ?? []
     #expect(rows.first { $0.id == "SOLUSDT" }?.priceText == "141.226")          // 3
     #expect(rows.first { $0.id == "DOGEUSDT" }?.priceText == "0.16204")         // 5
@@ -194,7 +194,7 @@ struct SymbolSectionsTests {
     let btc = SymbolFixtures.info("BTCUSDT")
     #expect(btc.pricePrecision == 2)
     #expect(btc.priceDecimals == 1)
-    #expect(rows.first { $0.id == "BTCUSDT" }?.priceText == "76800.00")
+    #expect(rows.first { $0.id == "BTCUSDT" }?.priceText == "76800.0")
   }
 
   @Test("平盘按涨算，没有行情时价显示破折号")

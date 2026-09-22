@@ -286,7 +286,7 @@ import KanpanNetwork
   /// 这个 base 对应品种的价格小数位。品种表里没有就 `nil`——列表那一层会退回
   /// 按大小猜，但绝不在这儿编一个位数出来（审查 B-07）。
   func priceDecimals(forBase base: String) -> Int? {
-    catalogIndex[symbol(forBase: base)]?.pricePrecision
+    catalogIndex[symbol(forBase: base)]?.priceDecimals
   }
 
   private var catalogIndex: [String: SymbolInfo] {

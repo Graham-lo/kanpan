@@ -34,10 +34,10 @@ final class MarketModel {
   private(set) var info: SymbolInfo
   /// 这个品种的小数位与成交额单位，一旦定下来这一程就不再变（§2B / 审查 §3.10 #53）。
   ///
-  /// 换线路会把整张品种表换掉，备用源对同一个品种给的 `pricePrecision` 未必一样；
+  /// 换线路会把整张品种表换掉，备用源对同一个品种给的 `tickSize` 未必一样；
   /// 成交额口径也可能差一截，数字一跨过一亿的坎单位就从「万」跳成「亿」。用户看到的
   /// 是「我什么都没动，价格突然多了一位、成交额换了个单位」——那比数字本身更像出错。
-  /// 展示口径按品种钉死：换品种才重新认，换线路一律沿用。
+  /// 步长与兜底精度一起锁住，展示位数始终从 `info.priceDecimals` 取；换线路沿用。
   private var lockedPrecision: [String: (precision: Int, tick: Double)] = [:]
   private(set) var volumeUnit: VolUnit?
   /// 顶栏右侧四格里 FR 那一格：`markPrice@1s` 那条流顺带捎回来的资金费率整帧。

@@ -83,7 +83,7 @@ extension ChartRenderer {
     let fractions = box.h < 35 ? [0.5] : box.h < 60 ? [0.0, 1.0] : [0.0, 0.5, 1.0]
     for fraction in fractions {
       let value = state.subInverted.contains(key) ? ext.lo + fraction * (ext.hi - ext.lo) : ext.hi - fraction * (ext.hi - ext.lo)
-      let label = key == .vol || key == .oi ? fmtVol(value) : fmtNum(value, 2)
+      let label = subValueText(value, indicator: key)
       let y = min(box.y + box.h - 4, max(box.y + 4, box.y + box.h * fraction))
       label.drawCentered(at: CGPoint(x: L.plotW + L.axisW / 2, y: y),
                          font: ChartFont.axis, color: state.colors.dim)
@@ -412,9 +412,13 @@ extension ChartRenderer {
     if let cross = state.crosshair { return values.indices.contains(cross.index) ? values[cross.index] : .nan }
     return values.last(where: { $0.isFinite }) ?? .nan
   }
+  func subValueText(_ value: Double, indicator: IndicatorID) -> String {
+    if indicator == .vol || indicator == .oi { return fmtVol(value) }
+    return fmtNum(value, indicator == .macd || indicator == .atr ? state.decimals : 2)
+  }
   func subAxisLabels(_ id: IndicatorID) -> [String] {
     let b = visibleRange(view: state.view, series: state.series)
     let e = subExtent(id, lo: b.lo, hi: b.hi)
-    return [e.lo, e.hi].map { id == .vol || id == .oi ? fmtVol($0) : fmtNum($0, 2) }
+    return [e.lo, e.hi].map { subValueText($0, indicator: id) }
   }
 }

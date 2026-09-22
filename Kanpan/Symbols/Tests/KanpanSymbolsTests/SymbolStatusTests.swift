@@ -272,7 +272,7 @@ struct SymbolStatusTests {
                                     prefs: SymbolPrefs(), query: "")
       .first { $0.kind == .all }?.rows ?? []
     func text(_ symbol: String) -> String? { rows.first { $0.id == symbol }?.priceText }
-    #expect(text("BTCUSDT") == "76800.00")          // 2 位
+    #expect(text("BTCUSDT") == "76800.0")           // 1 位
     #expect(text("SOLUSDT") == "141.226")           // 3 位
     #expect(text("XRPUSDT") == "2.1843")            // 4 位
     #expect(text("1000PEPEUSDT") == "0.0074812")    // 7 位

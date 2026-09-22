@@ -173,7 +173,7 @@ public func fmtNum(_ x: Double, _ p: Int) -> String {
   return toFixed(x, p)
 }
 
-/// 价格文案：小数位由品种自己说（`SymbolInfo.pricePrecision` / `priceDecimals`），
+/// 价格文案：小数位由品种自己说（`SymbolInfo.priceDecimals`），
 /// 不再按数值大小现猜几位（审查 B-07：同一个价在头部、板块页、复盘浮层给出三种写法）。
 ///
 /// 唯一的例外是**极小的正价**：如果按品种的位数四舍五入之后变成了 0，
@@ -190,7 +190,7 @@ public func fmtPrice(_ x: Double, decimals: Int) -> String {
 
 /// 品种表还没到时的临时小数位。**只在这一种情形下用。**
 ///
-/// 正常路径上小数位一律由品种自己说（`SymbolInfo.pricePrecision`）；这把梯子是给
+/// 正常路径上小数位一律由品种自己说（`SymbolInfo.priceDecimals`）；这把梯子是给
 /// 「冷启动第一帧目录还没回来」「自选里那个代号不在这份目录里」这两种空档用的。
 /// 单独放在这儿是为了全 app 只有一把：原来自选页写死 2 位、板块页另有一套
 /// 2/4/5/7，于是同一个价在两页上写法不同（审查 B-07）。

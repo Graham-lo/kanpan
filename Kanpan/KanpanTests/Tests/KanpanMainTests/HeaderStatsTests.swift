@@ -10,6 +10,10 @@ import KanpanCore
 struct HeaderStatsTests {
   @Test("头部涨跌额按品种精度、涨跌幅两位，缺数不编造")
   func changeLinePrecision() {
+    let sndk = SymbolInfo(symbol: "SNDKUSDT", base: "SNDK", pricePrecision: 5, tickSize: 0.01)
+    let btc = SymbolInfo(symbol: "BTCUSDT", base: "BTC", pricePrecision: 2, tickSize: 0.1)
+    #expect(HeaderStats.priceChangeText(change: -19.73, percent: -1.1, decimals: sndk.priceDecimals) == "−19.73  −1.10%")
+    #expect(HeaderStats.priceChangeText(change: 123.4, percent: 0.64, decimals: btc.priceDecimals) == "+123.4  +0.64%")
     #expect(HeaderStats.priceChangeText(change: 6.72, percent: 0.64, decimals: 2) == "+6.72  +0.64%")
     #expect(HeaderStats.priceChangeText(change: -0.00000001, percent: -0.08, decimals: 8) == "−0.00000001  −0.08%")
     #expect(HeaderStats.priceChangeText(change: nil, percent: 1, decimals: 2) == "—")

@@ -284,7 +284,7 @@ public struct ReviewRecordView: View {
         Button("作废记录", role: .destructive) { feature.voidRecord(id) }
       }
   }
-  /// 一口价的小数位由品种自己说（`SymbolInfo.pricePrecision`，宿主注入给
+  /// 一口价的小数位由品种自己说（`SymbolInfo.priceDecimals`，宿主注入给
   /// `feature.priceDecimals`），和顶栏、K 线价格轴、图上的目标线一致（审查 B-07）。
   /// 原来是「最多 8 位、能省就省」：同一张记录里目标写 `76800`、失效写 `76812.5`。
   private func price(_ value: Double, _ record: ReviewRecord) -> String {

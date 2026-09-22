@@ -10,7 +10,7 @@ import Foundation
 ///
 /// 现在只有这一份：时间一律按**图表那一档时区**（`TZOffset`，偏移在被格式化的那一刻现问，
 /// 所以跨夏令时的历史不会整段平移），价格一律按**品种自己的小数位**
-/// （`SymbolInfo.pricePrecision`；实在拿不到才 `priceDecimalsFallback`）。
+/// （`SymbolInfo.priceDecimals`；实在拿不到才 `priceDecimalsFallback`）。
 ///
 /// 放在 KanpanCore 是为了**同一个函数**同时被 UIKit 那层手绘的 overlay、SwiftUI 的
 /// 复盘本、以及用例驱动——测的就是屏上那一行，不是「另一个长得一样的格式化器」。

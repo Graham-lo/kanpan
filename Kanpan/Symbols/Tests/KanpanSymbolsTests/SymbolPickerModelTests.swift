@@ -200,7 +200,7 @@ struct SymbolPickerModelTests {
     feed.push([Ticker(symbol: "BTCUSDT", last: 77_123.4, changePercent: -2.5,
                       high: 78_000, low: 76_000, quoteVolume: 1e9)])
     let btc = m.sections[0].rows.first { $0.id == "BTCUSDT" }
-    #expect(btc?.priceText == "77123.40")
+    #expect(btc?.priceText == "77123.4")
     #expect(btc?.changeText == "-2.50%")
     #expect(btc?.isUp == false)
 
@@ -208,7 +208,7 @@ struct SymbolPickerModelTests {
     m.disappear()
     feed.push([Ticker(symbol: "BTCUSDT", last: 1, changePercent: 0,
                       high: 1, low: 1, quoteVolume: 1)])
-    #expect(m.sections[0].rows.first { $0.id == "BTCUSDT" }?.priceText == "77123.40")
+    #expect(m.sections[0].rows.first { $0.id == "BTCUSDT" }?.priceText == "77123.4")
   }
 
   @Test("品种表可以后到（异步拉回来再灌）")

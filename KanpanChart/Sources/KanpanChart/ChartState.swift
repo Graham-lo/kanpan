@@ -30,8 +30,7 @@ public struct ChartState: Sendable {
   /// 十字线磁吸（原型 `chart.magnet`，默认开）。开着竖线吸到根中心、横线吸到最近的
   /// 开高低收；关掉就停在手指上。
   public var magnet: Bool
-  /// 价格小数位。原型是快照里的 `meta.p`（BTCUSDT 是 2），等于 `exchangeInfo`
-  /// 的 `pricePrecision`——不是按 `tickSize` 推的 `priceDecimals`。
+  /// 价格小数位来自 `SymbolInfo.priceDecimals`，按最小报价步长展示。
   public var decimals: Int
   /// K 线设置的那组开关（网格 / 实体 / 平均 K 线 / 实时价格线 / 画线 / 倒计时 / 至今涨幅 /
   /// 留白偏置 / 拖动位置）。全默认 = 现状。
@@ -82,7 +81,7 @@ public struct ChartState: Sendable {
     self.timezone = timezone; self.oi = oi; self.drawings = drawings
     self.crosshair = crosshair
     self.magnet = magnet
-    self.decimals = decimals ?? symbol.pricePrecision
+    self.decimals = decimals ?? symbol.priceDecimals
     self.options = options
     self.nowMs = nowMs
     self.subScale = subScale

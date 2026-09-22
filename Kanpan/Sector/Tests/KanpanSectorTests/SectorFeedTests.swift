@@ -216,10 +216,12 @@ struct SectorFeedTests {
   func decimalsComeFromTheCatalog() {
     let feed = SectorFeed()
     feed.setCatalog([
-      SymbolInfo(symbol: "BTCUSDT", base: "BTC", pricePrecision: 2, tickSize: 0.01),
+      SymbolInfo(symbol: "BTCUSDT", base: "BTC", pricePrecision: 2, tickSize: 0.1),
+      SymbolInfo(symbol: "SNDKUSDT", base: "SNDK", pricePrecision: 5, tickSize: 0.01),
       SymbolInfo(symbol: "PEPEUSDT", base: "PEPE", pricePrecision: 8, tickSize: 0.00000001),
     ])
-    #expect(feed.priceDecimals(forBase: "BTC") == 2)
+    #expect(feed.priceDecimals(forBase: "BTC") == 1)
+    #expect(feed.priceDecimals(forBase: "SNDK") == 2)
     #expect(feed.priceDecimals(forBase: "pepe") == 8)
     #expect(feed.priceDecimals(forBase: "NOPE") == nil)
   }

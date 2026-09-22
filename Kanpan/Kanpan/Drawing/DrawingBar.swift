@@ -513,7 +513,7 @@ private struct DrawingStyleEditor: View {
             DatePicker("点 \(index + 1) 时间", selection: Binding(get: { Date(timeIntervalSince1970: item.points[index].t / 1000) }, set: { item.points[index].t = $0.timeIntervalSince1970 * 1000 }))
             HStack {
               Text("点 \(index + 1) 价格")
-              TextField("价格", value: $item.points[index].p, format: .number.precision(.fractionLength(0...max(decimals, 2))))
+              TextField("价格", value: $item.points[index].p, format: .number.precision(.fractionLength(max(0, decimals))))
                 .keyboardType(.decimalPad).multilineTextAlignment(.trailing).accessibilityIdentifier("draw.price.\(index)")
             }
           }

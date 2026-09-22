@@ -188,11 +188,29 @@ struct FormatTests {
             == "America/New_York")
   }
 
+  @Test("展示按报价步长，缺步长才退回字段精度，未知目录保留小价兜底")
+  func displayDecimalsUseTickSize() {
+    let cases: [(String, Int, Double, Double, String)] = [
+      ("SNDKUSDT", 5, 0.01, 1774.23, "1774.23"),
+      ("MUUSDT", 5, 0.01, 1045.4, "1045.40"),
+      ("BTCUSDT", 2, 0.1, 76800.06, "76800.1"),
+      ("1000SATSUSDT", 8, 0.00000001, 0.00001234, "0.00001234"),
+      ("WHOLEUSDT", 5, 1.0, 123.0, "123"),
+      ("MISSINGUSDT", 3, 0.0, 1.234, "1.234")
+    ]
+    for (symbol, precision, tick, price, expected) in cases {
+      let info = SymbolInfo(symbol: symbol, base: symbol, pricePrecision: precision, tickSize: tick)
+      #expect(fmtPrice(price, decimals: info.displayDecimals(for: price)) == expected)
+    }
+    let unknown = SymbolInfo.placeholder(symbol: "GONEUSDT")
+    #expect(Double(fmtPrice(0.0000004, decimals: unknown.displayDecimals(for: 0.0000004)))! > 0)
+  }
+
   /// B-T16：价格小数位由品种说，极小的正价绝不能显示成 0。
   @Test("价格小数位来自品种")
   func priceDecimalsComeFromTheSymbol() {
-    // BTC：2 位
-    #expect(fmtPrice(76_800, decimals: 2) == "76800.00")
+    // BTC：tickSize 0.1，一位
+    #expect(fmtPrice(76_800, decimals: 1) == "76800.0")
     // 1000PEPE：7 位
     #expect(fmtPrice(0.0123456, decimals: 7) == "0.0123456")
     // tickSize 0.0001 的合约：4 位

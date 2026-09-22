@@ -25,6 +25,9 @@ final class AlertWatcher: ObservableObject {
   /// 说一句。宿主接到主 toast 上（`MainScreen.say`）。
   var onFired: ((Alert) -> Void)?
 
+  /// 宿主按提醒所属品种查目录，目录缺失才按价格兜底。
+  var priceDecimals: (String) -> Int? = { _ in nil }
+
   private weak var store: AlertStore?
   private var bag: Set<AnyCancellable> = []
   /// 已经报过的那些。只按 id 记，重新上膛（`rearm`）时会被摘掉，所以同一条线
@@ -61,7 +64,7 @@ final class AlertWatcher: ObservableObject {
   private func report(_ alert: Alert) {
     // 通知中心里留一条：前台时 `willPresent` 会把横幅压掉（界面上已经有浮条了），
     // 后台回来那一下则是它把人叫住。
-    AlertNotifications.present(alert)
+    AlertNotifications.present(alert, decimals: priceDecimals(alert.symbol))
     guard foreground else { return }
     UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
     onFired?(alert)

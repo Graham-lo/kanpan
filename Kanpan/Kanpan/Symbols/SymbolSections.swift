@@ -37,13 +37,10 @@ struct SymbolRow: Sendable, Equatable, Identifiable {
 
   /// 最新价。没有行情时原型给一个破折号 `—`。
   ///
-  /// 小数位用 `pricePrecision`，不是 `SymbolInfo.priceDecimals`（那个由 `tickSize` 推）。
-  /// 原型 `symRow()` 取的是 catalog 行里的 `p`，也就是 `pricePrecision`：
-  /// BTCUSDT 的 tickSize 是 0.10（推出来 1 位），但币安和原型都显示两位 `76800.00`。
-  /// 差异记在 docs/acceptance/M5/品种页.md。
+  /// 小数位按 `SymbolInfo.priceDecimals`（最小报价步长），与头部、图表一致。
   var priceText: String {
     guard let t = ticker, t.last.isFinite else { return "—" }
-    // `fmtPrice` 而不是 `fmtNum`：0.0000004 这种合法极小价按 `pricePrecision`
+    // `fmtPrice` 而不是 `fmtNum`：0.0000004 这种合法极小价按通常位数
     // 四舍五入会变成 `0.00`，那是在说「这个东西不值钱」（审查 B-07）。
     // 占位行没有精度可言（目录里查不到），`displayDecimals` 会按这口价自己猜。
     return fmtPrice(t.last, decimals: info.displayDecimals(for: t.last))

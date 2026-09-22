@@ -99,7 +99,7 @@ public struct ReviewCaptureCard: View {
     }
   }
 
-  /// 这张卡上所有口价的小数位：品种自己说（`SymbolInfo.pricePrecision`，宿主注入到
+  /// 这张卡上所有口价的小数位：品种自己说（`SymbolInfo.priceDecimals`，宿主注入到
   /// `feature.priceDecimals`），问不到才按参考价猜。写死 8 位会把 76800 显示成
   /// 一个能填到 `76800.00000001` 的框，也会让摆出来的口价和 K 线价格轴不是一个写法。
   private var decimals: Int {

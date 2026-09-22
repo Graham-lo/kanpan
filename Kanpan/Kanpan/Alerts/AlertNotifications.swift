@@ -100,10 +100,10 @@ extension AlertNotifications {
   /// 服务端判的到价，客户端只负责让它被看见。app 在前台时 `willPresent` 会把横幅压掉，
   /// 留在通知中心里；在后台回来的那一下（`AppLifecycle` 进前台 → 拉一次同步）发出来的，
   /// 用户点开就直接到那条线上。
-  static func present(_ alert: Alert) {
+  static func present(_ alert: Alert, decimals: Int? = nil) {
     let content = UNMutableNotificationContent()
     content.title = alert.title.isEmpty ? "提醒" : alert.title
-    if let price = alert.firedPrice { content.body = "现价 " + ReviewLabels.price(price, decimals: nil) }
+    if let price = alert.firedPrice { content.body = "现价 " + ReviewLabels.price(price, decimals: decimals) }
     content.sound = .default
     content.categoryIdentifier = category
     if let link = link(for: alert) { content.userInfo = [linkKey: link] }

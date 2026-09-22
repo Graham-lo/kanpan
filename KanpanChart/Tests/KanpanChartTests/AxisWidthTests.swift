@@ -40,6 +40,26 @@ struct AxisWidthTests {
     return ChartRenderer(state: st)
   }
 
+  @Test("图表价格与价差读数按报价步长，百分比保留独立口径")
+  func priceReadoutsUseTickSize() {
+    let cases: [(String, Int, Double, Double, Int)] = [
+      ("SNDKUSDT", 5, 0.01, 1774.23, 2), ("MUUSDT", 5, 0.01, 1045.4, 2),
+      ("BTCUSDT", 2, 0.1, 76800.0, 1), ("1000SATSUSDT", 8, 0.00000001, 0.00001234, 8)
+    ]
+    for (symbol, precision, tick, price, digits) in cases {
+      let info = SymbolInfo(symbol: symbol, base: symbol, pricePrecision: precision, tickSize: tick)
+      let series = Self.series(price / 80_000, symbol: symbol)
+      let state = ChartState(series: series, symbol: info, view: ViewWindow(to: Double(series.lastTime), span: 3_600_000))
+      #expect(state.decimals == digits)
+      let r = ChartRenderer(state: state)
+      let range = r.priceRange(size: Self.size)
+      #expect(r.axisLabel(price, range: range) == fmtNum(price, digits))
+      #expect(r.subValueText(price / 100, indicator: .macd) == fmtNum(price / 100, digits))
+      #expect(r.subValueText(price / 100, indicator: .atr) == fmtNum(price / 100, digits))
+      #expect(r.subValueText(54.321, indicator: .rsi) == "54.32")
+    }
+  }
+
   /// 轴宽正好是「最宽的那条刻度 + 两侧各 `axisLabelPadding`」，一个像素都不多。
   @Test("轴宽贴着最宽的那条刻度走")
   func hugsContent() {

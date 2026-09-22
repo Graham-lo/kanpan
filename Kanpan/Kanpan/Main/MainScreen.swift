@@ -450,7 +450,7 @@ struct MainScreen: View {
     .sheet(item: $draw.panel) { panel in
       // 主题显式灌进去：这张表里的「画线管理」和「样式」都要跟着皮肤走
       // （和 `IndicatorPanel` 里那张编辑表一个做法）。
-      DrawingSheet(controller: draw, panel: panel, decimals: market.info.pricePrecision)
+      DrawingSheet(controller: draw, panel: panel, decimals: market.info.priceDecimals)
         .environment(\.panelTheme, theme)
     }
     // 竖屏的「绘图」面板是一张半屏表单；横屏走 `drawToolsLayer` 那块贴边卡片，
@@ -692,7 +692,7 @@ struct MainScreen: View {
         LandscapeHeadline(
           theme: theme, symbol: market.symbol, price: readoutPrice,
           changePercent: displayedTicker?.changePercent,
-          decimals: market.info.pricePrecision,
+          decimals: market.info.priceDecimals,
           // 只有画线工作台里那一行是按钮，见 `DrawingSymbolSwitcher` 顶上那段。
           // 换品种和挑工具都贴在左边，同时开会叠在一起——开一个就把另一个收了。
           onTapSymbol: draw.active ? { draw.picker = false; showDrawSwitcher.toggle() } : nil)
@@ -869,7 +869,7 @@ struct MainScreen: View {
         onSearch: { dismissPanel(); showSearch = true })
       ZStack {
         PriceRow(theme: theme, ticker: rollingTicker, lastPrice: readoutPrice,
-          decimals: market.info.pricePrecision,
+          decimals: market.info.priceDecimals,
           volumeUnit: market.volumeUnit,
           openInterest: market.openInterestDisplay,
           openInterestUnit: market.openInterestUnit,
@@ -965,7 +965,7 @@ struct MainScreen: View {
   private var crosshairContext: CrosshairContext {
     CrosshairContext(
       series: market.series, symbol: market.symbol, interval: market.interval,
-      decimals: market.info.pricePrecision, offsetMinutes: prefs.timeZone.offsetMinutes,
+      decimals: market.info.priceDecimals, offsetMinutes: prefs.timeZone.offsetMinutes,
       enabled: prefs.dataDisplay == .top)
   }
 
@@ -1088,7 +1088,7 @@ struct MainScreen: View {
     let pct = displayedTicker?.changePercent
     return ChartShotHead(
       symbol: market.symbol, interval: market.interval,
-      price: readoutPrice, decimals: market.info.pricePrecision,
+      price: readoutPrice, decimals: market.info.priceDecimals,
       changePercent: (pct?.isFinite == true) ? pct : nil)
   }
 
@@ -1200,13 +1200,13 @@ struct MainScreen: View {
     // 复盘本里的时刻与口价（审查 B-07 / B-08，复核项 5）。`ReviewUI` 那个包既看不见
     // `Prefs` 也看不见品种目录，所以两样都在这儿灌：时刻跟着图表那一档时区
     // （`prefs.timeZone`，下面 `lifecycleContent` 里有 `onChange` 跟着改），
-    // 小数位问品种表要 `pricePrecision`。占位行的精度是 0（表示「不知道」），
+    // 小数位问品种表要 `priceDecimals`。占位行的步长与精度都为 0（表示「不知道」），
     // 那就交回 nil，让它按那口价自己猜，别把 0.0000004 写成 `0`。
     review.timezone = prefs.timeZone
     let picker = self.picker
     review.priceDecimals = { symbol in
-      guard let p = picker.info(for: symbol)?.pricePrecision, p > 0 else { return nil }
-      return p
+      guard let info = picker.info(for: symbol), info.tickSize > 0 || info.pricePrecision > 0 else { return nil }
+      return info.priceDecimals
     }
     review.onOpenChart = { record in
       endSharePreview(); dismissPanel(); draw.finish()
@@ -1261,7 +1261,7 @@ struct MainScreen: View {
       if let series = reviewChart.state?.series, let open = series.open.last, let high = series.high.last, let low = series.low.last, let close = series.close.last {
         // 小数位由品种自己说（审查 B-07）：原来按「有效数字 1–7 位」写，
         // 回放头部的开高低收和顶栏的最新价能是两种写法。
-        let p = reviewChart.state?.decimals ?? market.info.pricePrecision
+        let p = reviewChart.state?.decimals ?? market.info.priceDecimals
         HStack(spacing: 10) {
           Text("开 " + fmtPrice(open, decimals: p))
           Text("高 " + fmtPrice(high, decimals: p))
@@ -1357,7 +1357,7 @@ struct MainScreen: View {
       timezone: prefs.timeZone,
       oi: market.oi,
       magnet: prefs.magnet,
-      decimals: market.info.pricePrecision,
+      decimals: market.info.priceDecimals,
       options: prefs.chartOptions,
       nowMs: nowMs,
       subScale: subScale)
@@ -1549,6 +1549,10 @@ struct MainScreen: View {
       engine?.observe(symbol: symbol, price: price, timeMs: timeMs)
     }
     quotes.onPrice = { [weak engine = alertEngine] tickers in engine?.observe(tickers) }
+    alertWatcher.priceDecimals = { [picker] symbol in
+      guard let info = picker.info(for: symbol), info.tickSize > 0 || info.pricePrecision > 0 else { return nil }
+      return info.priceDecimals
+    }
     alertWatcher.attach(alerts)
     alertWatcher.onFired = { alert in
       guard let drawingID = alert.drawingID else { return say(alert.title) }

@@ -143,6 +143,7 @@ public final class ChartView: UIView {
         let info: [String: Any] = ["style": s.style.id, "background": s.colors.bg.value, "bars": s.series.count, "symbol": s.series.symbol,
           "latestRightGap": layout.plotW - s.view.x(Double(s.series.lastTime), plotW: layout.plotW)
             - s.view.barSpacing(step: s.series.step, plotW: layout.plotW) / 2,
+          "priceDecimals": s.decimals,
           "lastClose": s.series.close.last ?? 0, "lastVolume": s.series.volume.last ?? 0,
           "from": s.view.from, "to": s.view.to, "span": s.view.span,
           "plotW": layout.plotW, "mainH": layout.mainH, "timeY": layout.timeY,

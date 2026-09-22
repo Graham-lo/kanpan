@@ -115,12 +115,12 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
 
   /// 摆一口价要几位小数。
   ///
-  /// 正常行用交易所给的 `pricePrecision`（币安那张表里它一律 ≥ 1）。
-  /// `placeholder` 造出来的行没有精度可言（`pricePrecision == 0`），
+  /// 有 `tickSize` 时用 `priceDecimals`；没有步长时才用 `pricePrecision`。
+  /// `placeholder` 的步长与精度都为 0，表示目录未知，
   /// 那就按这口价自己猜——写死 2 位会把 0.0000004 摆成 `0.00`，那是在说
   /// 「这东西不值钱」（审查 B-07）。
   public func displayDecimals(for price: Double) -> Int {
-    pricePrecision > 0 ? pricePrecision : priceDecimalsFallback(price)
+    tickSize > 0 || pricePrecision > 0 ? priceDecimals : priceDecimalsFallback(price)
   }
 
   /// 只知道代号时的占位行。

@@ -1,0 +1,189 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=D6C41248-C78E-46B8-B391-311F373D24A8" -derivedDataPath /tmp/kanpan-p0-rework-dd "-only-testing:KanpanUITests/MainScreenUITests/testPricePrecisionInFavoritesAndSectorRows" -test-timeouts-enabled YES -default-test-execution-time-allowance 480 -maximum-test-execution-time-allowance 900 -resultBundlePath /tmp/kanpan-handoff-checks/p0-rework/lists-results-16pro/iPhone-16-Pro.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanData: /tmp/kanpan-p0-rework/KanpanData @ local
+  KanpanAccount: /tmp/kanpan-p0-rework/KanpanAccount @ local
+  KanpanCore: /tmp/kanpan-p0-rework/KanpanCore @ local
+  KanpanNetwork: /tmp/kanpan-p0-rework/KanpanNetwork @ local
+  KanpanReview: /tmp/kanpan-p0-rework/KanpanReview @ local
+  KanpanChart: /tmp/kanpan-p0-rework/KanpanChart @ local
+
+Writing result bundle at path:
+	/tmp/kanpan-handoff-checks/p0-rework/lists-results-16pro/iPhone-16-Pro.xcresult
+
+2026-09-22 13:04:41.153345+0800 KanpanUITests-Runner[37997:3620753] [Default] Running tests...
+objc[37997]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10a958310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10a00c398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-22 13:04:43.997.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 13:04:43.998.
+Test Suite 'MainScreenUITests' started at 2026-09-22 13:04:43.998.
+Test Case '-[KanpanUITests.MainScreenUITests testPricePrecisionInFavoritesAndSectorRows]' started.
+    t =     0.00s Start Test at 2026-09-22 13:04:43.998
+    t =     0.21s Set Up
+    t =     0.21s     Open com.mdd.kanpan
+    t =     0.21s         Launch com.mdd.kanpan
+2026-09-22 13:04:45.018 xcodebuild[37782:3617175] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:04:45.018 xcodebuild[37782:3617175] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     3.47s             Setting up automation session
+    t =     4.83s             Wait for com.mdd.kanpan to idle
+    t =     6.63s     Waiting 3.0s for "bottom.chart" Button to exist
+    t =     7.71s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.chart" Button`
+    t =     7.71s             Checking existence of `"bottom.chart" Button`
+    t =     7.80s     Checking existence of `"top.symbol" Any`
+    t =     7.81s     Waiting 30.0s for "top.symbol" Any to exist
+    t =     8.88s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Any`
+    t =     8.88s             Checking existence of `"top.symbol" Any`
+    t =     8.89s     Find the Window (First Match)
+    t =     8.90s     Find the "interval.more" Button
+    t =     8.91s     Find the "bottom.favorites" Button
+    t =     9.03s Terminate com.mdd.kanpan:38038
+    t =    10.13s Open com.mdd.kanpan
+    t =    10.13s     Launch com.mdd.kanpan
+2026-09-22 13:04:54.188 xcodebuild[37782:3617175] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 13:04:54.188 xcodebuild[37782:3617175] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    10.68s         Setting up automation session
+    t =    11.71s         Wait for com.mdd.kanpan to idle
+    t =    13.47s Waiting 30.0s for "favorites.group.美股" Button to exist
+    t =    14.53s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.group.美股" Button`
+    t =    14.54s         Checking existence of `"favorites.group.美股" Button`
+    t =    14.65s Tap "favorites.group.美股" Button
+    t =    14.65s     Wait for com.mdd.kanpan to idle
+    t =    14.65s     Find the "favorites.group.美股" Button
+    t =    14.68s     Check for interrupting elements affecting "favorites.group.美股" Button
+    t =    14.71s     Synthesize event
+    t =    15.12s     Wait for com.mdd.kanpan to idle
+    t =    15.13s Checking existence of `"favorites.price.SNDKUSDT" Any`
+    t =    15.18s Find the "favorites.price.SNDKUSDT" Any
+    t =    15.26s Find the "favorites.price.SNDKUSDT" StaticText
+LIST PRECISION favorites.price.SNDKUSDT=1,770.72
+    t =    15.33s Checking existence of `"favorites.price.MUUSDT" Any`
+    t =    15.44s Find the "favorites.price.MUUSDT" Any
+    t =    15.51s Find the "favorites.price.MUUSDT" StaticText
+LIST PRECISION favorites.price.MUUSDT=1,042.48
+    t =    15.60s Find the Target Application 'com.mdd.kanpan'
+    t =    15.78s Added attachment named 'precision-favorites-stocks'
+    t =    15.78s Tap "favorites.group.加密" Button
+    t =    15.78s     Wait for com.mdd.kanpan to idle
+    t =    15.78s     Find the "favorites.group.加密" Button
+    t =    15.80s     Check for interrupting elements affecting "favorites.group.加密" Button
+    t =    15.81s     Synthesize event
+    t =    16.11s     Wait for com.mdd.kanpan to idle
+    t =    16.12s Checking existence of `"favorites.price.1000SATSUSDT" Any`
+    t =    16.28s Find the "favorites.price.1000SATSUSDT" Any
+    t =    16.36s Find the "favorites.price.1000SATSUSDT" StaticText
+LIST PRECISION favorites.price.1000SATSUSDT=0.00001236
+    t =    16.58s Checking existence of `"favorites.price.BTCUSDT" Any`
+    t =    16.67s Find the "favorites.price.BTCUSDT" Any
+    t =    16.86s Find the "favorites.price.BTCUSDT" StaticText
+LIST PRECISION favorites.price.BTCUSDT=85,371.4
+    t =    17.05s Find the Target Application 'com.mdd.kanpan'
+    t =    17.19s Added attachment named 'precision-favorites-crypto'
+    t =    17.19s Tap "bottom.sectors" Button
+    t =    17.19s     Wait for com.mdd.kanpan to idle
+    t =    17.19s     Find the "bottom.sectors" Button
+    t =    17.21s     Check for interrupting elements affecting "bottom.sectors" Button
+    t =    17.25s     Synthesize event
+    t =    17.56s     Wait for com.mdd.kanpan to idle
+    t =    17.56s Waiting 30.0s for "sector.more" Button to exist
+    t =    18.64s     Checking `Expect predicate `existsNoRetry == 1` for object "sector.more" Button`
+    t =    18.64s         Checking existence of `"sector.more" Button`
+    t =    18.68s Tap "sector.more" Button
+    t =    18.68s     Wait for com.mdd.kanpan to idle
+    t =    18.70s     Find the "sector.more" Button
+    t =    18.73s     Check for interrupting elements affecting "sector.more" Button
+    t =    18.75s     Synthesize event
+    t =    19.05s     Wait for com.mdd.kanpan to idle
+    t =    19.08s Tap "sector.market.us" Button
+    t =    19.08s     Wait for com.mdd.kanpan to idle
+    t =    19.09s     Find the "sector.market.us" Button
+    t =    19.15s     Check for interrupting elements affecting "sector.market.us" Button
+    t =    19.20s     Synthesize event
+    t =    19.51s     Wait for com.mdd.kanpan to idle
+    t =    19.51s Waiting 30.0s for "sector.all.row.mem" Button to exist
+    t =    20.61s     Checking `Expect predicate `existsNoRetry == 1` for object "sector.all.row.mem" Button`
+    t =    20.61s         Checking existence of `"sector.all.row.mem" Button`
+    t =    20.74s Tap "sector.all.row.mem" Button
+    t =    20.74s     Wait for com.mdd.kanpan to idle
+    t =    20.75s     Find the "sector.all.row.mem" Button
+    t =    20.80s     Check for interrupting elements affecting "sector.all.row.mem" Button
+    t =    20.85s     Synthesize event
+    t =    21.17s     Wait for com.mdd.kanpan to idle
+    t =    21.17s Checking existence of `"sector.price.SNDKUSDT" Any`
+    t =    21.46s Find the "sector.price.SNDKUSDT" Any
+    t =    21.79s Find the "sector.price.SNDKUSDT" StaticText
+LIST PRECISION sector.price.SNDKUSDT=1,770.72
+    t =    22.04s Checking existence of `"sector.price.MUUSDT" Any`
+    t =    22.36s Find the "sector.price.MUUSDT" Any
+    t =    22.62s Find the "sector.price.MUUSDT" StaticText
+LIST PRECISION sector.price.MUUSDT=1,042.48
+    t =    22.78s Find the Target Application 'com.mdd.kanpan'
+    t =    23.02s Added attachment named 'precision-sector-stocks'
+    t =    23.02s Tap "sector.list.back" Button
+    t =    23.03s     Wait for com.mdd.kanpan to idle
+    t =    23.03s     Find the "sector.list.back" Button
+    t =    23.07s     Check for interrupting elements affecting "sector.list.back" Button
+    t =    23.12s     Synthesize event
+    t =    23.13s         Scroll element to visible
+    t =    23.14s         Find the "sector.list.back" Button
+    t =    23.20s         Computed hit point {-1, -1} after scrolling to visible
+    t =    23.49s     Wait for com.mdd.kanpan to idle
+    t =    23.50s Tap "sector.market.crypto" Button
+    t =    23.50s     Wait for com.mdd.kanpan to idle
+    t =    23.50s     Find the "sector.market.crypto" Button
+    t =    23.53s     Check for interrupting elements affecting "sector.market.crypto" Button
+    t =    23.56s     Synthesize event
+    t =    23.84s     Wait for com.mdd.kanpan to idle
+    t =    23.84s Find the "sector.all.row.btc-eco" Button
+    t =    24.05s Find the "sector.all.row.btc-eco" Button
+    t =    24.12s Find the "sector.all.row.btc-eco" Button
+    t =    24.19s Find the "sector.all.row.btc-eco" Button
+    t =    24.26s Find the "sector.all.row.btc-eco" Button
+    t =    24.33s Find the "sector.all.row.btc-eco" Button
+    t =    24.39s Find the "sector.all.row.btc-eco" Button
+    t =    24.44s Find the "sector.all.row.btc-eco" Button
+    t =    24.52s Waiting 30.0s for "sector.all.row.btc-eco" Button to exist
+    t =    25.59s     Checking `Expect predicate `existsNoRetry == 1` for object "sector.all.row.btc-eco" Button`
+    t =    25.59s         Checking existence of `"sector.all.row.btc-eco" Button`
+    t =    25.65s Tap "sector.all.row.btc-eco" Button
+    t =    25.65s     Wait for com.mdd.kanpan to idle
+    t =    25.66s     Find the "sector.all.row.btc-eco" Button
+    t =    25.69s     Check for interrupting elements affecting "sector.all.row.btc-eco" Button
+    t =    25.73s     Synthesize event
+    t =    26.03s     Wait for com.mdd.kanpan to idle
+    t =    26.03s Checking existence of `"sector.price.BTCUSDT" Any`
+    t =    26.19s Find the "sector.price.BTCUSDT" Any
+    t =    26.39s Find the "sector.price.BTCUSDT" StaticText
+LIST PRECISION sector.price.BTCUSDT=85,371.4
+    t =    26.77s Find the "sector.price.1000SATSUSDT" Any
+    t =    26.97s Find the "sector.price.1000SATSUSDT" StaticText
+    t =    27.25s Find the "sector.price.1000SATSUSDT" StaticText
+    t =    27.64s Find the "sector.price.1000SATSUSDT" StaticText
+    t =    27.84s Find the "sector.price.1000SATSUSDT" StaticText
+    t =    28.08s Checking existence of `"sector.price.1000SATSUSDT" Any`
+    t =    28.46s Find the "sector.price.1000SATSUSDT" Any
+    t =    29.02s Find the "sector.price.1000SATSUSDT" StaticText
+LIST PRECISION sector.price.1000SATSUSDT=0.00001237
+    t =    29.24s Find the Target Application 'com.mdd.kanpan'
+    t =    29.53s Added attachment named 'precision-sector-crypto'
+    t =    29.54s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testPricePrecisionInFavoritesAndSectorRows]' passed (30.047 seconds).
+Test Suite 'MainScreenUITests' passed at 2026-09-22 13:05:14.046.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.047 (30.048) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-22 13:05:14.046.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.047 (30.049) seconds
+Test Suite 'Selected tests' passed at 2026-09-22 13:05:14.047.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.047 (30.049) seconds
+2026-09-22 13:05:40.477 xcodebuild[37782:3617175] [MT] IDETestOperationsObserverDebug: 79.717 elapsed -- Testing started completed.
+2026-09-22 13:05:40.478 xcodebuild[37782:3617175] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-22 13:05:40.478 xcodebuild[37782:3617175] [MT] IDETestOperationsObserverDebug: 79.717 sec, +79.717 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/kanpan-handoff-checks/p0-rework/lists-results-16pro/iPhone-16-Pro.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

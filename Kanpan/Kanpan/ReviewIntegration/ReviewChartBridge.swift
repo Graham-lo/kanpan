@@ -171,20 +171,15 @@ import ReviewUI
         for i in 1..<ordered.count where Self.closeTime(ordered[i - 1].openTime, interval: interval) != ordered[i].openTime { throw ReviewBridgeError.historyGap }
         bars = ordered
         base.series = BarSeries(symbol: range.symbol, interval: interval, bars: ordered)
-        // 精度得是**这个品种**的，不能沿用当前那张实时图（审查 B-04）。
-        //
-        // `base` 是从屏幕上那张图复制来的，`base.decimals` 还是 BTC 的 1 位；拿它去
-        // 画 0.00001234 的记录，轴、十字线、价格标签全写成 `0.0`——重温一条自己记过的
-        // 判断，看到的是一排一样的零。品种目录在这儿查不到（记录可能是任何品种、
-        // 甚至已经下架），但行情自己带着答案：交易所的报价一律落在 `tickSize` 的整数倍
-        // 上，「让每一口价都能原样写出来的最少位数」就是它。全是整数时（有这种品种）
-        // 才退回实时图那一档。
-        let decimals = ReviewPricePrecision.decimals(of: ordered.flatMap { [$0.open, $0.high, $0.low, $0.close] }) ?? base.decimals
+        // 先用记录所属品种的目录精度。目录缺失才从历史报价推，不能继承另一张图的精度。
+        let decimals = feature.priceDecimals(range.symbol)
+          ?? (base.symbol.symbol == range.symbol ? base.symbol.priceDecimals : nil)
+          ?? ReviewPricePrecision.decimals(of: ordered.flatMap { [$0.open, $0.high, $0.low, $0.close] })
+          ?? priceDecimalsFallback(ordered.last!.close)
         base.symbol = SymbolInfo(symbol: range.symbol, base: range.shortSymbol, pricePrecision: decimals,
-                                 tickSize: ReviewPricePrecision.tickSize(decimals: decimals))
-        // `ChartState.decimals` 是自己的一份存储属性（初始化时取 `symbol.pricePrecision`，
-        // 之后各走各的），渲染器读的是它——只改 `symbol` 改不动屏幕上的数字。
-        base.decimals = decimals
+                                 tickSize: pow(10, -Double(decimals)))
+        // 存储的显示位数与这次替换的品种一起更新。
+        base.decimals = base.symbol.priceDecimals
         replayBase = base; replayRecord = record; speed = preferredSpeed()
         let saved = savedPosition
         cursor = max(2, ordered.lastIndex(where: { Self.closeTime($0.openTime, interval: interval) <= saved }) ?? 2)

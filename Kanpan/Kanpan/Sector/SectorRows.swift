@@ -30,7 +30,7 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
   let quoteVolume: Double
   /// 前沿成员：跑赢池基准、且相对收益排在全池 90 分位以上。
   let isFrontier: Bool
-  /// 这个品种自己的价格小数位（`SymbolInfo.pricePrecision`）。品种表还没到就是 `nil`。
+  /// 这个品种自己的价格小数位（`SymbolInfo.priceDecimals`）。品种表还没到就是 `nil`。
   let decimals: Int?
 
   var id: String { symbol }
@@ -40,7 +40,7 @@ struct SectorSymbolRow: Sendable, Equatable, Identifiable {
     symbol.hasPrefix(base) ? String(symbol.dropFirst(base.count)) : ""
   }
 
-  /// 价格小数位由**品种自己**说（`SymbolInfo.pricePrecision`），和顶栏、图表、
+  /// 价格小数位由**品种自己**说（`SymbolInfo.priceDecimals`），和顶栏、图表、
   /// 复盘浮层同一个口径（审查 B-07）。原来这儿按数值大小现猜 2/4/5/7 位，
   /// 于是同一个价在这张列表里和在行情页头部能写成两种样子。
   ///

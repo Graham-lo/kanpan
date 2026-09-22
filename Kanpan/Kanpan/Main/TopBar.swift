@@ -236,7 +236,7 @@ struct PriceRow: View {
     }
   }
 
-  /// 价格的小数位由品种自己说（`pricePrecision`），极小的正价会自动多给几位，
+  /// 价格的小数位由品种自己说（`priceDecimals`，按 `tickSize` 推），极小的正价会自动多给几位，
   /// 绝不四舍五入成 `0.00`（审查 B-07，规则在 `fmtPrice`）。
   private var lastText: String {
     guard let p = lastPrice else { return "—" }

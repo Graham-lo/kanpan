@@ -1117,7 +1117,7 @@ struct FavoritesView: View {
     // 和 `row(_:first:)` 同一个判据（审查 B-06 / 复核项 4）。
     let stale = !model.listing(of: symbol).hasLivePrice
     let price = ticker?.last ?? .nan
-    // 小数位由品种自己说（`pricePrecision`）。目录里没有这个代号时走全 app 唯一那把
+    // 小数位由品种自己说（`priceDecimals`，按 `tickSize` 推）。目录里没有这个代号时走全 app 唯一那把
     // 梯子，不再在这一页写死 2 位（审查 B-07）。
     let decimals = info?.displayDecimals(for: price) ?? priceDecimalsFallback(price)
     let value: Double = stale ? .nan : (ticker?.changePercent ?? .nan)

@@ -49,7 +49,7 @@ import ReviewData
   /// 在复盘本里还写着 1/5。
   public var timezone: TZChoice = .exchange
 
-  /// 某个代号的价格小数位（`SymbolInfo.pricePrecision`），宿主从品种目录里接进来。
+  /// 某个代号的价格小数位（`SymbolInfo.priceDecimals`），宿主从品种目录里接进来。
   ///
   /// 查不到给 `nil`，那就按这口价自己猜（`priceDecimalsFallback`）。这个包看不见
   /// 品种目录，所以只留一个口子；不留的话就只能像原来那样「最多 8 位、能省就省」，

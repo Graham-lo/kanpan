@@ -1,0 +1,26 @@
+{
+  "checkedAt": "2026-09-22T04:47:11.859162+00:00",
+  "source": "https://fapi.binance.com/fapi/v1/exchangeInfo",
+  "symbols": [
+    {
+      "symbol": "SNDKUSDT",
+      "pricePrecision": 5,
+      "tickSize": "0.01000"
+    },
+    {
+      "symbol": "MUUSDT",
+      "pricePrecision": 5,
+      "tickSize": "0.01000"
+    },
+    {
+      "symbol": "1000SATSUSDT",
+      "pricePrecision": 8,
+      "tickSize": "0.00000001"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "pricePrecision": 2,
+      "tickSize": "0.10"
+    }
+  ]
+}
