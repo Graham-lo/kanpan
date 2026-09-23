@@ -78,9 +78,9 @@ import ReviewUI
     account.onPrepareAccount = { [weak self] user in guard let self else { return {} }; return try self.prepare(user) }
     account.onSynchronize = { [weak self] in self?.synchronize(manual: true) }
     account.onAutoSync = { [weak self] enabled in self?.setAutoSync(enabled) }
+    account.lastOwner = { [weak self] in self?.files.lastOwner }
     prefs.onChange = { [weak self] _ in self?.captureSettings() }
     symbols.onPrefsChange = { [weak self] _ in self?.captureSymbols() }
-    account.lastOwner = { [weak self] in self?.files.lastOwner }
     // 自选页停在哪一类，真身在 `Prefs.favoritesGroup`（跟着账号走）。`KanpanSymbols`
     // 看不见设置包，所以在这儿——两边都认识的地方——把读法接过去。加自选 / 新建分类 /
     // 删分类时「落单的成员进哪一类」要问它。
@@ -245,6 +245,16 @@ import ReviewUI
     let loadedAlerts = nextAlerts
     let nextReview = try ReviewStore(directory: directory)
     let nextSync = user == nil ? nil : try SyncStore(directory: directory)
+    // 体检 `prefs.json`（审查 17）。必须在下面任何一步写盘之前：这一段末尾会把整理好的
+    // 设置写回 `prefs.json`，之后再体检永远是 `.intact`。坏了 / 没了时照 `SettingsRecovery`
+    // 办：先找同步存档里本机上一次记下的那份，绝不拿出厂值当「本机刚改的」推上云端。
+    let profileOwner = user?.id.uuidString ?? ("guest:" + files.guestBatch.uuidString)
+    let verdict = prefs.diagnose(nextStorage, owner: profileOwner)
+    let archivedSettings = try nextSync.flatMap { sync in
+      try sync.archive.local[PersonalSyncCodec.settings(nextPrefs).key].flatMap { try? PersonalSyncCodec.apply($0, to: nextPrefs) }
+    }
+    let recovery = SettingsRecovery.plan(verdict, onDisk: nextPrefs, baseline: archivedSettings)
+    nextPrefs = recovery.prefs
     let claim = try user.flatMap { try files.claimGuest(user: $0.id) }
     if let claim {
       let guestStorage = try PersonalFileStorage(directory: claim.directory)
@@ -257,7 +267,9 @@ import ReviewUI
       // 并之前账号手上已经有的那几条：下面记导入批次时只记访客**新带来**的（见 `guestImport`）。
       let accountBefore = try PersonalSyncCodec.drawings(nextDrawings) + PersonalSyncCodec.symbols(nextSymbols) + PersonalSyncCodec.alerts(nextAlerts.alerts)
       var adopted = Set<String>()
-      if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("prefs.json").path) { nextPrefs = guestPrefs; adopted.insert("settings") }
+      // 档案坏了 / 被清了不是「这个号第一次在这台机器上登录」：那时访客那份不许顶上来
+      // （顶上来就会被当成导入推上云端，盖掉这个人自己的设置）。
+      if recovery.mayAdoptGuest, !FileManager.default.fileExists(atPath: directory.appendingPathComponent("prefs.json").path) { nextPrefs = guestPrefs; adopted.insert("settings") }
       for (key, values) in guestDrawings.bySymbol {
         let existing = Set(nextDrawings[key].map(\.id)); nextDrawings[key] += values.filter { !existing.contains($0.id) }
       }
@@ -416,7 +428,8 @@ import ReviewUI
       // 留着兜老档（装了脏标识之前就存在的那些安装，它们一个标识都没有）。
       let dirty = PrefsStore.storedStamp(in: nextStorage)?.isDirty ?? false
       let baseline = nextSync.archive.local[settings.key].flatMap { try? PersonalSyncCodec.apply($0, to: nextPrefs) }
-      if dirty || ChartLayoutReconcile.decide(onDisk: nextPrefs, baseline: baseline) == .recapture {
+      // 盘上那份不可信时一条操作都不记（`SettingsRecovery.Plan.mayCapture`）。
+      if recovery.mayCapture, dirty || ChartLayoutReconcile.decide(onDisk: nextPrefs, baseline: baseline) == .recapture {
         try nextSync.capture([settings], device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
       }
       nextSync.flushNow()
@@ -434,6 +447,8 @@ import ReviewUI
       // 那一步就已经挪过去了，这次半路失败之后 `Library/Caches` 下那几份按身份分目录的
       // 行情缓存会写进另一个人的目录（见 `AccountFiles.activate`）。
       files.activate(user: user?.id)
+      // 钥匙串读不动时的后备：记下这回装的是谁（只有身份，没有令牌）。
+      files.remember(owner: user)
       task?.cancel(); debounce?.cancel(); task = nil; taskID = UUID(); epoch = UUID(); gate.rotate(); gate.enter()
       onSwitch()
       owner = user?.id; personal = nextStorage; sync = nextSync
@@ -447,10 +462,8 @@ import ReviewUI
       //   人没换，只是**自己的档案晚到了 900ms**，这中间他捏的那一下得留着。
       // - `.some(uuid)`（上一个是某个真账号）：退登或换号，那是另一个人了，作废。
       let arrival: ChartLayoutArrival = (previouslyPrepared ?? nil) == nil ? .sameProfile : .ownerSwitched
-      prefs.useStorage(nextStorage, prefs: nextPrefs, arrival: arrival,
-                       owner: user?.id.uuidString ?? ("guest:" + files.guestBatch.uuidString))
-      // 钥匙串读不动时的后备：记下这回装的是谁（只有身份，没有令牌）。
-      files.remember(owner: user)
+      prefs.useStorage(nextStorage, prefs: nextPrefs, arrival: arrival, owner: profileOwner,
+                       verdict: verdict, keepsDirtyMarks: recovery.keepsDirtyMarks)
       symbols.useStorage(SymbolPrefsStore(storage: nextStorage), prefs: nextSymbols)
       drawings.useStorage(drawStore, archive: nextDrawings)
       alerts.useStorage(alertStore, archive: nextAlerts)

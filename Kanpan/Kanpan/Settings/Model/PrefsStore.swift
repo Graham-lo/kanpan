@@ -323,7 +323,8 @@ final class PrefsStore {
     onChange?(prefs)
   }
 
-  /// 服务端认掉了。**只有这一条路能清脏标识。**
+  /// 服务端认掉了。**正常情况下只有这一条路能清脏标识**；唯一的例外是档案坏了 / 没了、
+  /// 同步存档里也找不回那几个值的时候（`SettingsRecovery`：值已经丢了，标识护着的是空气）。
   ///
   /// - Parameters:
   ///   - pushed: 推上去那一刻的脏字段快照。只清「时刻没变的」那几个，推的过程中
@@ -379,6 +380,13 @@ final class PrefsStore {
     storage.prefsData(forKey: SettingsSentinel.storageKey).flatMap { try? JSONDecoder().decode(SettingsSentinel.self, from: $0) }
   }
 
+  /// 给某个柜子体检：里面那份 `prefs.json` 对 `owner` 来说是什么状况。
+  func diagnose(_ storage: any PrefsStorage, owner: String) -> SettingsCacheVerdict {
+    let archived = storage.prefsData(forKey: PrefsCodec.key)
+    return SettingsCacheDoctor.diagnose(archive: archived, readable: PrefsStore.isReadable(archived),
+                                        stamp: PrefsStore.storedStamp(in: storage), sentinel: sentinel, owner: owner)
+  }
+
   /// 这份字节解得开、字段齐不齐。解不开或者连版本号都没有就算「损坏 / 不完整」。
   static func isReadable(_ data: Data?) -> Bool {
     guard let data, !data.isEmpty,
@@ -394,19 +402,22 @@ final class PrefsStore {
   ///   立刻捏、300ms 后档案回来，那一捏会被无条件作废掉。
   /// - Parameter owner: 现在这份档案该是谁的（账号 id / 访客档案 id）。用来体检：
   ///   档案里记着别人的名字就当它不存在，**绝不能用**（防「B 登进来看到 A 的东西」）。
-  func useStorage(_ storage: any PrefsStorage, prefs: Prefs, arrival: ChartLayoutArrival, owner: String = "") {
+  /// - Parameter known: 调用方在**写盘之前**已经体检过的结论（`AppAccountBridge.prepare`
+  ///   在装档案前会把整理好的 `prefs.json` 写回去，到这儿再体检只会看到 `.intact`）。
+  ///   不传就在这儿现场体检。
+  /// - Parameter keepsDirtyMarks: 脏标识还作不作数（见 `SettingsRecovery.Plan`）。
+  func useStorage(_ storage: any PrefsStorage, prefs: Prefs, arrival: ChartLayoutArrival, owner: String = "",
+                  verdict known: SettingsCacheVerdict? = nil, keepsDirtyMarks: Bool = true) {
     // 先体检，再换手：诊断要看的是这个柜子里原来躺着什么。
-    let archived = storage.prefsData(forKey: PrefsCodec.key)
     let found = PrefsStore.storedStamp(in: storage)
-    verdict = SettingsCacheDoctor.diagnose(archive: archived, readable: PrefsStore.isReadable(archived),
-                                           stamp: found, sentinel: sentinel, owner: owner)
+    verdict = known ?? diagnose(storage, owner: owner)
     self.storage = storage; self.prefs = prefs
     switch verdict {
     case .ownerMismatch:
       // 上一个人留下的那份脏标识跟这个人没关系，从头记。
       stamp = .fresh(owner: owner)
     default:
-      stamp = found ?? .fresh(owner: owner)
+      stamp = (keepsDirtyMarks ? found : nil) ?? .fresh(owner: owner)
       stamp.owner = owner
     }
     storage.setPrefsData(PrefsCodec.encode(prefs), forKey: PrefsCodec.key)

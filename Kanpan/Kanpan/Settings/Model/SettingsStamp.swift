@@ -165,15 +165,63 @@ enum SettingsCacheVerdict: Equatable, Sendable {
   case firstRun
   /// 属主不符：档案在，但里面记的不是当前这个人。当它不存在，**绝不能用**。
   case ownerMismatch(expected: String, found: String)
-  /// 损坏 / 不完整：解不开或缺字段。回落云端，但**不许顺手清掉脏标记**，
-  /// 否则会把还没推上去的改动一起抹掉。
+  /// 损坏 / 不完整：解不开或缺字段。怎么恢复见 `SettingsRecovery`：同步存档里有本机
+  /// 上一次记下的那份就用它（脏标识照留——没推上去的改动就在那份里、操作还在队列里），
+  /// 没有才回落云端。
   case damaged
   /// 被清空：档案没了，哨兵还在。`unpushed` 为真时，本地曾有过没推上去的改动——
-  /// 这时候直接拉云端就是用户最痛的那个现象「我明明改了，等于没改」。
+  /// 这时候直接拉云端就是用户最痛的那个现象「我明明改了，等于没改」，所以恢复
+  /// 同样先找同步存档里那份（`SettingsRecovery`）。
   case wiped(unpushed: Bool)
 
   /// 这一路还能不能把本地那份当权威。
   var trustsLocal: Bool { self == .intact }
+  /// 盘上那份**不可信**：它要么解不开，要么已经没了，读出来的只是出厂值（或残片）。
+  /// 这时它绝不能被当成「用户刚改的」记成待发操作推上云端——那等于拿出厂值把
+  /// 这个人在所有设备上的设置抹平。
+  var localIsUnreliable: Bool {
+    switch self {
+    case .damaged, .wiped: true
+    case .intact, .firstRun, .ownerMismatch: false
+    }
+  }
+}
+
+/// 体检结论怎么落地（审查 17）。
+///
+/// 从前 `.damaged` / `.wiped` 只是算出来记在 `PrefsStore.verdict` 上，没有任何一处读它；
+/// 更糟的是，档案装进来之前 `AppAccountBridge.prepare` 已经把出厂值写回了 `prefs.json`，
+/// 于是 `useStorage` 再体检时看到的永远是 `.intact`。实际走的路是：盘上读出出厂值 →
+/// 和同步存档里那份一比「不一样」→ 记成待发操作 → 推上云端，把这个人所有设备上的
+/// 设置盖回出厂。这里把结论换成三条硬规矩，由 `prepare` 在写盘之前照办。
+enum SettingsRecovery {
+  struct Plan: Equatable {
+    /// 这次装哪份设置。
+    var prefs: Prefs
+    /// 能不能拿这份当「本机说了算」记成待发操作（脏标识 / `ChartLayoutReconcile` 那一步）。
+    var mayCapture: Bool
+    /// 脏标识还作不作数。
+    var keepsDirtyMarks: Bool
+    /// 首次登录认领访客档案时，能不能拿访客那份设置顶上来。
+    var mayAdoptGuest: Bool
+  }
+  /// - Parameters:
+  ///   - onDisk: 从 `prefs.json` 读出来的那份（坏了 / 没了时是出厂值或残片）。
+  ///   - baseline: 同步存档 `local` 里本机上一次记下的那份（没登录、没存档时 `nil`）。
+  static func plan(_ verdict: SettingsCacheVerdict, onDisk: Prefs, baseline: Prefs?) -> Plan {
+    guard verdict.localIsUnreliable else {
+      return Plan(prefs: onDisk, mayCapture: true, keepsDirtyMarks: true, mayAdoptGuest: true)
+    }
+    // 存档里有：本机最后一次改动（连同还没推上去的那几条）就在这份里，待发操作也还在
+    // 队列里——用它，脏标识照留，一条新操作都不记。
+    if let baseline {
+      return Plan(prefs: baseline, mayCapture: false, keepsDirtyMarks: true, mayAdoptGuest: false)
+    }
+    // 存档里也没有：本机这一半真的丢了，只能等云端那份拉回来。脏标识作废——它护着的
+    // 值已经不在了，留着只会让 `applySynced` 把那几个字段按「本地刚改过」挡在云端
+    // 之外，用户恰恰在自己改过的那几项上被钉死在出厂值。
+    return Plan(prefs: onDisk, mayCapture: false, keepsDirtyMarks: false, mayAdoptGuest: false)
+  }
 }
 
 enum SettingsCacheDoctor {
