@@ -13,7 +13,7 @@ use crate::{AppState,binance_gate,envelope,error::{ApiError,Result}};
 use axum::{Router,Json,extract::Query,routing::get,http::StatusCode};
 use serde::{Deserialize,Serialize};
 use serde_json::{Value,json};
-use std::collections::HashMap;
+use std::collections::{HashMap,HashSet};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -31,6 +31,9 @@ const COINGECKO_PAGES:u32=4;
 // with production data. Measured 2026-09-18 on both nodes.
 const BINANCE_OI:&str="https://www.binance.com/fapi/v1/openInterest?symbol=";
 const BINANCE_PRICES:&str="https://www.binance.com/fapi/v1/ticker/price";
+/// Coinbase 现货整表，带价格；只用来核对 CoinGecko 撞上的身份（P4.8）。一次最多
+/// 一千行，2026-09-23 整表 925 行。
+const COINBASE_SPOT:&str="https://api.coinbase.com/api/v3/brokerage/market/products?product_type=SPOT&limit=1000";
 // Binance's own contract list, read for one field: `underlyingType`. A third of
 // the perpetuals are not coins at all (equities, ETFs, metals, indices), and a
 // ticker like NVDA or META also names an unrelated altcoin, so without this the
@@ -87,7 +90,13 @@ pub struct Meta {pub total_supply:Option<f64>,pub circulating_supply:Option<f64>
  /// 分辨「币安自己就把 `1000SATS` 当成一个资产」和「CoinGecko 上有个叫这名字的
  /// 东西」，这两者一个是证据、一个是巧合。落盘快照里带着它，否则重启之后每一行都
  /// 退化成「没人认领」，`1000SATS` 就会被当成有歧义而留空。
- pub family:Option<Family>}
+ pub family:Option<Family>,
+ /// 这一行的上游在同一刻报的单价（美元）。**内部字段**，同 `family` 一样不进
+ /// [`Meta::value`]。只有 CoinGecko 那一族填它：CoinGecko 是按代号撞上的弱证据，
+ /// 同一个代号底下可能是另一个币（P4.8 普查：`1000000BOBUSDT` 撞上的是
+ /// bob-build-on-bitcoin，单价差了五个数量级）。拿它跟合约价一比，身份对不对一眼就
+ /// 看得出来，见 [`coingecko_verified`]。
+ pub price:Option<f64>}
 /// 一行供应量的身份是哪一族的口径认的。
 ///
 /// 币安自己的两个表（apex / product）用的是同一套资产代号，所以它们是同一族，
@@ -104,7 +113,10 @@ impl Meta {
  pub fn scaled(self,multiplier:f64)->Self {
   if !(multiplier.is_finite()&&multiplier>0.0) {return self}
   let by=|v:Option<f64>|v.map(|x|x/multiplier);
-  Self{total_supply:by(self.total_supply),circulating_supply:by(self.circulating_supply),max_supply:by(self.max_supply),rank:self.rank,family:self.family}
+  // 单价反过来乘：一张 `1000PEPE` 值一千个 PEPE。这样查出来的 `price` 总是「一张合约
+  // 该值多少」，可以直接跟合约价比。
+  Self{total_supply:by(self.total_supply),circulating_supply:by(self.circulating_supply),max_supply:by(self.max_supply),rank:self.rank,family:self.family,
+   price:self.price.map(|p|p*multiplier)}
  }
  pub fn value(&self)->Value {
   let mut out=serde_json::Map::new();
@@ -197,11 +209,21 @@ pub struct Market {
  pub kinds:HashMap<String,Kind>,
  /// 币的那张表是什么时候抓下来的。`None` = 不知道，于是一个都不发布。
  pub coins_at:Option<SystemTime>,
+ /// 供应量来自 CoinGecko、而且同一刻的单价跟这张合约（`1000PEPEUSDT`）或这个现货对
+ /// （`TON-USD`）的价格对得上的那些。CoinGecko 那一族的数字只有在这里面才出门：
+ /// 按代号撞上的可能是同名的另一个币，见 [`coingecko_verified`]。
+ pub coingecko_verified:HashSet<String>,
 }
 impl Market {
  /// 刚抓下来的一张表。
  pub fn fresh(coins:SupplyTable,equities:EquityTable,kinds:HashMap<String,Kind>)->Self {
-  Market{coins,equities,kinds,coins_at:Some(SystemTime::now())}
+  Market{coins,equities,kinds,coins_at:Some(SystemTime::now()),coingecko_verified:HashSet::new()}
+ }
+ /// 同上，带着这一轮核对过身份的 CoinGecko 行。
+ pub fn with_verified(mut self,verified:HashSet<String>)->Self {self.coingecko_verified=verified;self}
+ /// CoinGecko 那一族的数字，只有这个合约或现货对核对过身份才放行。
+ fn vouched(&self,key:&str,meta:Meta)->Option<Meta> {
+  (meta.family!=Some(Family::CoinGecko)||self.coingecko_verified.contains(key)).then_some(meta)
  }
  /// 币安没说这个合约写在什么上面时是 [`Kind::Unknown`]，不是「币」。
  ///
@@ -214,7 +236,7 @@ impl Market {
  pub fn meta(&self,symbol:&str)->Option<Meta> {
   match self.kind(symbol) {
    // 七天没刷成功的供应量不再出门：见 MAX_PUBLISH_AGE。
-   Kind::Crypto=>(!expired(self.coins_at)).then(||lookup(&self.coins,symbol)).flatten(),
+   Kind::Crypto=>(!expired(self.coins_at)).then(||lookup(&self.coins,symbol)).flatten().and_then(|meta|self.vouched(&plain(symbol),meta)),
    // A stock whose capitalisation we could not resolve stays blank. Falling
    // back to the coin table here is exactly the bug this split exists to
    // prevent: NVDAUSDT would report the market cap of an altcoin that happens
@@ -231,7 +253,7 @@ impl Market {
  /// 币的供应量表，和币安合约同一张表、同一条「七天没刷新就不出门」。
  pub fn spot_meta(&self,pair:&str)->Option<Meta> {
   let base=pair.strip_suffix("-USD").filter(|b|!b.is_empty()&&!b.contains('-'))?;
-  (!expired(self.coins_at)).then(||lookup(&self.coins,base)).flatten()
+  (!expired(self.coins_at)).then(||lookup(&self.coins,base)).flatten().and_then(|meta|self.vouched(pair,meta))
  }
 }
 
@@ -396,13 +418,21 @@ pub fn base_readings(symbol:&str)->Vec<String> {
 /// 读法之间仍然是「第一个对得上的赢」，这也是歧义对的解法：`USDTUSD` 可以读成
 /// USD/TUSD，但表里只有 USDT 这个资产。
 pub fn lookup(table:&SupplyTable,symbol:&str)->Option<Meta> {
- for name in base_readings(symbol) {
+ let readings=base_readings(symbol);
+ let binance=|meta:&&Meta|meta.family==Some(Family::Binance);
+ // 币安那一族先把所有读法走一遍，然后才轮到弱证据。「第一个对得上的赢」只在同一族
+ // 里成立：`AUSDT` 的第一种读法是整个符号，CoinGecko 上正好有个叫 AUSDT 的
+ // alloy-tether；而币安自己的表里认的是第二种读法 `A`（Vaulta）。按读法顺序走的话
+ // 弱证据先到先得，市值差了三十多倍（P4.8 普查）。
+ for name in &readings {
+  if let Some(meta)=table.get(name).filter(binance) {return Some(*meta)}
+  let (stripped_name,multiplier)=strip_multiplier(name);
+  if multiplier!=1.0 && let Some(meta)=table.get(stripped_name).filter(binance) {return Some(meta.scaled(multiplier))}
+ }
+ for name in readings {
   let original=table.get(&name);
   let (stripped_name,multiplier)=strip_multiplier(&name);
   let stripped=(multiplier!=1.0).then(||table.get(stripped_name)).flatten();
-  let binance=|meta:&&Meta|meta.family==Some(Family::Binance);
-  if let Some(meta)=original.filter(binance) {return Some(*meta)}
-  if let Some(meta)=stripped.filter(binance) {return Some(meta.scaled(multiplier))}
   match (original,stripped) {
    (Some(_),Some(_))=>return None,
    (Some(meta),None)=>return Some(*meta),
@@ -411,6 +441,40 @@ pub fn lookup(table:&SupplyTable,symbol:&str)->Option<Meta> {
   }
  }
  None
+}
+
+/// 哪些币合约、哪些现货对的 CoinGecko 身份经得起单价核对。
+///
+/// CoinGecko 那一族的身份是它自己的 `id`，跟币安、Coinbase 的代号只是碰巧同名（B-02）。
+/// 同一刻 CoinGecko 报的单价（已按打包倍数折成一张合约的价）和交易所的价差出 1.5 倍
+/// 以上，撞上的就不是这个币。2026-09-23 的普查（P4.8）里有四个这样的：
+/// `1000000BOBUSDT` 撞上 bob-build-on-bitcoin，单价差五个数量级，市值报成 66 美元，
+/// 真值八百多万；Coinbase 的 `TON-USD`、`UP-USD`、`INDEX-USD` 各撞上一个同名币。
+/// 阈值跟股票拆股同一把尺（[`unit_changed`]）：同一刻两家报价差五成不可能是行情。
+///
+/// 交易所价拿不到、或 CoinGecko 那行没有单价：身份无从核对，不放行——认不出身份的
+/// 数字不出门。币安那一族的行不需要这一关，它的代号就是身份。
+pub fn coingecko_verified(coins:&SupplyTable,contracts:&[Contract],prices:&HashMap<String,f64>,spot:&HashMap<String,f64>)->HashSet<String> {
+ let agrees=|meta:Meta,price:Option<&f64>|meta.family==Some(Family::CoinGecko)
+  && matches!((meta.price,price),(Some(bundle),Some(&price)) if !unit_changed(bundle,price));
+ let mut out=HashSet::new();
+ for contract in contracts.iter().filter(|c|c.kind==Kind::Crypto) {
+  if lookup(coins,&contract.symbol).is_some_and(|meta|agrees(meta,prices.get(&contract.symbol))) {out.insert(contract.symbol.clone());}
+ }
+ for (pair,price) in spot {
+  let Some(base)=pair.strip_suffix("-USD").filter(|b|!b.is_empty()&&!b.contains('-')) else {continue};
+  if lookup(coins,base).is_some_and(|meta|agrees(meta,Some(price))) {out.insert(pair.clone());}
+ }
+ out
+}
+/// Coinbase 现货整表（`/market/products?product_type=SPOT`）→ 在线的 USD 对的价格。
+pub fn parse_coinbase_spot(body:&Value)->HashMap<String,f64> {
+ let mut out=HashMap::new();
+ for row in body["products"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
+  if row["quote_currency_id"].as_str()!=Some("USD")||row["status"].as_str()!=Some("online")||row["is_disabled"].as_bool()==Some(true) {continue}
+  if let (Some(pair),Some(price))=(row["product_id"].as_str(),positive(&row["price"])) {out.insert(pair.to_ascii_uppercase(),price);}
+ }
+ out
 }
 
 // -------------------------------------------------------------------- parsing
@@ -445,6 +509,7 @@ fn merge_into(slot:&mut Meta,meta:&Meta) {
  slot.circulating_supply=slot.circulating_supply.or(meta.circulating_supply);
  slot.max_supply=slot.max_supply.or(meta.max_supply);
  slot.rank=slot.rank.or(meta.rank);
+ slot.price=slot.price.or(meta.price);
 }
 /// 把一个源的资产按身份收拢，再按代号索引。
 ///
@@ -498,7 +563,7 @@ pub fn parse_apex(body:&Value)->Vec<Asset> {
  for row in rows(body) {
   let Some(base)=row["baseAsset"].as_str() else {continue};
   let base=base.to_ascii_uppercase();
-  let meta=Meta{total_supply:positive(&row["totalSupply"]),circulating_supply:positive(&row["circulatingSupply"]),max_supply:positive(&row["maxSupply"]),rank:rank_of(&row["rank"]),family:Some(Family::Binance)};
+  let meta=Meta{total_supply:positive(&row["totalSupply"]),circulating_supply:positive(&row["circulatingSupply"]),max_supply:positive(&row["maxSupply"]),rank:rank_of(&row["rank"]),family:Some(Family::Binance),price:None};
   out.push(Asset{id:base.clone(),ticker:base,meta});
  }
  out
@@ -522,7 +587,7 @@ pub fn parse_coingecko(body:&Value)->Vec<Asset> {
  let mut out=Vec::new();
  for row in rows(body) {
   let (Some(id),Some(symbol))=(row["id"].as_str(),row["symbol"].as_str()) else {continue};
-  let meta=Meta{total_supply:positive(&row["total_supply"]),circulating_supply:positive(&row["circulating_supply"]),max_supply:positive(&row["max_supply"]),rank:rank_of(&row["market_cap_rank"]),family:Some(Family::CoinGecko)};
+  let meta=Meta{total_supply:positive(&row["total_supply"]),circulating_supply:positive(&row["circulating_supply"]),max_supply:positive(&row["max_supply"]),rank:rank_of(&row["market_cap_rank"]),family:Some(Family::CoinGecko),price:positive(&row["current_price"])};
   out.push(Asset{id:id.to_ascii_lowercase(),ticker:symbol.to_ascii_uppercase(),meta});
  }
  out
@@ -878,9 +943,12 @@ impl Source for Upstream {
 }
 
 /// 落盘快照的版本号。表的结构变了就换这个数，旧文件会被当成「没有快照」。
-const SNAPSHOT_VERSION:u32=2;
+// 3：多了 `coingecko_verified`（P4.8）。旧快照里的 CoinGecko 行没核对过身份。
+const SNAPSHOT_VERSION:u32=3;
 #[derive(Serialize,Deserialize)]
 struct Snapshot {version:u32,coins:SupplyTable,equities:EquityTable,kinds:HashMap<String,Kind>,
+ /// 核对过 CoinGecko 身份的合约与现货对，跟币表一起刷新、一起落盘。
+ #[serde(default)] coingecko_verified:HashSet<String>,
  /// 币那张表是什么时候抓的。快照里必须带着它，否则重启就等于把所有年龄清零，
  /// 七天上限会被一次重启绕过去（B-03）。
  #[serde(default)] coins_at:Option<SystemTime>}
@@ -1025,10 +1093,23 @@ impl Supply {
   // ——那是上百次请求，每次之间还隔着 LISTING_GAP。此刻分类已经在表里，所以
   // 一只还没定价的股票答的是空，而不是同名币种的供应量；NVDAUSDT 报出某个
   // 叫 NVDA 的山寨币的市值，正是这个拆分存在的理由。
-  self.publish(Market::fresh(coins.clone(),carried.clone(),kinds.clone()));
+  // 币那一半发布之前先核对 CoinGecko 撞上的身份：币安合约价、Coinbase 现货价各一次
+  // 请求。这一轮合约表没答时沿用上一轮核对过的；价格表没答时那一边一个都放行不了。
+  let verified=if contracts.is_empty() {old.map(|m|m.coingecko_verified.clone()).unwrap_or_default()} else {
+   let prices=match self.source.json(BINANCE_PRICES).await {
+    Ok(body)=>parse_binance_prices(&body),
+    Err(_)=>{tracing::warn!("Supply: contract prices unavailable; CoinGecko identities stay unverified");HashMap::new()}
+   };
+   let spot=match self.source.json(COINBASE_SPOT).await {
+    Ok(body)=>parse_coinbase_spot(&body),
+    Err(_)=>{tracing::warn!("Supply: Coinbase spot prices unavailable; CoinGecko identities of spot pairs stay unverified");HashMap::new()}
+   };
+   coingecko_verified(&coins,&contracts,&prices,&spot)
+  };
+  self.publish(Market::fresh(coins.clone(),carried.clone(),kinds.clone()).with_verified(verified.clone()));
   let equities=if contracts.is_empty() {carried} else {refresh_equities(self.source.as_ref(),&contracts,old.map(|m|&m.equities)).await};
   tracing::info!("Supply table refreshed: {} coins, {} equities priced, {} contracts classified",coins.len(),equities.len(),kinds.len());
-  let table=self.publish(Market::fresh(coins,equities,kinds));
+  let table=self.publish(Market::fresh(coins,equities,kinds).with_verified(verified));
   // 只有这一轮真的问到了合约分类才留快照：存一份分不出股票和币的表，等于让
   // 下次启动从一张会报错数的表开始。
   if !contracts.is_empty() {self.save(table.clone()).await}
@@ -1058,7 +1139,7 @@ impl Supply {
   // （不该发生）就当不知道年龄，于是币那一半一个都不发布，等这一轮刷新填上。
   let coins_at=snapshot.coins_at;
   if coins_at.is_none() {tracing::warn!("Supply snapshot carries no time; the coin half stays blank until the next refresh")}
-  self.cache.store_stale(Market{coins:snapshot.coins,equities:snapshot.equities,kinds:snapshot.kinds,coins_at},SUPPLY_TTL);
+  self.cache.store_stale(Market{coins:snapshot.coins,equities:snapshot.equities,kinds:snapshot.kinds,coins_at,coingecko_verified:snapshot.coingecko_verified},SUPPLY_TTL);
   true
  }
  /// 写快照。先写临时文件再改名：断电或被杀时留下的要么是上一份完整快照、要么
@@ -1066,7 +1147,7 @@ impl Supply {
  async fn save(&self,table:Arc<Market>) {
   let Some(path)=self.snapshot.clone() else {return};
   let _=tokio::task::spawn_blocking(move||{
-   let snapshot=Snapshot{version:SNAPSHOT_VERSION,coins:table.coins.clone(),equities:table.equities.clone(),kinds:table.kinds.clone(),coins_at:table.coins_at};
+   let snapshot=Snapshot{version:SNAPSHOT_VERSION,coins:table.coins.clone(),equities:table.equities.clone(),kinds:table.kinds.clone(),coins_at:table.coins_at,coingecko_verified:table.coingecko_verified.clone()};
    let Ok(payload)=serde_json::to_vec(&snapshot) else {return};
    let temporary=path.with_extension(format!("tmp{}",std::process::id()));
    if std::fs::write(&temporary,&payload).is_err()||std::fs::rename(&temporary,&path).is_err() {
@@ -1146,7 +1227,7 @@ mod tests {
 
  fn table(pairs:&[(&str,Meta)])->SupplyTable {pairs.iter().map(|(k,v)|((*k).to_owned(),*v)).collect()}
  /// 币安自己认领的一行：它的身份是证据，剥前缀的判断要靠它。
- fn supply(total:f64)->Meta {Meta{total_supply:Some(total),circulating_supply:Some(total),max_supply:None,rank:None,family:Some(Family::Binance)}}
+ fn supply(total:f64)->Meta {Meta{total_supply:Some(total),circulating_supply:Some(total),max_supply:None,rank:None,family:Some(Family::Binance),price:None}}
  /// CoinGecko 那一族的一行：同样的数字，但身份是弱的。
  fn weak(total:f64)->Meta {Meta{family:Some(Family::CoinGecko),..supply(total)}}
  /// 一张币表，外加「这些合约写的确实是币」这句声明。没有声明就是 Unknown，
@@ -1164,13 +1245,58 @@ mod tests {
  /// 只有币安那一族的表，合出来给 lookup 用。
  fn binance_table(body:&Value)->SupplyTable {merge_assets(&parse_apex(body),&[])}
 
+ /// P4.8 普查（2026-09-23）里的 `AUSDT`：第一种读法（整个符号）只在 CoinGecko 上撞到
+ /// alloy-tether，第二种读法 `A` 是币安自己认的 Vaulta。币安那一族要先把所有读法走完。
+ #[test]
+ fn a_binance_identity_on_a_later_reading_beats_a_weak_one_on_an_earlier_reading() {
+  let t=table(&[("AUSDT",weak(50_000_000.0)),("A",supply(1_727_008_173.0))]);
+  assert_eq!(lookup(&t,"AUSDT").and_then(|m|m.total_supply),Some(1_727_008_173.0));
+  // 只有弱证据时照旧按读法顺序：第一种读法赢。
+  let weak_only=table(&[("AUSDT",weak(50_000_000.0)),("A",weak(1.0))]);
+  assert_eq!(lookup(&weak_only,"AUSDT").and_then(|m|m.total_supply),Some(50_000_000.0));
+ }
+ /// P4.8 普查里的 `1000000BOBUSDT`：CoinGecko 前一千名里叫 BOB 的是 bob-build-on-bitcoin
+ /// （单价 0.0057），币安这张合约是一百万个 BNB 链上的 BOB（一张 0.0199，一个 2e-8）。
+ /// 按一张合约折算，单价差五个数量级，市值报成 66 美元——身份错了，留空。
+ #[test]
+ fn a_coingecko_identity_is_published_only_when_the_exchange_price_agrees() {
+  let cg=|price:f64|Meta{family:Some(Family::CoinGecko),price:Some(price),..supply(21_000_000.0)};
+  let coins=table(&[("BOB",cg(0.005_717_32)),("ZEC",cg(51.0)),("NOPRICE",Meta{price:None,..cg(1.0)}),("BTC",supply(19_800_000.0))]);
+  let contracts=vec![
+   Contract{symbol:"1000000BOBUSDT".into(),base:"1000000BOB".into(),kind:Kind::Crypto},
+   Contract{symbol:"ZECUSDT".into(),base:"ZEC".into(),kind:Kind::Crypto},
+   Contract{symbol:"NOPRICEUSDT".into(),base:"NOPRICE".into(),kind:Kind::Crypto},
+   Contract{symbol:"UNLISTEDUSDT".into(),base:"UNLISTED".into(),kind:Kind::Crypto},
+   Contract{symbol:"BTCUSDT".into(),base:"BTC".into(),kind:Kind::Crypto}];
+  let prices:HashMap<String,f64>=[("1000000BOBUSDT",0.019_88),("ZECUSDT",52.3),("NOPRICEUSDT",1.0),("UNLISTEDUSDT",1.0),("BTCUSDT",1.0)]
+   .into_iter().map(|(k,v)|(k.to_owned(),v)).collect();
+  // Coinbase 的 TON-USD：CoinGecko 撞上的是 tokamak-network（0.37），现货价 1.44。
+  let coins={let mut c=coins;c.insert("TON".into(),cg(0.371_415));c};
+  let spot:HashMap<String,f64>=[("TON-USD",1.4404),("ZEC-USD",52.2),("BTC-USD",85_465.0)].into_iter().map(|(k,v)|(k.to_owned(),v)).collect();
+  let verified=coingecko_verified(&coins,&contracts,&prices,&spot);
+  // 只有价格对得上的 ZEC 放行；币安自己的表（BTC）不需要核对，也就不在集合里。
+  assert_eq!(verified,["ZECUSDT","ZEC-USD"].into_iter().map(str::to_owned).collect::<HashSet<_>>());
+  // 价格整张缺席：CoinGecko 那一族一个都核对不了。
+  assert!(coingecko_verified(&coins,&contracts,&HashMap::new(),&HashMap::new()).is_empty());
+  let kinds=kinds_of(&contracts);
+  let m=Market::fresh(coins,EquityTable::new(),kinds).with_verified(verified);
+  assert_eq!(m.meta("1000000BOBUSDT"),None);
+  assert_eq!(m.meta("NOPRICEUSDT"),None,"没有单价可比的也留空");
+  assert_eq!(m.spot_meta("TON-USD"),None);
+  assert!(m.spot_meta("ZEC-USD").is_some());
+  assert!(m.spot_meta("BTC-USD").is_some());
+  assert_eq!(m.meta("ZECUSDT").and_then(|meta|meta.total_supply),Some(21_000_000.0));
+  assert!(m.meta("BTCUSDT").is_some());
+  // 单价是内部字段，出门的 JSON 里没有它。
+  assert!(m.meta("ZECUSDT").unwrap().value().get("price").is_none());
+ }
  #[test]
  fn apex_rows_parse_and_an_absent_cap_means_unknown() {
   let body=json!({"code":"000000","success":true,"data":[
    {"symbol":"BTCUSDT","baseAsset":"BTC","quoteAsset":"USDT","circulatingSupply":19_800_000.0,"totalSupply":19_800_000.0,"maxSupply":21_000_000.0,"rank":1},
    {"symbol":"ETHUSDT","baseAsset":"ETH","quoteAsset":"USDT","circulatingSupply":"120500000","totalSupply":"120500000","maxSupply":null,"rank":"2"}]});
   let t=binance_table(&body);
-  assert_eq!(t["BTC"],Meta{total_supply:Some(19_800_000.0),circulating_supply:Some(19_800_000.0),max_supply:Some(21_000_000.0),rank:Some(1),family:Some(Family::Binance)});
+  assert_eq!(t["BTC"],Meta{total_supply:Some(19_800_000.0),circulating_supply:Some(19_800_000.0),max_supply:Some(21_000_000.0),rank:Some(1),family:Some(Family::Binance),price:None});
   assert_eq!(t["ETH"].max_supply,None);
   assert_eq!(t["ETH"].rank,Some(2));
  }
@@ -1472,18 +1598,18 @@ mod tests {
   let day=Duration::from_secs(24*60*60);
   let equities:EquityTable=[
    ("NVDAUSDT".to_owned(),aged(24_100_000_000.0,180.0,6*day))].into_iter().collect();
-  let fresh=Market{coins:coins.clone(),equities:equities.clone(),kinds:kinds.clone(),coins_at:Some(SystemTime::now()-6*day)};
+  let fresh=Market{coins:coins.clone(),equities:equities.clone(),kinds:kinds.clone(),coins_at:Some(SystemTime::now()-6*day),..Market::default()};
   assert!(fresh.meta("BTCUSDT").is_some(),"六天大的表照常发布");
   assert!(fresh.meta("NVDAUSDT").is_some());
 
   let stale=Market{coins:coins.clone(),equities:[("NVDAUSDT".to_owned(),aged(24_100_000_000.0,180.0,8*day))].into_iter().collect(),
-   kinds:kinds.clone(),coins_at:Some(SystemTime::now()-8*day)};
+   kinds:kinds.clone(),coins_at:Some(SystemTime::now()-8*day),..Market::default()};
   assert_eq!(stale.meta("BTCUSDT"),None,"八天没刷成功的供应量不再出门");
   assert_eq!(stale.meta("NVDAUSDT"),None,"股票乘数同一把尺子");
   // 表还在缓存里——留着是为了下一轮刷新有底可依，只是不发布。
   assert!(stale.coins.contains_key("BTC"));
   // 不知道年龄跟过期一样处理。
-  let ageless=Market{coins,equities,kinds,coins_at:None};
+  let ageless=Market{coins,equities,kinds,coins_at:None,..Market::default()};
   assert_eq!(ageless.meta("BTCUSDT"),None);
   assert!(!expired(Some(SystemTime::now()+Duration::from_secs(60))),"机器对时不算数据变旧");
  }
@@ -1742,6 +1868,28 @@ mod tests {
   assert_eq!(fake.hits(APEX),1,"整张表只被抓了一遍，请求没有自己再抓一次");
   assert_eq!(fake.hits(EXCHANGE_INFO),1);
   assert_eq!(fake.hits(&stock_page()),1,"股票页面也没有被抓两遍");
+ }
+
+ /// P4.8：刷新这一轮就把 CoinGecko 撞错身份的合约认出来，币的那一半第一次发布时
+ /// 就已经留空，不会先答一轮错数。
+ #[tokio::test]
+ async fn the_refresh_blanks_a_coingecko_identity_the_contract_price_refutes() {
+  let mut bodies=fake_upstream().bodies;
+  bodies.insert(format!("{COINGECKO}1"),json!([
+   {"id":"bob-build-on-bitcoin","symbol":"bob","current_price":0.005_717_32,"circulating_supply":3_000_000_000.0,"total_supply":10_000_000_000.0,"market_cap_rank":942},
+   {"id":"zcash","symbol":"zec","current_price":51.0,"circulating_supply":16_000_000.0,"total_supply":21_000_000.0,"market_cap_rank":80}]));
+  bodies.insert(EXCHANGE_INFO.to_owned(),json!({"symbols":[
+   {"symbol":"BTCUSDT","baseAsset":"BTC","underlyingType":"COIN"},
+   {"symbol":"1000000BOBUSDT","baseAsset":"1000000BOB","underlyingType":"COIN"},
+   {"symbol":"ZECUSDT","baseAsset":"ZEC","underlyingType":"COIN"},
+   {"symbol":"NVDAUSDT","baseAsset":"NVDA","underlyingType":"EQUITY"}]}));
+  bodies.insert(BINANCE_PRICES.to_owned(),json!([{"symbol":"NVDAUSDT","price":"180.0"},{"symbol":"1000000BOBUSDT","price":"0.01988"},{"symbol":"ZECUSDT","price":"52.3"}]));
+  let fake=Arc::new(Fake::new(bodies));
+  let supply=instance(fake.clone(),None);
+  let table=supply.table().await.expect("table");
+  assert_eq!(table.meta("1000000BOBUSDT"),None,"撞错身份的留空");
+  assert_eq!(table.meta("ZECUSDT").and_then(|m|m.circulating_supply),Some(16_000_000.0),"价格对得上的照常");
+  assert!(table.meta("BTCUSDT").is_some());
  }
 
  #[tokio::test]
