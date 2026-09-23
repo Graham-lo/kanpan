@@ -44,6 +44,7 @@ final class ToastCenter {
     let mine = serial
     action = undo
     installIfNeeded()
+    window?.isHidden = false
     withAnimation(.easeOut(duration: 0.18)) {
       line = Line(serial: mine, text: text, actionTitle: actionTitle, hasAction: undo != nil)
     }
@@ -65,7 +66,12 @@ final class ToastCenter {
   func dismiss() {
     action = nil
     hitRect = .null
-    withAnimation(.easeOut(duration: 0.22)) { line = nil }
+    // 收完就把窗藏起来：一扇常驻的全屏窗哪怕是透明的，也会被系统当成「最上面那扇」
+    // 去问转屏和状态栏——没话说的时候它不该在场。
+    withAnimation(.easeOut(duration: 0.22)) { line = nil } completion: { [weak self] in
+      guard let self, self.line == nil else { return }
+      self.window?.isHidden = true
+    }
   }
 
   // ---------------------------------------------------------------- 窗口
@@ -111,7 +117,10 @@ private final class ToastHostController: UIHostingController<ToastStage> {
 
   override var preferredStatusBarStyle: UIStatusBarStyle { main?.preferredStatusBarStyle ?? .default }
   override var prefersStatusBarHidden: Bool { main?.prefersStatusBarHidden ?? false }
-  override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .all }
+  override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+    main?.supportedInterfaceOrientations ?? .allButUpsideDown
+  }
+  override var shouldAutorotate: Bool { main?.shouldAutorotate ?? true }
 }
 
 /// 窗口里唯一的内容：底下那条提示。位置和原来宿主上那条一样（离底 92pt，让开底栏）。
