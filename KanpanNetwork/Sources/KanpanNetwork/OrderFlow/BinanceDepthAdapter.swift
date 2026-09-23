@@ -122,4 +122,5 @@ public struct DepthSnapshotError: Error, Sendable, Equatable {
   public var status: Int
   public var retryAfterMs: Double?
   public var isClientError: Bool { (400..<500).contains(status) && status != 429 && status != 418 }
+  public init(status: Int, retryAfterMs: Double? = nil) { self.status = status; self.retryAfterMs = retryAfterMs }
 }

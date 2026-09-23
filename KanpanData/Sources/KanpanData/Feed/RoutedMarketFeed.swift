@@ -40,6 +40,8 @@ public actor RoutedMarketFeed {
   private var interval: Interval = .h1
   private var takerEnabled = false
   private var depthEnabled = false
+  /// 主力订单流（`OrderFlowSlot` / `OrderFlowFeed`）。
+  private var orderFlow = OrderFlowSlot()
   private var snapshots = true
   private var foreground = true
   private var announcingSwitch = false
@@ -154,6 +156,24 @@ public actor RoutedMarketFeed {
     let micro = activeProvider?.capabilities.hasMicrostructure == true
     await feed?.setMicrostructure(taker: micro && taker, depth: micro && depth)
   }
+  /// 主力订单流开关。簿订阅不在这里发：要等当前品种的 K 线交给界面之后（见 `forward`）。
+  public func setOrderFlow(enabled: Bool, tick: @escaping @Sendable (String) -> Double?) {
+    orderFlow.enabled = enabled; orderFlow.tick = tick
+    if enabled { startOrderFlow() } else { stopOrderFlow(forgetChart: false) }
+  }
+  private func startOrderFlow() {
+    guard orderFlow.start(symbol: symbol, foreground: foreground, provider: activeProvider, paths: paths, log: log,
+                          publish: { [weak self] token, frame in await self?.publishOrderFlow(frame, token: token) })
+    else { return }
+    continuation?.yield(FeedUpdate(selection: selection, event: .orderFlow(.loading(symbol))))
+  }
+  private func stopOrderFlow(forgetChart: Bool) {
+    if orderFlow.stop(forgetChart: forgetChart) { continuation?.yield(FeedUpdate(selection: selection, event: .orderFlow(nil))) }
+  }
+  private func publishOrderFlow(_ frame: OrderFlowSnapshot, token: UUID) {
+    guard orderFlow.accept(frame, token: token, symbol: symbol) else { return }
+    continuation?.yield(FeedUpdate(selection: selection, event: .orderFlow(frame)))
+  }
   public func setSnapshotEnabled(_ enabled: Bool) async {
     snapshots = enabled
     await feed?.setSnapshotEnabled(enabled)
@@ -176,7 +196,12 @@ public actor RoutedMarketFeed {
     guard !Task.isCancelled else { return }
     freshHistory = false; pendingStatus = .offline
     pendingHistoryError = nil; historyBoundary = nil; seriesStart = nil; historyRetry = .distantPast
+    let sameSymbol = InstrumentID.canonical(symbol) == self.symbol
     self.symbol = InstrumentID.canonical(symbol); self.interval = interval; self.selection = selection
+    // 主力订单流：换品种就清簿；只换周期时把最后一帧补给新的 selection。
+    if !sameSymbol { stopOrderFlow(forgetChart: true) } else if let last = orderFlow.last {
+      continuation?.yield(FeedUpdate(selection: selection, event: .orderFlow(last)))
+    }
     monitor?.cancel()
     // 同一个提供者（同一家、同一条上游、同一条线路）就只换订阅；换到另一家交易所的品种要整份换 feed：
     // 一份 feed 永远只接一家的数据，不在同一条连接里混源。
@@ -191,6 +216,7 @@ public actor RoutedMarketFeed {
   private func activate(coldStart: Bool = false) async {
     let request = selection; let generation = UUID(); route = generation
     pump?.cancel()
+    stopOrderFlow(forgetChart: true)  // 换了提供者，深度流也要换那一家的
     // 先把旧的那份摘下来再去停它。`stop()` 要等落盘和一次 WS 收尾，这中间进来的
     // `switchTo` 看到 `feed` 还在，就会把「切品种」交给一份正在被拆掉的 feed，
     // 那一笔切换从此没有下文。
@@ -293,6 +319,10 @@ public actor RoutedMarketFeed {
     }
     continuation?.yield(update)
     settleRoute()
+    // 当前品种的 K 线刚交给界面：这之后才订簿，不跟首屏抢。
+    if case .series(let series) = update.event, series.count >= 3, orderFlow.chartReady != symbol {
+      orderFlow.chartReady = symbol; startOrderFlow()
+    }
   }
   /// 新线路的历史和实时都到齐了：收掉「切换中」的提示。
   ///
@@ -570,8 +600,10 @@ public actor RoutedMarketFeed {
     await feed?.networkChanged(online: online)
     if online { startMonitoring() } else { monitor?.cancel() }
   }
-  public func enterBackground() async { foreground = false; monitor?.cancel(); await feed?.enterBackground() }
-  public func enterForeground() async { foreground = true; await feed?.enterForeground(); startMonitoring() }
+  public func enterBackground() async {
+    foreground = false; monitor?.cancel(); stopOrderFlow(forgetChart: false); await feed?.enterBackground()
+  }
+  public func enterForeground() async { foreground = true; await feed?.enterForeground(); startMonitoring(); startOrderFlow() }
   public func memoryWarning() async { await feed?.memoryWarning() }
 
   // ---------------------------------------------------------------- 测试缝
@@ -583,6 +615,7 @@ public actor RoutedMarketFeed {
     selection = UUID(); route = UUID(); monitor?.cancel(); pump?.cancel()
     prefetchTask?.cancel(); warmTask?.cancel(); listPrefetchTask?.cancel()
     prewarmTasks.values.forEach { $0.cancel() }; prewarmTasks = [:]
+    stopOrderFlow(forgetChart: true)
     await feed?.stop(); feed = nil; continuation?.finish(); continuation = nil
   }
 }

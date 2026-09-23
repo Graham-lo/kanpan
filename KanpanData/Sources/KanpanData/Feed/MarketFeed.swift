@@ -20,6 +20,8 @@ public enum FeedEvent: Sendable {
   case oi([OIPoint])
   case takerTail(OIPoint?)
   case depth(OrderBook?)
+  /// 主力订单流（`OrderFlowFeed`）：此刻的大单集合；nil = 关了 / 换了品种，清掉。
+  case orderFlow(OrderFlowSnapshot?)
   case status(FeedStatus)
 }
 

@@ -495,6 +495,8 @@ final class MarketModel {
       if snapshot == nil || (snapshot?.symbol == symbol && (snapshot?.time ?? 0) >= (depth?.time ?? 0)) {
         depth = snapshot
       }
+    case .orderFlow:
+      break                                   // 主力订单流：App 步接到图表
     case .oi:
       break                                   // 副图 OI 由指标层自己取
     case .status(let s):
