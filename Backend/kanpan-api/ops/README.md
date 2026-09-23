@@ -8,13 +8,15 @@
 
 ```sh
 ssh orderflow-vps
-sudo bash -c 'set -a; . /etc/kanpan-api/service.env; set +a; /opt/kanpan-api/target/release/kanpan-api reset-password <用户名>'
+systemd-run --quiet --pipe --wait --collect -p DynamicUser=yes \
+  -p EnvironmentFile=/etc/kanpan-api/service.env \
+  /opt/kanpan-api/target/release/kanpan-api reset-password <用户名>
 ```
 
 - 标准输出只有一行：新的一次性密码（14 位，不含 0/O/1/l/I 这类易混字符）。把它私下发给本人，让他登录后在「账号」里改掉。
 - 同时会做两件事：吊销这个人**所有设备**上的会话（原因记作 `password_change`，和用户自己改密码同一类，旧设备下一次请求就回 401、回到登录页），并清掉该用户名的登录失败锁定。
-- 用户名不存在或已停用时，退出码非 0，输出 `reset-password failed: unknown_username`，库里什么都不改。
-- 必须用 `service.env` 里的运行时角色（`kanpan_app`）跑：程序开头会拒绝超级用户或 BYPASSRLS 角色，和 `serve` 同一道闸。不用停服务，线上照常。
+- 用户名不存在或已停用时，退出码非 0，标准错误输出 `Error: reset-password failed: unknown_username`，库里什么都不改。
+- 和 `kanpan-api.service` 同样的环境文件、同样的动态非特权用户：程序开头会拒绝超级用户或 BYPASSRLS 角色，和 `serve` 同一道闸。不用停服务，线上照常。2026-09-23 已在线上实跑过：`qa_export_cli*` 测试账号重置成功；不存在的用户名退出码 1、库里不变。
 
 ## 导出一个人的数据
 
