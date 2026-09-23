@@ -6,6 +6,7 @@ public struct ReviewBook: View {
   @Bindable var feature: ReviewFeature
   @Environment(\.reviewTheme) private var t
   @State private var filter = ""
+  @State private var savedOpen = false
   public init(feature: ReviewFeature) { self.feature = feature }
   public var body: some View {
     NavigationStack {
@@ -73,7 +74,8 @@ public struct ReviewBook: View {
           Button { feature.bookOpen = false; feature.onCapture() } label: { Image(systemName: "plus") }.accessibilityLabel("记一笔")
           // 不常用的去处收在「…」里：现在只有「已存案例」一样。
           Menu {
-            NavigationLink { ReviewSavedMatchesView(feature: feature) } label: { Label("已存案例", systemImage: "bookmark") }
+            // Menu 里直接放 NavigationLink 在 iOS 26 上一点就崩；菜单只翻开关，推页交给下面的 destination。
+            Button { savedOpen = true } label: { Label("已存案例", systemImage: "bookmark") }
               .accessibilityIdentifier("review.menu.saved")
           } label: { Image(systemName: "ellipsis.circle") }
             .accessibilityLabel("更多")
@@ -83,6 +85,7 @@ public struct ReviewBook: View {
       // 「已记下 · 查看」、图上点记号都先把 id 放进 `selectedRecord` 再开复盘本（§2F2），
       // 这一行负责把它翻到那条上。列表里正常点进去走的还是 `NavigationLink`，
       // 两条路互不干扰；退回列表时把 id 清掉，免得下次开复盘本又自己弹进去。
+      .navigationDestination(isPresented: $savedOpen) { ReviewSavedMatchesView(feature: feature) }
       .navigationDestination(item: $feature.selectedRecord) { id in
         ReviewRecordView(feature: feature, id: id)
       }
@@ -318,9 +321,9 @@ public struct ReviewRecordView: View {
           if feature.isConnected { ReviewAttachmentsSection(feature: feature, record: record) }
           Section("市场的答案") { Text(record.outcome.title).foregroundStyle(t.ink); if let result = record.assessment { Text(result.reason).font(.caption).foregroundStyle(t.ink3) } }
             .listRowBackground(t.raised)
-          Section("现在怎么看") { TextField("当时的判断，哪些成立", text: $note, axis: .vertical).lineLimit(3...8) }
+          Section("现在怎么看") { TextField("当时的判断，哪些成立", text: $note, axis: .vertical).lineLimit(3...8).accessibilityIdentifier("review.note") }
             .listRowBackground(t.raised)
-          Section("下次怎么做") { TextField("同样的局面再来，改哪儿", text: $nextTime, axis: .vertical).lineLimit(2...6) }
+          Section("下次怎么做") { TextField("同样的局面再来，改哪儿", text: $nextTime, axis: .vertical).lineLimit(2...6).accessibilityIdentifier("review.nextTime") }
             .listRowBackground(t.raised)
           Section {
             Button("保存草稿") { feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) }

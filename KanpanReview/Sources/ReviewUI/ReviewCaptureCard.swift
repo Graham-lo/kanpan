@@ -96,7 +96,8 @@ public struct ReviewCaptureCard: View {
     let lastOpen = draft.range.end - step
     func date(_ ms: Int64) -> Date { Date(timeIntervalSince1970: Double(ms) / 1000) }
     func ms(_ d: Date) -> Int64 { Int64((d.timeIntervalSince1970 * 1000).rounded()) }
-    return HStack(spacing: 8) {
+    // 上下两行：并排放两颗「日期 + 时刻」会比竖屏宽，把整张卡撑出屏幕。
+    return VStack(alignment: .leading, spacing: 6) {
       DatePicker("起", selection: Binding(get: { date(draft.range.start) }, set: {
         guard let value = feature.draft else { return }
         feature.editRange(start: ms($0), end: value.range.end)

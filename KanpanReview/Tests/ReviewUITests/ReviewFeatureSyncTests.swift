@@ -47,8 +47,21 @@ import ReviewData
   /// 收到的那几张图（记录 id → 字节）。
   private(set) var shots: [UUID: Data] = [:]
 
+  /// 为真时，拉列表的请求停在门口，直到测试放行（用来卡住「队列已清空、正在拉列表」那一段）。
+  var holdList = false
+  /// 有一次拉列表正停在门口。
+  private(set) var listWaiting = false
+
   var transport: ScorebookClient.Transport {
-    { [self] path, method, body, key in try await self.respond(path, method, body, key) }
+    { [self] path, method, body, key in try await self.gated(path, method, body, key) }
+  }
+
+  func gated(_ path: String, _ method: String, _ body: Data?, _ key: UUID?) async throws -> Data {
+    if method == "GET", path.split(separator: "?")[0] == "v1/native-review/records" {
+      while holdList { listWaiting = true; try await Task.sleep(for: .milliseconds(5)) }
+      listWaiting = false
+    }
+    return try respond(path, method, body, key)
   }
 
   func respond(_ path: String, _ method: String, _ body: Data?, _ key: UUID?) throws -> Data {
@@ -611,5 +624,34 @@ final class ReviewFeatureSyncTests: XCTestCase {
       try? await Task.sleep(for: .milliseconds(10))
     }
     XCTAssertTrue(server.paths.contains { $0.contains("/void") }, "窗口过了作废还没发出去")
+  }
+
+  // MARK: - P3.7：同步正在拉列表时点了「完成复盘」，这一轮收尾要再跑一轮把它发出去
+
+  @MainActor func testReflectionSavedWhileListingIsSentByAFollowUpRun() async throws {
+    let directory = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let server = FakeReviewServer()
+    var mine = ReviewRecord(draft: validDraft())
+    mine.serverId = mine.id; mine.revision = 1
+    server.records = [mine.id: mine]; server.page0 = [mine.id]
+
+    let feature = ReviewFeature(directory: directory)
+    let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
+    try store.transaction { $0.records = [mine] }
+    feature.activate(store: store, client: client(server))
+
+    server.holdList = true
+    feature.synchronize(manual: true)
+    for _ in 0..<400 where !server.listWaiting { try? await Task.sleep(for: .milliseconds(5)) }
+    XCTAssertTrue(server.listWaiting, "这一轮得停在拉列表那一段")
+
+    feature.saveReflection(mine.id, note: "突破没站稳", nextTime: "", publish: true)
+    XCTAssertEqual(feature.pendingUploads, 1)
+    server.holdList = false
+    await settle(feature)
+
+    XCTAssertEqual(feature.pendingUploads, 0, "刚写的复盘还躺在本机队列里——这一轮没回头看队列，也没人补跑")
+    XCTAssertEqual(server.records[mine.id]?.reflection.note, "突破没站稳")
   }
 }

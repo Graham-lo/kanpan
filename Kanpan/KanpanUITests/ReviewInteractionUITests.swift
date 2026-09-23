@@ -84,15 +84,15 @@ final class ReviewInteractionUITests: KanpanUICase {
       XCTFail("点了时间钮没出滚轮：\(app.debugDescription)"); return
     }
     note("滚轮原值=\(wheel.value as? String ?? "?")")
-    if earlier { wheel.swipeDown() } else { wheel.swipeUp() }
+    // 实测：往下扫是往后拨（16 点 → 20 点），往上扫是往前拨。
+    if earlier { wheel.swipeUp() } else { wheel.swipeDown() }
     _ = XCTWaiter.wait(for: [XCTestExpectation(description: "settle")], timeout: 1.2)
     note("滚轮新值=\(wheel.value as? String ?? "?")")
   }
 
   private func dismissPopover() {
-    // 点卡片抬头那一行空白处收掉弹层（紧凑时间钮的弹层点外面就收）。
-    let title = app.staticTexts["记一笔"]
-    if title.exists { title.tap() } else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap() }
+    // 紧凑时间钮的弹层点外面就收：点顶栏统计块那一片（点穿了也无害）。
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.15)).tap()
     _ = XCTWaiter.wait(for: [XCTestExpectation(description: "settle")], timeout: 0.8)
   }
 
@@ -222,23 +222,23 @@ final class ReviewInteractionUITests: KanpanUICase {
     app.buttons["review.chip.all"].tap()
     let row = app.cells.firstMatch.exists ? app.cells.firstMatch : app.buttons.matching(NSPredicate(format: "label CONTAINS '只记录' OR label CONTAINS '1h'")).firstMatch
     guard expectExists(row, Self.long, "复盘本「全部」里没有刚记的那一条") else { return }
+    shot("P37-10b-复盘本-全部-有记录")
     row.tap()
     guard expectExists(app.navigationBars["记录详情"], Self.short, "没进记录详情") else { return }
 
-    // 复盘写两次，都点「完成复盘」。
-    for (index, text) in ["第一版：突破没站稳", "第二版：其实是假突破，等回踩"].enumerated() {
-      let field = app.textFields["当时的判断，哪些成立"].exists ? app.textFields["当时的判断，哪些成立"] : app.textViews.firstMatch
-      if !field.exists { app.swipeUp() }
+    shot("P37-13b-记录详情")
+    // 复盘写两次，都点「完成复盘」。第二次在第一次后面接着写，两版一看就分得开。
+    for text in ["突破没站稳", "；其实是假突破，等回踩"] {
+      let field = app.descendants(matching: .any)["review.note"]
+      for _ in 0..<6 where !field.isHittable { app.swipeUp() }
       guard expectExists(field, Self.short, "详情里没有「现在怎么看」输入框") else { return }
       field.tap()
-      if index > 0, let current = field.value as? String, !current.isEmpty {
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
-      }
-      field.typeText(text)
+      app.typeText(text)
       let done = app.buttons["完成复盘"]
-      if !done.isHittable { app.swipeUp() }
+      for _ in 0..<4 where !done.isHittable { app.swipeUp() }
       done.tap()
       _ = XCTWaiter.wait(for: [XCTestExpectation(description: "upload")], timeout: 4)
+      shot("P37-14a-完成复盘-" + String(text.prefix(4)))
     }
 
     // 修订记录：两版复盘都在。
@@ -248,11 +248,19 @@ final class ReviewInteractionUITests: KanpanUICase {
       self.app.swipeUp(); return revisions.exists
     }
     guard expectExists(revisions, Self.long, "详情里没有「修订记录」") else { return }
-    revisions.tap()
-    XCTAssertTrue(app.navigationBars["修订记录"].waitForExistence(timeout: Self.short), "没进修订记录页")
-    XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.staticTexts["第一版：突破没站稳"].exists },
+    // 复盘是排队上传的：修订记录页只在打开那一刻问一次服务端，没赶上就退出来再进一次。
+    var found = false
+    for _ in 0..<4 where !found {
+      revisions.tap()
+      XCTAssertTrue(app.navigationBars["修订记录"].waitForExistence(timeout: Self.short), "没进修订记录页")
+      found = waitUntil(timeout: Self.short) {
+        self.app.staticTexts["现在怎么看：突破没站稳；其实是假突破，等回踩"].exists
+      }
+      if !found { app.navigationBars["修订记录"].buttons.firstMatch.tap(); _ = revisions.waitForExistence(timeout: Self.short) }
+    }
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.staticTexts["现在怎么看：突破没站稳"].exists },
                   "修订记录里没有第一版复盘：\(app.debugDescription)")
-    XCTAssertTrue(app.staticTexts["第二版：其实是假突破，等回踩"].exists, "修订记录里没有第二版复盘")
+    XCTAssertTrue(app.staticTexts["现在怎么看：突破没站稳；其实是假突破，等回踩"].exists, "修订记录里没有第二版复盘")
     shot("P37-14-修订记录-两版复盘")
     app.navigationBars["修订记录"].buttons.firstMatch.tap()
 

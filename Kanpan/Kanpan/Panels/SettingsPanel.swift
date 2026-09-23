@@ -176,6 +176,8 @@ struct SettingsPanel: View {
         .font(PanelFont.seg).foregroundStyle(t.amber)
       }
     }
+    // 不 contain 的话外层这个 id 会盖到两条链接上，`settings.privacy` / `settings.terms` 就找不到了。
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("settings.about")
   }
 

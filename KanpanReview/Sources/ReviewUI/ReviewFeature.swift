@@ -112,6 +112,11 @@ import ReviewData
   @ObservationIgnored private var voidRelease: Task<Void, Never>?
   public var pendingUploads: Int { store?.archive.queue.count ?? 0 }
   private var syncID = UUID()
+  /// 同步正跑着时又来了一次请求（比如刚点了「完成复盘」）：记下来，这一轮收尾时再补跑一轮。
+  /// 不记的话，那条新排进队列的操作赶上的正好是这一轮「队列已清空、在拉列表」那一段，
+  /// 这一轮不会回头看队列，它就一直躺在本机，直到下一次别的事触发同步（P3.7 修订记录里
+  /// 迟迟看不到刚写的复盘，就是这么来的）。值是那次请求的 `manual`。
+  @ObservationIgnored private var syncAgain: Bool?
   public var autoSync = true
   public private(set) var nextPage: String?
   public private(set) var history: [ReviewRecord] = []
@@ -197,7 +202,7 @@ import ReviewData
   public func activate(store: ReviewStore, client: ScorebookClient?) {
     syncTask?.cancel(); cancelSearch(); epoch = UUID(); syncID = UUID()
     self.store = store; self.client = client; store.cloudCache = client != nil
-    syncing = false; searching = false; matches = []; statistics = []; searchID = nil; searchGeneration = UUID(); searchNext = nil; savedMatchIDs = []
+    syncing = false; syncAgain = nil; searching = false; matches = []; statistics = []; searchID = nil; searchGeneration = UUID(); searchNext = nil; savedMatchIDs = []
     nextPage = nil; searchError = nil; statisticsError = nil; history = []; historyGeneration = UUID(); historyLoading = false; historyError = nil; historyLoaded = false
     bookOpen = false; captureOpen = false; searchOpen = false; selectedRecord = nil; searchRecord = nil
     reload()
@@ -407,15 +412,21 @@ import ReviewData
       history += response.records.filter { !known.contains($0.id) }; nextPage = response.next
     } catch is CancellationError {} catch { if epoch == requestEpoch && historyGeneration == generation { historyError = error.localizedDescription } }
   }
-  public func pauseAutomaticSync() { syncTask?.cancel(); syncID = UUID(); syncing = false }
+  public func pauseAutomaticSync() { syncTask?.cancel(); syncID = UUID(); syncing = false; syncAgain = nil }
   public func synchronize(manual: Bool = false) {
-    guard (autoSync || manual), !syncing, let client else { return }
+    guard (autoSync || manual), let client else { return }
+    if syncing { syncAgain = (syncAgain ?? false) || manual; return }
     let requestEpoch = epoch
     let runID = UUID(); syncID = runID
     syncing = true
     syncTask = Task { [weak self] in
       guard let self else { return }
-      defer { if epoch == requestEpoch && syncID == runID { syncing = false } }
+      defer {
+        if epoch == requestEpoch && syncID == runID {
+          syncing = false
+          if let manual = syncAgain { syncAgain = nil; synchronize(manual: manual) }
+        }
+      }
       do {
         while var operation = store?.archive.queue.first {
           try Task.checkCancellation()
