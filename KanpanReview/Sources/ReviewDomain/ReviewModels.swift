@@ -28,23 +28,23 @@ public enum ReviewConfirmation: String, Codable, Sendable, CaseIterable {
   }
 }
 public struct ReviewRange: Codable, Sendable, Equatable {
-  public var venue = "binance"
-  public var market = "usd_m"
+  public var venue = InstrumentID.defaultVenue
+  public var market = InstrumentID.defaultMarket
   public var symbol: String
   public var interval: String
   public var start: Int64
   public var end: Int64
   public var bars: Int
-  public init(venue: String = "binance", symbol: String, interval: String, start: Int64, end: Int64, bars: Int) {
-    let id = symbol.contains("/") ? InstrumentID(symbol) : InstrumentID(venue: venue, market: venue == "binance" ? "usd_m" : "spot", symbol: symbol)
+  public init(venue: String = InstrumentID.defaultVenue, symbol: String, interval: String, start: Int64, end: Int64, bars: Int) {
+    let id = symbol.contains("/") ? InstrumentID(symbol) : InstrumentID(venue: venue, market: venue == InstrumentID.defaultVenue ? InstrumentID.defaultMarket : "spot", symbol: symbol)
     self.venue = id.venue; self.market = id.market; self.symbol = symbol.contains("/") ? id.symbol : symbol; self.interval = interval; self.start = start; self.end = end; self.bars = bars
   }
   /// 属性写了初值**不等于**这个键可以缺：合成出来的 `Decodable` 照样要求它在。
   /// 老存档、老响应里没有 `venue` / `market` 的那几条，现在按默认值读回来。
   public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
-    venue = try c.decodeIfPresent(String.self, forKey: .venue) ?? "binance"
-    market = try c.decodeIfPresent(String.self, forKey: .market) ?? "usd_m"
+    venue = try c.decodeIfPresent(String.self, forKey: .venue) ?? InstrumentID.defaultVenue
+    market = try c.decodeIfPresent(String.self, forKey: .market) ?? InstrumentID.defaultMarket
     symbol = try c.decode(String.self, forKey: .symbol)
     // 存档里的 `symbol` 若已是完整品种 key，以它为准拆开；否则 `key` 会拼出两层前缀。
     if symbol.contains("/") {

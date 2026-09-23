@@ -62,11 +62,14 @@ extension ReviewDueAlerts.Item {
   /// 一条复盘记录折成提醒要的那几样（`ReviewDueAlerts` 不链复盘那一摊，折在这儿）。
   init(record: ReviewRecord) {
     let range = record.draft.range
+    let instrument = InstrumentID(venue: range.venue, market: range.market, symbol: range.symbol)
     self.init(id: record.id.uuidString,
-              symbol: InstrumentID(venue: range.venue, market: range.market, symbol: range.symbol).key,
+              symbol: instrument.key,
               dueAt: Double(record.draft.rule.expires),
               short: range.shortSymbol,
               waiting: record.outcome == .waiting,
-              eligible: range.venue == "binance" && range.market == "usd_m" && !range.symbol.isEmpty)
+              // 和捕获入口同一个判定（`ReviewContract.supports`）：能记的市场，到点就能进提醒。
+              // 服务端复盘到点不分交易所（`alerts.rs` 只在币安那一支里读一次，读的是全部 reviewDue）。
+              eligible: ReviewContract.supports(instrument) && !range.symbol.isEmpty)
   }
 }

@@ -67,9 +67,22 @@ public enum ReviewInterval: String, Sendable, Codable, CaseIterable {
 
 /// 服务端 `native_review.rs` 里那些常量，逐条搬过来。
 public enum ReviewContract {
-  public static let supportedMarkets = ["binance/usd_m", "coinbase/spot"]
-  public static let venue = "binance"
-  public static let market = "usd_m"
+  /// 服务端 `validate_range` 收的那几个市场（`ReviewContractReconciliationTests` 对着 `.rs` 比）。
+  ///
+  /// 「这个市场能不能复盘」全客户端只问这一处（`supports`）：捕获入口
+  /// （`ReviewChartBridge.beginCapture` → `captureFailure`）和复盘到点提醒
+  /// （`ReviewDueNotifications` 的 `eligible`）以前各判一遍，后者只认币安，
+  /// 于是现货（`coinbase/spot`）的记录能记、到点却不进提醒总表（审查 2026-09-24 §2）。
+  ///
+  /// 为什么是镜像而不是开机问服务端要能力表：服务端没有这样的端点，而捕获入口是离线也要
+  /// 当场给答案的（圈之前就说「不支持」）；多一次往返换来的只是把同一张两项的表从编译期
+  /// 挪到运行期。镜像的风险是两边漂移，那由上面那条对账测试兜住。
+  public static let supportedMarkets = [InstrumentID.defaultMarketKey, "coinbase/spot"]
+  public static let venue = InstrumentID.defaultVenue
+  public static let market = InstrumentID.defaultMarket
+
+  /// 这个市场的品种能不能记复盘。
+  public static func supports(_ id: InstrumentID) -> Bool { supportedMarkets.contains(id.marketKey) }
   public static let quoteSuffix = "USDT"
   public static let symbolMaxLength = 40
   public static let minBars = 3
@@ -101,10 +114,10 @@ public enum ReviewContract {
   public static func captureFailure(venue: String, market: String = market, symbol: String, interval: String) -> String? {
     guard ReviewInterval(rawValue: interval) != nil else { return "这个周期暂不支持复盘，请切换周期" }
     let id = symbol.contains("/") ? InstrumentID(symbol) : InstrumentID(venue: venue, market: market, symbol: symbol)
-    guard supportedMarkets.contains(id.marketKey), id.isValid else { return "这个市场暂不支持复盘" }
+    guard supports(id), id.isValid else { return "这个市场暂不支持复盘" }
     let info = SymbolInfo.placeholder(symbol: id.key)
     guard (symbol.contains("/") || symbol == id.symbol), id.symbol.count <= symbolMaxLength,
-          (id.market == "usd_m" && info.quote == quoteSuffix && !id.symbol.contains("-")) || (id.market == "spot" && info.quote == "USD" && id.symbol.contains("-")) else { return "这个品种暂不支持复盘" }
+          (id.isDefaultMarket && info.quote == quoteSuffix && !id.symbol.contains("-")) || (id.market == "spot" && info.quote == "USD" && id.symbol.contains("-")) else { return "这个品种暂不支持复盘" }
     return nil
   }
 

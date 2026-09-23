@@ -1,4 +1,5 @@
 import XCTest
+import KanpanCore
 import ReviewDomain
 
 /// **本地过不了的，上去也一定被拒；本地过得了的，上去不许被拒。**（审查 B-06 / B-02）
@@ -49,6 +50,14 @@ final class ReviewContractTests: XCTestCase {
     XCTAssertNotNil(ReviewContract.captureFailure(venue: "coinbase", market: "usd_m", symbol: "BTC-USD", interval: "1h"))
     XCTAssertNotNil(ReviewContract.captureFailure(venue: "okx", symbol: "BTCUSDT", interval: "1h"))
     XCTAssertNotNil(ReviewContract.failure(draft(venue: "okx"), now: now))
+  }
+
+  /// 捕获入口和复盘到点提醒问的是同一个 `supports`：现货记得下来，到点也得提醒得到。
+  func testSupportedMarketIsOnePredicate() {
+    XCTAssertTrue(ReviewContract.supports(InstrumentID("BTCUSDT")))
+    XCTAssertTrue(ReviewContract.supports(InstrumentID("coinbase/spot/BTC-USD")))
+    XCTAssertFalse(ReviewContract.supports(InstrumentID("okx/usd_m/BTCUSDT")))
+    XCTAssertEqual(ReviewContract.supportedMarkets.first, InstrumentID.defaultMarketKey)
   }
 
   func testSymbolShapeFollowsTheServer() {

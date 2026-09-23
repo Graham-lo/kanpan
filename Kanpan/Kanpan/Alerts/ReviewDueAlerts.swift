@@ -33,8 +33,8 @@ enum ReviewDueAlerts {
     var short: String
     /// 还在等答案（没判、没作废、不是只记录）。
     var waiting: Bool
-    /// 这条记录能不能挂进提醒：只有币安 U 本位合约的记录（提醒对象的 id 形态
-    /// `binance/usd_m/<代号>/…` 只认这一个市场）。
+    /// 这条记录能不能挂进提醒：复盘支持的市场（`ReviewContract.supports`）里的记录。
+    /// 提醒对象的 id 是 `<完整品种 key>/<提醒 id>`，市场跟着品种 key 走。
     var eligible: Bool
   }
 
