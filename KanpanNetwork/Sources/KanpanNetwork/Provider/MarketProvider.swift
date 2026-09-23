@@ -55,9 +55,33 @@ public protocol MarketProvider: Sendable {
   func rawStreamURL(topics: [StreamTopic]) -> URL?
   /// 主力订单流的深度接入（实现在 `OrderFlow/`）。这条线路上没有深度就是 nil。
   func orderFlowAdapter(symbol: String) -> (any DepthFeedAdapter)?
+
+  /// 冷启动热身：这条线路上首屏最先要连的那几台主机（只握手，回什么都不管）。
+  /// 由线路决定——直连热交易所自己的域名，网关热网关；不给就不热。
+  var prewarmTargets: [PrewarmTarget] { get }
+  /// 桌面小组件在 app 不在前台时自己补价的取数方式（也由线路决定）。做不到就 nil。
+  var widgetRefresh: WidgetSnapshot.Refresh? { get }
+}
+
+/// 冷启动热身的一笔请求。
+public struct PrewarmTarget: Sendable, Equatable {
+  public let url: URL
+  public let method: String
+  public init(url: URL, method: String) { self.url = url; self.method = method }
+
+  /// `host` 可以带端口；形状不对（带路径、账号、查询）就不给。
+  public static func make(host: String, path: String, method: String) -> PrewarmTarget? {
+    guard host.range(of: "^[A-Za-z0-9.-]+(:[0-9]+)?$", options: .regularExpression) != nil,
+          var parts = URLComponents(string: "https://" + host), parts.host != nil else { return nil }
+    parts.path = path
+    return parts.url.map { PrewarmTarget(url: $0, method: method) }
+  }
 }
 
 public extension MarketProvider {
+  var prewarmTargets: [PrewarmTarget] { [] }
+  var widgetRefresh: WidgetSnapshot.Refresh? { nil }
+
   func klines(symbol: String, interval: Interval, limit: Int) async throws -> [Bar] {
     try await klines(symbol: symbol, interval: interval, limit: limit, startTime: nil, endTime: nil)
   }
@@ -110,22 +134,28 @@ public protocol MarketStream: AnyObject, Sendable {
 }
 
 /// 行情线路要用到的主机。和哪家交易所无关：各家提供者自己从这里取自己要的那部分。
+///
+/// 只有网关这一样。各家交易所的直连域名是那一家提供者自己的出厂值（写死在它的目录里），
+/// 原来这里还有「用户自定义 REST / 推送域名」两栏，设置页早就没有入口，只剩一整层
+/// 往下透传的死配置，2026-09-24 按审查 18a 收掉。
 public struct MarketEndpoints: Sendable, Equatable {
-  /// 用户自定义的 REST 域名（只作用于默认交易所；nil = 用它的默认域名）。
-  public var restHost: String?
-  /// 用户自定义的推送域名（同上）。
-  public var streamHost: String?
   /// 看盘自己的网关，主在前、备在后。
   public var gateways: [String]
 
-  public init(restHost: String? = nil, streamHost: String? = nil,
-              gateways: [String] = []) {
-    self.restHost = restHost; self.streamHost = streamHost
+  public init(gateways: [String] = []) {
     var seen = Set<String>()
     self.gateways = gateways.filter { !$0.isEmpty && seen.insert($0).inserted }
   }
 
+  /// 没有网关的空表：只给测试和「只走直连」的离线工具用。app 里一律用 `production`。
   public static let `default` = MarketEndpoints()
+
+  /// 线上那两台网关（美国 VPS），主在前、备在后。app 里所有取数件都从 `RouteResolver.current`
+  /// 拿到这一份，不再各自拼。
+  public static let production = MarketEndpoints(gateways: [
+    "kanpan.107-174-172-10.sslip.io",
+    "kanpan.96-44-162-222.sslip.io:8443",
+  ])
 }
 
 /// 与交易所无关的 K 线序列小工具。

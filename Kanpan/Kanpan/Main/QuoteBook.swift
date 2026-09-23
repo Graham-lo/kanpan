@@ -22,7 +22,8 @@ final class QuoteBook {
   private(set) var basis: ChangeBasis = .rolling24h
   private var latestReceived: [String: QuoteState] = [:]
   /// 线路 × 主机。每个品种找它那一家的提供者要数据（`provider(for:)`）。
-  private var resolver = RouteResolver(policy: .direct, endpoints: .default, log: QuoteBook.log)
+  /// 一出生就是这台设备当前的线路（`RouteResolver.current`），`configure` 之前也不会偷偷直连。
+  private var resolver = RouteResolver.current.logging(to: QuoteBook.log)
   /// 提供者按交易所缓存；线路或主机一变整份换。
   private var providers: [String: any MarketProvider] = [:]
   private var socket: MergedMarketStream?
@@ -407,16 +408,16 @@ final class QuoteBook {
     VenueRegistry.all.map { resolver.provider(venue: $0.id).capabilities.upstream }
   }
 
-  func configure(endpoints: MarketEndpoints, basis: ChangeBasis, policy: MarketRoutePolicy = .direct) {
-    let next = RouteResolver(policy: policy, endpoints: endpoints, log: Self.log)
-    let changedHost = endpoints != resolver.endpoints
+  func configure(route: RouteResolver, basis: ChangeBasis) {
+    let next = route.logging(to: Self.log)
+    let changedHost = next.route != resolver.route
     let changedSource = Self.upstreams(next) != Self.upstreams(resolver)
     let changedBasis = basis != self.basis
     if changedSource {
       // 手里这批是旧上游的：先落进旧上游自己的分区，再换。
       persistQuotes(); persistBaselines()
     }
-    if changedHost || policy != resolver.policy { resolver = next; providers.removeAll() }
+    if changedHost { resolver = next; providers.removeAll() }
     if changedSource {
       // 换了上游，手里的报价就是另一家的数（成交额口径都不一样）。整份清掉、
       // 从新上游自己的分区读回来——不在连接的时候 `restartStream(clearing:)` 不会走到，

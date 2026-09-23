@@ -96,7 +96,7 @@ struct RootLifecycleTests {
   func marketModelIsReleasedWhenItsHostGoesAway() async {
     weak var probe: MarketModel?
     do {
-      let model = MarketModel(symbol: "BTCUSDT", interval: .h1)
+      let model = MarketModel(symbol: "BTCUSDT", interval: .h1, endpoints: .default)
       model.start(snapshot: false)
       probe = model
       #expect(probe != nil)

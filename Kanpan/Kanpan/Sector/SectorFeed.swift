@@ -38,10 +38,16 @@ import KanpanNetwork
   /// 换线路会把它清回 false——换了一家交易所，之前问过什么都不作数。
   private(set) var attempted = false
 
-  private var resolver = RouteResolver(policy: .direct, endpoints: .default)
-  private var rest: any MarketProvider = RouteResolver(policy: .direct, endpoints: .default)
-    .provider(venue: VenueRegistry.sectorVenue.id)
+  /// 一出生就是这台设备当前的线路，`configure` 之前也不会拿直连或空网关表去问。
+  private var resolver: RouteResolver
+  private var rest: any MarketProvider
   private var catalog: [SymbolInfo] = []
+
+  /// 默认就是这台设备当前选的线路；测试显式传一条，不吃 UserDefaults 里残留的选择。
+  init(route: RouteResolver = .current) {
+    resolver = route
+    rest = route.provider(venue: VenueRegistry.sectorVenue.id)
+  }
 
   private var visible = false
   private var foreground = true
@@ -64,12 +70,12 @@ import KanpanNetwork
   /// 换线路/换镜像。口径和 `QuoteBook.configure` 一致，由 `MainScreen` 一起调。
   ///
   /// 第一次调（冷启动）即使线路和默认值一样也要往下走：盘上那份要在这时恢复。
-  func configure(endpoints: MarketEndpoints, policy: MarketRoutePolicy) {
-    let changed = endpoints != resolver.endpoints || policy != resolver.policy
+  func configure(route: RouteResolver) {
+    let changed = route.route != resolver.route
     guard changed || !configured else { return }
     configured = true
     if changed {
-      resolver = RouteResolver(policy: policy, endpoints: endpoints)
+      resolver = route
       rest = resolver.provider(venue: VenueRegistry.sectorVenue.id)
       // 手里这份是上一条线路报的，换了就一条都不留（审查 A-04）。两家的 24h 口径
       // 和品种集合都不一样，混着算出来的中位数不属于任何一个市场。
@@ -223,11 +229,11 @@ import KanpanNetwork
     if Self.shouldDrop(failures: failures, age: age) { drop() }
   }
 
-  /// 后端网关名单，顺序就是 `MarketStatsClient` 问供应量 / 持仓量时试的那个顺序。
+  /// 后端取数口（`RouteResolver.backend`）。
   ///
-  /// 「5 日」那一档的日线收盘（`SectorHistoryFeed`）问的是同样这几台。板块页手里
+  /// 「5 日」那一档的日线收盘（`SectorHistoryFeed`）从这儿问。板块页手里
   /// 已经有这个 feed，不必为一条只读接口再从 `MainScreen` 另牵一根线下来。
-  var backendHosts: [String] { resolver.endpoints.gateways }
+  var backend: BackendClient { resolver.backend }
 
   /// 品种表。用来把 `BTCUSDT` 还原成 `BTC`，以及给没被任何板块收录的币凑兜底桶。
   ///

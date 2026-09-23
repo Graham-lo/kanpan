@@ -11,7 +11,7 @@ struct OrderFlowAdapterTests {
 
   static func binance(_ policy: MarketRoutePolicy, server: FakeServer = FakeServer { _ in json("{}") },
                       deck: ReplayDeck = ReplayDeck([.hang])) -> BinanceDepthAdapter {
-    BinanceDepthAdapter(symbol: "BTCUSDT", hosts: hosts, policy: policy,
+    BinanceDepthAdapter(symbol: "BTCUSDT", hosts: hosts, route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: hosts.oiProxies)),
                         sockets: ReplayFactory(deck: deck, pacer: FastPacer()), http: FakeTransport(server))
   }
 
@@ -90,7 +90,7 @@ struct OrderFlowAdapterTests {
   // ---------------------------------------------------------------- OKX
 
   static func okx(deck: ReplayDeck = ReplayDeck([.hang])) -> OKXBooksAdapter {
-    OKXBooksAdapter(symbol: "BTCUSDT", hosts: hosts, sockets: ReplayFactory(deck: deck, pacer: FastPacer()))
+    OKXBooksAdapter(symbol: "BTCUSDT", gateways: hosts.oiProxies, sockets: ReplayFactory(deck: deck, pacer: FastPacer()))
   }
 
   static func okxFrame(_ action: String, seq: Int64, prev: Int64, bids: String = #"[["78450.1","350","0","4"]]"#,
@@ -195,7 +195,7 @@ struct OrderFlowAdapterTests {
     let deck = ReplayDeck([.frame(.text(first)), .frame(.text("{}")), .drop("bye"),
                            .frame(.text(Self.okxFrame("snapshot", seq: 20, prev: -1))), .hang])
     let pacer = FastPacer()
-    let stream = DepthStream(adapter: OKXBooksAdapter(symbol: "BTCUSDT", hosts: Self.hosts,
+    let stream = DepthStream(adapter: OKXBooksAdapter(symbol: "BTCUSDT", gateways: Self.hosts.oiProxies,
                                                       sockets: ReplayFactory(deck: deck, pacer: pacer)),
                              pacer: pacer, silenceMs: 600_000)
     let events = await stream.start()
@@ -214,7 +214,7 @@ struct OrderFlowAdapterTests {
   func streamFallsBackToBackupGateway() async throws {
     let deck = ReplayDeck([.drop("主节点没推"), .frame(.text(Self.okxFrame("snapshot", seq: 10, prev: -1))), .hang])
     let pacer = FastPacer()
-    let stream = DepthStream(adapter: OKXBooksAdapter(symbol: "BTCUSDT", hosts: Self.hosts,
+    let stream = DepthStream(adapter: OKXBooksAdapter(symbol: "BTCUSDT", gateways: Self.hosts.oiProxies,
                                                       sockets: ReplayFactory(deck: deck, pacer: pacer)),
                              pacer: pacer, silenceMs: 600_000)
     let events = await stream.start()
@@ -231,7 +231,7 @@ struct OrderFlowAdapterTests {
     let deck = ReplayDeck([.frame(.text(Self.okxFrame("snapshot", seq: 10, prev: -1))), .silence(120_000),
                            .frame(.text(Self.okxFrame("snapshot", seq: 30, prev: -1))), .hang])
     let pacer = FastPacer()
-    let stream = DepthStream(adapter: OKXBooksAdapter(symbol: "BTCUSDT", hosts: Self.hosts,
+    let stream = DepthStream(adapter: OKXBooksAdapter(symbol: "BTCUSDT", gateways: Self.hosts.oiProxies,
                                                       sockets: ReplayFactory(deck: deck, pacer: pacer)),
                              pacer: pacer, silenceMs: 30_000)
     let events = await stream.start()

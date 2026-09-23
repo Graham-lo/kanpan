@@ -158,10 +158,10 @@ import ReviewUI
   func endCapture(feature: ReviewFeature) {
     feature.saveDraft(); feature.captureOpen = false; mode = .live; state = nil; proxy = ChartProxy()
   }
-  func open(_ record: ReviewRecord, feature: ReviewFeature, live: ChartState?, endpoints: MarketEndpoints,
-            policy: MarketRoutePolicy, cutoff: Int64? = nil) {
+  func open(_ record: ReviewRecord, feature: ReviewFeature, live: ChartState?, route: MarketRoute,
+            cutoff: Int64? = nil) {
     let provider = VenueRegistry.descriptor(record.draft.range.venue)?.market == record.draft.range.market
-      ? RouteResolver(policy: policy, endpoints: endpoints).ownDataProvider(venue: record.draft.range.venue) : nil
+      ? RouteResolver(route: route).ownDataProvider(venue: record.draft.range.venue) : nil
     open(record, feature: feature, live: live, provider: provider, cutoff: cutoff)
   }
   /// 回放取数认的是记录所属那一家的本家数据（`RouteResolver.ownDataProvider`）。
@@ -238,10 +238,10 @@ import ReviewUI
     }
   }
   func openMatch(_ match: ReviewMatch, cutoff: Int64, feature: ReviewFeature, live: ChartState?,
-                 endpoints: MarketEndpoints, policy: MarketRoutePolicy) {
+                 route: MarketRoute) {
     var draft = ReviewDraft(range: match.range, reference: 1, high: 1, low: 1, now: cutoff)
     draft.rule.expires = cutoff
-    open(ReviewRecord(draft: draft), feature: feature, live: live, endpoints: endpoints, policy: policy, cutoff: cutoff)
+    open(ReviewRecord(draft: draft), feature: feature, live: live, route: route, cutoff: cutoff)
   }
   /// 回放条上那颗倍速按钮：1× → 2× → 4× → 1×。写回偏好，跟着人走。
   func cycleSpeed() {

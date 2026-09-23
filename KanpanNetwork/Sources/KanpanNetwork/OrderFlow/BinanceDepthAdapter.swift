@@ -9,6 +9,9 @@ import KanpanCore
 ///   成交同样订 `@aggTrade`（网关原样转发）。快照打 kanpan-api `GET /v1/market/depth`
 ///   （美国机房打 fapi 回 451，由 kanpan-api 经 `www.binance.com` 取），只有主节点有，按网关表逐台试。
 ///
+/// 走哪条、网关有哪几台，一律读提供者交进来的 `MarketRoute`（`RouteResolver` 定的那一份），
+/// 这里不再自己拿线路档位和 `hosts.oiProxies` 另判一遍。
+///
 /// 解码对应原项目 `bit-orderbook-binance/src/lib.rs:519 decode_depth_snapshot`、`:548 decode_depth_delta`。
 public struct BinanceDepthAdapter: DepthFeedAdapter {
   public static let snapshotLevels = 1000
@@ -20,15 +23,15 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
   public var snapshotInBand: Bool { false }
 
   let hosts: BinanceHosts
-  let policy: MarketRoutePolicy
+  let route: MarketRoute
   let sockets: any WSSocketFactory
   let http: any HTTPTransport
 
-  public init(symbol: String, hosts: BinanceHosts, policy: MarketRoutePolicy,
+  public init(symbol: String, hosts: BinanceHosts, route: MarketRoute,
               sockets: any WSSocketFactory = URLSessionSocketFactory(),
               http: any HTTPTransport = URLSessionTransport()) {
     self.symbol = InstrumentID(symbol).symbol.uppercased()
-    self.hosts = hosts; self.policy = policy; self.sockets = sockets; self.http = http
+    self.hosts = hosts; self.route = route; self.sockets = sockets; self.http = http
   }
 
   var depthStream: String { "\(symbol.lowercased())@depth@100ms" }
@@ -36,8 +39,8 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
   var streams: [String] { [depthStream, tradeStream] }
 
   public var streamURLs: [URL] {
-    policy == .direct ? [hosts.combinedStream(streams)]
-                      : Self.gatewayStreams(hosts, path: "/market/stream", streams: streams)
+    route.viaGateway ? Self.gatewayStreams(route.gateways, path: "/market/stream", streams: streams)
+                     : [hosts.combinedStream(streams)]
   }
 
   public func connect(candidate: Int) async throws -> any WSSocket {
@@ -72,30 +75,28 @@ public struct BinanceDepthAdapter: DepthFeedAdapter {
   // ------------------------------------------------------------------ 快照
 
   public func fetchSnapshot() async throws -> BookSnapshot {
-    switch policy {
-    case .direct:
+    guard route.viaGateway else {
       let url = hosts.url("/fapi/v1/depth", ["symbol": symbol, "limit": String(Self.snapshotLevels)])
       return try Self.snapshot(try await Self.body(http.get(url, timeout: 10)))
-    case .gateway:
-      var lastError: Error = FeedError.badResponse("行情服务暂不可用")
-      for host in hosts.oiProxies {
-        guard var c = URLComponents(string: "https://\(host)") else { continue }
-        c.path = Self.gatewaySnapshotPath
-        c.queryItems = [URLQueryItem(name: "symbol", value: symbol),
-                        URLQueryItem(name: "limit", value: String(Self.snapshotLevels))]
-        guard let url = c.url else { continue }
-        do {
-          return try Self.snapshot(try await Self.body(http.get(url, timeout: 10)))
-        } catch is CancellationError {
-          throw CancellationError()
-        } catch let error as DepthSnapshotError where error.isClientError {
-          throw error
-        } catch {
-          lastError = error
-        }
-      }
-      throw lastError
     }
+    var lastError: Error = FeedError.badResponse("行情服务暂不可用")
+    for host in route.gateways {
+      guard var c = URLComponents(string: "https://\(host)") else { continue }
+      c.path = Self.gatewaySnapshotPath
+      c.queryItems = [URLQueryItem(name: "symbol", value: symbol),
+                      URLQueryItem(name: "limit", value: String(Self.snapshotLevels))]
+      guard let url = c.url else { continue }
+      do {
+        return try Self.snapshot(try await Self.body(http.get(url, timeout: 10)))
+      } catch is CancellationError {
+        throw CancellationError()
+      } catch let error as DepthSnapshotError where error.isClientError {
+        throw error
+      } catch {
+        lastError = error
+      }
+    }
+    throw lastError
   }
 
   static func body(_ reply: HTTPReply) throws -> Data {

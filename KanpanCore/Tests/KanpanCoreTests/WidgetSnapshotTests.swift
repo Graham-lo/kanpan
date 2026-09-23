@@ -17,8 +17,7 @@ import Testing
                           groups: [.init(id: "g1", name: "主流", symbols: ["ETHUSDT", "BTCUSDT"])],
                           quotes: ["BTCUSDT": q("BTCUSDT", 100, 1), "ETHUSDT": q("ETHUSDT", 50, -2),
                                    "SOLUSDT": q("SOLUSDT", 10, 0)],
-                          light: colors(), dark: colors(), appearance: .auto, fapiHost: "fapi.binance.com",
-                          rolling: rolling)
+                          light: colors(), dark: colors(), appearance: .auto, rolling: rolling)
   }
 
   @Test("小号：全部取前四只，没价的品种照样占一行")
@@ -89,5 +88,45 @@ import Testing
     let s = snapshot()
     try s.write(to: WidgetSnapshot.url(in: dir))
     #expect(WidgetSnapshot.read(from: WidgetSnapshot.url(in: dir)) == s)
+  }
+
+  @Test("小组件补价：直连模板打币安本家、载荷不带信封")
+  func refreshDirect() throws {
+    let r = WidgetSnapshot.Refresh(market: "binance/usdm", hosts: ["fapi.binance.com"],
+                                   ticker: "/fapi/v1/ticker/24hr?symbol={symbol}",
+                                   closes: "/fapi/v1/klines?symbol={symbol}&interval=1h&limit={limit}")
+    #expect(r.tickerURL(host: "fapi.binance.com", symbol: "BTCUSDT")?.absoluteString
+            == "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT")
+    #expect(r.closesURL(host: "fapi.binance.com", symbol: "BTCUSDT")?.absoluteString
+            == "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1h&limit=\(WidgetSnapshot.sparkBars)")
+    let ticker = try #require(r.parseTicker(Data(#"{"lastPrice":"101.5","priceChangePercent":"-1.2","closeTime":1700}"#.utf8)))
+    #expect(ticker.price == 101.5 && ticker.change == -1.2 && ticker.timeMs == 1700)
+    #expect(r.parseCloses(Data(#"[[0,"1","2","0","10"],[1,"1","2","0","11"]]"#.utf8)) == [10, 11])
+    // 代号里夹了查询串分隔符的，不拼。
+    #expect(r.tickerURL(host: "fapi.binance.com", symbol: "BTC&x=1") == nil)
+  }
+
+  @Test("小组件补价：网关模板打网关、载荷从信封里取；主机可带端口")
+  func refreshGateway() throws {
+    let r = WidgetSnapshot.Refresh(market: "binance/usdm", hosts: ["a.example", "b.example:8443"],
+                                   ticker: "/market/v1/ticker?symbol={symbol}&source=okx",
+                                   closes: "/market/v1/klines?symbol={symbol}&interval=1h&limit={limit}&source=okx",
+                                   tickerField: "ticker", closesField: "bars")
+    #expect(r.tickerURL(host: "b.example:8443", symbol: "ETHUSDT")?.absoluteString
+            == "https://b.example:8443/market/v1/ticker?symbol=ETHUSDT&source=okx")
+    let ticker = try #require(r.parseTicker(Data(#"{"source":"okx","symbol":"ETHUSDT","ticker":{"lastPrice":"2000","priceChangePercent":"3","closeTime":5}}"#.utf8)))
+    #expect(ticker.price == 2000 && ticker.change == 3)
+    #expect(r.parseCloses(Data(#"{"source":"okx","bars":[[0,"1","2","0",7],[1,"1","2","0","8"]]}"#.utf8)) == [7, 8])
+    // 没有信封的直连载荷在网关模板下不算数。
+    #expect(r.parseTicker(Data(#"{"lastPrice":"2000"}"#.utf8)) == nil)
+  }
+
+  @Test("旧快照（带 fapiHost / hostMarket）照样解得开，补价方式是 nil")
+  func legacySnapshotDecodes() throws {
+    var json = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot())) as? [String: Any])
+    json["fapiHost"] = "fapi.binance.com"; json["hostMarket"] = "binance/usdm"
+    let decoded = try JSONDecoder().decode(WidgetSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+    #expect(decoded.refresh == nil)
+    #expect(decoded.favorites == snapshot().favorites)
   }
 }

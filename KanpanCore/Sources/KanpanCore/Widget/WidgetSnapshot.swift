@@ -82,20 +82,88 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
   public var light: Colors
   public var dark: Colors
   public var appearance: Appearance
-  /// 小组件自己补价走的 REST 主机（和 app 当前直连那台一致）。
-  public var fapiHost: String
-  /// `fapiHost` 供的是哪个市场（`InstrumentID.marketKey`）。别的市场的品种小组件不自己补价，
-  /// 只用 app 写进来的快照。旧快照没有这一栏（nil），那时自选里只有这一个市场。
-  public var hostMarket: String?
+  /// 小组件自己补价怎么取：主机、路径、有没有网关信封——全由 app 按当前线路
+  /// （`RouteResolver`）写进来，小组件不自己判断直连还是网关。nil 就不自己补价，只用快照。
+  /// 旧快照里是 `fapiHost` / `hostMarket` 两栏（永远指向直连域名，网关线路下也照打直连），
+  /// 解码时忽略它们、这一栏是 nil，下一次 app 写快照就补上。
+  public var refresh: Refresh?
   /// 涨跌幅口径是不是滚动 24 小时。
   public var rolling: Bool
 
   public init(updatedAt: Int64, favorites: [String], groups: [Group], quotes: [String: Quote],
-              light: Colors, dark: Colors, appearance: Appearance, fapiHost: String, hostMarket: String? = nil, rolling: Bool) {
+              light: Colors, dark: Colors, appearance: Appearance, refresh: Refresh? = nil, rolling: Bool) {
     self.updatedAt = updatedAt; self.favorites = favorites; self.groups = groups; self.quotes = quotes
-    self.light = light; self.dark = dark; self.appearance = appearance; self.fapiHost = fapiHost
-    self.hostMarket = hostMarket
+    self.light = light; self.dark = dark; self.appearance = appearance; self.refresh = refresh
     self.rolling = rolling
+  }
+
+  /// 小组件自己补价的取数方式。
+  ///
+  /// 直连：`hosts` 是币安 REST 那一台，路径是 `/fapi/v1/...`，回的就是载荷本身。
+  /// 网关：`hosts` 是主、备两台网关，路径是 `/market/v1/...&source=...`，载荷包在信封的
+  /// `tickerField` / `closesField` 字段里。两条线路的载荷形状一样（币安 `ticker/24hr` 对象、
+  /// `klines` 数组），所以解析只有一份。
+  public struct Refresh: Codable, Sendable, Equatable {
+    /// 能自己补价的市场（`InstrumentID.marketKey`）。别的市场的品种只用快照。
+    public var market: String
+    /// 候选主机（可带端口），按顺序试，第一台回得上就用。
+    public var hosts: [String]
+    /// 单品种 24h 行情的「路径?查询」模板，`{symbol}` 是交易所裸代号。
+    public var ticker: String
+    /// 1 小时收盘价的「路径?查询」模板，`{symbol}`、`{limit}` 两个占位。
+    public var closes: String
+    /// 网关信封里装载荷的字段；直连是 nil（回的就是载荷）。
+    public var tickerField: String?
+    public var closesField: String?
+
+    public init(market: String, hosts: [String], ticker: String, closes: String,
+                tickerField: String? = nil, closesField: String? = nil) {
+      self.market = market; self.hosts = hosts; self.ticker = ticker; self.closes = closes
+      self.tickerField = tickerField; self.closesField = closesField
+    }
+
+    public func tickerURL(host: String, symbol: String) -> URL? {
+      Self.url(host: host, template: ticker, symbol: symbol, limit: WidgetSnapshot.sparkBars)
+    }
+
+    public func closesURL(host: String, symbol: String) -> URL? {
+      Self.url(host: host, template: closes, symbol: symbol, limit: WidgetSnapshot.sparkBars)
+    }
+
+    static func url(host: String, template: String, symbol: String, limit: Int) -> URL? {
+      guard symbol.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil else { return nil }
+      let filled = template.replacingOccurrences(of: "{symbol}", with: symbol)
+        .replacingOccurrences(of: "{limit}", with: String(limit))
+      return URL(string: "https://" + host + filled)
+    }
+
+    /// 一口 24h 行情：`(最新价, 滚动涨跌幅, 时间)`。取不出价就 nil。
+    public func parseTicker(_ data: Data) -> (price: Double, change: Double?, timeMs: Int64?)? {
+      guard let root = try? JSONSerialization.jsonObject(with: data),
+            let object = Self.unwrap(root, field: tickerField) as? [String: Any],
+            let price = Self.number(object["lastPrice"]) else { return nil }
+      let time = Self.number(object["closeTime"]).map { Int64($0) }
+      return (price, Self.number(object["priceChangePercent"]), time)
+    }
+
+    /// 一段 1 小时收盘价（第 5 列）。不足两根就 nil。
+    public func parseCloses(_ data: Data) -> [Double]? {
+      guard let root = try? JSONSerialization.jsonObject(with: data),
+            let rows = Self.unwrap(root, field: closesField) as? [[Any]] else { return nil }
+      let closes = rows.compactMap { row in row.count > 4 ? Self.number(row[4]) : nil }
+      return closes.count >= 2 ? closes : nil
+    }
+
+    private static func unwrap(_ root: Any, field: String?) -> Any? {
+      guard let field else { return root }
+      return (root as? [String: Any])?[field]
+    }
+
+    private static func number(_ value: Any?) -> Double? {
+      if let text = value as? String { return Double(text) }
+      if let number = value as? NSNumber { return number.doubleValue }
+      return nil
+    }
   }
 
   // MARK: 挑行

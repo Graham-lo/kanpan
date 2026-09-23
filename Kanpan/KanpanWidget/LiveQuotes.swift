@@ -4,7 +4,8 @@ import KanpanCore
 /// 小组件刷新那一拍自己补的价。
 ///
 /// app 在前台时每刷到行情就写快照、并叫系统重载小组件，那时快照是新的，这儿什么都不取；
-/// app 不在前台，系统按 15 分钟来刷，这时快照是旧的，就照 app 当前那台 REST 主机取一口：
+/// app 不在前台，系统按 15 分钟来刷，这时快照是旧的，就照快照里写的取数方式
+/// （`WidgetSnapshot.Refresh`，app 按用户选的线路定：直连打币安、网关打网关）取一口：
 /// 小号四只各一口 24 小时行情，中号那一只再带一段 1 小时收盘价。
 /// 每一口都有超时，取不到就沿用快照——宁可旧，不画空。
 enum LiveQuotes {
@@ -15,14 +16,13 @@ enum LiveQuotes {
   static func refresh(_ snapshot: WidgetSnapshot, symbols: [String], sparkline: String? = nil,
                       now: Date = Date()) async -> WidgetSnapshot {
     let age = now.timeIntervalSince1970 - Double(snapshot.updatedAt) / 1000
-    guard age > freshSeconds, !snapshot.fapiHost.isEmpty else { return snapshot }
+    guard age > freshSeconds, let plan = snapshot.refresh, !plan.hosts.isEmpty else { return snapshot }
     var next = snapshot
     await withTaskGroup(of: (String, Ticker24h?, [Double]?).self) { group in
-      for symbol in symbols where snapshot.quotes[symbol] != nil
-        && snapshot.hostMarket.map({ InstrumentID(symbol).marketKey == $0 }) ?? true {
+      for symbol in symbols where snapshot.quotes[symbol] != nil && InstrumentID(symbol).marketKey == plan.market {
         group.addTask {
-          async let ticker = fetchTicker(host: snapshot.fapiHost, symbol: symbol)
-          async let closes: [Double]? = symbol == sparkline ? fetchCloses(host: snapshot.fapiHost, symbol: symbol) : nil
+          async let ticker = fetchTicker(plan, symbol: symbol)
+          async let closes: [Double]? = symbol == sparkline ? fetchCloses(plan, symbol: symbol) : nil
           return (symbol, await ticker, await closes)
         }
       }
@@ -43,23 +43,29 @@ enum LiveQuotes {
     return URLSession(configuration: config)
   }
 
-  static func fetchTicker(host: String, symbol: String) async -> Ticker24h? {
-    guard let url = URL(string: "https://\(host)/fapi/v1/ticker/24hr?symbol=\(InstrumentID(symbol).symbol)"),
-          let (data, response) = try? await session().data(from: url),
-          (response as? HTTPURLResponse)?.statusCode == 200,
-          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let price = (object["lastPrice"] as? String).flatMap(Double.init) else { return nil }
-    let change = (object["priceChangePercent"] as? String).flatMap(Double.init)
-    let time = (object["closeTime"] as? NSNumber)?.int64Value ?? Int64(Date().timeIntervalSince1970 * 1000)
-    return Ticker24h(price: price, change: change, timeMs: time)
+  /// 按顺序试候选主机，第一台回 200 的就用。
+  private static func get(_ urls: [URL]) async -> Data? {
+    let session = session()
+    defer { session.finishTasksAndInvalidate() }
+    for url in urls {
+      guard let (data, response) = try? await session.data(from: url),
+            (response as? HTTPURLResponse)?.statusCode == 200 else { continue }
+      return data
+    }
+    return nil
   }
 
-  static func fetchCloses(host: String, symbol: String) async -> [Double]? {
-    guard let url = URL(string: "https://\(host)/fapi/v1/klines?symbol=\(InstrumentID(symbol).symbol)&interval=1h&limit=\(WidgetSnapshot.sparkBars)"),
-          let (data, response) = try? await session().data(from: url),
-          (response as? HTTPURLResponse)?.statusCode == 200,
-          let rows = try? JSONSerialization.jsonObject(with: data) as? [[Any]] else { return nil }
-    let closes = rows.compactMap { row in row.count > 4 ? (row[4] as? String).flatMap(Double.init) : nil }
-    return closes.count >= 2 ? closes : nil
+  static func fetchTicker(_ plan: WidgetSnapshot.Refresh, symbol: String) async -> Ticker24h? {
+    let raw = InstrumentID(symbol).symbol
+    guard let data = await get(plan.hosts.compactMap { plan.tickerURL(host: $0, symbol: raw) }),
+          let parsed = plan.parseTicker(data) else { return nil }
+    return Ticker24h(price: parsed.price, change: parsed.change,
+                     timeMs: parsed.timeMs ?? Int64(Date().timeIntervalSince1970 * 1000))
+  }
+
+  static func fetchCloses(_ plan: WidgetSnapshot.Refresh, symbol: String) async -> [Double]? {
+    let raw = InstrumentID(symbol).symbol
+    guard let data = await get(plan.hosts.compactMap { plan.closesURL(host: $0, symbol: raw) }) else { return nil }
+    return plan.parseCloses(data)
   }
 }

@@ -62,36 +62,49 @@ public struct BinanceProvider: MarketProvider {
   public let rest: BinanceREST
   public let hosts: BinanceHosts
   public let upstream: BinanceUpstream
-  let policy: MarketRoutePolicy
+  /// `RouteResolver` 定下的线路：直连 / 网关与网关表。
+  let route: MarketRoute
   let sockets: any WSSocketFactory
   /// 直接问网关（不经 `BinanceREST` 的路径翻译与限流器）的那几笔：替身的资金费率表。
   let http: any HTTPTransport
 
   /// - Parameters:
-  ///   - rest: 测试注入用。不传就按 `upstream` + `policy` 建一个走共享限流器的。
+  ///   - rest: 测试注入用。不传就按 `upstream` + `route` 建一个走共享限流器的。
   ///   - sockets: 最底层的 WS 拨号器（测试里换成假的）。
   ///   - http: 直接问网关的那几笔走的传输（测试里换成假的）。
-  public init(upstream: BinanceUpstream, hosts: BinanceHosts, policy: MarketRoutePolicy,
+  public init(upstream: BinanceUpstream, hosts: BinanceHosts, route: MarketRoute,
               rest: BinanceREST? = nil, sockets: any WSSocketFactory = URLSessionSocketFactory(),
               http: any HTTPTransport = URLSessionTransport(),
               log: FeedLog = .silent) {
     self.upstream = upstream
     self.hosts = hosts
-    self.policy = policy
+    self.route = route
     self.sockets = sockets
     self.http = http
-    self.rest = rest ?? BinanceREST.upstream(upstream, hosts: hosts, log: log, policy: policy)
+    self.rest = rest ?? BinanceREST.upstream(upstream, hosts: hosts, route: route, log: log)
     self.capabilities = Self.capabilities(upstream)
   }
 
-  /// 用户的线路 → 这一家实际由谁供数。直连是币安本家，网关上是 OKX 替身。
-  public static func upstream(for policy: MarketRoutePolicy) -> BinanceUpstream {
-    policy == .gateway ? .okx : .binance
+  /// 测试用的旧写法：只给线路档位，网关表取 `hosts.oiProxies`。
+  public init(upstream: BinanceUpstream, hosts: BinanceHosts, policy: MarketRoutePolicy,
+              rest: BinanceREST? = nil, sockets: any WSSocketFactory = URLSessionSocketFactory(),
+              http: any HTTPTransport = URLSessionTransport(),
+              log: FeedLog = .silent) {
+    self.init(upstream: upstream, hosts: hosts,
+              route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: hosts.oiProxies)),
+              rest: rest, sockets: sockets, http: http, log: log)
   }
 
+  /// 用户的线路 → 这一家实际由谁供数。直连是币安本家，网关上是 OKX 替身。
+  public static func upstream(for route: MarketRoute) -> BinanceUpstream {
+    route.viaGateway ? .okx : .binance
+  }
+
+  /// 币安的域名：REST / 流都是出厂默认（直连用），网关表来自线路。
+  /// 以前这里还能被「自定义 REST / 流域名」覆盖，那一层已经删了（见 `APIHost.swift`）。
   public static func hosts(_ endpoints: MarketEndpoints) -> BinanceHosts {
-    BinanceHosts(fapi: endpoints.restHost ?? defaultRestHost,
-                 stream: endpoints.streamHost ?? defaultStreamHost,
+    BinanceHosts(fapi: defaultRestHost,
+                 stream: defaultStreamHost,
                  oiProxy: endpoints.gateways.first,
                  oiProxyFallbacks: Array(endpoints.gateways.dropFirst()))
   }
@@ -251,14 +264,14 @@ public struct BinanceProvider: MarketProvider {
   public func makeStream(silenceMs: Double?, log: FeedLog) -> any MarketStream {
     BinanceWS(hosts: hosts,
                      factory: SourceSocketFactory(source: upstream, hosts: hosts, factory: sockets,
-                                                  policy: policy, log: log),
+                                                  route: route, log: log),
                      // 首帧前的静默窗口给 60 秒（A-07 第②层）：线路是用户定死的、没有竞速，
                      // 冷门永续 15 秒内完全可能一帧都不推，收窄就会变成无休止的重连。
                      silenceMs: silenceMs ?? 60_000, log: log)
   }
 
   public func probeStream(symbol: String, interval: Interval) async -> Bool {
-    let factory = SourceSocketFactory(source: upstream, hosts: hosts, factory: sockets, policy: policy)
+    let factory = SourceSocketFactory(source: upstream, hosts: hosts, factory: sockets, route: route)
     let url = hosts.combinedStream([Self.streamName(.kline(symbol: symbol, interval: BinanceREST.source(interval)))])
     do {
       let socket = try await factory.connect(to: url)
@@ -266,6 +279,33 @@ public struct BinanceProvider: MarketProvider {
       try Task.checkCancellation()
       return true
     } catch { return false }
+  }
+
+  /// 直连：REST 那台发一笔 `ping`（权重 1、无鉴权），推送那台只要 DNS + TLS 走通，用 HEAD。
+  /// 网关：首屏的 REST 竞速和推送都打网关，主、备两台各 HEAD 一下——以前这里不管线路
+  /// 一律热直连域名，选了网关的人热的是一台他根本不会连的机器。
+  public var prewarmTargets: [PrewarmTarget] {
+    if route.viaGateway {
+      return route.gateways.compactMap { PrewarmTarget.make(host: $0, path: "/", method: "HEAD") }
+    }
+    return [PrewarmTarget.make(host: hosts.fapi, path: Self.warmPath, method: "GET"),
+            PrewarmTarget.make(host: hosts.stream, path: "/", method: "HEAD")].compactMap { $0 }
+  }
+
+  /// 小组件补价：直连打币安 `/fapi/v1/*`；网关打 `/market/v1/*`（替身来源），载荷在信封里。
+  public var widgetRefresh: WidgetSnapshot.Refresh? {
+    let market = "\(capabilities.venue)/\(capabilities.market)"
+    if route.viaGateway {
+      guard !route.gateways.isEmpty else { return nil }
+      let source = "&source=\(upstream.rawValue)"
+      return WidgetSnapshot.Refresh(market: market, hosts: route.gateways,
+                                    ticker: "/market/v1/ticker?symbol={symbol}" + source,
+                                    closes: "/market/v1/klines?symbol={symbol}&interval=1h&limit={limit}" + source,
+                                    tickerField: "ticker", closesField: "bars")
+    }
+    return WidgetSnapshot.Refresh(market: market, hosts: [hosts.fapi],
+                                  ticker: "/fapi/v1/ticker/24hr?symbol={symbol}",
+                                  closes: "/fapi/v1/klines?symbol={symbol}&interval=1h&limit={limit}")
   }
 
   public func rawStreamURL(topics: [StreamTopic]) -> URL? {

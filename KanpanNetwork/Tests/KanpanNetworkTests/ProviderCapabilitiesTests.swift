@@ -79,4 +79,45 @@ struct ProviderCapabilitiesTests {
     let e = MarketEndpoints(gateways: ["a", "", "b", "a"])
     #expect(e.gateways == ["a", "b"])
   }
+
+  @Test("RouteResolver 的出口：直连给币安本家与出厂域名，网关给替身与两台线上网关")
+  func resolverOutputs() {
+    let direct = RouteResolver(policy: .direct)
+    #expect(direct.route.restHosts(direct: "fapi.binance.com") == ["fapi.binance.com"])
+    #expect(direct.defaultProvider.capabilities.upstream == "binance")
+    let gateway = RouteResolver(policy: .gateway)
+    #expect(gateway.route.gateways == MarketEndpoints.production.gateways)
+    #expect(gateway.route.gateways.count == 2)
+    #expect(gateway.route.restHosts(direct: "fapi.binance.com") == MarketEndpoints.production.gateways)
+    #expect(gateway.defaultProvider.capabilities.upstream == "okx")
+    // 线上网关表里绝不能混进合约测试网。
+    #expect(!MarketEndpoints.production.gateways.contains { $0.contains("binancefuture") })
+  }
+
+  @Test("冷启动热身跟线路走：直连热币安两台，网关热两台网关")
+  func prewarmFollowsRoute() {
+    let direct = RouteResolver(policy: .direct).defaultProvider.prewarmTargets
+    #expect(direct.map { $0.url.host ?? "" } == ["fapi.binance.com", "dstream.binance.me"])
+    #expect(direct.first?.url.path == "/fapi/v1/ping")
+    let gateway = RouteResolver(policy: .gateway).defaultProvider.prewarmTargets
+    #expect(gateway.map { $0.url.host ?? "" } == MarketEndpoints.production.gateways.map {
+      String($0.split(separator: ":").first ?? "")
+    })
+    #expect(gateway.allSatisfy { $0.method == "HEAD" })
+  }
+
+  @Test("小组件补价跟线路走：直连打 /fapi，网关打 /market/v1 并从信封取")
+  func widgetRefreshFollowsRoute() throws {
+    let direct = try #require(RouteResolver(policy: .direct).defaultProvider.widgetRefresh)
+    #expect(direct.hosts == ["fapi.binance.com"])
+    #expect(direct.tickerURL(host: direct.hosts[0], symbol: "BTCUSDT")?.path == "/fapi/v1/ticker/24hr")
+    #expect(direct.tickerField == nil)
+    #expect(direct.market == VenueRegistry.default.marketKey)
+    let gateway = try #require(RouteResolver(policy: .gateway).defaultProvider.widgetRefresh)
+    #expect(gateway.hosts == MarketEndpoints.production.gateways)
+    let url = try #require(gateway.tickerURL(host: gateway.hosts[0], symbol: "BTCUSDT"))
+    #expect(url.path == "/market/v1/ticker")
+    #expect(url.query?.contains("source=okx") == true)
+    #expect(gateway.tickerField == "ticker" && gateway.closesField == "bars")
+  }
 }

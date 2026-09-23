@@ -18,21 +18,25 @@ public struct CoinbaseEndpoints: Sendable, Equatable {
   static let gatewayStreamPath = "/v1/market/stream"
   static let gatewaySource = "coinbase"
 
-  public var policy: MarketRoutePolicy
+  /// `RouteResolver` 定下的线路（直连 / 网关与网关表）。
+  public var route: MarketRoute
   /// 看盘自己的网关，主在前、备在后。直连线路不用。
-  public var gateways: [String]
+  public var gateways: [String] { route.gateways }
+  var viaGateway: Bool { route.viaGateway }
+
+  public init(route: MarketRoute) { self.route = route }
 
   public init(policy: MarketRoutePolicy, gateways: [String]) {
-    self.policy = policy; self.gateways = gateways
+    self.init(route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways)))
   }
 
   /// 这条线路上能试的 REST 主机，按顺序。直连只有 Coinbase 一家；网关按主、备。
-  var restHosts: [String] { policy == .gateway ? gateways : [Self.restHost] }
+  var restHosts: [String] { route.restHosts(direct: Self.restHost) }
 
   /// `path` 是 Coinbase 公开行情前缀之后的那一截（`products`、`products/BTC-USD/candles`）。
   func rest(_ path: String, query: [URLQueryItem] = [], host: String) -> URL? {
     guard var c = Self.origin("https", host) else { return nil }
-    if policy == .gateway {
+    if viaGateway {
       c.path = Self.gatewayRestPrefix + path
       c.queryItems = [URLQueryItem(name: "source", value: Self.gatewaySource)] + query
     } else {
@@ -44,7 +48,7 @@ public struct CoinbaseEndpoints: Sendable, Equatable {
 
   /// 推送地址。网关线路上按主、备顺序给候选。
   var streams: [URL] {
-    if policy == .gateway {
+    if viaGateway {
       return gateways.compactMap { host in
         guard var c = Self.origin("wss", host) else { return nil }
         c.path = Self.gatewayStreamPath

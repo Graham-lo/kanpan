@@ -145,7 +145,7 @@ struct SectorPage: View {
     .accessibilityIdentifier("sector.page")
     .onAppear {
       feed.setVisible(true)
-      historyFeed.configure(hosts: feed.backendHosts)
+      historyFeed.configure(backend: feed.backend)
       historyFeed.setVisible(true)
     }
     .onDisappear {
@@ -154,7 +154,7 @@ struct SectorPage: View {
     }
     // 网关名单是宿主在启动时配进 `feed` 的，可能比这一页出现得晚一步；
     // 换线路时也会变。变一次就重新接一次线，免得「5 日」那一档等到下次进页才活。
-    .onChange(of: feed.backendHosts) { _, next in historyFeed.configure(hosts: next) }
+    .onChange(of: feed.backend) { _, next in historyFeed.configure(backend: next) }
   }
 
   /// 最上面那一层如果是品种列表，是哪个板块。

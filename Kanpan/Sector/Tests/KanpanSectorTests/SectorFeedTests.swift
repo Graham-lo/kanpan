@@ -22,12 +22,18 @@ private final class Calls: @unchecked Sendable {
   var all: [String] { lock.lock(); defer { lock.unlock() }; return items }
 }
 
+/// 测试一律显式走直连：`RouteResolver.current` 读的是这台机器 UserDefaults 里的选择，
+/// 别的套件或开发者本机留下的「网关」会让「线路没变」的断言变成换了线路。
+private extension RouteResolver {
+  static var direct: RouteResolver { RouteResolver(policy: .direct) }
+}
+
 @MainActor
 @Suite("A-T12 / B-T21 板块行情不许过期还摆在屏上")
 struct SectorFeedTests {
 
   private func feed(_ tickers: [Ticker]) -> SectorFeed {
-    let feed = SectorFeed()
+    let feed = SectorFeed(route: .direct)
     feed.fetchTickers = { _ in tickers }
     return feed
   }
@@ -42,7 +48,7 @@ struct SectorFeedTests {
     #expect(feed.quotes["BTC"]?.pct == 1.5)
 
     // 换一家交易所。两家的 24h 口径和品种集合都不一样，上一家报的一条都不能留。
-    feed.configure(endpoints: .default, policy: .gateway)
+    feed.configure(route: RouteResolver(policy: .gateway, endpoints: .default))
     #expect(feed.quotes.isEmpty)
     #expect(feed.lastUpdate == nil)
   }
@@ -52,7 +58,7 @@ struct SectorFeedTests {
     let feed = feed([ticker("BTCUSDT", pct: 1.5)])
     feed.setVisible(true)
     await settle(feed)
-    feed.configure(endpoints: .default, policy: .direct)
+    feed.configure(route: .direct)
     #expect(feed.quotes["BTC"]?.pct == 1.5)
   }
 
@@ -105,7 +111,7 @@ struct SectorFeedTests {
 
   @Test("一趟都没取到过就直接是空的")
   func neverLoadedDropsImmediately() {
-    let feed = SectorFeed()
+    let feed = SectorFeed(route: .direct)
     for _ in 1...SectorFeed.failuresBeforeDropping { feed.noteFailure() }
     #expect(feed.quotes.isEmpty)
   }
@@ -122,7 +128,7 @@ struct SectorFeedTests {
 
   @Test("第一趟还没回来时不算空态")
   func loadingIsNotEmptiness() async {
-    let feed = SectorFeed()
+    let feed = SectorFeed(route: .direct)
     feed.fetchTickers = { _ in [ticker("BTCUSDT", pct: 1)] }
     // 一趟都还没问过：屏上没有板块，但也不是「暂无行情」——那句会在首屏闪一下。
     #expect(feed.quotes.isEmpty)
@@ -136,7 +142,7 @@ struct SectorFeedTests {
 
   @Test("问过了却什么都没有，才是空态")
   func emptinessNeedsAnAttempt() async {
-    let feed = SectorFeed()
+    let feed = SectorFeed(route: .direct)
     feed.fetchTickers = { _ in throw URLError(.timedOut) }
     feed.setVisible(true)
     for _ in 0..<50 where !feed.showsEmptyState { await Task.yield() }
@@ -144,7 +150,7 @@ struct SectorFeedTests {
     #expect(feed.showsEmptyState)
 
     // 换线路等于换了一家交易所：之前问过什么都不作数，回到「还没问过」。
-    feed.configure(endpoints: .default, policy: .gateway)
+    feed.configure(route: RouteResolver(policy: .gateway, endpoints: .default))
     #expect(feed.quotes.isEmpty)
     #expect(!feed.showsEmptyState)
   }
@@ -176,7 +182,7 @@ struct SectorFeedTests {
   @Test("重试先清线路冷却，再发第一趟请求")
   func retryClearsCooldownsBeforeFetching() async {
     let calls = Calls()
-    let feed = SectorFeed()
+    let feed = SectorFeed(route: .direct)
     feed.resetCooldowns = { _ in calls.note("reset") }
     feed.fetchTickers = { _ in
       calls.note("fetch")
@@ -196,7 +202,7 @@ struct SectorFeedTests {
 
   @Test("空态上点一下就再取一趟")
   func retryRefetches() async {
-    let feed = SectorFeed()
+    let feed = SectorFeed(route: .direct)
     feed.fetchTickers = { _ in throw URLError(.timedOut) }
     feed.setVisible(true)
     await settle(feed)
@@ -214,7 +220,7 @@ struct SectorFeedTests {
 
   @Test("品种表给的小数位按 base 查得到")
   func decimalsComeFromTheCatalog() {
-    let feed = SectorFeed()
+    let feed = SectorFeed(route: .direct)
     feed.setCatalog([
       SymbolInfo(symbol: "BTCUSDT", base: "BTC", pricePrecision: 2, tickSize: 0.1),
       SymbolInfo(symbol: "SNDKUSDT", base: "SNDK", pricePrecision: 5, tickSize: 0.01),
@@ -273,14 +279,14 @@ struct SectorFeedTests {
 
   @Test("冷启动第一次 configure 就把盘上那份读回来，但不算「问过了」")
   func firstConfigureRestoresCache() async {
-    let feed = SectorFeed()
+    let feed = SectorFeed(route: .direct)
     let saved = Calls()
     feed.cache = .init(load: { partition in partition == nil ? [ticker("BTCUSDT", pct: 2.5)] : [] },
                        save: { partition, _ in saved.note(partition ?? "root") })
     let got = Calls()
     feed.onTickers = { tickers, upstream in got.note("\(upstream):\(tickers.count)") }
     // 和默认线路一样也要读：从前这一下直接 return，盘上那份没人读。
-    feed.configure(endpoints: .default, policy: .direct)
+    feed.configure(route: .direct)
     for _ in 0..<200 where feed.quotes.isEmpty { await Task.yield(); try? await Task.sleep(for: .milliseconds(5)) }
     #expect(feed.quotes["BTC"]?.pct == 2.5)
     #expect(got.all == ["binance:1"])
@@ -301,7 +307,7 @@ struct SectorFeedTests {
     feed.applyRestored([ticker("BTCUSDT", pct: 9)], upstream: feed.upstream, generation: 0)
     #expect(feed.quotes["BTC"]?.pct == 1.5)
 
-    let other = SectorFeed()
+    let other = SectorFeed(route: .direct)
     other.applyRestored([ticker("BTCUSDT", pct: 9)], upstream: "okx", generation: 0)
     #expect(other.quotes.isEmpty)
   }

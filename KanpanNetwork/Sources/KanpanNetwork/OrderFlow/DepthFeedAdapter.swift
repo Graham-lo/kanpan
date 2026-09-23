@@ -53,8 +53,8 @@ extension DepthFeedAdapter {
   }
 
   /// 网关上某条路径的组合流地址，按网关表逐台（主在前）。
-  static func gatewayStreams(_ hosts: BinanceHosts, path: String, streams: [String]) -> [URL] {
-    hosts.oiProxies.compactMap { host in
+  static func gatewayStreams(_ gateways: [String], path: String, streams: [String]) -> [URL] {
+    gateways.compactMap { host in
       guard var c = URLComponents(string: "wss://" + host), c.host != nil, c.user == nil else { return nil }
       c.path = path
       c.queryItems = [URLQueryItem(name: "streams", value: streams.joined(separator: "/"))]

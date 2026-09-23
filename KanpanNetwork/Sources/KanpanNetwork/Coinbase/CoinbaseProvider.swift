@@ -46,11 +46,19 @@ public struct CoinbaseProvider: MarketProvider {
   let log: FeedLog
   let clock: @Sendable () -> Date
 
+  public init(route: MarketRoute,
+              transport: any HTTPTransport = URLSessionTransport(),
+              sockets: any WSSocketFactory = URLSessionSocketFactory(),
+              log: FeedLog = .silent) {
+    self.init(route: route, transport: transport, sockets: sockets, limiter: .shared, log: log)
+  }
+
+  /// 测试用的旧写法：线路档位 + 地址表。
   public init(policy: MarketRoutePolicy, endpoints: MarketEndpoints,
               transport: any HTTPTransport = URLSessionTransport(),
               sockets: any WSSocketFactory = URLSessionSocketFactory(),
               log: FeedLog = .silent) {
-    self.init(policy: policy, gateways: endpoints.gateways, transport: transport, sockets: sockets,
+    self.init(route: MarketRoute(policy: policy, endpoints: endpoints), transport: transport, sockets: sockets,
               limiter: .shared, log: log)
   }
 
@@ -58,7 +66,15 @@ public struct CoinbaseProvider: MarketProvider {
        sockets: any WSSocketFactory = URLSessionSocketFactory(),
        limiter: CoinbaseRateLimiter, log: FeedLog = .silent,
        clock: @escaping @Sendable () -> Date = { Date() }) {
-    self.endpoints = CoinbaseEndpoints(policy: policy, gateways: gateways)
+    self.init(route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways)),
+              transport: transport, sockets: sockets, limiter: limiter, log: log, clock: clock)
+  }
+
+  init(route: MarketRoute, transport: any HTTPTransport,
+       sockets: any WSSocketFactory = URLSessionSocketFactory(),
+       limiter: CoinbaseRateLimiter, log: FeedLog = .silent,
+       clock: @escaping @Sendable () -> Date = { Date() }) {
+    self.endpoints = CoinbaseEndpoints(route: route)
     self.transport = transport; self.sockets = sockets
     self.limiter = limiter; self.log = log; self.clock = clock
   }
@@ -90,7 +106,7 @@ public struct CoinbaseProvider: MarketProvider {
         let retry = UpstreamError.retryAfterSeconds(reply.header("Retry-After"))
         let error = UpstreamError(status: reply.status, msg: Self.message(reply.body),
                                   url: url.absoluteString, retryAfter: retry,
-                                  proxied: endpoints.policy == .gateway)
+                                  proxied: endpoints.viaGateway)
         if reply.status == 429 {
           await limiter.penalize(seconds: retry ?? 1)
           failure = error

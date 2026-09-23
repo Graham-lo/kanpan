@@ -47,7 +47,7 @@ extension RoutedMarketFeed {
        primary: BinanceREST, backup: BinanceREST, sockets: any WSSocketFactory,
        policy: MarketRoutePolicy) {
     self.init(paths: paths, log: log, policy: policy) { _, policy in
-      let upstream = BinanceProvider.upstream(for: policy)
+      let upstream = BinanceProvider.upstream(for: MarketRoute(policy: policy, endpoints: .production))
       return BinanceProvider(upstream: upstream, hosts: hosts, policy: policy,
                              rest: upstream == .binance ? primary : backup, sockets: sockets, log: log)
     }

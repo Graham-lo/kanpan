@@ -21,20 +21,21 @@ public struct OKXBooksAdapter: DepthFeedAdapter {
   public var sequenceModel: DepthSequenceModel { .previousFinalExact }
   public var snapshotInBand: Bool { true }
 
-  let hosts: BinanceHosts
+  /// 网关候选（`MarketRoute.gateways`，主在前）。这一路只在网关上有。
+  let gateways: [String]
   let sockets: any WSSocketFactory
 
-  public init(symbol: String, hosts: BinanceHosts,
+  public init(symbol: String, gateways: [String],
               sockets: any WSSocketFactory = URLSessionSocketFactory()) {
     self.symbol = InstrumentID(symbol).symbol.uppercased()
-    self.hosts = hosts; self.sockets = sockets
+    self.gateways = gateways; self.sockets = sockets
   }
 
   var channel: String { "\(symbol.lowercased())@depth@100ms" }
   var tradeChannel: String { BinanceHosts.aggTradeStream(symbol: symbol) }
 
   public var streamURLs: [URL] {
-    Self.gatewayStreams(hosts, path: "/market/okx/stream", streams: [channel, tradeChannel])
+    Self.gatewayStreams(gateways, path: "/market/okx/stream", streams: [channel, tradeChannel])
   }
 
   public func connect(candidate: Int) async throws -> any WSSocket {

@@ -143,11 +143,12 @@ final class MarketModel {
   // `@Observable` 把它包进跟踪存储——包进去之后 `nonisolated(unsafe)` 落在合成的
   // 后备变量上，写在这儿的那个就成了空话，编译器会照实报「没有效果」。
   @ObservationIgnored nonisolated(unsafe) private var policyObserver: (any NSObjectProtocol)?
-  /// 品种表。域名可以改（A6.10），而品种页握着的是一条早就交出去的 `@Sendable`
-  /// 闭包——中间夹这个盒子，换域名时换掉里面那份，闭包不用重发。
+  /// 品种表。线路可以换，而品种页握着的是一条早就交出去的 `@Sendable`
+  /// 闭包——中间夹这个盒子，换线路时换掉里面那份，闭包不用重发。
   nonisolated private let catalog: CatalogBox
-  private var endpoints: MarketEndpoints
-  /// 启动快照开关的当前值。换域名要把整条流重建一遍，得记着用哪个值重启。
+  /// 网关表。线上就是那两台（`MarketEndpoints.production`），测试可以换成空表。
+  private let endpoints: MarketEndpoints
+  /// 启动快照开关的当前值：预热要不要顺手写快照看它。
   private var snapshot = true
   // 同上：`deinit` 要 cancel 它。
   @ObservationIgnored nonisolated(unsafe) private var pump: Task<Void, Never>?
@@ -164,7 +165,7 @@ final class MarketModel {
   private var loading = false
 
   init(symbol: String = VenueRegistry.default.defaultSymbol, interval: Interval = .h1,
-       endpoints: MarketEndpoints = .default) {
+       endpoints: MarketEndpoints = .production) {
     let canonical = InstrumentID.canonical(symbol)
     self.symbol = canonical
     self.interval = interval
@@ -175,7 +176,7 @@ final class MarketModel {
     let resolver = RouteResolver(policy: MarketRoutePolicyStore.current, endpoints: endpoints, log: MarketModel.log)
     let provider = resolver.provider(forSymbol: canonical)
     self.capabilities = provider.capabilities
-    self.oiSource = OISource(provider: provider, gateways: endpoints.gateways, store: Self.oiStore(for: provider.capabilities))
+    self.oiSource = OISource(provider: provider, gateways: resolver.route.gateways, store: Self.oiStore(for: provider.capabilities))
     self.feed = RoutedMarketFeed(endpoints: endpoints, log: MarketModel.log)
     self.catalog = CatalogBox(Self.catalogs(resolver))
     // 换线路时 `RoutedMarketFeed` 自己会切；历史 OI 的客户端是这里建的，也得跟着换，
@@ -211,7 +212,7 @@ final class MarketModel {
   /// 历史持仓量 / 衍生统计的客户端：按当前品种所在的那一家、当前线路建。
   private func rebuildOISource() {
     let provider = resolver.provider(forSymbol: symbol)
-    oiSource = OISource(provider: provider, gateways: endpoints.gateways, store: Self.oiStore(for: provider.capabilities))
+    oiSource = OISource(provider: provider, gateways: resolver.route.gateways, store: Self.oiStore(for: provider.capabilities))
   }
 
   /// 持仓量副图与外部指标问不问：图上这份行情和手里的统计客户端都得有这项能力
@@ -375,26 +376,6 @@ final class MarketModel {
     Task { [feed] in await feed.setSnapshotEnabled(on) }
   }
 
-  /// 换域名（A6.10）。REST 和推送是两台，改哪一边都得把整条流重建——
-  /// 提供者对一组主机是不可变的，本来就不打算中途改。
-  func setEndpoints(_ next: MarketEndpoints) {
-    guard next != endpoints else { return }
-    endpoints = next
-    let running = pump != nil
-    stop()
-    rebuildOISource()
-    resetOI(); forgetOIMemo()
-    feed = RoutedMarketFeed(endpoints: next, log: MarketModel.log)
-    updateMicrostructure()  // 新流上重新挂盘口、主动买卖与主力订单流，否则要等下次拨开关
-    let box = catalog, catalogs = Self.catalogs(resolver)
-    Task { await box.replace(catalogs) }
-    status = .offline
-    lastPushAt = nil
-    guard running else { return }
-    switching = true
-    start(snapshot: snapshot)
-  }
-
   // ---------------------------------------------------------------- 事件
 
   private var applied = 0
@@ -430,7 +411,7 @@ final class MarketModel {
       startStats()
       rebuildOISource()
       resetOI(); historyError = nil
-      // 品种表在换线路 / 换域名时已经整份换过（`routePolicyDidChange` / `setEndpoints`），
+      // 品种表在换线路 / 换域名时已经整份换过（`routePolicyDidChange`），
       // 这里只按新的那份把品种事实再对一遍。
       Task { await self.refreshInfo() }
     case .historyError(let error):
@@ -517,7 +498,7 @@ final class MarketModel {
   /// 两条都失败就让那两格一直是 `--`，不报错、不弹窗。
   private func startStats() {
     statsTask?.cancel()
-    let sym = symbol, src = capabilities.openInterestSource, base = info.base, proxies = endpoints.gateways
+    let sym = symbol, src = capabilities.openInterestSource, base = info.base, proxies = resolver.route.gateways
     guard !proxies.isEmpty else {
       openInterestValue = nil; openInterestUnit = nil; totalSupply = nil
       return
@@ -692,7 +673,7 @@ final class MarketModel {
         self.seedFunding(for: self.symbol)
       }
     }
-    let proxies = endpoints.gateways
+    let proxies = resolver.route.gateways
     guard !proxies.isEmpty else { return }
     // 可能混着不同交易所的品种：持仓量按各自那一家的口径问。
     let bySource = Dictionary(grouping: syms) { resolver.provider(forSymbol: $0).capabilities.openInterestSource ?? "" }

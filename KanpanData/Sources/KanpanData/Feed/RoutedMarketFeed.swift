@@ -69,7 +69,9 @@ public actor RoutedMarketFeed {
   /// 板块列表只热前面这几行——一屏看得见、最可能被点的那几只。
   public static let listPrefetchLimit = 10
 
-  public init(endpoints: MarketEndpoints, paths: Paths = .caches(), log: FeedLog = .silent) {
+  /// 线路从 `RouteResolver` 取：档位跟着本机的线路选择（换档时广播过来），
+  /// 网关表默认是线上那两台。
+  public init(endpoints: MarketEndpoints = .production, paths: Paths = .caches(), log: FeedLog = .silent) {
     self.paths = paths; self.log = log
     self.policy = MarketRoutePolicyStore.current
     self.resolver = { venue, policy in

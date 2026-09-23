@@ -250,11 +250,9 @@ struct MainScreen: View {
   private var dark: Bool { seed.dark }
   private var theme: PanelTheme { PanelTheme(seed: seed, redUp: prefs.redUp) }
 
-  /// 设置里那两行域名（A6.10）。REST 和推送分开填，理由见 `APIHost.defaultStream`。
-  private var endpoints: MarketEndpoints {
-    MarketEndpoints(restHost: prefs.apiHost, streamHost: prefs.streamHost,
-      gateways: [APIHost.gateway, APIHost.gatewayBackup])
-  }
+  /// 这台设备选的线路。所有取数件（报价簿、板块、预览卡、对比、复盘、小组件）都从它拿
+  /// 主机，不再各自拼（审查 14）。
+  private var route: RouteResolver { RouteResolver(policy: prefs.routePolicy) }
 
   /// 横屏判据用高度的 size class，不用宽高比。
   ///
@@ -434,7 +432,6 @@ struct MainScreen: View {
       microstructureVisible: microstructureVisible,
       syncGate: syncGate,
       reviewScope: review.searchScope,
-      endpoints: endpoints,
       routePolicy: prefs.routePolicy,
       fundingRate: market.displayedFundingRate,
       catalogCount: picker.catalog.count,
@@ -465,16 +462,12 @@ struct MainScreen: View {
       onReviewScope: { value in store.update { $0.reviewSearchScope = value } },
       onPrefsReviewScope: { value in review.searchScope = value },
       onTimeZone: { value in review.timezone = value },
-      onEndpoints: { next in
-        market.setEndpoints(next); quotes.configure(endpoints: next, basis: prefs.changeBasis, policy: prefs.routePolicy)
-        sectorFeed.configure(endpoints: next, policy: prefs.routePolicy)
-        previews.configure(endpoints: next, policy: prefs.routePolicy)
-      },
-      onChangeBasis: { next in quotes.configure(endpoints: endpoints, basis: next, policy: prefs.routePolicy) },
+      onChangeBasis: { next in quotes.configure(route: route, basis: next) },
       onRoutePolicy: { next in
-        quotes.configure(endpoints: endpoints, basis: prefs.changeBasis, policy: next)
-        sectorFeed.configure(endpoints: endpoints, policy: next)
-        previews.configure(endpoints: endpoints, policy: next)
+        let route = RouteResolver(policy: next)
+        quotes.configure(route: route, basis: prefs.changeBasis)
+        sectorFeed.configure(route: route)
+        previews.configure(route: route)
       },
       onFundingRate: { rate in previews.note(funding: rate, for: market.symbol) },
       onCatalog: { sectorFeed.setCatalog(picker.catalog) },
@@ -1283,14 +1276,14 @@ struct MainScreen: View {
     review.onOpenChart = { record in
       endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = .record(record.id)
-      reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), endpoints: endpoints, policy: prefs.routePolicy)
+      reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), route: route.route)
     }
     // 卡片上改起止时刻（P3.7）：吸附、重算目标失效、把图挪过去，都在图这一头做。
     review.onEditRange = { start, end in reviewChart.editRange(start: start, end: end, feature: review) }
     review.onOpenMatch = { match, cutoff in
       endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = review.searchRecord.map { .search($0) }
-      reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), endpoints: endpoints, policy: prefs.routePolicy)
+      reviewChart.openMatch(match, cutoff: cutoff, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), route: route.route)
     }
     review.synchronize()
   }
@@ -1432,17 +1425,17 @@ struct MainScreen: View {
   private var compareReady: Bool {
     !market.switching && market.routing != .switching
       && comparison.mainSettled(symbol: market.symbol, upstream: market.capabilities.upstream,
-                                policy: prefs.routePolicy, endpoints: endpoints)
+                                route: route.route)
   }
   private var compareDrive: CompareDrive {
     let s = market.series
     return CompareDrive(keys: comparing ? compareKeys : [], symbol: market.symbol, interval: market.interval,
-      endpoints: endpoints, policy: prefs.routePolicy, ready: compareReady,
+      route: route.route, ready: compareReady,
       first: s?.firstTime ?? 0, last: s?.lastTime ?? 0)
   }
   private func updateCompare() {
     comparison.configure(keys: comparing ? compareKeys : [], main: compareReady ? market.series : nil,
-      symbol: market.symbol, interval: market.interval, endpoints: endpoints, policy: prefs.routePolicy)
+      symbol: market.symbol, interval: market.interval, route: route.route)
   }
 
   /// 副图高度：`Prefs.scale(for:)` 给每个副图的倍率（拖过的用拖出来的，没拖过的用出厂值）。
@@ -1707,14 +1700,15 @@ struct MainScreen: View {
             picker.info(for: symbol).flatMap { $0.tickSize > 0 || $0.pricePrecision > 0 ? $0.priceDecimals : nil }
           },
           closes: closes, skin: prefs.skin, appearance: prefs.theme, redUp: prefs.redUp,
-          fapiHost: prefs.apiHost,
-          hostMarket: VenueRegistry.default.marketKey, basis: prefs.changeBasis)
+          refresh: RouteResolver(policy: prefs.routePolicy).defaultProvider.widgetRefresh,
+          basis: prefs.changeBasis)
       },
       shape: {
         let symbols = picker.prefs, prefs = store.prefs
         return symbols.favorites + ["|"] + symbols.pinned + ["|"] + symbols.groups.map { $0.id + ":" + $0.name }
           + symbols.groupForSymbol.map { $0.key + "=" + $0.value }.sorted()
-          + [prefs.skin.rawValue, prefs.theme.rawValue, String(prefs.redUp), prefs.changeBasis.rawValue]
+          + [prefs.skin.rawValue, prefs.theme.rawValue, String(prefs.redUp), prefs.changeBasis.rawValue,
+             prefs.routePolicy.rawValue]
       },
       fetchCloses: { [quotes] symbol in await quotes.closes(symbol: symbol) })
   }
@@ -1771,7 +1765,6 @@ struct MainScreen: View {
     // 看一眼不是他上次那张图，比晚开这十几毫秒（几个小 JSON 的同步读盘）贵得多。
     // 连接预热本来就在 `LaunchPrewarm` 里更早跑着，这里挪后不影响握手。
     wireAccount()
-    market.setEndpoints(endpoints)
     // 第一帧画的是自选页时，不为图表同步读 K 线快照（主线程上的一次读盘 + 解码）；
     // 快照照样由 feed 异步送到，点进图表第一帧仍然有图。
     market.start(snapshot: prefs.launchSnapshot, symbol: picker.prefs.recents.first, interval: prefs.interval,
@@ -1790,7 +1783,7 @@ struct MainScreen: View {
       picker.markDelisted(symbol)
       market.noteSymbolRejected(symbol)
     }
-    quotes.configure(endpoints: endpoints, basis: prefs.changeBasis, policy: prefs.routePolicy)
+    quotes.configure(route: route, basis: prefs.changeBasis)
     // 自选表要赶在 `setChartSymbol` 前面：后者会重算订阅范围，那时候如果自选还是空的，
     // `configure` 刚恢复出来的那批报价就会被裁到只剩图上这一个品种。
     //
@@ -1811,8 +1804,8 @@ struct MainScreen: View {
     sectorFeed.cache = .disk
     sectorFeed.onTickers = { [quotes] tickers, upstream in quotes.seed(tickers, upstream: upstream) }
     picker.seedTickers = { [quotes] in quotes.seedTable }
-    sectorFeed.configure(endpoints: endpoints, policy: prefs.routePolicy)
-    previews.configure(endpoints: endpoints, policy: prefs.routePolicy)
+    sectorFeed.configure(route: route)
+    previews.configure(route: route)
     sectorFeed.setCatalog(picker.catalog)
     sectorFeed.setForeground(phase != .background)
     picker.onPick = { info in

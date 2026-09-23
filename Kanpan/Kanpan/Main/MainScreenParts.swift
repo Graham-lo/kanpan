@@ -41,7 +41,6 @@ struct MainScreenObservers: ViewModifier {
   let microstructureVisible: Bool
   let syncGate: Bool
   let reviewScope: String
-  let endpoints: MarketEndpoints
   let routePolicy: MarketRoutePolicy
   let fundingRate: Double?
   let catalogCount: Int
@@ -74,7 +73,6 @@ struct MainScreenObservers: ViewModifier {
   let onReviewScope: (String) -> Void
   let onPrefsReviewScope: (String) -> Void
   let onTimeZone: (TZChoice) -> Void
-  let onEndpoints: (MarketEndpoints) -> Void
   let onChangeBasis: (ChangeBasis) -> Void
   let onRoutePolicy: (MarketRoutePolicy) -> Void
   let onFundingRate: (Double?) -> Void
@@ -141,7 +139,6 @@ struct MainScreenObservers: ViewModifier {
   // 原 `marketContent`：线路、口径、行情源、品种表、自选、报价、停留。
   private func marketSection<V: View>(_ view: V) -> some View {
     view
-    .onChange(of: endpoints) { _, next in onEndpoints(next) }
     .onChange(of: prefs.changeBasis) { _, next in onChangeBasis(next) }
     .onChange(of: routePolicy) { _, next in onRoutePolicy(next) }
     // 费率只有正在看的那张图才有（`markPrice` 流里捎的），顺手存一份给预览卡。

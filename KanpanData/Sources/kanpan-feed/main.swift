@@ -56,10 +56,10 @@ func flag(_ name: String) -> String? {
 func has(_ name: String) -> Bool { CommandLine.arguments.contains(name) }
 
 let env = ProcessInfo.processInfo.environment
-/// 看盘自己的网关（`--route gateway` 与持仓量归档用），逗号分隔，主在前。
+/// 看盘自己的网关（`--route gateway` 与持仓量归档用），逗号分隔，主在前；不给就用线上那两台。
+/// 直连域名是出厂的那一份，不再能从环境变量改（app 里的自定义域名那一层已经删了）。
 let gateways = (env["KANPAN_GATEWAYS"] ?? "").split(separator: ",").map(String.init)
-let endpoints = MarketEndpoints(restHost: env["KANPAN_FAPI"], streamHost: env["KANPAN_STREAM"],
-                                gateways: gateways)
+let endpoints = gateways.isEmpty ? MarketEndpoints.production : MarketEndpoints(gateways: gateways)
 let route = MarketRoutePolicy(rawValue: flag("--route") ?? "direct") ?? .direct
 let venue = VenueRegistry.descriptor(flag("--venue") ?? "") ?? VenueRegistry.default
 let provider = RouteResolver(policy: route, endpoints: endpoints, log: has("-v") ? log : .silent)

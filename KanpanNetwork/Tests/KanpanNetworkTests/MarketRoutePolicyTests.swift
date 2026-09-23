@@ -57,8 +57,8 @@ struct MarketRoutePolicyTests {
       #expect(MarketRoutePolicyStore.current == policy)
     }
     #expect(MarketRoutePolicy.allCases.map(\.title) == ["直连", "网关"])
-    #expect(BinanceProvider.upstream(for: .direct) == .binance)
-    #expect(BinanceProvider.upstream(for: .gateway) == .okx)
+    #expect(BinanceProvider.upstream(for: MarketRoute(policy: .direct, endpoints: .production)) == .binance)
+    #expect(BinanceProvider.upstream(for: MarketRoute(policy: .gateway, endpoints: .production)) == .okx)
   }
 
   @Test("换线路会广播；没变就不广播")
@@ -174,16 +174,22 @@ struct MarketRoutePolicyTests {
   /// 网关表（主、备）就是 REST / OI 代理那一份；故意把直连域名也混进去，看它会不会被剔掉。
   private static let appHosts = BinanceHosts(oiProxy: "dstream.binance.me", oiProxyFallbacks: ["gw1.test", "gw2.test:8443"])
 
-  @Test("网关：WS 只拨网关，直连域名混在网关表里也不算")
-  func gatewaySocketsSkipDirect() async {
+  @Test("网关线路下不开币安本家的流：明确报错，不悄悄退回直连、也不拨任何主机")
+  func gatewayBinanceSocketThrows() async {
     let spy = SocketSpy()
     let factory = SourceSocketFactory(source: .binance, hosts: Self.appHosts, factory: spy, policy: .gateway)
+    await #expect(throws: FeedError.self) { _ = try await factory.connect(to: Self.stream) }
+    #expect(spy.hosts.isEmpty)
+  }
+
+  @Test("替身（OKX）的流只拨网关的 /market/okx/stream，主、备按顺序")
+  func substituteSocketsDialGateways() async {
+    let spy = SocketSpy()
+    let hosts = BinanceHosts(oiProxy: "gw1.test", oiProxyFallbacks: ["gw2.test:8443"])
+    let factory = SourceSocketFactory(source: .okx, hosts: hosts, factory: spy, policy: .gateway)
     _ = try? await factory.connect(to: Self.stream)
-    let dialed = Set(spy.hosts)
-    #expect(!dialed.contains("dstream.binance.me"))
-    #expect(dialed == ["gw1.test", "gw2.test"])
-    // 网关的组合流挂在它自己的路由上。
-    #expect(Set(spy.paths) == ["/market/stream"])
+    #expect(Set(spy.hosts).isSubset(of: ["gw1.test", "gw2.test"]) && !spy.hosts.isEmpty)
+    #expect(Set(spy.paths) == ["/market/okx/stream"])
   }
 
   @Test("直连：WS 只拨币安自己的域名")

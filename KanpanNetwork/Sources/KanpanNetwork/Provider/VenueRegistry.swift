@@ -17,7 +17,7 @@ public struct VenueDescriptor: Sendable {
   public let joinsSectors: Bool
   /// 冷启动什么都没有时默认看的那一只。
   public let defaultSymbol: String
-  public typealias Factory = @Sendable (MarketRoutePolicy, MarketEndpoints, FeedLog) -> any MarketProvider
+  public typealias Factory = @Sendable (MarketRoute, FeedLog) -> any MarketProvider
   /// 按线路建提供者（网关上可能是替身）。
   let make: Factory
   /// 按线路建一个**只供这家本家数据**的提供者：复盘记录、回放说的是这家自己的 K 线，
@@ -48,25 +48,25 @@ public enum VenueRegistry {
   public static let binance = VenueDescriptor(
     id: BinanceProvider.venue, market: BinanceProvider.market, displayName: "币安",
     searchTag: nil, hasFavoriteCategory: false, joinsSectors: true, defaultSymbol: "BTCUSDT",
-    makeOwn: { policy, endpoints, log in
-      BinanceProvider(upstream: .binance, hosts: BinanceProvider.hosts(endpoints), policy: policy, log: log)
+    makeOwn: { route, log in
+      BinanceProvider(upstream: .binance, hosts: BinanceProvider.hosts(route.endpoints), route: route, log: log)
     }
-  ) { policy, endpoints, log in
-    BinanceProvider(upstream: BinanceProvider.upstream(for: policy),
-                    hosts: BinanceProvider.hosts(endpoints), policy: policy, log: log)
+  ) { route, log in
+    BinanceProvider(upstream: BinanceProvider.upstream(for: route),
+                    hosts: BinanceProvider.hosts(route.endpoints), route: route, log: log)
   }
 
   public static let coinbase = VenueDescriptor(
     id: CoinbaseProvider.venue, market: CoinbaseProvider.market, displayName: "Coinbase",
     searchTag: "Coinbase", hasFavoriteCategory: true, joinsSectors: false, defaultSymbol: "BTC-USD"
-  ) { policy, endpoints, log in
-    CoinbaseProvider(policy: policy, endpoints: endpoints, log: log)
+  ) { route, log in
+    CoinbaseProvider(route: route, log: log)
   }
 
   /// 注册顺序就是自选分类条、设置里出现的顺序。第一家是默认交易所。
   public static let all: [VenueDescriptor] = [binance, coinbase]
 
-  /// 默认交易所：没带交易所前缀的旧数据（裸符号）一律归它，用户自定义域名也只作用于它。
+  /// 默认交易所：没带交易所前缀的旧数据（裸符号）一律归它。
   public static var `default`: VenueDescriptor { all[0] }
 
   /// 板块页取全市场行情的那一家（分类表是按它的品种表做的）。
@@ -82,11 +82,9 @@ public enum VenueRegistry {
     descriptor(InstrumentID(key).venue) ?? `default`
   }
 
-  /// 默认交易所的出厂 REST / 推送域名（设置页「自定义域名」的出厂值）。
+  /// 默认交易所的出厂 REST / 推送域名。
   public static var defaultRestHost: String { BinanceProvider.defaultRestHost }
   public static var defaultStreamHost: String { BinanceProvider.defaultStreamHost }
-  /// 冷启动热身时对默认交易所 REST 域名打的那条最轻的无鉴权请求（只为走通 DNS + TLS）。
-  public static var defaultWarmPath: String { BinanceProvider.warmPath }
-  /// 默认交易所该迁走的旧推送域名（存过它们的设备换回出厂值）。
+  /// 默认交易所绝不能用的推送域名（测试网等）。
   public static var legacyStreamHosts: [String] { BinanceProvider.legacyStreamHosts }
 }

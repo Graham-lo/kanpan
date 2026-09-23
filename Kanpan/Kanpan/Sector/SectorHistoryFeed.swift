@@ -10,8 +10,8 @@ import KanpanNetwork
 /// GET https://<网关>/v1/market/sector-history
 /// → {"data":{"asof":"2026-09-18","symbols":{"BTCUSDT":{"c5":…,"c20":…}}}}
 /// ```
-/// 主备两台按网关清单（`MarketEndpoints.gateways`）的顺序试（和 `MarketStatsClient.meta` 同一份
-/// 名单、同一个顺序）：非 200 或解不开就换下一台，全都不成就**什么也不做**——
+/// 走共享的后端取数口（`RouteResolver.backend`，主、备两台按顺序试，失败按类记日志），
+/// 不再自己建 `URLSession`、自己拼名单。解不开或全都不成就**什么也不做**——
 /// 界面上不出现取数状态、不出现更新时间、不出现数据来源
 /// （`kanpan-no-engineering-status-fields`）。没历史时页面自己会退回只有「今日」的样子。
 ///
@@ -29,7 +29,7 @@ import KanpanNetwork
   /// 当前这份日线收盘。取不到就是 `.empty`。
   private(set) var history: SectorHistory = .empty
 
-  @ObservationIgnored private var hosts: [String] = []
+  @ObservationIgnored private var backend: BackendClient?
   @ObservationIgnored private var visible = false
   @ObservationIgnored private var job: Task<Void, Never>?
   @ObservationIgnored private var lastPull: Date?
@@ -42,10 +42,10 @@ import KanpanNetwork
 
   // MARK: 外部接线
 
-  /// 后端网关名单。口径和顶栏那两格（`MarketStatsClient`）完全一致。
-  func configure(hosts: [String]) {
-    guard hosts != self.hosts else { return }
-    self.hosts = hosts
+  /// 后端取数口（`RouteResolver.backend`）。
+  func configure(backend: BackendClient) {
+    guard backend != self.backend else { return }
+    self.backend = backend
     // 换了线路就当手上这份过期，下一拍立刻重取。
     lastPull = nil
     restart()
@@ -63,7 +63,7 @@ import KanpanNetwork
   private func restart() {
     job?.cancel()
     job = nil
-    guard visible, !hosts.isEmpty else { return }
+    guard visible, let backend, !backend.hosts.isEmpty else { return }
     job = Task { [weak self] in await self?.run() }
   }
 
@@ -81,8 +81,7 @@ import KanpanNetwork
   }
 
   private func pull() async {
-    let hosts = self.hosts
-    guard let body = await Self.fetch(hosts: hosts) else { return }
+    guard let backend, let body = try? await backend.get(Self.path, timeout: 8) else { return }
     guard let parsed = Self.decode(body) else { return }
     lastPull = Date()
     apply(parsed)
@@ -98,23 +97,7 @@ import KanpanNetwork
     history = next
   }
 
-  private nonisolated static func fetch(hosts: [String]) async -> Data? {
-    let session = URLSession(configuration: {
-      let c = URLSessionConfiguration.ephemeral
-      c.timeoutIntervalForRequest = 8
-      c.timeoutIntervalForResource = 12
-      c.waitsForConnectivity = false
-      return c
-    }())
-    defer { session.invalidateAndCancel() }
-    for host in hosts {
-      guard let url = URL(string: "https://\(host)/v1/market/sector-history") else { continue }
-      guard let (body, response) = try? await session.data(from: url) else { continue }
-      guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
-      return body
-    }
-    return nil
-  }
+  static let path = "/v1/market/sector-history"
 
   // MARK: 解包
 

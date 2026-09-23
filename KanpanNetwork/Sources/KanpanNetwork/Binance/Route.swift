@@ -16,7 +16,6 @@ public actor MarketRESTTransport: HTTPTransport {
   private static let gatewayGeoCooldownSeconds: TimeInterval = 60
   private let source: BinanceUpstream
   private let log: FeedLog
-  private let gateways: [String]
   private let transport: any HTTPTransport
   private var gatewayRetry: [String: Date] = [:]
   /// 因为**上游限流**而歇的那些网关：截止时间 + 上游当时给的状态码。
@@ -37,8 +36,9 @@ public actor MarketRESTTransport: HTTPTransport {
   /// 一场竞速要等好几秒，赢家回来的时候用户可能已经换了线路、或者刚按过重试，
   /// 那份结果就是上一档的旧账，不能再写进来。
   private var routeEpoch = 0
-  /// 行情线路。用户定的，见 `MarketRoutePolicy`：直连就只直连，网关就只网关。
-  private var policy: MarketRoutePolicy
+  /// 行情线路（`RouteResolver` 给的决策）：直连就只直连，网关就只网关。
+  private var route: MarketRoute
+  private var gateways: [String] { route.gateways }
 
   private struct GatewayCandidate: Sendable {
     let host: String
@@ -69,16 +69,22 @@ public actor MarketRESTTransport: HTTPTransport {
     var upstreamStatus: Int?
   }
 
+  public init(source: BinanceUpstream, route: MarketRoute, transport: any HTTPTransport = URLSessionTransport(),
+              log: FeedLog = .silent) {
+    self.source = source; self.route = route; self.transport = transport; self.log = log
+  }
+
+  /// 测试用的旧写法：线路 + 网关表。
   public init(source: BinanceUpstream, gateways: [String], transport: any HTTPTransport = URLSessionTransport(),
               log: FeedLog = .silent, policy: MarketRoutePolicy = .direct) {
-    self.source = source; self.gateways = gateways; self.transport = transport; self.log = log
-    self.policy = policy
+    self.init(source: source, route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: gateways)),
+              transport: transport, log: log)
   }
 
   /// 换线路。顺手把网关冷却清掉：线路是用户刚按下的，
   /// 上一档留下的「这台网关先歇着」的账不该拖累新的选择。
   public func setPolicy(_ policy: MarketRoutePolicy) {
-    self.policy = policy
+    route = MarketRoute(policy: policy, endpoints: route.endpoints)
     resetRouteCooldowns()
   }
 
@@ -104,9 +110,8 @@ public actor MarketRESTTransport: HTTPTransport {
       throw FeedError.badResponse("Test: Binance REST unavailable")
     }
     #endif
-    // 「直连」只对币安成立：OKX 本来就没有直连这条路（网关才有），
-    // 所以 OKX 无论哪条线路都走网关竞速。
-    if policy == .direct, source == .binance { return try await direct(url, timeout: timeout) }
+    // 「直连」只对币安本家成立：替身（OKX）只在网关上有，它那一支永远走网关竞速。
+    if !route.viaGateway, source == .binance { return try await direct(url, timeout: timeout) }
 
     let failure = FeedError.badResponse("行情暂不可用，请重试")
     // 网关代理不了这条路线（`/futures/data/openInterestHist` 就是这种）：
@@ -115,7 +120,7 @@ public actor MarketRESTTransport: HTTPTransport {
     // 毫无关系，不许借用下面那条「网关在冷却」的判定——否则任一网关正被上游限流时，
     // 一笔本来没有网关路线的 OI 请求也会被报成 429 限流，业务层于是当成出口被按住。
     guard let plan = gatewayPlan(for: url) else {
-      log("\(url.path) 没有网关路线（行情线路=\(policy.rawValue)），直接跳过")
+      log("\(url.path) 没有网关路线（行情线路=\(route.policy.rawValue)），直接跳过")
       throw failure
     }
     guard !plan.candidates.isEmpty else {
@@ -130,7 +135,7 @@ public actor MarketRESTTransport: HTTPTransport {
                            url: url.absoluteString, retryAfter: limit.remaining,
                            reason: banned ? .ipBanned : .rateLimited, proxied: true)
       }
-      log("\(url.path) 的网关都在冷却里（行情线路=\(policy.rawValue)），直接跳过")
+      log("\(url.path) 的网关都在冷却里（行情线路=\(route.policy.rawValue)），直接跳过")
       throw failure
     }
     // 竞速前记下路由账本的版本。竞速要等好几秒，这中间用户完全可能换了线路
@@ -212,6 +217,21 @@ public actor MarketRESTTransport: HTTPTransport {
     }
   }
 
+  /// 传输层失败的类别，只用来写日志（不改变行为）。
+  static func transportKind(_ error: Error) -> String {
+    guard let url = error as? URLError else { return "其他" }
+    switch url.code {
+    case .timedOut: return "超时"
+    case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed: return "断网"
+    case .cannotFindHost, .dnsLookupFailed: return "域名解析"
+    case .cannotConnectToHost: return "连不上"
+    case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+         .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot, .clientCertificateRejected:
+      return "TLS"
+    default: return "URLError \(url.code.rawValue)"
+    }
+  }
+
   /// 这个状态码要不要退到另一条路上。
   static func fallsBack(_ status: Int) -> Bool {
     status != 200 && [403, 408, 418, 429, 451, 500, 502, 503, 504].contains(status)
@@ -227,6 +247,7 @@ public actor MarketRESTTransport: HTTPTransport {
     let sourceRawValue: String
     let candidates: [GatewayCandidate]
     let transport: any HTTPTransport
+    let log: FeedLog
   }
 
   /// 把这条 URL 能走的网关路线算出来。网关代理不了就返回 nil，调用方只能走直连。
@@ -267,7 +288,7 @@ public actor MarketRESTTransport: HTTPTransport {
     }
     return GatewayPlan(endpoint: endpoint, field: field, expectedSymbol: expectedSymbol,
                        expectedInterval: expectedInterval, sourceRawValue: source.rawValue,
-                       candidates: candidates, transport: transport)
+                       candidates: candidates, transport: transport, log: log)
   }
 
   /// 几台网关一起发，谁先回一份校验得过的同源载荷就用谁。
@@ -287,12 +308,22 @@ public actor MarketRESTTransport: HTTPTransport {
                       MarketRESTTransport.gatewayFailure(reply, url: candidate.target))
             }
             guard let data = MarketRESTTransport.payload(of: reply.body, plan: plan) else {
-              return (candidate.host, nil, nil)
+              // 回了 200 但信封不对（来源、品种或周期对不上、字段缺失）：这台网关给的是
+              // 别人的数据，按普通不可用记冷却，并留一行日志说清楚是哪一种。
+              plan.log("网关 \(candidate.host) \(plan.endpoint) 载荷校验不过（期望 source=\(plan.sourceRawValue) symbol=\(plan.expectedSymbol)）")
+              return (candidate.host, nil,
+                      GatewayFailure(cooldown: MarketRESTTransport.gatewayCooldownSeconds, error: nil))
             }
             return (candidate.host, GatewaySuccess(host: candidate.host, payload: data), nil)
           } catch is CancellationError {
+            // 竞速里被取消的一支：要么是别的网关先赢了，要么是整笔被上层取消。都不是这台的错。
+            return (candidate.host, nil, nil)
+          } catch let error as URLError where error.code == .cancelled {
             return (candidate.host, nil, nil)
           } catch {
+            // 传输层失败（超时、断网、TLS、连不上）：以前在这里一声不吭地吞掉，
+            // 两台都失败时上层只看得到一句笼统的「行情服务暂不可用」。现在按类记一行。
+            plan.log("网关 \(candidate.host) \(plan.endpoint) 传输失败（\(MarketRESTTransport.transportKind(error))）：\(error.localizedDescription)")
             return (candidate.host, nil, nil)
           }
         }
@@ -443,64 +474,57 @@ public actor MarketRESTTransport: HTTPTransport {
 
 }
 
-/// Both gateways expose the existing candle wire format, with a source-specific URL.
+/// 行情 WS 的拨号：线路决策来自 `MarketRoute`，这里只把它翻成具体的地址。
+///
+/// 只有两条生产上真走得到的路：
+/// - 币安本家 + 直连：连币安自己的流域名（`hosts.stream`），不带任何退路。
+/// - 替身（OKX）：只在网关上有，连网关的 `/market/okx/stream`，主备两台按顺序拨。
+///
+/// 「币安本家 + 网关」这一格以前有一段拨 `/market/stream` 的代码，但生产上没有人走得到：
+/// 选了网关，`BinanceProvider.upstream(for:)` 给的就是替身；唯一在网关线路下还拿币安本家的
+/// 是复盘的 `makeOwn`，它只取 REST K 线、从不开流。所以这一格现在明确抛错，不再留一条
+/// 没人验证过的暗路（也不许悄悄退回直连——线路选了网关就只走网关）。
 public struct SourceSocketFactory: WSSocketFactory {
   let source: BinanceUpstream
   let hosts: BinanceHosts
   let factory: any WSSocketFactory
-  /// 币安的 WS 也有直连（`hosts.stream`，默认 `dstream.binance.me`）与网关（`hosts.oiProxies`，
-  /// 就是那两台 VPS）两条路，用户选了哪条就只拨哪条；OKX 只有网关这一条路，不受影响。
-  let policy: MarketRoutePolicy
+  let viaGateway: Bool
   let log: FeedLog
   public init(source: BinanceUpstream, hosts: BinanceHosts, factory: any WSSocketFactory = URLSessionSocketFactory(),
-              policy: MarketRoutePolicy = .direct, log: FeedLog = .silent) {
-    self.source = source; self.hosts = hosts; self.factory = factory; self.policy = policy; self.log = log
+              route: MarketRoute, log: FeedLog = .silent) {
+    self.source = source; self.hosts = hosts; self.factory = factory; self.viaGateway = route.viaGateway; self.log = log
+  }
+  /// 测试用：只给线路档位，网关表取 `hosts.oiProxies`。
+  public init(source: BinanceUpstream, hosts: BinanceHosts, factory: any WSSocketFactory = URLSessionSocketFactory(),
+              policy: MarketRoutePolicy, log: FeedLog = .silent) {
+    self.init(source: source, hosts: hosts, factory: factory,
+              route: MarketRoute(policy: policy, endpoints: MarketEndpoints(gateways: hosts.oiProxies)), log: log)
   }
   public func connect(to url: URL) async throws -> any WSSocket {
-    if source == .binance {
-      switch policy {
-      case .direct:
-        // 不带退路：只连币安自己的域名。
-        return try await MarketSocketRouter(factory: factory, fallbacks: [], log: log).connect(to: url)
-      case .gateway:
-        // 把首选也换成网关，`MarketSocketRouter` 才不会仍旧把直连塞进候选里。
-        // 网关表和 REST / OI 代理是同一份（`oiProxies`，主在前、备在后）；万一有人把直连
-        // 域名也填进去，先剔掉，剩下的才是真正的网关。
-        let direct = [hosts.stream.lowercased(), (url.host ?? "").lowercased()]
-        let gateways = hosts.oiProxies.filter { host in
-          guard let name = URLComponents(string: "wss://" + host)?.host?.lowercased() else { return false }
-          return !direct.contains(name)
-        }
-        guard let first = gateways.first,
-              var parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let endpoint = URLComponents(string: "wss://" + first), let name = endpoint.host,
-              endpoint.user == nil, endpoint.password == nil else {
-          throw FeedError.badResponse("行情服务暂不可用")
-        }
-        parts.host = name; parts.port = endpoint.port
-        // 网关的组合流挂在它自己的 `/market/stream` 上，不是币安的 `/stream`。
-        parts.path = "/market/stream"
-        guard let target = parts.url else { throw FeedError.badResponse("行情地址无效") }
-        return try await MarketSocketRouter(factory: factory,
-                                            fallbacks: Array(gateways.dropFirst()), log: log).connect(to: target)
-      }
+    switch (source, viaGateway) {
+    case (.binance, false):
+      // 不带退路：只连币安自己的域名。
+      return try await MarketSocketRouter(factory: factory, fallbacks: [], log: log).connect(to: url)
+    case (.binance, true):
+      log("行情流：网关线路下不开币安本家的流（没有这条生产路径）")
+      throw FeedError.badResponse("行情服务暂不可用")
+    case (.okx, _):
+      guard let first = hosts.oiProxies.first, var parts = URLComponents(string: "wss://" + first),
+            parts.host != nil, parts.user == nil, parts.password == nil else { throw FeedError.badResponse("行情服务暂不可用") }
+      parts.path = "/market/okx/stream"; parts.queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+      guard let target = parts.url else { throw FeedError.badResponse("行情地址无效") }
+      return try await MarketSocketRouter(factory: factory, fallbacks: Array(hosts.oiProxies.dropFirst()), log: log).connect(to: target)
     }
-    guard let first = hosts.oiProxies.first, var parts = URLComponents(string: "wss://" + first),
-          parts.host != nil, parts.user == nil, parts.password == nil else { throw FeedError.badResponse("行情服务暂不可用") }
-    parts.path = "/market/okx/stream"; parts.queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
-    guard let target = parts.url else { throw FeedError.badResponse("行情地址无效") }
-    return try await MarketSocketRouter(factory: factory, fallbacks: Array(hosts.oiProxies.dropFirst()), log: log).connect(to: target)
   }
 }
 
 public extension BinanceREST {
-  /// 某条线路上的 REST 客户端。`policy` 不传就用用户当前选的线路（`MarketRoutePolicyStore`），
-  /// 这样 app 里顺手建的目录 / 历史 OI / 报价簿客户端都跟设置走，不会「行情走网关、
-  /// OI 却还在直连」。测试要钉死线路时显式传。
-  static func upstream(_ source: BinanceUpstream, hosts: BinanceHosts, log: FeedLog = .silent,
-                       policy: MarketRoutePolicy = MarketRoutePolicyStore.current) -> BinanceREST {
+  /// 某条线路上的 REST 客户端。线路由 `RouteResolver` 定好传进来（`MarketRoute`），
+  /// 这里不再自己去读设置。
+  static func upstream(_ source: BinanceUpstream, hosts: BinanceHosts, route: MarketRoute,
+                       log: FeedLog = .silent) -> BinanceREST {
     BinanceREST(hosts: hosts,
-                transport: MarketRESTTransport(source: source, gateways: hosts.oiProxies, log: log, policy: policy),
+                transport: MarketRESTTransport(source: source, route: route, log: log),
                 limiter: source == .binance ? .sharedBinance : .sharedOKX, log: log)
   }
 
