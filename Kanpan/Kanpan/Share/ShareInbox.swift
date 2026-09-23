@@ -73,6 +73,8 @@ import KanpanCore
           .sorted { $0.createdAt == $1.createdAt ? $0.id > $1.id : $0.createdAt > $1.createdAt }
         cache.cursor = page.cursor
         try save(); items = cache.items; revision += 1
+        // 列表刷新完顺手扫一次截图缓存：过了留存期被滤掉的信，图也跟着删（审查 D4）。
+        if let directory { Self.pruneShots(in: directory, keeping: Set(cache.items.map(\.id))) }
         let names = try await client.friends()
         try Task.checkCancellation(); guard epoch == generation else { return }
         cache.friends = names; try save(); friends = names; notice = nil
@@ -116,6 +118,19 @@ import KanpanCore
       try await client.remove(name); guard generation == epoch else { return }
       cache.friends.removeAll { $0.username == name }; try save(); friends = cache.friends
     } catch { if generation == epoch { notice = ShareClient.message(error) } }
+  }
+  /// `share-shots/` 里只留还在收件箱里的那几封信的图，别的删掉。
+  ///
+  /// 图是 `shot(_:)` 按需拉下来落盘的，信过了 90 天留存期从列表里滤掉之后没人再删它，
+  /// 一张一两百 KB 一直攒。只动「id.jpg」，别的文件不碰。
+  @discardableResult static func pruneShots(in directory: URL, keeping ids: Set<String>) -> Int {
+    let folder = directory.appendingPathComponent("share-shots")
+    let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+    var removed = 0
+    for name in names where name.hasSuffix(".jpg") && !ids.contains(String(name.dropLast(4))) {
+      if (try? FileManager.default.removeItem(at: folder.appendingPathComponent(name))) != nil { removed += 1 }
+    }
+    return removed
   }
   func shot(_ id: String) async -> Data? {
     if let image = shots[id] { return image }

@@ -206,6 +206,8 @@ import ReviewData
     nextPage = nil; searchError = nil; statisticsError = nil; history = []; historyGeneration = UUID(); historyLoading = false; historyError = nil; historyLoaded = false
     bookOpen = false; captureOpen = false; searchOpen = false; selectedRecord = nil; searchRecord = nil
     reload()
+    // 换进一份档案（冷启动、登录、退登）时扫一次没人认领的图；不挂定时器（审查 D4）。
+    store.pruneShots()
   }
   /// 复盘本每次打开都落在「待办」（§2G2）。
   ///

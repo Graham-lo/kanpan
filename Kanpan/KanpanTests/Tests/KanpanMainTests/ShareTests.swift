@@ -65,4 +65,20 @@ import UIKit
     inbox.activate(directory: folder, owner: nil, cache: ShareInbox.Cache(), api: nil)
     #expect(inbox.items.isEmpty && inbox.friends.isEmpty)
   }
+
+  /// 截图缓存只留还在收件箱里的那几封（审查 D4）：过了留存期滤掉的信，图跟着删；
+  /// 不是「id.jpg」的文件不碰。
+  @Test func pruneShotsKeepsOnlyLiveItems() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let shots = folder.appendingPathComponent("share-shots")
+    try FileManager.default.createDirectory(at: shots, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    for name in ["live.jpg", "gone.jpg", "other.tmp"] { try Data([1]).write(to: shots.appendingPathComponent(name)) }
+    #expect(ShareInbox.pruneShots(in: folder, keeping: ["live"]) == 1)
+    let left = Set(try FileManager.default.contentsOfDirectory(atPath: shots.path))
+    #expect(left == ["live.jpg", "other.tmp"])
+    #expect(ShareInbox.pruneShots(in: folder, keeping: ["live"]) == 0)
+    // 目录还不存在（一张图都没拉过）也不出事。
+    #expect(ShareInbox.pruneShots(in: folder.appendingPathComponent("nope"), keeping: []) == 0)
+  }
 }

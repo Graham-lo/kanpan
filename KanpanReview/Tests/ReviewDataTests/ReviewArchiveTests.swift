@@ -208,4 +208,49 @@ final class ReviewArchiveTests: XCTestCase {
     XCTAssertEqual(reopened.archive.records.count, 1)
     XCTAssertEqual(reopened.archive.records.first?.id, record.id)
   }
+
+  // MARK: - 没人认领的图（审查 D4）
+
+  /// 记录还在（含被裁前的、待发队列提到的、手上那条草稿）的图留着，别的 UUID.png 删掉；
+  /// 不是「UUID.png」的文件一概不碰。
+  @MainActor func testPruneShotsKeepsOnlyLiveEntries() throws {
+    let directory = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = try ReviewStore(directory: directory)
+    let kept = ReviewRecord(draft: makeDraft(text: "留"))
+    let queued = UUID()
+    let draft = makeDraft(text: "草稿")
+    try store.transaction { archive in
+      archive.records = [kept]
+      archive.queue = [ReviewOperation(recordId: queued, kind: "shot", body: Data())]
+    }
+    try store.saveDraft(draft)
+    let orphan = UUID()
+    for id in [kept.id, queued, draft.id, orphan] { try store.saveShot(Data([1, 2, 3]), for: id) }
+    let shots = directory.appendingPathComponent("shots")
+    let stray = shots.appendingPathComponent("not-a-shot.tmp")
+    try Data([9]).write(to: stray)
+
+    XCTAssertEqual(store.pruneShots(), 1, "只该删那一张没人认领的")
+    XCTAssertTrue(store.hasShot(kept.id))
+    XCTAssertTrue(store.hasShot(queued), "待发队列里还提着它，不能删")
+    XCTAssertTrue(store.hasShot(draft.id), "手上那条草稿的图不能删")
+    XCTAssertFalse(store.hasShot(orphan))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: stray.path), "不是 UUID.png 的文件不碰")
+    XCTAssertEqual(store.pruneShots(), 0, "再扫一次没东西可删")
+  }
+
+  /// 记录被删掉（或被云端缓存裁掉）之后，它的图下一次扫就跟着走。
+  @MainActor func testPruneShotsDropsTheShotOfARemovedRecord() throws {
+    let directory = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = try ReviewStore(directory: directory)
+    let record = ReviewRecord(draft: makeDraft())
+    try store.transaction { $0.records = [record] }
+    try store.saveShot(Data([1]), for: record.id)
+    XCTAssertEqual(store.pruneShots(), 0)
+    try store.transaction { $0.records = [] }
+    XCTAssertEqual(store.pruneShots(), 1)
+    XCTAssertFalse(store.hasShot(record.id))
+  }
 }

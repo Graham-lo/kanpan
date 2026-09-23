@@ -134,6 +134,30 @@ public enum ReviewStorageError: LocalizedError {
   }
   public func removeShot(_ id: UUID) { try? FileManager.default.removeItem(at: shotURL(id)) }
 
+  /// 删掉已经没有记录认领的图（审查 D4）。
+  ///
+  /// `shots/` 只进不出：记录被云端缓存那趟裁掉（`cloudCache` 只留最近 200 条 / 12 MB）、
+  /// 登录时从访客那边整目录搬过来的图（`adoptShots` 不看记录在不在）都会留成孤儿，
+  /// 一张几百 KB，攒着没人删。
+  ///
+  /// 认领的口径：主档里的记录、待发队列里提到的记录、以及手上那条草稿。被裁掉的记录
+  /// 本来就在服务端，图也传上去过，哪天再翻到它 `loadShot` 会再要一次。
+  /// 只动文件名是「UUID.png」的那些，别的（写了一半的临时文件等）一概不碰；
+  /// 主档读不动时不删——那时候不知道谁还活着。
+  @discardableResult public func pruneShots() -> Int {
+    guard readable else { return 0 }
+    var live = Set(archive.records.map(\.id))
+    live.formUnion(archive.queue.map(\.recordId))
+    if let draft = archive.draft { live.insert(draft.id) }
+    let names = (try? FileManager.default.contentsOfDirectory(atPath: shotsURL.path)) ?? []
+    var removed = 0
+    for name in names where name.hasSuffix(".png") {
+      guard let id = UUID(uuidString: String(name.dropLast(4))), !live.contains(id) else { continue }
+      if (try? FileManager.default.removeItem(at: shotsURL.appendingPathComponent(name))) != nil { removed += 1 }
+    }
+    return removed
+  }
+
   /// 重温进度：这边没有的才收（这边有的那一条是这个人自己更晚看到的位置）。
   public func adoptReplay(from other: ReviewStore) throws {
     var next = positions
