@@ -90,3 +90,69 @@ struct QuoteStateTests {
     #expect(state.value?.last == 100)
   }
 }
+
+@Suite("成交额自己一条时钟（推送帧不带成交额的线路）")
+struct TurnoverCarryTests {
+  func frame(_ price: Double, time: Int64, turnover: Double = .nan, symbol: String = "BTCUSDT") -> Ticker {
+    Ticker(symbol: symbol, last: price, changePercent: 1, high: 110, low: 90,
+      quoteVolume: turnover, open24h: 100, timeMs: time)
+  }
+
+  @Test("推送帧不带成交额时沿用 REST 补来的那份")
+  func streamWithoutTurnoverKeepsKnownValue() {
+    var state = QuoteState()
+    state.receive(frame(101, time: 1000, turnover: 5_000))
+    state.receive(frame(102, time: 2000))
+    #expect(state.value?.last == 102)
+    #expect(state.value?.quoteVolume == 5_000)
+    #expect(state.turnoverTimeMs == 1000)
+  }
+
+  @Test("整帧已旧的 REST 回包，成交额仍收下，价不回退")
+  func staleRestFrameStillDeliversTurnover() {
+    var state = QuoteState()
+    state.receive(frame(102, time: 2000))
+    #expect(state.value?.quoteVolume.isNaN == true)
+    let r1 = state.receive(frame(101, time: 1500, turnover: 7_000))
+    #expect(r1)
+    #expect(state.value?.last == 102)
+    #expect(state.value?.quoteVolume == 7_000)
+    // 比已知成交额更旧的那份不收。
+    let r2 = state.receive(frame(100, time: 1200, turnover: 6_000))
+    #expect(!r2)
+    #expect(state.value?.quoteVolume == 7_000)
+  }
+
+  @Test("只收成交额的入口不动价和会话")
+  func turnoverOnlyEntry() {
+    var state = QuoteState()
+    let r3 = state.receiveTurnover(frame(99, time: 500, turnover: 1))
+    #expect(!r3)  // 还没有值：记下但不出值
+    state.receive(frame(102, time: 2000))
+    #expect(state.value?.quoteVolume == 1)
+    let r4 = state.receiveTurnover(frame(99, time: 1800, turnover: 8_000))
+    #expect(r4)
+    #expect(state.value?.last == 102)
+    #expect(state.value?.quoteVolume == 8_000)
+    let r5 = state.receiveTurnover(frame(99, time: 1800, turnover: 8_000))
+    #expect(!r5)
+  }
+
+  @Test("换品种不借上一只的成交额")
+  func carryDoesNotCrossSymbols() {
+    var carry = TurnoverCarry()
+    carry.note(frame(1, time: 1000, turnover: 9_000))
+    #expect(carry.apply(frame(2, time: 2000, symbol: "ETHUSDT")).quoteVolume.isNaN)
+    #expect(carry.apply(frame(2, time: 2000)).quoteVolume == 9_000)
+    carry.note(frame(3, time: 500, turnover: 10, symbol: "ETHUSDT"))
+    #expect(carry.symbol == InstrumentID.canonical("ETHUSDT"))
+    #expect(carry.apply(frame(2, time: 2000)).quoteVolume.isNaN)
+  }
+
+  @Test("带成交额的帧照旧以帧里的为准")
+  func frameValueWins() {
+    var carry = TurnoverCarry()
+    carry.note(frame(1, time: 1000, turnover: 9_000))
+    #expect(carry.apply(frame(2, time: 900, turnover: 3)).quoteVolume == 3)
+  }
+}
