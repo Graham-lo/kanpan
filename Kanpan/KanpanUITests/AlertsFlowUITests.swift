@@ -343,6 +343,40 @@ import XCTest
     shot("10-价格提醒已触发")
   }
 
+  /// 从行情页出发（开局停在 BTC 的图上）→ 设置 → 提醒 → 新建：品种框里是给人看的代号
+  /// `BTCUSDT`，不是内部的 `binance/usd_m/BTCUSDT`；点进框里整串是选中的，直接打「ETH」
+  /// 就覆盖成 ETH，认成 ETHUSDT、有现价，建出来的是一条 ETH 的提醒。
+  func testNewAlertSymbolFieldShowsTheCodeAndTakesATypedSymbol() throws {
+    openAlertsFromSettings()
+    let create = app.buttons["alerts.new"]
+    XCTAssertTrue(create.waitForExistence(timeout: 8), "总表右上没有「新建」")
+    create.tap()
+    let symbol = app.textFields["alerts.new.symbol"]
+    XCTAssertTrue(symbol.waitForExistence(timeout: 8), "「新建」没开出那一页")
+    XCTAssertEqual(symbol.value as? String, "BTCUSDT", "品种框该是代号，不是规范键")
+    shot("15-新建提醒-预填代号")
+    symbol.tap()
+    symbol.typeText("ETH")
+    XCTAssertTrue(wait(seconds: 5) { symbol.value as? String == "ETH" },
+                  "点进品种框没有整串选中，打完是：\(symbol.value as? String ?? "nil")")
+    let current = app.staticTexts["alerts.new.current"]
+    XCTAssertTrue(wait(seconds: 20) { current.label.hasPrefix("当前 ") && current.label != "当前 —" },
+                  "改成 ETH 之后那一行没写现价：\(current.label)")
+    shot("16-新建提醒-改成ETH")
+    let price = app.textFields["alerts.new.price"]
+    XCTAssertTrue(price.waitForExistence(timeout: 5), "没有价格输入框")
+    price.tap()
+    price.typeText("12345")
+    let add = app.buttons["alerts.new.create"]
+    XCTAssertTrue(add.waitForExistence(timeout: 5) && add.isEnabled, "「加提醒」按不下去")
+    shot("17-新建提醒-ETH填好")
+    add.tap()
+    XCTAssertTrue(alertsPage.waitForExistence(timeout: 8), "加完没回到总表")
+    let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "ETH ", "12345")).firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: 8), "总表里没有这条 ETH 的提醒：\(app.debugDescription)")
+    shot("18-总表里的ETH提醒")
+  }
+
   /// P3.3「盯一个」：总表里一条价格提醒 →「盯一个」→ 锁屏上挂出一块实时活动（品种、现价、
   /// 24h 涨跌、离提醒价多少）→ 回 app 跟几拍价再锁屏看它更新 → 删掉提醒，锁屏那块跟着收。
   func testWatchingOneAlertPutsItOnTheLockScreen() throws {

@@ -593,7 +593,7 @@ struct MainScreen: View {
                     zone: prefs.timeZone.offsetMinutes,
                     currentSymbol: InstrumentID(market.symbol).display,
                     quote: { text in alertQuote(text) },
-                    prepareQuote: { [weak quotes] symbol in quotes?.watch(symbol) },
+                    prepareQuote: { [weak quotes] symbol in quotes?.quoteNow(symbol) },
                     watching: activities.watching,
                     onWatch: { alert in watch(alert) })
         .environment(\.panelTheme, theme)

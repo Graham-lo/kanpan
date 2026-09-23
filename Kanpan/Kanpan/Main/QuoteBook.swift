@@ -216,6 +216,8 @@ final class QuoteBook {
   @ObservationIgnored private var seedSleeping: Set<String> = []
   @ObservationIgnored private var seedFlush: Task<Void, Never>?
   @ObservationIgnored private var seededBatch: [Ticker] = []
+  /// `quoteNow` 点名要的那一只（新建价格提醒页），列表不可见也给它要价。
+  @ObservationIgnored private var named: String?
   private var historyWanted = Set<String>()
   private var historyJobs: [String: Task<Void, Never>] = [:]
   private var historyRequested: [String: Date] = [:]
@@ -500,8 +502,10 @@ final class QuoteBook {
     reconcileConnection()
     updateStreams()
     if !on {
-      for symbol in Array(quoteJobs.keys) where symbol != chartSymbol { quoteJobs.removeValue(forKey: symbol)?.cancel() }
-      quoteQueue.removeAll { $0 != chartSymbol }
+      for symbol in Array(quoteJobs.keys) where symbol != chartSymbol && symbol != named {
+        quoteJobs.removeValue(forKey: symbol)?.cancel()
+      }
+      quoteQueue.removeAll { $0 != chartSymbol && $0 != named }
       flushCoalesced()
       historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
     }
@@ -715,6 +719,19 @@ final class QuoteBook {
     wanted.insert(symbol)
     requestQuote(symbol)
     watchBaseline(symbol)
+  }
+
+  /// 点名要一只的现价：不管列表开没开，都去要一口（新建价格提醒那一页用）。
+  ///
+  /// 列表不可见时 `requestQuote` 只放行图上那只——平时这是对的，别的页面不该替看不见的
+  /// 行去拉价。可新建提醒那一页是从设置里开的，列表本来就不可见：用户在品种框里打了
+  /// 「ETH」，要看的就是 ETH 此刻多少；原来这里只调 `watch`，被那道闸挡掉，于是
+  /// 不在图上的品种一直是「当前 —」。同一时刻只点名一只，换一只就换掉。
+  func quoteNow(_ symbol: String) {
+    let symbol = InstrumentID.canonical(symbol)
+    guard !symbol.isEmpty else { return }
+    named = symbol
+    watch(symbol)
   }
 
   private func watchBaseline(_ symbol: String) {
@@ -1187,7 +1204,7 @@ final class QuoteBook {
   /// 不是「有没有值」——从后台或磁盘带回来的旧值也要补一次。
   /// REST 与 WS 并行，不依赖 REST 成功。
   private func requestQuote(_ symbol: String) {
-    guard foreground, (visible || symbol == chartSymbol), online, wantsQuote(symbol), quoteJobs[symbol] == nil,
+    guard foreground, (visible || symbol == chartSymbol || symbol == named), online, wantsQuote(symbol), quoteJobs[symbol] == nil,
           !quoteQueue.contains(symbol), quoteQueue.count < 128,
           Date().timeIntervalSince(quoteAttempt[symbol] ?? .distantPast) >= Self.freshSeconds else { return }
     quoteQueue.append(symbol); drainQuotes()

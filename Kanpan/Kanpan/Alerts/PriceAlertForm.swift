@@ -3,7 +3,8 @@ import SwiftUI
 
 /// 某只品种此刻的价，新建价格提醒时用。宿主按用户打的代号查出来（`MainScreen.alertQuote`）。
 struct PriceAlertQuote: Equatable {
-  /// 目录里的正式代号（「ETH」会被认成 `ETHUSDT`）。
+  /// 规范键（`binance/usd_m/ETHUSDT`；「ETH」会被认成这一只）。框里给人看的是代号，
+  /// 提交时交出去的是它。
   var symbol: String
   var price: Double?
   var decimals: Int?
@@ -13,12 +14,14 @@ struct PriceAlertQuote: Equatable {
 
 /// 提醒总表右上「新建」进来的那一页（P3.1）：一只品种、一个价，别的都不问。
 ///
-/// - 品种默认就是图上那只，能改（打「ETH」就认成 `ETHUSDT`），锁英文键盘
-///   （`kanpan-symbol-search-keyboard`）。
+/// - 品种默认就是图上那只，框里填的是给人看的代号（`BTCUSDT`、`BTC/USD`），不是内部的规范键
+///   （`binance/usd_m/BTCUSDT`）；规范键只在宿主解析、提交时才出现。能改（打「ETH」就认成
+///   `ETHUSDT`），点进框里整串全选，直接打就是覆盖；锁英文键盘（`kanpan-symbol-search-keyboard`）。
 /// - 价格是手动输入框、等宽数字，不给加减步进器（`kanpan-no-steppers-use-text-fields`）。
 /// - **方向不让选**：比现价高就是「涨到」，低就是「跌到」，由 `Alert.price` 按建的那一刻的
 ///   现价定；这页上只有一行小字「当前 xxx」让人知道自己在跟谁比。
 struct PriceAlertForm: View {
+  /// 图上那只给人看的代号（宿主交的是 `InstrumentID.display`）。
   var initialSymbol: String
   /// 按用户打的字查品种与现价；查不到这只品种返回 nil。
   var resolve: (String) -> PriceAlertQuote?
@@ -27,6 +30,7 @@ struct PriceAlertForm: View {
   var onCreate: (PriceAlertQuote, Double) -> Void
 
   @State private var symbolText = ""
+  @State private var symbolSelection: TextSelection?
   @State private var priceText = ""
   @FocusState private var focus: Field?
   @Environment(\.panelTheme) private var t
@@ -38,7 +42,7 @@ struct PriceAlertForm: View {
     let quote = resolve(symbolText)
     PanelSheet(title: "新建提醒", subtitle: nil) {
       field("品种") {
-        TextField("", text: $symbolText)
+        TextField("", text: $symbolText, selection: $symbolSelection)
           .keyboardType(.asciiCapable)
           .textInputAutocapitalization(.characters)
           .autocorrectionDisabled()
@@ -84,8 +88,17 @@ struct PriceAlertForm: View {
     .toolbar(.hidden, for: .navigationBar)
     .onAppear {
       if symbolText.isEmpty { symbolText = initialSymbol }
-      prepare(initialSymbol)
+      // 要价按宿主解析出来的规范键要；框里的代号（尤其 `BTC/USD`）直接交出去会被当成币安的裸代号。
+      prepare(resolve(symbolText)?.symbol ?? initialSymbol)
       focus = .price
+    }
+    // 点进品种框就把整串选中：想换一只直接打，不用先删。等这一拍的光标落定再选，
+    // 否则点按落下的插入点会把选区盖掉。
+    .onChange(of: focus) { _, field in
+      guard field == .symbol else { return }
+      Task { @MainActor in
+        symbolSelection = TextSelection(range: symbolText.startIndex..<symbolText.endIndex)
+      }
     }
     .onChange(of: quote?.symbol) { _, symbol in if let symbol { prepare(symbol) } }
     .accessibilityElement(children: .contain)
