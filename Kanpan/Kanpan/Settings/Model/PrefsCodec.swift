@@ -86,6 +86,7 @@ extension Prefs: Codable {
     case lastDrawTool
     case replaySpeed, reviewSearchScope
     case alertSound
+    case watchMoveAlert, watchMoveThreshold
   }
 
   func encode(to encoder: Encoder) throws {
@@ -152,6 +153,8 @@ extension Prefs: Codable {
     try c.encode(replaySpeed, forKey: .replaySpeed)
     try c.encode(reviewSearchScope, forKey: .reviewSearchScope)
     try c.encode(alertSound.rawValue, forKey: .alertSound)
+    try c.encode(watchMoveAlert, forKey: .watchMoveAlert)
+    try c.encode(watchMoveThreshold, forKey: .watchMoveThreshold)
   }
 
   /// 历次出厂的常用行。存档里一字不差地躺着其中一串，就说明用户从没动过常用行。
@@ -316,6 +319,10 @@ extension Prefs: Codable {
     if let v = (try? c.decodeIfPresent(Int.self, forKey: .replaySpeed)) ?? nil { replaySpeed = Prefs.clampSpeed(v) }
     if let raw = str(.reviewSearchScope), Prefs.searchScopes.contains(raw) { reviewSearchScope = raw }
     if let raw = str(.alertSound), let sound = AlertSound(rawValue: raw) { alertSound = sound }
+    if let v = bool(.watchMoveAlert) { watchMoveAlert = v }
+    if let v = (try? c.decodeIfPresent(Double.self, forKey: .watchMoveThreshold)) ?? nil {
+      watchMoveThreshold = WatchMove.clampThreshold(v)
+    }
 
     PrefsCodec.migrate(&self, from: archived)
   }

@@ -93,6 +93,33 @@ final class AlertStore: ObservableObject {
     return alert
   }
 
+  /// 提醒总表右上「新建」：裸价格提醒。方向按现价自动定（`Alert.price`），同一只品种
+  /// 同一个价已经有一条活动的就不再建第二条。
+  @discardableResult
+  func addPrice(symbol: String, target: Double, current: Double?, label: String,
+                now: Double = Date().timeIntervalSince1970 * 1000) -> Alert? {
+    guard target.isFinite, target > 0, !symbol.isEmpty else { return nil }
+    if let same = archive.alerts.first(where: {
+      $0.kind == .price && $0.isActive && $0.symbol == symbol && $0.targetPrice == target
+    }) { return same }
+    guard archive.hasRoom else { notice = "提醒最多 \(AlertArchive.limit) 条"; return nil }
+    let alert = Alert.price(symbol: symbol, target: target, current: current, label: label, now: now)
+    write { $0.alerts.append(alert) }
+    return alert
+  }
+
+  /// 复盘待办到点：跟着复盘记录对一遍账（`ReviewDueAlerts.plan` 算，这儿只落账）。
+  func settleReviewDue(_ plan: ReviewDueAlerts.Plan) {
+    guard !plan.isEmpty else { return }
+    write { archive in
+      for id in plan.remove { archive[id] = nil }
+      for alert in plan.upsert {
+        if archive[alert.id] != nil { archive[alert.id] = alert }
+        else if archive.hasRoom { archive.alerts.append(alert) }
+      }
+    }
+  }
+
   func remove(id: String) { write { $0[id] = nil } }
 
   func remove(symbol: String, drawingID: String) {
@@ -113,8 +140,9 @@ final class AlertStore: ObservableObject {
   }
 
   /// 响了。前台评估和服务端推下来的那条走同一个口，`once` 保证只记一次。
+  /// 复盘到点那一种不看价，`price` 传 nil。
   @discardableResult
-  func markFired(id: String, at time: Double, price: Double) -> Alert? {
+  func markFired(id: String, at time: Double, price: Double?) -> Alert? {
     guard var alert = archive[id], alert.status == .active else { return nil }
     alert.status = .fired; alert.firedAt = time; alert.firedPrice = price
     write { $0[id] = alert }

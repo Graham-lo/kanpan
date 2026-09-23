@@ -1,0 +1,125 @@
+import KanpanCore
+import SwiftUI
+
+/// 某只品种此刻的价，新建价格提醒时用。宿主按用户打的代号查出来（`MainScreen.alertQuote`）。
+struct PriceAlertQuote: Equatable {
+  /// 目录里的正式代号（「ETH」会被认成 `ETHUSDT`）。
+  var symbol: String
+  var price: Double?
+  var decimals: Int?
+
+  func label(_ value: Double) -> String { ReviewLabels.price(value, decimals: decimals) }
+}
+
+/// 提醒总表右上「新建」进来的那一页（P3.1）：一只品种、一个价，别的都不问。
+///
+/// - 品种默认就是图上那只，能改（打「ETH」就认成 `ETHUSDT`），锁英文键盘
+///   （`kanpan-symbol-search-keyboard`）。
+/// - 价格是手动输入框、等宽数字，不给加减步进器（`kanpan-no-steppers-use-text-fields`）。
+/// - **方向不让选**：比现价高就是「涨到」，低就是「跌到」，由 `Alert.price` 按建的那一刻的
+///   现价定；这页上只有一行小字「当前 xxx」让人知道自己在跟谁比。
+struct PriceAlertForm: View {
+  var initialSymbol: String
+  /// 按用户打的字查品种与现价；查不到这只品种返回 nil。
+  var resolve: (String) -> PriceAlertQuote?
+  /// 品种定下来之后叫一声：宿主去要一口价（不在自选里的品种报价簿手上没有）。
+  var prepare: (String) -> Void = { _ in }
+  var onCreate: (PriceAlertQuote, Double) -> Void
+
+  @State private var symbolText = ""
+  @State private var priceText = ""
+  @FocusState private var focus: Field?
+  @Environment(\.panelTheme) private var t
+  @Environment(\.dismiss) private var dismiss
+
+  private enum Field: Hashable { case symbol, price }
+
+  var body: some View {
+    let quote = resolve(symbolText)
+    PanelSheet(title: "新建提醒", subtitle: nil) {
+      field("品种") {
+        TextField("", text: $symbolText)
+          .keyboardType(.asciiCapable)
+          .textInputAutocapitalization(.characters)
+          .autocorrectionDisabled()
+          .focused($focus, equals: .symbol)
+          .accessibilityIdentifier("alerts.new.symbol")
+          .accessibilityLabel("品种")
+      }
+      field("价格") {
+        TextField("", text: $priceText)
+          .keyboardType(.decimalPad)
+          .focused($focus, equals: .price)
+          .accessibilityIdentifier("alerts.new.price")
+          .accessibilityLabel("价格")
+      }
+      HStack {
+        Text(currentLine(quote))
+          .font(PanelFont.meta).monospacedDigit()
+          .foregroundStyle(t.ink3)
+          .accessibilityIdentifier("alerts.new.current")
+        Spacer(minLength: 0)
+      }
+      .padding(.horizontal, PanelMetrics.hPad)
+      .padding(.top, 8)
+      Button {
+        guard let quote, let target else { return }
+        onCreate(quote, target)
+        dismiss()
+      } label: {
+        Text("加提醒")
+          .font(.scaled(15, .semibold))
+          .foregroundStyle(t.badgeInk)
+          .frame(maxWidth: .infinity)
+          .frame(height: 42)
+          .background(Capsule().fill(t.amber))
+          .opacity(quote != nil && target != nil ? 1 : 0.4)
+      }
+      .buttonStyle(.plain)
+      .disabled(quote == nil || target == nil)
+      .padding(.horizontal, PanelMetrics.hPad)
+      .padding(.top, 16)
+      .accessibilityIdentifier("alerts.new.create")
+    }
+    .toolbar(.hidden, for: .navigationBar)
+    .onAppear {
+      if symbolText.isEmpty { symbolText = initialSymbol }
+      prepare(initialSymbol)
+      focus = .price
+    }
+    .onChange(of: quote?.symbol) { _, symbol in if let symbol { prepare(symbol) } }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("alerts.new.page")
+  }
+
+  /// 用户打的价。逗号当千分位扔掉；非正数、读不出来的都不算。
+  private var target: Double? {
+    let text = priceText.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespaces)
+    guard let value = Double(text), value.isFinite, value > 0 else { return nil }
+    return value
+  }
+
+  private func currentLine(_ quote: PriceAlertQuote?) -> String {
+    guard let quote else { return symbolText.isEmpty ? " " : "没有这只品种" }
+    guard let price = quote.price else { return "当前 —" }
+    return "当前 " + quote.label(price)
+  }
+
+  private func field<Input: View>(_ label: String, @ViewBuilder input: () -> Input) -> some View {
+    HStack(spacing: 12) {
+      Text(label).font(PanelFont.name).foregroundStyle(t.ink)
+      Spacer(minLength: 8)
+      input()
+        .multilineTextAlignment(.trailing)
+        .font(.body.monospacedDigit())
+        .foregroundStyle(t.ink)
+        .frame(width: 150)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(t.raised2, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+    .padding(.horizontal, PanelMetrics.hPad)
+    .frame(minHeight: 48)
+    .overlay(alignment: .bottom) { Rectangle().fill(t.line).frame(height: 0.5).padding(.leading, PanelMetrics.hPad) }
+  }
+}

@@ -61,6 +61,8 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "favoritesGroup",
  "sectorMarket","sectorWindow","sectorSort","drawToolGroup","lastDrawTool","replaySpeed","reviewSearchScope",
  "alertSound",
+ // 自选五分钟波动提醒（P3.1）：开关 + 幅度（百分数）。服务端 `watch_move.rs` 读这两个。
+ "watchMoveAlert","watchMoveThreshold",
 ];
 // `variants/<palette tool>` is the drawing method last picked for that family in the style sheet
 // (trend → extended, hline → hray, vline → crossLine): the next line from that tool is drawn that way.
@@ -382,6 +384,18 @@ mod tests {
   }
   for bad in [json!("future"),json!("alert-glass.caf"),json!(null),json!(1),json!(false)] {
    assert!(op("settings",&[("alertSound",bad)]).validate().is_err());
+  }
+ }
+ /// 自选波动提醒的两项设置：过白名单、过值规则、真的合并进去；越界的一律拒。
+ #[test] fn watch_move_settings_are_accepted_and_bounded() {
+  for (key,value) in [("watchMoveAlert",json!(true)),("watchMoveAlert",json!(false)),("watchMoveThreshold",json!(1.5)),("watchMoveThreshold",json!(0.1)),("watchMoveThreshold",json!(50))] {
+   let operation=op("settings",&[(key,value.clone())]);
+   assert!(operation.validate().is_ok(),"{key}={value}");
+   assert!(operation.unknown_fields().is_empty(),"{key} 要在白名单里");
+   assert_eq!(applied("settings",&[(key,value.clone())]).body[key],value);
+  }
+  for (key,bad) in [("watchMoveAlert",json!(1)),("watchMoveThreshold",json!(0)),("watchMoveThreshold",json!(51)),("watchMoveThreshold",json!("1.5")),("watchMoveThreshold",json!(null))] {
+   assert!(op("settings",&[(key,bad.clone())]).validate().is_err(),"{key} 不该收 {bad}");
   }
  }
  /// The bug this whole allowlist pass is about: one pinch on the chart used to come back

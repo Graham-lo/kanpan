@@ -26,6 +26,8 @@ struct PanelSheet<Content: View>: View {
   var subtitle: String?
   /// 当作标签栏上的一整页来画：不画左上角的「‹」，底色用页面底色。
   var asPage: Bool = false
+  /// 标题行右端那一个字按钮（如提醒总表的「新建」）。一页最多一个。
+  var action: PanelSheetAction? = nil
   @ViewBuilder var content: () -> Content
 
   @Environment(\.panelTheme) private var t
@@ -58,6 +60,15 @@ struct PanelSheet<Content: View>: View {
           }
         }
         Spacer(minLength: 0)
+        if let action {
+          Button(action: action.run) {
+            Text(action.title).font(PanelFont.title).foregroundStyle(t.amber)
+              .frame(minHeight: 32)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier(action.id)
+        }
       }
       // 图标自带 7pt 视觉留白，左边对齐到和正文一样的 `hPad`；整页模式下没有图标，
       // 标题自己顶上去，直接用 `hPad`。
@@ -78,6 +89,13 @@ struct PanelSheet<Content: View>: View {
     .background(asPage ? t.app : t.raised)
     .accessibilityLabel(title)
   }
+}
+
+/// `PanelSheet` 标题行右端的字按钮。
+struct PanelSheetAction {
+  var title: String
+  var id: String
+  var run: () -> Void
 }
 
 // MARK: - 行

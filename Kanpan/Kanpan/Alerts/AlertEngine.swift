@@ -85,6 +85,11 @@ final class AlertEngine: ObservableObject {
       .receive(on: RunLoop.main)
       .sink { [weak self] archive in self?.settle(archive) }
       .store(in: &bag)
+    // 复盘到点不看价，按钟判：前台每半分钟看一眼（日历通知只精确到分钟，这个粒度够）。
+    Timer.publish(every: Self.dueTick, on: .main, in: .common)
+      .autoconnect()
+      .sink { [weak self] _ in self?.settleDue() }
+      .store(in: &bag)
   }
 
   /// 前后台。`MainScreen` 那一处 `AppLifecycle` 把话递过来，和 `AlertWatcher` 同一拍。
@@ -93,17 +98,44 @@ final class AlertEngine: ObservableObject {
     foreground = value
     // 断过就不算连着：回来那一下手上的桶既不完整，`previousClose` 也不知道是哪一根了。
     if !value { buckets.removeAll(keepingCapacity: true) }
+    else { settleDue() }
   }
 
-  /// 存档变了：重算要盯的品种。
+  // ---------------------------------------------------------------- 复盘到点
+
+  static let dueTick: TimeInterval = 30
+
+  /// 复盘到点那一种（`kind == .reviewDue`）：到了就标 `fired`，不带价。
+  ///
+  /// 和价格提醒同一道闸去重：服务端 `settle_due` 先到，本地这边 `markFired` 被
+  /// `status == .active` 挡掉；本地先到，服务端那条 `UPDATE … WHERE status='active'`
+  /// 一行都改不到。app 不在前台时不判——那一段归服务端和本机那条日历通知。
+  func settleDue(now: Double = Date().timeIntervalSince1970 * 1000) {
+    guard foreground, let store else { return }
+    for alert in store.all where AlertEvaluator.dueHit(alert, now: now) {
+      store.markFired(id: alert.id, at: now, price: nil)
+    }
+  }
+
+  /// 存档变了：重算要盯的品种；刚同步下来、已经过了点的复盘到点当场判掉。
   private func settle(_ archive: AlertArchive) {
+    if archive.alerts.contains(where: { $0.kind == .reviewDue && $0.isActive }) {
+      // 下一拍再判：这一拍还在 `$archive` 的回调里，当场 `markFired` 就是在发布途中改它。
+      Task { @MainActor [weak self] in self?.settleDue() }
+    }
     let next = Set(
       archive.alerts
-        .filter { $0.isActive && $0.kind == .drawing && !$0.lines.isEmpty }
+        .filter { $0.isActive && ($0.kind == .drawing || $0.kind == .price) && !$0.lines.isEmpty }
         .map { $0.symbol.uppercased() }
         .filter { !$0.isEmpty })
     if next != watched {
+      #if DEBUG
+      let added = next.subtracting(watched)
+      #endif
       watched = next
+      #if DEBUG
+      if !added.isEmpty { Task { @MainActor [weak self] in self?.feedTestTouch(added) } }
+      #endif
       // 不再盯的品种把桶丢掉：留着只会在它重新挂上提醒时拿一段陈价当「上一根」。
       buckets = buckets.filter { next.contains($0.key) }
     }
@@ -202,6 +234,25 @@ final class AlertEngine: ObservableObject {
   // ---------------------------------------------------------------- 测试用
 
   #if DEBUG
+  /// UI 用例「输一个价建提醒，然后它响了」要一段一定会碰到那个价的行情：真行情下一分钟
+  /// 未必走到。启动环境 `KANPAN_TEST_ALERT_TOUCH=<代号>`（配 `KANPAN_TEST_PROFILE=1`）时，
+  /// 这只品种一挂上裸价格提醒，就往它身上喂两口夹住目标价的价（高一点、低一点）。
+  /// 时间戳放在一天以后：`armedAt` 那一关照样要过，真行情的帧全比它早、按乱序挡掉。
+  /// 往下走的是和真行情完全一样的一条路：桶 → `AlertEvaluator.hit` → `markFired`
+  /// → `AlertWatcher` 浮条 + 通知 → 总表「已触发」。
+  private func feedTestTouch(_ symbols: Set<String>,
+                             environment: [String: String] = ProcessInfo.processInfo.environment) {
+    guard environment["KANPAN_TEST_PROFILE"] == "1",
+          let symbol = environment["KANPAN_TEST_ALERT_TOUCH"]?.uppercased(), symbols.contains(symbol),
+          let store else { return }
+    let future = Int64(Date().timeIntervalSince1970 * 1000) + 86_400_000
+    for alert in store.all where alert.kind == .price && alert.isActive && alert.symbol.uppercased() == symbol {
+      guard let target = alert.targetPrice else { continue }
+      observe(symbol: symbol, price: target * 1.001, timeMs: future)
+      observe(symbol: symbol, price: target * 0.999, timeMs: future + 1)
+    }
+  }
+
   /// 用例拿它看桶折得对不对（品种 → 开盘时刻/高/低/收/上一根收盘）。
   func bucketState(_ symbol: String) -> (openTime: Int64, high: Double, low: Double, close: Double, previousClose: Double?)? {
     guard let b = buckets[symbol.uppercased()] else { return nil }

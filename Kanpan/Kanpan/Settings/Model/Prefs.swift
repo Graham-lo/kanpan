@@ -111,6 +111,10 @@ struct Prefs: Sendable, Equatable {
   var changeBasis: ChangeBasis = .rolling24h
   /// 所有价格提醒共用，随账号同步；复盘到期通知不使用此项。
   var alertSound: AlertSound = .default
+  /// 自选五分钟波动提醒（P3.1），出厂关。判定只有一种，见 `WatchMove`。
+  var watchMoveAlert: Bool = false
+  /// 波动幅度（百分数），出厂 1.5，手动输入，夹在 `WatchMove.thresholdRange` 里。
+  var watchMoveThreshold: Double = WatchMove.defaultThreshold
 
   // ---------------------------------------------------------------- 指标
   /// 主图叠加，按打开先后排。默认 `[.ma]`。

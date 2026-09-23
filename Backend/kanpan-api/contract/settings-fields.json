@@ -101,7 +101,9 @@
     "subs" : "synced",
     "theme" : "synced",
     "timeZone" : "synced",
-    "viewAnchor" : "synced"
+    "viewAnchor" : "synced",
+    "watchMoveAlert" : "synced",
+    "watchMoveThreshold" : "synced"
   },
   "fieldClassesNote" : "synced=随账号同步、线上用自己的名字；syncedMerged=随账号同步但线上并成别的键（见 wireOnlyKeys）；deviceOnly=这台机器 / 这张网的属性，不跟人走；derivedLocal=自动累积的统计，不跟人也不同步。",
   "generatedBy" : "Kanpan/Settings/Tests/KanpanSettingsTests/PrefsFieldPlanTests.swift · SettingsFieldContract",
@@ -209,7 +211,9 @@
     "subs",
     "theme",
     "timeZone",
-    "viewAnchor"
+    "viewAnchor",
+    "watchMoveAlert",
+    "watchMoveThreshold"
   ],
   "wireKeysNote" : "线上真正会出现的 settings 顶层键 = synced 的字段名 + wireOnlyKeys。Backend/kanpan-api/src/sync.rs 的 SETTINGS_FIELDS 必须逐字等于这一集合。少一个：含那个键的操作被服务端整条拒绝，客户端的同步队列被它堵死（提交 a161bb0）。多一个而 sync_validation::field 没配值规则：同一种死法，_=>false 让整条操作 400。",
   "wireOnlyKeys" : {

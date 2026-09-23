@@ -157,6 +157,8 @@ struct MainScreen: View {
   @StateObject private var alertWatcher = AlertWatcher()
   /// 前台的到价判定。没有 APNs 密钥，它是提醒在这台手机上唯一会响的那条路。
   @StateObject private var alertEngine = AlertEngine()
+  /// 自选五分钟波动提醒的前台那一半（P3.1）。
+  @State private var watchMove = WatchMoveMonitor()
   /// 提醒总表开着没有。设置里那一行和 `hkline://alerts` 都开它。
   @State private var showAlerts = false
   @State private var shareInterval: SharePreviewInterval?
@@ -486,7 +488,13 @@ struct MainScreen: View {
       onReviewNotice: { note in if let note { say(note); review.notice = nil } },
       onReviewChartNotice: { note in if let note { say(note); reviewChart.notice = nil } },
       onReviewBookOpen: { endSharePreview() },
-      onReviewRecords: { list in ReviewDueNotifications.reschedule(list) })
+      onReviewRecords: { list in
+        // 本机那条日历通知是双保险；进提醒系统（总表 + 同步 + 服务端到点推送）的是这一份。
+        ReviewDueNotifications.reschedule(list)
+        alerts.settleReviewDue(ReviewDueAlerts.plan(items: list.map(ReviewDueAlerts.Item.init(record:)),
+                                                    existing: alerts.all,
+                                                    now: Date().timeIntervalSince1970 * 1000))
+      })
   }
 
   var body: some View {
@@ -527,11 +535,15 @@ struct MainScreen: View {
       AlertListPage(store: alerts, preferences: store,
                     onOpen: { alert in
                       showAlerts = false
+                      if alert.kind == .reviewDue, let id = alert.reviewID { openReview(id: id); return }
                       guard let drawingID = alert.drawingID else { open(linkedSymbol: alert.symbol); return }
                       open(linkedSymbol: alert.symbol)
                       draw.highlight(drawingID: drawingID, symbol: SymbolPrefs.key(alert.symbol))
                     },
-                    zone: prefs.timeZone.offsetMinutes)
+                    zone: prefs.timeZone.offsetMinutes,
+                    currentSymbol: market.symbol,
+                    quote: { text in alertQuote(text) },
+                    prepareQuote: { [weak quotes] symbol in quotes?.watch(symbol) })
         .environment(\.panelTheme, theme)
     }
   }
@@ -1273,6 +1285,7 @@ struct MainScreen: View {
   /// 所以「订阅自选、预热 K 线」这两件事不能只在 `boot()` 里做一次，得跟着表本身走。
   private func settleFavorites(_ symbols: [String]) {
     quotes.setFavorites(symbols)
+    watchMove.setFavorites(symbols)
     // 换号那一拍报价簿会把「挂着提醒的品种」清空（那是上一个人的）。这儿顺手把
     // 这个人的那份再交一次，否则他的提醒品种要等下一次存档变动才回得到订阅里。
     alertEngine.republishWatchlist()
@@ -1329,11 +1342,13 @@ struct MainScreen: View {
       alertWatcher.setForeground(false)
       // 判定也一起停：桶断了就不算连着，回来那一下不拿断口两侧的价去算穿越。
       alertEngine.setForeground(false)
+      watchMove.setForeground(false)
     } enter: {
       grace.end()
       market.enterForeground(); quotes.setForeground(true); sectorFeed.setForeground(true)
       alertWatcher.setForeground(true)
       alertEngine.setForeground(true)
+      watchMove.setForeground(true)
       // 回到前台先拉一次同步：服务端判到价、写回 `status=fired`，这一趟就是
       // 已触发的提醒走到用户眼前的那条路（没有 APNs 时它是唯一一条）。
       accountBridge?.synchronize(); review.synchronize()
@@ -1401,10 +1416,14 @@ struct MainScreen: View {
     // （和 `teardown.onTeardown` 那儿同一个理由）。
     alertEngine.attach(alerts)
     alertEngine.onWatchlist = { [weak quotes] symbols in quotes?.setAlertedSymbols(symbols) }
-    market.onPrice = { [weak engine = alertEngine] symbol, price, timeMs in
+    market.onPrice = { [weak engine = alertEngine, weak mover = watchMove] symbol, price, timeMs in
       engine?.observe(symbol: symbol, price: price, timeMs: timeMs)
+      mover?.observe(symbol: symbol, price: price, timeMs: timeMs)
     }
-    quotes.onPrice = { [weak engine = alertEngine] tickers in engine?.observe(tickers) }
+    quotes.onPrice = { [weak engine = alertEngine, weak mover = watchMove] tickers in
+      engine?.observe(tickers)
+      mover?.observe(tickers)
+    }
     alertWatcher.priceDecimals = { [picker] symbol in
       guard let info = picker.info(for: symbol), info.tickSize > 0 || info.pricePrecision > 0 else { return nil }
       return info.priceDecimals
@@ -1412,7 +1431,12 @@ struct MainScreen: View {
     alertWatcher.sound = { [weak store] in store?.prefs.alertSound ?? .default }
     alertWatcher.attach(alerts)
     alertWatcher.onFired = { alert in
-      guard let drawingID = alert.drawingID else { return say(alert.title) }
+      if alert.kind == .reviewDue, let id = alert.reviewID {
+        return say(alert.title, actionTitle: "查看") { openReview(id: id) }
+      }
+      guard let drawingID = alert.drawingID else {
+        return say(alert.title, actionTitle: "查看") { open(linkedSymbol: alert.symbol) }
+      }
       say(alert.title, actionTitle: "查看") {
         open(linkedSymbol: alert.symbol)
         draw.highlight(drawingID: drawingID, symbol: SymbolPrefs.key(alert.symbol))
@@ -1420,10 +1444,59 @@ struct MainScreen: View {
     }
   }
 
+  /// 自选五分钟波动提醒（P3.1）：开关与幅度跟着设置走，自选在 `settleFavorites` 交进去，
+  /// 价在 `wireAlerts` 那两条流上一起喂。响了：通知中心留一条 + 震一下 + 浮条「查看」。
+  private func wireWatchMove() {
+    watchMove.follow { [weak store] in
+      (store?.prefs.watchMoveAlert ?? false, store?.prefs.watchMoveThreshold ?? WatchMove.defaultThreshold)
+    }
+    watchMove.onEvent = { [weak store] event in
+      let decimals = picker.info(for: event.symbol).map(\.priceDecimals)
+      AlertNotifications.present(event, decimals: decimals, sound: store?.prefs.alertSound ?? .default)
+      UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+      let title = WatchMove.title(for: event)
+      // 那唯一一条提示画在面板与表之上（P2.7），开着提醒总表时也看得见。
+      say(title, actionTitle: "查看") {
+        showAlerts = false
+        dismissPanel()
+        open(linkedSymbol: event.symbol)
+      }
+    }
+  }
+
+  /// 新建价格提醒那一页问的：用户打的这串是哪只品种、现价多少。
+  /// 「ETH」认成 `ETHUSDT`；图上那只取逐笔，别的取报价簿。
+  private func alertQuote(_ text: String) -> PriceAlertQuote? {
+    let raw = text.trimmingCharacters(in: .whitespaces).uppercased()
+    guard !raw.isEmpty else { return nil }
+    let symbol = [raw, raw + "USDT"].first { picker.info(for: $0) != nil }
+      ?? (raw == market.symbol.uppercased() ? raw : nil)
+    guard let symbol else { return nil }
+    let price: Double?
+    if symbol == market.symbol.uppercased() {
+      price = market.tradeQuote?.price ?? market.ticker?.last ?? quotes.raw[symbol]?.last
+    } else {
+      price = quotes.raw[symbol]?.last
+    }
+    let decimals = picker.info(for: symbol).flatMap { info in
+      info.tickSize > 0 || info.pricePrecision > 0 ? info.priceDecimals : nil
+    }
+    return PriceAlertQuote(symbol: symbol, price: price.flatMap { $0 > 0 ? $0 : nil }, decimals: decimals)
+  }
+
+  /// 站到某一条复盘记录上（通知、提醒总表、到点浮条都走这儿）。
+  private func openReview(id: String) {
+    guard let uuid = UUID(uuidString: id), review.record(uuid) != nil else { return }
+    dismissPanel(); showAlerts = false
+    review.selectedRecord = uuid
+    review.bookOpen = true
+  }
+
   /// 只由 `BootOnce` 调（它保证一辈子只进来一次）。别在别处直接调它。
   private func boot() {
     wireLifecycle()
     wireAlerts()
+    wireWatchMove()
     // 先把档案装进来，再开行情。
     //
     // 以前是反过来的（注释写着「让网络 I/O 和首帧渲染重叠」）：`market.start` 跑在
@@ -1454,7 +1527,12 @@ struct MainScreen: View {
     // 初始化时同步装的），里面本来就没有自选；把这份空表交上去，`QuoteBook` 会认定
     // 「自选范围已知且为空」，刚从磁盘恢复出来的十几行报价当场被裁光。等
     // `account.restore()` 把账号那份读回来，走 `settleFavorites(_:)` 再交。
-    if !picker.prefs.favorites.isEmpty { quotes.setFavorites(picker.prefs.favorites) }
+    // 自选波动提醒也要在这一拍认表：没登录（或测试档案）时自选不会再「变」一次，
+    // 不交就永远盯着一张空表。
+    if !picker.prefs.favorites.isEmpty {
+      quotes.setFavorites(picker.prefs.favorites)
+      watchMove.setFavorites(picker.prefs.favorites)
+    }
     quotes.setChartSymbol(market.symbol)
     quotes.setForeground(phase != .background)
     sectorFeed.configure(hosts: hosts, source: market.source)
@@ -1611,10 +1689,7 @@ struct MainScreen: View {
       showAlerts = true
     case let .review(id):
       // 复盘那条「到点了」的通知点进来：直接站到那条记录上。
-      guard let uuid = UUID(uuidString: id), review.record(uuid) != nil else { return }
-      dismissPanel(); showAlerts = false
-      review.selectedRecord = uuid
-      review.bookOpen = true
+      openReview(id: id)
     case .search:
       openLinkedSearch()
     case let .share(id):

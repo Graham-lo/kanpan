@@ -57,7 +57,7 @@ fn anchor_count(kind:&str)->usize {
 ///
 /// 一条线一个点是合法的：水平线摊平之后就是「一个价 + 两端都延伸」。
 fn lines(v:&Value)->bool {
- v.as_array().is_some_and(|all|(1..=32).contains(&all.len())&&all.iter().all(|line|{
+ v.as_array().is_some_and(|all|all.len()<=32&&all.iter().all(|line|{
   line.as_object().is_some_and(|o|o.len()==3&&o.contains_key("points")&&o.contains_key("extendLeft")&&o.contains_key("extendRight"))
    && line["extendLeft"].is_boolean() && line["extendRight"].is_boolean()
    && line["points"].as_array().is_some_and(|ps|(1..=64).contains(&ps.len())
@@ -113,6 +113,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "sectorSort"=>one_of(v,&["change","volume"]),
    "reviewSearchScope"=>one_of(v,&["history","private"]),
    "alertSound"=>one_of(v,&["default","crisp","electronic","glass"]),
+   // 自选波动提醒的幅度（百分数），和客户端 `WatchMove.thresholdRange` 同一个区间。
+   "watchMoveThreshold"=>number(v,0.1,50.0),
    // Empty means "has not picked one yet" for both.
    "lastDrawTool"=>v.as_str().is_some_and(|s|s.is_empty()||KINDS.contains(&s)),
    // A tab label on the drawing panel, not an enum with any server meaning; the client
@@ -127,7 +129,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    // Capped at `Prefs.maxExpanded`.
    "favoritesExpanded"=>v.as_array().is_some_and(|a|a.len()<=500&&a.iter().all(symbol)),
    "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"lastLine"|"sinceChange"|"showDrawings"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
-    |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"=>v.is_boolean(),
+    |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
   }
  }
@@ -162,7 +164,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   ("groups","name")=>string(v,100),
   ("groups","members")=>v.as_array().is_some_and(|a|a.len()<=2000&&a.iter().all(|v|string(v,100))),
   // ——— 提醒（方案文档 2.2） ———
-  // `price` 只进白名单与值规则，评估器本轮不认它；`reviewDue` 全走客户端本地通知。
+  // 三种都真的在用（P3.1）：`drawing` / `price` 按线判，`reviewDue` 按 `dueAt` 判。
   ("alerts","kind")=>one_of(v,&["drawing","price","reviewDue"]),
   // 这个集合的 market 是整串 `binance/usd_m`（drawings / favorites 是 `usd_m` 加单独的
   // venue）。形状是文档定的，照抄，不要「统一」。
@@ -217,6 +219,16 @@ pub fn object(value:&Object)->Result<()> {
   if !value.id.starts_with(&format!("binance/usd_m/{symbol}/")) {return Err(ApiError::bad("invalid_alert_identity"))}
   // 画线提醒必须指得出是哪条线：物化表存它，通知的深链也靠它跳回那条线上。
   if kind=="drawing" && value.body.get("drawingID").and_then(Value::as_str).is_none_or(str::is_empty) {
+   return Err(ApiError::bad("invalid_alert"))
+  }
+  // 价格提醒（画线与裸价格）要有线可判：`lines` 字段本身允许空数组，是因为复盘到点那一种
+  // 不看价、没有线；但一条没有线的价格提醒是永远不会响的死提醒。
+  if matches!(kind,"drawing"|"price") && value.body.get("lines").and_then(Value::as_array).is_none_or(Vec::is_empty) {
+   return Err(ApiError::bad("invalid_alert"))
+  }
+  // 复盘到点必须说得出「什么时候」和「哪一条」：评估器按 dueAt 判，推送的深链靠 reviewID。
+  if kind=="reviewDue" && (value.body.get("dueAt").and_then(Value::as_f64).is_none()
+   || value.body.get("reviewID").and_then(Value::as_str).is_none_or(str::is_empty)) {
    return Err(ApiError::bad("invalid_alert"))
   }
  }
@@ -465,8 +477,9 @@ mod tests {
   assert!(field("alerts","lines",&json!([
    {"points":[{"t":1.0,"p":2.0},{"t":3.0,"p":4.0}],"extendLeft":false,"extendRight":false},
    {"points":[{"t":1.0,"p":9.0},{"t":3.0,"p":9.0}],"extendLeft":false,"extendRight":false}])));
+  // 空数组这一层放行：复盘到点那一种没有线。有没有线该不该空，交给 `object` 按种类判。
+  assert!(field("alerts","lines",&json!([])));
   for bad in [
-   json!([]),
    json!([{"points":[],"extendLeft":false,"extendRight":false}]),
    json!([{"points":[{"t":1.0,"p":2.0}],"extendLeft":false}]),
    json!([{"points":[{"t":1.0,"p":2.0}],"extendLeft":"yes","extendRight":false}]),
@@ -492,6 +505,32 @@ mod tests {
   let due=alert(&[("kind",json!("reviewDue")),("dueAt",json!(1_800_000_000_000i64)),("reviewID",json!("9F1E"))]);
   let mut due=due;due.body.remove("drawingID");
   object(&due).expect("a review reminder needs no drawing");
+ }
+
+ /// 三种提醒各有各的必填：价格类（画线、裸价格）必须有线，复盘到点必须有 `dueAt` 与 `reviewID`。
+ ///
+ /// 裸价格提醒不指画线（没有 `drawingID`），复盘到点没有线——少了这一层，一条没有线的价格
+ /// 提醒会存进去、永远不会响；一条没有 `dueAt` 的到点提醒永远不会到点。
+ #[test] fn each_alert_kind_carries_what_it_is_judged_by() {
+  let mut price=alert(&[("kind",json!("price")),("title",json!("BTC 涨到 70,000"))]);
+  price.body.remove("drawingID");
+  object(&price).expect("a price alert needs no drawing");
+  let mut lineless=price.clone();
+  lineless.body.insert("lines".into(),json!([]));
+  assert!(object(&lineless).is_err(),"a price alert without a line can never fire");
+  let mut drawing_lineless=alert(&[]);
+  drawing_lineless.body.insert("lines".into(),json!([]));
+  assert!(object(&drawing_lineless).is_err(),"neither can a drawing alert");
+
+  let mut due=alert(&[("kind",json!("reviewDue")),("dueAt",json!(1_800_000_000_000i64)),("reviewID",json!("7C0A")),("lines",json!([]))]);
+  due.body.remove("drawingID");
+  object(&due).expect("a review reminder has no line and needs none");
+  let mut undated=due.clone();
+  undated.body.remove("dueAt");
+  assert!(object(&undated).is_err(),"a review reminder without dueAt never comes due");
+  let mut anonymous=due.clone();
+  anonymous.body.insert("reviewID".into(),json!(""));
+  assert!(object(&anonymous).is_err(),"a review reminder must name its record");
  }
 
  /// 「再次提醒」把一条已触发的提醒重新武装：firedAt / firedPrice 被清掉。

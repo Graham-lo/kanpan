@@ -13,7 +13,8 @@ import PackageDescription
 // `KanpanCore`，把一口一口的价折成 1 分钟桶交给 `AlertEvaluator`）、以及
 // 「通知关着那一行出不出」的判据（`AlertPermission`——`UNAuthorizationStatus`
 // 在 mac 上也有，它那半句 `UIApplication.openSettingsURLString` 自己用
-// `#if canImport(UIKit)` 圈着）。
+// `#if canImport(UIKit)` 圈着）。P3.1 又添两件：复盘到点折成提醒的对账
+// （`ReviewDueAlerts`）、自选五分钟波动的前台接线（`WatchMoveMonitor`）。
 // 问句（`AlertPrompt`）、总表（`AlertListPage`）吃 SwiftUI，
 // 「响了怎么走到人眼前」（`AlertWatcher` / `AlertNotifications`）吃 UIKit 与
 // UserNotifications，那几件的证据走模拟器。

@@ -12,10 +12,14 @@ import Foundation
 public struct Alert: Sendable, Equatable, Codable, Identifiable {
   /// 这条提醒是怎么来的。
   ///
-  /// - `drawing`：当前由画线入口创建、由两侧评估器判定。
-  /// - `price`：当前无创建入口，且两侧评估器拒绝此类型。
-  /// - `reviewDue`：当前由独立本地排程处理，没有创建云端提醒对象。
-  /// 两项增量的唯一规格见 docs/待办交接-Codex-2026-09-22.md P3.1。
+  /// - `drawing`：画完线那一下问一句建出来的；`lines` 是那条线摊平的几何。
+  /// - `price`：提醒总表右上「新建」建出来的裸价格提醒。目标价挂成一条两端都延的
+  ///   水平线（`lines` 只有一个点），所以判定和画线提醒走的是同一套几何、同一份规则，
+  ///   两侧评估器（`AlertEvaluator` / 服务端 `alerts.rs`）都认它。
+  /// - `reviewDue`：复盘待办到期。由复盘记录生成（`ReviewDueAlerts`），`dueAt` 是记录的
+  ///   到期时刻、`reviewID` 是记录 id、`lines` 为空；服务端到点把它置成 `fired` 并推送，
+  ///   本机另排一条本地通知当双保险。记录判完 / 作废 / 删掉之后自动清掉。
+  /// 规格见 docs/待办交接-Codex-2026-09-22.md P3.1。
   public enum Kind: String, Sendable, Codable, CaseIterable {
     case drawing, price, reviewDue
   }
@@ -162,6 +166,33 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
     guard let range = title.range(of: Alert.titleMarker) else { return nil }
     let name = title[range.upperBound...]
     return name.isEmpty ? nil : String(name)
+  }
+
+  /// 裸价格提醒那一条水平线的价。别的种类返回 nil。
+  public var targetPrice: Double? {
+    guard kind == .price else { return nil }
+    return lines.first?.points.first?.p
+  }
+
+  /// 建一条裸价格提醒。目标价挂成一条两端都延的水平线——和画线里的水平线摊出来的
+  /// 几何一模一样，评估器与服务端不需要为它多认一种形状。
+  ///
+  /// 方向不存：它由建的那一刻的现价决定（高于现价就是「涨到」、低于就是「跌到」），
+  /// 只体现在标题里。判定按 `touch`：价格走到那条线上就响，从哪边来都一样。
+  public static func price(symbol: String, target: Double, current: Double?, label: String,
+                           now: Double) -> Alert {
+    let line = AlertLine(points: [DrawPoint(t: now, p: target)], extendLeft: true, extendRight: true)
+    return Alert(kind: .price, symbol: symbol, lines: [line], condition: .touch, armedAt: now,
+                 title: priceTitle(symbol: symbol, target: target, current: current, label: label),
+                 created: now)
+  }
+
+  /// 「BTC 涨到 65,000」/「BTC 跌到 60,000」。`label` 是调用方按品种精度排好的价。
+  /// 现价取不到时不猜方向，写「到了」。
+  public static func priceTitle(symbol: String, target: Double, current: Double?, label: String) -> String {
+    let verb: String
+    if let current, current.isFinite, current > 0 { verb = target >= current ? "涨到" : "跌到" } else { verb = "到了" }
+    return "\(base(of: symbol)) \(verb) \(label)"
   }
 
   public static func base(of symbol: String) -> String {

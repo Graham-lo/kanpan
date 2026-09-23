@@ -13,10 +13,20 @@ struct AlertListPage: View {
   @ObservedObject var store: AlertStore
   var preferences: PrefsStore
   @State private var showSound = false
-  /// 点一行：去那条线上。宿主接成深链（`DeepLink.drawing`）。
+  @State private var showNew = false
+  /// 点一行：去那条线上（复盘到点去那条记录）。宿主接成深链。
   var onOpen: (KanpanCore.Alert) -> Void
   /// 时间按用户在设置里选的那档时区写。
   var zone: TZOffset = .system
+  /// 「新建」那一页默认的品种（图上那只）。
+  var currentSymbol: String = ""
+  /// 按用户打的代号查品种与现价（宿主那边有目录、报价簿与图上那只的逐笔）。
+  var quote: (String) -> PriceAlertQuote? = { _ in nil }
+  /// 新建页定了品种之后叫一声，宿主去要一口价。
+  var prepareQuote: (String) -> Void = { _ in }
+  /// 自选波动的幅度，编辑时的那一格字。离开输入框才落盘（`kanpan-persist-on-gesture-end`）。
+  @State private var thresholdText = ""
+  @FocusState private var thresholdFocused: Bool
 
   @Environment(\.panelTheme) private var t
   /// 通知权限那一行的开关（见 `AlertPermission`）。总表自己养一个，别处不看它。
@@ -34,11 +44,23 @@ struct AlertListPage: View {
       list
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $showSound) { AlertSoundPage(store: preferences) }
+        .navigationDestination(isPresented: $showNew) {
+          PriceAlertForm(initialSymbol: currentSymbol, resolve: quote, prepare: prepareQuote) { quote, target in
+            let alert = store.addPrice(symbol: quote.symbol, target: target, current: quote.price,
+                                       label: quote.label(target))
+            guard alert != nil else { return }
+            Task {
+              await AlertNotifications.requestAuthorization()
+              await MainActor.run { PushRegistration.startIfAuthorized() }
+            }
+          }
+        }
     }
   }
 
   private var list: some View {
-    PanelSheet(title: "提醒", subtitle: nil, asPage: false) {
+    PanelSheet(title: "提醒", subtitle: nil, asPage: false,
+               action: PanelSheetAction(title: "新建", id: "alerts.new", run: { showNew = true })) {
       PanelRow(name: "提醒铃声", onTap: { showSound = true }) {
         HStack(spacing: 5) {
           Text(preferences.prefs.alertSound.title).font(PanelFont.seg)
@@ -47,6 +69,7 @@ struct AlertListPage: View {
       }
       .accessibilityIdentifier("alerts.sound.open")
       .accessibilityValue(preferences.prefs.alertSound.title)
+      watchMoveRows
       if permission.needsSystemSettings { permissionRow }
       if store.all.isEmpty {
         empty
@@ -83,6 +106,57 @@ struct AlertListPage: View {
     // 一个容器，子元素各留各的名字。`AlertPromptBar` 那一条也是这么写的。
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("alerts.page")
+  }
+
+  /// 自选波动提醒：一个开关，开着时下面一格幅度（手动输入，没有口径可选）。
+  @ViewBuilder private var watchMoveRows: some View {
+    let on = preferences.prefs.watchMoveAlert
+    PanelRow(name: "自选波动提醒") {
+      PanelSwitch(isOn: on) {
+        commitThreshold()
+        preferences.update { $0.watchMoveAlert.toggle() }
+      }
+      .accessibilityIdentifier("alerts.watchMove")
+    }
+    if on {
+      PanelRow(name: "五分钟涨跌超过") {
+        HStack(spacing: 4) {
+          TextField("", text: $thresholdText)
+            .keyboardType(.decimalPad)
+            .multilineTextAlignment(.trailing)
+            .font(.body.monospacedDigit())
+            .foregroundStyle(t.ink)
+            .frame(width: 52)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(t.raised2, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .focused($thresholdFocused)
+            .onSubmit(commitThreshold)
+            .accessibilityIdentifier("alerts.watchMove.threshold")
+            .accessibilityLabel("五分钟涨跌超过")
+          Text("%").font(.body).foregroundStyle(t.ink3)
+        }
+      }
+      .onAppear { thresholdText = Self.format(preferences.prefs.watchMoveThreshold) }
+      .onChange(of: thresholdFocused) { _, focused in if !focused { commitThreshold() } }
+      .onDisappear(perform: commitThreshold)
+    }
+  }
+
+  private func commitThreshold() {
+    let text = thresholdText.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)
+    guard !text.isEmpty else { return }
+    let value = Double(text).map(WatchMove.clampThreshold) ?? preferences.prefs.watchMoveThreshold
+    thresholdText = Self.format(value)
+    guard value != preferences.prefs.watchMoveThreshold else { return }
+    preferences.update { $0.watchMoveThreshold = value }
+  }
+
+  private static func format(_ value: Double) -> String {
+    var text = String(format: "%.2f", value)
+    while text.hasSuffix("0") { text.removeLast() }
+    if text.hasSuffix(".") { text.removeLast() }
+    return text
   }
 
   /// 通知被拒之后顶上那一行。**提示，不是拦路**：它不挡列表，下面该有几条还是几条。
@@ -135,7 +209,6 @@ struct AlertListPage: View {
     VStack(spacing: 6) {
       Image(systemName: "bell").font(.system(size: 22, weight: .light)).foregroundStyle(t.ink3)
       Text("还没有提醒").font(PanelFont.name).foregroundStyle(t.ink3)
-      Text("在图上画一条线，画完那一下就能加").font(PanelFont.meta).foregroundStyle(t.ink3)
     }
     .frame(maxWidth: .infinity)
     .padding(.vertical, 48)
@@ -168,7 +241,10 @@ private struct AlertRow: View {
 
   private func row(_ swipe: SwipeDeleteProxy) -> some View {
     PanelRow(name: title, meta: meta, onTap: { swipe.isOpen ? swipe.close() : onOpen() }) {
-      if alert.status == .fired {
+      if alert.kind == .reviewDue {
+        // 复盘到点没有「再次提醒」也没有条件可改：它跟着那条记录走。
+        EmptyView()
+      } else if alert.status == .fired {
         Button(action: { swipe.close(); onRearm() }) {
           Text("再次提醒")
             .font(PanelFont.seg)
@@ -202,12 +278,18 @@ private struct AlertRow: View {
   }
 
   private var title: String {
+    if alert.kind != .drawing, !alert.title.isEmpty { return alert.title }
     let base = KanpanCore.Alert.base(of: alert.symbol)
     guard let name = alert.lineName else { return base }
     return base + " · " + name
   }
 
   private var meta: String {
+    if alert.kind == .reviewDue {
+      let at = alert.status == .fired ? alert.firedAt ?? alert.dueAt : alert.dueAt
+      let time = at.map { ReviewLabels.dayTime(ms: Int64($0), offsetMinutes: zone) } ?? ""
+      return alert.status == .fired ? "已到点 · " + time : "到期 " + time
+    }
     switch alert.status {
     case .fired:
       guard let at = alert.firedAt else { return "已触发" }

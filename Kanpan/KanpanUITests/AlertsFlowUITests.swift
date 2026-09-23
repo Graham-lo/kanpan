@@ -31,6 +31,13 @@ import XCTest
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
     app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
     if needsSeed { app.launchEnvironment["KANPAN_TEST_ALERT_FIRED"] = "BTCUSDT" }
+    // P3.1：输价建的提醒一挂上就喂两口夹住目标价的价（`AlertEngine.feedTestTouch`）；
+    // 自选波动开关一打开就往 BTC 上喂一段五分钟涨 2% 的价（`WatchMoveMonitor.injectTestMove`）。
+    if name.contains("TypedPrice") { app.launchEnvironment["KANPAN_TEST_ALERT_TOUCH"] = "BTCUSDT" }
+    if name.contains("WatchMove") {
+      app.launchEnvironment["KANPAN_TEST_WATCHMOVE"] = "BTCUSDT"
+      app.launchEnvironment["KANPAN_TEST_FAVORITES"] = "BTCUSDT,ETHUSDT"
+    }
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
     app.launch()
     let chartTab = app.buttons["bottom.chart"]
@@ -304,5 +311,91 @@ import XCTest
     XCTAssertTrue(wait(seconds: 8) { !self.app.buttons["再次提醒"].exists }, "按了「再次提醒」还挂着那颗按钮")
     XCTAssertTrue(app.staticTexts["等它碰到"].waitForExistence(timeout: 5), "重新上膛之后那一行没回到「等它碰到」")
     shot("08-再次提醒之后重新上膛")
+  }
+
+  // ------------------------------------------------------------ P3.1
+
+  /// 设置 →「提醒」总表。
+  private func openAlertsFromSettings() {
+    let settingsTab = app.buttons["bottom.settings"]
+    XCTAssertTrue(settingsTab.waitForExistence(timeout: 10), "标签栏上没有「设置」")
+    settingsTab.tap()
+    XCTAssertTrue(openAlertsPage(), "「提醒」没开出总表")
+  }
+
+  /// 总表右上「新建」→ 品种默认图上那只 → 手输一个价 →「加提醒」→ 总表里多一条，
+  /// 碰到那个价之后变成「已触发」。
+  ///
+  /// 方向不让选：页上只有一行「当前 xxx」。碰价那一段由启动环境
+  /// `KANPAN_TEST_ALERT_TOUCH` 喂（真行情一两分钟里未必走到那个价），喂的价走的是和真行情
+  /// 同一条路：桶 → 判定 → `markFired` → 总表。
+  func testATypedPriceBecomesAnAlertAndFires() throws {
+    openAlertsFromSettings()
+    let create = app.buttons["alerts.new"]
+    XCTAssertTrue(create.waitForExistence(timeout: 8), "总表右上没有「新建」")
+    create.tap()
+    let symbol = app.textFields["alerts.new.symbol"]
+    XCTAssertTrue(symbol.waitForExistence(timeout: 8), "「新建」没开出那一页")
+    XCTAssertEqual(symbol.value as? String, "BTCUSDT", "品种没默认成图上那只")
+    let current = app.staticTexts["alerts.new.current"]
+    XCTAssertTrue(wait(seconds: 20) { (current.label).hasPrefix("当前 ") && current.label != "当前 —" },
+                  "那一行没写现价：\(current.label)")
+    let price = app.textFields["alerts.new.price"]
+    XCTAssertTrue(price.waitForExistence(timeout: 5), "没有价格输入框")
+    XCTAssertFalse(app.steppers.count > 0, "价格不许用加减步进器")
+    price.tap()
+    price.typeText("12345")
+    shot("09-新建价格提醒")
+    let add = app.buttons["alerts.new.create"]
+    XCTAssertTrue(add.waitForExistence(timeout: 5) && add.isEnabled, "「加提醒」按不下去")
+    add.tap()
+    XCTAssertTrue(alertsPage.waitForExistence(timeout: 8), "加完没回到总表")
+    let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "BTC ", "12345")).firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: 8), "总表里没有这条价格提醒：\(app.debugDescription)")
+    XCTAssertTrue(wait(seconds: 20) {
+      self.app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "已触发")).count > 0
+    }, "碰到那个价之后没变成「已触发」：\(app.debugDescription)")
+    shot("10-价格提醒已触发")
+  }
+
+  /// 记一笔（看多，等答案）→ 总表里多一条「BTC 到点了」，写着到期时刻。
+  func testARecordedCallShowsUpAsADueAlert() throws {
+    let entry = app.buttons[Ids.intervalChart]
+    XCTAssertTrue(entry.waitForExistence(timeout: 10), "周期行右端没有「图表」")
+    entry.tap()
+    let record = app.buttons["chart.record"]
+    XCTAssertTrue(record.waitForExistence(timeout: 10), "「图表」面板里没有「记一笔」")
+    record.tap()
+    let long = app.buttons["看多"]
+    XCTAssertTrue(long.waitForExistence(timeout: 10), "取景卡里没有「看多」")
+    long.tap()
+    let save = app.buttons["记下"]
+    XCTAssertTrue(save.waitForExistence(timeout: 5), "取景卡里没有「记下」")
+    save.tap()
+    XCTAssertTrue(save.waitForNonExistence(timeout: 10), "点了「记下」取景卡没收回去：\(app.debugDescription)")
+    openAlertsFromSettings()
+    XCTAssertTrue(app.staticTexts["BTC 到点了"].waitForExistence(timeout: 10),
+                  "记完一笔总表里没有到点提醒：\(app.debugDescription)")
+    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "到期 ")).count > 0,
+                  "到点提醒那一行没写到期时刻")
+    shot("11-记一笔之后的到点提醒")
+  }
+
+  /// 自选五分钟波动：总表里那颗开关默认关着，打开、幅度默认 1.5%；
+  /// 自选里的 BTC 五分钟涨 2%（启动环境 `KANPAN_TEST_WATCHMOVE` 喂的一段）→ 浮条说出来。
+  func testWatchMoveSwitchFiresOnAFavorite() throws {
+    openAlertsFromSettings()
+    let toggle = app.descendants(matching: .any).matching(identifier: "alerts.watchMove").firstMatch
+    XCTAssertTrue(toggle.waitForExistence(timeout: 8), "总表里没有「自选波动提醒」开关")
+    XCTAssertFalse(app.textFields["alerts.watchMove.threshold"].exists, "开关默认应当关着")
+    toggle.tap()
+    let threshold = app.textFields["alerts.watchMove.threshold"]
+    XCTAssertTrue(threshold.waitForExistence(timeout: 5), "打开之后没露出幅度")
+    XCTAssertEqual(threshold.value as? String, "1.5", "幅度默认不是 1.5")
+    shot("12-自选波动开关")
+    // 表开着响的，就在表上那条 toast 里说（主 toast 被表压着看不见）。
+    XCTAssertTrue(app.staticTexts["BTC 五分钟涨 2.00%"].waitForExistence(timeout: 20),
+                  "自选里的 BTC 五分钟涨 2% 没响：\(app.debugDescription)")
+    shot("13-自选波动响了")
   }
 }

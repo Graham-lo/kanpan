@@ -72,10 +72,14 @@ pub fn alert_sound(settings:Option<&serde_json::Value>)->&'static str {
 }
 
 /// 生产推送与回归验收共用同一个 payload 构造口。
-fn alert_payload(title:&str,body:&str,link:&str,sound:&str)->serde_json::Value {
+///
+/// `kind` 是这条推送从哪儿来（`alert` / `reviewDue` / `watchMove`）。客户端前台自己已经
+/// 提示过的那几种靠它在 `willPresent` 里把横幅压掉，免得前台响两下。
+fn alert_payload(title:&str,body:&str,link:&str,sound:&str,kind:&str)->serde_json::Value {
  json!({
   "aps":{"alert":{"title":title,"body":body},"sound":sound,"thread-id":"alerts"},
   "link":link,
+  "kind":kind,
  })
 }
 
@@ -124,8 +128,8 @@ impl Apns {
  /// 一条提醒的推送。payload 的形状写死在方案文档 2.4 里。
  ///
  /// `link` 是深链（`hkline://drawing/<SYMBOL>/<drawingID>`），点通知就跳回那条线上。
- pub async fn push_alert(&self,device_token:&str,environment:&str,title:&str,body:&str,link:&str,sound:&str)->Result<Outcome> {
-  let payload=alert_payload(title,body,link,sound);
+ pub async fn push_alert(&self,device_token:&str,environment:&str,title:&str,body:&str,link:&str,sound:&str,kind:&str)->Result<Outcome> {
+  let payload=alert_payload(title,body,link,sound,kind);
   self.send(device_token,environment,"alert",None,&payload).await
  }
  /// 灵动岛 / 锁屏实时活动的推送。调用方是 `src/live_activity.rs`（心跳与结束两条路）。
@@ -193,12 +197,13 @@ mod tests {
  #[test] fn alert_payload_uses_the_selected_sound_and_keeps_the_deep_link() {
   for (setting,sound) in [("default","default"),("crisp","alert-crisp.caf"),("electronic","alert-electronic.caf"),("glass","alert-glass.caf")] {
    let settings=json!({"alertSound":setting});
-   let payload=alert_payload("铃声验收 · 玻璃","现价 64500","hkline://symbol/BTCUSDT",alert_sound(Some(&settings)));
+   let payload=alert_payload("铃声验收 · 玻璃","现价 64500","hkline://symbol/BTCUSDT",alert_sound(Some(&settings)),"alert");
    assert_eq!(payload["aps"]["sound"],sound);
    assert_eq!(payload["aps"]["alert"]["title"],"铃声验收 · 玻璃");
    assert_eq!(payload["aps"]["alert"]["body"],"现价 64500");
    assert_eq!(payload["aps"]["thread-id"],"alerts");
    assert_eq!(payload["link"],"hkline://symbol/BTCUSDT");
+   assert_eq!(payload["kind"],"alert");
    if setting=="glass" {println!("RINGTONE_PAYLOAD={payload}");}
   }
  }

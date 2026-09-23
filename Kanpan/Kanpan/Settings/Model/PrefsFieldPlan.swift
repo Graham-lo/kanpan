@@ -102,6 +102,7 @@ enum PrefsFieldPlan {
     "lastDrawTool": .synced,
     "replaySpeed": .synced, "reviewSearchScope": .synced,
     "alertSound": .synced,
+    "watchMoveAlert": .synced, "watchMoveThreshold": .synced,
 
     // ------------------------------------------------- 跟着人走，但线上并成一个键
     "rsiUpper": .syncedMerged, "rsiLower": .syncedMerged,

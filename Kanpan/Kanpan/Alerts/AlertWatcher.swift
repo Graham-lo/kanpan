@@ -65,8 +65,11 @@ final class AlertWatcher: ObservableObject {
 
   private func report(_ alert: Alert) {
     // 通知中心里留一条：前台时 `willPresent` 会把横幅压掉（界面上已经有浮条了），
-    // 后台回来那一下则是它把人叫住。
-    AlertNotifications.present(alert, decimals: priceDecimals(alert.symbol), sound: sound())
+    // 后台回来那一下则是它把人叫住。复盘到点不在这儿发：它有一条到点就响的日历
+    // 通知（`ReviewDueNotifications`），这儿再发就是同一件事两条。
+    if alert.kind != .reviewDue {
+      AlertNotifications.present(alert, decimals: priceDecimals(alert.symbol), sound: sound())
+    }
     guard foreground else { return }
     UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
     onFired?(alert)

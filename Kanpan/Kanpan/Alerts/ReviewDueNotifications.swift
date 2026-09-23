@@ -68,3 +68,16 @@ enum ReviewDueNotifications {
                                      content: content, trigger: trigger))
   }
 }
+
+extension ReviewDueAlerts.Item {
+  /// 一条复盘记录折成提醒要的那几样（`ReviewDueAlerts` 不链复盘那一摊，折在这儿）。
+  init(record: ReviewRecord) {
+    let range = record.draft.range
+    self.init(id: record.id.uuidString,
+              symbol: range.symbol.uppercased(),
+              dueAt: Double(record.draft.rule.expires),
+              short: range.shortSymbol,
+              waiting: record.outcome == .waiting,
+              eligible: range.venue == "binance" && range.market == "usd_m" && !range.symbol.isEmpty)
+  }
+}

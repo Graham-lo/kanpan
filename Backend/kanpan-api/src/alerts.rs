@@ -117,23 +117,21 @@ fn crosses(previous:f64,close:f64,line:f64)->bool {
 
 /// 把一条 `alerts` 同步对象刷进 `alert_watches`。由 `sync::push` 在同一个事务里调用。
 ///
-/// 只物化 `kind == "drawing"` 的提醒。其余情况（包括删除、改成别的 kind、暂停）一律
-/// 把行删掉——评估器读的就是这张表，删掉就等于停评估，不需要第二处开关。
+/// 三种 kind 都物化（P3.1）：
 ///
-/// 另外两种 kind 为什么不在这儿：
+/// - `drawing`：画线提醒，按摊平的折线判。
+/// - `price`：裸价格「到价提醒」。客户端把目标价摊成一条两端都延伸的水平线放进
+///   `lines`，所以评估器对它和画线提醒是**同一套**判法，不需要第二套几何。
+/// - `reviewDue`：复盘到点。没有线，按 `due_at` 判；`review_id` 给推送的深链用。
 ///
-/// - `reviewDue`：整条链路都在客户端本地通知里，服务端没有它的事。
-/// - `price`（裸价格「到价提醒」）：**客户端没有任何入口能产生它**，表 2.2 也没给它
-///   放目标价的字段，所以它只进白名单与值规则。这一行 `kind == "drawing"` 就是那道
-///   **显式**的闸——它不是「顺便漏掉了」，是「还没实现」。谁要开这个入口：先把这里
-///   和客户端 `AlertEvaluator.hit` 的同一道闸一起实现掉，再去开界面，否则用户又会
-///   拿到一条界面答应了、评估器不认的死提醒（`condition='close'` 就这么坑过一次）。
+/// 删除、认不得的 kind 一律把行删掉——评估器读的就是这张表，删掉就等于停评估，
+/// 不需要第二处开关。暂停与已触发照样留着行（`status` 列挡住评估）。
 ///
 /// 每次都整行覆盖，所以用户把被提醒的那条线拖到别处、客户端用同一个 alert id 重传
 /// `lines` 时，`lines` 与 `armedAt` 是一起换掉的，评估器下一帧就用新几何。
 pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,object:&Object)->Result<()> {
  let keep=!object.deleted
-  && object.body.get("kind").and_then(Value::as_str)==Some("drawing")
+  && matches!(object.body.get("kind").and_then(Value::as_str),Some("drawing"|"price"|"reviewDue"))
   && object.body.get("symbol").and_then(Value::as_str).is_some();
  if !keep {
   sqlx::query("DELETE FROM alert_watches WHERE user_id=$1 AND alert_id=$2").bind(owner).bind(&object.id).execute(&mut **tx).await?;
@@ -141,11 +139,11 @@ pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid
  }
  let text=|k:&str|object.body.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
  let number=|k:&str|object.body.get(k).and_then(Value::as_f64);
- sqlx::query("INSERT INTO alert_watches(user_id,alert_id,kind,symbol,market,drawing_id,lines,condition,title,armed_at,status,fired_at,fired_price,updated_at) \
-  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now()) \
+ sqlx::query("INSERT INTO alert_watches(user_id,alert_id,kind,symbol,market,drawing_id,lines,condition,title,armed_at,status,fired_at,fired_price,due_at,review_id,updated_at) \
+  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now()) \
   ON CONFLICT(user_id,alert_id) DO UPDATE SET kind=excluded.kind,symbol=excluded.symbol,market=excluded.market,drawing_id=excluded.drawing_id,\
   lines=excluded.lines,condition=excluded.condition,title=excluded.title,armed_at=excluded.armed_at,status=excluded.status,\
-  fired_at=excluded.fired_at,fired_price=excluded.fired_price,updated_at=now()")
+  fired_at=excluded.fired_at,fired_price=excluded.fired_price,due_at=excluded.due_at,review_id=excluded.review_id,updated_at=now()")
   .bind(owner).bind(&object.id).bind(text("kind")).bind(text("symbol"))
   .bind(object.body.get("market").and_then(Value::as_str).unwrap_or("binance/usd_m"))
   .bind(object.body.get("drawingID").and_then(Value::as_str))
@@ -156,6 +154,8 @@ pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid
   .bind(object.body.get("status").and_then(Value::as_str).unwrap_or("active"))
   .bind(number("firedAt").map(|v|v as i64))
   .bind(number("firedPrice"))
+  .bind(number("dueAt").map(|v|v as i64))
+  .bind(object.body.get("reviewID").and_then(Value::as_str))
   .execute(&mut **tx).await?;
  Ok(())
 }
@@ -235,16 +235,23 @@ struct Watch {
  title:String,lines:Vec<Line>,armed_at:i64,condition:Condition,
 }
 
-/// 一轮刷新读回来的东西：所有人的活动提醒，以及其中哪些品种正被实时活动盯着。
-struct Loaded {watches:Vec<Watch>,live:Vec<String>}
+/// 一条还没到点的复盘到点提醒。它不看价，不进 K 线流，只在每轮刷新时看一眼钟。
+#[derive(Clone,Debug)]
+struct Due {owner:Uuid,alert_id:String,symbol:String,review_id:String,title:String,due_at:i64}
 
-/// 把所有用户的活动画线提醒读成一张内存表。
+/// 一轮刷新读回来的东西：所有人的活动价格提醒（画线 + 裸价格）、已经到点的复盘提醒、
+/// 自选波动提醒开着的人，以及其中哪些品种正被实时活动盯着。
+struct Loaded {watches:Vec<Watch>,due:Vec<Due>,movers:Vec<crate::watch_move::Mover>,live:Vec<String>}
+
+/// 把所有用户的活动提醒读成一张内存表。
 ///
 /// 为什么逐个用户开事务：这两张表和同步表一样挂着 FORCE ROW LEVEL SECURITY，运行期角色
 /// 既不是属主也没有 BYPASSRLS，所以**没有**一条能一次看见所有人的通道——这是故意的。
 /// 代价是一次刷新 N 个短事务，而 N 是个位数（`maintenance::cleanup` 用的同一套分页）。
 async fn load(s:&AppState)->Result<Loaded> {
  let mut out=vec![];
+ let mut due=vec![];
+ let mut movers=vec![];
  let mut live=vec![];
  let mut after:Option<Uuid>=None;
  loop {
@@ -252,8 +259,18 @@ async fn load(s:&AppState)->Result<Loaded> {
   if owners.is_empty(){break}
   for owner in &owners {
    let mut tx=match s.personal(*owner).await {Ok(tx)=>tx,Err(_)=>continue};
-   let rows=sqlx::query("SELECT alert_id,symbol,drawing_id,title,lines,armed_at,condition FROM alert_watches WHERE user_id=$1 AND status='active' AND kind='drawing'")
+   // `price` 和 `drawing` 同一种形状（`lines`），一起读。
+   let rows=sqlx::query("SELECT alert_id,symbol,drawing_id,title,lines,armed_at,condition FROM alert_watches WHERE user_id=$1 AND status='active' AND kind IN ('drawing','price')")
     .bind(owner).fetch_all(&mut *tx).await?;
+   // 复盘到点只读**已经到点**的那几条：没到点的留在库里，下一轮再看，不占内存。
+   let now=chrono::Utc::now().timestamp_millis();
+   for r in sqlx::query("SELECT alert_id,symbol,title,due_at,review_id FROM alert_watches WHERE user_id=$1 AND status='active' AND kind='reviewDue' AND due_at IS NOT NULL AND due_at<=$2")
+    .bind(owner).bind(now).fetch_all(&mut *tx).await? {
+    let review_id:Option<String>=r.get("review_id");
+    due.push(Due{owner:*owner,alert_id:r.get("alert_id"),symbol:r.get("symbol"),review_id:review_id.unwrap_or_default(),
+     title:r.get("title"),due_at:r.get::<Option<i64>,_>("due_at").unwrap_or(now)});
+   }
+   if let Some(mover)=crate::watch_move::load_mover(&mut tx,*owner).await.unwrap_or(None) {movers.push(mover)}
    // 同一个事务里顺手问一句「这个人有实时活动盯着哪些品种」：那些品种要多订一条
    // `@ticker`（24h 涨跌幅只有那条流里有）。没有活动的时候这一句什么都不返回，
    // 订阅串和从前一模一样。
@@ -274,7 +291,7 @@ async fn load(s:&AppState)->Result<Loaded> {
   after=owners.last().copied();
  }
  live.sort();live.dedup();
- Ok(Loaded{watches:out,live})
+ Ok(Loaded{watches:out,due,movers,live})
 }
 
 /// 触发：物化表置 fired + 往同步日志写一条 op，**同一个事务**。返回「这一下真的是我触发的」。
@@ -289,7 +306,9 @@ async fn load(s:&AppState)->Result<Loaded> {
 ///
 /// 返回 `false` 的两种情形都不该推送：已经是 fired（客户端前台先到了），
 /// 或者这条提醒的同步对象已经被删了。
-pub async fn record_fired(s:&AppState,owner:Uuid,alert_id:&str,price:f64,at:i64)->Result<bool> {
+///
+/// `price` 是 `None` 的只有复盘到点那一种：它不看价，`firedPrice` 就不写，不拿 0 冒充。
+pub async fn record_fired(s:&AppState,owner:Uuid,alert_id:&str,price:Option<f64>,at:i64)->Result<bool> {
  let mut tx=s.personal(owner).await?;
  crate::sync::lock(&mut tx,owner).await?;
  let changed=sqlx::query("UPDATE alert_watches SET status='fired',fired_at=$3,fired_price=$4,updated_at=now() WHERE user_id=$1 AND alert_id=$2 AND status='active'")
@@ -303,8 +322,9 @@ pub async fn record_fired(s:&AppState,owner:Uuid,alert_id:&str,price:f64,at:i64)
   sqlx::query("DELETE FROM alert_watches WHERE user_id=$1 AND alert_id=$2").bind(owner).bind(alert_id).execute(&mut *tx).await?;
   tx.commit().await?;return Ok(false)
  }
- let fields:BTreeMap<String,Value>=[("status",json!("fired")),("firedAt",json!(at)),("firedPrice",json!(price))]
+ let mut fields:BTreeMap<String,Value>=[("status",json!("fired")),("firedAt",json!(at))]
   .into_iter().map(|(k,v)|(k.to_string(),v)).collect();
+ if let Some(price)=price {fields.insert("firedPrice".into(),json!(price));}
  crate::sync::apply_server(&mut tx,owner,"alerts",alert_id,fields).await?;
  tx.commit().await?;
  Ok(true)
@@ -314,7 +334,7 @@ pub async fn record_fired(s:&AppState,owner:Uuid,alert_id:&str,price:f64,at:i64)
 /// 推送**在事务之外**做：HTTP/2 一个往返几百毫秒，握着这个人的同步闸等苹果回话，
 /// 等于把他所有设备的同步一起挂在那儿。
 async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,quote:Quote,price:f64,at:i64)->Result<()> {
- if !record_fired(s,w.owner,&w.alert_id,price,at).await? {return Ok(())}
+ if !record_fired(s,w.owner,&w.alert_id,Some(price),at).await? {return Ok(())}
  // 锁屏上那一块要当场收掉：event=end、state=fired。这一句排在下面「没有密钥就 return」
  // 的**前面**是故意的——没有密钥时它照样把活动登记那一行清干净，少的只是发信那一下。
  // 推不出去不算触发失败：提醒已经落库、已经进同步日志了。
@@ -330,28 +350,43 @@ async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,quote:Quote,price:f64,at:i
   tracing::info!("{} triggered {} at {}; recorded and synced, not pushed (no APNs key)",w.symbol,w.alert_id,money(price));
   return Ok(())
  };
+ let title=if w.title.is_empty() {format!("{} 触到你画的线",w.symbol)} else {w.title.clone()};
+ notify(s,apns,w.owner,&Notice{title,body:format!("现价 {}",money(price)),link:link_of(w),kind:"alert"}).await
+}
+
+/// 一条推送的内容。`kind` 原样进 payload：客户端前台已经自己出过提示的那几种
+/// （复盘到点、自选波动）靠它在 `willPresent` 里把横幅压掉，不让前台响两下。
+pub struct Notice {pub title:String,pub body:String,pub link:String,pub kind:&'static str}
+
+/// 画线提醒点开去那条线；裸价格提醒没有线，只开品种。
+fn link_of(w:&Watch)->String {
+ match w.drawing_id.as_deref().filter(|d|!d.is_empty()) {
+  Some(drawing)=>format!("hkline://drawing/{}/{drawing}",w.symbol),
+  None=>format!("hkline://symbol/{}",w.symbol),
+ }
+}
+
+/// 把一条通知推给这个人所有注册过的设备。触发类（提醒、复盘到点、自选波动）共用。
+pub async fn notify(s:&AppState,apns:&Apns,owner:Uuid,notice:&Notice)->Result<()> {
  let (tokens,sound)={
-  let mut tx=s.personal(w.owner).await?;
+  let mut tx=s.personal(owner).await?;
   let rows=sqlx::query("SELECT device_id,token,environment FROM device_push_tokens WHERE user_id=$1 AND kind='alerts'")
-   .bind(w.owner).fetch_all(&mut *tx).await?;
+   .bind(owner).fetch_all(&mut *tx).await?;
   // 与 token 在同一个个人事务里读取；不缓存，用户改声后下一条提醒立即采用新值。
   let settings:Option<Value>=sqlx::query_scalar("SELECT body FROM sync_objects WHERE user_id=$1 AND collection='settings' AND id='chart' AND NOT deleted")
-   .bind(w.owner).fetch_optional(&mut *tx).await?;
+   .bind(owner).fetch_optional(&mut *tx).await?;
   let sound=crate::apns::alert_sound(settings.as_ref());
   tx.commit().await?;(rows,sound)
  };
- let link=format!("hkline://drawing/{}/{}",w.symbol,w.drawing_id.clone().unwrap_or_default());
- let title=if w.title.is_empty() {format!("{} 触到你画的线",w.symbol)} else {w.title.clone()};
- let body=format!("现价 {}",money(price));
  for row in tokens {
   let token:String=row.get("token");
   let environment:String=row.get("environment");
-  match apns.push_alert(&token,&environment,&title,&body,&link,sound).await {
+  match apns.push_alert(&token,&environment,&notice.title,&notice.body,&notice.link,sound,notice.kind).await {
    Ok(Outcome::Delivered)=>{}
    Ok(Outcome::Gone)=>{
     let device:Uuid=row.get("device_id");
-    let mut tx=s.personal(w.owner).await?;
-    sqlx::query("DELETE FROM device_push_tokens WHERE user_id=$1 AND device_id=$2 AND kind='alerts'").bind(w.owner).bind(device).execute(&mut *tx).await?;
+    let mut tx=s.personal(owner).await?;
+    sqlx::query("DELETE FROM device_push_tokens WHERE user_id=$1 AND device_id=$2 AND kind='alerts'").bind(owner).bind(device).execute(&mut *tx).await?;
     tx.commit().await?;
    }
    // 推不出去不回滚状态：提醒确实触发了，客户端下次拉取照样看得到，
@@ -362,8 +397,41 @@ async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,quote:Quote,price:f64,at:i
  Ok(())
 }
 
+/// 复盘到点：到了就置 fired、写同步 op、推送。和价格提醒走同一个 `record_fired`，
+/// 所以「客户端前台先一步置了 fired」时这里同样一行都改不到、不会推第二次。
+///
+/// 手机上还有一条本地日历通知兜底（`ReviewDueNotifications`，服务器宕机也照响），
+/// 这一条推送是给「换了设备 / 本地排程被系统清掉」的那一下的。
+async fn settle_due(s:&AppState,apns:Option<&Apns>,due:&[Due]) {
+ let at=chrono::Utc::now().timestamp_millis();
+ for d in due {
+  if d.due_at>at {continue}
+  match record_fired(s,d.owner,&d.alert_id,None,at).await {
+   Ok(true)=>{}
+   Ok(false)=>continue,
+   Err(e)=>{tracing::warn!("A review reminder could not be recorded as fired ({e:?}); the next refresh will retry");continue}
+  }
+  let Some(apns)=apns else {
+   tracing::info!("{} review {} is due; recorded and synced, not pushed (no APNs key)",d.symbol,d.alert_id);
+   continue
+  };
+  let notice=due_notice(d);
+  if let Err(e)=notify(s,apns,d.owner,&notice).await {tracing::warn!("A review reminder was recorded but could not be pushed ({e:?})")}
+ }
+}
+/// 复盘到点那条推送长什么样：和本地日历通知一字不差，点开去那一条复盘。
+fn due_notice(d:&Due)->Notice {
+ let short=crate::watch_move::short(&d.symbol);
+ Notice{
+  title:if d.title.is_empty() {format!("{short} 到点了")} else {d.title.clone()},
+  body:"去看看这一笔判对了没有".into(),
+  link:format!("hkline://review/{}",d.review_id),
+  kind:"reviewDue",
+ }
+}
+
 /// 通知正文里的价。K/M 那套金额单位是给成交额用的，价格要看得清每一位。
-fn money(v:f64)->String {
+pub fn money(v:f64)->String {
  let magnitude=v.abs();
  let decimals=if magnitude>=1000.0 {0} else if magnitude>=1.0 {2} else if magnitude>=0.01 {4} else {8};
  let text=format!("{v:.decimals$}");
@@ -430,12 +498,18 @@ pub async fn run(s:AppState,apns:Option<Apns>) {
  // 上一拍心跳。它活在重连之外：断线重连不该让锁屏上的活动多等一整拍。
  // 减一拍是为了「起来就先走一拍」；刚开机的机器上 Instant 减不动，那就当这一拍刚走过。
  let mut beat=std::time::Instant::now().checked_sub(crate::live_activity::HEARTBEAT).unwrap_or_else(std::time::Instant::now);
+ // 自选波动提醒的各人状态。和 `closes` 一样活在重连之外：闸不因断线复位，同一个
+ // 窗口里重连回来不许再响一次。
+ let mut movers=crate::watch_move::Movers::default();
  loop {
   let fresh=match load(&s).await {
    Ok(v)=>v,
    Err(_)=>{tracing::warn!("Alerts could not be loaded; will retry");tokio::time::sleep(Duration::from_secs(10)).await;continue}
   };
-  let symbols=symbols_of(&fresh.watches);
+  movers.refresh(&fresh.movers);
+  // 复盘到点不看价：有没有 K 线流都要按时判，所以放在「一个品种都没有」那条岔路前面。
+  settle_due(&s,apns.as_ref(),&fresh.due).await;
+  let symbols=symbols_of(&fresh.watches,&movers.symbols());
   let streams=streams_of(&symbols,&fresh.live);
   watches=fresh.watches;
   if symbols.is_empty() {
@@ -447,14 +521,15 @@ pub async fn run(s:AppState,apns:Option<Apns>) {
   // 不再盯的品种没必要一直留着它的收盘价与行情。
   closes.retain(|symbol,_|symbols.iter().any(|s|s==symbol));
   quotes.retain(|symbol,_|symbols.iter().any(|s|s==symbol));
-  if let Err(e)=session(&s,apns.as_ref(),&streams,&mut watches,&mut closes,&mut quotes,&mut beat).await {
+  if let Err(e)=session(&s,apns.as_ref(),&streams,&mut watches,&mut movers,&mut closes,&mut quotes,&mut beat).await {
    tracing::warn!("Alert stream ended ({e}); reconnecting");
    tokio::time::sleep(Duration::from_secs(5)).await;
   }
  }
 }
-fn symbols_of(watches:&[Watch])->Vec<String> {
- let mut all:Vec<String>=watches.iter().map(|w|w.symbol.clone()).collect();
+/// 要订的品种：有活动价格提醒的，加上开着自选波动提醒的人的自选。
+fn symbols_of(watches:&[Watch],movers:&std::collections::BTreeSet<String>)->Vec<String> {
+ let mut all:Vec<String>=watches.iter().map(|w|w.symbol.clone()).chain(movers.iter().cloned()).collect();
  all.sort();all.dedup();
  if all.len()>MAX_STREAMS {
   tracing::warn!("{} symbols have alerts but one combined stream carries {MAX_STREAMS}; the rest are not watched",all.len());
@@ -487,9 +562,13 @@ async fn heartbeat(s:&AppState,apns:Option<&Apns>,quotes:&BTreeMap<String,Quote>
 }
 
 /// 一次连接的生命周期。要订的流变了就返回，让外层重连。
-async fn session(s:&AppState,apns:Option<&Apns>,streams:&[String],watches:&mut Vec<Watch>,closes:&mut BTreeMap<String,f64>,quotes:&mut BTreeMap<String,Quote>,beat:&mut std::time::Instant)->anyhow::Result<()> {
+#[allow(clippy::too_many_arguments)]
+async fn session(s:&AppState,apns:Option<&Apns>,streams:&[String],watches:&mut Vec<Watch>,movers:&mut crate::watch_move::Movers,closes:&mut BTreeMap<String,f64>,quotes:&mut BTreeMap<String,Quote>,beat:&mut std::time::Instant)->anyhow::Result<()> {
  let url=format!("{STREAM}?streams={}",streams.join("/"));
  let (mut stream,_)=tokio_tungstenite::connect_async(&url).await?;
+ // 新连上的这一条和上一条之间有缺口：断线前那一根记下的「收盘」不是真收盘，
+ // 波动判定要的五分钟前参照全部作废，从缺口重新开始（缺口不冒充零波动）。
+ movers.forget_prices();
  tracing::info!("Alert evaluator watching {} stream(s)",streams.len());
  let mut refresh=tokio::time::interval(Duration::from_secs(10));
  refresh.tick().await;
@@ -506,6 +585,9 @@ async fn session(s:&AppState,apns:Option<&Apns>,streams:&[String],watches:&mut V
      // None 等于每来一根 K 线就把锁屏上的涨跌幅抹掉一次。
      quotes.entry(candle.symbol.clone()).or_default().price=candle.close.is_finite().then_some(candle.close);
      evaluate(s,apns,watches,closes,quotes,&candle).await;
+     for (owner,event) in movers.observe(&candle.symbol,candle.open_time,candle.close,candle.closed) {
+      crate::watch_move::notify(s,apns,owner,&event).await;
+     }
      continue
     }
     if let Some((symbol,price,change))=parse_ticker(&text) {
@@ -517,7 +599,9 @@ async fn session(s:&AppState,apns:Option<&Apns>,streams:&[String],watches:&mut V
    _=refresh.tick()=>{
     match load(s).await {
      Ok(fresh)=>{
-      let changed=streams_of(&symbols_of(&fresh.watches),&fresh.live)!=streams;
+      movers.refresh(&fresh.movers);
+      settle_due(s,apns,&fresh.due).await;
+      let changed=streams_of(&symbols_of(&fresh.watches,&movers.symbols()),&fresh.live)!=streams;
       *watches=fresh.watches;
       if changed {return Ok(())}
      }
@@ -741,6 +825,36 @@ mod tests {
   assert_eq!(Condition::of(""),Condition::Touch);
  }
 
+ /// 裸价格提醒没有线，点开只开品种；画线提醒去那条线。
+ #[test] fn a_price_alert_links_to_its_symbol() {
+  let mut w=Watch{owner:Uuid::nil(),alert_id:"p".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:"BTC 涨到 70,000".into(),
+   lines:vec![line(&[(0.0,70_000.0)],true,true)],armed_at:0,condition:Condition::Touch};
+  assert_eq!(link_of(&w),"hkline://symbol/BTCUSDT");
+  w.drawing_id=Some(String::new());
+  assert_eq!(link_of(&w),"hkline://symbol/BTCUSDT");
+  w.drawing_id=Some("trend-1".into());
+  assert_eq!(link_of(&w),"hkline://drawing/BTCUSDT/trend-1");
+ }
+ /// 裸价格提醒就是一条两端都延伸的水平线：任何时刻、按 `touch` 判，碰到目标价就响。
+ #[test] fn a_price_alert_fires_when_the_candle_reaches_the_target() {
+  let l=vec![line(&[(1_800_000_000_000.0,70_000.0)],true,true)];
+  assert_eq!(touched(&l,1_800_000_060_000,1_800_000_000_000,69_900.0,70_010.0),Some(70_000.0));
+  assert_eq!(touched(&l,1_800_000_060_000,1_800_000_000_000,69_000.0,69_990.0),None);
+  // 建之前开盘的那根不算。
+  assert_eq!(touched(&l,1_799_999_940_000,1_800_000_000_000,69_900.0,70_010.0),None);
+ }
+ /// 复盘到点的推送和本地日历通知一字不差，点开去那一条复盘。
+ #[test] fn a_review_due_notice_links_to_the_record() {
+  let d=Due{owner:Uuid::nil(),alert_id:"binance/usd_m/BTCUSDT/r1".into(),symbol:"BTCUSDT".into(),review_id:"9F1E".into(),title:String::new(),due_at:0};
+  let n=due_notice(&d);
+  assert_eq!(n.title,"BTC 到点了");
+  assert_eq!(n.body,"去看看这一笔判对了没有");
+  assert_eq!(n.link,"hkline://review/9F1E");
+  assert_eq!(n.kind,"reviewDue");
+  let named=Due{title:"ETH 到点了".into(),..d};
+  assert_eq!(due_notice(&named).title,"ETH 到点了");
+ }
+
  /// 通知正文里的价要看得清每一位，小币种也是。
  #[test] fn the_notification_shows_a_readable_price() {
   assert_eq!(money(63_120.0),"63,120");
@@ -772,8 +886,11 @@ mod tests {
    Watch{owner:Uuid::nil(),alert_id:"b".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch},
    Watch{owner:Uuid::nil(),alert_id:"c".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Close},
   ];
-  let symbols=symbols_of(&watches);
+  let symbols=symbols_of(&watches,&Default::default());
   assert_eq!(symbols,vec!["BTCUSDT".to_string(),"ETHUSDT".to_string()],"同一品种只订一次，顺序稳定");
+  // 开着自选波动提醒的人的自选也要订，和提醒品种合并去重。
+  let movers:std::collections::BTreeSet<String>=["SOLUSDT".to_string(),"BTCUSDT".to_string()].into();
+  assert_eq!(symbols_of(&watches,&movers),vec!["BTCUSDT".to_string(),"ETHUSDT".to_string(),"SOLUSDT".to_string()]);
   // 没有实时活动时和从前一字不差：常态下上游负载一点没变。
   assert_eq!(streams_of(&symbols,&[]).join("/"),"btcusdt@kline_1m/ethusdt@kline_1m");
   // 有活动盯着 BTC 时才多一条 @ticker，而且只多那一个品种的。

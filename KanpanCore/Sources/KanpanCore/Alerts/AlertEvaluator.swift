@@ -6,7 +6,7 @@ import Foundation
 /// 写在这儿、两边照着同一段文字实现：
 ///
 /// 1. 这条提醒还在等（`status == .active`）；
-/// 2. 它是图上那条线长出来的（`kind == .drawing`）——别的种类见下面那条闸；
+/// 2. 它是一条价格提醒（`kind == .drawing` 或 `.price`）——`.reviewDue` 按时间判，见 `dueHit`；
 /// 3. 这一根的开盘时刻不早于 `armedAt`——挪过线之后 `armedAt` 重置成现在，
 ///    历史 K 线不会把刚挪好的线当场判成已触发；
 /// 4. 线在这一刻有价（落在线外、那一头又没延长的，不算）；
@@ -61,18 +61,10 @@ public enum AlertEvaluator {
 
   public static func hit(_ alert: Alert, bar: Bar) -> Hit? {
     guard alert.status == .active else { return nil }
-    // **`.price` / `.reviewDue` 在这里被显式挡住，不是悄悄落进 else。**
-    //
-    // `.reviewDue` 本来就不是价格提醒：它是复盘待办到点，走本地排程的时间通知，
-    // 跟 K 线没有关系，落到这儿只会是调用方传错了。
-    //
-    // `.price`（裸价格「到价提醒」）是另一回事：它在协议白名单与值规则里都有位置
-    // （`Alert.Kind` / 服务端 `sync.rs` 的 `ALERT_FIELDS`），但**客户端没有任何入口
-    // 能产生它**——表 2.2 也没有给它一个放目标价的字段，目标价只能挂在 `lines` 里，
-    // 而那套几何是画线摊出来的。所以现在它是一种存得下、永远不会出现的东西。
-    // 谁要开这个入口：**先在这里（以及服务端 `alerts.rs` 的同一处）把判定实现掉，
-    // 再去开界面**，否则用户又会拿到一条界面答应了、评估器不认的死提醒。
-    guard alert.kind == .drawing else { return nil }
+    // `.reviewDue` 不是价格提醒：它是复盘待办到点，按时间判（`dueHit`），跟 K 线
+    // 没有关系，落到这儿只会是调用方传错了。`.price` 的目标价就是一条两端都延的
+    // 水平线，和画线提醒同一套几何、同一份规则——服务端 `alerts.rs` 那一份也一样。
+    guard alert.kind == .drawing || alert.kind == .price else { return nil }
     guard bar.openTime >= alert.armedAt else { return nil }
     switch alert.condition {
     case .touch: return touchHit(alert, bar: bar)
@@ -113,6 +105,12 @@ public enum AlertEvaluator {
   }
 
   public static func fires(_ alert: Alert, bar: Bar) -> Bool { hit(alert, bar: bar) != nil }
+
+  /// 复盘到点：还在等、到期时刻已经过了（含正好到点）。服务端 `alerts.rs` 同一条。
+  public static func dueHit(_ alert: Alert, now: Double) -> Bool {
+    guard alert.status == .active, alert.kind == .reviewDue, let due = alert.dueAt, due.isFinite else { return false }
+    return now >= due
+  }
 
   /// 现价离这条提醒最近的那条线有多远，按比例（0.008 就是 0.8%）。
   ///

@@ -15,6 +15,7 @@ pub mod alerts;
 pub mod apns;
 pub mod live_activity;
 pub mod share;
+pub mod watch_move;
 use axum::{Router,Json,routing::get,extract::DefaultBodyLimit};
 use std::time::Duration;
 use serde_json::{Value,json};

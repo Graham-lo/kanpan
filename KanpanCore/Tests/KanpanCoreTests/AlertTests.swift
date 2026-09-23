@@ -284,20 +284,36 @@ struct AlertTests {
     #expect(hit.price == 100)
   }
 
-  // --------------------------------------------------- 入口没开的那两种 kind
+  // --------------------------------------------------- 裸价格与复盘到点（P3.1）
 
-  /// `price`（裸价格到价提醒）客户端没有入口能产生，评估器**显式**不认它。
-  /// 这条测试就是那道闸的看守：谁哪天开了入口，得先来这儿把它改掉。
-  @Test("price / reviewDue 提醒一律不判，直到有人来实现它")
-  func kindsWithoutAnEntryAreRejected() {
-    for kind in [Alert.Kind.price, .reviewDue] {
-      var a = alert([flat100])
-      a.kind = kind
-      // 就算几何、时间、条件全都对得上，也不响。
-      #expect(!AlertEvaluator.fires(a, bar: .init(openTime: Self.t0, high: 105, low: 95)))
-      a.condition = .close
-      #expect(!AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 95, close: 105)))
-    }
+  /// `price`：目标价是一条两端都延的水平线，和画线提醒同一套规则。
+  @Test("裸价格提醒按同一套几何判：碰到目标价就响，收盘穿过一档同样认")
+  func priceAlertsFireLikeAFlatLine() {
+    var a = Alert.price(symbol: "BTCUSDT", target: 100, current: 90, label: "100", now: Self.t0)
+    #expect(a.kind == .price && a.targetPrice == 100 && a.drawingID == nil)
+    #expect(a.title == "BTC 涨到 100")
+    #expect(AlertEvaluator.fires(a, bar: .init(openTime: Self.t0, high: 101, low: 99)))
+    #expect(!AlertEvaluator.fires(a, bar: .init(openTime: Self.t0, high: 99, low: 95)))
+    // 建之前开盘的那一根不算——建的那一刻价常常就贴在线上。
+    #expect(!AlertEvaluator.fires(a, bar: .init(openTime: Self.t0 - 60_000, high: 101, low: 99)))
+    a.condition = .close
+    #expect(AlertEvaluator.fires(a, bar: closedBar(Self.t0 + Self.hour, previous: 95, close: 105)))
+    #expect(Alert.price(symbol: "ETHUSDT", target: 100, current: 120, label: "100", now: 0).title == "ETH 跌到 100")
+    #expect(Alert.price(symbol: "ETHUSDT", target: 100, current: nil, label: "100", now: 0).title == "ETH 到了 100")
+  }
+
+  /// `reviewDue` 不看 K 线，只看时间。
+  @Test("复盘到点不走 K 线判定，只按 dueAt 判")
+  func reviewDueIsJudgedByTimeOnly() {
+    var a = alert([flat100])
+    a.kind = .reviewDue; a.lines = []; a.dueAt = Self.t0 + Self.hour; a.reviewID = "r1"
+    #expect(!AlertEvaluator.fires(a, bar: .init(openTime: Self.t0 + 2 * Self.hour, high: 105, low: 95)))
+    #expect(!AlertEvaluator.dueHit(a, now: Self.t0))
+    #expect(AlertEvaluator.dueHit(a, now: Self.t0 + Self.hour))
+    a.status = .fired
+    #expect(!AlertEvaluator.dueHit(a, now: Self.t0 + 2 * Self.hour), "响过的不再响")
+    var drawing = alert([flat100]); drawing.dueAt = Self.t0
+    #expect(!AlertEvaluator.dueHit(drawing, now: Self.t0 + Self.hour), "别的种类不按时间判")
   }
 
   @Test("线在这一刻没有价就不判")

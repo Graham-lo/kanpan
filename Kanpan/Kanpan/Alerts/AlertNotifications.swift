@@ -20,6 +20,10 @@ final class AlertNotifications: NSObject, UNUserNotificationCenterDelegate, @unc
   static let linkKey = "link"
   /// 提醒自己发的那几条通知的分类号。认出「这是我们的」只看它。
   static let category = "kanpan.alert"
+  /// 服务端推送里标明「这是哪一种」的键（`apns.rs::alert_payload`）。
+  static let kindKey = "kind"
+  /// 本机前台自己也会报的那几种推送。
+  static let localTwins: Set<String> = ["watchMove", "reviewDue"]
 
   private override init() { super.init() }
 
@@ -47,9 +51,13 @@ final class AlertNotifications: NSObject, UNUserNotificationCenterDelegate, @unc
                               willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
     let request = notification.request
     if request.content.categoryIdentifier == AlertSoundPreview.category { return [.sound] }
+    // 服务端推下来的自选波动 / 复盘到点：前台时本机自己那一份已经说过了
+    // （`WatchMoveMonitor` 的浮条、`ReviewDueNotifications` 的日历通知），这一条压掉，
+    // 免得同一件事在通知中心躺两条。
+    if let kind = request.content.userInfo[Self.kindKey] as? String, Self.localTwins.contains(kind) { return [] }
     guard request.content.categoryIdentifier == Self.category else { return [.banner, .list, .sound] }
     // 价格提醒保留所选声音与通知中心条目；复盘到期的前台呈现保持原样。
-    return request.identifier.hasPrefix("alert.") ? [.list, .sound] : [.list]
+    return request.identifier.hasPrefix("alert.") || request.identifier.hasPrefix("move.") ? [.list, .sound] : [.list]
   }
 
   // ---------------------------------------------------------------- 翻译
@@ -113,8 +121,24 @@ extension AlertNotifications {
     UNUserNotificationCenter.current().add(request)
   }
 
-  /// 这条提醒点开该去哪儿：有画线就去那条线，没有就只开品种。
+  /// 自选波动响了：通知中心留一条，点开就是那只品种。id 带窗口，同一个窗口重复 `add`
+  /// 只会覆盖同一条。
+  static func present(_ event: WatchMove.Event, decimals: Int? = nil, sound: AlertSound) {
+    let content = UNMutableNotificationContent()
+    content.title = WatchMove.title(for: event)
+    content.body = "现价 " + ReviewLabels.price(event.price, decimals: decimals)
+    content.sound = sound.fileName.map { UNNotificationSound(named: UNNotificationSoundName(rawValue: $0)) } ?? .default
+    content.categoryIdentifier = category
+    content.userInfo = [linkKey: "\(DeepLink.scheme)://symbol/\(event.symbol)"]
+    let id = "move.\(event.symbol).\(event.direction.rawValue).\(event.window)"
+    UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
+  }
+
+  /// 这条提醒点开该去哪儿：复盘到点去那条记录；有画线就去那条线，没有就只开品种。
   static func link(for alert: Alert) -> String? {
+    if alert.kind == .reviewDue, let id = alert.reviewID, !id.isEmpty {
+      return "\(DeepLink.scheme)://review/\(id)"
+    }
     guard !alert.symbol.isEmpty else { return nil }
     if let drawingID = alert.drawingID, !drawingID.isEmpty {
       return "\(DeepLink.scheme)://drawing/\(alert.symbol)/\(drawingID)"
