@@ -52,7 +52,12 @@ struct Prefs: Sendable, Equatable {
   var bodyChoice: BodyChoice = .solid
   /// 最新价横线 + 右轴胶囊。默认开。
   var lastLine: Bool = true
-  /// 用户画的线显不显示（数据不删）。默认显示。
+  /// 用户画的线显不显示（数据不删）。**2026-09-23 起只有存档、没有入口，也不再读。**
+  ///
+  /// 「图表设置」里原来有一行「显示画线」，画线栏上又有一颗「全部隐藏」——同一件事两个
+  /// 开关，一个管全局、一个管这只品种，关了全局那颗之后画线栏上怎么点都看不见线。
+  /// 现在只留画线页「更多」里那一个「全部隐藏」（按品种）。字段和编解码键留着：
+  /// 老存档和云端都带着它，同步白名单两端也都有这一项。
   var showDrawings: Bool = true
   /// 十字线打开时，多报一段「选中那根到最新价」的涨跌幅。默认关。
   var sinceChange: Bool = false
@@ -262,7 +267,7 @@ struct Prefs: Sendable, Equatable {
     o.grid = gridChoice
     o.body = bodyChoice
     o.lastLine = lastLine
-    o.drawings = showDrawings
+    o.drawings = true                // 见 `showDrawings`：全局开关已撤，线的显隐只按品种管
     o.countdown = countdown          // 「本根倒计时」早就有了，这里接的是同一个字段
     o.sinceChange = sinceChange
     o.anchor = viewAnchor

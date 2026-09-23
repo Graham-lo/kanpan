@@ -142,20 +142,6 @@ final class ChartFoundationUITests: XCTestCase {
     let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
   }
 
-  /// 收掉「要不要在这条线上提醒你吗」那一行（方案 2.3）。
-  ///
-  /// 2026-09-21 起那一行**长在头部价格行的位置上**（价格行透明让位，`AlertPromptBar`
-  /// 的 `inHeader`），不再是图外额外插的一行——所以它在与不在，图区高度一个 pt 都不变，
-  /// 按 `mainH` 的比例点画布的用例不必再先收掉它。留着这一下是为了把「收掉之后高度
-  /// 照样是那个数」也验一遍（从前的毛病正好相反：不收它就矮一行）。
-  /// 它不在场时这一下什么也不做。
-  func dismissAlertPrompt() {
-    let dismiss = app.buttons["alert.prompt.dismiss"]
-    guard dismiss.exists else { return }
-    dismiss.tap()
-    XCTAssertTrue(wait(seconds: 5) { !dismiss.exists }, "点了「只画线」，那一句还挂在头部")
-  }
-
   /// 在样式表的「换一种画法」那一行上换一种画法。
   ///
   /// 面板上只摆十二把（`Drawing.Kind.palette`）；向右延伸 / 两端延伸 / 箭头 / 十字线
@@ -342,7 +328,7 @@ final class ChartFoundationUITests: XCTestCase {
   func testExternalIndicatorsAndDepthRoundTrip() throws {
     executionTimeAllowance = 900 // 三次开图、线路往返与二十次品种切换都在同一条用例里。
     func toggleIndicator(_ id: String) {
-      app.buttons["interval.chart"].tap()
+      app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
       let toggle = app.buttons["indicator.switch." + id]
       revealChartControl(toggle); toggle.tap(); closePanel()
     }
@@ -1339,7 +1325,7 @@ final class ChartFoundationUITests: XCTestCase {
   /// 再开一个 RSI，最早那个被换下去、总数仍是三个，图整体高度还等于可视区高度
   /// （`height == viewportH` 就是「没有整页滚动」），新开的那格把手也点得到。
   func testThreeSubpanelsFitWithoutPageScroll() throws {
-    app.buttons["interval.chart"].tap()
+    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
     let toggle = app.buttons["indicator.switch.RSI"]
     let scroll = app.scrollViews["panel.content"]
     for _ in 0..<5 {
@@ -1377,7 +1363,7 @@ final class ChartFoundationUITests: XCTestCase {
 
   func testMAParameterCancelAndSaveOutput() throws {
     let original = try XCTUnwrap(info()["ma"] as? [Int])
-    app.buttons["interval.chart"].tap()
+    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     // 手指还停在输入框里就按「取消」：一个参数都不许动（2026-09-20 加减改输入框后的验收 c）。
     let field = app.textFields["indicator.param.0.field"]
@@ -1386,7 +1372,7 @@ final class ChartFoundationUITests: XCTestCase {
     field.typeText("77")
     app.buttons["取消"].tap(); closePanel()
     XCTAssertEqual(info()["ma"] as? [Int], original)
-    app.buttons["interval.chart"].tap()
+    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     let output = app.switches["indicator.output.0"]
     XCTAssertTrue(output.waitForExistence(timeout: 5))
@@ -1405,7 +1391,7 @@ final class ChartFoundationUITests: XCTestCase {
   /// 跟着挪位的那段逻辑走一遍。
   func testMAPeriodsTypedAndAddRemove() throws {
     let original = try XCTUnwrap(info()["ma"] as? [Int])
-    app.buttons["interval.chart"].tap()
+    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
 
     let field = app.textFields["indicator.param.0.field"]
@@ -1425,7 +1411,7 @@ final class ChartFoundationUITests: XCTestCase {
     })
     shot("均线周期-手输并加一条")
 
-    app.buttons["interval.chart"].tap()
+    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     let last = app.cells.containing(.textField,
                                     identifier: "indicator.param.\(original.count).field").firstMatch
@@ -1447,7 +1433,7 @@ final class ChartFoundationUITests: XCTestCase {
   /// 「保存」那一格也算数、按「取消」一个参数都不变；最后空着提交要回落到原值。
   func testParamFieldsReplaceSteppers() throws {
     let original = try XCTUnwrap(info()["ma"] as? [Int])
-    app.buttons["interval.chart"].tap()
+    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     let field = app.textFields["indicator.param.0.field"]
     XCTAssertTrue(field.waitForExistence(timeout: 5))
@@ -1465,14 +1451,14 @@ final class ChartFoundationUITests: XCTestCase {
     shot("均线参数-保存后第一条是169")
     let saved = try XCTUnwrap(info()["ma"] as? [Int])
 
-    app.buttons["interval.chart"].tap()
+    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     XCTAssertTrue(field.waitForExistence(timeout: 5))
     field.tap(); field.typeText("42")
     app.buttons["取消"].tap(); closePanel()
     XCTAssertEqual(info()["ma"] as? [Int], saved, "取消之后参数动了")
 
-    app.buttons["interval.chart"].tap()
+    app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
     app.buttons["indicator.edit.MA"].tap()
     XCTAssertTrue(field.waitForExistence(timeout: 5))
     field.tap()
@@ -1631,10 +1617,14 @@ extension ChartFoundationUITests {
     // 「换一种画法」：面板上只摆十二把，射线活在线段这一族的这一行里
     // （`Drawing.Kind.swaps`）。换完点数不变，所以这条线原地变成射线、id 也不换。
     switchDrawKind(to: "向右延伸")
+    // 锁定只在样式表里（「锁定位置」那一行，2026-09-23 选中栏撤掉了「⋯」）。
+    // `switchDrawKind` 已经把表拖成整屏，这一行就在「画法」上面。
+    let lock = app.switches["锁定位置"]
+    XCTAssertTrue(lock.waitForExistence(timeout: 5), "样式表里没有「锁定位置」")
+    flip(lock, to: "1")
     app.buttons["draw.save"].tap()
     XCTAssertTrue(wait { self.info()["drawingColors"] as? [String] == ["#4A90E2"] })
     XCTAssertEqual(info()["drawingKinds"] as? [String], ["ray"], "换画法没生效，或者被 isValid 挡掉了")
-    app.buttons["draw.lock"].tap()
     XCTAssertTrue(wait { self.info()["drawingLocked"] as? [Bool] == [true] })
     let ids = try XCTUnwrap(info()["drawingIDs"] as? [String])
     shot("画线-换成射线并锁定")
@@ -1645,7 +1635,7 @@ extension ChartFoundationUITests {
     XCTAssertEqual(info()["drawingColors"] as? [String], ["#4A90E2"])
     XCTAssertEqual(info()["drawingLocked"] as? [Bool], [true])
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
-    app.buttons["draw.objects.quick"].tap()
+    XCTAssertTrue(app.openDrawList(), "「更多」里开不出画线列表")
     XCTAssertTrue(app.buttons["draw.object.\(ids[0])"].waitForExistence(timeout: 5))
     shot("画线-重启恢复对象")
     app.buttons["隐藏画线"].tap()
@@ -1678,9 +1668,9 @@ extension ChartFoundationUITests {
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     XCTAssertTrue(wait { self.info()["drawingHidden"] as? [Bool] == [true] })
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
-    app.buttons["draw.objects.quick"].tap()
+    XCTAssertTrue(app.openDrawList(), "「更多」里开不出画线列表")
     app.buttons["draw.object.\(ids[0])"].tap()
-    XCTAssertTrue(app.buttons["draw.copy"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["draw.copy"].waitForExistence(timeout: 5), "选中栏上没有「复制」")
     app.buttons["draw.copy"].tap()
     XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 2 })
     app.buttons["draw.delete"].tap()
@@ -1690,11 +1680,11 @@ extension ChartFoundationUITests {
     app.buttons["draw.redo"].tap()
     XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })
     shot("画线-只删除选中对象并可撤销")
-    // 上排那三个开关和选中栏共用同一格（2026-09-21）：这会儿删掉的那条已经没了选中，
-    // 它们该回到位。先确认回来了再点，免得点在残留的选中栏上。
-    XCTAssertTrue(app.buttons["draw.magnet.quick"].waitForExistence(timeout: 5), "取消选中之后开关那排没回来")
+    // 吸附与连续画 2026-09-23 起收在「更多」弹层里：删掉的那条已经没了选中，「更多」该回到位。
+    XCTAssertTrue(app.openDrawMore(), "取消选中之后开不出「更多」")
     app.buttons["draw.magnet.quick"].tap()
     app.buttons["draw.continuous.quick"].tap()
+    app.closeDrawMore()
     app.terminate(); app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })
@@ -1704,7 +1694,7 @@ extension ChartFoundationUITests {
 
   func testIndicatorColorSaveCancelAndRestart() throws {
     func edit(_ id: String, color: String, save: Bool) {
-      app.buttons["interval.chart"].tap()
+      app.buttons["interval.chart"].tap(); XCTAssertTrue(app.openIndicatorPage())
       if !app.buttons["indicator.edit.\(id)"].exists { app.buttons["indicator.switch.\(id)"].tap() }
       app.buttons["indicator.edit.\(id)"].tap()
       let swatch = app.buttons["indicator.color.0.\(color)"].firstMatch
@@ -1732,7 +1722,9 @@ extension ChartFoundationUITests {
 extension ChartFoundationUITests {
   func testDrawingAllToolsAndFingerTargets() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
+    XCTAssertTrue(app.openDrawMore(), "画线栏上开不出「更多」")
     app.buttons["draw.magnet.quick"].tap()
+    app.closeDrawMore()
     // 「绘图」面板上摆出来的就是这十二把（`Drawing.Kind.palette`）。2026-09-22 砍掉
     // 分类标签之后，面板是一张铺平的格子，进去就能看见，不用先点标签。
     // 第二项是这把工具要在图上点几下（`Drawing.Kind.placeCount`）。
@@ -1790,18 +1782,11 @@ extension ChartFoundationUITests {
         XCTAssertTrue(wait(seconds: 5) { !save.exists }, "样式表收不掉")
       }
       if index == 0 {
-        // 这条线刚落下，那一句问话正好长出来——它现在占的是**头部价格行**那一行的位置
-        // （价格行透明让位），图区一个 pt 都不该动。所以这儿不再「先收掉它、等图长回来」，
-        // 反过来断言：它在场时是这个高度，压根没碰着画布，收掉之后还是这个高度。
-        let prompt = app.otherElements["alert.prompt"]
-        XCTAssertTrue(prompt.waitForExistence(timeout: 6), "画完第一条线没问「要不要提醒」")
+        // 画完什么都不弹（2026-09-23 起提醒只在选中栏的胶囊上开），图区一个 pt 都不该动：
+        // 选中栏和平时那排工具是同一行，换上来也不改高度。
+        XCTAssertFalse(app.otherElements["alert.prompt"].waitForExistence(timeout: 2), "画完线又弹了一句问话")
         XCTAssertEqual(try XCTUnwrap(info()["mainH"] as? Double), h, accuracy: 0.5,
-                       "那句问话在场时图区矮了——它又去图外占行了")
-        XCTAssertFalse(prompt.frame.intersects(canvas.frame),
-                       "那句问话压在画布上了：问话 \(prompt.frame)，画布 \(canvas.frame)")
-        dismissAlertPrompt()
-        XCTAssertEqual(try XCTUnwrap(info()["mainH"] as? Double), h, accuracy: 0.5,
-                       "收掉那句问话之后图区高度变了")
+                       "选中栏换上来之后图区高度变了")
         let before = try XCTUnwrap(info()["drawingAnchors"] as? [[[String: Double]]])
         origin.withOffset(CGVector(dx: 90, dy: h * 0.65 + 17)).press(forDuration: 0.1,
           thenDragTo: origin.withOffset(CGVector(dx: 115, dy: h * 0.65 + 42)), withVelocity: .slow, thenHoldForDuration: 0.1)
@@ -1815,18 +1800,13 @@ extension ChartFoundationUITests {
     let ids = try XCTUnwrap(info()["drawingIDs"] as? [String])
     app.buttons["draw.finish"].tap()
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
-    app.buttons["draw.objects.quick"].tap()
+    // 「清空全部画线」2026-09-23 起在「更多」弹层的最底下，点了还要确认一次。
+    XCTAssertTrue(app.openDrawMore(), "画线栏上开不出「更多」")
     let clear = app.buttons["draw.clear"]
-    // 同理：往上翻要翻的是「画线管理」这张面板自己的列表。管理面板停在 `.medium`，
-    // 背景是可交互的，`app.swipeUp()` 有机会划到底下的行情页上去。
-    let objects = app.collectionViews.containing(.button, identifier: "draw.object.\(ids[0])").firstMatch
-    for _ in 0..<10 {
-      if clear.exists && clear.isHittable { break }
-      if objects.exists { objects.swipeUp() } else { app.swipeUp() }
-    }
-    XCTAssertTrue(clear.isHittable); clear.tap()
-    app.buttons["清空画线"].tap()
-    app.buttons["draw.sheet.done"].tap()
+    XCTAssertTrue(clear.waitForExistence(timeout: 5)); clear.tap()
+    let confirm = app.buttons["清空画线"]
+    XCTAssertTrue(confirm.waitForExistence(timeout: 5), "清空之前没有确认")
+    confirm.tap()
     XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 0 })
     app.buttons["draw.undo"].tap()
     XCTAssertTrue(wait { self.info()["drawingIDs"] as? [String] == ids })

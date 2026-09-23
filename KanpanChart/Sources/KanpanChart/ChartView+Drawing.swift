@@ -88,6 +88,7 @@ final class DrawingSession {
   var onState: (() -> Void)?
   var onFull: (() -> Void)?
   var onCommitted: ((Drawing) -> Void)?
+  var onDragged: ((Drawing) -> Void)?
   /// 诊断用：落成过几条线、外面有没有接「刚画完」那一条。只给 `KANPAN_CHART_DIAGNOSTICS` 看。
   var commits = 0
   /// 哪几条线上挂着提醒。图上只拿它画那枚小铃铛，别的一概不管。
@@ -470,12 +471,21 @@ extension ChartView {
   ///
   /// 和 `onDrawingsChanged` 分得很清：那一条是「这个品种的线变成这样了」，增删改拖
   /// 全都响，外面靠它落盘；这一条只在用户亲手落下最后一点、一条新线诞生的那一刻响一次。
-  /// 提醒模块要的正是这一刻——画完弹一张确认卡（方案 2.3），别的时候不该弹。
   ///
   /// 排在 `onDrawingsChanged` 后面响：外面接到这一条时，线已经落过盘了。
   public var onDrawingCommitted: ((Drawing) -> Void)? {
     get { drawing.onCommitted }
     set { drawing.onCommitted = newValue }
+  }
+
+  /// 手指正拖着一条线（整条或某个端点），每一帧报一次拖到哪儿了。
+  ///
+  /// 拖动途中线还没落盘（`onDrawingsChanged` 要等抬手），外面想跟着手指实时读出
+  /// 这条线此刻的价格——提醒胶囊上那句「跌到 64,000」——就接这一条。抬手之后
+  /// 照常走 `onDrawingStateChanged`，这里不再补一次「结束了」。
+  public var onDrawingDragged: ((Drawing) -> Void)? {
+    get { drawing.onDragged }
+    set { drawing.onDragged = newValue }
   }
 
   /// 这个品种画满 50 条了（A7.7）。要不要提示由外面定，这里只负责不再往里塞。
@@ -1005,6 +1015,7 @@ extension ChartView {
     }
     drawing.preview = item
     refreshDrawingOverlay()
+    drawing.onDragged?(item)
   }
 
   private func captureDrawingLoupe() {

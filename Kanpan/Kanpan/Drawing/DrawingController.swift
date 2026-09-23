@@ -53,6 +53,13 @@ final class DrawingController: ObservableObject {
   /// 它**只**用来在工具面板上把那把工具预选高亮，不是「此刻正举着笔」——
   /// 待画状态归图自己（`ChartView+Drawing`），换品种照样清掉。
   var onPickTool: ((DrawingStore.Tool) -> Void)?
+  /// 手指正拖着的那条线此刻的样子；抬手（或别的任何一次状态变化）报一次 `nil`。
+  ///
+  /// 不走 `@Published`：拖动是逐帧的，发布出去会让整个主屏跟着每帧重算一遍。
+  /// 只有提醒胶囊（`LineAlertModel`）接它，读出线此刻的价格。
+  var onDragPreview: ((Drawing?) -> Void)?
+  /// 当前这张图是哪个品种（`ChartState.series.symbol` 那个写法）。
+  var currentSymbol: String { symbol }
   var storedArchive: DrawArchive { archive }
   private var archive: DrawArchive
   private var symbol = ""
@@ -91,7 +98,7 @@ final class DrawingController: ObservableObject {
     // 线还在、「撤销」却是灰的——正是任务 3 要修的那个现象，只不过病根从
     // 「栈存在图身上」挪到了「栈刚存好就被新图抹了」。
     let resumed = symbol.isEmpty ? DrawHistory() : (histories[symbol] ?? DrawHistory())
-    chart?.onDrawingsChanged = nil; chart?.onDrawingStateChanged = nil
+    chart?.onDrawingsChanged = nil; chart?.onDrawingStateChanged = nil; chart?.onDrawingDragged = nil
     chart?.endDrawing()
     // 覆盖层一直在场（它还要画选中态、预览线和提醒铃铛），**收不收手**另算：
     // 不在画线态时点图就只是平移 / 十字光标，点中一条旧线不会把它选中。
@@ -99,6 +106,7 @@ final class DrawingController: ObservableObject {
     view.onDrawingsChanged = { [weak self] items in self?.persist(items) }
     view.onDrawingStateChanged = { [weak self] in self?.sync() }
     view.onDrawingLimitReached = { [weak self] in self?.full = true }
+    view.onDrawingDragged = { [weak self] item in self?.onDragPreview?(item) }
     applyPreferences()
     if !symbol.isEmpty {
       // 顺序要紧：`setDrawings` 会把撤销栈清掉（它是「整批外部替换」的语义），
@@ -330,6 +338,7 @@ final class DrawingController: ObservableObject {
     guard let chart else { return }
     // 每一次编辑最后都会走到这儿（`onDrawingStateChanged`），在这儿收栈就不会漏。
     rememberHistory()
+    onDragPreview?(nil)
     tool = chart.drawTool; hint = active ? chart.drawHint : nil
     items = chart.drawings; selected = items.first { $0.id == chart.selectedDrawingID }
     // **「选中」从来不开画线工作台。** 这儿原来有一句「选中了就 `active = true`」，

@@ -301,6 +301,8 @@ final class MainScreenUITests: KanpanUICase {
   /// （用户：「行情页面的指标放到图表里作为一个子栏目」），入口是周期行右端的「图表」。
   func testIndicatorPanelOpensAndCloses() {
     app.buttons[Ids.intervalChart].tap()
+    // 2026-09-23 起面板上只留一行「指标」摘要，点进去才是开关（同一张面板里推进去的一页）。
+    XCTAssertTrue(app.openIndicatorPage(), "图表设置面板里点「指标」没进到指标页")
     let macd = app.buttons[Ids.indicatorSwitch("MACD")]
     expectExists(macd, Self.short, "点周期行「图表」没开出指标那几栏")
     expectExists(app.buttons[Ids.indicatorSwitch("MA")], Self.short, "指标那几栏里没有主图叠加")
@@ -329,7 +331,7 @@ final class MainScreenUITests: KanpanUICase {
     // 拿不到行情不是「这条用例不适用」，是环境或产品断了，该红就红。
     XCTAssertTrue(waitForLiveChart(), "\(Self.long)s 内没等到 K 线数据——这条要真数据，拿不到就是断了")
     app.buttons[Ids.intervalChart].tap()
-    let macd = app.buttons[Ids.indicatorSwitch("MACD")]
+    let macd = app.buttons["chart.indicators"]
     expectExists(macd, Self.short, "图表设置面板没开出来")
     chartPoint().tap()
     expectGone(macd, Self.short, "点了图，面板没收起")

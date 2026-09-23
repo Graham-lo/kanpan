@@ -362,23 +362,8 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
     mainChartPoint(0.25).tap()
     XCTAssertTrue(waitUntil(timeout: Self.long) { (self.chartInfo()["drawingCount"] as? Int ?? 0) >= 1 },
                   "水平线没落上：\(chartInfo())")
-    // 画完那一句问话只活 6 秒，顺手收掉，别让它占着头部影响这一屏。
-    let dismissPrompt = app.buttons["alert.prompt.dismiss"]
-    if dismissPrompt.waitForExistence(timeout: 3) { dismissPrompt.tap() }
-
-    // 选中之后上排左半边换成 `DrawingSelectionBar`，三个开关连同「管理」一起暂时
-    // 不在树上——点一下图上的空白处取消选中，「管理」才回来（同
-    // `ChartFoundationUITests` 里「取消选中之后开关那排没回来」那一段）。
-    //
-    // 而且要打在**主图**里：`axes.bounds` 之外的那一下（副图三格）连判都不判。
-    // 第一下常常只是收掉十字线（`busy` 那条早退），所以最多打四下。
-    let manage = app.buttons["draw.objects.quick"]
-    for _ in 0..<4 where !manage.exists {
-      mainChartPoint(0.8).tap()
-      _ = waitUntil(timeout: 3) { manage.exists }
-    }
-    XCTAssertTrue(manage.exists, "画线栏上没有「管理」：\(app.debugDescription)")
-    manage.tap()
+    // 「画线列表」2026-09-23 起在画线栏的「更多」弹层里，选没选中线都开得出来。
+    XCTAssertTrue(app.openDrawList(), "「更多」里开不出画线列表：\(app.debugDescription)")
 
     let ids = try XCTUnwrap(chartInfo()["drawingIDs"] as? [String], "读不到画线 id：\(chartInfo())")
     let first = try XCTUnwrap(ids.first)

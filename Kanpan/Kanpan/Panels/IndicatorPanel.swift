@@ -3,157 +3,153 @@ import SwiftUI
 import UIKit
 import KanpanCore
 
-/// 指标那几栏。指标选择即时生效；参数与输出在独立草稿中保存或取消。
+/// 「图表设置 › 指标」：面板里推进去的一整层。
 ///
-/// 2026-09-18 起它不再是一张独立的半屏面板，而是「图表设置」里的一段
-/// （见 `ChartPanel`）。用户的话是「行情页面的指标放到图表里作为一个子栏目」——
-/// 底栏那一格让位给了常驻标签栏，指标本来也就是「图上画什么」的一部分。
-/// 参数编辑那层 sheet 和面板提示留在这一段自己身上，搬到哪儿都跟着走。
-struct IndicatorSections: View {
+/// 2026-09-18 指标并进「图表设置」时，是十三个开关连同每个开着的指标底下那块「参数与颜色」
+/// 一股脑铺在那一页上的——再往下还有一段「副图顺序」。开得越多，这一页越长，坐标轴、
+/// 网格那几行被推到三四屏之后。2026-09-23 用户的话是「新加的指标全部堆积在图表里，
+/// 应该在图表中增加一个指标，点击指标跳到专门的指标设置页面」，于是：
+///
+/// - 「图表设置」上只剩一行「指标」，右边写着开着的是哪几个（`summary`）；
+/// - 点进来，最上面「正在用」一段只列开着的指标，参数直接写在行上，点一行进参数表，
+///   副图那几行右端的把手拖动就是换顺序——原来单独那段「副图顺序」并进来了；
+/// - 下面两段只有开关，不再夹参数块。
+///
+/// 参数编辑那层 sheet 和面板提示仍挂在这一层自己身上。
+struct IndicatorPage: View {
   var store: PrefsStore
+  var onBack: () -> Void
   @State private var editing: IndicatorID?
   @Environment(\.panelTheme) private var t
 
   private var prefs: Prefs { store.prefs }
 
   var body: some View {
-    // `PanelSheet` 的内容是一根 `VStack`，这儿必须也铺成同样的一串行，
-    // 不能自己再套一层带内边距的容器，否则这一段会比上面几段窄一圈。
-    Group {
+    PanelSheet(title: "指标", subtitle: nil, onBack: onBack) {
+      if !prefs.overlays.isEmpty || !prefs.subs.isEmpty {
+        PanelGroupTitle(text: "正在用")
+        InUseList(store: store, onEdit: { editing = $0 })
+      }
+
       PanelGroupTitle(text: "主图叠加")
       ForEach(IndicatorID.mainPalette, id: \.self) { id in
-        row(id)
+        row(id, last: id == IndicatorID.mainPalette.last)
       }
 
       // 上限写在标题里：满了再点第四个是「换一个」而不是「点不动」，先把规矩摆出来。
-      PanelGroupTitle(text: "副图 · 同时最多三个")
+      PanelGroupTitle(text: "副图 · 最多三个")
       ForEach(IndicatorID.subPalette, id: \.self) { id in
-        row(id)
-      }
-
-      if prefs.subs.count > 1 {
-        PanelGroupTitle(text: "副图顺序")
-        SubOrderList(store: store)
+        row(id, last: id == IndicatorID.subPalette.last)
       }
     }
     .sheet(item: $editing) { id in IndicatorEditor(store: store, id: id).environment(\.panelTheme, t) }
   }
 
-  @ViewBuilder
-  private func row(_ id: IndicatorID) -> some View {
+  private func row(_ id: IndicatorID, last: Bool) -> some View {
     let on = prefs.isOn(id)
-    PanelRow(name: id.name, swatch: t.swatch(id)) {
-      PanelSwitch(isOn: on) {
-        store.toggleIndicator(id)
-      }
-      .accessibilityIdentifier("indicator.switch.\(id.rawValue)")
-    }
-    if on, !id.paramLabels.isEmpty || id.placement == .sub {
-      detail(id)
+    return PanelRow(name: id.name, swatch: t.swatch(id), divider: !last) {
+      PanelSwitch(isOn: on) { store.toggleIndicator(id) }
+        .accessibilityIdentifier("indicator.switch.\(id.rawValue)")
     }
   }
 
-  /// 开着的指标底下这一块：参数输入框 +（手调过高度的副图才有的）一键还原。
-  ///
-  /// 原来这儿挂着「高度」三档。它和图上副图上沿那条把手是同一件事的两个入口，
-  /// 两边还各说各话——拖过之后三档仍停在旧档位上，看着像没生效（第三批 16）。
-  /// 现在设高度只有一个地方：在图上拖，边拖边看。这儿只留一条退路，
-  /// 而且只在真的手调过之后才出现。
-  @ViewBuilder
-  private func detail(_ id: IndicatorID) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Button { editing = id } label: {
-        HStack(spacing: 4) {
-          Text(id == .ma || id == .ema ? "参数与颜色" : "参数与输出").font(PanelFont.seg)
-          VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(-90))
-        }
-        .foregroundStyle(t.amber)
-        .padding(.horizontal, 10)
-        .frame(height: 26)
-        .background(t.amberSoft, in: Capsule())
-        .contentShape(Capsule())
-      }
-      .buttonStyle(.plain)
-      .accessibilityIdentifier("indicator.edit.\(id.rawValue)")
-      if id.placement == .sub, prefs.subHeightOverrides[id] != nil {
-        HStack(spacing: PanelMetrics.rowGap) {
-          Text("高度 · 已手调").font(PanelFont.meta).foregroundStyle(t.ink3)
-          Spacer(minLength: 0)
-          Button("还原高度") { store.update { $0.subHeightOverrides[id] = nil } }
-            .font(PanelFont.meta).foregroundStyle(t.amber)
-            .accessibilityIdentifier("indicator.height.reset.\(id.rawValue)")
-        }
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.horizontal, PanelMetrics.hPad)
-    .padding(.bottom, PanelMetrics.vPad)
-    .overlay(alignment: .bottom) { Rectangle().fill(t.hair).frame(height: 1) }
-  }
-
-  /// 指标的中文名，此外一个字都不说。
-  ///
-  /// 持仓量这一条从前写的是「持仓量 · 近 30 天，最细 5 分钟」。「近 30 天」是错的——
-  /// 归档站从 2020-09-01 起是全的（`OISource.archiveEpoch`），那句话只会让人以为
-  /// 长周期上看不到持仓量而不再去看。剩下的「最细 5 分钟」是源的粒度，不是限制，
-  /// 图上一看便知，不必在设置里讲。
-  /// 从前这里是一张把每个 id 的中文名又抄了一遍的表，和 `IndicatorID.name` 几乎逐条重合，
-  /// 加一把指标就得两处各改一遍，漏一处就编译不过。现在只留下真正说得更全的那两条。
-  static func hint(_ id: IndicatorID) -> String {
-    switch id {
-    case .macd: "平滑异同均线"
-    case .atr: "平均真实波幅"
-    default: id.name
-    }
+  /// 「图表设置」上那一行右边的字：开着的指标按图上从上到下的次序报名字。
+  static func summary(_ prefs: Prefs) -> String {
+    let on = prefs.overlays.filter { $0.placement == .main } + prefs.subs
+    return on.isEmpty ? "都关着" : on.map(\.name).joined(separator: " · ")
   }
 }
 
-// MARK: - 副图顺序
+// MARK: - 正在用
 
-/// §10.6 的拖柄：按住往上下拖，松手就定。行高固定，所以位移除以行高就是挪几格。
-private struct SubOrderList: View {
+/// 开着的指标，一行一个：名字、参数、「›」。副图那几行右端多一个把手，拖它换顺序。
+///
+/// 拖法沿用原来「副图顺序」那一段（§10.6）：行高固定，位移除以行高就是挪几格，松手就定。
+/// 主图叠加不排序——几条均线叠在同一张图上，谁先谁后看不出来。
+private struct InUseList: View {
   var store: PrefsStore
+  var onEdit: (IndicatorID) -> Void
   @Environment(\.panelTheme) private var t
 
   @State private var dragging: IndicatorID?
   @State private var offset: CGFloat = 0
 
-  private static let rowH: CGFloat = 44
+  private static let rowH: CGFloat = 48
+
+  private var prefs: Prefs { store.prefs }
 
   var body: some View {
     VStack(spacing: 0) {
-      ForEach(Array(store.prefs.subs.enumerated()), id: \.element) { index, id in
-        HStack(spacing: PanelMetrics.rowGap) {
-          RoundedRectangle(cornerRadius: 2, style: .continuous)
-            .fill(t.swatch(id)).frame(width: 9, height: 9)
-          Text(id.name).font(PanelFont.name).foregroundStyle(t.ink)
-          Spacer(minLength: 0)
-          Image(systemName: "line.3.horizontal")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(t.ink3)
-            .frame(width: 44, height: Self.rowH)
-            .contentShape(Rectangle())
-            .gesture(drag(id: id, index: index))
-        }
-        .padding(.leading, PanelMetrics.hPad)
-        .padding(.trailing, PanelMetrics.hPad - 12)
-        .frame(height: Self.rowH)
-        .background(dragging == id ? t.raised2 : .clear)
-        .offset(y: dragging == id ? offset : 0)
-        .zIndex(dragging == id ? 1 : 0)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(id.name)，第 \(index + 1) 个副图")
-        .accessibilityAdjustableAction { direction in
-          switch direction {
-          case .increment: store.update { $0.moveSub(from: index, to: index + 1) }
-          case .decrement: store.update { $0.moveSub(from: index, to: index - 1) }
-          default: break
-          }
-        }
+      ForEach(prefs.overlays.filter { $0.placement == .main }, id: \.self) { id in
+        line(id, index: nil)
+      }
+      ForEach(Array(prefs.subs.enumerated()), id: \.element) { index, id in
+        line(id, index: index)
+          .background(dragging == id ? t.raised2 : .clear)
+          .offset(y: dragging == id ? offset : 0)
+          .zIndex(dragging == id ? 1 : 0)
       }
     }
-    .animation(.easeOut(duration: 0.15), value: store.prefs.subs)
+    .animation(.easeOut(duration: 0.15), value: prefs.subs)
     .overlay(alignment: .bottom) { Rectangle().fill(t.hair).frame(height: 1) }
+  }
+
+  private func line(_ id: IndicatorID, index: Int?) -> some View {
+    let params = prefs.params(for: id).map(String.init).joined(separator: " · ")
+    let resized = id.placement == .sub && prefs.subHeightOverrides[id] != nil
+    return HStack(spacing: 0) {
+      Button { onEdit(id) } label: {
+        HStack(spacing: PanelMetrics.rowGap) {
+          HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+              .fill(t.swatch(id)).frame(width: 9, height: 9)
+            Text(id.name).font(PanelFont.name).foregroundStyle(t.ink).lineLimit(1)
+          }
+          Spacer(minLength: 0)
+          if !params.isEmpty {
+            Text(params).monospacedDigit().font(PanelFont.meta).foregroundStyle(t.ink3).lineLimit(1)
+          }
+          VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
+        }
+        .padding(.leading, PanelMetrics.hPad)
+        .padding(.trailing, index == nil ? PanelMetrics.hPad : 4)
+        .frame(height: Self.rowH)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(params.isEmpty ? id.name : "\(id.name)，\(params)")
+      .accessibilityIdentifier("indicator.edit.\(id.rawValue)")
+
+      // 在图上拖过副图高度才出现的那条退路（高度只在图上拖，这儿不给档位）。
+      if resized {
+        Button("还原高度") { store.update { $0.subHeightOverrides[id] = nil } }
+          .font(PanelFont.meta).foregroundStyle(t.amber)
+          .buttonStyle(.plain)
+          .frame(height: Self.rowH)
+          .padding(.leading, 6)
+          .accessibilityIdentifier("indicator.height.reset.\(id.rawValue)")
+      }
+
+      if let index {
+        Image(systemName: "line.3.horizontal")
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(t.ink3)
+          .frame(width: 44, height: Self.rowH)
+          .contentShape(Rectangle())
+          .gesture(drag(id: id, index: index))
+          .padding(.trailing, PanelMetrics.hPad - 12)
+          .accessibilityElement()
+          .accessibilityLabel("\(id.name)，第 \(index + 1) 个副图")
+          .accessibilityIdentifier("indicator.order.\(id.rawValue)")
+          .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: store.update { $0.moveSub(from: index, to: index + 1) }
+            case .decrement: store.update { $0.moveSub(from: index, to: index - 1) }
+            default: break
+            }
+          }
+      }
+    }
   }
 
   private func drag(id: IndicatorID, index: Int) -> some Gesture {
@@ -205,9 +201,7 @@ struct FlowRow: SwiftUI.Layout {
 }
 
 #Preview("指标") {
-  PanelPreviewHost { store in
-    ScrollView { VStack(spacing: 0) { IndicatorSections(store: store) } }
-  }
+  PanelPreviewHost { store in IndicatorPage(store: store, onBack: {}) }
 }
 
 /// 指标参数编辑：全 app **唯一**一处「要按『保存』才生效」的设置，是**已知且有意的例外**。

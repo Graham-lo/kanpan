@@ -449,6 +449,7 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     app.buttons[Ids.intervalChart].tap()
     let header = app.staticTexts[Ids.panelHeader]
     expectExists(header, Self.short, "图表设置面板没开出来")
+    XCTAssertTrue(app.openIndicatorPage(), "图表设置面板里点「指标」没进到指标页")
     let toggle = app.buttons[Ids.indicatorSwitch(dropped)]
     expectExists(toggle, Self.short, "图表设置面板里没有 \(dropped) 的开关")
     scrollPanelContent(to: toggle)

@@ -64,7 +64,7 @@ struct PrefsDefaultsTests {
     #expect(o.grid == .off)
     #expect(o.body == .hollowUp)
     #expect(o.lastLine == false)
-    #expect(o.drawings == false)
+    #expect(o.drawings)                  // 全局「显示画线」已撤，存档里是 false 也照样画
     #expect(o.sinceChange)
     #expect(o.anchor == .left)
     #expect(o.bias == .up)

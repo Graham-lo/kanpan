@@ -392,6 +392,7 @@ class KanpanUICase: XCTestCase {
       entry.tap()
       expectExists(app.staticTexts[Ids.panelHeader], Self.short, "图表设置面板没开出来",
                    file: file, line: line)
+      XCTAssertTrue(app.openIndicatorPage(), "点了「指标」没进到指标页", file: file, line: line)
       let toggle = app.buttons[Ids.indicatorSwitch("MA")]
       expectExists(toggle, Self.short, "图表设置面板里没有均线开关", file: file, line: line)
       if !edit.exists {
@@ -494,15 +495,59 @@ extension XCUIApplication {
     return true
   }
 
+  /// 图表设置面板上那一行「指标」→ 同一张面板里推进去的指标页。
+  /// 2026-09-23 起指标开关与参数都在这一页上，图表面板本身只留一行摘要。已经在指标页就直接认。
+  @discardableResult func openIndicatorPage() -> Bool {
+    let marker = buttons["indicator.switch.RSI"]
+    if marker.exists { return true }
+    let row = buttons["chart.indicators"]
+    guard row.waitForExistence(timeout: 8) else { return false }
+    row.tap()
+    return marker.waitForExistence(timeout: 8)
+  }
+
   @discardableResult func enterDrawingInPortrait() -> Bool {
     _ = tapDrawEntry()
     let exit = buttons[Ids.landscapeExit]
     if exit.waitForExistence(timeout: 15) { exit.tap() }
-    // 到没到竖屏画线栏：认「完成」在场 + 横屏那条独有的「全部隐藏」不在场。
-    // 不能再拿「管理」当路标——选中一条线之后上排让位给选中栏，那三个开关会
-    // 暂时不在树里（2026-09-21），已经在画线态也会被误判成没进去。
+    // 到没到竖屏画线栏：认「完成」在场 + 横屏工具栏独有的「竖屏」不在场。
+    // 2026-09-23 起「全部隐藏」收进了「更多」弹层，横竖屏都不再常驻，不能再拿它当路标。
     guard buttons["draw.finish"].waitForExistence(timeout: 15) else { return false }
-    return !buttons["draw.hideAll"].exists
+    return waitUntilGone(buttons[Ids.landscapeExit], timeout: 5)
+  }
+
+  private func waitUntilGone(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+    let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
+    return XCTWaiter.wait(for: [gone], timeout: timeout) == .completed
+  }
+
+  /// 画线栏上的「更多」→ 那块弹层（吸附、连续画、全部隐藏、画线列表、清空）。
+  /// 已经开着就直接认。
+  @discardableResult func openDrawMore() -> Bool {
+    let magnet = buttons["draw.magnet.quick"]
+    if magnet.exists { return true }
+    let more = buttons["draw.more"]
+    guard more.waitForExistence(timeout: 8) else { return false }
+    more.tap()
+    return magnet.waitForExistence(timeout: 5)
+  }
+
+  /// 收掉「更多」弹层：点弹层外面（系统给弹层外面铺的那块 `PopoverDismissRegion`）。
+  func closeDrawMore() {
+    let magnet = buttons["draw.magnet.quick"]
+    guard magnet.exists else { return }
+    let region = otherElements["PopoverDismissRegion"].firstMatch
+    if region.exists { region.tap() }
+    else { windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap() }
+    _ = waitUntilGone(magnet, timeout: 5)
+  }
+
+  /// 「更多」→「画线列表」。返回列表开没开出来。
+  @discardableResult func openDrawList() -> Bool {
+    guard openDrawMore() else { return false }
+    buttons["draw.objects.quick"].tap()
+    return navigationBars["画线列表"].waitForExistence(timeout: 8)
+      || staticTexts["画线列表"].waitForExistence(timeout: 2)
   }
 
   /// 打开选中画线的样式面板并挑一个颜色。

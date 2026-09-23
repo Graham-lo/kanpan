@@ -1,26 +1,24 @@
 import KanpanCore
 import SwiftUI
 
-/// 刚画完一条线，问一句「要不要提醒」。
+/// 收下朋友发来的一组线时，问一句「他设了提醒的那几条，也给你设上？」。
 ///
-/// 方案 2.3 第一条：**不许挡住画布，也不许用系统弹窗**。用户刚落下这条线，
-/// 眼睛还在线上；一张居中的系统 alert 会把他刚画的东西盖住，还得先答完才能看。
-/// 所以它是图**外面**那一条——竖屏就地占头部价格行，横屏在画线工具栏上方。
+/// 自己画线不再问（2026-09-23 起）：给线加提醒改成选中栏上的那枚胶囊
+/// （`LineAlertChip`），任何时候点选中都能开。只剩这一处还问，是因为这是一次性地
+/// 决定「要不要接受别人的设置」，错过了也没关系——线已经收下，想要提醒照样点胶囊。
 ///
-/// 六秒没动就等于「只画线」。默认不是「加提醒」：用户画线大多数时候只是画线，
-/// 沉默要落在代价小的那一边。
+/// 方案 2.3 第一条仍然成立：**不许挡住画布，也不许用系统弹窗**。竖屏占头部价格行，
+/// 横屏在画线工具栏上方。六秒没动就等于「只留线」。
 @MainActor
 final class AlertPromptModel: ObservableObject {
   struct Pending: Equatable {
-    var drawing: Drawing
     var symbol: String
     var sentence: String
-    var batch: [Drawing]? = nil
+    var batch: [Drawing]
   }
 
   @Published private(set) var pending: Pending?
   /// 用户按了「加入提醒」。
-  var onAccept: ((Drawing, String) -> Void)?
   var onAcceptBatch: (([Drawing], String) -> Void)?
 
   /// 六秒。方案里写死的那个数。
@@ -28,43 +26,17 @@ final class AlertPromptModel: ObservableObject {
 
   private var countdown: Task<Void, Never>?
 
-  /// 刚画完一条线。摊不出线的种类（文字、图形标注那些）直接不问。
-  ///
-  /// **这一句必须推到下一轮 runloop 才改 `pending`**，不能在原地改。原因是这条路是
-  /// 从 UIKit 的触摸回调里同步回来的（`ChartView.commit` → `ChartHost` → 这儿），
-  /// 而同一微秒之前那条线自己刚落过盘、发过一轮通知，SwiftUI 这一帧多半正开着事务；
-  /// `@Published` 的通知是**改之前**发的（`willSet`），撞上这一帧就会被当场同步重画一次，
-  /// 视图读到的还是改之前的 `nil`，而真正的赋值发生在重画之后——于是这一整场都不再重画，
-  /// 那句问话再也不出来。实测四成的概率（日志里是「bar eval pending=0」夹在
-  /// 「offer」和「offer pending set」中间那一条）。让出一轮之后两件事分开，没再复现过。
-  func offer(_ drawing: Drawing, symbol: String) {
-    guard !symbol.isEmpty, AlertGeometry.supports(drawing.kind) else { return }
-    let next = Pending(drawing: drawing, symbol: symbol,
-                       sentence: Self.sentence(for: drawing.kind))
-    countdown?.cancel()
-    countdown = Task { [weak self] in
-      guard let self, !Task.isCancelled else { return }
-      withAnimation(.easeOut(duration: 0.18)) { self.pending = next }
-      try? await Task.sleep(for: Self.patience)
-      guard !Task.isCancelled else { return }
-      self.dismiss()
-    }
-  }
-
-  /// 线名就是样式表里那排按钮上的字；「两端延伸」「向右延伸」不是名词，后面补个「线」。
-  static func sentence(for kind: Drawing.Kind) -> String {
-    let name = kind.title
-    return "要在这条\(name)\(name.hasSuffix("延伸") ? "线" : "")上提醒你吗？"
-  }
-
+  /// **必须推到下一轮 runloop 才改 `pending`**：这条路常常是从别的发布回调里同步
+  /// 回来的，SwiftUI 这一帧多半正开着事务；`@Published` 的通知是改之前发的，撞上就会
+  /// 读到改之前的 `nil`，整场不再重画，问话出不来。让出一轮之后两件事分开。
   func offerBatch(_ drawings: [Drawing], symbol: String, preferred: Set<String>, from sender: String) {
     let supported = drawings.filter { AlertGeometry.lines(for: $0) != nil }
-    guard let first = supported.first, !symbol.isEmpty else { return }
+    guard !supported.isEmpty, !symbol.isEmpty else { return }
     let defaults = supported.filter { preferred.contains($0.id) }
     let sentence = defaults.isEmpty
       ? "要在这 \(supported.count) 条线上提醒你吗？"
       : "\(sender) 在其中 \(defaults.count) 条上设了提醒，也给你设上？"
-    let next = Pending(drawing: first, symbol: symbol, sentence: sentence,
+    let next = Pending(symbol: symbol, sentence: sentence,
                        batch: defaults.isEmpty ? supported : defaults)
     countdown?.cancel()
     countdown = Task { [weak self] in
@@ -79,8 +51,7 @@ final class AlertPromptModel: ObservableObject {
   func accept() {
     guard let pending else { return }
     dismiss()
-    if let batch = pending.batch { onAcceptBatch?(batch, pending.symbol) }
-    else { onAccept?(pending.drawing, pending.symbol) }
+    onAcceptBatch?(pending.batch, pending.symbol)
   }
 
   func dismiss() {
@@ -116,10 +87,10 @@ struct AlertPromptBar: View {
         Text(pending.sentence)
           .font(.scaled(13))
           .foregroundStyle(theme.ink)
-          .lineLimit(pending.batch == nil ? 1 : 2)
+          .lineLimit(2)
           .minimumScaleFactor(0.85)
         Spacer(minLength: 6)
-        Button(pending.batch == nil ? "只画线" : "只留线") { model.dismiss() }
+        Button("只留线") { model.dismiss() }
           .buttonStyle(.plain)
           .font(.scaled(13))
           .foregroundStyle(theme.ink3)

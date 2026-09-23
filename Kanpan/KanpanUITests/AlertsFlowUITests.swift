@@ -1,16 +1,17 @@
 import XCTest
 
-/// 提醒（方案 2.3）走一遍用户真的会走的那条路：
-/// 画一条水平线 → 画完那一下问一句 → 「加入提醒」 → 线右端多一枚铃铛 →
+/// 提醒走一遍用户真的会走的那条路：
+/// 画一条水平线 → 选中栏上那句「跌到 X 叫我」 → 点一下 → 线右端多一枚铃铛 →
 /// 设置里那一行「提醒」 → 总表。
 ///
-/// 这条用例盯着三件光靠单测证明不了的事：
+/// 2026-09-23 起画完线什么都不问（原来那句「要不要提醒、六秒后自己消失」撤了），
+/// 提醒只在选中一条线时、选中栏左边那颗胶囊上开关。这条用例盯着三件光靠单测证明不了的事：
 ///
-/// 1. **那句问话不盖画布。** 它长在周期条底下、标签栏上面（横屏是工具栏那一行），
-///    不是系统弹窗、也不是浮在图上的卡片（`kanpan-no-floating-controls-over-chart`）。
-///    所以这儿量的是它的 frame 和画布的 frame 不相交。
-/// 2. **铃铛真的挂上去了。** 图那一侧只认 id，诊断里 `drawingAlerted` 就是它画了记号的那几条。
-/// 3. **六秒不动等于「只画线」。** 这一条是方案里写死的默认动作，不能靠人记得去点。
+/// 1. **胶囊不盖画布。** 它长在画线栏的选中栏里，不是系统弹窗、也不是浮在图上的卡片
+///    （`kanpan-no-floating-controls-over-chart`），换上来时画布一个 pt 都不动。
+/// 2. **铃铛真的挂上去了，再点一下又摘掉。** 图那一侧只认 id，诊断里 `drawingAlerted`
+///    就是它画了记号的那几条。
+/// 3. **不碰就只是线。** 画完不弹任何东西，也不会自己挂上提醒。
 ///
 /// 到价判定在服务端，这儿一个字都不验——客户端压根没有那段代码。
 @MainActor final class AlertsFlowUITests: XCTestCase {
@@ -101,16 +102,15 @@ import XCTest
     return app.buttons["draw.finish"].waitForExistence(timeout: 10) && inPortraitDrawing
   }
 
-  /// 在不在**竖屏**画线栏上。「完成」两个方向都有，横屏那条上还多一个「全部隐藏」，
-  /// 拿这两个一起判。原来用的是「管理」，但它现在会被选中栏顶掉（2026-09-21）。
+  /// 在不在**竖屏**画线栏上。「完成」两个方向都有，横屏工具栏上还多一颗「竖屏」，
+  /// 拿这两个一起判。
   private var inPortraitDrawing: Bool {
-    app.buttons["draw.finish"].exists && !app.buttons["draw.hideAll"].exists
+    app.buttons["draw.finish"].exists && !app.buttons["land.exit"].exists
   }
 
   /// 落一笔水平线（一下就成，`pointCount == 1`）。
   ///
-  /// **先量坐标再点工具**：量一次画布 frame + 诊断要花一两秒，花在落笔之前就不占
-  /// 那句问话只有的 6 秒。落完笔这儿一个查询都不做，让调用方直接去接问话。
+  /// 先量坐标再点工具，落完笔这儿一个查询都不做，让调用方直接去接胶囊。
   private func tapHorizontal(at y: Double) throws {
     let target = try point(x: 0.5, y: y)
     let chip = app.buttons["draw.hline"]
@@ -121,21 +121,20 @@ import XCTest
     target.tap()
   }
 
-  /// 那句问话本人。用带类型的查询（`otherElements`）而不是 `descendants(matching: .any)`：
-  /// 后者每问一次都要把整棵可及性树捞下来，机器忙的时候一次就好几秒——问话只活 6 秒，
-  /// 查询自己把时间吃光，就会出现「明明弹了却查不到」。
-  private var prompt: XCUIElement { app.otherElements["alert.prompt"] }
+  /// 选中栏上那颗提醒胶囊。
+  private var chip: XCUIElement { app.buttons["alert.line"] }
 
-  /// 画一笔并接住那句问话。
+  /// 画一笔，等它被选中、胶囊露面。
   ///
   /// 落笔本身偶尔会掉（工具 chip 的那一下被滚动容器吃掉、或者方向切换的动画还没停），
-  /// 所以最多试三轮，每轮换一个高度免得两笔叠在一起。返回这一趟之后图上有哪些线。
+  /// 所以最多试三轮，每轮换一个高度免得两笔叠在一起。
   @discardableResult
-  private func drawAndAwaitPrompt(at y: Double, _ what: String) throws -> Bool {
+  private func drawAndAwaitChip(at y: Double, _ what: String) throws -> Bool {
     for round in 0..<3 {
+      let before = ids().count
       try tapHorizontal(at: y + Double(round) * 0.06)
-      if prompt.waitForExistence(timeout: 5) { return true }
-      shot("_\(what)第\(round + 1)轮没问")
+      if wait(seconds: 5, { self.ids().count > before }), chip.waitForExistence(timeout: 5) { return true }
+      shot("_\(what)第\(round + 1)轮没出胶囊")
     }
     return false
   }
@@ -206,43 +205,31 @@ import XCTest
   // ------------------------------------------------------------ 主路
 
   func testDrawingALineOffersAnAlertAndKeepsIt() throws {
-    // ① 画一条水平线，量那句问话长在哪儿。
+    // ① 画一条水平线：它自动选中，选中栏左边就是那句「跌到 / 涨到 X 叫我」。
     XCTAssertTrue(enterDrawing(), "没能进入竖屏画线态")
-    // 那条问话只活 6 秒（方案写死的耐心），而 XCUI 查一次元素、截一张图在机器忙的时候
-    // 都要一两秒。所以这儿分成两笔线来量：**第一笔只量位置**（问话的 frame、有没有用
-    // 系统弹窗、截一张图），量完就放手让它按 6 秒自己收掉；**第二笔紧接着按「加入提醒」**，
-    // 中间一次多余的查询都不插。挤在一笔里做完就会踩着 6 秒的边，忙的时候必偶发。
-    XCTAssertTrue(try drawAndAwaitPrompt(at: 0.35, "画完问一句"), "画完没有问「要不要提醒」：\(info())")
-    let promptFrame = prompt.frame
     let canvasFrame = canvas.frame
-    XCTAssertFalse(promptFrame.intersects(canvasFrame),
-                   "那句问话压在画布上了：问话 \(promptFrame)，画布 \(canvasFrame)")
-    XCTAssertTrue(app.alerts.count == 0, "问话不许用系统弹窗")
-    shot("01-画完问一句")
-    XCTAssertTrue(prompt.waitForNonExistence(timeout: 12), "六秒过去那条问话还在")
-    // 它占的是**头部价格行**那一行的位置（2026-09-21）：价格行透明让位，行高不变。
-    // 所以它来一趟走一趟，画布的 frame 一个 pt 都不该动——从前它在图外自成一行，
-    // 画完线图当场矮一截、六秒后又长回来，用户看见的是两次跳动。
-    XCTAssertEqual(canvas.frame, canvasFrame,
-                   "那句问话来去一趟，画布跟着缩了又长：问话在时 \(canvasFrame)，收掉后 \(canvas.frame)")
-    shot("01b-问话收掉之后")
+    XCTAssertTrue(try drawAndAwaitChip(at: 0.35, "画完出胶囊"), "画完选中之后没有提醒胶囊：\(info())")
+    XCTAssertEqual(chip.value as? String, "off", "没点就开了提醒")
+    XCTAssertTrue(chip.label.hasSuffix("提醒我") && (chip.label.contains("跌到") || chip.label.contains("涨到")),
+                  "胶囊上没说到哪个价会响：\(chip.label)")
+    XCTAssertFalse(chip.frame.intersects(canvas.frame), "胶囊压在画布上了：胶囊 \(chip.frame)，画布 \(canvas.frame)")
+    XCTAssertEqual(canvas.frame, canvasFrame, "选中栏换上来，画布跟着动了")
+    XCTAssertTrue(app.alerts.count == 0, "画完线不许弹系统弹窗")
+    XCTAssertFalse(app.otherElements["alert.prompt"].exists, "画完线又问了一句")
+    XCTAssertEqual(alerted(), [], "没人点胶囊，铃铛却挂上了")
+    shot("01-画完选中出胶囊")
 
-    // ② 再画一笔，这一次紧接着按「加入提醒」：线右端挂铃铛，问话收掉。
-    let before = Set(ids())
-    let accept = app.buttons["alert.prompt.accept"]
-    var tapped = false
-    for round in 0..<3 {
-      try tapHorizontal(at: 0.55 + Double(round) * 0.06)
-      if accept.waitForExistence(timeout: 5) { accept.tap(); tapped = true; break }
-      shot("_加入提醒第\(round + 1)轮没露面")
-    }
-    XCTAssertTrue(tapped, "没有「加入提醒」：\(info())")
-    // 只认「恰好一条线挂了铃铛，而且是这一趟新画的那条」——上面重试过几轮的话
-    // 图上可能不止一条新线，但点了一次「加入提醒」就只该有一枚铃铛。
-    XCTAssertTrue(wait(seconds: 8) { self.alerted().count == 1 && !before.contains(self.alerted()[0]) },
-                  "铃铛没挂上：alerted=\(alerted())，画之前=\(before)")
-    XCTAssertTrue(prompt.waitForNonExistence(timeout: 6), "点完「加入提醒」那一条还赖着")
+    // ② 点一下开：线右端挂铃铛，胶囊变成「会叫你」。再点一下关，再点一下开。
+    let line = try XCTUnwrap(ids().last)
+    chip.tap()
+    XCTAssertTrue(wait(seconds: 8) { self.alerted() == [line] }, "铃铛没挂上：alerted=\(alerted())，线=\(line)")
+    XCTAssertTrue(wait(seconds: 5) { self.chip.value as? String == "on" }, "开了提醒胶囊还是关着的样子")
     shot("02-线上挂了铃铛")
+    chip.tap()
+    XCTAssertTrue(wait(seconds: 8) { self.alerted().isEmpty }, "再点一下铃铛没摘掉：\(alerted())")
+    XCTAssertTrue(wait(seconds: 5) { self.chip.value as? String == "off" }, "关了提醒胶囊还亮着")
+    chip.tap()
+    XCTAssertTrue(wait(seconds: 8) { self.alerted() == [line] }, "第二次打开铃铛没挂上：\(alerted())")
 
     // ③ 设置 →「提醒」→ 总表。
     let settingsTab = app.buttons["bottom.settings"]
@@ -269,17 +256,16 @@ import XCTest
     }
   }
 
-  /// 六秒不动 = 只画线。方案 2.3 写死的默认动作。
-  func testSixSecondsOfSilenceMeansJustTheLine() throws {
+  /// 不碰胶囊 = 只画线：画完什么都不弹，过一阵也不会自己挂上提醒。
+  func testDrawingALineAsksNothing() throws {
     XCTAssertTrue(enterDrawing(), "没能进入竖屏画线态")
-    XCTAssertTrue(try drawAndAwaitPrompt(at: 0.5, "六秒不动"), "画完没有问「要不要提醒」：\(info())")
+    XCTAssertTrue(try drawAndAwaitChip(at: 0.5, "不碰"), "画完没有选中栏：\(info())")
     let lines = ids()
     XCTAssertFalse(lines.isEmpty, "水平线没画上：\(info())")
-    // 一下都不碰。6s 的耐心 + 动画和调度的余量。
-    XCTAssertTrue(prompt.waitForNonExistence(timeout: 12), "六秒过去那条问话还在")
-    XCTAssertEqual(ids(), lines, "线被那句问话带走了")
-    XCTAssertEqual(alerted(), [], "没人点「加入提醒」，铃铛却挂上了")
-    shot("06-六秒不动只剩线")
+    XCTAssertFalse(app.otherElements["alert.prompt"].waitForExistence(timeout: 7), "画完线又问了一句")
+    XCTAssertEqual(ids(), lines, "线被带走了")
+    XCTAssertEqual(alerted(), [], "没人点胶囊，铃铛却挂上了")
+    shot("06-不碰只剩线")
   }
 
   /// 没有推送时，用户是怎么看见「已经响了」的。

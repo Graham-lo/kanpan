@@ -299,7 +299,6 @@ struct MainChartView: View {
   let reviewChart: ReviewChartBridge
   let draw: DrawingController
   let alerts: AlertStore
-  let alertPrompt: AlertPromptModel
   let readout: CrosshairReadout
   /// 宿主揉好的那份 `ChartState`（复盘态下用的是 `reviewChart.state`）。
   let liveState: ChartState?
@@ -351,8 +350,6 @@ struct MainChartView: View {
         onTapped: { onTapped() },
         onNotice: { say($0) },
         drawing: reviewChart.active ? nil : draw,
-        // 用户刚亲手画完一条线：只是**问一句**，加不加由那条问句说了算。
-        onDrawingCommitted: { item, symbol in alertPrompt.offer(item, symbol: symbol) },
         // 图上哪几条线挂着提醒——右端一枚小铃铛。
         alertedDrawingIDs: alertedDrawingIDs
       )

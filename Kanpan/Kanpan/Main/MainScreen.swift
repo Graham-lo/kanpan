@@ -154,6 +154,9 @@ struct MainScreen: View {
   /// 三个都挂在宿主这一层，换页不重建（和行情、复盘那几个模型同一个理由）。
   @StateObject private var alerts = AlertStore()
   @StateObject private var alertPrompt = AlertPromptModel()
+  /// 选中一条线时画线栏上那句「跌到 64,000 叫我」。放在 `@State` 里而不是 `@StateObject`：
+  /// 它逐笔跟着现价变，主屏不该跟着它重算，只有胶囊自己观察它。
+  @State private var lineAlert = LineAlertModel()
   @StateObject private var alertWatcher = AlertWatcher()
   /// 提醒「盯一个」挂在锁屏上的那块实时活动（一台设备一块）。
   @StateObject private var activities = AlertActivityController()
@@ -275,7 +278,7 @@ struct MainScreen: View {
     // 系统顶成全屏，图就整个没了。
     .prefsPanel(landscape ? .constant(nil) : $panel, store: store,
                 onPickInterval: pick(interval:), onRecord: chartRecordAction,
-                onShare: chartShareAction, onSend: chartSendAction, sendMeta: shareSendMeta)
+                onShare: chartShareAction, onSend: chartSendAction, sendBlocked: shareSendBlocked)
   }
 
   private var presentation: some View {
@@ -511,7 +514,7 @@ struct MainScreen: View {
     // 那唯一一条提示画在自己的窗里，拿不到这儿的环境；皮肤一换就递一份过去（P2.7）。
     .onChange(of: theme, initial: true) { _, value in ToastCenter.shared.theme = value }
     .sheet(item: $draw.panel) { panel in
-      // 主题显式灌进去：这张表里的「画线管理」和「样式」都要跟着皮肤走
+      // 主题显式灌进去：这张表里的「画线列表」和「样式」都要跟着皮肤走
       // （和 `IndicatorPanel` 里那张编辑表一个做法）。
       DrawingSheet(controller: draw, panel: panel, decimals: market.info.priceDecimals)
         .environment(\.panelTheme, theme)
@@ -699,7 +702,7 @@ struct MainScreen: View {
       replayControls
       hairline
       if draw.active {
-        DrawingBar(controller: draw, onSend: beginShareSend, sendEnabled: canSendShare)
+        DrawingBar(controller: draw, lineAlert: lineAlert)
       }
       // 画完线问的那一句**不在这儿**（2026-09-21）：它从前是周期条下面、标签栏上面
       // 额外插的一行，于是线一落下整张图当场矮一行，六秒后又弹回来——用户看见的是
@@ -762,7 +765,7 @@ struct MainScreen: View {
         // 控件」相冲。挂在图上方、和标题同一根 `VStack` 里，选中 / 取消选中只在图外
         // 增减一行，K 线不会跟着跳。竖屏那份在画线栏上排里（见 `DrawingBar`）。
         if draw.active, draw.selected != nil {
-          DrawingSelectionBar(controller: draw, placement: .landscape)
+          DrawingSelectionBar(controller: draw, placement: .landscape, lineAlert: lineAlert)
         }
         chart.overlay(alignment: .bottom) { captureCard }
         replayControls
@@ -770,7 +773,7 @@ struct MainScreen: View {
         // 控件竖着摆放不下、横着摆绰绰有余，而且两个拇指本来就停在下沿。
         shareAndAlertCard(inHeader: false)
         if draw.active {
-          DrawingDock(controller: draw, onSend: beginShareSend, sendEnabled: canSendShare)
+          DrawingDock(controller: draw)
         }
       }
       ToolRail(
@@ -889,7 +892,7 @@ struct MainScreen: View {
       PanelSide(store: store, seed: seed, onClose: PanelDismiss { dismissPanel() }) {
         switch which {
         case .period: IntervalGridPanel(store: store, onPick: pick(interval:))
-        case .chart: ChartPanel(store: store, onShare: chartShareAction, onSend: chartSendAction, sendMeta: shareSendMeta)
+        case .chart: ChartPanel(store: store, onShare: chartShareAction, onSend: chartSendAction, sendBlocked: shareSendBlocked)
         }
       }
     }
@@ -979,9 +982,9 @@ struct MainScreen: View {
     guard let state = proxy.box?.chart.state, state.options.drawings else { return [] }
     return state.drawings.filter { !$0.hidden }
   }
-  private var canSendShare: Bool { account.user != nil && !visibleShareDrawings.isEmpty }
-  private var shareSendMeta: String {
-    account.user == nil ? "登录后可用" : visibleShareDrawings.isEmpty ? "先在图上画点什么" : "把图上的线发过去"
+  /// 「分享 › 画线」那格此刻为什么发不了；nil 就是能发。
+  private var shareSendBlocked: String? {
+    account.user == nil ? "登录后可发" : visibleShareDrawings.isEmpty ? "先画几条线" : nil
   }
   private var chartSendAction: (() -> Void)? {
     guard !reviewChart.active, draw.previewing == nil else { return nil }
@@ -1135,7 +1138,7 @@ struct MainScreen: View {
     MainChartView(
       theme: theme, market: market, proxy: proxy, viewport: viewport, store: store,
       review: review, reviewChart: reviewChart, draw: draw, alerts: alerts,
-      alertPrompt: alertPrompt, readout: crosshairReadout,
+      readout: crosshairReadout,
       liveState: chartState,
       portrait: !landscape,
       renderingActive: tab == .chart && !showSymbols && !showSearch,
@@ -1477,20 +1480,22 @@ struct MainScreen: View {
         PushRegistration.startIfAuthorized()
       }
     }
-    alertPrompt.onAccept = { item, symbol in
-      guard alerts.add(drawing: item, symbol: symbol) != nil else {
-        say("这种线暂时不能设提醒"); return
-      }
-      // 这儿从前说一句「已加入提醒」。删掉（§P3-8）：他刚在那句问话上点了「加提醒」，
-      // 线右端当场多出一枚铃铛，成没成看得见——再弹一条只告诉成功的横幅，是在替
-      // 他自己的动作鼓掌。失败那一句（上面那条）留着，那是他看不出来的事。
-      // 权限只在第一次真的加提醒时问一次。**问不到也不挡**：提醒照建、照同步，
-      // 只是响的时候要等下一次打开 app 才看得见（现在没有 APNs，本来就是这样）。
+    // 选中栏上的提醒胶囊。打开之后不再弹「已加入提醒」：胶囊当场变成实心、线右端
+    // 多出一枚铃铛，成没成看得见（§P3-8）。满额那句走 `alerts.notice`。
+    // 权限只在第一次真的加提醒时问一次。**问不到也不挡**：提醒照建、照同步，
+    // 只是后台响的时候弹不出来。
+    lineAlert.attach(alerts)
+    lineAlert.decimals = { [picker] symbol in
+      guard let info = picker.info(for: symbol), info.tickSize > 0 || info.pricePrecision > 0 else { return nil }
+      return info.priceDecimals
+    }
+    lineAlert.onArmed = {
       Task {
         await AlertNotifications.requestAuthorization()
         await MainActor.run { PushRegistration.startIfAuthorized() }
       }
     }
+    draw.onDragPreview = { [weak lineAlert] item in lineAlert?.drag(item) }
     // 线被挪了就按同一个提醒 id 重算几何、重新上膛；线被删了提醒跟着删。
     draw.onGeometryChanged = { archive in alerts.reconcile(with: archive) }
     // 到价判定：两条流各喂各的。图上那只走 `MarketModel`（逐笔，最细），别的品种走
@@ -1499,10 +1504,11 @@ struct MainScreen: View {
     // （和 `teardown.onTeardown` 那儿同一个理由）。
     alertEngine.attach(alerts)
     alertEngine.onWatchlist = { [weak quotes] symbols in quotes?.setAlertedSymbols(symbols) }
-    market.onPrice = { [weak engine = alertEngine, weak mover = watchMove, weak activities, weak quotes] symbol, price, timeMs in
+    market.onPrice = { [weak engine = alertEngine, weak mover = watchMove, weak activities, weak quotes, weak lineAlert] symbol, price, timeMs in
       engine?.observe(symbol: symbol, price: price, timeMs: timeMs)
       mover?.observe(symbol: symbol, price: price, timeMs: timeMs)
       activities?.observe(symbol: symbol, price: price, change: quotes?.raw[symbol].map { $0.changePercent / 100 })
+      lineAlert?.observe(symbol: symbol, price: price)
     }
     quotes.onPrice = { [weak engine = alertEngine, weak mover = watchMove, weak activities] tickers in
       engine?.observe(tickers)

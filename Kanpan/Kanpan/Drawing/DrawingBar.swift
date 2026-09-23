@@ -3,63 +3,59 @@ import KanpanCore
 import SwiftUI
 import UIKit
 
-/// 画线栏：上排是「当前状态相关」的动作，下排是工具。
+/// 竖屏画线栏，两行，总高度钉死。
 ///
-/// 右端钉着几个固定按钮，左边那一段放可变数量的东西。这里有个坑：固定按钮原来是直接
-/// 跟在滚动区后面排的，`撤销/重做/完成` 三个 44pt 加起来 132pt，实测最后一个工具
-/// chip（「测量」）会整块压在「撤销」底下，`hittable=false`——想点测量，点到的是撤销，
-/// 用户刚画的那条线没了。所以：
+/// **2026-09-23 按「常用的摆出来、冷门的收进更多」重排。** 用户的话是「目前的画线用户要点击的
+/// 或者功能太多了吧好像有点混乱……清空画线还在另一个图标弹窗里，我建议功能类似的冷门整理到
+/// 一起给二级弹窗，常用的直接展示在画线那一页上」。原来这根栏上摆着吸附、连续、管理、撤销、
+/// 重做、纸飞机、工具、收藏、完成九样，「清空」又藏在「管理」那张表的最底下。现在：
 ///
-/// 1. 左边那一段显式 `.frame(maxWidth: .infinity)` + `.clipped()`，不许它把内容漏到固定区底下；
-/// 2. 撤销/重做挪到上排右端，下排右端只剩「完成」，工具排的固定占用从 132pt 降到 44pt；
-/// 3. 固定区左边加一条分隔线，让「这边是可变的、那边是不动的」一眼看得出来。
+/// - **上排**是手上正在干的事：没选中时是收藏的那几把工具，选中一条线之后整排
+///   换成这条线的动作（`DrawingSelectionBar`：提醒胶囊、样式、删除、⋯）。
+/// - **下排**钉死：全部工具、撤销、（能重做时才出现的）重做、⋯ 更多、完成。
+/// - 吸附、连续、全部隐藏、画线列表、清空全部——一天点不了几次的——都在「更多」里
+///   （`DrawingMoreButton`）。纸飞机撤了：分享统一走「图表设置 › 分享」。
+///
+/// 两行怎么换，总高度都不变，选中 / 取消选中时图不会跳。
 ///
 /// **工具排：放得下就铺满，放不下才滚动（2026-09-21）。** 从前它一律是滚动区，
 /// 393pt 上出厂那几把正好把第四把「回撤」切在字中间——切口没有任何「后面还有」的提示，
 /// 这把工具在最窄的机型上等于不存在。现在按周期条那套来：`ViewThatFits` 先试一套不滚动、
 /// 各档等分铺满剩余宽度的排法，真放不下（用户钉了很多把）才退回滚动，并且右缘加一层
 /// 渐隐——被裁的那把是淡出去的，不是被切成半个字。字号、图标、文字一个都没缩。
-///
-/// **选中一条线之后，上排左边那一段换成 `DrawingSelectionBar`**：三个开关让位，
-/// 撤销/重做原地不动。行数和总高度一个 pt 不变，所以图表不会跟着跳；那几个动作也就
-/// 不必再浮在画布上（`kanpan-no-floating-controls-over-chart`）。
+/// 可变的那一段一律 `.frame(maxWidth: .infinity)` + `.clipped()`，不许把内容漏到
+/// 固定按钮底下（「测量」曾整块压在「撤销」底下，点测量点到的是撤销）。
 struct DrawingBar: View {
   @ObservedObject var controller: DrawingController
-  var onSend: (() -> Void)?
-  var sendEnabled = true
+  /// 选中一条能设提醒的线时，选中栏左边是提醒胶囊（`LineAlertChip`）。
+  var lineAlert: LineAlertModel?
   @Environment(\.panelTheme) private var theme
   var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 0) {
         if controller.selected != nil {
-          DrawingSelectionBar(controller: controller)
+          DrawingSelectionBar(controller: controller, lineAlert: lineAlert)
         } else {
-          ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-              action(controller.preferences.magnet ? "吸附开" : "吸附关", "arrow.up.and.down.and.arrow.left.and.right", "draw.magnet.quick") { controller.toggleMagnet() }
-              action(controller.preferences.continuous ? "连续开" : "连续关", "repeat", "draw.continuous.quick") { controller.toggleContinuous() }
-              action("管理", "square.stack", "draw.objects.quick") { controller.panel = .objects }
-            }.padding(.horizontal, 8)
-          }
-          .frame(maxWidth: .infinity)
-          .clipped()
-        }
-        divider
-        icon("arrow.uturn.backward", "撤销", "draw.undo", enabled: controller.canUndo) { controller.undo() }
-        icon("arrow.uturn.forward", "重做", "draw.redo", enabled: controller.canRedo) { controller.redo() }
-        if let onSend {
-          icon("paperplane", "发给朋友", "draw.send", enabled: true, action: onSend)
-            .opacity(sendEnabled ? 1 : 0.35)
+          tools
         }
       }
-      // 选中 / 取消选中是很频繁的事：这一换不带动画，免得开关和选中栏互相甩进甩出。
+      // 选中 / 取消选中是很频繁的事：这一换不带动画，免得工具和选中栏互相甩进甩出。
       .animation(nil, value: controller.selected?.id)
       HStack(spacing: 0) {
+        // 「全部工具」钉在下排：画完一条线它自动选中、上排换成选中栏，这时照样一下就能换别的工具。
         Button { controller.openTools() } label: {
           Image(systemName: "pencil.line").frame(width: 44, height: 44).contentShape(Rectangle())
         }
+        .foregroundStyle(controller.picker ? theme.amber : theme.ink2)
         .accessibilityLabel("全部画线工具").accessibilityIdentifier("draw.tools")
-        tools
+        divider
+        icon("arrow.uturn.backward", "撤销", "draw.undo", enabled: controller.canUndo) { controller.undo() }
+        // 重做只在真有东西可重做时出现：常驻一颗灰掉的按钮，大多数时候是在占位。
+        if controller.canRedo {
+          icon("arrow.uturn.forward", "重做", "draw.redo", enabled: true) { controller.redo() }
+        }
+        Spacer(minLength: 0)
+        DrawingMoreButton(controller: controller, style: .inline)
         divider
         Button("完成") { controller.finish() }
           .frame(width: 52, height: 44).contentShape(Rectangle())
@@ -88,6 +84,7 @@ struct DrawingBar: View {
       scrollingTools
     }
     .frame(maxWidth: .infinity)
+    .clipped()
   }
 
   /// 铺满的那套排法：**多出来的宽度摊给 chip 之间的空隙**，chip 自己按内容该多宽多宽。
@@ -111,7 +108,7 @@ struct DrawingBar: View {
       }.padding(.trailing, 4)
     }
     .frame(maxWidth: .infinity)
-    // `.clipped()` 管的是 hit-test（见上面第 1 条，不许删）；渐隐只管看的那一层，
+    // `.clipped()` 管的是 hit-test（见上面，不许删）；渐隐只管看的那一层，
     // 让右缘被裁的那把淡出去、一眼看得出「还能往左划」。
     .clipped()
     .mask(LinearGradient(
@@ -145,57 +142,60 @@ struct DrawingBar: View {
     .opacity(enabled ? 1 : 0.35)
     .accessibilityLabel(label).accessibilityIdentifier(id)
   }
-  private func action(_ title: String, _ icon: String, _ id: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) { Label(title, systemImage: icon).padding(.horizontal, 10).frame(minHeight: 44) }.accessibilityIdentifier(id)
-  }
 }
 
-/// 选中一条线之后才出现的那几个动作：样式 / 锁定 / 复制 / 删除（第二批 11）。
+/// 选中一条线之后的那一排：提醒胶囊 …… 样式、复制、删除。
 ///
-/// 最早它们是**顶掉**画线栏上排那三个开关的，位置一一对应：「管理」原地变成「样式」，
-/// 而「删除」正好落在手指刚刚点过的那一格上。选中通常是误触的结果，紧接着下一下就把
-/// 线删了。所以这几个动作现在的排法是：线名在最左（提示而已，窄了就省略号收掉），
-/// 「删除」推到最右端、和另外三个之间隔一条分隔线、警示色（`theme.danger`），离误触点最远。
+/// 2026-09-23 起只摆三颗。锁定不在这排：样式表里已经有「锁定位置」那一行，一个动作只留
+/// 一个入口；锁着的线在胶囊后面挂一把小锁，拖不动时看得出为什么。这排原来还有一颗
+/// 「⋯ 更多」装锁定和复制，和下排那颗「⋯ 更多」上下叠着同名，分不清点哪颗——撤了，
+/// 复制直接摆出来。左边原来是一个灰字线名（提示而已），现在是这条线的
+/// 提醒胶囊（`LineAlertChip`）——不能设提醒的线（文字、测量……）仍然只写线名。
 ///
-/// **警示色不是跌色。** 这儿原来写的是 `theme.down`，想的是「跌 = 红 = 危险」——可看盘
+/// **警示色不是跌色。** 删除原来写的是 `theme.down`，想的是「跌 = 红 = 危险」——可看盘
 /// 出厂就是红涨绿跌，跌色是**绿的**，于是这个「删除」在真机上是个绿按钮，读起来像
 /// 「确认 / 通过」。涨跌色是行情的读数，不是语义色；警示走 `theme.danger`（见 `PaletteSeed.danger`）。
 ///
-/// **2026-09-21 它不再浮在图上。** 中间那一版把它做成压在画线栏上面的一条浮条，
-/// 理由是「多一行少一行会把整张图一跳一跳地改高」——可竖屏它正好盖掉半行 MACD 图例，
-/// 和「K 线画布上不浮任何控件」（`kanpan-no-floating-controls-over-chart`）直接冲突。
-/// 现在两个都要：
+/// **它不浮在图上**（`kanpan-no-floating-controls-over-chart`）：
 ///
-/// - **竖屏（`inline`）**：它占掉画线栏上排左边那一段，也就是三个开关原来的位置，
-///   撤销/重做仍在右端原地。栏的行数与总高度一个 pt 不变，图表不会跳，它也不碰画布。
+/// - **竖屏（`inline`）**：它顶替画线栏上排的工具，栏的行数与总高度一个 pt 不变。
 ///   自己不铺底——底是画线栏的（`theme.raised`）。
 /// - **横屏（`landscape`）**：排在图外、标题下面那一行（见 `MainScreen.landscapeBody`），
 ///   贴一条横栏加底下一根发丝线，没有圆角阴影和左右留白。
 ///
-/// 标识符两边一模一样（`draw.selection` / `draw.style` / `draw.lock` / `draw.copy` /
-/// `draw.delete`）——横竖屏永远只有一根在场。
+/// 标识符两边一模一样（`draw.selection` / `draw.style` / `draw.delete` /
+/// `draw.copy`）——横竖屏永远只有一根在场。
 struct DrawingSelectionBar: View {
   /// 它排在哪儿。两套只差外壳：里头那几个动作、顺序和标识符完全一样。
   enum Placement { case inline, landscape }
   @ObservedObject var controller: DrawingController
   var placement: Placement = .inline
+  var lineAlert: LineAlertModel?
   @Environment(\.panelTheme) private var theme
   private var landscape: Bool { placement == .landscape }
   var body: some View {
     if let item = controller.selected {
       HStack(spacing: 2) {
-        Text(item.kind.title + (item.locked ? " · 已锁定" : ""))
-          .font(.system(size: 12)).foregroundStyle(theme.ink3)
-          .padding(.leading, landscape ? 12 : 8).lineLimit(1).truncationMode(.tail)
-          // 「两端延伸」「向右延伸」四个字，竖屏窄机上刚好差一点：先缩一点字，还不够才截。
-          .minimumScaleFactor(0.75)
-          // 名字是提示不是功能：宽度不够先收它，四个动作一个都不许挤掉。
-          .layoutPriority(-1)
+        if let lineAlert, AlertGeometry.supports(item.kind) {
+          LineAlertChip(model: lineAlert, drawing: item, symbol: controller.currentSymbol)
+            .padding(.leading, 8)
+            // 胶囊可以缩字，三颗动作一个都不许挤掉。
+            .layoutPriority(-1)
+          if item.locked {
+            Image(systemName: "lock.fill").font(.system(size: 11)).foregroundStyle(theme.ink3)
+              .padding(.leading, 4).accessibilityLabel("已锁定")
+          }
+        } else {
+          Text(item.kind.title + (item.locked ? " · 已锁定" : ""))
+            .font(.system(size: 12)).foregroundStyle(theme.ink3)
+            .padding(.leading, landscape ? 12 : 10).lineLimit(1).truncationMode(.tail)
+            // 「两端延伸」「向右延伸」四个字，竖屏窄机上刚好差一点：先缩一点字，还不够才截。
+            .minimumScaleFactor(0.75)
+            .layoutPriority(-1)
+        }
         Spacer(minLength: 4)
         act("样式", "slider.horizontal.3", "draw.style") { controller.panel = .style }
-        act(item.locked ? "解锁" : "锁定", item.locked ? "lock.open" : "lock", "draw.lock") { controller.toggleLock() }
         act("复制", "plus.square.on.square", "draw.copy") { controller.duplicate() }
-        theme.line.frame(width: 0.5, height: 26).padding(.horizontal, 4)
         act("删除", "trash", "draw.delete", tint: theme.danger) { controller.deleteSelected() }
           .padding(.trailing, landscape ? 8 : 2)
       }
@@ -205,8 +205,8 @@ struct DrawingSelectionBar: View {
       .overlay(alignment: .bottom) { if landscape { theme.line.frame(height: 0.5) } }
       .buttonStyle(.plain)
       // `children: .contain` 必须写在标识之前：直接给这根 `HStack` 挂标识，
-      // SwiftUI 会把它**盖到每个子按钮头上**——四个按钮全叫 `draw.selection`，
-      // 「样式」「锁定」「删除」在辅助功能树里就变成了一个名字，点不中也读不清。
+      // SwiftUI 会把它**盖到每个子按钮头上**——几个按钮全叫 `draw.selection`，
+      // 在辅助功能树里就变成了一个名字，点不中也读不清。
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("draw.selection")
     }
@@ -224,6 +224,120 @@ struct DrawingSelectionBar: View {
       .frame(width: 48, height: 44).contentShape(Rectangle())
     }
     .accessibilityLabel(title).accessibilityIdentifier(id)
+  }
+}
+
+/// 画线页的「⋯ 更多」：一天点不了几次的东西都在这儿，按「管什么」分两组。
+///
+/// - **画的时候**：吸附到 K 线、连续画同一种线——两个开关，改的是下一笔怎么画。
+/// - **这个品种的所有画线**：全部隐藏（开关）、画线列表（进那张表挑线、单条隐藏、左划删）、
+///   清空全部画线（警示色，二次确认；清空后仍可撤销）。
+///
+/// 从按钮上方弹出一块小浮层，不是整张半屏表：这几样点完就回到图上，没有必要把图盖掉。
+/// 开关写成完整的一句话（「吸附到 K 线」而不是「吸附开」），不用先学这个词是什么意思。
+struct DrawingMoreButton: View {
+  enum Style { case inline, dock }
+  @ObservedObject var controller: DrawingController
+  var style: Style
+  var height: Double = 44
+  @Environment(\.panelTheme) private var theme
+  @State private var open = false
+
+  var body: some View {
+    Button { open = true } label: {
+      Group {
+        switch style {
+        case .inline:
+          HStack(spacing: 4) {
+            Image(systemName: "ellipsis.circle").font(.system(size: 15))
+            Text("更多")
+          }
+          .padding(.horizontal, 10)
+        case .dock:
+          VStack(spacing: 1) {
+            Image(systemName: "ellipsis.circle").font(.system(size: 15))
+            Text("更多").lineLimit(1)
+          }
+          .frame(width: 48)
+        }
+      }
+      .frame(height: height).contentShape(Rectangle())
+      .foregroundStyle(open ? theme.amber : theme.ink2)
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("更多画线设置")
+    .accessibilityIdentifier("draw.more")
+    .popover(isPresented: $open, arrowEdge: .bottom) {
+      DrawingMoreMenu(controller: controller, onList: showList, onDone: { open = false })
+        .environment(\.panelTheme, theme)
+        .presentationCompactAdaptation(.popover)
+        .presentationBackground(theme.raised)
+    }
+  }
+
+  /// 浮层收起之后再推画线列表那张表：两层同时在场，系统会把后一张吞掉。
+  private func showList() {
+    open = false
+    Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(350))
+      controller.panel = .objects
+    }
+  }
+}
+
+private struct DrawingMoreMenu: View {
+  @ObservedObject var controller: DrawingController
+  var onList: () -> Void
+  var onDone: () -> Void
+  @Environment(\.panelTheme) private var theme
+  @State private var confirmClear = false
+
+  var body: some View {
+    let empty = controller.items.isEmpty
+    let allHidden = !empty && controller.items.allSatisfy(\.hidden)
+    VStack(spacing: 0) {
+      PanelGroupTitle(text: "画的时候")
+      PanelRow(name: "吸附到 K 线") {
+        PanelSwitch(isOn: controller.preferences.magnet) { controller.toggleMagnet() }
+          .accessibilityIdentifier("draw.magnet.quick")
+      }
+      PanelRow(name: "连续画同一种线", divider: false) {
+        PanelSwitch(isOn: controller.preferences.continuous) { controller.toggleContinuous() }
+          .accessibilityIdentifier("draw.continuous.quick")
+      }
+
+      PanelGroupTitle(text: "这个品种的所有画线")
+      PanelRow(name: "全部隐藏") {
+        PanelSwitch(isOn: allHidden) { controller.hideAll() }
+          .disabled(empty).opacity(empty ? 0.4 : 1)
+          .accessibilityIdentifier("draw.hideAll")
+      }
+      PanelRow(name: "画线列表", onTap: onList) {
+        HStack(spacing: 6) {
+          Text("\(controller.items.count) 条").monospacedDigit().font(PanelFont.meta).foregroundStyle(theme.ink3)
+          VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(theme.ink3)
+        }
+      }
+      .accessibilityIdentifier("draw.objects.quick")
+      Button { confirmClear = true } label: {
+        Text("清空全部画线")
+          .font(PanelFont.name)
+          .foregroundStyle(theme.danger)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, PanelMetrics.hPad)
+          .padding(.vertical, PanelMetrics.vPad)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .disabled(empty).opacity(empty ? 0.4 : 1)
+      .accessibilityIdentifier("draw.clear")
+    }
+    .padding(.bottom, 4)
+    .frame(width: 290)
+    .fixedSize(horizontal: false, vertical: true)
+    .confirmationDialog("清空这个品种的全部画线？", isPresented: $confirmClear, titleVisibility: .visible) {
+      Button("清空画线", role: .destructive) { controller.clear(); onDone() }
+    } message: { Text("清空后可以撤销。") }
   }
 }
 
@@ -253,15 +367,12 @@ struct DrawingHintStrip: View {
 /// 十四五个，横屏可用高度只有 390pt 上下，竖着摆必然要滚动——而横屏的**宽**有 850pt，
 /// 横着摆绰绰有余。手也顺：横握手机时两个拇指都停在下沿，右栏顶上那几格恰恰是最难够的。
 ///
-/// 条上留下的都是**画的过程中要反复点**的东西，它们不该藏进面板里：收藏的工具一格一个、
-/// 形状即按钮（`DrawKindGlyph`），吸附 / 连续两个开关，以及撤销 / 重做 / 隐藏 / 管理 / 完成。
-///
-/// 「清空」没上条。AICoin 把它和「隐藏」并排放，但那是一下就把整个品种的线全删掉的动作，
-/// 紧挨着一个每天要点很多次的「隐藏」太险——它留在「管理」里，那儿有确认。
+/// 条上留下的都是**画的过程中要反复点**的东西：收藏的工具一格一个、形状即按钮
+/// （`DrawKindGlyph`），撤销、（能重做时才出现的）重做、完成。2026-09-23 起吸附 / 连续 /
+/// 全部隐藏 / 画线列表 / 清空都收进了「⋯ 更多」（`DrawingMoreButton`），纸飞机撤了
+/// （分享统一走「图表设置 › 分享」）——和竖屏那根栏同一套分法，见 `DrawingBar`。
 struct DrawingDock: View {
   @ObservedObject var controller: DrawingController
-  var onSend: (() -> Void)?
-  var sendEnabled = true
   @Environment(\.panelTheme) private var theme
   @Environment(\.displayScale) private var displayScale
   private static let height: Double = 46
@@ -280,20 +391,11 @@ struct DrawingDock: View {
       .frame(maxWidth: .infinity)
       .clipped()
       divider
-      toggleButton("吸附", "arrow.up.and.down.and.arrow.left.and.right", "draw.magnet.quick",
-                   on: controller.preferences.magnet) { controller.toggleMagnet() }
-      toggleButton("连续", "repeat", "draw.continuous.quick",
-                   on: controller.preferences.continuous) { controller.toggleContinuous() }
-      divider
       iconButton("arrow.uturn.backward", "撤销", "draw.undo", enabled: controller.canUndo) { controller.undo() }
-      iconButton("arrow.uturn.forward", "重做", "draw.redo", enabled: controller.canRedo) { controller.redo() }
-      let allHidden = !controller.items.isEmpty && controller.items.allSatisfy(\.hidden)
-      iconButton(allHidden ? "eye.slash" : "eye", allHidden ? "全部显示" : "全部隐藏", "draw.hideAll",
-                 enabled: !controller.items.isEmpty) { controller.hideAll() }
-      iconButton("square.stack", "管理画线", "draw.objects.quick") { controller.panel = .objects }
-      if let onSend {
-        iconButton("paperplane", "发给朋友", "draw.send", action: onSend).opacity(sendEnabled ? 1 : 0.35)
+      if controller.canRedo {
+        iconButton("arrow.uturn.forward", "重做", "draw.redo") { controller.redo() }
       }
+      DrawingMoreButton(controller: controller, style: .dock, height: Self.height)
       divider
       Button("完成") { controller.finish() }
         .frame(width: 56, height: Self.height).contentShape(Rectangle())
@@ -340,19 +442,6 @@ struct DrawingDock: View {
     .drawRepeatOnLongPress(controller, kind)
   }
 
-  private func toggleButton(_ title: String, _ icon: String, _ id: String, on: Bool,
-                            action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      VStack(spacing: 1) {
-        Image(systemName: icon).font(.system(size: 13))
-        Text(title).lineLimit(1)
-      }.frame(width: 44, height: Self.height).contentShape(Rectangle())
-    }
-    .foregroundStyle(on ? theme.amber : theme.ink3)
-    .accessibilityLabel(title + (on ? "开" : "关"))
-    .accessibilityIdentifier(id)
-  }
-
   private func iconButton(_ icon: String, _ label: String, _ id: String, enabled: Bool = true,
                           action: @escaping () -> Void) -> some View {
     Button(action: action) {
@@ -373,7 +462,6 @@ struct DrawingSheet: View {
   var decimals: Int = 2
   @Environment(\.dismiss) private var dismiss
   @Environment(\.panelTheme) private var theme
-  @State private var confirmClear = false
   /// 当前左划开着的是哪一行。一张表同一时刻只许开一行（见 `SwipeToDelete`）。
   @State private var openSwipe: String?
   var body: some View {
@@ -440,20 +528,7 @@ struct DrawingSheet: View {
               }
             }
             .listRowBackground(theme.raised)
-          if !controller.items.isEmpty {
-            Section {
-              Button(controller.items.allSatisfy(\.hidden) ? "全部显示" : "全部隐藏") { controller.hideAll() }
-              // 这一行不留 `role: .destructive`：表里的破坏性按钮，role 的作用只有
-              // 「把字染成系统红」，而系统红是这一屏上唯一不跟皮肤走的颜色。改用
-              // `theme.danger`（同 `ReviewBook` 的「作废记录」、`AlertListPage` 的删除）。
-              // 破坏性语义没丢——真正不可逆的那一下在紧接着的确认弹窗里，
-              // 那颗「清空画线」仍是 destructive（系统弹窗自己画，染不了也不该染）。
-              Button("清空当前品种画线") { confirmClear = true }
-                .foregroundStyle(theme.danger)
-                .accessibilityIdentifier("draw.clear")
-            }
-            .listRowBackground(theme.raised)
-          }
+          // 「全部隐藏」和「清空」2026-09-23 搬去了画线页的「⋯ 更多」：这张表只剩清单本身。
         }
         // 这张 `List` 原来一个主题令牌都没接：三套皮肤下它长得一模一样，一张系统灰白
         // 的表压在身后那张跟着皮肤走的页面上，读成两张纸。接法照 `IndicatorPanel`
@@ -466,7 +541,7 @@ struct DrawingSheet: View {
         // 整屏要读成一块连续的材料，所以这儿不留台阶。
         .scrollContentBackground(.hidden)
         .background(theme.app)
-        .navigationTitle("画线管理")
+        .navigationTitle("画线列表")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(theme.app, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
@@ -478,9 +553,6 @@ struct DrawingSheet: View {
               .accessibilityIdentifier("draw.sheet.done")
           }
         }
-        .confirmationDialog("清空当前品种的全部画线？", isPresented: $confirmClear, titleVisibility: .visible) {
-          Button("清空画线", role: .destructive) { controller.clear() }
-        } message: { Text("清空后可在画线栏撤销。") }
       }.tint(theme.amber)
         .presentationDetents([.medium, .large])
         .presentationBackgroundInteraction(.enabled(upThrough: .medium))
@@ -563,7 +635,7 @@ private struct DrawingStyleEditor: View {
       .scrollContentBackground(.hidden)
       .background(theme.app)
       .navigationTitle(item.kind.title).navigationBarTitleDisplayMode(.inline)
-      // 导航栏和表底同取 `app`，中间不留明度台阶（同「画线管理」那张，理由见那儿）。
+      // 导航栏和表底同取 `app`，中间不留明度台阶（同「画线列表」那张，理由见那儿）。
       .toolbarBackground(theme.app, for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)
       .onAppear {

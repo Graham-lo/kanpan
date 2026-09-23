@@ -28,6 +28,8 @@ struct PanelSheet<Content: View>: View {
   var asPage: Bool = false
   /// 标题行右端那一个字按钮（如提醒总表的「新建」）。一页最多一个。
   var action: PanelSheetAction? = nil
+  /// 面板里推进去的下一层（「图表设置 › 指标」）：左上角的「‹」回上一层，不关面板。
+  var onBack: (() -> Void)? = nil
   @ViewBuilder var content: () -> Content
 
   @Environment(\.panelTheme) private var t
@@ -39,7 +41,7 @@ struct PanelSheet<Content: View>: View {
     VStack(spacing: 0) {
       HStack(alignment: .center, spacing: 6) {
         if !asPage {
-          Button { PanelCloser(side: sideDismiss, sheet: dismiss)() } label: {
+          Button { if let onBack { onBack() } else { PanelCloser(side: sideDismiss, sheet: dismiss)() } } label: {
             Image(systemName: "chevron.left")
               .font(.system(size: 17, weight: .semibold))
               // 描边图标的点击区默认只有笔画本身，补一块 32×32 的矩形，画面不动。

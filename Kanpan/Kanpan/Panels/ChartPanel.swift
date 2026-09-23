@@ -21,24 +21,38 @@ import KanpanCore
 /// 一路要点的地方，一天用不到一次的东西不该在那儿占格。放这一页也讲得通：这一页
 /// 管的就是「画在图上的东西」，取景本来就是往图上添东西。
 ///
-/// 2026-09-18 这一页又收进了整段「指标」（`IndicatorSections`），面板名字也从
-/// 「图表」改成了「图表设置」。用户的话是「行情页面的指标放到图表里作为一个子栏目」：
-/// 底栏换成常驻标签栏之后，「图表」是标签栏上那一整页的名字，指标不再单独占一格。
+/// 2026-09-18 这一页又收进了整段「指标」，面板名字也从「图表」改成了「图表设置」。
+/// 用户的话是「行情页面的指标放到图表里作为一个子栏目」：底栏换成常驻标签栏之后，
+/// 「图表」是标签栏上那一整页的名字，指标不再单独占一格。
 /// 同一轮里「画线」那行也走了——它升成了标签栏最左边的一格，直接画当前这张图。
+///
+/// 2026-09-23 又收了两处：
+///
+/// - **指标收成一行。** 十三个开关连同参数块铺在这一页上，开得越多，下面的设置被推得越远。
+///   现在这儿只有一行「指标」，右边写着开着哪几个，点进去是面板里推进去的一层
+///   （`IndicatorPage`），「‹」回到这一页，不关面板。
+/// - **「分享图片」和「发给朋友」并成一行「分享」。** 两者都是「把这张图给别人」，
+///   差别只在对方收到的是一张图还是能在自己图上看的线。点「分享」底下弹一块二选一
+///   （`ShareChooser`）；只有一种能用时（复盘回放里没有「发线」）直接走那一种，不弹。
+///   画线页上那颗纸飞机一并撤了：同一个动作只留一个入口。
 struct ChartPanel: View {
   var store: PrefsStore
   /// 「记一笔」：把当前这张图存进复盘本。复盘回放里没有这回事，调用方传 nil。
   var onRecord: (() -> Void)?
-  /// 「分享图片」：把当前这张图离屏画成一张 PNG 交给系统分享面板
+  /// 分享成图片：把当前这张图离屏画成一张 PNG 交给系统分享面板
   /// （见 `ChartSnapshotRenderer`）。同样地，没有图可分享时调用方传 nil。
   var onShare: (() -> Void)?
+  /// 分享画线：发给账号里的朋友。复盘回放和预览别人的线时传 nil。
   var onSend: (() -> Void)?
-  var sendMeta = "把图上的线发过去"
+  /// 发线此刻为什么发不了（没登录 / 图上没线）；nil 表示能发。
+  var sendBlocked: String? = nil
 
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
   /// 横屏侧栏没有系统 `dismiss`，走主界面递进来的这一条（见 `PanelCloser`）。
   @Environment(\.panelDismiss) private var sideDismiss
+  @State private var showIndicators = false
+  @State private var choosingShare = false
 
   private var prefs: Prefs { store.prefs }
 
@@ -48,6 +62,30 @@ struct ChartPanel: View {
   private var close: PanelCloser { PanelCloser(side: sideDismiss, sheet: dismiss) }
 
   var body: some View {
+    ZStack {
+      if showIndicators {
+        IndicatorPage(store: store, onBack: { showIndicators = false })
+          .transition(.move(edge: .trailing))
+      } else {
+        settings
+          .transition(.move(edge: .leading))
+      }
+    }
+    .animation(.easeOut(duration: 0.22), value: showIndicators)
+    .clipped()
+    .overlay {
+      if choosingShare, let onShare, let onSend {
+        ShareChooser(onImage: { choosingShare = false; close(); onShare() },
+                     onLines: { choosingShare = false; close(); onSend() },
+                     linesBlocked: sendBlocked,
+                     onCancel: { choosingShare = false })
+      }
+    }
+    .animation(.easeOut(duration: 0.18), value: choosingShare)
+    .sensoryFeedback(.selection, trigger: prefs)
+  }
+
+  private var settings: some View {
     PanelSheet(title: "图表设置", subtitle: nil) {
       if onRecord != nil || onShare != nil || onSend != nil {
         PanelGroupTitle(text: "这张图")
@@ -56,21 +94,24 @@ struct ChartPanel: View {
                    divider: onShare != nil || onSend != nil, onTap: { close(); onRecord() })
             .accessibilityIdentifier("chart.record")
         }
-        if let onShare {
-          PanelRow(name: "分享图片", meta: "存成图片发出去",
-                   divider: onSend != nil, onTap: { close(); onShare() })
+        if onShare != nil || onSend != nil {
+          PanelRow(name: "分享", meta: "发图片，或把线发给朋友", divider: false,
+                   onTap: share) { chevron }
             .accessibilityIdentifier("chart.share")
-        }
-        if let onSend {
-          PanelRow(name: "发给朋友", meta: sendMeta, divider: false,
-                   onTap: { close(); onSend() })
-            .accessibilityIdentifier("chart.send")
         }
       }
 
-      // 指标排在设置前面：一天里开关指标的次数远多于改坐标轴和网格，
-      // 半屏出场时第一眼要能看见它。
-      IndicatorSections(store: store)
+      // 指标排在设置前面：一天里开关指标的次数远多于改坐标轴和网格。
+      PanelGroupTitle(text: "指标")
+      PanelRow(name: "指标", divider: false, onTap: { showIndicators = true }) {
+        HStack(spacing: 6) {
+          Text(IndicatorPage.summary(prefs))
+            .font(PanelFont.meta).foregroundStyle(t.ink3)
+            .lineLimit(1).truncationMode(.tail)
+          chevron
+        }
+      }
+      .accessibilityIdentifier("chart.indicators")
 
       PanelGroupTitle(text: "布局与读数")
       PanelRow(name: "K 线数据") {
@@ -132,17 +173,26 @@ struct ChartPanel: View {
       switchRow("盘口", nil, prefs.depth, id: "chart.depth") { $0.depth = $1 }
       switchRow("本根倒计时", nil, prefs.countdown) { $0.countdown = $1 }
         .accessibilityIdentifier("chart.countdown")
-      switchRow("至今涨幅", "选中 K 线至今的涨跌幅", prefs.sinceChange) {
+      // 「显示画线」那一行 2026-09-23 撤了：画线页「更多」里有「全部隐藏」，两颗开关管同一件事。
+      switchRow("至今涨幅", "选中 K 线至今的涨跌幅", prefs.sinceChange, divider: false) {
         $0.sinceChange = $1
       }
       .accessibilityIdentifier("chart.sinceChange")
-      switchRow("显示画线", nil, prefs.showDrawings, divider: false) {
-        $0.showDrawings = $1
-      }
-      .accessibilityIdentifier("chart.showDrawings")
-
     }
     .sensoryFeedback(.selection, trigger: prefs)
+  }
+
+  private var chevron: some View {
+    VectorIcon.chevron(9, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(t.ink3)
+  }
+
+  /// 只有一种分享能用时直接走那一种，两种都在才弹二选一。
+  private func share() {
+    switch (onShare, onSend) {
+    case (let image?, nil): close(); image()
+    case (nil, let send?): close(); send()
+    default: choosingShare = true
+    }
   }
 
   // MARK: - 行

@@ -92,9 +92,10 @@ final class AlertSoundUITests: XCTestCase {
     XCTAssertTrue(horizontal.waitForExistence(timeout: 10))
     horizontal.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     point.tap()
-    let accept = app.buttons["alert.prompt.accept"]
-    XCTAssertTrue(accept.waitForExistence(timeout: 5))
-    accept.tap()
+    // 画完线它自动选中，选中栏左边那颗「跌到 / 涨到 X 叫我」就是加提醒的唯一入口。
+    let chip = app.buttons["alert.line"]
+    XCTAssertTrue(chip.waitForExistence(timeout: 8))
+    chip.tap()
     let allow = springboard.alerts.buttons.matching(NSPredicate(format: "label IN %@", ["允许", "Allow"])).firstMatch
     XCTAssertTrue(allow.waitForExistence(timeout: 10), "新安装后应通过正常加入提醒流程申请通知权限")
     shot("系统通知授权")

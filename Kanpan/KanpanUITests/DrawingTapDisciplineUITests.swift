@@ -66,8 +66,11 @@ import XCTest
   /// 而手上一直举着工具正是那条陈旧分支最容易多落一条的场面。
   func testSingleAnchorTapPlacesExactlyOneLine() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
+    // 「连续画同一种线」2026-09-23 起收在画线栏的「更多」弹层里。
+    XCTAssertTrue(app.openDrawMore(), "画线栏上开不出「更多」")
     let repeatToggle = app.buttons["draw.continuous.quick"]
-    if repeatToggle.waitForExistence(timeout: 8), repeatToggle.label.contains("关") { repeatToggle.tap() }
+    if repeatToggle.value as? String == "关" { repeatToggle.tap() }
+    app.closeDrawMore()
 
     let chip = app.buttons["draw.hline"]
     XCTAssertTrue(chip.waitForExistence(timeout: 8), "画线栏上没有水平线")

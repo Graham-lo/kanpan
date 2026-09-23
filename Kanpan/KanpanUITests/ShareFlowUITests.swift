@@ -90,7 +90,10 @@ import XCTest
     XCTAssertTrue(wait(20) { self.info()["interval"] as? String == "4h" })
     attach("退出还原且尊重手动换档")
     // 图表面板中的另一处落点使用同一张朋友名单。
-    tap("interval.chart"); tap("chart.send")
+    // 2026-09-23 起图片与画线合成一个「分享」，点开再选「画线」。
+    tap("interval.chart"); tap("chart.share")
+    XCTAssertTrue(app.otherElements["share.chooser"].waitForExistence(timeout: 10), "「分享」没弹出选图片还是画线")
+    tap("share.lines")
     XCTAssertTrue(app.otherElements["share.picker"].waitForExistence(timeout: 10))
     XCTAssertFalse(app.keyboards.firstMatch.exists)
     tap("share.friend." + people[0]["username"]!)
@@ -126,26 +129,25 @@ import XCTest
     }
     XCTAssertTrue(found, "留下后提醒没有同步到服务端")
     assertLayout(); attach("留下并加入提醒")
-    // 横屏贴左卡与竖屏半屏都要能从画线台直接到达。
+    // 画线台上不再有纸飞机（分享只留图表设置里那一个入口）：横竖屏各看一眼。
     tap("bottom.draw")
     XCTAssertTrue(app.buttons["land.exit"].waitForExistence(timeout: 15))
-    tap("draw.send")
-    XCTAssertTrue(app.otherElements["share.picker"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.otherElements["share.picker"].frame.width < app.windows.firstMatch.frame.width * 0.6)
-    attach("横屏画线台贴左朋友名单")
-    tap("panel.done")
-    XCTAssertTrue(app.buttons["draw.finish"].exists)
+    XCTAssertFalse(app.buttons["draw.send"].exists, "横屏画线台上还挂着纸飞机")
     tap("land.exit")
     XCTAssertTrue(app.buttons["draw.finish"].waitForExistence(timeout: 15))
-    tap("draw.send")
+    XCTAssertFalse(app.buttons["draw.send"].exists, "竖屏画线栏上还挂着纸飞机")
+    tap("draw.finish")
+    // 留下来的线是自己的了，从「图表 › 分享 › 画线」回发给朋友。
+    tap("interval.chart"); tap("chart.share")
+    XCTAssertTrue(app.otherElements["share.chooser"].waitForExistence(timeout: 10))
+    tap("share.lines")
     XCTAssertTrue(app.otherElements["share.picker"].waitForExistence(timeout: 10))
     XCTAssertFalse(app.keyboards.firstMatch.exists, "朋友面板不该自动弹键盘")
     tap("share.friend." + people[0]["username"]!)
     XCTAssertTrue(wait(30) { !self.app.otherElements["share.picker"].exists })
-    XCTAssertTrue(app.buttons["draw.finish"].exists, "发送退出了画线态")
     let received = try await request("v1/shares/inbox", person: 0)
     XCTAssertFalse((received["items"] as? [Any] ?? []).isEmpty, "朋友没有收到回发")
-    attach("画线台发给朋友后继续画线")
+    attach("留下的线从分享回发给朋友")
   }
 
   /// P3.5「回给他」：B 在 A 发来的那封上点「回给 A」→ 他的线留在图上 → 发送 →
