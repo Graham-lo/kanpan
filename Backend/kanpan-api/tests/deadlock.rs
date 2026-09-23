@@ -189,7 +189,7 @@ async fn push_and_record_fired_race_fifty_rounds_without_deadlock() {
    };
    let evaluator={
     let (gate,worker)=(gate.clone(),worker.clone());
-    tokio::spawn(async move {gate.wait().await;kanpan_api::alerts::record_fired(&worker,owner,id,64_000.0+round as f64,armed+10_000+round as i64).await})
+    tokio::spawn(async move {gate.wait().await;kanpan_api::alerts::record_fired(&worker,owner,id,Some(64_000.0+round as f64),armed+10_000+round as i64).await})
    };
    let (status,v)=api.await.unwrap();
    assert_eq!(status,200,"第 {round} 轮 push 失败（死锁或锁等待超时都会变成 503）：{v}");

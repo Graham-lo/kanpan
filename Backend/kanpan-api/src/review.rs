@@ -24,6 +24,13 @@ pub fn routes()->Router<AppState> {
  .route("/v1/native-review/records/{id}/shot",post(shot_put).get(shot_get)
   .layer(DefaultBodyLimit::max(3*1024*1024)))
  .route("/v1/native-review/statistics",get(stats))
+ // 修订记录（P3.7）：这一条记录从记下到现在的每一版规则 / 判定 / 复盘，只读。
+ .route("/v1/native-review/records/{id}/revisions",get(revisions))
+ // 补图（P3.7）：人事后从相册里挑的图，一条记录最多三张。上传那一条单独放宽体积：
+ // 单张解码后 ≤ 5 MiB，base64 膨胀 4/3 再加 JSON 外壳，7 MiB 正好兜住。
+ .route("/v1/native-review/records/{id}/attachments",get(attachments))
+ .route("/v1/native-review/attachments",post(attachment_put).layer(DefaultBodyLimit::max(ATTACHMENT_BODY_LIMIT)))
+ .route("/v1/native-review/attachments/{id}",get(attachment_get).delete(attachment_delete))
 }
 pub fn parse<T:serde::de::DeserializeOwned>(value:Value)->Result<T> {Ok(serde_json::from_value(value)?)}
 /// 领域层的校验码就是服务端的真话：原样透出来，客户端才知道是区间不对、规则不对
@@ -96,13 +103,13 @@ async fn create(State(s):State<AppState>,i:Identity,headers:HeaderMap,Payload(in
  let response=json!({"record":visible});finish(&mut tx,i.user,key,&request,&response).await?;tx.commit().await?;Ok(envelope(response))
 }
 #[derive(Serialize,Deserialize)] struct Cursor {submitted:i64,id:Uuid}
-#[derive(Deserialize,Default)] #[serde(deny_unknown_fields)] struct Filter {after:Option<String>,symbol:Option<String>,state:Option<String>,q:Option<String>,todo:Option<bool>}
+#[derive(Deserialize,Default)] #[serde(deny_unknown_fields)] struct Filter {after:Option<String>,symbol:Option<String>,state:Option<String>,q:Option<String>,todo:Option<bool>,decided:Option<bool>}
 async fn list(State(s):State<AppState>,i:Identity,Params(f):Params<Filter>)->Result<Json<Value>> {
  let cursor=if let Some(v)=f.after {if v.len()>200{return Err(ApiError::bad("invalid_cursor"))}Some(serde_json::from_slice::<Cursor>(&URL_SAFE_NO_PAD.decode(v).map_err(|_|ApiError::bad("invalid_cursor"))?)?)}else{None};
  if f.q.as_ref().is_some_and(|q|q.len()>200)||f.symbol.as_ref().is_some_and(|s|s.len()>40)||f.state.as_ref().is_some_and(|s|!matches!(s.as_str(),"waiting"|"needs_verification"|"realized"|"unrealized"|"observation"|"voided")){return Err(ApiError::bad("invalid_filter"))}
  let mut tx=s.personal(i.user).await?;
- let rows=sqlx::query("SELECT record,submitted,id,group_pending FROM review_records WHERE user_id=$1 AND ($2::bigint IS NULL OR (submitted,id)<($2,$3)) AND ($4::text IS NULL OR symbol=$4) AND ($5::text IS NULL OR CASE WHEN record->>'voided'='true' THEN 'voided' ELSE COALESCE(record#>>'{assessment,outcome}',CASE WHEN record#>>'{draft,rule,direction}'='observe' THEN 'observation' ELSE 'waiting' END) END=$5) AND ($6::text IS NULL OR strpos(lower(record#>>'{draft,text}'),lower($6))>0 OR strpos(lower(symbol),lower($6))>0) AND (NOT $7 OR (record->>'voided'='false' AND (record#>>'{draft,rule,direction}'<>'observe') AND (record#>>'{reflection,publishedAt}' IS NULL OR record#>>'{assessment,outcome}' IN ('waiting','needs_verification') OR group_pending))) ORDER BY submitted DESC,id DESC LIMIT 51")
- .bind(i.user).bind(cursor.as_ref().map(|c|c.submitted)).bind(cursor.as_ref().map(|c|c.id)).bind(f.symbol).bind(f.state).bind(f.q).bind(f.todo.unwrap_or(false)).fetch_all(&mut *tx).await?;
+ let rows=sqlx::query("SELECT record,submitted,id,group_pending FROM review_records WHERE user_id=$1 AND ($2::bigint IS NULL OR (submitted,id)<($2,$3)) AND ($4::text IS NULL OR symbol=$4) AND ($5::text IS NULL OR CASE WHEN record->>'voided'='true' THEN 'voided' ELSE COALESCE(record#>>'{assessment,outcome}',CASE WHEN record#>>'{draft,rule,direction}'='observe' THEN 'observation' ELSE 'waiting' END) END=$5) AND ($6::text IS NULL OR strpos(lower(record#>>'{draft,text}'),lower($6))>0 OR strpos(lower(symbol),lower($6))>0) AND (NOT $7 OR (record->>'voided'='false' AND (record#>>'{draft,rule,direction}'<>'observe') AND (record#>>'{reflection,publishedAt}' IS NULL OR record#>>'{assessment,outcome}' IN ('waiting','needs_verification') OR group_pending))) AND (NOT $8 OR (record->>'voided'='false' AND record#>>'{reflection,publishedAt}' IS NOT NULL AND NOT group_pending AND COALESCE(record#>>'{assessment,outcome}','') NOT IN ('waiting','needs_verification'))) ORDER BY submitted DESC,id DESC LIMIT 51")
+ .bind(i.user).bind(cursor.as_ref().map(|c|c.submitted)).bind(cursor.as_ref().map(|c|c.id)).bind(f.symbol).bind(f.state).bind(f.q).bind(f.todo.unwrap_or(false)).bind(f.decided.unwrap_or(false)).fetch_all(&mut *tx).await?;
  let mut next=None;let mut records=vec![];
  for row in rows.iter().take(50) {let mut record:Value=row.get("record");record["groupPending"]=json!(row.get::<bool,_>("group_pending"));records.push(record);}
  if rows.len()>50 {let r=&rows[49];next=Some(URL_SAFE_NO_PAD.encode(serde_json::to_vec(&Cursor{submitted:r.get("submitted"),id:r.get("id")})?));}
@@ -188,6 +195,69 @@ async fn shot_get(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>)->Re
  let row=sqlx::query("SELECT mime,bytes FROM review_shots WHERE user_id=$1 AND record_id=$2").bind(i.user).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
  let bytes:Vec<u8>=row.get("bytes");let mime:String=row.get("mime");
  tx.commit().await?;Ok(envelope(json!({"image":STANDARD.encode(bytes),"mime":mime})))
+}
+/// 一条记录的全部修订（P3.7）：`review_events` 按时间排好原样给出。
+///
+/// 记录里内联的 `reflectionHistory` 只留最近五版（给列表省流量），权威历史一直是
+/// 事件表——每一次记下、判定、复盘、作废、分组都各写了一条。这里只读，没有
+/// 「恢复到这一版」：旧版本只能看，不能覆盖回当前记录。
+///
+/// 先确认这条记录是这个人的（查不到就 404，和详情同一个口径），再按 user_id 取事件；
+/// 两道都在 `personal` 事务里，RLS 兜底。
+async fn revisions(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>)->Result<Json<Value>> {
+ let mut tx=s.personal(i.user).await?;
+ if sqlx::query_scalar::<_,Uuid>("SELECT id FROM review_records WHERE user_id=$1 AND id=$2").bind(i.user).bind(id).fetch_optional(&mut *tx).await?.is_none() {return Err(ApiError::missing())}
+ let rows=sqlx::query("SELECT kind,body,(extract(epoch from created_at)*1000)::bigint AS at FROM review_events WHERE user_id=$1 AND record_id=$2 ORDER BY created_at,id").bind(i.user).bind(id).fetch_all(&mut *tx).await?;
+ let items:Vec<Value>=rows.iter().map(|r|json!({"kind":r.get::<String,_>("kind"),"at":r.get::<i64,_>("at"),"body":r.get::<Value,_>("body")})).collect();
+ tx.commit().await?;Ok(envelope(json!({"revisions":items})))
+}
+/// 补图（P3.7）。
+///
+/// 和「记一笔」那张自动截图（`shot_put`）一样只认 PNG / JPEG 魔数，一样不碰
+/// `record.revision`：图是记录的附属物，不是对记录内容的一次修改。
+///
+/// 幂等靠客户端给的 `id`：同一个 id 再传一次，库里已经有了就原样回 `ok`，
+/// 不算第四张——网络抖一下重发，不能把人的额度吃掉。
+pub const ATTACHMENT_MAX_BYTES:usize=5*1024*1024;
+pub const ATTACHMENTS_PER_RECORD:i64=3;
+const ATTACHMENT_BODY_LIMIT:usize=7*1024*1024;
+#[derive(Deserialize)] #[serde(rename_all="camelCase",deny_unknown_fields)] struct AttachmentInput {id:Uuid,record_id:Uuid,image:String}
+async fn attachment_put(State(s):State<AppState>,i:Identity,Payload(input):Payload<AttachmentInput>)->Result<Json<Value>> {
+ let bytes=STANDARD.decode(input.image.as_bytes()).map_err(|_|ApiError::bad("invalid_attachment"))?;
+ if bytes.is_empty() {return Err(ApiError::bad("invalid_attachment"))}
+ if bytes.len()>ATTACHMENT_MAX_BYTES {return Err(ApiError::bad("attachment_too_large"))}
+ let mime=shot_mime(&bytes).ok_or_else(||ApiError::bad("invalid_attachment"))?;
+ let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
+ if sqlx::query_scalar::<_,Uuid>("SELECT id FROM review_records WHERE user_id=$1 AND id=$2").bind(i.user).bind(input.record_id).fetch_optional(&mut *tx).await?.is_none() {return Err(ApiError::missing())}
+ if let Some(owner)=sqlx::query_scalar::<_,Uuid>("SELECT record_id FROM review_attachments WHERE user_id=$1 AND id=$2").bind(i.user).bind(input.id).fetch_optional(&mut *tx).await? {
+  // 同一个 id 挂在另一条记录上：这不是重发，是客户端把 id 用串了。
+  if owner!=input.record_id {return Err(ApiError::conflict("attachment_identity_conflict"))}
+  tx.commit().await?;return Ok(envelope(json!({"ok":true,"id":input.id})))
+ }
+ let count:i64=sqlx::query_scalar("SELECT count(*) FROM review_attachments WHERE user_id=$1 AND record_id=$2").bind(i.user).bind(input.record_id).fetch_one(&mut *tx).await?;
+ if count>=ATTACHMENTS_PER_RECORD {return Err(ApiError::conflict("attachment_limit"))}
+ sqlx::query("INSERT INTO review_attachments(user_id,id,record_id,mime,bytes) VALUES($1,$2,$3,$4,$5)").bind(i.user).bind(input.id).bind(input.record_id).bind(mime).bind(&bytes).execute(&mut *tx).await?;
+ tx.commit().await?;Ok(envelope(json!({"ok":true,"id":input.id})))
+}
+/// 这一条记录挂了哪几张补图：只给元数据，图本身按 id 一张一张取。
+async fn attachments(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>)->Result<Json<Value>> {
+ let mut tx=s.personal(i.user).await?;
+ if sqlx::query_scalar::<_,Uuid>("SELECT id FROM review_records WHERE user_id=$1 AND id=$2").bind(i.user).bind(id).fetch_optional(&mut *tx).await?.is_none() {return Err(ApiError::missing())}
+ let rows=sqlx::query("SELECT id,mime,octet_length(bytes) AS size,(extract(epoch from created_at)*1000)::bigint AS at FROM review_attachments WHERE user_id=$1 AND record_id=$2 ORDER BY created_at,id").bind(i.user).bind(id).fetch_all(&mut *tx).await?;
+ let items:Vec<Value>=rows.iter().map(|r|json!({"id":r.get::<Uuid,_>("id"),"recordId":id,"mime":r.get::<String,_>("mime"),"size":r.get::<i32,_>("size"),"createdAt":r.get::<i64,_>("at")})).collect();
+ tx.commit().await?;Ok(envelope(json!({"items":items})))
+}
+async fn attachment_get(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>)->Result<Json<Value>> {
+ let mut tx=s.personal(i.user).await?;
+ let row=sqlx::query("SELECT mime,bytes FROM review_attachments WHERE user_id=$1 AND id=$2").bind(i.user).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::missing)?;
+ let bytes:Vec<u8>=row.get("bytes");let mime:String=row.get("mime");
+ tx.commit().await?;Ok(envelope(json!({"image":STANDARD.encode(bytes),"mime":mime})))
+}
+/// 删一张补图。已经没了也回 `ok`：删除是幂等的，重发不该变成一个错误。
+async fn attachment_delete(State(s):State<AppState>,i:Identity,Route(id):Route<Uuid>)->Result<Json<Value>> {
+ let mut tx=s.personal(i.user).await?;
+ let gone=sqlx::query("DELETE FROM review_attachments WHERE user_id=$1 AND id=$2").bind(i.user).bind(id).execute(&mut *tx).await?.rows_affected();
+ tx.commit().await?;Ok(envelope(json!({"ok":true,"deleted":gone>0})))
 }
 pub fn signature(d:&NativeDraft)->String {
  // Never combine different target/stop/horizon or price confirmation policies into one win rate.

@@ -201,24 +201,15 @@ async fn review_trade_order() {
  w.close().await;
 }
 
-/// OKX 的逐笔成交本建没有接：说清楚是待核实，并且**就此收手**——
-/// 不许留一条每几秒重来一次、永远答不了、却被当成「还在跑」的任务。
+/// 多交易所阶段 1 之后复盘只收币安合约与 Coinbase 现货（`validate_range`）。OKX 的记录
+/// 在门口就挡掉——不许先收下、再留一条永远答不了的裁定任务。
 #[tokio::test]
 async fn review_okx_touch_policy() {
  let w=boot().await;let a=signup(&w.app,"okx").await;
- let id=place(&w,&a,&Spec{interval:"1m",venue:"okx",confirmation:"trade_touch",..Spec::default()}).await;
- let base=past("1m",30);
- retime(&w,&a,id,base,base,base+3_600_000).await;
- let market=Market::silent();
- let record=assess(&w,&a,id,&market).await;
- assert_eq!(market.calls(),0,"没接的能力不必去问上游");
- assert_eq!(outcome(&record),"needs_verification","{record}");
- assert_eq!(reason(&record),"成交顺序待核实");
- let row=job(&w,&a,id,"assess").await;
- assert!(row.finished,"未支持的能力不许生出一条永不完成的任务");
- assert_eq!(row.attempts,1,"它只该被认领过一次");
- assert!(!row.leased,"租约要还回去");
- assert!(!run(&w,&market).await,"队列里不该还剩下它");
+ let body=draft(&Spec{interval:"1m",venue:"okx",confirmation:"trade_touch",..Spec::default()});
+ let (status,v)=request(&w.app,"/v1/native-review/records","POST",Some(&a.token),Some(uuid::Uuid::new_v4()),body).await;
+ assert_eq!(status,400,"OKX 已不是复盘能记的行情源：{v}");
+ assert_eq!(v["error"]["code"],"invalid_chart_range");
  w.close().await;
 }
 
@@ -248,25 +239,25 @@ async fn review_regional_backoff() {
  w.close().await;
 }
 
-/// OKX 的日线锚点：一天从 UTC 零点开始，不许因为交易所在东八区就把它挪八小时。
-/// 本机没有 8792 这个网关时，取不到数就是取不到数——绝不因此判错。
+/// 日线锚点：一天从 UTC 零点开始，不许因为用户在东八区就把它挪八小时。
+/// 取不到数就是取不到数——绝不因此判错。
 #[tokio::test]
 async fn review_okx_daily_anchor() {
  let w=boot().await;let a=signup(&w.app,"anchor").await;
  let day=86_400_000i64;let midnight=Utc::now().timestamp_millis()/day*day;
  // 规范化之后仍旧是 UTC 日根：挪八小时的区间直接被挡在门外。
- let mut shifted=draft(&Spec{interval:"1d",venue:"okx",..Spec::default()});
+ let mut shifted=draft(&Spec{interval:"1d",..Spec::default()});
  shifted["range"]["start"]=json!(midnight-4*day+8*3_600_000);
  shifted["range"]["end"]=json!(midnight-day+8*3_600_000);
  let (status,v)=request(&w.app,"/v1/native-review/records","POST",Some(&a.token),Some(uuid::Uuid::new_v4()),shifted).await;
  assert_eq!(status,400,"东八区的日界不是这里的日界：{v}");
  assert_eq!(v["error"]["code"],"invalid_chart_range");
  // 冻结区间照样收：它本来就锚在 UTC 零点上。
- let id=place(&w,&a,&Spec{interval:"1d",venue:"okx",reference:100.0,target:1_000_000_000.0,invalidation:0.000_001,..Spec::default()}).await;
+ let id=place(&w,&a,&Spec{interval:"1d",reference:100.0,target:1_000_000_000.0,invalidation:0.000_001,..Spec::default()}).await;
  // 到期留在未来，这样无论网关在不在，都不可能出现「到期没达标」这种终态；
  // 于是断言「绝不判错」在两种环境下都成立。
  retime(&w,&a,id,midnight-3*day,midnight-3*day,Utc::now().timestamp_millis()+day).await;
- let record=assess(&w,&a,id,&Market::silent()).await;
+ let record=assess(&w,&a,id,&Market::refusing(Reply::Down)).await;
  assert!(matches!(outcome(&record).as_str(),"needs_verification"|"waiting"),"取不到数不判错：{record}");
  assert!(event_at(&record).is_none());
  w.close().await;

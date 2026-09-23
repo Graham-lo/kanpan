@@ -146,7 +146,7 @@ async fn real_postgres_alerts_materialize_fire_once_and_register_tokens() {
 
  // 服务端触发：物化表置 fired + 往同步日志写一条 op，同一个事务。
  let at=moved+60_000;
- assert!(kanpan_api::alerts::record_fired(&s,owner,id,64_500.0,at).await.unwrap(),"the server fires it");
+ assert!(kanpan_api::alerts::record_fired(&s,owner,id,Some(64_500.0),at).await.unwrap(),"the server fires it");
  let (status,fired_at,fired_price):(String,Option<i64>,Option<f64>)=sqlx::query_as("SELECT status,fired_at,fired_price FROM alert_watches WHERE user_id=$1 AND alert_id=$2").bind(owner).bind(id).fetch_one(&admin).await.unwrap();
  assert_eq!(status,"fired");assert_eq!(fired_at,Some(at));assert_eq!(fired_price,Some(64_500.0));
  // 客户端下次拉取就该看到 fired——不写同步日志的话，手机上那条提醒会一直显示「活动」。
@@ -163,7 +163,7 @@ async fn real_postgres_alerts_materialize_fire_once_and_register_tokens() {
 
  // **同一条提醒只触发一次。** 第二次什么都不该发生——客户端前台先置 fired 再同步上来时
  // 走的是同一条路（那时库里已经是 fired），服务端不再推。
- assert!(!kanpan_api::alerts::record_fired(&s,owner,id,70_000.0,at+1).await.unwrap(),"a fired alert does not fire again");
+ assert!(!kanpan_api::alerts::record_fired(&s,owner,id,Some(70_000.0),at+1).await.unwrap(),"a fired alert does not fire again");
  let price:Option<f64>=sqlx::query_scalar("SELECT fired_price FROM alert_watches WHERE user_id=$1 AND alert_id=$2").bind(owner).bind(id).fetch_one(&admin).await.unwrap();
  assert_eq!(price,Some(64_500.0),"第二次不许把第一次的记录改掉");
 
