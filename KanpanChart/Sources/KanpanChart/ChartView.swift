@@ -207,7 +207,7 @@ public final class ChartView: UIView {
           "overlays": s.overlays.map(\.rawValue),
           "ma": s.params[.ma] ?? [], "macd": s.params[.macd] ?? [],
           "externalReady": s.external.keys.map(\.rawValue).sorted(),
-          "externalSupported": s.oiSupported, "depthSymbol": s.depth?.symbol ?? "", "depthLevels": (s.depth?.bids.count ?? 0) + (s.depth?.asks.count ?? 0),
+          "externalSupported": s.externalSupported, "oiSupported": s.oiSupported, "depthSymbol": s.depth?.symbol ?? "", "depthLevels": (s.depth?.bids.count ?? 0) + (s.depth?.asks.count ?? 0),
           "renderedDepthRows": renderedDepthRows,
           "oiReady": s.oi != nil, "interval": s.series.interval.rawValue,
           "oiPeriod": s.oi?.bucketInterval?.rawValue ?? "",
@@ -463,7 +463,7 @@ public final class ChartView: UIView {
     a.symbol == b.symbol && a.view == b.view && a.style == b.style && a.dark == b.dark && a.paletteSeed == b.paletteSeed
       && a.redUp == b.redUp && a.price == b.price && a.overlays == b.overlays
       && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
-      && a.drawingPreviewID == b.drawingPreviewID && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi && a.external == b.external && a.oiSupported == b.oiSupported
+      && a.drawingPreviewID == b.drawingPreviewID && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi && a.external == b.external && a.oiSupported == b.oiSupported && a.externalSupported == b.externalSupported
       && a.magnet == b.magnet && a.options == b.options && a.subScale == b.subScale
       && a.compare == b.compare && a.percentAxis == b.percentAxis
       && a.indicatorColors == b.indicatorColors && a.hiddenOutputs == b.hiddenOutputs && a.subInverted == b.subInverted

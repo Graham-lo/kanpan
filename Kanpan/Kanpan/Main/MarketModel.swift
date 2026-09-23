@@ -26,7 +26,18 @@ final class MarketModel {
   private var oiTask: Task<Void, Never>?
   private var oiSource: OISource
   /// 归档缓存；`OISource` 和这里共用一份，聚好的整段也存在它里面。
-  private let oiStore = OIStore(paths: .caches())
+  /// 按上游分区（见 `oiStore(for:)`），所以跟着统计客户端走。
+  private var oiStore: OIStore { oiSource.store }
+  /// 每个上游分区一份持仓量缓存。替身（网关线路上的 OKX）的持仓量和币安的是两份数，
+  /// 存进同一个目录，换线路冷启动时第一帧摆出来的就是另一家的曲线。
+  private static var oiStores: [String: OIStore] = [:]
+  private static func oiStore(for caps: ProviderCapabilities) -> OIStore {
+    let key = caps.snapshotNamespace ?? ""
+    if let hit = oiStores[key] { return hit }
+    let made = OIStore(paths: caps.snapshotNamespace.map { Paths.caches().source($0) } ?? .caches())
+    oiStores[key] = made
+    return made
+  }
   /// 已经到手的点，按时间排好；`oiRegion` 是它们覆盖的区间。两个合起来就是
   /// 「这张图上已经有什么」，平移和刷新都据此只补差的那一段，不整段重下。
   private var oiPoints: [OIPoint] = []
@@ -66,6 +77,9 @@ final class MarketModel {
   @ObservationIgnored private var detailWarm: (key: String, at: Date)?
   private var lastView: ViewWindow?
   private(set) var ticker: Ticker?
+  /// 成交额自己一条时钟（见 `TurnoverCarry`）：网关线路的推送帧不带成交额，整帧替换
+  /// 会把 REST 补来的那份冲掉。换线路清空——不同上游的成交额不能串着用。
+  @ObservationIgnored private var turnoverCarry = TurnoverCarry()
   private(set) var tradeQuote: TradeQuote?
   private(set) var info: SymbolInfo
   /// 这个品种的小数位与成交额单位，一旦定下来这一程就不再变（§2B / 审查 §3.10 #53）。
@@ -157,7 +171,7 @@ final class MarketModel {
     let resolver = RouteResolver(policy: MarketRoutePolicyStore.current, endpoints: endpoints, log: MarketModel.log)
     let provider = resolver.provider(forSymbol: canonical)
     self.capabilities = provider.capabilities
-    self.oiSource = OISource(provider: provider, gateways: endpoints.gateways, store: oiStore)
+    self.oiSource = OISource(provider: provider, gateways: endpoints.gateways, store: Self.oiStore(for: provider.capabilities))
     self.feed = RoutedMarketFeed(endpoints: endpoints, log: MarketModel.log)
     self.catalog = CatalogBox(Self.catalogs(resolver))
     // 换线路时 `RoutedMarketFeed` 自己会切；历史 OI 的客户端是这里建的，也得跟着换，
@@ -192,13 +206,20 @@ final class MarketModel {
 
   /// 历史持仓量 / 衍生统计的客户端：按当前品种所在的那一家、当前线路建。
   private func rebuildOISource() {
-    oiSource = OISource(provider: resolver.provider(forSymbol: symbol), gateways: endpoints.gateways, store: oiStore)
+    let provider = resolver.provider(forSymbol: symbol)
+    oiSource = OISource(provider: provider, gateways: endpoints.gateways, store: Self.oiStore(for: provider.capabilities))
   }
 
   /// 持仓量副图与外部指标问不问：图上这份行情和手里的统计客户端都得有这项能力
   /// （换线路那一拍，行情事件还没到，统计客户端已经先换了）。
   private var metricsAvailable: Bool {
     capabilities.hasDerivativeMetrics && oiSource.capabilities.hasDerivativeMetrics
+  }
+
+  /// 持仓量副图问不问。和衍生统计（多空比、主动买卖、基差）分开：网关线路上的替身
+  /// 有持仓量历史（kanpan-api 代问 OKX），却没有那三样。
+  private var oiAvailable: Bool {
+    capabilities.hasOpenInterestHistory && oiSource.capabilities.hasOpenInterestHistory
   }
 
   /// 每家交易所一份品种表，按注册顺序。各自落在哪棵树由 `SymbolCatalog.partition` 定
@@ -390,6 +411,7 @@ final class MarketModel {
       // 那样会一直空着。留着上一条线路的最后一口价，灰显标明「这是旧的」（§2B #54），
       // 新线路第一帧到了就自己转正。
       capabilities = next; tickerStale = ticker != nil; tradeQuote = nil; markPrice = nil; markTime = 0
+      turnoverCarry.reset()
       funding = nil; fundingExpired = false
       // 持仓量是按交易所报的，换了线路就得按新交易所重取；供应量与交易所无关，留着。
       openInterestValue = nil; openInterestUnit = nil
@@ -428,8 +450,17 @@ final class MarketModel {
       onPrice?(quote.symbol, quote.price, quote.timeMs)
     case .ticker(let t):
       guard InstrumentID.canonical(t.symbol) == InstrumentID.canonical(symbol) else { return }
-      guard tickerStale || LatestQuote.accepts(t, after: ticker) else { return }
-      var next = t; next.markPrice = markPrice
+      let tookTurnover = turnoverCarry.note(t)
+      guard tickerStale || LatestQuote.accepts(t, after: ticker) else {
+        // 整帧比手里的旧（推送先到了），但它带的成交额是新的：只收这一格。
+        if tookTurnover, let current = ticker, current.symbol == t.symbol, current.quoteVolume != t.quoteVolume {
+          var next = current; next.quoteVolume = t.quoteVolume
+          ticker = next
+          if volumeUnit == nil { volumeUnit = volUnit(next.quoteVolume) }
+        }
+        return
+      }
+      var next = turnoverCarry.apply(t); next.markPrice = markPrice
       ticker = next
       tickerStale = false
       if volumeUnit == nil, next.quoteVolume.isFinite { volumeUnit = volUnit(next.quoteVolume) }
@@ -737,6 +768,7 @@ final class MarketModel {
     restoreOI()
     if cold {
       ticker = nil
+      turnoverCarry.reset()
       tickerStale = false
       volumeUnit = nil                      // 单位按品种记，换品种就重新认
       markPrice = nil; markTime = 0
@@ -912,7 +944,7 @@ final class MarketModel {
   func loadOI(view: ViewWindow, refresh: Bool = false) {
     lastView = view
     loadMetrics(view: view, refresh: refresh)
-    guard chartVisible, foreground, metricsAvailable else { return }
+    guard chartVisible, foreground, oiAvailable else { return }
     guard oiEnabled, let series, !series.isEmpty else { return }
     let refresh = refresh || oiStaleTail
     oiStaleTail = false
@@ -1009,9 +1041,9 @@ final class MarketModel {
     oi = OISource.chartSeries(oiPoints, interval: iv)
   }
 
-  /// 换走之前把手里这份记进 `oiMemo`。只记有衍生统计能力的那家：没有的那家不画持仓量副图。
+  /// 换走之前把手里这份记进 `oiMemo`。只记有持仓量历史的那家：没有的那家不画持仓量副图。
   private func rememberOI() {
-    guard metricsAvailable, let region = oiRegion, !oiPoints.isEmpty else { return }
+    guard oiAvailable, let region = oiRegion, !oiPoints.isEmpty else { return }
     storeOIMemo(symbol + "|" + interval.rawValue,
                 OIMemo(points: oiPoints, region: region, at: oiFetchedAt))
   }
@@ -1031,7 +1063,7 @@ final class MarketModel {
 
   /// 换过去那一刻（`resetOI` 之后）：`oiMemo` 里有就同步摆上，没有就立刻开始读盘。
   private func restoreOI() {
-    guard metricsAvailable else { return }
+    guard oiAvailable else { return }
     let sym = symbol, iv = interval
     if let memo = oiMemo[sym + "|" + iv.rawValue] {
       oiPoints = memo.points
@@ -1067,7 +1099,7 @@ final class MarketModel {
   /// 落盘和记账归 `loadOI` / `mergeOI`，这里只是让换过去那一帧有线可画）。
   /// 正在屏上的那一档、一分钟内热过的、正在热的都跳过。
   private func warmOI(_ jobs: [(symbol: String, interval: Interval)]) {
-    guard oiEnabled, foreground, metricsAvailable else { return }
+    guard oiEnabled, foreground, oiAvailable else { return }
     let now = Date()
     var todo: [(symbol: String, interval: Interval)] = []
     let mine = oiSource.capabilities

@@ -111,6 +111,9 @@ final class QuoteBook {
   private var batchRetry = Date.distantPast
   /// 超过这个秒数的值只是「上次看到的」，要重新取。
   private static let freshSeconds: TimeInterval = 20
+  /// 推送帧不带成交额的线路（网关上的 OKX 替身）：成交额多旧就得单独问一次 REST，
+  /// 以及两次之间至少隔多久。成交额是 24h 滚动总数，一分钟一更足够。
+  private static let turnoverRefreshSeconds: TimeInterval = 60
   /// 攒够这么多行要补，就用一次全市场请求换掉逐行往返。
   ///
   /// 门槛原来是 8，那是按「一次请求换几十次往返」估的，但估错了两件事：
@@ -270,7 +273,7 @@ final class QuoteBook {
     guard !restored else { return }
     restored = true
     guard raw.isEmpty else { return }
-    let saved = QuoteSnapshot.read(paths.quotes)
+    let saved = QuoteSnapshot.read(quotePaths.quotes)
     guard !saved.isEmpty else { return }
     for ticker in saved { raw[ticker.symbol] = ticker }
     // 盘上就是这批，别让下面那次 publish 又原样写回去一遍。
@@ -301,7 +304,7 @@ final class QuoteBook {
     let values = Array(raw.values)
     guard !values.isEmpty else { return }
     persistedSymbols = Set(values.map(\.symbol))
-    let url = paths.quotes
+    let url = quotePaths.quotes
     let log = Self.log
     // 写盘排成一条链（P2.3）：分离任务之间不保证先后，上一笔慢了就可能被这一笔抢先，
     // 旧报价落在新报价上面。cancel 只拦还没开写的那一笔；已经在写的写完即止，
@@ -357,6 +360,34 @@ final class QuoteBook {
     guard raw[symbol] != nil, let at = receivedAt[symbol] else { return false }
     return Date().timeIntervalSince(at) < Self.freshSeconds
   }
+  /// 这一行要不要去问 REST：值不新鲜，或者值新鲜但成交额补不上（推送帧不带成交额）。
+  private func wantsQuote(_ symbol: String) -> Bool {
+    if !isFresh(symbol) { return true }
+    guard let state = latestReceived[symbol], state.value != nil,
+          Date().timeIntervalSince(quoteAttempt[symbol] ?? .distantPast) >= Self.turnoverRefreshSeconds else { return false }
+    guard let time = state.turnoverTimeMs else { return true }
+    return Date().timeIntervalSince1970 - Double(time) / 1000 >= Self.turnoverRefreshSeconds
+  }
+
+  /// 某个品种的报价状态。第一次见到时，把手里那份（盘上恢复的、种子）的成交额先记上：
+  /// 替身的推送帧不带成交额，不记的话第一帧推送一到，列表和顶栏的「额」就退成「—」。
+  /// `raw` 只装当前上游的数（换上游整份清掉、按上游分区读回；种子按上游收），不跨源。
+  private func quoteState(_ symbol: String) -> QuoteState {
+    if let state = latestReceived[symbol] { return state }
+    var state = QuoteState()
+    if let old = raw[symbol], old.quoteVolume.isFinite { state.receiveTurnover(old) }
+    return state
+  }
+
+  /// 报价与开盘价这两份缓存按上游分区：替身上游（`snapshotNamespace`）的数和真身的
+  /// 不能串——换了线路冷启动，第一帧摆出来的得是这条线路自己上次的数。
+  /// 真身（直连）照旧放在档案根上，老缓存不作废。
+  private var quotePaths: Paths {
+    let names = Set(VenueRegistry.all.compactMap { provider(for: $0.defaultSymbol).capabilities.snapshotNamespace })
+    guard !names.isEmpty else { return paths }
+    return paths.source(names.sorted().joined(separator: "+"))
+  }
+
 
   /// 某个品种该找谁要行情（按品种键里的交易所）。
   private func provider(for symbol: String) -> any MarketProvider {
@@ -377,7 +408,21 @@ final class QuoteBook {
     let changedHost = endpoints != resolver.endpoints
     let changedSource = Self.upstreams(next) != Self.upstreams(resolver)
     let changedBasis = basis != self.basis
+    if changedSource {
+      // 手里这批是旧上游的：先落进旧上游自己的分区，再换。
+      persistQuotes(); persistBaselines()
+    }
     if changedHost || policy != resolver.policy { resolver = next; providers.removeAll() }
+    if changedSource {
+      // 换了上游，手里的报价就是另一家的数（成交额口径都不一样）。整份清掉、
+      // 从新上游自己的分区读回来——不在连接的时候 `restartStream(clearing:)` 不会走到，
+      // 这儿不清，旧上游的「额」就会一直挂在新线路的列表和顶栏上。
+      raw.removeAll(keepingCapacity: true); receivedAt.removeAll(keepingCapacity: true)
+      latestReceived.removeAll(keepingCapacity: true); everPublished.removeAll(keepingCapacity: true)
+      persistedSymbols.removeAll(); persistedOpens.removeAll(); persistedBoundary = nil
+      session.reset(); onReset?()
+      restored = false
+    }
     if changedHost || changedSource {
       // 换镜像不动开盘价：那是交易所的数据，跟走哪台机器取回来没关系。
       // 以前这儿连着 `opens.removeAll()`，改一下行情源地址、或者
@@ -399,6 +444,7 @@ final class QuoteBook {
     if changedHost || changedSource || changedBasis { resetBaselineRequests() }
     if (changedHost || changedSource), needsConnection { restartStream(clearing: changedSource) }
     restoreQuotes()
+    if changedSource { restoreBaselines() }
     tick()
     publish(Array(raw.values))
     if changedSource { warmSeeds() }
@@ -569,7 +615,7 @@ final class QuoteBook {
     guard accepting else { return }
     var valid: [Ticker] = []
     for ticker in batch where wanted.contains(ticker.symbol) {
-      var state = latestReceived[ticker.symbol] ?? QuoteState()
+      var state = quoteState(ticker.symbol)
       guard state.receive(ticker), let ticker = state.value else { continue }
       latestReceived[ticker.symbol] = state
       session.receive(ticker.symbol)
@@ -583,10 +629,21 @@ final class QuoteBook {
     if visible { loadHistories() }
   }
 
+  /// 只收一帧里的成交额（见 `QuoteState.receiveTurnover`）。价、会话版本、「刚收到」都不动。
+  private func ingestTurnover(_ ticker: Ticker) {
+    guard accepting, ticker.quoteVolume.isFinite, wanted.contains(ticker.symbol),
+          var state = latestReceived[ticker.symbol], state.receiveTurnover(ticker),
+          let value = state.value else { return }
+    latestReceived[ticker.symbol] = state
+    if let old = raw[ticker.symbol], LatestQuote.sameDisplay(value, old) { return }
+    raw[ticker.symbol] = value
+    publish([value])
+  }
+
   func ingestTrade(_ trade: TradeQuote) {
     noteIngest(1)
     guard accepting, wanted.contains(trade.symbol) else { return }
-    var state = latestReceived[trade.symbol] ?? QuoteState()
+    var state = quoteState(trade.symbol)
     guard state.receive(trade), var ticker = state.value else { return }
     latestReceived[trade.symbol] = state
     if ticker.quoteVolume.isFinite {
@@ -868,7 +925,7 @@ final class QuoteBook {
   private func restoreBaselines() {
     retargetProfile()
     guard let boundary else { return }
-    let saved = BaselineSnapshot.read(paths.opens, boundary: boundary)
+    let saved = BaselineSnapshot.read(quotePaths.opens, boundary: boundary)
     guard !saved.isEmpty else { return }
     for (symbol, price) in saved { opens[symbol] = (boundary, price); provisionalOpens.remove(symbol) }
     persistedOpens = Set(saved.keys); persistedBoundary = boundary
@@ -882,7 +939,7 @@ final class QuoteBook {
     guard !rows.isEmpty else { return }
     guard persistedBoundary != boundary || Set(rows.keys) != persistedOpens else { return }
     persistedOpens = Set(rows.keys); persistedBoundary = boundary
-    let url = paths.opens
+    let url = quotePaths.opens
     // 和 `persistQuotes` 同一条理由：链起来，后一笔一定落在前一笔之后；被撤的那一笔不写。
     let previous = baselineTask
     previous?.cancel()
@@ -1130,7 +1187,7 @@ final class QuoteBook {
   /// 不是「有没有值」——从后台或磁盘带回来的旧值也要补一次。
   /// REST 与 WS 并行，不依赖 REST 成功。
   private func requestQuote(_ symbol: String) {
-    guard foreground, (visible || symbol == chartSymbol), online, !isFresh(symbol), quoteJobs[symbol] == nil,
+    guard foreground, (visible || symbol == chartSymbol), online, wantsQuote(symbol), quoteJobs[symbol] == nil,
           !quoteQueue.contains(symbol), quoteQueue.count < 128,
           Date().timeIntervalSince(quoteAttempt[symbol] ?? .distantPast) >= Self.freshSeconds else { return }
     quoteQueue.append(symbol); drainQuotes()
@@ -1185,7 +1242,7 @@ final class QuoteBook {
     if drainBatch() { return }
     while quoteJobs.count < Self.quoteConcurrency, !quoteQueue.isEmpty {
       let symbol = quoteQueue.removeFirst()
-      guard !isFresh(symbol) else { continue }
+      guard wantsQuote(symbol) else { continue }
       quoteAttempt[symbol] = Date()
       let request = session.request(symbol), rest = provider(for: symbol)
       quoteJobs[symbol] = Task { [weak self] in
@@ -1198,7 +1255,11 @@ final class QuoteBook {
         guard let self, !Task.isCancelled, request.generation == self.session.generation else { return }
         self.quoteJobs[symbol] = nil
         if rejected { self.onSymbolRejected?(symbol) }
-        if let ticker, self.session.accepts(request, symbol: symbol) { self.ingest([ticker]) }
+        if let ticker {
+          if self.session.accepts(request, symbol: symbol) { self.ingest([ticker]) }
+          // 推送在这期间到过，整帧作废；但它带的成交额推送帧里没有，照收这一格。
+          else { self.ingestTurnover(ticker) }
+        }
         self.drainQuotes()
         if self.quoteJobs.isEmpty, self.quoteQueue.isEmpty { self.flushCoalesced() }
       }

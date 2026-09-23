@@ -62,6 +62,9 @@ public struct ChartState: Sendable {
   /// 当前行情线路给不给得出持仓量。`OISource` 只认币安；走 OKX 兜底线路时这条数据
   /// 根本不会来，副图要是还挂着「持仓量加载中」，等多久都等不到，用户只会以为卡住了。
   public var oiSupported = true
+  /// 当前行情线路给不给得出多空比、主动买卖、基差这几样衍生统计。和持仓量分开：
+  /// 网关线路上的替身有持仓量历史，这几样没有。
+  public var externalSupported = true
 
   public init(
     series: BarSeries,
@@ -139,7 +142,7 @@ extension ChartState {
       && options == other.options && axisScaleAnchor == other.axisScaleAnchor
       && hiddenOutputs == other.hiddenOutputs && subInverted == other.subInverted
       && rsiUpper == other.rsiUpper && rsiLower == other.rsiLower && subScale == other.subScale
-      && oiSupported == other.oiSupported && compare == other.compare && percentAxis == other.percentAxis
+      && oiSupported == other.oiSupported && externalSupported == other.externalSupported && compare == other.compare && percentAxis == other.percentAxis
   }
 }
 

@@ -43,8 +43,8 @@ extension ChartRenderer {
   private func subExternal(_ ctx: CGContext, _ box: Pane, _ L: Layout,
                            _ lo: Int, _ hi: Int, _ id: IndicatorID, _ scale: Double) {
     let values = displayed(id)?.lines.first ?? []
-    if !state.oiSupported || !(lo...hi).contains(where: { values.indices.contains($0) && values[$0].isFinite }) {
-      let text = !state.oiSupported ? "当前行情线路不提供" + id.name
+    if !state.externalSupported || !(lo...hi).contains(where: { values.indices.contains($0) && values[$0].isFinite }) {
+      let text = !state.externalSupported ? "当前行情线路不提供" + id.name
         : state.external[id] == nil ? id.name + "暂无数据" : "该时段暂无" + id.name
       text.drawLeft(at: CGPoint(x: 8, y: box.y + box.h / 2),
                     font: ChartFont.notice, color: state.colors.dim)

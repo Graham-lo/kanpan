@@ -945,7 +945,7 @@ struct MainScreen: View {
   private var visibleSubs: [IndicatorID] {
     if drawingCanvasOnly { return [] }
     let caps = market.capabilities
-    guard !caps.hasOpenInterest, !caps.hasDerivativeMetrics else { return prefs.subs }
+    guard !caps.hasOpenInterest, !caps.hasOpenInterestHistory, !caps.hasDerivativeMetrics else { return prefs.subs }
     return prefs.subs.filter { !$0.isExternal }
   }
   private var visibleOverlays: [IndicatorID] { drawingCanvasOnly || comparing ? [] : prefs.overlays }
@@ -996,7 +996,17 @@ struct MainScreen: View {
   private var rollingTicker: Ticker? {
     // 备用线路上先用它自己的一帧；它还没到（或这个品种它根本没有）就退回
     // 共享报价层里那口最后的价，顶栏灰显而不是退成骨架（§2B #54）。
-    if market.capabilities.isSubstitute { return market.ticker ?? quotes.raw[market.symbol] ?? quotes.seeded(market.symbol) }
+    if market.capabilities.isSubstitute {
+      let shared = quotes.raw[market.symbol] ?? quotes.seeded(market.symbol)
+      guard var own = market.ticker else { return shared }
+      // 替身的推送帧不带成交额，REST 那一帧补回来之前（冷启动、扫图的头一两百毫秒），
+      // 用共享报价层同一条线路上的那份垫着（它按上游分区存盘、种子按上游收），不跨源借。
+      if !own.quoteVolume.isFinite, !market.tickerStale, let shared, shared.symbol == own.symbol,
+         shared.quoteVolume.isFinite {
+        own.quoteVolume = shared.quoteVolume
+      }
+      return own
+    }
     if let quote = quotes.raw[market.symbol] { return quote }
     // MarketModel already receives the venue ticker frames as part of the
     // chart feed. Use that value immediately instead of waiting for the
@@ -1383,7 +1393,10 @@ struct MainScreen: View {
     // 别一直挂「加载中」。
     result.external = market.external
     result.depth = drawingCanvasOnly || !prefs.depth ? nil : market.depth
-    result.oiSupported = market.capabilities.hasDerivativeMetrics
+    // 持仓量和衍生统计分开认：网关线路上的替身有持仓量历史（kanpan-api 代问 OKX），
+    // 多空比、主动买卖、基差没有。
+    result.oiSupported = market.capabilities.hasOpenInterestHistory
+    result.externalSupported = market.capabilities.hasDerivativeMetrics
     result.subInverted = prefs.allowSubInversion ? prefs.subInverted : []
     result.paletteSeed = seed
     result.hiddenOutputs = prefs.hiddenOutputs
