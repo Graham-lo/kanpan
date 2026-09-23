@@ -146,6 +146,40 @@ struct OIAlignTests {
       URLQueryItem(name: "interval", value: "4h")) == true)
   }
 
+  @Test("网关那一台不行换下一台时，失败原因进日志而不是被吞掉")
+  func gatewayFailureIsLogged() async throws {
+    let day = Aggregator.utcMs(year: 2021, month: 12, day: 1)
+    let now = Aggregator.utcMs(year: 2026, month: 9, day: 15)
+    let server = FakeServer { url in
+      if url.host == "gateway.example" { return HTTPReply(status: 503) }
+      if url.host == "backup.example", url.path.hasSuffix("/range") {
+        return json("[[\(day),120,null,null,null,null]]")
+      }
+      return HTTPReply(status: 500)
+    }
+    let transport = FakeTransport(server)
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("oi-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let lines = LogLines()
+    let source = OISource(hosts: BinanceHosts(oiProxy: "gateway.example", oiProxyFallbacks: ["backup.example"]),
+      rest: BinanceREST(transport: transport), transport: transport,
+      store: OIStore(paths: Paths(root: dir)), log: FeedLog { lines.append($0) })
+    let result = await source.rawPoints(symbol: "BTCUSDT", interval: .h4,
+      from: day, to: day + 86_399_999, now: now)
+    #expect(result == [.init(time: day, value: 120)])
+    #expect(lines.all.contains { $0.contains("gateway.example") && $0.contains("503") })
+  }
+
+  @Test("取数失败归类：限流、地域拒绝、上游状态码、响应解不开、超时")
+  func classifiesFailures() {
+    #expect(OISource.classify(UpstreamError(status: 429)) == "限流")
+    #expect(OISource.classify(UpstreamError(status: 451)) == "地域拒绝")
+    #expect(OISource.classify(UpstreamError(status: 502)) == "上游 502")
+    #expect(OISource.classify(FeedError.badResponse("x")) == "响应解不开")
+    #expect(OISource.classify(URLError(.timedOut)) == "超时")
+    #expect(OISource.classify(URLError(.notConnectedToInternet)).hasPrefix("网络"))
+  }
+
   @Test("图表管线按周期取最后持仓量，不求和、不直接取原始首点", arguments: Interval.allCases)
   func chartPipeline(interval: Interval) {
     let origin = Aggregator.utcMs(year: 2024, month: 2, day: 15)
@@ -878,4 +912,12 @@ struct OICoverageTests {
       #expect((OISource.coveredRegion(of: [got], step: Self.step) != nil) == complete)
     }
   }
+}
+
+/// 收日志用。`FeedLog` 的闭包是 `@Sendable` 的，所以要一把锁。
+private final class LogLines: @unchecked Sendable {
+  private let lock = NSLock()
+  private var lines: [String] = []
+  func append(_ s: String) { lock.lock(); lines.append(s); lock.unlock() }
+  var all: [String] { lock.lock(); defer { lock.unlock() }; return lines }
 }

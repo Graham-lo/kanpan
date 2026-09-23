@@ -339,7 +339,11 @@ public actor OISource {
       do {
         let response = try await transport.get(target, timeout: 45)
         if response.status == 200 { return try Self.decodeGateway(response.body, requireMetrics: true) }
-      } catch { if Task.isCancelled { return nil } }
+        log("OI 网关历史 \(proxy) 回 \(response.status)，换下一台 / 退到逐日归档")
+      } catch {
+        if Task.isCancelled || error is CancellationError { return nil }
+        log("OI 网关历史 \(proxy) \(Self.classify(error))：\(error)")
+      }
     }
     return nil
   }
@@ -379,10 +383,21 @@ public actor OISource {
           do {
             for proxy in gateways {
               guard !Task.isCancelled else { return (day, [], false) }
-              if let proxyURL = URL(string: "https://\(proxy)/oi/v1/metrics/\(InstrumentID(symbol).symbol)/\(OIArchive.dayString(day)).json?metrics=1"),
-                 let reply = try? await transport.get(proxyURL, timeout: 6), reply.status == 200,
-                 let points = try? Self.decodeGateway(reply.body, requireMetrics: true) {
-                return (day, points, true)
+              guard let proxyURL = URL(string: "https://\(proxy)/oi/v1/metrics/\(InstrumentID(symbol).symbol)/\(OIArchive.dayString(day)).json?metrics=1")
+              else { continue }
+              // 网关这一台不行就换下一台、最后退到公开归档站——但不再一声不吭地退：
+              // 从前两处 `try?` 把超时、限流、响应坏了一概吞成「没拿到」，
+              // 日志里只看得见后面归档站那一步，查不出网关这层到底出了什么事。
+              do {
+                let reply = try await transport.get(proxyURL, timeout: 6)
+                guard reply.status == 200 else {
+                  log("OI 网关归档 \(OIArchive.dayString(day)) \(proxy) 回 \(reply.status)")
+                  continue
+                }
+                return (day, try Self.decodeGateway(reply.body, requireMetrics: true), true)
+              } catch {
+                if Task.isCancelled || error is CancellationError { return (day, [], false) }
+                log("OI 网关归档 \(OIArchive.dayString(day)) \(proxy) \(Self.classify(error))：\(error)")
               }
             }
             // 公开归档站：这一家没有就算问过了（没有这份数据，不是失败）。
@@ -478,7 +493,13 @@ public actor OISource {
           guard let first = page.first else { answered = true; break }
           if page.count < 500 || first.time <= lower { answered = true; break }
           end = first.time - 1
-        } catch { break }
+        } catch {
+          // 断在半路：已经到手的几页照用，`answered` 留假，下一轮再问这一段。
+          if !(error is CancellationError || Task.isCancelled) {
+            log("\(id.rawValue) 近期翻页中断（\(Self.classify(error))）：\(error)")
+          }
+          break
+        }
       }
       complete = complete && answered
     }
@@ -487,6 +508,21 @@ public actor OISource {
   }
 
   // ------------------------------------------------------------------ 纯函数
+
+  /// 取数失败归类，只进日志：限流、地域拒绝、上游状态码、响应解不开、网络层。
+  /// 调用方的处理不按类分叉（都是「这一段没问到，下一轮再问」），分类是给查日志的人看的。
+  static func classify(_ error: any Error) -> String {
+    if let e = error as? UpstreamError {
+      if e.isRateLimited { return "限流" }
+      if e.isGeoBlocked { return "地域拒绝" }
+      return "上游 \(e.status)"
+    }
+    if error is FeedError || error is DecodingError { return "响应解不开" }
+    if let e = error as? URLError {
+      return e.code == .timedOut ? "超时" : "网络 \(e.code.rawValue)"
+    }
+    return "其他"
+  }
 
   /// 按时间排序去重，同一时刻留后来的。
   public static func dedup(_ pts: [OIPoint]) -> [OIPoint] {
