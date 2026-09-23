@@ -43,7 +43,7 @@ enum LiveQuotes {
   }
 
   static func fetchTicker(host: String, symbol: String) async -> Ticker24h? {
-    guard let url = URL(string: "https://\(host)/fapi/v1/ticker/24hr?symbol=\(symbol)"),
+    guard let url = URL(string: "https://\(host)/fapi/v1/ticker/24hr?symbol=\(InstrumentID(symbol).symbol)"),
           let (data, response) = try? await session().data(from: url),
           (response as? HTTPURLResponse)?.statusCode == 200,
           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -54,7 +54,7 @@ enum LiveQuotes {
   }
 
   static func fetchCloses(host: String, symbol: String) async -> [Double]? {
-    guard let url = URL(string: "https://\(host)/fapi/v1/klines?symbol=\(symbol)&interval=1h&limit=\(WidgetSnapshot.sparkBars)"),
+    guard let url = URL(string: "https://\(host)/fapi/v1/klines?symbol=\(InstrumentID(symbol).symbol)&interval=1h&limit=\(WidgetSnapshot.sparkBars)"),
           let (data, response) = try? await session().data(from: url),
           (response as? HTTPURLResponse)?.statusCode == 200,
           let rows = try? JSONSerialization.jsonObject(with: data) as? [[Any]] else { return nil }
