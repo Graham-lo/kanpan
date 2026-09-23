@@ -126,7 +126,7 @@ public struct SectorHistory: Sendable, Equatable {
   /// 新取回来的这份要不要顶掉手上那份。
   ///
   /// 日线一天才换一次，同一个 `asof` 基本就是同一份数据。手上已经有同一天的还照样
-  /// 赋值，整页会为一份一模一样的收盘重算一遍聚合、重排一遍球——用户看得见的是
+  /// 赋值，整页会为一份一模一样的收盘重算一遍聚合、重排一遍列表——用户看得见的是
   /// 无缘无故抖一下。
   ///
   /// 三条，都按**日期**判，不按字符串判：
@@ -173,7 +173,7 @@ public struct SectorStat: Sendable, Equatable, Identifiable {
   public let staticCount: Int
   /// 成员成交额之和。
   public let quoteVolume: Double
-  /// 兜底桶。兜底桶在气泡场的排序与归一之前就被摘掉，只活在「全部板块」里。
+  /// 兜底桶（分类表没收录、按交易所标签凑的那几桶）。在板块列表里和普通板块同样对待。
   public let isFallback: Bool
   /// 相对广度：跑赢池基准（`e_i > 0`）的成员占 `memberCount` 的比例。平盘不算跑赢。
   public let breadth: Double
@@ -184,10 +184,6 @@ public struct SectorStat: Sendable, Equatable, Identifiable {
   public let frontier: [String]
   /// 删一区间：逐个删掉一个成员再取中位数，落在这个范围里。成员 ≤ 2 时没有意义，缺省。
   public let jackknife: ClosedRange<Double>?
-  /// 进不进气泡场。有行情成员 < 3 的板块（以及兜底桶）不上场——一只币的涨跌不是板块强弱。
-  /// 5 日 / 20 日窗口还多一条：这段有收盘的成员要占到有行情成员的八成
-  /// （`SectorAggregator.minWindowCoverage`），不然这个中位数说的不是这个板块。
-  public let eligible: Bool
 
   /// 跑赢池基准的家数。`breadth` 就是它除以 `memberCount`，这儿还原回整数给界面用。
   public var outperformCount: Int {
@@ -195,13 +191,12 @@ public struct SectorStat: Sendable, Equatable, Identifiable {
     return Int((breadth * Double(memberCount)).rounded())
   }
 
-  /// `staticCount` 不传就等于 `memberCount`；`eligible` 不传按上得了场算
-  /// ——手搓统计（测试、预览）默认不该被过滤掉。
+  /// `staticCount` 不传就等于 `memberCount`。
   public init(id: String, name: String, market: SectorMarket,
               pct: Double, memberCount: Int, staticCount: Int? = nil,
               quoteVolume: Double, isFallback: Bool,
               breadth: Double = 0, upCount: Int = 0, frontier: [String] = [],
-              jackknife: ClosedRange<Double>? = nil, eligible: Bool = true) {
+              jackknife: ClosedRange<Double>? = nil) {
     self.id = id
     self.name = name
     self.market = market
@@ -214,7 +209,6 @@ public struct SectorStat: Sendable, Equatable, Identifiable {
     self.upCount = upCount
     self.frontier = frontier
     self.jackknife = jackknife
-    self.eligible = eligible
   }
 }
 
@@ -237,7 +231,7 @@ public struct SectorFallbackBucket: Sendable, Equatable {
 /// 同一个 base 挂着好几张合约（USDT 本位 + USDC 本位 + FDUSD…）时留哪一张。
 ///
 /// 从前是「留成交额大的那张」，可 USDT 和 USDC 两张的 24h 涨幅并不相同，成交额
-/// 来回反超就让板块的中位数跟着跳、球跟着抖。所以先按计价币的固定档次挑，
+/// 来回反超就让板块的中位数跟着跳、列表跟着抖。所以先按计价币的固定档次挑，
 /// 同一档才比成交额。
 public enum SectorQuotePreference {
   /// 计价币优先级，越靠前越优先。表里没有的一律垫底。
@@ -279,14 +273,15 @@ struct SectorPool: Sendable {
 /// （今日是 24h 涨跌幅，5 日 / 20 日是 `100·(现价/收盘 − 1)`），之后中位数、广度、
 /// 领涨、删一全都照着这一个向量算，一行分支都不多。
 public enum SectorAggregator {
-  /// 有行情成员少于这个数的板块不进气泡场。
+  /// 有行情成员少于这个数的板块不算一个板块的强弱：列表里照样列出来，但副文案不写
+  /// 「x/N 跑赢大盘」，也不拿它判「5 日」那一档有没有东西可看。
   public static let minEligibleMembers = 3
 
-  /// 5 日 / 20 日窗口另加的一条上场门槛：这一段有收盘的成员，得占到有行情成员的这个比例。
+  /// 5 日 / 20 日窗口另加的一条门槛：这一段有收盘的成员，得占到有行情成员的这个比例。
   ///
   /// 服务端的日线是逐个合约采的，新上市的币根本没有 5 根日线。一个 20 个成员的板块
   /// 只剩 4 个算得出 5 日收益时，那 4 个的中位数不是这个板块的 5 日强弱。
-  /// 覆盖不够的板块就不上场，退到「全部板块」里去——不解释，也不标注。
+  /// 覆盖不够的板块不算数——`hasEligible` 靠它判「5 日」那颗药丸出不出现。
   public static let minWindowCoverage = 0.8
 
   /// - Parameters:
@@ -325,7 +320,7 @@ public enum SectorAggregator {
     return out
   }
 
-  /// 这个市场在这段窗口上还有没有板块上得了场。
+  /// 这个市场在这段窗口上还有没有板块算得出像样的强弱（成员够、覆盖够）。
   ///
   /// 「5 日」那颗药丸只在有东西可看时才出现：某个市场服务端还没采日线（美股就是），
   /// 或者整段历史断了，那一行药丸就整行不在，页面读起来和只有今日时一模一样。
@@ -497,9 +492,7 @@ public enum SectorAggregator {
                       isFallback: isFallback,
                       breadth: Double(outperform) / Double(rets.count),
                       upCount: up, frontier: frontier.map(\.base),
-                      jackknife: jackknife(rets),
-                      eligible: rets.count >= minEligibleMembers && !isFallback
-                        && covered(set, window: window))
+                      jackknife: jackknife(rets))
   }
 
   /// 偶数个取中间两个的平均——跟分类表 README 的口径一致。

@@ -1,13 +1,13 @@
 import Foundation
 
-/// 板块气泡页的**归类目录**：板块 id、中文名、以及它收录的 base 代号。
+/// 板块页的**归类目录**：板块 id、中文名、以及它收录的 base 代号。
 ///
 /// 口径来自 `docs/板块分类表-2026-09-18/`（2026-09-18 用户确认「分得很好，就按照这个来即可」），
 /// 由 `scratchpad/gen-sector-catalog.py` 一次性生成成静态表——**运行时不解析任何 TSV/JSON**。
 /// 归类是不会变的那一半，会变的那一半（涨跌幅、成交额）实时从行情流来。
 ///
 /// 注意跟 `MarketSector` 分清楚：那个是交易所元数据（品种属于哪个市场），
-/// 这里是板块气泡页的目录（板块收了哪些品种），两者互不覆盖。
+/// 这里是板块页的目录（板块收了哪些品种），两者互不覆盖。
 ///
 /// 几条不许破的规矩：
 /// - 加密固定 24 个 id，照 `加密-板块定义.md`，**不得自创**。
@@ -49,10 +49,6 @@ public enum SectorCatalog {
     let key = base.uppercased()
     return (byBase[market]?[key] ?? []).compactMap { byID[$0] }
   }
-
-  /// 球面上放得下的短名（原型 `SHORT` 表）。没有短名就退回全名。
-  /// 这是给气泡用的显示名，不是 `SectorDef.name`，不要混用。
-  public static func shortName(_ id: String) -> String { shortNames[id] ?? byID[id]?.name ?? id }
 
   /// 美股标的的中文公司名（`美股-中文名.json`）。加密一律没有，返回 nil。
   public static func chineseName(base: String) -> String? { usChineseNames[base.uppercased()] }
@@ -273,18 +269,6 @@ public enum SectorCatalog {
     }
     return out
   }()
-
-  private static let shortNames: [String: String] = [
-    "l1": "公链", "ai": "AI", "meme": "Meme", "sol-eco": "Solana",
-    "defi-blue": "DeFi 蓝筹", "gamefi": "链游", "l2": "Layer-2", "depin": "DePIN",
-    "nft-social": "NFT", "stable-yield": "稳定收益", "btc-eco": "BTC 生态", "storage-data": "存储",
-    "zk": "ZK", "rwa": "RWA", "oracle-bridge": "预言机", "payment": "支付",
-    "perp-dex": "永续 DEX", "pow": "PoW", "privacy": "隐私", "eth-eco": "ETH 生态",
-    "metaverse": "元宇宙", "meme-cn": "华语 Meme", "fan-token": "粉丝代币", "desci": "DeSci",
-    "gpu": "算力芯片", "mem": "存储", "equip": "设备材料", "optic": "光通信",
-    "hyper": "云厂商", "neo": "算力租赁", "server": "服务器", "power": "电力", "edge": "端侧 AI",
-    "robot": "机器人", "software": "软件", "app": "模型应用",
-  ]
 
   private static let usChineseNames: [String: String] = [
     "NVDA": "英伟达", "AMD": "AMD", "AVGO": "博通",

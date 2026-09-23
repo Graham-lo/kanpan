@@ -52,6 +52,6 @@ enum SectorDrillDecision: Equatable {
     let members = def?.members ?? bucket?.members ?? []
     return SectorStat(id: id, name: def?.name ?? bucket?.name ?? id, market: market,
                       pct: 0, memberCount: 0, staticCount: members.count,
-                      quoteVolume: 0, isFallback: def == nil, eligible: false)
+                      quoteVolume: 0, isFallback: def == nil)
   }
 }

@@ -3,7 +3,7 @@ import Testing
 
 @testable import KanpanCore
 
-/// 板块口径层：目录、中位数聚合与它的旁证（广度 / 前沿 / 删一）、上场名单。
+/// 板块口径层：目录、中位数聚合与它的旁证（广度 / 前沿 / 删一）、成员够不够算一个板块。
 ///
 /// 对数材料是 `Fixtures/sectors.json`——2026-09-18 币安真实快照，
 /// 从定版原型 `proto2/data.json` 抽出来的。原型侧的 median 存的是
@@ -57,27 +57,6 @@ struct SectorTests {
                            members: $0["members"] as? [String] ?? [])
     }
     return Snapshot(quotes: quotes, rows: rows, buckets: buckets)
-  }
-
-  /// 造一批只带 pct 的假统计，用来钉选取算法的边界。
-  ///
-  /// 默认全都上得了场（`eligible`）：这一组用例要钉的是排序、陪衬与归一，
-  /// 「成员太少不上场」另有专门的用例。
-  static func fakes(_ pcts: [Double], fallback: [Double] = [],
-                    ineligible: [Double] = []) -> [SectorStat] {
-    var out = pcts.enumerated().map { i, p in
-      SectorStat(id: "s\(i)", name: "板块\(i)", market: .crypto, pct: p,
-                 memberCount: 3, quoteVolume: 1, isFallback: false)
-    }
-    out += fallback.enumerated().map { i, p in
-      SectorStat(id: "fb-\(i)", name: "兜底\(i)", market: .crypto, pct: p,
-                 memberCount: 3, quoteVolume: 1, isFallback: true)
-    }
-    out += ineligible.enumerated().map { i, p in
-      SectorStat(id: "tiny\(i)", name: "小板块\(i)", market: .crypto, pct: p,
-                 memberCount: 1, quoteVolume: 1, isFallback: false, eligible: false)
-    }
-    return out
   }
 
   /// 只给这几个 base 行情，其余品种当没行情——市场池就是它们自己，
@@ -186,14 +165,6 @@ struct SectorTests {
     #expect(SectorCatalog.chineseName(base: "SOL") == nil)
   }
 
-  @Test func shortNamesExistForEverySector() {
-    for d in SectorCatalog.all {
-      #expect(!SectorCatalog.shortName(d.id).isEmpty)
-    }
-    #expect(SectorCatalog.shortName("l1") == "公链")
-    #expect(SectorCatalog.shortName("不存在") == "不存在")
-  }
-
   // MARK: - 2. 中位数口径拿快照对数
 
   @Test(arguments: [SectorMarket.crypto, .us])
@@ -227,7 +198,7 @@ struct SectorTests {
     #expect(got.firstIndex(where: \.isFallback) == 24)
     let us = try Self.snapshot("us")
     // 12 个板块，一个不落——「软件」在这份快照里只有 4 家有行情（那 9 家是
-    // 2026-09-18 之后才收进来的，快照没抓到），但 4 家也够上场；拆出来的「电力」5 家
+    // 2026-09-18 之后才收进来的，快照没抓到），但 4 家也够列出来；拆出来的「电力」5 家
     // 也够，段数是 12。
     #expect(SectorAggregator.stats(market: .us, quotes: us.quotes, fallbackBuckets: []).count == 12)
   }
@@ -259,135 +230,10 @@ struct SectorTests {
     // 去重后 3 个登记成员（`zza` 是 `ZZA` 的重复），其中只有一个有能用的行情。
     #expect(got == [SectorStat(id: "fb-x", name: "其他", market: .crypto, pct: 5,
                                memberCount: 1, staticCount: 3, quoteVolume: 1, isFallback: true,
-                               breadth: 0, upCount: 1, frontier: [], jackknife: nil,
-                               eligible: false)])
+                               breadth: 0, upCount: 1, frontier: [], jackknife: nil)])
   }
 
-  // MARK: - 3. 选取算法
-
-  @Test func defaultsPerMarket() {
-    #expect(SectorSelector.defaults(.crypto) == (5, 3))
-    #expect(SectorSelector.defaults(.us) == (3, 2))
-  }
-
-  @Test func fallbackBucketsAreDroppedBeforeRankingAndNormalising() {
-    // 兜底桶的 pct 是全场最极端的，如果没被摘掉，它会既上场又把尺子撑大。
-    let stats = Self.fakes([3, 1, -2], fallback: [99, -99])
-    let sel = SectorSelector.select(stats, n: 5, m: 3)
-    #expect(sel.total == 3)
-    #expect(sel.picks.allSatisfy { !$0.stat.isFallback })
-    // 尺子是全场 |pct| 的最大值，兜底桶那 ±99 不算数。
-    #expect(sel.scalePct == 3)
-    #expect(sel.upCount == 2 && sel.downCount == 1)
-  }
-
-  @Test func clampsNAndMOnASmallBoard() {
-    // 10 段、默认加密档 (5,3)：N=min(5,5)=5，M=min(3, 10-10)=0。
-    let sel = SectorSelector.select(Self.fakes((0..<10).map { Double(10 - $0) }), n: 5, m: 3)
-    #expect(sel.picks.count == 10)
-    #expect(sel.picks.filter { $0.side == .filler }.isEmpty)
-    #expect(sel.picks.filter { $0.side == .strong }.count == 5)
-    #expect(sel.picks.filter { $0.side == .weak }.count == 5)
-  }
-
-  @Test func ordersPicksStrongThenFillerThenWeak() {
-    // 13 段，pct = 13…1；N=5，M=min(3, 3)=3，midPool = 名次 5…7。
-    let sel = SectorSelector.select(Self.fakes((0..<13).map { Double(13 - $0) }), n: 5, m: 3)
-    #expect(sel.total == 13)
-    #expect(sel.picks.map(\.side) == Array(repeating: .strong, count: 5)
-            + Array(repeating: .filler, count: 3) + Array(repeating: .weak, count: 5))
-    #expect(sel.picks.map(\.slot) == [0, 1, 2, 3, 4, 0, 1, 2, 0, 1, 2, 3, 4])
-    // 等距抽：midPool.count=3、M=3 → idx = round(0.5)-1, round(1.5)-1, round(2.5)-1 = 0,1,2
-    #expect(sel.picks.map(\.rank) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
-    #expect(sel.scalePct == 13)
-    #expect(sel.upCount == 13 && sel.downCount == 0)
-  }
-
-  @Test func fillerIndicesAreEvenlySpaced() {
-    // 30 段、N=5 → midPool 有 20 个（名次 5…24）、M=3。
-    // idx = clamp(round((i+.5)*20/3)-1, 0, 19) = round(3.33)-1, round(10)-1, round(16.67)-1 = 2, 9, 16
-    let sel = SectorSelector.select(Self.fakes((0..<30).map { Double(30 - $0) }), n: 5, m: 3)
-    let fillers = sel.picks.filter { $0.side == .filler }
-    #expect(fillers.map(\.rank) == [5 + 2, 5 + 9, 5 + 16])
-    #expect(fillers.map(\.slot) == [0, 1, 2])
-    // 尺子看的是全场 30 段（不只是上场那 13 颗）里最大的那个。
-    #expect(sel.scalePct == 30)
-  }
-
-  @Test func halfUpRoundingMatchesTheJavaScript() {
-    // Math.round 是「四舍五入向上」，Swift 的 rounded() 在正数上等价。
-    // midPool.count=4、M=8 → raw = .25,.75,1.25,… idx = round(raw)-1 再夹到 0…3
-    let sel = SectorSelector.select(Self.fakes((0..<14).map { Double(14 - $0) }), n: 5, m: 8)
-    // N=min(5,7)=5，M=min(8, 14-10)=4，midPool.count=4 → idx = round(.5*4/4)... 逐个算
-    let fillers = sel.picks.filter { $0.side == .filler }
-    #expect(fillers.count == 4)
-    #expect(fillers.map(\.rank) == [5 + 0, 5 + 1, 5 + 2, 5 + 3])
-  }
-
-  @Test func handlesEmptyAndTinyBoards() {
-    let none = SectorSelector.select([], n: 5, m: 3)
-    #expect(none.picks.isEmpty && none.total == 0 && none.scalePct == 0.01)
-    #expect(none.upCount == 0 && none.downCount == 0)
-    #expect(none == SectorSelection.empty)
-
-    // 1 段：N=0，midPool 是全部，M=min(3,1)=1 → 唯一那段当陪衬上场。
-    let one = SectorSelector.select(Self.fakes([2]), n: 5, m: 3)
-    #expect(one.picks.count == 1)
-    #expect(one.picks[0].side == .filler && one.picks[0].rank == 0 && one.picks[0].slot == 0)
-    #expect(one.scalePct == 2)
-
-    // 2 段：N=1，两头各一颗，midPool 空，一个陪衬也排不出来。
-    let two = SectorSelector.select(Self.fakes([2, -4]), n: 5, m: 3)
-    #expect(two.picks.map(\.side) == [.strong, .weak])
-    #expect(two.picks.map(\.rank) == [0, 1])
-    #expect(two.scalePct == 4)
-
-    // M=0：只有两头。
-    let noFill = SectorSelector.select(Self.fakes((0..<20).map { Double(20 - $0) }), n: 5, m: 0)
-    #expect(noFill.picks.count == 10)
-    #expect(noFill.picks.filter { $0.side == .filler }.isEmpty)
-
-    // 极小的涨跌幅也不能把分母压成 0。
-    let flat = SectorSelector.select(Self.fakes([0, 0, 0, 0]), n: 1, m: 1)
-    #expect(flat.scalePct == SectorSelector.minScalePct)
-    #expect(flat.upCount == 4 && flat.downCount == 0)
-  }
-
-  // MARK: - 4. 全场同号时球身仍分两色
-
-  @Test func isUpSideSplitsTheBoardEvenWhenEveryoneIsGreen() throws {
-    let snap = try Self.snapshot("crypto")
-    let stats = SectorAggregator.stats(market: .crypto, quotes: snap.quotes,
-                                       fallbackBuckets: snap.buckets)
-    // 2026-09-18 这天全线飘绿：非兜底的板块中位数没有一个是负的。
-    #expect(stats.filter { !$0.isFallback }.allSatisfy { $0.pct > 0 })
-
-    let sel = SectorSelector.select(stats, market: .crypto)
-    #expect(sel.upCount == sel.total && sel.downCount == 0, "这份快照就是全场同号")
-
-    let up = sel.picks.filter { $0.isUpSide(total: sel.total) }
-    let down = sel.picks.filter { !$0.isUpSide(total: sel.total) }
-    #expect(!up.isEmpty && !down.isEmpty, "全场同号也必须分出强弱两色，否则整屏一片绿")
-    #expect(down.count >= 5, "弱端 5 颗一颗都不能被染成强端色")
-    // 强端恒 true、弱端恒 false，跟涨跌正负无关。
-    #expect(sel.picks.filter { $0.side == .strong }.allSatisfy { $0.isUpSide(total: sel.total) })
-    #expect(sel.picks.filter { $0.side == .weak }.allSatisfy { !$0.isUpSide(total: sel.total) })
-  }
-
-  @Test func fillerTakesItsColourFromWhichHalfItRanksIn() {
-    // 21 段：N=5，midPool 名次 5…15（11 个），M=3 → idx = round(1.83)-1, round(5.5)-1, round(9.17)-1 = 1, 5, 8
-    let sel = SectorSelector.select(Self.fakes((0..<21).map { Double(21 - $0) }), n: 5, m: 3)
-    let fillers = sel.picks.filter { $0.side == .filler }
-    #expect(fillers.map(\.rank) == [6, 10, 13])
-    // total=21，分界线 10.5：名次 6、10 算强端那半，13 算弱端那半。
-    #expect(fillers.map { $0.isUpSide(total: sel.total) } == [true, true, false])
-    // 全跌的一屏同理，强端那 5 颗照样是「强端色」。
-    let allRed = SectorSelector.select(Self.fakes((0..<21).map { -Double($0 + 1) }), n: 5, m: 3)
-    #expect(allRed.upCount == 0 && allRed.downCount == 21)
-    #expect(allRed.picks.filter { $0.side == .strong }.allSatisfy { $0.isUpSide(total: 21) })
-  }
-
-  // MARK: - 5. 主数字之外的旁证：广度 / 前沿 / 删一
+  // MARK: - 3. 主数字之外的旁证：广度 / 前沿 / 删一
 
   /// 五个成员 `−2, −1, 0, +1, +300`：整体没动，一只在爆。
   /// 中位数照样是 0，把「谁在爆」交给前沿，把「这个 0 稳不稳」交给删一区间。
@@ -403,7 +249,6 @@ struct SectorTests {
     #expect(l1.frontier == ["AVAX"])
     // 删掉任意一个成员，中位数在 ±0.5 之间摆——0 不是一个孤零零的巧合。
     #expect(try #require(l1.jackknife) == -0.5...0.5)
-    #expect(l1.eligible)
   }
 
   /// 全部相同：没人跑赢谁，前沿是空的，删一区间塌成一个点。
@@ -418,22 +263,27 @@ struct SectorTests {
     #expect(try #require(l1.jackknife) == 3...3)
   }
 
-  /// 1–2 个有行情的成员：删一区间缺省，也上不了气泡场。
+  /// 1–2 个有行情的成员：删一区间缺省，也不算「这个市场有板块可看」。
   @Test func oneOrTwoQuotedMembersAreNotASector() throws {
+    func quotes(_ pcts: [String: Double]) -> [String: SectorQuote] {
+      pcts.reduce(into: [:]) { $0[$1.key] = SectorQuote(base: $1.key, pct: $1.value, quoteVolume: 1, price: 1) }
+    }
+    func counts(_ pcts: [String: Double]) -> Bool {
+      SectorAggregator.hasEligible(market: .crypto, quotes: quotes(pcts), window: .today, history: .empty)
+    }
     let single = try #require(Self.aggregate(["ADA": 5]).first { $0.id == "l1" })
     #expect(single.memberCount == 1 && single.pct == 5)
-    #expect(single.jackknife == nil && !single.eligible)
+    #expect(single.jackknife == nil)
 
     let pair = try #require(Self.aggregate(["ADA": 5, "ALGO": 1]).first { $0.id == "l1" })
     #expect(pair.memberCount == 2 && pair.pct == 3)
-    #expect(pair.jackknife == nil && !pair.eligible)
+    #expect(pair.jackknife == nil)
+    // 全场只有两只有行情，哪个板块都凑不满三家。
+    #expect(!counts(["ADA": 5, "ALGO": 1]))
 
     let trio = try #require(Self.aggregate(["ADA": 5, "ALGO": 1, "APT": 3]).first { $0.id == "l1" })
-    #expect(trio.memberCount == 3 && trio.eligible && trio.jackknife != nil)
-
-    // 上不了场的不进球场，也不参与排序和归一。
-    let sel = SectorSelector.select(Self.aggregate(["ADA": 5, "ALGO": 1]), market: .crypto)
-    #expect(sel.picks.isEmpty && sel.total == 0)
+    #expect(trio.memberCount == 3 && trio.jackknife != nil)
+    #expect(counts(["ADA": 5, "ALGO": 1, "APT": 3]))
   }
 
   /// 缺成员：登记了 60 个、只有 3 个有行情，聚合按有行情的那 3 个算。
@@ -475,34 +325,7 @@ struct SectorTests {
     #expect(SectorAggregator.quantile([1, 2, 3, 4], 2) == 4)
   }
 
-  // MARK: - 6. 尺子：全场最大值 + 迟滞
-
-  @Test func theScaleIsTheWholeBoardMaximumAndHoldsStillUntilItReallyMoves() {
-    let board = Self.fakes((1...20).map(Double.init))
-    let base = SectorSelector.select(board, n: 5, m: 3)
-    // 分母取全场最大：最大的那颗球就是幅度最大的板块。
-    #expect(base.scalePct == 20)
-    // 上场的只有 13 颗，但没上场的那几段也算进分母。
-    #expect(base.picks.count == 13 && base.total == 20)
-
-    // 抖一下：最大值 20 → 21，差 1，不到旧尺子的 20%（4）→ 沿用旧值，
-    // 整屏球不跟着呼吸一次。
-    let nudged = Self.fakes((1...19).map(Double.init) + [21])
-    #expect(SectorSelector.select(nudged, n: 5, m: 3).scalePct == 21)
-    #expect(SectorSelector.select(nudged, n: 5, m: 3, previousScale: base.scalePct).scalePct == 20)
-
-    // 真的换了一档就认新的：一颗 +300% 进场，差 280 ≥ 4。
-    let spiked = Self.fakes((1...20).map(Double.init) + [300])
-    let sel = SectorSelector.select(spiked, n: 5, m: 3, previousScale: base.scalePct)
-    #expect(sel.scalePct == 300)
-
-    // 负的一头也算绝对值；超出分母的球面积截到 1（数字仍按真值显示）。
-    #expect(SectorSelector.select(Self.fakes([2, -40]), n: 1, m: 0).scalePct == 40)
-    #expect(sel.norm(300) == 1)
-    #expect(sel.norm(-600) == 1)
-    #expect(sel.norm(150) == 0.5)
-    #expect(sel.norm(.nan) == 0)
-  }
+  // MARK: - 4. 中位数与广度走两条路
 
   /// B-T19：板块那个数就是成员涨跌幅的**中位数本身**（原始百分数），
   /// 不是对数收益。三个成员都 −50% 的板块必须显示 −50，不是 ln(0.5)·100 = −69.3。
@@ -513,7 +336,7 @@ struct SectorTests {
     let l1 = try #require(stats.first { $0.id == "l1" })
     #expect(l1.pct == -50)
     #expect(abs(l1.pct - (-50)) < 1e-9, "中位数不能是对数口径的 -69.3")
-    #expect(l1.memberCount == 3 && l1.eligible)
+    #expect(l1.memberCount == 3)
     // 全场只有这三个、而且一模一样：谁也没跑赢池基准，广度是 0。
     #expect(l1.breadth == 0 && l1.upCount == 0)
     // 对数口径确实是 -69.3，钉一下，免得以后有人把它接到 pct 上。
@@ -531,48 +354,7 @@ struct SectorTests {
     #expect(l1.upCount == 2, "绝对上涨家数和广度不是一回事")
   }
 
-  /// B-T20：合格全场固定时，只改选球档位（N/M）不能动尺子——
-  /// 分母取的是**全场**，不是上场那几颗。
-  @Test func changingTheBoardSizeDoesNotMoveTheRuler() {
-    let board = Self.fakes([12, 7, 3, 0, -2, -6, -18])
-    let scales = [(1, 0), (2, 1), (3, 3), (5, 8), (0, 0)].map {
-      SectorSelector.select(board, n: $0.0, m: $0.1).scalePct
-    }
-    #expect(Set(scales) == [18], "换档位之后尺子变了：\(scales)")
-    let totals = [(1, 0), (5, 8)].map { SectorSelector.select(board, n: $0.0, m: $0.1).total }
-    #expect(Set(totals) == [7], "参与排序的板块数不该随档位变")
-  }
-
-  /// B-T20：伪造的 NaN / ±∞ 输入必须被安全拒绝——既不上场、也不撑尺子、
-  /// 更不能把排序谓词弄成非严格弱序。
-  @Test func forgedNonFiniteStatsAreRefused() {
-    let board = Self.fakes([5, 2, -3]) + [
-      SectorStat(id: "nan", name: "假的", market: .crypto, pct: .nan,
-                 memberCount: 5, quoteVolume: 1, isFallback: false),
-      SectorStat(id: "inf", name: "更假的", market: .crypto, pct: .infinity,
-                 memberCount: 5, quoteVolume: 1, isFallback: false),
-      SectorStat(id: "ninf", name: "还有", market: .crypto, pct: -.infinity,
-                 memberCount: 5, quoteVolume: 1, isFallback: false),
-    ]
-    let sel = SectorSelector.select(board, n: 5, m: 3)
-    #expect(sel.total == 3)
-    #expect(Set(sel.picks.map(\.id)) == ["s0", "s1", "s2"])
-    #expect(sel.scalePct == 5, "±∞ 不能变成面积分母")
-    #expect(sel.upCount + sel.downCount == 3)
-    // 非数一律归一到 0（球画成最小），不是 1：伪造的数不该长成全场最大那颗。
-    #expect(sel.norm(.nan) == 0 && sel.norm(.infinity) == 0)
-  }
-
-  @Test func ineligibleSectorsAreDroppedBeforeRankingAndScaling() {
-    // 上不了场的那两段 pct 最极端，没被摘掉的话既上场又把尺子撑大。
-    let sel = SectorSelector.select(Self.fakes([3, 1, -2], ineligible: [99, -99]), n: 5, m: 3)
-    #expect(sel.total == 3)
-    #expect(Set(sel.picks.map(\.id)) == ["s0", "s1", "s2"])
-    #expect(sel.scalePct == 3)
-    #expect(sel.upCount == 2 && sel.downCount == 1)
-  }
-
-  // MARK: - 7. 同一个 base 挂着两张合约时留哪一张
+  // MARK: - 5. 同一个 base 挂着两张合约时留哪一张
 
   @Test func quoteAssetRankOutranksVolume() {
     let usdt = SectorQuotePreference.rank("USDT")
@@ -590,7 +372,7 @@ struct SectorTests {
     #expect(SectorQuotePreference.rank("BTC") == SectorQuotePreference.quoteAssets.count)
   }
 
-  // MARK: - 8. 拿不到成交额的成员
+  // MARK: - 6. 拿不到成交额的成员
 
   /// 缺失的成交额一律当「没有」，绝不当 0（审查复核项 1）。
   ///
@@ -626,7 +408,7 @@ struct SectorTests {
 /// 乙版：日线 5 日 / 20 日那一段窗口。
 ///
 /// 口径和今日**完全是同一套**——给每个成员一个收益值，再算中位数 / 广度 / 领涨 /
-/// 删一。这一组用例钉的是那个收益值怎么来、以及「这段数据不够就不上场」那条门槛。
+/// 删一。这一组用例钉的是那个收益值怎么来、以及「这段数据不够就不算数」那条门槛。
 @Suite("板块窗口")
 struct SectorWindowTests {
   /// 挑一个成员够多的真板块来搭台。用例不写死 id，免得分类表一调就红。
@@ -689,23 +471,26 @@ struct SectorWindowTests {
                                          window: .today, history: .empty))
   }
 
-  @Test func shortCoverageStaysOffTheFieldButKeepsItsRow() {
+  @Test func shortCoverageDoesNotCountButKeepsItsRow() {
     let members = Self.sector.members
     let quotes = Self.quotes(members, price: 110)
+    func covered(_ history: SectorHistory) -> Bool {
+      SectorAggregator.covered(SectorAggregator.memberSet(members: members, quotes: quotes,
+                                                          window: .d5, history: history),
+                               window: .d5)
+    }
     // 只有一半成员有 5 日收盘：这一半的中位数不是这个板块的 5 日强弱。
     let half = Array(members.prefix(members.count / 2))
     let thin = SectorAggregator.stats(market: .crypto, quotes: quotes, fallbackBuckets: [],
                                       window: .d5, history: Self.history(half, c5: 100))
     let row = thin.first { $0.id == Self.sector.id }
-    #expect(row != nil, "覆盖不够也还在「全部板块」里，只是不上场")
+    #expect(row != nil, "覆盖不够也还在板块列表里，只是不算数")
     #expect(row?.memberCount == half.count)
-    #expect(row?.eligible == false)
+    #expect(!covered(Self.history(half, c5: 100)))
 
-    // 八成以上就上得了场。
+    // 八成以上就算数。
     let wide = Array(members.prefix(Int((0.9 * Double(members.count)).rounded(.up))))
-    let full = SectorAggregator.stats(market: .crypto, quotes: quotes, fallbackBuckets: [],
-                                      window: .d5, history: Self.history(wide, c5: 100))
-    #expect(full.first { $0.id == Self.sector.id }?.eligible == true)
+    #expect(covered(Self.history(wide, c5: 100)))
   }
 
   @Test func theMedianAndBreadthComeFromTheWindowNotFromToday() {
