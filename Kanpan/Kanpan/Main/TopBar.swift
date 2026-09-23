@@ -19,6 +19,8 @@ import SwiftUI
 /// 2026-09-18 右上角多了一颗「复盘」。底栏那天换成了常驻标签栏（画线 · 图表 ·
 /// 自选 · 设置），复盘按用户的话「放到图表里」——它是看着某张图时才想起来的事，
 /// 所以落在行情页顶栏，挨着搜索。待办条数照旧画成一颗角标。
+/// 2026-09-24（审查 U6）它的记号从借来的「指标」折线换成专属的 `ReviewGlyph`（一本带书签的
+/// 复盘本）。这颗只负责**进复盘本**；「记一笔」只留两处：图表设置里的那一行、复盘本右上角的「+」。
 ///
 /// 字号、间距、图标都按原型 `style.css` 的 `.top` 那一段抄，别自己发挥——
 /// 这一条和价格行是整个 app 里唯一常驻的文字，差一点点立刻显得不像同一个应用。
@@ -86,7 +88,7 @@ struct TopBar: View {
       // 左边的品种名一个点都没挪。
       HStack(spacing: 14) {
         if let onReview {
-          iconButton(VectorIcon.indicator, label: "复盘", action: onReview)
+          iconButton(ReviewGlyph(theme: theme), label: "复盘", action: onReview)
             .accessibilityIdentifier("top.review")
             .overlay(alignment: .topTrailing) {
               if reviewCount > 0 {
@@ -132,8 +134,8 @@ struct TopBar: View {
   /// 右上角的圆按钮：30pt 的托底 + 15pt 的线性图标（用户定过的尺度）。
   /// 图标用二级墨色配一层中性托底，不要用强调色填满——它旁边就是价格，
   /// 填满会把视线从价格上抢走。
-  private func iconButton(
-    _ icon: VectorIcon, label: String, action: @escaping () -> Void
+  private func iconButton<Icon: View>(
+    _ icon: Icon, label: String, action: @escaping () -> Void
   ) -> some View {
     Button {
       iconTapCount += 1

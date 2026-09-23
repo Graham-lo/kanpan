@@ -141,7 +141,7 @@ final class ReviewFlowUITests: KanpanUICase {
 
     // ---- 复盘本里确实有这一条
     openBookRecords()
-    XCTAssertFalse(app.buttons["review.empty"].exists, "图上画着记号，复盘本里却说一条都没有")
+    XCTAssertFalse(app.descendants(matching: .any)["review.empty"].exists, "图上画着记号，复盘本里却说一条都没有")
     XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: Self.short), "「记录」里一行都没有")
     shot("复盘-复盘本记录里有这一条")
     app.buttons["review.back"].tap()

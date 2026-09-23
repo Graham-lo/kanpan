@@ -295,6 +295,45 @@ private struct TabGlyph: View {
   private func shape(_ items: [IconItem]) -> IconShape { IconShape(box: Self.box, items: items) }
 }
 
+/// 顶栏「复盘」那颗的记号：一本合着的复盘本，右上角夹一条金色书签（审查 U6）。
+///
+/// 原来借的是横屏工具栏「指标」那枚线框折线——摆在行情页顶栏，看上去就是「指标」，
+/// 和复盘毫无关系。现在按底栏那五枚的画法单独画一枚：实心、带釉、主色本身配金色书签，
+/// 本身上挖两道「字行」露出身后的托底。坐标同样按 24 的框排。
+///
+/// 托底仍是顶栏那枚 30pt 中性圆（`TopBar.iconButton`）——颜色只长在记号上，
+/// 不拿强调色把整颗按钮填满，免得和旁边的价格抢视线。
+struct ReviewGlyph: View {
+  var theme: PanelTheme
+  var size: Double = 17
+
+  private static let box: Double = 24
+
+  var body: some View {
+    ZStack {
+      shape([.rect(x: 4.2, y: 2.6, w: 15.6, h: 18.8, r: 3.4)]).fill(accentGlaze)
+      // 两道字行：一长一短，挖穿本身，露出托底。
+      shape([.rect(x: 7.6, y: 12.2, w: 8.8, h: 2.3, r: 1.15),
+             .rect(x: 7.6, y: 16.1, w: 5.6, h: 2.3, r: 1.15)])
+        .fill(.black).blendMode(.destinationOut)
+      // 书签：从本子上沿垂下来，尾巴剪一个燕尾口，四个角都是圆的。
+      shape([.path("M12.6 1.9h4.2c.5 0 .9.4.9.9v7.5c0 .45-.52.7-.87.42L14.7 9.1l-2.13 1.62"
+                   + "c-.35.28-.87.03-.87-.42V2.8c0-.5.4-.9.9-.9z")])
+        .fill(goldGlaze)
+    }
+    .compositingGroup()
+    .frame(width: size, height: size)
+    .shadow(color: .black.opacity(theme.dark ? 0.26 : 0.12), radius: 1.5, y: 0.8)
+  }
+
+  private var accentGlaze: LinearGradient { glaze(TabBar.lift(theme.seed.accent, 0.42), theme.amber) }
+  private var goldGlaze: LinearGradient { glaze(TabBar.lift(theme.seed.amber, 0.34), Color(hex: theme.seed.amber)) }
+  private func glaze(_ top: Color, _ bottom: Color) -> LinearGradient {
+    LinearGradient(colors: [top, bottom], startPoint: .topLeading, endPoint: UnitPoint(x: 0.35, y: 1))
+  }
+  private func shape(_ items: [IconItem]) -> IconShape { IconShape(box: Self.box, items: items) }
+}
+
 /// 一句话提示（原型 `.toast`）。
 ///
 /// 没有「撤销」时 1.6 秒自己消失；带「撤销」时停 5 秒——按钮得给人反应过来的时间，

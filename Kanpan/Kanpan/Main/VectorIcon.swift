@@ -382,10 +382,6 @@ extension VectorIcon {
     ])
   }
 
-  static var indicator: VectorIcon {
-    tool([.path("M2.5 13.5 6.5 8l3.5 3.5L17 4"), .path("M2.5 17h15")])
-  }
-
   static var draw: VectorIcon {
     tool([.path("M3 17 17 3"), .circle(x: 4.4, y: 15.6, r: 1.8), .circle(x: 15.6, y: 4.4, r: 1.8)])
   }

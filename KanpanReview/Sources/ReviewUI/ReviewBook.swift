@@ -37,15 +37,14 @@ public struct ReviewBook: View {
             Button("重试") { Task { if feature.nextPage != nil && !feature.history.isEmpty { await feature.loadMoreHistory() } else { await feature.loadHistory(query: filter) } } }.listRowBackground(t.app)
           }
           if filtered.isEmpty && !feature.historyLoading && feature.historyError == nil {
-            // 空状态一行字就够（§2G5）。
-            Button { feature.bookOpen = false; feature.onCapture() } label: {
-              Text(feature.tab == "todo" ? "没有待判定的 · 记一笔" : "还没有记录 · 记一笔")
-                .foregroundStyle(t.ink3)
-                .frame(maxWidth: .infinity, minHeight: 44)
-            }
-            .listRowBackground(t.app)
-            .listRowSeparator(.hidden)
-            .accessibilityIdentifier("review.empty")
+            // 空状态一行字就够（§2G5）。只是一行字，不再是「记一笔」的第三个入口（审查 U6）：
+            // 记一笔只留图表设置那一行和右上角的「+」，同一件事不摆三处。
+            Text(feature.tab == "todo" ? "没有待判定的" : "还没有记录")
+              .foregroundStyle(t.ink3)
+              .frame(maxWidth: .infinity, minHeight: 44)
+              .listRowBackground(t.app)
+              .listRowSeparator(.hidden)
+              .accessibilityIdentifier("review.empty")
           }
           // 无限下滑：最后一行一露头就接下一页，不再有「上一页 / 下一页」。
           if feature.isConnected && feature.nextPage != nil && feature.historyError == nil {
@@ -72,6 +71,7 @@ public struct ReviewBook: View {
         }
         ToolbarItemGroup(placement: .primaryAction) {
           Button { feature.bookOpen = false; feature.onCapture() } label: { Image(systemName: "plus") }.accessibilityLabel("记一笔")
+            .accessibilityIdentifier("review.capture")
           // 不常用的去处收在「…」里：现在只有「已存案例」一样。
           Menu {
             // Menu 里直接放 NavigationLink 在 iOS 26 上一点就崩；菜单只翻开关，推页交给下面的 destination。
