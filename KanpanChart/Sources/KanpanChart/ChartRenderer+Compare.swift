@@ -63,11 +63,7 @@ extension ChartRenderer {
 
   private func compareAdjacent(_ before: Int64, _ after: Int64) -> Bool {
     let interval = state.series.interval
-    guard interval.isIrregular else { return after - before == interval.stepMs }
-    var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-    let date = Date(timeIntervalSince1970: Double(before) / 1000)
-    guard let next = calendar.date(byAdding: interval == .mo1 ? .month : .year, value: 1, to: date) else { return false }
-    return Int64(next.timeIntervalSince1970 * 1000) == after
+    return interval.advancing(before, by: 1) == after
   }
 
   public var compareLegend: [(name: String, value: Double?, color: Hex)] {

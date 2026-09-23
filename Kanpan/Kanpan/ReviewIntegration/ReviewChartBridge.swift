@@ -75,17 +75,13 @@ import ReviewUI
     #endif
     return root
   }
+  // 月线 / 年线按日历走，只有 `Interval.advancing` 一份（KanpanCore/UTCCalendar）。
   static func closeTime(_ time: Int64, interval: Interval) -> Int64 {
-    guard interval.isIrregular else { return time + interval.stepMs }
-    var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-    let date = Date(timeIntervalSince1970: Double(time) / 1000)
-    return Int64((calendar.date(byAdding: interval == .y1 ? .year : .month, value: 1, to: date)?.timeIntervalSince1970 ?? date.timeIntervalSince1970) * 1000)
+    interval.advancing(time, by: 1)
   }
   static func shifted(_ time: Int64, interval: Interval, bars: Int) -> Int64 {
-    guard interval.isIrregular else { return max(0, time + Int64(bars) * interval.stepMs) }
-    var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-    let date = Date(timeIntervalSince1970: Double(time) / 1000)
-    return Int64((calendar.date(byAdding: interval == .y1 ? .year : .month, value: bars, to: date)?.timeIntervalSince1970 ?? date.timeIntervalSince1970) * 1000)
+    let moved = interval.advancing(time, by: bars)
+    return interval.isIrregular ? moved : max(0, moved)
   }
   /// 当前这张实时图是从哪家取的数。
   ///

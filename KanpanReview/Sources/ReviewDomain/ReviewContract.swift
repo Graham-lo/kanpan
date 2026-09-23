@@ -44,19 +44,7 @@ public enum ReviewInterval: String, Sendable, Codable, CaseIterable {
     if let step = fixedSeconds {
       return Self.floorDiv((end - start) / 1000, step)
     }
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-    let from = Date(timeIntervalSince1970: Double(start) / 1000)
-    let to = Date(timeIntervalSince1970: Double(end) / 1000)
-    let index = { (date: Date) -> Int in
-      let parts = calendar.dateComponents([.year, .month], from: date)
-      return (parts.year ?? 0) * 12 + (parts.month ?? 0)
-    }
-    let shifted = { (months: Int) -> Date in calendar.date(byAdding: .month, value: months, to: from) ?? from }
-    var n = index(to) - index(from)
-    while shifted(n) > to { n -= 1 }
-    while shifted(n + 1) <= to { n += 1 }
-    return Int64(n)
+    return UTCCalendar.wholeMonths(from: start, to: end)
   }
 
   private static func floorDiv(_ a: Int64, _ b: Int64) -> Int64 {
