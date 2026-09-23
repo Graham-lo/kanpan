@@ -4,8 +4,13 @@ let package = Package(name: "KanpanReview", platforms: [.iOS(.v26), .macOS(.v14)
   products: [.library(name: "KanpanReview", targets: ["ReviewDomain", "ReviewData", "ReviewUI"])],
   // ReviewUI 借 KanpanCore 的价格 / 时间格式化（审查 B-07 / B-08）：复盘本里的价和
   // 时刻必须和顶栏、K 线轴、选区标签同一口径，各自现造 formatter 就会写成三种样子。
-  dependencies: [.package(path: "../KanpanCore")],
-  targets: [.target(name: "ReviewDomain", dependencies: [.product(name: "KanpanCore", package: "KanpanCore")]), .target(name: "ReviewData", dependencies: ["ReviewDomain"]),
+  // ReviewData 认 KanpanAccount 只为一件事：app 里复盘走的是账号那条带 token 的通道，
+  // 失败抛的是 `AccountError`，队列要按它的状态码决定「留着重发 / 摘出来裁决」
+  // （`AccountError: ReviewFailureStatus`，见 ScorebookClient.swift）。KanpanAccount 是
+  // 零依赖的叶子包，不会把别的东西带进来。
+  dependencies: [.package(path: "../KanpanCore"), .package(path: "../KanpanAccount")],
+  targets: [.target(name: "ReviewDomain", dependencies: [.product(name: "KanpanCore", package: "KanpanCore")]),
+    .target(name: "ReviewData", dependencies: ["ReviewDomain", .product(name: "KanpanAccount", package: "KanpanAccount")]),
     .target(name: "ReviewUI", dependencies: ["ReviewDomain", "ReviewData",
                                              .product(name: "KanpanCore", package: "KanpanCore")]),
     // 三个测试目标分三层，和报告 B.5 的客户端那张表一一对上：
@@ -15,4 +20,5 @@ let package = Package(name: "KanpanReview", platforms: [.iOS(.v26), .macOS(.v14)
     // `xcodebuild test -scheme KanpanReview -destination 'platform=iOS Simulator,…'`。
     .testTarget(name: "ReviewDomainTests", dependencies: ["ReviewDomain", "ReviewData"]),
     .testTarget(name: "ReviewDataTests", dependencies: ["ReviewDomain", "ReviewData"]),
-    .testTarget(name: "ReviewUITests", dependencies: ["ReviewDomain", "ReviewData", "ReviewUI"])])
+    .testTarget(name: "ReviewUITests", dependencies: ["ReviewDomain", "ReviewData", "ReviewUI",
+                                                      .product(name: "KanpanAccount", package: "KanpanAccount")])])

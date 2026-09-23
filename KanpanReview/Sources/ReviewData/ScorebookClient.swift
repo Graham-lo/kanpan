@@ -3,6 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 import ReviewDomain
+import KanpanAccount
 
 public struct ReviewConnection: Codable, Sendable, Equatable {
   public var baseURL: URL
@@ -45,6 +46,17 @@ public protocol ReviewFailureStatus {
   var reviewErrorCode: String? { get }
 }
 extension ScorebookError: ReviewFailureStatus {
+  public var reviewStatusCode: Int? { if case .http(let status, _) = self { status } else { nil } }
+  public var reviewErrorCode: String? { if case .http(_, let code) = self { code } else { nil } }
+}
+/// 生产上真正会被抛出来的是这一个：app 注进来的 transport 走 `AccountClient.data`，
+/// 非 2xx 抛 `AccountError.http(状态码, 服务端错误码)`。以前只有 `ScorebookError` 遵循，
+/// 于是 409 / 422 在队列眼里都成了「问不出状态码」→ `.transient`，那条操作原样留在
+/// 队首无限重发，后面的记录和云端拉取全停（审查 2026-09-24 §0.2 #2）。
+///
+/// 别的几种（`sessionReplaced`、`reauthenticationRequired`、`unavailable`…）没有状态码，
+/// 照旧按 transient 留着——那是「等人重新登录 / 等网」，不是「内容被拒」。
+extension AccountError: ReviewFailureStatus {
   public var reviewStatusCode: Int? { if case .http(let status, _) = self { status } else { nil } }
   public var reviewErrorCode: String? { if case .http(_, let code) = self { code } else { nil } }
 }

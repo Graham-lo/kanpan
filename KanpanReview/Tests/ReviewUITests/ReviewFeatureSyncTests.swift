@@ -2,6 +2,7 @@ import XCTest
 import Foundation
 import ReviewDomain
 import ReviewData
+import KanpanAccount
 @testable import ReviewUI
 
 // ============================================================ 复盘本这一层的四条
@@ -31,6 +32,9 @@ import ReviewData
   var cursor: String?
   /// 还要拒几次复盘更新（409）。
   var reflectionRejections = 0
+  /// 拒的时候抛什么。出厂是旧的 `ScorebookError`；生产上 transport 走账号通道，抛的是
+  /// `AccountError.http`，那条用例把它换掉。
+  var reflectionRejection: any Error = ScorebookError.http(409, "record_revision_changed")
   /// 创建接口要不要报错（模拟断网 / 服务端忙）。
   var createFailure: (any Error)?
   /// 战绩接口要不要报错。
@@ -90,7 +94,7 @@ import ReviewData
       reflectionExpected = edit.expectedRevision
       if reflectionRejections > 0 {
         reflectionRejections -= 1
-        throw ScorebookError.http(409, "record_revision_changed")
+        throw reflectionRejection
       }
       var record = try XCTUnwrap(records[id])
       guard record.revision == edit.expectedRevision else { throw ScorebookError.http(409, "record_revision_changed") }
@@ -356,6 +360,52 @@ final class ReviewFeatureSyncTests: XCTestCase {
     let uploaded = try XCTUnwrap(feature.record(later.id))
     XCTAssertNotNil(uploaded.serverId, "后面那条不相干的记录必须传上去")
     XCTAssertTrue(server.paths.contains { $0 == "POST v1/native-review/records" })
+  }
+
+  /// 生产上的 transport 走账号通道，抛的是 `AccountError.http` 而不是 `ScorebookError`。
+  /// 以前 `AccountError` 不遵循 `ReviewFailureStatus`，问不出状态码 → 一律 `.transient`，
+  /// 一条 409 / 422 就原样坐在队首无限重发，后面的记录永远上不去（审查 2026-09-24 §0.2 #2）。
+  @MainActor func testAccountErrorRejectionsDoNotBlockTheQueue() async throws {
+    XCTAssertEqual(ReviewFailure.verdict(for: AccountError.http(409, "record_revision_changed")), .conflict)
+    XCTAssertEqual(ReviewFailure.verdict(for: AccountError.http(422, "invalid_reflection")), .rejected)
+    XCTAssertEqual(ReviewFailure.verdict(for: AccountError.http(503, "request_failed")), .transient)
+    XCTAssertEqual(ReviewFailure.verdict(for: AccountError.sessionReplaced(.phone)), .transient, "被顶下线是等人重新登录，不是内容被拒")
+    XCTAssertEqual(ReviewFailure.code(for: AccountError.http(422, "invalid_reflection")), "invalid_reflection")
+
+    for (status, code) in [(409, "record_revision_changed"), (422, "invalid_reflection")] {
+      let directory = makeDirectory()
+      defer { try? FileManager.default.removeItem(at: directory) }
+      let server = FakeReviewServer()
+      var mine = ReviewRecord(draft: validDraft(symbol: "ETHUSDT"))
+      mine.serverId = mine.id; mine.revision = 3
+      server.records = [mine.id: mine]; server.page0 = [mine.id]
+      server.reflectionRejections = 1
+      server.reflectionRejection = AccountError.http(status, code)
+
+      let feature = ReviewFeature(directory: directory)
+      let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
+      try store.transaction { $0.records = [mine] }
+      feature.activate(store: store, client: client(server))
+      feature.autoSync = false
+      feature.saveReflection(mine.id, note: "追高那一笔", nextTime: "", publish: true)
+      let later = validDraft()
+      feature.begin(later)
+      XCTAssertTrue(feature.saveRecord())
+      XCTAssertEqual(feature.pendingUploads, 2)
+
+      feature.autoSync = true
+      feature.synchronize(manual: true)
+      await settle(feature)
+
+      XCTAssertEqual(feature.pendingUploads, 0, "AccountError.http(\(status)) 让队列卡在了队首")
+      XCTAssertEqual(server.reflectionKeys.count, 1, "\(status) 不该被当成网络抖动重发")
+      let stuck = try XCTUnwrap(feature.record(mine.id))
+      XCTAssertEqual(stuck.conflict?.kind, "reflection")
+      XCTAssertEqual(stuck.conflict?.code, code)
+      XCTAssertEqual(stuck.conflict?.retryable, status == 409, "409 可以重新基准再发，422 只能留在本机")
+      XCTAssertEqual(stuck.reflection.note, "追高那一笔")
+      XCTAssertNotNil(feature.record(later.id)?.serverId, "后面那条不相干的记录必须传上去")
+    }
   }
 
   /// 人裁决「用我这份」：拿服务端最新版本做基准重发，而且必须是**一条新操作、新幂等键**。
