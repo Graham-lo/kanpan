@@ -42,6 +42,19 @@ struct SymbolClassificationTests {
       let info = SymbolInfo(symbol: base + "USDT", base: base, pricePrecision: 2, tickSize: 0.01)
       #expect(SymbolClassifier.classify(info).asset == .preciousMetal)
     }
+    #expect(SymbolClassifier.preciousMetals == ["XAU", "XAG", "XPT", "XPD"])
+  }
+
+  /// 链上的金子代币照交易所算加密：币安给的是 `COIN` + `[RWA, Crypto]`
+  /// （KanpanData 夹具 catalog-classification-2026-09-15.json）。只有徽章按材料画金锭。
+  @Test func goldTokensAreCryptoPerExchange() {
+    for base in ["XAUT", "PAXG"] {
+      let info = SymbolInfo(symbol: base + "USDT", base: base, pricePrecision: 2, tickSize: 0.01,
+                            underlyingType: "COIN", underlyingSubTypes: ["RWA", "Crypto"],
+                            contractType: "PERPETUAL")
+      #expect(SymbolClassifier.classify(info).asset == .crypto)
+      #expect(!SymbolClassifier.isPreciousMetal(base: base))
+    }
   }
 
   /// B-T12（Swift 半边）：网关合成出来的 OKX 行带上 `underlyingType: "COIN"` 之后，

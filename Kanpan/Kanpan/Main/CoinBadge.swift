@@ -238,9 +238,10 @@ extension CoinSpec {
 extension CoinSpec {
   /// 交易所元数据到不了的时候（顶栏在首屏就要画徽章），靠这几张表认品类。
   /// 币安那套代号是固定的，列全比猜准。
-  /// XAUT / PAXG 是链上的金子，跟 XAU 一样该画金锭——它们在币安归在加密那一栏，
-  /// 事实分类给的是 `.crypto`，所以只能在这儿点名。
-  private static let metals: Set<String> = ["XAU", "XAG", "XPT", "XPD", "XAUT", "PAXG"]
+  /// 贵金属名单本身只有 `SymbolClassifier.preciousMetals` 一份。这里只多点名两支
+  /// 链上的金子：XAUT / PAXG 跟 XAU 一样该画金锭，但它们在交易所那儿是加密
+  /// （`COIN` + `[RWA, Crypto]`），事实分类给的是 `.crypto`，所以只能按记号在这儿点名。
+  private static let goldTokens: Set<String> = ["XAUT", "PAXG"]
   private static let oils: Set<String> = ["CL", "BZ"]
   private static let gas: Set<String> = ["NATGAS"]
   private static let copper: Set<String> = ["COPPER"]
@@ -293,7 +294,7 @@ extension CoinSpec {
     // 实物商品是唯一还共用记号的一类：画的是这块东西本身，金子就该是金锭、
     // 原油就该是油滴，四支贵金属靠渐变分金银铂钯。换成各自的几何标反而认不出来。
     // 调用方递进来的事实分类优先，够不着的时候再查自己那几张表。
-    if metals.contains(name) || asset == .preciousMetal {
+    if SymbolClassifier.preciousMetals.contains(name) || goldTokens.contains(name) || asset == .preciousMetal {
       return CoinSpec(from: pair.0, to: pair.1, mark: ingot, inset: 0.68)
     }
     if oils.contains(name) { return CoinSpec(from: pair.0, to: pair.1, mark: drop, inset: 0.6) }

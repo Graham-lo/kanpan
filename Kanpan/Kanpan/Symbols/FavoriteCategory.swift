@@ -3,10 +3,6 @@ import KanpanCore
 /// 自动收藏建议仅映射粗粒度文件夹；品种事实分类由Core独立提供。
 /// 只在首次收藏/迁移未归类成员时使用，不覆盖用户主动移动过的分类。
 enum FavoriteCategory {
-  /// 按 ISO 资产代码就能认出来的贵金属。和 `SymbolClassifier` 里那一条同一份名单——
-  /// 那不是猜代号，XAU/XAG/XPT/XPD 本身就是资产代码。
-  private static let preciousMetals: Set<String> = ["XAU", "XAG", "XPT", "XPD"]
-
   /// 这个代号我们**知道**它是什么吗？
   ///
   /// 判据只有两条，和 `SymbolClassifier` 逐字一致（审查 B-04）：交易所的
@@ -18,7 +14,8 @@ enum FavoriteCategory {
     if let info, info.underlyingType != nil { return true }
     let key = SymbolPrefs.key(symbol)
     let base = info?.base ?? SymbolInfo.placeholder(symbol: key).base
-    return preciousMetals.contains(base.uppercased())
+    // 名单只有 `SymbolClassifier.preciousMetals` 一份：XAU/XAG/XPT/XPD 本身就是资产代码，不是猜。
+    return SymbolClassifier.isPreciousMetal(base: base)
   }
 
   /// 只在 `knows(symbol:info:) == true` 时才有意义；不知道的一律落到「其他」，

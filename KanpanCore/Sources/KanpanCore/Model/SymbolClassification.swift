@@ -15,6 +15,18 @@ public struct SymbolClassification: Codable, Sendable, Equatable {
 public enum SymbolClassifier {
   public static let ruleVersion = 1
 
+  /// 按 ISO 资产代码就能认出来的贵金属。**客户端只此一份**：分类器、自选的「知不知道」、
+  /// 徽章画金锭都用它（审查 2026-09-24 §2：以前三处各抄一份，徽章那份多了 XAUT / PAXG）。
+  ///
+  /// XAUT、PAXG 不在这里，是有意的：它们是链上的金子代币，币安 `exchangeInfo` 给的是
+  /// `PERPETUAL` + `underlyingType: COIN` + `underlyingSubType: [RWA, Crypto]`
+  /// （KanpanData 夹具 catalog-classification-2026-09-15.json），板块表把它们归在
+  /// 「RWA 现实资产」。事实分类照交易所算加密；只有徽章按材料画金锭，那是
+  /// `CoinSpec.goldTokens` 的事，不改变它们是什么。
+  public static let preciousMetals: Set<String> = ["XAU", "XAG", "XPT", "XPD"]
+
+  public static func isPreciousMetal(base: String) -> Bool { preciousMetals.contains(base.uppercased()) }
+
   public static func classify(_ info: SymbolInfo) -> SymbolClassification {
     let base = info.base.uppercased()
     let tags = Array(Set((info.underlyingSubTypes ?? []).map { $0.lowercased() })).sorted()
@@ -23,7 +35,7 @@ public enum SymbolClassifier {
       SymbolClassification(asset: asset, region: region, tags: tags, source: source, ruleVersion: ruleVersion)
     }
     // 贵金属细分来自明确的ISO资产代码，原始COMMODITY标签仍保留在SymbolInfo。
-    if ["XAU", "XAG", "XPT", "XPD"].contains(base) { return result(.preciousMetal, .unspecified, .knownSymbol) }
+    if isPreciousMetal(base: base) { return result(.preciousMetal, .unspecified, .knownSymbol) }
     switch info.underlyingType?.uppercased() {
     case "COIN": return result(.crypto)
     case "EQUITY": return result(.equity, .us)
