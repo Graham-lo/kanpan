@@ -123,6 +123,24 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     }
   }
 
+  /// 算之前把参数理成这把指标能直接下标取用的长度。
+  ///
+  /// 参数是从偏好里来的：用户手输、云端同步、老版本存下来的都有，长度不可信。
+  /// 固定个数的那几把（布林、MACD、KDJ、随机强弱、真实波幅、超级趋势、动向）在引擎里
+  /// 按 `p[0]`…`p[3]` 直接取，少一个就是越界崩溃——所以缺的位置用默认值补上，
+  /// 多出来的丢掉。按列表画的那几把（均线、指数均线、强弱、均量）条数本来就随用户，原样。
+  /// 取值本身（0、负数）不在这里改：各条线对脏窗口长度自有处理，画成「这段没有线」
+  /// （见 `IndicatorEdgeTests`、`degenerateParamsAtIndexZero`）。
+  public func normalizedParams(_ params: [Int]?) -> [Int] {
+    guard let params else { return defaultParams }
+    switch self {
+    case .ma, .ema, .rsi, .vol:
+      return params
+    default:
+      return defaultParams.indices.map { i in i < params.count ? params[i] : defaultParams[i] }
+    }
+  }
+
   public var paramLabels: [String] {
     switch self {
     case .ma: ["短", "中", "长"]

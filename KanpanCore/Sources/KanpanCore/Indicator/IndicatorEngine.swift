@@ -31,7 +31,8 @@ public struct IndicatorEngine: Sendable {
     external: [IndicatorID: ExternalSeries] = [:], dataKey: String = ""
   ) -> Bool {
     let ids = Array(Set(wanted))
-    let resolved = Dictionary(uniqueKeysWithValues: ids.map { ($0, params[$0] ?? $0.defaultParams) })
+    // 参数先理一遍再用：`build` 按下标取固定个数的参数，长度不够就是越界崩溃。
+    let resolved = Dictionary(uniqueKeysWithValues: ids.map { ($0, $0.normalizedParams(params[$0])) })
     let k = Self.cacheKey(series: series, wanted: ids, params: resolved,
                           external: external, dataKey: dataKey)
     if k == key { return false }
@@ -50,7 +51,7 @@ public struct IndicatorEngine: Sendable {
     var keptStates: [IndicatorID: State] = [:]
     var keptValues: [IndicatorID: IndicatorResult] = [:]
     for id in ids {
-      let p = resolved[id]!
+      let p = resolved[id] ?? id.defaultParams
       // 吃外部数据的指标一律不留用：它的输入除了 K 线还有那一路外部序列，
       // `series.revision` 管不着它。宁可重建。
       //
@@ -148,12 +149,14 @@ public struct IndicatorEngine: Sendable {
     series: BarSeries, wanted: [IndicatorID], params: [IndicatorID: [Int]],
     external: [IndicatorID: ExternalSeries] = [:], dataKey: String = ""
   ) -> String {
-    let parts = wanted.map(\.rawValue).sorted().map { id -> String in
-      let p = (params[IndicatorID(rawValue: id)!] ?? []).map(String.init).joined(separator: "-")
-      return "\(id):\(p)"
+    // 直接按指标排、直接拿值，不再「先转成字符串排序、再用字符串反查指标」——
+    // 那一来一回要两次强制解包，任何一个名字对不上就是崩溃。
+    let parts = wanted.sorted { $0.rawValue < $1.rawValue }.map { id -> String in
+      let p = (params[id] ?? []).map(String.init).joined(separator: "-")
+      return "\(id.rawValue):\(p)"
     }
-    let ext = external.keys.map(\.rawValue).sorted().map { id -> String in
-      "\(id)@\(external[IndicatorID(rawValue: id)!]!.revision)"
+    let ext = external.sorted { $0.key.rawValue < $1.key.rawValue }.map { id, series -> String in
+      "\(id.rawValue)@\(series.revision)"
     }
     return "\(dataKey)|\(series.symbol)|\(series.interval.rawValue)|\(parts.joined(separator: ","))|\(ext.joined(separator: ","))|\(series.count)"
   }

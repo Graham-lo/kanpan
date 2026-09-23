@@ -232,6 +232,35 @@ struct IndicatorIncrementalTests {
     }
   }
 
+  /// 参数长度不够（老版本存档、云端同步来的半截数组）时，固定个数的指标按默认值补齐，
+  /// 不能按 `p[0]`…`p[3]` 直接越界崩掉；补齐后的结果等于直接传完整默认参数。
+  @Test("参数长度不够时按默认值补齐，不越界")
+  func shortParamsArePadded() {
+    let s = synthSeries(count: 120, seed: 4242)
+    let fixed: [IndicatorID] = [.boll, .macd, .kdj, .srsi, .atr, .supertrend, .dmi]
+    var short = IndicatorEngine()
+    short.ensure(series: s, wanted: fixed,
+                 params: Dictionary(uniqueKeysWithValues: fixed.map { ($0, [Int]()) }),
+                 dataKey: "short")
+    var partial = IndicatorEngine()
+    partial.ensure(series: s, wanted: [.srsi, .macd], params: [.srsi: [10], .macd: [8, 21]],
+                   dataKey: "partial")
+    var full = IndicatorEngine()
+    full.ensure(series: s, wanted: fixed, dataKey: "full")
+    for id in fixed {
+      for (i, line) in short.values[id]!.lines.enumerated() {
+        expectSame(line, full.values[id]!.lines[i], "空参数 \(id.rawValue)[\(i)]", tol: 0)
+      }
+    }
+    #expect(IndicatorID.srsi.normalizedParams([10]) == [10, 14, 3, 3])
+    #expect(IndicatorID.macd.normalizedParams([8, 21]) == [8, 21, 9])
+    #expect(IndicatorID.boll.normalizedParams([20, 2, 7]) == [20, 2])
+    #expect(IndicatorID.ma.normalizedParams([5]) == [5])
+    #expect(IndicatorID.kdj.normalizedParams(nil) == [9, 3, 3])
+    #expect(partial.values[.srsi]?.lines.isEmpty == false)
+    #expect(partial.values[.macd]?.lines.isEmpty == false)
+  }
+
   /// 随机对拍从 n = 1 起步：先改唯一那一根，再一根根长到所有线都出过值，每一步都对账。
   ///
   /// 原来的随机用例从 320 根开始，暖机边界根本走不到；这条补的就是那一段。
