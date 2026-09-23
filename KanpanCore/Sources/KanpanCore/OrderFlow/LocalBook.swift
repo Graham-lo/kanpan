@@ -250,7 +250,7 @@ public struct LocalBook: Sendable {
     return .applied
   }
 
-  // MARK: 流内权威快照（OKX books、Coinbase level2 的 snapshot 帧）
+  // MARK: 流内权威快照（快照随增量流一起下发的那几家的 snapshot 帧）
 
   public mutating func replaceFromStreamSnapshot(_ snapshot: BookSnapshot) throws(BookError) {
     try validateIdentity(snapshot.connection)

@@ -53,6 +53,8 @@ public protocol MarketProvider: Sendable {
   func probeStream(symbol: String, interval: Interval) async -> Bool
   /// 一条已经带好订阅、连上就推的原始推送地址（命令行录回放报文用）。做不到就给 nil。
   func rawStreamURL(topics: [StreamTopic]) -> URL?
+  /// 主力订单流的深度接入（实现在 `OrderFlow/`）。这条线路上没有深度就是 nil。
+  func orderFlowAdapter(symbol: String) -> (any DepthFeedAdapter)?
 }
 
 public extension MarketProvider {

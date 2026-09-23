@@ -74,9 +74,9 @@ public struct OrderFlowTrade: Sendable, Equatable {
 
 /// 适配器解出来的一条消息。三家交易所都落到这四种上。
 public enum DepthMessage: Sendable, Equatable {
-  /// 流内权威快照（OKX books / Coinbase level2 的 snapshot）：整本替换，立即就绪。
+  /// 流内权威快照（快照随流下发的那几家）：整本替换，立即就绪。
   case snapshot(BookSnapshot)
-  /// 增量；Coinbase 的心跳、订阅回执、成交帧也各带一条空增量，用来推进连接级序号。
+  /// 增量；序号按整条连接计的那家，心跳、订阅回执、成交帧也各带一条空增量，用来推进连接级序号。
   case delta(BookDelta)
   case trade(OrderFlowTrade)
   /// 协议层面接不上了（例如 OKX 序号重置），需要重建。
@@ -88,7 +88,7 @@ public struct OrderFlowModel: Sendable {
     case none
     /// 需要一份 REST 快照（币安）。
     case fetchSnapshot
-    /// 需要重新订阅以拿到新的流内快照（OKX / Coinbase）。
+    /// 需要重新订阅以拿到新的流内快照（快照在流里的那几家）。
     case resubscribe
   }
 

@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VENUE_DIRS='^KanpanNetwork/Sources/KanpanNetwork/(Binance|Coinbase)/'
+VENUE_DIRS='^KanpanNetwork/Sources/KanpanNetwork/(Binance|Coinbase|OrderFlow)/'
 REGISTRY='^KanpanNetwork/Sources/KanpanNetwork/Provider/VenueRegistry\.swift$'
 PATTERN='Binance\|Coinbase\|fapi\.binance\|coinbase\.com\|hasSuffix("USDT")'
 
