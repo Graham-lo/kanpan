@@ -50,6 +50,14 @@ fn share_identity(symbol:&str)->(&str,&str,&str) {
  let parts:Vec<_>=symbol.split('/').collect();
  if parts.len()==3 {(parts[0],parts[1],parts[2])} else {(crate::instruments::DEFAULT_VENUE,crate::instruments::DEFAULT_MARKET,symbol)}
 }
+/// 分享里每条画线可能出现的键（去掉 `id`，它单独校验）：就是客户端 `Drawing` 编码会写的那些。
+/// 和 `SHARE_REQUIRED`、`SHARE_RENAMED` 一起逐项对着 `contract/drawing-fields.json`
+/// （由 Swift 那边拿真实编码生成）——测试 `share_fields_are_what_drawing_encodes`。
+pub const SHARE_FIELDS:[&str;10]=["color","dash","filled","hidden","kind","levels","lineWidth","locked","points","text"];
+/// 每条画线都一定会写的键：`color` 只在设过颜色时写、`text` 只有带文字的工具写，所以不在这里。
+pub const SHARE_REQUIRED:[&str;8]=["dash","filled","hidden","kind","levels","lineWidth","locked","points"];
+/// 分享用 `Drawing` 自己的键名，个人同步用线上的名字；改完名交给同一套值规则。
+pub const SHARE_RENAMED:[(&str,&str);1]=[("points","anchors")];
 fn validate(v:&Send)->Result<()> {
  let (venue,market,symbol)=share_identity(&v.symbol);
  if !sync_validation::field(sync::DRAWINGS,"symbol",&json!(symbol)) || !sync_validation::identity(venue,market,symbol) || !crate::instruments::is_interval(&v.interval) || v.view.from<0 || v.view.to>9_000_000_000_000_000 || v.view.from>=v.view.to || !(1..=200).contains(&v.drawings.len()) {return Err(ApiError::bad("invalid_share"))}
@@ -59,13 +67,14 @@ fn validate(v:&Send)->Result<()> {
   let id=map.get("id").and_then(Value::as_str).filter(|s|!s.is_empty()&&s.len()<=100&&s.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_')).ok_or(ApiError::bad("invalid_drawing"))?;
   if !ids.insert(id) {return Err(ApiError::bad("invalid_drawing"))}
   // Drawing Codable 使用 points，个人同步使用 anchors；这里只适配名称，规则完全共用。
+  if SHARE_REQUIRED.iter().any(|key|!map.contains_key(*key)) {return Err(ApiError::bad("invalid_drawing"))}
   let mut body=BTreeMap::new();
   for (key,value) in map {
    if key=="id" {continue}
-   if !["kind","points","color","lineWidth","dash","filled","locked","hidden","levels","text"].contains(&key.as_str()) {return Err(ApiError::bad("invalid_drawing"))}
-   body.insert(if key=="points" {"anchors".into()} else {key.clone()},value.clone());
+   if !SHARE_FIELDS.contains(&key.as_str()) {return Err(ApiError::bad("invalid_drawing"))}
+   let wire=SHARE_RENAMED.iter().find(|(from,_)|*from==key).map_or(key.as_str(),|(_,to)|*to);
+   body.insert(wire.to_string(),value.clone());
   }
-  for key in ["kind","anchors","lineWidth","dash","filled","locked","hidden","levels"] {if !body.contains_key(key) {return Err(ApiError::bad("invalid_drawing"))}}
   body.insert("symbol".into(),json!(symbol));
   body.insert("venue".into(),json!(venue)); body.insert("market".into(),json!(market));
   sync_validation::object(&sync::Object{collection:sync::DRAWINGS.into(),id:format!("{venue}/{market}/{symbol}/{id}"),body,fields:BTreeMap::new(),revision:0,deleted:false,generation:0})?;
@@ -138,6 +147,42 @@ async fn opened(State(s):State<AppState>,who:Identity,Route(id):Route<String>)->
 async fn kept(State(s):State<AppState>,who:Identity,Route(id):Route<String>)->Result<Json<Value>> {mark(&s,who.user,&id,true).await}
 #[cfg(test)] mod tests {
  use super::*;
+ /// 客户端 `Drawing` 编码导出的那份，编进来而不是运行时读：文件缺了或坏了是编译错误。
+ const DRAWING_CONTRACT:&str=include_str!("../contract/drawing-fields.json");
+ fn drawing_contract()->Value {serde_json::from_str(DRAWING_CONTRACT).expect("contract/drawing-fields.json is not valid JSON; regenerate it with `make sync-contract`")}
+ fn strings(v:&Value)->Vec<String> {let mut all:Vec<String>=v.as_array().expect("contract list").iter().map(|s|s.as_str().expect("string").to_string()).collect();all.sort();all}
+ fn ours(list:&[&str])->Vec<String> {let mut all:Vec<String>=list.iter().map(|s|s.to_string()).collect();all.sort();all}
+ /// **分享收哪些画线键、哪些必须在，就是客户端 `Drawing` 编码写哪些键。**
+ ///
+ /// 这两张表从前是 `validate` 里两段手写的字面量，和 `Drawing.encode(to:)` 各管各的：
+ /// 客户端多编一个键，服务端不认 → 整次分享 400；服务端多要一个客户端不一定写的键 → 同样 400。
+ /// 契约是 Swift 那边拿真实编码结果生成的，它是对的一方：照它改这里的三个常量。
+ /// 只有契约本身过期（有人改了 Drawing 没重新生成）时，才先在仓库根跑 `make sync-contract`。
+ #[test] fn share_fields_are_what_drawing_encodes() {
+  let c=drawing_contract();
+  assert_eq!(c["version"],json!(1),"drawing-fields.json 的格式版本变了，这里的读法要一起改");
+  assert_eq!(ours(&SHARE_FIELDS),strings(&c["shareFields"]),"SHARE_FIELDS 和契约的 shareFields 对不上");
+  assert_eq!(ours(&SHARE_REQUIRED),strings(&c["shareRequiredFields"]),"SHARE_REQUIRED 和契约的 shareRequiredFields 对不上");
+  let renamed:Vec<(String,String)>=c["renamed"].as_object().expect("renamed").iter().map(|(k,v)|(k.clone(),v.as_str().expect("string").to_string())).collect();
+  let mut have:Vec<(String,String)>=SHARE_RENAMED.iter().map(|(a,b)|(a.to_string(),b.to_string())).collect();have.sort();
+  assert_eq!(have,renamed,"SHARE_RENAMED 和契约的 renamed 对不上");
+ }
+ /// 契约里每种工具的样本（点数、颜色、文字都照客户端会写的那样）整条分享都收；
+ /// 少了任何一个必带键就拒。这一条证明上面三个常量在 `validate` 里真的被用上了。
+ #[test] fn every_tool_the_client_encodes_is_shareable() {
+  let c=drawing_contract();
+  for (kind,count) in c["anchorCounts"].as_object().expect("anchorCounts") {
+   let n=count.as_u64().expect("count") as i64;
+   let points:Vec<Value>=(0..n).map(|i|json!({"t":1_800_000_000_000i64+i*60_000,"p":100+i})).collect();
+   let mut v=good();
+   v["drawings"][0]=json!({"id":"line1","kind":kind,"points":points,"color":{"value":"#112233"},"text":"x","lineWidth":1.3,"dash":"solid","filled":true,"hidden":false,"locked":false,"levels":[]});
+   assert!(validate(&serde_json::from_value(v.clone()).unwrap()).is_ok(),"{kind}");
+   for key in SHARE_REQUIRED {
+    let mut w=v.clone();w["drawings"][0].as_object_mut().unwrap().remove(key);
+    assert!(validate(&serde_json::from_value(w).unwrap()).is_err(),"{kind} without {key}");
+   }
+  }
+ }
  fn good()->Value {json!({"to":"qa_friend","symbol":"BTCUSDT","interval":"1h","view":{"from":1,"to":2},"drawings":[{"id":"line1","kind":"trend","points":[{"t":1,"p":100},{"t":2,"p":110}],"lineWidth":1.3,"dash":"solid","filled":true,"hidden":false,"locked":false,"levels":[]}],"alerted":["line1"]})}
  /// 截断了就停在这一页最后一封，下次从它接着拉；没截断照旧回「现在」。
  #[test] fn a_truncated_inbox_page_resumes_from_its_last_letter() {

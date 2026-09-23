@@ -49,7 +49,7 @@ help:
 	@echo "evidence     出 M3 全套取证产物到 docs/acceptance/M3/（A3.1–A3.10）"
 	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库；配色那两份不重导）"
 	@echo "feed         编数据层取证工具 kanpan-feed（Release）"
-	@echo "sync-contract 从 PrefsFieldPlan.table 重新生成 iOS↔Rust 的 settings 字段契约（Backend/kanpan-api/contract/settings-fields.json）"
+	@echo "sync-contract 重新生成 iOS↔Rust 契约：settings 字段（PrefsFieldPlan.table → contract/settings-fields.json）与画线字段（Drawing 编码 → contract/drawing-fields.json）"
 	@echo "app-test     app-logic-test + 编一遍 app（app 自己没有单元测试 target）"
 	@echo "build        在模拟器上编 app（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "ui-test      A8.4：两台重点机型跑同一套 XCUITest 用例，逐台记结果"
@@ -220,12 +220,19 @@ venue-isolation:
 #
 # 走的是 settings 那条测试的「写文件」模式（KANPAN_WRITE_SYNC_CONTRACT=1），
 # 不另起一个可执行：生成器和对账用的是同一段代码，不可能各说各话。
+#
+# 同一条命令也重新生成画线那一份 `drawing-fields.json`：一条画线在线上长什么样
+# （分享收哪些键、哪些必须在、同步收哪些键、每种工具几个锚点），母本是 `Drawing` 的编码
+# 本身，由 Kanpan/AccountCodec 的 DrawingFieldContract 拿真实编码结果导出。
 SYNC_CONTRACT := Backend/kanpan-api/contract/settings-fields.json
+DRAWING_CONTRACT := Backend/kanpan-api/contract/drawing-fields.json
 
 sync-contract:
 	cd $(SETTINGS) && KANPAN_WRITE_SYNC_CONTRACT=1 $(SWIFT) test $(CORE_TEST_FLAGS) \
 	  --filter theContractFileIsTheOneListBothSidesRead
-	@echo "→ $(SYNC_CONTRACT) 已按 PrefsFieldPlan.table 重新生成；跑 make app-logic-test 与 (cd Backend/kanpan-api && cargo test --lib) 对账"
+	cd $(ACCOUNT_CODEC) && KANPAN_WRITE_SYNC_CONTRACT=1 $(SWIFT) test $(CORE_TEST_FLAGS) \
+	  --filter theDrawingContractFileIsWhatDrawingEncodes
+	@echo "→ $(SYNC_CONTRACT) 已按 PrefsFieldPlan.table、$(DRAWING_CONTRACT) 已按 Drawing 的编码重新生成；跑 make app-logic-test 与 (cd Backend/kanpan-api && cargo test --lib) 对账"
 	@$(MAKE) --no-print-directory backend-test
 
 # ---------------------------------------------------------------- 后端单测

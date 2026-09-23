@@ -94,6 +94,8 @@ pub const SETTINGS_FIELDS:&[&str]=&[
 // (trend → extended, hline → hray, vline → crossLine): the next line from that tool is drawn that way.
 pub const DRAWING_PREFERENCE_FIELDS:[&str;5]=["favorites","magnet","continuous","styles","variants"];
 // `text` is the note/callout/flag caption; `created` only old archives carry.
+// Checked against `contract/drawing-fields.json` (`syncFields` + `legacySyncFields`, generated from what
+// the client's `PersonalSyncCodec.drawings` really sends) by `drawing_fields_are_what_the_codec_sends`.
 pub const DRAWING_FIELDS:[&str;14]=["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"];
 pub const FAVORITE_FIELDS:[&str;7]=["symbol","market","venue","groupId","order","pinned","alerts"];
 pub const GROUP_FIELDS:[&str;3]=["name","order","members"];
@@ -384,6 +386,22 @@ mod tests {
  const CONTRACT:&str=include_str!("../contract/settings-fields.json");
 
  /// The wire keys the contract says exist, sorted.
+ /// **The drawings allowlist is what the client's codec sends, plus the keys only old archives carry.**
+ ///
+ /// `DRAWING_FIELDS` used to be a third hand-copy of the drawing shape. A key the client starts
+ /// encoding that is missing here makes every such line 400 and jam the sync queue behind it.
+ /// The contract is generated from real encodes, so it is the side that is right.
+ #[test] fn drawing_fields_are_what_the_codec_sends() {
+  let contract:Value=serde_json::from_str(include_str!("../contract/drawing-fields.json"))
+   .expect("contract/drawing-fields.json is not valid JSON; regenerate it with `make sync-contract`");
+  let mut theirs:Vec<String>=contract["syncFields"].as_array().expect("syncFields").iter()
+   .map(|v|v.as_str().expect("string").to_string())
+   .chain(contract["legacySyncFields"].as_object().expect("legacySyncFields").keys().cloned()).collect();
+  theirs.sort();
+  let mut ours:Vec<String>=DRAWING_FIELDS.iter().map(|s|s.to_string()).collect(); ours.sort();
+  assert_eq!(ours,theirs,"DRAWING_FIELDS drifted from the contract's syncFields + legacySyncFields; \
+   edit DRAWING_FIELDS (and give a new key a value rule in sync_validation::field)");
+ }
  fn contract_wire_keys()->Vec<String> {
   let contract:Value=serde_json::from_str(CONTRACT)
    .expect("contract/settings-fields.json is not valid JSON; regenerate it with `make sync-contract`");

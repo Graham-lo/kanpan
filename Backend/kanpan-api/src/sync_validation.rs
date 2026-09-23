@@ -42,6 +42,8 @@ fn symbol(v:&Value)->bool {
  if v.as_str().is_some_and(|s|s.len()<=40 && s.strip_suffix("-USD").is_some_and(|base| !base.is_empty() && base.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))) {return true}
 v.as_str().is_some_and(|s|s.len()<=40&&QUOTES.iter().any(|q|s.ends_with(q))&&s.bytes().all(|c|c.is_ascii_uppercase()||c.is_ascii_digit()))}
 /// How many anchors a finished drawing of this kind carries: `Drawing.Kind.pointCount`.
+/// Checked kind by kind against `contract/drawing-fields.json`'s `anchorCounts` (generated from
+/// the client's enum) by `anchor_counts_are_the_clients_point_counts`.
 fn anchor_count(kind:&str)->usize {
  match kind {
   "hline"|"vline"|"hray"|"note"|"crossLine"|"priceLabel"|"flag"|"markerUp"|"markerDown"
@@ -331,6 +333,29 @@ mod tests {
    "main chart + sub panels is not the contract's `indicatorIDs`, so the two halves here are \
     not the whole vocabulary — `params/<id>` and friends would refuse an indicator the client \
     really does send. {note}");
+ }
+
+ /// **Every tool's anchor count is the client's `Drawing.Kind.pointCount`.**
+ ///
+ /// `anchor_count` is a hand-written match with a `_=>2` default, and the client's
+ /// `pointCount` is another; a three-point tool added on one side only would have every line
+ /// drawn with it refused (wrong anchor count → the whole operation 400s). The contract is
+ /// generated from the client's enum, so it is the side that is right: fix the match arm here.
+ /// Only if the contract is stale — someone edited `Drawing.Kind` without regenerating — run
+ /// `make sync-contract` from the repo root first.
+ #[test] fn anchor_counts_are_the_clients_point_counts() {
+  let contract:Value=serde_json::from_str(include_str!("../contract/drawing-fields.json"))
+   .expect("contract/drawing-fields.json is not valid JSON; regenerate it with `make sync-contract`");
+  let counts=contract["anchorCounts"].as_object().expect("contract/drawing-fields.json has no `anchorCounts`; run `make sync-contract`");
+  let mut theirs:Vec<&str>=counts.keys().map(String::as_str).collect(); theirs.sort();
+  let mut ours:Vec<&str>=KINDS.to_vec(); ours.sort();
+  assert_eq!(ours,theirs,"KINDS is not the set of kinds the client counts anchors for");
+  for (kind,count) in counts {
+   let n=count.as_u64().expect("anchor count") as usize;
+   assert_eq!(anchor_count(kind),n,"anchor_count(\"{kind}\") drifted from the client's pointCount");
+   assert!(object(&drawing(kind,n)).is_ok(),"{kind} with {n} anchors should be valid");
+   assert!(object(&drawing(kind,n+1)).is_err(),"{kind} with {} anchors should be refused",n+1);
+  }
  }
 
  /// **Every drawing tool the client can draw with is a tool this server stores.**
