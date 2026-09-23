@@ -15,6 +15,7 @@
 #
 # 结果与说明见 docs/acceptance/M3/A3.12-cpu.md。
 set -euo pipefail
+GUARD="${GUARD:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/machine-guard.sh run}"  # 机器资源守门：排队 + nice，见 AGENTS.md「机器资源纪律」
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJ="$ROOT/Evidence/KanpanEvidenceHost/KanpanEvidenceHost.xcodeproj"
@@ -41,7 +42,7 @@ xcrun simctl boot "$UDID" 2>/dev/null || true
 xcrun simctl bootstatus "$UDID" -b >/dev/null
 
 echo "→ 构建取证宿主"
-xcodebuild -project "$PROJ" -scheme KanpanEvidenceHost \
+$GUARD xcodebuild -project "$PROJ" -scheme KanpanEvidenceHost \
   -destination "platform=iOS Simulator,id=$UDID" \
   -derivedDataPath "$ROOT/Evidence/KanpanEvidenceHost/.xcbuild" \
   build | tail -3

@@ -28,6 +28,18 @@
 - 手机可能经本机 Mac 的 Surge 网关上网。按真实网络路径排查，不改 Mac 的网关、代理与其他应用路由。
 - 当前验证只跑受影响的模拟器 UI 用例并开超时，视觉改动截原始图；完整矩阵只在交接书P4执行。不寻找账号、签名或推送密钥。
 
+## 机器资源纪律（2026-09-23 起，所有窗口与子代理都要守）
+
+这台 Mac 只有 10 核 / 16 GB / 460 GB。09-23 中午同时开着 5 台模拟器、4 个 xcodebuild（40 个 swift-frontend）、一台上限 10 GB 的 Docker 虚拟机和 8 个 Claude 会话：负载 54、交换区 12 GB 满、磁盘只剩 15 GB（117 GB 是 57 台模拟器攒的数据），macOS 开始强杀进程，Surge / ChatGPT / Claude 跟着崩，用户只能手动停任务。用户的指示：**Claude 执行多任务时必须先看机器资源；Surge、ChatGPT、Claude 必须保住；不能交给 macOS 自己杀；在这个前提下机器资源可以尽量用。**
+
+- **预算**（`scripts/machine-guard.sh`，launchd 看门狗每 60 秒巡一次）：同时最多 **2 个重编译**（xcodebuild / swift build|test / cargo）、**2 台开机模拟器**、磁盘空闲 **≥ 40 GB**、交换区 **≤ 8 GB**、空闲内存 **≥ 12%**。超预算的活自动排队，不是并行硬挤——排队比挤在一起换页快。
+- **起重活一律经 `make` 目标**，或者 `scripts/machine-guard.sh run <命令>`；Makefile 与 `Tools/*.sh` 里的 xcodebuild / swift 已经包好，会占槽、会 nice 10。不要在会话里裸跑 xcodebuild，也不要一个窗口同时起两个（09-23 一个窗口并行起了三个）。
+- **模拟器**：一个窗口同一时刻只用一台，用完 `xcrun simctl shutdown`。不再给每个窗口建整套 13 台副本；`Tools/make-sim-set.sh` 只在跑完整矩阵前建，跑完 `scripts/machine-guard.sh clean --sims` 重置。看门狗会关掉超预算且十分钟内没有 xcodebuild / xctest / simctl 引用的模拟器，被关了就重新 boot。
+- **派子代理前先 `scripts/machine-guard.sh status`**；负载、交换区或磁盘超预算时子代理串行派、不并行派；要跑编译的子代理同一时刻最多两个。
+- **磁盘**：DerivedData、`.build`、cargo `target`、`/tmp` 里的构建目录都是可再生产物，`scripts/machine-guard.sh clean` 随时可删，看门狗在磁盘不足 40 GB 且没有构建在跑时会自动清。自己的临时 derived data 一律放 `/tmp/kanpan-<窗口>-…`，别的命名清不掉。`DerivedData-archive`（TestFlight 归档与 dSYM）不在清理范围内。
+- **Docker** 只在任务确实需要时开，用完退出；虚拟机上限已从 10 GB 降到 3 GB。
+- **受保护应用**（Surge / ChatGPT / Claude app / `claude remote-control`）掉了看门狗会拉起；要临时关掉这个行为 `touch /tmp/kanpan-guard/protect.off`。日志在 `/tmp/kanpan-guard/guard.log`，告警在 `/tmp/kanpan-guard/ALERT`。
+
 ## 加 / 删一个同步字段
 
 「哪些设置跟着人走、服务端认哪些键」母表只有一张：`Kanpan/Kanpan/Settings/Model/PrefsFieldPlan.swift` 的 `PrefsFieldPlan.table`。两边不再手抄，中间是一份生成物 `Backend/kanpan-api/contract/settings-fields.json`（**不要手改**）。

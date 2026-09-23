@@ -1,6 +1,13 @@
 # 看盘 · 构建与取证入口（任务书 §13 M0）
 # 约定：所有命令从仓库根跑；证据落在 docs/acceptance/。
 
+# ---------------------------------------------------------------- 机器资源守门（2026-09-23）
+# 所有重编译一律经 scripts/machine-guard.sh run：机器上同时最多 2 个，超了就排队；
+# 一律 nice 10，让 Surge / ChatGPT / Claude 保住前台。规则见 AGENTS.md「机器资源纪律」。
+GUARD      := $(CURDIR)/scripts/machine-guard.sh run
+XCODEBUILD := $(GUARD) xcodebuild
+SWIFT      := $(GUARD) swift
+
 WORKSPACE  := Kanpan.xcworkspace
 SCHEME     := Kanpan
 CORE       := KanpanCore
@@ -84,7 +91,7 @@ else
 endif
 
 core-test:
-	cd $(CORE) && swift test $(CORE_TEST_FLAGS)
+	cd $(CORE) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 # ---------------------------------------------------------------- 网络层
 # 怎么连到交易所：HTTP / WS 最小接口、币安 REST / WS 客户端与限流、行情线路（直连 / 网关）、
@@ -92,23 +99,23 @@ core-test:
 NETWORK := KanpanNetwork
 
 network-test:
-	cd $(NETWORK) && swift test $(CORE_TEST_FLAGS)
+	cd $(NETWORK) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 # ---------------------------------------------------------------- A2 Data
 DATA := KanpanData
 
 data-test:
-	cd $(DATA) && swift test $(CORE_TEST_FLAGS)
+	cd $(DATA) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 # 绘制层 import UIKit，裸 swift build 会拿 macOS sysroot 编（-sdk 那条 flag 会被吞掉），
 # 所以这里必须走 xcodebuild 指一个 iOS Simulator destination。
 chart-build:
-	cd $(CHART) && xcodebuild -scheme KanpanChart \
+	cd $(CHART) && $(XCODEBUILD) -scheme KanpanChart \
 		-destination 'generic/platform=iOS Simulator' \
 		-derivedDataPath .xcbuild build
 
 chart-test:
-	cd $(CHART) && xcodebuild test -scheme KanpanChart \
+	cd $(CHART) && $(XCODEBUILD) test -scheme KanpanChart \
 		-destination 'platform=iOS Simulator,name=$(DEVICE)' \
 		-derivedDataPath .xcbuild
 
@@ -121,17 +128,17 @@ SYMBOLS := Kanpan/Symbols
 SETTINGS := Kanpan/Settings
 
 symbols-test:
-	cd $(SYMBOLS) && swift test $(CORE_TEST_FLAGS)
+	cd $(SYMBOLS) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 settings-test:
-	cd $(SETTINGS) && swift test $(CORE_TEST_FLAGS)
+	cd $(SETTINGS) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 # 板块页那两件不吃 SwiftUI 的：取数（`SectorFeed`：换线路清行情、连着失败就丢）
 # 和品种列表的值与文案（`SectorRows`：小数位听品种表的、缺数不许伪排序）。
 SECTOR := Kanpan/Sector
 
 sector-test:
-	cd $(SECTOR) && swift test $(CORE_TEST_FLAGS)
+	cd $(SECTOR) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 # 连续扫图与「看细节」的纯算术（§10.1）：冻结下来的那张名单怎么走一只（`ScanList`）、
 # 「看细节」该进哪一档、视野铺多宽、切回大周期时回到哪儿（`DetailZoom`）。
@@ -139,7 +146,7 @@ sector-test:
 SCAN := Kanpan/Scan
 
 scan-test:
-	cd $(SCAN) && swift test $(CORE_TEST_FLAGS)
+	cd $(SCAN) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 # 提醒模块里不吃 SwiftUI / UIKit 的那两件：存档与对账（线被挪了按同一个 id 重算、
 # 线被删了提醒跟着删）、以及那份存档的管家。纯逻辑（几何摊平、触发判定）在
@@ -147,12 +154,12 @@ scan-test:
 ALERTS := Kanpan/Alerts
 
 alerts-test:
-	cd $(ALERTS) && swift test $(CORE_TEST_FLAGS)
+	cd $(ALERTS) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 DIAG := Kanpan/Diagnostics
 
 diag-test:
-	cd $(DIAG) && swift test $(CORE_TEST_FLAGS)
+	cd $(DIAG) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 # 外面进来的那条链接长什么样（`DeepLink`）。通知、桌面快捷入口、共享链接三边
 # 照着同一份形态拼串，解析只有这一处，所以它的契约要有人钉着。零依赖、不吃
@@ -160,7 +167,7 @@ diag-test:
 DEEPLINK := Kanpan/DeepLink
 
 deeplink-test:
-	cd $(DEEPLINK) && swift test $(CORE_TEST_FLAGS)
+	cd $(DEEPLINK) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 # 「这个客户端替哪些字段说话」那张表（`PersonalSyncCodec.ownedKeys`）的跑道。
 # 它吃的 Prefs / SymbolPrefs 都是 internal 的，所以这个壳包把设置模型、SymbolPrefs
@@ -168,13 +175,13 @@ deeplink-test:
 ACCOUNT_CODEC := Kanpan/AccountCodec
 
 account-codec-test:
-	cd $(ACCOUNT_CODEC) && swift test $(CORE_TEST_FLAGS)
+	cd $(ACCOUNT_CODEC) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 # 帧探针那几条只有真跑在 iOS 上才走得到（CADisplayLink / CFRunLoopObserver 在 mac
 # 上编得过但量不到东西），所以单独一个 target，要起模拟器，故意不挂进 `test`。
 # 真机取证前必须跑一遍。
 diag-ios-test:
-	cd $(DIAG) && xcodebuild test -scheme KanpanDiagnostics \
+	cd $(DIAG) && $(XCODEBUILD) test -scheme KanpanDiagnostics \
 	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
 
 # 主屏那几条生命周期用例（宿主销毁收摊、合批缓冲换人就丢、转屏复位只认最后一次、
@@ -187,7 +194,7 @@ diag-ios-test:
 MAIN := Kanpan/KanpanTests
 
 main-ios-test:
-	cd $(MAIN) && xcodebuild test -scheme KanpanMain \
+	cd $(MAIN) && $(XCODEBUILD) test -scheme KanpanMain \
 	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
 
 app-logic-test: symbols-test sector-test settings-test diag-test account-codec-test deeplink-test scan-test alerts-test
@@ -205,7 +212,7 @@ app-logic-test: symbols-test sector-test settings-test diag-test account-codec-t
 SYNC_CONTRACT := Backend/kanpan-api/contract/settings-fields.json
 
 sync-contract:
-	cd $(SETTINGS) && KANPAN_WRITE_SYNC_CONTRACT=1 swift test $(CORE_TEST_FLAGS) \
+	cd $(SETTINGS) && KANPAN_WRITE_SYNC_CONTRACT=1 $(SWIFT) test $(CORE_TEST_FLAGS) \
 	  --filter theContractFileIsTheOneListBothSidesRead
 	@echo "→ $(SYNC_CONTRACT) 已按 PrefsFieldPlan.table 重新生成；跑 make app-logic-test 与 (cd Backend/kanpan-api && cargo test --lib) 对账"
 
@@ -216,7 +223,7 @@ sync-contract:
 ACCOUNT := KanpanAccount
 
 account-test:
-	cd $(ACCOUNT) && swift test $(CORE_TEST_FLAGS)
+	cd $(ACCOUNT) && $(SWIFT) test $(CORE_TEST_FLAGS)
 
 # 复盘包在 mac 上 `swift test` 编不过：`ReviewUI` 吃 SwiftUI + UIKit，裸 swift build
 # 会拿 macOS sysroot 去编。所以照 `main-ios-test` / `chart-test` 的老规矩起模拟器，
@@ -224,7 +231,7 @@ account-test:
 REVIEW := KanpanReview
 
 review-test:
-	cd $(REVIEW) && xcodebuild test -scheme KanpanReview \
+	cd $(REVIEW) && $(XCODEBUILD) test -scheme KanpanReview \
 	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild
 
 test: core-test network-test data-test app-logic-test chart-test main-ios-test account-test review-test
@@ -252,44 +259,44 @@ test-release: core-test-release network-test-release data-test-release app-logic
               account-test-release chart-test-release main-ios-test-release review-test-release
 
 core-test-release:
-	cd $(CORE) && swift test -c release $(CORE_TEST_FLAGS)
+	cd $(CORE) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 network-test-release:
-	cd $(NETWORK) && swift test -c release $(CORE_TEST_FLAGS)
+	cd $(NETWORK) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 data-test-release:
-	cd $(DATA) && swift test -c release $(CORE_TEST_FLAGS)
+	cd $(DATA) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 account-test-release:
-	cd $(ACCOUNT) && swift test -c release $(CORE_TEST_FLAGS)
+	cd $(ACCOUNT) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 app-logic-test-release:
-	cd $(SYMBOLS) && swift test -c release $(CORE_TEST_FLAGS)
-	cd $(SETTINGS) && swift test -c release $(CORE_TEST_FLAGS)
-	cd $(SECTOR) && swift test -c release $(CORE_TEST_FLAGS)
-	cd $(DIAG) && swift test -c release $(CORE_TEST_FLAGS)
-	cd $(ACCOUNT_CODEC) && swift test -c release $(CORE_TEST_FLAGS)
+	cd $(SYMBOLS) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
+	cd $(SETTINGS) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
+	cd $(SECTOR) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
+	cd $(DIAG) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
+	cd $(ACCOUNT_CODEC) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 chart-test-release:
-	cd $(CHART) && xcodebuild test -scheme KanpanChart \
+	cd $(CHART) && $(XCODEBUILD) test -scheme KanpanChart \
 	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
 	  -configuration Release ENABLE_TESTABILITY=YES
 main-ios-test-release:
-	cd $(MAIN) && xcodebuild test -scheme KanpanMain \
+	cd $(MAIN) && $(XCODEBUILD) test -scheme KanpanMain \
 	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
 	  -configuration Release ENABLE_TESTABILITY=YES
 review-test-release:
-	cd $(REVIEW) && xcodebuild test -scheme KanpanReview \
+	cd $(REVIEW) && $(XCODEBUILD) test -scheme KanpanReview \
 	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
 	  -configuration Release ENABLE_TESTABILITY=YES
 
 # 帧探针那一套同样只在模拟器上成立，Release 下也得能跑（同样要 ENABLE_TESTABILITY=YES）。
 diag-ios-test-release:
-	cd $(DIAG) && xcodebuild test -scheme KanpanDiagnostics \
+	cd $(DIAG) && $(XCODEBUILD) test -scheme KanpanDiagnostics \
 	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
 	  -configuration Release ENABLE_TESTABILITY=YES
 
 # A2.13：零警告零错误。警告即错误，谁也别想蒙混过去。
 strict:
-	cd $(CORE) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
-	cd $(NETWORK) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
-	cd $(DATA) && swift build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
-	cd $(CHART) && KANPAN_STRICT=1 xcodebuild -scheme KanpanChart \
+	cd $(CORE) && $(SWIFT) build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+	cd $(NETWORK) && $(SWIFT) build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+	cd $(DATA) && $(SWIFT) build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+	cd $(CHART) && KANPAN_STRICT=1 $(XCODEBUILD) -scheme KanpanChart \
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
 
 # ---------------------------------------------------------------- §12 M3 取证
@@ -308,7 +315,7 @@ fixtures:
 
 # 数据层取证工具（§13 M2 的证据都从这儿出）
 feed:
-	cd $(DATA) && swift build -c release --product kanpan-feed
+	cd $(DATA) && $(SWIFT) build -c release --product kanpan-feed
 	@echo "二进制：$(DATA)/.build/release/kanpan-feed"
 
 # ---------------------------------------------------------------- app
@@ -329,14 +336,14 @@ ui-test:
 	@bash Tools/ui-test.sh
 
 ui-test-one:
-	xcodebuild test \
+	$(XCODEBUILD) test \
 		-workspace $(WORKSPACE) \
 		-scheme $(SCHEME) \
 		-destination 'platform=iOS Simulator,name=$(DEVICE)' \
 		-derivedDataPath DerivedData
 
 build:
-	xcodebuild build \
+	$(XCODEBUILD) build \
 		-workspace $(WORKSPACE) \
 		-scheme $(SCHEME) \
 		-destination 'platform=iOS Simulator,name=$(DEVICE)' \
@@ -353,7 +360,7 @@ DEVICE_RELEASE_DD := DerivedData-device-release
 DEVICE_RELEASE_APP := $(DEVICE_RELEASE_DD)/Build/Products/Release-iphoneos/Kanpan.app
 
 device-release:
-	xcodebuild \
+	$(XCODEBUILD) \
 		-project Kanpan/Kanpan.xcodeproj \
 		-scheme $(SCHEME) \
 		-configuration Release \
@@ -439,7 +446,7 @@ UPLOAD_LEDGER := docs/testflight-uploads.md
 
 archive:
 	@echo "→ 归档 Release$(if $(BUILD), · 构建号 $(BUILD),（构建号用工程里的值）)"
-	xcodebuild archive \
+	$(XCODEBUILD) archive \
 		-project Kanpan/Kanpan.xcodeproj \
 		-scheme $(SCHEME) \
 		-configuration Release \
@@ -456,7 +463,7 @@ ipa:
 	@mkdir -p $(EXPORT_DIR)
 	@sed 's/27Y32PT2HZ/$(TEAM_ID)/' Kanpan/Config/ExportOptions.plist > $(EXPORT_PLIST)
 	@rm -f $(IPA) $(EXPORT_DIR)/$(SCHEME).ipa
-	xcodebuild -exportArchive \
+	$(XCODEBUILD) -exportArchive \
 		-archivePath $(ARCHIVE_PATH) \
 		-exportOptionsPlist $(EXPORT_PLIST) \
 		-exportPath $(EXPORT_DIR) \

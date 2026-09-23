@@ -9,6 +9,7 @@
 # 每台跑之前先 uninstall 一次：app 的偏好是持久化的（PrefsStore 写 UserDefaults），
 # 上一轮留下的风格 / 周期会让「默认态」不成立。卸掉 = 干净的第一次启动。
 set -uo pipefail
+GUARD="${GUARD:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/machine-guard.sh run}"  # 机器资源守门：排队 + nice，见 AGENTS.md「机器资源纪律」
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -121,7 +122,7 @@ print('MISSING' if x is None else (x.get('connectionProperties',{}).get('transpo
 fi
 
 echo "== build-for-testing =="
-xcodebuild build-for-testing \
+$GUARD xcodebuild build-for-testing \
   -workspace "$WORKSPACE" -scheme "$SCHEME" \
   -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath "$DD" > "$OUT/build.log" 2>&1 || {
@@ -159,7 +160,7 @@ for name in "${DEVICES[@]}"; do
   # 用例那边的根因已经修掉，这里再上一道闸：**任何**一条用例卡住，XCTest 到点就判它
   # 超时、记一条红，然后接着跑下一条。全套最长的一条正常是 150s 上下
   # （`AccountPreferenceSyncUITests`），三条流水线并行时会慢一截，所以给到 480s。
-  xcodebuild test-without-building \
+  $GUARD xcodebuild test-without-building \
     -workspace "$WORKSPACE" -scheme "$SCHEME" \
     -destination "platform=iOS Simulator,id=$udid" \
     -derivedDataPath "$DD" \

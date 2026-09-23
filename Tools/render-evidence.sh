@@ -14,6 +14,7 @@
 # 为什么不用环境变量：`xcodebuild test` 的 `TEST_RUNNER_<VAR>` 前缀对 SwiftPM scheme
 # 的 xctest 宿主不生效，变量进不到测试进程里（实测 2026-09-14）。
 set -euo pipefail
+GUARD="${GUARD:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/machine-guard.sh run}"  # 机器资源守门：排队 + nice，见 AGENTS.md「机器资源纪律」
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEVICE="${1:-iPhone 16 Pro}"
@@ -35,7 +36,7 @@ MARKER="$OUT/.render"
 : > "$MARKER"
 trap 'rm -f "$MARKER"' EXIT
 
-xcodebuild test \
+$GUARD xcodebuild test \
   -scheme KanpanChart \
   -destination "platform=iOS Simulator,name=$DEVICE" \
   -derivedDataPath .xcbuild
