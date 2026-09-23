@@ -609,7 +609,7 @@ import ReviewUI
     // 还没推上去，这句话重启之后也就还得成立（B3）。
     let stuck = sync?.archive.rejected.count ?? 0
     account.syncStatus = owner == nil ? "" : !account.autoSync ? "已暂停" : account.pending > 0 ? "待同步"
-      : stuck > 0 ? "有 \(stuck) 项这台服务器还不认，已留在本机"
+      : stuck > 0 ? "\(stuck) 项暂未同步"
       : account.lastSync == nil ? "尚未同步" : "已同步"
   }
   /// 这一轮同步做到哪一步。

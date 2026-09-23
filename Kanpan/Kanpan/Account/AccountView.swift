@@ -118,7 +118,7 @@ struct AccountView: View {
           // 被同类设备顶下去时说得出是什么顶的（「这个账号在另一台手机上登录了」）；
           // 其余的失效仍旧是笼统那一句。
           Text(feature.replacedNotice ?? "登录已失效").foregroundStyle(theme.danger)
-          Text("同步暂停了，本机的自选、画线、复盘都还在。重新登录就接着同步。")
+          Text("已退出登录，本机数据都在")
             .font(.footnote).foregroundStyle(theme.ink3)
           Button("重新登录") { feature.reauthenticate() }
             .frame(minHeight: 44).accessibilityIdentifier("account.reauthenticate")

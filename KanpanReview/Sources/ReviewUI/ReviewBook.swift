@@ -58,7 +58,7 @@ public struct ReviewBook: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(t.app)
-        .searchable(text: $filter, prompt: "品种或原话")
+        .searchable(text: $filter, prompt: "搜品种或笔记")
       }
       // iPad 满屏时这一列封顶居中，不然筛选摊成 1300pt、行里的胜率被甩到一米外。
       .readableColumn()

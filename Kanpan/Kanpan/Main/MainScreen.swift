@@ -1192,7 +1192,7 @@ struct MainScreen: View {
       draw.endPreview(); shareInterval = nil
       inbox.kept(item)
       alertPrompt.offerBatch(kept, symbol: item.key, preferred: item.preferred(in: kept), from: item.from)
-    } catch { say("暂时无法留下，请重试") }
+    } catch { say("暂时无法保存，请重试") }
   }
 
   private func shareChartImage() {

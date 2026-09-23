@@ -298,7 +298,7 @@ final class DrawingController: ObservableObject {
       do { try store.save(value) }
       // 出错提示是唯一准跳回主 actor 的东西：它不参与「谁先落盘」这件事，
       // 晚一点、乱一点序都无所谓。
-      catch { Task { @MainActor in self?.notice = "画线未能保存，原存档已保留。请检查设备存储空间。" } }
+      catch { Task { @MainActor in self?.notice = "画线没存上，检查存储空间" } }
     }
   }
   func useStorage(_ store: DrawStore, archive: DrawArchive) {

@@ -23,7 +23,7 @@ struct FriendsPage: View {
                 .font(.scaled(13)).foregroundStyle(theme.ink).lineLimit(1)
               HStack(spacing: 6) {
                 if let date = item.createdDate { Text(date, format: .dateTime.month().day().hour().minute()) }
-                if item.keptAt != nil { Text("已留下") }
+                if item.keptAt != nil { Text("已保存") }
               }.font(.scaled(11)).foregroundStyle(theme.ink3)
             }
             Spacer(minLength: 0)

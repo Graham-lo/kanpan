@@ -26,7 +26,7 @@ struct ShareCard: View {
       Spacer(minLength: 0)
       if previewing {
         let kept = inbox.items.first(where: { $0.id == item.id })?.keptAt != nil
-        Button(kept ? "已留下" : "留下", action: onKeep)
+        Button(kept ? "已保存" : "保存到图上", action: onKeep)
           .disabled(kept).foregroundStyle(kept ? theme.ink3 : theme.amber)
           .accessibilityIdentifier("share.keep")
         Button("回给 \(item.from)", action: onReply).foregroundStyle(theme.amber).lineLimit(1)
@@ -34,7 +34,7 @@ struct ShareCard: View {
         Button("退出", action: onExit).foregroundStyle(theme.ink3)
           .accessibilityIdentifier("share.exit")
       } else {
-        Button("看看", action: onOpen).foregroundStyle(theme.amber)
+        Button("查看", action: onOpen).foregroundStyle(theme.amber)
           .accessibilityIdentifier("share.open")
       }
     }
