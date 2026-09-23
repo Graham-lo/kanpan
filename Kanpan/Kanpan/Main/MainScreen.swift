@@ -253,7 +253,6 @@ struct MainScreen: View {
   /// 设置里那两行域名（A6.10）。REST 和推送分开填，理由见 `APIHost.defaultStream`。
   private var endpoints: MarketEndpoints {
     MarketEndpoints(restHost: prefs.apiHost, streamHost: prefs.streamHost,
-      streamFallbacks: prefs.smartMarketRoute ? [APIHost.defaultStream, APIHost.gateway, APIHost.gatewayBackup] : [],
       gateways: [APIHost.gateway, APIHost.gatewayBackup])
   }
 

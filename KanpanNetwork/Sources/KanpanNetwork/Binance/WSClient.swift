@@ -73,11 +73,10 @@ public actor BinanceWS {
               capBackoffMs: Double = 30_000,
               log: FeedLog = .silent) {
     self.hosts = hosts
-    self.factory = hosts.streamFallbacks.isEmpty ? factory
-      : MarketSocketRouter(factory: factory, fallbacks: hosts.streamFallbacks, log: log)
+    self.factory = factory
     self.pacer = pacer
     self.systemClock = pacer is SystemPacer
-    self.silenceMs = hosts.streamFallbacks.isEmpty ? silenceMs : min(silenceMs, 15_000)
+    self.silenceMs = silenceMs
     self.transportSilenceMs = max(1, transportSilenceMs)
     self.keepaliveProbeMs = max(1, keepaliveProbeMs)
     self.baseBackoffMs = baseBackoffMs
@@ -88,9 +87,8 @@ public actor BinanceWS {
 
   public var currentConnectionID: Int { connectionID }
   public var currentStreams: [String] { streams.sorted() }
-  /// 真正生效的第②层窗口（毫秒）。传进来的 `silenceMs` 不一定就是这个数：
-  /// `hosts.streamFallbacks` 非空（有竞速候选）时它会被夹到 15 秒。调用方
-  /// 与用例要能看见「这条连接最后按哪个数在等第一帧」。
+  /// 真正生效的第②层窗口（毫秒），就是传进来的 `silenceMs`。线路由用户定死、
+  /// 一条连接不在几个域名之间竞速，所以不再有「有候选就夹到 15 秒」的钳子。
   public var firstFrameSilenceMs: Double { silenceMs }
 
   // ------------------------------------------------------------------ 生命周期

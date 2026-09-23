@@ -171,10 +171,10 @@ struct MarketRoutePolicyTests {
   }
 
   private static let stream = URL(string: "wss://dstream.binance.me/stream?streams=btcusdt@kline_1m")!
-  /// app 侧 `MainScreen.hosts` 就是这么填的：直连域名自己也排在 fallbacks 第一位。
-  private static let appHosts = BinanceHosts(streamFallbacks: ["dstream.binance.me", "gw1.test", "gw2.test:8443"])
+  /// 网关表（主、备）就是 REST / OI 代理那一份；故意把直连域名也混进去，看它会不会被剔掉。
+  private static let appHosts = BinanceHosts(oiProxy: "dstream.binance.me", oiProxyFallbacks: ["gw1.test", "gw2.test:8443"])
 
-  @Test("网关：WS 只拨网关，直连域名混在 fallbacks 里也不算")
+  @Test("网关：WS 只拨网关，直连域名混在网关表里也不算")
   func gatewaySocketsSkipDirect() async {
     let spy = SocketSpy()
     let factory = SourceSocketFactory(source: .binance, hosts: Self.appHosts, factory: spy, policy: .gateway)

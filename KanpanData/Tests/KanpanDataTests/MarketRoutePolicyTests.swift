@@ -29,7 +29,7 @@ struct RoutedFeedPolicyTests {
     init() {
       dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
       try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-      hosts = BinanceHosts(streamFallbacks: ["gw.test"], oiProxy: "gw.test")
+      hosts = BinanceHosts(oiProxy: "gw.test")
       // 两条线路都答 500：只看「哪条线路被叫起来了」，答什么不重要。
       binance = FakeServer { _ in json("{}", status: 500) }
       okx = FakeServer { _ in json("{}", status: 500) }

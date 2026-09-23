@@ -92,7 +92,6 @@ public struct BinanceProvider: MarketProvider {
   public static func hosts(_ endpoints: MarketEndpoints) -> BinanceHosts {
     BinanceHosts(fapi: endpoints.restHost ?? defaultRestHost,
                  stream: endpoints.streamHost ?? defaultStreamHost,
-                 streamFallbacks: endpoints.streamFallbacks,
                  oiProxy: endpoints.gateways.first,
                  oiProxyFallbacks: Array(endpoints.gateways.dropFirst()))
   }
@@ -248,11 +247,9 @@ public struct BinanceProvider: MarketProvider {
 
   // ------------------------------------------------------------------ WS
 
-  /// 线路由 `SourceSocketFactory` 管（直连只拨币安、网关只拨网关），所以交给 `BinanceWS`
-  /// 的那份主机表要把通用的 `streamFallbacks` 清掉，免得两层各包一次候选。
+  /// 线路由 `SourceSocketFactory` 管（直连只拨币安、网关只拨网关）。
   public func makeStream(silenceMs: Double?, log: FeedLog) -> any MarketStream {
-    var direct = hosts; direct.streamFallbacks = []
-    return BinanceWS(hosts: direct,
+    BinanceWS(hosts: hosts,
                      factory: SourceSocketFactory(source: upstream, hosts: hosts, factory: sockets,
                                                   policy: policy, log: log),
                      // 首帧前的静默窗口给 60 秒（A-07 第②层）：线路是用户定死的、没有竞速，

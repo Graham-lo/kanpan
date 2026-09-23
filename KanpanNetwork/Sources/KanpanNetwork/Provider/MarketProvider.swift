@@ -113,15 +113,12 @@ public struct MarketEndpoints: Sendable, Equatable {
   public var restHost: String?
   /// 用户自定义的推送域名（同上）。
   public var streamHost: String?
-  /// 推送连不上时按顺序试的候选（可能含网关）。
-  public var streamFallbacks: [String]
   /// 看盘自己的网关，主在前、备在后。
   public var gateways: [String]
 
   public init(restHost: String? = nil, streamHost: String? = nil,
-              streamFallbacks: [String] = [], gateways: [String] = []) {
+              gateways: [String] = []) {
     self.restHost = restHost; self.streamHost = streamHost
-    self.streamFallbacks = streamFallbacks
     var seen = Set<String>()
     self.gateways = gateways.filter { !$0.isEmpty && seen.insert($0).inserted }
   }

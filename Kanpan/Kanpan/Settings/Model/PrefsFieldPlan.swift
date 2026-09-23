@@ -10,8 +10,7 @@ import Foundation
 ///
 /// - 皮肤、周期、副图高度、自选表按什么排、板块停在哪个市场、上次拿的哪把画线工具——
 ///   都是他用手点出来的，换台设备登同一个账号就该还是那样。`synced`。
-/// - 行情**域名**（`apiHost` / `streamHost`）、**自动探测开关**（`smartMarketRoute`）、
-///   **直连 / 网关那两档**（`routePolicy`）、本机启动快照（`launchSnapshot`）——是
+/// - 行情**域名**（`apiHost` / `streamHost`）、**直连 / 网关那两档**（`routePolicy`）、本机启动快照（`launchSnapshot`）——是
 ///   **这台手机所处网络 / 这台手机自己**的属性，不是他摆出来的样子：跟着人走只会把
 ///   A 手机的网络环境带到 B 手机上。`deviceOnly`。
 /// - 「最近打开过哪些品种」「哪些品种看得勤」这类**每开一张图就变的统计**——不是他摆出来的
@@ -19,7 +18,7 @@ import Foundation
 ///
 /// ## 「线路」这一摊整个留在本机（2026-09-19 改的）
 ///
-/// `apiHost` / `streamHost` / `smartMarketRoute` / `routePolicy` 四项**全是 `deviceOnly`**，
+/// `apiHost` / `streamHost` / `routePolicy` 三项**全是 `deviceOnly`**，
 /// 判据是同一条：它们说的是**这台手机挂在哪张网上、这张网连得通哪一头**。
 ///
 /// `routePolicy` 曾经是 `.synced`（理由是「直连 / 网关是他用手点的两档」），2026-09-19 按
@@ -112,8 +111,11 @@ enum PrefsFieldPlan {
     // 具体连哪个主机名、要不要备着几个备用域名、走直连还是走 VPS 网关，都是这台手机
     // 所处网络的属性，不是他的习惯。`routePolicy` 2026-09-19 从 `.synced` 搬到这儿，
     // 理由见上面那一节（A 选网关，B 从没碰过线路却跟着换了头）。
-    "apiHost": .deviceOnly, "streamHost": .deviceOnly, "smartMarketRoute": .deviceOnly,
+    "apiHost": .deviceOnly, "streamHost": .deviceOnly,
     "routePolicy": .deviceOnly,
+    // `smartMarketRoute`（「智能行情线路」自动探测开关）2026-09-24 整条删了：它把网关主机表
+    // 挂在一个没有界面入口的布尔上，和「两档、没有任何自动切换」相悖。旧存档里的这个键
+    // 解码时直接忽略；服务端从来不认它（它一直是 deviceOnly），两端没有要对账的。
     // 本机缓存的开关，只对这台机器有意义。
     "launchSnapshot": .deviceOnly,
   ]

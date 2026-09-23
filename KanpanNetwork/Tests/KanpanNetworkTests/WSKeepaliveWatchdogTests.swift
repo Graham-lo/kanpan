@@ -151,18 +151,12 @@ struct WSKeepaliveWatchdogTests {
     reader.cancel()
   }
 
-  /// 第②层的窗口给多少是有条件的：只有「一条 WS 要在几个域名之间竞速」时，
-  /// 15 秒换一条候选才有意义。生产路径上 `RoutedMarketFeed` 把 `streamFallbacks`
-  /// 清空了（线路由用户定死、不混源），所以那条路走的是 60 秒；这里守的是钳子
-  /// 本身还在——真有候选域名时仍然按 15 秒催。
-  @Test("有竞速候选才把首帧窗口夹到 15 秒；没有候选就按传进来的 60 秒等")
-  func silenceWindowIsClampedOnlyWhenRacingFallbacks() async throws {
-    let racing = BinanceWS(hosts: BinanceHosts(streamFallbacks: ["gw.test"]),
-                           factory: ReplayFactory(deck: ReplayDeck([.hang]), pacer: FastPacer()),
-                           pacer: FastPacer(), silenceMs: 60_000)
-    #expect(await racing.firstFrameSilenceMs == 15_000)
-    let alone = BinanceWS(hosts: BinanceHosts(streamFallbacks: []),
-                          factory: ReplayFactory(deck: ReplayDeck([.hang]), pacer: FastPacer()),
+  /// 第②层的窗口就是传进来的那个数。以前「一条 WS 在几个域名之间竞速」时会被夹到
+  /// 15 秒；线路由用户定死、不混源之后，那条竞速链（`streamFallbacks`）2026-09-24 整条删了，
+  /// 钳子跟着没了。这里守的是它不会借别的路回来。
+  @Test("首帧窗口按传进来的 60 秒等，没有竞速钳子")
+  func silenceWindowIsWhatTheCallerPassed() async throws {
+    let alone = BinanceWS(factory: ReplayFactory(deck: ReplayDeck([.hang]), pacer: FastPacer()),
                           pacer: FastPacer(), silenceMs: 60_000)
     #expect(await alone.firstFrameSilenceMs == 60_000)
   }

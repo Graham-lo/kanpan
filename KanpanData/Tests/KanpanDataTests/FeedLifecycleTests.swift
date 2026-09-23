@@ -269,7 +269,7 @@ struct FeedLifecycleTests {
       let limit = q.first { $0.name == "limit" }?.value.flatMap(Int.init) ?? 300
       return FeedLifecycleTests.klines(min(limit, 1500))
     }
-    let hosts = BinanceHosts(streamFallbacks: ["gw.test"], oiProxy: "gw.test")
+    let hosts = BinanceHosts(oiProxy: "gw.test")
     let routed = RoutedMarketFeed(
       hosts: hosts, paths: tempPaths(), log: .silent,
       primary: BinanceREST(hosts: hosts, transport: FakeTransport(server), limiter: RateLimiter()),

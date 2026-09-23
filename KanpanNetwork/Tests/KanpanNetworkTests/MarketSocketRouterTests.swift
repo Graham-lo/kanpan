@@ -141,7 +141,8 @@ private actor AckFactory: WSSocketFactory {
   func switchDuringProbe() async throws {
     let local = RouteSocket(delay: 100), vps = RouteSocket(delay: 500)
     let factory = RouteFactory(["local.example": local, "vps.example": vps])
-    let ws = BinanceWS(hosts: BinanceHosts(stream: "local.example", streamFallbacks: ["vps.example"]), factory: factory)
+    let ws = BinanceWS(hosts: BinanceHosts(stream: "local.example"),
+                       factory: MarketSocketRouter(factory: factory, fallbacks: ["vps.example"]))
     _ = await ws.start(streams: ["btcusdt@ticker"])
     for _ in 0..<100 {
       if await factory.connections >= 2 { break }

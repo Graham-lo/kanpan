@@ -453,7 +453,7 @@ public struct SourceSocketFactory: WSSocketFactory {
   let source: BinanceUpstream
   let hosts: BinanceHosts
   let factory: any WSSocketFactory
-  /// 币安的 WS 也有直连（`hosts.stream`，默认 `dstream.binance.me`）与网关（`streamFallbacks`，
+  /// 币安的 WS 也有直连（`hosts.stream`，默认 `dstream.binance.me`）与网关（`hosts.oiProxies`，
   /// 就是那两台 VPS）两条路，用户选了哪条就只拨哪条；OKX 只有网关这一条路，不受影响。
   let policy: MarketRoutePolicy
   let log: FeedLog
@@ -469,10 +469,10 @@ public struct SourceSocketFactory: WSSocketFactory {
         return try await MarketSocketRouter(factory: factory, fallbacks: [], log: log).connect(to: url)
       case .gateway:
         // 把首选也换成网关，`MarketSocketRouter` 才不会仍旧把直连塞进候选里。
-        // `streamFallbacks` 里可能混着直连域名本身（app 侧把 `APIHost.defaultStream`
-        // 也列在第一位），先把它剔掉，剩下的才是真正的网关。
+        // 网关表和 REST / OI 代理是同一份（`oiProxies`，主在前、备在后）；万一有人把直连
+        // 域名也填进去，先剔掉，剩下的才是真正的网关。
         let direct = [hosts.stream.lowercased(), (url.host ?? "").lowercased()]
-        let gateways = hosts.streamFallbacks.filter { host in
+        let gateways = hosts.oiProxies.filter { host in
           guard let name = URLComponents(string: "wss://" + host)?.host?.lowercased() else { return false }
           return !direct.contains(name)
         }

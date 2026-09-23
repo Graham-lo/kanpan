@@ -80,7 +80,6 @@ struct RoutePolicyStaysHomeTests {
     var onThisPhone = Prefs.defaults
     onThisPhone.routePolicy = .gateway
     onThisPhone.apiHost = "mine.example.com"
-    onThisPhone.smartMarketRoute = false
 
     // 新档案：云端那份（或者访客档案）里线路是直连、皮肤是陶土。
     var incoming = Prefs.defaults
@@ -90,7 +89,6 @@ struct RoutePolicyStaysHomeTests {
 
     #expect(incoming.routePolicy == .gateway, "换档案不许把这台设备当前的选择重置掉")
     #expect(incoming.apiHost == "mine.example.com")
-    #expect(incoming.smartMarketRoute == false)
     #expect(incoming.skin == .terra, "跟着人走的那些照旧由新档案说了算")
   }
 }

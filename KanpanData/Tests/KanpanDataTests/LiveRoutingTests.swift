@@ -7,7 +7,7 @@ import KanpanCore
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["KANPAN_LIVE_ROUTING"] == "1"))
 struct LiveRoutingTests {
   @Test(.timeLimit(.minutes(1))) func completeOKXFeed() async throws {
-    let endpoints = MarketEndpoints(streamFallbacks: ["kanpan.107-174-172-10.sslip.io"], gateways: ["kanpan.107-174-172-10.sslip.io", "kanpan.96-44-162-222.sslip.io:8443"])
+    let endpoints = MarketEndpoints(gateways: ["kanpan.107-174-172-10.sslip.io", "kanpan.96-44-162-222.sslip.io:8443"])
     let path = Paths(root: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     defer { try? FileManager.default.removeItem(at: path.root) }
     try FileManager.default.createDirectory(at: path.root, withIntermediateDirectories: true)

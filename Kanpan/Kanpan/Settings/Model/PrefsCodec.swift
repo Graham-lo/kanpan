@@ -79,7 +79,7 @@ extension Prefs: Codable {
     case barSpacing, mainInverted, subInverted
     case adaptiveIndicators, portraitHeight, hiddenOutputs, rsiUpper, rsiLower
     case overlays, subs, params, subHeights, subHeightOverrides
-    case apiHost, streamHost, smartMarketRoute, routePolicy
+    case apiHost, streamHost, routePolicy
     // 他在各页上摆出来的样子。全是加法加进来的新键，老存档里没有就退默认值。
     case favoritesSort, favoritesAscending, favoritesAmount, favoritesSparkline, favoritesExpanded
     case favoritesGroup
@@ -140,7 +140,6 @@ extension Prefs: Codable {
                  forKey: .subHeights)
     try c.encode(apiHost, forKey: .apiHost)
     try c.encode(streamHost, forKey: .streamHost)
-    try c.encode(smartMarketRoute, forKey: .smartMarketRoute)
     try c.encode(routePolicy.rawValue, forKey: .routePolicy)
     try c.encode(favoritesSort, forKey: .favoritesSort)
     try c.encode(favoritesAscending, forKey: .favoritesAscending)
@@ -289,7 +288,6 @@ extension Prefs: Codable {
       subHeights = out
     }
 
-    smartMarketRoute = (try? c.decode(Bool.self, forKey: .smartMarketRoute)) ?? true
     // 认不出的值（比如旧版本的「自动」）退回直连。
     if let raw = str(.routePolicy), let v = MarketRoutePolicy(rawValue: raw) { routePolicy = v }
     if let raw = str(.apiHost) { apiHost = APIHost.sanitize(raw) }

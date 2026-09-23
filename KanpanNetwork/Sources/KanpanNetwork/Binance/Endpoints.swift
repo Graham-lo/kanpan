@@ -14,7 +14,7 @@ public struct BinanceHosts: Sendable, Equatable {
   public var stream: String
   /// 公开归档站，OI 的 metrics zip 在这儿。
   public var vision: String
-  public var streamFallbacks: [String]
+  /// 看盘自己的网关（主在前、备在后）。网关档的 REST、OI 代理与推送都只拨这几台。
   public var oiProxy: String?
   public var oiProxyFallbacks: [String]
   public var oiProxies: [String] {
@@ -25,11 +25,11 @@ public struct BinanceHosts: Sendable, Equatable {
   public init(fapi: String = "fapi.binance.com",
               stream: String = "dstream.binance.me",
               vision: String = "data.binance.vision",
-              streamFallbacks: [String] = [], oiProxy: String? = nil, oiProxyFallbacks: [String] = []) {
+              oiProxy: String? = nil, oiProxyFallbacks: [String] = []) {
     self.fapi = fapi
     self.stream = stream
     self.vision = vision
-    self.streamFallbacks = streamFallbacks; self.oiProxy = oiProxy
+    self.oiProxy = oiProxy
     self.oiProxyFallbacks = oiProxyFallbacks
   }
 
