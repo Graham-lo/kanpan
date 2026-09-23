@@ -781,6 +781,18 @@ async fn session(s:&AppState,effects:&Effects,streams:&[String],watches:&mut Vec
  }
 }
 
+/// 一根 K 线对一条提醒响不响：响了返回线在这一刻的价。和客户端 `AlertEvaluator.hit`
+/// 是同一个入口、同一套规则，`contract/alert-cases.json` 的每条用例两边都跑一遍
+/// （`every_shared_alert_case_agrees` 与 KanpanCore 的 `AlertCasesContractTests`）。
+fn judge(lines:&[Line],condition:Condition,armed_at:i64,candle:&Candle,previous:Option<f64>)->Option<f64> {
+ match condition {
+  Condition::Touch=>touched(lines,candle.open_time,armed_at,candle.low,candle.high),
+  // 这一根没收就一个字都不判；没有上一根的收盘价（刚起来、或者这个品种第一次收）
+  // 也不判——宁可漏一根，也不拿一个不知道是哪一根的价去算穿越。
+  Condition::Close=>if candle.closed {previous.and_then(|p|crossed_on_close(lines,candle.open_time,armed_at,p,candle.close))} else {None},
+ }
+}
+
 /// 一帧 K 线对上这一批提醒。**纯计算，不 await**：判中的交给 [`work`] 去落库、推送。
 ///
 /// 触发过的从内存里摘掉：下一次刷新（十秒内）才会重新读库，中间这段时间不摘就会
@@ -800,13 +812,7 @@ fn evaluate(effects:&Effects,watches:&mut Vec<Watch>,closes:&mut Closes,quotes:&
  let mut fired=vec![];
  for (index,w) in watches.iter().enumerate() {
   if w.symbol!=candle.symbol {continue}
-  let hit=match w.condition {
-   Condition::Touch=>touched(&w.lines,candle.open_time,w.armed_at,candle.low,candle.high),
-   // 这一根没收就一个字都不判；没有上一根的收盘价（刚起来、或者这个品种第一次收）
-   // 也不判——宁可漏一根，也不拿一个不知道是哪一根的价去算穿越。
-   Condition::Close=>if candle.closed {previous.and_then(|p|crossed_on_close(&w.lines,candle.open_time,w.armed_at,p,candle.close))} else {None},
-  };
-  if hit.is_some() {fired.push(index)}
+  if judge(&w.lines,w.condition,w.armed_at,candle,previous).is_some() {fired.push(index)}
  }
  if candle.closed&&candle.close.is_finite()&&!seen {closes.insert(candle.symbol.clone(),(candle.open_time,candle.close));}
  let quote=quotes.get(&candle.symbol).copied().unwrap_or_default();
@@ -1062,6 +1068,31 @@ fn coinbase_trades(text:&str)->Vec<(String,i64,f64)> {
 #[cfg(test)]
 mod tests {
  use super::*;
+
+ /// **提醒判定两端一字不差：同一份夹具，客户端和服务端各跑一遍。**
+ ///
+ /// 判定器有两份（前台 `AlertEvaluator.swift`、这里），规则靠注释「照着同一段文字实现」，
+ /// 已经分歧过两次：low > high 时 Swift 归一、这里当坏帧（cc025383 修掉），竖直段 Swift 取
+ /// 靠后那个点、这里取靠前那个。同一根 K 线一端响一端不响，用户就会收到一条前台没响过的
+ /// 推送，或者反过来。夹具是手工维护的 `contract/alert-cases.json`；改规则先改它。
+ /// 服务端只返回价，所以这里只核价；`line` 下标由客户端那一半核。
+ #[test] fn every_shared_alert_case_agrees() {
+  let fixture:Value=serde_json::from_str(include_str!("../contract/alert-cases.json")).expect("contract/alert-cases.json");
+  assert_eq!(fixture["version"],json!(1),"alert-cases.json 的格式版本变了，这里的读法要一起改");
+  let cases=fixture["cases"].as_array().expect("cases");
+  assert!(cases.len()>=30,"夹具被删薄了");
+  for case in cases {
+   let name=case["name"].as_str().expect("name");
+   let lines:Vec<Line>=serde_json::from_value(case["lines"].clone()).expect("lines");
+   let bar=&case["bar"];
+   let int=|v:&Value|v.as_i64().unwrap_or_else(||panic!("{name}: 时间要是毫秒整数"));
+   let candle=Candle{symbol:String::new(),open_time:int(&bar["openTime"]),low:bar["low"].as_f64().expect("low"),
+    high:bar["high"].as_f64().expect("high"),close:bar["close"].as_f64().unwrap_or(f64::NAN),closed:bar["closed"].as_bool().expect("closed")};
+   let got=judge(&lines,Condition::of(case["condition"].as_str().expect("condition")),int(&case["armedAt"]),&candle,bar["previousClose"].as_f64());
+   let want=case["expect"]["price"].as_f64();
+   assert_eq!(got,want,"{name}：{}",case["why"].as_str().unwrap_or(""));
+  }
+ }
 
  fn line(points:&[(f64,f64)],left:bool,right:bool)->Line {
   Line{points:points.iter().map(|(t,p)|Point{t:*t,p:*p}).collect(),extend_left:left,extend_right:right}

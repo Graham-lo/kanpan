@@ -254,8 +254,10 @@ public struct AlertLine: Sendable, Equatable, Codable {
       let a = pts[i], b = pts[i + 1]
       guard t >= a.t, t <= b.t else { continue }
       let span = b.t - a.t
-      // 两点同一时刻：那是一段竖直的边，价格取不出唯一值，按靠后那个点算。
-      guard span > 0 else { return b.p }
+      // 两点同一时刻：那是一段竖直的边，价格取不出唯一值，取靠前那个点（`sorted` 是稳定排序，
+      // 就是给出时排在前面的那个）。服务端 `alerts.rs` 的 `on_sorted` 同样取左端——从前这里取
+      // 靠后那个，同一根 K 线两端一个响一个不响。夹具 `contract/alert-cases.json` 两边都跑。
+      guard span > 0 else { return a.p }
       return a.p + (b.p - a.p) * (t - a.t) / span
     }
     return last.p

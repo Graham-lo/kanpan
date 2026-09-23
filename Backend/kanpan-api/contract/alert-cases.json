@@ -1,0 +1,1011 @@
+{
+ "version": 1,
+ "whatThisIs": "提醒判定的共用夹具：一根 K 线对一条提醒响不响、响在哪条线的哪个价。客户端 AlertEvaluator.hit 与服务端 alerts.rs 的 judge 各跑一遍，结论必须一字不差。",
+ "howToMaintain": "手工维护。改判定规则时先在这里加 / 改用例，两边的测试（KanpanCore AlertCasesContractTests、Rust alerts::tests::every_shared_alert_case_agrees）会各自告诉你哪一边还没跟上。时间是毫秒整数，价格是有限数。",
+ "fields": "condition: touch | close；armedAt 毫秒；lines 与同步线上的 alerts.lines 同形；bar.openTime/low/high 必有，close/previousClose 可缺（缺 previousClose 就是「没有上一根」），closed 是币安 kline 的 k.x；expect 为 null 表示不响，否则 {line: alert.lines 下标, price: 线在这一刻的价}。服务端只返回价，line 下标只有客户端核对。",
+ "cases": [
+  {
+   "name": "touch-inside",
+   "why": "最低 ≤ 线价 ≤ 最高",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 99,
+    "high": 101,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "touch-low-equals-line",
+   "why": "贴着线也算触碰（下沿）",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 100,
+    "high": 102,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "touch-high-equals-line",
+   "why": "贴着线也算触碰（上沿）",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 98,
+    "high": 100,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "touch-miss-above",
+   "why": "整根在线上方",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 101,
+    "high": 102,
+    "closed": false
+   },
+   "expect": null
+  },
+  {
+   "name": "touch-miss-below",
+   "why": "整根在线下方",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 98,
+    "high": 99,
+    "closed": false
+   },
+   "expect": null
+  },
+  {
+   "name": "touch-reversed-range",
+   "why": "low > high 时先归一再判（从前 Swift 归一、Rust 当坏帧，两端一个响一个不响）",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 101,
+    "high": 99,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "touch-reversed-range-miss",
+   "why": "归一之后仍夹不住线",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 102,
+    "high": 101,
+    "closed": false
+   },
+   "expect": null
+  },
+  {
+   "name": "armed-after-bar",
+   "why": "这一根开盘早于 armedAt：挪过线之后历史 K 线不算",
+   "condition": "touch",
+   "armedAt": 2000,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 99,
+    "high": 101,
+    "closed": false
+   },
+   "expect": null
+  },
+  {
+   "name": "armed-equals-open",
+   "why": "开盘时刻正好等于 armedAt 算数",
+   "condition": "touch",
+   "armedAt": 2000,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 2000,
+    "low": 99,
+    "high": 101,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "segment-interpolated",
+   "why": "两点之间线性插值",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      },
+      {
+       "t": 1100,
+       "p": 200
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 149,
+    "high": 151,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 150
+   }
+  },
+  {
+   "name": "segment-endpoint",
+   "why": "正好在端点上",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      },
+      {
+       "t": 1100,
+       "p": 200
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    }
+   ],
+   "bar": {
+    "openTime": 1100,
+    "low": 199,
+    "high": 201,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 200
+   }
+  },
+  {
+   "name": "segment-right-outside",
+   "why": "不延伸的一侧超出即不评估",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      },
+      {
+       "t": 1100,
+       "p": 200
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    }
+   ],
+   "bar": {
+    "openTime": 1150,
+    "low": 0,
+    "high": 1000,
+    "closed": false
+   },
+   "expect": null
+  },
+  {
+   "name": "segment-left-outside",
+   "why": "不延伸的一侧超出即不评估（左）",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      },
+      {
+       "t": 1100,
+       "p": 200
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    }
+   ],
+   "bar": {
+    "openTime": 950,
+    "low": 0,
+    "high": 1000,
+    "closed": false
+   },
+   "expect": null
+  },
+  {
+   "name": "ray-extrapolates-right",
+   "why": "标了延伸才外推，斜率沿用最靠边的两点",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      },
+      {
+       "t": 1100,
+       "p": 200
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1200,
+    "low": 299,
+    "high": 301,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 300
+   }
+  },
+  {
+   "name": "ray-not-left",
+   "why": "射线只往标了的那一侧延伸",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      },
+      {
+       "t": 1100,
+       "p": 200
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 900,
+    "low": -1000,
+    "high": 1000,
+    "closed": false
+   },
+   "expect": null
+  },
+  {
+   "name": "ray-extrapolates-left",
+   "why": "往左延伸同理",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      },
+      {
+       "t": 1100,
+       "p": 200
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": false
+    }
+   ],
+   "bar": {
+    "openTime": 900,
+    "low": -1,
+    "high": 1,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 0
+   }
+  },
+  {
+   "name": "one-point-on-its-time",
+   "why": "一个点、不延伸：只在那一刻有价",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    }
+   ],
+   "bar": {
+    "openTime": 1000,
+    "low": 99,
+    "high": 101,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "one-point-after-its-time",
+   "why": "一个点、不延伸：之后没有价",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    }
+   ],
+   "bar": {
+    "openTime": 1001,
+    "low": 99,
+    "high": 101,
+    "closed": false
+   },
+   "expect": null
+  },
+  {
+   "name": "one-point-extends-right",
+   "why": "水平射线：之后恒为那个价",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 5000,
+    "low": 99,
+    "high": 101,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "vertical-segment-takes-first",
+   "why": "两点同时刻（竖直段）：取按时间稳定排序后靠前那个点的价（从前 Swift 取靠后那个，两端分歧）",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      },
+      {
+       "t": 1000,
+       "p": 200
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    }
+   ],
+   "bar": {
+    "openTime": 1000,
+    "low": 90,
+    "high": 150,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "unsorted-points",
+   "why": "点给乱了也照时间排好再插值",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1100,
+       "p": 200
+      },
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 149,
+    "high": 151,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 150
+   }
+  },
+  {
+   "name": "multi-line-first-hit-wins",
+   "why": "好几条线都碰到时响第一条",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    },
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 105
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 99,
+    "high": 106,
+    "closed": false
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "multi-line-skips-misses",
+   "why": "前面的线没碰到，响后面碰到的那条",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 200
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    },
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 99,
+    "high": 101,
+    "closed": false
+   },
+   "expect": {
+    "line": 1,
+    "price": 100
+   }
+  },
+  {
+   "name": "multi-line-skips-lines-without-price",
+   "why": "没价的线（线段外）跳过",
+   "condition": "touch",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      },
+      {
+       "t": 1100,
+       "p": 200
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    },
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1500,
+    "low": 99,
+    "high": 101,
+    "closed": false
+   },
+   "expect": {
+    "line": 1,
+    "price": 100
+   }
+  },
+  {
+   "name": "close-cross-up",
+   "why": "上一根收在线下、这一根收在线上",
+   "condition": "close",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 94,
+    "high": 106,
+    "closed": true,
+    "close": 105,
+    "previousClose": 95
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "close-cross-down",
+   "why": "反过来也是穿过",
+   "condition": "close",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 94,
+    "high": 106,
+    "closed": true,
+    "close": 95,
+    "previousClose": 105
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "close-lands-on-line",
+   "why": "正好收在线上算穿过",
+   "condition": "close",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 94,
+    "high": 106,
+    "closed": true,
+    "close": 100,
+    "previousClose": 95
+   },
+   "expect": {
+    "line": 0,
+    "price": 100
+   }
+  },
+  {
+   "name": "close-previous-on-line",
+   "why": "上一根就收在线上：那一下上一根算过了",
+   "condition": "close",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 94,
+    "high": 106,
+    "closed": true,
+    "close": 105,
+    "previousClose": 100
+   },
+   "expect": null
+  },
+  {
+   "name": "close-same-side",
+   "why": "一直在同一侧不算",
+   "condition": "close",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 94,
+    "high": 106,
+    "closed": true,
+    "close": 105,
+    "previousClose": 101
+   },
+   "expect": null
+  },
+  {
+   "name": "close-wick-only",
+   "why": "盘中扎穿但收盘没换边：touch 会响，close 不响",
+   "condition": "close",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 99,
+    "high": 103,
+    "closed": true,
+    "close": 102,
+    "previousClose": 101
+   },
+   "expect": null
+  },
+  {
+   "name": "close-not-closed",
+   "why": "没收的帧一个字都不判",
+   "condition": "close",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 94,
+    "high": 106,
+    "closed": false,
+    "close": 105,
+    "previousClose": 95
+   },
+   "expect": null
+  },
+  {
+   "name": "close-missing-previous",
+   "why": "没有上一根的收盘价不判",
+   "condition": "close",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 94,
+    "high": 106,
+    "closed": true,
+    "close": 105
+   },
+   "expect": null
+  },
+  {
+   "name": "close-armed-after-bar",
+   "why": "armedAt 挡 close 也挡",
+   "condition": "close",
+   "armedAt": 2000,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      }
+     ],
+     "extendLeft": true,
+     "extendRight": true
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 94,
+    "high": 106,
+    "closed": true,
+    "close": 105,
+    "previousClose": 95
+   },
+   "expect": null
+  },
+  {
+   "name": "close-on-trend-line",
+   "why": "阈值是线在这一根开盘时刻上的价，趋势线随时间变",
+   "condition": "close",
+   "armedAt": 0,
+   "lines": [
+    {
+     "points": [
+      {
+       "t": 1000,
+       "p": 100
+      },
+      {
+       "t": 1100,
+       "p": 200
+      }
+     ],
+     "extendLeft": false,
+     "extendRight": false
+    }
+   ],
+   "bar": {
+    "openTime": 1050,
+    "low": 139,
+    "high": 161,
+    "closed": true,
+    "close": 160,
+    "previousClose": 140
+   },
+   "expect": {
+    "line": 0,
+    "price": 150
+   }
+  }
+ ]
+}
