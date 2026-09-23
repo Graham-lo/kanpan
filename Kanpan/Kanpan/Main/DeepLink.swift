@@ -165,3 +165,35 @@ final class DeepLinkRouter {
     return link
   }
 }
+
+/// Handoff（P3.4）：行情页登记「我在看哪只、哪个周期」，另一台设备接力时化成
+/// `hkline://symbol/<S>?interval=<i>` 那条深链，和桌面快捷入口、通知点击走同一个口。
+///
+/// userInfo 只放两个字符串，不放任何本机状态：接力的那台按自己的布局打开这张图。
+enum ChartHandoff {
+  /// 登记在 `Kanpan/Config/Info.plist` 的 `NSUserActivityTypes` 里。
+  static let activityType = "com.mdd.kanpan.chart"
+  static let symbolKey = "symbol"
+  static let intervalKey = "interval"
+
+  static func userInfo(symbol: String, interval: String) -> [String: String] {
+    [symbolKey: symbol, intervalKey: interval]
+  }
+
+  /// 接力过来的那份 userInfo 拼成深链串，再交给 `DeepLink.parse` 按同一套规矩认。
+  static func url(from userInfo: [AnyHashable: Any]) -> URL? {
+    guard let symbol = userInfo[symbolKey] as? String, !symbol.isEmpty else { return nil }
+    var c = URLComponents()
+    c.scheme = DeepLink.scheme
+    c.host = "symbol"
+    c.path = "/" + symbol
+    if let interval = userInfo[intervalKey] as? String, !interval.isEmpty {
+      c.queryItems = [URLQueryItem(name: "interval", value: interval)]
+    }
+    return c.url
+  }
+
+  static func link(from userInfo: [AnyHashable: Any]) -> DeepLink? {
+    url(from: userInfo).flatMap(DeepLink.parse)
+  }
+}

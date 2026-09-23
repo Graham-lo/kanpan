@@ -92,5 +92,10 @@
   <!-- 提醒「盯一个」的锁屏 / 灵动岛实时活动。 -->
   <key>NSSupportsLiveActivities</key>
   <true/>
+  <!-- Handoff：行情页登记的「品种 + 周期」（P3.4，见 `ChartHandoff`）。 -->
+  <key>NSUserActivityTypes</key>
+  <array>
+    <string>com.mdd.kanpan.chart</string>
+  </array>
 </dict>
 </plist>

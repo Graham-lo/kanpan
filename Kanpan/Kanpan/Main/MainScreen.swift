@@ -554,6 +554,12 @@ struct MainScreen: View {
     }
     // 盯着的那条被删、被暂停、响了：锁屏那块跟着收。
     .onReceive(alerts.$archive) { activities.reconcile($0.alerts) }
+    // Handoff（P3.4）：在行情页上就登记「这只、这个周期」，同账号的另一台设备可以接力打开。
+    .userActivity(ChartHandoff.activityType, isActive: tab == .chart) { activity in
+      activity.title = market.symbol + " · " + market.interval.rawValue
+      activity.addUserInfoEntries(from: ChartHandoff.userInfo(symbol: market.symbol, interval: market.interval.rawValue))
+      activity.isEligibleForHandoff = true
+    }
   }
 
   // ---------------------------------------------------------------- 各段

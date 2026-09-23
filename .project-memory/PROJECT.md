@@ -367,3 +367,8 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - 样式表「画法」由弹出菜单改为直接摆开的一排按钮（`DrawingKindSwapRow`）：半屏时菜单弹到面板外点不到，是 `testDrawingToolsAndPersistentStyles` 在 main 上时好时坏的根因。
 - 服务端 `DRAWING_PREFERENCE_FIELDS` 加 `variants`，值只收已知画法。报告：[画法记忆](../docs/acceptance/画线-画法记忆-2026-09-23/验收报告.md)。
 - 模拟器转屏偶尔卡死（设备转了界面不转，无关用例同样红），重启模拟器即恢复，别当成 app 回归。
+
+## 12. 2026-09-22 待办交接 · P3（3.4 起由 pchain 子代理续做）
+
+- **3.4 Handoff**：行情页（底栏停在图表）挂 `NSUserActivity`（`com.mdd.kanpan.chart`，userInfo 只有 `symbol`/`interval`），接力端 `.onContinueUserActivity` 把它拼成 `hkline://symbol/<S>?interval=` 交给 `DeepLinkRouter`——和通知点击、桌面快捷入口同一条路，不另写跳转。模拟器之间做不了 Handoff，用 `ChartHandoffTests`（含属性列表编解一次）顶替。无后端改动。报告：[3.4](../docs/acceptance/待办交接-2026-09-22/P3/3.4.md)。
+- 原 P3 补丁里连带的「回给他」（3.5）与导出 / 隐私条款 / 重置密码（3.6）从 3.4 拆出，各自单独提交与部署。

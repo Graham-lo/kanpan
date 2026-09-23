@@ -41,6 +41,11 @@ struct KanpanApp: App {
         // 外面进来的链接全走这一个口：桌面快捷入口、通知点击、共享链接。
         // 这儿只负责交给路由，去哪儿由 `MainScreen` 一处消费（见 `DeepLink`）。
         .onOpenURL { DeepLinkRouter.shared.open($0) }
+        // Handoff（P3.4）：另一台设备上正看着的那张图，化成同一条深链走同一个口。
+        .onContinueUserActivity(ChartHandoff.activityType) { activity in
+          guard let link = ChartHandoff.link(from: activity.userInfo ?? [:]) else { return }
+          DeepLinkRouter.shared.open(link)
+        }
     }
   }
 }
