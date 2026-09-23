@@ -286,23 +286,6 @@ struct PanelFormSectionTitle: View {
   }
 }
 
-/// 原型 `.note`：面板末尾那段解释。`**粗**` 会加深一档（对应原型的 `<b>`）。
-struct PanelNote: View {
-  var markdown: String
-  @Environment(\.panelTheme) private var t
-
-  var body: some View {
-    Text(.init(markdown))
-      .font(PanelFont.note)
-      .lineSpacing(5)
-      .foregroundStyle(t.ink3)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.horizontal, PanelMetrics.hPad)
-      .padding(.top, 10)
-      .padding(.bottom, 2)
-  }
-}
-
 // MARK: - toast
 
 // 面板从前自己养一条 `PanelToast`（主界面那条被半屏面板盖住了）。P2.7 起全 app 只有一条

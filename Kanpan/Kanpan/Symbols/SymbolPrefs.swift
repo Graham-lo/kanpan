@@ -347,8 +347,6 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     if recents.count > Self.recentLimit { recents.removeLast(recents.count - Self.recentLimit) }
   }
 
-  mutating func clearRecents() { recents.removeAll() }
-
   // ---------------------------------------------------------------- 常看
 
   /// 「真的在这张图上待了一会儿」记一分。
@@ -380,8 +378,6 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
       return (recency[$0.key] ?? .max) < (recency[$1.key] ?? .max)
     }.prefix(limit).map(\.key)
   }
-
-  mutating func clearViewScores() { viewScores.removeAll(); scoredAt = 0 }
 
   private mutating func decayScores(to now: Double) {
     Self.decay(&viewScores, from: scoredAt, to: now)

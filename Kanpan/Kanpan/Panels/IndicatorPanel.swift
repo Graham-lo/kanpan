@@ -168,38 +168,6 @@ private struct InUseList: View {
   }
 }
 
-// MARK: - 参数排布
-
-/// 一排步进器，塞不下就换行（原型 `.params { flex-wrap: wrap }`）。
-struct FlowRow: SwiftUI.Layout {
-  var spacing: CGFloat = 5
-
-  func sizeThatFits(proposal: ProposedViewSize, subviews: SwiftUI.LayoutSubviews, cache: inout ()) -> CGSize {
-    let maxW = proposal.width ?? .infinity
-    var x: CGFloat = 0, y: CGFloat = 0, lineH: CGFloat = 0, widest: CGFloat = 0
-    for v in subviews {
-      let s = v.sizeThatFits(.unspecified)
-      if x > 0, x + s.width > maxW { x = 0; y += lineH + spacing; lineH = 0 }
-      x += s.width + spacing
-      widest = max(widest, x - spacing)
-      lineH = max(lineH, s.height)
-    }
-    return CGSize(width: min(widest, maxW), height: y + lineH)
-  }
-
-  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize,
-                     subviews: SwiftUI.LayoutSubviews, cache: inout ()) {
-    var x = bounds.minX, y = bounds.minY, lineH: CGFloat = 0
-    for v in subviews {
-      let s = v.sizeThatFits(.unspecified)
-      if x > bounds.minX, x + s.width > bounds.maxX { x = bounds.minX; y += lineH + spacing; lineH = 0 }
-      v.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(s))
-      x += s.width + spacing
-      lineH = max(lineH, s.height)
-    }
-  }
-}
-
 #Preview("指标") {
   PanelPreviewHost { store in IndicatorPage(store: store, onBack: {}) }
 }

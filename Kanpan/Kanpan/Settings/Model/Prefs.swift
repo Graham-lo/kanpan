@@ -326,10 +326,6 @@ struct Prefs: Sendable, Equatable {
   /// 当前深浅下的图表用色，涨跌已按 `redUp` 对调（A6.7 靠这一个入口，不会漏）。
   func chartColors(dark: Bool) -> ChartColors { Palette.chart(seed(systemDark: dark), redUp: redUp) }
 
-  /// 涨色 / 跌色。胶囊、VOL 柱、MACD 柱都从这儿取，免得各处自己判 `redUp`。
-  func upColor(dark: Bool) -> Hex { chartColors(dark: dark).up }
-  func downColor(dark: Bool) -> Hex { chartColors(dark: dark).down }
-
   // ---------------------------------------------------------------- 改
 
   /// 开 / 关一个指标。
@@ -359,13 +355,6 @@ struct Prefs: Sendable, Equatable {
     guard v.indices.contains(index) else { return }
     v[index] = IndicatorParamRule.clamp(value)
     params[id] = v
-  }
-
-  /// 步进器的加减（原型 `bump`）。
-  mutating func bumpParam(_ id: IndicatorID, at index: Int, by delta: Int) {
-    let v = params(for: id)
-    guard v.indices.contains(index) else { return }
-    setParam(id, at: index, to: v[index] + delta)
   }
 
   /// 副图上下排序（§10.6 的拖柄）。
@@ -416,15 +405,6 @@ struct Prefs: Sendable, Equatable {
     let host = APIHost.normalize(raw)
     if let why = APIHost.reject(host) { return why }
     apiHost = host
-    return nil
-  }
-
-  /// 改行情推送域名。规则和 `setAPIHost` 一样。
-  @discardableResult
-  mutating func setStreamHost(_ raw: String) -> String? {
-    let host = APIHost.normalize(raw)
-    if let why = APIHost.reject(host) { return why }
-    streamHost = host
     return nil
   }
 }

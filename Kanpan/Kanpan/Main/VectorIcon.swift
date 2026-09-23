@@ -343,14 +343,6 @@ enum SVGPath {
 // MARK: - 原型里的那几个
 
 extension VectorIcon {
-  /// 换个边长再用。图标表里那几个是 `static var`，尺寸写死在定义里；
-  /// 底栏要 18、圆按钮要 15，不必为每个尺寸各写一份。
-  func sized(_ s: Double) -> VectorIcon {
-    var copy = self
-    copy.size = s
-    return copy
-  }
-
   /// 顶栏品种按钮上的下箭头。
   static func chevron(_ size: Double = 11, w: Double = 1.6) -> VectorIcon {
     VectorIcon(box: 12, size: size, lineWidth: w, items: [.path("M3 4.5 6 7.5 9 4.5")])
@@ -364,28 +356,6 @@ extension VectorIcon {
     VectorIcon(
       box: 18, size: size, lineWidth: 1.5,
       items: [.path("M9 2.2l2 4.2 4.6.6-3.4 3.2.9 4.6L9 12.6 4.9 14.8l.9-4.6L2.4 7l4.6-.6z")])
-  }
-
-  /// 自选页右上角那颗「自选设置」。
-  ///
-  /// 六边形而不是齿轮：它和左边的放大镜并排站在同一条横线上，齿轮那圈牙齿在
-  /// 15pt 上会糊成一团毛边，和放大镜那种一笔画的线条不是同一种语言。六边形加一个
-  /// 内圈是「螺母」的意思——也是设置，但只有六条直边加一个圆，每一笔在 1.5 的描边
-  /// 下都还立得住。
-  ///
-  /// 尺寸是照着放大镜配的：外接圆 6.6 让六边形高 13.2，和放大镜连柄的 12.7 基本
-  /// 齐平，两颗并排看着一样大。六个角不预先倒圆——`lineJoin: .round` 在这个描边
-  /// 宽度下自然磨出的那点圆已经够了；手动把角削掉反而会把直边吃掉一半，整个记号
-  /// 就圆回去、认不出是六边形了。内圈 2.45 是让它中间那个洞看得见的下限，再小
-  /// 就被描边填成一个实心点。描边比放大镜细 0.1：直边比弧线显重，不减一点这颗会
-  /// 压过旁边那颗。
-  static func hexSettings(_ size: Double = 17) -> VectorIcon {
-    VectorIcon(
-      box: 18, size: size, lineWidth: 1.5,
-      items: [
-        .path("M9 2.4L14.72 5.7L14.72 12.3L9 15.6L3.28 12.3L3.28 5.7Z"),
-        .circle(x: 9, y: 9, r: 2.45),
-      ])
   }
 
   /// 图区右下角「回到最新」。

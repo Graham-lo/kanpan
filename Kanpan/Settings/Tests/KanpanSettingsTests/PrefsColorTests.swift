@@ -15,20 +15,20 @@ struct PrefsColorTests {
     // 出厂跟国内看盘习惯：红涨绿跌。`redUp` 为真时 up/down 两色是对调过来取的。
     let p = Prefs.defaults
     #expect(p.redUp == true)
-    #expect(p.upColor(dark: false) == Palette.lightSeed.down)   // 红
-    #expect(p.downColor(dark: false) == Palette.lightSeed.up)   // 绿
-    #expect(p.upColor(dark: true) == Palette.darkSeed.down)
-    #expect(p.downColor(dark: true) == Palette.darkSeed.up)
+    #expect(p.chartColors(dark: false).up == Palette.lightSeed.down)   // 红
+    #expect(p.chartColors(dark: false).down == Palette.lightSeed.up)   // 绿
+    #expect(p.chartColors(dark: true).up == Palette.darkSeed.down)
+    #expect(p.chartColors(dark: true).down == Palette.darkSeed.up)
   }
 
   @Test("关掉之后绿涨红跌，浅深都对调")
   func 对调() {
     var p = Prefs.defaults
     p.redUp = false
-    #expect(p.upColor(dark: false) == Palette.lightSeed.up)
-    #expect(p.downColor(dark: false) == Palette.lightSeed.down)
-    #expect(p.upColor(dark: true) == Palette.darkSeed.up)
-    #expect(p.downColor(dark: true) == Palette.darkSeed.down)
+    #expect(p.chartColors(dark: false).up == Palette.lightSeed.up)
+    #expect(p.chartColors(dark: false).down == Palette.lightSeed.down)
+    #expect(p.chartColors(dark: true).up == Palette.darkSeed.up)
+    #expect(p.chartColors(dark: true).down == Palette.darkSeed.down)
   }
 
   @Test("只动涨跌两色，其余令牌一个不变")
@@ -43,17 +43,6 @@ struct PrefsColorTests {
       #expect(a.palette == b.palette)
       #expect(a.crossBg == b.crossBg && a.crossInk == b.crossInk)
     }
-  }
-
-  @Test("K 线、成交量、MACD 柱、胶囊取的是同一对颜色")
-  func 同一个出口() {
-    var p = Prefs.defaults
-    p.redUp = true
-    let c = p.chartColors(dark: false)
-    // 画 K 线的、画 VOL 柱的、画 MACD 柱的、画涨跌幅胶囊的，拿的都是这两个值。
-    #expect(p.upColor(dark: false) == c.up)
-    #expect(p.downColor(dark: false) == c.down)
-    #expect(c.up != c.down)
   }
 
   @Test("开关能存下来")

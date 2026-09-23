@@ -236,7 +236,7 @@ final class DrawingController: ObservableObject {
   ///
   /// `promoteStyle` 只有在用户**真的在样式面板上动了**颜色 / 粗细 / 线型 / 填充 / 比例时
   /// 才为 true，这时才把这条线的样式提成该类工具以后的默认。以前这儿是无条件提升的：
-  /// `toggleLock()` 只是给线上了个锁，却顺手把它当前的颜色粗细写成了「以后所有趋势线
+  /// 给线上个锁，却顺手把它当前的颜色粗细写成了「以后所有趋势线
   /// 的默认样式」——用户没做任何改样式的动作，下一条线却变了样，正是「同一个动作两次
   /// 结果不一样」。锁定、隐藏、移动、改端点一律不碰 `preferences.styles`
   /// （`toggleHidden` 本来就绕开了这个方法，那个写法是对的）。
@@ -256,7 +256,6 @@ final class DrawingController: ObservableObject {
     if changed { savePreferences() }
     sync()
   }
-  func toggleLock() { if var item = selected { item.locked.toggle(); update(item) } }
   func toggleHidden(_ item: Drawing) { var next = item; next.hidden.toggle(); chart?.updateDrawing(next); sync() }
   func toggleMagnet() { preferences.magnet.toggle(); savePreferences() }
   func toggleContinuous() { preferences.continuous.toggle(); savePreferences() }

@@ -27,18 +27,6 @@ public enum ReviewConfirmation: String, Codable, Sendable, CaseIterable {
     self = Self(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .barClose
   }
 }
-public struct ReviewBar: Codable, Sendable, Equatable {
-  public var time: Int64
-  public var end: Int64
-  public var open: Double
-  public var high: Double
-  public var low: Double
-  public var close: Double
-  public var volume: Double
-  public init(time: Int64, end: Int64, open: Double, high: Double, low: Double, close: Double, volume: Double) {
-    self.time = time; self.end = end; self.open = open; self.high = high; self.low = low; self.close = close; self.volume = volume
-  }
-}
 public struct ReviewRange: Codable, Sendable, Equatable {
   public var venue = "binance"
   public var market = "usd_m"

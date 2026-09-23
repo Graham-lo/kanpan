@@ -158,17 +158,6 @@ struct IndicatorParamRuleTests {
     #expect(IndicatorParamRule.isValid(26))
   }
 
-  @Test("步进器按不出非法值")
-  func 步进夹紧() {
-    var p = Prefs.defaults
-    p.setParam(.ma, at: 0, to: 7)
-    for _ in 0..<10 { p.bumpParam(.ma, at: 0, by: -1) }
-    #expect(p.params(for: .ma)[0] == 1)            // 不会到 0 或负数
-    p.setParam(.ma, at: 0, to: 399)
-    for _ in 0..<10 { p.bumpParam(.ma, at: 0, by: 1) }
-    #expect(p.params(for: .ma)[0] == 400)
-  }
-
   @Test("越界赋值被夹住；越界下标被忽略")
   func 直接赋值() {
     var p = Prefs.defaults

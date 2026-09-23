@@ -695,12 +695,6 @@ final class QuoteBook {
     return value
   }
 
-  func watchChart(_ symbol: String) {
-    let symbol = InstrumentID.canonical(symbol)
-    setChartSymbol(symbol)
-    if needsConnection { watch(symbol) }
-  }
-
   /// Keeps the chart symbol available to the shared quote book without
   /// opening a second socket for the chart page. If the list is already
   /// visible, preserve the old behavior and add the symbol to its stream.

@@ -180,8 +180,6 @@ enum PanelFont {
   static let seg = ScaledFont(12, .medium)
   static let note = ScaledFont(11.5)
   static let cardName = ScaledFont(14, .semibold)
-  static let cardOne = ScaledFont(10.5)
-  static let cardBet = ScaledFont(11)
   /// 数字一律等宽，免得步进时左右跳。
   static let number = ScaledFont(11, .medium, design: .monospaced)
 }
