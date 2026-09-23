@@ -47,6 +47,8 @@ impl AppState {
  }
 }
 pub fn envelope(value: Value) -> Json<Value> { Json(json!({"data":value})) }
+/// worker / migrate 连接的事务内发呆上限，见 `pool_options`。
+pub const WORKER_IDLE_IN_TRANSACTION:&str="SET idle_in_transaction_session_timeout='60s'";
 /// 建连接池。`deadlines` 为真时给每条新连接挂上数据库自己的那层死线。
 ///
 /// 三层截止里的最后一层：请求体有 512 KiB 上限、请求有 30 秒超时，但那两层只管到
@@ -63,12 +65,21 @@ pub fn envelope(value: Value) -> Json<Value> { Json(json!({"data":value})) }
 /// statement`），而 `after_connect` 一报错就是**每一条连接都建不起来**——服务起得来，
 /// 却一个请求都接不了。`sqlx::raw_sql` 能一次发三条，但它在 `after_connect` 这个
 /// 高阶闭包里过不了 `Executor` 的生命周期，所以这里就按三条发。
+///
+/// worker 与 migrate 只挂一条「事务里发呆 60 秒」（审查 A6），理由见函数体里的注释。
 pub fn pool_options(deadlines: bool) -> sqlx::postgres::PgPoolOptions {
  sqlx::postgres::PgPoolOptions::new().max_connections(8).after_connect(move|conn,_|Box::pin(async move {
   if deadlines {
    for sql in ["SET statement_timeout='20s'","SET lock_timeout='5s'","SET idle_in_transaction_session_timeout='30s'"] {
     sqlx::query(sql).execute(&mut *conn).await?;
    }
+  } else {
+   // worker 与 migrate 不设语句和锁的死线，但**发呆**的死线要有（审查 A6）：一个在事务里
+   // 停住不动的连接（任务卡在某个 await 上、忘了 commit）会一直攥着它拿到的行锁和同步闸，
+   // API 那边同一个人的推送就一直排在它后面。worker 的每个事务都是在出站之前就提交的
+   // （review_worker、search、alerts::record_fired），正常路径上从不在事务里等网络；
+   // 60 秒给得很宽。migrate 的语句一条接一条发，也不会在事务里发呆。
+   sqlx::query(WORKER_IDLE_IN_TRANSACTION).execute(&mut *conn).await?;
   }
   // 这两条对 serve 和 worker 都要挂：找相似图形的近邻查询跑在 worker 里。
   //

@@ -24,6 +24,9 @@ async fn worker_connections_keep_the_server_defaults() {
  let pool=kanpan_api::pool_options(false).connect(&url()).await.unwrap();
  let value:String=sqlx::query_scalar("SELECT current_setting('statement_timeout')").fetch_one(&pool).await.unwrap();
  assert_ne!(value,"20s");
+ // 发呆的死线例外：worker 的事务不许停在半路攥着锁（审查 A6）。
+ let idle:String=sqlx::query_scalar("SELECT current_setting('idle_in_transaction_session_timeout')").fetch_one(&pool).await.unwrap();
+ assert_eq!(idle,"1min");
 }
 
 /// pgvector 0.8 的 `hnsw.iterative_scan` 默认是 `off`：HNSW 先按 ef_search 取回固定的
