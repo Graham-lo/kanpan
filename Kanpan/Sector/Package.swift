@@ -10,7 +10,8 @@ import PackageDescription
 // 符号链接**，一份代码两处编，不会各自走样。
 //
 // 里面只放不吃 SwiftUI 的那几件：取数（`SectorFeed`）、列表的值与文案与排序
-// （`SectorRows`）、窗口这一档（`SectorWindowChoice`）、下钻去留（`SectorDrillDecision`）。
+// （`SectorRows`）、窗口这一档（`SectorWindowChoice`）、下钻去留（`SectorDrillDecision`）、
+// 板块记号表（`SectorIconTable`，只有 id / 身份色 / 路径，画法留在 `SectorIcon.swift`）。
 // 页面外壳那些吃 SwiftUI/UIKit，证据走 UI 用例和真机。
 //
 // 跑：cd Kanpan/Sector && swift test（或 make sector-test）

@@ -425,7 +425,7 @@ import KanpanNetwork
   /// 我们定义的板块。这些币走交易所自己的 `underlyingSubTypes` 兜底，在板块列表里
   /// 和普通板块一起按涨跌幅排，画得也一模一样（不去饱和、不加标记、不另起一组）。
   ///
-  /// 桶的 id 和数量不是随手定的，得和记号表对上：`SectorIcons` 里除了 34 个真板块，
+  /// 桶的 id 和数量不是随手定的，得和记号表对上：`SectorIcons` 里除了 36 个真板块（加密 24 + 美股 12），
   /// 另有 `tag-infrastructure` / `tag-alpha` / `tag-defi` / `misc` 四枚，就是给这儿用的
   /// （原型定稿那一版也正好是这四个桶、49 个成员）。所以这儿**不能**按标签有几种就分几个桶
   /// ——那样会冒出一串 id 对不上、没有记号的小桶，在板块列表里就是一片空洞。
@@ -456,11 +456,12 @@ import KanpanNetwork
   }
 
   /// 认领顺序。和 `bucketOrder` 一致，只是少了兜底的 `misc`。
-  private static let tagOrder = ["infrastructure", "alpha", "defi"]
-  /// 在板块列表里并列时的先后，和 `SectorIcons` 里那四枚记号的顺序一致。
-  private static let bucketOrder = ["tag-infrastructure", "tag-alpha", "tag-defi", "misc"]
+  nonisolated private static let tagOrder = ["infrastructure", "alpha", "defi"]
+  /// 在板块列表里并列时的先后。桶的 id 和名字只有这里一份，记号表只按 id 挂记号
+  /// （`SectorIconTableTests` 对账）。
+  nonisolated static let bucketOrder = ["tag-infrastructure", "tag-alpha", "tag-defi", "misc"]
   /// 桶名照原型定稿。`MarketSector.title` 给的是「基础设施 / Alpha / DeFi」，
   /// 但这一页要说清楚它们是**兜底**，所以 Alpha 带上「币安」、DeFi 带上「其他」。
-  private static let bucketNames = ["tag-infrastructure": "基础设施", "tag-alpha": "币安 Alpha",
+  nonisolated static let bucketNames = ["tag-infrastructure": "基础设施", "tag-alpha": "币安 Alpha",
                                     "tag-defi": "DeFi 其他", "misc": "其他"]
 }

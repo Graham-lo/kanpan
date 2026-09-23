@@ -377,8 +377,8 @@ struct SectorMarketSwitch: View {
 
   var body: some View {
     HStack(spacing: 2) {
-      tab(.crypto, "加密")
-      tab(.us, "美股")
+      // 名字只认 `MarketSector.title`，和品种页、自选页的市场名是同一张表。
+      ForEach(SectorMarket.allCases, id: \.self) { tab($0, MarketSector.title($0.rawValue)) }
     }
     .padding(2)
     .background {
