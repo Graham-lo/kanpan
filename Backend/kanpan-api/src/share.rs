@@ -94,11 +94,27 @@ async fn send(State(s):State<AppState>,who:Identity,Payload(v):Payload<Send>)->R
   sqlx::query("INSERT INTO shares(id,from_user,to_user,symbol,interval,view_from,view_to,drawings,alerted,market,reply_to) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)").bind(&id).bind(who.user).bind(other).bind(v.symbol).bind(v.interval).bind(v.view.from).bind(v.view.to).bind(json!(v.drawings)).bind(json!(v.alerted)).bind(market_key).bind(&v.reply_to).execute(&mut *tx).await?;
  tx.commit().await?;Ok(envelope(json!({"id":id})))
 }
+/// 收件箱一页最多这么多封。
+pub const INBOX_PAGE:usize=200;
+/// 这一页之后客户端下次该从哪儿接着拉。
+///
+/// 没截断：`now`（本次查询的时刻），和原来一样。截断了：这一页最后一封的改动时刻——
+/// 查询条件是 `>=`，所以那一封下次会再来一遍（客户端按 id 合并，重复无害），而这一页
+/// 之后的那些一封都不会漏。原来截断之后照样回 `now`，没拿到的那些就永远拿不到了。
+pub fn inbox_cursor(changed:&[DateTime<Utc>],now:DateTime<Utc>)->DateTime<Utc> {
+ if changed.len()>INBOX_PAGE {changed[INBOX_PAGE-1]} else {now}
+}
 async fn inbox(State(s):State<AppState>,who:Identity,Params(v):Params<Cursor>)->Result<Json<Value>> {
  let mut tx=s.personal(who.user).await?;lock(&mut tx,who.user).await?;
- let rows=sqlx::query("SELECT s.*,u.email AS sender FROM shares s JOIN account_users u ON u.id=s.from_user WHERE to_user=$1 AND ($2::timestamptz IS NULL OR greatest(s.created_at,s.opened_at,s.kept_at)>=$2) ORDER BY s.created_at DESC,s.id DESC").bind(who.user).bind(v.after).fetch_all(&mut *tx).await?;
+ // 列表不带截图（`shot` 每封最多 300 KB，原来 `SELECT s.*` 把它们整列读出来又丢掉）；
+ // 截图走 `GET /v1/shares/{id}/shot` 单取。按改动时刻正序分页，多取一行判断截断没有；
+ // 客户端自己按创建时间排序，不依赖这里的顺序。
+ let mut rows=sqlx::query("SELECT s.id,s.symbol,s.market,s.interval,s.view_from,s.view_to,s.drawings,s.alerted,s.created_at,s.opened_at,s.kept_at,s.reply_to,u.email AS sender,greatest(s.created_at,s.opened_at,s.kept_at) AS changed FROM shares s JOIN account_users u ON u.id=s.from_user WHERE to_user=$1 AND ($2::timestamptz IS NULL OR greatest(s.created_at,s.opened_at,s.kept_at)>=$2) ORDER BY changed,s.id LIMIT $3")
+  .bind(who.user).bind(v.after).bind(INBOX_PAGE as i64+1).fetch_all(&mut *tx).await?;
+ let now:DateTime<Utc>=sqlx::query_scalar("SELECT clock_timestamp()").fetch_one(&mut *tx).await?;
+ let cursor=inbox_cursor(&rows.iter().map(|r|r.get::<DateTime<Utc>,_>("changed")).collect::<Vec<_>>(),now);
+ rows.truncate(INBOX_PAGE);
  let items:Vec<Value>=rows.iter().map(|r|json!({"id":r.get::<String,_>("id"),"from":r.get::<String,_>("sender"),"symbol":r.get::<String,_>("symbol"),"market":r.get::<String,_>("market"),"interval":r.get::<String,_>("interval"),"view":{"from":r.get::<i64,_>("view_from"),"to":r.get::<i64,_>("view_to")},"drawings":r.get::<Value,_>("drawings"),"alerted":r.get::<Value,_>("alerted"),"createdAt":r.get::<DateTime<Utc>,_>("created_at"),"openedAt":r.get::<Option<DateTime<Utc>>,_>("opened_at"),"keptAt":r.get::<Option<DateTime<Utc>>,_>("kept_at"),"replyTo":r.get::<Option<String>,_>("reply_to")})).collect();
- let cursor:DateTime<Utc>=sqlx::query_scalar("SELECT clock_timestamp()").fetch_one(&mut *tx).await?;
  tx.commit().await?;Ok(envelope(json!({"items":items,"cursor":cursor})))
 }
 async fn put_shot(State(s):State<AppState>,who:Identity,Route(id):Route<String>,headers:HeaderMap,body:Bytes)->Result<Json<Value>> {
@@ -124,6 +140,16 @@ async fn kept(State(s):State<AppState>,who:Identity,Route(id):Route<String>)->Re
 #[cfg(test)] mod tests {
  use super::*;
  fn good()->Value {json!({"to":"qa_friend","symbol":"BTCUSDT","interval":"1h","view":{"from":1,"to":2},"drawings":[{"id":"line1","kind":"trend","points":[{"t":1,"p":100},{"t":2,"p":110}],"lineWidth":1.3,"dash":"solid","filled":true,"hidden":false,"locked":false,"levels":[]}],"alerted":["line1"]})}
+ /// 截断了就停在这一页最后一封，下次从它接着拉；没截断照旧回「现在」。
+ #[test] fn a_truncated_inbox_page_resumes_from_its_last_letter() {
+  let t=|n:i64|DateTime::<Utc>::from_timestamp(1_800_000_000+n,0).unwrap();
+  let now=t(10_000);
+  assert_eq!(inbox_cursor(&[],now),now);
+  let full:Vec<_>=(0..INBOX_PAGE as i64).map(t).collect();
+  assert_eq!(inbox_cursor(&full,now),now,"刚好一页不算截断");
+  let over:Vec<_>=(0..=INBOX_PAGE as i64).map(t).collect();
+  assert_eq!(inbox_cursor(&over,now),t(INBOX_PAGE as i64-1),"多出来的那一封下次还拿得到");
+ }
  #[test] fn bad_drawings_use_sync_validation() {
   assert!(validate(&serde_json::from_value(good()).unwrap()).is_ok());
   for (field,bad) in [("points",json!([{"t":1,"p":2}])),("lineWidth",json!(90)),("kind",json!("unknown")),("hidden",json!("false")),("color",json!({"value":"bad"})),("other",json!(true))] {
