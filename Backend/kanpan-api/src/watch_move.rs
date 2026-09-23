@@ -100,15 +100,9 @@ impl Tracker {
  pub fn forget_prices(&mut self) {self.series.clear()}
 }
 
-/// 品种的短名：去掉计价币后缀，和客户端 `SymbolInfo.placeholder` 同一张后缀表。
-pub fn short(symbol:&str)->&str {
- // `BTC-USD` 这类带分隔符的（Coinbase 现货）：横杠前面就是 base。
- if let Some((base,_))=symbol.split_once('-').filter(|(b,_)|!b.is_empty()) {return base}
- for quote in ["USDT","USDC","USD1","BUSD"] {
-  if let Some(base)=symbol.strip_suffix(quote).filter(|b|!b.is_empty()) {return base}
- }
- symbol
-}
+/// 品种的短名：去掉计价币后缀。后缀表只有一份（`instruments`）；以前这里抄了四项，
+/// `ETHFDUSD`、`XTUSD` 的通知标题就成了整串代号。
+pub fn short(symbol:&str)->&str {crate::instruments::base(symbol)}
 /// 通知标题：「BTC 五分钟涨 1.82%」。客户端 `WatchMove.title` 一字不差。
 pub fn title(symbol:&str,event:&Event)->String {
  let short=short(symbol);

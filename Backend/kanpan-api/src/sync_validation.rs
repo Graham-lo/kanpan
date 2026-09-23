@@ -26,11 +26,12 @@ const KINDS:&[&str]=&[
  // not from the anchors themselves. Same vocabulary rules apply — the server only stores them.
  "anchoredVWAP","fixedVolumeProfile","anchoredVolumeProfile",
 ];
-// A superset of `Interval` (KanpanCore/Model/Interval.swift:4); 3d and 8h are not offered.
-const INTERVALS:[&str;16]=["1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d","3d","1w","1M","1y"];
-// `SectorQuotePreference.quoteAssets` (KanpanCore/Sector/SectorAggregate.swift:178). Binance
+// Intervals: `instruments::is_synced_interval` — what the period bar offers today plus the two it
+// used to (8h, 3d), which old archives still carry.
+// Quotes: `instruments::QUOTE_ASSETS`, the client's `SectorQuotePreference.quoteAssets`. Binance
 // lists USDC-margined contracts too, so a USDT-only rule refused perfectly real favourites.
-const QUOTES:[&str;6]=["USDT","USDC","FDUSD","BUSD","USD1","TUSD"];
+use crate::instruments::{QUOTE_ASSETS as QUOTES,is_synced_interval};
+fn intervals(v:&Value,count:usize)->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_str().is_some_and(is_synced_interval)))}
 fn color(v:&Value)->bool {v.as_object().is_some_and(|o|o.len()==1)&&v["value"].as_str().is_some_and(|s|matches!(s.len(),7|9)&&s.starts_with('#')&&s[1..].bytes().all(|c|c.is_ascii_hexdigit()))}
 fn number(v:&Value,lo:f64,hi:f64)->bool {v.as_f64().is_some_and(|v|v.is_finite()&&v>=lo&&v<=hi)}
 fn integers(v:&Value,count:usize,lo:i64,hi:i64)->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_i64().is_some_and(|n|n>=lo&&n<=hi)))}
@@ -105,7 +106,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "overlays"=>names(v,OVERLAY_INDICATORS.len(),OVERLAY_INDICATORS),"subs"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
    // `subInverted` is a set of sub-panel ids, same vocabulary as `subs`.
    "subInverted"=>names(v,SUB_INDICATORS.len(),SUB_INDICATORS),
-   "quickIntervals"=>names(v,10,&INTERVALS),"interval"=>one_of(v,&INTERVALS),
+   "quickIntervals"=>intervals(v,10),"interval"=>v.as_str().is_some_and(is_synced_interval),
    "rsiRange"=>v.as_array().is_some_and(|a|a.len()==2&&number(&a[0],0.0,100.0)&&number(&a[1],0.0,100.0)&&a[0].as_f64()<a[1].as_f64()),
    "portraitHeight"=>number(v,0.1,1.0),
    // `Prefs.clampSpacing` never stores anything outside AICoinBehavior's 1.6…40pt.

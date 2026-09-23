@@ -140,10 +140,11 @@ async fn perpetuals(client:&reqwest::Client)->Option<Vec<Arc<str>>> {
  if binance_gate::note_reply(&reply) {return None}
  let listing:serde_json::Value=reply.json().await.ok()?;
  let mut symbols:Vec<&str>=listing.get("symbols")?.as_array()?.iter()
-  .filter(|row|{
-   let field=|key|row.get(key).and_then(serde_json::Value::as_str);
-   field("status")==Some("TRADING")&&field("contractType")==Some("PERPETUAL")&&field("quoteAsset")==Some("USDT")
-  })
+  // 「正在交易的永续」和板块历史用同一个判定（`instruments::is_live_perpetual`）：以前这里只认
+  // `PERPETUAL`，美股、贵金属那些 `TRADIFI_PERPETUAL` 板块历史里有、预热里没有。
+  // 只留 USDT 计价是这里自己的取舍：USDC / USD1 那几只是同一个标的的双胞胎，预热是替
+  // 还没来的人做的投机性工作，双胞胎各热一遍只是把币安的权重花两次。
+  .filter(|row|crate::instruments::is_live_perpetual(row)&&row.get("quoteAsset").and_then(serde_json::Value::as_str)==Some("USDT"))
   .filter_map(|row|row.get("symbol").and_then(serde_json::Value::as_str))
   .collect();
  symbols.sort_unstable();

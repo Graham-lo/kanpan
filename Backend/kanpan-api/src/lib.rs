@@ -3,6 +3,7 @@ pub mod crypto;
 pub mod error;
 pub mod sync;
 pub mod sync_validation;
+pub mod instruments;
 pub mod review;
 pub mod review_worker;
 pub mod search;

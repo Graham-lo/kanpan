@@ -8,7 +8,6 @@ use serde_json::{Value,json};
 use sqlx::{Row,Postgres,Transaction};
 use std::collections::{BTreeMap,HashSet};
 use uuid::Uuid;
-const INTERVALS:&[&str]=&["1m","3m","5m","15m","30m","1h","2h","4h","6h","12h","1d","1w","1M","1y"];
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct View {from:i64,to:i64}
 #[derive(Deserialize)] #[serde(deny_unknown_fields)]
 struct Send {to:String,symbol:String,interval:String,view:View,drawings:Vec<Value>,#[serde(default)] alerted:Vec<String>,
@@ -53,7 +52,7 @@ fn share_identity(symbol:&str)->(&str,&str,&str) {
 }
 fn validate(v:&Send)->Result<()> {
  let (venue,market,symbol)=share_identity(&v.symbol);
- if !sync_validation::field("drawings","symbol",&json!(symbol)) || !sync_validation::identity(venue,market,symbol) || !INTERVALS.contains(&v.interval.as_str()) || v.view.from<0 || v.view.to>9_000_000_000_000_000 || v.view.from>=v.view.to || !(1..=200).contains(&v.drawings.len()) {return Err(ApiError::bad("invalid_share"))}
+ if !sync_validation::field("drawings","symbol",&json!(symbol)) || !sync_validation::identity(venue,market,symbol) || !crate::instruments::is_interval(&v.interval) || v.view.from<0 || v.view.to>9_000_000_000_000_000 || v.view.from>=v.view.to || !(1..=200).contains(&v.drawings.len()) {return Err(ApiError::bad("invalid_share"))}
  let mut ids=HashSet::new();
  for drawing in &v.drawings {
   let map=drawing.as_object().ok_or(ApiError::bad("invalid_drawing"))?;
@@ -166,10 +165,14 @@ async fn kept(State(s):State<AppState>,who:Identity,Route(id):Route<String>)->Re
   }
   let mut v=good();v["reply_to"]=json!("abcdefghijklmnopqrstuv");assert!(serde_json::from_value::<Send>(v).is_err(),"snake_case is an unknown field");
  }
- #[test] fn intervals_match_native() {
-  let source=include_str!("../../../KanpanCore/Sources/KanpanCore/Model/Interval.swift");
-  // 只认 `case m1 = "1m", …` 这几行的原始值（显示名那几行是 `case .m1: "1 分钟"`）。
-  let cases:String=source.lines().filter(|l|l.trim_start().starts_with("case ")&&l.contains(" = \"")).collect::<Vec<_>>().join("\n");
-  let values:Vec<_>=cases.split('"').enumerate().filter_map(|(i,s)|(i%2==1).then_some(s)).collect();assert_eq!(values,INTERVALS);
+ /// 周期表只有一份（`instruments::INTERVALS`，那边逐项对着 Swift 比）。分享只收对方周期条上
+ /// 点得到的：同步还收着的老周期（8h、3d）在这里要被拒。
+ #[test] fn a_share_is_on_an_interval_the_friend_can_pick() {
+  for interval in crate::instruments::INTERVALS {
+   let mut v=good();v["interval"]=json!(interval);assert!(validate(&serde_json::from_value(v).unwrap()).is_ok(),"{interval}");
+  }
+  for interval in crate::instruments::LEGACY_INTERVALS.iter().chain(["7h",""].iter()) {
+   let mut v=good();v["interval"]=json!(interval);assert!(validate(&serde_json::from_value(v).unwrap()).is_err(),"{interval}");
+  }
  }
 }

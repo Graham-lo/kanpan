@@ -103,14 +103,12 @@ fn num(v:&Value)->Option<f64> {
 /// `PENDING_TRADING` or `BREAK`. A quarterly's history belongs to a contract
 /// that expires, and a contract that is not trading has no live price for the
 /// phone to divide, so neither earns a daily request.
-const PERPETUAL_TYPES:[&str;2]=["PERPETUAL","TRADIFI_PERPETUAL"];
-
+///
+/// The predicate itself lives in `instruments::is_live_perpetual`, shared with the
+/// open-interest warm-up, so the two can no longer disagree about what a perpetual is.
 pub fn perpetuals(body:&Value)->Vec<String> {
  let Some(rows)=body["symbols"].as_array() else {return Vec::new()};
- let mut out:Vec<String>=rows.iter().filter(|row|{
-  row["contractType"].as_str().is_some_and(|kind|PERPETUAL_TYPES.contains(&kind))
-   &&row["status"].as_str()==Some("TRADING")
- }).filter_map(|row|row["symbol"].as_str()).filter(|symbol|{
+ let mut out:Vec<String>=rows.iter().filter(|row|crate::instruments::is_live_perpetual(row)).filter_map(|row|row["symbol"].as_str()).filter(|symbol|{
   // The name goes into a query string; anything that is not a contract name
   // is a row we cannot read rather than a request to make.
   !symbol.is_empty()&&symbol.len()<=32&&symbol.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')

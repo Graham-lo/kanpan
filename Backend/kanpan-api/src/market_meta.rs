@@ -60,8 +60,10 @@ const LISTING_GAP:Duration=Duration::from_millis(200);
 const SUPPLY_TTL:Duration=Duration::from_secs(24*60*60);
 /// Open interest and price only need to be fresher than a glance at the header.
 pub(crate) const LIVE_TTL:Duration=Duration::from_secs(15);
-/// The quote assets a perpetual symbol can end with, longest spelling first.
-pub(crate) const QUOTES:[&str;7]=["FDUSD","BUSD","TUSD","USDT","USDC","USDD","USD"];
+/// The quote assets a perpetual symbol can end with, longest spelling first —
+/// one table for the whole server, [`crate::instruments::QUOTE_SUFFIXES`].
+/// It used to be a copy here without `USD1`, so `SPCXUSD1` never lost its quote.
+pub(crate) use crate::instruments::QUOTE_SUFFIXES as QUOTES;
 
 // 缓存可以一直留着当恢复材料，但**送出去**的数字有年龄上限：拿不到新数据时留空，
 // 绝不把一个不知道多久以前的数字当现在的答案（B-03）。
@@ -1358,6 +1360,9 @@ mod tests {
   assert_eq!(strip_quote("ETHFDUSD"),"ETH");
   assert_eq!(strip_quote("BTC-USDT-SWAP"),"BTC");
   assert_eq!(strip_quote("USDCUSDT"),"USDC");
+  // USD1 / TUSD 计价的那几只以前剥不掉，基础资产读成了 SPCXUSD1 整个。
+  assert_eq!(strip_quote("SPCXUSD1"),"SPCX");
+  assert_eq!(strip_quote("XTUSD"),"X");
   assert_eq!(strip_quote("BTC"),"BTC");
  }
  #[test]
