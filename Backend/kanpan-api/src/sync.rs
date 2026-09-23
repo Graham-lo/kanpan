@@ -55,8 +55,27 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 /// these through instead of 400-ing every review an older build tries to save. Readers ignore
 /// them: the client only applies names it still declares.
 pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights"];
+/// Retired names, per collection.
+pub fn retired_fields(c:&str)->&'static [&'static str] {
+ match c {SETTINGS=>RETIRED_SETTINGS_FIELDS,_=>&[]}
+}
+/// First path segment is a retired name in that collection (`subHeights/MACD` counts).
+pub fn retired_field(c:&str,path:&str)->bool {retired_fields(c).contains(&path.split('/').next().unwrap_or_default())}
 /// First path segment is a retired settings name (`subHeights/MACD` counts).
-pub fn retired_settings_field(path:&str)->bool {RETIRED_SETTINGS_FIELDS.contains(&path.split('/').next().unwrap_or_default())}
+pub fn retired_settings_field(path:&str)->bool {retired_field(SETTINGS,path)}
+/// Take retired names out of a stored object before it is validated and written back.
+///
+/// Without this, retiring a name is a trap: the value rule goes away with the name, but every
+/// body already in the database still carries it (production had `showDrawings:true` on all 66
+/// settings objects), so `sync_validation::object` finds a key with no rule and 400s *every*
+/// later merge onto that object with `invalid_sync_value` — nothing the person changes syncs
+/// again. Readers already ignore these names, so dropping them loses nothing; an older build
+/// reading the cleaned body falls back to its own default, which is what production held.
+pub fn strip_retired(object:&mut Object) {
+ let c=object.collection.clone();
+ object.body.retain(|k,_|!retired_field(&c,k));
+ object.fields.retain(|k,_|!retired_field(&c,k));
+}
 // One enumerable allowlist per collection, mirroring what iOS actually sends.
 //
 // `settings` is not a hand-copy any more: it must equal, name for name, the `wireKeys` array
@@ -158,6 +177,7 @@ pub fn merge(mut object:Object,op:&Operation,now:i64)->Result<Object> {
   && !v.as_array().is_some_and(|a|a.len()==2&&a[0].as_f64().is_some_and(|lo|lo>=0.0&&a[1].as_f64().is_some_and(|hi|hi>lo&&hi<=100.0))) {return Err(ApiError::bad("invalid_rsi_range"))}
  if let Some(v)=object.body.get("lineWidth")&& !v.as_f64().is_some_and(|n|n>0.0&&n<=12.0){return Err(ApiError::bad("invalid_line_width"))}
  crate::sync_validation::clear_tombstones(&mut object);
+ strip_retired(&mut object);
  crate::sync_validation::object(&object)?;
  object.revision=next;Ok(object)
 }
@@ -578,6 +598,19 @@ mod tests {
   let mut named=operation.unknown_fields();named.sort();
   assert_eq!(named,vec!["moodRing".to_string(),"telepathy".to_string()]);
   assert!(op("settings",&[("barSpacing",json!(9.5))]).unknown_fields().is_empty());
+ }
+ /// 退役名字留在**已经存下的** body 里时，之后对这条对象的每一次合并都不能被它拖死：
+ /// 值规则随名字删掉了，`sync_validation::object` 会把它当成没有规则的键整条 400
+ /// （`invalid_sync_value`）。线上 66 份设置对象都还躺着 `showDrawings:true`。
+ #[test] fn a_stored_body_with_retired_names_still_merges() {
+  let mut settings=blank("settings","chart");
+  settings.body.insert("showDrawings".into(),json!(true));
+  settings.body.insert("subHeights".into(),json!({"MACD":"large"}));
+  settings.fields.insert("showDrawings".into(),json!({"revision":1}));
+  let merged=merge(settings,&op("settings",&[("barSpacing",json!(9.5))]),1_800_000_000_000)
+   .unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
+  assert_eq!(merged.body["barSpacing"],json!(9.5));
+  assert!(!merged.body.contains_key("showDrawings")&&!merged.body.contains_key("subHeights")&&!merged.fields.contains_key("showDrawings"));
  }
  /// 两端删掉的 `showDrawings` / `subHeights`：老版本推上来照旧只丢字段、不丢操作，
  /// 回执里点名；它们也不许再混回白名单（不然就是没删干净）。
