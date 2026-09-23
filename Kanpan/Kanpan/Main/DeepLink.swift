@@ -4,12 +4,12 @@ import Observation
 
 /// 一个外来的「去哪儿」。
 ///
-/// 桌面快捷入口、通知点击、朋友之间的共享链接，最后都化成这个枚举里的一条，
+/// 桌面快捷入口、通知点击、收件箱里朋友发来的画线，最后都化成这个枚举里的一条，
 /// 由 `MainScreen` 一处消费（见 `71bd340:docs/提醒与体验细节-实施方案-2026-09-20.md` 第 1 节）。
 /// **不要为某一个入口另开一条跳转路径**——那样同一个「打开 BTC 的 1 小时图」
 /// 会在通知里和桌面图标里长成两套行为。
 ///
-/// 两种壳子解析到同一个枚举：
+/// 只认一种壳子 `hkline://`（分享走账号内朋友 + 收件箱，不发链接，所以没有 https 通用链接）：
 ///
 ///   hkline://symbol/BTCUSDT?interval=1h
 ///   hkline://drawing/BTCUSDT/<drawingID>
@@ -18,7 +18,6 @@ import Observation
 ///   hkline://search
 ///   hkline://favorites
 ///   hkline://share/<id>
-///   https://kanpan.107-174-172-10.sslip.io/s/<id>        （与上一条等价）
 ///
 /// scheme 登记在 `Kanpan/Config/Info.plist` 的 `CFBundleURLTypes` 里。
 enum DeepLink: Equatable {
@@ -38,19 +37,13 @@ enum DeepLink: Equatable {
   /// 朋友共享的那张图。
   case share(id: String)
 
-  /// 通用链接的主机。共享链接 `https://<host>/s/<id>` 只认这一个。
-  static let webHost = "kanpan.107-174-172-10.sslip.io"
   /// 自定义 scheme。
   static let scheme = "hkline"
 
   /// 认不出来的一律返回 nil——宁可什么都不做，也不要猜一个「差不多」的地方打开。
   static func parse(_ url: URL) -> DeepLink? {
-    guard let scheme = url.scheme?.lowercased() else { return nil }
-    switch scheme {
-    case Self.scheme: return app(url)
-    case "https": return web(url)
-    default: return nil
-    }
+    guard url.scheme?.lowercased() == Self.scheme else { return nil }
+    return app(url)
   }
 
   // ---------------------------------------------------------------- 私有
@@ -90,22 +83,11 @@ enum DeepLink: Equatable {
     }
   }
 
-  /// 通用链接。只有共享那一条，形态固定 `https://<webHost>/s/<id>`。
-  private static func web(_ url: URL) -> DeepLink? {
-    guard url.host?.lowercased() == webHost else { return nil }
-    let parts = segments(url)
-    guard parts.count == 2, parts[0].lowercased() == "s", !parts[1].isEmpty else { return nil }
-    return .share(id: parts[1])
-  }
-
-  /// 把 host 和 path 揉成一串段。
-  ///
-  /// `hkline://alerts` 的 host 是 `alerts`、path 是空的；`https://…/s/x` 反过来，
-  /// host 是域名、段全在 path 里——所以两族各自决定第一段从哪儿取：自定义 scheme
-  /// 连 host 一起算，通用链接只算 path。
+  /// 把 host 和 path 揉成一串段：`hkline://alerts` 的 host 是 `alerts`、path 是空的，
+  /// 所以第一段（去处）从 host 取。
   private static func segments(_ url: URL) -> [String] {
     var parts: [String] = []
-    if url.scheme?.lowercased() == Self.scheme, let host = url.host, !host.isEmpty { parts.append(host) }
+    if let host = url.host, !host.isEmpty { parts.append(host) }
     parts += url.path.split(separator: "/").map(String.init)
     // path 里的 `%2F` 之类由 URL 自己解过了；空段（`//`）不算一段。
     return parts.filter { !$0.isEmpty }

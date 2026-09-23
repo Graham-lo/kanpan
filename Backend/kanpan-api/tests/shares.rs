@@ -21,6 +21,8 @@ async fn shares_are_private_make_friends_and_keep_independent_lines() {
   let (_,v)=request(&w.app,"/v1/friends","GET",Some(&user.token),None,json!({})).await;
   assert_eq!(v["data"].as_array().unwrap().len(),1,"first send makes reciprocal friends");
  }
+ // 朋友只能靠「发一次」结成；单独加朋友的 POST /v1/friends 没有客户端用，已删（P4.11）。
+ assert_eq!(request(&w.app,"/v1/friends","POST",Some(&a.token),None,json!({"username":name})).await.0,405);
  let (_,inbox)=request(&w.app,"/v1/shares/inbox","GET",Some(&b.token),None,json!({})).await;
  assert_eq!(inbox["data"]["items"][0]["drawings"],payload["drawings"]);
  for user in [&a,&c] {

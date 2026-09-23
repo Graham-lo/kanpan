@@ -4,7 +4,7 @@
 mod review_common;
 use chrono::Utc;
 use review_common::*;
-use serde_json::{Value,json};
+use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -203,13 +203,9 @@ async fn review_rls_and_alias() {
  assert_eq!(v["error"]["code"],"record_revision_changed");
  let (status,v)=request(&w.app,&single,"POST",Some(&a.token),Some(Uuid::new_v4()),write("第二遍",1)).await;
  assert_eq!(status,200,"{v}");assert_eq!(v["data"]["record"]["reflection"]["note"],"第二遍");
- // 不带身份的能力清单：只说这台服务器会什么，不带任何一个人的影子。
- let (status,body)=text(&w.app,"/v1/capabilities","GET",None,None,String::new()).await;
- assert_eq!(status,200,"{body}");
- for secret in [a.id.to_string(),id.to_string(),"只属于我".into(),"BTCUSDT".into()] {
-  assert!(!body.contains(&secret),"能力清单里不许出现 {secret}：{body}");
- }
- let v:Value=serde_json::from_str(&body).unwrap();
- assert_eq!(v["data"]["search"]["anonymous"],false);
+ // 旧的匿名能力清单 `/v1/capabilities` 没有任何客户端调用，已删（P4.11）：
+ // 删掉就得真的不在，不能留一条不要身份、还要查库的路由。
+ let (status,_)=text(&w.app,"/v1/capabilities","GET",None,None,String::new()).await;
+ assert_eq!(status,404,"/v1/capabilities 应该已经删掉");
  w.close().await;
 }

@@ -9,7 +9,6 @@ use sqlx::{Row,Postgres,Transaction};
 use std::collections::{BTreeMap,HashSet};
 use uuid::Uuid;
 const INTERVALS:&[&str]=&["1m","3m","5m","15m","30m","1h","2h","4h","6h","12h","1d","1w","1M","1y"];
-#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct Friend {username:String}
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct View {from:i64,to:i64}
 #[derive(Deserialize)] #[serde(deny_unknown_fields)]
 struct Send {to:String,symbol:String,interval:String,view:View,drawings:Vec<Value>,#[serde(default)] alerted:Vec<String>,
@@ -17,7 +16,7 @@ struct Send {to:String,symbol:String,interval:String,view:View,drawings:Vec<Valu
  #[serde(default,rename="replyTo")] reply_to:Option<String>}
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct Cursor {after:Option<DateTime<Utc>>}
 pub fn routes()->Router<AppState> {
- Router::new().route("/v1/friends",get(friends).post(add_friend))
+ Router::new().route("/v1/friends",get(friends))
   .route("/v1/friends/{username}",delete(remove_friend))
   .route("/v1/shares",post(send)).route("/v1/shares/inbox",get(inbox))
   .route("/v1/shares/{id}/shot",put(put_shot).get(get_shot))
@@ -42,11 +41,6 @@ async fn friends(State(s):State<AppState>,who:Identity)->Result<Json<Value>> {
  let mut tx=s.personal(who.user).await?;
  let names:Vec<String>=sqlx::query_scalar("SELECT u.email FROM friendships f JOIN account_users u ON u.id=f.friend_id WHERE f.user_id=$1 AND u.disabled_at IS NULL ORDER BY u.email").bind(who.user).fetch_all(&mut *tx).await?;
  tx.commit().await?; Ok(envelope(json!(names.into_iter().map(|username|json!({"username":username})).collect::<Vec<_>>())))
-}
-async fn add_friend(State(s):State<AppState>,who:Identity,Payload(v):Payload<Friend>)->Result<Json<Value>> {
- let name=username(&v.username)?;let mut tx=s.personal(who.user).await?;
- let other=recipient(&mut tx,&name,who.user).await?;befriend(&mut tx,who.user,other).await?;
- tx.commit().await?;Ok(envelope(json!({"ok":true})))
 }
 async fn remove_friend(State(s):State<AppState>,who:Identity,Route(name):Route<String>)->Result<Json<Value>> {
  let name=username(&name)?;let mut tx=s.personal(who.user).await?;

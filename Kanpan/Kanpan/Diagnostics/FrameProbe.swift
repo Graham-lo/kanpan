@@ -11,7 +11,7 @@
   // ## 为什么不去改 ChartView
   //
   // 最直接的做法是在 `ChartView.onFrame()` / `drawPlot` 前后各打一个时间戳。
-  // 但那要改绘制层，而绘制层是 M3 已经封了的（176 张逐像素基线压着）。
+  // 但那要改绘制层，诊断探针不该为了计时去碰渲染路径。
   // 这里改用**完全不侵入**的办法，两条腿：
   //
   //   1. `CADisplayLink` —— 拿 `timestamp` / `targetTimestamp`。

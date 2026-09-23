@@ -265,8 +265,8 @@ public struct ChartRenderer {
   /// 拖动期间钉住的主图价格区间（`ChartView.beginAxisFreeze`）。
   ///
   /// 为什么不放进 `ChartState`：它是**交互中间量**，和选中态、预览线是一类东西——
-  /// `ChartState` 是渲染的纯输入，A3.11 的 176 张逐像素基线钉死了「同一份 state →
-  /// 同一张图」，把一个只在手指按着的那两秒里存在的值塞进去就等于改渲染路径。
+  /// `ChartState` 是渲染的纯输入，约定是「同一份 state → 同一张图」，把一个只在
+  /// 手指按着的那两秒里存在的值塞进去就等于改渲染路径。
   /// 它只盖住「这一帧画在哪个价格区间上」这一件事，谁都不必知道它存在。
   var pinnedPriceRange: PriceRange?
 

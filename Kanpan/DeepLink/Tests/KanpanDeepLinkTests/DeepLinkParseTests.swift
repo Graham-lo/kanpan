@@ -3,8 +3,8 @@ import Testing
 @testable import KanpanDeepLink
 
 // 深链的形态是一份契约（`71bd340:docs/提醒与体验细节-实施方案-2026-09-20.md` 第 1 节）：
-// 通知、桌面快捷入口、共享链接三边都照着它拼串，客户端照着它解。这儿把两种壳子
-// （`hkline://` 与 `https://<webHost>/s/<id>`）和「认不出来就 nil」一并钉住。
+// 通知、桌面快捷入口、收件箱三边都照着它拼串，客户端照着它解。这儿把唯一的壳子
+// `hkline://` 和「认不出来就 nil」一并钉住。分享不发链接，https 通用链接一律不认。
 
 @Suite("深链解析")
 struct DeepLinkParseTests {
@@ -56,15 +56,9 @@ struct DeepLinkParseTests {
     #expect(parse("hkline://favorites/x") == nil)
   }
 
-  @Test("共享：两种 host 形态解析到同一条")
-  func shareHasTwoShapes() {
-    let app = parse("hkline://share/abc123")
-    let web = parse("https://kanpan.107-174-172-10.sslip.io/s/abc123")
-    #expect(app == .share(id: "abc123"))
-    #expect(web == .share(id: "abc123"))
-    #expect(app == web)
-    // 域名大小写不敏感。
-    #expect(parse("https://KANPAN.107-174-172-10.sslip.io/s/abc123") == .share(id: "abc123"))
+  @Test("共享：只有 hkline://share/<id> 一种形态")
+  func shareHasOneShape() {
+    #expect(parse("hkline://share/abc123") == .share(id: "abc123"))
   }
 
   // ---------------------------------------------------------------- 非法
@@ -97,12 +91,11 @@ struct DeepLinkParseTests {
     #expect(parse("hkline://symbol/" + String(repeating: "A", count: 33)) == nil)
   }
 
-  @Test("共享的通用链接只认自己的域名和 /s/ 那条路")
-  func webHostIsStrict() {
+  @Test("https 通用链接一律不认（分享走收件箱，不发链接）")
+  func webLinksAreIgnored() {
+    #expect(parse("https://kanpan.107-174-172-10.sslip.io/s/abc123") == nil)
     #expect(parse("https://example.com/s/abc123") == nil)
     #expect(parse("https://kanpan.107-174-172-10.sslip.io/ui/") == nil)
-    #expect(parse("https://kanpan.107-174-172-10.sslip.io/s/") == nil)
-    #expect(parse("https://kanpan.107-174-172-10.sslip.io/s/abc/def") == nil)
   }
 
   // ---------------------------------------------------------------- 路由

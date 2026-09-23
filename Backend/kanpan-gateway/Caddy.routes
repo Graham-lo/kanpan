@@ -26,7 +26,7 @@ handle @archive {
 # 客户端那一半在边缘就 404，手机上的提醒永远拿不到设备令牌。
 # /privacy、/terms 是设置「关于」里打开的两张静态页，正文编进 kanpan-api（src/legal.rs）；
 # 不转发的话会落到下面那个原型静态站，回的是 404。
-@account path /v1/auth/* /v1/sync/* /v1/native-review/* /v1/market/* /v1/devices/* /v1/capabilities /privacy /terms
+@account path /v1/auth/* /v1/sync/* /v1/native-review/* /v1/market/* /v1/devices/* /privacy /terms
 handle @account {
     encode zstd gzip
     reverse_proxy 127.0.0.1:8794

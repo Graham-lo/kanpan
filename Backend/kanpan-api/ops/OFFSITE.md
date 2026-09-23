@@ -331,10 +331,10 @@ systemctl status kanpan-api --no-pager
 docker exec -i kanpan-postgres psql -tAq -U kanpan_admin -d kanpan \
   -c 'SELECT count(*) FROM account_users'
 # 服务活着吗
-curl -s http://127.0.0.1:8794/v1/capabilities | head -c 400; echo
+curl -s http://127.0.0.1:8794/health; echo
 ```
 
-**最关键的一步是真的登一次。**能力接口 200 只说明进程起来了，说明不了 pepper 对不对——
+**最关键的一步是真的登一次。**`/health` 200 只说明进程起来了，说明不了 pepper 对不对——
 pepper 错的时候库照样读得出来，只是每个人的密码都验不过，一个错都不报。
 拿一个已知口令的测试账号打真接口：
 

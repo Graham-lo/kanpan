@@ -2,7 +2,7 @@ use crate::review_domain as domain;
 use crate::{AppState,auth::Identity,error::{ApiError,Params,Payload,Result,Route},envelope,review::{key,lock,cached,finish,parse,core},review_worker::range_bars};
 use axum::{Router,Json,extract::State,routing::{get,post},http::HeaderMap};
 use chrono::Utc;
-use scorebook_core::{api::native_review::{NativeSearch,ChartRange},domain::{chart_match,interval::Interval},market::MarketDataProvider};
+use scorebook_core::{api::native_review::{NativeSearch,ChartRange},domain::chart_match,market::MarketDataProvider};
 use serde::{Deserialize,Serialize};
 use serde_json::{Value,json};
 use sqlx::Row;
@@ -14,11 +14,6 @@ pub fn routes()->Router<AppState> {
  .route("/v1/native-review/searches/{id}/results",get(results))
  .route("/v1/native-review/saved-matches",get(saved).post(save))
  .route("/v1/native-review/saved-matches/{id}",axum::routing::delete(remove))
- .route("/v1/capabilities",get(capabilities))
-}
-async fn capabilities(State(s):State<AppState>)->Result<Json<Value>> {
- let count:i64=sqlx::query_scalar("SELECT count(*) FROM market_features WHERE published AND model_id='candle-geometry-v2' AND render_version='ohlc-geometry-resample64-v2'").fetch_one(&s.pool).await?;
- Ok(envelope(json!({"reviewMarkets":["binance/usd_m","coinbase/spot"],"reviewIntervals":Interval::ALL.iter().map(|v|v.as_str()).collect::<Vec<_>>(),"search":{"model":chart_match::MODEL,"threshold":0.60,"indexedWindows":count,"anonymous":false},"screenshots":true})))
 }
 async fn start(State(s):State<AppState>,i:Identity,headers:HeaderMap,Payload(query):Payload<NativeSearch>)->Result<Json<Value>> {
  let id=key(&headers)?;core(domain::validate_range(&query.range,query.cutoff))?;

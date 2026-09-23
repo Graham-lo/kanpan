@@ -9,10 +9,10 @@ import UIKit
 
 /// 画线态从「选了工具」到「完成」之间要记住的东西（§10.8、§13 A7）。
 ///
-/// 为什么不塞进 `ChartState`：`ChartState` 是渲染的纯输入，M3 的 176 张逐像素基线
-/// （A3.11）钉死了「同一份 state → 同一张图」。选中态、待落点、预览线都是**交互**
-/// 中间量，进了 state 就等于改渲染路径。所以它们留在这里，由一层不接触渲染器的
-/// 覆盖视图画（`DrawingOverlayView`）——基线一张都不用动。
+/// 为什么不塞进 `ChartState`：`ChartState` 是渲染的纯输入，约定是「同一份 state →
+/// 同一张图」（K 线风格已收成 AICoin 一套，取证由 `make evidence` 出、渲染单测守着）。
+/// 选中态、待落点、预览线都是**交互**中间量，进了 state 就等于改渲染路径。所以它们
+/// 留在这里，由一层不接触渲染器的覆盖视图画（`DrawingOverlayView`）。
 ///
 /// 扩展加不了存储属性，所以这个会话挂在视图的关联对象上（见 `ChartView.drawing`）。
 @MainActor
@@ -1112,7 +1112,7 @@ struct DrawingPreview: Equatable {
 /// 虚线预览。
 ///
 /// 它比十字线那层还高，所以选中的线会压在十字线上面——两者同时出现的机会很少，
-/// 换来的是渲染路径一行都不用改（A3.11 的 176 张基线全部原封不动）。
+/// 换来的是渲染路径一行都不用改（主图渲染器的输入只有 `ChartState`）。
 final class DrawingOverlayView: UIView {
   weak var host: ChartView?
 

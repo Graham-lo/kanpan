@@ -85,8 +85,6 @@ async fn review_errors_never_leak_internals() {
   ("列记录","/v1/native-review/records".to_owned(),"GET",None,String::new()),
   ("看战绩","/v1/native-review/statistics".to_owned(),"GET",None,String::new()),
   ("看检索进度",format!("/v1/native-review/searches/{}",Uuid::new_v4()),"GET",None,String::new()),
-  // 这条不要身份，走的是另一条路；它照样要查库，也照样不许把死掉的连接说出来。
-  ("能力清单","/v1/capabilities".to_owned(),"GET",None,String::new()),
  ];
  for (what,path,method,key,body) in dark {
   let (status,v)=text(&offline,&path,method,token,key,body).await;

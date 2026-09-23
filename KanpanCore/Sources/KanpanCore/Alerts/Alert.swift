@@ -19,6 +19,9 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   /// - `reviewDue`：复盘待办到期。由复盘记录生成（`ReviewDueAlerts`），`dueAt` 是记录的
   ///   到期时刻、`reviewID` 是记录 id、`lines` 为空；服务端到点把它置成 `fired` 并推送，
   ///   本机另排一条本地通知当双保险。记录判完 / 作废 / 删掉之后自动清掉。
+  ///
+  /// 自选五分钟波动不在这里：它不是一条条提醒对象，是 `settings/chart` 里的开关与阈值
+  /// （`watchMoveAlert` / `watchMoveThreshold`），判定在 `WatchMove` / 服务端 `watch_move.rs`。
   /// 规格见 docs/待办交接-Codex-2026-09-22.md P3.1。
   public enum Kind: String, Sendable, Codable, CaseIterable {
     case drawing, price, reviewDue

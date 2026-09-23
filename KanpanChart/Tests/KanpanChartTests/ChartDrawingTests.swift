@@ -131,7 +131,7 @@ private func at(_ axes: DrawAxes, _ p: DrawPoint) -> CGPoint {
 ///
 /// 计算型工具（VWAP、成交量分布）的形状是算出来的，「算得对」在 Core 的单测里已经钉死了；
 /// 这一层要回答的是另一个问题：这些几何交给 CoreGraphics 到底画不画得出来、会不会崩。
-/// 所以只数墨，不比像素——比像素是 M3 那 176 张基线的事。
+/// 所以只数墨，不比像素——比像素归 `make evidence` 取证。
 @MainActor
 private func inkPixels(size: CGSize = CGSize(width: 390, height: 700),
                        _ body: (CGContext) -> Void) -> Int {
