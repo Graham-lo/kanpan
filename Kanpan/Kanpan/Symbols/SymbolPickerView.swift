@@ -313,7 +313,12 @@ struct SymbolRowView: View {
         // 事实分类直接从 `row.info` 算，比让徽章自己去猜准。
         CoinBadge(base: row.info.base, asset: SymbolClassifier.classify(row.info).asset, size: 33)
         VStack(alignment: .leading, spacing: 2) {
-          name
+          HStack(alignment: .firstTextBaseline, spacing: 5) {
+            name
+            if NewListingMark.shows(row.info) {
+              NewListingMark(symbol: row.id, accent: Color(hex: seed.accent))
+            }
+          }
           Text(row.meta)
             .font(.system(size: metaSize))
             .foregroundStyle(Color(hex: seed.ink3))

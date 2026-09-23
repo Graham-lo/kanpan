@@ -1,0 +1,385 @@
+cd KanpanNetwork && /Users/mdd/zhk/kanpan-wt-pchain/scripts/machine-guard.sh run swift test 
+[guard] 机器上已有 2 个重编译在跑，排队等槽…
+Building for debugging...
+[0/9] /Users/mdd/zhk/kanpan-wt-pchain/KanpanNetwork/.build/arm64-apple-macosx/debug/KanpanNetworkPackageTests.derived/runner.swift
+[0/9] Write sources
+[6/9] Write swift-version--58304C5D6DBC2206.txt
+[8/55] Emitting module KanpanCore
+[9/59] Compiling KanpanCore Alert.swift
+[10/59] Compiling KanpanCore AlertActivity.swift
+[11/59] Compiling KanpanCore AlertEvaluator.swift
+[12/59] Compiling KanpanCore AlertGeometry.swift
+[13/59] Compiling KanpanCore WatchMove.swift
+[14/59] Compiling KanpanCore AICoinBehavior.swift
+[15/59] Compiling KanpanCore ChartOptions.swift
+[16/59] Compiling KanpanCore DrawEdit.swift
+[17/59] Compiling KanpanCore DrawGeometry.swift
+[18/59] Compiling KanpanCore DrawRegression.swift
+[19/59] Compiling KanpanCore Aggregator.swift
+[20/59] Compiling KanpanCore Bar.swift
+[21/59] Compiling KanpanCore BarSeries.swift
+[22/59] Compiling KanpanCore ChangeBasis.swift
+[23/59] Compiling KanpanCore ExternalSeries.swift
+[24/59] Compiling KanpanCore HeikinAshi.swift
+[25/59] Compiling KanpanCore Interval.swift
+[26/59] Compiling KanpanCore LatestQuote.swift
+[27/59] Compiling KanpanCore MarkPriceTick.swift
+[28/59] Compiling KanpanCore MarketMicrostructure.swift
+[29/59] Compiling KanpanCore CandleWidths.swift
+[30/59] Compiling KanpanCore Clamp.swift
+[31/59] Compiling KanpanCore Constants.swift
+[32/59] Compiling KanpanCore Fling.swift
+[33/59] Compiling KanpanCore Layout.swift
+[34/59] Compiling KanpanCore DrawStore.swift
+[35/59] Compiling KanpanCore DrawVolume.swift
+[36/59] Compiling KanpanCore Drawing.swift
+[37/59] Compiling KanpanCore Format.swift
+[38/59] Compiling KanpanCore ReviewLabels.swift
+[39/59] Compiling KanpanCore PriceScale.swift
+[40/59] Compiling KanpanCore Ticks.swift
+[41/59] Compiling KanpanCore ViewTransition.swift
+[42/59] Compiling KanpanCore ViewWindow.swift
+[43/59] Compiling KanpanCore IncrementalLines.swift
+[44/59] Compiling KanpanCore MarketSector.swift
+[45/59] Compiling KanpanCore SymbolClassification.swift
+[46/59] Compiling KanpanCore SymbolInfo.swift
+[47/59] Compiling KanpanCore SectorAggregate.swift
+[48/59] Compiling KanpanCore SectorCatalog.swift
+[49/59] Compiling KanpanCore IndicatorEngine.swift
+[50/59] Compiling KanpanCore IndicatorID.swift
+[51/59] Compiling KanpanCore Indicators.swift
+[52/59] Compiling KanpanCore Math.swift
+[53/59] Compiling KanpanCore OINotice.swift
+[54/59] Compiling KanpanCore SectorSelection.swift
+[55/59] Compiling KanpanCore CandleStyle.swift
+[56/59] Compiling KanpanCore Palette.swift
+[57/59] Compiling KanpanCore WidgetSnapshot.swift
+[58/73] Compiling KanpanNetwork Pacer.swift
+[59/74] Compiling KanpanNetwork WSSocket.swift
+[60/74] Compiling KanpanNetwork HTTPTransport.swift
+[61/74] Compiling KanpanNetwork Backoff.swift
+[62/74] Compiling KanpanNetwork MarketSocketRouter.swift
+[63/74] Emitting module KanpanNetwork
+[64/74] Compiling KanpanNetwork RateLimiter.swift
+[65/74] Compiling KanpanNetwork WSClient.swift
+[66/74] Compiling KanpanNetwork GatewayEnvelope.swift
+[67/74] Compiling KanpanNetwork MarketRoutePolicy.swift
+[68/74] Compiling KanpanNetwork Errors.swift
+[69/74] Compiling KanpanNetwork RESTClient.swift
+[70/74] Compiling KanpanNetwork DTO.swift
+[71/74] Compiling KanpanNetwork Endpoints.swift
+[72/74] Compiling KanpanNetwork MarketSource.swift
+[73/76] Compiling KanpanNetworkTestSupport NetworkFakes.swift
+[74/76] Emitting module KanpanNetworkTestSupport
+[75/94] Compiling KanpanNetworkTests ExchangeInfoOnboardTests.swift
+[76/94] Compiling KanpanNetworkTests ExchangeInfoStatusTests.swift
+[77/95] Compiling KanpanNetworkTests WSKeepaliveWatchdogTests.swift
+[78/95] Compiling KanpanNetworkTests RateLimitTests.swift
+[79/95] Compiling KanpanNetworkTests TailLimitTests.swift
+[80/95] Compiling KanpanNetworkTests WSRunGenerationTests.swift
+[81/95] Compiling KanpanNetworkTests DTODecodeTests.swift
+[82/95] Compiling KanpanNetworkTests DeafSocketTests.swift
+[83/95] Compiling KanpanNetworkTests GatewayDimensionDecodeTests.swift
+[84/95] Compiling KanpanNetworkTests GatewayEnvelopeTests.swift
+[85/95] Emitting module KanpanNetworkTests
+[86/95] Compiling KanpanNetworkTests GatewayRaceCancelTests.swift
+[87/95] Compiling KanpanNetworkTests MarketRoutePolicyTests.swift
+[88/95] Compiling KanpanNetworkTests FuturesDataTests.swift
+[89/95] Compiling KanpanNetworkTests GatewayCooldownTests.swift
+[90/95] Compiling KanpanNetworkTests MarketSocketRouterTests.swift
+[91/95] Compiling KanpanNetworkTests MarketSourceTests.swift
+[92/95] Compiling KanpanNetworkTests RateLimitBanTests.swift
+[93/95] Compiling KanpanNetworkTests RateLimitGatewaySignalTests.swift
+[94/97] Compiling KanpanNetworkPackageTests runner.swift
+[95/97] Emitting module KanpanNetworkPackageTests
+[95/97] Write Objects.LinkFileList
+[96/97] Linking KanpanNetworkPackageTests
+Build complete! (63.66s)
+Test Suite 'All tests' started at 2026-09-23 14:23:54.688.
+Test Suite 'All tests' passed at 2026-09-23 14:23:54.692.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.003) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "网关冷却：听 Retry-After" started.
+◇ Suite "行情线路策略" started.
+◇ Suite "网关竞速：取消与换线路之后不许污染路由账本" started.
+◇ Suite "无感行情选路" started.
+◇ Suite "单品种资金费率" started.
+◇ Suite "行情来源隔离" started.
+◇ Suite "品种表状态与解析失败" started.
+◇ Suite "限流与退避" started.
+◇ Suite "网关信封：只扫一趟就把载荷切出来" started.
+◇ Suite "币安报文解码" started.
+◇ Suite "BT-10 聋 socket：超时与上层取消必须真的掐 socket" started.
+◇ Suite "A-07 三层静默看门狗" started.
+◇ Suite "补缺按需：一根就别拉一千五" started.
+◇ Suite "品种上线时间与「新」记号" started.
+◇ Suite "A-T10/A-T11 量纲与收盘标志" started.
+◇ Suite "WS 一轮 run 只动自己的东西" started.
+◇ Suite "futures/data 三个端点" started.
+◇ Test "429 / 503 听网关自己报的 Retry-After，封顶 10 秒" started.
+◇ Test "BT-07 竞速途中这一笔被取消：不许给输家记冷却，下一笔照样两台一起发" started.
+◇ Suite "A-03 限流与 IP 封禁" started.
+◇ Test "选择更快有效线路，首帧不丢失，正常收数不反复选路" started.
+◇ Test "所有线路超时后释放连接，不无限等待" started.
+◇ Test "备用HTTPS独立端口保留路径及订阅参数" started.
+◇ Test "A-T14 网关只回订阅成功和 pong：候选全关，且不自动改连币安" started.
+◇ Suite "BT-08 取消唯一消费者：iterator 退出，连接只听 owner 的" started.
+◇ Suite "A-05 网关转述的上游限流" started.
+◇ Test "选路期间换品种，连接完成后补订新流，不误记已同步" started.
+◇ Test "premiumIndex 拿得到费率和下一次结算时刻" started.
+◇ Test cancelledSelectionDoesNotPoisonHealthyDirectRoute() started.
+◇ Test failedGatewayUsesBackupWithSameSource() started.
+◇ Test gatewayRouteAsksBinanceGatewayWithSource() started.
+◇ Test timeoutDoesNotCoolDownDirectRoute() started.
+◇ Test gatewaysRaceSoFastBackupAvoidsSlowPrimary() started.
+◇ Test "换线路之后，上一档竞速的结果不许再写进路由账本" started.
+◇ Test "默认是直连，写进去能读回来，认不出的值退回直连" started.
+◇ Test "解不开就抛，不给空表" started.
+◇ Test "撞到分钟权重上限就等到窗口滚出去" started.
+◇ Test "60 秒没帧就算断了" started.
+◇ Test "标量字段读得出来，载荷是原样字节" started.
+◇ Test "连发要隔 120ms" started.
+◇ Test "每一档再抖 ±20%，档位与上限不变" started.
+◇ Test rejectsWrongSourceAndRange() started.
+◇ Test "结算时刻是 0 就当没有" started.
+◇ Test "重连退避 1/2/4/…≤30s" started.
+◇ Test "字符串里的括号和逗号不会把扫描带偏" started.
+◇ Test "K 线请求按实际 limit 消耗权重" started.
+◇ Test "载荷排在信封中间、后面还有字段，也切得准" started.
+◇ Test "交易所的十来种挂牌状态映射成四档，非 TRADING 的行留在表里" started.
+◇ Test "429 带 Retry-After：停够秒数再发，然后成功" started.
+◇ Test "已取消的请求不出站" started.
+◇ Test "K 线权重按 limit 分档" started.
+◇ Test "产品范围的过滤条件一条没少" started.
+◇ Test "429 不带 Retry-After：退避 1s、2s" started.
+◇ Test decoderRetainsExchangeClock() started.
+◇ Test "行被截断到只剩收盘时间：主动买量算缺失，不算 0" started.
+◇ Test "重试到上限还是 429 就把错误抛出来" started.
+◇ Test "网关给 OKX 的行在主动买量那一格是 null" started.
+◇ Test "BT-10 首帧静默看门狗：超时那一路必须先 cancel 聋 socket，重连只在退避之后" started.
+◇ Test "涨跌额在 REST、单品种流与全市场流中保留同一数值" started.
+◇ Test "BT-10 传输层静默看门狗：首帧之后保活探不通，满 30 秒必须 cancel 聋 socket" started.
+◇ Test "BT-10 选路首帧超时：两条候选都聋，超时那一路必须对每条都调 cancel，connect 才能返回" started.
+◇ Test "时钟倒挂也不会算出负数" started.
+◇ Test "断了很久还是顶到一页 1500，翻页逻辑不受影响" started.
+◇ Test "传输层真的死了（既无帧也无 pong）：到 30 秒那一档才重连" started.
+◇ Test "切出来的字节和老路 JSONSerialization 重新序列化后等价" started.
+◇ Test "还在同一根上：拉下限 5 根，不是 1500" started.
+◇ Test "缺几十根就拉几十根，带 2 根余量" started.
+◇ Test "行情静默的保活日志只在状态变化时打一次（跨帧也只有一次）" started.
+◇ Test "首帧行情之前的静默照旧算「订阅没生效」：连保活都不探，直接换一条" started.
+◇ Test "A-T13 收到首帧行情之后长时间没有行情但保活正常：连接保留，不重连" started.
+◇ Test "形状不对就返回 nil，让调用方退回老路" started.
+◇ Test "有竞速候选才把首帧窗口夹到 15 秒；没有候选就按传进来的 60 秒等" started.
+◇ Test "A-T16 64 条旧流换 64 条新流：两帧控制帧，不是 128 帧" started.
+◇ Test "A-T13 保活答得上就一直留着：探了很多拍也只有一条连接" started.
+◇ Test "旧目录缓存没有 onboardDate 照样解得开，编码来回不丢" started.
+◇ Test "onboardDate 原样带进来，缺字段为空" started.
+◇ Test "上线 30 天以内才算新；预告上线、没有日期都不算" started.
+◇ Test "A-T10 REST K 线只认第 6 列（币数），不拿成交额也不拿张数" started.
+◇ Test "A-T10 WS K 线也只认 k.v，k.q 是成交额不许混进成交量" started.
+◇ Test "A-T10 OKX 报价没有成交额时给空串：解成 NaN，不许变成 0" started.
+◇ Test "A-T11 confirm 0/1 → x false/true：没收的那根不许当收盘" started.
+◇ Test "BT-04 再 start 一轮：旧连接的帧不许进新流，旧 socket 必须被收走" started.
+◇ Test "罚停后成功一次，计数清零" started.
+◇ Test "多空比：账户数比和两边占比都解得出，请求打在 globalLongShortAccountRatio 上" started.
+◇ Test "BT-03 旧一轮卡住的控制帧醒来：不许发到新连接上，也不许改新一轮的订阅账" started.
+◇ Test "解不动的那一条跳过，同一页里好的照收" started.
+◇ Test "主动买卖比：路径是全小写的 takerlongshortRatio，响应里没有 symbol 也照解" started.
+◇ Test "四种 futures/data 请求扣的是同一个计数器" started.
+◇ Test "基差：pair + contractType 两个参数，futuresPrice 解得出，年化空串不判废" started.
+◇ Test case passing 1 argument localFast → true to "选择更快有效线路，首帧不丢失，正常收数不反复选路" started.
+◇ Test "本地失败时自动兜底，订阅确认不算有效行情" started.
+◇ Test invalidOHLCVIsRejectedBeforeIndicators() started.
+◇ Test case passing 1 argument localFast → false to "选择更快有效线路，首帧不丢失，正常收数不反复选路" started.
+◇ Test "kline 行数字可以是字符串也可以是数字" started.
+◇ Test "BT-10 owner stop() 时收帧正挂在聋 socket 上：stop 必须 cancel 它并且自己能返回" started.
+◇ Test "BT-10 选路时上层任务被取消：cancel handler 必须掐掉每条挂着的候选 socket" started.
+◇ Test "BT-03b 旧一轮断线善后不许把新一轮的连接清掉" started.
+◇ Test "探针探不通时按拍重探，不空转：拆连接之前只探了几次" started.
+◇ Suite "强平 / 逐笔 / 五档盘口的帧" started.
+◇ Test "A-T19 两把限流器各记 1200：靠响应头看见合计 2400，第二把当场停下" started.
+◇ Test "A-T04 封禁期间晚到的 200 不解封" started.
+◇ Test "封禁到点自动放行：同一把限流器上的报价与历史都恢复" started.
+◇ Test "上游报的权重比本地低就不动本地账" started.
+◇ Test "A-03④ 清线路冷却不解 IP 封禁：重试当场失败且不出站" started.
+◇ Test "封禁期内所有调用方共用一把限流器：26 笔新调用全被当场拒，出站次数 == 1" started.
+◇ Test "持仓量走 /futures/data 那条 1000 次 / 5 分钟的配额，权重仍然算 1" started.
+✔ Test "429 / 503 听网关自己报的 Retry-After，封顶 10 秒" passed after 0.010 seconds.
+◇ Test "429 没给 Retry-After 时也至少停 10 秒" started.
+◇ Test "A-T03 首个 418 之后：在途请求照收响应，新许可全部拒绝" started.
+◇ Test "A-T02 收到 418：2 分钟起步，只发一次，截止前的新调用一律不出站" started.
+◇ Test "A-T19 X-MBX-USED-WEIGHT-1M 比本地账高就以上游为准" started.
+◇ Test "网关在上游限流冷却里：没有网关路线的 openInterestHist 不被误报成限流，直连照常" started.
+◇ Test "A-T06 地域拒绝、本机 busy、普通不可用：三种和限流分得清" started.
+◇ Test "清线路冷却之后，显式重试允许再拨一次那台网关" started.
+◇ Test "A-T06 upstreamStatus 是 418 时算 IP 级封禁，业务层立刻收手" started.
+◇ Test "A-T06 两台网关各歇各的：被限的那台停 120 秒，另一台按自己的短冷却回来" started.
+◇ Test "418 造成的网关冷却：冷却期内重放仍是 IP 级封禁，带上游状态码" started.
+◇ Test "A-T06 本机限流器不为网关的限流罚停：手机自己的账干净，只有那台网关在歇" started.
+◇ Test "upstream_rate_limited 的冷却取头与 body 的较大者，且不封顶" started.
+◇ Test "upstreamStatus 403 按 IP 级封禁算，起步 2 分钟" started.
+◇ Test "A-04 网关档的全市场报价走 /market/v1/tickers，信封同单品种" started.
+◇ Test "A-T01 直连收到 429 + Retry-After:120：本机记满 120 秒，这一轮只出站一次" started.
+◇ Test "A.2 exchangeInfo 里的 rateLimits 能改写本机的分钟权重预算" started.
+◇ Test "BT-08 BinanceWS：取消消费者任务 → 迭代当场结束；连接不抖不重连；owner stop() 才掐 socket" started.
+✔ Test "60 秒没帧就算断了" passed after 0.010 seconds.
+✔ Test "premiumIndex 拿得到费率和下一次结算时刻" passed after 0.010 seconds.
+✔ Test cancelledSelectionDoesNotPoisonHealthyDirectRoute() passed after 0.010 seconds.
+✔ Test "重连退避 1/2/4/…≤30s" passed after 0.010 seconds.
+✔ Test "K 线请求按实际 limit 消耗权重" passed after 0.010 seconds.
+✔ Test "载荷排在信封中间、后面还有字段，也切得准" passed after 0.010 seconds.
+✔ Test "结算时刻是 0 就当没有" passed after 0.010 seconds.
+✔ Test "K 线权重按 limit 分档" passed after 0.010 seconds.
+✔ Test decoderRetainsExchangeClock() passed after 0.010 seconds.
+✔ Test "产品范围的过滤条件一条没少" passed after 0.010 seconds.
+✔ Test "行被截断到只剩收盘时间：主动买量算缺失，不算 0" passed after 0.010 seconds.
+✔ Test "时钟倒挂也不会算出负数" passed after 0.010 seconds.
+✔ Test "断了很久还是顶到一页 1500，翻页逻辑不受影响" passed after 0.010 seconds.
+✔ Test timeoutDoesNotCoolDownDirectRoute() passed after 0.011 seconds.
+✔ Test "每一档再抖 ±20%，档位与上限不变" passed after 0.011 seconds.
+✔ Test "缺几十根就拉几十根，带 2 根余量" passed after 0.010 seconds.
+✔ Test "字符串里的括号和逗号不会把扫描带偏" passed after 0.011 seconds.
+✔ Test "切出来的字节和老路 JSONSerialization 重新序列化后等价" passed after 0.011 seconds.
+✔ Test "解不开就抛，不给空表" passed after 0.011 seconds.
+✔ Test "形状不对就返回 nil，让调用方退回老路" passed after 0.010 seconds.
+✔ Test "有竞速候选才把首帧窗口夹到 15 秒；没有候选就按传进来的 60 秒等" passed after 0.010 seconds.
+✔ Test "交易所的十来种挂牌状态映射成四档，非 TRADING 的行留在表里" passed after 0.011 seconds.
+✔ Test "上线 30 天以内才算新；预告上线、没有日期都不算" passed after 0.010 seconds.
+✔ Test "A-T10 REST K 线只认第 6 列（币数），不拿成交额也不拿张数" passed after 0.010 seconds.
+✔ Test "onboardDate 原样带进来，缺字段为空" passed after 0.010 seconds.
+✔ Test "A-T10 OKX 报价没有成交额时给空串：解成 NaN，不许变成 0" passed after 0.010 seconds.
+✔ Test "罚停后成功一次，计数清零" passed after 0.010 seconds.
+◇ Test "A-T06 网关报上游限流 120 秒：类别是限流，秒数不被 10 秒截断，一轮只出站一次" started.
+✔ Test "A-T11 confirm 0/1 → x false/true：没收的那根不许当收盘" passed after 0.010 seconds.
+✔ Test "网关给 OKX 的行在主动买量那一格是 null" passed after 0.011 seconds.
+✔ Test "主动买卖比：路径是全小写的 takerlongshortRatio，响应里没有 symbol 也照解" passed after 0.010 seconds.
+✔ Test "涨跌额在 REST、单品种流与全市场流中保留同一数值" passed after 0.011 seconds.
+✔ Test "标量字段读得出来，载荷是原样字节" passed after 0.011 seconds.
+◇ Test "upstream_blocked 的冷却是 60 秒起，不被 10 秒夹住" started.
+✔ Test "A-T10 WS K 线也只认 k.v，k.q 是成交额不许混进成交量" passed after 0.010 seconds.
+✔ Test invalidOHLCVIsRejectedBeforeIndicators() passed after 0.010 seconds.
+✔ Test "kline 行数字可以是字符串也可以是数字" passed after 0.013 seconds.
+✔ Test "还在同一根上：拉下限 5 根，不是 1500" passed after 0.012 seconds.
+✔ Test "解不动的那一条跳过，同一页里好的照收" passed after 0.013 seconds.
+◇ Test "aggTrade：m == false 是主动买入，m == true 是主动卖出" started.
+◇ Test "depth5：买五卖五各解成 (价, 量)，顺序原样保留" started.
+◇ Test "forceOrder：BUY 记成空头被强平；全市场那条流的帧形状一样" started.
+◇ Test "forceOrder：SELL 记成多头被强平，价量取 ap / z" started.
+✔ Test "多空比：账户数比和两边占比都解得出，请求打在 globalLongShortAccountRatio 上" passed after 0.013 seconds.
+✔ Test "基差：pair + contractType 两个参数，futuresPrice 解得出，年化空串不判废" passed after 0.013 seconds.
+✔ Test "旧目录缓存没有 onboardDate 照样解得开，编码来回不丢" passed after 0.014 seconds.
+✔ Test "上游报的权重比本地低就不动本地账" passed after 0.005 seconds.
+✔ Suite "网关冷却：听 Retry-After" passed after 0.016 seconds.
+✔ Test "429 没给 Retry-After 时也至少停 10 秒" passed after 0.005 seconds.
+✔ Test "A-T02 收到 418：2 分钟起步，只发一次，截止前的新调用一律不出站" passed after 0.005 seconds.
+✔ Test "upstream_rate_limited 的冷却取头与 body 的较大者，且不封顶" passed after 0.005 seconds.
+✔ Test "A-03④ 清线路冷却不解 IP 封禁：重试当场失败且不出站" passed after 0.005 seconds.
+✔ Test "A-T04 封禁期间晚到的 200 不解封" passed after 0.006 seconds.
+✔ Test "A-T01 直连收到 429 + Retry-After:120：本机记满 120 秒，这一轮只出站一次" passed after 0.005 seconds.
+✔ Test "封禁期内所有调用方共用一把限流器：26 笔新调用全被当场拒，出站次数 == 1" passed after 0.005 seconds.
+✔ Test "撞到分钟权重上限就等到窗口滚出去" passed after 0.016 seconds.
+✔ Test gatewayRouteAsksBinanceGatewayWithSource() passed after 0.016 seconds.
+✔ Suite "单品种资金费率" passed after 0.017 seconds.
+✔ Suite "网关信封：只扫一趟就把载荷切出来" passed after 0.017 seconds.
+✔ Suite "币安报文解码" passed after 0.017 seconds.
+✔ Suite "品种表状态与解析失败" passed after 0.017 seconds.
+✔ Test "upstreamStatus 403 按 IP 级封禁算，起步 2 分钟" passed after 0.005 seconds.
+✔ Test "已取消的请求不出站" passed after 0.016 seconds.
+✔ Suite "补缺按需：一根就别拉一千五" passed after 0.017 seconds.
+✔ Suite "A-T10/A-T11 量纲与收盘标志" passed after 0.017 seconds.
+✔ Test "upstream_blocked 的冷却是 60 秒起，不被 10 秒夹住" passed after 0.004 seconds.
+◇ Test "三条流的流名" started.
+✔ Test "aggTrade：m == false 是主动买入，m == true 是主动卖出" passed after 0.002 seconds.
+✔ Test "forceOrder：BUY 记成空头被强平；全市场那条流的帧形状一样" passed after 0.002 seconds.
+✔ Test "depth5：买五卖五各解成 (价, 量)，顺序原样保留" passed after 0.002 seconds.
+✔ Test "forceOrder：SELL 记成多头被强平，价量取 ap / z" passed after 0.002 seconds.
+✔ Suite "品种上线时间与「新」记号" passed after 0.018 seconds.
+✔ Test "A-T19 两把限流器各记 1200：靠响应头看见合计 2400，第二把当场停下" passed after 0.008 seconds.
+✔ Test "A-T19 X-MBX-USED-WEIGHT-1M 比本地账高就以上游为准" passed after 0.008 seconds.
+✔ Test "A-T06 upstreamStatus 是 418 时算 IP 级封禁，业务层立刻收手" passed after 0.007 seconds.
+✔ Test "418 造成的网关冷却：冷却期内重放仍是 IP 级封禁，带上游状态码" passed after 0.007 seconds.
+✔ Test "A-T06 本机限流器不为网关的限流罚停：手机自己的账干净，只有那台网关在歇" passed after 0.007 seconds.
+✔ Test "A.2 exchangeInfo 里的 rateLimits 能改写本机的分钟权重预算" passed after 0.007 seconds.
+✔ Test gatewaysRaceSoFastBackupAvoidsSlowPrimary() passed after 0.018 seconds.
+✔ Test rejectsWrongSourceAndRange() passed after 0.018 seconds.
+✔ Test "429 不带 Retry-After：退避 1s、2s" passed after 0.018 seconds.
+✔ Test "429 带 Retry-After：停够秒数再发，然后成功" passed after 0.018 seconds.
+✔ Test failedGatewayUsesBackupWithSameSource() passed after 0.018 seconds.
+✔ Test "A-T06 网关报上游限流 120 秒：类别是限流，秒数不被 10 秒截断，一轮只出站一次" passed after 0.006 seconds.
+✔ Test "封禁到点自动放行：同一把限流器上的报价与历史都恢复" passed after 0.008 seconds.
+✔ Test "A-04 网关档的全市场报价走 /market/v1/tickers，信封同单品种" passed after 0.008 seconds.
+✔ Test "网关在上游限流冷却里：没有网关路线的 openInterestHist 不被误报成限流，直连照常" passed after 0.008 seconds.
+✔ Suite "行情来源隔离" passed after 0.019 seconds.
+✔ Test "重试到上限还是 429 就把错误抛出来" passed after 0.018 seconds.
+✔ Test "连发要隔 120ms" passed after 0.019 seconds.
+✔ Test "A-T06 地域拒绝、本机 busy、普通不可用：三种和限流分得清" passed after 0.008 seconds.
+✔ Suite "限流与退避" passed after 0.019 seconds.
+✔ Test "BT-07 竞速途中这一笔被取消：不许给输家记冷却，下一笔照样两台一起发" passed after 0.019 seconds.
+✔ Test "BT-10 首帧静默看门狗：超时那一路必须先 cancel 聋 socket，重连只在退避之后" passed after 0.019 seconds.
+✔ Test "三条流的流名" passed after 0.005 seconds.
+✔ Suite "强平 / 逐笔 / 五档盘口的帧" passed after 0.014 seconds.
+✔ Test "换线路之后，上一档竞速的结果不许再写进路由账本" passed after 0.020 seconds.
+✔ Suite "网关竞速：取消与换线路之后不许污染路由账本" passed after 0.020 seconds.
+✔ Test "BT-10 传输层静默看门狗：首帧之后保活探不通，满 30 秒必须 cancel 聋 socket" passed after 0.019 seconds.
+✔ Test "清线路冷却之后，显式重试允许再拨一次那台网关" passed after 0.010 seconds.
+✔ Test "A-T03 首个 418 之后：在途请求照收响应，新许可全部拒绝" passed after 0.010 seconds.
+✔ Test "默认是直连，写进去能读回来，认不出的值退回直连" passed after 0.029 seconds.
+◇ Test "换线路会广播；没变就不广播" started.
+✔ Test "BT-04 再 start 一轮：旧连接的帧不许进新流，旧 socket 必须被收走" passed after 0.029 seconds.
+✔ Test "备用HTTPS独立端口保留路径及订阅参数" passed after 0.031 seconds.
+✔ Test "BT-10 选路时上层任务被取消：cancel handler 必须掐掉每条挂着的候选 socket" passed after 0.030 seconds.
+✔ Test "传输层真的死了（既无帧也无 pong）：到 30 秒那一档才重连" passed after 0.080 seconds.
+✔ Test "BT-10 owner stop() 时收帧正挂在聋 socket 上：stop 必须 cancel 它并且自己能返回" passed after 0.077 seconds.
+✔ Test "所有线路超时后释放连接，不无限等待" passed after 0.081 seconds.
+✔ Test "首帧行情之前的静默照旧算「订阅没生效」：连保活都不探，直接换一条" passed after 0.080 seconds.
+✔ Test "本地失败时自动兜底，订阅确认不算有效行情" passed after 0.081 seconds.
+✔ Test "探针探不通时按拍重探，不空转：拆连接之前只探了几次" passed after 0.103 seconds.
+✔ Test "选择更快有效线路，首帧不丢失，正常收数不反复选路" with 2 test cases passed after 0.109 seconds.
+✔ Test "BT-10 选路首帧超时：两条候选都聋，超时那一路必须对每条都调 cancel，connect 才能返回" passed after 0.108 seconds.
+✔ Suite "BT-10 聋 socket：超时与上层取消必须真的掐 socket" passed after 0.109 seconds.
+✔ Test "BT-08 BinanceWS：取消消费者任务 → 迭代当场结束；连接不抖不重连；owner stop() 才掐 socket" passed after 0.098 seconds.
+✔ Suite "BT-08 取消唯一消费者：iterator 退出，连接只听 owner 的" passed after 0.109 seconds.
+✔ Test "四种 futures/data 请求扣的是同一个计数器" passed after 0.137 seconds.
+✔ Suite "futures/data 三个端点" passed after 0.139 seconds.
+✔ Test "持仓量走 /futures/data 那条 1000 次 / 5 分钟的配额，权重仍然算 1" passed after 0.130 seconds.
+✔ Suite "A-03 限流与 IP 封禁" passed after 0.141 seconds.
+✔ Test "A-T14 网关只回订阅成功和 pong：候选全关，且不自动改连币安" passed after 0.182 seconds.
+✔ Test "A-T13 收到首帧行情之后长时间没有行情但保活正常：连接保留，不重连" passed after 0.222 seconds.
+✔ Test "BT-03 旧一轮卡住的控制帧醒来：不许发到新连接上，也不许改新一轮的订阅账" passed after 0.345 seconds.
+✔ Test "换线路会广播；没变就不广播" passed after 0.318 seconds.
+◇ Test "直连：币安一笔都不打到网关" started.
+✔ Test "直连：币安一笔都不打到网关" passed after 0.001 seconds.
+◇ Test "直连：失败不记冷却，下一笔照样直连" started.
+✔ Test "直连：失败不记冷却，下一笔照样直连" passed after 0.001 seconds.
+◇ Test "直连：用满请求超时，不做快速让位" started.
+✔ Test "直连：用满请求超时，不做快速让位" passed after 0.001 seconds.
+◇ Test "直连：OKX 源照旧走网关，不受影响" started.
+✔ Test "直连：OKX 源照旧走网关，不受影响" passed after 0.001 seconds.
+◇ Test "网关：一笔都不打直连" started.
+✔ Test "网关：一笔都不打直连" passed after 0.001 seconds.
+◇ Test "网关：失败之后这台网关先歇着，下一笔不再打它" started.
+✔ Test "网关：失败之后这台网关先歇着，下一笔不再打它" passed after 0.001 seconds.
+◇ Test "网关：没有网关路线的请求直接失败，不偷偷走直连" started.
+✔ Test "网关：没有网关路线的请求直接失败，不偷偷走直连" passed after 0.001 seconds.
+◇ Test "网关：WS 只拨网关，直连域名混在 fallbacks 里也不算" started.
+✔ Test "网关：WS 只拨网关，直连域名混在 fallbacks 里也不算" passed after 0.001 seconds.
+◇ Test "直连：WS 只拨币安自己的域名" started.
+✔ Test "直连：WS 只拨币安自己的域名" passed after 0.001 seconds.
+◇ Test "换档会把上一档留下的网关冷却清掉" started.
+✔ Test "换档会把上一档留下的网关冷却清掉" passed after 0.001 seconds.
+✔ Suite "行情线路策略" passed after 0.351 seconds.
+✔ Test "BT-03b 旧一轮断线善后不许把新一轮的连接清掉" passed after 0.436 seconds.
+✔ Suite "WS 一轮 run 只动自己的东西" passed after 0.441 seconds.
+✔ Test "A-T06 两台网关各歇各的：被限的那台停 120 秒，另一台按自己的短冷却回来" passed after 0.430 seconds.
+✔ Suite "A-05 网关转述的上游限流" passed after 0.441 seconds.
+✔ Test "A-T16 64 条旧流换 64 条新流：两帧控制帧，不是 128 帧" passed after 0.727 seconds.
+✔ Test "选路期间换品种，连接完成后补订新流，不误记已同步" passed after 0.828 seconds.
+✔ Suite "无感行情选路" passed after 0.828 seconds.
+✔ Test "行情静默的保活日志只在状态变化时打一次（跨帧也只有一次）" passed after 0.918 seconds.
+✔ Test "A-T13 保活答得上就一直留着：探了很多拍也只有一条连接" passed after 0.918 seconds.
+✔ Suite "A-07 三层静默看门狗" passed after 0.920 seconds.
+✔ Test run with 118 tests in 21 suites passed after 0.920 seconds.
+exit=0

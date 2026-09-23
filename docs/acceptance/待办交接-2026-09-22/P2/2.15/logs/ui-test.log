@@ -1,0 +1,149 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=D6C41248-C78E-46B8-B391-311F373D24A8" -derivedDataPath DerivedData "-only-testing:KanpanUITests/NewListingMarkUITests" -test-timeouts-enabled YES -default-test-execution-time-allowance 480 -maximum-test-execution-time-allowance 900 -resultBundlePath DerivedData/ui-test/iPhone-16-Pro.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanCore: /Users/mdd/zhk/kanpan-wt-pchain/KanpanCore @ local
+  KanpanChart: /Users/mdd/zhk/kanpan-wt-pchain/KanpanChart @ local
+  KanpanReview: /Users/mdd/zhk/kanpan-wt-pchain/KanpanReview @ local
+  KanpanAccount: /Users/mdd/zhk/kanpan-wt-pchain/KanpanAccount @ local
+  KanpanNetwork: /Users/mdd/zhk/kanpan-wt-pchain/KanpanNetwork @ local
+  KanpanData: /Users/mdd/zhk/kanpan-wt-pchain/KanpanData @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan-wt-pchain/DerivedData/ui-test/iPhone-16-Pro.xcresult
+
+2026-09-23 14:49:40.838437+0800 KanpanUITests-Runner[70734:7339687] [Default] Running tests...
+2026-09-23 14:49:40.879826+0800 KanpanUITests-Runner[70734:7339741] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-23 14:49:41.339.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-23 14:49:41.339.
+Test Suite 'NewListingMarkUITests' started at 2026-09-23 14:49:41.340.
+Test Case '-[KanpanUITests.NewListingMarkUITests testNewListingsCarryTheMarkInSearchAndFavorites]' started.
+    t =     0.00s Start Test at 2026-09-23 14:49:41.340
+    t =     0.04s Set Up
+    t =     0.64s     Open com.mdd.kanpan
+    t =     0.64s         Launch com.mdd.kanpan
+2026-09-23 14:49:42.437 xcodebuild[70584:7338892] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-23 14:49:42.437 xcodebuild[70584:7338892] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     2.79s             Setting up automation session
+    t =     3.34s             Wait for com.mdd.kanpan to idle
+    t =     4.97s     Waiting 3.0s for "bottom.chart" Button to exist
+    t =     6.04s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.chart" Button`
+    t =     6.04s             Checking existence of `"bottom.chart" Button`
+    t =     6.15s     Checking existence of `"top.symbol" Any`
+    t =     6.20s     Tap "bottom.chart" Button
+    t =     6.20s         Wait for com.mdd.kanpan to idle
+    t =     6.21s         Find the "bottom.chart" Button
+    t =     6.23s         Check for interrupting elements affecting "bottom.chart" Button
+    t =     6.25s         Synthesize event
+    t =     6.55s         Wait for com.mdd.kanpan to idle
+    t =     6.55s     Waiting 30.0s for "top.symbol" Any to exist
+    t =     7.63s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Any`
+    t =     7.63s             Checking existence of `"top.symbol" Any`
+    t =     7.64s     Find the Window (First Match)
+    t =     7.65s     Find the "interval.more" Button
+    t =     7.68s     Find the "bottom.favorites" Button
+    t =     7.73s Waiting 10.0s for "top.search" Button to exist
+2026-09-23 14:49:49.071011+0800 KanpanUITests-Runner[70734:7339729] [General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+objc[70734]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x106da8310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x1061b8398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     8.79s     Checking `Expect predicate `existsNoRetry == 1` for object "top.search" Button`
+    t =     8.79s         Checking existence of `"top.search" Button`
+    t =     8.81s Tap "top.search" Button
+    t =     8.81s     Wait for com.mdd.kanpan to idle
+    t =     8.81s     Find the "top.search" Button
+    t =     8.83s     Check for interrupting elements affecting "top.search" Button
+    t =     8.85s     Synthesize event
+    t =     9.14s     Wait for com.mdd.kanpan to idle
+    t =     9.17s Waiting 10.0s for "search.query" TextField to exist
+    t =    10.24s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =    10.24s         Checking existence of `"search.query" TextField`
+    t =    10.33s Waiting 8.0s for "search.query" TextField to exist
+    t =    11.40s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =    11.40s         Checking existence of `"search.query" TextField`
+    t =    11.44s Tap "search.query" TextField
+    t =    11.44s     Wait for com.mdd.kanpan to idle
+    t =    11.44s     Find the "search.query" TextField
+    t =    11.47s     Check for interrupting elements affecting "search.query" TextField
+    t =    11.49s     Synthesize event
+    t =    11.78s     Wait for com.mdd.kanpan to idle
+    t =    11.78s Type '哈基米' into "search.query" TextField
+    t =    11.78s     Wait for com.mdd.kanpan to idle
+    t =    11.78s     Find the "search.query" TextField
+    t =    11.89s     Check for interrupting elements affecting "search.query" TextField
+    t =    11.93s     Synthesize event
+    t =    12.17s     Wait for com.mdd.kanpan to idle
+    t =    12.54s Waiting 30.0s for "symbols.new.哈基米USDT" Any to exist
+    t =    13.60s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.new.哈基米USDT" Any`
+    t =    13.60s         Checking existence of `"symbols.new.哈基米USDT" Any`
+    t =    13.67s Find the "symbols.new.哈基米USDT" Any
+    t =    13.71s Type 'BTC' into "search.query" TextField
+    t =    13.71s     Wait for com.mdd.kanpan to idle
+    t =    13.71s     Find the "search.query" TextField
+    t =    13.74s     Check for interrupting elements affecting "search.query" TextField
+    t =    13.77s     Synthesize event
+    t =    14.07s     Wait for com.mdd.kanpan to idle
+    t =    14.07s Waiting 30.0s for "symbols.star.BTCUSDT" Button to exist
+    t =    15.14s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.star.BTCUSDT" Button`
+    t =    15.14s         Checking existence of `"symbols.star.BTCUSDT" Button`
+    t =    15.21s Checking existence of `"symbols.new.BTCUSDT" Any`
+    t =    15.25s Type '哈基米' into "search.query" TextField
+    t =    15.25s     Wait for com.mdd.kanpan to idle
+    t =    15.25s     Find the "search.query" TextField
+    t =    15.28s     Check for interrupting elements affecting "search.query" TextField
+    t =    15.31s     Synthesize event
+    t =    15.61s     Wait for com.mdd.kanpan to idle
+    t =    15.61s Waiting 30.0s for "symbols.new.哈基米USDT" StaticText to exist
+    t =    16.69s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.new.哈基米USDT" StaticText`
+    t =    16.69s         Checking existence of `"symbols.new.哈基米USDT" StaticText`
+    t =    16.75s Find the Target Application 'com.mdd.kanpan'
+    t =    16.86s Added attachment named '新-搜索结果'
+    t =    16.86s Tap "search.cancel" Button
+    t =    16.86s     Wait for com.mdd.kanpan to idle
+    t =    16.86s     Find the "search.cancel" Button
+    t =    16.89s     Check for interrupting elements affecting "search.cancel" Button
+    t =    16.92s     Synthesize event
+    t =    17.21s     Wait for com.mdd.kanpan to idle
+    t =    17.57s Checking existence of `"favorites.more" Button`
+    t =    17.58s Checking existence of `"panel.header" StaticText`
+    t =    17.60s Waiting 10.0s for "bottom.favorites" Button to exist
+    t =    18.66s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.favorites" Button`
+    t =    18.66s         Checking existence of `"bottom.favorites" Button`
+    t =    18.74s Tap "bottom.favorites" Button
+    t =    18.74s     Wait for com.mdd.kanpan to idle
+    t =    18.74s     Find the "bottom.favorites" Button
+    t =    18.82s     Check for interrupting elements affecting "bottom.favorites" Button
+    t =    18.85s     Synthesize event
+    t =    19.14s     Wait for com.mdd.kanpan to idle
+    t =    19.14s Waiting 15.0s for "favorites.more" Button to exist
+    t =    20.20s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =    20.20s         Checking existence of `"favorites.more" Button`
+    t =    20.25s Waiting 30.0s for "favorites.open.哈基米USDT" Button to exist
+    t =    21.32s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.哈基米USDT" Button`
+    t =    21.32s         Checking existence of `"favorites.open.哈基米USDT" Button`
+    t =    21.35s Waiting 30.0s for "symbols.new.哈基米USDT" StaticText to exist
+    t =    22.42s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.new.哈基米USDT" StaticText`
+    t =    22.42s         Checking existence of `"symbols.new.哈基米USDT" StaticText`
+    t =    22.46s Checking existence of `"symbols.new.BTCUSDT" Any`
+    t =    22.48s Find the Target Application 'com.mdd.kanpan'
+    t =    22.62s Added attachment named '新-自选行'
+    t =    22.62s Tear Down
+Test Case '-[KanpanUITests.NewListingMarkUITests testNewListingsCarryTheMarkInSearchAndFavorites]' passed (22.925 seconds).
+Test Suite 'NewListingMarkUITests' passed at 2026-09-23 14:50:04.266.
+	 Executed 1 test, with 0 failures (0 unexpected) in 22.925 (22.926) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-23 14:50:04.266.
+	 Executed 1 test, with 0 failures (0 unexpected) in 22.925 (22.927) seconds
+Test Suite 'Selected tests' passed at 2026-09-23 14:50:04.267.
+	 Executed 1 test, with 0 failures (0 unexpected) in 22.925 (22.928) seconds
+2026-09-23 14:50:27.871 xcodebuild[70584:7338892] [MT] IDETestOperationsObserverDebug: 50.832 elapsed -- Testing started completed.
+2026-09-23 14:50:27.871 xcodebuild[70584:7338892] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-23 14:50:27.871 xcodebuild[70584:7338892] [MT] IDETestOperationsObserverDebug: 50.832 sec, +50.832 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan-wt-pchain/DerivedData/ui-test/iPhone-16-Pro.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

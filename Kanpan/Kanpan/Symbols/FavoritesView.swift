@@ -1048,6 +1048,9 @@ struct FavoritesView: View {
           HStack(alignment: .firstTextBaseline, spacing: 3) {
             Text(base).font(.scaled(13.5, .semibold)).foregroundStyle(theme.ink)
             Text(quoteAsset(symbol)).font(.scaled(9)).foregroundStyle(skin.ink4)
+            if NewListingMark.shows(info) {
+              NewListingMark(symbol: symbol, accent: skin.accent).padding(.leading, 2)
+            }
           }.lineLimit(1).minimumScaleFactor(0.75)
           // 按「离提醒线最近」排的时候，这一行让位给距离；这个品种没有在等的线就空着，
           // 不写「—」也不解释——空白本身就说明它不在这张单子上（只答远近，不答方向）。

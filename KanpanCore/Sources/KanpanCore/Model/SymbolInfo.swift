@@ -69,6 +69,8 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
   public var contractType: String?
   /// 挂牌状态。目录层会把非 `TRADING` 的行**留在表里**并打上这一档（审查 B-06）。
   public var status: SymbolStatus
+  /// 上线时间（`exchangeInfo.symbols[].onboardDate`，毫秒）。缺字段 / 旧缓存为 `nil`。
+  public var onboardDate: Int64?
 
   public var id: String { symbol }
   /// 顶栏和品种页里显示的名字：BTC/USDT。
@@ -77,7 +79,7 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
   public init(symbol: String, base: String, quote: String = "USDT",
               pricePrecision: Int, quantityPrecision: Int = 3, tickSize: Double, underlyingType: String? = nil,
               underlyingSubTypes: [String]? = nil, contractType: String? = nil,
-              status: SymbolStatus = .tradable) {
+              status: SymbolStatus = .tradable, onboardDate: Int64? = nil) {
     self.symbol = symbol
     self.base = base
     self.quote = quote
@@ -88,6 +90,7 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
     self.underlyingSubTypes = underlyingSubTypes
     self.contractType = contractType
     self.status = status
+    self.onboardDate = onboardDate
   }
 
   /// 旧盘上的目录缓存里没有 `status`，解码时当 `tradable`——
@@ -104,6 +107,17 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
     underlyingSubTypes = try c.decodeIfPresent([String].self, forKey: .underlyingSubTypes)
     contractType = try c.decodeIfPresent(String.self, forKey: .contractType)
     status = try c.decodeIfPresent(SymbolStatus.self, forKey: .status) ?? .tradable
+    onboardDate = try c.decodeIfPresent(Int64.self, forKey: .onboardDate)
+  }
+
+  /// 「新」记号的窗口：上线 30 天以内（P2.15）。
+  public static let newListingWindowMs: Int64 = 30 * 86_400_000
+
+  /// 上线不满 30 天。还没到上线时间的（预告上线）不算——它还没「上线」。
+  public func isNewListing(nowMs: Int64) -> Bool {
+    guard let onboardDate, onboardDate > 0 else { return false }
+    let age = nowMs - onboardDate
+    return age >= 0 && age <= Self.newListingWindowMs
   }
 
   /// 价格按 `tickSize` 定小数位：0.1 → 1 位，0.001 → 3 位（§A1.11）。

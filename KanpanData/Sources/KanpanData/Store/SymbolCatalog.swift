@@ -30,7 +30,9 @@ public actor SymbolCatalog {
   /// 6：非 TRADING 的行也留在表里，并带上 `status`（审查 B-06）。
   /// 必须跳一版——盘上那份 schema 5 的缓存里根本没有那些行，沿用它会让
   /// 「已下架」这一档在升级后的第一天里完全失效。
-  private static let schema = 6
+  /// 7：每行带上 `onboardDate`（P2.15「新」记号）。同理必须跳——schema 6 的缓存里
+  /// 没有这一列，沿用它就是升级后一整天搜索和自选里一个「新」都不出。
+  private static let schema = 7
   private var loadedSchema = 0
   private var failedAtMs: Int64 = 0
   private var lastOnDemandMs: Int64 = 0

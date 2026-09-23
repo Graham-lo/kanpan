@@ -74,6 +74,8 @@ struct ExchangeInfoDTO: Decodable {
     var pricePrecision: Int
     var quantityPrecision: Int
     var filters: [[String: JSONValue]]
+    /// 上线时间（毫秒）。只给「新」记号用（P2.15）；缺了就当不知道。
+    var onboardDate: Int64?
 
     var tickSize: Double {
       for f in filters where f["filterType"]?.stringValue == "PRICE_FILTER" {

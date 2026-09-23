@@ -190,7 +190,7 @@ public actor BinanceREST {
                    pricePrecision: $0.pricePrecision, quantityPrecision: $0.quantityPrecision,
                    tickSize: $0.tickSize, underlyingType: $0.underlyingType,
                    underlyingSubTypes: $0.underlyingSubType, contractType: $0.contractType,
-                   status: SymbolStatus.exchange($0.status))
+                   status: SymbolStatus.exchange($0.status), onboardDate: $0.onboardDate)
       }
       .sorted { $0.symbol < $1.symbol }
   }

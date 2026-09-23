@@ -156,7 +156,7 @@ struct CatalogStatusTests {
     #expect(list.first { $0.symbol == "OLDUSDT" }?.status.hasLivePrice == false)
     #expect(list.first { $0.symbol == "BTCUSDT" }?.status.hasLivePrice == true)
     // 落盘的那份带上了新代次，下次冷启动直接可用。
-    #expect(try readDisk(p).schema == 6)
+    #expect(try readDisk(p).schema == 7)
     #expect(try readDisk(p).list.count == 3)
   }
 
