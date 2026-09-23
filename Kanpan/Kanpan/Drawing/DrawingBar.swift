@@ -30,6 +30,9 @@ struct DrawingBar: View {
   var lineAlert: LineAlertModel?
   @Environment(\.panelTheme) private var theme
   var body: some View {
+    #if DEBUG
+      let _ = FrameProbe.shared.countBody("DrawingBar")
+    #endif
     VStack(spacing: 0) {
       HStack(spacing: 0) {
         if controller.selected != nil {
@@ -173,6 +176,9 @@ struct DrawingSelectionBar: View {
   @Environment(\.panelTheme) private var theme
   private var landscape: Bool { placement == .landscape }
   var body: some View {
+    #if DEBUG
+      let _ = FrameProbe.shared.countBody("DrawingSelectionBar")
+    #endif
     if let item = controller.selected {
       HStack(spacing: 2) {
         if let lineAlert, AlertGeometry.supports(item.kind) {

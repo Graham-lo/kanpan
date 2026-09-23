@@ -110,6 +110,11 @@ struct FrameReport: Sendable, Equatable, Codable {
   /// 对着任务书的预算逐条判。nil = 这项没数据，**不算过**。
   var verdict: Verdict
 
+  /// 采集期间各个 SwiftUI 视图的 `body` 被求值了几次（键是视图名）。
+  /// 只有登记过的视图才会出现在这里（`FrameProbe.countBody`）；没登记、或者采集期间
+  /// 一次也没重算的，不在表里。用来比「拖一条线时宿主页整页重算了多少遍」这种账。
+  var bodies: [String: Int]? = nil
+
   struct Verdict: Sendable, Equatable, Codable {
     /// P9.2：hitch 占比 < 1%。
     var hitchRatioUnder1Percent: Bool?

@@ -68,6 +68,15 @@
 
     private(set) var label: String = ""
     private(set) var isRunning = false
+    /// 这一段里登记过的视图各重算了几次 `body`。见 `countBody`。
+    private var bodyCounts: [String: Int] = [:]
+
+    /// 在视图的 `body` 里调一下，采集期间它每被求值一次就记一笔，停的时候进报告
+    /// （`FrameReport.bodies`）。没在采集就什么也不做——平时这一行只是一次布尔判断。
+    func countBody(_ name: String) {
+      guard isRunning else { return }
+      bodyCounts[name, default: 0] += 1
+    }
 
     init(store: FrameReportStore = FrameReportStore()) {
       self.store = store
@@ -83,6 +92,7 @@
       isRunning = true
       self.label = label
       stats.reset()
+      bodyCounts = [:]
       wokeAt = nil
       pendingFrame = nil
 
@@ -109,7 +119,9 @@
       removeObservers()
 
       guard !stats.isEmpty else { return nil }
-      let report = stats.report(label: label, device: Self.deviceTag())
+      var report = stats.report(label: label, device: Self.deviceTag())
+      if !bodyCounts.isEmpty { report.bodies = bodyCounts }
+      bodyCounts = [:]
       stats.reset()
       store.save(report)
       return report

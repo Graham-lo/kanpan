@@ -541,6 +541,9 @@ struct MainScreen: View {
   }
 
   var body: some View {
+    #if DEBUG
+      let _ = FrameProbe.shared.countBody("MainScreen")
+    #endif
     lifecycleContent
     // 那唯一一条提示画在自己的窗里，拿不到这儿的环境；皮肤一换就递一份过去（P2.7）。
     .onChange(of: theme, initial: true) { _, value in ToastCenter.shared.theme = value }
@@ -1624,7 +1627,14 @@ struct MainScreen: View {
         await MainActor.run { PushRegistration.startIfAuthorized() }
       }
     }
-    draw.onDragPreview = { [weak lineAlert] item in lineAlert?.drag(item) }
+    draw.onDragPreview = { [weak lineAlert] item in
+      #if DEBUG
+        // 拖线的手指归画线覆盖层，不经过 `ChartView.touchesBegan`，画布那条帧探针的打点
+        // 接不到它。拖动每报一帧就续一次采集，抬手 1.2 秒后自己停、存盘（和画布手势同一份报告格式）。
+        if item != nil { ChartGestureFrames.began(); ChartGestureFrames.ended() }
+      #endif
+      lineAlert?.drag(item)
+    }
     // 线被挪了就按同一个提醒 id 重算几何、重新上膛；线被删了提醒跟着删。
     draw.onGeometryChanged = { archive in alerts.reconcile(with: archive) }
     // 到价判定：两条流各喂各的。图上那只走 `MarketModel`（逐笔，最细），别的品种走
