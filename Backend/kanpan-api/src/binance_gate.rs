@@ -71,6 +71,14 @@ pub fn note(status:u16,retry_after:Option<&str>)->bool {
 pub fn note_reply(response:&reqwest::Response)->bool {
  note(response.status().as_u16(),response.headers().get(reqwest::header::RETRY_AFTER).and_then(|v|v.to_str().ok()))
 }
+/// 把这道闸交给 vendor 的币安适配器（复盘判定 / 找相似取数走的那一个）。
+/// 原来它自己一套、不看这条截止时间：别的模块刚被 418，它照样出站把封禁撞长。
+pub struct Gate;
+impl scorebook_market::adapters::binance::EgressGate for Gate {
+ fn wait(&self)->Option<Duration> {wait()}
+ fn note(&self,status:u16,retry_after:Option<&str>) {note(status,retry_after);}
+}
+
 /// Retry-After 的秒数形式。币安发的是秒；HTTP 日期那种写法读不出来就当没说，
 /// 按上面的默认值等。
 fn seconds(header:&str)->Option<Duration> {

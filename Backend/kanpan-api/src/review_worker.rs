@@ -82,7 +82,7 @@ async fn assess(market:&dyn MarketDataProvider,r:&NativeRecord,checkpoint:Option
   // 逐笔按记录自己的交易所取：币安走 aggTrades，Coinbase 走它自己的成交号（同一品种上连续）。
   // 两家给出的形状一样（`raw:[{a,T,p}]` + `coverage_complete`），下面的判定不分家。
   let data=match (range.venue.as_str(),range.market.as_str()) {
-   ("binance","usd_m")=>market.trades(&range.market,&range.symbol,core(domain::time(from))?,core(domain::time(until))?).await.map_err(|_|ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"market_unavailable"))?,
+   ("binance","usd_m")=>market.trades(&range.market,&range.symbol,core(domain::time(from))?,core(domain::time(until))?).await.map_err(|e|crate::review_market::refusal(&e,&range.symbol))?,
    ("coinbase","spot")=>{
     crate::review_market::coinbase_ready()?;
     crate::venues::coinbase::trades(&range.symbol,from,until).await.map_err(crate::review_market::coinbase_refusal)?

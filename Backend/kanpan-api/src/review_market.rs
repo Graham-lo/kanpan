@@ -76,12 +76,34 @@ pub fn coinbase_ready()->Result<()> {
  if cooling().is_some() {Err(refused(Refusal::RateLimited))} else {Ok(())}
 }
 
+/// 复盘判定、找相似取币安 K 线 / 逐笔用的那个适配器：出站前后都过
+/// [`crate::binance_gate`]，跟 market_meta / sector_history / oi_archive 共用一条
+/// 418 / 429 截止时间（原来它自己一套、不看这条截止时间，别的模块刚被 418 它照样出站）。
+pub fn provider(pool:sqlx::PgPool)->anyhow::Result<scorebook_market::adapters::binance::Binance> {
+ let market=scorebook_market::adapters::binance::Binance::new(pool)?.with_gate(std::sync::Arc::new(crate::binance_gate::Gate));
+ tracing::info!("Review market data reads Binance REST at {}",market.base());
+ Ok(market)
+}
+
+/// 币安适配器的一次失败折成对外的错误码。可重试的（限流、闸门按着、5xx、传输）是
+/// `market_unavailable`，worker 一分钟后再来；不可重试的（451 以及别的 4xx）折成
+/// BLOCKED，worker 按天退避，不再每 60 秒问一次同一个拒绝。主机已是 www.binance.com，
+/// 这里不该再出现 451；真出现了说明上游改了规矩，所以记 error 让人看见。
+pub fn refusal(e:&scorebook_core::error::Error,symbol:&str)->ApiError {
+ if e.retry.retryable() {
+  tracing::warn!(code=%e.code,symbol,"Review market data: Binance is not answering right now; will retry");
+  return ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"market_unavailable");
+ }
+ tracing::error!(code=%e.code,symbol,"Review market data: Binance refused the request");
+ blocked()
+}
+
 pub async fn klines(provider:&dyn MarketDataProvider,r:&ChartRange,start:DateTime<Utc>,end:DateTime<Utc>)->Result<Value> {
  // A provider error that already says "do not retry" is, on these VPS, almost
  // always Binance answering 451. Flattening it into market_unavailable made the
  // worker re-ask the same refusal every 60 seconds for the life of the record.
  match (r.venue.as_str(),r.market.as_str()) {
-  ("binance","usd_m")=>provider.klines(&r.market,&r.symbol,&r.interval,start,end).await.map_err(|e|if e.retry.retryable(){ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"market_unavailable")}else{blocked()}),
+  ("binance","usd_m")=>provider.klines(&r.market,&r.symbol,&r.interval,start,end).await.map_err(|e|refusal(&e,&r.symbol)),
   ("coinbase","spot")=>coinbase_klines(&r.symbol,&r.interval,start,end,Utc::now().timestamp()).await,
   _=>Err(ApiError::bad("invalid_chart_range")),
  }
@@ -171,6 +193,83 @@ mod tests {
   assert_eq!(told_to_wait(None,&json!({"error":"busy"})),UNTOLD_COOLDOWN);
   assert_eq!(told_to_wait(Some("soon"),&Value::Null),UNTOLD_COOLDOWN);
   assert_eq!(told_to_wait(None,&json!({"error":"busy","retryAfter":0})),UNTOLD_COOLDOWN);
+ }
+
+ /// 一个本地假币安：每个连接答一次，按顺序取 `replies` 里的回答，把请求行记下来。
+ async fn fake_binance(replies:Vec<String>)->(String,std::sync::Arc<std::sync::Mutex<Vec<String>>>,tokio::task::JoinHandle<()>) {
+  use tokio::io::{AsyncReadExt,AsyncWriteExt};
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+  let base=format!("http://{}",listener.local_addr().expect("addr"));
+  let seen=std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+  let log=seen.clone();
+  let server=tokio::spawn(async move {
+   for reply in replies {
+    let Ok((mut socket,_))=listener.accept().await else {return};
+    let mut buf=vec![0u8;4096];let n=socket.read(&mut buf).await.unwrap_or(0);
+    let head=String::from_utf8_lossy(&buf[..n]).lines().next().unwrap_or("").to_owned();
+    log.lock().unwrap().push(head);
+    let _=socket.write_all(reply.as_bytes()).await;let _=socket.shutdown().await;
+   }
+  });
+  (base,seen,server)
+ }
+ fn reply(status:&str,extra:&str,body:&str)->String {
+  format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len())
+ }
+ fn range(start:i64,end:i64,bars:usize)->ChartRange {
+  serde_json::from_value(json!({"venue":"binance","market":"usd_m","symbol":"BTCUSDT","interval":"1d","start":start,"end":end,"bars":bars})).unwrap()
+ }
+ fn gated(base:&str)->scorebook_market::adapters::binance::Binance {
+  scorebook_market::adapters::binance::Binance::without_budget(base).unwrap().with_gate(std::sync::Arc::new(crate::binance_gate::Gate))
+ }
+
+ #[test]
+ fn fixture_instances_build_urls_on_their_own_host() {
+  let b=scorebook_market::adapters::binance::Binance::without_budget("http://127.0.0.1:9/").unwrap();
+  assert_eq!(b.url("usd_m","klines").as_deref(),Some("http://127.0.0.1:9/fapi/v1/klines"),"末尾的 / 去掉");
+  assert_eq!(b.url("usd_m","aggTrades").as_deref(),Some("http://127.0.0.1:9/fapi/v1/aggTrades"));
+  assert_eq!(b.url("spot","klines"),None);
+ }
+
+ // 这把锁把「同时只许一条测试碰进程级闸门」做实，跨 await 持有就是它的用途。
+ #[allow(clippy::await_holding_lock)]
+ #[tokio::test]
+ async fn review_klines_go_through_the_shared_ban_gate() {
+  let _serial=crate::binance_gate::test_lock().lock().unwrap_or_else(|e|e.into_inner());
+  crate::binance_gate::clear();
+  let day=86_400_000i64;let start=1_780_000_000_000i64/day*day;let end=start+2*day;
+  let rows=json!([[start,"100","110","90","105","1",start+day-1],[start+day,"105","120","100","110","1",end-1]]).to_string();
+  let (base,seen,server)=fake_binance(vec![
+   reply("200 OK","",&rows),
+   reply("451 Unavailable For Legal Reasons","",r#"{"code":0,"msg":"restricted location"}"#),
+   reply("418 I'm a teapot","Retry-After: 300\r\n","{}"),
+  ]).await;
+  let market=gated(&base);
+  let r=range(start,end,2);
+
+  // 成功：走的是 /fapi/v1/klines，两根收好的日线都在。
+  let data=klines(&market,&r,crate::review_domain::time(start).unwrap(),crate::review_domain::time(end).unwrap()).await.expect("bars");
+  assert_eq!(data["bars"].as_array().map(Vec::len),Some(2));
+  assert_eq!(data["coverage_complete"],true);
+  assert!(seen.lock().unwrap()[0].starts_with("GET /fapi/v1/klines?symbol=BTCUSDT"),"{:?}",seen.lock().unwrap());
+
+  // 451：不可重试，折成 BLOCKED（worker 按天退避），不按下限流闸门。
+  let e=klines(&market,&r,crate::review_domain::time(start).unwrap(),crate::review_domain::time(end).unwrap()).await.unwrap_err();
+  assert_eq!(e.1,BLOCKED);
+  assert!(!crate::binance_gate::blocked(),"451 不是限流");
+
+  // 418：记进进程级闸门，本次按可重试处理。
+  let e=klines(&market,&r,crate::review_domain::time(start).unwrap(),crate::review_domain::time(end).unwrap()).await.unwrap_err();
+  assert_eq!(e.1,"market_unavailable");
+  assert!(crate::binance_gate::wait().is_some_and(|left|left>std::time::Duration::from_secs(290)),"418 的 Retry-After 按下整条出口");
+  server.await.unwrap();
+
+  // 闸门按着：连出站都不出站，照样是可重试的 market_unavailable。
+  let before=seen.lock().unwrap().len();
+  let e=klines(&market,&r,crate::review_domain::time(start).unwrap(),crate::review_domain::time(end).unwrap()).await.unwrap_err();
+  assert_eq!(e.1,"market_unavailable");
+  assert_eq!(seen.lock().unwrap().len(),before,"封禁期内不许出站");
+  crate::binance_gate::clear();
  }
 
  #[tokio::test(start_paused=true)]

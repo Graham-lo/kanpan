@@ -4,10 +4,24 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
+/// 进程级的出站闸门。币安的 418 / 429 是按出口 IP 算的，同一进程里别的模块撞上了，
+/// 这里也不该再出站；反过来这里撞上了也要让别人知道。适配器本身不知道闸门长什么样，
+/// 由宿主注入（看盘注入的是 `kanpan_api::binance_gate::Gate`）。
+pub trait EgressGate: Send + Sync {
+    /// 还要等多久才能出站；`None` 表示现在可以。
+    fn wait(&self) -> Option<std::time::Duration>;
+    /// 记下这一次回答的状态码和 `Retry-After`。
+    fn note(&self, status: u16, retry_after: Option<&str>);
+}
+
 #[derive(Clone)]
 pub struct Binance {
     client: reqwest::Client,
-    budget: super::provider_budget::ProviderBudget,
+    /// `None` 只给不连数据库的夹具用；线上一律经 [`Binance::new`] 带上。
+    budget: Option<super::provider_budget::ProviderBudget>,
+    /// 线上恒为 [`REST`]；只有夹具经 [`Binance::without_budget`] 指向本地假上游。
+    base: String,
+    gate: Option<std::sync::Arc<dyn EgressGate>>,
 }
 impl scorebook_core::market::MarketDataProvider for Binance {
     fn tickers_24h<'a>(&'a self, market: &'a str) -> scorebook_core::market::ProviderFuture<'a> {
@@ -56,13 +70,17 @@ const REST: &str = "https://www.binance.com";
 const BROWSER_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 /// `usd_m` → `/fapi/v1/<path>`，`coin_m` → `/dapi/v1/<path>`；别的市场没有。
+#[cfg(test)]
 fn endpoint(market: &str, path: &str) -> Option<String> {
+    endpoint_at(REST, market, path)
+}
+fn endpoint_at(base: &str, market: &str, path: &str) -> Option<String> {
     let family = match market {
         "usd_m" => "fapi",
         "coin_m" => "dapi",
         _ => return None,
     };
-    Some(format!("{REST}/{family}/v1/{path}"))
+    Some(format!("{base}/{family}/v1/{path}"))
 }
 
 /// 这一页向币安要多少根：还差几根就要几根再多一根，封顶 1000。
@@ -81,20 +99,31 @@ fn klines_weight(limit: i64) -> i32 {
 
 impl Binance {
     async fn tickers_24h(&self, market: &str) -> Result<Value> {
-        let url =
-            endpoint(market, "ticker/24hr").ok_or_else(|| Error::bad("market_not_supported"))?;
-        self.budget.reserve(market, 40).await?;
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(anyhow::Error::from)?;
+        let url = self
+            .url(market, "ticker/24hr")
+            .ok_or_else(|| Error::bad("market_not_supported"))?;
+        self.reserve(market, 40).await?;
+        let response = self.send(self.client.get(&url)).await?;
         self.decode(market, response).await
     }
+    /// 线上构造：带数据库里的共享权重预算，主机恒为 [`REST`]。
     pub fn new(pool: sqlx::PgPool) -> anyhow::Result<Self> {
+        Self::build(Some(super::provider_budget::ProviderBudget::new(pool)?), REST)
+    }
+    /// 不带数据库预算、指向给定主机（`http://127.0.0.1:端口` 这类）的实例，
+    /// 只给测试夹具用（本地假上游）。线上一律 [`Binance::new`]。
+    #[doc(hidden)]
+    pub fn without_budget(base: &str) -> anyhow::Result<Self> {
+        Self::build(None, base.trim_end_matches('/'))
+    }
+    fn build(
+        budget: Option<super::provider_budget::ProviderBudget>,
+        base: &str,
+    ) -> anyhow::Result<Self> {
         Ok(Self {
-            budget: super::provider_budget::ProviderBudget::new(pool)?,
+            budget,
+            base: base.to_owned(),
+            gate: None,
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(20))
                 .connect_timeout(std::time::Duration::from_secs(5))
@@ -103,6 +132,47 @@ impl Binance {
                 .user_agent(BROWSER_UA)
                 .build()?,
         })
+    }
+    /// 接上进程级出站闸门。
+    pub fn with_gate(mut self, gate: std::sync::Arc<dyn EgressGate>) -> Self {
+        self.gate = Some(gate);
+        self
+    }
+    /// 现在用的 REST 主机。
+    pub fn base(&self) -> &str {
+        &self.base
+    }
+    /// 一个市场下某条 REST 路径在这个实例主机上的完整 URL；不认识的市场回 `None`。
+    pub fn url(&self, market: &str, path: &str) -> Option<String> {
+        endpoint_at(&self.base, market, path)
+    }
+    async fn reserve(&self, market: &str, weight: i32) -> Result<()> {
+        match &self.budget {
+            Some(budget) => budget.reserve(market, weight).await,
+            None => Ok(()),
+        }
+    }
+    /// 出站一次：闸门按着就不出去（回一个可重试的错误，等它自己开），出去了就把
+    /// 状态码交给闸门记下。
+    async fn send(&self, request: reqwest::RequestBuilder) -> Result<reqwest::Response> {
+        if let Some(left) = self.gate.as_ref().and_then(|g| g.wait()) {
+            let seconds = u32::try_from(left.as_secs().max(1)).unwrap_or(u32::MAX);
+            return Err(Error::deferred(
+                "provider_rate_limited",
+                crate::error::RetryDirective::After(seconds),
+            ));
+        }
+        let response = request.send().await.map_err(anyhow::Error::from)?;
+        if let Some(gate) = &self.gate {
+            gate.note(
+                response.status().as_u16(),
+                response
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|v| v.to_str().ok()),
+            );
+        }
+        Ok(response)
     }
     pub async fn klines(
         &self,
@@ -123,7 +193,9 @@ impl Binance {
         if start >= end || iv.bars_between(start, end) > 50_000 {
             return Err(Error::bad("market_range_too_large"));
         }
-        let url = endpoint(market, "klines").ok_or_else(|| Error::bad("market_not_supported"))?;
+        let url = self
+            .url(market, "klines")
+            .ok_or_else(|| Error::bad("market_not_supported"))?;
         let mut cursor = start.timestamp_millis();
         let mut raw = Vec::<Value>::new();
         let mut bars = Vec::<Bar>::new();
@@ -137,20 +209,16 @@ impl Binance {
                 DateTime::from_timestamp_millis(cursor).unwrap_or(start),
                 end,
             ));
-            self.budget.reserve(market, klines_weight(limit)).await?;
+            self.reserve(market, klines_weight(limit)).await?;
             let response = self
-                .client
-                .get(&url)
-                .query(&[
+                .send(self.client.get(&url).query(&[
                     ("symbol", symbol.to_string()),
                     ("interval", interval.to_string()),
                     ("startTime", cursor.to_string()),
                     ("endTime", (end.timestamp_millis() - 1).to_string()),
                     ("limit", limit.to_string()),
-                ])
-                .send()
-                .await
-                .map_err(anyhow::Error::from)?;
+                ]))
+                .await?;
             let page: Vec<Value> = self.decode(market, response).await?;
             if page.is_empty() {
                 break;
@@ -238,8 +306,9 @@ impl Binance {
         {
             return Err(Error::bad("invalid_trade_range"));
         }
-        let url =
-            endpoint(market, "aggTrades").ok_or_else(|| Error::bad("market_not_supported"))?;
+        let url = self
+            .url(market, "aggTrades")
+            .ok_or_else(|| Error::bad("market_not_supported"))?;
         let mut all = vec![];
         let mut from = None;
         let mut complete = false;
@@ -251,14 +320,8 @@ impl Binance {
                 params.push(("startTime", start.timestamp_millis().to_string()));
                 params.push(("endTime", end.timestamp_millis().to_string()));
             }
-            self.budget.reserve(market, 20).await?;
-            let response = self
-                .client
-                .get(&url)
-                .query(&params)
-                .send()
-                .await
-                .map_err(anyhow::Error::from)?;
+            self.reserve(market, 20).await?;
+            let response = self.send(self.client.get(&url).query(&params)).await?;
             let page: Vec<Value> = self.decode(market, response).await?;
             if page.is_empty() {
                 complete = true;
@@ -297,15 +360,11 @@ impl Binance {
 }
 impl Binance {
     pub async fn exchange_info(&self, market: &str) -> Result<Value> {
-        let url = endpoint(market, "exchangeInfo")
+        let url = self
+            .url(market, "exchangeInfo")
             .ok_or_else(|| Error::bad("contract_market_required"))?;
-        self.budget.reserve(market, 1).await?;
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(anyhow::Error::from)?;
+        self.reserve(market, 1).await?;
+        let response = self.send(self.client.get(&url)).await?;
         self.decode(market, response).await
     }
     async fn decode<T: serde::de::DeserializeOwned>(
@@ -327,13 +386,17 @@ impl Binance {
                 .and_then(|v| v.parse::<u32>().ok())
                 .unwrap_or(if status == 418 { 3600 } else { 30 })
                 .clamp(1, 259200);
-            self.budget.observe(market, used, Some(seconds)).await?;
+            if let Some(budget) = &self.budget {
+                budget.observe(market, used, Some(seconds)).await?;
+            }
             return Err(Error::deferred(
                 "provider_rate_limited",
                 crate::error::RetryDirective::After(seconds),
             ));
         }
-        self.budget.observe(market, used, None).await?;
+        if let Some(budget) = &self.budget {
+            budget.observe(market, used, None).await?;
+        }
         if status >= 500 {
             return Err(Error::transient("provider_unavailable"));
         }

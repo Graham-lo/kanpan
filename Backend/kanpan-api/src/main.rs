@@ -32,7 +32,7 @@ async fn main()->anyhow::Result<()> {
   }
  }
  if command=="worker" {
-  let market=scorebook_market::adapters::binance::Binance::new(s.pool.clone())?;
+  let market=kanpan_api::review_market::provider(s.pool.clone())?;
   let review_loop=async {loop {
    if kanpan_api::review_worker::run_one(&s,&market).await.is_err(){tracing::warn!("Review work will retry");}
    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
