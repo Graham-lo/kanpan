@@ -52,7 +52,7 @@ fn share_identity(symbol:&str)->(&str,&str,&str) {
 }
 fn validate(v:&Send)->Result<()> {
  let (venue,market,symbol)=share_identity(&v.symbol);
- if !sync_validation::field("drawings","symbol",&json!(symbol)) || !sync_validation::identity(venue,market,symbol) || !crate::instruments::is_interval(&v.interval) || v.view.from<0 || v.view.to>9_000_000_000_000_000 || v.view.from>=v.view.to || !(1..=200).contains(&v.drawings.len()) {return Err(ApiError::bad("invalid_share"))}
+ if !sync_validation::field(sync::DRAWINGS,"symbol",&json!(symbol)) || !sync_validation::identity(venue,market,symbol) || !crate::instruments::is_interval(&v.interval) || v.view.from<0 || v.view.to>9_000_000_000_000_000 || v.view.from>=v.view.to || !(1..=200).contains(&v.drawings.len()) {return Err(ApiError::bad("invalid_share"))}
  let mut ids=HashSet::new();
  for drawing in &v.drawings {
   let map=drawing.as_object().ok_or(ApiError::bad("invalid_drawing"))?;
@@ -68,7 +68,7 @@ fn validate(v:&Send)->Result<()> {
   for key in ["kind","anchors","lineWidth","dash","filled","locked","hidden","levels"] {if !body.contains_key(key) {return Err(ApiError::bad("invalid_drawing"))}}
   body.insert("symbol".into(),json!(symbol));
   body.insert("venue".into(),json!(venue)); body.insert("market".into(),json!(market));
-  sync_validation::object(&sync::Object{collection:"drawings".into(),id:format!("{venue}/{market}/{symbol}/{id}"),body,fields:BTreeMap::new(),revision:0,deleted:false,generation:0})?;
+  sync_validation::object(&sync::Object{collection:sync::DRAWINGS.into(),id:format!("{venue}/{market}/{symbol}/{id}"),body,fields:BTreeMap::new(),revision:0,deleted:false,generation:0})?;
  }
  if v.reply_to.as_deref().is_some_and(|r|r.len()!=22||!r.bytes().all(|b|b.is_ascii_alphanumeric())) {return Err(ApiError::bad("invalid_reply_to"))}
  if v.alerted.len()>ids.len() || v.alerted.iter().any(|id|!ids.contains(id.as_str())) || v.alerted.iter().collect::<HashSet<_>>().len()!=v.alerted.len() {return Err(ApiError::bad("invalid_alerted"))} Ok(())

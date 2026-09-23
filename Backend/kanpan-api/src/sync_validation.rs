@@ -1,5 +1,5 @@
 //! Mirrors the native wire types at the boundary, before a merged value can reach another device.
-use crate::{error::{ApiError,Result},sync::Object};
+use crate::{error::{ApiError,Result},sync::{Object,SETTINGS,DRAWING_PREFERENCES,DRAWINGS,FAVORITES,GROUPS,ALERTS}};
 use serde_json::Value;
 // `IndicatorID` (KanpanCore/Indicator/IndicatorID.swift), split the way `IndicatorID.placement`
 // splits it: main chart first, sub-panels second. `overlays` accepts only the first half and
@@ -67,7 +67,7 @@ fn lines(v:&Value)->bool {
     && ps.iter().all(|p|p.as_object().is_some_and(|o|o.len()==2)&&number(&p["t"],0.0,9e15)&&number(&p["p"],-1e15,1e15)))
  }))
 }
-fn style(v:&Value)->bool {v.as_object().is_some_and(|o|o.iter().all(|(k,v)|field("drawings",k,v))&&o.contains_key("lineWidth")&&o.contains_key("dash")&&o.contains_key("filled")&&o.contains_key("levels"))}
+fn style(v:&Value)->bool {v.as_object().is_some_and(|o|o.iter().all(|(k,v)|field(DRAWINGS,k,v))&&o.contains_key("lineWidth")&&o.contains_key("dash")&&o.contains_key("filled")&&o.contains_key("levels"))}
 fn compare_key(v:&Value)->bool {
  let Some(s)=v.as_str() else {return false};
  let p:Vec<_>=s.split('/').collect();
@@ -89,9 +89,9 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
  // firedAt / firedPrice 清掉；`kind` 从 drawing 改成别的时 drawingID 也会被清。
  // 客户端的 diff 把「这次不写这个 key」发成 null，拒收它就等于整条 op 400。
  if v.is_null(){return p.len()==1&&matches!(path,"color"|"groupId"|"text")
-  || collection=="alerts"&&p.len()==1&&matches!(path,"drawingID"|"firedAt"|"firedPrice"|"dueAt"|"reviewID")
-  || collection=="settings"&&p.len()>=2 || collection=="drawingPreferences"&&p.len()==2}
- if collection=="settings" {
+  || collection==ALERTS&&p.len()==1&&matches!(path,"drawingID"|"firedAt"|"firedPrice"|"dueAt"|"reviewID")
+  || collection==SETTINGS&&p.len()>=2 || collection==DRAWING_PREFERENCES&&p.len()==2}
+ if collection==SETTINGS {
   if p.len()>1 {
    if !indicator(p[1]) {return false}
    return match p[0] {
@@ -144,22 +144,22 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
   }
  }
- if collection=="drawingPreferences" {return match path {"favorites"=>names(v,KINDS.len(),KINDS),"magnet"|"continuous"=>v.is_boolean(),
+ if collection==DRAWING_PREFERENCES {return match path {"favorites"=>names(v,KINDS.len(),KINDS),"magnet"|"continuous"=>v.is_boolean(),
   _=>p.len()==2&&KINDS.contains(&p[1])&&match p[0] {"styles"=>style(v),"variants"=>v.as_str().is_some_and(|s|KINDS.contains(&s)),_=>false}}}
  if p.len()!=1 {return false}
  match (collection,path) {
-  ("drawings","kind")=>v.as_str().is_some_and(|s|KINDS.contains(&s)),
+  (DRAWINGS,"kind")=>v.as_str().is_some_and(|s|KINDS.contains(&s)),
   // Up to eight: `Drawing.Part.anchors`, which the seven-point head-and-shoulders needs.
-  ("drawings","anchors")=>v.as_array().is_some_and(|a|(1..=8).contains(&a.len())&&a.iter().all(|p|p.as_object().is_some_and(|o|o.len()==2)&&number(&p["t"],0.0,9e15)&&number(&p["p"],-1e15,1e15))),
-  ("drawings","color")=>color(v),
-  ("drawings","lineWidth")=>number(v,0.5,6.0),
-  ("drawings","dash")=>v.as_str().is_some_and(|s|["solid","dashed","dotted"].contains(&s)),
-  ("drawings","filled"|"locked"|"hidden")|("favorites","pinned"|"alerts")=>v.is_boolean(),
-  ("drawings","levels")=>v.as_array().is_some_and(|a|a.len()<=24&&a.iter().all(|v|number(v,-10.0,10.0))),
-  ("drawings"|"favorites","market")=>v=="usd_m"||v=="spot",
-  ("drawings"|"favorites","venue")=>v=="binance"||v=="coinbase",
-  ("drawings"|"favorites","symbol")=>symbol(v),
-  ("drawings","created")=>number(v,0.0,9e15),
+  (DRAWINGS,"anchors")=>v.as_array().is_some_and(|a|(1..=8).contains(&a.len())&&a.iter().all(|p|p.as_object().is_some_and(|o|o.len()==2)&&number(&p["t"],0.0,9e15)&&number(&p["p"],-1e15,1e15))),
+  (DRAWINGS,"color")=>color(v),
+  (DRAWINGS,"lineWidth")=>number(v,0.5,6.0),
+  (DRAWINGS,"dash")=>v.as_str().is_some_and(|s|["solid","dashed","dotted"].contains(&s)),
+  (DRAWINGS,"filled"|"locked"|"hidden")|(FAVORITES,"pinned"|"alerts")=>v.is_boolean(),
+  (DRAWINGS,"levels")=>v.as_array().is_some_and(|a|a.len()<=24&&a.iter().all(|v|number(v,-10.0,10.0))),
+  (DRAWINGS|FAVORITES,"market")=>v=="usd_m"||v=="spot",
+  (DRAWINGS|FAVORITES,"venue")=>v=="binance"||v=="coinbase",
+  (DRAWINGS|FAVORITES,"symbol")=>symbol(v),
+  (DRAWINGS,"created")=>number(v,0.0,9e15),
   // An anti-abuse ceiling, deliberately not a copy of the client's UX rule. The client caps a
   // caption at 60 Swift Characters (grapheme clusters) because that is what still reads as one
   // line over the candles; this function can only count UTF-8 bytes, and the two do not convert
@@ -169,32 +169,32 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   // why 1 KB would not be enough either. 4 KB clears any realistic caption by a wide margin and
   // still stops someone pasting a novel; the per-field 64 KB rule in `Operation::validate` is
   // the real backstop. Whatever the client accepts, the server must be able to store.
-  ("drawings","text")=>string(v,4096),
-  ("favorites","groupId")=>string(v,100),
-  ("favorites"|"groups","order")=>number(v,0.0,1e9),
-  ("groups","name")=>string(v,100),
-  ("groups","members")=>v.as_array().is_some_and(|a|a.len()<=2000&&a.iter().all(|v|string(v,100))),
+  (DRAWINGS,"text")=>string(v,4096),
+  (FAVORITES,"groupId")=>string(v,100),
+  (FAVORITES|GROUPS,"order")=>number(v,0.0,1e9),
+  (GROUPS,"name")=>string(v,100),
+  (GROUPS,"members")=>v.as_array().is_some_and(|a|a.len()<=2000&&a.iter().all(|v|string(v,100))),
   // ——— 提醒（方案文档 2.2） ———
   // 三种都真的在用（P3.1）：`drawing` / `price` 按线判，`reviewDue` 按 `dueAt` 判。
-  ("alerts","kind")=>one_of(v,&["drawing","price","reviewDue"]),
+  (ALERTS,"kind")=>one_of(v,&["drawing","price","reviewDue"]),
   // 这个集合的 market 是整串 `binance/usd_m`（drawings / favorites 是 `usd_m` 加单独的
   // venue）。形状是文档定的，照抄，不要「统一」。
-  ("alerts","market")=>v=="binance/usd_m"||v=="coinbase/spot",
-  ("alerts","symbol")=>symbol(v),
+  (ALERTS,"market")=>v=="binance/usd_m"||v=="coinbase/spot",
+  (ALERTS,"symbol")=>symbol(v),
   // 画线的同步对象 id 原样，和 `drawings` 的 id 同一套形态。
-  ("alerts","drawingID")=>string(v,180),
-  ("alerts","lines")=>lines(v),
+  (ALERTS,"drawingID")=>string(v,180),
+  (ALERTS,"lines")=>lines(v),
   // `close`（收盘穿过）是第二种条件，见文档第 10 节。两侧评估器都判它
   // （`alerts::crossed_on_close` / 客户端 `AlertEvaluator.closeHit`）。
-  ("alerts","condition")=>one_of(v,&["touch","close"]),
-  ("alerts","status")=>one_of(v,&["active","fired","paused"]),
-  ("alerts","once")=>v.is_boolean(),
-  ("alerts","armedAt"|"firedAt"|"dueAt"|"created")=>number(v,0.0,9e15),
-  ("alerts","firedPrice")=>number(v,-1e15,1e15),
-  ("alerts","reviewID")=>string(v,100),
+  (ALERTS,"condition")=>one_of(v,&["touch","close"]),
+  (ALERTS,"status")=>one_of(v,&["active","fired","paused"]),
+  (ALERTS,"once")=>v.is_boolean(),
+  (ALERTS,"armedAt"|"firedAt"|"dueAt"|"created")=>number(v,0.0,9e15),
+  (ALERTS,"firedPrice")=>number(v,-1e15,1e15),
+  (ALERTS,"reviewID")=>string(v,100),
   // 通知标题是客户端生成的中文短句。和 `drawings.text` 同一档理由：这里数的是 UTF-8
   // 字节，客户端数的是字素，两者换算不了，所以给一个宽到不可能误伤的上限。
-  ("alerts","title")=>string(v,1024),_=>false
+  (ALERTS,"title")=>string(v,1024),_=>false
  }
 }
 /// Folds the tombstones whose "no value" is actually a real value back into that value.
@@ -208,7 +208,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
 /// screen. Runs after the field merge and before validation, so what is stored is already
 /// canonical.
 pub fn clear_tombstones(value:&mut Object) {
- if value.collection=="drawings" && value.body.get("text").is_some_and(Value::is_null) {
+ if value.collection==DRAWINGS && value.body.get("text").is_some_and(Value::is_null) {
   value.body.insert("text".into(),Value::String(String::new()));
  }
 }
@@ -222,12 +222,12 @@ pub fn identity(venue:&str,market:&str,symbol:&str)->bool {
 pub fn object(value:&Object)->Result<()> {
  if value.deleted{return Ok(())}
  if value.body.iter().any(|(k,v)|!field(&value.collection,k,v)){return Err(ApiError::bad("invalid_sync_value"))}
- if value.collection=="favorites" {
+ if value.collection==FAVORITES {
   let part=|k:&str|value.body.get(k).and_then(Value::as_str).unwrap_or("");
   let (venue,market,symbol)=(part("venue"),part("market"),part("symbol"));
   if !identity(venue,market,symbol) || value.id!=format!("{venue}/{market}/{symbol}") {return Err(ApiError::bad("invalid_favorite_identity"))}
  }
- if value.collection=="drawings" {
+ if value.collection==DRAWINGS {
   let kind=value.body.get("kind").and_then(Value::as_str).ok_or_else(||ApiError::bad("invalid_drawing"))?;
   let count=anchor_count(kind);
   if value.body.get("anchors").and_then(Value::as_array).is_none_or(|a|a.len()!=count){return Err(ApiError::bad("invalid_drawing"))}
@@ -236,7 +236,7 @@ pub fn object(value:&Object)->Result<()> {
   let market=value.body.get("market").and_then(Value::as_str).unwrap_or("usd_m");
   if !identity(venue,market,symbol) || !value.id.starts_with(&format!("{venue}/{market}/{symbol}/")) {return Err(ApiError::bad("invalid_drawing_identity"))}
  }
- if value.collection=="alerts" {
+ if value.collection==ALERTS {
   // 和 drawings 同一套 id 形态：binance/usd_m/<SYMBOL>/<alertID>。物化表按 symbol 订阅
   // 行情、按 id 回写状态，两者对不上就会订阅一个品种、推另一个品种的价。
   let kind=value.body.get("kind").and_then(Value::as_str).ok_or_else(||ApiError::bad("invalid_alert"))?;

@@ -22,7 +22,7 @@ async fn export(State(s):State<AppState>,who:Identity)->Result<Json<Value>> {
  // 每一段都在同一个 RLS 事务里、并且显式按 user_id 过滤：双保险，谁也读不到别人的行。
  let (username,created):(String,chrono::DateTime<chrono::Utc>)=sqlx::query_as("SELECT email,created_at FROM account_users WHERE id=$1").bind(who.user).fetch_one(&mut *tx).await?;
  let one=|sql:&'static str| sqlx::query_scalar::<_,Value>(sql).bind(who.user);
- let sync=one("SELECT coalesce(jsonb_agg(jsonb_build_object('collection',collection,'id',id,'body',body,'fields',fields,'revision',revision,'changedAt',changed_at) ORDER BY collection,id),'[]') FROM sync_objects WHERE user_id=$1 AND NOT deleted").fetch_one(&mut *tx).await?;
+ let sync=crate::sync::export(&mut tx,who.user).await?;
  let episodes=one("SELECT coalesce(jsonb_agg(to_jsonb(e)-'user_id' ORDER BY anchor_at),'[]') FROM review_episodes e WHERE user_id=$1").fetch_one(&mut *tx).await?;
  let records=one("SELECT coalesce(jsonb_agg(jsonb_build_object('id',id,'submitted',submitted,'symbol',symbol,'timeframe',timeframe,'record',record,'changedAt',changed_at) ORDER BY submitted),'[]') FROM review_records WHERE user_id=$1").fetch_one(&mut *tx).await?;
  let events=one("SELECT coalesce(jsonb_agg(to_jsonb(e)-'user_id'),'[]') FROM review_events e WHERE user_id=$1").fetch_one(&mut *tx).await?;

@@ -327,8 +327,7 @@ pub async fn record_fired(s:&AppState,owner:Uuid,alert_id:&str,price:Option<f64>
  if changed==0 {tx.commit().await?;return Ok(false)}
  // 同步对象没了（用户在别的设备上删了这条提醒，而这一轮的内存快照还没刷新）：
  // 把物化表那一行一起清掉就好，不要拿一条不存在的对象去写 op。
- let present:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sync_objects WHERE user_id=$1 AND collection='alerts' AND id=$2 AND NOT deleted)")
-  .bind(owner).bind(alert_id).fetch_one(&mut *tx).await?;
+ let present=crate::sync::read_object(&mut tx,owner,crate::sync::ALERTS,alert_id).await?.is_some();
  if !present {
   sqlx::query("DELETE FROM alert_watches WHERE user_id=$1 AND alert_id=$2").bind(owner).bind(alert_id).execute(&mut *tx).await?;
   tx.commit().await?;return Ok(false)
@@ -336,7 +335,7 @@ pub async fn record_fired(s:&AppState,owner:Uuid,alert_id:&str,price:Option<f64>
  let mut fields:BTreeMap<String,Value>=[("status",json!("fired")),("firedAt",json!(at))]
   .into_iter().map(|(k,v)|(k.to_string(),v)).collect();
  if let Some(price)=price {fields.insert("firedPrice".into(),json!(price));}
- crate::sync::apply_server(&mut tx,owner,"alerts",alert_id,fields).await?;
+ crate::sync::apply_server_op(&mut tx,owner,crate::sync::ALERTS,alert_id,fields).await?;
  tx.commit().await?;
  Ok(true)
 }
@@ -395,8 +394,7 @@ pub async fn notify(s:&AppState,apns:&Apns,owner:Uuid,notice:&Notice)->Result<()
   let rows=sqlx::query("SELECT device_id,token,environment FROM device_push_tokens WHERE user_id=$1 AND kind='alerts'")
    .bind(owner).fetch_all(&mut *tx).await?;
   // 与 token 在同一个个人事务里读取；不缓存，用户改声后下一条提醒立即采用新值。
-  let settings:Option<Value>=sqlx::query_scalar("SELECT body FROM sync_objects WHERE user_id=$1 AND collection='settings' AND id='chart' AND NOT deleted")
-   .bind(owner).fetch_optional(&mut *tx).await?;
+  let settings=crate::sync::settings_body(&mut tx,owner).await?;
   let sound=crate::apns::alert_sound(settings.as_ref());
   tx.commit().await?;(rows,sound)
  };

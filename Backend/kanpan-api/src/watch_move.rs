@@ -118,13 +118,17 @@ pub struct Mover {pub owner:Uuid,pub threshold:f64,pub symbols:BTreeSet<String>}
 /// 那个个人事务里调用，每家交易所的评估器各读各的（币安的组合流订不了 `BTC-USD`）。
 /// 老客户端写的自选没有 `venue` 字段，按币安算。
 pub async fn load_mover(tx:&mut Transaction<'_,Postgres>,owner:Uuid,venue:&str)->Result<Option<Mover>> {
- let settings:Option<Value>=sqlx::query_scalar("SELECT body FROM sync_objects WHERE user_id=$1 AND collection='settings' AND id='chart' AND NOT deleted")
-  .bind(owner).fetch_optional(&mut **tx).await?;
+ let settings=crate::sync::settings_body(tx,owner).await?;
  let Some(threshold)=enabled(settings.as_ref()) else {return Ok(None)};
- let symbols:Vec<Option<String>>=sqlx::query_scalar("SELECT DISTINCT body->>'symbol' FROM sync_objects WHERE user_id=$1 AND collection='favorites' AND NOT deleted AND COALESCE(body->>'venue','binance')=$2")
-  .bind(owner).bind(venue).fetch_all(&mut **tx).await?;
- let symbols:BTreeSet<String>=symbols.into_iter().flatten().filter(|s|!s.is_empty()).map(|s|s.to_uppercase()).collect();
- Ok(Some(Mover{owner,threshold,symbols}))
+ let favorites=crate::sync::live_objects(tx,owner,crate::sync::FAVORITES).await?;
+ Ok(Some(Mover{owner,threshold,symbols:favorite_symbols(&favorites,venue)}))
+}
+/// 自选里这家交易所的品种（大写、去重）。老客户端写的自选没有 `venue`，按币安算。
+fn favorite_symbols(favorites:&[crate::sync::Object],venue:&str)->BTreeSet<String> {
+ favorites.iter()
+  .filter(|o|o.body.get("venue").and_then(Value::as_str).unwrap_or("binance")==venue)
+  .filter_map(|o|o.body.get("symbol").and_then(Value::as_str))
+  .filter(|s|!s.is_empty()).map(str::to_uppercase).collect()
 }
 /// 设置里开着就返回幅度，关着（或者从没设过——出厂是关）就是 `None`。
 fn enabled(settings:Option<&Value>)->Option<f64> {
@@ -294,6 +298,15 @@ mod tests {
   assert_eq!(hits.iter().map(|(o,_)|*o).collect::<Vec<_>>(),vec![Uuid::from_u128(1)]);
  }
  /// 断线重连之后收盘价作废，闸保留：同一个窗口回来不再响一次。
+ /// 自选按交易所分：没写 `venue` 的老自选算币安，空代号不算，大小写归一、去重。
+ #[test] fn favorites_are_split_by_venue() {
+  let fav=|id:&str,body:serde_json::Value|crate::sync::Object{collection:crate::sync::FAVORITES.into(),id:id.into(),
+   body:serde_json::from_value(body).unwrap(),fields:BTreeMap::new(),revision:1,deleted:false,generation:0};
+  let all=[fav("a",serde_json::json!({"symbol":"btcusdt"})),fav("b",serde_json::json!({"symbol":"BTCUSDT","venue":"binance"})),
+   fav("c",serde_json::json!({"symbol":"BTC-USD","venue":"coinbase"})),fav("d",serde_json::json!({"symbol":""})),fav("e",serde_json::json!({"venue":"binance"}))];
+  assert_eq!(favorite_symbols(&all,"binance"),BTreeSet::from(["BTCUSDT".to_owned()]));
+  assert_eq!(favorite_symbols(&all,"coinbase"),BTreeSet::from(["BTC-USD".to_owned()]));
+ }
  #[test] fn a_reconnect_forgets_prices_but_keeps_the_gates() {
   let mut m=Movers::default();
   m.refresh(&[mover(1,1.5,&["BTCUSDT"])]);

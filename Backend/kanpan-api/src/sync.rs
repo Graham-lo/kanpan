@@ -30,7 +30,18 @@ pub struct Object {
  pub collection:String,pub id:String,pub body:BTreeMap<String,Value>,
  pub fields:BTreeMap<String,Value>,pub revision:i64,pub deleted:bool,pub generation:i64,
 }
-const COLLECTIONS:[&str;6]=["settings","drawingPreferences","drawings","favorites","groups","alerts"];
+// 集合名只在这里写一次（审查 A4）。服务端别处要点名一个集合——评估器读设置、
+// 波动提醒读自选、分享校验画线——一律用这些常量，不再手写字符串：拼错一个字母
+// 不会报错，只会安静地读到「这个人什么都没有」。
+pub const SETTINGS:&str="settings";
+pub const DRAWING_PREFERENCES:&str="drawingPreferences";
+pub const DRAWINGS:&str="drawings";
+pub const FAVORITES:&str="favorites";
+pub const GROUPS:&str="groups";
+pub const ALERTS:&str="alerts";
+pub const COLLECTIONS:[&str;6]=[SETTINGS,DRAWING_PREFERENCES,DRAWINGS,FAVORITES,GROUPS,ALERTS];
+/// `settings` 集合里那一条设置对象的 id（客户端 `PersonalSyncCodec` 固定写 `chart`）。
+pub const SETTINGS_OBJECT:&str="chart";
 fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::bad("invalid_collection"))}else{Ok(())}}
 // One enumerable allowlist per collection, mirroring what iOS actually sends.
 //
@@ -85,7 +96,7 @@ pub const ALERT_FIELDS:[&str;15]=[
  "status","firedAt","firedPrice","dueAt","reviewID","title","created",
 ];
 pub fn allowlist(c:&str)->&'static [&'static str] {
- match c {"settings"=>SETTINGS_FIELDS,"drawingPreferences"=>&DRAWING_PREFERENCE_FIELDS,"drawings"=>&DRAWING_FIELDS,"favorites"=>&FAVORITE_FIELDS,"groups"=>&GROUP_FIELDS,"alerts"=>&ALERT_FIELDS,_=>&[]}
+ match c {SETTINGS=>SETTINGS_FIELDS,DRAWING_PREFERENCES=>&DRAWING_PREFERENCE_FIELDS,DRAWINGS=>&DRAWING_FIELDS,FAVORITES=>&FAVORITE_FIELDS,GROUPS=>&GROUP_FIELDS,ALERTS=>&ALERT_FIELDS,_=>&[]}
 }
 // Malformed paths are rejected; unknown-but-well-formed names are only dropped.
 fn valid_path(path:&str)->bool {!path.is_empty() && path.len()<=160 && !path.split('/').any(|p|p.is_empty()||p==".."||p.starts_with('_'))}
@@ -146,6 +157,34 @@ fn object(r:&sqlx::postgres::PgRow)->Result<Object> {
 pub async fn lock(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<()> {
  sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))").bind(format!("sync:{owner}")).execute(&mut **tx).await?;Ok(())
 }
+// ------------------------------------------------------------ 服务端的出入口
+//
+// `sync_objects` 只有这个文件直接读写（审查 A4）。服务端别的模块要看一个人同步上来的
+// 东西，走 `read_object` / `live_objects`；要以服务端身份改一条，走 `apply_server_op`。
+// 这样「删了的不算」「body 是 json 对象」这些约定只在一处，别处不会各写一版 SQL。
+
+/// 一条**还活着**的同步对象（删了的当作没有）。调用方在自己的个人事务里调用。
+pub async fn read_object(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,collection:&str,id:&str)->Result<Option<Object>> {
+ let row=sqlx::query("SELECT * FROM sync_objects WHERE user_id=$1 AND collection=$2 AND id=$3 AND NOT deleted")
+  .bind(owner).bind(collection).bind(id).fetch_optional(&mut **tx).await?;
+ row.as_ref().map(object).transpose()
+}
+/// 这个人某个集合里全部还活着的对象，按 id 排序。只给小集合用（自选、分组）。
+pub async fn live_objects(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,collection:&str)->Result<Vec<Object>> {
+ let rows=sqlx::query("SELECT * FROM sync_objects WHERE user_id=$1 AND collection=$2 AND NOT deleted ORDER BY id")
+  .bind(owner).bind(collection).fetch_all(&mut **tx).await?;
+ rows.iter().map(object).collect()
+}
+/// 这个人的设置对象的 body（评估器取提醒声音、波动提醒的开关与幅度）。没有就是 `None`。
+pub async fn settings_body(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<Option<Value>> {
+ Ok(read_object(tx,owner,SETTINGS,SETTINGS_OBJECT).await?.map(|o|json!(o.body)))
+}
+/// 「导出我的数据」里的同步那一段：全部活着的对象，连同字段戳与最后修改时间。
+pub async fn export(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<Value> {
+ Ok(sqlx::query_scalar("SELECT coalesce(jsonb_agg(jsonb_build_object('collection',collection,'id',id,'body',body,'fields',fields,'revision',revision,'changedAt',changed_at) ORDER BY collection,id),'[]') FROM sync_objects WHERE user_id=$1 AND NOT deleted")
+  .bind(owner).fetch_one(&mut **tx).await?)
+}
+
 /// 以服务端自己的身份改一条同步对象，走的是和客户端 op 完全一样的那条路。
 ///
 /// 评估器判定触发之后要把 `status=fired` 告诉这个人的每一台设备，而设备只认同步日志：
@@ -157,7 +196,7 @@ pub async fn lock(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Resu
 /// 不会把它当成回声丢掉。调用方必须**已经**拿了 `lock`（本文件 `push` 的同一把）。
 ///
 /// 对象不存在就报错而不是新建：服务端只会去改一条客户端已经同步上来的提醒。
-pub async fn apply_server(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,collection:&str,object_id:&str,fields:BTreeMap<String,Value>)->Result<Object> {
+pub async fn apply_server_op(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid,collection:&str,object_id:&str,fields:BTreeMap<String,Value>)->Result<Object> {
  let row=sqlx::query("SELECT * FROM sync_objects WHERE user_id=$1 AND collection=$2 AND id=$3 FOR UPDATE").bind(owner).bind(collection).bind(object_id).fetch_optional(&mut **tx).await?;
  let Some(row)=row else {return Err(ApiError::bad("unknown_object"))};
  let old=object(&row)?;
@@ -199,7 +238,7 @@ async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Js
   // 提醒对象落库的同一口气里刷新物化表：评估器读的是 alert_watches，不是 sync_objects。
   // 放在同一个事务里，所以「同步成功了但评估器还在用旧几何」这个中间态不存在——
   // 用户把被提醒的线拖到别处、客户端用同一个 alert id 重传 lines，下一帧就是新形状。
-  if next.collection=="alerts" {crate::alerts::materialize(&mut tx,i.user,&next).await?;}
+  if next.collection==ALERTS {crate::alerts::materialize(&mut tx,i.user,&next).await?;}
   let cursor:i64=sqlx::query_scalar("INSERT INTO sync_changes(user_id,collection,object_id,revision,deleted) VALUES($1,$2,$3,$4,$5) RETURNING sequence").bind(i.user).bind(&next.collection).bind(&next.id).bind(next.revision).bind(next.deleted).fetch_one(&mut *tx).await?;
   // `droppedFields` is always present, so a client can tell "this server does not
   // report drops" (field absent) from "nothing was dropped" (empty list). Older
@@ -212,7 +251,7 @@ async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Js
 async fn bootstrap(State(s):State<AppState>,i:Identity,Query(v):Query<Scope>)->Result<Json<Value>> {
  if let Some(c)=&v.collection{collection(c)?}
  // Default bootstrap contains only small personal settings. Histories require an explicit scope.
- let c=v.collection.unwrap_or_else(||"settings".into());
+ let c=v.collection.unwrap_or_else(||SETTINGS.into());
  let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
  // 主键 (user_id,collection,id) 就够了，前缀这一条是过滤器、不指望走索引。
  // 0007 曾经为它建过 sync_objects_prefix（…,id text_pattern_ops）：那种操作符族按字节
@@ -257,6 +296,12 @@ async fn changes(State(s):State<AppState>,i:Identity,Query(v):Query<Scope>)->Res
 #[cfg(test)]
 mod tests {
  use super::*;
+ /// 集合名常量就是协议里的那六个，每个都有白名单；拼错的名字没有白名单。
+ #[test] fn every_collection_constant_has_an_allowlist() {
+  assert_eq!(COLLECTIONS,["settings","drawingPreferences","drawings","favorites","groups","alerts"]);
+  for c in COLLECTIONS {assert!(!allowlist(c).is_empty(),"{c}");assert!(collection(c).is_ok())}
+  assert!(allowlist("alert").is_empty()&&collection("alert").is_err());
+ }
  fn op(collection:&str,fields:&[(&str,Value)])->Operation {
   Operation{id:Uuid::nil(),collection:collection.into(),object_id:"chart".into(),device_id:Uuid::nil(),
    base_revision:0,generation:0,timestamp:1,logical:1,action:"patch".into(),
