@@ -102,6 +102,8 @@ impl Tracker {
 
 /// 品种的短名：去掉计价币后缀，和客户端 `SymbolInfo.placeholder` 同一张后缀表。
 pub fn short(symbol:&str)->&str {
+ // `BTC-USD` 这类带分隔符的（Coinbase 现货）：横杠前面就是 base。
+ if let Some((base,_))=symbol.split_once('-').filter(|(b,_)|!b.is_empty()) {return base}
  for quote in ["USDT","USDC","USD1","BUSD"] {
   if let Some(base)=symbol.strip_suffix(quote).filter(|b|!b.is_empty()) {return base}
  }
@@ -118,13 +120,15 @@ pub fn title(symbol:&str,event:&Event)->String {
 #[derive(Clone,Debug,PartialEq)]
 pub struct Mover {pub owner:Uuid,pub threshold:f64,pub symbols:BTreeSet<String>}
 
-/// 这个人开着没有；开着就把幅度与自选一起读回来。在 `alerts::load` 那个个人事务里调用。
-pub async fn load_mover(tx:&mut Transaction<'_,Postgres>,owner:Uuid)->Result<Option<Mover>> {
+/// 这个人开着没有；开着就把幅度与**这家交易所**的自选一起读回来。在 `alerts::load`
+/// 那个个人事务里调用，每家交易所的评估器各读各的（币安的组合流订不了 `BTC-USD`）。
+/// 老客户端写的自选没有 `venue` 字段，按币安算。
+pub async fn load_mover(tx:&mut Transaction<'_,Postgres>,owner:Uuid,venue:&str)->Result<Option<Mover>> {
  let settings:Option<Value>=sqlx::query_scalar("SELECT body FROM sync_objects WHERE user_id=$1 AND collection='settings' AND id='chart' AND NOT deleted")
   .bind(owner).fetch_optional(&mut **tx).await?;
  let Some(threshold)=enabled(settings.as_ref()) else {return Ok(None)};
- let symbols:Vec<Option<String>>=sqlx::query_scalar("SELECT DISTINCT body->>'symbol' FROM sync_objects WHERE user_id=$1 AND collection='favorites' AND NOT deleted")
-  .bind(owner).fetch_all(&mut **tx).await?;
+ let symbols:Vec<Option<String>>=sqlx::query_scalar("SELECT DISTINCT body->>'symbol' FROM sync_objects WHERE user_id=$1 AND collection='favorites' AND NOT deleted AND COALESCE(body->>'venue','binance')=$2")
+  .bind(owner).bind(venue).fetch_all(&mut **tx).await?;
  let symbols:BTreeSet<String>=symbols.into_iter().flatten().filter(|s|!s.is_empty()).map(|s|s.to_uppercase()).collect();
  Ok(Some(Mover{owner,threshold,symbols}))
 }
@@ -164,13 +168,14 @@ impl Movers {
 }
 
 /// 响了：推给这个人的设备。没有 APNs 密钥时只留一行日志——前台那一半照样由 app 自己响。
-pub async fn notify(s:&AppState,apns:Option<&Apns>,owner:Uuid,event:&Event) {
+/// `market` 是这一支评估器的 `binance/usd_m` / `coinbase/spot`，决定点开去哪一家的那只。
+pub async fn notify(s:&AppState,apns:Option<&Apns>,owner:Uuid,event:&Event,market:&str) {
  let title=title(&event.symbol,event);
  let Some(apns)=apns else {
   tracing::info!("{title} (watch move); not pushed (no APNs key)");
   return
  };
- let notice=crate::alerts::Notice{title,body:format!("现价 {}",crate::alerts::money(event.price)),link:format!("hkline://symbol/{}",event.symbol),kind:"watchMove"};
+ let notice=crate::alerts::Notice{title,body:format!("现价 {}",crate::alerts::money(event.price)),link:format!("hkline://symbol/{}",crate::alerts::symbol_path(market,&event.symbol)),kind:"watchMove"};
  if let Err(e)=crate::alerts::notify(s,apns,owner,&notice).await {tracing::warn!("A watch-move notice could not be pushed ({e:?})")}
 }
 
@@ -198,6 +203,9 @@ mod tests {
   assert_eq!(title("BTCUSDT",&e),"BTC 五分钟跌 1.60%");
   assert_eq!(title("ETHUSDC",&e),"ETH 五分钟跌 1.60%");
   assert_eq!(short("USDT"),"USDT");
+  // Coinbase 现货：和客户端 `SymbolInfo.placeholder` 一样按横杠拆。
+  assert_eq!(title("BTC-USD",&e),"BTC 五分钟跌 1.60%");
+  assert_eq!(short("-USD"),"-USD");
  }
  #[test] fn a_small_move_is_quiet() {
   let mut t=Tracker::default();warm(&mut t,"BTCUSDT");

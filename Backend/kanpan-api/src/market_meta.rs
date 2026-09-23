@@ -31,7 +31,6 @@ const COINGECKO_PAGES:u32=4;
 // with production data. Measured 2026-09-18 on both nodes.
 const BINANCE_OI:&str="https://www.binance.com/fapi/v1/openInterest?symbol=";
 const BINANCE_PRICES:&str="https://www.binance.com/fapi/v1/ticker/price";
-const OKX_OI:&str="https://www.okx.com/api/v5/public/open-interest?instType=SWAP";
 // Binance's own contract list, read for one field: `underlyingType`. A third of
 // the perpetuals are not coins at all (equities, ETFs, metals, indices), and a
 // ticker like NVDA or META also names an unrelated altcoin, so without this the
@@ -57,9 +56,9 @@ const LISTING_GAP:Duration=Duration::from_millis(200);
 /// Supply moves in months, not seconds; one fetch a day is generous.
 const SUPPLY_TTL:Duration=Duration::from_secs(24*60*60);
 /// Open interest and price only need to be fresher than a glance at the header.
-const LIVE_TTL:Duration=Duration::from_secs(15);
+pub(crate) const LIVE_TTL:Duration=Duration::from_secs(15);
 /// The quote assets a perpetual symbol can end with, longest spelling first.
-const QUOTES:[&str;7]=["FDUSD","BUSD","TUSD","USDT","USDC","USDD","USD"];
+pub(crate) const QUOTES:[&str;7]=["FDUSD","BUSD","TUSD","USDT","USDC","USDD","USD"];
 
 // 缓存可以一直留着当恢复材料，但**送出去**的数字有年龄上限：拿不到新数据时留空，
 // 绝不把一个不知道多久以前的数字当现在的答案（B-03）。
@@ -70,9 +69,6 @@ pub const MAX_PUBLISH_AGE:Duration=Duration::from_secs(7*24*60*60);
 /// 名义持仓量 = 张数 × 价格，价格超过五分钟就不再乘：那是「现在的持仓 × 半小时前
 /// 的价格」，一个谁都对不上的数。超时就只给张数，不给 `value`（A-02）。
 pub const OI_PRICE_MAX_AGE:Duration=Duration::from_secs(300);
-/// OKX 的持仓量整张表一起抓。十五分钟没刷成功就不再拿它答题：持仓量是分钟级的量，
-/// 一刻钟前的表已经不是「现在」了。
-pub const OKX_OI_MAX_AGE:Duration=Duration::from_secs(900);
 /// 不带 `symbols` 时最多答多少个品种，跟 `symbols` 那一路同一个上限。
 const PAYLOAD_LIMIT:usize=1000;
 
@@ -410,20 +406,10 @@ pub fn lookup(table:&SupplyTable,symbol:&str)->Option<Meta> {
  }
  None
 }
-/// `BTCUSDT` -> `BTC-USDT-SWAP`; an instrument id passed in as-is stays intact.
-pub fn okx_instrument(symbol:&str)->String {
- let up=symbol.to_ascii_uppercase();
- if up.contains('-') {return if up.ends_with("-SWAP"){up}else{format!("{up}-SWAP")}}
- let clean:String=up.chars().filter(char::is_ascii_alphanumeric).collect();
- for quote in QUOTES {
-  if let Some(rest)=clean.strip_suffix(quote)&& !rest.is_empty() {return format!("{rest}-{quote}-SWAP")}
- }
- format!("{clean}-USDT-SWAP")
-}
 
 // -------------------------------------------------------------------- parsing
 
-fn num(v:&Value)->Option<f64> {
+pub(crate) fn num(v:&Value)->Option<f64> {
  match v {Value::Number(n)=>n.as_f64(),Value::String(s)=>s.trim().parse().ok(),_=>None}.filter(|x:&f64|x.is_finite())
 }
 /// Upstreams spell "unknown" as 0 (or a negative), notably `maxSupply`.
@@ -432,7 +418,7 @@ fn rank_of(v:&Value)->Option<i64> {
  match v {Value::Number(n)=>n.as_i64(),Value::String(s)=>s.trim().parse().ok(),_=>None}.filter(|r|*r>0)
 }
 /// Finds the row array whichever envelope the upstream wraps it in this week.
-fn rows(body:&Value)->&[Value] {
+pub(crate) fn rows(body:&Value)->&[Value] {
  for candidate in [body,&body["data"],&body["data"]["list"],&body["data"]["rows"],&body["result"]] {
   if let Some(array)=candidate.as_array()&& !array.is_empty() {return array}
  }
@@ -703,17 +689,6 @@ pub fn parse_binance_prices(body:&Value)->HashMap<String,f64> {
  }
  out
 }
-/// OKX sends every swap at once: `oiCcy` is coin-denominated, `oiUsd` notional.
-pub fn parse_okx_oi(body:&Value)->HashMap<String,OpenInterest> {
- let mut out=HashMap::new();
- for row in rows(body) {
-  let Some(instrument)=row["instId"].as_str() else {continue};
-  let Some(amount)=num(&row["oiCcy"]).or_else(||num(&row["oi"])) else {continue};
-  let time=row["ts"].as_str().and_then(|t|t.parse().ok()).or_else(||row["ts"].as_i64()).unwrap_or(0);
-  out.insert(instrument.to_ascii_uppercase(),OpenInterest{open_interest:amount,value:num(&row["oiUsd"]),time});
- }
- out
-}
 fn oi_payload(symbol:&str,oi:&OpenInterest)->Value {
  let mut out=serde_json::Map::new();
  out.insert("symbol".into(),json!(symbol));
@@ -725,13 +700,13 @@ fn oi_payload(symbol:&str,oi:&OpenInterest)->Value {
 
 // --------------------------------------------------------------------- caches
 
-struct Cache<T> {slot:std::sync::RwLock<Option<(Instant,Arc<T>)>>}
+pub(crate) struct Cache<T> {slot:std::sync::RwLock<Option<(Instant,Arc<T>)>>}
 impl<T> Cache<T> {
- fn new()->Self {Self{slot:std::sync::RwLock::new(None)}}
+ pub(crate) fn new()->Self {Self{slot:std::sync::RwLock::new(None)}}
  fn read(&self)->Option<(Instant,Arc<T>)> {self.slot.read().unwrap_or_else(|e|e.into_inner()).clone()}
- fn fresh(&self,ttl:Duration)->Option<Arc<T>> {self.read().filter(|(at,_)|at.elapsed()<ttl).map(|(_,v)|v)}
+ pub(crate) fn fresh(&self,ttl:Duration)->Option<Arc<T>> {self.read().filter(|(at,_)|at.elapsed()<ttl).map(|(_,v)|v)}
  fn stale(&self)->Option<Arc<T>> {self.read().map(|(_,v)|v)}
- fn store(&self,value:T)->Arc<T> {self.store_at(value,Instant::now())}
+ pub(crate) fn store(&self,value:T)->Arc<T> {self.store_at(value,Instant::now())}
  /// 存一份「一进来就算旧」的值，快照走这条路：它立刻能用来答请求，但仍然算
  /// 旧表，所以第一个请求照常把后台刷新踢起来，而不是拿着昨天的数字当新的用。
  fn store_stale(&self,value:T,age:Duration)->Arc<T> {
@@ -759,7 +734,6 @@ impl<T:Clone> Recent<T> {
  }
 }
 fn price_cache()->&'static Cache<HashMap<String,f64>> {static C:OnceLock<Cache<HashMap<String,f64>>>=OnceLock::new();C.get_or_init(Cache::new)}
-fn okx_cache()->&'static Cache<HashMap<String,OpenInterest>> {static C:OnceLock<Cache<HashMap<String,OpenInterest>>>=OnceLock::new();C.get_or_init(Cache::new)}
 fn binance_oi_cache()->&'static Recent<OpenInterest> {static C:OnceLock<Recent<OpenInterest>>=OnceLock::new();C.get_or_init(Recent::new)}
 
 // -------------------------------------------------------------------- fetching
@@ -782,7 +756,7 @@ pub(crate) fn http()->&'static reqwest::Client {
 /// `contractType` and `status` from the same body rather than fetching it a
 /// second time from a host of its own.
 pub async fn exchange_info()->Result<Value> {get_json(EXCHANGE_INFO).await}
-async fn get_json(url:&str)->Result<Value> {
+pub(crate) async fn get_json(url:&str)->Result<Value> {
  // 同一个出口被币安封着的时候连出站都不出：429 之后继续敲门换来的是 418，418 之后
  // 继续敲门换来的是几天（A-06）。这道闸门是进程级的，`sector_history` 和
  // `oi_archive` 的 exchangeInfo / ticker / klines 共用同一份截止时间。
@@ -1135,14 +1109,6 @@ async fn binance_open_interest(symbol:&str)->Result<OpenInterest> {
  oi.value=binance_price(symbol).await.map(|price|oi.open_interest*price);
  Ok(oi)
 }
-async fn okx_open_interest(symbol:&str)->Result<OpenInterest> {
- let table=match okx_cache().fresh(LIVE_TTL) {
-  Some(table)=>table,
-  // 一刻钟没刷成功就不再拿旧表答题：持仓量是分钟级的量。
-  None=>match get_json(OKX_OI).await {Ok(body)=>okx_cache().store(parse_okx_oi(&body)),Err(e)=>okx_cache().fresh(OKX_OI_MAX_AGE).ok_or(e)?}
- };
- table.get(&okx_instrument(symbol)).copied().ok_or_else(ApiError::missing)
-}
 
 // ------------------------------------------------------------------- handlers
 
@@ -1161,7 +1127,7 @@ async fn open_interest(Query(q):Query<OiQuery>)->Result<Json<Value>> {
    let plain:String=symbol.chars().filter(char::is_ascii_alphanumeric).collect();
    binance_open_interest(&plain).await?
   },
-  "okx"=>okx_open_interest(&symbol).await?,
+  "okx"=>crate::venues::okx::open_interest(&symbol).await?,
   _=>return Err(ApiError::bad("invalid_source")),
  };
  Ok(envelope(oi_payload(&symbol,&oi)))
@@ -1427,21 +1393,6 @@ mod tests {
   assert_eq!(prices.len(),1);
   let oi=parse_binance_oi(&json!({"symbol":"BTCUSDT","openInterest":"100","time":1})).unwrap();
   assert_eq!(oi.open_interest*prices["BTCUSDT"],7_670_000.0);
- }
- #[test]
- fn okx_swaps_parse_with_their_own_notional() {
-  let body=json!({"code":"0","data":[{"instId":"BTC-USDT-SWAP","oi":"1084317","oiCcy":"10843.17","oiUsd":"832000000","ts":"1789661435379"}]});
-  let table=parse_okx_oi(&body);
-  let oi=table["BTC-USDT-SWAP"];
-  assert_eq!(oi.open_interest,10_843.17);
-  assert_eq!(oi.value,Some(832_000_000.0));
-  assert_eq!(oi.time,1_789_661_435_379);
- }
- #[test]
- fn okx_instrument_ids_are_built_from_the_plain_symbol() {
-  assert_eq!(okx_instrument("BTCUSDT"),"BTC-USDT-SWAP");
-  assert_eq!(okx_instrument("btc-usdt-swap"),"BTC-USDT-SWAP");
-  assert_eq!(okx_instrument("PEPE-USDT"),"PEPE-USDT-SWAP");
  }
  #[test]
  fn oi_payload_drops_an_unknown_notional() {

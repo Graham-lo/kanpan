@@ -75,13 +75,20 @@ async fn assess(market:&dyn MarketDataProvider,r:&NativeRecord,checkpoint:Option
  let from=checkpoint.unwrap_or(r.submitted);
  if from>now {return Ok(open(answer("waiting","等待行情",None)))}
  if rule.confirmation=="trade_touch" {
-  // 当前网关不提供逐笔顺序证据，直接保留“待核实”并结束任务，避免反复空转。
-  // 不扩展多交易所能力，见 docs/不做清单.md；不以另一来源或普通K线冒充成交顺序。
-  if r.draft.range.venue=="okx" {return Ok(closed(answer("needs_verification","成交顺序待核实",None)))}
   // Leave one second for the exchange to settle the covered endpoint.
   let until=(now-1_000).min(rule.expires).min(from+30_000);
   if until<=from {return Ok(open(answer("waiting","等待行情",None)))}
-  let data=market.trades(&r.draft.range.market,&r.draft.range.symbol,core(domain::time(from))?,core(domain::time(until))?).await.map_err(|_|ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"market_unavailable"))?;
+  let range=&r.draft.range;
+  // 逐笔按记录自己的交易所取：币安走 aggTrades，Coinbase 走它自己的成交号（同一品种上连续）。
+  // 两家给出的形状一样（`raw:[{a,T,p}]` + `coverage_complete`），下面的判定不分家。
+  let data=match (range.venue.as_str(),range.market.as_str()) {
+   ("binance","usd_m")=>market.trades(&range.market,&range.symbol,core(domain::time(from))?,core(domain::time(until))?).await.map_err(|_|ApiError(axum::http::StatusCode::SERVICE_UNAVAILABLE,"market_unavailable"))?,
+   ("coinbase","spot")=>{
+    crate::review_market::coinbase_ready()?;
+    crate::venues::coinbase::trades(&range.symbol,from,until).await.map_err(crate::review_market::coinbase_refusal)?
+   }
+   _=>return Err(ApiError::bad("invalid_chart_range")),
+  };
   if data["coverage_complete"]!=true{return Ok(open(answer("needs_verification","成交数据尚不完整",None)))}
   let raw=data["raw"].as_array().ok_or_else(||ApiError::bad("invalid_trade"))?;
   let (assessment,checkpoint)=trade_assessment(r,raw,from,until,now)?;

@@ -94,4 +94,16 @@ struct SymbolQueryTests {
     #expect(SymbolQuery.split("USDT", highlight: 0 ..< 3, offset: 5).map(\.hit) == [false])
     #expect(SymbolQuery.split("USDT", highlight: nil, offset: 0).map(\.hit) == [false])
   }
+
+  @Test("带横杠的代号：BTC-USD / BTC/USD / btcusd 都搜得到，且算完全命中")
+  func dashedSymbols() {
+    let spot = SymbolInfo(symbol: "coinbase/spot/BTC-USD", base: "BTC", quote: "USD",
+                          pricePrecision: 2, tickSize: 0.01, underlyingType: "COIN")
+    for q in ["BTC-USD", "BTC/USD", "btcusd"] {
+      #expect(SymbolQuery.match(spot, query: SymbolQuery.normalize(q))?.tier == .exact)
+    }
+    // 计价那一段的高亮落在去掉横杠之后的位置（BTC 3 位，USD 从 3 起）。
+    #expect(SymbolQuery.match(spot, query: "USD")?.highlight == 3 ..< 6)
+  }
 }
+

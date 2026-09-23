@@ -8,6 +8,7 @@ pub mod review_worker;
 pub mod search;
 pub mod binance_gate;
 pub mod market_meta;
+pub mod venues;
 pub mod sector_history;
 pub mod oi_archive;
 pub mod maintenance;
@@ -84,11 +85,11 @@ pub fn pool_options(deadlines: bool) -> sqlx::postgres::PgPoolOptions {
 /// rather than served by `router` with a pool nobody would query.
 pub fn metrics_router() -> Router {
  Router::new().route("/health",get(||async{envelope(json!({"ok":true}))}))
-  .merge(oi_archive::routes())
+  .merge(oi_archive::routes()).merge(venues::routes())
 }
 pub fn router(s: AppState) -> Router {
  Router::new().route("/health",get(||async{envelope(json!({"ok":true}))}))
-  .merge(auth::routes()).merge(export::routes()).merge(legal::routes()).merge(sync::routes()).merge(alerts::routes()).merge(live_activity::routes()).merge(share::routes()).merge(review::routes()).merge(search::routes()).merge(market_meta::routes()).merge(sector_history::routes()).merge(oi_archive::routes())
+  .merge(auth::routes()).merge(export::routes()).merge(legal::routes()).merge(sync::routes()).merge(alerts::routes()).merge(live_activity::routes()).merge(share::routes()).merge(review::routes()).merge(search::routes()).merge(market_meta::routes()).merge(sector_history::routes()).merge(oi_archive::routes()).merge(venues::routes())
   .layer(DefaultBodyLimit::max(512*1024))
   // 一个请求最多占住一条连接三十秒。池子只有八条连接，一个卡死的查询就能把
   // 剩下的人一起挡在门外；超时之后连接回池，客户端本来也早就重试了。

@@ -228,16 +228,25 @@ impl Condition {
  pub fn of(text:&str)->Self {if text=="close" {Self::Close} else {Self::Touch}}
 }
 
+/// `alert_watches.market` 的两个取值（客户端 `InstrumentID.marketKey`）。
+pub const BINANCE:&str="binance/usd_m";
+pub const COINBASE:&str="coinbase/spot";
+
 /// 评估器在内存里保有的一条活动提醒。
 #[derive(Clone,Debug)]
 struct Watch {
  owner:Uuid,alert_id:String,symbol:String,drawing_id:Option<String>,
  title:String,lines:Vec<Line>,armed_at:i64,condition:Condition,
+ /// `binance/usd_m` 或 `coinbase/spot`：决定这条提醒由哪一条行情流来评估。
+ market:String,
 }
 
 /// 一条还没到点的复盘到点提醒。它不看价，不进 K 线流，只在每轮刷新时看一眼钟。
 #[derive(Clone,Debug)]
 struct Due {owner:Uuid,alert_id:String,symbol:String,review_id:String,title:String,due_at:i64}
+
+/// `binance/usd_m` → `binance`（自选同步对象里交易所和市场是分开的两个字段）。
+fn venue_of(market:&str)->&str {market.split('/').next().unwrap_or(market)}
 
 /// 一轮刷新读回来的东西：所有人的活动价格提醒（画线 + 裸价格）、已经到点的复盘提醒、
 /// 自选波动提醒开着的人，以及其中哪些品种正被实时活动盯着。
@@ -248,7 +257,7 @@ struct Loaded {watches:Vec<Watch>,due:Vec<Due>,movers:Vec<crate::watch_move::Mov
 /// 为什么逐个用户开事务：这两张表和同步表一样挂着 FORCE ROW LEVEL SECURITY，运行期角色
 /// 既不是属主也没有 BYPASSRLS，所以**没有**一条能一次看见所有人的通道——这是故意的。
 /// 代价是一次刷新 N 个短事务，而 N 是个位数（`maintenance::cleanup` 用的同一套分页）。
-async fn load(s:&AppState)->Result<Loaded> {
+async fn load(s:&AppState,market:&str)->Result<Loaded> {
  let mut out=vec![];
  let mut due=vec![];
  let mut movers=vec![];
@@ -260,21 +269,23 @@ async fn load(s:&AppState)->Result<Loaded> {
   for owner in &owners {
    let mut tx=match s.personal(*owner).await {Ok(tx)=>tx,Err(_)=>continue};
    // `price` 和 `drawing` 同一种形状（`lines`），一起读。
-   let rows=sqlx::query("SELECT alert_id,symbol,drawing_id,title,lines,armed_at,condition FROM alert_watches WHERE user_id=$1 AND status='active' AND kind IN ('drawing','price')")
-    .bind(owner).fetch_all(&mut *tx).await?;
+   let rows=sqlx::query("SELECT alert_id,symbol,drawing_id,title,lines,armed_at,condition,market FROM alert_watches WHERE user_id=$1 AND status='active' AND kind IN ('drawing','price') AND market=$2")
+    .bind(owner).bind(market).fetch_all(&mut *tx).await?;
    // 复盘到点只读**已经到点**的那几条：没到点的留在库里，下一轮再看，不占内存。
+   // 它不看价、不分交易所，只在币安那一支里判一次（两支都判会各推一遍）。
    let now=chrono::Utc::now().timestamp_millis();
-   for r in sqlx::query("SELECT alert_id,symbol,title,due_at,review_id FROM alert_watches WHERE user_id=$1 AND status='active' AND kind='reviewDue' AND due_at IS NOT NULL AND due_at<=$2")
+   if market==BINANCE {for r in sqlx::query("SELECT alert_id,symbol,title,due_at,review_id FROM alert_watches WHERE user_id=$1 AND status='active' AND kind='reviewDue' AND due_at IS NOT NULL AND due_at<=$2")
     .bind(owner).bind(now).fetch_all(&mut *tx).await? {
     let review_id:Option<String>=r.get("review_id");
     due.push(Due{owner:*owner,alert_id:r.get("alert_id"),symbol:r.get("symbol"),review_id:review_id.unwrap_or_default(),
      title:r.get("title"),due_at:r.get::<Option<i64>,_>("due_at").unwrap_or(now)});
-   }
-   if let Some(mover)=crate::watch_move::load_mover(&mut tx,*owner).await.unwrap_or(None) {movers.push(mover)}
+   }}
+   // 自选波动：每一支只读这家交易所的自选（币安的组合流订不了别家的代号）。
+   if let Some(mover)=crate::watch_move::load_mover(&mut tx,*owner,venue_of(market)).await.unwrap_or(None) {movers.push(mover)}
    // 同一个事务里顺手问一句「这个人有实时活动盯着哪些品种」：那些品种要多订一条
    // `@ticker`（24h 涨跌幅只有那条流里有）。没有活动的时候这一句什么都不返回，
    // 订阅串和从前一模一样。
-   live.extend(crate::live_activity::active_symbols(&mut tx,*owner).await.unwrap_or_default());
+   if market==BINANCE {live.extend(crate::live_activity::active_symbols(&mut tx,*owner).await.unwrap_or_default());}
    tx.commit().await?;
    for r in rows {
     let lines:Vec<Line>=match serde_json::from_value(r.get::<Value,_>("lines")) {
@@ -285,7 +296,7 @@ async fn load(s:&AppState)->Result<Loaded> {
     };
     out.push(Watch{owner:*owner,alert_id:r.get("alert_id"),symbol:r.get("symbol"),
      drawing_id:r.get("drawing_id"),title:r.get("title"),lines,armed_at:r.get("armed_at"),
-     condition:Condition::of(&r.get::<String,_>("condition"))});
+     condition:Condition::of(&r.get::<String,_>("condition")),market:r.get("market")});
    }
   }
   after=owners.last().copied();
@@ -350,7 +361,7 @@ async fn fire(s:&AppState,apns:Option<&Apns>,w:&Watch,quote:Quote,price:f64,at:i
   tracing::info!("{} triggered {} at {}; recorded and synced, not pushed (no APNs key)",w.symbol,w.alert_id,money(price));
   return Ok(())
  };
- let title=if w.title.is_empty() {format!("{} 触到你画的线",w.symbol)} else {w.title.clone()};
+ let title=if w.title.is_empty() {format!("{} 触到你画的线",display_symbol(&w.market,&w.symbol))} else {w.title.clone()};
  notify(s,apns,w.owner,&Notice{title,body:format!("现价 {}",money(price)),link:link_of(w),kind:"alert"}).await
 }
 
@@ -360,10 +371,21 @@ pub struct Notice {pub title:String,pub body:String,pub link:String,pub kind:&'s
 
 /// 画线提醒点开去那条线；裸价格提醒没有线，只开品种。
 fn link_of(w:&Watch)->String {
+ let symbol=symbol_path(&w.market,&w.symbol);
  match w.drawing_id.as_deref().filter(|d|!d.is_empty()) {
-  Some(drawing)=>format!("hkline://drawing/{}/{drawing}",w.symbol),
-  None=>format!("hkline://symbol/{}",w.symbol),
+  Some(drawing)=>format!("hkline://drawing/{symbol}/{drawing}"),
+  None=>format!("hkline://symbol/{symbol}"),
  }
+}
+
+/// 深链里的品种段。币安沿用老写法（裸代号，老客户端也认）；别家带上完整的
+/// `venue/market/symbol`，不然客户端会把 `BTC-USD` 当成币安的品种去开。
+pub fn symbol_path(market:&str,symbol:&str)->String {
+ if market==BINANCE {symbol.to_string()} else {format!("{market}/{symbol}")}
+}
+/// 通知标题里的品种名：和界面上一样，Coinbase 写 `BTC/USD`。
+pub fn display_symbol(market:&str,symbol:&str)->String {
+ if market==BINANCE {symbol.to_string()} else {symbol.replace('-',"/")}
 }
 
 /// 把一条通知推给这个人所有注册过的设备。触发类（提醒、复盘到点、自选波动）共用。
@@ -450,6 +472,7 @@ pub fn money(v:f64)->String {
 /// `closed` 就是币安 kline 帧里的 `k.x`：这一根收了没有。同一根 K 线一分钟里会发来
 /// 几十帧，只有最后那一帧是 `true`，`close` 到那一帧才是真正的收盘价——`condition='close'`
 /// 的提醒只认那一帧。
+#[derive(Clone,Debug,PartialEq)]
 struct Candle {symbol:String,open_time:i64,low:f64,high:f64,close:f64,closed:bool}
 fn parse(text:&str)->Option<Candle> {
  let v:Value=serde_json::from_str(text).ok()?;
@@ -483,6 +506,9 @@ fn parse_ticker(text:&str)->Option<(String,Option<f64>,Option<f64>)> {
 /// worker 的评估器入口。永不返回：连不上就退几秒再连，品种集合变了就重订阅。
 pub async fn run(s:AppState,apns:Option<Apns>) {
  tracing::info!("Alert evaluator started");
+ let apns=apns.map(std::sync::Arc::new);
+ // Coinbase 的提醒不在币安那条组合流里：另起一条自己的循环，两边互不牵连。
+ tokio::spawn(run_coinbase(s.clone(),apns.clone()));
  let mut watches:Vec<Watch>=vec![];
  // 每个品种最近一根**已收盘**的收盘价。`condition='close'` 要两个点才判得出穿越，
  // 这就是那第一个点。
@@ -502,26 +528,26 @@ pub async fn run(s:AppState,apns:Option<Apns>) {
  // 窗口里重连回来不许再响一次。
  let mut movers=crate::watch_move::Movers::default();
  loop {
-  let fresh=match load(&s).await {
+  let fresh=match load(&s,BINANCE).await {
    Ok(v)=>v,
    Err(_)=>{tracing::warn!("Alerts could not be loaded; will retry");tokio::time::sleep(Duration::from_secs(10)).await;continue}
   };
   movers.refresh(&fresh.movers);
   // 复盘到点不看价：有没有 K 线流都要按时判，所以放在「一个品种都没有」那条岔路前面。
-  settle_due(&s,apns.as_ref(),&fresh.due).await;
+  settle_due(&s,apns.as_deref(),&fresh.due).await;
   let symbols=symbols_of(&fresh.watches,&movers.symbols());
   let streams=streams_of(&symbols,&fresh.live);
   watches=fresh.watches;
   if symbols.is_empty() {
    // 一条提醒都没有的时候也要走心跳：提醒刚被删掉、而它的活动还挂在别人锁屏上的
    // 那一下，正是最该推 end 的时候。
-   heartbeat(&s,apns.as_ref(),&quotes,&mut beat).await;
+   heartbeat(&s,apns.as_deref(),&quotes,&mut beat).await;
    tokio::time::sleep(Duration::from_secs(10)).await;continue
   }
   // 不再盯的品种没必要一直留着它的收盘价与行情。
   closes.retain(|symbol,_|symbols.iter().any(|s|s==symbol));
   quotes.retain(|symbol,_|symbols.iter().any(|s|s==symbol));
-  if let Err(e)=session(&s,apns.as_ref(),&streams,&mut watches,&mut movers,&mut closes,&mut quotes,&mut beat).await {
+  if let Err(e)=session(&s,apns.as_deref(),&streams,&mut watches,&mut movers,&mut closes,&mut quotes,&mut beat).await {
    tracing::warn!("Alert stream ended ({e}); reconnecting");
    tokio::time::sleep(Duration::from_secs(5)).await;
   }
@@ -586,7 +612,7 @@ async fn session(s:&AppState,apns:Option<&Apns>,streams:&[String],watches:&mut V
      quotes.entry(candle.symbol.clone()).or_default().price=candle.close.is_finite().then_some(candle.close);
      evaluate(s,apns,watches,closes,quotes,&candle).await;
      for (owner,event) in movers.observe(&candle.symbol,candle.open_time,candle.close,candle.closed) {
-      crate::watch_move::notify(s,apns,owner,&event).await;
+      crate::watch_move::notify(s,apns,owner,&event,BINANCE).await;
      }
      continue
     }
@@ -597,7 +623,7 @@ async fn session(s:&AppState,apns:Option<&Apns>,streams:&[String],watches:&mut V
     }
    }
    _=refresh.tick()=>{
-    match load(s).await {
+    match load(s,BINANCE).await {
      Ok(fresh)=>{
       movers.refresh(&fresh.movers);
       settle_due(s,apns,&fresh.due).await;
@@ -643,6 +669,152 @@ async fn evaluate(s:&AppState,apns:Option<&Apns>,watches:&mut Vec<Watch>,closes:
    watches.push(w);
   }
  }
+}
+
+// ------------------------------------------------------------------ Coinbase
+
+/// Coinbase 这一支：它没有 1 分钟 K 线推送（`candles` 频道固定 5 分钟），所以订
+/// `market_trades`，用逐笔在这里拼 1 分钟 K 线，再交给和币安同一个 `evaluate`。
+///
+/// - 触线：这一分钟的高/低被刷新时才判一次（逐笔成百上千，没刷新极值的那几笔判了也
+///   只是重复）；
+/// - 收盘穿越：一分钟收完才判。「收完」= 下一分钟的第一笔到了，或者这一分钟结束后
+///   `SETTLE` 过去还没有新的一笔（冷门品种一分钟可能一笔都没有）。
+/// - 连接十秒一刷提醒集合，品种集合变了就重连；心跳频道每秒一帧，三十秒一帧都没有就判断线。
+async fn run_coinbase(s:AppState,apns:Option<std::sync::Arc<Apns>>) {
+ let mut closes:BTreeMap<String,f64>=BTreeMap::new();
+ // 这一支自己的自选波动状态（只装 Coinbase 的自选）。和币安那一支一样活在重连之外。
+ let mut movers=crate::watch_move::Movers::default();
+ loop {
+  let fresh=match load(&s,COINBASE).await {
+   Ok(v)=>v,
+   Err(_)=>{tracing::warn!("Coinbase alerts could not be loaded; will retry");tokio::time::sleep(Duration::from_secs(10)).await;continue}
+  };
+  movers.refresh(&fresh.movers);
+  let symbols=symbols_of(&fresh.watches,&movers.symbols());
+  if symbols.is_empty() {closes.clear();tokio::time::sleep(Duration::from_secs(10)).await;continue}
+  closes.retain(|symbol,_|symbols.contains(symbol));
+  if let Err(e)=coinbase_session(&s,apns.as_deref(),&symbols,fresh.watches,&mut movers,&mut closes).await {
+   tracing::warn!("Coinbase alert stream ended ({e}); reconnecting");
+   tokio::time::sleep(Duration::from_secs(5)).await;
+  }
+ }
+}
+
+async fn coinbase_session(s:&AppState,apns:Option<&Apns>,symbols:&[String],mut watches:Vec<Watch>,movers:&mut crate::watch_move::Movers,closes:&mut BTreeMap<String,f64>)->anyhow::Result<()> {
+ use futures_util::SinkExt;
+ use tokio_tungstenite::tungstenite::Message;
+ use crate::venues::coinbase;
+ let (mut stream,_)=tokio::time::timeout(Duration::from_secs(10),tokio_tungstenite::connect_async(coinbase::WS)).await??;
+ stream.send(Message::Text(coinbase::control("subscribe","heartbeats",&[]).into())).await?;
+ stream.send(Message::Text(coinbase::control("subscribe","market_trades",symbols).into())).await?;
+ tracing::info!("Coinbase alert evaluator watching {} product(s)",symbols.len());
+ // 新连上的这一条和上一条之间有缺口：五分钟前的参照全部作废（和币安那一支同一条规矩）。
+ movers.forget_prices();
+ let mut bars=MinuteBars::default();
+ let mut quotes:BTreeMap<String,Quote>=BTreeMap::new();
+ let mut refresh=tokio::time::interval(Duration::from_secs(10));
+ refresh.tick().await;
+ let mut settle=tokio::time::interval(Duration::from_secs(1));
+ loop {
+  let mut candles=vec![];
+  tokio::select! {
+   frame=tokio::time::timeout(Duration::from_secs(30),stream.next())=>{
+    let Some(frame)=frame? else {anyhow::bail!("the stream closed")};
+    let text=match frame? {
+     Message::Text(text)=>text,
+     Message::Ping(p)=>{stream.send(Message::Pong(p)).await?;continue}
+     Message::Close(_)=>anyhow::bail!("Coinbase closed the stream"),
+     _=>continue,
+    };
+    for (symbol,time,price) in coinbase_trades(text.as_str()) {
+     if !symbols.contains(&symbol) {continue}
+     quotes.entry(symbol.clone()).or_default().price=Some(price);
+     candles.extend(bars.trade(&symbol,time,price));
+    }
+   }
+   _=settle.tick()=>{
+    candles.extend(bars.settle(chrono::Utc::now().timestamp_millis()));
+   }
+   _=refresh.tick()=>{
+    match load(s,COINBASE).await {
+     Ok(fresh)=>{
+      movers.refresh(&fresh.movers);
+      let changed=symbols_of(&fresh.watches,&movers.symbols())!=symbols;
+      watches=fresh.watches;
+      if changed {return Ok(())}
+     }
+     Err(_)=>tracing::warn!("Coinbase alerts could not be refreshed; keeping the current set"),
+    }
+   }
+  }
+  for candle in candles {
+   evaluate(s,apns,&mut watches,closes,&quotes,&candle).await;
+   for (owner,event) in movers.observe(&candle.symbol,candle.open_time,candle.close,candle.closed) {
+    crate::watch_move::notify(s,apns,owner,&event,COINBASE).await;
+   }
+  }
+ }
+}
+
+/// 一分钟结束后再等这么久才判它收了：推送的逐笔会比成交时间晚一点到。
+const SETTLE_MS:i64=2_000;
+
+/// 每个品种正在走的那一根 1 分钟 K 线。
+#[derive(Default)]
+struct MinuteBars {open:BTreeMap<String,Candle>}
+impl MinuteBars {
+ /// 一笔成交。返回要评估的 K 线：上一分钟收了就先给那一根（`closed`），这一根的
+ /// 高/低被刷新了再给这一根（未收）。比当前这一根还早的成交（迟到的、或者跨分钟乱序）
+ /// 不再改动已经判过的那一根。
+ fn trade(&mut self,symbol:&str,time:i64,price:f64)->Vec<Candle> {
+  if !price.is_finite()||price<=0.0 {return vec![]}
+  let minute=time.div_euclid(60_000)*60_000;
+  let mut out=vec![];
+  match self.open.get_mut(symbol) {
+   Some(bar) if minute<bar.open_time=>{}
+   Some(bar) if minute==bar.open_time=>{
+    let extended=price<bar.low||price>bar.high;
+    bar.low=bar.low.min(price);bar.high=bar.high.max(price);bar.close=price;
+    if extended {out.push(bar.clone())}
+   }
+   _=>{
+    if let Some(mut done)=self.open.remove(symbol) {done.closed=true;out.push(done)}
+    let bar=Candle{symbol:symbol.to_string(),open_time:minute,low:price,high:price,close:price,closed:false};
+    out.push(bar.clone());
+    self.open.insert(symbol.to_string(),bar);
+   }
+  }
+  out
+ }
+ /// 一分钟过完 `SETTLE_MS` 还没等到下一笔的那几根，就当它们收了。
+ fn settle(&mut self,now:i64)->Vec<Candle> {
+  let due:Vec<String>=self.open.iter().filter(|(_,b)|now>=b.open_time+60_000+SETTLE_MS).map(|(k,_)|k.clone()).collect();
+  due.into_iter().filter_map(|k|self.open.remove(&k)).map(|mut b|{b.closed=true;b}).collect()
+ }
+}
+
+/// 一帧 `market_trades` 里的逐笔：(品种, 成交时间毫秒, 价)，按成交先后排好。
+/// `snapshot` 事件是订阅那一刻补发的最近几十笔历史，不拿来判提醒。
+fn coinbase_trades(text:&str)->Vec<(String,i64,f64)> {
+ let Ok(v)=serde_json::from_str::<Value>(text) else {return vec![]};
+ if v.get("channel").and_then(Value::as_str)!=Some("market_trades") {return vec![]}
+ let mut out=vec![];
+ for event in v.get("events").and_then(Value::as_array).into_iter().flatten() {
+  if event.get("type").and_then(Value::as_str)!=Some("update") {continue}
+  for t in event.get("trades").and_then(Value::as_array).into_iter().flatten() {
+   let (Some(symbol),Some(time),Some(price))=(
+    t.get("product_id").and_then(Value::as_str),
+    t.get("time").and_then(Value::as_str).and_then(crate::venues::coinbase::iso_ms),
+    t.get("price").and_then(Value::as_str).and_then(|p|p.parse::<f64>().ok()),
+   ) else {continue};
+   let id=t.get("trade_id").and_then(Value::as_str).and_then(|s|s.parse::<i64>().ok()).unwrap_or(0);
+   out.push((id,symbol.to_string(),time,price));
+  }
+ }
+ // Coinbase 一帧里是新的在前。
+ out.sort_by_key(|(id,_,time,_)|(*time,*id));
+ out.into_iter().map(|(_,s,t,p)|(s,t,p)).collect()
 }
 
 #[cfg(test)]
@@ -828,7 +1000,7 @@ mod tests {
  /// 裸价格提醒没有线，点开只开品种；画线提醒去那条线。
  #[test] fn a_price_alert_links_to_its_symbol() {
   let mut w=Watch{owner:Uuid::nil(),alert_id:"p".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:"BTC 涨到 70,000".into(),
-   lines:vec![line(&[(0.0,70_000.0)],true,true)],armed_at:0,condition:Condition::Touch};
+   lines:vec![line(&[(0.0,70_000.0)],true,true)],armed_at:0,condition:Condition::Touch,market:BINANCE.into()};
   assert_eq!(link_of(&w),"hkline://symbol/BTCUSDT");
   w.drawing_id=Some(String::new());
   assert_eq!(link_of(&w),"hkline://symbol/BTCUSDT");
@@ -882,9 +1054,9 @@ mod tests {
  #[test] fn the_stream_url_is_the_one_measured_on_the_vps() {
   assert_eq!(STREAM,"wss://fstream.binance.com/market/stream");
   let watches=vec![
-   Watch{owner:Uuid::nil(),alert_id:"a".into(),symbol:"ETHUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch},
-   Watch{owner:Uuid::nil(),alert_id:"b".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch},
-   Watch{owner:Uuid::nil(),alert_id:"c".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Close},
+   Watch{owner:Uuid::nil(),alert_id:"a".into(),symbol:"ETHUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch,market:BINANCE.into()},
+   Watch{owner:Uuid::nil(),alert_id:"b".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch,market:BINANCE.into()},
+   Watch{owner:Uuid::nil(),alert_id:"c".into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),lines:vec![],armed_at:0,condition:Condition::Close,market:BINANCE.into()},
   ];
   let symbols=symbols_of(&watches,&Default::default());
   assert_eq!(symbols,vec!["BTCUSDT".to_string(),"ETHUSDT".to_string()],"同一品种只订一次，顺序稳定");
@@ -900,5 +1072,47 @@ mod tests {
   // 一条连接 200 条流封顶，加 ticker 也不许越过它。
   let many:Vec<String>=(0..MAX_STREAMS).map(|i|format!("S{i}USDT")).collect();
   assert_eq!(streams_of(&many,&many).len(),MAX_STREAMS);
+ }
+ /// Coinbase 没有 1 分钟推送：逐笔拼出来的 K 线要在极值刷新时判触线、在收完时判收盘。
+ #[test] fn coinbase_trades_build_minute_bars_that_close_on_the_next_minute_or_after_settling() {
+  let mut bars=MinuteBars::default();
+  let t0=1_790_000_040_000; // 某一分钟的开头
+  let first=bars.trade("BTC-USD",t0+1_000,100.0);
+  assert_eq!(first.len(),1);assert!(!first[0].closed);
+  assert!(bars.trade("BTC-USD",t0+2_000,100.0).is_empty(),"没刷新极值就不重判");
+  let up=bars.trade("BTC-USD",t0+3_000,101.0);
+  assert_eq!((up[0].low,up[0].high,up[0].closed),(100.0,101.0,false));
+  // 下一分钟第一笔：先交上一根（收了，收盘 101），再开新的一根。
+  let next=bars.trade("BTC-USD",t0+61_000,99.0);
+  assert_eq!(next.len(),2);
+  assert!(next[0].closed&&next[0].close==101.0&&next[0].open_time==t0);
+  assert!(!next[1].closed&&next[1].open_time==t0+60_000);
+  // 迟到的上一分钟成交不再改已经收了的那一根。
+  assert!(bars.trade("BTC-USD",t0+59_000,50.0).is_empty());
+  // 冷门品种一分钟没有下一笔：过了 SETTLE_MS 由定时器收。
+  assert!(bars.settle(t0+120_000+SETTLE_MS-1).is_empty());
+  let settled=bars.settle(t0+120_000+SETTLE_MS);
+  assert_eq!(settled.len(),1);assert!(settled[0].closed&&settled[0].close==99.0);
+ }
+ #[test] fn coinbase_trade_frames_skip_the_snapshot_and_come_out_in_trade_order() {
+  let frame=r#"{"channel":"market_trades","events":[
+   {"type":"snapshot","trades":[{"trade_id":"1","product_id":"BTC-USD","price":"1","size":"1","side":"BUY","time":"2026-09-23T00:00:00Z"}]},
+   {"type":"update","trades":[
+    {"trade_id":"12","product_id":"BTC-USD","price":"101.5","size":"1","side":"BUY","time":"2026-09-23T00:00:01.250Z"},
+    {"trade_id":"11","product_id":"BTC-USD","price":"101","size":"1","side":"SELL","time":"2026-09-23T00:00:01.250Z"}]}]}"#;
+  let trades=coinbase_trades(frame);
+  assert_eq!(trades.iter().map(|t|t.2).collect::<Vec<_>>(),vec![101.0,101.5]);
+  assert_eq!(trades[0].1%1000,250);
+  assert!(coinbase_trades(r#"{"channel":"heartbeats","events":[]}"#).is_empty());
+ }
+ #[test] fn coinbase_alerts_open_the_coinbase_chart_and_read_like_the_app() {
+  let mut w=Watch{owner:Uuid::nil(),alert_id:"a".into(),symbol:"BTC-USD".into(),drawing_id:Some("d1".into()),title:String::new(),lines:vec![],armed_at:0,condition:Condition::Touch,market:COINBASE.into()};
+  assert_eq!(link_of(&w),"hkline://drawing/coinbase/spot/BTC-USD/d1");
+  assert_eq!(display_symbol(&w.market,&w.symbol),"BTC/USD");
+  w.drawing_id=None;
+  assert_eq!(link_of(&w),"hkline://symbol/coinbase/spot/BTC-USD","裸价格提醒也要开 Coinbase 那只");
+  w.market=BINANCE.into();w.symbol="BTCUSDT".into();w.drawing_id=Some("d1".into());
+  assert_eq!(link_of(&w),"hkline://drawing/BTCUSDT/d1","币安沿用老链接，老客户端也认");
+  assert_eq!(venue_of(COINBASE),"coinbase");assert_eq!(venue_of(BINANCE),"binance");
  }
 }

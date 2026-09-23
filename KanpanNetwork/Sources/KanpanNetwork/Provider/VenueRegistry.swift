@@ -54,8 +54,15 @@ public enum VenueRegistry {
                     hosts: BinanceProvider.hosts(endpoints), policy: policy, log: log)
   }
 
+  public static let coinbase = VenueDescriptor(
+    id: CoinbaseProvider.venue, market: CoinbaseProvider.market, displayName: "Coinbase",
+    searchTag: "Coinbase", hasFavoriteCategory: true, joinsSectors: false, defaultSymbol: "BTC-USD"
+  ) { policy, endpoints, log in
+    CoinbaseProvider(policy: policy, endpoints: endpoints, log: log)
+  }
+
   /// 注册顺序就是自选分类条、设置里出现的顺序。第一家是默认交易所。
-  public static let all: [VenueDescriptor] = [binance]
+  public static let all: [VenueDescriptor] = [binance, coinbase]
 
   /// 默认交易所：没带交易所前缀的旧数据（裸符号）一律归它，用户自定义域名也只作用于它。
   public static var `default`: VenueDescriptor { all[0] }

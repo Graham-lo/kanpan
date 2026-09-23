@@ -96,7 +96,9 @@ enum SymbolQuery {
   /// 单个品种的命中判定。`q` 必须已经归一化。
   static func match(_ info: SymbolInfo, query q: String) -> SymbolMatch? {
     guard !q.isEmpty else { return SymbolMatch(info: info) }
-    let symbol = Array(info.id.symbol.uppercased())
+    // 代号本身也去分隔符：`BTC-USD` 这种带横杠的代号，查询那边已经归一成 `BTCUSD`，
+    // 不对齐的话「BTC-USD」「BTC/USD」一个都搜不到它。
+    let symbol = Array(normalize(info.id.symbol))
     let base = Array(info.base.uppercased())
     let needle = Array(q)
 
