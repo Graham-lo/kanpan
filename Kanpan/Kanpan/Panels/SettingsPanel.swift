@@ -225,9 +225,11 @@ struct SettingsPanel: View {
     MarketRoutePolicy.allCases.map { ($0.title, $0) }
 }
 
+#if DEBUG
 #Preview("设置") {
   PanelPreviewHost { store in SettingsPanel(store: store) }
 }
+#endif
 
 /// 把账号页挂在调用方自己这一层。`account` 为 nil 时整段不挂——
 /// 那说明账号呈现权在别人手里（见 `SettingsPanel` 里那段说明）。

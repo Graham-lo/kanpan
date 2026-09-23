@@ -239,6 +239,8 @@ struct ChartPanel: View {
   static let biases: [(String, PriceBias)] = [("偏上", .up), ("居中", .center), ("偏下", .down)]
 }
 
+#if DEBUG
 #Preview("图表设置") {
   PanelPreviewHost { store in ChartPanel(store: store) }
 }
+#endif

@@ -29,7 +29,10 @@ let package = Package(
     .target(
       name: "KanpanSymbols",
       dependencies: [.product(name: "KanpanCore", package: "KanpanCore")],
-      path: "Sources/KanpanSymbols"
+      path: "Sources/KanpanSymbols",
+      // 假数据 / 帧探针 / 诊断导出在 app 里只进 DEBUG 包（审查 C5）；测试壳在 `swift test -c release`
+      // 下也要编得进来，所以这里单独打开。
+      swiftSettings: [.define("KANPAN_TEST_SUPPORT")]
     ),
     .testTarget(
       name: "KanpanSymbolsTests",

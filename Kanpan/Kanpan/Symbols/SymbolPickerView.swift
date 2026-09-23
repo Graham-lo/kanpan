@@ -467,6 +467,7 @@ struct StarShape: Shape {
   }
 }
 
+#if DEBUG
 // ============================================================ 最小宿主 + 预览
 
 /// 自包含的宿主：自己造 model、自己接返回。接进主界面之前用它跑预览 / 单页调试。
@@ -521,3 +522,4 @@ struct SymbolPickerHost: View {
 #Preview("品种页 · 空自选") {
   SymbolPickerHost(prefs: SymbolPrefs())
 }
+#endif

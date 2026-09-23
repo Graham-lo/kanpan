@@ -142,6 +142,7 @@ extension View {
   }
 }
 
+#if DEBUG
 // MARK: - 预览
 
 /// `#Preview` 用的壳：不碰真沙盒、不碰真缓存，深浅两版各看一眼。
@@ -189,3 +190,4 @@ private struct PanelDemo: View {
     .preferredColorScheme(store.prefs.theme.forced)
   }
 }
+#endif

@@ -1,5 +1,8 @@
 import Foundation
 
+// 帧报告只由 DEBUG 包里的 `FrameProbe` 产出（审查 C5）；测试壳包靠 `KANPAN_TEST_SUPPORT` 在 release 下也编得进来。
+#if DEBUG || KANPAN_TEST_SUPPORT
+
 // ============================================================ 帧报告落盘
 //
 // `FrameProbe` 采完一段就往这儿扔一份 `FrameReport`。落盘位置和 MetricKit 的
@@ -120,3 +123,5 @@ final class FrameReportStore: @unchecked Sendable {
     }
   }
 }
+
+#endif

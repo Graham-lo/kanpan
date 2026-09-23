@@ -168,9 +168,11 @@ private struct InUseList: View {
   }
 }
 
+#if DEBUG
 #Preview("指标") {
   PanelPreviewHost { store in IndicatorPage(store: store, onBack: {}) }
 }
+#endif
 
 /// 指标参数编辑：全 app **唯一**一处「要按『保存』才生效」的设置，是**已知且有意的例外**。
 ///

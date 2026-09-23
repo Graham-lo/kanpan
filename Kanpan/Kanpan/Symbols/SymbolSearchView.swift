@@ -418,6 +418,7 @@ private struct ChipFlow: SwiftUI.Layout {
   }
 }
 
+#if DEBUG
 // ============================================================ 预览
 
 /// 自包含宿主：自己造 model 和历史词，接进主界面之前用它跑预览。
@@ -460,3 +461,4 @@ private struct SearchHost: View {
 #Preview("搜索页 · 深") {
   SearchHost().preferredColorScheme(.dark)
 }
+#endif

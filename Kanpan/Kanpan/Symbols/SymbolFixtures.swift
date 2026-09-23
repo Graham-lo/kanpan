@@ -1,6 +1,9 @@
 import Foundation
 import KanpanCore
 
+// 只给预览和单测用：Release 包里不带这份假数据（审查 C5）。测试壳包靠 `KANPAN_TEST_SUPPORT` 在 release 下也编得进来。
+#if DEBUG || KANPAN_TEST_SUPPORT
+
 // ============================================================ 假品种表
 //
 // 预览和单测共用的一份离线数据，形状照原型 data.js 的 `catalog` / `quote`：
@@ -45,3 +48,5 @@ enum SymbolFixtures {
     catalog.first { $0.symbol == InstrumentID.canonical(symbol) } ?? catalog[0]
   }
 }
+
+#endif

@@ -34,6 +34,9 @@ struct DiagnosticsRecord: Codable, Sendable, Equatable {
   var payloadBase64: String?
 }
 
+// 导出一整套（`DiagnosticsBundle` / `records` / `exportBundle` / `writeExport` / `removeAll` /
+// `diskUsageBytes`）只给取证脚本和单测用，Release 包里不带（审查 C5）。
+#if DEBUG || KANPAN_TEST_SUPPORT
 /// 一次导出。给人看、也给 `Tools/diagnostics-report.sh` 读。
 struct DiagnosticsBundle: Codable, Sendable {
   var schema: Int = 1
@@ -50,6 +53,7 @@ struct DiagnosticsBundle: Codable, Sendable {
   var crashFree: Bool?
   var records: [DiagnosticsRecord]
 }
+#endif
 
 final class DiagnosticsStore: @unchecked Sendable {
 
@@ -146,6 +150,7 @@ final class DiagnosticsStore: @unchecked Sendable {
     return record
   }
 
+#if DEBUG || KANPAN_TEST_SUPPORT
   // ---------------------------------------------------------------- 读
 
   /// 按收到时间从旧到新。解不动的文件跳过但**不删**——留着人工看。
@@ -205,14 +210,17 @@ final class DiagnosticsStore: @unchecked Sendable {
     // 走索引：只问文件大小，不用把每份 payload 都解出来。
     return indexLocked().reduce(0) { $0 + $1.size }
   }
+#endif
 
   // ---------------------------------------------------------------- 内部
 
+#if DEBUG || KANPAN_TEST_SUPPORT
   private struct Entry {
     var url: URL
     var record: DiagnosticsRecord
     var size: Int
   }
+#endif
 
   /// 目录的轻量索引：淘汰只需要「谁最旧、各自多大」，这两样文件名和
   /// `.fileSizeKey` 里都有（文件名带毫秒时间戳，见 `fileName(kind:at:id:)`），
@@ -258,6 +266,7 @@ final class DiagnosticsStore: @unchecked Sendable {
     return out
   }
 
+#if DEBUG || KANPAN_TEST_SUPPORT
   private func recordsLocked() -> [Entry] {
     let fm = FileManager.default
     let files = (try? fm.contentsOfDirectory(
@@ -272,6 +281,7 @@ final class DiagnosticsStore: @unchecked Sendable {
     out.sort { $0.record.receivedAt < $1.record.receivedAt }
     return out
   }
+#endif
 
   /// 超限就从最旧的开始删。**先删到条数达标，再删到字节达标**，
   /// 顺序无所谓（都是删最旧），分两步只是读起来清楚。

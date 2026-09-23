@@ -1,5 +1,8 @@
 import Foundation
 
+// 帧统计只服务 DEBUG 包里的帧探针 / 事件探针（审查 C5）；测试壳包靠 `KANPAN_TEST_SUPPORT` 在 release 下也编得进来。
+#if DEBUG || KANPAN_TEST_SUPPORT
+
 // ============================================================ 帧耗时统计（纯算术）
 //
 // 任务书 §13 M9 的 P9.2 / P9.3 和 §13 M4 的 G13 都要 Instruments：
@@ -214,3 +217,5 @@ struct FrameStats: Sendable {
     return s.count % 2 == 1 ? s[m] : (s[m - 1] + s[m]) / 2
   }
 }
+
+#endif
