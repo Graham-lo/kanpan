@@ -1,0 +1,359 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -jobs 1 test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=48F3DE6B-8B3B-4C9E-8C1E-11DA12185EB5" -derivedDataPath DerivedData-multi "-only-testing:KanpanUITests/ChartFoundationUITests/testColdLaunchFavoritesAndLiveQuotes" "-only-testing:KanpanUITests/ChartFoundationUITests/testDrawingToolsAndPersistentStyles" "-only-testing:KanpanUITests/MainScreenUITests/testFavoritesRowRoundTripsThroughChart" -test-timeouts-enabled YES -default-test-execution-time-allowance 480 -maximum-test-execution-time-allowance 900 -resultBundlePath DerivedData-multi/ui-stage1-rebase/iPhone-16-Pro.xcresult ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SWIFT_ENABLE_BATCH_MODE=NO
+
+Build settings from command line:
+    ARCHS = arm64
+    ONLY_ACTIVE_ARCH = YES
+    SWIFT_ENABLE_BATCH_MODE = NO
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanNetwork: /Users/mdd/zhk/kanpan-coinbase/KanpanNetwork @ local
+  KanpanChart: /Users/mdd/zhk/kanpan-coinbase/KanpanChart @ local
+  KanpanReview: /Users/mdd/zhk/kanpan-coinbase/KanpanReview @ local
+  KanpanData: /Users/mdd/zhk/kanpan-coinbase/KanpanData @ local
+  KanpanCore: /Users/mdd/zhk/kanpan-coinbase/KanpanCore @ local
+  KanpanAccount: /Users/mdd/zhk/kanpan-coinbase/KanpanAccount @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan-coinbase/DerivedData-multi/ui-stage1-rebase/iPhone-16-Pro.xcresult
+
+Reload Package ‘kanpanreview’
+
+Reload Package ‘kanpanreview’
+
+2026-09-22 16:05:00.621232+0800 KanpanUITests-Runner[3837:4396612] [Default] Running tests...
+objc[3837]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10b76c310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10a00c398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-22 16:05:05.085.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 16:05:05.086.
+Test Suite 'ChartFoundationUITests' started at 2026-09-22 16:05:05.087.
+Test Case '-[KanpanUITests.ChartFoundationUITests testColdLaunchFavoritesAndLiveQuotes]' started.
+    t =     0.00s Start Test at 2026-09-22 16:05:05.089
+    t =     0.38s Set Up
+    t =     0.38s     Setting device orientation to Portrait
+    t =     0.38s         Device orientation changed to Portrait
+    t =     0.40s         Wait for com.apple.springboard to idle
+2026-09-22 16:05:11.345 xcodebuild[3028:4389456] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 16:05:11.361 xcodebuild[3028:4389456] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     0.45s     Open com.mdd.kanpan
+    t =     0.45s         Launch com.mdd.kanpan
+    t =    21.49s             Setting up automation session
+    t =    22.49s             Wait for com.mdd.kanpan to idle
+    t =    24.28s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =    25.31s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =    25.32s             Checking existence of `"chart.canvas" Other`
+    t =    26.57s     Checking existence of `"chart.canvas" Other`
+    t =    26.63s     Find the "chart.canvas" Other
+    t =    26.72s Terminate com.mdd.kanpan:4170
+    t =    27.72s Open com.mdd.kanpan
+    t =    27.72s     Launch com.mdd.kanpan
+2026-09-22 16:05:32.824 xcodebuild[3028:4389456] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 16:05:32.824 xcodebuild[3028:4389456] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    28.38s         Setting up automation session
+    t =    29.14s         Wait for com.mdd.kanpan to idle
+    t =    31.06s Waiting 15.0s for "favorites.more" Button to exist
+    t =    32.09s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =    32.09s         Checking existence of `"favorites.more" Button`
+    t =    33.35s Checking existence of `"favorites.price.binance/usd_m/BTCUSDT" StaticText`
+    t =    33.42s Find the "favorites.price.binance/usd_m/BTCUSDT" StaticText
+    t =    33.45s Checking existence of `"favorites.change.binance/usd_m/BTCUSDT" StaticText`
+    t =    33.57s Find the "favorites.change.binance/usd_m/BTCUSDT" StaticText
+    t =    34.76s Checking existence of `"favorites.price.binance/usd_m/BTCUSDT" StaticText`
+    t =    34.88s Find the "favorites.price.binance/usd_m/BTCUSDT" StaticText
+    t =    35.79s Checking existence of `"favorites.price.binance/usd_m/BTCUSDT" StaticText`
+    t =    35.95s Find the "favorites.price.binance/usd_m/BTCUSDT" StaticText
+    t =    36.03s Find the Target Application 'com.mdd.kanpan'
+    t =    36.25s Added attachment named '冷启动自选-实时价格与涨跌幅'
+    t =    36.25s Tap "favorites.open.binance/usd_m/BTCUSDT" Button
+    t =    36.25s     Wait for com.mdd.kanpan to idle
+    t =    36.25s     Find the "favorites.open.binance/usd_m/BTCUSDT" Button
+    t =    36.36s     Check for interrupting elements affecting "favorites.open.binance/usd_m/BTCUSDT" Button
+    t =    36.42s     Synthesize event
+    t =    36.83s     Wait for com.mdd.kanpan to idle
+    t =    36.84s Waiting 8.0s for "interval.chart" Button to exist
+    t =    37.87s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chart" Button`
+    t =    37.87s         Checking existence of `"interval.chart" Button`
+    t =    37.98s Pressing Home button
+    t =    38.47s Open com.mdd.kanpan
+    t =    38.47s     Activate com.mdd.kanpan
+    t =    39.05s         Wait for com.mdd.kanpan to idle
+    t =    39.05s Waiting 8.0s for "interval.chart" Button to exist
+    t =    40.09s     Checking `Expect predicate `existsNoRetry == 1` for object "interval.chart" Button`
+    t =    40.09s         Checking existence of `"interval.chart" Button`
+    t =    40.14s Checking existence of `"favorites.more" Button`
+    t =    40.17s Tear Down
+    t =    40.17s     Find the Target Application 'com.mdd.kanpan'
+    t =    40.31s     Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    40.31s     Terminate com.mdd.kanpan:4201
+Test Case '-[KanpanUITests.ChartFoundationUITests testColdLaunchFavoritesAndLiveQuotes]' passed (41.490 seconds).
+Test Case '-[KanpanUITests.ChartFoundationUITests testDrawingToolsAndPersistentStyles]' started.
+    t =     0.00s Start Test at 2026-09-22 16:05:46.581
+    t =     0.04s Set Up
+    t =     0.04s     Setting device orientation to Portrait
+    t =     0.05s         Wait for com.apple.springboard to idle
+2026-09-22 16:05:46.968 xcodebuild[3028:4389456] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 16:05:46.969 xcodebuild[3028:4389456] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     0.06s     Open com.mdd.kanpan
+    t =     0.06s         Launch com.mdd.kanpan
+    t =     0.81s             Setting up automation session
+    t =     1.63s             Wait for com.mdd.kanpan to idle
+    t =     3.22s     Waiting 30.0s for "chart.canvas" Other to exist
+    t =     4.24s         Checking `Expect predicate `existsNoRetry == 1` for object "chart.canvas" Other`
+    t =     4.24s             Checking existence of `"chart.canvas" Other`
+    t =     5.33s     Checking existence of `"chart.canvas" Other`
+    t =     5.42s     Find the "chart.canvas" Other
+    t =     6.39s     Checking existence of `"chart.canvas" Other`
+    t =     6.43s     Find the "chart.canvas" Other
+    t =     7.36s     Checking existence of `"chart.canvas" Other`
+    t =     7.42s     Find the "chart.canvas" Other
+    t =     8.37s     Checking existence of `"chart.canvas" Other`
+    t =     8.40s     Find the "chart.canvas" Other
+    t =     9.31s     Checking existence of `"chart.canvas" Other`
+    t =     9.50s     Find the "chart.canvas" Other
+    t =    10.35s     Checking existence of `"chart.canvas" Other`
+    t =    10.42s     Find the "chart.canvas" Other
+    t =    11.36s     Checking existence of `"chart.canvas" Other`
+    t =    11.42s     Find the "chart.canvas" Other
+    t =    12.38s     Checking existence of `"chart.canvas" Other`
+    t =    12.41s     Find the "chart.canvas" Other
+    t =    13.35s     Checking existence of `"chart.canvas" Other`
+    t =    13.50s     Find the "chart.canvas" Other
+    t =    14.38s     Checking existence of `"chart.canvas" Other`
+    t =    14.51s     Find the "chart.canvas" Other
+    t =    15.34s     Checking existence of `"chart.canvas" Other`
+    t =    15.36s     Find the "chart.canvas" Other
+    t =    16.39s     Checking existence of `"chart.canvas" Other`
+    t =    16.48s     Find the "chart.canvas" Other
+    t =    17.37s     Checking existence of `"chart.canvas" Other`
+    t =    17.44s     Find the "chart.canvas" Other
+    t =    18.31s     Checking existence of `"chart.canvas" Other`
+    t =    18.34s     Find the "chart.canvas" Other
+    t =    19.38s     Checking existence of `"chart.canvas" Other`
+    t =    19.53s     Find the "chart.canvas" Other
+    t =    20.38s     Checking existence of `"chart.canvas" Other`
+    t =    20.51s     Find the "chart.canvas" Other
+    t =    21.36s     Checking existence of `"chart.canvas" Other`
+    t =    21.39s     Find the "chart.canvas" Other
+Resolve Package Graph
+    t =    22.33s     Checking existence of `"chart.canvas" Other`
+    t =    22.39s     Find the "chart.canvas" Other
+    t =    23.33s     Checking existence of `"chart.canvas" Other`
+    t =    25.90s     Find the "chart.canvas" Other
+    t =    26.31s     Checking existence of `"chart.canvas" Other`
+    t =    26.34s     Find the "chart.canvas" Other
+    t =    27.32s     Checking existence of `"chart.canvas" Other`
+
+Resolve Package Graph
+    t =    29.50s     Find the "chart.canvas" Other
+    t =    30.36s     Checking existence of `"chart.canvas" Other`
+    t =    30.57s     Find the "chart.canvas" Other
+    t =    31.35s     Checking existence of `"chart.canvas" Other`
+    t =    31.41s     Find the "chart.canvas" Other
+    t =    32.34s     Checking existence of `"chart.canvas" Other`
+
+Resolve Package Graph
+    t =    32.81s     Find the "chart.canvas" Other
+
+    t =    34.36s     Checking existence of `"chart.canvas" Other`
+    t =    34.43s     Find the "chart.canvas" Other
+    t =    36.31s     Checking existence of `"chart.canvas" Other`
+    t =    36.42s     Find the "chart.canvas" Other
+    t =    37.35s     Checking existence of `"chart.canvas" Other`
+    t =    37.43s     Find the "chart.canvas" Other
+    t =    38.35s     Checking existence of `"chart.canvas" Other`
+    t =    38.37s     Find the "chart.canvas" Other
+    t =    39.33s     Checking existence of `"chart.canvas" Other`
+    t =    39.35s     Find the "chart.canvas" Other
+    t =    40.38s     Checking existence of `"chart.canvas" Other`
+    t =    40.47s     Find the "chart.canvas" Other
+    t =    41.32s     Checking existence of `"chart.canvas" Other`
+    t =    41.39s     Find the "chart.canvas" Other
+    t =    42.31s     Checking existence of `"chart.canvas" Other`
+    t =    42.36s     Find the "chart.canvas" Other
+    t =    43.31s     Checking existence of `"chart.canvas" Other`
+    t =    43.42s     Find the "chart.canvas" Other
+    t =    44.36s     Checking existence of `"chart.canvas" Other`
+    t =    44.40s     Find the "chart.canvas" Other
+    t =    45.33s     Checking existence of `"chart.canvas" Other`
+    t =    45.36s     Find the "chart.canvas" Other
+    t =    46.31s     Checking existence of `"chart.canvas" Other`
+    t =    46.38s     Find the "chart.canvas" Other
+    t =    47.31s     Checking existence of `"chart.canvas" Other`
+    t =    47.51s     Find the "chart.canvas" Other
+    t =    48.35s     Checking existence of `"chart.canvas" Other`
+    t =    48.46s     Find the "chart.canvas" Other
+    t =    49.32s     Checking existence of `"chart.canvas" Other`
+    t =    49.36s     Find the "chart.canvas" Other
+    t =    50.40s     Checking existence of `"chart.canvas" Other`
+    t =    50.46s     Find the "chart.canvas" Other
+    t =    51.31s     Checking existence of `"chart.canvas" Other`
+    t =    51.61s     Find the "chart.canvas" Other
+    t =    52.36s     Checking existence of `"chart.canvas" Other`
+    t =    52.46s     Find the "chart.canvas" Other
+    t =    53.31s     Checking existence of `"chart.canvas" Other`
+    t =    53.35s     Find the "chart.canvas" Other
+    t =    54.32s     Checking existence of `"chart.canvas" Other`
+    t =    54.36s     Find the "chart.canvas" Other
+    t =    55.40s     Checking existence of `"chart.canvas" Other`
+    t =    55.45s     Find the "chart.canvas" Other
+    t =    56.39s     Checking existence of `"chart.canvas" Other`
+    t =    56.45s     Find the "chart.canvas" Other
+    t =    57.38s     Checking existence of `"chart.canvas" Other`
+    t =    57.48s     Find the "chart.canvas" Other
+    t =    58.36s     Checking existence of `"chart.canvas" Other`
+    t =    58.38s     Find the "chart.canvas" Other
+    t =    59.32s     Checking existence of `"chart.canvas" Other`
+    t =    59.36s     Find the "chart.canvas" Other
+    t =    60.30s     Checking existence of `"chart.canvas" Other`
+    t =    60.34s     Find the "chart.canvas" Other
+    t =    61.31s     Checking existence of `"chart.canvas" Other`
+    t =    61.36s     Find the "chart.canvas" Other
+    t =    62.31s     Checking existence of `"chart.canvas" Other`
+    t =    62.46s     Find the "chart.canvas" Other
+    t =    63.32s     Checking existence of `"chart.canvas" Other`
+    t =    63.53s     Find the "chart.canvas" Other
+    t =    64.31s     Checking existence of `"chart.canvas" Other`
+    t =    64.50s     Find the "chart.canvas" Other
+    t =    64.54s     Checking existence of `"market.source" StaticText`
+    t =    64.58s     Find the "market.source" StaticText
+    t =    64.61s     Find the "market.source" StaticText
+    t =    64.65s     Checking existence of `"market.network" StaticText`
+    t =    64.67s     Find the "market.network" StaticText
+    t =    64.72s     Checking existence of `"chart.canvas" Other`
+    t =    64.74s     Find the "chart.canvas" Other
+/Users/mdd/zhk/kanpan-coinbase/Kanpan/KanpanUITests/ChartFoundationUITests.swift:26: error: -[KanpanUITests.ChartFoundationUITests testDrawingToolsAndPersistentStyles] : XCTAssertTrue failed - 图 [:]；线路 binance/Optional(live)；链路日志：
+
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+图表订阅：btcusdt@kline_1h/btcusdt@ticker/btcusdt@markPrice@1s
+回前台补发首屏（上一发没落地）
+直连 fapi.binance.com /fapi/v1/klines HTTP 429 685ms
+限流 429（上游），Retry-After=11s，记录罚停
+上游封禁未解除（还剩 11 秒），这一笔不发：/fapi/v1/klines
+首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=11s 上游封禁未解除（429），还要等 11 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=BTCUSDT
+拉 binance/usd_m/BTCUSDT|1h 失败：HTTP 429 blocked retryAfter=11s 上游封禁未解除（429），还要等 11 秒 https://fapi.binance.com/fapi/v1/klines?interval=1h&limit=1500&symbol=BTCUSDT
+直连 fapi.binance.com /fapi/v1/exchangeInfo HTTP 429 909ms
+限流 429（上游），Retry-After=11s，记录罚停
+上游封禁未解除（还剩 11 秒），这一笔不发：/fapi/v1/exchangeInfo
+上游封禁未解除（还剩 11 秒），这一笔不发：/fapi/v1/exchangeInfo
+WS有效首帧 dstream.binance.me 1157ms
+WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1h/btcusdt@markPrice@1s/btcusdt@ticker
+图表事件 收23 丢0/5196ms
+WS 收帧 19 条/5312ms
+图表事件 收34 丢0/5284ms
+WS 收帧 19 条/5120ms
+图表事件 收36 丢0/5218ms
+WS 收帧 22 条/5328ms
+图表事件 收39 丢0/5088ms
+WS 收帧 25 条/5035ms
+图表事件 收37 丢0/6027ms
+WS 收帧 22 条/5195ms
+图表事件 收40 丢0/5001ms
+WS 收帧 21 条/5056ms
+图表事件 收29 丢0/5264ms
+WS 收帧 17 条/5151ms
+图表事件 收29 丢0/5052ms
+WS 收帧 17 条/5143ms
+图表事件 收31 丢0/5039ms
+WS 收帧 20 条/5101ms
+图表事件 收31 丢0/5311ms
+WS 收帧 20 条/5415ms
+图表事件 收34 丢0/5278ms
+WS 收帧 21 条/5033ms
+    t =    65.37s     Tear Down
+    t =    65.37s         Find the Target Application 'com.mdd.kanpan'
+    t =    65.57s         Added attachment named 'Screenshot of Target Application 'com.mdd.kanpan'.png'
+    t =    65.57s         Checking existence of `"chart.canvas" Other`
+    t =    65.60s         Find the "chart.canvas" Other
+    t =    65.62s         Requesting snapshot of accessibility hierarchy for app with pid 4273
+    t =    65.70s         Requesting snapshot of accessibility hierarchy for app with pid 4273
+    t =    65.74s         Added attachment of type 'public.plain-text'
+    t =    65.74s         Terminate com.mdd.kanpan:4273
+Test Case '-[KanpanUITests.ChartFoundationUITests testDrawingToolsAndPersistentStyles]' failed (66.770 seconds).
+2026-09-22 16:06:53.351556+0800 KanpanUITests-Runner[3837:4396612] [Default] Flushing outgoing messages to the IDE with timeout 600.00s
+2026-09-22 16:06:53.352212+0800 KanpanUITests-Runner[3837:4398544] [Default] Received confirmation that IDE processed remaining outgoing messages
+2026-09-22 16:06:55.593477+0800 KanpanUITests-Runner[4731:4404387] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-22 16:06:56.478.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 16:06:56.478.
+Test Suite 'MainScreenUITests' started at 2026-09-22 16:06:56.478.
+Test Case '-[KanpanUITests.MainScreenUITests testFavoritesRowRoundTripsThroughChart]' started.
+    t =     0.00s Start Test at 2026-09-22 16:06:56.479
+2026-09-22 16:06:56.574 xcodebuild[3028:4389456] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 16:06:56.574 xcodebuild[3028:4389456] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     0.02s Set Up
+    t =     0.03s     Open com.mdd.kanpan
+    t =     0.03s         Launch com.mdd.kanpan
+    t =     0.69s             Setting up automation session
+    t =     1.89s             Wait for com.mdd.kanpan to idle
+    t =     3.59s     Waiting 3.0s for "bottom.chart" Button to exist
+    t =     4.62s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.chart" Button`
+    t =     4.62s             Checking existence of `"bottom.chart" Button`
+    t =     4.71s     Checking existence of `"top.symbol" Any`
+    t =     4.76s     Waiting 30.0s for "top.symbol" Any to exist
+    t =     5.78s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Any`
+    t =     5.78s             Checking existence of `"top.symbol" Any`
+    t =     5.84s     Find the Window (First Match)
+    t =     5.87s     Find the "interval.more" Button
+    t =     5.89s     Find the "bottom.favorites" Button
+    t =     5.95s Terminate com.mdd.kanpan:4736
+objc[4731]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x1073ac310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10692c398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     6.95s Open com.mdd.kanpan
+    t =     6.95s     Launch com.mdd.kanpan
+2026-09-22 16:07:03.461 xcodebuild[3028:4389456] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 16:07:03.463 xcodebuild[3028:4389456] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     7.41s         Setting up automation session
+    t =     8.16s         Wait for com.mdd.kanpan to idle
+    t =     9.97s Waiting 30.0s for "favorites.more" Button to exist
+    t =    11.00s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =    11.00s         Checking existence of `"favorites.more" Button`
+    t =    11.11s Waiting 30.0s for "favorites.open.binance/usd_m/BTCUSDT" Button to exist
+    t =    12.15s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.binance/usd_m/BTCUSDT" Button`
+    t =    12.15s         Checking existence of `"favorites.open.binance/usd_m/BTCUSDT" Button`
+    t =    12.18s Tap "favorites.open.binance/usd_m/BTCUSDT" Button
+    t =    12.18s     Wait for com.mdd.kanpan to idle
+    t =    12.18s     Find the "favorites.open.binance/usd_m/BTCUSDT" Button
+    t =    12.22s     Check for interrupting elements affecting "favorites.open.binance/usd_m/BTCUSDT" Button
+    t =    12.25s     Synthesize event
+    t =    12.55s     Wait for com.mdd.kanpan to idle
+    t =    12.55s Waiting 30.0s for "top.back" Button to exist
+    t =    13.58s     Checking `Expect predicate `existsNoRetry == 1` for object "top.back" Button`
+    t =    13.58s         Checking existence of `"top.back" Button`
+    t =    13.62s Tap "top.back" Button
+    t =    13.62s     Wait for com.mdd.kanpan to idle
+    t =    13.63s     Find the "top.back" Button
+    t =    13.65s     Check for interrupting elements affecting "top.back" Button
+    t =    13.67s     Synthesize event
+    t =    13.96s     Wait for com.mdd.kanpan to idle
+    t =    13.96s Waiting 30.0s for "favorites.more" Button to exist
+    t =    14.99s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =    14.99s         Checking existence of `"favorites.more" Button`
+    t =    15.04s Tear Down
+Test Case '-[KanpanUITests.MainScreenUITests testFavoritesRowRoundTripsThroughChart]' passed (15.316 seconds).
+Test Suite 'MainScreenUITests' passed at 2026-09-22 16:07:11.795.
+	 Executed 1 test, with 0 failures (0 unexpected) in 15.316 (15.317) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-22 16:07:11.795.
+	 Executed 1 test, with 0 failures (0 unexpected) in 15.316 (15.317) seconds
+Test Suite 'Selected tests' passed at 2026-09-22 16:07:11.795.
+	 Executed 1 test, with 0 failures (0 unexpected) in 15.316 (15.318) seconds
+Reload Package ‘kanpanreview’
+
+2026-09-22 16:08:40.558 xcodebuild[3028:4389456] [MT] IDETestOperationsObserverDebug: 299.360 elapsed -- Testing started completed.
+2026-09-22 16:08:40.558 xcodebuild[3028:4389456] [MT] IDETestOperationsObserverDebug: 0.001 sec, +0.001 sec -- start
+2026-09-22 16:08:40.558 xcodebuild[3028:4389456] [MT] IDETestOperationsObserverDebug: 299.360 sec, +299.359 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan-coinbase/DerivedData-multi/ui-stage1-rebase/iPhone-16-Pro.xcresult
+
+Failing tests:
+	ChartFoundationUITests.testDrawingToolsAndPersistentStyles()
+
+** TEST EXECUTE FAILED **
+
+Testing started

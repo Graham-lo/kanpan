@@ -210,4 +210,16 @@ final class ReviewContractTests: XCTestCase {
     short.rule.target = 110; short.rule.invalidation = 90
     XCTAssertNotNil(ReviewContract.failure(short, now: now))
   }
+
+  /// 存档里 `symbol` 写成完整品种 key 时，解码后拆回三段，`key` 不会叠出两层前缀。
+  func testDecodingAFullKeySymbolSplitsIntoVenueMarketSymbol() throws {
+    let json = #"{"symbol":"coinbase/spot/BTC-USD","interval":"1h","start":0,"end":3600000,"bars":1}"#
+    let range = try JSONDecoder().decode(ReviewRange.self, from: Data(json.utf8))
+    XCTAssertEqual(range.venue, "coinbase")
+    XCTAssertEqual(range.market, "spot")
+    XCTAssertEqual(range.symbol, "BTC-USD")
+    XCTAssertEqual(range.key, "coinbase/spot/BTC-USD")
+    let bare = #"{"symbol":"ETHUSDT","interval":"1h","start":0,"end":3600000,"bars":1}"#
+    XCTAssertEqual(try JSONDecoder().decode(ReviewRange.self, from: Data(bare.utf8)).key, "binance/usd_m/ETHUSDT")
+  }
 }

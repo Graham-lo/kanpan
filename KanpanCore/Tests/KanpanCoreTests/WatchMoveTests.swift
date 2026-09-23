@@ -110,6 +110,18 @@ import Testing
     #expect(t.observe(symbol: "ETHUSDT", barOpen: minute(5), price: 110, threshold: 1.5) != nil)
   }
 
+  @Test("自选没拿掉的品种闸照留：品种键里带「/」、别家的现货也一样")
+  func keepPreservesGatesForFullKeys() {
+    var t = WatchMove.Tracker()
+    let key = "binance/usd_m/BTCUSDT"
+    warm(&t, symbol: key)
+    let e = t.observe(symbol: key, barOpen: minute(5), price: 102, threshold: 1.5)
+    #expect(e.map(WatchMove.title(for:)) == "BTC 五分钟涨 2.00%")
+    t.keep([key, "binance/usd_m/ETHUSDT"])
+    #expect(t.observe(symbol: key, barOpen: minute(5), price: 103, threshold: 1.5) == nil,
+            "自选改了但这只还在：同一个窗口里不许再响")
+  }
+
   @Test("幅度夹在 0.1%～50% 之间，读不出来退回 1.5%")
   func thresholdIsClamped() {
     #expect(WatchMove.clampThreshold(0) == 0.1)

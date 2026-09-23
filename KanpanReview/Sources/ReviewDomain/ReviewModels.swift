@@ -58,6 +58,11 @@ public struct ReviewRange: Codable, Sendable, Equatable {
     venue = try c.decodeIfPresent(String.self, forKey: .venue) ?? "binance"
     market = try c.decodeIfPresent(String.self, forKey: .market) ?? "usd_m"
     symbol = try c.decode(String.self, forKey: .symbol)
+    // 存档里的 `symbol` 若已是完整品种 key，以它为准拆开；否则 `key` 会拼出两层前缀。
+    if symbol.contains("/") {
+      let id = InstrumentID(symbol)
+      venue = id.venue; market = id.market; symbol = id.symbol
+    }
     interval = try c.decode(String.self, forKey: .interval)
     start = try c.decode(Int64.self, forKey: .start)
     end = try c.decode(Int64.self, forKey: .end)

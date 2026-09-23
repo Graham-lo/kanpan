@@ -108,7 +108,7 @@ public enum WatchMove {
       let window = barOpen - barOpen % WatchMove.windowMs
       var fired: Event?
       for direction in Direction.allCases {
-        let gateKey = key + "/" + direction.rawValue
+        let gateKey = key + "|" + direction.rawValue
         var gate = gates[gateKey] ?? Gate()
         let signed = direction == .up ? change : -change
         if gate.pass(signed: signed, threshold: limit, window: window), fired == nil {
@@ -121,9 +121,11 @@ public enum WatchMove {
 
     /// 只留这几只（自选改了）。拿掉的品种连同它的闸一起忘掉：以后再加回来，从缺口重新开始。
     public mutating func keep(_ symbols: Set<String>) {
+      // 品种键本身带「/」（`BINANCE/USD_M/BTCUSDT`），闸的键用「|」接方向，拆的时候按最后一个「|」。
+      // 原来按第一个「/」拆，拆出来的是交易所名，自选一改所有闸全被清掉，同一个窗口能再响一次。
       let keys = Set(symbols.map { $0.uppercased() })
       series = series.filter { keys.contains($0.key) }
-      gates = gates.filter { keys.contains(String($0.key.split(separator: "/").first ?? "")) }
+      gates = gates.filter { keys.contains(String($0.key[..<($0.key.lastIndex(of: "|") ?? $0.key.endIndex)])) }
     }
 
     /// 断过（切后台、关掉开关）：收盘价全扔，闸留着——同一个窗口里回来不许再响一次。

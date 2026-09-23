@@ -35,8 +35,9 @@ final class AlertActivityController: ObservableObject {
   /// 这台设备允许实时活动吗（设置里能关）。
   var available: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
 
-  /// 同步对象 id（`binance/usd_m/<代号>/<提醒 id>`），服务端按它认线。
-  static func syncID(_ alert: KanpanCore.Alert) -> String { "binance/usd_m/" + alert.symbol + "/" + alert.id }
+  /// 同步对象 id（`<完整品种 key>/<提醒 id>`，如 `binance/usd_m/BTCUSDT/<id>`），服务端按它认线。
+  /// 和 `PersonalSyncCodec` 里 alerts 那一份同一个拼法：`alert.symbol` 已经是完整 key，不能再前缀一次。
+  static func syncID(_ alert: KanpanCore.Alert) -> String { InstrumentID.canonical(alert.symbol) + "/" + alert.id }
 
   /// 活动标题里说它盯的是什么：裸价格提醒写「价格」，画线提醒写线种。
   static func toolLabel(_ alert: KanpanCore.Alert) -> String {
