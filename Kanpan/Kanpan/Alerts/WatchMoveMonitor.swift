@@ -59,10 +59,12 @@ final class WatchMoveMonitor {
   }
 
   /// 自选里存的是完整品种 key（`binance/usd_m/BTCUSDT`），报价簿与主图喂进来的可能是裸代号；
-  /// 两边都折成同一个完整 key 再比，不然谁也对不上、永远不响。大写是 `WatchMove.Tracker` 的口径。
-  static func key(_ symbol: String) -> String { InstrumentID.canonical(symbol).uppercased() }
+  /// 两边都折成同一个完整 key 再比，不然谁也对不上、永远不响。规范键是小写前缀 + 大写代号
+  /// （`WatchMove.Tracker` 也按它记）；不能再 `uppercased()`——那会写成 `BINANCE/USD_M/BTCUSDT`，
+  /// 事件带着它出去，`picker.info(for:)` 查不到小数位，点「查看」开的也不是规范键。
+  static func key(_ symbol: String) -> String { InstrumentID.canonical(symbol) }
 
-  /// 自选变了。
+  /// 自选变了。进来的是什么写法都先归成规范键（宿主交的是规范键，UI 用例的注入是裸代号）。
   func setFavorites(_ symbols: [String]) {
     let next = Set(symbols.map(Self.key).filter { !$0.isEmpty })
     guard next != favorites else { return }

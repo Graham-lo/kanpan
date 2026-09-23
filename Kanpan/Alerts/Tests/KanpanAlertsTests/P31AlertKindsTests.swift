@@ -30,6 +30,11 @@ struct P31AlertKindsTests {
     #expect(up.drawingID == nil)
     let again = store.addPrice(symbol: "BTCUSDT", target: 70_000, current: 66_000, label: "70,000", now: Double(m0))
     #expect(again?.id == up.id)
+    #expect(up.symbol == "binance/usd_m/BTCUSDT")
+    for spelling in ["binance/usd_m/BTCUSDT", "BINANCE/USD_M/BTCUSDT"] {
+      #expect(store.addPrice(symbol: spelling, target: 70_000, current: 66_000, label: "70,000")?.id == up.id,
+              "\(spelling) 和裸代号是同一只")
+    }
     let down = try #require(store.addPrice(symbol: "BTCUSDT", target: 60_000, current: 65_000, label: "60,000", now: Double(m0)))
     #expect(down.title == "BTC 跌到 60,000")
     #expect(store.all.count == 2)
@@ -52,8 +57,21 @@ struct P31AlertKindsTests {
 
   // ---------------------------------------------------------------- 复盘到点
 
-  private func item(_ id: String = "9F1E", due: Double, waiting: Bool = true, eligible: Bool = true) -> ReviewDueAlerts.Item {
-    .init(id: id, symbol: "BTCUSDT", dueAt: due, short: "BTC", waiting: waiting, eligible: eligible)
+  private func item(_ id: String = "9F1E", due: Double, waiting: Bool = true, eligible: Bool = true,
+                    symbol: String = "BTCUSDT") -> ReviewDueAlerts.Item {
+    .init(id: id, symbol: symbol, dueAt: due, short: "BTC", waiting: waiting, eligible: eligible)
+  }
+
+  @Test("到点提醒：记录的品种不管写成裸代号、规范键还是大写规范键，对账都是同一只，不来回改")
+  func dueAlertSymbolSpellingsAreOneKey() throws {
+    let now = Double(m0)
+    let due = now + 3_600_000
+    let created = try #require(ReviewDueAlerts.plan(items: [item(due: due)], existing: [], now: now).upsert.first)
+    #expect(created.symbol == "binance/usd_m/BTCUSDT")
+    for spelling in ["BTCUSDT", "binance/usd_m/BTCUSDT", "BINANCE/USD_M/BTCUSDT"] {
+      let plan = ReviewDueAlerts.plan(items: [item(due: due, symbol: spelling)], existing: [created], now: now)
+      #expect(plan.isEmpty, "\(spelling) 不该让同一条提醒被改写")
+    }
   }
 
   @Test("记一笔等答案的：建一条到点提醒，id 由记录定死")
@@ -211,6 +229,39 @@ struct P31AlertKindsTests {
     warm(bare, "binance/usd_m/BTCUSDT")
     bare.observe(symbol: "binance/usd_m/BTCUSDT", price: 98.2, timeMs: minute(5) + 1_000)
     #expect(bareBox.events.map(\.direction) == [.down])
+  }
+
+  @Test("自选、喂价用哪种写法都算同一只：裸代号 / 规范键 / 大写规范键")
+  func symbolSpellingsMatch() {
+    for favorite in ["BTCUSDT", "binance/usd_m/BTCUSDT", "BINANCE/USD_M/BTCUSDT"] {
+      for fed in ["BTCUSDT", "binance/usd_m/BTCUSDT", "BINANCE/USD_M/BTCUSDT"] {
+        let (m, box) = monitor(favorites: [favorite])
+        #expect(m.favorites == ["binance/usd_m/BTCUSDT"])
+        warm(m, fed)
+        m.observe(symbol: fed, price: 101.6, timeMs: minute(5) + 1_000)
+        #expect(box.events.map(\.symbol) == ["binance/usd_m/BTCUSDT"], "自选 \(favorite) / 喂价 \(fed)")
+      }
+    }
+  }
+
+  #if DEBUG
+  @Test("UI 用例的注入写裸代号，自选是规范键：照样响（以前两边对不上，一声不响）")
+  func testInjectionMatchesCanonicalFavorites() {
+    let (m, box) = monitor(favorites: ["binance/usd_m/BTCUSDT"])
+    m.injectTestMove(symbol: "BTCUSDT")
+    #expect(box.events.map(\.direction) == [.up])
+  }
+  #endif
+
+  @Test("改自选时留下的那只闸还在：同窗口不再响")
+  func changingFavoritesKeepsTheRemainingGate() {
+    let (m, box) = monitor(favorites: ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
+    warm(m, "binance/usd_m/BTCUSDT")
+    m.observe(symbol: "binance/usd_m/BTCUSDT", price: 101.6, timeMs: minute(5) + 1_000)
+    #expect(box.events.count == 1)
+    m.setFavorites(["binance/usd_m/BTCUSDT"])
+    m.observe(symbol: "binance/usd_m/BTCUSDT", price: 101.8, timeMs: minute(5) + 2_000)
+    #expect(box.events.count == 1, "拿掉 ETH 不能把 BTC 的闸一起清掉")
   }
 
   @Test("关掉开关就停；再打开从缺口重新开始")

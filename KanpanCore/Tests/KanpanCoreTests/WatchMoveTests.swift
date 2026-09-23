@@ -104,7 +104,7 @@ import Testing
     warm(&t, symbol: "BTCUSDT")
     warm(&t, symbol: "ETHUSDT")
     t.keep(["ETHUSDT"])
-    #expect(t.symbols == ["ETHUSDT"])
+    #expect(t.symbols == ["binance/usd_m/ETHUSDT"])
     #expect(t.observe(symbol: "BTCUSDT", barOpen: minute(5), price: 110, threshold: 1.5) == nil,
             "加回来的品种没有五分钟前的参照")
     #expect(t.observe(symbol: "ETHUSDT", barOpen: minute(5), price: 110, threshold: 1.5) != nil)
@@ -120,6 +120,40 @@ import Testing
     t.keep([key, "binance/usd_m/ETHUSDT"])
     #expect(t.observe(symbol: key, barOpen: minute(5), price: 103, threshold: 1.5) == nil,
             "自选改了但这只还在：同一个窗口里不许再响")
+  }
+
+  @Test("裸代号 / 规范键 / 大写规范键三种写法归到同一只：同一串价、同一道闸")
+  func symbolSpellingsShareOneKey() {
+    let spellings = ["BTCUSDT", "binance/usd_m/BTCUSDT", "BINANCE/USD_M/BTCUSDT", " btcusdt "]
+    var t = WatchMove.Tracker()
+    // 五根收盘价轮着用不同写法喂：只要归到同一格，第六口就能拿到五分钟前那一根。
+    for n in Int64(0)..<5 {
+      _ = t.observe(symbol: spellings[Int(n) % spellings.count], barOpen: minute(n), price: 100, threshold: 1.5)
+    }
+    #expect(t.symbols == ["binance/usd_m/BTCUSDT"])
+    let e = t.observe(symbol: "BINANCE/USD_M/BTCUSDT", barOpen: minute(5), price: 101.6, threshold: 1.5)
+    #expect(e?.symbol == "binance/usd_m/BTCUSDT", "事件带的是规范键，不是大写的规范键")
+    #expect(e.map(WatchMove.title(for:)) == "BTC 五分钟涨 1.60%")
+    for spelling in spellings {
+      #expect(t.observe(symbol: spelling, barOpen: minute(5), price: 101.9, threshold: 1.5) == nil,
+              "换个写法也是同一道闸：同窗口不再响")
+    }
+  }
+
+  @Test("改自选不丢留下那只的闸：同窗口里不会再响一次")
+  func keepingASymbolKeepsItsGate() {
+    var t = WatchMove.Tracker()
+    warm(&t, symbol: "binance/usd_m/BTCUSDT")
+    warm(&t, symbol: "binance/usd_m/ETHUSDT")
+    #expect(t.observe(symbol: "binance/usd_m/BTCUSDT", barOpen: minute(5), price: 101.6, threshold: 1.5) != nil)
+    // 宿主交进来的是规范键；以前按第一个 `/` 拆出 "BINANCE" 去比，闸全被清掉。
+    t.keep(["binance/usd_m/BTCUSDT"])
+    #expect(t.symbols == ["binance/usd_m/BTCUSDT"])
+    #expect(t.observe(symbol: "binance/usd_m/BTCUSDT", barOpen: minute(5), price: 101.8, threshold: 1.5) == nil)
+    // 裸代号去 keep 也是同一只。
+    t.keep(["BTCUSDT"])
+    #expect(t.symbols == ["binance/usd_m/BTCUSDT"])
+    #expect(t.observe(symbol: "BTCUSDT", barOpen: minute(5), price: 101.9, threshold: 1.5) == nil)
   }
 
   @Test("幅度夹在 0.1%～50% 之间，读不出来退回 1.5%")

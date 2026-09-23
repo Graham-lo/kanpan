@@ -91,15 +91,25 @@ public enum WatchMove {
   }
 
   /// 一个人的全部状态：各品种的收盘价 + 各品种各方向的闸。
+  ///
+  /// 品种一律按规范键（`binance/usd_m/BTCUSDT`）记：裸代号、规范键、大写的规范键
+  /// 进来都先过 `InstrumentID.canonical`，归到同一格。闸按（品种, 方向）成对记，
+  /// 不再把两者拼成一个字符串——规范键里本身带 `/`，拼起来再按 `/` 拆会拆错。
   public struct Tracker: Sendable, Equatable {
+    struct GateKey: Hashable, Sendable {
+      var symbol: String
+      var direction: Direction
+    }
+
     var series: [String: Series] = [:]
-    var gates: [String: Gate] = [:]
+    var gates: [GateKey: Gate] = [:]
     public init() {}
 
     /// 喂一口价。`threshold` 是百分数（1.5 = 1.5%）。
     public mutating func observe(symbol: String, barOpen: Int64, price: Double, closed: Bool = false,
                                  threshold: Double) -> Event? {
-      let key = symbol.uppercased()
+      let key = InstrumentID.canonical(symbol)
+      guard !key.isEmpty else { return nil }
       var s = series[key] ?? Series()
       let change = s.observe(barOpen: barOpen, price: price, closed: closed)
       series[key] = s
@@ -108,7 +118,7 @@ public enum WatchMove {
       let window = barOpen - barOpen % WatchMove.windowMs
       var fired: Event?
       for direction in Direction.allCases {
-        let gateKey = key + "|" + direction.rawValue
+        let gateKey = GateKey(symbol: key, direction: direction)
         var gate = gates[gateKey] ?? Gate()
         let signed = direction == .up ? change : -change
         if gate.pass(signed: signed, threshold: limit, window: window), fired == nil {
@@ -120,12 +130,11 @@ public enum WatchMove {
     }
 
     /// 只留这几只（自选改了）。拿掉的品种连同它的闸一起忘掉：以后再加回来，从缺口重新开始。
+    /// 留下的品种闸照旧——改自选不能让同一个窗口里再响一次。
     public mutating func keep(_ symbols: Set<String>) {
-      // 品种键本身带「/」（`BINANCE/USD_M/BTCUSDT`），闸的键用「|」接方向，拆的时候按最后一个「|」。
-      // 原来按第一个「/」拆，拆出来的是交易所名，自选一改所有闸全被清掉，同一个窗口能再响一次。
-      let keys = Set(symbols.map { $0.uppercased() })
+      let keys = Set(symbols.map(InstrumentID.canonical))
       series = series.filter { keys.contains($0.key) }
-      gates = gates.filter { keys.contains(String($0.key[..<($0.key.lastIndex(of: "|") ?? $0.key.endIndex)])) }
+      gates = gates.filter { keys.contains($0.key.symbol) }
     }
 
     /// 断过（切后台、关掉开关）：收盘价全扔，闸留着——同一个窗口里回来不许再响一次。

@@ -74,7 +74,7 @@ extension ReviewDueAlerts.Item {
   init(record: ReviewRecord) {
     let range = record.draft.range
     self.init(id: record.id.uuidString,
-              symbol: range.symbol.uppercased(),
+              symbol: InstrumentID(venue: range.venue, market: range.market, symbol: range.symbol).key,
               dueAt: Double(record.draft.rule.expires),
               short: range.shortSymbol,
               waiting: record.outcome == .waiting,
