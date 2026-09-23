@@ -269,6 +269,24 @@ final class ArchiveWriter: @unchecked Sendable {
   public func markApplied(at time: Int64) throws {
     try transaction { $0.lastApplied = time }
   }
+  /// 云端的值落进 `local`、而且**和本机原来那份不一样**的次数（只在内存里记，进程内单调递增）。
+  ///
+  /// 两条路会把云端的值写进 `local`：拉取（`receive`）和回执（`acknowledge`——服务端把
+  /// 这条 patch 并进它那份对象，别的设备改过的字段会跟着回来）。只要这个数没动，
+  /// `local` 里就没有本机界面上还没有的东西，一轮「只推不拉」之后不必再合并、落盘一遍。
+  /// 比的是 `body` 与 `deleted`，不比 `revision`：每条回执都会抬版本号，那不是新内容。
+  public private(set) var remoteArrivals: UInt64 = 0
+
+  /// 一轮**只推送、没有拉取**的同步收尾：`local` 从 `mark`（本轮开始时的 `remoteArrivals`）
+  /// 起没被云端改过、上一批也早已装进本机时，直接把「拉到哪儿 / 装到哪儿」两个时刻一起
+  /// 记上，返回 `false`——调用方**不必**再跑一遍合并与两次阻塞落盘。
+  /// 否则什么都不写，返回 `true`，由调用方照常 `markFetched` + 合并。
+  public func finishPushOnlyRound(since mark: UInt64, at time: Int64) throws -> Bool {
+    guard remoteArrivals == mark, !needsApply else { return true }
+    try transaction { $0.lastSync = time; $0.lastApplied = time }
+    return false
+  }
+
   /// 拉下来的这批还没装进本机。重启之后照样看得出来，因为两个时刻都在存档里。
   public var needsApply: Bool {
     guard let fetched = archive.lastSync else { return false }
@@ -612,6 +630,7 @@ final class ArchiveWriter: @unchecked Sendable {
     let pending = Set(archive.operations.map(\.id))
     let mine = response.results.filter { pending.contains($0.operationId) }
     guard !mine.isEmpty else { return }
+    var arrived = false
     try transaction { a in
       a.offset = response.serverTime - Int64(Date().timeIntervalSince1970 * 1000)
       for result in mine {
@@ -635,19 +654,33 @@ final class ArchiveWriter: @unchecked Sendable {
         if let local = a.local[result.object.key], local.body == result.object.body, local.deleted == result.object.deleted {
           a.rejected.removeAll { $0.key == result.object.key }
         }
-        if !a.holdsLocal(result.object.collection, result.object.id) { a.local[result.object.key] = result.object }
+        if !a.holdsLocal(result.object.collection, result.object.id) {
+          if Self.differs(a.local[result.object.key], result.object) { arrived = true }
+          a.local[result.object.key] = result.object
+        }
       }
     }
+    if arrived { remoteArrivals &+= 1 }
+  }
+  /// 云端这份和本机记账里那份是不是两样内容（版本号不算）。
+  private static func differs(_ local: SyncObject?, _ remote: SyncObject) -> Bool {
+    guard let local else { return true }
+    return local.body != remote.body || local.deleted != remote.deleted
   }
   public func receive(_ page: SyncPage) throws {
+    var arrived = false
     try transaction { a in
       a.offset = page.serverTime - Int64(Date().timeIntervalSince1970 * 1000)
       for object in page.objects {
         a.objects[object.key] = object
         // 有待发操作**或者**有未了结的拒绝记录，就都别让云端那份盖掉本机的值。
-        if !a.holdsLocal(object.collection, object.id) { a.local[object.key] = object }
+        if !a.holdsLocal(object.collection, object.id) {
+          if Self.differs(a.local[object.key], object) { arrived = true }
+          a.local[object.key] = object
+        }
       }
     }
+    if arrived { remoteArrivals &+= 1 }
   }
   /// 等排队的写盘全部落地。
   public func flush() async {

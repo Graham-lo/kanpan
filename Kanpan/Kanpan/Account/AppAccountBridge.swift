@@ -741,6 +741,9 @@ import ReviewUI
         // 推上去那一刻的脏字段快照。推成功之后按「时刻没变」逐个清——
         // **推成功才清**，失败 / 断网 / 被杀都留着，下次启动本地照样赢。
         let marks = prefs.dirtyMarks
+        // 这一轮开始时「云端改过本机记账」的计数。一轮下来它没动、又没拉任何 scope，
+        // 就是纯推送：本机界面上已经是最新的，合并与两次阻塞落盘都省掉（见收尾处）。
+        let arrivals = sync.remoteArrivals
         // 服务端**认掉**的那些操作里带的线上字段名。`markSent` 只是「发出去了」，
         // 不算成功；成功以 `SyncPushResponse` 里按 `operationId` 对上的为准，
         // 而且要扣掉它回报的 `droppedFields`（认了这条，但这几项没收下）。
@@ -877,9 +880,18 @@ import ReviewUI
           try sync.retryRejected(device: account.device.id, owning: PersonalSyncCodec.ownedKeys)
           if !sync.archive.operations.isEmpty { queuedPush = queuedPush ?? false }
         }
-        // 只记「拉到哪儿了」。「装进本机没有」由 `applyPending()` 落盘成功后自己记（B4）。
-        try sync.markFetched(at: Int64(Date().timeIntervalSince1970 * 1000))
-        try applyPending(); updateStatus()
+        // 纯推送（没拉任何 scope）而且回执没带回别的设备的改动：`local` 里没有界面上还没有的
+        // 东西，`applyPending()` 那一整套（全量合并、两次主线程 `flushNow()`、`onProfileReady()`）
+        // 跑了也是原样写回。这时把两个时刻一起记上就收工。上一次被 `canApply()` 挡下的
+        // （`pendingApply`）、或者拉下来还没装进去的（`needsApply`），照旧走合并。
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        if scopes.isEmpty, !pendingApply, try !sync.finishPushOnlyRound(since: arrivals, at: now) {
+          updateStatus()
+        } else {
+          // 只记「拉到哪儿了」。「装进本机没有」由 `applyPending()` 落盘成功后自己记（B4）。
+          try sync.markFetched(at: now)
+          try applyPending(); updateStatus()
+        }
         // 复盘同步只跟着全量走：登录 / 恢复会话 / 手动 / 到点的回前台。
         if case .full = plan { review.synchronize(manual: manual) }
       } catch is CancellationError { if requestEpoch == epoch && taskID == runID { updateStatus() } }
