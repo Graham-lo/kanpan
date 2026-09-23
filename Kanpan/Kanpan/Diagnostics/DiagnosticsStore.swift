@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // ============================================================ 落盘
@@ -111,16 +112,30 @@ final class DiagnosticsStore: @unchecked Sendable {
 
   // ---------------------------------------------------------------- 写
 
-  /// 收下一份 payload。返回写成功的那条记录（写失败返回 nil，不抛——
-  /// 诊断收集自己把 app 弄崩了是本末倒置）。
+  /// 收下一份 payload。返回写成功的那条记录；写失败、或者这份早就收过，返回 nil
+  /// （不抛——诊断收集自己把 app 弄崩了是本末倒置）。
+  ///
+  /// **幂等**：同一份 payload 收几次，盘上都只有一份。MetricKit 的 `pastPayloads` /
+  /// `pastDiagnosticPayloads` 是系统留着的最近 24 份历史副本，每次冷启动 `start()` 都会
+  /// 补收一遍，而其中大部分当天已经由 `didReceive` 收过；以前记录 id 是随机 UUID，
+  /// 于是每开一次 app 就多出一整套重复记录，把崩溃数、条数上限和字节上限一起吃掉。
+  /// 现在 id 是 payload 内容的指纹（见 `fingerprint(of:raw:kind:)`），收之前先对一遍
+  /// 「目录里现有的文件名」和「收过的指纹账本」，对上就跳过。
   @discardableResult
   func ingest(_ data: Data, kind: PayloadKind) -> DiagnosticsRecord? {
     let now = clock()
-    let digest = PayloadParser.digest(from: data, kind: kind)
     let value = try? JSONDecoder().decode(JSONValue.self, from: data)
+    let fingerprint = Self.fingerprint(of: value, raw: data, kind: kind)
 
+    lock.lock()
+    let seen = seenLocked().contains(fingerprint)
+      || indexLocked().contains { $0.name.hasSuffix("-\(fingerprint.prefix(Self.nameIDLength)).json") }
+    lock.unlock()
+    if seen { return nil }
+
+    let digest = PayloadParser.digest(from: data, kind: kind)
     let record = DiagnosticsRecord(
-      id: UUID().uuidString,
+      id: fingerprint,
       kind: kind,
       receivedAt: now,
       digest: digest,
@@ -132,6 +147,8 @@ final class DiagnosticsStore: @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     guard ensureDirectory() else { return nil }
+    // 解析那一段没加锁，这期间可能有另一条线程收下了同一份——写之前再对一遍。
+    if seenLocked().contains(fingerprint) { return nil }
 
     let name = Self.fileName(kind: kind, at: now, id: record.id)
     guard let encoded = try? Self.encoder.encode(record) else { return nil }
@@ -141,6 +158,7 @@ final class DiagnosticsStore: @unchecked Sendable {
     } catch {
       return nil
     }
+    rememberLocked(fingerprint)
     // 索引是增量维护的：刚写的这一份直接加进去，不必为了淘汰再扫一遍目录。
     var entries = indexLocked()
     entries.append(Slot(url: url, name: name, size: encoded.count))
@@ -192,6 +210,7 @@ final class DiagnosticsStore: @unchecked Sendable {
   }
 
   /// 清空。设置页「清诊断数据」用；单测也用它做 teardown。
+  /// 指纹账本不清：清掉的那些下次冷启动还会从 `pastPayloads` 里递过来，清空就该一直是空的。
   func removeAll() {
     lock.lock()
     defer { lock.unlock() }
@@ -238,7 +257,33 @@ final class DiagnosticsStore: @unchecked Sendable {
   /// nil = 还没扫过。
   private var slots: [Slot]?
 
-  /// 文件名里的毫秒时间戳：`<kind>-<015d 毫秒>-<id 前 8 位>.json`。
+  /// 收过的指纹账本（`.seen`，一行一个，只留最近 `seenCapacity` 个）。
+  ///
+  /// 只看目录里的文件名不够：一份 payload 被条数 / 字节上限淘汰之后，系统下次冷启动
+  /// 还会把它放在 `pastPayloads` 里递过来，光靠文件名会把它当新的再收一遍、再挤掉一份别的。
+  /// 账本比记录活得久（淘汰、清空都不动它），所以收过就是收过。
+  /// 文件没有 `.json` 后缀，索引、导出、淘汰都看不见它。
+  private var seen: [String]?
+  private static let seenCapacity = 256
+  private var seenURL: URL { directory.appendingPathComponent(".seen") }
+
+  private func seenLocked() -> Set<String> {
+    if seen == nil {
+      let text = (try? String(contentsOf: seenURL, encoding: .utf8)) ?? ""
+      seen = text.split(separator: "\n").map(String.init)
+    }
+    return Set(seen ?? [])
+  }
+
+  private func rememberLocked(_ fingerprint: String) {
+    var list = seen ?? []
+    list.append(fingerprint)
+    if list.count > Self.seenCapacity { list.removeFirst(list.count - Self.seenCapacity) }
+    seen = list
+    try? Data(list.joined(separator: "\n").utf8).write(to: seenURL, options: .atomic)
+  }
+
+  /// 文件名里的毫秒时间戳：`<kind>-<015d 毫秒>-<id 前 16 位>.json`（老文件是 UUID 前 8 位）。
   private static func stamp(_ name: String) -> Int64 {
     let parts = name.split(separator: "-")
     guard parts.count > 1, let value = Int64(parts[1]) else { return 0 }
@@ -313,8 +358,35 @@ final class DiagnosticsStore: @unchecked Sendable {
   static func fileName(kind: PayloadKind, at date: Date, id: String) -> String {
     let ms = Int64((date.timeIntervalSince1970 * 1000).rounded())
     let stamp = String(format: "%015lld", ms)
-    return "\(kind.rawValue)-\(stamp)-\(id.prefix(8)).json"
+    return "\(kind.rawValue)-\(stamp)-\(id.prefix(nameIDLength)).json"
   }
+
+  /// 文件名里带 id 的前几位。指纹是十六进制，16 位 = 64 bit，同一目录撞车的概率可以不计；
+  /// 老文件名里那 8 位是 UUID 前缀，形状不同，不会被误认成同一份。
+  static let nameIDLength = 16
+
+  /// payload 的内容指纹：SHA-256 的十六进制。
+  ///
+  /// 能解成 JSON 的，先按排好序的键重新编一遍再算——同一份 payload 两次
+  /// `jsonRepresentation()` 出来的字节，键的顺序不保证一样。解不了的就按原字节算。
+  /// kind 也算进去：同样的字节分别以 metric 和 diagnostic 收，是两份不同的东西。
+  static func fingerprint(of value: JSONValue?, raw: Data, kind: PayloadKind) -> String {
+    var hasher = SHA256()
+    hasher.update(data: Data(kind.rawValue.utf8))
+    hasher.update(data: Data([0]))
+    if let value, let canonical = try? canonicalEncoder.encode(value) {
+      hasher.update(data: canonical)
+    } else {
+      hasher.update(data: raw)
+    }
+    return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+
+  private static let canonicalEncoder: JSONEncoder = {
+    let e = JSONEncoder()
+    e.outputFormatting = [.sortedKeys]
+    return e
+  }()
 
   static let encoder: JSONEncoder = {
     let e = JSONEncoder()

@@ -61,8 +61,9 @@ final class DiagnosticsCenter: @unchecked Sendable {
     #if canImport(MetricKit) && os(iOS)
       // `pastPayloads` / `pastDiagnosticPayloads` 是**已经交付过**的历史副本，
       // 系统留最近 24 份。首次装上订阅（或用户升级到带诊断的版本）时补收一次，
-      // 否则「装了新版之前的崩溃」全看不到。重复的那些会被 id 去重吗？不会——
-      // 所以只在第一次 start 时补，靠上面的 `first` 挡住。
+      // 否则「装了新版之前的崩溃」全看不到。`first` 只挡得住同一进程里的重复 start，
+      // 挡不住下一次冷启动：这 24 份每次开 app 都会递过来，大半已经由 `didReceive` 收过。
+      // 去重靠 `DiagnosticsStore.ingest` 本身——记录 id 是 payload 内容指纹，收过的直接跳过。
       //
       // 补收这一段是**冷启动主线程上最贵的一笔**：最多 24 份，每份都要 JSON 化、
       // 解一遍、算摘要、写一次盘，再加一次淘汰扫描。`start()` 是在 `KanpanApp.init()`

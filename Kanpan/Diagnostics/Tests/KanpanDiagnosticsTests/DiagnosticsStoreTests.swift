@@ -147,6 +147,56 @@ struct DiagnosticsStoreTests {
     #expect(kept.first?.digest?.appBuildVersion == "3")
   }
 
+  @Test("同一份 payload 收两次（冷启动补收 pastPayloads），盘上只有一份")
+  func ingestIsIdempotent() throws {
+    let dir = makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let clock = TestClock()
+    let store = DiagnosticsStore(directory: dir, clock: clock.now)
+
+    let crash = PayloadFixtures.crashPayload()
+    #expect(store.ingest(crash, kind: .diagnostic) != nil)
+    clock.advance(86_400)
+    // 第二天冷启动：系统把同一份放在 pastDiagnosticPayloads 里又递了一遍。
+    #expect(store.ingest(crash, kind: .diagnostic) == nil)
+    // 换一个进程（新的 store 实例、索引和账本都从盘上读）也一样认得出来。
+    let reopened = DiagnosticsStore(directory: dir, clock: clock.now)
+    #expect(reopened.ingest(crash, kind: .diagnostic) == nil)
+    #expect(reopened.exportBundle().crashCount == 1)
+    #expect(reopened.records().count == 1)
+    // 不同的 payload 照收。
+    #expect(reopened.ingest(PayloadFixtures.metricPayload(), kind: .metric) != nil)
+    #expect(reopened.records().count == 2)
+  }
+
+  @Test("键的顺序不同也算同一份；同样的字节换个 kind 是另一份")
+  func fingerprintIsCanonical() throws {
+    let a = Data(#"{"b":1,"a":{"y":2,"x":3}}"#.utf8)
+    let b = Data(#"{"a":{"x":3,"y":2},"b":1}"#.utf8)
+    func fp(_ d: Data, _ k: PayloadKind) -> String {
+      DiagnosticsStore.fingerprint(
+        of: try? JSONDecoder().decode(JSONValue.self, from: d), raw: d, kind: k)
+    }
+    #expect(fp(a, .metric) == fp(b, .metric))
+    #expect(fp(a, .metric) != fp(a, .diagnostic))
+  }
+
+  @Test("被淘汰掉的那份再递过来也不回来")
+  func evictedPayloadStaysEvicted() {
+    let dir = makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let clock = TestClock()
+    let store = DiagnosticsStore(
+      directory: dir, limits: .init(maxRecords: 2, maxBytes: 10 * 1024 * 1024), clock: clock.now)
+    for i in 0..<3 {
+      store.ingest(PayloadFixtures.metricPayload(build: "\(i)"), kind: .metric)
+      clock.advance(60)
+    }
+    // build 0 已被挤掉；下次冷启动它还在 pastPayloads 里。
+    #expect(store.ingest(PayloadFixtures.metricPayload(build: "0"), kind: .metric) == nil)
+    #expect(store.records().compactMap { $0.digest?.appBuildVersion } == ["1", "2"])
+  }
+
   @Test("文件名按毫秒时间戳排，ls 出来就是时间序")
   func fileNamesSortByTime() {
     let a = DiagnosticsStore.fileName(
