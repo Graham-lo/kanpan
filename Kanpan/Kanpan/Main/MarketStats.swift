@@ -1,6 +1,7 @@
 import Foundation
 import KanpanCore
 import KanpanNetwork
+import Synchronization
 
 /// 顶栏右侧那两格要的后端数据：供应量（算总市值）和持仓量。
 ///
@@ -45,6 +46,41 @@ actor MarketStatsClient {
   private var metaFailedAt: [String: Date] = [:]
   private var metaTasks: [String: Task<SymbolMeta?, Never>] = [:]
 
+  /// 持仓量在「一换品种就有数」这件事上的保鲜期。持仓量本来就是分钟级统计，
+  /// 一分钟内的那口足够代表「现在」；过了就当没有，换过去先空着等新的一口。
+  static let openInterestFresh: TimeInterval = 60
+
+  /// 换品种那一刻要**同步**读的那份：主线程上的 `switchTo` 不能等一次 actor 跳转，
+  /// 否则顶栏还是会先画一帧「—」。所以供应量和持仓量各在锁里镜像一份，
+  /// actor 里的写入顺手更新它；读的人不用 `await`。
+  private struct Memo {
+    var meta: [String: SymbolMeta] = [:]
+    var openInterest: [String: (stat: OpenInterestStat, at: Date)] = [:]
+  }
+  private nonisolated let memo = Mutex(Memo())
+  private var oiTasks: [String: Task<OpenInterestStat?, Never>] = [:]
+
+  private static func oiKey(_ symbol: String, _ source: String) -> String {
+    source + "|" + InstrumentID.canonical(symbol)
+  }
+
+  /// 已经问到过的供应量（没过 12 小时）。空行也算答案：股指、贵金属没有市值。
+  nonisolated func cachedMeta(symbol: String) -> SymbolMeta? {
+    let sym = InstrumentID.canonical(symbol)
+    return memo.withLock { $0.meta[sym] }
+  }
+
+  /// 一分钟内问到过的持仓量。按交易所分开记：币安和 OKX 的口径不是一回事。
+  nonisolated func cachedOpenInterest(symbol: String, source: String?,
+                                      maxAge: TimeInterval = openInterestFresh) -> OpenInterestStat? {
+    guard let source else { return nil }
+    let key = Self.oiKey(symbol, source)
+    return memo.withLock { box in
+      guard let hit = box.openInterest[key], Date().timeIntervalSince(hit.at) < maxAge else { return nil }
+      return hit.stat
+    }
+  }
+
   private let session: URLSession = {
     let c = URLSessionConfiguration.ephemeral
     c.timeoutIntervalForRequest = 8
@@ -84,6 +120,7 @@ actor MarketStatsClient {
     if let row {
       metaCache[sym] = (row, Date())
       metaFailedAt[sym] = nil
+      memo.withLock { $0.meta[sym] = row }
     } else {
       metaFailedAt[sym] = Date()
     }
@@ -98,6 +135,33 @@ actor MarketStatsClient {
     if let hit = metaCache[sym], now.timeIntervalSince(hit.at) < Self.metaTTL { return nil }
     if let failed = metaFailedAt[sym], now.timeIntervalSince(failed) < Self.metaRetryDelay { return nil }
     return await meta(symbol: sym, base: base, hosts: hosts)
+  }
+
+  /// 一次问一批（扫图时的前后邻居）：`symbols=A,B` 一个往返。已经有的、刚失败还在
+  /// 冷却里的、正在问的都不再问。后端没回的那只就是「没有」，照样记一行空的。
+  func prefetchMeta(symbols: [String], hosts: [String]) async {
+    let now = Date()
+    let want = Array(Set(symbols.map { InstrumentID.canonical($0) }.filter { sym in
+      if let hit = metaCache[sym], now.timeIntervalSince(hit.at) < Self.metaTTL { return false }
+      if let failed = metaFailedAt[sym], now.timeIntervalSince(failed) < Self.metaRetryDelay { return false }
+      return metaTasks[sym] == nil
+    })).sorted()
+    guard !want.isEmpty else { return }
+    let names = want.map { InstrumentID($0).symbol }.joined(separator: ",")
+    for host in hosts {
+      guard var parts = URLComponents(string: "https://\(host)/v1/market/meta") else { continue }
+      parts.queryItems = [URLQueryItem(name: "symbols", value: names)]
+      guard let url = parts.url, let body = try? await Self.get(url, session: session),
+            let table = Self.decodeMeta(body) else { continue }
+      let at = Date()
+      for sym in want {
+        let row = table[InstrumentID(sym).symbol] ?? SymbolMeta()
+        metaCache[sym] = (row, at)
+        metaFailedAt[sym] = nil
+        memo.withLock { $0.meta[sym] = row }
+      }
+      return
+    }
   }
 
   private static func decodeMeta(_ body: Data) -> [String: SymbolMeta]? {
@@ -120,19 +184,49 @@ actor MarketStatsClient {
 
   /// - Parameter source: 服务端按哪家的口径取（`ProviderCapabilities.openInterestSource`）。
   ///   nil = 这家没有持仓量，直接不问。
-  func openInterest(symbol: String, source: String?, hosts: [String]) async -> OpenInterestStat? {
+  /// - Parameter maxAge: 缓存里这么新的就直接用，不再问（0 = 一定去问）。
+  ///   同一只同一家正在问的，后到的人等同一个结果，不再多发一次。
+  func openInterest(symbol: String, source: String?, hosts: [String],
+                    maxAge: TimeInterval = 0) async -> OpenInterestStat? {
     guard let source else { return nil }
+    let key = Self.oiKey(symbol, source)
+    if maxAge > 0, let hit = cachedOpenInterest(symbol: symbol, source: source, maxAge: maxAge) { return hit }
+    if let running = oiTasks[key] { return await running.value }
+    let task = Task<OpenInterestStat?, Never> { [session] in
+      await Self.fetchOpenInterest(symbol: symbol, source: source, hosts: hosts, session: session)
+    }
+    oiTasks[key] = task
+    let stat = await task.value
+    oiTasks[key] = nil
+    if let stat { memo.withLock { $0.openInterest[key] = (stat, Date()) } }
+    return stat
+  }
+
+  /// 扫图时的前后邻居：没有一分钟内那口的才去问，几只并发出去。
+  func prefetchOpenInterest(symbols: [String], source: String?, hosts: [String]) async {
+    guard let source else { return }
+    await withTaskGroup(of: Void.self) { group in
+      for sym in Set(symbols.map { InstrumentID.canonical($0) })
+      where cachedOpenInterest(symbol: sym, source: source) == nil {
+        group.addTask { _ = await self.openInterest(symbol: sym, source: source, hosts: hosts,
+                                                    maxAge: Self.openInterestFresh) }
+      }
+    }
+  }
+
+  private static func fetchOpenInterest(symbol: String, source: String, hosts: [String],
+                                        session: URLSession) async -> OpenInterestStat? {
     for host in hosts {
       guard var parts = URLComponents(string: "https://\(host)/v1/market/open-interest") else { continue }
       parts.queryItems = [URLQueryItem(name: "symbol", value: InstrumentID(symbol).symbol),
                           URLQueryItem(name: "source", value: source)]
       guard let url = parts.url else { continue }
-      guard let body = try? await Self.get(url, session: session) else { continue }
+      guard let body = try? await get(url, session: session) else { continue }
       guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
             let row = root["data"] as? [String: Any] else { continue }
       return OpenInterestStat(symbol: InstrumentID.canonical((row["symbol"] as? String) ?? symbol),
-                              openInterest: Self.num(row["openInterest"]),
-                              openInterestValue: Self.num(row["openInterestValue"]),
+                              openInterest: num(row["openInterest"]),
+                              openInterestValue: num(row["openInterestValue"]),
                               timeMs: (row["time"] as? NSNumber)?.int64Value)
     }
     return nil

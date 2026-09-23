@@ -27,7 +27,10 @@ final class ScanAndDetailZoomUITests: KanpanUICase {
   }
 
   private var canvas: XCUIElement { app.otherElements["chart.canvas"] }
-  private func symbolOnChart() -> String { chartInfo()["symbol"] as? String ?? "" }
+  /// 图上这只的代号。诊断里报的是完整品种 key（`binance/usd_m/BTCUSDT`），这里只比代号。
+  private func symbolOnChart() -> String {
+    (chartInfo()["symbol"] as? String ?? "").split(separator: "/").last.map(String.init) ?? ""
+  }
 
   /// 顶栏价格区横滑一下。左滑 = 名单里的下一只。
   private func swipePrice(next: Bool) {

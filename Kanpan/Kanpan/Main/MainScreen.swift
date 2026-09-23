@@ -346,7 +346,7 @@ struct MainScreen: View {
                   onHistoryVisibility: { quotes.watchHistory($0, visible: $1) },
                   previews: previews,
                   // 点一行进图的同一瞬间冻结这张表的顺序，顶栏横滑就照着它一只只看过去。
-                  onScanList: { scanList = ScanList($0) },
+                  onScanList: { adoptScanList($0) },
                   // 加了提醒的线就是「关注线」：自选页多一档「离提醒线最近」（§10）。
                   alerts: alerts.all)
   }
@@ -371,7 +371,7 @@ struct MainScreen: View {
                    market.switchTo(symbol: symbol)
                  }
                },
-               onScanList: { scanList = ScanList($0) },
+               onScanList: { adoptScanList($0) },
                previews: previews, picker: picker,
                route: $sectorRoute)
   }
@@ -474,6 +474,8 @@ struct MainScreen: View {
         // 回信只回那一只上的线：换走了就算不回了。
         if let reply = replying, reply.key != symbol { replying = nil }
         quotes.setChartSymbol(symbol); accountBridge?.focus(symbol)
+        // 扫图名单里的前后邻居先预取：滑过去时顶栏六格和持仓量副图就有数（B1 / B2）。
+        if let list = scanList { market.prefetchNeighbors(list.neighbors(of: symbol)) }
         // 换了一只，「刚才那一屏」说的已经不是这张图上的事了（§P3-2）。
         forgetReturn()
       },
@@ -1989,6 +1991,14 @@ struct MainScreen: View {
     }
     market.switchTo(interval: iv)
     Haptics.step()
+  }
+
+  /// 冻结扫图名单。点的若正是图上这只（不会触发 `onSymbol`），邻居就在这里先预取；
+  /// 点了别的那只，`onSymbol` 随后会拿新品种的邻居把这一笔替掉（B1 / B2）。
+  private func adoptScanList(_ symbols: [String]) {
+    let list = ScanList(symbols)
+    scanList = list
+    market.prefetchNeighbors(list.neighbors(of: market.symbol))
   }
 
   /// 顶栏价格区横滑一下：按冻结下来的名单换上一只 / 下一只（§10.1）。

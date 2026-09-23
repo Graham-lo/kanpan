@@ -51,6 +51,10 @@ public actor RoutedMarketFeed {
   private var prefetchTask: Task<Void, Never>?
   /// 换周期预热单独占一个槽：它跟自选预热是两件事，谁也不该把对方掐掉。
   private var warmTask: Task<Void, Never>?
+  /// 行情页顺手预热（扫图邻居、「看细节」要去的那一档）各占一个槽，按槽名分开：
+  /// 同一个槽里新的一轮顶掉旧的一轮（扫得快时邻居一直在变），不同槽互不相掐，
+  /// 也不碰自选预热和换周期预热那两个槽。
+  private var prewarmTasks: [String: Task<Void, Never>] = [:]
   /// 上一次预热时带来的常用周期表。记下来，换品种之后自动给新品种也热一遍。
   private var warmIntervals: [Interval] = []
   /// 预热几个自选。自选列表通常也就这么长，等于「整张列表都热过一遍」。
@@ -400,6 +404,22 @@ public actor RoutedMarketFeed {
     prefetchTask = run(jobs: jobs, delayMs: 1200)
   }
 
+  /// 行情页马上可能要用到的几份快照，立刻拉（不等 1.2 s）。
+  ///
+  /// 两个用处：扫图时的前后邻居（当前周期），以及十字线一出来就预取「看细节」
+  /// 要切去的那档更细周期——那一档多半没钉在周期条上，自选预热从来不会碰它，
+  /// 点下去时磁盘上没有快照，整张图就先空一拍。
+  /// 已经有够新快照的会被 `run` 跳过，重复叫不会重复打请求。
+  public func prewarm(symbols: [String], interval: Interval, slot: String) {
+    prewarmTasks[slot]?.cancel()
+    guard snapshots else { prewarmTasks[slot] = nil; return }
+    // 聚出来的周期、这家不支持的周期不拉（`job` 按各品种那一家的能力位判）。
+    var seen = Set<String>()
+    let jobs = symbols.map { InstrumentID.canonical($0) }.filter { seen.insert($0).inserted }
+      .compactMap { job($0, interval) }
+    prewarmTasks[slot] = run(jobs: jobs, delayMs: 0)
+  }
+
   /// 换品种之后，给新品种的其他常用周期也各拉一份。
   ///
   /// 常用周期表是上一次 `prefetch` 留下来的（`warmIntervals`），所以不用在每次
@@ -521,7 +541,7 @@ public actor RoutedMarketFeed {
   func wsSilenceMsForTests() async -> Double? { await feed?.wsSilenceMsForTests() }
   public func stop() async {
     selection = UUID(); route = UUID(); monitor?.cancel(); pump?.cancel()
-    prefetchTask?.cancel(); warmTask?.cancel()
+    prefetchTask?.cancel(); warmTask?.cancel(); prewarmTasks.values.forEach { $0.cancel() }; prewarmTasks = [:]
     await feed?.stop(); feed = nil; continuation?.finish(); continuation = nil
   }
 }

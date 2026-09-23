@@ -43,4 +43,14 @@ struct ScanListTests {
     #expect(list.index(of: "ethusdt") == 1)
     #expect(list.step(from: "btcusdt", .next) == .move("binance/usd_m/ETHUSDT"))
   }
+
+  @Test("预取的邻居：前后各一只，到头那侧没有，名单外的没有")
+  func neighboursForPrefetch() {
+    let list = ScanList(["BTCUSDT", "ETHUSDT", "MUUSDT"])
+    #expect(list.neighbors(of: "ethusdt") == ["binance/usd_m/MUUSDT", "binance/usd_m/BTCUSDT"])
+    #expect(list.neighbors(of: "BTCUSDT") == ["binance/usd_m/ETHUSDT"])
+    #expect(list.neighbors(of: "MUUSDT") == ["binance/usd_m/ETHUSDT"])
+    #expect(list.neighbors(of: "DOGEUSDT").isEmpty)
+    #expect(ScanList(["BTCUSDT"]).neighbors(of: "BTCUSDT").isEmpty)
+  }
 }

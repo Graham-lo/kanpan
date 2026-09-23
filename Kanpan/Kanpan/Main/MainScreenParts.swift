@@ -311,6 +311,7 @@ struct MainChartView: View {
         renderingActive: renderingActive,
         panelOpen: panelOpen,
         state: reviewChart.active ? reviewChart.state : liveState,
+        holdOnEmpty: !reviewChart.active && market.holdsFrame,
         proxy: reviewChart.active ? reviewChart.proxy : proxy,
         onView: { view in
           if !reviewChart.active { market.loadOI(view: view) }
@@ -334,7 +335,11 @@ struct MainChartView: View {
         onInversion: { main, subs in if !reviewChart.active { store.noteInversion(main: main, subs: subs) } },
         onSubResize: { id, scale in store.update { $0.subHeightOverrides[id] = scale } },
         onSubReorder: { order in let next = merged(order); store.update { $0.subs = next } },
-        onCrosshair: { [readout] in readout.set($0) },
+        onCrosshair: { [readout] in
+          readout.set($0)
+          // 十字线一出来就把「看细节」要去的那一档先热上（B3）。
+          if $0 != nil, !reviewChart.active { market.prewarmDetail() }
+        },
         onNeedsHistory: { if reviewChart.mode == .replay { reviewChart.loadReplayPage(forward: false, feature: review) } else if !reviewChart.active { market.loadMore() } },
         // 面板打开时由原生遮罩消费首个触摸，只收起面板。
         onTapped: { onTapped() },

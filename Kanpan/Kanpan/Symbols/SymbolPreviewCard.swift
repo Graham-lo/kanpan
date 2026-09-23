@@ -10,10 +10,9 @@ import KanpanNetwork
 ///
 /// 数据一律走现成的路：价和涨跌来自列表本来就订着的报价，持仓量和供应量走
 /// 顶栏那四格同一个 `MarketStatsClient`（它自己带缓存），K 线走这个品种那一家的提供者
-/// 拉一次 1 小时 × 60 根、按品种记着。费率走同一个客户端的
-/// `premiumIndex`（公开、免鉴权、权重 1），和 K 线并发发出、按品种缓存 5 分钟；
-/// 正在看的那张图上有 `markPrice` 流，那一帧会直接喂进来（`note(funding:for:)`），
-/// 省掉一次往返。
+/// 拉一次 1 小时 × 60 根、按品种记着。费率读顶栏同一本 `FundingBook`（全市场整表 +
+/// 图上 `markPrice` 流记下的那口），5 分钟内的都算数；簿里没有才走单品种
+/// `premiumIndex`（公开、免鉴权、权重 1），和 K 线并发发出，问到了也记回簿里。
 @MainActor @Observable
 final class SymbolPreviewStore {
   /// 预览卡要的那两个后端数：持仓量（美元名义）和供应量（算市值）。
@@ -28,20 +27,12 @@ final class SymbolPreviewStore {
   /// 最多记多少个品种的 K 线。翻一页自选也就几十行，记 24 个够用，多了白占内存。
   static let capacity = 24
 
-  /// 费率带着「什么时候拿到的」一起记：过了 `fundingMaxAge` 就当没有，
-  /// 下一次按住同一行会重新取一次。
-  struct Funding: Equatable {
-    var rate: Double
-    var at: Date
-  }
-
   /// 费率的保鲜期。资金费率几小时才结算一次，5 分钟内的那口足够代表「现在」，
   /// 又不至于让翻一页自选变成几十次往返。
   static let fundingMaxAge: TimeInterval = 5 * 60
 
   private(set) var bars: [String: [Bar]] = [:]
   private(set) var stats: [String: Stats] = [:]
-  private(set) var funding: [String: Funding] = [:]
 
   @ObservationIgnored private var resolver = RouteResolver(policy: .direct, endpoints: .default)
   @ObservationIgnored private var jobs: [String: Task<Void, Never>] = [:]
@@ -56,27 +47,24 @@ final class SymbolPreviewStore {
     jobs.removeAll()
     bars.removeAll()
     stats.removeAll()
-    funding.removeAll()
     recent.removeAll()
   }
 
   /// 正在看的那张图捎回来的费率（`markPrice@1s`）。它比 REST 那口还新，
   /// 直接覆盖缓存，省掉这个品种的一次往返。
   func note(funding rate: Double?, for symbol: String) {
-    let key = InstrumentID.canonical(symbol)
-    guard let rate, rate.isFinite else { return }
-    funding[key] = Funding(rate: rate, at: Date())
+    FundingBook.shared.note(rate: rate, for: symbol, upstream: upstream(of: symbol), live: false)
+  }
+
+  /// 这只在当前线路上由哪条上游供数：费率簿按它分开记，不混源。
+  private func upstream(of symbol: String) -> String {
+    resolver.provider(forSymbol: InstrumentID.canonical(symbol)).capabilities.upstream
   }
 
   func bars(for symbol: String) -> [Bar] { bars[InstrumentID.canonical(symbol)] ?? [] }
   func stats(for symbol: String) -> Stats? { stats[InstrumentID.canonical(symbol)] }
   func funding(for symbol: String) -> Double? {
-    guard let row = funding[InstrumentID.canonical(symbol)], !expired(row) else { return nil }
-    return row.rate
-  }
-
-  private func expired(_ row: Funding) -> Bool {
-    Date().timeIntervalSince(row.at) > Self.fundingMaxAge
+    FundingBook.shared.entry(for: symbol, upstream: upstream(of: symbol), maxAge: Self.fundingMaxAge)?.rate
   }
 
   /// 手指按住那一刻才去取。已经有的那几样不再取：K 线取一次就一直留着，
@@ -86,11 +74,11 @@ final class SymbolPreviewStore {
     touch(key)
     let needsBars = bars[key] == nil
     let needsStats = stats[key] == nil
-    let needsFunding = funding[key].map(expired) ?? true
+    let needsFunding = funding(for: key) == nil
     guard jobs[key] == nil, needsBars || needsStats || needsFunding else { return }
     let rest = resolver.provider(forSymbol: key)
     let proxies = resolver.endpoints.gateways
-    let src = rest.capabilities.openInterestSource
+    let src = rest.capabilities.openInterestSource, upstream = rest.capabilities.upstream
     jobs[key] = Task { [weak self] in
       // 费率和 K 线同时出发：两笔都是这张卡等着画的，串起来等于让人多等一趟。
       async let rate: FundingSnapshot? = needsFunding
@@ -103,11 +91,13 @@ final class SymbolPreviewStore {
         if !usable.isEmpty { self?.put(Array(usable), for: key) }
       }
       if let snapshot = await rate, snapshot.rate.isFinite, !Task.isCancelled {
-        self?.note(funding: snapshot.rate, for: key)
+        FundingBook.shared.note(rate: snapshot.rate, nextFundingTimeMs: snapshot.nextFundingTimeMs,
+                                for: key, upstream: upstream)
       }
       guard needsStats, !proxies.isEmpty else { self?.jobs[key] = nil; return }
       async let meta = MarketStatsClient.shared.meta(symbol: key, base: base, hosts: proxies)
-      async let oi = MarketStatsClient.shared.openInterest(symbol: key, source: src, hosts: proxies)
+      async let oi = MarketStatsClient.shared.openInterest(symbol: key, source: src, hosts: proxies,
+                                                           maxAge: MarketStatsClient.openInterestFresh)
       let row = Stats(
         openInterestValue: MarketStatsClient.notionalOpenInterest(await oi, previous: nil),
         totalSupply: (await meta)?.totalSupply.flatMap { $0.isFinite && $0 > 0 ? $0 : nil })
@@ -139,7 +129,6 @@ final class SymbolPreviewStore {
       let victim = recent.removeFirst()
       bars.removeValue(forKey: victim)
       stats.removeValue(forKey: victim)
-      funding.removeValue(forKey: victim)
     }
   }
 }

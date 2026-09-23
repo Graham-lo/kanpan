@@ -105,4 +105,44 @@ struct PremiumIndexTests {
     #expect(snapshot.rate == -0.00023)
     #expect(snapshot.nextFundingTimeMs == nil)
   }
+
+  /// 扫图换品种时垫底用的那张全市场表：不带 symbol、一行一个品种，
+  /// 交割合约那种空串费率要略过，不能让整张表解码失败。
+  @Test("全市场费率表按代号索引，空费率的行略过")
+  func decodesWholeMarketFunding() async throws {
+    let pacer = StepPacer()
+    let server = FakeServer { _ in
+      json("""
+      [{"symbol":"BTCUSDT","lastFundingRate":"0.00010000","nextFundingTime":1700000000000},
+       {"symbol":"ETHUSDT","lastFundingRate":"-0.00005000","nextFundingTime":0},
+       {"symbol":"BTCUSDT_251226","lastFundingRate":"","nextFundingTime":0}]
+      """)
+    }
+    let rest = BinanceREST(transport: FakeTransport(server),
+                           limiter: RateLimiter(pacer: pacer, minGapMs: 0), pacer: pacer)
+    let table = try await rest.fundingAll()
+    #expect(table.count == 2)
+    #expect(table["BTCUSDT"] == FundingSnapshot(rate: 0.0001, nextFundingTimeMs: 1_700_000_000_000))
+    #expect(table["ETHUSDT"] == FundingSnapshot(rate: -0.00005, nextFundingTimeMs: nil))
+    let path = await server.hits.first?.url
+    #expect(path?.path == "/fapi/v1/premiumIndex")
+    #expect(path?.query == nil)
+  }
+
+  /// 提供者那一层：整表按完整品种 key 交出去；网关上的 OKX 替身不给整表（不混源）。
+  @Test("全市场费率只由币安本家给，键是完整品种 key")
+  func providerFundingAllIsDirectOnly() async throws {
+    let pacer = StepPacer()
+    let server = FakeServer { _ in
+      json(#"[{"symbol":"BTCUSDT","lastFundingRate":"0.00010000","nextFundingTime":1700000000000}]"#)
+    }
+    let rest = BinanceREST(transport: FakeTransport(server),
+                           limiter: RateLimiter(pacer: pacer, minGapMs: 0), pacer: pacer)
+    let direct = BinanceProvider(upstream: .binance, hosts: BinanceHosts(), policy: .direct, rest: rest)
+    let table = try await direct.fundingAll()
+    #expect(table[InstrumentID.canonical("BTCUSDT")]?.rate == 0.0001)
+    let substitute = BinanceProvider(upstream: .okx, hosts: BinanceHosts(), policy: .gateway, rest: rest)
+    await #expect(throws: (any Error).self) { try await substitute.fundingAll() }
+    #expect(await server.hits.count == 1)
+  }
 }

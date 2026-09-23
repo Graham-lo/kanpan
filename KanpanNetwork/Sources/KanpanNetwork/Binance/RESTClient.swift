@@ -203,6 +203,23 @@ public actor BinanceREST {
     return FundingSnapshot(rate: rate, nextFundingTimeMs: next)
   }
 
+  /// 全市场每个品种此刻的资金费率，按交易所代号（`BTCUSDT`）索引。
+  ///
+  /// 一次往返（权重 10）换回整张表，给「换品种时费率 / 结算先有个数」用；
+  /// 费率不是有限数的那几行（交割合约回的是空串）直接略过，不拿 `nan` 顶位。
+  public func fundingAll() async throws -> [String: FundingSnapshot] {
+    let data = try await fetch(hosts.premiumIndexAll(), weight: 10)
+    let rows = try decode([PremiumIndexDTO].self, data)
+    var out: [String: FundingSnapshot] = [:]
+    out.reserveCapacity(rows.count)
+    for dto in rows {
+      guard let rate = Double(dto.lastFundingRate), rate.isFinite else { continue }
+      out[dto.symbol.uppercased()] = FundingSnapshot(
+        rate: rate, nextFundingTimeMs: dto.nextFundingTime.flatMap { $0 > 0 ? $0 : nil })
+    }
+    return out
+  }
+
   // ------------------------------------------------------------------ K 线
 
   /// 币安原生没有的周期拿哪一档去聚：只有 1y，拉 1M 自己聚（§4.2）。

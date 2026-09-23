@@ -38,6 +38,29 @@ final class MarketModel {
   private var oiDiskKey: String?
   private var oiEnabled = false
   private var oiRequestedAt = Date.distantPast
+  /// 换走之前手里那份持仓量，按「品种|周期」留着（B2）。换回来、扫回来时同步摆上，
+  /// 副图不用先闪一下「持仓量加载中」再等一次读盘或往返。扫图邻居、「看细节」
+  /// 要去的那一档、当前品种的常用周期也会先预热进这里（`warmOI`）。
+  private struct OIMemo {
+    var points: [OIPoint]
+    var region: (from: Int64, to: Int64)
+    /// 尾巴最后一次真问到的时刻。一分钟以上的旧，摆上之后顺手刷一次尾巴。
+    var at: Date
+  }
+  private static let oiMemoLimit = 24
+  @ObservationIgnored private var oiMemo: [String: OIMemo] = [:]
+  @ObservationIgnored private var oiMemoOrder: [String] = []
+  @ObservationIgnored private var oiWarming: Set<String> = []
+  @ObservationIgnored private var oiFetchedAt = Date.distantPast
+  /// 摆上的是一份一分钟以上的旧货：下一次 `loadOI` 当作刷新来做。
+  @ObservationIgnored private var oiStaleTail = false
+  /// 换过去那一刻就开始读盘，不等图报视野、不等那 30 ms 防抖。`loadOI` 先等它。
+  @ObservationIgnored private var oiSeedTask: Task<Void, Never>?
+  /// 当前品种要预热持仓量的常用周期（`prefetchFavorites` 带下来的周期条）。
+  @ObservationIgnored private var oiWarmIntervals: [Interval] = []
+  @ObservationIgnored private var oiWarmLater: Task<Void, Never>?
+  @ObservationIgnored private var neighborTask: Task<Void, Never>?
+  @ObservationIgnored private var detailWarm: (key: String, at: Date)?
   private var lastView: ViewWindow?
   private(set) var ticker: Ticker?
   private(set) var tradeQuote: TradeQuote?
@@ -81,6 +104,9 @@ final class MarketModel {
   private(set) var lastPushAt: Date?
   /// 换品种/周期尚未取得新序列。旧蜡烛清空，宿主单独保留视野参数。
   private(set) var switching = false
+  /// 同一个品种换周期、新周期盘上又没有快照：新序列到之前，图先留着上一档那一帧，
+  /// 不清成一张空图（B3：「看细节」切到没钉住的细周期时首帧整张空白）。
+  private(set) var holdsFrame = false
 
   private(set) var symbol: String
   private(set) var interval: Interval
@@ -150,7 +176,7 @@ final class MarketModel {
     // 品种表跟着线路换：替身上游的品种表另存一棵（`SymbolCatalog.partition`）。
     let catalogs = Self.catalogs(resolver)
     Task { [catalog] in await catalog.replace(catalogs) }
-    resetOI()
+    resetOI(); forgetOIMemo()
     if let lastView { loadOI(view: lastView, refresh: true) }
   }
 
@@ -273,6 +299,9 @@ final class MarketModel {
     // 它等到超时才肯释放。
     Task { [weak self] in await self?.refreshInfo() }
     startStats()
+    // 全市场费率簿（扫图换品种时先垫顶栏的费率 / 结算）。冷启动时往后放两秒，
+    // 首屏那几发请求先过去，别跟它抢带宽。
+    FundingBook.shared.refreshIfStale(provider: resolver.provider(forSymbol: symbol), delay: .seconds(2))
   }
 
   func stop() {
@@ -314,7 +343,7 @@ final class MarketModel {
     let running = pump != nil
     stop()
     rebuildOISource()
-    resetOI()
+    resetOI(); forgetOIMemo()
     feed = RoutedMarketFeed(endpoints: next, log: MarketModel.log)
     let box = catalog, catalogs = Self.catalogs(resolver)
     Task { await box.replace(catalogs) }
@@ -354,6 +383,7 @@ final class MarketModel {
       funding = nil; fundingExpired = false
       // 持仓量是按交易所报的，换了线路就得按新交易所重取；供应量与交易所无关，留着。
       openInterestValue = nil; openInterestUnit = nil
+      seedStats()
       startStats()
       rebuildOISource()
       resetOI(); historyError = nil
@@ -362,10 +392,12 @@ final class MarketModel {
       Task { await self.refreshInfo() }
     case .historyError(let error):
       historyError = error
+      holdsFrame = false
     case .series(let s):
       guard s.symbol == symbol, s.interval == interval else { return }
       series = s
       switching = false
+      holdsFrame = false
     case .lastBar(let b):
       guard series?.symbol == symbol, series?.interval == interval else { return }
       _ = series?.upsert(b)
@@ -399,6 +431,8 @@ final class MarketModel {
       markTime = tick.timeMs
       // 费率那一格只认有值的帧：镜像偶尔发不带 `r` 的帧，别把已经显示的费率抹成 `--`。
       if tick.fundingRate != nil || funding == nil { funding = tick }
+      FundingBook.shared.note(rate: tick.fundingRate, nextFundingTimeMs: tick.nextFundingTimeMs,
+                              for: symbol, upstream: capabilities.upstream)
       sweepDisplayLifetimes()
       guard price.isFinite, price > 0 else { return }
       markPrice = price
@@ -446,9 +480,14 @@ final class MarketModel {
           await MainActor.run { self?.applyMeta(meta, for: sym) }
         }
         group.addTask { [weak self] in
+          // 第一口：一分钟内问到过（扫图邻居预取、刚扫过又扫回来）就直接用，不再多打一发；
+          // 之后每 45 秒一定去问新的。
+          var maxAge = MarketStatsClient.openInterestFresh
           while !Task.isCancelled {
             // 没有持仓量的那家（`openInterestSource == nil`）那一格就一直是「—」。
-            let stat = await MarketStatsClient.shared.openInterest(symbol: sym, source: src, hosts: proxies)
+            let stat = await MarketStatsClient.shared.openInterest(symbol: sym, source: src, hosts: proxies,
+                                                                   maxAge: maxAge)
+            maxAge = 0
             if Task.isCancelled { return }
             await MainActor.run { self?.applyOpenInterest(stat, for: sym) }
             // 顺着这条循环做两件跟时间有关的事（审查 B-03 / B.8）：
@@ -488,6 +527,67 @@ final class MarketModel {
     }
   }
 
+  /// 换品种那一刻，顶栏右侧几格先用手里已有的值垫上（B1）：
+  /// 持仓量（一分钟内问到过的）、供应量（半天内的，含「后端说没有」那一行空的——
+  /// 美股、贵金属的市值照样是「—」，不会垫出一个错数）、费率与下次结算（全市场费率簿，
+  /// 十分钟内的；按线路分开记，网关线路垫不到币安直连那本）。
+  /// 真值到了照常覆盖：`markTime` 不动，流来的第一帧一定被收下。
+  private func seedStats() {
+    // 按新品种自己那一家的能力取（`.provider` 事件还没到，`capabilities` 仍是上一只的）。
+    let sym = symbol, caps = resolver.provider(forSymbol: sym).capabilities
+    if let stat = MarketStatsClient.shared.cachedOpenInterest(symbol: sym, source: caps.openInterestSource) {
+      applyOpenInterest(stat, for: sym)
+    }
+    if let meta = MarketStatsClient.shared.cachedMeta(symbol: sym) { applyMeta(meta, for: sym) }
+    if caps.hasFunding, let row = FundingBook.shared.entry(for: sym, upstream: caps.upstream) {
+      let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+      // 结算时刻已经过去的那口不拿：那格会倒数出一个负数，宁可等流来。
+      let next = row.nextFundingTimeMs.flatMap { $0 > nowMs ? $0 : nil }
+      funding = MarkPriceTick(timeMs: Int64(row.at.timeIntervalSince1970 * 1000),
+                              fundingRate: row.rate, nextFundingTimeMs: next)
+    }
+  }
+
+  /// 扫图时的前后邻居：顶栏要的持仓量 / 供应量 / 费率、当前周期的 K 线快照与持仓量
+  /// 先拿回来，扫过去那一刻顶栏六格和持仓量副图就有数（B1 / B2）。
+  /// 慢半拍再发，别跟刚换过来这只的首屏请求抢。
+  func prefetchNeighbors(_ symbols: [String]) {
+    neighborTask?.cancel()
+    let syms = symbols.map { InstrumentID.canonical($0) }.filter { $0 != symbol }
+    guard !syms.isEmpty, foreground else { return }
+    let proxies = endpoints.gateways, iv = interval, warmSnapshots = snapshot
+    // 邻居可能在别家（自选里混着不同交易所的品种）：持仓量按各自那一家的口径问。
+    let bySource = Dictionary(grouping: syms) { resolver.provider(forSymbol: $0).capabilities.openInterestSource ?? "" }
+    neighborTask = Task { [weak self, feed] in
+      try? await Task.sleep(for: .milliseconds(400))
+      guard !Task.isCancelled, let self else { return }
+      FundingBook.shared.refreshIfStale(provider: self.resolver.provider(forSymbol: self.symbol))
+      self.warmOI(syms.map { (symbol: $0, interval: iv) })
+      if warmSnapshots { await feed.prewarm(symbols: syms, interval: iv, slot: "neighbors") }
+      guard !proxies.isEmpty else { return }
+      async let meta: Void = MarketStatsClient.shared.prefetchMeta(symbols: syms, hosts: proxies)
+      async let oi: Void = withTaskGroup(of: Void.self) { group in
+        for (src, list) in bySource where !src.isEmpty {
+          group.addTask { await MarketStatsClient.shared.prefetchOpenInterest(symbols: list, source: src, hosts: proxies) }
+        }
+      }
+      _ = await (meta, oi)
+    }
+  }
+
+  /// 十字线一出来就叫：「看细节」要切去的那一档更细周期（多半没钉在周期条上，
+  /// 自选预热从来不碰它），K 线快照和持仓量先拿回来，按下去时首帧就有图（B3）。
+  /// 同一只同一档一分钟内只热一次——十字线拖着走会一直叫这里。
+  func prewarmDetail() {
+    guard foreground, let finer = DetailZoom.finer(than: interval) else { return }
+    let key = symbol + "|" + finer.rawValue
+    if let last = detailWarm, last.key == key, Date().timeIntervalSince(last.at) < 60 { return }
+    detailWarm = (key, Date())
+    let sym = symbol
+    if snapshot { Task { [feed] in await feed.prewarm(symbols: [sym], interval: finer, slot: "detail") } }
+    warmOI([(symbol: sym, interval: finer)])
+  }
+
   // ---------------------------------------------------------------- 展示寿命
 
   /// 费率那一格是不是已经过了展示寿命（`markPrice` 帧超过一小时没更新）。
@@ -497,7 +597,8 @@ final class MarketModel {
 
   /// 顶栏上「拿到的时候是对的、现在不一定还对」的那几格，寿命在这儿统一扫。
   func sweepDisplayLifetimes(now: Date = Date()) {
-    fundingExpired = HeaderStats.expired(frameMs: markTime, now: now,
+    // 垫上的那口（`seedStats`）没有流帧，按它在簿里记下的时刻算寿命。
+    fundingExpired = HeaderStats.expired(frameMs: max(markTime, funding?.timeMs ?? 0), now: now,
                                          maxAge: HeaderStats.fundingMaxAge)
   }
 
@@ -534,6 +635,7 @@ final class MarketModel {
     selection = UUID()
     let request = selection
     switchTask?.cancel()
+    rememberOI()
     symbol = sym
     interval = iv
     switching = true
@@ -546,7 +648,9 @@ final class MarketModel {
       ? SeriesStore.read(symbol: sym, interval: iv, in: snapshotSeries, touch: false)
       : nil
     loading = false
+    holdsFrame = !cold && series == nil
     resetOI(); lastView = nil
+    restoreOI()
     if cold {
       ticker = nil
       tickerStale = false
@@ -559,8 +663,13 @@ final class MarketModel {
       var seed = MarketModel.placeholder(sym)
       if let locked = lockedPrecision[sym] { seed.pricePrecision = locked.precision; seed.tickSize = locked.tick }
       info = seed
+      seedStats()
     }
-    if cold { startStats() }
+    if cold {
+      FundingBook.shared.refreshIfStale(provider: resolver.provider(forSymbol: sym))
+      startStats()
+      warmOILater()
+    }
     switchTask = Task { [feed] in
       guard !Task.isCancelled else { return }
       await feed.switchTo(symbol: sym, interval: iv, coldStart: cold, selection: request)
@@ -574,6 +683,9 @@ final class MarketModel {
     guard !symbols.isEmpty || !intervals.isEmpty else { return }
     let iv = interval
     Task { [feed] in await feed.prefetch(symbols: symbols, interval: iv, intervals: intervals) }
+    // 当前品种其余常用周期的持仓量也先拿一份：切周期时副图直接有线（B2）。
+    if !intervals.isEmpty { oiWarmIntervals = intervals }
+    warmOI(oiWarmIntervals.map { (symbol: symbol, interval: $0) })
   }
 
   /// 视野推到头部 200 根以内时叫（G9）。
@@ -702,6 +814,8 @@ final class MarketModel {
     loadMetrics(view: view, refresh: refresh)
     guard chartVisible, foreground, metricsAvailable else { return }
     guard oiEnabled, let series, !series.isEmpty else { return }
+    let refresh = refresh || oiStaleTail
+    oiStaleTail = false
     let from = max(series.firstTime, Int64(view.from) - series.step)
     let to = min(series.lastTime + series.step, Int64(view.to))
     guard to >= from else { return }
@@ -712,6 +826,7 @@ final class MarketModel {
     let margin = max(series.step * 20, (to - from) / 2)
     let want = (from: max(series.firstTime, from - margin), to: to + series.step)
     let step = series.step
+    let earlySeed = oiSeedTask
     // 防抖是给连续平移用的：手指还在滑，就不该为中间每一帧各发一轮请求。第一次
     // 打开没有「连续」可言，那 250 ms 是白等的，所以只留够合并同一拍的那点时间。
     let quiet = oiRegion == nil && !refresh ? 30 : 250
@@ -727,6 +842,8 @@ final class MarketModel {
       do { try await Task.sleep(for: .milliseconds(quiet)) } catch { return }
       guard request == self.selection, self.symbol == sym, self.interval == iv else { return }
       // 上次留在磁盘上的那一段先上屏，用户不用对着「持仓量加载中」等一个往返。
+      // 换过去那一刻已经开读了（`restoreOI`），等它读完，别在它读完之前把整段又去网上要一遍。
+      await earlySeed?.value
       await self.seedOI(symbol: sym, interval: iv, step: step)
       guard !Task.isCancelled, request == self.selection, self.symbol == sym, self.interval == iv else { return }
       // 端点段（视野露出来的那截 + 刷新的尾巴）之外，还要扫一遍手里这串点自己断没断：
@@ -767,19 +884,134 @@ final class MarketModel {
   }
 
   /// 磁盘上那份「品种 + 周期」只认一次：认过之后内存里的才是最新的。
+  ///
+  /// 内存里已经有一段（换回来时从 `oiMemo` 摆上的、或者预热来的最近一截）时，
+  /// 盘上那份只拿来**往左接**：同一时刻以内存的为准，接不上就不要。
   private func seedOI(symbol sym: String, interval iv: Interval, step: Int64) async {
     let key = sym + "|" + iv.rawValue
     guard oiDiskKey != key else { return }
     oiDiskKey = key
-    guard oiRegion == nil, let cached = await oiStore.loadSeries(symbol: sym, interval: iv),
-          !cached.points.isEmpty, sym == symbol, iv == interval, oiRegion == nil else { return }
-    oiPoints = cached.points
+    guard let cached = await oiStore.loadSeries(symbol: sym, interval: iv),
+          !Task.isCancelled, !cached.points.isEmpty, sym == symbol, iv == interval else { return }
     // 盘上那份 `to` 可能是旧版本留下的虚高右端（记的是请求区间），照单全收就会从这个
     // 虚高的右端往后补，在接缝上再留一个新洞。所以同样按真拿到的点收敛一次。
     // 注意收敛只防**新**洞：已经漏在区间内部的那根空桶，端点怎么收都碰不到它，
     // 得靠 `loadOI` 里的 `OISource.holeSegments` 扫点序列本身才补得回来。
-    oiRegion = OISource.coveredRegion(want: (cached.from, cached.to), points: cached.points, step: step)
-    oi = OISource.chartSeries(cached.points, interval: iv)
+    let disk = OISource.coveredRegion(want: (cached.from, cached.to), points: cached.points, step: step)
+    if let mine = oiRegion {
+      guard disk.from < mine.from, disk.to + step >= mine.from else { return }
+      oiPoints = OISource.dedup(cached.points + oiPoints)
+      oiRegion = (from: disk.from, to: max(mine.to, disk.to))
+    } else {
+      oiPoints = cached.points
+      oiRegion = disk
+    }
+    oi = OISource.chartSeries(oiPoints, interval: iv)
+  }
+
+  /// 换走之前把手里这份记进 `oiMemo`。只记有衍生统计能力的那家：没有的那家不画持仓量副图。
+  private func rememberOI() {
+    guard metricsAvailable, let region = oiRegion, !oiPoints.isEmpty else { return }
+    storeOIMemo(symbol + "|" + interval.rawValue,
+                OIMemo(points: oiPoints, region: region, at: oiFetchedAt))
+  }
+
+  private func storeOIMemo(_ key: String, _ memo: OIMemo) {
+    oiMemo[key] = memo
+    oiMemoOrder.removeAll { $0 == key }
+    oiMemoOrder.append(key)
+    while oiMemoOrder.count > Self.oiMemoLimit { oiMemo[oiMemoOrder.removeFirst()] = nil }
+  }
+
+  private func forgetOIMemo() {
+    oiMemo = [:]; oiMemoOrder = []; oiWarming = []
+    oiWarmLater?.cancel(); oiWarmLater = nil
+    neighborTask?.cancel(); neighborTask = nil
+  }
+
+  /// 换过去那一刻（`resetOI` 之后）：`oiMemo` 里有就同步摆上，没有就立刻开始读盘。
+  private func restoreOI() {
+    guard metricsAvailable else { return }
+    let sym = symbol, iv = interval
+    if let memo = oiMemo[sym + "|" + iv.rawValue] {
+      oiPoints = memo.points
+      oiRegion = memo.region
+      oiFetchedAt = memo.at
+      oi = OISource.chartSeries(memo.points, interval: iv)
+      oiStaleTail = Date().timeIntervalSince(memo.at) >= 60
+    }
+    guard oiEnabled, chartVisible, foreground else { return }
+    let step = series?.step ?? max(Self.oiMinStepMs, iv.stepMs)
+    oiSeedTask = Task { [weak self] in await self?.seedOI(symbol: sym, interval: iv, step: step) }
+  }
+
+  /// 持仓量统计最细 5 分钟一个点（`OISource.chartSeries` 同一个下限）。
+  private static let oiMinStepMs: Int64 = 300_000
+  /// 预热拿多少根：和 K 线快照一样一屏多一点。只走近 30 天的 REST，不碰归档站。
+  private static let oiWarmBars: Int64 = 300
+
+  /// 换品种之后过一会儿，给新品种的其他常用周期也把持仓量热上（K 线那边
+  /// `RoutedMarketFeed.warmOtherIntervals` 同一个节奏）。扫得快时每换一只就作废上一次。
+  private func warmOILater() {
+    oiWarmLater?.cancel()
+    guard !oiWarmIntervals.isEmpty else { return }
+    let sym = symbol
+    oiWarmLater = Task { [weak self] in
+      try? await Task.sleep(for: .milliseconds(2500))
+      guard !Task.isCancelled, let self, self.symbol == sym else { return }
+      self.warmOI(self.oiWarmIntervals.map { (symbol: sym, interval: $0) })
+    }
+  }
+
+  /// 把几份「品种 + 周期」的最近一截持仓量先问回来，放进 `oiMemo`（不落盘：
+  /// 落盘和记账归 `loadOI` / `mergeOI`，这里只是让换过去那一帧有线可画）。
+  /// 正在屏上的那一档、一分钟内热过的、正在热的都跳过。
+  private func warmOI(_ jobs: [(symbol: String, interval: Interval)]) {
+    guard oiEnabled, foreground, metricsAvailable else { return }
+    let now = Date()
+    var todo: [(symbol: String, interval: Interval)] = []
+    let mine = oiSource.capabilities
+    for job in jobs {
+      let key = job.symbol + "|" + job.interval.rawValue
+      if job.symbol == symbol, job.interval == interval { continue }
+      // 手里这个统计客户端只认它那一家：邻居若在别家（没有持仓量、或口径不同）就不热。
+      guard resolver.provider(forSymbol: job.symbol).capabilities == mine else { continue }
+      if let memo = oiMemo[key], now.timeIntervalSince(memo.at) < 60 { continue }
+      guard oiWarming.insert(key).inserted else { continue }
+      todo.append(job)
+    }
+    guard !todo.isEmpty else { return }
+    let source = oiSource
+    let nowMs = Int64(now.timeIntervalSince1970 * 1000)
+    Task { [weak self] in
+      await withTaskGroup(of: (String, Interval, OIFetch).self) { group in
+        for job in todo {
+          let step = max(Self.oiMinStepMs, job.interval.stepMs)
+          let to = nowMs + step
+          let from = max(to - Self.oiWarmBars * step, nowMs - OISource.restWindowMs + step)
+          group.addTask {
+            (job.symbol, job.interval,
+             await source.fetch(symbol: job.symbol, interval: job.interval, from: from, to: to))
+          }
+        }
+        for await (sym, iv, result) in group { self?.adoptWarmOI(sym, iv, result) }
+      }
+    }
+  }
+
+  private func adoptWarmOI(_ sym: String, _ iv: Interval, _ result: OIFetch) {
+    let key = sym + "|" + iv.rawValue
+    oiWarming.remove(key)
+    // 那一档此刻就在屏上：归 `loadOI` 管，别拿一截预热去顶它。
+    guard !(sym == symbol && iv == interval), result.complete, !result.points.isEmpty,
+          let region = OISource.coveredRegion(of: [result], step: max(Self.oiMinStepMs, iv.stepMs))
+    else { return }
+    var memo = OIMemo(points: result.points, region: region, at: Date())
+    if let old = oiMemo[key], old.region.to >= region.from, old.region.from <= region.to {
+      memo.points = OISource.dedup(old.points + result.points)
+      memo.region = (from: min(old.region.from, region.from), to: max(old.region.to, region.to))
+    }
+    storeOIMemo(key, memo)
   }
 
   /// 半路到手的点：只管画，不碰 `oiRegion`，也不落盘。落盘和记账是 `mergeOI`
@@ -817,6 +1049,7 @@ final class MarketModel {
     }
     if joins, let old = previous { region = (from: min(old.from, region.from), to: max(old.to, region.to)) }
     oiRegion = region
+    oiFetchedAt = Date()
     let store = oiStore
     Task { await store.saveSeries(symbol: sym, interval: iv, points: merged, from: region.from, to: region.to) }
   }
@@ -826,6 +1059,8 @@ final class MarketModel {
     resetMetrics()
     oiTask?.cancel(); oiTask = nil
     oi = nil; oiPoints = []; oiRegion = nil; oiDiskKey = nil; oiPatched = []
+    oiSeedTask?.cancel(); oiSeedTask = nil
+    oiStaleTail = false; oiFetchedAt = .distantPast
   }
 
   /// 品种页要的品种表。`@Sendable` 是因为品种页把它当闭包存着，

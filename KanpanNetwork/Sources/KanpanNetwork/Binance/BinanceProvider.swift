@@ -157,6 +157,15 @@ public struct BinanceProvider: MarketProvider {
     try await rest.funding(symbol: symbol)
   }
 
+  /// `/fapi/v1/premiumIndex` 整表。只在币安本家上游给：网关没有这条路由，
+  /// 网关线路供的是 OKX 替身，拿币安的费率去垫它就是混源。
+  public func fundingAll() async throws -> [String: FundingSnapshot] {
+    guard upstream == .binance else { throw FeedError.unsupported("全市场资金费率") }
+    var out: [String: FundingSnapshot] = [:]
+    for (symbol, row) in try await rest.fundingAll() { out[InstrumentID.canonical(symbol)] = row }
+    return out
+  }
+
   public func openInterestHist(symbol: String, period: String, limit: Int,
                                startTime: Int64?, endTime: Int64?) async throws -> [OIPoint] {
     try await rest.openInterestHist(symbol: symbol, period: period, limit: limit,

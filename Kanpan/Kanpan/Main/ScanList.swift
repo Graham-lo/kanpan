@@ -33,6 +33,13 @@ struct ScanList: Equatable, Sendable {
     symbols.firstIndex(of: InstrumentID.canonical(symbol))
   }
 
+  /// 前后各一只（到头的那一侧没有）。扫图时先把它们的顶栏数据和快照预取回来，
+  /// 滑过去那一刻就有数。名单里没有这只（搜索进来的）就是空的。
+  func neighbors(of symbol: String) -> [String] {
+    guard isScannable, let here = index(of: symbol) else { return [] }
+    return [here + 1, here - 1].filter { symbols.indices.contains($0) }.map { symbols[$0] }
+  }
+
   /// 从 `symbol` 往某个方向走一只。到头不循环。
   func step(from symbol: String, _ direction: ScanDirection) -> ScanStep {
     guard isScannable, let here = index(of: symbol) else { return .unavailable }

@@ -398,6 +398,9 @@ struct ChartHost: UIViewRepresentable {
   var renderingActive: Bool = true
   var panelOpen = false
   var state: ChartState?
+  /// `state` 为空时是否先留着图上现有那一帧（同品种换周期、新周期还没数据）。
+  /// 假 = 照旧清成空图（换品种时必须清：老蜡烛顶着新品种的名字多一帧都是错的）。
+  var holdOnEmpty = false
   var proxy: ChartProxy?
   /// 手势改了视野。视野是**图自己**的状态，不走 SwiftUI 的 `@State` 回环——
   /// 每帧 60/120 次穿过 SwiftUI 的 diff 太贵，所以图自己改自己，改完通知外面记一笔。
@@ -482,6 +485,10 @@ struct ChartHost: UIViewRepresentable {
     wire(box)
     proxy?.handOverLatest(to: box)
     guard var s = state else {
+      // 「看细节」切到一档没钉住的细周期、盘上没快照时，新序列要一个往返才到。
+      // 这段时间里留着上一档那一帧，数据一到走下面「换周期」那条路接上视野
+      // （`proxy.window(for:)` 欠的那一下照样兑现），不先闪一张空图。
+      if holdOnEmpty, let old = box.chart.state, old.series.count > 0 { return }
       box.chart.state = nil
       box.pending = .reset
       return

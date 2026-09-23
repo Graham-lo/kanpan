@@ -30,6 +30,9 @@ public protocol MarketProvider: Sendable {
   func tickers24h(timeout: TimeInterval) async throws -> [Ticker]
 
   func funding(symbol: String) async throws -> FundingSnapshot
+  /// 全市场资金费率一次拿回（键是这家的完整品种 key）。只有 `hasFunding` 的那家才有，
+  /// 且不是每家都给得出整表——给不出就抛 `unsupported`，调用方只少一份「先垫上」的数。
+  func fundingAll() async throws -> [String: FundingSnapshot]
   func openInterestHist(symbol: String, period: String, limit: Int,
                         startTime: Int64?, endTime: Int64?) async throws -> [OIPoint]
   func globalLongShortAccountRatio(symbol: String, period: String, limit: Int,
@@ -72,6 +75,7 @@ public extension MarketProvider {
   }
 
   func funding(symbol: String) async throws -> FundingSnapshot { throw FeedError.unsupported("资金费率") }
+  func fundingAll() async throws -> [String: FundingSnapshot] { throw FeedError.unsupported("全市场资金费率") }
   func openInterestHist(symbol: String, period: String, limit: Int,
                         startTime: Int64?, endTime: Int64?) async throws -> [OIPoint] {
     throw FeedError.unsupported("持仓量")

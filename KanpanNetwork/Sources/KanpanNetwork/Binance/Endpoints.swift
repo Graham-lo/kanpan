@@ -68,6 +68,12 @@ public struct BinanceHosts: Sendable, Equatable {
     url("/fapi/v1/premiumIndex", ["symbol": InstrumentID(symbol).symbol])
   }
 
+  /// 全市场的资金费率快照：不带 `symbol` 一次回所有 U 本位合约，权重 10。
+  ///
+  /// 扫图换品种时费率 / 结算那两格要「一换就有」，而逐品种的 `markPrice@1s`
+  /// 要等新订阅的第一帧（实测 0.5–0.7 s）。拿这一张表垫着，流到了再接手。
+  public func premiumIndexAll() -> URL { url("/fapi/v1/premiumIndex") }
+
   public func ticker24h(symbol: String) -> URL {
     url("/fapi/v1/ticker/24hr", ["symbol": InstrumentID(symbol).symbol])
   }
