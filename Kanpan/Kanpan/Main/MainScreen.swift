@@ -586,7 +586,8 @@ struct MainScreen: View {
     .onReceive(alerts.$archive) { activities.reconcile($0.alerts) }
     // Handoff（P3.4）：在行情页上就登记「这只、这个周期」，同账号的另一台设备可以接力打开。
     .userActivity(ChartHandoff.activityType, isActive: tab == .chart) { activity in
-      activity.title = market.symbol + " · " + market.interval.rawValue
+      // 标题给人看，只放代号；userInfo 里是完整品种 key，接力端按它开对交易所。
+      activity.title = InstrumentID(market.symbol).symbol + " · " + market.interval.rawValue
       activity.addUserInfoEntries(from: ChartHandoff.userInfo(symbol: market.symbol, interval: market.interval.rawValue))
       activity.isEligibleForHandoff = true
     }
