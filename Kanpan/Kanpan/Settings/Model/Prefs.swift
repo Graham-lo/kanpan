@@ -317,7 +317,8 @@ struct Prefs: Sendable, Equatable {
 
   /// 某个指标是不是开着的。
   func isOn(_ id: IndicatorID) -> Bool {
-    id.placement == .main ? overlays.contains(id) : subs.contains(id)
+    if id == .orderFlow { return orderFlow }  // 主力订单流的开关是自己一个字段，不进 overlays
+    return id.placement == .main ? overlays.contains(id) : subs.contains(id)
   }
 
   /// 当前这一套配色 + 深浅下的原始令牌。全 app 只有这一处把两根轴合起来。
@@ -335,6 +336,7 @@ struct Prefs: Sendable, Equatable {
   /// 再返回一句「换下了谁」——调用方拿它弹一条带「撤销」的 toast，后悔一下就能还原。
   @discardableResult
   mutating func toggle(_ id: IndicatorID) -> String? {
+    if id == .orderFlow { orderFlow.toggle(); return nil }
     switch id.placement {
     case .main:
       if let at = overlays.firstIndex(of: id) { overlays.remove(at: at) } else { overlays.append(id) }

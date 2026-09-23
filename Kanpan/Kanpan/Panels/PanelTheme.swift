@@ -90,7 +90,7 @@ struct PanelTheme: Sendable, Equatable {
     switch id {
     case .oi: Color(hex: chart.oi)
     case .boll: Color(hex: chart.band)
-    case .supertrend, .sar: Color(hex: chart.up)
+    case .supertrend, .sar, .orderFlow: Color(hex: chart.up)
     default: Color(hex: chart.palette[id.paletteOffset % chart.palette.count])
     }
   }

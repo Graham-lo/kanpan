@@ -319,6 +319,8 @@ final class MainScreenUITests: KanpanUICase {
     let macd = app.buttons[Ids.indicatorSwitch("MACD")]
     expectExists(macd, Self.short, "点周期行「图表」没开出指标那几栏")
     expectExists(app.buttons[Ids.indicatorSwitch("MA")], Self.short, "指标那几栏里没有主图叠加")
+    // 主力订单流（2026-09-24）：主图叠加区第七行，只有开关。
+    expectExists(app.buttons[Ids.indicatorSwitch("ORDERFLOW")], Self.short, "主图叠加里没有「主力订单流」")
     dismissSheet(until: macd)
   }
 

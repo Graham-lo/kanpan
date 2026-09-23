@@ -12,6 +12,9 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   // 布林带后面，两把副图指标接在基差后面，不能图省事一律追加到末尾。
   case ma = "MA", ema = "EMA", boll = "BOLL"
   case vwap = "VWAP", supertrend = "ST", sar = "SAR"
+  /// 主力订单流（2026-09-24）：挂单簿里过门槛的大单画成色带。它不是 K 线算出来的指标，
+  /// 开关存在 `Prefs.orderFlow`、不进 `overlays`；枚举里有它是为了面板那一行和契约的词表。
+  case orderFlow = "ORDERFLOW"
   case vol = "VOL", macd = "MACD", rsi = "RSI", kdj = "KDJ", srsi = "SRSI", atr = "ATR", oi = "OI"
   case lsr = "LSR", taker = "TAKER", basis = "BASIS"
   case dmi = "DMI"
@@ -21,7 +24,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
 
   public var placement: Where {
     switch self {
-    case .ma, .ema, .boll, .vwap, .supertrend, .sar: .main
+    case .ma, .ema, .boll, .vwap, .supertrend, .sar, .orderFlow: .main
     default: .sub
     }
   }
@@ -44,6 +47,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .vwap: "当日均价线"
     case .supertrend: "超级趋势"
     case .sar: "抛物线转向"
+    case .orderFlow: "主力订单流"
     case .dmi: "动向指标"
     case .cvd: "累计成交量差"
     }
@@ -63,7 +67,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   // 内部照用 `RecursiveLine(.rma)` 算，只是不再单独占一张副图。
 
   /// 主图可选指标，面板顺序。
-  public static let mainPalette: [IndicatorID] = [.ma, .ema, .boll, .vwap, .supertrend, .sar]
+  public static let mainPalette: [IndicatorID] = [.ma, .ema, .boll, .vwap, .supertrend, .sar, .orderFlow]
   /// 副图可选指标，面板顺序。
   ///
   /// 累计成交量差紧跟成交量：两把读的是同一件事的两面（成交了多少 / 是谁在成交），
@@ -114,7 +118,8 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     // （`kanpan-sector-page-no-basis-picker`：口径这种东西我来定，不摆出来给他选）。
     // 累计成交量差是逐根净额的累加，没有窗口长度这回事；归零的锚和当日VWAP 一样
     // 是定死的（日内按 UTC 零点），同样不摆给用户拨。
-    case .vwap, .sar, .cvd, .oi, .lsr, .taker, .basis: []
+    // 主力订单流的桶宽、门槛、条数、颜色都由代码定死，没有参数。
+    case .vwap, .sar, .orderFlow, .cvd, .oi, .lsr, .taker, .basis: []
     }
   }
 
@@ -131,7 +136,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .atr: ["周期"]
     case .supertrend: ["周期", "倍数"]
     case .dmi: ["周期"]
-    case .vwap, .sar, .cvd, .oi, .lsr, .taker, .basis: []
+    case .vwap, .sar, .orderFlow, .cvd, .oi, .lsr, .taker, .basis: []
     }
   }
 
@@ -155,6 +160,8 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .vwap: ["当日均价"]
     case .supertrend: ["超级趋势"]
     case .sar: ["转向点"]
+    // 图例那一行的名字（ChartRenderer+OrderFlow 画「主力 买 … · 卖 …」）。
+    case .orderFlow: ["主力"]
     case .dmi: ["多头动向", "空头动向", "趋势强度"]
     case .cvd: ["累计成交量差"]
     }

@@ -54,7 +54,7 @@ struct IndicatorPage: View {
 
   /// 「图表设置」上那一行右边的字：开着的指标按图上从上到下的次序报名字。
   static func summary(_ prefs: Prefs) -> String {
-    let on = prefs.overlays.filter { $0.placement == .main } + prefs.subs
+    let on = prefs.overlays.filter { $0.placement == .main } + (prefs.orderFlow ? [.orderFlow] : []) + prefs.subs
     return on.isEmpty ? "都关着" : on.map(\.name).joined(separator: " · ")
   }
 }

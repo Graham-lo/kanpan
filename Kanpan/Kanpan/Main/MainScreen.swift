@@ -413,6 +413,7 @@ struct MainScreen: View {
     .modifier(observers)
     // 对比 K 线只有这一个观察者，自带一层修饰符，不往上面那只里塞。
     .modifier(CompareObservers(drive: compareDrive, onChange: { updateCompare() }))
+    .modifier(OrderFlowObserver(on: prefs.orderFlow, market: market))
   }
 
   private var microstructureVisible: Bool {
@@ -1392,6 +1393,7 @@ struct MainScreen: View {
     // 别一直挂「加载中」。
     result.external = market.external
     result.depth = drawingCanvasOnly || !prefs.depth ? nil : market.depth
+    result.orderFlow = market.orderFlow.chartValue(symbol: market.symbol, drawingCanvasOnly: drawingCanvasOnly)
     // 持仓量和衍生统计分开认：网关线路上的替身有持仓量历史（kanpan-api 代问 OKX），
     // 多空比、主动买卖、基差没有。
     result.oiSupported = market.capabilities.hasOpenInterestHistory

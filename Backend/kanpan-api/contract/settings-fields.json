@@ -116,6 +116,7 @@
     "VWAP",
     "ST",
     "SAR",
+    "ORDERFLOW",
     "VOL",
     "MACD",
     "RSI",
@@ -136,7 +137,8 @@
     "BOLL",
     "VWAP",
     "ST",
-    "SAR"
+    "SAR",
+    "ORDERFLOW"
   ],
   "overlayIndicatorIDsNote" : "画在主图上的那几种（`IndicatorID.placement == .main`）。settings.overlays 只认这一档，条数上限也是它的长度。",
   "subIndicatorIDs" : [

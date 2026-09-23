@@ -82,7 +82,9 @@ final class MarketModel {
   /// 会把 REST 补来的那份冲掉。换线路清空——不同上游的成交额不能串着用。
   @ObservationIgnored private var turnoverCarry = TurnoverCarry()
   private(set) var tradeQuote: TradeQuote?
-  private(set) var info: SymbolInfo
+  private(set) var info: SymbolInfo { didSet { orderFlow.noteInfo(info) } }
+  /// 主力订单流的胶水（OrderFlow/OrderFlowLink.swift）；本类只在下面三处把它接上。
+  @ObservationIgnored let orderFlow = OrderFlowLink()
   /// 这个品种的小数位与成交额单位，一旦定下来这一程就不再变（§2B / 审查 §3.10 #53）。
   ///
   /// 换线路会把整张品种表换掉，备用源对同一个品种给的 `tickSize` 未必一样；
@@ -382,6 +384,7 @@ final class MarketModel {
     rebuildOISource()
     resetOI(); forgetOIMemo()
     feed = RoutedMarketFeed(endpoints: next, log: MarketModel.log)
+    updateMicrostructure()  // 新流上重新挂盘口、主动买卖与主力订单流，否则要等下次拨开关
     let box = catalog, catalogs = Self.catalogs(resolver)
     Task { await box.replace(catalogs) }
     status = .offline
@@ -495,8 +498,8 @@ final class MarketModel {
       if snapshot == nil || (snapshot?.symbol == symbol && (snapshot?.time ?? 0) >= (depth?.time ?? 0)) {
         depth = snapshot
       }
-    case .orderFlow:
-      break                                   // 主力订单流：App 步接到图表
+    case .orderFlow(let frame):
+      orderFlow.accept(frame, symbol: symbol)
     case .oi:
       break                                   // 副图 OI 由指标层自己取
     case .status(let s):
@@ -889,7 +892,11 @@ final class MarketModel {
     if !active { depth = nil; takerTail = nil; publishMetric(.taker) }
     let taker = active && externalEnabled.contains(.taker), depth = active && depthEnabled
     Task { [feed] in await feed.setMicrostructure(taker: taker, depth: depth) }
+    orderFlow.apply(visible: active, to: feed)
   }
+
+  /// 主力订单流开关（`Prefs.orderFlow`）。
+  func setOrderFlow(_ on: Bool) { orderFlow.setWanted(on); updateMicrostructure() }
 
   private func resetMetrics() {
     metricTasks.values.forEach { $0.cancel() }; metricTasks = [:]; metricRequests = [:]

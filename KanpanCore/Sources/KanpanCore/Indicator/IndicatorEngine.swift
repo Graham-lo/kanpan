@@ -181,6 +181,8 @@ public struct IndicatorEngine: Sendable {
     case .vwap: .vwap(VWAPState(b))
     case .supertrend: .supertrend(SuperTrendState(b, n: p[0], mult: Double(p[1])))
     case .sar: .sar(SARState(b))
+    // 主力订单流不从 K 线算（大单来自挂单簿），也从不进 `overlays`；给一列 NaN 占位（和没喂到的外部指标同一种写法）。
+    case .orderFlow: .external(ExternalSeries.blank(1, b.count), 0)
     case .dmi: .dmi(DMIState(b, n: p[0]))
     case .cvd: .cvd(CVDState(b))
     case .oi, .lsr, .taker, .basis:
