@@ -11,7 +11,8 @@
 #   所以把三件事收成一个脚本：
 #     1. 预算：构建槽按点数记（重活 2 点、轻活 1 点，基础 BUILD_POINTS=4、空闲时 BURST_POINTS=6）、
 #        最多 MAX_SIMS 台开机模拟器，磁盘至少 MIN_DISK_GB，交换区不超 MAX_SWAP_MB。
-#        重活用 `run` 包着跑就会自动排队、自动 nice；
+#        重活用 `run` 包着跑就会自动排队、自动 nice；本会话若困在后台节流带（遥控宿主
+#        ProcessType=Background 继承下来的，只能用能效核）就交给 launchd 起，跑在正常带上；
 #        Makefile 与 Tools 里的 xcodebuild / swift 已经包好。
 #     2. 看门狗：launchd 每 60 秒 `tick`——受保护应用掉了就拉起、超预算又没人用的模拟器
 #        关掉、孤儿构建进程杀掉、Docker 没人用就退出、编译一律降优先级、磁盘告急且没有
@@ -188,11 +189,61 @@ cmd_run() {
     [ "$said" -eq 2 ] || { say "[guard] 机器超预算，占着槽等压力降下来："; say "$r" | sed 's/^/  /'; said=2; }
     sleep 15; waited=$((waited+15))
   done
-  log "run 槽$(basename "$SLOT") $(cat "$SLOT/weight")点 pid $$: $*"
-  KANPAN_GUARD_SLOT="$SLOT" nice -n "$BUILD_NICE" "$@"
-  local rc=$?
+  local rc
+  if in_throttle_band && [ -z "${KANPAN_GUARD_DIRECT:-}" ]; then
+    log "run 槽$(basename "$SLOT") $(cat "$SLOT/weight")点 pid $$ 经 launchd（本会话在后台节流带）: $*"
+    run_via_launchd "$@"; rc=$?
+  else
+    log "run 槽$(basename "$SLOT") $(cat "$SLOT/weight")点 pid $$: $*"
+    KANPAN_GUARD_SLOT="$SLOT" nice -n "$BUILD_NICE" "$@"; rc=$?
+  fi
   log "done 槽$(basename "$SLOT") rc=$rc"
   return $rc
+}
+
+# ---------------------------------------------------------------- 后台节流带
+# 09-23 查「任务慢了很多」的根因：遥控宿主的 LaunchAgent（~/Library/LaunchAgents/
+# com.mdd.kanpan.remote-control.plist）写着 ProcessType=Background，宿主和它下面所有 Claude
+# 会话、会话起的每个 xcodebuild / swift-frontend 都继承进 macOS 的后台节流带（ps -o pri 显示 4，
+# taskpolicy / setpriority / launchctl asuser 都出不来），Apple Silicon 只让这一带用 6 个能效核，
+# 4 个性能核一直空着（CPU 空闲常年 35–40% 就是这个）。同一段 CPU 循环：会话里 5.64 s，
+# launchd 起的 0.53 s。nice 0 / 10 / 20 在带里毫无区别。
+# 出路：让 launchd 替我们起进程（launchctl submit 起的是正常带 pri 20），这里把当前目录、
+# 环境变量和命令原样写进一个包装脚本交给 launchd，尾随它的输出、轮询它退出、取回退出码。
+# 包装脚本里仍然 renice 到 BUILD_NICE，Surge / ChatGPT / Claude 照旧比编译优先。
+# plist 本身已改成 ProcessType=Standard，宿主下次重启后会话本身也不在带里了，那时这条路自动不走。
+in_throttle_band() { local p; p=$(ps -o pri= -p $$ 2>/dev/null | tr -d ' '); [ -n "$p" ] && [ "$p" -lt 10 ]; }
+
+run_via_launchd() {
+  local label="kanpan-run-$$-$(date +%s)" dir="$STATE/launchd"
+  mkdir -p "$dir"
+  local wrap="$dir/$label.sh" out="$dir/$label.out"
+  {
+    echo '#!/bin/bash'
+    echo "cd $(printf '%q' "$PWD") || exit 97"
+    export -p | grep -vE '^declare -x (_|OLDPWD|PWD|SHLVL|PS1|BASH_[A-Z_]*|KANPAN_GUARD_SLOT)='
+    echo "export KANPAN_GUARD_SLOT=$(printf '%q' "$SLOT")"
+    echo "renice -n $BUILD_NICE -p \$\$ >/dev/null 2>&1"
+    printf 'exec'; printf ' %q' "$@"; echo
+  } > "$wrap"
+  chmod +x "$wrap"; : > "$out"
+  LAUNCHD_LABEL="$label"
+  trap 'launchctl remove "$LAUNCHD_LABEL" >/dev/null 2>&1; rm -rf "$SLOT"' EXIT INT TERM HUP
+  launchctl submit -l "$label" -o "$out" -e "$out" -- /bin/bash "$wrap" || { say "[guard] launchctl submit 失败，改为直接跑"; KANPAN_GUARD_SLOT="$SLOT" nice -n "$BUILD_NICE" "$@"; return $?; }
+  tail -n +1 -f "$out" & local tp=$!
+  local line pid st rc=1
+  while :; do
+    line=$(launchctl list 2>/dev/null | awk -v l="$label" '$3==l')
+    pid=$(printf '%s' "$line" | awk '{print $1}'); st=$(printf '%s' "$line" | awk '{print $2}')
+    if [ -z "$line" ]; then rc=99; break; fi
+    if [ "$pid" = "-" ]; then rc=$st; break; fi
+    sleep 2
+  done
+  sleep 1; kill "$tp" >/dev/null 2>&1; wait "$tp" 2>/dev/null
+  launchctl remove "$label" >/dev/null 2>&1; LAUNCHD_LABEL=""
+  rm -f "$wrap" "$out"
+  [ "$rc" -ge 0 ] 2>/dev/null || { say "[guard] 构建被信号 $((-rc)) 终止"; rc=$((128-rc)); }
+  return "$rc"
 }
 
 sim_referenced() {  # 有没有构建 / 测试 / simctl 进程正提着这台模拟器（按 UDID 或名字）
