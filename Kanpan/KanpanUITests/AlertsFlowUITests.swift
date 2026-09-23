@@ -238,11 +238,11 @@ import XCTest
     XCTAssertTrue(entry.waitForExistence(timeout: 10), "设置里没有「提醒」这一行")
     shot("03-设置里的提醒入口")
     XCTAssertTrue(openAlertsPage(), "「提醒」没开出总表")
-    XCTAssertTrue(app.staticTexts["等它碰到"].waitForExistence(timeout: 5),
+    XCTAssertTrue(app.staticTexts["生效中"].waitForExistence(timeout: 5),
                   "总表里那一条没写它在等什么：\(app.debugDescription)")
     shot("04-提醒总表")
 
-    // ④ 条件只在这一页改：触碰时 / 收盘穿过后。
+    // ④ 条件只在这一页改：碰到 / 收盘穿过。
     let condition = app.descendants(matching: .any).matching(identifier: "alerts.condition").firstMatch
     XCTAssertTrue(condition.waitForExistence(timeout: 5), "总表里没有条件开关")
 
@@ -291,10 +291,10 @@ import XCTest
                   "总表里没写「已触发」那一行")
     shot("07-已触发与再次提醒")
 
-    // 按下去就重新上膛：那一行回到「等它碰到」，「再次提醒」跟着收掉。
+    // 按下去就重新上膛：那一行回到「生效中」，「再次提醒」跟着收掉。
     rearm.tap()
     XCTAssertTrue(wait(seconds: 8) { !self.app.buttons["再次提醒"].exists }, "按了「再次提醒」还挂着那颗按钮")
-    XCTAssertTrue(app.staticTexts["等它碰到"].waitForExistence(timeout: 5), "重新上膛之后那一行没回到「等它碰到」")
+    XCTAssertTrue(app.staticTexts["生效中"].waitForExistence(timeout: 5), "重新上膛之后那一行没回到「生效中」")
     shot("08-再次提醒之后重新上膛")
   }
 

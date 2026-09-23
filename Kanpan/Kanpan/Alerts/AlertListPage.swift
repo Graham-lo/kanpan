@@ -293,7 +293,7 @@ private struct AlertRow: View {
   }
 
   @ViewBuilder private var condition: some View {
-    // 「触碰时 / 收盘穿过后」这个选择**只住在这一行**。画完线那一下不问，
+    // 「碰到 / 收盘穿过」这个选择**只住在这一行**。画完线那一下不问，
     // 图上也没有第二处能改（方案 2.3）。
     Menu {
       ForEach([KanpanCore.Alert.Condition.touch, .close], id: \.self) { c in
@@ -327,7 +327,8 @@ private struct AlertRow: View {
       guard let at = alert.firedAt else { return "已触发" }
       return "已触发 · " + ReviewLabels.dayTime(ms: Int64(at), offsetMinutes: zone)
     case .paused: return "已暂停"
-    case .active: return alert.condition == .touch ? "等它碰到" : "等它收盘穿过"
+    // 条件已经写在右边那颗胶囊上，这里不再复述一遍（2026-09-24 审查 6.4）。
+    case .active: return "生效中"
     }
   }
 }

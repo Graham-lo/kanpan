@@ -35,13 +35,13 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   ///   两侧都判：前台 `AlertEvaluator`、服务端 `alerts.rs`。切换的口子在提醒列表那一行上。
   public enum Condition: String, Sendable, Codable, CaseIterable {
     case touch, close
-    public var title: String { self == .touch ? "触碰时" : "收盘穿过后" }
+    public var title: String { self == .touch ? "碰到" : "收盘穿过" }
   }
 
   public enum Status: String, Sendable, Codable, CaseIterable {
     case active, fired, paused
     public var title: String {
-      switch self { case .active: "活动"; case .fired: "已触发"; case .paused: "已暂停" }
+      switch self { case .active: "生效中"; case .fired: "已触发"; case .paused: "已暂停" }
     }
   }
 
