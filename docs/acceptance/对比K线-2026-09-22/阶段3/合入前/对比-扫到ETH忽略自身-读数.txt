@@ -1,0 +1,125 @@
+["interval": 1m, "externalSupported": 1, "drawingContinuous": 0, "latestRightGap": 0, "oiReady": 1, "drawingMagnet": 1, "background": #F3F7F4, "guestIDs": <__NSArray0 0x1e723b918>(
+
+)
+, "zoomY": 1, "subs": <__NSArrayI 0x115631ef0>(
+VOL,
+OI,
+MACD
+)
+, "drawingCommits": 0, "crossAxisLabel": , "lastClose": 2753.6, "panes": <__NSArrayI 0x115630e40>(
+{
+    h = "78.71428571428571";
+    id = VOL;
+    y = "331.8571428571429";
+},
+{
+    h = "78.71428571428571";
+    id = OI;
+    y = "410.5714285714286";
+},
+{
+    h = "78.71428571428571";
+    id = MACD;
+    y = "489.2857142857143";
+}
+)
+, "viewportH": 568, "crossY": -1, "compareColors": <__NSArrayI 0x107b668a0>(
+#E849B9,
+#6EBF26
+)
+, "axisW": 43, "externalReady": <__NSArray0 0x1e723b918>(
+
+)
+, "scrollY": 0, "drawingIDs": <__NSArray0 0x1e723b918>(
+
+)
+, "compareBaseTime": 1790122380000, "compareBaseIndex": 1410, "centerY": 0.5, "crosshair": 0, "span": 5385000, "symbol": binance/usd_m/ETHUSDT, "compareTicks": <__NSArrayI 0x1079256c0>(
+0,
+0.5,
+1,
+1.5,
+2
+)
+, "crossPane": MAIN, "priceDecimals": 2, "candleKind": candle, "height": 568, "ma": <__NSArrayI 0x115631e60>(
+10,
+30,
+120,
+256
+)
+, "renderedDepthRows": 0, "depthSymbol": , "inverted": 0, "gestureTrace": , "drawingKinds": <__NSArray0 0x1e723b918>(
+
+)
+, "drawingAlerted": <__NSArray0 0x1e723b918>(
+
+)
+, "crossIndex": -1, "drawingHidden": <__NSArray0 0x1e723b918>(
+
+)
+, "drawingCount": 0, "oiPeriod": 1m, "from": 1790122365000, "emaColor0": #F55B58, "spacing": 4, "mainH": 314.8571428571429, "lastVolume": 4952.511, "drawingsVisible": 0, "bars": 1500, "dataDisplay": inside, "drawingCommitWired": 1, "crossX": -1, "hiddenMA": <__NSArray0 0x1e723b918>(
+
+)
+, "timeY": 314.8571428571429, "compareReady": 2, "drawingAnchors": <__NSArray0 0x1e723b918>(
+
+)
+, "plotW": 359, "compareMainClose": 2753.6, "overlays": <__NSArray0 0x1e723b918>(
+
+)
+, "macd": <__NSArrayI 0x115631ce0>(
+10,
+30,
+9
+)
+, "voiceValue": ETHUSDT，1 分钟，最新一根 2026-09-23 09:42，开 2753.93，高 2754.07，低 2752.00，收 2753.60，跌 0.01%, "to": 1790127750000, "percentAxis": 1, "maColor0": #FFB400, "compareBaseOpen": 2756.13, "bodyW": 2.666666666666667, "portraitHeight": 0.5, "compareKeys": <__NSArrayI 0x107b66620>(
+binance/usd_m/SOLUSDT,
+binance/usd_m/DOGEUSDT
+)
+, "mode": percent, "drawingColors": <__NSArray0 0x1e723b918>(
+
+)
+, "drawingLocked": <__NSArray0 0x1e723b918>(
+
+)
+, "oiTimes": <__NSArrayI 0x1049b4f00>(
+1790119800000,
+1790120100000,
+1790120400000,
+1790120700000,
+1790121000000,
+1790121300000,
+1790121600000,
+1790121900000,
+1790122200000,
+1790122500000,
+1790122800000,
+1790123100000,
+1790123400000,
+1790123700000,
+1790124000000,
+1790124300000,
+1790124600000,
+1790124900000,
+1790125200000,
+1790125500000,
+1790125800000,
+1790126100000,
+1790126400000,
+1790126700000,
+1790127000000,
+1790127300000,
+1790127600000
+)
+, "ownDimmed": 0, "style": aicoin, "depthLevels": 0, "compareLegend": <__NSArrayI 0x115631bc0>(
+{
+    label = "-0.09%";
+    name = ETH;
+},
+{
+    label = "-0.38%";
+    name = SOL;
+},
+{
+    label = "+0.71%";
+    name = DOGE;
+}
+)
+]

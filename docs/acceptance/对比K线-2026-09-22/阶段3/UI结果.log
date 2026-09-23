@@ -1,0 +1,6 @@
+Test Case '-[KanpanUITests.CompareUITests testIntervalsCrosshairPanLandscapeAndReview]' passed (76.909 seconds).
+Test Case '-[KanpanUITests.CompareUITests testPanelCollectionPersistsAndClears]' passed (82.876 seconds).
+Test Case '-[KanpanUITests.CompareUITests testScanningKeepsCollectionAndIgnoresTheMainInstrument]' passed (21.269 seconds).
+COMPARE_SYNC new profile restored three comparison keys; fixture account retained
+Test Case '-[KanpanUITests.CompareUITests testSyncRestoresCollectionIntoFreshInstallationProfile]' passed (154.915 seconds).
+EXIT=0
