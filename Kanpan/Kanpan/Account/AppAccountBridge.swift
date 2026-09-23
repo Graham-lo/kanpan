@@ -78,6 +78,7 @@ import ReviewUI
     account.onAutoSync = { [weak self] enabled in self?.setAutoSync(enabled) }
     prefs.onChange = { [weak self] _ in self?.captureSettings() }
     symbols.onPrefsChange = { [weak self] _ in self?.captureSymbols() }
+    account.lastOwner = { [weak self] in self?.files.lastOwner }
     // 自选页停在哪一类，真身在 `Prefs.favoritesGroup`（跟着账号走）。`KanpanSymbols`
     // 看不见设置包，所以在这儿——两边都认识的地方——把读法接过去。加自选 / 新建分类 /
     // 删分类时「落单的成员进哪一类」要问它。
@@ -446,6 +447,8 @@ import ReviewUI
       let arrival: ChartLayoutArrival = (previouslyPrepared ?? nil) == nil ? .sameProfile : .ownerSwitched
       prefs.useStorage(nextStorage, prefs: nextPrefs, arrival: arrival,
                        owner: user?.id.uuidString ?? ("guest:" + files.guestBatch.uuidString))
+      // 钥匙串读不动时的后备：记下这回装的是谁（只有身份，没有令牌）。
+      files.remember(owner: user)
       symbols.useStorage(SymbolPrefsStore(storage: nextStorage), prefs: nextSymbols)
       drawings.useStorage(drawStore, archive: nextDrawings)
       alerts.useStorage(alertStore, archive: nextAlerts)

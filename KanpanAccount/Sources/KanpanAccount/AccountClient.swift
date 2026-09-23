@@ -41,6 +41,13 @@ public actor AccountClient {
   private var lostAuthentication = false
   /// 被哪一类设备顶下去的（`nil` = 没被顶）。界面要靠它说出「另一台手机 / 平板 / 电脑」。
   private var replacement: DeviceKind?
+  /// 钥匙串上一次读的时候读不动（见 `AccountError.credentialsUnavailable`）。
+  ///
+  /// 读不动**不等于没有凭据**：锁屏状态下被后台拉起时整片钥匙串都是锁着的。所以这时
+  /// `saved` 虽然是 `nil`，客户端也不把自己当成「没登录」——`savedUser()`、发请求
+  /// 之前都会先再读一次，读到了就接上；主动登录、退登会把它清掉（那时本机已经有了
+  /// 比钥匙串里更新的结论，不能再让一次迟到的读把旧凭据翻回来）。
+  private var vaultUnreadable = false
   /// 服务端已经明确说这套凭据不作数了（刷新拿回 401），不是「暂时连不上」。
   /// 这个状态要的是让人重新登录一次，**不是**清掉本地数据——云端只是同步通道。
   public var needsReauthentication: Bool { lostAuthentication }
@@ -59,11 +66,31 @@ public actor AccountClient {
     self.session = session ?? URLSession(configuration: configuration, delegate: NoRedirect(), delegateQueue: nil)
     // 槽里那份凭据是别人签的（换了网关、DEBUG 指到了别处）就当作没有会话：
     // 不把它删掉（云端只是同步通道，换回去还得认），只是不拿它出门。
-    let stored = try vault.read()
-    saved = stored.flatMap { AccountClient.accepts($0, baseURL: baseURL) ? $0 : nil }
+    // 读不动不抛：客户端照样建起来，只是先记着「凭据欠着」（审查 17）。以前这里 `try`
+    // 一抛，整个客户端就是 `nil`，账号页当场变成「账号服务暂不可用」，冷启动装的是访客
+    // 档案——锁屏被拉起一次，登录的人一眼看去自选全没了。
+    do { saved = AccountClient.admit(try vault.read(), baseURL: baseURL) } catch { vaultUnreadable = true }
     // 上一次运行里被顶下去了：身份还在（本机档案照常认得出这是谁的），但令牌已经没了。
     // 开机就知道这条会话不作数，一个字节都不用发出去再问一遍。
     if let kind = saved?.replacedBy { lostAuthentication = true; replacement = kind }
+  }
+  /// 槽里那份凭据是别人签的（换了网关、DEBUG 指到了别处）就当作没有会话。
+  static func admit(_ stored: SavedAccount?, baseURL: URL) -> SavedAccount? {
+    stored.flatMap { AccountClient.accepts($0, baseURL: baseURL) ? $0 : nil }
+  }
+  /// 钥匙串是不是还读不动（凭据欠着）。界面用它区分「没登录」和「登录状态稍后才读得到」。
+  public var credentialsUnavailable: Bool { vaultUnreadable }
+  /// 凭据欠着的话再读一次钥匙串。返回 `true` = 这回读到了（里面有没有凭据另说），
+  /// `false` = 还是读不动。本来就读到过的直接答 `true`，不碰钥匙串。
+  @discardableResult public func retryCredentials() -> Bool {
+    guard vaultUnreadable else { return true }
+    // 不用 `try?`：它会把「读到了、里面没有」（`nil`）和「读不动」压成同一个 `nil`。
+    let stored: SavedAccount?
+    do { stored = try vault.read() } catch { return false }
+    vaultUnreadable = false
+    saved = AccountClient.admit(stored, baseURL: baseURL)
+    if let kind = saved?.replacedBy { lostAuthentication = true; replacement = kind }
+    return true
   }
   /// 这份凭据是不是这台服务器签的。老存档没有 `origin`，按当前地址算数——迁移不清人。
   static func accepts(_ stored: SavedAccount, baseURL: URL) -> Bool {
@@ -83,8 +110,8 @@ public actor AccountClient {
     guard let port = url.port else { return true }
     return allowedPorts.contains(port)
   }
-  public func savedUser() -> AccountUser? { saved?.user }
-  public func savedDevice() -> AccountDevice? { saved?.device }
+  public func savedUser() -> AccountUser? { retryCredentials(); return saved?.user }
+  public func savedDevice() -> AccountDevice? { retryCredentials(); return saved?.device }
   public func request<T: Decodable & Sendable>(_ path: String, method: String = "GET", body: Data? = nil,
                                              key: UUID? = nil, authenticated: Bool = true, as type: T.Type = T.self) async throws -> T {
     let data = try await data(path, method: method, body: body, key: key, authenticated: authenticated)
@@ -188,6 +215,9 @@ public actor AccountClient {
   }
   private func accessToken() async throws -> String {
     if let access, ProcessInfo.processInfo.systemUptime < accessDeadline { return access.accessToken }
+    // 凭据欠着：先再读一次；还读不动就报「稍后再试」，**不是** 401——一个 401 会被
+    // 上层当成「登录失效」把人推去重新登录，而他其实什么都没丢。
+    guard retryCredentials() else { throw AccountError.credentialsUnavailable }
     // 服务端已经拒过一次了，再撞第二次也是同一堵墙。停在这儿，等人重新登录。
     if let replacement { throw AccountError.sessionReplaced(replacement) }
     if lostAuthentication { throw AccountError.reauthenticationRequired }
@@ -249,7 +279,7 @@ public actor AccountClient {
   private func persist(_ tokens: AccountTokens, device: AccountDevice) throws {
     let next = SavedAccount(user: tokens.user, sessionId: tokens.sessionId, device: device,
                             refreshToken: tokens.refreshToken, origin: AccountClient.origin(of: baseURL))
-    try vault.write(next); saved = next; access = tokens
+    try vault.write(next); saved = next; access = tokens; vaultUnreadable = false
     accessDeadline = ProcessInfo.processInfo.systemUptime + max(0, min(900, Double(tokens.expiresAt - tokens.serverTime) / 1000) - 30)
   }
   /// 退登分两步，而且两步的地位不一样。
@@ -263,7 +293,10 @@ public actor AccountClient {
   public func signOut() async throws {
     let credential = saved
     let token = access?.accessToken
+    // `vaultUnreadable` 也清：人已经退了，钥匙串那次删哪怕没删成，稍后一次「读到了」
+    // 也不许把退掉的凭据翻回来。
     saved = nil; access = nil; accessDeadline = 0; lostAuthentication = false; replacement = nil
+    vaultUnreadable = false
     // 这一槽的凭据要作废，不只是我手上这一份：共用它的其他客户端也得跟着走。
     await coordinator.invalidate()
     var failure: (any Error)?

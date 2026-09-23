@@ -3,7 +3,11 @@ import Foundation
 /// Durable account boundaries. Evictable history belongs in Library/Caches, never this directory.
 @MainActor public final class AccountFiles {
   public let root: URL
-  private struct Registry: Codable { var version = 1; var guest = UUID(); var claims: [String: UUID] = [:]; var completed: Set<String> = [] }
+  /// `owner` 是后加的可选字段：老的 registry.json 没有这个键，解出来就是 `nil`。
+  private struct Registry: Codable {
+    var version = 1; var guest = UUID(); var claims: [String: UUID] = [:]; var completed: Set<String> = []
+    var owner: AccountUser?
+  }
   private var registry: Registry
   private var registryURL: URL { root.appendingPathComponent("registry.json") }
   public init(root: URL) throws {
@@ -16,6 +20,21 @@ import Foundation
     } else { registry = Registry(); try Self.write(registry, to: url) }
   }
   public var guestBatch: UUID { registry.guest }
+  /// 上一次装进来的是哪个**登录的**人（访客、已退登 = `nil`）。
+  ///
+  /// 只有身份（id + 用户名），没有任何令牌——凭据只在钥匙串里。它存在的唯一理由是
+  /// 钥匙串**读不动**的那几次（锁屏被后台拉起、钥匙串守护进程抽风）：那时不知道
+  /// 这台机器上是谁，就按它把那个人的本地档案照常装上，而不是退成访客让人以为
+  /// 「自选没了」。见 `AccountFeature.restore()`。
+  public var lastOwner: AccountUser? { registry.owner }
+  /// 记下现在装着的是谁（和 `activate` 同在提交点调用）。没变就不写盘；写失败也不抛——
+  /// 它只是钥匙串读不动时的后备，丢一次最坏就是那一次退成访客（和从前一样）。
+  public func remember(owner: AccountUser?) {
+    guard registry.owner != owner else { return }
+    var next = registry; next.owner = owner
+    guard (try? Self.write(next, to: registryURL)) != nil else { return }
+    registry = next
+  }
 
   /// 现在装着的是谁的档案：`u-<账号 uuid>`，或没登录时的 `local/<访客批次 uuid>`。
   ///

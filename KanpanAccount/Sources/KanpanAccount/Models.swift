@@ -101,6 +101,10 @@ public struct AccountDevices: Decodable, Sendable { public var devices: [Account
 public struct AccountOK: Decodable, Sendable { public var ok: Bool }
 public enum AccountError: LocalizedError, Equatable {
   case unavailable, invalidURL, invalidResponse, keychain, storage, reauthenticationRequired, http(Int, String)
+  /// 钥匙串**这一刻**读不动（锁屏状态下被后台拉起时的 `errSecInteractionNotAllowed`、
+  /// 钥匙串守护进程抽风）。凭据很可能还在，只是现在拿不到——和「没有凭据」「凭据被
+  /// 服务端拒了」都不是一回事：本机档案照常装着，同步停一停，读得到了再接上。
+  case credentialsUnavailable
   /// 这条会话被**同一类设备**顶下去了（服务端 401 `session_replaced`）。
   ///
   /// 和 `reauthenticationRequired` 分开是因为它们在界面上是两句话：一句是「登录
@@ -113,6 +117,7 @@ public enum AccountError: LocalizedError, Equatable {
     case .invalidURL: "账号服务地址无效"
     case .invalidResponse: "暂时无法读取，请重试"
     case .keychain: "暂时无法保存登录状态，请重试"
+    case .credentialsUnavailable: "暂时读不到登录状态，稍后自动重试"
     case .storage: "未能保存，请检查设备空间"
     case .reauthenticationRequired: "登录已失效，请重新登录"
     case .sessionReplaced(let kind): "这个账号在另一台\(kind.label)上登录了"

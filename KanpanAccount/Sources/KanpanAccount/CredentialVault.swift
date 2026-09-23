@@ -7,6 +7,8 @@ public protocol CredentialVault: Sendable {
   /// 两个客户端同时去刷同一把 refresh 令牌，服务端会当成令牌重用，把整条会话家族吊销。
   /// 所以这不是个可有可无的标识——认错槽就等于没有保护。
   var slotIdentifier: String { get }
+  /// 读凭据。`nil` = 这里确实没有凭据；**抛出** = 这一刻读不动（凭据可能还在）。
+  /// 两者不能混：把「读不动」当成「没有」，锁屏被拉起的那一次就会把登录的人装成访客。
   func read() throws -> SavedAccount?
   func write(_ value: SavedAccount?) throws
 }
@@ -22,6 +24,9 @@ public struct KeychainCredentialVault: CredentialVault {
     var result: CFTypeRef?
     let status = SecItemCopyMatching(q as CFDictionary, &result)
     if status == errSecItemNotFound { return nil }
+    // 条目在、但这一刻不让读：设备重启后还没解过锁，app 被后台拉起（推送、后台刷新）。
+    // 这不是「没登录」——调用方要按上次的身份照常装档案、稍后再读（见 `AccountClient`）。
+    if status == errSecInteractionNotAllowed { throw AccountError.credentialsUnavailable }
     guard status == errSecSuccess, let data = result as? Data else { throw AccountError.keychain }
     return try JSONDecoder().decode(SavedAccount.self, from: data)
   }
