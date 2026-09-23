@@ -31,6 +31,8 @@
 #   scripts/machine-guard.sh uninstall-watchdog
 #
 # 预算都能用环境变量临时覆盖：MAX_BUILDS=3 scripts/machine-guard.sh run ...
+# 动态预算：空闲内存 ≥ 35%、交换区 ≤ 4 GB、CPU 空闲 ≥ 25% 三项同时达标时，槽位自动放宽到
+# BURST_BUILDS=3 个编译 / BURST_SIMS=3 台模拟器；任一项掉下去就回到基础预算（不打断在跑的）。
 # 临时关掉「拉起受保护应用」：touch /tmp/kanpan-guard/protect.off
 
 set -u
@@ -41,6 +43,13 @@ LOG="$STATE/guard.log"
 
 MAX_BUILDS=${MAX_BUILDS:-2}
 MAX_SIMS=${MAX_SIMS:-2}
+# 机器明显空闲时动态放宽到下面这档（内存、交换区、CPU 空闲三项同时达标才算空闲）；
+# 压力一上来新槽就不再发，已经在跑的不打断。
+BURST_BUILDS=${BURST_BUILDS:-3}
+BURST_SIMS=${BURST_SIMS:-3}
+BURST_MIN_FREE_MEM_PCT=${BURST_MIN_FREE_MEM_PCT:-35}
+BURST_MAX_SWAP_MB=${BURST_MAX_SWAP_MB:-4096}
+BURST_MIN_CPU_IDLE_PCT=${BURST_MIN_CPU_IDLE_PCT:-25}
 MIN_DISK_GB=${MIN_DISK_GB:-40}
 MAX_SWAP_MB=${MAX_SWAP_MB:-8192}
 MIN_FREE_MEM_PCT=${MIN_FREE_MEM_PCT:-12}
@@ -69,6 +78,16 @@ for v in json.load(sys.stdin)["devices"].values():
         if d["state"]=="Booted": print(d["udid"]+"\t"+d["name"])'; }
 booted_count()  { booted_sims | grep -c . ; }
 slots_in_use()  { reap_slots; ls -1 "$STATE/slots" 2>/dev/null | wc -l | tr -d ' '; }
+cpu_idle_pct()  { top -l 2 -n 0 -s 1 2>/dev/null | grep 'CPU usage' | tail -n 1 | sed -n 's/.* \([0-9]*\)\.[0-9]*% idle.*/\1/p'; }
+
+# ---------------------------------------------------------------- 动态预算
+burst_ok() {  # 机器空闲：内存、交换区、CPU 空闲三项都达标
+  local mem swap idle
+  mem=$(free_mem_pct); swap=$(swap_used_mb); idle=$(cpu_idle_pct)
+  [ "${mem:-0}" -ge "$BURST_MIN_FREE_MEM_PCT" ] && [ "${swap:-99999}" -le "$BURST_MAX_SWAP_MB" ] && [ "${idle:-0}" -ge "$BURST_MIN_CPU_IDLE_PCT" ]
+}
+max_builds_now() { if burst_ok; then echo "$BURST_BUILDS"; else echo "$MAX_BUILDS"; fi; }
+max_sims_now()   { if burst_ok; then echo "$BURST_SIMS";   else echo "$MAX_SIMS";   fi; }
 
 # ---------------------------------------------------------------- 构建槽
 slot_dead() {  # 槽目录里的 pid 没了，或者目录建了 60 秒还没写 pid
@@ -79,8 +98,8 @@ slot_dead() {  # 槽目录里的 pid 没了，或者目录建了 60 秒还没写
 reap_slots() { local s; for s in "$STATE"/slots/*/; do [ -d "$s" ] || continue; slot_dead "$s" && rm -rf "$s"; done; }
 acquire_slot() {
   reap_slots
-  local i s
-  for i in $(seq 1 "$MAX_BUILDS"); do
+  local i s n; n=$(max_builds_now)
+  for i in $(seq 1 "$n"); do
     s="$STATE/slots/$i"
     if mkdir "$s" 2>/dev/null; then echo $$ > "$s/pid"; printf '%s\n' "$*" > "$s/cmd"; SLOT="$s"; return 0; fi
   done
@@ -97,10 +116,11 @@ pressure_reasons() {  # 打印超预算的原因，空则正常
 
 # ---------------------------------------------------------------- 子命令
 cmd_status() {
-  local free swap mem ld b s
-  free=$(disk_free_gb); swap=$(swap_used_mb); mem=$(free_mem_pct); ld=$(load1); b=$(build_count); s=$(booted_count)
-  say "负载 ${ld}（10 核）  空闲内存 ${mem}%  交换区 ${swap} MB / 预算 ${MAX_SWAP_MB}  磁盘空闲 ${free} GB / 预算 ${MIN_DISK_GB}"
-  say "重编译进程 ${b}  构建槽 $(slots_in_use)/${MAX_BUILDS}  开机模拟器 ${s}/${MAX_SIMS}"
+  local free swap mem ld b s idle mb ms mode
+  free=$(disk_free_gb); swap=$(swap_used_mb); mem=$(free_mem_pct); ld=$(load1); b=$(build_count); s=$(booted_count); idle=$(cpu_idle_pct)
+  if burst_ok; then mb=$BURST_BUILDS; ms=$BURST_SIMS; mode="机器空闲，预算放宽"; else mb=$MAX_BUILDS; ms=$MAX_SIMS; mode="基础预算"; fi
+  say "负载 ${ld}（10 核）  CPU 空闲 ${idle}%  空闲内存 ${mem}%  交换区 ${swap} MB / 预算 ${MAX_SWAP_MB}  磁盘空闲 ${free} GB / 预算 ${MIN_DISK_GB}"
+  say "重编译进程 ${b}  构建槽 $(slots_in_use)/${mb}  开机模拟器 ${s}/${ms}  （${mode}：空闲内存 ≥ ${BURST_MIN_FREE_MEM_PCT}%、交换区 ≤ ${BURST_MAX_SWAP_MB} MB、CPU 空闲 ≥ ${BURST_MIN_CPU_IDLE_PCT}% 时 ${BURST_BUILDS} 编译 / ${BURST_SIMS} 模拟器）"
   local d; for d in "$STATE"/slots/*/; do [ -d "$d" ] && say "  槽 $(basename "$d"): pid $(cat "$d/pid" 2>/dev/null) $(head -c 100 "$d/cmd" 2>/dev/null)"; done
   booted_sims | sed 's/^/  开机: /'
   local app; for app in "${PROTECTED_APPS[@]}"; do pgrep -xq "$app" && say "  $app 在" || say "  $app 不在！"; done
@@ -111,9 +131,9 @@ cmd_status() {
 }
 
 cmd_check() {
-  local r; r=$(pressure_reasons)
-  [ "$(build_count)" -lt "$MAX_BUILDS" ] || r="${r}${r:+$'\n'}已有 $(build_count) 个重编译在跑（预算 ${MAX_BUILDS}）"
-  [ "$(booted_count)" -lt "$MAX_SIMS" ]  || r="${r}${r:+$'\n'}已有 $(booted_count) 台模拟器开着（预算 ${MAX_SIMS}）"
+  local r mb ms; r=$(pressure_reasons); mb=$(max_builds_now); ms=$(max_sims_now)
+  [ "$(build_count)" -lt "$mb" ] || r="${r}${r:+$'\n'}已有 $(build_count) 个重编译在跑（当前预算 ${mb}）"
+  [ "$(booted_count)" -lt "$ms" ]  || r="${r}${r:+$'\n'}已有 $(booted_count) 台模拟器开着（当前预算 ${ms}）"
   if [ -n "$r" ]; then say "机器超预算，先别起重活："; say "$r" | sed 's/^/  /'; return 1; fi
   say "机器在预算内"; return 0
 }
@@ -131,7 +151,7 @@ cmd_run() {
   local waited=0 said=0
   until acquire_slot "$@"; do
     [ "$waited" -lt "$SLOT_WAIT_SEC" ] || { say "[guard] 等构建槽等了 ${SLOT_WAIT_SEC}s 还没轮到，放弃。占着的："; ls "$STATE/slots"; return 4; }
-    [ "$said" -eq 1 ] || { say "[guard] 机器上已有 ${MAX_BUILDS} 个重编译在跑，排队等槽…"; said=1; }
+    [ "$said" -eq 1 ] || { say "[guard] 构建槽已满（当前预算 $(max_builds_now)，机器空闲时会自动放宽到 ${BURST_BUILDS}），排队等槽…"; said=1; }
     sleep 15; waited=$((waited+15))
   done
   trap 'rm -rf "$SLOT"' EXIT INT TERM HUP
@@ -159,8 +179,8 @@ sim_age_sec() {  # macOS 的 ps 没有 etimes，只有 [[dd-]hh:]mm:ss 形式的
 }
 
 cmd_sim_gc() {
-  local mem count line udid name age list=""
-  mem=$(free_mem_pct); count=$(booted_count)
+  local mem count line udid name age list="" max_sims
+  mem=$(free_mem_pct); count=$(booted_count); max_sims=$(max_sims_now)
   while IFS=$'\t' read -r udid name; do
     [ -n "$udid" ] || continue
     sim_referenced "$udid" "$name" && continue
@@ -169,7 +189,7 @@ cmd_sim_gc() {
   done < <(booted_sims)
   [ -n "$list" ] || return 0
   printf '%b' "$list" | sort -rn | while IFS=$'\t' read -r age udid name; do
-    if [ "$count" -gt "$MAX_SIMS" ] || [ "${mem:-100}" -lt "$MIN_FREE_MEM_PCT" ]; then
+    if [ "$count" -gt "$max_sims" ] || [ "${mem:-100}" -lt "$MIN_FREE_MEM_PCT" ]; then
       xcrun simctl shutdown "$udid" >/dev/null 2>&1 && { say "[guard] 关掉闲置模拟器 $name（开了 $((age/60)) 分钟没人用）"; log "sim-gc 关 $name"; count=$((count-1)); }
     fi
   done
