@@ -13,7 +13,8 @@
 #        MIN_DISK_GB，交换区不超 MAX_SWAP_MB。重活用 `run` 包着跑就会自动排队、自动 nice；
 #        Makefile 与 Tools 里的 xcodebuild / swift 已经包好。
 #     2. 看门狗：launchd 每 60 秒 `tick`——受保护应用掉了就拉起、超预算又没人用的模拟器
-#        关掉、编译一律降优先级、磁盘告急且没有构建在跑时自动清可再生产物。
+#        关掉、孤儿构建进程杀掉、Docker 没人用就退出、编译一律降优先级、磁盘告急且没有
+#        构建在跑时自动清可再生产物。
 #     3. 清理：`clean` 只删能重新生成的东西（DerivedData、.build、cargo target、/tmp 构建目录、
 #        关机状态模拟器里攒的数据），从不动源码、证据、TestFlight 归档与线上服务。
 #
@@ -22,6 +23,8 @@
 #   scripts/machine-guard.sh check                  超预算就非零退出并说明原因
 #   scripts/machine-guard.sh run xcodebuild ...     占一个构建槽再跑（Makefile 已包好，直接 make）
 #   scripts/machine-guard.sh sim-gc                 关掉超预算且没人引用的模拟器
+#   scripts/machine-guard.sh zombie-gc              杀掉父进程已死的构建 / 模拟器残留进程
+#   scripts/machine-guard.sh docker-gc              没人连 Postgres 就退出 Docker（要用时 open -a Docker）
 #   scripts/machine-guard.sh clean [--sims]         删可再生产物；--sims 连关机模拟器的数据一起重置
 #   scripts/machine-guard.sh protect                Surge / ChatGPT / Claude / remote-control 掉了就拉起
 #   scripts/machine-guard.sh install-watchdog       装 launchd 看门狗（每 60 秒 tick）
@@ -43,6 +46,7 @@ MAX_SWAP_MB=${MAX_SWAP_MB:-8192}
 MIN_FREE_MEM_PCT=${MIN_FREE_MEM_PCT:-12}
 SLOT_WAIT_SEC=${SLOT_WAIT_SEC:-2400}
 SIM_GRACE_SEC=${SIM_GRACE_SEC:-600}
+DOCKER_IDLE_TICKS=${DOCKER_IDLE_TICKS:-10}   # Docker 连续几次巡检（分钟）没人连 Postgres 就退出
 BUILD_NICE=${BUILD_NICE:-10}
 PROTECTED_APPS=(Surge ChatGPT Claude)
 REMOTE_CONTROL_CMD="claude --dangerously-skip-permissions remote-control --name kanpan --permission-mode bypassPermissions"
@@ -149,7 +153,10 @@ sim_referenced() {  # 有没有构建 / 测试 / simctl 进程正提着这台模
   ps -Aeo args 2>/dev/null | grep -E 'xcodebuild|xctest|simctl|-Runner|Kanpan\.app|KanpanEvidenceHost' \
     | grep -v machine-guard | grep -qE -- "$udid|name=$name([,' ]|$)"
 }
-sim_age_sec() { ps -Aeo etimes,args 2>/dev/null | grep launchd_sim | grep -F "$1" | awk '{print $1}' | head -n 1; }
+sim_age_sec() {  # macOS 的 ps 没有 etimes，只有 [[dd-]hh:]mm:ss 形式的 etime，自己换算成秒
+  ps -Aeo etime,args 2>/dev/null | grep launchd_sim | grep -F "$1" | awk '{print $1}' | head -n 1 | awk -F'[-:]' '
+    { n=NF; s=$n; m=(n>=2)?$(n-1):0; h=(n>=3)?$(n-2):0; d=(n>=4)?$(n-3):0; print d*86400+h*3600+m*60+s }'
+}
 
 cmd_sim_gc() {
   local mem count line udid name age list=""
@@ -171,7 +178,8 @@ cmd_sim_gc() {
 cmd_clean() {
   local sims=0; [ "${1:-}" = "--sims" ] && sims=1
   local before; before=$(disk_free_gb)
-  rm -rf /tmp/kanpan-* /tmp/p[0-9]-* 2>/dev/null
+  # 守门自己的状态目录（构建槽锁）和 kanpan-guard-aside（rebase 时挪开的文件）不能删
+  find /tmp -maxdepth 1 \( -name 'kanpan-*' -o -name 'p[0-9]-*' \) ! -name 'kanpan-guard*' -exec rm -rf {} + 2>/dev/null
   rm -rf "$HOME/Library/Developer/Xcode/DerivedData"/* "$HOME/Library/Caches/org.swift.swiftpm" 2>/dev/null
   # DerivedData-archive 是 TestFlight 归档与 dSYM（docs/testflight-uploads.md 按它算 90 天保留期），不删
   find "$ROOT" -maxdepth 3 -type d \( -name .build -o -name '.xcbuild*' -o \( -name 'DerivedData*' ! -name DerivedData-archive \) \) -prune -exec rm -rf {} + 2>/dev/null
@@ -198,6 +206,42 @@ cmd_protect() {
   fi
 }
 
+# 僵尸 / 孤儿：会话被杀之后残留的构建与模拟器进程，父进程已经是 launchd（ppid 1）就没人会再收它
+cmd_zombie_gc() {
+  local killed=0 line pid et comm
+  while read -r pid et comm; do
+    [ -n "$pid" ] || continue
+    kill "$pid" 2>/dev/null && { say "[guard] 杀孤儿进程 $comm（pid $pid，跑了 $et）"; log "zombie-gc 杀 $comm $pid"; killed=$((killed+1)); }
+  done < <(ps -Aeo pid,ppid,etime,comm | awk '$2==1' | grep -E ' (xcodebuild|xctest|swift-frontend|swift-driver|swift-build|swift-test|cargo|rustc|XCBBuildService|simctl)$' | awk '{print $1, $3, $4}')
+  # 已经关机的模拟器却还留着 launchd_sim（simctl shutdown 半途被杀），直接清
+  local booted; booted=$(booted_sims | cut -f1)
+  while read -r pid udid; do
+    [ -n "$pid" ] || continue
+    printf '%s\n' "$booted" | grep -qF "$udid" && continue
+    kill "$pid" 2>/dev/null && { say "[guard] 杀已关机模拟器残留的 launchd_sim $pid"; log "zombie-gc 杀 launchd_sim $pid"; killed=$((killed+1)); }
+  done < <(ps -Aeo pid,args | grep launchd_sim | grep -v grep | sed -n 's/^ *\([0-9]*\) .*Devices\/\([A-F0-9-]*\)\/.*/\1 \2/p')
+  # 真·僵尸态（Z）只能靠父进程收尸，父进程若是活着的会话就不动，父进程没了它也就没了
+  [ "$killed" -eq 0 ] || sleep 2
+  return 0
+}
+
+# Docker 按需：没人连着它里面的 Postgres（5432）就退出，要用时 open -a Docker 再开；
+# 想临时保住 touch $STATE/docker.keep
+cmd_docker_gc() {
+  [ -f "$STATE/docker.keep" ] && return 0
+  pgrep -xq 'Docker Desktop' || { rm -f "$STATE/.docker-idle"; return 0; }
+  local c; c=$(netstat -an 2>/dev/null | grep -E '\.5432 ' | grep -c ESTABLISHED)
+  if [ "${c:-0}" -eq 0 ]; then
+    local mark="$STATE/.docker-idle" n=0
+    [ -f "$mark" ] && n=$(cat "$mark")
+    n=$((n+1)); printf '%s' "$n" >"$mark"
+    if [ "$n" -ge "$DOCKER_IDLE_TICKS" ]; then
+      osascript -e 'quit app "Docker"' >/dev/null 2>&1 && { say "[guard] Docker 连续 ${n} 分钟没人用，已退出"; log "docker-gc 退出 Docker（闲置 ${n} 分钟）"; }
+      rm -f "$mark"
+    fi
+  else rm -f "$STATE/.docker-idle"; fi
+}
+
 renice_builds() {
   local p
   for p in $(build_pids; pgrep -x swift-frontend; pgrep -x swift-driver; pgrep -x rustc; pgrep -x XCBBuildService; pgrep -x xctest); do
@@ -208,7 +252,9 @@ renice_builds() {
 cmd_tick() {
   cmd_protect
   renice_builds
+  cmd_zombie_gc
   cmd_sim_gc
+  cmd_docker_gc
   local r free
   r=$(pressure_reasons); free=$(disk_free_gb)
   if [ "$free" -lt "$MIN_DISK_GB" ] && [ "$(build_count)" -eq 0 ]; then cmd_clean --sims; r=$(pressure_reasons); fi
@@ -252,6 +298,8 @@ case "${1:-status}" in
   check) cmd_check ;;
   run) shift; cmd_run "$@" ;;
   sim-gc) cmd_sim_gc ;;
+  zombie-gc) cmd_zombie_gc ;;
+  docker-gc) cmd_docker_gc ;;
   clean) shift; cmd_clean "$@" ;;
   protect) cmd_protect ;;
   tick) cmd_tick ;;

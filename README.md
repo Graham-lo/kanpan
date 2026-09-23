@@ -51,6 +51,6 @@ make strict
 xcodebuild -workspace Kanpan.xcworkspace -scheme Kanpan -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/kanpan-dd build
 ```
 
-验证约定：当前任务全部用模拟器，受影响UI用例带超时执行，截图进入阶段报告；完整13机型矩阵在交接书P4执行。真机安装、账号登录和密钥配置属于第3节外部条件，不做、不等。服务端功能改动须备份、部署并只读验证，流程见 `.project-memory/PROJECT.md`。
+验证约定：当前任务全部用模拟器，受影响UI用例带超时执行，截图进入阶段报告；完整两机型（16 Pro / 17 Pro Max）矩阵在交接书P4执行。真机安装、账号登录和密钥配置属于第3节外部条件，不做、不等。服务端功能改动须备份、部署并只读验证，流程见 `.project-memory/PROJECT.md`。
 
 App 端无第三方依赖；网关是 Python + aiohttp，个人后端是 Rust。自选、分组、画线、设置持久化；K 线只有有界的内存缓存与启动快照。仓库不包含 VPS 登录配置、私钥、密码或令牌。

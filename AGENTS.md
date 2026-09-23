@@ -34,10 +34,12 @@
 
 - **预算**（`scripts/machine-guard.sh`，launchd 看门狗每 60 秒巡一次）：同时最多 **2 个重编译**（xcodebuild / swift build|test / cargo）、**2 台开机模拟器**、磁盘空闲 **≥ 40 GB**、交换区 **≤ 8 GB**、空闲内存 **≥ 12%**。超预算的活自动排队，不是并行硬挤——排队比挤在一起换页快。
 - **起重活一律经 `make` 目标**，或者 `scripts/machine-guard.sh run <命令>`；Makefile 与 `Tools/*.sh` 里的 xcodebuild / swift 已经包好，会占槽、会 nice 10。不要在会话里裸跑 xcodebuild，也不要一个窗口同时起两个（09-23 一个窗口并行起了三个）。
-- **模拟器**：一个窗口同一时刻只用一台，用完 `xcrun simctl shutdown`。不再给每个窗口建整套 13 台副本；`Tools/make-sim-set.sh` 只在跑完整矩阵前建，跑完 `scripts/machine-guard.sh clean --sims` 重置。看门狗会关掉超预算且十分钟内没有 xcodebuild / xctest / simctl 引用的模拟器，被关了就重新 boot。
-- **派子代理前先 `scripts/machine-guard.sh status`**；负载、交换区或磁盘超预算时子代理串行派、不并行派；要跑编译的子代理同一时刻最多两个。
+- **模拟器只维护两台**（2026-09-23 用户定）：iPhone 16 Pro、iPhone 17 Pro Max，矩阵、截图、验收都按这两台，其余机型不再建，有新需求用户再指定。**兼容范围同样只有这两台机器加 iOS 26.6 以上与 iOS 27**，其余机型与系统一律不再兼容，除非用户特别指定。一个窗口同一时刻只用一台，用完 `xcrun simctl shutdown`；不给每个窗口建整套副本，`Tools/make-sim-set.sh` 只在跑完整矩阵前建，跑完 `scripts/machine-guard.sh clean --sims` 重置。看门狗会关掉超预算且十分钟内没有 xcodebuild / xctest / simctl 引用的模拟器，被关了就重新 boot。
+- **子线程也按实际情况来，不是能并行就并行**：派子代理前先 `scripts/machine-guard.sh status`；负载、交换区或磁盘超预算时串行派；要跑编译或开模拟器的子代理同一时刻最多两个，每个子代理的 prompt 里都写明「重活经 make / machine-guard run，只用一台模拟器，用完关机」。
 - **磁盘**：DerivedData、`.build`、cargo `target`、`/tmp` 里的构建目录都是可再生产物，`scripts/machine-guard.sh clean` 随时可删，看门狗在磁盘不足 40 GB 且没有构建在跑时会自动清。自己的临时 derived data 一律放 `/tmp/kanpan-<窗口>-…`，别的命名清不掉。`DerivedData-archive`（TestFlight 归档与 dSYM）不在清理范围内。
-- **Docker** 只在任务确实需要时开，用完退出；虚拟机上限已从 10 GB 降到 3 GB。
+- **可再生资源用完即删**：任务收尾时跑 `scripts/machine-guard.sh clean`，不留到磁盘告急。
+- **Docker 按需**：要用时 `open -a Docker`，用完退出；看门狗发现连续 10 分钟没人连着它的 Postgres 就会退出它（要保住 `touch /tmp/kanpan-guard/docker.keep`）。虚拟机上限已从 10 GB 降到 3 GB。
+- **僵尸进程**：父进程已死的 xcodebuild / xctest / swift-frontend / cargo / launchd_sim 残留，看门狗每分钟杀一次；手动 `scripts/machine-guard.sh zombie-gc`。
 - **受保护应用**（Surge / ChatGPT / Claude app / `claude remote-control`）掉了看门狗会拉起；要临时关掉这个行为 `touch /tmp/kanpan-guard/protect.off`。日志在 `/tmp/kanpan-guard/guard.log`，告警在 `/tmp/kanpan-guard/ALERT`。
 
 ## 加 / 删一个同步字段

@@ -15,21 +15,10 @@ CHART      := KanpanChart
 RUNTIME    := iOS
 SHOTS      := docs/acceptance/shots
 
-# 当前兼容范围：iPhone 15 及更新型号、iPad；与 Tools/ui-test.sh 保持一致。
+# 重点维护的两台 16 Pro / 17 Pro Max（2026-09-23 用户定的：不再维护 13 台矩阵，机器顶不住；兼容也只认这两台 + iOS 26.6 以上与 27）；与 Tools/ui-test.sh 保持一致。
 DEVICES := \
-	"iPhone 15" \
 	"iPhone 16 Pro" \
-	"iPhone 16 Plus" \
-	"iPhone 17" \
-	"iPhone 17 Pro" \
-	"iPhone 17e" \
-	"iPhone 17 Pro Max" \
-	"iPhone Air" \
-	"iPad mini (A17 Pro)" \
-	"iPad (A16)" \
-	"iPad Air 11-inch (M4)" \
-	"iPad Pro 11-inch (M5)" \
-	"iPad Pro 13-inch (M5)"
+	"iPhone 17 Pro Max"
 
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
@@ -48,7 +37,7 @@ help:
 	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库）"
 	@echo "sync-contract 从 PrefsFieldPlan.table 重新生成 iOS↔Rust 的 settings 字段契约（Backend/kanpan-api/contract/settings-fields.json）"
 	@echo "app-test     跑 app target 的测试"
-	@echo "ui-test      A8.4：13 台机型跑同一套 XCUITest 用例，逐台记结果"
+	@echo "ui-test      A8.4：两台重点机型跑同一套 XCUITest 用例，逐台记结果"
 	@echo "ui-test-one  只跑一台（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "device-release  编真机 Release 包（generic/platform=iOS，签名走 -allowProvisioningUpdates）"
 	@echo "install-release 把 Release 包装到第一台 connected 真机"
@@ -58,9 +47,9 @@ help:
 	@echo "upload       用 App Store Connect API Key 传同一构建号的 ipa：make upload BUILD=7（需 ASC_KEY_ID / ASC_ISSUER_ID）"
 	@echo "             传成功后自动往 docs/testflight-uploads.md 追加一行，归档与 dSYM 按它算 90 天保留期"
 	@echo "snap         在单台模拟器上装 app 并截一张图（DEVICE=\"iPhone 16 Pro\"，RELEASE=1 走 Release 包）"
-	@echo "screenshots  13 台机型全跑一遍，出 docs/acceptance/shots/"
-	@echo "devices      备齐 当前范围的 13 台模拟器（缺的自动 create）"
-	@echo "boot         把13 台全 boot 起来"
+	@echo "screenshots  两台重点机型全跑一遍，出 docs/acceptance/shots/"
+	@echo "devices      备齐两台重点模拟器（缺的自动 create）"
+	@echo "boot         把两台全 boot 起来（一般不用；一次开一台）"
 	@echo "doctor       打印环境信息，对 A0.1 的验收"
 	@echo "clean        清 DerivedData 与 .build"
 
@@ -328,7 +317,7 @@ app-test: app-logic-test build
 
 # ---------------------------------------------------------------- A8.4 UI 测试
 # KanpanUITests（本工程里唯一的 XCTest target，其余单测一律 swift-testing）。
-# 同一套用例在13 台机型上各跑一遍，逐台记结果：make ui-test
+# 同一套用例在两台重点机型上各跑一遍，逐台记结果：make ui-test
 # 单台：make ui-test-one DEVICE="iPad mini (A17 Pro)"
 UI_DEVICES := $(DEVICES)
 
@@ -528,7 +517,7 @@ screenshots: build devices
 	@for d in $(DEVICES); do \
 		bash Tools/snap.sh "$$d" "$(SHOTS)" || exit 1; \
 	done
-	@echo "\n13 台完成，图在 $(SHOTS)/"
+	@echo "\n两台完成，图在 $(SHOTS)/"
 	@ls -1 $(SHOTS)
 
 # ---------------------------------------------------------------- A0.2 机型

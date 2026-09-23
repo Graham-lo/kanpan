@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 兼容验收：iPhone 15 及更新机型、iPad 系列，逐台记结果。
+# 兼容验收：两台重点机型（16 Pro / 17 Pro Max，2026-09-23 用户定），逐台记结果。
 #
 # 为什么一台一条命令、不用 xcodebuild 的多 -destination：
 #   多 destination 并行跑的时候，失败只会汇总成一句「Testing failed」，
@@ -26,9 +26,9 @@ RES="${RES:-$DD/ui-test}"                  # .xcresult 结果包（体积大，�
 #   错开 derived data 之后还剩最后一处共用——**设备本身**。两个窗口各跑一轮矩阵时，
 #   两轮会 boot / uninstall / 测同一批模拟器，谁的 uninstall 落在对方正在跑的那台上，
 #   对方那条用例当场就废了。给每个窗口一套自己的模拟器（名字 = 机型名 + 后缀，
-#   例如「iPhone 15 · m22」，用 Tools/make-sim-set.sh 照着现有同名设备建一套），
+#   例如「iPhone 16 Pro · m22」，用 Tools/make-sim-set.sh 照着现有同名设备建一套），
 #   两轮就互不相干。
-#   只做后缀、不让 DEVICES 被整份替换：那份 13 机型的列表本身就是兼容性承诺，
+#   只做后缀、不让 DEVICES 被整份替换：那份两机型的列表本身就是兼容性承诺，
 #   必须留在脚本里当唯一事实来源，否则两个窗口可能在测不同的机型集，矩阵就没有意义了。
 #   后缀只用于查设备；日志、summary.txt、.xcresult 一律仍按**不带后缀**的机型名命名，
 #   两个窗口产出的报告因此格式一致，可以直接比对。
@@ -45,19 +45,8 @@ WORKSPACE=Kanpan.xcworkspace
 SCHEME=Kanpan
 
 DEVICES=(
-  "iPhone 15"
   "iPhone 16 Pro"
-  "iPhone 16 Plus"
-  "iPhone 17"
-  "iPhone 17 Pro"
-  "iPhone 17e"
   "iPhone 17 Pro Max"
-  "iPhone Air"
-  "iPad mini (A17 Pro)"
-  "iPad (A16)"
-  "iPad Air 11-inch (M4)"
-  "iPad Pro 11-inch (M5)"
-  "iPad Pro 13-inch (M5)"
 )
 
 mkdir -p "$OUT" "$RES"
