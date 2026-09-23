@@ -218,7 +218,7 @@ impl Klines for Binance {
  fn get<'a>(&'a self,symbol:&'a str)->Pin<Box<dyn Future<Output=Reply>+Send+'a>> {
   Box::pin(async move {
    let url=format!("{KLINES}?symbol={symbol}&interval=1d&limit={HISTORY_LIMIT}");
-   let reply=match market_meta::http().get(&url).send().await {Ok(reply)=>reply,Err(_)=>return Reply::Transport};
+   let reply=match crate::http::shared().get(&url).send().await {Ok(reply)=>reply,Err(_)=>return Reply::Transport};
    let status=reply.status();
    if !status.is_success() {
     let retry_after=reply.headers().get(header::RETRY_AFTER).and_then(|v|v.to_str().ok()).map(str::to_owned);
@@ -264,11 +264,16 @@ async fn upsert(pool:&PgPool,symbol:&str,bars:&[(NaiveDate,f64,f64)])->sqlx::Res
  let closes:Vec<f64>=bars.iter().map(|b|b.1).collect();
  let volumes:Vec<f64>=bars.iter().map(|b|b.2).collect();
  // One statement for the contract's three weeks rather than twenty-one round
- // trips. Re-running the day rewrites the same values, which is what makes a
- // retried sweep free of consequence.
+ // trips. Re-running the day leaves the same values in place, which is what
+ // makes a retried sweep free of consequence.
+ //
+ // `IS DISTINCT FROM`（审查 A7）：已经收过的日子币安不会改，每天的扫描却要把三周
+ // 都重写一遍。无条件的 DO UPDATE 每行都生成一个新元组、留一个死元组给 vacuum，
+ // 几百个合约乘二十一天，天天如此；值没变就不写，只有币安真的改了口径那一天才更新。
  sqlx::query("INSERT INTO daily_close(symbol,day,close,quote_volume) \
   SELECT $1,d,c,q FROM UNNEST($2::date[],$3::double precision[],$4::double precision[]) AS t(d,c,q) \
-  ON CONFLICT(symbol,day) DO UPDATE SET close=EXCLUDED.close,quote_volume=EXCLUDED.quote_volume")
+  ON CONFLICT(symbol,day) DO UPDATE SET close=EXCLUDED.close,quote_volume=EXCLUDED.quote_volume \
+  WHERE (daily_close.close,daily_close.quote_volume) IS DISTINCT FROM (EXCLUDED.close,EXCLUDED.quote_volume)")
   .bind(symbol).bind(&days).bind(&closes).bind(&volumes).execute(pool).await?;
  Ok(())
 }
@@ -575,11 +580,17 @@ mod tests {
   let bars=vec![(twenty,100.0,1.0),(five,200.0,2.0),(window_day(asof,1),300.0,3.0)];
   upsert(&pool,"AAAUSDT",&bars).await.unwrap();
   assert_eq!(rows(pool.clone()).await,3);
-  // The sweep that retried, or simply ran twice: the same three rows.
+  // The sweep that retried, or simply ran twice: the same three rows — and the
+  // same tuples. `xmin` changes only when a row is rewritten, so an unchanged
+  // `xmin` is the proof the repeated sweep wrote nothing.
+  let versions=|pool:PgPool|async move{sqlx::query_scalar::<_,String>("SELECT string_agg(xmin::text,',' ORDER BY day) FROM daily_close WHERE symbol='AAAUSDT'").fetch_one(&pool).await.unwrap()};
+  let before=versions(pool.clone()).await;
   upsert(&pool,"AAAUSDT",&bars).await.unwrap();
   assert_eq!(rows(pool.clone()).await,3,"a repeated sweep must not duplicate a day");
+  assert_eq!(versions(pool.clone()).await,before,"unchanged days are not rewritten");
   // A day Binance restates is corrected in place, not appended beside itself.
   upsert(&pool,"AAAUSDT",&[(five,222.0,2.5)]).await.unwrap();
+  assert_ne!(versions(pool.clone()).await,before,"a restated day is rewritten");
   assert_eq!(rows(pool.clone()).await,3);
   let (close,volume):(f64,f64)=sqlx::query_as("SELECT close,quote_volume FROM daily_close WHERE symbol='AAAUSDT' AND day=$1")
    .bind(five).fetch_one(&pool).await.unwrap();

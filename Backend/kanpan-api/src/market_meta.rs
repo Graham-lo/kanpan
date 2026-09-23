@@ -797,23 +797,40 @@ fn binance_oi_cache()->&'static Recent<OpenInterest> {static C:OnceLock<Recent<O
 // -------------------------------------------------------------------- fetching
 
 fn upstream()->ApiError {ApiError(StatusCode::SERVICE_UNAVAILABLE,"market_upstream_unavailable")}
-pub(crate) fn http()->&'static reqwest::Client {
- static HTTP:OnceLock<reqwest::Client>=OnceLock::new();
- HTTP.get_or_init(||reqwest::Client::builder().timeout(Duration::from_secs(20))
-  // 单独的连接超时。只有整体超时的话，一个黑洞路由（SYN 出去没人回）会把这个请求
-  // 按满 20 秒，而刷新是串着跑的：几百个页面各占 20 秒，一轮就再也跑不完。连上
-  // 一个活着的主机从来不需要五秒。
-  .connect_timeout(Duration::from_secs(5))
-  // These are the endpoints binance.com itself calls; the default agent string
-  // is the kind of thing such a front door refuses.
-  .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-  .build().expect("HTTP client"))
-}
+/// 进程里那一个出站客户端（[`crate::http::shared`]）。留着这个名字是因为
+/// market_depth、coinbase 都从这里拿。
+pub(crate) fn http()->&'static reqwest::Client {crate::http::shared()}
 /// The contract list exactly as Binance publishes it, for callers that need
 /// fields `parse_exchange_info` does not keep — `sector_history` reads
 /// `contractType` and `status` from the same body rather than fetching it a
 /// second time from a host of its own.
-pub async fn exchange_info()->Result<Value> {get_json(EXCHANGE_INFO).await}
+///
+/// 三处都要它（这里的分类刷新、`sector_history` 的日线扫描、`oi_archive` 的预热名单），
+/// 以前各自取一遍，同一份几百 KB 的合约表十分钟里能从币安拉三次，占的是同一道按 IP
+/// 算的限速（审查 A7）。现在进程里只留一份，[`EXCHANGE_INFO_TTL`] 之内谁要都给这一份；
+/// 过期时同时来的几个调用方只有第一个出站，其余等它的结果（单飞）。失败不缓存——
+/// 各调用方本来就有自己的重试节奏。
+pub async fn exchange_info()->Result<Arc<Value>> {
+ static SHARED:OnceLock<Shared>=OnceLock::new();
+ SHARED.get_or_init(Shared::default).get(EXCHANGE_INFO_TTL,||get_json(EXCHANGE_INFO)).await
+}
+/// 合约表多久算新。合约上下架一天几次，刷新循环 600 秒一轮，十分钟正好让
+/// 同一轮里的三个调用方共用一份。
+pub(crate) const EXCHANGE_INFO_TTL:Duration=Duration::from_secs(10*60);
+/// 一份共享的上游应答：TTL 内复用，过期时单飞。
+#[derive(Default)]
+pub(crate) struct Shared {slot:tokio::sync::Mutex<Option<(Instant,Arc<Value>)>>}
+impl Shared {
+ pub(crate) async fn get<F,Fut>(&self,ttl:Duration,fetch:F)->Result<Arc<Value>>
+ where F:FnOnce()->Fut,Fut:Future<Output=Result<Value>> {
+  // 锁跨着出站拿：过期那一刻同时到的调用方排在这把锁后面，拿到锁时缓存已经是新的。
+  let mut slot=self.slot.lock().await;
+  if let Some((at,value))=slot.as_ref() && at.elapsed()<ttl {return Ok(value.clone())}
+  let fresh=Arc::new(fetch().await?);
+  *slot=Some((Instant::now(),fresh.clone()));
+  Ok(fresh)
+ }
+}
 pub(crate) async fn get_json(url:&str)->Result<Value> {
  // 同一个出口被币安封着的时候连出站都不出：429 之后继续敲门换来的是 418，418 之后
  // 继续敲门换来的是几天（A-06）。这道闸门是进程级的，`sector_history` 和
@@ -925,7 +942,11 @@ pub(crate) trait Source:Send+Sync {
 }
 struct Upstream;
 impl Source for Upstream {
- fn json<'a>(&'a self,url:&'a str)->Pin<Box<dyn Future<Output=Result<Value>>+Send+'a>> {Box::pin(get_json(url))}
+ fn json<'a>(&'a self,url:&'a str)->Pin<Box<dyn Future<Output=Result<Value>>+Send+'a>> {
+  // 合约表走进程里那一份共享副本（[`exchange_info`]），别的地址照常出站。
+  if url==EXCHANGE_INFO {return Box::pin(async {exchange_info().await.map(|body|Value::clone(&body))})}
+  Box::pin(get_json(url))
+ }
 }
 
 /// 落盘快照的版本号。表的结构变了就换这个数，旧文件会被当成「没有快照」。
@@ -1353,6 +1374,32 @@ mod tests {
   assert_eq!(t["XMR"].rank,Some(42));
   assert_eq!(t["XMR"].family,Some(Family::CoinGecko));
   assert!(!t.contains_key("GHOST"),"没有 id 的行不进表");
+ }
+ /// 合约表 TTL 内只出站一次，同时来的调用方等同一次出站（单飞）；失败不缓存。
+ #[tokio::test]
+ async fn the_contract_list_is_fetched_once_and_shared() {
+  use std::sync::atomic::AtomicUsize;
+  let shared=Arc::new(Shared::default());
+  let calls=Arc::new(AtomicUsize::new(0));
+  let fetch=|calls:Arc<AtomicUsize>|move||async move {
+   calls.fetch_add(1,Ordering::SeqCst);
+   tokio::time::sleep(Duration::from_millis(20)).await;
+   Ok(json!({"symbols":[]}))
+  };
+  let (a,b,c)=tokio::join!(
+   shared.get(Duration::from_secs(60),fetch(calls.clone())),
+   shared.get(Duration::from_secs(60),fetch(calls.clone())),
+   shared.get(Duration::from_secs(60),fetch(calls.clone())));
+  assert_eq!(calls.load(Ordering::SeqCst),1,"三个同时来的只出站一次");
+  assert!(Arc::ptr_eq(&a.unwrap(),&b.unwrap())&&c.is_ok());
+  // 过期了就再取一次。
+  shared.get(Duration::ZERO,fetch(calls.clone())).await.unwrap();
+  assert_eq!(calls.load(Ordering::SeqCst),2);
+  // 失败不进缓存：下一次照样出站，而且拿到的是新的那份。
+  let failing=Arc::new(Shared::default());
+  assert!(failing.get(Duration::from_secs(60),||async {Err(upstream())}).await.is_err());
+  failing.get(Duration::from_secs(60),fetch(calls.clone())).await.unwrap();
+  assert_eq!(calls.load(Ordering::SeqCst),3);
  }
  #[test]
  fn quote_assets_come_off_the_symbol() {

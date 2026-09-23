@@ -133,6 +133,12 @@ impl Binance {
                 .build()?,
         })
     }
+    /// 换成宿主进程共享的 HTTP 客户端（kanpan-api 的 `http::shared`），和别的模块共用
+    /// 一个连接池，不再单独握一套 TLS。客户端的超时与 UA 由宿主负责。
+    pub fn with_client(mut self, client: reqwest::Client) -> Self {
+        self.client = client;
+        self
+    }
     /// 接上进程级出站闸门。
     pub fn with_gate(mut self, gate: std::sync::Arc<dyn EgressGate>) -> Self {
         self.gate = Some(gate);

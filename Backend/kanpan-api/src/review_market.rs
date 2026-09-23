@@ -80,7 +80,9 @@ pub fn coinbase_ready()->Result<()> {
 /// [`crate::binance_gate`]，跟 market_meta / sector_history / oi_archive 共用一条
 /// 418 / 429 截止时间（原来它自己一套、不看这条截止时间，别的模块刚被 418 它照样出站）。
 pub fn provider(pool:sqlx::PgPool)->anyhow::Result<scorebook_market::adapters::binance::Binance> {
- let market=scorebook_market::adapters::binance::Binance::new(pool)?.with_gate(std::sync::Arc::new(crate::binance_gate::Gate));
+ let market=scorebook_market::adapters::binance::Binance::new(pool)?
+  .with_client(crate::http::shared().clone())
+  .with_gate(std::sync::Arc::new(crate::binance_gate::Gate));
  tracing::info!("Review market data reads Binance REST at {}",market.base());
  Ok(market)
 }

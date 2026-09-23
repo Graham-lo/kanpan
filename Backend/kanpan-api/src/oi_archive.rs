@@ -87,11 +87,10 @@ const WARM_DAYS:i64=180;
 /// behind. Three symbols at a time, a breath between days.
 const WARM_LANES:usize=3;
 const WARM_PAUSE:Duration=Duration::from_millis(60);
-/// The contract list, and the volume that decides what gets warmed first.
-/// `fapi.binance.com` answers 451 from this datacentre; `www.binance.com/fapi`
-/// answers 200 — same data, different edge, which is why the host here is not
-/// the documented one.
-const LISTING:&str="https://www.binance.com/fapi/v1/exchangeInfo";
+/// The volume that decides what gets warmed first (the contract list itself is
+/// `market_meta::exchange_info`). `fapi.binance.com` answers 451 from this
+/// datacentre; `www.binance.com/fapi` answers 200 — same data, different edge,
+/// which is why the host here is not the documented one.
 const TICKER:&str="https://www.binance.com/fapi/v1/ticker/24hr";
 
 /// Generic over the state because these routes never read it: the standby
@@ -136,9 +135,9 @@ async fn perpetuals(client:&reqwest::Client)->Option<Vec<Arc<str>>> {
  // 合约列表和 24h 榜单都在 binance.com 上，跟 `market_meta`、`sector_history` 撞的是
  // 同一道按 IP 算的限速墙，所以走同一条封禁截止时间：被封期间这轮预热直接不开。
  if binance_gate::blocked() {return None}
- let reply=client.get(LISTING).send().await.ok()?;
- if binance_gate::note_reply(&reply) {return None}
- let listing:serde_json::Value=reply.json().await.ok()?;
+ // 合约表和 market_meta、sector_history 共用进程里那一份（`market_meta::exchange_info`，
+ // 十分钟内不重复出站）；闸门在它里面照样过。
+ let listing=crate::market_meta::exchange_info().await.ok()?;
  let mut symbols:Vec<&str>=listing.get("symbols")?.as_array()?.iter()
   // 「正在交易的永续」和板块历史用同一个判定（`instruments::is_live_perpetual`）：以前这里只认
   // `PERPETUAL`，美股、贵金属那些 `TRADIFI_PERPETUAL` 板块历史里有、预热里没有。
@@ -775,17 +774,10 @@ impl Store {
  }
 }
 
-/// One client for the life of the process: the connections it keeps open to
-/// the archive are the whole difference between 54 s and a few seconds.
-fn client()->reqwest::Client {
- reqwest::Client::builder()
-  .pool_max_idle_per_host(GATE)
-  .pool_idle_timeout(Duration::from_secs(90))
-  .connect_timeout(Duration::from_secs(6))
-  .timeout(Duration::from_secs(20))
-  .user_agent("kanpan-api/1.0")
-  .build().unwrap_or_default()
-}
+/// 归档、合约列表、24h 榜单都走进程里那一个客户端（[`crate::http::shared`]）：
+/// 留着的连接就是 54 秒和几秒之间的全部差别。池子不再单独设每主机上限——reqwest 默认
+/// 不限空闲连接数，十六路并发（`GATE`）的连接都能留下。
+fn client()->reqwest::Client {crate::http::shared().clone()}
 
 #[cfg(test)]
 mod tests {

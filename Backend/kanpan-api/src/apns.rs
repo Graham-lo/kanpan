@@ -12,6 +12,9 @@ use serde_json::json;
 use std::sync::Mutex;
 use std::time::{Duration,Instant};
 
+/// 一次推送最多等多久。APNs 通常几十毫秒就回；卡住的请求不能把触发那一路拖满全局的 20 秒。
+const SEND_TIMEOUT:Duration=Duration::from_secs(10);
+
 /// 一次推送的结局里服务端唯一需要分辨的两种。
 ///
 /// `Gone` 是「这枚 token 已经死了，别再留着」：app 被卸载、重装、或者环境搞错
@@ -107,13 +110,10 @@ impl Apns {
    Err(e)=>{tracing::warn!("APNs key {path} is not a usable ES256 .p8 ({e}); alerts will still fire and sync, but nothing will be pushed");return None}
   };
   let environment=get("KANPAN_APNS_ENV").unwrap_or_else(||"production".into());
-  // 连接池留着：一次触发可能要推这个人的两三台设备，重开 TLS + HTTP/2 握手是纯浪费。
-  // ALPN 由 reqwest 的 http2 特性带上（Cargo.toml 里已经开了）；APNs 只说 HTTP/2，
-  // 所以协商出来的一定是 h2——这里不写死 prior knowledge，免得握手上再加一层假设。
-  let client=match reqwest::Client::builder().timeout(Duration::from_secs(10)).pool_idle_timeout(Duration::from_secs(300)).build() {
-   Ok(v)=>v,
-   Err(e)=>{tracing::warn!("APNs HTTP client could not be built ({e}); nothing will be pushed");return None}
-  };
+  // 用进程里那一个客户端（`crate::http::shared`），连接池也就跟着留着：一次触发可能要推
+  // 这个人的两三台设备，重开 TLS + HTTP/2 握手是纯浪费。ALPN 由 reqwest 的 http2 特性
+  // 带上；APNs 只说 HTTP/2，所以协商出来的一定是 h2。10 秒超时在每个请求上设（`SEND_TIMEOUT`）。
+  let client=crate::http::shared().clone();
   tracing::info!("APNs ready: topic {topic}, default environment {environment}");
   Some(Self{client,key,key_id,team_id,topic,default_environment:environment,cached:Mutex::new(None)})
  }
@@ -165,6 +165,7 @@ impl Apns {
    .header("apns-push-type",push_type)
    .header("apns-priority","10")
    .header("apns-expiration","0")
+   .timeout(SEND_TIMEOUT)
    .json(payload).send().await.map_err(|e|{tracing::warn!("APNs request failed: {e}");ApiError::bad("apns_unreachable")})?;
   let status=response.status();
   if status.is_success() {return Ok(Outcome::Delivered)}

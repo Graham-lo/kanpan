@@ -4,6 +4,7 @@ pub mod error;
 pub mod sync;
 pub mod sync_validation;
 pub mod instruments;
+pub mod http;
 pub mod review;
 pub mod review_worker;
 pub mod search;
