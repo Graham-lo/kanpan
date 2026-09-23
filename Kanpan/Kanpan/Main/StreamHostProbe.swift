@@ -6,6 +6,8 @@ import Foundation
 /// 出口的网络，不是手机的网络。同一个域名在两边可以一个通一个不通，拿 Mac 的
 /// 结论去改 app 的默认域名等于瞎猜。这段只做一件事——挨个拨候选域名，只认
 /// 「真收到一帧带 `stream` 字段的行情」，握手成功但不发数据的空壳一律判失败。
+///
+/// 候选只列生产盘的域名。合约测试网推的不是生产数据，拿来当对照组也没有意义，不在这张表里。
 enum StreamHostProbe {
   static let hosts = [
     "dstream.binance.me",           // 出厂默认：生产盘，国内直连
@@ -14,9 +16,6 @@ enum StreamHostProbe {
     "fstream.binance.me",
     "fstream.binance.info",
     "data-stream.binance.vision",   // 现货镜像，通了也只能当参考
-    "stream.binancefuture.com",     // 测试网，对照组（数据和 testnet 逐字段相同）
-    "fstream.binancefuture.com",    // 测试网
-    "dstream.binancefuture.com",    // 测试网
   ]
 
   /// 一条流拨出去，最多等 `timeout` 秒第一帧行情。
