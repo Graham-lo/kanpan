@@ -63,4 +63,6 @@
 
 ## 文档维护
 
+**验收素材只留两台机型**（2026-09-24 审查 18b 定）：`docs/acceptance/` 里新入库的截图、录屏、汇总只收 iPhone 16 Pro 与 iPhone 17 Pro Max 两台的；iPad、iPhone 13 mini、iPhone 15、16 Plus 等不再维护的机型，新跑出来的素材一律不入库（iPad 只要求「不破」，自查即可，不留档）。原始文本日志（xcodebuild 输出、逐台 `.log`、`logs/` 目录）不论机型都不入库，`.gitignore` 已排除 `docs/acceptance/**/logs/`，`Tools/ui-test.sh` 把逐台日志写进 `$OUT/logs/`，入库的只有 `summary.txt`、验收报告 `.md` 与挑过的截图；`.xcresult` 结果包同样只留本机。已经入库的旧机型素材不在这条规矩里顺手删，要清理另起一次、单独提交。
+
 完成里程碑时更新 `.project-memory/PROJECT.md` 的状态与日期，区分「本地已改 / 已推送 / 已部署 / 已真机验收」，不把计划写成已完成。`docs/` 仅留现行规格、手册、数据表与索引，验收证据放 `docs/acceptance/`。旧方案、审查、提示词、盘点、交接和进度文档先把有效未完成项并入唯一交接书，再删除；Git历史用于追溯，不在仓库留第二套待办。

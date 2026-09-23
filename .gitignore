@@ -12,6 +12,11 @@ Packages/
 *.dSYM.zip
 *.dSYM
 docs/acceptance/**/*.trace
+# 验收的原始文本日志（xcodebuild 输出、逐台 .log、子代理跑测留下的 logs/ 目录）只留本机，
+# 不入库：审查（2026-09-24 §7 / 18b）量过，已跟踪的 565 个日志占 406.8 MB，大半是
+# 不再维护的机型（iPad、iPhone 13 mini、iPhone 15…）留下的。入库的只有结论——
+# summary.txt、验收报告 .md 和挑过的截图。规矩写在 AGENTS.md「验收素材只留两台机型」。
+docs/acceptance/**/logs/
 .xcbuild/
 .xcbuild-strict/
 # Release 档跑测的派生数据（make test-release，审查 C-05）

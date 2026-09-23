@@ -14,7 +14,10 @@ GUARD="${GUARD:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/machine
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-OUT="${OUT:-docs/acceptance/M8/ui-test}"   # 文本日志与汇总（入库）
+OUT="${OUT:-docs/acceptance/M8/ui-test}"   # 汇总 summary.txt（入库）
+# 逐台的 xcodebuild 文本日志写到 $OUT/logs/，**不入库**（.gitignore 的 docs/acceptance/**/logs/）：
+# 日志只是本机排查用的原始输出，入库的只有 summary.txt 这份结论。
+LOGS="${LOGS:-$OUT/logs}"
 # 为什么 derived data 目录要能被环境变量覆盖：
 #   同一个工作树上常常还有第二个窗口在跑 xcodebuild，而它用的正是默认的 DerivedData。
 #   两条流水线同时往一个 derived data 里写，模块缓存、.app、.xctestrun 会互相覆盖，
@@ -49,7 +52,7 @@ DEVICES=(
   "iPhone 17 Pro Max"
 )
 
-mkdir -p "$OUT" "$RES"
+mkdir -p "$OUT" "$LOGS" "$RES"
 
 if [ -n "$ONLY_DEVICE" ]; then
   found=0
@@ -93,8 +96,8 @@ print('MISSING' if x is None else (x.get('connectionProperties',{}).get('transpo
   xcodebuild build-for-testing \
     -workspace "$WORKSPACE" -scheme "$SCHEME" \
     -destination 'generic/platform=iOS' \
-    -derivedDataPath "$DD" > "$OUT/build-device.log" 2>&1 || {
-      echo "真机构建失败，见 $OUT/build-device.log"; tail -30 "$OUT/build-device.log"; exit 1; }
+    -derivedDataPath "$DD" > "$LOGS/build-device.log" 2>&1 || {
+      echo "真机构建失败，见 $LOGS/build-device.log"; tail -30 "$LOGS/build-device.log"; exit 1; }
   rm -rf "$RES/$slug.xcresult"
   xcodebuild test-without-building \
     -workspace "$WORKSPACE" -scheme "$SCHEME" \
@@ -104,9 +107,9 @@ print('MISSING' if x is None else (x.get('connectionProperties',{}).get('transpo
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 480 \
     -maximum-test-execution-time-allowance 900 \
-    -resultBundlePath "$RES/$slug.xcresult" > "$OUT/$slug.log" 2>&1
+    -resultBundlePath "$RES/$slug.xcresult" > "$LOGS/$slug.log" 2>&1
   rc=$?
-  echo "真机 $DEVICE_UDID：退出码 $rc，通过 $(grep -c "' passed (" "$OUT/$slug.log") 条，失败 $(grep -c "' failed (" "$OUT/$slug.log") 条，见 $OUT/$slug.log"
+  echo "真机 $DEVICE_UDID：退出码 $rc，通过 $(grep -c "' passed (" "$LOGS/$slug.log") 条，失败 $(grep -c "' failed (" "$LOGS/$slug.log") 条，见 $LOGS/$slug.log"
   exit $rc
 fi
 
@@ -114,8 +117,8 @@ echo "== build-for-testing =="
 $GUARD xcodebuild build-for-testing \
   -workspace "$WORKSPACE" -scheme "$SCHEME" \
   -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath "$DD" > "$OUT/build.log" 2>&1 || {
-    echo "构建失败，见 $OUT/build.log"; tail -30 "$OUT/build.log"; exit 1; }
+  -derivedDataPath "$DD" > "$LOGS/build.log" 2>&1 || {
+    echo "构建失败，见 $LOGS/build.log"; tail -30 "$LOGS/build.log"; exit 1; }
 
 fail=0
 : > "$OUT/summary.txt"
@@ -157,20 +160,20 @@ for name in "${DEVICES[@]}"; do
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 480 \
     -maximum-test-execution-time-allowance 900 \
-    -resultBundlePath "$RES/$slug.xcresult" > "$OUT/$slug.log" 2>&1
+    -resultBundlePath "$RES/$slug.xcresult" > "$LOGS/$slug.log" 2>&1
   rc=$?
   dur=$((SECONDS-start))
   # 跑完就关机。八台一路 boot 下来不关，最后那台常常被系统按内存压力 SIGTERM 掉
   # （实测 iPad Pro 11-inch 在第八位上被 Terminated: 15，日志停在 ** BUILD INTERRUPTED **）。
   xcrun simctl shutdown "$udid" > /dev/null 2>&1 || true
-  passed=$(grep -c "' passed (" "$OUT/$slug.log")
-  failed=$(grep -c "' failed (" "$OUT/$slug.log")
+  passed=$(grep -c "' passed (" "$LOGS/$slug.log")
+  failed=$(grep -c "' failed (" "$LOGS/$slug.log")
   if [ $rc -eq 0 ]; then
     echo "  ✓ ${passed} 条通过，${dur}s"
     echo "$name	PASS	$passed	$dur" >> "$OUT/summary.txt"
   else
-    echo "  ✗ 失败 ${failed} 条（通过 ${passed}），见 $OUT/$slug.log"
-    grep -E "error:|XCTAssert" "$OUT/$slug.log" | head -10
+    echo "  ✗ 失败 ${failed} 条（通过 ${passed}），见 $LOGS/$slug.log"
+    grep -E "error:|XCTAssert" "$LOGS/$slug.log" | head -10
     echo "$name	FAIL	$passed/$failed	$dur" >> "$OUT/summary.txt"
     fail=1
   fi
