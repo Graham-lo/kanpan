@@ -71,6 +71,17 @@ async fn real_postgres_alerts_materialize_fire_once_and_register_tokens() {
  assert_eq!(row.0,moved,"移动之后重新武装");
  assert_eq!(row.1[0]["points"][0]["p"],json!(64_500.0),"下一帧起用新几何");
 
+ // 客户端给的点是倒着的：物化表里按时间排好再存（评估器每一帧走的是不排序的快路径），
+ // 同步对象本身原样保存、不改用户的数据。
+ let mut reversed=alert_fields(moved,64_800.0);
+ reversed["lines"]=json!([{"points":[{"t":moved+3_600_000,"p":65_000.0},{"t":moved,"p":64_800.0}],"extendLeft":false,"extendRight":true}]);
+ let (status,v)=request(&app,"/v1/sync/operations","POST",Some(&token),json!({"operations":[operation(&device,id,2,"patch",reversed)]})).await;
+ assert_eq!(status,200,"{v}");
+ let lines:Value=sqlx::query_scalar("SELECT lines FROM alert_watches WHERE user_id=$1 AND alert_id=$2").bind(owner).bind(id).fetch_one(&admin).await.unwrap();
+ assert_eq!(lines[0]["points"],json!([{"t":moved,"p":64_800.0},{"t":moved+3_600_000,"p":65_000.0}]),"物化时排好序");
+ let body:Value=sqlx::query_scalar("SELECT body FROM sync_objects WHERE user_id=$1 AND collection='alerts' AND id=$2").bind(owner).bind(id).fetch_one(&admin).await.unwrap();
+ assert_eq!(body["lines"][0]["points"][0]["t"],json!(moved+3_600_000),"同步对象原样保存");
+
  // 推送 token 端点：设备身份从会话反查，不由客户端自称。
  let hex="a".repeat(64);
  let (status,v)=request(&app,"/v1/devices/push-token","POST",Some(&token),json!({"token":hex,"kind":"alerts","environment":"production"})).await;
@@ -154,7 +165,7 @@ async fn real_postgres_alerts_materialize_fire_once_and_register_tokens() {
  let object=&v["data"]["objects"][0];
  assert_eq!(object["body"]["status"],json!("fired"),"{v}");
  assert_eq!(object["body"]["firedPrice"],json!(64_500.0),"{v}");
- assert_eq!(object["revision"],json!(3),"服务端那一下和客户端的改动走同一条路，修订号照常往前");
+ assert_eq!(object["revision"],json!(4),"服务端那一下和客户端的改动走同一条路，修订号照常往前");
 
  // 无密钥模式（线上现在就是这个样子：还没有 Apple 开发者会员，.p8 根本不存在）。
  // 装不出 Apns 来不是错误——而上面这一整段（fired 落库、op 进 alerts 集合、客户端
@@ -168,7 +179,7 @@ async fn real_postgres_alerts_materialize_fire_once_and_register_tokens() {
  assert_eq!(price,Some(64_500.0),"第二次不许把第一次的记录改掉");
 
  // 删掉提醒：物化表那一行跟着走，评估器不会再订阅这个品种。
- let (status,v)=request(&app,"/v1/sync/operations","POST",Some(&token),json!({"operations":[operation(&device,id,3,"delete",json!({}))]})).await;
+ let (status,v)=request(&app,"/v1/sync/operations","POST",Some(&token),json!({"operations":[operation(&device,id,4,"delete",json!({}))]})).await;
  assert_eq!(status,200,"{v}");
  let left:i64=sqlx::query_scalar("SELECT count(*) FROM alert_watches WHERE user_id=$1").bind(owner).fetch_one(&admin).await.unwrap();
  assert_eq!(left,0);

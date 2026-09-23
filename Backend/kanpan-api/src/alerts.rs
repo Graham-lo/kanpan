@@ -16,6 +16,9 @@
 //!   价比，两者分在线的两侧（正好收在线上也算穿过）才算。盘中来回穿一概不算。
 //!
 //! 触发后**在同一个事务里**把物化表置 fired 并往这个人的同步日志写一条 op，然后才推送。
+//!
+//! 读流判定与写库、推送分成两半并排跑（`Effect`）：读循环里不 await 任何数据库事务和
+//! APNs 往返；断线重连后先从 REST 把缺口里收掉的 1 分钟 K 线补回来再读流（`backfill`）。
 use crate::{AppState,apns::{Apns,Outcome},auth::Identity,envelope,error::{ApiError,Result},live_activity::Quote,sync::Object};
 use axum::{Router,Json,extract::State,routing::post};
 use futures_util::StreamExt;
@@ -46,22 +49,31 @@ pub struct Line {pub points:Vec<Point>,#[serde(default)] pub extend_left:bool,#[
 ///   一条画到昨天为止的线段，今天的价格穿过它的**延长线**并不是穿过那条线。
 /// - **只有一个点**：摊平出来的水平线。此刻之外要看该侧是否延伸，价恒为那个点的价。
 pub fn price_at(line:&Line,t:i64)->Option<f64> {
- let t=t as f64;
  let ps=&line.points;
- let first=ps.first()?;
- let last=ps.last()?;
- // 客户端理应按时间递增给点，但「理应」不是保证：一条乱序的折线会让下面的区间查找
- // 找不到任何一段，提醒就此变成哑的、而且没有任何迹象。排一次的代价可以忽略。
+ // 点在物化（`materialize`）和读进内存（`load`）时都已经按时间排好，这里通常一步都
+ // 不用排：评估器每来一帧、每条提醒都要走这里，原来那一次 clone + sort 就是白白的
+ // 分配。仍然留着乱序的兜底——客户端理应按时间递增给点，但「理应」不是保证，一条乱序
+ // 的折线会让区间查找找不到任何一段，提醒就此变成哑的、而且没有任何迹象。
+ if ps.is_sorted_by(|a,b|a.t<=b.t) {return on_sorted(line,ps,t)}
  let mut sorted:Vec<Point>=ps.clone();
- sorted.sort_by(|a,b|a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
- let (first,last)=(if sorted[0].t<=first.t {sorted[0]} else {*first},if sorted[sorted.len()-1].t>=last.t {sorted[sorted.len()-1]} else {*last});
+ sort_points(&mut sorted);
+ on_sorted(line,&sorted,t)
+}
+/// 按时间把点排好（稳定排序；NaN 之类比不出大小的原地不动）。物化、读库、兜底共用。
+fn sort_points(points:&mut [Point]) {
+ points.sort_by(|a,b|a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
+}
+/// 三种情况分开写，理由见 [`price_at`]。`sorted` 必须已经按时间递增。
+fn on_sorted(line:&Line,sorted:&[Point],t:i64)->Option<f64> {
+ let t=t as f64;
+ let (first,last)=(*sorted.first()?,*sorted.last()?);
  if t<first.t {
   if !line.extend_left {return None}
-  return Some(extrapolate(&sorted,t,true))
+  return Some(extrapolate(sorted,t,true))
  }
  if t>last.t {
   if !line.extend_right {return None}
-  return Some(extrapolate(&sorted,t,false))
+  return Some(extrapolate(sorted,t,false))
  }
  for w in sorted.windows(2) {
   let (a,b)=(w[0],w[1]);
@@ -71,6 +83,16 @@ pub fn price_at(line:&Line,t:i64)->Option<f64> {
   }
  }
  Some(first.p)
+}
+/// 把 `alerts` 同步对象里的 `lines` 按时间排好点再落库（评估器的快路径靠它）。
+/// 形状不认识的部分原样放过：白名单那一层已经挡过，这里不当第二道校验。
+fn sorted_lines(mut lines:Value)->Value {
+ for line in lines.as_array_mut().into_iter().flatten() {
+  let Some(points)=line.get_mut("points").and_then(Value::as_array_mut) else {continue};
+  let t=|v:&Value|v.get("t").and_then(Value::as_f64).unwrap_or(f64::NAN);
+  points.sort_by(|a,b|t(a).partial_cmp(&t(b)).unwrap_or(std::cmp::Ordering::Equal));
+ }
+ lines
 }
 /// 越过端点之后的外推。只有一个点时是水平线（没有斜率可言）。
 fn extrapolate(sorted:&[Point],t:f64,left:bool)->f64 {
@@ -86,7 +108,10 @@ fn extrapolate(sorted:&[Point],t:f64,left:bool)->f64 {
 /// 的话每条新提醒都会立刻响。
 pub fn touched(lines:&[Line],open_time:i64,armed_at:i64,low:f64,high:f64)->Option<f64> {
  if open_time<armed_at {return None}
- if !low.is_finite()||!high.is_finite()||low>high {return None}
+ if !low.is_finite()||!high.is_finite() {return None}
+ // 高低颠倒时先归一，和客户端 `AlertEvaluator.touchHit` 的 `min/max` 一字对一字——
+ // 原来这里当坏帧返回 None，两端同一根 K 线会一个响、一个不响。
+ let (low,high)=(low.min(high),low.max(high));
  lines.iter().filter_map(|l|price_at(l,open_time)).find(|p|p.is_finite()&&*p>=low&&*p<=high)
 }
 
@@ -147,7 +172,7 @@ pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid
   .bind(owner).bind(&object.id).bind(text("kind")).bind(text("symbol"))
   .bind(object.body.get("market").and_then(Value::as_str).unwrap_or("binance/usd_m"))
   .bind(object.body.get("drawingID").and_then(Value::as_str))
-  .bind(object.body.get("lines").cloned().unwrap_or_else(||json!([])))
+  .bind(sorted_lines(object.body.get("lines").cloned().unwrap_or_else(||json!([]))))
   .bind(object.body.get("condition").and_then(Value::as_str).unwrap_or("touch"))
   .bind(text("title"))
   .bind(number("armedAt").unwrap_or_default() as i64)
@@ -288,12 +313,15 @@ async fn load(s:&AppState,market:&str)->Result<Loaded> {
    if market==BINANCE {live.extend(crate::live_activity::active_symbols(&mut tx,*owner).await.unwrap_or_default());}
    tx.commit().await?;
    for r in rows {
-    let lines:Vec<Line>=match serde_json::from_value(r.get::<Value,_>("lines")) {
+    let mut lines:Vec<Line>=match serde_json::from_value(r.get::<Value,_>("lines")) {
      Ok(v)=>v,
      // 形状对不上就当这条提醒不存在，而不是让整轮刷新失败——一条坏数据不该让所有人
      // 的提醒一起停摆。白名单那一层已经挡过一次，真走到这里说明有别的路写进去了。
      Err(e)=>{tracing::warn!("An alert has unusable geometry and will not be evaluated: {e}");continue}
     };
+    // 物化时已经排过；这一步给「排序上线之前写进去的老行」兜底，一次读库排一次，
+    // 之后每一帧都走 `price_at` 的快路径。
+    for line in &mut lines {sort_points(&mut line.points)}
     out.push(Watch{owner:*owner,alert_id:r.get("alert_id"),symbol:r.get("symbol"),
      drawing_id:r.get("drawing_id"),title:r.get("title"),lines,armed_at:r.get("armed_at"),
      condition:Condition::of(&r.get::<String,_>("condition")),market:r.get("market")});
@@ -501,19 +529,131 @@ fn parse_ticker(text:&str)->Option<(String,Option<f64>,Option<f64>)> {
  Some((data.get("s").and_then(Value::as_str)?.to_string(),number("c"),number("P").map(|p|p/100.0)))
 }
 
+// ——————————————————————— 副作用（写库、推送）走另一条路 ———————————————————————
+
+/// 评估器攒下来、交给 [`work`] 去做的事。
+///
+/// 为什么要分开：原来评估器在 WebSocket 读循环里**当场** await 写库事务和 APNs 往返。
+/// 一次推送几百毫秒、一次写库碰上锁等几秒，这期间读循环一帧都不读——帧在缓冲里堆着，
+/// 堆到九十秒的死线就被当成断流重连，重连又丢一段 K 线。现在读循环只做纯计算（外加
+/// 十秒一次的只读刷新），要做的事塞进一条有界队列，由同一个任务里并排跑着的 [`work`]
+/// 一件件做完。
+enum Effect {
+ /// 一条价格提醒碰到了线：落库、写同步 op、收实时活动、推送。
+ Fire{watch:Box<Watch>,quote:Quote,price:f64,at:i64},
+ /// 自选波动响了。
+ Move{owner:Uuid,event:crate::watch_move::Event},
+ /// 这一轮刷新读到的已到点复盘提醒。
+ Due(Vec<Due>),
+ /// 实时活动的一拍心跳（带着那一刻的行情表）。
+ Beat(BTreeMap<String,Quote>),
+}
+/// 队列多深。十来个用户、一分钟一根 K 线，正常时队列里不会超过个位数；排满只会是
+/// 数据库或 APNs 卡死了，那时候再往里塞也做不完。
+const EFFECT_QUEUE:usize=1024;
+
+/// 已经交出去、还没做完的那几条提醒（`(owner, alert_id)`）。
+///
+/// 为什么要记：评估器十秒一刷，从库里读回所有 active 的提醒。交出去的那条在 [`work`]
+/// 把它落成 fired 之前在库里还是 active，不挡一下的话它会被读回来、下一帧又判中、
+/// 又交一次——APNs 慢的时候每秒几次地往队列里塞同一条。落库那道 `WHERE status='active'`
+/// 让它不会推两次，但每一次都是一个白开的事务。做完（不论成败）就放掉：失败的那条
+/// 下一轮刷新自然读回来重判，这就是原来「失败了塞回内存表」的那条重试路。
+#[derive(Clone,Default)]
+struct Busy(std::sync::Arc<std::sync::Mutex<std::collections::HashSet<(Uuid,String)>>>);
+impl Busy {
+ fn set(&self)->std::sync::MutexGuard<'_,std::collections::HashSet<(Uuid,String)>> {self.0.lock().unwrap_or_else(|e|e.into_inner())}
+ fn claim(&self,owner:Uuid,alert_id:&str)->bool {self.set().insert((owner,alert_id.to_string()))}
+ fn holds(&self,owner:Uuid,alert_id:&str)->bool {self.set().contains(&(owner,alert_id.to_string()))}
+ fn done(&self,owner:Uuid,alert_id:&str) {self.set().remove(&(owner,alert_id.to_string()));}
+}
+
+/// 评估器手里那一头：往队列里放事，**永不等待**。
+#[derive(Clone)]
+struct Effects {queue:tokio::sync::mpsc::Sender<Effect>,busy:Busy}
+impl Effects {
+ fn channel(depth:usize)->(Self,tokio::sync::mpsc::Receiver<Effect>) {
+  let (queue,rx)=tokio::sync::mpsc::channel(depth);
+  (Self{queue,busy:Busy::default()},rx)
+ }
+ /// 排满了就丢掉并留一行日志。丢掉是安全的：提醒和复盘到点在库里还是 active，
+ /// 下一轮刷新（十秒内）重新读回来再判；心跳下一拍再走；只有自选波动那一下会真的
+ /// 少一条横幅。
+ fn send(&self,effect:Effect) {
+  use tokio::sync::mpsc::error::TrySendError;
+  let rejected=match self.queue.try_send(effect) {
+   Ok(())=>return,
+   Err(TrySendError::Full(e))=>{tracing::warn!("The alert side-effect queue is full; dropping one (active alerts are re-read on the next refresh)");e}
+   Err(TrySendError::Closed(e))=>{tracing::warn!("The alert side-effect worker is gone; dropping one");e}
+  };
+  // 没交出去的那几条要放掉，不然它们永远被当成「在做」、再也不判。
+  match rejected {
+   Effect::Fire{watch,..}=>self.busy.done(watch.owner,&watch.alert_id),
+   Effect::Due(due)=>for d in due {self.busy.done(d.owner,&d.alert_id)},
+   Effect::Move{..}|Effect::Beat(_)=>{}
+  }
+ }
+ fn fire(&self,watch:Watch,quote:Quote,price:f64,at:i64) {
+  if !self.busy.claim(watch.owner,&watch.alert_id) {return}
+  self.send(Effect::Fire{watch:Box::new(watch),quote,price,at});
+ }
+ fn due(&self,due:Vec<Due>) {
+  let due:Vec<Due>=due.into_iter().filter(|d|self.busy.claim(d.owner,&d.alert_id)).collect();
+  if !due.is_empty() {self.send(Effect::Due(due))}
+ }
+ /// 刷新读回来的提醒里，去掉已经交出去还没做完的那几条。
+ fn idle(&self,watches:Vec<Watch>)->Vec<Watch> {watches.into_iter().filter(|w|!self.busy.holds(w.owner,&w.alert_id)).collect()}
+}
+
+/// 把队列里的事一件件做完。按先来后到串行：同一个人的推送顺序不乱，同一时刻只占
+/// 一条数据库连接。
+async fn work(s:&AppState,apns:Option<&Apns>,market:&'static str,mut queue:tokio::sync::mpsc::Receiver<Effect>,busy:Busy) {
+ while let Some(effect)=queue.recv().await {
+  match effect {
+   Effect::Fire{watch,quote,price,at}=>{
+    if let Err(e)=fire(s,apns,&watch,quote,price,at).await {
+     tracing::warn!("An alert could not be recorded as fired ({e:?}); the next refresh will retry it");
+    }
+    busy.done(watch.owner,&watch.alert_id);
+   }
+   Effect::Move{owner,event}=>crate::watch_move::notify(s,apns,owner,&event,market).await,
+   Effect::Due(due)=>{
+    settle_due(s,apns,&due).await;
+    for d in &due {busy.done(d.owner,&d.alert_id)}
+   }
+   Effect::Beat(quotes)=>if let Err(e)=crate::live_activity::beat(s,apns,&quotes).await {
+    tracing::warn!("A live activity heartbeat could not be delivered ({e:?}); the next beat will try again");
+   },
+  }
+ }
+}
+
+/// 每个品种最近一根**已收盘** K 线的（开盘时刻, 收盘价）。开盘时刻是断线后补 K 线的
+/// 起点，也用来认出「这一根已经按收盘判过了」（补回来的那根又从流里来一遍）。
+type Closes=BTreeMap<String,(i64,f64)>;
+
 /// worker 的评估器入口（币安那一支）。永不返回：连不上就退几秒再连，品种集合变了就重订阅。
 /// Coinbase 的提醒不在币安那条组合流里，是另一条常驻任务 [`run_coinbase`]；两条由
 /// worker 各自起、各自被 `supervise` 看着，两边互不牵连。
+///
+/// 判定和做事在同一个任务里并排跑（`join!`）：任何一边 panic 都带着另一边一起倒，
+/// 由 `supervise` 整个重启，不会出现「还在判、做事的那一半已经没了」的半死状态。
 pub async fn run(s:AppState,apns:Option<std::sync::Arc<Apns>>) {
  tracing::info!("Alert evaluator started");
+ let (effects,queue)=Effects::channel(EFFECT_QUEUE);
+ let busy=effects.busy.clone();
+ tokio::join!(binance(&s,effects),work(&s,apns.as_deref(),BINANCE,queue,busy));
+}
+async fn binance(s:&AppState,effects:Effects) {
  let mut watches:Vec<Watch>=vec![];
  // 每个品种最近一根**已收盘**的收盘价。`condition='close'` 要两个点才判得出穿越，
  // 这就是那第一个点。
  //
  // 它活在重连之外（不放在 `session` 里）是故意的：断线重连、品种集合变化都不该把它
- // 丢掉。中间断了几分钟的话，这一比就是「跨过那段缺口有没有穿过线」——价格确实从
- // 一侧走到了另一侧，该响；清空它换来的只是白白漏掉一次。
- let mut closes:BTreeMap<String,f64>=BTreeMap::new();
+ // 丢掉。重连之后先按它记下的开盘时刻把断线期间收掉的 K 线补回来（[`backfill`]），
+ // 补不回来的部分，这一比就是「跨过那段缺口有没有穿过线」——价格确实从一侧走到了
+ // 另一侧，该响；清空它换来的只是白白漏掉一次。
+ let mut closes:Closes=BTreeMap::new();
  // 每个品种此刻的价与 24h 涨跌幅。K 线帧一直在刷价，涨跌幅只有 `@ticker` 那条流里有，
  // 而那条流只在有实时活动盯着这个品种时才订——没有活动的时候这张表里就只有价。
  // 实时活动的心跳（`live_activity::beat`）读的就是它。
@@ -525,26 +665,26 @@ pub async fn run(s:AppState,apns:Option<std::sync::Arc<Apns>>) {
  // 窗口里重连回来不许再响一次。
  let mut movers=crate::watch_move::Movers::default();
  loop {
-  let fresh=match load(&s,BINANCE).await {
+  let fresh=match load(s,BINANCE).await {
    Ok(v)=>v,
    Err(_)=>{tracing::warn!("Alerts could not be loaded; will retry");tokio::time::sleep(Duration::from_secs(10)).await;continue}
   };
   movers.refresh(&fresh.movers);
   // 复盘到点不看价：有没有 K 线流都要按时判，所以放在「一个品种都没有」那条岔路前面。
-  settle_due(&s,apns.as_deref(),&fresh.due).await;
+  effects.due(fresh.due);
   let symbols=symbols_of(&fresh.watches,&movers.symbols());
   let streams=streams_of(&symbols,&fresh.live);
-  watches=fresh.watches;
+  watches=effects.idle(fresh.watches);
   if symbols.is_empty() {
    // 一条提醒都没有的时候也要走心跳：提醒刚被删掉、而它的活动还挂在别人锁屏上的
    // 那一下，正是最该推 end 的时候。
-   heartbeat(&s,apns.as_deref(),&quotes,&mut beat).await;
+   heartbeat(&effects,&quotes,&mut beat);
    tokio::time::sleep(Duration::from_secs(10)).await;continue
   }
   // 不再盯的品种没必要一直留着它的收盘价与行情。
   closes.retain(|symbol,_|symbols.iter().any(|s|s==symbol));
   quotes.retain(|symbol,_|symbols.iter().any(|s|s==symbol));
-  if let Err(e)=session(&s,apns.as_deref(),&streams,&mut watches,&mut movers,&mut closes,&mut quotes,&mut beat).await {
+  if let Err(e)=session(s,&effects,&streams,&mut watches,&mut movers,&mut closes,&mut quotes,&mut beat).await {
    tracing::warn!("Alert stream ended ({e}); reconnecting");
    tokio::time::sleep(Duration::from_secs(5)).await;
   }
@@ -575,30 +715,34 @@ fn streams_of(symbols:&[String],live:&[String])->Vec<String> {
  out
 }
 /// 到点了就走一拍实时活动的心跳。**六十秒一拍**，不是每来一帧推一次：前台由客户端自己
-/// 更新，这一拍只为被挂起的 app 而存在。
-async fn heartbeat(s:&AppState,apns:Option<&Apns>,quotes:&BTreeMap<String,Quote>,beat:&mut std::time::Instant) {
+/// 更新，这一拍只为被挂起的 app 而存在。发信交给 [`work`]，这里只看钟、抄一份行情。
+fn heartbeat(effects:&Effects,quotes:&BTreeMap<String,Quote>,beat:&mut std::time::Instant) {
  if beat.elapsed()<crate::live_activity::HEARTBEAT {return}
  *beat=std::time::Instant::now();
- if let Err(e)=crate::live_activity::beat(s,apns,quotes).await {
-  tracing::warn!("A live activity heartbeat could not be delivered ({e:?}); the next beat will try again");
- }
+ effects.send(Effect::Beat(quotes.clone()));
 }
 
 /// 一次连接的生命周期。要订的流变了就返回，让外层重连。
 #[allow(clippy::too_many_arguments)]
-async fn session(s:&AppState,apns:Option<&Apns>,streams:&[String],watches:&mut Vec<Watch>,movers:&mut crate::watch_move::Movers,closes:&mut BTreeMap<String,f64>,quotes:&mut BTreeMap<String,Quote>,beat:&mut std::time::Instant)->anyhow::Result<()> {
+async fn session(s:&AppState,effects:&Effects,streams:&[String],watches:&mut Vec<Watch>,movers:&mut crate::watch_move::Movers,closes:&mut Closes,quotes:&mut BTreeMap<String,Quote>,beat:&mut std::time::Instant)->anyhow::Result<()> {
  let url=format!("{STREAM}?streams={}",streams.join("/"));
  let (mut stream,_)=tokio_tungstenite::connect_async(&url).await?;
  // 新连上的这一条和上一条之间有缺口：断线前那一根记下的「收盘」不是真收盘，
  // 波动判定要的五分钟前参照全部作废，从缺口重新开始（缺口不冒充零波动）。
  movers.forget_prices();
  tracing::info!("Alert evaluator watching {} stream(s)",streams.len());
+ // 先连上再补：补的那几秒里新帧在连接里排着，一帧不丢；反过来先补后连，补完到连上
+ // 之间收掉的那一根就又漏了。
+ for candle in backfill(BINANCE,closes,chrono::Utc::now().timestamp_millis()).await {
+  evaluate(effects,watches,closes,quotes,&candle);
+ }
  let mut refresh=tokio::time::interval(Duration::from_secs(10));
  refresh.tick().await;
  loop {
   tokio::select! {
    // 币安每三分钟发一次 ping，正常品种的 1m K 线每秒都有好几帧。九十秒一帧都没有
-   // 只有一种解释：这条连接已经死了而 TCP 还没告诉我们。
+   // 只有一种解释：这条连接已经死了而 TCP 还没告诉我们。读循环里不再有写库和推送，
+   // 所以这条死线不会再被自己的慢动作撞上。
    frame=tokio::time::timeout(Duration::from_secs(90),stream.next())=>{
     let Some(frame)=frame? else {anyhow::bail!("the stream closed")};
     let message=frame?;
@@ -607,9 +751,9 @@ async fn session(s:&AppState,apns:Option<&Apns>,streams:&[String],watches:&mut V
      // 最新价就是这一根还没收的收盘价。涨跌幅不动：它只从 ticker 帧来，这里覆盖成
      // None 等于每来一根 K 线就把锁屏上的涨跌幅抹掉一次。
      quotes.entry(candle.symbol.clone()).or_default().price=candle.close.is_finite().then_some(candle.close);
-     evaluate(s,apns,watches,closes,quotes,&candle).await;
+     evaluate(effects,watches,closes,quotes,&candle);
      for (owner,event) in movers.observe(&candle.symbol,candle.open_time,candle.close,candle.closed) {
-      crate::watch_move::notify(s,apns,owner,&event,BINANCE).await;
+      effects.send(Effect::Move{owner,event});
      }
      continue
     }
@@ -623,29 +767,35 @@ async fn session(s:&AppState,apns:Option<&Apns>,streams:&[String],watches:&mut V
     match load(s,BINANCE).await {
      Ok(fresh)=>{
       movers.refresh(&fresh.movers);
-      settle_due(s,apns,&fresh.due).await;
+      effects.due(fresh.due);
       let changed=streams_of(&symbols_of(&fresh.watches,&movers.symbols()),&fresh.live)!=streams;
-      *watches=fresh.watches;
+      *watches=effects.idle(fresh.watches);
       if changed {return Ok(())}
      }
      Err(_)=>tracing::warn!("Alerts could not be refreshed; keeping the current set"),
     }
-    heartbeat(s,apns,quotes,beat).await;
+    heartbeat(effects,quotes,beat);
    }
   }
  }
 }
 
-/// 一帧 K 线对上这一批提醒。
+/// 一帧 K 线对上这一批提醒。**纯计算，不 await**：判中的交给 [`work`] 去落库、推送。
 ///
 /// 触发过的从内存里摘掉：下一次刷新（十秒内）才会重新读库，中间这段时间不摘就会
-/// 每来一帧推一次。库里那条 `WHERE status='active'` 是最终的那道闸，这里只是不做无用功。
+/// 每来一帧交一次。库里那条 `WHERE status='active'` 是最终的那道闸，这里只是不做无用功。
 ///
 /// `closes` 里那一条**先读后写**：这一帧要拿的是上一根的收盘价，写进去的是这一根的。
 /// 顺序反了的话每一根都在和自己比，`close` 这一档永远不会响。
-async fn evaluate(s:&AppState,apns:Option<&Apns>,watches:&mut Vec<Watch>,closes:&mut BTreeMap<String,f64>,quotes:&BTreeMap<String,Quote>,candle:&Candle) {
+///
+/// 这一根已经按收盘判过（记下的开盘时刻不早于它：断线补回来的那根又从流里收了一遍）时，
+/// 收盘穿越不再判第二次，`closes` 也不再改——拿它和自己比永远不会穿，拿更早那根比会把
+/// 同一次穿越算两遍。
+fn evaluate(effects:&Effects,watches:&mut Vec<Watch>,closes:&mut Closes,quotes:&BTreeMap<String,Quote>,candle:&Candle) {
  let at=chrono::Utc::now().timestamp_millis();
- let previous=closes.get(&candle.symbol).copied();
+ let last=closes.get(&candle.symbol).copied();
+ let seen=last.is_some_and(|(open_time,_)|open_time>=candle.open_time);
+ let previous=last.filter(|_|!seen).map(|(_,close)|close);
  let mut fired=vec![];
  for (index,w) in watches.iter().enumerate() {
   if w.symbol!=candle.symbol {continue}
@@ -657,15 +807,99 @@ async fn evaluate(s:&AppState,apns:Option<&Apns>,watches:&mut Vec<Watch>,closes:
   };
   if hit.is_some() {fired.push(index)}
  }
- if candle.closed&&candle.close.is_finite() {closes.insert(candle.symbol.clone(),candle.close);}
+ if candle.closed&&candle.close.is_finite()&&!seen {closes.insert(candle.symbol.clone(),(candle.open_time,candle.close));}
  let quote=quotes.get(&candle.symbol).copied().unwrap_or_default();
  for index in fired.iter().rev() {
-  let w=watches.remove(*index);
-  if let Err(e)=fire(s,apns,&w,quote,candle.close,at).await {
-   tracing::warn!("An alert could not be recorded as fired ({:?}); it will be retried",e);
-   watches.push(w);
+  effects.fire(watches.remove(*index),quote,candle.close,at);
+ }
+}
+
+// ——————————————————————— 断线补 K 线 ———————————————————————
+
+/// 断线最多往回补多久。再往前的缺口不补：一小时前碰过的线现在才推，用户已经不需要了，
+/// 那一段按原来的规矩只拿缺口两端的收盘价比一次穿越。
+const BACKFILL_MS:i64=60*60_000;
+/// 补 K 线最多等多久。补不回来就算了，新连接不能一直不读流。
+const BACKFILL_WAIT:Duration=Duration::from_secs(15);
+/// 同时问几个品种。币安、Coinbase 的 REST 都有限速，几个品种一起补不必排成一列，
+/// 也不该一下子全撒出去。
+const BACKFILL_PARALLEL:usize=4;
+/// 币安 K 线走 www.binance.com：美国那台 VPS 上 fapi.binance.com 回 451（见
+/// `sector_history::KLINES`）。
+const BINANCE_KLINES:&str="https://www.binance.com/fapi/v1/klines";
+
+/// 这个品种该补哪一段：`last` 是最后一根记下来的已收盘 K 线的开盘时刻。返回
+/// `[first, end)`（开盘时刻，毫秒）——`end` 是此刻还没收的那一根，它之前的都已经收了。
+/// 一根都没漏就是 `None`：断线只有几秒、没跨过分钟线的那种重连一次 REST 都不发。
+fn gap(last:i64,now:i64)->Option<(i64,i64)> {
+ let end=now.div_euclid(60_000)*60_000;
+ let first=(last+60_000).max(end-BACKFILL_MS);
+ (first<end).then_some((first,end))
+}
+/// 币安 `/fapi/v1/klines` 的一页：`[[开盘时刻, "开", "高", "低", "收", …], …]`。
+/// 只留 `[first, end)` 里的（那一段都已经收了）。
+fn binance_rows(symbol:&str,v:&Value,first:i64,end:i64)->Vec<Candle> {
+ v.as_array().into_iter().flatten().filter_map(|row|{
+  let row=row.as_array()?;
+  let number=|i:usize|row.get(i)?.as_str()?.parse::<f64>().ok().filter(|v|v.is_finite());
+  let open_time=row.first()?.as_i64()?;
+  if open_time<first||open_time>=end {return None}
+  Some(Candle{symbol:symbol.to_string(),open_time,low:number(3)?,high:number(2)?,close:number(4)?,closed:true})
+ }).collect()
+}
+/// Coinbase 的原生 1 分钟 K 线（秒、字符串价）换成评估器的样子。没成交的分钟 Coinbase
+/// 不给，缺着就缺着——和逐笔拼出来的那一支同一个口径。
+fn coinbase_rows(symbol:&str,rows:Vec<crate::venues::coinbase::Candle>,first:i64,end:i64)->Vec<Candle> {
+ rows.into_iter().filter_map(|c|{
+  let number=|s:&str|s.parse::<f64>().ok().filter(|v|v.is_finite());
+  let open_time=c.start*1000;
+  if open_time<first||open_time>=end {return None}
+  Some(Candle{symbol:symbol.to_string(),open_time,low:number(&c.low)?,high:number(&c.high)?,close:number(&c.close)?,closed:true})
+ }).collect()
+}
+
+/// 重连之后，把断线期间收掉的 1 分钟 K 线从 REST 补回来，按时间排好交给 `evaluate`
+/// （当成已收盘的那一帧判：触线、收盘穿越都判）。
+///
+/// 为什么要补：原来断一次线就丢一段 K 线，这段时间里碰过线又回来的价格，提醒就再也
+/// 不会响了——而断线正是 APNs 慢、数据库慢时最常发生的事。
+///
+/// 只补 `closes` 里有底的品种（这个进程里见过它收盘）：刚起来、或者新加进来的品种，
+/// 不知道缺口从哪儿开始，也就不补。补回来的 K 线**不喂**自选波动：它们的窗口早就过了，
+/// 现在推「五分钟涨 1.6%」是一条过期的横幅。
+async fn backfill(market:&'static str,closes:&Closes,now:i64)->Vec<Candle> {
+ use futures_util::stream;
+ let jobs:Vec<(String,i64,i64)>=closes.iter().filter_map(|(symbol,(last,_))|gap(*last,now).map(|(first,end)|(symbol.clone(),first,end))).collect();
+ if jobs.is_empty() {return vec![]}
+ let asked=jobs.len();
+ let fetch=stream::iter(jobs).map(|(symbol,first,end)|async move {
+  if market==COINBASE {
+   crate::venues::coinbase::candles(&symbol,60,first/1000,end/1000).await.ok().map(|rows|coinbase_rows(&symbol,rows,first,end))
+  } else {
+   let limit=(end-first)/60_000;
+   let url=format!("{BINANCE_KLINES}?symbol={symbol}&interval=1m&startTime={first}&endTime={}&limit={limit}",end-1);
+   crate::market_meta::get_json(&url).await.ok().map(|v|binance_rows(&symbol,&v,first,end))
+  }
+ }).buffered(BACKFILL_PARALLEL);
+ let mut fetch=std::pin::pin!(fetch);
+ let deadline=tokio::time::sleep(BACKFILL_WAIT);
+ let mut deadline=std::pin::pin!(deadline);
+ let (mut out,mut answered,mut failed)=(vec![],0usize,0usize);
+ loop {
+  tokio::select! {
+   next=fetch.next()=>match next {
+    Some(Some(candles))=>{answered+=1;out.extend(candles)}
+    Some(None)=>{answered+=1;failed+=1}
+    None=>break,
+   },
+   _=&mut deadline=>{tracing::warn!("Backfilling {market} candles after a reconnect timed out; {} of {asked} symbol(s) answered",answered);break}
   }
  }
+ if failed>0 {tracing::warn!("{failed} of {asked} {market} symbol(s) could not be backfilled after a reconnect; their gap is judged by the closes on either side")}
+ // 稳定排序：同一个品种的先后不变，不同品种交错着来无所谓。
+ out.sort_by_key(|c|c.open_time);
+ if !out.is_empty() {tracing::info!("Backfilled {} {market} candle(s) missed while reconnecting",out.len())}
+ out
 }
 
 // ------------------------------------------------------------------ Coinbase
@@ -678,12 +912,18 @@ async fn evaluate(s:&AppState,apns:Option<&Apns>,watches:&mut Vec<Watch>,closes:
 /// - 收盘穿越：一分钟收完才判。「收完」= 下一分钟的第一笔到了，或者这一分钟结束后
 ///   `SETTLE` 过去还没有新的一笔（冷门品种一分钟可能一笔都没有）。
 /// - 连接十秒一刷提醒集合，品种集合变了就重连；心跳频道每秒一帧，三十秒一帧都没有就判断线。
+/// - 和币安那一支一样：判定和做事分两半并排跑，重连后先补断线期间的 K 线。
 pub async fn run_coinbase(s:AppState,apns:Option<std::sync::Arc<Apns>>) {
- let mut closes:BTreeMap<String,f64>=BTreeMap::new();
+ let (effects,queue)=Effects::channel(EFFECT_QUEUE);
+ let busy=effects.busy.clone();
+ tokio::join!(coinbase(&s,effects),work(&s,apns.as_deref(),COINBASE,queue,busy));
+}
+async fn coinbase(s:&AppState,effects:Effects) {
+ let mut closes:Closes=BTreeMap::new();
  // 这一支自己的自选波动状态（只装 Coinbase 的自选）。和币安那一支一样活在重连之外。
  let mut movers=crate::watch_move::Movers::default();
  loop {
-  let fresh=match load(&s,COINBASE).await {
+  let fresh=match load(s,COINBASE).await {
    Ok(v)=>v,
    Err(_)=>{tracing::warn!("Coinbase alerts could not be loaded; will retry");tokio::time::sleep(Duration::from_secs(10)).await;continue}
   };
@@ -691,14 +931,14 @@ pub async fn run_coinbase(s:AppState,apns:Option<std::sync::Arc<Apns>>) {
   let symbols=symbols_of(&fresh.watches,&movers.symbols());
   if symbols.is_empty() {closes.clear();tokio::time::sleep(Duration::from_secs(10)).await;continue}
   closes.retain(|symbol,_|symbols.contains(symbol));
-  if let Err(e)=coinbase_session(&s,apns.as_deref(),&symbols,fresh.watches,&mut movers,&mut closes).await {
+  if let Err(e)=coinbase_session(s,&effects,&symbols,effects.idle(fresh.watches),&mut movers,&mut closes).await {
    tracing::warn!("Coinbase alert stream ended ({e}); reconnecting");
    tokio::time::sleep(Duration::from_secs(5)).await;
   }
  }
 }
 
-async fn coinbase_session(s:&AppState,apns:Option<&Apns>,symbols:&[String],mut watches:Vec<Watch>,movers:&mut crate::watch_move::Movers,closes:&mut BTreeMap<String,f64>)->anyhow::Result<()> {
+async fn coinbase_session(s:&AppState,effects:&Effects,symbols:&[String],mut watches:Vec<Watch>,movers:&mut crate::watch_move::Movers,closes:&mut Closes)->anyhow::Result<()> {
  use futures_util::SinkExt;
  use tokio_tungstenite::tungstenite::Message;
  use crate::venues::coinbase;
@@ -708,8 +948,12 @@ async fn coinbase_session(s:&AppState,apns:Option<&Apns>,symbols:&[String],mut w
  tracing::info!("Coinbase alert evaluator watching {} product(s)",symbols.len());
  // 新连上的这一条和上一条之间有缺口：五分钟前的参照全部作废（和币安那一支同一条规矩）。
  movers.forget_prices();
- let mut bars=MinuteBars::default();
  let mut quotes:BTreeMap<String,Quote>=BTreeMap::new();
+ // 订阅之后再补（理由同币安那一支）。
+ for candle in backfill(COINBASE,closes,chrono::Utc::now().timestamp_millis()).await {
+  evaluate(effects,&mut watches,closes,&quotes,&candle);
+ }
+ let mut bars=MinuteBars::default();
  let mut refresh=tokio::time::interval(Duration::from_secs(10));
  refresh.tick().await;
  let mut settle=tokio::time::interval(Duration::from_secs(1));
@@ -738,7 +982,7 @@ async fn coinbase_session(s:&AppState,apns:Option<&Apns>,symbols:&[String],mut w
      Ok(fresh)=>{
       movers.refresh(&fresh.movers);
       let changed=symbols_of(&fresh.watches,&movers.symbols())!=symbols;
-      watches=fresh.watches;
+      watches=effects.idle(fresh.watches);
       if changed {return Ok(())}
      }
      Err(_)=>tracing::warn!("Coinbase alerts could not be refreshed; keeping the current set"),
@@ -746,9 +990,9 @@ async fn coinbase_session(s:&AppState,apns:Option<&Apns>,symbols:&[String],mut w
    }
   }
   for candle in candles {
-   evaluate(s,apns,&mut watches,closes,&quotes,&candle).await;
+   evaluate(effects,&mut watches,closes,&quotes,&candle);
    for (owner,event) in movers.observe(&candle.symbol,candle.open_time,candle.close,candle.closed) {
-    crate::watch_move::notify(s,apns,owner,&event,COINBASE).await;
+    effects.send(Effect::Move{owner,event});
    }
   }
  }
@@ -895,7 +1139,10 @@ mod tests {
  #[test] fn a_candle_with_impossible_numbers_is_ignored() {
   let l=vec![line(&[(0.0,100.0),(100.0,100.0)],false,false)];
   assert_eq!(touched(&l,50,0,f64::NAN,101.0),None);
-  assert_eq!(touched(&l,50,0,101.0,99.0),None,"low 比 high 大是坏帧");
+  // 高低颠倒不是坏帧：和客户端 `AlertEvaluator.touchHit` 一样先归一再判。
+  assert_eq!(touched(&l,50,0,101.0,99.0),Some(100.0),"low 比 high 大时归一，和 Swift 同判");
+  assert_eq!(touched(&l,50,0,102.0,101.0),None);
+  assert_eq!(touched(&l,50,0,f64::INFINITY,99.0),None);
  }
  /// 一帧真的币安组合流消息。
  #[test] fn a_binance_frame_becomes_a_candle() {
@@ -1111,5 +1358,119 @@ mod tests {
   w.market=BINANCE.into();w.symbol="BTCUSDT".into();w.drawing_id=Some("d1".into());
   assert_eq!(link_of(&w),"hkline://drawing/BTCUSDT/d1","币安沿用老链接，老客户端也认");
   assert_eq!(venue_of(COINBASE),"coinbase");assert_eq!(venue_of(BINANCE),"binance");
+ }
+
+ // ——— A5：锚点预排序、判定与做事解耦、断线补 K 线 ———
+
+ fn watch(alert_id:&str,condition:Condition,lines:Vec<Line>)->Watch {
+  Watch{owner:Uuid::nil(),alert_id:alert_id.into(),symbol:"BTCUSDT".into(),drawing_id:None,title:String::new(),
+   lines,armed_at:0,condition,market:BINANCE.into()}
+ }
+ fn bar(open_time:i64,low:f64,high:f64,close:f64,closed:bool)->Candle {
+  Candle{symbol:"BTCUSDT".into(),open_time,low,high,close,closed}
+ }
+ fn fired(rx:&mut tokio::sync::mpsc::Receiver<Effect>)->Vec<(String,f64)> {
+  let mut out=vec![];
+  while let Ok(e)=rx.try_recv() {if let Effect::Fire{watch,price,..}=e {out.push((watch.alert_id,price))}}
+  out
+ }
+
+ /// 排好序的折线走快路径，算出来的价和乱序那条慢路径一模一样。
+ #[test] fn sorted_and_unsorted_points_price_the_same() {
+  let sorted=line(&[(0.0,100.0),(100.0,200.0),(300.0,0.0)],true,true);
+  let shuffled=line(&[(300.0,0.0),(0.0,100.0),(100.0,200.0)],true,true);
+  assert!(sorted.points.is_sorted_by(|a,b|a.t<=b.t));
+  for t in [-50,0,50,100,200,300,400] {assert_eq!(price_at(&sorted,t),price_at(&shuffled,t),"t={t}")}
+  let mut fixed=shuffled.clone();sort_points(&mut fixed.points);
+  assert_eq!(fixed.points,sorted.points,"读库时排一次，之后就是快路径");
+ }
+ /// 物化时把 `lines` 里的点按时间排好再落库；形状不认识的部分原样放过。
+ #[test] fn materialized_lines_are_stored_sorted() {
+  let v=sorted_lines(json!([{"points":[{"t":300,"p":1},{"t":0,"p":2},{"t":100,"p":3}],"extendLeft":true},{"extendRight":true},"odd"]));
+  assert_eq!(v,json!([{"points":[{"t":0,"p":2},{"t":100,"p":3},{"t":300,"p":1}],"extendLeft":true},{"extendRight":true},"odd"]));
+  assert_eq!(sorted_lines(json!({"not":"an array"})),json!({"not":"an array"}));
+ }
+
+ /// 判中了只往队列里放一件事就返回：评估器不 await 写库和推送。摘掉的那条在做完
+ /// 之前不会被刷新读回来再判一次。
+ #[test] fn a_hit_is_handed_to_the_side_effect_queue() {
+  let (effects,mut rx)=Effects::channel(8);
+  let flat=vec![line(&[(0.0,100.0)],true,true)];
+  let mut watches=vec![watch("a1",Condition::Touch,flat.clone()),watch("a2",Condition::Touch,vec![line(&[(0.0,500.0)],true,true)])];
+  let mut closes=Closes::new();
+  evaluate(&effects,&mut watches,&mut closes,&BTreeMap::new(),&bar(60_000,99.0,101.0,100.5,false));
+  assert_eq!(fired(&mut rx),vec![("a1".to_string(),100.5)]);
+  assert_eq!(watches.iter().map(|w|w.alert_id.as_str()).collect::<Vec<_>>(),vec!["a2"],"判中的那条从内存里摘掉");
+  // 十秒刷新读回来的时候它在库里还是 active：交出去、还没做完的不再放回来。
+  let reloaded=effects.idle(vec![watch("a1",Condition::Touch,flat.clone()),watch("a2",Condition::Touch,vec![])]);
+  assert_eq!(reloaded.iter().map(|w|w.alert_id.as_str()).collect::<Vec<_>>(),vec!["a2"]);
+  // 做完（不论成败）就放掉：失败的那条下一轮刷新读回来重判。
+  effects.busy.done(Uuid::nil(),"a1");
+  assert_eq!(effects.idle(vec![watch("a1",Condition::Touch,flat)]).len(),1);
+ }
+ /// 队列排满时丢掉这一件、不等待，并且把这条提醒放掉，让下一轮刷新重新读回来。
+ #[test] fn a_full_queue_drops_the_effect_without_waiting_and_releases_the_alert() {
+  let (effects,mut rx)=Effects::channel(1);
+  effects.send(Effect::Beat(BTreeMap::new()));
+  let mut watches=vec![watch("a1",Condition::Touch,vec![line(&[(0.0,100.0)],true,true)])];
+  evaluate(&effects,&mut watches,&mut Closes::new(),&BTreeMap::new(),&bar(60_000,99.0,101.0,100.0,false));
+  assert!(watches.is_empty());
+  assert!(!effects.busy.holds(Uuid::nil(),"a1"),"没交出去的不能一直占着");
+  assert!(matches!(rx.try_recv(),Ok(Effect::Beat(_))));
+  assert!(rx.try_recv().is_err());
+  // 复盘到点同一条规矩：重复读到的只交一次；交不出去就放掉。
+  let (effects,mut rx)=Effects::channel(4);
+  let due=|id:&str|Due{owner:Uuid::nil(),alert_id:id.into(),symbol:"BTCUSDT".into(),review_id:"r".into(),title:String::new(),due_at:0};
+  effects.due(vec![due("r1")]);effects.due(vec![due("r1"),due("r2")]);
+  let mut seen=vec![];
+  while let Ok(Effect::Due(d)) = rx.try_recv() {seen.extend(d.into_iter().map(|d|d.alert_id))}
+  assert_eq!(seen,vec!["r1","r2"]);
+ }
+ /// 收盘穿越：断线期间收掉的那根从 REST 补回来按收盘判；同一根再从流里收一遍，
+ /// 不再判第二次，也不把「上一根」改成它自己。
+ #[test] fn a_backfilled_close_confirms_once_and_the_stream_repeat_is_ignored() {
+  let (effects,mut rx)=Effects::channel(8);
+  let l=vec![line(&[(0.0,102.0)],true,true)];
+  let mut watches=vec![watch("c1",Condition::Close,l.clone())];
+  let mut closes:Closes=[("BTCUSDT".to_string(),(0,100.0))].into_iter().collect();
+  // 补回来的第 1、2 分钟：第 1 分钟收在线下，第 2 分钟收上去了。
+  for c in [bar(60_000,99.0,101.0,101.0,true),bar(120_000,101.0,104.0,103.0,true)] {evaluate(&effects,&mut watches,&mut closes,&BTreeMap::new(),&c)}
+  assert_eq!(fired(&mut rx),vec![("c1".to_string(),103.0)]);
+  assert_eq!(closes["BTCUSDT"],(120_000,103.0));
+  // 流里又收了一遍第 2 分钟（补的时候它刚收）：换一条同样的提醒来看，它不会被这一帧判中。
+  watches=vec![watch("c2",Condition::Close,l)];
+  evaluate(&effects,&mut watches,&mut closes,&BTreeMap::new(),&bar(120_000,101.0,104.0,103.0,true));
+  assert!(fired(&mut rx).is_empty());
+  assert_eq!(closes["BTCUSDT"],(120_000,103.0),"已经判过的那根不改「上一根」");
+  // 下一根照常拿第 2 分钟比。
+  evaluate(&effects,&mut watches,&mut closes,&BTreeMap::new(),&bar(180_000,100.0,103.0,101.0,true));
+  assert_eq!(fired(&mut rx),vec![("c2".to_string(),101.0)]);
+ }
+ /// 该补哪一段：只补已经收了的整分钟，最多一小时；没跨过分钟线的重连一次 REST 都不发。
+ #[test] fn the_gap_covers_closed_minutes_only_and_at_most_an_hour() {
+  let m=1_800_000_000_000;
+  assert_eq!(m%60_000,0,"整分钟");
+  assert_eq!(gap(m,m+59_000),None,"断了几秒，那一根还没收");
+  assert_eq!(gap(m,m+120_500),Some((m+60_000,m+120_000)),"第 1 分钟收了，第 2 分钟还没收");
+  assert_eq!(gap(m,m+60_000),None);
+  assert_eq!(gap(m,m+3*3_600_000+1),Some((m+3*3_600_000-BACKFILL_MS,m+3*3_600_000)),"再往前的不补");
+ }
+ /// 币安 `/fapi/v1/klines` 一页换成已收盘的 K 线，窗口外的与读不出的都丢掉。
+ #[test] fn binance_kline_rows_become_closed_candles() {
+  let v=json!([
+   [0,"1","2","0.5","1.5","10",59_999,"0",1,"0","0","0"],
+   [60_000,"1.5","3","1","2.5","10",119_999,"0",1,"0","0","0"],
+   [120_000,"2.5","4","2","x","10",179_999,"0",1,"0","0","0"],
+   [180_000,"3","5","2","4","10",239_999,"0",1,"0","0","0"],
+  ]);
+  let rows=binance_rows("BTCUSDT",&v,60_000,180_000);
+  assert_eq!(rows,vec![Candle{symbol:"BTCUSDT".into(),open_time:60_000,low:1.0,high:3.0,close:2.5,closed:true}]);
+  assert!(binance_rows("BTCUSDT",&json!({"code":-1121}),0,1).is_empty());
+ }
+ /// Coinbase 的原生 K 线（秒、字符串价）同样换成已收盘的 1 分钟 K 线。
+ #[test] fn coinbase_candles_become_closed_candles() {
+  let c=|start:i64,close:&str|crate::venues::coinbase::Candle{start,open:"1".into(),high:"3".into(),low:"0.5".into(),close:close.into(),volume:"1".into()};
+  let rows=coinbase_rows("BTC-USD",vec![c(60,"2"),c(120,"nan?"),c(180,"2")],60_000,180_000);
+  assert_eq!(rows,vec![Candle{symbol:"BTC-USD".into(),open_time:60_000,low:0.5,high:3.0,close:2.0,closed:true}]);
  }
 }

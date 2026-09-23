@@ -807,7 +807,7 @@ pub(crate) fn http()->&'static reqwest::Client {crate::http::shared()}
 ///
 /// 三处都要它（这里的分类刷新、`sector_history` 的日线扫描、`oi_archive` 的预热名单），
 /// 以前各自取一遍，同一份几百 KB 的合约表十分钟里能从币安拉三次，占的是同一道按 IP
-/// 算的限速（审查 A7）。现在进程里只留一份，[`EXCHANGE_INFO_TTL`] 之内谁要都给这一份；
+/// 算的限速（审查 A7）。现在进程里只留一份，`EXCHANGE_INFO_TTL` 之内谁要都给这一份；
 /// 过期时同时来的几个调用方只有第一个出站，其余等它的结果（单飞）。失败不缓存——
 /// 各调用方本来就有自己的重试节奏。
 pub async fn exchange_info()->Result<Arc<Value>> {
