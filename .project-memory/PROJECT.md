@@ -348,6 +348,16 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - 约束：集合最多 3 只、完整品种 key、主品种与重复不进集合；对比期间画线置灰、价格叠加隐藏、复盘不含对比；扫图扫到集合里的品种时临时忽略，集合不变。
 - 2026-09-23 **四个阶段全部完成**：阶段 3 交互收口在 iPhone 17 Pro Max 模拟器上逐条验收（三档周期、十字线与右轴同口径、平移重定基点、横屏 / 复盘暂退、扫图保留、跨设备同步），`CompareUITests` 4 条全过；阶段 4 使用手册补「对比」一节。旧分支 `compare-kline` / `compare-kline-s2` 与工作树 `kanpan-compare` 已删。报告：[阶段3](../docs/acceptance/对比K线-2026-09-22/阶段3.md)、[阶段4](../docs/acceptance/对比K线-2026-09-22/阶段4.md)、[总结](../docs/acceptance/对比K线-2026-09-22/总结.md)。
 
+## 多交易所 · 第二线程（2026-09-22/23）
+
+- 阶段 1（`cba7c93`，Codex）：`InstrumentID` 内部键 `venue/market/symbol`，个人数据与缓存无损迁移；09-23 起 Codex 线程停用，由 Claude 子代理接手阶段 2–5，短命工作树 rebase 到 main 小步直推。
+- 阶段 2（`09a4067`）：`KanpanNetwork/Provider/` 的 `MarketProvider` / 能力位 / `RouteResolver` / `VenueRegistry`，币安原样包成 `BinanceProvider`，行为零变化（首屏中位 1570 → 1089ms）。守门脚本 `Tools/check-venue-isolation.sh` 挂在 `make app-logic-test` 里：交易所名（含注释）只许出现在各自目录与注册表。
+- 阶段 3（`daaa3b0`、`e5beef2`）：Coinbase 美元现货——客户端 `KanpanNetwork/Coinbase/`；kanpan-api `src/venues/coinbase.rs`（`/v1/market/raw/*?source=coinbase` 白名单透传 + `/v1/market/stream?source=coinbase` 共享上游推送 hub），复盘与提醒按记录自己的交易所取数；已部署。部署时顺带修掉复盘 worker 预算时间溢出的 panic 循环。
+- 阶段 4（`d7410d8`、`5909020`）：自选里 Coinbase 自成一类、显示 `BTC/USD`、搜索行灰色小字、六格无数据写「—」、现货不画外部指标副图；feed 身份带上线路（否则切「网关」不换线）。
+- 阶段 5（`8fce9ad`、`8626d0a`）：iPhone 17 Pro Max 模拟器上币安回归 26 条 + `CoinbaseVenueUITests` 3 条全过；冷启动逐帧 Coinbase K 线中位 1.2s、币安 0.8s；提醒文案改用 `Alert.name(of:)`（Coinbase 写 `BTC/USD`）；线上只读验证透传 200、白名单外 404。
+- 约束：用户看得见的文案只放显示代号（`InstrumentID(…).symbol` / `.display`），内部键只在 DEBUG 诊断里；诊断里的 `symbol` 是完整键，UI 用例拿它去搜索前要先取代号。接第三家照 `docs/多交易所-接入指南.md`。没有真机验收。
+- 报告：[阶段1](../docs/acceptance/多交易所-2026-09-22/阶段1.md)、[阶段2](../docs/acceptance/多交易所-2026-09-22/阶段2.md)、[阶段3](../docs/acceptance/多交易所-2026-09-22/阶段3.md)、[阶段4](../docs/acceptance/多交易所-2026-09-22/阶段4.md)、[阶段5](../docs/acceptance/多交易所-2026-09-22/阶段5.md)、[总结](../docs/acceptance/多交易所-2026-09-22/总结.md)。临时分支 `xchain-tmp` / `xchain-venue` / `venue-tmp` 与工作树 `kanpan-wt-xchain*` 已删。
+
 ## 10. 2026-09-22 待办交接 · P1
 
 **P1初版已重放并推送 `d4f5e2f`（原本地 `5742db3`）；三个副图已获Claude验收通过，初版盘口视觉打回，本次已完成固定十行梯返工与模拟器验证。后端已部署并只读验证。未安装真机。**
