@@ -296,6 +296,7 @@ final class MainScreenUITests: KanpanUICase {
   /// 选完调回「实心」，不给下一条用例留状态。
   func testChartPanelTogglesCandleBody() {
     app.buttons[Ids.intervalChart].tap()
+    XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
     let solid = app.buttons[Ids.chartBody("实心")], hollow = app.buttons[Ids.chartBody("空心")]
     expectExists(hollow, Self.short, "点周期行「图表」没开出图表面板")
     hollow.tap()

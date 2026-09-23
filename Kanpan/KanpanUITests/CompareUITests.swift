@@ -115,6 +115,7 @@ import UIKit
 
     // 用产品已有的「收盘价」档验证十字线、图例与右轴同口径。
     panel()
+    XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
     // 面板上有两个「收盘价」（K 线画法、十字线读数），这里要的是十字线那一档。
     // 只滚面板自己的列表：页面上还有别的滚动区，`scrollViews.firstMatch` 可能落在
     // 别处，划了也滚不到面板里。用手指拖而不是 swipe，免得面板被撑满屏。
@@ -127,7 +128,7 @@ import UIKit
       content.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.7 : 0.3))
         .press(forDuration: 0.1, thenDragTo: content.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.3 : 0.7)))
     }
-    XCTAssertTrue(closeMode.isHittable); closeMode.tap(); closePanel()
+    XCTAssertTrue(closeMode.isHittable); closeMode.tap(); app.closeChartPanelFromMore()
     let h = try XCTUnwrap(info()["mainH"] as? Double)
     let point = canvas.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 170, dy: h * 0.55))
     point.press(forDuration: 0.8)

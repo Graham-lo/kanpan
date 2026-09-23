@@ -35,6 +35,12 @@ import KanpanCore
 ///   差别只在对方收到的是一张图还是能在自己图上看的线。点「分享」底下弹一块二选一
 ///   （`ShareChooser`）；只有一种能用时（复盘回放里没有「发线」）直接走那一种，不弹。
 ///   画线页上那颗纸飞机一并撤了：同一个动作只留一个入口。
+///
+/// 2026-09-24（审查 U4 / U5）：这一页原来十七八行，要滚三屏。现在头一层只放每天会碰的
+/// ——这张图的动作、对比、指标、画法、价格轴、实时价格线、盘口——一调就不再动的开关
+/// （读数位置、十字线取价、轴翻转、网格、阳线、视图锚点、倒计时、至今涨幅）收进最后
+/// 一行「更多设置」推进去的一层（`morePage`），和「指标」同一种推法，「‹」回来不关面板。
+/// 「指标」分组下第一行又叫「指标」的那个分组标题撤了；「记一笔」「分享」的解释灰字也撤了。
 struct ChartPanel: View {
   var store: PrefsStore
   /// 「记一笔」：把当前这张图存进复盘本。复盘回放里没有这回事，调用方传 nil。
@@ -53,7 +59,8 @@ struct ChartPanel: View {
   @Environment(\.dismiss) private var dismiss
   /// 横屏侧栏没有系统 `dismiss`，走主界面递进来的这一条（见 `PanelCloser`）。
   @Environment(\.panelDismiss) private var sideDismiss
-  @State private var showIndicators = false
+  /// 面板里推进去的是哪一层。
+  @State private var page: Page = .main
   @State private var choosingShare = false
 
   private var prefs: Prefs { store.prefs }
@@ -65,15 +72,19 @@ struct ChartPanel: View {
 
   var body: some View {
     ZStack {
-      if showIndicators {
-        IndicatorPage(store: store, onBack: { showIndicators = false })
+      switch page {
+      case .indicators:
+        IndicatorPage(store: store, onBack: { page = .main })
           .transition(.move(edge: .trailing))
-      } else {
+      case .more:
+        morePage
+          .transition(.move(edge: .trailing))
+      case .main:
         settings
           .transition(.move(edge: .leading))
       }
     }
-    .animation(.easeOut(duration: 0.22), value: showIndicators)
+    .animation(.easeOut(duration: 0.22), value: page)
     .clipped()
     .overlay {
       if choosingShare, let onShare, let onSend {
@@ -92,13 +103,11 @@ struct ChartPanel: View {
       if onRecord != nil || onShare != nil || onSend != nil {
         PanelGroupTitle(text: "这张图")
         if let onRecord {
-          PanelRow(name: "记一笔", meta: "存进复盘本",
-                   divider: onShare != nil || onSend != nil, onTap: { close(); onRecord() })
+          PanelRow(name: "记一笔", divider: onShare != nil || onSend != nil, onTap: { close(); onRecord() })
             .accessibilityIdentifier("chart.record")
         }
         if onShare != nil || onSend != nil {
-          PanelRow(name: "分享", meta: "发图片，或把线发给朋友", divider: false,
-                   onTap: share) { chevron }
+          PanelRow(name: "分享", divider: false, onTap: share) { chevron }
             .accessibilityIdentifier("chart.share")
         }
       }
@@ -122,9 +131,10 @@ struct ChartPanel: View {
         }
       }
 
-      // 指标排在设置前面：一天里开关指标的次数远多于改坐标轴和网格。
-      PanelGroupTitle(text: "指标")
-      PanelRow(name: "指标", divider: false, onTap: { showIndicators = true }) {
+      // 指标排在最前：一天里开关指标的次数远多于改坐标轴和网格。
+      // 分组标题就叫「图上」——原来叫「指标」，底下第一行又叫「指标」，念出来是两遍。
+      PanelGroupTitle(text: "图上")
+      PanelRow(name: "指标", onTap: { page = .indicators }) {
         HStack(spacing: 6) {
           Text(IndicatorPage.summary(prefs))
             .font(PanelFont.meta).foregroundStyle(t.ink3)
@@ -133,8 +143,29 @@ struct ChartPanel: View {
         }
       }
       .accessibilityIdentifier("chart.indicators")
+      PanelRow(name: "画法") {
+        PanelSegment(options: ChartPanel.kinds, selection: prefs.candleKind,
+                     id: "chart.candleKind") { v in
+          store.update { $0.candleKind = v }
+        }
+      }
+      PanelRow(name: "价格轴") {
+        PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: prefs.priceMode) { v in store.update { $0.priceMode = v } }
+      }
+      switchRow("实时价格线", nil, prefs.lastLine) { $0.lastLine = $1 }
+        .accessibilityIdentifier("chart.lastLine")
+      // 「设置」里原来也有一行同名开关，已经去掉了：那是画在图上的东西，归这儿。
+      switchRow("盘口", nil, prefs.depth, id: "chart.depth") { $0.depth = $1 }
+      PanelRow(name: "更多设置", divider: false, onTap: { page = .more }) { chevron }
+        .accessibilityIdentifier("chart.more")
+    }
+    .sensoryFeedback(.selection, trigger: prefs)
+  }
 
-      PanelGroupTitle(text: "布局与读数")
+  /// 「更多设置」：一调就不再动的开关。和「指标」一样是面板里推进去的一层。
+  private var morePage: some View {
+    PanelSheet(title: "更多设置", subtitle: nil, onBack: { page = .main }) {
+      PanelGroupTitle(text: "读数与坐标轴")
       PanelRow(name: "K 线数据") {
         PanelSegment(options: [("K线内", CandleDataDisplay.inside), ("顶部", .top), ("跟随K线", .follow)],
                      selection: prefs.dataDisplay, id: "chart.dataDisplay") { v in store.update { $0.dataDisplay = v } }
@@ -143,22 +174,11 @@ struct ChartPanel: View {
         PanelSegment(options: [("选中价", CrossPriceMode.selected), ("收盘价", .close)], selection: prefs.crossPrice,
                      id: "chart.crossPrice") { v in store.update { $0.crossPrice = v } }
       }
-      PanelRow(name: "价格轴") {
-        PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: prefs.priceMode) { v in store.update { $0.priceMode = v } }
-      }
       switchRow("主轴允许翻转", nil, prefs.allowMainInversion,
                 id: "chart.allowMainInversion") { $0.allowMainInversion = $1 }
       switchRow("副轴允许翻转", nil, prefs.allowSubInversion,
                 id: "chart.allowSubInversion") { $0.allowSubInversion = $1 }
-      switchRow("指标区域自适应", nil, prefs.adaptiveIndicators) { $0.adaptiveIndicators = $1 }
-
-      PanelGroupTitle(text: "类型")
-      PanelRow(name: "画法", divider: false) {
-        PanelSegment(options: ChartPanel.kinds, selection: prefs.candleKind,
-                     id: "chart.candleKind") { v in
-          store.update { $0.candleKind = v }
-        }
-      }
+      switchRow("指标区域自适应", nil, prefs.adaptiveIndicators, divider: false) { $0.adaptiveIndicators = $1 }
 
       PanelGroupTitle(text: "K 线")
       PanelRow(name: "网格") {
@@ -187,10 +207,6 @@ struct ChartPanel: View {
       }
 
       PanelGroupTitle(text: "显示")
-      switchRow("实时价格线", nil, prefs.lastLine) { $0.lastLine = $1 }
-        .accessibilityIdentifier("chart.lastLine")
-      // 「设置」里原来也有一行同名开关，已经去掉了：那是画在图上的东西，归这儿。
-      switchRow("盘口", nil, prefs.depth, id: "chart.depth") { $0.depth = $1 }
       switchRow("本根倒计时", nil, prefs.countdown) { $0.countdown = $1 }
         .accessibilityIdentifier("chart.countdown")
       // 「显示画线」那一行 2026-09-23 撤了：画线页「更多」里有「全部隐藏」，两颗开关管同一件事。
@@ -227,6 +243,8 @@ struct ChartPanel: View {
         .accessibilityIdentifier(id ?? "")
     }
   }
+
+  enum Page: Hashable { case main, indicators, more }
 
   // MARK: - 分段选项
 

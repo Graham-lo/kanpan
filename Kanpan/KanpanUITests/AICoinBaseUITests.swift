@@ -81,6 +81,7 @@ final class AICoinBaseUITests: XCTestCase {
     // 「阳线实心 / 空心」这一档还在「图表」面板上，它同样不该动版面：造型是造型，
     // 间距、主图高度、时间轴位置不归它管——改用它来验同一件事。
     app.buttons["interval.chart"].tap()
+    XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
     let hollow = app.buttons["chart.bodyChoice.空心"]
     XCTAssertTrue(hollow.waitForExistence(timeout: 8), "图表面板没开出来")
     hollow.tap()
@@ -91,7 +92,7 @@ final class AICoinBaseUITests: XCTestCase {
     shot("02-空心阳线-尺寸保持")
     app.buttons["chart.bodyChoice.实心"].tap()
     // 图表面板是配置页，选完不自己收；后面全是点图的动作，先把它收掉。
-    app.buttons["panel.done"].tap()
+    app.closeChartPanelFromMore()
     XCTAssertTrue(wait { !hollow.exists }, "图表面板没收回去")
     let point = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.2))
     point.tap()
@@ -106,8 +107,9 @@ final class AICoinBaseUITests: XCTestCase {
     XCTAssertFalse(wait({ info()["inverted"] as? Bool == true }, seconds: 3),
                    "开关关着的时候双击价格轴不该翻转")
     // 每个面板标题右边常驻一颗「完成」，那是明确的出口——比往下拽靠谱。
-    let closePanel = { app.buttons["panel.done"].tap() }
+    let closePanel = { app.closeChartPanelFromMore() }
     app.buttons["interval.chart"].tap()
+    XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
     let allowInvert = app.buttons["chart.allowMainInversion"]
     XCTAssertTrue(allowInvert.waitForExistence(timeout: 8), "图表面板里没有「主轴允许翻转」")
     allowInvert.tap()
@@ -119,6 +121,7 @@ final class AICoinBaseUITests: XCTestCase {
     axis.doubleTap()
     XCTAssertTrue(wait { info()["inverted"] as? Bool == false })
     app.buttons["interval.chart"].tap()
+    XCTAssertTrue(app.openChartMorePage())
     XCTAssertTrue(allowInvert.waitForExistence(timeout: 8))
     allowInvert.tap()
     XCTAssertTrue(wait { allowInvert.value as? String == "关" }, "开关没关回去")

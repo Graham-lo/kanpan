@@ -1935,6 +1935,7 @@ extension ChartFoundationUITests {
     // `CandleStyle`）卡撤了，改用同一张面板上的「阳线」实心 / 空心走同一条路：
     // 改一下、收面板、杀进程重开，看它还在不在。
     app.buttons["interval.chart"].tap()
+    XCTAssertTrue(app.openChartMorePage(), "图表设置里没有「更多设置」")
     let body = app.buttons["chart.bodyChoice.空心"]
     XCTAssertTrue(body.waitForExistence(timeout: 5), "图表面板没开出来")
     XCTAssertFalse(app.buttons["style.card.aicoin"].exists, "风格卡还在")
@@ -1944,6 +1945,7 @@ extension ChartFoundationUITests {
     app.terminate(); app.launch()
     XCTAssertTrue(canvas.waitForExistence(timeout: 30))
     app.buttons["interval.chart"].tap()
+    XCTAssertTrue(app.openChartMorePage())
     XCTAssertTrue(wait { self.app.buttons["chart.bodyChoice.空心"].isSelected },
                   "重启之后阳线画法没留住")
     app.buttons["chart.bodyChoice.实心"].tap()
@@ -1977,6 +1979,7 @@ extension ChartFoundationUITests {
     XCTAssertTrue(wait(seconds: 8) { self.canvas.frame.width < self.canvas.frame.height && self.app.buttons["interval.chart"].isHittable })
     // 手机转一圈回来，刚选的阳线画法还在。
     app.buttons["interval.chart"].tap()
+    XCTAssertTrue(app.openChartMorePage())
     XCTAssertTrue(wait { self.app.buttons["chart.bodyChoice.实心"].isSelected }, "转一圈回来阳线画法丢了")
     closePanel()
   }

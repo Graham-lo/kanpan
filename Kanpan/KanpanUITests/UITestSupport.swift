@@ -508,6 +508,28 @@ extension XCUIApplication {
     return marker.waitForExistence(timeout: 8)
   }
 
+  /// 图表设置面板最后一行「更多设置」→ 推进去的那一层（读数、轴翻转、网格、阳线、
+  /// 视图锚点、倒计时、至今涨幅这些一调就不再动的开关，审查 U4）。已经在那一层就直接认。
+  @discardableResult func openChartMorePage() -> Bool {
+    let marker = buttons["chart.allowMainInversion"]
+    if marker.exists { return true }
+    let row = buttons["chart.more"]
+    guard row.waitForExistence(timeout: 8) else { return false }
+    row.tap()
+    return marker.waitForExistence(timeout: 8)
+  }
+
+  /// 收掉图表设置面板，不管眼下在头一层还是「更多设置」那一层：
+  /// 在里层先点「‹」退回头一层，再点一次「‹」收面板。
+  @discardableResult func closeChartPanelFromMore() -> Bool {
+    let done = buttons["panel.done"]
+    let more = buttons["chart.more"]
+    if !more.exists, done.exists { done.tap(); _ = more.waitForExistence(timeout: 5) }
+    guard more.exists, done.exists else { return !done.exists }
+    done.tap()
+    return waitUntilGone(more, timeout: 8)
+  }
+
   @discardableResult func enterDrawingInPortrait() -> Bool {
     _ = tapDrawEntry()
     if landscapeMarker.waitForExistence(timeout: 15) { rotateDrawingToPortraitByHand() }
