@@ -13,9 +13,9 @@
 
 ## 共享实时订阅
 
-`/market/stream?streams=…`由独立aiohttp服务处理：每节点只有一条固定币安上游WS，所有客户端的同名频道合并订阅，最后一个订阅者离开才退订；无客户端时释放上游。保留双向SUBSCRIBE/UNSUBSCRIBE语义。每个慢客户端只留每频道最新一条待发真实帧，不落盘，不向新客户端重播旧报价。例外是`<symbol>@depth@100ms`（逻辑都在`depth_relay.py`）：深度增量靠U/u/pu（OKX靠seqId/prevSeqId）串成链，逐帧排队不合并，超出每客户端待发上限就断开让它重连重取快照；币安把盘口流拆到了`/public`端点（`/market`不推深度），所以深度单开一条`wss://fstream.binance.com/public/stream`上游、按需开关；OKX线路把同名频道映射为`books`，首帧snapshot、之后update，整条原样包在`{"stream","source":"okx","ctVal","data"}`里转发，后来者靠重订拿到新snapshot。共享上游不等于下行免费：客户端数量增加仍消耗出站带宽和连接资源。
+`/market/stream?streams=…`由独立aiohttp服务处理：每节点只有一条固定币安上游WS，所有客户端的同名频道合并订阅，最后一个订阅者离开才退订；无客户端时释放上游。保留双向SUBSCRIBE/UNSUBSCRIBE语义。每个慢客户端只留每频道最新一条待发真实帧，不落盘，不向新客户端重播旧报价。例外是`<symbol>@depth@100ms`（逻辑都在`depth_relay.py`）：深度增量靠U/u/pu（OKX靠seqId/prevSeqId）串成链，逐帧排队不合并，超出每客户端待发上限就断开让它重连重取快照；币安把盘口流拆到了`/public`端点（`/market`不推深度），所以深度单开一条`wss://fstream.binance.com/public/stream`上游、按需开关；OKX线路把同名频道映射为`books`，首帧snapshot、之后update，整条原样包在`{"stream","source":"okx","ctVal","data"}`里转发，后来者靠重订拿到新snapshot。`<symbol>@aggTrade`同样逐帧排队，但币安仍走`/market`（实测`/public`不推成交）；OKX映射为`trades`，外层同上。共享上游不等于下行免费：客户端数量增加仍消耗出站带宽和连接资源。
 
-允许ticker、markPrice@1s、depth@100ms和图表支持的kline周期；不允许用户指定上游URL、交易或账户API。每连接最多64频道、每来源最多160不同频道、每节点最多512频道。订阅消息有大小和速率限制；单来源握手、并发与总键数有界；慢发送超时断开，避免阻塞其他客户端。Caddy覆盖客户端来源头，公网自行填写同名头不能伪造来源。
+允许ticker、markPrice@1s、depth@100ms、aggTrade和图表支持的kline周期；不允许用户指定上游URL、交易或账户API。每连接最多64频道、每来源最多160不同频道、每节点最多512频道。订阅消息有大小和速率限制；单来源握手、并发与总键数有界；慢发送超时断开，避免阻塞其他客户端。Caddy覆盖客户端来源头，公网自行填写同名头不能伪造来源。
 
 当前匿名应用用可信连接IP隔离滥用，不宣称能识别独立自然人。共享NAT也共享来源配额。正常自选与主图每App通常两条连接；上限针对异常占用。应用层限制不替代运营商对大规模网络攻击的防护。
 

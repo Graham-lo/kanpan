@@ -8,15 +8,15 @@ from collections import deque
 from aiohttp import WSMsgType
 from market_rest import MARKET, OKX_BARS, normalize_okx, Unavailable
 from stream_hub import Hub
-from depth_relay import OKX_CHANNEL, SUFFIX, okx_frame
+from depth_relay import OKX_SEQUENCED, okx_frame
 
 
 class OKXHub(Hub):
-    # OKX tickers and books live on the public endpoint while candle channels
-    # live on the business endpoint. Keep one client-facing hub, but use one
+    # OKX tickers, books and trades live on the public endpoint while candle
+    # channels live on the business endpoint. Keep one client-facing hub, but use one
     # bounded upstream connection for each channel family.
     # Client channel kind -> OKX channel; any other kind is a kline interval.
-    OKX_CHANNELS = {'ticker': 'tickers', 'books': OKX_CHANNEL}
+    OKX_CHANNELS = {'ticker': 'tickers', **dict(OKX_SEQUENCED.values())}
     def __init__(self,
                  upstream='wss://ws.okx.com:8443/ws/v5/public',
                  candle_upstream='wss://ws.okx.com:8443/ws/v5/business', **kwargs):
@@ -26,7 +26,7 @@ class OKXHub(Hub):
         self.controls = deque()
         self.kind_changed = {'ticker': asyncio.Event(), 'kline': asyncio.Event()}
         self.upstreams = set()
-        self.ct_vals = {}  # books channel -> OKX contract face value
+        self.ct_vals = {}  # books/trades channel -> OKX contract face value
         self.fresh = set()  # books channels a new peer joined: they need a new snapshot
 
     def update_upstream_indicator(self):
@@ -38,7 +38,7 @@ class OKXHub(Hub):
     @staticmethod
     def channel_parts(channel):
         """Return (binance-style symbol, kind) for a validated client channel."""
-        for suffix, kind in (('@ticker', 'ticker'), (SUFFIX, 'books')):
+        for suffix, kind in (('@ticker', 'ticker'), *((s, k) for s, (k, _) in OKX_SEQUENCED.items())):
             if channel.endswith(suffix):
                 symbol = channel[:-len(suffix)]
                 return (symbol, kind) if symbol else None
@@ -70,7 +70,7 @@ class OKXHub(Hub):
                 item = await asyncio.to_thread(MARKET.instrument, symbol.upper())
             except (Unavailable, ValueError):
                 continue
-            if kind == 'books':
+            if kind in ('books', 'trades'):
                 self.ct_vals[channel] = item.get('ctVal')
             args.add((item['instId'], self.OKX_CHANNELS.get(kind) or 'candle' + OKX_BARS[kind]))
         return args
@@ -128,8 +128,10 @@ class OKXHub(Hub):
             if parts is None or parts[0] != symbol.lower():
                 continue
             _, kind = parts
-            if kind == 'books':
-                if arg.get('channel') != OKX_CHANNEL or payload.get('action') not in ('snapshot', 'update'):
+            if kind in ('books', 'trades'):
+                if arg.get('channel') != self.OKX_CHANNELS[kind]:
+                    continue
+                if kind == 'books' and payload.get('action') not in ('snapshot', 'update'):
                     continue
                 frame = okx_frame(channel, self.ct_vals.get(channel),
                                   raw if raw is not None else json.dumps(payload, separators=(',', ':')))

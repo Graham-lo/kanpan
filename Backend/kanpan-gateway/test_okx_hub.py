@@ -256,5 +256,35 @@ class OKXDepthTests(unittest.IsolatedAsyncioTestCase):
             task.cancel()
 
 
+TRADES = 'btcusdt@aggTrade'
+TRADE = ('{"arg":{"channel":"trades","instId":"BTC-USDT-SWAP"},"data":[{"instId":"BTC-USDT-SWAP",'
+         '"tradeId":"%d","px":"84300","sz":"3","side":"buy","ts":"1790198491905","count":"1"}]}')
+
+
+class OKXTradesTests(unittest.IsolatedAsyncioTestCase):
+    """`<symbol>@aggTrade` is OKX `trades`, every message forwarded verbatim with the face value."""
+    setUp, tearDown = OKXDepthTests.setUp, OKXDepthTests.tearDown
+
+    async def test_aggtrade_maps_to_trades_on_the_public_socket(self):
+        self.assertEqual(OKXHub.channel_parts(TRADES), ('btcusdt', 'trades'))
+        self.assertTrue(self.hub.replace(self.peer, {TRADES, 'btcusdt@kline_1m'}))
+        self.assertEqual(self.hub.channels_for('ticker'), {TRADES})
+        self.assertEqual(await self.hub.arguments({TRADES}), {('BTC-USDT-SWAP', 'trades')})
+        self.assertEqual(self.hub.ct_vals[TRADES], '0.01')
+
+    async def test_back_to_back_trades_are_all_forwarded_in_order(self):
+        self.assertTrue(self.hub.replace(self.peer, {TRADES}))
+        await self.hub.arguments({TRADES})
+        raws = [TRADE % n for n in (1, 2, 3)]
+        for raw in raws:
+            await self.hub.publish(json.loads(raw), raw)
+        books = SNAPSHOT  # a books message for the same instrument is not a trade
+        await self.hub.publish(json.loads(books), books)
+        frames = [self.peer.pending.pop(TRADES) for _ in range(3)]
+        self.assertIsNone(self.peer.pending.peek(TRADES))
+        for frame, raw in zip(frames, raws):
+            self.assertEqual(frame, '{"stream":"btcusdt@aggTrade","source":"okx","ctVal":"0.01","data":%s}' % raw)
+
+
 if __name__ == '__main__':
     unittest.main()

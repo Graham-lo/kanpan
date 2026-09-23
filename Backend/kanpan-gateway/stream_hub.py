@@ -27,7 +27,7 @@ RESIDENT = frozenset(v for v in os.environ.get('RESIDENT_STREAMS', 'btcusdt@klin
 # the return trip cost nothing; the cap keeps a long session from accumulating.
 LINGER_SECONDS = float(os.environ.get('CHANNEL_LINGER', '90'))
 LINGER_CHANNELS = 48
-STREAM = re.compile(r'(?:[a-z0-9_]{1,30}@(?:ticker|markPrice@1s|depth@100ms|kline_(?:1m|3m|5m|15m|30m|1h|2h|4h|6h|8h|12h|1d|3d|1w|1M))|!ticker@arr)\Z')
+STREAM = re.compile(r'(?:[a-z0-9_]{1,30}@(?:ticker|markPrice@1s|depth@100ms|aggTrade|kline_(?:1m|3m|5m|15m|30m|1h|2h|4h|6h|8h|12h|1d|3d|1w|1M))|!ticker@arr)\Z')
 
 
 def streams(values):

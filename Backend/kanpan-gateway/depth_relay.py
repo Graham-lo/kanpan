@@ -1,19 +1,22 @@
-"""Order-book diff channels (`<symbol>@depth@100ms`) for both relays.
+"""Order-flow channels (`<symbol>@depth@100ms`, `<symbol>@aggTrade`) for both relays.
 
-Everything that makes a depth channel different from a ticker or kline lives
+Everything that makes these channels different from a ticker or kline lives
 here, so the two hubs only carry one-line hooks:
 
-* A depth channel is a *sequence*: Binance chains frames by U/u/pu and OKX by
-  seqId/prevSeqId. The newest-frame-only coalescing the hubs use for tickers
-  would silently break the chain, so `sequenced()` channels are queued frame by
-  frame in Pending instead (still inside the same per-peer byte cap).
+* They are *sequences*: Binance chains depth frames by U/u/pu and OKX by
+  seqId/prevSeqId, and every trade counts towards the traded volume. The
+  newest-frame-only coalescing the hubs use for tickers would silently drop
+  frames, so `sequenced()` channels are queued frame by frame in Pending
+  instead (still inside the same per-peer byte cap).
 * Binance moved order-book streams to the `/public` endpoint. Measured on the
   node on 2026-09-24: `/market/stream?streams=btcusdt@depth@100ms` delivered 0
   frames in 4 s, `/public/stream` delivered 39 with U/u/pu. The ticker/kline
   socket therefore never carries depth; `BinancePublicLane` owns a second
-  upstream that only carries depth channels.
-* OKX `books` frames are forwarded verbatim inside the envelope the phone
-  expects, with the contract face value next to them (`okx_frame`).
+  upstream that only carries depth channels. Trades did not move: the same
+  measurement gave `/market/stream` 123 aggTrade frames in 5 s and `/public`
+  none, so aggTrade stays on the ticker/kline socket (`on_public()` is False).
+* OKX `books` and `trades` frames are forwarded verbatim inside the envelope
+  the phone expects, with the contract face value next to them (`okx_frame`).
 """
 import asyncio
 import contextlib
@@ -24,20 +27,28 @@ from urllib.parse import urlencode
 from aiohttp import WSMsgType
 
 SUFFIX = '@depth@100ms'
+TRADES = '@aggTrade'
 BINANCE_PUBLIC = 'wss://fstream.binance.com/public/stream'
 OKX_CHANNEL = 'books'  # 400 levels: a snapshot first, then incremental updates
+# Client channel suffix -> (hub kind, OKX channel). Same instId as the ticker.
+OKX_SEQUENCED = {SUFFIX: ('books', OKX_CHANNEL), TRADES: ('trades', 'trades')}
 
 
 def sequenced(channel):
     """True for channels whose frames must all arrive, in order."""
+    return channel.endswith(SUFFIX) or channel.endswith(TRADES)
+
+
+def on_public(channel):
+    """True for the Binance channels that only the /public endpoint delivers."""
     return channel.endswith(SUFFIX)
 
 
 def split(channels):
-    """(depth channels, everything else) of an iterable of channel names."""
+    """(Binance /public channels, everything else) of an iterable of channel names."""
     channels = set(channels)
-    depth = {channel for channel in channels if sequenced(channel)}
-    return depth, channels - depth
+    public = {channel for channel in channels if on_public(channel)}
+    return public, channels - public
 
 
 def okx_frame(channel, ct_val, raw):
@@ -69,7 +80,7 @@ class BinancePublicLane:
         return split(set(self.hub.channels) | self.hub.lingering())[0]
 
     def next_expiry(self):
-        deadlines = [at for channel, at in self.hub.linger.items() if sequenced(channel)]
+        deadlines = [at for channel, at in self.hub.linger.items() if on_public(channel)]
         return min(deadlines) if deadlines else None
 
     async def run(self):
