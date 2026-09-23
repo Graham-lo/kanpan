@@ -155,6 +155,8 @@ struct MainScreen: View {
   @StateObject private var alerts = AlertStore()
   @StateObject private var alertPrompt = AlertPromptModel()
   @StateObject private var alertWatcher = AlertWatcher()
+  /// 提醒「盯一个」挂在锁屏上的那块实时活动（一台设备一块）。
+  @StateObject private var activities = AlertActivityController()
   /// 前台的到价判定。没有 APNs 密钥，它是提醒在这台手机上唯一会响的那条路。
   @StateObject private var alertEngine = AlertEngine()
   /// 自选五分钟波动提醒的前台那一半（P3.1）。
@@ -545,9 +547,13 @@ struct MainScreen: View {
                     zone: prefs.timeZone.offsetMinutes,
                     currentSymbol: market.symbol,
                     quote: { text in alertQuote(text) },
-                    prepareQuote: { [weak quotes] symbol in quotes?.watch(symbol) })
+                    prepareQuote: { [weak quotes] symbol in quotes?.watch(symbol) },
+                    watching: activities.watching,
+                    onWatch: { alert in watch(alert) })
         .environment(\.panelTheme, theme)
     }
+    // 盯着的那条被删、被暂停、响了：锁屏那块跟着收。
+    .onReceive(alerts.$archive) { activities.reconcile($0.alerts) }
   }
 
   // ---------------------------------------------------------------- 各段
@@ -1390,6 +1396,17 @@ struct MainScreen: View {
   /// 判定全靠服务端 + APNs；而这个项目没有 APNs 密钥，于是「提醒」在用户手上
   /// 其实一次都没响过。现在前台自己判，服务端那一份照旧当后台的兜底，
   /// 两边靠 `status == .active` 这道闸去重（细节写在 `AlertEngine` 的头注释里）。
+  /// 提醒行上的「盯一个」：拿这一刻手上最新的价开一块锁屏实时活动（再点一次就是不盯了）。
+  private func watch(_ alert: KanpanCore.Alert) {
+    let symbol = alert.symbol
+    let ticker = quotes.raw[symbol] ?? (market.symbol == symbol ? market.ticker : nil)
+    let price = market.symbol == symbol ? (market.tradeQuote?.price ?? market.ticker?.last) : ticker?.last
+    let decimals = picker.info(for: symbol).flatMap { $0.tickSize > 0 || $0.pricePrecision > 0 ? $0.priceDecimals : nil }
+    let started = activities.toggle(alert, price: price, change: ticker.map { $0.changePercent / 100 },
+                                    decimals: decimals, redUp: prefs.redUp)
+    if !started && activities.watching == nil && !activities.available { say("系统设置里关掉了实时活动") }
+  }
+
   private func wireAlerts() {
     alertPrompt.onAcceptBatch = { items, symbol in
       for item in items {
@@ -1423,14 +1440,18 @@ struct MainScreen: View {
     // （和 `teardown.onTeardown` 那儿同一个理由）。
     alertEngine.attach(alerts)
     alertEngine.onWatchlist = { [weak quotes] symbols in quotes?.setAlertedSymbols(symbols) }
-    market.onPrice = { [weak engine = alertEngine, weak mover = watchMove] symbol, price, timeMs in
+    market.onPrice = { [weak engine = alertEngine, weak mover = watchMove, weak activities, weak quotes] symbol, price, timeMs in
       engine?.observe(symbol: symbol, price: price, timeMs: timeMs)
       mover?.observe(symbol: symbol, price: price, timeMs: timeMs)
+      activities?.observe(symbol: symbol, price: price, change: quotes?.raw[symbol].map { $0.changePercent / 100 })
     }
-    quotes.onPrice = { [weak engine = alertEngine, weak mover = watchMove] tickers in
+    quotes.onPrice = { [weak engine = alertEngine, weak mover = watchMove, weak activities] tickers in
       engine?.observe(tickers)
       mover?.observe(tickers)
+      for t in tickers { activities?.observe(symbol: t.symbol, price: t.last, change: t.changePercent / 100) }
     }
+    // app 被杀过、锁屏上那块还挂着：接回来继续跟价。
+    activities.adopt(alerts: alerts.all)
     alertWatcher.priceDecimals = { [picker] symbol in
       guard let info = picker.info(for: symbol), info.tickSize > 0 || info.pricePrecision > 0 else { return nil }
       return info.priceDecimals
@@ -1633,6 +1654,8 @@ struct MainScreen: View {
         // 落脚点也一起丢（审查 C-08）：换了号，「他停在 APTUSDT 那一行」说的是
         // 上一个人的表，留着只会把新账号的表滚到一个莫名其妙的位置。
         if !awaitingAccount { favoritesEdit.end(); favoritesEdit.forgetScrollAnchor() }
+        // 换了号，锁屏上盯着的是上一个人的提醒，收掉。
+        if !awaitingAccount { activities.stop() }
         dismissPanel(); crosshairReadout.clear()
       }
       // 档案真的装进来之后才谈「该开哪张图、该停在哪一格、该用哪个周期」。
@@ -1642,6 +1665,10 @@ struct MainScreen: View {
       awaitingAccount = true
       try bridge.activate()
       accountBridge = bridge; bridge.focus(market.symbol)
+      activities.submitToken = { [weak bridge] token, activityID, alertID in
+        bridge?.submitActivityToken(token, activityID: activityID, alertID: alertID)
+      }
+      activities.submitEnd = { [weak bridge] activityID in bridge?.endActivity(activityID) }
       // 视野的「云端那条腿」。没有桥（或没登录）时它是 nil，模块照常工作——
       // 登录与否只差这一个引用，对外行为一模一样，调用方一个字的分支都不许写。
       viewport.sync = bridge

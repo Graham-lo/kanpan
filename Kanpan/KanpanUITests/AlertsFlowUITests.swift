@@ -358,6 +358,83 @@ import XCTest
     shot("10-价格提醒已触发")
   }
 
+  /// P3.3「盯一个」：总表里一条价格提醒 →「盯一个」→ 锁屏上挂出一块实时活动（品种、现价、
+  /// 24h 涨跌、离提醒价多少）→ 回 app 跟几拍价再锁屏看它更新 → 删掉提醒，锁屏那块跟着收。
+  func testWatchingOneAlertPutsItOnTheLockScreen() throws {
+    openAlertsFromSettings()
+    let create = app.buttons["alerts.new"]
+    XCTAssertTrue(create.waitForExistence(timeout: 8), "总表右上没有「新建」")
+    create.tap()
+    let current = app.staticTexts["alerts.new.current"]
+    XCTAssertTrue(wait(seconds: 20) { current.label.hasPrefix("当前 ") && current.label != "当前 —" },
+                  "那一行没写现价：\(current.label)")
+    let price = app.textFields["alerts.new.price"]
+    XCTAssertTrue(price.waitForExistence(timeout: 5), "没有价格输入框")
+    price.tap(); price.typeText("12345")
+    app.buttons["alerts.new.create"].tap()
+    XCTAssertTrue(alertsPage.waitForExistence(timeout: 8), "加完没回到总表")
+    let watch = app.buttons["alerts.watch"]
+    XCTAssertTrue(watch.waitForExistence(timeout: 8), "价格提醒那一行没有「盯一个」：\(app.debugDescription)")
+    XCTAssertEqual(watch.value as? String, "off")
+    watch.tap()
+    XCTAssertTrue(wait(seconds: 8) { watch.value as? String == "on" }, "点了「盯一个」没变成「盯着」")
+    shot("13-盯一个")
+
+    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    let card = springboard.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "离提醒价")).firstMatch
+    lock()
+    XCTAssertTrue(card.waitForExistence(timeout: 15), "锁屏上没有那块实时活动：\(springboard.debugDescription)")
+    let first = lockScreenPrice(springboard)
+    shot("14-锁屏实时活动")
+    unlock()
+    // 前台跟几拍价（控制器五秒一拍），再锁屏看它换了没有。
+    Thread.sleep(forTimeInterval: 14)
+    lock()
+    XCTAssertTrue(card.waitForExistence(timeout: 15), "第二次锁屏那块不见了")
+    let second = lockScreenPrice(springboard)
+    shot("15-锁屏价格更新")
+    print("P3.3 锁屏价：\(first) → \(second)")
+    unlock()
+
+    // 删掉提醒 → 锁屏那块收起。
+    let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "BTC ", "12345")).firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: 8), "回到 app 总表不见了：\(app.debugDescription)")
+    // 按住慢拖 120pt 露出删除砖（快甩会越过「滑到底」门槛直接删，看不到砖）。
+    let from = row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+    from.press(forDuration: 0.1, thenDragTo: from.withOffset(CGVector(dx: -120, dy: 0)),
+               withVelocity: .slow, thenHoldForDuration: 0.3)
+    let delete = app.buttons["swipe.delete"]
+    XCTAssertTrue(wait(seconds: 5) { delete.exists && delete.frame.width >= 60 }, "左划没划出「删除」")
+    delete.tap()
+    XCTAssertTrue(row.waitForNonExistence(timeout: 8), "删了行还在")
+    lock()
+    XCTAssertTrue(card.waitForNonExistence(timeout: 15), "提醒删了，锁屏那块还挂着")
+    shot("16-删掉提醒活动收起")
+    unlock()
+  }
+
+  private func lock() {
+    XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
+    Thread.sleep(forTimeInterval: 1.5)
+    XCUIDevice.shared.press(.home)  // 点亮屏幕，停在锁屏上
+    Thread.sleep(forTimeInterval: 2)
+  }
+
+  private func unlock() {
+    XCUIDevice.shared.press(.home)
+    Thread.sleep(forTimeInterval: 1.5)
+    app.activate()
+    XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10), "解锁后没回到 app")
+  }
+
+  private func lockScreenPrice(_ springboard: XCUIApplication) -> String {
+    // 一次快照里挑文字，不逐个元素去取（锁屏在刷新，逐个取会撞上已经换掉的元素）。
+    springboard.debugDescription.split(separator: "\n")
+      .filter { $0.contains("StaticText") && ($0.contains("USDT") || $0.contains("离提醒价") || $0.contains("%")) }
+      .map { line in line.split(separator: "label: ").last.map(String.init) ?? String(line) }
+      .joined(separator: " | ")
+  }
+
   /// 记一笔（看多，等答案）→ 总表里多一条「BTC 到点了」，写着到期时刻。
   func testARecordedCallShowsUpAsADueAlert() throws {
     let entry = app.buttons[Ids.intervalChart]

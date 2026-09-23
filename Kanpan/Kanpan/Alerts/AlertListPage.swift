@@ -25,6 +25,10 @@ struct AlertListPage: View {
   var quote: (String) -> PriceAlertQuote? = { _ in nil }
   /// 新建页定了品种之后叫一声，宿主去要一口价。
   var prepareQuote: (String) -> Void = { _ in }
+  /// 锁屏上正盯着的那条提醒（一台设备只盯一条）。
+  var watching: String? = nil
+  /// 行上那颗「盯一个」：宿主去开 / 收锁屏实时活动。
+  var onWatch: (KanpanCore.Alert) -> Void = { _ in }
   /// 自选波动的幅度，编辑时的那一格字。离开输入框才落盘（`kanpan-persist-on-gesture-end`）。
   @State private var thresholdText = ""
   @FocusState private var thresholdFocused: Bool
@@ -82,6 +86,8 @@ struct AlertListPage: View {
                    onRearm: { store.rearm(id: alert.id) },
                    onCondition: { store.setCondition($0, id: alert.id) },
                    onDelete: { Haptics.warning(); store.remove(id: alert.id) },
+                   watched: watching == alert.id,
+                   onWatch: { onWatch(alert) },
                    zone: zone)
         }
       }
@@ -229,6 +235,8 @@ private struct AlertRow: View {
   var onRearm: () -> Void
   var onCondition: (KanpanCore.Alert.Condition) -> Void
   var onDelete: () -> Void
+  var watched = false
+  var onWatch: () -> Void = {}
   var zone: TZOffset
 
   @Environment(\.panelTheme) private var t
@@ -255,19 +263,10 @@ private struct AlertRow: View {
         }
         .buttonStyle(.plain)
       } else {
-        // 「触碰时 / 收盘穿过后」这个选择**只住在这一行**。画完线那一下不问，
-        // 图上也没有第二处能改（方案 2.3）。
-        Menu {
-          ForEach([KanpanCore.Alert.Condition.touch, .close], id: \.self) { c in
-            Button(c.title) { onCondition(c) }
-          }
-        } label: {
-          HStack(spacing: 3) {
-            Text(alert.condition.title).font(PanelFont.seg)
-            VectorIcon.chevron(9, w: 1.7)
-          }.foregroundStyle(t.amber)
+        HStack(spacing: 10) {
+          if alert.isActive { watchButton(swipe) }
+          condition
         }
-        .accessibilityIdentifier("alerts.condition")
       }
     }
     .overlay(alignment: .leading) {
@@ -276,6 +275,37 @@ private struct AlertRow: View {
         .allowsHitTesting(false)
     }
     .padding(.leading, 30)
+  }
+
+  /// 「盯一个」：把这条挂到锁屏 / 灵动岛上。盯着时实心，再点一次就不盯了。
+  private func watchButton(_ swipe: SwipeDeleteProxy) -> some View {
+    Button(action: { swipe.close(); onWatch() }) {
+      Text(watched ? "盯着" : "盯一个")
+        .font(PanelFont.seg)
+        .foregroundStyle(watched ? t.badgeInk : t.amber)
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(Capsule().fill(watched ? t.amber : Color.clear))
+        .overlay(Capsule().stroke(t.amber, lineWidth: watched ? 0 : 1))
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("alerts.watch")
+    .accessibilityValue(watched ? "on" : "off")
+  }
+
+  @ViewBuilder private var condition: some View {
+    // 「触碰时 / 收盘穿过后」这个选择**只住在这一行**。画完线那一下不问，
+    // 图上也没有第二处能改（方案 2.3）。
+    Menu {
+      ForEach([KanpanCore.Alert.Condition.touch, .close], id: \.self) { c in
+        Button(c.title) { onCondition(c) }
+      }
+    } label: {
+      HStack(spacing: 3) {
+        Text(alert.condition.title).font(PanelFont.seg)
+        VectorIcon.chevron(9, w: 1.7)
+      }.foregroundStyle(t.amber)
+    }
+    .accessibilityIdentifier("alerts.condition")
   }
 
   private var title: String {

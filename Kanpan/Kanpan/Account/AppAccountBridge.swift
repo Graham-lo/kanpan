@@ -567,6 +567,20 @@ import ReviewUI
     guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
     Task { _ = try? await api.data("v1/devices/push-token", method: "POST", body: data) }
   }
+  /// 「盯一个」那条实时活动的推送令牌：服务端拿它按行情推锁屏更新（有 APNs 密钥时）。
+  func submitActivityToken(_ token: String, activityID: String, alertID: String) {
+    guard let api = account.client, owner != nil else { return }
+    let body: [String: String] = ["token": token, "kind": "liveActivity", "environment": PushRegistration.environment,
+                                  "activityId": activityID, "alertId": alertID]
+    guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
+    Task { _ = try? await api.data("v1/devices/push-token", method: "POST", body: data) }
+  }
+  /// 活动收起：服务端停止给它推更新、丢掉令牌。
+  func endActivity(_ activityID: String) {
+    guard let api = account.client, owner != nil else { return }
+    guard let data = try? JSONSerialization.data(withJSONObject: ["activityId": activityID]) else { return }
+    Task { _ = try? await api.data("v1/devices/live-activity/end", method: "POST", body: data) }
+  }
   private func setAutoSync(_ enabled: Bool) {
     do {
       try sync?.transaction { $0.autoSync = enabled }; updateStatus()

@@ -11,5 +11,6 @@ struct KanpanWidgetBundle: WidgetBundle {
   var body: some Widget {
     FavoritesWidget()
     SymbolWidget()
+    AlertLiveActivity()
   }
 }

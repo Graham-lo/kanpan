@@ -89,5 +89,8 @@
       </array>
     </dict>
   </array>
+  <!-- 提醒「盯一个」的锁屏 / 灵动岛实时活动。 -->
+  <key>NSSupportsLiveActivities</key>
+  <true/>
 </dict>
 </plist>
