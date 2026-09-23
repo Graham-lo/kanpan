@@ -231,7 +231,20 @@ class Upstream:
                 failure = error
                 if not reused:
                     break  # a fresh connection failing is a real upstream fault
+                # The exchange closes idle keep-alive sockets on its own clock, so a
+                # quiet spell leaves every pooled connection dead at once. Retrying
+                # with the next pooled one just meets the next corpse: with two or
+                # more in the pool the phone got a 503 while the exchange was fine
+                # (D.7, 2026-09-23: first request after idle, both sources at once).
+                # One reused failure condemns the whole pool; the retry is fresh.
+                self._drain()
         raise Unavailable('upstream unreachable') from failure
+
+    def _drain(self):
+        with self.lock:
+            stale, self.idle = self.idle, deque()
+        for connection in stale:
+            connection.close()
 
 
 def bucket(at, interval):

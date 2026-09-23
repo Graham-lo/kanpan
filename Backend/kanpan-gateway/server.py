@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import select
 import socket
+import sys
 import tempfile
 import threading
 import time as time_module
@@ -365,7 +366,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.blocked(blocked.source)
             except (KeyError, ValueError, TypeError):
                 return self.reply(400, b'{"error":"invalid market request"}')
-            except (Unavailable, HTTPError, OSError, TimeoutError, RuntimeError):
+            except (Unavailable, HTTPError, OSError, TimeoutError, RuntimeError) as error:
+                # The phone only needs "unavailable"; the journal needs why, or a
+                # 503 can't be told apart from a dead pool, a cooldown or pacing.
+                cause = error.__cause__
+                sys.stderr.write('kanpan-gateway: 503 %s: %r%s\n' % (
+                    parts.path, error, ' from %r' % cause if cause else ''))
                 return self.reply(503, b'{"error":"market unavailable"}')
             finally:
                 MARKET_SLOTS.release()

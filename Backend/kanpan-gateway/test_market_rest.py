@@ -756,5 +756,52 @@ class InstrumentIndexTests(unittest.TestCase):
 
 
 
+class UpstreamPoolTests(unittest.TestCase):
+    """A quiet spell leaves every pooled keep-alive socket dead at once."""
+
+    def test_dead_pool_is_dropped_and_retry_uses_a_fresh_connection(self):
+        import http.client, http.server, socket
+        import market_rest
+        accepted = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'
+
+            def do_GET(self):
+                accepted.append(self.connection)
+                self.send_response(200)
+                self.send_header('Content-Length', '2')
+                self.end_headers()
+                self.wfile.write(b'ok')
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        port = server.server_address[1]
+        plain = lambda host, timeout=None: http.client.HTTPConnection('127.0.0.1', port, timeout=timeout)
+        original = market_rest.http.client.HTTPSConnection
+        market_rest.http.client.HTTPSConnection = plain
+        self.addCleanup(setattr, market_rest.http.client, 'HTTPSConnection', original)
+
+        pool = market_rest.Upstream('exchange.invalid')
+        for _ in range(3):
+            connection = plain('exchange.invalid', timeout=5)
+            connection.request('GET', '/')
+            connection.getresponse().read()
+            pool._keep(connection)
+        for sock in list(accepted):  # the exchange hangs up on idle sockets
+            with contextlib.suppress(OSError):
+                sock.shutdown(socket.SHUT_RDWR)
+        time.sleep(0.2)
+
+        status, body, _ = pool.fetch('/', {}, 5, 100)
+        self.assertEqual((status, body), (200, b'ok'))
+        # The dead siblings were closed, not left for the next request to trip on.
+        self.assertLessEqual(len(pool.idle), 1)
+
+
 if __name__ == '__main__':
     unittest.main()
