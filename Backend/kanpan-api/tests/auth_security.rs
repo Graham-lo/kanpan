@@ -280,3 +280,33 @@ async fn the_upgrade_must_not_call_every_old_session_a_phone() {
  assert_eq!(kind,"desktop","已经有明确类别的会话不该被设备名改写");
  s.pool.close().await;admin.close().await;
 }
+
+/// 审查 A6：登录、改密码、删账号的 Argon2 挪到了事务外面（先不加锁读哈希去验，
+/// 再上锁重读、哈希没变才算数）。挪完之后几条规矩要照旧：猜错五次锁一分钟、锁着时
+/// 猜对也进不去；改完密码旧的进不去、新的能进；删账号要现在的密码。
+#[tokio::test]
+async fn password_checks_keep_their_rules_outside_the_lock() {
+ let (s,app,admin)=boot().await;
+ let peer="192.0.2.71:19000";let username=name("argon");let d=device("A phone");
+ let a=signup(&app,&username,&d).await;let at=a["accessToken"].as_str().unwrap().to_string();
+ let try_login=|password:&'static str|{let app=app.clone();let username=username.clone();let d=d.clone();async move {
+  request(&app,"/v1/auth/login","POST",peer,&[],None,json!({"username":username,"password":password,"device":d})).await
+ }};
+ for _ in 0..5 {assert_eq!(try_login("Wrongpass123").await.0,401);}
+ assert_eq!(try_login("Passcode123").await.0,401,"锁着的时候猜对也进不去");
+ sqlx::query("DELETE FROM account_limits WHERE key=$1").bind(s.secrets.keyed(&format!("login:{username}"))).execute(&admin).await.unwrap();
+ let (status,v)=try_login("Passcode123").await;assert_eq!(status,200,"{v}");
+ let fresh=v["data"]["accessToken"].as_str().unwrap().to_string();
+ assert_ne!(fresh,at);
+ let (status,v)=request(&app,"/v1/auth/password/change","POST",peer,&[],Some(&fresh),json!({"currentPassword":"Passcode123","newPassword":"Passcode456"})).await;
+ assert_eq!(status,200,"{v}");
+ assert_eq!(try_login("Passcode123").await.0,401,"旧密码进不去");
+ let (status,v)=try_login("Passcode456").await;assert_eq!(status,200,"新密码能进：{v}");
+ let token=v["data"]["accessToken"].as_str().unwrap().to_string();
+ let (status,v)=request(&app,"/v1/auth/account","DELETE",peer,&[],Some(&token),json!({"password":"Passcode123"})).await;
+ assert_eq!((status.as_u16(),v["error"]["code"].as_str()),(401,Some("wrong_password")),"删账号要的是现在的密码");
+ let (status,v)=request(&app,"/v1/auth/account","DELETE",peer,&[],Some(&token),json!({"password":"Passcode456"})).await;assert_eq!(status,200,"{v}");
+ assert_eq!(try_login("Passcode456").await.0,401,"删掉的账号进不去");
+ let gone:i64=sqlx::query_scalar("SELECT count(*) FROM account_users WHERE email=$1").bind(&username).fetch_one(&admin).await.unwrap();assert_eq!(gone,0);
+ s.pool.close().await;admin.close().await;
+}

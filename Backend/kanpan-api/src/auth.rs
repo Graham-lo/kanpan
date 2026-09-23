@@ -184,19 +184,37 @@ async fn login(State(s):State<AppState>,ConnectInfo(peer):ConnectInfo<SocketAddr
  // 额度打满要说自己是额度打满。此前这里回 401，界面上写成「用户名或密码不对」，
  // 人会以为自己记错了密码，一遍遍重试，把剩下那点额度也烧光。
  if !hit_limit(&s,&format!("login-ip:{}",client_ip(&peer,&headers)),60,60).await? {return Err(ApiError(StatusCode::TOO_MANY_REQUESTS,"try_later"))}
+ // Argon2 在事务**外面**算（审查 A6）：它要几十到上百毫秒的 CPU，以前是攥着账号顾问锁、
+ // 用户行的 FOR UPDATE 和一条池连接算的——同一个人的另一次登录、改密码、推送都得等它。
+ // 先不加锁读出哈希去验，再开事务上锁、重读一遍，哈希没变才算数（`still_current`）。
+ let seen=credential(&s.pool,&email,false).await?;
+ let h=seen.as_ref().map(|(_,h)|h.clone()).unwrap_or_else(||s.dummy_hash.as_ref().clone());
+ let valid=verify(&s,v.password,h).await?;
  let mut tx=s.pool.begin().await?;lock_email(&mut tx,&email).await?;
  let key=s.secrets.keyed(&format!("login:{email}"));
  let locked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM account_limits WHERE key=$1 AND locked_until>now())").bind(&key).fetch_one(&mut *tx).await?;
- let row=sqlx::query("SELECT id,password_hash FROM account_users WHERE email=$1 AND disabled_at IS NULL FOR UPDATE").bind(&email).fetch_optional(&mut *tx).await?;
- let h=row.as_ref().map(|r|r.get::<String,_>("password_hash")).unwrap_or_else(||s.dummy_hash.as_ref().clone());
- let valid=verify(&s,v.password,h).await?;
- if locked || !valid || row.is_none() {
+ let now=credential(&mut *tx,&email,true).await?;
+ if locked || !valid || seen.is_none() {
   if !locked {sqlx::query("INSERT INTO account_limits(key,failures) VALUES($1,1) ON CONFLICT(key) DO UPDATE SET failures=CASE WHEN account_limits.locked_until<=now() THEN 1 ELSE account_limits.failures+1 END,locked_until=CASE WHEN account_limits.locked_until<=now() THEN NULL WHEN account_limits.failures>=4 THEN now()+interval '60 seconds' ELSE NULL END")
    .bind(key).execute(&mut *tx).await?;}
   tx.commit().await?;return Err(ApiError::unauthorized());
  }
+ // 密码对，但验的那一刻到上锁之间密码被改了、账号被删或停用了：验过的是一把旧钥匙。
+ // 这不是猜错，不记失败次数。
+ let Some(id)=still_current(&seen,&now) else {return Err(ApiError::unauthorized())};
  sqlx::query("DELETE FROM account_limits WHERE key=$1").bind(key).execute(&mut *tx).await?;
- let response=new_session(&s,&mut tx,row.unwrap().get("id"),&v.device).await?;tx.commit().await?;Ok(envelope(response))
+ let response=new_session(&s,&mut tx,id,&v.device).await?;tx.commit().await?;Ok(envelope(response))
+}
+/// 这个用户名现在的（id，密码哈希）；停用的账号当不存在。`for_update` 只在上了账号锁的
+/// 那个事务里用：事务外那次读是给 Argon2 取料的，不该锁任何东西。
+async fn credential<'e,E:sqlx::PgExecutor<'e>>(e:E,email:&str,for_update:bool)->Result<Option<(Uuid,String)>> {
+ let sql=if for_update {"SELECT id,password_hash FROM account_users WHERE email=$1 AND disabled_at IS NULL FOR UPDATE"}
+  else {"SELECT id,password_hash FROM account_users WHERE email=$1 AND disabled_at IS NULL"};
+ Ok(sqlx::query_as(sql).bind(email).fetch_optional(e).await?)
+}
+/// 事务外验过的那把哈希，上锁之后是否还是这个账号现在的那一把。是就交回账号 id。
+fn still_current(seen:&Option<(Uuid,String)>,now:&Option<(Uuid,String)>)->Option<Uuid> {
+ match (seen,now) {(Some(a),Some(b)) if a==b=>Some(a.0),_=>None}
 }
 async fn refresh(State(s):State<AppState>,Json(v):Json<RefreshInput>)->AuthResult<Json<Value>> {
  v.device.validate()?;if v.refresh_token.len()>128{return Err(ApiError::unauthorized().into())}
@@ -272,26 +290,41 @@ async fn revoke_device(State(s):State<AppState>,i:Identity,Path(id):Path<Uuid>)-
 }
 async fn change_password(State(s):State<AppState>,i:Identity,Json(v):Json<ChangeInput>)->Result<Json<Value>> {
  password(&v.new_password)?;
- let mut tx=s.pool.begin().await?;
- let row=sqlx::query("SELECT password_hash FROM account_users WHERE id=$1 AND disabled_at IS NULL FOR UPDATE").bind(i.user).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::unauthorized)?;
+ // 验旧密码、算新哈希两次 Argon2 都在事务外面（审查 A6），理由同 `login`。
+ let seen=current_hash(&s.pool,i.user,false).await?.ok_or_else(ApiError::unauthorized)?;
  // 「密码不对」和「登录已失效」都回 authentication_failed 时，客户端只能把两者
  // 写成同一句话；改密码填错一次就被告知「密码不对」是对的，会话过期被告知
  // 「密码不对」就是在骗人。
- if !verify(&s,v.current_password,row.get("password_hash")).await? {return Err(ApiError(StatusCode::UNAUTHORIZED,"wrong_password"))}
+ if !verify(&s,v.current_password,seen.clone()).await? {return Err(wrong_password())}
  let h=hash(&s,v.new_password).await?;
+ let mut tx=s.pool.begin().await?;
+ let now=current_hash(&mut *tx,i.user,true).await?.ok_or_else(ApiError::unauthorized)?;
+ // 验完到上锁之间，另一台设备已经把密码改掉了：这里填的已经不是现在的密码。
+ if now!=seen {return Err(wrong_password())}
  sqlx::query("UPDATE account_users SET password_hash=$2 WHERE id=$1").bind(i.user).bind(h).execute(&mut *tx).await?;
  sqlx::query("UPDATE account_sessions SET revoked_at=now(),revoked_reason='password_change' WHERE user_id=$1 AND id<>$2 AND revoked_at IS NULL").bind(i.user).bind(i.session).execute(&mut *tx).await?;
  tx.commit().await?;Ok(envelope(json!({"ok":true})))
 }
 async fn delete_account(State(s):State<AppState>,i:Identity,Json(v):Json<DeleteInput>)->Result<Json<Value>> {
+ // Argon2 在事务外面（审查 A6）：这个事务要删的是这个人的全部数据，锁住的行最多，
+ // 更不该一边攥着它们一边算哈希。
+ let seen=current_hash(&s.pool,i.user,false).await?.ok_or_else(ApiError::unauthorized)?;
+ if !verify(&s,v.password,seen.clone()).await? {return Err(wrong_password())}
  let mut tx=s.personal(i.user).await?;
- let row=sqlx::query("SELECT password_hash,email FROM account_users WHERE id=$1 AND disabled_at IS NULL FOR UPDATE").bind(i.user).fetch_optional(&mut *tx).await?.ok_or_else(ApiError::unauthorized)?;
- if !verify(&s,v.password,row.get("password_hash")).await? {return Err(ApiError(StatusCode::UNAUTHORIZED,"wrong_password"))}
+ let now=current_hash(&mut *tx,i.user,true).await?.ok_or_else(ApiError::unauthorized)?;
+ if now!=seen {return Err(wrong_password())}
  sqlx::query("INSERT INTO account_deletions(user_id) VALUES($1) ON CONFLICT DO NOTHING").bind(i.user).execute(&mut *tx).await?;
  // Foreign-key cascades cover every personal table; durable deletion ledger survives backups.
  sqlx::query("DELETE FROM account_users WHERE id=$1").bind(i.user).execute(&mut *tx).await?;
  sqlx::query("UPDATE account_deletions SET completed_at=now() WHERE user_id=$1").bind(i.user).execute(&mut *tx).await?;
  tx.commit().await?;Ok(envelope(json!({"ok":true})))
+}
+fn wrong_password()->ApiError {ApiError(StatusCode::UNAUTHORIZED,"wrong_password")}
+/// 这个人现在的密码哈希；停用的账号当不存在。`for_update` 的含义同 `credential`。
+async fn current_hash<'e,E:sqlx::PgExecutor<'e>>(e:E,user:Uuid,for_update:bool)->Result<Option<String>> {
+ let sql=if for_update {"SELECT password_hash FROM account_users WHERE id=$1 AND disabled_at IS NULL FOR UPDATE"}
+  else {"SELECT password_hash FROM account_users WHERE id=$1 AND disabled_at IS NULL"};
+ Ok(sqlx::query_scalar(sql).bind(user).fetch_optional(e).await?)
 }
 
 /// 运维 CLI `kanpan-api reset-password <username>`：忘了密码的朋友找过来时，由我在服务器上
@@ -325,6 +358,17 @@ fn one_time_password()->String {
 #[cfg(test)]
 mod tests {
  use super::*;
+ /// 事务外验过的哈希，上锁后必须还是同一个账号的同一把，登录才算数。
+ #[test]
+ fn a_hash_verified_outside_the_lock_must_still_be_current() {
+  let a=Uuid::new_v4();let b=Uuid::new_v4();
+  let seen=Some((a,"h1".to_string()));
+  assert_eq!(still_current(&seen,&Some((a,"h1".into()))),Some(a));
+  assert_eq!(still_current(&seen,&Some((a,"h2".into()))),None,"验完之后密码被改了");
+  assert_eq!(still_current(&seen,&Some((b,"h1".into()))),None,"账号删了又被别人注册了同名");
+  assert_eq!(still_current(&seen,&None),None,"验完之后账号被删或停用了");
+  assert_eq!(still_current(&None,&Some((a,"h1".into()))),None);
+ }
  #[test]
  fn one_time_passwords_pass_the_signup_rule_and_differ() {
   let a=one_time_password();let b=one_time_password();
