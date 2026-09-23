@@ -116,14 +116,18 @@ pub async fn open_interest(symbol:&str)->Result<OpenInterest> {
 
 // -------------------------------------------------------------------- 24h 行情
 
-/// 官方文档（Market Data › Get ticker）：`last`、滚动 24 小时的 `open24h` / `high24h` /
-/// `low24h`，和币安 `/fapi/v1/ticker/24hr` 同一个口径（都是滚动 24 小时，不是自然日）。
-const TICKER_URL:&str="https://www.okx.com/api/v5/market/ticker?instId=";
+/// 官方文档（Market Data › Get tickers）：一次给全部永续的 `last`、滚动 24 小时的
+/// `open24h` / `high24h` / `low24h`，和币安 `/fapi/v1/ticker/24hr` 同一个口径（都是滚动
+/// 24 小时，不是自然日）。整张表一起抓：自选列表冷启动时手机一口气补二十几只，
+/// 逐只问 `market/ticker` 会撞上它每 2 秒 20 次的限速。
+const TICKERS_URL:&str="https://www.okx.com/api/v5/market/tickers?instType=SWAP";
 /// 官方文档（Market Data › Get candlesticks）：每行 `[ts,o,h,l,c,vol,volCcy,volCcyQuote,confirm]`，
 /// 一次最多 300 行；288 根 5 分钟正好一天。
 const CANDLES_URL:&str="https://www.okx.com/api/v5/market/candles?bar=5m&limit=288&instId=";
-/// 行情页一只一只地问；几台手机同时看同一只时，两秒内的答复共用一份。
+/// 整张行情表两秒内共用一份。
 const TICKER_TTL:Duration=Duration::from_secs(2);
+/// 表刷不动时，十五秒内的旧表还能答（价格旧几秒总比整格「—」强，手机那头推送随后就盖上）。
+const TICKER_MAX_AGE:Duration=Duration::from_secs(15);
 /// 24 小时的成交均价一分钟重算一次就够：它只用来把币量换成 USDT，一分钟里挪不了几个基点。
 const VWAP_TTL:Duration=Duration::from_secs(60);
 /// 十分钟没刷成功就不再拿旧均价换算，宁可这一格留空。
@@ -142,7 +146,7 @@ impl<T:Clone> Slots<T> {
   slots.insert(key.to_owned(),(Instant::now(),value));
  }
 }
-fn ticker_cache()->&'static Slots<Ticker> {static C:OnceLock<Slots<Ticker>>=OnceLock::new();C.get_or_init(Slots::new)}
+fn tickers_cache()->&'static Cache<HashMap<String,Ticker>> {static C:OnceLock<Cache<HashMap<String,Ticker>>>=OnceLock::new();C.get_or_init(Cache::new)}
 fn vwap_cache()->&'static Slots<f64> {static C:OnceLock<Slots<f64>>=OnceLock::new();C.get_or_init(Slots::new)}
 
 /// OKX 一只永续的 24h 行情。价格都保留 OKX 给的原文，免得 `f64` 来回一趟多出一串尾数。
@@ -154,14 +158,18 @@ pub struct Ticker {
  pub time:i64,
 }
 
-pub fn parse_ticker(body:&Value)->Option<Ticker> {
- let row=rows(body).first()?;
+fn ticker_row(row:&Value)->Option<Ticker> {
  let text=|k:&str|row[k].as_str().map(str::trim).filter(|s|num(&Value::String((*s).to_owned())).is_some()).map(str::to_owned);
  let last=text("last")?;
  if num(&Value::String(last.clone()))? <= 0.0 {return None}
  Some(Ticker{last,open:text("open24h")?,high:text("high24h")?,low:text("low24h")?,
   base_volume:num(&row["volCcy24h"]).unwrap_or(f64::NAN),
   time:row["ts"].as_str().and_then(|t|t.parse().ok()).or_else(||row["ts"].as_i64()).unwrap_or(0)})
+}
+
+/// `market/tickers` 的整张表，键是 OKX 的品种号（`BTC-USDT-SWAP`）。
+pub fn parse_tickers(body:&Value)->HashMap<String,Ticker> {
+ rows(body).iter().filter_map(|row|Some((row["instId"].as_str()?.to_ascii_uppercase(),ticker_row(row)?))).collect()
 }
 
 /// 近 24 小时的成交均价：`Σ volCcyQuote / Σ volCcy`，两列都是 OKX 自己按笔累出来的。
@@ -202,14 +210,42 @@ pub fn ticker_payload(symbol:&str,t:&Ticker,vwap:Option<f64>)->Value {
 }
 
 async fn ticker_raw(inst:&str)->Result<Ticker> {
- if let Some(t)=ticker_cache().get(inst,TICKER_TTL) {return Ok(t)}
- let body=get_json(&format!("{TICKER_URL}{inst}")).await?;
- let t=parse_ticker(&body).ok_or_else(ApiError::missing)?;
- ticker_cache().put(inst,t.clone());
- Ok(t)
+ static REFRESH:OnceLock<tokio::sync::Mutex<()>>=OnceLock::new();
+ let table=match tickers_cache().fresh(TICKER_TTL) {
+  Some(table)=>table,
+  None=>{
+   // 同一时刻只让一个请求去刷表，其余的等它刷完直接读——冷启动时二十几只一起到。
+   let _guard=REFRESH.get_or_init(||tokio::sync::Mutex::new(())).lock().await;
+   match tickers_cache().fresh(TICKER_TTL) {
+    Some(table)=>table,
+    None=>match get_json(TICKERS_URL).await {
+     Ok(body)=>{
+      let table=parse_tickers(&body);
+      if table.is_empty() {tickers_cache().fresh(TICKER_MAX_AGE).ok_or_else(ApiError::missing)?}
+      else {tickers_cache().store(table)}
+     },
+     Err(e)=>tickers_cache().fresh(TICKER_MAX_AGE).ok_or(e)?,
+    },
+   }
+  },
+ };
+ table.get(inst).cloned().ok_or_else(ApiError::missing)
+}
+/// K 线接口每 IP 每 2 秒 40 次；留余量按每秒 18 次放行。
+async fn candle_pace() {
+ static SENT:OnceLock<tokio::sync::Mutex<VecDeque<Instant>>>=OnceLock::new();
+ let mut sent=SENT.get_or_init(||tokio::sync::Mutex::new(VecDeque::new())).lock().await;
+ let window=Duration::from_secs(1);
+ while sent.front().is_some_and(|t|t.elapsed()>=window) {sent.pop_front();}
+ if sent.len()>=18 && let Some(first)=sent.front().copied() {
+  tokio::time::sleep(window.saturating_sub(first.elapsed())).await;
+  sent.pop_front();
+ }
+ sent.push_back(Instant::now());
 }
 async fn vwap_for(inst:&str)->Option<f64> {
  if let Some(p)=vwap_cache().get(inst,VWAP_TTL) {return Some(p)}
+ candle_pace().await;
  match get_json(&format!("{CANDLES_URL}{inst}")).await.ok().and_then(|b|vwap(&b)) {
   Some(p)=>{vwap_cache().put(inst,p);Some(p)},
   None=>vwap_cache().get(inst,VWAP_MAX_AGE),
@@ -358,8 +394,9 @@ mod tests {
 
  #[test]
  fn ticker_turnover_is_okx_coins_times_okx_average_price() {
-  let ticker=parse_ticker(&json!({"code":"0","data":[{"instId":"BTC-USDT-SWAP","last":"85701.6","open24h":"86048.7",
-   "high24h":"87245","low24h":"85406","volCcy24h":"72722.3712","vol24h":"7272237.12","ts":"1790162237169"}]})).unwrap();
+  let table=parse_tickers(&json!({"code":"0","data":[{"instId":"BTC-USDT-SWAP","last":"85701.6","open24h":"86048.7",
+   "high24h":"87245","low24h":"85406","volCcy24h":"72722.3712","vol24h":"7272237.12","ts":"1790162237169"}]}));
+  let ticker=table["BTC-USDT-SWAP"].clone();
   let candles=json!({"code":"0","data":[
    ["1790162100000","85717.9","85722","85701.6","85701.6","3676.49","36.7649","3151022.15994","0"],
    ["1790161800000","85821.6","85821.7","85666.7","85717.8","27164.55","271.6455","23287754.86518","1"],
@@ -383,8 +420,14 @@ mod tests {
  }
  #[test]
  fn ticker_without_a_price_is_not_a_ticker() {
-  assert_eq!(parse_ticker(&json!({"code":"51001","data":[],"msg":"Instrument ID does not exist"})),None);
-  assert_eq!(parse_ticker(&json!({"code":"0","data":[{"last":"","open24h":"1","high24h":"1","low24h":"1"}]})),None);
+  assert!(parse_tickers(&json!({"code":"50011","data":[],"msg":"Too Many Requests"})).is_empty());
+  let table=parse_tickers(&json!({"code":"0","data":[
+   {"instId":"ETH-USDT-SWAP","last":"","open24h":"1","high24h":"1","low24h":"1"},
+   {"instId":"SOL-USDT-SWAP","last":"150","open24h":"","high24h":"1","low24h":"1"},
+   {"last":"1","open24h":"1","high24h":"1","low24h":"1"},
+   {"instId":"xrp-usdt-swap","last":"2.1","open24h":"2","high24h":"2.2","low24h":"1.9","volCcy24h":"","ts":"1"}]}));
+  assert_eq!(table.keys().collect::<Vec<_>>(),vec!["XRP-USDT-SWAP"]);
+  assert!(table["XRP-USDT-SWAP"].base_volume.is_nan());
  }
  #[test]
  fn oi_history_keeps_coins_and_maps_binance_periods() {
