@@ -1,0 +1,46 @@
+1790181246.624 列表收行情 12 条/5205ms 订阅0 想要0 连接无
+1790181247.331 快照 72150B → binance/usd_m/BTCUSDT|1m
+1790181247.975 主线程心跳 最大滞后 15ms
+1790181248.708 图表事件 收29 丢0/5032ms
+1790181251.065 WS 收帧 19 条/5066ms
+1790181251.958 列表收行情 11 条/5333ms 订阅0 想要0 连接无
+1790181253.014 主线程心跳 最大滞后 13ms
+1790181253.987 图表事件 收30 丢0/5278ms
+1790181255.011 WS 断了：Error Domain=NSURLErrorDomain Code=-1005 "(null)"
+1790181255.012 WS 退避 921ms 后重连（第 1 次）
+1790181255.982 WS 断了：badResponse("所有行情线路均未收到有效数据")
+1790181255.982 WS 退避 1736ms 后重连（第 2 次）
+1790181257.835 WS 断了：badResponse("所有行情线路均未收到有效数据")
+1790181257.835 WS 退避 4591ms 后重连（第 3 次）
+1790181258.059 主线程心跳 最大滞后 16ms
+1790181259.070 直连失败 fapi.binance.com（行情线路=直连，不退网关）：Error Domain=NSURLErrorDomain Code=-1009 "(null)"
+1790181262.100 直连失败 fapi.binance.com（行情线路=直连，不退网关）：Error Domain=NSURLErrorDomain Code=-1009 "(null)"
+1790181262.732 WS 断了：badResponse("所有行情线路均未收到有效数据")
+1790181262.732 WS 退避 9340ms 后重连（第 4 次）
+1790181262.732 图表事件 收16 丢0/8745ms
+1790181262.737 快照 72150B → binance/usd_m/BTCUSDT|1m
+1790181263.109 主线程心跳 最大滞后 10ms
+1790181267.142 直连失败 fapi.binance.com（行情线路=直连，不退网关）：Error Domain=NSURLErrorDomain Code=-1009 "(null)"
+1790181267.169 直连失败 fapi.binance.com（行情线路=直连，不退网关）：Error Domain=NSURLErrorDomain Code=-1009 "(null)"
+1790181267.169 对表失败：Error Domain=NSURLErrorDomain Code=-1009 "(null)"
+1790181268.152 主线程心跳 最大滞后 10ms
+1790181272.185 WS 断了：badResponse("所有行情线路均未收到有效数据")
+1790181272.185 WS 退避 13860ms 后重连（第 5 次）
+1790181272.185 直连失败 fapi.binance.com（行情线路=直连，不退网关）：Error Domain=NSURLErrorDomain Code=-1009 "(null)"
+1790181272.185 图表事件 收3 丢0/9452ms
+1790181273.186 主线程心跳 最大滞后 10ms
+1790181277.260 直连失败 fapi.binance.com（行情线路=直连，不退网关）：Error Domain=NSURLErrorDomain Code=-1009 "(null)"
+1790181277.287 直连失败 fapi.binance.com（行情线路=直连，不退网关）：Error Domain=NSURLErrorDomain Code=-1009 "(null)"
+1790181277.287 对表失败：Error Domain=NSURLErrorDomain Code=-1009 "(null)"
+1790181278.354 主线程心跳 最大滞后 66ms
+1790181279.399 直连失败 fapi.binance.com（行情线路=直连，不退网关）：Error Domain=NSURLErrorDomain Code=-1009 "(null)"
+1790181282.559 直连失败 fapi.binance.com（行情线路=直连，不退网关）：Error Domain=NSURLErrorDomain Code=-1009 "(null)"
+1790181283.623 主线程心跳 最大滞后 65ms
+1790181286.993 WS有效首帧 dstream.binance.me 738ms
+1790181286.993 WS 连上 #2 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+1790181286.994 图表事件 收3 丢0/14808ms
+1790181287.211 直连 fapi.binance.com /fapi/v1/klines HTTP 200 217ms
+1790181287.211 GET /fapi/v1/klines?interval=1m&limit=5&startTime=1790181240000&symbol=BTCUSDT → 200 133B 217ms
+1790181287.217 补缺 startTime=1790181240000 → 1 根，净增 0，队列已合并
+1790181287.383 快照 72150B → binance/usd_m/BTCUSDT|1m
+1790181287.384 列表收行情 8 条/35425ms 订阅0 想要0 连接无

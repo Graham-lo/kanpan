@@ -1,0 +1,35 @@
+1790181381.064 列表收行情 14 条/5081ms 订阅0 想要0 连接无
+1790181381.757 主线程心跳 最大滞后 199ms
+1790181382.268 快照 72246B → binance/usd_m/BTCUSDT|1m
+1790181385.241 WS 收帧 17 条/5049ms
+1790181385.241 图表事件 收27 丢0/5049ms
+1790181386.180 列表收行情 10 条/5115ms 订阅0 想要0 连接无
+1790181387.093 主线程心跳 最大滞后 181ms
+1790181390.431 WS 收帧 23 条/5189ms
+1790181390.431 图表事件 收38 丢0/5189ms
+1790181391.350 列表收行情 15 条/5169ms 订阅0 想要0 连接无
+1790181392.256 暂停WS，保留当前图表与待补缺口
+1790181392.653 主线程心跳 最大滞后 168ms
+1790181397.935 主线程心跳 最大滞后 66ms
+1790181397.941 快照 72246B → binance/usd_m/BTCUSDT|1m
+1790181425.455 主线程心跳 最大滞后 26520ms
+1790181425.903 图表订阅：BTCUSDT K线1m、BTCUSDT 行情、BTCUSDT 标记价
+1790181425.904 图表订阅：BTCUSDT K线1m、BTCUSDT 行情、BTCUSDT 标记价
+1790181425.911 图表事件 收14 丢0/35479ms
+1790181426.270 直连 fapi.binance.com /fapi/v1/klines HTTP 200 367ms
+1790181426.271 GET /fapi/v1/klines?interval=1m&limit=5&startTime=1790181360000&symbol=BTCUSDT → 200 263B 367ms
+1790181426.274 补缺 startTime=1790181360000 → 2 根，净增 1，队列已合并
+1790181427.108 直连 fapi.binance.com /fapi/v1/ticker/24hr HTTP 200 207ms
+1790181427.108 GET /fapi/v1/ticker/24hr?symbol=BTCUSDT → 200 375B 208ms
+1790181427.108 列表收行情 3 条/35758ms 订阅0 想要0 连接无
+1790181427.257 WS有效首帧 dstream.binance.me 1353ms
+1790181427.257 WS 连上 #3 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+1790181427.561 直连 fapi.binance.com /fapi/v1/klines HTTP 200 303ms
+1790181427.562 GET /fapi/v1/klines?interval=1m&limit=5&startTime=1790181420000&symbol=BTCUSDT → 200 127B 304ms
+1790181427.570 补缺 startTime=1790181420000 → 1 根，净增 0，队列已合并
+1790181427.696 快照 72294B → binance/usd_m/BTCUSDT|1m
+1790181429.306 GET /api/v3/brokerage/market/products?product_type=SPOT → 200 1174242B
+1790181429.331 直连 fapi.binance.com /fapi/v1/ticker/24hr HTTP 200 392ms
+1790181429.331 GET /fapi/v1/ticker/24hr → 200 289106B 392ms
+1790181430.753 主线程心跳 最大滞后 66ms
+1790181430.996 图表事件 收35 丢0/5085ms
