@@ -1,0 +1,2 @@
+/tmp/kanpan-pchain-a510/am-start.trace: 59.0 秒内 CPU 时间 9.32 秒，平均 15.8%；footprint 中位 81.1 MB（57.6～89.5）
+/tmp/kanpan-pchain-a510/am-end.trace: 59.9 秒内 CPU 时间 9.98 秒，平均 16.7%；footprint 中位 86.3 MB（62.6～86.7）
