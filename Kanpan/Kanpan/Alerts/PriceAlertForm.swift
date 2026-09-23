@@ -10,6 +10,11 @@ struct PriceAlertQuote: Equatable {
   var decimals: Int?
 
   func label(_ value: Double) -> String { ReviewLabels.price(value, decimals: decimals) }
+  /// 页上「当前 xxx」那口现价：和行情页头部那口价同一个写法——小数位由品种说
+  /// （`decimals`），整数部分插千分位（`grouped`，头部 `TopBar.lastText` 用的就是它）。
+  /// 同一只 BTC，头部写 86,781.5、这里写 86781.50 就对不上眼（审查 D3）。
+  /// 提醒标题（`label`）不插千分位：它和用户手打的那串数要一眼对得上。
+  func current(_ value: Double) -> String { grouped(label(value)) }
 }
 
 /// 提醒总表右上「新建」进来的那一页（P3.1）：一只品种、一个价，别的都不问。
@@ -115,7 +120,7 @@ struct PriceAlertForm: View {
   private func currentLine(_ quote: PriceAlertQuote?) -> String {
     guard let quote else { return symbolText.isEmpty ? " " : "没有这只品种" }
     guard let price = quote.price else { return "当前 —" }
-    return "当前 " + quote.label(price)
+    return "当前 " + quote.current(price)
   }
 
   private func field<Input: View>(_ label: String, @ViewBuilder input: () -> Input) -> some View {

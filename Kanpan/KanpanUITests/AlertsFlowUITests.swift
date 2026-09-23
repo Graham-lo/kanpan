@@ -325,6 +325,11 @@ import XCTest
     let current = app.staticTexts["alerts.new.current"]
     XCTAssertTrue(wait(seconds: 20) { (current.label).hasPrefix("当前 ") && current.label != "当前 —" },
                   "那一行没写现价：\(current.label)")
+    // 现价和头部同一个写法：BTCUSDT 的 tick 是 0.1，所以一位小数，整数部分带千分位
+    // （审查 D3：以前是不插千分位的 `86781.5`，和头部的 `86,781.5` 对不上）。
+    XCTAssertTrue(wait(seconds: 10) {
+      current.label.range(of: #"^当前 \d{1,3}(,\d{3})+\.\d$"#, options: .regularExpression) != nil
+    }, "「当前」那口价没按品种小数位 + 千分位写：\(current.label)")
     let price = app.textFields["alerts.new.price"]
     XCTAssertTrue(price.waitForExistence(timeout: 5), "没有价格输入框")
     XCTAssertFalse(app.steppers.count > 0, "价格不许用加减步进器")
