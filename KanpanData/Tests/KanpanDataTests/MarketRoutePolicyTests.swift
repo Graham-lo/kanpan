@@ -102,4 +102,41 @@ struct RoutedFeedPolicyTests {
     await feed.stop()
     #expect(moved)
   }
+
+  @Test("运行中换档：Coinbase 直连 → 网关，上游没变也要换到 kanpan-api 透传口", .timeLimit(.minutes(1)))
+  func coinbaseSwitchingRouteMovesToGateway() async throws {
+    // Coinbase 两条线路的上游都是 coinbase。原来 feed 的身份只看「交易所|上游」，
+    // 切到网关之后以为「供数的没变」就不重起，直连那份 feed 原样接着打 coinbase.com。
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    // 两条线路都答得好好的：直连一切正常时没有报错、没有探测，正是真机上漏网的那条路
+    // （答 500 的话，出错后的健康探测会顺手打到新线路上，把这个毛病盖住）。
+    let server = FakeServer { url in
+      guard url.path.hasSuffix("/candles") else { return json("{}") }
+      let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+      func q(_ k: String) -> Int64? { items.first { $0.name == k }?.value.flatMap { Int64($0) } }
+      guard let start = q("start"), let end = q("end"), end >= start else { return json(#"{"candles":[]}"#) }
+      let rows = stride(from: end - end % 60, through: start, by: -60).prefix(349).map {
+        #"{"start":"\#($0)","low":"1","high":"2","open":"1","close":"2","volume":"1"}"#
+      }
+      return json(#"{"candles":[\#(rows.joined(separator: ","))]}"#)
+    }
+    let endpoints = MarketEndpoints(gateways: ["gw.test"])
+    let feed = RoutedMarketFeed(paths: Paths(root: dir), policy: .direct) { _, policy in
+      CoinbaseProvider(policy: policy, endpoints: endpoints,
+                       transport: FakeTransport(server), sockets: DeadSockets())
+    }
+    _ = await feed.events()
+    await feed.start(symbol: "coinbase/spot/BTC-USD", interval: .m1)
+    #expect(await waitUntil(20) { await server.urls().contains { $0.host == "api.coinbase.com" } })
+    #expect(await !server.urls().contains { $0.host == "gw.test" })
+
+    await feed.setRoutePolicy(.gateway)
+    let moved = await waitUntil(20) {
+      await server.urls().contains { $0.host == "gw.test" && $0.path.hasPrefix("/v1/market/raw/") }
+    }
+    await feed.stop()
+    #expect(moved)
+  }
 }

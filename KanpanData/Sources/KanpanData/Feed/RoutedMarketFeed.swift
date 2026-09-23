@@ -82,7 +82,16 @@ public actor RoutedMarketFeed {
     self.resolver = resolver
   }
 
-  private static func key(_ caps: ProviderCapabilities) -> String { caps.venue + "|" + caps.upstream }
+  /// 一份 feed 的身份：交易所 × 上游 × **线路**。
+  ///
+  /// 提供者是按线路建的（主机名在它肚子里），所以线路本身必须进键。原来只看
+  /// 「交易所|上游」：币安换线路时上游恰好也换（币安 ↔ OKX 替身），看不出毛病；
+  /// Coinbase 两条线路上游都是 coinbase，键一样，切到「网关」之后连着的直连 feed
+  /// 原样留着——REST 和推送照旧打 coinbase.com，网关开关对它形同虚设。
+  private func key(_ caps: ProviderCapabilities) -> String { Self.key(caps, policy) }
+  private static func key(_ caps: ProviderCapabilities, _ policy: MarketRoutePolicy) -> String {
+    caps.venue + "|" + caps.upstream + "|" + policy.rawValue
+  }
 
   /// 某个品种在当前线路上该找谁。
   private func provider(forSymbol symbol: String) -> any MarketProvider {
@@ -128,8 +137,9 @@ public actor RoutedMarketFeed {
     self.policy = policy
     // 提供者表同步换掉（这里没有挂起点）：之后进来的 `start` / 预热看到的已经是新线路。
     providers.removeAll()
-    // 同一家交易所、同一个上游（线路换了但供数的没变）就不用重起 feed。
-    guard !symbol.isEmpty, activeKey != Self.key(current.capabilities) else { return }
+    // 线路一换键就不同（键里带线路），这里总会重起 feed：提供者是按线路建的，旧的那份
+    // 连着的是旧线路的主机。只有换回了正在跑的那条（先前的切换还没落地）才不用动。
+    guard !symbol.isEmpty, activeKey != key(current.capabilities) else { return }
     announceSwitch()
     await activate()
   }
@@ -168,9 +178,9 @@ public actor RoutedMarketFeed {
     pendingHistoryError = nil; historyBoundary = nil; seriesStart = nil; historyRetry = .distantPast
     self.symbol = InstrumentID.canonical(symbol); self.interval = interval; self.selection = selection
     monitor?.cancel()
-    // 同一个提供者（同一家、同一条上游）就只换订阅；换到另一家交易所的品种要整份换 feed：
+    // 同一个提供者（同一家、同一条上游、同一条线路）就只换订阅；换到另一家交易所的品种要整份换 feed：
     // 一份 feed 永远只接一家的数据，不在同一条连接里混源。
-    if let feed, activeKey == Self.key(current.capabilities) {
+    if let feed, activeKey == key(current.capabilities) {
       await feed.switchTo(symbol: symbol, interval: interval, coldStart: coldStart, selection: selection)
     } else { await activate(coldStart: coldStart) }
     if self.selection == selection { startMonitoring(immediate: historyRetry > Date()) }
@@ -192,7 +202,7 @@ public actor RoutedMarketFeed {
     guard request == selection, generation == route, !Task.isCancelled else { return }
     freshHistory = false
     pendingStatus = .offline
-    let next = current
+    let next = current, nextPolicy = policy
     let caps = next.capabilities
     // 首帧前的静默窗口交给提供者定（A-07 第②层：线路是用户定死的、没有竞速，
     // 冷门品种 15 秒内完全可能一帧都不推，收窄就会变成无休止的重连）。
@@ -221,7 +231,7 @@ public actor RoutedMarketFeed {
     // 从这儿开始对外才存在这份 feed。挂上、接管、开跑之间不再有任何挂起点，
     // 别人插不进来。
     feed = created
-    activeKey = Self.key(caps)
+    activeKey = Self.key(caps, nextPolicy)
     activeProvider = next
     pump = Task { [weak self] in
       for await update in stream {
@@ -364,16 +374,16 @@ public actor RoutedMarketFeed {
   private func checkSource(selection request: UUID) async {
     guard request == selection, foreground, !Task.isCancelled else { return }
     let sym = symbol, iv = interval, chosen = current
-    let chosenKey = Self.key(chosen.capabilities)
+    let chosenKey = key(chosen.capabilities)
     if !chosen.capabilities.hasTickerStream { await refreshPolledTicker(chosen, symbol: sym, selection: request) }
     guard request == selection, foreground, !Task.isCancelled, pendingHistoryError != nil else { return }
     // 刚报错那 60 秒内不去探：feed 自己还在重试，探了也是重复打同一条线。
     let ready = Date() >= historyRetry ? await healthy(chosen, symbol: sym, interval: iv) : false
-    guard request == selection, foreground, !Task.isCancelled, chosenKey == Self.key(current.capabilities) else { return }
+    guard request == selection, foreground, !Task.isCancelled, chosenKey == key(current.capabilities) else { return }
     if ready { await activate() } else { unavailable(request) }
   }
   private func refreshPolledTicker(_ chosen: any MarketProvider, symbol: String, selection request: UUID) async {
-    let key = Self.key(chosen.capabilities)
+    let key = self.key(chosen.capabilities)
     if let ticker = try? await chosen.ticker24h(symbol: symbol), request == selection,
        key == activeKey, !Task.isCancelled {
       continuation?.yield(FeedUpdate(selection: request, event: .ticker(ticker)))
