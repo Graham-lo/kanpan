@@ -516,4 +516,61 @@ final class ReviewFeatureSyncTests: XCTestCase {
     XCTAssertTrue(feature.bookRecords.isEmpty)
     XCTAssertNil(feature.statisticsError)
   }
+
+  // MARK: - P2.7：作废一条记录，五秒内能撤销
+
+  /// 作废之后先说一句带「撤销」的话；窗口里点撤销，记录回来、那条作废根本没发到服务端。
+  @MainActor func testVoidingARecordCanBeUndoneBeforeItIsSent() async throws {
+    let directory = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let server = FakeReviewServer()
+    let feature = ReviewFeature(directory: directory)
+    let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
+    feature.activate(store: store, client: client(server))
+    var said: [String] = []
+    var undo: (@MainActor () -> Void)?
+    feature.onUndoable = { text, action in said.append(text); undo = action }
+
+    let draft = validDraft()
+    feature.begin(draft)
+    XCTAssertTrue(feature.saveRecord())
+    await settle(feature)
+    XCTAssertEqual(feature.pendingUploads, 0)
+
+    feature.voidRecord(draft.id)
+    await settle(feature)
+    XCTAssertEqual(said, ["已作废"], "作废之后没给「撤销」")
+    XCTAssertEqual(feature.record(draft.id)?.voided, true, "本地得立刻显示已作废")
+    XCTAssertEqual(feature.pendingUploads, 1, "作废要排在队列里（app 被杀也不丢）")
+    XCTAssertFalse(server.paths.contains { $0.contains("/void") }, "撤销窗口还没过，作废就发出去了")
+
+    try XCTUnwrap(undo)()
+    XCTAssertEqual(feature.record(draft.id)?.voided, false, "撤销之后记录没回来")
+    XCTAssertEqual(feature.pendingUploads, 0, "撤销之后那条作废还挂在队列里")
+    try? await Task.sleep(for: .milliseconds(80))
+    await settle(feature)
+    XCTAssertFalse(server.paths.contains { $0.contains("/void") }, "撤销过的作废还是发出去了")
+  }
+
+  /// 不撤销：窗口一过，作废照常发出去。
+  @MainActor func testAVoidIsSentOnceTheUndoWindowPasses() async throws {
+    let directory = makeDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let server = FakeReviewServer()
+    let feature = ReviewFeature(directory: directory)
+    feature.undoWindow = .milliseconds(50)
+    let store = try ReviewStore(directory: directory.appendingPathComponent("account"))
+    feature.activate(store: store, client: client(server))
+
+    let draft = validDraft()
+    feature.begin(draft)
+    XCTAssertTrue(feature.saveRecord())
+    await settle(feature)
+
+    feature.voidRecord(draft.id)
+    for _ in 0..<200 where !server.paths.contains(where: { $0.contains("/void") }) {
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    XCTAssertTrue(server.paths.contains { $0.contains("/void") }, "窗口过了作废还没发出去")
+  }
 }

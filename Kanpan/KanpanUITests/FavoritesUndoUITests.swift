@@ -55,6 +55,43 @@ final class FavoritesUndoUITests: KanpanUICase {
     shot("12-自选-撤销之后回到原来那一行")
   }
 
+  // ------------------------------------------------------------ 设置里的两件事也能撤（P2.7）
+  //
+  // 以前设置页说话走的是它自己的 `PanelToast`，和自选页那条不是一回事；现在全 app 只有
+  // `ToastCenter` 那一条。这两条量的是：设置页上说的话出现在同一条上、带着同一颗「撤销」。
+
+  func testClearingTheCacheCanBeUndone() {
+    let clear = openSettingsRow("settings.clearCache")
+    clear.tap()
+    let undo = app.buttons["toast.undo"]
+    XCTAssertTrue(undo.waitForExistence(timeout: Self.short), "清缓存之后底下没有「撤销」")
+    XCTAssertTrue(app.staticTexts["已清缓存"].exists, "那一条上写的不是「已清缓存」")
+    shot("13-设置-已清缓存撤销")
+    undo.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !undo.exists }, "点了「撤销」提示没收起来")
+  }
+
+  func testRestoringDefaultsCanBeUndone() {
+    let reset = openSettingsRow("settings.reset")
+    reset.tap()
+    let undo = app.buttons["toast.undo"]
+    XCTAssertTrue(undo.waitForExistence(timeout: Self.short), "恢复默认之后底下没有「撤销」")
+    XCTAssertTrue(app.staticTexts["已恢复默认"].exists, "那一条上写的不是「已恢复默认」")
+    shot("14-设置-已恢复默认撤销")
+    undo.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !undo.exists }, "点了「撤销」提示没收起来")
+  }
+
+  private func openSettingsRow(_ id: String) -> XCUIElement {
+    let tab = app.buttons["bottom.settings"]
+    XCTAssertTrue(tab.waitForExistence(timeout: Self.long), "标签栏上没有「设置」")
+    tab.tap()
+    let row = app.descendants(matching: .any).matching(identifier: id).firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: Self.long), "设置页上没有 \(id)")
+    for _ in 0..<4 where !row.isHittable { app.swipeUp() }
+    return row
+  }
+
   /// 三行此刻从上到下的顺序。
   private func rowOrder() -> [String] {
     ["BTCUSDT", "ETHUSDT", "SOLUSDT"].compactMap { symbol -> (String, CGFloat)? in

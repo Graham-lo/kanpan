@@ -1,0 +1,323 @@
+[0/1] Planning build
+Building for debugging...
+[0/10] /tmp/p2-settings-build/arm64-apple-macosx/debug/KanpanSettingsPackageTests.derived/runner.swift
+[0/10] Write sources
+[7/10] Write swift-version--58304C5D6DBC2206.txt
+[9/12] Emitting module KanpanSettingsPackageTests
+[10/12] Compiling KanpanSettingsPackageTests runner.swift
+[10/12] Write Objects.LinkFileList
+[11/12] Linking KanpanSettingsPackageTests
+Build complete! (25.70s)
+Test Suite 'All tests' started at 2026-09-23 08:12:46.335.
+Test Suite 'All tests' passed at 2026-09-23 08:12:46.342.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.007) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "指标" started.
+◇ Suite "首帧底色镜像" started.
+◇ Suite "版本与合并" started.
+◇ Suite "提醒铃声" started.
+◇ Suite "体验类状态标识" started.
+◇ Suite "存放分层" started.
+◇ Suite "周期表" started.
+◇ Suite "体验类状态的归类表" started.
+◇ Suite "默认值" started.
+◇ Suite "容错" started.
+◇ Suite "持久化" started.
+◇ Suite "涨跌对调" started.
+◇ Suite "A.5 · 视野的落盘时机" started.
+◇ Suite "退役的指标读回来就不挂了" started.
+◇ Suite "指标草稿与图表设置" started.
+◇ Suite "清缓存" started.
+◇ Suite "参数规则" started.
+◇ Test "重新创建设置存储仍保留选择" started.
+◇ Suite "护眼选择与屏幕亮度防抖" started.
+◇ Test "缺省、未知与坏类型只回退铃声，不重置别的设置" started.
+◇ Test "不读取旧原型存档" started.
+◇ Test "四档映射与往返持久化" started.
+◇ Test "副图最多三个，第四个挤掉最早打开的那个" started.
+◇ Suite "MA EMA color persistence" started.
+◇ Test "subHeightOverrides/MACD 被认下就清 subHeightOverrides" started.
+◇ Test "字段比对认的是编码键名，和同步清单是同一张表" started.
+◇ Test "副图高度三档" started.
+◇ Test "主图叠加随便开几个，按打开先后排" started.
+◇ Suite "API 域名" started.
+◇ Test "推的中途用户又改了同一项：那一改不许跟着被清掉" started.
+◇ Test "推成功之后，云端那份就说了算了" started.
+◇ Test "改参数只影响那一个指标" started.
+◇ Test "拖动排序" started.
+◇ Test "第一次装：哨兵也没有，正常从云端拉" started.
+◇ Test "任何清理路径都不许删到账号目录" started.
+◇ Test "档案没了、哨兵还在：这是「被清空」，而且看得出本地有没有没推上去的改动" started.
+◇ Test "会删文件的地方，删的必须都是能再取回来的东西" started.
+◇ Test "哨兵那一格不许被整片抹掉" started.
+◇ Test "Caches 那棵树上只放能再取回来的行情数据" started.
+◇ Test "档案里记的属主不是现在这个人：当它不存在，绝不能用" started.
+◇ Test "推成功才清脏字段" started.
+◇ Test "体验类的键一个都不许出现在行情缓存那一层" started.
+◇ Test "按字段挑回来：只有点名的那几项用本地的，别的原样用对方那份" started.
+◇ Test "按字段记，不按整份档案：改皮肤不会把根宽也标成脏的" started.
+◇ Test "脏着却没东西可推的字段：桥判定和存档一致后就地清掉，别的脏字段不动" started.
+◇ Test "换了个人：上一个人的脏标识算不到我头上" started.
+◇ Test "账号目录里一个键一个文件，脏标识不许压在偏好上" started.
+◇ Test "三段的那条也一样：indicatorColors/MACD/0 映得回 indicatorColors" started.
+◇ Test "改一项就记一个脏字段，落盘和记脏是同一步" started.
+◇ Test "线上键名对得上，RSI 那一对来回都不丢" started.
+◇ Test "发出去了不算数，服务端认了才算：没回执的那几项脏标识留着" started.
+◇ Test "一个字段拍成好几条路径：只要有一条被 droppedFields 丢了，这个字段就还得脏着" started.
+◇ Test "档案解不开：算「损坏」，回落云端，但脏标识不许顺手抹掉" started.
+◇ Test "哨兵和真身不在同一层：真身那层整个没了，哨兵照样认得出这是「被清空」" started.
+◇ Test "副图高度、副图顺序、指标颜色，一样都算一次改动" started.
+◇ Test "每个存储字段都归了类" started.
+◇ Test "常用行增删：最多 6 档、至少留 1 档，且按 14 档的顺序排" started.
+◇ Test "嵌套字段发上去的是拍平后的路径：params/MA 和 params/EMA 都认下了就清 params" started.
+◇ Test "常用行 6 档放满，与 Interval.quick 相同" started.
+◇ Test "派生出来的几张表对得上母表" started.
+◇ Test "自选页停在哪一类跟着账号走" started.
+◇ Test "云端回拉：本地脏的字段一律跳过，干净的跟着云端走" started.
+◇ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" started.
+◇ Test "每个指标的默认参数直接取 Core，不另抄一份" started.
+◇ Test "表里的键就是存档里的键" started.
+◇ Test "全新安装的一份（A6.4「首次安装即如此」）" started.
+◇ Test "直连 / 网关留在这台设备上，域名和探测开关也是" started.
+◇ Test "副图高度默认「中」" started.
+◇ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" started.
+◇ Test "客户端会发的字段和契约文件一个不差" started.
+◇ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" started.
+◇ Test "没真改动就不落盘" started.
+◇ Test "字段类型全错 → 逐项退回默认，不是整档作废" started.
+◇ Test "捏的过程中不写盘，手一松立刻落盘" started.
+◇ Test "关掉之后绿涨红跌，浅深都对调" started.
+◇ Test "改完全部 → 杀 app → 重开逐项相等" started.
+◇ Test "认不出来的枚举值 → 那一项取默认" started.
+◇ Test "参数越界 / 个数不对 → 夹回区间并补齐" started.
+◇ Test "捏完立刻换周期换品种：内存里那份根宽当场就是新的，不用等落盘" started.
+◇ Test "开关能存下来" started.
+◇ Test "域名：修得好就修，修不好退回默认" started.
+◇ Test "JSON 里存的是 rawValue，人能读，不是交错数组" started.
+◇ Test "离谱的根宽存不进去：读回来一定夹在上下限之间" started.
+◇ Test "坏档进 store：能起来，而且不会把坏档留在盘上" started.
+◇ Test "默认红涨绿跌" started.
+◇ Test "只动涨跌两色，其余令牌一个不变" started.
+◇ Test "旧存档里多出来的副图按顺序截到三个" started.
+◇ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" started.
+◇ Test "常用行：去重、认不出的丢掉、超过 6 档按从短到长截断、空数组不生效" started.
+◇ Test "没有存档 → 全新安装的默认" started.
+◇ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" started.
+◇ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" started.
+◇ Test "重开一个 store 读回同一份" started.
+◇ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" started.
+◇ Test "同一个人的档案晚到：手上没落盘的那一捏要保住" started.
+◇ Test "真的换了个人：手上没落盘的那一捏必须作废，不许写到新属主头上" started.
+◇ Test "本机与云端对账：没基线只播种、不一样以本机为准、一样就什么都不做" started.
+◇ Test "没存过根宽的老存档退回出厂 4pt，不是 0" started.
+◇ Test "老存档里选的是网关，升级之后这台机器还是网关" started.
+◇ Test "翻转不节流：一次双击就落一次盘，重复报不重复写" started.
+◇ Test "副图高度：认不出的档丢掉" started.
+◇ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" started.
+◇ Test "7 缩放没落盘时收到同一份档案的旧值：本地这一捏赢，且只提交一次" started.
+◇ Test "7 手势中途换了属主：欠着的那一捏作废，之后的抬手一次都不许提交" started.
+◇ Test "老存档里的随机强弱与真实波幅不再进副图" started.
+◇ Test "退役的不在面板清单上" started.
+◇ Test "每到一次货，adoptToken 都要跳一格" started.
+◇ Test "恢复默认把键抹掉" started.
+◇ Test "常用指标取消不改原值、保存连同输出和阈值生效" started.
+◇ Test "7 没捏过就抬手：不写盘、不提交；真捏过才提交，且一次手势只提交一轮" started.
+◇ Test "全部新增设置落盘并容错读取" started.
+◇ Test "7 退后台是兜底不是时机：正常抬过手之后它一次都不提交" started.
+◇ Test "不是 JSON / 是别的 JSON → 默认，不抛" started.
+◇ Test "根宽和上下翻转跨 app 重启都在" started.
+◇ Test "旧存档里超额的副图读回时被裁到三个" started.
+◇ Test "没记过就按出厂值走：青苔 · 跟随系统" started.
+◇ Test case passing 1 argument sound → .crisp to "四档映射与往返持久化" started.
+◇ Test case passing 1 argument sound → .electronic to "四档映射与往返持久化" started.
+◇ Test case passing 1 argument sound → .glass to "四档映射与往返持久化" started.
+◇ Test "「图表」的三个开关：类型不对退回默认" started.
+◇ Test case passing 1 argument sound → .default to "四档映射与往返持久化" started.
+◇ Test "rsiRange 被认下，仍然清掉 rsiLower 和 rsiUpper 两个本地字段" started.
+◇ Test "清完之后，板块历史和分身份的报价都没了" started.
+◇ Test "行情缓存那棵树和账号那棵树互不包含" started.
+◇ Test "分身份的报价和板块历史都算进「行情缓存」那个数" started.
+◇ Test "store 清完会重新量，而且不多说一句" started.
+◇ Test "清完之后，按行情源分的那份品种表也没了" started.
+◇ Test "步进器按不出非法值" started.
+◇ Test "按行情源分的那份品种表算进「行情缓存」那个数" started.
+◇ Test "越界赋值被夹住；越界下标被忽略" started.
+◇ Test "清完三处都没了，数字归零；沙盒里别的东西不动" started.
+◇ Test "体积文案" started.
+◇ Test "目录本来就不存在 → 量出 0，清也不报错" started.
+◇ Test "清缓存不撤销，窗口一过就真清" started.
+◇ Test "清缓存不碰 UserDefaults 里那几格" started.
+◇ Test "清缓存五秒内点撤销，缓存原样还在" started.
+◇ Test "数据层没接上就如实说没接上，不报假的 0" started.
+◇ Test "量出来的是那三处，分三笔报" started.
+◇ Test invalidBrightnessDoesNotChangeChoice() started.
+◇ Test seedResolutionIsIndependentOfSystemForManualChoice() started.
+◇ Test hysteresisAndDwell() started.
+◇ Test allThemesRoundTripWithoutNewArchiveVersion() started.
+◇ Test "0、负数、超上限都要有拒绝理由" started.
+◇ Test "抄来的地址能normalize" started.
+✔ Test "副图高度三档" passed after 0.016 seconds.
+◇ Test "形状不对的都要拒绝，并且不写进设置" started.
+◇ Test "合法域名写得进去，往返后还在" started.
+◇ Test cancelSaveRestartAndReset() started.
+◇ Test "默认就是 fapi.binance.com" started.
+✔ Test "副图最多三个，第四个挤掉最早打开的那个" passed after 0.017 seconds.
+✔ Test "主图叠加随便开几个，按打开先后排" passed after 0.017 seconds.
+✔ Test "拖动排序" passed after 0.017 seconds.
+✔ Test "缺省、未知与坏类型只回退铃声，不重置别的设置" passed after 0.017 seconds.
+✔ Test "改参数只影响那一个指标" passed after 0.017 seconds.
+✔ Test "四档映射与往返持久化" with 4 test cases passed after 0.017 seconds.
+✔ Test "常用行增删：最多 6 档、至少留 1 档，且按 14 档的顺序排" passed after 0.016 seconds.
+✔ Test "常用行 6 档放满，与 Interval.quick 相同" passed after 0.016 seconds.
+✔ Test "「图表」那一页：三个分段都从「跟随风格」起步，覆盖不主动生效" passed after 0.016 seconds.
+✔ Test "Caches 那棵树上只放能再取回来的行情数据" passed after 0.017 seconds.
+✔ Test "每个指标的默认参数直接取 Core，不另抄一份" passed after 0.016 seconds.
+✔ Test "全新安装的一份（A6.4「首次安装即如此」）" passed after 0.016 seconds.
+✔ Test "副图高度默认「中」" passed after 0.016 seconds.
+✔ Test "指标：认不出的丢掉、重复的去重、放错位置的剔掉" passed after 0.016 seconds.
+✔ Test "每个存储字段都归了类" passed after 0.016 seconds.
+✔ Test "表里的键就是存档里的键" passed after 0.016 seconds.
+✔ Test "chartOptions 把这一页每一项加已有的 countdown 一并交给引擎，一项不漏" passed after 0.016 seconds.
+✔ Test "字段类型全错 → 逐项退回默认，不是整档作废" passed after 0.016 seconds.
+✔ Test "关掉之后绿涨红跌，浅深都对调" passed after 0.016 seconds.
+✔ Test "自选页停在哪一类跟着账号走" passed after 0.016 seconds.
+✔ Test "认不出来的枚举值 → 那一项取默认" passed after 0.016 seconds.
+✔ Test "参数越界 / 个数不对 → 夹回区间并补齐" passed after 0.016 seconds.
+✔ Test "改完全部 → 杀 app → 重开逐项相等" passed after 0.016 seconds.
+✔ Test "开关能存下来" passed after 0.016 seconds.
+✔ Test "账号目录里一个键一个文件，脏标识不许压在偏好上" passed after 0.017 seconds.
+✔ Test "域名：修得好就修，修不好退回默认" passed after 0.017 seconds.
+✔ Test "JSON 里存的是 rawValue，人能读，不是交错数组" passed after 0.017 seconds.
+✔ Test "派生出来的几张表对得上母表" passed after 0.018 seconds.
+✔ Test "直连 / 网关留在这台设备上，域名和探测开关也是" passed after 0.025 seconds.
+✔ Test "只动涨跌两色，其余令牌一个不变" passed after 0.025 seconds.
+✔ Test "客户端会发的字段和契约文件一个不差" passed after 0.025 seconds.
+✔ Test "离谱的根宽存不进去：读回来一定夹在上下限之间" passed after 0.025 seconds.
+✔ Test "K 线、成交量、MACD 柱、胶囊取的是同一对颜色" passed after 0.026 seconds.
+✔ Test "旧存档里多出来的副图按顺序截到三个" passed after 0.027 seconds.
+✔ Test "没有存档 → 全新安装的默认" passed after 0.027 seconds.
+✔ Test "默认红涨绿跌" passed after 0.027 seconds.
+✔ Test "本机与云端对账：没基线只播种、不一样以本机为准、一样就什么都不做" passed after 0.027 seconds.
+✔ Test "「图表」那几项：认不出的字面量退回默认，不牵连同一档里别的项" passed after 0.027 seconds.
+✔ Test "副图高度：认不出的档丢掉" passed after 0.027 seconds.
+✔ Test "常用行：去重、认不出的丢掉、超过 6 档按从短到长截断、空数组不生效" passed after 0.028 seconds.
+✔ Test "14 档，顺序与原型 ALL_PERIODS 一字不差" passed after 0.027 seconds.
+✔ Test "「图表」那几项逐个往返，不是靠整体相等蒙过去" passed after 0.028 seconds.
+✔ Test "退役的不在面板清单上" passed after 0.027 seconds.
+✔ Test "常用指标取消不改原值、保存连同输出和阈值生效" passed after 0.029 seconds.
+✔ Test "没存过根宽的老存档退回出厂 4pt，不是 0" passed after 0.029 seconds.
+✔ Test "老存档里的随机强弱与真实波幅不再进副图" passed after 0.029 seconds.
+✔ Test "旧存档里超额的副图读回时被裁到三个" passed after 0.029 seconds.
+✔ Test "不是 JSON / 是别的 JSON → 默认，不抛" passed after 0.030 seconds.
+✔ Test "根宽和上下翻转跨 app 重启都在" passed after 0.029 seconds.
+✔ Test "「图表」的三个开关：类型不对退回默认" passed after 0.036 seconds.
+✔ Test "全部新增设置落盘并容错读取" passed after 0.038 seconds.
+✔ Test "行情缓存那棵树和账号那棵树互不包含" passed after 0.028 seconds.
+✔ Test "步进器按不出非法值" passed after 0.028 seconds.
+✔ Test "越界赋值被夹住；越界下标被忽略" passed after 0.028 seconds.
+✔ Test "没记过就按出厂值走：青苔 · 跟随系统" passed after 0.038 seconds.
+✔ Test "体积文案" passed after 0.028 seconds.
+✔ Test "数据层没接上就如实说没接上，不报假的 0" passed after 0.028 seconds.
+✔ Test invalidBrightnessDoesNotChangeChoice() passed after 0.027 seconds.
+✔ Test seedResolutionIsIndependentOfSystemForManualChoice() passed after 0.027 seconds.
+✔ Test hysteresisAndDwell() passed after 0.027 seconds.
+✔ Test "0、负数、超上限都要有拒绝理由" passed after 0.026 seconds.
+✔ Suite "指标" passed after 0.045 seconds.
+✔ Test "形状不对的都要拒绝，并且不写进设置" passed after 0.027 seconds.
+✔ Test allThemesRoundTripWithoutNewArchiveVersion() passed after 0.033 seconds.
+✔ Suite "周期表" passed after 0.049 seconds.
+✔ Suite "涨跌对调" passed after 0.056 seconds.
+✔ Suite "退役的指标读回来就不挂了" passed after 0.056 seconds.
+✔ Test "抄来的地址能normalize" passed after 0.038 seconds.
+✔ Suite "指标草稿与图表设置" passed after 0.056 seconds.
+✔ Test "量出来的是那三处，分三笔报" passed after 0.041 seconds.
+✔ Test "按行情源分的那份品种表算进「行情缓存」那个数" passed after 0.042 seconds.
+✔ Test "默认就是 fapi.binance.com" passed after 0.039 seconds.
+✔ Suite "参数规则" passed after 0.056 seconds.
+✔ Test "合法域名写得进去，往返后还在" passed after 0.039 seconds.
+✔ Test "目录本来就不存在 → 量出 0，清也不报错" passed after 0.043 seconds.
+✔ Test "清完之后，板块历史和分身份的报价都没了" passed after 0.044 seconds.
+◇ Test "记下什么读回什么" started.
+✔ Suite "API 域名" passed after 0.058 seconds.
+✔ Suite "护眼选择与屏幕亮度防抖" passed after 0.062 seconds.
+✔ Test "记下什么读回什么" passed after 0.005 seconds.
+◇ Test "镜像里写了别的东西不算数，退回出厂而不是崩" started.
+✔ Test "镜像里写了别的东西不算数，退回出厂而不是崩" passed after 0.001 seconds.
+◇ Test "只兑现皮肤与深浅，别的偏好一个字不猜" started.
+✔ Test "清完之后，按行情源分的那份品种表也没了" passed after 0.052 seconds.
+✔ Test "清完三处都没了，数字归零；沙盒里别的东西不动" passed after 0.052 seconds.
+✔ Test "只兑现皮肤与深浅，别的偏好一个字不猜" passed after 0.001 seconds.
+◇ Test "落一次盘就把皮肤与深浅镜像出来" started.
+✔ Suite "默认值" passed after 0.067 seconds.
+✔ Test "重新创建设置存储仍保留选择" passed after 0.067 seconds.
+✔ Test "不读取旧原型存档" passed after 0.067 seconds.
+✔ Suite "提醒铃声" passed after 0.068 seconds.
+✔ Suite "版本与合并" passed after 0.068 seconds.
+✔ Test "没真改动就不落盘" passed after 0.068 seconds.
+✔ Test "捏的过程中不写盘，手一松立刻落盘" passed after 0.070 seconds.
+✔ Test "捏完立刻换周期换品种：内存里那份根宽当场就是新的，不用等落盘" passed after 0.070 seconds.
+✔ Test "坏档进 store：能起来，而且不会把坏档留在盘上" passed after 0.070 seconds.
+✔ Suite "容错" passed after 0.073 seconds.
+✔ Test "落在 UserDefaults 的键就是 kanpan.prefs.v2" passed after 0.071 seconds.
+✔ Test "重开一个 store 读回同一份" passed after 0.075 seconds.
+✔ Test "同一个人的档案晚到：手上没落盘的那一捏要保住" passed after 0.078 seconds.
+✔ Test "体验类的键一个都不许出现在行情缓存那一层" passed after 0.085 seconds.
+✔ Test "分身份的报价和板块历史都算进「行情缓存」那个数" passed after 0.078 seconds.
+✔ Test "真的换了个人：手上没落盘的那一捏必须作废，不许写到新属主头上" passed after 0.101 seconds.
+✔ Test "翻转不节流：一次双击就落一次盘，重复报不重复写" passed after 0.107 seconds.
+✔ Test "7 缩放没落盘时收到同一份档案的旧值：本地这一捏赢，且只提交一次" passed after 0.119 seconds.
+✔ Test "7 手势中途换了属主：欠着的那一捏作废，之后的抬手一次都不许提交" passed after 0.119 seconds.
+✔ Test "每到一次货，adoptToken 都要跳一格" passed after 0.119 seconds.
+✔ Test "恢复默认把键抹掉" passed after 0.191 seconds.
+✔ Suite "持久化" passed after 0.195 seconds.
+✔ Test "7 没捏过就抬手：不写盘、不提交；真捏过才提交，且一次手势只提交一轮" passed after 0.199 seconds.
+✔ Test "老存档里选的是网关，升级之后这台机器还是网关" passed after 0.244 seconds.
+✔ Suite "体验类状态的归类表" passed after 0.246 seconds.
+✔ Test "7 退后台是兜底不是时机：正常抬过手之后它一次都不提交" passed after 0.262 seconds.
+✔ Suite "A.5 · 视野的落盘时机" passed after 0.267 seconds.
+✔ Test cancelSaveRestartAndReset() passed after 0.304 seconds.
+✔ Suite "MA EMA color persistence" passed after 0.323 seconds.
+✔ Test "会删文件的地方，删的必须都是能再取回来的东西" passed after 0.342 seconds.
+✔ Test "落一次盘就把皮肤与深浅镜像出来" passed after 0.314 seconds.
+◇ Test "换档案（登录 / 退登）也把镜像改过来" started.
+✔ Test "字段比对认的是编码键名，和同步清单是同一张表" passed after 0.713 seconds.
+✔ Test "第一次装：哨兵也没有，正常从云端拉" passed after 0.755 seconds.
+✔ Test "subHeightOverrides/MACD 被认下就清 subHeightOverrides" passed after 0.755 seconds.
+✔ Test "档案里记的属主不是现在这个人：当它不存在，绝不能用" passed after 0.755 seconds.
+✔ Test "推成功才清脏字段" passed after 0.755 seconds.
+✔ Test "档案没了、哨兵还在：这是「被清空」，而且看得出本地有没有没推上去的改动" passed after 0.755 seconds.
+✔ Test "换档案（登录 / 退登）也把镜像改过来" passed after 0.374 seconds.
+✔ Test "按字段记，不按整份档案：改皮肤不会把根宽也标成脏的" passed after 0.755 seconds.
+✔ Test "按字段挑回来：只有点名的那几项用本地的，别的原样用对方那份" passed after 0.755 seconds.
+✔ Test "换了个人：上一个人的脏标识算不到我头上" passed after 0.755 seconds.
+✔ Test "脏着却没东西可推的字段：桥判定和存档一致后就地清掉，别的脏字段不动" passed after 0.755 seconds.
+✔ Test "改一项就记一个脏字段，落盘和记脏是同一步" passed after 0.755 seconds.
+✔ Test "三段的那条也一样：indicatorColors/MACD/0 映得回 indicatorColors" passed after 0.755 seconds.
+✔ Test "发出去了不算数，服务端认了才算：没回执的那几项脏标识留着" passed after 0.755 seconds.
+✔ Test "一个字段拍成好几条路径：只要有一条被 droppedFields 丢了，这个字段就还得脏着" passed after 0.755 seconds.
+✔ Test "档案解不开：算「损坏」，回落云端，但脏标识不许顺手抹掉" passed after 0.755 seconds.
+✔ Test "哨兵和真身不在同一层：真身那层整个没了，哨兵照样认得出这是「被清空」" passed after 0.755 seconds.
+✔ Test "线上键名对得上，RSI 那一对来回都不丢" passed after 0.755 seconds.
+✔ Test "云端回拉：本地脏的字段一律跳过，干净的跟着云端走" passed after 0.755 seconds.
+✔ Test "嵌套字段发上去的是拍平后的路径：params/MA 和 params/EMA 都认下了就清 params" passed after 0.755 seconds.
+✔ Test "副图高度、副图顺序、指标颜色，一样都算一次改动" passed after 0.755 seconds.
+◇ Test "柜子空着时从镜像起步，有存档时一个字不掺" started.
+✔ Test "推成功之后，云端那份就说了算了" passed after 0.756 seconds.
+✔ Test "推的中途用户又改了同一项：那一改不许跟着被清掉" passed after 0.756 seconds.
+✔ Test "清缓存不碰 UserDefaults 里那几格" passed after 0.783 seconds.
+✔ Test "rsiRange 被认下，仍然清掉 rsiLower 和 rsiUpper 两个本地字段" passed after 0.792 seconds.
+✔ Suite "体验类状态标识" passed after 0.798 seconds.
+✔ Test "柜子空着时从镜像起步，有存档时一个字不掺" passed after 0.092 seconds.
+◇ Test "同机换号：第一帧还是上一个人的，档案一到货就自愈，下次冷启动不再闪" started.
+✔ Test "store 清完会重新量，而且不多说一句" passed after 0.836 seconds.
+✔ Test "任何清理路径都不许删到账号目录" passed after 0.861 seconds.
+✔ Test "哨兵那一格不许被整片抹掉" passed after 0.868 seconds.
+✔ Suite "存放分层" passed after 0.876 seconds.
+✔ Test "同机换号：第一帧还是上一个人的，档案一到货就自愈，下次冷启动不再闪" passed after 0.066 seconds.
+✔ Suite "首帧底色镜像" passed after 0.917 seconds.
+✔ Test "清缓存不撤销，窗口一过就真清" passed after 1.154 seconds.
+✔ Test "清缓存五秒内点撤销，缓存原样还在" passed after 1.157 seconds.
+✔ Suite "清缓存" passed after 1.171 seconds.
+✔ Test run with 131 tests in 20 suites passed after 1.173 seconds.

@@ -481,7 +481,6 @@ struct IntervalGridPanel: View {
         onChart: {})
       .frame(maxWidth: .infinity)
     }
-    .panelToast(store)
   }
 }
 

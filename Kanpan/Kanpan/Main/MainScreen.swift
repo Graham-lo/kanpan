@@ -165,12 +165,6 @@ struct MainScreen: View {
   @State private var showFriendPicker = false
   @State private var shareDraft: ShareOutbound?
   @State private var shareShot: Data?
-  @State private var toast: String?
-  /// 这句话右边那颗按钮。和 `toast` 同一拍赋值。
-  @State private var toastUndo: (() -> Void)?
-  /// 那颗按钮上的字。默认「撤销」，「已记下 · 查看」时是「查看」（§2F2）。
-  @State private var toastAction = "撤销"
-  @State private var toastID = 0
   /// 「更多」那张周期网格摊开了没有。开着时它把图往下推，所以状态得住在这一层。
   @State private var intervalGrid = false
   /// 图还停在最新那根上没有。周期条行尾那颗「最新」靠它决定露不露面。
@@ -268,7 +262,6 @@ struct MainScreen: View {
       if !landscape, panel != nil || draw.panel != nil { PanelDismissShield(onDismiss: dismissPanel) }
     }
     .preferredColorScheme(effectiveTheme.forced)
-    .overlay(alignment: .bottom) { toastLayer }
     // 横屏的面板走自己那层侧栏，不挂系统 sheet：半屏 sheet 在 compact 高度下会被
     // 系统顶成全屏，图就整个没了。
     .prefsPanel(landscape ? .constant(nil) : $panel, store: store,
@@ -466,11 +459,9 @@ struct MainScreen: View {
         picker.noteDwell(symbol)
       },
       onStoreNotice: { note in
-        // 设置那一侧说的话（换下了哪个副图、常用行满了、已恢复默认）分两处落：
-        // 面板开着的时候它归面板自己的 `panelToast` 说——主 toast 压在面板底下
-        // 根本看不见；面板没开（比如周期网格里点图钉）才接到主 toast 上。
-        // 两处加起来永远只有一层。
-        if let note, panel == nil {
+        // 设置那一侧说的话（换下了哪个副图、常用行满了、已恢复默认、清缓存）一律从这儿
+        // 转给那唯一一条提示（P2.7）。它画在面板之上，面板开没开都一样看得见。
+        if let note {
           let undo = store.noticeUndo
           store.clearNotice()
           say(note, undo: undo)
@@ -500,6 +491,8 @@ struct MainScreen: View {
 
   var body: some View {
     lifecycleContent
+    // 那唯一一条提示画在自己的窗里，拿不到这儿的环境；皮肤一换就递一份过去（P2.7）。
+    .onChange(of: theme, initial: true) { _, value in ToastCenter.shared.theme = value }
     .sheet(item: $draw.panel) { panel in
       // 主题显式灌进去：这张表里的「画线管理」和「样式」都要跟着皮肤走
       // （和 `IndicatorPanel` 里那张编辑表一个做法）。
@@ -1113,6 +1106,8 @@ struct MainScreen: View {
       guard let info = picker.info(for: symbol), info.tickSize > 0 || info.pricePrecision > 0 else { return nil }
       return info.priceDecimals
     }
+    // 作废记录之类还能反悔的事，走那唯一一条提示（P2.7）。
+    review.onUndoable = { text, undo in ToastCenter.shared.say(text, undo: undo) }
     review.onOpenChart = { record in
       endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = .record(record.id)
@@ -1187,17 +1182,6 @@ struct MainScreen: View {
 
   private var hairline: some View {
     Rectangle().fill(theme.line).frame(height: 1 / displayScale)
-  }
-
-  @ViewBuilder private var toastLayer: some View {
-    if let toast {
-      Toast(theme: theme, text: toast, actionTitle: toastAction, undo: toastUndo.map { act in
-        { act(); withAnimation(.easeOut(duration: 0.22)) { self.toast = nil; toastUndo = nil } }
-      })
-        .padding(.bottom, 92)
-        // 带撤销的那一条要能点；不带的照旧穿透，别挡住底下的图。
-        .allowsHitTesting(toastUndo != nil)
-    }
   }
 
   // ---------------------------------------------------------------- 图的输入
@@ -1767,24 +1751,15 @@ struct MainScreen: View {
                symbol: market.symbol, interval: finer)
   }
 
-  /// 说一句话。全屏只有这一层，新的一句直接顶掉旧的（`toastID` 就是用来作废旧计时器的）。
+  /// 说一句话。全 app 只有一条提示（`ToastCenter`），新的一句直接顶掉旧的。
   ///
   /// 给了 `undo` 就在右边画一颗按钮并停 5 秒：1.6 秒只够读完，来不及看清、
   /// 决定、再抬手点。不给就还是 1.6 秒。按钮上的字默认是「撤销」，
   /// 「已记下 · 查看」这类「去看看」用 `actionTitle` 换掉。
   private func say(_ text: String, actionTitle: String = "撤销", undo: (() -> Void)? = nil) {
-    toastID += 1
-    let mine = toastID
-    toastUndo = undo
-    toastAction = actionTitle
-    withAnimation(.easeOut(duration: 0.18)) { toast = text }
-    let stay = undo == nil ? 1600 : 5000
-    Task {
-      try? await Task.sleep(for: .milliseconds(stay))
-      if mine == toastID {
-        withAnimation(.easeOut(duration: 0.22)) { toast = nil; toastUndo = nil }
-      }
-    }
+    let center = ToastCenter.shared
+    center.theme = theme
+    center.say(text, actionTitle: actionTitle, undo: undo)
   }
 }
 

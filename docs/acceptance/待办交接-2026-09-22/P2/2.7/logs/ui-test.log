@@ -1,0 +1,12 @@
+Test Case '-[KanpanUITests.FavoritesUndoUITests testClearingTheCacheCanBeUndone]' started.
+Test Case '-[KanpanUITests.FavoritesUndoUITests testClearingTheCacheCanBeUndone]' passed (60.102 seconds).
+Test Case '-[KanpanUITests.FavoritesUndoUITests testRemovingAFavoriteOffersUndoAndPutsTheRowBack]' started.
+Test Case '-[KanpanUITests.FavoritesUndoUITests testRemovingAFavoriteOffersUndoAndPutsTheRowBack]' passed (25.819 seconds).
+Test Case '-[KanpanUITests.FavoritesUndoUITests testRestoringDefaultsCanBeUndone]' started.
+Test Case '-[KanpanUITests.FavoritesUndoUITests testRestoringDefaultsCanBeUndone]' passed (23.232 seconds).
+	 Executed 3 tests, with 0 failures (0 unexpected) in 109.153 (109.156) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 18.776 (18.777) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 127.929 (127.935) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 127.929 (127.936) seconds
+** TEST SUCCEEDED **
+UI EXIT 0

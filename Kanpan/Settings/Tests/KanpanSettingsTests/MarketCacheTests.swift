@@ -265,6 +265,49 @@ struct MarketCacheTests {
     #expect(store.notice == nil)
   }
 
+  /// P2.7：设置页那颗「清除」现在走 `clearCacheLater`——先说「已清缓存 · 撤销」，
+  /// 窗口过了才真清；窗口里点撤销，一个字节都不动。
+  @Test("清缓存五秒内点撤销，缓存原样还在")
+  @MainActor
+  func 撤销清缓存() async throws {
+    let (paths, root) = try seed()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: DiskMarketCache(paths: paths))
+    store.undoWindow = .milliseconds(80)
+    await store.refreshCacheUsage()
+    let before = store.cacheUsage?.totalBytes ?? 0
+    #expect(before > 0)
+
+    store.clearCacheLater()
+    #expect(store.notice == "已清缓存")
+    let undo = try #require(store.noticeUndo)
+    undo()
+    try await Task.sleep(for: .milliseconds(300))
+    await store.refreshCacheUsage()
+    #expect(store.cacheUsage?.totalBytes == before, "点了撤销缓存还是被清了")
+  }
+
+  @Test("清缓存不撤销，窗口一过就真清")
+  @MainActor
+  func 窗口过了才清() async throws {
+    let (paths, root) = try seed()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let store = PrefsStore(storage: InMemoryPrefsStorage(), cache: DiskMarketCache(paths: paths))
+    store.undoWindow = .milliseconds(80)
+    await store.refreshCacheUsage()
+    #expect((store.cacheUsage?.totalBytes ?? 0) > 0)
+
+    store.clearCacheLater()
+    await store.refreshCacheUsage()
+    #expect((store.cacheUsage?.totalBytes ?? 0) > 0, "撤销窗口还没过就清了")
+    for _ in 0..<100 where store.cacheUsage?.totalBytes != 0 {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(store.cacheUsage?.totalBytes == 0)
+  }
+
   @Test("数据层没接上就如实说没接上，不报假的 0")
   func 占位() async {
     let u = await UnavailableMarketCache().usage()

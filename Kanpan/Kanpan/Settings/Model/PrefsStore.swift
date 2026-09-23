@@ -439,6 +439,30 @@ final class PrefsStore {
     await cache.clear()
     cacheUsage = await cache.usage()
   }
+
+  /// 「撤销」给多长时间。和提示条带撤销时的停留时间是同一个数（`ToastCenter.undoSeconds`），
+  /// 测试里调短。
+  @ObservationIgnored var undoWindow: Duration = .seconds(5)
+  @ObservationIgnored private var pendingClear: Task<Void, Never>?
+
+  /// 设置页那颗「清除」（P2.7）：先说「已清缓存 · 撤销」，撤销的机会过了才真的清。
+  ///
+  /// 缓存删了就回不来（要重新下载），所以撤销只能是「还没动手」：在提示条消失之前
+  /// 盘上一个字节都不碰。提示期间 app 被杀，这次就当没清——他没等到那一刻。
+  func clearCacheLater() {
+    pendingClear?.cancel()
+    let wait = undoWindow
+    pendingClear = Task { [weak self] in
+      try? await Task.sleep(for: wait)
+      guard !Task.isCancelled, let self else { return }
+      self.pendingClear = nil
+      await self.clearCache()
+    }
+    note("已清缓存", undo: { [weak self] in
+      self?.pendingClear?.cancel()
+      self?.pendingClear = nil
+    })
+  }
 }
 
 // MARK: - 图的视野那一侧要的起点与去处

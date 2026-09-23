@@ -88,6 +88,14 @@ import ReviewData
   public private(set) var shotVersion = 0
   public var onLogin: () -> Void = {}
   public var onSyncComplete: () -> Void = {}
+  /// 刚做完一件还能反悔的事（P2.7）：一句话 + 撤销时要做的动作。
+  /// 宿主把它接到全 app 那唯一一条提示上，这个包自己不画提示。
+  @ObservationIgnored public var onUndoable: (@MainActor (String, @escaping @MainActor () -> Void) -> Void)?
+  /// 撤销窗口有多长。和宿主那条提示带「撤销」时停留的时间一致；测试里调短。
+  @ObservationIgnored public var undoWindow: Duration = .seconds(5)
+  /// 刚作废、还在撤销窗口里的那一条。它的 void 操作已经排进队列，但窗口没过之前不发。
+  @ObservationIgnored private var heldVoid: UUID?
+  @ObservationIgnored private var voidRelease: Task<Void, Never>?
   public var pendingUploads: Int { store?.archive.queue.count ?? 0 }
   private var syncID = UUID()
   public var autoSync = true
@@ -298,8 +306,41 @@ import ReviewData
       if change({ archive in
         if let i = archive.records.firstIndex(where: { $0.id == id }) { archive.records[i].voided = true } else { var value = record; value.voided = true; archive.records.insert(value, at: 0) }
         archive.queue.append(operation)
-      }) { synchronize() }
+      }) { holdVoid(id) }
     } catch { notice = error.localizedDescription }
+  }
+
+  /// 作废之后给五秒反悔（P2.7）。
+  ///
+  /// 服务端没有「取消作废」这一步，发出去就收不回来了。所以撤销只能是「还没发」：
+  /// 操作照常排进队列（本地立刻显示已作废、app 被杀也不丢），只是撤销窗口没过之前
+  /// `synchronize` 走到它就停下；窗口一过放行并同步。窗口里再作废一条，前一条的提示
+  /// 已经被新的顶掉了，撤销按钮跟着没了，所以前一条随之放行。
+  private func holdVoid(_ id: UUID) {
+    heldVoid = id
+    voidRelease?.cancel()
+    let wait = undoWindow
+    voidRelease = Task { [weak self] in
+      try? await Task.sleep(for: wait)
+      guard !Task.isCancelled, let self, self.heldVoid == id else { return }
+      self.heldVoid = nil
+      self.synchronize()
+    }
+    onUndoable?("已作废") { [weak self] in self?.undoVoid(id) }
+    synchronize()
+  }
+
+  /// 撤销作废：把还没发出去的那条 void 摘下来，记录回到作废之前。
+  public func undoVoid(_ id: UUID) {
+    guard heldVoid == id else { return }
+    heldVoid = nil
+    voidRelease?.cancel(); voidRelease = nil
+    guard store?.archive.queue.contains(where: { $0.recordId == id && $0.kind == "void" && $0.attempted != true }) == true
+    else { return }
+    if change({ archive in
+      archive.queue.removeAll { $0.recordId == id && $0.kind == "void" && $0.attempted != true }
+      if let i = archive.records.firstIndex(where: { $0.id == id }) { archive.records[i].voided = false }
+    }) { synchronize() }
   }
   public func resolveGroup(_ id: UUID, sameEpisode: Bool) {
     guard var value = record(id) else { return }
@@ -352,6 +393,8 @@ import ReviewData
         while var operation = store?.archive.queue.first {
           try Task.checkCancellation()
           guard epoch == requestEpoch && syncID == runID else { return }
+          // 撤销窗口还没过的作废先不发（`holdVoid`）；窗口一过会再叫一次同步。
+          if operation.kind == "void", operation.recordId == heldVoid, operation.attempted != true { return }
           if operation.attempted != true {
             // 图不是对记录内容的一次修改，没有版本可锁（服务端那条路也不读它）。
             if operation.kind != "create", operation.kind != "shot",

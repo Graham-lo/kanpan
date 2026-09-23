@@ -33,7 +33,6 @@ struct SettingsPanel: View {
 
   @Environment(\.panelTheme) private var t
   @Environment(\.accountFeature) private var account
-  @State private var clearing = false
 
   private var prefs: Prefs { store.prefs }
 
@@ -132,7 +131,6 @@ struct SettingsPanel: View {
     // `asPage == false` 的那条路留着：那时这一页自己是一张 sheet，账号页得叠在
     // 它上面，根的 sheet 够不着——那才是「真正作为上层 sheet 的设置上下文」。
     .modifier(AccountPresenter(account: asPage ? nil : account))
-    .panelToast(store)
     .sensoryFeedback(.selection, trigger: prefs)
   }
 
@@ -148,22 +146,16 @@ struct SettingsPanel: View {
   /// A6.11：清的是 `KanpanData.Paths` 指的那几处，不是另拼一套目录。
   ///
   /// 右边不再报「占了多少 MB」：那个数字是给我们排查用的，用户看到它只会开始
-  /// 琢磨「多少算多」。要清就清，清完那个数字当场归零，不另说一句「已清缓存」——
-  /// 只报成功、没有下一步可做的提示对用户没有用（2026-09-21）。
+  /// 琢磨「多少算多」。「已清缓存」那一句带着「撤销」才说（P2.7）——它不是报喜，
+  /// 是这一下还能反悔；只报成功、没有下一步可做的提示仍然不说（2026-09-21）。
   private var cacheRow: some View {
     PanelRow(name: "清缓存") {
-      Button {
-        clearing = true
-        Task { await store.clearCache(); clearing = false }
-      } label: {
-        if clearing {
-          ProgressView().controlSize(.small)
-        } else {
-          Text("清除").font(PanelFont.seg).foregroundStyle(t.amber)
-        }
+      // 点下去先给五秒反悔，过了才真清（P2.7），所以这里不再转圈。
+      Button { store.clearCacheLater() } label: {
+        Text("清除").font(PanelFont.seg).foregroundStyle(t.amber)
       }
       .buttonStyle(.plain)
-      .disabled(clearing)
+      .accessibilityIdentifier("settings.clearCache")
     }
   }
 

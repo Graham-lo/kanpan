@@ -1320,8 +1320,16 @@ struct FavoritesView: View {
                               tickSize: 0)
     model.pick(model.info(for: symbol) ?? fallback)
   }
+  /// 移到分类。移错了也给五秒反悔（P2.7）：先记下每一只原来在哪一类，撤销时逐只放回。
   private func assign(_ symbols: [String], to group: String?) {
+    let model = self.model
+    let before = symbols.compactMap { model.favoriteSnapshot($0) }.filter { $0.group != group }
     symbols.forEach { model.assign($0, to: group) }; moving = nil; selection.removeAll()
+    guard !before.isEmpty else { return }
+    let name = group.flatMap { id in model.prefs.groups.first { $0.id == id }?.name } ?? "未分类"
+    session.offerUndo(before.count > 1 ? "已把 \(before.count) 个移到「\(name)」" : "已移到「\(name)」") {
+      before.forEach { model.assign($0.symbol, to: $0.group) }
+    }
   }
 
   /// 移除自选 —— 这一页上**唯一**的移除口子（左滑两处、长按菜单、编辑条批量，全走它）。
@@ -1331,7 +1339,7 @@ struct FavoritesView: View {
   /// （`SymbolPrefs.snapshot`），屏幕底下那条提示条上挂一颗「撤销」，点了就照快照原样
   /// 放回去。还原走的是和删除同一条写入路径（`commit()`），落盘和同步都照常发生。
   ///
-  /// 这是全 app 唯一允许出现提示条的地方：它不是「告诉你成功了」，而是「这一下还能反悔」。
+  /// 提示条不是「告诉你成功了」，而是「这一下还能反悔」。
   private func removeFavorites(_ list: [String]) {
     let model = self.model
     let snapshots = list.compactMap { model.favoriteSnapshot($0) }

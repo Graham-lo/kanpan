@@ -174,11 +174,11 @@ struct SectorSymbolList: View {
             if !picker.prefs.groups.isEmpty {
               Menu("移到分类") {
                 ForEach(picker.prefs.groups) { group in
-                  Button(group.name) { picker.assign(item.symbol, to: group.id) }
+                  Button(group.name) { move(item.symbol, to: group, picker) }
                 }
               }
             }
-            Button("取消自选", role: .destructive) { picker.removeFavorite(item.symbol) }
+            Button("取消自选", role: .destructive) { unfavorite(item.symbol, picker) }
           } else {
             Button("加入自选") { picker.addFavorite(item.symbol, info: picker.info(for: item.symbol)) }
           }
@@ -191,6 +191,19 @@ struct SectorSymbolList: View {
     } else {
       content
     }
+  }
+
+  /// 移到分类、取消自选都和自选页一样给五秒反悔（P2.7），说在全 app 那唯一一条提示上。
+  private func move(_ symbol: String, to group: FavoriteGroup, _ picker: SymbolPickerModel) {
+    guard let before = picker.favoriteSnapshot(symbol), before.group != group.id else { return }
+    picker.assign(symbol, to: group.id)
+    ToastCenter.shared.say("已移到「\(group.name)」") { picker.assign(before.symbol, to: before.group) }
+  }
+
+  private func unfavorite(_ symbol: String, _ picker: SymbolPickerModel) {
+    guard let before = picker.favoriteSnapshot(symbol) else { return }
+    picker.removeFavorite(symbol)
+    ToastCenter.shared.say("已移除") { picker.restoreFavorites([before]) }
   }
 
   /// 卡上那几格要一份 `Ticker`。板块页手里是 `SectorQuote`，价和涨跌照这一行写的来

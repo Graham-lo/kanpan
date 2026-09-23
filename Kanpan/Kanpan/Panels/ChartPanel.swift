@@ -143,8 +143,6 @@ struct ChartPanel: View {
 
     }
     .sensoryFeedback(.selection, trigger: prefs)
-    // 指标那段会弹「副图最多三个」，提示归这一层——面板盖着主界面的 toast。
-    .panelToast(store)
   }
 
   // MARK: - 行

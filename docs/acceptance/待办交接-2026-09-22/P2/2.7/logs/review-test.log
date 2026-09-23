@@ -1,0 +1,37 @@
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testAFailedRefreshKeepsTheNumbersAlreadyOnScreen]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testAFailedRefreshKeepsTheNumbersAlreadyOnScreen]' passed (0.008 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testARecordWithoutAShotStillSaves]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testARecordWithoutAShotStillSaves]' passed (0.004 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testATransientFailureKeepsTheOperationAndItsKey]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testATransientFailureKeepsTheOperationAndItsKey]' passed (0.021 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testAVoidIsSentOnceTheUndoWindowPasses]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testAVoidIsSentOnceTheUndoWindowPasses]' passed (0.082 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testKeepingTheRemoteVersionDropsTheLocalUpload]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testKeepingTheRemoteVersionDropsTheLocalUpload]' passed (0.013 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLaterPagesAreNotMixedWithLocalOnlyRecords]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLaterPagesAreNotMixedWithLocalOnlyRecords]' passed (0.003 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLoadingAndSyncingDoNotSendTheUserBackToTheTodoTab]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLoadingAndSyncingDoNotSendTheUserBackToTheTodoTab]' passed (0.009 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLocallyCreatedRecordStaysInTheBookAfterTheServerListLoads]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testLocallyCreatedRecordStaysInTheBookAfterTheServerListLoads]' passed (0.395 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testOnePermanentConflictDoesNotBlockTheRestOfTheQueue]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testOnePermanentConflictDoesNotBlockTheRestOfTheQueue]' passed (0.009 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testResolvingAConflictRebasesAndUsesAFreshIdempotencyKey]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testResolvingAConflictRebasesAndUsesAFreshIdempotencyKey]' passed (0.017 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testStatisticsNeverFabricateAZeroPercent]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testStatisticsNeverFabricateAZeroPercent]' passed (0.001 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testSwitchingAccountsClearsTheOtherPersonsNumbers]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testSwitchingAccountsClearsTheOtherPersonsNumbers]' passed (0.001 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheChartShotIsSavedLocallyAndUploaded]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheChartShotIsSavedLocallyAndUploaded]' passed (0.012 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheFirstStatisticsFailureShowsAnErrorNotAnEmptyScoreboard]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheFirstStatisticsFailureShowsAnErrorNotAnEmptyScoreboard]' passed (0.001 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheLocalCopyDoesNotDuplicateTheServerRow]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testTheLocalCopyDoesNotDuplicateTheServerRow]' passed (0.010 seconds).
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testVoidingARecordCanBeUndoneBeforeItIsSent]' started.
+Test Case '-[ReviewUITests.ReviewFeatureSyncTests testVoidingARecordCanBeUndoneBeforeItIsSent]' passed (0.102 seconds).
+	 Executed 16 tests, with 0 failures (0 unexpected) in 0.690 (0.694) seconds
+	 Executed 16 tests, with 0 failures (0 unexpected) in 0.690 (1.160) seconds
+	 Executed 16 tests, with 0 failures (0 unexpected) in 0.690 (1.161) seconds
+** TEST SUCCEEDED **
+EXIT 0
