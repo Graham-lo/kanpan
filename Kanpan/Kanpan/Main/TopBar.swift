@@ -179,6 +179,9 @@ struct PriceRow: View {
   @ScaledMetric(relativeTo: .body) private var valueSize: CGFloat = 13
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var theme: PanelTheme
+  /// 这口价属于哪只：完整品种键（`venue/market/symbol`，即 `MarketModel.symbol`）。
+  /// 价格的逐位滚动只在同一个键下做，换了键就直接换字（见 `body`）。
+  var instrument: String
   var ticker: Ticker?
   var lastPrice: Double?
   var decimals: Int
@@ -223,6 +226,11 @@ struct PriceRow: View {
           // 跳价时逐位滚过去（P2.8），只动变了的那几位；「减少动效」下直接换字。
           .contentTransition(reduceMotion ? .identity : .numericText(value: lastPrice ?? 0))
           .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: lastText)
+          // 逐位滚动只在**同一只**里做。换品种（横滑扫图、搜索、自选 / 板块点进）时
+          // 视图身份跟着完整品种键换掉：新的那只的价直接落（有种子就是种子，没有就是「—」），
+          // 不从上一只的数滚过来——否则标题已经是 ETH，底下还闪过一串 BTC 量级的数。
+          .id(instrument)
+          .transition(.identity)
           .accessibilityIdentifier("top.lastPrice")
         Text(HeaderStats.priceChangeText(change: ticker?.priceChange, percent: pct, decimals: decimals))
           .font(.system(size: changeSize, weight: .semibold))
@@ -235,6 +243,9 @@ struct PriceRow: View {
       Spacer(minLength: 8)
       stats
     }
+    // 换品种这一下整行不带任何动画（哪怕外面的事务带着）：旧那只的价当场拿掉，
+    // 不留一帧淡出，涨跌与六格也直接换成新那只的数。
+    .transaction(value: instrument) { $0.animation = nil }
   }
 
   /// 价格的小数位由品种自己说（`priceDecimals`，按 `tickSize` 推），极小的正价会自动多给几位，

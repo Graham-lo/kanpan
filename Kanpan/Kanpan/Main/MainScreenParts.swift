@@ -218,7 +218,7 @@ struct MainHeaderView<Card: View>: View {
         onReview: onReview,
         onSearch: onSearch)
       ZStack {
-        PriceRow(theme: theme, ticker: ticker, lastPrice: lastPrice,
+        PriceRow(theme: theme, instrument: market.symbol, ticker: ticker, lastPrice: lastPrice,
           decimals: market.info.priceDecimals,
           volumeUnit: market.volumeUnit,
           openInterest: market.openInterestDisplay,
