@@ -1198,7 +1198,8 @@ struct MainScreen: View {
       say: { say($0) },
       onTapped: { dismissPanel() },
       // 他自己动手翻图了：「返回刚才」那条后路当场作废——再点它就是盖掉他刚做的事。
-      onUserView: { forgetReturn() })
+      onUserView: { forgetReturn() },
+      onOpenRecord: { openReview(id: $0.uuidString) })
   }
 
   /// 这次重温是从哪儿开的。复盘本会在开图之前把自己关掉，退出时照这个把它开回来——
@@ -1252,6 +1253,8 @@ struct MainScreen: View {
       replayOrigin = .record(record.id)
       reviewChart.open(record, feature: review, live: reviewState(proxy.box?.chart.state ?? chartState), endpoints: endpoints, policy: prefs.routePolicy)
     }
+    // 卡片上改起止时刻（P3.7）：吸附、重算目标失效、把图挪过去，都在图这一头做。
+    review.onEditRange = { start, end in reviewChart.editRange(start: start, end: end, feature: review) }
     review.onOpenMatch = { match, cutoff in
       endSharePreview(); dismissPanel(); draw.finish()
       replayOrigin = review.searchRecord.map { .search($0) }

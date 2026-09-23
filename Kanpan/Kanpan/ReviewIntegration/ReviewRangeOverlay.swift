@@ -13,6 +13,10 @@ struct ReviewRangeOverlay: UIViewRepresentable {
   var suppressed = false
   /// 刚记下的那一条（§2F2）：进来一个新 id 就闪一下，告诉用户「记号落在这儿了」。
   var flash: UUID?
+  /// 非圈选时点图上已画的那条记录（落图标签那一小块）打开它的详情（P3.7）。
+  /// 画线、横屏、回放时不接手指——那时候图上的手势都是别人的。
+  var tappable = false
+  var onOpenRecord: (UUID) -> Void = { _ in }
   /// 这一层是 UIKit 手绘的，取不到 SwiftUI 那套 `foregroundStyle`，所以配色得自己端进去。
   ///
   /// 原来它把橙色（`UIColor.systemOrange`）钉死在自己那边：SwiftUI 那几页早就跟着
@@ -30,7 +34,9 @@ struct ReviewRangeOverlay: UIViewRepresentable {
     view.records = suppressed ? [] : feature.records
     view.suppressed = suppressed
     view.flash(suppressed ? nil : flash)
-    view.isUserInteractionEnabled = bridge.mode == .capture
+    view.tappable = tappable && bridge.mode == .live && !suppressed
+    view.onOpenRecord = onOpenRecord
+    view.isUserInteractionEnabled = bridge.mode == .capture || view.tappable
     view.attach()
     view.setNeedsDisplay()
   }
@@ -72,6 +78,18 @@ final class RangeOverlayView: UIView {
   private var flashOn = false
   private var flashTimer: Timer?
   private var dragPart = ""
+  /// 见 `ReviewRangeOverlay.tappable`。
+  var tappable = false
+  var onOpenRecord: (UUID) -> Void = { _ in }
+  /// 这一帧每条落图记录的可点区域（落图标签那一块），`draw(_:)` 里顺手记下。
+  private var hotspots: [(CGRect, UUID)] = []
+  private var tapTarget: UUID?
+  private var tapOrigin = CGPoint.zero
+  /// 贴边自动滚动（P3.7）：拖选区的左右手柄或整段圈选时，手指进了离边 24pt 以内，
+  /// 图就按手指压进去的深度往那一头滚，边滚边把选区跟到手指下面那根。
+  private static let edgeZone: CGFloat = 24
+  private var edgeLink: CADisplayLink?
+  private var lastTouch = CGPoint.zero
   private var startIndex = 0
   private var before: ReviewDraft?
   override init(frame: CGRect) { super.init(frame: frame); isOpaque = false; backgroundColor = .clear; isMultipleTouchEnabled = false }
@@ -124,7 +142,9 @@ final class RangeOverlayView: UIView {
   }()
   private func report(marks: Int, state: ChartState) {
     guard Self.diagnostics else { return }
-    let value = "\(marks)/\(records.count) \(state.series.symbol) \(state.series.interval.rawValue) \(bridge?.liveVenue ?? "-")"
+    // 末尾带上最后一条可点记号的中心（相对这一层），用例靠它去点「图上那条记录」。
+    let spot = hotspots.last.map { " @\(Int($0.0.midX)),\(Int($0.0.midY))" } ?? ""
+    let value = "\(marks)/\(records.count) \(state.series.symbol) \(state.series.interval.rawValue) \(bridge?.liveVenue ?? "-")" + spot
     if probe.accessibilityValue != value { probe.accessibilityValue = value }
   }
 
@@ -208,7 +228,7 @@ final class RangeOverlayView: UIView {
   override func didMoveToWindow() {
     super.didMoveToWindow()
     watchdog?.invalidate(); watchdog = nil
-    guard window != nil else { return }
+    guard window != nil else { stopEdgeScroll(); return }
     // 同 `flash(_:)` 里那段：定时器挂在主 runloop 上，回调只会在主线程来，这里把这件
     // 既成事实如实声明一次；视图没了就让定时器自己收摊——`deinit` 是非隔离的，碰不了
     // 主 actor 上的这几个存储属性。
@@ -228,12 +248,15 @@ final class RangeOverlayView: UIView {
   }
   override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
     guard let layout = chart?.chartLayout else { return false }
-    return point.x >= 0 && point.x <= layout.plotW && point.y >= 0 && point.y < layout.mainH
+    let inPlot = point.x >= 0 && point.x <= layout.plotW && point.y >= 0 && point.y < layout.mainH
+    if bridge?.mode == .capture { return inPlot }
+    return inPlot && tappable && hotspots.contains { $0.0.contains(point) }
   }
   override func draw(_ rect: CGRect) {
     guard let chart, let state = chart.state, let layout = chart.chartLayout, let ctx = UIGraphicsGetCurrentContext() else { return }
     ctx.saveGState(); ctx.clip(to: CGRect(x: 0, y: 0, width: layout.plotW, height: layout.mainH))
     report(marks: 0, state: state)   // 先归零：下面只有实时那一支会往上画记号。
+    hotspots = []
     if let draft { paint(draft, state: state, layout: layout, ctx: ctx, editing: true, outcome: nil) }
     else if suppressed { ctx.restoreGState(); return }
     else if bridge?.mode == .live {
@@ -248,6 +271,13 @@ final class RangeOverlayView: UIView {
       for record in mine {
         paint(record.draft, state: state, layout: layout, ctx: ctx, editing: false,
               outcome: record.outcome, emphasis: record.id == flashID && flashOn)
+        // 可点的只有落图标签那一小块（44pt 见方起），其余图面照旧归图表的手势。
+        let a = state.view.x(Double(record.draft.range.start), plotW: layout.plotW)
+        let b = state.view.x(Double(record.draft.range.end), plotW: layout.plotW)
+        let x = max(0, a), w = max(44, min(96, b - x))
+        let spot = CGRect(x: x - 6, y: layout.mainH - 44, width: w + 12, height: 44)
+          .intersection(CGRect(x: 0, y: 0, width: layout.plotW, height: layout.mainH))
+        if !spot.isNull, spot.width > 8 { hotspots.append((spot, record.id)) }
       }
       report(marks: mine.count, state: state)
     } else if let record = bridge?.replayRecord, state.series.lastTime >= record.draft.range.start {
@@ -310,6 +340,10 @@ final class RangeOverlayView: UIView {
     ctx.setStrokeColor(canvas.cgColor); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10))
   }
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+    if bridge?.mode != .capture, let q = touches.first?.location(in: self) {
+      // 后画的在上面：从后往前找，点到重叠的两条时开最上面那条。
+      tapTarget = hotspots.last { $0.0.contains(q) }?.1; tapOrigin = q; return
+    }
     guard let q = touches.first?.location(in: self), let draft, let state = chart?.state, let layout = chart?.chartLayout else { return }
     before = draft
     let a = state.view.x(Double(draft.range.start), plotW: layout.plotW), b = state.view.x(Double(draft.range.end), plotW: layout.plotW)
@@ -324,7 +358,18 @@ final class RangeOverlayView: UIView {
     startIndex = state.series.index(atTime: state.view.t(atX: q.x, plotW: layout.plotW))
   }
   override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-    guard let q = touches.first?.location(in: self), var draft, let state = chart?.state, let layout = chart?.chartLayout else { return }
+    guard let q = touches.first?.location(in: self) else { return }
+    if bridge?.mode != .capture {
+      if hypot(q.x - tapOrigin.x, q.y - tapOrigin.y) > 10 { tapTarget = nil }
+      return
+    }
+    lastTouch = q
+    drag(to: q)
+    updateEdgeScroll()
+  }
+  /// 把正在拖的那一部分跟到手指 `q` 下面。手指移动和贴边滚动的每一帧都走这里。
+  private func drag(to q: CGPoint) {
+    guard var draft, let state = chart?.state, let layout = chart?.chartLayout else { return }
     let s = state.series, t = state.view.t(atX: max(0, min(layout.plotW, q.x)), plotW: layout.plotW)
     let index = s.index(atTime: t)
     if ["target", "invalid"].contains(dragPart), let range = chart?.chartPriceRange {
@@ -338,13 +383,44 @@ final class RangeOverlayView: UIView {
       if dragPart == "left" { left = min(index, max(0, right - 2)) }
       else if dragPart == "right" { right = max(index, min(s.count - 1, left + 2)) }
       else { left = min(startIndex, index); right = max(startIndex, index); if right - left < 2 { right = min(s.count - 1, left + 2); left = max(0, right - 2) } }
-      draft.range.start = s.time(at: left); draft.range.end = ReviewChartBridge.closeTime(s.time(at: right), interval: s.interval); draft.range.bars = right - left + 1
-      let high = s.high[left...right].max() ?? draft.rule.target, low = s.low[left...right].min() ?? draft.rule.invalidation
-      if !draft.rule.targetEdited { draft.rule.target = draft.rule.direction == .short ? low : high }
-      if !draft.rule.invalidationEdited { draft.rule.invalidation = draft.rule.direction == .short ? high : low }
+      ReviewChartBridge.snap(&draft, left: left, right: right, series: s)
     }
     self.draft = draft; feature?.draft = draft; setNeedsDisplay()
   }
-  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { feature?.saveDraft(); before = nil; dragPart = "" }
-  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { if let before { draft = before; feature?.draft = before }; self.before = nil; dragPart = ""; setNeedsDisplay() }
+  /// 手指在离边 24pt 以内、拖的是选区（左手柄 / 右手柄 / 整段圈选）时开一条 displayLink；
+  /// 出了那一圈、换成拖价格线或到期、或者松手，就停。
+  private func updateEdgeScroll() {
+    guard let layout = chart?.chartLayout, ["left", "right", "range"].contains(dragPart),
+          lastTouch.x < Self.edgeZone || lastTouch.x > layout.plotW - Self.edgeZone else { stopEdgeScroll(); return }
+    guard edgeLink == nil else { return }
+    let link = CADisplayLink(target: self, selector: #selector(edgeTick(_:)))
+    link.add(to: .main, forMode: .common)
+    edgeLink = link
+  }
+  private func stopEdgeScroll() { edgeLink?.invalidate(); edgeLink = nil }
+  /// 一帧挪多少：压得越深越快。刚进那一圈时每秒约 120pt（慢到能停在想要的那根上），
+  /// 压到边上（或出了图）每秒约 900pt。按帧时长算，不按帧数算——120Hz 屏不会快一倍。
+  @objc private func edgeTick(_ link: CADisplayLink) {
+    guard let chart, let layout = chart.chartLayout, ["left", "right", "range"].contains(dragPart) else { stopEdgeScroll(); return }
+    let zone = Self.edgeZone
+    let depth: CGFloat
+    if lastTouch.x < zone { depth = -min(1, (zone - lastTouch.x) / zone) }
+    else if lastTouch.x > layout.plotW - zone { depth = min(1, (lastTouch.x - (layout.plotW - zone)) / zone) }
+    else { stopEdgeScroll(); return }
+    let dt = max(1.0 / 240, min(1.0 / 30, link.targetTimestamp - link.timestamp))
+    let speed = 120 + 780 * abs(depth) * abs(depth)
+    chart.nudge(byPx: Double(depth < 0 ? -speed : speed) * dt)
+    drag(to: lastTouch)
+  }
+  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+    if bridge?.mode != .capture {
+      if let id = tapTarget { onOpenRecord(id) }
+      tapTarget = nil; return
+    }
+    stopEdgeScroll(); feature?.saveDraft(); before = nil; dragPart = ""
+  }
+  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+    tapTarget = nil; stopEdgeScroll()
+    if let before { draft = before; feature?.draft = before }; self.before = nil; dragPart = ""; setNeedsDisplay()
+  }
 }

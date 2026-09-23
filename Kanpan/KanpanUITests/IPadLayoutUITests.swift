@@ -79,8 +79,8 @@ final class IPadLayoutUITests: KanpanUICase {
   /// 复盘本 · 未登录：登录门这一页本身也归内容列管。
   ///
   /// 这条**不是**「只看到了未登录页也算过」——它钉的就是未登录这个明确 fixture：
-  /// 分段控件必须在（它和登录状态无关，`ReviewBook` 一进来就画），「战绩」那一档
-  /// 必须给出登录门 `review.stats.login`，而且这几件东西都得在 560 的一列里。
+  /// 摘要卡和那一排筛选必须在（它们和登录状态无关，`ReviewBook` 一进来就画），点摘要卡
+  /// 进的「战绩」必须给出登录门 `review.stats.login`，而且这几件东西都得在 560 的一列里。
   func testReviewBookLoginGateKeepsAReadableColumn() throws {
     try skipUnlessWide()
 
@@ -88,13 +88,15 @@ final class IPadLayoutUITests: KanpanUICase {
     expectExists(app.buttons["review.back"], Self.long, "顶栏的「复盘」没开复盘本")
     shot("iPad-复盘本-未登录")
 
-    let tabs = app.segmentedControls.firstMatch
-    expectExists(tabs, Self.short, "复盘本上没有「待办 / 记录 / 战绩」分段控件")
+    let tabs = app.descendants(matching: .any)["review.chips"]
+    expectExists(tabs, Self.short, "复盘本上没有「全部 / 待判定 / 已判定」那一排筛选")
     XCTAssertLessThanOrEqual(tabs.frame.width, Self.columnCap,
-                             "复盘本的分段控件被摊到 \(Int(tabs.frame.width))pt")
+                             "复盘本的筛选那一排被摊到 \(Int(tabs.frame.width))pt")
 
-    let stats = tabs.buttons["战绩"]
-    expectExists(stats, Self.short, "分段控件里没有「战绩」")
+    let stats = app.buttons["review.summary"]
+    expectExists(stats, Self.short, "复盘本上没有战绩摘要卡")
+    XCTAssertLessThanOrEqual(stats.frame.width, Self.columnCap,
+                             "战绩摘要卡被摊到 \(Int(stats.frame.width))pt")
     stats.tap()
     let gate = app.buttons["review.stats.login"]
     expectExists(gate, Self.long, "未登录的「战绩」应当只给一句话加一颗「登录」，没见到登录门")
@@ -144,19 +146,19 @@ final class IPadReviewBookSignedInUITests: KanpanUICase {
     entry.tap()
     expectExists(app.buttons["review.back"], Self.long, "顶栏的「复盘」没开复盘本")
 
-    let tabs = app.segmentedControls.firstMatch
-    expectExists(tabs, Self.short, "复盘本上没有「待办 / 记录 / 战绩」分段控件")
-    let stats = tabs.buttons["战绩"]
-    expectExists(stats, Self.short, "分段控件里没有「战绩」")
+    let tabs = app.descendants(matching: .any)["review.chips"]
+    expectExists(tabs, Self.short, "复盘本上没有「全部 / 待判定 / 已判定」那一排筛选")
+    XCTAssertLessThanOrEqual(tabs.frame.width, IPadLayoutUITests.columnCap,
+                             "已登录的复盘本里筛选那一排被摊到 \(Int(tabs.frame.width))pt")
+    let stats = app.buttons["review.summary"]
+    expectExists(stats, Self.short, "复盘本上没有战绩摘要卡")
     stats.tap()
     // 先证明「真的进到已登录的复盘本里了」，再量宽度（审查 C-04 的要害）。
     XCTAssertTrue(waitUntil(timeout: Self.long) { !self.app.buttons["review.stats.login"].exists },
                   "已登录却还挂着登录门 review.stats.login——这一条量的还是未登录页")
     shot("iPad-复盘本-已登录")
 
-    XCTAssertLessThanOrEqual(tabs.frame.width, IPadLayoutUITests.columnCap,
-                             "已登录的复盘本里分段控件被摊到 \(Int(tabs.frame.width))pt")
-    // 内容那一列同样封顶：战绩这一页铺满屏幕的是列表，不是分段控件。
+    // 内容那一列同样封顶：战绩这一页铺满屏幕的是列表。
     let list = app.collectionViews.firstMatch.exists ? app.collectionViews.firstMatch
                                                      : app.tables.firstMatch
     expectExists(list, Self.short, "战绩页上没有列表")

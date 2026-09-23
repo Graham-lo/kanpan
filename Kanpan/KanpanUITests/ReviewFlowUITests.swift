@@ -81,15 +81,15 @@ final class ReviewFlowUITests: KanpanUICase {
     return saved
   }
 
-  /// 顶栏「复盘」→ 复盘本的「记录」那一档（默认落在「待办」，而「只记录」的那条
-  /// 既不待处理也不等答案，本来就不该出现在待办里）。
+  /// 顶栏「复盘」→ 复盘本的「全部」那一枚筛选（默认落在「待判定」，而「只记录」的那条
+  /// 既不待处理也不等答案，本来就不该出现在待判定里）。
   private func openBookRecords(file: StaticString = #filePath, line: UInt = #line) {
     let entry = app.buttons[Ids.topReview]
     guard expectExists(entry, Self.short, "顶栏没有「复盘」", file: file, line: line) else { return }
     entry.tap()
     guard expectExists(app.buttons["review.back"], Self.long, "「复盘」没开出复盘本", file: file, line: line)
     else { return }
-    let records = app.buttons["记录"]
+    let records = app.buttons["review.chip.all"]
     if records.waitForExistence(timeout: Self.short) { records.tap() }
   }
 

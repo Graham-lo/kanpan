@@ -20,6 +20,7 @@ public struct ReviewCaptureCard: View {
             Spacer()
             Button("收起", action: onClose).foregroundStyle(t.ink2)
           }
+          rangePickers(draft)
           Picker("方向", selection: binding(\.rule.direction, fallback: .observe)) {
             ForEach(ReviewDirection.allCases, id: \.self) { Text($0.title).tag($0) }
           }.pickerStyle(.segmented)
@@ -86,6 +87,30 @@ public struct ReviewCaptureCard: View {
         }
         .sheet(isPresented: $feature.searchOpen) { ReviewSearchView(feature: feature, range: draft.range, cutoff: feature.searchCutoff) }
     }
+  }
+  /// 起止两颗紧凑时间钮（P3.7）。时区和复盘本、选区标签同一档（`ReviewLabels.range` 用的
+  /// `tzOffset`）；「止」写的是最后一根的开盘时刻——和图上那根蜡烛对得上，存下来的仍是收盘边界。
+  /// 改完交给宿主吸附到整根 K 线，图上的选区跟着挪（`feature.editRange`）。
+  private func rangePickers(_ draft: ReviewDraft) -> some View {
+    let step = max(1, (draft.range.end - draft.range.start) / Int64(max(1, draft.range.bars)))
+    let lastOpen = draft.range.end - step
+    func date(_ ms: Int64) -> Date { Date(timeIntervalSince1970: Double(ms) / 1000) }
+    func ms(_ d: Date) -> Int64 { Int64((d.timeIntervalSince1970 * 1000).rounded()) }
+    return HStack(spacing: 8) {
+      DatePicker("起", selection: Binding(get: { date(draft.range.start) }, set: {
+        guard let value = feature.draft else { return }
+        feature.editRange(start: ms($0), end: value.range.end)
+      }), in: ...date(lastOpen), displayedComponents: [.date, .hourAndMinute])
+        .accessibilityIdentifier("review.capture.start")
+      DatePicker("止", selection: Binding(get: { date(lastOpen) }, set: {
+        guard let value = feature.draft else { return }
+        feature.editRange(start: value.range.start, end: ms($0) + step)
+      }), in: date(draft.range.start)...date(ReviewClock.now), displayedComponents: [.date, .hourAndMinute])
+        .accessibilityIdentifier("review.capture.end")
+    }
+    .font(.subheadline).foregroundStyle(t.ink2)
+    .datePickerStyle(.compact)
+    .environment(\.timeZone, feature.tzOffset.timeZone)
   }
   private func binding<T>(_ key: WritableKeyPath<ReviewDraft, T>, fallback: T) -> Binding<T> {
     Binding(get: { feature.draft?[keyPath: key] ?? fallback }, set: { feature.draft?[keyPath: key] = $0; feature.saveDraft() })

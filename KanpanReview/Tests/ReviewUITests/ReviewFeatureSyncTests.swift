@@ -249,8 +249,8 @@ final class ReviewFeatureSyncTests: XCTestCase {
     XCTAssertEqual(feature.pendingUploads, 1, "只有新建那一条")
   }
 
-  /// 翻到第二页时不补本地那几条：那一页的口径在服务端，补进去就是串行。
-  @MainActor func testLaterPagesAreNotMixedWithLocalOnlyRecords() async throws {
+  /// 无限滚动（P3.7）：滑到底接下一页，接在已有那几条后面，本地那条只补一次、不重复。
+  @MainActor func testLoadingMoreAppendsTheNextPageOnce() async throws {
     let directory = makeDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let server = FakeReviewServer()
@@ -272,8 +272,13 @@ final class ReviewFeatureSyncTests: XCTestCase {
     XCTAssertTrue(feature.saveRecord())
     XCTAssertEqual(Set(feature.bookRecords.map(\.id)), [first.id, draft.id], "第一页要把本地那条补进来")
 
-    await feature.loadHistory(page: 1)
-    XCTAssertEqual(feature.bookRecords.map(\.id), [older.id], "第二页只听服务端的")
+    await feature.loadMoreHistory()
+    let ids = feature.bookRecords.map(\.id)
+    XCTAssertEqual(Set(ids), [first.id, draft.id, older.id], "第二页接在后面，第一页和本地那条都还在")
+    XCTAssertEqual(ids.count, 3, "同一条不许出现两次")
+    XCTAssertNil(feature.nextPage, "到底了")
+    await feature.loadMoreHistory()
+    XCTAssertEqual(feature.bookRecords.count, 3, "没有下一页时再滑到底什么都不做")
   }
 
   // MARK: - 人停在哪一档就停在哪一档
@@ -287,11 +292,11 @@ final class ReviewFeatureSyncTests: XCTestCase {
     feature.activate(store: store, client: client(server))
     XCTAssertEqual(feature.tab, "todo", "复盘本每次**打开**都落在待办（§2G2）")
 
-    feature.tab = "history"
+    feature.tab = "all"
     await feature.loadHistory()
     feature.synchronize(manual: true)
     await settle(feature)
-    XCTAssertEqual(feature.tab, "history", "拉一次列表、同步一轮，不该把人从他正看的那一档上拨走")
+    XCTAssertEqual(feature.tab, "all", "拉一次列表、同步一轮，不该把人从他正看的那一档上拨走")
   }
 
   // MARK: - B-02：一条永远成功不了的上传，不许把整条队列锁死

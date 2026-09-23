@@ -557,6 +557,36 @@ extension ChartView {
     state = s
   }
 
+  // MARK: - 外面叫的平移（复盘选区）
+
+  /// 按像素挪视野（正数 = 往更新的那头走）。复盘圈选拖手柄贴到边上时，由那一层的
+  /// displayLink 每帧叫一次（P3.7）。和手指拖图同一条夹紧、同一条「要更多历史」回调，
+  /// 所以挪到头就停在头上，挪到最左边会照常去取更早的 K 线。
+  public func nudge(byPx dx: Double) {
+    guard var s = state, let L = chartLayout, L.plotW > 0, dx != 0 else { return }
+    let v = clampView(s.view.shifted(byPx: dx, plotW: L.plotW),
+                      series: s.series, plotW: L.plotW, anchor: s.options.anchor)
+    guard v != s.view else { return }
+    s.view = v
+    state = s
+    viewDidChange(v)
+  }
+
+  /// 让 `[from, to)` 这段时间落进可视区：已经在里面就不动；不在就平移过去，
+  /// 宽过一屏才放宽视野。复盘卡片上改起止时刻时用（P3.7）。
+  public func reveal(from: Double, to: Double) {
+    guard var s = state, let L = chartLayout, L.plotW > 0, to > from else { return }
+    if from >= s.view.from && to <= s.view.to { return }
+    var span = s.view.span
+    if (to - from) * 1.16 > span { span = (to - from) * 1.25 }
+    let center = (from + to) / 2
+    let v = clampView(ViewWindow(to: center + span / 2, span: span),
+                      series: s.series, plotW: L.plotW, anchor: s.options.anchor)
+    s.view = v
+    state = s
+    viewDidChange(v)
+  }
+
   // MARK: - 轻点与双击
 
   /// 画布轻点 / 双击（P2.11）。

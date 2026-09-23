@@ -300,6 +300,8 @@ struct MainChartView: View {
   let say: (String) -> Void
   let onTapped: () -> Void
   let onUserView: () -> Void
+  /// 点图上已画的一条复盘记录（P3.7）：打开它的详情。
+  var onOpenRecord: (UUID) -> Void = { _ in }
 
   var body: some View {
     ZStack(alignment: .bottomTrailing) {
@@ -345,9 +347,12 @@ struct MainChartView: View {
       // 横屏画线时复盘的区间框、目标线和「等答案」标签一律不画（§2E5）：横屏那一屏
       // 要的是干净的原始 K 线，和「指标一律不画」是同一条理由——画布上多一根线，
       // 画的时候就多一次「这是我画的还是本来就有的」。记录本身没动，转回竖屏原样都在。
+      // 非圈选时这一层只接落图标签那一小块（`RangeOverlayView.point(inside:)`），
+      // 其余位置命中测试穿过去，图照常拖、捏、长按。画线时整层让开。
       ReviewRangeOverlay(feature: review, bridge: reviewChart, liveProxy: proxy,
-                         suppressed: drawingCanvasOnly, flash: review.lastSaved)
-        .allowsHitTesting(reviewChart.mode == .capture)
+                         suppressed: drawingCanvasOnly, flash: review.lastSaved,
+                         tappable: !draw.active && !panelOpen, onOpenRecord: onOpenRecord)
+        .allowsHitTesting(reviewChart.mode == .capture || (reviewChart.mode == .live && !draw.active && !drawingCanvasOnly && !panelOpen))
       // 切线路一律静默：用户要看的是 K 线，不是我们从哪台机器取的数。
       // 历史数据真拉不下来才出这一条——那是「图不全」，得让人知道并且能重试。
       if let error = market.historyError, !reviewChart.active {

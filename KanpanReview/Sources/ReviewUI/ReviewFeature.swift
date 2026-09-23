@@ -16,6 +16,8 @@ import ReviewData
   public private(set) var records: [ReviewRecord] = []
   public private(set) var matches: [ReviewMatch] = []
   public private(set) var statistics: [ReviewStatsGroup] = []
+  /// 战绩按哪一版判定规则算的。服务端战绩响应里带着；没拉到之前就是本机草稿用的那一版。
+  public private(set) var ruleVersion = "criteria-v2"
   public private(set) var syncing = false
   public private(set) var searching = false
   public private(set) var searchCutoff: Int64 = 0
@@ -78,6 +80,15 @@ import ReviewData
   /// 画图的本事在 app 里（`ChartSnapshotRenderer`），这个包看不见它，所以由宿主注进来。
   /// 没接线就没有图：记录照记，详情里那一格整个不出现——不写「无截图」。
   @ObservationIgnored public var captureShot: (@MainActor () -> Data?)?
+  /// 卡片上改起止时刻（P3.7）：落到哪根 K 线、目标失效要不要跟着区间重算、图要不要挪过去，
+  /// 都得看这张图手里的那串 K 线——这个包看不见，所以宿主注进来，和图上拖手柄走同一段吸附。
+  /// 没接线时只原样记下时刻。
+  @ObservationIgnored public var onEditRange: (@MainActor (_ start: Int64, _ end: Int64) -> Void)?
+  public func editRange(start: Int64, end: Int64) {
+    if let onEditRange { onEditRange(start, end); return }
+    guard end > start else { return }
+    draft?.range.start = start; draft?.range.end = end; saveDraft()
+  }
   /// 已经读进内存的那几张图。视图每帧都要问「这条有没有图」，不能每次都去读盘。
   /// 只留最近看过的几张：一张 PNG 几百 KB，攒多了就是白占内存。
   @ObservationIgnored private var shotCache: [UUID: Data] = [:]
@@ -106,8 +117,6 @@ import ReviewData
   public private(set) var history: [ReviewRecord] = []
   public private(set) var historyLoading = false
   public private(set) var historyError: String?
-  public private(set) var historyPage = 0
-  private var historyCursors: [String?] = [nil]
   private var historyGeneration = UUID()
   private var historyQuery = ""
   private var historyTab = ""
@@ -121,8 +130,8 @@ import ReviewData
   /// 把 `historyLoaded` 放回去，所以这个洞会一直开着。
   ///
   /// 补进来的只有「服务端还不知道的」：待上传的、从没上云的、以及被隔离成冲突的。
-  /// 已经在云端的旧记录仍然只由分页说了算，不然翻页会翻出重复行。
-  /// 搜过词、翻到第二页之后不补——那两种视图的口径在服务端，本地补进去就是串行。
+  /// 已经在云端的旧记录仍然只由分页说了算，不然往下接页会接出重复行。
+  /// 搜过词之后不补——那种视图的口径在服务端，本地补进去就是串行。
   public var bookRecords: [ReviewRecord] {
     guard isConnected && historyLoaded else { return records }
     let pending = Set(store?.archive.queue.map(\.recordId) ?? [])
@@ -132,7 +141,7 @@ import ReviewData
       guard let local = records.first(where: { $0.id == item.id }) else { return item }
       return pending.contains(item.id) || local.conflict != nil ? local : item
     }
-    guard historyQuery.isEmpty, historyPage == 0 else { return page }
+    guard historyQuery.isEmpty else { return page }
     let known = Set(page.map(\.id))
     let extras = records.filter { record in
       !known.contains(record.id) && (pending.contains(record.id) || record.serverId == nil || record.conflict != nil)
@@ -170,6 +179,7 @@ import ReviewData
   }
   private var epoch = UUID()
   @ObservationIgnored private var store: ReviewStore?
+  @ObservationIgnored private var attachmentCache: [UUID: Data] = [:]
   @ObservationIgnored private var client: ScorebookClient?
   @ObservationIgnored private let directory: URL
   @ObservationIgnored private var searchTask: Task<Void, Never>?
@@ -188,7 +198,7 @@ import ReviewData
     syncTask?.cancel(); cancelSearch(); epoch = UUID(); syncID = UUID()
     self.store = store; self.client = client; store.cloudCache = client != nil
     syncing = false; searching = false; matches = []; statistics = []; searchID = nil; searchGeneration = UUID(); searchNext = nil; savedMatchIDs = []
-    nextPage = nil; searchError = nil; statisticsError = nil; history = []; historyCursors = [nil]; historyPage = 0; historyGeneration = UUID(); historyLoading = false; historyError = nil; historyLoaded = false
+    nextPage = nil; searchError = nil; statisticsError = nil; history = []; historyGeneration = UUID(); historyLoading = false; historyError = nil; historyLoaded = false
     bookOpen = false; captureOpen = false; searchOpen = false; selectedRecord = nil; searchRecord = nil
     reload()
   }
@@ -364,24 +374,37 @@ import ReviewData
     do { try store?.saveReplay(id, position: position) } catch { notice = error.localizedDescription }
   }
   public func savedReplay(_ id: UUID) -> ReviewReplayPosition? { store?.savedReplay(id) }
-  public func loadHistory(query: String = "", page target: Int = 0) async {
+  /// 从头拉一次复盘本（换了筛选、换了搜索词、下拉刷新都走这儿）。
+  ///
+  /// 原来是「上一页 / 下一页」两颗按钮翻页（审计 §2.4）：复盘本是一本往回翻的本子，
+  /// 人要的是一直往下滑，而不是在第 3 页和第 4 页之间来回点。现在第一页从这儿来，
+  /// 后面的页由 `loadMoreHistory` 在滑到底时接上。
+  public func loadHistory(query: String = "") async {
     guard let client else { history = records; return }
     let requestedTab = tab
-    let reset = query != historyQuery || requestedTab != historyTab || target == 0
-    let next = reset ? 0 : target
-    guard next >= 0, reset || next <= historyCursors.count else { return }
-    let cursor: String? = reset ? nil : next < historyCursors.count ? historyCursors[next] : nextPage
-    if next > 0 && cursor == nil { return }
     let requestEpoch = epoch; let generation = UUID(); historyGeneration = generation
     historyLoading = true; historyError = nil
     defer { if epoch == requestEpoch && historyGeneration == generation { historyLoading = false } }
     do {
-      let response = try await client.list(after: cursor, query: query, todo: requestedTab == "todo")
+      let response = try await client.list(query: query, todo: requestedTab == "todo", decided: requestedTab == "decided")
       try Task.checkCancellation()
       guard epoch == requestEpoch && historyGeneration == generation else { return }
-      if reset { historyCursors = [nil] } else if next == historyCursors.count { historyCursors.append(cursor) }
-      history = response.records; historyLoaded = true; nextPage = response.next; historyPage = next; historyQuery = query; historyTab = requestedTab
-      // First screen cache stays bounded; older pages live only while this view is open.
+      history = response.records; historyLoaded = true; nextPage = response.next; historyQuery = query; historyTab = requestedTab
+    } catch is CancellationError {} catch { if epoch == requestEpoch && historyGeneration == generation { historyError = error.localizedDescription } }
+  }
+  /// 滑到底，接下一页。筛选或搜索词在这期间变过（`historyGeneration` 换了）就作废。
+  public func loadMoreHistory() async {
+    guard let client, let cursor = nextPage, historyLoaded, !historyLoading else { return }
+    let requestedTab = historyTab; let query = historyQuery
+    let requestEpoch = epoch; let generation = UUID(); historyGeneration = generation
+    historyLoading = true; historyError = nil
+    defer { if epoch == requestEpoch && historyGeneration == generation { historyLoading = false } }
+    do {
+      let response = try await client.list(after: cursor, query: query, todo: requestedTab == "todo", decided: requestedTab == "decided")
+      try Task.checkCancellation()
+      guard epoch == requestEpoch && historyGeneration == generation else { return }
+      let known = Set(history.map(\.id))
+      history += response.records.filter { !known.contains($0.id) }; nextPage = response.next
     } catch is CancellationError {} catch { if epoch == requestEpoch && historyGeneration == generation { historyError = error.localizedDescription } }
   }
   public func pauseAutomaticSync() { syncTask?.cancel(); syncID = UUID(); syncing = false }
@@ -639,8 +662,69 @@ import ReviewData
     // 屏幕上只摆这一份，不给用户两套口径去挑。服务端一直在算「够不够 20 笔」，
     // 客户端以前只接 `groups` 那两个裸数字，于是一笔一组被算成 0% 摆上去
     // （审查 B.2 / B-07）。
-    do { let groups = try await client.stats().resolvedGroups; guard requestEpoch == epoch else { return }; statistics = groups; statisticsError = nil }
+    do {
+      let response = try await client.stats(); guard requestEpoch == epoch else { return }
+      statistics = response.resolvedGroups; statisticsError = nil
+      if let version = response.ruleVersion, !version.isEmpty { ruleVersion = version }
+    }
     catch { if requestEpoch == epoch { statisticsError = error.localizedDescription } }
+  }
+
+  // MARK: 已存案例 / 修订记录 / 补图（P3.7）
+  //
+  // 这三样都是「打开那一页才去问服务端」的只读或轻写操作，不进本机存档、不排上传队列：
+  // 存档与队列管的是记录本身，而这几样离线时本来就看不了（补图要传几 MB，排队没有意义）。
+  // 所以状态留在各自那一页上，这里只给出带登录检查的几条通路。
+
+  /// 一页存下的案例。
+  public func savedMatchesPage(after: String? = nil) async throws -> NativeSavedMatchesResponse {
+    guard let client else { throw ScorebookError.invalidConnection }
+    return try await client.savedMatches(after: after)
+  }
+  /// 删一条存下的案例；「找相似」那一页上的「已保存」标记跟着撤掉。
+  public func removeSavedMatch(_ match: NativeSavedMatch) async throws {
+    guard let client else { throw ScorebookError.invalidConnection }
+    try await client.removeSavedMatch(match.id, expectedRevision: match.revision)
+    savedMatchIDs.remove(match.id)
+  }
+  /// 从「已存案例」点开一条：和「找相似」结果点开是同一条路，只是没有发起它的那条记录。
+  public func openSavedMatch(_ match: ReviewMatch) {
+    searchRecord = nil; bookOpen = false; captureOpen = false
+    onOpenMatch(match, ReviewClock.now)
+  }
+  /// 这条记录的全部修订。本机从没上过云的记录没有修订可看，给空。
+  public func revisions(_ id: UUID) async throws -> [ReviewRevision] {
+    guard let client else { throw ScorebookError.invalidConnection }
+    guard record(id)?.serverId != nil else { return [] }
+    return try await client.revisions(id)
+  }
+  /// 补图一条记录最多几张、单张最大多少——服务端 `review.rs` 的 `ATTACHMENTS_PER_RECORD` /
+  /// `ATTACHMENT_MAX_BYTES` 同一个数。
+  public static let attachmentLimit = 3
+  public static let attachmentMaxBytes = 5 * 1024 * 1024
+  public func attachments(_ id: UUID) async throws -> [ReviewAttachment] {
+    guard let client else { throw ScorebookError.invalidConnection }
+    guard record(id)?.serverId != nil else { return [] }
+    return try await client.attachments(id)
+  }
+  /// 取一张补图。取过的放在内存里，横滑来回不重复下载。
+  public func attachmentImage(_ id: UUID) async -> Data? {
+    if let hit = attachmentCache[id] { return hit }
+    guard let client, let data = try? await client.attachment(id) else { return nil }
+    attachmentCache[id] = data
+    return data
+  }
+  /// 补一张图。`data` 由调用方压成 JPEG、并保证不超过上限。
+  public func addAttachment(_ data: Data, to record: UUID) async throws {
+    guard let client else { throw ScorebookError.invalidConnection }
+    let id = UUID()
+    try await client.uploadAttachment(id: id, record: record, image: data)
+    attachmentCache[id] = data
+  }
+  public func deleteAttachment(_ id: UUID) async throws {
+    guard let client else { throw ScorebookError.invalidConnection }
+    try await client.deleteAttachment(id)
+    attachmentCache.removeValue(forKey: id)
   }
 }
 

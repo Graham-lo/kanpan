@@ -261,6 +261,12 @@ public struct ReviewRecord: Codable, Sendable, Equatable, Identifiable {
       || outcome == .needsVerification
       || ([.realized, .unrealized].contains(outcome) && reflection.publishedAt == nil))
   }
+  /// 复盘本「已判定」那一档：复盘写完了，也没有别的事等人处理。
+  /// 和服务端 `?decided=true` 同一个口径（`review.rs` 的列表查询）。
+  public var isDecided: Bool {
+    !voided && reflection.publishedAt != nil && groupPending != true && !needsAction
+      && outcome != .waiting && outcome != .needsVerification
+  }
 
   /// 这一条该不该画在**当前这张图**上（§2F3）。
   ///

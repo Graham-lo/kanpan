@@ -10,54 +10,56 @@ public struct ReviewBook: View {
   public var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
-        Picker("复盘", selection: $feature.tab) {
-          Text("待办").tag("todo"); Text("记录").tag("records"); Text("战绩").tag("stats")
-        }.pickerStyle(.segmented).padding()
-        if feature.tab == "stats" { statistics }
-        else {
-          List {
-            if feature.draft != nil {
-              Button { feature.bookOpen = false; feature.onCapture() } label: {
-                Label("继续未完成的记录", systemImage: "square.and.pencil")
-              }
-              .listRowBackground(t.app)
+        // 顶部：战绩摘要卡 + 三颗筛选（审计 §2.4）。原来是「待办 / 记录 / 战绩」三段
+        // 分段控件：战绩是和记录并列的第三页，人要先切过去才知道自己打得怎么样。
+        // 现在战绩浓缩成一张摘要卡常驻顶上，点开才是完整的分组战绩；下面的列表只剩
+        // 「看哪一部分」这一个维度。
+        summary.padding(.horizontal).padding(.top, 8)
+        chips.padding(.horizontal).padding(.vertical, 10)
+        List {
+          if feature.draft != nil {
+            Button { feature.bookOpen = false; feature.onCapture() } label: {
+              Label("继续未完成的记录", systemImage: "square.and.pencil")
             }
-            if feature.tab == "todo" {
-              group("待处理", records: filtered.filter { $0.needsAction })
-              group("等答案", records: filtered.filter { $0.outcome == .waiting && !$0.needsAction })
-            } else { group(nil, records: filtered) }
-            if feature.historyLoading { ProgressView().listRowBackground(t.app) }
-            if let error = feature.historyError {
-              Text(error).foregroundStyle(t.ink3).listRowBackground(t.app)
-              Button("重试") { Task { await feature.loadHistory(query: filter, page: feature.historyPage) } }.listRowBackground(t.app)
-            }
-            if filtered.isEmpty && !feature.historyLoading && feature.historyError == nil {
-              // 空状态一行字就够（§2G5）。原来是一整块 `ContentUnavailableView`：一个大图标、
-              // 一行标题、一行说明，占掉大半屏来说「这儿是空的」——空本身不需要这么大声。
-              Button { feature.bookOpen = false; feature.onCapture() } label: {
-                Text(feature.tab == "todo" ? "没有待办 · 记一笔" : "还没有记录 · 记一笔")
-                  .foregroundStyle(t.ink3)
-                  .frame(maxWidth: .infinity, minHeight: 44)
-              }
-              .listRowBackground(t.app)
-              .listRowSeparator(.hidden)
-              .accessibilityIdentifier("review.empty")
-            }
-            if feature.isConnected && (feature.historyPage > 0 || feature.nextPage != nil) {
-              HStack {
-                Button("上一页") { Task { await feature.loadHistory(query: filter, page: feature.historyPage - 1) } }.disabled(feature.historyPage == 0 || feature.historyLoading)
-                Spacer(); Text("\(feature.historyPage + 1)").monospacedDigit(); Spacer()
-                Button("下一页") { Task { await feature.loadHistory(query: filter, page: feature.historyPage + 1) } }.disabled(feature.nextPage == nil || feature.historyLoading)
-              }.buttonStyle(.borderless).frame(minHeight: 44).listRowBackground(t.app)
-            }
+            .listRowBackground(t.app)
           }
-          .listStyle(.plain)
-          .scrollContentBackground(.hidden)
-          .background(t.app)
-          .searchable(text: $filter, prompt: "品种或原话")
+          switch feature.tab {
+          case "todo":
+            group("待处理", records: filtered.filter { $0.needsAction })
+            group("等答案", records: filtered.filter { $0.outcome == .waiting && !$0.needsAction })
+          case "decided": group(nil, records: filtered.filter(\.isDecided))
+          default: group(nil, records: filtered)
+          }
+          if feature.historyLoading { ProgressView().frame(maxWidth: .infinity).listRowBackground(t.app).listRowSeparator(.hidden) }
+          if let error = feature.historyError {
+            Text(error).foregroundStyle(t.ink3).listRowBackground(t.app)
+            Button("重试") { Task { if feature.nextPage != nil && !feature.history.isEmpty { await feature.loadMoreHistory() } else { await feature.loadHistory(query: filter) } } }.listRowBackground(t.app)
+          }
+          if filtered.isEmpty && !feature.historyLoading && feature.historyError == nil {
+            // 空状态一行字就够（§2G5）。
+            Button { feature.bookOpen = false; feature.onCapture() } label: {
+              Text(feature.tab == "todo" ? "没有待判定的 · 记一笔" : "还没有记录 · 记一笔")
+                .foregroundStyle(t.ink3)
+                .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .listRowBackground(t.app)
+            .listRowSeparator(.hidden)
+            .accessibilityIdentifier("review.empty")
+          }
+          // 无限下滑：最后一行一露头就接下一页，不再有「上一页 / 下一页」。
+          if feature.isConnected && feature.nextPage != nil && feature.historyError == nil {
+            Color.clear.frame(height: 1)
+              .listRowBackground(t.app).listRowSeparator(.hidden)
+              .onAppear { Task { await feature.loadMoreHistory() } }
+              .accessibilityIdentifier("review.more")
+          }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(t.app)
+        .searchable(text: $filter, prompt: "品种或原话")
       }
-      // iPad 满屏时这一列封顶居中，不然分段控件摊成 1300pt、行里的胜率被甩到一米外。
+      // iPad 满屏时这一列封顶居中，不然筛选摊成 1300pt、行里的胜率被甩到一米外。
       .readableColumn()
       .background(t.app)
       .navigationTitle("复盘").navigationBarTitleDisplayMode(.inline)
@@ -69,19 +71,83 @@ public struct ReviewBook: View {
         }
         ToolbarItemGroup(placement: .primaryAction) {
           Button { feature.bookOpen = false; feature.onCapture() } label: { Image(systemName: "plus") }.accessibilityLabel("记一笔")
+          // 不常用的去处收在「…」里：现在只有「已存案例」一样。
+          Menu {
+            NavigationLink { ReviewSavedMatchesView(feature: feature) } label: { Label("已存案例", systemImage: "bookmark") }
+              .accessibilityIdentifier("review.menu.saved")
+          } label: { Image(systemName: "ellipsis.circle") }
+            .accessibilityLabel("更多")
+            .accessibilityIdentifier("review.menu")
         }
       }
-      // 「已记下 · 查看」那颗按钮先把 id 放进 `selectedRecord` 再开复盘本（§2F2），
+      // 「已记下 · 查看」、图上点记号都先把 id 放进 `selectedRecord` 再开复盘本（§2F2），
       // 这一行负责把它翻到那条上。列表里正常点进去走的还是 `NavigationLink`，
       // 两条路互不干扰；退回列表时把 id 清掉，免得下次开复盘本又自己弹进去。
       .navigationDestination(item: $feature.selectedRecord) { id in
         ReviewRecordView(feature: feature, id: id)
       }
       .refreshable { feature.synchronize(manual: true); await feature.loadHistory(query: filter) }
-      .task(id: feature.tab) { if feature.tab == "stats" { await feature.loadStatistics() } else { await feature.loadHistory(query: filter) } }
-      .task(id: filter) { do { try await Task.sleep(for: .milliseconds(350)); if feature.tab != "stats" { await feature.loadHistory(query: filter) } } catch {} }
+      .task(id: feature.tab) { await feature.loadHistory(query: filter) }
+      .task(id: filter) { do { try await Task.sleep(for: .milliseconds(350)); await feature.loadHistory(query: filter) } catch {} }
+      // 摘要卡底部那行「判定规则」来自战绩响应；已登录就顺手拉一次。
+      .task { if feature.isConnected { await feature.loadStatistics() } }
     }
     .tint(t.accent)
+  }
+  /// 战绩摘要卡。数字是本机这份记录现算的（离线也有）；点开是服务端算的分组战绩。
+  private var summary: some View {
+    let live = feature.records.filter { !$0.voided }
+    let right = live.filter { $0.outcome == .realized }.count
+    let wrong = live.filter { $0.outcome == .unrealized }.count
+    return NavigationLink { ReviewStatisticsView(feature: feature) } label: {
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .firstTextBaseline) {
+          Text("战绩").font(.headline).foregroundStyle(t.ink)
+          Spacer()
+          Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(t.ink3)
+        }
+        HStack(spacing: 18) {
+          stat("记录", live.count); stat("判对", right); stat("判错", wrong)
+        }
+        Text("判定规则 \(feature.ruleVersion)").font(.caption2).foregroundStyle(t.ink3)
+          .accessibilityIdentifier("review.ruleVersion")
+      }
+      .padding(12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(t.raised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+      .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("review.summary")
+  }
+  private func stat(_ title: String, _ value: Int) -> some View {
+    VStack(alignment: .leading, spacing: 1) {
+      Text("\(value)").font(.title3.monospacedDigit().weight(.semibold)).foregroundStyle(t.ink)
+      Text(title).font(.caption).foregroundStyle(t.ink3)
+    }
+  }
+  /// 「全部 · 待判定 N · 已判定」。N 和底栏、顶栏的角标是同一个数（`pendingCount`）。
+  private var chips: some View {
+    HStack(spacing: 8) {
+      chip("全部", tag: "all")
+      chip(feature.pendingCount > 0 ? "待判定 \(feature.pendingCount)" : "待判定", tag: "todo")
+      chip("已判定", tag: "decided")
+      Spacer(minLength: 0)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("review.chips")
+  }
+  private func chip(_ title: String, tag: String) -> some View {
+    let on = feature.tab == tag
+    return Button { feature.tab = tag } label: {
+      Text(title).font(.subheadline.weight(on ? .semibold : .regular)).monospacedDigit()
+        .foregroundStyle(on ? t.onAccent : t.ink2)
+        .padding(.horizontal, 14).frame(minHeight: 32)
+        .background(on ? t.accent : t.raised, in: Capsule())
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("review.chip.\(tag)")
+    .accessibilityAddTraits(on ? .isSelected : [])
   }
   private var filtered: [ReviewRecord] { feature.bookRecords.filter { filter.isEmpty || $0.draft.range.symbol.localizedCaseInsensitiveContains(filter) || $0.draft.text.localizedCaseInsensitiveContains(filter) } }
   @ViewBuilder private func group(_ title: String?, records: [ReviewRecord]) -> some View {
@@ -94,13 +160,18 @@ public struct ReviewBook: View {
       } header: { if let title { Text(title).foregroundStyle(t.ink3) } }
     }
   }
-  private var statistics: some View {
+}
+/// 摘要卡点开的完整战绩：按同一类判断分组，样本够了才给百分比。
+struct ReviewStatisticsView: View {
+  @Bindable var feature: ReviewFeature
+  @Environment(\.reviewTheme) private var t
+  var body: some View {
     List {
       if !feature.isConnected {
         // 没登录不是「出错」，是这一页还没轮到它：一句话 + 一颗「登录」，不给「重试」——
         // 重试一百次也还是没登录（§2G3）。
         Text("登录后可用").foregroundStyle(t.ink3).listRowBackground(t.app)
-        Button("登录") { feature.onLogin() }.listRowBackground(t.app)
+        Button("登录") { feature.bookOpen = false; feature.onLogin() }.listRowBackground(t.app)
           .accessibilityIdentifier("review.stats.login")
       } else if let error = feature.statisticsError {
         Text(error).foregroundStyle(t.ink3).listRowBackground(t.app)
@@ -115,19 +186,23 @@ public struct ReviewBook: View {
           }
           Spacer()
           // 样本够了才写百分比，不够就写「样本不足」（审查 B-07 / B.2）。
-          // 一笔判错算出来的那个 0% 不是战绩，是噪声；把它排版成一个大号百分数，
-          // 人会真的照着它改自己的做法。够不够由服务端的 `verdict_status` 说了算，
-          // 那个数它一直在算，只是以前客户端没接。
           Text(group.rateText)
             .font(group.verdict == "insufficient" ? .subheadline : .title2.monospacedDigit())
             .foregroundStyle(group.verdict == "insufficient" ? t.ink3 : t.ink)
         }
         .listRowBackground(t.app)
       }
+      if feature.isConnected {
+        Text("判定规则 \(feature.ruleVersion)").font(.caption2).foregroundStyle(t.ink3)
+          .listRowBackground(t.app).listRowSeparator(.hidden)
+      }
     }
     .listStyle(.plain)
     .scrollContentBackground(.hidden)
     .background(t.app)
+    .readableColumn()
+    .navigationTitle("战绩").navigationBarTitleDisplayMode(.inline)
+    .task { await feature.loadStatistics() }
   }
 }
 struct ReviewRecordRow: View {
@@ -240,6 +315,7 @@ public struct ReviewRecordView: View {
               feature.search(record.draft.range, cutoff: record.draft.created, scope: feature.searchScope)
             }
           }.listRowBackground(t.raised)
+          if feature.isConnected { ReviewAttachmentsSection(feature: feature, record: record) }
           Section("市场的答案") { Text(record.outcome.title).foregroundStyle(t.ink); if let result = record.assessment { Text(result.reason).font(.caption).foregroundStyle(t.ink3) } }
             .listRowBackground(t.raised)
           Section("现在怎么看") { TextField("当时的判断，哪些成立", text: $note, axis: .vertical).lineLimit(3...8) }
@@ -253,6 +329,13 @@ public struct ReviewRecordView: View {
           if !record.reflectionHistory.isEmpty {
             Section("历史复盘") { ForEach(Array(record.reflectionHistory.enumerated()), id: \.offset) { _, reflection in Text(reflection.note.isEmpty ? "未写内容" : reflection.note).foregroundStyle(t.ink2) } }
               .listRowBackground(t.raised)
+          }
+          // 每一版规则 / 判定 / 复盘的完整内容，按时间排；只读，不能把旧版覆盖回来。
+          if feature.isConnected && record.serverId != nil {
+            Section {
+              NavigationLink { ReviewRevisionsView(feature: feature, record: record) } label: { Text("修订记录").foregroundStyle(t.ink) }
+                .accessibilityIdentifier("review.revisions")
+            }.listRowBackground(t.raised)
           }
           if !record.voided {
             // 警示走 `danger`，不是跌色——出厂红涨绿跌时 `t.down` 是绿的（见 `ReviewTheme.danger`）。

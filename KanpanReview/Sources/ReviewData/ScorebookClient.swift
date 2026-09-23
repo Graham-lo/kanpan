@@ -116,6 +116,58 @@ public struct NativeSearchResponse: Codable, Sendable { public var items: [Revie
 public struct NativeSearchJob: Codable, Sendable { public var id: UUID; public var status: String; public var cutoff: Int64; public var checked: Int?; public var total: Int?; public var error: String? }
 public struct NativeMatchResponse: Codable, Sendable { public var item: ReviewMatch }
 private struct OKResponse: Codable, Sendable { var ok: Bool }
+public struct NativeSavedMatch: Codable, Sendable, Identifiable {
+  public var item: ReviewMatch
+  public var revision: Int
+  public var id: String { item.id }
+  public init(item: ReviewMatch, revision: Int) { self.item = item; self.revision = revision }
+}
+public struct NativeSavedMatchesResponse: Codable, Sendable { public var items: [NativeSavedMatch]; public var next: String? }
+/// 修订记录里的一版。`body` 原样保留服务端那份 JSON，怎么念由界面按 `kind` 决定。
+public struct ReviewRevision: Codable, Sendable, Identifiable, Equatable {
+  public var kind: String
+  public var at: Int64
+  public var body: ReviewJSON
+  public var id: String { "\(kind)-\(at)-\(body.hashValue)" }
+  public init(kind: String, at: Int64, body: ReviewJSON) { self.kind = kind; self.at = at; self.body = body }
+}
+/// 补图的元数据。
+public struct ReviewAttachment: Codable, Sendable, Identifiable, Equatable {
+  public var id: UUID
+  public var recordId: UUID
+  public var mime: String
+  public var size: Int
+  public var createdAt: Int64
+  public init(id: UUID, recordId: UUID, mime: String, size: Int, createdAt: Int64) { self.id = id; self.recordId = recordId; self.mime = mime; self.size = size; self.createdAt = createdAt }
+}
+/// 一小段任意 JSON。修订记录的 `body` 各版形状不同，不值得为每一种各写一个类型。
+public enum ReviewJSON: Codable, Sendable, Hashable {
+  case null, bool(Bool), number(Double), string(String), array([ReviewJSON]), object([String: ReviewJSON])
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.singleValueContainer()
+    if c.decodeNil() { self = .null }
+    else if let v = try? c.decode(Bool.self) { self = .bool(v) }
+    else if let v = try? c.decode(Double.self) { self = .number(v) }
+    else if let v = try? c.decode(String.self) { self = .string(v) }
+    else if let v = try? c.decode([ReviewJSON].self) { self = .array(v) }
+    else { self = .object(try c.decode([String: ReviewJSON].self)) }
+  }
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.singleValueContainer()
+    switch self {
+    case .null: try c.encodeNil()
+    case .bool(let v): try c.encode(v)
+    case .number(let v): try c.encode(v)
+    case .string(let v): try c.encode(v)
+    case .array(let v): try c.encode(v)
+    case .object(let v): try c.encode(v)
+    }
+  }
+  public subscript(_ key: String) -> ReviewJSON? { if case .object(let v) = self { v[key] } else { nil } }
+  public var string: String? { if case .string(let v) = self { v } else { nil } }
+  public var number: Double? { if case .number(let v) = self { v } else { nil } }
+  public var bool: Bool? { if case .bool(let v) = self { v } else { nil } }
+}
 /// 战绩里每一组的**证据**。外层那几个键是驼峰，`proof` 里面是蛇形（它是领域层
 /// `statistics::summarize` 直接吐出来的 JSON），所以这两层各写各的 `CodingKeys`。
 public struct ReviewStatsProofGroup: Codable, Sendable {
@@ -242,11 +294,12 @@ public struct ScorebookClient: Sendable {
     let response: NativeRecordResponse = try await request("v1/native-review/records", method: "POST", body: operation.body, key: operation.id)
     return response.merged
   }
-  public func list(after: String? = nil, query: String = "", todo: Bool = false) async throws -> NativeListResponse {
+  public func list(after: String? = nil, query: String = "", todo: Bool = false, decided: Bool = false) async throws -> NativeListResponse {
     var parts = URLComponents(); var items: [URLQueryItem] = []
     if let after { items.append(URLQueryItem(name: "after", value: after)) }
     if !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
     if todo { items.append(URLQueryItem(name: "todo", value: "true")) }
+    if decided { items.append(URLQueryItem(name: "decided", value: "true")) }
     parts.queryItems = items.isEmpty ? nil : items
     return try await request("v1/native-review/records" + (parts.string ?? ""))
   }
@@ -264,6 +317,42 @@ public struct ScorebookClient: Sendable {
   public func saveMatch(_ match: ReviewMatch, search: UUID) async throws {
     struct Input: Encodable { var searchId: UUID; var matchId: String }
     let _: NativeMatchResponse = try await request("v1/native-review/saved-matches", method: "POST", body: JSONEncoder().encode(Input(searchId: search, matchId: match.id)), key: UUID())
+  }
+  /// 存下的相似案例，一页 50 条，`next` 是下一页从哪个 id 之后接着给。
+  public func savedMatches(after: String? = nil) async throws -> NativeSavedMatchesResponse {
+    let suffix = after.map { "?after=\($0)" } ?? ""
+    return try await request("v1/native-review/saved-matches" + suffix)
+  }
+  /// 删一条存下的案例。带上列表里读到的版本号：别的设备刚重新存过它，这一删就回 409，
+  /// 不会把人在另一台设备上刚做的事悄悄抹掉。
+  public func removeSavedMatch(_ id: String, expectedRevision: Int) async throws {
+    struct Input: Encodable { var expectedRevision: Int }
+    let _: OKResponse = try await request("v1/native-review/saved-matches/\(id)", method: "DELETE", body: JSONEncoder().encode(Input(expectedRevision: expectedRevision)), key: UUID())
+  }
+  /// 一条记录从记下到现在的每一版（规则 / 判定 / 复盘 / 作废 / 分组），按时间排好。只读。
+  public func revisions(_ id: UUID) async throws -> [ReviewRevision] {
+    struct Response: Decodable, Sendable { var revisions: [ReviewRevision] }
+    let value: Response = try await request("v1/native-review/records/\(id.uuidString)/revisions")
+    return value.revisions
+  }
+  /// 补一张图。`id` 由客户端生成：同一个 id 重发，服务端认作同一张，不吃额度。
+  public func uploadAttachment(id: UUID, record: UUID, image: Data) async throws {
+    struct Input: Encodable { var id: UUID; var recordId: UUID; var image: String }
+    let _: OKResponse = try await request("v1/native-review/attachments", method: "POST", body: JSONEncoder().encode(Input(id: id, recordId: record, image: image.base64EncodedString())))
+  }
+  /// 这条记录挂了哪几张补图（只有元数据）。
+  public func attachments(_ record: UUID) async throws -> [ReviewAttachment] {
+    struct Response: Decodable, Sendable { var items: [ReviewAttachment] }
+    let value: Response = try await request("v1/native-review/records/\(record.uuidString)/attachments")
+    return value.items
+  }
+  public func attachment(_ id: UUID) async throws -> Data? {
+    struct Shot: Decodable, Sendable { var image: String; var mime: String? }
+    let value: Shot = try await request("v1/native-review/attachments/\(id.uuidString)")
+    return Data(base64Encoded: value.image)
+  }
+  public func deleteAttachment(_ id: UUID) async throws {
+    let _: OKResponse = try await request("v1/native-review/attachments/\(id.uuidString)", method: "DELETE")
   }
   public func stats() async throws -> NativeStatsResponse { try await request("v1/native-review/statistics") }
   /// 把「记一笔」那张图放上去。

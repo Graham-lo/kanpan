@@ -122,6 +122,38 @@ import ReviewUI
     }
     proxy = ChartProxy(); state = live; mode = .capture; feature.begin(draft)
   }
+  /// 选区落到第 `left…right` 根：起止写成那两根的开盘 / 收盘边界，目标、失效没被手改过的
+  /// 就跟着区间的高低点重算。图上拖手柄和卡片上改时刻走的是这同一段（P3.7）。
+  static func snap(_ draft: inout ReviewDraft, left: Int, right: Int, series s: BarSeries) {
+    guard s.count > 0 else { return }
+    let left = max(0, min(s.count - 1, left)), right = max(left, min(s.count - 1, right))
+    draft.range.start = s.time(at: left)
+    draft.range.end = closeTime(s.time(at: right), interval: s.interval)
+    draft.range.bars = right - left + 1
+    let high = s.high[left...right].max() ?? draft.rule.target, low = s.low[left...right].min() ?? draft.rule.invalidation
+    if !draft.rule.targetEdited { draft.rule.target = draft.rule.direction == .short ? low : high }
+    if !draft.rule.invalidationEdited { draft.rule.invalidation = draft.rule.direction == .short ? high : low }
+  }
+  /// 卡片上两颗时间钮改出来的起止（`ReviewFeature.editRange`）。挑到的时刻落在哪根 K 线里
+  /// 就吸到哪根（向下取整，不是就近——「从 10:05 起」说的是 10:00 那根）；少于三根时
+  /// 由没动的那一头让位；选区不在屏上就把图挪过去，人改完一眼就能看见它落在哪。
+  func editRange(start: Int64, end: Int64, feature: ReviewFeature) {
+    guard mode == .capture, var draft = feature.draft,
+          let s = proxy.box?.chart.state?.series ?? state?.series, s.count >= 3 else { return }
+    func floorIndex(_ t: Int64) -> Int {
+      var i = s.index(atTime: Double(t))
+      while i > 0 && s.time(at: i) > t { i -= 1 }
+      return i
+    }
+    var left = floorIndex(start), right = floorIndex(end - 1)
+    if right - left < 2 {
+      if start != draft.range.start { left = max(0, right - 2) } else { right = min(s.count - 1, left + 2) }
+      if right - left < 2 { left = max(0, right - 2); right = min(s.count - 1, left + 2) }
+    }
+    Self.snap(&draft, left: left, right: right, series: s)
+    feature.draft = draft; feature.saveDraft()
+    proxy.box?.chart.reveal(from: Double(draft.range.start), to: Double(draft.range.end))
+  }
   func endCapture(feature: ReviewFeature) {
     feature.saveDraft(); feature.captureOpen = false; mode = .live; state = nil; proxy = ChartProxy()
   }
