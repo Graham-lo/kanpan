@@ -4,7 +4,8 @@ import Foundation
 ///
 /// 选法和 `PrefsStore.deviceStorage()` / `MarketRoutePolicyStore.defaults` 一致：
 /// UI 用例各自有自己的一套 defaults，跑测不会把真机上的镜像改掉。
-/// `LaunchHostMirror` 和 `LaunchThemeMirror` 共用这一份，免得两处各写一遍走样。
+/// 今天只有 `LaunchThemeMirror` 用它（冷启动热身原来的 `LaunchHostMirror` 随自定义域名
+/// 一起删了，热身改问 `RouteResolver`）。
 enum LaunchMirror {
   /// 单测专用：把整份镜像挪进**这条用例自己的**柜子。
   ///
@@ -39,7 +40,7 @@ enum LaunchMirror {
 
 /// 冷启动**第一帧底色**要用的皮肤与深浅，在本机留的一份镜像。
 ///
-/// 病根和 `LaunchHostMirror` 是同一个：皮肤 / 深浅的真身在账号目录里的 `prefs.json`
+/// 病根：皮肤 / 深浅的真身在账号目录里的 `prefs.json`
 /// （`PersonalFileStorage`），而 `MainScreen` 那个 `PrefsStore` 是在第一帧**之前**就
 /// 构造好的，那一刻只有 `UserDefaults` 可读——里头根本没有 prefs 这个键，于是读出来的
 /// 是**出厂值**（青苔 · 跟随系统）。没登录的人还好，访客档案在 `boot()` 里是同步装的，
@@ -48,11 +49,11 @@ enum LaunchMirror {
 /// 等账号回来再整屏换一次。这正是判据①（改过的设置在这条路上悄悄回了默认）
 /// 和判据③（改完要等一下才生效）。
 ///
-/// 所以照 `LaunchHostMirror` 的老规矩办：`PrefsStore` 每次落盘、每次换档案都顺手把
+/// 所以照 `MarketRoutePolicyStore` 的老规矩办：`PrefsStore` 每次落盘、每次换档案都顺手把
 /// 皮肤与深浅镜像到本机，第一帧直接拿镜像开张，不解整份 `Prefs`，也不等账号桥。
 /// 没镜像（全新安装、或升上这版的第一次启动）就按出厂值走，和原来一样，不会更差。
 ///
-/// 和 `LaunchHostMirror` 的一点不同：域名是「这台机器所处网络的属性」，本来就不跟人走；
+/// 和线路镜像的一点不同：线路是「这台机器所处网络的属性」，本来就不跟人走；
 /// 皮肤和深浅**是跟人走的**（在 `PersonalSyncCodec.fields` 里），这儿留的只是
 /// 「这台机器上最后一次落盘的那个人的皮肤」——一份给第一帧顶上用的缓存。真档案一到货
 /// （`AppAccountBridge.onProfileReady`）就以档案为准，镜像随下一次落盘改过来。

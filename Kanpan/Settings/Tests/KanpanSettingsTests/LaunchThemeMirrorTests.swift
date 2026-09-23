@@ -70,7 +70,7 @@ struct LaunchThemeMirrorTests {
       #expect(p.skin == .classic)
       #expect(p.theme == .light)
       #expect(p.interval == Prefs.defaults.interval)
-      #expect(p.apiHost == Prefs.defaults.apiHost)
+      #expect(p.routePolicy == Prefs.defaults.routePolicy)
       #expect(p.subs == Prefs.defaults.subs)
       wipe()
     }

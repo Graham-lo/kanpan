@@ -197,11 +197,9 @@ struct PrefsFieldPlanTests {
   /// 是 `.synced`，于是有过这么一出：A 在自己的网络里选了网关并同步上去，B 本来是直连、
   /// 这个字段还干净，B 同步一轮之后存档里就成了网关——B 从头到尾没碰过线路那两档。
   ///
-  /// 现在这一摊三项全部 `deviceOnly`，判据是同一条「这是不是这台机器 / 这张网的属性」：
-  ///
-  /// - `apiHost` / `streamHost`：具体主机名。
-  /// - `routePolicy`：直连还是走 VPS 网关，取决于这台手机这张网连得通哪一头，
-  ///   不是他摆出来的样子。
+  /// 现在它是 `deviceOnly`，判据是「这是不是这台机器 / 这张网的属性」：直连还是走 VPS
+  /// 网关，取决于这台手机这张网连得通哪一头，不是他摆出来的样子。（原来并排的
+  /// `apiHost` / `streamHost` 两个自定义域名字段 2026-09-24 删了，审查 18a。）
   ///
   /// **产品规则本身一个字没变**：出厂默认直连、只有两档、手动选、没有任何自动切换。
   /// 变的只有一件事——这个选择不再跨设备覆盖。
@@ -209,9 +207,12 @@ struct PrefsFieldPlanTests {
   /// 服务端那一侧仍然认 `routePolicy`（进了 `PrefsFieldPlan.wireOnlyKeys`）：口袋里还有
   /// 老版本客户端在发它，而服务端对含未知字段的操作是**整条拒绝**，把它从白名单上删掉
   /// 等于把那台手机的同步队列堵死。新客户端既不发也不收。
-  @Test("直连 / 网关留在这台设备上，域名也是")
+  @Test("直连 / 网关留在这台设备上")
   func routePolicyStaysOnThisDevice() {
-    for name in ["routePolicy", "apiHost", "streamHost", "launchSnapshot"] {
+    for name in ["apiHost", "streamHost"] {
+      #expect(PrefsFieldPlan.table[name] == nil, "\(name) 已删：主机一律由 RouteResolver 按线路给")
+    }
+    for name in ["routePolicy", "launchSnapshot"] {
       #expect(PrefsFieldPlan.table[name] == .deviceOnly, "\(name) 是这台机器 / 这张网的属性，不跟人走")
       #expect(!Prefs.syncedFieldNames.contains(name), "\(name) 进了同步白名单就会被发上去")
     }
@@ -229,16 +230,13 @@ struct PrefsFieldPlanTests {
             "服务端不认它，老客户端那条操作会被整条拒绝，队列从此堵死（提交 a161bb0）")
 
     // 换档案（登录 / 退登 / 切账号）时按 `deviceOnlyFieldNames` 保本机值：
-    // 主机名留住，线路那两档也一起留住。
+    // 线路那两档留住。
     var mine = Prefs.defaults
-    mine.apiHost = "mine.example.com"
-    mine.streamHost = "mine-stream.example.com"
     mine.routePolicy = .gateway
     var theirs = Prefs.defaults
     theirs.routePolicy = .direct
     theirs.skin = .terra
     let merged = Prefs.keeping(Prefs.deviceOnlyFieldNames, of: mine, over: theirs)
-    #expect(merged.apiHost == "mine.example.com" && merged.streamHost == "mine-stream.example.com")
     #expect(merged.routePolicy == .gateway, "这台设备选的那一档不被新档案盖掉")
     #expect(merged.skin == .terra, "真正跟着人走的那些照旧由新档案说了算")
   }

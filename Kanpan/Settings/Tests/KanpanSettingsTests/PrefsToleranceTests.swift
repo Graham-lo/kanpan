@@ -130,11 +130,15 @@ struct PrefsToleranceTests {
     #expect(c.quickIntervals == [.m1, .m3, .m5, .m15, .m30, .h1])
   }
 
-  @Test("域名：修得好就修，修不好退回默认")
-  func 脏域名() {
-    #expect(decode(#"{"apiHost":"  HTTPS://Fapi.Example.COM/  "}"#).apiHost == "fapi.example.com")
-    #expect(decode(#"{"apiHost":"不是域名"}"#).apiHost == APIHost.default)
-    #expect(decode(#"{"apiHost":""}"#).apiHost == APIHost.default)
+  @Test("旧存档里的自定义域名键直接忽略，别的设置照读")
+  func 旧域名键() {
+    let p = decode(#"{"apiHost":"fapi.example.com","streamHost":"stream.example.com","interval":"4h"}"#)
+    #expect(p.interval == .h4)
+    var expected = Prefs.defaults
+    expected.interval = .h4
+    #expect(p == expected)
+    let text = String(decoding: PrefsCodec.encode(p), as: UTF8.self)
+    #expect(!text.contains("apiHost") && !text.contains("streamHost"), "删掉的键不再写回盘上")
   }
 
   @Test("坏档进 store：能起来，而且不会把坏档留在盘上")
@@ -176,37 +180,18 @@ struct IndicatorParamRuleTests {
   }
 }
 
-/// A6.10：自定义 API 域名。
-@Suite("API 域名")
+/// 出厂行情域名与测试网黑名单（审查 18a 之后 `APIHost` 只剩这三个常量）。
+@Suite("出厂行情域名")
 struct APIHostTests {
 
-  @Test("默认就是 fapi.binance.com")
-  func 默认值() {
-    #expect(Prefs.defaults.apiHost == "fapi.binance.com")
-  }
-
-  @Test("抄来的地址能normalize")
-  func 规范化() {
-    #expect(APIHost.normalize("https://FAPI.Binance.com/") == "fapi.binance.com")
-    #expect(APIHost.normalize(" wss://x.example.cn//") == "x.example.cn")
-    #expect(APIHost.normalize("fapi.binance.com") == "fapi.binance.com")
-  }
-
-  @Test("形状不对的都要拒绝，并且不写进设置")
-  func 拒绝() {
-    for bad in ["", "   ", "localhost", "a b.com", "x.com:443", "x.com/path", ".com", "x..com", "中文.com"] {
-      #expect(APIHost.reject(bad) != nil, "\(bad) 本该被拒")
-      var p = Prefs.defaults
-      #expect(p.setAPIHost(bad) != nil)
-      #expect(p.apiHost == APIHost.default)
+  @Test("出厂域名是币安生产盘，绝不落在测试网或旧域名黑名单里")
+  func 出厂域名() {
+    #expect(APIHost.default == "fapi.binance.com")
+    #expect(!APIHost.legacyStreams.contains(APIHost.defaultStream))
+    #expect(!APIHost.legacyStreams.contains(APIHost.default))
+    for host in [APIHost.default, APIHost.defaultStream] {
+      #expect(!host.hasSuffix("binancefuture.com"), "\(host) 是合约测试网")
     }
-  }
-
-  @Test("合法域名写得进去，往返后还在")
-  func 合法() {
-    var p = Prefs.defaults
-    #expect(p.setAPIHost(" https://Fapi.Mirror.COM/ ") == nil)
-    #expect(p.apiHost == "fapi.mirror.com")
-    #expect(PrefsCodec.decode(PrefsCodec.encode(p)).apiHost == "fapi.mirror.com")
+    #expect(APIHost.legacyStreams.contains("fstream.binancefuture.com"))
   }
 }

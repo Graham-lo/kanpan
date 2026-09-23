@@ -19,7 +19,6 @@ struct PrefsDefaultsTests {
     #expect(p.timeZone == .local)                    // chart.js: this.tz = 'local'
     #expect(p.redUp == true)                         // 国内习惯红涨绿跌，出厂即如此
     #expect(p.theme == .system)                      // app.js: 'auto'
-    #expect(p.apiHost == "fapi.binance.com")         // §4.1
     #expect(!p.countdown)                             // §10.4 默认开
     #expect(p.keepAwake)                             // §10.4 默认开
     #expect(p.launchSnapshot)                        // §4.3 默认开

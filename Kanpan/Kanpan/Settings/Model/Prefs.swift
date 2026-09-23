@@ -135,10 +135,6 @@ struct Prefs: Sendable, Equatable {
   var subHeightOverrides: [IndicatorID: Double] = [:]
 
   // ---------------------------------------------------------------- 网络
-  /// 自定义 API 域名（A6.10）。
-  var apiHost: String = APIHost.default
-  /// 自定义行情推送域名（WebSocket）。和 `apiHost` 分开，理由见 `APIHost.defaultStream`。
-  var streamHost: String = APIHost.defaultStream
   /// 行情线路：直连（默认）/ 网关。选了哪条就走哪条，代码不做自动切换。
   /// 存在这里而不是单独一个键，是为了跟着设置一起走：登录了随账号同步，
   /// 没登录就落在本机的访客档案里；`PrefsStore` 再把它镜像给 `MarketRoutePolicyStore`。
@@ -388,14 +384,5 @@ struct Prefs: Sendable, Equatable {
     quickIntervals.sort { a, b in
       (Interval.allCases.firstIndex(of: a) ?? 0) < (Interval.allCases.firstIndex(of: b) ?? 0)
     }
-  }
-
-  /// 改 API 域名。形状不对就不写，返回那句提示。
-  @discardableResult
-  mutating func setAPIHost(_ raw: String) -> String? {
-    let host = APIHost.normalize(raw)
-    if let why = APIHost.reject(host) { return why }
-    apiHost = host
-    return nil
   }
 }

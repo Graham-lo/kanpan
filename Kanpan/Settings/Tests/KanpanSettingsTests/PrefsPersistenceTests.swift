@@ -36,7 +36,6 @@ struct PrefsPersistenceTests {
     p.subs = [.dmi, .vol, .kdj]
     p.params = [.ma: [10, 30, 120], .macd: [8, 21, 5], .dmi: [7]]
     p.subHeightOverrides = [.dmi: 1.3, .vol: 0.6]
-    p.apiHost = "fapi.example.com"
     p.routePolicy = .gateway
     p.candleKind = .heikin
     p.gridChoice = .off

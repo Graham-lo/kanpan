@@ -82,7 +82,9 @@ extension Prefs: Codable {
     case barSpacing, mainInverted, subInverted
     case adaptiveIndicators, portraitHeight, hiddenOutputs, rsiUpper, rsiLower
     case overlays, subs, params, subHeightOverrides
-    case apiHost, streamHost, routePolicy
+    // `apiHost` / `streamHost`（自定义行情域名）2026-09-24 删了：设置里早就没有入口，
+    // 线路只剩直连 / 网关两档，主机一律由 `RouteResolver` 定。旧存档里的这两个键解码时忽略。
+    case routePolicy
     // 他在各页上摆出来的样子。全是加法加进来的新键，老存档里没有就退默认值。
     case favoritesSort, favoritesAscending, favoritesAmount, favoritesSparkline, favoritesExpanded
     case favoritesGroup
@@ -138,8 +140,6 @@ extension Prefs: Codable {
     try c.encode(Dictionary(uniqueKeysWithValues: params.map { ($0.key.rawValue, $0.value) }),
                  forKey: .params)
     try c.encode(Dictionary(uniqueKeysWithValues: subHeightOverrides.map { ($0.key.rawValue, $0.value) }), forKey: .subHeightOverrides)
-    try c.encode(apiHost, forKey: .apiHost)
-    try c.encode(streamHost, forKey: .streamHost)
     try c.encode(routePolicy.rawValue, forKey: .routePolicy)
     try c.encode(favoritesSort, forKey: .favoritesSort)
     try c.encode(favoritesAscending, forKey: .favoritesAscending)
@@ -281,14 +281,6 @@ extension Prefs: Codable {
 
     // 认不出的值（比如旧版本的「自动」）退回直连。
     if let raw = str(.routePolicy), let v = MarketRoutePolicy(rawValue: raw) { routePolicy = v }
-    if let raw = str(.apiHost) { apiHost = APIHost.sanitize(raw) }
-    if let raw = str(.streamHost) {
-      let host = APIHost.normalize(raw)
-      // 存过旧推送域名的设备直接迁到新默认值：那几台要么已经不发成交/K 线，要么
-      // 推的是测试网数据，留着等于让老用户永远看着一张不动的图。手动改过别的域名的不动。
-      if APIHost.legacyStreams.contains(host) { streamHost = APIHost.defaultStream }
-      else { streamHost = APIHost.isValid(host) ? host : APIHost.defaultStream }
-    }
 
     // 他在各页上摆出来的样子。全走 `decodeIfPresent`：老存档里一个都没有，
     // 缺了就留在上面那份 `.defaults` 给的出厂值上。

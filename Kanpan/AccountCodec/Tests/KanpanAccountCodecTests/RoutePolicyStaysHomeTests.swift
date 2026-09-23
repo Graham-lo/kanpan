@@ -79,7 +79,6 @@ struct RoutePolicyStaysHomeTests {
   func switchingProfilesKeepsThisDevicesRoute() {
     var onThisPhone = Prefs.defaults
     onThisPhone.routePolicy = .gateway
-    onThisPhone.apiHost = "mine.example.com"
 
     // 新档案：云端那份（或者访客档案）里线路是直连、皮肤是陶土。
     var incoming = Prefs.defaults
@@ -88,7 +87,6 @@ struct RoutePolicyStaysHomeTests {
     PersonalSyncCodec.keepDeviceFields(onThisPhone, in: &incoming)
 
     #expect(incoming.routePolicy == .gateway, "换档案不许把这台设备当前的选择重置掉")
-    #expect(incoming.apiHost == "mine.example.com")
     #expect(incoming.skin == .terra, "跟着人走的那些照旧由新档案说了算")
   }
 }
