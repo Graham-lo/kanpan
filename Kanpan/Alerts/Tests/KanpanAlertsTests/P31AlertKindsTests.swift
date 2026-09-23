@@ -244,6 +244,7 @@ struct P31AlertKindsTests {
     }
   }
 
+  // `WatchMoveMonitor.injectTestMove` 是 UI 用例的注入口，只在 DEBUG 里有；Release 下这一条不编。
   #if DEBUG
   @Test("UI 用例的注入写裸代号，自选是规范键：照样响（以前两边对不上，一声不响）")
   func testInjectionMatchesCanonicalFavorites() {

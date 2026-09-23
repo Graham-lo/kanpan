@@ -37,6 +37,9 @@ struct ReleaseTestRosterTests {
       + "那份计数存储趴在渲染热路径上，Release 里 `bump` 是空的、`count` 恒返回 0，"
       + "断言要么直接红，要么因为上界永远成立而假绿。同文件里「一次移动一条回调」"
       + "这类产品行为没被圈进去，Release 照样跑。",
+    "P31AlertKindsTests.swift":
+      "「UI 注入写裸代号也响」那一条调的是 `WatchMoveMonitor.injectTestMove`，"
+      + "那是 UI 用例的注入口，只在 DEBUG 里有。同文件其余用例两种配置都跑。",
   ]
 
   /// 允许跳过用例的文件，以及跳过的那一下是什么门。
