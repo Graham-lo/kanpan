@@ -38,7 +38,7 @@ public struct ReviewSearchView: View {
             } label: {
               HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                  Text(match.range.symbol + " · " + match.range.interval).fontWeight(.medium).foregroundStyle(t.ink)
+                  Text(match.range.shortSymbol + " · " + match.range.interval).fontWeight(.medium).foregroundStyle(t.ink)
                   // 相似区间大多在几个月甚至几年前，所以写全年份；时区跟着图表那一档走
                   // （审查 B-08）。原来是 `Text(Date, style: .date)`：只有日期、认设备时区，
                   // 点进去在图上看到的那一段和这一行写的日子能差一天。

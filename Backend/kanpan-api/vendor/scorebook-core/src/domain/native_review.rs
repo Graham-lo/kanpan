@@ -5,10 +5,12 @@ pub fn time(ms: i64) -> Result<DateTime<Utc>> { DateTime::from_timestamp_millis(
 pub fn validate_range(range: &ChartRange, cutoff: i64) -> Result<Interval> {
     let interval = Interval::exact(&range.interval)?;
     if !matches!((range.venue.as_str(),range.market.as_str()), ("binance","usd_m") | ("coinbase","spot"))
-        || range.symbol.len() > 40 || range.symbol.is_empty()
-        || !range.symbol.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-')
-        || (range.venue == "binance" && (!range.symbol.ends_with("USDT") || range.symbol.contains('-')))
-        || (range.venue == "coinbase" && !range.symbol.ends_with("-USD"))
+        || range.symbol.chars().count() > 40 || range.symbol.is_empty()
+        // 币安有汉字名的合约（「龙虾USDT」这类），它们在全市场历史里、也会被人复盘；
+        // 原来这里只认 ASCII，这些品种记不了、也永远比不上，「找相似」一碰到它就只能
+        // 报「部分行情暂缺」（P3.8）。字符表和品种目录共用 `instrument::symbol_character`。
+        || (range.venue == "binance" && (!range.symbol.ends_with("USDT") || !range.symbol.chars().all(crate::domain::instrument::symbol_character)))
+        || (range.venue == "coinbase" && (!range.symbol.ends_with("-USD") || !range.symbol.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-')))
         || range.start >= range.end || range.end > cutoff || !(3..=1500).contains(&range.bars)
         || interval.bars_between(time(range.start)?, time(range.end)?) != range.bars as i64 {
         return Err(Error::bad("invalid_chart_range"));
@@ -85,4 +87,28 @@ pub fn evaluate(record: &NativeRecord, bars: &[Bar], now: i64) -> Result<NativeA
         return Ok(answer("unrealized", "到期未达到目标", Some(r.expires)));
     }
     Ok(answer("waiting", "等待行情", None))
+}
+
+#[cfg(test)]
+mod range_tests {
+    use super::validate_range;
+    use crate::api::native_review::ChartRange;
+
+    fn range(venue: &str, market: &str, symbol: &str) -> ChartRange {
+        // 2026-07-01 07:30 起 64 根 15m。
+        let start = 1_782_891_000_000;
+        ChartRange { venue: venue.into(), market: market.into(), symbol: symbol.into(), interval: "15m".into(), start, end: start + 64 * 900_000, bars: 64 }
+    }
+
+    #[test]
+    fn han_named_binance_contracts_are_valid_ranges() {
+        let far = 2_000_000_000_000;
+        assert!(validate_range(&range("binance", "usd_m", "龙虾USDT"), far).is_ok());
+        assert!(validate_range(&range("binance", "usd_m", "BTCUSDT"), far).is_ok());
+        assert!(validate_range(&range("coinbase", "spot", "BTC-USD"), far).is_ok());
+        for bad in ["btcusdT", "BTC-USDT", "BTCUSD", "龙虾USDT/../x", "ＢＴＣUSDT"] {
+            assert!(validate_range(&range("binance", "usd_m", bad), far).is_err(), "{bad}");
+        }
+        assert!(validate_range(&range("coinbase", "spot", "龙虾-USD"), far).is_err());
+    }
 }

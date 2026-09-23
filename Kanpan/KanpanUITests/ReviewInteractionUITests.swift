@@ -321,6 +321,65 @@ final class ReviewInteractionUITests: KanpanUICase {
     closeAccount(user)
   }
 
+  // ------------------------------------------------------------ P3.8：找相似
+
+  /// 15m 和 4h 各框一段、点「找相似」，要真的出结果（线上后端、全市场一年历史）；
+  /// 15m 那一页左滑存下第一条，再去复盘本「…」→「已存案例」看到它。
+  func testFindSimilarOn15mAnd4hAndSaveOne() throws {
+    let user = "p38_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12).lowercased()
+    created.append(user)
+    register(user)
+    app.buttons[Ids.bottomChart].tap()
+    XCTAssertTrue(waitForLiveChart(), "没等到行情")
+    for tf in ["15m", "4h"] {
+      app.tapIntervalChip(tf)
+      XCTAssertTrue(waitUntil(timeout: Self.long) { self.app.buttons[Ids.intervalChip(tf)].isSelected }, "没切到 \(tf)")
+      XCTAssertTrue(waitForLiveChart(), "\(tf) 没等到行情")
+      guard openCapture() else { return }
+      XCTAssertTrue(waitUntil(timeout: Self.short) { (self.captureBars() ?? 0) >= 16 }, "\(tf) 取景不到 16 根")
+      note("\(tf) 取景根数=\(captureBars() ?? -1)")
+      app.buttons["找相似"].tap()
+      XCTAssertTrue(app.navigationBars["找相似"].waitForExistence(timeout: Self.short), "\(tf) 没开出找相似")
+      let row = app.buttons.matching(NSPredicate(format: "label CONTAINS '相似 0.'")).firstMatch
+      let started = Date()
+      let found = waitUntil(timeout: 150, poll: 1) {
+        row.exists || self.app.staticTexts["没有很像的区间"].exists
+      }
+      note("\(tf) 找相似用时 \(Int(Date().timeIntervalSince(started))) 秒，结果行=\(row.exists)")
+      XCTAssertTrue(found && row.exists, "\(tf) 找相似没出结果：\(app.debugDescription)")
+      shot("P38-\(tf)-找相似结果")
+      if tf == "15m", row.exists {
+        row.swipeLeft()
+        let save = app.buttons["保存"]
+        if expectExists(save, Self.short, "左滑没出「保存」") {
+          save.tap()
+          _ = XCTWaiter.wait(for: [XCTestExpectation(description: "save")], timeout: 2)
+          row.swipeLeft()
+          XCTAssertTrue(app.buttons["已保存"].waitForExistence(timeout: Self.short), "存了之后左滑没变成「已保存」")
+          shot("P38-15m-已保存")
+          row.swipeRight()
+        }
+      }
+      app.buttons["review.search.back"].tap()
+      XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.navigationBars["找相似"].exists }, "找相似没关掉")
+      app.buttons["记下"].tap()
+      XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons["记下"].exists }, "取景卡没收回去")
+    }
+
+    // 复盘本「…」→「已存案例」：刚存的那一条在。
+    app.buttons[Ids.topReview].tap()
+    guard expectExists(app.buttons["review.back"], Self.long, "「复盘」没开出复盘本") else { return }
+    app.buttons["review.menu"].tap()
+    let saved = app.buttons["review.menu.saved"]
+    guard expectExists(saved, Self.short, "「…」里没有「已存案例」") else { return }
+    saved.tap()
+    XCTAssertTrue(app.buttons["review.saved.row"].waitForExistence(timeout: Self.long), "已存案例里没有刚存的那一条")
+    shot("P38-已存案例-有一条")
+    app.navigationBars["已存案例"].buttons.firstMatch.tap()
+    if app.buttons["review.back"].waitForExistence(timeout: 3) { app.buttons["review.back"].tap() }
+    closeAccount(user)
+  }
+
   // ------------------------------------------------------------ 账号
 
   private func openAccountPage() {
