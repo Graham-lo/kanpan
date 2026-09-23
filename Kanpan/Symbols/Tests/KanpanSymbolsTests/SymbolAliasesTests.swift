@@ -12,6 +12,20 @@ struct SymbolAliasesTests {
   private let tesla = SymbolInfo(symbol: "binance/usd_m/TSLAUSDT", base: "TSLA", pricePrecision: 2,
                                  tickSize: 0.01, underlyingType: "EQUITY")
 
+  /// 倍数前缀只剥真的倍数：以前「剥所有前导数字、再见 M 就剥」把 MSFT 剥成 SFT，
+  /// 「微软」就搜不到了。
+  @Test("倍数前缀只剥 1000… 与 1M")
+  func multiplierKey() {
+    for (base, want) in [("1000PEPE", "PEPE"), ("1000000MOG", "MOG"), ("1MBABYDOGE", "BABYDOGE"),
+                         ("10000LADYS", "LADYS"), ("1INCH", "1INCH"), ("MATIC", "MATIC"),
+                         ("MSFT", "MSFT"), ("META", "META"), ("4", "4"), ("pepe", "PEPE")] {
+      #expect(SymbolAliases.key(base) == want, "\(base)")
+    }
+    #expect(SymbolAliases.names(base: "MSFT") == ["微软"])
+    #expect(SymbolAliases.names(base: "MATIC").contains("马蹄链"))
+    #expect(SymbolAliases.names(base: "1000PEPE") == SymbolAliases.names(base: "PEPE"))
+  }
+
   @Test("全拼与首字母是从中文名算出来的，不是抄的")
   func pinyinGeneration() throws {
     let btc = try #require(SymbolAliases.pinyin("比特币"))

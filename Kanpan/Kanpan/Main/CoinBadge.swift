@@ -284,8 +284,10 @@ extension CoinSpec {
   private static func resolve(_ base: String, asset: SymbolClassification.Asset?) -> CoinSpec {
     let key = base.uppercased()
     if let hit = known[key] ?? brand(key) { return hit }
-    // 「1000PEPE」「1000000BOB」这类杠杆代号：把前缀的数字剥掉再认一次品牌。
-    let stripped = String(key.drop(while: \.isNumber))
+    // 「1000PEPE」「1000000BOB」「1MBABYDOGE」这类倍数代号：把倍数剥掉再认一次品牌。
+    // 剥法只有 `SymbolAliases.key` 一份；剥不出东西时它原样返回，这里记成空串。
+    let multiplierFree = SymbolAliases.key(key)
+    let stripped = multiplierFree == key ? "" : multiplierFree
     if !stripped.isEmpty, let hit = known[stripped] ?? brand(stripped) { return hit }
 
     let name = stripped.isEmpty ? key : stripped

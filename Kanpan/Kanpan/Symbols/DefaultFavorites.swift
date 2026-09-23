@@ -77,12 +77,7 @@ enum DefaultFavorites {
     return out
   }
 
-  /// 合约代号里的币。倍数前缀（`1000PEPE`、`1MBABYDOGE`）不是名字的一部分——
-  /// 和 `SymbolAliases.key` 同一个口径，不然 `PEPE` 和 `1000PEPE` 会各占一行。
-  private static func base(_ info: SymbolInfo) -> String {
-    var s = Substring(info.base.uppercased())
-    while let c = s.first, c.isNumber { s = s.dropFirst() }
-    if s.first == "M", s.count >= 3 { s = s.dropFirst() }
-    return s.isEmpty ? info.base.uppercased() : String(s)
-  }
+  /// 合约代号里的币。倍数前缀（`1000PEPE`、`1MBABYDOGE`）不是名字的一部分，
+  /// 不然 `PEPE` 和 `1000PEPE` 会各占一行——剥法只有 `SymbolAliases.key` 一份。
+  private static func base(_ info: SymbolInfo) -> String { SymbolAliases.key(info.base) }
 }

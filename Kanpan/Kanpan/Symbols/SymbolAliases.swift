@@ -103,16 +103,27 @@ enum SymbolAliases {
     return out
   }
 
-  /// 查表用的键。
+  /// 查表用的键：大写、剥掉倍数前缀。**客户端只此一份**——自选出厂推荐按币去重
+  /// （`DefaultFavorites`）、徽章认品牌（`CoinSpec`）都用它（审查 2026-09-24 §2）。
   ///
   /// 币安把小面值的币按 1000 倍打包成合约（`1000PEPEUSDT` 的 base 就是 `1000PEPE`，
   /// 还有 `1MBABYDOGE` 这种百万倍的），倍数不是名字的一部分——人搜「佩佩」
   /// 要的就是那一个合约。所以查表前先把前面的倍数剥掉。
-  private static func key(_ base: String) -> String {
-    var s = Substring(base.uppercased())
-    while let c = s.first, c.isNumber { s = s.dropFirst() }
-    if s.first == "M", s.count >= 3 { s = s.dropFirst() }   // 1M / 1MB 那一族
-    return s.isEmpty ? base.uppercased() : String(s)
+  ///
+  /// 倍数只认两种写法：`1` 后面跟三个以上的 `0`（1000、10000、1000000），或者 `1M`。
+  /// 以前是「剥掉所有前导数字，再见 M 就剥」，于是没有倍数的 `MATIC`、`MSTR`、`META`
+  /// 也被剥成 `ATIC`、`STR`、`ETA`，中文名查不到；`1000000MOG` 剥成 `OG`；
+  /// 名字本身带数字的 `1INCH` 剥成 `INCH`。
+  static func key(_ base: String) -> String {
+    let upper = base.uppercased()
+    let digits = upper.prefix(while: \.isNumber)
+    var rest = upper.dropFirst(digits.count)
+    if digits == "1", rest.first == "M", rest.count >= 3 {
+      rest = rest.dropFirst()   // 1MBABYDOGE：百万倍
+    } else if !(digits.count >= 4 && digits.first == "1" && digits.dropFirst().allSatisfy { $0 == "0" }) {
+      return upper
+    }
+    return rest.isEmpty ? upper : String(rest)
   }
 
   private static func isHan(_ c: Character) -> Bool {
