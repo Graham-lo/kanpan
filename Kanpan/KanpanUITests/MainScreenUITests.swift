@@ -118,19 +118,21 @@ final class MainScreenUITests: KanpanUICase {
     check("favorites.price.binance/usd_m/BTCUSDT", digits: 1)
     shot("precision-favorites-crypto")
     app.buttons[Ids.bottomSectors].tap()
-    let more = app.buttons["sector.more"]
-    guard expectExists(more, Self.long) else { return }
-    more.tap()
-    app.otherElements["sector.all"].buttons["sector.market.us"].tap()
-    let storage = app.buttons["sector.all.row.mem"]
+    let usMarket = app.buttons["sector.market.us"]
+    guard expectExists(usMarket, Self.long) else { return }
+    usMarket.tap()
+    let storage = app.descendants(matching: .any)["sector.row.mem"].firstMatch
+    _ = storage.waitForExistence(timeout: Self.long)
+    for _ in 0..<8 where !storage.isHittable { app.swipeUp() }
     guard expectExists(storage, Self.long) else { return }
     storage.tap()
     check("sector.price." + testInstrumentKey("SNDKUSDT"), digits: 2)
     check("sector.price." + testInstrumentKey("MUUSDT"), digits: 2)
     shot("precision-sector-stocks")
     app.buttons["sector.list.back"].tap()
-    app.otherElements["sector.all"].buttons["sector.market.crypto"].tap()
-    let bitcoin = app.buttons["sector.all.row.btc-eco"]
+    app.buttons["sector.market.crypto"].tap()
+    let bitcoin = app.descendants(matching: .any)["sector.row.btc-eco"].firstMatch
+    _ = bitcoin.waitForExistence(timeout: Self.long)
     for _ in 0..<8 where !bitcoin.isHittable { app.swipeUp() }
     guard expectExists(bitcoin, Self.long) else { return }
     bitcoin.tap()
@@ -178,20 +180,16 @@ final class MainScreenUITests: KanpanUICase {
 
   // ---------------------------------------------------------------- 来回一趟
 
-  /// 板块 →「全部板块」→ 某个板块的品种列表 → 行情页 → 顶栏返回 → **还站在那张品种列表上**。
+  /// 板块列表 → 某个板块的品种列表 → 行情页 → 顶栏返回 → **还站在那张品种列表上**。
   ///
   /// 两件事一起验：顶栏那颗返回在「走进来」的图上要存在；退回去之后板块页下钻到
-  /// 第几层就还在第几层（路由挪到宿主身上之前，切走一次就整页重建，人被扔回球场）。
+  /// 第几层就还在第几层（路由挪到宿主身上之前，切走一次就整页重建，人被扔回板块列表）。
   func testSectorDrillDownRoundTripsThroughChart() {
     app.buttons[Ids.bottomSectors].tap()
     expectExists(app.otherElements["sector.page"], Self.long, "点「板块分类」没进板块页")
-    let more = app.buttons["sector.more"]
-    expectExists(more, Self.long, "板块页上没有「…」")
-    more.tap()
-
-    let sectorRow = app.buttons.matching(
-      NSPredicate(format: "identifier BEGINSWITH %@", "sector.all.row.")).firstMatch
-    expectExists(sectorRow, Self.long, "「全部板块」里一行都没有")
+    let sectorRow = app.descendants(matching: .any).matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "sector.row.")).firstMatch
+    expectExists(sectorRow, Self.long, "板块列表里一行都没有")
     sectorRow.tap()
 
     let listBack = app.buttons["sector.list.back"]
@@ -207,10 +205,8 @@ final class MainScreenUITests: KanpanUICase {
 
     expectExists(listBack, Self.long, "顶栏返回没把人放回那张品种列表")
     listBack.tap()
-    let allBack = app.buttons["sector.all.back"]
-    expectExists(allBack, Self.long, "品种列表退不回「全部板块」")
-    allBack.tap()
-    expectExists(more, Self.long, "「全部板块」退不回气泡场")
+    expectExists(sectorRow, Self.long, "品种列表退不回板块列表")
+    expectGone(listBack, Self.short, "退回板块列表之后品种列表还压在上面")
   }
 
   /// 自选行 → 行情页 → 顶栏返回 → 自选页。自选是「走进来」的另一条路。

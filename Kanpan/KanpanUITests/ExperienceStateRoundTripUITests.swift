@@ -333,17 +333,14 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     // 还是**记住了没还原到位**，这一串（`anchor=` / `top=` / `used=`）分得开。
     let favoritesDiagnosticsBefore = favoritesDiagnostics()
 
-    // 板块：下钻两层（全部板块 → 某个板块的品种列表）。
+    // 板块：下钻一层（板块列表 → 某个板块的品种列表）。
     // 注意全程不许在已经站在板块页时再点一次「板块分类」——那一下按规则要把下钻
-    // 路径清回气泡场（`MainScreen.switchTo`），会把这条腿自己验的东西擦掉。
+    // 路径清回板块列表（`MainScreen.switchTo`），会把这条腿自己验的东西擦掉。
     app.buttons[Ids.bottomSectors].tap()
     expectExists(app.otherElements["sector.page"], Self.long, "点「板块分类」没进板块页")
-    let more = app.buttons["sector.more"]
-    expectExists(more, Self.long, "板块页上没有「…」")
-    more.tap()
-    let sectorRow = app.buttons.matching(
-      NSPredicate(format: "identifier BEGINSWITH %@", "sector.all.row.")).firstMatch
-    expectExists(sectorRow, Self.long, "「全部板块」里一行都没有")
+    let sectorRow = app.descendants(matching: .any).matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "sector.row.")).firstMatch
+    expectExists(sectorRow, Self.long, "板块列表里一行都没有")
     sectorRow.tap()
     let listBack = app.buttons["sector.list.back"]
     expectExists(listBack, Self.long, "点一个板块没进它的品种列表")
@@ -372,7 +369,7 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
     // 回板块：还站在第二层那张品种列表上，而且还是同一个板块（C-01 钉的就是它）。
     app.buttons[Ids.bottomSectors].tap()
     XCTAssertTrue(listBack.waitForExistence(timeout: Self.long),
-                  "切回板块，人被扔回气泡场了——下钻路径没被持有")
+                  "切回板块，人被扔回板块列表了——下钻路径没被持有")
     XCTAssertTrue(app.buttons[sectorMemberID].waitForExistence(timeout: Self.long),
                   "切回板块，进的不是刚才那个板块（\(sectorMemberID) 不在了）")
 

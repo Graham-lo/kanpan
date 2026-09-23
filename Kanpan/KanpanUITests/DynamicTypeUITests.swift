@@ -7,7 +7,7 @@ import XCTest
 // （`UICTContentSizeCategoryAccessibilityXL`）下走五页：
 //
 // - 行情页头部：六格仍在价格右边，价格、六格、周期条的位置和默认档一个 pt 都不差；
-// - 自选页、板块页（气泡场 + 全部板块 + 板块品种表）、设置整页、提醒总表：各留一张图，
+// - 自选页、板块页（板块列表 + 板块品种表）、设置整页、提醒总表：各留一张图，
 //   截字和重叠靠人看图判（验收报告里逐张写结论），用例只守「控件都还在窗口里」。
 //
 // 启动参数 `-UIPreferredContentSizeCategoryName` 是 UIKit 自己认的，不是测试后门。
@@ -46,20 +46,16 @@ final class DynamicTypeUITests: KanpanUICase {
     shot("AX3-自选")
     assertInWindow(["favorites.more", Ids.bottomChart], page: "自选")
 
-    // 板块页：气泡场 → 全部板块 → 一个板块的品种表
+    // 板块页：板块列表 → 一个板块的品种表
     app.buttons[Ids.bottomSectors].tap()
     expectExists(app.otherElements["sector.page"], Self.long, "AX3 下进不了板块页")
-    _ = waitUntil(timeout: Self.long) { self.app.otherElements["sector.bubbles"].exists }
-    shot("AX3-板块")
-    let more = app.buttons["sector.more"]
-    if expectExists(more, Self.short, "板块页上没有「…」") {
-      assertInWindow(["sector.more"], page: "板块")
-      more.tap()
-      let row = app.buttons.matching(
-        NSPredicate(format: "identifier BEGINSWITH %@", "sector.all.row.")).firstMatch
-      if expectExists(row, Self.long, "「全部板块」里一行都没有") {
-        shot("AX3-全部板块")
-        row.tap()
+    let row = app.descendants(matching: .any).matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "sector.row.")).firstMatch
+    if expectExists(row, Self.long, "板块列表里一行都没有") {
+      shot("AX3-板块")
+      assertInWindow(["sector.market"], page: "板块")
+      row.tap()
+      if expectExists(app.buttons["sector.list.back"], Self.long, "点一个板块没进它的品种表") {
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 2))
         shot("AX3-板块品种表")
       }
