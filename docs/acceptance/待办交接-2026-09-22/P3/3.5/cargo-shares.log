@@ -1,0 +1,12 @@
+[guard] 构建槽已满（当前预算 3，机器空闲时会自动放宽到 3），排队等槽…
+   Compiling kanpan-api v0.1.0 (/Users/mdd/zhk/kanpan-wt-pchain/Backend/kanpan-api)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 01s
+     Running tests/shares.rs (target/debug/deps/shares-630ef46a78943196)
+
+running 1 test
+test shares_are_private_make_friends_and_keep_independent_lines ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 29.82s
+
+Isolated test database and role removed.
+exit=0

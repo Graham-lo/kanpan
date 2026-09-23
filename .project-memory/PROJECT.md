@@ -407,3 +407,4 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 
 - **3.4 Handoff**：行情页（底栏停在图表）挂 `NSUserActivity`（`com.mdd.kanpan.chart`，userInfo 只有 `symbol`/`interval`），接力端 `.onContinueUserActivity` 把它拼成 `hkline://symbol/<S>?interval=` 交给 `DeepLinkRouter`——和通知点击、桌面快捷入口同一条路，不另写跳转。模拟器之间做不了 Handoff，用 `ChartHandoffTests`（含属性列表编解一次）顶替。无后端改动。报告：[3.4](../docs/acceptance/待办交接-2026-09-22/P3/3.4.md)。
 - 原 P3 补丁里连带的「回给他」（3.5）与导出 / 隐私条款 / 重置密码（3.6）从 3.4 拆出，各自单独提交与部署。
+- **3.5 回给他**：预览别人分享时卡片上「回给他」，在他的线上接着画、原路发回；服务端 `shares.reply_to` 只许回「对方发给我」的那封（否则 400 `invalid_reply_to`），收件方卡片写「XX 回了你」。已部署。报告：[3.5](../docs/acceptance/待办交接-2026-09-22/P3/3.5.md)。
