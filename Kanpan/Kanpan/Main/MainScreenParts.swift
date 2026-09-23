@@ -411,7 +411,7 @@ struct ReplayHeaderView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
-      Text("重温 · " + InstrumentID(bridge.state?.series.symbol ?? "").symbol).font(.headline)
+      Text("重温 · " + InstrumentID(bridge.state?.series.symbol ?? "").display).font(.headline)
       // 时间跟着**这张图自己的时区档**走，和时间轴、十字线、选区标签同一口径（审查 B-08）。
       // `Text(Date, style:)` 认的是设备时区：图表切到「交易所」之后，这一行和轴上
       // 写着两个时刻。

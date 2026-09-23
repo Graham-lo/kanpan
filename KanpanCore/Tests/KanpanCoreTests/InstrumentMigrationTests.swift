@@ -8,6 +8,9 @@ import Testing
     #expect(old.key == "binance/usd_m/BTCUSDT")
     #expect(InstrumentID(old.key) == old)
     #expect(InstrumentID("coinbase/spot/BTC-USD") != old)
+    // 给人看的代号：带横杠的写成斜杠，连写的原样。
+    #expect(InstrumentID("coinbase/spot/BTC-USD").display == "BTC/USD")
+    #expect(old.display == "BTCUSDT")
     #expect(!InstrumentID("coinbase/../BTC-USD").isValid)
     let data = Data(#"{"symbol":"BTCUSDT","base":"BTC","pricePrecision":1,"tickSize":0.1}"#.utf8)
     #expect(try JSONDecoder().decode(SymbolInfo.self, from: data).id == old)

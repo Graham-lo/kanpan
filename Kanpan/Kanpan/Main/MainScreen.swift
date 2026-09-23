@@ -1,6 +1,7 @@
 import KanpanChart
 import KanpanCore
 import KanpanData
+import KanpanNetwork
 import SwiftUI
 import UIKit
 import ReviewDomain
@@ -65,7 +66,8 @@ struct MainScreen: View {
   /// 规则全在 `ChartViewport` 里。这一层只负责**报事件**——用户在捏、手松了、
   /// 档案到货了——**一个字都不许自己决定要不要写盘**。
   @State private var viewport: ChartViewport
-  @State private var picker = SymbolPickerModel(store: SymbolPrefsStore(storage: SymbolPrefsStore.deviceStorage()))
+  @State private var picker = SymbolPickerModel(store: SymbolPrefsStore(storage: SymbolPrefsStore.deviceStorage()),
+                                                venueCategory: { VenueRegistry.descriptor(forSymbol: $0).favoriteCategory })
   /// 自选页上正在做的那次批量编辑（编辑模式 + 勾中的那几行 + 冻住的报价）。
   ///
   /// 它必须挂在宿主身上：`portraitBody` 里的 `switch tab` 会把自选页整个拆掉，
@@ -573,7 +575,7 @@ struct MainScreen: View {
                       draw.highlight(drawingID: drawingID, symbol: SymbolPrefs.key(alert.symbol))
                     },
                     zone: prefs.timeZone.offsetMinutes,
-                    currentSymbol: InstrumentID(market.symbol).symbol,
+                    currentSymbol: InstrumentID(market.symbol).display,
                     quote: { text in alertQuote(text) },
                     prepareQuote: { [weak quotes] symbol in quotes?.watch(symbol) },
                     watching: activities.watching,
@@ -917,7 +919,16 @@ struct MainScreen: View {
   /// 退出画线，副图和均线原样回来，用户开着的那几个指标不需要重新打开。
   private var drawingCanvasOnly: Bool { draw.active && landscape }
   /// 外部指标在不支持的线路上保留对应空态，选择不随线路变化。
-  private var visibleSubs: [IndicatorID] { drawingCanvasOnly ? [] : prefs.subs }
+  ///
+  /// 例外是**整个市场就没有这类数据**（现货：没有持仓量、也没有任何衍生统计）：
+  /// 那不是线路暂时给不了，而是永远不会有，挂一格空态只是在报错。这时候这几格
+  /// 直接不画，`prefs.subs` 一个字不动——切回永续品种，它们原样回来。
+  private var visibleSubs: [IndicatorID] {
+    if drawingCanvasOnly { return [] }
+    let caps = market.capabilities
+    guard !caps.hasOpenInterest, !caps.hasDerivativeMetrics else { return prefs.subs }
+    return prefs.subs.filter { !$0.isExternal }
+  }
   private var visibleOverlays: [IndicatorID] { drawingCanvasOnly || comparing ? [] : prefs.overlays }
   /// 图上只调整当前可见副图的顺序，保留没有参与排序的设置。
   /// 横屏画线台不展示副图；网关则保留已选指标并显示空态。
@@ -1673,10 +1684,17 @@ struct MainScreen: View {
   private func alertQuote(_ text: String) -> PriceAlertQuote? {
     let raw = text.trimmingCharacters(in: .whitespaces).uppercased()
     guard !raw.isEmpty else { return nil }
-    // 输入框里是给人看的代号（「BTCUSDT」「ETH」），报价簿、目录、提醒存的都是完整 key。
+    // 输入框里是给人看的代号（「BTCUSDT」「ETH」「BTC/USD」），报价簿、目录、提醒存的都是完整 key。
+    // 别家的代号带「-」、显示成「/」，比的时候两样都抹掉：「BTC/USD」「BTC-USD」「BTCUSD」都认。
     let main = InstrumentID.canonical(market.symbol)
-    let symbol = [raw, raw + "USDT"].map(InstrumentID.canonical).first { picker.info(for: $0) != nil }
-      ?? (InstrumentID.canonical(raw) == main ? main : nil)
+    let flat = { (s: String) in s.uppercased().filter { $0 != "-" && $0 != "/" } }
+    let typed = flat(raw)
+    let symbol: String? = if typed == flat(InstrumentID(main).symbol) || raw == main.uppercased() {
+      main
+    } else {
+      [raw, raw + "USDT"].map(InstrumentID.canonical).first { picker.info(for: $0) != nil }
+        ?? picker.catalog.first { flat($0.id.symbol) == typed }?.id.key
+    }
     guard let symbol else { return nil }
     let price: Double?
     if symbol == main {

@@ -254,13 +254,19 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
 
   // ---------------------------------------------------------------- 自选分类
 
+  /// 按名字取一类，没有就新开。`after` 给了而且那一类在：新开的这一类紧跟在它后面
+  /// （交易所那一类要排在「美股」之后），否则排在最后。已有的分类不挪位置。
   @discardableResult
-  mutating func createGroup(_ name: String) -> String? {
+  mutating func createGroup(_ name: String, after anchor: String? = nil) -> String? {
     let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
     guard !trimmed.isEmpty else { return nil }
     if let existing = groups.first(where: { $0.name == trimmed }) { return existing.id }
     let id = UUID().uuidString
-    groups.append(.init(id: id, name: trimmed))
+    if let anchor, let at = groups.firstIndex(where: { $0.name == anchor }) {
+      groups.insert(.init(id: id, name: trimmed), at: at + 1)
+    } else {
+      groups.append(.init(id: id, name: trimmed))
+    }
     return id
   }
 

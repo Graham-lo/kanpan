@@ -162,6 +162,19 @@ struct SymbolSectionsTests {
   func countText() {
     #expect(SymbolSections.countText(catalog) == "\(catalog.count) 个永续合约")
     #expect(SymbolSections.countText([]) == "0 个永续合约")
+    // 表里并进了现货（别家交易所）：分开数，不把现货算成永续。
+    let spot = SymbolInfo(symbol: "coinbase/spot/BTC-USD", base: "BTC", quote: "USD",
+                          pricePrecision: 2, tickSize: 0.01, underlyingType: "COIN")
+    #expect(SymbolSections.countText(catalog + [spot]) == "\(catalog.count) 个永续合约 · 1 个现货")
+  }
+
+  @Test("现货行的小字写「现货」")
+  func spotMeta() {
+    let spot = SymbolInfo(symbol: "coinbase/spot/BTC-USD", base: "BTC", quote: "USD",
+                          pricePrecision: 2, tickSize: 0.01, underlyingType: "COIN")
+    let rows = SymbolSections.build(catalog: [spot], tickers: [:], prefs: SymbolPrefs(), query: "")
+      .first { $0.kind == .all }?.rows ?? []
+    #expect(rows.first?.meta == "BTC-USD 现货")
   }
 
   // ---------------------------------------------------------------- 行

@@ -1,6 +1,7 @@
 import KanpanChart
 import SwiftUI
 import KanpanCore
+import KanpanNetwork
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -318,6 +319,14 @@ struct SymbolRowView: View {
             if NewListingMark.shows(row.info) {
               NewListingMark(symbol: row.id, accent: Color(hex: seed.accent))
             }
+            // 别家交易所的品种在名字右边标一个灰色小字（默认那一家不标）——
+            // 两家所都有 BTC，搜出来并排时靠它分。
+            if let tag = VenueRegistry.descriptor(forSymbol: row.id).searchTag {
+              Text(tag)
+                .font(.system(size: metaSize))
+                .foregroundStyle(Color(hex: seed.ink3))
+                .accessibilityIdentifier("symbols.venue.\(row.id)")
+            }
           }
           Text(row.meta)
             .font(.system(size: metaSize))
@@ -404,7 +413,7 @@ private struct FavoriteDragModifier: ViewModifier {
       content
         .opacity(dragging == symbol ? 0.4 : 1)
         .draggable(symbol) {
-          Text(InstrumentID(symbol).symbol).font(.scaled(13, .medium)).padding(6)
+          Text(InstrumentID(symbol).display).font(.scaled(13, .medium)).padding(6)
         }
         .dropDestination(for: String.self) { items, _ in
           guard let from = items.first, from != symbol else { return false }

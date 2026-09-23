@@ -33,7 +33,7 @@ struct SymbolRow: Sendable, Equatable, Identifiable {
   var quoteSuffix: String { " / " + info.quote }
   /// 第二行小字。原型这行放的是「内嵌了哪些周期」，属于原型特有；
   /// 真 app 里放合约全称，和顶栏「BTCUSDT 永续 ▾」对上。
-  var meta: String { info.id.symbol + " 永续" }
+  var meta: String { info.id.symbol + " " + info.id.productLabel }
 
   /// 最新价。没有行情时原型给一个破折号 `—`。
   ///
@@ -107,7 +107,10 @@ enum SymbolSections {
   /// 数的是**还在交易的**那些。停牌和还没开盘的行现在也留在表里（审查 B-06），
   /// 把它们一起数进去，这行小字就会比「全部合约」里真能点的条数多出一百多个。
   static func countText(_ catalog: [SymbolInfo]) -> String {
-    "\(catalog.count { $0.status.hasLivePrice }) 个永续合约"
+    let live = catalog.filter { $0.status.hasLivePrice }
+    let spot = live.count { $0.id.market == "spot" }
+    let perps = "\(live.count - spot) 个永续合约"
+    return spot == 0 ? perps : perps + " · \(spot) 个现货"
   }
 
   /// 搭出整页的分区。
@@ -212,4 +215,10 @@ enum SymbolSections {
     }
     return out
   }
+}
+
+extension InstrumentID {
+  /// 品种名后面那枚小签：现货市场写「现货」，其余（币安 U 本位）写「永续」。
+  /// 按市场分、不按交易所分，这一层不认识任何一家交易所。
+  var productLabel: String { market == "spot" ? "现货" : "永续" }
 }

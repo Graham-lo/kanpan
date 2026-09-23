@@ -97,14 +97,22 @@ final class SymbolPickerModel {
     if active { rebuild() }
   }
 
+  /// 品种键 → 它所在交易所在自选页上的那一类（nil = 默认交易所，按资产类型分）。
+  /// 交易所清单在网络层的注册表里，这个包看不见，由宿主注进来。
+  private let venueCategory: @Sendable (String) -> String?
+  /// 交易所那一类排在哪一类后面（交接 §2：「美股」之后）。
+  static let venueCategoryAnchor = "美股"
+
   init(catalog: [SymbolInfo] = [],
        tickers: [Ticker] = [],
        store: SymbolPrefsStore,
-       catalogLoader: (@Sendable () async -> [SymbolInfo])? = nil) {
+       catalogLoader: (@Sendable () async -> [SymbolInfo])? = nil,
+       venueCategory: @escaping @Sendable (String) -> String? = { _ in nil }) {
     self.catalog = catalog
     self.filteredCatalog = catalog
     self.store = store
     self.catalogLoader = catalogLoader
+    self.venueCategory = venueCategory
     reindex()
     self.prefs = store.load()
     // 只有真给未分类的自选补了分类才回写。
@@ -239,6 +247,9 @@ final class SymbolPickerModel {
     let key = SymbolPrefs.key(symbol)
     guard !key.isEmpty else { return }
     prefs.addFavorite(key, in: currentGroup)
+    // 别家交易所的品种固定进它自己那一类（交接 §2 拍板：分类条上「美股」之后的那一格），
+    // 不跟着他此刻站着的那一类走——两家所的 BTC 混在一类里，一眼分不出是哪家的报价。
+    if assignVenueCategory(key) { commit(); return }
     // 已经落进一类了就到此为止——那一类就是**他此刻站着的那一类**
     // （`currentGroup`；停在「全部」时是默认的第一类）。用户 2026-09-20 定的：
     // 从某一类里点搜索加进来的品种要留在那一类，不再问他归哪儿，也不再按
@@ -288,6 +299,7 @@ final class SymbolPickerModel {
   private func classifyUnassigned() -> Bool {
     var changed = false
     for symbol in prefs.favorites where prefs.groupForSymbol[symbol] == nil {
+      if assignVenueCategory(symbol) { changed = true; continue }
       let facts = self.info(for: symbol)
       // 不知道它是什么就不编分类（审查 B-04）。已经有分类在时把它归到他此刻看的
       // 那一类——未归类的自选在分类页上根本看不见，宁可放错一格也不能让它消失；
@@ -301,6 +313,15 @@ final class SymbolPickerModel {
       if prefs.groupForSymbol[symbol] != nil { changed = true }
     }
     return changed
+  }
+
+  /// 这一只属于有自己分类的交易所：把它归进那一类（没有就在「美股」之后开一类）。
+  /// 返回是否归了——默认交易所的品种返回 false，照原来的规则走。
+  private func assignVenueCategory(_ symbol: String) -> Bool {
+    guard let name = venueCategory(symbol),
+          let group = prefs.createGroup(name, after: Self.venueCategoryAnchor) else { return false }
+    prefs.assign(symbol, to: group)
+    return true
   }
 
   func removeFavorite(_ symbol: String) {

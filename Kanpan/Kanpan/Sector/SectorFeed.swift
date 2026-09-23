@@ -157,6 +157,10 @@ import KanpanNetwork
   /// 比的是 symbol 集合的内容，不是条数：一张合约下架、另一张同时上架时条数一模一样，
   /// 只比数量会让整页一直拿着旧表算兜底桶。
   func setCatalog(_ catalog: [SymbolInfo]) {
+    // 品种页那份表是所有交易所并在一起的；板块只认分类表所属的那一家，
+    // 别家的品种（比如只在别家上市的币）不许混进兜底桶。
+    let venue = VenueRegistry.sectorVenue.id
+    let catalog = catalog.filter { $0.id.venue == venue }
     let ids = Set(catalog.map { InstrumentID.canonical($0.symbol) })
     guard ids != catalogIDs else { return }
     catalogIDs = ids

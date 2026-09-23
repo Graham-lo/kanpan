@@ -1047,7 +1047,7 @@ struct FavoritesView: View {
         VStack(alignment: .leading, spacing: 4) {
           HStack(alignment: .firstTextBaseline, spacing: 3) {
             Text(base).font(.scaled(13.5, .semibold)).foregroundStyle(theme.ink)
-            Text(quoteAsset(symbol)).font(.scaled(9)).foregroundStyle(skin.ink4)
+            Text(quoteLabel(symbol)).font(.scaled(9)).foregroundStyle(skin.ink4)
             if NewListingMark.shows(info) {
               NewListingMark(symbol: symbol, accent: skin.accent).padding(.leading, 2)
             }
@@ -1307,6 +1307,12 @@ struct FavoritesView: View {
   private func quoteAsset(_ symbol: String) -> String {
     model.info(for: symbol)?.quote ??
       SymbolInfo.placeholder(symbol: symbol).quote
+  }
+  /// 行里基础币后面那一小截。代号本身带分隔的（别家现货 `BTC-USD`）写成 `BTC/USD`，
+  /// 币安那种连写的代号照旧只写计价币。
+  private func quoteLabel(_ symbol: String) -> String {
+    let quote = quoteAsset(symbol)
+    return InstrumentID(symbol).symbol.contains("-") ? "/" + quote : quote
   }
   private func open(_ symbol: String) {
     // 先冻结名单再开图：这一刻的顺序就是人眼里那张表的顺序，之后行情再跳也不改它。

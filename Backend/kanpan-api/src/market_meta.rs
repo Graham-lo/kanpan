@@ -227,6 +227,12 @@ impl Market {
    Kind::PreMarket|Kind::Other|Kind::Unknown=>None,
   }
  }
+ /// 现货对（Coinbase 的 `BTC-USD`）的供应量：那一家现货只上币，所以直接按 base 查
+ /// 币的供应量表，和币安合约同一张表、同一条「七天没刷新就不出门」。
+ pub fn spot_meta(&self,pair:&str)->Option<Meta> {
+  let base=pair.strip_suffix("-USD").filter(|b|!b.is_empty()&&!b.contains('-'))?;
+  (!expired(self.coins_at)).then(||lookup(&self.coins,base)).flatten()
+ }
 }
 
 // ------------------------------------------------------------------- listings
@@ -651,7 +657,8 @@ pub fn meta_payload(market:&Market,symbols:Option<&str>)->Value {
   Some(list)=>for name in list.split(',').map(str::trim).filter(|s|!s.is_empty()).take(PAYLOAD_LIMIT) {
    let key=name.to_ascii_uppercase();
    if out.contains_key(&key) {continue}
-   if let Some(meta)=market.meta(&key) {out.insert(key,meta.value());}
+   let meta=if key.contains('-') {market.spot_meta(&key)} else {market.meta(&key)};
+   if let Some(meta)=meta {out.insert(key,meta.value());}
   },
   // The unfiltered form is the whole contract table: the equity rows are
   // already keyed by contract symbol, and a coin row is turned into a
@@ -1340,6 +1347,15 @@ mod tests {
   assert!(map.contains_key("BTCUSDT")&&map.contains_key("ETHUSDT"));
   assert!(!map.contains_key("HYPEUSDT"),"an unknown base must be absent, not null");
   assert_eq!(map["BTCUSDT"]["totalSupply"],json!(19_800_000.0));
+ }
+ /// Coinbase 现货对按 base 查同一张币表；不认识的币、不是 USD 计价的对都不答。
+ #[test]
+ fn spot_pairs_read_the_coin_table_by_base() {
+  let t=market(table(&[("BTC",supply(19_800_000.0))]),&["BTCUSDT"]);
+  let payload=meta_payload(&t,Some("BTC-USD,ETH-USD,BTC-EUR,-USD"));
+  let map=payload.as_object().unwrap();
+  assert_eq!(map.len(),1);
+  assert_eq!(map["BTC-USD"]["totalSupply"],json!(19_800_000.0));
  }
  #[test]
  fn omitting_symbols_returns_the_whole_table() {

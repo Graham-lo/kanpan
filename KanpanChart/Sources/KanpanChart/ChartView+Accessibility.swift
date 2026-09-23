@@ -28,7 +28,7 @@ extension ChartView {
       "低 " + fmtNum(b.low[i], d), "收 " + fmtNum(b.close[i], d), change,
     ].joined(separator: "，")
     guard s.crosshair == nil else { return bar }
-    return "\(InstrumentID(s.symbol.symbol).symbol)，\(b.interval.display)，最新一根 " + bar
+    return "\(InstrumentID(s.symbol.symbol).display)，\(b.interval.display)，最新一根 " + bar
   }
 
   public override func accessibilityIncrement() { stepCrosshairForVoiceOver(1) }

@@ -57,4 +57,46 @@ struct FavoriteCategoryTests {
     #expect(reloaded.prefs.groupForSymbol["binance/usd_m/BTCUSDT"] == custom)
     #expect(reloaded.prefs.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT", "binance/usd_m/MYSTERYUSDT"])
   }
+
+  /// 别家交易所的品种固定进它自己那一类，排在「美股」之后；不跟着他此刻站着的那一类走，
+  /// 默认交易所的品种照旧（交接 §2 拍板）。
+  @Test @MainActor func venueFavoritesGoToTheirOwnCategoryAfterUSEquities() throws {
+    let store = SymbolPrefsStore(storage: MemoryPrefsStorage())
+    let venue: @Sendable (String) -> String? = { $0.hasPrefix("coinbase/") ? "Coinbase" : nil }
+    let model = SymbolPickerModel(store: store, venueCategory: venue)
+    var selected: String? = nil
+    model.selectedGroupSource = { selected }
+    func info(_ symbol: String, _ base: String, _ type: String) -> SymbolInfo {
+      SymbolInfo(symbol: symbol, base: base, pricePrecision: 2, tickSize: 0.01, underlyingType: type)
+    }
+    model.addFavorite("binance/usd_m/BTCUSDT", info: info("binance/usd_m/BTCUSDT", "BTC", "COIN"))
+    selected = try #require(model.createGroup("美股"))
+    let mine = try #require(model.createGroup("长期"))
+    selected = mine
+    model.addFavorite("coinbase/spot/BTC-USD", info: info("coinbase/spot/BTC-USD", "BTC", "COIN"))
+    #expect(model.prefs.groups.map(\.name) == ["加密", "美股", "Coinbase", "长期"])
+    let own = try #require(model.prefs.groups.first { $0.name == "Coinbase" }?.id)
+    #expect(model.prefs.groupForSymbol["coinbase/spot/BTC-USD"] == own)
+    // 第二只进同一类，不再开新的。
+    model.addFavorite("coinbase/spot/ETH-USD", info: info("coinbase/spot/ETH-USD", "ETH", "COIN"))
+    #expect(model.prefs.groups.count == 4)
+    #expect(model.prefs.groupForSymbol["coinbase/spot/ETH-USD"] == own)
+    // 默认交易所的品种仍然留在他此刻那一类。
+    model.addFavorite("binance/usd_m/ETHUSDT", info: info("binance/usd_m/ETHUSDT", "ETH", "COIN"))
+    #expect(model.prefs.groupForSymbol["binance/usd_m/ETHUSDT"] == mine)
+    // 同步拉回来一只还没分类的别家品种：重开时补进它自己那一类。
+    var prefs = model.prefs
+    prefs.addFavorite("coinbase/spot/SOL-USD")
+    prefs.groupForSymbol["coinbase/spot/SOL-USD"] = nil
+    store.save(prefs)
+    let reopened = SymbolPickerModel(store: store, venueCategory: venue)
+    #expect(reopened.prefs.groupForSymbol["coinbase/spot/SOL-USD"] == own)
+  }
+
+  @Test func newCategoryWithoutAnchorGoesLast() {
+    var prefs = SymbolPrefs()
+    _ = prefs.createGroup("加密")
+    _ = prefs.createGroup("Coinbase", after: "美股")
+    #expect(prefs.groups.map(\.name) == ["加密", "Coinbase"])
+  }
 }

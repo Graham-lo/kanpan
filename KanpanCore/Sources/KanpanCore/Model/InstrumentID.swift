@@ -9,6 +9,9 @@ public struct InstrumentID: Hashable, Codable, Sendable, CustomStringConvertible
   public var key: String { "\(venue)/\(market)/\(symbol)" }
   public var description: String { key }
   public var marketKey: String { "\(venue)/\(market)" }
+  /// 给人看的代号：交易所代号里的 `-` 分隔（`BTC-USD`）显示成 `BTC/USD`，
+  /// 没有分隔的（`BTCUSDT`）原样。存储、请求、文件名一律用 `symbol`，不用它。
+  public var display: String { symbol.replacingOccurrences(of: "-", with: "/") }
 
   public init(venue: String, market: String, symbol: String) {
     self.venue = venue.lowercased()

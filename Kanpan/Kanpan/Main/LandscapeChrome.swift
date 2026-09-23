@@ -21,7 +21,7 @@ struct LandscapeHeadline: View {
 
   var body: some View {
     HStack(spacing: 8) {
-      Text(InstrumentID(symbol).symbol)
+      Text(InstrumentID(symbol).display)
         .font(.system(size: 13, weight: .semibold))
         .foregroundStyle(theme.ink)
       if onTapSymbol != nil {

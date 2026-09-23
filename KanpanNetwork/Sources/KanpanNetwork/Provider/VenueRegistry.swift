@@ -35,6 +35,8 @@ public struct VenueDescriptor: Sendable {
   }
 
   public var marketKey: String { "\(id)/\(market)" }
+  /// 自选页上它自己那一类的名字；nil = 不单列（按资产类型分）。
+  public var favoriteCategory: String? { hasFavoriteCategory ? displayName : nil }
 }
 
 /// **唯一的「有哪些交易所」清单。**

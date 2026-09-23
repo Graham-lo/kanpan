@@ -60,7 +60,7 @@ struct TopBar: View {
           }
           // 这儿原来还有一个 ▾。弹层没了，箭头就不能留——一个点不动的控件画着
           // 「点我展开」的记号，比没有记号更糟。
-          Text("永续")
+          Text(InstrumentID(symbol).productLabel)
             // 10pt 是界面上文字的下限（9.5 那一档小到得凑近看）；纯符号不在此列。
             .font(.scaled(10, .medium))
             .foregroundStyle(theme.ink3)
@@ -72,7 +72,7 @@ struct TopBar: View {
         .lineLimit(1)
       }
       .accessibilityElement(children: .combine)
-      .accessibilityLabel("当前品种 \(InstrumentID(symbol).symbol)")
+      .accessibilityLabel("当前品种 \(InstrumentID(symbol).display)")
       .accessibilityIdentifier("top.symbol")
 
       Spacer(minLength: 0)
