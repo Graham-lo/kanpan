@@ -39,6 +39,12 @@ public struct ProviderCapabilities: Sendable, Equatable {
   /// 有持仓量历史、多空比、主动买卖比、基差这类衍生统计（持仓量副图与那几个外部指标）。
   /// 没有的话界面上干脆不给这几个副图，不报错。
   public var hasDerivativeMetrics: Bool
+  /// 有持仓量历史（持仓量副图）。和 `hasDerivativeMetrics` 分开：网关线路上替身有自己的
+  /// 持仓量历史（服务端 `/v1/market/open-interest/history`），但没有多空比、主动买卖比、基差。
+  public var hasOpenInterestHistory: Bool
+  /// 持仓量历史更早的那段有归档（币安每日 metrics zip、看盘网关按它聚好的区间）。
+  /// 没有的话整段都问 `openInterestHist`，问到头就是头，不拿别家的归档来接。
+  public var hasOpenInterestArchive: Bool
   /// 一次请求就能拿全市场 24h 行情。
   public var hasBulkTickers: Bool
   /// 行情巡检判断「线路恢复」时，要不要连更早那段历史也探一下。
@@ -54,6 +60,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
               maxKlines: Int, initialKlines: Int, liveKlineIntervals: Set<Interval>,
               hasTickerStream: Bool, hasMarkPrice: Bool, hasFunding: Bool,
               openInterestSource: String?, hasMicrostructure: Bool, hasDerivativeMetrics: Bool,
+              hasOpenInterestHistory: Bool = false, hasOpenInterestArchive: Bool = false,
               hasBulkTickers: Bool, probesHistoryBoundary: Bool, snapshotNamespace: String? = nil,
               quoteAssets: [String]) {
     self.venue = venue; self.market = market; self.upstream = upstream ?? venue
@@ -63,6 +70,7 @@ public struct ProviderCapabilities: Sendable, Equatable {
     self.hasTickerStream = hasTickerStream; self.hasMarkPrice = hasMarkPrice; self.hasFunding = hasFunding
     self.openInterestSource = openInterestSource; self.hasMicrostructure = hasMicrostructure
     self.hasDerivativeMetrics = hasDerivativeMetrics; self.hasBulkTickers = hasBulkTickers
+    self.hasOpenInterestHistory = hasOpenInterestHistory; self.hasOpenInterestArchive = hasOpenInterestArchive
     self.probesHistoryBoundary = probesHistoryBoundary; self.snapshotNamespace = snapshotNamespace
     self.quoteAssets = quoteAssets
   }

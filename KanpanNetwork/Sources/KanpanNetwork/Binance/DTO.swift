@@ -343,9 +343,14 @@ extension StreamPayload: Decodable {
     case "24hrTicker":
       let sym = try c.decode(String.self, forKey: .s)
       func d(_ k: K) -> Double { (try? c.decode(String.self, forKey: k)).flatMap(Double.init) ?? .nan }
-      self = .ticker(Ticker(symbol: sym, last: d(.c), changePercent: d(.P),
-                            high: d(.h), low: d(.l), quoteVolume: d(.q), open24h: d(.o), timeMs: try c.decodeIfPresent(Int64.self, forKey: .C),
-                            lastTradeID: try c.decodeIfPresent(Int64.self, forKey: .L), priceChange: d(.p)))
+      // 网关转的替身帧（OKX）不带 `p`，同一帧里的最新价减 24h 开盘价就是它——币安自己
+      // 的 `p` 也是这么定义的。`q`（成交额）替身帧里是空串，这里留成缺失，由 REST 那帧补。
+      let last = d(.c), open = d(.o)
+      var change = d(.p)
+      if !change.isFinite, last.isFinite, open.isFinite, open > 0 { change = last - open }
+      self = .ticker(Ticker(symbol: sym, last: last, changePercent: d(.P),
+                            high: d(.h), low: d(.l), quoteVolume: d(.q), open24h: open, timeMs: try c.decodeIfPresent(Int64.self, forKey: .C),
+                            lastTradeID: try c.decodeIfPresent(Int64.self, forKey: .L), priceChange: change))
     case "markPriceUpdate":
       let sym = try c.decode(String.self, forKey: .s)
       // 数值字段币安一律发字符串，但回放文件 / 镜像偶尔发数字，两种都收。

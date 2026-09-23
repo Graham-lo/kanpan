@@ -9,7 +9,7 @@ import KanpanCore
 ///
 /// 网关线路上币安本家是被封的（451），服务端拿 OKX 的同名永续顶上——那是这一家
 /// 自己的事，见 `BinanceUpstream` 与 `RouteResolver`：同一个 venue（`binance`），
-/// 能力位不一样（首屏深度、没有 24h 推送、没有盘口），上层照能力位办事就行。
+/// 能力位不一样（首屏深度、没有标记价推送、没有盘口），上层照能力位办事就行。
 public struct BinanceProvider: MarketProvider {
   public static let venue = "binance"
   public static let market = "usd_m"
@@ -112,15 +112,20 @@ public struct BinanceProvider: MarketProvider {
         liveKlineIntervals: nativeIntervals,
         hasTickerStream: true, hasMarkPrice: true, hasFunding: true,
         openInterestSource: "binance", hasMicrostructure: true, hasDerivativeMetrics: true,
+        hasOpenInterestHistory: true, hasOpenInterestArchive: true,
         hasBulkTickers: true, probesHistoryBoundary: true, snapshotNamespace: nil,
         quoteAssets: ["USDT"])
     case .okx:
       // OKX 替身：网关只有「最新窗口且 limit ≤ 300」才是一次请求，再深就要在 VPS 上
       // 按 100 根翻十几页拼出来（`Backend/kanpan-gateway/market_rest.py` 的 klines 分支），
       // 首屏反而更慢，所以首屏只要 300 根，深度交给后台加深。
-      // 网关这条组合流只转 kline：没有 24h 推送、标记价、逐笔方向与盘口；
-      // 持仓量历史副图与那几个外部指标也只在币安本家上开（顶栏「仓」那一格走网关按
-      // OKX 口径取，见 `openInterestSource`）。
+      // 网关的 OKX 组合流（`Backend/kanpan-gateway/okx_hub.py`）转 K 线和 24h 行情：
+      // 行情帧是 OKX `tickers` 频道原样换成币安写法，只是不带成交额（OKX 那边只有币的
+      // 个数），「额」那一格由 `ticker24h` 走 kanpan-api 补（`GatewayTicker`，按 OKX 自己的
+      // 成交均价换成 USDT）。没有标记价、逐笔方向与盘口。
+      // 持仓量：顶栏「仓」走网关按 OKX 口径取（`openInterestSource`），持仓量副图走
+      // kanpan-api 的 OKX 持仓量历史（`GatewayOIHistory`）；没有币安那份归档，也没有
+      // 多空比、主动买卖比、基差那几个外部指标。
       // 资金费率有：没有标记价流，但网关按 OKX 官方整表给（`GatewayFunding`），
       // 顶栏「费率」「结算」两格由整表垫、按表的刷新续，数是 OKX 自己的。
       return ProviderCapabilities(
@@ -128,8 +133,9 @@ public struct BinanceProvider: MarketProvider {
         nativeIntervals: nativeIntervals, aggregatedFrom: BinanceREST.aggregatedFrom,
         maxKlines: BinanceREST.maxKlines, initialKlines: 300,
         liveKlineIntervals: nativeIntervals,
-        hasTickerStream: false, hasMarkPrice: false, hasFunding: true,
+        hasTickerStream: true, hasMarkPrice: false, hasFunding: true,
         openInterestSource: "okx", hasMicrostructure: false, hasDerivativeMetrics: false,
+        hasOpenInterestHistory: true, hasOpenInterestArchive: false,
         hasBulkTickers: false, probesHistoryBoundary: false, snapshotNamespace: "okx",
         quoteAssets: ["USDT"])
     }
@@ -152,8 +158,21 @@ public struct BinanceProvider: MarketProvider {
     try await rest.history(symbol: symbol, interval: interval, pages: pages, before: firstOpen)
   }
 
+  /// 直连是币安本家的 `/fapi/v1/ticker/24hr`。网关线路上先问 kanpan-api 的替身行情
+  /// （`GatewayTicker`，带换算好的 USDT 成交额）；它不在时退回网关原有的那条
+  /// （同是 OKX 的数，只是没有成交额）——两条都是替身自己的，不混源。
   public func ticker24h(symbol: String, timeout: TimeInterval) async throws -> Ticker {
-    try await rest.ticker24h(symbol: symbol, timeout: timeout)
+    let proxies = hosts.oiProxies
+    guard upstream != .binance, !proxies.isEmpty else {
+      return try await rest.ticker24h(symbol: symbol, timeout: timeout)
+    }
+    do {
+      return try await GatewayTicker.fetch(hosts: proxies, source: upstream.rawValue, symbol: symbol,
+                                           timeout: min(timeout, 6), transport: http)
+    } catch {
+      if error is CancellationError || Task.isCancelled { throw CancellationError() }
+      return try await rest.ticker24h(symbol: symbol, timeout: timeout)
+    }
   }
 
   public func tickers24h(timeout: TimeInterval) async throws -> [Ticker] {
@@ -188,9 +207,19 @@ public struct BinanceProvider: MarketProvider {
     return out
   }
 
+  /// 网关线路上是替身自己的持仓量历史（`GatewayOIHistory`，OKX 的币数）。它只认
+  /// `endTime`：往前翻页由调用方（`OISource`）按页头时间接着问。
   public func openInterestHist(symbol: String, period: String, limit: Int,
                                startTime: Int64?, endTime: Int64?) async throws -> [OIPoint] {
-    try await rest.openInterestHist(symbol: symbol, period: period, limit: limit,
+    guard upstream == .binance else {
+      let proxies = hosts.oiProxies
+      guard !proxies.isEmpty else { throw FeedError.unsupported("持仓量历史") }
+      let rows = try await GatewayOIHistory.fetch(hosts: proxies, source: upstream.rawValue, symbol: symbol,
+                                                  period: period, limit: limit, endTime: endTime, transport: http)
+      guard let startTime else { return rows }
+      return rows.filter { $0.time >= startTime }
+    }
+    return try await rest.openInterestHist(symbol: symbol, period: period, limit: limit,
                                     startTime: startTime, endTime: endTime)
   }
 

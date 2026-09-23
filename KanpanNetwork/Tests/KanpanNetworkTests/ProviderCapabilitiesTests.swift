@@ -16,6 +16,7 @@ struct ProviderCapabilitiesTests {
     #expect(caps.initialKlines == 1800 && caps.maxKlines == 1500)
     #expect(caps.hasTickerStream && caps.hasMarkPrice && caps.hasFunding)
     #expect(caps.hasMicrostructure && caps.hasDerivativeMetrics && caps.hasBulkTickers)
+    #expect(caps.hasOpenInterestHistory && caps.hasOpenInterestArchive)
     #expect(caps.probesHistoryBoundary)
     #expect(caps.snapshotNamespace == nil)
     #expect(caps.openInterestSource == "binance")
@@ -27,10 +28,13 @@ struct ProviderCapabilitiesTests {
     #expect(caps.venue == "binance" && caps.upstream == "okx")
     #expect(caps.isSubstitute)
     #expect(caps.initialKlines == 300)
-    #expect(!caps.hasTickerStream && !caps.hasMarkPrice)
+    // 网关的 OKX 组合流转 24h 行情（不带成交额，「额」由 `GatewayTicker` 补）；没有标记价。
+    #expect(caps.hasTickerStream && !caps.hasMarkPrice)
     // 费率由网关按替身自己的整表给（`GatewayFunding`），不是没有。
     #expect(caps.hasFunding)
     #expect(!caps.hasMicrostructure && !caps.hasDerivativeMetrics && !caps.hasBulkTickers)
+    // 持仓量副图有替身自己的历史（`GatewayOIHistory`），没有币安那份归档。
+    #expect(caps.hasOpenInterestHistory && !caps.hasOpenInterestArchive)
     #expect(!caps.probesHistoryBoundary)
     #expect(caps.snapshotNamespace == "okx")
     #expect(caps.openInterestSource == "okx")
