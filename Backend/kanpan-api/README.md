@@ -72,6 +72,26 @@ settlement at `nextFundingTime` (OKX's `fundingTime`), never a Binance figure.
 Any other `source` is a 400. It sits in `venues::routes()`, so the standby
 metrics host answers it too.
 
+Two more gateway-route stand-ins sit beside it, same rules (only `source=okx`,
+anything else a 400; both hosts answer):
+
+- `GET /v1/market/ticker?source=okx&symbol=BTCUSDT` is one contract's rolling
+  24 h ticker in Binance's `/fapi/v1/ticker/24hr` shape inside
+  `{"data":{"source":"okx","ticker":{…}}}`. OKX gives no quote-currency volume for
+  swaps (`volCcy24h` counts coins), so `quoteVolume` is OKX's own `volCcy24h` ×
+  the 24 h average trade price from OKX's own 288 five-minute candles
+  (`Σ volCcyQuote / Σ volCcy`), never `coins × last` and never a Binance figure;
+  when it cannot be computed it is an empty string. Ticker cached 2 s, average
+  price 60 s (served no older than 10 minutes). Unknown symbol is a 404.
+- `GET /v1/market/open-interest/history?source=okx&symbol=&period=&limit=&endTime=`
+  takes Binance `openInterestHist` parameters (`period` 5m…1d, `limit` ≤ 500,
+  `endTime` inclusive) and answers `{"source":"okx","rows":[[ms, coins, usd|null],…]}`
+  in ascending time — coins being the unit of Binance's `sumOpenInterest`. It pages
+  OKX's `rubik/stat/contracts/open-interest-history` 100 rows at a time behind a
+  5-per-2.1 s pacer; 6h / 12h / 1d use OKX's `…utc` bars so buckets start where
+  Binance's do. Depth is whatever OKX keeps (5m ≈ 5 days, 1H ≈ 2 months, 1D > 2
+  years); older is simply absent — the Binance archive is not spliced in.
+
 Every call this process makes to `binance.com` — metadata, daily closes, the
 contract list behind the archive warm-up — shares one ban deadline
 (`src/binance_gate.rs`). A 429 or 418 anywhere sets it, `Retry-After` is
