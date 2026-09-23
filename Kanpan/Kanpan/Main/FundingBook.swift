@@ -11,10 +11,13 @@ import Observation
 /// 一次拿回整张表，换品种时先从簿里取；流到了照旧由流接手（它更新、更准）。
 ///
 /// **整表只向有费率能力、且给得出整表的那家要**（`MarketProvider.fundingAll`）：
-/// 眼下只有直连线路上的币安本家。这条接口网关上没有路由（网关只代理 K 线、
-/// 24h 统计和品种表），而网关线路供的是 OKX 替身的行情——拿直连的费率去垫
-/// 网关线路那张图，就是混源。簿按供数的上游分开记（`ProviderCapabilities.upstream`），
-/// 别家（没有费率的现货、替身）永远查不到直连那一行。
+/// 直连线路上是币安本家的 `premiumIndex`；网关线路供的是 OKX 替身的行情，整表由
+/// 网关按 OKX 自己的费率给（`/v1/market/funding?source=okx`）——拿直连的费率去垫
+/// 网关线路那张图就是混源。簿按供数的上游分开记（`ProviderCapabilities.upstream`），
+/// 替身查不到直连那一行，直连也查不到替身那一行；没有费率的现货什么也查不到。
+///
+/// 网关线路没有标记价流，那两格**只**靠这本簿：`refreshIfStale` 的 `then` 在表回来
+/// （或本来就新）时叫，行情页据此把当前这只再垫一次，并跟着持仓轮询按表续。
 ///
 /// 长按预览卡的费率也从这里读，不再各记一份（原来 `SymbolPreviewStore` 自己有个字典）。
 @MainActor @Observable
@@ -37,6 +40,8 @@ final class FundingBook {
   /// 按上游记：各家的整表各自多久拉过一次、正不正在拉。
   @ObservationIgnored private var fetchedAt: [String: Date] = [:]
   @ObservationIgnored private var fetching: [String: Task<Void, Never>] = [:]
+  /// 表在路上时要来的回调，表回来（成败都叫）后一起叫。
+  @ObservationIgnored private var waiters: [String: [@MainActor () -> Void]] = [:]
 
   private static func key(_ symbol: String, _ upstream: String) -> String {
     upstream + "|" + InstrumentID.canonical(symbol)
@@ -67,21 +72,35 @@ final class FundingBook {
 
   /// 这家的簿比 `refreshEvery` 旧就拉一次整表。没有费率能力的那家不拉；
   /// 给不出整表的那家（`unsupported`）什么也不记，只是少一份「先垫上」的数。
-  /// - Parameter delay: 先等这么久再发（冷启动时让首屏请求先走）。
+  /// - Parameters:
+  ///   - delay: 先等这么久再发（冷启动时让首屏请求先走）。
+  ///   - then: 簿里这家的表可用之后叫一次：本来就新就立刻叫，在路上就排队等它回来，
+  ///     这一发回来（成败都算）再叫。没有费率能力的那家不叫。
   func refreshIfStale(provider: any MarketProvider, maxAge: TimeInterval = refreshEvery,
-                      delay: Duration = .zero) {
+                      delay: Duration = .zero, then: (@MainActor () -> Void)? = nil) {
     let upstream = provider.capabilities.upstream
-    guard provider.capabilities.hasFunding, fetching[upstream] == nil,
-          Date().timeIntervalSince(fetchedAt[upstream] ?? .distantPast) >= maxAge else { return }
+    guard provider.capabilities.hasFunding else { return }
+    if fetching[upstream] != nil {
+      if let then { waiters[upstream, default: []].append(then) }
+      return
+    }
+    guard Date().timeIntervalSince(fetchedAt[upstream] ?? .distantPast) >= maxAge else {
+      then?()
+      return
+    }
+    if let then { waiters[upstream, default: []].append(then) }
     fetching[upstream] = Task { [weak self] in
       if delay > .zero { try? await Task.sleep(for: delay) }
       let table = try? await provider.fundingAll()
       guard let self else { return }
       self.fetching[upstream] = nil
-      guard let table, !table.isEmpty else { return }
-      let at = Date()
-      self.fetchedAt[upstream] = at
-      self.merge(table, upstream: upstream, at: at)
+      if let table, !table.isEmpty {
+        let at = Date()
+        self.fetchedAt[upstream] = at
+        self.merge(table, upstream: upstream, at: at)
+      }
+      let callbacks = self.waiters.removeValue(forKey: upstream) ?? []
+      for callback in callbacks { callback() }
     }
   }
 

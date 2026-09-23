@@ -64,17 +64,22 @@ public struct BinanceProvider: MarketProvider {
   public let upstream: BinanceUpstream
   let policy: MarketRoutePolicy
   let sockets: any WSSocketFactory
+  /// 直接问网关（不经 `BinanceREST` 的路径翻译与限流器）的那几笔：替身的资金费率表。
+  let http: any HTTPTransport
 
   /// - Parameters:
   ///   - rest: 测试注入用。不传就按 `upstream` + `policy` 建一个走共享限流器的。
   ///   - sockets: 最底层的 WS 拨号器（测试里换成假的）。
+  ///   - http: 直接问网关的那几笔走的传输（测试里换成假的）。
   public init(upstream: BinanceUpstream, hosts: BinanceHosts, policy: MarketRoutePolicy,
               rest: BinanceREST? = nil, sockets: any WSSocketFactory = URLSessionSocketFactory(),
+              http: any HTTPTransport = URLSessionTransport(),
               log: FeedLog = .silent) {
     self.upstream = upstream
     self.hosts = hosts
     self.policy = policy
     self.sockets = sockets
+    self.http = http
     self.rest = rest ?? BinanceREST.upstream(upstream, hosts: hosts, log: log, policy: policy)
     self.capabilities = Self.capabilities(upstream)
   }
@@ -116,12 +121,14 @@ public struct BinanceProvider: MarketProvider {
       // 网关这条组合流只转 kline：没有 24h 推送、标记价、逐笔方向与盘口；
       // 持仓量历史副图与那几个外部指标也只在币安本家上开（顶栏「仓」那一格走网关按
       // OKX 口径取，见 `openInterestSource`）。
+      // 资金费率有：没有标记价流，但网关按 OKX 官方整表给（`GatewayFunding`），
+      // 顶栏「费率」「结算」两格由整表垫、按表的刷新续，数是 OKX 自己的。
       return ProviderCapabilities(
         venue: venue, market: market, upstream: upstream.rawValue,
         nativeIntervals: nativeIntervals, aggregatedFrom: BinanceREST.aggregatedFrom,
         maxKlines: BinanceREST.maxKlines, initialKlines: 300,
         liveKlineIntervals: nativeIntervals,
-        hasTickerStream: false, hasMarkPrice: false, hasFunding: false,
+        hasTickerStream: false, hasMarkPrice: false, hasFunding: true,
         openInterestSource: "okx", hasMicrostructure: false, hasDerivativeMetrics: false,
         hasBulkTickers: false, probesHistoryBoundary: false, snapshotNamespace: "okx",
         quoteAssets: ["USDT"])
@@ -154,13 +161,28 @@ public struct BinanceProvider: MarketProvider {
   }
 
   public func funding(symbol: String) async throws -> FundingSnapshot {
-    try await rest.funding(symbol: symbol)
+    guard upstream == .binance else {
+      // 替身没有单品种费率接口：整表只有几 KB，从表里取这一行。
+      guard let row = try await fundingAll()[InstrumentID.canonical(symbol)] else {
+        throw FeedError.badResponse("\(upstream.rawValue) 没有 \(symbol) 的资金费率")
+      }
+      return row
+    }
+    return try await rest.funding(symbol: symbol)
   }
 
-  /// `/fapi/v1/premiumIndex` 整表。只在币安本家上游给：网关没有这条路由，
-  /// 网关线路供的是 OKX 替身，拿币安的费率去垫它就是混源。
+  /// 全市场资金费率整表，键是完整品种 key。
+  ///
+  /// 直连是币安本家的 `/fapi/v1/premiumIndex`；网关线路上是替身自己的整表
+  /// （`/v1/market/funding?source=okx`，见 `GatewayFunding`）——两家各给各的，
+  /// 不拿币安的费率去垫替身那张图（不混源）。
   public func fundingAll() async throws -> [String: FundingSnapshot] {
-    guard upstream == .binance else { throw FeedError.unsupported("全市场资金费率") }
+    guard upstream == .binance else {
+      let proxies = hosts.oiProxies
+      guard !proxies.isEmpty else { throw FeedError.unsupported("全市场资金费率") }
+      return try await GatewayFunding.fetch(hosts: proxies, source: upstream.rawValue,
+                                            venue: Self.venue, market: Self.market, transport: http)
+    }
     var out: [String: FundingSnapshot] = [:]
     for (symbol, row) in try await rest.fundingAll() { out[InstrumentID.canonical(symbol)] = row }
     return out

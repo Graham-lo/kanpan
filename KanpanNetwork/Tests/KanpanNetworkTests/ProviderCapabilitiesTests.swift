@@ -27,7 +27,9 @@ struct ProviderCapabilitiesTests {
     #expect(caps.venue == "binance" && caps.upstream == "okx")
     #expect(caps.isSubstitute)
     #expect(caps.initialKlines == 300)
-    #expect(!caps.hasTickerStream && !caps.hasMarkPrice && !caps.hasFunding)
+    #expect(!caps.hasTickerStream && !caps.hasMarkPrice)
+    // 费率由网关按替身自己的整表给（`GatewayFunding`），不是没有。
+    #expect(caps.hasFunding)
     #expect(!caps.hasMicrostructure && !caps.hasDerivativeMetrics && !caps.hasBulkTickers)
     #expect(!caps.probesHistoryBoundary)
     #expect(caps.snapshotNamespace == "okx")

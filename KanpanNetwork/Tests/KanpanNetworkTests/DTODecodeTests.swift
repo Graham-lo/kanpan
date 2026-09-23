@@ -129,9 +129,10 @@ struct PremiumIndexTests {
     #expect(path?.query == nil)
   }
 
-  /// 提供者那一层：整表按完整品种 key 交出去；网关上的 OKX 替身不给整表（不混源）。
-  @Test("全市场费率只由币安本家给，键是完整品种 key")
-  func providerFundingAllIsDirectOnly() async throws {
+  /// 提供者那一层：整表按完整品种 key 交出去。直连问币安本家；网关上的 OKX 替身
+  /// 问网关的替身整表，绝不落到币安的 `premiumIndex` 上（不混源）。
+  @Test("全市场费率：直连问本家，网关问替身自己的整表，键都是完整品种 key")
+  func providerFundingAllStaysOnItsOwnSource() async throws {
     let pacer = StepPacer()
     let server = FakeServer { _ in
       json(#"[{"symbol":"BTCUSDT","lastFundingRate":"0.00010000","nextFundingTime":1700000000000}]"#)
@@ -141,8 +142,32 @@ struct PremiumIndexTests {
     let direct = BinanceProvider(upstream: .binance, hosts: BinanceHosts(), policy: .direct, rest: rest)
     let table = try await direct.fundingAll()
     #expect(table[InstrumentID.canonical("BTCUSDT")]?.rate == 0.0001)
-    let substitute = BinanceProvider(upstream: .okx, hosts: BinanceHosts(), policy: .gateway, rest: rest)
-    await #expect(throws: (any Error).self) { try await substitute.fundingAll() }
+
+    let gateway = FakeServer { url in
+      if url.host == "gw-a.example" { return json("{}", status: 503) }
+      return json(#"{"ok":true,"data":{"source":"okx","rows":[{"symbol":"BTCUSDT","rate":0.00008,"nextFundingTime":1790179200000},{"symbol":"ETHUSDT","rate":null,"nextFundingTime":1790179200000}]}}"#)
+    }
+    let hosts = BinanceHosts(oiProxy: "gw-a.example", oiProxyFallbacks: ["gw-b.example:8443"])
+    let substitute = BinanceProvider(upstream: .okx, hosts: hosts, policy: .gateway, rest: rest,
+                                     http: FakeTransport(gateway))
+    let okx = try await substitute.fundingAll()
+    #expect(okx[InstrumentID.canonical("BTCUSDT")] == FundingSnapshot(rate: 0.00008, nextFundingTimeMs: 1_790_179_200_000))
+    #expect(okx[InstrumentID.canonical("ETHUSDT")] == nil)
+    #expect(try await substitute.funding(symbol: "BTCUSDT").rate == 0.00008)
+    let asked = await gateway.hits.map(\.url)
+    // 主网关 503 就换备用那台（带端口），两次都一样。
+    #expect(asked.map { $0.host ?? "" } == ["gw-a.example", "gw-b.example", "gw-a.example", "gw-b.example"])
+    #expect(asked.filter { $0.host == "gw-b.example" }.allSatisfy { $0.port == 8443 })
+    #expect(asked.allSatisfy { $0.path == "/v1/market/funding" && $0.query == "source=okx" })
+    // 替身那两次一发也没打到币安本家那台假 server 上。
     #expect(await server.hits.count == 1)
+  }
+
+  @Test("网关费率表来源对不上就整表不收")
+  func gatewayFundingRejectsForeignSource() {
+    let body = Data(#"{"data":{"source":"binance","rows":[{"symbol":"BTCUSDT","rate":0.0001}]}}"#.utf8)
+    #expect(throws: (any Error).self) {
+      try GatewayFunding.decode(body, source: "okx", venue: "binance", market: "usd_m")
+    }
   }
 }
