@@ -122,7 +122,7 @@ struct Prefs: Sendable, Equatable {
   /// 副图从上往下的顺序，默认 VOL/OI/MACD。
   var subs: [IndicatorID] = AICoinBehavior.subpanels
   /// 每个指标的参数。没记的取 `IndicatorID.defaultParams`。
-  var params: [IndicatorID: [Int]] = [.ma: AICoinBehavior.maPeriods, .ema: [12, 144, 169, 200], .vol: AICoinBehavior.volumePeriods, .macd: AICoinBehavior.macdPeriods]
+  var params: [IndicatorID: [Int]] = IndicatorID.factoryParams
   /// 拖分隔线拖出来的副图高度倍率，按面板身份记。这是**唯一**的副图高度来源。
   ///
   /// 原来还有一份档位式的 `subHeights`（A6.4，小 / 中 / 大），改成拖分隔线之后就没有

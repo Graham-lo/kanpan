@@ -94,7 +94,7 @@ struct PrefsToleranceTests {
     {"params":{"MA":[0,9999,-3],"MACD":[12],"ATR":[14,14,14],"超级线":[1],"OI":[5]}}
     """#)
     #expect(p.params(for: .ma) == [1, 400, 1])
-    #expect(p.params(for: .macd) == [12, 26, 9])   // 缺的两位按默认补
+    #expect(p.params(for: .macd) == [12, 30, 9])   // 缺的两位按默认（`IndicatorID.defaultParams`）补
     #expect(p.params(for: .atr) == [14])           // 多出来的截掉
     #expect(p.params(for: .oi) == [])
     #expect(p.params[.rsi] == nil)                 // 没存的就是没存

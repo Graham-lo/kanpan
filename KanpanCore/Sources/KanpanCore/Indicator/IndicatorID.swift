@@ -100,13 +100,22 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
   /// 值是外面喂进来的（持仓量、多空比、主动买卖比、基差），不是 K 线算出来的。
   public var isExternal: Bool { externalColumns != nil }
 
+  /// 每把指标的出厂参数。**客户端只此一份**：偏好的出厂值（`factoryParams`）、
+  /// 图表状态的缺省、存档修补（`IndicatorParamRule.sanitize`）、引擎补位
+  /// （`normalizedParams`）都从这里取。
+  ///
+  /// 审查 2026-09-24 §2：以前这里写的是通用教科书值（均线 7/25/99、MACD 12/26/9），
+  /// 偏好出厂值却是 `AICoinBehavior` 里另抄的 AICoin 值（10/30/120/256、10/30/9），
+  /// 图表状态又是第三份（没有指数均线）——同一个用户，新装时看到的是 AICoin 值，
+  /// 一条参数坏了被修补时却掉回 7/25/99。现在只有 AICoin 手机端这一套
+  /// （`kanpan-single-aicoin-candle-style`：图表底座照 AICoin 还原）。
   public var defaultParams: [Int] {
     switch self {
-    case .ma: [7, 25, 99]
-    case .ema: [12, 26]
+    case .ma: [10, 30, 120, 256]
+    case .ema: [12, 144, 169, 200]
     case .boll: [20, 2]
-    case .vol: [5, 10]
-    case .macd: [12, 26, 9]
+    case .vol: [5, 10, 30, 60, 120]
+    case .macd: [10, 30, 9]
     case .rsi: [6, 12, 24]
     case .kdj: [9, 3, 3]
     case .srsi: [14, 14, 3, 3]
@@ -122,6 +131,11 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .vwap, .sar, .orderFlow, .cvd, .oi, .lsr, .taker, .basis: []
     }
   }
+
+  /// 新装时写进偏好、图表状态缺省就带着的那几把的参数（值就是 `defaultParams`）。
+  /// 只放这四把是历史形状：偏好存档与同步里一直带着它们，别的指标没记就是没记。
+  public static let factoryParams: [IndicatorID: [Int]] =
+    Dictionary(uniqueKeysWithValues: [IndicatorID.ma, .ema, .vol, .macd].map { ($0, $0.defaultParams) })
 
   /// 算之前把参数理成这把指标能直接下标取用的长度。
   ///
@@ -143,10 +157,10 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
 
   public var paramLabels: [String] {
     switch self {
-    case .ma: ["短", "中", "长"]
-    case .ema: ["短", "长"]
+    // 均线、指数均线、均量是按列表画的，条数随用户；面板上按「周期1、周期2…」排，
+    // 这里给出厂那几条的名字，个数跟着 `defaultParams` 走。
+    case .ma, .ema, .vol: defaultParams.indices.map { "周期\($0 + 1)" }
     case .boll: ["周期", "倍数"]
-    case .vol: ["均量一", "均量二"]
     case .macd: ["快", "慢", "信号"]
     case .rsi: ["①", "②", "③"]
     case .kdj: ["周期", "快线", "慢线"]

@@ -29,9 +29,7 @@ public enum AICoinBehavior {
   public static let rightInset = 0.0
   public static let mainTopInset = 24.0
   public static let mainBottomInset = 8.0
-  public static let maPeriods = [10, 30, 120, 256]
-  public static let volumePeriods = [5, 10, 30, 60, 120]
-  public static let macdPeriods = [10, 30, 9]
+  // 均线 / 均量 / MACD 的出厂周期不在这里：只有 `IndicatorID.defaultParams` 一份。
   public static let subpanels: [IndicatorID] = [.vol, .oi, .macd]
 
   public enum NarrowRendering { case closeLine, highLow, candle }

@@ -76,7 +76,7 @@ public struct ChartState: Sendable {
     price: PriceTransform = .init(mode: .log),
     overlays: [IndicatorID] = [.ma],
     subs: [IndicatorID] = AICoinBehavior.subpanels,
-    params: [IndicatorID: [Int]] = [.ma: AICoinBehavior.maPeriods, .vol: AICoinBehavior.volumePeriods, .macd: AICoinBehavior.macdPeriods],
+    params: [IndicatorID: [Int]] = IndicatorID.factoryParams,
     timezone: TZChoice = .local,
     oi: OISeries? = nil,
     drawings: [Drawing] = [],

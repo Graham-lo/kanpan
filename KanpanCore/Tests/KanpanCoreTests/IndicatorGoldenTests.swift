@@ -88,7 +88,11 @@ struct IndicatorGoldenTests {
   func engineMatchesPlain(_ ci: Int) {
     let c = Golden.cases[ci]
     var e = IndicatorEngine()
-    e.ensure(series: c.series, wanted: [.ma, .ema, .boll, .vol, .macd, .rsi, .kdj, .srsi, .atr], dataKey: "golden")
+    // 黄金值按夹具自己的参数算（教科书值），不是出厂参数——参数显式递进去。
+    let params = Dictionary(uniqueKeysWithValues: Golden.params.compactMap { k, v in
+      IndicatorID(rawValue: k).map { ($0, v) } })
+    e.ensure(series: c.series, wanted: [.ma, .ema, .boll, .vol, .macd, .rsi, .kdj, .srsi, .atr],
+             params: params, dataKey: "golden")
     expectSame(e[.ma]!.lines[0], c.line("ma", 0), "引擎 \(c.name) MA")
     expectSame(e[.ema]!.lines[1], c.line("ema", 1), "引擎 \(c.name) EMA")
     expectSame(e[.boll]!.lines[2], c.part("boll", "dn"), "引擎 \(c.name) BOLL dn")

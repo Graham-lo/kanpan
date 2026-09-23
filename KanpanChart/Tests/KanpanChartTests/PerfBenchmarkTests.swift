@@ -135,9 +135,9 @@ final class PerfBenchmarkTests: XCTestCase {
   static let overlays: [IndicatorID] = [.ma]
   static let subs: [IndicatorID] = [.vol, .macd, .rsi]
   static let params: [IndicatorID: [Int]] = [
-    .ma: AICoinBehavior.maPeriods,
-    .vol: AICoinBehavior.volumePeriods,
-    .macd: AICoinBehavior.macdPeriods,
+    .ma: IndicatorID.ma.defaultParams,
+    .vol: IndicatorID.vol.defaultParams,
+    .macd: IndicatorID.macd.defaultParams,
     .rsi: IndicatorID.rsi.defaultParams,
   ]
 

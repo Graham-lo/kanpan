@@ -75,11 +75,11 @@ struct IndicatorMetaTests {
 
   @Test("默认参数与原型一致")
   func defaultsMatchPrototype() {
-    #expect(IndicatorID.ma.defaultParams == [7, 25, 99])
-    #expect(IndicatorID.ema.defaultParams == [12, 26])
+    #expect(IndicatorID.ma.defaultParams == [10, 30, 120, 256])
+    #expect(IndicatorID.ema.defaultParams == [12, 144, 169, 200])
     #expect(IndicatorID.boll.defaultParams == [20, 2])
-    #expect(IndicatorID.vol.defaultParams == [5, 10])
-    #expect(IndicatorID.macd.defaultParams == [12, 26, 9])
+    #expect(IndicatorID.vol.defaultParams == [5, 10, 30, 60, 120])
+    #expect(IndicatorID.macd.defaultParams == [10, 30, 9])
     #expect(IndicatorID.rsi.defaultParams == [6, 12, 24])
     #expect(IndicatorID.kdj.defaultParams == [9, 3, 3])
     #expect(IndicatorID.srsi.defaultParams == [14, 14, 3, 3])
