@@ -86,7 +86,7 @@ public enum SeriesStore {
     let legacy = dir.appendingPathComponent("\(id.symbol)@\(slug(interval)).kbar")
     // Read the old file in place. Atomic writes use the new path; never delete the migration source.
     let current = Snapshot.read(url)
-    guard let series = current ?? (id.venue == "binance" && id.market == "usd_m" ? Snapshot.read(legacy) : nil),
+    guard let series = current ?? (id.isDefaultMarket ? Snapshot.read(legacy) : nil),
           InstrumentID(series.symbol) == id, series.interval == interval, series.count > 0 else { return nil }
     if touch { self.touch(current == nil ? legacy : url, in: dir) }
     return series
@@ -108,7 +108,7 @@ public enum SeriesStore {
     guard let url = url(symbol: symbol, interval: interval, in: dir) else { return }
     try? FileManager.default.removeItem(at: url)
     let id = InstrumentID(symbol)
-    if id.venue == "binance", id.market == "usd_m" {
+    if id.isDefaultMarket {
       try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(id.symbol)@\(slug(interval)).kbar"))
     }
     let index = SeriesIndex.shared

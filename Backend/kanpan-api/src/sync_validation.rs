@@ -28,9 +28,9 @@ const KINDS:&[&str]=&[
 ];
 // Intervals: `instruments::is_synced_interval` — what the period bar offers today plus the two it
 // used to (8h, 3d), which old archives still carry.
-// Quotes: `instruments::QUOTE_ASSETS`, the client's `SectorQuotePreference.quoteAssets`. Binance
+// Quotes: `instruments::QUOTE_ASSETS`, the client's `QuoteAssets.tradable` (both checked against contract/instruments.json). Binance
 // lists USDC-margined contracts too, so a USDT-only rule refused perfectly real favourites.
-use crate::instruments::{QUOTE_ASSETS as QUOTES,is_synced_interval};
+use crate::instruments::{QUOTE_ASSETS as QUOTES,DEFAULT_VENUE,DEFAULT_MARKET,is_synced_interval};
 fn intervals(v:&Value,count:usize)->bool {v.as_array().is_some_and(|a|a.len()<=count&&a.iter().all(|v|v.as_str().is_some_and(is_synced_interval)))}
 fn color(v:&Value)->bool {v.as_object().is_some_and(|o|o.len()==1)&&v["value"].as_str().is_some_and(|s|matches!(s.len(),7|9)&&s.starts_with('#')&&s[1..].bytes().all(|c|c.is_ascii_hexdigit()))}
 fn number(v:&Value,lo:f64,hi:f64)->bool {v.as_f64().is_some_and(|v|v.is_finite()&&v>=lo&&v<=hi)}
@@ -231,8 +231,8 @@ pub fn object(value:&Object)->Result<()> {
   let count=anchor_count(kind);
   if value.body.get("anchors").and_then(Value::as_array).is_none_or(|a|a.len()!=count){return Err(ApiError::bad("invalid_drawing"))}
   let symbol=value.body.get("symbol").and_then(Value::as_str).ok_or_else(||ApiError::bad("invalid_drawing"))?;
-  let venue=value.body.get("venue").and_then(Value::as_str).unwrap_or("binance");
-  let market=value.body.get("market").and_then(Value::as_str).unwrap_or("usd_m");
+  let venue=value.body.get("venue").and_then(Value::as_str).unwrap_or(DEFAULT_VENUE);
+  let market=value.body.get("market").and_then(Value::as_str).unwrap_or(DEFAULT_MARKET);
   if !identity(venue,market,symbol) || !value.id.starts_with(&format!("{venue}/{market}/{symbol}/")) {return Err(ApiError::bad("invalid_drawing_identity"))}
  }
  if value.collection==ALERTS {

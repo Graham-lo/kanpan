@@ -8,6 +8,16 @@ import KanpanCore
 @Suite("提供者能力位与交易所清单")
 struct ProviderCapabilitiesTests {
 
+  /// 裸代号归哪一家，Core 里只有 `InstrumentID.defaultMarketKey` 一份（下层不知道有哪些
+  /// 交易所）；交易所清单里排第一的那一家必须就是它，否则老存档的裸代号会被读成一家、
+  /// 却被当成另一家去取数。
+  @Test("默认交易所 = InstrumentID 的裸代号归属")
+  func defaultVenueIsTheBareKeyDefault() {
+    #expect(VenueRegistry.default.marketKey == InstrumentID.defaultMarketKey)
+    #expect(VenueRegistry.default.id == InstrumentID.defaultVenue)
+    #expect(VenueRegistry.default.market == InstrumentID.defaultMarket)
+  }
+
   @Test("直连：币安本家，能力位全开")
   func directIsBinanceWithEverything() {
     let caps = RouteResolver(policy: .direct).provider(venue: "binance").capabilities

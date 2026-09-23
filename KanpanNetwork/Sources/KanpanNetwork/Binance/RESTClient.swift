@@ -174,7 +174,7 @@ public actor BinanceREST {
         let stableBases: Set<String> = ["USDC", "FDUSD", "TUSD", "USDP", "DAI", "USDE", "PYUSD", "USD1", "USDD"]
         let stablePair = type == "PERPETUAL" && stableBases.contains($0.baseAsset)
         return !stablePair && $0.quoteAsset == "USDT" &&
-          ["PERPETUAL", "TRADIFI_PERPETUAL"].contains(type)
+          SymbolInfo.perpetualContractTypes.contains(type)
       }
       .map {
         SymbolInfo(symbol: $0.symbol, base: $0.baseAsset, quote: $0.quoteAsset,

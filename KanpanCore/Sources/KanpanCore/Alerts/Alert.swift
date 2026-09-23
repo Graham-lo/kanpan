@@ -144,7 +144,7 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
     created = try c.decodeIfPresent(Double.self, forKey: .created) ?? 0
   }
 
-  public static let market = "binance/usd_m"
+  public static let market = InstrumentID.defaultMarketKey
   public static func newID() -> String { "a" + UUID().uuidString }
 
   /// 还在等的那些。列表的排序、前台评估、自选页的「离提醒线最近」都只看这一种。

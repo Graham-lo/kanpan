@@ -84,7 +84,7 @@ final class HostViewController: UIViewController {
       state.percentAxis = true
       state.compare = ["ETH", "SOL", "DOGE"].enumerated().map { index, name in
         let factor = Double(index + 2)
-        return CompareSeries(key: "binance/usd_m/" + name + "USDT", name: name, color: state.colors.palette[index],
+        return CompareSeries(key: InstrumentID.defaultMarketKey + "/" + name + "USDT", name: name, color: state.colors.palette[index],
           open: s.open.map { $0 / factor }, close: s.close.enumerated().map { bar, value in
             value / factor * (1 + Double(index + 1) * sin(Double(bar) / 11) * 0.002)
           })

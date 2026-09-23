@@ -68,6 +68,10 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
   public var underlyingType: String?
   public var underlyingSubTypes: [String]?
   public var contractType: String?
+  /// 算「永续」的 `contractType`。美股、ETF、贵金属这些 TradFi 合约写的是
+  /// `TRADIFI_PERPETUAL`，只认 `PERPETUAL` 的话「美股」那一栏整个没了。
+  /// 对着 Rust `instruments::PERPETUAL_TYPES`，两边都对 `contract/instruments.json`。
+  public static let perpetualContractTypes = ["PERPETUAL", "TRADIFI_PERPETUAL"]
   /// 挂牌状态。目录层会把非 `TRADING` 的行**留在表里**并打上这一档（审查 B-06）。
   public var status: SymbolStatus
   /// 上线时间（`exchangeInfo.symbols[].onboardDate`，毫秒）。缺字段 / 旧缓存为 `nil`。
@@ -146,11 +150,10 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
   /// 精度留 0 表示「不知道」，由 `displayDecimals(for:)` 按价格猜。
   public static func placeholder(symbol: String, status: SymbolStatus = .tradable) -> SymbolInfo {
     let identity = InstrumentID(symbol)
-    let s = identity.symbol
-    let parts = s.split(separator: "-")
-    let quote = parts.count == 2 ? String(parts[1]) : (["FDUSD", "USDT", "USDC", "USD1", "BUSD", "TUSD", "USD"].first { s.hasSuffix($0) } ?? "USDT")
-    let base = parts.count == 2 ? String(parts[0]) : (s.hasSuffix(quote) ? String(s.dropLast(quote.count)) : s)
-    return SymbolInfo(symbol: identity.key, base: base.isEmpty ? s : base, quote: quote,
+    // 后缀表只有 `QuoteAssets` 那一份（和服务端 `instruments::base` 同一口径）；
+    // 认不出计价资产时 base 就是整串代号，计价按出厂的 USDT 记。
+    let (base, quote) = QuoteAssets.split(identity.symbol)
+    return SymbolInfo(symbol: identity.key, base: base, quote: quote ?? "USDT",
                       pricePrecision: 0, tickSize: 0, status: status)
   }
 }

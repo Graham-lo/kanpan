@@ -170,7 +170,7 @@ pub async fn materialize(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid
   lines=excluded.lines,condition=excluded.condition,title=excluded.title,armed_at=excluded.armed_at,status=excluded.status,\
   fired_at=excluded.fired_at,fired_price=excluded.fired_price,due_at=excluded.due_at,review_id=excluded.review_id,updated_at=now()")
   .bind(owner).bind(&object.id).bind(text("kind")).bind(text("symbol"))
-  .bind(object.body.get("market").and_then(Value::as_str).unwrap_or("binance/usd_m"))
+  .bind(object.body.get("market").and_then(Value::as_str).unwrap_or(BINANCE))
   .bind(object.body.get("drawingID").and_then(Value::as_str))
   .bind(sorted_lines(object.body.get("lines").cloned().unwrap_or_else(||json!([]))))
   .bind(object.body.get("condition").and_then(Value::as_str).unwrap_or("touch"))
@@ -253,8 +253,9 @@ impl Condition {
  pub fn of(text:&str)->Self {if text=="close" {Self::Close} else {Self::Touch}}
 }
 
-/// `alert_watches.market` 的两个取值（客户端 `InstrumentID.marketKey`）。
-pub const BINANCE:&str="binance/usd_m";
+/// `alert_watches.market` 的两个取值（客户端 `InstrumentID.marketKey`）。币安那一个就是
+/// 裸代号的默认交易所（`instruments::DEFAULT_MARKET_KEY`），缺 `market` 的老提醒按它记。
+pub const BINANCE:&str=crate::instruments::DEFAULT_MARKET_KEY;
 pub const COINBASE:&str="coinbase/spot";
 
 /// 评估器在内存里保有的一条活动提醒。

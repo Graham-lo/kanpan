@@ -77,7 +77,7 @@ public actor OIStore {
 
   private func readable(_ current: URL, symbol: String) -> URL {
     let id = InstrumentID(symbol)
-    guard id.marketKey == "binance/usd_m", !FileManager.default.fileExists(atPath: current.path) else { return current }
+    guard id.isDefaultMarket, !FileManager.default.fileExists(atPath: current.path) else { return current }
     return paths.oi.appendingPathComponent(id.symbol).appendingPathComponent(current.lastPathComponent)
   }
 

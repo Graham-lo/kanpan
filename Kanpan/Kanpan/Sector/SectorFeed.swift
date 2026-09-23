@@ -364,14 +364,8 @@ import KanpanNetwork
   private func quoteRank(of symbol: String) -> Int {
     let upper = InstrumentID.canonical(symbol)
     if let info = catalogIndex[upper] { return SectorQuotePreference.rank(info.quote) }
-    for (index, quote) in Self.quoteAssets.enumerated()
-    where upper.hasSuffix(quote) && upper.count > quote.count {
-      return index
-    }
-    return Self.quoteAssets.count
+    return QuoteAssets.tradableSplit(InstrumentID(upper).symbol).rank
   }
-
-  private static let quoteAssets = SectorQuotePreference.quoteAssets
 
   /// 这个 base 对应品种的价格小数位。品种表里没有就 `nil`——列表那一层会退回
   /// 按大小猜，但绝不在这儿编一个位数出来（审查 B-07）。
@@ -397,7 +391,7 @@ import KanpanNetwork
   /// 知道它是拿什么计价的。但点进品种列表再点一行是要开行情页的，那儿要的是全名。
   /// 直接拼 `base + "USDT"` 在绝大多数上成立，可币安有一小撮只有 USDC 本位的合约
   /// （分类表里也收了），拼出来的代号在品种表里根本不存在，点下去就是一张空图。
-  /// 所以照表查：同一个 base 有多条时按 `quoteAssets` 的顺序取偏好最高的那条。
+  /// 所以照表查：同一个 base 有多条时按 `QuoteAssets.tradable` 的顺序取偏好最高的那条。
   func symbol(forBase base: String) -> String {
     let upper = base.uppercased()
     if let hit = baseIndex[upper] { return hit }

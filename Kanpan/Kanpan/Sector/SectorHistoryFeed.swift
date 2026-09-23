@@ -132,11 +132,7 @@ import KanpanNetwork
 
   /// `BTCUSDT` → （`BTC`，计价币档次）。认不出计价币就整条当 base，档次垫底。
   private static func split(_ symbol: String) -> (base: String, rank: Int) {
-    for (index, quote) in SectorQuotePreference.quoteAssets.enumerated()
-    where symbol.hasSuffix(quote) && symbol.count > quote.count {
-      return (String(symbol.dropLast(quote.count)), index)
-    }
-    return (symbol, SectorQuotePreference.quoteAssets.count)
+    QuoteAssets.tradableSplit(symbol)
   }
 
   /// 数可能是数也可能是字符串。`null`、非数、非正数一律当**缺失**

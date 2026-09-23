@@ -234,12 +234,8 @@ public struct SectorFallbackBucket: Sendable, Equatable {
 /// 来回反超就让板块的中位数跟着跳、列表跟着抖。所以先按计价币的固定档次挑，
 /// 同一档才比成交额。
 public enum SectorQuotePreference {
-  /// 计价币优先级，越靠前越优先。表里没有的一律垫底。
-  public static let quoteAssets = ["USDT", "USDC", "FDUSD", "BUSD", "USD1", "TUSD"]
-
-  public static func rank(_ quote: String) -> Int {
-    quoteAssets.firstIndex(of: quote.uppercased()) ?? quoteAssets.count
-  }
+  /// 计价币优先级，越靠前越优先，表里没有的一律垫底。表本身只有 `QuoteAssets.tradable` 那一份。
+  public static func rank(_ quote: String) -> Int { QuoteAssets.rank(quote) }
 
   /// 新来的这张是不是比手上那张更该留下。
   public static func prefers(rank: Int, volume: Double,

@@ -123,10 +123,10 @@ pub async fn load_mover(tx:&mut Transaction<'_,Postgres>,owner:Uuid,venue:&str)-
  let favorites=crate::sync::live_objects(tx,owner,crate::sync::FAVORITES).await?;
  Ok(Some(Mover{owner,threshold,symbols:favorite_symbols(&favorites,venue)}))
 }
-/// 自选里这家交易所的品种（大写、去重）。老客户端写的自选没有 `venue`，按币安算。
+/// 自选里这家交易所的品种（大写、去重）。老客户端写的自选没有 `venue`，按裸代号的默认交易所（币安）算。
 fn favorite_symbols(favorites:&[crate::sync::Object],venue:&str)->BTreeSet<String> {
  favorites.iter()
-  .filter(|o|o.body.get("venue").and_then(Value::as_str).unwrap_or("binance")==venue)
+  .filter(|o|o.body.get("venue").and_then(Value::as_str).unwrap_or(crate::instruments::DEFAULT_VENUE)==venue)
   .filter_map(|o|o.body.get("symbol").and_then(Value::as_str))
   .filter(|s|!s.is_empty()).map(str::to_uppercase).collect()
 }

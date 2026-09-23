@@ -369,7 +369,7 @@ struct SectorTests {
     #expect(SectorQuotePreference.rank("usdt") == 0)
     #expect(usdc == 1)
     #expect(SectorQuotePreference.rank("FDUSD") == 2)
-    #expect(SectorQuotePreference.rank("BTC") == SectorQuotePreference.quoteAssets.count)
+    #expect(SectorQuotePreference.rank("BTC") == QuoteAssets.tradable.count)
   }
 
   // MARK: - 6. 拿不到成交额的成员

@@ -48,7 +48,7 @@ async fn remove_friend(State(s):State<AppState>,who:Identity,Route(name):Route<S
 }
 fn share_identity(symbol:&str)->(&str,&str,&str) {
  let parts:Vec<_>=symbol.split('/').collect();
- if parts.len()==3 {(parts[0],parts[1],parts[2])} else {("binance","usd_m",symbol)}
+ if parts.len()==3 {(parts[0],parts[1],parts[2])} else {(crate::instruments::DEFAULT_VENUE,crate::instruments::DEFAULT_MARKET,symbol)}
 }
 fn validate(v:&Send)->Result<()> {
  let (venue,market,symbol)=share_identity(&v.symbol);

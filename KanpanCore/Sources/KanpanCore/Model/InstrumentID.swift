@@ -13,6 +13,20 @@ public struct InstrumentID: Hashable, Codable, Sendable, CustomStringConvertible
   /// 没有分隔的（`BTCUSDT`）原样。存储、请求、文件名一律用 `symbol`，不用它。
   public var display: String { symbol.replacingOccurrences(of: "-", with: "/") }
 
+  /// 裸代号（v2 之前的存档、老客户端、老服务端字段缺省）一律算这一家的这个市场。
+  ///
+  /// **客户端只此一份**：`"binance/usd_m"` 这串字面量以前在 Core、数据层、复盘、提醒里
+  /// 各写一遍（审查 2026-09-24 §2）。它必须等于默认交易所的 `VenueRegistry.default.marketKey`
+  /// （`KanpanNetworkTests` 钉着），也必须等于服务端 `instruments::DEFAULT_MARKET_KEY`
+  /// ——两端都对着 `Backend/kanpan-api/contract/instruments.json` 的 `defaultMarket`。
+  public static let defaultVenue = "binance"
+  public static let defaultMarket = "usd_m"
+  /// `defaultVenue/defaultMarket`：提醒同步对象里那种「整串」写法的 market。
+  public static let defaultMarketKey = defaultVenue + "/" + defaultMarket
+
+  /// 是默认交易所的默认市场（老的裸代号存档只可能落在这里）。
+  public var isDefaultMarket: Bool { marketKey == Self.defaultMarketKey }
+
   public init(venue: String, market: String, symbol: String) {
     self.venue = venue.lowercased()
     self.market = market.lowercased()
@@ -24,7 +38,7 @@ public struct InstrumentID: Hashable, Codable, Sendable, CustomStringConvertible
     if parts.count == 3 {
       self.init(venue: String(parts[0]), market: String(parts[1]), symbol: String(parts[2]))
     } else {
-      self.init(venue: "binance", market: "usd_m", symbol: legacyOrKey.trimmingCharacters(in: .whitespacesAndNewlines))
+      self.init(venue: Self.defaultVenue, market: Self.defaultMarket, symbol: legacyOrKey.trimmingCharacters(in: .whitespacesAndNewlines))
     }
   }
 
