@@ -29,10 +29,6 @@ struct AlertListPage: View {
   var watching: String? = nil
   /// 行上那颗「盯一个」：宿主去开 / 收锁屏实时活动。
   var onWatch: (KanpanCore.Alert) -> Void = { _ in }
-  /// 订 / 退一只品种的实时价（每行「距现价」要跟着跳）。表出现时订、离开时退。
-  var watchQuote: (String, Bool) -> Void = { _, _ in }
-  /// 现在订着的那几只。表开着时新加的提醒换了品种，就补订、退掉不再用的。
-  @State private var quoteSymbols: Set<String> = []
   /// 自选波动的幅度，编辑时的那一格字。离开输入框才落盘（`kanpan-persist-on-gesture-end`）。
   @State private var thresholdText = ""
   @FocusState private var thresholdFocused: Bool
@@ -92,7 +88,6 @@ struct AlertListPage: View {
                    onDelete: { Haptics.warning(); store.remove(id: alert.id) },
                    watched: watching == alert.id,
                    onWatch: { onWatch(alert) },
-                   quote: quote,
                    zone: zone)
         }
       }
@@ -105,10 +100,7 @@ struct AlertListPage: View {
         leave: {},
         enter: { Task { await permission.refresh() } })
     }
-    .onAppear { syncQuoteWatch(active: true) }
-    .onChange(of: store.all.map(\.symbol)) { _, _ in syncQuoteWatch(active: true) }
     .onDisappear {
-      syncQuoteWatch(active: false)
       guard let token = lifecycle else { return }
       AppLifecycle.shared.unregisterResources(token: token)
       lifecycle = nil
@@ -121,16 +113,6 @@ struct AlertListPage: View {
     // 一个容器，子元素各留各的名字。`AlertPromptBar` 那一条也是这么写的。
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("alerts.page")
-  }
-
-  /// 让还在等的那几条提醒的品种有实时价可读；`active == false` 时全退。
-  private func syncQuoteWatch(active: Bool) {
-    let want: Set<String> = active
-      ? Set(store.all.filter { $0.isActive && $0.kind != .reviewDue }.map { InstrumentID.canonical($0.symbol) })
-      : []
-    for symbol in quoteSymbols.subtracting(want) { watchQuote(symbol, false) }
-    for symbol in want.subtracting(quoteSymbols) { watchQuote(symbol, true) }
-    quoteSymbols = want
   }
 
   /// 自选波动提醒：一个开关，开着时下面一格幅度（手动输入，没有口径可选）。
@@ -255,23 +237,18 @@ private struct AlertRow: View {
   var onDelete: () -> Void
   var watched = false
   var onWatch: () -> Void = {}
-  /// 按代号取现价与价格位数（宿主的 `alertQuote`）。
-  var quote: (String) -> PriceAlertQuote? = { _ in nil }
   var zone: TZOffset
 
   @Environment(\.panelTheme) private var t
 
   var body: some View {
-    // 副文案在 body 里当场算好：读现价要落在这一行自己的观察范围里，报价一跳
-    // 只重算这一行（`SwipeToDelete` 的内容闭包不在 body 的观察范围内）。
-    let meta = meta
     SwipeToDelete(id: alert.id, open: $open, brick: .flush,
                   trailing: [.delete(t, run: onDelete)]) { swipe in
-      row(swipe, meta: meta)
+      row(swipe)
     }
   }
 
-  private func row(_ swipe: SwipeDeleteProxy, meta: String) -> some View {
+  private func row(_ swipe: SwipeDeleteProxy) -> some View {
     PanelRow(name: title, meta: meta, onTap: { swipe.isOpen ? swipe.close() : onOpen() }) {
       if alert.kind == .reviewDue {
         // 复盘到点没有「再次提醒」也没有条件可改：它跟着那条记录走。
@@ -348,26 +325,8 @@ private struct AlertRow: View {
     case .fired:
       guard let at = alert.firedAt else { return "已触发" }
       return "已触发 · " + ReviewLabels.dayTime(ms: Int64(at), offsetMinutes: zone)
-    case .paused: return (level.map { $0 + " · " } ?? "") + "已暂停"
-    case .active:
-      return (level.map { $0 + " · " } ?? "") + (alert.condition == .touch ? "等它碰到" : "等它收盘穿过")
+    case .paused: return "已暂停"
+    case .active: return alert.condition == .touch ? "等它碰到" : "等它收盘穿过"
     }
-  }
-
-  /// 「81,963.9 · 距现价 −5.0%」：这条提醒等在哪口价上、离现价还有多远（2026-09-23）。
-  ///
-  /// 从前每一行只写「等它碰到」，一张表挂着七八条，哪条快到了得一条条点进图里看。
-  /// 价用这只品种自己的位数；画线提醒取离现价最近的那条线此刻的价（`AlertEvaluator.level`）。
-  /// 取不到现价就只写价，取不到价（线段已经走完）就什么都不加。
-  private var level: String? {
-    let q = quote(alert.symbol)
-    let now = Date().timeIntervalSince1970 * 1000
-    guard let value = AlertEvaluator.level(of: alert, near: q?.price, at: now) else { return nil }
-    var text = grouped(ReviewLabels.price(value, decimals: q?.decimals))
-    if alert.isActive, let price = q?.price, price > 0, price.isFinite {
-      let pct = (value - price) / price * 100
-      text += " · 距现价 " + (pct >= 0 ? "+" : "−") + toFixed(abs(pct), abs(pct) < 1 ? 2 : 1) + "%"
-    }
-    return text
   }
 }

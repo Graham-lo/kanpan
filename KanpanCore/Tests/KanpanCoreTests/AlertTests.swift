@@ -348,26 +348,6 @@ struct AlertTests {
     #expect(AlertEvaluator.distance(from: 100, to: alert([], status: .fired), at: Self.t0) == nil)
   }
 
-  @Test("提醒总表那一行的价位：价格提醒取目标价，画线取离现价最近的那条线此刻的价")
-  func levelForListRow() {
-    let price = Alert.price(symbol: "BTCUSDT", target: 81_963.9, current: 86_000, label: "81,963.9",
-                            now: Self.t0)
-    #expect(AlertEvaluator.level(of: price, near: 86_000, at: Self.t0 + Self.hour) == 81_963.9)
-    #expect(AlertEvaluator.level(of: price, near: nil, at: Self.t0) == 81_963.9)
-    let channel = alert([
-      AlertLine(points: [DrawPoint(t: Self.t0, p: 110)], extendLeft: true, extendRight: true),
-      // 斜线：t0 时 90，t0+1h 时 100——取「此刻」的价，不是画的那一刻。
-      AlertLine(points: [DrawPoint(t: Self.t0, p: 90), DrawPoint(t: Self.t0 + Self.hour, p: 100)],
-                extendRight: true),
-    ])
-    #expect(AlertEvaluator.level(of: channel, near: 104, at: Self.t0 + Self.hour) == 100)
-    #expect(AlertEvaluator.level(of: channel, near: 108, at: Self.t0 + Self.hour) == 110)
-    #expect(AlertEvaluator.level(of: channel, near: nil, at: Self.t0) == 110)
-    // 线段已经走完、两头不延：取不到价就不写。
-    let ended = alert([AlertLine(points: [DrawPoint(t: Self.t0, p: 90), DrawPoint(t: Self.t0 + 1, p: 91)])])
-    #expect(AlertEvaluator.level(of: ended, near: 100, at: Self.t0 + Self.hour) == nil)
-  }
-
   // ------------------------------------------------------------------ 线协议
 
   @Test("身体的键和服务端那张表一字不差")

@@ -577,9 +577,7 @@ struct MainScreen: View {
                     quote: { text in alertQuote(text) },
                     prepareQuote: { [weak quotes] symbol in quotes?.watch(symbol) },
                     watching: activities.watching,
-                    onWatch: { alert in watch(alert) },
-                    // 每行「距现价」要跟着跳：表开着时把那几只当成可见行订上实时价。
-                    watchQuote: { [weak quotes] symbol, on in quotes?.watchRow(symbol, visible: on) })
+                    onWatch: { alert in watch(alert) })
         .environment(\.panelTheme, theme)
     }
     // 盯着的那条被删、被暂停、响了：锁屏那块跟着收。
