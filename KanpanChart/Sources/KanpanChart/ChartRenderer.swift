@@ -160,7 +160,8 @@ public struct ChartRenderer {
 
   private func computeMainLegendInset(plotW: Double) -> Double {
     if state.percentAxis { return compareLegendInset(plotW: plotW) }
-    guard state.options.adaptiveIndicators else { return AICoinBehavior.mainTopInset }
+    let orderFlowRow = orderFlowSnapshot == nil ? 0.0 : 12  // 主力订单流的图例另占一行
+    guard state.options.adaptiveIndicators else { return AICoinBehavior.mainTopInset + orderFlowRow }
     var x = 8.0, rows = 1.0
     for id in state.overlays {
       let names = id.lineNames(params: state.params[id] ?? id.defaultParams)
@@ -170,7 +171,7 @@ public struct ChartRenderer {
         x += width
       }
     }
-    return max(AICoinBehavior.mainTopInset, rows * 12 + 12)
+    return max(AICoinBehavior.mainTopInset, rows * 12 + 12) + orderFlowRow
   }
 
   // ---------------------------------------------------------------- 入口
@@ -337,6 +338,7 @@ public struct ChartRenderer {
     if state.percentAxis { drawCompare(ctx, pane: main, r: r, L: L) }
     else {
       drawOverlays(ctx, pane: main, r: r, L: L, scale: s)
+      drawOrderFlow(ctx, pane: main, range: r, L: L)
       drawDrawings(ctx, pane: main, r: r, L: L, scale: s)
       if live { drawDepth(ctx, pane: main, range: r, L: L) }
     }

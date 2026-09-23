@@ -455,6 +455,10 @@ public final class ChartView: UIView {
       if o.crosshair == nil || new.crosshair == nil { p.insert(.cross) }
     }
     if o.depth != new.depth { p.insert(.live) }
+    // 主力订单流：色带在 plot、图例在 cross；十字线进出色带要把那条提亮到 0.9，也得重画 plot。
+    if o.orderFlow != new.orderFlow { p.insert([.plot, .cross]) }
+    else if o.crosshair != new.crosshair, new.orderFlow?.orders.isEmpty == false,
+            o.crosshair.map({ $0.pane == nil }) == true || new.crosshair.map({ $0.pane == nil }) == true { p.insert(.plot) }
     if o.crosshair != new.crosshair { p.insert(.cross) }
     // 倒计时每秒走一格，但它只画在 `liveLayer` 上——只脏 live，别把整张图拖下水
     // （A3.12 要求静止时 CPU < 1%，重画 plot 层就破功了）。倒计时没开就当没变过。
@@ -469,7 +473,7 @@ public final class ChartView: UIView {
       && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
       && a.drawingPreviewID == b.drawingPreviewID && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi && a.external == b.external && a.oiSupported == b.oiSupported && a.externalSupported == b.externalSupported
       && a.magnet == b.magnet && a.options == b.options && a.subScale == b.subScale
-      && a.compare == b.compare && a.percentAxis == b.percentAxis
+      && a.compare == b.compare && a.percentAxis == b.percentAxis && (a.orderFlow == nil) == (b.orderFlow == nil)
       && a.indicatorColors == b.indicatorColors && a.hiddenOutputs == b.hiddenOutputs && a.subInverted == b.subInverted
       && a.rsiUpper == b.rsiUpper && a.rsiLower == b.rsiLower && a.axisScaleAnchor == b.axisScaleAnchor
       && sameSeriesExceptLast(a.series, b.series)

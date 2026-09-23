@@ -315,6 +315,7 @@ extension ChartRenderer {
     }
     // 至今涨幅挂在图例最后一段：它读的是十字线那根，和前面几段同源。
     if let (text, color) = sinceChangeChip { put(text, color) }
+    drawOrderFlowLegend(ctx, pane: pane, L: L, x: x, y: y)
   }
 
   /// 「至今涨幅」那一段：从十字线那根的收盘到**最新一根**收盘的涨跌幅。

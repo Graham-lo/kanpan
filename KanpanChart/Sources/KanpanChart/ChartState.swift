@@ -12,6 +12,8 @@ public struct ChartState: Sendable {
   public var oi: OISeries?
   public var external: [IndicatorID: ExternalSeries] = [:]
   public var depth: OrderBook?
+  /// 主力订单流的当前大单集合（ChartRenderer+OrderFlow）。`nil` = 开关关着或横屏画线台；永不落盘。
+  public var orderFlow: OrderFlowSnapshot?
   public var indicatorInputs: [IndicatorID: ExternalSeries] {
     var inputs = external
     if let oi { inputs[.oi] = ExternalSeries(oi: oi) }
@@ -139,6 +141,7 @@ extension ChartState {
       && hiddenOutputs == other.hiddenOutputs && subInverted == other.subInverted
       && rsiUpper == other.rsiUpper && rsiLower == other.rsiLower && subScale == other.subScale
       && oiSupported == other.oiSupported && externalSupported == other.externalSupported && compare == other.compare && percentAxis == other.percentAxis
+      && (orderFlow == nil) == (other.orderFlow == nil)  // 开着主力就多一行图例，影响 mainLegendInset
   }
 }
 
