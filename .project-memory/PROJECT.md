@@ -459,3 +459,15 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - **深度增量流**：网关两条线路都放行 `<symbol>@depth@100ms`，逻辑全在 `Backend/kanpan-gateway/depth_relay.py`。币安把盘口流拆到了 `/public`，`/market` 实测 0 帧，所以网关为深度单开一条 `fstream.binance.com/public/stream` 上游、按需开关；深度帧逐帧排队不合并（合并会打断 U/u/pu 链）。OKX 线路 `/market/okx/stream` 映射为 `books`：帧是 `{"stream","source":"okx","ctVal","data":<OKX 原消息>}`，首帧 snapshot（400 档、prevSeqId=-1）、之后 update；OKX 的 checksum 现恒为 0，只能靠 seqId/prevSeqId；后来者加入时网关重订一次拿新 snapshot（约 0.4 秒，之前会先收到几条 update，客户端要丢掉 snapshot 之前的 update；已在看的人也会再收到一份 snapshot）。
 - **成交流**（`50c431d`，已部署）：网关两条线路都放行 `<symbol>@aggTrade`，逐帧排队不合并（成交比例要每一笔都在）。币安 aggTrade 实测只在 `/market/stream` 上推（5 秒 123 帧，`/public` 0 帧），所以和行情同一条上游；OKX 映射为 `trades`（instId 同 books），帧是 `{"stream":"<sym>@aggTrade","source":"okx","ctVal","data":<OKX 原消息>}`，sz 是张数要乘 ctVal。
 - 判定都在 `depth_relay.py`：`sequenced()` 管逐帧排队（深度 + 成交），`on_public()` 管走不走币安 `/public`（只有深度），`OKX_SEQUENCED` 是 OKX 映射表。
+
+## 主力订单流 · 客户端（2026-09-24，`819f9cc` Core → `12b4e76` Network → `b01d647` Data → `2e4d136` Chart → `4953b31` App，验收见 `docs/acceptance/主力订单流-2026-09-24/验收报告.md`）
+
+- **是什么**：主图叠加「主力订单流」（主图指标第 7 项，无参数）。挂单簿里挑出的大单画成横向色带（高 2–6 pt、透明度按平方根落在 0.22–0.55、只有一条时 0.45、十字线停上去 0.9），右端 9pt 等宽标签「金额 · 成交%」，图例一行「主力 买 … · 卖 …」；十字线停在色带上时图例换成那一条的明细。每侧最多 6 条；画在 K 线之上、画线与最新价线之下；横屏画线台不画。
+- **模块位置**（一个功能一个模块，外面只留接线点）：判定 `KanpanCore/OrderFlow/`（本地簿、8 bps 分桶、`BigOrderFilter` 照搬 send-tradfi candidate.rs 的门槛、下限标定、模型与 60 秒热身）；接入 `KanpanNetwork/OrderFlow/`（`DepthFeedAdapter` 协议 + 币安 / OKX / Coinbase 三家适配器，深度与成交都走适配器，`check-venue-isolation.sh` 已把这个目录算作交易所目录）；订阅 `KanpanData/OrderFlow/`（`OrderFlowFeed` 管连接、快照、桶宽，`OrderFlowSlot` 是 `RoutedMarketFeed` 里的一格）；画法 `KanpanChart/ChartRenderer+OrderFlow.swift`；App 胶水 `Kanpan/OrderFlow/OrderFlowLink.swift`。
+- **开关的唯一真身是 `Prefs.orderFlow`**（体验类、随账号同步，跟「深度」一样）；`IndicatorID.orderFlow` 只为面板那一行和契约存在，永不进 `overlays`。订单簿、色带、标定这些运行时状态不落盘、不同步，换品种即清。
+- **订阅时机**：不抢首屏。`RoutedMarketFeed.swift:331-332` 等当前品种的 `.series`（≥ 3 根）交给界面之后才起深度连接；切后台停、回前台再起。**只跟前后台走，不跟「图表看不看得见」走**（`MarketModel.updateMicrostructure`）：切去自选 / 设置看一眼再回来，簿、墙的起点与「N 分」都还在——原先跟图表可见性走，每切一次页就换一本新簿、重新 60 秒热身，取证时四套皮肤换完回来一条墙都没有。
+- **三家范围**：币安 USDT 合约（直连 `fstream` / 网关 `/market/stream`）、OKX USDT 永续（网关 `/market/okx/stream` 的 `books`，只有 400 档，checksum 恒 0 只靠 seqId）、Coinbase 现货（恒走 Coinbase 直连 level2）。
+- **墙不常有是原判据的本色，不是故障**：本机探针（同一套门槛）实测币安 1000 档快照只摊到 BTC 两侧约 16 bps、ETH 约 42 bps、SOL 约 870 bps；两分钟里有墙的秒数 BTC 51/120、ETH 33/120、SOL 21/110、DOGE 33/110、XRP 0/110，挡掉的多是「不过绝对下限」和「不到 5 倍」。OKX 400 档只摊到 BTC 两侧 6–8 bps，BTC 在 OKX 上天生挑不出墙，取证用 SOL / DOGE。原项目币安合约同样只取 1000 档、OKX 同样 400 档。
+- **有意没搬的**：原项目的单交易所 8 倍分支与 0.97 分位；标定样本口径按本机单交易所重定。桶宽缺日线时退回簿中间价，tick 不明时退回 10 的幂。深度连接不经 `MarketSocketRouter`（它只管行情主流）。
+- **服务端**：`ORDERFLOW` 已进 `settings-fields.json` 与 `sync_validation.rs` 的 `OVERLAY_INDICATORS`，随 App 那一步部署（备份 `/opt/kanpan-backups/orderflow-app-20260924-060238`，06:05:41 重启，只读核对通过）。
+- **取证用例** `KanpanUITests/OrderFlowEvidenceUITests`（不进常规套件，按需 `-only-testing` 跑）：色带画在 CoreGraphics 上，读 `chart.canvas` 诊断里的 `orderFlowPhase / orderFlowBands / orderFlowHovered`（DEBUG 才有）；每条用例一份新档案（线路种子只在空档案上生效）。

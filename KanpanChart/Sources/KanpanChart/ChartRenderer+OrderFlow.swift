@@ -118,6 +118,14 @@ extension ChartRenderer {
     return state.view.x(Double(b.time(at: i)), plotW: plotW) - spacing / 2
   }
 
+  /// 此刻主图上画着的色带（视图坐标）与有没有一条被十字线点亮。只给 DEBUG 诊断（UI 取证）用。
+  func orderFlowDiagnostics(size: CGSize) -> (bands: [OrderFlowBand], hovered: Bool) {
+    guard !state.series.isEmpty else { return ([], false) }
+    let L = layout(size: size)
+    let frame = orderFlowFrame(pane: L.main, range: priceRange(size: size), L: L)
+    return (frame.bands, frame.hovered != nil)
+  }
+
   /// 在 plotLayer 上画色带与右端标签。返回画了几条（给测试核对）。
   @discardableResult
   func drawOrderFlow(_ ctx: CGContext, pane: Pane, range: PriceRange, L: Layout) -> Int {

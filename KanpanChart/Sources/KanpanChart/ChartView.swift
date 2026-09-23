@@ -151,6 +151,7 @@ public final class ChartView: UIView {
         if let compareRange, let crossPoint, let renderer {
           crossLabel = renderer.axisLabel(pOf(crossPoint.y, pane: layout.main, range: compareRange, mode: s.effectivePriceMode), range: compareRange)
         } else { crossLabel = "" }
+        let orderFlow = renderer?.orderFlowDiagnostics(size: bounds.size)
         let info: [String: Any] = [
           "compareMainClose": s.series.close.indices.contains(compareIndex) ? s.series.close[compareIndex] : 0,
           "crossAxisLabel": crossLabel,
@@ -202,6 +203,14 @@ public final class ChartView: UIView {
           "crossIndex": s.crosshair?.index ?? -1,
           "crossX": renderer?.crosshairCenter(size: bounds.size)?.x ?? -1,
           "crossY": renderer?.crosshairCenter(size: bounds.size)?.y ?? -1,
+          // 主力订单流：快照阶段、大单条数、此刻画出来的色带（视图坐标）与十字线点亮与否。
+          "orderFlowPhase": s.orderFlow.map { $0.phase == .ready ? "ready" : "loading" } ?? "",
+          "orderFlowOrders": s.orderFlow?.orders.count ?? 0,
+          "orderFlowBands": (orderFlow?.bands ?? []).map {
+            ["side": $0.order.side == .bid ? "bid" : "ask", "x": $0.frame.minX, "y": $0.frame.midY,
+             "w": $0.frame.width, "alpha": $0.alpha, "color": $0.color.value] as [String: Any]
+          },
+          "orderFlowHovered": orderFlow?.hovered ?? false,
           "panes": layout.panes.dropFirst().map { ["id": $0.indicator?.rawValue ?? "", "y": $0.y, "h": $0.h] as [String: Any] }, "subs": s.subs.map(\.rawValue),
           // 画线横屏要的是一张没有任何指标参与定标的原始 K 线，用例得能看见主图叠加层。
           "overlays": s.overlays.map(\.rawValue),

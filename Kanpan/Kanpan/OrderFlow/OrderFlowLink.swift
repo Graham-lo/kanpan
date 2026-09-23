@@ -8,7 +8,8 @@ import SwiftUI
 //
 // 数据链路在 KanpanData（OrderFlowFeed / RoutedMarketFeed.setOrderFlow），绘制在 KanpanChart
 // （ChartRenderer+OrderFlow）；这里只做三件事：
-//   1. 把用户开关（`Prefs.orderFlow`，跟人走、随账号同步）连同「图表可见 + 在前台」交给行情流；
+//   1. 把用户开关（`Prefs.orderFlow`，跟人走、随账号同步）连同「在前台」交给行情流
+//      （图表暂时看不见时照订：簿和墙的历史不能因为切去自选页看一眼就清零）；
 //   2. 收下行情流推来的当前大单集合，只认当前品种的；
 //   3. 给图表一份可以直接塞进 `ChartState.orderFlow` 的值（横屏画线台给 nil）。
 // 大单集合本身永远不同步、不落盘，切品种就清。
@@ -30,13 +31,13 @@ final class OrderFlowLink {
   private(set) var snapshot: OrderFlowSnapshot?
   /// 用户开关。
   @ObservationIgnored private(set) var wanted = false
-  /// 开关开着、图表看得见、在前台——此刻是否真的订着簿。
+  /// 开关开着、在前台——此刻是否真的订着簿。
   private(set) var active = false
   @ObservationIgnored let ticks = OrderFlowTicks()
 
   func setWanted(_ on: Bool) { wanted = on }
 
-  /// 跟着 `MarketModel.updateMicrostructure` 走：可见性、前后台、开关、换行情流都从那儿过。
+  /// 跟着 `MarketModel.updateMicrostructure` 走：前后台、开关、换行情流都从那儿过（传进来的是「在前台」）。
   func apply(visible: Bool, to feed: RoutedMarketFeed) {
     active = visible && wanted
     if !active { snapshot = nil }
