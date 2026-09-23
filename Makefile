@@ -316,7 +316,7 @@ diag-ios-test-release:
 # A2.13：零警告零错误。警告即错误，谁也别想蒙混过去。
 # 覆盖全部包：五个库包、app 侧八个 mac 能编的壳包，外加三个只能在 iOS 上编的
 # （KanpanChart、KanpanReview、主屏壳包 KanpanMain）。后三个走 xcodebuild，警告即错误
-# 由各自 Package.swift 认 `KANPAN_STRICT=1` 打开（原因见 KanpanChart/Package.swift 顶上）。
+# 由各自 Package.swift 认 `KANPAN_STRICT=<包名>` 打开（原因见 KanpanChart/Package.swift 顶上）。
 STRICT_FLAGS := -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
 STRICT_MAC_PACKAGES := $(CORE) $(NETWORK) $(DATA) $(ACCOUNT) \
 	$(SYMBOLS) $(SETTINGS) $(SECTOR) $(SCAN) $(ALERTS) $(DIAG) $(DEEPLINK) $(ACCOUNT_CODEC)
@@ -326,11 +326,11 @@ strict:
 		echo "→ strict $$p"; \
 		(cd $$p && $(SWIFT) build $(STRICT_FLAGS)) || exit 1; \
 	done
-	cd $(CHART) && KANPAN_STRICT=1 $(XCODEBUILD) -scheme KanpanChart \
+	cd $(CHART) && KANPAN_STRICT=KanpanChart $(XCODEBUILD) -scheme KanpanChart \
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
-	cd $(REVIEW) && KANPAN_STRICT=1 $(XCODEBUILD) -scheme KanpanReview \
+	cd $(REVIEW) && KANPAN_STRICT=KanpanReview $(XCODEBUILD) -scheme KanpanReview \
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
-	cd $(MAIN) && KANPAN_STRICT=1 $(XCODEBUILD) -scheme KanpanMain \
+	cd $(MAIN) && KANPAN_STRICT=KanpanMain $(XCODEBUILD) -scheme KanpanMain \
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
 
 # ---------------------------------------------------------------- §12 M3 取证

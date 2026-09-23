@@ -14,9 +14,9 @@ import PackageDescription
 //   cd Kanpan/KanpanTests && xcodebuild test -scheme KanpanMain \
 //     -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
 
-// `make strict` 置 KANPAN_STRICT=1 时本包自己的 target 警告即错误（为什么不走 xcodebuild 的
-// SWIFT_TREAT_WARNINGS_AS_ERRORS，见 KanpanChart/Package.swift 顶上）。
-let strict: [SwiftSetting] = ProcessInfo.processInfo.environment["KANPAN_STRICT"] != nil
+// `make strict` 置 KANPAN_STRICT=KanpanMain 时本包自己的 target 警告即错误（为什么不走
+// xcodebuild 的 SWIFT_TREAT_WARNINGS_AS_ERRORS、为什么认包名，见 KanpanChart/Package.swift 顶上）。
+let strict: [SwiftSetting] = ProcessInfo.processInfo.environment["KANPAN_STRICT"] == "KanpanMain"
   ? [.treatAllWarnings(as: .error)] : []
 
 let package = Package(
