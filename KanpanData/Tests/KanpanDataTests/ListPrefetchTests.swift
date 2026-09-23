@@ -73,4 +73,21 @@ struct ListPrefetchTests {
     #expect(await staysFalse(for: 1.0) { await !requested(server).isEmpty })
     await feed.stop()
   }
+
+  @Test("关掉快照：排队的预热不再拉，跑着的也不会把快照写回盘上", .timeLimit(.minutes(1)))
+  func disablingSnapshotsStopsPrefetch() async {
+    let (feed, server, paths) = make()
+    // 列表那一轮延迟 0.4 秒；行情页邻居那一轮立刻开跑（可能已经发出请求）。
+    await feed.prefetchList(symbols: ["LISTAUSDT", "LISTBUSDT"], interval: .m15)
+    await feed.prewarm(symbols: ["NEXTAUSDT", "NEXTBUSDT"], interval: .m15, slot: "scan")
+    await feed.setSnapshotEnabled(false)
+    #expect(await staysFalse(for: 1.0) {
+      await requested(server).contains { $0.hasPrefix("LIST") }
+    })
+    for name in ["LISTAUSDT", "LISTBUSDT", "NEXTAUSDT", "NEXTBUSDT"] {
+      #expect(SeriesStore.read(symbol: name, interval: .m15, in: paths.series) == nil,
+              "\(name) 在快照关掉之后又被写回了盘上")
+    }
+    await feed.stop()
+  }
 }

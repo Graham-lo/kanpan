@@ -179,6 +179,11 @@ public actor RoutedMarketFeed {
   }
   public func setSnapshotEnabled(_ enabled: Bool) async {
     snapshots = enabled
+    if !enabled {
+      // 关了快照，还在排队或跑着的预热一并叫停——否则它们会在下面清完盘之后
+      // 接着把刚拉回来的几份写回去（审查 §4：关快照不取消 prefetch / warm）。
+      cancelPrefetching()
+    }
     await feed?.setSnapshotEnabled(enabled)
     if !enabled {
       Snapshot.remove(paths.snapshot)
@@ -530,7 +535,7 @@ public actor RoutedMarketFeed {
     guard !jobs.isEmpty else { return nil }
     let log = self.log
     let cache = self.cache
-    return Task.detached(priority: .utility) {
+    return Task.detached(priority: .utility) { [weak self] in
       if delayMs > 0 {
         try? await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
         guard !Task.isCancelled else { return }
@@ -547,7 +552,10 @@ public actor RoutedMarketFeed {
           let bars = try await job.provider.klines(symbol: job.symbol, interval: job.interval, limit: MarketFeed.firstScreenLimit)
           guard !bars.isEmpty else { continue }
           let series = BarSeries(symbol: job.symbol, interval: job.interval, bars: MarketSeries.dedup(bars))
-          _ = try SeriesStore.write(series, in: job.dir)
+          // 写盘回到 actor 上做：和 `setSnapshotEnabled(false)` 的清盘排在同一条队里，
+          // 快照一关，要么这份还没写（不写了），要么已经写了（跟着被清掉），不会漏一份在盘上。
+          guard !Task.isCancelled, let self,
+                try await self.persistPrefetched(series, in: job.dir) else { return }
           await cache.put(series)
           done += 1
         } catch {
@@ -569,6 +577,21 @@ public actor RoutedMarketFeed {
       }
       log("预热 \(done)/\(jobs.count) 份快照\(skipped > 0 ? "，跳过 \(skipped) 个" : "")")
     }
+  }
+
+  /// 预热拉回来的一份落盘。快照已经关了就不写，返回假让那一轮收工。
+  private func persistPrefetched(_ series: BarSeries, in dir: URL) throws -> Bool {
+    guard snapshots else { return false }
+    _ = try SeriesStore.write(series, in: dir)
+    return true
+  }
+
+  /// 所有预热任务一起停：关快照、整个 feed 停掉时用。
+  private func cancelPrefetching() {
+    prefetchTask?.cancel(); prefetchTask = nil
+    warmTask?.cancel(); warmTask = nil
+    listPrefetchTask?.cancel(); listPrefetchTask = nil
+    prewarmTasks.values.forEach { $0.cancel() }; prewarmTasks = [:]
   }
 
   /// 这个错误只是「这一个品种不行」，还是「整条线路不行」。
@@ -616,8 +639,7 @@ public actor RoutedMarketFeed {
   func wsSilenceMsForTests() async -> Double? { await feed?.wsSilenceMsForTests() }
   public func stop() async {
     selection = UUID(); route = UUID(); monitor?.cancel(); pump?.cancel()
-    prefetchTask?.cancel(); warmTask?.cancel(); listPrefetchTask?.cancel()
-    prewarmTasks.values.forEach { $0.cancel() }; prewarmTasks = [:]
+    cancelPrefetching()
     stopOrderFlow(forgetChart: true)
     await feed?.stop(); feed = nil; continuation?.finish(); continuation = nil
   }
