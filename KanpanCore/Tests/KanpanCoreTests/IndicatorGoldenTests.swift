@@ -71,9 +71,10 @@ struct IndicatorGoldenTests {
   func srsiGolden(_ ci: Int) {
     let c = Golden.cases[ci]
     let p = Golden.params["SRSI"]!
-    let got = stochRsi(c.close, p[0], p[1], p[2], p[3])
-    expectSame(got.k, c.part("srsi", "k"), "\(c.name) SRSI K")
-    expectSame(got.d, c.part("srsi", "d"), "\(c.name) SRSI D")
+    var e = IndicatorEngine()
+    e.ensure(series: c.series, wanted: [.srsi], params: [.srsi: p], dataKey: "golden-srsi")
+    expectSame(e[.srsi]!.lines[0], c.part("srsi", "k"), "\(c.name) SRSI K")
+    expectSame(e[.srsi]!.lines[1], c.part("srsi", "d"), "\(c.name) SRSI D")
   }
 
   @Test("ATR", arguments: Golden.indices)

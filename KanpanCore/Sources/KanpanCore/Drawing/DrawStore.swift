@@ -159,14 +159,9 @@ public struct DrawArchive: Sendable, Equatable, Codable {
       if newValue.isEmpty {
         bySymbol.removeValue(forKey: InstrumentID.canonical(symbol))   // 空的不占位，省得存档里一堆空数组
       } else {
-        bySymbol[InstrumentID.canonical(symbol)] = Self.capped(newValue)
+        bySymbol[InstrumentID.canonical(symbol)] = newValue
       }
     }
-  }
-
-  /// 保留顺序和所有对象；旧调用点仍可使用此兼容方法。
-  public static func capped(_ ds: [Drawing]) -> [Drawing] {
-    ds
   }
 
   /// 眼下这个品种的那一桶，跟另一份存档比有没有变。
@@ -206,7 +201,7 @@ public struct DrawArchive: Sendable, Equatable, Codable {
     let raw = try c.decodeIfPresent([String: [TolerantDrawing]].self, forKey: .bySymbol) ?? [:]
     bySymbol = Self.migrate(raw.compactMapValues { bucket in
       let kept = bucket.compactMap(\.drawing)
-      return kept.isEmpty ? nil : Self.capped(kept)
+      return kept.isEmpty ? nil : kept
     })
   }
 }

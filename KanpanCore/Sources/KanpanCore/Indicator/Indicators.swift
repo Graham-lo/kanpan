@@ -73,29 +73,6 @@ public func kdj(_ high: [Double], _ low: [Double], _ close: [Double], _ n: Int, 
   return (K, D, J)
 }
 
-/// StochRSI：对 RSI(rlen) 做 Stoch(slen)，K = SMA(kn)，D = SMA(K, dn)。
-public func stochRsi(_ close: [Double], _ rlen: Int, _ slen: Int, _ kn: Int, _ dn2: Int)
-  -> (k: [Double], d: [Double]) {
-  let r = rsi(close, rlen)
-  var raw = nanArray(close.count)
-  for i in 0..<close.count {
-    guard r[i].isFinite else { continue }
-    var hi = -Double.infinity, lo = Double.infinity, ok = true
-    var j = i - slen + 1
-    while j <= i {
-      if j < 0 || !r[j].isFinite { ok = false; break }
-      if r[j] > hi { hi = r[j] }
-      if r[j] < lo { lo = r[j] }
-      j += 1
-    }
-    guard ok else { continue }
-    raw[i] = hi == lo ? 0 : ((r[i] - lo) / (hi - lo)) * 100
-  }
-  let K = smaSkip(raw, kn)
-  let D = smaSkip(K, dn2)
-  return (K, D)
-}
-
 /// ATR：`TR = max(h-l, |h-c₋₁|, |l-c₋₁|)` 再 RMA(n)。
 public func atr(_ high: [Double], _ low: [Double], _ close: [Double], _ n: Int) -> [Double] {
   guard !close.isEmpty else { return [] }

@@ -194,9 +194,3 @@ public struct OISeries: Sendable, Equatable {
     return out
   }
 }
-
-/// 持仓量在某个周期下的可用性。
-public enum OIAvailability: Sendable, Equatable {
-  case available(period: String)
-  case unsupported   // 周期 > 1d，币安没有
-}

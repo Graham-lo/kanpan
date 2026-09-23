@@ -304,16 +304,4 @@ public enum SectorCatalog {
     "DDOG": "Datadog", "MDB": "MongoDB", "GTLB": "GitLab",
     "TEAM": "Atlassian", "PATH": "UiPath", "ZM": "Zoom",
   ]
-
-  /// 4 个粗段只是分类表里的说明性分组，**不是 UI 维度**——
-  /// 用户 2026-09-18 砍掉了粗细粒度切换，界面上永远只有「细分」这一层。
-  /// 留在这里纯粹是为了让归类表跟源文件对得上，任何 UI 都不许拿它做控件。
-  /// 所以 2026-09-18 手工补的「软件」「电力」故意不往里加——源文件里没有它们，
-  /// 硬塞进去反而对不上了。
-  static let coarseGroupsNotAUIDimension: [(id: String, name: String, medium: [String])] = [
-    ("silicon", "硅与制造", ["gpu", "mem", "equip"]),
-    ("iron", "机房与互连", ["optic", "server"]),
-    ("compute", "云与算力", ["hyper", "neo"]),
-    ("intel", "终端与模型", ["edge", "robot", "app"]),
-  ]
 }

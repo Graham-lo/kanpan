@@ -242,7 +242,7 @@ extension ChartView {
     guard var s = state else { return }
     s.drawingPreviewID = nil
     drawing.preview = nil
-    s.drawings = DrawArchive.capped(items)
+    s.drawings = items
     state = s
     let d = drawing
     d.selected = nil

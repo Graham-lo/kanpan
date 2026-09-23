@@ -85,8 +85,12 @@ struct IndicatorEdgeTests {
   /// StochRSI 的窗口全等时分母为 0，同样不能出 NaN。
   @Test("StochRSI 分母为零")
   func stochRsiFlat() {
-    let s = stochRsi(Self.flat, 14, 14, 3, 3)
-    let tail = s.k.dropFirst(35)
+    let n = Self.flat.count
+    let series = BarSeries(symbol: "X", interval: .h1, t0: 0, open: Self.flat, high: Self.flat, low: Self.flat,
+                           close: Self.flat, volume: [Double](repeating: 1, count: n))
+    var e = IndicatorEngine()
+    e.ensure(series: series, wanted: [.srsi], params: [.srsi: [14, 14, 3, 3]], dataKey: "flat")
+    let tail = e[.srsi]!.lines[0].dropFirst(35)
     #expect(!tail.isEmpty)
     #expect(tail.filter { $0.isNaN || $0.isInfinite }.isEmpty)
     #expect(tail.allSatisfy2 { $0 >= 0 && $0 <= 100 })
