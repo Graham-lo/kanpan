@@ -249,6 +249,10 @@ public struct ReviewRecordView: View {
   @State private var note = ""
   @State private var nextTime = ""
   @State private var confirmVoid = false
+  /// 两个输入框谁在打字。按下「保存草稿 / 完成复盘」就收键盘：这一段写完了，
+  /// 键盘还挂着会盖住下面的「补图」「修订记录」，而且接着去相册挑图回来，
+  /// 系统会把焦点还给输入框、键盘又弹起来盖住刚补的那张图（P3.7 模拟器上实测）。
+  @FocusState private var typing: Bool
   /// 记这一笔的那一刻，图上是什么样（§4.3）。没有就整格不出现。
   @State private var shot: UIImage?
   @Environment(\.reviewTheme) private var t
@@ -321,13 +325,13 @@ public struct ReviewRecordView: View {
           if feature.isConnected { ReviewAttachmentsSection(feature: feature, record: record) }
           Section("市场的答案") { Text(record.outcome.title).foregroundStyle(t.ink); if let result = record.assessment { Text(result.reason).font(.caption).foregroundStyle(t.ink3) } }
             .listRowBackground(t.raised)
-          Section("现在怎么看") { TextField("当时的判断，哪些成立", text: $note, axis: .vertical).lineLimit(3...8).accessibilityIdentifier("review.note") }
+          Section("现在怎么看") { TextField("当时的判断，哪些成立", text: $note, axis: .vertical).lineLimit(3...8).focused($typing).accessibilityIdentifier("review.note") }
             .listRowBackground(t.raised)
-          Section("下次怎么做") { TextField("同样的局面再来，改哪儿", text: $nextTime, axis: .vertical).lineLimit(2...6).accessibilityIdentifier("review.nextTime") }
+          Section("下次怎么做") { TextField("同样的局面再来，改哪儿", text: $nextTime, axis: .vertical).lineLimit(2...6).focused($typing).accessibilityIdentifier("review.nextTime") }
             .listRowBackground(t.raised)
           Section {
-            Button("保存草稿") { feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) }
-            Button("完成复盘") { feature.saveReflection(id, note: note, nextTime: nextTime, publish: true) }
+            Button("保存草稿") { typing = false; feature.saveReflection(id, note: note, nextTime: nextTime, publish: false) }
+            Button("完成复盘") { typing = false; feature.saveReflection(id, note: note, nextTime: nextTime, publish: true) }
           }.listRowBackground(t.raised)
           if !record.reflectionHistory.isEmpty {
             Section("历史复盘") { ForEach(Array(record.reflectionHistory.enumerated()), id: \.offset) { _, reflection in Text(reflection.note.isEmpty ? "未写内容" : reflection.note).foregroundStyle(t.ink2) } }

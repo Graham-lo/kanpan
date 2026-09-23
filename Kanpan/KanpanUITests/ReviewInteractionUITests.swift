@@ -228,17 +228,35 @@ final class ReviewInteractionUITests: KanpanUICase {
 
     shot("P37-13b-记录详情")
     // 复盘写两次，都点「完成复盘」。第二次在第一次后面接着写，两版一看就分得开。
-    for text in ["突破没站稳", "；其实是假突破，等回踩"] {
+    for (round, text) in ["突破没站稳", "突破没站稳；其实是假突破，等回踩"].enumerated() {
       let field = app.descendants(matching: .any)["review.note"]
-      for _ in 0..<6 where !field.isHittable { app.swipeUp() }
+      // 第二轮时上一轮为了够到按钮往上滚过：输入框可能已经滚出屏幕顶上（List 是懒的，
+      // 滚出去就不存在了），这时要往下滑才找得回来。
+      for _ in 0..<6 where !field.isHittable {
+        let below = field.exists ? field.frame.minY > app.frame.midY : round == 0
+        if below { app.swipeUp() } else { app.swipeDown() }
+      }
       guard expectExists(field, Self.short, "详情里没有「现在怎么看」输入框") else { return }
       field.tap()
+      // 「完成复盘」会收键盘，第二轮重新点进框里时光标落在点的位置（r11 落在了开头，
+      // 存成了「；其实是…突破没站稳」）。所以整段删掉重写，第二版里带着第一版的原话。
+      if let old = field.value as? String, !old.isEmpty, round > 0 {
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.2)).tap()
+        app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count + 2))
+      }
       app.typeText(text)
       let done = app.buttons["完成复盘"]
-      for _ in 0..<4 where !done.isHittable { app.swipeUp() }
+      // 键盘盖住的按钮 XCUITest 照样报 isHittable，点下去落在键盘上——r7 两次「完成复盘」
+      // 都是这么丢的（服务端只收到离开详情时补存的那一条草稿）。按钮下沿压进键盘就接着往上滚。
+      func covered() -> Bool {
+        let keyboard = app.keyboards.firstMatch
+        return keyboard.exists && done.exists && done.frame.maxY > keyboard.frame.minY
+      }
+      for _ in 0..<4 where !done.isHittable || covered() { app.swipeUp() }
+      XCTAssertFalse(covered(), "「完成复盘」还压在键盘底下")
       done.tap()
       _ = XCTWaiter.wait(for: [XCTestExpectation(description: "upload")], timeout: 4)
-      shot("P37-14a-完成复盘-" + String(text.prefix(4)))
+      shot("P37-14a-完成复盘-第\(round + 1)版")
     }
 
     // 修订记录：两版复盘都在。
@@ -251,6 +269,8 @@ final class ReviewInteractionUITests: KanpanUICase {
     // 复盘是排队上传的：修订记录页只在打开那一刻问一次服务端，没赶上就退出来再进一次。
     var found = false
     for _ in 0..<4 where !found {
+      // 退回详情后滚动位置可能变了，按钮在但点不到（not hittable），先滚到能点。
+      for _ in 0..<4 where !revisions.isHittable { app.swipeUp() }
       revisions.tap()
       XCTAssertTrue(app.navigationBars["修订记录"].waitForExistence(timeout: Self.short), "没进修订记录页")
       found = waitUntil(timeout: Self.short) {
@@ -266,22 +286,32 @@ final class ReviewInteractionUITests: KanpanUICase {
 
     // 补图：从相册挑一张。
     let add = app.buttons["review.attachments.add"]
+    // 按钮在详情顶上：从修订记录退回来时它常压在导航栏底下——存在、但点下去落在导航栏上
+    // （r12 就是这样没打开相册）。滑到真的点得着为止。
     _ = waitUntil(timeout: Self.short) {
-      if add.exists { return true }
-      self.app.swipeDown(); return add.exists
+      if add.exists && add.isHittable && add.frame.minY > self.app.navigationBars.firstMatch.frame.maxY { return true }
+      self.app.swipeDown(); return false
     }
     if expectExists(add, Self.short, "详情里没有「补一张图」") {
       shot("P37-15-补图-之前")
       add.tap()
-      let photo = app.images.firstMatch
-      if photo.waitForExistence(timeout: Self.long) {
-        photo.tap()
-        let pager = app.descendants(matching: .any)["review.attachments.pager"]
-        XCTAssertTrue(pager.waitForExistence(timeout: 60), "挑了图但详情里没出现那张图")
+      // 系统相册面板是跨进程的：它的格子不在 app 的无障碍树里（r9 实测树里只剩面板后面的
+      // 行情页），`app.images` 找到的是 app 自己的图——r8 点的 `images.firstMatch` 命中点
+      // {-1,-1}，什么都没选上。面板先转几秒「正在载入…」再出网格，所以按屏幕坐标点
+      // 第一行第一格（顶上有没有「私密访问照片」横幅，这一点都落在某张照片上），
+      // 没出图就隔几秒再点一次。
+      let pager = app.descendants(matching: .any)["review.attachments.pager"]
+      var picked = false
+      for _ in 0..<4 where !picked {
+        _ = XCTWaiter.wait(for: [XCTestExpectation(description: "grid")], timeout: 4)
+        shot("P37-15b-相册面板")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.163, dy: 0.41)).tap()
+        picked = pager.waitForExistence(timeout: 20)
+      }
+      XCTAssertTrue(picked, "挑了图但详情里没出现那张图")
+      if picked {
         XCTAssertTrue(waitUntil(timeout: Self.long) { add.label.contains("1/3") }, "补图计数没到 1/3：\(add.label)")
         shot("P37-16-补图-之后")
-      } else {
-        XCTFail("相册里没有可挑的图：\(app.debugDescription)")
       }
     }
 
