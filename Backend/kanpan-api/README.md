@@ -116,20 +116,19 @@ migrates. Caddy's existing `/v1/market/*` rule already forwards the route.
 
 `cargo test` includes unit tests; the integration suite needs its dedicated PostgreSQL test configuration and must never target production. Tests cover username registration, session rotation/retry, isolation, field merge, deletion tombstones and private native-review search.
 
-The public similarity index is populated by an explicit, provenance-bound history import. The current seed covers Binance and OKX USDⓈ-M 1h candles for ten liquid USDT perpetuals over the latest 180 days; it is a useful seed, not full-market coverage. Personal OHLC search is available. Exact OKX trade-touch adjudication is not available through candle data alone. See `docs/待办交接-Codex-2026-09-22.md` for the sole implementation checklist and `docs/acceptance/` for dated evidence.
+The public similarity index is populated by an explicit, provenance-bound history import. The importer's default is the thirty USDⓈ-M perpetuals with the largest 24h quote volume × `15m,1h,4h,1d` × the latest 365 days. The production run of 2026-09-23 took about 25 minutes and wrote 82,429 new windows; see `docs/acceptance/待办交接-2026-09-22/P3/3.8.md`. An earlier OKX 1h seed is still in the table. This covers the liquid contracts, not the whole market. Personal OHLC search is available. Exact OKX trade-touch adjudication is not available through candle data alone. See `docs/待办交接-Codex-2026-09-22.md` for the sole implementation checklist and `docs/acceptance/` for dated evidence.
 
 To extend the public seed on the main host, run the release importer with the API service environment loaded:
 
 ```sh
 cd /opt/kanpan-api
 set -a; . /etc/kanpan-api/service.env; set +a
-KANPAN_INDEX_SYMBOLS=BTCUSDT,ETHUSDT \
-KANPAN_INDEX_INTERVALS=1h \
-KANPAN_INDEX_DAYS=180 \
+# defaults: top 30 by 24h quote volume × 15m,1h,4h,1d × 365 days
+# narrow it with KANPAN_INDEX_SYMBOLS=BTCUSDT,ETHUSDT / KANPAN_INDEX_INTERVALS / KANPAN_INDEX_DAYS
 target/release/import_public_history
 ```
 
-The importer reads the official Binance REST endpoint when `KANPAN_INDEX_SOURCE=binance`, or the local OKX market gateway when `KANPAN_INDEX_SOURCE=okx`; it validates candle continuity and the frozen `candle-geometry-v2` descriptor, and is idempotent on the public-window identity.
+The importer reads Binance's futures REST paths through `www.binance.com` (the `fapi.` host answers 451 from the US VPS) when `KANPAN_INDEX_SOURCE=binance`, or the local OKX market gateway when `KANPAN_INDEX_SOURCE=okx`; it validates candle continuity and the frozen `candle-geometry-v2` descriptor, and is idempotent on the public-window identity.
 
 ## Drawing shares
 

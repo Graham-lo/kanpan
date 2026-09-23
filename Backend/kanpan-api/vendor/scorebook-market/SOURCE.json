@@ -2,7 +2,8 @@
   "origin": "scorebook-backend",
   "adaptations": [
     "MarketDataProvider import path",
-    "KANPAN environment prefix"
+    "KANPAN environment prefix",
+    "Binance REST through www.binance.com with a browser UA (fapi./dapi. answer 451 from the US VPS)"
   ],
   "files": [
     {

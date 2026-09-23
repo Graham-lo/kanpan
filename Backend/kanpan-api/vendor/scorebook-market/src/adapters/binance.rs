@@ -40,24 +40,39 @@ impl scorebook_core::market::MarketDataProvider for Binance {
                 .map_err(Into::into)
         })
     }
-    fn exchange_info<'a>(
-        &'a self,
-        market: &'a str,
-    ) -> scorebook_core::market::ProviderFuture<'a> {
+    fn exchange_info<'a>(&'a self, market: &'a str) -> scorebook_core::market::ProviderFuture<'a> {
         Box::pin(async move { self.exchange_info(market).await.map_err(Into::into) })
     }
 }
+/// 币安 REST 一律走网站主机 `www.binance.com`，不走 `fapi.` / `dapi.binance.com`。
+///
+/// 线上 worker 跑在美国的 VPS 上，API 主机对这里一律回 451（「受限地区」），
+/// 于是复盘判定取 K 线、「找相似」取查询区间全部失败，界面上只剩一句「行情暂时拿不到」。
+/// 同样的路径挂在网站主机下回 200，而且是生产盘：2026-09-23 在 VPS 与本机对同一根
+/// BTCUSDT 4h 各取一次，两边逐字节相同，`x-mbx-used-weight-1m` 也照常带回来，
+/// 预算记账不受影响。kanpan-api 自己的 `market_meta`、`sector_history`、`oi_archive`
+/// 早就这样取（见那几处注释）；这个包是后来 vendor 进来的，一直还写着 API 主机。
+const REST: &str = "https://www.binance.com";
+const BROWSER_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+/// `usd_m` → `/fapi/v1/<path>`，`coin_m` → `/dapi/v1/<path>`；别的市场没有。
+fn endpoint(market: &str, path: &str) -> Option<String> {
+    let family = match market {
+        "usd_m" => "fapi",
+        "coin_m" => "dapi",
+        _ => return None,
+    };
+    Some(format!("{REST}/{family}/v1/{path}"))
+}
+
 impl Binance {
     async fn tickers_24h(&self, market: &str) -> Result<Value> {
-        let url = match market {
-            "usd_m" => "https://fapi.binance.com/fapi/v1/ticker/24hr",
-            "coin_m" => "https://dapi.binance.com/dapi/v1/ticker/24hr",
-            _ => return Err(Error::bad("market_not_supported")),
-        };
+        let url =
+            endpoint(market, "ticker/24hr").ok_or_else(|| Error::bad("market_not_supported"))?;
         self.budget.reserve(market, 40).await?;
         let response = self
             .client
-            .get(url)
+            .get(&url)
             .send()
             .await
             .map_err(anyhow::Error::from)?;
@@ -68,6 +83,10 @@ impl Binance {
             budget: super::provider_budget::ProviderBudget::new(pool)?,
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(20))
+                .connect_timeout(std::time::Duration::from_secs(5))
+                // 网站主机是给浏览器用的前门，reqwest 默认的空 UA 这类请求它会拒。
+                // 和 kanpan-api 的 market_meta 用同一个串。
+                .user_agent(BROWSER_UA)
                 .build()?,
         })
     }
@@ -90,11 +109,7 @@ impl Binance {
         if start >= end || iv.bars_between(start, end) > 50_000 {
             return Err(Error::bad("market_range_too_large"));
         }
-        let url = match market {
-            "usd_m" => "https://fapi.binance.com/fapi/v1/klines",
-            "coin_m" => "https://dapi.binance.com/dapi/v1/klines",
-            _ => return Err(Error::bad("market_not_supported")),
-        };
+        let url = endpoint(market, "klines").ok_or_else(|| Error::bad("market_not_supported"))?;
         let mut cursor = start.timestamp_millis();
         let mut raw = Vec::<Value>::new();
         let mut bars = Vec::<Bar>::new();
@@ -105,7 +120,7 @@ impl Binance {
             self.budget.reserve(market, 5).await?;
             let response = self
                 .client
-                .get(url)
+                .get(&url)
                 .query(&[
                     ("symbol", symbol.to_string()),
                     ("interval", interval.to_string()),
@@ -203,11 +218,8 @@ impl Binance {
         {
             return Err(Error::bad("invalid_trade_range"));
         }
-        let url = match market {
-            "usd_m" => "https://fapi.binance.com/fapi/v1/aggTrades",
-            "coin_m" => "https://dapi.binance.com/dapi/v1/aggTrades",
-            _ => return Err(Error::bad("market_not_supported")),
-        };
+        let url =
+            endpoint(market, "aggTrades").ok_or_else(|| Error::bad("market_not_supported"))?;
         let mut all = vec![];
         let mut from = None;
         let mut complete = false;
@@ -222,7 +234,7 @@ impl Binance {
             self.budget.reserve(market, 20).await?;
             let response = self
                 .client
-                .get(url)
+                .get(&url)
                 .query(&params)
                 .send()
                 .await
@@ -265,15 +277,12 @@ impl Binance {
 }
 impl Binance {
     pub async fn exchange_info(&self, market: &str) -> Result<Value> {
-        let url = match market {
-            "usd_m" => "https://fapi.binance.com/fapi/v1/exchangeInfo",
-            "coin_m" => "https://dapi.binance.com/dapi/v1/exchangeInfo",
-            _ => return Err(Error::bad("contract_market_required")),
-        };
+        let url = endpoint(market, "exchangeInfo")
+            .ok_or_else(|| Error::bad("contract_market_required"))?;
         self.budget.reserve(market, 1).await?;
         let response = self
             .client
-            .get(url)
+            .get(&url)
             .send()
             .await
             .map_err(anyhow::Error::from)?;
@@ -318,5 +327,34 @@ impl Binance {
             .json()
             .await
             .map_err(|_| Error::transient("invalid_provider_response"))
+    }
+}
+
+#[cfg(test)]
+mod endpoint_tests {
+    use super::endpoint;
+
+    #[test]
+    fn every_rest_path_goes_through_the_website_host() {
+        for market in ["usd_m", "coin_m"] {
+            for path in ["klines", "aggTrades", "ticker/24hr", "exchangeInfo"] {
+                let url = endpoint(market, path).unwrap();
+                assert!(url.starts_with("https://www.binance.com/"), "{url}");
+                assert!(
+                    !url.contains("fapi.binance.com") && !url.contains("dapi.binance.com"),
+                    "{url}"
+                );
+                assert!(!url.contains("binancefuture"), "{url}");
+            }
+        }
+        assert_eq!(
+            endpoint("usd_m", "klines").unwrap(),
+            "https://www.binance.com/fapi/v1/klines"
+        );
+        assert_eq!(
+            endpoint("coin_m", "aggTrades").unwrap(),
+            "https://www.binance.com/dapi/v1/aggTrades"
+        );
+        assert!(endpoint("spot", "klines").is_none());
     }
 }
