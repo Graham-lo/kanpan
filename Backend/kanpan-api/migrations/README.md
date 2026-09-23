@@ -117,3 +117,26 @@ DROP INDEX CONCURRENTLY IF EXISTS review_searches_due;
 
 清完再跑一次 `python3 ops/install.py` 即可。0011 的 `IF NOT EXISTS` 与 0012 的
 `IF EXISTS` 就是为了让这种重跑安全——新加 CONCURRENTLY 迁移时把它们带上。
+
+## 0021 / 0022 上线怎么排（2026-09-24 深度审查 A1 / A3）
+
+两条都跟着 `ops/install.py` 的 `migrate` 走，**不需要手工 SQL、不需要停 worker**，
+但 migrate 之后要**紧接着 restart**：
+
+- **0021**：`DROP TABLE IF EXISTS sync_snapshots`。新二进制已经不写也不清这张表。
+  migrate 与 restart 之间那几秒，旧二进制的推送会因为表不存在回 500；失败的事务整体回滚、
+  没有回执，客户端按同一个 op id 重试是幂等的，restart 之后就好。旧二进制的 maintenance
+  若恰好在这几秒里跑，那一个人那一轮会报错跳过，同样无害。
+- **0022**：新建 `sync_change_floors`（一人一行的截断水位，FORCE RLS + `personal_owner`）。
+  旧二进制不认识它，也不需要认识：旧二进制不截断变更日志，水位表一直是空的。
+  `install.py` 在 migrate 之后会把 `ALL TABLES` 授给 `kanpan_app`，新表也在里面。
+
+上线后第一次整点清理会把 30 天前的回执和变更一次删掉（每个人最新的那一行变更留着）。
+现在的客户端只走 bootstrap，不用 `/v1/sync/changes`，所以 410 `cursor_expired`
+不会出现在它们身上。只读核对：
+
+```sql
+SELECT to_regclass('sync_snapshots');                                            -- 应为 NULL
+SELECT count(*) FROM sync_operations WHERE created_at<now()-interval '31 days';   -- 清理后应为 0
+SELECT count(*) FROM sync_change_floors;                                          -- 清理后 >0（有人有过旧变更时）
+```

@@ -185,6 +185,46 @@ pub async fn export(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Re
   .bind(owner).fetch_one(&mut **tx).await?)
 }
 
+// ------------------------------------------------------------------ 保留窗口
+
+/// 推送回执（`sync_operations`）留多久。回执只为一件事存在：客户端发出去一条 op、
+/// 没收到回话，拿同一个 op id 重发时，服务端原样交回上一次的结果而不是再合并一遍。
+/// 客户端的发件箱几秒到几天内就会重试完；一个月前的回执没有人会再来要（审查 A2）。
+pub const OPERATION_RETENTION_DAYS:i32=30;
+/// 变更日志（`sync_changes`）留多久。现在的客户端只用 bootstrap（整页拉取）、不走
+/// `/v1/sync/changes`，所以截断碰不到它们；将来走增量的客户端落后超过这个窗口，
+/// 会拿到 410 `cursor_expired` 再重新 bootstrap（审查 A3）。
+pub const CHANGE_RETENTION_DAYS:i32=30;
+
+/// 这个人的回执与变更日志各按窗口截一次。maintenance 每小时对每个人调一次。
+///
+/// 先拿 `lock`（和 push / changes 同一把）：水位和删除必须对 `changes` 原子可见——
+/// 否则一次 `changes` 可能读到旧水位、却撞上已经删掉的那几行，悄悄漏一段改动。
+/// 每个人**最新的那一行变更永远不删**：bootstrap 交出去的游标是 max(sequence)，
+/// 那一行没了，游标会退回 0、落到水位以下，刚 bootstrap 完的设备立刻就「过期」。
+/// 返回删掉的（回执数，变更数）。
+pub async fn prune(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<(u64,u64)> {
+ lock(tx,owner).await?;
+ let receipts=sqlx::query("DELETE FROM sync_operations WHERE user_id=$1 AND created_at<now()-make_interval(days=>$2)")
+  .bind(owner).bind(OPERATION_RETENTION_DAYS).execute(&mut **tx).await?.rows_affected();
+ let changes:i64=sqlx::query_scalar("WITH gone AS (\
+   DELETE FROM sync_changes WHERE user_id=$1 AND created_at<now()-make_interval(days=>$2) \
+    AND sequence<(SELECT max(sequence) FROM sync_changes WHERE user_id=$1) RETURNING sequence), \
+  floor AS (INSERT INTO sync_change_floors(user_id,sequence) SELECT $1,max(sequence) FROM gone HAVING count(*)>0 \
+   ON CONFLICT(user_id) DO UPDATE SET sequence=GREATEST(sync_change_floors.sequence,EXCLUDED.sequence),updated_at=now() RETURNING 1) \
+  SELECT count(*) FROM gone")
+  .bind(owner).bind(CHANGE_RETENTION_DAYS).fetch_one(&mut **tx).await?;
+ Ok((receipts,u64::try_from(changes).unwrap_or(0)))
+}
+/// 这个人的变更日志从哪里往后是完整的：`sequence` 不大于它的变更可能已经删掉了。
+async fn floor(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Result<i64> {
+ Ok(sqlx::query_scalar::<_,i64>("SELECT sequence FROM sync_change_floors WHERE user_id=$1").bind(owner).fetch_optional(&mut **tx).await?.unwrap_or(0))
+}
+/// 游标落在水位以下：它要的那一段（cursor, floor] 可能已经不在了，只能重新 bootstrap。
+/// 正好等于水位不算过期——要的是 floor 之后的，一行都没删。
+fn expired(cursor:i64,floor:i64)->bool {cursor<floor}
+fn cursor_expired()->ApiError {ApiError(axum::http::StatusCode::GONE,"cursor_expired")}
+
 /// 以服务端自己的身份改一条同步对象，走的是和客户端 op 完全一样的那条路。
 ///
 /// 评估器判定触发之后要把 `status=fired` 告诉这个人的每一台设备，而设备只认同步日志：
@@ -259,7 +299,10 @@ async fn bootstrap(State(s):State<AppState>,i:Identity,Query(v):Query<Scope>)->R
  let rows=sqlx::query("SELECT * FROM sync_objects WHERE user_id=$1 AND collection=$2 AND ($3::text IS NULL OR starts_with(id,$3)) AND ($4::text IS NULL OR id>$4) ORDER BY id LIMIT 101")
   .bind(i.user).bind(c).bind(v.prefix).bind(v.after).fetch_all(&mut *tx).await?;
  let more=rows.len()>100;let objects=rows.iter().take(100).map(object).collect::<Result<Vec<_>>>()?;
- let cursor:i64=sqlx::query_scalar("SELECT COALESCE(max(sequence),0) FROM sync_changes WHERE user_id=$1").bind(i.user).fetch_one(&mut *tx).await?;
+ // 水位是兜底：prune 永远留着每个人最新的一行，正常情况下 max(sequence) 不会低于水位；
+ // 真低了（手工删过日志），交出去的游标也不能一出门就是过期的。
+ let cursor:i64=sqlx::query_scalar::<_,i64>("SELECT COALESCE(max(sequence),0) FROM sync_changes WHERE user_id=$1").bind(i.user).fetch_one(&mut *tx).await?
+  .max(floor(&mut tx,i.user).await?);
  let next=if more {objects.last().map(|o|o.id.clone())}else{None};tx.commit().await?;
  Ok(envelope(json!({"objects":objects,"next":next,"cursor":cursor,"serverTime":Utc::now().timestamp_millis()})))
 }
@@ -267,6 +310,7 @@ async fn changes(State(s):State<AppState>,i:Identity,Query(v):Query<Scope>)->Res
  if let Some(c)=&v.collection{collection(c)?}
  let cursor=v.cursor.unwrap_or(0);if cursor<0{return Err(ApiError::bad("invalid_cursor"))}
  let mut tx=s.personal(i.user).await?;lock(&mut tx,i.user).await?;
+ if expired(cursor,floor(&mut tx,i.user).await?) {return Err(cursor_expired())}
  // One join instead of one query per changed row. A device coming back after a
  // long trip made up to 201 extra round trips inside a single locked
  // transaction, which is also how long every other device of that user waited.
@@ -292,6 +336,17 @@ async fn changes(State(s):State<AppState>,i:Identity,Query(v):Query<Scope>)->Res
 #[cfg(test)]
 mod tests {
  use super::*;
+ /// 游标低于水位才算过期；等于水位时要的是水位之后的，一行都没删。
+ #[test] fn a_cursor_below_the_floor_has_expired() {
+  assert!(!expired(0,0),"从没截断过的人，游标 0 照样能从头拉");
+  assert!(!expired(120,120)&&!expired(121,120));
+  assert!(expired(119,120)&&expired(0,120));
+  let e=cursor_expired();assert_eq!((e.0,e.1),(axum::http::StatusCode::GONE,"cursor_expired"));
+ }
+ /// 两个窗口都比客户端任何一次重试长得多，也不能是零（零等于每小时清空回执）。
+ #[test] fn retention_windows_are_a_month() {
+  assert_eq!((OPERATION_RETENTION_DAYS,CHANGE_RETENTION_DAYS),(30,30));
+ }
  /// 集合名常量就是协议里的那六个，每个都有白名单；拼错的名字没有白名单。
  #[test] fn every_collection_constant_has_an_allowlist() {
   assert_eq!(COLLECTIONS,["settings","drawingPreferences","drawings","favorites","groups","alerts"]);

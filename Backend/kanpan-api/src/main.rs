@@ -58,6 +58,7 @@ async fn main()->anyhow::Result<()> {
   {
    let s=s.clone();
    supervisor.spawn("cleanup",Life::Forever,async move {loop {
+    // 单步失败在 cleanup 里面各自记、接着做；这里只剩「整轮都开不了头」。
     if let Err(e)=kanpan_api::maintenance::cleanup(&s).await {tracing::warn!("Cleanup will retry ({e:?})");}
     tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
    }});
