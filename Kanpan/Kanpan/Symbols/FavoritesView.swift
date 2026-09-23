@@ -83,6 +83,8 @@ struct FavoritesView: View {
   /// 现在每一行停在哪儿，以及由它算出来的落脚点（审查 C-08）。盒子是**不被观察**的，
   /// 理由见 `FavoritesRenderedRows`。
   @State private var rows = FavoritesRenderedRows()
+  /// 排好的顺序缓存。和上面那个一样是不被观察的引用盒子：命中与否不该触发重画。
+  @State private var sortCache = FavoritesSortCache()
   /// 落脚点已经还原过了吗。还原之前不记新的——列表刚铺开时最上面那几行会先
   /// `onAppear`，那时候记下来的是「第一行」，正好把要还原的那个盖掉。
   @State private var anchorRestored = false
@@ -174,8 +176,26 @@ struct FavoritesView: View {
     return rows
   }
 
+  /// 按「名单 + 口径 + 报价版本」记住的那一份顺序（审查 C3）。
+  ///
+  /// `symbols` 一次 body 求值里要被读好多遍——每一行问一次「我是不是第一行」、
+  /// 每露一行报一次可见顺序——从前每读一遍就把整张表重排一遍，一屏 N 行就是
+  /// N 次 O(N log N)。现在输入没变就直接拿上一次排好的，报价来一批才重排一次。
   private var sortedSymbols: [String] {
     let source = model.prefs.favorites(in: groupID)
+    // 只有按行情排的那几档才认报价版本：自选顺序、按品种名、编辑中，行情再跳顺序也不动，
+    // 别让它们平白每批报价都失效一次（也别平白多挂一条对报价的观察）。
+    let byQuote = !editing && sort != "custom" && sort != "name"
+    let key = FavoritesSortCache.Key(
+      source: source, sort: sort, ascending: ascending, amount: amount, editing: editing,
+      quotes: byQuote ? model.quoteRevision : 0, alerts: sort == alertSortKey ? alerts : [])
+    if let hit = sortCache.rows(for: key) { return hit }
+    let rows = sortRows(source)
+    sortCache.store(rows, for: key)
+    return rows
+  }
+
+  private func sortRows(_ source: [String]) -> [String] {
     var rows = source
     if !editing, sort != "custom" {
       // 「离提醒线最近」要拿每一行的现价和它自己的提醒线比，一次比较算一遍太贵——
@@ -1782,6 +1802,27 @@ private struct FavoritesHeader<Content: View>: View, Equatable {
   }
   /// 换分类、换账号时把落脚点一起丢掉。
   func forgetScrollAnchor() { scrollAnchor = nil }
+}
+
+/// 自选表排好的那一份顺序，连同算它用的输入（审查 C3）。
+///
+/// 输入一样，结果就一样：名单本身、排序口径、升降序、涨跌额还是涨跌幅、在不在编辑、
+/// 报价版本（`SymbolPickerModel.quoteRevision`），以及按「离提醒线最近」排时的那几条提醒。
+/// 只记最近一份——这一页同一时刻只画一类、一种排法。
+@MainActor final class FavoritesSortCache {
+  struct Key: Equatable {
+    var source: [String]
+    var sort: String
+    var ascending: Bool
+    var amount: Bool
+    var editing: Bool
+    var quotes: UInt64
+    var alerts: [KanpanCore.Alert]
+  }
+  private var key: Key?
+  private var cached: [String] = []
+  func rows(for key: Key) -> [String]? { self.key == key ? cached : nil }
+  func store(_ rows: [String], for key: Key) { self.key = key; cached = rows }
 }
 
 /// 列表现在铺着哪几行，以及由它算出来的落脚点（审查 C-08）。

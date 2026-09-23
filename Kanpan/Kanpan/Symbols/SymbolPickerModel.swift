@@ -38,6 +38,10 @@ final class SymbolPickerModel {
   }
   /// symbol（大写）→ 24h 行情。
   private(set) var tickers: [String: Ticker] = [:]
+  /// 报价表或品种表每变一次就加一。自选页拿它当排序缓存的键（审查 C3）：
+  /// 版本没动，排好的那份顺序就还作数，不必每求值一次 body 就把整张表重排一遍。
+  /// 品种表也算在里面，因为「有没有实时价」（`listing(of:)`）决定一行沉不沉底。
+  private(set) var quoteRevision: UInt64 = 0
   private(set) var historyBars: [String: [Bar]] = [:]
   /// 自选与最近。改完立刻落盘。
   private(set) var prefs = SymbolPrefs()
@@ -157,6 +161,7 @@ final class SymbolPickerModel {
 
   func setCatalog(_ list: [SymbolInfo]) {
     catalog = list
+    quoteRevision &+= 1
     reindex()
     rebuildFilter()
     // 目录到了才知道一个代号到底是什么东西（`underlyingType`）——而分类名正是从这儿来的。
@@ -174,6 +179,7 @@ final class SymbolPickerModel {
   /// 行情按 symbol 覆盖写；`!ticker@arr` 每 1s 推一批，只推变动的。
   func apply(_ batch: [Ticker]) {
     guard !batch.isEmpty else { return }
+    quoteRevision &+= 1
     for t in batch {
       let symbol = InstrumentID.canonical(t.symbol)
       tickers[symbol] = t
@@ -198,11 +204,13 @@ final class SymbolPickerModel {
   func retainQuotes(for symbols: Set<String>) {
     guard tickers.keys.contains(where: { !symbols.contains($0) }) else { return }
     tickers = tickers.filter { symbols.contains($0.key) }
+    quoteRevision &+= 1
     if sectionsActive { rebuild() }
   }
 
   func clearQuotes() {
     tickers.removeAll(keepingCapacity: true)
+    quoteRevision &+= 1
     rebuild()
   }
 
