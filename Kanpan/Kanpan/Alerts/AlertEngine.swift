@@ -252,7 +252,10 @@ final class AlertEngine: ObservableObject {
       observe(symbol: symbol, price: target * 0.999, timeMs: future + 1)
     }
   }
+  #endif
 
+  // 只读的桶快照，Release 包里不带；测试壳包靠 `KANPAN_TEST_SUPPORT` 在 `swift test -c release` 下也能用。
+  #if DEBUG || KANPAN_TEST_SUPPORT
   /// 用例拿它看桶折得对不对（品种 → 开盘时刻/高/低/收/上一根收盘）。
   func bucketState(_ symbol: String) -> (openTime: Int64, high: Double, low: Double, close: Double, previousClose: Double?)? {
     guard let b = buckets[InstrumentID.canonical(symbol)] else { return nil }

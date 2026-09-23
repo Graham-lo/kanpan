@@ -37,7 +37,10 @@ let package = Package(
     .target(
       name: "KanpanAlerts",
       dependencies: [.product(name: "KanpanCore", package: "KanpanCore")],
-      path: "Sources/KanpanAlerts"
+      path: "Sources/KanpanAlerts",
+      // `AlertEngine.bucketState` 这类只读测试口子在 app 里只进 DEBUG 包；
+      // 测试壳在 `swift test -c release` 下也要编得进来，所以这里单独打开。
+      swiftSettings: [.define("KANPAN_TEST_SUPPORT")]
     ),
     .testTarget(
       name: "KanpanAlertsTests",
