@@ -598,6 +598,11 @@ struct ChartHost: UIViewRepresentable {
       // P2.2：DEBUG 包里每一次画布手势都让帧探针采一段，Release 一行都不进。
       // 抬手后再多采一小会儿，甩出去的惯性滑行也算在这一段里。
       box.chart.onInteractionBegan = { ChartGestureFrames.began() }
+      // M5 A5.2：「收到行情事件 → 画进图层」计时，只在带 KANPAN_EVENT_DRAW_PROBE=1 启动时挂。
+      if EventDrawProbe.enabled {
+        box.chart.onAdoptedForProbe = { EventDrawProbe.shared.adopted(dirty: $0) }
+        box.chart.onRenderedForProbe = { EventDrawProbe.shared.rendered() }
+      }
       let onInteractionEnded = self.onInteractionEnded
       box.chart.onInteractionEnded = {
         ChartGestureFrames.ended()

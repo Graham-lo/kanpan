@@ -1,0 +1,25 @@
+{
+ "bars": 31,
+ "first_open": 1790175240000,
+ "last_open": 1790177040000,
+ "open_step_ms_set": [
+  60000
+ ],
+ "updates": 5104,
+ "update_gap_ms_p50": 302,
+ "update_gap_ms_p90": 588,
+ "update_gap_ms_max": 5518,
+ "append_delay_ms_median": 414.5,
+ "append_delay_ms_max": 1130,
+ "volume_went_back": 0,
+ "rest_samples": 303,
+ "rest_matched_windows": 300,
+ "within_one_tick": 290,
+ "exact": 271,
+ "max_diff": 6.5,
+ "bars_compared_with_rest_klines": 30,
+ "bars_max_ohlc_diff": 0.0,
+ "bars_bad": [],
+ "rest_trade_inside_final_bar_range": 296,
+ "rest_trade_outside": []
+}

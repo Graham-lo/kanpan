@@ -41,7 +41,7 @@ final class DynamicTypeUITests: KanpanUICase {
     // 自选页
     XCTAssertTrue(app.openFavorites(), "AX3 下进不了自选页")
     XCTAssertTrue(waitUntil(timeout: Self.long) {
-      self.app.descendants(matching: .any)["favorites.change.BTCUSDT"].exists
+      self.app.descendants(matching: .any)["favorites.change." + testInstrumentKey("BTCUSDT")].exists
     }, "自选页上没有 BTCUSDT 那一行")
     shot("AX3-自选")
     assertInWindow(["favorites.more", Ids.bottomChart], page: "自选")

@@ -44,12 +44,12 @@ final class NewListingMarkUITests: KanpanUICase {
     expectExists(field, Self.short, "搜索页上没有输入框")
     field.tap()
     field.typeText(base)
-    let mark = app.descendants(matching: .any)["symbols.new.\(symbol)"]
+    let mark = app.descendants(matching: .any)["symbols.new." + testInstrumentKey(symbol)]
     expectExists(mark, Self.long, "搜 \(base) 的结果里 \(symbol) 后面没有「新」")
     XCTAssertEqual(mark.label, "新上线")
     field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: base.count) + "BTC")
-    expectExists(app.buttons["symbols.star.BTCUSDT"], Self.long, "搜 BTC 没出 BTCUSDT")
-    XCTAssertFalse(app.descendants(matching: .any)["symbols.new.BTCUSDT"].exists,
+    expectExists(app.buttons["symbols.star." + testInstrumentKey("BTCUSDT")], Self.long, "搜 BTC 没出 BTCUSDT")
+    XCTAssertFalse(app.descendants(matching: .any)["symbols.new." + testInstrumentKey("BTCUSDT")].exists,
                    "老品种 BTCUSDT 也挂上了「新」")
     field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + base)
     expectExists(mark, Self.long, "删回去之后「新」没回来")
@@ -57,9 +57,9 @@ final class NewListingMarkUITests: KanpanUICase {
     app.buttons["search.cancel"].tap()
 
     XCTAssertTrue(app.openFavorites(), "没进到自选页")
-    expectExists(app.buttons["favorites.open.\(symbol)"], Self.long, "预置的 \(symbol) 不在自选页上")
+    expectExists(app.buttons["favorites.open." + testInstrumentKey(symbol)], Self.long, "预置的 \(symbol) 不在自选页上")
     expectExists(mark, Self.long, "自选行上 \(symbol) 后面没有「新」")
-    XCTAssertFalse(app.descendants(matching: .any)["symbols.new.BTCUSDT"].exists)
+    XCTAssertFalse(app.descendants(matching: .any)["symbols.new." + testInstrumentKey("BTCUSDT")].exists)
     shot("新-自选行")
   }
 

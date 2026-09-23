@@ -1,0 +1,20 @@
+direct ETHUSDT 688
+direct XRPUSDT 1063
+direct DOGEUSDT 721
+direct ADAUSDT 521
+direct LINKUSDT 1042
+direct AVAXUSDT 604
+direct LTCUSDT 692
+direct DOTUSDT 653
+direct BNBUSDT 2232
+direct SUIUSDT 478
+gateway ETHUSDT NA ws 1308
+gateway XRPUSDT 1339 ws 2917
+gateway DOGEUSDT 1033 ws 2915
+gateway ADAUSDT 1272 ws 2910
+gateway LINKUSDT 960 ws 2887
+gateway AVAXUSDT 1239 ws 2937
+gateway LTCUSDT 1304 ws 2890
+gateway DOTUSDT 1533 ws 2936
+gateway BNBUSDT 1053 ws 2908
+gateway SUIUSDT 1002 ws 2870

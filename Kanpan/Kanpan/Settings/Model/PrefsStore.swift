@@ -156,6 +156,11 @@ final class PrefsStore {
          let policy = MarketRoutePolicy(rawValue: raw) {
         self.prefs.routePolicy = policy
       }
+      // 不经 XCUITest、直接 `simctl launch` 起的长时取证（M5 的 30 分钟 1 分钟图）从这一档开张：
+      // 深链要过系统那句「在 Hkline 中打开？」，没有测试进程就没人去点。
+      if let raw = ProcessInfo.processInfo.environment["KANPAN_TEST_INTERVAL"], let interval = Interval(rawValue: raw) {
+        self.prefs.interval = interval
+      }
     }
     #endif
     mirrorToDevice()

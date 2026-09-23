@@ -35,6 +35,9 @@ public struct URLSessionTransport: HTTPTransport {
     req.httpMethod = "GET"
     // 币安对没有 UA 的请求偶尔更严，带一个固定的，方便对方限流统计。
     req.setValue("kanpan-ios/1.0", forHTTPHeaderField: "User-Agent")
+    #if DEBUG
+      if SimulatedOutage.active { throw URLError(.notConnectedToInternet) }
+    #endif
     let (data, resp) = try await session.data(for: req)
     guard let http = resp as? HTTPURLResponse else {
       throw FeedError.badResponse("非 HTTP 响应 \(url)")

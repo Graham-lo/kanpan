@@ -2,6 +2,7 @@ import Foundation
 import KanpanCore
 import KanpanData
 import Observation
+import QuartzCore
 
 /// 主界面的数据源：握着 `MarketFeed`，把它吐的事件收成一份可画的快照。
 ///
@@ -322,7 +323,12 @@ final class MarketModel {
         if Task.isCancelled { break }
         // 宿主已经走了：这条流没有收件人了，顺手把 feed 也关掉再退出。
         guard let self else { await feed.stop(); return }
+        #if DEBUG
+        let receivedAt = CACurrentMediaTime()
+        await MainActor.run { self.apply(e, receivedAt: receivedAt) }
+        #else
         await MainActor.run { self.apply(e) }
+        #endif
       }
     }
     // `[weak self]`：这一发只是去补品种的小数位与名字。宿主要是在这一个往返里
@@ -391,7 +397,7 @@ final class MarketModel {
   private var appliedDropped = 0
   private var applyReport = Date()
 
-  private func apply(_ update: FeedUpdate) {
+  private func apply(_ update: FeedUpdate, receivedAt: CFTimeInterval? = nil) {
     // 「帧到了但图不动」最常见的哑法是事件在这一关被 `selection` 判出局：WS 那边
     // 收帧计数照样涨，界面却一帧不更新。所以收多少、丢多少都要报出来。
     if update.selection == selection { applied += 1 } else { appliedDropped += 1 }
@@ -435,6 +441,9 @@ final class MarketModel {
       guard series?.symbol == symbol, series?.interval == interval else { return }
       _ = series?.upsert(b)
       lastPushAt = Date()
+      #if DEBUG
+      if let receivedAt { EventDrawProbe.shared.received(at: receivedAt) }
+      #endif
     case .prepend:
       // `.prepend` 不带新序列，得自己去取。视野是绝对时间窗，补在左边天然不跳。
       let request = selection, expectedSource = capabilities

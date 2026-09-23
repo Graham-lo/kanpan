@@ -397,7 +397,11 @@ public final class ChartView: UIView {
     }
     if renderer == nil { renderer = ChartRenderer(state: s) } else { renderer?.state = s }
     renderer?.guestDrawings = guestDrawings; renderer?.ownDimmed = ownDimmed
-    setNeedsRedraw(Self.changed(from: old, to: s))
+    let parts = Self.changed(from: old, to: s)
+    setNeedsRedraw(parts)
+    #if DEBUG
+    onAdoptedForProbe?(!parts.isEmpty)
+    #endif
     flashIfTicked(from: old, to: s)
     onStateChanged?(s)
     if old?.crosshair != s.crosshair { fireCrosshairChanged(s.crosshair) }
@@ -592,7 +596,18 @@ public final class ChartView: UIView {
       #endif
     case .cross: renderer.drawCross(in: ctx, size: size, scale: scale)
     }
+    #if DEBUG
+    if part != .cross { onRenderedForProbe?() }
+    #endif
   }
+
+  #if DEBUG
+  /// 诊断口子（M5 A5.2「收到行情事件 → 画进图层」计时），正式包里没有。
+  /// `onAdoptedForProbe`：新状态进来了，参数是这一次有没有置上脏位（没有就不会重画）。
+  /// `onRenderedForProbe`：蜡烛层或最新价层刚画完一次。
+  public var onAdoptedForProbe: ((Bool) -> Void)?
+  public var onRenderedForProbe: (() -> Void)?
+  #endif
 }
 
 // ---------------------------------------------------------------- 一层画布

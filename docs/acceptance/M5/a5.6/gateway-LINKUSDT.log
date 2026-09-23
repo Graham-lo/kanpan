@@ -1,0 +1,10 @@
+[22:54:10.956] 图表订阅：LINKUSDT K线1h、LINKUSDT 行情
+[22:54:10.956] 图表订阅：LINKUSDT K线1h、LINKUSDT 行情
+[22:54:10.956] 开始：binance/usd_m/LINKUSDT 1h，跑 0.05 分钟（Ctrl-C 停）
+[22:54:11.916] 首屏 300 根先落地 binance/usd_m/LINKUSDT|1h
+[22:54:11.916] 序列 300 根  1789095600000 … 1790172000000  末根 close=12.332
+[22:54:13.843] WS有效首帧 kanpan.107-174-172-10.sslip.io 2887ms
+[22:54:13.844] WS 连上 #1 wss://dstream.binance.me/stream?streams=linkusdt@kline_1h/linkusdt@ticker
+[22:54:13.844] 状态 → live
+[22:54:13.844] 行情 last=12.318 涨跌=-4.474602559131446% 24h高=13.215 低=12.042
+[22:54:13.983] 收工：末根更新 0 次，价格 0 次，行情 2 次，首帧 961ms

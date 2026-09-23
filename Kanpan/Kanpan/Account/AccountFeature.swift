@@ -209,6 +209,12 @@ extension DeviceKind {
   /// （审查 C：零警告）。唯一的调用方是 `AccountFeature.device` 的初值，那个类本来
   /// 就整个挂在主线程上，标上去不影响任何人。
   @MainActor static var current: DeviceKind {
+    #if DEBUG
+      // 测试后门（P4.5）：同一账号每类设备只准一台在线，两台 iPhone 模拟器同时登录
+      // 必然顶掉一台。跨设备并发用例让第二台自报「平板」，规则本身不动。正式包没有这一行。
+      if let raw = ProcessInfo.processInfo.environment["KANPAN_TEST_DEVICE_KIND"],
+         let kind = DeviceKind(rawValue: raw) { return kind }
+    #endif
     if ProcessInfo.processInfo.isiOSAppOnMac { return .desktop }
     switch UIDevice.current.userInterfaceIdiom {
     case .pad: return .tablet

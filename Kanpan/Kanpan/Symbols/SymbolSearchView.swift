@@ -71,9 +71,10 @@ struct SymbolSearchView: View {
   private var hitCount: Int { hits.map { $0.rows.count + $0.more } ?? 0 }
 
   /// 最近看过。品种表还没到的时候查不到信息，那就先不显示这一组——
-  /// 不占位、不解释，表到了它自己就出来。
+  /// 不占位、不解释，表到了它自己就出来。存几个就摆几个（`SymbolPrefs.recentLimit`，
+  /// 10 个）：这里原来另截到 8 个，存下的最后两个永远看不见。
   private var recents: [SymbolRow] {
-    model.prefs.recents.compactMap { model.info(for: $0) }.prefix(8).map {
+    model.prefs.recents.compactMap { model.info(for: $0) }.prefix(SymbolPrefs.recentLimit).map {
       SymbolRow(match: SymbolMatch(info: $0), ticker: model.ticker(for: $0.symbol))
     }
   }

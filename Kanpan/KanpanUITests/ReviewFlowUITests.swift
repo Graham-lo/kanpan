@@ -117,6 +117,7 @@ final class ReviewFlowUITests: KanpanUICase {
 
     XCTAssertTrue(recordOnce(), "记一笔这条路没走通")
     expectMarks(1, "记完了图上没有记号")
+    shot("复盘-记完一笔-图上的记号")
 
     // ---- 换一档周期
     let other = try XCTUnwrap(Ids.quickIntervals.first { $0 != interval }, "测试档案里只有一档周期")
@@ -124,6 +125,7 @@ final class ReviewFlowUITests: KanpanUICase {
     XCTAssertTrue(waitUntil(timeout: Self.long) { self.chartInfo()["interval"] as? String == other },
                   "没切到 \(other)：\(chartInfo())")
     expectMarks(0, "\(interval) 上记的那条画到了 \(other) 上")
+    shot("复盘-换周期-记号不跟过去")
     app.tapIntervalChip(interval)
     XCTAssertTrue(waitUntil(timeout: Self.long) { self.chartInfo()["interval"] as? String == interval },
                   "没切回 \(interval)：\(chartInfo())")
@@ -133,6 +135,7 @@ final class ReviewFlowUITests: KanpanUICase {
     let elsewhere = symbol == "ETHUSDT" ? "BTCUSDT" : "ETHUSDT"
     switchSymbol(to: elsewhere)
     expectMarks(0, "\(symbol) 上记的那条画到了 \(elsewhere) 上")
+    shot("复盘-换品种-记号不跟过去")
     switchSymbol(to: symbol)
     expectMarks(1, "换回 \(symbol)，记号没回来")
 
@@ -140,6 +143,7 @@ final class ReviewFlowUITests: KanpanUICase {
     openBookRecords()
     XCTAssertFalse(app.buttons["review.empty"].exists, "图上画着记号，复盘本里却说一条都没有")
     XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: Self.short), "「记录」里一行都没有")
+    shot("复盘-复盘本记录里有这一条")
     app.buttons["review.back"].tap()
     expectExists(app.buttons[Ids.intervalChart], Self.long, "复盘本退不回行情页")
     expectMarks(1, "从复盘本回来，记号没了")
@@ -148,6 +152,7 @@ final class ReviewFlowUITests: KanpanUICase {
     XCUIDevice.shared.orientation = .landscapeLeft
     expectExists(app.staticTexts[Ids.landscapeSymbol], Self.long, "没横过来")
     expectMarks(1, "横屏（没在画线）把记号也屏蔽了")
+    shot("复盘-横屏记号仍在")
     XCUIDevice.shared.orientation = .portrait
     expectExists(app.buttons[Ids.intervalChart], Self.long, "没转回竖屏")
     expectMarks(1, "转回竖屏记号没回来")
@@ -200,6 +205,7 @@ final class ReviewFlowUITests: KanpanUICase {
                   "回放的图一根 K 线都没有：\(chartInfo())")
     let opened = chartInfo()
     let span = try XCTUnwrap(opened["span"] as? Double)
+    shot("复盘-回放-刚打开")
 
     // ---- 先退一根：给「后一根」腾出往前走的余地
     //
@@ -235,16 +241,26 @@ final class ReviewFlowUITests: KanpanUICase {
                    "按一下「后一根」，视野被拽回最右边了：\(stepped)")
     XCTAssertEqual(try XCTUnwrap(stepped["span"] as? Double), span, accuracy: span * 0.01,
                    "按一下「后一根」，一屏的根数被改回默认值了：\(stepped)")
+    shot("复盘-回放-拖开后按后一根视野不动")
 
     // ---- 「判断处」才是人自己要求换地方，这时候才重铺
     app.buttons["判断处"].tap()
     XCTAssertTrue(waitUntil(timeout: Self.long) {
       (self.chartInfo()["to"] as? Double ?? 0) > pannedTo + span * 0.1
     }, "点了「判断处」视野没跳回判断那一刻：\(chartInfo())")
+    shot("复盘-回放-判断处")
 
     // ---- 退出回到实时图
     app.buttons["退出"].tap()
     XCTAssertTrue(waitUntil(timeout: Self.long) { !step.exists && self.app.buttons[Ids.intervalChart].exists },
                   "点「退出」没回到实时行情页")
+  }
+
+  /// P4.6 要「全跑一遍并截图」：关键几步各留一张，`keepAlways` 让通过的用例也留下来。
+  private func shot(_ name: String) {
+    let value = XCTAttachment(screenshot: app.screenshot())
+    value.name = name
+    value.lifetime = .keepAlways
+    add(value)
   }
 }

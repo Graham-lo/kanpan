@@ -47,6 +47,12 @@ final class URLSessionSocket: WSSocket, @unchecked Sendable {
 
   func receive() async throws -> WSFrame {
     let m = try await task.receive()
+    #if DEBUG
+      if SimulatedOutage.active {
+        task.cancel(with: .goingAway, reason: nil)
+        throw URLError(.networkConnectionLost)
+      }
+    #endif
     switch m {
     case .string(let s): return .text(s)
     case .data(let d): return .text(String(decoding: d, as: UTF8.self))
@@ -64,6 +70,9 @@ final class URLSessionSocket: WSSocket, @unchecked Sendable {
   /// 代理黑洞、NAT 超时那种「连接看着还在、其实什么都过不去」的局面，这一发探得出来。
   func keepalive(timeoutMs: Double) async -> Bool {
     guard task.state == .running else { return false }
+    #if DEBUG
+      if SimulatedOutage.active { return false }
+    #endif
     let gate = PingGate()
     return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
       gate.arm(cont)
@@ -87,6 +96,9 @@ public struct URLSessionSocketFactory: WSSocketFactory {
     self.session = session; self.connectTimeout = connectTimeout
   }
   public func connect(to url: URL) async throws -> WSSocket {
+    #if DEBUG
+      if SimulatedOutage.active { throw URLError(.notConnectedToInternet) }
+    #endif
     var request = URLRequest(url: url)
     // URLSessionWebSocketTask returns before the TLS/HTTP upgrade completes;
     // put a bound on that handshake too, otherwise a black-holed mobile route
