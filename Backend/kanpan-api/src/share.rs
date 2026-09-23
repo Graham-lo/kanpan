@@ -12,7 +12,9 @@ const INTERVALS:&[&str]=&["1m","3m","5m","15m","30m","1h","2h","4h","6h","12h","
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct Friend {username:String}
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct View {from:i64,to:i64}
 #[derive(Deserialize)] #[serde(deny_unknown_fields)]
-struct Send {to:String,symbol:String,interval:String,view:View,drawings:Vec<Value>,#[serde(default)] alerted:Vec<String>}
+struct Send {to:String,symbol:String,interval:String,view:View,drawings:Vec<Value>,#[serde(default)] alerted:Vec<String>,
+ // 「回给他」：在他发来的那封信的线上接着画，再发回去。只能指向**我收到的、正是他发的**那一封。
+ #[serde(default,rename="replyTo")] reply_to:Option<String>}
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct Cursor {after:Option<DateTime<Utc>>}
 pub fn routes()->Router<AppState> {
  Router::new().route("/v1/friends",get(friends).post(add_friend))
@@ -69,6 +71,7 @@ fn validate(v:&Send)->Result<()> {
   body.insert("symbol".into(),json!(v.symbol));
   sync_validation::object(&sync::Object{collection:"drawings".into(),id:format!("binance/usd_m/{}/{id}",v.symbol),body,fields:BTreeMap::new(),revision:0,deleted:false,generation:0})?;
  }
+ if v.reply_to.as_deref().is_some_and(|r|r.len()!=22||!r.bytes().all(|b|b.is_ascii_alphanumeric())) {return Err(ApiError::bad("invalid_reply_to"))}
  if v.alerted.len()>ids.len() || v.alerted.iter().any(|id|!ids.contains(id.as_str())) || v.alerted.iter().collect::<HashSet<_>>().len()!=v.alerted.len() {return Err(ApiError::bad("invalid_alerted"))} Ok(())
 }
 async fn send(State(s):State<AppState>,who:Identity,Payload(v):Payload<Send>)->Result<Json<Value>> {
@@ -81,14 +84,19 @@ async fn send(State(s):State<AppState>,who:Identity,Payload(v):Payload<Send>)->R
  sqlx::query("SELECT set_config('kanpan.user_id',$1,true)").bind(other.to_string()).execute(&mut *tx).await?;
  befriend(&mut tx,other,who.user).await?;
  sqlx::query("SELECT set_config('kanpan.user_id',$1,true)").bind(who.user.to_string()).execute(&mut *tx).await?;
+ if let Some(reply)=&v.reply_to {
+  // RLS 下我只看得见自己收发的信；再加两道条件：收件人是我、发件人正是这次的收件人。
+  let ok:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM shares WHERE id=$1 AND to_user=$2 AND from_user=$3)").bind(reply).bind(who.user).bind(other).fetch_one(&mut *tx).await?;
+  if !ok {return Err(ApiError::bad("invalid_reply_to"))}
+ }
  let id=Alphanumeric.sample_string(&mut rand::rng(),22);
- sqlx::query("INSERT INTO shares(id,from_user,to_user,symbol,interval,view_from,view_to,drawings,alerted) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)").bind(&id).bind(who.user).bind(other).bind(v.symbol).bind(v.interval).bind(v.view.from).bind(v.view.to).bind(json!(v.drawings)).bind(json!(v.alerted)).execute(&mut *tx).await?;
+ sqlx::query("INSERT INTO shares(id,from_user,to_user,symbol,interval,view_from,view_to,drawings,alerted,reply_to) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)").bind(&id).bind(who.user).bind(other).bind(v.symbol).bind(v.interval).bind(v.view.from).bind(v.view.to).bind(json!(v.drawings)).bind(json!(v.alerted)).bind(&v.reply_to).execute(&mut *tx).await?;
  tx.commit().await?;Ok(envelope(json!({"id":id})))
 }
 async fn inbox(State(s):State<AppState>,who:Identity,Params(v):Params<Cursor>)->Result<Json<Value>> {
  let mut tx=s.personal(who.user).await?;lock(&mut tx,who.user).await?;
  let rows=sqlx::query("SELECT s.*,u.email AS sender FROM shares s JOIN account_users u ON u.id=s.from_user WHERE to_user=$1 AND ($2::timestamptz IS NULL OR greatest(s.created_at,s.opened_at,s.kept_at)>=$2) ORDER BY s.created_at DESC,s.id DESC").bind(who.user).bind(v.after).fetch_all(&mut *tx).await?;
- let items:Vec<Value>=rows.iter().map(|r|json!({"id":r.get::<String,_>("id"),"from":r.get::<String,_>("sender"),"symbol":r.get::<String,_>("symbol"),"market":r.get::<String,_>("market"),"interval":r.get::<String,_>("interval"),"view":{"from":r.get::<i64,_>("view_from"),"to":r.get::<i64,_>("view_to")},"drawings":r.get::<Value,_>("drawings"),"alerted":r.get::<Value,_>("alerted"),"createdAt":r.get::<DateTime<Utc>,_>("created_at"),"openedAt":r.get::<Option<DateTime<Utc>>,_>("opened_at"),"keptAt":r.get::<Option<DateTime<Utc>>,_>("kept_at")})).collect();
+ let items:Vec<Value>=rows.iter().map(|r|json!({"id":r.get::<String,_>("id"),"from":r.get::<String,_>("sender"),"symbol":r.get::<String,_>("symbol"),"market":r.get::<String,_>("market"),"interval":r.get::<String,_>("interval"),"view":{"from":r.get::<i64,_>("view_from"),"to":r.get::<i64,_>("view_to")},"drawings":r.get::<Value,_>("drawings"),"alerted":r.get::<Value,_>("alerted"),"createdAt":r.get::<DateTime<Utc>,_>("created_at"),"openedAt":r.get::<Option<DateTime<Utc>>,_>("opened_at"),"keptAt":r.get::<Option<DateTime<Utc>>,_>("kept_at"),"replyTo":r.get::<Option<String>,_>("reply_to")})).collect();
  let cursor:DateTime<Utc>=sqlx::query_scalar("SELECT clock_timestamp()").fetch_one(&mut *tx).await?;
  tx.commit().await?;Ok(envelope(json!({"items":items,"cursor":cursor})))
 }
@@ -122,6 +130,14 @@ async fn kept(State(s):State<AppState>,who:Identity,Route(id):Route<String>)->Re
   }
   let mut v=good();v["alerted"]=json!(["not-present"]);assert!(validate(&serde_json::from_value(v).unwrap()).is_err());
   let mut v=good();v["interval"]=json!("8h");assert!(validate(&serde_json::from_value(v).unwrap()).is_err());
+
+ }
+ #[test] fn reply_to_must_look_like_a_share_id() {
+  let mut v=good();v["replyTo"]=json!("abcdefghijklmnopqrstuv");assert!(validate(&serde_json::from_value(v).unwrap()).is_ok());
+  for bad in ["short","abcdefghijklmnopqrstu/","abcdefghijklmnopqrstuvw"] {
+   let mut v=good();v["replyTo"]=json!(bad);assert!(validate(&serde_json::from_value(v).unwrap()).is_err(),"{bad}");
+  }
+  let mut v=good();v["reply_to"]=json!("abcdefghijklmnopqrstuv");assert!(serde_json::from_value::<Send>(v).is_err(),"snake_case is an unknown field");
  }
  #[test] fn intervals_match_native() {
   let source=include_str!("../../../KanpanCore/Sources/KanpanCore/Model/Interval.swift");

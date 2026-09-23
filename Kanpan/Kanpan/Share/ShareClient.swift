@@ -31,6 +31,7 @@ struct ShareClient: Sendable {
       case .http(404, "no_such_user"): return "没有这个用户名"
       case .http(400, "cannot_send_self"): return "不能发给自己"
       case .http(400, "invalid_username"): return "请填写朋友的用户名"
+      case .http(400, "invalid_reply_to"): return "这封已经回不了了"
       case .http(429, _): return "发得有点快，稍后再试"
       default: return value.localizedDescription
       }

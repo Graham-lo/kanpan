@@ -10,12 +10,13 @@ struct ShareCard: View {
   var onOpen: () -> Void
   var onKeep: () -> Void
   var onExit: () -> Void
+  var onReply: () -> Void = {}
   @Environment(\.panelTheme) private var theme
   var body: some View {
     HStack(spacing: 7) {
       ShareThumbnail(item: item, inbox: inbox)
       VStack(alignment: .leading, spacing: 1) {
-        Text(previewing ? "正在看 \(item.from) 的线" : item.from)
+        Text(previewing ? "正在看 \(item.from) 的线" : item.replyTo != nil ? "\(item.from) 回了你" : item.from)
           .font(.system(size: 12)).foregroundStyle(theme.ink).lineLimit(1)
         if !previewing {
           Text("\(item.shortSymbol) · \(item.drawings.count) 条线" + (extra > 0 ? "  +\(extra)" : ""))
@@ -28,6 +29,8 @@ struct ShareCard: View {
         Button(kept ? "已留下" : "留下", action: onKeep)
           .disabled(kept).foregroundStyle(kept ? theme.ink3 : theme.amber)
           .accessibilityIdentifier("share.keep")
+        Button("回给 \(item.from)", action: onReply).foregroundStyle(theme.amber).lineLimit(1)
+          .accessibilityIdentifier("share.reply")
         Button("退出", action: onExit).foregroundStyle(theme.ink3)
           .accessibilityIdentifier("share.exit")
       } else {
@@ -47,6 +50,36 @@ struct ShareCard: View {
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier(previewing ? "share.preview" : "share.card")
     .accessibilityAction(named: "划掉") { if !previewing { inbox.opened(item) } }
+  }
+}
+/// 「回给他」进行中：他的线已经留在我图上，我接着画，画好了点「发送」原路回过去。
+/// 和收件卡同一个位置、同一副样子，不另起一层。
+struct ShareReplyBar: View {
+  var item: ShareItem
+  var sending: Bool
+  var onSend: () -> Void
+  var onCancel: () -> Void
+  @Environment(\.panelTheme) private var theme
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "arrowshape.turn.up.left.fill").font(.system(size: 13)).foregroundStyle(theme.amber)
+      Text("回给 \(item.from)").font(.system(size: 12)).foregroundStyle(theme.ink).lineLimit(1)
+      Spacer(minLength: 0)
+      if sending {
+        ProgressView().controlSize(.small).tint(theme.amber)
+      } else {
+        Button("发送", action: onSend).foregroundStyle(theme.amber)
+          .accessibilityIdentifier("share.reply.send")
+      }
+      Button("取消", action: onCancel).foregroundStyle(theme.ink3)
+        .accessibilityIdentifier("share.reply.cancel")
+    }
+    .font(.system(size: 13)).buttonStyle(.plain).disabled(sending)
+    .padding(.horizontal, 9).frame(height: 36)
+    .background(RoundedRectangle(cornerRadius: 10).fill(theme.amberSoft)
+      .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme.amberLine, lineWidth: 0.5)))
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("share.replying")
   }
 }
 struct ShareThumbnail: View {

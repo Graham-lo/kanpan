@@ -171,6 +171,9 @@ struct MainScreen: View {
   @State private var showFriendPicker = false
   @State private var shareDraft: ShareOutbound?
   @State private var shareShot: Data?
+  /// 「回给他」：他那一封的线已经留在图上，等我画完点发送（P3.5）。
+  @State private var replying: ShareItem?
+  @State private var replySending = false
   /// 「更多」那张周期网格摊开了没有。开着时它把图往下推，所以状态得住在这一层。
   @State private var intervalGrid = false
   /// 图还停在最新那根上没有。周期条行尾那颗「最新」靠它决定露不露面。
@@ -443,6 +446,8 @@ struct MainScreen: View {
       },
       onSymbol: { symbol in
         if let preview = draw.previewing, preview.symbol != symbol { endSharePreview() }
+        // 回信只回那一只上的线：换走了就算不回了。
+        if let reply = replying, reply.symbol != symbol { replying = nil }
         quotes.setChartSymbol(symbol); accountBridge?.focus(symbol)
         // 换了一只，「刚才那一屏」说的已经不是这张图上的事了（§P3-2）。
         forgetReturn()
@@ -1014,15 +1019,63 @@ struct MainScreen: View {
     inbox.pull()
     if let shot { try? await client.upload(shot, id: id) }
   }
-  private var headerCardVisible: Bool { alertPrompt.pending != nil || draw.previewing != nil || !inbox.unseen.isEmpty }
+  private var headerCardVisible: Bool {
+    alertPrompt.pending != nil || draw.previewing != nil || replying != nil || !inbox.unseen.isEmpty
+  }
   @ViewBuilder private func shareAndAlertCard(inHeader: Bool) -> some View {
     if alertPrompt.pending != nil {
       AlertPromptBar(model: alertPrompt, inHeader: inHeader)
-    } else if let item = draw.previewing ?? inbox.unseen.first {
+    } else if let item = draw.previewing ?? (replying == nil ? inbox.unseen.first : nil) {
       ShareCard(item: item, inbox: inbox, previewing: draw.previewing != nil,
                 extra: max(0, inbox.unseen.count - 1), onOpen: { openShare(item) },
-                onKeep: { keepShare(item) }, onExit: endSharePreview)
+                onKeep: { keepShare(item) }, onExit: endSharePreview, onReply: { replyShare(item) })
         .padding(.horizontal, inHeader ? 0 : 10)
+    } else if let item = replying {
+      ShareReplyBar(item: item, sending: replySending, onSend: sendReply, onCancel: { replying = nil })
+        .padding(.horizontal, inHeader ? 0 : 10)
+    }
+  }
+
+  /// 「回给他」：先把他的线留到我图上（和「留下」同一条路，不重复复制），
+  /// 然后收件卡换成回信条，我接着画，画好点「发送」。
+  private func replyShare(_ item: ShareItem) {
+    do {
+      let kept = try inbox.prepareKeep(item)
+      if inbox.items.first(where: { $0.id == item.id })?.keptAt == nil {
+        guard draw.append(kept, symbol: item.symbol) else { return }
+        inbox.kept(item)
+      }
+      draw.endPreview(); shareInterval = nil
+      replying = item
+    } catch { say("暂时无法回信，请重试") }
+  }
+
+  /// 把这只品种上看得见的线原路发回去，带上 `replyTo`。不过朋友名单：收件人就是来信的人。
+  private func sendReply() {
+    guard let item = replying, let api = account.client, let owner = account.user?.id else { return }
+    let lines = visibleShareDrawings
+    guard !lines.isEmpty else { say("先在图上画点什么"); return }
+    guard let chart = proxy.box?.chart, let state = chart.state else { say("图还没画出来"); return }
+    let draft = ShareOutbound(to: item.from, symbol: market.symbol, interval: market.interval,
+                              view: ShareWindow(from: state.view.from.rounded(), to: state.view.to.rounded()),
+                              drawings: lines,
+                              alerted: lines.filter { line in alerts.alerts(symbol: market.symbol).contains { $0.isActive && $0.drawingID == line.id } }.map(\.id),
+                              replyTo: item.id)
+    let shot = ChartSnapshotRenderer.thumbnail(state: state, size: chart.bounds.size)
+    let client = ShareClient(api: api)
+    replySending = true
+    Task {
+      defer { replySending = false }
+      do {
+        let id = try await client.send(draft)
+        guard account.user?.id == owner else { return }
+        replying = nil
+        say("已回给 \(item.from)")
+        inbox.pull()
+        if let shot { try? await client.upload(shot, id: id) }
+      } catch is CancellationError {} catch {
+        say(ShareClient.message(error))
+      }
     }
   }
 
@@ -1647,6 +1700,7 @@ struct MainScreen: View {
       bridge.canApply = { syncGate }
       bridge.onSwitch = {
         endSharePreview(); showFriends = false; showFriendPicker = false; shareDraft = nil; shareShot = nil
+        replying = nil
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
         else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
         showSymbols = false; symbolsFromSearch = false

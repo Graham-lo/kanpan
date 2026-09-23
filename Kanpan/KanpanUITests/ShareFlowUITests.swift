@@ -148,6 +148,39 @@ import XCTest
     attach("画线台发给朋友后继续画线")
   }
 
+  /// P3.5「回给他」：B 在 A 发来的那封上点「回给 A」→ 他的线留在图上 → 发送 →
+  /// 服务端那封带 `replyTo` 指回原信 → A 登录后收件卡写「B 回了你」。
+  func testReplyRoundTrip() async throws {
+    tap("share.open")
+    tap("share.reply")
+    let bar = app.descendants(matching: .any)["share.replying"]
+    XCTAssertTrue(bar.waitForExistence(timeout: 15), "点了「回给」没换成回信条")
+    XCTAssertTrue(app.staticTexts["回给 " + people[0]["username"]!].exists)
+    XCTAssertTrue(wait(20) { (self.info()["drawingIDs"] as? [String] ?? []).count >= 4 }, "他的线没留到图上")
+    attach("01-回给他")
+    tap("share.reply.send")
+    XCTAssertTrue(wait(30) { !bar.exists }, "发送后回信条没收起")
+    var reply: [String: Any]?
+    for _ in 0..<20 where reply == nil {
+      let inbox = try await request("v1/shares/inbox", person: 0)
+      reply = (inbox["items"] as? [[String: Any]] ?? []).first { $0["replyTo"] as? String == sharedID }
+      if reply == nil { try await Task.sleep(for: .seconds(1)) }
+    }
+    let got = try XCTUnwrap(reply, "A 的收件箱里没有带 replyTo 的回信")
+    XCTAssertEqual(got["from"] as? String, people[1]["username"])
+    print("回信证据：\(got["id"] ?? "") replyTo=\(sharedID)")
+    // 换成 A 登录，看那张卡。
+    app.terminate()
+    app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
+    app.launch()
+    loginUI(people[0])
+    tap("bottom.chart")
+    XCUIDevice.shared.press(.home); app.activate()
+    let card = app.staticTexts[people[1]["username"]! + " 回了你"]
+    XCTAssertTrue(card.waitForExistence(timeout: 60), "A 的收件卡没写「B 回了你」：\(app.debugDescription)")
+    attach("02-对方卡片回了你")
+  }
+
   private func assertLayout(file: StaticString = #filePath, line: UInt = #line) {
     let current = info()
     for key in ["background", "overlays", "subs", "ma", "mode", "inverted"] {

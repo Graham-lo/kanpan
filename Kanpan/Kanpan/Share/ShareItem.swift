@@ -19,6 +19,8 @@ struct ShareItem: Codable, Equatable, Identifiable, Sendable {
   var createdAt: String
   var openedAt: String?
   var keptAt: String?
+  /// 这封是回信：指向我先前发给他的那一封（P3.5）。卡上写「XX 回了你」。
+  var replyTo: String?
   var shortSymbol: String {
     for quote in ["FDUSD", "USDT", "USDC", "BUSD", "TUSD", "USD1"] where symbol.hasSuffix(quote) {
       return String(symbol.dropLast(quote.count))
@@ -50,6 +52,8 @@ struct ShareOutbound: Encodable, Sendable {
   var view: ShareWindow
   var drawings: [Drawing]
   var alerted: [String]
+  /// 「回给他」时带上他发来的那一封的 id；服务端只认我收到的、正是他发的那封。
+  var replyTo: String? = nil
 }
 struct ShareFriend: Codable, Hashable, Identifiable, Sendable {
   var username: String

@@ -43,6 +43,23 @@ async fn shares_are_private_make_friends_and_keep_independent_lines() {
   let req=Request::builder().uri(format!("/v1/shares/{id}/shot")).header("authorization",format!("Bearer {token}")).body(Body::empty()).unwrap();
   let r=w.app.clone().oneshot(req).await.unwrap();assert_eq!(r.status(),expected);if expected==200 {assert_eq!(r.into_body().collect().await.unwrap().to_bytes(),shot);}
  }
+ // 回给他：只能回我收到的、正是他发来的那一封；回过去的信在他的收件箱里带着 replyTo。
+ let a_name:String=sqlx::query_scalar("SELECT email FROM account_users WHERE id=$1").bind(a.id).fetch_one(&w.admin).await.unwrap();
+ let c_name:String=sqlx::query_scalar("SELECT email FROM account_users WHERE id=$1").bind(c.id).fetch_one(&w.admin).await.unwrap();
+ let mut reply=payload.clone();reply["to"]=json!(a_name);reply["replyTo"]=json!(id);
+ let (status,v)=request(&w.app,"/v1/shares","POST",Some(&b.token),None,reply.clone()).await;assert_eq!(status,200,"{v}");
+ let (_,a_inbox)=request(&w.app,"/v1/shares/inbox","GET",Some(&a.token),None,json!({})).await;
+ assert_eq!(a_inbox["data"]["items"][0]["replyTo"],json!(id));
+ assert_eq!(inbox["data"]["items"][0]["replyTo"],Value::Null,"a first send is not a reply");
+ // 发信人自己不能拿自己发出去的那封当「回信」；第三人拿别人的信也不行；指向不存在的信也不行。
+ let mut own=payload.clone();own["replyTo"]=json!(id);
+ assert_eq!(request(&w.app,"/v1/shares","POST",Some(&a.token),None,own).await.0,400);
+ let mut stranger=reply.clone();stranger["to"]=json!(a_name);
+ assert_eq!(request(&w.app,"/v1/shares","POST",Some(&c.token),None,stranger).await.0,400);
+ let mut wrong_person=reply.clone();wrong_person["to"]=json!(c_name);
+ assert_eq!(request(&w.app,"/v1/shares","POST",Some(&b.token),None,wrong_person).await.0,400);
+ let mut missing=reply.clone();missing["replyTo"]=json!("zzzzzzzzzzzzzzzzzzzzzz");
+ assert_eq!(request(&w.app,"/v1/shares","POST",Some(&b.token),None,missing).await.0,400);
  // 留下是收件人的状态；重复操作不改时间，并可在增量拉取中收到它。
  assert_eq!(request(&w.app,&format!("/v1/shares/{id}/kept"),"POST",Some(&b.token),None,json!({})).await.0,200);
  let cursor=inbox["data"]["cursor"].as_str().unwrap().replace('+',"%2B");
