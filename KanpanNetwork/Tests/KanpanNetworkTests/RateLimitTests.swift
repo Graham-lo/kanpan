@@ -30,6 +30,26 @@ struct RateLimitTests {
     #expect(await limiter.usedWeight() == 2)
   }
 
+  /// 首屏小页被取消时（完整那发先回来了），这一笔不许再出站。`minGapMs == 0` 的
+  /// 限流器放行时一次都不睡，所以取消不会在排队那一步被顺手拦下，得在出站前自己看。
+  @Test("已取消的请求不出站")
+  func cancelledRequestNeverLeaves() async throws {
+    let pacer = StepPacer()
+    let limiter = RateLimiter(pacer: pacer, minGapMs: 0)
+    let server = FakeServer { _ in json("[]") }
+    let rest = BinanceREST(transport: FakeTransport(server), limiter: limiter, pacer: pacer)
+    let request = Task { () -> Result<[Bar], Error> in
+      withUnsafeCurrentTask { $0?.cancel() }
+      do { return .success(try await rest.klines(symbol: "BTCUSDT", interval: .m1, limit: 300)) }
+      catch { return .failure(error) }
+    }
+    guard case .failure(let error) = await request.value else {
+      Issue.record("已取消的请求照样拿回了数据"); return
+    }
+    #expect(error is CancellationError, "\(error)")
+    #expect(await server.urls().isEmpty)
+  }
+
   // ---------------------------------------------------------------- A2.10
 
   @Test("连发要隔 120ms")

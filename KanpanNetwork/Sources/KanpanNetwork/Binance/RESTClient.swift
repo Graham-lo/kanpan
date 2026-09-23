@@ -72,6 +72,10 @@ public actor BinanceREST {
                            url: url.absoluteString, retryAfter: error.retryAfter,
                            reason: .blocked)
       }
+      // 调用方已经不要这一笔了（例如首屏小页：完整那发先回来了）就别出站。限流器放行
+      // 这一步不一定让出执行权（`minGapMs == 0` 时一次都不睡），被取消的任务照样会
+      // 走到这里；指望 transport 自己响应取消的话，请求已经发出去了、权重也花了。
+      try Task.checkCancellation()
       let t0 = await pacer.nowMs()
       let reply: HTTPReply
       do { reply = try await transport.get(url, timeout: timeout) }

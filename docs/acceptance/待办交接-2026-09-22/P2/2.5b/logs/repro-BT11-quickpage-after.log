@@ -1,0 +1,68 @@
+◇ Test "TEMPREPRO BT-11 饿死首屏小页" started.
+REPRO round 1 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT", "interval=1m&limit=1500&startTime=1700000000000&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT", "interval=1m&limit=1500&startTime=1700000000000&symbol=BTCUSDT"]
+REPRO round 2 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 3 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 4 base=1 after=1 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT"]
+REPRO round 5 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 6 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 7 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 8 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 9 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 10 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 11 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 12 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO bad=0/12
+✔ Test "TEMPREPRO BT-11 饿死首屏小页" passed after 19.593 seconds.
+✔ Suite "行情流水线：生命周期与并发" passed after 19.594 seconds.
+✔ Test run with 1 test in 1 suite passed after 19.595 seconds.
+◇ Test "TEMPREPRO BT-11 饿死首屏小页" started.
+REPRO round 1 base=1 after=1 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT"]
+REPRO round 2 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 3 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 4 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 5 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 6 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 7 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 8 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 9 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 10 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 11 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 12 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO bad=0/12
+✔ Test "TEMPREPRO BT-11 饿死首屏小页" passed after 19.385 seconds.
+✔ Suite "行情流水线：生命周期与并发" passed after 19.386 seconds.
+✔ Test run with 1 test in 1 suite passed after 19.386 seconds.
+◇ Test "TEMPREPRO BT-11 饿死首屏小页" started.
+REPRO round 1 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 2 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 3 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 4 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 5 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 6 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 7 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 8 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 9 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 10 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 11 base=1 after=1 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT"]
+REPRO round 12 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO bad=0/12
+✔ Test "TEMPREPRO BT-11 饿死首屏小页" passed after 19.449 seconds.
+✔ Suite "行情流水线：生命周期与并发" passed after 19.451 seconds.
+✔ Test run with 1 test in 1 suite passed after 19.451 seconds.
+◇ Test "TEMPREPRO BT-11 饿死首屏小页" started.
+REPRO round 1 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 2 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 3 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 4 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 5 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 6 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 7 base=1 after=1 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT"]
+REPRO round 8 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 9 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 10 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 11 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO round 12 base=2 after=2 baseQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"] allQ=["interval=1m&limit=1500&symbol=BTCUSDT", "interval=1m&limit=300&symbol=BTCUSDT"]
+REPRO bad=0/12
+✔ Test "TEMPREPRO BT-11 饿死首屏小页" passed after 19.510 seconds.
+✔ Suite "行情流水线：生命周期与并发" passed after 19.512 seconds.
+✔ Test run with 1 test in 1 suite passed after 19.513 seconds.

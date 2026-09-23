@@ -865,6 +865,15 @@ public actor MarketFeed {
       emit(.historyError(nil))
       emit(.series(composer.series))
       scheduleSnapshot()
+      // 完整那发已经落地，首屏小页就没用了：当场取消，并等它收尾再落旗。还没出站的
+      // 那一笔在 `fetch` 出站前被取消拦下，不花请求；已经在路上的回来什么也不做。
+      // 原来只在函数末尾的 `defer` 里取消（要等 ticker 往返之后），机器一忙，小页
+      // 任务迟迟排不上，会在「首屏已到手」之后才真正出站，白打一发 300 根。
+      // 不等它收尾的话，`filling` 落下时也还不能说「首屏那几发都结束了」。
+      if let quickTask {
+        quickTask.cancel()
+        _ = try? await quickTask.value
+      }
       // 首屏历史到手了，这面旗就该落下——它的含义是「首屏还在路上」。下面还有
       // ticker 校准、快照缺口要走，但那些都不是首屏；继续挂着它，回前台那条路会把
       // 「ticker 正在往返」误判成「首屏没到手」，白拉一整屏 1500 根。

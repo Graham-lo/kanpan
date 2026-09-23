@@ -1,0 +1,86 @@
+== run 1 rc=0 load=38.26 46.13 44.68
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 2.726 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 2.727 seconds.
+✔ Test run with 1 test in 1 suite passed after 2.727 seconds.
+== run 2 rc=0 load=38.67 45.69 44.55
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 3.379 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 3.380 seconds.
+✔ Test run with 1 test in 1 suite passed after 3.380 seconds.
+== run 3 rc=0 load=40.88 45.61 44.55
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 3.579 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 3.580 seconds.
+✔ Test run with 1 test in 1 suite passed after 3.581 seconds.
+== run 4 rc=0 load=43.88 45.96 44.70
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 4.363 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 4.364 seconds.
+✔ Test run with 1 test in 1 suite passed after 4.364 seconds.
+== run 5 rc=0 load=48.59 46.89 45.08
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 3.866 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 3.867 seconds.
+✔ Test run with 1 test in 1 suite passed after 3.867 seconds.
+== run 6 rc=0 load=54.26 48.49 45.73
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 5.086 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 5.087 seconds.
+✔ Test run with 1 test in 1 suite passed after 5.087 seconds.
+== run 7 rc=0 load=52.03 48.55 45.85
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 2.903 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 2.904 seconds.
+✔ Test run with 1 test in 1 suite passed after 2.905 seconds.
+== run 8 rc=0 load=48.07 47.85 45.67
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 2.626 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 2.631 seconds.
+✔ Test run with 1 test in 1 suite passed after 2.631 seconds.
+== run 9 rc=0 load=46.80 47.57 45.61
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 2.739 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 2.740 seconds.
+✔ Test run with 1 test in 1 suite passed after 2.740 seconds.
+== run 10 rc=0 load=44.44 47.02 45.45
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 2.681 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 2.682 seconds.
+✔ Test run with 1 test in 1 suite passed after 2.682 seconds.
+== run 11 rc=0 load=43.45 46.57 45.33
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 3.027 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 3.028 seconds.
+✔ Test run with 1 test in 1 suite passed after 3.029 seconds.
+== run 12 rc=0 load=45.09 46.69 45.41
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 3.943 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 3.944 seconds.
+✔ Test run with 1 test in 1 suite passed after 3.945 seconds.
+== run 13 rc=0 load=43.36 46.19 45.26
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 2.473 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 2.473 seconds.
+✔ Test run with 1 test in 1 suite passed after 2.474 seconds.
+== run 14 rc=0 load=43.85 46.05 45.23
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 3.882 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 3.884 seconds.
+✔ Test run with 1 test in 1 suite passed after 3.885 seconds.
+== run 15 rc=0 load=45.42 46.25 45.33
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 4.253 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 4.254 seconds.
+✔ Test run with 1 test in 1 suite passed after 4.255 seconds.
+== run 16 rc=0 load=49.28 47.05 45.65
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 4.911 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 4.919 seconds.
+✔ Test run with 1 test in 1 suite passed after 5.041 seconds.
+== run 17 rc=0 load=49.50 47.42 45.86
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 5.358 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 5.378 seconds.
+✔ Test run with 1 test in 1 suite passed after 5.379 seconds.
+== run 18 rc=1 load=48.00 47.46 45.98
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:436:5: Expectation failed: await ws.currentConnectionID == 1
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:437:5: Expectation failed: await deck.stats().connects == 1
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" failed after 4.144 seconds with 2 issues.
+✘ Suite "WS 回放：合成规矩、断线补缺、静默重连" failed after 4.149 seconds with 2 issues.
+✘ Test run with 1 test in 1 suite failed after 4.150 seconds with 2 issues.
+== run 19 rc=1 load=46.50 47.12 45.92
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:436:5: Expectation failed: await ws.currentConnectionID == 1
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:437:5: Expectation failed: await deck.stats().connects == 1
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:439:5: Expectation failed: sent.contains { $0.contains("UNSUBSCRIBE") }
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:440:5: Expectation failed: sent.contains { $0.contains("SUBSCRIBE") }
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" failed after 4.436 seconds with 4 issues.
+✘ Suite "WS 回放：合成规矩、断线补缺、静默重连" failed after 4.437 seconds with 4 issues.
+✘ Test run with 1 test in 1 suite failed after 4.438 seconds with 4 issues.
+== run 20 rc=0 load=51.44 48.33 46.42
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 5.258 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 5.259 seconds.
+✔ Test run with 1 test in 1 suite passed after 5.260 seconds.

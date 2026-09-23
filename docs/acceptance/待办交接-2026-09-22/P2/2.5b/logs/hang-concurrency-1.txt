@@ -1,0 +1,992 @@
+TASKS
+        
+      Task 1 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x1029b2be0
+        async backtrace: TaskGroup.next(isolation:)
+                         TaskGroup.awaitAllRemainingTasks(isolation:)
+                         closure #1 in closure #3 in static Runner._run(_:)
+                         <deduplicated_symbol>
+                         withTaskGroup<A, B>(of:returning:isolation:body:)
+                         closure #3 in static Runner._run(_:)
+                         <deduplicated_symbol>
+                         TaskLocal.withValueImpl<A>(_:operation:isolation:file:line:)
+                         TaskLocal.withValue<A>(_:operation:isolation:file:line:)
+                         static Runner._run(_:)
+                         entryPoint(passing:eventHandler:)
+                         __swiftPMEntryPoint(passing:)
+                         static Runner.main()
+                         static Runner.$main()
+                         async_MainTQ0_
+                         thunk for @escaping @convention(thin) @async () -> ()
+                         partial apply for thunk for @escaping @convention(thin) @async () -> ()
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_group_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 33928 bytes in 10 chunks
+        * 1 child task
+             
+        `--Task 452 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788e44000
+             parent: 0x1029b2be0
+             async backtrace: <deduplicated_symbol>
+                              ThrowingTaskGroup.awaitAllRemainingTasks(isolation:)
+                              <deduplicated_symbol>
+                              withThrowingTaskGroup<A, B>(of:returning:isolation:body:)
+                              specialized static Runner._forEach<A, B>(in:namingTasksWith:_:)
+                              static Runner._runChildren(of:context:)
+                              static Runner._runStep(atRootOf:context:)
+                              closure #1 in closure #1 in closure #3 in static Runner._run(_:)
+                              <deduplicated_symbol>
+                              <deduplicated_symbol>
+                              <deduplicated_symbol>
+                              completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+             resume function: task_group_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+             task allocator: 16240 bytes in 12 chunks
+             * 1 child task
+                  
+             `--Task 453 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788e44280
+                  parent: 0x788e44000
+                  async backtrace: <deduplicated_symbol>
+                                   ThrowingTaskGroup.awaitAllRemainingTasks(isolation:)
+                                   <deduplicated_symbol>
+                                   withThrowingTaskGroup<A, B>(of:returning:isolation:body:)
+                                   specialized static Runner._forEach<A, B>(in:namingTasksWith:_:)
+                                   static Runner._runChildren(of:context:)
+                                   static Runner._runStep(atRootOf:context:)
+                                   <deduplicated_symbol>
+                                   <deduplicated_symbol>
+                                   <deduplicated_symbol>
+                                   <deduplicated_symbol>
+                                   completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+                  resume function: task_group_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+                  task allocator: 16240 bytes in 12 chunks
+                  * 1 child task
+                       
+                  `--Task 485 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788e492c0
+                       parent: 0x788e44280
+                       async backtrace: <deduplicated_symbol>
+                                        ThrowingTaskGroup.awaitAllRemainingTasks(isolation:)
+                                        <deduplicated_symbol>
+                                        withThrowingTaskGroup<A, B>(of:returning:isolation:body:)
+                                        specialized static Runner._forEach<A, B>(in:namingTasksWith:_:)
+                                        static Runner._runChildren(of:context:)
+                                        closure #1 in closure #2 in static Runner._runStep(atRootOf:context:)
+                                        <deduplicated_symbol>
+                                        specialized static Issue.withErrorRecording(at:configuration:isolation:_:)
+                                        closure #2 in static Runner._runStep(atRootOf:context:)
+                                        <deduplicated_symbol>
+                                        <deduplicated_symbol>
+                                        <deduplicated_symbol>
+                                        withTaskCancellationHandler<A>(operation:onCancel:isolation:)
+                                        specialized closure #1 in TestCancellable.withCancellationHandling<A>(_:)
+                                        <deduplicated_symbol>
+                                        TaskLocal.withValueImpl<A>(_:operation:isolation:file:line:)
+                                        TaskLocal.withValue<A>(_:operation:isolation:file:line:)
+                                        specialized TestCancellable.withCancellationHandling<A>(_:)
+                                        <deduplicated_symbol>
+                                        <deduplicated_symbol>
+                                        TaskLocal.withValueImpl<A>(_:operation:isolation:file:line:)
+                                        TaskLocal.withValue<A>(_:operation:isolation:file:line:)
+                                        specialized static Test.withCurrent<A>(_:perform:)
+                                        static Runner._runStep(atRootOf:context:)
+                                        <deduplicated_symbol>
+                                        <deduplicated_symbol>
+                                        <deduplicated_symbol>
+                                        <deduplicated_symbol>
+                                        completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+                       resume function: task_group_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+                       task allocator: 27680 bytes in 30 chunks
+                       * 1 child task
+                            
+                       `--Task 631 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788e94a00
+                            parent: 0x788e492c0
+                            async backtrace: <deduplicated_symbol>
+                                             ThrowingTaskGroup.awaitAllRemainingTasks(isolation:)
+                                             <deduplicated_symbol>
+                                             withThrowingTaskGroup<A, B>(of:returning:isolation:body:)
+                                             specialized static Runner._forEach<A, B>(in:namingTasksWith:_:)
+                                             static Runner._runChildren(of:context:)
+                                             static Runner._runStep(atRootOf:context:)
+                                             <deduplicated_symbol>
+                                             <deduplicated_symbol>
+                                             <deduplicated_symbol>
+                                             <deduplicated_symbol>
+                                             completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+                            resume function: task_group_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+                            task allocator: 16240 bytes in 12 chunks
+                            * 1 child task
+                                 
+                            `--Task 790 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788ead7c0
+                                 parent: 0x788e94a00
+                                 async backtrace: <deduplicated_symbol>
+                                                  ThrowingTaskGroup.awaitAllRemainingTasks(isolation:)
+                                                  <deduplicated_symbol>
+                                                  withThrowingTaskGroup<A, B>(of:returning:isolation:body:)
+                                                  specialized static Runner._forEach<A, B>(in:namingTasksWith:_:)
+                                                  specialized static Runner._runTestCases<A>(_:within:context:)
+                                                  closure #1 in closure #2 in static Runner._runStep(atRootOf:context:)
+                                                  <deduplicated_symbol>
+                                                  specialized static Issue.withErrorRecording(at:configuration:isolation:_:)
+                                                  closure #2 in static Runner._runStep(atRootOf:context:)
+                                                  <deduplicated_symbol>
+                                                  <deduplicated_symbol>
+                                                  <deduplicated_symbol>
+                                                  withTaskCancellationHandler<A>(operation:onCancel:isolation:)
+                                                  specialized closure #1 in TestCancellable.withCancellationHandling<A>(_:)
+                                                  <deduplicated_symbol>
+                                                  TaskLocal.withValueImpl<A>(_:operation:isolation:file:line:)
+                                                  TaskLocal.withValue<A>(_:operation:isolation:file:line:)
+                                                  specialized TestCancellable.withCancellationHandling<A>(_:)
+                                                  <deduplicated_symbol>
+                                                  <deduplicated_symbol>
+                                                  TaskLocal.withValueImpl<A>(_:operation:isolation:file:line:)
+                                                  TaskLocal.withValue<A>(_:operation:isolation:file:line:)
+                                                  specialized static Test.withCurrent<A>(_:perform:)
+                                                  static Runner._runStep(atRootOf:context:)
+                                                  <deduplicated_symbol>
+                                                  <deduplicated_symbol>
+                                                  <deduplicated_symbol>
+                                                  <deduplicated_symbol>
+                                                  completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+                                 resume function: task_group_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+                                 task allocator: 28288 bytes in 32 chunks
+                                 * 1 child task
+                                      
+                                 `--Task 957 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788f5c000
+                                      parent: 0x788ead7c0
+                                      async backtrace: Task<>.value.getter
+                                                       DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                                                       static DataIntegrityTests.$s15KanpanDataTests0b9IntegrityC0V39concurrentCatalogReadersShareOneRequest4TestfMp_17Z671b059270114a87fMu_@Sendable ()
+                                                       implicit closure #1 in static DataIntegrityTests.$s15KanpanDataTests0b9IntegrityC0V39concurrentCatalogReadersShareOneRequest4TestfMp_25generator671b059270114a87fMu_@Sendable ()
+                                                       partial apply for implicit closure #1 in static DataIntegrityTests.$s15KanpanDataTests0b9IntegrityC0V39concurrentCatalogReadersShareOneRequest4TestfMp_25generator671b059270114a87fMu_@Sendable ()
+                                                       closure #1 in closure #1 in static Runner._runTestCase(_:within:context:)
+                                                       <deduplicated_symbol>
+                                                       specialized static Issue.withErrorRecording(at:configuration:isolation:_:)
+                                                       closure #1 in static Runner._runTestCase(_:within:context:)
+                                                       <deduplicated_symbol>
+                                                       <deduplicated_symbol>
+                                                       <deduplicated_symbol>
+                                                       withTaskCancellationHandler<A>(operation:onCancel:isolation:)
+                                                       specialized closure #1 in TestCancellable.withCancellationHandling<A>(_:)
+                                                       <deduplicated_symbol>
+                                                       TaskLocal.withValueImpl<A>(_:operation:isolation:file:line:)
+                                                       TaskLocal.withValue<A>(_:operation:isolation:file:line:)
+                                                       specialized TestCancellable.withCancellationHandling<A>(_:)
+                                                       <deduplicated_symbol>
+                                                       <deduplicated_symbol>
+                                                       TaskLocal.withValueImpl<A>(_:operation:isolation:file:line:)
+                                                       TaskLocal.withValue<A>(_:operation:isolation:file:line:)
+                                                       specialized static Test.Case.withCurrent<A>(_:perform:)
+                                                       specialized static Runner._runTestCase(_:within:context:)
+                                                       closure #4 in static Runner._runTestCases<A>(_:within:context:)
+                                                       <deduplicated_symbol>
+                                                       <deduplicated_symbol>
+                                                       <deduplicated_symbol>
+                                                       specialized closure #1 in closure #1 in static Runner._forEach<A, B>(in:namingTasksWith:_:)
+                                                       <deduplicated_symbol>
+                                                       completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+                                      resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+                                      task allocator: 18448 bytes in 28 chunks
+                                      
+      Task 983 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x788f5de00
+        async backtrace: <deduplicated_symbol>
+                         closure #1 in AsyncStream._Storage.next()
+                         <deduplicated_symbol>
+                         withTaskCancellationHandler<A>(operation:onCancel:isolation:)
+                         AsyncStream._Storage.next()
+                         <deduplicated_symbol>
+                         <deduplicated_symbol>
+                         AsyncStream.Iterator.next()
+                         closure #1 in RoutedMarketFeed.activate(_:coldStart:)
+                         partial apply for closure #1 in RoutedMarketFeed.activate(_:coldStart:)
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: <deduplicated_symbol> in libswift_Concurrency.dylib
+        task allocator: 3048 bytes in 6 chunks
+        
+      Task 984 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x788f5e080
+        async backtrace: static Task<>.sleep(nanoseconds:)
+                         SystemPacer.sleep(ms:)
+                         protocol witness for Pacer.sleep(ms:) in conformance SystemPacer
+                         closure #1 in MarketFeed.startReconcile()
+                         partial apply for closure #1 in MarketFeed.startReconcile()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: static Task<>.sleep(nanoseconds:) in libswift_Concurrency.dylib
+        task allocator: 7840 bytes in 6 chunks
+        
+      Task 985 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x788f5df40
+        async backtrace: static Task<>.sleep(nanoseconds:)
+                         SystemPacer.sleep(ms:)
+                         protocol witness for Pacer.sleep(ms:) in conformance SystemPacer
+                         BinanceWS.loop(generation:sink:)
+                         closure #1 in BinanceWS.start(streams:)
+                         partial apply for closure #1 in BinanceWS.start(streams:)
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: static Task<>.sleep(nanoseconds:) in libswift_Concurrency.dylib
+        task allocator: 11920 bytes in 8 chunks
+        
+      Task 1088 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x788860500
+        async backtrace: <deduplicated_symbol>
+                         closure #1 in AsyncStream._Storage.next()
+                         <deduplicated_symbol>
+                         withTaskCancellationHandler<A>(operation:onCancel:isolation:)
+                         AsyncStream._Storage.next()
+                         <deduplicated_symbol>
+                         <deduplicated_symbol>
+                         AsyncStream.Iterator.next()
+                         closure #1 in RoutedMarketFeed.activate(_:coldStart:)
+                         partial apply for closure #1 in RoutedMarketFeed.activate(_:coldStart:)
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: <deduplicated_symbol> in libswift_Concurrency.dylib
+        task allocator: 3048 bytes in 6 chunks
+        
+      Task 1089 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x788860780
+        async backtrace: static Task<>.sleep(nanoseconds:)
+                         SystemPacer.sleep(ms:)
+                         protocol witness for Pacer.sleep(ms:) in conformance SystemPacer
+                         closure #1 in MarketFeed.startReconcile()
+                         partial apply for closure #1 in MarketFeed.startReconcile()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: static Task<>.sleep(nanoseconds:) in libswift_Concurrency.dylib
+        task allocator: 7840 bytes in 6 chunks
+        
+      Task 1090 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x788860640
+        async backtrace: static Task<>.sleep(nanoseconds:)
+                         SystemPacer.sleep(ms:)
+                         protocol witness for Pacer.sleep(ms:) in conformance SystemPacer
+                         BinanceWS.loop(generation:sink:)
+                         closure #1 in BinanceWS.start(streams:)
+                         partial apply for closure #1 in BinanceWS.start(streams:)
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: static Task<>.sleep(nanoseconds:) in libswift_Concurrency.dylib
+        task allocator: 12096 bytes in 20 chunks
+        
+      Task 1096 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x788861180
+        async backtrace: <deduplicated_symbol>
+                         ThrowingTaskGroup.next(isolation:)
+                         closure #2 in BinanceWS.receiveFrame(_:quietMs:quietSinceMs:aliveSinceMs:keepalive:probe:)
+                         partial apply for closure #2 in BinanceWS.receiveFrame(_:quietMs:quietSinceMs:aliveSinceMs:keepalive:probe:)
+                         withThrowingTaskGroup<A, B>(of:returning:isolation:body:)
+                         withThrowingTaskGroup<A, B>(of:returning:isolation:body:)
+                         BinanceWS.receiveFrame(_:quietMs:quietSinceMs:aliveSinceMs:keepalive:probe:)
+                         BinanceWS.pump(_:generation:connection:sink:)
+                         BinanceWS.loop(generation:sink:)
+                         closure #1 in BinanceWS.start(streams:)
+                         partial apply for closure #1 in BinanceWS.start(streams:)
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_group_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 11112 bytes in 14 chunks
+        * 1 child task
+             
+        `--Task 35090 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x787ff1180
+             parent: 0x788861180
+             async backtrace: <deduplicated_symbol>
+                              withCheckedContinuation<A>(isolation:function:_:)
+                              Gate.wait()
+                              ReplaySocket.deafSleep(ms:)
+                              ReplaySocket.receive()
+                              protocol witness for WSSocket.receive() in conformance ReplaySocket
+                              closure #1 in closure #2 in BinanceWS.receiveFrame(_:quietMs:quietSinceMs:aliveSinceMs:keepalive:probe:)
+                              partial apply for closure #1 in closure #2 in BinanceWS.receiveFrame(_:quietMs:quietSinceMs:aliveSinceMs:keepalive:probe:)
+                              completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+             resume function: <deduplicated_symbol> in libswift_Concurrency.dylib
+             task allocator: 2032 bytes in 4 chunks
+             
+      Task 1173 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x788ff3980
+        async backtrace: TaskGroup.next(isolation:)
+                         TaskGroup.Iterator.next()
+                         closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         withTaskGroup<A, B>(of:returning:isolation:body:)
+                         withTaskGroup<A, B>(of:returning:isolation:body:)
+                         closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_group_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 3048 bytes in 6 chunks
+        * 1 child task
+             
+        `--Task 1359 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788eaebc0
+             parent: 0x788ff3980
+             async backtrace: Task<>.value.getter
+                              SymbolCatalog.refresh(now:)
+                              SymbolCatalog.all(now:)
+                              closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                              partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                              thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                              partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                              completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+             resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+             task allocator: 1016 bytes in 2 chunks
+             
+      Task 1360 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788eaf0c0
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1361 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788eaca00
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1362 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788ead040
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1363 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788eacf00
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1364 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788eacdc0
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1365 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788eacc80
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1366 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788eac3c0
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1367 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788eac280
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1368 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788eac8c0
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1369 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788eac780
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1370 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788eaf5c0
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1371 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788e95180
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1372 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788f1a800
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1373 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788ea3e80
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1374 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788ea3d40
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1375 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788ea2580
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1376 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788ea2300
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1377 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788ea2800
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1378 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x788ea26c0
+        async backtrace: Task<>.value.getter
+                         SymbolCatalog.refresh(now:)
+                         SymbolCatalog.all(now:)
+                         closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         partial apply for closure #1 in closure #1 in closure #1 in DataIntegrityTests.concurrentCatalogReadersShareOneRequest()
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: task_future_wait_resume_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 1481 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x788e89e00
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 1618 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x788e5a800
+        async backtrace: <deduplicated_symbol>
+                         withCheckedContinuation<A>(isolation:function:_:)
+                         HeldCatalog.get(_:timeout:)
+                         protocol witness for HTTPTransport.get(_:timeout:) in conformance HeldCatalog
+                         BinanceREST.fetch(_:weight:attempts:timeout:quota:)
+                         BinanceREST.exchangeInfo()
+                         closure #1 in SymbolCatalog.refresh(now:)
+                         partial apply for closure #1 in SymbolCatalog.refresh(now:)
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: <deduplicated_symbol> in libswift_Concurrency.dylib
+        task allocator: 6800 bytes in 12 chunks
+        
+      Task 1640 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x788e8bd40
+        async backtrace: static Task<>.sleep(nanoseconds:)
+                         SystemPacer.sleep(ms:)
+                         protocol witness for Pacer.sleep(ms:) in conformance SystemPacer
+                         BinanceWS.loop(generation:sink:)
+                         closure #1 in BinanceWS.start(streams:)
+                         partial apply for closure #1 in BinanceWS.start(streams:)
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: static Task<>.sleep(nanoseconds:) in libswift_Concurrency.dylib
+        task allocator: 11112 bytes in 14 chunks
+        
+      Task 1645 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x788ea3840
+        async backtrace: static Task<>.sleep(nanoseconds:)
+                         SystemPacer.sleep(ms:)
+                         protocol witness for Pacer.sleep(ms:) in conformance SystemPacer
+                         BinanceWS.loop(generation:sink:)
+                         closure #1 in BinanceWS.start(streams:)
+                         partial apply for closure #1 in BinanceWS.start(streams:)
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: static Task<>.sleep(nanoseconds:) in libswift_Concurrency.dylib
+        task allocator: 11112 bytes in 14 chunks
+        
+      Task 34552 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cef840
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34558 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cecc80
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34572 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cef0c0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34587 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cee300
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34593 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cefe80
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34605 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cee800
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34607 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cee080
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34623 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ced7c0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34629 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cef980
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34650 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cecb40
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34658 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ced2c0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34663 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ceef80
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34683 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cef200
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34690 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ced180
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34695 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ced680
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34701 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cec000
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34722 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ceda40
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34730 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cedb80
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34745 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cee940
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34755 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cefac0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34766 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cec780
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34776 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787cefd40
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34783 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff1cc0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34793 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff2080
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34804 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff1b80
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34820 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff1a40
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34830 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff1540
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34839 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff2f80
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34855 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff26c0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34865 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff0140
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34872 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff1400
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34878 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff2e40
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34893 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff0f00
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34908 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff0c80
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34919 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff2580
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34927 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff3840
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34943 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff3ac0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34951 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff3480
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34959 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff0000
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34964 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff1e00
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34981 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff0640
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 34994 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff3980
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35008 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff2bc0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35019 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff3200
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35028 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff0b40
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35041 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff0a00
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35048 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff12c0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35055 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff35c0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35064 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff1f40
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35084 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff1040
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35091 - flags=childTask|future|groupChildTask enqueuePriority=0x15 maxPriority=0x0 address=0x787ff2440
+        async backtrace: static Task<>.sleep(nanoseconds:)
+                         SystemPacer.sleep(ms:)
+                         protocol witness for Pacer.sleep(ms:) in conformance SystemPacer
+                         closure #2 in closure #2 in BinanceWS.receiveFrame(_:quietMs:quietSinceMs:aliveSinceMs:keepalive:probe:)
+                         partial apply for closure #2 in closure #2 in BinanceWS.receiveFrame(_:quietMs:quietSinceMs:aliveSinceMs:keepalive:probe:)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: static Task<>.sleep(nanoseconds:) in libswift_Concurrency.dylib
+        task allocator: 2032 bytes in 4 chunks
+        
+      Task 35092 - flags=future enqueuePriority=0x15 maxPriority=0x0 address=0x787ff2d00
+        async backtrace: static Task<>.sleep(nanoseconds:)
+                         SystemPacer.sleep(ms:)
+                         protocol witness for Pacer.sleep(ms:) in conformance SystemPacer
+                         closure #1 in ReplaySocket.deafSleep(ms:)
+                         partial apply for closure #1 in ReplaySocket.deafSleep(ms:)
+                         thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         partial apply for thunk for @escaping @isolated(any) @callee_guaranteed @async () -> (@out A)
+                         completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: static Task<>.sleep(nanoseconds:) in libswift_Concurrency.dylib
+        task allocator: 1016 bytes in 2 chunks
+        
+      Task 35093 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff1900
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35094 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff1680
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35100 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff03c0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35101 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff2940
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35104 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff0280
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35107 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff3340
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35108 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff0780
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35109 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff2300
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+        
+      Task 35110 - flags=future enqueuePriority=0x0 maxPriority=0x0 address=0x787ff17c0
+        async backtrace: completeTaskWithClosure(swift::AsyncContext*, swift::SwiftError*)
+        resume function: future_adapter(swift::AsyncContext*) in libswift_Concurrency.dylib
+        task allocator: 0 bytes in 0 chunks
+
+ACTORS
+  0x788cbd180 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x788cbd400 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x788cd8000 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x788cd8280 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x788cd8780 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x788fa8100 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x788fa8900 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x788faab80 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x789004cc0 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x789004d80 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x789004f00 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x789005f80 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x789006040 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x78911dc00 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x78914c000 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x78914c820 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x78914cd20 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x7891c2140 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x789210000 <unknown class name> state=idle flags=0 maxPriority=0x0
+    no jobs queued
+
+  0x789f80000 <unknown class name> state=idle flags=priorityEscalated|distributedRemote maxPriority=0x0
+    waiting on thread: port=0x7 (unknown thread ID)
+    no jobs queued
+
+  0x789f9c000 <unknown class name> state=idle flags=priorityEscalated|distributedRemote maxPriority=0xc0
+    waiting on thread: port=0x7 (unknown thread ID)
+    no jobs queued
+
+THREADS
+  no threads with active tasks

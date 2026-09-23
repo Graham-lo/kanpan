@@ -1,0 +1,1521 @@
+== stress run 1 load={ 34.38 26.07 28.32 }
+Test Suite 'All tests' started at 2026-09-23 09:58:34.755.
+Test Suite 'KanpanDataPackageTests.xctest' started at 2026-09-23 09:58:34.762.
+Test Suite 'PerfBenchmarkTests' started at 2026-09-23 09:58:34.762.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testFeedComposerMerge]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testFeedComposerMerge]' passed (40.674 seconds).
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSeriesStoreWriteRead]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSeriesStoreWriteRead]' passed (5.814 seconds).
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSnapshotEncodeDecode]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSnapshotEncodeDecode]' passed (6.388 seconds).
+Test Suite 'PerfBenchmarkTests' passed at 2026-09-23 09:59:27.643.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 52.876 (52.881) seconds
+Test Suite 'KanpanDataPackageTests.xctest' passed at 2026-09-23 09:59:27.644.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 52.876 (52.882) seconds
+Test Suite 'All tests' passed at 2026-09-23 09:59:27.644.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 52.876 (52.889) seconds
+BENCH data.feedcomposer.merge_1500_into_15000 median_ms=1767.3239 p90_ms=2206.9857 n=15000
+BENCH data.seriesstore.write median_ms=31.9475 p90_ms=112.5507 n=3000
+BENCH data.seriesstore.read median_ms=150.4842 p90_ms=239.7360 n=3000
+BENCH data.snapshot.encode median_ms=95.5807 p90_ms=110.5411 n=3000
+BENCH data.snapshot.decode median_ms=136.0396 p90_ms=203.6355 n=3000
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "两段式首屏" started.
+◇ Suite "WS 回放：合成规矩、断线补缺、静默重连" started.
+◇ Suite "封禁后的首屏与分钟边界补洞" started.
+◇ Suite "A-07 第②层：首帧窗口" started.
+◇ Suite "REST 与 DTO" started.
+◇ Suite "OI 对齐：两源合一条" started.
+◇ Suite "空洞序列的合并与落盘" started.
+◇ Suite "逐笔折线" started.
+◇ Suite "多品种启动快照" started.
+◇ Suite "历史OI网关解析" started.
+◇ Suite "OI 覆盖记账：只有真问到的那一段才算覆盖" started.
+◇ Suite "缓存边界" started.
+◇ Suite "当日开盘价快照" started.
+◇ Suite "OI 归档：自写 ZIP + CSV" started.
+◇ Suite "启动快照与内存缓存" started.
+◇ Suite "行情线路：整条路由" started.
+➜ Suite LiveRoutingTests skipped.
+◇ Suite "外部指标：近期和历史取数" started.
+◇ Suite "首屏历史重试" started.
+◇ Suite "行情流水线：生命周期与并发" started.
+◇ Suite "外部指标归档：列保留与格式升级" started.
+◇ Suite "图表微观行情订阅" started.
+◇ Suite "报价快照与整屏补价" started.
+◇ Suite "OI 增量：只补缺的那一段" started.
+◇ Suite "合帧闸门：kline 也限速，开新根不等" started.
+◇ Suite "Data identity, snapshots and duplicate delivery" started.
+◇ Suite "OI 切块：细周期看长区间也要走网关那条快路" started.
+◇ Suite "OI 分段上屏：先到的那一段不必陪着慢的一起等" started.
+◇ Suite "缓存层：预热分级与目录索引" started.
+◇ Suite "快照字节格式：新旧实现逐字节相同" started.
+◇ Suite "品种表状态与单飞刷新" started.
+◇ Suite "首屏拉不到历史时的表现" started.
+◇ Test "完整那发先回来，小页落地时什么都不做" started.
+◇ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" started.
+◇ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" started.
+◇ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" started.
+◇ Test "服务器 ping 立刻回 pong" started.
+◇ Suite "末根的定盘与基线" started.
+◇ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" started.
+◇ Test "30 品种 × 14 周期切一遍：沙盒里只有 series/ 下封顶的快照和品种表" started.
+◇ Test "60 秒一帧没有就主动重连" started.
+◇ Test "A-T15 分钟边界上掉线、新连接晚到：补洞请求发出去，补回来的与交易所一致" started.
+◇ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" started.
+◇ Test "A.3.4 451 地域拒绝也只打一发：落到既有的「点此重试」，不叠加退避" started.
+◇ Test "A-T05 封禁期内首屏立刻收手：图表留着、横幅亮着、重试不再撞上游" started.
+◇ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" started.
+◇ Test "关掉「启动快照」：文件被删，之后不再写" started.
+◇ Test "连断三次：退避 1s / 2s / 4s（各再抖 ±20%），日志可见" started.
+◇ Test "USDT TradFi全保留，USD1、普通USDC、交割排除；停牌的行留在表里带下架标记；旧目录即时刷新" started.
+◇ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" started.
+◇ Test "1500 根 klines：严格递增、等距、无重复" started.
+◇ Test "网关档（OKX）等第一帧的窗口实际就是 60 秒，不被 15 秒钳子咬住" started.
+◇ Test "直连档的窗口也是 60 秒（两档一视同仁）" started.
+◇ Test "当前全部717个产品品种进入独立分类模块，保留细分元数据；停牌与待开盘的行带状态留着" started.
+◇ Test "exchangeInfo 走一遍 transport，请求路径正确" started.
+◇ Test "404 / 451 / 429 分类" started.
+◇ Test "全市场WS数组包含普通与TradFi报价，保持真实24h涨跌幅" started.
+◇ Test "3000 条录制报文回放：最终序列与期望全等" started.
+◇ Test "近 30 天走 REST、更早走归档：两个源都被问到" started.
+◇ Test "完整那发还没回来，小页先把图画上" started.
+◇ Test "1y 由 1M 聚出来" started.
+◇ Test "dedup 去重并排序" started.
+◇ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" started.
+◇ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "对齐取「之前最近」一条，没有就是 NaN" started.
+◇ Test "品种上市前：归档站 404 → 返回空而不是报错" started.
+◇ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" started.
+◇ Test "1w / 1M / 1y：按桶取最后一条" started.
+◇ Test "点列有缺口也对得上：缺口里续用缺口前那条" started.
+◇ Test "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" started.
+◇ Test "空点列 / 空序列不崩" started.
+◇ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" started.
+◇ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" started.
+◇ Test "空洞序列进内存缓存被截头之后，剩下那段的时间还是真时间" started.
+◇ Test "带洞的序列写进快照再读回来，每一根的时间都不变" started.
+◇ Test "空洞被 REST 补上之后，整段一根不多一根不少" started.
+◇ Test "旧快照接最新窗口，中间的两根空洞不能把后段整体平移" started.
+◇ Test "抽掉中间一根喂进 merge，末根的时间不能早一根" started.
+◇ Test "桶按撮合时间算，同一根内的时间不会开新根" started.
+◇ Test "组合行情端点用币安自己的 /stream，替换品种仍可复用连接" started.
+◇ Test "挂单心跳只改价不记量，也不凭它开新的一根" started.
+◇ Test "落在末根上：收盘跟着走，高低取极值，量累加" started.
+◇ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" started.
+◇ Test "trade / bookTicker 报文解得出来" started.
+◇ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" started.
+◇ Test "换一段序列，折线状态跟着清掉" started.
+◇ Test "超出字节上限也会淘汰" started.
+◇ Test "过期、补缺中、价格不合法、序列空着都不折" started.
+◇ Test "对表：这根还没被折过就认 REST 的收盘" started.
+◇ Test "脏品种名不落盘" started.
+◇ Test "清掉整个目录" started.
+◇ Test "太旧的快照不拿来打底" started.
+◇ Test "历史OI网关时间戳、数值和坏响应检查" started.
+◇ Test "几段合起来：失败的那段不算，右端只认真到手的点" started.
+◇ Test "REST 整段报错：点是空的，而且说清楚「没问到」" started.
+◇ Test "超出条数上限就按最近用过的淘汰" started.
+◇ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" started.
+◇ Test "左边那截整段失败：记账一步都不推进，下一轮还会再问它" started.
+◇ Test "归档站 404 是答复（上市前），别的状态码不是" started.
+◇ Test "问到了却是空的：照样算覆盖，不会每平移一次重下一遍" started.
+◇ Test "1m 和 1M 不能撞成同一个文件" started.
+◇ Test "按 (品种, 周期) 存取：写进去的能原样读回来" started.
+◇ Test "REST 翻到一半断了：到手的几页留住，但这一段仍然不算问全" started.
+◇ Test "缓存树下没有一条路径通向随人走的档案" started.
+◇ Test "板块历史在 kanpan 这棵子树里" started.
+◇ Test "注入的身份不会把测试档隔离绕开" started.
+◇ Test "非法值不落盘；一个都不剩时文件删掉" started.
+◇ Test "按行情源分的那棵子树在缓存树里，而且有名字可点" started.
+◇ Test ".oi 日切片：编解码一致，保留四个比率列" started.
+◇ Test "跨到下一天就整份作废，不拿昨天的开盘价算今天" started.
+◇ Test "同一档边界读得回来，涨跌幅第一帧就能算" started.
+◇ Test "两个身份的报价与开盘价不共用一个文件" started.
+◇ Test "日期工具：dayString / dayStart / days / 中间优先" started.
+◇ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" started.
+◇ Test "不规则周期（1M）带 openTime 表，也能原样读回" started.
+◇ Test "归档站有的文件本身是乱序的：解析器必须自己排" started.
+◇ Test "没认主时落在 unknown，不落在共用目录" started.
+◇ Test "内存警告后只剩当前 (品种, 周期)" started.
+◇ Test "真实 metrics zip：解出 288 行 5 分钟粒度" started.
+◇ Test "读快照 + 建 BarSeries < 20ms" started.
+◇ Test "快照文件：≤3000 根、≤300KB，读回逐字节一致" started.
+◇ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" started.
+◇ Test "坏文件不崩，返回 nil" started.
+➜ Test completeOKXFeed() skipped.
+◇ Test "单个 key 超长会裁掉最老的" started.
+◇ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" started.
+◇ Test "存取日切片：关掉开关就不落盘" started.
+◇ Test "多空比历史取账户列，主动买卖比取成交列，基差不会请求远期归档" started.
+◇ Test "近期三个端点各用自己的值，主动买卖比不冒用未完成统计桶" started.
+◇ Test "旧 magic 必须未命中，不把没有比率的缓存当新格式" started.
+◇ Test "默认没有额外流，启用后连续切换二十次只留下当前品种，关闭即退订" started.
+◇ Test "上游连回两个 429，首屏自己重试到拿下" started.
+◇ Test "没有文件、或文件是坏的，就是空，不抛" started.
+◇ Test "落盘失败要留一行日志，不许悄悄吞掉" started.
+◇ Test "B-T15 老版本写下的行没有交易所时钟，按文件自己的修改时间算年龄" started.
+◇ Test "首屏那一发彻底失败，也会自己再来一发" started.
+◇ Test "四个比率经过日片、聚合片、网关 JSON 均不丢失" started.
+◇ Test "涨跌额往返落盘，旧快照缺字段仍可读" started.
+◇ Test "BT-02 首屏还在路上就切后台再回前台：必须补发首屏，不能只剩打底那几根" started.
+◇ Test "B-T15 隔了一天以上的那口价不再摆出来，昨天的还摆" started.
+◇ Test "BT-12 回前台补不补缺看真实时钟：同一根不补，隔了一根才补" started.
+◇ Test "只留最近的一批，文件不会越滚越大" started.
+◇ Test "BT-01 上一份 feed 还在收摊时切品种：新品种的行情必须真的流出来" started.
+◇ Test "冷启动读回上次看到的报价，值与交易所时间都不走样" started.
+◇ Test "BT-11 后台 24.9 秒回来复用现有连接；25.1 秒回来才重连并补缺" started.
+◇ Test "BT-09 报文猛灌时消费者被闸门按住：放行后结构性事件一条都不能少" started.
+◇ Test "往左拖：只取左边多出来的一截" started.
+◇ Test "全市场报价走网关自己的 tickers 端点，载荷仍要同源校验" started.
+◇ Test "全市场报价一次往返换回整屏，坏行被剔掉" started.
+◇ Test "旧盘里的洞：端点法看不见，扫点序列才扫得出来" started.
+◇ Test "一行成交额是 NaN，整份快照照样落得下去" started.
+◇ Test "请求区间收敛成实际覆盖：伸到未来那两根不许记成已有" started.
+◇ Test "1m 图上 OI 本来就是 5 分钟一条：正常间隔不许当成洞" started.
+◇ Test "BT-05 后台那记 25 秒的闹钟醒来时人已回前台：不许掐当前连接" started.
+◇ Test "30 天以外的洞：不扫，别为归档站本来就没有的那几天每次开图白发请求" started.
+◇ Test "左端不收：上市前那一截照样算问过，不会每次平移重下一遍" started.
+◇ Test "和已有区间完全不挨着：整段重取" started.
+◇ Test "开新根的那一帧不等拍子，立刻发" started.
+◇ Test "同一根上连着来 10 帧，只合成 ≤2 次末根事件" started.
+◇ Test "洞段和端点段一起并：同一截数据不发两次请求" started.
+◇ Test "刷新时左边也缺：尾巴并进右边那段，不会多发一个请求" started.
+◇ Test "1M / 1y 月长年长不等：连着的两根不许当成洞" started.
+◇ Test "聚合段存取：换一张图回来先有旧的可画" started.
+◇ Test "手里没有：整段都要" started.
+◇ Test "点不够 / 窗口退化：不扫出任何段" started.
+◇ Test "窗口整个落在已有区间里：一个请求都不发" started.
+◇ Test "60 秒定时刷新：全都在手里也要把尾巴几根重取一次" started.
+◇ Test restCannotReplaceLiveTailReceivedDuringRequest() started.
+◇ Test "空窗口 / 倒着的窗口：不发请求" started.
+◇ Suite "持仓量覆盖边界：2020-09 起，最细五分钟" started.
+◇ Test "坏盘面：不是 KOI4 / 被截断 / 区间倒着，一律当没有" started.
+◇ Test "REST 翻到一半断了：已经到手的几页要留住，不是整条空" started.
+◇ Test "ticker 校准失败不降级已加载的历史" started.
+◇ Test lateFramesAndWrongIntervalCannotRewriteTail() started.
+◇ Test "两个挨着的洞并成一段；洞太碎就退化成一整段，不发一串小请求" started.
+◇ Test returningToSameSelectionCannotReviveOldRequest() started.
+◇ Test "两头都缺：拆成左右两段，不重不漏" started.
+◇ Test "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test sameMillisecondDistinctTradesAreNotDropped() started.
+◇ Test tradeDuplicatesDoNotDoubleVolume() started.
+◇ Test concurrentCatalogReadersShareOneRequest() started.
+◇ Test "空窗口 / 倒着的窗口：不切出任何块" started.
+◇ Test "只有一段：不回调，免得同一批点被画两遍" started.
+◇ Test "默认那条读仍然会把 mtime 顶上去，只是不在调用线程上做" started.
+◇ Test "目录索引：第一次碰到目录扫一遍，之后删掉的、忘掉的都对得上" started.
+◇ Test "两段都在：先到的先回调，不等另一段" started.
+◇ Test "目录索引：读一次只挪 LRU 位置，不改条数也不改字节" started.
+◇ Test "目录索引：写盘增量记账，不用每次扫目录" started.
+◇ Test "预热：品种级的 4xx 跳过接着跑，线路级的错误才停" started.
+◇ Test "会话接缝不留洞：下一轮从空洞那根接着补，不是从虚高的右端" started.
+◇ Test "日线看一年：还是一个请求，不为切块而切块" started.
+◇ Test "冷启动那一读可以不写 mtime" started.
+◇ Test "超过 maxBars 的序列只留最后 3000 根，首尾对得上" started.
+◇ Test "主动买成交量写进快照再读回来，一位不差；缺失的那几根读回来还是缺失" started.
+◇ Test "空序列也编得出、解得回" started.
+◇ Test "截断、魔数不对、版本不对都要稳稳返回 nil" started.
+◇ Test "版本 1 写下的字节照样解得出来，主动买量整列当缺失" started.
+◇ Test "已聚好的一段存盘：编解码一致，区间跟着回来" started.
+◇ Test "等距周期：编码逐字节钉死" started.
+◇ Test "不等距周期（1M，带 openTime 表）：编码逐字节钉死" started.
+◇ Suite "历史没到但 WS 活着" started.
+◇ Test case passing 1 argument interval → .m1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m3 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m5 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m15 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m30 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h2 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h4 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument firstStatus → 200 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument interval → .h6 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument firstStatus → 429 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument interval → .h12 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument firstStatus → 503 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument interval → .d1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .w1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .mo1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .y1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "复核项 4 目录里没有这个代号也能标下架：补一行占位，不再默默丢掉" started.
+◇ Test "B-T15 用户点名一个表里没有的新合约：立刻重拉一次，但 5 分钟内只拉一次" started.
+◇ Test "B-T13 一张全是停牌的表不算好表：不采纳、不落盘，盘上那份可用的还在" started.
+◇ Test "B-T14 只有「交易所不认这个代号」才配标下架，限流地域超时都不算" started.
+◇ Test "B-T13 一份畸形响应：发起者和等在门口的人拿到同一张旧表，谁都不会拿到空表" started.
+◇ Test "B-T14 非 TRADING 的行留在表里带状态；老 schema 的缓存一律重拉" started.
+◇ Test "复核项 4 手里还没有表的时候标下架：什么都不写，不许拿一行顶掉盘上那份" started.
+◇ Test "B-T14 交易所不认这个代号：标成下架、不删，冷启动之后还记得" started.
+◇ Test "B-T13 刚失败过就先用手里那份，60 秒内不再往枪口上撞" started.
+◇ Test "历史报错不冒充换线路，「点此重试」不会被自己抹掉" started.
+◇ Test "历史全 429、只有 WS 推来一根时，不把这一根落成快照" started.
+◇ Test case passing 1 argument interval → .m1 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m3 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m5 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m15 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test "补洞请求在路上时到的实时末根，不能被它的陈旧回包盖回去" started.
+◇ Test "换桶那一刻，上一根压在合帧闸门里的最终值必须补发给消费端" started.
+◇ Test "交易所宣布收线的那一帧被闸门攒着，紧接着开新根就永远丢了" started.
+✔ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" passed after 3.556 seconds.
+✔ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" passed after 3.563 seconds.
+✔ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" passed after 3.564 seconds.
+✔ Test "exchangeInfo 走一遍 transport，请求路径正确" passed after 3.571 seconds.
+✔ Test "404 / 451 / 429 分类" passed after 3.571 seconds.
+✔ Test "全市场WS数组包含普通与TradFi报价，保持真实24h涨跌幅" passed after 3.572 seconds.
+✔ Test "1y 由 1M 聚出来" passed after 3.573 seconds.
+✔ Test "dedup 去重并排序" passed after 3.574 seconds.
+✔ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" passed after 3.574 seconds.
+✔ Test "对齐取「之前最近」一条，没有就是 NaN" passed after 3.574 seconds.
+✔ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" with 14 test cases passed after 3.574 seconds.
+✔ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" passed after 3.582 seconds.
+✔ Test "1w / 1M / 1y：按桶取最后一条" passed after 3.583 seconds.
+✔ Test "点列有缺口也对得上：缺口里续用缺口前那条" passed after 3.583 seconds.
+✔ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" passed after 3.584 seconds.
+✔ Test "空点列 / 空序列不崩" passed after 3.609 seconds.
+✔ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" passed after 3.610 seconds.
+✔ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" passed after 3.610 seconds.
+✔ Test "空洞序列进内存缓存被截头之后，剩下那段的时间还是真时间" passed after 3.610 seconds.
+✔ Test "带洞的序列写进快照再读回来，每一根的时间都不变" passed after 3.616 seconds.
+✔ Test "空洞被 REST 补上之后，整段一根不多一根不少" passed after 3.616 seconds.
+✔ Test "旧快照接最新窗口，中间的两根空洞不能把后段整体平移" passed after 3.616 seconds.
+✔ Test "抽掉中间一根喂进 merge，末根的时间不能早一根" passed after 3.617 seconds.
+✔ Test "桶按撮合时间算，同一根内的时间不会开新根" passed after 3.617 seconds.
+✔ Test "组合行情端点用币安自己的 /stream，替换品种仍可复用连接" passed after 3.649 seconds.
+✔ Test "挂单心跳只改价不记量，也不凭它开新的一根" passed after 3.650 seconds.
+✔ Test "落在末根上：收盘跟着走，高低取极值，量累加" passed after 3.677 seconds.
+✔ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" passed after 3.678 seconds.
+✔ Test "trade / bookTicker 报文解得出来" passed after 3.678 seconds.
+✔ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" passed after 3.679 seconds.
+✔ Test "换一段序列，折线状态跟着清掉" passed after 3.679 seconds.
+✔ Test "1500 根 klines：严格递增、等距、无重复" passed after 3.684 seconds.
+✔ Test "过期、补缺中、价格不合法、序列空着都不折" passed after 3.686 seconds.
+✔ Test "对表：这根还没被折过就认 REST 的收盘" passed after 3.687 seconds.
+✔ Test "清掉整个目录" passed after 3.687 seconds.
+✔ Test "脏品种名不落盘" passed after 3.687 seconds.
+✔ Test "太旧的快照不拿来打底" passed after 3.687 seconds.
+✔ Test "历史OI网关时间戳、数值和坏响应检查" passed after 3.691 seconds.
+✔ Test "几段合起来：失败的那段不算，右端只认真到手的点" passed after 3.691 seconds.
+✔ Test "超出字节上限也会淘汰" passed after 3.692 seconds.
+✔ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" passed after 3.695 seconds.
+✔ Test "左边那截整段失败：记账一步都不推进，下一轮还会再问它" passed after 3.695 seconds.
+✔ Test "问到了却是空的：照样算覆盖，不会每平移一次重下一遍" passed after 3.708 seconds.
+✔ Test "1m 和 1M 不能撞成同一个文件" passed after 3.708 seconds.
+✔ Test "按 (品种, 周期) 存取：写进去的能原样读回来" passed after 3.708 seconds.
+✔ Test "缓存树下没有一条路径通向随人走的档案" passed after 3.763 seconds.
+✔ Test "板块历史在 kanpan 这棵子树里" passed after 3.764 seconds.
+✔ Test "注入的身份不会把测试档隔离绕开" passed after 3.813 seconds.
+✔ Test "非法值不落盘；一个都不剩时文件删掉" passed after 3.814 seconds.
+✔ Test ".oi 日切片：编解码一致，保留四个比率列" passed after 3.829 seconds.
+✔ Test "同一档边界读得回来，涨跌幅第一帧就能算" passed after 3.830 seconds.
+✔ Test "两个身份的报价与开盘价不共用一个文件" passed after 3.831 seconds.
+✔ Test "按行情源分的那棵子树在缓存树里，而且有名字可点" passed after 3.815 seconds.
+✔ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" passed after 3.854 seconds.
+✔ Test "不规则周期（1M）带 openTime 表，也能原样读回" passed after 3.854 seconds.
+✔ Test "当前全部717个产品品种进入独立分类模块，保留细分元数据；停牌与待开盘的行带状态留着" passed after 3.857 seconds.
+✔ Test "没认主时落在 unknown，不落在共用目录" passed after 3.856 seconds.
+✔ Test "内存警告后只剩当前 (品种, 周期)" passed after 3.856 seconds.
+✔ Test "读快照 + 建 BarSeries < 20ms" passed after 3.880 seconds.
+✔ Test "归档站有的文件本身是乱序的：解析器必须自己排" passed after 3.881 seconds.
+✔ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" passed after 3.881 seconds.
+✔ Test "坏文件不崩，返回 nil" passed after 3.881 seconds.
+✔ Test "真实 metrics zip：解出 288 行 5 分钟粒度" passed after 3.862 seconds.
+✔ Test "跨到下一天就整份作废，不拿昨天的开盘价算今天" passed after 3.864 seconds.
+✔ Test "日期工具：dayString / dayStart / days / 中间优先" passed after 3.831 seconds.
+✔ Test "单个 key 超长会裁掉最老的" passed after 3.919 seconds.
+✔ Test "旧 magic 必须未命中，不把没有比率的缓存当新格式" passed after 3.920 seconds.
+✔ Test "默认没有额外流，启用后连续切换二十次只留下当前品种，关闭即退订" passed after 3.922 seconds.
+✔ Test "没有文件、或文件是坏的，就是空，不抛" passed after 3.925 seconds.
+✔ Test "B-T15 老版本写下的行没有交易所时钟，按文件自己的修改时间算年龄" passed after 3.940 seconds.
+✔ Test "四个比率经过日片、聚合片、网关 JSON 均不丢失" passed after 3.948 seconds.
+✔ Test "涨跌额往返落盘，旧快照缺字段仍可读" passed after 3.949 seconds.
+✔ Test "落盘失败要留一行日志，不许悄悄吞掉" passed after 3.951 seconds.
+✔ Test "多空比历史取账户列，主动买卖比取成交列，基差不会请求远期归档" passed after 3.951 seconds.
+✔ Test "B-T15 隔了一天以上的那口价不再摆出来，昨天的还摆" passed after 3.951 seconds.
+✔ Test "冷启动读回上次看到的报价，值与交易所时间都不走样" passed after 3.953 seconds.
+✔ Test "往左拖：只取左边多出来的一截" passed after 3.956 seconds.
+✔ Test "全市场报价一次往返换回整屏，坏行被剔掉" passed after 3.958 seconds.
+✔ Test "旧盘里的洞：端点法看不见，扫点序列才扫得出来" passed after 3.958 seconds.
+✔ Test "一行成交额是 NaN，整份快照照样落得下去" passed after 3.958 seconds.
+✔ Test "请求区间收敛成实际覆盖：伸到未来那两根不许记成已有" passed after 3.958 seconds.
+✔ Test "1m 图上 OI 本来就是 5 分钟一条：正常间隔不许当成洞" passed after 3.958 seconds.
+✔ Test "30 天以外的洞：不扫，别为归档站本来就没有的那几天每次开图白发请求" passed after 3.958 seconds.
+✔ Test "只留最近的一批，文件不会越滚越大" passed after 3.959 seconds.
+✔ Test "和已有区间完全不挨着：整段重取" passed after 3.959 seconds.
+✔ Test "洞段和端点段一起并：同一截数据不发两次请求" passed after 3.960 seconds.
+✔ Test "1M / 1y 月长年长不等：连着的两根不许当成洞" passed after 3.960 seconds.
+✔ Test "刷新时左边也缺：尾巴并进右边那段，不会多发一个请求" passed after 3.960 seconds.
+✔ Test "左端不收：上市前那一截照样算问过，不会每次平移重下一遍" passed after 3.960 seconds.
+✔ Test "手里没有：整段都要" passed after 3.960 seconds.
+✔ Test "点不够 / 窗口退化：不扫出任何段" passed after 3.960 seconds.
+✔ Test "60 秒定时刷新：全都在手里也要把尾巴几根重取一次" passed after 3.960 seconds.
+✔ Test restCannotReplaceLiveTailReceivedDuringRequest() passed after 3.960 seconds.
+✔ Test "空窗口 / 倒着的窗口：不发请求" passed after 3.994 seconds.
+✔ Test "窗口整个落在已有区间里：一个请求都不发" passed after 3.960 seconds.
+✔ Test lateFramesAndWrongIntervalCannotRewriteTail() passed after 4.020 seconds.
+✔ Test "两个挨着的洞并成一段；洞太碎就退化成一整段，不发一串小请求" passed after 4.021 seconds.
+◇ Test "1d 以下也一样，一路到 5 分钟" started.
+◇ Test "边界是 2020-09-01：更早的那几根是真的没有，不是周期的问题" started.
+✔ Test "两头都缺：拆成左右两段，不重不漏" passed after 4.021 seconds.
+✔ Test sameMillisecondDistinctTradesAreNotDropped() passed after 4.051 seconds.
+✔ Test "5 分钟看一年：切成几块，每块都在服务端的上限之内" with 4 test cases passed after 4.051 seconds.
+✔ Test tradeDuplicatesDoNotDoubleVolume() passed after 4.051 seconds.
+✔ Test "空窗口 / 倒着的窗口：不切出任何块" passed after 4.051 seconds.
+✔ Test "目录索引：读一次只挪 LRU 位置，不改条数也不改字节" passed after 4.087 seconds.
+✔ Test "坏盘面：不是 KOI4 / 被截断 / 区间倒着，一律当没有" passed after 4.087 seconds.
+✔ Test "预热：品种级的 4xx 跳过接着跑，线路级的错误才停" passed after 4.087 seconds.
+◇ Test "近 30 天这一段用的是原生 period，不是唯一的一段" started.
+◇ Test "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+✔ Test "会话接缝不留洞：下一轮从空洞那根接着补，不是从虚高的右端" passed after 4.109 seconds.
+✔ Test "日线看一年：还是一个请求，不为切块而切块" passed after 4.109 seconds.
+✔ Test "冷启动那一读可以不写 mtime" passed after 4.109 seconds.
+◇ Test "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+✔ Test "目录索引：第一次碰到目录扫一遍，之后删掉的、忘掉的都对得上" passed after 4.110 seconds.
+✔ Test "主动买成交量写进快照再读回来，一位不差；缺失的那几根读回来还是缺失" passed after 4.109 seconds.
+✔ Test "空序列也编得出、解得回" passed after 4.110 seconds.
+✔ Test "截断、魔数不对、版本不对都要稳稳返回 nil" passed after 4.109 seconds.
+✔ Test "版本 1 写下的字节照样解得出来，主动买量整列当缺失" passed after 4.130 seconds.
+✔ Test "聚合段存取：换一张图回来先有旧的可画" passed after 4.158 seconds.
+✔ Test "不等距周期（1M，带 openTime 表）：编码逐字节钉死" passed after 4.158 seconds.
+◇ Test "运行中换档：直连 → 网关，线路立刻换到 OKX" started.
+◇ Test "直连：币安探测失败也不切 OKX，照实说「点此重试」" started.
+◇ Test "网关：开机就走 OKX 那条线路，币安一笔都不碰" started.
+✔ Test "等距周期：编码逐字节钉死" passed after 4.129 seconds.
+◇ Test "首屏历史全 429 时，WS 的实时价照样交给界面，状态也不谎报离线" started.
+✔ Test "目录索引：写盘增量记账，不用每次扫目录" passed after 4.614 seconds.
+✔ Test "已聚好的一段存盘：编解码一致，区间跟着回来" passed after 4.621 seconds.
+✔ Test "存取日切片：关掉开关就不落盘" passed after 4.623 seconds.
+✔ Test "B-T14 只有「交易所不认这个代号」才配标下架，限流地域超时都不算" passed after 1.553 seconds.
+✔ Test "复核项 4 手里还没有表的时候标下架：什么都不写，不许拿一行顶掉盘上那份" passed after 1.391 seconds.
+◇ Test case passing 1 argument interval → .h4 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .d1 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .h1 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .m5 to "1d 以下也一样，一路到 5 分钟" started.
+✔ Test "超过 maxBars 的序列只留最后 3000 根，首尾对得上" passed after 5.453 seconds.
+◇ Test case passing 1 argument interval → .w1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test case passing 1 argument interval → .m1 to "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+◇ Test case passing 1 argument interval → .m3 to "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+◇ Test case passing 1 argument interval → .mo1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test case passing 1 argument interval → .y1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+✔ Test "USDT TradFi全保留，USD1、普通USDC、交割排除；停牌的行留在表里带下架标记；旧目录即时刷新" passed after 6.060 seconds.
+✔ Test "快照文件：≤3000 根、≤300KB，读回逐字节一致" passed after 6.461 seconds.
+✔ Test "历史网关失败换备用，保留周期且不重复下载ZIP" with 3 test cases passed after 6.464 seconds.
+✔ Suite "空洞序列的合并与落盘" passed after 6.494 seconds.
+✔ Suite "逐笔折线" passed after 6.494 seconds.
+✔ Suite "历史OI网关解析" passed after 6.494 seconds.
+✔ Test "REST 整段报错：点是空的，而且说清楚「没问到」" passed after 6.464 seconds.
+✔ Suite "缓存边界" passed after 6.494 seconds.
+✔ Suite "当日开盘价快照" passed after 6.494 seconds.
+✔ Suite "OI 归档：自写 ZIP + CSV" passed after 6.509 seconds.
+✔ Suite "外部指标归档：列保留与格式升级" passed after 6.483 seconds.
+✔ Suite "图表微观行情订阅" passed after 6.483 seconds.
+✔ Suite "OI 切块：细周期看长区间也要走网关那条快路" passed after 6.557 seconds.
+✔ Test "边界是 2020-09-01：更早的那几根是真的没有，不是周期的问题" passed after 2.537 seconds.
+✔ Test "默认那条读仍然会把 mtime 顶上去，只是不在调用线程上做" passed after 6.559 seconds.
+✔ Test "近 30 天这一段用的是原生 period，不是唯一的一段" passed after 2.901 seconds.
+✔ Test "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" with 2 test cases passed after 2.882 seconds.
+✔ Suite "快照字节格式：新旧实现逐字节相同" passed after 6.998 seconds.
+✔ Test "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" with 3 test cases passed after 2.966 seconds.
+✔ Test "复核项 4 目录里没有这个代号也能标下架：补一行占位，不再默默丢掉" passed after 4.404 seconds.
+✔ Test "B-T13 一张全是停牌的表不算好表：不采纳、不落盘，盘上那份可用的还在" passed after 4.401 seconds.
+✔ Test "B-T14 非 TRADING 的行留在表里带状态；老 schema 的缓存一律重拉" passed after 4.208 seconds.
+✔ Test "B-T14 交易所不认这个代号：标成下架、不删，冷启动之后还记得" passed after 4.114 seconds.
+✔ Test "网关档（OKX）等第一帧的窗口实际就是 60 秒，不被 15 秒钳子咬住" passed after 7.951 seconds.
+✔ Test "直连档的窗口也是 60 秒（两档一视同仁）" passed after 7.951 seconds.
+✔ Test "REST 翻到一半断了：到手的几页留住，但这一段仍然不算问全" passed after 8.062 seconds.
+✔ Test "上游连回两个 429，首屏自己重试到拿下" passed after 8.068 seconds.
+✔ Test "首屏那一发彻底失败，也会自己再来一发" passed after 8.093 seconds.
+✔ Test "关掉「启动快照」：文件被删，之后不再写" passed after 8.106 seconds.
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 8.107 seconds.
+✔ Test "1d 以下也一样，一路到 5 分钟" with 4 test cases passed after 4.082 seconds.
+✔ Test "ticker 校准失败不降级已加载的历史" passed after 8.104 seconds.
+✔ Test "近期三个端点各用自己的值，主动买卖比不冒用未完成统计桶" passed after 8.106 seconds.
+✔ Suite "缓存层：预热分级与目录索引" passed after 8.110 seconds.
+✔ Test "REST 翻到一半断了：已经到手的几页要留住，不是整条空" passed after 8.206 seconds.
+✔ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" passed after 8.212 seconds.
+✔ Test "超出条数上限就按最近用过的淘汰" passed after 8.377 seconds.
+✔ Suite "A-07 第②层：首帧窗口" passed after 8.446 seconds.
+✔ Test "A.3.4 451 地域拒绝也只打一发：落到既有的「点此重试」，不叠加退避" passed after 8.418 seconds.
+✔ Test "完整那发先回来，小页落地时什么都不做" passed after 8.418 seconds.
+✔ Suite "首屏历史重试" passed after 8.494 seconds.
+✔ Test "B-T13 一份畸形响应：发起者和等在门口的人拿到同一张旧表，谁都不会拿到空表" passed after 5.286 seconds.
+✔ Test "全市场报价走网关自己的 tickers 端点，载荷仍要同源校验" passed after 8.592 seconds.
+✔ Suite "持仓量覆盖边界：2020-09 起，最细五分钟" passed after 8.595 seconds.
+✔ Test "BT-05 后台那记 25 秒的闹钟醒来时人已回前台：不许掐当前连接" passed after 8.592 seconds.
+✔ Suite "外部指标：近期和历史取数" passed after 8.597 seconds.
+✔ Suite "OI 增量：只补缺的那一段" passed after 8.637 seconds.
+✔ Test "B-T13 刚失败过就先用手里那份，60 秒内不再往枪口上撞" passed after 5.232 seconds.
+✔ Suite "多品种启动快照" passed after 8.669 seconds.
+✔ Test "A-T05 封禁期内首屏立刻收手：图表留着、横幅亮着、重试不再撞上游" passed after 8.732 seconds.
+✔ Suite "报价快照与整屏补价" passed after 8.735 seconds.
+✔ Test "网关：开机就走 OKX 那条线路，币安一笔都不碰" passed after 4.574 seconds.
+✔ Test concurrentCatalogReadersShareOneRequest() passed after 8.769 seconds.
+✔ Test "30 品种 × 14 周期切一遍：沙盒里只有 series/ 下封顶的快照和品种表" passed after 8.774 seconds.
+✔ Test "历史报错不冒充换线路，「点此重试」不会被自己抹掉" passed after 5.402 seconds.
+✔ Test "运行中换档：直连 → 网关，线路立刻换到 OKX" passed after 4.738 seconds.
+✔ Test returningToSameSelectionCannotReviveOldRequest() passed after 8.910 seconds.
+✔ Test "近 30 天走 REST、更早走归档：两个源都被问到" passed after 8.914 seconds.
+✔ Test "两段都在：先到的先回调，不等另一段" passed after 8.933 seconds.
+✔ Test "B-T15 用户点名一个表里没有的新合约：立刻重拉一次，但 5 分钟内只拉一次" passed after 5.844 seconds.
+✔ Test "服务器 ping 立刻回 pong" passed after 8.942 seconds.
+✔ Test "60 秒一帧没有就主动重连" passed after 8.942 seconds.
+✔ Suite "Data identity, snapshots and duplicate delivery" passed after 8.945 seconds.
+✔ Suite "品种表状态与单飞刷新" passed after 8.956 seconds.
+✔ Test "连断三次：退避 1s / 2s / 4s（各再抖 ±20%），日志可见" passed after 9.084 seconds.
+✔ Test "补洞请求在路上时到的实时末根，不能被它的陈旧回包盖回去" passed after 5.620 seconds.
+✔ Test "完整那发还没回来，小页先把图画上" passed after 9.152 seconds.
+✔ Suite "两段式首屏" passed after 9.183 seconds.
+✔ Test "归档站 404 是答复（上市前），别的状态码不是" passed after 9.227 seconds.
+✔ Suite "OI 覆盖记账：只有真问到的那一段才算覆盖" passed after 9.326 seconds.
+✔ Test "交易所宣布收线的那一帧被闸门攒着，紧接着开新根就永远丢了" passed after 5.747 seconds.
+✔ Test "开新根的那一帧不等拍子，立刻发" passed after 9.294 seconds.
+✔ Test "BT-02 首屏还在路上就切后台再回前台：必须补发首屏，不能只剩打底那几根" passed after 9.296 seconds.
+✔ Test "同一根上连着来 10 帧，只合成 ≤2 次末根事件" passed after 9.320 seconds.
+✔ Suite "合帧闸门：kline 也限速，开新根不等" passed after 9.326 seconds.
+✔ Test "品种上市前：归档站 404 → 返回空而不是报错" passed after 9.324 seconds.
+✔ Suite "OI 对齐：两源合一条" passed after 9.390 seconds.
+✔ Test "换桶那一刻，上一根压在合帧闸门里的最终值必须补发给消费端" passed after 5.842 seconds.
+✔ Suite "末根的定盘与基线" passed after 9.374 seconds.
+BT-09 观测：灌入 30 条报文，放行那一刻流里积压 55 条事件，其中末根事件 25 条
+✔ Test "BT-09 报文猛灌时消费者被闸门按住：放行后结构性事件一条都不能少" passed after 9.413 seconds.
+✔ Test "BT-01 上一份 feed 还在收摊时切品种：新品种的行情必须真的流出来" passed after 9.680 seconds.
+✔ Test "BT-12 回前台补不补缺看真实时钟：同一根不补，隔了一根才补" passed after 10.538 seconds.
+✔ Test "历史全 429、只有 WS 推来一根时，不把这一根落成快照" passed after 7.182 seconds.
+✔ Suite "首屏拉不到历史时的表现" passed after 10.628 seconds.
+✔ Test "直连：币安探测失败也不切 OKX，照实说「点此重试」" passed after 6.853 seconds.
+✔ Suite "行情线路：整条路由" passed after 11.046 seconds.
+✔ Test "BT-11 后台 24.9 秒回来复用现有连接；25.1 秒回来才重连并补缺" passed after 12.052 seconds.
+✔ Suite "行情流水线：生命周期与并发" passed after 12.058 seconds.
+✔ Test "首屏历史全 429 时，WS 的实时价照样交给界面，状态也不谎报离线" passed after 7.915 seconds.
+✔ Suite "历史没到但 WS 活着" passed after 12.085 seconds.
+✔ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" passed after 13.393 seconds.
+✔ Test "A-T15 分钟边界上掉线、新连接晚到：补洞请求发出去，补回来的与交易所一致" passed after 14.125 seconds.
+✔ Suite "封禁后的首屏与分钟边界补洞" passed after 14.154 seconds.
+✔ Test "3000 条录制报文回放：最终序列与期望全等" passed after 14.465 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 14.495 seconds.
+✔ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" passed after 14.666 seconds.
+✔ Suite "REST 与 DTO" passed after 14.695 seconds.
+✔ Test "只有一段：不回调，免得同一批点被画两遍" passed after 15.488 seconds.
+✔ Suite "OI 分段上屏：先到的那一段不必陪着慢的一起等" passed after 15.495 seconds.
+✔ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" passed after 26.897 seconds.
+✔ Suite "启动快照与内存缓存" passed after 26.930 seconds.
+✔ Test run with 190 tests in 35 suites passed after 26.932 seconds.
+       93.97 real        15.81 user         5.85 sys
+rc=0
+load-after={ 49.36 33.27 30.87 }
+== stress run 2 load={ 49.36 33.27 30.87 }
+Test Suite 'All tests' started at 2026-09-23 10:00:09.489.
+Test Suite 'KanpanDataPackageTests.xctest' started at 2026-09-23 10:00:09.495.
+Test Suite 'PerfBenchmarkTests' started at 2026-09-23 10:00:09.495.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testFeedComposerMerge]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testFeedComposerMerge]' passed (41.749 seconds).
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSeriesStoreWriteRead]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSeriesStoreWriteRead]' passed (4.790 seconds).
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSnapshotEncodeDecode]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSnapshotEncodeDecode]' passed (5.939 seconds).
+BENCH data.feedcomposer.merge_1500_into_15000 median_ms=1766.5316 p90_ms=2376.2307 n=15000
+BENCH data.seriesstore.write median_ms=54.3445 p90_ms=91.3219 n=3000
+BENCH data.seriesstore.read median_ms=127.1220 p90_ms=152.4178 n=3000
+BENCH data.snapshot.encode median_ms=82.5343 p90_ms=126.5669 n=3000
+BENCH data.snapshot.decode median_ms=134.0607 p90_ms=176.2162 n=3000
+Test Suite 'PerfBenchmarkTests' passed at 2026-09-23 10:01:01.975.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 52.478 (52.480) seconds
+Test Suite 'KanpanDataPackageTests.xctest' passed at 2026-09-23 10:01:01.977.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 52.478 (52.482) seconds
+Test Suite 'All tests' passed at 2026-09-23 10:01:01.977.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 52.478 (52.488) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "封禁后的首屏与分钟边界补洞" started.
+◇ Suite "缓存边界" started.
+◇ Suite "缓存层：预热分级与目录索引" started.
+➜ Suite LiveRoutingTests skipped.
+◇ Suite "行情线路：整条路由" started.
+◇ Suite "OI 对齐：两源合一条" started.
+◇ Suite "快照字节格式：新旧实现逐字节相同" started.
+◇ Suite "外部指标归档：列保留与格式升级" started.
+◇ Suite "品种表状态与单飞刷新" started.
+◇ Suite "空洞序列的合并与落盘" started.
+◇ Suite "OI 覆盖记账：只有真问到的那一段才算覆盖" started.
+◇ Suite "末根的定盘与基线" started.
+◇ Suite "WS 回放：合成规矩、断线补缺、静默重连" started.
+◇ Suite "A-07 第②层：首帧窗口" started.
+◇ Suite "OI 归档：自写 ZIP + CSV" started.
+◇ Suite "REST 与 DTO" started.
+◇ Suite "当日开盘价快照" started.
+◇ Suite "启动快照与内存缓存" started.
+◇ Suite "持仓量覆盖边界：2020-09 起，最细五分钟" started.
+◇ Suite "逐笔折线" started.
+◇ Suite "报价快照与整屏补价" started.
+◇ Suite "行情流水线：生命周期与并发" started.
+◇ Suite "首屏拉不到历史时的表现" started.
+◇ Suite "首屏历史重试" started.
+◇ Suite "两段式首屏" started.
+◇ Suite "Data identity, snapshots and duplicate delivery" started.
+◇ Suite "OI 分段上屏：先到的那一段不必陪着慢的一起等" started.
+◇ Suite "历史OI网关解析" started.
+◇ Suite "OI 增量：只补缺的那一段" started.
+◇ Suite "合帧闸门：kline 也限速，开新根不等" started.
+◇ Suite "外部指标：近期和历史取数" started.
+◇ Suite "多品种启动快照" started.
+◇ Suite "OI 切块：细周期看长区间也要走网关那条快路" started.
+◇ Test "默认那条读仍然会把 mtime 顶上去，只是不在调用线程上做" started.
+➜ Test completeOKXFeed() skipped.
+◇ Test "目录索引：写盘增量记账，不用每次扫目录" started.
+◇ Test "运行中换档：直连 → 网关，线路立刻换到 OKX" started.
+◇ Test "预热：品种级的 4xx 跳过接着跑，线路级的错误才停" started.
+◇ Test "截断、魔数不对、版本不对都要稳稳返回 nil" started.
+◇ Test "直连：币安探测失败也不切 OKX，照实说「点此重试」" started.
+◇ Test "空序列也编得出、解得回" started.
+◇ Test "目录索引：读一次只挪 LRU 位置，不改条数也不改字节" started.
+◇ Test "不等距周期（1M，带 openTime 表）：编码逐字节钉死" started.
+◇ Test "目录索引：第一次碰到目录扫一遍，之后删掉的、忘掉的都对得上" started.
+◇ Test "等距周期：编码逐字节钉死" started.
+◇ Test "网关：开机就走 OKX 那条线路，币安一笔都不碰" started.
+◇ Test "版本 1 写下的字节照样解得出来，主动买量整列当缺失" started.
+◇ Test "主动买成交量写进快照再读回来，一位不差；缺失的那几根读回来还是缺失" started.
+◇ Test "近 30 天走 REST、更早走归档：两个源都被问到" started.
+◇ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" started.
+◇ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" started.
+◇ Test "对齐取「之前最近」一条，没有就是 NaN" started.
+◇ Test "空点列 / 空序列不崩" started.
+◇ Test "超过 maxBars 的序列只留最后 3000 根，首尾对得上" started.
+◇ Test "1w / 1M / 1y：按桶取最后一条" started.
+◇ Test "四个比率经过日片、聚合片、网关 JSON 均不丢失" started.
+◇ Test "冷启动那一读可以不写 mtime" started.
+◇ Test "旧 magic 必须未命中，不把没有比率的缓存当新格式" started.
+◇ Test "品种上市前：归档站 404 → 返回空而不是报错" started.
+◇ Test "点列有缺口也对得上：缺口里续用缺口前那条" started.
+◇ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" started.
+◇ Test "B-T13 刚失败过就先用手里那份，60 秒内不再往枪口上撞" started.
+◇ Test "复核项 4 目录里没有这个代号也能标下架：补一行占位，不再默默丢掉" started.
+◇ Test "B-T13 一份畸形响应：发起者和等在门口的人拿到同一张旧表，谁都不会拿到空表" started.
+◇ Test "B-T14 交易所不认这个代号：标成下架、不删，冷启动之后还记得" started.
+◇ Test "B-T14 非 TRADING 的行留在表里带状态；老 schema 的缓存一律重拉" started.
+◇ Test "B-T15 用户点名一个表里没有的新合约：立刻重拉一次，但 5 分钟内只拉一次" started.
+◇ Test "抽掉中间一根喂进 merge，末根的时间不能早一根" started.
+◇ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" started.
+◇ Test "空洞被 REST 补上之后，整段一根不多一根不少" started.
+◇ Test "REST 翻到一半断了：到手的几页留住，但这一段仍然不算问全" started.
+◇ Test "旧快照接最新窗口，中间的两根空洞不能把后段整体平移" started.
+◇ Test "左边那截整段失败：记账一步都不推进，下一轮还会再问它" started.
+◇ Test "A-T05 封禁期内首屏立刻收手：图表留着、横幅亮着、重试不再撞上游" started.
+◇ Test "问到了却是空的：照样算覆盖，不会每平移一次重下一遍" started.
+◇ Test "补洞请求在路上时到的实时末根，不能被它的陈旧回包盖回去" started.
+◇ Test "A-T15 分钟边界上掉线、新连接晚到：补洞请求发出去，补回来的与交易所一致" started.
+◇ Test "交易所宣布收线的那一帧被闸门攒着，紧接着开新根就永远丢了" started.
+◇ Test "REST 整段报错：点是空的，而且说清楚「没问到」" started.
+◇ Test "A.3.4 451 地域拒绝也只打一发：落到既有的「点此重试」，不叠加退避" started.
+◇ Test "换桶那一刻，上一根压在合帧闸门里的最终值必须补发给消费端" started.
+◇ Test "复核项 4 手里还没有表的时候标下架：什么都不写，不许拿一行顶掉盘上那份" started.
+◇ Test "带洞的序列写进快照再读回来，每一根的时间都不变" started.
+◇ Test "60 秒一帧没有就主动重连" started.
+◇ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" started.
+◇ Test "服务器 ping 立刻回 pong" started.
+◇ Test "几段合起来：失败的那段不算，右端只认真到手的点" started.
+◇ Test "空洞序列进内存缓存被截头之后，剩下那段的时间还是真时间" started.
+◇ Test "连断三次：退避 1s / 2s / 4s（各再抖 ±20%），日志可见" started.
+◇ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" started.
+◇ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" started.
+◇ Test "归档站 404 是答复（上市前），别的状态码不是" started.
+◇ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" started.
+◇ Test "板块历史在 kanpan 这棵子树里" started.
+◇ Test "没认主时落在 unknown，不落在共用目录" started.
+◇ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" started.
+◇ Test "两个身份的报价与开盘价不共用一个文件" started.
+◇ Test "按行情源分的那棵子树在缓存树里，而且有名字可点" started.
+◇ Test "缓存树下没有一条路径通向随人走的档案" started.
+◇ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" started.
+◇ Test "关掉「启动快照」：文件被删，之后不再写" started.
+◇ Test "30 品种 × 14 周期切一遍：沙盒里只有 series/ 下封顶的快照和品种表" started.
+◇ Test ".oi 日切片：编解码一致，保留四个比率列" started.
+◇ Test "网关档（OKX）等第一帧的窗口实际就是 60 秒，不被 15 秒钳子咬住" started.
+◇ Test "直连档的窗口也是 60 秒（两档一视同仁）" started.
+◇ Test "3000 条录制报文回放：最终序列与期望全等" started.
+◇ Test "1y 由 1M 聚出来" started.
+◇ Test "归档站有的文件本身是乱序的：解析器必须自己排" started.
+◇ Test "1500 根 klines：严格递增、等距、无重复" started.
+◇ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" started.
+◇ Test "存取日切片：关掉开关就不落盘" started.
+◇ Test "真实 metrics zip：解出 288 行 5 分钟粒度" started.
+◇ Test "读快照 + 建 BarSeries < 20ms" started.
+◇ Test "注入的身份不会把测试档隔离绕开" started.
+◇ Test "日期工具：dayString / dayStart / days / 中间优先" started.
+◇ Test "同一档边界读得回来，涨跌幅第一帧就能算" started.
+◇ Test "全市场WS数组包含普通与TradFi报价，保持真实24h涨跌幅" started.
+◇ Test "非法值不落盘；一个都不剩时文件删掉" started.
+◇ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" started.
+◇ Test "单个 key 超长会裁掉最老的" started.
+◇ Test "USDT TradFi全保留，USD1、普通USDC、交割排除；停牌的行留在表里带下架标记；旧目录即时刷新" started.
+◇ Test "跨到下一天就整份作废，不拿昨天的开盘价算今天" started.
+◇ Test "dedup 去重并排序" started.
+◇ Test "内存警告后只剩当前 (品种, 周期)" started.
+◇ Test "不规则周期（1M）带 openTime 表，也能原样读回" started.
+◇ Test "404 / 451 / 429 分类" started.
+◇ Test "坏文件不崩，返回 nil" started.
+◇ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" started.
+◇ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" started.
+◇ Test "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+◇ Test "快照文件：≤3000 根、≤300KB，读回逐字节一致" started.
+◇ Test "1d 以下也一样，一路到 5 分钟" started.
+◇ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" started.
+◇ Test "exchangeInfo 走一遍 transport，请求路径正确" started.
+◇ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" started.
+◇ Test "当前全部717个产品品种进入独立分类模块，保留细分元数据；停牌与待开盘的行带状态留着" started.
+◇ Test "边界是 2020-09-01：更早的那几根是真的没有，不是周期的问题" started.
+◇ Test "近 30 天这一段用的是原生 period，不是唯一的一段" started.
+◇ Test "过期、补缺中、价格不合法、序列空着都不折" started.
+◇ Test "换一段序列，折线状态跟着清掉" started.
+◇ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" started.
+◇ Test "挂单心跳只改价不记量，也不凭它开新的一根" started.
+◇ Test "落盘失败要留一行日志，不许悄悄吞掉" started.
+◇ Test "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" started.
+◇ Test "没有文件、或文件是坏的，就是空，不抛" started.
+◇ Test "只留最近的一批，文件不会越滚越大" started.
+◇ Test "一行成交额是 NaN，整份快照照样落得下去" started.
+◇ Test "BT-11 后台 24.9 秒回来复用现有连接；25.1 秒回来才重连并补缺" started.
+◇ Test "BT-01 上一份 feed 还在收摊时切品种：新品种的行情必须真的流出来" started.
+◇ Test "BT-09 报文猛灌时消费者被闸门按住：放行后结构性事件一条都不能少" started.
+◇ Test "全市场报价走网关自己的 tickers 端点，载荷仍要同源校验" started.
+◇ Test "BT-02 首屏还在路上就切后台再回前台：必须补发首屏，不能只剩打底那几根" started.
+◇ Test "桶按撮合时间算，同一根内的时间不会开新根" started.
+◇ Test "对表：这根还没被折过就认 REST 的收盘" started.
+◇ Test "BT-12 回前台补不补缺看真实时钟：同一根不补，隔了一根才补" started.
+◇ Test "B-T15 隔了一天以上的那口价不再摆出来，昨天的还摆" started.
+◇ Test "组合行情端点用币安自己的 /stream，替换品种仍可复用连接" started.
+◇ Test "冷启动读回上次看到的报价，值与交易所时间都不走样" started.
+◇ Test "全市场报价一次往返换回整屏，坏行被剔掉" started.
+◇ Test "BT-05 后台那记 25 秒的闹钟醒来时人已回前台：不许掐当前连接" started.
+◇ Test "涨跌额往返落盘，旧快照缺字段仍可读" started.
+◇ Test "落在末根上：收盘跟着走，高低取极值，量累加" started.
+◇ Test "上游连回两个 429，首屏自己重试到拿下" started.
+◇ Test lateFramesAndWrongIntervalCannotRewriteTail() started.
+◇ Test "完整那发还没回来，小页先把图画上" started.
+◇ Test "首屏那一发彻底失败，也会自己再来一发" started.
+◇ Test "完整那发先回来，小页落地时什么都不做" started.
+◇ Test sameMillisecondDistinctTradesAreNotDropped() started.
+◇ Test "历史全 429、只有 WS 推来一根时，不把这一根落成快照" started.
+◇ Test "B-T15 老版本写下的行没有交易所时钟，按文件自己的修改时间算年龄" started.
+◇ Test tradeDuplicatesDoNotDoubleVolume() started.
+◇ Test "ticker 校准失败不降级已加载的历史" started.
+◇ Test "历史报错不冒充换线路，「点此重试」不会被自己抹掉" started.
+◇ Test restCannotReplaceLiveTailReceivedDuringRequest() started.
+◇ Test "和已有区间完全不挨着：整段重取" started.
+◇ Test "只有一段：不回调，免得同一批点被画两遍" started.
+◇ Test "历史OI网关时间戳、数值和坏响应检查" started.
+◇ Test concurrentCatalogReadersShareOneRequest() started.
+◇ Test "B-T14 只有「交易所不认这个代号」才配标下架，限流地域超时都不算" started.
+◇ Test "两段都在：先到的先回调，不等另一段" started.
+◇ Test returningToSameSelectionCannotReviveOldRequest() started.
+◇ Test "REST 翻到一半断了：已经到手的几页要留住，不是整条空" started.
+◇ Test "窗口整个落在已有区间里：一个请求都不发" started.
+◇ Test "trade / bookTicker 报文解得出来" started.
+◇ Test "刷新时左边也缺：尾巴并进右边那段，不会多发一个请求" started.
+◇ Test "开新根的那一帧不等拍子，立刻发" started.
+◇ Test "坏盘面：不是 KOI4 / 被截断 / 区间倒着，一律当没有" started.
+◇ Test "同一根上连着来 10 帧，只合成 ≤2 次末根事件" started.
+◇ Test "两头都缺：拆成左右两段，不重不漏" started.
+◇ Test "B-T13 一张全是停牌的表不算好表：不采纳、不落盘，盘上那份可用的还在" started.
+◇ Test "已聚好的一段存盘：编解码一致，区间跟着回来" started.
+◇ Test "两个挨着的洞并成一段；洞太碎就退化成一整段，不发一串小请求" started.
+◇ Test "请求区间收敛成实际覆盖：伸到未来那两根不许记成已有" started.
+◇ Test "点不够 / 窗口退化：不扫出任何段" started.
+◇ Test "洞段和端点段一起并：同一截数据不发两次请求" started.
+◇ Test "30 天以外的洞：不扫，别为归档站本来就没有的那几天每次开图白发请求" started.
+◇ Test "60 秒定时刷新：全都在手里也要把尾巴几根重取一次" started.
+◇ Test "空窗口 / 倒着的窗口：不发请求" started.
+◇ Test "1M / 1y 月长年长不等：连着的两根不许当成洞" started.
+◇ Test "会话接缝不留洞：下一轮从空洞那根接着补，不是从虚高的右端" started.
+◇ Test "往左拖：只取左边多出来的一截" started.
+◇ Test "聚合段存取：换一张图回来先有旧的可画" started.
+◇ Test "手里没有：整段都要" started.
+◇ Test "左端不收：上市前那一截照样算问过，不会每次平移重下一遍" started.
+◇ Test "1m 图上 OI 本来就是 5 分钟一条：正常间隔不许当成洞" started.
+◇ Test "旧盘里的洞：端点法看不见，扫点序列才扫得出来" started.
+◇ Test case passing 1 argument firstStatus → 200 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument interval → .m1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m3 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument firstStatus → 429 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument firstStatus → 503 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument interval → .m5 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m30 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m15 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h2 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h4 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h6 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h12 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .d1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .w1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .mo1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "近期三个端点各用自己的值，主动买卖比不冒用未完成统计桶" started.
+◇ Test case passing 1 argument interval → .y1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "多空比历史取账户列，主动买卖比取成交列，基差不会请求远期归档" started.
+◇ Test "按 (品种, 周期) 存取：写进去的能原样读回来" started.
+◇ Test "脏品种名不落盘" started.
+◇ Test "太旧的快照不拿来打底" started.
+◇ Test "清掉整个目录" started.
+◇ Suite "历史没到但 WS 活着" started.
+◇ Suite "图表微观行情订阅" started.
+◇ Test "1m 和 1M 不能撞成同一个文件" started.
+◇ Test "超出字节上限也会淘汰" started.
+◇ Test "超出条数上限就按最近用过的淘汰" started.
+◇ Test case passing 1 argument interval → .m1 to "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+◇ Test case passing 1 argument interval → .m3 to "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+◇ Test case passing 1 argument interval → .d1 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .h4 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .h1 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .m5 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .w1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test case passing 1 argument interval → .mo1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test case passing 1 argument interval → .y1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test "空窗口 / 倒着的窗口：不切出任何块" started.
+◇ Test "日线看一年：还是一个请求，不为切块而切块" started.
+◇ Test "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+✔ Test "空序列也编得出、解得回" passed after 2.806 seconds.
+✔ Test "截断、魔数不对、版本不对都要稳稳返回 nil" passed after 2.807 seconds.
+✔ Test "等距周期：编码逐字节钉死" passed after 2.808 seconds.
+✔ Test "主动买成交量写进快照再读回来，一位不差；缺失的那几根读回来还是缺失" passed after 2.808 seconds.
+✔ Test "不等距周期（1M，带 openTime 表）：编码逐字节钉死" passed after 2.808 seconds.
+✔ Test "预热：品种级的 4xx 跳过接着跑，线路级的错误才停" passed after 2.808 seconds.
+✔ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" passed after 2.808 seconds.
+✔ Test "版本 1 写下的字节照样解得出来，主动买量整列当缺失" passed after 2.808 seconds.
+✔ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" passed after 2.808 seconds.
+✔ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" with 14 test cases passed after 2.808 seconds.
+✔ Test "对齐取「之前最近」一条，没有就是 NaN" passed after 2.808 seconds.
+✔ Test "空点列 / 空序列不崩" passed after 2.809 seconds.
+✔ Test "1w / 1M / 1y：按桶取最后一条" passed after 2.809 seconds.
+✔ Test "目录索引：读一次只挪 LRU 位置，不改条数也不改字节" passed after 2.809 seconds.
+✔ Test "旧 magic 必须未命中，不把没有比率的缓存当新格式" passed after 2.809 seconds.
+✔ Test "四个比率经过日片、聚合片、网关 JSON 均不丢失" passed after 2.809 seconds.
+✔ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" passed after 2.809 seconds.
+✔ Test "冷启动那一读可以不写 mtime" passed after 2.810 seconds.
+✔ Test "目录索引：第一次碰到目录扫一遍，之后删掉的、忘掉的都对得上" passed after 2.810 seconds.
+✔ Test "点列有缺口也对得上：缺口里续用缺口前那条" passed after 2.810 seconds.
+✔ Test "抽掉中间一根喂进 merge，末根的时间不能早一根" passed after 2.892 seconds.
+✔ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" passed after 2.893 seconds.
+✔ Test "空洞被 REST 补上之后，整段一根不多一根不少" passed after 2.893 seconds.
+✔ Test "旧快照接最新窗口，中间的两根空洞不能把后段整体平移" passed after 2.909 seconds.
+✔ Test "左边那截整段失败：记账一步都不推进，下一轮还会再问它" passed after 2.909 seconds.
+✔ Test "问到了却是空的：照样算覆盖，不会每平移一次重下一遍" passed after 2.911 seconds.
+✔ Test "目录索引：写盘增量记账，不用每次扫目录" passed after 2.913 seconds.
+✔ Test "几段合起来：失败的那段不算，右端只认真到手的点" passed after 2.929 seconds.
+✔ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" passed after 2.929 seconds.
+✔ Test "空洞序列进内存缓存被截头之后，剩下那段的时间还是真时间" passed after 2.929 seconds.
+✔ Test "带洞的序列写进快照再读回来，每一根的时间都不变" passed after 2.930 seconds.
+✔ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" passed after 2.929 seconds.
+✔ Test "板块历史在 kanpan 这棵子树里" passed after 2.929 seconds.
+✔ Test "没认主时落在 unknown，不落在共用目录" passed after 2.930 seconds.
+✔ Test "按行情源分的那棵子树在缓存树里，而且有名字可点" passed after 2.966 seconds.
+✔ Test "两个身份的报价与开盘价不共用一个文件" passed after 2.970 seconds.
+✔ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" passed after 2.970 seconds.
+✔ Test "缓存树下没有一条路径通向随人走的档案" passed after 2.971 seconds.
+✔ Test "复核项 4 手里还没有表的时候标下架：什么都不写，不许拿一行顶掉盘上那份" passed after 2.972 seconds.
+✔ Test "1y 由 1M 聚出来" passed after 2.981 seconds.
+✔ Test "超过 maxBars 的序列只留最后 3000 根，首尾对得上" passed after 2.983 seconds.
+✔ Test ".oi 日切片：编解码一致，保留四个比率列" passed after 2.981 seconds.
+✔ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" passed after 2.981 seconds.
+✔ Test "归档站有的文件本身是乱序的：解析器必须自己排" passed after 2.981 seconds.
+✔ Test "真实 metrics zip：解出 288 行 5 分钟粒度" passed after 2.982 seconds.
+✔ Test "同一档边界读得回来，涨跌幅第一帧就能算" passed after 2.982 seconds.
+✔ Test "注入的身份不会把测试档隔离绕开" passed after 2.982 seconds.
+✔ Test "读快照 + 建 BarSeries < 20ms" passed after 2.982 seconds.
+✔ Test "日期工具：dayString / dayStart / days / 中间优先" passed after 2.982 seconds.
+✔ Test "全市场WS数组包含普通与TradFi报价，保持真实24h涨跌幅" passed after 2.983 seconds.
+✔ Test "非法值不落盘；一个都不剩时文件删掉" passed after 2.983 seconds.
+✔ Test "存取日切片：关掉开关就不落盘" passed after 2.983 seconds.
+✔ Test "单个 key 超长会裁掉最老的" passed after 2.983 seconds.
+✔ Test "跨到下一天就整份作废，不拿昨天的开盘价算今天" passed after 2.985 seconds.
+✔ Test "dedup 去重并排序" passed after 2.985 seconds.
+✔ Test "内存警告后只剩当前 (品种, 周期)" passed after 2.985 seconds.
+✔ Test "不规则周期（1M）带 openTime 表，也能原样读回" passed after 2.985 seconds.
+✔ Test "404 / 451 / 429 分类" passed after 2.985 seconds.
+✔ Test "坏文件不崩，返回 nil" passed after 2.985 seconds.
+✔ Test "1500 根 klines：严格递增、等距、无重复" passed after 2.986 seconds.
+✔ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" passed after 2.985 seconds.
+✔ Test "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" with 2 test cases passed after 2.985 seconds.
+✔ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" passed after 2.986 seconds.
+✔ Test "快照文件：≤3000 根、≤300KB，读回逐字节一致" passed after 2.986 seconds.
+✔ Test "exchangeInfo 走一遍 transport，请求路径正确" passed after 2.986 seconds.
+✔ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" passed after 2.986 seconds.
+✔ Test "近 30 天这一段用的是原生 period，不是唯一的一段" passed after 3.113 seconds.
+✔ Test "过期、补缺中、价格不合法、序列空着都不折" passed after 3.117 seconds.
+✔ Test "换一段序列，折线状态跟着清掉" passed after 3.118 seconds.
+✔ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" passed after 3.118 seconds.
+✔ Test "挂单心跳只改价不记量，也不凭它开新的一根" passed after 3.120 seconds.
+✔ Test "边界是 2020-09-01：更早的那几根是真的没有，不是周期的问题" passed after 3.120 seconds.
+✔ Test "落盘失败要留一行日志，不许悄悄吞掉" passed after 3.121 seconds.
+✔ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" passed after 3.125 seconds.
+✔ Test "没有文件、或文件是坏的，就是空，不抛" passed after 3.157 seconds.
+✔ Test "一行成交额是 NaN，整份快照照样落得下去" passed after 3.670 seconds.
+✔ Test "桶按撮合时间算，同一根内的时间不会开新根" passed after 3.675 seconds.
+✔ Test "对表：这根还没被折过就认 REST 的收盘" passed after 3.675 seconds.
+✔ Test "B-T15 隔了一天以上的那口价不再摆出来，昨天的还摆" passed after 3.676 seconds.
+✔ Test "组合行情端点用币安自己的 /stream，替换品种仍可复用连接" passed after 3.676 seconds.
+✔ Test "冷启动读回上次看到的报价，值与交易所时间都不走样" passed after 3.676 seconds.
+✔ Test "全市场报价一次往返换回整屏，坏行被剔掉" passed after 3.676 seconds.
+◇ Test case passing 1 argument interval → .m1 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m3 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m5 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m15 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+✔ Test "只留最近的一批，文件不会越滚越大" passed after 3.678 seconds.
+✔ Test "落在末根上：收盘跟着走，高低取极值，量累加" passed after 3.678 seconds.
+✔ Test lateFramesAndWrongIntervalCannotRewriteTail() passed after 3.678 seconds.
+✔ Test sameMillisecondDistinctTradesAreNotDropped() passed after 3.679 seconds.
+✔ Test "涨跌额往返落盘，旧快照缺字段仍可读" passed after 3.680 seconds.
+✔ Test tradeDuplicatesDoNotDoubleVolume() passed after 3.679 seconds.
+✔ Test restCannotReplaceLiveTailReceivedDuringRequest() passed after 3.681 seconds.
+✔ Test "和已有区间完全不挨着：整段重取" passed after 3.680 seconds.
+✔ Test "B-T15 老版本写下的行没有交易所时钟，按文件自己的修改时间算年龄" passed after 3.681 seconds.
+✔ Test "历史OI网关时间戳、数值和坏响应检查" passed after 3.789 seconds.
+✔ Test "B-T14 只有「交易所不认这个代号」才配标下架，限流地域超时都不算" passed after 3.790 seconds.
+✔ Test "窗口整个落在已有区间里：一个请求都不发" passed after 3.878 seconds.
+✔ Test "trade / bookTicker 报文解得出来" passed after 3.878 seconds.
+✔ Test "刷新时左边也缺：尾巴并进右边那段，不会多发一个请求" passed after 3.879 seconds.
+✔ Test "两头都缺：拆成左右两段，不重不漏" passed after 3.880 seconds.
+✔ Test "两个挨着的洞并成一段；洞太碎就退化成一整段，不发一串小请求" passed after 3.919 seconds.
+✔ Test "点不够 / 窗口退化：不扫出任何段" passed after 3.919 seconds.
+✔ Test "洞段和端点段一起并：同一截数据不发两次请求" passed after 3.919 seconds.
+✔ Test "30 天以外的洞：不扫，别为归档站本来就没有的那几天每次开图白发请求" passed after 3.919 seconds.
+✔ Test "60 秒定时刷新：全都在手里也要把尾巴几根重取一次" passed after 3.919 seconds.
+✔ Test "1M / 1y 月长年长不等：连着的两根不许当成洞" passed after 3.919 seconds.
+✔ Test "空窗口 / 倒着的窗口：不发请求" passed after 3.919 seconds.
+✔ Test "坏盘面：不是 KOI4 / 被截断 / 区间倒着，一律当没有" passed after 3.920 seconds.
+✔ Test "聚合段存取：换一张图回来先有旧的可画" passed after 3.919 seconds.
+✔ Test "往左拖：只取左边多出来的一截" passed after 3.919 seconds.
+✔ Test "手里没有：整段都要" passed after 3.919 seconds.
+✔ Test "左端不收：上市前那一截照样算问过，不会每次平移重下一遍" passed after 3.919 seconds.
+✔ Test "1m 图上 OI 本来就是 5 分钟一条：正常间隔不许当成洞" passed after 3.920 seconds.
+✔ Test "旧盘里的洞：端点法看不见，扫点序列才扫得出来" passed after 3.919 seconds.
+✔ Test "请求区间收敛成实际覆盖：伸到未来那两根不许记成已有" passed after 3.910 seconds.
+✔ Test "会话接缝不留洞：下一轮从空洞那根接着补，不是从虚高的右端" passed after 3.951 seconds.
+✔ Test "多空比历史取账户列，主动买卖比取成交列，基差不会请求远期归档" passed after 3.935 seconds.
+✔ Test "按 (品种, 周期) 存取：写进去的能原样读回来" passed after 3.935 seconds.
+✔ Test "脏品种名不落盘" passed after 4.138 seconds.
+✔ Test "太旧的快照不拿来打底" passed after 4.138 seconds.
+✔ Test "已聚好的一段存盘：编解码一致，区间跟着回来" passed after 4.157 seconds.
+✔ Test "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" with 3 test cases passed after 4.160 seconds.
+◇ Test "首屏历史全 429 时，WS 的实时价照样交给界面，状态也不谎报离线" started.
+◇ Test "默认没有额外流，启用后连续切换二十次只留下当前品种，关闭即退订" started.
+✔ Test "清掉整个目录" passed after 4.161 seconds.
+✔ Test "1m 和 1M 不能撞成同一个文件" passed after 4.096 seconds.
+✔ Test "超出字节上限也会淘汰" passed after 4.160 seconds.
+✔ Test "30 品种 × 14 周期切一遍：沙盒里只有 series/ 下封顶的快照和品种表" passed after 4.246 seconds.
+✔ Test "空窗口 / 倒着的窗口：不切出任何块" passed after 1.552 seconds.
+✔ Test "日线看一年：还是一个请求，不为切块而切块" passed after 1.552 seconds.
+✔ Test "5 分钟看一年：切成几块，每块都在服务端的上限之内" with 4 test cases passed after 1.552 seconds.
+✔ Suite "快照字节格式：新旧实现逐字节相同" passed after 5.076 seconds.
+✔ Test "历史网关失败换备用，保留周期且不重复下载ZIP" with 3 test cases passed after 5.075 seconds.
+✔ Suite "外部指标归档：列保留与格式升级" passed after 5.078 seconds.
+✔ Test "1d 以下也一样，一路到 5 分钟" with 4 test cases passed after 5.084 seconds.
+✔ Test "默认那条读仍然会把 mtime 顶上去，只是不在调用线程上做" passed after 5.115 seconds.
+✔ Suite "空洞序列的合并与落盘" passed after 5.117 seconds.
+✔ Test "B-T14 交易所不认这个代号：标成下架、不删，冷启动之后还记得" passed after 5.114 seconds.
+✔ Test "REST 整段报错：点是空的，而且说清楚「没问到」" passed after 5.119 seconds.
+✔ Test "复核项 4 目录里没有这个代号也能标下架：补一行占位，不再默默丢掉" passed after 5.120 seconds.
+✔ Test "B-T14 非 TRADING 的行留在表里带状态；老 schema 的缓存一律重拉" passed after 5.120 seconds.
+✔ Suite "缓存边界" passed after 5.123 seconds.
+✔ Suite "OI 归档：自写 ZIP + CSV" passed after 5.124 seconds.
+✔ Suite "当日开盘价快照" passed after 5.124 seconds.
+✔ Test "USDT TradFi全保留，USD1、普通USDC、交割排除；停牌的行留在表里带下架标记；旧目录即时刷新" passed after 5.120 seconds.
+✔ Suite "逐笔折线" passed after 5.124 seconds.
+✔ Test "关掉「启动快照」：文件被删，之后不再写" passed after 5.134 seconds.
+✔ Suite "历史OI网关解析" passed after 5.244 seconds.
+✔ Test "B-T13 一张全是停牌的表不算好表：不采纳、不落盘，盘上那份可用的还在" passed after 5.734 seconds.
+✔ Test "默认没有额外流，启用后连续切换二十次只留下当前品种，关闭即退订" passed after 1.575 seconds.
+✔ Suite "OI 切块：细周期看长区间也要走网关那条快路" passed after 5.814 seconds.
+✔ Test "当前全部717个产品品种进入独立分类模块，保留细分元数据；停牌与待开盘的行带状态留着" passed after 5.812 seconds.
+✔ Suite "持仓量覆盖边界：2020-09 起，最细五分钟" passed after 6.342 seconds.
+✔ Suite "缓存层：预热分级与目录索引" passed after 6.343 seconds.
+✔ Test "REST 翻到一半断了：到手的几页留住，但这一段仍然不算问全" passed after 6.344 seconds.
+✔ Test "直连档的窗口也是 60 秒（两档一视同仁）" passed after 6.343 seconds.
+✔ Test "网关档（OKX）等第一帧的窗口实际就是 60 秒，不被 15 秒钳子咬住" passed after 6.344 seconds.
+✔ Test "首屏那一发彻底失败，也会自己再来一发" passed after 6.351 seconds.
+✔ Test "ticker 校准失败不降级已加载的历史" passed after 6.351 seconds.
+✔ Test "B-T13 一份畸形响应：发起者和等在门口的人拿到同一张旧表，谁都不会拿到空表" passed after 6.530 seconds.
+✔ Suite "图表微观行情订阅" passed after 6.530 seconds.
+✔ Test "REST 翻到一半断了：已经到手的几页要留住，不是整条空" passed after 6.531 seconds.
+✔ Test "上游连回两个 429，首屏自己重试到拿下" passed after 6.532 seconds.
+✔ Test "近期三个端点各用自己的值，主动买卖比不冒用未完成统计桶" passed after 6.515 seconds.
+✔ Test "网关：开机就走 OKX 那条线路，币安一笔都不碰" passed after 6.689 seconds.
+✔ Test "B-T13 刚失败过就先用手里那份，60 秒内不再往枪口上撞" passed after 6.689 seconds.
+✔ Suite "A-07 第②层：首帧窗口" passed after 6.692 seconds.
+✔ Test "全市场报价走网关自己的 tickers 端点，载荷仍要同源校验" passed after 6.716 seconds.
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 6.718 seconds.
+✔ Test "完整那发先回来，小页落地时什么都不做" passed after 6.716 seconds.
+✔ Test "BT-05 后台那记 25 秒的闹钟醒来时人已回前台：不许掐当前连接" passed after 6.795 seconds.
+✔ Suite "OI 增量：只补缺的那一段" passed after 6.850 seconds.
+✔ Suite "首屏历史重试" passed after 6.851 seconds.
+✔ Suite "外部指标：近期和历史取数" passed after 6.851 seconds.
+✔ Suite "报价快照与整屏补价" passed after 6.926 seconds.
+✔ Test "A-T05 封禁期内首屏立刻收手：图表留着、横幅亮着、重试不再撞上游" passed after 6.923 seconds.
+✔ Test "运行中换档：直连 → 网关，线路立刻换到 OKX" passed after 6.930 seconds.
+✔ Test "A.3.4 451 地域拒绝也只打一发：落到既有的「点此重试」，不叠加退避" passed after 6.929 seconds.
+✔ Test concurrentCatalogReadersShareOneRequest() passed after 6.926 seconds.
+✔ Test "历史报错不冒充换线路，「点此重试」不会被自己抹掉" passed after 6.928 seconds.
+✔ Test "近 30 天走 REST、更早走归档：两个源都被问到" passed after 6.967 seconds.
+✔ Test "B-T15 用户点名一个表里没有的新合约：立刻重拉一次，但 5 分钟内只拉一次" passed after 7.034 seconds.
+✔ Test returningToSameSelectionCannotReviveOldRequest() passed after 7.331 seconds.
+✔ Suite "品种表状态与单飞刷新" passed after 7.352 seconds.
+✔ Suite "Data identity, snapshots and duplicate delivery" passed after 7.560 seconds.
+✔ Test "完整那发还没回来，小页先把图画上" passed after 7.554 seconds.
+✔ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" passed after 7.557 seconds.
+✔ Test "两段都在：先到的先回调，不等另一段" passed after 7.555 seconds.
+✔ Test "60 秒一帧没有就主动重连" passed after 7.546 seconds.
+✔ Test "服务器 ping 立刻回 pong" passed after 7.597 seconds.
+✔ Suite "两段式首屏" passed after 7.601 seconds.
+✔ Test "补洞请求在路上时到的实时末根，不能被它的陈旧回包盖回去" passed after 7.643 seconds.
+✔ Test "BT-02 首屏还在路上就切后台再回前台：必须补发首屏，不能只剩打底那几根" passed after 7.691 seconds.
+✔ Test "超出条数上限就按最近用过的淘汰" passed after 7.694 seconds.
+✔ Suite "多品种启动快照" passed after 7.787 seconds.
+✔ Test "连断三次：退避 1s / 2s / 4s（各再抖 ±20%），日志可见" passed after 7.784 seconds.
+✔ Test "归档站 404 是答复（上市前），别的状态码不是" passed after 7.855 seconds.
+✔ Suite "OI 覆盖记账：只有真问到的那一段才算覆盖" passed after 7.873 seconds.
+✔ Test "品种上市前：归档站 404 → 返回空而不是报错" passed after 7.890 seconds.
+✔ Test "交易所宣布收线的那一帧被闸门攒着，紧接着开新根就永远丢了" passed after 7.890 seconds.
+✔ Suite "OI 对齐：两源合一条" passed after 7.894 seconds.
+✔ Test "同一根上连着来 10 帧，只合成 ≤2 次末根事件" passed after 7.939 seconds.
+✔ Test "开新根的那一帧不等拍子，立刻发" passed after 7.942 seconds.
+✔ Test "换桶那一刻，上一根压在合帧闸门里的最终值必须补发给消费端" passed after 7.947 seconds.
+✔ Suite "合帧闸门：kline 也限速，开新根不等" passed after 7.951 seconds.
+✔ Suite "末根的定盘与基线" passed after 7.952 seconds.
+✔ Test "BT-01 上一份 feed 还在收摊时切品种：新品种的行情必须真的流出来" passed after 8.007 seconds.
+BT-09 观测：灌入 30 条报文，放行那一刻流里积压 62 条事件，其中末根事件 30 条
+✔ Test "BT-09 报文猛灌时消费者被闸门按住：放行后结构性事件一条都不能少" passed after 8.082 seconds.
+✔ Test "直连：币安探测失败也不切 OKX，照实说「点此重试」" passed after 8.298 seconds.
+✔ Suite "行情线路：整条路由" passed after 8.301 seconds.
+✔ Test "历史全 429、只有 WS 推来一根时，不把这一根落成快照" passed after 8.586 seconds.
+✔ Suite "首屏拉不到历史时的表现" passed after 8.592 seconds.
+✔ Test "BT-12 回前台补不补缺看真实时钟：同一根不补，隔了一根才补" passed after 8.593 seconds.
+✔ Test "BT-11 后台 24.9 秒回来复用现有连接；25.1 秒回来才重连并补缺" passed after 10.298 seconds.
+✔ Suite "行情流水线：生命周期与并发" passed after 10.304 seconds.
+✔ Test "首屏历史全 429 时，WS 的实时价照样交给界面，状态也不谎报离线" passed after 6.608 seconds.
+✔ Suite "历史没到但 WS 活着" passed after 10.794 seconds.
+✔ Test "只有一段：不回调，免得同一批点被画两遍" passed after 12.123 seconds.
+✔ Suite "OI 分段上屏：先到的那一段不必陪着慢的一起等" passed after 12.131 seconds.
+✔ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" passed after 12.505 seconds.
+✔ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" passed after 12.693 seconds.
+✔ Suite "REST 与 DTO" passed after 12.698 seconds.
+✔ Test "A-T15 分钟边界上掉线、新连接晚到：补洞请求发出去，补回来的与交易所一致" passed after 12.970 seconds.
+✔ Suite "封禁后的首屏与分钟边界补洞" passed after 12.974 seconds.
+✔ Test "3000 条录制报文回放：最终序列与期望全等" passed after 13.042 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 13.046 seconds.
+✔ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" passed after 26.692 seconds.
+✔ Suite "启动快照与内存缓存" passed after 26.699 seconds.
+✔ Test run with 190 tests in 35 suites passed after 26.717 seconds.
+       93.68 real        16.16 user         5.58 sys
+rc=0
+load-after={ 54.95 39.24 33.41 }
+== stress run 3 load={ 54.95 39.24 33.41 }
+Test Suite 'All tests' started at 2026-09-23 10:01:44.083.
+Test Suite 'KanpanDataPackageTests.xctest' started at 2026-09-23 10:01:44.088.
+Test Suite 'PerfBenchmarkTests' started at 2026-09-23 10:01:44.088.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testFeedComposerMerge]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testFeedComposerMerge]' passed (68.481 seconds).
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSeriesStoreWriteRead]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSeriesStoreWriteRead]' passed (7.909 seconds).
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSnapshotEncodeDecode]' started.
+Test Case '-[KanpanDataTests.PerfBenchmarkTests testSnapshotEncodeDecode]' passed (8.522 seconds).
+Test Suite 'PerfBenchmarkTests' passed at 2026-09-23 10:03:09.006.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 84.911 (84.918) seconds
+Test Suite 'KanpanDataPackageTests.xctest' passed at 2026-09-23 10:03:09.009.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 84.911 (84.921) seconds
+Test Suite 'All tests' passed at 2026-09-23 10:03:09.009.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 84.911 (84.926) seconds
+BENCH data.feedcomposer.merge_1500_into_15000 median_ms=2927.7249 p90_ms=3350.4099 n=15000
+BENCH data.seriesstore.write median_ms=75.7112 p90_ms=152.0430 n=3000
+BENCH data.seriesstore.read median_ms=182.8154 p90_ms=316.2761 n=3000
+BENCH data.snapshot.encode median_ms=128.3707 p90_ms=178.8716 n=3000
+BENCH data.snapshot.decode median_ms=182.5703 p90_ms=233.8636 n=3000
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "历史OI网关解析" started.
+◇ Suite "外部指标：近期和历史取数" started.
+◇ Suite "首屏历史重试" started.
+◇ Suite "REST 与 DTO" started.
+◇ Suite "外部指标归档：列保留与格式升级" started.
+◇ Suite "启动快照与内存缓存" started.
+◇ Suite "逐笔折线" started.
+◇ Suite "OI 对齐：两源合一条" started.
+◇ Suite "WS 回放：合成规矩、断线补缺、静默重连" started.
+◇ Suite "缓存边界" started.
+◇ Suite "多品种启动快照" started.
+◇ Suite "首屏拉不到历史时的表现" started.
+◇ Suite "A-07 第②层：首帧窗口" started.
+◇ Suite "历史没到但 WS 活着" started.
+◇ Suite "Data identity, snapshots and duplicate delivery" started.
+◇ Suite "OI 增量：只补缺的那一段" started.
+◇ Suite "缓存层：预热分级与目录索引" started.
+◇ Suite "图表微观行情订阅" started.
+◇ Suite "报价快照与整屏补价" started.
+◇ Suite "末根的定盘与基线" started.
+◇ Suite "行情流水线：生命周期与并发" started.
+◇ Suite "合帧闸门：kline 也限速，开新根不等" started.
+◇ Suite "空洞序列的合并与落盘" started.
+◇ Suite "封禁后的首屏与分钟边界补洞" started.
+◇ Suite "OI 切块：细周期看长区间也要走网关那条快路" started.
+◇ Suite "OI 覆盖记账：只有真问到的那一段才算覆盖" started.
+◇ Suite "行情线路：整条路由" started.
+◇ Suite "当日开盘价快照" started.
+◇ Suite "两段式首屏" started.
+◇ Suite "OI 分段上屏：先到的那一段不必陪着慢的一起等" started.
+◇ Suite "持仓量覆盖边界：2020-09 起，最细五分钟" started.
+◇ Suite "OI 归档：自写 ZIP + CSV" started.
+➜ Suite LiveRoutingTests skipped.
+◇ Suite "品种表状态与单飞刷新" started.
+◇ Test "近期三个端点各用自己的值，主动买卖比不冒用未完成统计桶" started.
+◇ Test "多空比历史取账户列，主动买卖比取成交列，基差不会请求远期归档" started.
+◇ Test "1500 根 klines：严格递增、等距、无重复" started.
+◇ Test "USDT TradFi全保留，USD1、普通USDC、交割排除；停牌的行留在表里带下架标记；旧目录即时刷新" started.
+◇ Test "404 / 451 / 429 分类" started.
+◇ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" started.
+◇ Test "历史OI网关时间戳、数值和坏响应检查" started.
+◇ Test "exchangeInfo 走一遍 transport，请求路径正确" started.
+◇ Test "1y 由 1M 聚出来" started.
+◇ Test "快照文件：≤3000 根、≤300KB，读回逐字节一致" started.
+◇ Test "单个 key 超长会裁掉最老的" started.
+◇ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" started.
+◇ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" started.
+◇ Test "读快照 + 建 BarSeries < 20ms" started.
+◇ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" started.
+◇ Test "旧 magic 必须未命中，不把没有比率的缓存当新格式" started.
+◇ Test "当前全部717个产品品种进入独立分类模块，保留细分元数据；停牌与待开盘的行带状态留着" started.
+◇ Test "内存警告后只剩当前 (品种, 周期)" started.
+◇ Test "上游连回两个 429，首屏自己重试到拿下" started.
+◇ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" started.
+◇ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" started.
+◇ Test "对表：这根还没被折过就认 REST 的收盘" started.
+◇ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" started.
+◇ Test "过期、补缺中、价格不合法、序列空着都不折" started.
+◇ Test "挂单心跳只改价不记量，也不凭它开新的一根" started.
+◇ Test "换一段序列，折线状态跟着清掉" started.
+◇ Test "桶按撮合时间算，同一根内的时间不会开新根" started.
+◇ Test "trade / bookTicker 报文解得出来" started.
+◇ Test "dedup 去重并排序" started.
+◇ Test "不规则周期（1M）带 openTime 表，也能原样读回" started.
+◇ Test "点列有缺口也对得上：缺口里续用缺口前那条" started.
+◇ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" started.
+◇ Test "坏文件不崩，返回 nil" started.
+◇ Test "品种上市前：归档站 404 → 返回空而不是报错" started.
+◇ Test "首屏那一发彻底失败，也会自己再来一发" started.
+◇ Test "空点列 / 空序列不崩" started.
+◇ Test "全市场WS数组包含普通与TradFi报价，保持真实24h涨跌幅" started.
+◇ Test "3000 条录制报文回放：最终序列与期望全等" started.
+◇ Test "组合行情端点用币安自己的 /stream，替换品种仍可复用连接" started.
+◇ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" started.
+◇ Test "1w / 1M / 1y：按桶取最后一条" started.
+◇ Test "落在末根上：收盘跟着走，高低取极值，量累加" started.
+◇ Test "近 30 天走 REST、更早走归档：两个源都被问到" started.
+◇ Test "30 品种 × 14 周期切一遍：沙盒里只有 series/ 下封顶的快照和品种表" started.
+◇ Test "关掉「启动快照」：文件被删，之后不再写" started.
+◇ Test "四个比率经过日片、聚合片、网关 JSON 均不丢失" started.
+◇ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" started.
+◇ Test "服务器 ping 立刻回 pong" started.
+◇ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" started.
+◇ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" started.
+◇ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" started.
+◇ Test "60 秒一帧没有就主动重连" started.
+◇ Test "对齐取「之前最近」一条，没有就是 NaN" started.
+◇ Test "板块历史在 kanpan 这棵子树里" started.
+◇ Test "按行情源分的那棵子树在缓存树里，而且有名字可点" started.
+◇ Test "两个身份的报价与开盘价不共用一个文件" started.
+◇ Test "注入的身份不会把测试档隔离绕开" started.
+◇ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" started.
+◇ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" started.
+◇ Test "清掉整个目录" started.
+◇ Test "超出条数上限就按最近用过的淘汰" started.
+◇ Test "缓存树下没有一条路径通向随人走的档案" started.
+◇ Test "太旧的快照不拿来打底" started.
+◇ Test "脏品种名不落盘" started.
+◇ Test "历史报错不冒充换线路，「点此重试」不会被自己抹掉" started.
+◇ Test tradeDuplicatesDoNotDoubleVolume() started.
+◇ Test "首屏历史全 429 时，WS 的实时价照样交给界面，状态也不谎报离线" started.
+◇ Test "历史全 429、只有 WS 推来一根时，不把这一根落成快照" started.
+◇ Test sameMillisecondDistinctTradesAreNotDropped() started.
+◇ Test "没认主时落在 unknown，不落在共用目录" started.
+◇ Test concurrentCatalogReadersShareOneRequest() started.
+◇ Test lateFramesAndWrongIntervalCannotRewriteTail() started.
+◇ Test "ticker 校准失败不降级已加载的历史" started.
+◇ Test "默认那条读仍然会把 mtime 顶上去，只是不在调用线程上做" started.
+◇ Test "超出字节上限也会淘汰" started.
+◇ Test "连断三次：退避 1s / 2s / 4s（各再抖 ±20%），日志可见" started.
+◇ Test "预热：品种级的 4xx 跳过接着跑，线路级的错误才停" started.
+◇ Test "目录索引：写盘增量记账，不用每次扫目录" started.
+◇ Test "窗口整个落在已有区间里：一个请求都不发" started.
+◇ Test "1m 和 1M 不能撞成同一个文件" started.
+◇ Test "只留最近的一批，文件不会越滚越大" started.
+◇ Test "冷启动那一读可以不写 mtime" started.
+◇ Test "补洞请求在路上时到的实时末根，不能被它的陈旧回包盖回去" started.
+◇ Test "全市场报价走网关自己的 tickers 端点，载荷仍要同源校验" started.
+◇ Test restCannotReplaceLiveTailReceivedDuringRequest() started.
+◇ Test "落盘失败要留一行日志，不许悄悄吞掉" started.
+◇ Test "刷新时左边也缺：尾巴并进右边那段，不会多发一个请求" started.
+◇ Test "一行成交额是 NaN，整份快照照样落得下去" started.
+◇ Test "全市场报价一次往返换回整屏，坏行被剔掉" started.
+◇ Test returningToSameSelectionCannotReviveOldRequest() started.
+◇ Test "交易所宣布收线的那一帧被闸门攒着，紧接着开新根就永远丢了" started.
+◇ Test "换桶那一刻，上一根压在合帧闸门里的最终值必须补发给消费端" started.
+◇ Test "B-T15 老版本写下的行没有交易所时钟，按文件自己的修改时间算年龄" started.
+◇ Test "目录索引：读一次只挪 LRU 位置，不改条数也不改字节" started.
+◇ Test "没有文件、或文件是坏的，就是空，不抛" started.
+◇ Test "目录索引：第一次碰到目录扫一遍，之后删掉的、忘掉的都对得上" started.
+◇ Test "冷启动读回上次看到的报价，值与交易所时间都不走样" started.
+◇ Test "BT-11 后台 24.9 秒回来复用现有连接；25.1 秒回来才重连并补缺" started.
+◇ Test "涨跌额往返落盘，旧快照缺字段仍可读" started.
+◇ Test "BT-02 首屏还在路上就切后台再回前台：必须补发首屏，不能只剩打底那几根" started.
+◇ Test "BT-12 回前台补不补缺看真实时钟：同一根不补，隔了一根才补" started.
+◇ Test "按 (品种, 周期) 存取：写进去的能原样读回来" started.
+◇ Test "BT-01 上一份 feed 还在收摊时切品种：新品种的行情必须真的流出来" started.
+◇ Test "B-T15 隔了一天以上的那口价不再摆出来，昨天的还摆" started.
+◇ Test "带洞的序列写进快照再读回来，每一根的时间都不变" started.
+◇ Test "BT-09 报文猛灌时消费者被闸门按住：放行后结构性事件一条都不能少" started.
+◇ Test "旧快照接最新窗口，中间的两根空洞不能把后段整体平移" started.
+◇ Test "空洞被 REST 补上之后，整段一根不多一根不少" started.
+◇ Test "同一根上连着来 10 帧，只合成 ≤2 次末根事件" started.
+◇ Test "开新根的那一帧不等拍子，立刻发" started.
+◇ Test "BT-05 后台那记 25 秒的闹钟醒来时人已回前台：不许掐当前连接" started.
+◇ Test "空洞序列进内存缓存被截头之后，剩下那段的时间还是真时间" started.
+◇ Test "A.3.4 451 地域拒绝也只打一发：落到既有的「点此重试」，不叠加退避" started.
+◇ Test "默认没有额外流，启用后连续切换二十次只留下当前品种，关闭即退订" started.
+◇ Test "请求区间收敛成实际覆盖：伸到未来那两根不许记成已有" started.
+◇ Test "抽掉中间一根喂进 merge，末根的时间不能早一根" started.
+◇ Test "空窗口 / 倒着的窗口：不切出任何块" started.
+◇ Test "左端不收：上市前那一截照样算问过，不会每次平移重下一遍" started.
+◇ Test "点不够 / 窗口退化：不扫出任何段" started.
+◇ Test "日线看一年：还是一个请求，不为切块而切块" started.
+◇ Test "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test "REST 翻到一半断了：已经到手的几页要留住，不是整条空" started.
+◇ Test "聚合段存取：换一张图回来先有旧的可画" started.
+◇ Test "手里没有：整段都要" started.
+◇ Test "60 秒定时刷新：全都在手里也要把尾巴几根重取一次" started.
+◇ Test "1M / 1y 月长年长不等：连着的两根不许当成洞" started.
+◇ Test "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test "1m 图上 OI 本来就是 5 分钟一条：正常间隔不许当成洞" started.
+◇ Test "A-T05 封禁期内首屏立刻收手：图表留着、横幅亮着、重试不再撞上游" started.
+◇ Test "已聚好的一段存盘：编解码一致，区间跟着回来" started.
+◇ Test "坏盘面：不是 KOI4 / 被截断 / 区间倒着，一律当没有" started.
+◇ Test "和已有区间完全不挨着：整段重取" started.
+◇ Test "两个挨着的洞并成一段；洞太碎就退化成一整段，不发一串小请求" started.
+◇ Test "几段合起来：失败的那段不算，右端只认真到手的点" started.
+◇ Test "30 天以外的洞：不扫，别为归档站本来就没有的那几天每次开图白发请求" started.
+◇ Test "洞段和端点段一起并：同一截数据不发两次请求" started.
+◇ Test "会话接缝不留洞：下一轮从空洞那根接着补，不是从虚高的右端" started.
+◇ Test "归档站 404 是答复（上市前），别的状态码不是" started.
+◇ Test "问到了却是空的：照样算覆盖，不会每平移一次重下一遍" started.
+◇ Test "REST 整段报错：点是空的，而且说清楚「没问到」" started.
+◇ Test "REST 翻到一半断了：到手的几页留住，但这一段仍然不算问全" started.
+◇ Test "两头都缺：拆成左右两段，不重不漏" started.
+◇ Test "左边那截整段失败：记账一步都不推进，下一轮还会再问它" started.
+◇ Test "空窗口 / 倒着的窗口：不发请求" started.
+◇ Test "往左拖：只取左边多出来的一截" started.
+◇ Test "直连：币安探测失败也不切 OKX，照实说「点此重试」" started.
+◇ Test "A-T15 分钟边界上掉线、新连接晚到：补洞请求发出去，补回来的与交易所一致" started.
+◇ Test "同一档边界读得回来，涨跌幅第一帧就能算" started.
+◇ Test "网关：开机就走 OKX 那条线路，币安一笔都不碰" started.
+◇ Test "旧盘里的洞：端点法看不见，扫点序列才扫得出来" started.
+◇ Test "非法值不落盘；一个都不剩时文件删掉" started.
+◇ Test "跨到下一天就整份作废，不拿昨天的开盘价算今天" started.
+◇ Test "两段都在：先到的先回调，不等另一段" started.
+◇ Test "只有一段：不回调，免得同一批点被画两遍" started.
+◇ Test "运行中换档：直连 → 网关，线路立刻换到 OKX" started.
+◇ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" started.
+◇ Test "完整那发先回来，小页落地时什么都不做" started.
+◇ Test "存取日切片：关掉开关就不落盘" started.
+◇ Test ".oi 日切片：编解码一致，保留四个比率列" started.
+◇ Test "归档站有的文件本身是乱序的：解析器必须自己排" started.
+◇ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" started.
+◇ Test "日期工具：dayString / dayStart / days / 中间优先" started.
+◇ Test "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+◇ Test "1d 以下也一样，一路到 5 分钟" started.
+◇ Test "边界是 2020-09-01：更早的那几根是真的没有，不是周期的问题" started.
+◇ Test "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test "真实 metrics zip：解出 288 行 5 分钟粒度" started.
+◇ Test "近 30 天这一段用的是原生 period，不是唯一的一段" started.
+➜ Test completeOKXFeed() skipped.
+◇ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" started.
+◇ Test "完整那发还没回来，小页先把图画上" started.
+◇ Suite "快照字节格式：新旧实现逐字节相同" started.
+◇ Test "B-T13 一份畸形响应：发起者和等在门口的人拿到同一张旧表，谁都不会拿到空表" started.
+◇ Test "B-T13 一张全是停牌的表不算好表：不采纳、不落盘，盘上那份可用的还在" started.
+◇ Test "B-T14 交易所不认这个代号：标成下架、不删，冷启动之后还记得" started.
+◇ Test "B-T13 刚失败过就先用手里那份，60 秒内不再往枪口上撞" started.
+◇ Test "复核项 4 手里还没有表的时候标下架：什么都不写，不许拿一行顶掉盘上那份" started.
+◇ Test "B-T14 非 TRADING 的行留在表里带状态；老 schema 的缓存一律重拉" started.
+◇ Test "B-T15 用户点名一个表里没有的新合约：立刻重拉一次，但 5 分钟内只拉一次" started.
+◇ Test "复核项 4 目录里没有这个代号也能标下架：补一行占位，不再默默丢掉" started.
+◇ Test "B-T14 只有「交易所不认这个代号」才配标下架，限流地域超时都不算" started.
+◇ Test case passing 1 argument interval → .m1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m3 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m5 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m15 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m30 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h2 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h4 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h6 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .h12 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .d1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .w1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .mo1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .y1 to "图表管线按周期取最后持仓量，不求和、不直接取原始首点" started.
+◇ Test case passing 1 argument interval → .m1 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m3 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m5 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument interval → .m15 to "5 分钟看一年：切成几块，每块都在服务端的上限之内" started.
+◇ Test case passing 1 argument firstStatus → 200 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument firstStatus → 429 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument firstStatus → 503 to "历史网关失败换备用，保留周期且不重复下载ZIP" started.
+◇ Test case passing 1 argument interval → .m1 to "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+◇ Test case passing 1 argument interval → .m3 to "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" started.
+◇ Test case passing 1 argument interval → .d1 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .h4 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .h1 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .m5 to "1d 以下也一样，一路到 5 分钟" started.
+◇ Test case passing 1 argument interval → .w1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test case passing 1 argument interval → .mo1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+◇ Test case passing 1 argument interval → .y1 to "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" started.
+✔ Test "404 / 451 / 429 分类" passed after 5.577 seconds.
+✔ Test "1y 由 1M 聚出来" passed after 5.578 seconds.
+✔ Test "历史OI网关时间戳、数值和坏响应检查" passed after 5.578 seconds.
+✔ Test "多空比历史取账户列，主动买卖比取成交列，基差不会请求远期归档" passed after 5.579 seconds.
+✔ Test "exchangeInfo 走一遍 transport，请求路径正确" passed after 5.584 seconds.
+✔ Test "旧 magic 必须未命中，不把没有比率的缓存当新格式" passed after 5.584 seconds.
+✔ Test "内存警告后只剩当前 (品种, 周期)" passed after 5.588 seconds.
+✔ Test "跨过周期边界就开新的一根，开=高=低=收=这一笔" passed after 5.591 seconds.
+✔ Test "exchangeInfo 只留 USDT 永续，tickSize 解析正确" passed after 5.591 seconds.
+✔ Test "对表：已收线的照单全收，还在走的那根收盘留自己的" passed after 5.599 seconds.
+✔ Test "对表：这根还没被折过就认 REST 的收盘" passed after 5.603 seconds.
+✔ Test "对表：REST 带回来的新一根直接接上，旧的那根拿权威值盖回去" passed after 5.605 seconds.
+✔ Test "挂单心跳只改价不记量，也不凭它开新的一根" passed after 5.605 seconds.
+✔ Test "换一段序列，折线状态跟着清掉" passed after 5.605 seconds.
+✔ Test "桶按撮合时间算，同一根内的时间不会开新根" passed after 5.606 seconds.
+✔ Test "dedup 去重并排序" passed after 5.639 seconds.
+✔ Test "trade / bookTicker 报文解得出来" passed after 5.639 seconds.
+✔ Test "点列有缺口也对得上：缺口里续用缺口前那条" passed after 5.640 seconds.
+✔ Test "月OI用真实日历桶，缺失二月不把一月或三月数据填进去" passed after 5.640 seconds.
+✔ Test "过期、补缺中、价格不合法、序列空着都不折" passed after 5.635 seconds.
+✔ Test "坏文件不崩，返回 nil" passed after 5.677 seconds.
+✔ Test "不规则周期（1M）带 openTime 表，也能原样读回" passed after 5.677 seconds.
+✔ Test "空点列 / 空序列不崩" passed after 5.677 seconds.
+✔ Test "全市场WS数组包含普通与TradFi报价，保持真实24h涨跌幅" passed after 5.678 seconds.
+✔ Test "组合行情端点用币安自己的 /stream，替换品种仍可复用连接" passed after 5.679 seconds.
+✔ Test "1w / 1M / 1y：按桶取最后一条" passed after 5.679 seconds.
+✔ Test "落在末根上：收盘跟着走，高低取极值，量累加" passed after 5.679 seconds.
+✔ Test "图表管线按周期取最后持仓量，不求和、不直接取原始首点" with 14 test cases passed after 5.680 seconds.
+✔ Test "分钟图仅在5分钟采样有效窗内复用OI，不提前取未来点或跨缺口延长" passed after 5.681 seconds.
+✔ Test "单个 key 超长会裁掉最老的" passed after 5.705 seconds.
+✔ Test "读快照 + 建 BarSeries < 20ms" passed after 5.705 seconds.
+✔ Test "四个比率经过日片、聚合片、网关 JSON 均不丢失" passed after 5.705 seconds.
+✔ Test "慢一拍的 REST 快照不许把已经收线的那根改回半截" passed after 5.705 seconds.
+✔ Test "x=false 覆盖末根，x=true / 新 openTime 追加，乱序的丢掉" passed after 5.705 seconds.
+✔ Test "对齐取「之前最近」一条，没有就是 NaN" passed after 5.706 seconds.
+✔ Test "板块历史在 kanpan 这棵子树里" passed after 5.706 seconds.
+✔ Test "按行情源分的那棵子树在缓存树里，而且有名字可点" passed after 5.706 seconds.
+✔ Test "两个身份的报价与开盘价不共用一个文件" passed after 5.706 seconds.
+✔ Test "注入的身份不会把测试档隔离绕开" passed after 5.707 seconds.
+✔ Test "补缺期间事件排队，补完按 openTime 合并、队列再放行" passed after 5.707 seconds.
+✔ Test "1m / 3m 比 5m 细：原样保留，相邻几根共用一个值" passed after 5.708 seconds.
+✔ Test "1500 根 klines：严格递增、等距、无重复" passed after 5.710 seconds.
+✔ Test "清掉整个目录" passed after 5.708 seconds.
+✔ Test "缓存树下没有一条路径通向随人走的档案" passed after 5.708 seconds.
+✔ Test "太旧的快照不拿来打底" passed after 5.708 seconds.
+✔ Test "脏品种名不落盘" passed after 5.709 seconds.
+✔ Test tradeDuplicatesDoNotDoubleVolume() passed after 5.712 seconds.
+✔ Test "没认主时落在 unknown，不落在共用目录" passed after 5.714 seconds.
+✔ Test "内存缓存：总量封顶、LRU 淘汰最久没用的" passed after 5.722 seconds.
+✔ Test sameMillisecondDistinctTradesAreNotDropped() passed after 5.721 seconds.
+✔ Test lateFramesAndWrongIntervalCannotRewriteTail() passed after 5.721 seconds.
+✔ Test "超出字节上限也会淘汰" passed after 5.723 seconds.
+✔ Test "预热：品种级的 4xx 跳过接着跑，线路级的错误才停" passed after 5.723 seconds.
+✔ Test "目录索引：写盘增量记账，不用每次扫目录" passed after 5.724 seconds.
+✔ Test "1m 和 1M 不能撞成同一个文件" passed after 5.724 seconds.
+✔ Test "窗口整个落在已有区间里：一个请求都不发" passed after 5.725 seconds.
+✔ Test "只留最近的一批，文件不会越滚越大" passed after 5.725 seconds.
+✔ Test "冷启动那一读可以不写 mtime" passed after 5.725 seconds.
+✔ Test restCannotReplaceLiveTailReceivedDuringRequest() passed after 5.738 seconds.
+✔ Test "刷新时左边也缺：尾巴并进右边那段，不会多发一个请求" passed after 5.738 seconds.
+✔ Test "快照文件：≤3000 根、≤300KB，读回逐字节一致" passed after 5.741 seconds.
+✔ Test "一行成交额是 NaN，整份快照照样落得下去" passed after 5.738 seconds.
+✔ Test "全市场报价一次往返换回整屏，坏行被剔掉" passed after 5.738 seconds.
+✔ Test "B-T15 老版本写下的行没有交易所时钟，按文件自己的修改时间算年龄" passed after 5.740 seconds.
+✔ Test "目录索引：读一次只挪 LRU 位置，不改条数也不改字节" passed after 5.740 seconds.
+✔ Test "没有文件、或文件是坏的，就是空，不抛" passed after 5.740 seconds.
+✔ Test "目录索引：第一次碰到目录扫一遍，之后删掉的、忘掉的都对得上" passed after 5.740 seconds.
+✔ Test "冷启动读回上次看到的报价，值与交易所时间都不走样" passed after 5.740 seconds.
+✔ Test "涨跌额往返落盘，旧快照缺字段仍可读" passed after 5.741 seconds.
+✔ Test "按 (品种, 周期) 存取：写进去的能原样读回来" passed after 5.742 seconds.
+✔ Test "B-T15 隔了一天以上的那口价不再摆出来，昨天的还摆" passed after 5.742 seconds.
+✔ Test "带洞的序列写进快照再读回来，每一根的时间都不变" passed after 5.742 seconds.
+✔ Test "旧快照接最新窗口，中间的两根空洞不能把后段整体平移" passed after 5.743 seconds.
+✔ Test "空洞被 REST 补上之后，整段一根不多一根不少" passed after 5.743 seconds.
+✔ Test "空洞序列进内存缓存被截头之后，剩下那段的时间还是真时间" passed after 5.744 seconds.
+✔ Test "请求区间收敛成实际覆盖：伸到未来那两根不许记成已有" passed after 5.745 seconds.
+✔ Test "默认没有额外流，启用后连续切换二十次只留下当前品种，关闭即退订" passed after 5.745 seconds.
+✔ Test "抽掉中间一根喂进 merge，末根的时间不能早一根" passed after 5.745 seconds.
+✔ Test "空窗口 / 倒着的窗口：不切出任何块" passed after 5.745 seconds.
+✔ Test "左端不收：上市前那一截照样算问过，不会每次平移重下一遍" passed after 5.745 seconds.
+✔ Test "日线看一年：还是一个请求，不为切块而切块" passed after 5.745 seconds.
+✔ Test "点不够 / 窗口退化：不扫出任何段" passed after 5.746 seconds.
+✔ Test "聚合段存取：换一张图回来先有旧的可画" passed after 5.745 seconds.
+✔ Test "手里没有：整段都要" passed after 5.746 seconds.
+✔ Test "5 分钟看一年：切成几块，每块都在服务端的上限之内" with 4 test cases passed after 5.746 seconds.
+✔ Test "60 秒定时刷新：全都在手里也要把尾巴几根重取一次" passed after 5.746 seconds.
+✔ Test "1M / 1y 月长年长不等：连着的两根不许当成洞" passed after 5.746 seconds.
+✔ Test "1m 图上 OI 本来就是 5 分钟一条：正常间隔不许当成洞" passed after 5.746 seconds.
+✔ Test "两个挨着的洞并成一段；洞太碎就退化成一整段，不发一串小请求" passed after 5.777 seconds.
+✔ Test "几段合起来：失败的那段不算，右端只认真到手的点" passed after 5.777 seconds.
+✔ Test "30 天以外的洞：不扫，别为归档站本来就没有的那几天每次开图白发请求" passed after 5.778 seconds.
+✔ Test "洞段和端点段一起并：同一截数据不发两次请求" passed after 5.777 seconds.
+✔ Test "会话接缝不留洞：下一轮从空洞那根接着补，不是从虚高的右端" passed after 5.777 seconds.
+✔ Test "问到了却是空的：照样算覆盖，不会每平移一次重下一遍" passed after 5.794 seconds.
+✔ Test "左边那截整段失败：记账一步都不推进，下一轮还会再问它" passed after 5.803 seconds.
+✔ Test "空窗口 / 倒着的窗口：不发请求" passed after 5.803 seconds.
+✔ Test "往左拖：只取左边多出来的一截" passed after 5.803 seconds.
+✔ Test "落盘失败要留一行日志，不许悄悄吞掉" passed after 5.754 seconds.
+✔ Test "坏盘面：不是 KOI4 / 被截断 / 区间倒着，一律当没有" passed after 5.755 seconds.
+✔ Test "已聚好的一段存盘：编解码一致，区间跟着回来" passed after 5.813 seconds.
+✔ Test "同一档边界读得回来，涨跌幅第一帧就能算" passed after 5.812 seconds.
+✔ Test "旧盘里的洞：端点法看不见，扫点序列才扫得出来" passed after 5.813 seconds.
+✔ Test "非法值不落盘；一个都不剩时文件删掉" passed after 5.812 seconds.
+✔ Test "跨到下一天就整份作废，不拿昨天的开盘价算今天" passed after 5.812 seconds.
+✔ Test "和已有区间完全不挨着：整段重取" passed after 5.762 seconds.
+✔ Test "两头都缺：拆成左右两段，不重不漏" passed after 5.814 seconds.
+✔ Test "存取日切片：关掉开关就不落盘" passed after 5.873 seconds.
+✔ Test "两源接缝：REST 段和归档段拼起来无重复无缺口" passed after 5.873 seconds.
+✔ Test "当前全部717个产品品种进入独立分类模块，保留细分元数据；停牌与待开盘的行带状态留着" passed after 5.880 seconds.
+✔ Test "归档站有的文件本身是乱序的：解析器必须自己排" passed after 5.874 seconds.
+✔ Test ".oi 日切片：编解码一致，保留四个比率列" passed after 5.874 seconds.
+✔ Test "日期工具：dayString / dayStart / days / 中间优先" passed after 5.874 seconds.
+✔ Test "1m / 3m 比源还细：不是没有，是一条按五分钟走的阶梯" with 2 test cases passed after 5.874 seconds.
+✔ Test "边界是 2020-09-01：更早的那几根是真的没有，不是周期的问题" passed after 5.875 seconds.
+✔ Test "1w / 1M / 1y 从 2020-09 到今天整条都有持仓量" with 3 test cases passed after 6.025 seconds.
+✔ Test "近 30 天这一段用的是原生 period，不是唯一的一段" passed after 6.026 seconds.
+✔ Test "不是 zip / 方法不认 / 截断，都抛明确错误不崩" passed after 6.026 seconds.
+◇ Test "网关档（OKX）等第一帧的窗口实际就是 60 秒，不被 15 秒钳子咬住" started.
+◇ Test "直连档的窗口也是 60 秒（两档一视同仁）" started.
+◇ Test "截断、魔数不对、版本不对都要稳稳返回 nil" started.
+◇ Test "版本 1 写下的字节照样解得出来，主动买量整列当缺失" started.
+◇ Test "等距周期：编码逐字节钉死" started.
+◇ Test "超过 maxBars 的序列只留最后 3000 根，首尾对得上" started.
+◇ Test "空序列也编得出、解得回" started.
+◇ Test "不等距周期（1M，带 openTime 表）：编码逐字节钉死" started.
+◇ Test "主动买成交量写进快照再读回来，一位不差；缺失的那几根读回来还是缺失" started.
+✔ Test "复核项 4 手里还没有表的时候标下架：什么都不写，不许拿一行顶掉盘上那份" passed after 6.055 seconds.
+✔ Test "真实 metrics zip：解出 288 行 5 分钟粒度" passed after 6.085 seconds.
+✔ Test "B-T14 只有「交易所不认这个代号」才配标下架，限流地域超时都不算" passed after 6.058 seconds.
+✔ Test "30 品种 × 14 周期切一遍：沙盒里只有 series/ 下封顶的快照和品种表" passed after 6.093 seconds.
+✔ Suite "历史OI网关解析" passed after 7.198 seconds.
+✔ Test "USDT TradFi全保留，USD1、普通USDC、交割排除；停牌的行留在表里带下架标记；旧目录即时刷新" passed after 7.188 seconds.
+✔ Suite "外部指标归档：列保留与格式升级" passed after 7.224 seconds.
+✔ Suite "逐笔折线" passed after 7.325 seconds.
+✔ Test "1d 以下也一样，一路到 5 分钟" with 4 test cases passed after 7.373 seconds.
+✔ Suite "缓存边界" passed after 7.403 seconds.
+✔ Suite "空洞序列的合并与落盘" passed after 7.486 seconds.
+✔ Suite "图表微观行情订阅" passed after 7.487 seconds.
+✔ Suite "OI 切块：细周期看长区间也要走网关那条快路" passed after 7.487 seconds.
+✔ Test "历史网关失败换备用，保留周期且不重复下载ZIP" with 3 test cases passed after 7.482 seconds.
+✔ Test "REST 整段报错：点是空的，而且说清楚「没问到」" passed after 7.482 seconds.
+✔ Suite "当日开盘价快照" passed after 7.490 seconds.
+✔ Suite "OI 归档：自写 ZIP + CSV" passed after 7.497 seconds.
+✔ Test "超出条数上限就按最近用过的淘汰" passed after 7.493 seconds.
+✔ Test "默认那条读仍然会把 mtime 顶上去，只是不在调用线程上做" passed after 7.493 seconds.
+✔ Test "截断、魔数不对、版本不对都要稳稳返回 nil" passed after 1.578 seconds.
+✔ Test "版本 1 写下的字节照样解得出来，主动买量整列当缺失" passed after 1.579 seconds.
+✔ Test "等距周期：编码逐字节钉死" passed after 1.609 seconds.
+✔ Test "空序列也编得出、解得回" passed after 1.609 seconds.
+✔ Test "不等距周期（1M，带 openTime 表）：编码逐字节钉死" passed after 1.609 seconds.
+✔ Test "主动买成交量写进快照再读回来，一位不差；缺失的那几根读回来还是缺失" passed after 1.609 seconds.
+✔ Test "B-T13 一张全是停牌的表不算好表：不采纳、不落盘，盘上那份可用的还在" passed after 7.920 seconds.
+✔ Test "B-T14 交易所不认这个代号：标成下架、不删，冷启动之后还记得" passed after 7.918 seconds.
+✔ Test "B-T14 非 TRADING 的行留在表里带状态；老 schema 的缓存一律重拉" passed after 7.918 seconds.
+✔ Test "复核项 4 目录里没有这个代号也能标下架：补一行占位，不再默默丢掉" passed after 7.918 seconds.
+✔ Test "超过 maxBars 的序列只留最后 3000 根，首尾对得上" passed after 2.158 seconds.
+✔ Suite "持仓量覆盖边界：2020-09 起，最细五分钟" passed after 8.426 seconds.
+✔ Test "ticker 校准失败不降级已加载的历史" passed after 8.426 seconds.
+✔ Test "REST 翻到一半断了：已经到手的几页要留住，不是整条空" passed after 8.424 seconds.
+✔ Suite "多品种启动快照" passed after 8.442 seconds.
+✔ Suite "缓存层：预热分级与目录索引" passed after 8.432 seconds.
+✔ Test "近期三个端点各用自己的值，主动买卖比不冒用未完成统计桶" passed after 8.430 seconds.
+✔ Test "REST 翻到一半断了：到手的几页留住，但这一段仍然不算问全" passed after 8.424 seconds.
+✔ Test "关掉「启动快照」：文件被删，之后不再写" passed after 8.429 seconds.
+✔ Suite "快照字节格式：新旧实现逐字节相同" passed after 8.409 seconds.
+✔ Test "完整那发还没回来，小页先把图画上" passed after 8.428 seconds.
+✔ Test "上游连回两个 429，首屏自己重试到拿下" passed after 8.530 seconds.
+✔ Test "首屏那一发彻底失败，也会自己再来一发" passed after 8.610 seconds.
+✔ Test "全市场报价走网关自己的 tickers 端点，载荷仍要同源校验" passed after 8.608 seconds.
+✔ Suite "OI 增量：只补缺的那一段" passed after 8.625 seconds.
+✔ Suite "外部指标：近期和历史取数" passed after 8.637 seconds.
+✔ Test "BT-05 后台那记 25 秒的闹钟醒来时人已回前台：不许掐当前连接" passed after 8.620 seconds.
+✔ Test "网关档（OKX）等第一帧的窗口实际就是 60 秒，不被 15 秒钳子咬住" passed after 2.541 seconds.
+✔ Test "直连档的窗口也是 60 秒（两档一视同仁）" passed after 2.540 seconds.
+✔ Test "B-T13 刚失败过就先用手里那份，60 秒内不再往枪口上撞" passed after 8.592 seconds.
+✔ Suite "首屏历史重试" passed after 8.644 seconds.
+✔ Test "B-T13 一份畸形响应：发起者和等在门口的人拿到同一张旧表，谁都不会拿到空表" passed after 8.636 seconds.
+✔ Test concurrentCatalogReadersShareOneRequest() passed after 8.669 seconds.
+✔ Suite "报价快照与整屏补价" passed after 8.673 seconds.
+✔ Test "历史报错不冒充换线路，「点此重试」不会被自己抹掉" passed after 8.670 seconds.
+✔ Test "运行中换档：直连 → 网关，线路立刻换到 OKX" passed after 8.667 seconds.
+✔ Suite "A-07 第②层：首帧窗口" passed after 8.685 seconds.
+✔ Test "网关：开机就走 OKX 那条线路，币安一笔都不碰" passed after 8.621 seconds.
+✔ Test "A-T05 封禁期内首屏立刻收手：图表留着、横幅亮着、重试不再撞上游" passed after 8.741 seconds.
+✔ Test returningToSameSelectionCannotReviveOldRequest() passed after 8.878 seconds.
+✔ Test "完整那发先回来，小页落地时什么都不做" passed after 8.886 seconds.
+✔ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" passed after 8.887 seconds.
+✔ Test "B-T15 用户点名一个表里没有的新合约：立刻重拉一次，但 5 分钟内只拉一次" passed after 8.905 seconds.
+✔ Test "60 秒一帧没有就主动重连" passed after 8.963 seconds.
+✔ Test "服务器 ping 立刻回 pong" passed after 8.955 seconds.
+✔ Test "快照 → 补缺：重启后先按 startTime=末根补，再拉满，合并无重复" passed after 8.967 seconds.
+✔ Suite "Data identity, snapshots and duplicate delivery" passed after 9.030 seconds.
+✔ Suite "两段式首屏" passed after 9.030 seconds.
+✔ Test "两段都在：先到的先回调，不等另一段" passed after 9.035 seconds.
+✔ Suite "品种表状态与单飞刷新" passed after 9.043 seconds.
+✔ Test "近 30 天走 REST、更早走归档：两个源都被问到" passed after 9.076 seconds.
+✔ Test "补洞请求在路上时到的实时末根，不能被它的陈旧回包盖回去" passed after 9.105 seconds.
+✔ Test "连断三次：退避 1s / 2s / 4s（各再抖 ±20%），日志可见" passed after 9.188 seconds.
+✔ Test "A.3.4 451 地域拒绝也只打一发：落到既有的「点此重试」，不叠加退避" passed after 9.257 seconds.
+✔ Test "归档站 404 是答复（上市前），别的状态码不是" passed after 9.335 seconds.
+✔ Test "BT-02 首屏还在路上就切后台再回前台：必须补发首屏，不能只剩打底那几根" passed after 9.338 seconds.
+✔ Suite "OI 覆盖记账：只有真问到的那一段才算覆盖" passed after 9.344 seconds.
+✔ Test "品种上市前：归档站 404 → 返回空而不是报错" passed after 9.345 seconds.
+✔ Suite "OI 对齐：两源合一条" passed after 9.359 seconds.
+✔ Test "BT-01 上一份 feed 还在收摊时切品种：新品种的行情必须真的流出来" passed after 9.363 seconds.
+✔ Test "交易所宣布收线的那一帧被闸门攒着，紧接着开新根就永远丢了" passed after 9.402 seconds.
+✔ Test "换桶那一刻，上一根压在合帧闸门里的最终值必须补发给消费端" passed after 9.402 seconds.
+✔ Test "开新根的那一帧不等拍子，立刻发" passed after 9.402 seconds.
+✔ Suite "末根的定盘与基线" passed after 9.410 seconds.
+✔ Test "同一根上连着来 10 帧，只合成 ≤2 次末根事件" passed after 9.407 seconds.
+✔ Suite "合帧闸门：kline 也限速，开新根不等" passed after 9.413 seconds.
+BT-09 观测：灌入 30 条报文，放行那一刻流里积压 61 条事件，其中末根事件 29 条
+✔ Test "BT-09 报文猛灌时消费者被闸门按住：放行后结构性事件一条都不能少" passed after 9.488 seconds.
+✔ Test "直连：币安探测失败也不切 OKX，照实说「点此重试」" passed after 10.459 seconds.
+✔ Suite "行情线路：整条路由" passed after 10.467 seconds.
+✔ Test "历史全 429、只有 WS 推来一根时，不把这一根落成快照" passed after 10.580 seconds.
+✔ Suite "首屏拉不到历史时的表现" passed after 10.596 seconds.
+✔ Test "首屏历史全 429 时，WS 的实时价照样交给界面，状态也不谎报离线" passed after 10.831 seconds.
+✔ Suite "历史没到但 WS 活着" passed after 10.903 seconds.
+✔ Test "BT-12 回前台补不补缺看真实时钟：同一根不补，隔了一根才补" passed after 10.978 seconds.
+✔ Test "BT-11 后台 24.9 秒回来复用现有连接；25.1 秒回来才重连并补缺" passed after 12.010 seconds.
+✔ Suite "行情流水线：生命周期与并发" passed after 12.016 seconds.
+✔ Test "3000 条录制报文回放：最终序列与期望全等" passed after 14.433 seconds.
+✔ Test "第 1000 条处断线 20 秒：期间报文全丢，REST 补缺后仍与期望全等" passed after 14.538 seconds.
+✔ Suite "WS 回放：合成规矩、断线补缺、静默重连" passed after 14.553 seconds.
+✔ Test "向前翻 10 页：endTime 一页页往前、无缝无重复、每页间隔 ≥ 120ms" passed after 15.144 seconds.
+✔ Suite "REST 与 DTO" passed after 15.158 seconds.
+✔ Test "A-T15 分钟边界上掉线、新连接晚到：补洞请求发出去，补回来的与交易所一致" passed after 15.565 seconds.
+✔ Suite "封禁后的首屏与分钟边界补洞" passed after 15.574 seconds.
+✔ Test "只有一段：不回调，免得同一批点被画两遍" passed after 18.127 seconds.
+✔ Suite "OI 分段上屏：先到的那一段不必陪着慢的一起等" passed after 18.137 seconds.
+✔ Test "30 品种 × 14 周期跑一遍，缓存不超 40MB" passed after 30.025 seconds.
+✔ Suite "启动快照与内存缓存" passed after 30.039 seconds.
+✔ Test run with 190 tests in 35 suites passed after 30.067 seconds.
+      131.36 real        15.69 user         7.32 sys
+rc=0
+load-after={ 59.25 46.20 37.01 }

@@ -1,0 +1,137 @@
+== run 1 rc=0 load=36.31 45.17 46.58
+DIAG-BEGIN
+DIAG +27.5ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG total 172.3ms
+== run 2 rc=0 load=38.74 44.71 46.35
+DIAG-BEGIN
+DIAG +55.4ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG total 213.1ms
+== run 3 rc=0 load=36.05 43.83 46.00
+DIAG-BEGIN
+DIAG +2.7ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +88.3ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG total 89.5ms
+== run 4 rc=0 load=55.05 49.85 48.24
+DIAG-BEGIN
+DIAG +24.5ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +294.5ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG +294.7ms WS 断了：badResponse("传输层静默 133 秒（既无帧也无 pong），重连")
+DIAG +295.8ms WS 退避 1127ms 后重连（第 1 次）
+DIAG total 297.2ms
+== run 5 rc=0 load=78.34 56.01 50.54
+DIAG-BEGIN
+DIAG +232.5ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +274.4ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG total 376.9ms
+== run 6 rc=0 load=52.64 52.20 49.39
+DIAG-BEGIN
+DIAG +29.8ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +111.8ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG total 139.8ms
+== run 7 rc=0 load=40.38 49.14 48.40
+DIAG-BEGIN
+DIAG +63.8ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG total 213.1ms
+== run 8 rc=0 load=37.24 46.89 47.61
+DIAG-BEGIN
+DIAG +7.4ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG total 27.9ms
+== run 9 rc=1 load=35.86 45.26 46.97
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:440:5: Expectation failed: await ws.currentConnectionID == 1
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:441:5: Expectation failed: await deck.stats().connects == 1
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:443:5: Expectation failed: sent.contains { $0.contains("UNSUBSCRIBE") }
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:444:5: Expectation failed: sent.contains { $0.contains("SUBSCRIBE") }
+DIAG-BEGIN
+DIAG +1.4ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +46.9ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG +48.2ms WS 断了：badResponse("传输层静默 40 秒（既无帧也无 pong），重连")
+DIAG +48.5ms WS 退避 1142ms 后重连（第 1 次）
+DIAG +51.0ms WS 连上 #2 wss://dstream.binance.me/stream?streams=xrpusdt@kline_1d/xrpusdt@markPrice@1s/xrpusdt@ticker
+DIAG total 107.7ms
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" failed after 3.164 seconds with 4 issues.
+✘ Suite "WS 回放：合成规矩、断线补缺、静默重连" failed after 3.164 seconds with 4 issues.
+✘ Test run with 1 test in 1 suite failed after 3.165 seconds with 4 issues.
+== run 10 rc=0 load=34.27 44.43 46.64
+DIAG-BEGIN
+DIAG +1.1ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG total 8.1ms
+== run 11 rc=0 load=34.25 44.09 46.50
+DIAG-BEGIN
+DIAG +1.0ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +29.0ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG total 29.5ms
+== run 12 rc=0 load=33.22 43.54 46.27
+DIAG-BEGIN
+DIAG +1.5ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +34.6ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG total 35.0ms
+== run 13 rc=0 load=32.06 42.95 46.03
+DIAG-BEGIN
+DIAG +1.0ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +66.4ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG +67.1ms WS 断了：badResponse("传输层静默 61 秒（既无帧也无 pong），重连")
+DIAG total 67.3ms
+== run 14 rc=0 load=32.66 42.72 45.91
+DIAG-BEGIN
+DIAG +3.8ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +57.6ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG +59.3ms WS 断了：badResponse("传输层静默 46 秒（既无帧也无 pong），重连")
+DIAG total 59.5ms
+== run 15 rc=0 load=34.21 42.57 45.80
+DIAG-BEGIN
+DIAG +2.5ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG total 49.5ms
+== run 16 rc=1 load=36.12 41.96 45.43
+DIAG-BEGIN
+DIAG +20.4ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +89.0ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG +110.0ms WS 断了：badResponse("传输层静默 58 秒（既无帧也无 pong），重连")
+DIAG +111.0ms WS 退避 983ms 后重连（第 1 次）
+DIAG +121.5ms WS 连上 #2 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG total 307.7ms
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:440:5: Expectation failed: await ws.currentConnectionID == 1
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:441:5: Expectation failed: await deck.stats().connects == 1
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" failed after 4.275 seconds with 2 issues.
+✘ Suite "WS 回放：合成规矩、断线补缺、静默重连" failed after 4.282 seconds with 2 issues.
+✘ Test run with 1 test in 1 suite failed after 4.283 seconds with 2 issues.
+== run 17 rc=1 load=34.58 41.25 45.09
+DIAG-BEGIN
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:440:5: Expectation failed: await ws.currentConnectionID == 1
+DIAG +7.2ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +89.3ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG +93.3ms WS 断了：badResponse("传输层静默 73 秒（既无帧也无 pong），重连")
+DIAG +94.5ms WS 退避 961ms 后重连（第 1 次）
+DIAG +96.9ms WS 连上 #2 wss://dstream.binance.me/stream?streams=xrpusdt@kline_1d/xrpusdt@markPrice@1s/xrpusdt@ticker
+DIAG total 195.9ms
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:441:5: Expectation failed: await deck.stats().connects == 1
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:443:5: Expectation failed: sent.contains { $0.contains("UNSUBSCRIBE") }
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" recorded an issue at FeedReplayTests.swift:444:5: Expectation failed: sent.contains { $0.contains("SUBSCRIBE") }
+✘ Test "连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE" failed after 3.537 seconds with 4 issues.
+✘ Suite "WS 回放：合成规矩、断线补缺、静默重连" failed after 3.538 seconds with 4 issues.
+✘ Test run with 1 test in 1 suite failed after 3.538 seconds with 4 issues.
+== run 18 rc=0 load=33.45 40.45 44.69
+DIAG-BEGIN
+DIAG +6.8ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +74.1ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG +78.9ms WS 断了：badResponse("传输层静默 59 秒（既无帧也无 pong），重连")
+DIAG total 79.2ms
+== run 19 rc=0 load=35.46 40.23 44.46
+DIAG-BEGIN
+DIAG +12.1ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG total 149.4ms
+== run 20 rc=0 load=41.49 41.19 44.56
+DIAG-BEGIN
+DIAG +12.2ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG total 30.0ms
+== run 21 rc=0 load=38.80 40.61 44.25
+DIAG-BEGIN
+DIAG +3.8ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG +116.9ms WS 保活探针没答上，30 秒内再探不通就重连
+DIAG total 118.3ms
+== run 22 rc=0 load=38.51 40.37 44.06
+DIAG-BEGIN
+DIAG +17.6ms WS 连上 #1 wss://dstream.binance.me/stream?streams=btcusdt@kline_1m/btcusdt@markPrice@1s/btcusdt@ticker
+DIAG total 38.6ms
+== run 23 rc=142 load=48.12 42.15 44.17
+== run 24 rc=142 load=60.27 47.70 46.04
+== run 25 rc=142 load=71.17 56.82 49.95

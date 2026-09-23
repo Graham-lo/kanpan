@@ -1,0 +1,10 @@
+Test Suite 'KanpanDataPackageTests.xctest' passed at 2026-09-23 08:46:22.205.
+Test Suite 'Selected tests' passed at 2026-09-23 08:46:22.206.
+◇ Test "TEMPREPRO 首连晚到覆盖横幅" started.
+REPRO banner before connect: 历史行情暂未加载，点此重试
+REPRO banner after late first connect: 行情缺口暂未补齐，点此重试 flipped=true connects=1
+REPRO log: 首屏历史撞上上游封禁/限流，本轮到此为止，不叠加重试：HTTP 429 blocked retryAfter=3600s 上游封禁未解除（429），还要等 3600 秒 https://fapi.binance.com/fapi/v1/klines?interval=1m&limit=1500&symbol=BTCUSDT
+REPRO log: 补缺失败：HTTP 429 blocked retryAfter=3600s 上游封禁未解除（429），还要等 3600 秒 https://fapi.binance.com/fapi/v1/klines?interval=1m&limit=1500&startTime=1700017940000&symbol=BTCUSDT
+✔ Test "TEMPREPRO 首连晚到覆盖横幅" passed after 0.111 seconds.
+✔ Suite "封禁后的首屏与分钟边界补洞" passed after 0.113 seconds.
+✔ Test run with 1 test in 1 suite passed after 0.114 seconds.

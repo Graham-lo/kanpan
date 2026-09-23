@@ -66,7 +66,12 @@ struct TwoStageFetchTests {
 
     // 完整那发挂着，图却已经有东西了。
     #expect(await waitUntil(3) { await feed.currentSeries.count == MarketFeed.firstScreenLimit })
-    #expect(await transport.deepCount == 1)
+    // 两发都要过限流器（默认两笔之间隔 120ms）：小页先过的话，完整那发这会儿还在
+    // 限流器里排着，没走到 transport。原来这里当场断言 `deepCount == 1`，没等到就红，
+    // 后面的 `releaseDeep` 放了个空，晚到的完整那发再也没人放行，整条用例挂满超时。
+    // 所以先等它真的挂上来，再确认此刻图上仍然只有小页那 300 根。
+    #expect(await waitUntil(3) { await transport.deepCount == 1 })
+    #expect(await feed.currentSeries.count == MarketFeed.firstScreenLimit)
     #expect(await transport.limits.contains(MarketFeed.firstScreenLimit))
     #expect(await transport.limits.contains { $0 > MarketFeed.firstScreenLimit })
 
@@ -89,9 +94,13 @@ struct TwoStageFetchTests {
     await transport.releaseDeep(1500)
     #expect(await waitUntil(3) { await feed.currentSeries.count == 1500 })
 
-    // 小页这时才落地也不能把 1500 根盖成 300 根。
-    try? await Task.sleep(for: .milliseconds(50))
-    #expect(await feed.currentSeries.count == 1500)
+    // 小页这时才落地也不能把 1500 根盖成 300 根。原来这里睡 50ms 再看一眼：小页要是
+    // 在限流器里排在完整那发后面（两笔隔 120ms），50ms 时它还没落地，这一眼什么也
+    // 没验到。现在先等首屏这一轮收尾——`filling` 落下之前 feed 会等小页结束：要么
+    // 已经出站、答复回来了，要么还没出站就被取消、根本不发——再确认之后一段时间里
+    // 序列始终是 1500 根。
+    #expect(await waitUntil(3) { await feed.isFillingForTests == false })
+    #expect(await staysFalse(for: 0.5) { await feed.currentSeries.count != 1500 })
     await feed.stop()
   }
 }
