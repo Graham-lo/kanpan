@@ -329,3 +329,135 @@ class SharedHubTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.hub.peers), 100)
         self.assertEqual(len(self.hub.channels), 1)
         await asyncio.gather(*(ws.close() for ws in clients))
+
+
+DEPTH = 'btcusdt@depth@100ms'
+
+
+class DepthPendingTests(unittest.TestCase):
+    def test_depth_frames_queue_in_order_while_tickers_still_coalesce(self):
+        pending = Pending(12)
+        for frame in ['a1', 'a2', 'a3']:
+            self.assertTrue(pending.put(DEPTH, frame))
+        self.assertTrue(pending.put('btcusdt@ticker', 'old'))
+        self.assertTrue(pending.put('btcusdt@ticker', 'new'))
+        self.assertEqual(pending.size, 9)
+        self.assertFalse(pending.put(DEPTH, 'toolong'))  # the per-peer byte cap still holds
+        self.assertEqual(sorted(pending.waiting()), [DEPTH, 'btcusdt@ticker'])
+        self.assertEqual([pending.pop(DEPTH) for _ in range(2)], ['a1', 'a2'])
+        self.assertEqual(pending.peek(DEPTH), 'a3')
+        pending.put(DEPTH, 'a4')
+        pending.retain({'btcusdt@ticker'})  # unsubscribing drops the whole queue
+        self.assertEqual(pending.waiting(), ['btcusdt@ticker'])
+        self.assertEqual(pending.pop('btcusdt@ticker'), 'new')
+        self.assertEqual(pending.size, 0)
+
+    def test_only_the_100ms_diff_stream_is_admitted(self):
+        self.assertEqual(streams([DEPTH]), {DEPTH})
+        for value in ['btcusdt@depth', 'btcusdt@depth@500ms', 'btcusdt@depth20@100ms', '@depth@100ms']:
+            with self.assertRaises(ValueError):
+                streams([value])
+
+
+class DepthLaneTests(unittest.IsolatedAsyncioTestCase):
+    """Depth rides Binance's /public socket, frame by frame; tickers stay on /market."""
+
+    async def asyncSetUp(self):
+        self.seen = {'market': set(), 'public': set()}
+        self.connections = {'market': 0, 'public': 0}
+        self.live = {'market': 0, 'public': 0}
+
+        def source(name, frame):
+            async def handler(request):
+                self.connections[name] += 1
+                self.live[name] += 1
+                active = set(filter(None, request.query['streams'].split('/')))
+                self.seen[name] |= active
+                ws = web.WebSocketResponse()
+                await ws.prepare(request)
+
+                async def emit():
+                    # Depth comes in bursts of back-to-back frames, the way a busy
+                    # book does, so frames really pile up in a peer's Pending.
+                    count, burst = 0, 25 if name == 'public' else 1
+                    while True:
+                        for _ in range(burst):
+                            count += 1
+                            for channel in list(active):
+                                await ws.send_json({'stream': channel, 'data': frame(count)})
+                        await asyncio.sleep(.01 if name == 'public' else .02)
+                sender = asyncio.create_task(emit())
+                try:
+                    async for msg in ws:
+                        if msg.type == WSMsgType.TEXT:
+                            obj = json.loads(msg.data)
+                            self.seen[name] |= set(obj['params'])
+                            if obj['method'] == 'SUBSCRIBE':
+                                active.update(obj['params'])
+                            else:
+                                active.difference_update(obj['params'])
+                finally:
+                    sender.cancel()
+                    self.live[name] -= 1
+                return ws
+            return handler
+
+        app = web.Application()
+        app.router.add_get('/market/stream', source('market', lambda n: {'e': '24hrTicker', 'c': str(n)}))
+        app.router.add_get('/public/stream', source('public', lambda n: {
+            'e': 'depthUpdate', 'U': n * 10 + 1, 'u': (n + 1) * 10, 'pu': n * 10,
+            'b': [['100.0', str(n)]], 'a': []}))
+        self.source_runner = web.AppRunner(app)
+        await self.source_runner.setup()
+        site = web.TCPSite(self.source_runner, '127.0.0.1', 0)
+        await site.start()
+        base = f'http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}'
+        self.hub = Hub(base + '/market/stream', public_upstream=base + '/public/stream',
+                       capacity=Capacity(128, 4_000_000), idle_seconds=.05, resident=(), linger_seconds=0)
+        self.runner = web.AppRunner(app_for(self.hub))
+        await self.runner.setup()
+        site = web.TCPSite(self.runner, '127.0.0.1', 0)
+        await site.start()
+        self.url = f'http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}/market/stream'
+        self.http = ClientSession()
+
+    async def asyncTearDown(self):
+        await self.http.close()
+        await self.runner.cleanup()
+        await self.source_runner.cleanup()
+
+    async def frames(self, ws, channel, count):
+        found = []
+        while len(found) < count:
+            obj = await asyncio.wait_for(ws.receive_json(), 3)
+            if obj.get('stream') == channel:
+                found.append(obj['data'])
+        return found
+
+    async def test_every_diff_arrives_in_order_and_only_on_the_public_socket(self):
+        ws = await self.http.ws_connect(self.url, params={'streams': 'btcusdt@ticker/' + DEPTH})
+        diffs = await self.frames(ws, DEPTH, 300)  # sent 1ms apart: coalescing would leave gaps
+        for before, after in zip(diffs, diffs[1:]):
+            self.assertEqual(after['pu'], before['u'])
+        self.assertEqual(diffs[0]['e'], 'depthUpdate')
+        self.assertTrue(await self.frames(ws, 'btcusdt@ticker', 1))
+        self.assertEqual(self.seen, {'market': {'btcusdt@ticker'}, 'public': {DEPTH}})
+        self.assertEqual(self.connections, {'market': 1, 'public': 1})
+        await ws.close()
+
+    async def test_the_public_socket_opens_on_demand_and_closes_when_released(self):
+        ws = await self.http.ws_connect(self.url, params={'streams': 'btcusdt@ticker'})
+        await self.frames(ws, 'btcusdt@ticker', 1)
+        self.assertEqual(self.connections['public'], 0)
+        await ws.send_json({'method': 'SUBSCRIBE', 'params': [DEPTH], 'id': 1})
+        await self.frames(ws, DEPTH, 5)
+        await ws.send_json({'method': 'UNSUBSCRIBE', 'params': [DEPTH], 'id': 2})
+        for _ in range(100):
+            if self.live['public'] == 0 and self.hub.public.upstream is None:
+                break
+            await asyncio.sleep(.02)
+        self.assertEqual(self.live['public'], 0)
+        self.assertIsNotNone(self.hub.upstream)  # the ticker socket is untouched
+        self.assertNotIn(DEPTH, self.seen['market'])
+        await self.frames(ws, 'btcusdt@ticker', 1)
+        await ws.close()

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 import unittest
@@ -162,6 +163,97 @@ class OKXHubTests(unittest.IsolatedAsyncioTestCase):
             }],
         })
         self.assertNotIn('btcusdt@ticker', self.peer.pending.frames)
+
+
+BOOKS = 'btcusdt@depth@100ms'
+SNAPSHOT = ('{"arg":{"channel":"books","instId":"BTC-USDT-SWAP"},"action":"snapshot",'
+            '"data":[{"asks":[["84320.1","12","0","3"]],"bids":[["84320","7","0","2"]],'
+            '"ts":"1790197952785","checksum":0,"seqId":100,"prevSeqId":-1}]}')
+UPDATE = ('{"arg":{"channel":"books","instId":"BTC-USDT-SWAP"},"action":"update",'
+          '"data":[{"asks":[],"bids":[["84320","9","0","3"]],'
+          '"ts":"1790197952885","checksum":0,"seqId":104,"prevSeqId":100}]}')
+
+
+class FakeUpstream:
+    def __init__(self):
+        self.sent = []
+
+    async def send_json(self, value):
+        self.sent.append(value)
+
+    async def close(self):
+        pass
+
+
+class OKXDepthTests(unittest.IsolatedAsyncioTestCase):
+    """`<symbol>@depth@100ms` is OKX `books`, forwarded verbatim with the face value."""
+
+    def setUp(self):
+        self.hub = OKXHub(capacity=Capacity(16, 1_000_000))
+        self.peer = Peer(None, '192.0.2.1')
+        self.hub.peers.add(self.peer)
+        self.patch = patch('okx_hub.MARKET.instrument',
+                           side_effect=lambda symbol: {'instId': symbol[:-4] + '-USDT-SWAP', 'ctVal': '0.01'})
+        self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+
+    async def test_depth_channel_maps_to_books_on_the_public_socket(self):
+        self.assertEqual(OKXHub.channel_parts(BOOKS), ('btcusdt', 'books'))
+        self.assertIsNone(OKXHub.channel_parts('@depth@100ms'))
+        self.assertTrue(self.hub.replace(self.peer, {BOOKS, 'btcusdt@ticker', 'btcusdt@kline_1m'}))
+        self.assertEqual(self.hub.channels_for('ticker'), {BOOKS, 'btcusdt@ticker'})
+        self.assertEqual(self.hub.channels_for('kline'), {'btcusdt@kline_1m'})
+        self.assertEqual(await self.hub.arguments({BOOKS, 'ethusdt@depth@100ms'}),
+                         {('BTC-USDT-SWAP', 'books'), ('ETH-USDT-SWAP', 'books')})
+        self.assertEqual(self.hub.ct_vals[BOOKS], '0.01')
+
+    async def test_snapshot_then_update_are_both_forwarded_verbatim_in_order(self):
+        self.assertTrue(self.hub.replace(self.peer, {BOOKS}))
+        await self.hub.arguments({BOOKS})
+        for raw in (SNAPSHOT, UPDATE):
+            await self.hub.publish(json.loads(raw), raw)
+        frames = [self.peer.pending.pop(BOOKS) for _ in range(2)]
+        self.assertIsNone(self.peer.pending.peek(BOOKS))
+        for frame, raw in zip(frames, (SNAPSHOT, UPDATE)):
+            self.assertTrue(frame.endswith('"data":' + raw + '}'))  # byte for byte, contracts untouched
+            envelope = json.loads(frame)
+            self.assertEqual((envelope['stream'], envelope['source'], envelope['ctVal']), (BOOKS, 'okx', '0.01'))
+        self.assertEqual([json.loads(f)['data']['action'] for f in frames], ['snapshot', 'update'])
+
+    async def test_no_face_value_means_no_frame(self):
+        self.assertTrue(self.hub.replace(self.peer, {BOOKS}))  # arguments() never resolved a ctVal
+        await self.hub.publish(json.loads(SNAPSHOT), SNAPSHOT)
+        self.assertIsNone(self.peer.pending.peek(BOOKS))
+        await self.hub.arguments({BOOKS})
+        tickers = SNAPSHOT.replace('"books"', '"tickers"')
+        await self.hub.publish(json.loads(tickers), tickers)  # another channel's message is not a book
+        self.assertIsNone(self.peer.pending.peek(BOOKS))
+
+    async def test_a_second_watcher_gets_a_fresh_snapshot_by_resubscribing(self):
+        upstream, sent, changed = FakeUpstream(), set(), asyncio.Event()
+        books = [{'instId': 'BTC-USDT-SWAP', 'channel': 'books'}]
+        task = asyncio.create_task(self.hub.sync(upstream, 'ticker', sent, changed))
+        try:
+            self.assertTrue(self.hub.replace(self.peer, {BOOKS}))
+            changed.set()
+            await asyncio.sleep(.2)
+            self.assertEqual(upstream.sent, [{'op': 'subscribe', 'args': books}])
+            other = Peer(None, '192.0.2.2')
+            self.hub.peers.add(other)
+            self.assertTrue(self.hub.replace(other, {BOOKS}))
+            changed.set()
+            await asyncio.sleep(.5)
+            self.assertEqual(upstream.sent[1:], [{'op': 'unsubscribe', 'args': books}, {'op': 'subscribe', 'args': books}])
+            self.assertEqual(sent, {('BTC-USDT-SWAP', 'books')})
+            self.assertFalse(self.hub.fresh)
+            self.assertTrue(self.hub.replace(other, set()))  # leaving resubscribes nobody
+            changed.set()
+            await asyncio.sleep(.5)
+            self.assertEqual(len(upstream.sent), 3)
+        finally:
+            task.cancel()
 
 
 if __name__ == '__main__':

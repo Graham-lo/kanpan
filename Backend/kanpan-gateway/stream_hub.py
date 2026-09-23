@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
 from resource_limits import Bucket, Capacity, HostSampler
+from depth_relay import BINANCE_PUBLIC, BinancePublicLane, sequenced, split
 
 UPSTREAM = 'wss://fstream.binance.com/market/stream'
 # One channel the node keeps subscribed with or without clients. Opening the
@@ -26,7 +27,7 @@ RESIDENT = frozenset(v for v in os.environ.get('RESIDENT_STREAMS', 'btcusdt@klin
 # the return trip cost nothing; the cap keeps a long session from accumulating.
 LINGER_SECONDS = float(os.environ.get('CHANNEL_LINGER', '90'))
 LINGER_CHANNELS = 48
-STREAM = re.compile(r'(?:[a-z0-9_]{1,30}@(?:ticker|markPrice@1s|kline_(?:1m|3m|5m|15m|30m|1h|2h|4h|6h|8h|12h|1d|3d|1w|1M))|!ticker@arr)\Z')
+STREAM = re.compile(r'(?:[a-z0-9_]{1,30}@(?:ticker|markPrice@1s|depth@100ms|kline_(?:1m|3m|5m|15m|30m|1h|2h|4h|6h|8h|12h|1d|3d|1w|1M))|!ticker@arr)\Z')
 
 
 def streams(values):
@@ -48,11 +49,20 @@ def client_key(request):
 
 
 class Pending:
-    """At most one newest unsent real frame per subscribed channel; never disk cached."""
+    """At most one newest unsent real frame per subscribed channel; never disk cached.
+
+    Sequenced (depth) channels are the exception: every frame is queued in
+    order, because dropping one breaks the U/u/pu or seqId chain."""
     def __init__(self, limit=512 * 1024):
-        self.frames, self.size, self.limit = {}, 0, limit
+        self.frames, self.queues, self.size, self.limit = {}, {}, 0, limit
 
     def put(self, channel, frame):
+        if sequenced(channel):
+            if self.size + len(frame) > self.limit:
+                return False
+            self.queues.setdefault(channel, []).append(frame)
+            self.size += len(frame)
+            return True
         old = self.frames.get(channel, '')
         size = self.size - len(old) + len(frame)
         if size > self.limit:
@@ -60,14 +70,27 @@ class Pending:
         self.frames[channel], self.size = frame, size
         return True
 
+    def waiting(self):
+        return list(self.frames) + list(self.queues)
+
+    def peek(self, channel):
+        queue = self.queues.get(channel)
+        return queue[0] if queue else self.frames.get(channel)
+
     def pop(self, channel):
-        frame = self.frames.pop(channel)
+        queue = self.queues.get(channel)
+        if queue:
+            frame = queue.pop(0)
+            if not queue:
+                del self.queues[channel]
+        else:
+            frame = self.frames.pop(channel)
         self.size -= len(frame)
         return frame
 
     def retain(self, channels):
-        for channel in list(self.frames):
-            if channel not in channels:
+        for channel in self.waiting():
+            while channel not in channels and self.peek(channel) is not None:
                 self.pop(channel)
 
 
@@ -90,8 +113,9 @@ class Peer:
 
 class Hub:
     def __init__(self, upstream=UPSTREAM, capacity=None, idle_seconds=2, resident=RESIDENT,
-                 linger_seconds=LINGER_SECONDS):
+                 linger_seconds=LINGER_SECONDS, public_upstream=BINANCE_PUBLIC):
         self.upstream_url = upstream  # injected only by local tests, never by client requests
+        self.public = BinancePublicLane(self, public_upstream, idle_seconds)  # depth channels
         self.resident = frozenset(resident)
         self.linger_seconds = linger_seconds
         self.linger = OrderedDict()  # channel -> deadline, oldest first
@@ -177,6 +201,7 @@ class Hub:
         peer.channels = set(desired)
         peer.pending.retain(desired)
         self.changed.set()
+        self.public.changed.set()
         return True
 
     async def disconnect(self, peer, code=1000):
@@ -246,8 +271,8 @@ class Hub:
             while not peer.ws.closed:
                 await peer.ready.wait()
                 peer.ready.clear()
-                for channel in list(peer.pending.frames):
-                    frame = peer.pending.frames.get(channel)
+                for channel in peer.pending.waiting():
+                    frame = peer.pending.peek(channel)
                     if frame is None:
                         continue
                     budget = self.identities[peer.key][1]
@@ -267,6 +292,8 @@ class Hub:
                     frame = peer.pending.pop(channel)
                     await asyncio.wait_for(peer.ws.send_str(frame), 1)
                     blocked_since = None
+                if peer.pending.queues:
+                    peer.ready.set()  # queued depth frames go one per channel per pass
         except (asyncio.TimeoutError, ConnectionError, RuntimeError):
             await self.disconnect(peer, 1013)
         except asyncio.CancelledError:
@@ -289,17 +316,17 @@ class Hub:
             # off to .3 so rapid chart switching stays <= ~3 control frames/s.
             pause = .03 if time.monotonic() - last_control > 1 else .3
             await asyncio.sleep(pause)
-            wanted = set(self.channels) | self.resident | self.lingering()
+            wanted = self.market_channels() | self.resident | split(self.lingering())[1]
             if not wanted:
                 # Wait on the event, not the clock: a client arriving during the
                 # idle hold must be subscribed at once, not when the hold ends.
                 with contextlib.suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(self.changed.wait(), self.idle_seconds)
-                if not self.channels:
+                if not self.market_channels():
                     await upstream.close()
                     return
                 self.changed.clear()
-                wanted = set(self.channels)
+                wanted = self.market_channels()
             removed, added = self.sent - wanted, wanted - self.sent
             for method, values in [('UNSUBSCRIBE', removed), ('SUBSCRIBE', added)]:
                 if values:
@@ -312,17 +339,23 @@ class Hub:
                         self.sent -= values
                     await asyncio.sleep(pause)
 
+    def market_channels(self):
+        return split(self.channels)[1]
+
     async def run(self):
+        await asyncio.gather(self.run_market(), self.public.run())
+
+    async def run_market(self):
         backoff = 1
         while not self.closed:
-            if not self.channels and not self.resident:
+            if not self.market_channels() and not self.resident:
                 self.changed.clear()
                 await self.changed.wait()
-                if not self.channels:
+                if not self.market_channels():
                     continue
             sync = None
             try:
-                initial = set(self.channels) | self.resident | self.lingering()
+                initial = self.market_channels() | self.resident | split(self.lingering())[1]
                 url = self.upstream_url + '?' + urlencode({'streams': '/'.join(sorted(initial))})
                 async with self.http.ws_connect(url, heartbeat=20, max_msg_size=2 * 1024 * 1024, compress=0) as upstream:
                     self.upstream, self.sent = upstream, initial
@@ -362,7 +395,7 @@ class Hub:
                         await sync
             # Back off for the resident channel too: without this a node with no
             # clients would reconnect to a failing upstream in a tight loop.
-            if self.channels or self.resident:
+            if self.market_channels() or self.resident:
                 await asyncio.sleep(backoff)
                 backoff = min(30, backoff * 2)
 
@@ -372,7 +405,7 @@ class Hub:
             self.capacity.update(**self.sampler.sample())
             # The resident channel is also the stall detector: a warm socket that
             # stopped delivering is worth reconnecting even with nobody watching.
-            if self.upstream and (self.channels or self.resident) and time.monotonic() - self.last_market > 15:
+            if self.upstream and (self.market_channels() or self.resident) and time.monotonic() - self.last_market > 15:
                 await self.upstream.close()
 
     async def health(self, _request):
@@ -380,7 +413,8 @@ class Hub:
                                   'channels': len(self.channels), 'capacity': self.capacity.clients,
                                   'resident': len(self.resident), 'lingering': len(self.linger),
                                   'upstreamConnected': self.upstream is not None,
-                                  'upstreamConnections': self.upstream_connections})
+                                  'upstreamConnections': self.upstream_connections,
+                                  'publicConnected': self.public.upstream is not None})
 
 
 def app_for(hub, okx=None):
