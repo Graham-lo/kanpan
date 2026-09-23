@@ -134,11 +134,10 @@ for (const [x, p] of [[76800, 2], [0.0001234, 8], [1.5, 1], [123456.789, 3], [-1
 write('format.json', fmt)
 
 // ---------------------------------------------------------------- 风格表与配色
-write('styles.json', {
-  styles: win.KanpanStyles.map((s) => ({ id: s.id, name: s.name, one: s.one, ...s.geom })),
-  light: win.KanpanPalette.L,
-  dark: win.KanpanPalette.D,
-})
+// styles.json 不再从原型重导：它的明暗两套涨跌色、图区底色与网格已改成 AICoin 手机端实测值
+// （真源是 KanpanCore/Style/Palette.swift），原型 styles.js 还停在旧色，重导会把黄金值打回去。
+// 那份文件现在手工维护，改配色时跟着 Palette.swift 一起改。
+console.log('styles.json 跳过（手工维护，真源是 Palette.swift）')
 
 // ---------------------------------------------------------------- 画线命中
 const seg = []

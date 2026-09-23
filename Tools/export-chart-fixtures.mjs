@@ -218,7 +218,11 @@ for (const dark of [false, true]) {
   }
   colors.themes[dark ? 'dark' : 'light'] = per
 }
-write('colors.json', colors)
+// colors.json 不再从原型重导（2026-09-18 起）：它记的是出厂配色「青苔」的 Palette 定版值，
+// 原型 styles.js 没有那批 AICoin 真机采样色，重导只会把它打回旧色。真源是
+// KanpanCore/Style/Palette.swift，那份文件手工维护。上面的计算留着，只是不落盘。
+void colors
+console.log('colors.json 跳过（手工维护，真源是 Palette.swift）')
 
 console.log('\n口径：' + SYMBOL + ' ' + INTERVAL + '，' + BARS.c.length + ' 根，'
   + GEOM_W + '×' + GEOM_H + ' @' + GEOM_DPR + 'x，叠加 ' + OVERLAYS.join('/')

@@ -1,4 +1,5 @@
 // swift-tools-version: 6.2
+import Foundation
 import PackageDescription
 
 // 主界面（`Kanpan/Kanpan/Main/`）那几个生命周期件的**测试壳**。
@@ -12,6 +13,11 @@ import PackageDescription
 //
 //   cd Kanpan/KanpanTests && xcodebuild test -scheme KanpanMain \
 //     -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
+
+// `make strict` 置 KANPAN_STRICT=1 时本包自己的 target 警告即错误（为什么不走 xcodebuild 的
+// SWIFT_TREAT_WARNINGS_AS_ERRORS，见 KanpanChart/Package.swift 顶上）。
+let strict: [SwiftSetting] = ProcessInfo.processInfo.environment["KANPAN_STRICT"] != nil
+  ? [.treatAllWarnings(as: .error)] : []
 
 let package = Package(
   name: "KanpanMain",
@@ -36,7 +42,8 @@ let package = Package(
         .product(name: "KanpanData", package: "KanpanData"),
         .product(name: "KanpanAccount", package: "KanpanAccount"),
       ],
-      path: "Sources/KanpanMain"
+      path: "Sources/KanpanMain",
+      swiftSettings: strict
     ),
     .testTarget(
       name: "KanpanMainTests",
@@ -47,7 +54,8 @@ let package = Package(
         .product(name: "KanpanNetwork", package: "KanpanNetwork"),
         .product(name: "KanpanAccount", package: "KanpanAccount"),
       ],
-      path: "Tests/KanpanMainTests"
+      path: "Tests/KanpanMainTests",
+      swiftSettings: strict
     ),
   ]
 )

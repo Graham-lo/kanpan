@@ -23,7 +23,13 @@ DEVICES := \
 # 单台机型时用：make snap DEVICE="iPhone 16 Pro"
 DEVICE ?= iPhone 16 Pro
 
-.PHONY: help venue-isolation core-test network-test data-test sync-contract symbols-test sector-test alerts-test scan-test settings-test deeplink-test app-logic-test diag-test diag-ios-test main-ios-test account-codec-test chart-build chart-test test strict app-test ui-test ui-test-one snap screenshots devices boot shutdown clean doctor evidence fixtures device-release install-release archive ipa upload
+.PHONY: help doctor venue-isolation core-test network-test data-test chart-build chart-test \
+	symbols-test settings-test sector-test scan-test alerts-test diag-test deeplink-test account-codec-test \
+	diag-ios-test main-ios-test app-logic-test sync-contract backend-test account-test review-test test \
+	test-release core-test-release network-test-release data-test-release account-test-release \
+	app-logic-test-release chart-test-release main-ios-test-release review-test-release diag-ios-test-release \
+	strict evidence fixtures feed app-test ui-test ui-test-one build device-release install-release \
+	archive ipa upload snap screenshots devices boot shutdown clean
 
 help:
 	@echo "core-test    跑 KanpanCore 单测（不需要 Xcode GUI，CLT 也能跑）"
@@ -31,12 +37,21 @@ help:
 	@echo "data-test    跑 KanpanData 单测（全离线：假 transport / 假 socket / 假时钟）"
 	@echo "chart-build  编 KanpanChart（UIKit，必须走 xcodebuild）"
 	@echo "chart-test   跑 KanpanChart 单测（需要一台模拟器）"
-	@echo "test         core-test + network-test + data-test + app-logic-test + chart-test + main-ios-test"
-	@echo "strict       两个包都按 Swift 6 严格并发 + 警告即错误编一遍（A2.13）"
+	@echo "account-test 跑 KanpanAccount 单测（登录、退登、被顶下线、同步编解码）"
+	@echo "review-test  跑 KanpanReview 单测（需要一台模拟器）"
+	@echo "app-logic-test  跑 app 侧壳包（自选 / 设置 / 板块 / 诊断 / 同步字段 / 链接 / 扫图 / 提醒）+ 交易所隔离检查"
+	@echo "diag-ios-test   帧探针那几条（需要一台模拟器，不挂进 test）"
+	@echo "main-ios-test   主屏生命周期用例（需要一台模拟器）"
+	@echo "backend-test 跑 kanpan-api 的库内单测（cargo test --lib，不需要 Postgres）"
+	@echo "test         core / network / data / app-logic / chart / main-ios / account / review 全跑"
+	@echo "test-release 同一套按 Release 配置再跑一遍（各目标加 -release 后缀可单跑）"
+	@echo "strict       全部包按 Swift 6 严格并发 + 警告即错误编一遍（A2.13）"
 	@echo "evidence     出 M3 全套取证产物到 docs/acceptance/M3/（A3.1–A3.10）"
-	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库）"
+	@echo "fixtures     从原型重新导一次定版 fixture（需要 node，产物已入库；配色那两份不重导）"
+	@echo "feed         编数据层取证工具 kanpan-feed（Release）"
 	@echo "sync-contract 从 PrefsFieldPlan.table 重新生成 iOS↔Rust 的 settings 字段契约（Backend/kanpan-api/contract/settings-fields.json）"
-	@echo "app-test     跑 app target 的测试"
+	@echo "app-test     app-logic-test + 编一遍 app（app 自己没有单元测试 target）"
+	@echo "build        在模拟器上编 app（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "ui-test      A8.4：两台重点机型跑同一套 XCUITest 用例，逐台记结果"
 	@echo "ui-test-one  只跑一台（DEVICE=\"iPhone 16 Pro\"）"
 	@echo "device-release  编真机 Release 包（generic/platform=iOS，签名走 -allowProvisioningUpdates）"
@@ -50,8 +65,10 @@ help:
 	@echo "screenshots  两台重点机型全跑一遍，出 docs/acceptance/shots/"
 	@echo "devices      备齐两台重点模拟器（缺的自动 create）"
 	@echo "boot         把两台全 boot 起来（一般不用；一次开一台）"
+	@echo "shutdown     关掉所有模拟器"
 	@echo "doctor       打印环境信息，对 A0.1 的验收"
-	@echo "clean        清 DerivedData 与 .build"
+	@echo "venue-isolation 交易所隔离检查（交易所名只许出现在自己的提供者目录与注册表里）"
+	@echo "clean        删全部可再生产物（DerivedData、.build、cargo target、/tmp 构建目录），即 scripts/machine-guard.sh clean"
 
 # ---------------------------------------------------------------- A0.1 环境
 doctor:
@@ -109,8 +126,8 @@ chart-test:
 		-derivedDataPath .xcbuild
 
 # ---------------------------------------------------------------- app 侧逻辑包
-# app target（Kanpan.xcodeproj）没有 test action，补一个要改 project.pbxproj。
-# 改用 SwiftPM 壳包：Sources/ 下是指向 Kanpan/Kanpan/<模块>/ 的符号链接，
+# app 工程里没有单元测试 target（`Kanpan.xcscheme` 的 test action 只挂 KanpanUITests），
+# 补一个要改 project.pbxproj。改用 SwiftPM 壳包：Sources/ 下是指向 Kanpan/Kanpan/<模块>/ 的符号链接，
 # 一份代码两处编译，不会漂移。新增模块照 Symbols 的样子加一行。
 SYMBOLS := Kanpan/Symbols
 
@@ -171,7 +188,7 @@ account-codec-test:
 # 真机取证前必须跑一遍。
 diag-ios-test:
 	cd $(DIAG) && $(XCODEBUILD) test -scheme KanpanDiagnostics \
-	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
+	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild
 
 # 主屏那几条生命周期用例（宿主销毁收摊、合批缓冲换人就丢、转屏复位只认最后一次、
 # 后台额度必须还）离不开真的 UIKit：UIApplication 的后台任务、CADisplayLink、
@@ -184,7 +201,7 @@ MAIN := Kanpan/KanpanTests
 
 main-ios-test:
 	cd $(MAIN) && $(XCODEBUILD) test -scheme KanpanMain \
-	  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -derivedDataPath .xcbuild
+	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild
 
 app-logic-test: venue-isolation symbols-test sector-test settings-test diag-test account-codec-test deeplink-test scan-test alerts-test
 
@@ -214,7 +231,6 @@ sync-contract:
 # kanpan-api 的库内单测：不需要 Postgres，几秒跑完（要库的集成测试走
 # Backend/kanpan-api/ops/test.py）。sync-contract 重新生成契约之后接着跑它——Rust 那一半
 # 的对账就在这些单测里，不再靠人记得去手敲。cargo 在 rustup 的 keg 里、不在默认 PATH 上。
-.PHONY: backend-test
 backend-test:
 	cd Backend/kanpan-api && PATH="$$PATH:/opt/homebrew/opt/rustup/bin" $(GUARD) cargo test --lib
 
@@ -268,12 +284,16 @@ data-test-release:
 	cd $(DATA) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 account-test-release:
 	cd $(ACCOUNT) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
-app-logic-test-release:
+# 和 Debug 档的 app-logic-test 同一份包清单，少一个就等于那个包的 Release 没人测。
+app-logic-test-release: venue-isolation
 	cd $(SYMBOLS) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 	cd $(SETTINGS) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 	cd $(SECTOR) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 	cd $(DIAG) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 	cd $(ACCOUNT_CODEC) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
+	cd $(DEEPLINK) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
+	cd $(SCAN) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
+	cd $(ALERTS) && $(SWIFT) test -c release $(CORE_TEST_FLAGS)
 chart-test-release:
 	cd $(CHART) && $(XCODEBUILD) test -scheme KanpanChart \
 	  -destination 'platform=iOS Simulator,name=$(DEVICE)' -derivedDataPath .xcbuild-release \
@@ -294,11 +314,23 @@ diag-ios-test-release:
 	  -configuration Release ENABLE_TESTABILITY=YES
 
 # A2.13：零警告零错误。警告即错误，谁也别想蒙混过去。
+# 覆盖全部包：五个库包、app 侧八个 mac 能编的壳包，外加三个只能在 iOS 上编的
+# （KanpanChart、KanpanReview、主屏壳包 KanpanMain）。后三个走 xcodebuild，警告即错误
+# 由各自 Package.swift 认 `KANPAN_STRICT=1` 打开（原因见 KanpanChart/Package.swift 顶上）。
+STRICT_FLAGS := -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+STRICT_MAC_PACKAGES := $(CORE) $(NETWORK) $(DATA) $(ACCOUNT) \
+	$(SYMBOLS) $(SETTINGS) $(SECTOR) $(SCAN) $(ALERTS) $(DIAG) $(DEEPLINK) $(ACCOUNT_CODEC)
+
 strict:
-	cd $(CORE) && $(SWIFT) build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
-	cd $(NETWORK) && $(SWIFT) build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
-	cd $(DATA) && $(SWIFT) build -Xswiftc -warnings-as-errors -Xswiftc -strict-concurrency=complete
+	@for p in $(STRICT_MAC_PACKAGES); do \
+		echo "→ strict $$p"; \
+		(cd $$p && $(SWIFT) build $(STRICT_FLAGS)) || exit 1; \
+	done
 	cd $(CHART) && KANPAN_STRICT=1 $(XCODEBUILD) -scheme KanpanChart \
+		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
+	cd $(REVIEW) && KANPAN_STRICT=1 $(XCODEBUILD) -scheme KanpanReview \
+		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
+	cd $(MAIN) && KANPAN_STRICT=1 $(XCODEBUILD) -scheme KanpanMain \
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath .xcbuild-strict build
 
 # ---------------------------------------------------------------- §12 M3 取证
@@ -310,8 +342,12 @@ evidence:
 	@bash Tools/render-evidence.sh "$(DEVICE)"
 
 # fixture 是把原型 chart.js / styles.js / data.js 原样跑一遍问出来的黄金值，
-# 已入库，只有原型改动时才需要重导。
+# 已入库，只有原型改动时才需要重导。两个脚本各管一个包（KanpanCore 的算法黄金值 /
+# KanpanChart 的几何与快照）；配色那两份（styles.json、colors.json）真源已是 Palette.swift，
+# 脚本不再覆盖它们。
 fixtures:
+	node Tools/export-fixtures.mjs
+	@ls -l $(CORE)/Tests/KanpanCoreTests/Fixtures
 	node Tools/export-chart-fixtures.mjs
 	@ls -l $(CHART)/Tests/KanpanChartTests/Fixtures
 
@@ -321,17 +357,15 @@ feed:
 	@echo "二进制：$(DATA)/.build/release/kanpan-feed"
 
 # ---------------------------------------------------------------- app
-# app target 本身没有 test action，`xcodebuild test` 会直接报
-# 「Scheme Kanpan is not currently configured for the test action」，
-# 原来那条末尾的 `|| true` 把这个事实吞掉了，看着像过了其实一条没跑。
-# app 侧的逻辑一律由上面的壳包覆盖，这里只做编译验证。
+# app 工程没有单元测试 target：`Kanpan.xcscheme` 的 test action 只挂 KanpanUITests（那是
+# `ui-test` / `ui-test-one`）。app 侧的逻辑一律由上面的壳包覆盖，这里只做编译验证。
 app-test: app-logic-test build
-	@echo "注意：app target 没有 test action，app 侧逻辑走 symbols-test 这类壳包。"
+	@echo "注意：app 没有单元测试 target，app 侧逻辑走 symbols-test 这类壳包，界面走 ui-test。"
 
 # ---------------------------------------------------------------- A8.4 UI 测试
 # KanpanUITests（本工程里唯一的 XCTest target，其余单测一律 swift-testing）。
 # 同一套用例在两台重点机型上各跑一遍，逐台记结果：make ui-test
-# 单台：make ui-test-one DEVICE="iPad mini (A17 Pro)"
+# 单台：make ui-test-one DEVICE="iPhone 17 Pro Max"
 UI_DEVICES := $(DEVICES)
 
 ui-test:
@@ -548,5 +582,8 @@ boot: devices
 shutdown:
 	-xcrun simctl shutdown all
 
+# 可再生产物的清单只有一份，在守门脚本里：各包 .build、.xcbuild*、DerivedData*（留着
+# DerivedData-archive）、cargo target、/tmp 构建目录（worktree 只清里面的产物）、Xcode 全局
+# DerivedData 与 SwiftPM 缓存。这里不再自己列一份，免得新加一个包就漏删。
 clean:
-	rm -rf DerivedData $(CORE)/.build $(DATA)/.build
+	@scripts/machine-guard.sh clean
