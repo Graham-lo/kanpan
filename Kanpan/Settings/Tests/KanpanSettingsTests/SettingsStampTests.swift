@@ -313,7 +313,9 @@ struct SettingsStampTests {
     next.barSpacing = 7
     #expect(Prefs.changedStampedFields(from: .defaults, to: next) == ["barSpacing"])
     #expect(Prefs.stampedFieldNames.isSuperset(of: Prefs.syncedFieldNames))
-    #expect(Prefs.syncedFieldNames.contains("subHeights"))
+    #expect(Prefs.syncedFieldNames.contains("subHeightOverrides"))
+    #expect(!Prefs.syncedFieldNames.contains("subHeights"))     // 2026-09-24 两端删掉
+    #expect(!Prefs.syncedFieldNames.contains("showDrawings"))
   }
 
   @Test("按字段挑回来：只有点名的那几项用本地的，别的原样用对方那份")

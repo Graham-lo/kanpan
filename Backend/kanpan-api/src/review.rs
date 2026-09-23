@@ -69,7 +69,8 @@ fn validate(d:&NativeDraft,now:i64)->Result<()> {
   let op=crate::sync::Operation{id:Uuid::nil(),collection:crate::sync::SETTINGS.into(),object_id:crate::sync::SETTINGS_OBJECT.into(),device_id:Uuid::nil(),base_revision:0,generation:0,timestamp:now,logical:0,action:"patch".into(),fields,import_batch:None};op.validate()?;
   // A snapshot is stored whole and never merged, so there is no receipt to report a dropped
   // field on: an unfamiliar key here is refused outright rather than silently kept.
-  if !op.unknown_fields().is_empty() {return Err(ApiError::bad("invalid_chart_snapshot"))}
+  // Names both ends retired are the exception: older builds still write them into every snapshot.
+  if op.unknown_fields().iter().any(|k|!crate::sync::retired_settings_field(k)) {return Err(ApiError::bad("invalid_chart_snapshot"))}
  }
  if let Some(encoded)=&d.drawing_snapshot {
   let bytes=STANDARD.decode(encoded).map_err(|_|ApiError::bad("invalid_drawing_snapshot"))?;

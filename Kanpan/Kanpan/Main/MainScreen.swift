@@ -1445,9 +1445,9 @@ struct MainScreen: View {
       symbol: market.symbol, interval: market.interval, endpoints: endpoints, policy: prefs.routePolicy)
   }
 
-  /// 副图高度（A6.4）：`Prefs.subHeights` 是档位，图要的是倍率。
+  /// 副图高度：`Prefs.scale(for:)` 给每个副图的倍率（拖过的用拖出来的，没拖过的用出厂值）。
   ///
-  /// 只报当前开着的那几个：`subHeights` 里会留着以前开过的指标的档位，全倒进去
+  /// 只报当前开着的那几个：`subHeightOverrides` 里会留着以前开过的指标的倍率，全倒进去
   /// 没坏处但也没用，而且每帧都要比一次字典，不如只带用得上的。
   private var subScale: [IndicatorID: Double] {
     var out: [IndicatorID: Double] = [:]

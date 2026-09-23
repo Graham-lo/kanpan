@@ -148,6 +148,10 @@ import KanpanAccount
       """)
     #expect(top.contains("rsiRange"), "`rsiRange` 是客户端合成出来发的，它是自己的字段")
     #expect(!top.contains("styleID"), "`styleID` 客户端早就不发了，替它说话等于提议把它删掉")
+    // 2026-09-24 两端删掉的两个键：云端老 body 里还躺着，客户端不替它们说话，
+    // 于是它们是「外来键」——原样留着、不会被差分成 null 推上去。
+    #expect(!top.contains("showDrawings"), "`showDrawings` 两端都删了，替它说话会把 null 推上去")
+    #expect(!owned.contains { $0.hasPrefix("subHeights/") || $0 == "subHeights" }, "`subHeights` 两端都删了")
     #expect(!top.contains("routePolicy"), "线路那两档 2026-09-19 起是本机字段，新客户端不发它")
     #expect(!top.contains("drawToolGroup"), "「绘图」面板没有分类标签了，新客户端不发它")
     #expect(!top.contains("compactValues"), "数额怎么缩写不再交给用户选，新客户端不发它")
@@ -156,7 +160,7 @@ import KanpanAccount
 
   /// 一份把每个指标都改过的设置，发出去的键一个不许落在表外。
   ///
-  /// `params` / `indicatorColors` / `hiddenOutputs` / `subHeights` / `subHeightOverrides`
+  /// `params` / `indicatorColors` / `hiddenOutputs` / `subHeightOverrides`
   /// 拍平之后是 `<字段>/<指标>` 乃至 `<字段>/<指标>/<输出序号>`：一份出厂设置只拍得出
   /// 其中几条，所以这儿按 `IndicatorID.allCases` 铺满了再比。
   @Test("每个指标的嵌套路径都在表里")
@@ -166,7 +170,6 @@ import KanpanAccount
       prefs.params[id] = [index + 1]
       prefs.hiddenOutputs[id] = [0]
       prefs.indicatorColors[id] = [0: Hex("#123456"), 20: Hex("#654321")]
-      prefs.subHeights[id] = .large
       prefs.subHeightOverrides[id] = 1.5
     }
     let owned = try #require(PersonalSyncCodec.ownedKeys["settings"])

@@ -98,8 +98,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
     "params"=>p.len()==2&&integers(v,20,1,400),
     "hiddenOutputs"=>p.len()==2&&integers(v,21,0,20),
     "indicatorColors"=>p.len()==3&&p[2].parse::<u8>().is_ok_and(|n|n<=20)&&color(v),
-    "subHeightOverrides"=>p.len()==2&&number(v,0.25,5.0),
-    "subHeights"=>p.len()==2&&v.as_str().is_some_and(|s|["small","medium","large"].contains(&s)),_=>false
+    "subHeightOverrides"=>p.len()==2&&number(v,0.25,5.0),_=>false
    }
   }
   return match path {
@@ -139,7 +138,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "favoritesGroup"=>string(v,128),
    // Capped at `Prefs.maxExpanded`.
    "favoritesExpanded"=>v.as_array().is_some_and(|a|a.len()<=500&&a.iter().all(|v|symbol(v)||v.as_str().is_some_and(|s|{let p:Vec<_>=s.split('/').collect();p.len()==3&&identity(p[0],p[1],p[2])}))),
-   "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"orderFlow"|"lastLine"|"sinceChange"|"showDrawings"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
+   "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"orderFlow"|"lastLine"|"sinceChange"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
     |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
   }

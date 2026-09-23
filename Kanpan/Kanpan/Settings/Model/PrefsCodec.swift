@@ -70,15 +70,17 @@ extension Prefs: Codable {
     // 这儿原来还有 `recordButtonX/Y`：「记」还浮在图上、能拖着摆的那阵子存的位置。
     // 现在「记」住在周期条上，没有位置可存了。老存档里那两个键读的时候认不出来，
     // 直接忽略（这份编解码是一个键一个键 `try?` 取的，多出来的键不会让整份存档解不开）。
+    // `showDrawings`（全局画线开关）和 `subHeights`（副图三档高度）同理：2026-09-24 两端删掉，
+    // 老存档、云端老 body 里还带着也无妨。
     case indicatorColors
     case ambientTheme
     case depth, orderFlow, priceMode, magnet, countdown, keepAwake, launchSnapshot, timeZone, changeBasis
-    case candleKind, gridChoice, bodyChoice, lastLine, showDrawings, sinceChange
+    case candleKind, gridChoice, bodyChoice, lastLine, sinceChange
     case viewAnchor, priceBias
     case dataDisplay, crossPrice, allowMainInversion, allowSubInversion
     case barSpacing, mainInverted, subInverted
     case adaptiveIndicators, portraitHeight, hiddenOutputs, rsiUpper, rsiLower
-    case overlays, subs, params, subHeights, subHeightOverrides
+    case overlays, subs, params, subHeightOverrides
     case apiHost, streamHost, routePolicy
     // 他在各页上摆出来的样子。全是加法加进来的新键，老存档里没有就退默认值。
     case favoritesSort, favoritesAscending, favoritesAmount, favoritesSparkline, favoritesExpanded
@@ -113,7 +115,6 @@ extension Prefs: Codable {
     try c.encode(gridChoice.rawValue, forKey: .gridChoice)
     try c.encode(bodyChoice.rawValue, forKey: .bodyChoice)
     try c.encode(lastLine, forKey: .lastLine)
-    try c.encode(showDrawings, forKey: .showDrawings)
     try c.encode(sinceChange, forKey: .sinceChange)
     try c.encode(viewAnchor.rawValue, forKey: .viewAnchor)
     try c.encode(priceBias.rawValue, forKey: .priceBias)
@@ -136,8 +137,6 @@ extension Prefs: Codable {
     try c.encode(Dictionary(uniqueKeysWithValues: params.map { ($0.key.rawValue, $0.value) }),
                  forKey: .params)
     try c.encode(Dictionary(uniqueKeysWithValues: subHeightOverrides.map { ($0.key.rawValue, $0.value) }), forKey: .subHeightOverrides)
-    try c.encode(Dictionary(uniqueKeysWithValues: subHeights.map { ($0.key.rawValue, $0.value.rawValue) }),
-                 forKey: .subHeights)
     try c.encode(apiHost, forKey: .apiHost)
     try c.encode(streamHost, forKey: .streamHost)
     try c.encode(routePolicy.rawValue, forKey: .routePolicy)
@@ -226,7 +225,6 @@ extension Prefs: Codable {
     // 旧存档里的 `"style"`（「跟随风格」那一档）读成实心：风格表只剩一套，两者等价。
     if let raw = str(.bodyChoice) { bodyChoice = raw == "style" ? .solid : BodyChoice(rawValue: raw) ?? bodyChoice }
     if let v = bool(.lastLine) { lastLine = v }
-    if let v = bool(.showDrawings) { showDrawings = v }
     if let v = bool(.sinceChange) { sinceChange = v }
     if let raw = str(.viewAnchor), let v = ViewAnchor(rawValue: raw) { viewAnchor = v }
     if let raw = str(.priceBias), let v = PriceBias(rawValue: raw) { priceBias = v }
@@ -278,14 +276,6 @@ extension Prefs: Codable {
           subHeightOverrides[id] = min(2, max(0.5, scale))
         }
       }
-    }
-    if let raw = (try? c.decodeIfPresent([String: String].self, forKey: .subHeights)) ?? nil {
-      var out: [IndicatorID: SubPaneHeight] = [:]
-      for (k, v) in raw {
-        guard let id = IndicatorID(rawValue: k), let h = SubPaneHeight(rawValue: v) else { continue }
-        out[id] = h
-      }
-      subHeights = out
     }
 
     // 认不出的值（比如旧版本的「自动」）退回直连。

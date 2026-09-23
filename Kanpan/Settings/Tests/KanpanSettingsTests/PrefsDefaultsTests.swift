@@ -35,7 +35,7 @@ struct PrefsDefaultsTests {
     #expect(p.viewAnchor == .right)       // 复位到最新时最新一根靠右——现状
     #expect(p.priceBias == .center)       // 蜡烛在主图区里居中——现状
     #expect(p.lastLine)                   // 最新价横线 + 右轴胶囊，默认开
-    #expect(p.showDrawings)               // 画好的线默认看得见
+    #expect(p.chartOptions.drawings)      // 画好的线看得见；显隐只按品种管，没有全局开关
     #expect(p.sinceChange == false)       // 十字线上多报一段涨跌幅，默认不报
     // 根宽出厂就是图表底座那个常数：没缩放过的人看到的第一屏和以前一模一样。
     #expect(p.barSpacing == AICoinBehavior.initialSpacing)
@@ -52,7 +52,6 @@ struct PrefsDefaultsTests {
     p.gridChoice = .off
     p.bodyChoice = .hollowUp
     p.lastLine = false
-    p.showDrawings = false
     p.sinceChange = true
     p.viewAnchor = .left
     p.priceBias = .up
@@ -63,7 +62,7 @@ struct PrefsDefaultsTests {
     #expect(o.grid == .off)
     #expect(o.body == .hollowUp)
     #expect(o.lastLine == false)
-    #expect(o.drawings)                  // 全局「显示画线」已撤，存档里是 false 也照样画
+    #expect(o.drawings)                  // 全局「显示画线」已撤，恒为 true
     #expect(o.sinceChange)
     #expect(o.anchor == .left)
     #expect(o.bias == .up)
@@ -81,10 +80,10 @@ struct PrefsDefaultsTests {
     #expect(p.params(for: .macd) == [10, 30, 9])
   }
 
-  @Test("副图高度默认「中」")
+  @Test("副图高度默认等高：谁都没拖过，每一格都是出厂倍率")
   func 默认高度() {
     for id in IndicatorID.allCases {
-      #expect(Prefs.defaults.height(for: id) == .medium)
+      #expect(Prefs.defaults.scale(for: id) == Prefs.defaultSubScale)
     }
   }
 }

@@ -69,32 +69,3 @@ enum ThemeChoice: String, Sendable, Codable, CaseIterable, Hashable {
   static let fallback: ThemeChoice = .system
 }
 
-/// 副图高度三档（任务书 A6.4 / §10.6「每个副图有 小 / 中 / 大 三档高度」）。
-///
-/// 原型没有这一项——它的副图高度完全由风格表的 `subH` 定死。所以这里只加一个
-/// **倍率**：中档就是风格给的那个数，小 / 大在它上下各让一档，风格换了跟着换。
-/// 下限 44pt 来自 §10.6「最小 44pt」。
-enum SubPaneHeight: String, Sendable, Codable, CaseIterable, Hashable {
-  case small, medium, large
-
-  var display: String {
-    switch self {
-    case .small: "小"
-    case .medium: "中"
-    case .large: "大"
-    }
-  }
-
-  var scale: Double {
-    switch self {
-    case .small: 0.75
-    case .medium: 1.0
-    case .large: 1.3
-    }
-  }
-
-  /// 这一档实际多高；`base` 是副图的基准高度。
-  func points(base: Double) -> Double { max(44, (base * scale).rounded()) }
-
-  static let fallback: SubPaneHeight = .medium
-}

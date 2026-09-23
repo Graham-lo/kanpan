@@ -85,7 +85,7 @@ enum PrefsFieldPlan {
     "interval": .synced, "quickIntervals": .synced,
     "theme": .synced, "skin": .synced, "ambientTheme": .synced, "redUp": .synced,
     "priceMode": .synced, "magnet": .synced, "countdown": .synced, "depth": .synced, "orderFlow": .synced, "candleKind": .synced,
-    "gridChoice": .synced, "bodyChoice": .synced, "lastLine": .synced, "showDrawings": .synced,
+    "gridChoice": .synced, "bodyChoice": .synced, "lastLine": .synced,
     "sinceChange": .synced, "viewAnchor": .synced, "priceBias": .synced,
     "dataDisplay": .synced, "crossPrice": .synced,
     "allowMainInversion": .synced, "allowSubInversion": .synced,
@@ -94,7 +94,7 @@ enum PrefsFieldPlan {
     "indicatorColors": .synced, "hiddenOutputs": .synced,
     "keepAwake": .synced, "timeZone": .synced, "changeBasis": .synced,
     "overlays": .synced, "subs": .synced, "params": .synced,
-    "subHeights": .synced, "subHeightOverrides": .synced,
+    "subHeightOverrides": .synced,
     // 他在各页上摆出来的样子（见 `Prefs` 末尾那一节）。
     "favoritesSort": .synced, "favoritesAscending": .synced, "favoritesAmount": .synced,
     "favoritesSparkline": .synced, "favoritesExpanded": .synced, "favoritesGroup": .synced,

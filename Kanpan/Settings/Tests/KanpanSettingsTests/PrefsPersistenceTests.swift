@@ -35,14 +35,13 @@ struct PrefsPersistenceTests {
     // 拿它当「改过的样子」就永远读不回来。换成同样在副图的动向指标。
     p.subs = [.dmi, .vol, .kdj]
     p.params = [.ma: [10, 30, 120], .macd: [8, 21, 5], .dmi: [7]]
-    p.subHeights = [.dmi: .large, .vol: .small]
+    p.subHeightOverrides = [.dmi: 1.3, .vol: 0.6]
     p.apiHost = "fapi.example.com"
     p.routePolicy = .gateway
     p.candleKind = .heikin
     p.gridChoice = .off
     p.bodyChoice = .hollowUp
     p.lastLine = false
-    p.showDrawings = false
     p.sinceChange = true
     p.viewAnchor = .left
     p.priceBias = .up
@@ -81,7 +80,6 @@ struct PrefsPersistenceTests {
     #expect(back.gridChoice == .off)
     #expect(back.bodyChoice == .hollowUp)
     #expect(back.lastLine == false)
-    #expect(back.showDrawings == false)
     #expect(back.sinceChange)
     #expect(back.viewAnchor == .left)
     #expect(back.priceBias == .up)
@@ -274,14 +272,17 @@ struct PrefsPersistenceTests {
   func 可读的JSON() throws {
     var p = Prefs.defaults
     p.params = [.ma: [7, 25, 99]]
-    p.subHeights = [.macd: .large]
+    p.subHeightOverrides = [.macd: 1.25]
     let obj = try #require(
       try JSONSerialization.jsonObject(with: PrefsCodec.encode(p)) as? [String: Any])
     #expect(obj["v"] as? Int == 2)
     #expect(obj["interval"] as? String == "1h")
     #expect(obj["subs"] as? [String] == ["VOL", "OI", "MACD"])
     #expect((obj["params"] as? [String: [Int]])?["MA"] == [7, 25, 99])
-    #expect((obj["subHeights"] as? [String: String])?["MACD"] == "large")
+    #expect((obj["subHeightOverrides"] as? [String: Double])?["MACD"] == 1.25)
+    // 两端删掉的两个键不再写出去（2026-09-24）。
+    #expect(obj["showDrawings"] == nil)
+    #expect(obj["subHeights"] == nil)
     // 「图表」那几项也是 rawValue，不是枚举的序号
     #expect(obj["candleKind"] as? String == "candle")
     #expect(obj["gridChoice"] as? String == "off")

@@ -43,9 +43,9 @@ public struct Layout: Sendable, Equatable {
     return x >= b.x - pad && x <= b.x + b.w + pad && y >= b.y - pad && y <= b.y + b.h + pad
   }
 
-  /// - Parameter subScale: 每个副图各自的高度倍率（A6.4 `Prefs.subHeights`）。
-  ///   缺省 / 查不到就是 1.0 = 风格表原值 = 现状。三档的具体倍率定义在 app 层
-  ///   （`SubPaneHeight.scale`），Core 只收倍率，不在这儿再定义一份，不然两处会漂。
+  /// - Parameter subScale: 每个副图各自的高度倍率（app 层 `Prefs.scale(for:)`）。
+  ///   缺省 / 查不到就是 1.0 = 风格表原值。倍率怎么定（拖出来的、出厂的）归 app 层，
+  ///   Core 只收倍率，不在这儿再定义一份，不然两处会漂。
   public init(
     width W: Double, height H: Double, subs: [IndicatorID],
     subScale: [IndicatorID: Double] = [:], mainWeight: Double = 3, axisWidth: Double = AICoinBehavior.axisWidth

@@ -57,13 +57,6 @@ struct Prefs: Sendable, Equatable {
   var bodyChoice: BodyChoice = .solid
   /// 最新价横线 + 右轴胶囊。默认开。
   var lastLine: Bool = true
-  /// 用户画的线显不显示（数据不删）。**2026-09-23 起只有存档、没有入口，也不再读。**
-  ///
-  /// 「图表设置」里原来有一行「显示画线」，画线栏上又有一颗「全部隐藏」——同一件事两个
-  /// 开关，一个管全局、一个管这只品种，关了全局那颗之后画线栏上怎么点都看不见线。
-  /// 现在只留画线页「更多」里那一个「全部隐藏」（按品种）。字段和编解码键留着：
-  /// 老存档和云端都带着它，同步白名单两端也都有这一项。
-  var showDrawings: Bool = true
   /// 十字线打开时，多报一段「选中那根到最新价」的涨跌幅。默认关。
   var sinceChange: Bool = false
   /// 复位到最新时，最新一根落在横向哪儿。默认靠右（现状）。
@@ -129,14 +122,11 @@ struct Prefs: Sendable, Equatable {
   var subs: [IndicatorID] = AICoinBehavior.subpanels
   /// 每个指标的参数。没记的取 `IndicatorID.defaultParams`。
   var params: [IndicatorID: [Int]] = [.ma: AICoinBehavior.maPeriods, .ema: [12, 144, 169, 200], .vol: AICoinBehavior.volumePeriods, .macd: AICoinBehavior.macdPeriods]
-  /// 每个副图的高度档（A6.4，高 / 中 / 低）。**和 `portraitHeight` 一样只有读端。**
+  /// 拖分隔线拖出来的副图高度倍率，按面板身份记。这是**唯一**的副图高度来源。
   ///
-  /// 读端在 `scale(for:)` 和 `height(for:)`；写端一个也没有——副图高度早就改成了
-  /// 直接拖分隔线，走的是下面那份 `subHeightOverrides`，档位式的这一份被架空了。
-  /// 同样按「清死重 + 留注释」处理：字段和 codec 键留着（老存档带着它，版本号不许动），
-  /// 但别再往这儿加入口，高度统一走拖拽。
-  var subHeights: [IndicatorID: SubPaneHeight] = [:]
-  /// 拖分隔线拖出来的副图高度倍率，按面板身份记。这是**唯一**活着的高度写入端。
+  /// 原来还有一份档位式的 `subHeights`（A6.4，小 / 中 / 大），改成拖分隔线之后就没有
+  /// 写端了；2026-09-24 连字段、`SubPaneHeight` 和同步白名单两端一起删了（线上 66 份
+  /// 设置里它全是空的）。老存档里那个键解码时认不出来，直接忽略。
   ///
   /// 横竖屏共用这一份，是有意的：这里存的是**权重**（占内容高度的比例），不是绝对
   /// 点数——`Layout` 拿它和主图权重一起分配当前视口，所以同一个值在两种朝向下给出
@@ -265,7 +255,10 @@ struct Prefs: Sendable, Equatable {
     o.grid = gridChoice
     o.body = bodyChoice
     o.lastLine = lastLine
-    o.drawings = true                // 见 `showDrawings`：全局开关已撤，线的显隐只按品种管
+    // 画线显隐只按品种管（画线页「更多」里的「全部隐藏」）。原来还有一个全局的
+    // `showDrawings`，和那颗按品种的开关打架——关了全局那颗，画线栏上怎么点都看不见线；
+    // 2026-09-23 撤了入口，2026-09-24 连字段带同步白名单两端一起删了。
+    o.drawings = true
     o.countdown = countdown          // 「本根倒计时」早就有了，这里接的是同一个字段
     o.sinceChange = sinceChange
     o.anchor = viewAnchor
@@ -276,7 +269,7 @@ struct Prefs: Sendable, Equatable {
     o.allowSubInversion = allowSubInversion
     o.adaptiveIndicators = adaptiveIndicators
     o.portraitHeight = portraitHeight
-    // 副图高度（`subHeights`）**不**走这里：它改的是分区怎么切，归 `Layout`，
+    // 副图高度（`subHeightOverrides`）**不**走这里：它改的是分区怎么切，归 `Layout`，
     // 由主界面另行接线。放进来会变成两条路各说各话。
     return o
   }
@@ -288,7 +281,7 @@ struct Prefs: Sendable, Equatable {
 
   /// 这个副图实际要多高（倍率，1.0 = 风格表原值）。
   ///
-  /// 三档和拖拽只在用户**真的调过**的时候才算数；没调过的一律走同一个出厂倍率
+  /// 拖拽只在用户**真的拖过**的时候才算数；没拖过的一律走同一个出厂倍率
   /// `defaultSubScale`，也就是三个副图**等高**。
   ///
   /// 以前这里给成交量满格、其余只给 0.62，理由是「成交量靠柱子的高度差读，压扁了
@@ -301,7 +294,6 @@ struct Prefs: Sendable, Equatable {
   /// 副图各 79.1pt，主图只让出半个点。省高度要省在别处，不是让成交量一家独大。
   func scale(for id: IndicatorID) -> Double {
     if let manual = subHeightOverrides[id] { return manual }
-    if let picked = subHeights[id] { return picked.scale }
     return Prefs.defaultSubScale
   }
 
@@ -310,10 +302,6 @@ struct Prefs: Sendable, Equatable {
   /// 0.75 是照「主图不动」反推的：主图权重 3、三个副图各 w，
   /// 想让每格 ≈79pt 而主图留在 ≈317pt，解出来正好 w = 0.75。
   static let defaultSubScale: Double = 0.75
-
-  /// 这个副图的高度档。用户没选过就是「中」——注意这只是档位的缺省，
-  /// 实际高度看 `scale(for:)`（没选过的走 `defaultSubScale`，不是「中」的 1.0）。
-  func height(for id: IndicatorID) -> SubPaneHeight { subHeights[id] ?? .medium }
 
   /// 某个指标是不是开着的。
   func isOn(_ id: IndicatorID) -> Bool {

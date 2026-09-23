@@ -209,7 +209,7 @@ enum SettingsCacheDoctor {
 ///    反过来 ACK 回来一个 `rsiRange`，要清的是**两个**本地字段。
 /// 2. **嵌套字段被 `PersonalSyncCodec.flatten` 拍成了带斜杠的路径。** 本地一个
 ///    `params` 字段，上线之后是 `params/MA`、`params/EMA`、`params/VOL`… 一串；
-///    `indicatorColors` 更深一层，是 `indicatorColors/MACD/0`。`subHeights`、
+///    `indicatorColors` 更深一层，是 `indicatorColors/MACD/0`。
 ///    `subHeightOverrides`、`hiddenOutputs` 同理。服务端 ACK 回来的、
 ///    `droppedFields` 里报回来的，全是这些**路径**，不是顶层字段名。
 ///
@@ -217,7 +217,7 @@ enum SettingsCacheDoctor {
 /// 某个账号的 `settings-stamp.json` 里 `dirty` 一直挂着 `subHeightOverrides`，
 /// 而云端那份 `body` 明明已经收下了 `subHeightOverrides/MACD`）。后果有两层：
 /// 一是 `PrefsStore.applySynced` 里 `Prefs.keeping(dirtyFields, …)` 会让云端的
-/// `params` / `indicatorColors` / `subHeightOverrides` / `hiddenOutputs` / `subHeights`
+/// `params` / `indicatorColors` / `subHeightOverrides` / `hiddenOutputs`（当时还有 `subHeights`）
 /// **永远打不赢本地**——换台设备改的指标参数、指标颜色、副图高度，另一台再也收不到，
 /// 这几类设置事实上变成单向同步；二是 `AppAccountBridge.applyPending` 里
 /// `if prefs.stamp.isDirty { captureSettings() }` 永远为真，每轮同步都白推一整份 settings。

@@ -99,16 +99,13 @@ struct IndicatorToggleTests {
     #expect(p.subs == [.macd, .rsi, .kdj])
   }
 
-  @Test("副图高度三档")
+  @Test("副图高度：拖过的用拖出来的倍率，没拖过的走出厂倍率")
   func 高度() {
     var p = Prefs.defaults
-    #expect(p.height(for: .macd) == .medium)
-    p.subHeights[.macd] = .large
-    #expect(p.height(for: .macd) == .large)
-    #expect(p.height(for: .rsi) == .medium)
-    #expect(SubPaneHeight.small.points(base: 84) < SubPaneHeight.medium.points(base: 84))
-    #expect(SubPaneHeight.medium.points(base: 84) < SubPaneHeight.large.points(base: 84))
-    #expect(SubPaneHeight.small.points(base: 10) >= 44)   // 再小也不能小到看不见
+    #expect(p.scale(for: .macd) == Prefs.defaultSubScale)
+    p.subHeightOverrides[.macd] = 1.3
+    #expect(p.scale(for: .macd) == 1.3)
+    #expect(p.scale(for: .rsi) == Prefs.defaultSubScale)   // 只动拖过的那一格
   }
 
   @Test("改参数只影响那一个指标")

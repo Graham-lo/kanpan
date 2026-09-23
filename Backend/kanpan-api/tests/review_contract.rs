@@ -81,3 +81,21 @@ async fn review_contract_reject_values() {
  }
  w.close().await;
 }
+
+/// 两端已删掉的 `showDrawings` / `subHeights`（2026-09-24）：老版本每一份快照都编着
+/// `showDrawings`，把它们当「白名单外」拒掉，就等于老版本一条复盘都存不进来。
+/// 放行、原样保存；真正的白名单外字段照旧拒（见上一条的 `apiHost`）。
+#[tokio::test]
+async fn review_contract_accepts_retired_settings_names() {
+ let w=boot().await;let a=signup(&w.app,"retired").await;
+ let retired=STANDARD.encode(br#"{"version":1,"fields":{"theme":"moss","showDrawings":true,"subHeights/MACD":"large"}}"#);
+ let mut old=draft(&Spec{interval:"1m",..Spec::default()});old["chartSettings"]=json!(retired);
+ let (status,v)=request(&w.app,"/v1/native-review/records","POST",Some(&a.token),Some(Uuid::new_v4()),old).await;
+ assert_eq!(status,200,"老版本的快照带着退役字段也要能建记录：{v}");
+ assert_eq!(v["data"]["record"]["draft"]["chartSettings"],json!(retired),"快照原样保存");
+ let mixed=STANDARD.encode(br#"{"version":1,"fields":{"showDrawings":true,"apiHost":"https://private.example"}}"#);
+ let mut bad=draft(&Spec{interval:"1m",..Spec::default()});bad["chartSettings"]=json!(mixed);
+ let (status,v)=request(&w.app,"/v1/native-review/records","POST",Some(&a.token),Some(Uuid::new_v4()),bad).await;
+ assert_eq!(status,400,"退役字段不是夹带私货的通行证：{v}");assert_eq!(v["error"]["code"],"invalid_chart_snapshot");
+ w.close().await;
+}

@@ -10,7 +10,7 @@ enum PersonalSyncCodec {
   /// 计字段，而脏标识做在 `PrefsStore` 那一层（包里，M1 抽 `PersonalStore` 时整块搬走），
   /// 包看不见 app 靶子里的这个文件。**一份清单，两处用**——别在这儿再抄一份。
   static var fields: Set<String> { Prefs.syncedFieldNames }
-  static let nested: Set<String> = ["params", "indicatorColors", "hiddenOutputs", "subHeights", "subHeightOverrides", "styles", "variants"]
+  static let nested: Set<String> = ["params", "indicatorColors", "hiddenOutputs", "subHeightOverrides", "styles", "variants"]
   static func flatten(_ value: [String: KanpanAccount.JSONValue]) -> [String: KanpanAccount.JSONValue] {
     var result: [String: KanpanAccount.JSONValue] = [:]
     for (key, value) in value {
@@ -260,7 +260,7 @@ enum PersonalSyncCodec {
 
   /// 每一个同步字段都填满了的一份设置。
   ///
-  /// 嵌套的那几摊（`params` / `indicatorColors` / `hiddenOutputs` / `subHeights` /
+  /// 嵌套的那几摊（`params` / `indicatorColors` / `hiddenOutputs` /
   /// `subHeightOverrides`）拍平之后是 `<字段>/<指标>` 甚至 `<字段>/<指标>/<输出序号>`，
   /// 一份出厂设置只拍得出其中几条，所以这儿按 `IndicatorID.allCases` × `0...maxOutputIndex`
   /// 全部铺满——铺不满的话，用户把某个指标的自定义颜色清掉时，那一条就成了「外来键」
@@ -275,7 +275,6 @@ enum PersonalSyncCodec {
       prefs.params[id] = prefs.params[id] ?? []
       prefs.hiddenOutputs[id] = []
       prefs.indicatorColors[id] = colors
-      prefs.subHeights[id] = .medium
       prefs.subHeightOverrides[id] = 1
     }
     return prefs

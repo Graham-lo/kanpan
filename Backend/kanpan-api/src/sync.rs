@@ -43,6 +43,20 @@ pub const COLLECTIONS:[&str;6]=[SETTINGS,DRAWING_PREFERENCES,DRAWINGS,FAVORITES,
 /// `settings` 集合里那一条设置对象的 id（客户端 `PersonalSyncCodec` 固定写 `chart`）。
 pub const SETTINGS_OBJECT:&str="chart";
 fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::bad("invalid_collection"))}else{Ok(())}}
+/// Settings names that used to be on the wire and were deleted from both ends (2026-09-24:
+/// `showDrawings` had no switch left and nobody read it; `subHeights` had no writer since pane
+/// heights became drag-to-resize `subHeightOverrides`). Production had `showDrawings:true` on
+/// every settings object and `subHeights` empty on all of them, so nothing is lost.
+///
+/// They are **not** in `SETTINGS_FIELDS` any more: a sync push from an older build still
+/// carrying them has them dropped and reported in `droppedFields`, like any unknown name. The
+/// one place that refuses unknown names outright is a review chart snapshot (`review::validate`),
+/// and every older build encodes `showDrawings` into every snapshot — so the snapshot check lets
+/// these through instead of 400-ing every review an older build tries to save. Readers ignore
+/// them: the client only applies names it still declares.
+pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights"];
+/// First path segment is a retired settings name (`subHeights/MACD` counts).
+pub fn retired_settings_field(path:&str)->bool {RETIRED_SETTINGS_FIELDS.contains(&path.split('/').next().unwrap_or_default())}
 // One enumerable allowlist per collection, mirroring what iOS actually sends.
 //
 // `settings` is not a hand-copy any more: it must equal, name for name, the `wireKeys` array
@@ -60,9 +74,9 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 // A slice rather than `[&str;N]`: adding a field should not also mean editing a length.
 pub const SETTINGS_FIELDS:&[&str]=&[
  "compareSymbols",
- "overlays","subs","subHeights","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange",
+ "overlays","subs","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange",
  "portraitHeight","quickIntervals","theme","skin","ambientTheme","styleID","redUp","priceMode","timeZone",
- "magnet","countdown","depth","orderFlow","lastLine","sinceChange","showDrawings","candleKind","gridChoice","bodyChoice",
+ "magnet","countdown","depth","orderFlow","lastLine","sinceChange","candleKind","gridChoice","bodyChoice",
  "viewAnchor","priceBias","dataDisplay","crossPrice","allowMainInversion","allowSubInversion",
  "adaptiveIndicators","compactValues","changeBasis","barSpacing","mainInverted","subInverted","interval",
  "keepAwake","routePolicy",
@@ -546,5 +560,19 @@ mod tests {
   let mut named=operation.unknown_fields();named.sort();
   assert_eq!(named,vec!["moodRing".to_string(),"telepathy".to_string()]);
   assert!(op("settings",&[("barSpacing",json!(9.5))]).unknown_fields().is_empty());
+ }
+ /// 两端删掉的 `showDrawings` / `subHeights`：老版本推上来照旧只丢字段、不丢操作，
+ /// 回执里点名；它们也不许再混回白名单（不然就是没删干净）。
+ #[test] fn retired_settings_names_are_dropped_not_refused() {
+  for name in RETIRED_SETTINGS_FIELDS {assert!(!SETTINGS_FIELDS.contains(name),"{name} 已退役，不该还在白名单里")}
+  let operation=op("settings",&[("showDrawings",json!(true)),("subHeights/MACD",json!("large")),("barSpacing",json!(9.5))]);
+  assert!(operation.validate().is_ok(),"老版本带着退役字段推上来不能整条 400");
+  let mut named=operation.unknown_fields();named.sort();
+  assert_eq!(named,vec!["showDrawings".to_string(),"subHeights/MACD".to_string()]);
+  assert!(named.iter().all(|k|retired_settings_field(k)));
+  assert!(!retired_settings_field("subHeightOverrides/MACD")&&!retired_settings_field("telepathy"));
+  let object=merge(blank("settings","chart"),&operation,1_800_000_000_000).unwrap();
+  assert_eq!(object.body["barSpacing"],json!(9.5));
+  assert!(!object.body.contains_key("showDrawings")&&!object.body.contains_key("subHeights"));
  }
 }

@@ -64,11 +64,10 @@ struct PrefsToleranceTests {
     #expect(decode(#"{"bodyChoice":"style"}"#).bodyChoice == .solid)
   }
 
-  @Test("「图表」的三个开关：类型不对退回默认")
+  @Test("「图表」的开关：类型不对退回默认")
   func 脏图表开关() {
-    let p = decode(#"{"lastLine":"开","showDrawings":1,"sinceChange":[true]}"#)
+    let p = decode(#"{"lastLine":"开","sinceChange":[true]}"#)
     #expect(p.lastLine == Prefs.defaults.lastLine)
-    #expect(p.showDrawings == Prefs.defaults.showDrawings)
     #expect(p.sinceChange == Prefs.defaults.sinceChange)
   }
 
@@ -102,11 +101,18 @@ struct PrefsToleranceTests {
     #expect(p.params(for: .rsi) == IndicatorID.rsi.defaultParams)
   }
 
-  @Test("副图高度：认不出的档丢掉")
-  func 脏高度() {
-    let p = decode(#"{"subHeights":{"MACD":"huge","RSI":"large","超级线":"small"}}"#)
-    #expect(p.height(for: .macd) == .medium)   // 认不出 → 落回「中」
-    #expect(p.height(for: .rsi) == .large)
+  /// 2026-09-24 两端删掉的 `showDrawings`（全局画线开关）和 `subHeights`（副图三档高度）：
+  /// 老存档里还带着，读的时候认不出来、直接忽略，别的字段照常读回来。
+  @Test("已删掉的旧键：老存档带着也不碍事")
+  func 已删旧键() {
+    let p = decode(#"{"showDrawings":false,"subHeights":{"MACD":"large"},"lastLine":false,"subHeightOverrides":{"MACD":1.2}}"#)
+    #expect(p.lastLine == false)
+    #expect(p.subHeightOverrides[.macd] == 1.2)
+    #expect(p.scale(for: .macd) == 1.2)
+    #expect(p.scale(for: .rsi) == Prefs.defaultSubScale)   // 老的「大」档不再生效
+    #expect(p.chartOptions.drawings)                      // 老的全局「不显示」不再生效
+    let back = try? JSONSerialization.jsonObject(with: PrefsCodec.encode(p)) as? [String: Any]
+    #expect(back?["showDrawings"] == nil && back?["subHeights"] == nil)   // 存回去就不带了
   }
 
   @Test("常用行：去重、认不出的丢掉、超过 6 档按从短到长截断、空数组不生效")

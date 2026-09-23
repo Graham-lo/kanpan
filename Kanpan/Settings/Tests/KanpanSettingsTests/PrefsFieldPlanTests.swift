@@ -402,7 +402,7 @@ enum SettingsFieldContract {
       wireOnlyKeys: PrefsFieldPlan.wireOnlyKeys,
       indicatorIDsNote: "`IndicatorID` 的全部 rawValue，顺序就是枚举的顺序：主图那几种在前、副图那几种在后。"
         + "服务端 sync_validation 的 OVERLAY_INDICATORS ++ SUB_INDICATORS 必须逐项等于它——"
-        + "`params` / `hiddenOutputs` / `indicatorColors` / `subHeights` 这些带指标名的路径，"
+        + "`params` / `hiddenOutputs` / `indicatorColors` / `subHeightOverrides` 这些带指标名的路径，"
         + "第二段只认这份词表，不在表里的整条操作 400。",
       indicatorIDs: IndicatorID.allCases.map(\.rawValue),
       overlayIndicatorIDsNote: "画在主图上的那几种（`IndicatorID.placement == .main`）。"
