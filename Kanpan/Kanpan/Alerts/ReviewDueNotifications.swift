@@ -42,17 +42,6 @@ enum ReviewDueNotifications {
     }
   }
 
-  /// 全撤。退登 / 换号时叫——别人的待办不该在这台机器上继续响。
-  static func cancelAll() {
-    Task { @MainActor in
-      let center = UNUserNotificationCenter.current()
-      let mine = await center.pendingNotificationRequests()
-        .map(\.identifier).filter { $0.hasPrefix(prefix) }
-      guard !mine.isEmpty else { return }
-      center.removePendingNotificationRequests(withIdentifiers: mine)
-    }
-  }
-
   private static func schedule(_ record: ReviewRecord, on center: UNUserNotificationCenter) {
     let date = Date(timeIntervalSince1970: Double(record.draft.rule.expires) / 1000)
     guard date > Date() else { return }

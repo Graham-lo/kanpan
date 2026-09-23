@@ -419,8 +419,8 @@ import ReviewUI
       nextSync.flushNow()
     }
     let client: ScorebookClient?
-    if let user, let api = account.client {
-      client = ScorebookClient(connection: ReviewConnection(baseURL: api.baseURL, account: user.id.uuidString)) { path, method, body, key in
+    if user != nil, let api = account.client {
+      client = ScorebookClient(connection: ReviewConnection(baseURL: api.baseURL)) { path, method, body, key in
         try await api.data(path, method: method, body: body, key: key)
       }
     } else { client = nil }

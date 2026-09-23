@@ -7,8 +7,7 @@ import KanpanAccount
 
 public struct ReviewConnection: Codable, Sendable, Equatable {
   public var baseURL: URL
-  public var account: String
-  public init(baseURL: URL, account: String) { self.baseURL = baseURL; self.account = account }
+  public init(baseURL: URL) { self.baseURL = baseURL }
 }
 public enum ScorebookError: LocalizedError {
   /// `http(状态码, 机器可读错误码)`。第二个参数**不是**给人看的文案，而是服务端
@@ -261,46 +260,15 @@ private struct Envelope<T: Decodable>: Decodable { var data: T }
 public struct ScorebookClient: Sendable {
   public typealias Transport = @Sendable (String, String, Data?, UUID?) async throws -> Data
   public let connection: ReviewConnection
-  private let token: String
-  private var transport: Transport?
-  public init(connection: ReviewConnection, token: String) { self.connection = connection; self.token = token }
+  private let transport: Transport
+  /// 复盘只走注进来的 `Transport`（账号那条带 token 的通道）；自己拼 URLSession 的那条
+  /// 旁路已经没有调用方了（审查 3.1）。
   public init(connection: ReviewConnection, transport: @escaping Transport) {
-    self.connection = connection; self.token = ""; self.transport = transport
+    self.connection = connection; self.transport = transport
   }
   public func request<T: Decodable & Sendable>(_ path: String, method: String = "GET", body: Data? = nil, key: UUID? = nil, as: T.Type = T.self) async throws -> T {
-    if let transport {
-      let data = try await transport(path, method, body, key)
-      return try JSONDecoder().decode(Envelope<T>.self, from: data).data
-    }
-    guard ["https", "http"].contains(connection.baseURL.scheme), connection.baseURL.host != nil,
-      !token.isEmpty else { throw ScorebookError.invalidConnection }
-    guard let url = URL(string: path, relativeTo: connection.baseURL.appendingPathComponent("/"))?.absoluteURL,
-      url.host == connection.baseURL.host else { throw ScorebookError.invalidConnection }
-    var request = URLRequest(url: url, timeoutInterval: 45)
-    request.httpMethod = method; request.httpBody = body
-    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    if let key { request.setValue(key.uuidString, forHTTPHeaderField: "Idempotency-Key") }
-    let (data, response) = try await URLSession.shared.data(for: request)
-    guard let http = response as? HTTPURLResponse else { throw ScorebookError.invalidResponse }
-    guard (200..<300).contains(http.statusCode) else {
-      // No server internals or echoed request/credential bodies in product errors.
-      //
-      // 但**机器可读的那个码**要留下来：`record_revision_changed` 和
-      // `invalid_reflection` 都是 4xx，前者重新基准之后还能成，后者再发一万次也一样。
-      // 队列靠它决定「摘出来还是留着重试」（审查 B-02）。码只认 `[a-z0-9_]`，
-      // 别的形状当没有；文案一律由本地按码翻译。
-      throw ScorebookError.http(http.statusCode, Self.errorCode(data))
-    }
+    let data = try await transport(path, method, body, key)
     return try JSONDecoder().decode(Envelope<T>.self, from: data).data
-  }
-  /// 从 `{"error":{"code":"…"}}` 里取那个码，形状不对就当没有。
-  static func errorCode(_ data: Data) -> String {
-    struct Body: Decodable { struct Error: Decodable { var code: String? }; var error: Error? }
-    guard let code = (try? JSONDecoder().decode(Body.self, from: data))?.error?.code, !code.isEmpty,
-          code.count <= 64, code.allSatisfy({ $0.isASCII && ($0.isLowercase || $0.isNumber || $0 == "_") })
-    else { return "" }
-    return code
   }
   public func create(_ operation: ReviewOperation) async throws -> ReviewRecord {
     let response: NativeRecordResponse = try await request("v1/native-review/records", method: "POST", body: operation.body, key: operation.id)

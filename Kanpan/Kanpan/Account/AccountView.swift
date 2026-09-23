@@ -6,7 +6,7 @@ struct AccountView: View {
   @Bindable var feature: AccountFeature
   @Environment(\.panelTheme) private var theme
   @FocusState private var focused: Field?
-  private enum Field { case email, password, newPassword, code }
+  private enum Field { case email, password, newPassword }
   var body: some View {
     NavigationStack {
       Group {

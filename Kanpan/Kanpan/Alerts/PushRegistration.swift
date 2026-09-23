@@ -19,8 +19,6 @@ enum PushRegistration {
   private(set) static var token: String?
   /// 有人等着它。账号桥登记在这儿：token 来了就上传。
   static var onToken: ((String) -> Void)?
-  /// 上一次注册失败的原因。只进日志和诊断，不上屏（`kanpan-no-engineering-status-fields`）。
-  private(set) static var failure: String?
 
   /// 沙盒还是生产。Debug 包连沙盒 APNs，Release 连生产。
   static var environment: String {
@@ -54,12 +52,11 @@ enum PushRegistration {
   static func arrived(_ data: Data) {
     let hex = data.map { String(format: "%02x", $0) }.joined()
     guard !hex.isEmpty, hex != token else { return }
-    token = hex; failure = nil
+    token = hex
     onToken?(hex)
   }
 
   static func failed(_ error: any Error) {
     token = nil
-    failure = error.localizedDescription
   }
 }

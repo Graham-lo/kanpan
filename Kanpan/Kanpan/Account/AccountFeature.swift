@@ -10,17 +10,14 @@ import KanpanAccount
   var email = ""
   var password = ""
   var newPassword = ""
-  var code = ""
   var error: String?
   var busy = false
   /// 「导出我的数据」正在路上（`AccountExport.swift`）。
   var exporting = false
-  var resendAt = Date.distantPast
   var devices: [AccountSessionDevice] = []
   private(set) var user: AccountUser?
   private(set) var device = AccountDevice(name: UIDevice.current.model, kind: .current)
   private(set) var client: AccountClient?
-  private var challenge: AccountChallenge?
   private var attempt = UUID()
   /// 「这台机器上现在是谁」的版本号。主动登录、退出登录各抬一次。
   ///
@@ -87,8 +84,8 @@ import KanpanAccount
       onSynchronize?()
     } catch { self.error = error.localizedDescription }
   }
-  func open() { error = nil; password = ""; newPassword = ""; code = ""; page = user == nil ? .login : .account; presented = true }
-  func move(_ page: Page) { self.page = page; error = nil; password = ""; newPassword = ""; code = "" }
+  func open() { error = nil; password = ""; newPassword = ""; page = user == nil ? .login : .account; presented = true }
+  func move(_ page: Page) { self.page = page; error = nil; password = ""; newPassword = "" }
   func submit() {
     guard !busy else { return }
     guard let client else { error = AccountError.unavailable.localizedDescription; return }
@@ -129,7 +126,7 @@ import KanpanAccount
     let apply = try onPrepareAccount?(value.user)
     try await client.accept(value, device: device)
     apply?()
-    user = value.user; email = value.user.email; password = ""; newPassword = ""; code = ""
+    user = value.user; email = value.user.email; password = ""; newPassword = ""
     needsReauthentication = false; replacedNotice = nil
     page = .account; presented = false; onSynchronize?()
     Haptics.success()
@@ -175,7 +172,7 @@ import KanpanAccount
   }
   /// 把登录页摆到用户面前（会话失效之后那条路）。账号还在、档案还在，只是要再签一次名。
   func reauthenticate() {
-    error = nil; password = ""; newPassword = ""; code = ""
+    error = nil; password = ""; newPassword = ""
     email = user?.email ?? email
     page = .login; presented = true
   }

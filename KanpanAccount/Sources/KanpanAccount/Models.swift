@@ -74,10 +74,6 @@ public struct SavedAccount: Codable, Sendable {
   /// 云端只是同步通道，不是可用性依赖。
   public var replacedBy: DeviceKind?
 }
-public struct AccountChallenge: Codable, Sendable {
-  public var challengeId: UUID
-  public var resendAfter: Int
-}
 public struct AccountSessionDevice: Codable, Sendable, Identifiable {
   public var id: UUID
   public var name: String
@@ -104,7 +100,7 @@ public struct AccountSessionDevice: Codable, Sendable, Identifiable {
 public struct AccountDevices: Decodable, Sendable { public var devices: [AccountSessionDevice] }
 public struct AccountOK: Decodable, Sendable { public var ok: Bool }
 public enum AccountError: LocalizedError, Equatable {
-  case unavailable, invalidURL, invalidResponse, keychain, storage, cancelled, reauthenticationRequired, http(Int, String)
+  case unavailable, invalidURL, invalidResponse, keychain, storage, reauthenticationRequired, http(Int, String)
   /// 这条会话被**同一类设备**顶下去了（服务端 401 `session_replaced`）。
   ///
   /// 和 `reauthenticationRequired` 分开是因为它们在界面上是两句话：一句是「登录
@@ -118,16 +114,12 @@ public enum AccountError: LocalizedError, Equatable {
     case .invalidResponse: "暂时无法读取，请重试"
     case .keychain: "暂时无法保存登录状态，请重试"
     case .storage: "未能保存，请检查设备空间"
-    case .cancelled: "操作已取消"
     case .reauthenticationRequired: "登录已失效，请重新登录"
     case .sessionReplaced(let kind): "这个账号在另一台\(kind.label)上登录了"
     case .http(_, "invalid_username"): "用户名需 3–32 位字母、数字或下划线"
     case .http(_, "username_taken"): "用户名已被使用"
     case .http(_, "invalid_password"): "密码至少 8 位，需含字母和数字"
     case .http(_, "wrong_password"): "密码不对"
-    case .http(_, "invalid_code"): "验证码不对"
-    case .http(_, "code_expired"): "验证码已失效，请重新发送"
-    case .http(_, "email_unavailable"): "邮件暂时发不出，请稍后重试"
     case .http(_, "search_range_too_short"): "找相似至少框选 16 根 K 线"
     case .http(_, "search_busy"): "正在处理上一次查找，请稍后再试"
     case .http(_, "export_too_large"): "数据太多，暂时导不出来"

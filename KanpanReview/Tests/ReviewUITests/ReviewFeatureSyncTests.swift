@@ -153,7 +153,7 @@ final class ReviewFeatureSyncTests: XCTestCase {
   }
 
   @MainActor private func client(_ server: FakeReviewServer) -> ScorebookClient {
-    ScorebookClient(connection: ReviewConnection(baseURL: URL(string: "https://example.invalid")!, account: "r5"),
+    ScorebookClient(connection: ReviewConnection(baseURL: URL(string: "https://example.invalid")!),
                     transport: server.transport)
   }
 
