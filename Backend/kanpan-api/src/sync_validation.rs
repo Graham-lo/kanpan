@@ -138,7 +138,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "favoritesGroup"=>string(v,128),
    // Capped at `Prefs.maxExpanded`.
    "favoritesExpanded"=>v.as_array().is_some_and(|a|a.len()<=500&&a.iter().all(|v|symbol(v)||v.as_str().is_some_and(|s|{let p:Vec<_>=s.split('/').collect();p.len()==3&&identity(p[0],p[1],p[2])}))),
-   "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"lastLine"|"sinceChange"|"showDrawings"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
+   "ambientTheme"|"redUp"|"magnet"|"countdown"|"depth"|"orderFlow"|"lastLine"|"sinceChange"|"showDrawings"|"allowMainInversion"|"allowSubInversion"|"adaptiveIndicators"|"compactValues"
     |"mainInverted"|"keepAwake"|"favoritesAscending"|"favoritesAmount"|"favoritesSparkline"|"watchMoveAlert"=>v.is_boolean(),
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
   }

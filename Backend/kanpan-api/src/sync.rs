@@ -51,7 +51,7 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "compareSymbols",
  "overlays","subs","subHeights","subHeightOverrides","params","indicatorColors","hiddenOutputs","rsiRange",
  "portraitHeight","quickIntervals","theme","skin","ambientTheme","styleID","redUp","priceMode","timeZone",
- "magnet","countdown","depth","lastLine","sinceChange","showDrawings","candleKind","gridChoice","bodyChoice",
+ "magnet","countdown","depth","orderFlow","lastLine","sinceChange","showDrawings","candleKind","gridChoice","bodyChoice",
  "viewAnchor","priceBias","dataDisplay","crossPrice","allowMainInversion","allowSubInversion",
  "adaptiveIndicators","compactValues","changeBasis","barSpacing","mainInverted","subInverted","interval",
  "keepAwake","routePolicy",

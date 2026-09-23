@@ -46,6 +46,8 @@ struct Prefs: Sendable, Equatable {
   var magnet: Bool = false
   /// 本根倒计时，默认关；前台时钟独立更新。
   var depth: Bool = false
+  /// 主图指标「主力订单流」：簿里过门槛的大单画到 K 线上。默认关。
+  var orderFlow: Bool = false
   var countdown: Bool = false
   /// 蜡烛 / 平均K线（Heikin-Ashi）。默认蜡烛。
   var candleKind: CandleKind = .candle
