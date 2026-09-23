@@ -41,4 +41,16 @@ struct DrawingKindNameTests {
     #expect(alert("BTC 触到你画的直线").title == "BTC 触到你画的直线")
     #expect(Alert.title(symbol: "BTCUSDT", drawingKind: .extended) == "BTC 触到你画的两端延伸")
   }
+
+  @Test("别家带分隔的代号在提醒文案里写 BTC/USD，币安照旧只写基础币，都不露品种键")
+  func alertNamesUseTheDisplaySymbol() {
+    #expect(Alert.name(of: "binance/usd_m/BTCUSDT") == "BTC")
+    #expect(Alert.name(of: "BTCUSDT") == "BTC")
+    #expect(Alert.name(of: "coinbase/spot/BTC-USD") == "BTC/USD")
+    #expect(Alert.title(symbol: "coinbase/spot/BTC-USD", drawingKind: .extended) == "BTC/USD 触到你画的两端延伸")
+    #expect(Alert.priceTitle(symbol: "coinbase/spot/ETH-USD", target: 5000, current: 4000, label: "5,000")
+            == "ETH/USD 涨到 5,000")
+    #expect(Alert.priceTitle(symbol: "binance/usd_m/ETHUSDT", target: 3000, current: 4000, label: "3,000")
+            == "ETH 跌到 3,000")
+  }
 }

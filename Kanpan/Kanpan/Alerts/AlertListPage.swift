@@ -310,7 +310,8 @@ private struct AlertRow: View {
 
   private var title: String {
     if alert.kind != .drawing, !alert.title.isEmpty { return alert.title }
-    let base = KanpanCore.Alert.base(of: alert.symbol)
+    // 别家带分隔的代号写 `BTC/USD`，币安照旧只写基础币（见 `Alert.name(of:)`）。
+    let base = KanpanCore.Alert.name(of: alert.symbol)
     guard let name = alert.lineName else { return base }
     return base + " · " + name
   }

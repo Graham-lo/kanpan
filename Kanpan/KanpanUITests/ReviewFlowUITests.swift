@@ -108,7 +108,10 @@ final class ReviewFlowUITests: KanpanUICase {
   ///   单纯把手机转一下不该让记号消失。
   func testAMarkOnlyPaintsOnItsOwnSymbolAndIntervalAndLandsInTheBook() throws {
     XCTAssertTrue(waitForLiveChart(), "没等到行情：\(chartInfo())")
-    let symbol = try XCTUnwrap(chartInfo()["symbol"] as? String)
+    // 诊断里的 `symbol` 自多交易所阶段 1 起是完整品种键（`binance/usd_m/BTCUSDT`）；
+    // 搜索框里敲的是人打的代号，取最后一段。
+    let key = try XCTUnwrap(chartInfo()["symbol"] as? String)
+    let symbol = String(key.split(separator: "/").last ?? Substring(key))
     let interval = try XCTUnwrap(chartInfo()["interval"] as? String)
     expectMarks(0, "还没记就有记号")
 

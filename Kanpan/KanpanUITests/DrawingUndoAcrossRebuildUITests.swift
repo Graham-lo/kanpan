@@ -64,11 +64,22 @@ import XCTest
       .withOffset(CGVector(dx: frame.width * x, dy: mainH * scale * y))
   }
 
-  /// 画一笔趋势线。工具 chip 每画完一笔就退回选择态（「连续」默认是关的），所以每笔都重新点。
+  /// 画一笔趋势线。工具每画完一笔就退回选择态（「连续」默认是关的），所以每笔都重新拿。
+  ///
+  /// 画完的那条会自动选中，上排整排换成选中栏（`DrawingSelectionBar`，1e271ee），趋势线 chip
+  /// 这时不在栏上——走下排钉死的「全部工具」，跟用户画完一笔接着换工具走的是同一条路。
   private func drawTrend(from a: (Double, Double), to b: (Double, Double), expect count: Int) throws {
     let chip = app.buttons["draw.trend"]
-    XCTAssertTrue(chip.waitForExistence(timeout: 8), "画线栏上没有趋势线")
-    chip.tap()
+    if chip.waitForExistence(timeout: 3) {
+      chip.tap()
+    } else {
+      let tools = app.buttons["draw.tools"]
+      XCTAssertTrue(tools.waitForExistence(timeout: 8), "画线栏下排没有「全部工具」")
+      tools.tap()
+      let cell = app.buttons["draw.tool.trend"]
+      XCTAssertTrue(cell.waitForExistence(timeout: 8), "全部工具面板里没有趋势线")
+      cell.tap()
+    }
     try point(x: a.0, y: a.1).tap()
     try point(x: b.0, y: b.1).tap()
     XCTAssertTrue(wait(seconds: 8) { self.info()["drawingCount"] as? Int == count },

@@ -42,7 +42,7 @@ public enum WatchMove {
   /// 通知标题：「BTC 五分钟涨 1.82%」。服务端 `watch_move::title` 一字不差。
   public static func title(for event: Event) -> String {
     let verb = event.direction == .up ? "涨" : "跌"
-    return Alert.base(of: event.symbol) + " 五分钟" + verb + " " + String(format: "%.2f%%", abs(event.change) * 100)
+    return Alert.name(of: event.symbol) + " 五分钟" + verb + " " + String(format: "%.2f%%", abs(event.change) * 100)
   }
 
   /// 一只品种的 1 分钟收盘价（最近七根够用）。

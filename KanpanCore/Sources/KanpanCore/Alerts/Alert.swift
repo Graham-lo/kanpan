@@ -153,9 +153,9 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   /// 通知正文那句话。图上那条线用「触到你画的<线名>」，裸价格用「到了 <价>」。
   ///
   /// 代号只取 base（`BTCUSDT` → `BTC`）：通知栏一行字很短，后面那个 `USDT`
-  /// 对用户不传达任何东西。
+  /// 对用户不传达任何东西。别家带分隔的代号写全（`BTC/USD`），见 `name(of:)`。
   public static func title(symbol: String, drawingKind: Drawing.Kind) -> String {
-    "\(base(of: symbol)) \(titleMarker)\(drawingKind.title)"
+    "\(name(of: symbol)) \(titleMarker)\(drawingKind.title)"
   }
 
   /// 整句里「线名」前面那一截。列表要的是线名，通知要的是整句，两边共用这一个记号，
@@ -200,11 +200,19 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   public static func priceTitle(symbol: String, target: Double, current: Double?, label: String) -> String {
     let verb: String
     if let current, current.isFinite, current > 0 { verb = target >= current ? "涨到" : "跌到" } else { verb = "到了" }
-    return "\(base(of: symbol)) \(verb) \(label)"
+    return "\(name(of: symbol)) \(verb) \(label)"
   }
 
   public static func base(of symbol: String) -> String {
     SymbolInfo.placeholder(symbol: symbol).base
+  }
+
+  /// 提醒文案里写给人看的品种名。币安那种连写的代号只写基础币（`BTCUSDT` → `BTC`）；
+  /// 代号本身带分隔的（别家现货 `coinbase/spot/BTC-USD`）写成 `BTC/USD`——和自选行同一条
+  /// 规矩，只写「BTC」就和币安那只 BTC 永续的提醒分不出来了。绝不露完整品种 key。
+  public static func name(of symbol: String) -> String {
+    let id = InstrumentID(symbol)
+    return id.symbol.contains("-") ? id.display : base(of: symbol)
   }
 }
 

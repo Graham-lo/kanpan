@@ -482,11 +482,16 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
                   "点了主图没出十字线：mainH=\(chartInfo()["mainH"] ?? "?") "
                   + "panes=\(chartInfo()["panes"] ?? "?") trace=\(chartInfo()["gestureTrace"] ?? "?") "
                   + "画布=\(app.otherElements["chart.canvas"].frame)")
+    // 十字线活着时周期条整行让位给十字线的四颗动作、透明且点不着（ae1e7a4）；这时能换周期的
+    // 只有「看细节」——它正是「换了周期、原来指的那一根不在了」的那条路。
     let from = try XCTUnwrap(chartInfo()["interval"] as? String)
-    let to = from == "1h" ? "4h" : "1h"
-    app.tapIntervalChip(to)
-    XCTAssertTrue(waitUntil(timeout: Self.long) { self.chartInfo()["interval"] as? String == to },
-                  "点了 \(to) 图没换过去")
+    let detail = app.buttons["chart.detailZoom"]
+    expectExists(detail, Self.short, "十字线开着却没有「看细节」")
+    detail.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.long) {
+      (self.chartInfo()["interval"] as? String).map { $0 != from } ?? false
+    }, "点了「看细节」图没换周期")
+    let to = chartInfo()["interval"] as? String ?? "?"
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.chartInfo()["crosshair"] as? Bool == false },
                   "从 \(from) 换到 \(to)，十字线还钉在那儿")
   }
