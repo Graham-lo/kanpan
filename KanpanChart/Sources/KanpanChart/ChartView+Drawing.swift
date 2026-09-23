@@ -329,7 +329,7 @@ extension ChartView {
     guard var s = state, !s.drawings.isEmpty else { return }
     drawing.history.commit(before: s.drawings); s.drawings = []; state = s
     drawing.selected = nil; drawing.pending = nil; drawing.aim = nil; drawing.origin = nil
-    Haptics.warning()
+    ChartHaptics.warning()
     drawingChanged(items: [])
   }
   public func setAllDrawingsHidden(_ hidden: Bool) {
@@ -348,7 +348,7 @@ extension ChartView {
     s.drawings.removeAll { $0.id == sel }
     state = s
     drawing.selected = nil
-    Haptics.warning()
+    ChartHaptics.warning()
     drawingChanged(items: s.drawings)
   }
 
@@ -368,7 +368,7 @@ extension ChartView {
     guard price.isFinite, var s = state, s.series.count > 0 else { return false }
     let d = drawing
     guard s.drawings.count < DrawArchive.perSymbolLimit else {
-      Haptics.boundary()
+      ChartHaptics.boundary()
       d.onFull?()
       return false
     }
@@ -386,7 +386,7 @@ extension ChartView {
     d.history.commit(before: s.drawings)
     s.drawings.append(item)
     state = s
-    Haptics.magnetTick()
+    ChartHaptics.magnetTick()
     drawingChanged(items: s.drawings)
     d.commits += 1
     d.onCommitted?(item)
@@ -930,7 +930,7 @@ extension ChartView {
     let d = drawing
     let snap = drawPoint(at: q, axes: axes)
     d.aim = snap.point
-    if began, snap.index >= 0 { Haptics.magnetTick() }
+    if began, snap.index >= 0 { ChartHaptics.magnetTick() }
     refreshDrawingOverlay()
   }
 
@@ -948,7 +948,7 @@ extension ChartView {
     func commit(_ item: Drawing) {
       guard s.drawings.count < DrawArchive.perSymbolLimit else {
         // 满了就不画，也不偷偷挤掉最早那条——用户多半根本没看见它被挤掉。
-        Haptics.boundary()
+        ChartHaptics.boundary()
         d.pending = nil
         d.aim = nil
         d.onFull?()
@@ -965,7 +965,7 @@ extension ChartView {
       d.selected = d.continuous ? nil : item.id
       d.pending = nil
       d.aim = nil
-      if snap.index >= 0 { Haptics.magnetTick() }
+      if snap.index >= 0 { ChartHaptics.magnetTick() }
       drawingChanged(items: s.drawings)
       // 落盘那一条先响完再说「新画了一条」，这样外面拿到它的时候线已经在存档里了。
       d.commits += 1
@@ -981,7 +981,7 @@ extension ChartView {
         // 拟合不出来（圈住的 K 线不到 3 根）就当这一点没落，提示条还停在「选择终点」上，
         // 用户往右再点远一些就成了——比画出一条没有数据支持的通道诚实。
         guard let fitted = Drawing.fittedRegression(from: points, series: s.series) else {
-          Haptics.boundary()
+          ChartHaptics.boundary()
           return
         }
         points = fitted
@@ -991,7 +991,7 @@ extension ChartView {
       commit(DrawingPreferences.newDrawing(tool: tool, points: points, styles: d.styles, variants: d.variants))
     } else {
       d.anchors.append(pt); d.aim = nil
-      if snap.index >= 0 { Haptics.magnetTick() }
+      if snap.index >= 0 { ChartHaptics.magnetTick() }
       drawingChanged()
     }
   }

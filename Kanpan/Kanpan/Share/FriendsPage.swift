@@ -1,4 +1,3 @@
-import KanpanChart
 import SwiftUI
 
 struct FriendsPage: View {

@@ -1,4 +1,3 @@
-import KanpanChart
 import Combine
 import Foundation
 import KanpanCore

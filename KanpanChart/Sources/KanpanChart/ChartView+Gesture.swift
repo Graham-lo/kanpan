@@ -450,7 +450,7 @@ extension ChartView {
     guard let s = state, s.series.count > 0 else { return }
     let sp = v.barSpacing(step: s.series.step, plotW: L.plotW)
     let atLimit = sp <= Chart.minBarSpacing * 1.001 || sp >= Chart.maxBarSpacing * 0.999
-    if atLimit && !gesture.wasAtZoomLimit { Haptics.boundary() }
+    if atLimit && !gesture.wasAtZoomLimit { ChartHaptics.boundary() }
     gesture.wasAtZoomLimit = atLimit
   }
 
@@ -473,7 +473,7 @@ extension ChartView {
       // 新高新低也好，都不许把手指底下那根 K 线挪走（见 `beginAxisFreeze`）。
       self.beginAxisFreeze()
       self.moveCrosshair(to: q, L: L)
-      Haptics.crosshair()
+      ChartHaptics.crosshair()
     }
     gesture.longPress = work
     DispatchQueue.main.asyncAfter(
@@ -495,7 +495,7 @@ extension ChartView {
     // 回调由 `state` 的 setter 统一发（`adopt` 里那一句）。这儿不再补一发：同一份
     // 十字线连送两次，外面每收一次就重算一遍读数——跟手时那是白白翻倍的一摊活。
     state = s
-    // 这儿从前每跨一根 K 线就 `Haptics.magnetTick()` 一次，没有任何节流：手指横着
+    // 这儿从前每跨一根 K 线就 `ChartHaptics.magnetTick()` 一次，没有任何节流：手指横着
     // 一扫过去几十根，那串 selection 触感连成一片嗡嗡响，像电动牙刷。触感只留给
     // **离散事件**——十字线出现（`scheduleLongPress`）、缩放顶到边界（`reportZoomLimit`）、
     // 画线落点（`ChartView+Drawing`）。「跟着手指连续变化」的过程一律不震。
@@ -546,7 +546,7 @@ extension ChartView {
       }
     }
     state = s
-    Haptics.magnetTick()
+    ChartHaptics.magnetTick()
   }
 
   /// 清掉十字线。品种 / 周期切换、面板弹出时外面也会叫。
@@ -663,7 +663,7 @@ extension ChartView {
       spacing: s.view.barSpacing(step: s.series.step, plotW: L.plotW),
       anchor: s.options.anchor)
     // 不在窗口上挂动画会被 `animation` 的 didSet 直接丢掉，那就一步到位。
-    guard animated, window != nil, !Haptics.reduceMotion else {
+    guard animated, window != nil, !ChartHaptics.reduceMotion else {
       s.view = target
       state = s
       // 「回到最新」只动位置、不动根宽，而且是按钮点出来的程序动作，不是用户在图上捏。
@@ -686,7 +686,7 @@ extension ChartView {
     let settled = clamp(s.view, plotW: L.plotW)
     if abs(s.view.to - settled.to) / s.view.span * L.plotW > 0.01 { settleView(); return }
     // G12：系统开了「减少动效」就不滑行，抬手即停，其余功能不变。
-    guard !Haptics.reduceMotion,
+    guard !ChartHaptics.reduceMotion,
       let run = FlingRun(
         speedPxPerMs: speed, start: s.view, plotW: L.plotW)
     else {
@@ -721,7 +721,7 @@ extension ChartView {
   private func settleView() {
     guard var s = state, let L = chartLayout else { return }
     let target = clamp(s.view, plotW: L.plotW)
-    if !Haptics.reduceMotion, abs(s.view.to - target.to) / s.view.span * L.plotW > 0.01 {
+    if !ChartHaptics.reduceMotion, abs(s.view.to - target.to) / s.view.span * L.plotW > 0.01 {
       animate(from: s.view, to: target, rebound: true)
     } else {
       s.view = target; state = s; viewDidChange(s.view)
@@ -836,48 +836,29 @@ extension ChartView {
 
 // MARK: - 触觉
 
-/// 全 app 的触觉都从这儿出（G11、P2.9），各管一件事：
-/// - 图上：出十字线 light、磁吸换根 selection、缩放到边界 rigid；
-/// - 图外：点星、扫到头之类的轻点 `tap`，选中、拖完排序 `press`，换一档 `step`，提醒响了 `alarm`；一件事办成了（记下、判定、登录）`success`；
-///   拿掉了东西（删除、恢复默认、清缓存、退出）`warning`。
+/// 图上自己的那几下触觉（G11、P2.9）：出十字线 light、磁吸换根 selection、缩放到边界 rigid，
+/// 删画线 / 清空画线 warning。图外的触觉（点星、换档、提醒响了……）在 app 层的 `Haptics` 里，
+/// 这个包不对外公开触觉。
 ///
 /// 生成器留着不重建：`prepare()` 之后系统会把 Taptic Engine 预热，每次现 new 一个
 /// 第一下会晚几十毫秒，磁吸换根那种连续反馈就会糊成一片。
 @MainActor
-public enum Haptics {
+enum ChartHaptics {
   private static let light = UIImpactFeedbackGenerator(style: .light)
   private static let rigid = UIImpactFeedbackGenerator(style: .rigid)
   private static let selection = UISelectionFeedbackGenerator()
-  private static let medium = UIImpactFeedbackGenerator(style: .medium)
   private static let notice = UINotificationFeedbackGenerator()
 
   /// 系统「减少动效」。甩和回弹看它，触觉不看——那是两个开关。
   static var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
 
-  /// 轻点一下：加减自选这类随手的开关。
-  public static func tap() { trace("tap"); light.impactOccurred() }
-
-  /// 实一点的一下：选中一只、拖完排序这类「落定」。
-  public static func press() { trace("press"); medium.impactOccurred() }
-
-  /// 换了一档：换周期、扫到下一只、副图挪了一格。
-  public static func step() { trace("step"); selection.selectionChanged() }
-
-  /// 提醒响了（前台）。
-  public static func alarm() { trace("alarm"); rigid.impactOccurred() }
-
-  /// 一件事办成了：记下一笔、判定、登录成功。
-  public static func success() { trace("success"); notice.notificationOccurred(.success) }
-
-  /// 拿掉了东西：删除、恢复默认、清缓存、退出登录。都能撤销或重来，所以是提醒不是报错。
-  public static func warning() { trace("warning"); notice.notificationOccurred(.warning) }
-
-  /// 模拟器上摸不到震动，只好留一行日志证明「该震的时候真的叫了」（P2.9 验收用，仅 DEBUG）。
-  /// 抓法：`/usr/bin/log stream --predicate 'subsystem == "kanpan.haptics"'`。
-  private static func trace(_ kind: StaticString) {
+  /// 拿掉了画线：删选中的那条、清空。都能撤销，所以是提醒不是报错。
+  static func warning() {
     #if DEBUG
-    os_log("haptic %{public}s", log: traceLog, type: .default, "\(kind)")
+    // 和 app 层 `Haptics` 同一个日志口子（P2.9 验收：模拟器上摸不到震动，只能看日志）。
+    os_log("haptic %{public}s", log: traceLog, type: .default, "warning")
     #endif
+    notice.notificationOccurred(.warning)
   }
   #if DEBUG
   private static let traceLog = OSLog(subsystem: "kanpan.haptics", category: "haptics")

@@ -1,4 +1,3 @@
-import KanpanChart
 import KanpanCore
 import SwiftUI
 import UIKit
