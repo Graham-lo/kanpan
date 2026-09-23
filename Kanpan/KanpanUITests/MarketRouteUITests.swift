@@ -55,4 +55,28 @@ final class MarketRouteUITests: KanpanUICase {
     let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "直连-币安K线"; shot.lifetime = .keepAlways
     add(shot)
   }
+  /// 在设置里点「网关」之后，行情真的从网关那条路活过来：上游换成 OKX、推送是 live、
+  /// 图上有 K 线，而且最新价在跳（不是缓存里那一屏）。
+  ///
+  /// 2026-09-24 撤掉 `smartMarketRoute` / `streamFallbacks` 之后守的就是这一条：
+  /// 网关地址只从 `MarketEndpoints.gateways` → `BinanceHosts.oiProxies` 来，
+  /// 不再有「本机没开自动切线路，网关就一直暂不可用」的那条岔路。
+  func testGatewayRouteGoesLive() {
+    openSettings()
+    route("网关").tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { route("网关").isSelected }, "点了「网关」没选中")
+    leaveSettings()
+    let source = app.staticTexts["market.source"]
+    XCTAssertTrue(waitUntil(timeout: Self.long, poll: 0.5) {
+      source.exists && source.label == "okx" && (source.value as? String) == "live"
+    }, "切到「网关」\(Self.long)s 内推送没活：source=\(source.label) status=\(String(describing: source.value)) network=\(app.staticTexts["market.network"].label)")
+    XCTAssertTrue(waitForLiveChart(), "「网关」下 \(Self.long)s 内没等到 K 线")
+    let first = chartInfo()["lastClose"] as? Double ?? 0
+    XCTAssertTrue(waitUntil(timeout: Self.long, poll: 0.5) {
+      let now = self.chartInfo()["lastClose"] as? Double ?? 0
+      return now > 0 && now != first
+    }, "「网关」下最新价 \(Self.long)s 没动过：\(first)")
+    let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "网关-OKX实时"; shot.lifetime = .keepAlways
+    add(shot)
+  }
 }
