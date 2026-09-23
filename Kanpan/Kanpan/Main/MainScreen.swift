@@ -557,7 +557,9 @@ struct MainScreen: View {
                     quote: { text in alertQuote(text) },
                     prepareQuote: { [weak quotes] symbol in quotes?.watch(symbol) },
                     watching: activities.watching,
-                    onWatch: { alert in watch(alert) })
+                    onWatch: { alert in watch(alert) },
+                    // 每行「距现价」要跟着跳：表开着时把那几只当成可见行订上实时价。
+                    watchQuote: { [weak quotes] symbol, on in quotes?.watchRow(symbol, visible: on) })
         .environment(\.panelTheme, theme)
     }
     // 盯着的那条被删、被暂停、响了：锁屏那块跟着收。
@@ -684,7 +686,8 @@ struct MainScreen: View {
     VStack(spacing: 0) {
       if reviewChart.mode == .replay { reviewHeader } else { header }
       hairline
-      if !reviewChart.active { IntervalBar(
+      // 十字线活着时这一行换成它的四颗动作（`IntervalRow` / `CrosshairActionBar`）。
+      if !reviewChart.active { IntervalRow(
         theme: theme, quick: prefs.quickIntervals, current: market.interval,
         atLatest: atLatest, gridOpen: $intervalGrid,
         onPick: pick(interval:),
@@ -694,11 +697,25 @@ struct MainScreen: View {
         // 没有后路时传 `nil`，那个槽位照旧空着——槽宽是钉死的，谁在里面都不影响周期药丸。
         onReturn: returnView.map { view in { returnToRemembered(view) } },
         // 配置页，不连着关：开着它一次调好几项（和指标 / 设置一样）。
-        onChart: { panel = .chart }
-      )
-      .background(theme.app) }
+        onChart: { panel = .chart },
+        readout: crosshairReadout, context: crosshairContext,
+        // 「看细节」（§10.1）：还有更细的一档可进才给。只看当前周期，不引入对十字线的观察。
+        canDetail: DetailZoom.finer(than: market.interval) != nil,
+        onStep: { proxy.moveCrosshair(by: $0) },
+        onLine: { endSharePreview(); proxy.addHorizontalLine(at: $0) },
+        onDetail: zoomIntoDetail
+      ) }
       hairline
-      chart.overlay(alignment: .bottom) { captureCard }
+      // 「更多」那张网格是盖在图上的一层（遮罩 + 从上沿展开的面板），和复盘卡片在同一个
+      // overlay 里——不在 `chartPage` 这条链上多接修饰符（文件头那条层数上限）。
+      chart.overlay(alignment: .bottom) { ZStack(alignment: .bottom) {
+        IntervalPopoverLayer(
+          theme: theme, quick: prefs.quickIntervals, current: market.interval,
+          open: $intervalGrid, onPick: pick(interval:),
+          onPin: { iv in store.attempt { $0.toggleQuick(iv) } },
+          onReplace: { old, new in store.update { $0.replaceQuick(old: old, new: new) } })
+        captureCard
+      } }
       replayControls
       hairline
       if draw.active {
@@ -907,16 +924,10 @@ struct MainScreen: View {
       ticker: rollingTicker, lastPrice: readoutPrice,
       diagnostics: quoteDiagnostics,
       cardVisible: headerCardVisible,
-      // 「看细节」（§10.1）：还有更细的一档可进才给。这个判断只看当前周期，
-      // 主屏的 body 本来就读它，不引入对十字线的观察。
-      canDetail: DetailZoom.finer(than: market.interval) != nil,
       // 有来路才有返回。复盘态走的是另一副页头（`reviewHeader`），不经过这儿。
       onBack: chartOrigin.map { origin in { switchTo(tab: origin) } },
       onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() },
       onSearch: { dismissPanel(); showSearch = true },
-      onStep: { proxy.moveCrosshair(by: $0) },
-      onLine: { endSharePreview(); proxy.addHorizontalLine(at: $0) },
-      onDetail: zoomIntoDetail,
       onScan: { scan($0) },
       card: shareAndAlertCard(inHeader: true))
   }

@@ -11,13 +11,15 @@ import XCTest
 // 0.18s 平滑地重新铺满。同一轮里出厂默认也从五档放满成六档（`Interval.quick`）。
 //
 // 所以「周期一个点都不许动」这条只剩一处还成立、也只有那一处该成立：**十字线开关**。
-// 十字线的那几个动作在头部的另一行上（`CrosshairReadoutRow`，2026-09-20 从这儿搬走的
-// 「看细节」也在那儿），它们进出跟周期条没关系，条上动一下就是布局串了。
+// 2026-09-23 起十字线的四颗动作（上一根 / 下一根 / 按此价画线 / 看细节，`CrosshairActionBar`）
+// 就在周期条**这一行**上：十字线在时它们整行顶替周期条，条透明让位、点不着，但照旧占位；
+// 十字线一收，六档要原地出现，一个点都不许挪。
 // 「最新 / 返回刚才」进出时周期区**本来就要重新铺满**，改成断言「六档还是全在、
 // 互不重叠、都在条里」，外加那颗动作自己点得着。
 //
 // `testPinnedChipsAllFit` 守的是两头——钉满六档时六颗全在条上，钉三档时那三颗把整行
-// 铺满；`testSixthPinIsTheLimit` 守的是「第七颗根本钉不下去」。
+// 铺满；`testFullPinsSwapInOneStep` 守的是「钉满时点第七颗 = 挑一档换掉，一步到位」；
+// `testOffBarIntervalNeverEvictsPins` 守的是「临时去看一个没钉的周期，钉住的一档都不少」。
 //
 // 量的是每一颗 chip 的 `frame`，不是截图像素：截图能看出「动了」，量框才说得出「动了多少」。
 // 截图照旧落到 `/tmp/kanpan-p3/` 下给人看。
@@ -162,14 +164,13 @@ final class IntervalSlotUITests: KanpanUICase {
                   "网格没收起来")
   }
 
-  /// 钉上几档（网格右上角那颗图钉）。钉满六档之后图钉会灰掉，所以顺序上要先取后钉。
+  /// 钉上几档（网格右上角那颗图钉）。钉满六档之后点图钉是「挑一档换掉」，所以顺序上要先取后钉。
   private func pinFromGrid(_ list: [String]) {
     app.buttons[Ids.intervalMore].tap()
     XCTAssertTrue(app.buttons["period.pin.\(list[0])"].waitForExistence(timeout: Self.short),
                   "「更多」网格没打开")
     for raw in list {
       let pin = app.buttons["period.pin.\(raw)"]
-      XCTAssertTrue(pin.isEnabled, "\(raw) 那颗图钉按不动，钉位提前满了？")
       pin.tap()
       XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.buttons[Ids.intervalChip(raw)].exists },
                     "钉上 \(raw) 之后它没出现在常用行上")
@@ -197,22 +198,28 @@ final class IntervalSlotUITests: KanpanUICase {
     let empty = chipFrames()
     shot("01-出厂态-停在最新")
 
-    // ② 十字线开着（头部多出「上一根 / 下一根 / 按此价画线 / 看细节」）：
-    //    那几颗在**图外的另一行**上，周期条一个点都不该动。
+    // ② 十字线开着：「上一根 / 下一根 / 按此价画线 / 看细节」整行顶替周期条，
+    //    就摆在周期条那一行的框里；周期条透明让位、点不着。十字线一收，六档原地出现。
+    guard let strip = try? app.intervalStrip.snapshot().frame else { return XCTFail("量不到周期条") }
     toggleCrosshair(); waitCrosshair(true, "点图没选中一根")
     XCTAssertTrue(app.buttons["chart.detailZoom"].waitForExistence(timeout: Self.short),
                   "十字线开着却没有「看细节」")
-    XCTAssertTrue(app.buttons["chart.crosshair.prev"].exists, "十字线开着却没有「上一根」")
-    XCTAssertTrue(app.buttons["chart.crosshair.next"].exists, "十字线开着却没有「下一根」")
-    XCTAssertTrue(app.buttons["chart.crosshair.hline"].exists, "十字线开着却没有「按此价画线」")
-    let crosshairOn = chipFrames()
+    for id in ["chart.crosshair.prev", "chart.crosshair.next", "chart.crosshair.hline", "chart.detailZoom"] {
+      let b = app.buttons[id]
+      XCTAssertTrue(b.exists && b.isHittable, "十字线开着却点不着 \(id)")
+      XCTAssertEqual(b.frame.midY, strip.midY, accuracy: 2, "\(id) 不在周期条那一行上：\(b.frame) 条 \(strip)")
+    }
+    let moreButton = app.buttons[Ids.intervalMore]
+    XCTAssertFalse(moreButton.exists && moreButton.isHittable, "十字线开着时周期条没让位")
     shot("02-十字线开着")
-    assertSame(empty, crosshairOn, "空 → 十字线")
+    toggleCrosshair(); waitCrosshair(false, "再点一下没收掉十字线")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.buttons[Ids.intervalMore].isHittable },
+                  "十字线收了周期条没回来")
+    assertSame(empty, chipFrames(), "十字线收起后")
 
-    // ③ 只有「最新」：收掉十字线，把图往回推。
+    // ③ 只有「最新」：把图往回推。
     //    这颗不再有预留槽位，它一露面周期区就少一块宽度、六档跟着重新铺满——
     //    要验的不是「一个点都不动」，而是**重新铺完之后六档一颗不少、谁也没压着谁**。
-    toggleCrosshair(); waitCrosshair(false, "再点一下没收掉十字线")
     dragChartRight()
     XCTAssertTrue(waitUntil(timeout: Self.short) { self.onScreen(self.app.buttons[Ids.latestButton]) },
                   "往回拖了却没出现「最新」")
@@ -221,16 +228,18 @@ final class IntervalSlotUITests: KanpanUICase {
     XCTAssertTrue(app.buttons[Ids.latestButton].isHittable, "「最新」在屏上却点不着")
     shot("03-有最新")
 
-    // ④ 「最新」+ 十字线一起：十字线那一行照旧不该再动周期条。
+    // ④ 「最新」+ 十字线一起：动作行照旧顶替整行；十字线收起后「最新」和六档原地回来。
     let latestOnly = chipFrames()
     toggleCrosshair(); waitCrosshair(true, "历史视野上点图没选中一根")
     XCTAssertTrue(app.buttons["chart.detailZoom"].waitForExistence(timeout: Self.short),
                   "历史视野上十字线开着却没有「看细节」")
-    assertAllVisible(full, "最新加十字线")
-    assertNoOverlap(full, "最新加十字线")
-    XCTAssertTrue(app.buttons[Ids.latestButton].isHittable, "最新加十字线时「最新」点不着")
     shot("04-最新加十字线")
-    assertSame(latestOnly, chipFrames(), "最新 → 最新加十字线")
+    toggleCrosshair(); waitCrosshair(false, "历史视野上再点一下没收掉十字线")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.buttons[Ids.latestButton].isHittable },
+                  "十字线收起后「最新」点不着")
+    assertAllVisible(full, "最新加十字线之后")
+    assertNoOverlap(full, "最新加十字线之后")
+    assertSame(latestOnly, chipFrames(), "最新 → 十字线 → 收起")
   }
 
   // ------------------------------------------------------------ 钉住的档一个都不许被挤出去
@@ -310,22 +319,56 @@ final class IntervalSlotUITests: KanpanUICase {
     shot("27-最宽六档-有最新")
   }
 
-  /// 钉满六档之后，网格里其余那些图钉按不动。
-  func testSixthPinIsTheLimit() {
+  /// 钉满六档时点没钉住的图钉：进「挑一档换掉」，六个已钉格子标成可替换，点哪个换哪个；
+  /// 点别处（同一颗图钉）取消。没有「已满六档」那句解释。
+  func testFullPinsSwapInOneStep() {
     XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
     XCTAssertEqual(Ids.quickIntervals.count, 6, "沙盒该铺满六档")
     app.buttons[Ids.intervalMore].tap()
     let seventh = app.buttons["period.pin.1d"]
     XCTAssertTrue(seventh.waitForExistence(timeout: Self.short), "「更多」网格没打开")
-    XCTAssertFalse(seventh.isEnabled, "钉满六档之后，1d 那颗图钉还按得动")
-    seventh.tap()                                        // 按下去应当什么也不发生
-    XCTAssertFalse(app.buttons[Ids.intervalChip("1d")].exists, "钉满六档之后 1d 还是钉上了")
-    XCTAssertTrue(app.staticTexts["已满六档"].exists, "钉满之后网格底下没有那句「已满六档」")
-    shot("25-更多网格-已满六档")
-    // 取下一档，图钉立刻又能按了。
-    app.buttons["period.pin.1m"].tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.buttons["period.pin.1d"].isEnabled },
-                  "取下一档之后，1d 那颗图钉还是按不动")
+    XCTAssertFalse(app.staticTexts["已满六档"].exists, "解释文案「已满六档」还在")
+
+    // 点一下又点一下：取消，什么都没换。
+    seventh.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.buttons["period.row.1m"].label.hasPrefix("换掉") },
+                  "钉满时点 1d 的图钉没进「挑一档换掉」")
+    shot("25-更多网格-挑一档换掉")
+    seventh.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons["period.row.1m"].label.hasPrefix("换掉") },
+                  "再点一次同一颗图钉没取消换档")
+
+    // 再来一次，这回点 1m 那一格：1m 出去、1d 进来，还是六档。
+    seventh.tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.buttons["period.row.1m"].label.hasPrefix("换掉") },
+                  "第二次点 1d 的图钉没进「挑一档换掉」")
+    app.buttons["period.row.1m"].tap()
+    XCTAssertTrue(app.buttons[Ids.intervalMore].exists)
+    app.buttons[Ids.intervalMore].tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !self.app.buttons["period.row.1m"].exists },
+                  "网格没收起来")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { self.app.buttons[Ids.intervalChip("1d")].exists },
+                  "换档之后 1d 没上条")
+    XCTAssertFalse(app.buttons[Ids.intervalChip("1m")].exists, "换档之后 1m 还在条上")
+    let now = ["5m", "15m", "30m", "1h", "4h", "1d"]
+    assertAllVisible(now, "换档之后")
+    assertNoOverlap(now, "换档之后")
+    shot("28-换档之后")
+  }
+
+  /// 从网格里切到一个没钉住的周期（2h）：钉住的六档一个都不少，「更多」写成「2h」并高亮。
+  func testOffBarIntervalNeverEvictsPins() {
+    XCTAssertTrue(waitForLiveChart(), "图一直没有数据")
+    pickFromGrid("2h")
+    let more = app.buttons[Ids.intervalMore]
+    XCTAssertTrue(waitUntil(timeout: Self.long) { more.isSelected }, "切到没钉住的 2h，「更多」没高亮")
+    XCTAssertTrue(more.label.contains("当前"), "「更多」没替 2h 说话：\(more.label)")
+    XCTAssertFalse(app.buttons[Ids.intervalChip("2h")].exists, "没钉住的 2h 挤上了周期条")
+    assertAllVisible(Ids.quickIntervals, "当前档没钉住")
+    assertNoOverlap(Ids.quickIntervals, "当前档没钉住")
+    shot("29-当前档没钉住-更多写成周期名")
+    pickFromGrid("4h")
+    XCTAssertTrue(waitUntil(timeout: Self.long) { !more.isSelected }, "切回钉住档，「更多」还亮着")
   }
 
   /// 这几档此刻是不是整颗都落在周期条里（没被右边那道渐隐吃掉、没滚出可视区）。

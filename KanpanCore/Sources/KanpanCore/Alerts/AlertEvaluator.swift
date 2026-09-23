@@ -127,6 +127,19 @@ public enum AlertEvaluator {
     return best
   }
 
+  /// 这条提醒此刻「等在哪个价上」：提醒总表每一行写的那口价（2026-09-23）。
+  ///
+  /// 裸价格提醒就是目标价；画线提醒取每条线在 `t` 这一刻的价，有好几条时取离现价最近的
+  /// 那一条（通道、平行线那种一次挂两三条的，人关心的是先碰到的那条）。现价取不到时
+  /// 取第一条取得到价的线。复盘到点、线都落在时间段外的，返回 nil。
+  public static func level(of alert: Alert, near price: Double?, at t: Double) -> Double? {
+    guard alert.kind != .reviewDue else { return nil }
+    if let target = alert.targetPrice { return target.isFinite ? target : nil }
+    let levels = alert.lines.compactMap { $0.price(at: t) }.filter(\.isFinite)
+    guard let price, price.isFinite, price > 0 else { return levels.first }
+    return levels.min { abs($0 - price) < abs($1 - price) }
+  }
+
   /// 一组提醒里离现价最近的那个距离。
   public static func nearestDistance(from price: Double, among alerts: [Alert], at t: Double) -> Double? {
     alerts.compactMap { distance(from: price, to: $0, at: t) }.min()

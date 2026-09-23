@@ -382,8 +382,8 @@ struct Prefs: Sendable, Equatable {
 
   /// 长按常用行 / 更多面板里的增删（§10.6），最多 `Prefs.maxQuick`（六）个，至少留 1 个。
   ///
-  /// 钉满之后「更多」网格里其余那些图钉是灰的、按不动（见 `IntervalBar.cell`），
-  /// 所以这儿返回的那句话正常走不到；它守的是别的入口（横屏侧栏、以后新加的路）。
+  /// 钉满之后「更多」网格里点没钉住的图钉走的是 `replaceQuick`（先挑一档换掉），
+  /// 不经过这儿，所以「最多 6 档」那句话正常走不到；它守的是别的入口。
   @discardableResult
   mutating func toggleQuick(_ iv: Interval) -> String? {
     if let at = quickIntervals.firstIndex(of: iv) {
@@ -397,6 +397,20 @@ struct Prefs: Sendable, Equatable {
       (Interval.allCases.firstIndex(of: a) ?? 0) < (Interval.allCases.firstIndex(of: b) ?? 0)
     }
     return nil
+  }
+
+  /// 钉满六档时「换一档」：把钉住的 `old` 换成没钉住的 `new`，一步到位（2026-09-23）。
+  ///
+  /// 原来钉满之后其余图钉一律灰掉，想换一档得先拔一颗再钉一颗，中间还得记着自己要换哪个。
+  /// 现在点没钉住的图钉就进「挑一档换掉」，再点哪一格换哪一格（见 `IntervalGridPopover`）。
+  /// 档数不变，顺序照旧按 `Interval.allCases` 排。`old` 不在钉位里或 `new` 已经钉着时不做事。
+  mutating func replaceQuick(old: Interval, new: Interval) {
+    guard old != new, let at = quickIntervals.firstIndex(of: old),
+          !quickIntervals.contains(new) else { return }
+    quickIntervals[at] = new
+    quickIntervals.sort { a, b in
+      (Interval.allCases.firstIndex(of: a) ?? 0) < (Interval.allCases.firstIndex(of: b) ?? 0)
+    }
   }
 
   /// 改 API 域名。形状不对就不写，返回那句提示。

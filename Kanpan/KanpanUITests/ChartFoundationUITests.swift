@@ -1304,15 +1304,15 @@ final class ChartFoundationUITests: XCTestCase {
       selectMain()
       XCTAssertTrue(wait(seconds: 3) { self.info()["crosshair"] as? Bool == false })
     }
-    // 内联的周期网格背后没有那层拦截罩（`PanelDismissShield` 只给面板铺），所以规矩②
-    // 对它不适用：它是排在图**上面**的一段内容，不是盖住图的一层，手指落到图上它自己收起。
+    // 周期「更多」2026-09-23 起是盖在图上的一层弹层（网格 + 遮罩），遮罩上铺着同一层
+    // `PanelDismissShield`，所以规矩②对它同样成立：点遮罩只收弹层，不落十字线。
+    // 点的位置要避开从图上沿展开的网格（三行约 170pt），落在图的下半截遮罩上。
     app.buttons["interval.more"].tap()
     let row = app.buttons["period.row.1h"]
     XCTAssertTrue(row.waitForExistence(timeout: 5), "点「更多」没摊开周期网格")
-    selectMain()
-    XCTAssertTrue(wait(seconds: 5) { !row.exists }, "点了图，周期网格没收起")
-    if info()["crosshair"] as? Bool == true { selectMain() }
-    XCTAssertTrue(wait(seconds: 3) { self.info()["crosshair"] as? Bool == false })
+    canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.8)).tap()
+    XCTAssertTrue(wait(seconds: 5) { !row.exists }, "点了遮罩，周期网格没收起")
+    XCTAssertEqual(info()["crosshair"] as? Bool, false, "点遮罩只收弹层，不许顺手落十字线")
     shot("面板外点击-只收起不触发十字线")
   }
 

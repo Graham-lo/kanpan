@@ -143,4 +143,19 @@ struct IntervalTableTests {
     #expect(one.toggleQuick(.h1) != nil)                                  // 最后一档删不掉
     #expect(one.quickIntervals == [.h1])
   }
+
+  @Test("钉满六档时一步换档：换掉的那档出去、新的一档按 14 档的顺序插回，档数不变")
+  func 钉满换档() {
+    var p = Prefs.defaults
+    #expect(p.quickIntervals == [.m5, .m30, .h1, .h4, .d1, .w1])
+    p.replaceQuick(old: .w1, new: .h2)
+    #expect(p.quickIntervals == [.m5, .m30, .h1, .h2, .h4, .d1])
+    p.replaceQuick(old: .m5, new: .y1)
+    #expect(p.quickIntervals == [.m30, .h1, .h2, .h4, .d1, .y1])
+    // 没钉着的 old、已经钉着的 new、自己换自己：一律不做事。
+    p.replaceQuick(old: .m1, new: .m3)
+    p.replaceQuick(old: .h1, new: .h2)
+    p.replaceQuick(old: .h4, new: .h4)
+    #expect(p.quickIntervals == [.m30, .h1, .h2, .h4, .d1, .y1])
+  }
 }

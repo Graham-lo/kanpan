@@ -198,13 +198,9 @@ struct MainHeaderView<Card: View>: View {
   let diagnostics: String
   /// 「要不要加提醒」/ 分享卡在场没有：价格行和读数行照旧占位，只是透明。
   let cardVisible: Bool
-  let canDetail: Bool
   let onBack: (() -> Void)?
   let onReview: () -> Void
   let onSearch: () -> Void
-  let onStep: (Int) -> Void
-  let onLine: (Double) -> Void
-  let onDetail: (Crosshair) -> Void
   let onScan: (ScanDirection) -> Void
   let card: Card
 
@@ -238,22 +234,14 @@ struct MainHeaderView<Card: View>: View {
           // 「要不要加提醒」在场的那六秒，价格行也照旧占着位置、只是透明——
           // 和十字线那套让位一模一样，行高一个 pt 都不变。
           .opacity(cardVisible ? 0 : 1)
-        // 读数 + 十字线的那几个动作（§P3-7）。两样都只在这只小视图里跟着手指重求值，
-        // 主屏的 body 照旧一次都不用动。
-        CrosshairReadoutRow(
-          readout: readout, context: context, theme: theme,
-          onStep: onStep,
-          // 走的是画线自己那条落笔路（`ChartView.addHorizontalLine`）：一样进撤销栈、
-          // 一样落盘、一样在末尾问一句「要不要加个提醒」。画满了那一句也照旧由
-          // `draw.full` 那条统一说，不在这儿另说一遍。
-          onLine: onLine,
-          // 「看细节」（§10.1）：还有更细的一档可进才给。
-          canDetail: canDetail,
-          onDetail: onDetail)
-          // 两件事抢同一行时，刚画完的那一句优先：它只活六秒，而十字线还在手指底下，
-          // 六秒过去它自己就回来了。让位也是透明让位，这一行的高度不因此变。
+        // 「顶部」那一档的开高低收（其余两档读数在图里，这儿什么都不画）。
+        // 十字线的四颗动作不在头部了：它们在周期条那一行（`CrosshairActionBar`），
+        // 所以按住图找位置的时候，价格、涨跌、六格一直是实时的（2026-09-23）。
+        CrosshairOHLCLabel(readout: readout, context: context, color: theme.ink, fillsWidth: true)
+          .fixedSize(horizontal: false, vertical: true)
+          // 刚画完的那一句优先：让位也是透明让位，这一行的高度不因此变。
           .opacity(cardVisible ? 0 : 1)
-          .allowsHitTesting(!cardVisible)
+          .allowsHitTesting(false)
       }
       // 画完一条线问的那一句，摆在**价格行的位置上**，而且是 `overlay`——
       // overlay 不参与父视图定尺寸，所以它在与不在，头部和图表的高度一个 pt 都不会变

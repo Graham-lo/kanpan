@@ -109,7 +109,7 @@ final class ScanAndDetailZoomUITests: KanpanUICase {
                   "点图没选中一根")
 
     let detail = app.buttons["chart.detailZoom"]
-    expectExists(detail, Self.short, "十字线选中了一根，周期条行尾却没有「看细节」")
+    expectExists(detail, Self.short, "十字线选中了一根，周期条那一行却没有「看细节」")
     shot("05-看细节-十字线选中一根")
 
     detail.tap()

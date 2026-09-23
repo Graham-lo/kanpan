@@ -256,20 +256,37 @@ final class MainScreenUITests: KanpanUICase {
     if let original { app.tapIntervalChip(original) }
   }
 
-  /// 周期条右端「更多」→ **内联**周期网格（十四档都在、每格带图钉）→ 再点一下收起。
+  /// 周期条右端「更多」→ 盖在图上的周期弹层（十四档都在、每格带图钉）。
   ///
-  /// 原来这是一张半屏 sheet，收起走 `dismissSheet`（拖面板 / 点「完成」）。网格改成
-  /// 内联展开之后（§2C4）既没有 `panel.done` 也没有 `panel.header`，那条路整条不适用；
-  /// 现在「更多」自己就是开关，点第二下收起。`period.row.*` / `period.pin.*` 两个 id
-  /// 原样挪到了格子上，所以这条用例验的还是同一件事。
+  /// 2026-09-23 起它不再是周期条底下摊开的一段（那样一展开图就被压扁一半），而是从周期条
+  /// 下沿往下展开、盖在图上的一层，外面压一层遮罩。所以这儿先量**图的框一个 pt 都不动**，
+  /// 再把三条收起的路各走一遍：再点「更多」、在面板上滑一下、点遮罩。
   func testMoreOpensPeriodPanel() {
+    let canvas = app.otherElements["chart.canvas"]
+    XCTAssertTrue(canvas.waitForExistence(timeout: Self.long), "没有图")
+    let before = canvas.frame
     app.buttons[Ids.intervalMore].tap()
     let row = app.buttons[Ids.periodRow("1h")]
     expectExists(row, Self.short, "点「更多」没摊开周期网格")
     expectExists(app.buttons[Ids.periodRow("1M")], Self.short, "周期网格里没有冷门档（1M）")
     expectExists(app.buttons[Ids.periodPin("1M")], Self.short, "周期网格的格子上没有图钉")
+    XCTAssertEqual(canvas.frame, before, "「更多」一展开图的框变了：\(before) → \(canvas.frame)")
+    XCTAssertGreaterThanOrEqual(row.frame.minY, before.minY - 1, "网格没从周期条下沿往下展开")
     app.buttons[Ids.intervalMore].tap()
     XCTAssertTrue(waitUntil(timeout: Self.short) { !row.exists }, "再点一下「更多」，网格没收起来")
+
+    // 在面板上往上推一下：收起。
+    app.buttons[Ids.intervalMore].tap()
+    expectExists(row, Self.short, "第二次点「更多」没摊开周期网格")
+    app.otherElements["interval.grid"].swipeUp()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !row.exists }, "在面板上滑一下，网格没收起来")
+
+    // 点遮罩（图的下半截）：收起，不落十字线。
+    app.buttons[Ids.intervalMore].tap()
+    expectExists(row, Self.short, "第三次点「更多」没摊开周期网格")
+    canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.8)).tap()
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !row.exists }, "点遮罩，网格没收起来")
+    XCTAssertEqual(canvas.frame, before, "收起之后图的框变了")
   }
 
   // ---------------------------------------------------------------- 底栏三个面板

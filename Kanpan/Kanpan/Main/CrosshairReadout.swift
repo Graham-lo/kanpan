@@ -71,21 +71,22 @@ struct CrosshairOHLCLabel: View {
   }
 }
 
-/// 十字线活着的时候把实时价格行让出去。
+/// 「顶部」读数那一档里，十字线活着的时候把实时价格行让给开高低收。
 ///
 /// 做成修饰器而不是在主屏 body 里算 `opacity`：这一层跟着十字线重求值，
 /// 被它包着的 `PriceRow` 是主屏那一次 body 求值造出来的值，不会跟着重造。
 ///
-/// 从前的条件是「顶部读数出来了」，现在是「十字线在」（§P3-7）：读数摆在图里那两档
-/// （`dataDisplay == .inside / .follow`，出厂默认就是 `.inside`）头部本来是不让位的，
-/// 但十字线一活，头部那一行就要腾出来放「上一根 / 下一根 / 按此价画线」这三颗。
-/// 让的是**同一行**：价格行照旧占着位置（只是透明），行高一个 pt 都不变，图不会跳。
+/// **只有 `.top` 那一档让位**（2026-09-23）。从前是「十字线一在就让」，因为头部那一行
+/// 要腾出来放「上一根 / 下一根 / 按此价画线 / 看细节」——结果手指按在图上找位置的那几秒，
+/// 顶栏最新价、涨跌和右边六格全没了，而那正是交易员最想同时盯着的东西。现在那几颗
+/// 搬去了周期条那一行（`CrosshairActionBar`），价格行一直实时；只有读数摆在顶部的那一档，
+/// 开高低收要借这一行的位置。让的是**同一行**：价格行照旧占着位置（只是透明），行高不变。
 struct HiddenWhileCrosshairReads: ViewModifier {
   let readout: CrosshairReadout
   let context: CrosshairContext
 
   func body(content: Content) -> some View {
-    content.opacity(crosshairAlive(readout.crosshair, context) ? 0 : 1)
+    content.opacity(context.enabled && crosshairAlive(readout.crosshair, context) ? 0 : 1)
   }
 }
 
@@ -97,68 +98,49 @@ func crosshairAlive(_ crosshair: Crosshair?, _ context: CrosshairContext) -> Boo
   return series.close.indices.contains(c.index)
 }
 
-/// 读数行：左边开高低收（只有「顶部」那一档有），右边三颗动作（§P3-7）。
+/// 十字线的四颗动作：上一根 / 下一根 / 按此价画线 / 看细节。
 ///
-/// **三颗都在图外**——画布上不许浮控件，而十字线活着的时候人正盯着这一屏，
-/// 头部那一行是唯一一块既看得见、拇指又够得着、还不压着 K 线的地方。
+/// **摆在周期条那一行的同一个 44pt 框里**（2026-09-23）：十字线活着时它整行顶替周期条
+/// （周期条透明让位、点不着，但照旧占着位置、量着自己的宽度，所以十字线收起时不跳位），
+/// 顶栏的价格、涨跌、六格一直实时。从前它们在头部价格行的位置上，一按住图价格就没了。
 ///
-/// 和整只 `MainScreen` 的关系照旧：跟着手指重求值的只有这只小视图，
-/// 主屏的 body 一次都不用动（这也是三颗动作没做成主屏 `@State` 的原因）。
-struct CrosshairReadoutRow: View {
+/// 画布上不许浮控件，而周期条那一行紧贴图的上沿、拇指够得着、也不压 K 线。
+/// 和整只 `MainScreen` 的关系照旧：跟着手指重求值的只有这只小视图。
+/// 四颗在最窄的受支持机型 iPhone 16 Pro（402pt）上一行放得下（实测约 290pt）。
+struct CrosshairActionBar: View {
   let readout: CrosshairReadout
   let context: CrosshairContext
   let theme: PanelTheme
+  /// 当前这一档还有更细的一档可进（`DetailZoom.finer`）。最细那一档不画「看细节」。
+  var canDetail: Bool
   /// 往左 / 往右挪一根。
   var onStep: (Int) -> Void
   /// 按十字线此刻这口价画一条水平线。
   var onLine: (Double) -> Void
   /// 「看细节」：把选中的这一根换到更细的一档铺满一屏（§10.1）。
-  ///
-  /// 它从前在周期条行尾，和「最新」并排——两颗一起摆要 143pt，16 Pro 上把钉住的
-  /// 周期挤得只剩三档半。它本来就只在十字线活着的时候出现，和这儿的三颗是一伙的，
-  /// 2026-09-20 整体搬过来。当前这一档已经是最细的一档时（`canDetail == false`）不画。
-  var canDetail: Bool = false
-  var onDetail: ((Crosshair) -> Void)? = nil
+  var onDetail: (Crosshair) -> Void
 
   var body: some View {
     if crosshairAlive(readout.crosshair, context), let c = readout.crosshair {
-      let text = crosshairOHLCText(c, context)
-      if let text {
-        // 装得下就并排，装不下就让这一行长高一点——字一个都不缩、一个都不截
-        // （用户 2026-09-20 定的版面原则）。
-        ViewThatFits(in: .horizontal) {
-          HStack(alignment: .top, spacing: 8) { label(text); Spacer(minLength: 0); chips(c) }
-          VStack(alignment: .leading, spacing: 5) { label(text); chips(c) }
+      HStack(spacing: 6) {
+        chip("上一根", icon: VectorIcon.chevronLeft(10), id: "chart.crosshair.prev") { onStep(-1) }
+        chip("下一根", trailingIcon: VectorIcon.chevronRight(10), id: "chart.crosshair.next") { onStep(1) }
+        // 副图上的十字线读的是指标值，不是价——那条线画到主图上毫无意义，所以不给。
+        if c.pane == nil, let price = c.price ?? priceOfBar(c.index), price.isFinite {
+          chip("按此价画线", id: "chart.crosshair.hline") { onLine(price) }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-      } else {
-        chips(c).frame(maxWidth: .infinity, alignment: .trailing)
+        if canDetail {
+          chip("看细节", id: "chart.detailZoom") { onDetail(c) }
+            .accessibilityLabel("看这一根的细节")
+        }
       }
+      .fixedSize(horizontal: true, vertical: false)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.horizontal, 12)
+      .frame(height: 44)
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("chart.crosshair.actions")
     }
-  }
-
-  private func label(_ text: String) -> some View {
-    Text(text)
-      .font(.system(size: 11, design: .monospaced))
-      .foregroundStyle(theme.ink)
-      .fixedSize(horizontal: false, vertical: true)
-      .accessibilityIdentifier("chart.topOHLC")
-  }
-
-  @ViewBuilder private func chips(_ c: Crosshair) -> some View {
-    HStack(spacing: 6) {
-      chip("上一根", icon: VectorIcon.chevronLeft(10), id: "chart.crosshair.prev") { onStep(-1) }
-      chip("下一根", trailingIcon: VectorIcon.chevronRight(10), id: "chart.crosshair.next") { onStep(1) }
-      // 副图上的十字线读的是指标值，不是价——那条线画到主图上毫无意义，所以不给。
-      if c.pane == nil, let price = c.price ?? priceOfBar(c.index), price.isFinite {
-        chip("按此价画线", id: "chart.crosshair.hline") { onLine(price) }
-      }
-      if canDetail, let onDetail {
-        chip("看细节", id: "chart.detailZoom") { onDetail(c) }
-          .accessibilityLabel("看这一根的细节")
-      }
-    }
-    .fixedSize(horizontal: true, vertical: false)
   }
 
   private func priceOfBar(_ i: Int) -> Double? {
@@ -166,8 +148,7 @@ struct CrosshairReadoutRow: View {
     return series.close[i]
   }
 
-  /// 和周期条行尾那几颗一模一样的做法：药丸自己 28pt 高，命中区 44pt，
-  /// 多出来的两圈用负边距收回去，所以这一行的高度不因为它们而变。
+  /// 和周期条行尾「最新」一模一样的做法：药丸自己 28pt 高，命中区 44pt。
   private func chip(
     _ title: String, icon: VectorIcon? = nil, trailingIcon: VectorIcon? = nil,
     id: String, action: @escaping () -> Void
@@ -186,7 +167,28 @@ struct CrosshairReadoutRow: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .padding(.vertical, -8)
     .accessibilityIdentifier(id)
+  }
+}
+
+/// 十字线活着时周期条透明让位、点不着；十字线一出来顺手收起「更多」弹层。
+///
+/// 做成修饰器：跟着十字线重求值的只有这一层，被包着的 `IntervalBar` 不跟着重造。
+/// 用透明而不是拿掉：条照旧占位、`rowWidth` 照旧量着，十字线收起时六档原地出现。
+struct YieldsToCrosshair: ViewModifier {
+  let readout: CrosshairReadout
+  let context: CrosshairContext
+  @Binding var gridOpen: Bool
+
+  func body(content: Content) -> some View {
+    let alive = crosshairAlive(readout.crosshair, context)
+    content
+      .opacity(alive ? 0 : 1)
+      .allowsHitTesting(!alive)
+      .accessibilityHidden(alive)
+      .onChange(of: alive) { _, now in
+        guard now, gridOpen else { return }
+        withAnimation(.easeOut(duration: 0.2)) { gridOpen = false }
+      }
   }
 }

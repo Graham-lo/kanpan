@@ -6,8 +6,9 @@ import UIKit
 /// 周期条：钉住的那几档横排 + 行尾「最新 / 更多 / 图表」（§9.1）。
 ///
 /// 条上排哪几档由用户自己钉（`quickIntervals`，A6.5），不按停留时长学习——
-/// 会自己动的东西没法形成肌肉记忆。顺序固定按 `Interval.allCases` 走：从「更多」里
-/// 选了个不在常用里的周期，它插进自己那个位置，不会把后面整排顶偏一格。
+/// 会自己动的东西没法形成肌肉记忆。顺序固定按 `Interval.allCases` 走。从「更多」里
+/// 选了个不在常用里的周期，条上这一排一个都不动，行尾的「更多」写成那一档的名字
+/// （2026-09-23，见 `list`）。
 ///
 /// **条上最多六档**（`Prefs.maxQuick`，2026-09-21 定），**出厂就把六格放满**
 /// （`Interval.quick` = `5m 30m 1h 4h 1d 1w`）。这一行要同时放下六档、行尾的
@@ -56,58 +57,55 @@ struct IntervalBar: View {
   /// 行尾「图表」：开 K 线那一页（`Panel.chart`）。画线、记一笔也在那一页上。
   var onChart: () -> Void
 
-  /// 条上排哪几档：钉住的那些，外加「当前这档没被钉住」时的一颗临时 chip。
+  /// 条上排哪几档：**只有钉住的那些**，按 `Interval.allCases` 从短到长。
   ///
-  /// 临时 chip 不占钉位，虚线描边，切回常用档就消失——否则从网格里点了个 2h，
-  /// 条上会一个高亮都没有，看着像没切成。
+  /// 从前当前档没钉住时会在这儿追加一颗虚线描边的临时 chip，钉满六档时还得把最长的
+  /// 那一档先让出去——「看细节」从 4h 进到没钉住的 15m、或者从网格里点个 2h，
+  /// 用户自己钉的 1w 当场从条上消失（2026-09-23 体验审查）。钉住的档是人挑的，
+  /// 不该被一个临时去看的周期挤掉；现在当前档没钉住时，由行尾「更多」改写成那一档的
+  /// 名字并高亮（见 `body`），这一排一个都不动。
   ///
-  /// 总数**硬卡在 `Prefs.maxQuick`（六）**，这是排版唯一负责的那个数：
-  ///
-  /// - 存档里躺着更多档（上限从 10 收到 6 之前钉的、手改的存档）时，按从短到长取前六个，
-  ///   和 `PrefsCodec` 落盘那一侧是同一条规矩；
-  /// - 已经钉满六档、人又从网格里点了个没钉住的周期时，临时 chip 得有地方站，
-  ///   就把最长的那一档先让出来（当前这档永远留着——正看着的那一档消失是最难解释的）。
-  ///   切回任意一档常用周期，让出去的那一档立刻回来。
+  /// 存档里躺着多于六档（上限从 10 收到 6 之前钉的、手改的存档）时按从短到长取前六个，
+  /// 和 `PrefsCodec` 落盘那一侧是同一条规矩。
   private var list: [Interval] {
     let order = Interval.allCases
     func rank(_ iv: Interval) -> Int { order.firstIndex(of: iv) ?? order.count }
-    var set = Array(quick.sorted { rank($0) < rank($1) }.prefix(Prefs.maxQuick))
-    guard !set.contains(current) else { return set }
-    set.append(current)
-    set.sort { rank($0) < rank($1) }
-    while set.count > Prefs.maxQuick, let drop = set.last(where: { $0 != current }) {
-      set.removeAll { $0 == drop }
-    }
-    return set
+    return Array(quick.sorted { rank($0) < rank($1) }.prefix(Prefs.maxQuick))
   }
 
+  /// 当前档没钉在条上：「更多」替它说出来。
+  private var currentOffBar: Bool { !list.contains(current) }
+
   var body: some View {
-    VStack(spacing: 0) {
-      // 缝全交给格子自己（等宽 + 文字居中），所以这一层 `spacing` 是 0：行尾那几件
+    // 缝全交给格子自己（等宽 + 文字居中），所以这一层 `spacing` 是 0：行尾那几件
       // 各自带着自己的留白——「最新」自带 6pt 的前缝，分隔线两侧各 8pt，
       // 「更多 / 图表」本来就有 44pt 的命中区兜着。
-      HStack(spacing: 0) {
-        chips
-        actionSlot
-        divider
-        tail("更多", chevron: true, on: gridOpen, flipped: gridOpen) {
-          withAnimation(.easeOut(duration: 0.18)) { gridOpen.toggle() }
-        }
-        .accessibilityIdentifier("interval.more")
-        tail("图表", action: onChart)
-          .accessibilityIdentifier("interval.chart")
+    HStack(spacing: 0) {
+      chips
+      actionSlot
+      divider
+      // 当前档没钉在条上时，「更多」就写成那一档（「2h ▾」）并高亮：人一眼知道
+      // 自己正看着哪一档，钉住的那几档也一个都没被挤走。网格拉开时照旧高亮。
+      tail(currentOffBar ? current.rawValue : "更多", chevron: true,
+           on: gridOpen || currentOffBar, flipped: gridOpen) {
+        withAnimation(.easeOut(duration: 0.2)) { gridOpen.toggle() }
       }
-      // 两头 12pt：和头部内容的左缘对齐（2026-09-21 从 8 放回来的——影子药丸删掉之后
-      // 这一行不再需要从边距里抠那几个点）。
-      .padding(.horizontal, 12)
-      .frame(height: 44)
-      // 「最新 / 返回刚才」进出时周期区跟着重新铺满。这一句兜住 `MainScreen` 那头
-      // 没有包 `withAnimation` 的情况：没有它，六档会「啪」地跳一下位置。
-      .animation(.easeOut(duration: 0.18), value: atLatest)
-      .animation(.easeOut(duration: 0.18), value: onReturn != nil)
-
-      if gridOpen { grid }
+      .accessibilityIdentifier("interval.more")
+      .accessibilityLabel(currentOffBar ? "更多周期，当前 \(current.display)" : "更多周期")
+      .accessibilityAddTraits(currentOffBar ? [.isSelected] : [])
+      tail("图表", action: onChart)
+        .accessibilityIdentifier("interval.chart")
     }
+    // 两头 12pt：和头部内容的左缘对齐（2026-09-21 从 8 放回来的——影子药丸删掉之后
+    // 这一行不再需要从边距里抠那几个点）。
+    .padding(.horizontal, 12)
+    .frame(height: 44)
+    // 「最新 / 返回刚才」进出时周期区跟着重新铺满。这一句兜住 `MainScreen` 那头
+    // 没有包 `withAnimation` 的情况：没有它，六档会「啪」地跳一下位置。
+    .animation(.easeOut(duration: 0.18), value: atLatest)
+    .animation(.easeOut(duration: 0.18), value: onReturn != nil)
+    // 「更多」那张网格不在这儿了：它是图上的一层弹层（`IntervalPopoverLayer`），
+    // 这根条永远 44pt，展开收起图的高度一个 pt 都不动。
   }
 
   // ---------------------------------------------------------------- 周期区与动作之间
@@ -141,9 +139,8 @@ struct IntervalBar: View {
   ///   0.18s 的铺开是看得见的，手跟得上。
   ///
   /// 这儿**只可能有一颗**：「最新」的前提是不在最新，「返回刚才」的前提是在最新。
-  /// 「看细节」从前也挤在这儿，2026-09-20 搬去了头部那一行十字线动作里——
-  /// 它本来就是十字线的动作，和「上一根 / 下一根 / 按此价画线」是一伙的
-  /// （见 `CrosshairReadoutRow`）。
+  /// 「看细节」从前也挤在这儿，现在和「上一根 / 下一根 / 按此价画线」一起在
+  /// 十字线动作行里（`CrosshairActionBar`）——十字线在时它整行顶替这根条。
   ///
   /// 两颗上原来各有一个小箭头（`‹` / `›`），2026-09-21 去掉了：「最新」「返回刚才」
   /// 四个字本身已经把话说完了，箭头连着间距占 14pt。
@@ -240,7 +237,6 @@ struct IntervalBar: View {
   }
 
   /// 一档周期：没选中就是一行字里的一个词，选中了在它底下垫一层 10% 的强调色。
-  /// 没被钉住的当前档在那层底上再加一圈虚线——它是临时的，切走就没了。
   ///
   /// 命中区是**整个格子 × 44pt**，比看得见的那几个字大得多：格子等宽、首尾相接，
   /// 手指落在两档之间也一定归其中一档。外面再用一句负的竖向内边距把**版面**高度
@@ -254,13 +250,9 @@ struct IntervalBar: View {
         .contentShape(Rectangle())
     }
       .buttonStyle(.plain)
-      // §10.6：长按 = 取消钉。临时 chip 上长按则是把它钉下来，同一个 `toggleQuick`。
+      // §10.6：长按 = 取消钉（条上只剩钉住的档，长按只可能是拔掉它）。
       // 挂在收版面高度之前：长按认的是这一层的框，收完再挂就只剩 28pt 那一条。
-      // 钉满六档时临时 chip 上的长按不做事（和网格里那些灰掉的图钉同一条规矩），
-      // 不再走一遍「按了 → 弹一句钉不上」。
-      .onLongPressGesture(minimumDuration: 0.45) {
-        if quick.contains(iv) || !pinFull { onPin(iv) }
-      }
+      .onLongPressGesture(minimumDuration: 0.45) { onPin(iv) }
       .padding(.vertical, -8)
       .accessibilityIdentifier("interval.chip.\(iv.rawValue)")
       .accessibilityLabel(iv.display)
@@ -269,7 +261,6 @@ struct IntervalBar: View {
 
   @ViewBuilder private func chipLabel(_ iv: Interval) -> some View {
     let on = iv == current
-    let temp = !quick.contains(iv)
     Text(iv.rawValue)
       .font(.system(size: 12.5, weight: on ? .semibold : .medium))
       .foregroundStyle(on ? theme.amber : theme.ink2)
@@ -284,7 +275,7 @@ struct IntervalBar: View {
       .padding(.horizontal, 2)
       .frame(maxWidth: Self.maxChipWidth)
       .frame(height: 28)
-      .background(alignment: .center) { mark(iv, on: on, temp: temp) }
+      .background(alignment: .center) { mark(iv, on: on) }
       .contentShape(Rectangle())
   }
 
@@ -303,19 +294,10 @@ struct IntervalBar: View {
   /// 一块，比任何一根蜡烛都跳，可它要说的只是「十四档里选中了这一档」。2026-09-17
   /// 逐像素比过 AICoin：它的 chrome 一律 10% 淡底 + 彩色字
   /// （`sh_base_transparent_highlight_color` = `#1a1478fa`，落白底上就是 `#E8F1FF`）。
-  ///
-  /// `temp`（当前档没被钉住）在那层底上再加一圈虚线。`list` 只在「当前档没钉住」时
-  /// 才放它进来，所以 `temp` 必然同时 `on`，虚线不会单独出现。
-  @ViewBuilder private func mark(_ iv: Interval, on: Bool, temp: Bool) -> some View {
+  @ViewBuilder private func mark(_ iv: Interval, on: Bool) -> some View {
     if on {
       Capsule()
         .fill(theme.amberSoft)
-        .overlay {
-          if temp {
-            Capsule().strokeBorder(theme.amber,
-              style: StrokeStyle(lineWidth: 1, dash: [3, 2.5]))
-          }
-        }
         .frame(width: markWidth(iv), height: 28)
     }
   }
@@ -341,8 +323,8 @@ struct IntervalBar: View {
   /// 条右端那两个动作：**平文字，没有底色**——和没选中的周期一个画法，
   /// 整条读起来才是一行字。它们和周期分得开靠的是中间那条 `divider`，不是各自的底色。
   ///
-  /// 只有「更多」展开时才亮起来：字变强调色、底下垫同一套 10% 的淡底（和当前档一个规矩），
-  /// 说明「这张网格是它拉开的」。
+  /// 「更多」展开时、或者当前档没钉在条上（它替那一档说话）时才亮起来：字变强调色、
+  /// 底下垫同一套 10% 的淡底（和当前档一个规矩）。
   ///
   /// 「更多」带下箭头（那是从条上往下拉出一张网格，展开时箭头翻上去），「图表」不带
   /// （它开的是另一页，不是这根条的延伸）。
@@ -374,89 +356,12 @@ struct IntervalBar: View {
     // ——UI 测试里当场报「Activation point invalid」，点都点不着。
     .fixedSize(horizontal: true, vertical: false)
   }
-
-  // ---------------------------------------------------------------- 「更多」网格
-
-  /// 十四档摊成 4×4，直接把图往下推，不再开一层 sheet。
-  ///
-  /// 以前这是半屏 `PeriodPanel`：弹一层、选一下、再收一层，换个周期要三次动画。
-  /// 摊在条下面之后，点开点选点收都在原地，也顺带解决了「『更多』这个词不说明它是什么」——
-  /// 十四档全摆在眼前。
-  private var grid: some View {
-    VStack(spacing: 8) {
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
-                spacing: 8) {
-        ForEach(Interval.allCases, id: \.self) { cell($0) }
-      }
-      // 钉满了就换成四个字，直说为什么那些图钉按不动；没满时还是原来那句范围。
-      // 两句都是网格底下的一行小字，不弹窗、不挡手——按不动的图钉本身已经灰在那儿了。
-      Text(pinFull ? "已满六档" : "至少留 1 档，最多 \(Prefs.maxQuick) 档")
-        .font(.system(size: 11))
-        .foregroundStyle(theme.ink3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    // 四列 `.flexible()` 会把整行宽度平分：iPad 上一格能摊到 250pt 宽、还是 42pt 高，
-    // 十四个横躺的长条。封一个和手机相当的上限，网格照旧从左边起排。
-    .frame(maxWidth: 460, alignment: .leading)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.horizontal, 10)
-    .padding(.bottom, 10)
-    .transition(.move(edge: .top).combined(with: .opacity))
-    .clipped()
-  }
-
-  /// 钉位满了没有。满了之后没钉住的那些图钉一律按不动（§2026-09-21「最多六档」）。
-  private var pinFull: Bool { quick.count >= Prefs.maxQuick }
-
-  private func cell(_ iv: Interval) -> some View {
-    let on = iv == current
-    let pinned = quick.contains(iv)
-    // 钉满六档之后，其余那些图钉灰下去、按不动：条上只保证六档排得开，
-    // 让人钉第七个再弹一句「钉不上」，是先给希望再收回去。
-    let canPin = pinned || !pinFull
-    return ZStack(alignment: .topTrailing) {
-      Button {
-        onPick(iv)
-        withAnimation(.easeOut(duration: 0.18)) { gridOpen = false }
-      } label: {
-        Text(iv.display)
-          .font(.system(size: 12.5, weight: on ? .semibold : .medium))
-          .foregroundStyle(on ? theme.amber : theme.ink2)
-          .frame(maxWidth: .infinity)
-          .frame(height: 42)
-          // 同上：网格里当前那一格也是 10% 淡底 + 强调色字。
-          .background(on ? AnyShapeStyle(theme.amberSoft) : AnyShapeStyle(theme.raised),
-                      in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-          .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-      }
-      .buttonStyle(.plain)
-      .accessibilityIdentifier("period.row.\(iv.rawValue)")
-      .accessibilityLabel(iv.display)
-      .accessibilityAddTraits(on ? [.isSelected] : [])
-
-      // 图钉压在格子右上角：钉住的实心，没钉的是个空壳。点它只钉不切档。
-      Button { onPin(iv) } label: {
-        Image(systemName: pinned ? "pin.fill" : "pin")
-          .font(.system(size: 9.5, weight: .medium))
-          .foregroundStyle(pinned ? theme.amber : theme.ink3)
-          .opacity(canPin ? 1 : 0.3)
-          .frame(width: 24, height: 22)
-          .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .disabled(!canPin)
-      .accessibilityIdentifier("period.pin.\(iv.rawValue)")
-      .accessibilityLabel(
-        pinned ? "从常用行移除 \(iv.display)"
-          : canPin ? "加进常用行 \(iv.display)" : "已满六档，钉不下 \(iv.display)")
-    }
-  }
 }
 
 /// 横屏侧栏那一版「更多」。
 ///
-/// 竖屏的网格是摊在条下面的，横屏没有那根条（右侧是 `IntervalRail`），所以在侧栏里
-/// 再挂一份同样的网格。`PeriodPanel` 那张半屏表因此可以整张删掉，功能一个都不少。
+/// 横屏没有周期条（右侧是 `IntervalRail`），所以在侧栏里摆同一张网格
+/// （`IntervalGridPopover`），换档、钉、钉满换档都和竖屏一模一样。
 struct IntervalGridPanel: View {
   var store: PrefsStore
   var onPick: ((Interval) -> Void)?
@@ -464,23 +369,58 @@ struct IntervalGridPanel: View {
   @Environment(\.panelTheme) private var t
   @Environment(\.dismiss) private var dismiss
   @Environment(\.panelDismiss) private var sideDismiss
-  @State private var open = true
 
   var body: some View {
     PanelSheet(title: "周期", subtitle: nil) {
-      IntervalBar(
+      IntervalGridPopover(
         theme: t, quick: store.prefs.quickIntervals, current: store.prefs.interval,
-        atLatest: true, gridOpen: $open,
         onPick: { iv in
           store.update { $0.interval = iv }
           onPick?(iv)
           PanelCloser(side: sideDismiss, sheet: dismiss)()
         },
         onPin: { iv in store.attempt { $0.toggleQuick(iv) } },
-        onLatest: {},
-        onChart: {})
+        onReplace: { old, new in store.update { $0.replaceQuick(old: old, new: new) } })
       .frame(maxWidth: .infinity)
     }
   }
 }
 
+/// 竖屏周期条那一行：平时是周期条，十字线活着时整行换成十字线的四颗动作。
+///
+/// 独立成非泛型 struct 有两个原因：一是把这几层从 `MainScreen.chartPage` 的类型嵌套里
+/// 摘出去（见 `MainScreen.swift` 文件头那条层数上限）；二是只有这一层去观察十字线——
+/// 让位靠 `YieldsToCrosshair`，按钮自己观察 `readout`，主屏 body 不因手指移动重算。
+struct IntervalRow: View {
+  var theme: PanelTheme
+  var quick: [Interval]
+  var current: Interval
+  var atLatest: Bool
+  @Binding var gridOpen: Bool
+  var onPick: (Interval) -> Void
+  var onPin: (Interval) -> Void
+  var onLatest: () -> Void
+  var onReturn: (() -> Void)?
+  var onChart: () -> Void
+  let readout: CrosshairReadout
+  let context: CrosshairContext
+  var canDetail: Bool
+  var onStep: (Int) -> Void
+  var onLine: (Double) -> Void
+  var onDetail: (Crosshair) -> Void
+
+  var body: some View {
+    ZStack {
+      IntervalBar(
+        theme: theme, quick: quick, current: current, atLatest: atLatest,
+        gridOpen: $gridOpen, onPick: onPick, onPin: onPin,
+        onLatest: onLatest, onReturn: onReturn, onChart: onChart)
+        .modifier(YieldsToCrosshair(readout: readout, context: context, gridOpen: $gridOpen))
+      CrosshairActionBar(
+        readout: readout, context: context, theme: theme, canDetail: canDetail,
+        onStep: onStep, onLine: onLine, onDetail: onDetail)
+    }
+    .frame(height: 44)
+    .background(theme.app)
+  }
+}
