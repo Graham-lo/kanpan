@@ -1,0 +1,16 @@
+coldbase: COMPARE_COLD main=16.181555032730103 all=baseline interval=1m bars=1500
+coldbase: Test Case '-[KanpanUITests.ComparePerformanceUITests testColdStartOneMinute]' passed (17.399 seconds).
+coldcmp: COMPARE_COLD main=11.542121052742004 all=12.738749980926514 interval=1m bars=1500
+coldcmp: Test Case '-[KanpanUITests.ComparePerformanceUITests testColdStartOneMinute]' passed (13.974 seconds).
+coldbase2: COMPARE_COLD main=7.902629017829895 all=baseline interval=1m bars=1500
+coldbase2: Test Case '-[KanpanUITests.ComparePerformanceUITests testColdStartOneMinute]' passed (9.030 seconds).
+coldcmp2: COMPARE_COLD main=17.17211103439331 all=18.278879046440125 interval=1m bars=1500
+coldcmp2: Test Case '-[KanpanUITests.ComparePerformanceUITests testColdStartOneMinute]' passed (19.473 seconds).
+coldbase3: COMPARE_COLD main=14.734118938446045 all=baseline interval=1m bars=1500
+coldbase3: Test Case '-[KanpanUITests.ComparePerformanceUITests testColdStartOneMinute]' passed (15.910 seconds).
+coldcmp3: COMPARE_COLD main=19.608458042144775 all=20.721421003341675 interval=1m bars=1500
+coldcmp3: Test Case '-[KanpanUITests.ComparePerformanceUITests testColdStartOneMinute]' passed (21.948 seconds).
+coldbase4: COMPARE_COLD main=13.970404028892517 all=baseline interval=1m bars=1500
+coldbase4: Test Case '-[KanpanUITests.ComparePerformanceUITests testColdStartOneMinute]' passed (15.273 seconds).
+coldcmp4: COMPARE_COLD main=12.236495971679688 all=14.487995982170105 interval=1m bars=1501
+coldcmp4: Test Case '-[KanpanUITests.ComparePerformanceUITests testColdStartOneMinute]' passed (15.741 seconds).

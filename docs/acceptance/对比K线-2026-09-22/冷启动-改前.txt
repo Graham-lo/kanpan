@@ -1,0 +1,1 @@
+COMPARE_COLD main=20.288522958755493 all=baseline interval=1m bars=1500

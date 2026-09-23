@@ -1,0 +1,12 @@
+对比 K 线 · 阶段 1 · 命令摘要（2026-09-22，工作树 kanpan-compare，分支 compare-kline @ fa74866）
+
+make core-test          ✔ Test run with 366 tests in 44 suites passed；XCTest Executed 4 tests, 0 failures
+make network-test       ✔ Test run with 106 tests in 18 suites passed
+make data-test          ✔ Test run with 189 tests in 35 suites passed；XCTest Executed 3 tests, 0 failures
+                          （并行跑时「读快照 + 建 BarSeries <20ms」一次测到 64.9ms，--no-parallel 顺序复跑全过，门槛未放宽）
+make app-logic-test     各包全部通过（合计 445 条）
+cargo test --lib        test result: ok. 155 passed; 0 failed
+xcodebuild build -workspace Kanpan.xcworkspace -scheme Kanpan -destination 'generic/platform=iOS Simulator' ARCHS=arm64
+                        ** BUILD SUCCEEDED **（2026-09-22T08:22:30Z）
+KanpanChart xcodebuild test（iPhone 16 Pro · compare，iOS 26.5，-parallel-testing-enabled NO）
+                        ✔ Test run with 131 tests in 21 suites passed；XCTest Executed 4 tests, 0 failures

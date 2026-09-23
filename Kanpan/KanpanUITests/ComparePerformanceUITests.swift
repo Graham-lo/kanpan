@@ -10,7 +10,11 @@ import XCTest
     app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
     app.launchEnvironment["KANPAN_TEST_DEEPLINK"] = "hkline://symbol/BTCUSDT?interval=1m"
     app.launchEnvironment["KANPAN_CHART_DIAGNOSTICS"] = "1"
-    app.launchEnvironment["KANPAN_TEST_COMPARE_SYMBOLS"] = "binance/usd_m/ETHUSDT,binance/usd_m/SOLUSDT,binance/usd_m/DOGEUSDT"
+    // COMPARE_BASELINE=1（xcodebuild 前加 TEST_RUNNER_ 前缀传入）：同一台机器、同一负载下量不带对比的基线，
+    // 和带三条对比的那一轮背靠背比，主图首屏不该被对比拖慢。
+    if ProcessInfo.processInfo.environment["COMPARE_BASELINE"] != "1" {
+      app.launchEnvironment["KANPAN_TEST_COMPARE_SYMBOLS"] = "binance/usd_m/ETHUSDT,binance/usd_m/SOLUSDT,binance/usd_m/DOGEUSDT"
+    }
     let started = Date()
     app.launch()
     let canvas = app.otherElements["chart.canvas"]

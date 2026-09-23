@@ -340,6 +340,13 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 
 - 阶段 2 已推送 main `39523a8`，独立验收 `6fd70e8` 通过。阶段 3 已推送 `5f30e3c` / `cef66b6`：按用户 settings 选声、APNs payload 接线、完整整合检查与三条铃声 UI 用例全绿；真实 simctl 注入的系统日志确认加载玻璃 CAF 并 playedToEnd。按用户最新「能用就推」指令，记录五份线上 Coinbase 先行差异后继续仅从 origin/main `cef66b6` 部署；备份 `/opt/kanpan-api/backup-ringtone-3-20260922-160818`，API/worker 于 16:16:28 CST 重启并 active，157 条服务端测试通过、106 份源码与两个运行二进制散列一致，健康及两个公网只读端点成功。早先停部署判断已被用户新指令取代。[阶段3](../docs/acceptance/提醒铃声-2026-09-22/阶段3.md)保留全部时间线与发布证据；无真机或真实 Apple APNs 结论。
 
+## 对比 K 线 · 第三线程（2026-09-22/23）
+
+- 2026-09-23 起 Codex 线程停用，由 Claude 子代理 compare 接手阶段 2–4，改在主线小步推送（不再挂长命分支）。
+- 阶段 1（渲染、百分比轴、图例、夹具）与阶段 2（`CompareFeed` 数据、`CompareModel` 模块、「图表」面板「对比」一节、`Prefs.compareSymbols` 同步字段 + 服务端白名单/值规则）随同一次推送进 main；服务端已部署并只读验证。报告：[阶段1](../docs/acceptance/对比K线-2026-09-22/阶段1.md)、[阶段2](../docs/acceptance/对比K线-2026-09-22/阶段2.md)。
+- 验收发现并修掉：图表读屏念完整品种 key（`binance/usd_m/BTCUSDT`），改为念 `InstrumentID(…).symbol`；全仓其它显示文案已核对无同类问题。
+- 约束：集合最多 3 只、完整品种 key、主品种与重复不进集合；对比期间画线置灰、价格叠加隐藏、复盘不含对比；扫图扫到集合里的品种时临时忽略，集合不变。
+
 ## 10. 2026-09-22 待办交接 · P1
 
 **P1初版已重放并推送 `d4f5e2f`（原本地 `5742db3`）；三个副图已获Claude验收通过，初版盘口视觉打回，本次已完成固定十行梯返工与模拟器验证。后端已部署并只读验证。未安装真机。**

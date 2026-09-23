@@ -1,0 +1,53 @@
+→ 模拟器：iPhone 16 Pro · compare (F5EB53E9-4A51-4CA9-B5CE-C4B287E13F6F)
+→ 构建取证宿主
+
+** BUILD SUCCEEDED **
+
+→ 探针轮：1 Hz 读 ChartView.link，约 40 秒
+A3.12| 模式：--probe（带 1 Hz 观察定时器）
+A3.12| 已喂快照：BTCUSDT 1h，1000 根；画布 402×874@3x，主题 浅，风格 aicoin
+A3.12| 
+A3.12|       t  阶段        link      timestamp
+A3.12|   1.047  settled     paused    81968.218035
+A3.12|       —  poke        setNeedsRedraw(.all)
+A3.12|   2.097  poked       RUNNING   81968.218035
+A3.12|   3.149  repaused    paused    81970.283333
+A3.12|       —  window      静止 30 秒开始（不碰屏幕）
+A3.12|   5.182  window      paused    81970.283333
+A3.12|   6.183  window      paused    81970.283333
+A3.12|   7.183  window      paused    81970.283333
+A3.12|   8.183  window      paused    81970.283333
+A3.12|   9.182  window      paused    81970.283333
+A3.12|  10.183  window      paused    81970.283333
+A3.12|  11.183  window      paused    81970.283333
+A3.12|  12.183  window      paused    81970.283333
+A3.12|  13.182  window      paused    81970.283333
+A3.12|  14.182  window      paused    81970.283333
+A3.12|  15.183  window      paused    81970.283333
+A3.12|  16.182  window      paused    81970.283333
+A3.12|  17.183  window      paused    81970.283333
+A3.12|  18.183  window      paused    81970.283333
+A3.12|  19.182  window      paused    81970.283333
+A3.12|  20.183  window      paused    81970.283333
+A3.12|  21.183  window      paused    81970.283333
+A3.12|  22.182  window      paused    81970.283333
+A3.12|  23.183  window      paused    81970.283333
+A3.12|  24.182  window      paused    81970.283333
+A3.12|  25.183  window      paused    81970.283333
+A3.12|  26.183  window      paused    81970.283333
+A3.12|  27.182  window      paused    81970.283333
+A3.12|  28.183  window      paused    81970.283333
+A3.12|  29.183  window      paused    81970.283333
+A3.12|  30.183  window      paused    81970.283333
+A3.12|  31.182  window      paused    81970.283333
+A3.12|  32.183  window      paused    81970.283333
+A3.12|  33.183  window      paused    81970.283333
+A3.12|  34.182  window      paused    81970.283333
+A3.12|  35.182  window      paused    81970.283333
+A3.12| 
+A3.12| == 结论 ==
+A3.12| 静止窗口采样 31 次（1 Hz，30 秒）
+A3.12| 其中 isPaused == false（link 在跑）：0 次
+A3.12| 其中 没有 link 对象：0 次
+A3.12| 窗口内出现过的 link.timestamp 取值：1 个 → 81970.283333
+A3.12| A3.12 前半句（静止时 DisplayLink 暂停）：通过

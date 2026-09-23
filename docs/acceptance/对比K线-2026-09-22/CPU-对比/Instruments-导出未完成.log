@@ -1,0 +1,13 @@
+→ 模拟器：iPhone 16 Pro · compare (F5EB53E9-4A51-4CA9-B5CE-C4B287E13F6F)
+→ 构建取证宿主
+
+** BUILD SUCCEEDED **
+
+→ CPU 轮：画一屏，静止 30 秒
+  pid=93061
+Detected file type from extension: PNG
+Note: No display specified. Defaulting to display: C9687EC7-1156-4D18-AE32-0AD984C0B06B (screenID: 1, name: LCD)
+Wrote screenshot to: /Users/mdd/zhk/kanpan-compare/docs/acceptance/对比K线-2026-09-22/CPU-对比/A3.12-screen.png
+Starting recording with the Time Profiler template. Targeting All Processes. Time limit: 30.0 s
+Ctrl-C to stop the recording
+Reached specified time limit, ending recording...

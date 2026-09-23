@@ -1,0 +1,131 @@
+["compareKeys": <__NSArrayI 0x105843ae0>(
+binance/usd_m/ETHUSDT,
+binance/usd_m/SOLUSDT,
+binance/usd_m/DOGEUSDT
+)
+, "candleKind": candle, "bars": 1501, "compareBaseOpen": 86349.2, "compareColors": <__NSArrayI 0x105840c00>(
+#FFB400,
+#E849B9,
+#6EBF26
+)
+, "renderedDepthRows": 0, "overlays": <__NSArray0 0x1e723b918>(
+
+)
+, "guestIDs": <__NSArray0 0x1e723b918>(
+
+)
+, "timeY": 314.8571428571429, "span": 5325000, "axisW": 47, "lastClose": 86389.60000000001, "height": 568, "depthSymbol": , "scrollY": 0, "latestRightGap": 0, "gestureTrace": , "depthLevels": 0, "dataDisplay": inside, "ma": <__NSArrayI 0x105841ec0>(
+10,
+30,
+120,
+256
+)
+, "macd": <__NSArrayI 0x105842310>(
+10,
+30,
+9
+)
+, "crossX": -1, "plotW": 355, "oiPeriod": 1m, "oiReady": 1, "drawingCount": 0, "compareMainClose": 86389.60000000001, "inverted": 0, "centerY": 0.5, "crosshair": 0, "maColor0": #FFB400, "drawingAlerted": <__NSArray0 0x1e723b918>(
+
+)
+, "oiTimes": <__NSArrayI 0x102a18a00>(
+1790116200000,
+1790116500000,
+1790116800000,
+1790117100000,
+1790117400000,
+1790117700000,
+1790118000000,
+1790118300000,
+1790118600000,
+1790118900000,
+1790119200000,
+1790119500000,
+1790119800000,
+1790120100000,
+1790120400000,
+1790120700000,
+1790121000000,
+1790121300000,
+1790121600000,
+1790121900000,
+1790122200000,
+1790122500000,
+1790122800000,
+1790123100000,
+1790123400000,
+1790123700000,
+1790124000000
+)
+, "to": 1790124210000, "compareBaseTime": 1790118900000, "percentAxis": 1, "crossPane": MAIN, "spacing": 4, "style": aicoin, "drawingKinds": <__NSArray0 0x1e723b918>(
+
+)
+, "mode": percent, "lastVolume": 205.781, "drawingContinuous": 0, "viewportH": 568, "drawingMagnet": 1, "compareReady": 3, "from": 1790118885000, "drawingHidden": <__NSArray0 0x1e723b918>(
+
+)
+, "externalSupported": 1, "bodyW": 2.666666666666667, "panes": <__NSArrayI 0x105841aa0>(
+{
+    h = "78.71428571428571";
+    id = VOL;
+    y = "331.8571428571429";
+},
+{
+    h = "78.71428571428571";
+    id = OI;
+    y = "410.5714285714286";
+},
+{
+    h = "78.71428571428571";
+    id = MACD;
+    y = "489.2857142857143";
+}
+)
+, "interval": 1m, "compareLegend": <__NSArrayI 0x1058404e0>(
+{
+    label = "+0.05%";
+    name = BTC;
+},
+{
+    label = "-0.23%";
+    name = ETH;
+},
+{
+    label = "-0.18%";
+    name = SOL;
+},
+{
+    label = "-0.28%";
+    name = DOGE;
+}
+)
+, "drawingIDs": <__NSArray0 0x1e723b918>(
+
+)
+, "subs": <__NSArrayI 0x105841fe0>(
+VOL,
+OI,
+MACD
+)
+, "emaColor0": #F55B58, "drawingsVisible": 0, "symbol": binance/usd_m/BTCUSDT, "drawingLocked": <__NSArray0 0x1e723b918>(
+
+)
+, "drawingAnchors": <__NSArray0 0x1e723b918>(
+
+)
+, "hiddenMA": <__NSArray0 0x1e723b918>(
+
+)
+, "ownDimmed": 0, "voiceValue": BTCUSDT，1 分钟，最新一根 2026-09-23 08:43，开 86472.4，高 86472.4，低 86389.6，收 86389.6，跌 0.10%, "drawingColors": <__NSArray0 0x1e723b918>(
+
+)
+, "crossY": -1, "crossAxisLabel": , "drawingCommits": 0, "drawingCommitWired": 1, "compareTicks": <__NSArrayI 0x10593a040>(
+-0.75,
+-0.5,
+-0.25,
+0,
+0.25
+)
+, "priceDecimals": 1, "portraitHeight": 0.5, "mainH": 314.8571428571429, "compareBaseIndex": 1412, "externalReady": <__NSArray0 0x1e723b918>(
+
+)
+, "background": #F3F7F4, "crossIndex": -1, "zoomY": 1]

@@ -1,0 +1,59 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -jobs 2 "OTHER_SWIFT_FLAGS=$(inherited) -j2" test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=F5EB53E9-4A51-4CA9-B5CE-C4B287E13F6F" -derivedDataPath /Users/mdd/zhk/kanpan-compare/.compare-work/App "-only-testing:KanpanUITests/ComparePerformanceUITests/testColdStartOneMinute" -test-timeouts-enabled YES -default-test-execution-time-allowance 480 -maximum-test-execution-time-allowance 900 -resultBundlePath /Users/mdd/zhk/kanpan-compare/.compare-work/baseline-ui-results/iPhone-16-Pro.xcresult
+
+Build settings from command line:
+    OTHER_SWIFT_FLAGS = $(inherited) -j2
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanReview: /Users/mdd/zhk/kanpan-compare/KanpanReview @ local
+  KanpanData: /Users/mdd/zhk/kanpan-compare/KanpanData @ local
+  KanpanNetwork: /Users/mdd/zhk/kanpan-compare/KanpanNetwork @ local
+  KanpanChart: /Users/mdd/zhk/kanpan-compare/KanpanChart @ local
+  KanpanAccount: /Users/mdd/zhk/kanpan-compare/KanpanAccount @ local
+  KanpanCore: /Users/mdd/zhk/kanpan-compare/KanpanCore @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan-compare/.compare-work/baseline-ui-results/iPhone-16-Pro.xcresult
+
+2026-09-22 14:49:17.091914+0800 KanpanUITests-Runner[70956:4013513] [Default] Running tests...
+objc[70956]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x109d28310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x109c90398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-22 14:49:20.603.
+2026-09-22 14:49:23.815 xcodebuild[70270:4004348] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-22 14:49:23.815 xcodebuild[70270:4004348] [MT] IDELaunchParametersSnapshot: no debugger version
+Test Suite 'KanpanUITests.xctest' started at 2026-09-22 14:49:20.604.
+Test Suite 'ComparePerformanceUITests' started at 2026-09-22 14:49:20.604.
+Test Case '-[KanpanUITests.ComparePerformanceUITests testColdStartOneMinute]' started.
+    t =     0.00s Start Test at 2026-09-22 14:49:20.605
+    t =     0.22s Set Up
+    t =     0.22s Open com.mdd.kanpan
+    t =     0.23s     Launch com.mdd.kanpan
+    t =    15.32s         Setting up automation session
+    t =    17.12s         Wait for com.mdd.kanpan to idle
+    t =    20.39s Checking existence of `"chart.canvas" Other`
+    t =    20.48s Find the "chart.canvas" Other
+COMPARE_COLD main=20.288522958755493 all=baseline interval=1m bars=1500
+    t =    20.52s Added attachment of type 'public.plain-text'
+    t =    20.62s Added attachment named '对比-冷启动'
+    t =    20.62s Terminate com.mdd.kanpan:71058
+    t =    21.63s Tear Down
+Test Case '-[KanpanUITests.ComparePerformanceUITests testColdStartOneMinute]' passed (21.694 seconds).
+Test Suite 'ComparePerformanceUITests' passed at 2026-09-22 14:49:42.300.
+	 Executed 1 test, with 0 failures (0 unexpected) in 21.694 (21.696) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-22 14:49:42.300.
+	 Executed 1 test, with 0 failures (0 unexpected) in 21.694 (21.696) seconds
+Test Suite 'Selected tests' passed at 2026-09-22 14:49:42.301.
+	 Executed 1 test, with 0 failures (0 unexpected) in 21.694 (21.697) seconds
+2026-09-22 14:51:54.412 xcodebuild[70270:4004348] [MT] IDETestOperationsObserverDebug: 206.780 elapsed -- Testing started completed.
+2026-09-22 14:51:54.412 xcodebuild[70270:4004348] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-22 14:51:54.412 xcodebuild[70270:4004348] [MT] IDETestOperationsObserverDebug: 206.780 sec, +206.780 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan-compare/.compare-work/baseline-ui-results/iPhone-16-Pro.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
