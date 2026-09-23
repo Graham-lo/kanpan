@@ -130,46 +130,6 @@ public enum SeriesStore {
 
   // ------------------------------------------------------------------ 淘汰
 
-  /// 两次淘汰之间至少隔这么久。
-  ///
-  /// 只对下面那条「扫目录」的老路有意义。正常写盘路径已经不走它了。
-  static let pruneEverySeconds: TimeInterval = 60
-  private static let pruneClock = PruneClock()
-
-  /// 扫目录版的淘汰：按 mtime 倒序留下，超出条数或字节上限的删掉。
-  ///
-  /// 这条路现在只留给测试和「外面明确要求马上清一次」用。正常写盘走
-  /// `SeriesIndex`：进程内记着每份的 (mtime, bytes)，写完只更新一个字典，
-  /// 只有真的超限了才排序删文件——一次 `contentsOfDirectory` + 2000 次
-  /// `resourceValues` 从每次写盘的路径上整个拿掉了。
-  static func prune(in dir: URL, force: Bool = false) {
-    guard force || pruneClock.due(every: pruneEverySeconds) else { return }
-    let fm = FileManager.default
-    let keys: [URLResourceKey] = [.contentModificationDateKey, .totalFileAllocatedSizeKey, .fileSizeKey]
-    let files = Self.files(in: dir, keys: keys)
-    let entries = files
-      .filter { $0.pathExtension == "kbar" }
-      .map { url -> (url: URL, at: Date, bytes: Int) in
-        let v = try? url.resourceValues(forKeys: Set(keys))
-        return (url, v?.contentModificationDate ?? .distantPast,
-                v?.totalFileAllocatedSize ?? v?.fileSize ?? 0)
-      }
-      .sorted { $0.at > $1.at }
-
-    var kept = 0
-    var bytes = 0
-    for entry in entries {
-      kept += 1
-      bytes += entry.bytes
-      if kept > maxEntries || bytes > maxBytes {
-        try? fm.removeItem(at: entry.url)
-      }
-    }
-    // 磁盘刚被动过，进程内那份索引作废，下次用到时重扫。
-    let index = SeriesIndex.shared
-    Task.detached(priority: .utility) { await index.forget(dir) }
-  }
-
   static func files(in dir: URL, keys: [URLResourceKey]) -> [URL] {
     (FileManager.default.enumerator(at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])?.allObjects as? [URL]) ?? []
   }
@@ -270,7 +230,7 @@ actor SeriesIndex {
     }
   }
 
-  /// 磁盘被别人动过（整目录删掉、扫目录版淘汰跑过），索引作废。
+  /// 磁盘被别人动过（整目录删掉），索引作废。
   func forget(_ dir: URL) {
     let d = key(dir)
     dirs[d] = nil
@@ -310,18 +270,5 @@ actor SeriesIndex {
     }
     dirs[dir] = table
     totals[dir] = total
-  }
-}
-
-/// 记上次淘汰的时间。写盘可能发生在任意线程，所以上把锁。
-private final class PruneClock: @unchecked Sendable {
-  private let lock = NSLock()
-  private var last = Date.distantPast
-  func due(every seconds: TimeInterval) -> Bool {
-    lock.lock(); defer { lock.unlock() }
-    let now = Date()
-    guard now.timeIntervalSince(last) >= seconds else { return false }
-    last = now
-    return true
   }
 }

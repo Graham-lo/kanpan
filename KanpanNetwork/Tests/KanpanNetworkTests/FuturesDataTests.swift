@@ -117,36 +117,13 @@ struct FuturesDataRESTTests {
   }
 }
 
-@Suite("强平 / 逐笔 / 五档盘口的帧")
-struct LiquidationAggTradeDepthTests {
+@Suite("逐笔 / 五档盘口的帧")
+struct AggTradeDepthTests {
 
   private func payload(_ text: String) throws -> StreamPayload {
     let env = try JSONDecoder().decode(StreamEnvelope.self, from: Data(text.utf8))
     guard let p = env.payload else { throw FeedError.badResponse("没有 payload") }
     return p
-  }
-
-  /// `S` 是系统那张平仓单的方向，和被平掉的仓位正好相反：SELL 是多头爆仓。
-  @Test("forceOrder：SELL 记成多头被强平，价量取 ap / z")
-  func forceOrderSellIsLongLiquidated() throws {
-    let text = #"{"e":"forceOrder","E":1790046465123,"o":{"s":"BTCUSDT","S":"SELL","o":"LIMIT","f":"IOC","q":"0.014","p":"9910","ap":"9910","X":"FILLED","l":"0.014","z":"0.014","T":1790046464110}}"#
-    guard case .forceOrder(let e) = try payload(text) else { Issue.record("不是 forceOrder"); return }
-    #expect(e.symbol == "BTCUSDT")
-    #expect(e.side == .long)
-    #expect(e.price == 9910)
-    #expect(e.qty == 0.014)
-    #expect(e.timeMs == 1_790_046_464_110)       // 用撮合时间 T，不用推送时间 E
-    #expect(abs(e.notional - 138.74) < 0.001)
-  }
-
-  @Test("forceOrder：BUY 记成空头被强平；全市场那条流的帧形状一样")
-  func forceOrderBuyIsShortLiquidated() throws {
-    // 实测 `!forceOrder@arr` 的一帧（多了 `ps` / `st`，不影响解析）。
-    let text = #"{"stream":"!forceOrder@arr","data":{"e":"forceOrder","E":1790046465123,"o":{"s":"MARSCOINUSDT","S":"BUY","o":"LIMIT","f":"IOC","q":"18052","p":"0.0952900","ap":"0.0975410","X":"FILLED","l":"2170","z":"18052","T":1790046464110,"ps":"MARSCOINUSDT","st":1}}}"#
-    guard case .forceOrder(let e) = try payload(text) else { Issue.record("不是 forceOrder"); return }
-    #expect(e.symbol == "MARSCOINUSDT")
-    #expect(e.side == .short)
-    #expect(e.qty == 18052)
   }
 
   /// `m` 是「买方是不是挂单方」：true 表示这笔是主动卖出。
@@ -186,9 +163,8 @@ struct LiquidationAggTradeDepthTests {
     #expect(d.asks.map(\.price) == d.asks.map(\.price).sorted(by: <))
   }
 
-  @Test("三条流的流名")
+  @Test("两条流的流名")
   func streamNames() {
-    #expect(BinanceHosts.forceOrderStream(symbol: "BTCUSDT") == "btcusdt@forceOrder")
     #expect(BinanceHosts.aggTradeStream(symbol: "BTCUSDT") == "btcusdt@aggTrade")
     #expect(BinanceHosts.depth5Stream(symbol: "BTCUSDT") == "btcusdt@depth5@100ms")
     let url = BinanceHosts.default.combinedStream([

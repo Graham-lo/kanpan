@@ -212,11 +212,6 @@ public actor MarketRESTTransport: HTTPTransport {
     }
   }
 
-  /// 这个错误是不是「这一笔被取消了」。取消不算线路故障，不记冷却。
-  static func isCancellation(_ error: any Error) -> Bool {
-    error is CancellationError || (error as? URLError)?.code == .cancelled
-  }
-
   /// 这个状态码要不要退到另一条路上。
   static func fallsBack(_ status: Int) -> Bool {
     status != 200 && [403, 408, 418, 429, 451, 500, 502, 503, 504].contains(status)

@@ -314,10 +314,6 @@ public enum StreamPayload: Sendable {
   case markPrice(symbol: String, price: Double, tick: MarkPriceTick)
   /// 逐笔成交。K 线的实时跳动现在靠它（见 `BinanceHosts.tradeStream`）。
   case trade(TradeEvent)
-  /// 最优挂单：只给价格线一个心跳，不进成交量。
-  case bookTicker(symbol: String, bid: Double, ask: Double, timeMs: Int64)
-  /// 保留帧解析，无消费方；强平功能不做，见 docs/不做清单.md。
-  case forceOrder(LiquidationEvent)
   /// 逐笔聚合成交（`@aggTrade`）：给主动买卖比补当前这根的实时尾巴。
   case aggTrade(AggTradeEvent)
   /// 五档全量快照（`@depth5@100ms`）。
@@ -368,19 +364,11 @@ extension StreamPayload: Decodable {
       self = .markPrice(symbol: sym, price: p, tick: tick)
     case "trade":
       self = .trade(try TradeEvent(from: decoder))
-    case "forceOrder":
-      self = .forceOrder(try LiquidationEvent(from: decoder))
     case "aggTrade":
       self = .aggTrade(try AggTradeEvent(from: decoder))
     case "depthUpdate":
       // `@depth5@100ms` 的事件名也是 `depthUpdate`（见 `DepthSnapshot`）。
       self = .depth(try DepthSnapshot(from: decoder))
-    case "bookTicker":
-      let sym = try c.decode(String.self, forKey: .s)
-      func px(_ k: K) -> Double { (try? c.decode(String.self, forKey: k)).flatMap(Double.init) ?? .nan }
-      // 撮合时间 `T` 优先；某些镜像只给事件时间 `E`。
-      let t = (try? c.decode(Int64.self, forKey: .T)) ?? (try? c.decode(Int64.self, forKey: .E)) ?? 0
-      self = .bookTicker(symbol: sym, bid: px(.b), ask: px(.a), timeMs: t)
     default:
       self = .other(e)
     }
@@ -465,68 +453,7 @@ public struct TradeEvent: Sendable, Equatable, Decodable {
   enum K: String, CodingKey { case e, s, p, q, T, E, t, m }
 }
 
-// ---------------------------------------------------------------- 强平 / 逐笔 / 盘口
-
-/// 一笔强平里**被平掉的是哪一边**。
-///
-/// 币安发的 `S` 是**系统这张平仓单的方向**，不是被平仓位的方向，两者正好相反：
-/// `S == "SELL"` 是系统卖出去平掉一个**多头**（多头爆仓），`S == "BUY"` 是买回来
-/// 平掉一个**空头**。这条流最常被搞错的就是这一点，所以这儿存的是「谁被平了」，
-/// 不是原样的 `S`——调用方拿到 `.long` 就是多头爆仓，不用再反一次。
-public enum LiquidationSide: Sendable, Equatable {
-  case long, short
-}
-
-/// 保留的强平事件模型（`forceOrder`），功能不做，见 docs/不做清单.md。
-///
-/// 只留这张图上要用的四项：品种、被平的方向、成交均价 `ap`、累计成交量 `z`、
-/// 撮合时间 `T`。委托价 `p` 和委托量 `q` 不留——爆仓柱看的是**真的成交了多少**，
-/// 强平单是 IOC，委托量里有没吃掉的部分。
-///
-/// 时间用 `T` 不用 `E`，理由和 `TradeEvent` 一样：`E` 是推送时刻，跨周期边界时
-/// 会把这一笔折错到下一根上。
-public struct LiquidationEvent: Sendable, Equatable, Decodable {
-  public var symbol: String
-  public var side: LiquidationSide
-  /// 成交均价 `ap`。
-  public var price: Double
-  /// 累计成交量 `z`，按合约标的计。乘以 `price` 才是名义额。
-  public var qty: Double
-  public var timeMs: Int64
-
-  /// 名义额（报价货币）。双色柱要画的就是它。
-  public var notional: Double { price * qty }
-
-  public init(symbol: String, side: LiquidationSide, price: Double, qty: Double, timeMs: Int64) {
-    self.symbol = symbol; self.side = side; self.price = price; self.qty = qty; self.timeMs = timeMs
-  }
-
-  public init(from decoder: Decoder) throws {
-    let outer = try decoder.container(keyedBy: Outer.self)
-    let o = try outer.nestedContainer(keyedBy: Inner.self, forKey: .o)
-    symbol = try o.decode(String.self, forKey: .s)
-    let raw = (try? o.decode(String.self, forKey: .S))?.uppercased() ?? ""
-    switch raw {
-    case "SELL": side = .long
-    case "BUY": side = .short
-    default: throw FeedError.badResponse("强平方向不认识：\(raw)")
-    }
-    func num(_ key: Inner) throws -> Double {
-      if let s = try? o.decode(String.self, forKey: key) {
-        guard let v = Double(s) else { throw FeedError.badResponse("不是数字：\(s)") }
-        return v
-      }
-      return try o.decode(Double.self, forKey: key)
-    }
-    price = try num(.ap)
-    qty = try num(.z)
-    timeMs = (try? o.decode(Int64.self, forKey: .T))
-      ?? (try? outer.decode(Int64.self, forKey: .E)) ?? 0
-  }
-
-  enum Outer: String, CodingKey { case e, E, o }
-  enum Inner: String, CodingKey { case s, S, o, f, q, p, ap, X, l, z, T }
-}
+// ---------------------------------------------------------------- 逐笔 / 盘口
 
 /// 聚合成交事件（`aggTrade`）：同一时刻、同一价位、同一方向的若干笔并成一条。
 public struct AggTradeEvent: Sendable, Equatable, Decodable {

@@ -43,13 +43,11 @@ public enum StreamTopic: Hashable, Sendable, CustomStringConvertible {
   case aggTrade(symbol: String)
   /// 五档盘口。
   case depth(symbol: String)
-  /// 买一卖一。
-  case bookTicker(symbol: String)
 
   public var symbol: String {
     switch self {
     case .kline(let s, _), .ticker(let s), .markPrice(let s), .trade(let s),
-         .aggTrade(let s), .depth(let s), .bookTicker(let s):
+         .aggTrade(let s), .depth(let s):
       return s
     }
   }
@@ -63,7 +61,6 @@ public enum StreamTopic: Hashable, Sendable, CustomStringConvertible {
     case .trade: return "\(bare) 逐笔"
     case .aggTrade: return "\(bare) 主动成交"
     case .depth: return "\(bare) 盘口"
-    case .bookTicker: return "\(bare) 买一卖一"
     }
   }
 }

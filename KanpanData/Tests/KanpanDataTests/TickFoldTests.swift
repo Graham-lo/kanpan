@@ -104,20 +104,6 @@ struct TickFoldTests {
     #expect(r10 == .ignored)
   }
 
-  @Test("挂单心跳只改价不记量，也不凭它开新的一根")
-  func bookTickerHeartbeat() {
-    var c = composer()
-    let last = c.series.lastTime
-    let r11 = c.applyTick(price: 108, qty: 0, timeMs: last + 1_000, allowAppend: false)
-    #expect(r11 == .updated)
-    #expect(c.series.close[2] == 108)
-    #expect(c.series.volume[2] == 1)              // 量一点没动
-    // 跨桶了也不许开新根——买一卖一的中间价不是成交价
-    let r12 = c.applyTick(price: 130, qty: 0, timeMs: last + 60_000, allowAppend: false)
-    #expect(r12 == .ignored)
-    #expect(c.series.count == 3)
-  }
-
   // ---------------------------------------------------------------- 对表
 
   @Test("对表：已收线的照单全收，还在走的那根收盘留自己的")
@@ -186,7 +172,7 @@ struct TickFoldTests {
 
   // ---------------------------------------------------------------- 报文
 
-  @Test("trade / bookTicker 报文解得出来")
+  @Test("trade 报文解得出来")
   func decodeStreams() throws {
     let trade = """
     {"stream":"btcusdt@trade","data":{"e":"trade","E":1789382760123,"T":1789382760100,\
@@ -200,19 +186,6 @@ struct TickFoldTests {
     #expect(t.price == 77930.10)
     #expect(t.qty == 0.052)
     #expect(t.timeMs == 1789382760100)    // 用撮合时间 T，不是事件时间 E
-
-    let book = """
-    {"stream":"btcusdt@bookTicker","data":{"e":"bookTicker","u":400900217,\
-    "E":1789382760893,"T":1789382760891,"s":"BTCUSDT","b":"77929.90","B":"31.2","a":"77930.20","A":"40.6"}}
-    """
-    let env2 = try JSONDecoder().decode(StreamEnvelope.self, from: Data(book.utf8))
-    guard case .bookTicker(let sym, let bid, let ask, let ms)? = env2.payload else {
-      Issue.record("没解成 bookTicker：\(String(describing: env2.payload))"); return
-    }
-    #expect(sym == "BTCUSDT")
-    #expect(bid == 77929.90)
-    #expect(ask == 77930.20)
-    #expect(ms == 1789382760891)
   }
 
   @Test("组合行情端点用币安自己的 /stream，替换品种仍可复用连接")

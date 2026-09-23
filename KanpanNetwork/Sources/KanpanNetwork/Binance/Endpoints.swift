@@ -161,16 +161,8 @@ public struct BinanceHosts: Sendable, Equatable {
   public static func tickerStream(symbol: String) -> String { "\(InstrumentID(symbol).symbol.lowercased())@ticker" }
   public static func markPriceStream(symbol: String) -> String { "\(InstrumentID(symbol).symbol.lowercased())@markPrice@1s" }
 
-  /// Legacy trade decoder support for recordings. Production subscribes to the documented
-  /// /market kline/ticker/markPrice streams; /public bookTicker is a separate endpoint.
+  /// 逐笔成交。周期没有原生 K 线推送时，`MarketFeed` / `CompareFeed` 订它在本地拼末根。
   public static func tradeStream(symbol: String) -> String { "\(InstrumentID(symbol).symbol.lowercased())@trade" }
-
-  /// 最优买卖挂单。成交稀疏的品种（半夜的小币）可能几十秒没有一笔成交，
-  /// 靠它给最新价一个心跳——只改价，不记量，也不凭它开新的一根。
-  public static func bookTickerStream(symbol: String) -> String { "\(InstrumentID(symbol).symbol.lowercased())@bookTicker" }
-
-  /// 保留未消费的流名；强平功能不做，见 docs/不做清单.md，不添加订阅或展示。
-  public static func forceOrderStream(symbol: String) -> String { "\(symbol.lowercased())@forceOrder" }
 
   /// 逐笔聚合成交。它的用处不是做一张逐笔明细表，而是给主动买卖比补上
   /// 「当前这根还没成型的桶」——`/futures/data/takerlongshortRatio` 是 5 分钟粒度

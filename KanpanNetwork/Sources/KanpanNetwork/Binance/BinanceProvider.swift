@@ -281,7 +281,6 @@ public struct BinanceProvider: MarketProvider {
     case .trade(let s): return BinanceHosts.tradeStream(symbol: s)
     case .aggTrade(let s): return BinanceHosts.aggTradeStream(symbol: s)
     case .depth(let s): return BinanceHosts.depth5Stream(symbol: s)
-    case .bookTicker(let s): return BinanceHosts.bookTickerStream(symbol: s)
     }
   }
 }

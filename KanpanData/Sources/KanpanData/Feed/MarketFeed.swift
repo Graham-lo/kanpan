@@ -142,8 +142,6 @@ public actor MarketFeed {
   private var reconcileTask: Task<Void, Never>?
   /// 对表跑了第几拍：24h 行情每拍取，K 线每两拍取一次。
   private var reconcileTicks = 0
-  /// 最后一笔真成交的撮合时间。挂单心跳只在成交停了之后才顶上。
-  private var lastTradeMs: Int64 = 0
   private var lastKlineReceivedMs = -Double.infinity
   private var lastTickerReceivedMs = -Double.infinity
   /// 这条推送源的 24h 统计帧不带成交额（网关线路上的 OKX 替身就是）。那时推送再新，
@@ -153,8 +151,6 @@ public actor MarketFeed {
   private var lastTurnoverFetchMs = -Double.infinity
   /// 推送帧不带成交额时，隔多久补一次成交额。成交额是 24h 滚动总数，一分钟一更足够。
   private static let turnoverRefreshMs: Double = 60_000
-  /// 成交静默多久之后才让挂单接手。
-  private let quoteTakeoverMs: Int64 = 3_000
   private let reconcileStepMs: Double
   /// 墙上时钟。只有 `pendingBars()` 用它算「回前台欠了几根」——那是真实时刻的差，
   /// 不是 `pacer` 那套可加速的节拍。测试要把「差一根」和「差两根」摆出来看，
@@ -222,7 +218,6 @@ public actor MarketFeed {
     deepenTask?.cancel(); deepenTask = nil
     tickFlush?.cancel(); tickFlush = nil; tickDirty = false
     lastTickEmitMs = -.infinity
-    lastTradeMs = 0
     lastKlineReceivedMs = -.infinity; lastTickerReceivedMs = -.infinity
     streamTickerLacksTurnover = false; lastTurnoverFetchMs = -.infinity
     gapFrom = 0
@@ -573,23 +568,8 @@ public actor MarketFeed {
         if InstrumentID.canonical(s) == symbol { emit(.markPrice(symbol: InstrumentID.canonical(s), price: px, tick: tick)) }
       case .trade(let t):
         guard InstrumentID.canonical(t.symbol) == symbol else { return }
-        lastTradeMs = max(lastTradeMs, t.timeMs)
-        foldTick(price: t.price, qty: t.qty, timeMs: t.timeMs, allowAppend: true,
+        foldTick(price: t.price, qty: t.qty, timeMs: t.timeMs,
                  tradeID: t.tradeID, now: received)
-      case .bookTicker(let s, let bid, let ask, let ms):
-        guard InstrumentID.canonical(s) == symbol, bid.isFinite, ask.isFinite, bid > 0, ask > 0, bid <= ask
-        else { return }
-        // 成交还在推就别插手：真成交价才是最新价。
-        guard ms - lastTradeMs > quoteTakeoverMs else { return }
-        // 顶上来的时候取**贴着盘口的那一侧**，不取中间价：BTCUSDT 的价差就是一个
-        // 最小变动价位，中间价永远落在半个 tick 上，顶栏会显示一个从没成交过的价。
-        // 把上一个价夹进买一卖一之间——盘口往上走就跟着买一，往下走就跟着卖一，
-        // 盘口没越过它就一动不动。
-        guard composer.series.count > 0 else { return }
-        let cur = composer.series.close[composer.series.count - 1]
-        let px = min(max(cur, bid), ask)
-        guard px != cur else { return }
-        foldTick(price: px, qty: 0, timeMs: ms, allowAppend: false, now: received)
       case .tickerBatch:
         break
       default:
@@ -643,12 +623,12 @@ public actor MarketFeed {
   // ------------------------------------------------------------------ 逐笔折线
 
   /// 一次报价折进当前那根（细节见 `FeedComposer.applyTick`）。
-  private func foldTick(price: Double, qty: Double, timeMs: Int64, allowAppend: Bool,
+  private func foldTick(price: Double, qty: Double, timeMs: Int64,
                         tradeID: Int64? = nil, now: Double) {
     // 聚出来的周期：折进源周期，再把当前那根重算（和 applyKline 一个路数，§4.2）。
     if caps.isAggregated(interval) {
       guard var src = sourceComposer, src.series.count > 0 else { return }
-      guard src.applyTick(price: price, qty: qty, timeMs: timeMs, allowAppend: allowAppend, tradeID: tradeID) != .ignored
+      guard src.applyTick(price: price, qty: qty, timeMs: timeMs, tradeID: tradeID) != .ignored
       else { return }
       sourceComposer = src
       composer.replace(Aggregator.bucket(series: src.series, into: interval))
@@ -657,7 +637,7 @@ public actor MarketFeed {
       scheduleSnapshot()
       return
     }
-    switch composer.applyTick(price: price, qty: qty, timeMs: timeMs, allowAppend: allowAppend, tradeID: tradeID) {
+    switch composer.applyTick(price: price, qty: qty, timeMs: timeMs, tradeID: tradeID) {
     case .ignored:
       return
     case .updated:

@@ -39,12 +39,8 @@ public struct EndpointQuota: Sendable, Equatable {
 public actor RateLimiter {
   /// 币安 USDT 合约的分钟权重上限。留 10% 余量，撞上限比慢一点难受得多。
   public static let weightPerMinute = 2400
-  /// `klines limit=1500` 的权重。
-  public static let klinesWeight = 10
-
-  /// 币安 K 线按请求条数计权重。保留上面的常量兼容旧调用方，
-  /// 新请求必须传实际 `limit`，否则 300 根首屏和 3 根健康探测都会被
-  /// 按 1500 根计费，造成不必要的分钟窗口等待。
+  /// 币安 K 线按请求条数计权重。必须传实际 `limit`，否则 300 根首屏和 3 根健康探测
+  /// 都会被按 1500 根计费，造成不必要的分钟窗口等待。
   public static func klinesWeight(for limit: Int) -> Int {
     switch max(1, min(limit, 1500)) {
     case 1..<100: return 1
@@ -225,13 +221,6 @@ public actor RateLimiter {
     let local = spent.reduce(0) { $0 + $1.weight }
     guard usedWeight > local else { return }
     spent.append((at: now, weight: usedWeight - local))
-  }
-
-  /// 还要等多久才能发（测试和日志用）。
-  public func waitMs() async -> Double {
-    let now = await nowMs()
-    prune(now: now)
-    return max(0, max(blockedUntilMs - now, lastSendMs + minGapMs - now))
   }
 
   /// 封禁还剩多久（毫秒）。0 表示没在封禁期内。

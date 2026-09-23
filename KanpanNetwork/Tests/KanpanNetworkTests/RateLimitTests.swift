@@ -195,13 +195,4 @@ struct RateLimitTests {
     }
     #expect(seen.count > 1)
   }
-
-  @Test("60 秒没帧就算断了")
-  func silenceWatch() {
-    var w = SilenceWatch()
-    w.sawFrame(at: 1_000_000)
-    #expect(!w.isSilent(at: 1_059_000))
-    #expect(w.remainingMs(at: 1_059_000) == 1000)
-    #expect(w.isSilent(at: 1_060_001))
-  }
 }

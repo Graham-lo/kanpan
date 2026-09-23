@@ -65,7 +65,7 @@ struct SeriesStoreTests {
   }
 
   @Test("超出条数上限就按最近用过的淘汰")
-  func evictsByEntryCount() throws {
+  func evictsByEntryCount() async throws {
     let dir = tempDir()
     defer { try? FileManager.default.removeItem(at: dir) }
 
@@ -73,11 +73,13 @@ struct SeriesStoreTests {
     for i in 0..<(SeriesStore.maxEntries + extra) {
       _ = try SeriesStore.write(makeSeries("S\(i)USDT", .m1, count: 10), in: dir)
     }
-    // 正常路径上淘汰是按分钟节流的（`pruneEverySeconds`），这里直接催一次。
-    SeriesStore.prune(in: dir, force: true)
-    let kbars = SeriesStore.files(in: dir, keys: [])
-      .filter { $0.pathExtension == "kbar" }
-    #expect(kbars.count <= SeriesStore.maxEntries)
+    // 淘汰在写盘后的后台任务里由 `SeriesIndex` 做，等它们跑完再数。
+    func kbarCount() -> Int { SeriesStore.files(in: dir, keys: []).filter { $0.pathExtension == "kbar" }.count }
+    let deadline = Date().addingTimeInterval(10)
+    while kbarCount() > SeriesStore.maxEntries, Date() < deadline {
+      try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(kbarCount() <= SeriesStore.maxEntries)
     // 最后写进去的那一份一定还在。
     #expect(SeriesStore.read(symbol: "S\(SeriesStore.maxEntries + extra - 1)USDT", interval: .m1, in: dir) != nil)
   }

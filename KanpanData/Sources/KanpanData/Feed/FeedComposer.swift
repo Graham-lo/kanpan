@@ -85,12 +85,10 @@ public struct FeedComposer: Sendable {
   /// those frames concurrently or treat a quote as a real trade.
   ///
   /// - Parameters:
-  ///   - qty: 成交量。挂单心跳（`bookTicker`）传 0，只动价不动量。
-  ///   - allowAppend: 允许跨桶开新的一根。只有真成交才给 true——用买一卖一的中间价
-  ///     去开一根的开盘价，开出来的是一个从没成交过的价。
+  ///   - qty: 成交量。传 0 时只动价不动量。
   @discardableResult
   public mutating func applyTick(price: Double, qty: Double = 0, timeMs: Int64,
-                                 allowAppend: Bool = true, tradeID: Int64? = nil) -> TickFold {
+                                 tradeID: Int64? = nil) -> TickFold {
     guard price.isFinite, price > 0, timeMs >= lastTickMs else { return .ignored }
     if timeMs == lastTickMs, (tradeID ?? -1) <= (lastTradeID ?? -1) { return .ignored }
     // 补缺期间不折：REST 马上就要拿权威值整段盖过来，这会儿改末根只会打架。
@@ -121,7 +119,6 @@ public struct FeedComposer: Sendable {
       _ = series.upsert(b)
       return .updated
     }
-    guard allowAppend else { return .ignored }
     _ = series.upsert(Bar(openTime: t, open: price, high: price, low: price, close: price, volume: vol))
     lastTickMs = timeMs; lastTradeID = tradeID
     return .appended

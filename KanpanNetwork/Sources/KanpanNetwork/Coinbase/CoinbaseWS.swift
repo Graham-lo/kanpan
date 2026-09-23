@@ -67,7 +67,7 @@ public actor CoinbaseWS: MarketStream {
       case .kline(_, let iv) where iv == candleInterval: out.insert(Sub(channel: "candles", product: product))
       case .kline, .trade: out.insert(Sub(channel: "market_trades", product: product))
       case .ticker: out.insert(Sub(channel: "ticker", product: product))
-      case .markPrice, .aggTrade, .depth, .bookTicker: break
+      case .markPrice, .aggTrade, .depth: break
       }
     }
     return out
