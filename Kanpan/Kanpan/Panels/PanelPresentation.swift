@@ -56,7 +56,7 @@ struct PanelHost<Content: View>: View {
       .presentationDragIndicator(.visible)
       .presentationBackground { Color(hex: seed.raised) }
       .presentationCornerRadius(18)
-      // 背后继续更新；外部触摸由ChartBox遮罩消费，只关闭面板。
+      // 背后继续更新；外部触摸由宿主页的 `PanelDismissShield` 接住，只关闭面板。
       .presentationBackgroundInteraction(.enabled(upThrough: .medium))
       // 面板里那张长列表**自己滚**，不许它把面板一路顶到满屏。
       //
@@ -122,22 +122,44 @@ struct PanelSide<Content: View>: View {
   }
 }
 
+/// 两张面板里那些「由宿主页决定能不能做」的动作。竖屏 sheet 和横屏侧栏拿的是
+/// **同一份**，所以两边不会再一边有「记一笔」一边没有（审查 16.2）。
+///
+/// 某个动作此刻做不了（复盘回放里没有「记一笔」、预览别人的线时不能发线），
+/// 宿主页就把那一项传 nil，面板里那一行直接不排——面板自己不判断横竖屏。
+struct PanelActions {
+  var onPickInterval: ((Interval) -> Void)? = nil
+  var onRecord: (() -> Void)? = nil
+  var onShare: (() -> Void)? = nil
+  var onAddCompare: (() -> Void)? = nil
+  var compareNames: [String: String] = [:]
+  var onSend: (() -> Void)? = nil
+  var sendBlocked: String? = nil
+}
+
+/// 某张面板里装什么。竖屏 sheet（`prefsPanel`）和横屏侧栏（`PanelSide`）都只认这一个，
+/// 面板内容从此只有一处 `switch`。
+struct PanelContent: View {
+  var which: Panel
+  var store: PrefsStore
+  var actions: PanelActions
+
+  var body: some View {
+    switch which {
+    case .period: IntervalGridPanel(store: store, onPick: actions.onPickInterval)
+    case .chart:
+      ChartPanel(store: store, onRecord: actions.onRecord, onShare: actions.onShare,
+                 onSend: actions.onSend, sendBlocked: actions.sendBlocked,
+                 onAddCompare: actions.onAddCompare, compareNames: actions.compareNames)
+    }
+  }
+}
+
 extension View {
-  /// 主界面用这一个：`.prefsPanel($panel, store: store)`。
-  func prefsPanel(_ panel: Binding<Panel?>,
-                  store: PrefsStore,
-                  onPickInterval: ((Interval) -> Void)? = nil,
-                  onRecord: (() -> Void)? = nil,
-                  onShare: (() -> Void)? = nil,
-                  onAddCompare: (() -> Void)? = nil, compareNames: [String: String] = [:],
-                  onSend: (() -> Void)? = nil, sendBlocked: String? = nil) -> some View {
+  /// 主界面用这一个：`.prefsPanel($panel, store: store, actions: …)`。
+  func prefsPanel(_ panel: Binding<Panel?>, store: PrefsStore, actions: PanelActions = PanelActions()) -> some View {
     sheet(item: panel) { which in
-      PanelHost(store: store) {
-        switch which {
-        case .period: IntervalGridPanel(store: store, onPick: onPickInterval)
-        case .chart: ChartPanel(store: store, onRecord: onRecord, onShare: onShare, onSend: onSend, sendBlocked: sendBlocked, onAddCompare: onAddCompare, compareNames: compareNames)
-        }
-      }
+      PanelHost(store: store) { PanelContent(which: which, store: store, actions: actions) }
     }
   }
 }

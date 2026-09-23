@@ -291,9 +291,7 @@ struct MainScreen: View {
     .preferredColorScheme(effectiveTheme.forced)
     // 横屏的面板走自己那层侧栏，不挂系统 sheet：半屏 sheet 在 compact 高度下会被
     // 系统顶成全屏，图就整个没了。
-    .prefsPanel(landscape ? .constant(nil) : $panel, store: store,
-                onPickInterval: pick(interval:), onRecord: chartRecordAction,
-                onShare: chartShareAction, onAddCompare: { showComparePicker = true }, compareNames: compareNames, onSend: chartSendAction, sendBlocked: shareSendBlocked)
+    .prefsPanel(landscape ? .constant(nil) : $panel, store: store, actions: panelActions)
   }
 
   private var presentation: some View {
@@ -963,12 +961,17 @@ struct MainScreen: View {
   @ViewBuilder private var sidePanelContent: some View {
     if let which = panel {
       PanelSide(store: store, seed: seed, onClose: PanelDismiss { dismissPanel() }) {
-        switch which {
-        case .period: IntervalGridPanel(store: store, onPick: pick(interval:))
-        case .chart: ChartPanel(store: store, onShare: chartShareAction, onSend: chartSendAction, sendBlocked: shareSendBlocked)
-        }
+        PanelContent(which: which, store: store, actions: panelActions)
       }
     }
+  }
+
+  /// 面板里的动作，竖屏 sheet 与横屏侧栏共用这一份（见 `PanelActions`）。
+  /// 以前侧栏那份是手抄的，比 sheet 少了「记一笔」「对比」两个动作。
+  private var panelActions: PanelActions {
+    PanelActions(onPickInterval: pick(interval:), onRecord: chartRecordAction,
+                 onShare: chartShareAction, onAddCompare: { showComparePicker = true },
+                 compareNames: compareNames, onSend: chartSendAction, sendBlocked: shareSendBlocked)
   }
 
   /// 行情页头部。画的东西全在 `MainHeaderView`（`MainScreenParts.swift`）——
@@ -1041,17 +1044,26 @@ struct MainScreen: View {
       enabled: prefs.dataDisplay == .top)
   }
 
-  /// 「图表」那一页顶上的「记一笔」。复盘回放里没有「记」这回事，横屏归 `ToolRail` 管，
-  /// 这两种情形返回 nil，那一条直接不排。
+  /// 「图表设置」里的「记一笔」。复盘回放里没有「记」这回事、预览别人的线时那张图不是
+  /// 「我的图」，这两种情形返回 nil，那一条直接不排。
+  ///
+  /// **不按横竖屏拦**（审查 16.2，2026-09-24 定）：以前这里还多一条 `!landscape`，
+  /// 理由是「横屏归 `ToolRail` 管」，可 `ToolRail` 只有「绘图」「竖屏」两格，并没有记一笔。
+  /// 仓库里也没有「横屏不许记」的规则，横屏外壳本来就挂着取景卡（`landscapeBody` 的
+  /// `captureCard`，高 150pt），所以这件事只由上面两条决定。
+  ///
+  /// 眼下「图表设置」在横屏其实开不出来：横屏周期栏只有「更多」（周期面板），而竖屏开着的
+  /// sheet 一转屏就被系统收掉（SwiftUI 经 `$panel` 写回 nil，模拟器上抓到过这一下）。
+  /// 所以这里不拦只是让两份面板内容说同一句话，不是新开了一个横屏入口。
   private var chartRecordAction: (() -> Void)? {
-    guard !reviewChart.active, draw.previewing == nil, !landscape else { return nil }
+    guard !reviewChart.active, draw.previewing == nil else { return nil }
     return { startReviewCapture() }
   }
 
   /// 「分享图片」：把眼前这张图（画线、指标、配色全带着）离屏画成一张 PNG，
   /// 交给系统的分享面板（见 `ChartSnapshotRenderer`）。
   ///
-  /// 和「记一笔」同一个前提：复盘回放里那张图不是「我的图」，横屏画线台归 `ToolRail` 管。
+  /// 复盘回放里那张图不是「我的图」，不给分享。
   private var chartShareAction: (() -> Void)? {
     guard !reviewChart.active else { return nil }
     return { shareChartImage() }
