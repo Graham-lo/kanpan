@@ -24,6 +24,13 @@ async fn main()->anyhow::Result<()> {
  let secrets=Arc::new(Secrets{pepper,encryption});
  let dummy_hash=Arc::new(secrets.hash_password(&kanpan_api::crypto::random_token()).map_err(|_|anyhow::anyhow!("Password hashing unavailable"))?);
  let s=AppState{pool,secrets,dummy_hash};
+ if command=="reset-password" {
+  let name=std::env::args().nth(2).ok_or_else(||anyhow::anyhow!("Usage: kanpan-api reset-password <username>"))?;
+  match kanpan_api::auth::reset_password(&s,&name).await {
+   Ok(fresh)=>{println!("{fresh}");return Ok(())}
+   Err(e)=>anyhow::bail!("reset-password failed: {}",e.1),
+  }
+ }
  if command=="worker" {
   let market=scorebook_market::adapters::binance::Binance::new(s.pool.clone())?;
   let review_loop=async {loop {
@@ -51,7 +58,7 @@ async fn main()->anyhow::Result<()> {
   return Ok(());
 
  }
- anyhow::ensure!(command=="serve","Use serve, metrics, worker or migrate");
+ anyhow::ensure!(command=="serve","Use serve, metrics, worker, migrate or reset-password <username>");
  // Public supply data has no owner and no database; warm it before the first request.
  kanpan_api::market_meta::spawn_refresh();
  // Daily closes are history, not a cache: the sweep and the route share this

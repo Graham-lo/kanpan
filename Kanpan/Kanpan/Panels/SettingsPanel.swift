@@ -111,6 +111,7 @@ struct SettingsPanel: View {
       }
 
       cacheRow
+      aboutRow
 
       // 不弹确认框：确认框把「点错了」的代价前置给每一次点击，而这件事本来就
       // 撤得回来。直接恢复，右边留一颗「撤销」五秒。
@@ -158,6 +159,37 @@ struct SettingsPanel: View {
       .buttonStyle(.plain)
       .accessibilityIdentifier("settings.clearCache")
     }
+  }
+
+  /// 「关于」（P3.6）：版本号、构建号，和托管在账号服务上的两张静态页。
+  /// 正文由 `kanpan-api` 的 `/privacy`、`/terms` 发（`legal.rs`），这里只放链接，
+  /// 用系统浏览器打开；账号服务地址没配（开发包）就不摆链接。
+  private var aboutRow: some View {
+    PanelRow(name: "关于", meta: SettingsPanel.version) {
+      if let base = SettingsPanel.legalBase {
+        HStack(spacing: 12) {
+          Link("隐私政策", destination: base.appending(path: "privacy"))
+            .accessibilityIdentifier("settings.privacy")
+          Link("服务条款", destination: base.appending(path: "terms"))
+            .accessibilityIdentifier("settings.terms")
+        }
+        .font(PanelFont.seg).foregroundStyle(t.amber)
+      }
+    }
+    .accessibilityIdentifier("settings.about")
+  }
+
+  static var version: String {
+    let info = Bundle.main.infoDictionary ?? [:]
+    let short = info["CFBundleShortVersionString"] as? String ?? "—"
+    let build = info["CFBundleVersion"] as? String ?? "—"
+    return "Hkline \(short)（\(build)）"
+  }
+
+  static var legalBase: URL? {
+    guard let raw = Bundle.main.object(forInfoDictionaryKey: "KanpanAccountAPIURL") as? String,
+          !raw.isEmpty, let url = URL(string: raw) else { return nil }
+    return url
   }
 
   private func resetAll() {

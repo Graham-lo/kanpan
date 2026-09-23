@@ -1,0 +1,35 @@
+import Foundation
+import KanpanAccount
+
+/// 「导出我的数据」（P3.6）：向服务端要这个人的全部个人数据，落成一份 JSON，
+/// 交给系统分享面板——存到「文件」、AirDrop、发邮件都由用户自己挑。
+///
+/// 服务端 `GET /v1/auth/me/export` 回的是 `{"data":{…}}` 信封，文件里只放信封里那一层
+/// （`format: hkline-export-1`），用户拿到的就是自己的数据，不带我们的传输外壳。
+/// 文件名带日期：同一天导两次覆盖成一份，不在临时目录里越堆越多。
+extension AccountFeature {
+  func exportData() {
+    guard let client, !exporting else { return }
+    exporting = true; error = nil
+    Task {
+      defer { exporting = false }
+      do {
+        let raw = try await client.data("v1/auth/me/export")
+        let url = try Self.writeExport(raw)
+        ChartSnapshotRenderer.present(url)
+      } catch {
+        self.error = error.localizedDescription
+      }
+    }
+  }
+
+  nonisolated static func writeExport(_ raw: Data, now: Date = Date()) throws -> URL {
+    guard let envelope = try JSONSerialization.jsonObject(with: raw) as? [String: Any],
+          let body = envelope["data"] as? [String: Any] else { throw AccountError.invalidResponse }
+    let data = try JSONSerialization.data(withJSONObject: body, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    let day = now.formatted(.iso8601.year().month().day().dateSeparator(.omitted))
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("Hkline-我的数据-\(day).json")
+    try data.write(to: url, options: .atomic)
+    return url
+  }
+}

@@ -130,6 +130,7 @@ public enum AccountError: LocalizedError, Equatable {
     case .http(_, "email_unavailable"): "邮件暂时发不出，请稍后重试"
     case .http(_, "search_range_too_short"): "找相似至少框选 16 根 K 线"
     case .http(_, "search_busy"): "正在处理上一次查找，请稍后再试"
+    case .http(_, "export_too_large"): "数据太多，暂时导不出来"
     case .http(401, _): "登录已失效，请重新登录"
     case .http(429, _): "操作频繁，请稍后重试"
     case .http(409, _): "正在更新，本机内容已保留"

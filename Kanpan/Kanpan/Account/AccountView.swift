@@ -136,8 +136,21 @@ struct AccountView: View {
         row("同步") { feature.move(.sync) }
         row("登录设备") { feature.move(.devices) }
         row("修改密码") { feature.move(.changePassword) }
+        Button { feature.exportData() } label: {
+          HStack {
+            Text("导出我的数据"); Spacer()
+            if feature.exporting { ProgressView().controlSize(.small) }
+            else { VectorIcon.chevron(10, w: 1.7).rotationEffect(.degrees(-90)).foregroundStyle(theme.ink3) }
+          }
+        }
+        .foregroundStyle(theme.ink).disabled(feature.exporting)
+        .accessibilityIdentifier("account.export")
       }
       .listRowBackground(theme.raised)
+      if let error = feature.error {
+        Section { Text(error).foregroundStyle(theme.danger).accessibilityIdentifier("account.error") }
+          .listRowBackground(theme.raised)
+      }
       Section { Button("退出登录") { Haptics.warning(); Task { await feature.logout() } }.foregroundStyle(theme.danger) }
         .listRowBackground(theme.raised)
       Section { Button("注销账号") { feature.move(.close) }.foregroundStyle(theme.danger) }

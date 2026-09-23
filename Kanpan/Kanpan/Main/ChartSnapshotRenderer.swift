@@ -101,7 +101,8 @@ enum ChartSnapshotRenderer {
 
   /// 面板是一层 sheet，点完这行它正在往下收。系统不许在它收的过程中再叠一层，
   /// 所以这儿等它收干净再上——等不到就算了，不弹任何东西。
-  private static func present(_ url: URL) {
+  /// 账号页「导出我的数据」也走这一处（P3.6），全 app 只有这一个系统分享面板的入口。
+  static func present(_ url: URL) {
     Task { @MainActor in
       for _ in 0..<20 {
         if let host = topViewController(), host.presentedViewController == nil,

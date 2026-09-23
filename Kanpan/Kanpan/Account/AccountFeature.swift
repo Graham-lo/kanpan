@@ -13,6 +13,8 @@ import KanpanAccount
   var code = ""
   var error: String?
   var busy = false
+  /// 「导出我的数据」正在路上（`AccountExport.swift`）。
+  var exporting = false
   var resendAt = Date.distantPast
   var devices: [AccountSessionDevice] = []
   private(set) var user: AccountUser?

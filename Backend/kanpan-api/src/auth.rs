@@ -294,9 +294,43 @@ async fn delete_account(State(s):State<AppState>,i:Identity,Json(v):Json<DeleteI
  tx.commit().await?;Ok(envelope(json!({"ok":true})))
 }
 
+/// 运维 CLI `kanpan-api reset-password <username>`：忘了密码的朋友找过来时，由我在服务器上
+/// 替他换一把一次性新密码，登录后让他自己在账号页改掉。app 里不做「忘记密码」——
+/// 没有邮箱就没有第二条能证明「你是你」的路，交给认识他的人来判断反而更可靠。
+///
+/// 换密码的同时吊销这个账号的全部会话、清掉登录失败的锁：旧设备上谁拿着令牌都得重新登录。
+/// 吊销原因沿用 `password_change`（`revoked_reason` 有 CHECK 约束，客户端也只区分 `replaced`）。
+pub async fn reset_password(s:&AppState,username:&str)->Result<String> {
+ let name=email(username)?;
+ let fresh=one_time_password();
+ password(&fresh)?;
+ let h=hash(s,fresh.clone()).await?;
+ let mut tx=s.pool.begin().await?;lock_email(&mut tx,&name).await?;
+ let user:Uuid=sqlx::query_scalar("UPDATE account_users SET password_hash=$2 WHERE email=$1 AND disabled_at IS NULL RETURNING id").bind(&name).bind(h).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::NOT_FOUND,"unknown_username"))?;
+ sqlx::query("UPDATE account_sessions SET revoked_at=now(),revoked_reason='password_change' WHERE user_id=$1 AND revoked_at IS NULL").bind(user).execute(&mut *tx).await?;
+ sqlx::query("DELETE FROM account_limits WHERE key=$1").bind(s.secrets.keyed(&format!("login:{name}"))).execute(&mut *tx).await?;
+ tx.commit().await?;Ok(fresh)
+}
+/// 十四位、去掉了 0/O、1/l/I 这类念出来容易抄错的字符；保证至少一个字母一个数字，满足注册规则。
+fn one_time_password()->String {
+ use rand::Rng;
+ const LETTERS:&[u8]=b"abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";const DIGITS:&[u8]=b"23456789";
+ let mut rng=rand::rng();
+ loop {
+  let v:String=(0..14).map(|i|{let pool=if i%4==3 {DIGITS} else {LETTERS};pool[rng.random_range(0..pool.len())] as char}).collect();
+  if v.chars().any(|c|c.is_ascii_digit()) && v.chars().any(|c|c.is_ascii_alphabetic()) {return v}
+ }
+}
+
 #[cfg(test)]
 mod tests {
  use super::*;
+ #[test]
+ fn one_time_passwords_pass_the_signup_rule_and_differ() {
+  let a=one_time_password();let b=one_time_password();
+  assert!(password(&a).is_ok());assert_eq!(a.len(),14);assert_ne!(a,b);
+  assert!(!a.contains(['0','O','1','l','I']));
+ }
  fn headers(pairs:&[(&str,&str)])->HeaderMap {
   let mut h=HeaderMap::new();
   for (k,v) in pairs {h.insert(axum::http::HeaderName::from_bytes(k.as_bytes()).unwrap(),v.parse().unwrap());}
