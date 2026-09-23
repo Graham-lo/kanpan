@@ -45,9 +45,12 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
       switch self {
       case .hline: "水平线"
       case .trend: "趋势线"
-      case .ray: "射线"
-      case .hray: "水平射线"
-      case .extended: "直线"
+      // 这三种只在样式表「画法」一排里换得到，名字就是那排按钮上的字——选中条、提醒、
+      // 读屏、通知里都叫这个，一样东西界面上只有一个名字（2026-09-23）。
+      // 水平那一族原来按钮上只写「向右」，单拿出来不成词，统一成「向右延伸」。
+      case .ray: "向右延伸"
+      case .hray: "向右延伸"
+      case .extended: "两端延伸"
       case .vline: "垂直线"
       case .rectangle: "矩形"
       case .channel: "平行通道"
@@ -221,14 +224,13 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
     public var swaps: [KindSwap] {
       switch self {
       case .hline, .hray:
-        [KindSwap(title: "画法", options: [.init("整条", .hline), .init("向右", .hray)])]
+        [KindSwap(title: "画法", options: [.init("整条", .hline), .init(.hray)])]
       case .trend, .ray, .extended, .arrowLine:
         [KindSwap(title: "画法", options: [
-          .init("线段", .trend), .init("向右延伸", .ray),
-          .init("两端延伸", .extended), .init("箭头", .arrowLine),
+          .init("线段", .trend), .init(.ray), .init(.extended), .init(.arrowLine),
         ])]
       case .vline, .crossLine:
-        [KindSwap(title: "画法", options: [.init("垂直线", .vline), .init("十字线", .crossLine)])]
+        [KindSwap(title: "画法", options: [.init(.vline), .init(.crossLine)])]
       default: []
       }
     }
@@ -253,6 +255,9 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
         self.label = label
         self.kind = kind
       }
+      /// 按钮上的字就是这种画法的名字（`Kind.title`）。只有面板那一格在自己族里
+      /// 另有叫法（「线段」「整条」），才传一个 label 进来。
+      public init(_ kind: Kind) { self.init(kind.title, kind) }
     }
     public let title: String
     public let options: [Option]

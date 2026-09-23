@@ -158,7 +158,7 @@ final class ChartFoundationUITests: XCTestCase {
 
   /// 在样式表的「换一种画法」那一行上换一种画法。
   ///
-  /// 面板上只摆十二把（`Drawing.Kind.palette`）；射线 / 直线 / 箭头 / 水平射线 / 十字线
+  /// 面板上只摆十二把（`Drawing.Kind.palette`）；向右延伸 / 两端延伸 / 箭头 / 十字线
   /// 这些和主工具形状一样、只差一处画法的，退到这一行里换（`Drawing.Kind.swaps`）。
   /// 这一行是一排直接摆开的按钮（`DrawingKindSwapRow`，标识 `draw.swap.<kind>`）。
   /// 原来是 `Picker` 的弹出菜单，半屏时往上弹出面板、「向右延伸」点不到，2026-09-23 改掉。
@@ -1538,6 +1538,9 @@ extension ChartFoundationUITests {
     shot("画线-样式表里画法一排选中两端延伸")
     app.buttons["draw.save"].tap()
     XCTAssertTrue(wait { self.info()["drawingKinds"] as? [String] == ["extended"] }, String(describing: info()))
+    // 同一样东西界面上只有一个名字：选中条上的线名就是样式表那排按钮上的字。
+    XCTAssertTrue(app.staticTexts["两端延伸"].waitForExistence(timeout: 5), "选中条上的线名和样式表那排对不上")
+    XCTAssertFalse(app.staticTexts["直线"].exists, "选中条上还叫「直线」")
 
     // 再从面板上点「趋势线」画一条：落下来的得是两端延伸，不是线段。
     openDrawTools()
@@ -1549,6 +1552,8 @@ extension ChartFoundationUITests {
     XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 2 }, String(describing: info()))
     XCTAssertEqual(info()["drawingKinds"] as? [String], ["extended", "extended"],
                    "换成两端延伸之后再画趋势线，第二条还是线段")
+    XCTAssertTrue(app.staticTexts["要在这条两端延伸线上提醒你吗？"].waitForExistence(timeout: 5),
+                  "提醒确认条上的线名和样式表那排对不上")
     shot("画线-换成两端延伸后再画仍是两端延伸")
 
     // 重开 app 还记得：这份记忆和样式一样落在画线存档的偏好里。

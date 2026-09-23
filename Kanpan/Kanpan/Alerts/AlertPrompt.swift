@@ -40,7 +40,7 @@ final class AlertPromptModel: ObservableObject {
   func offer(_ drawing: Drawing, symbol: String) {
     guard !symbol.isEmpty, AlertGeometry.supports(drawing.kind) else { return }
     let next = Pending(drawing: drawing, symbol: symbol,
-                       sentence: "要在这条\(drawing.kind.title)上提醒你吗？")
+                       sentence: Self.sentence(for: drawing.kind))
     countdown?.cancel()
     countdown = Task { [weak self] in
       guard let self, !Task.isCancelled else { return }
@@ -49,6 +49,12 @@ final class AlertPromptModel: ObservableObject {
       guard !Task.isCancelled else { return }
       self.dismiss()
     }
+  }
+
+  /// 线名就是样式表里那排按钮上的字；「两端延伸」「向右延伸」不是名词，后面补个「线」。
+  static func sentence(for kind: Drawing.Kind) -> String {
+    let name = kind.title
+    return "要在这条\(name)\(name.hasSuffix("延伸") ? "线" : "")上提醒你吗？"
   }
 
   func offerBatch(_ drawings: [Drawing], symbol: String, preferred: Set<String>, from sender: String) {

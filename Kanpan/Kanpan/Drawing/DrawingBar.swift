@@ -187,6 +187,8 @@ struct DrawingSelectionBar: View {
         Text(item.kind.title + (item.locked ? " · 已锁定" : ""))
           .font(.system(size: 12)).foregroundStyle(theme.ink3)
           .padding(.leading, landscape ? 12 : 8).lineLimit(1).truncationMode(.tail)
+          // 「两端延伸」「向右延伸」四个字，竖屏窄机上刚好差一点：先缩一点字，还不够才截。
+          .minimumScaleFactor(0.75)
           // 名字是提示不是功能：宽度不够先收它，四个动作一个都不许挤掉。
           .layoutPriority(-1)
         Spacer(minLength: 4)
@@ -510,7 +512,7 @@ private struct DrawingStyleEditor: View {
           if item.kind.usesFill { Toggle("背景填充", isOn: $item.filled) }
           Toggle("锁定位置", isOn: $item.locked)
           // 「换一种画法」：同一族里形状一样，只差延伸到哪儿、端点画不画箭头。
-          // 面板上只摆十二把，射线 / 直线 / 水平射线 / 箭头 / 十字线就活在这几行里——
+          // 面板上只摆十二把，向右延伸 / 两端延伸 / 箭头 / 十字线就活在这几行里——
           // 用户是看着图上那条线换的，不用先认识五个名字。
           ForEach(item.kind.swaps) { swap in
             DrawingKindSwapRow(swap: swap, kind: swapBinding(swap))

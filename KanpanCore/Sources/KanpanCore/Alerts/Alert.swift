@@ -164,9 +164,13 @@ public struct Alert: Sendable, Equatable, Codable, Identifiable {
   /// 它本来就已经在 `title` 里了，这儿把它取回来，而不是再存一份可能对不上的。
   public var lineName: String? {
     guard let range = title.range(of: Alert.titleMarker) else { return nil }
-    let name = title[range.upperBound...]
-    return name.isEmpty ? nil : String(name)
+    let name = String(title[range.upperBound...])
+    return name.isEmpty ? nil : Self.legacyLineNames[name] ?? name
   }
+
+  /// 2026-09-23 之前线名跟样式表按钮不是一个叫法。老提醒的 `title` 是同步字段、原样留着，
+  /// 显示时换成现在的名字，免得列表里同一种线出现两个名字。
+  static let legacyLineNames = ["射线": "向右延伸", "水平射线": "向右延伸", "直线": "两端延伸"]
 
   /// 裸价格提醒那一条水平线的价。别的种类返回 nil。
   public var targetPrice: Double? {
