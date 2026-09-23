@@ -1,6 +1,7 @@
 import Observation
 import SwiftUI
 import KanpanCore
+import KanpanData
 import KanpanNetwork
 
 /// 长按一行品种弹出来的那张小卡：徽章 · 名字 · 最新价 · 涨跌药丸 · 一段 K 线 · 四格数。
@@ -9,10 +10,10 @@ import KanpanNetwork
 /// 已经有的事实，不做任何交互（要动手的都在旁边那份菜单里）。
 ///
 /// 数据一律走现成的路：价和涨跌来自列表本来就订着的报价，持仓量和供应量走
-/// 顶栏那四格同一个 `MarketStatsClient`（它自己带缓存），K 线走这个品种那一家的提供者
-/// 拉一次 1 小时 × 60 根、按品种记着。费率读顶栏同一本 `FundingBook`（全市场整表 +
-/// 图上 `markPrice` 流记下的那口），5 分钟内的都算数；簿里没有才走单品种
-/// `premiumIndex`（公开、免鉴权、权重 1），和 K 线并发发出，问到了也记回簿里。
+/// 顶栏那四格同一个 `MarketStatsClient`（它自己带缓存），K 线与单品种费率由数据层的
+/// `SymbolPreviewService` 取（按当前线路、走共享限流器，审查 18a），这里只按品种记着。
+/// 费率读顶栏同一本 `FundingBook`（全市场整表 + 图上 `markPrice` 流记下的那口），
+/// 5 分钟内的都算数；簿里没有才问单品种费率，和 K 线并发发出，问到了也记回簿里。
 @MainActor @Observable
 final class SymbolPreviewStore {
   /// 预览卡要的那两个后端数：持仓量（美元名义）和供应量（算市值）。
@@ -21,9 +22,9 @@ final class SymbolPreviewStore {
     var totalSupply: Double?
   }
 
-  /// 卡上那段 K 线：1 小时 × 60 根。
-  static let interval = Interval.h1
-  static let barCount = 60
+  /// 卡上那段 K 线：1 小时 × 60 根（取数口径在 `SymbolPreviewService`）。
+  static let interval = SymbolPreviewService.interval
+  static let barCount = SymbolPreviewService.barCount
   /// 最多记多少个品种的 K 线。翻一页自选也就几十行，记 24 个够用，多了白占内存。
   static let capacity = 24
 
@@ -34,15 +35,17 @@ final class SymbolPreviewStore {
   private(set) var bars: [String: [Bar]] = [:]
   private(set) var stats: [String: Stats] = [:]
 
-  @ObservationIgnored private var resolver = RouteResolver(policy: .direct, endpoints: .default)
+  /// 一出生就是这台设备选的线路：从前是「直连 + 空网关表」，选了网关的人长按一行，
+  /// K 线和费率照样直连交易所，持仓量和供应量干脆没得问（审查 14）。
+  @ObservationIgnored private var resolver = RouteResolver.current
   @ObservationIgnored private var jobs: [String: Task<Void, Never>] = [:]
   /// 最近用过的在后面。满了从前面扔。
   @ObservationIgnored private var recent: [String] = []
 
-  /// 换线路 / 换域名：手上这批数是上一条路取的，整批作废。
-  func configure(endpoints next: MarketEndpoints, policy: MarketRoutePolicy) {
-    guard next != resolver.endpoints || policy != resolver.policy else { return }
-    resolver = RouteResolver(policy: policy, endpoints: next)
+  /// 换线路：手上这批数是上一条路取的，整批作废。
+  func configure(route next: RouteResolver) {
+    guard next.route != resolver.route else { return }
+    resolver = next
     for job in jobs.values { job.cancel() }
     jobs.removeAll()
     bars.removeAll()
@@ -76,21 +79,19 @@ final class SymbolPreviewStore {
     let needsStats = stats[key] == nil
     let needsFunding = funding(for: key) == nil
     guard jobs[key] == nil, needsBars || needsStats || needsFunding else { return }
-    let rest = resolver.provider(forSymbol: key)
-    let proxies = resolver.endpoints.gateways
-    let src = rest.capabilities.openInterestSource, upstream = rest.capabilities.upstream
+    let service = SymbolPreviewService(resolver: resolver)
+    let proxies = resolver.route.gateways
+    let caps = service.capabilities(for: key)
+    let src = caps.openInterestSource, upstream = caps.upstream
     jobs[key] = Task { [weak self] in
       // 费率和 K 线同时出发：两笔都是这张卡等着画的，串起来等于让人多等一趟。
-      async let rate: FundingSnapshot? = needsFunding
-        ? try? await rest.funding(symbol: key) : nil
+      async let rate: FundingSnapshot? = needsFunding ? await service.funding(for: key) : nil
       if needsBars {
-        let rows = (try? await rest.klines(symbol: key, interval: Self.interval,
-                                           limit: Self.barCount)) ?? []
+        let usable = await service.bars(for: key)
         if Task.isCancelled { return }
-        let usable = rows.filter(\.isValidMarketBar).suffix(Self.barCount)
-        if !usable.isEmpty { self?.put(Array(usable), for: key) }
+        if !usable.isEmpty { self?.put(usable, for: key) }
       }
-      if let snapshot = await rate, snapshot.rate.isFinite, !Task.isCancelled {
+      if let snapshot = await rate, !Task.isCancelled {
         FundingBook.shared.note(rate: snapshot.rate, nextFundingTimeMs: snapshot.nextFundingTimeMs,
                                 for: key, upstream: upstream)
       }
