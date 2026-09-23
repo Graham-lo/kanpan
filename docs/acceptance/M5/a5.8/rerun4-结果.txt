@@ -1,0 +1,2 @@
+Test Case '-[KanpanUITests.AccountPreferenceSyncUITests testConcurrentEditsOnTwoDevicesConvergeToTheNewest]' failed (329.084 seconds).
+Test Case '-[KanpanUITests.FavoritesSurviveRestartUITests testAddRemoveReorderSurviveRestart]' passed (39.019 seconds).

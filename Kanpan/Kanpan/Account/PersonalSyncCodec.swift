@@ -159,6 +159,34 @@ enum PersonalSyncCodec {
     return parts.count >= 3 ? InstrumentID.canonical(parts.prefix(3).joined(separator: "/")) : ""
   }
 
+  /// 访客档案并进账号那一刻，**真正要记进同步队列**的那几条（带导入批次号）。
+  ///
+  /// 只记「并进来之后盘上真的变成了访客那份」的对象，和 `AppAccountBridge.prepare`
+  /// 合并盘上文件的规则一一对应：
+  ///
+  /// - 画线、自选、分组、提醒：只记**访客有、账号原来没有**的那几条，值取合并后的那份
+  ///   （自选接在账号原有的后面，`order` 以合并后为准）。两边都有的，盘上留的是账号的，
+  ///   队列里也不该出现访客那份。
+  /// - 设置、画线工具偏好这两个单例：只有账号目录里原来没有那份文件、盘上整份换成了
+  ///   访客的（`adopted` 里点了名），才记。
+  ///
+  /// 2026-09-24 以前这里是把访客那几份**原样整份**记进去。坏在冷启动：已登录的人每次
+  /// 冷启动都先装一遍访客档案（它会把默认偏好写进访客目录），`account.restore()` 回来
+  /// 再 `claimGuest`，于是每次冷启动都「导入」一份默认设置——同步存档的 `local` 被改成
+  /// 默认值，而盘上仍是这个人自己的设置；紧接着脏标识 / `ChartLayoutReconcile` 那一步
+  /// 看见两份不一样，又把这个人的设置**以当下的时间戳**重新记了一条。结果是：
+  /// 哪台设备最后冷启动，它手上所有非默认的设置在云端就算「最新」，别的设备更晚做的
+  /// 改动被它盖掉（P4.5 两台模拟器并发改设置的回归里复现过：B 在 T2 改的浅色压过了
+  /// A 在 T3 改的深色，因为 B 冷启动时把浅色重记成了当下）。
+  static func guestImport(merged: [SyncObject], guest: [SyncObject], accountBefore: [SyncObject],
+                          adopted: Set<String>) -> [SyncObject] {
+    let guestKeys = Set(guest.map(\.key)), existing = Set(accountBefore.map(\.key))
+    return merged.filter { object in
+      if object.collection == "settings" || object.collection == "drawingPreferences" { return adopted.contains(object.collection) }
+      return guestKeys.contains(object.key) && !existing.contains(object.key)
+    }
+  }
+
   static func symbols(_ prefs: SymbolPrefs) -> [SyncObject] {
     var objects: [SyncObject] = []
     for (order, group) in prefs.groups.enumerated() {

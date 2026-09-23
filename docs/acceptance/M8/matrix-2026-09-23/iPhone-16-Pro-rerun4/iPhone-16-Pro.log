@@ -1,0 +1,2599 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -workspace Kanpan.xcworkspace -scheme Kanpan -destination "platform=iOS Simulator,id=D6C41248-C78E-46B8-B391-311F373D24A8" -derivedDataPath DerivedData "-only-testing:KanpanUITests/AccountPreferenceSyncUITests/testConcurrentEditsOnTwoDevicesConvergeToTheNewest" "-only-testing:KanpanUITests/FavoritesSurviveRestartUITests" -test-timeouts-enabled YES -default-test-execution-time-allowance 480 -maximum-test-execution-time-allowance 900 -resultBundlePath DerivedData/ui-test/iPhone-16-Pro.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  KanpanData: /Users/mdd/zhk/kanpan-wt-pchain/KanpanData @ local
+  KanpanCore: /Users/mdd/zhk/kanpan-wt-pchain/KanpanCore @ local
+  KanpanNetwork: /Users/mdd/zhk/kanpan-wt-pchain/KanpanNetwork @ local
+  KanpanAccount: /Users/mdd/zhk/kanpan-wt-pchain/KanpanAccount @ local
+  KanpanReview: /Users/mdd/zhk/kanpan-wt-pchain/KanpanReview @ local
+  KanpanChart: /Users/mdd/zhk/kanpan-wt-pchain/KanpanChart @ local
+
+Writing result bundle at path:
+	/Users/mdd/zhk/kanpan-wt-pchain/DerivedData/ui-test/iPhone-16-Pro.xcresult
+
+2026-09-24 00:08:15.195658+0800 KanpanUITests-Runner[24252:9432903] [Default] Running tests...
+objc[24252]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10932c310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10879c398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-09-24 00:08:17.845.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-24 00:08:17.845.
+Test Suite 'AccountPreferenceSyncUITests' started at 2026-09-24 00:08:17.845.
+Test Case '-[KanpanUITests.AccountPreferenceSyncUITests testConcurrentEditsOnTwoDevicesConvergeToTheNewest]' started.
+    t =     0.00s Start Test at 2026-09-24 00:08:17.846
+    t =     0.16s Set Up
+    t =     0.17s Open com.mdd.kanpan
+    t =     0.17s     Launch com.mdd.kanpan
+2026-09-24 00:08:18.263 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-24 00:08:18.263 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     1.25s         Setting up automation session
+    t =     1.89s         Wait for com.mdd.kanpan to idle
+    t =     3.44s Waiting 90.0s for "bottom.settings" Button to exist
+    t =     4.52s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =     4.52s         Checking existence of `"bottom.settings" Button`
+    t =     4.58s Checking existence of `"account.view" Other`
+    t =     4.59s Checking existence of `"display.theme.sage" Button`
+    t =     4.60s Waiting 60.0s for "bottom.settings" Button to exist
+    t =     5.67s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =     5.67s         Checking existence of `"bottom.settings" Button`
+    t =     5.69s Tap "bottom.settings" Button
+    t =     5.69s     Wait for com.mdd.kanpan to idle
+    t =     5.69s     Find the "bottom.settings" Button
+    t =     5.70s     Check for interrupting elements affecting "bottom.settings" Button
+    t =     5.72s     Synthesize event
+    t =     6.13s     Wait for com.mdd.kanpan to idle
+    t =     6.17s Waiting 20.0s for "display.theme.sage" Button to exist
+    t =     7.24s     Checking `Expect predicate `existsNoRetry == 1` for object "display.theme.sage" Button`
+    t =     7.24s         Checking existence of `"display.theme.sage" Button`
+    t =     7.30s Waiting 20.0s for "settings.account" Button to exist
+    t =     8.37s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account" Button`
+    t =     8.38s         Checking existence of `"settings.account" Button`
+    t =     8.42s Tap "settings.account" Button
+    t =     8.42s     Wait for com.mdd.kanpan to idle
+    t =     8.42s     Find the "settings.account" Button
+    t =     8.45s     Check for interrupting elements affecting "settings.account" Button
+    t =     8.47s     Synthesize event
+    t =     8.76s     Wait for com.mdd.kanpan to idle
+    t =     8.78s Waiting 20.0s for "account.view" Other to exist
+    t =     9.86s     Checking `Expect predicate `existsNoRetry == 1` for object "account.view" Other`
+    t =     9.86s         Checking existence of `"account.view" Other`
+    t =     9.91s Waiting 20.0s for "注册" Button to exist
+    t =    10.98s     Checking `Expect predicate `existsNoRetry == 1` for object "注册" Button`
+    t =    10.98s         Checking existence of `"注册" Button`
+    t =    11.02s Tap "注册" Button
+    t =    11.02s     Wait for com.mdd.kanpan to idle
+    t =    11.02s     Find the "注册" Button
+    t =    11.05s     Check for interrupting elements affecting "注册" Button
+    t =    11.08s     Synthesize event
+    t =    11.37s     Wait for com.mdd.kanpan to idle
+    t =    11.37s Waiting 20.0s for "account.email" TextField to exist
+    t =    12.43s     Checking `Expect predicate `existsNoRetry == 1` for object "account.email" TextField`
+    t =    12.43s         Checking existence of `"account.email" TextField`
+    t =    12.46s Tap "account.email" TextField
+    t =    12.46s     Wait for com.mdd.kanpan to idle
+    t =    12.47s     Find the "account.email" TextField
+    t =    12.50s     Check for interrupting elements affecting "account.email" TextField
+    t =    12.54s     Synthesize event
+    t =    12.82s     Wait for com.mdd.kanpan to idle
+    t =    13.04s Type 'p45_82a52ee6c12a' into "account.email" TextField
+    t =    13.04s     Wait for com.mdd.kanpan to idle
+    t =    13.61s     Find the "account.email" TextField
+    t =    13.67s     Check for interrupting elements affecting "account.email" TextField
+    t =    13.70s     Synthesize event
+    t =    14.17s     Wait for com.mdd.kanpan to idle
+    t =    14.17s Waiting 20.0s for "account.password" SecureTextField to exist
+    t =    15.24s     Checking `Expect predicate `existsNoRetry == 1` for object "account.password" SecureTextField`
+    t =    15.24s         Checking existence of `"account.password" SecureTextField`
+    t =    15.30s Tap "account.password" SecureTextField
+    t =    15.30s     Wait for com.mdd.kanpan to idle
+    t =    15.30s     Find the "account.password" SecureTextField
+    t =    15.34s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    15.37s     Synthesize event
+    t =    15.66s     Wait for com.mdd.kanpan to idle
+    t =    16.01s Waiting 2.0s for "GenerateStrongPasswordButton" Button to exist
+    t =    17.08s     Checking `Expect predicate `existsNoRetry == 1` for object "GenerateStrongPasswordButton" Button`
+    t =    17.08s         Checking existence of `"GenerateStrongPasswordButton" Button`
+    t =    17.12s         Capturing element debug description
+    t =    18.02s     Checking `Expect predicate `existsNoRetry == 1` for object "GenerateStrongPasswordButton" Button`
+    t =    18.02s         Checking existence of `"GenerateStrongPasswordButton" Button`
+    t =    18.06s         Capturing element debug description
+    t =    18.06s     Checking existence of `"GenerateStrongPasswordButton" Button`
+    t =    18.09s Collecting debug information to assist test failure triage
+    t =    18.09s     Requesting snapshot of accessibility hierarchy for app with pid 24279
+    t =    18.15s Waiting 20.0s for Keyboard (First Match) to exist
+    t =    19.21s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =    19.21s         Checking existence of `Keyboard (First Match)`
+    t =    19.23s Type '<redacted>' into "account.password" SecureTextField
+    t =    19.23s     Wait for com.mdd.kanpan to idle
+    t =    19.23s     Find the "account.password" SecureTextField
+    t =    19.27s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    19.30s     Synthesize event
+    t =    19.53s     Wait for com.mdd.kanpan to idle
+    t =    19.53s Type '<redacted>' into "account.password" SecureTextField
+    t =    19.53s     Wait for com.mdd.kanpan to idle
+    t =    19.53s     Find the "account.password" SecureTextField
+    t =    19.58s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    19.62s     Synthesize event
+    t =    19.85s     Wait for com.mdd.kanpan to idle
+    t =    19.85s Type '<redacted>' into "account.password" SecureTextField
+    t =    19.85s     Wait for com.mdd.kanpan to idle
+    t =    19.86s     Find the "account.password" SecureTextField
+    t =    19.92s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    19.96s     Synthesize event
+    t =    20.18s     Wait for com.mdd.kanpan to idle
+    t =    20.20s Type '<redacted>' into "account.password" SecureTextField
+    t =    20.20s     Wait for com.mdd.kanpan to idle
+    t =    20.20s     Find the "account.password" SecureTextField
+    t =    20.25s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    20.29s     Synthesize event
+    t =    20.52s     Wait for com.mdd.kanpan to idle
+    t =    20.55s Type '<redacted>' into "account.password" SecureTextField
+    t =    20.55s     Wait for com.mdd.kanpan to idle
+    t =    20.55s     Find the "account.password" SecureTextField
+    t =    20.60s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    20.63s     Synthesize event
+    t =    20.85s     Wait for com.mdd.kanpan to idle
+    t =    20.85s Type '<redacted>' into "account.password" SecureTextField
+    t =    20.85s     Wait for com.mdd.kanpan to idle
+    t =    20.85s     Find the "account.password" SecureTextField
+    t =    20.89s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    20.92s     Synthesize event
+    t =    21.14s     Wait for com.mdd.kanpan to idle
+    t =    21.16s Type '<redacted>' into "account.password" SecureTextField
+    t =    21.16s     Wait for com.mdd.kanpan to idle
+    t =    21.17s     Find the "account.password" SecureTextField
+    t =    21.21s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    21.25s     Synthesize event
+    t =    21.47s     Wait for com.mdd.kanpan to idle
+    t =    21.47s Type '<redacted>' into "account.password" SecureTextField
+    t =    21.47s     Wait for com.mdd.kanpan to idle
+    t =    21.47s     Find the "account.password" SecureTextField
+    t =    21.51s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    21.54s     Synthesize event
+    t =    21.77s     Wait for com.mdd.kanpan to idle
+    t =    21.77s Type '<redacted>' into "account.password" SecureTextField
+    t =    21.77s     Wait for com.mdd.kanpan to idle
+    t =    21.77s     Find the "account.password" SecureTextField
+    t =    21.81s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    21.85s     Synthesize event
+    t =    22.07s     Wait for com.mdd.kanpan to idle
+    t =    22.07s Type '<redacted>' into "account.password" SecureTextField
+    t =    22.07s     Wait for com.mdd.kanpan to idle
+    t =    22.07s     Find the "account.password" SecureTextField
+    t =    22.11s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    22.15s     Synthesize event
+    t =    22.38s     Wait for com.mdd.kanpan to idle
+    t =    22.38s Type '<redacted>' into "account.password" SecureTextField
+    t =    22.38s     Wait for com.mdd.kanpan to idle
+    t =    22.38s     Find the "account.password" SecureTextField
+    t =    22.42s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    22.46s     Synthesize event
+    t =    22.68s     Wait for com.mdd.kanpan to idle
+    t =    22.68s Type '<redacted>' into "account.password" SecureTextField
+    t =    22.68s     Wait for com.mdd.kanpan to idle
+    t =    22.69s     Find the "account.password" SecureTextField
+    t =    22.73s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    22.76s     Synthesize event
+    t =    22.98s     Wait for com.mdd.kanpan to idle
+    t =    22.99s Tap "account.submit" Button
+    t =    22.99s     Wait for com.mdd.kanpan to idle
+    t =    22.99s     Find the "account.submit" Button
+    t =    23.03s     Check for interrupting elements affecting "account.submit" Button
+    t =    23.07s     Synthesize event
+    t =    23.36s     Wait for com.mdd.kanpan to idle
+    t =    23.62s Checking existence of `"account.view" Other`
+    t =    23.87s Checking existence of `"account.view" Other`
+    t =    24.12s Checking existence of `"account.view" Other`
+    t =    24.52s Checking existence of `"account.view" Other`
+    t =    24.77s Checking existence of `"account.view" Other`
+    t =    25.02s Checking existence of `"account.view" Other`
+    t =    25.05s Checking existence of `"favorites.more" Button`
+    t =    25.07s Waiting 60.0s for "bottom.favorites" Button to exist
+    t =    26.13s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.favorites" Button`
+    t =    26.13s         Checking existence of `"bottom.favorites" Button`
+    t =    26.15s Tap "bottom.favorites" Button
+    t =    26.15s     Wait for com.mdd.kanpan to idle
+    t =    26.15s     Find the "bottom.favorites" Button
+    t =    26.17s     Check for interrupting elements affecting "bottom.favorites" Button
+    t =    26.18s     Synthesize event
+    t =    26.48s     Wait for com.mdd.kanpan to idle
+    t =    26.48s Waiting 30.0s for "favorites.more" Button to exist
+    t =    27.54s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =    27.54s         Checking existence of `"favorites.more" Button`
+    t =    27.57s Tap "favorites.add" Button
+    t =    27.57s     Wait for com.mdd.kanpan to idle
+    t =    27.58s     Find the "favorites.add" Button
+    t =    27.59s     Check for interrupting elements affecting "favorites.add" Button
+    t =    27.60s     Synthesize event
+    t =    27.89s     Wait for com.mdd.kanpan to idle
+    t =    28.25s Waiting 20.0s for "search.query" TextField to exist
+    t =    29.32s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =    29.32s         Checking existence of `"search.query" TextField`
+    t =    29.36s Tap "search.query" TextField
+    t =    29.36s     Wait for com.mdd.kanpan to idle
+    t =    29.36s     Find the "search.query" TextField
+    t =    29.38s     Check for interrupting elements affecting "search.query" TextField
+    t =    29.40s     Synthesize event
+    t =    29.69s     Wait for com.mdd.kanpan to idle
+    t =    29.70s Type 'ETHUSDT' into "search.query" TextField
+    t =    29.70s     Wait for com.mdd.kanpan to idle
+    t =    29.77s     Find the "search.query" TextField
+    t =    29.79s     Check for interrupting elements affecting "search.query" TextField
+    t =    29.81s     Synthesize event
+    t =    30.13s     Wait for com.mdd.kanpan to idle
+    t =    30.43s Waiting 60.0s for "symbols.star.binance/usd_m/ETHUSDT" Button to exist
+    t =    31.50s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.star.binance/usd_m/ETHUSDT" Button`
+    t =    31.50s         Checking existence of `"symbols.star.binance/usd_m/ETHUSDT" Button`
+    t =    31.54s Find the "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =    31.57s Tap "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =    31.57s     Wait for com.mdd.kanpan to idle
+    t =    31.57s     Find the "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =    31.59s     Check for interrupting elements affecting "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =    31.61s     Synthesize event
+    t =    31.91s     Wait for com.mdd.kanpan to idle
+    t =    31.91s Find the "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =    31.94s Tap "search.cancel" Button
+    t =    31.94s     Wait for com.mdd.kanpan to idle
+    t =    31.95s     Find the "search.cancel" Button
+    t =    31.97s     Check for interrupting elements affecting "search.cancel" Button
+    t =    31.99s     Synthesize event
+    t =    32.28s     Wait for com.mdd.kanpan to idle
+    t =    32.64s Checking existence of `"account.view" Other`
+    t =    32.65s Checking existence of `"display.theme.sage" Button`
+    t =    32.67s Waiting 60.0s for "bottom.settings" Button to exist
+    t =    33.74s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =    33.74s         Checking existence of `"bottom.settings" Button`
+    t =    33.77s Tap "bottom.settings" Button
+    t =    33.77s     Wait for com.mdd.kanpan to idle
+    t =    33.77s     Find the "bottom.settings" Button
+    t =    33.78s     Check for interrupting elements affecting "bottom.settings" Button
+    t =    33.80s     Synthesize event
+    t =    34.09s     Wait for com.mdd.kanpan to idle
+    t =    34.10s Waiting 20.0s for "display.theme.sage" Button to exist
+    t =    35.17s     Checking `Expect predicate `existsNoRetry == 1` for object "display.theme.sage" Button`
+    t =    35.17s         Checking existence of `"display.theme.sage" Button`
+    t =    35.22s Waiting 20.0s for "settings.account" Button to exist
+    t =    36.27s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account" Button`
+    t =    36.28s         Checking existence of `"settings.account" Button`
+    t =    36.32s Tap "settings.account" Button
+    t =    36.32s     Wait for com.mdd.kanpan to idle
+    t =    36.32s     Find the "settings.account" Button
+    t =    36.35s     Check for interrupting elements affecting "settings.account" Button
+    t =    36.37s     Synthesize event
+    t =    36.66s     Wait for com.mdd.kanpan to idle
+    t =    37.03s Waiting 20.0s for "account.view" Other to exist
+    t =    38.08s     Checking `Expect predicate `existsNoRetry == 1` for object "account.view" Other`
+    t =    38.08s         Checking existence of `"account.view" Other`
+    t =    38.16s Waiting 20.0s for "同步" Button to exist
+    t =    39.19s     Checking `Expect predicate `existsNoRetry == 1` for object "同步" Button`
+    t =    39.19s         Checking existence of `"同步" Button`
+    t =    39.24s Tap "同步" Button
+    t =    39.24s     Wait for com.mdd.kanpan to idle
+    t =    39.24s     Find the "同步" Button
+    t =    39.27s     Check for interrupting elements affecting "同步" Button
+    t =    39.31s     Synthesize event
+    t =    39.60s     Wait for com.mdd.kanpan to idle
+    t =    39.60s Waiting 20.0s for "立即同步" Button to exist
+    t =    40.67s     Checking `Expect predicate `existsNoRetry == 1` for object "立即同步" Button`
+    t =    40.67s         Checking existence of `"立即同步" Button`
+    t =    40.72s Tap "立即同步" Button
+    t =    40.72s     Wait for com.mdd.kanpan to idle
+    t =    40.73s     Find the "立即同步" Button
+    t =    40.76s     Check for interrupting elements affecting "立即同步" Button
+    t =    40.79s     Synthesize event
+    t =    41.08s     Wait for com.mdd.kanpan to idle
+    t =    41.09s Checking existence of `"已同步" StaticText`
+    t =    41.33s Checking existence of `"已同步" StaticText`
+    t =    41.57s Checking existence of `"已同步" StaticText`
+    t =    41.82s Checking existence of `"已同步" StaticText`
+    t =    42.07s Checking existence of `"已同步" StaticText`
+    t =    42.33s Checking existence of `"已同步" StaticText`
+    t =    42.59s Checking existence of `"已同步" StaticText`
+    t =    42.65s Checking existence of `"account.view" Other`
+    t =    42.68s Checking existence of `"account.back" Button`
+    t =    42.71s Find the "account.back" Button
+    t =    42.75s Tap "account.back" Button
+    t =    42.75s     Wait for com.mdd.kanpan to idle
+    t =    42.75s     Find the "account.back" Button
+    t =    42.79s     Check for interrupting elements affecting "account.back" Button
+    t =    42.82s     Synthesize event
+    t =    43.11s     Wait for com.mdd.kanpan to idle
+    t =    43.95s Checking existence of `"account.view" Other`
+    t =    44.22s Checking existence of `"account.view" Other`
+    t =    44.48s Checking existence of `"account.view" Other`
+    t =    44.74s Checking existence of `"account.view" Other`
+    t =    44.98s Checking existence of `"account.view" Other`
+    t =    45.23s Checking existence of `"account.view" Other`
+    t =    45.48s Checking existence of `"account.view" Other`
+    t =    45.75s Checking existence of `"account.view" Other`
+    t =    46.02s Checking existence of `"account.view" Other`
+    t =    46.29s Checking existence of `"account.view" Other`
+    t =    46.56s Checking existence of `"account.view" Other`
+    t =    46.82s Checking existence of `"account.view" Other`
+    t =    47.08s Checking existence of `"account.view" Other`
+    t =    47.34s Checking existence of `"account.view" Other`
+    t =    47.60s Checking existence of `"account.view" Other`
+    t =    47.84s Checking existence of `"account.view" Other`
+    t =    48.10s Checking existence of `"account.view" Other`
+    t =    48.37s Checking existence of `"account.view" Other`
+    t =    48.62s Checking existence of `"account.view" Other`
+    t =    48.87s Checking existence of `"account.view" Other`
+    t =    49.15s Checking existence of `"account.view" Other`
+    t =    49.22s Checking existence of `"account.view" Other`
+    t =    49.26s Checking existence of `"account.back" Button`
+    t =    49.29s Find the "account.back" Button
+    t =    49.33s Tap "account.back" Button
+    t =    49.33s     Wait for com.mdd.kanpan to idle
+    t =    49.33s     Find the "account.back" Button
+    t =    49.37s     Check for interrupting elements affecting "account.back" Button
+    t =    49.40s     Synthesize event
+    t =    49.69s     Wait for com.mdd.kanpan to idle
+    t =    50.52s Checking existence of `"account.view" Other`
+    t =    50.53s Checking existence of `"account.view" Other`
+    t =    50.55s Checking existence of `"display.theme.sage" Button`
+    t =    50.57s Checking existence of `"display.theme.sage" Button`
+    t =    50.59s Checking existence of `"display.mode.跟随系统" Button`
+    t =    50.60s Find the "display.theme.sage" Button
+    t =    50.62s Find the "display.mode.跟随系统" Button
+    t =    50.64s Terminate com.mdd.kanpan:24279
+    t =    51.69s Open com.mdd.kanpan
+    t =    51.69s     Launch com.mdd.kanpan
+2026-09-24 00:09:09.535 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-24 00:09:09.535 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    51.90s         Setting up automation session
+    t =    52.57s         Wait for com.mdd.kanpan to idle
+    t =    53.93s Waiting 90.0s for "bottom.settings" Button to exist
+    t =    54.97s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =    54.97s         Checking existence of `"bottom.settings" Button`
+    t =    55.01s Checking existence of `"account.view" Other`
+    t =    55.03s Checking existence of `"display.theme.sage" Button`
+    t =    55.04s Waiting 60.0s for "bottom.settings" Button to exist
+    t =    56.09s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =    56.09s         Checking existence of `"bottom.settings" Button`
+    t =    56.12s Tap "bottom.settings" Button
+    t =    56.12s     Wait for com.mdd.kanpan to idle
+    t =    56.13s     Find the "bottom.settings" Button
+    t =    56.14s     Check for interrupting elements affecting "bottom.settings" Button
+    t =    56.16s     Synthesize event
+    t =    56.44s     Wait for com.mdd.kanpan to idle
+    t =    56.44s Waiting 20.0s for "display.theme.sage" Button to exist
+    t =    57.49s     Checking `Expect predicate `existsNoRetry == 1` for object "display.theme.sage" Button`
+    t =    57.49s         Checking existence of `"display.theme.sage" Button`
+    t =    57.55s Waiting 20.0s for "settings.account" Button to exist
+    t =    58.59s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account" Button`
+    t =    58.59s         Checking existence of `"settings.account" Button`
+    t =    58.64s Tap "settings.account" Button
+    t =    58.64s     Wait for com.mdd.kanpan to idle
+    t =    58.64s     Find the "settings.account" Button
+    t =    58.66s     Check for interrupting elements affecting "settings.account" Button
+    t =    58.68s     Synthesize event
+    t =    58.97s     Wait for com.mdd.kanpan to idle
+    t =    59.44s Waiting 20.0s for "account.view" Other to exist
+    t =    60.46s     Checking `Expect predicate `existsNoRetry == 1` for object "account.view" Other`
+    t =    60.46s         Checking existence of `"account.view" Other`
+    t =    60.53s Waiting 20.0s for "account.email" TextField to exist
+    t =    61.57s     Checking `Expect predicate `existsNoRetry == 1` for object "account.email" TextField`
+    t =    61.57s         Checking existence of `"account.email" TextField`
+    t =    61.62s Tap "account.email" TextField
+    t =    61.62s     Wait for com.mdd.kanpan to idle
+    t =    61.62s     Find the "account.email" TextField
+    t =    61.66s     Check for interrupting elements affecting "account.email" TextField
+    t =    61.69s     Synthesize event
+    t =    61.98s     Wait for com.mdd.kanpan to idle
+    t =    62.00s Type 'p45_82a52ee6c12a' into "account.email" TextField
+    t =    62.00s     Wait for com.mdd.kanpan to idle
+    t =    62.39s     Find the "account.email" TextField
+    t =    62.46s     Check for interrupting elements affecting "account.email" TextField
+    t =    62.49s     Synthesize event
+    t =    62.96s     Wait for com.mdd.kanpan to idle
+    t =    62.96s Waiting 20.0s for "account.password" SecureTextField to exist
+    t =    64.04s     Checking `Expect predicate `existsNoRetry == 1` for object "account.password" SecureTextField`
+    t =    64.04s         Checking existence of `"account.password" SecureTextField`
+    t =    64.11s Tap "account.password" SecureTextField
+    t =    64.11s     Wait for com.mdd.kanpan to idle
+    t =    64.11s     Find the "account.password" SecureTextField
+    t =    64.15s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    64.18s     Synthesize event
+    t =    64.48s     Wait for com.mdd.kanpan to idle
+    t =    64.83s Waiting 2.0s for "GenerateStrongPasswordButton" Button to exist
+    t =    65.88s     Checking `Expect predicate `existsNoRetry == 1` for object "GenerateStrongPasswordButton" Button`
+    t =    65.88s         Checking existence of `"GenerateStrongPasswordButton" Button`
+    t =    65.95s         Capturing element debug description
+    t =    66.84s     Checking `Expect predicate `existsNoRetry == 1` for object "GenerateStrongPasswordButton" Button`
+    t =    66.84s         Checking existence of `"GenerateStrongPasswordButton" Button`
+    t =    66.91s         Capturing element debug description
+    t =    66.91s     Checking existence of `"GenerateStrongPasswordButton" Button`
+    t =    66.94s Collecting debug information to assist test failure triage
+    t =    66.94s     Requesting snapshot of accessibility hierarchy for app with pid 24510
+    t =    67.00s Waiting 20.0s for Keyboard (First Match) to exist
+    t =    68.06s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =    68.06s         Checking existence of `Keyboard (First Match)`
+    t =    68.08s Type '<redacted>' into "account.password" SecureTextField
+    t =    68.08s     Wait for com.mdd.kanpan to idle
+    t =    68.08s     Find the "account.password" SecureTextField
+    t =    68.12s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    68.15s     Synthesize event
+    t =    68.38s     Wait for com.mdd.kanpan to idle
+    t =    68.38s Type '<redacted>' into "account.password" SecureTextField
+    t =    68.38s     Wait for com.mdd.kanpan to idle
+    t =    68.38s     Find the "account.password" SecureTextField
+    t =    68.43s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    68.47s     Synthesize event
+    t =    68.70s     Wait for com.mdd.kanpan to idle
+    t =    68.70s Type '<redacted>' into "account.password" SecureTextField
+    t =    68.70s     Wait for com.mdd.kanpan to idle
+    t =    68.70s     Find the "account.password" SecureTextField
+    t =    68.76s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    68.80s     Synthesize event
+    t =    69.03s     Wait for com.mdd.kanpan to idle
+    t =    69.03s Type '<redacted>' into "account.password" SecureTextField
+    t =    69.03s     Wait for com.mdd.kanpan to idle
+    t =    69.04s     Find the "account.password" SecureTextField
+    t =    69.09s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    69.14s     Synthesize event
+    t =    69.36s     Wait for com.mdd.kanpan to idle
+    t =    69.37s Type '<redacted>' into "account.password" SecureTextField
+    t =    69.37s     Wait for com.mdd.kanpan to idle
+    t =    69.39s     Find the "account.password" SecureTextField
+    t =    69.44s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    69.47s     Synthesize event
+    t =    69.69s     Wait for com.mdd.kanpan to idle
+    t =    69.70s Type '<redacted>' into "account.password" SecureTextField
+    t =    69.70s     Wait for com.mdd.kanpan to idle
+    t =    69.70s     Find the "account.password" SecureTextField
+    t =    69.74s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    69.77s     Synthesize event
+    t =    69.99s     Wait for com.mdd.kanpan to idle
+    t =    70.00s Type '<redacted>' into "account.password" SecureTextField
+    t =    70.00s     Wait for com.mdd.kanpan to idle
+    t =    70.00s     Find the "account.password" SecureTextField
+    t =    70.04s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    70.07s     Synthesize event
+    t =    70.29s     Wait for com.mdd.kanpan to idle
+    t =    70.30s Type '<redacted>' into "account.password" SecureTextField
+    t =    70.30s     Wait for com.mdd.kanpan to idle
+    t =    70.30s     Find the "account.password" SecureTextField
+    t =    70.34s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    70.37s     Synthesize event
+    t =    70.59s     Wait for com.mdd.kanpan to idle
+    t =    70.59s Type '<redacted>' into "account.password" SecureTextField
+    t =    70.60s     Wait for com.mdd.kanpan to idle
+    t =    70.60s     Find the "account.password" SecureTextField
+    t =    70.64s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    70.67s     Synthesize event
+    t =    70.89s     Wait for com.mdd.kanpan to idle
+    t =    70.90s Type '<redacted>' into "account.password" SecureTextField
+    t =    70.90s     Wait for com.mdd.kanpan to idle
+    t =    70.90s     Find the "account.password" SecureTextField
+    t =    70.94s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    70.97s     Synthesize event
+    t =    71.19s     Wait for com.mdd.kanpan to idle
+    t =    71.19s Type '<redacted>' into "account.password" SecureTextField
+    t =    71.19s     Wait for com.mdd.kanpan to idle
+    t =    71.20s     Find the "account.password" SecureTextField
+    t =    71.24s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    71.27s     Synthesize event
+    t =    71.49s     Wait for com.mdd.kanpan to idle
+    t =    71.50s Type '<redacted>' into "account.password" SecureTextField
+    t =    71.50s     Wait for com.mdd.kanpan to idle
+    t =    71.50s     Find the "account.password" SecureTextField
+    t =    71.55s     Check for interrupting elements affecting "account.password" SecureTextField
+    t =    71.58s     Synthesize event
+    t =    71.80s     Wait for com.mdd.kanpan to idle
+    t =    71.81s Tap "account.submit" Button
+    t =    71.81s     Wait for com.mdd.kanpan to idle
+    t =    71.81s     Find the "account.submit" Button
+    t =    71.86s     Check for interrupting elements affecting "account.submit" Button
+    t =    71.90s     Synthesize event
+    t =    72.19s     Wait for com.mdd.kanpan to idle
+    t =    72.42s Checking existence of `"account.view" Other`
+    t =    72.65s Checking existence of `"account.view" Other`
+    t =    72.89s Checking existence of `"account.view" Other`
+    t =    73.13s Checking existence of `"account.view" Other`
+    t =    73.41s Checking existence of `"account.view" Other`
+    t =    73.64s Checking existence of `"account.view" Other`
+    t =    73.66s Checking existence of `"account.view" Other`
+    t =    73.67s Checking existence of `"display.theme.sage" Button`
+    t =    73.68s Waiting 60.0s for "bottom.settings" Button to exist
+    t =    74.73s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =    74.73s         Checking existence of `"bottom.settings" Button`
+    t =    74.75s Tap "bottom.settings" Button
+    t =    74.75s     Wait for com.mdd.kanpan to idle
+    t =    74.75s     Find the "bottom.settings" Button
+    t =    74.76s     Check for interrupting elements affecting "bottom.settings" Button
+    t =    74.78s     Synthesize event
+    t =    75.07s     Wait for com.mdd.kanpan to idle
+    t =    75.08s Waiting 20.0s for "display.theme.sage" Button to exist
+    t =    76.11s     Checking `Expect predicate `existsNoRetry == 1` for object "display.theme.sage" Button`
+    t =    76.11s         Checking existence of `"display.theme.sage" Button`
+    t =    76.16s Waiting 20.0s for "settings.account" Button to exist
+    t =    77.19s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account" Button`
+    t =    77.19s         Checking existence of `"settings.account" Button`
+    t =    77.22s Tap "settings.account" Button
+    t =    77.22s     Wait for com.mdd.kanpan to idle
+    t =    77.23s     Find the "settings.account" Button
+    t =    77.25s     Check for interrupting elements affecting "settings.account" Button
+    t =    77.27s     Synthesize event
+    t =    77.56s     Wait for com.mdd.kanpan to idle
+    t =    77.93s Waiting 20.0s for "account.view" Other to exist
+    t =    78.98s     Checking `Expect predicate `existsNoRetry == 1` for object "account.view" Other`
+    t =    78.98s         Checking existence of `"account.view" Other`
+    t =    79.04s Waiting 20.0s for "同步" Button to exist
+    t =    80.06s     Checking `Expect predicate `existsNoRetry == 1` for object "同步" Button`
+    t =    80.06s         Checking existence of `"同步" Button`
+    t =    80.10s Tap "同步" Button
+    t =    80.10s     Wait for com.mdd.kanpan to idle
+    t =    80.10s     Find the "同步" Button
+    t =    80.14s     Check for interrupting elements affecting "同步" Button
+    t =    80.17s     Synthesize event
+    t =    80.47s     Wait for com.mdd.kanpan to idle
+    t =    80.47s Waiting 20.0s for "立即同步" Button to exist
+    t =    81.49s     Checking `Expect predicate `existsNoRetry == 1` for object "立即同步" Button`
+    t =    81.49s         Checking existence of `"立即同步" Button`
+    t =    81.56s Tap "立即同步" Button
+    t =    81.56s     Wait for com.mdd.kanpan to idle
+    t =    81.56s     Find the "立即同步" Button
+    t =    81.60s     Check for interrupting elements affecting "立即同步" Button
+    t =    81.63s     Synthesize event
+    t =    81.92s     Wait for com.mdd.kanpan to idle
+    t =    81.93s Checking existence of `"已同步" StaticText`
+    t =    82.17s Checking existence of `"已同步" StaticText`
+    t =    82.41s Checking existence of `"已同步" StaticText`
+    t =    82.68s Checking existence of `"已同步" StaticText`
+    t =    82.94s Checking existence of `"已同步" StaticText`
+    t =    83.20s Checking existence of `"已同步" StaticText`
+    t =    83.44s Checking existence of `"已同步" StaticText`
+    t =    83.50s Checking existence of `"account.view" Other`
+    t =    83.53s Checking existence of `"account.back" Button`
+    t =    83.57s Find the "account.back" Button
+    t =    83.61s Tap "account.back" Button
+    t =    83.61s     Wait for com.mdd.kanpan to idle
+    t =    83.61s     Find the "account.back" Button
+    t =    83.64s     Check for interrupting elements affecting "account.back" Button
+    t =    83.67s     Synthesize event
+    t =    83.97s     Wait for com.mdd.kanpan to idle
+    t =    84.80s Checking existence of `"account.view" Other`
+    t =    85.08s Checking existence of `"account.view" Other`
+    t =    85.34s Checking existence of `"account.view" Other`
+    t =    85.58s Checking existence of `"account.view" Other`
+    t =    85.83s Checking existence of `"account.view" Other`
+    t =    86.08s Checking existence of `"account.view" Other`
+    t =    86.35s Checking existence of `"account.view" Other`
+    t =    86.61s Checking existence of `"account.view" Other`
+    t =    86.88s Checking existence of `"account.view" Other`
+    t =    87.14s Checking existence of `"account.view" Other`
+    t =    87.39s Checking existence of `"account.view" Other`
+    t =    87.66s Checking existence of `"account.view" Other`
+    t =    87.93s Checking existence of `"account.view" Other`
+    t =    88.19s Checking existence of `"account.view" Other`
+    t =    88.42s Checking existence of `"account.view" Other`
+    t =    88.68s Checking existence of `"account.view" Other`
+    t =    88.95s Checking existence of `"account.view" Other`
+    t =    89.22s Checking existence of `"account.view" Other`
+    t =    89.48s Checking existence of `"account.view" Other`
+    t =    89.73s Checking existence of `"account.view" Other`
+    t =    89.99s Checking existence of `"account.view" Other`
+    t =    90.03s Checking existence of `"account.view" Other`
+    t =    90.07s Checking existence of `"account.back" Button`
+    t =    90.10s Find the "account.back" Button
+    t =    90.14s Tap "account.back" Button
+    t =    90.14s     Wait for com.mdd.kanpan to idle
+    t =    90.14s     Find the "account.back" Button
+    t =    90.17s     Check for interrupting elements affecting "account.back" Button
+    t =    90.21s     Synthesize event
+    t =    90.51s     Wait for com.mdd.kanpan to idle
+    t =    91.34s Checking existence of `"account.view" Other`
+    t =    91.37s Checking existence of `"account.view" Other`
+    t =    91.40s Checking existence of `"favorites.more" Button`
+    t =    91.42s Waiting 60.0s for "bottom.favorites" Button to exist
+    t =    92.44s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.favorites" Button`
+    t =    92.44s         Checking existence of `"bottom.favorites" Button`
+    t =    92.49s Tap "bottom.favorites" Button
+    t =    92.49s     Wait for com.mdd.kanpan to idle
+    t =    92.49s     Find the "bottom.favorites" Button
+    t =    92.51s     Check for interrupting elements affecting "bottom.favorites" Button
+    t =    92.53s     Synthesize event
+    t =    92.83s     Wait for com.mdd.kanpan to idle
+    t =    92.83s Waiting 30.0s for "favorites.more" Button to exist
+    t =    93.87s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =    93.88s         Checking existence of `"favorites.more" Button`
+    t =    93.91s Checking existence of `"favorites.open.binance/usd_m/ETHUSDT" Button`
+    t =    93.93s Checking existence of `"favorites.open.binance/usd_m/ETHUSDT" Button`
+    t =    93.94s Terminate com.mdd.kanpan:24510
+    t =    94.99s Open com.mdd.kanpan
+    t =    94.99s     Launch com.mdd.kanpan
+2026-09-24 00:09:52.834 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-24 00:09:52.835 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    95.20s         Setting up automation session
+    t =    95.85s         Wait for com.mdd.kanpan to idle
+    t =    97.30s Waiting 90.0s for "bottom.settings" Button to exist
+    t =    98.36s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =    98.36s         Checking existence of `"bottom.settings" Button`
+    t =    98.41s Checking existence of `"account.view" Other`
+    t =    98.43s Checking existence of `"display.theme.sage" Button`
+    t =    98.44s Waiting 60.0s for "bottom.settings" Button to exist
+    t =    99.46s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =    99.46s         Checking existence of `"bottom.settings" Button`
+    t =    99.49s Tap "bottom.settings" Button
+    t =    99.49s     Wait for com.mdd.kanpan to idle
+    t =    99.49s     Find the "bottom.settings" Button
+    t =    99.51s     Check for interrupting elements affecting "bottom.settings" Button
+    t =    99.52s     Synthesize event
+    t =    99.81s     Wait for com.mdd.kanpan to idle
+    t =    99.81s Waiting 20.0s for "display.theme.sage" Button to exist
+    t =   100.83s     Checking `Expect predicate `existsNoRetry == 1` for object "display.theme.sage" Button`
+    t =   100.83s         Checking existence of `"display.theme.sage" Button`
+    t =   100.89s Waiting 20.0s for "settings.account" Button to exist
+    t =   101.89s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account" Button`
+    t =   101.89s         Checking existence of `"settings.account" Button`
+    t =   101.94s Tap "settings.account" Button
+    t =   101.94s     Wait for com.mdd.kanpan to idle
+    t =   101.94s     Find the "settings.account" Button
+    t =   101.97s     Check for interrupting elements affecting "settings.account" Button
+    t =   101.99s     Synthesize event
+    t =   102.28s     Wait for com.mdd.kanpan to idle
+    t =   102.75s Waiting 20.0s for "account.view" Other to exist
+    t =   103.78s     Checking `Expect predicate `existsNoRetry == 1` for object "account.view" Other`
+    t =   103.78s         Checking existence of `"account.view" Other`
+    t =   103.83s Waiting 20.0s for "同步" Button to exist
+    t =   104.89s     Checking `Expect predicate `existsNoRetry == 1` for object "同步" Button`
+    t =   104.89s         Checking existence of `"同步" Button`
+    t =   104.96s Tap "同步" Button
+    t =   104.96s     Wait for com.mdd.kanpan to idle
+    t =   104.96s     Find the "同步" Button
+    t =   105.00s     Check for interrupting elements affecting "同步" Button
+    t =   105.03s     Synthesize event
+    t =   105.32s     Wait for com.mdd.kanpan to idle
+    t =   105.32s Waiting 20.0s for "立即同步" Button to exist
+    t =   106.36s     Checking `Expect predicate `existsNoRetry == 1` for object "立即同步" Button`
+    t =   106.36s         Checking existence of `"立即同步" Button`
+    t =   106.41s Waiting 20.0s for "自动同步" Switch to exist
+    t =   107.48s     Checking `Expect predicate `existsNoRetry == 1` for object "自动同步" Switch`
+    t =   107.48s         Checking existence of `"自动同步" Switch`
+    t =   107.54s Find the "自动同步" Switch
+    t =   107.58s Tap "自动同步" Switch
+    t =   107.58s     Wait for com.mdd.kanpan to idle
+    t =   107.58s     Find the "自动同步" Switch
+    t =   107.62s     Check for interrupting elements affecting "自动同步" Switch
+    t =   107.65s     Synthesize event
+    t =   107.93s     Wait for com.mdd.kanpan to idle
+    t =   107.94s Find the "自动同步" Switch
+    t =   108.18s Find the "自动同步" Switch
+    t =   108.45s Find the "自动同步" Switch
+    t =   108.69s Find the "自动同步" Switch
+    t =   108.94s Find the "自动同步" Switch
+    t =   109.19s Find the "自动同步" Switch
+    t =   109.45s Find the "自动同步" Switch
+    t =   109.71s Find the "自动同步" Switch
+    t =   109.97s Find the "自动同步" Switch
+    t =   110.23s Find the "自动同步" Switch
+    t =   110.48s Find the "自动同步" Switch
+    t =   110.74s Find the "自动同步" Switch
+    t =   111.00s Find the "自动同步" Switch
+    t =   111.05s Tap "自动同步" Switch[0.93, 0.50]
+    t =   111.05s     Wait for com.mdd.kanpan to idle
+    t =   111.05s     Find the "自动同步" Switch
+    t =   111.08s     Check for interrupting elements affecting "自动同步" Switch
+    t =   111.11s     Synthesize event
+    t =   111.11s         Find the "自动同步" Switch
+    t =   111.14s         Find the "自动同步" Switch
+    t =   111.18s         Find the "自动同步" Switch
+    t =   111.50s     Wait for com.mdd.kanpan to idle
+    t =   112.80s Find the "自动同步" Switch
+    t =   112.83s Checking existence of `"已暂停" StaticText`
+    t =   112.86s Checking existence of `"account.view" Other`
+    t =   112.89s Checking existence of `"account.back" Button`
+    t =   112.92s Find the "account.back" Button
+    t =   112.99s Tap "account.back" Button
+    t =   112.99s     Wait for com.mdd.kanpan to idle
+    t =   112.99s     Find the "account.back" Button
+    t =   113.02s     Check for interrupting elements affecting "account.back" Button
+    t =   113.06s     Synthesize event
+    t =   113.34s     Wait for com.mdd.kanpan to idle
+    t =   114.19s Checking existence of `"account.view" Other`
+    t =   114.44s Checking existence of `"account.view" Other`
+    t =   114.71s Checking existence of `"account.view" Other`
+    t =   114.96s Checking existence of `"account.view" Other`
+    t =   115.22s Checking existence of `"account.view" Other`
+    t =   115.47s Checking existence of `"account.view" Other`
+    t =   115.73s Checking existence of `"account.view" Other`
+    t =   115.97s Checking existence of `"account.view" Other`
+    t =   116.21s Checking existence of `"account.view" Other`
+    t =   116.46s Checking existence of `"account.view" Other`
+    t =   116.72s Checking existence of `"account.view" Other`
+    t =   116.98s Checking existence of `"account.view" Other`
+    t =   117.23s Checking existence of `"account.view" Other`
+    t =   117.48s Checking existence of `"account.view" Other`
+    t =   117.73s Checking existence of `"account.view" Other`
+    t =   117.99s Checking existence of `"account.view" Other`
+    t =   118.26s Checking existence of `"account.view" Other`
+    t =   118.51s Checking existence of `"account.view" Other`
+    t =   118.76s Checking existence of `"account.view" Other`
+    t =   118.99s Checking existence of `"account.view" Other`
+    t =   119.26s Checking existence of `"account.view" Other`
+    t =   119.32s Checking existence of `"account.view" Other`
+    t =   119.36s Checking existence of `"account.back" Button`
+    t =   119.39s Find the "account.back" Button
+    t =   119.43s Tap "account.back" Button
+    t =   119.43s     Wait for com.mdd.kanpan to idle
+    t =   119.43s     Find the "account.back" Button
+    t =   119.46s     Check for interrupting elements affecting "account.back" Button
+    t =   119.49s     Synthesize event
+    t =   119.78s     Wait for com.mdd.kanpan to idle
+    t =   120.62s Checking existence of `"account.view" Other`
+    t =   120.66s Checking existence of `"account.view" Other`
+    t =   120.68s Checking existence of `"display.theme.sage" Button`
+    t =   120.71s Waiting 20.0s for "display.theme.terra" Button to exist
+    t =   121.75s     Checking `Expect predicate `existsNoRetry == 1` for object "display.theme.terra" Button`
+    t =   121.75s         Checking existence of `"display.theme.terra" Button`
+    t =   121.78s Find the "display.theme.terra" Button
+    t =   121.80s Tap "display.theme.terra" Button
+    t =   121.80s     Wait for com.mdd.kanpan to idle
+    t =   121.80s     Find the "display.theme.terra" Button
+    t =   121.82s     Check for interrupting elements affecting "display.theme.terra" Button
+    t =   121.84s     Synthesize event
+    t =   122.13s     Wait for com.mdd.kanpan to idle
+    t =   122.13s Waiting 20.0s for "display.mode.跟随系统" Button to exist
+    t =   123.17s     Checking `Expect predicate `existsNoRetry == 1` for object "display.mode.跟随系统" Button`
+    t =   123.17s         Checking existence of `"display.mode.跟随系统" Button`
+    t =   123.20s Find the "display.mode.跟随系统" Button
+    t =   123.23s Checking existence of `"favorites.more" Button`
+    t =   123.24s Waiting 60.0s for "bottom.favorites" Button to exist
+    t =   124.29s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.favorites" Button`
+    t =   124.29s         Checking existence of `"bottom.favorites" Button`
+    t =   124.34s Tap "bottom.favorites" Button
+    t =   124.34s     Wait for com.mdd.kanpan to idle
+    t =   124.34s     Find the "bottom.favorites" Button
+    t =   124.36s     Check for interrupting elements affecting "bottom.favorites" Button
+    t =   124.39s     Synthesize event
+    t =   124.67s     Wait for com.mdd.kanpan to idle
+    t =   124.68s Waiting 30.0s for "favorites.more" Button to exist
+    t =   125.72s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =   125.73s         Checking existence of `"favorites.more" Button`
+    t =   125.76s Tap "favorites.add" Button
+    t =   125.76s     Wait for com.mdd.kanpan to idle
+    t =   125.76s     Find the "favorites.add" Button
+    t =   125.77s     Check for interrupting elements affecting "favorites.add" Button
+    t =   125.79s     Synthesize event
+    t =   126.08s     Wait for com.mdd.kanpan to idle
+    t =   126.44s Waiting 20.0s for "search.query" TextField to exist
+    t =   127.49s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =   127.49s         Checking existence of `"search.query" TextField`
+    t =   127.55s Tap "search.query" TextField
+    t =   127.55s     Wait for com.mdd.kanpan to idle
+    t =   127.55s     Find the "search.query" TextField
+    t =   127.57s     Check for interrupting elements affecting "search.query" TextField
+    t =   127.59s     Synthesize event
+    t =   127.87s     Wait for com.mdd.kanpan to idle
+    t =   127.87s Type 'SOLUSDT' into "search.query" TextField
+    t =   127.87s     Wait for com.mdd.kanpan to idle
+    t =   127.87s     Find the "search.query" TextField
+    t =   127.92s     Check for interrupting elements affecting "search.query" TextField
+    t =   127.95s     Synthesize event
+    t =   128.27s     Wait for com.mdd.kanpan to idle
+    t =   128.56s Waiting 60.0s for "symbols.star.binance/usd_m/SOLUSDT" Button to exist
+    t =   129.59s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.star.binance/usd_m/SOLUSDT" Button`
+    t =   129.59s         Checking existence of `"symbols.star.binance/usd_m/SOLUSDT" Button`
+    t =   129.63s Find the "symbols.star.binance/usd_m/SOLUSDT" Button
+    t =   129.65s Tap "symbols.star.binance/usd_m/SOLUSDT" Button
+    t =   129.65s     Wait for com.mdd.kanpan to idle
+    t =   129.65s     Find the "symbols.star.binance/usd_m/SOLUSDT" Button
+    t =   129.67s     Check for interrupting elements affecting "symbols.star.binance/usd_m/SOLUSDT" Button
+    t =   129.70s     Synthesize event
+    t =   129.98s     Wait for com.mdd.kanpan to idle
+    t =   129.99s Find the "symbols.star.binance/usd_m/SOLUSDT" Button
+    t =   130.03s Tap "search.cancel" Button
+    t =   130.03s     Wait for com.mdd.kanpan to idle
+    t =   130.03s     Find the "search.cancel" Button
+    t =   130.06s     Check for interrupting elements affecting "search.cancel" Button
+    t =   130.08s     Synthesize event
+    t =   130.37s     Wait for com.mdd.kanpan to idle
+    t =   133.76s Terminate com.mdd.kanpan:24653
+    t =   134.84s Open com.mdd.kanpan
+    t =   134.84s     Launch com.mdd.kanpan
+2026-09-24 00:10:32.692 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-24 00:10:32.692 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =   135.05s         Setting up automation session
+    t =   135.70s         Wait for com.mdd.kanpan to idle
+    t =   137.16s Waiting 90.0s for "bottom.settings" Button to exist
+    t =   138.19s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =   138.19s         Checking existence of `"bottom.settings" Button`
+    t =   138.26s Checking existence of `"account.view" Other`
+    t =   138.27s Checking existence of `"display.theme.sage" Button`
+    t =   138.27s Waiting 60.0s for "bottom.settings" Button to exist
+    t =   139.31s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =   139.31s         Checking existence of `"bottom.settings" Button`
+    t =   139.33s Tap "bottom.settings" Button
+    t =   139.33s     Wait for com.mdd.kanpan to idle
+    t =   139.33s     Find the "bottom.settings" Button
+    t =   139.34s     Check for interrupting elements affecting "bottom.settings" Button
+    t =   139.36s     Synthesize event
+    t =   139.64s     Wait for com.mdd.kanpan to idle
+    t =   139.64s Waiting 20.0s for "display.theme.sage" Button to exist
+    t =   140.67s     Checking `Expect predicate `existsNoRetry == 1` for object "display.theme.sage" Button`
+    t =   140.67s         Checking existence of `"display.theme.sage" Button`
+    t =   140.72s Waiting 20.0s for "settings.account" Button to exist
+    t =   141.76s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account" Button`
+    t =   141.76s         Checking existence of `"settings.account" Button`
+    t =   141.81s Tap "settings.account" Button
+    t =   141.81s     Wait for com.mdd.kanpan to idle
+    t =   141.81s     Find the "settings.account" Button
+    t =   141.83s     Check for interrupting elements affecting "settings.account" Button
+    t =   141.85s     Synthesize event
+    t =   142.14s     Wait for com.mdd.kanpan to idle
+    t =   142.62s Waiting 20.0s for "account.view" Other to exist
+    t =   143.66s     Checking `Expect predicate `existsNoRetry == 1` for object "account.view" Other`
+    t =   143.66s         Checking existence of `"account.view" Other`
+    t =   143.73s Waiting 20.0s for "同步" Button to exist
+    t =   144.77s     Checking `Expect predicate `existsNoRetry == 1` for object "同步" Button`
+    t =   144.78s         Checking existence of `"同步" Button`
+    t =   144.84s Tap "同步" Button
+    t =   144.84s     Wait for com.mdd.kanpan to idle
+    t =   144.84s     Find the "同步" Button
+    t =   144.88s     Check for interrupting elements affecting "同步" Button
+    t =   144.92s     Synthesize event
+    t =   145.20s     Wait for com.mdd.kanpan to idle
+    t =   145.20s Waiting 20.0s for "立即同步" Button to exist
+    t =   146.24s     Checking `Expect predicate `existsNoRetry == 1` for object "立即同步" Button`
+    t =   146.24s         Checking existence of `"立即同步" Button`
+    t =   146.32s Waiting 20.0s for "自动同步" Switch to exist
+    t =   147.35s     Checking `Expect predicate `existsNoRetry == 1` for object "自动同步" Switch`
+    t =   147.35s         Checking existence of `"自动同步" Switch`
+    t =   147.41s Find the "自动同步" Switch
+    t =   147.44s Tap "自动同步" Switch
+    t =   147.44s     Wait for com.mdd.kanpan to idle
+    t =   147.44s     Find the "自动同步" Switch
+    t =   147.47s     Check for interrupting elements affecting "自动同步" Switch
+    t =   147.51s     Synthesize event
+    t =   147.80s     Wait for com.mdd.kanpan to idle
+    t =   147.81s Find the "自动同步" Switch
+    t =   148.05s Find the "自动同步" Switch
+    t =   148.30s Find the "自动同步" Switch
+    t =   148.56s Find the "自动同步" Switch
+    t =   148.81s Find the "自动同步" Switch
+    t =   149.05s Find the "自动同步" Switch
+    t =   149.29s Find the "自动同步" Switch
+    t =   149.53s Find the "自动同步" Switch
+    t =   149.79s Find the "自动同步" Switch
+    t =   150.04s Find the "自动同步" Switch
+    t =   150.30s Find the "自动同步" Switch
+    t =   150.56s Find the "自动同步" Switch
+    t =   150.82s Find the "自动同步" Switch
+    t =   150.87s Tap "自动同步" Switch[0.93, 0.50]
+    t =   150.87s     Wait for com.mdd.kanpan to idle
+    t =   150.87s     Find the "自动同步" Switch
+    t =   150.90s     Check for interrupting elements affecting "自动同步" Switch
+    t =   150.93s     Synthesize event
+    t =   150.93s         Find the "自动同步" Switch
+    t =   150.96s         Find the "自动同步" Switch
+    t =   150.99s         Find the "自动同步" Switch
+    t =   151.31s     Wait for com.mdd.kanpan to idle
+    t =   152.61s Find the "自动同步" Switch
+    t =   152.67s Checking existence of `"已暂停" StaticText`
+    t =   152.71s Checking existence of `"account.view" Other`
+    t =   152.74s Checking existence of `"account.back" Button`
+    t =   152.76s Find the "account.back" Button
+    t =   152.80s Tap "account.back" Button
+    t =   152.80s     Wait for com.mdd.kanpan to idle
+    t =   152.80s     Find the "account.back" Button
+    t =   152.84s     Check for interrupting elements affecting "account.back" Button
+    t =   152.86s     Synthesize event
+    t =   153.15s     Wait for com.mdd.kanpan to idle
+    t =   153.99s Checking existence of `"account.view" Other`
+    t =   154.23s Checking existence of `"account.view" Other`
+    t =   154.49s Checking existence of `"account.view" Other`
+    t =   154.75s Checking existence of `"account.view" Other`
+    t =   154.99s Checking existence of `"account.view" Other`
+    t =   155.25s Checking existence of `"account.view" Other`
+    t =   155.50s Checking existence of `"account.view" Other`
+    t =   155.74s Checking existence of `"account.view" Other`
+    t =   156.01s Checking existence of `"account.view" Other`
+    t =   156.27s Checking existence of `"account.view" Other`
+    t =   156.53s Checking existence of `"account.view" Other`
+    t =   156.77s Checking existence of `"account.view" Other`
+    t =   157.03s Checking existence of `"account.view" Other`
+    t =   157.28s Checking existence of `"account.view" Other`
+    t =   157.54s Checking existence of `"account.view" Other`
+    t =   157.80s Checking existence of `"account.view" Other`
+    t =   158.06s Checking existence of `"account.view" Other`
+    t =   158.32s Checking existence of `"account.view" Other`
+    t =   158.59s Checking existence of `"account.view" Other`
+    t =   158.85s Checking existence of `"account.view" Other`
+    t =   159.10s Checking existence of `"account.view" Other`
+    t =   159.17s Checking existence of `"account.view" Other`
+    t =   159.20s Checking existence of `"account.back" Button`
+    t =   159.23s Find the "account.back" Button
+    t =   159.27s Tap "account.back" Button
+    t =   159.27s     Wait for com.mdd.kanpan to idle
+    t =   159.27s     Find the "account.back" Button
+    t =   159.31s     Check for interrupting elements affecting "account.back" Button
+    t =   159.34s     Synthesize event
+    t =   159.63s     Wait for com.mdd.kanpan to idle
+    t =   160.45s Checking existence of `"account.view" Other`
+    t =   160.49s Checking existence of `"account.view" Other`
+    t =   160.52s Checking existence of `"display.theme.sage" Button`
+    t =   160.54s Checking existence of `"display.theme.sage" Button`
+    t =   160.55s Checking existence of `"display.mode.跟随系统" Button`
+    t =   160.57s Find the "display.theme.sage" Button
+    t =   160.59s Find the "display.mode.跟随系统" Button
+    t =   160.60s Checking existence of `"display.theme.sage" Button`
+    t =   160.62s Waiting 20.0s for "display.theme.classic" Button to exist
+    t =   161.68s     Checking `Expect predicate `existsNoRetry == 1` for object "display.theme.classic" Button`
+    t =   161.68s         Checking existence of `"display.theme.classic" Button`
+    t =   161.72s Find the "display.theme.classic" Button
+    t =   161.75s Tap "display.theme.classic" Button
+    t =   161.75s     Wait for com.mdd.kanpan to idle
+    t =   161.75s     Find the "display.theme.classic" Button
+    t =   161.77s     Check for interrupting elements affecting "display.theme.classic" Button
+    t =   161.79s     Synthesize event
+    t =   162.08s     Wait for com.mdd.kanpan to idle
+    t =   162.09s Waiting 20.0s for "display.mode.浅色" Button to exist
+    t =   163.14s     Checking `Expect predicate `existsNoRetry == 1` for object "display.mode.浅色" Button`
+    t =   163.14s         Checking existence of `"display.mode.浅色" Button`
+    t =   163.19s Find the "display.mode.浅色" Button
+    t =   163.22s Tap "display.mode.浅色" Button
+    t =   163.22s     Wait for com.mdd.kanpan to idle
+    t =   163.22s     Find the "display.mode.浅色" Button
+    t =   163.24s     Check for interrupting elements affecting "display.mode.浅色" Button
+    t =   163.26s     Synthesize event
+    t =   163.55s     Wait for com.mdd.kanpan to idle
+    t =   163.55s Checking existence of `"favorites.more" Button`
+    t =   163.59s Waiting 60.0s for "bottom.favorites" Button to exist
+    t =   164.64s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.favorites" Button`
+    t =   164.64s         Checking existence of `"bottom.favorites" Button`
+    t =   164.69s Tap "bottom.favorites" Button
+    t =   164.69s     Wait for com.mdd.kanpan to idle
+    t =   164.69s     Find the "bottom.favorites" Button
+    t =   164.71s     Check for interrupting elements affecting "bottom.favorites" Button
+    t =   164.73s     Synthesize event
+    t =   165.02s     Wait for com.mdd.kanpan to idle
+    t =   165.03s Waiting 30.0s for "favorites.more" Button to exist
+    t =   166.06s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =   166.06s         Checking existence of `"favorites.more" Button`
+    t =   166.09s Tap "favorites.add" Button
+    t =   166.09s     Wait for com.mdd.kanpan to idle
+    t =   166.09s     Find the "favorites.add" Button
+    t =   166.11s     Check for interrupting elements affecting "favorites.add" Button
+    t =   166.12s     Synthesize event
+    t =   166.41s     Wait for com.mdd.kanpan to idle
+    t =   166.76s Waiting 20.0s for "search.query" TextField to exist
+    t =   167.83s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =   167.83s         Checking existence of `"search.query" TextField`
+    t =   167.89s Tap "search.query" TextField
+    t =   167.89s     Wait for com.mdd.kanpan to idle
+    t =   167.90s     Find the "search.query" TextField
+    t =   167.92s     Check for interrupting elements affecting "search.query" TextField
+    t =   167.93s     Synthesize event
+    t =   168.22s     Wait for com.mdd.kanpan to idle
+    t =   168.22s Type 'DOGEUSDT' into "search.query" TextField
+    t =   168.22s     Wait for com.mdd.kanpan to idle
+    t =   168.23s     Find the "search.query" TextField
+    t =   168.27s     Check for interrupting elements affecting "search.query" TextField
+    t =   168.30s     Synthesize event
+    t =   168.63s     Wait for com.mdd.kanpan to idle
+    t =   168.90s Waiting 60.0s for "symbols.star.binance/usd_m/DOGEUSDT" Button to exist
+    t =   169.94s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.star.binance/usd_m/DOGEUSDT" Button`
+    t =   169.94s         Checking existence of `"symbols.star.binance/usd_m/DOGEUSDT" Button`
+    t =   169.99s Find the "symbols.star.binance/usd_m/DOGEUSDT" Button
+    t =   170.01s Tap "symbols.star.binance/usd_m/DOGEUSDT" Button
+    t =   170.01s     Wait for com.mdd.kanpan to idle
+    t =   170.01s     Find the "symbols.star.binance/usd_m/DOGEUSDT" Button
+    t =   170.03s     Check for interrupting elements affecting "symbols.star.binance/usd_m/DOGEUSDT" Button
+    t =   170.05s     Synthesize event
+    t =   170.34s     Wait for com.mdd.kanpan to idle
+    t =   170.35s Find the "symbols.star.binance/usd_m/DOGEUSDT" Button
+    t =   170.39s Tap "search.cancel" Button
+    t =   170.39s     Wait for com.mdd.kanpan to idle
+    t =   170.40s     Find the "search.cancel" Button
+    t =   170.42s     Check for interrupting elements affecting "search.cancel" Button
+    t =   170.45s     Synthesize event
+    t =   170.73s     Wait for com.mdd.kanpan to idle
+    t =   171.11s Checking existence of `"favorites.more" Button`
+    t =   171.13s Tap "favorites.add" Button
+    t =   171.13s     Wait for com.mdd.kanpan to idle
+    t =   171.13s     Find the "favorites.add" Button
+    t =   171.14s     Check for interrupting elements affecting "favorites.add" Button
+    t =   171.16s     Synthesize event
+    t =   171.45s     Wait for com.mdd.kanpan to idle
+    t =   171.79s Waiting 20.0s for "search.query" TextField to exist
+    t =   172.84s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =   172.84s         Checking existence of `"search.query" TextField`
+    t =   172.89s Tap "search.query" TextField
+    t =   172.89s     Wait for com.mdd.kanpan to idle
+    t =   172.89s     Find the "search.query" TextField
+    t =   172.92s     Check for interrupting elements affecting "search.query" TextField
+    t =   172.94s     Synthesize event
+    t =   173.23s     Wait for com.mdd.kanpan to idle
+    t =   173.26s Type 'ETHUSDT' into "search.query" TextField
+    t =   173.26s     Wait for com.mdd.kanpan to idle
+    t =   173.64s     Find the "search.query" TextField
+    t =   173.69s     Check for interrupting elements affecting "search.query" TextField
+    t =   173.72s     Synthesize event
+    t =   174.03s     Wait for com.mdd.kanpan to idle
+    t =   174.22s Waiting 60.0s for "symbols.star.binance/usd_m/ETHUSDT" Button to exist
+    t =   175.28s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.star.binance/usd_m/ETHUSDT" Button`
+    t =   175.28s         Checking existence of `"symbols.star.binance/usd_m/ETHUSDT" Button`
+    t =   175.32s Find the "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =   175.36s Tap "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =   175.36s     Wait for com.mdd.kanpan to idle
+    t =   175.37s     Find the "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =   175.39s     Check for interrupting elements affecting "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =   175.41s     Synthesize event
+    t =   175.70s     Wait for com.mdd.kanpan to idle
+    t =   175.70s Find the "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =   175.73s Tap "search.cancel" Button
+    t =   175.73s     Wait for com.mdd.kanpan to idle
+    t =   175.73s     Find the "search.cancel" Button
+    t =   175.76s     Check for interrupting elements affecting "search.cancel" Button
+    t =   175.78s     Synthesize event
+    t =   176.07s     Wait for com.mdd.kanpan to idle
+    t =   179.42s Find the Target Application 'com.mdd.kanpan'
+    t =   179.58s Added attachment named 'P45-B-本地改完没推'
+    t =   179.58s Terminate com.mdd.kanpan:24763
+    t =   180.65s Open com.mdd.kanpan
+    t =   180.65s     Launch com.mdd.kanpan
+2026-09-24 00:11:18.495 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-24 00:11:18.495 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =   180.86s         Setting up automation session
+    t =   181.52s         Wait for com.mdd.kanpan to idle
+    t =   183.02s Waiting 90.0s for "bottom.settings" Button to exist
+    t =   184.06s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =   184.06s         Checking existence of `"bottom.settings" Button`
+    t =   184.14s Checking existence of `"display.theme.sage" Button`
+    t =   184.15s Waiting 60.0s for "bottom.settings" Button to exist
+    t =   185.18s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =   185.18s         Checking existence of `"bottom.settings" Button`
+    t =   185.20s Tap "bottom.settings" Button
+    t =   185.20s     Wait for com.mdd.kanpan to idle
+    t =   185.20s     Find the "bottom.settings" Button
+    t =   185.22s     Check for interrupting elements affecting "bottom.settings" Button
+    t =   185.23s     Synthesize event
+    t =   185.52s     Wait for com.mdd.kanpan to idle
+    t =   185.52s Waiting 20.0s for "display.theme.sage" Button to exist
+    t =   186.57s     Checking `Expect predicate `existsNoRetry == 1` for object "display.theme.sage" Button`
+    t =   186.57s         Checking existence of `"display.theme.sage" Button`
+    t =   186.63s Waiting 20.0s for "display.theme.terra" Button to exist
+    t =   187.66s     Checking `Expect predicate `existsNoRetry == 1` for object "display.theme.terra" Button`
+    t =   187.66s         Checking existence of `"display.theme.terra" Button`
+    t =   187.71s Find the "display.theme.terra" Button
+    t =   187.73s Waiting 20.0s for "display.mode.深色" Button to exist
+    t =   188.76s     Checking `Expect predicate `existsNoRetry == 1` for object "display.mode.深色" Button`
+    t =   188.76s         Checking existence of `"display.mode.深色" Button`
+    t =   188.81s Find the "display.mode.深色" Button
+    t =   188.83s Tap "display.mode.深色" Button
+    t =   188.83s     Wait for com.mdd.kanpan to idle
+    t =   188.83s     Find the "display.mode.深色" Button
+    t =   188.85s     Check for interrupting elements affecting "display.mode.深色" Button
+    t =   188.87s     Synthesize event
+    t =   189.17s     Wait for com.mdd.kanpan to idle
+    t =   189.17s Checking existence of `"account.view" Other`
+    t =   189.20s Checking existence of `"display.theme.sage" Button`
+    t =   189.22s Waiting 20.0s for "settings.account" Button to exist
+    t =   190.26s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account" Button`
+    t =   190.26s         Checking existence of `"settings.account" Button`
+    t =   190.30s Tap "settings.account" Button
+    t =   190.30s     Wait for com.mdd.kanpan to idle
+    t =   190.30s     Find the "settings.account" Button
+    t =   190.32s     Check for interrupting elements affecting "settings.account" Button
+    t =   190.34s     Synthesize event
+    t =   190.63s     Wait for com.mdd.kanpan to idle
+    t =   191.40s Waiting 20.0s for "account.view" Other to exist
+    t =   192.44s     Checking `Expect predicate `existsNoRetry == 1` for object "account.view" Other`
+    t =   192.44s         Checking existence of `"account.view" Other`
+    t =   192.52s Waiting 20.0s for "同步" Button to exist
+    t =   193.58s     Checking `Expect predicate `existsNoRetry == 1` for object "同步" Button`
+    t =   193.58s         Checking existence of `"同步" Button`
+    t =   193.64s Tap "同步" Button
+    t =   193.64s     Wait for com.mdd.kanpan to idle
+    t =   193.64s     Find the "同步" Button
+    t =   193.68s     Check for interrupting elements affecting "同步" Button
+    t =   193.71s     Synthesize event
+    t =   193.99s     Wait for com.mdd.kanpan to idle
+    t =   194.00s Waiting 20.0s for "立即同步" Button to exist
+    t =   195.04s     Checking `Expect predicate `existsNoRetry == 1` for object "立即同步" Button`
+    t =   195.04s         Checking existence of `"立即同步" Button`
+    t =   195.09s Waiting 20.0s for "自动同步" Switch to exist
+    t =   196.13s     Checking `Expect predicate `existsNoRetry == 1` for object "自动同步" Switch`
+    t =   196.13s         Checking existence of `"自动同步" Switch`
+    t =   196.19s Find the "自动同步" Switch
+    t =   196.23s Tap "自动同步" Switch
+    t =   196.23s     Wait for com.mdd.kanpan to idle
+    t =   196.23s     Find the "自动同步" Switch
+    t =   196.26s     Check for interrupting elements affecting "自动同步" Switch
+    t =   196.29s     Synthesize event
+    t =   196.59s     Wait for com.mdd.kanpan to idle
+    t =   196.59s Find the "自动同步" Switch
+    t =   196.85s Find the "自动同步" Switch
+    t =   197.11s Find the "自动同步" Switch
+    t =   197.35s Find the "自动同步" Switch
+    t =   197.60s Find the "自动同步" Switch
+    t =   197.85s Find the "自动同步" Switch
+    t =   198.11s Find the "自动同步" Switch
+    t =   198.36s Find the "自动同步" Switch
+    t =   198.64s Find the "自动同步" Switch
+    t =   198.89s Find the "自动同步" Switch
+    t =   199.14s Find the "自动同步" Switch
+    t =   199.40s Find the "自动同步" Switch
+    t =   199.67s Find the "自动同步" Switch
+    t =   199.71s Tap "自动同步" Switch[0.93, 0.50]
+    t =   199.72s     Wait for com.mdd.kanpan to idle
+    t =   199.72s     Find the "自动同步" Switch
+    t =   199.75s     Check for interrupting elements affecting "自动同步" Switch
+    t =   199.78s     Synthesize event
+    t =   199.78s         Find the "自动同步" Switch
+    t =   199.81s         Find the "自动同步" Switch
+    t =   199.85s         Find the "自动同步" Switch
+    t =   200.16s     Wait for com.mdd.kanpan to idle
+    t =   201.48s Find the "自动同步" Switch
+    t =   201.53s Checking existence of `"account.view" Other`
+    t =   201.56s Checking existence of `"account.back" Button`
+    t =   201.59s Find the "account.back" Button
+    t =   201.63s Tap "account.back" Button
+    t =   201.63s     Wait for com.mdd.kanpan to idle
+    t =   201.63s     Find the "account.back" Button
+    t =   201.66s     Check for interrupting elements affecting "account.back" Button
+    t =   201.69s     Synthesize event
+    t =   201.98s     Wait for com.mdd.kanpan to idle
+    t =   202.80s Checking existence of `"account.view" Other`
+    t =   203.04s Checking existence of `"account.view" Other`
+    t =   203.28s Checking existence of `"account.view" Other`
+    t =   203.54s Checking existence of `"account.view" Other`
+    t =   203.81s Checking existence of `"account.view" Other`
+    t =   204.07s Checking existence of `"account.view" Other`
+    t =   204.33s Checking existence of `"account.view" Other`
+    t =   204.59s Checking existence of `"account.view" Other`
+    t =   204.86s Checking existence of `"account.view" Other`
+    t =   205.13s Checking existence of `"account.view" Other`
+    t =   205.40s Checking existence of `"account.view" Other`
+    t =   205.65s Checking existence of `"account.view" Other`
+    t =   205.91s Checking existence of `"account.view" Other`
+    t =   206.16s Checking existence of `"account.view" Other`
+    t =   206.42s Checking existence of `"account.view" Other`
+    t =   206.68s Checking existence of `"account.view" Other`
+    t =   206.94s Checking existence of `"account.view" Other`
+    t =   207.19s Checking existence of `"account.view" Other`
+    t =   207.44s Checking existence of `"account.view" Other`
+    t =   207.69s Checking existence of `"account.view" Other`
+    t =   207.96s Checking existence of `"account.view" Other`
+    t =   208.01s Checking existence of `"account.view" Other`
+    t =   208.05s Checking existence of `"account.back" Button`
+    t =   208.08s Find the "account.back" Button
+    t =   208.12s Tap "account.back" Button
+    t =   208.12s     Wait for com.mdd.kanpan to idle
+    t =   208.12s     Find the "account.back" Button
+    t =   208.15s     Check for interrupting elements affecting "account.back" Button
+    t =   208.18s     Synthesize event
+    t =   208.48s     Wait for com.mdd.kanpan to idle
+    t =   209.30s Checking existence of `"account.view" Other`
+    t =   209.34s Checking existence of `"account.view" Other`
+    t =   209.37s Checking existence of `"account.view" Other`
+    t =   209.39s Checking existence of `"display.theme.sage" Button`
+    t =   209.41s Waiting 20.0s for "settings.account" Button to exist
+    t =   210.44s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account" Button`
+    t =   210.44s         Checking existence of `"settings.account" Button`
+    t =   210.48s Tap "settings.account" Button
+    t =   210.48s     Wait for com.mdd.kanpan to idle
+    t =   210.48s     Find the "settings.account" Button
+    t =   210.51s     Check for interrupting elements affecting "settings.account" Button
+    t =   210.53s     Synthesize event
+    t =   210.82s     Wait for com.mdd.kanpan to idle
+    t =   211.40s Waiting 20.0s for "account.view" Other to exist
+    t =   212.46s     Checking `Expect predicate `existsNoRetry == 1` for object "account.view" Other`
+    t =   212.46s         Checking existence of `"account.view" Other`
+    t =   212.53s Waiting 20.0s for "同步" Button to exist
+    t =   213.58s     Checking `Expect predicate `existsNoRetry == 1` for object "同步" Button`
+    t =   213.58s         Checking existence of `"同步" Button`
+    t =   213.62s Tap "同步" Button
+    t =   213.62s     Wait for com.mdd.kanpan to idle
+    t =   213.62s     Find the "同步" Button
+    t =   213.66s     Check for interrupting elements affecting "同步" Button
+    t =   213.70s     Synthesize event
+    t =   213.98s     Wait for com.mdd.kanpan to idle
+    t =   213.99s Waiting 20.0s for "立即同步" Button to exist
+    t =   215.04s     Checking `Expect predicate `existsNoRetry == 1` for object "立即同步" Button`
+    t =   215.04s         Checking existence of `"立即同步" Button`
+    t =   215.09s Tap "立即同步" Button
+    t =   215.09s     Wait for com.mdd.kanpan to idle
+    t =   215.09s     Find the "立即同步" Button
+    t =   215.13s     Check for interrupting elements affecting "立即同步" Button
+    t =   215.15s     Synthesize event
+    t =   215.44s     Wait for com.mdd.kanpan to idle
+    t =   215.45s Checking existence of `"已同步" StaticText`
+    t =   215.69s Checking existence of `"已同步" StaticText`
+    t =   215.94s Checking existence of `"已同步" StaticText`
+    t =   216.20s Checking existence of `"已同步" StaticText`
+    t =   216.44s Checking existence of `"已同步" StaticText`
+    t =   216.69s Checking existence of `"已同步" StaticText`
+    t =   216.94s Checking existence of `"已同步" StaticText`
+    t =   216.99s Checking existence of `"account.view" Other`
+    t =   217.01s Checking existence of `"account.back" Button`
+    t =   217.04s Find the "account.back" Button
+    t =   217.09s Tap "account.back" Button
+    t =   217.09s     Wait for com.mdd.kanpan to idle
+    t =   217.09s     Find the "account.back" Button
+    t =   217.12s     Check for interrupting elements affecting "account.back" Button
+    t =   217.15s     Synthesize event
+    t =   217.44s     Wait for com.mdd.kanpan to idle
+    t =   218.27s Checking existence of `"account.view" Other`
+    t =   218.54s Checking existence of `"account.view" Other`
+    t =   218.80s Checking existence of `"account.view" Other`
+    t =   219.08s Checking existence of `"account.view" Other`
+    t =   219.36s Checking existence of `"account.view" Other`
+    t =   219.62s Checking existence of `"account.view" Other`
+    t =   219.89s Checking existence of `"account.view" Other`
+    t =   220.15s Checking existence of `"account.view" Other`
+    t =   220.40s Checking existence of `"account.view" Other`
+    t =   220.63s Checking existence of `"account.view" Other`
+    t =   220.89s Checking existence of `"account.view" Other`
+    t =   221.16s Checking existence of `"account.view" Other`
+    t =   221.41s Checking existence of `"account.view" Other`
+    t =   221.68s Checking existence of `"account.view" Other`
+    t =   221.94s Checking existence of `"account.view" Other`
+    t =   222.20s Checking existence of `"account.view" Other`
+    t =   222.45s Checking existence of `"account.view" Other`
+    t =   222.70s Checking existence of `"account.view" Other`
+    t =   222.95s Checking existence of `"account.view" Other`
+    t =   223.20s Checking existence of `"account.view" Other`
+    t =   223.44s Checking existence of `"account.view" Other`
+    t =   223.48s Checking existence of `"account.view" Other`
+    t =   223.51s Checking existence of `"account.back" Button`
+    t =   223.55s Find the "account.back" Button
+    t =   223.59s Tap "account.back" Button
+    t =   223.59s     Wait for com.mdd.kanpan to idle
+    t =   223.59s     Find the "account.back" Button
+    t =   223.63s     Check for interrupting elements affecting "account.back" Button
+    t =   223.66s     Synthesize event
+    t =   223.95s     Wait for com.mdd.kanpan to idle
+    t =   224.77s Checking existence of `"account.view" Other`
+    t =   224.81s Checking existence of `"account.view" Other`
+    t =   224.83s Checking existence of `"display.theme.sage" Button`
+    t =   224.85s Checking existence of `"display.theme.terra" Button`
+    t =   224.87s Checking existence of `"display.mode.深色" Button`
+    t =   224.89s Find the "display.theme.terra" Button
+    t =   224.90s Find the "display.mode.深色" Button
+    t =   224.92s Terminate com.mdd.kanpan:24990
+    t =   226.00s Open com.mdd.kanpan
+    t =   226.00s     Launch com.mdd.kanpan
+2026-09-24 00:12:03.847 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-24 00:12:03.847 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =   226.21s         Setting up automation session
+    t =   226.87s         Wait for com.mdd.kanpan to idle
+    t =   228.37s Waiting 90.0s for "bottom.settings" Button to exist
+    t =   229.42s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =   229.42s         Checking existence of `"bottom.settings" Button`
+    t =   229.50s Checking existence of `"account.view" Other`
+    t =   229.51s Checking existence of `"display.theme.sage" Button`
+    t =   229.52s Waiting 60.0s for "bottom.settings" Button to exist
+    t =   230.53s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.settings" Button`
+    t =   230.53s         Checking existence of `"bottom.settings" Button`
+    t =   230.55s Tap "bottom.settings" Button
+    t =   230.55s     Wait for com.mdd.kanpan to idle
+    t =   230.55s     Find the "bottom.settings" Button
+    t =   230.56s     Check for interrupting elements affecting "bottom.settings" Button
+    t =   230.57s     Synthesize event
+    t =   230.86s     Wait for com.mdd.kanpan to idle
+    t =   230.86s Waiting 20.0s for "display.theme.sage" Button to exist
+    t =   231.89s     Checking `Expect predicate `existsNoRetry == 1` for object "display.theme.sage" Button`
+    t =   231.89s         Checking existence of `"display.theme.sage" Button`
+    t =   231.93s Waiting 20.0s for "settings.account" Button to exist
+    t =   232.99s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account" Button`
+    t =   232.99s         Checking existence of `"settings.account" Button`
+    t =   233.03s Tap "settings.account" Button
+    t =   233.03s     Wait for com.mdd.kanpan to idle
+    t =   233.04s     Find the "settings.account" Button
+    t =   233.06s     Check for interrupting elements affecting "settings.account" Button
+    t =   233.08s     Synthesize event
+    t =   233.36s     Wait for com.mdd.kanpan to idle
+    t =   233.83s Waiting 20.0s for "account.view" Other to exist
+    t =   234.87s     Checking `Expect predicate `existsNoRetry == 1` for object "account.view" Other`
+    t =   234.87s         Checking existence of `"account.view" Other`
+    t =   234.95s Waiting 20.0s for "同步" Button to exist
+    t =   235.98s     Checking `Expect predicate `existsNoRetry == 1` for object "同步" Button`
+    t =   235.98s         Checking existence of `"同步" Button`
+    t =   236.05s Tap "同步" Button
+    t =   236.05s     Wait for com.mdd.kanpan to idle
+    t =   236.05s     Find the "同步" Button
+    t =   236.09s     Check for interrupting elements affecting "同步" Button
+    t =   236.13s     Synthesize event
+    t =   236.42s     Wait for com.mdd.kanpan to idle
+    t =   236.42s Waiting 20.0s for "立即同步" Button to exist
+    t =   237.46s     Checking `Expect predicate `existsNoRetry == 1` for object "立即同步" Button`
+    t =   237.46s         Checking existence of `"立即同步" Button`
+    t =   237.51s Waiting 20.0s for "自动同步" Switch to exist
+    t =   238.54s     Checking `Expect predicate `existsNoRetry == 1` for object "自动同步" Switch`
+    t =   238.54s         Checking existence of `"自动同步" Switch`
+    t =   238.59s Find the "自动同步" Switch
+    t =   238.63s Tap "自动同步" Switch
+    t =   238.63s     Wait for com.mdd.kanpan to idle
+    t =   238.63s     Find the "自动同步" Switch
+    t =   238.66s     Check for interrupting elements affecting "自动同步" Switch
+    t =   238.68s     Synthesize event
+    t =   238.97s     Wait for com.mdd.kanpan to idle
+    t =   238.98s Find the "自动同步" Switch
+    t =   239.22s Find the "自动同步" Switch
+    t =   239.47s Find the "自动同步" Switch
+    t =   239.71s Find the "自动同步" Switch
+    t =   239.97s Find the "自动同步" Switch
+    t =   240.23s Find the "自动同步" Switch
+    t =   240.48s Find the "自动同步" Switch
+    t =   240.73s Find the "自动同步" Switch
+    t =   240.97s Find the "自动同步" Switch
+    t =   241.22s Find the "自动同步" Switch
+    t =   241.48s Find the "自动同步" Switch
+    t =   241.74s Find the "自动同步" Switch
+    t =   242.00s Find the "自动同步" Switch
+    t =   242.05s Tap "自动同步" Switch[0.93, 0.50]
+    t =   242.05s     Wait for com.mdd.kanpan to idle
+    t =   242.06s     Find the "自动同步" Switch
+    t =   242.09s     Check for interrupting elements affecting "自动同步" Switch
+    t =   242.12s     Synthesize event
+    t =   242.12s         Find the "自动同步" Switch
+    t =   242.15s         Find the "自动同步" Switch
+    t =   242.18s         Find the "自动同步" Switch
+    t =   242.49s     Wait for com.mdd.kanpan to idle
+    t =   243.80s Find the "自动同步" Switch
+    t =   243.85s Checking existence of `"account.view" Other`
+    t =   243.89s Checking existence of `"account.back" Button`
+    t =   243.92s Find the "account.back" Button
+    t =   243.96s Tap "account.back" Button
+    t =   243.96s     Wait for com.mdd.kanpan to idle
+    t =   243.96s     Find the "account.back" Button
+    t =   243.99s     Check for interrupting elements affecting "account.back" Button
+    t =   244.02s     Synthesize event
+    t =   244.31s     Wait for com.mdd.kanpan to idle
+    t =   245.14s Checking existence of `"account.view" Other`
+    t =   245.39s Checking existence of `"account.view" Other`
+    t =   245.66s Checking existence of `"account.view" Other`
+    t =   245.93s Checking existence of `"account.view" Other`
+    t =   246.19s Checking existence of `"account.view" Other`
+    t =   246.45s Checking existence of `"account.view" Other`
+    t =   246.72s Checking existence of `"account.view" Other`
+    t =   246.98s Checking existence of `"account.view" Other`
+    t =   247.24s Checking existence of `"account.view" Other`
+    t =   247.49s Checking existence of `"account.view" Other`
+    t =   247.74s Checking existence of `"account.view" Other`
+    t =   248.00s Checking existence of `"account.view" Other`
+    t =   248.24s Checking existence of `"account.view" Other`
+    t =   248.49s Checking existence of `"account.view" Other`
+    t =   248.75s Checking existence of `"account.view" Other`
+    t =   249.02s Checking existence of `"account.view" Other`
+    t =   249.28s Checking existence of `"account.view" Other`
+    t =   249.55s Checking existence of `"account.view" Other`
+    t =   249.81s Checking existence of `"account.view" Other`
+    t =   250.08s Checking existence of `"account.view" Other`
+    t =   250.34s Checking existence of `"account.view" Other`
+    t =   250.40s Checking existence of `"account.view" Other`
+    t =   250.43s Checking existence of `"account.back" Button`
+    t =   250.47s Find the "account.back" Button
+    t =   250.52s Tap "account.back" Button
+    t =   250.52s     Wait for com.mdd.kanpan to idle
+    t =   250.52s     Find the "account.back" Button
+    t =   250.56s     Check for interrupting elements affecting "account.back" Button
+    t =   250.59s     Synthesize event
+    t =   250.88s     Wait for com.mdd.kanpan to idle
+    t =   251.70s Checking existence of `"account.view" Other`
+    t =   251.74s Checking existence of `"account.view" Other`
+    t =   251.77s Checking existence of `"account.view" Other`
+    t =   251.79s Checking existence of `"display.theme.sage" Button`
+    t =   251.80s Waiting 20.0s for "settings.account" Button to exist
+    t =   252.84s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account" Button`
+    t =   252.84s         Checking existence of `"settings.account" Button`
+    t =   252.89s Tap "settings.account" Button
+    t =   252.89s     Wait for com.mdd.kanpan to idle
+    t =   252.89s     Find the "settings.account" Button
+    t =   252.91s     Check for interrupting elements affecting "settings.account" Button
+    t =   252.93s     Synthesize event
+    t =   253.22s     Wait for com.mdd.kanpan to idle
+    t =   253.60s Waiting 20.0s for "account.view" Other to exist
+    t =   254.62s     Checking `Expect predicate `existsNoRetry == 1` for object "account.view" Other`
+    t =   254.62s         Checking existence of `"account.view" Other`
+    t =   254.69s Waiting 20.0s for "同步" Button to exist
+    t =   255.73s     Checking `Expect predicate `existsNoRetry == 1` for object "同步" Button`
+    t =   255.73s         Checking existence of `"同步" Button`
+    t =   255.80s Tap "同步" Button
+    t =   255.80s     Wait for com.mdd.kanpan to idle
+    t =   255.80s     Find the "同步" Button
+    t =   255.84s     Check for interrupting elements affecting "同步" Button
+    t =   255.88s     Synthesize event
+    t =   256.17s     Wait for com.mdd.kanpan to idle
+    t =   256.17s Waiting 20.0s for "立即同步" Button to exist
+    t =   257.22s     Checking `Expect predicate `existsNoRetry == 1` for object "立即同步" Button`
+    t =   257.22s         Checking existence of `"立即同步" Button`
+    t =   257.27s Tap "立即同步" Button
+    t =   257.27s     Wait for com.mdd.kanpan to idle
+    t =   257.27s     Find the "立即同步" Button
+    t =   257.30s     Check for interrupting elements affecting "立即同步" Button
+    t =   257.34s     Synthesize event
+    t =   257.63s     Wait for com.mdd.kanpan to idle
+    t =   257.63s Checking existence of `"已同步" StaticText`
+    t =   257.90s Checking existence of `"已同步" StaticText`
+    t =   258.15s Checking existence of `"已同步" StaticText`
+    t =   258.39s Checking existence of `"已同步" StaticText`
+    t =   258.66s Checking existence of `"已同步" StaticText`
+    t =   258.91s Checking existence of `"已同步" StaticText`
+    t =   259.17s Checking existence of `"已同步" StaticText`
+    t =   259.21s Checking existence of `"account.view" Other`
+    t =   259.25s Checking existence of `"account.back" Button`
+    t =   259.28s Find the "account.back" Button
+    t =   259.32s Tap "account.back" Button
+    t =   259.32s     Wait for com.mdd.kanpan to idle
+    t =   259.32s     Find the "account.back" Button
+    t =   259.35s     Check for interrupting elements affecting "account.back" Button
+    t =   259.38s     Synthesize event
+    t =   259.67s     Wait for com.mdd.kanpan to idle
+    t =   260.50s Checking existence of `"account.view" Other`
+    t =   260.75s Checking existence of `"account.view" Other`
+    t =   261.01s Checking existence of `"account.view" Other`
+    t =   261.26s Checking existence of `"account.view" Other`
+    t =   261.50s Checking existence of `"account.view" Other`
+    t =   261.76s Checking existence of `"account.view" Other`
+    t =   262.01s Checking existence of `"account.view" Other`
+    t =   262.27s Checking existence of `"account.view" Other`
+    t =   262.53s Checking existence of `"account.view" Other`
+    t =   262.79s Checking existence of `"account.view" Other`
+    t =   263.05s Checking existence of `"account.view" Other`
+    t =   263.30s Checking existence of `"account.view" Other`
+    t =   263.56s Checking existence of `"account.view" Other`
+    t =   263.83s Checking existence of `"account.view" Other`
+    t =   264.08s Checking existence of `"account.view" Other`
+    t =   264.34s Checking existence of `"account.view" Other`
+    t =   264.59s Checking existence of `"account.view" Other`
+    t =   264.85s Checking existence of `"account.view" Other`
+    t =   265.11s Checking existence of `"account.view" Other`
+    t =   265.38s Checking existence of `"account.view" Other`
+    t =   265.63s Checking existence of `"account.view" Other`
+    t =   265.70s Checking existence of `"account.view" Other`
+    t =   265.74s Checking existence of `"account.back" Button`
+    t =   265.77s Find the "account.back" Button
+    t =   265.81s Tap "account.back" Button
+    t =   265.81s     Wait for com.mdd.kanpan to idle
+    t =   265.81s     Find the "account.back" Button
+    t =   265.84s     Check for interrupting elements affecting "account.back" Button
+    t =   265.87s     Synthesize event
+    t =   266.16s     Wait for com.mdd.kanpan to idle
+    t =   266.99s Checking existence of `"account.view" Other`
+    t =   267.03s Checking existence of `"account.view" Other`
+    t =   267.05s Checking existence of `"display.theme.sage" Button`
+    t =   267.07s Checking existence of `"display.theme.classic" Button`
+    t =   267.09s Checking existence of `"display.mode.深色" Button`
+    t =   267.11s Find the "display.theme.classic" Button
+    t =   267.12s Find the "display.mode.深色" Button
+    t =   267.34s Checking existence of `"display.theme.classic" Button`
+    t =   267.39s Checking existence of `"display.mode.深色" Button`
+    t =   267.41s Find the "display.theme.classic" Button
+    t =   267.43s Find the "display.mode.深色" Button
+    t =   267.66s Checking existence of `"display.theme.classic" Button`
+    t =   267.68s Checking existence of `"display.mode.深色" Button`
+    t =   267.70s Find the "display.theme.classic" Button
+    t =   267.72s Find the "display.mode.深色" Button
+    t =   267.95s Checking existence of `"display.theme.classic" Button`
+    t =   267.99s Checking existence of `"display.mode.深色" Button`
+    t =   268.01s Find the "display.theme.classic" Button
+    t =   268.03s Find the "display.mode.深色" Button
+    t =   268.25s Checking existence of `"display.theme.classic" Button`
+    t =   268.27s Checking existence of `"display.mode.深色" Button`
+    t =   268.29s Find the "display.theme.classic" Button
+    t =   268.30s Find the "display.mode.深色" Button
+    t =   268.52s Checking existence of `"display.theme.classic" Button`
+    t =   268.56s Checking existence of `"display.mode.深色" Button`
+    t =   268.59s Find the "display.theme.classic" Button
+    t =   268.61s Find the "display.mode.深色" Button
+    t =   268.83s Checking existence of `"display.theme.classic" Button`
+    t =   268.87s Checking existence of `"display.mode.深色" Button`
+    t =   268.89s Find the "display.theme.classic" Button
+    t =   268.92s Find the "display.mode.深色" Button
+    t =   269.14s Checking existence of `"display.theme.classic" Button`
+    t =   269.19s Checking existence of `"display.mode.深色" Button`
+    t =   269.21s Find the "display.theme.classic" Button
+    t =   269.23s Find the "display.mode.深色" Button
+    t =   269.46s Checking existence of `"display.theme.classic" Button`
+    t =   269.50s Checking existence of `"display.mode.深色" Button`
+    t =   269.53s Find the "display.theme.classic" Button
+    t =   269.55s Find the "display.mode.深色" Button
+    t =   269.78s Checking existence of `"display.theme.classic" Button`
+    t =   269.82s Checking existence of `"display.mode.深色" Button`
+    t =   269.84s Find the "display.theme.classic" Button
+    t =   269.86s Find the "display.mode.深色" Button
+    t =   270.08s Checking existence of `"display.theme.classic" Button`
+    t =   270.13s Checking existence of `"display.mode.深色" Button`
+    t =   270.15s Find the "display.theme.classic" Button
+    t =   270.17s Find the "display.mode.深色" Button
+    t =   270.39s Checking existence of `"display.theme.classic" Button`
+    t =   270.44s Checking existence of `"display.mode.深色" Button`
+    t =   270.46s Find the "display.theme.classic" Button
+    t =   270.48s Find the "display.mode.深色" Button
+    t =   270.71s Checking existence of `"display.theme.classic" Button`
+    t =   270.75s Checking existence of `"display.mode.深色" Button`
+    t =   270.77s Find the "display.theme.classic" Button
+    t =   270.80s Find the "display.mode.深色" Button
+    t =   271.02s Checking existence of `"display.theme.classic" Button`
+    t =   271.06s Checking existence of `"display.mode.深色" Button`
+    t =   271.08s Find the "display.theme.classic" Button
+    t =   271.10s Find the "display.mode.深色" Button
+    t =   271.33s Checking existence of `"display.theme.classic" Button`
+    t =   271.35s Checking existence of `"display.mode.深色" Button`
+    t =   271.37s Find the "display.theme.classic" Button
+    t =   271.38s Find the "display.mode.深色" Button
+    t =   271.61s Checking existence of `"display.theme.classic" Button`
+    t =   271.65s Checking existence of `"display.mode.深色" Button`
+    t =   271.67s Find the "display.theme.classic" Button
+    t =   271.69s Find the "display.mode.深色" Button
+    t =   271.92s Checking existence of `"display.theme.classic" Button`
+    t =   271.96s Checking existence of `"display.mode.深色" Button`
+    t =   271.98s Find the "display.theme.classic" Button
+    t =   272.00s Find the "display.mode.深色" Button
+    t =   272.23s Checking existence of `"display.theme.classic" Button`
+    t =   272.26s Checking existence of `"display.mode.深色" Button`
+    t =   272.29s Find the "display.theme.classic" Button
+    t =   272.31s Find the "display.mode.深色" Button
+    t =   272.53s Checking existence of `"display.theme.classic" Button`
+    t =   272.57s Checking existence of `"display.mode.深色" Button`
+    t =   272.59s Find the "display.theme.classic" Button
+    t =   272.61s Find the "display.mode.深色" Button
+    t =   272.83s Checking existence of `"display.theme.classic" Button`
+    t =   272.88s Checking existence of `"display.mode.深色" Button`
+    t =   272.90s Find the "display.theme.classic" Button
+    t =   272.92s Find the "display.mode.深色" Button
+    t =   273.14s Checking existence of `"display.theme.classic" Button`
+    t =   273.19s Checking existence of `"display.mode.深色" Button`
+    t =   273.21s Find the "display.theme.classic" Button
+    t =   273.23s Find the "display.mode.深色" Button
+    t =   273.45s Checking existence of `"display.theme.classic" Button`
+    t =   273.48s Checking existence of `"display.mode.深色" Button`
+    t =   273.50s Find the "display.theme.classic" Button
+    t =   273.52s Find the "display.mode.深色" Button
+    t =   273.74s Checking existence of `"display.theme.classic" Button`
+    t =   273.78s Checking existence of `"display.mode.深色" Button`
+    t =   273.80s Find the "display.theme.classic" Button
+    t =   273.82s Find the "display.mode.深色" Button
+    t =   274.04s Checking existence of `"display.theme.classic" Button`
+    t =   274.06s Checking existence of `"display.mode.深色" Button`
+    t =   274.08s Find the "display.theme.classic" Button
+    t =   274.10s Find the "display.mode.深色" Button
+    t =   274.32s Checking existence of `"display.theme.classic" Button`
+    t =   274.36s Checking existence of `"display.mode.深色" Button`
+    t =   274.39s Find the "display.theme.classic" Button
+    t =   274.41s Find the "display.mode.深色" Button
+    t =   274.63s Checking existence of `"display.theme.classic" Button`
+    t =   274.68s Checking existence of `"display.mode.深色" Button`
+    t =   274.70s Find the "display.theme.classic" Button
+    t =   274.72s Find the "display.mode.深色" Button
+    t =   274.94s Checking existence of `"display.theme.classic" Button`
+    t =   274.99s Checking existence of `"display.mode.深色" Button`
+    t =   275.01s Find the "display.theme.classic" Button
+    t =   275.03s Find the "display.mode.深色" Button
+    t =   275.26s Checking existence of `"display.theme.classic" Button`
+    t =   275.31s Checking existence of `"display.mode.深色" Button`
+    t =   275.33s Find the "display.theme.classic" Button
+    t =   275.35s Find the "display.mode.深色" Button
+    t =   275.58s Checking existence of `"display.theme.classic" Button`
+    t =   275.62s Checking existence of `"display.mode.深色" Button`
+    t =   275.64s Find the "display.theme.classic" Button
+    t =   275.66s Find the "display.mode.深色" Button
+    t =   275.89s Checking existence of `"display.theme.classic" Button`
+    t =   275.93s Checking existence of `"display.mode.深色" Button`
+    t =   275.95s Find the "display.theme.classic" Button
+    t =   275.97s Find the "display.mode.深色" Button
+    t =   276.19s Checking existence of `"display.theme.classic" Button`
+    t =   276.22s Checking existence of `"display.mode.深色" Button`
+    t =   276.25s Find the "display.theme.classic" Button
+    t =   276.26s Find the "display.mode.深色" Button
+    t =   276.48s Checking existence of `"display.theme.classic" Button`
+    t =   276.53s Checking existence of `"display.mode.深色" Button`
+    t =   276.55s Find the "display.theme.classic" Button
+    t =   276.57s Find the "display.mode.深色" Button
+    t =   276.80s Checking existence of `"display.theme.classic" Button`
+    t =   276.84s Checking existence of `"display.mode.深色" Button`
+    t =   276.86s Find the "display.theme.classic" Button
+    t =   276.88s Find the "display.mode.深色" Button
+    t =   277.11s Checking existence of `"display.theme.classic" Button`
+    t =   277.15s Checking existence of `"display.mode.深色" Button`
+    t =   277.18s Find the "display.theme.classic" Button
+    t =   277.20s Find the "display.mode.深色" Button
+    t =   277.42s Checking existence of `"display.theme.classic" Button`
+    t =   277.46s Checking existence of `"display.mode.深色" Button`
+    t =   277.48s Find the "display.theme.classic" Button
+    t =   277.50s Find the "display.mode.深色" Button
+    t =   277.72s Checking existence of `"display.theme.classic" Button`
+    t =   277.77s Checking existence of `"display.mode.深色" Button`
+    t =   277.79s Find the "display.theme.classic" Button
+    t =   277.81s Find the "display.mode.深色" Button
+    t =   278.03s Checking existence of `"display.theme.classic" Button`
+    t =   278.07s Checking existence of `"display.mode.深色" Button`
+    t =   278.09s Find the "display.theme.classic" Button
+    t =   278.11s Find the "display.mode.深色" Button
+    t =   278.34s Checking existence of `"display.theme.classic" Button`
+    t =   278.36s Checking existence of `"display.mode.深色" Button`
+    t =   278.38s Find the "display.theme.classic" Button
+    t =   278.40s Find the "display.mode.深色" Button
+    t =   278.62s Checking existence of `"display.theme.classic" Button`
+    t =   278.67s Checking existence of `"display.mode.深色" Button`
+    t =   278.69s Find the "display.theme.classic" Button
+    t =   278.71s Find the "display.mode.深色" Button
+    t =   278.93s Checking existence of `"display.theme.classic" Button`
+    t =   278.98s Checking existence of `"display.mode.深色" Button`
+    t =   279.00s Find the "display.theme.classic" Button
+    t =   279.02s Find the "display.mode.深色" Button
+    t =   279.24s Checking existence of `"display.theme.classic" Button`
+    t =   279.28s Checking existence of `"display.mode.深色" Button`
+    t =   279.31s Find the "display.theme.classic" Button
+    t =   279.33s Find the "display.mode.深色" Button
+    t =   279.55s Checking existence of `"display.theme.classic" Button`
+    t =   279.59s Checking existence of `"display.mode.深色" Button`
+    t =   279.61s Find the "display.theme.classic" Button
+    t =   279.63s Find the "display.mode.深色" Button
+    t =   279.86s Checking existence of `"display.theme.classic" Button`
+    t =   279.90s Checking existence of `"display.mode.深色" Button`
+    t =   279.93s Find the "display.theme.classic" Button
+    t =   279.95s Find the "display.mode.深色" Button
+    t =   280.18s Checking existence of `"display.theme.classic" Button`
+    t =   280.22s Checking existence of `"display.mode.深色" Button`
+    t =   280.24s Find the "display.theme.classic" Button
+    t =   280.26s Find the "display.mode.深色" Button
+    t =   280.48s Checking existence of `"display.theme.classic" Button`
+    t =   280.52s Checking existence of `"display.mode.深色" Button`
+    t =   280.55s Find the "display.theme.classic" Button
+    t =   280.57s Find the "display.mode.深色" Button
+    t =   280.79s Checking existence of `"display.theme.classic" Button`
+    t =   280.83s Checking existence of `"display.mode.深色" Button`
+    t =   280.85s Find the "display.theme.classic" Button
+    t =   280.87s Find the "display.mode.深色" Button
+    t =   281.09s Checking existence of `"display.theme.classic" Button`
+    t =   281.13s Checking existence of `"display.mode.深色" Button`
+    t =   281.16s Find the "display.theme.classic" Button
+    t =   281.18s Find the "display.mode.深色" Button
+    t =   281.40s Checking existence of `"display.theme.classic" Button`
+    t =   281.42s Checking existence of `"display.mode.深色" Button`
+    t =   281.44s Find the "display.theme.classic" Button
+    t =   281.46s Find the "display.mode.深色" Button
+    t =   281.68s Checking existence of `"display.theme.classic" Button`
+    t =   281.72s Checking existence of `"display.mode.深色" Button`
+    t =   281.74s Find the "display.theme.classic" Button
+    t =   281.76s Find the "display.mode.深色" Button
+    t =   281.99s Checking existence of `"display.theme.classic" Button`
+    t =   282.03s Checking existence of `"display.mode.深色" Button`
+    t =   282.05s Find the "display.theme.classic" Button
+    t =   282.07s Find the "display.mode.深色" Button
+    t =   282.29s Checking existence of `"display.theme.classic" Button`
+    t =   282.34s Checking existence of `"display.mode.深色" Button`
+    t =   282.36s Find the "display.theme.classic" Button
+    t =   282.38s Find the "display.mode.深色" Button
+    t =   282.61s Checking existence of `"display.theme.classic" Button`
+    t =   282.65s Checking existence of `"display.mode.深色" Button`
+    t =   282.68s Find the "display.theme.classic" Button
+    t =   282.69s Find the "display.mode.深色" Button
+    t =   282.92s Checking existence of `"display.theme.classic" Button`
+    t =   282.96s Checking existence of `"display.mode.深色" Button`
+    t =   282.98s Find the "display.theme.classic" Button
+    t =   283.00s Find the "display.mode.深色" Button
+    t =   283.22s Checking existence of `"display.theme.classic" Button`
+    t =   283.26s Checking existence of `"display.mode.深色" Button`
+    t =   283.28s Find the "display.theme.classic" Button
+    t =   283.30s Find the "display.mode.深色" Button
+    t =   283.53s Checking existence of `"display.theme.classic" Button`
+    t =   283.57s Checking existence of `"display.mode.深色" Button`
+    t =   283.60s Find the "display.theme.classic" Button
+    t =   283.62s Find the "display.mode.深色" Button
+    t =   283.84s Checking existence of `"display.theme.classic" Button`
+    t =   283.89s Checking existence of `"display.mode.深色" Button`
+    t =   283.91s Find the "display.theme.classic" Button
+    t =   283.93s Find the "display.mode.深色" Button
+    t =   284.16s Checking existence of `"display.theme.classic" Button`
+    t =   284.18s Checking existence of `"display.mode.深色" Button`
+    t =   284.20s Find the "display.theme.classic" Button
+    t =   284.21s Find the "display.mode.深色" Button
+    t =   284.43s Checking existence of `"display.theme.classic" Button`
+    t =   284.48s Checking existence of `"display.mode.深色" Button`
+    t =   284.50s Find the "display.theme.classic" Button
+    t =   284.52s Find the "display.mode.深色" Button
+    t =   284.74s Checking existence of `"display.theme.classic" Button`
+    t =   284.79s Checking existence of `"display.mode.深色" Button`
+    t =   284.81s Find the "display.theme.classic" Button
+    t =   284.83s Find the "display.mode.深色" Button
+    t =   285.06s Checking existence of `"display.theme.classic" Button`
+    t =   285.10s Checking existence of `"display.mode.深色" Button`
+    t =   285.13s Find the "display.theme.classic" Button
+    t =   285.15s Find the "display.mode.深色" Button
+    t =   285.38s Checking existence of `"display.theme.classic" Button`
+    t =   285.42s Checking existence of `"display.mode.深色" Button`
+    t =   285.44s Find the "display.theme.classic" Button
+    t =   285.47s Find the "display.mode.深色" Button
+    t =   285.69s Checking existence of `"display.theme.classic" Button`
+    t =   285.74s Checking existence of `"display.mode.深色" Button`
+    t =   285.76s Find the "display.theme.classic" Button
+    t =   285.78s Find the "display.mode.深色" Button
+    t =   286.00s Checking existence of `"display.theme.classic" Button`
+    t =   286.04s Checking existence of `"display.mode.深色" Button`
+    t =   286.06s Find the "display.theme.classic" Button
+    t =   286.08s Find the "display.mode.深色" Button
+    t =   286.30s Checking existence of `"display.theme.classic" Button`
+    t =   286.33s Checking existence of `"display.mode.深色" Button`
+    t =   286.35s Find the "display.theme.classic" Button
+    t =   286.37s Find the "display.mode.深色" Button
+    t =   286.59s Checking existence of `"display.theme.classic" Button`
+    t =   286.63s Checking existence of `"display.mode.深色" Button`
+    t =   286.66s Find the "display.theme.classic" Button
+    t =   286.67s Find the "display.mode.深色" Button
+    t =   286.90s Checking existence of `"display.theme.classic" Button`
+    t =   286.95s Checking existence of `"display.mode.深色" Button`
+    t =   286.97s Find the "display.theme.classic" Button
+    t =   286.99s Find the "display.mode.深色" Button
+    t =   287.21s Checking existence of `"display.theme.classic" Button`
+    t =   287.25s Checking existence of `"display.mode.深色" Button`
+    t =   287.27s Find the "display.theme.classic" Button
+    t =   287.29s Find the "display.mode.深色" Button
+    t =   287.51s Checking existence of `"display.theme.classic" Button`
+    t =   287.56s Checking existence of `"display.mode.深色" Button`
+    t =   287.58s Find the "display.theme.classic" Button
+    t =   287.60s Find the "display.mode.深色" Button
+    t =   287.83s Checking existence of `"display.theme.classic" Button`
+    t =   287.87s Checking existence of `"display.mode.深色" Button`
+    t =   287.89s Find the "display.theme.classic" Button
+    t =   287.91s Find the "display.mode.深色" Button
+    t =   288.13s Checking existence of `"display.theme.classic" Button`
+    t =   288.18s Checking existence of `"display.mode.深色" Button`
+    t =   288.20s Find the "display.theme.classic" Button
+    t =   288.22s Find the "display.mode.深色" Button
+    t =   288.44s Checking existence of `"display.theme.classic" Button`
+    t =   288.46s Checking existence of `"display.mode.深色" Button`
+    t =   288.48s Find the "display.theme.classic" Button
+    t =   288.50s Find the "display.mode.深色" Button
+    t =   288.72s Checking existence of `"display.theme.classic" Button`
+    t =   288.76s Checking existence of `"display.mode.深色" Button`
+    t =   288.78s Find the "display.theme.classic" Button
+    t =   288.80s Find the "display.mode.深色" Button
+    t =   289.03s Checking existence of `"display.theme.classic" Button`
+    t =   289.07s Checking existence of `"display.mode.深色" Button`
+    t =   289.10s Find the "display.theme.classic" Button
+    t =   289.12s Find the "display.mode.深色" Button
+    t =   289.34s Checking existence of `"display.theme.classic" Button`
+    t =   289.38s Checking existence of `"display.mode.深色" Button`
+    t =   289.41s Find the "display.theme.classic" Button
+    t =   289.43s Find the "display.mode.深色" Button
+    t =   289.65s Checking existence of `"display.theme.classic" Button`
+    t =   289.68s Checking existence of `"display.mode.深色" Button`
+    t =   289.70s Find the "display.theme.classic" Button
+    t =   289.72s Find the "display.mode.深色" Button
+    t =   289.94s Checking existence of `"display.theme.classic" Button`
+    t =   289.97s Checking existence of `"display.mode.深色" Button`
+    t =   290.00s Find the "display.theme.classic" Button
+    t =   290.02s Find the "display.mode.深色" Button
+    t =   290.24s Checking existence of `"display.theme.classic" Button`
+    t =   290.28s Checking existence of `"display.mode.深色" Button`
+    t =   290.30s Find the "display.theme.classic" Button
+    t =   290.32s Find the "display.mode.深色" Button
+    t =   290.54s Checking existence of `"display.theme.classic" Button`
+    t =   290.58s Checking existence of `"display.mode.深色" Button`
+    t =   290.61s Find the "display.theme.classic" Button
+    t =   290.63s Find the "display.mode.深色" Button
+    t =   290.85s Checking existence of `"display.theme.classic" Button`
+    t =   290.89s Checking existence of `"display.mode.深色" Button`
+    t =   290.91s Find the "display.theme.classic" Button
+    t =   290.93s Find the "display.mode.深色" Button
+    t =   291.16s Checking existence of `"display.theme.classic" Button`
+    t =   291.20s Checking existence of `"display.mode.深色" Button`
+    t =   291.22s Find the "display.theme.classic" Button
+    t =   291.24s Find the "display.mode.深色" Button
+    t =   291.46s Checking existence of `"display.theme.classic" Button`
+    t =   291.50s Checking existence of `"display.mode.深色" Button`
+    t =   291.52s Find the "display.theme.classic" Button
+    t =   291.54s Find the "display.mode.深色" Button
+    t =   291.76s Checking existence of `"display.theme.classic" Button`
+    t =   291.79s Checking existence of `"display.mode.深色" Button`
+    t =   291.81s Find the "display.theme.classic" Button
+    t =   291.83s Find the "display.mode.深色" Button
+    t =   292.05s Checking existence of `"display.theme.classic" Button`
+    t =   292.10s Checking existence of `"display.mode.深色" Button`
+    t =   292.12s Find the "display.theme.classic" Button
+    t =   292.14s Find the "display.mode.深色" Button
+    t =   292.37s Checking existence of `"display.theme.classic" Button`
+    t =   292.41s Checking existence of `"display.mode.深色" Button`
+    t =   292.43s Find the "display.theme.classic" Button
+    t =   292.45s Find the "display.mode.深色" Button
+    t =   292.68s Checking existence of `"display.theme.classic" Button`
+    t =   292.72s Checking existence of `"display.mode.深色" Button`
+    t =   292.75s Find the "display.theme.classic" Button
+    t =   292.77s Find the "display.mode.深色" Button
+    t =   292.99s Checking existence of `"display.theme.classic" Button`
+    t =   293.03s Checking existence of `"display.mode.深色" Button`
+    t =   293.05s Find the "display.theme.classic" Button
+    t =   293.07s Find the "display.mode.深色" Button
+    t =   293.29s Checking existence of `"display.theme.classic" Button`
+    t =   293.34s Checking existence of `"display.mode.深色" Button`
+    t =   293.36s Find the "display.theme.classic" Button
+    t =   293.38s Find the "display.mode.深色" Button
+    t =   293.61s Checking existence of `"display.theme.classic" Button`
+    t =   293.65s Checking existence of `"display.mode.深色" Button`
+    t =   293.67s Find the "display.theme.classic" Button
+    t =   293.69s Find the "display.mode.深色" Button
+    t =   293.91s Checking existence of `"display.theme.classic" Button`
+    t =   293.95s Checking existence of `"display.mode.深色" Button`
+    t =   293.97s Find the "display.theme.classic" Button
+    t =   293.99s Find the "display.mode.深色" Button
+    t =   294.22s Checking existence of `"display.theme.classic" Button`
+    t =   294.24s Checking existence of `"display.mode.深色" Button`
+    t =   294.25s Find the "display.theme.classic" Button
+    t =   294.27s Find the "display.mode.深色" Button
+    t =   294.49s Checking existence of `"display.theme.classic" Button`
+    t =   294.54s Checking existence of `"display.mode.深色" Button`
+    t =   294.56s Find the "display.theme.classic" Button
+    t =   294.58s Find the "display.mode.深色" Button
+    t =   294.80s Checking existence of `"display.theme.classic" Button`
+    t =   294.84s Checking existence of `"display.mode.深色" Button`
+    t =   294.87s Find the "display.theme.classic" Button
+    t =   294.89s Find the "display.mode.深色" Button
+    t =   295.11s Checking existence of `"display.theme.classic" Button`
+    t =   295.14s Checking existence of `"display.mode.深色" Button`
+    t =   295.16s Find the "display.theme.classic" Button
+    t =   295.18s Find the "display.mode.深色" Button
+    t =   295.40s Checking existence of `"display.theme.classic" Button`
+    t =   295.44s Checking existence of `"display.mode.深色" Button`
+    t =   295.47s Find the "display.theme.classic" Button
+    t =   295.49s Find the "display.mode.深色" Button
+    t =   295.71s Checking existence of `"display.theme.classic" Button`
+    t =   295.75s Checking existence of `"display.mode.深色" Button`
+    t =   295.78s Find the "display.theme.classic" Button
+    t =   295.80s Find the "display.mode.深色" Button
+    t =   296.02s Checking existence of `"display.theme.classic" Button`
+    t =   296.06s Checking existence of `"display.mode.深色" Button`
+    t =   296.08s Find the "display.theme.classic" Button
+    t =   296.10s Find the "display.mode.深色" Button
+    t =   296.32s Checking existence of `"display.theme.classic" Button`
+    t =   296.37s Checking existence of `"display.mode.深色" Button`
+    t =   296.39s Find the "display.theme.classic" Button
+    t =   296.41s Find the "display.mode.深色" Button
+    t =   296.63s Checking existence of `"display.theme.classic" Button`
+    t =   296.68s Checking existence of `"display.mode.深色" Button`
+    t =   296.71s Find the "display.theme.classic" Button
+    t =   296.73s Find the "display.mode.深色" Button
+    t =   296.95s Checking existence of `"display.theme.classic" Button`
+    t =   296.98s Checking existence of `"display.mode.深色" Button`
+    t =   297.00s Find the "display.theme.classic" Button
+    t =   297.02s Find the "display.mode.深色" Button
+    t =   297.24s Checking existence of `"display.theme.classic" Button`
+    t =   297.29s Checking existence of `"display.mode.深色" Button`
+    t =   297.31s Find the "display.theme.classic" Button
+    t =   297.33s Find the "display.mode.深色" Button
+    t =   297.55s Checking existence of `"display.theme.classic" Button`
+    t =   297.60s Checking existence of `"display.mode.深色" Button`
+    t =   297.62s Find the "display.theme.classic" Button
+    t =   297.64s Find the "display.mode.深色" Button
+    t =   297.86s Checking existence of `"display.theme.classic" Button`
+    t =   297.90s Checking existence of `"display.mode.深色" Button`
+    t =   297.92s Find the "display.theme.classic" Button
+    t =   297.94s Find the "display.mode.深色" Button
+    t =   298.17s Checking existence of `"display.theme.classic" Button`
+    t =   298.21s Checking existence of `"display.mode.深色" Button`
+    t =   298.23s Find the "display.theme.classic" Button
+    t =   298.25s Find the "display.mode.深色" Button
+    t =   298.48s Checking existence of `"display.theme.classic" Button`
+    t =   298.52s Checking existence of `"display.mode.深色" Button`
+    t =   298.55s Find the "display.theme.classic" Button
+    t =   298.57s Find the "display.mode.深色" Button
+    t =   298.79s Checking existence of `"display.theme.classic" Button`
+    t =   298.81s Checking existence of `"display.mode.深色" Button`
+    t =   298.83s Find the "display.theme.classic" Button
+    t =   298.85s Find the "display.mode.深色" Button
+    t =   299.08s Checking existence of `"display.theme.classic" Button`
+    t =   299.12s Checking existence of `"display.mode.深色" Button`
+    t =   299.15s Find the "display.theme.classic" Button
+    t =   299.17s Find the "display.mode.深色" Button
+    t =   299.40s Checking existence of `"display.theme.classic" Button`
+    t =   299.44s Checking existence of `"display.mode.深色" Button`
+    t =   299.46s Find the "display.theme.classic" Button
+    t =   299.48s Find the "display.mode.深色" Button
+    t =   299.71s Checking existence of `"display.theme.classic" Button`
+    t =   299.76s Checking existence of `"display.mode.深色" Button`
+    t =   299.78s Find the "display.theme.classic" Button
+    t =   299.80s Find the "display.mode.深色" Button
+    t =   300.04s Checking existence of `"display.theme.classic" Button`
+    t =   300.08s Checking existence of `"display.mode.深色" Button`
+    t =   300.10s Find the "display.theme.classic" Button
+    t =   300.12s Find the "display.mode.深色" Button
+    t =   300.34s Checking existence of `"display.theme.classic" Button`
+    t =   300.39s Checking existence of `"display.mode.深色" Button`
+    t =   300.41s Find the "display.theme.classic" Button
+    t =   300.43s Find the "display.mode.深色" Button
+    t =   300.65s Checking existence of `"display.theme.classic" Button`
+    t =   300.70s Checking existence of `"display.mode.深色" Button`
+    t =   300.73s Find the "display.theme.classic" Button
+    t =   300.75s Find the "display.mode.深色" Button
+    t =   300.97s Checking existence of `"display.theme.classic" Button`
+    t =   301.00s Checking existence of `"display.mode.深色" Button`
+    t =   301.02s Find the "display.theme.classic" Button
+    t =   301.04s Find the "display.mode.深色" Button
+    t =   301.27s Checking existence of `"display.theme.classic" Button`
+    t =   301.31s Checking existence of `"display.mode.深色" Button`
+    t =   301.34s Find the "display.theme.classic" Button
+    t =   301.35s Find the "display.mode.深色" Button
+    t =   301.58s Checking existence of `"display.theme.classic" Button`
+    t =   301.62s Checking existence of `"display.mode.深色" Button`
+    t =   301.65s Find the "display.theme.classic" Button
+    t =   301.67s Find the "display.mode.深色" Button
+    t =   301.89s Checking existence of `"display.theme.classic" Button`
+    t =   301.92s Checking existence of `"display.mode.深色" Button`
+    t =   301.94s Find the "display.theme.classic" Button
+    t =   301.96s Find the "display.mode.深色" Button
+    t =   302.18s Checking existence of `"display.theme.classic" Button`
+    t =   302.21s Checking existence of `"display.mode.深色" Button`
+    t =   302.23s Find the "display.theme.classic" Button
+    t =   302.25s Find the "display.mode.深色" Button
+    t =   302.48s Checking existence of `"display.theme.classic" Button`
+    t =   302.51s Checking existence of `"display.mode.深色" Button`
+    t =   302.53s Find the "display.theme.classic" Button
+    t =   302.55s Find the "display.mode.深色" Button
+    t =   302.77s Checking existence of `"display.theme.classic" Button`
+    t =   302.80s Checking existence of `"display.mode.深色" Button`
+    t =   302.83s Find the "display.theme.classic" Button
+    t =   302.85s Find the "display.mode.深色" Button
+    t =   303.07s Checking existence of `"display.theme.classic" Button`
+    t =   303.12s Checking existence of `"display.mode.深色" Button`
+    t =   303.14s Find the "display.theme.classic" Button
+    t =   303.16s Find the "display.mode.深色" Button
+    t =   303.39s Checking existence of `"display.theme.classic" Button`
+    t =   303.43s Checking existence of `"display.mode.深色" Button`
+    t =   303.45s Find the "display.theme.classic" Button
+    t =   303.47s Find the "display.mode.深色" Button
+    t =   303.70s Checking existence of `"display.theme.classic" Button`
+    t =   303.75s Checking existence of `"display.mode.深色" Button`
+    t =   303.77s Find the "display.theme.classic" Button
+    t =   303.79s Find the "display.mode.深色" Button
+    t =   304.01s Checking existence of `"display.theme.classic" Button`
+    t =   304.05s Checking existence of `"display.mode.深色" Button`
+    t =   304.08s Find the "display.theme.classic" Button
+    t =   304.10s Find the "display.mode.深色" Button
+    t =   304.32s Checking existence of `"display.theme.classic" Button`
+    t =   304.36s Checking existence of `"display.mode.深色" Button`
+    t =   304.38s Find the "display.theme.classic" Button
+    t =   304.40s Find the "display.mode.深色" Button
+    t =   304.62s Checking existence of `"display.theme.classic" Button`
+    t =   304.65s Checking existence of `"display.mode.深色" Button`
+    t =   304.67s Find the "display.theme.classic" Button
+    t =   304.68s Find the "display.mode.深色" Button
+    t =   304.90s Checking existence of `"display.theme.classic" Button`
+    t =   304.94s Checking existence of `"display.mode.深色" Button`
+    t =   304.97s Find the "display.theme.classic" Button
+    t =   304.99s Find the "display.mode.深色" Button
+    t =   305.21s Checking existence of `"display.theme.classic" Button`
+    t =   305.25s Checking existence of `"display.mode.深色" Button`
+    t =   305.28s Find the "display.theme.classic" Button
+    t =   305.29s Find the "display.mode.深色" Button
+    t =   305.52s Checking existence of `"display.theme.classic" Button`
+    t =   305.56s Checking existence of `"display.mode.深色" Button`
+    t =   305.58s Find the "display.theme.classic" Button
+    t =   305.60s Find the "display.mode.深色" Button
+    t =   305.83s Checking existence of `"display.theme.classic" Button`
+    t =   305.87s Checking existence of `"display.mode.深色" Button`
+    t =   305.90s Find the "display.theme.classic" Button
+    t =   305.92s Find the "display.mode.深色" Button
+    t =   306.14s Checking existence of `"display.theme.classic" Button`
+    t =   306.19s Checking existence of `"display.mode.深色" Button`
+    t =   306.21s Find the "display.theme.classic" Button
+    t =   306.23s Find the "display.mode.深色" Button
+    t =   306.45s Checking existence of `"display.theme.classic" Button`
+    t =   306.50s Checking existence of `"display.mode.深色" Button`
+    t =   306.52s Find the "display.theme.classic" Button
+    t =   306.54s Find the "display.mode.深色" Button
+    t =   306.76s Checking existence of `"display.theme.classic" Button`
+    t =   306.78s Checking existence of `"display.mode.深色" Button`
+    t =   306.80s Find the "display.theme.classic" Button
+    t =   306.82s Find the "display.mode.深色" Button
+    t =   307.04s Checking existence of `"display.theme.classic" Button`
+    t =   307.06s Checking existence of `"display.mode.深色" Button`
+    t =   307.07s Find the "display.theme.classic" Button
+    t =   307.09s Find the "display.mode.深色" Button
+    t =   307.31s Checking existence of `"display.theme.classic" Button`
+    t =   307.33s Checking existence of `"display.mode.深色" Button`
+    t =   307.35s Find the "display.theme.classic" Button
+    t =   307.37s Find the "display.mode.深色" Button
+    t =   307.59s Checking existence of `"display.theme.classic" Button`
+    t =   307.64s Checking existence of `"display.mode.深色" Button`
+    t =   307.66s Find the "display.theme.classic" Button
+    t =   307.68s Find the "display.mode.深色" Button
+    t =   307.90s Checking existence of `"display.theme.classic" Button`
+    t =   307.94s Checking existence of `"display.mode.深色" Button`
+    t =   307.96s Find the "display.theme.classic" Button
+    t =   307.98s Find the "display.mode.深色" Button
+    t =   308.20s Checking existence of `"display.theme.classic" Button`
+    t =   308.24s Checking existence of `"display.mode.深色" Button`
+    t =   308.27s Find the "display.theme.classic" Button
+    t =   308.28s Find the "display.mode.深色" Button
+    t =   308.51s Checking existence of `"display.theme.classic" Button`
+    t =   308.55s Checking existence of `"display.mode.深色" Button`
+    t =   308.58s Find the "display.theme.classic" Button
+    t =   308.60s Find the "display.mode.深色" Button
+    t =   308.82s Checking existence of `"display.theme.classic" Button`
+    t =   308.84s Checking existence of `"display.mode.深色" Button`
+    t =   308.86s Find the "display.theme.classic" Button
+    t =   308.88s Find the "display.mode.深色" Button
+    t =   309.10s Checking existence of `"display.theme.classic" Button`
+    t =   309.14s Checking existence of `"display.mode.深色" Button`
+    t =   309.16s Find the "display.theme.classic" Button
+    t =   309.18s Find the "display.mode.深色" Button
+    t =   309.41s Checking existence of `"display.theme.classic" Button`
+    t =   309.45s Checking existence of `"display.mode.深色" Button`
+    t =   309.48s Find the "display.theme.classic" Button
+    t =   309.50s Find the "display.mode.深色" Button
+    t =   309.72s Checking existence of `"display.theme.classic" Button`
+    t =   309.77s Checking existence of `"display.mode.深色" Button`
+    t =   309.79s Find the "display.theme.classic" Button
+    t =   309.81s Find the "display.mode.深色" Button
+    t =   310.03s Checking existence of `"display.theme.classic" Button`
+    t =   310.08s Checking existence of `"display.mode.深色" Button`
+    t =   310.10s Find the "display.theme.classic" Button
+    t =   310.12s Find the "display.mode.深色" Button
+    t =   310.34s Checking existence of `"display.theme.classic" Button`
+    t =   310.39s Checking existence of `"display.mode.深色" Button`
+    t =   310.41s Find the "display.theme.classic" Button
+    t =   310.43s Find the "display.mode.深色" Button
+    t =   310.65s Checking existence of `"display.theme.classic" Button`
+    t =   310.69s Checking existence of `"display.mode.深色" Button`
+    t =   310.72s Find the "display.theme.classic" Button
+    t =   310.74s Find the "display.mode.深色" Button
+    t =   310.96s Checking existence of `"display.theme.classic" Button`
+    t =   311.00s Checking existence of `"display.mode.深色" Button`
+    t =   311.03s Find the "display.theme.classic" Button
+    t =   311.04s Find the "display.mode.深色" Button
+    t =   311.27s Checking existence of `"display.theme.classic" Button`
+    t =   311.31s Checking existence of `"display.mode.深色" Button`
+    t =   311.34s Find the "display.theme.classic" Button
+    t =   311.36s Find the "display.mode.深色" Button
+    t =   311.58s Checking existence of `"display.theme.classic" Button`
+    t =   311.63s Checking existence of `"display.mode.深色" Button`
+    t =   311.65s Find the "display.theme.classic" Button
+    t =   311.67s Find the "display.mode.深色" Button
+    t =   311.90s Checking existence of `"display.theme.classic" Button`
+    t =   311.92s Checking existence of `"display.mode.深色" Button`
+    t =   311.94s Find the "display.theme.classic" Button
+    t =   311.96s Find the "display.mode.深色" Button
+    t =   312.18s Checking existence of `"display.theme.classic" Button`
+    t =   312.22s Checking existence of `"display.mode.深色" Button`
+    t =   312.24s Find the "display.theme.classic" Button
+    t =   312.26s Find the "display.mode.深色" Button
+    t =   312.48s Checking existence of `"display.theme.classic" Button`
+    t =   312.53s Checking existence of `"display.mode.深色" Button`
+    t =   312.55s Find the "display.theme.classic" Button
+    t =   312.57s Find the "display.mode.深色" Button
+    t =   312.80s Checking existence of `"display.theme.classic" Button`
+    t =   312.84s Checking existence of `"display.mode.深色" Button`
+    t =   312.86s Find the "display.theme.classic" Button
+    t =   312.88s Find the "display.mode.深色" Button
+    t =   313.10s Checking existence of `"display.theme.classic" Button`
+    t =   313.14s Checking existence of `"display.mode.深色" Button`
+    t =   313.17s Find the "display.theme.classic" Button
+    t =   313.19s Find the "display.mode.深色" Button
+    t =   313.42s Checking existence of `"display.theme.classic" Button`
+    t =   313.46s Checking existence of `"display.mode.深色" Button`
+    t =   313.48s Find the "display.theme.classic" Button
+    t =   313.50s Find the "display.mode.深色" Button
+    t =   313.73s Checking existence of `"display.theme.classic" Button`
+    t =   313.77s Checking existence of `"display.mode.深色" Button`
+    t =   313.79s Find the "display.theme.classic" Button
+    t =   313.81s Find the "display.mode.深色" Button
+    t =   314.04s Checking existence of `"display.theme.classic" Button`
+    t =   314.08s Checking existence of `"display.mode.深色" Button`
+    t =   314.11s Find the "display.theme.classic" Button
+    t =   314.13s Find the "display.mode.深色" Button
+    t =   314.35s Checking existence of `"display.theme.classic" Button`
+    t =   314.39s Checking existence of `"display.mode.深色" Button`
+    t =   314.42s Find the "display.theme.classic" Button
+    t =   314.44s Find the "display.mode.深色" Button
+    t =   314.66s Checking existence of `"display.theme.classic" Button`
+    t =   314.68s Checking existence of `"display.mode.深色" Button`
+    t =   314.70s Find the "display.theme.classic" Button
+    t =   314.72s Find the "display.mode.深色" Button
+    t =   314.94s Checking existence of `"display.theme.classic" Button`
+    t =   314.98s Checking existence of `"display.mode.深色" Button`
+    t =   315.00s Find the "display.theme.classic" Button
+    t =   315.02s Find the "display.mode.深色" Button
+    t =   315.24s Checking existence of `"display.theme.classic" Button`
+    t =   315.28s Checking existence of `"display.mode.深色" Button`
+    t =   315.31s Find the "display.theme.classic" Button
+    t =   315.33s Find the "display.mode.深色" Button
+    t =   315.55s Checking existence of `"display.theme.classic" Button`
+    t =   315.58s Checking existence of `"display.mode.深色" Button`
+    t =   315.60s Find the "display.theme.classic" Button
+    t =   315.62s Find the "display.mode.深色" Button
+    t =   315.84s Checking existence of `"display.theme.classic" Button`
+    t =   315.89s Checking existence of `"display.mode.深色" Button`
+    t =   315.91s Find the "display.theme.classic" Button
+    t =   315.93s Find the "display.mode.深色" Button
+    t =   316.16s Checking existence of `"display.theme.classic" Button`
+    t =   316.21s Checking existence of `"display.mode.深色" Button`
+    t =   316.23s Find the "display.theme.classic" Button
+    t =   316.25s Find the "display.mode.深色" Button
+    t =   316.47s Checking existence of `"display.theme.classic" Button`
+    t =   316.51s Checking existence of `"display.mode.深色" Button`
+    t =   316.53s Find the "display.theme.classic" Button
+    t =   316.55s Find the "display.mode.深色" Button
+    t =   316.78s Checking existence of `"display.theme.classic" Button`
+    t =   316.81s Checking existence of `"display.mode.深色" Button`
+    t =   316.83s Find the "display.theme.classic" Button
+    t =   316.85s Find the "display.mode.深色" Button
+    t =   317.08s Checking existence of `"display.theme.classic" Button`
+    t =   317.12s Checking existence of `"display.mode.深色" Button`
+    t =   317.14s Find the "display.theme.classic" Button
+    t =   317.16s Find the "display.mode.深色" Button
+    t =   317.38s Checking existence of `"display.theme.classic" Button`
+    t =   317.43s Checking existence of `"display.mode.深色" Button`
+    t =   317.45s Find the "display.theme.classic" Button
+    t =   317.47s Find the "display.mode.深色" Button
+    t =   317.69s Checking existence of `"display.theme.classic" Button`
+    t =   317.73s Checking existence of `"display.mode.深色" Button`
+    t =   317.75s Find the "display.theme.classic" Button
+    t =   317.77s Find the "display.mode.深色" Button
+    t =   317.99s Checking existence of `"display.theme.classic" Button`
+    t =   318.04s Checking existence of `"display.mode.深色" Button`
+    t =   318.06s Find the "display.theme.classic" Button
+    t =   318.08s Find the "display.mode.深色" Button
+    t =   318.31s Checking existence of `"display.theme.classic" Button`
+    t =   318.35s Checking existence of `"display.mode.深色" Button`
+    t =   318.38s Find the "display.theme.classic" Button
+    t =   318.39s Find the "display.mode.深色" Button
+    t =   318.62s Checking existence of `"display.theme.classic" Button`
+    t =   318.67s Checking existence of `"display.mode.深色" Button`
+    t =   318.69s Find the "display.theme.classic" Button
+    t =   318.71s Find the "display.mode.深色" Button
+    t =   318.93s Checking existence of `"display.theme.classic" Button`
+    t =   318.95s Checking existence of `"display.mode.深色" Button`
+    t =   318.97s Find the "display.theme.classic" Button
+    t =   318.99s Find the "display.mode.深色" Button
+    t =   319.21s Checking existence of `"display.theme.classic" Button`
+    t =   319.24s Checking existence of `"display.mode.深色" Button`
+    t =   319.26s Find the "display.theme.classic" Button
+    t =   319.28s Find the "display.mode.深色" Button
+    t =   319.51s Checking existence of `"display.theme.classic" Button`
+    t =   319.55s Checking existence of `"display.mode.深色" Button`
+    t =   319.58s Find the "display.theme.classic" Button
+    t =   319.60s Find the "display.mode.深色" Button
+    t =   319.82s Checking existence of `"display.theme.classic" Button`
+    t =   319.85s Checking existence of `"display.mode.深色" Button`
+    t =   319.87s Find the "display.theme.classic" Button
+    t =   319.89s Find the "display.mode.深色" Button
+    t =   320.12s Checking existence of `"display.theme.classic" Button`
+    t =   320.16s Checking existence of `"display.mode.深色" Button`
+    t =   320.19s Find the "display.theme.classic" Button
+    t =   320.21s Find the "display.mode.深色" Button
+    t =   320.43s Checking existence of `"display.theme.classic" Button`
+    t =   320.47s Checking existence of `"display.mode.深色" Button`
+    t =   320.50s Find the "display.theme.classic" Button
+    t =   320.52s Find the "display.mode.深色" Button
+    t =   320.74s Checking existence of `"display.theme.classic" Button`
+    t =   320.78s Checking existence of `"display.mode.深色" Button`
+    t =   320.80s Find the "display.theme.classic" Button
+    t =   320.82s Find the "display.mode.深色" Button
+    t =   321.04s Checking existence of `"display.theme.classic" Button`
+    t =   321.09s Checking existence of `"display.mode.深色" Button`
+    t =   321.11s Find the "display.theme.classic" Button
+    t =   321.13s Find the "display.mode.深色" Button
+    t =   321.35s Checking existence of `"display.theme.classic" Button`
+    t =   321.39s Checking existence of `"display.mode.深色" Button`
+    t =   321.42s Find the "display.theme.classic" Button
+    t =   321.43s Find the "display.mode.深色" Button
+    t =   321.66s Checking existence of `"display.theme.classic" Button`
+    t =   321.69s Checking existence of `"display.mode.深色" Button`
+    t =   321.71s Find the "display.theme.classic" Button
+    t =   321.73s Find the "display.mode.深色" Button
+    t =   321.96s Checking existence of `"display.theme.classic" Button`
+    t =   321.99s Checking existence of `"display.mode.深色" Button`
+    t =   322.00s Find the "display.theme.classic" Button
+    t =   322.02s Find the "display.mode.深色" Button
+    t =   322.25s Checking existence of `"display.theme.classic" Button`
+    t =   322.28s Checking existence of `"display.mode.深色" Button`
+    t =   322.30s Find the "display.theme.classic" Button
+    t =   322.32s Find the "display.mode.深色" Button
+    t =   322.54s Checking existence of `"display.theme.classic" Button`
+    t =   322.58s Checking existence of `"display.mode.深色" Button`
+    t =   322.61s Find the "display.theme.classic" Button
+    t =   322.63s Find the "display.mode.深色" Button
+    t =   322.86s Checking existence of `"display.theme.classic" Button`
+    t =   322.90s Checking existence of `"display.mode.深色" Button`
+    t =   322.92s Find the "display.theme.classic" Button
+    t =   322.94s Find the "display.mode.深色" Button
+    t =   323.17s Checking existence of `"display.theme.classic" Button`
+    t =   323.22s Checking existence of `"display.mode.深色" Button`
+    t =   323.24s Find the "display.theme.classic" Button
+    t =   323.26s Find the "display.mode.深色" Button
+    t =   323.48s Checking existence of `"display.theme.classic" Button`
+    t =   323.52s Checking existence of `"display.mode.深色" Button`
+    t =   323.54s Find the "display.theme.classic" Button
+    t =   323.56s Find the "display.mode.深色" Button
+    t =   323.78s Checking existence of `"display.theme.classic" Button`
+    t =   323.83s Checking existence of `"display.mode.深色" Button`
+    t =   323.85s Find the "display.theme.classic" Button
+    t =   323.87s Find the "display.mode.深色" Button
+    t =   324.09s Checking existence of `"display.theme.classic" Button`
+    t =   324.13s Checking existence of `"display.mode.深色" Button`
+    t =   324.16s Find the "display.theme.classic" Button
+    t =   324.18s Find the "display.mode.深色" Button
+    t =   324.40s Checking existence of `"display.theme.classic" Button`
+    t =   324.44s Checking existence of `"display.mode.深色" Button`
+    t =   324.47s Find the "display.theme.classic" Button
+    t =   324.49s Find the "display.mode.深色" Button
+    t =   324.71s Checking existence of `"display.theme.classic" Button`
+    t =   324.73s Checking existence of `"display.mode.深色" Button`
+    t =   324.75s Find the "display.theme.classic" Button
+    t =   324.77s Find the "display.mode.深色" Button
+    t =   324.98s Checking existence of `"display.theme.classic" Button`
+    t =   325.02s Checking existence of `"display.mode.深色" Button`
+    t =   325.04s Find the "display.theme.classic" Button
+    t =   325.06s Find the "display.mode.深色" Button
+    t =   325.28s Checking existence of `"display.theme.classic" Button`
+    t =   325.33s Checking existence of `"display.mode.深色" Button`
+    t =   325.35s Find the "display.theme.classic" Button
+    t =   325.37s Find the "display.mode.深色" Button
+    t =   325.60s Checking existence of `"display.theme.classic" Button`
+    t =   325.64s Checking existence of `"display.mode.深色" Button`
+    t =   325.66s Find the "display.theme.classic" Button
+    t =   325.68s Find the "display.mode.深色" Button
+    t =   325.91s Checking existence of `"display.theme.classic" Button`
+    t =   325.95s Checking existence of `"display.mode.深色" Button`
+    t =   325.98s Find the "display.theme.classic" Button
+    t =   326.00s Find the "display.mode.深色" Button
+    t =   326.22s Checking existence of `"display.theme.classic" Button`
+    t =   326.27s Checking existence of `"display.mode.深色" Button`
+    t =   326.29s Find the "display.theme.classic" Button
+    t =   326.31s Find the "display.mode.深色" Button
+    t =   326.53s Checking existence of `"display.theme.classic" Button`
+    t =   326.58s Checking existence of `"display.mode.深色" Button`
+    t =   326.60s Find the "display.theme.classic" Button
+    t =   326.62s Find the "display.mode.深色" Button
+    t =   326.84s Checking existence of `"display.theme.classic" Button`
+    t =   326.89s Checking existence of `"display.mode.深色" Button`
+    t =   326.91s Find the "display.theme.classic" Button
+    t =   326.93s Find the "display.mode.深色" Button
+    t =   327.15s Checking existence of `"display.theme.classic" Button`
+    t =   327.19s Checking existence of `"display.mode.深色" Button`
+    t =   327.22s Find the "display.theme.classic" Button
+    t =   327.23s Find the "display.mode.深色" Button
+    t =   327.25s Checking existence of `"display.theme.sage" Button`
+    t =   327.27s Find the "display.theme.sage" Button
+    t =   327.29s Checking existence of `"display.theme.terra" Button`
+    t =   327.30s Find the "display.theme.terra" Button
+    t =   327.32s Checking existence of `"display.theme.classic" Button`
+    t =   327.34s Find the "display.theme.classic" Button
+    t =   327.35s Checking existence of `"display.mode.跟随系统" Button`
+    t =   327.37s Find the "display.mode.跟随系统" Button
+    t =   327.39s Checking existence of `"display.mode.浅色" Button`
+    t =   327.41s Find the "display.mode.浅色" Button
+    t =   327.42s Checking existence of `"display.mode.深色" Button`
+    t =   327.44s Find the "display.mode.深色" Button
+    t =   327.46s Requesting snapshot of accessibility hierarchy for app with pid 25256
+    t =   327.54s Requesting snapshot of accessibility hierarchy for app with pid 25256
+/Users/mdd/zhk/kanpan-wt-pchain/Kanpan/KanpanUITests/AccountPreferenceSyncUITests.swift:413: error: -[KanpanUITests.AccountPreferenceSyncUITests testConcurrentEditsOnTwoDevicesConvergeToTheNewest] : XCTAssertTrue failed - B 收敛：皮肤取 B 的 T2（比 A 的 T1 新），深浅取 A 的 T3（比 B 的 T2 新，虽然 B 后推）：配色应当是 classic + 深色，等了 60.20s 仍是 sage=未选 terra=未选 classic=已选 跟随系统=未选 浅色=选中 深色=未选
+Optional(Attributes: Application, 0x115cc1cc0, pid: 25256, label: 'Hkline'
+Element subtree:
+ →Application, 0x115cc1cc0, pid: 25256, label: 'Hkline'
+    Window (Main), 0x115cc2e40, {{0.0, 0.0}, {402.0, 874.0}}
+      Other, 0x115cc2800, {{0.0, 0.0}, {402.0, 874.0}}
+        Other, 0x115cc21c0, {{0.0, 0.0}, {402.0, 874.0}}
+          Other, 0x115cc0c80, {{0.0, 0.0}, {402.0, 874.0}}
+            Other, 0x115cc1680, {{0.0, 0.0}, {402.0, 874.0}}
+              StaticText, 0x115cc2080, {{16.0, 75.0}, {30.0, 18.0}}, identifier: 'panel.header', label: '设置'
+              ScrollView, 0x115cc17c0, {{0.0, 103.0}, {402.0, 771.0}}, identifier: 'panel.content', label: '设置'
+                Other, 0x115cc3200, {{0.0, 103.0}, {402.0, 946.0}}
+                  Button, 0x115cc2940, {{0.0, 107.0}, {402.0, 54.3}}, identifier: 'settings.account', label: 'p45_82a52ee6c12a、上次同步 1 分钟前'
+                    StaticText, 0x115cc2bc0, {{16.0, 118.0}, {132.0, 17.0}}, label: 'p45_82a52ee6c12a'
+                    StaticText, 0x115cc2440, {{16.0, 137.0}, {88.3, 13.3}}, label: '上次同步 1 分钟前'
+                    Image, 0x115cc3ac0, {{364.3, 124.3}, {20.0, 20.0}}, identifier: 'person.crop.circle', label: '账户'
+                  StaticText, 0x115cc3980, {{16.0, 175.3}, {24.0, 13.3}}, label: '配色'
+                  Button, 0x115cc3d40, {{15.5, 202.2}, {117.7, 92.0}}, identifier: 'display.theme.sage', label: '青苔、冷 · 墨绿', value: 未选
+                    Other, 0x115cc1180, {{28.0, 219.3}, {92.7, 30.7}}
+                    StaticText, 0x115cc1900, {{28.0, 264.7}, {28.0, 17.0}}, label: '青苔'
+                    StaticText, 0x115cc1a40, {{62.0, 266.5}, {44.7, 13.3}}, label: '冷 · 墨绿'
+                  Button, 0x115cc0a00, {{142.2, 202.2}, {117.7, 92.0}}, identifier: 'display.theme.terra', label: '陶土、暖 · 赤陶', value: 未选
+                    Other, 0x115cc1040, {{154.7, 219.3}, {92.7, 30.7}}
+                    StaticText, 0x115cc12c0, {{154.7, 264.7}, {28.0, 17.0}}, label: '陶土'
+                    StaticText, 0x115cc2f80, {{188.7, 266.5}, {44.7, 13.3}}, label: '暖 · 赤陶'
+                  Button, 0x115cc3c00, {{268.3, 201.7}, {118.7, 93.0}}, identifier: 'display.theme.classic', label: '经典、白 · 墨绿', value: 已选
+                    Other, 0x115cc0b40, {{281.3, 219.3}, {92.7, 30.7}}
+                    StaticText, 0x115cc0dc0, {{281.3, 264.7}, {28.0, 17.0}}, label: '经典'
+                    StaticText, 0x115cc08c0, {{315.3, 266.5}, {44.7, 13.3}}, label: '白 · 墨绿'
+                  StaticText, 0x115cc1400, {{16.0, 315.7}, {24.0, 13.3}}, label: '深浅'
+                  StaticText, 0x115cc1540, {{16.0, 351.7}, {28.0, 17.0}}, label: '外观'
+                  Button, 0x115cc0f00, {{234.0, 353.0}, {48.0, 14.3}}, identifier: 'display.mode.跟随系统', label: '跟随系统'
+                  Button, 0x115cc3840, {{294.0, 348.0}, {44.0, 24.3}}, identifier: 'display.mode.浅色', label: '浅色', Selected
+                  Button, 0x115cc0640, {{350.0, 353.0}, {24.0, 14.3}}, identifier: 'display.mode.深色', label: '深色'
+                  StaticText, 0x115cc0500, {{16.0, 396.3}, {83.7, 17.0}}, label: '自动护眼配色'
+                  StaticText, 0x115cc2580, {{16.0, 415.3}, {76.7, 13.3}}, label: '随屏幕明暗切换'
+                  Button, 0x115cc03c0, {{342.0, 399.7}, {44.0, 26.0}}, identifier: 'display.ambient', value: 关
+                  StaticText, 0x115cc3480, {{16.0, 456.3}, {55.7, 17.0}}, label: '涨跌配色'
+                  Button, 0x115cc3340, {{256.0, 457.7}, {48.0, 14.3}}, label: '绿涨红跌'
+                  Button, 0x115cc2d00, {{316.0, 452.7}, {68.0, 24.3}}, label: '红涨绿跌', Selected
+                  StaticText, 0x115cc3700, {{16.0, 501.0}, {55.7, 17.0}}, label: '开盘时间'
+                  Button, 0x115cc2a80, {{333.3, 502.3}, {52.7, 14.3}}, identifier: 'settings.changeBasis', label: '24小时'
+                    Button, 0x115cc35c0, {{333.3, 502.3}, {52.7, 14.3}}
+                      StaticText, 0x115cc0280, {{333.3, 502.3}, {40.7, 14.3}}, label: '24小时'
+                  StaticText, 0x115cc3e80, {{16.0, 545.7}, {28.0, 17.0}}, label: '时区'
+                  Button, 0x115a08dc0, {{234.7, 542.0}, {44.0, 24.3}}, label: '本地', Selected
+                  Button, 0x115a083c0, {{290.7, 547.0}, {25.3, 14.3}}, label: 'UTC'
+                  Button, 0x115a092c0, {{338.0, 547.0}, {36.0, 14.3}}, label: '交易所'
+                  StaticText, 0x115a0ad00, {{16.0, 594.8}, {69.7, 17.0}}, identifier: 'settings.magnet', label: '十字线磁吸'
+                  Button, 0x115a0b480, {{342.0, 590.3}, {44.0, 26.0}}, identifier: 'settings.magnet', value: 关
+                  Button, 0x115a09540, {{0.0, 627.3}, {402.0, 39.0}}, identifier: 'settings.alerts', label: '提醒'
+                  StaticText, 0x115a088c0, {{16.0, 680.3}, {24.0, 13.3}}, label: '朋友'
+                  Button, 0x115a0b5c0, {{0.0, 699.7}, {402.0, 39.0}}, identifier: 'settings.friends', label: '朋友'
+                  StaticText, 0x115a0b700, {{16.0, 754.2}, {83.7, 17.0}}, identifier: 'settings.keepAwake', label: '盯盘时不锁屏'
+                  Button, 0x115a0b840, {{342.0, 749.7}, {44.0, 26.0}}, identifier: 'settings.keepAwake', value: 开
+                  StaticText, 0x115a08f00, {{16.0, 797.7}, {55.7, 17.0}}, identifier: 'settings.launchSnapshot', label: '启动快照'
+                  StaticText, 0x115a09040, {{16.0, 816.7}, {76.7, 13.3}}, identifier: 'settings.launchSnapshot', label: '先显示上次图表'
+                  Button, 0x115a0a800, {{342.0, 801.0}, {44.0, 26.0}}, identifier: 'settings.launchSnapshot', value: 开
+                  StaticText, 0x115a0a940, {{16.0, 857.7}, {55.7, 17.0}}, label: '行情线路'
+                  Button, 0x115a0aa80, {{294.0, 854.0}, {44.0, 24.3}}, identifier: 'settings.routePolicy.直连', label: '直连', Selected
+                  Button, 0x115a08c80, {{350.0, 859.0}, {24.0, 14.3}}, identifier: 'settings.routePolicy.网关', label: '网关'
+                  StaticText, 0x115a0abc0, {{16.0, 902.3}, {42.0, 17.0}}, label: '清缓存'
+                  Button, 0x1166dc000, {{362.0, 903.7}, {24.0, 14.3}}, identifier: 'settings.clearCache', label: '清除'
+                  Other, 0x1166dc140, {{0.0, 930.3}, {402.0, 54.3}}, identifier: 'settings.about'
+                    StaticText, 0x1166dc280, {{16.0, 941.3}, {28.0, 17.0}}, label: '关于'
+                    StaticText, 0x1166dc3c0, {{16.0, 960.3}, {79.0, 13.3}}, label: 'Hkline 1.0.0（1）'
+                    Button, 0x1166dc500, {{278.0, 950.3}, {48.0, 14.3}}, identifier: 'settings.privacy', label: '隐私政策'
+                    Button, 0x1166dc640, {{338.0, 950.3}, {48.0, 14.3}}, identifier: 'settings.terms', label: '服务条款'
+                  Button, 0x1166dc780, {{0.0, 984.7}, {402.0, 54.3}}, identifier: 'settings.reset', label: '恢复默认、重置所有偏好设置、恢复'
+                    StaticText, 0x1166dc8c0, {{16.0, 995.7}, {55.7, 17.0}}, label: '恢复默认'
+                    StaticText, 0x1166dca00, {{16.0, 1014.7}, {87.7, 13.3}}, label: '重置所有偏好设置'
+                    StaticText, 0x1166dcb40, {{362.0, 1004.7}, {24.0, 14.3}}, label: '恢复'
+                Other, 0x1166dcc80, {{369.0, 131.0}, {30.0, 651.0}}, label: '垂直滚动条, 2页', value: 0%
+                  Other, 0x1166dcdc0, {{396.0, 134.0}, {3.0, 479.0}}
+                Other, 0x1166dcf00, {{369.0, 131.0}, {30.0, 651.0}}, label: '垂直滚动条, 2页', value: 0%
+                  Other, 0x1166dd040, {{396.0, 134.0}, {3.0, 479.0}}
+              Button, 0x1166dd180, {{0.0, 790.0}, {80.3, 50.0}}, identifier: 'bottom.draw', label: '画线'
+              Button, 0x1166dd2c0, {{80.3, 790.0}, {80.3, 50.0}}, identifier: 'bottom.chart', label: '图表'
+              Button, 0x1166dd400, {{160.7, 790.0}, {80.7, 50.0}}, identifier: 'bottom.favorites', label: '自选'
+              Button, 0x1166dd540, {{241.3, 790.0}, {80.3, 50.0}}, identifier: 'bottom.sectors', label: '板块分类'
+              Button, 0x1166dd680, {{321.7, 790.0}, {80.3, 50.0}}, identifier: 'bottom.settings', label: '设置', Selected
+Path to element:
+ →Application, 0x115cc1cc0, pid: 25256, label: 'Hkline'
+Query chain:
+ →Find: Target Application 'com.mdd.kanpan'
+  Output: {
+    Application, 0x1166dd7c0, pid: 25256, label: 'Hkline'
+  }
+)
+    t =   327.76s Tear Down
+Test Case '-[KanpanUITests.AccountPreferenceSyncUITests testConcurrentEditsOnTwoDevicesConvergeToTheNewest]' failed (329.084 seconds).
+2026-09-24 00:13:46.930135+0800 KanpanUITests-Runner[24252:9432903] [Default] Flushing outgoing messages to the IDE with timeout 600.00s
+2026-09-24 00:13:46.930261+0800 KanpanUITests-Runner[24252:9435551] [Default] Received confirmation that IDE processed remaining outgoing messages
+2026-09-24 00:13:47.835128+0800 KanpanUITests-Runner[25564:9441190] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+
+Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
+
+Test Suite 'Selected tests' started at 2026-09-24 00:13:48.281.
+Test Suite 'KanpanUITests.xctest' started at 2026-09-24 00:13:48.282.
+Test Suite 'FavoritesSurviveRestartUITests' started at 2026-09-24 00:13:48.282.
+Test Case '-[KanpanUITests.FavoritesSurviveRestartUITests testAddRemoveReorderSurviveRestart]' started.
+    t =     0.00s Start Test at 2026-09-24 00:13:48.282
+    t =     0.02s Set Up
+    t =     0.02s     Open com.mdd.kanpan
+    t =     0.02s         Launch com.mdd.kanpan
+2026-09-24 00:13:48.308 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-24 00:13:48.308 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     0.23s             Setting up automation session
+    t =     0.88s             Wait for com.mdd.kanpan to idle
+    t =     2.23s     Waiting 3.0s for "bottom.chart" Button to exist
+    t =     3.31s         Checking `Expect predicate `existsNoRetry == 1` for object "bottom.chart" Button`
+    t =     3.31s             Checking existence of `"bottom.chart" Button`
+    t =     3.35s     Checking existence of `"top.symbol" Any`
+    t =     3.35s     Waiting 30.0s for "top.symbol" Any to exist
+    t =     4.42s         Checking `Expect predicate `existsNoRetry == 1` for object "top.symbol" Any`
+    t =     4.42s             Checking existence of `"top.symbol" Any`
+    t =     4.43s     Find the Window (First Match)
+    t =     4.44s     Find the "interval.more" Button
+    t =     4.45s     Find the "bottom.favorites" Button
+    t =     4.50s Checking existence of `"favorites.more" Button`
+    t =     4.51s Checking existence of `"panel.header" StaticText`
+    t =     4.52s Waiting 10.0s for "bottom.favorites" Button to exist
+objc[25564]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10bc68310) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10a714398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     5.56s     Checking `Expect predicate `existsNoRetry == 1` for object "bottom.favorites" Button`
+    t =     5.56s         Checking existence of `"bottom.favorites" Button`
+    t =     5.58s Tap "bottom.favorites" Button
+    t =     5.58s     Wait for com.mdd.kanpan to idle
+    t =     5.58s     Find the "bottom.favorites" Button
+    t =     5.60s     Check for interrupting elements affecting "bottom.favorites" Button
+    t =     5.61s     Synthesize event
+    t =     5.90s     Wait for com.mdd.kanpan to idle
+    t =     5.90s Waiting 15.0s for "favorites.more" Button to exist
+    t =     6.97s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.more" Button`
+    t =     6.97s         Checking existence of `"favorites.more" Button`
+    t =     7.00s Tap "favorites.add" Button
+    t =     7.00s     Wait for com.mdd.kanpan to idle
+    t =     7.00s     Find the "favorites.add" Button
+    t =     7.01s     Check for interrupting elements affecting "favorites.add" Button
+    t =     7.02s     Synthesize event
+    t =     7.30s     Wait for com.mdd.kanpan to idle
+    t =     7.68s Waiting 30.0s for "search.query" TextField to exist
+    t =     8.74s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =     8.74s         Checking existence of `"search.query" TextField`
+    t =     8.80s Tap "search.query" TextField
+    t =     8.80s     Wait for com.mdd.kanpan to idle
+    t =     8.81s     Find the "search.query" TextField
+    t =     8.83s     Check for interrupting elements affecting "search.query" TextField
+    t =     8.84s     Synthesize event
+    t =     9.14s     Wait for com.mdd.kanpan to idle
+    t =     9.14s Type 'ETHUSDT' into "search.query" TextField
+    t =     9.14s     Wait for com.mdd.kanpan to idle
+    t =     9.18s     Find the "search.query" TextField
+    t =     9.21s     Check for interrupting elements affecting "search.query" TextField
+    t =     9.23s     Synthesize event
+    t =     9.55s     Wait for com.mdd.kanpan to idle
+    t =     9.83s Waiting 30.0s for "symbols.star.binance/usd_m/ETHUSDT" Button to exist
+    t =    10.90s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.star.binance/usd_m/ETHUSDT" Button`
+    t =    10.90s         Checking existence of `"symbols.star.binance/usd_m/ETHUSDT" Button`
+    t =    10.95s Find the "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =    10.98s Tap "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =    10.98s     Wait for com.mdd.kanpan to idle
+    t =    10.98s     Find the "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =    11.00s     Check for interrupting elements affecting "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =    11.02s     Synthesize event
+    t =    11.31s     Wait for com.mdd.kanpan to idle
+    t =    11.31s Find the "symbols.star.binance/usd_m/ETHUSDT" Button
+    t =    11.35s Tap "search.cancel" Button
+    t =    11.35s     Wait for com.mdd.kanpan to idle
+    t =    11.35s     Find the "search.cancel" Button
+    t =    11.37s     Check for interrupting elements affecting "search.cancel" Button
+    t =    11.40s     Synthesize event
+    t =    11.70s     Wait for com.mdd.kanpan to idle
+    t =    12.06s Waiting 30.0s for "favorites.open.binance/usd_m/ETHUSDT" Button to exist
+    t =    13.13s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.binance/usd_m/ETHUSDT" Button`
+    t =    13.13s         Checking existence of `"favorites.open.binance/usd_m/ETHUSDT" Button`
+    t =    13.15s Tap "favorites.add" Button
+    t =    13.15s     Wait for com.mdd.kanpan to idle
+    t =    13.15s     Find the "favorites.add" Button
+    t =    13.16s     Check for interrupting elements affecting "favorites.add" Button
+    t =    13.17s     Synthesize event
+    t =    13.46s     Wait for com.mdd.kanpan to idle
+    t =    13.78s Waiting 30.0s for "search.query" TextField to exist
+    t =    14.86s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =    14.86s         Checking existence of `"search.query" TextField`
+    t =    14.89s Tap "search.query" TextField
+    t =    14.89s     Wait for com.mdd.kanpan to idle
+    t =    14.89s     Find the "search.query" TextField
+    t =    14.91s     Check for interrupting elements affecting "search.query" TextField
+    t =    14.93s     Synthesize event
+    t =    15.22s     Wait for com.mdd.kanpan to idle
+    t =    15.22s Type 'SOLUSDT' into "search.query" TextField
+    t =    15.22s     Wait for com.mdd.kanpan to idle
+    t =    15.23s     Find the "search.query" TextField
+    t =    15.28s     Check for interrupting elements affecting "search.query" TextField
+    t =    15.30s     Synthesize event
+    t =    15.61s     Wait for com.mdd.kanpan to idle
+    t =    15.84s Waiting 30.0s for "symbols.star.binance/usd_m/SOLUSDT" Button to exist
+    t =    16.91s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.star.binance/usd_m/SOLUSDT" Button`
+    t =    16.91s         Checking existence of `"symbols.star.binance/usd_m/SOLUSDT" Button`
+    t =    16.95s Find the "symbols.star.binance/usd_m/SOLUSDT" Button
+    t =    16.98s Tap "symbols.star.binance/usd_m/SOLUSDT" Button
+    t =    16.98s     Wait for com.mdd.kanpan to idle
+    t =    16.98s     Find the "symbols.star.binance/usd_m/SOLUSDT" Button
+    t =    17.00s     Check for interrupting elements affecting "symbols.star.binance/usd_m/SOLUSDT" Button
+    t =    17.02s     Synthesize event
+    t =    17.31s     Wait for com.mdd.kanpan to idle
+    t =    17.31s Find the "symbols.star.binance/usd_m/SOLUSDT" Button
+    t =    17.34s Tap "search.cancel" Button
+    t =    17.34s     Wait for com.mdd.kanpan to idle
+    t =    17.34s     Find the "search.cancel" Button
+    t =    17.37s     Check for interrupting elements affecting "search.cancel" Button
+    t =    17.39s     Synthesize event
+    t =    17.68s     Wait for com.mdd.kanpan to idle
+    t =    18.05s Waiting 30.0s for "favorites.open.binance/usd_m/SOLUSDT" Button to exist
+    t =    19.12s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.binance/usd_m/SOLUSDT" Button`
+    t =    19.12s         Checking existence of `"favorites.open.binance/usd_m/SOLUSDT" Button`
+    t =    19.14s Tap "favorites.add" Button
+    t =    19.14s     Wait for com.mdd.kanpan to idle
+    t =    19.14s     Find the "favorites.add" Button
+    t =    19.15s     Check for interrupting elements affecting "favorites.add" Button
+    t =    19.17s     Synthesize event
+    t =    19.45s     Wait for com.mdd.kanpan to idle
+    t =    19.78s Waiting 30.0s for "search.query" TextField to exist
+    t =    20.86s     Checking `Expect predicate `existsNoRetry == 1` for object "search.query" TextField`
+    t =    20.86s         Checking existence of `"search.query" TextField`
+    t =    20.90s Tap "search.query" TextField
+    t =    20.90s     Wait for com.mdd.kanpan to idle
+    t =    20.90s     Find the "search.query" TextField
+    t =    20.93s     Check for interrupting elements affecting "search.query" TextField
+    t =    20.95s     Synthesize event
+    t =    21.23s     Wait for com.mdd.kanpan to idle
+    t =    21.24s Type 'DOGEUSDT' into "search.query" TextField
+    t =    21.24s     Wait for com.mdd.kanpan to idle
+    t =    21.24s     Find the "search.query" TextField
+    t =    21.30s     Check for interrupting elements affecting "search.query" TextField
+    t =    21.32s     Synthesize event
+    t =    21.65s     Wait for com.mdd.kanpan to idle
+    t =    21.86s Waiting 30.0s for "symbols.star.binance/usd_m/DOGEUSDT" Button to exist
+    t =    22.93s     Checking `Expect predicate `existsNoRetry == 1` for object "symbols.star.binance/usd_m/DOGEUSDT" Button`
+    t =    22.93s         Checking existence of `"symbols.star.binance/usd_m/DOGEUSDT" Button`
+    t =    22.99s Find the "symbols.star.binance/usd_m/DOGEUSDT" Button
+    t =    23.02s Tap "symbols.star.binance/usd_m/DOGEUSDT" Button
+    t =    23.02s     Wait for com.mdd.kanpan to idle
+    t =    23.02s     Find the "symbols.star.binance/usd_m/DOGEUSDT" Button
+    t =    23.05s     Check for interrupting elements affecting "symbols.star.binance/usd_m/DOGEUSDT" Button
+    t =    23.07s     Synthesize event
+    t =    23.36s     Wait for com.mdd.kanpan to idle
+    t =    23.36s Find the "symbols.star.binance/usd_m/DOGEUSDT" Button
+    t =    23.42s Tap "search.cancel" Button
+    t =    23.42s     Wait for com.mdd.kanpan to idle
+    t =    23.42s     Find the "search.cancel" Button
+    t =    23.45s     Check for interrupting elements affecting "search.cancel" Button
+    t =    23.48s     Synthesize event
+    t =    23.77s     Wait for com.mdd.kanpan to idle
+    t =    24.13s Waiting 30.0s for "favorites.open.binance/usd_m/DOGEUSDT" Button to exist
+    t =    25.21s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.binance/usd_m/DOGEUSDT" Button`
+    t =    25.21s         Checking existence of `"favorites.open.binance/usd_m/DOGEUSDT" Button`
+    t =    25.25s Swipe right "favorites.open.binance/usd_m/SOLUSDT" Button
+    t =    25.25s     Wait for com.mdd.kanpan to idle
+    t =    25.25s     Find the "favorites.open.binance/usd_m/SOLUSDT" Button
+    t =    25.29s     Check for interrupting elements affecting "favorites.open.binance/usd_m/SOLUSDT" Button
+    t =    25.30s     Synthesize event
+    t =    25.74s     Wait for com.mdd.kanpan to idle
+    t =    25.74s Waiting 5.0s for "删除自选" Button to exist
+    t =    26.81s     Checking `Expect predicate `existsNoRetry == 1` for object "删除自选" Button`
+    t =    26.81s         Checking existence of `"删除自选" Button`
+    t =    26.83s Tap "删除自选" Button
+    t =    26.83s     Wait for com.mdd.kanpan to idle
+    t =    26.83s     Find the "删除自选" Button
+    t =    26.85s     Check for interrupting elements affecting "swipe.favorites.remove" Button
+    t =    26.87s     Synthesize event
+    t =    27.15s     Wait for com.mdd.kanpan to idle
+    t =    27.45s Checking existence of `"favorites.open.binance/usd_m/SOLUSDT" Button`
+    t =    27.48s Find the "favorites.open.binance/usd_m/ETHUSDT" Button
+    t =    27.51s Find the "favorites.open.binance/usd_m/DOGEUSDT" Button
+    t =    27.53s Find the "favorites.open.binance/usd_m/ETHUSDT" Button
+    t =    27.54s Find the "favorites.open.binance/usd_m/DOGEUSDT" Button
+    t =    27.56s Find the "favorites.open.binance/usd_m/DOGEUSDT" Button
+    t =    27.58s Find the "favorites.open.binance/usd_m/ETHUSDT" Button
+    t =    27.59s Find the "favorites.open.binance/usd_m/ETHUSDT" Button
+    t =    27.61s Press Window (First Match)[0.00, 0.00] -> (188.5, 323.2) for 1.0 seconds, then drag to Window (First Match)[0.00, 0.00] -> (188.5, 235.7) with velocity of 250.00 pixels per second, and then hold for 0.5 seconds 
+    t =    27.61s     Wait for com.mdd.kanpan to idle
+    t =    27.61s     Find the Window (First Match)
+    t =    27.62s     Check for interrupting elements affecting Window
+    t =    27.63s     Synthesize event
+    t =    27.63s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    27.64s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    27.64s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    27.65s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    27.66s         Find the Window at {{0.0, 0.0}, {402.0, 874.0}}
+    t =    29.75s     Wait for com.mdd.kanpan to idle
+    t =    30.64s Find the "favorites.open.binance/usd_m/DOGEUSDT" Button
+    t =    30.68s Find the "favorites.open.binance/usd_m/ETHUSDT" Button
+    t =    30.71s Find the "favorites.open.binance/usd_m/DOGEUSDT" Button
+    t =    30.74s Find the Target Application 'com.mdd.kanpan'
+    t =    30.87s Added attachment named '自选-加删排之后'
+    t =    33.88s Terminate com.mdd.kanpan:25565
+    t =    34.96s Open com.mdd.kanpan
+    t =    34.96s     Launch com.mdd.kanpan
+2026-09-24 00:14:23.241 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-09-24 00:14:23.242 xcodebuild[24150:9432012] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    35.17s         Setting up automation session
+    t =    35.77s         Wait for com.mdd.kanpan to idle
+    t =    37.25s Checking existence of `"favorites.more" Button`
+    t =    37.32s Waiting 30.0s for "favorites.open.binance/usd_m/DOGEUSDT" Button to exist
+    t =    38.37s     Checking `Expect predicate `existsNoRetry == 1` for object "favorites.open.binance/usd_m/DOGEUSDT" Button`
+    t =    38.37s         Checking existence of `"favorites.open.binance/usd_m/DOGEUSDT" Button`
+    t =    38.41s Checking existence of `"favorites.open.binance/usd_m/ETHUSDT" Button`
+    t =    38.42s Checking existence of `"favorites.open.binance/usd_m/SOLUSDT" Button`
+    t =    38.44s Find the "favorites.open.binance/usd_m/DOGEUSDT" Button
+    t =    38.45s Find the "favorites.open.binance/usd_m/ETHUSDT" Button
+    t =    38.48s Find the Target Application 'com.mdd.kanpan'
+    t =    38.60s Added attachment named '自选-重开之后'
+    t =    38.61s Tear Down
+Test Case '-[KanpanUITests.FavoritesSurviveRestartUITests testAddRemoveReorderSurviveRestart]' passed (39.019 seconds).
+Test Suite 'FavoritesSurviveRestartUITests' passed at 2026-09-24 00:14:27.302.
+	 Executed 1 test, with 0 failures (0 unexpected) in 39.019 (39.020) seconds
+Test Suite 'KanpanUITests.xctest' passed at 2026-09-24 00:14:27.302.
+	 Executed 1 test, with 0 failures (0 unexpected) in 39.019 (39.020) seconds
+Test Suite 'Selected tests' passed at 2026-09-24 00:14:27.302.
+	 Executed 1 test, with 0 failures (0 unexpected) in 39.019 (39.021) seconds
+2026-09-24 00:14:41.285 xcodebuild[24150:9432012] [MT] IDETestOperationsObserverDebug: 390.137 elapsed -- Testing started completed.
+2026-09-24 00:14:41.285 xcodebuild[24150:9432012] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-24 00:14:41.285 xcodebuild[24150:9432012] [MT] IDETestOperationsObserverDebug: 390.137 sec, +390.137 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/mdd/zhk/kanpan-wt-pchain/DerivedData/ui-test/iPhone-16-Pro.xcresult
+
+Failing tests:
+	AccountPreferenceSyncUITests.testConcurrentEditsOnTwoDevicesConvergeToTheNewest()
+
+** TEST EXECUTE FAILED **
+
+Testing started

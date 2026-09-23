@@ -128,10 +128,133 @@ import CoreGraphics
     XCTAssertTrue(created.isEmpty, "第 7 步：还有账号没删掉 \(created)")
   }
 
+  // ------------------------------------------------------------ P4.5 两台设备并发改同一份
+
+  /// 两台设备、同一个账号，**互相没看见对方的时候**各改同一份设置与自选，
+  /// 验证收敛到「谁新用谁」（按改动时刻，不按谁后推上去），而且两边的队列都不堵。
+  ///
+  /// **两台设备怎么来的**：同一个模拟器上两个不同的 `KANPAN_PERSISTENCE_PROFILE`（各自一棵
+  /// 档案子树、各自一份 keychain、各自一个设备 id），和 `FavoritesGroupSyncUITests`
+  /// 是同一套手法。B 那台启动时带 `KANPAN_TEST_DEVICE_KIND=tablet`（只有 DEBUG 包认），
+  /// 自报「平板」——账号规则是每类设备只许一台在线，两台都报「手机」的话，后登的会把
+  /// 先登的踢下线，那测的就是踢人而不是并发。规则本身一行没动。
+  ///
+  /// **「同时」怎么造**：两台都关掉「自动同步」再改，改动只进各自的待发队列；
+  /// 然后按一个刻意的顺序推上去——**手里拿着较旧改动的那台最后推**。这样「后推的赢」和
+  /// 「新改的赢」给出的答案不一样，用例才分得出服务端到底按哪条规矩合并：
+  ///
+  /// | 时刻 | 设备 | 改动 |
+  /// | --- | --- | --- |
+  /// | T1 | A | 皮肤 → 陶土；加自选 SOL（暂停中，没推） |
+  /// | T2 | B | 皮肤 → 经典、深浅 → 浅色；加自选 DOGE、删自选 ETH（暂停中，没推） |
+  /// | T3 | A | 深浅 → 深色；推（连同 T1 的） |
+  /// | 之后 | B | 推 T2 那一批——**最后推的是它** |
+  ///
+  /// 期望：皮肤 = 经典（B 的 T2 比 A 的 T1 新），深浅 = 深色（A 的 T3 比 B 的 T2 新，
+  /// 虽然 B 后推）；自选 = SOL、DOGE 都在，ETH 没了。任何一台都不该停在自己本地那一份上。
+  /// 最后再从 A 改一次皮肤，B 拉到它，证明合并完之后两边的队列都还通。
+  func testConcurrentEditsOnTwoDevicesConvergeToTheNewest() throws {
+    continueAfterFailure = false
+    let user = "p45_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12).lowercased()
+    // 档案 id 必须是一个裸 UUID：app 只在它能解析成 UUID 时才给这台「设备」单开偏好、
+    // 账号存档与同步队列的目录，否则两台共用一份队列——B 一启动就会把 A 没推的改动推上去。
+    let profileA = UUID().uuidString
+    let profileB = UUID().uuidString
+
+    // ---- 基线：A 注册，加 ETH，推上去；B 登录拉到同一份
+    app = makeApp(profile: profileA)
+    app.launch()
+    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "A 起了 90s 还没见到底栏")
+    created.append(user)
+    register(user, step: "A 注册 \(user)")
+    setFavorite("ETHUSDT", on: true, step: "A 加基线自选 ETH")
+    syncNow(step: "A 把基线推上去")
+    expectTheme(skin: "sage", mode: "跟随系统", step: "A 基线配色")
+    app.terminate()
+
+    app = makeApp(profile: profileB, kind: "tablet")
+    app.launch()
+    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "B 起了 90s 还没见到底栏")
+    login(user, step: "B（平板）登录 \(user)")
+    syncNow(step: "B 拉基线")
+    expectFavorites(present: ["ETHUSDT"], absent: [], step: "B 拉到的基线自选")
+    app.terminate()
+
+    // ---- T1：A 暂停同步后改
+    app = makeApp(profile: profileA)
+    app.launch()
+    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "A 重启后没见到底栏")
+    setAutoSync(false, step: "A 暂停自动同步")
+    setTheme(skin: "terra", mode: "跟随系统", step: "T1 A 皮肤改陶土")
+    setFavorite("SOLUSDT", on: true, step: "T1 A 加 SOL")
+    settle()
+    app.terminate()
+
+    // ---- T2：B 暂停同步后改（它看不见 A 的 T1——A 还没推）
+    app = makeApp(profile: profileB, kind: "tablet")
+    app.launch()
+    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "B 重启后没见到底栏")
+    setAutoSync(false, step: "B 暂停自动同步")
+    expectTheme(skin: "sage", mode: "跟随系统", step: "B 改之前应当还是基线（A 的 T1 没推）")
+    setTheme(skin: "classic", mode: "浅色", step: "T2 B 皮肤经典、深浅浅色")
+    setFavorite("DOGEUSDT", on: true, step: "T2 B 加 DOGE")
+    setFavorite("ETHUSDT", on: false, step: "T2 B 删 ETH")
+    settle()
+    shot("P45-B-本地改完没推")
+    app.terminate()
+
+    // ---- T3：A 改深浅并推（连同 T1 那批）。B 的 T2 还压在 B 的队列里
+    app = makeApp(profile: profileA)
+    app.launch()
+    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "A 第三次起没见到底栏")
+    setTheme(skin: "terra", mode: "深色", step: "T3 A 深浅改深色")
+    setAutoSync(true, step: "A 恢复自动同步")
+    syncNow(step: "A 推 T1 + T3")
+    expectTheme(skin: "terra", mode: "深色", step: "A 推完（B 还没推）应当是自己那份")
+    app.terminate()
+
+    // ---- B 最后推：拿着较旧的深浅改动
+    app = makeApp(profile: profileB, kind: "tablet")
+    app.launch()
+    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "B 第三次起没见到底栏")
+    setAutoSync(true, step: "B 恢复自动同步")
+    syncNow(step: "B 推 T2 并拉合并结果")
+    expectTheme(skin: "classic", mode: "深色",
+                step: "B 收敛：皮肤取 B 的 T2（比 A 的 T1 新），深浅取 A 的 T3（比 B 的 T2 新，虽然 B 后推）",
+                timeout: 60)
+    expectFavorites(present: ["SOLUSDT", "DOGEUSDT"], absent: ["ETHUSDT"], step: "B 收敛后的自选")
+    shot("P45-B-收敛后")
+    app.terminate()
+
+    // ---- A 再拉一次，应当和 B 一模一样
+    app = makeApp(profile: profileA)
+    app.launch()
+    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "A 第四次起没见到底栏")
+    syncNow(step: "A 拉合并结果")
+    expectTheme(skin: "classic", mode: "深色", step: "A 收敛到同一份", timeout: 60)
+    expectFavorites(present: ["SOLUSDT", "DOGEUSDT"], absent: ["ETHUSDT"], step: "A 收敛后的自选")
+    shot("P45-A-收敛后")
+
+    // ---- 队列不堵：合并之后 A 再改一次，B 照样拿得到
+    setTheme(skin: "sage", mode: "深色", step: "A 合并后再改皮肤")
+    syncNow(step: "A 推合并后的新改动")
+    app.terminate()
+    app = makeApp(profile: profileB, kind: "tablet")
+    app.launch()
+    XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 90), "B 第四次起没见到底栏")
+    syncNow(step: "B 拉合并后的新改动")
+    expectTheme(skin: "sage", mode: "深色", step: "合并之后队列仍通：B 拿到 A 的新皮肤", timeout: 60)
+    shot("P45-B-队列仍通")
+
+    closeAccount(user, step: "注销 \(user)")
+    XCTAssertTrue(created.isEmpty, "测试账号没删掉：\(created)")
+  }
+
   // ------------------------------------------------------------ 启动与环境
 
-  private func makeApp(profile: String) -> XCUIApplication {
+  private func makeApp(profile: String, kind: String? = nil) -> XCUIApplication {
     let value = XCUIApplication()
+    if let kind { value.launchEnvironment["KANPAN_TEST_DEVICE_KIND"] = kind }
     value.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"
     value.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = profile
     value.launchEnvironment["KANPAN_ACCOUNT_API_URL"] = api
@@ -411,6 +534,87 @@ import CoreGraphics
     add(note)
     print("=== 换号闭环-实测 ===\n" + text)
   }
+
+  // ------------------------------------------------------------ 同步页与自选（P4.5）
+
+  /// 「立即同步」走全量（先推再拉），等同步页自己报「已同步」——那是队列空了、没有被服务端
+  /// 隔离的字段、确实成功过一次这三件事的合取（写法照 `FavoritesGroupSyncUITests.syncNow`）。
+  private func syncNow(step: String) {
+    openSyncPage(step: step)
+    app.buttons["立即同步"].tap()
+    let done = waitUntil(180) { self.app.staticTexts["已同步"].exists }
+    if !done { shot(step + "-同步没完成") }
+    XCTAssertTrue(done, "\(step)：180s 之后同步页还没报「已同步」\n\(app.debugDescription)")
+    leaveAccount(step: step)
+  }
+
+  private func openSyncPage(step: String) {
+    openAccount(step: step)
+    let sync = app.buttons["同步"]
+    XCTAssertTrue(sync.waitForExistence(timeout: 20), "\(step)：账号页上没有「同步」\n\(app.debugDescription)")
+    sync.tap()
+    XCTAssertTrue(app.buttons["立即同步"].waitForExistence(timeout: 20), "\(step)：同步页没打开\n\(app.debugDescription)")
+  }
+
+  /// 同步页上的「自动同步」开关。SwiftUI 的 Toggle 在列表里整行是一个 switch，
+  /// 点中心有时落在文字上不翻，所以点完看值，没翻再点右侧的开关本体。
+  private func setAutoSync(_ on: Bool, step: String) {
+    openSyncPage(step: step)
+    let toggle = app.switches["自动同步"]
+    XCTAssertTrue(toggle.waitForExistence(timeout: 20), "\(step)：同步页上没有「自动同步」\n\(app.debugDescription)")
+    func isOn() -> Bool { (toggle.value as? String) == "1" }
+    if isOn() != on { toggle.tap() }
+    if !waitUntil(3, { isOn() == on }) { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap() }
+    XCTAssertTrue(waitUntil(5) { isOn() == on }, "\(step)：「自动同步」没切到 \(on)\n\(app.debugDescription)")
+    if !on { XCTAssertTrue(waitUntil(5) { self.app.staticTexts["已暂停"].exists }, "\(step)：暂停后状态不是「已暂停」") }
+    leaveAccount(step: step)
+  }
+
+  /// 从账号页退回页面本身（`account.back` 在子页是「返回」、在账号页是「收起」）。
+  private func leaveAccount(step: String) {
+    for _ in 0..<4 {
+      guard app.otherElements["account.view"].exists else { return }
+      let back = app.buttons["account.back"]
+      guard back.exists, back.isHittable else { break }
+      back.tap()
+      _ = waitUntil(5) { !self.app.otherElements["account.view"].exists }
+    }
+    XCTAssertFalse(app.otherElements["account.view"].exists, "\(step)：账号页收不起来\n\(app.debugDescription)")
+  }
+
+  private func openFavoritesPage(step: String) {
+    if app.buttons["favorites.more"].exists { return }
+    let tab = app.buttons["bottom.favorites"]
+    XCTAssertTrue(tab.waitForExistence(timeout: 60), "\(step)：底栏上没有自选格\n\(app.debugDescription)")
+    tab.tap()
+    XCTAssertTrue(app.buttons["favorites.more"].waitForExistence(timeout: 30), "\(step)：点了自选格但没到自选页\n\(app.debugDescription)")
+  }
+
+  /// 自选页头部搜索 → 打代号 → 按星的 label 决定点不点（星是开关）→ 取消退回。
+  private func setFavorite(_ symbol: String, on: Bool, step: String) {
+    openFavoritesPage(step: step)
+    app.buttons["favorites.add"].tap()
+    let query = app.textFields["search.query"]
+    XCTAssertTrue(query.waitForExistence(timeout: 20), "\(step)：搜索页没打开\n\(app.debugDescription)")
+    query.tap()
+    query.typeText(symbol)
+    let star = app.buttons["symbols.star." + testInstrumentKey(symbol)]
+    XCTAssertTrue(star.waitForExistence(timeout: 60), "\(step)：搜索页没搜到 \(symbol)\n\(app.debugDescription)")
+    if (star.label == "加入自选") == on { star.tap() }
+    XCTAssertTrue(waitUntil(5) { (star.label == "加入自选") != on }, "\(step)：星的状态没变过来，label=\(star.label)")
+    app.buttons["search.cancel"].tap()
+  }
+
+  private func expectFavorites(present: [String], absent: [String], step: String) {
+    openFavoritesPage(step: step)
+    let row = { (symbol: String) in self.app.buttons["favorites.open." + testInstrumentKey(symbol)] }
+    let ok = waitUntil(60) { present.allSatisfy { row($0).exists } && absent.allSatisfy { !row($0).exists } }
+    let report = (present + absent).map { "\($0)=\(row($0).exists ? "在" : "不在")" }.joined(separator: " ")
+    XCTAssertTrue(ok, "\(step)：自选应当有 \(present)、没有 \(absent)，实际 \(report)\n\(app.debugDescription)")
+  }
+
+  /// 改动要过 500ms 防抖才进待发队列、再落盘；杀 app 之前给它这一拍。
+  private func settle() { _ = XCTWaiter.wait(for: [XCTestExpectation(description: "settle")], timeout: 3) }
 
   // ------------------------------------------------------------ 兜底清理
 

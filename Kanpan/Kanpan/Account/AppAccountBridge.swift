@@ -251,11 +251,14 @@ import ReviewUI
       let guestSymbols = try SymbolPrefsStore(storage: guestStorage).read()
       let guestDrawings = try DrawStore(url: claim.directory.appendingPathComponent("draws.json")).read()
       let guestAlerts = try AlertFileStore(url: claim.directory.appendingPathComponent("alerts.json")).read()
-      if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("prefs.json").path) { nextPrefs = guestPrefs }
+      // 并之前账号手上已经有的那几条：下面记导入批次时只记访客**新带来**的（见 `guestImport`）。
+      let accountBefore = try PersonalSyncCodec.drawings(nextDrawings) + PersonalSyncCodec.symbols(nextSymbols) + PersonalSyncCodec.alerts(nextAlerts.alerts)
+      var adopted = Set<String>()
+      if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("prefs.json").path) { nextPrefs = guestPrefs; adopted.insert("settings") }
       for (key, values) in guestDrawings.bySymbol {
         let existing = Set(nextDrawings[key].map(\.id)); nextDrawings[key] += values.filter { !existing.contains($0.id) }
       }
-      if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("draws.json").path) { nextDrawings.preferences = guestDrawings.preferences }
+      if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("draws.json").path) { nextDrawings.preferences = guestDrawings.preferences; adopted.insert("drawingPreferences") }
       let claimedAlerts = Set(nextAlerts.alerts.map(\.id))
       nextAlerts.alerts += guestAlerts.alerts.filter { !claimedAlerts.contains($0.id) }
       let groupIDs = Set(nextSymbols.groups.map(\.id))
@@ -281,7 +284,14 @@ import ReviewUI
       // 进度则是压根没人并。规则与证据都在 `ReviewStore.adoptSideFiles(from:)`。
       try nextReview.adoptSideFiles(from: guestReview, sanitizingDraft: sanitize)
       if let nextSync {
-        let imported = try [PersonalSyncCodec.settings(guestPrefs)] + PersonalSyncCodec.drawings(guestDrawings) + PersonalSyncCodec.symbols(guestSymbols) + PersonalSyncCodec.alerts(guestAlerts.alerts)
+        // 只记盘上真的变成访客那份的对象：已登录的人每次冷启动都会走到这里（冷启动先装
+        // 访客档案，访客目录因此总有文件可「认领」），整份导入会把同步存档的 `local` 改成
+        // 默认值，下面的脏标识 / 对账一步再以当下时间戳把这个人的设置重记一遍，
+        // 最后冷启动的那台设备就把别的设备更晚的改动盖掉了。规则见 `guestImport`。
+        let imported = try PersonalSyncCodec.guestImport(
+          merged: [PersonalSyncCodec.settings(nextPrefs)] + PersonalSyncCodec.drawings(nextDrawings) + PersonalSyncCodec.symbols(nextSymbols) + PersonalSyncCodec.alerts(nextAlerts.alerts),
+          guest: [PersonalSyncCodec.settings(guestPrefs)] + PersonalSyncCodec.drawings(guestDrawings) + PersonalSyncCodec.symbols(guestSymbols) + PersonalSyncCodec.alerts(guestAlerts.alerts),
+          accountBefore: accountBefore, adopted: adopted)
         // 一次事务记完：逐条来的话这一档要被整份重写几十上百遍。
         try nextSync.capture(imported, device: account.device.id, importing: claim.id, owning: PersonalSyncCodec.ownedKeys)
       }
