@@ -34,7 +34,7 @@
 #
 # 预算都能用环境变量临时覆盖：BUILD_POINTS=6 scripts/machine-guard.sh run ...
 # 动态预算：空闲内存 ≥ 35%、交换区 ≤ 4 GB、CPU 空闲 ≥ 25% 三项同时达标时，槽位自动放宽到
-# BURST_POINTS=6 点（= 3 个重活）；任一项掉下去就回到基础预算（不打断在跑的）。
+# BURST_POINTS=6 点（= 3 个重活）；空闲内存 ≥ 50% 再放到 BURST2_POINTS=8 点；任一项掉下去就回到基础预算（不打断在跑的）。
 # 临时关掉「拉起受保护应用」：touch /tmp/kanpan-guard/protect.off
 
 set -u
@@ -58,6 +58,12 @@ BURST_SIMS=${BURST_SIMS:-2}
 BURST_MIN_FREE_MEM_PCT=${BURST_MIN_FREE_MEM_PCT:-35}
 BURST_MAX_SWAP_MB=${BURST_MAX_SWAP_MB:-4096}
 BURST_MIN_CPU_IDLE_PCT=${BURST_MIN_CPU_IDLE_PCT:-25}
+# 用户 09-23 傍晚：「在保证不崩溃的情况下最大限度使用资源，不要浪费」。所以再加一档：
+# 空闲内存 ≥ 50%（交换区门槛与第一档相同——交换区已用量是高峰留下的滞后指标，不拿它单独卡第二档）时放到 8 点
+# （= 4 个重活）。红线（MIN_FREE_MEM_PCT / MAX_SWAP_MB / MIN_DISK_GB）不动，它们才是防崩溃的那道。
+BURST2_POINTS=${BURST2_POINTS:-8}
+BURST2_MIN_FREE_MEM_PCT=${BURST2_MIN_FREE_MEM_PCT:-50}
+BURST2_MAX_SWAP_MB=${BURST2_MAX_SWAP_MB:-4096}
 MIN_DISK_GB=${MIN_DISK_GB:-40}
 MAX_SWAP_MB=${MAX_SWAP_MB:-8192}
 MIN_FREE_MEM_PCT=${MIN_FREE_MEM_PCT:-12}
@@ -94,7 +100,12 @@ burst_ok() {  # 机器空闲：内存、交换区、CPU 空闲三项都达标
   mem=$(free_mem_pct); swap=$(swap_used_mb); idle=$(cpu_idle_pct)
   [ "${mem:-0}" -ge "$BURST_MIN_FREE_MEM_PCT" ] && [ "${swap:-99999}" -le "$BURST_MAX_SWAP_MB" ] && [ "${idle:-0}" -ge "$BURST_MIN_CPU_IDLE_PCT" ]
 }
-max_points_now() { if burst_ok; then echo "$BURST_POINTS"; else echo "$BUILD_POINTS"; fi; }
+burst2_ok() {  # 机器非常空：在 burst_ok 之上，空闲内存再 ≥ BURST2_MIN_FREE_MEM_PCT、交换区 ≤ BURST2_MAX_SWAP_MB
+  local mem swap
+  mem=$(free_mem_pct); swap=$(swap_used_mb)
+  [ "${mem:-0}" -ge "$BURST2_MIN_FREE_MEM_PCT" ] && [ "${swap:-99999}" -le "$BURST2_MAX_SWAP_MB" ]
+}
+max_points_now() { if burst_ok; then if burst2_ok; then echo "$BURST2_POINTS"; else echo "$BURST_POINTS"; fi; else echo "$BUILD_POINTS"; fi; }
 max_sims_now()   { if burst_ok; then echo "$BURST_SIMS";   else echo "$MAX_SIMS";   fi; }
 job_weight() {  # 这条命令算重活还是轻活
   local a="$*"
@@ -145,7 +156,12 @@ pressure_reasons() {  # 打印超预算的原因，空则正常
 cmd_status() {
   local free swap mem ld b s idle mb ms mode
   free=$(disk_free_gb); swap=$(swap_used_mb); mem=$(free_mem_pct); ld=$(load1); b=$(build_count); s=$(booted_count); idle=$(cpu_idle_pct)
-  if burst_ok; then mb=$BURST_POINTS; ms=$BURST_SIMS; mode="机器空闲，放宽到 ${BURST_POINTS} 点"; else mb=$BUILD_POINTS; ms=$MAX_SIMS; mode="基础 ${BUILD_POINTS} 点"; fi
+  mb=$(max_points_now); ms=$(max_sims_now)
+  case "$mb" in
+    "$BURST2_POINTS") mode="机器很空（内存 ≥ ${BURST2_MIN_FREE_MEM_PCT}%、交换 ≤ ${BURST2_MAX_SWAP_MB} MB），放宽到 ${BURST2_POINTS} 点" ;;
+    "$BURST_POINTS")  mode="机器空闲，放宽到 ${BURST_POINTS} 点" ;;
+    *)                mode="基础 ${BUILD_POINTS} 点" ;;
+  esac
   say "负载 ${ld}（10 核）  CPU 空闲 ${idle}%  空闲内存 ${mem}%  交换区 ${swap} MB / 预算 ${MAX_SWAP_MB}  磁盘空闲 ${free} GB / 预算 ${MIN_DISK_GB}"
   say "重编译进程 ${b}  构建槽 $(points_in_use)/${mb} 点（重活 ${HEAVY_WEIGHT} 点、轻活 ${LIGHT_WEIGHT} 点；${mode}）  开机模拟器 ${s}/${ms}"
   say "  放宽条件：空闲内存 ≥ ${BURST_MIN_FREE_MEM_PCT}%、交换区 ≤ ${BURST_MAX_SWAP_MB} MB、CPU 空闲 ≥ ${BURST_MIN_CPU_IDLE_PCT}% 三项同时达标"
@@ -223,7 +239,7 @@ run_via_launchd() {
     echo "cd $(printf '%q' "$PWD") || exit 97"
     export -p | grep -vE '^declare -x (_|OLDPWD|PWD|SHLVL|PS1|BASH_[A-Z_]*|KANPAN_GUARD_SLOT)='
     echo "export KANPAN_GUARD_SLOT=$(printf '%q' "$SLOT")"
-    echo "renice -n $BUILD_NICE -p \$\$ >/dev/null 2>&1"
+    echo "renice $BUILD_NICE -p \$\$ >/dev/null 2>&1"
     printf 'exec'; printf ' %q' "$@"; echo
   } > "$wrap"
   chmod +x "$wrap"; : > "$out"
@@ -343,7 +359,7 @@ cmd_docker_gc() {
 renice_builds() {
   local p
   for p in $(build_pids; pgrep -x swift-frontend; pgrep -x swift-driver; pgrep -x rustc; pgrep -x XCBBuildService; pgrep -x xctest); do
-    renice -n "$BUILD_NICE" -p "$p" >/dev/null 2>&1
+    renice "$BUILD_NICE" -p "$p" >/dev/null 2>&1   # 绝对值；-n 在 macOS 上是增量，每分钟加 10 会一路加到 20
   done
 }
 
