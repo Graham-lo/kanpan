@@ -12,7 +12,7 @@ import KanpanCore
     #expect(p.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
     #expect(p.recents == Array(p.favorites.reversed()))
     #expect(p.groupForSymbol["binance/usd_m/BTCUSDT"] == "g")
-    #expect(p.pinned == ["binance/usd_m/ETHUSDT"])
+    // 老存档里的 `pinned` 读进来就丢（2026-09-24 两端删掉了），别的字段一样不少。
     #expect(p.viewScores["binance/usd_m/BTCUSDT"] == 7 && p.scoredAt == 123)
     store.save(p)
     #expect(try store.read() == p)

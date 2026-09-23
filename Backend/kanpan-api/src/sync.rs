@@ -55,9 +55,15 @@ fn collection(v:&str)->Result<()> {if !COLLECTIONS.contains(&v){Err(ApiError::ba
 /// these through instead of 400-ing every review an older build tries to save. Readers ignore
 /// them: the client only applies names it still declares.
 pub const RETIRED_SETTINGS_FIELDS:&[&str]=&["showDrawings","subHeights"];
+/// Favorite names deleted from both ends. `pinned` (2026-09-24): the favorites page never had a
+/// way to pin anything once custom groups were judged 「不做」, so `setPinned` had no caller and
+/// the Widget's pinned-first ordering only ever saw an empty list. Same treatment as the settings
+/// ones: an older build pushing it has it dropped and named in `droppedFields`, and stored
+/// bodies still carrying it are cleaned on their next merge (see `strip_retired`).
+pub const RETIRED_FAVORITE_FIELDS:&[&str]=&["pinned"];
 /// Retired names, per collection.
 pub fn retired_fields(c:&str)->&'static [&'static str] {
- match c {SETTINGS=>RETIRED_SETTINGS_FIELDS,_=>&[]}
+ match c {SETTINGS=>RETIRED_SETTINGS_FIELDS,FAVORITES=>RETIRED_FAVORITE_FIELDS,_=>&[]}
 }
 /// First path segment is a retired name in that collection (`subHeights/MACD` counts).
 pub fn retired_field(c:&str,path:&str)->bool {retired_fields(c).contains(&path.split('/').next().unwrap_or_default())}
@@ -116,7 +122,7 @@ pub const DRAWING_PREFERENCE_FIELDS:[&str;5]=["favorites","magnet","continuous",
 // Checked against `contract/drawing-fields.json` (`syncFields` + `legacySyncFields`, generated from what
 // the client's `PersonalSyncCodec.drawings` really sends) by `drawing_fields_are_what_the_codec_sends`.
 pub const DRAWING_FIELDS:[&str;14]=["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"];
-pub const FAVORITE_FIELDS:[&str;7]=["symbol","market","venue","groupId","order","pinned","alerts"];
+pub const FAVORITE_FIELDS:[&str;6]=["symbol","market","venue","groupId","order","alerts"];
 pub const GROUP_FIELDS:[&str;3]=["name","order","members"];
 // 提醒（方案文档 2.2 的整张表）。`condition` 的两档（`touch` / `close`）两侧评估器都判。
 // `kind` 里的 `price` 只进白名单与值规则：客户端没有入口能产生它，这张表也没给它放
@@ -464,7 +470,7 @@ mod tests {
   let expected=[
    ("drawingPreferences",&["favorites","magnet","continuous","styles","variants"][..]),
    ("drawings",&["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"][..]),
-   ("favorites",&["symbol","market","venue","groupId","order","pinned","alerts"][..]),
+   ("favorites",&["symbol","market","venue","groupId","order","alerts"][..]),
    ("groups",&["name","order","members"][..]),
    ("alerts",&["kind","symbol","market","drawingID","lines","condition","armedAt","once","status","firedAt","firedPrice","dueAt","reviewID","title","created"][..]),
   ];
@@ -611,6 +617,25 @@ mod tests {
    .unwrap_or_else(|e|panic!("merge onto an old settings body: {}",e.1));
   assert_eq!(merged.body["barSpacing"],json!(9.5));
   assert!(!merged.body.contains_key("showDrawings")&&!merged.body.contains_key("subHeights")&&!merged.fields.contains_key("showDrawings"));
+
+  let mut favorite=blank("favorites","binance/usd_m/BTCUSDT");
+  for (k,v) in [("symbol",json!("BTCUSDT")),("market",json!("usd_m")),("venue",json!("binance")),("order",json!(0)),("pinned",json!(false))] {favorite.body.insert(k.into(),v);}
+  let mut move_it=op("favorites",&[("groupId",json!("crypto"))]);move_it.object_id="binance/usd_m/BTCUSDT".into();
+  let merged=merge(favorite,&move_it,1_800_000_000_000).unwrap_or_else(|e|panic!("merge onto an old favorite body: {}",e.1));
+  assert_eq!(merged.body["groupId"],json!("crypto"));
+  assert!(!merged.body.contains_key("pinned"));
+ }
+ /// 老版本推上来的自选操作里带着 `pinned`：只丢这个字段，操作照常合并。
+ #[test] fn retired_favorite_names_are_dropped_not_refused() {
+  for name in RETIRED_FAVORITE_FIELDS {assert!(!FAVORITE_FIELDS.contains(name),"{name} 已退役，不该还在白名单里")}
+  let mut operation=op("favorites",&[("symbol",json!("BTCUSDT")),("market",json!("usd_m")),("venue",json!("binance")),("order",json!(3)),("pinned",json!(true))]);
+  operation.object_id="binance/usd_m/BTCUSDT".into();
+  assert!(operation.validate().is_ok(),"老版本带着 pinned 推上来不能整条 400");
+  assert_eq!(operation.unknown_fields(),vec!["pinned".to_string()]);
+  let object=merge(blank("favorites","binance/usd_m/BTCUSDT"),&operation,1_800_000_000_000).unwrap();
+  assert_eq!(object.body["order"],json!(3));
+  assert!(!object.body.contains_key("pinned"));
+  assert!(retired_field("favorites","pinned")&&!retired_field("settings","pinned")&&!retired_field("favorites","order"));
  }
  /// 两端删掉的 `showDrawings` / `subHeights`：老版本推上来照旧只丢字段、不丢操作，
  /// 回执里点名；它们也不许再混回白名单（不然就是没删干净）。

@@ -34,8 +34,9 @@ enum SymbolFieldPlan {
   /// 两者今天只有一处对不上，见 `codingKey(forProperty:)`。
   static let table: [String: SymbolFieldClass] = [
     // ---------------------------------------------------------------- 跟着人走
-    // 他收藏了哪些、分成哪几类、哪个在哪一类、钉住了哪几个——全是用手摆出来的。
-    "favorites": .synced, "groups": .synced, "groupForSymbol": .synced, "pinned": .synced,
+    // 他收藏了哪些、分成哪几类、哪个在哪一类——全是用手摆出来的。
+    // （`pinned` 2026-09-24 两端删掉：没有入口，线上的 `favorites` 对象也不再带它。）
+    "favorites": .synced, "groups": .synced, "groupForSymbol": .synced,
 
     // ---------------------------------------------------------------- 留在这台机器上
     // 「最近打开过哪些品种」：每开一张图就变一次的流水，不是他摆出来的样子。

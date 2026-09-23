@@ -389,16 +389,11 @@ final class SymbolPickerModel {
   //
   // 更早还有一个 `pickedGroupThisRun` 记号配 `resetSelectedGroup()`，执行「冷启动回到
   // 第一个分类」，2026-09-19 一并删掉：上次停在哪一类是他的习惯，冷启动照样要还给他。
-  func setPinned(_ symbol: String, _ on: Bool) { prefs.setPinned(symbol, on); commit() }
   func renameGroup(_ id: String, name: String) { prefs.renameGroup(id, name: name); commit() }
   func deleteGroup(_ id: String) { prefs.deleteGroup(id, selected: currentGroup); commit() }
   func assign(_ symbol: String, to group: String?) { prefs.assign(symbol, to: group); commit() }
   func moveVisible(_ visible: [String], from source: IndexSet, to destination: Int) {
     prefs.moveVisible(visible, from: source, to: destination); commit()
-  }
-
-  func moveInGroup(_ group: String?, from source: IndexSet, to destination: Int) {
-    prefs.moveInGroup(group, from: source, to: destination); commit()
   }
 
   // ---------------------------------------------------------------- 最近

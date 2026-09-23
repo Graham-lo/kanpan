@@ -194,7 +194,7 @@ import KanpanAccount
   func theFavoriteKeysAreExactlyWhatWeSend() throws {
     let prefs = SymbolPrefs(favorites: ["BTCUSDT", "ETHUSDT"],
                             groups: [FavoriteGroup(id: "g1", name: "主力")],
-                            groupForSymbol: ["BTCUSDT": "g1"], pinned: ["ETHUSDT"])
+                            groupForSymbol: ["BTCUSDT": "g1"])
     var sent: [String: Set<String>] = [:]
     for object in PersonalSyncCodec.symbols(prefs) { sent[object.collection, default: []].formUnion(object.body.keys) }
     for (collection, keys) in sent {

@@ -5,9 +5,9 @@ import Testing
 
 /// 「已移除 · 撤销」那条路（§P3-4）。
 ///
-/// 撤销要还原的不只是「它还在自选里」：**位置、分类、置顶位**三样一起回来，
-/// 否则删错一只之后还得自己去把它拖回原处、摆回原来那一类、重新置顶——
-/// 那就不叫撤销了。这一组用纯数据守住这三样，界面那一半由
+/// 撤销要还原的不只是「它还在自选里」：**位置、分类**两样一起回来，
+/// 否则删错一只之后还得自己去把它拖回原处、摆回原来那一类——
+/// 那就不叫撤销了。这一组用纯数据守住这两样，界面那一半由
 /// `KanpanUITests/FavoritesUndoUITests` 守。
 @Suite("自选删除可撤销")
 struct FavoriteUndoSnapshotTests {
@@ -18,24 +18,20 @@ struct FavoriteUndoSnapshotTests {
     let group = try #require(created)
     prefs.assign("binance/usd_m/SNDKUSDT", to: group)
     prefs.assign("binance/usd_m/ETHUSDT", to: group)
-    prefs.setPinned("binance/usd_m/SOLUSDT", true)
-    prefs.setPinned("binance/usd_m/ETHUSDT", true)
     return (prefs, group)
   }
 
-  @Test("撤销把它放回原来那一行、原来那一类、原来那个置顶位")
+  @Test("撤销把它放回原来那一行、原来那一类")
   func restorePutsEverythingBack() throws {
     let (original, _) = try prefsWithGroup()
     var prefs = original
     let snapshot = try #require(prefs.snapshot(of: "binance/usd_m/ETHUSDT"))
     #expect(snapshot.index == 1)
     #expect(snapshot.group != nil)
-    #expect(snapshot.pinIndex == 1)
 
     prefs.toggleFavorite("binance/usd_m/ETHUSDT")
     #expect(prefs.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/SOLUSDT", "binance/usd_m/SNDKUSDT"])
     #expect(prefs.groupForSymbol["binance/usd_m/ETHUSDT"] == nil)
-    #expect(!prefs.pinned.contains("binance/usd_m/ETHUSDT"))
 
     prefs.restore([snapshot])
     #expect(prefs == original)

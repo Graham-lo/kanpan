@@ -41,7 +41,7 @@ struct SymbolFieldPlanTests {
     // 每个字段都给一个非默认值，逼着可选字段也被写出来。
     var prefs = SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT"], recents: ["binance/usd_m/BTCUSDT"],
                             groups: [.init(id: "g", name: "加密")],
-                            groupForSymbol: ["binance/usd_m/BTCUSDT": "g"], pinned: ["binance/usd_m/BTCUSDT"],
+                            groupForSymbol: ["binance/usd_m/BTCUSDT": "g"],
                             legacySelectedGroup: "g", viewScores: ["binance/usd_m/BTCUSDT": 1], scoredAt: 1)
     prefs.scoredAt = 1
     let data = try JSONEncoder().encode(prefs)
@@ -60,15 +60,14 @@ struct SymbolFieldPlanTests {
   func rebuildKeepsLocalOnlyFields() {
     let local = SymbolPrefs(favorites: ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"], recents: ["binance/usd_m/ETHUSDT", "binance/usd_m/BTCUSDT"],
                             groups: [.init(id: "g", name: "加密")],
-                            groupForSymbol: ["binance/usd_m/BTCUSDT": "g", "binance/usd_m/ETHUSDT": "g"], pinned: ["binance/usd_m/BTCUSDT"],
+                            groupForSymbol: ["binance/usd_m/BTCUSDT": "g", "binance/usd_m/ETHUSDT": "g"],
                             legacySelectedGroup: "g",
                             viewScores: ["binance/usd_m/BTCUSDT": 7], scoredAt: 1_700_000_000)
-    // 云端那几张表重建出来的：只有自选、分类、归属、钉住。
+    // 云端那几张表重建出来的：只有自选、分类、归属。
     let cloud = SymbolPrefs(favorites: ["binance/usd_m/ETHUSDT"], groups: [.init(id: "g", name: "加密")],
-                            groupForSymbol: ["binance/usd_m/ETHUSDT": "g"], pinned: [])
+                            groupForSymbol: ["binance/usd_m/ETHUSDT": "g"])
     let merged = SymbolPrefs.keeping(SymbolPrefs.localOnlyFieldNames, of: local, over: cloud)
     #expect(merged.favorites == ["binance/usd_m/ETHUSDT"])          // 云端那半跟云端。
-    #expect(merged.pinned.isEmpty)
     #expect(merged.recents == ["binance/usd_m/ETHUSDT", "binance/usd_m/BTCUSDT"]) // 本机那半原样留着。
     #expect(merged.viewScores == ["binance/usd_m/BTCUSDT": 7])
     #expect(merged.scoredAt == 1_700_000_000)

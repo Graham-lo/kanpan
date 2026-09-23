@@ -1713,7 +1713,7 @@ struct MainScreen: View {
       },
       shape: {
         let symbols = picker.prefs, prefs = store.prefs
-        return symbols.favorites + ["|"] + symbols.pinned + ["|"] + symbols.groups.map { $0.id + ":" + $0.name }
+        return symbols.favorites + ["|"] + symbols.groups.map { $0.id + ":" + $0.name }
           + symbols.groupForSymbol.map { $0.key + "=" + $0.value }.sorted()
           + [prefs.skin.rawValue, prefs.theme.rawValue, String(prefs.redUp), prefs.changeBasis.rawValue,
              prefs.routePolicy.rawValue]

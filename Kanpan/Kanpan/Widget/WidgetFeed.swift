@@ -128,8 +128,7 @@ final class WidgetFeed {
                        closes: [String: [Double]], skin: ThemeSkin, appearance: ThemeChoice, redUp: Bool,
                        refresh: WidgetSnapshot.Refresh?, basis: ChangeBasis,
                        now: Date = Date()) -> WidgetSnapshot {
-    let pinned = symbols.pinned.filter { symbols.favorites.contains($0) }
-    let order = pinned + symbols.favorites.filter { !pinned.contains($0) }
+    let order = symbols.favorites
     let groups = symbols.groups.map { group in
       WidgetSnapshot.Group(id: group.id, name: group.name,
                            symbols: order.filter { symbols.groupForSymbol[$0] == group.id })

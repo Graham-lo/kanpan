@@ -280,7 +280,6 @@ import ReviewUI
       nextSymbols.groups += guestSymbols.groups.filter { !groupIDs.contains($0.id) }
       for key in guestSymbols.favorites where !nextSymbols.favorites.contains(key) {
         nextSymbols.favorites.append(key); nextSymbols.groupForSymbol[key] = guestSymbols.groupForSymbol[key]
-        if guestSymbols.pinned.contains(key) { nextSymbols.pinned.append(key) }
       }
       let guestReview = try ReviewStore(directory: claim.directory)
       try nextReview.transaction { archive in
@@ -382,12 +381,10 @@ import ReviewUI
         }
         let symbol = PersonalSyncCodec.instrument(object); guard !symbol.isEmpty else { continue }
         nextSymbols.favorites.removeAll { $0 == symbol }
-        nextSymbols.pinned.removeAll { $0 == symbol }
         nextSymbols.groupForSymbol[symbol] = nil
         guard !object.deleted else { continue }
         nextSymbols.favorites.insert(symbol, at: min(max(slot, 0), nextSymbols.favorites.count))
         if case .string(let group) = object.body["groupId"] { nextSymbols.groupForSymbol[symbol] = group }
-        if object.body["pinned"] == .bool(true) { nextSymbols.pinned.append(symbol) }
       }
     }
     PersonalSyncCodec.keepDeviceFields(prefs.prefs, in: &nextPrefs)
@@ -1001,11 +998,10 @@ import ReviewUI
       guard case .string(let name) = v.body["name"] else { return nil }; return FavoriteGroup(id: v.id, name: name)
     }
     let favorites = objects.values.filter { $0.collection == "favorites" && !$0.deleted }.sorted(by: order)
-    var names: [String] = [], membership: [String: String] = [:], pinned: [String] = []
+    var names: [String] = [], membership: [String: String] = [:]
     for value in favorites {
       let name = PersonalSyncCodec.instrument(value); guard !name.isEmpty else { continue }; names.append(name)
       if case .string(let group) = value.body["groupId"] { membership[name] = group }
-      if value.body["pinned"] == .bool(true) { pinned.append(name) }
     }
     // 服务端只同步自选/分组这几张表，「最近」「常看」一直是本机的事——
     // 重建时要把它们原样带回去，否则每来一次同步就把常看清零。
@@ -1014,7 +1010,7 @@ import ReviewUI
     // 少抄一个本机字段就是「每同步一次，常看被清空一次」，而且不报任何错。现在改成
     // **云端重建出来的那份当底，再按 `SymbolFieldPlan` 的 localOnly 表把本机字段抄回去**：
     // 清单只有那一张表，加字段的人不必记得回这儿补参数（`SymbolFieldPlanTests` 替他记）。
-    let rebuilt = SymbolPrefs(favorites: names, groups: groups, groupForSymbol: membership, pinned: pinned)
+    let rebuilt = SymbolPrefs(favorites: names, groups: groups, groupForSymbol: membership)
     let nextSymbols = SymbolPrefs.keeping(SymbolPrefs.localOnlyFieldNames, of: symbols.prefs, over: rebuilt)
     let encodedSymbols = try JSONEncoder().encode(nextSymbols)
 

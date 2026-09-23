@@ -194,7 +194,7 @@ enum PersonalSyncCodec {
     }
     for (order, symbol) in prefs.favorites.enumerated() {
       var value = SyncObject(collection: "favorites", id: InstrumentID.canonical(symbol))
-      value.body = ["symbol": .string(InstrumentID(symbol).symbol), "market": .string(InstrumentID(symbol).market), "venue": .string(InstrumentID(symbol).venue), "groupId": prefs.groupForSymbol[symbol].map(KanpanAccount.JSONValue.string) ?? .null, "order": .number(Double(order)), "pinned": .bool(prefs.pinned.contains(symbol))]
+      value.body = ["symbol": .string(InstrumentID(symbol).symbol), "market": .string(InstrumentID(symbol).market), "venue": .string(InstrumentID(symbol).venue), "groupId": prefs.groupForSymbol[symbol].map(KanpanAccount.JSONValue.string) ?? .null, "order": .number(Double(order))]
       objects.append(value)
     }
     return objects
@@ -317,9 +317,9 @@ enum PersonalSyncCodec {
           firedAt: 0, firedPrice: 0, dueAt: 0, reviewID: "r", title: "x", created: 0)
   }
 
-  /// 分类、自选、置顶、归属都齐了的一份自选表：`symbols` 每一种对象都发得出来。
+  /// 分类、自选、归属都齐了的一份自选表：`symbols` 每一种对象都发得出来。
   private static var maximalSymbolPrefs: SymbolPrefs {
     SymbolPrefs(favorites: ["BTCUSDT"], groups: [FavoriteGroup(id: "g", name: "g")],
-                groupForSymbol: ["BTCUSDT": "g"], pinned: ["BTCUSDT"])
+                groupForSymbol: ["BTCUSDT": "g"])
   }
 }

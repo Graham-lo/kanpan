@@ -51,7 +51,7 @@ struct SymbolPrefsDurabilityTests {
     #expect(prefs.groups.map(\.id) == ["g1"])
   }
 
-  @Test("scoredAt 写成字符串：只有它回默认，自选 / 分组 / 置顶全留着")
+  @Test("scoredAt 写成字符串：只有它回默认，自选 / 分组全留着")
   func typeMismatchFallsBackToDefaultOnly() throws {
     let raw = data(#"""
     {"favorites":["binance/usd_m/BTCUSDT","binance/usd_m/ETHUSDT"],"pinned":["binance/usd_m/BTCUSDT"],
@@ -60,7 +60,6 @@ struct SymbolPrefsDurabilityTests {
     """#)
     let prefs = try JSONDecoder().decode(SymbolPrefs.self, from: raw)
     #expect(prefs.favorites == ["binance/usd_m/BTCUSDT", "binance/usd_m/ETHUSDT"])
-    #expect(prefs.pinned == ["binance/usd_m/BTCUSDT"])
     #expect(prefs.groups.map(\.id) == ["g1"])
     #expect(prefs.viewScores["binance/usd_m/BTCUSDT"] == 3.5)
     #expect(prefs.scoredAt == 0)

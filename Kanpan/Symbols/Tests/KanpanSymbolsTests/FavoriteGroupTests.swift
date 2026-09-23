@@ -13,7 +13,6 @@ struct FavoriteGroupTests {
     let created = prefs.createGroup("半导体")
     let group = try #require(created)
     prefs.assign("sndkusdt", to: group)
-    prefs.setPinned("sndkusdt", true)
     store.save(prefs)
     #expect(store.load() == prefs)
     #expect(store.load().favorites(in: group) == ["binance/usd_m/SNDKUSDT"])
@@ -29,9 +28,7 @@ struct FavoriteGroupTests {
     let empty = prefs.createGroup("  ")
     #expect(empty == nil)
     prefs.assign("binance/usd_m/SNDKUSDT", to: group); prefs.assign("binance/usd_m/MUUSDT", to: group)
-    prefs.setPinned("binance/usd_m/SNDKUSDT", true)
     prefs.toggleFavorite("binance/usd_m/SNDKUSDT")
-    #expect(prefs.pinned.isEmpty)
     #expect(prefs.groupForSymbol["binance/usd_m/SNDKUSDT"] == nil)
     prefs.renameGroup(group, name: "半导体")
     #expect(prefs.groups.first?.name == "半导体")
@@ -45,7 +42,7 @@ struct FavoriteGroupTests {
     let created = prefs.createGroup("股票")
     let group = try #require(created)
     for symbol in ["A", "B", "C"] { prefs.assign(symbol, to: group) }
-    prefs.moveInGroup(group, from: IndexSet(integer: 0), to: 3)
+    prefs.moveVisible(prefs.favorites(in: group), from: IndexSet(integer: 0), to: 3)
     #expect(prefs.favorites(in: group) == ["B", "C", "A"].map(SymbolPrefs.key))
     #expect(prefs.favorites(in: nil) == ["BTC", "ETH"].map(SymbolPrefs.key))
   }

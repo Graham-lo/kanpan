@@ -155,7 +155,7 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
   (DRAWINGS,"color")=>color(v),
   (DRAWINGS,"lineWidth")=>number(v,0.5,6.0),
   (DRAWINGS,"dash")=>v.as_str().is_some_and(|s|["solid","dashed","dotted"].contains(&s)),
-  (DRAWINGS,"filled"|"locked"|"hidden")|(FAVORITES,"pinned"|"alerts")=>v.is_boolean(),
+  (DRAWINGS,"filled"|"locked"|"hidden")|(FAVORITES,"alerts")=>v.is_boolean(),
   (DRAWINGS,"levels")=>v.as_array().is_some_and(|a|a.len()<=24&&a.iter().all(|v|number(v,-10.0,10.0))),
   (DRAWINGS|FAVORITES,"market")=>v=="usd_m"||v=="spot",
   (DRAWINGS|FAVORITES,"venue")=>v=="binance"||v=="coinbase",

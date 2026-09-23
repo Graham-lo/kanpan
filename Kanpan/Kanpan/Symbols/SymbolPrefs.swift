@@ -59,8 +59,6 @@ struct FavoriteSnapshot: Codable, Sendable, Equatable {
   var index: Int
   /// 原来属于哪一类。`nil` = 未分类。
   var group: String?
-  /// 原来在 `pinned` 里排第几。`nil` = 没置顶。
-  var pinIndex: Int?
 }
 
 struct SymbolPrefs: Codable, Sendable, Equatable {
@@ -70,7 +68,6 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   var recents: [String] = []
   var groups: [FavoriteGroup] = []
   var groupForSymbol: [String: String] = [:]
-  var pinned: [String] = []
   /// 老存档里那个「停在哪个分类」。**真身 2026-09-19 搬去了 `Prefs.favoritesGroup`**，
   /// 跟着账号走（换台设备登同一个账号，自选页还停在同一个分类上）。
   ///
@@ -93,7 +90,7 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   static let scoreFloor = 0.02
 
   init(favorites: [String] = [], recents: [String] = [], groups: [FavoriteGroup] = [],
-       groupForSymbol: [String: String] = [:], pinned: [String] = [],
+       groupForSymbol: [String: String] = [:],
        legacySelectedGroup: String? = nil,
        viewScores: [String: Double] = [:], scoredAt: Double = 0) {
     self.viewScores = viewScores.reduce(into: [:]) { out, pair in
@@ -106,7 +103,6 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     self.recents = Array(Self.clean(recents).prefix(Self.recentLimit))
     var seen = Set<String>()
     self.groups = groups.filter { !$0.id.isEmpty && !$0.name.isEmpty && seen.insert($0.id).inserted }
-    self.pinned = Self.clean(pinned).filter { self.favorites.contains($0) }
     self.groupForSymbol = InstrumentID.migrate(groupForSymbol).filter { self.favorites.contains($0.key) && seen.contains($0.value) }
     // 老存档里那个分类可能早就被删了，读进来就洗掉——免得迁移把一个指向空气的
     // id 搬进 `Prefs.favoritesGroup`。
@@ -114,7 +110,9 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case favorites, recents, groups, groupForSymbol, pinned, viewScores, scoredAt
+    // `pinned` 2026-09-24 两端删掉（界面上早就没有置顶的入口，`setPinned` 没有调用方，小组件读到的永远是空表）。老存档里
+    // 那个键读的时候直接忽略，写回去就没了。
+    case favorites, recents, groups, groupForSymbol, viewScores, scoredAt
     /// ⚠️ 键名不是属性名。老存档里写的是 `selectedGroupID`，不能改；
     /// 属性叫 `legacySelectedGroup`，见上面那段说明。`SymbolFieldPlan.codingKey(forProperty:)`
     /// 记着这一处错位，穷举守卫靠它对账。
@@ -125,7 +123,7 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   /// 原来这儿是「顶层缺 key 能容忍，类型不对就整份抛」：`scoredAt` 写成字符串、
   /// 或者 `groups` 里一项缺 `name`，`init(from:)` 就抛；`SymbolPrefsStore.load()`
   /// 又把抛当空档返回，`AppAccountBridge.prepare` 再拿这份空档把 `symbols.json`
-  /// 回写一遍——用户的自选、分类、置顶全没了，而且盘上的原件也被盖掉（B-01）。
+  /// 回写一遍——用户的自选、分类全没了，而且盘上的原件也被盖掉（B-01）。
   ///
   /// 设置那一份（`PrefsCodec` 里的 `Prefs.init(from:)`）一直是逐字段容错的：
   /// 从默认值起步，每一项 `try?` 取，取不到就留默认。自选这一份是漏网的，
@@ -148,7 +146,6 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
               recents: list(.recents),
               groups: field(.groups, or: [Lenient<FavoriteGroup>]()).compactMap(\.value),
               groupForSymbol: table(.groupForSymbol, of: String.self),
-              pinned: list(.pinned),
               legacySelectedGroup: field(.legacySelectedGroup, or: String?.none),
               viewScores: table(.viewScores, of: Double.self),
               scoredAt: field(.scoredAt, or: 0))
@@ -182,22 +179,21 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
   mutating func removeFavorite(_ symbol: String) {
     favorites.removeAll { $0 == Self.key(symbol) }
     groupForSymbol.removeValue(forKey: Self.key(symbol))
-    pinned.removeAll { $0 == Self.key(symbol) }
   }
 
-  /// 移除之前先拍一张快照：它站在第几位、属于哪一类、置顶排在第几。
+  /// 移除之前先拍一张快照：它站在第几位、属于哪一类。
   ///
-  /// `removeFavorite` 一次抹掉三处（全局顺序、分组归属、置顶位），而 `addFavorite`
-  /// 只会把它 append 到最末、分组还按「当前停在哪一类」重写——原样放回去这三样都得
+  /// `removeFavorite` 一次抹掉两处（全局顺序、分组归属），而 `addFavorite`
+  /// 只会把它 append 到最末、分组还按「当前停在哪一类」重写——原样放回去这两样都得
   /// 事先记下来。没这个品种就返回 nil（没被移除的东西没有快照）。
   func snapshot(of symbol: String) -> FavoriteSnapshot? {
     let s = Self.key(symbol)
     guard let index = favorites.firstIndex(of: s) else { return nil }
     return FavoriteSnapshot(symbol: s, index: index,
-                            group: groupForSymbol[s], pinIndex: pinned.firstIndex(of: s))
+                            group: groupForSymbol[s])
   }
 
-  /// 照快照把它们放回原来的位置、分组、置顶位（「已移除 · 撤销」走这条路）。
+  /// 照快照把它们放回原来的位置和分组（「已移除 · 撤销」走这条路）。
   ///
   /// 按下标从小到大插：快照里的下标是「移除之前」那一刻的，批量删掉三个再一起撤销时
   /// 从小到大插回去，每一个都正好落回自己原来那一格。分类可能在这五秒里被删掉了，
@@ -211,9 +207,6 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
         groupForSymbol[s] = group
       } else {
         groupForSymbol.removeValue(forKey: s)
-      }
-      if let at = item.pinIndex, !pinned.contains(s) {
-        pinned.insert(s, at: min(max(at, 0), pinned.count))
       }
     }
   }
@@ -243,13 +236,6 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
           let to = favorites.firstIndex(of: t) else { return }
     favorites.remove(at: from)
     favorites.insert(s, at: to)
-  }
-
-  mutating func setPinned(_ symbol: String, _ on: Bool) {
-    let symbol = Self.key(symbol)
-    guard favorites.contains(symbol) else { return }
-    pinned.removeAll { $0 == symbol }
-    if on { pinned.append(symbol) }
   }
 
   // ---------------------------------------------------------------- 自选分类
@@ -325,15 +311,6 @@ struct SymbolPrefs: Codable, Sendable, Equatable {
     let members = Set(ordered.favorites)
     var iterator = ordered.favorites.makeIterator()
     favorites = favorites.map { members.contains($0) ? iterator.next()! : $0 }
-  }
-
-  mutating func moveInGroup(_ group: String?, from source: IndexSet, to destination: Int) {
-    let members = favorites(in: group)
-    var scoped = SymbolPrefs(favorites: members)
-    scoped.moveFavorites(from: source, to: destination)
-    var ordered = scoped.favorites.makeIterator()
-    let memberSet = Set(members)
-    favorites = favorites.map { memberSet.contains($0) ? ordered.next()! : $0 }
   }
 
   // ---------------------------------------------------------------- 最近
@@ -508,7 +485,7 @@ final class SymbolPrefsStore {
     }
     // 过一遍 init 的清洗（去重、大写、截断到 10）。
     return SymbolPrefs(favorites: prefs.favorites, recents: prefs.recents,
-                       groups: prefs.groups, groupForSymbol: prefs.groupForSymbol, pinned: prefs.pinned,
+                       groups: prefs.groups, groupForSymbol: prefs.groupForSymbol,
                        legacySelectedGroup: prefs.legacySelectedGroup,
                        viewScores: prefs.viewScores, scoredAt: prefs.scoredAt)
   }
