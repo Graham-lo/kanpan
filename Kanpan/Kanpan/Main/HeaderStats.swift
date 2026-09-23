@@ -20,6 +20,14 @@ enum HeaderStats {
       + "  " + (percent >= 0 ? "+" : "−") + toFixed(abs(percent), 2) + "%"
   }
 
+  /// 带方向箭头的涨跌幅药丸（品种预览卡、分享截图）：方向已经由箭头和底色说了，
+  /// 数字只写绝对值——「▼ 2.74%」，不是「▼ -2.74%」（2026-09-24 审查 6.4 / U9）。
+  /// 和自选列表那一格同一个写法。
+  static func arrowPercentText(_ percent: Double?) -> String {
+    guard let percent, percent.isFinite else { return "—" }
+    return toFixed(abs(percent), 2) + "%"
+  }
+
   /// 「仓」= **美元名义**持仓量（`openInterestValue`）。
   ///
   /// 审查 A-02：以前后端给不出名义时会退回币本位数量（`openInterest`）顶上，

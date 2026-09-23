@@ -26,6 +26,15 @@ struct HeaderStatsTests {
     #expect(HeaderStats.priceChangeText(change: .nan, percent: 1, decimals: 2) == "—")
   }
 
+  @Test("带箭头的涨跌幅只写绝对值，缺数写破折号")
+  func arrowPercent() {
+    #expect(HeaderStats.arrowPercentText(-2.74) == "2.74%")
+    #expect(HeaderStats.arrowPercentText(1.5) == "1.50%")
+    #expect(HeaderStats.arrowPercentText(0) == "0.00%")
+    #expect(HeaderStats.arrowPercentText(nil) == "—")
+    #expect(HeaderStats.arrowPercentText(.nan) == "—")
+  }
+
   private func stat(value: Double?, qty: Double?) -> OpenInterestStat {
     OpenInterestStat(symbol: "BTCUSDT", openInterest: qty, openInterestValue: value,
                      timeMs: 1_700_000_000_000)
