@@ -129,7 +129,11 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
   let mut deferred=false;
   {
   let batch:Vec<&Candidate>=candidates.iter().skip(position).take(SEARCH_BATCH).collect();
-  let mut fetched=futures_util::stream::iter(batch.iter().map(|c|range_bars(market,&c.range,q.cutoff))).buffered(SEARCH_CONCURRENCY);
+  // 先把这一批的取数 future 收成 Vec 再交给 `buffered`（future 是惰性的，照样最多并发
+  // SEARCH_CONCURRENCY 个）：流里若存着 `map` 的闭包，整条 run_one 的 future 就证不出
+  // 对任意生命周期都 Send，worker 没法把它 `tokio::spawn` 成一条被看着的任务。
+  let fetches:Vec<_>=batch.iter().map(|c|range_bars(market,&c.range,q.cutoff)).collect();
+  let mut fetched=futures_util::stream::iter(fetches).buffered(SEARCH_CONCURRENCY);
   for candidate in &batch {
    let Some(bars)=fetched.next().await else{break};
    match bars {

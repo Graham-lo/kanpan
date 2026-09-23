@@ -114,7 +114,7 @@ pub fn routes<S:Clone+Send+Sync+'static>()->Router<S> {
 /// ~700 MB against a 4 GB ceiling), ordered by turnover so the symbols anyone
 /// is likely to open come first, and skipped entirely for days already on disk —
 /// so a restart resumes rather than repeats. `KANPAN_OI_WARM_DAYS=0` turns it off.
-pub fn spawn_warm() {
+pub fn spawn_warm()->tokio::task::JoinHandle<()> {
  tokio::spawn(async {
   let store=store().await;
   let days=std::env::var("KANPAN_OI_WARM_DAYS").ok().and_then(|v|v.parse().ok()).unwrap_or(WARM_DAYS);
@@ -125,7 +125,7 @@ pub fn spawn_warm() {
   };
   tracing::info!("Open interest warm-up: {} contracts, {days} days",symbols.len());
   store.warm(symbols,days).await;
- });
+ })
 }
 
 /// The USDT perpetuals that are actually trading, busiest first.

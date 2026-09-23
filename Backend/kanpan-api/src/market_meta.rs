@@ -1159,7 +1159,7 @@ impl Supply {
 }
 
 /// Keeps the table warm from boot so no request ever pays for the cold fetch.
-pub fn spawn_refresh() {
+pub fn spawn_refresh()->tokio::task::JoinHandle<()> {
  tokio::spawn(async {
   // 先把上一次的快照顶上：进程重启后的那几十秒里，请求答的是昨天那张表，
   // 而不是排在几百个上游页面后面等。
@@ -1170,7 +1170,7 @@ pub fn spawn_refresh() {
    let wait=if supply().cycle().await.is_ok() {SUPPLY_TTL} else {Duration::from_secs(600)};
    tokio::time::sleep(wait).await;
   }
- });
+ })
 }
 async fn binance_price(symbol:&str)->Option<f64> {
  let prices=match price_cache().fresh(LIVE_TTL) {

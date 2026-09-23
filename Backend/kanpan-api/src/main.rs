@@ -1,4 +1,4 @@
-use kanpan_api::{AppState,crypto::Secrets};
+use kanpan_api::{AppState,crypto::Secrets,supervise::{Life,Supervisor}};
 use std::{sync::Arc,net::SocketAddr};
 #[tokio::main]
 async fn main()->anyhow::Result<()> {
@@ -8,11 +8,13 @@ async fn main()->anyhow::Result<()> {
  // so no database. Answered before the pool, or it would demand a connection
  // string it has no reason to hold.
  if command=="metrics" {
-  kanpan_api::oi_archive::spawn_warm();
+  let supervisor=Supervisor::new();
+  supervisor.watch("oi-warm",Life::Once,kanpan_api::oi_archive::spawn_warm());
   let address:SocketAddr=std::env::var("KANPAN_BIND").unwrap_or_else(|_|"127.0.0.1:8794".into()).parse()?;
   let listener=tokio::net::TcpListener::bind(address).await?;
-  axum::serve(listener,kanpan_api::metrics_router()).with_graceful_shutdown(async{let _=tokio::signal::ctrl_c().await;}).await?;
-  return Ok(());
+  let (stop,cause)=supervisor.shutdown();
+  axum::serve(listener,kanpan_api::metrics_router()).with_graceful_shutdown(stop).await?;
+  return kanpan_api::supervise::outcome(&cause);
  }
  let pool=kanpan_api::pool_options(command=="serve").connect(&std::env::var("KANPAN_DATABASE_URL")?).await?;
  if command=="migrate" {sqlx::migrate!().run(&pool).await?;return Ok(())}
@@ -32,43 +34,62 @@ async fn main()->anyhow::Result<()> {
   }
  }
  if command=="worker" {
-  let market=kanpan_api::review_market::provider(s.pool.clone())?;
-  let review_loop=async {loop {
-   if kanpan_api::review_worker::run_one(&s,&market).await.is_err(){tracing::warn!("Review work will retry");}
-   tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-  }};
+  let market=Arc::new(kanpan_api::review_market::provider(s.pool.clone())?);
+  // 每个循环各自一条任务、各自被看着：任何一条 panic 或者退出了，进程以非零码退出，
+  // 交给 systemd 拉起。原来它们 `join!` 在一起，一条 panic 掉整个 worker 还活着、
+  // 那一摊活却再也没人干（见 `kanpan_api::supervise`）。
+  let supervisor=Supervisor::new();
+  {
+   let (s,market)=(s.clone(),market.clone());
+   supervisor.spawn("review",Life::Forever,async move {loop {
+    if let Err(e)=kanpan_api::review_worker::run_one(&s,&*market).await {tracing::warn!("Review work will retry ({e:?})");}
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+   }});
+  }
   // Chart search is the one job a person actively waits on, and this host is
   // shared by fewer than ten of them: poll every second, not every two.
-  let search_loop=async {loop {
-   if kanpan_api::search::run_one(&s,&market).await.is_err(){tracing::warn!("Search work will retry");}
-   tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-  }};
-  let cleanup_loop=async {loop {
-   if kanpan_api::maintenance::cleanup(&s).await.is_err(){tracing::warn!("Cleanup will retry");}
-   tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
-  }};
+  {
+   let (s,market)=(s.clone(),market.clone());
+   supervisor.spawn("search",Life::Forever,async move {loop {
+    if let Err(e)=kanpan_api::search::run_one(&s,&*market).await {tracing::warn!("Search work will retry ({e:?})");}
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+   }});
+  }
+  {
+   let s=s.clone();
+   supervisor.spawn("cleanup",Life::Forever,async move {loop {
+    if let Err(e)=kanpan_api::maintenance::cleanup(&s).await {tracing::warn!("Cleanup will retry ({e:?})");}
+    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+   }});
+  }
   // 提醒的评估器。APNs 密钥缺席时 `from_env` 只写一行 warn 并返回 None——评估照常跑、
   // 触发状态照常写回同步日志，少的只是最后那一下推送。密钥是用户要去开发者后台下载的
-  // 东西，提醒的其余部分不该等它。
-  let alert_loop=kanpan_api::alerts::run(s.clone(),kanpan_api::apns::Apns::from_env());
+  // 东西，提醒的其余部分不该等它。币安、Coinbase 各一条常驻评估循环，各自被看着。
+  let apns=kanpan_api::apns::Apns::from_env().map(Arc::new);
+  supervisor.spawn("alerts",Life::Forever,kanpan_api::alerts::run(s.clone(),apns.clone()));
+  supervisor.spawn("alerts-coinbase",Life::Forever,kanpan_api::alerts::run_coinbase(s.clone(),apns));
   tokio::select! {
-   _=async {tokio::join!(review_loop,search_loop,cleanup_loop,alert_loop);} => {},
+   e=supervisor.failure()=>return Err(e),
    _=tokio::signal::ctrl_c()=>{}
   }
   return Ok(());
 
  }
  anyhow::ensure!(command=="serve","Use serve, metrics, worker, migrate or reset-password <username>");
+ // 三条后台任务都被看着：常驻的两条返回或 panic、预热那条 panic，都让进程以非零码
+ // 退出（先给在途请求 `supervise::DRAIN` 收尾），交给 systemd 拉起。
+ let supervisor=Supervisor::new();
  // Public supply data has no owner and no database; warm it before the first request.
- kanpan_api::market_meta::spawn_refresh();
+ supervisor.watch("market-meta",Life::Forever,kanpan_api::market_meta::spawn_refresh());
  // Daily closes are history, not a cache: the sweep and the route share this
  // process so the answer served is the one the sweep just refreshed.
- kanpan_api::sector_history::spawn_daily(s.pool.clone());
+ supervisor.watch("daily-close",Life::Forever,kanpan_api::sector_history::spawn_daily(s.pool.clone()));
  // The open interest archive keeps its own disk cache; index it before the
- // first chart asks rather than inside that request.
- kanpan_api::oi_archive::spawn_warm();
+ // first chart asks rather than inside that request. It finishes by design.
+ supervisor.watch("oi-warm",Life::Once,kanpan_api::oi_archive::spawn_warm());
  let address:SocketAddr=std::env::var("KANPAN_BIND").unwrap_or_else(|_|"127.0.0.1:8794".into()).parse()?;
  let listener=tokio::net::TcpListener::bind(address).await?;
- axum::serve(listener,kanpan_api::router(s).into_make_service_with_connect_info::<SocketAddr>()).with_graceful_shutdown(async{let _=tokio::signal::ctrl_c().await;}).await?;
- Ok(())
+ let (stop,cause)=supervisor.shutdown();
+ axum::serve(listener,kanpan_api::router(s).into_make_service_with_connect_info::<SocketAddr>()).with_graceful_shutdown(stop).await?;
+ kanpan_api::supervise::outcome(&cause)
 }

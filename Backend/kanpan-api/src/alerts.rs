@@ -503,12 +503,11 @@ fn parse_ticker(text:&str)->Option<(String,Option<f64>,Option<f64>)> {
  Some((data.get("s").and_then(Value::as_str)?.to_string(),number("c"),number("P").map(|p|p/100.0)))
 }
 
-/// worker 的评估器入口。永不返回：连不上就退几秒再连，品种集合变了就重订阅。
-pub async fn run(s:AppState,apns:Option<Apns>) {
+/// worker 的评估器入口（币安那一支）。永不返回：连不上就退几秒再连，品种集合变了就重订阅。
+/// Coinbase 的提醒不在币安那条组合流里，是另一条常驻任务 [`run_coinbase`]；两条由
+/// worker 各自起、各自被 `supervise` 看着，两边互不牵连。
+pub async fn run(s:AppState,apns:Option<std::sync::Arc<Apns>>) {
  tracing::info!("Alert evaluator started");
- let apns=apns.map(std::sync::Arc::new);
- // Coinbase 的提醒不在币安那条组合流里：另起一条自己的循环，两边互不牵连。
- tokio::spawn(run_coinbase(s.clone(),apns.clone()));
  let mut watches:Vec<Watch>=vec![];
  // 每个品种最近一根**已收盘**的收盘价。`condition='close'` 要两个点才判得出穿越，
  // 这就是那第一个点。
@@ -681,7 +680,7 @@ async fn evaluate(s:&AppState,apns:Option<&Apns>,watches:&mut Vec<Watch>,closes:
 /// - 收盘穿越：一分钟收完才判。「收完」= 下一分钟的第一笔到了，或者这一分钟结束后
 ///   `SETTLE` 过去还没有新的一笔（冷门品种一分钟可能一笔都没有）。
 /// - 连接十秒一刷提醒集合，品种集合变了就重连；心跳频道每秒一帧，三十秒一帧都没有就判断线。
-async fn run_coinbase(s:AppState,apns:Option<std::sync::Arc<Apns>>) {
+pub async fn run_coinbase(s:AppState,apns:Option<std::sync::Arc<Apns>>) {
  let mut closes:BTreeMap<String,f64>=BTreeMap::new();
  // 这一支自己的自选波动状态（只装 Coinbase 的自选）。和币安那一支一样活在重连之外。
  let mut movers=crate::watch_move::Movers::default();

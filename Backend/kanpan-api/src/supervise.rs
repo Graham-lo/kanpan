@@ -1,0 +1,133 @@
+//! 后台任务的看守：任何一条该常驻的后台任务死了（panic、或者本该永远转的循环返回了），
+//! 记一条 error，然后让整个进程以非零码退出，交给 systemd 的 `Restart=on-failure` 拉起。
+//!
+//! 为什么不就地重启那一条：原来 `serve` 里的 `spawn_refresh / spawn_daily / spawn_warm`
+//! 把 JoinHandle 直接丢掉，worker 的四个循环 `join!` 在一起——任何一条 panic 了，
+//! 进程照样活着、端口照样开着、systemd 看它一切正常，那条任务却已经静默地没了
+//! （行业表不再刷新、日收盘不再采集、提醒不再评估），日志里只有一行被淹掉的 panic。
+//! 进程级重启把「这条任务的状态是不是还干净」这个问题一并交给了一个全新的进程，
+//! 也让 `NRestarts` 成为一个看得见的计数。
+use std::future::Future;
+use tokio::sync::mpsc;
+
+/// 一条后台任务该活多久。
+#[derive(Clone,Copy,Debug,PartialEq)]
+pub enum Life {
+ /// 永远转的循环：它返回了就是出事了。
+ Forever,
+ /// 做完一次就该结束的（比如持仓量存档的预热）：正常结束不算事，panic 才算。
+ Once,
+}
+
+pub struct Supervisor {tx:mpsc::UnboundedSender<String>,rx:mpsc::UnboundedReceiver<String>}
+impl Default for Supervisor {fn default()->Self {Self::new()}}
+impl Supervisor {
+ pub fn new()->Self {let (tx,rx)=mpsc::unbounded_channel();Self{tx,rx}}
+ /// 起一条后台任务并看着它。
+ pub fn spawn<F>(&self,name:&'static str,life:Life,task:F) where F:Future<Output=()>+Send+'static {
+  self.watch(name,life,tokio::spawn(task))
+ }
+ /// 看着一条已经起好的任务。
+ pub fn watch(&self,name:&'static str,life:Life,handle:tokio::task::JoinHandle<()>) {
+  let tx=self.tx.clone();
+  tokio::spawn(async move {
+   if let Some(why)=verdict(life,handle.await) {
+    tracing::error!(task=name,"Background task died: {why}; exiting so systemd restarts the process");
+    let _=tx.send(format!("background task `{name}` {why}"));
+   }
+  });
+ }
+ /// 等到第一条任务死掉，返回它的死因。一条都没死就一直等下去。
+ pub async fn failure(mut self)->anyhow::Error {
+  match self.rx.recv().await {
+   Some(why)=>anyhow::anyhow!(why),
+   // 自己手里还握着一个 tx，通道不会关；走到这里只能是逻辑错了，照样当成出事。
+   None=>anyhow::anyhow!("background supervisor lost its channel"),
+  }
+ }
+}
+
+/// 后台任务死了之后，留给在途请求收尾的时间。过了还没收干净就直接退出。
+pub const DRAIN:std::time::Duration=std::time::Duration::from_secs(10);
+/// 死因的存放处：`shutdown` 的信号 future 把它写进去，`serve` 返回之后取出来当退出原因。
+pub type Cause=std::sync::Arc<std::sync::Mutex<Option<anyhow::Error>>>;
+impl Supervisor {
+ /// 给 axum `with_graceful_shutdown` 用的信号：Ctrl-C，或者某条后台任务死了。
+ /// 后者把死因写进返回的 [`Cause`]，并挂一个 [`DRAIN`] 的兜底——在途请求收不干净
+ /// 也不会让一个少了后台任务的进程一直挂着。
+ pub fn shutdown(self)->(impl Future<Output=()>+Send+'static,Cause) {
+  let cause:Cause=Default::default();
+  let slot=cause.clone();
+  (async move {
+   tokio::select! {
+    _=tokio::signal::ctrl_c()=>{}
+    e=self.failure()=>{
+     *slot.lock().unwrap_or_else(|p|p.into_inner())=Some(e);
+     tokio::spawn(async {
+      tokio::time::sleep(DRAIN).await;
+      tracing::error!("In-flight requests did not drain within {DRAIN:?} after a background task died; exiting");
+      std::process::exit(1);
+     });
+    }
+   }
+  },cause)
+ }
+}
+/// `serve` 结束之后：是因为后台任务死了，就把死因当错误返回（main 以非零码退出）。
+pub fn outcome(cause:&Cause)->anyhow::Result<()> {
+ match cause.lock().unwrap_or_else(|p|p.into_inner()).take() {Some(e)=>Err(e),None=>Ok(())}
+}
+
+/// 一条任务结束的方式算不算出事；算就给出一句死因。
+fn verdict(life:Life,outcome:Result<(),tokio::task::JoinError>)->Option<String> {
+ match outcome {
+  Ok(())=>(life==Life::Forever).then(||"returned, but it is meant to run forever".to_owned()),
+  Err(e) if e.is_panic()=>{
+   let payload=e.into_panic();
+   let message=payload.downcast_ref::<&str>().map(|s|(*s).to_owned()).or_else(||payload.downcast_ref::<String>().cloned()).unwrap_or_else(||"(non-string payload)".into());
+   Some(format!("panicked: {message}"))
+  }
+  Err(e)=>Some(format!("was cancelled: {e}")),
+ }
+}
+
+#[cfg(test)]
+mod tests {
+ use super::*;
+ use std::time::Duration;
+
+ #[tokio::test]
+ async fn a_panicking_task_is_reported_by_name() {
+  let s=Supervisor::new();
+  s.spawn("steady",Life::Forever,async {loop {tokio::time::sleep(Duration::from_secs(3600)).await}});
+  s.spawn("boom",Life::Forever,async {panic!("NaiveDateTime + TimeDelta overflowed")});
+  let e=tokio::time::timeout(Duration::from_secs(5),s.failure()).await.expect("reported");
+  let text=e.to_string();
+  assert!(text.contains("`boom`")&&text.contains("overflowed"),"{text}");
+ }
+
+ #[tokio::test]
+ async fn a_forever_loop_that_returns_is_a_failure_but_a_one_shot_is_not() {
+  let s=Supervisor::new();
+  s.spawn("warm",Life::Once,async {});
+  s.spawn("refresh",Life::Forever,async {tokio::time::sleep(Duration::from_millis(20)).await});
+  let e=tokio::time::timeout(Duration::from_secs(5),s.failure()).await.expect("reported");
+  assert!(e.to_string().contains("`refresh` returned"),"{e}");
+ }
+
+ #[tokio::test]
+ async fn nothing_dying_means_waiting_forever() {
+  let s=Supervisor::new();
+  s.spawn("warm",Life::Once,async {});
+  let handle=tokio::spawn(async {std::future::pending::<()>().await});
+  s.watch("idle",Life::Forever,handle);
+  assert!(tokio::time::timeout(Duration::from_millis(100),s.failure()).await.is_err(),"one-shot finishing cleanly is not a death");
+ }
+
+ #[test]
+ fn panics_with_a_formatted_message_keep_it() {
+  let rt=tokio::runtime::Builder::new_current_thread().build().unwrap();
+  let outcome=rt.block_on(async {tokio::spawn(async {let n=3;panic!("bad {n}")}).await});
+  assert_eq!(verdict(Life::Once,outcome).as_deref(),Some("panicked: bad 3"));
+ }
+}

@@ -359,7 +359,7 @@ pub async fn sweep(pool:&PgPool)->anyhow::Result<usize> {
 /// The daily job, started from `serve` beside `market_meta::spawn_refresh`.
 /// It shares the process with the route so the cache it refreshes is the one
 /// requests are answered from.
-pub fn spawn_daily(pool:PgPool) {
+pub fn spawn_daily(pool:PgPool)->tokio::task::JoinHandle<()> {
  tokio::spawn(async move {
   loop {
    // Every pass asks what is missing first, so the one that runs at startup
@@ -372,7 +372,7 @@ pub fn spawn_daily(pool:PgPool) {
    if let Err(e)=rebuild(&pool,Utc::now().date_naive()).await {tracing::warn!("Daily closes: cache not refreshed ({e})")}
    tokio::time::sleep(wait).await;
   }
- });
+ })
 }
 
 // ------------------------------------------------------------------- handler
