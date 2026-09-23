@@ -352,7 +352,8 @@ struct MainScreen: View {
   private var favoritesPage: some View {
     FavoritesView(model: picker, session: favoritesEdit, history: searchHistory, store: store, redUp: prefs.redUp, basisTitle: prefs.changeBasis.shortTitle, updatedAt: quotes.lastListUpdate, feedStatus: quotes.status, feedDiagnostics: quotes.diagnostics,
                   onVisible: { quotes.watch($0) },
-                  onRowVisibility: { quotes.watchRow($0, visible: $1) },
+                  // 露面的自选行顺手把顶栏那几格（仓 / 费率 / 结算 / 市值）的数先取回来。
+                  onRowVisibility: { quotes.watchRow($0, visible: $1); if $1 { market.prefetchListStats([$0]) } },
                   onHistoryVisibility: { quotes.watchHistory($0, visible: $1) },
                   previews: previews,
                   // 点一行进图的同一瞬间冻结这张表的顺序，顶栏横滑就照着它一只只看过去。
@@ -1813,6 +1814,7 @@ struct MainScreen: View {
       market.switchTo(symbol: info.symbol)
     }
     picker.setLoader(market.catalogLoader)
+    market.knownInfo = { [picker] in picker.info(for: $0) }
     // 搜了一个表里没有的代号：那是「用户点名」，允许立刻问一次目录（审查 B-06）。
     picker.onMissingSymbol = { [market] symbol in await market.lookupMissingSymbol(symbol) }
     market.setExternalIndicators(prefs.subs, depth: prefs.depth)

@@ -60,6 +60,9 @@ final class MarketModel {
   @ObservationIgnored private var oiWarmIntervals: [Interval] = []
   @ObservationIgnored private var oiWarmLater: Task<Void, Never>?
   @ObservationIgnored private var neighborTask: Task<Void, Never>?
+  /// 列表上刚露面、还没替它们取顶栏数据的行（见 `prefetchListStats`）。
+  @ObservationIgnored private var listStatsTask: Task<Void, Never>?
+  @ObservationIgnored private var listStatsPending: [String] = []
   @ObservationIgnored private var detailWarm: (key: String, at: Date)?
   private var lastView: ViewWindow?
   private(set) var ticker: Ticker?
@@ -72,6 +75,9 @@ final class MarketModel {
   /// 是「我什么都没动，价格突然多了一位、成交额换了个单位」——那比数字本身更像出错。
   /// 步长与兜底精度一起锁住，展示位数始终从 `info.priceDecimals` 取；换线路沿用。
   private var lockedPrecision: [String: (precision: Int, tick: Double)] = [:]
+  /// 手里已经有的品种表（品种页那份，同步可读）。冷切换时先拿它定小数位：
+  /// 从前一律先顶 2 位，`0.009428` 这种低价币第一帧会画成「0.01」，再跳成真值。
+  @ObservationIgnored var knownInfo: (@MainActor (String) -> SymbolInfo?)?
   private(set) var volumeUnit: VolUnit?
   /// 顶栏右侧六格中的费率：`markPrice@1s` 那条流顺带捎回来的资金费率整帧。
   private(set) var funding: MarkPriceTick?
@@ -305,7 +311,7 @@ final class MarketModel {
     startStats()
     // 全市场费率簿（扫图换品种时先垫顶栏的费率 / 结算）。冷启动时往后放两秒，
     // 首屏那几发请求先过去，别跟它抢带宽。
-    FundingBook.shared.refreshIfStale(provider: resolver.provider(forSymbol: symbol), delay: .seconds(2))
+    refreshFunding(delay: .seconds(2))
   }
 
   func stop() {
@@ -388,6 +394,7 @@ final class MarketModel {
       // 持仓量是按交易所报的，换了线路就得按新交易所重取；供应量与交易所无关，留着。
       openInterestValue = nil; openInterestUnit = nil
       seedStats()
+      refreshFunding()
       startStats()
       rebuildOISource()
       resetOI(); historyError = nil
@@ -503,7 +510,10 @@ final class MarketModel {
               await MainActor.run { self?.applyMeta(meta, for: sym) }
             }
             if Task.isCancelled { return }
-            await MainActor.run { self?.sweepDisplayLifetimes() }
+            await MainActor.run {
+              self?.renewFundingWithoutStream(sym)
+              self?.sweepDisplayLifetimes()
+            }
             try? await Task.sleep(for: .seconds(Double(Self.oiPollSeconds)))
           }
         }
@@ -543,13 +553,39 @@ final class MarketModel {
       applyOpenInterest(stat, for: sym)
     }
     if let meta = MarketStatsClient.shared.cachedMeta(symbol: sym) { applyMeta(meta, for: sym) }
-    if caps.hasFunding, let row = FundingBook.shared.entry(for: sym, upstream: caps.upstream) {
-      let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-      // 结算时刻已经过去的那口不拿：那格会倒数出一个负数，宁可等流来。
-      let next = row.nextFundingTimeMs.flatMap { $0 > nowMs ? $0 : nil }
-      funding = MarkPriceTick(timeMs: Int64(row.at.timeIntervalSince1970 * 1000),
-                              fundingRate: row.rate, nextFundingTimeMs: next)
+    seedFunding(for: sym)
+  }
+
+  /// 从费率簿垫这一只的费率与下次结算。手里那口比簿里的新（流刚推来的）就不动。
+  ///
+  /// 直连线路上这只是「流到之前先有个数」；网关线路（OKX 替身）没有标记价流，
+  /// 这两格**只**靠簿，所以表回来之后（`refreshFunding` 的回调）还要再垫一次。
+  private func seedFunding(for sym: String) {
+    guard sym == symbol else { return }
+    let caps = resolver.provider(forSymbol: sym).capabilities
+    guard caps.hasFunding, let row = FundingBook.shared.entry(for: sym, upstream: caps.upstream) else { return }
+    let rowMs = Int64(row.at.timeIntervalSince1970 * 1000)
+    if let current = funding, current.fundingRate != nil, current.timeMs >= rowMs { return }
+    let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+    // 结算时刻已经过去的那口不拿：那格会倒数出一个负数，宁可等流来。
+    let next = row.nextFundingTimeMs.flatMap { $0 > nowMs ? $0 : nil }
+    funding = MarkPriceTick(timeMs: rowMs, fundingRate: row.rate, nextFundingTimeMs: next)
+    sweepDisplayLifetimes()
+  }
+
+  /// 这一只所在那家的费率簿比 `FundingBook.refreshEvery` 旧就拉整表，表可用之后再垫一次。
+  private func refreshFunding(delay: Duration = .zero) {
+    let sym = symbol
+    FundingBook.shared.refreshIfStale(provider: resolver.provider(forSymbol: sym), delay: delay) { [weak self] in
+      self?.seedFunding(for: sym)
     }
+  }
+
+  /// 持仓轮询每一圈叫：没有标记价流的那条线路（网关上的替身），费率与结算只能靠
+  /// 整表续——不续的话挂着不动一小时就过了展示寿命，结算过了也不会换成下一次。
+  private func renewFundingWithoutStream(_ sym: String) {
+    guard sym == symbol, !resolver.provider(forSymbol: sym).capabilities.hasMarkPrice else { return }
+    refreshFunding()
   }
 
   /// 扫图时的前后邻居：顶栏要的持仓量 / 供应量 / 费率、当前周期的 K 线快照与持仓量
@@ -559,24 +595,68 @@ final class MarketModel {
     neighborTask?.cancel()
     let syms = symbols.map { InstrumentID.canonical($0) }.filter { $0 != symbol }
     guard !syms.isEmpty, foreground else { return }
-    let proxies = endpoints.gateways, iv = interval, warmSnapshots = snapshot
-    // 邻居可能在别家（自选里混着不同交易所的品种）：持仓量按各自那一家的口径问。
-    let bySource = Dictionary(grouping: syms) { resolver.provider(forSymbol: $0).capabilities.openInterestSource ?? "" }
+    let iv = interval, warmSnapshots = snapshot
     neighborTask = Task { [weak self, feed] in
       try? await Task.sleep(for: .milliseconds(400))
       guard !Task.isCancelled, let self else { return }
-      FundingBook.shared.refreshIfStale(provider: self.resolver.provider(forSymbol: self.symbol))
       self.warmOI(syms.map { (symbol: $0, interval: iv) })
       if warmSnapshots { await feed.prewarm(symbols: syms, interval: iv, slot: "neighbors") }
-      guard !proxies.isEmpty else { return }
-      async let meta: Void = MarketStatsClient.shared.prefetchMeta(symbols: syms, hosts: proxies)
-      async let oi: Void = withTaskGroup(of: Void.self) { group in
-        for (src, list) in bySource where !src.isEmpty {
-          group.addTask { await MarketStatsClient.shared.prefetchOpenInterest(symbols: list, source: src, hosts: proxies) }
-        }
-      }
-      _ = await (meta, oi)
+      await self.prefetchHeaderStats(syms)
     }
+  }
+
+  /// 列表（板块的品种列表、自选页）上露面的行：顶栏「仓 / 费率 / 结算 / 市值」要的数
+  /// 与当前周期的持仓量副图先替它们拿回来，点进去那一刻 `seedStats` / `restoreOI`
+  /// 就能同步垫上，不再先画一秒「—」或「加载中」。
+  ///
+  /// 行是一行行 `onAppear` 进来的，攒 300 ms 成一批再问；一批最多
+  /// `listStatsLimit` 只（一屏的量）。持仓量一分钟、供应量半天、费率整表一分钟内
+  /// 取过的都不再问（各自的缓存判），所以来回滚动不会一直发请求。
+  func prefetchListStats(_ symbols: [String]) {
+    for sym in symbols.map({ InstrumentID.canonical($0) }) where !sym.isEmpty && !listStatsPending.contains(sym) {
+      listStatsPending.append(sym)
+    }
+    guard listStatsTask == nil, !listStatsPending.isEmpty, foreground else { return }
+    listStatsTask = Task { [weak self] in
+      try? await Task.sleep(for: .milliseconds(300))
+      guard let self, !Task.isCancelled else { return }
+      let batch = Array(self.listStatsPending.prefix(Self.listStatsLimit))
+      self.listStatsPending.removeAll()
+      self.listStatsTask = nil
+      // 持仓量副图那条线也先取（副图开着时）：不然点进去顶栏齐了，副图还要「加载中」一秒。
+      self.warmOI(batch.map { (symbol: $0, interval: self.interval) })
+      await self.prefetchHeaderStats(batch)
+    }
+  }
+
+  /// 一屏列表的量。再多就是滚过去没停下来看的行，不值得替它们发请求。
+  private static let listStatsLimit = 16
+
+  /// 顶栏那几格的数：费率整表（按这批品种各自那一家，各问一次）、供应量一批一次、
+  /// 持仓量按各家口径并发。都是只读、带缓存的——已经够新的不会再问。
+  private func prefetchHeaderStats(_ syms: [String]) async {
+    guard !syms.isEmpty, foreground else { return }
+    var upstreams = Set<String>()
+    for sym in syms {
+      let provider = resolver.provider(forSymbol: sym)
+      guard provider.capabilities.hasFunding, upstreams.insert(provider.capabilities.upstream).inserted else { continue }
+      // 表回来时用户可能已经点进其中一只了：给**那时**的当前品种垫一次。
+      FundingBook.shared.refreshIfStale(provider: provider) { [weak self] in
+        guard let self else { return }
+        self.seedFunding(for: self.symbol)
+      }
+    }
+    let proxies = endpoints.gateways
+    guard !proxies.isEmpty else { return }
+    // 可能混着不同交易所的品种：持仓量按各自那一家的口径问。
+    let bySource = Dictionary(grouping: syms) { resolver.provider(forSymbol: $0).capabilities.openInterestSource ?? "" }
+    async let meta: Void = MarketStatsClient.shared.prefetchMeta(symbols: syms, hosts: proxies)
+    async let oi: Void = withTaskGroup(of: Void.self) { group in
+      for (src, list) in bySource where !src.isEmpty {
+        group.addTask { await MarketStatsClient.shared.prefetchOpenInterest(symbols: list, source: src, hosts: proxies) }
+      }
+    }
+    _ = await (meta, oi)
   }
 
   /// 十字线一出来就叫：「看细节」要切去的那一档更细周期（多半没钉在周期条上，
@@ -666,11 +746,16 @@ final class MarketModel {
       // 这个品种以前认过小数位就照旧顶上，别让冷切换先用 2 位画一帧再跳回去。
       var seed = MarketModel.placeholder(sym)
       if let locked = lockedPrecision[sym] { seed.pricePrecision = locked.precision; seed.tickSize = locked.tick }
+      else if let known = knownInfo?(sym), known.tickSize > 0 {
+        // 锁上：`refreshInfo` 回来的那份照这个位数摆，不会再跳一次。
+        lockedPrecision[sym] = (known.pricePrecision, known.tickSize)
+        seed.pricePrecision = known.pricePrecision; seed.tickSize = known.tickSize
+      }
       info = seed
       seedStats()
     }
     if cold {
-      FundingBook.shared.refreshIfStale(provider: resolver.provider(forSymbol: sym))
+      refreshFunding()
       startStats()
       warmOILater()
     }
@@ -696,6 +781,7 @@ final class MarketModel {
   func prefetchList(_ symbols: [String]) {
     let iv = interval
     Task { [feed] in await feed.prefetchList(symbols: symbols, interval: iv) }
+    prefetchListStats(symbols)
   }
 
   func cancelListPrefetch() {
