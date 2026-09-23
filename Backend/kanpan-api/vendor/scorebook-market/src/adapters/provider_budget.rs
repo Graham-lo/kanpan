@@ -10,9 +10,13 @@ pub struct ProviderBudget {
 }
 impl ProviderBudget {
     pub fn new(pool: PgPool) -> anyhow::Result<Self> {
+        // 默认 1200：币安 fapi 每个 IP 每分钟 2400，留一半给同机别的模块（板块历史、
+        // 市场元数据走的是同一个出口，`observe` 记的也是整个 IP 的已用权重）。原来是 600，
+        // 一次「找相似」要取 300 个候选、约 300 权重，同一分钟里连着找两次就被自家账本
+        // 拦下（P3.8 实测 1d 那次 12 个候选因此没比上）。
         let limit = std::env::var("KANPAN_BINANCE_WEIGHT_PER_MINUTE")
             .map(|v| v.parse())
-            .unwrap_or(Ok(600))?;
+            .unwrap_or(Ok(1200))?;
         anyhow::ensure!(
             (20..=2400).contains(&limit),
             "invalid Binance weight budget"

@@ -182,3 +182,55 @@ async fn review_search_determinism() {
  assert_eq!(keys,BTreeSet::from(["id","range","score","source"]),"多一个字段就是多一句没被证明的话：{keys:?}");
  w.close().await;
 }
+
+/// 查询区间取到了、候选却一个都取不到（这一分钟的权重账本满了、上游冷却）：这不是
+/// 「比过、没比上」。检索要停在原处、推到下一分钟再从同一个候选接着比，最后照样比全——
+/// 原来是直接跳过，忙时闲时同一个查询比上的候选数不一样（P3.8）。
+struct BusyAfterFirst(std::sync::atomic::AtomicUsize);
+impl scorebook_core::market::MarketDataProvider for BusyAfterFirst {
+ fn klines<'a>(&'a self,_:&'a str,_:&'a str,interval:&'a str,start:chrono::DateTime<Utc>,end:chrono::DateTime<Utc>)->scorebook_core::market::ProviderFuture<'a> {
+  Box::pin(async move {
+   if self.0.fetch_add(1,std::sync::atomic::Ordering::SeqCst)==0 {
+    Ok(json!({"coverage_complete":true,"bars":wave(interval,start.timestamp_millis(),end.timestamp_millis())}))
+   } else {Err(scorebook_core::error::Error::transient("provider_budget_exhausted"))}
+  })
+ }
+ fn trades<'a>(&'a self,_:&'a str,_:&'a str,_:chrono::DateTime<Utc>,_:chrono::DateTime<Utc>)->scorebook_core::market::ProviderFuture<'a> {panic!("检索不取成交")}
+ fn exchange_info<'a>(&'a self,_:&'a str)->scorebook_core::market::ProviderFuture<'a> {Box::pin(async{Ok(json!({}))})}
+ fn tickers_24h<'a>(&'a self,_:&'a str)->scorebook_core::market::ProviderFuture<'a> {Box::pin(async{Ok(json!({}))})}
+}
+#[tokio::test]
+async fn review_search_waits_out_a_busy_minute() {
+ let w=boot().await;let a=signup(&w.app,"searchbusy").await;
+ let hour=3_600_000;let cutoff=Utc::now().timestamp_millis()/hour*hour;
+ let window=(cutoff-16*hour,cutoff);
+ let vector=format!("{:?}",scorebook_core::domain::chart_match::descriptor(&scorebook_core::domain::chart_match::from_bars(&wave("1h",window.0,window.1)).unwrap()).unwrap());
+ let twin=Uuid::new_v4();
+ sqlx::query("INSERT INTO market_features(id,market,symbol,timeframe,start_at,end_at,bars_count,model_id,render_version,embedding,input_hash,source,published) VALUES($1,'usd_m','ADAUSDT','1h',$2,$3,16,'candle-geometry-v2','ohlc-geometry-resample64-v2',$4::vector,'fixture','binance',true)")
+  .bind(twin).bind(window.0).bind(cutoff).bind(&vector).execute(&w.admin).await.unwrap();
+ sqlx::query("UPDATE search_dispatch SET next_at=now()+interval '1 day' WHERE user_id<>$1").bind(a.id).execute(&w.admin).await.unwrap();
+ let query=json!({"range":{"venue":"binance","market":"usd_m","symbol":"BTCUSDT","interval":"1h","start":window.0,"end":window.1,"bars":16},"cutoff":cutoff,"scope":"history"});
+ let id=Uuid::new_v4();
+ let (status,v)=request(&w.app,"/v1/native-review/searches","POST",Some(&a.token),Some(id),query).await;
+ assert_eq!(status,200,"{v}");
+ assert!(kanpan_api::search::run_one(&w.s,&BusyAfterFirst(Default::default())).await.unwrap(),"该认领到这条检索");
+ let (_,job)=request(&w.app,&format!("/v1/native-review/searches/{id}"),"GET",Some(&a.token),None,json!({})).await;
+ assert_eq!(job["data"]["status"],"queued","取不到行情不能就此收工：{job}");
+ assert_eq!(job["data"]["checked"],0,"{job}");
+ let later:bool=sqlx::query_scalar("SELECT next_at>now()+interval '1 second' FROM review_searches WHERE id=$1").bind(id).fetch_one(&w.admin).await.unwrap();
+ assert!(later,"要等到下一分钟账本翻篇再来，而不是一秒后原样再撞一次");
+ // 下一分钟到了：从同一个候选接着比，比全。
+ sqlx::query("UPDATE review_searches SET next_at=now() WHERE id=$1").bind(id).execute(&w.admin).await.unwrap();
+ sqlx::query("UPDATE search_dispatch SET next_at=now() WHERE user_id=$1").bind(a.id).execute(&w.admin).await.unwrap();
+ assert!(kanpan_api::search::run_one(&w.s,&Market::wave()).await.unwrap(),"该认领到这条检索");
+ let (_,job)=request(&w.app,&format!("/v1/native-review/searches/{id}"),"GET",Some(&a.token),None,json!({})).await;
+ assert_eq!(job["data"]["status"],"completed","{job}");
+ // 库是整套回归共用的，别的用例摆的同形窗口也会进候选：所以比「全比上了」，不比个数。
+ assert_eq!(job["data"]["checked"],job["data"]["total"],"推迟的那些候选要接着比上：{job}");
+ let (_,result)=request(&w.app,&format!("/v1/native-review/searches/{id}/results"),"GET",Some(&a.token),None,json!({})).await;
+ assert_eq!(result["data"]["partial"],false,"{result}");
+ assert!(result["data"]["items"].as_array().unwrap().iter().any(|i|i["id"]==twin.to_string()),"{result}");
+ // 这条夹具别留给别的用例：它们按个数断言候选。
+ sqlx::query("DELETE FROM market_features WHERE id=$1").bind(twin).execute(&w.admin).await.unwrap();
+ w.close().await;
+}

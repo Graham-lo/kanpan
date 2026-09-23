@@ -126,30 +126,39 @@ pub async fn run_one(s:&AppState,market:&dyn MarketDataProvider)->Result<bool> {
   // 只有 8 条，每次取数还要进一次 provider_budgets 的行锁记账，开太宽会把判定、
   // 提醒那几条循环的连接挤掉。批大小的上限仍在：别的人的检索在租约之间照样能插进来。
   // `buffered` 保序：结果按候选顺序落，`position` 与原来逐个推进时一致。
+  let mut deferred=false;
   {
   let batch:Vec<&Candidate>=candidates.iter().skip(position).take(SEARCH_BATCH).collect();
   let mut fetched=futures_util::stream::iter(batch.iter().map(|c|range_bars(market,&c.range,q.cutoff))).buffered(SEARCH_CONCURRENCY);
   for candidate in &batch {
    let Some(bars)=fetched.next().await else{break};
-   if let Ok(bars)=bars {
-    let score=core(chart_match::rerank(&candles,&core(chart_match::from_bars(&bars))?,false))?.score;checked+=1;
-    if score>=0.60 {items.push(json!({"id":candidate.id,"range":candidate.range,"score":score,"source":q.scope}));}
+   match bars {
+    Ok(bars)=>{
+     let score=core(chart_match::rerank(&candles,&core(chart_match::from_bars(&bars))?,false))?.score;checked+=1;
+     if score>=0.60 {items.push(json!({"id":candidate.id,"range":candidate.range,"score":score,"source":q.scope}));}
+    }
+    // 取不到行情是「这会儿」的事（本分钟的权重账本满了、币安在冷却、网络抖了），
+    // 不是这个候选的事：停在这里、下一分钟从它接着比，不能把它当成「比过、没比上」
+    // 跳过去——原来就是这么跳的，结果同一个查询忙时闲时比上的候选不一样多。
+    Err(e) if e.0==axum::http::StatusCode::SERVICE_UNAVAILABLE=>{deferred=true;break}
+    // 这一段行情本身不完整（停牌、缺根），换什么时候取都一样：跳过。
+    Err(_)=>{}
    }
    position+=1;
   }
   }
-  Ok::<_,ApiError>(candidates)
+  Ok::<_,ApiError>((candidates,deferred))
  }.await;
  let mut tx=s.personal(owner).await?;
  let active:Option<Uuid>=sqlx::query_scalar("SELECT id FROM review_searches WHERE user_id=$1 AND id=$2 AND lease_id=$3 AND lease_until>now() AND status='running' FOR UPDATE").bind(owner).bind(id).bind(lease).fetch_optional(&mut *tx).await?;
  if active.is_none(){return Ok(true)}
  match work {
-  Ok(candidates)=>{
+  Ok((candidates,deferred))=>{
    let done=position>=candidates.len();let complete=done&&(checked>0||candidates.is_empty());
    let state=if complete{"completed"}else if done{"failed"}else{"queued"};
    let error=if done&&!complete{Some("market_unavailable")}else{None};
    let output=if done{sorted_unique(items)}else{items};
-   sqlx::query("UPDATE review_searches SET candidates=$4,position=$5,checked=$6,items=$7,status=$8,error=$9,attempts=0,lease_id=NULL,lease_until=NULL,next_at=now() WHERE user_id=$1 AND id=$2 AND lease_id=$3").bind(owner).bind(id).bind(lease).bind(json!(candidates)).bind(position as i32).bind(checked).bind(json!(output)).bind(state).bind(error).execute(&mut *tx).await?;
+   sqlx::query("UPDATE review_searches SET candidates=$4,position=$5,checked=$6,items=$7,status=$8,error=$9,attempts=0,lease_id=NULL,lease_until=NULL,next_at=CASE WHEN $10 THEN date_trunc('minute',now())+interval '61 seconds' ELSE now() END WHERE user_id=$1 AND id=$2 AND lease_id=$3").bind(owner).bind(id).bind(lease).bind(json!(candidates)).bind(position as i32).bind(checked).bind(json!(output)).bind(state).bind(error).bind(deferred).execute(&mut *tx).await?;
   },Err(_)=>{sqlx::query("UPDATE review_searches SET status=$4,error='market_unavailable',lease_id=NULL,lease_until=NULL,next_at=now()+interval '30 seconds' WHERE user_id=$1 AND id=$2 AND lease_id=$3").bind(owner).bind(id).bind(lease).bind(if attempts>=2{"failed"}else{"queued"}).execute(&mut *tx).await?;}
  }
  tx.commit().await?;Ok(true)
