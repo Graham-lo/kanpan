@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import KanpanCore
+import KanpanNetwork
 
 /// 板块页整页外壳。
 ///

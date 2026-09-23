@@ -3,6 +3,7 @@ import Testing
 import KanpanCore
 import KanpanNetworkTestSupport
 @testable import KanpanData
+import KanpanNetwork
 
 @Suite("对比行情", .serialized) struct CompareFeedTests {
   let t0: Int64 = 1_700_000_040_000

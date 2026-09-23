@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import KanpanCore
 import KanpanData
+import KanpanNetwork
 @testable import KanpanSettings
 
 /// **把「加了字段忘了归类」变成一条红线。**

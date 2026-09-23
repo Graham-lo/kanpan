@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import KanpanNetwork
 
 /// Switches complete feeds. Business views never merge candles from different exchanges.
 ///

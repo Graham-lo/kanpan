@@ -3,6 +3,7 @@ import Testing
 import KanpanCore
 import KanpanNetworkTestSupport
 @testable import KanpanData
+import KanpanNetwork
 
 /// 列表行情的合并推送：按品种键里的交易所分组，每家一条连接。
 @Suite("列表行情合并推送")

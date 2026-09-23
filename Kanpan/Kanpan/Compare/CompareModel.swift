@@ -3,6 +3,7 @@ import Observation
 import SwiftUI
 import KanpanCore
 import KanpanData
+import KanpanNetwork
 import KanpanChart
 
 /// 主屏的对比行情寿命与对齐缓存；不占用主行情首屏的等待链。

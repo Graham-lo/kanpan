@@ -3,6 +3,7 @@ import Observation
 import KanpanCore
 import KanpanChart
 import KanpanData
+import KanpanNetwork
 import ReviewDomain
 import ReviewUI
 

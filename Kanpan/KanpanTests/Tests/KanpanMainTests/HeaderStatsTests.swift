@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import KanpanCore
+import KanpanNetwork
 @testable import KanpanMain
 
 // 顶栏右侧六格（仓 / 额 · 市值 / 费率 · 结算 / 振幅）的取值规则。除了「仓」以外都会**过期**，

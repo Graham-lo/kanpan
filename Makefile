@@ -101,7 +101,8 @@ core-test:
 
 # ---------------------------------------------------------------- 网络层
 # 怎么连到交易所：HTTP / WS 最小接口、币安 REST / WS 客户端与限流、行情线路（直连 / 网关）、
-# 网关竞速与冷却。KanpanData 依赖它并整包 @_exported 转出去，app 照旧只 import KanpanData。
+# 网关竞速与冷却。KanpanData 依赖它但不再转出去（审查 18a）：用到网络层名字的文件自己
+# `import KanpanNetwork`，app 工程也显式链它。
 NETWORK := KanpanNetwork
 
 network-test:

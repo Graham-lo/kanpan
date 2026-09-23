@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import KanpanNetwork
 
 /// 图表侧收到的东西（§3.1）。`BarSeries` 是值类型快照，每次事件换一份，
 /// 绘制线程只读一份不可变数据，没有锁。

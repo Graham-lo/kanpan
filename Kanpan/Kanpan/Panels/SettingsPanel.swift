@@ -1,6 +1,7 @@
 import SwiftUI
 import KanpanCore
 import KanpanData
+import KanpanNetwork
 
 /// 设置面板（A6.3 / A6.7 / A6.8 / A6.9 / A6.10 / A6.11）。
 ///

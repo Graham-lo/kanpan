@@ -26,6 +26,7 @@ let package = Package(
   ],
   dependencies: [
     .package(path: "../../KanpanCore"),
+    .package(path: "../../KanpanNetwork"),
     .package(path: "../../KanpanData"),
   ],
   targets: [
@@ -33,6 +34,7 @@ let package = Package(
       name: "KanpanSettings",
       dependencies: [
         .product(name: "KanpanCore", package: "KanpanCore"),
+        .product(name: "KanpanNetwork", package: "KanpanNetwork"),
         .product(name: "KanpanData", package: "KanpanData"),
       ],
       path: "Sources/KanpanSettings"
@@ -42,6 +44,7 @@ let package = Package(
       dependencies: [
         "KanpanSettings",
         .product(name: "KanpanCore", package: "KanpanCore"),
+        .product(name: "KanpanNetwork", package: "KanpanNetwork"),
       ],
       path: "Tests/KanpanSettingsTests"
     ),

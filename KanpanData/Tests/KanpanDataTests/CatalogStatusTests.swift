@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetwork
 import KanpanNetworkTestSupport
 import KanpanCore
 

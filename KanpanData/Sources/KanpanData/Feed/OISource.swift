@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import KanpanNetwork
 
 /// 一次取数的结果：点，外加**这一轮是不是真的问到了答复**。
 ///

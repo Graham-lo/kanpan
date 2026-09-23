@@ -1,6 +1,7 @@
 import Foundation
 import KanpanCore
 import KanpanData
+import KanpanNetwork
 
 // MARK: - 落盘格式
 

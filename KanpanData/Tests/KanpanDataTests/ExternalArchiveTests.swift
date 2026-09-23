@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import KanpanData
+import KanpanNetwork
 import KanpanCore
 
 @Suite("外部指标归档：列保留与格式升级")

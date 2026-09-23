@@ -1,6 +1,7 @@
 import Foundation
 import KanpanCore
 import KanpanData
+import KanpanNetwork
 
 // kanpan-feed —— 数据层的命令行取证工具（§13 M2 的证据都从这儿出）。
 //

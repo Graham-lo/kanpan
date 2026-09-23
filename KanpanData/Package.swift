@@ -23,7 +23,8 @@ let package = Package(
     ),
     .executableTarget(
       name: "kanpan-feed",
-      dependencies: ["KanpanData", .product(name: "KanpanCore", package: "KanpanCore")],
+      dependencies: ["KanpanData", .product(name: "KanpanCore", package: "KanpanCore"),
+                     .product(name: "KanpanNetwork", package: "KanpanNetwork")],
       path: "Sources/kanpan-feed"
     ),
     .testTarget(
@@ -31,6 +32,7 @@ let package = Package(
       dependencies: [
         "KanpanData",
         .product(name: "KanpanCore", package: "KanpanCore"),
+        .product(name: "KanpanNetwork", package: "KanpanNetwork"),
         .product(name: "KanpanNetworkTestSupport", package: "KanpanNetwork"),
       ],
       path: "Tests/KanpanDataTests",

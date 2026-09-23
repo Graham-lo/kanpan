@@ -22,6 +22,7 @@ let package = Package(
   ],
   dependencies: [
     .package(path: "../../KanpanCore"),
+    .package(path: "../../KanpanNetwork"),
     .package(path: "../../KanpanData"),
     .package(path: "../../KanpanAccount"),
   ],
@@ -30,6 +31,7 @@ let package = Package(
       name: "KanpanAccountCodec",
       dependencies: [
         .product(name: "KanpanCore", package: "KanpanCore"),
+        .product(name: "KanpanNetwork", package: "KanpanNetwork"),
         .product(name: "KanpanData", package: "KanpanData"),
         .product(name: "KanpanAccount", package: "KanpanAccount"),
       ],

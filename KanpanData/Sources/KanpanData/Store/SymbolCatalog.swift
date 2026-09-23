@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import KanpanNetwork
 
 /// 一家交易所（一个提供者）的品种表（§4.1）。几十 KB，放 `Caches/` 24 小时；
 /// 过期就重拉，拉不到就先用旧的（离线也能开品种页）。

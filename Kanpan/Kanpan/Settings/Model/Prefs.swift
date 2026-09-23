@@ -1,6 +1,7 @@
 import Foundation
 import KanpanCore
 import KanpanData
+import KanpanNetwork
 
 /// 一份完整的设置（任务书 §3.2 的 `AppState` 里可持久化的那一半）。
 ///

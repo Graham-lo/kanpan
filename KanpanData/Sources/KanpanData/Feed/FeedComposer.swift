@@ -1,5 +1,6 @@
 import Foundation
 import KanpanCore
+import KanpanNetwork
 
 /// 实时合成的那点规矩（§4.4），抽成纯类型——回放器和单测都直接驱动它，
 /// 不用起网络、不用等时间。

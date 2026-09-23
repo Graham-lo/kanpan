@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import KanpanCore
 import KanpanData
+import KanpanNetwork
 
 /// 存档落在哪儿。真机上是 `UserDefaults.standard`，单测里换成内存里的一份。
 protocol PrefsStorage: AnyObject, Sendable {
