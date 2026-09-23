@@ -63,6 +63,9 @@ struct StorageLayeringTests {
     // 一个键一个文件，调用方是 `PersonalFileStorage.setPrefsData(nil, forKey:)`。
     // 它删不到整个账号目录，也没有任何 UI 入口通向它。
     "PersonalFileStorage.swift": "一个键置空时删掉那个键自己的文件，不是清理入口",
+    // 861cf81：信过了留存期从收件箱滤掉之后，它那张按需拉下来的截图没人认领。还在收件箱里的信
+    // 的图一张不动；删掉的只是已经没人会再打开的本地截图缓存。
+    "ShareInbox.swift": "已经不在收件箱里的信的截图缓存，只删 share-shots/ 下的 id.jpg",
   ]
 
   @Test("会删文件的地方，删的必须都是能再取回来的东西")
