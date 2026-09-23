@@ -194,11 +194,17 @@ public func fmtPrice(_ x: Double, decimals: Int) -> String {
 /// 「冷启动第一帧目录还没回来」「自选里那个代号不在这份目录里」这两种空档用的。
 /// 单独放在这儿是为了全 app 只有一把：原来自选页写死 2 位、板块页另有一套
 /// 2/4/5/7，于是同一个价在两页上写法不同（审查 B-07）。
+///
+/// 梯子按 2026-09-23 全目录普查（P4.8）重排：拿币安 776 个在报价合约的现价和真实步长对照，
+/// 旧梯子（≥0.01 给 5 位、再往下 7 位）在 39 个合约上少一位（`COTI` 0.017 步长 6 位、
+/// `1000SATS` 0.0000123 步长 8 位）；拆成 0.1 / 0.01 / 0.001 三档之后只剩 2 个（`USDC`、`BR`）。
+/// 空档里宁可末尾多一个 0，也不能把一位有效数字吃掉。
 public func priceDecimalsFallback(_ price: Double) -> Int {
   let magnitude = abs(price)
   return if !magnitude.isFinite { 2 }
     else if magnitude >= 100 { 2 } else if magnitude >= 1 { 4 }
-    else if magnitude >= 0.01 { 5 } else { 7 }
+    else if magnitude >= 0.1 { 5 } else if magnitude >= 0.01 { 6 }
+    else if magnitude >= 0.001 { 7 } else { 8 }
 }
 
 /// 成交量 / 持仓量 / 市值：K / M / B / T，两位小数；不满一千给原数。

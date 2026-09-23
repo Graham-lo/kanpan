@@ -1,0 +1,121 @@
+{
+ "inputs_sha256": {
+  "apex.json": "98574b9aefd8ed7d16508996ce340cc917d2d552bf88fc6fe058f47c40e2b730",
+  "products.json": "fc8a1d526cd9a13aa8db3df85ffad835d6ee9a41faccd0090992261053754aaa",
+  "cg1.json": "8d0797e0e02e2e71aa615440e0f3cd576b8da6a9542a60b3a6a55b8b2245a218",
+  "cg2.json": "bcf5ee0cf76cf3dc00254b65ad7c1407bd8110c2649124a7e49807ec5b5c2b73",
+  "cg3.json": "ecd562d6d8693bdcc8f45c7b21d6a21057b950d87b7c47b6621ac56d9c8d0c58",
+  "cg4.json": "4ffb2f400c1e05ff4e3ed8bf337563cbade1767a6466815377925f0ca674d65d",
+  "prices.json": "348e97fd8962f995c259d63f736b420b84323046e6118ef5c176a5c94753ae9f",
+  "exchangeInfo2.json": "91b7287e05c15d1934a86d66f9d0110eca3b198202d2103d9b682d17bcb4797e",
+  "coinbase-products.json": "3a16d0f08a1c34326d8828f8f856764b916ef15e593d22d937190ea54cd2d520"
+ },
+ "fetched_at": [
+  "2026-09-23T12:52:34Z",
+  "2026-09-23T12:52:45Z"
+ ],
+ "coin_perpetuals_trading": 569,
+ "routes": {
+  "binance-原名": 393,
+  "coingecko-原名": 100,
+  "binance-去打包前缀": 9,
+  "查不到": 65,
+  "coingecko-去打包前缀": 2
+ },
+ "coingecko_rows": 102,
+ "routes_after_fix": {
+  "binance-原名": 394,
+  "binance-去打包前缀": 9,
+  "coingecko-原名-单价核对通过": 99,
+  "coingecko-去打包前缀-单价对不上留空": 1,
+  "coingecko-去打包前缀-单价核对通过": 1,
+  "查不到": 65
+ },
+ "changed_by_fix": [
+  [
+   "AUSDT",
+   "coingecko-原名",
+   "binance-原名"
+  ],
+  [
+   "1000000BOBUSDT",
+   "coingecko-去打包前缀",
+   "coingecko-去打包前缀-单价对不上留空"
+  ]
+ ],
+ "coingecko_identity": {
+  "对": 100,
+  "错": 2,
+  "无价可比": 0
+ },
+ "coingecko_wrong": [
+  {
+   "symbol": "AUSDT",
+   "route": "coingecko-原名",
+   "route_after_fix": "binance-原名",
+   "ticker": "AUSDT",
+   "multiplier": 1.0,
+   "binance_price": 0.09696,
+   "cg_id": "alloy-tether",
+   "cg_price": 0.999825,
+   "price_ratio": 0.09697697096991974,
+   "identity": "错",
+   "shown_cap_usd": 4859558.455190401,
+   "right_cg_id": "",
+   "right_cap_usd": null,
+   "cap_error_x": null,
+   "same_ticker_ids": "alloy-tether"
+  },
+  {
+   "symbol": "1000000BOBUSDT",
+   "route": "coingecko-去打包前缀",
+   "route_after_fix": "coingecko-去打包前缀-单价对不上留空",
+   "ticker": "BOB",
+   "multiplier": 1000000.0,
+   "binance_price": 0.01988,
+   "cg_id": "bob-build-on-bitcoin",
+   "cg_price": 0.00571732,
+   "price_ratio": 3.4771536314217152e-06,
+   "identity": "错",
+   "shown_cap_usd": 65.92829713204,
+   "right_cg_id": "",
+   "right_cap_usd": null,
+   "cap_error_x": null,
+   "same_ticker_ids": "bob-build-on-bitcoin"
+  }
+ ],
+ "binance_ambiguous_tickers": [],
+ "coingecko_ambiguous_tickers_count": 22,
+ "coinbase_spot_usd_online": 403,
+ "coinbase_routes": {
+  "binance-原名": 215,
+  "coingecko-原名": 73,
+  "查不到": 115
+ },
+ "coinbase_coingecko_unverified": [
+  {
+   "pair": "TON-USD",
+   "route": "coingecko-原名",
+   "price": 1.4404,
+   "cg_id": "tokamak-network",
+   "cg_price": 0.371415,
+   "verified": false
+  },
+  {
+   "pair": "UP-USD",
+   "route": "coingecko-原名",
+   "price": 0.07087,
+   "cg_id": "unitas",
+   "cg_price": 0.307606,
+   "verified": false
+  },
+  {
+   "pair": "INDEX-USD",
+   "route": "coingecko-原名",
+   "price": 0.282,
+   "cg_id": "the-index",
+   "cg_price": 0.03436607,
+   "verified": false
+  }
+ ]
+}

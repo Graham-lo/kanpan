@@ -288,6 +288,9 @@ struct SymbolStatusTests {
     #expect(priceDecimalsFallback(2.18) == 4)
     #expect(priceDecimalsFallback(0.162) == 5)
     #expect(priceDecimalsFallback(0.0074) == 7)
+    // P4.8 普查：0.01–0.1 与 0.001 以下两段按真实步长各多给一位，不再吃掉有效数字。
+    #expect(priceDecimalsFallback(0.016991) == 6)   // COTIUSDT 步长 0.000001
+    #expect(priceDecimalsFallback(0.00001234) == 8) // 1000SATSUSDT 步长 0.00000001
   }
 
   // ------------------------------------------------------------ B-T22
