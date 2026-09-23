@@ -94,7 +94,6 @@ struct Prefs: Sendable, Equatable {
   /// 哪几个副图被上下翻转（双击副图那一侧）。同上，要 `allowSubInversion` 开着才生效。
   var subInverted: Set<IndicatorID> = []
   var adaptiveIndicators = false
-  var compactValues = false
   /// 主图在竖屏里占多少（0…1，越大主图越高）。**只有读端，没有写端。**
   ///
   /// 读端是活的：`ChartRenderer` 拿它算主图权重（`ChartContentLayout.mainWeight`）。
@@ -280,7 +279,6 @@ struct Prefs: Sendable, Equatable {
     o.allowMainInversion = allowMainInversion
     o.allowSubInversion = allowSubInversion
     o.adaptiveIndicators = adaptiveIndicators
-    o.compactValues = compactValues
     o.portraitHeight = portraitHeight
     // 副图高度（`subHeights`）**不**走这里：它改的是分区怎么切，归 `Layout`，
     // 由主界面另行接线。放进来会变成两条路各说各话。

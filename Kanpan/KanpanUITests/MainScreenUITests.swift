@@ -360,8 +360,9 @@ final class MainScreenUITests: KanpanUICase {
   /// 退出后还能再进一次，再点一次「画线」把它收掉。
   ///
   /// 第三批最后一版把独立的「横屏」撤了——画线本来就要更大的地方，所以点「画线」
-  /// 就横屏。`enterDrawingInPortrait()` 走的是「横过去再用横屏工具栏那颗『竖屏』
-  /// 转回来」，也就是用户横屏画一半转回竖屏接着画的那条路：只退横屏、不退画线。
+  /// 就横屏。`enterDrawingInPortrait()` 走的是「横过去再用手把机器转回来」，
+  /// 也就是用户横屏画一半转回竖屏接着画的那条路：只退横屏、不退画线。
+  /// （画线进行中横屏侧栏整条收起，没有「竖屏」按钮可按，2026-09-23。）
   func testDrawingModeEntersAndExits() {
     XCTAssertTrue(app.enterDrawingInPortrait(), "点「画线」没进画线态")
     let trend = app.buttons[Ids.drawTrend]

@@ -175,11 +175,12 @@ import XCTest
     }
     shot("转屏往返-快速再入")
 
-    let exit = app.buttons["land.exit"]
-    XCTAssertTrue(exit.waitForExistence(timeout: 10), "横屏没有回竖屏的出口")
-    exit.tap()
-    XCTAssertTrue(wait(seconds: 10) { !self.isLandscape() }, "按「竖屏」没回来")
-    if app.buttons["draw.finish"].waitForExistence(timeout: 5) { app.buttons["draw.finish"].tap() }
+    // 画线进行中横屏侧栏整条收起：出口只有画线栏上的「完成」，点完自动转回竖屏。
+    XCTAssertFalse(app.buttons["land.exit"].exists, "画线进行中横屏侧栏还在，和「完成」重复")
+    let finish = app.buttons["draw.finish"]
+    XCTAssertTrue(finish.waitForExistence(timeout: 10), "横屏画线台没有「完成」")
+    finish.tap()
+    XCTAssertTrue(wait(seconds: 10) { !self.isLandscape() }, "按「完成」没转回竖屏")
     XCTAssertTrue(wait(seconds: 8) { !self.app.buttons["draw.finish"].exists })
 
     // ---------------------------------------------------------------- 回来之后

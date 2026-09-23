@@ -416,9 +416,9 @@ final class ExperienceStateRoundTripUITests: KanpanUICase {
                    "横过来画的线没了")
     shot("画线横屏")
 
-    let exit = app.buttons[Ids.landscapeExit]
-    expectExists(exit, Self.long, "横屏工具栏上没有「竖屏」")
-    exit.tap()
+    // 画线进行中横屏侧栏整条收起，用手把机器转回来接着画。
+    XCTAssertFalse(app.buttons[Ids.landscapeExit].exists, "画线进行中横屏侧栏还在，和「完成」重复")
+    app.rotateDrawingToPortraitByHand()
     expectExists(app.buttons[Ids.drawFinish], Self.long, "转回竖屏画线栏没回来")
     app.buttons[Ids.drawFinish].tap()
     expectExists(app.buttons[Ids.intervalChart], Self.long, "退出画线态没回到行情页")

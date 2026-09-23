@@ -358,10 +358,10 @@ extension ChartRenderer {
     let at = { (a: [Double]) -> Double in reading(a) }
     switch key {
     case .vol:
-      if outputVisible(.vol, v?.lines.count ?? 0) { put("成交量 " + indicatorNumber(state.series.volume[i]), t.text) }
+      if outputVisible(.vol, v?.lines.count ?? 0) { put("成交量 " + amountNumber(state.series.volume[i]), t.text) }
       if let v {
         for (k, n) in params(.vol).enumerated() where k < v.lines.count {
-          put("均量\(n) " + indicatorNumber(at(v.lines[k])), pal[k % pal.count])
+          put("均量\(n) " + amountNumber(at(v.lines[k])), pal[k % pal.count])
         }
       }
     case .macd:
@@ -408,10 +408,10 @@ extension ChartRenderer {
       put("累计成交量差", t.dim)
       // 读数按涨跌色：为正是这一段被主动买上去的，为负是被主动卖下去的。
       if let x = (v?.lines.first).map({ at($0) }), x.isFinite {
-        put(fmtVol(x), x >= 0 ? t.up : t.down)
+        put(amountNumber(x), x >= 0 ? t.up : t.down)
       }
     case .oi:
-      let x0 = (v?.lines.first).map { at($0) }.flatMap { $0.isFinite ? indicatorNumber($0) : nil } ?? "--"
+      let x0 = (v?.lines.first).map { at($0) }.flatMap { $0.isFinite ? amountNumber($0) : nil } ?? "--"
       put("持仓量 " + x0, t.oi)
 
     default: break

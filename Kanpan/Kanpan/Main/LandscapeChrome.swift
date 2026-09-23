@@ -129,16 +129,19 @@ struct IntervalRail: View {
 /// - 「竖屏」是出口。锁了方向的手机转不回去，没有它横屏就是一张单程票。
 ///
 /// 工具列、撤销 / 重做、完成都在画线自己那根 `DrawingDock` 上，不在这儿重复一份。
+///
+/// **画线进行中这条竖栏整条不出现**（2026-09-23）：那时「画线」等于退出画线、「竖屏」也是
+/// 退法之一，两格都和画线栏上的「完成」重复。开工入口和出口都只在不画线的时候需要。
 struct ToolRail: View {
   var theme: PanelTheme
-  var drawing: Bool
   var onDraw: () -> Void
   var onPortrait: () -> Void
 
   var body: some View {
     VStack(spacing: 0) {
       Spacer(minLength: 0)
-      item(VectorIcon.draw, "画线", on: drawing, action: onDraw)
+      item(VectorIcon.draw, "画线", on: false, action: onDraw)
+        .accessibilityIdentifier("land.draw")
       item(VectorIcon.landscape, "竖屏", on: false, action: onPortrait)
         .accessibilityIdentifier("land.exit")
       Spacer(minLength: 0)

@@ -156,7 +156,7 @@ final class AICoinBaseUITests: XCTestCase {
     XCTAssertTrue(app.tapDrawEntry(), "「图表」面板里没有「画线」")
     if UIDevice.current.userInterfaceIdiom == .pad {
       // iPad windows can keep their orientation. Full chart mode must still open.
-      XCTAssertTrue(wait { app.buttons["land.exit"].exists &&
+      XCTAssertTrue(wait { app.buttons["draw.finish"].exists &&
         (info()["height"] as? Double ?? 0) > portraitHeight + 80 })
     } else {
       XCTAssertTrue(wait { (info()["plotW"] as? Double ?? 0) > portraitWidth + 80 })
@@ -165,13 +165,13 @@ final class AICoinBaseUITests: XCTestCase {
     shot("05-横屏共用底座")
     if UIDevice.current.userInterfaceIdiom == .pad {
       XCUIDevice.shared.orientation = .landscapeLeft
-      XCTAssertTrue(wait { app.buttons["land.exit"].isHittable && canvas.frame.height > 100 &&
+      XCTAssertTrue(wait { app.buttons["draw.finish"].isHittable && canvas.frame.height > 100 &&
         app.windows.firstMatch.frame.width > app.windows.firstMatch.frame.height })
       shot("06-iPad横向窗口")
     }
-    app.buttons["land.exit"].tap()
-    // 「竖屏」只退横屏、不退画线——用户横屏画一半转回来还得接着画。
-    XCTAssertTrue(app.buttons["draw.finish"].waitForExistence(timeout: 10), "退回竖屏后画线栏没了")
+    // 画线进行中横屏侧栏整条收起（「画线 / 竖屏」和「完成」重复），出口是「完成」：
+    // 点「画线」横过来的，完成后自动转回竖屏。
+    XCTAssertFalse(app.buttons["land.exit"].exists, "画线进行中横屏侧栏还在")
     app.buttons["draw.finish"].tap()
     XCTAssertTrue(app.buttons["bottom.settings"].waitForExistence(timeout: 10))
   }

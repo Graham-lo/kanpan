@@ -132,9 +132,22 @@ public struct ChartRenderer {
     !(state.hiddenOutputs[id]?.contains(index) ?? false)
   }
 
+  /// 指标读数：价格类（均线、均价、布林、超级趋势）与振荡类（强弱、随机、动向、平滑异同）。
+  /// **一律原样按小数位印，绝不缩写**——0.001779 缩成「0.00」等于告诉用户这东西不要钱，
+  /// 67000 缩成「67.00K」则和价格轴、头部对不上。
   func indicatorNumber(_ value: Double, decimals: Int = 2) -> String {
     guard value.isFinite else { return "--" }
-    return state.options.compactValues ? fmtVol(value) : fmtNum(value, decimals)
+    return fmtNum(value, decimals)
+  }
+
+  /// 数额类读数（量、均量、持仓量、成交量差）：一律 K / M / B / T。
+  ///
+  /// 以前两类共用 `indicatorNumber`，由一个「简化指标数值」开关统一决定缩不缩写——
+  /// 默认关着，十字线框和成交量图例就印出「量 457977283.00」这种读不出来的数；
+  /// 打开又会把均线价格一起缩掉。数额和价格该怎么印是确定的，不该交给用户去选。
+  func amountNumber(_ value: Double) -> String {
+    guard value.isFinite else { return "--" }
+    return fmtVol(value)
   }
 
   // Adaptive mode reserves legend rows, never changes pane allocation.
@@ -457,6 +470,10 @@ public struct ChartRenderer {
     let a = mode.forward(r.lo, base: r.base), z = mode.forward(r.hi, base: r.base)
     ctx.setLineWidth(1 / s)
     let gm = state.effectiveGrid
+    // 手动拖过价格轴之后那颗「A」画在价格轴里；和它同一高度的刻度字让位，不然两样叠在一起
+    // 哪个都读不出来。网格线照画，只让字。
+    let fitBadge: (lo: Double, hi: Double)? = state.price.isManual && pane.isMain
+      ? { let b = L.autoFitButton; return (b.y - 6, b.y + b.h + 6) }() : nil
     for f in mainPriceTicks(range: r, paneHeight: pane.h) {
       let fraction = (f - a) / (z - a)
       let y = pane.y + (r.inverted ? fraction : 1 - fraction) * pane.h
@@ -465,6 +482,7 @@ public struct ChartRenderer {
         let x0 = gm == .tick ? L.plotW - 22 : 0
         ctx.hairLine(from: x0, to: L.plotW, y: y, scale: CGFloat(s), color: Paint.cg(t.grid))
       }
+      if let fitBadge, y > fitBadge.lo, y < fitBadge.hi { continue }
       let label: String
       switch mode {
       case .percent: label = state.percentAxis ? ChartState.comparePercentLabel(f) : (f >= 0 ? "+" : "") + toFixed(f, 1) + "%"
@@ -936,11 +954,11 @@ extension ChartRenderer {
     let lines = [fmtFull(ms: Double(b.time(at: index)), offsetMinutes: state.timezone.offsetMinutes),
       "开 " + fmtNum(b.open[index], state.decimals), "高 " + fmtNum(b.high[index], state.decimals),
       "低 " + fmtNum(b.low[index], state.decimals), "收 " + fmtNum(b.close[index], state.decimals),
-      "量 " + indicatorNumber(b.volume[index])]
+      "量 " + amountNumber(b.volume[index])]
     let wantedW = (lines.map { Double($0.width(ChartFont.axis)) }.max() ?? 100) + 16
     let box = CandleDataBox.rect(plotWidth: L.plotW, mainHeight: L.mainH,
       selectedX: selectedX, desiredWidth: wantedW, desiredHeight: Double(lines.count) * 14 + 12,
-      follow: state.options.dataDisplay == .follow)
+      top: mainLegendInset(plotW: L.plotW) + 4)
     let rect = CGRect(x: box.x, y: box.y, width: box.width, height: box.height)
     ctx.saveGState(); defer { ctx.restoreGState() }
     ctx.clip(to: rect)

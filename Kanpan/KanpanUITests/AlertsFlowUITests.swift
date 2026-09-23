@@ -95,17 +95,16 @@ import XCTest
       if inPortraitDrawing { return true }
       if app.enterDrawingInPortrait() { return true }
       shot("_进画线态第\(round + 1)轮没成")
-      let exit = app.buttons["land.exit"]
-      if exit.exists, exit.isHittable { exit.tap() }
+      if app.landscapeMarker.exists { app.rotateDrawingToPortraitByHand() }
       XCUIDevice.shared.orientation = .portrait
     }
     return app.buttons["draw.finish"].waitForExistence(timeout: 10) && inPortraitDrawing
   }
 
-  /// 在不在**竖屏**画线栏上。「完成」两个方向都有，横屏工具栏上还多一颗「竖屏」，
-  /// 拿这两个一起判。
+  /// 在不在**竖屏**画线栏上。「完成」两个方向都有，横屏顶上还多一颗品种胶囊，
+  /// 拿这两个一起判（画线进行中横屏侧栏整条收起，「竖屏」不再能当路标）。
   private var inPortraitDrawing: Bool {
-    app.buttons["draw.finish"].exists && !app.buttons["land.exit"].exists
+    app.buttons["draw.finish"].exists && !app.landscapeMarker.exists
   }
 
   /// 落一笔水平线（一下就成，`pointCount == 1`）。

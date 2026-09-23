@@ -131,9 +131,10 @@ import XCTest
     assertLayout(); attach("留下并加入提醒")
     // 画线台上不再有纸飞机（分享只留图表设置里那一个入口）：横竖屏各看一眼。
     tap("bottom.draw")
-    XCTAssertTrue(app.buttons["land.exit"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.landscapeMarker.waitForExistence(timeout: 15))
     XCTAssertFalse(app.buttons["draw.send"].exists, "横屏画线台上还挂着纸飞机")
-    tap("land.exit")
+    // 画线进行中横屏侧栏整条收起，用手把机器转回竖屏再看一眼。
+    app.rotateDrawingToPortraitByHand()
     XCTAssertTrue(app.buttons["draw.finish"].waitForExistence(timeout: 15))
     XCTAssertFalse(app.buttons["draw.send"].exists, "竖屏画线栏上还挂着纸飞机")
     tap("draw.finish")

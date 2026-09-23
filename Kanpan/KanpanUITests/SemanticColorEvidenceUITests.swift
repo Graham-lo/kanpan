@@ -626,8 +626,8 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
 
     // 点「画线」直接横过来（`kanpan-landscape-is-for-drawing`）。
     XCTAssertTrue(app.tapDrawEntry(), "标签栏上没有「画线」")
-    let exit = app.buttons[Ids.landscapeExit]
-    expectExists(exit, Self.long, "点「画线」没横过来")
+    // 画线进行中横屏侧栏整条收起，拿横屏顶上那颗品种胶囊当准星。
+    expectExists(app.landscapeMarker, Self.long, "点「画线」没横过来")
     let canvas = app.otherElements["chart.canvas"]
     XCTAssertTrue(waitUntil(timeout: Self.long) { canvas.exists && canvas.frame.width > canvas.frame.height },
                   "图还没横过来：\(canvas.frame)")

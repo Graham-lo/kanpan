@@ -27,7 +27,6 @@ public struct ChartOptions: Sendable, Equatable {
   public var allowMainInversion = false
   public var allowSubInversion = false
   public var adaptiveIndicators = false
-  public var compactValues = false
   /// Native relative control, not a conversion from mirror screenshot coordinates.
   public var portraitHeight = 0.5
   public init() {}

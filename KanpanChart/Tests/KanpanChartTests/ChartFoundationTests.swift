@@ -71,6 +71,20 @@ struct ChartFoundationTests {
     #expect(renderer.reading([10, 20, 30, .nan]) == 30)
   }
 
+  @Test("数额一律 K/M/B/T，价格与振荡读数原样不缩写")
+  func numberFormats() {
+    let renderer = ChartRenderer(state: state())
+    // 十字线框「量」、成交量 / 均量 / 持仓量图例都走这一条。
+    #expect(renderer.amountNumber(457_977_283) == "457.98M")
+    #expect(renderer.amountNumber(10_618_099_697) == "10.62B")
+    #expect(renderer.amountNumber(3_178_552_003) == "3.18B")
+    #expect(renderer.amountNumber(12.345) == "12.35")
+    #expect(renderer.amountNumber(.nan) == "--")
+    // 均线、均价这些是价格：小价格按品种小数位原样印，大价格也不缩成 K。
+    #expect(renderer.indicatorNumber(0.001779, decimals: 6) == "0.001779")
+    #expect(renderer.indicatorNumber(67_123.4, decimals: 1) == "67123.4")
+  }
+
   @Test("显示模式和选中价格模式切换清空单一选择源")
   func cleanup() {
     let v = view()

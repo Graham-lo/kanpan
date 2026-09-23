@@ -58,6 +58,7 @@ enum Ids {
   /// 「画线」：标签栏最左那一格，任何一页上点它都直接在当前这张图上开画。
   static let drawEntry = "bottom.draw"
   /// 横屏工具栏上的「竖屏」。以前只有 iPad 有，第三批 17 起手机也有。
+  /// 画线进行中整条侧栏收起（2026-09-23），只有不画线的横屏里才找得到它。
   static let landscapeExit = "land.exit"
   /// 横屏顶上那行小字里的品种名：拿它当「已经横过来了」的准星。
   static let landscapeSymbol = "land.symbol"
@@ -486,8 +487,9 @@ extension XCUIApplication {
   ///
   /// 点完先横过去（`kanpan-landscape-is-for-drawing`：横屏就是画线的工作台）。
   /// 用例里按坐标点的位置都是按竖屏量的，所以要竖屏画线态的用例走
-  /// `enterDrawingInPortrait()`：横过去再按「竖屏」转回来——这也正是用户
-  /// 「横屏画完转回竖屏接着看」走的那条路。
+  /// `enterDrawingInPortrait()`：横过去再用手把机器转回来——这也正是用户
+  /// 「横屏画一半转回竖屏接着画」走的那条路。画线进行中横屏侧栏整条收起
+  /// （「画线 / 竖屏」和画线栏的「完成」重复，2026-09-23），所以没有按钮可按。
   @discardableResult func tapDrawEntry() -> Bool {
     let entry = buttons[Ids.bottomDraw]
     guard entry.waitForExistence(timeout: 10) else { return false }
@@ -508,12 +510,12 @@ extension XCUIApplication {
 
   @discardableResult func enterDrawingInPortrait() -> Bool {
     _ = tapDrawEntry()
-    let exit = buttons[Ids.landscapeExit]
-    if exit.waitForExistence(timeout: 15) { exit.tap() }
-    // 到没到竖屏画线栏：认「完成」在场 + 横屏工具栏独有的「竖屏」不在场。
-    // 2026-09-23 起「全部隐藏」收进了「更多」弹层，横竖屏都不再常驻，不能再拿它当路标。
+    if landscapeMarker.waitForExistence(timeout: 15) { rotateDrawingToPortraitByHand() }
+    // 到没到竖屏画线栏：认「完成」在场 + 横屏顶上那颗品种胶囊不在场。
+    // 2026-09-23 起「全部隐藏」收进了「更多」弹层、画线进行中横屏侧栏（「竖屏」）整条收起，
+    // 两样都不能再拿来当路标。
     guard buttons["draw.finish"].waitForExistence(timeout: 15) else { return false }
-    return waitUntilGone(buttons[Ids.landscapeExit], timeout: 5)
+    return waitUntilGone(landscapeMarker, timeout: 5)
   }
 
   private func waitUntilGone(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
@@ -548,6 +550,29 @@ extension XCUIApplication {
     buttons["draw.objects.quick"].tap()
     return navigationBars["画线列表"].waitForExistence(timeout: 8)
       || staticTexts["画线列表"].waitForExistence(timeout: 2)
+  }
+
+  /// 画线工作台里用手把机器转回竖屏，画线态不退。
+  ///
+  /// 点「画线」横过去是 app 自己 `requestGeometryUpdate` 转的，模拟器的「设备方向」
+  /// 还停在竖屏；直接设 `.portrait` 是空操作。先报一次横、再报一次竖，系统才会按
+  /// 方向变化重新排版。方向锁在转屏 600ms 后才放开（`Orientation.scheduleRelease`），
+  /// 所以先等一拍。
+  func rotateDrawingToPortraitByHand() {
+    Thread.sleep(forTimeInterval: 0.8)
+    XCUIDevice.shared.orientation = .landscapeLeft
+    Thread.sleep(forTimeInterval: 0.3)
+    XCUIDevice.shared.orientation = .portrait
+    _ = buttons["draw.finish"].waitForExistence(timeout: 10)
+    let deadline = Date().addingTimeInterval(10)
+    while landscapeMarker.exists, Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
+  }
+
+  /// 横屏顶上那颗品种胶囊（`land.symbol`）：只有横屏里有，画线与否都在。
+  /// 拿它当「已经横过来了」的准星——画线进行中横屏侧栏（「竖屏」）整条收起，
+  /// 「全部隐藏」也收进了「更多」弹层，这两样都不再常驻。
+  var landscapeMarker: XCUIElement {
+    descendants(matching: .any).matching(identifier: Ids.landscapeSymbol).firstMatch
   }
 
   /// 打开选中画线的样式面板并挑一个颜色。

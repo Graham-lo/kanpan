@@ -151,7 +151,6 @@ struct ChartPanel: View {
       switchRow("副轴允许翻转", "双击副图坐标轴翻转", prefs.allowSubInversion,
                 id: "chart.allowSubInversion") { $0.allowSubInversion = $1 }
       switchRow("指标区域自适应", nil, prefs.adaptiveIndicators) { $0.adaptiveIndicators = $1 }
-      switchRow("简化指标数值", "使用万、亿等单位", prefs.compactValues) { $0.compactValues = $1 }
 
       PanelGroupTitle(text: "类型")
       PanelRow(name: "画法", meta: prefs.candleKind == .heikin ? "平均 K 线使用平滑价格" : nil,

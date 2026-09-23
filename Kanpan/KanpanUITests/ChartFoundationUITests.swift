@@ -509,11 +509,10 @@ final class ChartFoundationUITests: XCTestCase {
 
     // ① 画线：对着用户当前看的这张图直接开画，点完横过去（横屏就是画线的工作台）。
     app.buttons["bottom.draw"].tap()
-    let exitLandscape = app.buttons["land.exit"]
-    XCTAssertTrue(exitLandscape.waitForExistence(timeout: 25), "从自选页点「画线」没进画线态")
-    exitLandscape.tap()
+    // 画线进行中横屏侧栏整条收起，出口是画线栏上的「完成」，点完自动转回竖屏。
     let finish = app.buttons["draw.finish"]
-    XCTAssertTrue(finish.waitForExistence(timeout: 20), "转回竖屏后画线栏没了")
+    XCTAssertTrue(finish.waitForExistence(timeout: 25), "从自选页点「画线」没进画线态")
+    XCTAssertFalse(app.buttons["land.exit"].exists, "画线进行中横屏侧栏还在")
     finish.tap()
 
     // ② 图表：退出画线就停在行情页，标签栏还在。
@@ -1937,6 +1936,14 @@ extension ChartFoundationUITests {
       // 横屏工具栏常驻一颗「竖屏」。以前这儿断言它**不存在**，理由是「手机转回去就行了」——
       // 可锁了方向的手机转不回去，进了横屏就只能杀进程，横屏成了单程票（见 `LandscapeChrome`）。
       XCTAssertTrue(app.buttons["land.exit"].waitForExistence(timeout: 5), "横屏没有回竖屏的出口")
+      // 手动横过来再开画线：画线进行中侧栏整条收起（「画线 / 竖屏」和「完成」重复），
+      // 点「完成」之后留在横屏、侧栏回来——出口不能跟着一起丢。
+      app.buttons["land.draw"].tap()
+      XCTAssertTrue(app.buttons["draw.finish"].waitForExistence(timeout: 10), "侧栏的「画线」没进画线态")
+      XCTAssertTrue(wait(seconds: 5) { !self.app.buttons["land.exit"].exists }, "画线进行中侧栏还在")
+      app.buttons["draw.finish"].tap()
+      XCTAssertTrue(app.buttons["land.exit"].waitForExistence(timeout: 10), "画完之后横屏侧栏没回来")
+      XCTAssertTrue(canvas.frame.width > canvas.frame.height, "手动横屏的画线，完成后不该自己转回竖屏")
     }
     let landscapeShot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
     landscapeShot.name = "手机-自动横屏"; landscapeShot.lifetime = .keepAlways; add(landscapeShot)

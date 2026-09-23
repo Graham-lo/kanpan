@@ -110,7 +110,7 @@ import XCTest
 
     // 就点在那条线身上。
     spot.tap()
-    XCTAssertFalse(wait(seconds: 4) { self.app.buttons["land.exit"].exists },
+    XCTAssertFalse(wait(seconds: 4) { self.app.landscapeMarker.exists },
                    "点中一条旧线把屏幕转成了横屏画线工作台")
     XCTAssertFalse(app.buttons["draw.finish"].exists, "点中一条旧线把画线工作台打开了")
     XCTAssertEqual(count(), 1, "点一下把线弄丢了或者多画了一条：\(info())")

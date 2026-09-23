@@ -42,15 +42,25 @@ struct ChartFoundationTests {
   func cards() {
     for width in [180.0, 343, 900] {
       for height in [80.0, 190, 500] {
-        let left = CandleDataBox.rect(plotWidth: width, mainHeight: height, selectedX: 20, desiredWidth: 140, desiredHeight: 96, follow: true)
-        let right = CandleDataBox.rect(plotWidth: width, mainHeight: height, selectedX: width - 20, desiredWidth: 140, desiredHeight: 96, follow: true)
+        let left = CandleDataBox.rect(plotWidth: width, mainHeight: height, selectedX: 20, desiredWidth: 140, desiredHeight: 96)
+        let right = CandleDataBox.rect(plotWidth: width, mainHeight: height, selectedX: width - 20, desiredWidth: 140, desiredHeight: 96)
         #expect(left.x >= right.x)
+        // 框永远在十字线的另一侧：宽度放得下的时候，十字线那一侧的 K 线一根都不盖。
+        if width - 8 > 140 * 2 {
+          #expect(left.x > 20, "十字线在左半，框该贴右边")
+          #expect(right.x + right.width < width - 20, "十字线在右半，框该贴左边")
+        }
         for box in [left, right] {
           #expect(box.x >= 0 && box.y >= 0)
           #expect(box.x + box.width <= width && box.y + box.height <= height)
         }
       }
     }
+    // 纵向从图例下沿起，不压均线读数；主图矮到放不下时才往上让。
+    #expect(CandleDataBox.rect(plotWidth: 343, mainHeight: 400, selectedX: 20,
+                               desiredWidth: 140, desiredHeight: 96, top: 52).y == 52)
+    #expect(CandleDataBox.rect(plotWidth: 343, mainHeight: 110, selectedX: 20,
+                               desiredWidth: 140, desiredHeight: 96, top: 52).y == 10)
   }
 
   @Test("价格三个模式正常倒置映射和百分比首个相交列")

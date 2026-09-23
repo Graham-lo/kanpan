@@ -816,14 +816,19 @@ struct MainScreen: View {
           DrawingDock(controller: draw)
         }
       }
-      ToolRail(
-        theme: theme, drawing: draw.active,
-        onDraw: { endSharePreview(); dismissPanel(); if reviewChart.active { endReview() }; draw.toggle() },
-        onPortrait: {
-          dismissPanel()
-          landscapeForDrawing = false
-          leaveLandscape()
-        })
+      // 画线进行中侧栏整条收起：「画线」此时等于退出画线，和画线栏上的「完成」是同一个动作，
+      // 「竖屏」也只是另一种退法——右手边两格和左手边的「完成」重复。出口留在「完成」上：
+      // 点「画线」进来的，完成后自动转回竖屏；手动横过来再开画线的，完成后侧栏回来。
+      if !draw.active {
+        ToolRail(
+          theme: theme,
+          onDraw: { endSharePreview(); dismissPanel(); if reviewChart.active { endReview() }; draw.toggle() },
+          onPortrait: {
+            dismissPanel()
+            landscapeForDrawing = false
+            leaveLandscape()
+          })
+      }
     }
     .overlay(alignment: .topLeading) { drawSwitcherLayer }
     // 换品种那一层开着的时候，键盘不许推整块横屏。

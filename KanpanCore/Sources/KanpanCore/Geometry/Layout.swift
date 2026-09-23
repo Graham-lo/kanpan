@@ -98,13 +98,22 @@ public enum ChartContentLayout {
 }
 
 public enum CandleDataBox {
-  /// Container-relative placement; midpoint is an implementation choice, not an iPhone measurement.
+  /// 十字线读数框放在哪儿。
+  ///
+  /// **横向永远落在十字线的另一侧**：十字线在左半，框贴右边；在右半，框贴左边。
+  /// 以前只有「跟随K线」那一档会换边，出厂的「K线内」永远钉在左上——十字线一挪到
+  /// 左边，框正好盖住手指要看的那几根 K 线。换边阈值取中点是实现上的选择，不是量出来的。
+  ///
+  /// **纵向落在主图图例下沿以下**（`top` 传图例占去的高度），不压均线读数；主图矮到
+  /// 放不下时才往上让，让到顶也只贴 4pt。
   public static func rect(plotWidth: Double, mainHeight: Double, selectedX: Double,
-                          desiredWidth: Double, desiredHeight: Double, follow: Bool) -> (x: Double, y: Double, width: Double, height: Double) {
+                          desiredWidth: Double, desiredHeight: Double,
+                          top: Double = AICoinBehavior.mainTopInset + 4) -> (x: Double, y: Double, width: Double, height: Double) {
     let width = max(1, min(desiredWidth, plotWidth - 8))
     let height = max(1, min(desiredHeight, mainHeight - 8))
-    let x = follow && selectedX < plotWidth / 2 ? plotWidth - width - 4 : 4
-    return (max(0, x), min(44, max(4, mainHeight - height - 4)), width, height)
+    let x = selectedX < plotWidth / 2 ? plotWidth - width - 4 : 4
+    let y = max(4, min(top, mainHeight - height - 4))
+    return (max(0, x), y, width, height)
   }
 }
 

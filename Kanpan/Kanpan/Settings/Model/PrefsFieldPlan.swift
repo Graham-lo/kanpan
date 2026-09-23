@@ -91,7 +91,7 @@ enum PrefsFieldPlan {
     "dataDisplay": .synced, "crossPrice": .synced,
     "allowMainInversion": .synced, "allowSubInversion": .synced,
     "barSpacing": .synced, "mainInverted": .synced, "subInverted": .synced,
-    "adaptiveIndicators": .synced, "compactValues": .synced, "portraitHeight": .synced,
+    "adaptiveIndicators": .synced, "portraitHeight": .synced,
     "indicatorColors": .synced, "hiddenOutputs": .synced,
     "keepAwake": .synced, "timeZone": .synced, "changeBasis": .synced,
     "overlays": .synced, "subs": .synced, "params": .synced,
@@ -142,6 +142,10 @@ enum PrefsFieldPlan {
       + "的操作整条拒掉——服务端对含未知字段的操作是整条拒绝，删掉它等于把老版本的同步队列堵死。",
     "drawToolGroup": "「绘图」面板上次停在哪个分类。2026-09-22 工具砍到十二把、"
       + "分类标签整条去掉之后，客户端既不发也不收了（见 Drawing.Kind.palette）。"
+      + "服务端仍然认这个键，是为了口袋里那些还在发它的老版本客户端——"
+      + "服务端对含未知字段的操作是整条拒绝，删掉它等于把那台手机的同步队列堵死。",
+    "compactValues": "「简化指标数值」开关。2026-09-23 起数额（量、均量、持仓量、成交量差）一律 K / M / B / T、"
+      + "价格与振荡类读数一律原样不缩写，这件事不再交给用户选，开关连同 Prefs 字段一起收掉，客户端既不发也不收。"
       + "服务端仍然认这个键，是为了口袋里那些还在发它的老版本客户端——"
       + "服务端对含未知字段的操作是整条拒绝，删掉它等于把那台手机的同步队列堵死。",
     "routePolicy": "直连 / 网关那两档。2026-09-19 起是本机字段（PrefsFieldClass.deviceOnly）："

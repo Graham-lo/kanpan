@@ -77,7 +77,7 @@ extension Prefs: Codable {
     case viewAnchor, priceBias
     case dataDisplay, crossPrice, allowMainInversion, allowSubInversion
     case barSpacing, mainInverted, subInverted
-    case adaptiveIndicators, compactValues, portraitHeight, hiddenOutputs, rsiUpper, rsiLower
+    case adaptiveIndicators, portraitHeight, hiddenOutputs, rsiUpper, rsiLower
     case overlays, subs, params, subHeights, subHeightOverrides
     case apiHost, streamHost, smartMarketRoute, routePolicy
     // 他在各页上摆出来的样子。全是加法加进来的新键，老存档里没有就退默认值。
@@ -124,7 +124,6 @@ extension Prefs: Codable {
     try c.encode(mainInverted, forKey: .mainInverted)
     try c.encode(subInverted.map(\.rawValue).sorted(), forKey: .subInverted)
     try c.encode(adaptiveIndicators, forKey: .adaptiveIndicators)
-    try c.encode(compactValues, forKey: .compactValues)
     try c.encode(portraitHeight, forKey: .portraitHeight)
     try c.encode(Dictionary(uniqueKeysWithValues: hiddenOutputs.map { ($0.key.rawValue, $0.value.sorted()) }), forKey: .hiddenOutputs)
     try c.encode(Dictionary(uniqueKeysWithValues: indicatorColors.map { ($0.key.rawValue, $0.value) }), forKey: .indicatorColors)
@@ -241,7 +240,6 @@ extension Prefs: Codable {
     if let v = bool(.mainInverted) { mainInverted = v }
     if let raw = strs(.subInverted) { subInverted = Set(Prefs.ids(raw, placement: .sub)) }
     if let v = bool(.adaptiveIndicators) { adaptiveIndicators = v }
-    if let v = bool(.compactValues) { compactValues = v }
     if let v = try? c.decode(Double.self, forKey: .portraitHeight), v.isFinite { portraitHeight = min(1, max(0, v)) }
     if let v = try? c.decode(Double.self, forKey: .rsiUpper), v.isFinite { rsiUpper = min(100, max(1, v)) }
     if let v = try? c.decode(Double.self, forKey: .rsiLower), v.isFinite { rsiLower = min(rsiUpper - 1, max(0, v)) }
