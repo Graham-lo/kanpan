@@ -27,6 +27,9 @@ public struct ChartRenderer {
   /// 临时客线不属于存档与个人布局。
   public var guestDrawings: [Drawing] = []
   public var ownDimmed = false
+  /// 最新价胶囊正在闪（P2.8）：刚来的这一口比上一口高还是低。不属于 `state`——
+  /// 它是一段 150ms 的过场，不是行情，不该进 `sameFrame` 的比较，也不该被存下来。
+  public var priceFlash: PriceFlash?
   public var state: ChartState { didSet { recalc(previous: oldValue) } }
   public private(set) var engine = IndicatorEngine()
   /// 平均 K 线的可见段。`kind == .candle` 时恒为 `nil`——默认路径一个数都不多算。
@@ -819,9 +822,17 @@ public struct ChartRenderer {
     let label = axisLabel(p, range: r)
     let chip = axisChip(L, text: label)
     let h = 15.0
-    ctx.setFillColor(Paint.cg(col))
-    ctx.addRoundRect(CGRect(x: chip.x, y: y - h / 2, width: chip.w, height: h), radius: 3)
+    let box = CGRect(x: chip.x, y: y - h / 2, width: chip.w, height: h)
+    // 闪的那 150ms（P2.8）：底色换成这一口的方向色，再提亮一层，涨一口亮一下红/绿，
+    // 哪怕这根 K 线整体是反方向的。平时照旧按这根 K 线的涨跌上色。
+    ctx.setFillColor(Paint.cg(priceFlash.map { $0 == .up ? t.up : t.down } ?? col))
+    ctx.addRoundRect(box, radius: 3)
     ctx.fillPath()
+    if priceFlash != nil {
+      ctx.setFillColor(UIColor.white.withAlphaComponent(0.32).cgColor)
+      ctx.addRoundRect(box, radius: 3)
+      ctx.fillPath()
+    }
     label.drawCentered(at: CGPoint(x: chip.x + chip.w / 2, y: y), font: ChartFont.axis, color: t.chip)
     drawCountdown(ctx, L: L, belowY: y + h / 2, width: chip.w)
   }
@@ -931,3 +942,6 @@ extension ChartRenderer {
     }
   }
 }
+
+/// 最新价胶囊闪的方向（P2.8）。
+public enum PriceFlash: Sendable, Equatable { case up, down }

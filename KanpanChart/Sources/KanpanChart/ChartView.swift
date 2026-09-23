@@ -378,8 +378,35 @@ public final class ChartView: UIView {
     if renderer == nil { renderer = ChartRenderer(state: s) } else { renderer?.state = s }
     renderer?.guestDrawings = guestDrawings; renderer?.ownDimmed = ownDimmed
     setNeedsRedraw(Self.changed(from: old, to: s))
+    flashIfTicked(from: old, to: s)
     onStateChanged?(s)
     if old?.crosshair != s.crosshair { fireCrosshairChanged(s.crosshair) }
+  }
+
+  // ---------------------------------------------------------------- 最新价闪一下
+
+  private var flashEnd: Task<Void, Never>?
+  /// 闪多久（P2.8）。
+  static let priceFlashDuration: Duration = .milliseconds(150)
+
+  /// 同一只、同一周期的末根收盘价动了一口（改末根或者刚开新根），右轴那颗最新价胶囊
+  /// 按这一口的方向闪 150ms。换品种、换周期、整段历史换掉都不算「一口」，不闪；
+  /// 系统「减少动效」打开时一律不闪。只脏 live 层，蜡烛那层不跟着重画。
+  private func flashIfTicked(from old: ChartState?, to new: ChartState) {
+    guard let o = old, let before = o.series.close.last, let now = new.series.close.last, before != now,
+      o.series.symbol == new.series.symbol, o.series.interval == new.series.interval,
+      new.series.count == o.series.count ? new.series.samePrefix(as: o.series) : new.series.count == o.series.count + 1,
+      new.options.lastLine, !UIAccessibility.isReduceMotionEnabled
+    else { return }
+    renderer?.priceFlash = now > before ? .up : .down
+    setNeedsRedraw(.live)
+    flashEnd?.cancel()
+    flashEnd = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: Self.priceFlashDuration)
+      guard !Task.isCancelled, let self else { return }
+      self.renderer?.priceFlash = nil
+      self.setNeedsRedraw(.live)
+    }
   }
 
   /// 十字线回调的唯一出口：计数挂在这儿，别绕过去直接叫 `onCrosshairChanged`。

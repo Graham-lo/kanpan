@@ -180,6 +180,7 @@ struct PriceRow: View {
   @ScaledMetric(relativeTo: .body) private var changeSize: CGFloat = 13
   @ScaledMetric(relativeTo: .body) private var labelSize: CGFloat = 12
   @ScaledMetric(relativeTo: .body) private var valueSize: CGFloat = 13
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var theme: PanelTheme
   var ticker: Ticker?
   var lastPrice: Double?
@@ -222,6 +223,9 @@ struct PriceRow: View {
           .font(.system(size: priceSize, weight: .medium))
           .monospacedDigit()
           .foregroundStyle(lastPrice == nil || stale ? theme.ink3 : tint)
+          // 跳价时逐位滚过去（P2.8），只动变了的那几位；「减少动效」下直接换字。
+          .contentTransition(reduceMotion ? .identity : .numericText(value: lastPrice ?? 0))
+          .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: lastText)
           .accessibilityIdentifier("top.lastPrice")
         Text(HeaderStats.priceChangeText(change: ticker?.priceChange, percent: pct, decimals: decimals))
           .font(.system(size: changeSize, weight: .semibold))
