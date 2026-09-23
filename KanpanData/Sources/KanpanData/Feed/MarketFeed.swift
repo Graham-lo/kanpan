@@ -146,6 +146,13 @@ public actor MarketFeed {
   private var lastTradeMs: Int64 = 0
   private var lastKlineReceivedMs = -Double.infinity
   private var lastTickerReceivedMs = -Double.infinity
+  /// 这条推送源的 24h 统计帧不带成交额（网关线路上的 OKX 替身就是）。那时推送再新，
+  /// 成交额也只能靠 REST 那份表补，见 `reconcileOnce()`。
+  private var streamTickerLacksTurnover = false
+  /// 上一次专门为成交额去问 REST 的时刻（和 `lastTickerReceivedMs` 同一个时钟）。
+  private var lastTurnoverFetchMs = -Double.infinity
+  /// 推送帧不带成交额时，隔多久补一次成交额。成交额是 24h 滚动总数，一分钟一更足够。
+  private static let turnoverRefreshMs: Double = 60_000
   /// 成交静默多久之后才让挂单接手。
   private let quoteTakeoverMs: Int64 = 3_000
   private let reconcileStepMs: Double
@@ -217,6 +224,7 @@ public actor MarketFeed {
     lastTickEmitMs = -.infinity
     lastTradeMs = 0
     lastKlineReceivedMs = -.infinity; lastTickerReceivedMs = -.infinity
+    streamTickerLacksTurnover = false; lastTurnoverFetchMs = -.infinity
     gapFrom = 0
     takerBucket = TakerBucket(startedAt: Int64(clock().timeIntervalSince1970 * 1000)); lastTakerEmitMs = -Double.infinity
     emit(.takerTail(nil)); emit(.depth(nil))
@@ -558,6 +566,7 @@ public actor MarketFeed {
       case .ticker(let t):
         if InstrumentID.canonical(t.symbol) == symbol {
           lastTickerReceivedMs = received
+          if !t.quoteVolume.isFinite { streamTickerLacksTurnover = true }
           emit(.ticker(t))
         }
       case .markPrice(let s, let px, let tick):
@@ -747,6 +756,14 @@ public actor MarketFeed {
        let t = try? await provider.ticker24h(symbol: sym), current(request), sym == symbol, iv == interval,
        lastTickerReceivedMs == tickerStamp {
       emit(.ticker(t))
+    } else if includeTicker, streamTickerLacksTurnover, now - lastTurnoverFetchMs >= Self.turnoverRefreshMs {
+      // 推送是活的，但它不带成交额：单独问一次 REST 要成交额。整帧照发，
+      // 价比推送旧的那部分由接收方按交易所时钟挡掉，只留下成交额。
+      lastTurnoverFetchMs = now
+      if let t = try? await provider.ticker24h(symbol: sym), t.quoteVolume.isFinite,
+         current(request), sym == symbol {
+        emit(.ticker(t))
+      }
     }
 
     // K 线两拍取一次，而且只有原生周期走这条——聚出来的周期得整段重聚，交给 fill。
@@ -947,7 +964,13 @@ public actor MarketFeed {
     do {
       let tickerStamp = lastTickerReceivedMs
       let t = try await provider.ticker24h(symbol: sym)
-      if current(request), sym == symbol, lastTickerReceivedMs == tickerStamp { emit(.ticker(t)) }
+      // 推送在这期间到过，本来这一帧就作废了；但推送帧不带成交额时，这一帧是成交额
+      // 唯一的来源，照发（旧的价由接收方按交易所时钟挡掉）。
+      if current(request), sym == symbol,
+         lastTickerReceivedMs == tickerStamp || (streamTickerLacksTurnover && t.quoteVolume.isFinite) {
+        if t.quoteVolume.isFinite { lastTurnoverFetchMs = await nowMs() }
+        emit(.ticker(t))
+      }
     } catch is CancellationError {
       return
     } catch {

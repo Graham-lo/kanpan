@@ -127,7 +127,7 @@ func cmdSnapshot(_ symbol: String, _ iv: Interval) async throws {
 
 func cmdOI(_ symbol: String, _ iv: Interval, days: Int) async throws {
   let store = OIStore(paths: paths)
-  guard provider.capabilities.hasDerivativeMetrics else { say("\(venue.displayName) 没有持仓量"); return }
+  guard provider.capabilities.hasOpenInterestHistory else { say("\(venue.displayName) 没有持仓量"); return }
   let src = OISource(provider: provider, gateways: gateways, store: store, log: log)
   let now = Int64(Date().timeIntervalSince1970 * 1000)
   let from = now - Int64(days) * 86_400_000

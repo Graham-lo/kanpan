@@ -39,7 +39,8 @@ public actor OISource {
   /// 看盘自己的网关（主在前），历史统计先问它（它自己存盘、自己聚合）。
   private let gateways: [String]
   private let transport: HTTPTransport
-  private let store: OIStore
+  /// 这份客户端读写的持仓量缓存。宿主按上游分区建（替身的不和真身的混），自己也要读它。
+  public nonisolated let store: OIStore
   private let log: FeedLog
 
   public init(provider: any MarketProvider, gateways: [String],
@@ -75,7 +76,9 @@ public actor OISource {
                     now: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
                     onDay: (@Sendable (Int64, [OIPoint]) -> Void)? = nil,
                     onPartial: (@Sendable ([OIPoint]) -> Void)? = nil) async -> OIFetch {
-    let cutoff = now - Self.restWindowMs
+    // 没有归档的上游（网关线路上的 OKX 替身）整段都走 REST：它那条 REST 能翻多深就多深，
+    // 没有「30 天以前去问归档」这回事——那份归档是币安的，拿来接在替身的曲线上就混了源。
+    let cutoff = provider.capabilities.hasOpenInterestArchive ? now - Self.restWindowMs : Int64.min
     // 两段谁也不等谁：① 近 30 天问币安 REST，② 更早的问网关归档。串着做等于把两次
     // 往返加起来，而它们各查各的、互不依赖——历史那段本来就是慢的那一段。
     let wantsRecent = to > cutoff, wantsHistory = from < cutoff
