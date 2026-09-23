@@ -346,6 +346,7 @@ worker 日志 `Alert evaluator watching 1 stream(s)`（措辞从 `symbol(s)` 变
 - 阶段 1（渲染、百分比轴、图例、夹具）与阶段 2（`CompareFeed` 数据、`CompareModel` 模块、「图表」面板「对比」一节、`Prefs.compareSymbols` 同步字段 + 服务端白名单/值规则）随同一次推送进 main；服务端已部署并只读验证。报告：[阶段1](../docs/acceptance/对比K线-2026-09-22/阶段1.md)、[阶段2](../docs/acceptance/对比K线-2026-09-22/阶段2.md)。
 - 验收发现并修掉：图表读屏念完整品种 key（`binance/usd_m/BTCUSDT`），改为念 `InstrumentID(…).symbol`；全仓其它显示文案已核对无同类问题。
 - 约束：集合最多 3 只、完整品种 key、主品种与重复不进集合；对比期间画线置灰、价格叠加隐藏、复盘不含对比；扫图扫到集合里的品种时临时忽略，集合不变。
+- 2026-09-23 **四个阶段全部完成**：阶段 3 交互收口在 iPhone 17 Pro Max 模拟器上逐条验收（三档周期、十字线与右轴同口径、平移重定基点、横屏 / 复盘暂退、扫图保留、跨设备同步），`CompareUITests` 4 条全过；阶段 4 使用手册补「对比」一节。旧分支 `compare-kline` / `compare-kline-s2` 与工作树 `kanpan-compare` 已删。报告：[阶段3](../docs/acceptance/对比K线-2026-09-22/阶段3.md)、[阶段4](../docs/acceptance/对比K线-2026-09-22/阶段4.md)、[总结](../docs/acceptance/对比K线-2026-09-22/总结.md)。
 
 ## 10. 2026-09-22 待办交接 · P1
 
