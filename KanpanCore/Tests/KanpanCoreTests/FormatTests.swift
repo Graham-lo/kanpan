@@ -206,6 +206,16 @@ struct FormatTests {
     #expect(Double(fmtPrice(0.0000004, decimals: unknown.displayDecimals(for: 0.0000004)))! > 0)
   }
 
+  /// 提醒、实时活动、小组件、复盘只拿得到代号，都问 `knownPriceDecimals`：
+  /// 目录给过精度就用它，占位行（步长与精度都是 0）交回 nil 让调用方按价格猜。
+  @Test("目录给过精度才有小数位，占位行是 nil")
+  func knownPriceDecimalsOnlyFromCatalog() {
+    #expect(SymbolInfo(symbol: "BTCUSDT", base: "BTC", pricePrecision: 2, tickSize: 0.1).knownPriceDecimals == 1)
+    #expect(SymbolInfo(symbol: "XUSDT", base: "X", pricePrecision: 3, tickSize: 0).knownPriceDecimals == 3)
+    #expect(SymbolInfo(symbol: "WUSDT", base: "W", pricePrecision: 0, tickSize: 1).knownPriceDecimals == 0)
+    #expect(SymbolInfo.placeholder(symbol: "GONEUSDT").knownPriceDecimals == nil)
+  }
+
   /// B-T16：价格小数位由品种说，极小的正价绝不能显示成 0。
   @Test("价格小数位来自品种")
   func priceDecimalsComeFromTheSymbol() {

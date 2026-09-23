@@ -140,7 +140,14 @@ public struct SymbolInfo: Sendable, Equatable, Codable, Identifiable {
   /// 那就按这口价自己猜——写死 2 位会把 0.0000004 摆成 `0.00`，那是在说
   /// 「这东西不值钱」（审查 B-07）。
   public func displayDecimals(for price: Double) -> Int {
-    tickSize > 0 || pricePrecision > 0 ? priceDecimals : priceDecimalsFallback(price)
+    knownPriceDecimals ?? priceDecimalsFallback(price)
+  }
+
+  /// 品种表**给过**精度时的小数位；步长与精度都为 0（`placeholder`，目录不知道）时是 `nil`，
+  /// 交给调用方按那口价自己猜。提醒、实时活动、小组件、复盘这些只拿得到代号的地方
+  /// 一律问它，不再各抄一遍 `tickSize > 0 || pricePrecision > 0` 的判断。
+  public var knownPriceDecimals: Int? {
+    tickSize > 0 || pricePrecision > 0 ? priceDecimals : nil
   }
 
   /// 只知道代号时的占位行。

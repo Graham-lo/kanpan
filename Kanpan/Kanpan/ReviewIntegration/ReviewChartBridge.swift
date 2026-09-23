@@ -215,7 +215,7 @@ import ReviewUI
         base.series = BarSeries(symbol: range.key, interval: interval, bars: ordered)
         // 先用记录所属品种的目录精度。目录缺失才从历史报价推，不能继承另一张图的精度。
         let decimals = feature.priceDecimals(range.key)
-          ?? (base.symbol.symbol == range.key ? base.symbol.priceDecimals : nil)
+          ?? (base.symbol.symbol == range.key ? base.symbol.knownPriceDecimals : nil)
           ?? ReviewPricePrecision.decimals(of: ordered.flatMap { [$0.open, $0.high, $0.low, $0.close] })
           ?? priceDecimalsFallback(ordered.last!.close)
         base.symbol = SymbolInfo(symbol: range.key, base: range.shortSymbol, pricePrecision: decimals,

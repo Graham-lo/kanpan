@@ -1267,8 +1267,7 @@ struct MainScreen: View {
     review.timezone = prefs.timeZone
     let picker = self.picker
     review.priceDecimals = { symbol in
-      guard let info = picker.info(for: symbol), info.tickSize > 0 || info.pricePrecision > 0 else { return nil }
-      return info.priceDecimals
+      picker.info(for: symbol)?.knownPriceDecimals
     }
     // 作废记录之类还能反悔的事，走那唯一一条提示（P2.7）。
     review.onUndoable = { text, undo in ToastCenter.shared.say(text, undo: undo) }
@@ -1594,7 +1593,7 @@ struct MainScreen: View {
     let symbol = alert.symbol
     let ticker = quotes.raw[symbol] ?? (market.symbol == symbol ? market.ticker : nil)
     let price = market.symbol == symbol ? (market.tradeQuote?.price ?? market.ticker?.last) : ticker?.last
-    let decimals = picker.info(for: symbol).flatMap { $0.tickSize > 0 || $0.pricePrecision > 0 ? $0.priceDecimals : nil }
+    let decimals = picker.info(for: symbol)?.knownPriceDecimals
     let started = activities.toggle(alert, price: price, change: ticker.map { $0.changePercent / 100 },
                                     decimals: decimals, redUp: prefs.redUp)
     if !started && activities.watching == nil && !activities.available { say("系统设置里关掉了实时活动") }
@@ -1617,8 +1616,7 @@ struct MainScreen: View {
     // 只是后台响的时候弹不出来。
     lineAlert.attach(alerts)
     lineAlert.decimals = { [picker] symbol in
-      guard let info = picker.info(for: symbol), info.tickSize > 0 || info.pricePrecision > 0 else { return nil }
-      return info.priceDecimals
+      picker.info(for: symbol)?.knownPriceDecimals
     }
     lineAlert.onArmed = {
       Task {
@@ -1649,8 +1647,7 @@ struct MainScreen: View {
     // app 被杀过、锁屏上那块还挂着：接回来继续跟价。
     activities.adopt(alerts: alerts.all)
     alertWatcher.priceDecimals = { [picker] symbol in
-      guard let info = picker.info(for: symbol), info.tickSize > 0 || info.pricePrecision > 0 else { return nil }
-      return info.priceDecimals
+      picker.info(for: symbol)?.knownPriceDecimals
     }
     alertWatcher.sound = { [weak store] in store?.prefs.alertSound ?? .default }
     alertWatcher.attach(alerts)
@@ -1697,7 +1694,7 @@ struct MainScreen: View {
         return WidgetFeed.snapshot(
           symbols: picker.prefs, quotes: quotes.raw.mapValues { quotes.presented($0) },
           decimals: { symbol in
-            picker.info(for: symbol).flatMap { $0.tickSize > 0 || $0.pricePrecision > 0 ? $0.priceDecimals : nil }
+            picker.info(for: symbol)?.knownPriceDecimals
           },
           closes: closes, skin: prefs.skin, appearance: prefs.theme, redUp: prefs.redUp,
           refresh: RouteResolver(policy: prefs.routePolicy).defaultProvider.widgetRefresh,
@@ -1736,9 +1733,7 @@ struct MainScreen: View {
     } else {
       price = quotes.raw[symbol]?.last
     }
-    let decimals = picker.info(for: symbol).flatMap { info in
-      info.tickSize > 0 || info.pricePrecision > 0 ? info.priceDecimals : nil
-    }
+    let decimals = picker.info(for: symbol)?.knownPriceDecimals
     return PriceAlertQuote(symbol: symbol, price: price.flatMap { $0 > 0 ? $0 : nil }, decimals: decimals)
   }
 
