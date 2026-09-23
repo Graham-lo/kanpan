@@ -18,7 +18,7 @@ struct FavoritesView: View {
   /// 正在进行的那次批量编辑。它住在宿主手里，不是这一页自己的 `@State`——
   /// 理由见 `FavoritesEditSession`。
   var session: FavoritesEditSession
-  /// 搜索页的历史词仓。自选页自己开搜索页（见 `searching`），所以得跟着传进来。
+  /// 搜索页的历史词仓。自选页自己开搜索页（见 `search`），所以得跟着传进来。
   var history: SearchHistory
   /// 这一页上「他摆出来的样子」存在哪：排序口径、方向、涨跌额/幅、迷你走势、展开的行。
   /// 见下面那一段注释——它们和皮肤、副图高度是同一等级的偏好，跟着人走。
@@ -47,13 +47,10 @@ struct FavoritesView: View {
   var alerts: [KanpanCore.Alert] = []
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.panelTheme) private var theme
-  /// 「查看全部 N 个品种」落到品种整页时才用得上；平时加品种一律走搜索页。
-  @State private var adding = false
-  /// 搜索页盖层。加自选统一在这儿做（用户 2026-09-18 定的），不用先跳回行情页。
-  @State private var searching = false
-  /// 品种整页是从搜索页「查看全部」进来的吗。是的话它那颗返回退回搜索页，
-  /// 而不是一路退回自选页——人是从搜索页走过来的，返回就该原路走回去。
-  @State private var addingFromSearch = false
+  /// 搜索页盖层，以及它「查看全部 N 个品种」通往的品种整页（见 `SymbolSearchFlow`，
+  /// 和行情页顶栏放大镜用的是同一个）。加自选统一在搜索页做（用户 2026-09-18 定的），
+  /// 不用先跳回行情页；整页那颗返回原路退回搜索页。
+  @State private var search = SymbolSearchFlow()
   @State private var more = false
   @State private var sorting = false
   @State private var afterMore: (() -> Void)?
@@ -293,27 +290,26 @@ struct FavoritesView: View {
         else if let id = model.createGroup(name) { select(id) }
       }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
-    .fullScreenCover(isPresented: $searching) {
+    .fullScreenCover(isPresented: $search.searchShown, onDismiss: { search.searchDismissed() }) {
       SymbolSearchView(model: model, history: history, redUp: redUp,
-                       onClose: { searching = false },
+                       onClose: { search.searchShown = false },
                        // 搜到的比一屏多时那行「查看全部」：交给品种整页，查询词跟着过去。
-                       onAll: { searching = false; addingFromSearch = true; adding = true },
-                       onPicked: { searching = false },
+                       onAll: { search.showAllFromSearch() },
+                       onPicked: { search.reset() },
                        // 星点亮之后跟着品种走：它落进哪一组就切到哪一组，
                        // 收起搜索页第一眼就能看见刚加的那一行。
                        onStarred: { if let group = model.prefs.groupForSymbol[$0] { select(group) } },
                        onVisible: onVisible,
                        onRowVisibility: onRowVisibility)
     }
-    .sheet(isPresented: $adding) {
-      // 「查看全部」走进来的那一趟，返回要退回搜索页（词留着）；别的路进来的照旧关掉。
+    .sheet(isPresented: $search.allShown, onDismiss: { search.allDismissed() }) {
+      // 「查看全部」走进来的，返回要等整页退完再退回搜索页（词留着）。
       SymbolPickerView(model: model, redUp: redUp, onClose: {
-        adding = false
-        if addingFromSearch { addingFromSearch = false; searching = true }
+        search.closeAll()
       }, onSelect: { info in
         model.addFavorite(info.symbol, info: info)
         if let group = model.prefs.groupForSymbol[info.symbol] { select(group) }
-        adding = false; addingFromSearch = false
+        search.reset()
       }, onVisible: onVisible, onRowVisibility: onRowVisibility)
     }
     .sheet(item: $moving) { request in
@@ -385,7 +381,7 @@ struct FavoritesView: View {
   /// 是用户 2026-09-18 照推特定的：框子把两头的圆按钮分开，中线不空，也一眼看得出
   /// 这里能搜。里面不放真的输入框——真输入框会在这一页起键盘，搜索页那边还要再起一次。
   private var searchField: some View {
-    Button { searching = true } label: {
+    Button { search.openSearch() } label: {
       HStack(spacing: 7) {
         VectorIcon.search(16).foregroundStyle(theme.ink3)
         Text("搜索品种").font(.scaled(15)).foregroundStyle(theme.ink3)
@@ -1396,7 +1392,7 @@ struct FavoritesView: View {
         .overlay(RoundedRectangle(cornerRadius: 13.6, style: .continuous)
           .strokeBorder(skin.accent.opacity(0.35), lineWidth: 1))
       Text("还没有自选").font(skin.serif(15.5)).foregroundStyle(theme.ink).padding(.top, 2)
-      Button { searching = true } label: {
+      Button { search.openSearch() } label: {
         Text("添加品种").font(.scaled(13, .semibold)).foregroundStyle(theme.badgeInk)
           .frame(height: 36).padding(.horizontal, 20)
           .background(skin.accentGradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))

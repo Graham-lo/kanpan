@@ -95,16 +95,10 @@ struct MainScreen: View {
   @State private var reviewChart = ReviewChartBridge()
 
   @State private var panel: Panel?
-  @State private var showSymbols = false
-  /// 顶栏放大镜开的搜索页。换品种只有这一条路了：左上角的品种名以前开一个
+  /// 顶栏放大镜开的搜索页，以及它「查看全部」通往的品种整页（见 `SymbolSearchFlow`，
+  /// 自选页用的是同一个）。换品种只有这一条路了：左上角的品种名以前开一个
   /// 半屏的「最近看过」弹层，搜索页做出来之后它就是重复入口，已经撤掉。
-  @State private var showSearch = false
-  /// 搜索页里点了「查看全部 N 个品种」：这一层关掉之后接着开品种整页，查询词跟着过去。
-  @State private var searchAllPending = false
-  /// 品种整页是从搜索页「查看全部」进来的吗。是的话它那颗返回要退回搜索页，
-  /// 而不是一路退回主界面——人是从搜索页走过来的，返回就该原路走回去，
-  /// 查询词也一并留着。挑中品种就作废（人已经走到图上了）。
-  @State private var symbolsFromSearch = false
+  @State private var symbolSearch = SymbolSearchFlow()
   /// 把人送进这张图的是哪一格。nil = 没有来路（底栏直接点的「图表」），顶栏不画返回。
   ///
   /// 底栏是常驻标签栏，每一格都是家；但板块下钻和自选行是「走进来」的，
@@ -296,12 +290,10 @@ struct MainScreen: View {
 
   private var presentation: some View {
     basePresentation
-    .fullScreenCover(isPresented: $showSearch, onDismiss: {
-      if searchAllPending { searchAllPending = false; symbolsFromSearch = true; showSymbols = true }
-    }) {
+    .fullScreenCover(isPresented: $symbolSearch.searchShown, onDismiss: { symbolSearch.searchDismissed() }) {
       SymbolSearchView(model: picker, history: searchHistory, redUp: prefs.redUp,
-                       onClose: { showSearch = false },
-                       onAll: { searchAllPending = true; showSearch = false },
+                       onClose: { symbolSearch.searchShown = false },
+                       onAll: { symbolSearch.showAllFromSearch() },
                        onVisible: { quotes.watch($0) },
                        onRowVisibility: { quotes.watchRow($0, visible: $1) })
         .preferredColorScheme(effectiveTheme.forced)
@@ -321,7 +313,7 @@ struct MainScreen: View {
         .environment(\.panelTheme, theme)
         .preferredColorScheme(effectiveTheme.forced)
     }
-    .fullScreenCover(isPresented: $showSymbols) {
+    .fullScreenCover(isPresented: $symbolSearch.allShown, onDismiss: { symbolSearch.allDismissed() }) {
       // 关掉品种页顺手把查询词清了：搜索页和它共用一个 `SymbolPickerModel`，
       // 词留着的话，下次点放大镜进来看到的是上一轮的结果，而不是「历史搜索 / 最近看过」。
       // 例外是从搜索页「查看全部」走进来的那一趟：那颗返回要原路退回搜索页，
@@ -337,13 +329,7 @@ struct MainScreen: View {
   /// 品种整页那颗返回。从搜索页「查看全部」走进来的，原路退回搜索页（词留着）；
   /// 别的路进来的就是关掉，顺手把词清了。
   private func closeSymbolPicker() {
-    showSymbols = false
-    if symbolsFromSearch {
-      symbolsFromSearch = false
-      showSearch = true
-    } else {
-      picker.query = ""
-    }
+    if symbolSearch.closeAll() { picker.query = "" }
   }
 
   /// 自选那一整页。标签栏上的一格，所以没有「返回」——返回就是换一格标签。
@@ -395,7 +381,7 @@ struct MainScreen: View {
   }
 
   /// 报价簿要不要拉列表：看得见一列品种的时候才拉。
-  private var listVisible: Bool { showingFavorites || showSymbols || showSearch }
+  private var listVisible: Bool { showingFavorites || symbolSearch.isActive }
 
   private var lifecycleContent: some View {
     presentation
@@ -416,7 +402,7 @@ struct MainScreen: View {
   }
 
   private var microstructureVisible: Bool {
-    tab == .chart && !showSearch && !showSymbols && !review.bookOpen && !reviewChart.active && !drawingCanvasOnly
+    tab == .chart && !symbolSearch.isActive && !review.bookOpen && !reviewChart.active && !drawingCanvasOnly
   }
 
   /// 主屏那一串观察者的接线。
@@ -986,7 +972,7 @@ struct MainScreen: View {
       // 有来路才有返回。复盘态走的是另一副页头（`reviewHeader`），不经过这儿。
       onBack: chartOrigin.map { origin in { switchTo(tab: origin) } },
       onReview: { dismissPanel(); review.bookOpen = true; review.synchronize() },
-      onSearch: { dismissPanel(); showSearch = true },
+      onSearch: { dismissPanel(); symbolSearch.openSearch() },
       onScan: { scan($0) },
       card: shareAndAlertCard(inHeader: true))
   }
@@ -1232,7 +1218,7 @@ struct MainScreen: View {
       readout: crosshairReadout,
       liveState: chartState,
       portrait: !landscape,
-      renderingActive: tab == .chart && !showSymbols && !showSearch && !showComparePicker,
+      renderingActive: tab == .chart && !symbolSearch.isActive && !showComparePicker,
       panelOpen: panel != nil || draw.panel != nil,
       drawingCanvasOnly: drawingCanvasOnly,
       alertedDrawingIDs: alerts.alertedDrawingIDs(symbol: market.symbol),
@@ -1830,8 +1816,7 @@ struct MainScreen: View {
     sectorFeed.setForeground(phase != .background)
     picker.onPick = { info in
       endSharePreview()
-      showSymbols = false; symbolsFromSearch = false
-      showSearch = false; searchAllPending = false
+      symbolSearch.reset()
       // 挑完品种落到行情页：自选、搜索、品种整页三条路都是「去看哪张图」。
       // 从别的一格走进来的，记下来路，顶栏那颗返回才回得去。
       if tab != .chart { chartOrigin = tab }
@@ -1879,8 +1864,7 @@ struct MainScreen: View {
         replying = nil
         if reviewChart.mode == .capture { reviewChart.endCapture(feature: review) }
         else if reviewChart.mode == .replay { reviewChart.exitReplay(feature: review) }
-        showSymbols = false; symbolsFromSearch = false
-        showSearch = false; searchAllPending = false
+        symbolSearch.reset()
         // 用户自己换号 / 退登，要把人从自选页带走（别让他对着上一个账号的表）。
         // 冷启动那一段不算：装访客档案、以及 `account.restore()` 把登录态读回来，
         // 走的是同一条路，那时候该停哪一格交给 `honorProfile()` 按真档案定。
@@ -1944,7 +1928,7 @@ struct MainScreen: View {
       // 落地页：有自选就停在自选。还在等 `account.restore()` 的那一小段里手上挂的
       // 是访客那份空档案，不能拿「自选是空的」当真，否则会先翻到行情页、账号回来
       // 再翻回自选，闪一下。
-      if !profile.favorites.isEmpty { if !showSymbols, !showSearch { tab = .favorites } }
+      if !profile.favorites.isEmpty { if !symbolSearch.isActive { tab = .favorites } }
       else if !awaitingAccount { tab = .chart }
       // 上次看的那张图。`boot()` 中途调到这儿时行情还没开张，那一次交给
       // `market.start(symbol:)` 直接开对，不在这儿切。
@@ -2011,8 +1995,7 @@ struct MainScreen: View {
     endSharePreview()
     dismissPanel()
     if let info = picker.info(for: symbol) { picker.pick(info); return }
-    showSymbols = false; symbolsFromSearch = false
-    showSearch = false; searchAllPending = false
+    symbolSearch.reset()
     if tab != .chart { chartOrigin = tab }
     tab = .chart; didLeaveLaunch = true
     crosshairReadout.clear()
@@ -2022,9 +2005,7 @@ struct MainScreen: View {
 
   private func openLinkedSearch() {
     dismissPanel()
-    guard !showSearch else { return }
-    showSymbols = false; symbolsFromSearch = false
-    showSearch = true
+    symbolSearch.openSearch()
   }
 
   /// 收起面板。选完一项、或者手指落到图和别的控件上，都走这儿。
