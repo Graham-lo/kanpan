@@ -1794,7 +1794,7 @@ struct MainScreen: View {
     }
     quotes.setChartSymbol(market.symbol)
     quotes.setForeground(phase != .background)
-    // 全市场 24h 行情落盘、冷启动先恢复（板块页第一帧就有气泡）；每到一批（含恢复出来的
+    // 全市场 24h 行情落盘、冷启动先恢复（板块页第一帧就有清单）；每到一批（含恢复出来的
     // 那批）都种进报价簿，从板块列表 / 搜索点进一只没看过的品种，价格第一帧就在。
     sectorFeed.cache = .disk
     sectorFeed.onTickers = { [quotes] tickers, upstream in quotes.seed(tickers, upstream: upstream) }
