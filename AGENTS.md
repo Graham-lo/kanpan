@@ -4,7 +4,7 @@
 
 ## 谁在做什么
 
-- **2026-09-22 起，仓库里所有还没做完的事一律由 Codex 实现**（`codex exec`，`gpt-6-astra`，推理挡位 `xhigh`），清单、禁做项与验收标准在 `docs/待办交接-Codex-2026-09-22.md`；此前单独交给 Codex 的「发给朋友·画线分享」已交付（`e058715`），验收在 `docs/acceptance/share/验收报告-2026-09-22.md`。Claude 窗口只设计、验收、打回，不再写代码。Codex 在这个仓库里遵守本文的全部约定。
+- **2026-09-23 起实现默认由 Claude 这边完成**（主窗口设计与验收，Opus 子代理写代码）；只有用户明确说「交给 codex」的活才走 Codex（`codex exec`，`gpt-6-astra`，`xhigh`）。09-22 已经派给 Codex 的阶段照 `docs/待办交接-Codex-2026-09-22.md` 继续，Codex 在这个仓库里遵守本文的全部约定。「发给朋友·画线分享」已交付（`e058715`），验收在 `docs/acceptance/share/验收报告-2026-09-22.md`。
 - **`docs/不做清单.md` 是「不做什么」的唯一口径**（强平、CNY 换算、固定起点强弱比较等）。其它任何文档、注释把这些写成「待办 / 建议 / 缓 / 预埋」都无效，不因为基建现成就顺手做；新判不做的项当场写进那份清单并把别处的待办措辞删掉。`docs/待办交接-Codex-2026-09-22.md` 是**唯一的待办来源**；`docs/` 下其余文档只能是现行规格（见 `docs/README.md` 索引），不是待办来源，不要从中翻出「建议 / 缓」来做。
 - **第二条 Codex 线程**（2026-09-22 起）在独立工作树 `/Users/mdd/zhk/kanpan-coinbase`、分支 `multi-exchange` 上做多交易所抽象 + Coinbase 现货接入（用户当天拍板，已从不做清单移出），交接书 `docs/多交易所-Coinbase-交接-Codex-2026-09-22.md`；每阶段 rebase 后 ff 合进 `main`。第一条线程不要碰它的范围（`InstrumentID`、`MarketProvider`、`KanpanNetwork/Coinbase/`、`kanpan-api/src/venues/`）。
 - **第三条 Codex 线程**：工作树 `/Users/mdd/zhk/kanpan-compare`、分支 `compare-kline`，做对比 K 线，交接书 `docs/对比K线-交接-Codex-2026-09-22.md`。
