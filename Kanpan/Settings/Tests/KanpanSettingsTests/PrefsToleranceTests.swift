@@ -37,7 +37,6 @@ struct PrefsToleranceTests {
     {"interval":"8h","styleID":"雷电","theme":"neon","priceMode":"polar","timeZone":"火星"}
     """#)
     #expect(p.interval == .h1)
-    #expect(p.style.name == "AICoin")       // 存档里那个 `styleID` 现在整条忽略，造型只有这一套
     #expect(p.theme == .system)
     #expect(p.priceMode == .log)
     #expect(p.timeZone == .local)

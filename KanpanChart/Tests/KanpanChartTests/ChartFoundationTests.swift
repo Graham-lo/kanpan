@@ -19,7 +19,7 @@ private final class FoundationEvent: UIEvent {
 @MainActor @Suite("图表补全渲染与交互")
 struct ChartFoundationTests {
   let size = CGSize(width: 393, height: 720)
-  func state() -> ChartState { Evidence.state(style: .default, dark: false, size: size) }
+  func state() -> ChartState { Evidence.state(dark: false, size: size) }
   func view() -> ChartView {
     let view = ChartView(frame: CGRect(origin: .zero, size: size)); view.state = state(); return view
   }

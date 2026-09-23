@@ -11,7 +11,6 @@ struct PrefsDefaultsTests {
   @Test("全新安装的一份（A6.4「首次安装即如此」）")
   func 全新安装() {
     let p = Prefs.defaults
-    #expect(p.style.name == "AICoin")                // 造型只有 AICoin 这一套
     #expect(p.interval == .h1)                       // 原型 S.interval 恒从 '1h' 起步
     #expect(p.overlays == [.ma])                     // chart.js: this.overlays = ['MA']
     #expect(p.subs == [.vol, .oi, .macd])                 // chart.js: this.subs = ['MACD','RSI']

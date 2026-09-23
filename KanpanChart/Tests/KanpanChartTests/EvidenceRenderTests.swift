@@ -52,19 +52,17 @@ struct EvidenceRenderTests {
     var list: [[String: Any]] = []
     for dev in Evidence.devices {
       for dark in [false, true] {
-        for (k, style) in CandleStyle.all.enumerated() {
-          let st = Evidence.state(style: style, dark: dark, size: dev.size)
-          let img = Evidence.render(st, size: dev.size, scale: dev.scale)
-          let p = ChartRenderer(state: st).probe(size: dev.size, scale: dev.scale)
-          emit(
-            img, Evidence.name(dev.id, dark, style.id, k + 1),
-            [
-              "item": "A3.1", "device": dev.id, "deviceName": dev.name,
-              "pt": [dev.w, dev.h], "scale": dev.scale,
-              "theme": dark ? "dark" : "light", "style": style.id, "styleName": style.name,
-              "spacing": p.spacing, "bars": p.visibleHi - p.visibleLo + 1, "thin": p.thin,
-            ], into: &list)
-        }
+        let st = Evidence.state(dark: dark, size: dev.size)
+        let img = Evidence.render(st, size: dev.size, scale: dev.scale)
+        let p = ChartRenderer(state: st).probe(size: dev.size, scale: dev.scale)
+        emit(
+          img, Evidence.name(dev.id, dark, "aicoin", 1),
+          [
+            "item": "A3.1", "device": dev.id, "deviceName": dev.name,
+            "pt": [dev.w, dev.h], "scale": dev.scale,
+            "theme": dark ? "dark" : "light", "style": "aicoin", "styleName": "AICoin",
+            "spacing": p.spacing, "bars": p.visibleHi - p.visibleLo + 1, "thin": p.thin,
+          ], into: &list)
       }
     }
     #expect(list.count == 16, "基线应为 8 机型 × 浅深 = 16 张，实际 \(list.count) 张")
@@ -91,8 +89,7 @@ struct EvidenceRenderTests {
       ("grid", .grid), ("body", .body), ("wicktop", .wickTop),
     ]
     for z in zooms {
-      let style = CandleStyle.default
-      let st = Evidence.state(style: style, dark: false, size: dev.size)
+      let st = Evidence.state(dark: false, size: dev.size)
       let r = ChartRenderer(state: st)
       let p = r.probe(size: dev.size, scale: dev.scale)
       let img = Evidence.render(st, size: dev.size, scale: dev.scale)
@@ -131,9 +128,8 @@ struct EvidenceRenderTests {
       emit(
         big, "M3-\(dev.id)-light-\(z.topic)-zoom8-\(String(format: "%02d", next())).png",
         [
-          "item": "A3.4", "topic": z.topic, "style": style.id, "styleName": style.name,
-          "grid": style.grid.rawValue, "shape": style.shape.rawValue,
-          "radius": style.radius, "wickCap": style.wickCap.rawValue,
+          "item": "A3.4", "topic": z.topic, "style": "aicoin", "styleName": "AICoin",
+          "grid": st.effectiveGrid.rawValue, "shape": st.effectiveShape.rawValue,
           "wickDevicePx": max(0.5, (4.0 / 3)), "anchor": anchoredAt,
           "cropDevicePx": [crop.minX, crop.minY, crop.width, crop.height], "magnify": 8,
         ], into: &list)
@@ -145,8 +141,7 @@ struct EvidenceRenderTests {
       ("thin-1.2", 1.2, dev), ("thin-0.4", Chart.minBarSpacing, dev),
       ("thin-0.4-ipad", Chart.minBarSpacing, Evidence.devices.first { $0.id == "ipad" }!),
     ] {
-      let style = CandleStyle.default
-      let st = Evidence.state(style: style, dark: false, size: d.size, spacing: spacing)
+      let st = Evidence.state(dark: false, size: d.size, spacing: spacing)
       let r = ChartRenderer(state: st)
       let p = r.probe(size: d.size, scale: d.scale)
       let img = Evidence.render(st, size: d.size, scale: d.scale)
@@ -156,19 +151,19 @@ struct EvidenceRenderTests {
         [
           "item": "A3.5", "device": d.id, "askedSpacing": spacing, "spacing": p.spacing,
           "thin": p.thin, "bars": p.visibleHi - p.visibleLo + 1,
-          "barsOnScreen": p.plotW / p.spacing, "style": style.id,
+          "barsOnScreen": p.plotW / p.spacing, "style": "aicoin",
         ], into: &list)
     }
 
     // ---- A3.6：各种副图各一张 ----
     for id in [IndicatorID.macd, .rsi, .kdj, .srsi, .atr, .vol, .oi, .dmi, .cvd] {
       let st = Evidence.state(
-        style: .default, dark: false, size: dev.size, overlays: [], subs: [id])
+        dark: false, size: dev.size, overlays: [], subs: [id])
       let img = Evidence.render(st, size: dev.size, scale: dev.scale)
       emit(
         img, "M3-\(dev.id)-light-sub-\(id.rawValue.lowercased())-\(String(format: "%02d", next())).png",
         ["item": "A3.6", "sub": id.rawValue, "subName": id.name,
-         "params": id.defaultParams, "style": CandleStyle.default.id], into: &list)
+         "params": id.defaultParams, "style": "aicoin"], into: &list)
     }
 
     // ---- A3.7：主图叠加 + 图例 ----
@@ -177,7 +172,7 @@ struct EvidenceRenderTests {
       ("vwap", [IndicatorID.vwap]), ("supertrend", [.supertrend]), ("sar", [.sar]),
     ] {
       let st = Evidence.state(
-        style: .default, dark: false, size: dev.size, overlays: ov, subs: [])
+        dark: false, size: dev.size, overlays: ov, subs: [])
       let img = Evidence.render(st, size: dev.size, scale: dev.scale)
       emit(
         img, "M3-\(dev.id)-light-overlay-\(tag)-\(String(format: "%02d", next())).png",
@@ -187,11 +182,11 @@ struct EvidenceRenderTests {
 
     // ---- A3.8：十字线静态摆在某根上 ----
     for dark in [false, true] {
-      let base = Evidence.state(style: .default, dark: dark, size: dev.size)
+      let base = Evidence.state(dark: dark, size: dev.size)
       let p = ChartRenderer(state: base).probe(size: dev.size, scale: dev.scale)
       let i = p.visibleLo + (p.visibleHi - p.visibleLo) * 2 / 3
       let st = Evidence.state(
-        style: .default, dark: dark, size: dev.size, crosshair: Crosshair(index: i))
+        dark: dark, size: dev.size, crosshair: Crosshair(index: i))
       let img = Evidence.render(st, size: dev.size, scale: dev.scale)
       emit(
         img, "M3-\(dev.id)-\(dark ? "dark" : "light")-crosshair-\(String(format: "%02d", next())).png",
@@ -202,7 +197,7 @@ struct EvidenceRenderTests {
     // ---- A3.9：价格轴三模式 ----
     for mode in PriceMode.allCases {
       let st = Evidence.state(
-        style: .default, dark: false, size: dev.size, price: PriceTransform(mode: mode))
+        dark: false, size: dev.size, price: PriceTransform(mode: mode))
       let img = Evidence.render(st, size: dev.size, scale: dev.scale)
       emit(
         img, "M3-\(dev.id)-light-axis-\(mode.rawValue)-\(String(format: "%02d", next())).png",
@@ -220,13 +215,11 @@ struct EvidenceRenderTests {
   @Test("同一 state 画两次逐字节一致")
   func deterministic() {
     let dev = Evidence.devices.first { $0.id == "std" }!
-    for style in CandleStyle.all {
-      for dark in [false, true] {
-        let st = Evidence.state(style: style, dark: dark, size: dev.size)
-        let a = UIImage(cgImage: Evidence.render(st, size: dev.size, scale: dev.scale)).pngData()!
-        let b = UIImage(cgImage: Evidence.render(st, size: dev.size, scale: dev.scale)).pngData()!
-        #expect(a == b, "\(style.id)/\(dark ? "dark" : "light") 两次渲染不一致")
-      }
+    for dark in [false, true] {
+      let st = Evidence.state(dark: dark, size: dev.size)
+      let a = UIImage(cgImage: Evidence.render(st, size: dev.size, scale: dev.scale)).pngData()!
+      let b = UIImage(cgImage: Evidence.render(st, size: dev.size, scale: dev.scale)).pngData()!
+      #expect(a == b, "aicoin/\(dark ? "dark" : "light") 两次渲染不一致")
     }
   }
 }

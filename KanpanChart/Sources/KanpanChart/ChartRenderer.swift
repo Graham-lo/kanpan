@@ -479,8 +479,7 @@ public struct ChartRenderer {
       let y = pane.y + (r.inverted ? fraction : 1 - fraction) * pane.h
       if y < pane.y + 6 || y > pane.y + pane.h - 2 { continue }
       if gm != .none {
-        let x0 = gm == .tick ? L.plotW - 22 : 0
-        ctx.hairLine(from: x0, to: L.plotW, y: y, scale: CGFloat(s), color: Paint.cg(t.grid))
+        ctx.hairLine(from: 0, to: L.plotW, y: y, scale: CGFloat(s), color: Paint.cg(t.grid))
       }
       if let fitBadge, y > fitBadge.lo, y < fitBadge.hi { continue }
       let label: String
@@ -586,45 +585,25 @@ public struct ChartRenderer {
   ///
   /// 上下边**各自** `snap`，不要 snap 一个再加高度：后者会让另一条边又掉回像素中间。
   private func drawCandles(_ ctx: CGContext, pane: Pane, r: PriceRange, L: Layout, scale s: Double) {
-    let b = state.series, t = state.colors, S = state.style
+    let b = state.series, t = state.colors
     let shape = state.effectiveShape
     let ha = heikin
     let (lo, hi) = visible
     let spacing = state.view.barSpacing(step: b.step, plotW: L.plotW)
-    let m = candleMetrics(spacing: spacing, style: S, scale: s)
+    let m = candleMetrics(spacing: spacing, scale: s)
     let lw = m.outline
-    let hollowShape = shape == .outline || shape == .hollowUp
-    // 影线兑淡（`wickTint`）是给「大实体配粗影线」准备的：墩 0.7 / 砖 0.45 / 辉 0.6，
-    // 让影线往背景退半步，实体才压得住。可蜡烛一捏小，这份退让就只剩「影线看不见」——
-    // 用户实机反馈的「颜色都好像变淡了，像模糊不清，特别是影线」就是这一段。
-    //
-    // AiCoin 的做法是**根本不兑**：1920×975 原生截图实测，影线与实体完全同色
-    // （#CF3E3E / #26A380，491 个影线样本无一偏离，见 docs/acceptance/M8/aicoin-对比.md §2.3）。
-    // 风格表是定版规格不动，改的是兑淡的**生效区间**：实体粗到 8 个设备像素以上照旧按
-    // 风格兑，从 8 掉到 2 的过程里线性收回满饱和，2 以下完全不兑。
-    //
-    // 从前这儿是 `bodyW*s <= 2 ? 1 : wickTint` 一个硬台阶——门槛太低（一屏一百多根时
-    // 实体还有 3~6 个像素，照兑不误），而且跨过去的那一帧颜色会跳一下。
-    let tintFade = min(1, max(0, (m.bodyW * s - 2) / 6))
-    let tint = S.wickTint + (1 - S.wickTint) * (1 - tintFade)
-    // 圆头帽在 ≤2 个设备像素时只贡献两坨抗锯齿，不贡献造型，那就别用。
-    let roundCap = S.wickCap == .round && m.wickW * s >= 3
+    // 影线与实体同色、平头：AICoin 的做法（1920×975 原生截图实测，影线与实体完全同色
+    // #CF3E3E / #26A380，见 docs/acceptance/M8/aicoin-对比.md §2.3）。
     let minBodyH = max(m.wickW, snap(m.minBody, scale: s))
 
     ctx.saveGState()
     ctx.beginPath()
     ctx.addRect(CGRect(x: 0, y: pane.y, width: L.plotW, height: pane.h))
     ctx.clip()
-    ctx.setLineCap(roundCap ? .round : .butt)
-    // 整帧不变的四种颜色：涨/跌的实体色、以及按 `tint` 兑淡后的影线色。
-    // 从前 `Paint.mix` 和 `Paint.cg` 都写在逐根循环里——一屏两百根就是两百次
-    // `String(format:)` 拼十六进制加两百次加锁查表，算出来的还都是同两个值。
-    // 这里提到循环外算一次，混色公式、入参、位数一个没动，像素完全一致。
+    // 整帧不变的颜色提到循环外算一次，别在逐根循环里反复查表。
     let map = PriceMapping(range: r, mode: state.effectivePriceMode)
     let cgBg = Paint.cg(t.bg)
     let cgUp = Paint.cg(t.up), cgDown = Paint.cg(t.down)
-    let cgWickUp = tint < 1 ? Paint.cg(Paint.mix(t.bg, t.up, tint)) : cgUp
-    let cgWickDown = tint < 1 ? Paint.cg(Paint.mix(t.bg, t.down, tint)) : cgDown
     let rendering = AICoinBehavior.rendering(spacing: spacing, scale: s)
     // 「收盘价」画法和 AICoin 捏到极窄时退成的收盘折线是同一笔：同色（`up`）、同宽
     // （2 个物理像素，AICoin `bk/a` 的 `setStrokeWidth(2.0f)`），不另起配色。
@@ -643,56 +622,32 @@ public struct ChartRenderer {
       let bar = ha?.bar(i) ?? (o: b.open[i], h: b.high[i], l: b.low[i], c: b.close[i])
       let up = bar.c >= bar.o
       let col = up ? cgUp : cgDown
-      let wick = up ? cgWickUp : cgWickDown
       let highY = map.y(bar.h, pane: pane), lowY = map.y(bar.l, pane: pane)
       let yh = snap(min(highY, lowY), scale: s), yl = snap(max(highY, lowY), scale: s)
 
-      // 影线：可以比实体淡，端头可以是圆的
-      if roundCap && !m.thin {
-        ctx.setStrokeColor(wick)
-        ctx.setLineWidth(m.wickW)
-        ctx.beginPath()
-        ctx.move(to: CGPoint(x: hairline(xc, scale: s), y: yh + m.wickW / 2))
-        ctx.addLine(to: CGPoint(x: hairline(xc, scale: s), y: yl - m.wickW / 2))
-        ctx.strokePath()
-      } else {
-        ctx.setFillColor(wick)
-        let xw = snap(xc - m.wickW / 2, scale: s)
-        ctx.fill(CGRect(x: xw, y: yh, width: m.wickW, height: max(m.wickW, yl - yh)))
-      }
+      // 影线：和实体同色的整像素矩形
+      ctx.setFillColor(col)
+      let xw = snap(xc - m.wickW / 2, scale: s)
+      ctx.fill(CGRect(x: xw, y: yh, width: m.wickW, height: max(m.wickW, yl - yh)))
       if rendering == .highLow { continue }
 
       let yo = map.y(bar.o, pane: pane), yc = map.y(bar.c, pane: pane)
       let top = snap(min(yo, yc), scale: s)
       let h = max(minBodyH, snap(max(yo, yc), scale: s) - top)
       let xb = snap(xc - m.bodyW / 2, scale: s)
-      let drawHollow = shape == .outline || (shape == .hollowUp && up)
       let rect = CGRect(x: xb, y: top, width: m.bodyW, height: h)
 
-      if hollowShape && drawHollow && h > lw * 2.2 && m.bodyW > lw * 2.2 {
+      if shape == .hollowUp && up && h > lw * 2.2 && m.bodyW > lw * 2.2 {
         // 描边实体：先用底色挖空，K 线之间才不会互相糊住
-        ctx.setLineWidth(lw)
-        if m.radius > 0 {
-          ctx.addRoundRect(rect, radius: m.radius)
-          ctx.setFillColor(cgBg)
-          ctx.setStrokeColor(col)
-          ctx.drawPath(using: .fillStroke)
-        } else {
-          ctx.setFillColor(cgBg)
-          ctx.fill(rect)
-          ctx.setStrokeColor(col)
-          ctx.stroke(rect.insetBy(dx: lw / 2, dy: lw / 2), width: lw)
-        }
-      } else if m.radius > 0 && h > m.radius * 2 {
-        ctx.setFillColor(col)
-        ctx.addRoundRect(rect, radius: m.radius)
-        ctx.fillPath()
+        ctx.setFillColor(cgBg)
+        ctx.fill(rect)
+        ctx.setStrokeColor(col)
+        ctx.stroke(rect.insetBy(dx: lw / 2, dy: lw / 2), width: lw)
       } else {
         ctx.setFillColor(col)
         ctx.fill(rect)
       }
     }
-    ctx.setLineCap(.butt)
     ctx.restoreGState()
   }
 

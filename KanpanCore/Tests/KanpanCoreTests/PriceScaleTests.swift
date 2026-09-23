@@ -63,7 +63,6 @@ struct PriceScaleTests {
     let s = synthSeries(count: 400, seed: 55)
     let plotW = 390.0
     let v = ViewMath.reset(series: s, plotW: plotW, spacing: AICoinBehavior.initialSpacing)
-    let style = CandleStyle.default
     let bare = priceRange(view: v, series: s)
 
     let (lo, hi) = visibleRange(view: v, series: s)
@@ -93,14 +92,12 @@ struct PriceScaleTests {
     let (lo, hi) = visibleRange(view: v, series: s)
     let maxV = (lo...hi).map { s.high[$0] }.max()!
     let minV = (lo...hi).map { s.low[$0] }.min()!
-    for st in CandleStyle.all {
-      let r = priceRange(view: v, series: s)
-      let top = AICoinBehavior.mainTopInset, bottom = AICoinBehavior.mainBottomInset
-      let perPoint = (maxV - minV) / (300 - top - bottom)
-      let want = perPoint * top
-      #expect(abs((maxV + want) - r.hi) < 1e-9, "\(st.id) 上留白")
-      #expect(abs((minV - perPoint * bottom) - r.lo) < 1e-9, "\(st.id) 下留白")
-    }
+    let r = priceRange(view: v, series: s)
+    let top = AICoinBehavior.mainTopInset, bottom = AICoinBehavior.mainBottomInset
+    let perPoint = (maxV - minV) / (300 - top - bottom)
+    let want = perPoint * top
+    #expect(abs((maxV + want) - r.hi) < 1e-9, "aicoin 上留白")
+    #expect(abs((minV - perPoint * bottom) - r.lo) < 1e-9, "aicoin 下留白")
   }
 
   /// 拖价格轴：zoom 只缩不移中心，shift 只移不缩。
@@ -108,7 +105,6 @@ struct PriceScaleTests {
   func transform() {
     let s = synthSeries(count: 300, seed: 57)
     let v = ViewMath.reset(series: s, plotW: 390, spacing: 9.2)
-    let st = CandleStyle.default
     let base = priceRange(view: v, series: s)
     let mid = (base.lo + base.hi) / 2
 

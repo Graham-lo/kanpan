@@ -143,7 +143,7 @@ public final class ChartView: UIView {
       #if DEBUG
       if ProcessInfo.processInfo.environment["KANPAN_CHART_DIAGNOSTICS"] == "1" {
         let metrics = candleMetrics(spacing: s.view.barSpacing(step: s.series.step, plotW: layout.plotW),
-                                    style: s.style, scale: Double(renderScale))
+                                    scale: Double(renderScale))
         let compareIndex = min(max(s.crosshair?.index ?? (s.series.count - 1), 0), max(s.series.count - 1, 0))
         let compareRange = renderer?.priceRange(size: bounds.size)
         let crossPoint = renderer?.crosshairCenter(size: bounds.size)
@@ -155,7 +155,7 @@ public final class ChartView: UIView {
           "compareMainClose": s.series.close.indices.contains(compareIndex) ? s.series.close[compareIndex] : 0,
           "crossAxisLabel": crossLabel,
           "compareTicks": compareRange.map { renderer?.mainPriceTicks(range: $0, paneHeight: layout.main.h) ?? [] } ?? [],
-          "style": s.style.id, "background": s.colors.bg.value, "bars": s.series.count, "symbol": s.series.symbol,
+          "background": s.colors.bg.value, "bars": s.series.count, "symbol": s.series.symbol,
           "latestRightGap": layout.plotW - s.view.x(Double(s.series.lastTime), plotW: layout.plotW)
             - s.view.barSpacing(step: s.series.step, plotW: layout.plotW) / 2,
           "priceDecimals": s.decimals,
@@ -464,7 +464,7 @@ public final class ChartView: UIView {
 
   /// 末根之外的一切是否一样。
   private static func sameFrame(_ a: ChartState, _ b: ChartState) -> Bool {
-    a.symbol == b.symbol && a.view == b.view && a.style == b.style && a.dark == b.dark && a.paletteSeed == b.paletteSeed
+    a.symbol == b.symbol && a.view == b.view && a.dark == b.dark && a.paletteSeed == b.paletteSeed
       && a.redUp == b.redUp && a.price == b.price && a.overlays == b.overlays
       && a.subs == b.subs && a.params == b.params && a.timezone == b.timezone
       && a.drawingPreviewID == b.drawingPreviewID && a.drawings == b.drawings && a.decimals == b.decimals && a.oi == b.oi && a.external == b.external && a.oiSupported == b.oiSupported && a.externalSupported == b.externalSupported

@@ -1975,9 +1975,7 @@ extension ChartFoundationUITests {
     landscapeShot.name = "手机-自动横屏"; landscapeShot.lifetime = .keepAlways; add(landscapeShot)
     XCUIDevice.shared.orientation = .portrait
     XCTAssertTrue(wait(seconds: 8) { self.canvas.frame.width < self.canvas.frame.height && self.app.buttons["interval.chart"].isHittable })
-    // 风格表收成 AICoin 一套之后 `style` 恒为 "aicoin"，原来断言的 "outline" 已经没有对应项了。
-    // 这一步真正该守的是「手机转一圈回来，刚选的阳线画法还在」。
-    XCTAssertEqual(info()["style"] as? String, "aicoin")
+    // 手机转一圈回来，刚选的阳线画法还在。
     app.buttons["interval.chart"].tap()
     XCTAssertTrue(wait { self.app.buttons["chart.bodyChoice.实心"].isSelected }, "转一圈回来阳线画法丢了")
     closePanel()

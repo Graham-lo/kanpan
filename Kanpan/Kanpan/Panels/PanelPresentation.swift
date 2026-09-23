@@ -179,7 +179,7 @@ private struct PanelDemo: View {
           Button(p.title) { panel = p }.buttonStyle(.bordered)
         }
       }
-      Text(verbatim: "\(store.prefs.style.name) · \(store.prefs.interval.rawValue) · "
+      Text(verbatim: "AICoin · \(store.prefs.interval.rawValue) · "
            + store.prefs.subs.map(\.rawValue).joined(separator: "+"))
         .font(.footnote.monospaced())
         .foregroundStyle(.secondary)

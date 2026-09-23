@@ -34,7 +34,6 @@ public struct ChartProbe: Sendable, Equatable {
   public var mainH: Double
   public var thin: Bool
   public var minBody: Double
-  public var radius: Double
   public var outline: Double
   public var rangeLo: Double
   public var rangeHi: Double
@@ -43,9 +42,6 @@ public struct ChartProbe: Sendable, Equatable {
   public var visibleHi: Int
   public var viewFrom: Double
   public var viewTo: Double
-
-  /// 按 A3.2 那一行的顺序取 7 项。
-  public static let metricNames = ["axisW", "timeH", "subH", "spacing", "bodyW", "wickW", "padTop"]
 
   public var metrics: [String: Double] {
     ["axisW": axisW, "timeH": timeH, "subH": subH, "spacing": spacing,
@@ -87,7 +83,7 @@ extension ChartRenderer {
     let b = state.series
     let s = Double(scale)
     let spacing = state.view.barSpacing(step: b.step, plotW: L.plotW)
-    let m = candleMetrics(spacing: spacing, style: state.style, scale: s)
+    let m = candleMetrics(spacing: spacing, scale: s)
     let (lo, hi) = visibleRange(view: state.view, series: b)
     let pane = L.main
 
@@ -129,7 +125,6 @@ extension ChartRenderer {
       mainH: L.mainH,
       thin: m.thin,
       minBody: m.minBody,
-      radius: m.radius,
       outline: m.outline,
       rangeLo: r.lo, rangeHi: r.hi, rangeBase: r.base,
       visibleLo: lo, visibleHi: hi,
@@ -147,12 +142,10 @@ extension ChartRenderer {
     let s = Double(scale)
     let r = priceRange(size: size)
     let pane = L.main
-    let S = state.style
     let shape = state.effectiveShape
     let ha = heikin
     let spacing = state.view.barSpacing(step: b.step, plotW: L.plotW)
-    let m = candleMetrics(spacing: spacing, style: S, scale: s)
-    let hollowShape = shape == .outline || shape == .hollowUp
+    let m = candleMetrics(spacing: spacing, scale: s)
     let minBodyH = max(m.wickW, snap(m.minBody, scale: s))
     let (lo, hi) = visibleRange(view: state.view, series: b)
     func y(_ p: Double) -> Double {
@@ -169,7 +162,6 @@ extension ChartRenderer {
       // 和 `drawCandles` 一样：上下边各自 snap，高度是两条对齐边之差。
       let top = snap(min(yo, yc), scale: s)
       let h = max(minBodyH, snap(max(yo, yc), scale: s) - top)
-      let drawHollow = shape == .outline || (shape == .hollowUp && up)
       out.append(
         CandleXProbe(
           index: i, center: xc,
@@ -179,7 +171,7 @@ extension ChartRenderer {
           up: up,
           wickTop: snap(y(bar.h), scale: s), wickBottom: snap(y(bar.l), scale: s),
           bodyTop: top, bodyHeight: h,
-          hollow: hollowShape && drawHollow && h > m.outline * 2.2 && m.bodyW > m.outline * 2.2))
+          hollow: shape == .hollowUp && up && h > m.outline * 2.2 && m.bodyW > m.outline * 2.2))
     }
     return out
   }

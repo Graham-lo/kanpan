@@ -21,20 +21,13 @@ import UIKit
 @Suite("A3.2 几何量化")
 struct GeometryTableTests {
   /// pt 差换成设备像素差；`padTop` 是比例，乘主图高再换。
-  @Test("所有风格的七项几何完全一致，使用AICoin底座")
+  @Test("AICoin 底座：时间轴高 17、实体与影线都有宽度")
   func table() {
     let dev = Evidence.geometryDevice
-    let base = ChartRenderer(state: Evidence.state(style: .aicoin, dark: false, size: dev.size))
+    let actual = ChartRenderer(state: Evidence.state(dark: false, size: dev.size))
       .probe(size: dev.size, scale: dev.scale)
-    for style in CandleStyle.all {
-      let actual = ChartRenderer(state: Evidence.state(style: style, dark: false, size: dev.size))
-        .probe(size: dev.size, scale: dev.scale)
-      #expect(actual.metrics == base.metrics)
-      #expect(actual.viewFrom == base.viewFrom && actual.viewTo == base.viewTo)
-      #expect(actual.plotW == base.plotW && actual.mainH == base.mainH)
-      #expect(actual.bodyW == base.bodyW && actual.wickW == base.wickW)
-      #expect(actual.timeH == 17)
-    }
+    #expect(actual.bodyW > 0 && actual.wickW > 0)
+    #expect(actual.timeH == 17)
   }
 
 }
@@ -49,35 +42,35 @@ struct GeometryTableTests {
 struct PixelBoundaryTests {
   private func isIntegral(_ v: Double) -> Bool { abs(v - v.rounded()) < 1e-9 }
 
-  @Test("每款风格 × 8 机型：实体与影线左缘 x·scale 为整数", arguments: CandleStyle.all)
-  func candleEdges(style: CandleStyle) {
+  @Test("8 机型：实体与影线左缘 x·scale 为整数")
+  func candleEdges() {
     var count = 0
     for dev in Evidence.devices {
-      let st = Evidence.state(style: style, dark: false, size: dev.size)
+      let st = Evidence.state(dark: false, size: dev.size)
       let r = ChartRenderer(state: st)
       let s = Double(dev.scale)
       let xs = r.candleXs(size: dev.size, scale: dev.scale)
-      #expect(!xs.isEmpty, "\(dev.id)/\(style.id) 一根都没画")
+      #expect(!xs.isEmpty, "\(dev.id)/aicoin 一根都没画")
       for c in xs {
-        #expect(isIntegral(c.bodyLeft * s), "\(dev.id)/\(style.id) 第 \(c.index) 根实体左缘 \(c.bodyLeft)")
-        #expect(isIntegral(c.wickLeft * s), "\(dev.id)/\(style.id) 第 \(c.index) 根影线左缘 \(c.wickLeft)")
-        #expect(isIntegral(c.wickHair * s - 0.5), "\(dev.id)/\(style.id) 第 \(c.index) 根影线中线 \(c.wickHair)")
+        #expect(isIntegral(c.bodyLeft * s), "\(dev.id)/aicoin 第 \(c.index) 根实体左缘 \(c.bodyLeft)")
+        #expect(isIntegral(c.wickLeft * s), "\(dev.id)/aicoin 第 \(c.index) 根影线左缘 \(c.wickLeft)")
+        #expect(isIntegral(c.wickHair * s - 0.5), "\(dev.id)/aicoin 第 \(c.index) 根影线中线 \(c.wickHair)")
         count += 1
       }
     }
     #expect(count > 0)
   }
 
-  @Test("竖向细线（价格轴分隔 + 时间网格）中线压在半像素上", arguments: CandleStyle.all)
-  func verticalHairlines(style: CandleStyle) {
+  @Test("竖向细线（价格轴分隔 + 时间网格）中线压在半像素上")
+  func verticalHairlines() {
     for dev in Evidence.devices {
-      let st = Evidence.state(style: style, dark: false, size: dev.size)
+      let st = Evidence.state(dark: false, size: dev.size)
       let r = ChartRenderer(state: st)
       let s = Double(dev.scale)
       let xs = r.verticalHairlineXs(size: dev.size, scale: dev.scale)
       #expect(!xs.isEmpty)
       for x in xs {
-        #expect(isIntegral(x * s - 0.5), "\(dev.id)/\(style.id) 竖线 \(x) 没落在像素中线上")
+        #expect(isIntegral(x * s - 0.5), "\(dev.id)/aicoin 竖线 \(x) 没落在像素中线上")
       }
     }
   }

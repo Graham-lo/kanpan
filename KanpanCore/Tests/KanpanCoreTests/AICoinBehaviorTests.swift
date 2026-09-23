@@ -20,18 +20,6 @@ struct AICoinBehaviorTests {
     let history = ViewWindow(to: Double(old.lastTime - 100 * old.step), span: view.span)
     #expect(AICoinBehavior.reconcile(history, from: old, to: new, plotW: 352) == history)
   }
-  @Test("所有皮肤保持相同实体宽度、影线宽度和最小高度")
-  func sameSize() {
-    for spacing in [1.6, 2.0, 4, 10, 40] {
-      for scale in [2.0, 3] {
-        let first = candleMetrics(spacing: spacing, style: .aicoin, scale: scale)
-        for style in CandleStyle.all {
-          let m = candleMetrics(spacing: spacing, style: style, scale: scale)
-          #expect(m.bodyW == first.bodyW && m.wickW == first.wickW && m.minBody == first.minBody)
-        }
-      }
-    }
-  }
   @Test("纯未来视野和短指标数组不越界，对数倒置可往返")
   func rangeBounds() {
     let b = series(start: 1_700_000_000_000)

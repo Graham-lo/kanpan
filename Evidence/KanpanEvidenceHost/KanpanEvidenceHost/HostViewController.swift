@@ -66,7 +66,6 @@ final class HostViewController: UIViewController {
     guard let s = snapshot else { return }
     built = true
 
-    let style = CandleStyle.default
     let subs: [IndicatorID] = [.macd, .rsi]
     let dark = traitCollection.userInterfaceStyle == .dark
     let size = view.bounds.size
@@ -78,7 +77,7 @@ final class HostViewController: UIViewController {
     view.backgroundColor = dark ? .black : .white
     chart.state = ChartState(
       series: s.series, symbol: s.symbolInfo, view: window,
-      style: style, dark: dark, redUp: false,
+      dark: dark, redUp: false,
       overlays: [.ma], subs: subs, timezone: .utc, oi: s.oiSeries)
 
     if ProcessInfo.processInfo.arguments.contains("--compare"), var state = chart.state {

@@ -70,7 +70,6 @@ final class AICoinBaseUITests: XCTestCase {
     }
     XCTAssertTrue(wait({ (info()["bars"] as? Int ?? 0) >= 256 }, seconds: 60), "BTC历史尚未加载")
     let original = info()
-    XCTAssertEqual(original["style"] as? String, "aicoin")
     XCTAssertEqual(original["mode"] as? String, "log")
     XCTAssertEqual(original["ma"] as? [Int], [10, 30, 120, 256])
     XCTAssertEqual(original["macd"] as? [Int], [10, 30, 9])

@@ -4,25 +4,21 @@ import Testing
 
 @Suite("AICoin 共用布局")
 struct LayoutTests {
-  @Test("所有风格同尺寸；主图、时间轴、副图铺满且互不重叠")
+  @Test("主图、时间轴、副图铺满且互不重叠")
   func sharedGeometry() {
     for (w, h) in [(402.0, 600.0), (375, 450), (874, 270), (744, 950), (320, 200)] {
       for subs in [[], [IndicatorID.macd], [.vol, .oi, .macd]] {
-        let reference = Layout(width: w, height: h, subs: subs)
-        for style in CandleStyle.all {
-          let layout = Layout(width: w, height: h, subs: subs)
-          #expect(layout == reference)
-          #expect(layout.main.h > 0)
-          #expect(layout.timeY == layout.mainH)
-          #expect(layout.plotW > 0)
-          var end = layout.mainH + AICoinBehavior.timeHeight
-          for pane in layout.panes.dropFirst() {
-            #expect(abs(pane.y - end) < 1e-8)
-            #expect(pane.h > 0)
-            end = pane.y + pane.h
-          }
-          #expect(abs(end - h) < 1e-8)
+        let layout = Layout(width: w, height: h, subs: subs)
+        #expect(layout.main.h > 0)
+        #expect(layout.timeY == layout.mainH)
+        #expect(layout.plotW > 0)
+        var end = layout.mainH + AICoinBehavior.timeHeight
+        for pane in layout.panes.dropFirst() {
+          #expect(abs(pane.y - end) < 1e-8)
+          #expect(pane.h > 0)
+          end = pane.y + pane.h
         }
+        #expect(abs(end - h) < 1e-8)
       }
     }
   }

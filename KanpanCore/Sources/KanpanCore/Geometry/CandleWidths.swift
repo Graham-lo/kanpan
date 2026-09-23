@@ -17,7 +17,7 @@ func evenUp(raw: Double, body: Int, wick: Int) -> Int {
   return max(body, wick)
 }
 
-/// Shared candle geometry in points; only radius and outline/fill are skin choices.
+/// Shared candle geometry in points.
 public struct CandleMetrics: Sendable, Equatable {
   /// 实体宽。
   public var bodyW: Double
@@ -25,8 +25,6 @@ public struct CandleMetrics: Sendable, Equatable {
   public var wickW: Double
   /// 十字星时实体的保底高度。
   public var minBody: Double
-  /// 实体圆角（不超过半个实体宽）。
-  public var radius: Double
   /// 描边实体的线宽。
   public var outline: Double
   /// 太挤了：只画影线，实体不画。
@@ -59,8 +57,8 @@ public func candlePixels(spacing: Double, scale: Double) -> CandleWidth {
   return CandleWidth(body: body, wick: wick)
 }
 
-/// 由根间距 + 风格 + 屏幕倍率推出一根蜡烛的全部尺寸。
-public func candleMetrics(spacing: Double, style: CandleStyle, scale: Double) -> CandleMetrics {
+/// 由根间距 + 屏幕倍率推出一根蜡烛的全部尺寸。
+public func candleMetrics(spacing: Double, scale: Double) -> CandleMetrics {
   let w = candlePixels(spacing: spacing, scale: scale)
   let bodyW = Double(w.body) / scale
   let wickW = Double(w.wick) / scale
@@ -69,7 +67,6 @@ public func candleMetrics(spacing: Double, style: CandleStyle, scale: Double) ->
     bodyW: bodyW,
     wickW: wickW,
     minBody: 1 / scale,
-    radius: min(style.radius, bodyW / 2),
     outline: 1 / scale,
     // 判据改成物理条件：一格里放不下比影线更宽的实体了，画实体就是白画。
     // 原来写死的 `spacing < 1.3` 和屏幕倍率、风格都无关，2x 和 3x 该退化的点不一样。

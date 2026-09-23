@@ -83,9 +83,6 @@ struct Prefs: Sendable, Equatable {
   /// 所以把它挪到设置里，跟皮肤、副图高度同一等级——所有品种、所有周期共用一份，
   /// 跨 app 重启也在。没存过就是出厂的 `initialSpacing`。
   ///
-  /// 唯一不读它的是显式的「重置视野」：重置的语义就是回出厂值（见
-  /// `ChartView.resetView()`），跟着偏好走就没有「回到出厂」这个动作了。
-  ///
   /// ⚠️ **这一份是「盘上那一份」，写入是节流的**（`PrefsStore.noteBarSpacing`），
   /// 它只管下次冷启动。本程内要「用户此刻捏到多宽」请读 `PrefsStore.liveBarSpacing`，
   /// 那一份手一动就变——用户捏完立刻换周期换品种，靠的是它。
@@ -258,9 +255,7 @@ struct Prefs: Sendable, Equatable {
 
   // ---------------------------------------------------------------- 取用
 
-  /// 造型只剩 AICoin 一套（见 `CandleStyle`），所以这儿不再存 id，也没有 `styleID` 这个字段了。
-  /// 旧存档里的 `styleID` 解码时直接忽略。
-  var style: CandleStyle { .aicoin }
+  // 造型只剩 AICoin 一套（见 `CandleStyle`），这儿不存风格 id；旧存档里的 `styleID` 解码时直接忽略。
 
   /// 喂给图表的那一包开关。**主界面只调这一句**：各处自己拼容易漏项，
   /// 漏了的那一项会静悄悄退回引擎默认值，而不是报错，很难发现。

@@ -93,7 +93,7 @@ enum SubPaneHeight: String, Sendable, Codable, CaseIterable, Hashable {
     }
   }
 
-  /// 某款风格下这一档实际多高。`base` 传 `CandleStyle.subH`。
+  /// 这一档实际多高；`base` 是副图的基准高度。
   func points(base: Double) -> Double { max(44, (base * scale).rounded()) }
 
   static let fallback: SubPaneHeight = .medium

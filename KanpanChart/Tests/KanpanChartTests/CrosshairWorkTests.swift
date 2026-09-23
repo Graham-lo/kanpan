@@ -49,7 +49,7 @@ private final class WorkEvent: UIEvent {
   /// 三个副图、主图和副图都藏了输出的一份 state。
   func heavyState() -> ChartState {
     var s = Evidence.state(
-      style: .default, dark: false, size: size,
+      dark: false, size: size,
       overlays: [.ma, .ema], subs: [.vol, .macd, .rsi])
     s.params[.ema] = [12, 26, 60]
     // 藏输出 = 每次重建缓存都要现开一条整列 NaN：这正是要数的那件事。

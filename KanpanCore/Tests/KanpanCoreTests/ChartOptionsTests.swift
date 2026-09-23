@@ -40,7 +40,6 @@ struct ChartOptionsTests {
   func biasKeepsSpan() {
     let s = synthSeries(count: 400, seed: 11)
     let v = ViewMath.reset(series: s, plotW: 353, spacing: 8)
-    let st = CandleStyle.default
     let r = PriceBias.allCases.map {
       priceRange(view: v, series: s, bias: $0)
     }
@@ -53,7 +52,6 @@ struct ChartOptionsTests {
   func biasDirection() {
     let s = synthSeries(count: 400, seed: 12)
     let v = ViewMath.reset(series: s, plotW: 353, spacing: 8)
-    let st = CandleStyle.default
     let up = priceRange(view: v, series: s, bias: .up)
     let mid = priceRange(view: v, series: s, bias: .center)
     let down = priceRange(view: v, series: s, bias: .down)

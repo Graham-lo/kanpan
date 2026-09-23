@@ -71,7 +71,7 @@ import UIKit
   }
 
   @Test func fixtureRendersThreeSeriesAndExportsEvidence() throws {
-    var s = Evidence.state(style: .default, dark: false, size: size, subs: [.vol, .macd, .rsi])
+    var s = Evidence.state(dark: false, size: size, subs: [.vol, .macd, .rsi])
     s.percentAxis = true
     for (k, name) in ["ETH", "SOL", "DOGE"].enumerated() {
       let factor = Double(k + 2)

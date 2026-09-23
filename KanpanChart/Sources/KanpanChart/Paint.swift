@@ -18,34 +18,6 @@ enum Paint {
     cache[h.value] = c
     return c
   }
-
-  /// 原型的 `mixHex(a, b, k)`：在 a 和 b 之间按 k 取色，整数通道、输出小写。
-  /// 影线的 `wickTint` 就是靠它把影线往底色里掺淡的。
-  ///
-  /// `k`（影线兑淡量）是随捏合连续变的，所以键**不能**拿 `k` 原样去存——一场捏合
-  /// 下来能攒出几千个只用过一次的键。这里不量化 `k`（量化会改掉整数通道上的
-  /// 四舍五入，像素就不是原来那张了），改成把表按容量封顶：超过就整只倒掉重来。
-  /// 调用方也别在逐根循环里叫它，把结果提到循环外（见 `drawCandles`）。
-  private nonisolated(unsafe) static var mixCache: [MixKey: Hex] = [:]
-  private static let mixLock = NSLock()
-  private static let mixCacheLimit = 512
-
-  private struct MixKey: Hashable {
-    let a: String, b: String, k: Double
-  }
-
-  static func mix(_ a: Hex, _ b: Hex, _ k: Double) -> Hex {
-    let key = MixKey(a: a.value, b: b.value, k: k)
-    mixLock.lock()
-    if let hit = mixCache[key] { mixLock.unlock(); return hit }
-    mixLock.unlock()
-    let value = KanpanCore.mixHex(a, b, k)
-    mixLock.lock()
-    if mixCache.count >= mixCacheLimit { mixCache.removeAll(keepingCapacity: true) }
-    mixCache[key] = value
-    mixLock.unlock()
-    return value
-  }
 }
 
 extension CGContext {
@@ -91,7 +63,6 @@ extension CGContext {
 /// 跟浏览器把 CJK 落回系统字的行为是一致的。
 enum ChartFont {
   static let axis = UIFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
-  static let legend = UIFont.systemFont(ofSize: 10, weight: .medium)
   /// 副图空着时那一行提示（「暂无数据」「当前行情线路不提供…」）。
   /// 必须是常驻的同一只实例：`attrs` / `measure` 两张缓存按字体的对象身份做键，
   /// 每帧现建一只 `UIFont` 会让键跟着变——属性表无上限地长，尺寸表还可能撞上
@@ -170,15 +141,6 @@ extension String {
   func drawLeft(at p: CGPoint, font: UIFont, color: Hex) {
     let s = ChartFont.measure(self, font)
     (self as NSString).draw(at: CGPoint(x: p.x, y: p.y - s.height / 2),
-                            withAttributes: ChartFont.attrs(font, color))
-  }
-}
-
-extension String {
-  /// 右对齐、以 (x, y) 为文字底边（原型 `textAlign='right'; textBaseline='bottom'`）。
-  func drawRightBottom(at p: CGPoint, font: UIFont, color: Hex) {
-    let s = ChartFont.measure(self, font)
-    (self as NSString).draw(at: CGPoint(x: p.x - s.width, y: p.y - s.height),
                             withAttributes: ChartFont.attrs(font, color))
   }
 }

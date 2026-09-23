@@ -1374,7 +1374,6 @@ struct MainScreen: View {
       series: s,
       symbol: market.info,
       view: ViewWindow(to: Double(s.lastTime), span: Double(s.step) * 80),
-      style: prefs.style,
       dark: dark,
       redUp: prefs.redUp,
       price: price,

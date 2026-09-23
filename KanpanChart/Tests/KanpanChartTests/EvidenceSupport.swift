@@ -135,9 +135,8 @@ enum Evidence {
 
   /// 造一帧取证用的 state。
   ///
-  /// 视野按 A3.1：`右边缘对齐末根 + spacing = 风格默认`，也就是原型的 `resetView()`。
+  /// 视野按 A3.1：`右边缘对齐末根 + spacing = AICoin 默认`，也就是原型的 `resetView()`。
   static func state(
-    style: CandleStyle,
     dark: Bool,
     size: CGSize,
     overlays: [IndicatorID] = Evidence.overlays,
@@ -152,7 +151,7 @@ enum Evidence {
       series: Fixture.series, plotW: L.plotW, spacing: spacing ?? AICoinBehavior.initialSpacing)
     return ChartState(
       series: Fixture.series, symbol: Fixture.symbol, view: view,
-      style: style, dark: dark, redUp: redUp, price: price,
+      dark: dark, redUp: redUp, price: price,
       overlays: overlays, subs: subs, timezone: Evidence.timezone,
       oi: Fixture.oi, crosshair: crosshair)
   }

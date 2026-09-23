@@ -5,38 +5,10 @@ import Testing
 /// A1.10：风格表和两套配色的每个颜色，都要和定版原型一模一样。
 ///
 /// 原来这儿逐字段比对的是原型带来的十一款风格（`Fx.styles`）。2026-09-15 风格表收成
-/// AICoin 一套（见 `CandleStyle`），那一批对照就没有对象了；配色那几条一个都没动，
-/// 它们和风格无关。
+/// AICoin 一套、2026-09-24 连风格字段一起删掉（见 `CandleStyle`），那一批对照就没有对象了；
+/// 配色那几条一个都没动，它们和风格无关。
 @Suite("风格表与配色")
 struct StyleTableTests {
-  @Test("只有 AICoin 一套")
-  func tableShape() {
-    #expect(CandleStyle.all.count == 1, "风格表又长出别的款了")
-    #expect(CandleStyle.default.id == "aicoin")
-    #expect(CandleStyle.default.name == "AICoin")
-    #expect(CandleStyle.style(id: "没这个").id == "aicoin", "认不出的 id 要落回这一套")
-    #expect(CandleStyle.style(id: "stout").id == "aicoin", "旧存档里的老风格 id 也一样")
-  }
-
-  /// AICoin 这一套本身：平头影线、不压影线颜色、直角实心、不画风格自带网格。
-  @Test("AICoin 的字段")
-  func aicoinFields() {
-    let st = CandleStyle.aicoin
-    #expect(st.wickCap == .butt)
-    #expect(st.wickTint == 1)
-    #expect(st.shape == .solid)
-    #expect(st.radius == 0)
-    #expect(st.grid == .none)
-  }
-
-  /// 字段本身得在合理范围里——写错一位小数比对不上原型也看得出来。
-  @Test("字段范围合理", arguments: CandleStyle.all)
-  func sane(_ st: CandleStyle) {
-    #expect(st.wickTint >= 0 && st.wickTint <= 1)
-    #expect(st.radius >= 0 && st.radius.isFinite)
-
-  }
-
   /// 配色不再对着原型那张表逐字比。2026-09-16 换成青苔 / 陶土两套（见 `Palette`），
   /// 旧 `styles.json` 里的浅 / 深两行说的是上一版的蓝白配色，留着比只会比出旧值。
   /// 现在守的是**接线**：每个令牌有没有接到该接的地方，四套配色一视同仁。

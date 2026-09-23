@@ -18,9 +18,8 @@ struct ChartOptionsRenderTests {
   static var scale: CGFloat { CGFloat(dev.scale) }
 
   static func state(_ mutate: (inout ChartOptions) -> Void = { _ in },
-                    style: CandleStyle = .default,
                     crosshair: Crosshair? = nil) -> ChartState {
-    var st = Evidence.state(style: style, dark: false, size: size, crosshair: crosshair)
+    var st = Evidence.state(dark: false, size: size, crosshair: crosshair)
     mutate(&st.options)
     return st
   }
@@ -30,26 +29,22 @@ struct ChartOptionsRenderTests {
   /// 这个套件的地基：`ChartOptions()` 不能改变任何一个探针数字。
   @Test("默认档不动任何几何")
   func defaultsAreInert() {
-    for style in CandleStyle.all {
-      let base = Evidence.state(style: style, dark: false, size: Self.size)
-      var same = base
-      same.options = ChartOptions()
-      let a = ChartRenderer(state: base).probe(size: Self.size, scale: Self.scale)
-      let b = ChartRenderer(state: same).probe(size: Self.size, scale: Self.scale)
-      #expect(a == b, "\(style.id) 默认档漂了")
-    }
+    let base = Evidence.state(dark: false, size: Self.size)
+    var same = base
+    same.options = ChartOptions()
+    let a = ChartRenderer(state: base).probe(size: Self.size, scale: Self.scale)
+    let b = ChartRenderer(state: same).probe(size: Self.size, scale: Self.scale)
+    #expect(a == b, "aicoin 默认档漂了")
   }
 
   // ---------------------------------------------------------------- 网格
 
-  /// `effectiveGrid`：`.style` 读风格表，另两档强制。竖细线数量是最直观的观测量。
+  /// `effectiveGrid`：`.style` 跟 AICoin 底座（无网格），另两档强制。竖细线数量是最直观的观测量。
   @Test("网格三档")
   func gridChoice() {
-    for style in CandleStyle.all {
-      #expect(Self.state({ $0.grid = .style }, style: style).effectiveGrid == .none)
-      #expect(Self.state({ $0.grid = .on }, style: style).effectiveGrid == .both)
-      #expect(Self.state({ $0.grid = .off }, style: style).effectiveGrid == .none)
-    }
+    #expect(Self.state({ $0.grid = .style }).effectiveGrid == .none)
+    #expect(Self.state({ $0.grid = .on }).effectiveGrid == .both)
+    #expect(Self.state({ $0.grid = .off }).effectiveGrid == .none)
     // 隐藏档下只剩价格轴那一条分隔线；显示档一定更多。
     let off = ChartRenderer(state: Self.state { $0.grid = .off })
       .verticalHairlineXs(size: Self.size, scale: Self.scale)
@@ -63,19 +58,17 @@ struct ChartOptionsRenderTests {
 
   @Test("实体两档")
   func bodyChoice() {
-    for style in CandleStyle.all {
-      #expect(Self.state({ $0.body = .solid }, style: style).effectiveShape == .solid)
-      #expect(Self.state({ $0.body = .hollowUp }, style: style).effectiveShape == .hollowUp)
-    }
+    #expect(Self.state({ $0.body = .solid }).effectiveShape == .solid)
+    #expect(Self.state({ $0.body = .hollowUp }).effectiveShape == .hollowUp)
     // 选了「实心」就该一根空心都不剩。原来这儿用的是造型自己说全空心的那款「描」，
     // 风格表收成 AICoin 一套之后（见 `CandleStyle`）没有那种造型了，直接用默认这套验。
-    let forced = ChartRenderer(state: Self.state({ $0.body = .solid }, style: .default))
+    let forced = ChartRenderer(state: Self.state({ $0.body = .solid }))
       .candleXs(size: Self.size, scale: Self.scale)
     #expect(!forced.isEmpty)
     #expect(forced.allSatisfy { !$0.hollow }, "强制实心还有空心实体")
 
     // 强制阳线空心：阳线空、阴线实（够胖的那些）。
-    let hollow = ChartRenderer(state: Self.state({ $0.body = .hollowUp }, style: .default))
+    let hollow = ChartRenderer(state: Self.state({ $0.body = .hollowUp }))
       .candleXs(size: Self.size, scale: Self.scale)
     #expect(hollow.contains { $0.up && $0.hollow }, "阳线没空心")
     #expect(hollow.allSatisfy { $0.up || !$0.hollow }, "阴线也空心了")
@@ -96,7 +89,7 @@ struct ChartOptionsRenderTests {
   /// 关掉只是不画，数据一根不删；顺带：看不见的线不许再把价格区间撑开。
   @Test("画线开关不删数据，也不再撑价格区间")
   func drawingsToggle() {
-    var st = Evidence.state(style: .default, dark: false, size: Self.size)
+    var st = Evidence.state(dark: false, size: Self.size)
     let far = st.series.high.max()! * 3
     st.drawings = [Drawing(kind: .hline, a: DrawPoint(t: Double(st.series.lastTime), p: far))]
 
@@ -109,9 +102,9 @@ struct ChartOptionsRenderTests {
     #expect(off.drawings.count == 1, "关显示把数据删了")
 
     // 没有画线时这个开关不该改变任何东西。
-    var plain = Evidence.state(style: .default, dark: false, size: Self.size)
+    var plain = Evidence.state(dark: false, size: Self.size)
     plain.options.drawings = false
-    let base = Evidence.state(style: .default, dark: false, size: Self.size)
+    let base = Evidence.state(dark: false, size: Self.size)
     #expect(ChartRenderer(state: plain).probe(size: Self.size, scale: Self.scale)
       == ChartRenderer(state: base).probe(size: Self.size, scale: Self.scale))
   }
@@ -153,7 +146,7 @@ struct ChartOptionsRenderTests {
 
   @Test("倒计时文案跟着 nowMs 走")
   func countdown() {
-    var st = Evidence.state(style: .default, dark: false, size: Self.size)
+    var st = Evidence.state(dark: false, size: Self.size)
     st.options.countdown = true
     let b = st.series
     let close = Double(b.time(at: b.count - 1)) + Double(b.step)
@@ -171,10 +164,10 @@ struct ChartOptionsRenderTests {
   /// 同一份 state 必须给同一张图，时间只能从外面喂进来。
   @Test("nowMs 为空时不影响任何几何")
   func countdownNeedsNow() {
-    var st = Evidence.state(style: .default, dark: false, size: Self.size)
+    var st = Evidence.state(dark: false, size: Self.size)
     st.options.countdown = true
     #expect(st.nowMs == nil)
-    let base = Evidence.state(style: .default, dark: false, size: Self.size)
+    let base = Evidence.state(dark: false, size: Self.size)
     #expect(ChartRenderer(state: st).probe(size: Self.size, scale: Self.scale)
       == ChartRenderer(state: base).probe(size: Self.size, scale: Self.scale))
   }
@@ -183,7 +176,7 @@ struct ChartOptionsRenderTests {
 
   @Test("平均K线改蜡烛，不改指标与最新价")
   func heikinAffectsCandlesOnly() {
-    let real = Evidence.state(style: .default, dark: false, size: Self.size)
+    let real = Evidence.state(dark: false, size: Self.size)
     var ha = real
     ha.options.kind = .heikin
 
@@ -210,7 +203,7 @@ struct ChartOptionsRenderTests {
   /// `hh` / `hl` 必须并进价格区间，否则平均 K 线的上下影会被裁掉一截。
   @Test("平均K线的极值进得了价格区间")
   func heikinExtremesInRange() {
-    var ha = Evidence.state(style: .default, dark: false, size: Self.size)
+    var ha = Evidence.state(dark: false, size: Self.size)
     ha.options.kind = .heikin
     let r = ChartRenderer(state: ha)
     let p = r.probe(size: Self.size, scale: Self.scale)
@@ -229,7 +222,7 @@ struct ChartOptionsRenderTests {
   /// 指标、图例读数、最新价胶囊照旧；价格区间按收盘价收窄。
   @Test("收盘价画法：只画收盘折线，指标与最新价照旧")
   func lineDrawsClosesOnly() {
-    let real = Evidence.state(style: .default, dark: false, size: Self.size)
+    let real = Evidence.state(dark: false, size: Self.size)
     var ln = real
     ln.options.kind = .line
     let rr = ChartRenderer(state: real), rl = ChartRenderer(state: ln)
@@ -261,7 +254,7 @@ struct ChartOptionsRenderTests {
   func linePixels() {
     let dev = Self.dev
     func st(_ kind: CandleKind) -> ChartState {
-      var s = Evidence.state(style: .default, dark: false, size: dev.size, overlays: [], subs: [])
+      var s = Evidence.state(dark: false, size: dev.size, overlays: [], subs: [])
       s.options.kind = kind
       s.options.lastLine = false
       return s
@@ -310,7 +303,7 @@ struct ChartOptionsRenderTests {
   @Test("偏置只挪位置不改大小")
   func biasMovesOnly() {
     func probe(_ b: PriceBias) -> ChartProbe {
-      var st = Evidence.state(style: .default, dark: false, size: Self.size)
+      var st = Evidence.state(dark: false, size: Self.size)
       st.options.bias = b
       return ChartRenderer(state: st).probe(size: Self.size, scale: Self.scale)
     }
@@ -327,7 +320,7 @@ struct ChartOptionsRenderTests {
 
   @Test("副图高度倍率进得了布局")
   func subScaleReachesLayout() {
-    var st = Evidence.state(style: .default, dark: false, size: Self.size)
+    var st = Evidence.state(dark: false, size: Self.size)
     let base = ChartRenderer(state: st).layout(size: Self.size)
     st.subScale = [.macd: 2.0]
     let big = ChartRenderer(state: st).layout(size: Self.size)
@@ -344,7 +337,7 @@ struct ChartOptionsRenderTests {
   @Test("BOLL 图例：legendIndex 为 −1 时不越界")
   func bollLegendWithEmptySeries() throws {
     for crosshair in [nil, Crosshair(index: 5)] as [Crosshair?] {
-      var st = Evidence.state(style: .default, dark: false, size: Self.size, overlays: [.boll], subs: [],
+      var st = Evidence.state(dark: false, size: Self.size, overlays: [.boll], subs: [],
                               crosshair: crosshair)
       st.series = BarSeries(symbol: st.series.symbol, interval: st.series.interval, bars: [])
       let r = ChartRenderer(state: st)

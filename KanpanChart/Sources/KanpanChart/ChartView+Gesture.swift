@@ -654,23 +654,6 @@ extension ChartView {
     if s.price.inverted { onNotice?("主图已上下翻转，再双击价格轴翻回来") }
   }
 
-  /// 把视野重置回出厂根宽。**程序动作，不算用户意图**——它硬写着
-  /// `AICoinBehavior.initialSpacing`，报成用户意图就等于替用户把他的宽度改成出厂值。
-  ///
-  /// 顺带一句：全仓（`Kanpan/Kanpan` 与 `KanpanChart/Sources`）目前**一个调用方都没有**。
-  /// 留着是因为它是 `public` API，删不删是另一轮的事。
-  public func resetView() {
-    cancelAxisFreeze()
-    guard var s = state, let L = chartLayout, s.series.count > 0 else { return }
-    s.view = ViewMath.reset(
-      series: s.series, plotW: L.plotW, spacing: AICoinBehavior.initialSpacing, anchor: s.options.anchor)
-    s.price.reset()
-    s.crosshair = nil
-    state = s
-    viewDidChange(s.view, source: .program)
-    fireCrosshairChanged(nil)
-  }
-
   /// 「回到最新」（G14）：滑回右边缘。
   public func scrollToLatest(animated: Bool = true) {
     cancelAxisFreeze()
@@ -772,7 +755,7 @@ extension ChartView {
 
   /// 视野变了之后统一走这里：通知外面 + 判断该不该补历史。
   ///
-  /// 默认算**用户手上的动作**——这个文件里除了「回到最新」和 `resetView()`，
+  /// 默认算**用户手上的动作**——这个文件里除了「回到最新」，
   /// 其余每一条路（拖、捏、甩、回弹、轴拖）都是手指直接或间接造成的。
   private func viewDidChange(_ v: ViewWindow, source: ViewChangeSource = .gesture) {
     onViewChanged?(v)

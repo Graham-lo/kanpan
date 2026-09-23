@@ -19,7 +19,6 @@ public struct ChartState: Sendable {
   }
   public var symbol: SymbolInfo
   public var view: ViewWindow
-  public var style: CandleStyle
   public var paletteSeed: PaletteSeed?
   public var dark: Bool
   public var redUp: Bool
@@ -70,7 +69,6 @@ public struct ChartState: Sendable {
     series: BarSeries,
     symbol: SymbolInfo,
     view: ViewWindow,
-    style: CandleStyle = .default,
     dark: Bool = false,
     redUp: Bool = false,
     price: PriceTransform = .init(mode: .log),
@@ -88,7 +86,7 @@ public struct ChartState: Sendable {
     subScale: [IndicatorID: Double] = [:]
   ) {
     self.series = series; self.symbol = symbol; self.view = view
-    self.style = style; self.dark = dark; self.redUp = redUp; self.price = price
+    self.dark = dark; self.redUp = redUp; self.price = price
     self.overlays = overlays; self.subs = subs; self.params = params
     self.timezone = timezone; self.oi = oi; self.drawings = drawings
     self.crosshair = crosshair
@@ -101,8 +99,7 @@ public struct ChartState: Sendable {
 
   public var colors: ChartColors { Palette.chart(paletteSeed ?? (dark ? Palette.darkSeed : Palette.lightSeed), redUp: redUp) }
 
-  /// 真正生效的网格档位。渲染器和探针一律读这个，别再读 `style.grid`——
-  /// 覆盖只在读的时候叠，风格表本身一个数都不许改（原型即规格）。
+  /// 真正生效的网格档位。渲染器和探针一律读这个。
   public var effectiveGrid: CandleStyle.Grid {
     switch options.grid {
     case .style: .none
@@ -111,8 +108,7 @@ public struct ChartState: Sendable {
     }
   }
 
-  /// 真正生效的实体画法。风格表只剩 AICoin 一套之后，这里就是「图表」面板上那两档的直译；
-  /// 渲染器一律读这个，别去读 `style.shape`。
+  /// 真正生效的实体画法：「图表」面板上那两档的直译。渲染器一律读这个。
   public var effectiveShape: CandleStyle.Shape {
     switch options.body {
     case .solid: .solid
@@ -134,7 +130,7 @@ extension ChartState {
   /// 而是把 `ChartState` 的字段一个不落地列全（新增字段时也必须加进来）。
   func sameGeometryInputs(as other: ChartState) -> Bool {
     series == other.series && oi == other.oi && external == other.external && symbol == other.symbol && view == other.view
-      && style == other.style && paletteSeed == other.paletteSeed && dark == other.dark
+      && paletteSeed == other.paletteSeed && dark == other.dark
       && redUp == other.redUp && price == other.price && overlays == other.overlays
       && subs == other.subs && params == other.params && timezone == other.timezone
       && indicatorColors == other.indicatorColors && drawingPreviewID == other.drawingPreviewID

@@ -181,7 +181,7 @@ import ReviewUI
     let windowStart = Self.shifted(initialAnchor == range.end ? range.start : initialAnchor, interval: interval, bars: -300)
     let end = min(limit, Self.shifted(initialAnchor, interval: interval, bars: 300))
     if let data = record.draft.chartSettings, let prefs = try? PersonalSyncCodec.snapshotPrefs(data) {
-      base.style = prefs.style; base.options = prefs.chartOptions; base.params = prefs.params
+      base.options = prefs.chartOptions; base.params = prefs.params
       base.overlays = prefs.overlays; base.subs = prefs.subs.filter { $0 != .oi }
       base.indicatorColors = prefs.indicatorColors; base.hiddenOutputs = prefs.hiddenOutputs
       base.price = PriceTransform(mode: prefs.priceMode)
