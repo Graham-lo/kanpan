@@ -1,6 +1,12 @@
 import XCTest
 
 @MainActor final class AccountMarketUITests: XCTestCase {
+  /// 本条用例注册的号：正常路径在界面上注销，中途失败时收尾兜底删掉，不留在线上。
+  private var createdAccount: String?
+  override func tearDown() async throws {
+    if let name = createdAccount { await TestAccounts.delete(name, password: "Testpass2026") }
+  }
+
   func testBinanceStartupThroughExistingNetwork() throws {
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -68,6 +74,7 @@ import XCTest
     app.buttons["settings.account"].tap()
     XCTAssertTrue(app.buttons["注册"].waitForExistence(timeout: 5)); app.buttons["注册"].tap()
     let name = "test_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)
+    createdAccount = String(name)
     app.textFields["account.email"].tap(); app.textFields["account.email"].typeText(String(name))
     app.secureTextFields["account.password"].tap()
     if app.buttons["GenerateStrongPasswordButton"].waitForExistence(timeout: 2) { app.buttons["xmark"].tap() }

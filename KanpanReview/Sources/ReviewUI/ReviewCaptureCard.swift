@@ -121,7 +121,7 @@ public struct ReviewCaptureCard: View {
       Text(title).font(.caption).foregroundStyle(t.ink3)
       TextField(title, value: Binding(get: { feature.draft?[keyPath: key] ?? 0 }, set: {
         feature.draft?[keyPath: key] = $0; feature.draft?[keyPath: flag] = true; feature.saveDraft()
-      }), format: .number.precision(.fractionLength(0...decimals))).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
+      }), format: .number.grouping(.never).precision(.fractionLength(0...decimals))).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
     }
   }
 

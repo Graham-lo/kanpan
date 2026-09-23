@@ -52,6 +52,27 @@ final class ChartFoundationUITests: XCTestCase {
     }
     app.terminate()
   }
+  /// 「视野没动」：右缘（`to`）和根宽（`spacing`）一点不差，图高不变。
+  ///
+  /// 为什么不直接比 `from` / `plotW`：价格刻度列按最宽那条刻度文字贴着算宽度（用户点名要窄），
+  /// 行情在跳，刻度文字换了一位数，这一列就会宽或窄 1 pt。右缘贴着末根不动，根宽也不动，
+  /// 左缘就跟着多露或少露四分之一根。这不是平移。2026-09-23 的 M8 矩阵里，十字线和拖副图
+  /// 这两条都是这样红的：`plotW 356→355`、`spacing 4→4`、`to` 不变、`from` 差了 900000 ms。
+  /// 这里把这 1–2 pt 的刻度列伸缩折算成左缘允许差的量；其余部分仍然要求一模一样。
+  func assertViewportKept(_ before: [String: Any], _ after: [String: Any],
+                          file: StaticString = #filePath, line: UInt = #line) throws {
+    func v(_ d: [String: Any], _ k: String) throws -> Double { try XCTUnwrap(d[k] as? Double, k, file: file, line: line) }
+    XCTAssertEqual(try v(after, "to"), try v(before, "to"), accuracy: 1, "右缘动了", file: file, line: line)
+    XCTAssertEqual(try v(after, "spacing"), try v(before, "spacing"), accuracy: 0.001, "根宽变了", file: file, line: line)
+    let dW = abs(try v(after, "plotW") - v(before, "plotW"))
+    XCTAssertLessThanOrEqual(dW, 2, "绘图区宽度差了 \(dW) pt，已经不是刻度列伸缩", file: file, line: line)
+    let msPerPt = try v(before, "span") / v(before, "plotW")
+    XCTAssertEqual(try v(after, "from"), try v(before, "from"), accuracy: dW * msPerPt + 1,
+                   "左缘挪得比刻度列伸缩多", file: file, line: line)
+    if before["height"] != nil {
+      XCTAssertEqual(try v(after, "height"), try v(before, "height"), accuracy: 0.001, "图高变了", file: file, line: line)
+    }
+  }
   func info() -> [String: Any] {
     guard canvas.exists, let value = canvas.value as? String, let data = value.data(using: .utf8),
           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
@@ -219,9 +240,9 @@ final class ChartFoundationUITests: XCTestCase {
     XCTAssertTrue(wait(seconds: 4) {
       (self.info()["mainH"] as? Double ?? 0) > (original["mainH"] as? Double ?? 0) + 15
     }, String(describing: info()))
-    for key in ["from", "span", "plotW", "spacing"] {
-      XCTAssertEqual(try XCTUnwrap(info()[key] as? Double), try XCTUnwrap(original[key] as? Double), accuracy: 0.001)
-    }
+    var kept = info(); kept["height"] = nil
+    var was = original; was["height"] = nil
+    try assertViewportKept(was, kept)
     shot("高度调高-主副图内容")
     XCTAssertEqual(try XCTUnwrap(info()["height"] as? Double), try XCTUnwrap(info()["viewportH"] as? Double), accuracy: 1)
     XCTAssertEqual(info()["scrollY"] as? Double, 0)
@@ -237,9 +258,9 @@ final class ChartFoundationUITests: XCTestCase {
     from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: 35)))
     XCTAssertTrue(wait(seconds: 3) { (Double(grip.value as? String ?? "") ?? 0) > before + 15 }, String(describing: info()))
     XCTAssertEqual(try XCTUnwrap(info()["height"] as? Double), try XCTUnwrap(info()["viewportH"] as? Double), accuracy: 1)
-    for key in ["from", "span", "plotW", "spacing"] {
-      XCTAssertEqual(try XCTUnwrap(info()[key] as? Double), try XCTUnwrap(original[key] as? Double), accuracy: 0.001)
-    }
+    var kept = info(); kept["height"] = nil
+    var was = original; was["height"] = nil
+    try assertViewportKept(was, kept)
     shot("一屏三副图-手动边界调整")
   }
 
@@ -250,7 +271,7 @@ final class ChartFoundationUITests: XCTestCase {
     let center = origin.withOffset(CGVector(dx: try XCTUnwrap(selected["crossX"] as? Double), dy: try XCTUnwrap(selected["crossY"] as? Double)))
     center.press(forDuration: 0.05, thenDragTo: center.withOffset(CGVector(dx: 50, dy: 10)))
     XCTAssertTrue(wait { self.info()["crossIndex"] as? Int != selected["crossIndex"] as? Int })
-    XCTAssertEqual(try XCTUnwrap(info()["from"] as? Double), try XCTUnwrap(selected["from"] as? Double), accuracy: 1)
+    try assertViewportKept(selected, info())
     let away = origin.withOffset(CGVector(dx: 45, dy: 100))
     away.press(forDuration: 0.05, thenDragTo: away.withOffset(CGVector(dx: 100, dy: 0)))
     XCTAssertTrue(wait { self.info()["crosshair"] as? Bool == false })
@@ -269,9 +290,7 @@ final class ChartFoundationUITests: XCTestCase {
       thenDragTo: origin.withOffset(CGVector(dx: 150, dy: lastY + lastH / 2)))
     XCTAssertTrue(wait { self.info()["subs"] as? [String] == ["OI", "MACD", "VOL"] }, String(describing: info()))
     XCTAssertEqual(info()["crosshair"] as? Bool, false)
-    for key in ["from", "span", "plotW", "spacing", "height"] {
-      XCTAssertEqual(try XCTUnwrap(info()[key] as? Double), try XCTUnwrap(original[key] as? Double), accuracy: 0.001)
-    }
+    try assertViewportKept(original, info())
     shot("区域长按拖动-整块副图换序")
   }
 
@@ -313,7 +332,7 @@ final class ChartFoundationUITests: XCTestCase {
     for interval in ["1h", "1m"] {
       app.tapIntervalChip(interval)
       XCTAssertTrue(wait(seconds: 40) {
-        self.info()["symbol"] as? String == "BTCUSDT" && self.info()["interval"] as? String == interval
+        self.info()["symbol"] as? String == testInstrumentKey("BTCUSDT") && self.info()["interval"] as? String == interval
           && self.info()["renderedDepthRows"] as? Int == 10
       }, feedEvidence())
       shot("盘口梯-BTC-" + interval)
@@ -352,7 +371,7 @@ final class ChartFoundationUITests: XCTestCase {
     for interval in ["1h", "1m"] {
       app.tapIntervalChip(interval)
       XCTAssertTrue(wait(seconds: 40) {
-        self.info()["interval"] as? String == interval && self.info()["symbol"] as? String == "BTCUSDT"
+        self.info()["interval"] as? String == interval && self.info()["symbol"] as? String == testInstrumentKey("BTCUSDT")
           && self.info()["renderedDepthRows"] as? Int == 10
       }, "必须已实际绘制十行盘口梯；" + feedEvidence())
       shot("盘口梯-BTC-" + interval)
@@ -1347,9 +1366,15 @@ final class ChartFoundationUITests: XCTestCase {
     selectMain()
     XCTAssertTrue(app.staticTexts["chart.topOHLC"].waitForExistence(timeout: 8))
     shot("顶部-历史OHLC")
+    // 十字线开着时，周期条那一行让位给十字线操作行（上一根 / 下一根 / 按此价画线 / 看细节，
+    // `2045efe`、`9f449e2` 起），「图表」钮不在手指够得着的地方——人要先在图上点一下收起十字线，
+    // 周期条回来了才去开面板。这条用例写在那之前，一直在十字线开着时点「图表」。
+    XCTAssertFalse(app.buttons["interval.chart"].isHittable, "十字线开着时周期条应让位给操作行")
+    selectMain()
+    XCTAssertTrue(wait { self.info()["crosshair"] as? Bool == false })
+    XCTAssertTrue(wait(seconds: 5) { !self.app.staticTexts["chart.topOHLC"].exists }, "收起十字线后头部应回到实时")
     app.buttons["interval.chart"].tap()
     app.buttons["跟随K线"].tap(); closePanel()
-    XCTAssertTrue(wait { self.info()["crosshair"] as? Bool == false })
     XCTAssertFalse(app.staticTexts["chart.topOHLC"].exists)
     selectMain()
     XCTAssertTrue(wait { self.info()["crosshair"] as? Bool == true })
@@ -1523,9 +1548,10 @@ extension ChartFoundationUITests {
     shot("画线-样式表里画法一排选中两端延伸")
     app.buttons["draw.save"].tap()
     XCTAssertTrue(wait { self.info()["drawingKinds"] as? [String] == ["extended"] }, String(describing: info()))
-    // 同一样东西界面上只有一个名字：选中条上的线名就是样式表那排按钮上的字。
-    XCTAssertTrue(app.staticTexts["两端延伸"].waitForExistence(timeout: 5), "选中条上的线名和样式表那排对不上")
-    XCTAssertFalse(app.staticTexts["直线"].exists, "选中条上还叫「直线」")
+    // 1e271ee 起选中栏左边是提醒胶囊，不再写线名（能挂提醒的线都是这样）；
+    // 线名只剩样式表那排按钮上的字，界面上任何地方都不许再冒出旧名「直线」。
+    XCTAssertTrue(app.buttons["alert.line"].waitForExistence(timeout: 5), "两端延伸选中后选中栏上该是提醒胶囊")
+    XCTAssertFalse(app.staticTexts["直线"].exists, "界面上还叫「直线」")
 
     // 再从面板上点「趋势线」画一条：落下来的得是两端延伸，不是线段。
     openDrawTools()
@@ -1537,8 +1563,8 @@ extension ChartFoundationUITests {
     XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 2 }, String(describing: info()))
     XCTAssertEqual(info()["drawingKinds"] as? [String], ["extended", "extended"],
                    "换成两端延伸之后再画趋势线，第二条还是线段")
-    XCTAssertTrue(app.staticTexts["要在这条两端延伸线上提醒你吗？"].waitForExistence(timeout: 5),
-                  "提醒确认条上的线名和样式表那排对不上")
+    // 画完不再弹「要不要加提醒」（1e271ee），刚落下的线是选中的，提醒在选中栏的胶囊上。
+    XCTAssertTrue(app.buttons["alert.line"].waitForExistence(timeout: 5), "刚画完的两端延伸选中栏上没有提醒胶囊")
     shot("画线-换成两端延伸后再画仍是两端延伸")
 
     // 重开 app 还记得：这份记忆和样式一样落在画线存档的偏好里。

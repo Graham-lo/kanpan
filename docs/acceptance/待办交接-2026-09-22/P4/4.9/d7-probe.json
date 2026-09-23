@@ -1,0 +1,50 @@
+{
+ "probe_started_at": "2026-09-23T13:21:13Z",
+ "runs": [
+  {
+   "source": "binance",
+   "gateway": {
+    "url": "https://kanpan.107-174-172-10.sslip.io/market/v1/klines?source=binance&symbol=BTCUSDT&interval=1m&limit=100",
+    "sent_at": "2026-09-23T13:21:13.532Z",
+    "ms": 1067,
+    "http": 503,
+    "envelope": {}
+   },
+   "direct": {
+    "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=100",
+    "sent_at": "2026-09-23T13:21:14.599Z",
+    "ms": 612,
+    "http": 200
+   },
+   "error": "ValueError: invalid literal for int() with base 10: 'e'",
+   "gateway_head": "{\"error\":\"market unavailable\"}",
+   "direct_head": "[[1790163720000,\"85450.60\",\"85456.00\",\"85433.00\",\"85455.90\",\"57.917\",1790163779999,\"4948758.13660\",1668,\"35.811\",\"3059911.82900\",\"0\"],[1790163780000,\"85456.00\",\"85458.70\",\"85434.80\",\"85441.60\",\"55.138\",1790163839999,\"4711351.01540\",1065,\"18.601\",\"1589347.64330\",\"0\"],[1790163840000,\"85441.60\",\"85484."
+  },
+  {
+   "source": "okx",
+   "gateway": {
+    "url": "https://kanpan.107-174-172-10.sslip.io/market/v1/klines?source=okx&symbol=BTCUSDT&interval=1m&limit=100",
+    "sent_at": "2026-09-23T13:21:15.211Z",
+    "ms": 1195,
+    "http": 503,
+    "envelope": {}
+   },
+   "direct": {
+    "url": "https://www.okx.com/api/v5/market/candles?instId=BTC-USDT-SWAP&bar=1m&limit=100",
+    "sent_at": "2026-09-23T13:21:16.406Z",
+    "ms": 477,
+    "http": 200
+   },
+   "error": "ValueError: invalid literal for int() with base 10: 'e'",
+   "gateway_head": "{\"error\":\"market unavailable\"}",
+   "direct_head": "{\"code\":\"0\",\"data\":[[\"1790169660000\",\"85458.9\",\"85458.9\",\"85444.6\",\"85451.5\",\"600.27\",\"6.0027\",\"512956.75529\",\"0\"],[\"1790169600000\",\"85418.9\",\"85463.1\",\"85418.9\",\"85458.8\",\"3800.91\",\"38.0091\",\"3247685.18568\",\"1\"],[\"1790169540000\",\"85380.3\",\"85427.4\",\"85367\",\"85419\",\"4698.07\",\"46.9807\",\"4012050.76969"
+  }
+ ],
+ "health": {
+  "url": "https://kanpan.107-174-172-10.sslip.io/chart-gateway/health",
+  "sent_at": "2026-09-23T13:21:16.883Z",
+  "ms": 1012,
+  "http": 200,
+  "body": "{\"status\":\"ok\",\"service\":\"kanpan-gateway\"}"
+ }
+}

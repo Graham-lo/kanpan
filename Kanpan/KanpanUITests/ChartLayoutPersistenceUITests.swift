@@ -19,6 +19,12 @@ import XCTest
   private let account = "test_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)
   private let password = "Testpass2026"
 
+  /// 登录那两条用例在界面上注销自己的号；中途失败走不到那一步，收尾兜底删掉（D.7 审读）。
+  override func tearDown() async throws {
+    guard name.contains("SignedIn") else { return }
+    await TestAccounts.delete(String(account), password: password)
+  }
+
   private func makeApp(signedIn: Bool) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchEnvironment["KANPAN_TEST_PROFILE"] = "1"

@@ -152,7 +152,10 @@ final class ReviewContractReconciliationTests: XCTestCase {
     XCTAssertEqual(ReviewContract.quoteSuffix, suffix,
                    "服务端要求品种以 `\(suffix)` 结尾；客户端放宽了就会让 USDC 永续存进队列再被整条拒掉")
 
-    let symbolLimit = try firstMatch("range\\.symbol\\.len\\(\\) > ([0-9_]+)", range, "品种名长度上限")[1]
+    // 服务端 P3.8 起按字符数（`chars().count()`）数品种名长度——汉字名合约一个字三个字节，
+    // 按字节数会把「龙虾USDT」这类名字算长；客户端 `String.count` 本来就是按字符数的，两边口径一致。
+    let symbolLimit = try firstMatch("range\\.symbol\\.(?:len\\(\\)|chars\\(\\)\\.count\\(\\)) > ([0-9_]+)",
+                                     range, "品种名长度上限")[1]
     XCTAssertEqual(Int64(ReviewContract.symbolMaxLength), number(symbolLimit), "品种名长度上限对不上")
 
     let bars = try firstMatch("\\(([0-9_]+)\\.\\.=([0-9_]+)\\)\\.contains\\(&range\\.bars\\)", range, "根数区间")

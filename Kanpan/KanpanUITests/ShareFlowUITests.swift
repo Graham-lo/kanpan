@@ -63,7 +63,17 @@ import XCTest
     XCUIDevice.shared.press(.home); app.activate()
     XCTAssertTrue(app.buttons["share.open"].waitForExistence(timeout: 60), "回前台没有收件卡")
   }
-  override func tearDown() async throws { app?.terminate() }
+  /// 自造的两个 qa_share_ 账号收尾一律注销（D.7 审读：原来成功也不删，一轮留 6 个号在线上）。
+  /// `SHARE_QA_USERS` 给的固定账号是别人的，不碰。
+  override func tearDown() async throws {
+    app?.terminate()
+    guard ProcessInfo.processInfo.environment["SHARE_QA_USERS"] == nil else { return }
+    for person in people {
+      if let name = person["username"], let password = person["password"] {
+        await TestAccounts.delete(name, password: password, api: api)
+      }
+    }
+  }
 
   func testPreviewKeepsOwnLayout() async throws {
     let card = app.otherElements["share.card"]

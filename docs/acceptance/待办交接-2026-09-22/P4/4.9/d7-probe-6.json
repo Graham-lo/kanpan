@@ -1,0 +1,65 @@
+{
+ "probe_started_at": "2026-09-23T13:22:34Z",
+ "runs": [
+  {
+   "source": "binance",
+   "gateway": {
+    "url": "https://kanpan.107-174-172-10.sslip.io/market/v1/klines?source=binance&symbol=BTCUSDT&interval=1m&limit=100",
+    "sent_at": "2026-09-23T13:22:34.384Z",
+    "ms": 1017,
+    "http": 451,
+    "envelope": {
+     "source": "binance"
+    }
+   },
+   "direct": {
+    "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=100",
+    "sent_at": "2026-09-23T13:22:35.402Z",
+    "ms": 620,
+    "http": 200
+   },
+   "error": "ValueError: invalid literal for int() with base 10: 'e'",
+   "gateway_head": "{\"error\":\"upstream_blocked\",\"source\":\"binance\",\"code\":451}",
+   "direct_head": "[[1790163780000,\"85456.00\",\"85458.70\",\"85434.80\",\"85441.60\",\"55.138\",1790163839999,\"4711351.01540\",1065,\"18.601\",\"1589347.64330\",\"0\"],[1790163840000,\"85441.60\",\"85484.50\",\"85436.80\",\"85478.50\",\"71.702\",1790163899999,\"6127645.16270\",2248,\"35.966\",\"3073714.96690\",\"0\"],[1790163900000,\"85478.40\",\"85530."
+  },
+  {
+   "source": "okx",
+   "gateway": {
+    "url": "https://kanpan.107-174-172-10.sslip.io/market/v1/klines?source=okx&symbol=BTCUSDT&interval=1m&limit=100",
+    "sent_at": "2026-09-23T13:22:36.022Z",
+    "ms": 1017,
+    "http": 200,
+    "envelope": {
+     "source": "okx",
+     "symbol": "BTCUSDT",
+     "interval": "1m"
+    },
+    "bars": 100
+   },
+   "direct": {
+    "url": "https://www.okx.com/api/v5/market/candles?instId=BTC-USDT-SWAP&bar=1m&limit=100",
+    "sent_at": "2026-09-23T13:22:37.039Z",
+    "ms": 463,
+    "http": 200,
+    "bars": 100
+   },
+   "compare": {
+    "common": 100,
+    "closed_compared": 99,
+    "closed_mismatch": [],
+    "closed_mismatch_n": 0,
+    "open_bars": 1,
+    "open_open_price_mismatch": 0,
+    "first": 1790163780000,
+    "last": 1790169720000
+   }
+  }
+ ],
+ "health": {
+  "url": "https://kanpan.107-174-172-10.sslip.io/chart-gateway/health",
+  "sent_at": "2026-09-23T13:22:37.504Z",
+  "ms": 1013,
+  "http": 200,
+  "body": "{\"status\":\"ok\",\"service\":\"kanpan-gateway\"}"
+ }
+}

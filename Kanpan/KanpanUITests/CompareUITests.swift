@@ -6,6 +6,8 @@ import UIKit
   var app: XCUIApplication!
   let keys = ["binance/usd_m/ETHUSDT", "binance/usd_m/SOLUSDT", "binance/usd_m/DOGEUSDT"]
   var canvas: XCUIElement { app.otherElements["chart.canvas"] }
+  /// 本条用例自己注册的隔离账号；收尾时注销，不留在线上（D.7 审读：原来每跑一次留一个号）。
+  var createdAccount: (name: String, password: String)?
 
   override func setUp() {
     continueAfterFailure = false
@@ -26,6 +28,7 @@ import UIKit
       app.terminate()
     }
     XCUIDevice.shared.orientation = .portrait
+    if let account = createdAccount { await TestAccounts.delete(account.name, password: account.password) }
   }
   func info() -> [String: Any] {
     guard canvas.exists, let text = canvas.value as? String, let bytes = text.data(using: .utf8),
@@ -190,6 +193,8 @@ import UIKit
       app.buttons["account.submit"].tap()
       XCTAssertTrue(wait(60) { !self.app.otherElements["account.view"].exists })
     }
+    // 先记下再注册：注册成功但回包丢了也能在收尾时删掉。
+    createdAccount = (name, password)
     openAccount(); app.buttons["注册"].tap(); credentials()
     // 产品的立即同步入口，待同步消失后才切到全新的本地档案。
     // 注册成功后账号页收起、回到原页面，要从设置页重新进账号。
@@ -207,8 +212,7 @@ import UIKit
     ready(3)
     XCTAssertEqual(info()["compareKeys"] as? [String], keys)
     shot("对比-新安装档案登录恢复")
-    print("COMPARE_SYNC new profile restored three comparison keys; fixture account retained")
-    // 验收只新增隔离账号，不删除任何线上账号或数据。
+    print("COMPARE_SYNC new profile restored three comparison keys; fixture account deleted in tearDown")
   }
 
   func testScanningKeepsCollectionAndIgnoresTheMainInstrument() {

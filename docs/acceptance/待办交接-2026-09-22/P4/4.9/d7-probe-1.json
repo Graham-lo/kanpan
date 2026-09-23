@@ -1,0 +1,56 @@
+{
+ "probe_started_at": "2026-09-23T13:22:03Z",
+ "runs": [
+  {
+   "source": "binance",
+   "gateway": {
+    "url": "https://kanpan.107-174-172-10.sslip.io/market/v1/klines?source=binance&symbol=BTCUSDT&interval=1m&limit=100",
+    "sent_at": "2026-09-23T13:22:03.057Z",
+    "ms": 1244,
+    "http": 451,
+    "envelope": {
+     "source": "binance"
+    }
+   },
+   "direct": {
+    "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=100",
+    "sent_at": "2026-09-23T13:22:04.301Z",
+    "ms": 624,
+    "http": 200
+   },
+   "error": "ValueError: invalid literal for int() with base 10: 'e'",
+   "gateway_head": "{\"error\":\"upstream_blocked\",\"source\":\"binance\",\"code\":451}",
+   "direct_head": "[[1790163780000,\"85456.00\",\"85458.70\",\"85434.80\",\"85441.60\",\"55.138\",1790163839999,\"4711351.01540\",1065,\"18.601\",\"1589347.64330\",\"0\"],[1790163840000,\"85441.60\",\"85484.50\",\"85436.80\",\"85478.50\",\"71.702\",1790163899999,\"6127645.16270\",2248,\"35.966\",\"3073714.96690\",\"0\"],[1790163900000,\"85478.40\",\"85530."
+  },
+  {
+   "source": "okx",
+   "gateway": {
+    "url": "https://kanpan.107-174-172-10.sslip.io/market/v1/klines?source=okx&symbol=BTCUSDT&interval=1m&limit=100",
+    "sent_at": "2026-09-23T13:22:04.925Z",
+    "ms": 1236,
+    "http": 200,
+    "envelope": {
+     "source": "okx",
+     "symbol": "BTCUSDT",
+     "interval": "1m"
+    }
+   },
+   "direct": {
+    "url": "https://www.okx.com/api/v5/market/candles?instId=BTC-USDT-SWAP&bar=1m&limit=100",
+    "sent_at": "2026-09-23T13:22:06.161Z",
+    "ms": 469,
+    "http": 200
+   },
+   "error": "ValueError: invalid literal for int() with base 10: 's'",
+   "gateway_head": "{\"source\":\"okx\",\"symbol\":\"BTCUSDT\",\"interval\":\"1m\",\"bars\":[[1790163780000,\"85466.8\",\"85466.8\",\"85446.5\",\"85452.6\",\"18.3768\",1790163839999,\"1570408.20641\",0,null,null,\"0\"],[1790163840000,\"85452.6\",\"85490.8\",\"85450\",\"85490.8\",\"49.5493\",1790163899999,\"4234598.23575\",0,null,null,\"0\"],[1790163900000,\"854",
+   "direct_head": "{\"code\":\"0\",\"data\":[[\"1790169720000\",\"85433.1\",\"85447.3\",\"85433\",\"85441.9\",\"946.42\",\"9.4642\",\"808635.18824\",\"0\"],[\"1790169660000\",\"85458.9\",\"85458.9\",\"85416.2\",\"85433\",\"3821.43\",\"38.2143\",\"3264755.72228\",\"1\"],[\"1790169600000\",\"85418.9\",\"85463.1\",\"85418.9\",\"85458.8\",\"3800.91\",\"38.0091\",\"3247685.18568"
+  }
+ ],
+ "health": {
+  "url": "https://kanpan.107-174-172-10.sslip.io/chart-gateway/health",
+  "sent_at": "2026-09-23T13:22:06.630Z",
+  "ms": 1166,
+  "http": 200,
+  "body": "{\"status\":\"ok\",\"service\":\"kanpan-gateway\"}"
+ }
+}

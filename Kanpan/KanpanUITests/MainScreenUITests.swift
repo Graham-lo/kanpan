@@ -125,8 +125,8 @@ final class MainScreenUITests: KanpanUICase {
     let storage = app.buttons["sector.all.row.mem"]
     guard expectExists(storage, Self.long) else { return }
     storage.tap()
-    check("sector.price.SNDKUSDT", digits: 2)
-    check("sector.price.MUUSDT", digits: 2)
+    check("sector.price." + testInstrumentKey("SNDKUSDT"), digits: 2)
+    check("sector.price." + testInstrumentKey("MUUSDT"), digits: 2)
     shot("precision-sector-stocks")
     app.buttons["sector.list.back"].tap()
     app.otherElements["sector.all"].buttons["sector.market.crypto"].tap()
@@ -134,12 +134,12 @@ final class MainScreenUITests: KanpanUICase {
     for _ in 0..<8 where !bitcoin.isHittable { app.swipeUp() }
     guard expectExists(bitcoin, Self.long) else { return }
     bitcoin.tap()
-    check("sector.price.BTCUSDT", digits: 1)
-    let sats = app.descendants(matching: .any)["sector.price.1000SATSUSDT"].firstMatch
+    check("sector.price." + testInstrumentKey("BTCUSDT"), digits: 1)
+    let sats = app.descendants(matching: .any)["sector.price." + testInstrumentKey("1000SATSUSDT")].firstMatch
     for _ in 0..<5 where !sats.isHittable {
       app.swipeUp()
     }
-    check("sector.price.1000SATSUSDT", digits: 8)
+    check("sector.price." + testInstrumentKey("1000SATSUSDT"), digits: 8)
     shot("precision-sector-crypto")
   }
 
