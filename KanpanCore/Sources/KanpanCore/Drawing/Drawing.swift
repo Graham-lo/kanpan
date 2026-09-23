@@ -84,9 +84,9 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
       case .flag: "旗标"
       case .markerUp: "向上箭头"
       case .markerDown: "向下箭头"
-      // 名字就叫「VWAP」：TV 那把叫「锚定 VWAP」，可这里的 VWAP 本来就只有锚定这一种
-      // （没有「当日 VWAP」那种指标版），前面两个字对用户不传达任何信息。
-      case .anchoredVWAP: "VWAP"
+      // TV 那把叫「锚定 VWAP」。界面标签一律中文，而指标里已经有一条「当日均价线」（每天零点
+      // 归零），这把从你点的那根起算，所以叫「锚定均价线」，工具条上短写「均价线」。
+      case .anchoredVWAP: "锚定均价线"
       case .fixedVolumeProfile: "区间成交量分布"
       case .anchoredVolumeProfile: "锚定成交量分布"
       }
@@ -118,6 +118,7 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
       case .priceLabel: "价签"
       case .markerUp: "上箭头"
       case .markerDown: "下箭头"
+      case .anchoredVWAP: "均价线"
       case .fixedVolumeProfile: "区间量分布"
       case .anchoredVolumeProfile: "锚定量分布"
       default: title

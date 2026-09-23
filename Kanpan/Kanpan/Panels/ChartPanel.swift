@@ -146,15 +146,14 @@ struct ChartPanel: View {
       PanelRow(name: "价格轴") {
         PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: prefs.priceMode) { v in store.update { $0.priceMode = v } }
       }
-      switchRow("主轴允许翻转", "双击价格轴上下颠倒", prefs.allowMainInversion,
+      switchRow("主轴允许翻转", nil, prefs.allowMainInversion,
                 id: "chart.allowMainInversion") { $0.allowMainInversion = $1 }
-      switchRow("副轴允许翻转", "双击副图坐标轴翻转", prefs.allowSubInversion,
+      switchRow("副轴允许翻转", nil, prefs.allowSubInversion,
                 id: "chart.allowSubInversion") { $0.allowSubInversion = $1 }
       switchRow("指标区域自适应", nil, prefs.adaptiveIndicators) { $0.adaptiveIndicators = $1 }
 
       PanelGroupTitle(text: "类型")
-      PanelRow(name: "画法", meta: prefs.candleKind == .heikin ? "平均 K 线使用平滑价格" : nil,
-               divider: false) {
+      PanelRow(name: "画法", divider: false) {
         PanelSegment(options: ChartPanel.kinds, selection: prefs.candleKind,
                      id: "chart.candleKind") { v in
           store.update { $0.candleKind = v }
@@ -195,7 +194,7 @@ struct ChartPanel: View {
       switchRow("本根倒计时", nil, prefs.countdown) { $0.countdown = $1 }
         .accessibilityIdentifier("chart.countdown")
       // 「显示画线」那一行 2026-09-23 撤了：画线页「更多」里有「全部隐藏」，两颗开关管同一件事。
-      switchRow("至今涨幅", "选中 K 线至今的涨跌幅", prefs.sinceChange, divider: false) {
+      switchRow("至今涨幅", nil, prefs.sinceChange, divider: false) {
         $0.sinceChange = $1
       }
       .accessibilityIdentifier("chart.sinceChange")

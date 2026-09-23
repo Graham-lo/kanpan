@@ -41,7 +41,7 @@ public enum IndicatorID: String, Sendable, Codable, CaseIterable, Hashable {
     case .lsr: "多空比"
     case .taker: "主动买卖比"
     case .basis: "基差"
-    case .vwap: "当日VWAP"
+    case .vwap: "当日均价线"
     case .supertrend: "超级趋势"
     case .sar: "抛物线转向"
     case .dmi: "动向指标"

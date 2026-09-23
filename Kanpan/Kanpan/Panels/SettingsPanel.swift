@@ -54,7 +54,7 @@ struct SettingsPanel: View {
           store.update { $0.redUp = v }
         }
       }
-      PanelRow(name: "开盘时间") {
+      PanelRow(name: "涨跌幅起点") {
         // 自带标签的 `Menu(_:)` 会用系统强调色（蓝），整页就这一处跳出配色之外。
         // 自己搭标签，颜色从 `PanelTheme` 取。
         Menu {
@@ -97,8 +97,8 @@ struct SettingsPanel: View {
       // ---- 任务书 §10.6 里有、原型里没有的
       switchRow("盯盘时不锁屏", nil, prefs.keepAwake) { $0.keepAwake = $1 }
         .accessibilityIdentifier("settings.keepAwake")
-      switchRow("启动快照", "先显示上次图表", prefs.launchSnapshot) { $0.launchSnapshot = $1 }
-        .accessibilityIdentifier("settings.launchSnapshot")
+      // 「启动快照」不再摆出来（2026-09-24 审查 U13）：它是工程开关，出厂就开着，
+      // 用户没有理由关它。字段仍在 `Prefs.launchSnapshot`，「恢复默认」会把它拨回开。
 
       // 线路是用户定的，选了哪条就走哪条，没有「自动」：原来那套对冲 + 自动切源
       // 偶尔会把一次探测失败当成「这台机器上不去币安」，整套换到 OKX 还要等好几
@@ -110,16 +110,17 @@ struct SettingsPanel: View {
         }
       }
 
-      cacheRow
       aboutRow
 
       // 不弹确认框：确认框把「点错了」的代价前置给每一次点击，而这件事本来就
       // 撤得回来。直接恢复，右边留一颗「撤销」五秒。
-      PanelRow(name: "恢复默认", meta: "重置所有偏好设置",
-               divider: false, onTap: { resetAll() }) {
+      PanelRow(name: "恢复默认", onTap: { resetAll() }) {
         Text("恢复").font(PanelFont.seg).foregroundStyle(t.amber)
       }
       .accessibilityIdentifier("settings.reset")
+
+      // 清缓存是排查用的，平时用不着，放在最底（2026-09-24 审查 U13）。
+      cacheRow
 
     }
     // 账号页由**一个** presenter 持有（审查 C-06）。
@@ -151,7 +152,7 @@ struct SettingsPanel: View {
   /// 琢磨「多少算多」。「已清缓存」那一句带着「撤销」才说（P2.7）——它不是报喜，
   /// 是这一下还能反悔；只报成功、没有下一步可做的提示仍然不说（2026-09-21）。
   private var cacheRow: some View {
-    PanelRow(name: "清缓存") {
+    PanelRow(name: "清缓存", divider: false) {
       // 点下去先给五秒反悔，过了才真清（P2.7），所以这里不再转圈。
       Button { Haptics.warning(); store.clearCacheLater() } label: {
         Text("清除").font(PanelFont.seg).foregroundStyle(t.amber)

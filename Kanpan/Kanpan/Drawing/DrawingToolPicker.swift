@@ -31,7 +31,7 @@ struct DrawingToolPicker: View {
 
   private var header: some View {
     HStack {
-      Text("绘图").font(.system(size: 20, weight: .semibold)).foregroundStyle(theme.ink)
+      Text("画线").font(.system(size: 20, weight: .semibold)).foregroundStyle(theme.ink)
       Spacer()
       Button(action: onClose) {
         Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))

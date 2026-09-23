@@ -611,7 +611,7 @@ private struct DrawingStyleEditor: View {
           Section {
             TextField("写点什么", text: $item.text, axis: .vertical).lineLimit(1...4)
               .accessibilityIdentifier("draw.note.text")
-            Text("最多 \(Drawing.textLimit) 个字。").font(.caption).foregroundStyle(theme.ink3)
+            Text("最多 \(Drawing.textLimit) 个字").font(.caption).foregroundStyle(theme.ink3)
           } header: {
             PanelFormSectionTitle(text: "文字")
           }
@@ -619,9 +619,9 @@ private struct DrawingStyleEditor: View {
         }
         if item.kind.usesLevels {
           Section {
+            // 原来底下还有一行讲算法的说明（「从起算点 C 往外按 A→B 的幅度乘出来」），
+            // 2026-09-24 审查 6.4 删掉：占位符已经示范了逗号分隔的写法，机制不必讲。
             TextField("0, 0.382, 0.5, 0.618, 1", text: $levelText).keyboardType(.numbersAndPunctuation)
-            Text(item.kind == .fibExtension ? "用逗号分隔；从起算点 C 往外按 A→B 的幅度乘出来。"
-                 : "用逗号分隔；0 为终点，1 为起点。").font(.caption).foregroundStyle(theme.ink3)
           } header: {
             PanelFormSectionTitle(text: item.kind == .fibExtension ? "扩展比例" : "回撤比例")
           }
