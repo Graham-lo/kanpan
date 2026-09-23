@@ -292,8 +292,20 @@ cmd_sim_gc() {
 cmd_clean() {
   local sims=0; [ "${1:-}" = "--sims" ] && sims=1
   local before; before=$(disk_free_gb)
-  # 守门自己的状态目录（构建槽锁）和 kanpan-guard-aside（rebase 时挪开的文件）不能删
-  find /tmp -maxdepth 1 \( -name 'kanpan-*' -o -name 'p[0-9]-*' \) ! -name 'kanpan-guard*' -exec rm -rf {} + 2>/dev/null
+  # 守门自己的状态目录（构建槽锁）和 kanpan-guard-aside（rebase 时挪开的文件）不能删。
+  # /tmp/kanpan-<线> 也常常是某条线的 git worktree（带 .git 文件）——那是源码和没提交的改动，
+  # 不是构建产物，整目录删掉等于毁掉别人的工作；只清它里面的构建目录。
+  local d
+  for d in /tmp/kanpan-* /tmp/p[0-9]-*; do
+    [ -e "$d" ] || continue
+    case "$d" in /tmp/kanpan-guard*) continue ;; esac
+    if [ -e "$d/.git" ]; then
+      find "$d" -maxdepth 3 -type d \( -name .build -o -name '.xcbuild*' -o \( -name 'DerivedData*' ! -name DerivedData-archive \) \) -prune -exec rm -rf {} + 2>/dev/null
+      rm -rf "$d/Backend/kanpan-api/target" 2>/dev/null
+      continue
+    fi
+    rm -rf "$d" 2>/dev/null
+  done
   rm -rf "$HOME/Library/Developer/Xcode/DerivedData"/* "$HOME/Library/Caches/org.swift.swiftpm" 2>/dev/null
   # DerivedData-archive 是 TestFlight 归档与 dSYM（docs/testflight-uploads.md 按它算 90 天保留期），不删
   find "$ROOT" -maxdepth 3 -type d \( -name .build -o -name '.xcbuild*' -o \( -name 'DerivedData*' ! -name DerivedData-archive \) \) -prune -exec rm -rf {} + 2>/dev/null
