@@ -36,6 +36,9 @@ struct SectorPage: View {
   var onPickSymbol: (String) -> Void
   /// 下钻那层品种列表点进图表时，把那一刻列表的顺序交出去（连续扫图，§10.1）。
   var onScanList: ([String]) -> Void = { _ in }
+  /// 下钻那层品种列表摆出来 / 收起来。宿主拿前几行去预取 K 线（见 `SectorSymbolList.onRowsShown`）。
+  var onListShown: ([String]) -> Void = { _ in }
+  var onListHidden: () -> Void = {}
   /// 下钻那层品种列表长按一行时，预览卡的 K 线与统计从这儿来（§4.1）。
   var previews: SymbolPreviewStore?
   /// 长按菜单里那几项自选动作要它。
@@ -291,11 +294,14 @@ struct SectorPage: View {
     Text("板块").font(skin.serif(21)).tracking(1.26).foregroundStyle(theme.ink)
   }
 
-  private func headerStats(_ snap: Snapshot) -> some View {
-    Text("\(snap.selection.picks.count) / \(snap.stats.count) 板块 · \(snap.covered) 品种")
-      .font(.scaled(10.5, design: .monospaced)).tracking(0.63)
-      .foregroundStyle(skin.ink4)
-      .lineLimit(1).minimumScaleFactor(0.8)
+  /// 手里还没有行情时整行不出：「0 / 0 板块 · 0 品种」读起来像这一页坏了。
+  @ViewBuilder private func headerStats(_ snap: Snapshot) -> some View {
+    if !feed.quotes.isEmpty, snap.covered > 0 {
+      Text("\(snap.selection.picks.count) / \(snap.stats.count) 板块 · \(snap.covered) 品种")
+        .font(.scaled(10.5, design: .monospaced)).tracking(0.63)
+        .foregroundStyle(skin.ink4)
+        .lineLimit(1).minimumScaleFactor(0.8)
+    }
   }
 
   /// 「板块明星 / 潜力明星」。就这两颗，没有第三颗，也没有任何解释文字。
@@ -394,6 +400,7 @@ struct SectorPage: View {
                        symbolForBase: symbolForBase,
                        decimalsForBase: { feed.priceDecimals(forBase: $0) }, store: store,
                        onBack: pop, onPick: onPickSymbol, onScanList: onScanList,
+                       onRowsShown: onListShown, onRowsHidden: onListHidden,
                        previews: previews, picker: picker)
     case .pop:
       Color.clear.onAppear { pop() }

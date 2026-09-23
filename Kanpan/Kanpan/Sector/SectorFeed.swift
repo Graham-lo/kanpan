@@ -62,17 +62,94 @@ import KanpanNetwork
   // MARK: 外部接线
 
   /// 换线路/换镜像。口径和 `QuoteBook.configure` 一致，由 `MainScreen` 一起调。
+  ///
+  /// 第一次调（冷启动）即使线路和默认值一样也要往下走：盘上那份要在这时恢复。
   func configure(endpoints: MarketEndpoints, policy: MarketRoutePolicy) {
-    guard endpoints != resolver.endpoints || policy != resolver.policy else { return }
-    resolver = RouteResolver(policy: policy, endpoints: endpoints)
-    rest = resolver.provider(venue: VenueRegistry.sectorVenue.id)
-    // 手里这份是上一条线路报的，换了就一条都不留（审查 A-04）。两家的 24h 口径
-    // 和品种集合都不一样，混着算出来的中位数不属于任何一个市场。
-    drop()
-    // 新线路还一趟都没问过：这会儿是在加载，不是「暂无行情」。
-    attempted = false
-    failures = 0
-    restart()
+    let changed = endpoints != resolver.endpoints || policy != resolver.policy
+    guard changed || !configured else { return }
+    configured = true
+    if changed {
+      resolver = RouteResolver(policy: policy, endpoints: endpoints)
+      rest = resolver.provider(venue: VenueRegistry.sectorVenue.id)
+      // 手里这份是上一条线路报的，换了就一条都不留（审查 A-04）。两家的 24h 口径
+      // 和品种集合都不一样，混着算出来的中位数不属于任何一个市场。
+      drop()
+      // 新线路还一趟都没问过：这会儿是在加载，不是「暂无行情」。
+      attempted = false
+      failures = 0
+    }
+    // 盘上那份按上游分区存（替身上游单独一份），读回来的一定是这条线路自己那家的数。
+    restoreCache()
+    if changed { restart() }
+  }
+
+  // MARK: 落盘
+  //
+  // 从前这份全市场行情只在内存里，于是每次冷启动后第一次进板块页，都要先对着
+  // 「0/0 板块 · 0 品种」等一趟 285 KB 的全量请求（约 1 秒）才出气泡。现在每次取回
+  // 都整份覆盖写一份（节流），`configure` 时读回来：进页第一帧画的是上次的气泡，
+  // 新数据到了再刷新。读写都在后台，不占主线程。
+
+  /// 落盘的口子。落到哪、怎么编码是数据层的事（`MainScreen` 用 `QuoteSnapshot` 接上），
+  /// 这一层只管什么时候读、什么时候写。不接（用例里）就不读不写。
+  ///
+  /// 参数是分区名（`ProviderCapabilities.snapshotNamespace`）：`nil` 是真身，
+  /// 替身上游各放一份，和品种表、K 线快照的分法一致。
+  struct Cache: Sendable {
+    var load: @Sendable (String?) -> [Ticker]
+    var save: @Sendable (String?, [Ticker]) -> Void
+  }
+  @ObservationIgnored var cache: Cache?
+  /// 手里这份全市场行情变了（恢复出来的、刚取回的）就交一份出去，第二个参数是它实际
+  /// 出自哪家上游（`ProviderCapabilities.upstream`）。`QuoteBook` 拿它当种子：
+  /// 搜索结果行、从板块列表点进去的那一只，第一帧就有价。
+  @ObservationIgnored var onTickers: (([Ticker], String) -> Void)?
+
+  /// 当前线路上板块那一家实际由谁供数。
+  var upstream: String { rest.capabilities.upstream }
+
+  @ObservationIgnored private var configured = false
+  /// 每次 `configure` +1。后台读回来的那份只认发起时的这一代，换过线路就作废。
+  @ObservationIgnored private var cacheGeneration = 0
+  @ObservationIgnored private var saveTask: Task<Void, Never>?
+  @ObservationIgnored private var lastSave = Date.distantPast
+  /// 两次落盘至少隔多久。10 秒一趟的轮询不必趟趟写，丢掉最后一分钟的变化无所谓——
+  /// 下次进页反正马上就有新的一趟。
+  static let saveEverySeconds: Double = 60
+
+  private func restoreCache() {
+    cacheGeneration &+= 1
+    guard let cache else { return }
+    let generation = cacheGeneration
+    let upstream = self.upstream
+    let partition = rest.capabilities.snapshotNamespace
+    Task.detached(priority: .userInitiated) { [weak self] in
+      let tickers = cache.load(partition)
+      guard !tickers.isEmpty else { return }
+      await self?.applyRestored(tickers, upstream: upstream, generation: generation)
+    }
+  }
+
+  /// 读回来的那份：只在手里还空着、线路没换过时才摆上去。已经取到新的就不要旧的。
+  func applyRestored(_ tickers: [Ticker], upstream: String, generation: Int) {
+    guard generation == cacheGeneration, upstream == self.upstream, quotes.isEmpty else { return }
+    // 年龄照它自己的交易所时钟算，不当成「刚取到」：连着取不到时，寿命判定
+    // （`noteFailure`）照样能把它清掉。不动 `attempted`——还没问过这条线路。
+    let newest = tickers.compactMap(\.timeMs).max()
+    ingest(tickers, at: newest.map { Date(timeIntervalSince1970: Double($0) / 1000) } ?? .distantPast)
+    onTickers?(tickers, upstream)
+  }
+
+  private func saveCache(_ tickers: [Ticker]) {
+    guard let cache, Date().timeIntervalSince(lastSave) >= Self.saveEverySeconds else { return }
+    lastSave = Date()
+    let partition = rest.capabilities.snapshotNamespace
+    // 写盘排成一条链，和 `QuoteBook.persistQuotes` 同一个道理：后一笔不能被前一笔盖回去。
+    let previous = saveTask
+    saveTask = Task.detached(priority: .utility) {
+      _ = await previous?.value
+      cache.save(partition, tickers)
+    }
   }
 
   /// 空态上那一下「点此重试」。不等退避，立刻重开一轮。
@@ -208,6 +285,8 @@ import KanpanNetwork
     var backoff = 2.0
     while !Task.isCancelled {
       let ok = await pull()
+      // 等这一趟的时候被 `restart` 撤了（多半是换了线路）：成败都不记在新线路头上。
+      guard !Task.isCancelled else { return }
       if ok {
         noteSuccess()
         backoff = 2
@@ -228,11 +307,17 @@ import KanpanNetwork
   private func pull() async -> Bool {
     let rest = self.rest
     guard let tickers = try? await fetchTickers(rest), !tickers.isEmpty else { return false }
+    // 等回来的时候线路已经换了（`restart` 撤了这一趟）：这一趟是上一条线路的，
+    // 不收，也不落进新线路那份盘。
+    guard !Task.isCancelled else { return false }
+    let upstream = rest.capabilities.upstream
     ingest(tickers)
+    onTickers?(tickers, upstream)
+    saveCache(tickers)
     return true
   }
 
-  private func ingest(_ tickers: [Ticker]) {
+  private func ingest(_ tickers: [Ticker], at time: Date = Date()) {
     var next: [String: SectorQuote] = [:]
     // base → 已选中那张的（计价币档次，成交额）。
     var picked: [String: (rank: Int, volume: Double)] = [:]
@@ -257,7 +342,7 @@ import KanpanNetwork
       next[base] = SectorQuote(base: base, pct: ticker.changePercent, quoteVolume: volume, price: ticker.last)
     }
     quotes = next
-    lastUpdate = Date()
+    lastUpdate = time
   }
 
   /// `BTCUSDT` → `BTC`。品种表里有就照表，没有就削掉计价币的后缀

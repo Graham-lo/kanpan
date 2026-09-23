@@ -16,6 +16,9 @@ import KanpanNetwork
 public enum QuoteSnapshot {
   /// 自选通常几十个，留够余量即可；这不是行情库。
   public static let maxEntries = 256
+  /// 全市场那一份（板块页的 24h 全量，币安合约五百多只）的上限。只在调用方显式传
+  /// `limit:` 时用，自选那一份仍按 `maxEntries`。
+  public static let marketEntries = 2048
 
   /// 一行报价还能当「上次看到的价」摆出来的最长年龄：24 小时。
   ///
@@ -54,10 +57,10 @@ public enum QuoteSnapshot {
     return v
   }
 
-  public static func write(_ tickers: [Ticker], to url: URL, log: FeedLog = .silent) {
+  public static func write(_ tickers: [Ticker], to url: URL, limit: Int = maxEntries, log: FeedLog = .silent) {
     let rows = tickers
       .filter { !$0.symbol.isEmpty && $0.last.isFinite && $0.last > 0 }
-      .prefix(maxEntries)
+      .prefix(limit)
       .map { Entry(s: $0.symbol, l: $0.last, c: finite($0.changePercent), p: finite($0.priceChange), h: finite($0.high),
                    lo: finite($0.low), v: finite($0.quoteVolume), m: finite($0.markPrice),
                    o: finite($0.open24h), t: $0.timeMs, i: $0.lastTradeID) }
@@ -80,12 +83,12 @@ public enum QuoteSnapshot {
   ///     留着是为了让「筛掉了」这件事在用例里能和「本来就没有」分开）。
   public static func read(_ url: URL,
                           now: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
-                          maxAgeMs: Int64? = maxAgeMs) -> [Ticker] {
+                          maxAgeMs: Int64? = maxAgeMs, limit: Int = maxEntries) -> [Ticker] {
     guard let data = try? Data(contentsOf: url),
           let rows = try? JSONDecoder().decode([Entry].self, from: data) else { return [] }
     // 没有 `t` 的老行按文件的修改时间算年龄——写下它的那一刻就是那个时间。
     let fileMs = fileModifiedMs(url)
-    return rows.prefix(maxEntries).compactMap { row in
+    return rows.prefix(limit).compactMap { row in
       guard !row.s.isEmpty, row.l.isFinite, row.l > 0 else { return nil }
       if let maxAgeMs, let stamp = row.t ?? fileMs, now - stamp > maxAgeMs { return nil }
       // `null` 还原成 NaN：「没有这一项」在内存里的写法就是它，上层按缺数处理

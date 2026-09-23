@@ -269,6 +269,55 @@ struct SectorFeedTests {
 
   /// 轮询是异步的，让它跑完一趟。`SectorFeed` 的循环第一件事就是取数，
   /// 假的取数不做 IO，让出几次执行权就到了。
+  // ------------------------------------------------------------ 落盘恢复（Lane D3）
+
+  @Test("冷启动第一次 configure 就把盘上那份读回来，但不算「问过了」")
+  func firstConfigureRestoresCache() async {
+    let feed = SectorFeed()
+    let saved = Calls()
+    feed.cache = .init(load: { partition in partition == nil ? [ticker("BTCUSDT", pct: 2.5)] : [] },
+                       save: { partition, _ in saved.note(partition ?? "root") })
+    let got = Calls()
+    feed.onTickers = { tickers, upstream in got.note("\(upstream):\(tickers.count)") }
+    // 和默认线路一样也要读：从前这一下直接 return，盘上那份没人读。
+    feed.configure(endpoints: .default, policy: .direct)
+    for _ in 0..<200 where feed.quotes.isEmpty { await Task.yield(); try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(feed.quotes["BTC"]?.pct == 2.5)
+    #expect(got.all == ["binance:1"])
+    #expect(!feed.showsEmptyState)
+    // 年龄按交易所时钟算：寿命判定照样能把这份旧的清掉。
+    #expect(feed.lastUpdate == Date(timeIntervalSince1970: 1_700_000_000))
+    feed.noteFailure(); feed.noteFailure(); feed.noteFailure()
+    #expect(feed.quotes.isEmpty)
+    #expect(saved.all.isEmpty, "只读不写：恢复出来的那份不必再写回去")
+  }
+
+  @Test("已经取到新的，晚到的旧盘作废；换了源，上一家的盘也作废")
+  func restoredCacheNeverOverridesFreshOrOtherSource() async {
+    let feed = feed([ticker("BTCUSDT", pct: 1.5)])
+    feed.setVisible(true)
+    await settle(feed)
+    feed.setVisible(false)
+    feed.applyRestored([ticker("BTCUSDT", pct: 9)], upstream: feed.upstream, generation: 0)
+    #expect(feed.quotes["BTC"]?.pct == 1.5)
+
+    let other = SectorFeed()
+    other.applyRestored([ticker("BTCUSDT", pct: 9)], upstream: "okx", generation: 0)
+    #expect(other.quotes.isEmpty)
+  }
+
+  @Test("取回来就整份落一次盘，之后按节流写，不趟趟写")
+  func pullSavesThrottled() async {
+    let feed = feed([ticker("BTCUSDT", pct: 1.5), ticker("ETHUSDT", pct: -1)])
+    let saved = Calls()
+    feed.cache = .init(load: { _ in [] }, save: { partition, tickers in saved.note("\(partition ?? "root"):\(tickers.count)") })
+    feed.setVisible(true)
+    await settle(feed)
+    feed.setVisible(false)
+    for _ in 0..<200 where saved.all.isEmpty { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(saved.all == ["root:2"])
+  }
+
   private func settle(_ feed: SectorFeed) async {
     for _ in 0..<50 {
       await Task.yield()

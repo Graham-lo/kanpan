@@ -55,11 +55,16 @@ public actor RoutedMarketFeed {
   /// 同一个槽里新的一轮顶掉旧的一轮（扫得快时邻居一直在变），不同槽互不相掐，
   /// 也不碰自选预热和换周期预热那两个槽。
   private var prewarmTasks: [String: Task<Void, Never>] = [:]
+  /// 板块品种列表的预热也单独占一个槽：进板块列表不该把自选那一轮掐掉，
+  /// 离开列表也只掐自己这一轮。
+  private var listPrefetchTask: Task<Void, Never>?
   /// 上一次预热时带来的常用周期表。记下来，换品种之后自动给新品种也热一遍。
   private var warmIntervals: [Interval] = []
   /// 预热几个自选。自选列表通常也就这么长，等于「整张列表都热过一遍」。
   /// 一个品种一发 300 根（限频权重 2），20 个合计 40 点权重，币安一分钟的配额是 2400。
   public static let prefetchLimit = 20
+  /// 板块列表只热前面这几行——一屏看得见、最可能被点的那几只。
+  public static let listPrefetchLimit = 10
 
   public init(endpoints: MarketEndpoints, paths: Paths = .caches(), log: FeedLog = .silent) {
     self.paths = paths; self.log = log
@@ -420,6 +425,31 @@ public actor RoutedMarketFeed {
     prewarmTasks[slot] = run(jobs: jobs, delayMs: 0)
   }
 
+  /// 板块品种列表出现时，把列表最上面几行当前周期的 K 线先拉一份落盘。
+  ///
+  /// 从板块列表点进一只没看过的品种，原来第一帧图是白的——本地什么都没有。
+  /// 这里只热前 `listPrefetchLimit` 行、只热当前周期；已经有够新快照的直接跳过
+  /// （`run` 里判），所以反复进出同一张列表不会重复打请求。
+  ///
+  /// 克制：延迟 400ms 才开始（列表的报价先上屏），跑在 utility 优先级；
+  /// 用户点进某一只时，那一只的首屏请求走的是自己的线路，不排在这后面。
+  public func prefetchList(symbols: [String], interval: Interval) {
+    listPrefetchTask?.cancel()
+    listPrefetchTask = nil
+    guard snapshots else { return }
+    var seen = Set<String>([InstrumentID.canonical(symbol)])
+    // 聚出来的周期不热（`job` 按各品种那一家的能力位判，和自选预热同一口径）。
+    let jobs = symbols.map { InstrumentID.canonical($0) }.filter { seen.insert($0).inserted }
+      .prefix(Self.listPrefetchLimit).compactMap { job($0, interval) }
+    listPrefetchTask = run(jobs: jobs, delayMs: 400)
+  }
+
+  /// 离开板块列表：还没拉完的那几份不拉了。
+  public func cancelListPrefetch() {
+    listPrefetchTask?.cancel()
+    listPrefetchTask = nil
+  }
+
   /// 换品种之后，给新品种的其他常用周期也各拉一份。
   ///
   /// 常用周期表是上一次 `prefetch` 留下来的（`warmIntervals`），所以不用在每次
@@ -541,7 +571,8 @@ public actor RoutedMarketFeed {
   func wsSilenceMsForTests() async -> Double? { await feed?.wsSilenceMsForTests() }
   public func stop() async {
     selection = UUID(); route = UUID(); monitor?.cancel(); pump?.cancel()
-    prefetchTask?.cancel(); warmTask?.cancel(); prewarmTasks.values.forEach { $0.cancel() }; prewarmTasks = [:]
+    prefetchTask?.cancel(); warmTask?.cancel(); listPrefetchTask?.cancel()
+    prewarmTasks.values.forEach { $0.cancel() }; prewarmTasks = [:]
     await feed?.stop(); feed = nil; continuation?.finish(); continuation = nil
   }
 }

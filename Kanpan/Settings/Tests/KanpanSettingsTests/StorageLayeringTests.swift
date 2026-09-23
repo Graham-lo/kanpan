@@ -102,8 +102,11 @@ struct StorageLayeringTests {
     // M4 加进来的两样也都是「没了还能原样取回来」：板块历史重新拉一趟就有；
     // `profiles/<档案>/` 底下那两份（报价、开盘价）分身份只为了不串号，
     // 仍然是缓存，照样归清缓存管。
+    // 板块页的全市场 24h 行情（`sector-quotes.json`）同理：它只是给板块页第一帧垫底的
+    // 上一份行情，下一次取数就整份覆盖。
     let refetchable: Set<String> = ["kanpan", "tests", "last.kbar", "series", "exchangeInfo.json",
-                                    "quotes.json", "opens.json", "oi", "sector-history.json"]
+                                    "quotes.json", "opens.json", "oi", "sector-history.json",
+                                    "sector-quotes.json"]
     let pattern = try! NSRegularExpression(pattern: #"appendingPathComponent\("([^"]+)""#)
     for match in pattern.matches(in: body, range: NSRange(body.startIndex..., in: body)) {
       guard let range = Range(match.range(at: 1), in: body) else { continue }

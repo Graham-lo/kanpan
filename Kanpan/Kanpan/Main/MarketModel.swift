@@ -256,14 +256,18 @@ final class MarketModel {
   /// 开张。`symbol` / `interval` 给了就先按它们落位再开——冷启动那一刻档案（访客或账号）
   /// 才刚装进来，「上次看的那张图、上次用的那个周期」只有到这一步才知道；先开再
   /// `switchTo` 等于白打一趟请求，还会让人先看一眼不是他上次那张图。
-  func start(snapshot: Bool, symbol requestedSymbol: String? = nil, interval requestedInterval: Interval? = nil) {
+  /// - Parameter deferSnapshot: 冷启动落点不是图表（上次落在自选页）时传 true：
+  ///   第一帧画的是自选，不必为图表同步读盘去抢主线程；快照照样经 `feed` 异步送到，
+  ///   点进图表时第一帧仍然有图。「启动快照」开关本身的语义不变。
+  func start(snapshot: Bool, symbol requestedSymbol: String? = nil, interval requestedInterval: Interval? = nil,
+             deferSnapshot: Bool = false) {
     if let requestedSymbol, !requestedSymbol.isEmpty { symbol = InstrumentID.canonical(requestedSymbol) }
     if let requestedInterval { interval = requestedInterval }
     self.snapshot = snapshot
     // 第一帧就把盘上的快照摆出来。`feed` 是 actor，它那份快照要等一次跨执行器的
     // 跳转才回得来——冷启动时那一跳就是半秒的空图。这里同步读一次（几十 KB 的
     // 连续内存，读完直接是可画的值），图和价格一起出现。
-    if snapshot, series == nil,
+    if snapshot, !deferSnapshot, series == nil,
        let saved = SeriesStore.read(symbol: symbol, interval: interval,
                                     in: snapshotSeries, touch: false) {
       series = saved
@@ -686,6 +690,16 @@ final class MarketModel {
     // 当前品种其余常用周期的持仓量也先拿一份：切周期时副图直接有线（B2）。
     if !intervals.isEmpty { oiWarmIntervals = intervals }
     warmOI(oiWarmIntervals.map { (symbol: symbol, interval: $0) })
+  }
+
+  /// 板块品种列表出现时预热前几行的当前周期（独立槽位，不顶掉自选那一轮）。
+  func prefetchList(_ symbols: [String]) {
+    let iv = interval
+    Task { [feed] in await feed.prefetchList(symbols: symbols, interval: iv) }
+  }
+
+  func cancelListPrefetch() {
+    Task { [feed] in await feed.cancelListPrefetch() }
   }
 
   /// 视野推到头部 200 根以内时叫（G9）。

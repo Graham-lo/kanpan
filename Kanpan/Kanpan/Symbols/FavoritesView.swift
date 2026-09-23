@@ -1907,3 +1907,16 @@ private struct MenuAnchors: PreferenceKey {
     value.merge(nextValue()) { _, new in new }
   }
 }
+
+/// 冷启动落在自选页、但自选表还在路上（登录用户的档案要等 `account.restore()`）
+/// 那一小段里铺的底：就是自选页自己的那层底，不画空态（「这一栏还空着」只会闪一下）。
+struct FavoritesLandingPlaceholder: View {
+  @Environment(\.panelTheme) private var theme
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  var body: some View {
+    AuroraBackdrop(skin: LiuliSkin(theme: theme), reduceMotion: reduceMotion)
+      .ignoresSafeArea()
+      .accessibilityIdentifier("favorites.landing")
+  }
+}

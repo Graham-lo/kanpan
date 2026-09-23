@@ -32,6 +32,10 @@ struct SectorSymbolList: View {
   /// 点进图表的那一刻把**这张表当时的顺序**交出去，供顶栏横滑连续扫图（§10.1）。
   /// 顺序是 `SectorSymbolRow.build` 按当前排序口径现算的，外面拿不到，只能这儿递。
   var onScanList: ([String]) -> Void = { _ in }
+  /// 列表摆出来（以及排在最前面的那几只换了）时交出前几行的完整 symbol，宿主拿去预取
+  /// K 线；列表收起时叫 `onRowsHidden` 撤掉。点进去的那一只第一帧就有图。
+  var onRowsShown: ([String]) -> Void = { _ in }
+  var onRowsHidden: () -> Void = {}
   /// 长按一行时那张预览卡的 K 线与统计（§4.1）。没接线就不做长按预览。
   var previews: SymbolPreviewStore?
   /// 长按菜单里动自选的那几项要它。没接线时菜单里只剩「打开」。
@@ -81,7 +85,12 @@ struct SectorSymbolList: View {
     // 先成组再挂 id，否则这个 id 会盖掉底下每一行自己的（见 `SectorPage`）。
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("sector.list")
+    .onChange(of: rows.prefix(Self.prefetchRows).map(\.symbol), initial: true) { _, top in onRowsShown(top) }
+    .onDisappear { onRowsHidden() }
   }
+
+  /// 预取前几行。一屏大约能看到八九行，多了是替用户猜，拖慢正在看的那一只。
+  static let prefetchRows = 10
 
   // MARK: - 头
 

@@ -85,6 +85,10 @@ public struct Paths: Sendable {
   /// 它原来直接挂在 `Library/Caches` 根上、不问这儿要路径，于是既躲开了「清缓存」，
   /// 也躲开了测试档隔离。板块历史是**取得回来**的数据，归这棵树管。
   public var sectorHistory: URL { root.appendingPathComponent("sector-history.json") }
+  /// 板块页上次取回的全市场 24h 行情（`SectorFeed`）。进页第一帧先画它，新数据到了再刷新；
+  /// 搜索结果行也拿它先填价。全市场公开数据、不随人走，所以挂在根上；非默认行情源的那份
+  /// 在 `source(_:)` 那棵子树里。整份覆盖写，不堆积。
+  public var sectorQuotes: URL { root.appendingPathComponent("sector-quotes.json") }
 
   // MARK: 内容随当前账号派生的那几份
 

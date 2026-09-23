@@ -196,6 +196,11 @@ final class QuoteBook {
   var onReset: (() -> Void)?
   var onScopeChange: ((Set<String>) -> Void)?
   private var visibleRows = Set<String>()
+  /// 全市场 24h 行情的种子（板块页那份，见 `seed(_:upstream:)`）。只拿来给**刚露面、
+  /// 手里还没有值**的行垫第一帧，不订阅、不当成实时，也不观察——它变了不需要重画谁。
+  @ObservationIgnored private var seeds: [String: Ticker] = [:]
+  @ObservationIgnored private var seedFlush: Task<Void, Never>?
+  @ObservationIgnored private var seededBatch: [Ticker] = []
   private var historyWanted = Set<String>()
   private var historyJobs: [String: Task<Void, Never>] = [:]
   private var historyRequested: [String: Date] = [:]
@@ -258,7 +263,21 @@ final class QuoteBook {
     for ticker in saved { raw[ticker.symbol] = ticker }
     // 盘上就是这批，别让下面那次 publish 又原样写回去一遍。
     persistedSymbols = Set(saved.map(\.symbol))
-    publish(saved.map(presented))
+    // 缓存直接上屏，不走 `publish` 的首帧合帧：那道闸是给「网络补价一行行往外冒」
+    // 准备的，拿磁盘上现成的一整批去等它，只会让自选行白白空着（冷启动、换号都是
+    // 约 0.8 秒骨架）。它们已经在盘上，也不必再记一笔写盘。
+    emitNow(saved.map(presented))
+  }
+
+  /// 不等任何合批窗口，当场交出去。只给本地已有的整批数据用（磁盘缓存、全市场种子）。
+  private func emitNow(_ batch: [Ticker]) {
+    guard !batch.isEmpty else { return }
+    if steadyEpoch != batchEpoch { steady.removeAll(keepingCapacity: true); steadyEpoch = batchEpoch }
+    for ticker in batch {
+      everPublished.insert(ticker.symbol)
+      steady[ticker.symbol] = ticker
+    }
+    flushSteady()
   }
 
   private func persistQuotes() {
@@ -351,7 +370,7 @@ final class QuoteBook {
       // 换镜像不动开盘价：那是交易所的数据，跟走哪台机器取回来没关系。
       // 以前这儿连着 `opens.removeAll()`，改一下行情源地址、或者
       // 「智能线路」开关一动，整屏涨跌幅就得重新排队取一遍。换上游才要重取。
-      if changedSource { opens.removeAll(); provisionalOpens.removeAll() }
+      if changedSource { opens.removeAll(); provisionalOpens.removeAll(); seeds.removeAll() }
       for symbol in Array(quoteJobs.keys) where symbol != chartSymbol { quoteJobs.removeValue(forKey: symbol)?.cancel() }
       quoteQueue.removeAll { $0 != chartSymbol }
       // 换镜像只是换台机器取同一家的数据，攒着的照发；换上游则整代作废
@@ -426,6 +445,7 @@ final class QuoteBook {
     // 回到列表时也不必先等满一个 2 秒的窗口才看见第一帧。
     lastEmit = .distantPast
     flushSteady()
+    if on { applySeeds(to: visibleRows) }
   }
 
   private func reconcileConnection() {
@@ -546,15 +566,42 @@ final class QuoteBook {
     noteIngest(1)
     guard accepting, wanted.contains(trade.symbol) else { return }
     var state = latestReceived[trade.symbol] ?? QuoteState()
-    guard state.receive(trade), let ticker = state.value else { return }
+    guard state.receive(trade), var ticker = state.value else { return }
     latestReceived[trade.symbol] = state
-    session.receive(trade.symbol)
-    receivedAt[trade.symbol] = Date()
+    if ticker.quoteVolume.isFinite {
+      session.receive(trade.symbol)
+      receivedAt[trade.symbol] = Date()
+    } else {
+      // 这只还没收到过 24h 统计——冷启动时图上那只的逐笔成交常常比统计先到。
+      // 从前这一笔照样记成「刚收到」、照样顶掉会话版本：于是补统计的 REST 被判不新鲜
+      // 不发，发出去的回来也因为版本对不上被扔掉（逐笔成交几百毫秒一条，REST 回来前
+      // 必然又到了一笔），顶栏的涨跌、额、振幅就一直是「—」。成交和统计的先后
+      // 由 `QuoteState` 自己按成交号 / 时间判，用不着会话版本来挡。
+      requestQuote(trade.symbol)
+      // 统计补回来之前，先拿手里那份（盘上恢复的、种子）的统计垫着，只换最新价，
+      // 别让顶栏在这一两百毫秒里退成一排「—」。
+      if let old = raw[trade.symbol], old.quoteVolume.isFinite { ticker = Self.overlay(ticker, on: old) }
+    }
     if let old = raw[trade.symbol], LatestQuote.sameDisplay(ticker, old) { return }
     raw[trade.symbol] = ticker
     if firstQuoteMs == nil { firstQuoteMs = Int(-startedAt.timeIntervalSinceNow * 1000) }
     onPrice?([ticker])
     publish([ticker])
+  }
+
+  /// 旧统计 + 新成交价：和 `QuoteState` 拼成交时同一个算法（涨跌额按价差平移，
+  /// 有 24h 开盘价就按它重算涨跌幅）。时间、成交号用新的那笔。
+  static func overlay(_ trade: Ticker, on old: Ticker) -> Ticker {
+    var next = old
+    let last = trade.last
+    if let change = old.priceChange, old.last.isFinite { next.priceChange = change + (last - old.last) }
+    next.last = last
+    next.timeMs = trade.timeMs
+    next.lastTradeID = trade.lastTradeID
+    if let open = old.open24h, open.isFinite, open > 0 { next.changePercent = (last - open) / open * 100 }
+    if next.high.isFinite { next.high = max(next.high, last) }
+    if next.low.isFinite { next.low = min(next.low, last) }
+    return next
   }
 
   func presented(_ ticker: Ticker) -> Ticker {
@@ -669,6 +716,51 @@ final class QuoteBook {
       }
     }
     updateStreams()
+    if visible { applySeeds(to: [symbol]) }
+  }
+
+  // MARK: 全市场种子
+
+  /// 收下一份全市场 24h 行情（板块页取回的、或它从盘上恢复的）。
+  ///
+  /// 为什么要它：搜索结果行、从板块列表点进去的那一只，从前都是露面之后才逐个发 REST，
+  /// 价格格子先空 300 ms 到一两秒。板块页手里其实已经有全市场的 24h 行情——拿它先垫上，
+  /// 第一帧就有价，REST / WS 的真值到了照常盖掉（种子不记 `receivedAt`，所以补价照发）。
+  ///
+  /// 不是同一家上游供的数一概不收：网关线路上替身顶的数和真身的不混用。
+  func seed(_ tickers: [Ticker], upstream: String) {
+    let venue = VenueRegistry.sectorVenue.id
+    let own = (providers[venue] ?? resolver.provider(venue: venue)).capabilities.upstream
+    guard upstream == own else { return }
+    var next: [String: Ticker] = [:]
+    next.reserveCapacity(tickers.count)
+    for ticker in tickers where ticker.last.isFinite && ticker.last > 0 { next[ticker.symbol] = ticker }
+    seeds = next
+    applySeeds(to: visibleRows.union([chartSymbol].compactMap { $0 }))
+  }
+
+  /// 这一只的种子。图上那一只还没拿到任何报价时，顶栏先用它（`MainScreen.rollingTicker`）。
+  func seeded(_ symbol: String) -> Ticker? { seeds[InstrumentID.canonical(symbol)] }
+  /// 整张种子表（品种 key → 行情）。搜索 / 品种页建行时直接拿它垫第一帧。
+  var seedTable: [String: Ticker] { seeds }
+
+  /// 在范围里、手里还没有值的行，拿种子垫上，攒到这一轮主线程结束一次交出去。
+  private func applySeeds(to symbols: Set<String>) {
+    guard !seeds.isEmpty else { return }
+    for symbol in symbols where raw[symbol] == nil && wanted.contains(symbol) {
+      guard let seed = seeds[symbol] else { continue }
+      raw[symbol] = seed
+      seededBatch.append(seed)
+    }
+    guard !seededBatch.isEmpty, seedFlush == nil else { return }
+    // 一屏搜索结果是一行行 `onAppear` 进来的，攒成一批只发一次，不必每行各发一帧。
+    seedFlush = Task { [weak self] in
+      guard let self else { return }
+      self.seedFlush = nil
+      let batch = self.seededBatch.filter { self.raw[$0.symbol] == $0 }
+      self.seededBatch.removeAll()
+      self.emitNow(batch.map(self.presented))
+    }
   }
 
   func watchHistory(_ symbol: String, visible: Bool) {

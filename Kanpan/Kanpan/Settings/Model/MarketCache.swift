@@ -71,7 +71,8 @@ struct DiskMarketCache: MarketCacheStore {
         snapshotBytes: DiskMarketCache.size(of: p.series) + DiskMarketCache.size(of: p.snapshot),
         catalogBytes: DiskMarketCache.size(of: p.exchangeInfo) + DiskMarketCache.size(of: p.sources),
         oiBytes: DiskMarketCache.size(of: p.oi),
-        derivedBytes: DiskMarketCache.size(of: p.profiles) + DiskMarketCache.size(of: p.sectorHistory))
+        derivedBytes: DiskMarketCache.size(of: p.profiles) + DiskMarketCache.size(of: p.sectorHistory)
+          + DiskMarketCache.size(of: p.sectorQuotes))
     }.value
   }
 
@@ -91,7 +92,7 @@ struct DiskMarketCache: MarketCacheStore {
     let p = paths
     await Task.detached(priority: .utility) {
       let fm = FileManager.default
-      for url in [p.series, p.snapshot, p.exchangeInfo, p.sources, p.oi, p.profiles, p.sectorHistory] {
+      for url in [p.series, p.snapshot, p.exchangeInfo, p.sources, p.oi, p.profiles, p.sectorHistory, p.sectorQuotes] {
         try? fm.removeItem(at: url)
       }
     }.value

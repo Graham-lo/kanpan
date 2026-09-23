@@ -130,7 +130,17 @@ struct MainScreen: View {
   /// 行情页）。改成标签栏之后这件事自己就成立了——第一帧画的就是 `tab` 指着的那一页。
   /// 初值只是「还不知道」的占位。档案装进来（`boot()` 里同步装访客那份、
   /// 账号那份随 `account.restore()` 异步到）之后由 `honorProfile()` 定。
-  @State private var tab: Tab = .chart
+  ///
+  /// 初值不再写死 `.chart`：上一次档案判定的落点在本机有一份镜像（`LaunchLandingMirror`），
+  /// 判的是自选页就从第一帧起画自选——登录用户的档案要等 `account.restore()` 回来，
+  /// 写死图表就是「先画 BTC 图、约 0.2s 后跳自选」那一闪。
+  @State private var tab: Tab = LaunchLandingMirror.favorites ? .favorites : .chart
+  /// 第一帧是按镜像停在自选页的、而真档案还没到货吗。
+  ///
+  /// 这一段里 `picker.prefs` 挂的还是访客那份（登录用户的自选表在账号档案里），
+  /// 自选页只铺底（`FavoritesLandingPlaceholder`），不画「这一栏还空着」。
+  /// 档案判定一次（`honorProfile()`）或用户自己换一格就放下。
+  @State private var landingHeld = LaunchLandingMirror.favorites
   /// 自选表的预热跑过了吗。见 `primeFavorites(_:)`。
   @State private var didPrimeFavorites = false
   /// `boot()` 已经把行情、报价簿、品种表这套线全接好了吗。
@@ -372,6 +382,9 @@ struct MainScreen: View {
                  }
                },
                onScanList: { adoptScanList($0) },
+               // 板块品种列表一出现就把最上面几行的 K 线先拉好（独立槽位，不顶掉自选那轮）。
+               onListShown: { market.prefetchList($0) },
+               onListHidden: { market.cancelListPrefetch() },
                previews: previews, picker: picker,
                route: $sectorRoute)
   }
@@ -616,7 +629,9 @@ struct MainScreen: View {
       switch tab {
       // 「画线」不是一张页：点它是把当前这张图横过来画，所以它落在行情页上。
       case .chart, .draw: chartPage
-      case .favorites: favoritesPage
+      case .favorites:
+        if landingHeld, picker.prefs.favorites.isEmpty { FavoritesLandingPlaceholder() }
+        else { favoritesPage }
       case .sectors: sectorPage
       case .settings: SettingsPanel(store: store, asPage: true,
                                     alertCount: alerts.activeCount,
@@ -666,6 +681,7 @@ struct MainScreen: View {
   private func switchTo(tab next: Tab) {
     dismissPanel()
     didLeaveLaunch = true
+    landingHeld = false
     guard next != .draw else {
       guard !comparing else { return }
       endSharePreview()
@@ -979,12 +995,14 @@ struct MainScreen: View {
   private var rollingTicker: Ticker? {
     // 备用线路上先用它自己的一帧；它还没到（或这个品种它根本没有）就退回
     // 共享报价层里那口最后的价，顶栏灰显而不是退成骨架（§2B #54）。
-    if market.capabilities.isSubstitute { return market.ticker ?? quotes.raw[market.symbol] }
+    if market.capabilities.isSubstitute { return market.ticker ?? quotes.raw[market.symbol] ?? quotes.seeded(market.symbol) }
     if let quote = quotes.raw[market.symbol] { return quote }
     // MarketModel already receives the venue ticker frames as part of the
     // chart feed. Use that value immediately instead of waiting for the
     // separate list QuoteBook to open another socket.
-    return market.ticker
+    // 两路都还没到（从板块列表 / 搜索点进一只没看过的品种）：退到全市场 24h 那一份
+    // 种子——几秒前的价，也比顶栏一排「—」强，真行情一到就被盖掉。
+    return market.ticker ?? quotes.seeded(market.symbol)
   }
 
   /// 给 UI 用例读的那串诊断值。**只在 DEBUG 构建里存在**（审查 C-02）：
@@ -1456,6 +1474,8 @@ struct MainScreen: View {
   /// 初始化时先同步装上访客那份档案，账号自己那份要等 `account.restore()` 异步读回来。
   /// 所以「订阅自选、预热 K 线」这两件事不能只在 `boot()` 里做一次，得跟着表本身走。
   private func settleFavorites(_ symbols: [String]) {
+    // 下次冷启动的落点跟着表走（访客那份空档案顶着的那一段不算）。
+    if !awaitingAccount { LaunchLandingMirror.set(favorites: !symbols.isEmpty) }
     quotes.setFavorites(symbols)
     watchMove.setFavorites(symbols)
     // 换号那一拍报价簿会把「挂着提醒的品种」清空（那是上一个人的）。这儿顺手把
@@ -1737,7 +1757,10 @@ struct MainScreen: View {
     // 连接预热本来就在 `LaunchPrewarm` 里更早跑着，这里挪后不影响握手。
     wireAccount()
     market.setEndpoints(endpoints)
-    market.start(snapshot: prefs.launchSnapshot, symbol: picker.prefs.recents.first, interval: prefs.interval)
+    // 第一帧画的是自选页时，不为图表同步读 K 线快照（主线程上的一次读盘 + 解码）；
+    // 快照照样由 feed 异步送到，点进图表第一帧仍然有图。
+    market.start(snapshot: prefs.launchSnapshot, symbol: picker.prefs.recents.first, interval: prefs.interval,
+                 deferSnapshot: tab == .favorites)
     picker.setSectionsActive(false)
     quotes.onReset = { picker.clearQuotes() }
     quotes.onScopeChange = { picker.retainQuotes(for: $0) }
@@ -1768,6 +1791,11 @@ struct MainScreen: View {
     }
     quotes.setChartSymbol(market.symbol)
     quotes.setForeground(phase != .background)
+    // 全市场 24h 行情落盘、冷启动先恢复（板块页第一帧就有气泡）；每到一批（含恢复出来的
+    // 那批）都种进报价簿，从板块列表 / 搜索点进一只没看过的品种，价格第一帧就在。
+    sectorFeed.cache = .disk
+    sectorFeed.onTickers = { [quotes] tickers, upstream in quotes.seed(tickers, upstream: upstream) }
+    picker.seedTickers = { [quotes] in quotes.seedTable }
     sectorFeed.configure(endpoints: endpoints, policy: prefs.routePolicy)
     previews.configure(endpoints: endpoints, policy: prefs.routePolicy)
     sectorFeed.setCatalog(picker.catalog)
@@ -1894,6 +1922,12 @@ struct MainScreen: View {
       if live, let last = profile.recents.first, last != market.symbol {
         crosshairReadout.clear(); market.switchTo(symbol: last)
       }
+    }
+    if !awaitingAccount {
+      // 真档案判过一次了：落点镜像跟着改，占位放下。冷启动按镜像开在自选、而档案
+      // 也判自选时，上面那句 `tab = .favorites` 等于没动。
+      landingHeld = false
+      LaunchLandingMirror.set(favorites: !profile.favorites.isEmpty)
     }
     // 周期跟着人走（已经从 `PersonalSyncCodec.keepDeviceFields` 里拿出来了）。
     // 复盘在跑的时候图是复盘自己的，别动。

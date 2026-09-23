@@ -93,3 +93,28 @@ enum LaunchThemeMirror {
     if d.string(forKey: themeKey) != theme.rawValue { d.set(theme.rawValue, forKey: themeKey) }
   }
 }
+
+/// 冷启动**第一帧停在哪一格**，在本机留的一份镜像。
+///
+/// 落点本来由 `MainScreen.honorProfile()` 按档案定：有自选停自选，没有停图表。
+/// 可档案到货有先后——访客那份在 `boot()` 里同步装，登录用户那份要等
+/// `account.restore()` 异步回来（实测约 0.2s）。`tab` 的初值又只能写死一个，
+/// 于是登录过、有自选的人每次冷启动都先看一眼 BTC 图表，再跳到自选，像闪了一下。
+///
+/// 所以照皮肤镜像的老规矩：每次落点被档案判定，就把结论记到本机；第一帧直接拿它开张。
+/// 只存一个布尔，只在本机、不同步——它是「这台机器上次判出来的落点」的缓存，
+/// 档案一到货仍以档案为准（`honorProfile()` 照判一次，判得和镜像一样就等于没动）。
+/// 没镜像（全新安装、或升上这版的第一次）按原来的图表开张，不会更差。
+enum LaunchLandingMirror {
+  static let key = "kanpan.launch.landing"
+
+  /// 上次判定的落点是不是自选页。
+  static var favorites: Bool { LaunchMirror.defaults.string(forKey: key) == "favorites" }
+
+  /// 档案判定一次就记一次。没变就不写。
+  static func set(favorites: Bool) {
+    let value = favorites ? "favorites" : "chart"
+    let d = LaunchMirror.defaults
+    if d.string(forKey: key) != value { d.set(value, forKey: key) }
+  }
+}

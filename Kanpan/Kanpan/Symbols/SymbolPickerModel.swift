@@ -87,6 +87,10 @@ final class SymbolPickerModel {
   /// 返回新的一整张表（`nil` = 没查到 / 还在去抖期里）。去抖（5 分钟）与 TTL 都在
   /// `SymbolCatalog.lookup` 那一层，这儿只负责把「他确实在找这个」传过去。
   @ObservationIgnored var onMissingSymbol: ((String) async -> [SymbolInfo]?)?
+  /// 全市场 24h 种子（报价簿那份，见 `QuoteBook.seed`）。一行刚露面、自己的报价还没到时
+  /// 先拿它垫：从前要等 `onAppear` → 报价簿 → 回调这一跳，搜索结果会先出一帧「—」。
+  /// 不观察——种子变了不必重画谁，真值一到照常盖掉它。
+  @ObservationIgnored var seedTickers: (() -> [String: Ticker])?
   /// 已经为哪些词问过了。同一个词只问一次，免得每敲一个字母都发一趟。
   @ObservationIgnored private var asked: Set<String> = []
   private var sectionsActive = true
@@ -228,7 +232,10 @@ final class SymbolPickerModel {
     sections = updated
   }
 
-  func ticker(for symbol: String) -> Ticker? { tickers[SymbolPrefs.key(symbol)] }
+  func ticker(for symbol: String) -> Ticker? {
+    let key = SymbolPrefs.key(symbol)
+    return tickers[key] ?? seedTickers?()[key]
+  }
 
   // ---------------------------------------------------------------- 自选
 
@@ -563,7 +570,9 @@ final class SymbolPickerModel {
   private func rebuild() {
     // `catalogKeys` 给的是**没筛过**的那份目录：被药丸筛掉的自选照旧不列，
     // 目录里根本没有的那个代号才算「未知」（审查复核项 4）。
-    sections = SymbolSections.build(catalog: filteredCatalog, tickers: tickers, prefs: prefs,
+    var shown = tickers
+    if let seeds = seedTickers?(), !seeds.isEmpty { shown.merge(seeds) { live, _ in live } }
+    sections = SymbolSections.build(catalog: filteredCatalog, tickers: shown, prefs: prefs,
                                     query: query, catalogKeys: Set(index.keys))
     lookUpMissingSymbolIfNeeded()
   }

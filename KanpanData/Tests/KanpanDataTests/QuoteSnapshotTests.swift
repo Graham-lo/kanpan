@@ -73,6 +73,22 @@ struct QuoteSnapshotTests {
     #expect(QuoteSnapshot.read(p.quotes, now: 1_700_000_000_000).count == QuoteSnapshot.maxEntries)
   }
 
+  @Test("全市场那份按自己的上限整份覆盖写，不被自选的 256 截断，也不越写越多")
+  func marketSnapshotUsesItsOwnCap() throws {
+    let p = tempPaths()
+    defer { try? FileManager.default.removeItem(at: p.root) }
+
+    let market = (0..<600).map { ticker("SYM\($0)USDT", last: Double($0 + 1), at: 1_700_000_000_000) }
+    QuoteSnapshot.write(market, to: p.sectorQuotes, limit: QuoteSnapshot.marketEntries)
+    QuoteSnapshot.write(market, to: p.sectorQuotes, limit: QuoteSnapshot.marketEntries)
+    let back = QuoteSnapshot.read(p.sectorQuotes, now: 1_700_000_000_000, limit: QuoteSnapshot.marketEntries)
+    #expect(back.count == 600)
+    // 不传上限时仍是自选那一档。
+    #expect(QuoteSnapshot.read(p.sectorQuotes, now: 1_700_000_000_000).count == QuoteSnapshot.maxEntries)
+    let files = try FileManager.default.contentsOfDirectory(atPath: p.root.path).filter { $0.hasPrefix("sector-quotes") }
+    #expect(files == ["sector-quotes.json"])
+  }
+
   // -------------------------------------------------------------- B-T15
 
   @Test("B-T15 隔了一天以上的那口价不再摆出来，昨天的还摆")
