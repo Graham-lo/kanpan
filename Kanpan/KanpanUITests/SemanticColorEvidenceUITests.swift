@@ -423,7 +423,7 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
     // 「这一行还在不在」的准星用**行名那行字**（「BTC · 水平线」），
     // 既不用「再次提醒」也不用「删除」：
     // - 「再次提醒」只在 `status == .fired` 时才在。第一版拿它当准星，起手点正压在
-    //   那颗胶囊上，那一下把提醒重新上了膛、它自己换成「触碰时 ⌄」，被误判成「行被删了」。
+    //   那颗胶囊上，那一下把提醒重新上了膛、它自己换成「碰到 ⌄」，被误判成「行被删了」。
     // - 「删除」那块砖没划开时压根不建出来（`SwipeToDelete.brickView` 里那个 `if`），
     //   不在无障碍树里，划之前找不着。
     // 行名两种状态都在，划开之后只是被推走，在树里照样在。
@@ -700,7 +700,7 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
                  "\(what)：自选页上没有 BTCUSDT 那一行", file: file, line: line)
   }
 
-  /// 自选分类页：左划露「移到分类」+「删除」，右划露「删除自选」。
+  /// 自选分类页：左划露「移到分类」+「取消自选」，右划露「取消自选」。
   ///
   /// 2026-09-22 之前这三颗是系统 `.swipeActions`：两颗 destructive 连 `.tint` 都没给，
   /// 底是系统红 `#FF3B30`（这几屏上唯一一处不跟皮肤走的颜色）、白字 3.55:1；
@@ -744,15 +744,15 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
                     "\(skin.tag)：点行没把砖收回去")
       XCTAssertTrue(row.exists, "\(skin.tag)：只是划开看一眼，BTCUSDT 却没了")
 
-      // ---- 右划：一颗「删除自选」。
+      // ---- 右划：一颗「取消自选」。
       let remove = revealBrick(Self.favRemoveBrick, band.midY, [80, width * 0.5, width - 40],
                                dx: 120)
       XCTAssertTrue(brickIsOpen(remove),
-                    "\(skin.tag)：右划没把「删除自选」划出来（宽 \(remove.exists ? Int(remove.frame.width) : -1)）："
+                    "\(skin.tag)：右划没把「取消自选」划出来（宽 \(remove.exists ? Int(remove.frame.width) : -1)）："
                       + app.debugDescription)
       shot("iPhone15-自选右划-" + skin.tag)
       measure(remove, "swipe.favorites.remove.text", fill: skin.danger, ink: skin.ink,
-              dark: skin.dark, what: "自选右划-删除自选-" + skin.tag)
+              dark: skin.dark, what: "自选右划-取消自选-" + skin.tag)
       row.tap()
       XCTAssertTrue(waitUntil(timeout: 3) { !remove.exists }, "\(skin.tag)：点行没把砖收回去")
 
@@ -767,7 +767,7 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
     }
   }
 
-  /// 品种整页自选段那一颗「移出自选」。
+  /// 品种整页自选段那一颗「取消自选」。
   ///
   /// 原来同样是没给 `.tint` 的系统 destructive（红底白字 3.55:1）。它旁边还挂着
   /// `FavoriteDragModifier`（`.draggable` / `.dropDestination`），所以这条用例
@@ -792,11 +792,11 @@ final class SemanticColorEvidenceUITests: KanpanUICase {
       // 划不出来的时候留一张现场图：上一轮就是靠它看出整页被当成点行关掉了。
       if !brickIsOpen(unstar) { shot("iPhone15-品种整页自选段左划-没划出来-" + skin.tag) }
       XCTAssertTrue(brickIsOpen(unstar),
-                    "\(skin.tag)：左划没把「移出自选」划出来（宽 \(unstar.exists ? Int(unstar.frame.width) : -1)）："
+                    "\(skin.tag)：左划没把「取消自选」划出来（宽 \(unstar.exists ? Int(unstar.frame.width) : -1)）："
                       + app.debugDescription)
       shot("iPhone15-品种整页自选段左划-" + skin.tag)
       measure(unstar, "swipe.favorites.unstar.text", fill: skin.danger, ink: skin.ink,
-              dark: skin.dark, what: "自选段左划-移出自选-" + skin.tag)
+              dark: skin.dark, what: "自选段左划-取消自选-" + skin.tag)
 
       // 点这一行收回去，不触发。
       row.tap()

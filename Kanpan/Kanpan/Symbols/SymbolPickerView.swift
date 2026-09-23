@@ -225,7 +225,7 @@ struct SymbolPickerView: View {
   @ViewBuilder
   private func rowView(_ row: SymbolRow, in section: SymbolSection) -> some View {
     let favorite = section.kind == .favorites
-    // 自选：左滑「移出自选」+ 长按拖动排序（§10.5）。
+    // 自选：左滑「取消自选」+ 长按拖动排序（§10.5）。
     //
     // 这一颗原来是系统 `.swipeActions` 里的 destructive 按钮，没给 `.tint`：
     // 底是系统红 `#FF3B30`（整页上唯一不跟皮肤走的颜色）、字被 UIKit 强行画成白，
@@ -241,7 +241,7 @@ struct SymbolPickerView: View {
     SwipeToDelete(
       id: row.id, open: $openSwipe, brick: .flush,
       trailing: favorite
-        ? [.delete(theme, title: "移出自选", id: SwipeDeleteIDs.favoritesUnstar) {
+        ? [.delete(theme, title: "取消自选", id: SwipeDeleteIDs.favoritesUnstar) {
             Haptics.warning()
             model.removeFavorite(row.id)
           }]
@@ -366,7 +366,7 @@ struct SymbolRowView: View {
         .onTapGesture(perform: onStar)
         .accessibilityElement()
         .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(isFavorite ? "移出自选" : "加入自选")
+        .accessibilityLabel(isFavorite ? "取消自选" : "加入自选")
         .accessibilityIdentifier("symbols.star.\(row.id)")
         .accessibilityAction(.default, onStar)
     }

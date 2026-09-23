@@ -743,18 +743,19 @@ struct FavoritesView: View {
         // 所以整个换成自己画的那一份，底走 `theme.danger` / `theme.amber`、
         // 字走 `theme.badgeInk`，机制见 `SwipeToDelete`。
         //
-        // 三颗的文案、边、顺序、以及「不许滑到底直接触发」（原来的
-        // `allowsFullSwipe: false`）一个字、一个位置都没动。
+        // 三颗的边、顺序、以及「不许滑到底直接触发」（原来的
+        // `allowsFullSwipe: false`）一个位置都没动。文案 2026-09-24 统一成「取消自选」
+        // （原来左划叫「删除」、右划叫「删除自选」、搜索页叫「移出自选」，同一件事三种叫法）。
         SwipeToDelete(
           id: symbol, open: $openSwipe, brick: .flush,
-          leading: [.delete(theme, title: "删除自选", id: SwipeDeleteIDs.favoritesRemove) {
+          leading: [.delete(theme, title: "取消自选", id: SwipeDeleteIDs.favoritesRemove) {
             removeFavorites([symbol])
           }],
           trailing: [
             SwipeAction(id: SwipeDeleteIDs.favoritesMove, title: "移到分类", fill: theme.amber) {
               moving = MoveRequest(symbols: [symbol])
             },
-            .delete(theme) { removeFavorites([symbol]) },
+            .delete(theme, title: "取消自选") { removeFavorites([symbol]) },
           ],
           fullSwipe: false
         ) { _ in
@@ -1060,7 +1061,9 @@ struct FavoritesView: View {
               .foregroundStyle(nearestAlertText == nil ? .clear : theme.amber)
               .lineLimit(1).minimumScaleFactor(0.8)
           } else {
-            Text("额 " + volumeText + "  ·  幅 " + amplitudeText)
+            // 写全称（2026-09-24 审查 6.4）：单字「额 / 幅」要猜。「幅」这里是 24h 振幅
+            // （`amplitude24h`），不是涨跌幅——涨跌已经在右边那格，所以写「振幅」，和顶栏一个叫法。
+            Text("成交额 " + volumeText + "  ·  振幅 " + amplitudeText)
               .font(.scaled(10)).monospacedDigit().foregroundStyle(theme.ink3)
               .lineLimit(1).minimumScaleFactor(0.8)
           }
@@ -1258,7 +1261,7 @@ struct FavoritesView: View {
       HStack(spacing: 10) {
         detailAction("移到分类", id: "favorites.move." + symbol) { moving = MoveRequest(symbols: [symbol]) }
         Spacer(minLength: 0)
-        detailAction("打开行情图表", id: "favorites.open.chart." + symbol) { open(symbol) }
+        detailAction("打开", id: "favorites.open.chart." + symbol) { open(symbol) }
       }
     }.padding(.horizontal, 18).padding(.top, 12).padding(.bottom, 16)
       .background(skin.glassThin)
@@ -1372,9 +1375,7 @@ struct FavoritesView: View {
         .background(skin.glassThin, in: RoundedRectangle(cornerRadius: 13.6, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 13.6, style: .continuous)
           .strokeBorder(skin.accent.opacity(0.35), lineWidth: 1))
-      Text("这一栏还空着").font(skin.serif(15.5)).foregroundStyle(theme.ink).padding(.top, 2)
-      Text("加几个常看的品种，它们会在这里排好")
-        .font(.scaled(12)).foregroundStyle(theme.ink3)
+      Text("还没有自选").font(skin.serif(15.5)).foregroundStyle(theme.ink).padding(.top, 2)
       Button { searching = true } label: {
         Text("添加品种").font(.scaled(13, .semibold)).foregroundStyle(theme.badgeInk)
           .frame(height: 36).padding(.horizontal, 20)
@@ -1393,11 +1394,11 @@ struct FavoritesView: View {
         selection = selection.count == symbols.count ? [] : Set(symbols)
       }.foregroundStyle(theme.amber)
       Spacer(minLength: 0)
-      Button("移到分组") { moving = MoveRequest(symbols: Array(selection)) }
+      Button("移到分类") { moving = MoveRequest(symbols: Array(selection)) }
         .disabled(selection.isEmpty)
         .foregroundStyle(selection.isEmpty ? skin.ink4 : theme.amber)
       Spacer(minLength: 0)
-      Button("删除", role: .destructive) {
+      Button("取消自选", role: .destructive) {
         removeFavorites(Array(selection)); selection.removeAll()
       }.disabled(selection.isEmpty)
         .foregroundStyle(selection.isEmpty ? skin.ink4 : theme.danger)

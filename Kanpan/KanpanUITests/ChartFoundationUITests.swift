@@ -647,7 +647,7 @@ final class ChartFoundationUITests: XCTestCase {
                     "回到编辑态之后行里的报价空着")
     }
     app.buttons["favorites.open.binance/usd_m/BTCUSDT"].tap()
-    let remove = app.buttons["删除"]
+    let remove = app.buttons["取消自选"]
     XCTAssertTrue(remove.isEnabled)
     // 编辑条必须整条落在标签栏上面。`cb0c4c3` 把标签栏改成 `safeAreaInset` 之后，
     // 编辑条那层 `safeAreaInset` 挂在 `NavigationStack` 里面，吃不到外面让出来的那一栏，
@@ -704,7 +704,7 @@ final class ChartFoundationUITests: XCTestCase {
     let btc = app.buttons["favorites.open.binance/usd_m/BTCUSDT"]
     XCTAssertTrue(btc.waitForExistence(timeout: 15))
     btc.swipeRight()
-    let remove = app.buttons["删除自选"]
+    let remove = app.buttons["取消自选"]
     XCTAssertTrue(remove.waitForExistence(timeout: 5))
     XCTAssertTrue(btc.exists, "右滑仅显示操作，不能自动删除")
     remove.tap()
@@ -1212,7 +1212,7 @@ final class ChartFoundationUITests: XCTestCase {
       "前台切页不能重建报价会话")
     print("FreshQuotes return: " + (feed.value as? String ?? ""))
     app.buttons["favorites.open.binance/usd_m/BTCUSDT"].swipeLeft()
-    XCTAssertTrue(app.buttons["删除"].waitForExistence(timeout: 3))
+    XCTAssertTrue(app.buttons["取消自选"].waitForExistence(timeout: 3))
     XCTAssertFalse(app.buttons["置顶"].exists)
     app.buttons["favorites.open.binance/usd_m/BTCUSDT"].swipeRight()
     XCUIDevice.shared.press(.home)

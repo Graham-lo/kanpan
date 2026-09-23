@@ -38,10 +38,10 @@ final class FavoritesUndoUITests: KanpanUICase {
     XCTAssertEqual(before.count, 3, "三只自选没都摆出来：\(before)")
 
     eth.swipeLeft()
-    let remove = app.buttons["删除"]
-    XCTAssertTrue(remove.waitForExistence(timeout: Self.short), "右滑没露出「删除」")
+    let remove = app.buttons["取消自选"]
+    XCTAssertTrue(remove.waitForExistence(timeout: Self.short), "左划没露出「取消自选」")
     remove.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { !eth.exists }, "点了「删除」那一行还在")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { !eth.exists }, "点了「取消自选」那一行还在")
 
     let undo = app.buttons["toast.undo"]
     XCTAssertTrue(undo.waitForExistence(timeout: Self.short),

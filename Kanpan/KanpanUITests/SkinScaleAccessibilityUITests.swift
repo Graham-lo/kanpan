@@ -141,8 +141,8 @@ final class SkinScaleAccessibilityUITests: KanpanUICase {
     XCTAssertTrue(windowFrame.insetBy(dx: -0.5, dy: -0.5).contains(star.frame),
                   "最大字号下那颗星被挤出窗口了：\(star.frame)")
     star.tap()
-    XCTAssertTrue(waitUntil(timeout: Self.short) { star.label == "移出自选" },
-                  "点了星，念出来的动作没跟着翻成「移出自选」（现在是「\(star.label)」）")
+    XCTAssertTrue(waitUntil(timeout: Self.short) { star.label == "取消自选" },
+                  "点了星，念出来的动作没跟着翻成「取消自选」（现在是「\(star.label)」）")
     shot("最大字号-搜索-加入自选")
     app.buttons["search.cancel"].tap()
 
