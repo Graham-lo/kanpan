@@ -15,7 +15,7 @@ import SwiftUI
 /// 横竖屏共用这一个视图：竖屏是一张半屏表单，横屏是贴着左边的一块卡片。所以它自己不带
 /// `NavigationStack`，标题和关闭都画在里面——两种呈现方式下长得一模一样。
 struct DrawingToolPicker: View {
-  @ObservedObject var controller: DrawingController
+  var controller: DrawingController
   /// 「上次用的是哪把工具」存在哪。见 `tile(_:)`。
   var store: PrefsStore
   var onClose: () -> Void

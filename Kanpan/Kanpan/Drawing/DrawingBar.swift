@@ -25,7 +25,7 @@ import UIKit
 /// 可变的那一段一律 `.frame(maxWidth: .infinity)` + `.clipped()`，不许把内容漏到
 /// 固定按钮底下（「测量」曾整块压在「撤销」底下，点测量点到的是撤销）。
 struct DrawingBar: View {
-  @ObservedObject var controller: DrawingController
+  var controller: DrawingController
   /// 选中一条能设提醒的线时，选中栏左边是提醒胶囊（`LineAlertChip`）。
   var lineAlert: LineAlertModel?
   @Environment(\.panelTheme) private var theme
@@ -170,7 +170,7 @@ struct DrawingBar: View {
 struct DrawingSelectionBar: View {
   /// 它排在哪儿。两套只差外壳：里头那几个动作、顺序和标识符完全一样。
   enum Placement { case inline, landscape }
-  @ObservedObject var controller: DrawingController
+  var controller: DrawingController
   var placement: Placement = .inline
   var lineAlert: LineAlertModel?
   @Environment(\.panelTheme) private var theme
@@ -242,7 +242,7 @@ struct DrawingSelectionBar: View {
 /// 开关写成完整的一句话（「吸附到 K 线」而不是「吸附开」），不用先学这个词是什么意思。
 struct DrawingMoreButton: View {
   enum Style { case inline, dock }
-  @ObservedObject var controller: DrawingController
+  var controller: DrawingController
   var style: Style
   var height: Double = 44
   @Environment(\.panelTheme) private var theme
@@ -291,7 +291,7 @@ struct DrawingMoreButton: View {
 }
 
 private struct DrawingMoreMenu: View {
-  @ObservedObject var controller: DrawingController
+  var controller: DrawingController
   var onList: () -> Void
   var onDone: () -> Void
   @Environment(\.panelTheme) private var theme
@@ -347,7 +347,7 @@ private struct DrawingMoreMenu: View {
 }
 
 struct DrawingHintStrip: View {
-  @ObservedObject var controller: DrawingController
+  var controller: DrawingController
   @Environment(\.panelTheme) private var theme
   var body: some View {
     if let hint = controller.hint {
@@ -377,7 +377,7 @@ struct DrawingHintStrip: View {
 /// 全部隐藏 / 画线列表 / 清空都收进了「⋯ 更多」（`DrawingMoreButton`），纸飞机撤了
 /// （分享统一走「图表设置 › 分享」）——和竖屏那根栏同一套分法，见 `DrawingBar`。
 struct DrawingDock: View {
-  @ObservedObject var controller: DrawingController
+  var controller: DrawingController
   @Environment(\.panelTheme) private var theme
   @Environment(\.displayScale) private var displayScale
   private static let height: Double = 46
@@ -460,7 +460,7 @@ struct DrawingDock: View {
 }
 
 struct DrawingSheet: View {
-  @ObservedObject var controller: DrawingController
+  var controller: DrawingController
   var panel: DrawingController.Panel
   /// 当前品种的报价小数位。价格输入框照它显示——原来是 `0...12`，BTC 的一条趋势线
   /// 端点会写成 `77017.099999999`，那串尾巴既不是用户填的也不是图上画的。
@@ -568,7 +568,7 @@ struct DrawingSheet: View {
 }
 
 private struct DrawingStyleEditor: View {
-  @ObservedObject var controller: DrawingController
+  var controller: DrawingController
   @State var item: Drawing
   var decimals: Int = 2
   @Environment(\.dismiss) private var dismiss

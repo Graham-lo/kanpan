@@ -164,7 +164,10 @@ struct MainScreen: View {
   @State private var expandedChart = false
   /// 这次横屏是「点画线」带进来的吗——是的话画完要自己转回竖屏。
   @State private var landscapeForDrawing = false
-  @StateObject private var draw = DrawingController()
+  /// 画线壳。`@Observable`：这一页只在读到的那几个字段（`active` / `panel` / `picker` /
+  /// `full` / `notice` / `previewing`）真变了的时候才重算，拖线、落点那一串内部状态不再
+  /// 把整页叫起来（审查 16.1）。挂在 `@State` 上，和从前的 `@StateObject` 一样跟着这一页活。
+  @State private var draw = DrawingController()
   /// 提醒那一摊：存档、画完线问的那一句、以及「响了」怎么走到用户眼前。
   /// 三个都挂在宿主这一层，换页不重建（和行情、复盘那几个模型同一个理由）。
   @StateObject private var alerts = AlertStore()

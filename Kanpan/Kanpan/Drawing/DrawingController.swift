@@ -1,32 +1,40 @@
 import KanpanChart
 import KanpanCore
+import Observation
 import SwiftUI
 
+/// 画线壳：亮哪一颗按钮、按品种落盘、撤销栈跟着品种走。
+///
+/// **`@Observable`，不是 `ObservableObject`**（审查 16.1）。从前十几个 `@Published`
+/// 任何一个一动，所有 `@ObservedObject` 着它的视图——包括整个 `MainScreen`——都跟着重算；
+/// 而 `sync()` 每次都把七个字段整套重新赋一遍，值没变也照发。现在谁读了哪个字段，
+/// 只有那个字段真变了才重算谁；`sync()` 也只写真变了的字段（见 `assign`）。
 @MainActor
-final class DrawingController: ObservableObject {
+@Observable
+final class DrawingController {
   enum Panel: String, Identifiable { case objects, style; var id: String { rawValue } }
   /// 「绘图」工具面板开着没有。它没跟 `panel` 合在一起：横竖屏呈现方式不一样——
   /// 竖屏是半屏表单，横屏是贴边的一块卡片（见 `DrawingToolPicker`），而 `panel`
   /// 那两张（管理 / 样式）两种朝向下都是表单。
-  @Published private(set) var active = false { didSet { chart?.drawingEditable = active } }
-  @Published private(set) var tool: DrawingStore.Tool?
-  @Published private(set) var hint: String?
-  @Published private(set) var canDelete = false
-  @Published private(set) var canUndo = false
-  @Published private(set) var canRedo = false
-  @Published private(set) var items: [Drawing] = []
-  @Published private(set) var selected: Drawing?
-  @Published private(set) var preferences: DrawingPreferences
-  @Published var full = false
-  @Published var notice: String?
-  @Published var panel: Panel?
-  @Published var picker = false
-  @Published private(set) var previewing: ShareItem?
-  private var guest: [Drawing] = []
-  private var guestSymbol: String?
-  private weak var chart: ChartView?
-  private var store: DrawStore
-  var onArchiveChange: ((DrawArchive) -> Void)?
+  private(set) var active = false { didSet { chart?.drawingEditable = active } }
+  private(set) var tool: DrawingStore.Tool?
+  private(set) var hint: String?
+  private(set) var canDelete = false
+  private(set) var canUndo = false
+  private(set) var canRedo = false
+  private(set) var items: [Drawing] = []
+  private(set) var selected: Drawing?
+  private(set) var preferences: DrawingPreferences
+  var full = false
+  var notice: String?
+  var panel: Panel?
+  var picker = false
+  private(set) var previewing: ShareItem?
+  @ObservationIgnored private var guest: [Drawing] = []
+  @ObservationIgnored private var guestSymbol: String?
+  @ObservationIgnored private weak var chart: ChartView?
+  @ObservationIgnored private var store: DrawStore
+  @ObservationIgnored var onArchiveChange: ((DrawArchive) -> Void)?
   /// 正式文件（`draws.json`）那次写**什么时候真的发生**。
   ///
   /// 默认「就地、同步写」——没登录、没账号桥、单测里都是这个样子，行为和从前逐字一样。
@@ -36,7 +44,7 @@ final class DrawingController: ObservableObject {
   /// 为什么必须是这个顺序、反过来会丢什么，见 `write()`。
   ///
   /// 交给它的那段活儿跑在写盘队列上，不在 MainActor 上。
-  var persistence: @MainActor (@escaping @Sendable () -> Void) -> Void = { $0() }
+  @ObservationIgnored var persistence: @MainActor (@escaping @Sendable () -> Void) -> Void = { $0() }
   /// 本机把画线的几何改动过了就喊一声——画、拖、改端点、删，都算。
   ///
   /// 提醒模块接着它对账（`AlertStore.reconcile`）：线被挪过就按**同一个提醒 id**
@@ -47,36 +55,36 @@ final class DrawingController: ObservableObject {
   /// （`publishSynced`）都不响：那两条路上画线与提醒是两摊分别换的货，谁先谁后不定，
   /// 拿新的画线去对老的提醒会当场把人家的提醒误删；而云端那一份本来就已经是
   /// 另一台设备对过账的结果，不需要这台再对一遍。
-  var onGeometryChanged: ((DrawArchive) -> Void)?
+  @ObservationIgnored var onGeometryChanged: ((DrawArchive) -> Void)?
   /// 记下「上次用的是哪把工具」。宿主接到 `Prefs.lastDrawTool`（随账号同步）。
   ///
   /// 它**只**用来在工具面板上把那把工具预选高亮，不是「此刻正举着笔」——
   /// 待画状态归图自己（`ChartView+Drawing`），换品种照样清掉。
-  var onPickTool: ((DrawingStore.Tool) -> Void)?
+  @ObservationIgnored var onPickTool: ((DrawingStore.Tool) -> Void)?
   /// 手指正拖着的那条线此刻的样子；抬手（或别的任何一次状态变化）报一次 `nil`。
   ///
-  /// 不走 `@Published`：拖动是逐帧的，发布出去会让整个主屏跟着每帧重算一遍。
+  /// 不进观察：拖动是逐帧的，发布出去会让整个主屏跟着每帧重算一遍。
   /// 只有提醒胶囊（`LineAlertModel`）接它，读出线此刻的价格。
-  var onDragPreview: ((Drawing?) -> Void)?
+  @ObservationIgnored var onDragPreview: ((Drawing?) -> Void)?
   /// 当前这张图是哪个品种（`ChartState.series.symbol` 那个写法）。
   var currentSymbol: String { symbol }
   var storedArchive: DrawArchive { archive }
-  private var archive: DrawArchive
+  @ObservationIgnored private var archive: DrawArchive
   private var symbol = ""
   /// 每个品种的撤销栈，按品种分开存。
   ///
   /// 撤销栈原本只活在 `ChartView` 那个实例上，而图是随时会被重建的：竖屏切一次自选页、
   /// 进一次横屏画线工作台，`ChartBox.makeUIView` 就造一个全新的 `ChartView`——画完两笔
-  /// 回来，两笔还在图上，「撤销」却是灰的（任务 3）。控制器是 `MainScreen` 里唯一那个
-  /// `@StateObject`，它活得过这些重建，栈就存在它这儿，图一接上来就接回去。
+  /// 回来，两笔还在图上，「撤销」却是灰的（任务 3）。控制器挂在 `MainScreen` 的
+  /// `@State` 上，它活得过这些重建，栈就存在它这儿，图一接上来就接回去。
   ///
   /// **空栈不占格子**：一轮下来用户会路过几百个品种，没在上面画过线的不该留下任何东西。
-  private var histories: [String: DrawHistory] = [:]
+  @ObservationIgnored private var histories: [String: DrawHistory] = [:]
   /// 上一条「刚落下、还没写字」的文字标注。只为了别把样式表反复弹出来：
   /// 用户点了取消之后 `panel` 回到 nil，`sync()` 又会跑一遍，没有这个记号就成了死循环。
-  private var promptedNote: String?
+  @ObservationIgnored private var promptedNote: String?
   /// 品种还没换过去时先记着，等 `focus` 把那个品种的线装进图里再选。
-  private var pendingHighlight: (symbol: String, id: String)?
+  @ObservationIgnored private var pendingHighlight: (symbol: String, id: String)?
 
   init(store: DrawStore = .applicationSupport()) {
     self.store = store
@@ -129,7 +137,7 @@ final class DrawingController: ObservableObject {
     let resumed = histories[symbol] ?? DrawHistory()
     chart?.setDrawings(archive[symbol])
     chart?.drawingHistory = resumed
-    panel = nil; picker = false; sync()
+    assign(\.panel, nil); assign(\.picker, false); sync()
     applyPreview(); applyPendingHighlight()
   }
 
@@ -193,9 +201,9 @@ final class DrawingController: ObservableObject {
     chart.selectedDrawingID = wanted.id
     sync()
   }
-  func toggle() { active.toggle(); if !active { chart?.endDrawing(); picker = false }; sync() }
+  func toggle() { active.toggle(); if !active { chart?.endDrawing(); assign(\.picker, false) }; sync() }
   /// 开「绘图」面板。入口只有一个笔形图标，横竖屏都是它。
-  func openTools() { active = true; picker = true }
+  func openTools() { assign(\.active, true); picker = true }
   /// 选工具：**幂等**。点已经选中的那个工具就是「还是它」，不是「取消它」。
   ///
   /// 原来是 `drawTool == t ? nil : t`。画完一条想接着画同一种线，很自然会再点一下工具，
@@ -213,7 +221,7 @@ final class DrawingController: ObservableObject {
   /// 不一样」）。现在这条按「用户用手改过的状态跟着人走」翻掉：开关的值只由用户自己
   /// 动它——画线栏的「连续」、工具表里的「连续画线」，以及长按工具这一下明确的「开」。
   func pick(_ t: DrawingStore.Tool, repeating: Bool = false) {
-    active = true
+    assign(\.active, true)
     chart?.selectedDrawingID = nil   // 手上拿着工具就不该还选中着上一条线
     if repeating, !preferences.continuous {
       preferences.continuous = true
@@ -221,12 +229,12 @@ final class DrawingController: ObservableObject {
     }
     chart?.drawTool = t
     onPickTool?(t)
-    panel = nil; picker = false
+    assign(\.panel, nil); assign(\.picker, false)
     sync()
   }
-  func select(_ id: String) { active = true; chart?.selectedDrawingID = id; sync() }
+  func select(_ id: String) { assign(\.active, true); chart?.selectedDrawingID = id; sync() }
   func deleteSelected() { chart?.deleteSelectedDrawing(); sync() }
-  func finish() { chart?.endDrawing(); active = false; panel = nil; picker = false; sync() }
+  func finish() { chart?.endDrawing(); assign(\.active, false); assign(\.panel, nil); assign(\.picker, false); sync() }
   func undo() { chart?.undoDrawing(); sync() }
   func redo() { chart?.redoDrawing(); sync() }
   func duplicate() { chart?.duplicateSelectedDrawing(); sync() }
@@ -342,8 +350,11 @@ final class DrawingController: ObservableObject {
     // 每一次编辑最后都会走到这儿（`onDrawingStateChanged`），在这儿收栈就不会漏。
     rememberHistory()
     onDragPreview?(nil)
-    tool = chart.drawTool; hint = active ? chart.drawHint : nil
-    items = chart.drawings; selected = items.first { $0.id == chart.selectedDrawingID }
+    // 每个字段都先比再写：`@Observable` 不替我们去重，同值赋一次也算「变了」，
+    // 读它的视图照样重算。这儿一次编辑要跑好几遍（落点、选中、抬手各一次）。
+    assign(\.tool, chart.drawTool); assign(\.hint, active ? chart.drawHint : nil)
+    let items = chart.drawings
+    assign(\.items, items); assign(\.selected, items.first { $0.id == chart.selectedDrawingID })
     // **「选中」从来不开画线工作台。** 这儿原来有一句「选中了就 `active = true`」，
     // 理由写的是「正常情况下选中线只可能发生在用户正在画线的时候」——那个前提是错的：
     // 图上的画线手势从前一接上就开着，竖屏随手点中一条旧线也会选中它，于是
@@ -351,9 +362,10 @@ final class DrawingController: ObservableObject {
     // （`highlightedID`）只是给这条错规矩打的补丁，一并删掉了。
     //
     // 真正该开工作台的入口——`toggle()` / `openTools()` / `pick(_:)` / `select(_:)`——
-    // 每一条都自己写着 `active = true`；图自己画完一笔之后的自动选中
+    // 每一条都自己把 `active` 置真；图自己画完一笔之后的自动选中
     // （`placeDrawPoint` 的 `commit`）也只发生在已经 `active` 的时候。所以这一句是纯多余的。
-    canDelete = selected != nil; canUndo = chart.canUndoDrawing; canRedo = chart.canRedoDrawing
+    assign(\.canDelete, selected != nil)
+    assign(\.canUndo, chart.canUndoDrawing); assign(\.canRedo, chart.canRedoDrawing)
     // 空的文字标注在图上只是一句「点这里写字」的占位。落点即开样式表，
     // 省掉「落点 → 发现没字 → 自己去找样式」这三步。
     if let note = selected, note.kind.usesText, note.text.isEmpty, promptedNote != note.id {
@@ -362,5 +374,10 @@ final class DrawingController: ObservableObject {
     } else if selected == nil {
       promptedNote = nil
     }
+  }
+
+  /// 值真变了才写。没变就不碰，读它的视图不会被白白叫起来重算。
+  private func assign<Value: Equatable>(_ key: ReferenceWritableKeyPath<DrawingController, Value>, _ value: Value) {
+    if self[keyPath: key] != value { self[keyPath: key] = value }
   }
 }
