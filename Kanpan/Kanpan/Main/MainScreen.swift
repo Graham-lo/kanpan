@@ -362,13 +362,13 @@ struct MainScreen: View {
                   alerts: alerts.all)
   }
 
-  /// 板块气泡页那一整页。计算全在 `KanpanCore`，画全在 `Kanpan/Sector/`，
-  /// 这儿只把行情、红涨绿跌和「点中一行去看图」三根线接上。
+  /// 板块列表页那一整页。计算全在 `KanpanCore`，画全在 `Kanpan/Sector/`，
+  /// 这儿只把行情和「点中一行去看图」两根线接上（涨跌色页面自己从 `theme` 拿）。
   ///
   /// 点一行品种走的是 `picker.onPick` 同一条路——切到行情页、换品种、回到最新那一根，
   /// 而不是另起一套跳转，免得板块页进来的图和自选页进来的图行为不一样。
   private var sectorPage: some View {
-    SectorPage(feed: sectorFeed, redUp: prefs.redUp,
+    SectorPage(feed: sectorFeed,
                symbolForBase: { sectorFeed.symbol(forBase: $0) }, store: store,
                onPickSymbol: { symbol in
                  if let info = picker.info(for: symbol) { picker.pick(info) }

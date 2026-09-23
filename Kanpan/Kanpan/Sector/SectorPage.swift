@@ -21,9 +21,6 @@ import KanpanCore
 struct SectorPage: View {
   /// 行情。页面只读它，并在出现 / 消失时开关它的轮询。
   var feed: SectorFeed
-  /// 红涨绿跌。气泡场时期给球身两头换色相用；列表的涨跌色走 `theme.up` / `down`，
-  /// 已经带着这一项。参数留着只是为了宿主那处调用（`MainScreen.sectorPage`）不用动。
-  var redUp: Bool
   /// 大写 base → 完整合约代号。板块聚合一路只认 base（分类表里记的就是代号），
   /// 但开行情页要的是品种的全名。默认按 USDT 本位拼，宿主手里有品种表，
   /// 传一个照表查的实现能把 USDC 本位那几个也认对。
