@@ -56,6 +56,8 @@ import ReviewUI
   /// 该停在哪一格、该用哪个周期」。冷启动装访客档案、恢复登录态、换号、退登、
   /// 以及云端设置落地（`applyPending`）都会走到它。
   var onProfileReady: () -> Void = {}
+  /// 推送 token 报给过谁（见 `PushTokenLedger`）。
+  private var pushLedger = PushTokenLedger()
   /// 上一次 `applyPending()` 被 `canApply()` 挡回去了，等条件到齐要补跑。
   private var pendingApply = false
 
@@ -116,7 +118,7 @@ import ReviewUI
     }
     // APNs 的 token 来了就报给服务端。现在这条**永远不会响**（没开发者会员，
     // 工程里没有推送 capability，注册必然失败），留着是为了开通那天不用改代码。
-    PushRegistration.onToken = { [weak self] token in self?.submitPushToken(token) }
+    PushRegistration.onToken = { [weak self] _ in self?.submitPushToken() }
     review.onLogin = { [weak account] in account?.open() }
     review.onSyncComplete = { [weak self] in
       guard let self else { return }
@@ -575,11 +577,19 @@ import ReviewUI
   /// 失败**不报给用户**：没有推送只是「提醒要等下一次打开 app 才看得见」，
   /// 不是故障（`kanpan-no-engineering-status-fields`）。没登录时连发都不发——
   /// 这个接口按人存 token。
-  private func submitPushToken(_ token: String) {
-    guard let api = account.client, owner != nil else { return }
+  /// 这台设备的推送 token 还欠不欠某个账号一次上报（见 `PushTokenLedger`）。
+  /// token 来的时候、以及每次同步都问一遍：没登录时来的 token，登录后补报；
+  /// 报的那一下失败了，下一次同步再报。
+  private func submitPushToken() {
+    guard let api = account.client, let owner,
+          let token = pushLedger.due(token: PushRegistration.token, owner: owner) else { return }
     let body: [String: String] = ["token": token, "kind": "alerts", "environment": PushRegistration.environment]
     guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
-    Task { _ = try? await api.data("v1/devices/push-token", method: "POST", body: data) }
+    pushLedger.begin(token: token, owner: owner)
+    Task { [weak self] in
+      let ok = (try? await api.data("v1/devices/push-token", method: "POST", body: data)) != nil
+      self?.pushLedger.finish(token: token, owner: owner, ok: ok)
+    }
   }
   /// 「盯一个」那条实时活动的推送令牌：服务端拿它按行情推锁屏更新（有 APNs 密钥时）。
   func submitActivityToken(_ token: String, activityID: String, alertID: String) {
@@ -629,6 +639,7 @@ import ReviewUI
   func synchronize(manual: Bool = false) {
     let due = needsBootstrap || Date().timeIntervalSince(lastBootstrap) >= Self.bootstrapInterval
     run(manual || due ? .full : .push, manual: manual)
+    submitPushToken()
     // 分享不是个人同步：暂停自动同步也照样收信。只在登录 / 前台拉取入口挂一次。
     let current = epoch; let running = task
     Task { [weak self] in
