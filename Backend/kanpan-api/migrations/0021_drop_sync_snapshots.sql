@@ -1,0 +1,14 @@
+-- 删掉 sync_snapshots（2026-09-24 深度审查 A1）。
+--
+-- 这张表从 0001 起每次改同步对象都写一行「改之前的整份对象」，30 天后由 maintenance 删。
+-- 但没有任何代码读它：没有恢复接口、没有导出、没有排障脚本，它只是每次推送多一次写、
+-- 多一份 jsonb 进 WAL 和备份。同一次提交里 sync.rs 已经不再写它、maintenance 不再清它。
+--
+-- 上线顺序：ops/install.py 先 migrate、后 restart。migrate 与 restart 之间那几秒，
+-- 还在跑的旧二进制推送时会因为表不存在回 500；客户端按同一个 op id 重试是幂等的
+-- （失败的那次事务整体回滚，sync_operations 里没有回执），restart 之后就好。
+--
+-- 不在 0011 起「无锁」规则的限制里：DROP TABLE 拿的是这张表自己的 ACCESS EXCLUSIVE，
+-- 没有别的查询读它，只会等手里正在写它的那一两个推送事务结束。
+-- IF EXISTS：重跑无害。表上的 RLS 策略随表一起删掉。
+DROP TABLE IF EXISTS sync_snapshots;

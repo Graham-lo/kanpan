@@ -8,8 +8,7 @@ use uuid::Uuid;
 /// worker 那几个小时里没跑、或者推送一直失败的那种情形——一行永远没人管的活动登记
 /// 会让心跳每一拍都为它多跑一次苹果往返。这里只删行不推送：都过了八小时了，
 /// 那个活动在系统那边早就自己结束了。
-const PERSONAL:[&str;4]=[
- "DELETE FROM sync_snapshots WHERE user_id=$1 AND created_at<now()-interval '30 days'",
+const PERSONAL:[&str;3]=[
  "DELETE FROM review_searches WHERE user_id=$1 AND expires_at<now()",
  "DELETE FROM shares WHERE to_user=$1 AND kept_at IS NULL AND created_at<now()-interval '90 days'",
  "DELETE FROM device_push_tokens WHERE user_id=$1 AND kind='liveActivity' AND COALESCE(started_at,updated_at)<now()-interval '8 hours'",
@@ -46,6 +45,27 @@ mod tests {
  /// **八小时之后那一行活动登记一定会被清掉**，哪怕 worker 的心跳从来没能推出去。
  /// 上限和 `live_activity::LIFETIME` 是同一个数：两处写的不是同一个八小时的话，
  /// 要么心跳还在推一个已经被清掉的活动，要么一行孤儿永远留在库里。
+ /// 0021 删掉了同步快照表：服务端代码里不能再有 SQL 写它、清它，否则上线后那一路
+ /// 每次都是「表不存在」。迁移文件本身不算。
+ #[test] fn nothing_refers_to_the_dropped_snapshot_table() {
+  let dropped=["sync","snapshots"].join("_");
+  let dir=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+  let mut stack=vec![dir];
+  while let Some(dir)=stack.pop() {
+   for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+    let path=entry.path();
+    if path.is_dir() {stack.push(path);continue}
+    if path.extension().is_some_and(|e|e=="rs") {
+     let text=std::fs::read_to_string(&path).unwrap();
+     for verb in ["INTO ","FROM ","UPDATE ","TABLE "] {
+      assert!(!text.contains(&format!("{verb}{dropped}")),"{} 还在碰 {dropped}",path.display());
+     }
+    }
+   }
+  }
+  let migration=include_str!("../migrations/0021_drop_sync_snapshots.sql");
+  assert!(migration.contains(&format!("DROP TABLE IF EXISTS {dropped};")),"重跑无害");
+ }
  #[test] fn a_live_activity_row_cannot_outlive_eight_hours() {
   let sql=PERSONAL.iter().find(|s|s.contains("liveActivity")).expect("清理里有实时活动这一路");
   assert!(sql.starts_with("DELETE FROM device_push_tokens"));

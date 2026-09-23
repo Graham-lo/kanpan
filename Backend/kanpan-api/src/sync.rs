@@ -189,7 +189,7 @@ pub async fn export(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:Uuid)->Re
 ///
 /// 评估器判定触发之后要把 `status=fired` 告诉这个人的每一台设备，而设备只认同步日志：
 /// 不写 `sync_changes`，手机下次拉取时什么都收不到，界面上那条提醒会一直显示「活动」。
-/// 所以这里不是直接 UPDATE 一行，而是拼一条 op 交给 `merge` ——校验、LWW 戳、快照、
+/// 所以这里不是直接 UPDATE 一行，而是拼一条 op 交给 `merge` ——校验、LWW 戳、
 /// 游标一样都不少，客户端读到的东西和别的改动没有区别。
 ///
 /// `device_id` 是全零：那不是任何一台真设备，客户端的「这条是我自己刚发的」判断因此
@@ -203,8 +203,7 @@ pub async fn apply_server_op(tx:&mut sqlx::Transaction<'_,sqlx::Postgres>,owner:
  let now=Utc::now().timestamp_millis();
  let op=Operation{id:Uuid::new_v4(),collection:collection.into(),object_id:object_id.into(),device_id:Uuid::nil(),
   base_revision:old.revision,generation:old.generation,timestamp:now,logical:0,action:"patch".into(),fields,import_batch:None};
- let next=merge(old.clone(),&op,now)?;
- sqlx::query("INSERT INTO sync_snapshots(user_id,collection,object_id,snapshot) VALUES($1,$2,$3,$4)").bind(owner).bind(collection).bind(object_id).bind(json!(old)).execute(&mut **tx).await?;
+ let next=merge(old,&op,now)?;
  sqlx::query("INSERT INTO sync_objects(user_id,collection,id,body,fields,revision,deleted,generation) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(user_id,collection,id) DO UPDATE SET body=excluded.body,fields=excluded.fields,revision=excluded.revision,deleted=excluded.deleted,generation=excluded.generation,changed_at=now()")
   .bind(owner).bind(&next.collection).bind(&next.id).bind(json!(next.body)).bind(json!(next.fields)).bind(next.revision).bind(next.deleted).bind(next.generation).execute(&mut **tx).await?;
  sqlx::query("INSERT INTO sync_changes(user_id,collection,object_id,revision,deleted) VALUES($1,$2,$3,$4,$5)").bind(owner).bind(&next.collection).bind(&next.id).bind(next.revision).bind(next.deleted).execute(&mut **tx).await?;
@@ -229,10 +228,7 @@ async fn push(State(s):State<AppState>,i:Identity,Json(v):Json<Push>)->Result<Js
   }
   let row=sqlx::query("SELECT * FROM sync_objects WHERE user_id=$1 AND collection=$2 AND id=$3 FOR UPDATE").bind(i.user).bind(&op.collection).bind(&op.object_id).fetch_optional(&mut *tx).await?;
   let old=match row {Some(ref r)=>object(r)?,None=>Object{collection:op.collection.clone(),id:op.object_id.clone(),body:BTreeMap::new(),fields:BTreeMap::new(),revision:0,deleted:false,generation:0}};
-  let next=merge(old.clone(),&op,Utc::now().timestamp_millis())?;
-  if row.is_some()&&next.revision!=old.revision {
-   sqlx::query("INSERT INTO sync_snapshots(user_id,collection,object_id,snapshot) VALUES($1,$2,$3,$4)").bind(i.user).bind(&op.collection).bind(&op.object_id).bind(json!(old)).execute(&mut *tx).await?;
-  }
+  let next=merge(old,&op,Utc::now().timestamp_millis())?;
   sqlx::query("INSERT INTO sync_objects(user_id,collection,id,body,fields,revision,deleted,generation) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(user_id,collection,id) DO UPDATE SET body=excluded.body,fields=excluded.fields,revision=excluded.revision,deleted=excluded.deleted,generation=excluded.generation,changed_at=now()")
    .bind(i.user).bind(&next.collection).bind(&next.id).bind(json!(next.body)).bind(json!(next.fields)).bind(next.revision).bind(next.deleted).bind(next.generation).execute(&mut *tx).await?;
   // 提醒对象落库的同一口气里刷新物化表：评估器读的是 alert_watches，不是 sync_objects。
