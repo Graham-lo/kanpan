@@ -1,0 +1,11 @@
+-- daily_close 补一列 venue：这张表是「每个合约每天一个收盘价」，主键 (symbol, day)
+-- 里没有交易所。眼下只有币安 U 本位在往里写（sector_history 每日采集），但同步、画线、
+-- 提醒、复盘已经接了 coinbase/spot，同名代号一旦出现在两家就会互相覆盖。
+--
+-- 这一条只做一件事：补列，现有行全部记为 binance。
+-- - `NOT NULL DEFAULT '<常量>'`：PostgreSQL 11 起只改系统表、不重写数据、不排队
+--   （README「加列只能是可空列，或者带常量默认值的列」，0010 的 device_kind 是同一种写法）。
+-- - 不改主键、不建索引、不动采集代码：把 venue 并进主键是要重建主键索引的，
+--   那一步等真有第二家往这张表里写的时候再单独一条迁移去做。
+-- - IF NOT EXISTS：ops/install.py 每次部署都跑一遍 migrate 也无妨。
+ALTER TABLE daily_close ADD COLUMN IF NOT EXISTS venue text NOT NULL DEFAULT 'binance';
