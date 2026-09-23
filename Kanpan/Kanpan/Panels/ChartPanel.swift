@@ -140,7 +140,8 @@ struct ChartPanel: View {
                      selection: prefs.dataDisplay, id: "chart.dataDisplay") { v in store.update { $0.dataDisplay = v } }
       }
       PanelRow(name: "十字线") {
-        PanelSegment(options: [("选中价", CrossPriceMode.selected), ("收盘价", .close)], selection: prefs.crossPrice) { v in store.update { $0.crossPrice = v } }
+        PanelSegment(options: [("选中价", CrossPriceMode.selected), ("收盘价", .close)], selection: prefs.crossPrice,
+                     id: "chart.crossPrice") { v in store.update { $0.crossPrice = v } }
       }
       PanelRow(name: "价格轴") {
         PanelSegment(options: [("线性", PriceMode.linear), ("对数", .log), ("百分比", .percent)], selection: prefs.priceMode) { v in store.update { $0.priceMode = v } }

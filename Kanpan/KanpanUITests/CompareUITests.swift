@@ -112,7 +112,8 @@ import UIKit
 
     // 用产品已有的「收盘价」档验证十字线、图例与右轴同口径。
     panel()
-    let closeMode = app.buttons["收盘价"]
+    // 面板上有两个「收盘价」（K 线画法、十字线读数），这里要的是十字线那一档。
+    let closeMode = app.buttons["chart.crossPrice.收盘价"]
     for _ in 0..<5 {
       if closeMode.exists && closeMode.isHittable { break }
       app.scrollViews.firstMatch.swipeUp()
@@ -185,9 +186,13 @@ import UIKit
     }
     openAccount(); app.buttons["注册"].tap(); credentials()
     // 产品的立即同步入口，待同步消失后才切到全新的本地档案。
-    app.buttons["settings.account"].tap(); app.buttons["同步"].tap()
-    app.buttons["立即同步"].tap()
-    XCTAssertTrue(wait(60) { !self.app.staticTexts["尚未同步"].exists && !self.app.staticTexts["待同步"].exists })
+    // 注册成功后账号页收起、回到原页面，要从设置页重新进账号。
+    openAccount()
+    let sync = app.buttons["同步"]
+    XCTAssertTrue(sync.waitForExistence(timeout: 20)); sync.tap()
+    let now = app.buttons["立即同步"]
+    XCTAssertTrue(now.waitForExistence(timeout: 20)); now.tap()
+    XCTAssertTrue(wait(180) { self.app.staticTexts["已同步"].exists })
     app.terminate()
     app.launchEnvironment["KANPAN_PERSISTENCE_PROFILE"] = UUID().uuidString
     app.launch(); ready(0)
