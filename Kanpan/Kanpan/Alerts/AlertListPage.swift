@@ -126,7 +126,7 @@ struct AlertListPage: View {
   /// 让还在等的那几条提醒的品种有实时价可读；`active == false` 时全退。
   private func syncQuoteWatch(active: Bool) {
     let want: Set<String> = active
-      ? Set(store.all.filter { $0.isActive && $0.kind != .reviewDue }.map { $0.symbol.uppercased() })
+      ? Set(store.all.filter { $0.isActive && $0.kind != .reviewDue }.map { InstrumentID.canonical($0.symbol) })
       : []
     for symbol in quoteSymbols.subtracting(want) { watchQuote(symbol, false) }
     for symbol in want.subtracting(quoteSymbols) { watchQuote(symbol, true) }
