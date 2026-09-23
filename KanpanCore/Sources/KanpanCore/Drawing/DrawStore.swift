@@ -39,7 +39,60 @@ public struct DrawingPreferences: Sendable, Equatable, Codable {
   public var magnet = true
   public var continuous = false
   public var styles: [String: DrawingStyle] = [:]
+  /// 每一族「换画法」上次选的是哪一种。键是面板上那一格（`trend` / `hline` / `vline`，
+  /// 见 `Drawing.Kind.paletteHead`），值是同族里的一种（`extended`、`hray`……）。
+  ///
+  /// 用户在样式表里把一条趋势线换成「两端延伸」，是他明确说了「我要的趋势线是这样的」；
+  /// 从前新线永远按面板那一格的 kind 生成，于是下一条又是线段，他得每画一条换一次。
+  /// 现在换一次就记住，之后面板上点「趋势线」落下来的就是两端延伸，直到他再换。
+  /// 面板那一格的名字和图标不变——入口还是一个，变的只是它落下来的画法。
+  ///
+  /// 和 `styles` 一样跟着账号走：拍平成 `variants/<面板那一格>` 一串子键同步。
+  public var variants: [String: Drawing.Kind] = [:]
   public init() {}
+
+  /// 面板上点的是 `tool`，这一笔落下来该是哪一种。
+  ///
+  /// 只认同一族里的记忆：值不在这一族（坏数据、以后改了族的划分）就当没记过，退回 `tool`
+  /// 本身——换错了族，点数可能对不上，`Drawing.isValid` 会把整条线丢掉。
+  public func kind(for tool: Drawing.Kind) -> Drawing.Kind {
+    Self.kind(for: tool, variants: variants)
+  }
+  public static func kind(for tool: Drawing.Kind, variants: [String: Drawing.Kind]) -> Drawing.Kind {
+    guard tool.paletteHead == tool, let chosen = variants[tool.rawValue], chosen.paletteHead == tool else { return tool }
+    return chosen
+  }
+
+  /// 样式表里把一条线从 `old` 换成了 `new`：同一族就把它记成这一族以后的画法。
+  /// 返回有没有真的改动（没变就不必落盘、不必发同步）。
+  @discardableResult
+  public mutating func rememberSwap(from old: Drawing.Kind, to new: Drawing.Kind) -> Bool {
+    guard old != new, let head = new.paletteHead, old.paletteHead == head,
+          variants[head.rawValue] != new else { return false }
+    variants[head.rawValue] = new
+    return true
+  }
+
+  /// 面板上的 `tool` 落下一条新线：kind 换成这一族记住的画法，样式铺这类工具记住的默认。
+  public func newDrawing(tool: Drawing.Kind, points: [DrawPoint]) -> Drawing {
+    Self.newDrawing(tool: tool, points: points, styles: styles, variants: variants)
+  }
+  /// 图表那一侧只持有 `styles` 与 `variants` 两份值（`ChartView.drawingStyles` / `drawingVariants`），
+  /// 落笔和这里走同一份算式，单测盖住的就是图上真的落下来的那条。
+  ///
+  /// 样式先找换过之后那一种自己的（用户给两端延伸单独调过颜色，就用那一份），
+  /// 没有再退到面板那一格的（他给趋势线调过颜色、再换成两端延伸，颜色不该跟着丢）。
+  /// 两份各存各的，谁也不覆盖谁——写入的规矩还是 `DrawingController.update` 那一条。
+  public static func newDrawing(tool: Drawing.Kind, points: [DrawPoint],
+                                styles: [String: DrawingStyle], variants: [String: Drawing.Kind]) -> Drawing {
+    let kind = kind(for: tool, variants: variants)
+    var item = Drawing(kind: kind, points: points)
+    if let style = styles[kind.rawValue] ?? styles[tool.rawValue] {
+      item.color = style.color; item.lineWidth = style.lineWidth; item.dash = style.dash
+      item.filled = style.filled; item.levels = style.levels
+    }
+    return item
+  }
 
   /// 缺的键取默认，别整份抛掉——和 `DrawArchive` 是同一条规矩（A6.13）。
   ///
@@ -57,6 +110,10 @@ public struct DrawingPreferences: Sendable, Equatable, Codable {
     magnet = try c.decodeIfPresent(Bool.self, forKey: .magnet) ?? fallback.magnet
     continuous = try c.decodeIfPresent(Bool.self, forKey: .continuous) ?? fallback.continuous
     styles = try c.decodeIfPresent([String: DrawingStyle].self, forKey: .styles) ?? fallback.styles
+    // 按字符串解、认不出的丢掉，别整份抛：以后的版本多了一种画法，老版本读到它
+    // 不该连自选、设置一起落不了地（理由同上面那段）。
+    let raw = (try? c.decodeIfPresent([String: String].self, forKey: .variants)) ?? nil
+    variants = (raw ?? [:]).compactMapValues(Drawing.Kind.init(rawValue:))
   }
 }
 

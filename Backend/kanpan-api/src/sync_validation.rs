@@ -131,7 +131,8 @@ pub fn field(collection:&str,path:&str,v:&Value)->bool {
    "theme"|"styleID"|"priceMode"|"timeZone"|"candleKind"|"gridChoice"|"bodyChoice"|"viewAnchor"|"priceBias"|"dataDisplay"|"crossPrice"|"changeBasis"=>string(v,64),_=>false
   }
  }
- if collection=="drawingPreferences" {return match path {"favorites"=>names(v,KINDS.len(),KINDS),"magnet"|"continuous"=>v.is_boolean(),_=>p.len()==2&&p[0]=="styles"&&KINDS.contains(&p[1])&&style(v)}}
+ if collection=="drawingPreferences" {return match path {"favorites"=>names(v,KINDS.len(),KINDS),"magnet"|"continuous"=>v.is_boolean(),
+  _=>p.len()==2&&KINDS.contains(&p[1])&&match p[0] {"styles"=>style(v),"variants"=>v.as_str().is_some_and(|s|KINDS.contains(&s)),_=>false}}}
  if p.len()!=1 {return false}
  match (collection,path) {
   ("drawings","kind")=>v.as_str().is_some_and(|s|KINDS.contains(&s)),
@@ -301,6 +302,22 @@ mod tests {
   for &kind in KINDS {assert!(field("drawings","kind",&json!(kind)),"{kind} should be a known tool")}
   assert!(!field("drawings","kind",&json!("telekinesis")));
   assert!(field("drawingPreferences","favorites",&json!(KINDS.to_vec())));
+ }
+ /// 「趋势线我要两端延伸」这一族的画法记忆跟着账号走：`variants/<面板那一格>` = 同族里的一种。
+ /// 进了白名单却没有值规则就是毒丸（整条操作 400），所以名字与值两头都要认。
+ #[test] fn the_remembered_drawing_method_travels_with_the_account() {
+  for (head,chosen) in [("trend","extended"),("trend","ray"),("trend","arrowLine"),("hline","hray"),("vline","crossLine")] {
+   assert!(field("drawingPreferences",&format!("variants/{head}"),&json!(chosen)),"variants/{head}={chosen} should be accepted");
+  }
+  // 用户换回面板那一格本身（线段）也是一个值；清掉走 null 墓碑。
+  assert!(field("drawingPreferences","variants/trend",&json!("trend")));
+  assert!(field("drawingPreferences","variants/trend",&json!(null)));
+  for bad in [json!("telekinesis"),json!(1),json!(true),json!({"kind":"extended"})] {
+   assert!(!field("drawingPreferences","variants/trend",&bad),"{bad} should be refused");
+  }
+  assert!(!field("drawingPreferences","variants/telekinesis",&json!("trend")));
+  assert!(!field("drawingPreferences","variants",&json!({"trend":"extended"})),"only the flattened path is a field");
+  assert!(!field("drawingPreferences","variants/trend/x",&json!("extended")));
  }
  /// A seven-point head and shoulders used to fail the 1..=3 anchor rule outright.
  #[test] fn a_many_pointed_pattern_keeps_all_its_anchors() {

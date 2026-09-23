@@ -160,31 +160,26 @@ final class ChartFoundationUITests: XCTestCase {
   ///
   /// 面板上只摆十二把（`Drawing.Kind.palette`）；射线 / 直线 / 箭头 / 水平射线 / 十字线
   /// 这些和主工具形状一样、只差一处画法的，退到这一行里换（`Drawing.Kind.swaps`）。
-  /// 这一行是 `Form` 里的 `Picker`，iOS 把它画成一颗弹菜单的按钮，选项是菜单里的按钮。
+  /// 这一行是一排直接摆开的按钮（`DrawingKindSwapRow`，标识 `draw.swap.<kind>`）。
+  /// 原来是 `Picker` 的弹出菜单，半屏时往上弹出面板、「向右延伸」点不到，2026-09-23 改掉。
   ///
-  /// 它排在「颜色 / 粗细 / 线型 / 锁定位置」后面，而样式表起手停在 `.medium`——
-  /// 半屏下这一行落在下沿以外，`Form` 是懒加载的，**压根不在无障碍树里**（查 `exists`
-  /// 返回 false，不是「在但点不着」）。所以先把半屏拖成整屏，再找这一行；
+  /// 它排在「颜色 / 粗细 / 线型 / 锁定位置」后面，而样式表起手停在 0.4 屏高——
+  /// 这一行落在下沿以外，`Form` 是懒加载的，**压根不在无障碍树里**（查 `exists`
+  /// 返回 false，不是「在但点不着」）。所以找不着就先把半屏拖成整屏，再找；
   /// 粗细那一档早就吃过同一个亏（见 `testDrawingWidthPresets` 里那段）。
   func switchDrawKind(to label: String) {
-    let swap = app.descendants(matching: .any).matching(identifier: "draw.swap").firstMatch
-    if !swap.waitForExistence(timeout: 3) {
+    let option = app.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@", "draw.swap.", label)).firstMatch
+    if !option.waitForExistence(timeout: 3) || !option.isHittable {
       let bar = app.navigationBars.element(boundBy: 0)
       bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         .press(forDuration: 0.1,
                thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)))
     }
-    if !swap.waitForExistence(timeout: 3) { app.swipeUp() }
-    // SwiftUI 的 `Picker` 在 `Form` 里被画成一颗弹菜单的按钮，标识符有时落在外层那个
-    // cell 上、有时干脆没落下来，所以标识符找不着时退一步按标题找那颗按钮。
-    let row = swap.waitForExistence(timeout: 5)
-      ? swap
-      : app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "画法")).firstMatch
-    XCTAssertTrue(row.waitForExistence(timeout: 5), "样式表里没有「换一种画法」那一行")
-    row.tap()
-    let option = app.buttons[label]
-    XCTAssertTrue(option.waitForExistence(timeout: 5), "「换一种画法」里点不到「\(label)」")
+    if !option.waitForExistence(timeout: 3) { app.swipeUp() }
+    XCTAssertTrue(option.waitForExistence(timeout: 5), "样式表的「画法」那一排里没有「\(label)」")
     option.tap()
+    XCTAssertTrue(wait(seconds: 5) { option.isSelected }, "点了「\(label)」，画法那一排没有换过去")
   }
 
   /// 「记一笔」收在「图表设置」那一屏里，开出的取景卡只压图的下半截，一根 K 线都不动。
@@ -1520,6 +1515,60 @@ final class ChartFoundationUITests: XCTestCase {
 }
 
 extension ChartFoundationUITests {
+  /// 用户 2026-09-23 报的：「选了趋势线，把样式改成两端延伸保存，然后重画还是线段」。
+  ///
+  /// 样式表里换画法是他明确的选择：换一次就记住，之后面板上点「趋势线」落下来的就是
+  /// 两端延伸（`DrawingPreferences.variants`）；杀掉 app 重开也还记得。
+  /// 面板那一格的名字和标识不变，入口还是 `draw.tool.trend`。
+  func testDrawingSwapIsRememberedForTheNextLine() throws {
+    XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
+    openDrawTools()
+    XCTAssertTrue(app.buttons["draw.tool.trend"].waitForExistence(timeout: 5))
+    app.buttons["draw.tool.trend"].tap()
+    var origin = canvas.coordinate(withNormalizedOffset: .zero)
+    origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
+    origin.withOffset(CGVector(dx: 240, dy: 160)).tap()
+    XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 1 }, String(describing: info()))
+    XCTAssertEqual(info()["drawingKinds"] as? [String], ["trend"], "没换过画法，第一条该是线段")
+    origin.withOffset(CGVector(dx: 80, dy: 100)).tap()
+    XCTAssertTrue(app.buttons["draw.style"].waitForExistence(timeout: 5))
+    app.buttons["draw.style"].tap()
+    XCTAssertTrue(app.buttons["draw.save"].waitForExistence(timeout: 8))
+    switchDrawKind(to: "两端延伸")
+    shot("画线-样式表里画法一排选中两端延伸")
+    app.buttons["draw.save"].tap()
+    XCTAssertTrue(wait { self.info()["drawingKinds"] as? [String] == ["extended"] }, String(describing: info()))
+
+    // 再从面板上点「趋势线」画一条：落下来的得是两端延伸，不是线段。
+    openDrawTools()
+    XCTAssertTrue(app.buttons["draw.tool.trend"].waitForExistence(timeout: 5))
+    app.buttons["draw.tool.trend"].tap()
+    origin = canvas.coordinate(withNormalizedOffset: .zero)
+    origin.withOffset(CGVector(dx: 110, dy: 30)).tap()
+    origin.withOffset(CGVector(dx: 250, dy: 55)).tap()
+    XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 2 }, String(describing: info()))
+    XCTAssertEqual(info()["drawingKinds"] as? [String], ["extended", "extended"],
+                   "换成两端延伸之后再画趋势线，第二条还是线段")
+    shot("画线-换成两端延伸后再画仍是两端延伸")
+
+    // 重开 app 还记得：这份记忆和样式一样落在画线存档的偏好里。
+    app.buttons["draw.finish"].tap()
+    app.terminate(); app.launch()
+    XCTAssertTrue(canvas.waitForExistence(timeout: 30))
+    XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 2 }, String(describing: info()))
+    XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")
+    openDrawTools()
+    XCTAssertTrue(app.buttons["draw.tool.trend"].waitForExistence(timeout: 5))
+    app.buttons["draw.tool.trend"].tap()
+    origin = canvas.coordinate(withNormalizedOffset: .zero)
+    origin.withOffset(CGVector(dx: 60, dy: 180)).tap()
+    origin.withOffset(CGVector(dx: 200, dy: 215)).tap()
+    XCTAssertTrue(wait { self.info()["drawingCount"] as? Int == 3 }, String(describing: info()))
+    XCTAssertEqual(info()["drawingKinds"] as? [String], ["extended", "extended", "extended"],
+                   "重开 app 之后画法记忆丢了")
+    shot("画线-重开后仍记得两端延伸")
+  }
+
   /// 粗细是四条样张，点哪条是哪条，没有加减也没有输入框（2026-09-20）。
   func testDrawingWidthPresets() throws {
     XCTAssertTrue(app.enterDrawingInPortrait(), "没能进入竖屏画线态")

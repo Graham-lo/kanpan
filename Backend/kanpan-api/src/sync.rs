@@ -62,7 +62,9 @@ pub const SETTINGS_FIELDS:&[&str]=&[
  "sectorMarket","sectorWindow","sectorSort","drawToolGroup","lastDrawTool","replaySpeed","reviewSearchScope",
  "alertSound",
 ];
-pub const DRAWING_PREFERENCE_FIELDS:[&str;4]=["favorites","magnet","continuous","styles"];
+// `variants/<palette tool>` is the drawing method last picked for that family in the style sheet
+// (trend → extended, hline → hray, vline → crossLine): the next line from that tool is drawn that way.
+pub const DRAWING_PREFERENCE_FIELDS:[&str;5]=["favorites","magnet","continuous","styles","variants"];
 // `text` is the note/callout/flag caption; `created` only old archives carry.
 pub const DRAWING_FIELDS:[&str;14]=["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"];
 pub const FAVORITE_FIELDS:[&str;7]=["symbol","market","venue","groupId","order","pinned","alerts"];
@@ -309,7 +311,7 @@ mod tests {
     regenerating — run `make sync-contract` from the repo root first.");
 
   let expected=[
-   ("drawingPreferences",&["favorites","magnet","continuous","styles"][..]),
+   ("drawingPreferences",&["favorites","magnet","continuous","styles","variants"][..]),
    ("drawings",&["kind","symbol","market","venue","anchors","color","lineWidth","dash","filled","levels","locked","hidden","created","text"][..]),
    ("favorites",&["symbol","market","venue","groupId","order","pinned","alerts"][..]),
    ("groups",&["name","order","members"][..]),
@@ -357,6 +359,18 @@ mod tests {
      400s every operation carrying it (see commit a161bb0) — or its rule is real and none of \
      the probes in this test fit its shape, in which case add one.");
   }
+ }
+ /// 画线工具「这一族上次选的画法」：客户端发的是拍平的 `variants/<面板那一格>`，
+ /// 要过白名单（不被当成未知字段丢掉）、过值校验，并且真的合并进对象。
+ #[test] fn the_remembered_drawing_method_is_stored() {
+  let fields=[("variants/trend",json!("extended")),("variants/hline",json!("hray")),("variants/vline",json!("crossLine"))];
+  let operation=op("drawingPreferences",&fields);
+  assert!(operation.validate().is_ok());
+  assert!(operation.unknown_fields().is_empty());
+  let object=applied("drawingPreferences",&fields);
+  assert_eq!(object.body["variants/trend"],json!("extended"));
+  assert_eq!(object.body["variants/vline"],json!("crossLine"));
+  assert!(op("drawingPreferences",&[("variants/trend",json!("telekinesis"))]).validate().is_err());
  }
  /// 铃声同时通过字段白名单、值校验与实际合并。
  #[test] fn alert_sound_is_accepted_and_invalid_values_are_refused() {

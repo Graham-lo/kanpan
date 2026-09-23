@@ -228,12 +228,20 @@ final class DrawingController: ObservableObject {
   /// 的默认样式」——用户没做任何改样式的动作，下一条线却变了样，正是「同一个动作两次
   /// 结果不一样」。锁定、隐藏、移动、改端点一律不碰 `preferences.styles`
   /// （`toggleHidden` 本来就绕开了这个方法，那个写法是对的）。
+  ///
+  /// 样式表里换了画法（趋势线 → 两端延伸）也在这儿记：那是用户明确选的「这一族我要这样画」，
+  /// 之后面板上点「趋势线」落下来的就是这一种（`DrawingPreferences.rememberSwap`）。
+  /// 旧的 kind 从图上那条取——`item` 已经是改过的那份了。
   func update(_ item: Drawing, promoteStyle: Bool = false) {
+    let before = chart?.drawings.first { $0.id == item.id }
     chart?.updateDrawing(item)
+    var changed = false
+    if let before, preferences.rememberSwap(from: before.kind, to: item.kind) { changed = true }
     if promoteStyle {
       preferences.styles[item.kind.rawValue] = DrawingStyle(item)
-      savePreferences()
+      changed = true
     }
+    if changed { savePreferences() }
     sync()
   }
   func toggleLock() { if var item = selected { item.locked.toggle(); update(item) } }
@@ -244,6 +252,7 @@ final class DrawingController: ObservableObject {
     chart?.drawingMagnet = preferences.magnet
     chart?.continuousDrawing = preferences.continuous
     chart?.drawingStyles = preferences.styles
+    chart?.drawingVariants = preferences.variants
   }
   private func savePreferences() { archive.preferences = preferences; write(); applyPreferences() }
   private func persist(_ items: [Drawing]) {

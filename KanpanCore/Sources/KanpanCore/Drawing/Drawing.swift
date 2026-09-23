@@ -232,6 +232,15 @@ public struct Drawing: Sendable, Equatable, Identifiable, Codable {
       default: []
       }
     }
+
+    /// 这一把所在的「换画法」那一族，摆在面板上的是哪一格：射线 / 直线 / 箭头 → 趋势线，
+    /// 水平射线 → 水平线，十字线 → 垂直线；趋势线自己也是 `.trend`。不在任何一族里是 `nil`。
+    ///
+    /// 「这一族上次选的画法」就记在这一格名下（`DrawingPreferences.variants`）：用户点的
+    /// 永远是面板上那一格，落下来的线换成他上次在样式表里选的那种。
+    public var paletteHead: Kind? {
+      swaps.first?.options.lazy.map(\.kind).first { Self.palette.contains($0) }
+    }
   }
 
   /// 样式表里一排「换一种画法」的按钮。

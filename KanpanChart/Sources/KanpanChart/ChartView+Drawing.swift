@@ -40,6 +40,8 @@ final class DrawingSession {
     set { anchors = newValue.map { [$0] } ?? [] }
   }
   var styles: [String: DrawingStyle] = [:]
+  /// 每一族上次选的画法（`DrawingPreferences.variants`）：面板点趋势线，落下来可能是两端延伸。
+  var variants: [String: Drawing.Kind] = [:]
   var continuous = false
   var magnet = true
   var navigating = false
@@ -293,6 +295,11 @@ extension ChartView {
   public var drawingStyles: [String: DrawingStyle] {
     get { drawing.styles }
     set { drawing.styles = newValue }
+  }
+  /// 每一族「换画法」记住的那一种（`DrawingPreferences.variants`）。落笔与预览都按它换 kind。
+  public var drawingVariants: [String: Drawing.Kind] {
+    get { drawing.variants }
+    set { drawing.variants = newValue }
   }
   public var continuousDrawing: Bool {
     get { drawing.continuous }
@@ -968,12 +975,9 @@ extension ChartView {
         }
         points = fitted
       }
-      var item = Drawing(kind: tool, points: points)
-      if let style = d.styles[tool.rawValue] {
-        item.color = style.color; item.lineWidth = style.lineWidth; item.dash = style.dash
-        item.filled = style.filled; item.levels = style.levels
-      }
-      commit(item)
+      // kind 按这一族记住的画法换（面板点趋势线、上次换成了两端延伸，落下来就是两端延伸），
+      // 样式按这类工具记住的默认铺——两样都在 Core 里同一份算式（`DrawingPreferences.newDrawing`）。
+      commit(DrawingPreferences.newDrawing(tool: tool, points: points, styles: d.styles, variants: d.variants))
     } else {
       d.anchors.append(pt); d.aim = nil
       if snap.index >= 0 { Haptics.magnetTick() }
@@ -1160,7 +1164,9 @@ final class DrawingOverlayView: UIView {
       }
       let points = plan.points
       if plan.whole {
-        var preview = Drawing(kind: tool, points: points); preview.dash = .dashed
+        // 预览和落下来的是同一种画法：拖的一路上看到的就是两端延伸，不是先给一段线段。
+        var preview = Drawing(kind: DrawingPreferences.kind(for: tool, variants: d.variants), points: points)
+        preview.dash = .dashed
         // 预览也喂序列：两点的区间分布在点第二下之前就该把整块柱子实时画出来，
         // 用户是照着柱子的位置决定第二下点哪儿的。
         paintDrawing(preview, ctx: ctx, axes: axes, colors: t, selected: true, handles: true,

@@ -513,10 +513,7 @@ private struct DrawingStyleEditor: View {
           // 面板上只摆十二把，射线 / 直线 / 水平射线 / 箭头 / 十字线就活在这几行里——
           // 用户是看着图上那条线换的，不用先认识五个名字。
           ForEach(item.kind.swaps) { swap in
-            Picker(swap.title, selection: swapBinding(swap)) {
-              ForEach(swap.options) { option in Text(option.label).tag(option.kind) }
-            }
-            .accessibilityIdentifier("draw.swap")
+            DrawingKindSwapRow(swap: swap, kind: swapBinding(swap))
           }
         } header: {
           PanelFormSectionTitle(text: "样式")
@@ -601,6 +598,62 @@ private struct DrawingStyleEditor: View {
     let values = parts.compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
     guard !values.isEmpty, values.count == parts.count, values.count <= 24, values.allSatisfy({ $0.isFinite && abs($0) <= 10 }) else { return nil }
     return Array(Set(values)).sorted()
+  }
+}
+
+/// 「换一种画法」那一排：一族最多四种，直接摊开摆在表里，点哪个就是哪个。
+///
+/// 原来是系统 `Picker` 的弹出菜单。样式表起手停在 0.4 屏高，这一行贴着面板下沿，
+/// 菜单只能往上弹，靠上的几项（「向右延伸」）落到面板外、压在被调暗的图表上——
+/// 模拟器上连 XCTest 都判它「点不到」（2026-09-23）。选项少、字短，摊成一排放得下，
+/// 还省掉「先点开菜单」那一下；放不下时（大字号）换成标题在上、一排在下。
+/// 选中态和「粗细」那排同一支笔（`ink` 淡底 + 描边），不用强调色，免得和「保存」抢眼。
+struct DrawingKindSwapRow: View {
+  let swap: Drawing.KindSwap
+  @Binding var kind: Drawing.Kind
+  @Environment(\.panelTheme) private var theme
+
+  var body: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 0) {
+        Text(swap.title)
+        Spacer(minLength: 8)
+        options
+      }
+      VStack(alignment: .leading, spacing: 8) {
+        Text(swap.title)
+        options
+      }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("draw.swap")
+  }
+
+  private var options: some View {
+    HStack(spacing: 4) {
+      ForEach(swap.options) { option in
+        let on = option.kind == kind
+        Button { kind = option.kind } label: {
+          Text(option.label)
+            .lineLimit(1)
+            .fixedSize()
+            .foregroundStyle(on ? theme.ink : theme.ink2)
+            .padding(.horizontal, 10)
+            .frame(minWidth: 44, minHeight: 34)
+            .background(on ? theme.ink.opacity(0.08) : .clear,
+                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay {
+              RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(on ? theme.ink.opacity(0.55) : .clear, lineWidth: 1.5)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(option.label)
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("draw.swap.\(option.kind.rawValue)")
+      }
+    }
   }
 }
 
