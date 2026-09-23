@@ -208,6 +208,15 @@ sync-contract:
 	cd $(SETTINGS) && KANPAN_WRITE_SYNC_CONTRACT=1 $(SWIFT) test $(CORE_TEST_FLAGS) \
 	  --filter theContractFileIsTheOneListBothSidesRead
 	@echo "→ $(SYNC_CONTRACT) 已按 PrefsFieldPlan.table 重新生成；跑 make app-logic-test 与 (cd Backend/kanpan-api && cargo test --lib) 对账"
+	@$(MAKE) --no-print-directory backend-test
+
+# ---------------------------------------------------------------- 后端单测
+# kanpan-api 的库内单测：不需要 Postgres，几秒跑完（要库的集成测试走
+# Backend/kanpan-api/ops/test.py）。sync-contract 重新生成契约之后接着跑它——Rust 那一半
+# 的对账就在这些单测里，不再靠人记得去手敲。cargo 在 rustup 的 keg 里、不在默认 PATH 上。
+.PHONY: backend-test
+backend-test:
+	cd Backend/kanpan-api && PATH="$$PATH:/opt/homebrew/opt/rustup/bin" $(GUARD) cargo test --lib
 
 # ---------------------------------------------------------------- 账号与复盘
 # 审查 C-05：这两个包过去一个都不在 `test` 里。也就是说「make test 全绿」跟
