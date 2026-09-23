@@ -86,8 +86,8 @@ public actor RoutedMarketFeed {
   ///
   /// 提供者是按线路建的（主机名在它肚子里），所以线路本身必须进键。原来只看
   /// 「交易所|上游」：币安换线路时上游恰好也换（币安 ↔ OKX 替身），看不出毛病；
-  /// Coinbase 两条线路上游都是 coinbase，键一样，切到「网关」之后连着的直连 feed
-  /// 原样留着——REST 和推送照旧打 coinbase.com，网关开关对它形同虚设。
+  /// 上游不随线路变的交易所（两条线路上游都是它自己），键一样，切到「网关」之后连着的
+  /// 直连 feed 原样留着——REST 和推送照旧打交易所自己的域名，网关开关对它形同虚设。
   private func key(_ caps: ProviderCapabilities) -> String { Self.key(caps, policy) }
   private static func key(_ caps: ProviderCapabilities, _ policy: MarketRoutePolicy) -> String {
     caps.venue + "|" + caps.upstream + "|" + policy.rawValue
