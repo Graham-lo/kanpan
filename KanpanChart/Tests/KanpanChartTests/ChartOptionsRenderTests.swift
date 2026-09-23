@@ -336,4 +336,28 @@ struct ChartOptionsRenderTests {
     #expect(big.mainH < base.mainH, "主图没让出高度")
     #expect(abs(big.panes[2].y - big.mainH - AICoinBehavior.timeHeight - big.panes[1].h) < 1e-9, "面板没接上")
   }
+
+  // ---------------------------------------------------------------- 图例越界
+
+  /// BOLL 图例曾经裸下标 `v.lines[1][i]`：序列为空时 `legendIndex` 是 −1，直接越界崩溃
+  /// （审查 2026-09-24 §0.2 #4）。空序列、十字线两种入口都要画得过去。
+  @Test("BOLL 图例：legendIndex 为 −1 时不越界")
+  func bollLegendWithEmptySeries() throws {
+    for crosshair in [nil, Crosshair(index: 5)] as [Crosshair?] {
+      var st = Evidence.state(style: .default, dark: false, size: Self.size, overlays: [.boll], subs: [],
+                              crosshair: crosshair)
+      st.series = BarSeries(symbol: st.series.symbol, interval: st.series.interval, bars: [])
+      let r = ChartRenderer(state: st)
+      #expect(r.legendIndex == -1)
+      let boll = try #require(r.displayed(.boll), "空序列下 BOLL 没有结果，这条用例就没走到图例那一段")
+      #expect(boll.lines.count >= 3)
+      let L = r.layout(size: Self.size)
+      let ctx = try #require(CGContext(data: nil, width: Int(Self.size.width), height: Int(Self.size.height),
+                                       bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+      UIGraphicsPushContext(ctx)
+      r.drawLegend(ctx, pane: L.main, L: L)
+      UIGraphicsPopContext()
+    }
+  }
 }

@@ -295,10 +295,13 @@ extension ChartRenderer {
           put("\(id.name)\(n) " + indicatorNumber(reading(v.lines[k]), decimals: p), indicatorColor(id, k))
         }
       case .boll:
+        // `legendIndex` 在序列为空时是 −1，指标结果也可能比序列短一截（换品种那一拍）：
+        // 裸下标会直接越界崩溃。读不到就是 NaN，`put` 自己会跳过。
         guard v.lines.count >= 3 else { break }
-        put("上轨 " + fmtNum(v.lines[1][i], p), t.band)
-        put("中轨 " + fmtNum(v.lines[0][i], p), t.amber)
-        put("下轨 " + fmtNum(v.lines[2][i], p), t.band)
+        let at = { (k: Int) -> Double in v.lines[k].indices.contains(i) ? v.lines[k][i] : .nan }
+        put("上轨 " + fmtNum(at(1), p), t.band)
+        put("中轨 " + fmtNum(at(0), p), t.amber)
+        put("下轨 " + fmtNum(at(2), p), t.band)
       case .vwap:
         guard let a = v.lines.first, outputVisible(id, 0) else { break }
         put("当日均价 " + indicatorNumber(reading(a), decimals: p), indicatorColor(id, 0))
