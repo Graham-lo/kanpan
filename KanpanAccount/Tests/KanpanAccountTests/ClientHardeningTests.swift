@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import KanpanCore
 @testable import KanpanAccount
 
 /// 把一趟答复扣在闸门后面，等测试放行再回。用来把「两个客户端同时在飞」摆成确定的场面，
@@ -138,6 +139,20 @@ struct ClientHardeningTests {
         _ = try AccountClient(baseURL: URL(string: allowed)!, vault: StubVault(nil))
       }
     }
+  }
+
+  /// 地址只在 `ServerHosts` 一处：行情网关表里的每一台、以及账号 API 本身，
+  /// 放行名单都得认——以前三份各抄各的，换机器漏改一处登录就一律被拒。
+  @Test("ServerHosts 里的每一台网关和账号地址都在放行名单里")
+  func 放行名单与网关表同源() throws {
+    reset()
+    #expect(AccountClient.allowedHosts == ServerHosts.names)
+    #expect(AccountClient.allowedPorts == ServerHosts.ports)
+    for gateway in ServerHosts.gateways {
+      let url = try #require(URL(string: "https://" + gateway))
+      #expect(throws: Never.self, "\(gateway)") { _ = try AccountClient(baseURL: url, vault: StubVault(nil)) }
+    }
+    #expect(throws: Never.self) { _ = try AccountClient(baseURL: ServerHosts.accountAPI, vault: StubVault(nil)) }
   }
 
   /// 存档要记得自己是谁签发的。换了服务器地址（换了台网关、DEBUG 下指到别处）时，

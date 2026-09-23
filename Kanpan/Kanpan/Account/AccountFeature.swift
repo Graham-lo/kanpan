@@ -1,6 +1,7 @@
 import SwiftUI
 import Observation
 import KanpanAccount
+import KanpanCore
 
 @MainActor @Observable final class AccountFeature {
   enum Page: String { case account, login, register, sync, devices, changePassword, close }
@@ -63,12 +64,13 @@ import KanpanAccount
   /// 测试用：直接给一个客户端（假服务器、假钥匙串）。产品走下面那个无参的。
   init(client: AccountClient?) { self.client = client }
   init() {
-    // Shipping endpoint is supplied by the app build, never typed into the product UI.
-    let configured = Bundle.main.object(forInfoDictionaryKey: "KanpanAccountAPIURL") as? String
+    // 线上地址只在 `ServerHosts` 一处（以前另抄在 Info.plist 的 KanpanAccountAPIURL 里）；
+    // DEBUG 构建的 UI 用例可以用环境变量指别处。
+    let configured = ServerHosts.accountAPI.absoluteString
     #if DEBUG
-    let address = ProcessInfo.processInfo.environment["KANPAN_ACCOUNT_API_URL"] ?? configured
+    let address: String? = ProcessInfo.processInfo.environment["KANPAN_ACCOUNT_API_URL"] ?? configured
     #else
-    let address = configured
+    let address: String? = configured
     #endif
     if let address, let url = URL(string: address), !address.isEmpty {
       do {

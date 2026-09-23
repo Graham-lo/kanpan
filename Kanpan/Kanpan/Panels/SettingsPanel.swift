@@ -189,11 +189,7 @@ struct SettingsPanel: View {
     return "Hkline \(short)（\(build)）"
   }
 
-  static var legalBase: URL? {
-    guard let raw = Bundle.main.object(forInfoDictionaryKey: "KanpanAccountAPIURL") as? String,
-          !raw.isEmpty, let url = URL(string: raw) else { return nil }
-    return url
-  }
+  static var legalBase: URL? { ServerHosts.accountAPI }
 
   private func resetAll() {
     let before = store.prefs

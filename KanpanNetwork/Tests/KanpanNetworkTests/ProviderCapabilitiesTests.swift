@@ -102,6 +102,9 @@ struct ProviderCapabilitiesTests {
     #expect(gateway.defaultProvider.capabilities.upstream == "okx")
     // 线上网关表里绝不能混进合约测试网。
     #expect(!MarketEndpoints.production.gateways.contains { $0.contains("binancefuture") })
+    // 地址只在 ServerHosts 一处；账号 API 走的就是主网关那台。
+    #expect(MarketEndpoints.production.gateways == ServerHosts.gateways)
+    #expect(MarketEndpoints.production.gateways.first == ServerHosts.accountAPI.host)
   }
 
   @Test("冷启动热身跟线路走：直连热币安两台，网关热两台网关")

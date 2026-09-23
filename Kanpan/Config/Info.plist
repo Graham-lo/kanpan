@@ -4,12 +4,13 @@
   这份 Info.plist 只放 Xcode 自己生成不了的那几个键，其余键仍由
   `GENERATE_INFOPLIST_FILE = YES` 生成后合并进来（两者可以同时用）。
 
-  为什么不能继续写 `INFOPLIST_KEY_KanpanAccountAPIURL`：`INFOPLIST_KEY_*` 这套
-  构建设置只认 Xcode 内置的那张已知键表（CFBundleDisplayName、UILaunchScreen 之类），
-  自定义键会被**静默丢弃**——不报错、不警告，打出来的包里就是没有。结果是
-  `Bundle.main.object(forInfoDictionaryKey: "KanpanAccountAPIURL")` 取到 nil，
-  `AccountFeature` 建不出 `AccountClient`，登录/注册一律回「账号服务暂不可用」，
-  看着像后端挂了，其实后端一直好好的。
+  自定义键不能写成 `INFOPLIST_KEY_*` 构建设置：那套设置只认 Xcode 内置的那张已知键表
+  （CFBundleDisplayName、UILaunchScreen 之类），自定义键会被**静默丢弃**——不报错、
+  不警告，打出来的包里就是没有。以前的 `KanpanAccountAPIURL` 就这么丢过一次：
+  `AccountFeature` 建不出 `AccountClient`，登录/注册一律回「账号服务暂不可用」。
+
+  账号 API 的地址 2026-09-24 起不再放在这里，只在 KanpanCore 的 `ServerHosts` 一处
+  （行情网关表、账号放行名单、账号地址原来是三份，审查 §2）。
 -->
 <plist version="1.0">
 <dict>
@@ -38,8 +39,6 @@
     <key>UIColorName</key>
     <string>LaunchBackground</string>
   </dict>
-  <key>KanpanAccountAPIURL</key>
-  <string>https://kanpan.107-174-172-10.sslip.io</string>
   <!--
     不加这一条，ProMotion 的 iPhone 上 CADisplayLink 会被系统钳死在 60 Hz：
     `preferredFrameRateRange(80…120)` 照样能设，但一帧都不会多给。
@@ -74,7 +73,7 @@
 
     写在这份手写的 plist 里而不是 `INFOPLIST_KEY_*`：`CFBundleURLTypes` 不在
     Xcode 那张已知键表上（那套设置只认 CFBundleDisplayName、UILaunchScreen 之类），
-    自定义键会被静默丢弃——理由和上面 `KanpanAccountAPIURL` 那条一样。
+    自定义键会被静默丢弃——理由见文件头。
   -->
   <key>CFBundleURLTypes</key>
   <array>

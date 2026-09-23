@@ -1,4 +1,5 @@
 import Foundation
+import KanpanCore
 
 private struct Envelope<T: Decodable>: Decodable { var data: T }
 private struct FailureEnvelope: Decodable {
@@ -24,10 +25,10 @@ public actor AccountClient {
     public init() {}
     #endif
   }
-  /// 自家那两台网关。地址是从 Info.plist 里拿的，写错一个字母就是把钥匙串里那份
+  /// 自家那两台网关（名单只在 `ServerHosts` 一处）。写错一个字母就是把钥匙串里那份
   /// refresh 令牌递给别人，所以这里只认名单，不认「看起来像 https」。
-  static let allowedHosts: Set<String> = ["kanpan.107-174-172-10.sslip.io", "kanpan.96-44-162-222.sslip.io"]
-  static let allowedPorts: Set<Int> = [443, 8443]
+  static let allowedHosts: Set<String> = ServerHosts.names
+  static let allowedPorts: Set<Int> = ServerHosts.ports
   public nonisolated let baseURL: URL
   private let vault: any CredentialVault
   /// 这一槽凭据的刷新协调者（进程级，按 `vault.slotIdentifier` 取）。

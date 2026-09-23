@@ -152,10 +152,8 @@ public struct MarketEndpoints: Sendable, Equatable {
 
   /// 线上那两台网关（美国 VPS），主在前、备在后。app 里所有取数件都从 `RouteResolver.current`
   /// 拿到这一份，不再各自拼。
-  public static let production = MarketEndpoints(gateways: [
-    "kanpan.107-174-172-10.sslip.io",
-    "kanpan.96-44-162-222.sslip.io:8443",
-  ])
+  /// 地址本身只在 `ServerHosts` 一处。
+  public static let production = MarketEndpoints(gateways: ServerHosts.gateways)
 }
 
 /// 与交易所无关的 K 线序列小工具。
