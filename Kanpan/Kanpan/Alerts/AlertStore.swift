@@ -98,6 +98,7 @@ final class AlertStore: ObservableObject {
   @discardableResult
   func addPrice(symbol: String, target: Double, current: Double?, label: String,
                 now: Double = Date().timeIntervalSince1970 * 1000) -> Alert? {
+    let symbol = InstrumentID.canonical(symbol)
     guard target.isFinite, target > 0, !symbol.isEmpty else { return nil }
     if let same = archive.alerts.first(where: {
       $0.kind == .price && $0.isActive && $0.symbol == symbol && $0.targetPrice == target

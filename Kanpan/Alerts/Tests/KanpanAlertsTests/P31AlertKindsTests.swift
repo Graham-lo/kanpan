@@ -42,7 +42,7 @@ struct P31AlertKindsTests {
     let alert = try #require(store.addPrice(symbol: "ETHUSDT", target: 3_000, current: 2_900, label: "3,000", now: Double(m0)))
     let engine = AlertEngine()
     engine.attach(store)
-    #expect(engine.watched == ["ETHUSDT"])
+    #expect(engine.watched == ["binance/usd_m/ETHUSDT"], "盯的是完整品种 key，和报价簿同一口径")
     engine.observe(symbol: "ETHUSDT", price: 2_990, timeMs: minute(0) + 1_000)
     #expect(store.alert(id: alert.id)?.status == .active)
     engine.observe(symbol: "ETHUSDT", price: 3_001, timeMs: minute(0) + 2_000)
@@ -198,6 +198,19 @@ struct P31AlertKindsTests {
     m.setFavorites(["ETHUSDT"])
     m.observe(symbol: "BTCUSDT", price: 110, timeMs: minute(5) + 1_000)
     #expect(box.events.isEmpty)
+  }
+
+  @Test("自选存完整品种 key、行情喂裸代号：照样对得上，标题只念代号")
+  func canonicalFavoritesMatchBareTickers() {
+    let (m, box) = monitor(favorites: ["binance/usd_m/BTCUSDT"])
+    warm(m)
+    m.observe(symbol: "BTCUSDT", price: 101.6, timeMs: minute(5) + 1_000)
+    #expect(box.events.map(\.direction) == [.up])
+    #expect(WatchMove.title(for: box.events[0]).hasPrefix("BTC "))
+    let (bare, bareBox) = monitor(favorites: ["BTCUSDT"])
+    warm(bare, "binance/usd_m/BTCUSDT")
+    bare.observe(symbol: "binance/usd_m/BTCUSDT", price: 98.2, timeMs: minute(5) + 1_000)
+    #expect(bareBox.events.map(\.direction) == [.down])
   }
 
   @Test("关掉开关就停；再打开从缺口重新开始")

@@ -58,9 +58,13 @@ final class WatchMoveMonitor {
     #endif
   }
 
+  /// 自选里存的是完整品种 key（`binance/usd_m/BTCUSDT`），报价簿与主图喂进来的可能是裸代号；
+  /// 两边都折成同一个完整 key 再比，不然谁也对不上、永远不响。大写是 `WatchMove.Tracker` 的口径。
+  static func key(_ symbol: String) -> String { InstrumentID.canonical(symbol).uppercased() }
+
   /// 自选变了。
   func setFavorites(_ symbols: [String]) {
-    let next = Set(symbols.map { $0.uppercased() }.filter { !$0.isEmpty })
+    let next = Set(symbols.map(Self.key).filter { !$0.isEmpty })
     guard next != favorites else { return }
     favorites = next
     tracker.keep(next)
@@ -84,7 +88,7 @@ final class WatchMoveMonitor {
   /// 一口价。`timeMs` 是交易所时刻，取不到传 0 用本机的顶上。
   func observe(symbol: String, price: Double, timeMs: Int64, closed: Bool = false) {
     guard enabled, foreground else { return }
-    let key = symbol.uppercased()
+    let key = Self.key(symbol)
     guard favorites.contains(key) else { return }
     let stamp = timeMs > 0 ? timeMs : Int64(Date().timeIntervalSince1970 * 1000)
     let open = stamp - stamp % WatchMove.barMs
@@ -97,7 +101,7 @@ final class WatchMoveMonitor {
   private var injected = false
   private func injectIfTesting(environment: [String: String] = ProcessInfo.processInfo.environment) {
     guard !injected, enabled, environment["KANPAN_TEST_PROFILE"] == "1",
-          let symbol = environment["KANPAN_TEST_WATCHMOVE"]?.uppercased(), favorites.contains(symbol) else { return }
+          let symbol = environment["KANPAN_TEST_WATCHMOVE"].map(Self.key), favorites.contains(symbol) else { return }
     injected = true
     // 隔两秒再喂：让用例先把开关与幅度那一格截完图。
     Task { @MainActor [weak self] in

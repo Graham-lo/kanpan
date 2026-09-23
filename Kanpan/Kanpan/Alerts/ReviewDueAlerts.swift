@@ -71,7 +71,7 @@ enum ReviewDueAlerts {
           continue
         }
         var next = current
-        next.symbol = item.symbol
+        next.symbol = InstrumentID.canonical(item.symbol)
         next.title = title(short: item.short)
         next.reviewID = item.id
         if current.dueAt != item.dueAt {

@@ -573,7 +573,7 @@ struct MainScreen: View {
                       draw.highlight(drawingID: drawingID, symbol: SymbolPrefs.key(alert.symbol))
                     },
                     zone: prefs.timeZone.offsetMinutes,
-                    currentSymbol: market.symbol,
+                    currentSymbol: InstrumentID(market.symbol).symbol,
                     quote: { text in alertQuote(text) },
                     prepareQuote: { [weak quotes] symbol in quotes?.watch(symbol) },
                     watching: activities.watching,
@@ -1666,11 +1666,13 @@ struct MainScreen: View {
   private func alertQuote(_ text: String) -> PriceAlertQuote? {
     let raw = text.trimmingCharacters(in: .whitespaces).uppercased()
     guard !raw.isEmpty else { return nil }
-    let symbol = [raw, raw + "USDT"].first { picker.info(for: $0) != nil }
-      ?? (raw == market.symbol.uppercased() ? raw : nil)
+    // 输入框里是给人看的代号（「BTCUSDT」「ETH」），报价簿、目录、提醒存的都是完整 key。
+    let main = InstrumentID.canonical(market.symbol)
+    let symbol = [raw, raw + "USDT"].map(InstrumentID.canonical).first { picker.info(for: $0) != nil }
+      ?? (InstrumentID.canonical(raw) == main ? main : nil)
     guard let symbol else { return nil }
     let price: Double?
-    if symbol == market.symbol.uppercased() {
+    if symbol == main {
       price = market.tradeQuote?.price ?? market.ticker?.last ?? quotes.raw[symbol]?.last
     } else {
       price = quotes.raw[symbol]?.last
