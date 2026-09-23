@@ -159,6 +159,8 @@ struct MainScreen: View {
   @StateObject private var alertEngine = AlertEngine()
   /// 自选五分钟波动提醒的前台那一半（P3.1）。
   @State private var watchMove = WatchMoveMonitor()
+  /// 桌面小组件的快照写手（P3.2）。
+  @State private var widgetFeed = WidgetFeed()
   /// 提醒总表开着没有。设置里那一行和 `hkline://alerts` 都开它。
   @State private var showAlerts = false
   @State private var shareInterval: SharePreviewInterval?
@@ -1345,12 +1347,15 @@ struct MainScreen: View {
       // 判定也一起停：桶断了就不算连着，回来那一下不拿断口两侧的价去算穿越。
       alertEngine.setForeground(false)
       watchMove.setForeground(false)
+      // 小组件：离开前台写最后一份，之后由系统按 15 分钟刷、扩展自己补价。
+      widgetFeed.setForeground(false)
     } enter: {
       grace.end()
       market.enterForeground(); quotes.setForeground(true); sectorFeed.setForeground(true)
       alertWatcher.setForeground(true)
       alertEngine.setForeground(true)
       watchMove.setForeground(true)
+      widgetFeed.setForeground(true)
       // 回到前台先拉一次同步：服务端判到价、写回 `status=fired`，这一趟就是
       // 已触发的提醒走到用户眼前的那条路（没有 APNs 时它是唯一一条）。
       accountBridge?.synchronize(); review.synchronize()
@@ -1466,6 +1471,29 @@ struct MainScreen: View {
     }
   }
 
+  /// 桌面小组件（P3.2）：自选、报价、皮肤折成一份快照写进 App Group，扩展只读它。
+  /// 自选 / 分类 / 置顶 / 皮肤一变立刻写并重载；价只是动了，按 `WidgetFeed` 的节奏写。
+  private func wireWidget() {
+    widgetFeed.bind(
+      collect: { closes in
+        let prefs = store.prefs
+        return WidgetFeed.snapshot(
+          symbols: picker.prefs, quotes: quotes.raw.mapValues { quotes.presented($0) },
+          decimals: { symbol in
+            picker.info(for: symbol).flatMap { $0.tickSize > 0 || $0.pricePrecision > 0 ? $0.priceDecimals : nil }
+          },
+          closes: closes, skin: prefs.skin, appearance: prefs.theme, redUp: prefs.redUp,
+          fapiHost: hosts.fapi, basis: prefs.changeBasis)
+      },
+      shape: {
+        let symbols = picker.prefs, prefs = store.prefs
+        return symbols.favorites + ["|"] + symbols.pinned + ["|"] + symbols.groups.map { $0.id + ":" + $0.name }
+          + symbols.groupForSymbol.map { $0.key + "=" + $0.value }.sorted()
+          + [prefs.skin.rawValue, prefs.theme.rawValue, String(prefs.redUp), prefs.changeBasis.rawValue]
+      },
+      fetchCloses: { [quotes] symbol in await quotes.closes(symbol: symbol) })
+  }
+
   /// 新建价格提醒那一页问的：用户打的这串是哪只品种、现价多少。
   /// 「ETH」认成 `ETHUSDT`；图上那只取逐笔，别的取报价簿。
   private func alertQuote(_ text: String) -> PriceAlertQuote? {
@@ -1499,6 +1527,7 @@ struct MainScreen: View {
     wireLifecycle()
     wireAlerts()
     wireWatchMove()
+    wireWidget()
     // 先把档案装进来，再开行情。
     //
     // 以前是反过来的（注释写着「让网络 I/O 和首帧渲染重叠」）：`market.start` 跑在
@@ -1513,7 +1542,10 @@ struct MainScreen: View {
     picker.setSectionsActive(false)
     quotes.onReset = { picker.clearQuotes() }
     quotes.onScopeChange = { picker.retainQuotes(for: $0) }
-    quotes.onUpdate = { picker.updateQuotes($0) }
+    quotes.onUpdate = { [widgetFeed] rows in
+      picker.updateQuotes(rows)
+      widgetFeed.quotesChanged()
+    }
     quotes.onHistory = { picker.setHistory($0, $1) }
     // 交易所不认这个代号：只把它标成下架，自选一行都不删（审查 B-06）。
     // 两处都标是因为品种页手里握的是目录的一份副本，标了它这一屏才立刻一致。
@@ -1694,6 +1726,10 @@ struct MainScreen: View {
       openReview(id: id)
     case .search:
       openLinkedSearch()
+    case .favorites:
+      // 桌面小号自选那一格点进来。
+      dismissPanel(); showAlerts = false
+      switchTo(tab: .favorites)
     case let .share(id):
       if let item = inbox.items.first(where: { $0.id == id }) { openShare(item) }
       else { showFriends = true; inbox.pull() }

@@ -633,6 +633,13 @@ final class QuoteBook {
     publish(Array(raw.values))
   }
 
+  /// 桌面小组件中号那条折线：最近 24 根 1 小时收盘价（P3.2），和 24 小时涨跌幅看的是同一段。
+  func closes(symbol: String) async -> [Double]? {
+    let bars = try? await rest.klines(symbol: symbol, interval: .h1, limit: WidgetSnapshot.sparkBars)
+    let closes = (bars ?? []).map(\.close).filter(\.isFinite)
+    return closes.count >= 2 ? closes : nil
+  }
+
   func watchRow(_ symbol: String, visible: Bool) {
     if visible { visibleRows.insert(symbol); requestQuote(symbol) }
     else {

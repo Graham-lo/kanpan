@@ -15,6 +15,7 @@ import Observation
 ///   hkline://alerts
 ///   hkline://review/<recordID>
 ///   hkline://search
+///   hkline://favorites
 ///   hkline://share/<id>
 ///   https://kanpan.107-174-172-10.sslip.io/s/<id>        （与上一条等价）
 ///
@@ -31,6 +32,8 @@ enum DeepLink: Equatable {
   case review(id: String)
   /// 品种搜索页。
   case search
+  /// 自选页（桌面小号自选那一格点进来）。
+  case favorites
   /// 朋友共享的那张图。
   case share(id: String)
 
@@ -70,6 +73,8 @@ enum DeepLink: Equatable {
       return .review(id: rest[0])
     case ("search", 0):
       return .search
+    case ("favorites", 0):
+      return .favorites
     case ("share", 1):
       guard !rest[0].isEmpty else { return nil }
       return .share(id: rest[0])

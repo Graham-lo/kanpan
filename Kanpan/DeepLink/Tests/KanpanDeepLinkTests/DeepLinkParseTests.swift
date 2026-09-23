@@ -49,6 +49,9 @@ struct DeepLinkParseTests {
     // 结尾多一条斜杠还是同一个地方。
     #expect(parse("hkline://alerts/") == .alerts)
     #expect(parse("hkline://search/") == .search)
+    // 桌面小号自选那一格点进来。
+    #expect(parse("hkline://favorites") == .favorites)
+    #expect(parse("hkline://favorites/x") == nil)
   }
 
   @Test("共享：两种 host 形态解析到同一条")

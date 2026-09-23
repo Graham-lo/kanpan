@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AD0000000000000000000012 /* KanpanCore in Frameworks */ = {isa = PBXBuildFile; productRef = AD0000000000000000000011 /* KanpanCore */; };
+		AD0000000000000000000013 /* KanpanWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AD0000000000000000000005 /* KanpanWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AC0000000000000000000052 /* KanpanAccount in Frameworks */ = {isa = PBXBuildFile; productRef = AC0000000000000000000051 /* KanpanAccount */; };
 		AB0000000000000000000012 /* KanpanCore in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000011 /* KanpanCore */; };
 		AB0000000000000000000022 /* KanpanChart in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000021 /* KanpanChart */; };
@@ -15,6 +17,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		AD000000000000000000004B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AB0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AD0000000000000000000004;
+			remoteInfo = KanpanWidget;
+		};
 		AB000000000000000000004B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = AB0000000000000000000001 /* Project object */;
@@ -24,12 +33,32 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		AD0000000000000000000014 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AD0000000000000000000013 /* KanpanWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		AD0000000000000000000005 /* KanpanWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KanpanWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB0000000000000000000005 /* Kanpan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kanpan.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB0000000000000000000041 /* KanpanUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KanpanUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		AD0000000000000000000009 /* KanpanWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = KanpanWidget;
+			sourceTree = "<group>";
+		};
 		AB0000000000000000000009 /* Kanpan */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Kanpan;
@@ -43,6 +72,14 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		AD0000000000000000000007 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AD0000000000000000000012 /* KanpanCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		AB0000000000000000000007 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -70,6 +107,7 @@
 			children = (
 				AB0000000000000000000009 /* Kanpan */,
 				AB0000000000000000000042 /* KanpanUITests */,
+				AD0000000000000000000009 /* KanpanWidget */,
 				AB0000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -79,6 +117,7 @@
 			children = (
 				AB0000000000000000000005 /* Kanpan.app */,
 				AB0000000000000000000041 /* KanpanUITests.xctest */,
+				AD0000000000000000000005 /* KanpanWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -93,10 +132,12 @@
 				AB0000000000000000000006 /* Sources */,
 				AB0000000000000000000007 /* Frameworks */,
 				AB0000000000000000000008 /* Resources */,
+				AD0000000000000000000014 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				AD000000000000000000004A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				AB0000000000000000000009 /* Kanpan */,
@@ -136,6 +177,29 @@
 			productReference = AB0000000000000000000041 /* KanpanUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		AD0000000000000000000004 /* KanpanWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AD000000000000000000000B /* Build configuration list for PBXNativeTarget "KanpanWidget" */;
+			buildPhases = (
+				AD0000000000000000000006 /* Sources */,
+				AD0000000000000000000007 /* Frameworks */,
+				AD0000000000000000000008 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AD0000000000000000000009 /* KanpanWidget */,
+			);
+			name = KanpanWidget;
+			packageProductDependencies = (
+				AD0000000000000000000011 /* KanpanCore */,
+			);
+			productName = KanpanWidget;
+			productReference = AD0000000000000000000005 /* KanpanWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -152,6 +216,9 @@
 					AB0000000000000000000046 = {
 						CreatedOnToolsVersion = 26.6;
 						TestTargetID = AB0000000000000000000004;
+					};
+					AD0000000000000000000004 = {
+						CreatedOnToolsVersion = 26.6;
 					};
 				};
 			};
@@ -178,6 +245,7 @@
 			targets = (
 				AB0000000000000000000004 /* Kanpan */,
 				AB0000000000000000000046 /* KanpanUITests */,
+				AD0000000000000000000004 /* KanpanWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -191,6 +259,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AB0000000000000000000045 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AD0000000000000000000008 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -214,6 +289,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AD0000000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -221,6 +303,11 @@
 			isa = PBXTargetDependency;
 			target = AB0000000000000000000004 /* Kanpan */;
 			targetProxy = AB000000000000000000004B /* PBXContainerItemProxy */;
+		};
+		AD000000000000000000004A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AD0000000000000000000004 /* KanpanWidget */;
+			targetProxy = AD000000000000000000004B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -272,6 +359,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/Kanpan.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 27Y32PT2HZ;
@@ -298,6 +386,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/Kanpan.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 27Y32PT2HZ;
@@ -351,6 +440,56 @@
 			};
 			name = Release;
 		};
+		AD000000000000000000000E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/KanpanWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 27Y32PT2HZ;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/KanpanWidget-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Hkline";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mdd.kanpan.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AD000000000000000000000F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/KanpanWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 27Y32PT2HZ;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/KanpanWidget-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Hkline";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mdd.kanpan.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -377,6 +516,15 @@
 			buildConfigurations = (
 				AB0000000000000000000048 /* Debug */,
 				AB0000000000000000000049 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AD000000000000000000000B /* Build configuration list for PBXNativeTarget "KanpanWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AD000000000000000000000E /* Debug */,
+				AD000000000000000000000F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -415,6 +563,11 @@
 			productName = KanpanData;
 		};
 		AB0000000000000000000051 /* KanpanReview */ = {isa = XCSwiftPackageProductDependency; productName = KanpanReview; };
+		AD0000000000000000000011 /* KanpanCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = KanpanCore;
+			package = AB0000000000000000000010 /* XCLocalSwiftPackageReference "../KanpanCore" */;
+		};
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AB0000000000000000000001 /* Project object */;
