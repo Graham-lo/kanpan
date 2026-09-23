@@ -121,6 +121,12 @@ final class QuoteBook {
   /// 抬到 48：自选表怎么加都走逐行那条，只有品种搜索页那种几百行滚动时
   /// 才值得用全市场换。
   private static let batchThreshold = 48
+  /// 不进板块页的那几家的全市场种子：多久刷一次、失败后多久再试、一次最多等多久、
+  /// 回前台后晚多久再取（见 `warmSeeds`）。
+  private static let seedRefreshSeconds: TimeInterval = 60
+  private static let seedRetrySeconds: TimeInterval = 30
+  private static let seedTimeoutSeconds: TimeInterval = 8
+  private static let seedWarmDelaySeconds = 3
   /// 逐行补价的并发。
   ///
   /// HTTP/2 下这些请求共用一条连接，并发开大不多开连接，只是多几条流；
@@ -199,6 +205,12 @@ final class QuoteBook {
   /// 全市场 24h 行情的种子（板块页那份，见 `seed(_:upstream:)`）。只拿来给**刚露面、
   /// 手里还没有值**的行垫第一帧，不订阅、不当成实时，也不观察——它变了不需要重画谁。
   @ObservationIgnored private var seeds: [String: Ticker] = [:]
+  /// 每一家那份种子是什么时候收下的 / 上一次去取是什么时候（交易所 id → 时刻）。
+  @ObservationIgnored private var seededAt: [String: Date] = [:]
+  @ObservationIgnored private var seedAttempt: [String: Date] = [:]
+  @ObservationIgnored private var seedJobs: [String: Task<Void, Never>] = [:]
+  /// 还在等那一拍延时、没真正发出去的种子任务（列表一露面就不再等，当场取）。
+  @ObservationIgnored private var seedSleeping: Set<String> = []
   @ObservationIgnored private var seedFlush: Task<Void, Never>?
   @ObservationIgnored private var seededBatch: [Ticker] = []
   private var historyWanted = Set<String>()
@@ -370,7 +382,11 @@ final class QuoteBook {
       // 换镜像不动开盘价：那是交易所的数据，跟走哪台机器取回来没关系。
       // 以前这儿连着 `opens.removeAll()`，改一下行情源地址、或者
       // 「智能线路」开关一动，整屏涨跌幅就得重新排队取一遍。换上游才要重取。
-      if changedSource { opens.removeAll(); provisionalOpens.removeAll(); seeds.removeAll() }
+      if changedSource {
+        opens.removeAll(); provisionalOpens.removeAll(); seeds.removeAll()
+        seededAt.removeAll(); seedAttempt.removeAll()
+        seedJobs.values.forEach { $0.cancel() }; seedJobs.removeAll(); seedSleeping.removeAll()
+      }
       for symbol in Array(quoteJobs.keys) where symbol != chartSymbol { quoteJobs.removeValue(forKey: symbol)?.cancel() }
       quoteQueue.removeAll { $0 != chartSymbol }
       // 换镜像只是换台机器取同一家的数据，攒着的照发；换上游则整代作废
@@ -385,6 +401,7 @@ final class QuoteBook {
     restoreQuotes()
     tick()
     publish(Array(raw.values))
+    if changedSource { warmSeeds() }
   }
 
   /// 进后台后的宽限窗口里连接还活着，这时到的帧照收——回来就是现价。
@@ -427,6 +444,8 @@ final class QuoteBook {
     guard on != foreground else { return }
     foreground = on
     reconcileConnection()
+    // 让开首屏：图表那一只的 K 线、报价先走，种子晚一拍再取（它只服务搜索 / 自选里的行）。
+    if on { warmSeeds(after: .seconds(Self.seedWarmDelaySeconds)) }
   }
 
   func setVisible(_ on: Bool) {
@@ -445,7 +464,7 @@ final class QuoteBook {
     // 回到列表时也不必先等满一个 2 秒的窗口才看见第一帧。
     lastEmit = .distantPast
     flushSteady()
-    if on { applySeeds(to: visibleRows) }
+    if on { applySeeds(to: visibleRows); warmSeeds() }
   }
 
   private func reconcileConnection() {
@@ -483,6 +502,8 @@ final class QuoteBook {
   private func teardown() {
     idleTeardown?.cancel(); idleTeardown = nil
     batchJob?.cancel(); batchJob = nil
+    // 种子只在前台取；前台时列表暂时不需要连接（没有自选、列表没露面）不拦它。
+    if !foreground { seedJobs.values.forEach { $0.cancel() }; seedJobs.removeAll(); seedSleeping.removeAll() }
     network.stop(); stopStream(); cancelQuotes(); resetBaselineRequests()
     historyJobs.values.forEach { $0.cancel() }; historyJobs.removeAll()
     lastListUpdate = nil
@@ -728,16 +749,66 @@ final class QuoteBook {
   /// 第一帧就有价，REST / WS 的真值到了照常盖掉（种子不记 `receivedAt`，所以补价照发）。
   ///
   /// 不是同一家上游供的数一概不收：网关线路上替身顶的数和真身的不混用。
-  func seed(_ tickers: [Ticker], upstream: String) {
-    let venue = VenueRegistry.sectorVenue.id
+  ///
+  /// 种子按交易所分份：`venue` 那一家的这一份整份换掉，别家的不动；键是完整品种 key，
+  /// 不是这一家的品种一概不收（板块页那份只垫进板块的那家，别家的由 `warmSeeds` 各取各的）。
+  func seed(_ tickers: [Ticker], upstream: String, venue: String = VenueRegistry.sectorVenue.id) {
     let own = (providers[venue] ?? resolver.provider(venue: venue)).capabilities.upstream
     guard upstream == own else { return }
-    var next: [String: Ticker] = [:]
-    next.reserveCapacity(tickers.count)
-    for ticker in tickers where ticker.last.isFinite && ticker.last > 0 { next[ticker.symbol] = ticker }
+    let prefix = venue + "/"
+    var next = seeds.filter { !$0.key.hasPrefix(prefix) }
+    next.reserveCapacity(next.count + tickers.count)
+    for ticker in tickers where ticker.last.isFinite && ticker.last > 0 && ticker.symbol.hasPrefix(prefix) {
+      next[ticker.symbol] = ticker
+    }
     seeds = next
+    seededAt[venue] = Date()
     applySeeds(to: visibleRows.union([chartSymbol].compactMap { $0 }))
   }
+
+  /// 全市场种子由这儿补取的那部分。
+  ///
+  /// * 不进板块页的那几家（`joinsSectors == false`）没人替它们取全市场，一律由这儿取，
+  ///   一分钟内取过就不再取。
+  /// * 进板块页的那一家平时由板块页供（它的轮询与落盘的那份，见 `SectorFeed.onTickers`）；
+  ///   只有这一程**一份都还没有**时（新装、从没进过板块页、盘上没有它落的那份）才由这儿
+  ///   取一次，之后照旧交给板块页——不跟它抢那 40 的请求权重。
+  ///
+  /// 为什么：搜索结果、自选里的行从前露面之后才逐个问单品种报价，第一帧是「—」、
+  /// 0.5–1 秒后才有价。这些家都有整表接口（`hasBulkTickers`，一次给全部品种的现价与
+  /// 24h 涨跌，压缩后几十到两百 KB），先取一份垫上，行一露面就有价；真值（REST / WS）
+  /// 到了照常盖掉。失败了半分钟后再试。
+  private func warmSeeds(after delay: Duration = .zero) {
+    guard foreground else { return }
+    for d in VenueRegistry.all {
+      if delay == .zero, seedSleeping.remove(d.id) != nil { seedJobs.removeValue(forKey: d.id)?.cancel() }
+      guard seedJobs[d.id] == nil, needsSeed(d) else { continue }
+      let rest = provider(for: d.defaultSymbol)
+      guard rest.capabilities.hasBulkTickers else { continue }
+      let venue = d.id, upstream = rest.capabilities.upstream
+      if delay > .zero { seedSleeping.insert(venue) }
+      seedJobs[venue] = Task { [weak self] in
+        if delay > .zero { try? await Task.sleep(for: delay) }
+        guard !Task.isCancelled else { return }
+        self?.seedSleeping.remove(venue)
+        // 等的这一拍里板块页可能已经从盘上摆好了那份：再判一次，用不着就不发。
+        guard self?.foreground == true, self?.needsSeed(d) == true else { self?.seedJobs[venue] = nil; return }
+        self?.seedAttempt[venue] = Date()
+        let all = try? await rest.tickers24h(timeout: Self.seedTimeoutSeconds)
+        guard let self, !Task.isCancelled else { return }
+        self.seedJobs[venue] = nil
+        if let all { self.seed(all, upstream: upstream, venue: venue) }
+      }
+    }
+  }
+
+  private func needsSeed(_ d: VenueDescriptor) -> Bool {
+    let now = Date()
+    guard now.timeIntervalSince(seedAttempt[d.id] ?? .distantPast) >= Self.seedRetrySeconds else { return false }
+    guard let at = seededAt[d.id] else { return true }
+    return !d.joinsSectors && now.timeIntervalSince(at) >= Self.seedRefreshSeconds
+  }
+
 
   /// 这一只的种子。图上那一只还没拿到任何报价时，顶栏先用它（`MainScreen.rollingTicker`）。
   func seeded(_ symbol: String) -> Ticker? { seeds[InstrumentID.canonical(symbol)] }
@@ -1093,6 +1164,10 @@ final class QuoteBook {
         for symbol in pending { self.quoteAttempt[symbol] = .distantPast }
         for symbol in pending { self.requestQuote(symbol) }
         return
+      }
+      // 手里已经是那一家的全市场了，顺手当种子收下（板块页那家由板块页供，不重复收）。
+      if !VenueRegistry.descriptor(forSymbol: pending[0]).joinsSectors {
+        self.seed(all, upstream: rest.capabilities.upstream, venue: venue)
       }
       let accepted = all.filter { ticker in
         guard self.wanted.contains(ticker.symbol), let request = requests[ticker.symbol] else { return false }
