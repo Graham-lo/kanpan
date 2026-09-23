@@ -316,8 +316,14 @@ public actor BinanceREST {
   /// 但省掉的是几十个请求各自的排队与往返——回前台整屏补价时用它。
   /// 网关只代理单品种 `ticker`，所以这条在非直连线路上会直接失败，
   /// 调用方要能退回逐个请求。
+  /// - Parameter timeout: **总**时限，限流器里排队的那段也算在内（`Deadline`）。
+  ///   只给 `URLRequest` 的话，排队那段没人管：出口 IP 的一分钟账接近上限时这一笔
+  ///   （权重 40）会在限流器里一声不响地等到窗口滑过去，板块页就一直空着。
   public func tickers24h(timeout: TimeInterval = 8) async throws -> [Ticker] {
-    let data = try await fetch(hosts.tickers24h(), weight: 40, attempts: 1, timeout: timeout)
+    let url = hosts.tickers24h()
+    let data = try await Deadline.run(seconds: timeout) {
+      try await self.fetch(url, weight: 40, attempts: 1, timeout: timeout)
+    }
     let rows = try decode([Ticker24hDTO].self, data)
     let tickers = rows.map(\.ticker).filter { $0.last.isFinite && $0.last > 0 && !$0.symbol.isEmpty }
     guard !tickers.isEmpty else { throw FeedError.badResponse("全市场报价为空") }

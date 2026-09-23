@@ -20,6 +20,37 @@ struct RateLimitTests {
     #expect(RateLimiter.klinesWeight(for: 5000) == 10)
   }
 
+  /// 板块页冷启动偶发「20 多秒没有气泡、也没有报错」的那一种：出口 IP 的一分钟账
+  /// （`X-MBX-USED-WEIGHT-1M`，同一出口上别的设备也记在里面）已经贴着预算，
+  /// 全市场 24h（权重 40）在限流器里排队等窗口滑过去——这段等待原来不受 8 秒超时管。
+  @Test("全市场 24h 的超时是总时限：限流器里排队也算")
+  func fullMarketTimeoutCoversLimiterQueue() async throws {
+    let limiter = RateLimiter(pacer: SystemPacer(), budget: 100, minGapMs: 0)
+    await limiter.observe(usedWeight: 90)
+    let server = FakeServer { _ in json("[]") }
+    let rest = BinanceREST(transport: FakeTransport(server), limiter: limiter, pacer: SystemPacer())
+    let began = ContinuousClock.now
+    await #expect(throws: URLError.self) { _ = try await rest.tickers24h(timeout: 0.3) }
+    #expect(ContinuousClock.now - began < .seconds(3))
+    #expect(await server.hits.isEmpty)
+  }
+
+  /// 连上了、却迟迟收不完（空闲超时只在「一个字节都不来」时才触发）。
+  @Test("全市场 24h 的超时是总时限：迟迟收不完也会到点")
+  func fullMarketTimeoutCoversSlowTransfer() async throws {
+    struct Stalled: HTTPTransport {
+      func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
+        try await Task.sleep(for: .seconds(30))
+        return json("[]")
+      }
+    }
+    let rest = BinanceREST(transport: Stalled(), limiter: RateLimiter(pacer: SystemPacer(), minGapMs: 0),
+                           pacer: SystemPacer())
+    let began = ContinuousClock.now
+    await #expect(throws: URLError.self) { _ = try await rest.tickers24h(timeout: 0.3) }
+    #expect(ContinuousClock.now - began < .seconds(3))
+  }
+
   @Test("K 线请求按实际 limit 消耗权重")
   func klineRequestUsesActualWeight() async throws {
     let pacer = StepPacer()

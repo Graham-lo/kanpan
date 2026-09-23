@@ -141,8 +141,12 @@ public struct CoinbaseProvider: MarketProvider {
     return ticker
   }
 
+  /// - Parameter timeout: 总时限（`Deadline`）：限速器排队、换主机重试都算在内。
   public func tickers24h(timeout: TimeInterval) async throws -> [Ticker] {
-    let data = try await get("products", query: productsQuery(), timeout: timeout)
+    let query = productsQuery()
+    let data = try await Deadline.run(seconds: timeout) {
+      try await self.get("products", query: query, timeout: timeout)
+    }
     let now = Int64(clock().timeIntervalSince1970 * 1000)
     let tickers = try Self.products(data).filter(\.isListed).compactMap { p -> Ticker? in
       guard var t = p.ticker else { return nil }
