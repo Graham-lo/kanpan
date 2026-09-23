@@ -12,8 +12,8 @@ The existing Scorebook services are separate. Frozen `vendor/scorebook-core` and
 
 ## Public market metadata
 
-`/v1/market/meta` and `/v1/market/open-interest` are the only routes with no
-owner and no database behind them: they are a cache in front of public
+`/v1/market/meta`, `/v1/market/open-interest` and `/v1/market/funding` are the
+only routes with no owner and no database behind them: they are a cache in front of public
 upstreams, refreshed in the background and served stale while refreshing.
 
 `meta` publishes, per contract symbol, what the phone multiplies the live price
@@ -60,6 +60,17 @@ source a figure was adopted from is kept internally (it is what stops a
 
 `open-interest` reads Binance or OKX live; `oi_archive` keeps the history on
 disk and warms its index at startup.
+
+`GET /v1/market/funding?source=okx` is the funding-rate table for the gateway
+route, where OKX stands in for Binance perpetuals (Binance's `fapi` answers 451
+here, and the OKX relay carries no mark-price channel). It is one call to OKX's
+`/api/v5/public/funding-rate?instId=ANY`, cached for 30 s and served no older
+than 10 minutes, answered as `{"data":{"source":"okx","rows":[{"symbol":"BTCUSDT",
+"rate":…,"nextFundingTime":…}]}}`. Only USDT- and USDC-margined swaps are listed,
+under their Binance-style symbol; `rate` is OKX's own `fundingRate` for the
+settlement at `nextFundingTime` (OKX's `fundingTime`), never a Binance figure.
+Any other `source` is a 400. It sits in `venues::routes()`, so the standby
+metrics host answers it too.
 
 Every call this process makes to `binance.com` — metadata, daily closes, the
 contract list behind the archive warm-up — shares one ban deadline
