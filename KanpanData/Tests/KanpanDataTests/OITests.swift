@@ -679,9 +679,16 @@ struct OIChunkTests {
 @Suite("OI 分段上屏：先到的那一段不必陪着慢的一起等")
 struct OIPartialTests {
 
-  private actor Batches {
-    private(set) var all: [[OIPoint]] = []
-    func add(_ points: [OIPoint]) { all.append(points) }
+  /// `onPartial` 是在 `rawPoints` 里的两个 `async let` 里**同步**调的，两者都在
+  /// `rawPoints` 返回之前收尾，所以回调里当场记下就够了，返回时一定已经记全。
+  /// 原来这里是个 actor、回调里再 `Task { await batches.add(...) }` 跳一次，测试只好
+  /// `sleep(120ms)` 去猜那几个 Task 跑完没有——整包并行跑、机器被占满时 120ms 根本
+  /// 轮不到它们，就读成「一次都没回调」。
+  private final class Batches: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [[OIPoint]] = []
+    func add(_ points: [OIPoint]) { lock.lock(); items.append(points); lock.unlock() }
+    var all: [[OIPoint]] { lock.lock(); defer { lock.unlock() }; return items }
   }
 
   /// REST 和归档都在场时，两段各自落地就各回调一次。
@@ -709,10 +716,8 @@ struct OIPartialTests {
     let batches = Batches()
     let out = await src.rawPoints(symbol: "BTCUSDT", interval: .h1,
                                   from: now - 40 * 86_400_000, to: now, now: now,
-                                  onPartial: { points in Task { await batches.add(points) } })
-    // 回调是从别的任务里发出来的，等它们收尾。
-    try await Task.sleep(for: .milliseconds(120))
-    let seen = await batches.all
+                                  onPartial: { points in batches.add(points) })
+    let seen = batches.all
     #expect(seen.count == 2)                       // REST 一次、归档一次
     #expect(seen.allSatisfy { !$0.isEmpty })
     // 两段拼起来就是最终结果：回调给的不是抽样，是真的那一段。
@@ -738,9 +743,8 @@ struct OIPartialTests {
     // 整个窗口都在 30 天之外：只有归档那一段。
     let out = await src.rawPoints(symbol: "BTCUSDT", interval: .h1,
                                   from: now - 100 * 86_400_000, to: now - 40 * 86_400_000, now: now,
-                                  onPartial: { points in Task { await batches.add(points) } })
-    try await Task.sleep(for: .milliseconds(120))
-    #expect(await batches.all.isEmpty)
+                                  onPartial: { points in batches.add(points) })
+    #expect(batches.all.isEmpty)
     #expect(!out.isEmpty)
   }
 }

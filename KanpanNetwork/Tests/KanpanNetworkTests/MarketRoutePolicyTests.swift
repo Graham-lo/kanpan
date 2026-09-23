@@ -77,7 +77,7 @@ struct MarketRoutePolicyTests {
 
     // `PrefsStore` 每落一次盘都会 set 一次，值没变不能把行情重开。
     MarketRoutePolicyStore.set(.direct)
-    #expect(!(await waitUntil(0.3) { heard.value >= 1 }))
+    #expect(await staysFalse(for: 0.3) { heard.value >= 1 })
     MarketRoutePolicyStore.set(.gateway)
     #expect(await waitUntil(2) { heard.value == 1 })
   }

@@ -184,16 +184,27 @@ private actor HeldHistory: HTTPTransport {
   }
 }
 
+/// 把品种表那一发按住，等测试放行。
+///
+/// `release()` 是**落闩**的：放行之后再来的请求当场答复。原来它只放行此刻挂着的那几笔，
+/// 整包并行跑、机器被占满时，读者任务可能在测试叫 `release()` 之后才走到这里——
+/// 那一笔的 continuation 就永远没人 resume，`readers.value` 跟着永远等下去，
+/// 整个测试进程卡死在 0% CPU（2026-09-23 用 `swift-inspect dump-concurrency` 在挂死的
+/// 进程里看到的就是这一笔挂在 `HeldCatalog.get` 上）。
 private actor HeldCatalog: HTTPTransport {
   var calls = 0
-  var pending: [CheckedContinuation<HTTPReply, Never>] = []
+  private var released = false
+  private var pending: [CheckedContinuation<HTTPReply, Never>] = []
+  private static let reply = json(#"{"symbols":[{"symbol":"BTCUSDT","baseAsset":"BTC","quoteAsset":"USDT","contractType":"PERPETUAL","status":"TRADING","pricePrecision":2,"quantityPrecision":3,"filters":[]}]}"#)
   func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPReply {
     calls += 1
+    if released { return Self.reply }
     return await withCheckedContinuation { pending.append($0) }
   }
   func release() {
-    for continuation in pending {
-      continuation.resume(returning: json(#"{"symbols":[{"symbol":"BTCUSDT","baseAsset":"BTC","quoteAsset":"USDT","contractType":"PERPETUAL","status":"TRADING","pricePrecision":2,"quantityPrecision":3,"filters":[]}]}"#))
-    }
+    released = true
+    let held = pending
+    pending = []
+    for continuation in held { continuation.resume(returning: Self.reply) }
   }
 }

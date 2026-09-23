@@ -52,9 +52,13 @@ struct StoreTests {
     _ = try Snapshot.write(makeSeries("BTCUSDT", .h1, count: 600), to: p.snapshot)
     // 先热一次文件系统，再计时。
     _ = Snapshot.read(p.snapshot)
-    let t0 = DispatchTime.now().uptimeNanoseconds
+    // 计的是这条线程真正花掉的 CPU 时间，不是墙上时钟：读快照是同步的、就在这条线程上
+    // 做完（文件刚热过，读盘就是一次页缓存拷贝），它的开销全在这里面。墙上时钟会把
+    // 「这条线程被抢走的那段」也算进去——整包并行跑、外面还有别的编译时负载到 50，
+    // 一次 5ms 的读能被量成 60ms，那量的是机器忙不忙，不是读快照快不快。
+    let t0 = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
     let s = Snapshot.read(p.snapshot)
-    let ms = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+    let ms = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - t0) / 1e6
     #expect(s?.count == 600)
     #expect(ms < 20)
   }

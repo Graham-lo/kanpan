@@ -339,14 +339,44 @@ public final class Counter: @unchecked Sendable {
 }
 
 /// 等某个条件成立，最多等 `timeout` 秒。actor 里的状态没法同步观察，只能轮询。
+///
+/// 预算按**轮询次数**记（每 2ms 一轮，`timeout` 秒折成 `timeout / 2ms` 轮），不按墙上
+/// 时钟记。机器空闲时两者一样：每轮至少睡满 2ms，所以最短也等满 `timeout` 秒。
+/// 差别在机器被占满的时候——整包并行跑（swift-testing 同时起几百条用例）、外面还有别的
+/// 编译把负载顶到 50 时，这个进程可以好几秒分不到时间片，一次 2ms 的 `Task.sleep`
+/// 实测要 100ms 才醒（2026-09-23）。被等的那件事没跑，等的这一方其实也没跑，墙上时钟
+/// 却照走不误，醒来一看截止时间已过，就把「还没轮到」误报成「永远不会发生」。按轮询
+/// 次数记，饿着的那段不计入预算。
+///
+/// 另有一道 `timeout` 的 10 倍墙上时钟封顶：条件真的永远不成立时，饿成什么样都会在
+/// 有限时间里返回 false，不会把整包拖成挂死。
+///
+/// 只用来等「会发生的事」。要确认「某件事在一段时间里没发生」用 `staysFalse`。
 public func waitUntil(_ timeout: Double = 5,
                       _ cond: @Sendable () async -> Bool) async -> Bool {
-  let deadline = Date().addingTimeInterval(timeout)
-  while Date() < deadline {
+  let polls = max(1, Int((timeout * 1000 / 2).rounded(.up)))
+  let ceiling = Date().addingTimeInterval(timeout * 10)
+  for _ in 0..<polls {
     if await cond() { return true }
+    if Date() >= ceiling { break }
     try? await Task.sleep(nanoseconds: 2_000_000)
   }
   return await cond()
+}
+
+/// 确认条件在 `seconds` 秒（墙上时钟）里一直不成立，是就返回 true。
+///
+/// 反向检查的窗口仍按墙上时钟算：它问的是「这段时间里有没有冒出来」，机器忙时窗口里
+/// 轮询得少一些只会让检查松一点，不会误报失败；要是也按轮询次数记，负载 50 时 1 秒的
+/// 窗口会被拉成 40 多秒，把带 `.timeLimit(.minutes(1))` 的用例拖超时。
+public func staysFalse(for seconds: Double,
+                       _ cond: @Sendable () async -> Bool) async -> Bool {
+  let deadline = Date().addingTimeInterval(seconds)
+  repeat {
+    if await cond() { return false }
+    try? await Task.sleep(nanoseconds: 2_000_000)
+  } while Date() < deadline
+  return !(await cond())
 }
 
 // ---------------------------------------------------------------- 聋 socket

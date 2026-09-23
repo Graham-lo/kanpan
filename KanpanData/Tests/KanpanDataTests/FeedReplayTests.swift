@@ -411,15 +411,21 @@ struct FeedReplayTests {
   @Test("连续切 20 次：连接 id 不变，走 SUBSCRIBE / UNSUBSCRIBE")
   func switchTwentyTimes() async throws {
     let rec = Recording.load()
-    let deck = ReplayDeck(rec.lines.prefix(50).map { .frame(.text($0)) } + [.hang])
+    // 50 帧放完之后回放器就挂住了：这是一条**安静但健康**的连接，所以它得答保活探针
+    // （`answersKeepalive: true`）。不答的话，A-07 第①层（传输层静默，默认 30 虚拟秒，
+    // FastPacer 下只有 30 毫秒真实时间）会在最后一帧之后约 30～60ms 判它死了去重连——
+    // 机器一忙，20 次切换还没切完就换成了第 2 条连接，新连接把订阅写在 URL 上，
+    // 于是 `currentConnectionID == 1`、`connects == 1` 和「发过 SUBSCRIBE」一起红。
+    // 那是看门狗在正确地工作，不是订阅复用出了问题；这条用例测的是后者。
+    let deck = ReplayDeck(rec.lines.prefix(50).map { .frame(.text($0)) } + [.hang],
+                          answersKeepalive: true)
     let pacer = FastPacer()
     let ex = FakeExchange(rec: rec, cursor: deck.cursor)
     let server = FakeServer(pacer: pacer) { ex.reply(for: $0) }
     let paths = tempPaths()
     defer { try? FileManager.default.removeItem(at: paths.root) }
     let rest = BinanceREST(transport: FakeTransport(server), pacer: pacer)
-    // The finite fixture then hangs; this case checks subscription reuse, not the
-    // separate silence watchdog. Keep its accelerated deadline outside this test.
+    // 第②/③层（等首帧、等有效行情）同理挪到用例之外：这里只看订阅复用。
     let ws = BinanceWS(factory: ReplayFactory(deck: deck, pacer: pacer), pacer: pacer, silenceMs: 60_000_000)
     let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0)
     _ = await feed.events()

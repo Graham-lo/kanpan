@@ -22,19 +22,29 @@ struct FeedBlockedRetryTests {
     return p
   }
 
-  /// 收 `FeedUpdate` 的小盒子：只留「横幅文案」和「有没有报过离线」。
+  /// 收 `FeedUpdate` 的小盒子：留「横幅文案」（此刻的和亮过的每一条）和「有没有报过离线」。
   private actor Seen {
     private(set) var banner: String?
+    /// 亮过的每一条横幅，按先后。横幅是「最后一条说了算」，而封禁期间合法地会亮两条：
+    /// 首屏那句，和 WS（重）连上之后补缺被封禁挡回来的「行情缺口暂未补齐」。两者谁后到
+    /// 取决于 WS 握手和首屏回包谁快，是调度决定的，所以要问「首屏那句亮过没有」得看这里。
+    private(set) var banners: [String] = []
     private(set) var offline = false
     func note(_ update: FeedUpdate) {
       switch update.event {
-      case .historyError(let text): banner = text
+      case .historyError(let text):
+        banner = text
+        if let text { banners.append(text) }
       case .status(let s): if s == .offline { offline = true }
       default: break
       }
     }
-    func clearBanner() { banner = nil }
+    func clearBanner() { banner = nil; banners = [] }
   }
+
+  /// 封禁期间允许亮的两条横幅（都带「点此重试」）。
+  private static let firstFillBanner = "历史行情暂未加载，点此重试"
+  private static let gapBanner = "行情缺口暂未补齐，点此重试"
 
   /// 被上游按住的出口：每一发都回 429 + `Retry-After`，并且数出站次数。
   private actor BannedUpstream: HTTPTransport {
@@ -68,11 +78,13 @@ struct FeedBlockedRetryTests {
     let seed = makeSeries("BTCUSDT", .m1, count: 300)
     _ = try SeriesStore.write(seed, in: paths.series)
 
-    // 封禁按报告给的 3600 秒（A-T05）。时钟放快 100 倍而不是默认的 1000 倍：
-    // 3600 虚拟秒于是是 36 秒真实时间，「有人在等封禁结束」和「当场收手」在墙上
-    // 时钟上差两个数量级，而下面「封禁还剩很久」那条断言（> 3_000_000 毫秒）也就有了
-    // 6 秒真实时间的富余——用例被别的套件饿一会儿，不会被读成「封禁快到点了」。
-    let pacer = FastPacer(scale: 0.01)
+    // 封禁按报告给的 3600 秒（A-T05）。REST / 限流器 / feed 用阶梯时钟：针只在有人
+    // `sleep` 时才走，所以
+    // - 「封禁还剩很久」（> 3_000_000 毫秒）不再随墙上时钟流逝——原来用 FastPacer(0.01)，
+    //   整包并行跑时这条用例被饿过 6 秒真实时间，封禁就「自己快到点了」；
+    // - 「有没有人在等封禁结束」直接看睡眠账本：谁要是去睡那 3600 秒，账上一目了然，
+    //   不必再拿墙上时钟掐「横幅 10 秒内亮」（机器忙的时候那个秒数只会乱闪）。
+    let pacer = StepPacer()
     let upstream = BannedUpstream(retryAfterSeconds: 3600)
     // 真 `MarketRESTTransport`（直连档）：这样「点此重试」清的是真的线路冷却，
     // 而不是一个空操作。清完线路冷却，限流器上的 IP 封禁仍然在（A-03 第 4 点）。
@@ -80,8 +92,11 @@ struct FeedBlockedRetryTests {
                                      transport: upstream, policy: .direct)
     let limiter = RateLimiter(pacer: pacer, minGapMs: 0)
     let rest = BinanceREST(transport: routed, limiter: limiter, pacer: pacer)
+    // WS 走真时钟：它的看门狗在阶梯时钟上会一睡就「到点」，连着空转重连。原来它跟着
+    // FastPacer(0.01)，60 虚拟秒的首帧窗口只有 0.6 秒真实时间，用例一慢就重连一次，
+    // 每次重连都去补缺、被封禁挡回来，把横幅换成「行情缺口暂未补齐」。
     let ws = BinanceWS(factory: ReplayFactory(deck: ReplayDeck([.hang]), pacer: SystemPacer()),
-                       pacer: pacer)
+                       pacer: SystemPacer())
     let logged = Waits()
     let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0,
                           log: FeedLog { logged.note($0) })
@@ -91,13 +106,15 @@ struct FeedBlockedRetryTests {
     let pump = Task { for await update in stream { await seen.note(update) } }
     defer { pump.cancel() }
 
-    let t0 = Date()
     await feed.start(symbol: "BTCUSDT", interval: .m1)
-    #expect(await waitUntil(20) { await seen.banner != nil })
-    let elapsed = Date().timeIntervalSince(t0)
-    // 3600 秒的封禁在这把时钟上是 36 秒：横幅远早于它，说明没人在等封禁结束。
-    #expect(elapsed < 10, "横幅等了 \(String(format: "%.2f", elapsed)) 秒才亮，有人在等封禁结束")
-    #expect(await seen.banner == "历史行情暂未加载，点此重试")
+    #expect(await waitUntil(20) { await seen.banners.contains(Self.firstFillBanner) })
+    // 没人在等封禁结束：睡眠账本上没有一笔长到能「等过」封禁（能等的上限是 10 秒）。
+    let slept = await pacer.sleepLog()
+    #expect(slept.allSatisfy { $0 < RateLimiter.waitableBanMs }, "有人在等封禁结束：\(slept)")
+    // 横幅亮着，而且只会是封禁期间那两条之一（WS 连上后补缺被挡回来那条是合法的）。
+    #expect(await seen.banner != nil)
+    let firstRound = await seen.banners
+    #expect(firstRound.allSatisfy { $0 == Self.firstFillBanner || $0 == Self.gapBanner }, "\(firstRound)")
     #expect(await seen.offline)
 
     // 本地图表原样留着：封禁不是「把图清空」的理由。
@@ -125,8 +142,12 @@ struct FeedBlockedRetryTests {
     await seen.clearBanner()
     await rest.resetRouteCooldowns()
     await feed.switchTo(symbol: "BTCUSDT", interval: .m1)
-    #expect(await waitUntil(20) { await seen.banner != nil })
-    #expect(await seen.banner == "历史行情暂未加载，点此重试")
+    #expect(await waitUntil(20) { await seen.banners.contains(Self.firstFillBanner) })
+    #expect(await seen.banner != nil)
+    let retryRound = await seen.banners
+    #expect(retryRound.allSatisfy { $0 == Self.firstFillBanner || $0 == Self.gapBanner }, "\(retryRound)")
+    let sleptAfter = await pacer.sleepLog()
+    #expect(sleptAfter.allSatisfy { $0 < RateLimiter.waitableBanMs }, "\(sleptAfter)")
     let sentAfter = await upstream.calls
     #expect(sentAfter == sentBefore, "重试又去撞了上游：\(sentAfter) 次")
     #expect(await limiter.banRemainingMs() > 3_000_000)   // 点重试也不能让封禁提前结束
@@ -163,8 +184,11 @@ struct FeedBlockedRetryTests {
     let upstream = GeoRefusedUpstream()
     let limiter = RateLimiter(pacer: pacer, minGapMs: 0)
     let rest = BinanceREST(transport: upstream, limiter: limiter, pacer: pacer)
+    // WS 走真时钟，理由同 A-T05：跟着 FastPacer(0.01) 时 60 虚拟秒的首帧窗口只有
+    // 0.6 秒真实时间，机器一忙就重连，重连后的补缺同样吃 451，横幅被换成「行情缺口
+    // 暂未补齐」——那是合法行为，不是本条要验的东西。
     let ws = BinanceWS(factory: ReplayFactory(deck: ReplayDeck([.hang]), pacer: SystemPacer()),
-                       pacer: pacer)
+                       pacer: SystemPacer())
     let logged = Waits()
     let feed = MarketFeed(rest: rest, ws: ws, paths: paths, pacer: pacer, reconcileMs: 0,
                           log: FeedLog { logged.note($0) })
@@ -174,8 +198,12 @@ struct FeedBlockedRetryTests {
     defer { pump.cancel() }
 
     await feed.start(symbol: "BTCUSDT", interval: .m1)
-    #expect(await waitUntil(20) { await seen.banner != nil })
-    #expect(await seen.banner == "历史行情暂未加载，点此重试")
+    // 首屏这一轮落到「历史行情暂未加载，点此重试」；之后横幅一直亮着，且只会是
+    // 这条或 WS 连上后补缺被 451 挡回的那条。
+    #expect(await waitUntil(20) { await seen.banners.contains(Self.firstFillBanner) })
+    #expect(await seen.banner != nil)
+    let banners = await seen.banners
+    #expect(banners.allSatisfy { $0 == Self.firstFillBanner || $0 == Self.gapBanner }, "\(banners)")
     // 本地图表原样留着。
     #expect(await feed.currentSeries.count == seed.count)
 
@@ -189,9 +217,9 @@ struct FeedBlockedRetryTests {
     // （`startTime=` 那种是补缺，另有自己的节奏，不在这一条的判据里。）
     let firstScreen = await upstream.klineQueries.filter { !$0.contains("startTime") }
     #expect(firstScreen.count == 1, "首屏这一条被重发了：\(firstScreen)")
-    #expect(await waitUntil(1) {
+    #expect(await staysFalse(for: 1) {
       await upstream.klineQueries.filter { !$0.contains("startTime") }.count > 1
-    } == false, "晚一点还是把首屏那条请求重发了")
+    }, "晚一点还是把首屏那条请求重发了")
     // 451 不是限流：不许在本机限流器上记罚停，换一条线路应该立刻能用。
     #expect(await limiter.banRemainingMs() == 0)
     await feed.stop()

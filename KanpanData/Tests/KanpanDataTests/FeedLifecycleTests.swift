@@ -207,7 +207,7 @@ struct FeedLifecycleTests {
     await feedA.enterBackground()
     await feedA.enterForeground()
     // 等一秒钟，确认那一笔补缺请求**始终没有**发出来（它是异步派的，光看这一刻不算数）。
-    #expect(await waitUntil(1) { await netA.backfillCalls > backfillsBefore } == false)
+    #expect(await staysFalse(for: 1) { await netA.backfillCalls > backfillsBefore })
     await feedA.stop(); collectorA.cancel()
 
     // ② 过了一根：欠两根（末根 + 新开的那根），必须补。
@@ -556,7 +556,7 @@ struct FeedLifecycleTests {
     #expect(await a.deck.stats().connects == 1)   // 没重连
     #expect(await a.net.backfillCalls == backfillsBefore)
     // 补缺是异步派的，光看这一刻不算数：确认它**始终**没发出来。
-    #expect(await waitUntil(1) { await a.net.backfillCalls > backfillsBefore } == false)
+    #expect(await staysFalse(for: 1) { await a.net.backfillCalls > backfillsBefore })
     // 首屏也没白重拉。
     // （`#expect` 的说明是不支持并发的 autoclosure，先把读数取出来再断言。）
     let klineCallsAfter = await a.net.firstScreenKlineCalls

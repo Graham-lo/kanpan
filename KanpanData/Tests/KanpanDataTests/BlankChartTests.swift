@@ -66,8 +66,8 @@ struct BlankChartTests {
     #expect(await transport.klineCalls > 0)
 
     // 落盘是 detached 任务，给它足够的时间真写下去——写了才算红。
-    let wrote = await waitUntil(2) { Self.hasStoredSeries(paths) }
-    #expect(!wrote, "只有 \(MarketFeed.snapshotFloor) 根以下的序列不该落成快照，它画不出第一帧，只会覆盖掉上一份好的")
+    let clean = await staysFalse(for: 2) { Self.hasStoredSeries(paths) }
+    #expect(clean, "只有 \(MarketFeed.snapshotFloor) 根以下的序列不该落成快照，它画不出第一帧，只会覆盖掉上一份好的")
   }
 
   private static func hasStoredSeries(_ paths: Paths) -> Bool {
